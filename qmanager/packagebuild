@@ -65,13 +65,21 @@ QMANAGER_RUNAWAY_PERCENTAGE = float( \
 QMANAGER_RUNAWAY_THRESHOLD  = int( \
     config.get( 'QMANAGER_RUNAWAY_THRESHOLD' ) )
 
+# debug controls
 DEBUG_PACKAGEBUILD = False
 DEBUG_RETCODE = False
+
+# argument handling
+ARG_UNLIMITED_ERRORS = "unlimited-errors"
+
+# global variables
 
 categories = {}
 ports = {}
 
 pkg_sufx = None
+
+unlimited_errors = False
 
 # When a build fails we requeue it with a lower priority such that it
 # will never preempt a phase 1 build but will build when spare
@@ -538,13 +546,24 @@ def main(arch, branch, buildid, args):
         print "error: pkg_sufx not defined in portbuild.conf"
         sys.exit(1)
 
-    print "[MASTER] parseindex..."
+    print "[MASTER] Parsing INDEX..."
     index = Index(indexfile)
     index.parse()
     print "[MASTER] length = %s" % len(ports)
 
+    print "[MASTER] Parsing arguments..."
+    targets = []
+    for arg in args:
+        if arg.find( "-" ) == 0:
+            if ( arg[ 1 : ] == ARG_UNLIMITED_ERRORS):
+                unlimited_errors = True
+            else:
+                print "[MASTER] arg %s not recognized, ignoring." % arg[ 1 : ]
+        else:
+            targets = targets.append( arg )
+
     print "[MASTER] Finding targets..."
-    targets = gettargets(args)
+    targets = gettargets(targets)
 
     print "[MASTER] Calculating depth..."
     depthindex(targets)
@@ -593,13 +612,13 @@ def main(arch, branch, buildid, args):
                 job.failure()
                 continue
             else:
-                # XXX MCL 20110421
                 completed_jobs = completed_jobs + 1
                 failed_jobs    = failed_jobs + 1
                 if DEBUG_PACKAGEBUILD:
                     print "[MASTER] jobs: %d failed jobs out of %d:" % \
                         ( failed_jobs, completed_jobs )
-                if completed_jobs > QMANAGER_RUNAWAY_THRESHOLD and \
+                if not unlimited_errors and \
+                        completed_jobs > QMANAGER_RUNAWAY_THRESHOLD and \
                         float( failed_jobs ) / completed_jobs > QMANAGER_RUNAWAY_PERCENTAGE:
                     print "[MASTER] ERROR: runaway build detected: %d failed jobs out of %d:" % \
                         ( failed_jobs, completed_jobs )
