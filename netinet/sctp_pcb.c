@@ -331,19 +331,9 @@ sctp_mark_ifa_addr_down(uint32_t vrf_id, struct sockaddr *addr,
 		goto out;
 	}
 	if (if_name) {
-		int len1, len2;
-
-		len1 = strlen(if_name);
-		len2 = strlen(sctp_ifap->ifn_p->ifn_name);
-		if (len1 != len2) {
-			SCTPDBG(SCTP_DEBUG_PCB4, "IFN of ifa names different length %d vs %d - ignored\n",
-			    len1, len2);
-			goto out;
-		}
-		if (strncmp(if_name, sctp_ifap->ifn_p->ifn_name, len1) != 0) {
+		if (strncmp(if_name, sctp_ifap->ifn_p->ifn_name, SCTP_IFNAMSIZ) != 0) {
 			SCTPDBG(SCTP_DEBUG_PCB4, "IFN %s of IFA not the same as %s\n",
-			    sctp_ifap->ifn_p->ifn_name,
-			    if_name);
+			    sctp_ifap->ifn_p->ifn_name, if_name);
 			goto out;
 		}
 	} else {
@@ -384,19 +374,9 @@ sctp_mark_ifa_addr_up(uint32_t vrf_id, struct sockaddr *addr,
 		goto out;
 	}
 	if (if_name) {
-		int len1, len2;
-
-		len1 = strlen(if_name);
-		len2 = strlen(sctp_ifap->ifn_p->ifn_name);
-		if (len1 != len2) {
-			SCTPDBG(SCTP_DEBUG_PCB4, "IFN of ifa names different length %d vs %d - ignored\n",
-			    len1, len2);
-			goto out;
-		}
-		if (strncmp(if_name, sctp_ifap->ifn_p->ifn_name, len1) != 0) {
+		if (strncmp(if_name, sctp_ifap->ifn_p->ifn_name, SCTP_IFNAMSIZ) != 0) {
 			SCTPDBG(SCTP_DEBUG_PCB4, "IFN %s of IFA not the same as %s\n",
-			    sctp_ifap->ifn_p->ifn_name,
-			    if_name);
+			    sctp_ifap->ifn_p->ifn_name, if_name);
 			goto out;
 		}
 	} else {
@@ -2670,6 +2650,7 @@ sctp_inpcb_alloc(struct socket *so, uint32_t vrf_id)
 #ifdef INET6
 	m->default_flowlabel = 0;
 #endif
+	m->port = 0;		/* encapsulation disabled by default */
 	sctp_auth_set_default_chunks(m->local_auth_chunks);
 	LIST_INIT(&m->shared_keys);
 	/* add default NULL key as key id 0 */
@@ -4013,13 +3994,9 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 	net->RTO = 0;
 	net->RTO_measured = 0;
 	stcb->asoc.numnets++;
-	*(&net->ref_count) = 1;
+	net->ref_count = 1;
 	net->cwr_window_tsn = net->last_cwr_tsn = stcb->asoc.sending_seq - 1;
-	if (SCTP_BASE_SYSCTL(sctp_udp_tunneling_for_client_enable)) {
-		net->port = htons(SCTP_BASE_SYSCTL(sctp_udp_tunneling_port));
-	} else {
-		net->port = 0;
-	}
+	net->port = stcb->asoc.port;
 	net->dscp = stcb->asoc.default_dscp;
 #ifdef INET6
 	net->flowlabel = stcb->asoc.default_flowlabel;
@@ -6918,11 +6895,6 @@ skip_vtag_check:
 	return (1);
 }
 
-
-static sctp_assoc_t reneged_asoc_ids[256];
-static uint8_t reneged_at = 0;
-
-
 static void
 sctp_drain_mbufs(struct sctp_inpcb *inp, struct sctp_tcb *stcb)
 {
@@ -7027,8 +6999,6 @@ sctp_drain_mbufs(struct sctp_inpcb *inp, struct sctp_tcb *stcb)
 		/* sa_ignore NO_NULL_CHK */
 		sctp_send_sack(stcb, SCTP_SO_NOT_LOCKED);
 		sctp_chunk_output(stcb->sctp_ep, stcb, SCTP_OUTPUT_FROM_DRAIN, SCTP_SO_NOT_LOCKED);
-		reneged_asoc_ids[reneged_at] = sctp_get_associd(stcb);
-		reneged_at++;
 	}
 	/*
 	 * Another issue, in un-setting the TSN's in the mapping array we

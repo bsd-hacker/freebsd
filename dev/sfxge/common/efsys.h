@@ -25,13 +25,12 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
 #ifndef	_SYS_EFSYS_H
 #define	_SYS_EFSYS_H
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #ifdef	__cplusplus
 extern "C" {
@@ -97,10 +96,11 @@ extern "C" {
 MALLOC_DECLARE(M_SFXGE);
 
 /* Machine dependend prefetch wrappers */
-#if defined(__i386) || defined(__amd64)
+#if defined(__i386__) || defined(__amd64__)
 static __inline void
 prefetch_read_many(void *addr)
 {
+
 	__asm__(
 	    "prefetcht0 (%0)"
 	    :
@@ -110,10 +110,43 @@ prefetch_read_many(void *addr)
 static __inline void
 prefetch_read_once(void *addr)
 {
+
 	__asm__(
 	    "prefetchnta (%0)"
 	    :
 	    : "r" (addr));
+}
+#elif defined(__sparc64__)
+static __inline void
+prefetch_read_many(void *addr)
+{
+
+	__asm__(
+	    "prefetch [%0], 0"
+	    :
+	    : "r" (addr));
+}
+
+static __inline void
+prefetch_read_once(void *addr)
+{
+
+	__asm__(
+	    "prefetch [%0], 1"
+	    :
+	    : "r" (addr));
+}
+#else
+static __inline void
+prefetch_read_many(void *addr)
+{
+
+}
+
+static __inline void
+prefetch_read_once(void *addr)
+{
+
 }
 #endif
 

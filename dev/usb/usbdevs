@@ -317,6 +317,7 @@ vendor ACTLABS		0x061c	Act Labs
 vendor ALARIS		0x0620	Alaris
 vendor APEX		0x0624	Apex
 vendor CREATIVE3	0x062a	Creative Labs
+vendor MICRON		0x0634	Micron Technology
 vendor VIVITAR		0x0636	Vivitar
 vendor GUNZE		0x0637	Gunze Electronics USA
 vendor AVISION		0x0638	Avision
@@ -664,7 +665,7 @@ vendor LINKSYS3		0x1915	Linksys
 vendor QUALCOMMINC	0x19d2	Qualcomm, Incorporated
 vendor WCH2		0x1a86	QinHeng Electronics
 vendor STELERA		0x1a8d	Stelera Wireless
-vendor MATRIXORBITAL	0x1b3d	Matrix Orbital 
+vendor MATRIXORBITAL	0x1b3d	Matrix Orbital
 vendor OVISLINK		0x1b75	OvisLink
 vendor TCTMOBILE	0x1bbb  TCT Mobile
 vendor WAGO		0x1be3  WAGO Kontakttechnik GmbH.
@@ -2086,11 +2087,13 @@ product LINKSYS4 RT3070		0x0078	RT3070
 product LINKSYS4 WUSB600NV2	0x0079	WUSB600N v2
 
 /* Logitech products */
+product LOGITECH LANW300NU2	0x0166  LAN-W300N/U2
 product LOGITECH M2452		0x0203	M2452 keyboard
 product LOGITECH M4848		0x0301	M4848 mouse
 product LOGITECH PAGESCAN	0x040f	PageScan
 product LOGITECH QUICKCAMWEB	0x0801	QuickCam Web
 product LOGITECH QUICKCAMPRO	0x0810	QuickCam Pro
+product LOGITECH WEBCAMC100	0X0817	Webcam C100
 product LOGITECH QUICKCAMEXP	0x0840	QuickCam Express
 product LOGITECH QUICKCAM	0x0850	QuickCam
 product LOGITECH QUICKCAMPRO3	0x0990	QuickCam Pro 9000
@@ -2136,7 +2139,7 @@ product MACALLY MOUSE1		0x0101	mouse
 
 /* Marvell Technology Group, Ltd. products */
 product MARVELL SHEEVAPLUG	0x9e8f	SheevaPlug serial interface
-  
+
 /* Matrix Orbital products */
 product MATRIXORBITAL MOUA	0x0153	Martrix Orbital MOU-Axxxx LCD displays
 
@@ -2181,6 +2184,7 @@ product MELCO RT2870_1		0x0148	RT2870
 product MELCO RT2870_2		0x0150	RT2870
 product MELCO WLIUCGN		0x015d	WLI-UC-GN
 product MELCO WLIUCG301N	0x016f	WLI-UC-G301N
+product MELCO WLIUCGNM		0x01a2  WLI-UC-GNM
 
 /* Merlin products */
 product MERLIN V620             0x1110  Merlin V620
@@ -2222,6 +2226,9 @@ product MSI RT3070_11		0x871a	RT3070
 product MSI RT3070_7		0x899a	RT3070
 product MSI RT2573_3		0xa861	RT2573
 product MSI RT2573_4		0xa874	RT2573
+
+/* Micron products */
+product MICRON REALSSD		0x0655	Real SSD eUSB
 
 /* Microsoft products */
 product MICROSOFT SIDEPREC	0x0008	SideWinder Precision Pro

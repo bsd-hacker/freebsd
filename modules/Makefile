@@ -22,7 +22,6 @@ SUBDIR=	${_3dfx} \
 	alc \
 	ale \
 	alq \
-	${_amd} \
 	${_amdsbwd} \
 	${_amdtemp} \
 	amr \
@@ -275,7 +274,7 @@ SUBDIR=	${_3dfx} \
 	sem \
 	send \
 	sf \
-	sfxge \
+	${_sfxge} \
 	sge \
 	siba_bwn \
 	siftr \
@@ -317,7 +316,9 @@ SUBDIR=	${_3dfx} \
 	usb \
 	utopia \
 	${_vesa} \
+	${_virtio} \
 	vge \
+	${_viawd} \
 	vkbd \
 	${_vpo} \
 	vr \
@@ -404,7 +405,6 @@ _3dfx=		3dfx
 _3dfx_linux=	3dfx_linux
 _agp=		agp
 _aic=		aic
-_amd=		amd
 _an=		an
 _aout=		aout
 _apm=		apm
@@ -529,6 +529,7 @@ _nve=		nve
 _nvram=		nvram
 _nxge=		nxge
 _tpm=		tpm
+_viawd=		viawd
 _wpi=		wpi
 _wpifw=		wpifw
 .if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
@@ -537,6 +538,7 @@ _padlock=	padlock
 _s3=		s3
 _twa=		twa
 _vesa=		vesa
+_virtio=	virtio
 _x86bios=	x86bios
 .elif ${MACHINE} == "pc98"
 _canbepm=	canbepm
@@ -628,6 +630,7 @@ _rdma=		rdma
 _s3=		s3
 _safe=		safe
 _scsi_low=	scsi_low
+_sfxge=		sfxge
 _smbfs=		smbfs
 _sound=		sound
 _speaker=	speaker
@@ -636,6 +639,8 @@ _sppp=		sppp
 _tpm=		tpm
 _twa=		twa
 _vesa=		vesa
+_viawd=		viawd
+_virtio=	virtio
 _vxge=  	vxge
 _x86bios=	x86bios
 _wi=		wi
