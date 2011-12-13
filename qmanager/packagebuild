@@ -66,8 +66,8 @@ QMANAGER_RUNAWAY_THRESHOLD  = int( \
     config.get( 'QMANAGER_RUNAWAY_THRESHOLD' ) )
 
 # debug controls
-DEBUG_PACKAGEBUILD = False
-DEBUG_RETCODE = False
+DEBUG_PACKAGEBUILD = True
+DEBUG_RETCODE = True
 
 # argument handling
 ARG_UNLIMITED_ERRORS = "unlimited-errors"
@@ -78,8 +78,6 @@ categories = {}
 ports = {}
 
 pkg_sufx = None
-
-unlimited_errors = False
 
 # When a build fails we requeue it with a lower priority such that it
 # will never preempt a phase 1 build but will build when spare
@@ -551,6 +549,7 @@ def main(arch, branch, buildid, args):
     index.parse()
     print "[MASTER] length = %s" % len(ports)
 
+    unlimited_errors = False
     print "[MASTER] Parsing arguments..."
     targets = []
     for arg in args:
