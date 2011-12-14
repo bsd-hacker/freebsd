@@ -118,7 +118,7 @@ buildenv () {
 	fi
     done
 
-    buildenv.common
+    buildenv.common ${arch}
 
     # override things destined for bsd.port.mk
     export DISTDIR=${builddir}/distfiles
@@ -151,13 +151,16 @@ buildenv () {
 # establish commonly-used environment variables (client-side)
 #
 buildenv.client() {
+    arch=$1
+    src_base=$2
+
     # derive OSREL, OSVERSION, and BRANCH
-    export_src_metadata $1
+    export_src_metadata ${src_base}
 
     # manually override results of uname(1)
-    export UNAME_m=${ARCH}
+    export UNAME_m=${arch}
     export UNAME_n=freebsd.org
-    export UNAME_p=${ARCH}
+    export UNAME_p=${arch}
     export UNAME_r=${OSREL}-${BRANCH}
     export UNAME_s=FreeBSD
     export UNAME_v="FreeBSD ${OSREL}-${BRANCH} #0: $(date)     portmgr@freebsd.org:/usr/src/sys/magic/kernel/path"
@@ -167,6 +170,8 @@ buildenv.client() {
 # establish commonly-used environment variables (common to clients and server)
 #
 buildenv.common() {
+    arch=$1
+
     export ARCH=${arch}
     export MACHINE_ARCH=${arch}
 
