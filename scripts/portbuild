@@ -66,6 +66,9 @@ shift 4
 # Default niceness value
 nice=0
 
+if [ ! -d ${pbd}/${arch}/ ]; then
+  bailout ${chroot} 0 255 ${pkgname}
+fi
 . ${pbd}/${arch}/client.conf
 . ${pbd}/${arch}/common.conf
 # note: should NOT need anything from server.conf
@@ -74,9 +77,13 @@ if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
     . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
 fi
 . ${pbd}/${arch}/portbuild.$(hostname)
+
 # if buildenv isn't there, then ${pbd} is probably the default, which for
 # some reason you have not populated.
-. ${pbd}/scripts/buildenv || bailout ${chroot} 0 255 ${pkgname}
+if [ ! -f ${pbd}/scripts/buildenv ]; then
+  bailout ${chroot} 0 255 ${pkgname}
+fi
+. ${pbd}/scripts/buildenv
 
 buildroot=${scratchdir}
 error=0
@@ -126,7 +133,7 @@ RD=$5
 
 builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 
-buildenv.common
+buildenv.common $arch
 
 # Want to use the /etc/make.conf in the chroot
 unset __MAKE_CONF
@@ -186,7 +193,7 @@ if [ -f ${chroot}/.notready ]; then
   if [ -f ${bindistlocal} ]; then
     tar -C ${chroot} -xpf ${bindistlocal}
   fi
-  # XXX MCL 20111117: allow additional (not replacement!) knobs for make.conf
+  # allow additional (not replacement!) knobs for make.conf
   if [ -f ${builddir}/make.conf.client ]; then
       cat ${builddir}/make.conf.client >> ${chroot}/etc/make.conf
   fi
@@ -247,7 +254,7 @@ mkdir -p ${chroot}/usr/src || bailout ${chroot} ${clean} 255 ${pkgname}
 mount_fs ${builddir}/src ${chroot}${CLIENT_SRCBASE} ${CLIENT_NFS_MASTER} || bailout ${chroot} ${clean} 255 ${pkgname}
 
 # set overrides for uname
-buildenv.client ${chroot}${CLIENT_SRCBASE}
+buildenv.client ${arch} ${chroot}${CLIENT_SRCBASE}
 
 mount -t devfs foo ${chroot}/dev
 umount -f ${chroot}/compat/linux/proc > /dev/null 2>&1
