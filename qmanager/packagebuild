@@ -559,7 +559,7 @@ def main(arch, branch, buildid, args):
             else:
                 print "[MASTER] arg %s not recognized, ignoring." % arg[ 1 : ]
         else:
-            targets = targets.append( arg )
+            targets.append( arg )
 
     print "[MASTER] Finding targets..."
     targets = gettargets(targets)
