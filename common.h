@@ -36,10 +36,10 @@
 
 /* constants */
 
-#define MAXHUNKSIZE 100000	/* is this enough lines? */
+#define MAXHUNKSIZE 200000	/* is this enough lines? */
 #define INITHUNKMAX 125		/* initial dynamic allocation size */
 #define MAXLINELEN 8192
-#define BUFFERSIZE 1024
+#define BUFFERSIZE 8192
 
 #define SCCSPREFIX "s."
 #define GET "get -e %s"
