@@ -1274,7 +1274,7 @@ fwohci_db_init(struct fwohci_softc *sc, struct fwohci_dbch *dbch)
 	}
 
 #define DB_SIZE(x) (sizeof(struct fwohcidb) * (x)->ndesc)
-	dbch->am = fwdma_malloc_multiseg(&sc->fc, DB_SIZE(dbch),
+	dbch->am = fwdma_malloc_multiseg(&sc->fc, sizeof(struct fwohcidb),
 		DB_SIZE(dbch), dbch->ndb, BUS_DMA_WAITOK);
 	if (dbch->am == NULL) {
 		printf("fwohci_db_init: fwdma_malloc_multiseg failed\n");
@@ -1907,8 +1907,6 @@ fwohci_intr_core(struct fwohci_softc *sc, uint32_t stat, int count)
 			OWRITE(sc, OHCI_LNKCTL, OHCI_CNTL_CYCTIMER);
 		}
 
-		fc->status = FWBUSINIT;
-
 		if (!kdb_active)
 			taskqueue_enqueue(sc->fc.taskqueue, &sc->fwohci_task_sid);
 	}
@@ -2014,7 +2012,6 @@ fwohci_task_sid(void *arg, int pending)
 	uint32_t *buf;
 	int i, plen;
 
-
 	/*
 	 * We really should have locking
 	 * here.  Not sure why it's not
@@ -2038,6 +2035,8 @@ fwohci_task_sid(void *arg, int pending)
 	}
 	for (i = 0; i < plen / 4; i ++)
 		buf[i] = FWOHCI_DMA_READ(sc->sid_buf[i+1]);
+
+	fc->status = FWBUSINIT;
 
 	/* pending all pre-bus_reset packets */
 	fwohci_txd(sc, &sc->atrq);

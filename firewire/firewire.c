@@ -221,9 +221,13 @@ fw_asyreq(struct firewire_comm *fc, int sub, struct fw_xfer *xfer)
 		return EINVAL;
 	}
 
-	/* XXX allow bus explore packets only after bus rest */
+	/*
+	 * XXX allow bus explore packets only after bus rest and after
+	 * we have have passed self-id receive state
+	 */
 	if ((fc->status < FWBUSEXPLORE) &&
-	    ((tcode != FWTCODE_RREQQ) || (fp->mode.rreqq.dest_hi != 0xffff) ||
+	    ((fc->status < FWBUSINIT) ||
+	    (tcode != FWTCODE_RREQQ) || (fp->mode.rreqq.dest_hi != 0xffff) ||
 	    (fp->mode.rreqq.dest_lo  < 0xf0000000) ||
 	    (fp->mode.rreqq.dest_lo >= 0xf0001000))) {
 		xfer->resp = EAGAIN;
