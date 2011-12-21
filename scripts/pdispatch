@@ -21,9 +21,9 @@ pbab=${pbd}/${arch}/${branch}
 . ${pbc}/conf/server.conf
 . ${pbc}/conf/common.conf
 . ${pbd}/${arch}/portbuild.conf
-if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+test -f ${pbd}/${arch}/portbuild.${host} && . ${pbd}/${arch}/portbuild.${host}
+test -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf && \
     . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
-fi
 . ${pbc}/scripts/buildenv
 
 timeout=${PDISPATCH_TIMEOUT}
@@ -81,8 +81,6 @@ if [ "x$TRYBROKEN" != "x" ]; then
 fi
 
 chroot=
-. ${pbd}/${arch}/portbuild.conf
-test -f ${pbd}/${arch}/portbuild.${host} && . ${pbd}/${arch}/portbuild.${host}
 
 # Upload scripts/claim-chroot as per-build scripts aren't in place yet.
 cmdpath=$(cat ${pbc}/scripts/claim-chroot | ${ssh_cmd} -a ${client_user}@${host} 't=$(mktemp -t claim-chroot); cat >$t; echo $t; chmod 755 $t')
@@ -139,9 +137,6 @@ if [ -z "${chroot}" ]; then
     exit 254
 fi
 
-. ${pbd}/${arch}/portbuild.conf
-test -f ${pbd}/${arch}/portbuild.${host} && . ${pbd}/${arch}/portbuild.${host}
-    
 rm -f ${builddir}/logs/${pkgname}.log ${builddir}/logs/${pkgname}.log.bz2
 rm -f ${builddir}/errors/${pkgname}.log ${builddir}/errors/${pkgname}.log.bz2
     
