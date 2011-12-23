@@ -188,12 +188,15 @@ class MachinePoll(threading.Thread):
             line=line.rstrip()
             part=line.partition('=')
             if part[1] != '=' or not part[0]:
-#                if "No such file or directory" in line:
-#                    # Client may require setting up post-boot
-#                    dosetup=1
                 logging.info("[%s] Bad input: %s" % (self.mach, line))
-                # Assume client needs setting up
-                dosetup=1
+                if "No such file or directory" in line:
+                    # client requires manual setup, do not attempt to set up
+                    # to avoid just filling up the error log
+                    logging.info("[%s] you MUST set the client up manually" % self.mach)
+                    dosetup=0
+                else:
+                    # attempt to set client up
+                    dosetup=1
             try:
                 old = self.vars[part[0]]
             except KeyError:

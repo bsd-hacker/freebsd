@@ -9,14 +9,36 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 arch=$(uname -m)
 osver=$(sysctl -n kern.osreldate)
 
-. ${pbd}/${arch}/client.conf
-. ${pbd}/${arch}/portbuild.conf
-if [ -f ${pbd}/${arch}/portbuild.$(hostname) ]; then
-    . ${pbd}/${arch}/portbuild.$(hostname)
+# set up configuration, or immediately error out if impossible
+error=
+if [ ! -d ${pbd}/${arch} ]; then
+  error="disk"
+else
+  if [ ! -f ${pbd}/${arch}/client.conf ]; then
+    error="disk"
+  else
+    . ${pbd}/${arch}/client.conf
+  fi
+  if [ ! -f ${pbd}/${arch}/portbuild.conf ]; then
+    error="disk"
+  else
+  . ${pbd}/${arch}/portbuild.conf
+  fi
+  if [ -f ${pbd}/${arch}/portbuild.$(hostname) ]; then
+      . ${pbd}/${arch}/portbuild.$(hostname)
+  fi
+
+  # iterate buildenvs
+  cd ${pbd}/${arch}
+  for i in */builds/*; do
+      buildenv=${arch}/${i%%/*}/${i##*/}
+      if [ -f ${i}/.ready ]; then
+	  buildenvs="${buildenv} ${buildenvs}"
+      fi
+  done
 fi
 
 # Look for exceptional conditions
-error=
 for i in squid disk; do
   if [ -f ${scratchdir}/.${i} ]; then
     error="${i} ${error}"
@@ -35,15 +57,6 @@ num=$(echo $(ls -1d ${scratchdir}/*/*/*/used ${scratchdir}/*/*/chroot/*/used 2>/
 echo "arch=${arch}"
 echo "osversion=${osver}"
 echo "jobs=${num}"
-
-cd ${pbd}/${arch}
-for i in */builds/*; do
-    buildenv=${arch}/${i%%/*}/${i##*/}
-    if [ -f ${i}/.ready ]; then
-	buildenvs="${buildenv} ${buildenvs}"
-    fi
-done
 echo "buildenvs=${buildenvs}"
-echo -n "load="
-uptime
+echo -n "load="`uptime`
 echo "error=${error}"
