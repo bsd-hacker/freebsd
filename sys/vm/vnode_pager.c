@@ -413,7 +413,7 @@ vnode_pager_setsize(vp, nsize)
 			 * have been zeroed.  Some of these valid bits may
 			 * have already been set.
 			 */
-			vm_page_set_valid(m, base, size);
+			vm_page_set_valid_range(m, base, size);
 
 			/*
 			 * Round "base" to the next block boundary so that the
@@ -486,15 +486,16 @@ vnode_pager_input_smlfs(object, m)
 	vm_object_t object;
 	vm_page_t m;
 {
-	int bits, i;
 	struct vnode *vp;
 	struct bufobj *bo;
 	struct buf *bp;
 	struct sf_buf *sf;
 	daddr_t fileaddr;
 	vm_offset_t bsize;
-	int error = 0;
+	vm_page_bits_t bits;
+	int error, i;
 
+	error = 0;
 	vp = object->handle;
 	if (vp->v_iflag & VI_DOOMED)
 		return VM_PAGER_BAD;
@@ -963,7 +964,7 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 			 * we just try to clear the piece that we couldn't
 			 * read.
 			 */
-			vm_page_set_valid(mt, 0,
+			vm_page_set_valid_range(mt, 0,
 			    object->un_pager.vnp.vnp_size - tfoff);
 			KASSERT((mt->dirty & vm_page_bits(0,
 			    object->un_pager.vnp.vnp_size - tfoff)) == 0,

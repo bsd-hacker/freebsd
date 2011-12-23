@@ -59,8 +59,6 @@ SUBDIR+=games
 .endif
 .if ${MK_CDDL} != "no"
 SUBDIR+=cddl
-.else
-NO_CTF=1
 .endif
 SUBDIR+=gnu include
 .if ${MK_KERBEROS} != "no"
@@ -239,7 +237,7 @@ BMAKE=		MAKEOBJDIRPREFIX=${WORLDTMP} \
 		BOOTSTRAPPING=${OSRELDATE} \
 		SSP_CFLAGS= \
 		-DWITHOUT_HTML -DWITHOUT_INFO -DNO_LINT -DWITHOUT_MAN \
-		-DNO_PIC -DWITHOUT_PROFILE -DNO_SHARED \
+		-DNO_PIC -DNO_PROFILE -DNO_SHARED \
 		-DNO_CPU_CFLAGS -DNO_WARNS -DNO_CTF
 
 # build-tools stage
@@ -291,7 +289,7 @@ LIB32CPUFLAGS=	-mcpu=powerpc
 LIB32CPUFLAGS=	-mcpu=${TARGET_CPUTYPE}
 .endif
 LIB32WMAKEENV=	MACHINE=powerpc MACHINE_ARCH=powerpc \
-		LD="${LD} -m elf32ppc"
+		LD="${LD} -m elf32ppc_fbsd"
 .endif
 
 
@@ -313,7 +311,8 @@ LIB32WMAKEENV+=	MAKEOBJDIRPREFIX=${OBJTREE}/lib32 \
 
 LIB32WMAKE=	${LIB32WMAKEENV} ${MAKE} -DNO_CPU_CFLAGS -DCOMPAT_32BIT \
 		-DWITHOUT_BIND -DWITHOUT_MAN -DWITHOUT_INFO \
-		-DWITHOUT_HTML -DNO_CTF -DNO_LINT DESTDIR=${LIB32TMP}
+		-DWITHOUT_HTML -DNO_CTF -DNO_LINT -ECC -ECXX -EAS -ELD \
+		DESTDIR=${LIB32TMP}
 LIB32IMAKE=	${LIB32WMAKE:NINSTALL=*:NDESTDIR=*} -DNO_INCS
 .endif
 
@@ -437,7 +436,7 @@ _libraries:
 	@echo "--------------------------------------------------------------"
 	${_+_}cd ${.CURDIR}; \
 	    ${WMAKE} -DNO_FSCHG -DWITHOUT_HTML -DWITHOUT_INFO -DNO_LINT \
-	    -DWITHOUT_MAN -DWITHOUT_PROFILE libraries
+	    -DWITHOUT_MAN -DNO_PROFILE libraries
 _depend:
 	@echo
 	@echo "--------------------------------------------------------------"
@@ -1217,6 +1216,9 @@ _startup_libs+=	lib/csu/${MACHINE_CPUARCH}
 _startup_libs+=	gnu/lib/libgcc
 _startup_libs+=	lib/libcompiler_rt
 _startup_libs+=	lib/libc
+.if ${MK_LIBCPLUSPLUS} != "no"
+_startup_libs+=	lib/libcxxrt
+.endif
 
 gnu/lib/libgcc__L: lib/libc__L
 
@@ -1317,8 +1319,8 @@ ${_lib}__PL: .PHONY
 		cd ${.CURDIR}/${_lib}; \
 		${MAKE} DIRPRFX=${_lib}/ obj; \
 		${MAKE} DIRPRFX=${_lib}/ depend; \
-		${MAKE} -DWITHOUT_PROFILE -DNO_PIC DIRPRFX=${_lib}/ all; \
-		${MAKE} -DWITHOUT_PROFILE -DNO_PIC DIRPRFX=${_lib}/ install
+		${MAKE} -DNO_PROFILE -DNO_PIC DIRPRFX=${_lib}/ all; \
+		${MAKE} -DNO_PROFILE -DNO_PIC DIRPRFX=${_lib}/ install
 .endif
 .endfor
 
@@ -1551,7 +1553,7 @@ XDEV_CPUTYPE?=${TARGET_CPUTYPE}
 .endif
 
 NOFUN=-DNO_FSCHG -DWITHOUT_HTML -DWITHOUT_INFO -DNO_LINT \
-	-DWITHOUT_MAN -DWITHOUT_NLS -DWITHOUT_PROFILE \
+	-DWITHOUT_MAN -DWITHOUT_NLS -DNO_PROFILE \
 	-DWITHOUT_KERBEROS -DWITHOUT_RESCUE -DNO_WARNS \
 	TARGET=${XDEV} TARGET_ARCH=${XDEV_ARCH} \
 	CPUTYPE=${XDEV_CPUTYPE}
@@ -1635,4 +1637,7 @@ _xi-links:
 			ln -sf ../../${XDTP}/usr/bin/$$i \
 			    ../../../../usr/bin/${XDDIR}${OSREL}-$$i; \
 		done
+.else
+xdev xdev-buil xdev-install:
+	@echo "*** Error: Both XDEV and XDEV_ARCH must be defined for \"${.TARGET}\" target"
 .endif

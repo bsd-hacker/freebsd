@@ -488,8 +488,9 @@ rtp_to_pri(struct rtprio *rtp, struct thread *td)
 	sched_class(td, rtp->type);	/* XXX fix */
 	oldpri = td->td_user_pri;
 	sched_user_prio(td, newpri);
-	if (curthread == td)
-		sched_prio(curthread, td->td_user_pri); /* XXX dubious */
+	if (td->td_user_pri != oldpri && (td == curthread ||
+	    td->td_priority == oldpri || td->td_user_pri >= PRI_MAX_REALTIME))
+		sched_prio(td, td->td_user_pri);
 	if (TD_ON_UPILOCK(td) && oldpri != newpri) {
 		critical_enter();
 		thread_unlock(td);
@@ -1118,6 +1119,10 @@ lim_hold(limp)
 void
 lim_fork(struct proc *p1, struct proc *p2)
 {
+
+	PROC_LOCK_ASSERT(p1, MA_OWNED);
+	PROC_LOCK_ASSERT(p2, MA_OWNED);
+
 	p2->p_limit = lim_hold(p1->p_limit);
 	callout_init_mtx(&p2->p_limco, &p2->p_mtx, 0);
 	if (p1->p_cpulimit != RLIM_INFINITY)
