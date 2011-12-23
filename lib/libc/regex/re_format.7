@@ -37,7 +37,7 @@
 .\"	@(#)re_format.7	8.3 (Berkeley) 3/20/94
 .\" $FreeBSD$
 .\"
-.Dd October 6, 2011
+.Dd December 23, 2011
 .Dt RE_FORMAT 7
 .Os
 .Sh NAME
@@ -69,13 +69,13 @@ so this manual will describe the behavior of this implementation
 instead of just reproducing the same iformation that is already
 available in the standard.
 .Pp
-An extended regular expression is one or more non-empty
+An extended regular expression is constructed from one or more non-empty
 .Em branches ,
 separated by
 .Ql \&| .
 It matches anything that matches one of the branches.
 .Pp
-A branch is one or more
+A branch consists of one or more
 .Em pieces ,
 concatenated.
 It matches a match for the first, followed by a match for the second, etc.
@@ -284,7 +284,7 @@ The reverse, matching any character that does not belong to a specific
 class, the negation operator of bracket expressions may be used:
 .Ql [^[:class:]] .
 .Pp
-In the event that a regular expression  could match more than one
+In the event that a regular expression could match more than one
 substring of a given string,
 the regular expression matches the one starting earliest in the string.
 If the regular expression could match more than one substring starting
@@ -343,23 +343,68 @@ longer than 256 bytes,
 as an implementation can refuse to accept such regular expressions and
 remain POSIX-compliant.
 .Pp
+As described before,
+repetition operators and bounds are greedy by definition.
+This implementation provides non-greedy operators and bounds that
+are formed by adding an extra
+.Ql \&?
+after the repetition.
+.No e.g. Ql a*?
+will be non-greedy,
+that is,
+will match as few characters as possible.
+.Pp
+Another extension in this implementation is the set of non-standard
+anchors:
+.Bl -tag -width BBBB
+.It Ql \e<
+Beginning of a word
+.It Ql \e>
+End of a word
+.It Ql \eb
+Word boundary
+.It Ql \eB
+Non-word boundary
+.It Ql \ed
+Digit (equivalent to [[:digit:]])
+.It Ql \eD
+Non-digit (equivalent to [^[:digit:]])
+.It Ql \es
+Space (equivalent to [[:space:]])
+.It Ql \eS
+Non-space (equivalent to [^[:space:]])
+.It Ql \ew
+Word character (equivalent to [[:alnum]])
+.It Ql \eW
+Non-word character (equivalent to [^[:alnum]])
+.El
+.Pp
+The literal characters can also be expressed with an extended notation
+apart from real literals and escaped specials.
+It is possible to specify 8\-bit hexadecimal encoded characters
+.No e.g. \ex1B
+or wide hexadecimal encoded characters
+.No e.g. \ex{263a} .
+With this notation,
+every character can be included in a regular expression.
+Some common non\-printable characters have an escaped shorthand,
+as well:
+.Bl -tag -width BBBB
+.It Ql \ea
+Bell character (ASCII code 7)
+.It Ql \ee
+Escape character (ASCII code 27)
+.It Ql \ef
+Form\-feed character (ASCII code 12)
+.It Ql \en
+Newline character (ASCII code 10)
+.It Ql \er
+Carriage return character (ASCII code 13)
+.It Ql \et
+Horizontal tab character (ASCII code 9)
+.El
+.Pp
 Basic regular expressions differ in several respects.
-.Ql \&|
-is an ordinary character and there is no equivalent
-for its functionality.
-.Ql \&+
-and
-.Ql ?\&
-are ordinary characters, and their functionality
-can be expressed using bounds
-.No ( Ql {1,}
-or
-.Ql {0,1}
-respectively).
-Also note that
-.Ql x+
-in extended regular expressions is equivalent to
-.Ql xx* .
 The delimiters for bounds are
 .Ql \e{
 and
@@ -369,6 +414,22 @@ with
 and
 .Ql \&}
 by themselves ordinary characters.
+.Ql \&|
+is an ordinary character and there is no equivalent
+for its functionality.
+.Ql \&+
+and
+.Ql ?\&
+are ordinary characters, and their functionality
+can be expressed using bounds
+.No ( Ql \e{1,\e}
+or
+.Ql \e{0,1\e}
+respectively).
+Also note that
+.Ql x+
+in extended regular expressions is equivalent to
+.Ql xx* .
 The parentheses for nested subexpressions are
 .Ql \e(
 and
@@ -426,6 +487,8 @@ This manual was originally written by
 for an older implementation and later extended and
 tailored for TRE by
 .An Gabor Kovesdan .
+The description of TRE\-specific extensions is based on the original
+TRE documentation.
 The regex implementation comes from the TRE project
 and it was included first in
 .Fx 10-CURRENT.
