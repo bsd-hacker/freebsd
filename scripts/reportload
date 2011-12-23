@@ -58,5 +58,5 @@ echo "arch=${arch}"
 echo "osversion=${osver}"
 echo "jobs=${num}"
 echo "buildenvs=${buildenvs}"
-echo -n "load="`uptime`
+echo "load="`uptime`
 echo "error=${error}"
