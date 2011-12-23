@@ -33,7 +33,7 @@
 .\"	@(#)regex.3	8.4 (Berkeley) 3/20/94
 .\" $FreeBSD$
 .\"
-.Dd September 24, 2011
+.Dd December 23, 2011
 .Dt REGEX 3
 .Os
 .Sh NAME
@@ -109,8 +109,8 @@ function
 compiles a regular expression from a string into an internal form.
 The
 .Fn regncomp
-function works in the very same way,
-but takes another argument to specify the length of the pattern.
+function works like the former but takes another argument to
+specify the length of the pattern.
 This function can accept patterns containing NUL bytes.
 The
 .Fn regwcomp
@@ -125,7 +125,7 @@ function matches the compiled regular expression against a string
 and reports results.
 The
 .Fn regnexec
-function works in the same way but takes another argument to specify
+function works like the former but takes another argument to specify
 the length of the pattern,
 allowing NUL bytes in the input string.
 Additionally,
@@ -207,12 +207,12 @@ Synonym for
 .It Dv REG_ICASE
 Compile for case insensitive matching.
 .It Dv REG_NOSUB
-Compile for only reporting match or mismatch´with no regard to
+Compile for only reporting match or mismatch with no regard to
 the matching offset.
 .It Dv REG_NEWLINE
 Compile for newline-sensitive matching.
 By default, newline is a completely ordinary character with no special
-meaning in either regular expressins or strings.
+meaning in either regular expressions or strings.
 With this flag,
 .Ql [^
 bracket expressions and
@@ -331,11 +331,11 @@ The string is considered to start at
 .Fa string
 +
 .Fa pmatch Ns [0]. Ns Va rm_so
-and to have a terminating NUL character located at
+(inclusive) and to end at
 .Fa string
 +
 .Fa pmatch Ns [0]. Ns Va rm_eo
-(there need not actually be a NUL character at that location),
+(exclusive),
 regardless of the value of
 .Fa nmatch .
 See below for the definition of
@@ -350,6 +350,7 @@ does not imply
 affects only the location of the string,
 not how it is matched.
 .El
+.Pp
 The function indicates a match by returning
 .Dv REG_OK ,
 no match with
@@ -359,7 +360,6 @@ if an error has occured during the execution.
 See
 .Sx RETURN VALUES
 for a detailed description of error codes.
-.El
 .Pp
 If
 .Dv REG_NOSUB
@@ -489,7 +489,8 @@ using that
 .Fn regerror
 function may be able to supply a more detailed message using information
 from the
-.Ft regex_t .)
+.Ft regex_t .
+)
 The
 .Fn regerror
 function
