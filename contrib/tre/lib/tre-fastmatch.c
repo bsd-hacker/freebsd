@@ -542,10 +542,8 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 	  case TRE_CHAR('{'):
 	    if (!(cflags & REG_EXTENDED) ^ escaped)
 	      STORE_CHAR;
-	    else if (!(cflags & REG_EXTENDED) && (i == 0))
+	    else if (i == 0)
 	      STORE_CHAR;
-	    else if ((cflags & REG_EXTENDED) && (i == 0))
-	      continue;
 	    else
 	      goto badpat;
 	    continue;

@@ -250,9 +250,9 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	     n = pmatch[0].rm_eo;
 
 	     /* Intermediate heuristics */
-	     while (!((heur->heurs[i] == NULL) ||
-		    ((heur->type == HEUR_PREFIX_ARRAY) &&
-		    heur->heurs[i + 1] == NULL)))
+	     while (!(heur->heurs[i] == NULL) &&
+		   ((heur->heurs[i + 1] != NULL) ||
+		   ((heur->heurs[i + 1] == NULL) && (heur->type == HEUR_PREFIX_ARRAY))))
 		{
 		  SEEK_TO(st + n);
 		  ret = tre_match_fast(heur->heurs[i], string, len - st - n,
@@ -283,7 +283,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	      {
 		size_t l = (heur->tlen == -1) ? len - st : heur->tlen;
 
-		if (l < len - st)
+		if (l > len - st)
 		  return REG_NOMATCH;
 		SEEK_TO(st);
 		ret = tre_match(tnfa, string, l, type, nmatch,

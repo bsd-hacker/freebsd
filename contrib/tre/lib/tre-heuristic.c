@@ -179,10 +179,8 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	      case TRE_CHAR('{'):
 		if (escaped && (i == 1))
 		  STORE_CHAR;
-		else if ((i == 0) && !(cflags & REG_EXTENDED))
+		else if (i == 0)
 		  STORE_CHAR;
-		else if ((i == 0) && (cflags & REG_EXTENDED))
-		  continue;
 
 		PARSE_UNIT('{', '}');
 		if (escaped ^ (cflags & REG_EXTENDED))
@@ -332,12 +330,14 @@ end_segment:
       else if (pos == 0)
 	continue;
 
+      /* Too many fragments - should never happen but to be safe */
       if (j == MAX_FRAGMENTS)
 	{
 	  errcode = REG_BADPAT;
 	  goto err;
 	}
 
+      /* Alloc space for fragment and copy it */
       arr[j] = xmalloc((pos + 1) * sizeof(tre_char_t));
       if (!arr[j])
 	{
@@ -358,9 +358,16 @@ ok:
 
     h->tlen = tlen;
 
+    /* Look up maximum length fragment */
     for (int i = 1; i < j; i++)
       m = (length[i] > length[m]) ? i : m;
 
+    /*
+     * If possible, store prefix, maximum internal fragment and suffix.
+     * If not possible, store prefix and either maximum internal fragment
+     * or suffix if it is the same.  In the worst case, only prefix is
+     * stored.  The closing element is always NULL.
+     */
     for (int i = 0; i < MIN(3, j + 1); i++)
       {
 	h->heurs[i] = xmalloc(sizeof(fastmatch_t));
@@ -380,12 +387,19 @@ ok:
 
     if (cflags & REG_NEWLINE)
       {
+	/* For REG_NEWLINE, only store longest fragment. */
 	ret = tre_compile_literal(h->heurs[0], arr[m], length[m], 0);
 	CHECK_ERR
 	h->type = HEUR_LONGEST;
       }
     else
       {
+	/*
+	 * If possible, store prefix, maximum internal fragment and suffix.
+	 * If not possible, store prefix and either maximum internal fragment
+	 * or suffix if it is the same.  In the worst case, only prefix is
+	 * stored.  The closing element is always NULL.
+	 */
 	ret = tre_compile_literal(h->heurs[0], arr[0], length[0], 0);
 	CHECK_ERR
 	if (j == 1)
