@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008, 2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -37,9 +37,10 @@
 mounts=15		# Number of parallel scripts
 mdstart=$mdstart	# Use md unit numbers from this point
 D=$diskimage
+export PATH_FSTAB=/tmp/fstab
 
 if [ $# -eq 0 ]; then
-	cp -p /etc/fstab /etc/fstab.save
+	rm -f $PATH_FSTAB
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
@@ -50,7 +51,7 @@ if [ $# -eq 0 ]; then
 		mdconfig -a -t vnode -f $D$m -u $m
 		bsdlabel -w md$m auto
 		newfs md${m}${part} > /dev/null 2>&1
-		echo "/dev/md${m}${part} ${mntpoint}$m ufs rw,userquota 2 2" >> /etc/fstab
+		echo "/dev/md${m}${part} ${mntpoint}$m ufs rw,userquota 2 2" >> $PATH_FSTAB
 		mount ${mntpoint}$m
 		edquota -u -f ${mntpoint}$m -e ${mntpoint}$m:100000:110000:15000:16000 root
 		umount ${mntpoint}$m
@@ -74,14 +75,14 @@ if [ $# -eq 0 ]; then
 		mdconfig -d -u $m
 		rm -f $D$m
 	done
-
-	mv /etc/fstab.save /etc/fstab
-
+	rm -f $PATH_FSTAB
 else
 	if [ $1 = find ]; then
 		while [ -r /tmp/$0 ]; do
+			(
 			quotaon  ${mntpoint}$2
 			quotaoff ${mntpoint}$2
+			) 2>&1 | egrep -v "No such file or directory"
 		done
 		echo "Done 1 @ `date '+%T'`"
 	else
