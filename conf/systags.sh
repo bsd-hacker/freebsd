@@ -57,7 +57,7 @@ sed -e "s, machine/, ../../include/,g" \
 			print i > "tags.hfiles";
 	}'
 
-if [ `which -s exctags` -eq 0 ]; then
+if [ X`which exctags` != X ]; then
  exctags `cat tags.cfiles tags.hfiles tags.sfiles`
 else
  ctags -t -d -w `cat tags.cfiles tags.hfiles tags.sfiles`

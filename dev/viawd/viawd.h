@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011 Fabien Thomas <fthomas@FreeBSD.org>
+ * Copyright (c) 2011 Fabien Thomas <fabient@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,8 +40,6 @@ struct viawd_softc {
 
 	int			wd_rid;
 	struct resource		*wd_res;
-	bus_space_tag_t		wd_bst;
-	bus_space_handle_t	wd_bsh;
 
 	eventhandler_tag	ev_tag;
 	unsigned int		timeout;

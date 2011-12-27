@@ -218,34 +218,34 @@
 #endif
 #endif
 
+#if !__GNUC_PREREQ__(2, 95)
+#define	__alignof(x)	__offsetof(struct { char __a; x __b; }, __b)
+#endif
+
 /*
- * Keywords added in C1X.
+ * Keywords added in C11.
  */
 #if defined(__cplusplus) && __cplusplus >= 201103L
+#define	_Alignas(e)		alignas(e)
 #define	_Alignof(e)		alignof(e)
 #define	_Noreturn		[[noreturn]]
 #define	_Static_assert(e, s)	static_assert(e, s)
 #define	_Thread_local		thread_local
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ > 201000L
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 /* Do nothing.  They are language keywords. */
 #else
-/* Not supported.  Implement them manually. */
-#ifdef __GNUC__
-#define	_Alignof(e)		__alignof__(e)
-#define	_Noreturn		__attribute__((__noreturn__))
+/* Not supported.  Implement them using our versions. */
+#define	_Alignas(x)		__aligned(x)
+#define	_Alignof(x)		__alignof(x)
+#define	_Noreturn		__dead2
 #define	_Thread_local		__thread
-#else
-#define	_Alignof(e)		__offsetof(struct { char __a; e __b; }, __b)
-#define	_Noreturn
-#define	_Thread_local
-#endif
 #ifdef __COUNTER__
-#define	_Static_assert(e, s)	__Static_assert(e, __COUNTER__)
+#define	_Static_assert(x, y)	__Static_assert(x, __COUNTER__)
+#define	__Static_assert(x, y)	___Static_assert(x, y)
+#define	___Static_assert(x, y)	typedef char __assert_ ## y[(x) ? 1 : -1]
 #else
-#define	_Static_assert(e, s)	__Static_assert(e, __LINE__)
+#define	_Static_assert(x, y)	struct __hack
 #endif
-#define	__Static_assert(e, c)	___Static_assert(e, c)
-#define	___Static_assert(e, c)	typedef char __assert ## c[(e) ? 1 : -1]
 #endif
 
 #if __GNUC_PREREQ__(2, 96)
@@ -360,10 +360,11 @@
 #define __offsetof(type, field)	 __builtin_offsetof(type, field)
 #else
 #ifndef __cplusplus
-#define	__offsetof(type, field)	((size_t)(&((type *)0)->field))
+#define	__offsetof(type, field) \
+	((__size_t)(__uintptr_t)((const volatile void *)&((type *)0)->field))
 #else
 #define __offsetof(type, field)					\
-  (__offsetof__ (reinterpret_cast <size_t>			\
+  (__offsetof__ (reinterpret_cast <__size_t>			\
                  (&reinterpret_cast <const volatile char &>	\
                   (static_cast<type *> (0)->field))))
 #endif
@@ -492,15 +493,15 @@
 #endif
 
 #ifndef	__DECONST
-#define	__DECONST(type, var)	((type)(uintptr_t)(const void *)(var))
+#define	__DECONST(type, var)	((type)(__uintptr_t)(const void *)(var))
 #endif
 
 #ifndef	__DEVOLATILE
-#define	__DEVOLATILE(type, var)	((type)(uintptr_t)(volatile void *)(var))
+#define	__DEVOLATILE(type, var)	((type)(__uintptr_t)(volatile void *)(var))
 #endif
 
 #ifndef	__DEQUALIFY
-#define	__DEQUALIFY(type, var)	((type)(uintptr_t)(const volatile void *)(var))
+#define	__DEQUALIFY(type, var)	((type)(__uintptr_t)(const volatile void *)(var))
 #endif
 
 /*-
@@ -608,12 +609,27 @@
 #define	__XSI_VISIBLE		0
 #define	__BSD_VISIBLE		0
 #define	__ISO_C_VISIBLE		1999
+#elif defined(_C11_SOURCE)	/* Localism to specify strict C11 env. */
+#define	__POSIX_VISIBLE		0
+#define	__XSI_VISIBLE		0
+#define	__BSD_VISIBLE		0
+#define	__ISO_C_VISIBLE		2011
 #else				/* Default environment: show everything. */
 #define	__POSIX_VISIBLE		200809
 #define	__XSI_VISIBLE		700
 #define	__BSD_VISIBLE		1
-#define	__ISO_C_VISIBLE		1999
+#define	__ISO_C_VISIBLE		2011
 #endif
+#endif
+
+#ifndef	__has_feature
+#define	__has_feature(x) 0
+#endif
+#ifndef	__has_include
+#define	__has_include(x) 0
+#endif
+#ifndef	__has_builtin
+#define	__has_builtin(x) 0
 #endif
 
 #endif /* !_SYS_CDEFS_H_ */
