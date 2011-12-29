@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008, 2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,24 +30,26 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-mount | grep "/dev/md0 on /mnt" > /dev/null && umount /mnt
+. ../default.cfg
+
+mount | grep -q "/dev/md$mdstart on $mntpoint" && umount $mntpoint
 rm -f /tmp/.snap/pho
 trap "rm -f /tmp/.snap/pho" 0
 
-for i in `jot 128`; do
+for i in `jot 2`; do
    mksnap_ffs /tmp /tmp/.snap/pho
-   mdconfig -a -t vnode -f /tmp/.snap/pho -u 0 -o readonly
-   mount -r /dev/md0 /mnt
+   mdconfig -a -t vnode -f /tmp/.snap/pho -u $mdstart -o readonly
+   mount -r /dev/md$mdstart $mntpoint
 
-   ls -l /mnt > /dev/null
+   ls -l $mntpoint > /dev/null
 
-   umount /mnt
-   mdconfig -d -u 0
+   umount $mntpoint
+   mdconfig -d -u $mdstart
    rm -f /tmp/.snap/pho
 done
 
 
-for i in `jot 128`; do
+for i in `jot 2`; do
    mksnap_ffs /tmp /tmp/.snap/pho
    rm -f /tmp/.snap/pho
 done
