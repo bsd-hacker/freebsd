@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008, 2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,23 +30,28 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-[ ! -d /mnt2 ] && mkdir /mnt2
-mount | grep "/dev/md0 on /mnt2" > /dev/null && umount /mnt2
-mdconfig -l | grep md0 > /dev/null &&  mdconfig -d -u 0
+. ../default.cfg
+
+mount | grep -q /tmp || exit 1 # /tmp must be a mount point for this test
+mnt2=${mntpoint}2
+[ ! -d $mnt2 ] && mkdir $mnt2
+mount | grep -q "/dev/md$mdstart on $mnt2" && umount $mnt2
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 rm -f /tmp/.snap/pho
 trap "rm -f /tmp/.snap/pho" 0
 
-for i in `jot 64`; do
+start=`date '+%s'`
+while [ `date '+%s'` -lt $((start + 1800)) ]; do
    date '+%T'
    mksnap_ffs /tmp /tmp/.snap/pho
-   mdconfig -a -t vnode -f /tmp/.snap/pho -u 0 -o readonly
-   mount -o ro /dev/md0 /mnt2
+   mdconfig -a -t vnode -f /tmp/.snap/pho -u $mdstart -o readonly
+   mount -o ro /dev/md$mdstart $mnt2
 
-   ls -l /mnt2 > /dev/null
+   ls -l $mnt2 > /dev/null
    r=`head -c4 /dev/urandom | od -N2 -tu4 | sed -ne '1s/  *$//;1s/.* //p'`
    sleep $(( r % 120 ))
 
-   umount /mnt2
-   mdconfig -d -u 0
+   umount $mnt2
+   mdconfig -d -u $mdstart
    rm -f /tmp/.snap/pho
 done
