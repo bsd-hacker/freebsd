@@ -32,35 +32,28 @@
 
 . ../default.cfg
 
-size=1  # Gb
-[ `df -k $(dirname $diskimage) | tail -1 | awk '{print $4'}` -lt $((size * 1024 * 1024)) ] && \
-	echo "Not enough disk space." && exit 1
-truncate -s ${size}G $diskimage
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
-mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mdconfig -a -t swap -s 1g -u $mdstart
+bsdlabel -w md$mdstart auto
 
-mdconfig -a -t vnode -f $diskimage -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-
-
-for opt in "-O1" "-O2" "-O2 -U"; do
+for opt in -O1 -O2 -U -j; do
 	blocksize=4096
 	while [ $blocksize -le 65536 ]; do
 		for i in 8 4 2 1; do
 			fragsize=$((blocksize / i))
-			echo "newfs $opt -b $blocksize -f $fragsize md${mdstart}${part}"
-			newfs $opt -b $blocksize -f $fragsize  md${mdstart}${part} > /dev/null
-			mount /dev/md${mdstart}${part} $mntpoint
+			echo "`date '+%T'` newfs $opt -b $blocksize -f $fragsize md${mdstart}${part}"
+			newfs $opt -b $blocksize -f $fragsize  md${mdstart}$part > /dev/null
+			mount /dev/md${mdstart}$part $mntpoint
 			export RUNDIR=$mntpoint/stressX
 			export runRUNTIME=4m
-			(cd ..; ./run.sh disk.cfg) 
-			while mount | grep "$mntpoint" | grep -q md${mdstart}${part}; do
-				umount $mntpoint > /dev/null 2>&1
+			(cd ..; ./run.sh disk.cfg > /dev/null 2>&1) 
+			while mount | grep "$mntpoint" | grep -q md${mdstart}$part; do
+				umount $mntpoint > /dev/null 2>&1 || sleep 1
 			done
 		done
 		blocksize=$((blocksize * 2))
 	done
 done
-mdconfig -d -u ${mdstart}
-rm -f $diskimage
+mdconfig -d -u $mdstart
