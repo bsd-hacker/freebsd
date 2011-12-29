@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008, 2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,29 +30,35 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 # Test with two snapshots
 # 20070506 Page fault in g_io_request+0x7f
 
-mount | grep "/dev/md0 on /mnt" > /dev/null && umount /mnt
+mount | grep -q /tmp || exit 1 # /tmp must be a mount point for this test
 rm -f /tmp/.snap/pho.1
 rm -f /tmp/.snap/pho.2
 trap "rm -f /tmp/.snap/pho.?" 0
-mount | grep "/mnt" | grep md5 > /dev/null && umount /mnt
-mdconfig -l | grep -q md5 &&  mdconfig -d -u 5
-mdconfig -l | grep -q md6 &&  mdconfig -d -u 6
+mount | grep $mntpoint | grep -q md && umount $mntpoint
+m1=$mdstart
+m2=$((m1 + 1))
+mdconfig -l | grep -q md$m1 &&  mdconfig -d -u $m1
+mdconfig -l | grep -q md$m2 &&  mdconfig -d -u $m2
 
-for i in `jot 64`; do
+start=`date '+%s'`
+while [ `date '+%s'` -lt $((start + 1800)) ]; do
    mksnap_ffs /tmp /tmp/.snap/pho.1
    mksnap_ffs /tmp /tmp/.snap/pho.2
-   mdconfig -a -t vnode -f /tmp/.snap/pho.1 -u 5 -o readonly
-   mdconfig -a -t vnode -f /tmp/.snap/pho.2 -u 6 -o readonly
-   mount -o ro /dev/md5 /mnt
+   if [ -r /tmp/.snap/pho.1 -a  -r /tmp/.snap/pho.2 ]; then
+	   mdconfig -a -t vnode -f /tmp/.snap/pho.1 -u $m1 -o readonly
+	   mdconfig -a -t vnode -f /tmp/.snap/pho.2 -u $m2 -o readonly
+	   mount -o ro /dev/md$m1 $mntpoint
 
-   sleep 3
+	   sleep 3
 
-   umount /mnt
-   mdconfig -d -u 5
-   mdconfig -d -u 6
-   rm -f /tmp/.snap/pho.1
-   rm -f /tmp/.snap/pho.2
+	   umount $mntpoint
+	   mdconfig -d -u $m1
+	   mdconfig -d -u $m2
+   fi
+   rm -f /tmp/.snap/pho.1 /tmp/.snap/pho.2
 done
