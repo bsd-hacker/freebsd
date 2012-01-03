@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 1992, 1993
+ * Copyright (c) 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,25 +25,28 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)skpc.c	8.1 (Berkeley) 6/10/93
  */
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/param.h>
 #include <sys/libkern.h>
 
-int
-skpc(mask0, size, cp0)
-	int mask0;
-	int size;
-	char *cp0;
+char *
+strchr(const char *p, int ch)
 {
-	register u_char *cp, *end, mask;
+	union {
+		const char *cp;
+		char *p;
+	} u;
 
-	mask = mask0;
-	cp = (u_char *)cp0;
-	for (end = &cp[size]; cp < end && *cp == mask; ++cp);
-	return (end - cp);
+	u.cp = p;
+	for (;; ++u.p) {
+		if (*u.p == ch)
+			return(u.p);
+		if (*u.p == '\0')
+			return(NULL);
+	}
+	/* NOTREACHED */
 }
