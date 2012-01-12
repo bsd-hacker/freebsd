@@ -94,7 +94,6 @@ powerpc/aim/swtch64.S		optional	aim powerpc64
 powerpc/aim/trap.c		optional	aim
 powerpc/aim/uma_machdep.c	optional	aim
 powerpc/aim/vm_machdep.c	optional	aim
-powerpc/cell/celliic.c		optional	aim
 powerpc/booke/clock.c		optional	e500
 powerpc/booke/copyinout.c	optional	e500
 powerpc/booke/interrupt.c	optional	e500
