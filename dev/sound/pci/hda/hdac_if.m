@@ -1,4 +1,4 @@
-# Copyright (c) 2004 - 2008 Søren Schmidt <sos@FreeBSD.org>
+# Copyright (c) 2012 Alexander Motin <mav@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,69 +24,91 @@
 #
 # $FreeBSD$
 
-#include <sys/bus.h>
-#include <sys/kernel.h>
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/callout.h>
-#include <sys/sema.h>
-#include <sys/taskqueue.h>
-#include <vm/uma.h>
-#include <machine/bus.h>
-#include <sys/ata.h>
-#include <dev/ata/ata-all.h>
+#include <sys/rman.h>
 
-INTERFACE ata;
+INTERFACE hdac;
 
-CODE {
-	static int ata_null_locking(device_t dev, int mode)
-	{
-	    struct ata_channel *ch = device_get_softc(dev);
-	
-	    return ch->unit;
-	}
-};
-METHOD int locking {
-    device_t    channel;
-    int         mode;
-} DEFAULT ata_null_locking;
-HEADER {
-#define         ATA_LF_LOCK             0x0001
-#define         ATA_LF_UNLOCK           0x0002
-#define         ATA_LF_WHICH            0x0004
-};
-
-CODE {
-	static int ata_null_setmode(device_t dev, int target, int mode)
-	{
-
-		if (mode > ATA_PIO_MAX)
-			return (ATA_PIO_MAX);
-		return (mode);
-	}
-};
-METHOD int setmode {
+METHOD struct mtx * get_mtx {
     device_t    dev;
-    int		target;
-    int		mode;
-}  DEFAULT ata_null_setmode;
-
-CODE {
-	static int ata_null_getrev(device_t dev, int target)
-	{
-		return (0);
-	}
+    device_t    child;
 };
 
-METHOD int getrev {
+METHOD uint32_t codec_command {
     device_t    dev;
-    int		target;
-} DEFAULT ata_null_getrev;
+    device_t    child;
+    uint32_t    verb;
+};
 
-METHOD void reset {
-    device_t    channel;
-} DEFAULT ata_generic_reset;
+METHOD int stream_alloc {
+    device_t    dev;
+    device_t    child;
+    int         dir;
+    int         format;
+    uint32_t    **dmapos;
+};
 
-METHOD int reinit {
+METHOD void stream_free {
+    device_t    dev;
+    device_t    child;
+    int         dir;
+    int         stream;
+};
+
+METHOD int stream_start {
+    device_t    dev;
+    device_t    child;
+    int         dir;
+    int         stream;
+    bus_addr_t  buf;
+    int         blksz;
+    int         blkcnt;
+};
+
+METHOD void stream_stop {
+    device_t    dev;
+    device_t    child;
+    int         dir;
+    int         stream;
+};
+
+METHOD void stream_reset {
+    device_t    dev;
+    device_t    child;
+    int         dir;
+    int         stream;
+};
+
+METHOD uint32_t stream_getptr {
+    device_t    dev;
+    device_t    child;
+    int         dir;
+    int         stream;
+};
+
+METHOD void stream_intr {
+    device_t    dev;
+    int         dir;
+    int         stream;
+};
+
+METHOD int unsol_alloc {
+    device_t    dev;
+    device_t    child;
+    int         wanted;
+};
+
+METHOD void unsol_free {
+    device_t    dev;
+    device_t    child;
+    int         tag;
+};
+
+METHOD void unsol_intr {
+    device_t    dev;
+    uint32_t    resp;
+};
+
+METHOD void pindump {
     device_t    dev;
 };
+
