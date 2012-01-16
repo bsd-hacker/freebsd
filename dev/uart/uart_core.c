@@ -342,8 +342,6 @@ uart_bus_probe(device_t dev, int regshft, int rclk, int rid, int chan)
 		sc->sc_rres = bus_alloc_resource(dev, sc->sc_rtype,
 		    &sc->sc_rrid, 0, ~0, uart_getrange(sc->sc_class),
 		    RF_ACTIVE);
-		if (sc->sc_rres == NULL)
-			return (ENXIO);
 	}
 
 	/*
@@ -353,8 +351,10 @@ uart_bus_probe(device_t dev, int regshft, int rclk, int rid, int chan)
 	 * accordingly. In general, you don't want to permanently disrupt
 	 * console I/O.
 	 */
-	sc->sc_bas.bsh = rman_get_bushandle(sc->sc_rres);
-	sc->sc_bas.bst = rman_get_bustag(sc->sc_rres);
+	if (sc->sc_rres != NULL) {
+		sc->sc_bas.bsh = rman_get_bushandle(sc->sc_rres);
+		sc->sc_bas.bst = rman_get_bustag(sc->sc_rres);
+	}
 	sc->sc_bas.chan = chan;
 	sc->sc_bas.regshft = regshft;
 	sc->sc_bas.rclk = (rclk == 0) ? sc->sc_class->uc_rclk : rclk;
@@ -369,7 +369,9 @@ uart_bus_probe(device_t dev, int regshft, int rclk, int rid, int chan)
 	}
 
 	error = UART_PROBE(sc);
-	bus_release_resource(dev, sc->sc_rtype, sc->sc_rrid, sc->sc_rres);
+	if (sc->sc_rres != NULL)
+		bus_release_resource(dev, sc->sc_rtype, sc->sc_rrid,
+		    sc->sc_rres);
 	return ((error) ? error : BUS_PROBE_DEFAULT);
 }
 
@@ -411,12 +413,10 @@ uart_bus_attach(device_t dev)
 	 */
 	sc->sc_rres = bus_alloc_resource(dev, sc->sc_rtype, &sc->sc_rrid,
 	    0, ~0, uart_getrange(sc->sc_class), RF_ACTIVE);
-	if (sc->sc_rres == NULL) {
-		mtx_destroy(&sc->sc_hwmtx_s);
-		return (ENXIO);
+	if (sc->sc_rres != NULL) {
+		sc->sc_bas.bsh = rman_get_bushandle(sc->sc_rres);
+		sc->sc_bas.bst = rman_get_bustag(sc->sc_rres);
 	}
-	sc->sc_bas.bsh = rman_get_bushandle(sc->sc_rres);
-	sc->sc_bas.bst = rman_get_bustag(sc->sc_rres);
 
 	sc->sc_irid = 0;
 	sc->sc_ires = bus_alloc_resource_any(dev, SYS_RES_IRQ, &sc->sc_irid,
