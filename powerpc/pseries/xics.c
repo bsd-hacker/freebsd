@@ -146,14 +146,17 @@ static void
 xics_bind(device_t dev, u_int irq, cpuset_t cpumask)
 {
 	struct xics_softc *sc = device_get_softc(dev);
-	uint64_t status;
+	cell_t status, cpu;
 
 	/*
-	 * XXX: This is very special and just needs a mask.
-	 * For the moment, just play dirty and get the first word.
+	 * This doesn't appear to actually support affinity groups, so just
+	 * use the first CPU.
 	 */
-	rtas_call_method(sc->ibm_set_xive, 3, 1, (uint64_t)irq,
-	    cpumask.__bits[0], XICS_PRIORITY, &status);
+	CPU_FOREACH(cpu)
+		if (CPU_ISSET(cpu, &cpumask)) break;
+
+	rtas_call_method(sc->ibm_set_xive, 3, 1, irq, cpu, XICS_PRIORITY,
+	    &status);
 }
 
 static void
@@ -194,8 +197,7 @@ static void
 xics_enable(device_t dev, u_int irq, u_int vector)
 {
 	struct xics_softc *sc;
-	uint64_t status, cpumask;
-	int i;
+	cell_t status, cpu;
 
 	sc = device_get_softc(dev);
 
@@ -213,13 +215,10 @@ xics_enable(device_t dev, u_int irq, u_int vector)
 	if (irq == MAX_XICS_IRQS)
 		return;
 
-	/* Bind to all CPUs to start */
-	cpumask = 0;
-	CPU_FOREACH(i)
-		cpumask |= (1ULL << i);
-
-	rtas_call_method(sc->ibm_set_xive, 3, 1, (uint64_t)irq, cpumask,
-	    XICS_PRIORITY, &status);
+	/* Bind to this CPU to start: distrib. ID is last entry in gserver# */
+	cpu = PCPU_GET(cpuid);
+	rtas_call_method(sc->ibm_set_xive, 3, 1, irq, cpu, XICS_PRIORITY,
+	    &status);
 	xics_unmask(dev, irq);
 }
 
@@ -246,22 +245,22 @@ static void
 xics_mask(device_t dev, u_int irq)
 {
 	struct xics_softc *sc = device_get_softc(dev);
-	uint64_t status;
+	cell_t status;
 
 	if (irq == MAX_XICS_IRQS)
 		return;
 
-	rtas_call_method(sc->ibm_int_off, 1, 1, (uint64_t)irq, &status);
+	rtas_call_method(sc->ibm_int_off, 1, 1, irq, &status);
 }
 
 static void
 xics_unmask(device_t dev, u_int irq)
 {
 	struct xics_softc *sc = device_get_softc(dev);
-	uint64_t status;
+	cell_t status;
 
 	if (irq == MAX_XICS_IRQS)
 		return;
 
-	rtas_call_method(sc->ibm_int_on, 1, 1, (uint64_t)irq, &status);
+	rtas_call_method(sc->ibm_int_on, 1, 1, irq, &status);
 }
