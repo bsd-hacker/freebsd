@@ -99,11 +99,9 @@ static phandle_t rtaspci_get_node(device_t bus, device_t dev);
 
 struct ofw_pci_range {
 	uint32_t	pci_hi;
-	uint32_t	pci_mid;
-	uint32_t	pci_lo;
+	uint64_t	pci;
 	uint64_t	host;
-	uint32_t	size_hi;
-	uint32_t	size_lo;
+	uint64_t	size;
 };
 
 static int rtaspci_fill_ranges(phandle_t node, struct ofw_pci_range **ranges,
@@ -156,7 +154,6 @@ struct rtaspci_softc {
 	struct rman		sc_mem_rman;
 	bus_space_tag_t		sc_memt;
 	bus_dma_tag_t		sc_dmat;
-	vm_offset_t		sc_iostart;
 
 	struct ofw_bus_iinfo    sc_pci_iinfo;
 };
@@ -196,8 +193,8 @@ rtaspci_attach(device_t dev)
 	struct		rtaspci_softc *sc;
 	phandle_t	node;
 	u_int32_t	busrange[2];
-	struct		ofw_pci_range *rp, *io, *mem[5];
-	int		nmem, i, error;
+	struct		ofw_pci_range *rp;
+	int		error;
 
 	node = ofw_bus_get_node(dev);
 	sc = device_get_softc(dev);
@@ -225,43 +222,14 @@ rtaspci_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	io = NULL;
-	nmem = 0;
-
-	for (rp = sc->sc_range; rp < sc->sc_range + sc->sc_nrange &&
-	       rp->pci_hi != 0; rp++) {
-		switch (rp->pci_hi & OFW_PCI_PHYS_HI_SPACEMASK) {
-		case OFW_PCI_PHYS_HI_SPACE_CONFIG:
-			break;
-		case OFW_PCI_PHYS_HI_SPACE_IO:
-			io = rp;
-			break;
-		case OFW_PCI_PHYS_HI_SPACE_MEM32:
-			mem[nmem] = rp;
-			nmem++;
-			break;
-		case OFW_PCI_PHYS_HI_SPACE_MEM64:
-			break;
-		}
-	}
-
-	if (io == NULL) {
-		device_printf(dev, "can't find io range\n");
-		return (ENXIO);
-	}
 	sc->sc_io_rman.rm_type = RMAN_ARRAY;
 	sc->sc_io_rman.rm_descr = "PCI I/O Ports";
-	sc->sc_iostart = io->host;
-	if (rman_init(&sc->sc_io_rman) != 0 ||
-	    rman_manage_region(&sc->sc_io_rman, io->pci_lo,
-	    io->pci_lo + io->size_lo) != 0) {
-		panic("rtaspci_attach: failed to set up I/O rman");
+	error = rman_init(&sc->sc_io_rman);
+	if (error) {
+		device_printf(dev, "rman_init() failed. error = %d\n", error);
+		return (error);
 	}
 
-	if (nmem == 0) {
-		device_printf(dev, "can't find mem ranges\n");
-		return (ENXIO);
-	}
 	sc->sc_mem_rman.rm_type = RMAN_ARRAY;
 	sc->sc_mem_rman.rm_descr = "PCI Memory";
 	error = rman_init(&sc->sc_mem_rman);
@@ -269,9 +237,25 @@ rtaspci_attach(device_t dev)
 		device_printf(dev, "rman_init() failed. error = %d\n", error);
 		return (error);
 	}
-	for (i = 0; i < nmem; i++) {
-		error = rman_manage_region(&sc->sc_mem_rman, mem[i]->pci_lo,
-		    mem[i]->pci_lo + mem[i]->size_lo);
+
+	for (rp = sc->sc_range; rp < sc->sc_range + sc->sc_nrange &&
+	       rp->pci_hi != 0; rp++) {
+		error = 0;
+
+		switch (rp->pci_hi & OFW_PCI_PHYS_HI_SPACEMASK) {
+		case OFW_PCI_PHYS_HI_SPACE_CONFIG:
+			break;
+		case OFW_PCI_PHYS_HI_SPACE_IO:
+			error = rman_manage_region(&sc->sc_io_rman, rp->pci,
+			    rp->pci + rp->size);
+			break;
+		case OFW_PCI_PHYS_HI_SPACE_MEM32:
+		case OFW_PCI_PHYS_HI_SPACE_MEM64:
+			error = rman_manage_region(&sc->sc_mem_rman, rp->pci,
+			    rp->pci + rp->size);
+			break;
+		}
+
 		if (error) {
 			device_printf(dev, 
 			    "rman_manage_region() failed. error = %d\n", error);
@@ -481,16 +465,37 @@ rtaspci_activate_resource(device_t bus, device_t child, int type, int rid,
 		return (bus_activate_resource(bus, type, rid, res));
 	}
 	if (type == SYS_RES_MEMORY || type == SYS_RES_IOPORT) {
+		struct ofw_pci_range *rp;
 		vm_offset_t start;
+		int space;
 
 		start = (vm_offset_t)rman_get_start(res);
 
 		/*
-		 * Some bridges have I/O ports relative to the start of I/O
-		 * space, so adjust if we are under that.
+		 * Map this through the ranges list
 		 */
-		if (type == SYS_RES_IOPORT && start < sc->sc_iostart)
-			start += sc->sc_iostart;
+		for (rp = sc->sc_range; rp < sc->sc_range + sc->sc_nrange &&
+		       rp->pci_hi != 0; rp++) {
+			if (start < rp->pci || start >= rp->pci + rp->size)
+				continue;
+
+			switch (rp->pci_hi & OFW_PCI_PHYS_HI_SPACEMASK) {
+			case OFW_PCI_PHYS_HI_SPACE_IO:
+				space = SYS_RES_IOPORT;
+				break;
+			case OFW_PCI_PHYS_HI_SPACE_MEM32:
+			case OFW_PCI_PHYS_HI_SPACE_MEM64:
+				space = SYS_RES_MEMORY;
+				break;
+			default:
+				space = -1;
+			}
+
+			if (type == space) {
+				start += (rp->host - rp->pci);
+				break;
+			}
+		}
 
 		if (bootverbose)
 			printf("rtaspci mapdev: start %zx, len %ld\n", start,
@@ -540,15 +545,23 @@ static int
 rtaspci_fill_ranges(phandle_t node, struct ofw_pci_range **ranges,
     int *nranges)
 {
-	int address_cells = 1;
+	int host_address_cells = 1, pci_address_cells = 3, size_cells = 2;
 	cell_t *base_ranges;
 	ssize_t nbase_ranges;
 	int i, j;
 
-	OF_getprop(OF_parent(node), "#address-cells", &address_cells,
-	    sizeof(address_cells));
-	if (address_cells > 2)
-		panic("RTAS PCI: Addresses too wide (%d)", address_cells);
+	OF_getprop(OF_parent(node), "#address-cells", &host_address_cells,
+	    sizeof(host_address_cells));
+	if (host_address_cells > 2)
+		panic("RTAS PCI: Addresses too wide (%d)", host_address_cells);
+	OF_getprop(node, "#address-cells", &pci_address_cells,
+	    sizeof(pci_address_cells));
+	if (pci_address_cells > 3)
+		panic("RTAS PCI: PCI addresses too wide (%d)",
+		    pci_address_cells);
+	OF_getprop(node, "#size-cells", &size_cells, sizeof(size_cells));
+	if (size_cells > 2)
+		panic("RTAS PCI: Sizes too wide (%d)", size_cells);
 
 	nbase_ranges = OF_getproplen(node, "ranges");
 	if (nbase_ranges <= 0)
@@ -556,21 +569,28 @@ rtaspci_fill_ranges(phandle_t node, struct ofw_pci_range **ranges,
 
 	base_ranges = malloc(nbase_ranges, M_DEVBUF, M_WAITOK);
 	OF_getprop(node, "ranges", base_ranges, nbase_ranges);
-	*nranges = nbase_ranges / sizeof(cell_t) / (5 + address_cells);
+	*nranges = nbase_ranges / sizeof(cell_t) /
+	    (pci_address_cells + host_address_cells + size_cells);
 	*ranges = malloc(*nranges * sizeof(struct ofw_pci_range), M_DEVBUF,
 	    M_WAITOK);
 
 	for (i = 0, j = 0; i < *nranges; i++) {
 		(*ranges)[i].pci_hi = base_ranges[j++];
-		(*ranges)[i].pci_mid = base_ranges[j++];
-		(*ranges)[i].pci_lo = base_ranges[j++];
+		(*ranges)[i].pci = base_ranges[j++];
+		if (pci_address_cells == 3) {
+			(*ranges)[i].pci <<= 32;
+			(*ranges)[i].pci |= base_ranges[j++];
+		}
 		(*ranges)[i].host = base_ranges[j++];
-		if (address_cells == 2) {
+		if (host_address_cells == 2) {
 			(*ranges)[i].host <<= 32;
 			(*ranges)[i].host |= base_ranges[j++];
 		}
-		(*ranges)[i].size_hi = base_ranges[j++];
-		(*ranges)[i].size_lo = base_ranges[j++];
+		(*ranges)[i].size = base_ranges[j++];
+		if (size_cells == 2) {
+			(*ranges)[i].size <<= 32;
+			(*ranges)[i].size |= base_ranges[j++];
+		}
 	}
 
 	free(base_ranges, M_DEVBUF);
