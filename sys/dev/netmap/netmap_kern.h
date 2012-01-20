@@ -65,7 +65,8 @@ struct netmap_kring {
 	struct netmap_ring *ring;
 	u_int nr_hwcur;
 	int nr_hwavail;
-	u_int nr_kflags;
+	u_int nr_kflags;	/* private driver flags */
+#define NKR_PENDINTR   0x1     // Pending interrupt.
 	u_int nkr_num_slots;
 
 	int	nkr_hwofs;	/* offset between NIC and netmap ring */
@@ -171,6 +172,9 @@ struct netmap_slot *netmap_reset(struct netmap_adapter *na,
 	enum txrx tx, int n, u_int new_cur);
 int netmap_ring_reinit(struct netmap_kring *);
 
+extern int netmap_mitigate;
+extern int netmap_skip_txsync, netmap_skip_rxsync;
+extern int netmap_delta[8];
 extern u_int netmap_total_buffers;
 extern char *netmap_buffer_base;
 extern int netmap_verbose;	// XXX debugging

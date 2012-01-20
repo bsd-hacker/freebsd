@@ -191,6 +191,10 @@ fail:
  * (this is also true for every use of ring in the kernel).
  *
  * ring->avail is never used, only checked for bogus values.
+ *
+ * If do_lock is set, it means the function has been called from the ioctl
+ * handler: in this particular case, do_lock has also the special meaning of
+ * force the update of NIC registers
  */
 static int
 ixgbe_netmap_txsync(void *a, u_int ring_nr, int do_lock)
@@ -292,10 +296,11 @@ ring_reset:
 			 * need this.
 			 */
 			curr->read.buffer_addr = htole64(paddr);
-			curr->read.olinfo_status = 0;
+			curr->read.olinfo_status = htole32(len << IXGBE_ADVTXD_PAYLEN_SHIFT);
 			curr->read.cmd_type_len =
 			    htole32(txr->txd_cmd | len |
 				(IXGBE_ADVTXD_DTYP_DATA |
+				    IXGBE_ADVTXD_DCMD_DEXT | // XXX
 				    IXGBE_ADVTXD_DCMD_IFCS |
 				    IXGBE_TXD_CMD_EOP | flags) );
 			/* If the buffer has changed, unload and reload map
@@ -336,7 +341,29 @@ ring_reset:
 	 * (meaning that probably the caller really wanted to check
 	 * for completed transmissions).
 	 */
-	if (n == 0 || kring->nr_hwavail < 1) {
+	if (do_lock) {
+		kring->nr_kflags = kring->nkr_num_slots; // filter interrupts
+		j = 1; // force read
+	} else if (kring->nr_hwavail > 0) { // no need to block
+		kring->nr_kflags = kring->nkr_num_slots; // filter interrupts
+		j = 0;
+	} else {
+		struct ixgbe_legacy_tx_desc *txd = (struct ixgbe_legacy_tx_desc *)txr->tx_base;
+
+		// wake me up every half ring (more or less)
+		j = txr->next_to_clean + kring->nkr_num_slots/2;
+		if (j >= kring->nkr_num_slots)
+			j -= kring->nkr_num_slots;
+		// round to the closest with dd set
+		j= (j < kring->nkr_num_slots / 4 || j >= kring->nkr_num_slots*3/4) ?
+			0 : report_frequency;
+		kring->nr_kflags = j; // remember where to look at in the interrupt
+		// now check if we have data ready
+		j = txd[j].upper.fields.status & IXGBE_TXD_STAT_DD;
+	}
+	if (!j) {
+		netmap_skip_txsync++;
+	} else {
 		int delta;
 
 		/*
@@ -362,6 +389,7 @@ ring_reset:
 			/* some tx completed, increment avail */
 			if (delta < 0)
 				delta += kring->nkr_num_slots;
+			netmap_delta[ring_nr] = (netmap_delta[ring_nr] * 15 + delta)/16;
 			txr->next_to_clean = l;
 			kring->nr_hwavail += delta;
 			if (kring->nr_hwavail > lim)
@@ -391,6 +419,8 @@ ring_reset:
  * We must subtract the newly consumed slots (cur - nr_hwcur)
  * from nr_hwavail, make the descriptors available for the next reads,
  * and set kring->nr_hwcur = ring->cur and ring->avail = kring->nr_hwavail.
+ *
+ * do_lock has a special meaning: please refer to txsync.
  */
 static int
 ixgbe_netmap_rxsync(void *a, u_int ring_nr, int do_lock)
@@ -401,6 +431,7 @@ ixgbe_netmap_rxsync(void *a, u_int ring_nr, int do_lock)
 	struct netmap_kring *kring = &na->rx_rings[ring_nr];
 	struct netmap_ring *ring = kring->ring;
 	int j, k, l, n, lim = kring->nkr_num_slots - 1;
+	int force_update = do_lock || kring->nr_kflags & NKR_PENDINTR;
 
 	k = ring->cur;	/* cache and check value, same as in txsync */
 	n = k - kring->nr_hwcur;
@@ -437,12 +468,14 @@ ixgbe_netmap_rxsync(void *a, u_int ring_nr, int do_lock)
 	if (j > lim)
 		j -= lim + 1;
 
+    if (force_update) {
 	for (n = 0; ; n++) {
 		union ixgbe_adv_rx_desc *curr = &rxr->rx_base[l];
 		uint32_t staterr = le32toh(curr->wb.upper.status_error);
 
 		if ((staterr & IXGBE_RXD_STAT_DD) == 0)
 			break;
+		// XXX add -4 if crcstrip
 		ring->slot[j].len = le16toh(curr->wb.upper.length);
 		bus_dmamap_sync(rxr->ptag,
 			rxr->rx_buffers[l].pmap, BUS_DMASYNC_POSTREAD);
@@ -453,6 +486,8 @@ ixgbe_netmap_rxsync(void *a, u_int ring_nr, int do_lock)
 		rxr->next_to_check = l;
 		kring->nr_hwavail += n;
 	}
+	kring->nr_kflags &= ~NKR_PENDINTR;
+    }
 
 	/*
 	 * Skip past packets that userspace has already processed
