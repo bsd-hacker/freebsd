@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2009, 2012 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,112 +28,106 @@
 # $FreeBSD$
 #
 
-# Run all the scripts in stress2/misc
+# Run all the scripts in stress2/misc, except these known problems:
 
-[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+# Start of list	Known problems						Seen
 
-# Start of list			Run	Known problems					Verified
+# backingstore.sh
+#		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111220
+# backingstore2.sh
+#		panic: 43 vncache entries remaining			20111220
+# backingstore3.sh
+#		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111230
+# datamove.sh	Deadlock (ufs)						20111216
+# datamove2.sh	Deadlock (ufs)						20111220
+# datamove3.sh	Deadlock (ufs)						20111221
+# dfull.sh	umount stuck in "mount drain"				20111227
+# fts.sh	Deadlock seen, possibly due to low v_free_count		20120105
+# mkfifo.sh	umount stuck in suspfs					20111224
+# mkfifo2c.sh	panic: ufsdirhash_newblk: bad offset			20111225
+# newfs.sh	Memory modified after free. ... used by inodedep	20111217
+# newfs2.sh	umount stuck in ufs					20111226
+# pmc.sh	NMI ... going to debugger				20111217
+# snap5-1.sh	mksnap_ffs deadlock					20111218
+# quota3.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111222
+# quota6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111219
+# snap3.sh	mksnap_ffs stuck in snaprdb				20111226
+# snap5.sh	mksnap_ffs stuck in getblk				20111224
+# suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
+# suj23.sh	panic: Bad link elm 0xc9d00e00 next->prev != elm	20111216
+# tmpfs6.sh	watchdogd fired. Test stuck in pgrbwt			20111219
+# trim3.sh	watchdog timeout					20111225
+# umountf3.sh	KDB: enter: watchdog timeout				20111217
+# unionfs.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111217
+# unionfs2.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111219
+# unionfs3.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111216
 
-# altbufferflushes.sh		Y
-# alternativeFlushPath.sh	Y
-# backingstore.sh		Y
-# cdevsw.sh			N	
-# core.sh			N	No problems seen
-# crossmp.sh			Y
-# crossmp2.sh			N	panic: sx lock still held			20071101
-# devfs.sh			Y
-# devfs2.sh			Y							20070503
-# fdescfs.sh			Y
-# fpclone.sh			N	No problem seen
-# fpclone2.sh			N	No problem seen
-# fs.sh				Y
-# fullpath.sh			Y							20081212
-# fuzz.sh			N							20080413
-# inversion.sh			N	Problem not seen lately
-# isofs.sh			Y
-# kevent.sh			Y	panic: KN_INFLUX set when not suppose to be	20080501
-# kevent2.sh			Y
-# kevent3.sh			Y
-# kevent4.sh			Y
-# kevent5.sh			Y
-# kinfo.sh			Y
-# kinfo2.sh			Y
-# libMicro.sh			Y
-# lockf.sh			Y	Page fault in nfs_advlock			20080413
-# lookup_shared.sh		N	The default, now
-# mac.sh			Y
-# md.sh				N	Waiting for fix					20071208
-# md2.sh			N	Waiting for fix					20071208
-# mmap.sh			N	Waiting for fix					20080222
-# mount.sh			N	Known problem					20070505
-# mount2.sh			Y
-# mountro.sh			N	Waiting for commit				20080725
-# mountro2.sh			N	Waiting for commit				20080725
-# mountro3.sh			N	Waiting for commit				20080725
-# msdos.sh			Y
-# newfs.sh			Y	Problem not seen lately				20080513
-# newfs2.sh			Y
-# newfs3.sh			N	panic: lockmgr: locking against myself		20070505
-# newfs4.sh			N	Livelock					20080725
-# nfs.sh			Y
-# nfs2.sh			N	panic: wrong diroffset				20080801
-# nfs3.sh			Y
-# nfs4.sh			Y
-# nfs5.sh			N	Page fault in ufs/ffs/ffs_vfsops.c:1501		20080913
-# nfs6.sh			N	Page fault in ffs_fhtovp+0x18			20080913
-# nfsrename.sh			Y
-# nullfs.sh			N	panic: xdrmbuf_create with NULL mbuf chain	20081122
-# pthread.sh			Y	panic: spin lock held too long			20081109
-# quota1.sh			Y
-# quota10.sh			N	Deadlock					20081212
-# quota2.sh			Y
-# quota3.sh			Y
-# quota4.sh			N	Known backing store problem			20070703
-# quota5.sh			Y
-# quota6.sh			N	Known problem with snapshots and no disk space
-# quota7.sh			Y							20070505
-# quota8.sh			Y							20070505
-# quota9.sh			N							20070505
-# recursiveflushes.sh		Y
-# revoke.sh			Y
-# snap.sh			N	Waiting for snap3.sh fix
-# snap2-1.sh			Y
-# snap2.sh			Y
-# snap3.sh			N	Reported as kostik033.html
-# snap4.sh			Y
-# snap5-1.sh			Y
-# snap5.sh			Y
-# snap6.sh			Y
-# snap7.sh			N	Waiting for snap3.sh fix			20070508
-# snapbackup.sh			N	WIP
-# softupdate.sh			Y
-# statfs.sh			Y
-# symlink.sh			Y
-# syscall.sh			Y
-# ucom.sh			N
-# umount.sh			Y
-# umountf.sh			Y
-# umountf2.sh			N	Waiting for commit of fix
-# umountf3.sh			N	Deadlock. Waiting for commit of fix		20081212
-# umountf4.sh			Y	Page fault in ufs/ufs/ufs_dirhash.c:204		20081003
-# unionfs.sh			N 	Page fault					20070503
-# unionfs2.sh			N	Reported as cons224				20070504
-# unionfs3.sh			N	Page fault in vfs_statfs			20070504
+# Test not to run for other reasons:
+
+# fuzz.sh	A know issue
+# syscall.sh	OK, but runs for a very long time
+# syscall2.sh	OK, but runs for a very long time
+# vunref.sh	No problems ever seen
+# vunref2.sh	No problems ever seen
 
 # End of list
 
-list=`sed -n '/^# Start of list/,/^# End of list/p' < $0 | awk '$3 ~ /Y/ {print $2}'`
-[ $# -ne 0 ] && list=$*
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+args=`getopt acn $*`
+[ $? -ne 0 ] && echo "Usage $0 [-a] [-c] [-n] [tests]" && exit 1
+set -- $args
+for i; do
+	case "$i" in
+	-a)	all=1		# Run all tests
+		shift
+		;;
+	-c)	rm -f .all.last	# Clear last know test
+		shift
+		;;
+	-n)	noshuffle=1	# Do not shuffle the list of tests
+		shift
+		;;
+	--)
+		shift
+		break
+		;;
+	esac
+done
 
-rm -f /tmp/misc.log
+> .all.log
+find . -maxdepth 1 -name .all.last -mtime +12h -delete
+touch .all.last
+chmod 555 .all.last .all.log
 while true; do
-# 	Shuffle the list
-	list=`perl -e 'print splice(@ARGV,rand(@ARGV),1), " " while @ARGV;' $list`
+	exclude=`sed -n '/^# Start of list/,/^# End of list/p' < $0 | \
+		grep "\.sh" | awk '{print $2}'`
+	list=`ls *.sh | egrep -v "all\.sh|cleanup\.sh"`
+	[ $# -ne 0 ] && list=$*
+
+	if [ -n "$noshuffle" -a $# -eq 0 ]; then
+		last=`cat .all.last`
+		if [ -n "$last" ]; then
+			list=`echo "$list" | sed "1,/$last/d"`
+			echo "Resuming test at `echo "$list" | head -1`"
+		fi
+	fi
+	[ -n "$noshuffle" ] ||
+		list=`echo $list | tr ' ' '\n' | random -w | tr '\n' ' '`
+
+	lst=""
 	for i in $list; do
+		[ -z "$all" ] && echo $exclude | grep -q $i && continue
+		lst="$lst $i"
+	done
+	[ -z "$lst" ] && exit
+
+	for i in $lst; do
+		echo $i > .all.last
 		./cleanup.sh
-		echo "`date '+%Y%m%d %T'` all: $i" | tee /dev/tty >> /tmp/misc.log
+		echo "`date '+%Y%m%d %T'` all: $i" | tee /dev/tty >> .all.log
 		logger "Starting test all: $i"
+		sync;sync;sync
 		./$i
 	done
 done
