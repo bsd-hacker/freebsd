@@ -34,7 +34,6 @@ __FBSDID("$FreeBSD: projects/pseries/powerpc/phyp/phyp_console.c 214348 2010-10-
 #include <sys/types.h>
 #include <sys/conf.h>
 #include <sys/cons.h>
-#include <sys/consio.h>
 #include <sys/tty.h>
 #include <machine/bus.h>
 
@@ -48,12 +47,33 @@ __FBSDID("$FreeBSD: projects/pseries/powerpc/phyp/phyp_console.c 214348 2010-10-
 #include "phyp-hvcall.h"
 #include "uart_if.h"
 
-static union {
-	uint64_t u64[2];
-	char str[16];
-} phyp_inbuf;
-static uint64_t			phyp_inbuflen = 0;
-static uint8_t			phyp_outseqno = 0;
+struct uart_phyp_softc {
+	device_t dev;
+	phandle_t node;
+	int vtermid;
+
+	struct tty *tp;
+	struct resource *irqres;
+	int irqrid;
+	struct callout callout;
+	void *sc_icookie;
+	int polltime;
+
+	struct mtx sc_mtx;
+	int protocol;
+
+	union {
+		uint64_t u64[2];
+		char str[16];
+	} phyp_inbuf;
+	uint64_t inbuflen;
+	uint8_t outseqno;
+};
+
+static struct uart_phyp_softc	*console_sc = NULL;
+#if defined(KDB)
+static int			alt_break_state;
+#endif
 
 enum {
 	HVTERM1, HVTERMPROT
@@ -69,86 +89,52 @@ enum {
 #define  VSV_SEND_MODEM_CTL_STATUS	0x02
 #define VS_QUERY_RESPONSE_PACKET_HEADER	0xfc
 
-/*
- * High-level interface
- */
-
 static int uart_phyp_probe(device_t dev);
-static int phyp_uart_bus_probe(struct uart_softc *);
-static int phyp_uart_bus_attach(struct uart_softc *);
-static int phyp_uart_bus_transmit(struct uart_softc *sc);
-static int phyp_uart_bus_receive(struct uart_softc *sc);
-static int phyp_uart_bus_ipend(struct uart_softc *sc);
-static int phyp_uart_bus_flush(struct uart_softc *, int);
-static int phyp_uart_bus_getsig(struct uart_softc *);
-static int phyp_uart_bus_ioctl(struct uart_softc *, int, intptr_t);
-static int phyp_uart_bus_param(struct uart_softc *, int, int, int, int);
-static int phyp_uart_bus_setsig(struct uart_softc *, int);
+static int uart_phyp_attach(device_t dev);
+static void uart_phyp_intr(void *v);
 
 static device_method_t uart_phyp_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		uart_phyp_probe),
-	DEVMETHOD(device_attach,	uart_bus_attach),
+	DEVMETHOD(device_attach,	uart_phyp_attach),
 
 	DEVMETHOD_END
 };
 
 static driver_t uart_phyp_driver = {
-	uart_driver_name,
+	"uart",
 	uart_phyp_methods,
-	sizeof(struct uart_softc),
+	sizeof(struct uart_phyp_softc),
 };
  
-DRIVER_MODULE(uart, vdevice, uart_phyp_driver, uart_devclass, 0, 0);
+DRIVER_MODULE(uart_phyp, vdevice, uart_phyp_driver, uart_devclass, 0, 0);
 
-/*
- * Low-level UART interface
- */
-static int phyp_uart_probe(struct uart_bas *bas);
-static void phyp_uart_init(struct uart_bas *bas, int baudrate, int databits,
-    int stopbits, int parity);
-static void phyp_uart_term(struct uart_bas *bas);
-static void phyp_uart_putc(struct uart_bas *bas, int c);
-static int phyp_uart_rxready(struct uart_bas *bas);
-static int phyp_uart_getc(struct uart_bas *bas, struct mtx *hwmtx);
+static cn_probe_t uart_phyp_cnprobe;
+static cn_init_t uart_phyp_cninit;
+static cn_term_t uart_phyp_cnterm;
+static cn_getc_t uart_phyp_cngetc;
+static cn_putc_t uart_phyp_cnputc;
+static cn_grab_t uart_phyp_cngrab;
+static cn_ungrab_t uart_phyp_cnungrab;
 
-static struct uart_ops phyp_uart_ops = {
-	.probe = phyp_uart_probe,
-	.init = phyp_uart_init,
-	.term = phyp_uart_term,
-	.putc = phyp_uart_putc,
-	.rxready = phyp_uart_rxready,
-	.getc = phyp_uart_getc,
-};
+CONSOLE_DRIVER(uart_phyp);
 
-static kobj_method_t phyp_uart_methods[] = {
-	KOBJMETHOD(uart_probe,	phyp_uart_bus_probe),
-	KOBJMETHOD(uart_attach,	phyp_uart_bus_attach),
-	KOBJMETHOD(uart_transmit,	phyp_uart_bus_transmit),
-	KOBJMETHOD(uart_receive,	phyp_uart_bus_receive),
-	KOBJMETHOD(uart_ipend,		phyp_uart_bus_ipend),
-	KOBJMETHOD(uart_flush,		phyp_uart_bus_flush),
-	KOBJMETHOD(uart_getsig,		phyp_uart_bus_getsig),
-	KOBJMETHOD(uart_ioctl,		phyp_uart_bus_ioctl),
-	KOBJMETHOD(uart_param,		phyp_uart_bus_param),
-	KOBJMETHOD(uart_setsig,		phyp_uart_bus_setsig),
-	{ 0, 0 }
-};
+static void uart_phyp_ttyoutwakeup(struct tty *tp);
 
-struct uart_class uart_phyp_class = {
-	"uart",
-	phyp_uart_methods,
-	sizeof(struct uart_softc),
-	.uc_ops = &phyp_uart_ops,
-	.uc_range = 1,
-	.uc_rclk = 0x5bbc
+static struct ttydevsw uart_phyp_tty_class = {
+	.tsw_flags	= TF_INITLOCK|TF_CALLOUT,
+	.tsw_outwakeup	= uart_phyp_ttyoutwakeup,
 };
 
 static int
-phyp_uart_probe(struct uart_bas *bas)
+uart_phyp_probe_node(struct uart_phyp_softc *sc)
 {
-	phandle_t node = bas->chan;
+	phandle_t node = sc->node;
+	uint32_t reg;
 	char buf[64];
+
+	sc->inbuflen = 0;
+	sc->outseqno = 0;
 
 	if (OF_getprop(node, "name", buf, sizeof(buf)) <= 0)
 		return (ENXIO);
@@ -160,92 +146,180 @@ phyp_uart_probe(struct uart_bas *bas)
 	if (strcmp(buf, "serial") != 0)
 		return (ENXIO);
 
+	reg = -1;
+	OF_getprop(node, "reg", &reg, sizeof(reg));
+	if (reg == -1)
+		return (ENXIO);
+	sc->node = node;
+
 	if (OF_getprop(node, "compatible", buf, sizeof(buf)) <= 0)
 		return (ENXIO);
 	if (strcmp(buf, "hvterm1") == 0) {
-		bas->regshft = HVTERM1;
+		sc->protocol = HVTERM1;
 		return (0);
 	} else if (strcmp(buf, "hvterm-protocol") == 0) {
-		bas->regshft = HVTERMPROT;
+		sc->protocol = HVTERMPROT;
 		return (0);
 	}
-		
-	return (ENXIO);
-}
 
-static int
-phyp_uart_bus_probe(struct uart_softc *sc)
-{
-	return (phyp_uart_probe(&sc->sc_bas));
+	return (ENXIO);
 }
 
 static int
 uart_phyp_probe(device_t dev)
 {
 	const char *name;
-	struct uart_softc *sc;
-	cell_t reg;
+	struct uart_phyp_softc sc;
+	int err;
 
 	name = ofw_bus_get_name(dev);
 	if (name == NULL || strcmp(name, "vty") != 0)
 		return (ENXIO);
 
-	sc = device_get_softc(dev);
-	sc->sc_class = &uart_phyp_class;
-	OF_getprop(ofw_bus_get_node(dev), "reg", &reg, sizeof(reg));
-	sc->sc_bas.bsh = reg;
-	sc->sc_bas.bst = NULL;
-	sc->sc_bas.chan = ofw_bus_get_node(dev);
+	sc.node = ofw_bus_get_node(dev);
+	err = uart_phyp_probe_node(&sc);
+	if (err != 0)
+		return (err);
 
 	device_set_desc(dev, "POWER Hypervisor Virtual Serial Port");
 
-	return (uart_bus_probe(dev, 0, 0, 0, ofw_bus_get_node(dev)));
+	return (err);
 }
 
-
 static void
-phyp_uart_init(struct uart_bas *bas, int baudrate __unused,
-    int databits __unused, int stopbits __unused, int parity __unused)
+uart_phyp_cnprobe(struct consdev *cp)
 {
+	char buf[64];
+	ihandle_t stdout;
+	phandle_t input, opts, chosen;
+	static struct uart_phyp_softc sc;
+
+	if ((opts = OF_finddevice("/options")) == -1)
+		goto fail;
+	if ((chosen = OF_finddevice("/chosen")) == -1)
+		goto fail;
+
+	/* Check if OF has an active stdin/stdout */
+	input = -1;
+	if (OF_getprop(chosen, "stdout", &stdout,
+	    sizeof(stdout)) == sizeof(stdout) && stdout != 0)
+		input = OF_instance_to_package(stdout);
+	if (input == -1)
+		goto fail;
+
+	if (OF_getprop(input, "device_type", buf, sizeof(buf)) == -1)
+		goto fail;
+	if (strcmp(buf, "serial") != 0)
+		goto fail;
+
+	sc.node = input;
+	if (uart_phyp_probe_node(&sc) != 0)
+		goto fail;
+	mtx_init(&sc.sc_mtx, "uart_phyp", NULL, MTX_SPIN | MTX_QUIET |
+	    MTX_NOWITNESS);
+
+	cp->cn_pri = CN_NORMAL;
+	console_sc = &sc;
+	return;
+	
+fail:
+	cp->cn_pri = CN_DEAD;
+	return;
+}
+
+static int
+uart_phyp_attach(device_t dev)
+{
+	struct uart_phyp_softc *sc;
+	int unit;
+
+	sc = device_get_softc(dev);
+	sc->dev = dev;
+	sc->node = ofw_bus_get_node(dev);
+	uart_phyp_probe_node(sc);
+
+	unit = device_get_unit(dev);
+	sc->tp = tty_alloc(&uart_phyp_tty_class, sc);
+	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL,
+	    MTX_SPIN | MTX_QUIET | MTX_NOWITNESS);
+
+	if (console_sc != NULL && console_sc->vtermid == sc->vtermid) {
+		sc->outseqno = console_sc->outseqno;
+		console_sc = sc;
+		sprintf(uart_phyp_consdev.cn_name, "ttyu%r", unit);
+		tty_init_console(sc->tp, 0);
+	}
+
+	sc->irqrid = 0;
+#ifdef NOTYET
+	sc->irqres = bus_alloc_resource_any(dev, SYS_RES_IRQ, &sc->irqrid,
+	    RF_ACTIVE | RF_SHAREABLE);
+#else
+	sc->irqres = NULL;
+#endif
+	if (sc->irqres != NULL) {
+		bus_setup_intr(dev, sc->irqres, INTR_TYPE_TTY | INTR_MPSAFE,
+		    NULL, uart_phyp_intr, sc, &sc->sc_icookie);
+	} else {
+		callout_init(&sc->callout, CALLOUT_MPSAFE);
+		sc->polltime = hz / 20;
+		if (sc->polltime < 1)
+			sc->polltime = 1;
+		callout_reset(&sc->callout, sc->polltime, uart_phyp_intr, sc);
+	}
+
+	tty_makedev(sc->tp, NULL, "u%r", unit);
+
+	return (0);
 }
 
 static void
-phyp_uart_term(struct uart_bas *bas __unused)
+uart_phyp_cninit(struct consdev *cp)
+{
+
+	strcpy(cp->cn_name, "phypcons");
+}
+
+static void
+uart_phyp_cnterm(struct consdev *cp)
 {
 }
 
 static int
-phyp_uart_getc(struct uart_bas *bas, struct mtx *hwmtx)
+uart_phyp_get(struct uart_phyp_softc *sc, void *buffer, size_t bufsize)
 {
-	int ch, err;
+	int err;
 
-	uart_lock(hwmtx);
-	if (phyp_inbuflen == 0) {
-		err = phyp_pft_hcall(H_GET_TERM_CHAR, (uint64_t)bas->bsh,
-		    0, 0, 0, &phyp_inbuflen, &phyp_inbuf.u64[0],
-		    &phyp_inbuf.u64[1]);
+	uart_lock(&sc->sc_mtx);
+	if (sc->inbuflen == 0) {
+		err = phyp_pft_hcall(H_GET_TERM_CHAR, sc->vtermid,
+		    0, 0, 0, &sc->inbuflen, &sc->phyp_inbuf.u64[0],
+		    &sc->phyp_inbuf.u64[1]);
 		if (err != H_SUCCESS) {
-			uart_unlock(hwmtx);
+			uart_unlock(&sc->sc_mtx);
 			return (-1);
 		}
 	}
 
-	if (phyp_inbuflen == 0) {
-		uart_unlock(hwmtx);
-		return (-1);
+	if (sc->inbuflen == 0) {
+		uart_unlock(&sc->sc_mtx);
+		return (0);
 	}
 
-	ch = phyp_inbuf.str[0];
-	phyp_inbuflen--;
-	if (phyp_inbuflen > 0)
-		memcpy(&phyp_inbuf.str[0], &phyp_inbuf.str[1], phyp_inbuflen);
+	if (bufsize > sc->inbuflen)
+		bufsize = sc->inbuflen;
+	memcpy(buffer, sc->phyp_inbuf.str, bufsize);
+	sc->inbuflen -= bufsize;
+	if (sc->inbuflen > 0)
+		memmove(&sc->phyp_inbuf.str[0], &sc->phyp_inbuf.str[bufsize],
+		    sc->inbuflen);
 
-	uart_unlock(hwmtx);
-	return (ch);
+	uart_unlock(&sc->sc_mtx);
+	return (bufsize);
 }
 
-static void
-phyp_uart_putc(struct uart_bas *bas, int c)
+static int
+uart_phyp_put(struct uart_phyp_softc *sc, void *buffer, size_t bufsize)
 {
 	uint16_t seqno;
 	uint64_t len = 0;
@@ -254,93 +328,93 @@ phyp_uart_putc(struct uart_bas *bas, int c)
 		char bytes[8];
 	} cbuf;
 
-	switch (bas->regshft) {
+	uart_lock(&sc->sc_mtx);
+	switch (sc->protocol) {
 	case HVTERM1:
-		cbuf.bytes[0] = c;
-		len = 1;
+		if (bufsize > 8)
+			bufsize = 8;
+		memcpy(&cbuf, buffer, bufsize);
+		len = bufsize;
 		break;
 	case HVTERMPROT:
-		seqno = phyp_outseqno++;
+		if (bufsize > 4)
+			bufsize = 4;
+		seqno = sc->outseqno++;
 		cbuf.bytes[0] = VS_DATA_PACKET_HEADER;
-		cbuf.bytes[1] = 5; /* total length */
+		cbuf.bytes[1] = 4 + bufsize; /* total length */
 		cbuf.bytes[2] = (seqno >> 8) & 0xff;
 		cbuf.bytes[3] = seqno & 0xff;
-		cbuf.bytes[4] = c;
-		len = 5;
+		memcpy(&cbuf.bytes[4], buffer, bufsize);
+		len = 4 + bufsize;
 		break;
 	}
-	phyp_hcall(H_PUT_TERM_CHAR, (uint64_t)bas->bsh, len, cbuf.u64, 0);
+	phyp_hcall(H_PUT_TERM_CHAR, sc->vtermid, len, cbuf.u64, 0);
+	uart_unlock(&sc->sc_mtx);
+
+	return (bufsize);
 }
 
 static int
-phyp_uart_rxready(struct uart_bas *bas)
+uart_phyp_cngetc(struct consdev *cp)
 {
-	return (1);
+	unsigned char c;
+	int retval;
+
+	retval = uart_phyp_get(console_sc, &c, 1);
+	if (retval != 1)
+		return (-1);
+#if defined(KDB)
+	kdb_alt_break(c, &alt_break_state);
+#endif
+
+	return (c);
 }
 
-static int
-phyp_uart_bus_attach(struct uart_softc *sc)
+static void
+uart_phyp_cnputc(struct consdev *cp, int c)
 {
-	return (0);
+	unsigned char ch = c;
+	uart_phyp_put(console_sc, &ch, 1);
 }
 
-static int
-phyp_uart_bus_transmit(struct uart_softc *sc)
+static void
+uart_phyp_cngrab(struct consdev *cp)
 {
-	int i;
-
-	uart_lock(sc->sc_hwmtx);
-	for (i = 0; i < sc->sc_txdatasz; i++)
-		phyp_uart_putc(&sc->sc_bas, sc->sc_txbuf[i]);
-	uart_unlock(sc->sc_hwmtx);
-
-	return (0);
 }
 
-static int
-phyp_uart_bus_receive(struct uart_softc *sc)
+static void
+uart_phyp_cnungrab(struct consdev *cp)
 {
-	int c;
-	while ((c = phyp_uart_getc(&sc->sc_bas, sc->sc_hwmtx)) != -1)
-		uart_rx_put(sc, c);
-
-	return (0);
 }
 
-static int
-phyp_uart_bus_ipend(struct uart_softc *sc)
+static void
+uart_phyp_ttyoutwakeup(struct tty *tp)
 {
-	return (0);
+	struct uart_phyp_softc *sc;
+	char buffer[8];
+	int len;
+
+	sc = tty_softc(tp);
+	
+	while ((len = ttydisc_getc(tp, buffer, sizeof(buffer))) != 0)
+		uart_phyp_put(sc, buffer, len);
 }
 
-static int
-phyp_uart_bus_flush(struct uart_softc *sc, int what)
+static void
+uart_phyp_intr(void *v)
 {
-	return (0);
-}
+	struct uart_phyp_softc *sc = v;
+	struct tty *tp = sc->tp;
+	unsigned char c;
+	int len;
 
-static int
-phyp_uart_bus_getsig(struct uart_softc *sc)
-{
-	return (0);
-}
+	tty_lock(tp);
+	while ((len = uart_phyp_get(sc, &c, 1)) > 0)
+		ttydisc_rint(tp, c, 0);
+	ttydisc_rint_done(tp);
+	tty_unlock(tp);
 
-static int
-phyp_uart_bus_ioctl(struct uart_softc *sc, int req, intptr_t data)
-{
-	return (EINVAL);
+	if (sc->irqres == NULL)
+		callout_reset(&sc->callout, sc->polltime, uart_phyp_intr, sc);
 }
-
-static int
-phyp_uart_bus_param(struct uart_softc *sc, int baud, int db, int sb, int par)
-{
-	return (0);
-}
-
-static int
-phyp_uart_bus_setsig(struct uart_softc *sc, int sig)
-{
-	return (0);
-}
-
 

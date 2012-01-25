@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/cpu.h>
 #include <machine/bus.h>
+#include <machine/intr_machdep.h>
 
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
@@ -44,6 +45,16 @@ static int	vdevice_probe(device_t);
 static int	vdevice_attach(device_t);
 static const struct ofw_bus_devinfo *vdevice_get_devinfo(device_t dev,
     device_t child);
+static int	vdevice_print_child(device_t dev, device_t child);
+static struct resource_list *vdevice_get_resource_list (device_t, device_t);
+
+/*
+ * VDevice devinfo
+ */
+struct vdevice_devinfo {
+	struct ofw_bus_devinfo mdi_obdinfo;
+	struct resource_list mdi_resources;
+};
 
 static device_method_t vdevice_methods[] = {
 	/* Device interface */
@@ -53,6 +64,14 @@ static device_method_t vdevice_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_add_child,	bus_generic_add_child),
 	DEVMETHOD(bus_child_pnpinfo_str, ofw_bus_gen_child_pnpinfo_str),
+	DEVMETHOD(bus_print_child,	vdevice_print_child),
+	DEVMETHOD(bus_setup_intr,	bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr,	bus_generic_teardown_intr),
+	DEVMETHOD(bus_alloc_resource,	bus_generic_rl_alloc_resource),
+	DEVMETHOD(bus_release_resource,	bus_generic_rl_release_resource),
+	DEVMETHOD(bus_activate_resource, bus_generic_activate_resource),
+	DEVMETHOD(bus_deactivate_resource, bus_generic_deactivate_resource),
+	DEVMETHOD(bus_get_resource_list, vdevice_get_resource_list),
 
 	/* ofw_bus interface */
 	DEVMETHOD(ofw_bus_get_devinfo,	vdevice_get_devinfo),
@@ -98,22 +117,46 @@ vdevice_attach(device_t dev)
 {
 	phandle_t root, child;
 	device_t cdev;
-	struct ofw_bus_devinfo *dinfo;
+	int icells, i, nintr, *intr;
+	phandle_t iparent;
+	struct vdevice_devinfo *dinfo;
 
 	root = ofw_bus_get_node(dev);
 
 	for (child = OF_child(root); child != 0; child = OF_peer(child)) {
 		dinfo = malloc(sizeof(*dinfo), M_DEVBUF, M_WAITOK | M_ZERO);
 
-                if (ofw_bus_gen_setup_devinfo(dinfo, child) != 0) {
+                if (ofw_bus_gen_setup_devinfo(&dinfo->mdi_obdinfo,
+		    child) != 0) {
                         free(dinfo, M_DEVBUF);
                         continue;
                 }
+		resource_list_init(&dinfo->mdi_resources);
+
+		if (OF_searchprop(child, "#interrupt-cells", &icells,
+		    sizeof(icells)) <= 0)
+			icells = 2;
+		if (OF_getprop(child, "interrupt-parent", &iparent,
+		    sizeof(iparent)) <= 0)
+			iparent = -1;
+		nintr = OF_getprop_alloc(child, "interrupts", sizeof(*intr),
+		    (void **)&intr);
+		if (nintr > 0) {
+			for (i = 0; i < nintr; i += icells) {
+				u_int irq = intr[i];
+				if (iparent != -1)
+					irq = MAP_IRQ(iparent, intr[i]);
+
+				resource_list_add(&dinfo->mdi_resources,
+				    SYS_RES_IRQ, i, irq, irq, i);
+			}
+		}
+
                 cdev = device_add_child(dev, NULL, -1);
                 if (cdev == NULL) {
                         device_printf(dev, "<%s>: device_add_child failed\n",
-                            dinfo->obd_name);
-                        ofw_bus_gen_destroy_devinfo(dinfo);
+                            dinfo->mdi_obdinfo.obd_name);
+                        ofw_bus_gen_destroy_devinfo(&dinfo->mdi_obdinfo);
                         free(dinfo, M_DEVBUF);
                         continue;
                 }
@@ -127,5 +170,33 @@ static const struct ofw_bus_devinfo *
 vdevice_get_devinfo(device_t dev, device_t child) 
 {
 	return (device_get_ivars(child));	
+}
+
+static int
+vdevice_print_child(device_t dev, device_t child)
+{
+	struct vdevice_devinfo *dinfo;
+	struct resource_list *rl;
+	int retval = 0;
+
+	dinfo = device_get_ivars(child);
+	rl = &dinfo->mdi_resources;
+
+	retval += bus_print_child_header(dev, child);
+
+	retval += resource_list_print_type(rl, "irq", SYS_RES_IRQ, "%ld");
+
+	retval += bus_print_child_footer(dev, child);
+
+	return (retval);
+}
+
+static struct resource_list *
+vdevice_get_resource_list (device_t dev, device_t child)
+{
+        struct vdevice_devinfo *dinfo;
+
+        dinfo = device_get_ivars(child);
+        return (&dinfo->mdi_resources);
 }
 
