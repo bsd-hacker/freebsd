@@ -72,7 +72,7 @@ struct netmap_kring {
 	int	nkr_hwofs;	/* offset between NIC and netmap ring */
 	struct netmap_adapter *na;	 // debugging
 	struct selinfo si; /* poll/select wait queue */
-};
+} __attribute__((__aligned__(64)));
 
 /*
  * This struct is part of and extends the 'struct adapter' (or
