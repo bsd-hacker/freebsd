@@ -42,18 +42,11 @@ __FBSDID("$FreeBSD$");
 bus_space_tag_t uart_bus_space_io = &bs_le_tag;
 bus_space_tag_t uart_bus_space_mem = &bs_le_tag;
 
-extern struct uart_class uart_phyp_class __attribute__((weak));
-
 int
 uart_cpu_eqres(struct uart_bas *b1, struct uart_bas *b2)
 {
-	if (b1->bst == NULL && b2->bst == NULL)
-		return ((b1->bsh == b2->bsh) ? 1 : 0);
-	else if (b1->bst != NULL && b2->bst != NULL)
-		return ((pmap_kextract(b1->bsh) == pmap_kextract(b2->bsh)) ?
-		    1 : 0);
-	else
-		return (0);
+
+	return ((pmap_kextract(b1->bsh) == pmap_kextract(b2->bsh)) ? 1 : 0);
 }
 
 static int
@@ -61,21 +54,16 @@ ofw_get_uart_console(phandle_t opts, phandle_t *result, const char *inputdev,
     const char *outputdev)
 {
 	char buf[64];
-	phandle_t input, output;
+	phandle_t input;
 
-	*result = -1;
 	if (OF_getprop(opts, inputdev, buf, sizeof(buf)) == -1)
-		return (ENOENT);
+		return (ENXIO);
 	input = OF_finddevice(buf);
 	if (input == -1)
-		return (ENOENT);
+		return (ENXIO);
 	if (OF_getprop(opts, outputdev, buf, sizeof(buf)) == -1)
-		return (ENOENT);
-	output = OF_finddevice(buf);
-	if (output == -1)
-		return (ENOENT);
-
-	if (input != output) /* UARTs are bidirectional */
+		return (ENXIO);
+	if (OF_finddevice(buf) != input)
 		return (ENXIO);
 
 	*result = input;
@@ -87,42 +75,28 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 {
 	char buf[64];
 	struct uart_class *class;
-	ihandle_t stdout;
-	phandle_t input, opts, chosen;
-	cell_t reg;
+	phandle_t input, opts;
 	int error;
+
+	class = &uart_z8530_class;
+	if (class == NULL)
+		return (ENXIO);
 
 	if ((opts = OF_finddevice("/options")) == -1)
 		return (ENXIO);
-	if ((chosen = OF_finddevice("/chosen")) == -1)
-		return (ENXIO);
 	switch (devtype) {
 	case UART_DEV_CONSOLE:
-		do {
-			/* Check if OF has an active stdin/stdout */
-			input = -1;
-			if (OF_getprop(chosen, "stdout", &stdout,
-			    sizeof(stdout)) == sizeof(stdout) && stdout != 0)
-				input = OF_instance_to_package(stdout);
-			if (input != -1)
-				break;
-
-			/* Guess what OF would have done had it had such */
-			if (ofw_get_uart_console(opts, &input, "input-device",
-			    "output-device") == 0)
-				break;
-
+		if (ofw_get_uart_console(opts, &input, "input-device",
+		    "output-device")) {
 			/*
 			 * At least some G5 Xserves require that we
 			 * probe input-device-1 as well
 			 */
+	
 			if (ofw_get_uart_console(opts, &input, "input-device-1",
-			    "output-device-1") == 0)
-				break;
-		} while (0);
-
-		if (input == -1)
-			return (ENXIO);
+			    "output-device-1"))
+				return (ENXIO);
+		}
 		break;
 	case UART_DEV_DBGPORT:
 		if (!getenv_string("hw.uart.dbgport", buf, sizeof(buf)))
@@ -150,24 +124,12 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 		class = &uart_ns8250_class;
 		di->bas.regshft = 0;
 		di->bas.chan = 0;
-	} else if (strcmp(buf,"vty") == 0) {
-		class = &uart_phyp_class;
-		di->bas.regshft = 0;
-		di->bas.chan = input;
 	} else
 		return (ENXIO);
 
-	if (strcmp(buf,"vty") == 0) {
-		if (OF_getproplen(input, "reg") != sizeof(reg))
-			return (ENXIO);
-		OF_getprop(input, "reg", &reg, sizeof(reg));
-		di->bas.bsh = reg;
-		di->bas.bst = NULL;
-	} else {
-		error = OF_decode_addr(input, 0, &di->bas.bst, &di->bas.bsh);
-		if (error)
-			return (error);
-	}
+	error = OF_decode_addr(input, 0, &di->bas.bst, &di->bas.bsh);
+	if (error)
+		return (error);
 
 	di->ops = uart_getops(class);
 

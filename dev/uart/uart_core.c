@@ -342,6 +342,8 @@ uart_bus_probe(device_t dev, int regshft, int rclk, int rid, int chan)
 		sc->sc_rres = bus_alloc_resource(dev, sc->sc_rtype,
 		    &sc->sc_rrid, 0, ~0, uart_getrange(sc->sc_class),
 		    RF_ACTIVE);
+		if (sc->sc_rres == NULL)
+			return (ENXIO);
 	}
 
 	/*
@@ -351,10 +353,8 @@ uart_bus_probe(device_t dev, int regshft, int rclk, int rid, int chan)
 	 * accordingly. In general, you don't want to permanently disrupt
 	 * console I/O.
 	 */
-	if (sc->sc_rres != NULL) {
-		sc->sc_bas.bsh = rman_get_bushandle(sc->sc_rres);
-		sc->sc_bas.bst = rman_get_bustag(sc->sc_rres);
-	}
+	sc->sc_bas.bsh = rman_get_bushandle(sc->sc_rres);
+	sc->sc_bas.bst = rman_get_bustag(sc->sc_rres);
 	sc->sc_bas.chan = chan;
 	sc->sc_bas.regshft = regshft;
 	sc->sc_bas.rclk = (rclk == 0) ? sc->sc_class->uc_rclk : rclk;
@@ -369,9 +369,7 @@ uart_bus_probe(device_t dev, int regshft, int rclk, int rid, int chan)
 	}
 
 	error = UART_PROBE(sc);
-	if (sc->sc_rres != NULL)
-		bus_release_resource(dev, sc->sc_rtype, sc->sc_rrid,
-		    sc->sc_rres);
+	bus_release_resource(dev, sc->sc_rtype, sc->sc_rrid, sc->sc_rres);
 	return ((error) ? error : BUS_PROBE_DEFAULT);
 }
 
@@ -428,7 +426,8 @@ uart_bus_attach(device_t dev)
 		if (error)
 			error = bus_setup_intr(dev,
 			    sc->sc_ires, INTR_TYPE_TTY | INTR_MPSAFE,
-			    NULL, (driver_intr_t *)uart_intr, sc, &sc->sc_icookie);
+			    NULL, (driver_intr_t *)uart_intr, sc,
+			    &sc->sc_icookie);
 		else
 			sc->sc_fastintr = 1;
 
@@ -438,8 +437,7 @@ uart_bus_attach(device_t dev)
 			    sc->sc_ires);
 			sc->sc_ires = NULL;
 		}
-	}
-	if (sc->sc_ires == NULL) {
+	} else {
 		/* XXX no interrupt resource. Force polled mode. */
 		sc->sc_polled = 1;
 	}
