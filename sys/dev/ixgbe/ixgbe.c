@@ -3386,6 +3386,7 @@ ixgbe_txeof(struct tx_ring *txr)
 	if (ifp->if_capenable & IFCAP_NETMAP) {
 		struct netmap_adapter *na = NA(ifp);
 		struct netmap_kring *kring = &na->tx_rings[txr->me];
+
 		tx_desc = (struct ixgbe_legacy_tx_desc *)txr->tx_base;
 
 		bus_dmamap_sync(txr->txdma.dma_tag, txr->txdma.dma_map,
@@ -3395,6 +3396,15 @@ ixgbe_txeof(struct tx_ring *txr)
 		 * of the client thread. Interrupt handlers only wake up
 		 * clients, which may be sleeping on individual rings
 		 * or on a global resource for all rings.
+		 * To implement tx interrupt mitigation, we wake up the client
+		 * thread roughly every half ring, even if the NIC interrupts
+		 * more frequently. This is implemented as follows:
+		 * - ixgbe_txsync() sets kring->nr_kflags with the index of
+		 *   the slot that should wake up the thread (nkr_num_slots
+		 *   means the user thread should not be woken up);
+		 * - the driver ignores tx interrupts unless netmap_mitigate=0
+		 *   or the slot has the DD bit set.
+		 *
 		 * When the driver has separate locks, we need to
 		 * release and re-acquire txlock to avoid deadlocks.
 		 * XXX see if we can find a better way.
@@ -3402,7 +3412,7 @@ ixgbe_txeof(struct tx_ring *txr)
 		if (!netmap_mitigate ||
 		    (kring->nr_kflags < kring->nkr_num_slots &&
 		     tx_desc[kring->nr_kflags].upper.fields.status & IXGBE_TXD_STAT_DD)) {
-			kring->nr_kflags = kring->nkr_num_slots; // invalidate
+			kring->nr_kflags = kring->nkr_num_slots;
 			selwakeuppri(&na->tx_rings[txr->me].si, PI_NET);
 			IXGBE_TX_UNLOCK(txr);
 			IXGBE_CORE_LOCK(adapter);
@@ -4306,8 +4316,10 @@ ixgbe_rxeof(struct ix_queue *que, int count)
 #ifdef DEV_NETMAP
 	if (ifp->if_capenable & IFCAP_NETMAP) {
 		/*
-		 * Same as the txeof routine, only wakeup clients
-		 * and make sure there are no deadlocks.
+		 * Same as the txeof routine: only wakeup clients on intr.
+		 * NKR_PENDINTR in nr_kflags is used to implement interrupt
+		 * mitigation (ixgbe_rxsync() will not look for new packets
+		 * unless NKR_PENDINTR is set).
 		 */
 		struct netmap_adapter *na = NA(ifp);
 
