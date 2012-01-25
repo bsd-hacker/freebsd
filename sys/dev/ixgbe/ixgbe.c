@@ -232,7 +232,7 @@ MODULE_DEPEND(ixgbe, ether, 1, 1, 1);
 static int ixgbe_enable_aim = 0; // TRUE;
 TUNABLE_INT("hw.ixgbe.enable_aim", &ixgbe_enable_aim);
 
-static int ixgbe_max_interrupt_rate = (8000000 / 250); // IXGBE_LOW_LATENCY);
+static int ixgbe_max_interrupt_rate = (4000000 / IXGBE_LOW_LATENCY);
 TUNABLE_INT("hw.ixgbe.max_interrupt_rate", &ixgbe_max_interrupt_rate);
 
 /* How many packets rxeof tries to clean at a time */
