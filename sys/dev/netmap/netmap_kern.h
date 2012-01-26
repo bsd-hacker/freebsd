@@ -174,7 +174,6 @@ int netmap_ring_reinit(struct netmap_kring *);
 
 extern int netmap_mitigate;
 extern int netmap_skip_txsync, netmap_skip_rxsync;
-extern int netmap_delta[8];
 extern u_int netmap_total_buffers;
 extern char *netmap_buffer_base;
 extern int netmap_verbose;	// XXX debugging

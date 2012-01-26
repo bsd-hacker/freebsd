@@ -192,9 +192,9 @@ fail:
  *
  * ring->avail is never used, only checked for bogus values.
  *
- * If do_lock is set, it means the function has been called from the ioctl
- * handler: in this particular case, do_lock has also the special meaning of
- * force the update of NIC registers
+ * do_lock is set iff the function is called from the ioctl handler.
+ * In this case, grab a lock around the body, and also reclaim transmitted
+ * buffers irrespective of interrupt mitigation.
  */
 static int
 ixgbe_netmap_txsync(void *a, u_int ring_nr, int do_lock)
@@ -300,7 +300,7 @@ ring_reset:
 			curr->read.cmd_type_len =
 			    htole32(txr->txd_cmd | len |
 				(IXGBE_ADVTXD_DTYP_DATA |
-				    IXGBE_ADVTXD_DCMD_DEXT | // XXX
+				    IXGBE_ADVTXD_DCMD_DEXT |
 				    IXGBE_ADVTXD_DCMD_IFCS |
 				    IXGBE_TXD_CMD_EOP | flags) );
 			/* If the buffer has changed, unload and reload map
@@ -333,32 +333,36 @@ ring_reset:
 	}
 
 	/*
-	 * If no packets are sent, or there is no room in the tx ring,
-	 * Check whether there are completed transmissions.
-	 * Because this is expensive (we need a register etc.)
-	 * we only do it if absolutely necessary, i.e. there is no room
-	 * in the tx ring, or where were no completed transmissions
-	 * (meaning that probably the caller really wanted to check
-	 * for completed transmissions).
+	 * Reclaim buffers for completed transmissions.
+	 * Because this is expensive (we read a NIC register etc.)
+	 * we only do it in specific cases (see below).
+	 * In all cases kring->nr_kflags indicates which slot will be
+	 * checked upon a tx interrupt (nkr_num_slots means none).
 	 */
 	if (do_lock) {
-		kring->nr_kflags = kring->nkr_num_slots; // filter interrupts
-		j = 1; // force read
-	} else if (kring->nr_hwavail > 0) { // no need to block
-		kring->nr_kflags = kring->nkr_num_slots; // filter interrupts
-		j = 0;
+		j = 1; /* forced reclaim, ignore interrupts */
+		kring->nr_kflags = kring->nkr_num_slots;
+	} else if (kring->nr_hwavail > 0) {
+		j = 0; /* buffers still available: no reclaim, ignore intr. */
+		kring->nr_kflags = kring->nkr_num_slots;
 	} else {
+		/*
+		 * no buffers available, locate a slot for which we request
+		 * ReportStatus (approximately half ring after next_to_clean)
+		 * and record it in kring->nr_kflags.
+		 * If the slot has DD set, do the reclaim looking at TDH,
+		 * otherwise we go to sleep (in netmap_poll()) and will be
+		 * woken up when slot nr_kflags will be ready.
+		 */
 		struct ixgbe_legacy_tx_desc *txd = (struct ixgbe_legacy_tx_desc *)txr->tx_base;
 
-		// wake me up every half ring (more or less)
 		j = txr->next_to_clean + kring->nkr_num_slots/2;
 		if (j >= kring->nkr_num_slots)
 			j -= kring->nkr_num_slots;
 		// round to the closest with dd set
 		j= (j < kring->nkr_num_slots / 4 || j >= kring->nkr_num_slots*3/4) ?
 			0 : report_frequency;
-		kring->nr_kflags = j; // remember where to look at in the interrupt
-		// now check if we have data ready
+		kring->nr_kflags = j; /* the slot to check */
 		j = txd[j].upper.fields.status & IXGBE_TXD_STAT_DD;
 	}
 	if (!j) {
@@ -389,7 +393,6 @@ ring_reset:
 			/* some tx completed, increment avail */
 			if (delta < 0)
 				delta += kring->nkr_num_slots;
-			netmap_delta[ring_nr] = (netmap_delta[ring_nr] * 15 + delta)/16;
 			txr->next_to_clean = l;
 			kring->nr_hwavail += delta;
 			if (kring->nr_hwavail > lim)
@@ -475,7 +478,6 @@ ixgbe_netmap_rxsync(void *a, u_int ring_nr, int do_lock)
 
 		if ((staterr & IXGBE_RXD_STAT_DD) == 0)
 			break;
-		// XXX add -4 if crcstrip
 		ring->slot[j].len = le16toh(curr->wb.upper.length);
 		bus_dmamap_sync(rxr->ptag,
 			rxr->rx_buffers[l].pmap, BUS_DMASYNC_POSTREAD);
