@@ -50,7 +50,7 @@
 
 #define XICS_PRIORITY	5	/* Random non-zero number */
 #define XICS_IPI	2
-#define MAX_XICS_IRQS	255	/* XXX: Should be 2^24, but causes problem */
+#define MAX_XICS_IRQS	(1<<24)	/* 24-bit XIRR field */
 
 static int	xics_probe(device_t);
 static int	xics_attach(device_t);
@@ -104,7 +104,8 @@ static driver_t xics_driver = {
 
 static devclass_t xics_devclass;
 
-DRIVER_MODULE(xics, nexus, xics_driver, xics_devclass, 0, 0);
+EARLY_DRIVER_MODULE(xics, nexus, xics_driver, xics_devclass, 0, 0,
+    BUS_PASS_INTERRUPT);
 
 static int
 xics_probe(device_t dev)
