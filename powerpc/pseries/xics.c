@@ -48,39 +48,49 @@
 #include "phyp-hvcall.h"
 #include "pic_if.h"
 
-#define XICS_PRIORITY	5	/* Random non-zero number */
-#define XICS_IPI	2
-#define MAX_XICS_IRQS	(1<<24)	/* 24-bit XIRR field */
+#define XICP_PRIORITY	5	/* Random non-zero number */
+#define XICP_IPI	2
+#define MAX_XICP_IRQS	(1<<24)	/* 24-bit XIRR field */
 
+static int	xicp_probe(device_t);
+static int	xicp_attach(device_t);
 static int	xics_probe(device_t);
 static int	xics_attach(device_t);
 
-static void	xics_bind(device_t dev, u_int irq, cpuset_t cpumask);
-static void	xics_dispatch(device_t, struct trapframe *);
-static void	xics_enable(device_t, u_int, u_int);
-static void	xics_eoi(device_t, u_int);
-static void	xics_ipi(device_t, u_int);
-static void	xics_mask(device_t, u_int);
-static void	xics_unmask(device_t, u_int);
+static void	xicp_bind(device_t dev, u_int irq, cpuset_t cpumask);
+static void	xicp_dispatch(device_t, struct trapframe *);
+static void	xicp_enable(device_t, u_int, u_int);
+static void	xicp_eoi(device_t, u_int);
+static void	xicp_ipi(device_t, u_int);
+static void	xicp_mask(device_t, u_int);
+static void	xicp_unmask(device_t, u_int);
+
+static device_method_t  xicp_methods[] = {
+	/* Device interface */
+	DEVMETHOD(device_probe,		xicp_probe),
+	DEVMETHOD(device_attach,	xicp_attach),
+
+	/* PIC interface */
+	DEVMETHOD(pic_bind,		xicp_bind),
+	DEVMETHOD(pic_dispatch,		xicp_dispatch),
+	DEVMETHOD(pic_enable,		xicp_enable),
+	DEVMETHOD(pic_eoi,		xicp_eoi),
+	DEVMETHOD(pic_ipi,		xicp_ipi),
+	DEVMETHOD(pic_mask,		xicp_mask),
+	DEVMETHOD(pic_unmask,		xicp_unmask),
+
+	{ 0, 0 },
+};
 
 static device_method_t  xics_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		xics_probe),
 	DEVMETHOD(device_attach,	xics_attach),
 
-	/* PIC interface */
-	DEVMETHOD(pic_bind,		xics_bind),
-	DEVMETHOD(pic_dispatch,		xics_dispatch),
-	DEVMETHOD(pic_enable,		xics_enable),
-	DEVMETHOD(pic_eoi,		xics_eoi),
-	DEVMETHOD(pic_ipi,		xics_ipi),
-	DEVMETHOD(pic_mask,		xics_mask),
-	DEVMETHOD(pic_unmask,		xics_unmask),
-
 	{ 0, 0 },
 };
 
-struct xics_softc {
+struct xicp_softc {
 	struct mtx sc_mtx;
 
 	int ibm_int_on;
@@ -96,19 +106,28 @@ struct xics_softc {
 	int nintvecs;
 };
 
+static driver_t xicp_driver = {
+	"xicp",
+	xicp_methods,
+	sizeof(struct xicp_softc)
+};
+
 static driver_t xics_driver = {
 	"xics",
 	xics_methods,
-	sizeof(struct xics_softc)
+	0
 };
 
+static devclass_t xicp_devclass;
 static devclass_t xics_devclass;
 
+EARLY_DRIVER_MODULE(xicp, nexus, xicp_driver, xicp_devclass, 0, 0,
+    BUS_PASS_INTERRUPT-1);
 EARLY_DRIVER_MODULE(xics, nexus, xics_driver, xics_devclass, 0, 0,
     BUS_PASS_INTERRUPT);
 
 static int
-xics_probe(device_t dev)
+xicp_probe(device_t dev)
 {
 	if (ofw_bus_get_name(dev) == NULL || strcmp(ofw_bus_get_name(dev),
 	    "interrupt-controller") != 0)
@@ -122,11 +141,26 @@ xics_probe(device_t dev)
 }
 
 static int
-xics_attach(device_t dev)
+xics_probe(device_t dev)
 {
-	struct xics_softc *sc = device_get_softc(dev);
+	if (ofw_bus_get_name(dev) == NULL || strcmp(ofw_bus_get_name(dev),
+	    "interrupt-controller") != 0)
+		return (ENXIO);
 
-	mtx_init(&sc->sc_mtx, "XICS", NULL, MTX_DEF);
+	if (!ofw_bus_is_compatible(dev, "ibm,ppc-xics"))
+		return (ENXIO);
+
+	device_set_desc(dev, "PAPR virtual interrupt source");
+	return (BUS_PROBE_GENERIC);
+}
+
+static int
+xicp_attach(device_t dev)
+{
+	struct xicp_softc *sc = device_get_softc(dev);
+	phandle_t phandle = ofw_bus_get_node(dev);
+
+	mtx_init(&sc->sc_mtx, "XICP", NULL, MTX_DEF);
 	sc->nintvecs = 0;
 
 	sc->ibm_int_on = rtas_token_lookup("ibm,int-on");
@@ -134,8 +168,28 @@ xics_attach(device_t dev)
 	sc->ibm_set_xive = rtas_token_lookup("ibm,set-xive");
 	sc->ibm_get_xive = rtas_token_lookup("ibm,get-xive");
 
-	powerpc_register_pic(dev, ofw_bus_get_node(dev), MAX_XICS_IRQS,
+	if (OF_getproplen(phandle, "ibm,phandle") > 0)
+		OF_getprop(phandle, "ibm,phandle", &phandle, sizeof(phandle));
+
+	powerpc_register_pic(dev, phandle, MAX_XICP_IRQS,
 	    1 /* Number of IPIs */, FALSE);
+	root_pic = dev;
+
+	return (0);
+}
+
+static int
+xics_attach(device_t dev)
+{
+	phandle_t phandle = ofw_bus_get_node(dev);
+
+	if (OF_getproplen(phandle, "ibm,phandle") > 0)
+		OF_getprop(phandle, "ibm,phandle", &phandle, sizeof(phandle));
+
+	/* The XICP (root PIC) will handle all our interrupts */
+	powerpc_register_pic(root_pic, phandle, MAX_XICP_IRQS,
+	    1 /* Number of IPIs */, FALSE);
+
 	return (0);
 }
 
@@ -144,9 +198,9 @@ xics_attach(device_t dev)
  */
 
 static void
-xics_bind(device_t dev, u_int irq, cpuset_t cpumask)
+xicp_bind(device_t dev, u_int irq, cpuset_t cpumask)
 {
-	struct xics_softc *sc = device_get_softc(dev);
+	struct xicp_softc *sc = device_get_softc(dev);
 	cell_t status, cpu;
 
 	/*
@@ -156,14 +210,14 @@ xics_bind(device_t dev, u_int irq, cpuset_t cpumask)
 	CPU_FOREACH(cpu)
 		if (CPU_ISSET(cpu, &cpumask)) break;
 
-	rtas_call_method(sc->ibm_set_xive, 3, 1, irq, cpu, XICS_PRIORITY,
+	rtas_call_method(sc->ibm_set_xive, 3, 1, irq, cpu, XICP_PRIORITY,
 	    &status);
 }
 
 static void
-xics_dispatch(device_t dev, struct trapframe *tf)
+xicp_dispatch(device_t dev, struct trapframe *tf)
 {
-	struct xics_softc *sc;
+	struct xicp_softc *sc;
 	uint64_t xirr, junk;
 	int i;
 
@@ -177,8 +231,8 @@ xics_dispatch(device_t dev, struct trapframe *tf)
 			phyp_hcall(H_CPPR, (uint64_t)0xff);
 			break;
 		}
-		if (xirr == XICS_IPI) {		/* Magic number for IPIs */
-			xirr = MAX_XICS_IRQS;	/* Map to FreeBSD magic */
+		if (xirr == XICP_IPI) {		/* Magic number for IPIs */
+			xirr = MAX_XICP_IRQS;	/* Map to FreeBSD magic */
 			phyp_hcall(H_IPI, (uint64_t)(PCPU_GET(cpuid)),
 			    0xff); /* Clear IPI */
 		}
@@ -195,15 +249,15 @@ xics_dispatch(device_t dev, struct trapframe *tf)
 }
 
 static void
-xics_enable(device_t dev, u_int irq, u_int vector)
+xicp_enable(device_t dev, u_int irq, u_int vector)
 {
-	struct xics_softc *sc;
+	struct xicp_softc *sc;
 	cell_t status, cpu;
 
 	sc = device_get_softc(dev);
 
 	KASSERT(sc->nintvecs + 1 < sizeof(sc->intvecs)/sizeof(sc->intvecs[0]),
-	    ("Too many XICS interrupts"));
+	    ("Too many XICP interrupts"));
 
 	mtx_lock(&sc->sc_mtx);
 	sc->intvecs[sc->nintvecs].irq = irq;
@@ -213,54 +267,54 @@ xics_enable(device_t dev, u_int irq, u_int vector)
 	mtx_unlock(&sc->sc_mtx);
 
 	/* IPIs are also enabled */
-	if (irq == MAX_XICS_IRQS)
+	if (irq == MAX_XICP_IRQS)
 		return;
 
 	/* Bind to this CPU to start: distrib. ID is last entry in gserver# */
 	cpu = PCPU_GET(cpuid);
-	rtas_call_method(sc->ibm_set_xive, 3, 1, irq, cpu, XICS_PRIORITY,
+	rtas_call_method(sc->ibm_set_xive, 3, 1, irq, cpu, XICP_PRIORITY,
 	    &status);
-	xics_unmask(dev, irq);
+	xicp_unmask(dev, irq);
 }
 
 static void
-xics_eoi(device_t dev, u_int irq)
+xicp_eoi(device_t dev, u_int irq)
 {
 	uint64_t xirr;
 
-	if (irq == MAX_XICS_IRQS) /* Remap IPI interrupt to internal value */
-		irq = XICS_IPI;
-	xirr = irq | (XICS_PRIORITY << 24);
+	if (irq == MAX_XICP_IRQS) /* Remap IPI interrupt to internal value */
+		irq = XICP_IPI;
+	xirr = irq | (XICP_PRIORITY << 24);
 
 	phyp_hcall(H_EOI, xirr);
 }
 
 static void
-xics_ipi(device_t dev, u_int cpu)
+xicp_ipi(device_t dev, u_int cpu)
 {
 
-	phyp_hcall(H_IPI, (uint64_t)cpu, XICS_PRIORITY);
+	phyp_hcall(H_IPI, (uint64_t)cpu, XICP_PRIORITY);
 }
 
 static void
-xics_mask(device_t dev, u_int irq)
+xicp_mask(device_t dev, u_int irq)
 {
-	struct xics_softc *sc = device_get_softc(dev);
+	struct xicp_softc *sc = device_get_softc(dev);
 	cell_t status;
 
-	if (irq == MAX_XICS_IRQS)
+	if (irq == MAX_XICP_IRQS)
 		return;
 
 	rtas_call_method(sc->ibm_int_off, 1, 1, irq, &status);
 }
 
 static void
-xics_unmask(device_t dev, u_int irq)
+xicp_unmask(device_t dev, u_int irq)
 {
-	struct xics_softc *sc = device_get_softc(dev);
+	struct xicp_softc *sc = device_get_softc(dev);
 	cell_t status;
 
-	if (irq == MAX_XICS_IRQS)
+	if (irq == MAX_XICP_IRQS)
 		return;
 
 	rtas_call_method(sc->ibm_int_on, 1, 1, irq, &status);
