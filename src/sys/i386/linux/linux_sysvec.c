@@ -1136,6 +1136,14 @@ linux_elf_modevent(module_t mod, int type, void *data)
 				printf("Linux ELF exec handler installed\n");
 		} else
 			printf("cannot insert Linux ELF brand handler\n");
+/*
+ * XXX: Lookup dynamically sdt_provider_listall and sdt_provider_reg_callback,
+ * after that run
+ * (void) sdt_provider_listall(sdt_provider_reg_callback, NULL);
+ *  or
+ * (void) sdt_provider_listall(sdt_provider_entry, NULL);
+ *  or something similar.
+ */
 		break;
 	case MOD_UNLOAD:
 		for (brandinfo = &linux_brandlist[0]; *brandinfo != NULL;
