@@ -46,7 +46,7 @@
 #include <dev/sound/pci/hda/hda_reg.h>
 #include <dev/sound/pci/hda/hdac.h>
 
-#define HDA_DRV_TEST_REV	"20120111_0001"
+#define HDA_DRV_TEST_REV	"20120126_0002"
 
 SND_DECLARE_FILE("$FreeBSD$");
 
@@ -1921,6 +1921,8 @@ hdac_stream_start(device_t dev, device_t child,
 	ctl |= 1 << ss;
 	HDAC_WRITE_4(&sc->mem, HDAC_INTCTL, ctl);
 
+	HDAC_WRITE_1(&sc->mem, off + HDAC_SDSTS,
+	    HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
 	ctl = HDAC_READ_1(&sc->mem, off + HDAC_SDCTL0);
 	ctl |= HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE |
 	    HDAC_SDCTL_RUN;
