@@ -27,8 +27,17 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
+#include <mregex.h>
+#include <regex.h>
 #include "tre-mfastmatch.h"
 #include "xmalloc.h"
+
+/* TODO:
+ *
+ * - REG_ICASE
+ * - Store pattern and sizes in pat/wpat/siz/wsiz
+ * - Test
+ */
 
 #define WM_B 2
 
@@ -39,6 +48,13 @@
       err = REG_ESPACE;							\
       goto fail;							\
     }
+
+#define FAIL								\
+  do									\
+    {									\
+      err = REG_BADPAT;							\
+      goto fail;							\
+    } while (0)
 
 #define _PROC_WM(pat_arr, siz_arr, char_size, sh_field, m_field)	\
   /* Determine shortest pattern length */				\
@@ -71,13 +87,13 @@
             entry->pref_list[0] = i;					\
             ret = hashtable_put(wm->sh_field, pat_arr[i], entry);	\
             if (ret != HASH_OK)						\
-              ; // XXX: error handling					\
+              FAIL;							\
             break;							\
           case HASH_OK:							\
             entry->shift = entry->shift < sh ? entry->shift : sh;	\
             entry->pref_list[entry->pref++] = i;			\
             if (ret != HASH_UPDATED)					\
-              ; // XXX: error handling					\
+              FAIL;							\
         }								\
       /* Intermediate fragments, only shift calculated */		\
       for (int j = 1; j < size_arr[i] - WB_M; j++)			\
@@ -93,12 +109,12 @@
                 ret = hashtable_put(wm->sh_field, &pat_arr[i][j],	\
 				    entry);				\
                 if (ret != HASH_OK)					\
-                  ;     // XXX: error handling				\
+                  FAIL;							\
                 break;							\
               case HASH_OK:						\
                 entry->shift = entry->shift < sh ? entry->shift : sh;	\
                 if (ret != HASH_UPDATED)				\
-                  ; // XXX: error handling				\
+                  FAIL;							\
         }								\
       ret = hashtable_get(wm->sh_field, &pat_arr[i][n[i] - WB_M],	\
 			  entry);					\
@@ -112,12 +128,12 @@
             ret = hashtable_put(wm->sh_field, &pat_arr[i][n[i] - WB_M],	\
 				entry);					\
             if (ret != HASH_OK)						\
-              ; // XXX: error handling					\
+              FAIL;							\
           case HASH_OK:							\
             entry->shift = entry->shift < sh ? entry->shift : sh;	\
             entry->suff_list[entry->suff++] = i;			\
             if (ret != HASH_UPDATED)					\
-              ; // XXX: error handling					\
+              FAIL;							\
         }								\
     }									\
   xfree(entry);
@@ -204,16 +220,75 @@ fail:
   return err;
 }
 
+#define MATCH(beg, end, p)						\
+  do									\
+    {									\
+      match->rm_so = beg;						\
+      match->rm_eo = end;						\
+      match->p = p;							\
+      err = REG_OK;							\
+      goto finish;							\
+    } while (0);
+
+#define _WMSEARCH(data, pats, sizes, mlen, tbl, dshift)			\
+  do									\
+    {									\
+      ret = hashtable_get(tbl, data[pos - WM_B], s_entry);		\
+      shift = (ret == HASH_OK) ? s_entry->shift : dshift;		\
+      if (shift == 0)							\
+	{								\
+	  ret = hashtable_get(tbl, data[pos - mlen, p_entry);		\
+	  if (ret == HASH_NOTFOUND)					\
+	    {								\
+	      pos += 1;							\
+	      continue;							\
+	    }								\
+	  else								\
+	    {								\
+	      for (int i = 0; i < p_entry->pref; i++)			\
+		for (int j = 0; (j < s_entry->suff) &&			\
+		    (s_entry->suff_list[j] <= p_entry->pref_list[i]);	\
+		     j++)						\
+		  if (s_entry->suff_list[j] == p_entry->pref_list[i])	\
+                    {							\
+		      size_t idx = s_entry->suff_list[j];		\
+		      int k;						\
+									\
+		      if (len - pos > sizes[idx] - mlen)		\
+			{						\
+			  for (k = WM_B; k < sizes[idx]; k++)		\
+			    if (pats[idx][k] != data[pos - mlen + k])	\
+			      break;					\
+			  if (k == sizes[idx])				\
+			    // XXX: match				\
+			}						\
+		    }							\
+		  else							\
+		     continue;						\
+	      pos += 1;							\
+            }								\
+	}								\
+      else								\
+	pos += shift;							\
+    } while (0);
+
+#define WMSEARCH							\
+  _WMSEARCH(byte_str, wm->pat, wm->siz, wm->m, wm->hash,		\
+	    wm->defsh)
+#define WMSEARCH_WIDE							\
+   _WMSEARCH(wide_str, wm->wpats, wm->wsiz, wm->wm, wm->whash,		\
+	     wm->wdefsh)
+
 int
 tre_wmexec(const void *str, size_t len, tre_str_type_t type,
 	   size_t nmatch, regmatch_t pmatch[], int eflags,
-	   const mregex_t *preg)
+	   const mregex_t *preg, regmatch_t *match)
 {
   wmsearch_t *wm = preg->wm;
   wmentry_t *s_entry, *p_entry;
   tre_char_t *wide_str = str;
   char *byte_str = str;
-  size_t pos = preg->n;
+  size_t pos = preg->m;
   size_T shift;
   int ret;
   int err = REG_NOMATCH;
@@ -224,47 +299,43 @@ tre_wmexec(const void *str, size_t len, tre_str_type_t type,
   while (pos < len)
     {
       if (type == STR_WIDE)
-	{
-	  ret = hashtable_get(wm->wshift, wide_str[pos - WM_B], s_entry);
-	  shift = (ret == HASH_OK) ? s_entry->shift : wm->wdefshift;
-	  if (shift == 0)
-	    {
-	      ret = hashtable_get(wm->wshift, wide_str[pos - wm->wm, p_entry);
-	      if (ret == HASH_NOTFOUND)
-		continue;
-	      else
-		{
-		  for (int i = 0; i < p_entry->pref; i++)
-		    for (int j = 0; (j < s_entry->suff) &&
-			(s_entry->suff_list[j] <= p_entry->pref_list[i]); j++)
-		      if (s_entry->suff_list[j] == p_entry->pref_list[i])
-			{
-			  // XXX: compare
-			}
-		      else
-			continue;
-		}
-	    }
-	  else
-	    pos += shift;
-	}
+	WMSEARCH;
       else
-	{
-	  ret = hashtable_get(wm->shift, byte_str[pos - WM_B], s_entry);
-	  shift = (ret == HASH_OK) ? s_entry->shift : wm->defshift;
-	  if (shift == 0)
-	    {
-	      // XXX: comapre
-	    }
-	  else
-	    pos += shift;
-	}
+	WMSEARCH_WIDE;
     }
 
 fail:
+finish:
   if (s_entry)
     xfree(s_entry);
   if (p_entry)
     xfree(p_entry);
   return err;
+}
+
+void
+wmfree(mregex_t *preg)
+{
+  wmsearch_t wm = preg->wm;
+
+  if (wm->hash)
+    hashtable_free(wm->hash);
+  for (int i = 0; i < wm->n; i++)
+    if (wm->pat[i])
+      xfree(wm->pat[i]);
+  if (wm->pat)
+    xfree(wm->pat);
+  if (wm->siz)
+    xfree(wm->siz);
+#ifdef TRE_WCHAR
+  if (wm->whash)
+    hashtable_free(wm->whash);
+  for (int i = 0; i < wm->wn; i++)
+    if (wm->wpat[i])
+      xfree(wm->wpat[i]);
+  if (wm->wpat)
+    xfree(wm->wpat);
+  if (wm->wsiz)
+    xfree(wm->wsiz);
+#endif
 }

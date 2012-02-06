@@ -79,6 +79,7 @@ typedef struct {
 } regex_t;
 
 typedef struct {
+  size_t p;
   regoff_t rm_so;
   regoff_t rm_eo;
 } regmatch_t;

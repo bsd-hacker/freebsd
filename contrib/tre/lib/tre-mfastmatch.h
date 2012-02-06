@@ -10,10 +10,16 @@
 #define WM_MAXPAT 64
 
 typedef struct {
+	char **pat;		/* Patterns */
+	size_t *siz;		/* Pattern sizes */
+	size_t n;		/* No of patterns */
         size_t m;		/* Shortest pattern length */
 	size_t defsh;		/* Default shift */
 	void *hash;		/* Wu-Manber shift table */
 #ifdef TRE_WCHAR
+	tre_char_t **wpat;	/* Patterns (wide) */
+	size_t wsiz;		/* Pattern sizes (wide) */
+	size_t wn;		/* No of patterns (wide) */
 	size_t wm;		/* Shortest pattern length (wide) */
 	size_t wdefsh;		/* Default shift (wide) */
 	void *whash;		/* Wu-Manber shift table (wide) */
