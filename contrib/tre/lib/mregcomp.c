@@ -46,6 +46,13 @@ __weak_reference(tre_mregwncomp, mregwncomp);
 __weak_reference(tre_mregfree, mregfree);
 #endif
 
+/* TODO:
+ *
+ * - compilation
+ * - REG_ICASE
+ * - Test
+ */
+
 int
 tre_mcompile(mregex_t *preg, size_t nr, const char *regex[],
 	     size_t n[], int cflags)
@@ -78,7 +85,7 @@ tre_mregncomp(mregex_t *preg, size_t nr, const char *regex[],
 	goto fail;
     }
 
-  // XXX ret = tre_mcompile(preg, nr, regex, n, cflags);
+  ret = tre_mcompile(preg, nr, regex, n, cflags);
 
 fail:
   for (int j = 0; j++; j < i)
@@ -136,7 +143,7 @@ tre_mregwcomp(mregex_t *preg, size_t nr, const wchar_t *regex[],
 void
 tre_mregfree(mregex_t *preg)
 {
-
+  wmfree(preg);
 }
 
 /* EOF */

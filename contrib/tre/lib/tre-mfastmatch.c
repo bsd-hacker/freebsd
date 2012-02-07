@@ -32,13 +32,6 @@
 #include "tre-mfastmatch.h"
 #include "xmalloc.h"
 
-/* TODO:
- *
- * - REG_ICASE
- * - Store pattern and sizes in pat/wpat/siz/wsiz
- * - Test
- */
-
 #define WM_B 2
 
 #define ALLOC(var, siz)							\
@@ -138,6 +131,24 @@
     }									\
   xfree(entry);
 
+#ifdef _SAVE_PATTERNS(dst, s)						\
+  do									\
+    {									\
+      ALLOC(dst, sizeof(tre_char_t *) * nr);				\
+      ALLOC(s, sizeof(size_t) * nr);					\
+      for (int i = 0; i < nr; i++)					\
+	{								\
+	  ALLOC(dst[i], n[i]);						\
+	  memcpy(dst[i], regex[i], n[i] * sizeof(tre_char_t));		\
+	  s[i] = n[i];							\
+	}								\
+    } while (0);
+
+#define SAVE_PATTERNS							\
+  _SAVE_PATTERNS(wm->pat, wm->siz)
+#define SAVE_PATTERNS_WIDE						\
+  _SAVE_PATTERNS(wm->wpat, wm->wsiz)
+
 #ifdef TRE_WCHAR
 #define PROC_WM(par_arr, size_arr)					\
   _PROC_WM(pat_arr, size_arr, 1, shift, m)
@@ -174,7 +185,7 @@ tre_wmcomp(mregex_t *preg, size_t nr, const char *regex[],
   PROC_WM_WIDE(regex, n);
 
   ALLOC(bregex, sizeof(char *) * nr);
-  ALLOC(bn, sizeof(int) * nr);
+  ALLOC(bn, sizeof(size_t) * nr);
 
   for (int i = 0; i < nr; i++)
     {
@@ -189,30 +200,31 @@ tre_wmcomp(mregex_t *preg, size_t nr, const char *regex[],
 	  goto fail;
 	}
     }
+
+  wm->wpat = bregex;
+  wm->wsize = bn;
+
   PROC_WM(bregex, bn);
   for (int i = 0; i < nr; i++)
     xfree(bregex[i]);
   xfree(bregex);
+
+  SAVE_PATTERNS;
+  SAVE_PATTERNS_WIDE;
 #else
   PROC_WM(regex, n);
+  SAVE_PATTERNS;
 #endif
 
   preg->searchdata = &wm;
   return REG_OK;
 fail:
 #ifdef TRE_WCHAR
-  if (wm->wshift)
-    hashtable_free(wm->wshift);
-  if (bregex)
-    {
-      for (int i = 0; i < nr; i++)
-	if (bregex[i]
-	  xfree(bregex[i]);
-      xfree(bregex);
-    }
+  if (wm->whash)
+    hashtable_free(wm->whash);
 #endif
-  if (wm->shift)
-    hashtable_free(wm->shift);
+  if (wm->hash)
+    hashtable_free(wm->hash);
   if (wm)
     xfree(wm);
   if (entry)
@@ -260,7 +272,8 @@ fail:
 			    if (pats[idx][k] != data[pos - mlen + k])	\
 			      break;					\
 			  if (k == sizes[idx])				\
-			    // XXX: match				\
+			    MATCH(pos - mlen, pos - mlen + sizes[idx],	\
+				  idx);					\
 			}						\
 		    }							\
 		  else							\
@@ -289,7 +302,7 @@ tre_wmexec(const void *str, size_t len, tre_str_type_t type,
   tre_char_t *wide_str = str;
   char *byte_str = str;
   size_t pos = preg->m;
-  size_T shift;
+  size_t shift;
   int ret;
   int err = REG_NOMATCH;
 
