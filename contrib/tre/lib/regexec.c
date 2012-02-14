@@ -224,8 +224,8 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	      else
 		{
 		  size_t rem = heur->tlen - (pmatch[0].rm_eo - pmatch[0].rm_so);
-		  so = st + pmatch[0].rm_so - rem;
-		  eo = st + pmatch[0].rm_eo + rem;
+		  so = st + pmatch[0].rm_so <= rem ? 0 : st + pmatch[0].rm_so - rem;
+		  eo = st + pmatch[0].rm_eo + rem >= len ? len : st + pmatch[0].rm_eo + rem;
 		}
 
 	      SEEK_TO(so);
@@ -247,7 +247,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	     if (ret != REG_OK)
 	       return ret;
 	     st += pmatch[0].rm_so;
-	     n = pmatch[0].rm_eo;
+	     n = pmatch[0].rm_eo - pmatch[0].rm_so;
 
 	     /* Intermediate heuristics */
 	     while (!(heur->heurs[i] == NULL) &&
@@ -255,6 +255,8 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 		   ((heur->heurs[i + 1] == NULL) && (heur->type == HEUR_PREFIX_ARRAY))))
 		{
 		  SEEK_TO(st + n);
+		  if (len <= st + n)
+		    return REG_NOMATCH;
 		  ret = tre_match_fast(heur->heurs[i], string, len - st - n,
 				       type, nmatch, pmatch, eflags);
 		  if (ret != REG_OK)
@@ -267,6 +269,8 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	    if ((heur->type == HEUR_ARRAY) && heur->heurs[i] != NULL)
 	      {
 		SEEK_TO(st + n);
+		if (len <= st + n)
+		  return REG_NOMATCH;
 		ret = tre_match_fast(heur->heurs[i], string, len - st - n,
 				     type, nmatch, pmatch, eflags);
 		if (ret != REG_OK)
