@@ -191,6 +191,10 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
       const char *data_byte = string;
       const tre_char_t *data_wide = string;
 
+      /*
+       * REG_NEWLINE: looking for the longest fragment and then
+       * isolate the line and run the automaton.
+       */
       if (heur->type == HEUR_LONGEST)
 	{
 	  while (st < len)
@@ -198,11 +202,17 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	      size_t eo, so;
 
 	      SEEK_TO(st);
+
+	      /* Match for heuristic */
 	      ret = tre_match_fast(heur->heurs[0], string, len - st, type, nmatch,
 				   pmatch, eflags);
 	      if (ret != REG_OK)
 		return ret;
 
+	      /*
+	       * If we do not know the length of the possibly matching part,
+	       * look for newlines.
+	       */
 	      if (heur->tlen == -1)
 		{
 		  for (so = st + pmatch[0].rm_so - 1; ; so--)
@@ -221,6 +231,11 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 		      break;
 		    }
 		}
+
+	      /*
+	       * If we know the possible match length, just check the narrowest
+	       * context that we can, without looking for explicit newlines.
+	       */
 	      else
 		{
 		  size_t rem = heur->tlen - (pmatch[0].rm_eo - pmatch[0].rm_so);
@@ -235,6 +250,14 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	   }
 	   return REG_NOMATCH;
 	}
+
+      /*
+       * General case when REG_NEWLINE is not set.  Look for prefix,
+       * intermediate and suffix heuristics is available, to determine
+       * the context where the automaton will be invoked.  The start
+       * of the context is st and the relative end offset from st is
+       * stored in n.
+       */
       else
 	{
 	  while (st < len)
@@ -249,7 +272,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	     st += pmatch[0].rm_so;
 	     n = pmatch[0].rm_eo - pmatch[0].rm_so;
 
-	     /* Intermediate heuristics */
+	     /* Intermediate heuristics (if any) */
 	     while (!(heur->heurs[i] == NULL) &&
 		   ((heur->heurs[i + 1] != NULL) ||
 		   ((heur->heurs[i + 1] == NULL) && (heur->type == HEUR_PREFIX_ARRAY))))
