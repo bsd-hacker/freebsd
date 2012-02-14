@@ -62,6 +62,14 @@ __weak_reference(tre_regawexec, regawexec);
 __weak_reference(tre_regawnexec, regawnexec);
 #endif
 
+static int tre_match_heur(const tre_tnfa_t *tnfa, heur_t *heur,
+			  const void *string, size_t len,
+			  tre_str_type_t type, size_t nmatch,
+			  regmatch_t pmatch[], int eflags);
+static int tre_match_nfa(const tre_tnfa_t *tnfa, const void *string,
+			 size_t len, tre_str_type_t type, size_t nmatch,
+			 regmatch_t pmatch[], int eflags);
+
 /* Fills the POSIX.2 regmatch_t array according to the TNFA tag and match
    endpoint values. */
 void
@@ -154,16 +162,27 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	  tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
 	  int eflags, fastmatch_t *shortcut, heur_t *heur)
 {
-  reg_errcode_t status;
-  int *tags = NULL, eo;
 
-  /* Check if we can cheat with a faster algorithm. */
   if ((shortcut != NULL) && (type != STR_USER))
-    {
-      DPRINT("tre_match: using tre_match_fast() instead of the full NFA\n");
-      return tre_match_fast(shortcut, string, len, type, nmatch,
-			    pmatch, eflags);
-    }
+    tre_match_fast(shortcut, string, len, type, nmatch,
+      pmatch, eflags);
+  else if ((heur != NULL) && (type != STR_USER))
+    return tre_match_heur(tnfa, heur, string, len, type, nmatch,
+			  pmatch, eflags);
+
+  return tre_match_nfa(tnfa, string, len, type, nmatch,
+		       pmatch, eflags);
+}
+
+static int
+tre_match_heur(const tre_tnfa_t *tnfa, heur_t *heur, const void *string,
+	       size_t len, tre_str_type_t type, size_t nmatch,
+	       regmatch_t pmatch[], int eflags)
+{
+  int ret;
+  size_t st = 0, i = 1, n;
+  const char *data_byte = string;
+  const tre_char_t *data_wide = string;
 
 #define FIX_OFFSETS(adj)						\
   if (ret == REG_NOMATCH)						\
@@ -183,144 +202,145 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
   string = (type == STR_WIDE) ? (void *)&data_wide[off] :		\
     (void *)&data_byte[off];
 
-  /* Check if we have a heuristic to speed up the search. */
-  if ((heur != NULL) && (type != STR_USER))
+  /*
+   * REG_NEWLINE: looking for the longest fragment and then
+   * isolate the line and run the automaton.
+   */
+  if (heur->type == HEUR_LONGEST)
     {
-      int ret;
-      size_t st = 0, i = 1, n;
-      const char *data_byte = string;
-      const tre_char_t *data_wide = string;
-
-      /*
-       * REG_NEWLINE: looking for the longest fragment and then
-       * isolate the line and run the automaton.
-       */
-      if (heur->type == HEUR_LONGEST)
+      while (st < len)
 	{
-	  while (st < len)
-	    {
-	      size_t eo, so;
+	  size_t eo, so;
 
-	      SEEK_TO(st);
+	  SEEK_TO(st);
 
-	      /* Match for heuristic */
-	      ret = tre_match_fast(heur->heurs[0], string, len - st, type, nmatch,
-				   pmatch, eflags);
-	      if (ret != REG_OK)
-		return ret;
+	  /* Match for heuristic */
+	   ret = tre_match_fast(heur->heurs[0], string, len - st, type, nmatch,
+				pmatch, eflags);
+	   if (ret != REG_OK)
+	     return ret;
 
-	      /*
-	       * If we do not know the length of the possibly matching part,
-	       * look for newlines.
-	       */
-	      if (heur->tlen == -1)
-		{
-		  for (so = st + pmatch[0].rm_so - 1; ; so--)
-		    {
-		      if ((type == STR_WIDE) ? (data_wide[so] == TRE_CHAR('\n')) :
-		         (data_byte[so] == '\n'))
+	   /*
+	    * If we do not know the length of the possibly matching part,
+	    * look for newlines.
+	    */
+	   if (heur->tlen == -1)
+	     {
+		for (so = st + pmatch[0].rm_so - 1; ; so--)
+		  {
+		    if ((type == STR_WIDE) ? (data_wide[so] == TRE_CHAR('\n')) :
+		       (data_byte[so] == '\n'))
 		      break;
 		    if (so == 0)
 		      break;
-		    }
+		  }
 
-		  for (eo = st + pmatch[0].rm_eo; st + eo < len; eo++)
-		    {
-		      if ((type == STR_WIDE) ? (data_wide[eo] == TRE_CHAR('\n')) :
-		        (data_byte[eo] == '\n'))
+		for (eo = st + pmatch[0].rm_eo; st + eo < len; eo++)
+		  {
+		    if ((type == STR_WIDE) ? (data_wide[eo] == TRE_CHAR('\n')) :
+		       (data_byte[eo] == '\n'))
 		      break;
-		    }
-		}
-
-	      /*
-	       * If we know the possible match length, just check the narrowest
-	       * context that we can, without looking for explicit newlines.
-	       */
-	      else
-		{
-		  size_t rem = heur->tlen - (pmatch[0].rm_eo - pmatch[0].rm_so);
-		  so = st + pmatch[0].rm_so <= rem ? 0 : st + pmatch[0].rm_so - rem;
-		  eo = st + pmatch[0].rm_eo + rem >= len ? len : st + pmatch[0].rm_eo + rem;
-		}
-
-	      SEEK_TO(so);
-	      ret = tre_match(tnfa, string, eo - so, type, nmatch, pmatch, eflags, NULL, NULL);
-	      FIX_OFFSETS(st = eo);
-
-	   }
-	   return REG_NOMATCH;
-	}
-
-      /*
-       * General case when REG_NEWLINE is not set.  Look for prefix,
-       * intermediate and suffix heuristics is available, to determine
-       * the context where the automaton will be invoked.  The start
-       * of the context is st and the relative end offset from st is
-       * stored in n.
-       */
-      else
-	{
-	  while (st < len)
-	    {
-	      SEEK_TO(st);
-
-	      /* Prefix heuristic */
-	     ret = tre_match_fast(heur->heurs[0], string, len - st,
-				  type, nmatch, pmatch, eflags);
-	     if (ret != REG_OK)
-	       return ret;
-	     st += pmatch[0].rm_so;
-	     n = pmatch[0].rm_eo - pmatch[0].rm_so;
-
-	     /* Intermediate heuristics (if any) */
-	     while (!(heur->heurs[i] == NULL) &&
-		   ((heur->heurs[i + 1] != NULL) ||
-		   ((heur->heurs[i + 1] == NULL) && (heur->type == HEUR_PREFIX_ARRAY))))
-		{
-		  SEEK_TO(st + n);
-		  if (len <= st + n)
-		    return REG_NOMATCH;
-		  ret = tre_match_fast(heur->heurs[i], string, len - st - n,
-				       type, nmatch, pmatch, eflags);
-		  if (ret != REG_OK)
-		    return ret;
-		  n += pmatch[0].rm_eo;
-		  i++;
-		}
-
-	    /* Suffix heuristic available */
-	    if ((heur->type == HEUR_ARRAY) && heur->heurs[i] != NULL)
-	      {
-		SEEK_TO(st + n);
-		if (len <= st + n)
-		  return REG_NOMATCH;
-		ret = tre_match_fast(heur->heurs[i], string, len - st - n,
-				     type, nmatch, pmatch, eflags);
-		if (ret != REG_OK)
-		  return ret;
-		n += pmatch[0].rm_eo;
-
-		SEEK_TO(st);
-		ret = tre_match(tnfa, string, n, type, nmatch, pmatch,
-				eflags, NULL, NULL);
-		FIX_OFFSETS(st += n);
+		  }
 	      }
-	    /* Suffix heuristic not available */
+
+	    /*
+	     * If we know the possible match length, just check the narrowest
+	     * context that we can, without looking for explicit newlines.
+	     */
 	    else
 	      {
-		size_t l = (heur->tlen == -1) ? len - st : heur->tlen;
+		size_t rem = heur->tlen - (pmatch[0].rm_eo - pmatch[0].rm_so);
 
-		if (l > len - st)
-		  return REG_NOMATCH;
-		SEEK_TO(st);
-		ret = tre_match(tnfa, string, l, type, nmatch,
-			        pmatch, eflags, NULL, NULL);
-		FIX_OFFSETS(st += n);
+		so = st + pmatch[0].rm_so <= rem ? 0 : st + pmatch[0].rm_so - rem;
+		eo = st + pmatch[0].rm_eo + rem >= len ? len : st + pmatch[0].rm_eo + rem;
 	      }
-	  }
-	  return REG_NOMATCH;
+
+	    SEEK_TO(so);
+	    ret = tre_match_nfa(tnfa, string, eo - so, type, nmatch, pmatch, eflags);
+	    FIX_OFFSETS(st = eo);
 	}
+	return REG_NOMATCH;
     }
+
+  /*
+   * General case when REG_NEWLINE is not set.  Look for prefix,
+   * intermediate and suffix heuristics is available, to determine
+   * the context where the automaton will be invoked.  The start
+   * of the context is st and the relative end offset from st is
+   * stored in n.
+   */
+  else
+    {
+      while (st < len)
+	{
+	  SEEK_TO(st);
+
+	  /* Prefix heuristic */
+	  ret = tre_match_fast(heur->heurs[0], string, len - st,
+			       type, nmatch, pmatch, eflags);
+	  if (ret != REG_OK)
+	    return ret;
+	  st += pmatch[0].rm_so;
+	  n = pmatch[0].rm_eo - pmatch[0].rm_so;
+
+	  /* Intermediate heuristics (if any) */
+	  while (!(heur->heurs[i] == NULL) &&
+		((heur->heurs[i + 1] != NULL) ||
+		((heur->heurs[i + 1] == NULL) && (heur->type == HEUR_PREFIX_ARRAY))))
+	    {
+	      SEEK_TO(st + n);
+	      if (len <= st + n)
+		return REG_NOMATCH;
+	      ret = tre_match_fast(heur->heurs[i], string, len - st - n,
+				   type, nmatch, pmatch, eflags);
+	      if (ret != REG_OK)
+		return ret;
+	      n += pmatch[0].rm_eo;
+	      i++;
+	    }
+
+	/* Suffix heuristic available */
+	if ((heur->type == HEUR_ARRAY) && heur->heurs[i] != NULL)
+	  {
+	    SEEK_TO(st + n);
+	    if (len <= st + n)
+	      return REG_NOMATCH;
+	    ret = tre_match_fast(heur->heurs[i], string, len - st - n,
+				 type, nmatch, pmatch, eflags);
+	    if (ret != REG_OK)
+	      return ret;
+	    n += pmatch[0].rm_eo;
+
+	    SEEK_TO(st);
+	    ret = tre_match_nfa(tnfa, string, n, type, nmatch, pmatch,
+				eflags);
+	    FIX_OFFSETS(st += n);
+	  }
+
+        /* Suffix heuristic not available */
+	else
+	  {
+	    size_t l = (heur->tlen == -1) ? len - st : heur->tlen;
+
+	    if (l > len - st)
+	      return REG_NOMATCH;
+	    SEEK_TO(st);
+	    ret = tre_match_nfa(tnfa, string, l, type, nmatch,
+				pmatch, eflags);
+	    FIX_OFFSETS(st += n);
+	  }
+      }
+      return REG_NOMATCH;
+    }
+}
+
+static int
+tre_match_nfa(const tre_tnfa_t *tnfa, const void *string, size_t len,
+	      tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
+	      int eflags)
+{
+  reg_errcode_t status;
+  int eo, *tags = NULL;
 
   if (tnfa->num_tags > 0 && nmatch > 0)
     {
