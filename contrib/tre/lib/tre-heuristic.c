@@ -126,7 +126,10 @@
 int
 tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 {
-  tre_char_t *arr[MAX_FRAGMENTS], *heur;
+  tre_char_t **arr, *heur;
+  tre_char_t **farr;
+  char **barr;
+  size_t *bsiz, *fsiz;
   size_t length[MAX_FRAGMENTS];
   ssize_t tlen = 0;
   int errcode, j = 0, pos = 0, st = 0;
@@ -135,6 +138,13 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
   heur = xmalloc(len * sizeof(tre_char_t));
   if (!heur)
     return REG_ESPACE;
+
+  arr = xmalloc(MAX_FRAGMENTS * sizeof(tre_char_t *));
+  if (!arr)
+    {
+      errcode = REG_ESPACE;
+      goto err;
+    }
 
   h->type = HEUR_ARRAY;
 
@@ -316,7 +326,7 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
       st = len;
  
 end_segment:
-
+      /* Check if pattern is open-ended */
       if (st == len && pos == 0)
 	{
 	  if (j == 0)
@@ -327,6 +337,7 @@ end_segment:
 	  h->type = HEUR_PREFIX_ARRAY;
 	  goto ok;
 	}
+      /* Continue if we got some variable-length part */
       else if (pos == 0)
 	continue;
 
@@ -349,26 +360,152 @@ end_segment:
       length[j] = pos;
       j++;
       pos = 0;
+
+      /* Check whether there is more input */
+      if (st == len)
+	goto ok;
     }
 
 ok:
   {
-    size_t m = 1;
-    int ret;
+    size_t m = 0;
+    int i, ret;
 
     h->tlen = tlen;
 
     /* Look up maximum length fragment */
-    for (int i = 1; i < j; i++)
+    for (i = 1; i < j; i++)
       m = (length[i] > length[m]) ? i : m;
 
+    /* Will hold the final fragments that we actually use */
+    farr = xmalloc(4 * sizeof(tre_char_t *));
+    if (!farr)
+      {
+	errcode = REG_ESPACE;
+	goto err;
+      }
+
+    /* Sizes for the final fragments */
+    fsiz = xmalloc(4 * sizeof(size_t));
+    if (!fsiz)
+      {
+        errcode = REG_ESPACE;
+        goto err;
+      }
+
     /*
-     * If possible, store prefix, maximum internal fragment and suffix.
-     * If not possible, store prefix and either maximum internal fragment
-     * or suffix if it is the same.  In the worst case, only prefix is
-     * stored.  The closing element is always NULL.
+     * Only save the longest fragment if match is line-based.
      */
-    for (int i = 0; i < MIN(3, j + 1); i++)
+    if (cflags & REG_NEWLINE)
+      {
+	farr[0] = arr[m];
+	arr[m] = NULL;
+	fsiz[0] = length[0];
+	farr[1] = NULL;
+      }
+    /*
+     * Otherwise try to save up to three fragments: beginning, longest
+     * intermediate pattern, ending.  If either the beginning or the
+     * ending fragment is longer than any intermediate fragments, we will
+     * not save any intermediate one.  The point here is to always maximize
+     * the possible shifting when searching in the input.  Measurements
+     * have shown that the eager approach works best.
+     */
+    else
+      {
+	size_t idx = 0;
+
+	/* Always start by saving the beginning */
+	farr[idx] = arr[0];
+	arr[0] = NULL;
+	fsiz[idx++] = length[0];
+
+	/*
+	 * If the longest pattern is not the beginning nor the ending,
+	 * save it.
+	 */
+	if ((m != 1) && (m != j - 1))
+	  {
+	    farr[idx] = arr[m];
+	    fsiz[idx++] = length[m];
+	    arr[m] = NULL;
+	  }
+
+	/*
+	 * If we have an ending pattern (even if the pattern is
+	 * "open-ended"), save it.
+	 */
+	if (j > 1)
+	  {
+	    farr[idx] = arr[j - 1];
+	    fsiz[idx++] = length[j - 1];
+	    arr[j - 1] = NULL;
+	  }
+
+	farr[idx] = NULL;
+      }
+
+    /* Once necessary pattern saved, free original array */
+    for (i = 0; i < j; i++)
+      if (arr[i])
+	xfree(arr[i]);
+    xfree(arr);
+
+/*
+ * Store the array in single-byte and wide char forms in the
+ * heur_t struct for later reuse.  When supporting whcar_t
+ * convert the fragments to single-byte string because
+ * conversion is probably faster than processing the patterns
+ * again in single-byte form.
+ */
+#ifdef TRE_WCHAR
+    barr = xmalloc(4 * sizeof(char *));
+    if (!barr)
+      {
+	errcode = REG_ESPACE;
+	goto err;
+      }
+
+    bsiz = xmalloc(4 * sizeof(size_t));
+      if (!bsiz)
+	{
+	  errcode = REG_ESPACE;
+	  goto err;
+	}
+
+    for (i = 0; farr[i] != NULL; i++)
+      {
+	bsiz[i] = mbstowcs(farr[i], NULL, 0);
+	barr[i] = xmalloc(bsiz[i] + 1);
+	if (!barr[i])
+	  {
+	    errcode = REG_ESPACE;
+	    goto err;
+	  }
+	mbstowcs(farr[i], barr[i], bsiz[i]);
+	barr[i][bsiz[i]] = '\0';
+      }
+    barr[i] = NULL;
+
+    h->warr = farr;
+    h->wsiz = fsiz;
+    h->arr = barr;
+    h->siz = bsiz;
+#else
+    h->arr = farr;
+    h->siz = fsiz;
+#endif
+
+    /*
+     * Compile all the useful fragments for actual matching.
+     */
+    h->heurs = xmalloc(4 * sizeof(fastmatch_t *));
+    if (!h->heurs)
+      {
+	errcode = REG_ESPACE;
+	goto err;
+      }
+    for (i = 0; farr[i] != NULL; i++)
       {
 	h->heurs[i] = xmalloc(sizeof(fastmatch_t));
 	if (!h->heurs[i])
@@ -376,68 +513,49 @@ ok:
 	    errcode = REG_ESPACE;
 	    goto err;
 	  }
-      }
-
-#define CHECK_ERR							\
-  if (ret != REG_OK)							\
-    {									\
-      errcode = REG_BADPAT;						\
-      goto err2;							\
-    }
-
-    if (cflags & REG_NEWLINE)
-      {
-	/* For REG_NEWLINE, only store longest fragment. */
-	ret = tre_compile_literal(h->heurs[0], arr[m], length[m], 0);
-	CHECK_ERR
-	h->type = HEUR_LONGEST;
-      }
-    else
-      {
-	/*
-	 * If possible, store prefix, maximum internal fragment and suffix.
-	 * If not possible, store prefix and either maximum internal fragment
-	 * or suffix if it is the same.  In the worst case, only prefix is
-	 * stored.  The closing element is always NULL.
-	 */
-	ret = tre_compile_literal(h->heurs[0], arr[0], length[0], 0);
-	CHECK_ERR
-	if (j == 1)
+	ret = tre_compile_literal(h->heurs[i], farr[i], fsiz[i], 0);
+	if (ret != REG_OK)
 	  {
-	    free(h->heurs[1]);
-	    h->heurs[1] = NULL;
-	    errcode = REG_OK;
-	    goto finish;
+	    errcode = REG_BADPAT;
+	    goto err;
 	  }
-	else
-	  ret = tre_compile_literal(h->heurs[1], arr[m], length[m], 0);
-	CHECK_ERR
-	if ((h->type == HEUR_PREFIX_ARRAY) || (m == j - 1))
-	  {
-	    xfree(h->heurs[2]);
-	    h->heurs[2] = NULL;
-	    errcode = REG_OK;
-	    goto finish;
-	  }
-	else
-	  ret = tre_compile_literal(h->heurs[2], arr[j - 1], length[j - 1], 0);
-	CHECK_ERR
-	h->heurs[3] = NULL;
       }
 
-      errcode = REG_OK;
-      goto finish;
+    h->heurs[i] = NULL;
+    errcode = REG_OK;
+    goto finish;
   }
 
-err2:
-  for (int i = 0; h->heurs[i] != NULL; i++)
-    tre_free_fast(h->heurs[i]);
-  xfree(h->heurs);
 err:
+#ifdef TRE_WCHAR
+  if (barr)
+    {
+      for (int i = 0; i < 4; i++)
+	if (barr[i])
+	  xfree(barr[i]);
+      xfree(barr);
+    }
+  if (bsiz)
+    xfree(bsiz);
+#endif
+  if (farr)
+    {
+      for (int i = 0; i < j; i++)
+	if (farr[i])
+	  xfree(farr[i]);
+      xfree(farr);
+    }
+  if (fsiz)
+    xfree(fsiz);
+  if (h->heurs)
+    {
+      for (int i = 0; h->heurs[i] != NULL; i++)
+	tre_free_fast(h->heurs[i]);
+      xfree(h->heurs);
+    }
 finish:
-  for (int i = 0; i < j; i++)
-    xfree(arr[i]);
-  xfree(heur);
+  if (heur)
+    xfree(heur);
   return errcode;
 }
 
@@ -449,6 +567,25 @@ tre_free_heur(heur_t *h)
 {
   for (int i = 0; h->heurs[i] != NULL; i++)
     tre_free_fast(h->heurs[i]);
+
+  if (h->arr)
+    {
+      for (int i = 0; h->arr[i] != NULL; i++)
+	if (h->arr[i])
+	  xfree(h->arr[i]);
+      xfree(h->arr);
+    }
+
+#ifdef TRE_WCHAR
+  if (h->warr)
+    {
+      for (int i = 0; h->warr[i] != NULL; i++)
+	if (h->warr[i])
+	  xfree(h->warr[i]);
+      xfree(h->warr);
+    }
+
+#endif
 
   DPRINT("tre_free_heur: resources are freed\n");
 }

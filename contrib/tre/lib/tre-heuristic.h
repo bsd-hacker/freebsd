@@ -12,7 +12,13 @@
 #define HEUR_LONGEST		2
 
 typedef struct {
-  fastmatch_t *heurs[4];
+  char **arr;
+  size_t *siz;
+#ifdef TRE_WCHAR
+  tre_char_t **warr;
+  size_t *wsiz;
+#endif
+  fastmatch_t **heurs;
   ssize_t tlen;
   int type;
 } heur_t;
