@@ -344,13 +344,13 @@ static int	fastcmp(const fastmatch_t *fg, const void *data,
  * Copies the pattern pat having lenght n to p and stores
  * the size in l.
  */
-#define SAVE_PATTERN(src, srclen, dst, dstlen)				\
+#define SAVE_PATTERN(src, srclen, dst, dstlen, l)			\
   dstlen = srclen;							\
-  dst = xmalloc((dstlen + 1) * sizeof(tre_char_t));			\
+  dst = xmalloc((dstlen + 1) * sizeof(l));				\
   if (dst == NULL)							\
     return REG_ESPACE;							\
   if (dstlen > 0)							\
-    memcpy(dst, src, dstlen * sizeof(tre_char_t));			\
+    memcpy(dst, src, dstlen * sizeof(l));				\
   dst[dstlen] = TRE_CHAR('\0');
 
 /*
@@ -402,8 +402,8 @@ static int	fastcmp(const fastmatch_t *fg, const void *data,
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_proc_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
-		 int cflags)
+tre_proc_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t wn,
+		 const char *pat, size_t n, int cflags)
 {
 
   INIT_COMP;
@@ -415,10 +415,10 @@ tre_proc_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
     return REG_BADPAT;
 
 #ifdef TRE_WCHAR
-  SAVE_PATTERN(pat, n, fg->wpattern, fg->wlen);
-  STORE_MBS_PAT;
+  SAVE_PATTERN(wpat, wn, fg->wpattern, fg->wlen, tre_char_t);
+  SAVE_PATTERN(pat, n, fg->pattern, fg->len, char);
 #else
-  SAVE_PATTERN(pat, n, fg->pattern, fg->len);
+  SAVE_PATTERN(pat, n, fg->pattern, fg->len, char);
 #endif
 
   DPRINT(("tre_proc_literal: pattern: %s, len %zu, icase: %c, word: %c, "
@@ -439,8 +439,8 @@ tre_proc_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_proc_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
-	      int cflags)
+tre_proc_fast(fastmatch_t *fg, const tre_char_t *wpat, size_t wn,
+	      const char *pat, size_t n, int cflags)
 {
   tre_char_t *tmp;
   size_t pos = 0;
@@ -449,23 +449,23 @@ tre_proc_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   INIT_COMP;
 
   /* Remove beginning-of-line character ('^'). */
-  if (pat[0] == TRE_CHAR('^'))
+  if (wpat[0] == TRE_CHAR('^'))
     {
       fg->bol = true;
-      n--;
-      pat++;
+      wn--;
+      wpat++;
     }
 
   CHECK_MATCHALL(false);
 
   /* Handle word-boundary matching when GNU extensions are enabled */
-  if ((cflags & REG_GNU) && (n >= 14) &&
-      (memcmp(pat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
-      (memcmp(pat + n - 7, TRE_CHAR("[[:>:]]"),
+  if ((cflags & REG_GNU) && (wn >= 14) &&
+      (memcmp(wpat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
+      (memcmp(wpat + wn - 7, TRE_CHAR("[[:>:]]"),
 	      7 * sizeof(tre_char_t)) == 0))
     {
-      n -= 14;
-      pat += 7;
+      wn -= 14;
+      wpat += 7;
       fg->word = true;
     }
 
@@ -473,7 +473,7 @@ tre_proc_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   if (fg->word && (TRE_MB_CUR_MAX > 1))
     return REG_BADPAT;
 
-  tmp = xmalloc((n + 1) * sizeof(tre_char_t));
+  tmp = xmalloc((wn + 1) * sizeof(tre_char_t));
   if (tmp == NULL)
     return REG_ESPACE;
 
@@ -481,15 +481,15 @@ tre_proc_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 #define STORE_CHAR							\
   do									\
     {									\
-      tmp[pos++] = pat[i];						\
+      tmp[pos++] = wpat[i];						\
       escaped = false;							\
       continue;								\
     } while (0)
 
   /* Traverse the input pattern for processing */
-  for (unsigned int i = 0; i < n; i++)
+  for (unsigned int i = 0; i < wn; i++)
     {
-      switch (pat[i])
+      switch (wpat[i])
 	{
 	  case TRE_CHAR('\\'):
 	    if (escaped)
@@ -574,10 +574,12 @@ badpat:
    * classes stripped out.
    */
 #ifdef TRE_WCHAR
-  SAVE_PATTERN(tmp, pos, fg->wpattern, fg->wlen);
+  SAVE_PATTERN(tmp, pos, fg->wpattern, fg->wlen, tre_char_t);
+
+  /* Convert back to MBS instead of processing again */
   STORE_MBS_PAT;
 #else
-  SAVE_PATTERN(tmp, pos, fg->pattern, fg->len);
+  SAVE_PATTERN(tmp, pos, fg->pattern, fg->len, char);
 #endif
 
   xfree(tmp);

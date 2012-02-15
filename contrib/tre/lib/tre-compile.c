@@ -1844,8 +1844,8 @@ tre_ast_to_tnfa(tre_ast_node_t *node, tre_tnfa_transition_t *transitions,
 }
 
 int
-tre_convert_pattern(const char *regex, size_t n, tre_char_t **w,
-		    size_t *wn)
+tre_convert_pattern_to_wcs(const char *regex, size_t n, tre_char_t **w,
+			   size_t *wn)
 {
 #if TRE_WCHAR
   tre_char_t *wregex;
@@ -1926,11 +1926,47 @@ tre_convert_pattern(const char *regex, size_t n, tre_char_t **w,
 #endif /* !TRE_WCHAR */
 }
 
+int
+tre_convert_pattern_to_mbs(const tre_char_t *wregex, size_t n, char **s,
+			   size_t *sn)
+{
+#ifdef TRE_WCHAR
+  size_t siz;
+  char *mbs;
+
+  siz = wcstombs(NULL, wregex, 0);
+  if (siz == (size_t)-1)
+    return REG_BADPAT;
+
+  mbs = xmalloc(siz + 1);
+  if (!mbs)
+    return REG_ESPACE;
+
+  wcstombs(mbs, wregex, siz);
+  mbs[siz] = '\0';
+  *s = mbs;
+  *sn = siz;
+  return REG_OK;
+#else /* !TRE_WCHAR */
+  *s = (char * const *)wregex;
+  *sn = n;
+  return REG_OK;
+#endif
+}
+
 void
-tre_free_pattern(tre_char_t *wregex)
+tre_free_wcs_pattern(tre_char_t *wregex)
 {
 #if TRE_WCHAR
   xfree(wregex);
+#endif
+}
+
+void
+tre_free_mbs_pattern(char *regex)
+{
+#if TRE_WCHAR
+  xfree(regex);
 #endif
 }
 
@@ -1945,7 +1981,8 @@ tre_free_pattern(tre_char_t *wregex)
 
 
 int
-tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
+tre_compile(regex_t *preg, const tre_char_t *wregex, size_t wn,
+	    const char *regex, size_t n, int cflags)
 {
   int ret;
 
@@ -1954,7 +1991,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
    * pattern validation.  In this way, validation is not
    * scattered through the code.
    */
-  ret = tre_compile_nfa(preg, regex, n, cflags);
+  ret = tre_compile_nfa(preg, wregex, wn, cflags);
   if (ret != REG_OK)
     return ret;
 
@@ -1962,11 +1999,11 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
    * Check if we can cheat with a fixed string algorithm
    * if the pattern is long enough.
    */
-  ret = tre_compile_bm(preg, regex, n, cflags);
+  ret = tre_compile_bm(preg, wregex, wn, regex, n, cflags);
 
   /* Only try to compile heuristic if the fast matcher failed. */
   if (ret != REG_OK)
-    ret = tre_compile_heur(preg, regex, n, cflags);
+    ret = tre_compile_heur(preg, wregex, wn, cflags);
   else
     preg->heur = NULL;
 
@@ -1975,7 +2012,8 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
 }
 
 int
-tre_compile_bm(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
+tre_compile_bm(regex_t *preg, const tre_char_t *wregex, size_t wn,
+	       const char *regex, size_t n, int cflags)
 {
   fastmatch_t *shortcut;
   int ret;
@@ -1986,8 +2024,8 @@ tre_compile_bm(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   if (!shortcut)
     return REG_ESPACE;
   ret = (cflags & REG_LITERAL)
-	 ? tre_proc_literal(shortcut, regex, n, cflags)
-	 : tre_proc_fast(shortcut, regex, n, cflags);
+	 ? tre_proc_literal(shortcut, wregex, wn, regex, n, cflags)
+	 : tre_proc_fast(shortcut, wregex, wn, regex, n, cflags);
   if (ret == REG_OK)
     {
       preg->shortcut = shortcut;

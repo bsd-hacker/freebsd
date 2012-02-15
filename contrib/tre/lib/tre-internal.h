@@ -277,14 +277,22 @@ struct tnfa {
     } while (0 /*CONSTCOND*/)
 
 int
-tre_convert_pattern(const char *regex, size_t n, tre_char_t **w,
-		    size_t *wn);
+tre_convert_pattern_to_wcs(const char *regex, size_t n, tre_char_t **w,
+			  size_t *wn);
 
 void
-tre_free_pattern(tre_char_t *wregex);
+tre_free_wcs_pattern(tre_char_t *wregex);
 
 int
-tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags);
+tre_convert_pattern_to_mbs(const tre_char_t *wregex, size_t n, char **s,
+			   size_t *sn);
+
+void
+tre_free_mbs_pattern(char *wregex);
+
+int
+tre_compile(regex_t *preg, const tre_char_t *wregex, size_t wn,
+	    const char *regex, size_t n, int cflags);
 
 void
 tre_free(regex_t *preg);

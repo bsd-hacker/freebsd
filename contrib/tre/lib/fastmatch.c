@@ -47,12 +47,12 @@ tre_fixncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 
   if (n != 0)
     {
-      ret = tre_convert_pattern(regex, n, &wregex, &wlen);
+      ret = tre_convert_pattern_to_wcs(regex, n, &wregex, &wlen);
       if (ret != REG_OK)
 	return ret;
       else 
 	ret = tre_proc_literal(preg, wregex, wlen, cflags);
-      tre_free_pattern(wregex);
+      tre_free_wcs_pattern(wregex);
       return ret;
     }
   else
@@ -68,14 +68,14 @@ tre_fastncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 
   if (n != 0)
     {
-      ret = tre_convert_pattern(regex, n, &wregex, &wlen);
+      ret = tre_convert_pattern_to_wcs(regex, n, &wregex, &wlen);
       if (ret != REG_OK)
 	return ret;
       else
 	ret = (cflags & REG_LITERAL)
 	      ? tre_proc_literal(preg, wregex, wlen, cflags)
 	      : tre_proc_fast(preg, wregex, wlen, cflags);
-      tre_free_pattern(wregex);
+      tre_free_wcs_pattern(wregex);
       return ret;
     }
   else

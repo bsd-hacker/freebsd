@@ -35,12 +35,12 @@ tre_regncomp(regex_t *preg, const char *regex, size_t n, int cflags)
   tre_char_t *wregex;
   size_t wlen;
 
-  ret = tre_convert_pattern(regex, n, &wregex, &wlen);
+  ret = tre_convert_pattern_to_wcs(regex, n, &wregex, &wlen);
   if (ret != REG_OK)
     return ret;
   else
-    ret = tre_compile(preg, wregex, wlen, cflags);
-  tre_free_pattern(wregex);
+    ret = tre_compile(preg, wregex, wlen, regex, n, cflags);
+  tre_free_wcs_pattern(wregex);
   return ret;
 }
 
@@ -58,16 +58,26 @@ tre_regcomp(regex_t *preg, const char *regex, int cflags)
 int
 tre_regwncomp(regex_t *preg, const wchar_t *regex, size_t n, int cflags)
 {
-  return tre_compile(preg, regex, n, cflags);
+  int ret;
+  char *sregex;
+  size_t slen;
+
+  ret = tre_convert_pattern_to_mbs(regex, n, &sregex, &slen);
+  if (ret != REG_OK)
+    return ret;
+  else
+    ret = tre_compile(preg, regex, n, sregex, slen, cflags);
+  tre_free_mbs_pattern(sregex);
+  return ret;
 }
 
 int
 tre_regwcomp(regex_t *preg, const wchar_t *regex, int cflags)
 {
   if ((cflags & REG_PEND) && (preg->re_wendp >= regex))
-    return tre_compile(preg, regex, preg->re_wendp - regex, cflags);
+    return tre_regwncomp(preg, regex, preg->re_wendp - regex, cflags);
   else
-    return tre_compile(preg, regex, regex ? wcslen(regex) : 0, cflags);
+    return tre_regwncomp(preg, regex, regex ? wcslen(regex) : 0, cflags);
 }
 #endif /* TRE_WCHAR */
 

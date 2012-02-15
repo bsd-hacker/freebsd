@@ -475,14 +475,14 @@ ok:
 
     for (i = 0; farr[i] != NULL; i++)
       {
-	bsiz[i] = mbstowcs(farr[i], NULL, 0);
+	bsiz[i] = wcstombs(NULL, farr[i], 0);
 	barr[i] = xmalloc(bsiz[i] + 1);
 	if (!barr[i])
 	  {
 	    errcode = REG_ESPACE;
 	    goto err;
 	  }
-	mbstowcs(farr[i], barr[i], bsiz[i]);
+	wcstombs(barr[i], farr[i], bsiz[i]);
 	barr[i][bsiz[i]] = '\0';
       }
     barr[i] = NULL;
@@ -513,7 +513,13 @@ ok:
 	    errcode = REG_ESPACE;
 	    goto err;
 	  }
-	ret = tre_proc_literal(h->heurs[i], farr[i], fsiz[i], 0);
+#ifdef TRE_WCHAR
+	ret = tre_proc_literal(h->heurs[i], farr[i], fsiz[i],
+			       barr[i], bsiz[i], 0);
+#else
+	ret = tre_proc_literal(h->heurs[i], farr[i], fsiz[i],
+			       farr[i], fsiz[i], 0);
+#endif
 	if (ret != REG_OK)
 	  {
 	    errcode = REG_BADPAT;

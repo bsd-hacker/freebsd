@@ -24,8 +24,8 @@ typedef struct {
   int *params;
 } tre_pos_and_tags_t;
 
-int tre_compile_bm(regex_t *preg, const tre_char_t *regex, size_t n,
-		   int cflags);
+int tre_compile_bm(regex_t *preg, const tre_char_t *wregex, size_t wn,
+		   const char *regex, size_t n, int cflags);
 int tre_compile_heur(regex_t *preg, const tre_char_t *regex, size_t n,
 		     int cflags);
 int tre_compile_nfa(regex_t *preg, const tre_char_t *regex, size_t n,
