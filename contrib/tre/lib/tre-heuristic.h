@@ -23,8 +23,8 @@ typedef struct {
   int type;
 } heur_t;
 
-extern int tre_compile_heur(heur_t *h, const tre_char_t *regex,
-			    size_t len, int cflags);
+extern int tre_proc_heur(heur_t *h, const tre_char_t *regex,
+			 size_t len, int cflags);
 extern void tre_free_heur(heur_t *h);
 
 #endif	/* TRE_HEURISTIC_H */

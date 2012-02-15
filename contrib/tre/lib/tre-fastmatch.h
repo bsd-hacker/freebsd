@@ -9,9 +9,9 @@
 #include "hashtable.h"
 #include "tre-internal.h"
 
-int	tre_compile_literal(fastmatch_t *preg, const tre_char_t *regex,
+int	tre_proc_literal(fastmatch_t *preg, const tre_char_t *regex,
 	    size_t, int);
-int	tre_compile_fast(fastmatch_t *preg, const tre_char_t *regex, size_t, int);
+int	tre_proc_fast(fastmatch_t *preg, const tre_char_t *regex, size_t, int);
 int	tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	    tre_str_type_t type, int nmatch, regmatch_t pmatch[], int eflags);
 void	tre_free_fast(fastmatch_t *preg);

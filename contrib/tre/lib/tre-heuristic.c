@@ -124,7 +124,7 @@
  * heuristic cannot be constructed.
  */
 int
-tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
+tre_proc_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 {
   tre_char_t **arr, *heur;
   tre_char_t **farr;
@@ -513,7 +513,7 @@ ok:
 	    errcode = REG_ESPACE;
 	    goto err;
 	  }
-	ret = tre_compile_literal(h->heurs[i], farr[i], fsiz[i], 0);
+	ret = tre_proc_literal(h->heurs[i], farr[i], fsiz[i], 0);
 	if (ret != REG_OK)
 	  {
 	    errcode = REG_BADPAT;

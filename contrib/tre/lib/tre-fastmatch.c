@@ -402,8 +402,8 @@ static int	fastcmp(const fastmatch_t *fg, const void *data,
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
-		    int cflags)
+tre_proc_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
+		 int cflags)
 {
 
   INIT_COMP;
@@ -421,7 +421,7 @@ tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   SAVE_PATTERN(pat, n, fg->pattern, fg->len);
 #endif
 
-  DPRINT(("tre_compile_literal: pattern: %s, len %zu, icase: %c, word: %c, "
+  DPRINT(("tre_proc_literal: pattern: %s, len %zu, icase: %c, word: %c, "
 	 "newline %c\n", fg->pattern, fg->len, fg->icase ? 'y' : 'n',
 	 fg->word ? 'y' : 'n', fg->newline ? 'y' : 'n'));
 
@@ -439,8 +439,8 @@ tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
-		 int cflags)
+tre_proc_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
+	      int cflags)
 {
   tre_char_t *tmp;
   size_t pos = 0;
@@ -563,7 +563,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
       continue;
 badpat:
       xfree(tmp);
-      DPRINT(("tre_compile_fast: compilation of pattern failed, falling"
+      DPRINT(("tre_proc_fast: compilation of pattern failed, falling"
 	      "back to NFA\n"));
       return REG_BADPAT;
     }
@@ -582,7 +582,7 @@ badpat:
 
   xfree(tmp);
 
-  DPRINT(("tre_compile_fast: pattern: %s, len %zu, bol %c, eol %c, "
+  DPRINT(("tre_proc_fast: pattern: %s, len %zu, bol %c, eol %c, "
 	 "icase: %c, word: %c, newline %c\n", fg->pattern, fg->len,
 	 fg->bol ? 'y' : 'n', fg->eol ? 'y' : 'n',
 	 fg->icase ? 'y' : 'n', fg->word ? 'y' : 'n',

@@ -51,12 +51,12 @@ tre_fixncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
       if (ret != REG_OK)
 	return ret;
       else 
-	ret = tre_compile_literal(preg, wregex, wlen, cflags);
+	ret = tre_proc_literal(preg, wregex, wlen, cflags);
       tre_free_pattern(wregex);
       return ret;
     }
   else
-    return tre_compile_literal(preg, NULL, 0, cflags);
+    return tre_proc_literal(preg, NULL, 0, cflags);
 }
 
 int
@@ -73,13 +73,13 @@ tre_fastncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 	return ret;
       else
 	ret = (cflags & REG_LITERAL)
-	      ? tre_compile_literal(preg, wregex, wlen, cflags)
-	      : tre_compile_fast(preg, wregex, wlen, cflags);
+	      ? tre_proc_literal(preg, wregex, wlen, cflags)
+	      : tre_proc_fast(preg, wregex, wlen, cflags);
       tre_free_pattern(wregex);
       return ret;
     }
   else
-    return tre_compile_literal(preg, NULL, 0, cflags);
+    return tre_proc_literal(preg, NULL, 0, cflags);
 }
 
 
@@ -98,15 +98,15 @@ tre_fastcomp(fastmatch_t *preg, const char *regex, int cflags)
 int
 tre_fixwncomp(fastmatch_t *preg, const wchar_t *regex, size_t n, int cflags)
 {
-  return tre_compile_literal(preg, regex, n, cflags);
+  return tre_proc_literal(preg, regex, n, cflags);
 }
 
 int
 tre_fastwncomp(fastmatch_t *preg, const wchar_t *regex, size_t n, int cflags)
 {
   return (cflags & REG_LITERAL) ?
-    tre_compile_literal(preg, regex, n, cflags) :
-    tre_compile_fast(preg, regex, n, cflags);
+    tre_proc_literal(preg, regex, n, cflags) :
+    tre_proc_fast(preg, regex, n, cflags);
 }
 
 int

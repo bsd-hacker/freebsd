@@ -1947,48 +1947,106 @@ tre_free_pattern(tre_char_t *wregex)
 int
 tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
 {
+  int ret;
+
+  /*
+   * First, we always compile the NFA and it also serves as
+   * pattern validation.  In this way, validation is not
+   * scattered through the code.
+   */
+  ret = tre_compile_nfa(preg, regex, n, cflags);
+  if (ret != REG_OK)
+    return ret;
+
+  /*
+   * Check if we can cheat with a fixed string algorithm
+   * if the pattern is long enough.
+   */
+  ret = tre_compile_bm(preg, regex, n, cflags);
+
+  /* Only try to compile heuristic if the fast matcher failed. */
+  if (ret != REG_OK)
+    ret = tre_compile_heur(preg, regex, n, cflags);
+  else
+    preg->heur = NULL;
+
+  /* When here, at least NFA surely succeeded. */
+  return REG_OK;
+}
+
+int
+tre_compile_bm(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
+{
+  fastmatch_t *shortcut;
+  int ret;
+
+  if (n < 2)
+    goto too_short;
+  shortcut = xmalloc(sizeof(fastmatch_t));
+  if (!shortcut)
+    return REG_ESPACE;
+  ret = (cflags & REG_LITERAL)
+	 ? tre_proc_literal(shortcut, regex, n, cflags)
+	 : tre_proc_fast(shortcut, regex, n, cflags);
+  if (ret == REG_OK)
+    {
+      preg->shortcut = shortcut;
+      DPRINT("tre_compile_bm: pattern compiled for fast matcher\n");
+    }        
+  else
+    {
+too_short:
+      xfree(shortcut);
+      preg->shortcut = NULL;
+      DPRINT("tre_compile_bm: pattern compilation failed for fast matcher\n");
+    }
+  return ret;
+}
+
+int
+tre_compile_heur(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
+{
+  heur_t *heur;
+  int ret;
+
+  heur = xmalloc(sizeof(heur_t));
+  if (!heur)
+    return REG_ESPACE;
+
+  ret = tre_proc_heur(heur, regex, n, cflags);
+  if (ret != REG_OK)
+    {
+      xfree(heur);
+      preg->heur = NULL;
+      DPRINT("tre_compile_heur: heuristic compilation failed, NFA will be used "
+	     "entirely\n");
+    }
+  else
+    {
+      preg->heur = heur;
+      DPRINT("tre_compile_heur: heuristic compiled to speed up the search\n");
+    }
+
+  return ret;
+}
+
+int
+tre_compile_nfa(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
+{
   tre_stack_t *stack;
   tre_ast_node_t *tree, *tmp_ast_l, *tmp_ast_r;
   tre_pos_and_tags_t *p;
   int *counts = NULL, *offs = NULL;
-  int i, add = 0, ret;
+  int i, add = 0;
   tre_tnfa_transition_t *transitions, *initial;
   tre_tnfa_t *tnfa = NULL;
   tre_submatch_data_t *submatch_data;
   tre_tag_direction_t *tag_directions = NULL;
   reg_errcode_t errcode;
   tre_mem_t mem;
-  fastmatch_t *shortcut;
-  heur_t *heur;
 
   /* Parse context. */
   tre_parse_ctx_t parse_ctx;
-
-  /*
-   * Check if we can cheat with a fixed string algorithm
-   * if the pattern is long enough.
-   */
-  if (n >= 2)
-    {
-      shortcut = xmalloc(sizeof(fastmatch_t));
-      if (!shortcut)
-	return REG_ESPACE;
-      ret = (cflags & REG_LITERAL)
-	     ? tre_compile_literal(shortcut, regex, n, cflags)
-	     : tre_compile_fast(shortcut, regex, n, cflags);
-      if (ret == REG_OK)
-	{
-	  preg->shortcut = shortcut;
-	  preg->re_nsub = 0;
-	  DPRINT("tre_compile: pattern compiled for fast matcher\n");
-	}
-      else
-	{
-	  xfree(shortcut);
-	  preg->shortcut = NULL;
-	  DPRINT("tre_compile: pattern compilation failed for fast matcher\n");
-	}
-    }
 
   /* Allocate a stack used throughout the compilation process for various
      purposes. */
@@ -2008,7 +2066,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   parse_ctx.len = n;
   parse_ctx.cflags = cflags;
   parse_ctx.max_backref = -1;
-  DPRINT(("tre_compile: parsing '%.*" STRF "'\n", (int)n, regex));
+  DPRINT(("tre_compile_nfa: parsing '%.*" STRF "'\n", (int)n, regex));
   errcode = tre_parse(&parse_ctx);
   if (errcode != REG_OK)
     ERROR_EXIT(errcode);
@@ -2040,7 +2098,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
      regexp does not have back references, this can be skipped. */
   if (tnfa->have_backrefs || !(cflags & REG_NOSUB))
     {
-      DPRINT(("tre_compile: setting up tags\n"));
+      DPRINT(("tre_compile_nfa: setting up tags\n"));
 
       /* Figure out how many tags we will need. */
       errcode = tre_add_tags(NULL, stack, tree, tnfa);
@@ -2277,42 +2335,10 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
 
   preg->TRE_REGEX_T_FIELD = (void *)tnfa;
 
-  /*
-   * If we reach here, the regex is parsed and legal. Now we try to construct
-   * a heuristic to speed up matching if we do not already have a shortcut
-   * pattern.
-   */
-  if (!preg->shortcut)
-    {
-      heur = xmalloc(sizeof(heur_t));
-      if (!heur)
-	ERROR_EXIT(REG_ESPACE);
-
-      ret = tre_compile_heur(heur, regex, n, cflags);
-      if (ret != REG_OK)
-	{
-	  xfree(heur);
-	  preg->heur = NULL;
-	  DPRINT("tre_compile: heuristic compilation failed, NFA will be used "
-		 "entirely\n");
-	}
-      else
-	{
-	  preg->heur = heur;
-	  DPRINT("tre_compile: heuristic compiled to speed up the search\n");
-	}
-    }
-  else
-    preg->heur = NULL;
-
   return REG_OK;
 
  error_exit:
   /* Free everything that was allocated and return the error code. */
-  if (shortcut != NULL)
-    xfree(shortcut);
-  if (heur != NULL)
-    xfree(heur);
   if (mem != NULL)
     tre_mem_destroy(mem);
   if (stack != NULL)
