@@ -262,7 +262,7 @@ mphyp_pte_spillable_ident(u_int ptegidx, struct lpte *to_evict)
 		phyp_pft_hcall(H_READ, 0, slot, 0, 0, &pt.pte_hi, &pt.pte_lo,
 		    &junk);
 		
-		if (pt.pte_hi & (LPTE_LOCKED | LPTE_WIRED))
+		if (pt.pte_hi & LPTE_SWBITS)
 			continue;
 
 		/* This is a candidate, so remember it */
