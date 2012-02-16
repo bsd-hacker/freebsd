@@ -167,11 +167,10 @@
  */
 
 int
-tre_wmcomp(mregex_t *preg, size_t nr, const char *regex[],
+tre_wmcomp(wmsearch_t *wm, size_t nr, const tre_char_t *regex[],
 	   size_t n[], int cflags)
 {
   wmentry_t *entry = NULL;
-  wmsearch_t *wm = NULL;
   int err;
 #ifdef TRE_WCHAR
   char **bregex;
@@ -179,7 +178,6 @@ tre_wmcomp(mregex_t *preg, size_t nr, const char *regex[],
 #endif
 
   ALLOC(wm, sizeof(wmsearch_t));
-  preg->n = nr;
 
 #ifdef TRE_WCHAR
   PROC_WM_WIDE(regex, n);
@@ -216,7 +214,6 @@ tre_wmcomp(mregex_t *preg, size_t nr, const char *regex[],
   SAVE_PATTERNS;
 #endif
 
-  preg->searchdata = &wm;
   return REG_OK;
 fail:
 #ifdef TRE_WCHAR
@@ -295,13 +292,12 @@ fail:
 int
 tre_wmexec(const void *str, size_t len, tre_str_type_t type,
 	   size_t nmatch, regmatch_t pmatch[], int eflags,
-	   const mregex_t *preg, regmatch_t *match)
+	   const wmsearch_t *wm, regmatch_t *match)
 {
-  wmsearch_t *wm = preg->wm;
   wmentry_t *s_entry, *p_entry;
   tre_char_t *wide_str = str;
   char *byte_str = str;
-  size_t pos = preg->m;
+  size_t pos = (type == STR_WIDE) ? wm->wm : wm->m;
   size_t shift;
   int ret;
   int err = REG_NOMATCH;
@@ -327,9 +323,8 @@ finish:
 }
 
 void
-wmfree(mregex_t *preg)
+tre_wmfree(wmsearch_t *wm)
 {
-  wmsearch_t wm = preg->wm;
 
   if (wm->hash)
     hashtable_free(wm->hash);

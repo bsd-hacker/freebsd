@@ -8,6 +8,7 @@
 typedef struct {
 	size_t k;		/* Number of patterns */
 	regex_t *patterns;	/* regex_t structure for each pattern */
+	size_t mfrag;		/* Number of fragments */
 	void *searchdata;
 } mregex_t;
 
