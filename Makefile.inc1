@@ -180,7 +180,11 @@ WORLDTMP=	${OBJTREE}${.CURDIR}/tmp
 BPATH=		${WORLDTMP}/legacy/usr/sbin:${WORLDTMP}/legacy/usr/bin:${WORLDTMP}/legacy/usr/games
 XPATH=		${WORLDTMP}/usr/sbin:${WORLDTMP}/usr/bin:${WORLDTMP}/usr/games
 STRICTTMPPATH=	${BPATH}:${XPATH}
+.if defined(TCPATH)
+TMPPATH=	${TCPATH}:${STRICTTMPPATH}:${PATH}
+.else
 TMPPATH=	${STRICTTMPPATH}:${PATH}
+.endif
 
 #
 # Avoid running mktemp(1) unless actually needed.
@@ -272,6 +276,9 @@ WMAKEENV=	${CROSSENV} \
 WMAKEENV+=	NO_CTF=1
 .endif
 WMAKE=		${WMAKEENV} ${MAKE} -f Makefile.inc1 DESTDIR=${WORLDTMP}
+.if defined(TCPATH)
+WMAKE+=		SYSROOT=${WORLDTMP}
+.endif
 
 .if ${TARGET_ARCH} == "amd64" || ${TARGET_ARCH} == "powerpc64"
 # 32 bit world

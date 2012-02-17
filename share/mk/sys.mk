@@ -53,6 +53,9 @@ CFLAGS		?=	-O -pipe
 .else
 CFLAGS		?=	-O2 -pipe
 .endif
+.if defined(SYSROOT)
+CFLAGS		+=	--sysroot=${SYSROOT}
+.endif
 .if defined(NO_STRICT_ALIASING)
 CFLAGS		+=	-fno-strict-aliasing
 .endif
