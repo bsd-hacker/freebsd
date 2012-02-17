@@ -7,6 +7,8 @@
 #include "tre-fastmatch.h"
 #include "tre-internal.h"
 
+#define MAX_FRAGMENTS 32
+
 #define HEUR_ARRAY		0
 #define HEUR_PREFIX_ARRAY	1
 #define HEUR_LONGEST		2

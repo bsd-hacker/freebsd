@@ -54,8 +54,6 @@
  * performance impact.
  */
 
-#define MAX_FRAGMENTS 32
-
 /*
  * Parses bracket expression seeking to the end of the enclosed text.
  * The parameters are the opening (oe) and closing elements (ce).
