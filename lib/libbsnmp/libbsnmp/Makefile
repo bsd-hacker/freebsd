@@ -23,3 +23,6 @@ INCS=	asn1.h snmp.h snmpagent.h snmpclient.h
 MAN=	asn1.3 bsnmplib.3 bsnmpclient.3 bsnmpagent.3
 
 .include <bsd.lib.mk>
+
+# Code uses mktemp() so don't let linker warnings be fatal.
+SOLINKOPTS+=	-Wl,--no-fatal-warnings

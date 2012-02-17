@@ -36,3 +36,6 @@ ssp.h: ssp.h.in
 SUBDIR+= libssp_nonshared
 
 .include <bsd.lib.mk>
+
+# Code users gets() so don't let linker warnings be fatal.
+SOLINKOPTS+=	-Wl,--no-fatal-warnings
