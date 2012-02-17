@@ -1999,11 +1999,11 @@ tre_compile(regex_t *preg, const tre_char_t *wregex, size_t wn,
    * Check if we can cheat with a fixed string algorithm
    * if the pattern is long enough.
    */
-  ret = tre_compile_bm(preg, wregex, wn, regex, n, cflags);
+  tre_compile_bm(preg, wregex, wn, regex, n, cflags);
 
-  /* Only try to compile heuristic if the fast matcher failed. */
-  if (ret != REG_OK)
-    ret = tre_compile_heur(preg, wregex, wn, cflags);
+  /* Only try to compile heuristic if the pattern is not literal */
+  if (!(cflags & REG_LITERAL))
+      tre_compile_heur(preg, wregex, wn, cflags);
   else
     preg->heur = NULL;
 
