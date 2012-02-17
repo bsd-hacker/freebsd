@@ -47,7 +47,7 @@ CFLAGS+= -DCONFIG_IPV6
 .endif
 #CFLAGS+= -g
 DPADD+=	${LIBPCAP} ${LIBSSL}
-LDADD+=	-lpcap -lssl
+LDADD+=	-lpcap -lssl -lcrypto
 
 # User customizations for wpa_supplicant/hostapd build environment
 CFLAGS+=${HOSTAPD_CFLAGS}
