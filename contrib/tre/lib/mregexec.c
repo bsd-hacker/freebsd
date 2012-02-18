@@ -28,44 +28,16 @@
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
 
-#ifdef TRE_USE_ALLOCA
-/* AIX requires this to be the first thing in the file.	 */
-#ifndef __GNUC__
-# if HAVE_ALLOCA_H
-#  include <alloca.h>
-# else
-#  ifdef _AIX
- #pragma alloca
-#  else
-#   ifndef alloca /* predefined by HP cc +Olibcalls */
-char *alloca ();
-#   endif
-#  endif
-# endif
-#endif
-#endif /* TRE_USE_ALLOCA */
-
-#include <assert.h>
+#include <limits.h>
+#include <mregex.h>
 #include <regex.h>
-#include <stdlib.h>
-#include <string.h>
 #ifdef HAVE_WCHAR_H
 #include <wchar.h>
 #endif /* HAVE_WCHAR_H */
-#ifdef HAVE_WCTYPE_H
-#include <wctype.h>
-#endif /* HAVE_WCTYPE_H */
-#ifndef TRE_WCHAR
-#include <ctype.h>
-#endif /* !TRE_WCHAR */
-#ifdef HAVE_MALLOC_H
-#include <malloc.h>
-#endif /* HAVE_MALLOC_H */
-#include <limits.h>
 
-#include "tre-fastmatch.h"
 #include "tre-heuristic.h"
 #include "tre-internal.h"
+#include "tre-mfastmatch.h"
 #include "xmalloc.h"
 
 #ifdef TRE_LIBC_BUILD

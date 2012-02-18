@@ -29,6 +29,7 @@
 #endif /* HAVE_CONFIG_H */
 #include <mregex.h>
 #include <regex.h>
+
 #include "tre-mfastmatch.h"
 #include "xmalloc.h"
 
