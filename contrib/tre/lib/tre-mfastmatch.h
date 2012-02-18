@@ -9,7 +9,13 @@
 
 #define WM_MAXPAT 64
 
+#define MHEUR_NONE 0
+#define MHEUR_PREFIX 1
+#define MHEUR_LONGEST 2
+#define MHEUR_LITERAL 3
+
 typedef struct {
+	int cflags;
 	char **pat;		/* Patterns */
 	size_t *siz;		/* Pattern sizes */
 	size_t n;		/* No of patterns */

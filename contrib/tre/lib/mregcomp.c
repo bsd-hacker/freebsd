@@ -54,81 +54,102 @@ __weak_reference(tre_mregfree, mregfree);
 
 int
 tre_mcompile(mregex_t *preg, size_t nr, const tre_char_t *wregex[],
-	     size_t wn[], int cflags)
+	     size_t wn[], const char *regex[], size_t n, int cflags)
 {
   int ret;
-  size_t mfrag = 0;
   tre_char_t **frags;
   size_t *siz;
   wmsearch_t *wm;
 
   preg->k = nr;
+  preg->cflags = cflags;
   preg->patterns = xmalloc(nr * sizeof(regex_t));
   if (!preg->patterns)
     return REG_ESPACE;
 
+  /* Compile NFA, BM and heuristic for each pattern. */
   for (int i = 0; i < nr; i++)
     {
-      ret = tre_compile_nfa(&preg->patterns[i], wregex[i], wn[i], cflags);
+      ret = tre_compile(&preg->patterns[i], wregex[i], wn[i],
+			regex[i], n[i], cflags);
       if (ret != REG_OK)
-	goto err;
-      ret = tre_compile_heur(&preg->patterns[i], wregex[i], wn[i], cflags);
-      if (ret != REG_OK)
-	goto err;
+	return ret;
     }
 
-  for (mfrag = 0; mfrag < nr; mfrag++)
-    for (int j = 0; j < nr; j++)
-      if (((heur_t)preg->patterns[j]->heur)->arr[mfrag] == NULL)
-	goto out;
-out:
+  /* If not literal, check if any of them have fixed-length prefix. */
+  if (!(cflags & REG_LITERAL))
+    for (int i = 0; i < nr; i++)
+      if ((preg->patterns[i]->heur == NULL) ||
+	 (((heur_t)preg->patterns[i]->heur)->arr[0] == NULL))
+	{
+	  preg->type = MHEUR_NONE;
+	  goto finish;
+	}
 
-  preg->mfrag = mfrag;
-
-  /* Worst case, not all patterns have a literal prefix */
-  if (mfrag == 0)
-    return REG_OK;
-
-  wm = xmalloc(mfrag * sizeof(wmsearch_t));
-  if (!wm)
-    goto err;
-
-  frags = xmalloc(nr * sizeof(char *));
-  if (!frags)
-    goto err;
-
-  siz = xmalloc(nr * sizeof(size_t));
-  // XXX: check NULL
-
-  for (int i = 0; i < mfrag; i++)
+  /*
+   * Set frag and siz to point to the fragments to compile and
+   * their respective sizes.
+   */
+  if (!(cflags & REG_LITERAL))
     {
+      frags = xmalloc(nr * sizeof(char *));
+      if (!frags)
+        goto err;
+
+      siz = xmalloc(nr * sizeof(size_t));
+      if (!siz)
+	goto err;
+
       for (int j = 0; j < nr; j++)
 	{
-	  frags[j] = &((heur_t)preg->patterns[j]->heur)->arr[i];
-	  siz[j] = ((heur_t)preg->patterns[j]->heur)->siz[i];
+	  frags[j] = &((heur_t)preg->patterns[j]->heur)->arr[0];
+	  siz[j] = ((heur_t)preg->patterns[j]->heur)->siz[0];
 	}
-      ret = tre_wmcomp(&wm[i], nr, frags, siz, cflags);
-      if (ret != REG_OK)
-	goto err;
+    }
+  else
+    {
+      frags = wregex;
+      siz = wn;
     }
 
+  /* Alloc and compile the fragments for Wu-Manber algorithm. */
+  wm = xmalloc(sizeof(wmsearch_t));
+  if (!wm)
+    goto err;
+  ret = tre_wmcomp(wm, nr, frags, siz, cflags);
+    if (ret != REG_OK)
+      goto err;
   preg->searchdata = wm;
 
-  return REG_OK;
+  /* Set the specific type of matching. */
+  if (cflags & REG_LITERAL)
+    preg->type = MHEUR_LITERAL;
+  else if (cflags & REG_NEWLINE)
+    preg->type = MHEUR_LONGEST;
+  else
+    preg->type = MHEUR_PREFIX;
+
+  goto finish;
 
 err:
   if (preg->patterns)
-    xfree(preg->patterns);
-  if (wm)
     {
-      for (int i = 0; i < mfrag; i++)
-	tre_wmfree(&wm[i]);
-      xfree(wm);
+      for (int i = 1; i < nr; i++)
+	if (preg->patterns[i])
+	  tre_regfree(preg->patterns[i]);
+      xfree(preg->patterns);
     }
-  if (frags)
-    xfree(frags);
-  if (siz)
-    xfree(siz);
+  if (wm)
+    xfree(wm);
+
+finish:
+  if (!(cflags & REG_LITERAL))
+    {
+      if (frag)
+	xfree(frag);
+      if (siz)
+	xfree(siz);
+    }
   return ret;
 }
 

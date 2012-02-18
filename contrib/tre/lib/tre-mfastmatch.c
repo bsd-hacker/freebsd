@@ -232,11 +232,14 @@ fail:
 #define MATCH(beg, end, p)						\
   do									\
     {									\
-      match->rm_so = beg;						\
-      match->rm_eo = end;						\
-      match->p = p;							\
-      err = REG_OK;							\
-      goto finish;							\
+      if (!(preg->cflags & REG_NOSUB) && (nmatch > 0))			\
+	{								\
+	  pmatch->rm_so = beg;						\
+	  pmatch->rm_eo = end;						\
+	  pmatch->p = p;						\
+	  err = REG_OK;							\
+	  goto finish;							\
+	}								\
     } while (0);
 
 #define _WMSEARCH(data, pats, sizes, mlen, tbl, dshift)			\
@@ -292,7 +295,7 @@ fail:
 int
 tre_wmexec(const void *str, size_t len, tre_str_type_t type,
 	   size_t nmatch, regmatch_t pmatch[], int eflags,
-	   const wmsearch_t *wm, regmatch_t *match)
+	   const wmsearch_t *wm)
 {
   wmentry_t *s_entry, *p_entry;
   tre_char_t *wide_str = str;
