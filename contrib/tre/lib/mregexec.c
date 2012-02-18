@@ -198,8 +198,8 @@ finish:
       while (st < len)
 	{
 	  /* Look for a possible match. */
-	  ret = tre_wmexec(INPUT(st), len, type, 1, &rpm,
-			   eflags, preg->wm);
+	  ret = tre_wmexec(preg->wm, INPUT(st), len, type, 1, &rpm,
+			   eflags);
 	  if (ret != REG_OK)
 	    goto finish;
 
@@ -255,7 +255,7 @@ finish:
    */
   else if (preg->type == MHEUR_LITERAL)
     {
-      return tre_wmexec(str, len, type, nmatch, pmatch, eflags, preg->wm);
+      return tre_wmexec(preg->wm, str, len, type, nmatch, pmatch, eflags);
     }
 
   /*
@@ -277,7 +277,7 @@ finish:
 
       while (st < len)
 	{
-	  ret = tre_wmexec(INPUT(st), len, type, nmatch, &rpm, eflags, preg->wm);
+	  ret = tre_wmexec(preg->wm, INPUT(st), len, type, nmatch, &rpm, eflags);
 	  if (ret != REG_OK)
 	    return ret;
 

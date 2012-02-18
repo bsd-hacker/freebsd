@@ -293,9 +293,9 @@ fail:
 	     wm->wdefsh)
 
 int
-tre_wmexec(const void *str, size_t len, tre_str_type_t type,
-	   size_t nmatch, regmatch_t pmatch[], int eflags,
-	   const wmsearch_t *wm)
+tre_wmexec(const wmsearch_t *wm, const void *str, size_t len,
+	   tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
+	   int eflags)
 {
   wmentry_t *s_entry, *p_entry;
   tre_char_t *wide_str = str;
