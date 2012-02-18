@@ -42,12 +42,11 @@ typedef struct {
 
 int
 tre_wmcomp(wmsearch_t *wm, size_t nr, const tre_char_t *regex[],
-           size_t n[], int cflags);
+	   size_t n[], int cflags);
 int
 tre_wmexec(const wmsearch_t *wm, const void *str, size_t len,
-           tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
-           int eflags);
+	   tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
+	   int eflags);
 void
 tre_wmfree(wmsearch_t *wm);
-
 #endif				/* TRE_MFASTMATCH_H */
