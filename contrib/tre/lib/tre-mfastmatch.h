@@ -7,6 +7,8 @@
 #include <mregex.h>
 #include <regex.h>
 
+#include "tre-internal.h"
+
 #define WM_MAXPAT 64
 
 #define MHEUR_NONE 0
@@ -21,14 +23,14 @@ typedef struct {
 	size_t n;		/* No of patterns */
         size_t m;		/* Shortest pattern length */
 	size_t defsh;		/* Default shift */
-	void *hash;		/* Wu-Manber shift table */
+	void *shift;		/* Wu-Manber shift table */
 #ifdef TRE_WCHAR
 	tre_char_t **wpat;	/* Patterns (wide) */
-	size_t wsiz;		/* Pattern sizes (wide) */
+	size_t *wsiz;		/* Pattern sizes (wide) */
 	size_t wn;		/* No of patterns (wide) */
 	size_t wm;		/* Shortest pattern length (wide) */
 	size_t wdefsh;		/* Default shift (wide) */
-	void *whash;		/* Wu-Manber shift table (wide) */
+	void *wshift;		/* Wu-Manber shift table (wide) */
 #endif
 } wmsearch_t;
 
@@ -41,8 +43,8 @@ typedef struct {
 } wmentry_t;
 
 int
-tre_wmcomp(wmsearch_t *wm, size_t nr, const tre_char_t *regex[],
-	   size_t n[], int cflags);
+tre_wmcomp(wmsearch_t *wm, size_t nr, const tre_char_t **regex,
+	   size_t *n, int cflags);
 int
 tre_wmexec(const wmsearch_t *wm, const void *str, size_t len,
 	   tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],

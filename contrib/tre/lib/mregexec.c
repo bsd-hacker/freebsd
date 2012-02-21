@@ -31,6 +31,7 @@
 #include <limits.h>
 #include <mregex.h>
 #include <regex.h>
+#include <string.h>
 #ifdef HAVE_WCHAR_H
 #include <wchar.h>
 #endif /* HAVE_WCHAR_H */
@@ -52,14 +53,16 @@ tre_mmatch(const void *str, size_t len, tre_str_type_t type,
 	   size_t nmatch, regmatch_t pmatch[], int eflags,
 	   const mregex_t *preg)
 {
-  tre_char_t *str_wide = str;
-  char *str_byte = str;
+  const tre_char_t *str_wide = str;
+  const char *str_byte = str;
   int ret;
   bool need_offsets;
 
-  need_offsets = (preg->cflags & REG_NOSUB) && (nmatch > 0);
+  need_offsets = (((wmsearch_t *)(preg->searchdata))->cflags & REG_NOSUB) &&
+		 (nmatch > 0);
 
-#define INPUT(pos) ((type == STR_WIDE) ? str_wide[pos] : str_byte[pos])
+#define INPUT(pos) ((type == STR_WIDE) ? (const void *)&str_wide[pos] : \
+		   (const void *)&str_byte[pos])
 
   /*
    * Worst case: at least one pattern does not have a literal
@@ -83,7 +86,7 @@ tre_mmatch(const void *str, size_t len, tre_str_type_t type,
 	    {
 	      pm[i] = xmalloc(nmatch * sizeof(regmatch_t));
 	      if (!pm[i])
-		goto finish;
+		goto finish1;
 	    }
 	}
 
@@ -102,14 +105,14 @@ tre_mmatch(const void *str, size_t len, tre_str_type_t type,
 	  else if (ret == REG_NOMATCH)
 	    pm[i][0].rm_so = -1;
 	  else if (ret != REG_OK)
-	    goto finish;
+	    goto finish1;
 	}
 
       if (!need_offsets)
 	return REG_NOMATCH;
 
       /* Check whether there has been a match at all. */
-      for (i; i < preg->k; i++)
+      for (i = 0; i < preg->k; i++)
 	if (pm[i][0].rm_so != -1)
 	  {
 	    first = i;
@@ -138,7 +141,7 @@ tre_mmatch(const void *str, size_t len, tre_str_type_t type,
 	}
       ret = REG_OK;
 
-finish:
+finish1:
       if (pm)
 	{
 	  for (i = 0; i < preg->k; i++)
@@ -170,29 +173,29 @@ finish:
       while (st < len)
 	{
 	  /* Look for a possible match. */
-	  ret = tre_wmexec(preg->wm, INPUT(st), len, type, 1, &rpm,
+	  ret = tre_wmexec(preg->searchdata, INPUT(st), len, type, 1, &rpm,
 			   eflags);
 	  if (ret != REG_OK)
-	    goto finish;
+	    goto finish2;
 
 	  /* Need to start from here if this fails. */
 	  st += rpm.rm_so + 1;
 
 	  /* Look for the beginning of the line. */
 	  for (bl = st; bl > 0; bl--)
-	    if ((type == STR_WIDE) ? (str_wide[bl] == TRE_CHAR('\n'))
-		(str_byte[bl] == '\n')
+	    if ((type == STR_WIDE) ? (str_wide[bl] == TRE_CHAR('\n')) :
+		(str_byte[bl] == '\n'))
 	      break;
 
 	  /* Look for the end of the line. */
 	  for (el = st; el < len; el++)
-	   if ((type == STR_WIDE) ? (str_wide[el] == TRE_CHAR('\n'))
-	        (str_byte[el] == '\n')
+	   if ((type == STR_WIDE) ? (str_wide[el] == TRE_CHAR('\n')) :
+	        (str_byte[el] == '\n'))
 	      break;
 
 	  /* Try to match the pattern on the line. */
 	  ret = tre_match(&preg->patterns[rpm.p], INPUT(bl), el - bl,
-			  type, need_offsets ? nmatch : 0, &pm, eflags);
+			  type, need_offsets ? nmatch : 0, pm, eflags);
 
 	  /* Evaluate result. */
 	  if (ret == REG_NOMATCH)
@@ -208,16 +211,16 @@ finish:
 		      pmatch[i].rm_so = pm[i].rm_so;
 		      pmatch[i].rm_eo = pm[i].rm_eo;
 		      pmatch[i].p = rpm.p;
-		      goto finish;
+		      goto finish2;
 		    }
 		}
 	    }
 	  else
-	    goto finish;
+	    goto finish2;
 	}
-finish:
+finish2:
       if (!pm)
-	xfree(pm)
+	xfree(pm);
       return ret;
     }
 
@@ -227,7 +230,8 @@ finish:
    */
   else if (preg->type == MHEUR_LITERAL)
     {
-      return tre_wmexec(preg->wm, str, len, type, nmatch, pmatch, eflags);
+      return tre_wmexec(preg->searchdata, str, len, type, nmatch, pmatch,
+			eflags);
     }
 
   /*
@@ -249,7 +253,8 @@ finish:
 
       while (st < len)
 	{
-	  ret = tre_wmexec(preg->wm, INPUT(st), len, type, nmatch, &rpm, eflags);
+	  ret = tre_wmexec(preg->searchdata, INPUT(st), len, type, nmatch,
+			   &rpm, eflags);
 	  if (ret != REG_OK)
 	    return ret;
 
@@ -261,17 +266,17 @@ finish:
 	      for (int i = 0; i < nmatch; i++)
 		{
 		  pm[i].rm_so += st;
-		  pm[i].rm_eo += eo;
+		  pm[i].rm_eo += st;
 		  pm[i].p = rpm.p;
 		}
-	      goto finish;
+	      goto finish3;
 	    }
 	  else if ((ret != REG_NOMATCH) || (ret != REG_OK))
-	    goto finish;
-	  st += pm1.rm_so + 1;
+	    goto finish3;
+	  st += rpm.rm_so + 1;
 	}
 
-finish:
+finish3:
       if (pm)
 	xfree(pm);
       return ret;
@@ -293,7 +298,7 @@ tre_mregnexec(const mregex_t *preg, const char *str, size_t len,
 }
 
 int
-tre_regexec(const mregex_t *preg, const char *str,
+tre_mregexec(const mregex_t *preg, const char *str,
 	size_t nmatch, regmatch_t pmatch[], int eflags)
 {
   return tre_mregnexec(preg, str, strlen(str), nmatch, pmatch, eflags);
@@ -319,7 +324,7 @@ int
 tre_mregwexec(const mregex_t *preg, const wchar_t *str,
 	 size_t nmatch, regmatch_t pmatch[], int eflags)
 {
-  return tre_regwnexec(preg, str, tre_strlen(str), nmatch, pmatch, eflags);
+  return tre_mregwnexec(preg, str, tre_strlen(str), nmatch, pmatch, eflags);
 }
 
 #endif /* TRE_WCHAR */

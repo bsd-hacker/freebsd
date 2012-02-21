@@ -30,12 +30,13 @@
 
 #include <string.h>
 #include <errno.h>
+#include <mregex.h>
 #include <regex.h>
 #include <stdlib.h>
 
-#include "tre-fastmatch.h"
 #include "tre-heuristic.h"
 #include "tre-internal.h"
+#include "tre-mfastmatch.h"
 #include "xmalloc.h"
 
 #ifdef TRE_LIBC_BUILD
@@ -53,16 +54,15 @@ __weak_reference(tre_mregfree, mregfree);
  */
 
 int
-tre_mcompile(mregex_t *preg, size_t nr, const tre_char_t *wregex[],
-	     size_t wn[], const char *regex[], size_t n, int cflags)
+tre_mcompile(mregex_t *preg, size_t nr, const wchar_t **wregex,
+	     size_t *wn, const char **regex, size_t *n, int cflags)
 {
   int ret;
-  tre_char_t **frags;
+  const wchar_t **frags;
   size_t *siz;
   wmsearch_t *wm;
 
   preg->k = nr;
-  preg->cflags = cflags;
   preg->patterns = xmalloc(nr * sizeof(regex_t));
   if (!preg->patterns)
     return REG_ESPACE;
@@ -79,8 +79,8 @@ tre_mcompile(mregex_t *preg, size_t nr, const tre_char_t *wregex[],
   /* If not literal, check if any of them have fixed-length prefix. */
   if (!(cflags & REG_LITERAL))
     for (int i = 0; i < nr; i++)
-      if ((preg->patterns[i]->heur == NULL) ||
-	 (((heur_t)preg->patterns[i]->heur)->arr[0] == NULL))
+      if ((preg->patterns[i].heur == NULL) ||
+	 (((heur_t *)(preg->patterns[i].heur))->arr[0] == NULL))
 	{
 	  preg->type = MHEUR_NONE;
 	  goto finish;
@@ -102,8 +102,8 @@ tre_mcompile(mregex_t *preg, size_t nr, const tre_char_t *wregex[],
 
       for (int j = 0; j < nr; j++)
 	{
-	  frags[j] = &((heur_t)preg->patterns[j]->heur)->arr[0];
-	  siz[j] = ((heur_t)preg->patterns[j]->heur)->siz[0];
+	  frags[j] = ((heur_t *)(preg->patterns[j].heur))->warr[0];
+	  siz[j] = ((heur_t *)(preg->patterns[j].heur))->siz[0];
 	}
     }
   else
@@ -119,6 +119,7 @@ tre_mcompile(mregex_t *preg, size_t nr, const tre_char_t *wregex[],
   ret = tre_wmcomp(wm, nr, frags, siz, cflags);
     if (ret != REG_OK)
       goto err;
+  wm->cflags = cflags;
   preg->searchdata = wm;
 
   /* Set the specific type of matching. */
@@ -135,8 +136,7 @@ err:
   if (preg->patterns)
     {
       for (int i = 1; i < nr; i++)
-	if (preg->patterns[i])
-	  tre_regfree(preg->patterns[i]);
+	tre_regfree(&preg->patterns[i]);
       xfree(preg->patterns);
     }
   if (wm)
@@ -145,8 +145,8 @@ err:
 finish:
   if (!(cflags & REG_LITERAL))
     {
-      if (frag)
-	xfree(frag);
+      if (frags)
+	xfree(frags);
       if (siz)
 	xfree(siz);
     }
@@ -154,46 +154,48 @@ finish:
 }
 
 int
-tre_mregncomp(mregex_t *preg, size_t nr, const char *regex[],
-	      size_t n[], int cflags)
+tre_mregncomp(mregex_t *preg, size_t nr, const char **regex,
+	      size_t *n, int cflags)
 {
   int i, ret;
-  tre_char_t **wregex;
+  const wchar_t **wr;
+  wchar_t **wregex;
   size_t *wlen;
 
-  wregex = xmalloc(nr * sizeof(tre_char *);
+  wregex = xmalloc(nr * sizeof(wchar_t *));
   if (!wregex)
-    return REG_ENOMEM;
-  wlen = xmalloc(nr * sizeof(size_t);
+    return REG_ESPACE;
+  wlen = xmalloc(nr * sizeof(size_t));
   if (!wlen)
-    return REG_ENOMEM;
+    return REG_ESPACE;
 
-  for (i = 0; i++; i < nr)
+  for (i = 0; i < nr; i++)
     {
       ret = tre_convert_pattern_to_wcs(regex[i], n[i], &wregex[i], &wlen[i]);
       if (ret != REG_OK)
 	goto fail;
     }
 
-  ret = tre_mcompile(preg, nr, regex, n, cflags);
+  wr = (const wchar_t **)wregex;
+  ret = tre_mcompile(preg, nr, wr, wlen, regex, n, cflags);
 
 fail:
-  for (int j = 0; j++; j < i)
+  for (int j = 0; j < i; j++)
     tre_free_wcs_pattern(wregex[j]);
   return ret;
 }
 
 int
-tre_mregcomp(mregex_t *preg, size_t nr, const char *regex[], int cflags)
+tre_mregcomp(mregex_t *preg, size_t nr, const char **regex, int cflags)
 {
   int ret;
   size_t *wlen;
 
-  wlen = xmalloc(nr * sizeof(size_t);
+  wlen = xmalloc(nr * sizeof(size_t));
   if (!wlen)
-    return REG_ENOMEM;
+    return REG_ESPACE;
 
-  for (int i = 0; i++; i < nr)
+  for (int i = 0; i < nr; i++)
     wlen[i] = strlen(regex[i]);
 
   ret = tre_mregncomp(preg, nr, regex, wlen, cflags);
@@ -204,47 +206,49 @@ tre_mregcomp(mregex_t *preg, size_t nr, const char *regex[], int cflags)
 
 #ifdef TRE_WCHAR
 int
-tre_mregwncomp(mregex_t *preg, size_t nr, const wchar_t *regex[],
-	       size_t n[], int cflags)
+tre_mregwncomp(mregex_t *preg, size_t nr, const wchar_t **regex,
+	       size_t *n, int cflags)
 {
   int i, ret;
+  const char **sr;
   char **sregex;
   size_t *slen;
 
-  sregex = xmalloc(nr * sizeof(char *);
+  sregex = xmalloc(nr * sizeof(char *));
   if (!sregex)
-    return REG_ENOMEM;
-  slen = xmalloc(nr * sizeof(size_t);
+    return REG_ESPACE;
+  slen = xmalloc(nr * sizeof(size_t));
   if (!slen)
-    return REG_ENOMEM;
+    return REG_ESPACE;
 
-  for (i = 0; i++; i < nr)
+  for (i = 0; i < nr; i++)
     {
       ret = tre_convert_pattern_to_mbs(regex[i], n[i], &sregex[i], &slen[i]);
       if (ret != REG_OK)
         goto fail;
     }
 
-  ret = tre_mcompile(preg, nr, regex, n, cflags);
+  sr = (const char **)sregex;
+  ret = tre_mcompile(preg, nr, regex, n, sr, slen, cflags);
 
 fail:
-  for (int j = 0; j++; j < i)
-    tre_free_mbs_pattern(wregex[j]);
+  for (int j = 0; j < i; j++)
+    tre_free_mbs_pattern(sregex[j]);
   return ret;
 }
 
 int
-tre_mregwcomp(mregex_t *preg, size_t nr, const wchar_t *regex[],
+tre_mregwcomp(mregex_t *preg, size_t nr, const wchar_t **regex,
 	      int cflags)
 {
   int ret;
   size_t *wlen;
 
-  wlen = xmalloc(nr * sizeof(size_t);
+  wlen = xmalloc(nr * sizeof(size_t));
   if (!wlen)
-    return REG_ENOMEM;
+    return REG_ESPACE;
 
-  for (int i = 0; i++; i < nr)
+  for (int i = 0; i < nr; i++)
     wlen[i] = tre_strlen(regex[i]);
 
   ret = tre_mregwncomp(preg, nr, regex, wlen, cflags);
@@ -256,7 +260,11 @@ tre_mregwcomp(mregex_t *preg, size_t nr, const wchar_t *regex[],
 void
 tre_mregfree(mregex_t *preg)
 {
-  wmfree(preg);
+  if (!preg)
+    {
+      tre_wmfree(preg->searchdata);
+      xfree(preg);
+    }
 }
 
 /* EOF */

@@ -157,7 +157,7 @@ tre_have_approx(const regex_t *preg)
   return tnfa->have_approx;
 }
 
-static int
+int
 tre_match(const regex_t *preg, const void *string, size_t len,
 	  tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
 	  int eflags)

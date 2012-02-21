@@ -294,6 +294,11 @@ int
 tre_compile(regex_t *preg, const tre_char_t *wregex, size_t wn,
 	    const char *regex, size_t n, int cflags);
 
+int
+tre_match(const regex_t *preg, const void *string, size_t len,
+	  tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
+	  int eflags);
+
 void
 tre_free(regex_t *preg);
 
