@@ -106,7 +106,8 @@ struct g_part_alias_list {
 };
 
 SYSCTL_DECL(_kern_geom);
-SYSCTL_NODE(_kern_geom, OID_AUTO, part, CTLFLAG_RW, 0, "GEOM_PART stuff");
+static SYSCTL_NODE(_kern_geom, OID_AUTO, part, CTLFLAG_RW, 0,
+    "GEOM_PART stuff");
 static u_int check_integrity = 1;
 TUNABLE_INT("kern.geom.part.check_integrity", &check_integrity);
 SYSCTL_UINT(_kern_geom_part, OID_AUTO, check_integrity, CTLFLAG_RW,
@@ -214,7 +215,7 @@ g_part_geometry(struct g_part_table *table, struct g_consumer *cp,
 				continue;
 			/*
 			 * Prefer a geometry with sectors > 1, but only if
-			 * it doesn't bump down the numbver of heads to 1.
+			 * it doesn't bump down the number of heads to 1.
 			 */
 			if (chs > bestchs || (chs == bestchs && heads > 1 &&
 			    table->gpt_sectors == 1)) {
@@ -450,6 +451,10 @@ g_part_parm_geom(struct gctl_req *req, const char *name, struct g_geom **v)
 	if (gp == NULL) {
 		gctl_error(req, "%d %s '%s'", EINVAL, name, gname);
 		return (EINVAL);
+	}
+	if ((gp->flags & G_GEOM_WITHER) != 0) {
+		gctl_error(req, "%d %s", ENXIO, gname);
+		return (ENXIO);
 	}
 	*v = gp;
 	return (0);
@@ -1211,6 +1216,9 @@ g_part_ctl_recover(struct gctl_req *req, struct g_part_parms *gpp)
 
 	if (table->gpt_corrupt) {
 		error = G_PART_RECOVER(table);
+		if (error == 0)
+			error = g_part_check_integrity(table,
+			    LIST_FIRST(&gp->consumer));
 		if (error) {
 			gctl_error(req, "%d recovering '%s' failed",
 			    error, gp->name);
@@ -2049,6 +2057,7 @@ g_part_start(struct bio *bp)
 	struct g_part_table *table;
 	struct g_kerneldump *gkd;
 	struct g_provider *pp;
+	char buf[64];
 
 	pp = bp->bio_to;
 	gp = pp->geom;
@@ -2097,13 +2106,19 @@ g_part_start(struct bio *bp)
 		if (g_handleattr_str(bp, "PART::scheme",
 		    table->gpt_scheme->name))
 			return;
+		if (g_handleattr_str(bp, "PART::type",
+		    G_PART_TYPE(table, entry, buf, sizeof(buf))))
+			return;
 		if (!strcmp("GEOM::kerneldump", bp->bio_attribute)) {
 			/*
 			 * Check that the partition is suitable for kernel
 			 * dumps. Typically only swap partitions should be
-			 * used.
+			 * used. If the request comes from the nested scheme
+			 * we allow dumping there as well.
 			 */
-			if (!G_PART_DUMPTO(table, entry)) {
+			if ((bp->bio_from == NULL ||
+			    bp->bio_from->geom->class != &g_part_class) &&
+			    G_PART_DUMPTO(table, entry) == 0) {
 				g_io_deliver(bp, ENODEV);
 				printf("GEOM_PART: Partition '%s' not suitable"
 				    " for kernel dumps (wrong type?)\n",

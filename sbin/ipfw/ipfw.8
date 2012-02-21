@@ -1,7 +1,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd August 20, 2011
+.Dd February 6, 2012
 .Dt IPFW 8
 .Os
 .Sh NAME
@@ -769,7 +769,7 @@ To enable
 .Cm fwd
 a custom kernel needs to be compiled with the option
 .Cd "options IPFIREWALL_FORWARD" .
-.It Cm nat Ar nat_nr
+.It Cm nat Ar nat_nr | tablearg
 Pass packet to a
 nat instance
 (for network address translation, address redirect, etc.):
@@ -1652,10 +1652,12 @@ option for details on matching fragmented packets.
 TCP packets only.
 Match if the TCP header sequence number field is set to
 .Ar seq .
-.It Cm tcpwin Ar win
-TCP packets only.
-Match if the TCP header window field is set to
-.Ar win .
+.It Cm tcpwin Ar tcpwin-list
+Matches TCP packets whose  header window field is set to
+.Ar tcpwin-list ,
+which is either a single value or a list of values or ranges
+specified in the same way as
+.Ar ports .
 .It Cm tcpoptions Ar spec
 TCP packets only.
 Match if the TCP header contains the comma separated list of

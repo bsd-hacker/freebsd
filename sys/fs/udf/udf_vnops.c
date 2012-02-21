@@ -107,8 +107,8 @@ struct vop_vector udf_fifoops = {
 	.vop_vptofh =		udf_vptofh,
 };
 
-MALLOC_DEFINE(M_UDFFID, "udf_fid", "UDF FileId structure");
-MALLOC_DEFINE(M_UDFDS, "udf_ds", "UDF Dirstream structure");
+static MALLOC_DEFINE(M_UDFFID, "udf_fid", "UDF FileId structure");
+static MALLOC_DEFINE(M_UDFDS, "udf_ds", "UDF Dirstream structure");
 
 #define UDF_INVALID_BMAP	-1
 
@@ -439,8 +439,9 @@ udf_read(struct vop_read_args *ap)
 	uint8_t *data;
 	daddr_t lbn, rablock;
 	off_t diff, fsize;
+	ssize_t n;
 	int error = 0;
-	long size, n, on;
+	long size, on;
 
 	if (uio->uio_resid == 0)
 		return (0);

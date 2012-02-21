@@ -205,7 +205,7 @@ _thr_umtx_timedwait_uint(volatile u_int *mtx, u_int id, int clockid,
 	if (abstime != NULL) {
 		clock_gettime(clockid, &ts);
 		TIMESPEC_SUB(&ts2, abstime, &ts);
-		if (ts2.tv_sec < 0 || ts2.tv_nsec <= 0)
+		if (ts2.tv_sec < 0 || (ts2.tv_sec == 0 && ts2.tv_nsec <= 0))
 			return (ETIMEDOUT);
 		tsp = &ts2;
 	} else {
@@ -231,7 +231,7 @@ _thr_ucond_init(struct ucond *cv)
 
 int
 _thr_ucond_wait(struct ucond *cv, struct umutex *m,
-	const struct timespec *timeout, int check_unparking)
+	const struct timespec *timeout, int flags)
 {
 	if (timeout && (timeout->tv_sec < 0 || (timeout->tv_sec == 0 &&
 	    timeout->tv_nsec <= 0))) {
@@ -239,8 +239,7 @@ _thr_ucond_wait(struct ucond *cv, struct umutex *m,
 		_thr_umutex_unlock(m, TID(curthread));
                 return (ETIMEDOUT);
 	}
-	return _umtx_op_err(cv, UMTX_OP_CV_WAIT,
-		     check_unparking ? UMTX_CHECK_UNPARKING : 0, 
+	return _umtx_op_err(cv, UMTX_OP_CV_WAIT, flags,
 		     m, __DECONST(void*, timeout));
 }
  

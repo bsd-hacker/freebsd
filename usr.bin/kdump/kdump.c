@@ -95,10 +95,13 @@ void visdump(char *, int, int);
 void ktrgenio(struct ktr_genio *, int);
 void ktrpsig(struct ktr_psig *);
 void ktrcsw(struct ktr_csw *);
+void ktruser_malloc(unsigned char *);
+void ktruser_rtld(int, unsigned char *);
 void ktruser(int, unsigned char *);
 void ktrsockaddr(struct sockaddr *);
 void ktrstat(struct stat *);
 void ktrstruct(char *, size_t);
+void ktrcapfail(struct ktr_cap_fail *);
 void usage(void);
 void ioctlname(unsigned long, int);
 
@@ -110,14 +113,14 @@ struct ktr_header ktr_header;
 #define TIME_FORMAT	"%b %e %T %Y"
 #define eqs(s1, s2)	(strcmp((s1), (s2)) == 0)
 
-#define print_number(i,n,c) do {				\
-	if (decimal)						\
-		printf("%c%jd", c, (intmax_t)*i);		\
-	else							\
-		printf("%c%#jx", c, (intmax_t)*i);		\
-	i++;							\
-	n--;							\
-	c = ',';						\
+#define print_number(i,n,c) do {					\
+	if (decimal)							\
+		printf("%c%jd", c, (intmax_t)*i);			\
+	else								\
+		printf("%c%#jx", c, (uintmax_t)(u_register_t)*i);	\
+	i++;								\
+	n--;								\
+	c = ',';							\
 } while (0)
 
 #if defined(__amd64__) || defined(__i386__)
@@ -301,6 +304,8 @@ main(int argc, char *argv[])
 		case KTR_STRUCT:
 			ktrstruct(m, ktrlen);
 			break;
+		case KTR_CAPFAIL:
+			ktrcapfail((struct ktr_cap_fail *)m);
 		default:
 			printf("\n");
 			break;
@@ -440,6 +445,9 @@ dumpheader(struct ktr_header *kth)
 		/* FALLTHROUGH */
 	case KTR_PROCDTOR:
 		return;
+	case KTR_CAPFAIL:
+		type = "CAP ";
+		break;
 	default:
 		sprintf(unknown, "UNKNOWN(%d)", kth->ktr_type);
 		type = unknown;
@@ -488,6 +496,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 {
 	int narg = ktr->ktr_narg;
 	register_t *ip;
+	intmax_t arg;
 
 	if ((flags != 0 && ((flags & SV_ABI_MASK) != SV_ABI_FREEBSD)) ||
 	    (ktr->ktr_code >= nsyscalls || ktr->ktr_code < 0))
@@ -501,7 +510,6 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 		    (flags == 0 || (flags & SV_ABI_MASK) == SV_ABI_FREEBSD)) {
 			switch (ktr->ktr_code) {
 			case SYS_ioctl: {
-				const char *cp;
 				print_number(ip, narg, c);
 				putchar(c);
 				ioctlname(*ip, decimal);
@@ -978,12 +986,33 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				ip++;
 				narg--;
 				break;
-                        case SYS_cap_new:
-                                print_number(ip, narg, c);
-                                putchar(',');
-                                capname(*ip);
-                                ip++;
-                                narg--;
+			case SYS_cap_new:
+				print_number(ip, narg, c);
+				putchar(',');
+				arg = *ip;
+				ip++;
+				narg--;
+				/*
+				 * Hack: the second argument is a
+				 * cap_rights_t, which 64 bits wide, so on
+				 * 32-bit systems, it is split between two
+				 * registers.
+				 *
+				 * Since sizeof() is not evaluated by the
+				 * preprocessor, we can't use an #ifdef,
+				 * but the compiler will probably optimize
+				 * the code out anyway.
+				 */
+				if (sizeof(cap_rights_t) > sizeof(register_t)) {
+#if _BYTE_ORDER == _LITTLE_ENDIAN
+					arg = ((intmax_t)*ip << 32) + arg;
+#else
+					arg = (arg << 32) + *ip;
+#endif
+					ip++;
+					narg--;
+				}
+				capname(arg);
 				break;
 			}
 		}
@@ -1306,7 +1335,7 @@ struct utrace_malloc {
 };
 
 void
-ktruser_malloc(int len, unsigned char *p)
+ktruser_malloc(unsigned char *p)
 {
 	struct utrace_malloc *ut = (struct utrace_malloc *)p;
 
@@ -1330,7 +1359,7 @@ ktruser(int len, unsigned char *p)
 	}
 
 	if (len == sizeof(struct utrace_malloc)) {
-		ktruser_malloc(len, p);
+		ktruser_malloc(p);
 		return;
 	}
 
@@ -1365,61 +1394,67 @@ ktrsockaddr(struct sockaddr *sa)
 	printf(", ");
 
 #define check_sockaddr_len(n)					\
-	if (sa_##n->s##n##_len < sizeof(struct sockaddr_##n)) {	\
+	if (sa_##n.s##n##_len < sizeof(struct sockaddr_##n)) {	\
 		printf("invalid");				\
 		break;						\
 	}
 
 	switch(sa->sa_family) {
 	case AF_INET: {
-		struct sockaddr_in	*sa_in;
+		struct sockaddr_in sa_in;
 
-		sa_in = (struct sockaddr_in *)sa;
+		memset(&sa_in, 0, sizeof(sa_in));
+		memcpy(&sa_in, sa, sizeof(sa));
 		check_sockaddr_len(in);
-		inet_ntop(AF_INET, &sa_in->sin_addr, addr, sizeof addr);
-		printf("%s:%u", addr, ntohs(sa_in->sin_port));
+		inet_ntop(AF_INET, &sa_in.sin_addr, addr, sizeof addr);
+		printf("%s:%u", addr, ntohs(sa_in.sin_port));
 		break;
 	}
 #ifdef NETATALK
 	case AF_APPLETALK: {
-		struct sockaddr_at	*sa_at;
+		struct sockaddr_at	sa_at;
 		struct netrange		*nr;
 
-		sa_at = (struct sockaddr_at *)sa;
+		memset(&sa_at, 0, sizeof(sa_at));
+		memcpy(&sa_at, sa, sizeof(sa));
 		check_sockaddr_len(at);
-		nr = &sa_at->sat_range.r_netrange;
-		printf("%d.%d, %d-%d, %d", ntohs(sa_at->sat_addr.s_net),
-			sa_at->sat_addr.s_node, ntohs(nr->nr_firstnet),
+		nr = &sa_at.sat_range.r_netrange;
+		printf("%d.%d, %d-%d, %d", ntohs(sa_at.sat_addr.s_net),
+			sa_at.sat_addr.s_node, ntohs(nr->nr_firstnet),
 			ntohs(nr->nr_lastnet), nr->nr_phase);
 		break;
 	}
 #endif
 	case AF_INET6: {
-		struct sockaddr_in6	*sa_in6;
+		struct sockaddr_in6 sa_in6;
 
-		sa_in6 = (struct sockaddr_in6 *)sa;
+		memset(&sa_in6, 0, sizeof(sa_in6));
+		memcpy(&sa_in6, sa, sizeof(sa));
 		check_sockaddr_len(in6);
-		inet_ntop(AF_INET6, &sa_in6->sin6_addr, addr, sizeof addr);
-		printf("[%s]:%u", addr, htons(sa_in6->sin6_port));
+		inet_ntop(AF_INET6, &sa_in6.sin6_addr, addr, sizeof addr);
+		printf("[%s]:%u", addr, htons(sa_in6.sin6_port));
 		break;
 	}
 #ifdef IPX
 	case AF_IPX: {
-		struct sockaddr_ipx	*sa_ipx;
+		struct sockaddr_ipx sa_ipx;
 
-		sa_ipx = (struct sockaddr_ipx *)sa;
+		memset(&sa_ipx, 0, sizeof(sa_ipx));
+		memcpy(&sa_ipx, sa, sizeof(sa));
 		check_sockaddr_len(ipx);
 		/* XXX wish we had ipx_ntop */
-		printf("%s", ipx_ntoa(sa_ipx->sipx_addr));
+		printf("%s", ipx_ntoa(sa_ipx.sipx_addr));
+		free(sa_ipx);
 		break;
 	}
 #endif
 	case AF_UNIX: {
-		struct sockaddr_un *sa_un;
+		struct sockaddr_un sa_un;
 
-		sa_un = (struct sockaddr_un *)sa;
+		memset(&sa_un, 0, sizeof(sa_un));
+		memcpy(&sa_un, sa, sizeof(sa));
 		check_sockaddr_len(un);
-		printf("%.*s", (int)sizeof(sa_un->sun_path), sa_un->sun_path);
+		printf("%.*s", (int)sizeof(sa_un.sun_path), sa_un.sun_path);
 		break;
 	}
 	default:
@@ -1530,8 +1565,8 @@ ktrstruct(char *buf, size_t buflen)
 	if (datalen == 0)
 		goto invalid;
 	/* sanity check */
-	for (i = 0; i < namelen; ++i)
-		if (!isalpha((unsigned char)name[i]))
+	for (i = 0; i < (int)namelen; ++i)
+		if (!isalpha(name[i]))
 			goto invalid;
 	if (strcmp(name, "stat") == 0) {
 		if (datalen != sizeof(struct stat))
@@ -1552,6 +1587,41 @@ ktrstruct(char *buf, size_t buflen)
 	return;
 invalid:
 	printf("invalid record\n");
+}
+
+void
+ktrcapfail(struct ktr_cap_fail *ktr)
+{
+	switch (ktr->cap_type) {
+	case CAPFAIL_NOTCAPABLE:
+		/* operation on fd with insufficient capabilities */
+		printf("operation requires ");
+		capname((intmax_t)ktr->cap_needed);
+		printf(", process holds ");
+		capname((intmax_t)ktr->cap_held);
+		break;
+	case CAPFAIL_INCREASE:
+		/* requested more capabilities than fd already has */
+		printf("attempt to increase capabilities from ");
+		capname((intmax_t)ktr->cap_held);
+		printf(" to ");
+		capname((intmax_t)ktr->cap_needed);
+		break;
+	case CAPFAIL_SYSCALL:
+		/* called restricted syscall */
+		printf("disallowed system call");
+		break;
+	case CAPFAIL_LOOKUP:
+		/* used ".." in strict-relative mode */
+		printf("restricted VFS lookup");
+		break;
+	default:
+		printf("unknown capability failure: ");
+		capname((intmax_t)ktr->cap_needed);
+		printf(" ");
+		capname((intmax_t)ktr->cap_held);
+		break;
+	}
 }
 
 #if defined(__amd64__) || defined(__i386__)

@@ -43,6 +43,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_ffs.h"
+#include "opt_quota.h"
 #include "opt_ddb.h"
 
 /*
@@ -658,12 +659,13 @@ unsigned long dep_total[D_LAST + 1];
 unsigned long dep_write[D_LAST + 1];
 
 
-SYSCTL_NODE(_debug, OID_AUTO, softdep, CTLFLAG_RW, 0, "soft updates stats");
-SYSCTL_NODE(_debug_softdep, OID_AUTO, total, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_debug, OID_AUTO, softdep, CTLFLAG_RW, 0,
+    "soft updates stats");
+static SYSCTL_NODE(_debug_softdep, OID_AUTO, total, CTLFLAG_RW, 0,
     "total dependencies allocated");
-SYSCTL_NODE(_debug_softdep, OID_AUTO, current, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_debug_softdep, OID_AUTO, current, CTLFLAG_RW, 0,
     "current dependencies allocated");
-SYSCTL_NODE(_debug_softdep, OID_AUTO, write, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_debug_softdep, OID_AUTO, write, CTLFLAG_RW, 0,
     "current dependencies written");
 
 #define	SOFTDEP_TYPE(type, str, long)					\
@@ -6427,7 +6429,7 @@ softdep_setup_freeblocks(ip, length, flags)
 	}
 #ifdef QUOTA
 	/* Reference the quotas in case the block count is wrong in the end. */
-	quotaref(vp, freeblks->fb_quota);
+	quotaref(ITOV(ip), freeblks->fb_quota);
 	(void) chkdq(ip, -datablocks, NOCRED, 0);
 #endif
 	freeblks->fb_chkcnt = -datablocks;
@@ -7159,13 +7161,16 @@ check_inode_unwritten(inodedep)
 	mtx_assert(&lk, MA_OWNED);
 
 	if ((inodedep->id_state & (DEPCOMPLETE | UNLINKED)) != 0 ||
+	    !LIST_EMPTY(&inodedep->id_dirremhd) ||
 	    !LIST_EMPTY(&inodedep->id_pendinghd) ||
 	    !LIST_EMPTY(&inodedep->id_bufwait) ||
 	    !LIST_EMPTY(&inodedep->id_inowait) ||
+	    !TAILQ_EMPTY(&inodedep->id_inoreflst) ||
 	    !TAILQ_EMPTY(&inodedep->id_inoupdt) ||
 	    !TAILQ_EMPTY(&inodedep->id_newinoupdt) ||
 	    !TAILQ_EMPTY(&inodedep->id_extupdt) ||
 	    !TAILQ_EMPTY(&inodedep->id_newextupdt) ||
+	    !TAILQ_EMPTY(&inodedep->id_freeblklst) ||
 	    inodedep->id_mkdiradd != NULL || 
 	    inodedep->id_nlinkdelta != 0)
 		return (0);
@@ -12111,6 +12116,7 @@ top:
 		case D_FREEWORK:
 		case D_FREEDEP:
 		case D_JSEGDEP:
+		case D_JNEWBLK:
 			continue;
 
 		default:

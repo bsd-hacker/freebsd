@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 1998 - 2008 Søren Schmidt <sos@FreeBSD.org>
+ * Copyright (c) 1998 - 2008 SÃ¸ren Schmidt <sos@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -80,7 +80,6 @@ static void ata_siiprb_dmainit(device_t dev);
 #define SII_BUG		0x04
 #define SII_4CH		0x08
 
-
 /*
  * Silicon Image Inc. (SiI) (former CMD) chipset support functions
  */
@@ -141,6 +140,17 @@ ata_sii_chipinit(device_t dev)
 	    bus_release_resource(dev, ctlr->r_type1, ctlr->r_rid1,ctlr->r_res1);
 	    return ENXIO;
 	}
+#ifdef __sparc64__
+	if (!bus_space_map(rman_get_bustag(ctlr->r_res2),
+	    rman_get_bushandle(ctlr->r_res2), rman_get_size(ctlr->r_res2),
+	    BUS_SPACE_MAP_LINEAR, NULL)) {
+	    	bus_release_resource(dev, ctlr->r_type1, ctlr->r_rid1,
+		    ctlr->r_res1);
+		bus_release_resource(dev, ctlr->r_type2, ctlr->r_rid2,
+		    ctlr->r_res2);
+		return (ENXIO);
+	}
+#endif
 	ctlr->ch_attach = ata_siiprb_ch_attach;
 	ctlr->ch_detach = ata_siiprb_ch_detach;
 	ctlr->reset = ata_siiprb_reset;
@@ -229,6 +239,10 @@ ata_cmd_ch_attach(device_t dev)
 
     if (ctlr->chip->cfg2 & SII_INTR)
 	ch->hw.status = ata_cmd_status;
+
+#ifdef ATA_CAM
+	ch->flags |= ATA_NO_ATAPI_DMA;
+#endif
 
     return 0;
 }
@@ -431,7 +445,6 @@ ata_sii_setmode(device_t dev, int target, int mode)
 	pci_write_config(parent, preg, piotimings[ata_mode2idx(piomode)], 2);
 	return (mode);
 }
-
 
 struct ata_siiprb_dma_prdentry {
     u_int64_t addr;

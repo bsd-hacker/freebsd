@@ -68,7 +68,7 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/vm_param.h>
 
-MALLOC_DEFINE(M_ACPIDEV, "acpidev", "ACPI devices");
+static MALLOC_DEFINE(M_ACPIDEV, "acpidev", "ACPI devices");
 
 /* Hooks for the ACPI CA debugging infrastructure */
 #define _COMPONENT	ACPI_BUS
@@ -152,6 +152,7 @@ static ACPI_STATUS acpi_EnterSleepState(struct acpi_softc *sc, int state);
 static void	acpi_shutdown_final(void *arg, int howto);
 static void	acpi_enable_fixed_events(struct acpi_softc *sc);
 static BOOLEAN	acpi_has_hid(ACPI_HANDLE handle);
+static void	acpi_resync_clock(struct acpi_softc *sc);
 static int	acpi_wake_sleep_prep(ACPI_HANDLE handle, int sstate);
 static int	acpi_wake_run_prep(ACPI_HANDLE handle, int sstate);
 static int	acpi_wake_prep_walk(int sstate);
@@ -277,11 +278,13 @@ TUNABLE_INT("debug.acpi.interpreter_slack", &acpi_interpreter_slack);
 SYSCTL_INT(_debug_acpi, OID_AUTO, interpreter_slack, CTLFLAG_RDTUN,
     &acpi_interpreter_slack, 1, "Turn on interpreter slack mode.");
 
+#ifdef __amd64__
 /* Reset system clock while resuming.  XXX Remove once tested. */
 static int acpi_reset_clock = 1;
 TUNABLE_INT("debug.acpi.reset_clock", &acpi_reset_clock);
 SYSCTL_INT(_debug_acpi, OID_AUTO, reset_clock, CTLFLAG_RW,
     &acpi_reset_clock, 1, "Reset system clock while resuming.");
+#endif
 
 /* Allow users to override quirks. */
 TUNABLE_INT("debug.acpi.quirks", &acpi_quirks);
@@ -1238,7 +1241,6 @@ acpi_alloc_resource(device_t bus, device_t child, int type, int *rid,
     struct resource_list_entry *rle;
     struct resource_list *rl;
     struct resource *res;
-    struct rman *rm;
     int isdefault = (start == 0UL && end == ~0UL);
 
     /*
@@ -1291,15 +1293,29 @@ acpi_alloc_resource(device_t bus, device_t child, int type, int *rid,
     } else
 	res = BUS_ALLOC_RESOURCE(device_get_parent(bus), child, type, rid,
 	    start, end, count, flags);
-    if (res != NULL || start + count - 1 != end)
-	return (res);
 
     /*
      * If the first attempt failed and this is an allocation of a
      * specific range, try to satisfy the request via a suballocation
-     * from our system resource regions.  Note that we only handle
-     * memory and I/O port system resources.
+     * from our system resource regions.
      */
+    if (res == NULL && start + count - 1 == end)
+	res = acpi_alloc_sysres(child, type, rid, start, end, count, flags);
+    return (res);
+}
+
+/*
+ * Attempt to allocate a specific resource range from the system
+ * resource ranges.  Note that we only handle memory and I/O port
+ * system resources.
+ */
+struct resource *
+acpi_alloc_sysres(device_t child, int type, int *rid, u_long start, u_long end,
+    u_long count, u_int flags)
+{
+    struct rman *rm;
+    struct resource *res;
+
     switch (type) {
     case SYS_RES_IOPORT:
 	rm = &acpi_rman_io;
@@ -1311,6 +1327,7 @@ acpi_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	return (NULL);
     }
 
+    KASSERT(start + count - 1 == end, ("wildcard resource range"));
     res = rman_reserve_resource(rm, start, end, count, flags & ~RF_ACTIVE,
 	child);
     if (res == NULL)
@@ -1798,23 +1815,29 @@ acpi_probe_children(device_t bus)
 static void
 acpi_probe_order(ACPI_HANDLE handle, int *order)
 {
-    ACPI_OBJECT_TYPE type;
+	ACPI_OBJECT_TYPE type;
 
-    /*
-     * 1. CPUs
-     * 2. I/O port and memory system resource holders
-     * 3. Embedded controllers (to handle early accesses)
-     * 4. PCI Link Devices
-     */
-    AcpiGetType(handle, &type);
-    if (type == ACPI_TYPE_PROCESSOR)
-	*order = 1;
-    else if (acpi_MatchHid(handle, "PNP0C01") || acpi_MatchHid(handle, "PNP0C02"))
-	*order = 2;
-    else if (acpi_MatchHid(handle, "PNP0C09"))
-	*order = 3;
-    else if (acpi_MatchHid(handle, "PNP0C0F"))
-	*order = 4;
+	/*
+	 * 0. CPUs
+	 * 1. I/O port and memory system resource holders
+	 * 2. Clocks and timers (to handle early accesses)
+	 * 3. Embedded controllers (to handle early accesses)
+	 * 4. PCI Link Devices
+	 */
+	AcpiGetType(handle, &type);
+	if (type == ACPI_TYPE_PROCESSOR)
+		*order = 0;
+	else if (acpi_MatchHid(handle, "PNP0C01") ||
+	    acpi_MatchHid(handle, "PNP0C02"))
+		*order = 1;
+	else if (acpi_MatchHid(handle, "PNP0100") ||
+	    acpi_MatchHid(handle, "PNP0103") ||
+	    acpi_MatchHid(handle, "PNP0B00"))
+		*order = 2;
+	else if (acpi_MatchHid(handle, "PNP0C09"))
+		*order = 3;
+	else if (acpi_MatchHid(handle, "PNP0C0F"))
+		*order = 4;
 }
 
 /*
@@ -1875,7 +1898,7 @@ acpi_probe_child(ACPI_HANDLE handle, UINT32 level, void *context, void **status)
 	     * resources).
 	     */
 	    ACPI_DEBUG_PRINT((ACPI_DB_OBJECTS, "scanning '%s'\n", handle_str));
-	    order = level * 10 + 100;
+	    order = level * 10 + ACPI_DEV_BASE_ORDER;
 	    acpi_probe_order(handle, &order);
 	    child = BUS_ADD_CHILD(bus, order, NULL, -1);
 	    if (child == NULL)
@@ -2692,7 +2715,8 @@ acpi_EnterSleepState(struct acpi_softc *sc, int state)
 	DELAY(sc->acpi_sleep_delay * 1000000);
 
     if (state != ACPI_STATE_S1) {
-	acpi_sleep_machdep(sc, state);
+	if (acpi_sleep_machdep(sc, state))
+		goto backout;
 
 	/* Re-enable ACPI hardware on wakeup from sleep state 4. */
 	if (state == ACPI_STATE_S4)
@@ -2717,12 +2741,16 @@ backout:
 	acpi_wake_prep_walk(state);
 	sc->acpi_sstate = ACPI_STATE_S0;
     }
-    if (slp_state >= ACPI_SS_SLP_PREP)
+    if (slp_state >= ACPI_SS_SLP_PREP) {
+	AcpiLeaveSleepStatePrep(state);
 	AcpiLeaveSleepState(state);
+    }
     if (slp_state >= ACPI_SS_DEV_SUSPEND)
 	DEVICE_RESUME(root_bus);
-    if (slp_state >= ACPI_SS_SLEPT)
+    if (slp_state >= ACPI_SS_SLEPT) {
+	acpi_resync_clock(sc);
 	acpi_enable_fixed_events(sc);
+    }
     sc->acpi_next_sstate = 0;
 
     mtx_unlock(&Giant);
@@ -2745,10 +2773,10 @@ backout:
     return_ACPI_STATUS (status);
 }
 
-void
+static void
 acpi_resync_clock(struct acpi_softc *sc)
 {
-
+#ifdef __amd64__
     if (!acpi_reset_clock)
 	return;
 
@@ -2758,6 +2786,7 @@ acpi_resync_clock(struct acpi_softc *sc)
     (void)timecounter->tc_get_timecount(timecounter);
     (void)timecounter->tc_get_timecount(timecounter);
     inittodr(time_second + sc->acpi_sleep_delay);
+#endif
 }
 
 /* Enable or disable the device's wake GPE. */

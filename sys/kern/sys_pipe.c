@@ -569,12 +569,7 @@ pipe_create(pipe, backing)
 		/* If we're not backing this pipe, no need to do anything. */
 		error = 0;
 	}
-	if (error == 0) {
-		pipe->pipe_ino = alloc_unr(pipeino_unr);
-		if (pipe->pipe_ino == -1)
-			/* pipeclose will clear allocated kva */
-			error = ENOMEM;
-	}
+	pipe->pipe_ino = -1;
 	return (error);
 }
 
@@ -622,7 +617,7 @@ pipe_read(fp, uio, active_cred, flags, td)
 			size = rpipe->pipe_buffer.size - rpipe->pipe_buffer.out;
 			if (size > rpipe->pipe_buffer.cnt)
 				size = rpipe->pipe_buffer.cnt;
-			if (size > (u_int) uio->uio_resid)
+			if (size > uio->uio_resid)
 				size = (u_int) uio->uio_resid;
 
 			PIPE_UNLOCK(rpipe);
@@ -655,7 +650,7 @@ pipe_read(fp, uio, active_cred, flags, td)
 		 */
 		} else if ((size = rpipe->pipe_map.cnt) &&
 			   (rpipe->pipe_state & PIPE_DIRECTW)) {
-			if (size > (u_int) uio->uio_resid)
+			if (size > uio->uio_resid)
 				size = (u_int) uio->uio_resid;
 
 			PIPE_UNLOCK(rpipe);
@@ -769,9 +764,10 @@ pipe_build_write_buffer(wpipe, uio)
 	KASSERT(wpipe->pipe_state & PIPE_DIRECTW,
 		("Clone attempt on non-direct write pipe!"));
 
-	size = (u_int) uio->uio_iov->iov_len;
-	if (size > wpipe->pipe_buffer.size)
-		size = wpipe->pipe_buffer.size;
+	if (uio->uio_iov->iov_len > wpipe->pipe_buffer.size)
+                size = wpipe->pipe_buffer.size;
+	else
+                size = uio->uio_iov->iov_len;
 
 	if ((i = vm_fault_quick_hold_pages(&curproc->p_vmspace->vm_map,
 	    (vm_offset_t)uio->uio_iov->iov_base, size, VM_PROT_READ,
@@ -965,7 +961,7 @@ pipe_write(fp, uio, active_cred, flags, td)
 	int flags;
 {
 	int error = 0;
-	int desiredsize, orig_resid;
+	size_t desiredsize, orig_resid;
 	struct pipe *wpipe, *rpipe;
 
 	rpipe = fp->f_data;
@@ -1354,7 +1350,8 @@ pipe_poll(fp, events, active_cred, td)
 		if (wpipe->pipe_present != PIPE_ACTIVE ||
 		    (wpipe->pipe_state & PIPE_EOF) ||
 		    (((wpipe->pipe_state & PIPE_DIRECTW) == 0) &&
-		     (wpipe->pipe_buffer.size - wpipe->pipe_buffer.cnt) >= PIPE_BUF))
+		     ((wpipe->pipe_buffer.size - wpipe->pipe_buffer.cnt) >= PIPE_BUF ||
+			 wpipe->pipe_buffer.size == 0)))
 			revents |= events & (POLLOUT | POLLWRNORM);
 
 	if ((events & POLLINIGNEOF) == 0) {
@@ -1398,16 +1395,40 @@ pipe_stat(fp, ub, active_cred, td)
 	struct ucred *active_cred;
 	struct thread *td;
 {
-	struct pipe *pipe = fp->f_data;
+	struct pipe *pipe;
+	int new_unr;
 #ifdef MAC
 	int error;
-
-	PIPE_LOCK(pipe);
-	error = mac_pipe_check_stat(active_cred, pipe->pipe_pair);
-	PIPE_UNLOCK(pipe);
-	if (error)
-		return (error);
 #endif
+
+	pipe = fp->f_data;
+	PIPE_LOCK(pipe);
+#ifdef MAC
+	error = mac_pipe_check_stat(active_cred, pipe->pipe_pair);
+	if (error) {
+		PIPE_UNLOCK(pipe);
+		return (error);
+	}
+#endif
+	/*
+	 * Lazily allocate an inode number for the pipe.  Most pipe
+	 * users do not call fstat(2) on the pipe, which means that
+	 * postponing the inode allocation until it is must be
+	 * returned to userland is useful.  If alloc_unr failed,
+	 * assign st_ino zero instead of returning an error.
+	 * Special pipe_ino values:
+	 *  -1 - not yet initialized;
+	 *  0  - alloc_unr failed, return 0 as st_ino forever.
+	 */
+	if (pipe->pipe_ino == (ino_t)-1) {
+		new_unr = alloc_unr(pipeino_unr);
+		if (new_unr != -1)
+			pipe->pipe_ino = new_unr;
+		else
+			pipe->pipe_ino = 0;
+	}
+	PIPE_UNLOCK(pipe);
+
 	bzero(ub, sizeof(*ub));
 	ub->st_mode = S_IFIFO;
 	ub->st_blksize = PAGE_SIZE;
@@ -1554,8 +1575,8 @@ pipeclose(cpipe)
 	} else
 		PIPE_UNLOCK(cpipe);
 
-	if (ino > 0)
-		free_unr(pipeino_unr, cpipe->pipe_ino);
+	if (ino != 0 && ino != (ino_t)-1)
+		free_unr(pipeino_unr, ino);
 }
 
 /*ARGSUSED*/
@@ -1641,7 +1662,8 @@ filt_pipewrite(struct knote *kn, long hint)
 		PIPE_UNLOCK(rpipe);
 		return (1);
 	}
-	kn->kn_data = wpipe->pipe_buffer.size - wpipe->pipe_buffer.cnt;
+	kn->kn_data = (wpipe->pipe_buffer.size > 0) ?
+	    (wpipe->pipe_buffer.size - wpipe->pipe_buffer.cnt) : PIPE_BUF;
 	if (wpipe->pipe_state & PIPE_DIRECTW)
 		kn->kn_data = 0;
 

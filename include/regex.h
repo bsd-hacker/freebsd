@@ -1,286 +1,116 @@
-/* $FreeBSD$ */
+/*-
+ * Copyright (c) 1992 Henry Spencer.
+ * Copyright (c) 1992, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Henry Spencer of the University of Toronto.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)regex.h	8.2 (Berkeley) 1/3/94
+ * $FreeBSD$
+ */
 
-/*
-  tre.h - TRE public API definitions
+#ifndef _REGEX_H_
+#define	_REGEX_H_
 
-  This software is released under a BSD-style license.
-  See the file LICENSE for details and copyright.
+#include <sys/cdefs.h>
+#include <sys/_types.h>
 
-*/
+/* types */
+typedef	__off_t		regoff_t;
 
-#ifndef REGEX_H
-#define REGEX_H 1
-
-#define TRE_WCHAR 1
-#define TRE_APPROX 1
-
-#include <sys/types.h>
-
-#ifdef TRE_WCHAR
-#include <wchar.h>
+#ifndef _SIZE_T_DECLARED
+typedef	__size_t	size_t;
+#define	_SIZE_T_DECLARED
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#ifndef TRE_LIBC_BUILD
-#define tre_regcomp     regcomp
-#define tre_regerror    regerror
-#define tre_regexec     regexec
-#define tre_regfree     regfree
-
-#define tre_regacomp    regacomp
-#define tre_regaexec    regaexec
-#define tre_regancomp   regancomp
-#define tre_reganexec   reganexec
-#define tre_regawncomp  regawncomp
-#define tre_regawnexec  regawnexec
-#define tre_regncomp    regncomp
-#define tre_regnexec    regnexec
-#define tre_regwcomp    regwcomp
-#define tre_regwexec    regwexec
-#define tre_regwncomp   regwncomp
-#define tre_regwnexec   regwnexec
-
-#define FUNC_DECL(f)	f
-#else
-#define regcomp		tre_regcomp
-#define regerror	tre_regerror
-#define regexec		tre_regexec
-#define regfree		tre_regfree
-
-#define regacomp	tre_regacomp
-#define regaexec	tre_regaexec
-#define regancomp	tre_regancomp
-#define reganexec	tre_reganexec
-#define regawncomp	tre_regawncomp
-#define regawnexec	tre_regawnexec
-#define regncomp	tre_regncomp
-#define regnexec	tre_regnexec
-#define regwcomp	tre_regwcomp
-#define regwexec	tre_regwexec
-#define regwncomp	tre_regwncomp
-#define regwnexec	tre_regwnexec
-
-#define FUNC_DECL(f)	tre_##f
-#endif
-
-typedef int regoff_t;
 typedef struct {
-  size_t re_nsub;  /* Number of parenthesized subexpressions. */
-  void *value;	   /* For internal use only. */
-  void *shortcut;  /* For internal use only. */
-  void *heur;	   /* For internal use only. */
-  const char *re_endp;
-#if TRE_WCHAR
-  const wchar_t *re_wendp;
-#endif
+	int re_magic;
+	size_t re_nsub;		/* number of parenthesized subexpressions */
+	const char *re_endp;	/* end pointer for REG_PEND */
+	struct re_guts *re_g;	/* none of your business :-) */
 } regex_t;
 
 typedef struct {
-  size_t p;
-  regoff_t rm_so;
-  regoff_t rm_eo;
+	regoff_t rm_so;		/* start of match */
+	regoff_t rm_eo;		/* end of match */
 } regmatch_t;
 
+/* regcomp() flags */
+#define	REG_BASIC	0000
+#define	REG_EXTENDED	0001
+#define	REG_ICASE	0002
+#define	REG_NOSUB	0004
+#define	REG_NEWLINE	0010
+#define	REG_NOSPEC	0020
+#define	REG_PEND	0040
+#define	REG_DUMP	0200
 
-typedef enum {
-  REG_OK = 0,		/* No error. */
-  /* POSIX tre_regcomp() return error codes.  (In the order listed in the
-     standard.)	 */
-  REG_NOMATCH,		/* No match. */
-  REG_BADPAT,		/* Invalid regexp. */
-  REG_ECOLLATE,		/* Unknown collating element. */
-  REG_ECTYPE,		/* Unknown character class name. */
-  REG_EESCAPE,		/* Trailing backslash. */
-  REG_ESUBREG,		/* Invalid back reference. */
-  REG_EBRACK,		/* "[]" imbalance */
-  REG_EPAREN,		/* "\(\)" or "()" imbalance */
-  REG_EBRACE,		/* "\{\}" or "{}" imbalance */
-  REG_BADBR,		/* Invalid content of {} */
-  REG_ERANGE,		/* Invalid use of range operator */
-  REG_ESPACE,		/* Out of memory.  */
-  REG_BADRPT            /* Invalid use of repetition operators. */
-} reg_errcode_t;
+/* regerror() flags */
+#define	REG_ENOSYS	(-1)
+#define	REG_NOMATCH	 1
+#define	REG_BADPAT	 2
+#define	REG_ECOLLATE	 3
+#define	REG_ECTYPE	 4
+#define	REG_EESCAPE	 5
+#define	REG_ESUBREG	 6
+#define	REG_EBRACK	 7
+#define	REG_EPAREN	 8
+#define	REG_EBRACE	 9
+#define	REG_BADBR	10
+#define	REG_ERANGE	11
+#define	REG_ESPACE	12
+#define	REG_BADRPT	13
+#define	REG_EMPTY	14
+#define	REG_ASSERT	15
+#define	REG_INVARG	16
+#define	REG_ILLSEQ	17
+#define	REG_ATOI	255	/* convert name to number (!) */
+#define	REG_ITOA	0400	/* convert number to name (!) */
 
-/* POSIX tre_regcomp() flags. */
-#define REG_EXTENDED	1
-#define REG_ICASE	(REG_EXTENDED << 1)
-#define REG_NEWLINE	(REG_ICASE << 1)
-#define REG_NOSUB	(REG_NEWLINE << 1)
+/* regexec() flags */
+#define	REG_NOTBOL	00001
+#define	REG_NOTEOL	00002
+#define	REG_STARTEND	00004
+#define	REG_TRACE	00400	/* tracing of execution */
+#define	REG_LARGE	01000	/* force large representation */
+#define	REG_BACKR	02000	/* force use of backref code */
 
-/* Extra tre_regcomp() flags. */
-#define REG_BASIC	0
-#define REG_LITERAL	(REG_NOSUB << 1)
-#define REG_RIGHT_ASSOC (REG_LITERAL << 1)
-#define REG_UNGREEDY    (REG_RIGHT_ASSOC << 1)
-#define REG_PEND	(REG_UNGREEDY << 1)
-#define REG_GNU         (REG_PEND << 1)
-#define REG_WORD	(REG_GNU << 1)
+__BEGIN_DECLS
+int	regcomp(regex_t * __restrict, const char * __restrict, int);
+size_t	regerror(int, const regex_t * __restrict, char * __restrict, size_t);
+/*
+ * XXX forth parameter should be `regmatch_t [__restrict]', but isn't because
+ * of a bug in GCC 3.2 (when -std=c99 is specified) which perceives this as a
+ * syntax error.
+ */
+int	regexec(const regex_t * __restrict, const char * __restrict, size_t,
+	    regmatch_t * __restrict, int);
+void	regfree(regex_t *);
+__END_DECLS
 
-/* POSIX tre_regexec() flags. */
-#define REG_NOTBOL 1
-#define REG_NOTEOL (REG_NOTBOL << 1)
-
-/* Extra tre_regexec() flags. */
-#define REG_APPROX_MATCHER	 (REG_NOTEOL << 1)
-#define REG_BACKTRACKING_MATCHER (REG_APPROX_MATCHER << 1)
-#define REG_STARTEND		 (REG_BACKTRACKING_MATCHER << 1)
-
-/* REG_NOSPEC and REG_LITERAL mean the same thing. */
-#if defined(REG_LITERAL) && !defined(REG_NOSPEC)
-#define REG_NOSPEC	REG_LITERAL
-#elif defined(REG_NOSPEC) && !defined(REG_LITERAL)
-#define REG_LITERAL	REG_NOSPEC
-#endif /* defined(REG_NOSPEC) */
-
-/* The maximum number of iterations in a bound expression. */
-#undef RE_DUP_MAX
-#define RE_DUP_MAX 255
-
-/* The POSIX.2 regexp functions */
-extern int
-FUNC_DECL(regcomp)(regex_t *preg, const char *regex, int cflags);
-
-extern int
-FUNC_DECL(regexec)(const regex_t *preg, const char *string, size_t nmatch,
-	regmatch_t pmatch[], int eflags);
-
-extern size_t
-FUNC_DECL(regerror)(int errcode, const regex_t *preg, char *errbuf,
-	 size_t errbuf_size);
-
-extern void
-FUNC_DECL(regfree)(regex_t *preg);
-
-#ifdef TRE_WCHAR
-#include <wchar.h>
-
-/* Wide character versions (not in POSIX.2). */
-extern int
-FUNC_DECL(regwcomp)(regex_t *preg, const wchar_t *regex, int cflags);
-
-extern int
-FUNC_DECL(regwexec)(const regex_t *preg, const wchar_t *string,
-	 size_t nmatch, regmatch_t pmatch[], int eflags);
-#endif /* TRE_WCHAR */
-
-/* Versions with a maximum length argument and therefore the capability to
-   handle null characters in the middle of the strings (not in POSIX.2). */
-extern int
-FUNC_DECL(regncomp)(regex_t *preg, const char *regex, size_t len, int cflags);
-
-extern int
-FUNC_DECL(regnexec)(const regex_t *preg, const char *string, size_t len,
-	 size_t nmatch, regmatch_t pmatch[], int eflags);
-
-#ifdef TRE_WCHAR
-extern int
-FUNC_DECL(regwncomp)(regex_t *preg, const wchar_t *regex, size_t len, int cflags);
-
-extern int
-FUNC_DECL(regwnexec)(const regex_t *preg, const wchar_t *string, size_t len,
-	  size_t nmatch, regmatch_t pmatch[], int eflags);
-#endif /* TRE_WCHAR */
-
-#ifdef TRE_APPROX
-
-/* Approximate matching parameter struct. */
-typedef struct {
-  int cost_ins;	       /* Default cost of an inserted character. */
-  int cost_del;	       /* Default cost of a deleted character. */
-  int cost_subst;      /* Default cost of a substituted character. */
-  int max_cost;	       /* Maximum allowed cost of a match. */
-
-  int max_ins;	       /* Maximum allowed number of inserts. */
-  int max_del;	       /* Maximum allowed number of deletes. */
-  int max_subst;       /* Maximum allowed number of substitutes. */
-  int max_err;	       /* Maximum allowed number of errors total. */
-} regaparams_t;
-
-/* Approximate matching result struct. */
-typedef struct {
-  size_t nmatch;       /* Length of pmatch[] array. */
-  regmatch_t *pmatch;  /* Submatch data. */
-  int cost;	       /* Cost of the match. */
-  int num_ins;	       /* Number of inserts in the match. */
-  int num_del;	       /* Number of deletes in the match. */
-  int num_subst;       /* Number of substitutes in the match. */
-} regamatch_t;
-
-
-/* Approximate matching functions. */
-extern int
-FUNC_DECL(regaexec)(const regex_t *preg, const char *string,
-	 regamatch_t *match, regaparams_t params, int eflags);
-
-extern int
-FUNC_DECL(reganexec)(const regex_t *preg, const char *string, size_t len,
-	  regamatch_t *match, regaparams_t params, int eflags);
-#ifdef TRE_WCHAR
-/* Wide character approximate matching. */
-extern int
-FUNC_DECL(regawexec)(const regex_t *preg, const wchar_t *string,
-	  regamatch_t *match, regaparams_t params, int eflags);
-
-extern int
-FUNC_DECL(regawnexec)(const regex_t *preg, const wchar_t *string, size_t len,
-	   regamatch_t *match, regaparams_t params, int eflags);
-#endif /* TRE_WCHAR */
-
-/* Sets the parameters to default values. */
-extern void
-tre_regaparams_default(regaparams_t *params);
-#endif /* TRE_APPROX */
-
-#ifdef TRE_WCHAR
-typedef wchar_t tre_char_t;
-#else /* !TRE_WCHAR */
-typedef unsigned char tre_char_t;
-#endif /* !TRE_WCHAR */
-
-typedef struct {
-  int (*get_next_char)(tre_char_t *c, unsigned int *pos_add, void *context);
-  void (*rewind)(size_t pos, void *context);
-  int (*compare)(size_t pos1, size_t pos2, size_t len, void *context);
-  void *context;
-} tre_str_source;
-
-extern int
-FUNC_DECL(reguexec)(const regex_t *preg, const tre_str_source *string,
-	 size_t nmatch, regmatch_t pmatch[], int eflags);
-
-/* Returns the version string.	The returned string is static. */
-extern char *
-tre_version(void);
-
-/* Returns the value for a config parameter.  The type to which `result'
-   must point to depends of the value of `query', see documentation for
-   more details. */
-extern int
-tre_config(int query, void *result);
-
-enum {
-  TRE_CONFIG_APPROX,
-  TRE_CONFIG_WCHAR,
-  TRE_CONFIG_MULTIBYTE,
-  TRE_CONFIG_SYSTEM_ABI,
-  TRE_CONFIG_VERSION
-};
-
-/* Returns 1 if the compiled pattern has back references, 0 if not. */
-extern int
-tre_have_backrefs(const regex_t *preg);
-
-/* Returns 1 if the compiled pattern uses approximate matching features,
-   0 if not. */
-extern int
-tre_have_approx(const regex_t *preg);
-
-#ifdef __cplusplus
-}
-#endif
-#endif				/* REGEX_H */
-
-/* EOF */
+#endif /* !_REGEX_H_ */

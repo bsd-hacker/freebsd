@@ -34,16 +34,11 @@ __FBSDID("$FreeBSD$");
  */
 
 #include "opt_ipfw.h"
-#if !defined(KLD_MODULE)
-#include "opt_ipdivert.h"
-#include "opt_ipdn.h"
 #include "opt_inet.h"
 #ifndef INET
 #error IPFIREWALL requires INET.
 #endif /* INET */
-#endif
 #include "opt_inet6.h"
-#include "opt_ipsec.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -574,7 +569,6 @@ check_ipfw_struct(struct ip_fw *rule, int size)
 		case O_IPPRECEDENCE:
 		case O_IPVER:
 		case O_SOCKARG:
-		case O_TCPWIN:
 		case O_TCPFLAGS:
 		case O_TCPOPTS:
 		case O_ESTAB:
@@ -684,6 +678,7 @@ check_ipfw_struct(struct ip_fw *rule, int size)
 		case O_IPTTL:
 		case O_IPLEN:
 		case O_TCPDATALEN:
+		case O_TCPWIN:
 		case O_TAGGED:
 			if (cmdlen < 1 || cmdlen > 31)
 				goto bad_size;
