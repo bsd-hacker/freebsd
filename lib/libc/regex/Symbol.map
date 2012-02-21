@@ -3,6 +3,15 @@
  */
 
 FBSD_1.2 {
+	mregncomp;
+	mregnexec;
+	mregcomp;
+	mregexec;
+	mregfree;
+	mregwcomp;
+	mregwexec;
+	mregwncomp;
+	mregwnexec;
 	regacomp;
 	regaexec;
 	regancomp;
@@ -24,6 +33,15 @@ FBSD_1.2 {
 };
 
 FBSDprivate_1.0 {
+	tre_mregncomp;
+	tre_mregnexec;
+	tre_mregcomp;
+	tre_mregexec;
+	tre_mregfree;
+	tre_mregwcomp;
+	tre_mregwexec;
+	tre_mregwncomp;
+	tre_mregwnexec;
 	tre_regacomp;
 	tre_regaexec;
 	tre_regancomp;
