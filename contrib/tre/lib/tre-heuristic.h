@@ -1,7 +1,6 @@
 #ifndef TRE_HEURISTIC_H
 #define TRE_HEURISTIC_H 1
 
-#include <fastmatch.h>
 #include <stdbool.h>
 
 #include "tre-fastmatch.h"
