@@ -1,13 +1,39 @@
 #ifndef TRE_FASTMATCH_H
 #define TRE_FASTMATCH_H 1
 
-#include <fastmatch.h>
 #include <limits.h>
 #include <regex.h>
 #include <stdbool.h>
+#include <wchar.h>
 
 #include "hashtable.h"
 #include "tre-internal.h"
+
+typedef struct {
+  size_t wlen;
+  size_t len;
+  wchar_t *wpattern;
+  bool *wescmap;
+  unsigned int qsBc[UCHAR_MAX + 1];
+  unsigned int *bmGs;
+  char *pattern;
+  bool *escmap;
+  unsigned int defBc;
+  void *qsBc_table;
+  unsigned int *sbmGs;
+  const char *re_endp;
+
+  /* flags */
+  bool hasdot;
+  bool bol;
+  bool eol;
+  bool word;
+  bool icase;
+  bool newline;
+  bool nosub;
+  bool matchall;
+  bool reversed;
+} fastmatch_t;
 
 int
 tre_proc_literal(fastmatch_t *, const tre_char_t *, size_t,
