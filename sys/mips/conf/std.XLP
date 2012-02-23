@@ -89,8 +89,19 @@ device		ehci			# EHCI PCI->USB interface (USB 2.0)
 #device		ugen			# Generic
 #device		uhid			# "Human Interface Devices"
 device		umass			# Requires scbus and da
+#
 # i2c driver and devices
+#
 device		iic
 device		iicbus
 device		iicoc
 device		ds1374			# RTC on boards
+#
+# Crypto
+#
+device		crypto
+device		cryptodev
+device		nlmsec
+device		nlmrsa
+options		IPSEC
+options 	GEOM_ELI
