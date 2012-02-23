@@ -25,28 +25,41 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  *
- * NETLOGIC_BSD
- * $FreeBSD$
- */
+ * NETLOGIC_BSD */
 
-#ifndef _NLM_MSGRING_H
-#define	_NLM_MSGRING_H
-#define	CMS_DEFAULT_CREDIT	50
-/*
- * packets are sent to VC 0 of a thread
- * freebacks are sent to VC 3 of a thread
- */
-#define	XLPGE_RX_VC		0
-#define	XLPGE_FB_VC		3
+#include <machine/asm.h>
 
-extern uint32_t xlp_msg_thread_mask;
+	.text
+	.align	2
+	.globl	_start
+	.ent	_start
+_start:
+	.set	noreorder
+	la	gp, _gp
+	.end 	_start
 
-struct nlm_fmn_msg;
-typedef void (*msgring_handler)(int, int, int, int, struct nlm_fmn_msg *, void *);
+	.globl	__stack
 
-int register_msgring_handler(int startb, int endb, msgring_handler action,
-		                    void *arg);
-int xlp_handle_msg_vc(u_int vcmask, int max_msgs);
-void xlp_msgring_cpu_init(int, int, int);
-void xlp_cms_enable_intr(int , int , int , int);
-#endif /* _NLM_MSGRING_H */
+	.ent	zerobss
+zerobss:
+	la	v0, _fbss
+	la	v1, _end
+3:
+	sw	zero, 0(v0)
+	bltu	v0,v1,3b
+	addiu	v0,v0,4			# executed in delay slot
+	la	sp, __stack		# set stack pointer
+	.end	zerobss
+
+	.ent	init
+init:
+	addiu	a1,sp,32		# argv = sp + 32
+	addiu	a2,sp,40		# envp = sp + 40
+	sw	zero,(a1)		# argv[argc] = 0
+	sw	zero,(a2)		# envp[0] = 0
+	jal	main			# call the program start function
+	move	a0,zero			# set argc to 0
+1:	b	1b
+	nop
+	.end	init
+
