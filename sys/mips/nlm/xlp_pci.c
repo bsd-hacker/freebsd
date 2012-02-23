@@ -59,6 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <mips/nlm/hal/haldefs.h>
 #include <mips/nlm/interrupt.h>
 #include <mips/nlm/hal/iomap.h>
+#include <mips/nlm/hal/i2c.h>
 #include <mips/nlm/hal/mips-extns.h>
 #include <mips/nlm/hal/pic.h>
 #include <mips/nlm/hal/bridge.h>
@@ -492,6 +493,14 @@ assign_soc_resource(device_t child, int type, u_long *startp, u_long *endp,
 		switch (devid) {
 		case PCI_DEVICE_ID_NLM_UART:
 			*va = nlm_get_uart_regbase(node, inst);
+			*startp = MIPS_KSEG1_TO_PHYS(*va);
+			*countp = 0x100;
+			*rm = &emul_rman;
+			*bst = uart_bus_space_mem;
+			break;
+
+		case PCI_DEVICE_ID_NLM_I2C:
+			*va = nlm_get_i2c_regbase(node, unit);
 			*startp = MIPS_KSEG1_TO_PHYS(*va);
 			*countp = 0x100;
 			*rm = &emul_rman;
