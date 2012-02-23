@@ -25,21 +25,19 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  *
- * NETLOGIC_BSD
- * $FreeBSD$
- */
+ * NETLOGIC_BSD */
 
-#ifndef _NLM_MSGRING_H
-#define	_NLM_MSGRING_H
-#define	CMS_DEFAULT_CREDIT	50
-extern uint32_t xlp_msg_thread_mask;
+#ifndef __NLM_I2C_H__
+#define	__NLM_I2C_H__
 
-struct nlm_fmn_msg;
-typedef void (*msgring_handler)(int, int, int, int, struct nlm_fmn_msg *, void *);
+#if !defined(LOCORE) && !defined(__ASSEMBLY__)
 
-int register_msgring_handler(int startb, int endb, msgring_handler action,
-		                    void *arg);
-int xlp_handle_msg_vc(u_int vcmask, int max_msgs);
-void xlp_msgring_cpu_init(int, int, int);
-void xlp_cms_enable_intr(int , int , int , int);
-#endif /* _NLM_MSGRING_H */
+#define	nlm_read_bridge_reg(b, r)	nlm_read_reg(b, r)
+#define	nlm_write_bridge_reg(b, r, v)	nlm_write_reg(b, r, v)
+#define	nlm_get_i2c_pcibase(node, inst)	\
+		nlm_pcicfg_base(XLP_IO_I2C_OFFSET(node, inst))
+#define	nlm_get_i2c_regbase(node, inst)	\
+		(nlm_get_i2c_pcibase(node, inst) + XLP_IO_PCI_HDRSZ)
+
+#endif
+#endif
