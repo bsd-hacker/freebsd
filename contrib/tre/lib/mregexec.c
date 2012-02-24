@@ -294,14 +294,15 @@ tre_mregnexec(const mregex_t *preg, const char *str, size_t len,
     CALL_WITH_OFFSET(tre_mmatch(&str[offset], slen, type, nmatch,
                      pmatch, eflags, preg));
   else
-    return tre_mmatch(str, len, type, nmatch, pmatch, eflags, preg);
+    return tre_mmatch(str, len == (unsigned)-1 ? strlen(str) : len,
+		      type, nmatch, pmatch, eflags, preg);
 }
 
 int
 tre_mregexec(const mregex_t *preg, const char *str,
 	size_t nmatch, regmatch_t pmatch[], int eflags)
 {
-  return tre_mregnexec(preg, str, strlen(str), nmatch, pmatch, eflags);
+  return tre_mregnexec(preg, str, (unsigned)-1, nmatch, pmatch, eflags);
 }
 
 
@@ -317,14 +318,15 @@ tre_mregwnexec(const mregex_t *preg, const wchar_t *str, size_t len,
     CALL_WITH_OFFSET(tre_mmatch(&str[offset], slen, type, nmatch,
 		     pmatch, eflags, preg));
   else
-    return tre_mmatch(str, len, STR_WIDE, nmatch, pmatch, eflags, preg);
+    return tre_mmatch(str, len == (unsigned)-1 ? tre_strlen(str) : len,
+		      STR_WIDE, nmatch, pmatch, eflags, preg);
 }
 
 int
 tre_mregwexec(const mregex_t *preg, const wchar_t *str,
 	 size_t nmatch, regmatch_t pmatch[], int eflags)
 {
-  return tre_mregwnexec(preg, str, tre_strlen(str), nmatch, pmatch, eflags);
+  return tre_mregwnexec(preg, str, (unsigned)-1, nmatch, pmatch, eflags);
 }
 
 #endif /* TRE_WCHAR */
