@@ -273,7 +273,6 @@ procline(struct str *l, int nottext)
 	regmatch_t matches[MAX_LINE_MATCHES];
 	regmatch_t pmatch;
 	size_t st = 0;
-	unsigned int i;
 	int c = 0, m = 0, r = 0;
 
 	/* Loop to process the whole line */
@@ -281,44 +280,30 @@ procline(struct str *l, int nottext)
 		pmatch.rm_so = st;
 		pmatch.rm_eo = l->len;
 
-		/* Loop to compare with all the patterns */
-		for (i = 0; i < patterns; i++) {
-			r = regexec(&r_pattern[i], l->dat, 1,
-			    &pmatch, eflags);
-			r = (r == 0) ? 0 : REG_NOMATCH;
-			st = (cflags & REG_NOSUB)
-				? (size_t)l->len
-				: (size_t)pmatch.rm_eo;
-			if (r == REG_NOMATCH)
-				continue;
-			/* Check for full match */
-			if (r == 0 && xflag)
-				if (pmatch.rm_so != 0 ||
-				    (size_t)pmatch.rm_eo != l->len)
-					r = REG_NOMATCH;
-			if (r == 0) {
-				if (m == 0)
-					c++;
-				if (m < MAX_LINE_MATCHES)
-					matches[m++] = pmatch;
-				/* matches - skip further patterns */
-				if ((color == NULL && !oflag) ||
-				    qflag || lflag)
-					break;
-			}
+		r = mregexec(&preg, l->dat, 1, &pmatch, eflags);
+		st = (cflags & REG_NOSUB) ? (size_t)l->len :
+		    (size_t)pmatch.rm_eo;
+		if (r == REG_NOMATCH)
+			continue;
+		/* Check for full match */
+		if (r == REG_OK && xflag)
+			if (pmatch.rm_so != 0 ||
+			    (size_t)pmatch.rm_eo != l->len)
+				r = REG_NOMATCH;
+		if (r == REG_OK) {
+			if (m == 0)
+				c++;
+			if (m < MAX_LINE_MATCHES)
+				matches[m++] = pmatch;
+			/* matches - skip further patterns */
+			if ((color == NULL && !oflag) || qflag || lflag)
+				break;
 		}
 
 		if (vflag) {
 			c = !c;
 			break;
 		}
-
-		/* One pass if we are not recording matches */
-		if ((color == NULL && !oflag) || qflag || lflag)
-			break;
-
-		if (st == (size_t)pmatch.rm_so)
-			break; 	/* No matches */
 	}
 
 

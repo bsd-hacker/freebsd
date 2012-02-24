@@ -61,12 +61,6 @@ MLINKS+= grep.1 bzgrep.1 \
 CFLAGS+= -DWITHOUT_BZIP2
 .endif
 
-.if !defined(WITHOUT_GNU_COMPAT)
-CFLAGS+= -I/usr/include/gnu
-LDADD+=	-lgnuregex
-DPADD+=	${LIBGNUREGEX}
-.endif
-
 .if !defined(WITHOUT_NLS)
 .include "${.CURDIR}/nls/Makefile.inc"
 .else

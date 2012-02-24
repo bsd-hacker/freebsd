@@ -43,6 +43,8 @@ __FBSDID("$FreeBSD$");
 #include <limits.h>
 #include <libgen.h>
 #include <locale.h>
+#include <mregex.h>
+#include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +57,8 @@ __FBSDID("$FreeBSD$");
 #include <nl_types.h>
 nl_catd	 catalog;
 #endif
+
+#define MAX_PATTERNS 256
 
 /*
  * Default messags to use when NLS is disabled or no catalogue
@@ -81,9 +85,10 @@ int		 eflags = REG_STARTEND;
 bool		 matchall;
 
 /* Searching patterns */
-unsigned int	 patterns, pattern_sz;
-struct pat	*pattern;
-regex_t		*r_pattern;
+unsigned int 	 patterns;
+char		**pats;
+size_t		*lens;
+mregex_t	 preg;
 
 /* Filename exclusion/inclusion patterns */
 unsigned int	 fpatterns, fpattern_sz;
@@ -228,28 +233,21 @@ add_pattern(char *pat, size_t len)
 	/* Check if we can do a shortcut */
 	if (len == 0) {
 		matchall = true;
-		for (unsigned int i = 0; i < patterns; i++) {
-			free(pattern[i].pat);
-		}
-		pattern = grep_realloc(pattern, sizeof(struct pat));
-		pattern[0].pat = NULL;
-		pattern[0].len = 0;
+		for (unsigned int i = 0; i < patterns; i++)
+			free(pats[i]);
+		pats[0] = grep_strdup("");
 		patterns = 1;
 		return;
 	}
 	/* Increase size if necessary */
-	if (patterns == pattern_sz) {
-		pattern_sz *= 2;
-		pattern = grep_realloc(pattern, ++pattern_sz *
-		    sizeof(struct pat));
-	}
+
 	if (len > 0 && pat[len - 1] == '\n')
 		--len;
 	/* pat may not be NUL-terminated */
-	pattern[patterns].pat = grep_malloc(len + 1);
-	memcpy(pattern[patterns].pat, pat, len);
-	pattern[patterns].len = len;
-	pattern[patterns].pat[len] = '\0';
+	pats[patterns] = grep_malloc(len + 1);
+	memcpy(pats[patterns], pat, len);
+	pats[patterns][len] = '\0';
+	lens[patterns] = len;
 	++patterns;
 }
 
@@ -327,7 +325,7 @@ main(int argc, char *argv[])
 {
 	char **aargv, **eargv, *eopts;
 	char *ep;
-	const char *pn;
+	const char *pn, **ptr;
 	unsigned long long l;
 	unsigned int aargc, eargc, i;
 	int c, lastc, needpattern, newarg, prevoptind;
@@ -337,6 +335,9 @@ main(int argc, char *argv[])
 #ifndef WITHOUT_NLS
 	catalog = catopen("grep", NL_CAT_LOCALE);
 #endif
+
+	pats = grep_malloc(MAX_PATTERNS * sizeof(char *));
+	lens = grep_malloc(MAX_PATTERNS * sizeof(size_t));
 
 	/* Check what is the program name of the binary.  In this
 	   way we can have all the funcionalities in one binary
@@ -682,16 +683,13 @@ main(int argc, char *argv[])
 		usage();
 	}
 
-	r_pattern = grep_calloc(patterns, sizeof(*r_pattern));
-
-	/* Check if cheating is allowed (always is for fgrep). */
-	for (i = 0; i < patterns; ++i) {
-		c = regcomp(&r_pattern[i], pattern[i].pat, cflags);
-		if (c != 0) {
-			regerror(c, &r_pattern[i], re_error,
-			    RE_ERROR_BUF);
-			errx(2, "%s", re_error);
-		}
+	/* Compile patterns. */
+	ptr = (const char **)pats;
+	c = mregncomp(&preg, patterns, ptr, lens, cflags);
+	if (c != 0) {
+	  // regerror(c, &r_pattern[i], re_error, RE_ERROR_BUF);
+	  // errx(2, "%s", re_error);
+	  errx(2, "%s", "Bad patterns.");
 	}
 
 	if (lbflag)

@@ -31,6 +31,7 @@
 
 #include <bzlib.h>
 #include <limits.h>
+#include <mregex.h>
 #include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -93,15 +94,13 @@ struct str {
 	int		 line_no;
 };
 
-struct pat {
-	char		*pat;
-	int		 len;
-};
-
 struct epat {
 	char		*pat;
 	int		 mode;
 };
+
+extern char **pats;
+extern size_t *lens;
 
 /* Flags passed to regcomp() and regexec() */
 extern int	 cflags, eflags;
@@ -122,7 +121,7 @@ extern int	 tail;
 extern unsigned int dpatterns, fpatterns, patterns;
 extern struct pat *pattern;
 extern struct epat *dpattern, *fpattern;
-extern regex_t	*er_pattern, *r_pattern;
+extern mregex_t preg;
 
 /* For regex errors  */
 #define RE_ERROR_BUF	512
