@@ -285,27 +285,31 @@ procline(struct str *l, int nottext)
 		    (size_t)pmatch.rm_eo;
 		if (r == REG_NOMATCH)
 			continue;
+		else if (ret != REG_OK)
+		  // XXX: better error msg?
+		  errx(2, "Failed processing input.");
+
 		/* Check for full match */
-		if (r == REG_OK && xflag)
+		if (xflag)
 			if (pmatch.rm_so != 0 ||
 			    (size_t)pmatch.rm_eo != l->len)
-				r = REG_NOMATCH;
-		if (r == REG_OK) {
-			if (m == 0)
-				c++;
-			if (m < MAX_LINE_MATCHES)
-				matches[m++] = pmatch;
-			/* matches - skip further patterns */
-			if ((color == NULL && !oflag) || qflag || lflag)
-				break;
-		}
+				continue;
+
+		/* If reached here, we have a match. */
+		if (m == 0)
+			c++;
+		if (m < MAX_LINE_MATCHES)
+			matches[m++] = pmatch;
+
+		/* matches - skip further patterns */
+		if ((color == NULL && !oflag) || qflag || lflag)
+			break;
 
 		if (vflag) {
 			c = !c;
 			break;
 		}
 	}
-
 
 	/* Count the matches if we have a match limit */
 	if (mflag)
