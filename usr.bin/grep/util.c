@@ -285,7 +285,7 @@ procline(struct str *l, int nottext)
 		    (size_t)pmatch.rm_eo;
 		if (r == REG_NOMATCH)
 			continue;
-		else if (ret != REG_OK)
+		else if (r != REG_OK)
 		  // XXX: better error msg?
 		  errx(2, "Failed processing input.");
 
