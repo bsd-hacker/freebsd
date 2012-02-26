@@ -73,7 +73,7 @@ tre_mcompile(mregex_t *preg, size_t nr, const wchar_t **wregex,
       ret = tre_compile(&preg->patterns[i], wregex[i], wn[i],
 			regex[i], n[i], cflags);
       if (ret != REG_OK)
-	return ret;
+	goto err;
     }
 
   /* If not literal, check if any of them have fixed-length prefix. */
@@ -167,21 +167,27 @@ tre_mregncomp(mregex_t *preg, size_t nr, const char **regex,
     return REG_ESPACE;
   wlen = xmalloc(nr * sizeof(size_t));
   if (!wlen)
-    return REG_ESPACE;
+    goto err;
 
   for (i = 0; i < nr; i++)
     {
       ret = tre_convert_pattern_to_wcs(regex[i], n[i], &wregex[i], &wlen[i]);
       if (ret != REG_OK)
-	goto fail;
+	goto err;
     }
 
   wr = (const wchar_t **)wregex;
   ret = tre_mcompile(preg, nr, wr, wlen, regex, n, cflags);
 
-fail:
-  for (int j = 0; j < i; j++)
-    tre_free_wcs_pattern(wregex[j]);
+err:
+  if (wregex)
+    {
+      for (int j = 0; j < i; j++)
+	if (wregex[j])
+	  tre_free_wcs_pattern(wregex[j]);
+    }
+  if (wlen)
+    xfree(wlen);
   return ret;
 }
 
@@ -189,17 +195,17 @@ int
 tre_mregcomp(mregex_t *preg, size_t nr, const char **regex, int cflags)
 {
   int ret;
-  size_t *wlen;
+  size_t *len;
 
-  wlen = xmalloc(nr * sizeof(size_t));
-  if (!wlen)
+  len = xmalloc(nr * sizeof(size_t));
+  if (!len)
     return REG_ESPACE;
 
   for (int i = 0; i < nr; i++)
-    wlen[i] = strlen(regex[i]);
+    len[i] = strlen(regex[i]);
 
-  ret = tre_mregncomp(preg, nr, regex, wlen, cflags);
-  xfree(wlen);
+  ret = tre_mregncomp(preg, nr, regex, len, cflags);
+  xfree(len);
   return ret;
 }
 
@@ -219,21 +225,27 @@ tre_mregwncomp(mregex_t *preg, size_t nr, const wchar_t **regex,
     return REG_ESPACE;
   slen = xmalloc(nr * sizeof(size_t));
   if (!slen)
-    return REG_ESPACE;
+    goto err;
 
   for (i = 0; i < nr; i++)
     {
       ret = tre_convert_pattern_to_mbs(regex[i], n[i], &sregex[i], &slen[i]);
       if (ret != REG_OK)
-        goto fail;
+        goto err;
     }
 
   sr = (const char **)sregex;
   ret = tre_mcompile(preg, nr, regex, n, sr, slen, cflags);
 
-fail:
-  for (int j = 0; j < i; j++)
-    tre_free_mbs_pattern(sregex[j]);
+err:
+  if (sregex)
+    {
+      for (int j = 0; j < i; j++)
+	if (sregex[j])
+	  tre_free_mbs_pattern(sregex[j]);
+    }
+  if (slen)
+    xfree(slen);
   return ret;
 }
 
@@ -242,17 +254,17 @@ tre_mregwcomp(mregex_t *preg, size_t nr, const wchar_t **regex,
 	      int cflags)
 {
   int ret;
-  size_t *wlen;
+  size_t *len;
 
-  wlen = xmalloc(nr * sizeof(size_t));
-  if (!wlen)
+  len = xmalloc(nr * sizeof(size_t));
+  if (!len)
     return REG_ESPACE;
 
   for (int i = 0; i < nr; i++)
-    wlen[i] = tre_strlen(regex[i]);
+    len[i] = tre_strlen(regex[i]);
 
-  ret = tre_mregwncomp(preg, nr, regex, wlen, cflags);
-  xfree(wlen);
+  ret = tre_mregwncomp(preg, nr, regex, len, cflags);
+  xfree(len);
   return ret;
 }
 #endif /* TRE_WCHAR */
