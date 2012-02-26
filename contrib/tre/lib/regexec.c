@@ -434,7 +434,7 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
     CALL_WITH_OFFSET(tre_match(preg, &str[offset], slen, type, nmatch,
 		     pmatch, eflags));
   else
-    return tre_match(preg, str, len == (unsigned)-1 ? strlen(str) : len,
+    return tre_match(preg, str, len == (unsigned)-1 ? tre_strlen(str) : len,
 		     STR_WIDE, nmatch, pmatch, eflags);
 }
 
