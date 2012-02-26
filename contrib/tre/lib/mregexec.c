@@ -263,12 +263,13 @@ finish2:
 			  pm, eflags);
 	  if ((ret == REG_OK) && (pm[0].rm_so == 0))
 	    {
-	      for (int i = 0; i < nmatch; i++)
-		{
-		  pm[i].rm_so += st;
-		  pm[i].rm_eo += st;
-		  pm[i].p = rpm.p;
-		}
+	      if (need_offsets)
+		for (int i = 0; i < nmatch; i++)
+		  {
+		    pm[i].rm_so += st;
+		    pm[i].rm_eo += st;
+		    pm[i].p = rpm.p;
+		  }
 	      goto finish3;
 	    }
 	  else if ((ret != REG_NOMATCH) || (ret != REG_OK))
