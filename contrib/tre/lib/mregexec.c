@@ -235,6 +235,15 @@ finish2:
     }
 
   /*
+   * Single pattern.  Call single matcher.
+   */
+  else if (preg->type == MHEUR_SINGLE)
+    {
+      return tre_match(&preg->patterns[0], str, len, type, nmatch, pmatch,
+		       eflags);
+    }
+
+  /*
    * General case. Look for the beginning of any of the patterns with the
    * Wu-Manber algorithm and try to match from there with the automaton.
    */

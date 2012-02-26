@@ -79,6 +79,12 @@ tre_mcompile(mregex_t *preg, size_t nr, const wchar_t **wregex,
 	}
     }
 
+  if (nr == 1)
+    {
+      preg->type = MHEUR_SINGLE;
+      goto finish;
+    }
+
   /* If not literal, check if any of them have fixed-length prefix. */
   if (!(cflags & REG_LITERAL))
     for (int i = 0; i < nr; i++)

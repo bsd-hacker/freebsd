@@ -15,6 +15,7 @@
 #define MHEUR_PREFIX 1
 #define MHEUR_LONGEST 2
 #define MHEUR_LITERAL 3
+#define MHEUR_SINGLE 4
 
 typedef struct {
 	int cflags;
