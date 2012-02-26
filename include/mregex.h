@@ -37,8 +37,9 @@
 typedef struct {
 	size_t k;		/* Number of patterns */
 	regex_t *patterns;	/* regex_t structure for each pattern */
-	size_t mfrag;		/* XXX Number of fragments */
-	size_t type;		/* XXX Matching type */
+	size_t mfrag;		/* XXX (private) Number of fragments */
+	size_t type;		/* XXX (private) Matching type */
+	int err;		/* XXX (private) Which pattern failed */
 	void *searchdata;
 } mregex_t;
 
@@ -56,6 +57,9 @@ FUNC_DECL(mregexec)(const mregex_t *preg, const char *str,
 	    size_t nmatch, regmatch_t pmatch[], int eflags);
 void
 FUNC_DECL(mregfree)(mregex_t *preg);
+size_t
+FUNC_DECL(tre_mregerror)(int errcode, const mregex_t *preg,
+			 int *errpatn, char *errbuf, size_t errbuf_size);
 #ifdef TRE_WCHAR
 int
 FUNC_DECL(mregwncomp)(mregex_t *preg, size_t nr, const wchar_t **regex,

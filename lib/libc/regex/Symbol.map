@@ -6,6 +6,7 @@ FBSD_1.2 {
 	mregncomp;
 	mregnexec;
 	mregcomp;
+	mregerror;
 	mregexec;
 	mregfree;
 	mregwcomp;

@@ -73,7 +73,10 @@ tre_mcompile(mregex_t *preg, size_t nr, const wchar_t **wregex,
       ret = tre_compile(&preg->patterns[i], wregex[i], wn[i],
 			regex[i], n[i], cflags);
       if (ret != REG_OK)
-	goto err;
+	{
+	  preg->err = i;
+	  goto err;
+	}
     }
 
   /* If not literal, check if any of them have fixed-length prefix. */
