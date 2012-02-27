@@ -289,11 +289,14 @@ procline(struct str *l, int nottext)
 		  // XXX: better error msg?
 		  errx(2, "Failed processing input.");
 
-		/* Check for full match */
+		/*
+		 * Check for full match.  There is already a match so
+		 * if it fails it will not succeed later either.
+		 */
 		if (xflag)
 			if (pmatch.rm_so != 0 ||
 			    (size_t)pmatch.rm_eo != l->len)
-				continue;
+			   break;
 
 		/* If reached here, we have a match. */
 		if (m == 0)
