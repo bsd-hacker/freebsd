@@ -106,3 +106,7 @@ device		nlmsec
 device		nlmrsa
 options		IPSEC
 options 	GEOM_ELI
+
+# NOR
+device		cfi
+device		cfid
