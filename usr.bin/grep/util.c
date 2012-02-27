@@ -276,7 +276,7 @@ procline(struct str *l, int nottext)
 	int c = 0, m = 0, r = 0;
 
 	/* Loop to process the whole line */
-	while (st <= l->len) {
+	while (st < l->len) {
 		pmatch.rm_so = st;
 		pmatch.rm_eo = l->len;
 
