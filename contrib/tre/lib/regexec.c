@@ -167,8 +167,8 @@ tre_match(const regex_t *preg, const void *string, size_t len,
   heur_t *heur = preg->heur;
 
   if ((shortcut != NULL) && (type != STR_USER))
-    tre_match_fast(shortcut, string, len, type, nmatch,
-      pmatch, eflags);
+    return tre_match_fast(shortcut, string, len, type, nmatch,
+			  pmatch, eflags);
   else if ((heur != NULL) && (type != STR_USER))
     return tre_match_heur(tnfa, heur, string, len, type, nmatch,
 			  pmatch, eflags);
