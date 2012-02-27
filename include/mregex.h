@@ -10,6 +10,7 @@
 #define tre_mregncomp	mregncomp
 #define tre_mregcomp	mregcomp
 #define tre_mregnexec	mregnexec
+#define tre_mregerror	mregerror
 #define tre_mregexec	mregexec
 #define tre_mregfree	mregfree
 #define tre_mregwncomp	mregwncomp
@@ -24,6 +25,7 @@
 #define mregncomp	tre_mregncomp
 #define mregcomp	tre_mregcomp
 #define mregnexec	tre_mregnexec
+#define mregerror	tre_mregerror
 #define mregexec	tre_mregexec
 #define mregfree	tre_mregfree
 #define mregwncomp	tre_mregwncomp
@@ -58,8 +60,8 @@ FUNC_DECL(mregexec)(const mregex_t *preg, const char *str,
 void
 FUNC_DECL(mregfree)(mregex_t *preg);
 size_t
-FUNC_DECL(tre_mregerror)(int errcode, const mregex_t *preg,
-			 int *errpatn, char *errbuf, size_t errbuf_size);
+FUNC_DECL(mregerror)(int errcode, const mregex_t *preg,
+		     int *errpatn, char *errbuf, size_t errbuf_size);
 #ifdef TRE_WCHAR
 int
 FUNC_DECL(mregwncomp)(mregex_t *preg, size_t nr, const wchar_t **regex,

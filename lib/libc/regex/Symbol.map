@@ -37,6 +37,7 @@ FBSDprivate_1.0 {
 	tre_mregncomp;
 	tre_mregnexec;
 	tre_mregcomp;
+	tre_mregerror;
 	tre_mregexec;
 	tre_mregfree;
 	tre_mregwcomp;
