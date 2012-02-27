@@ -58,7 +58,7 @@ tre_mmatch(const void *str, size_t len, tre_str_type_t type,
   int ret;
   bool need_offsets;
 
-  need_offsets = (((wmsearch_t *)(preg->searchdata))->cflags & REG_NOSUB) &&
+  need_offsets = (preg->searchdata && ((wmsearch_t *)(preg->searchdata))->cflags & REG_NOSUB) &&
 		 (nmatch > 0);
 
 #define INPUT(pos) ((type == STR_WIDE) ? (const void *)&str_wide[pos] : \

@@ -58,11 +58,12 @@ tre_mcompile(mregex_t *preg, size_t nr, const wchar_t **wregex,
 	     size_t *wn, const char **regex, size_t *n, int cflags)
 {
   int ret;
-  const wchar_t **frags;
-  size_t *siz;
-  wmsearch_t *wm;
+  const wchar_t **frags = NULL;
+  size_t *siz = NULL;
+  wmsearch_t *wm = NULL;
 
   preg->k = nr;
+  preg->searchdata = NULL;
   preg->patterns = xmalloc(nr * sizeof(regex_t));
   if (!preg->patterns)
     return REG_ESPACE;
@@ -152,7 +153,7 @@ err:
     xfree(wm);
 
 finish:
-  if (!(cflags & REG_LITERAL))
+  if (!(cflags & REG_LITERAL) && !(preg->type == MHEUR_SINGLE))
     {
       if (frags)
 	xfree(frags);
@@ -168,8 +169,8 @@ tre_mregncomp(mregex_t *preg, size_t nr, const char **regex,
 {
   int i, ret;
   const wchar_t **wr;
-  wchar_t **wregex;
-  size_t *wlen;
+  wchar_t **wregex = NULL;
+  size_t *wlen = NULL;
 
   wregex = xmalloc(nr * sizeof(wchar_t *));
   if (!wregex)
@@ -226,8 +227,8 @@ tre_mregwncomp(mregex_t *preg, size_t nr, const wchar_t **regex,
 {
   int i, ret;
   const char **sr;
-  char **sregex;
-  size_t *slen;
+  char **sregex = NULL;
+  size_t *slen = NULL;
 
   sregex = xmalloc(nr * sizeof(char *));
   if (!sregex)
