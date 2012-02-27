@@ -31,6 +31,10 @@
 #include <mregex.h>
 #include <regex.h>
 
+#ifdef TRE_LIBC_BUILD
+__weak_reference(tre_mregerror, mregerror);
+#endif
+
 size_t
 tre_mregerror(int errcode, const mregex_t *preg, int *errpatn, char *errbuf,
 	      size_t errbuf_size)
