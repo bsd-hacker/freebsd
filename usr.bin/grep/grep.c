@@ -687,9 +687,10 @@ main(int argc, char *argv[])
 	ptr = (const char **)pats;
 	c = mregncomp(&preg, patterns, ptr, lens, cflags);
 	if (c != 0) {
-	  // regerror(c, &r_pattern[i], re_error, RE_ERROR_BUF);
-	  // errx(2, "%s", re_error);
-	  errx(2, "%s", "Bad patterns.");
+	  int no;
+
+	  mregerror(c, &preg, &no, re_error, RE_ERROR_BUF);
+	  errx(2, "%s:%s", pats[no], re_error);
 	}
 
 	if (lbflag)
