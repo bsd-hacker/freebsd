@@ -285,9 +285,10 @@ procline(struct str *l, int nottext)
 		    (size_t)pmatch.rm_eo;
 		if (r == REG_NOMATCH)
 			continue;
-		else if (r != REG_OK)
-		  // XXX: better error msg?
-		  errx(2, "Failed processing input.");
+		else if (r != REG_OK) {
+			mregerror(r, &preg, NULL, re_error, RE_ERROR_BUF);
+			errx(2, "%s", re_error);
+		}
 
 		/*
 		 * Check for full match.  There is already a match so
