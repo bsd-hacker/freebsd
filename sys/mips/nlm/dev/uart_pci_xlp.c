@@ -56,7 +56,7 @@ static device_method_t uart_soc_methods[] = {
 	DEVMETHOD(device_probe,		uart_soc_probe),
 	DEVMETHOD(device_attach,	uart_bus_attach),
 	DEVMETHOD(device_detach,	uart_bus_detach),
-	{ 0, 0 }
+	DEVMETHOD_END
 };
 
 static driver_t uart_soc_driver = {
