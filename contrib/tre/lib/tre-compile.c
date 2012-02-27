@@ -2033,8 +2033,8 @@ tre_compile_bm(regex_t *preg, const tre_char_t *wregex, size_t wn,
     }        
   else
     {
-too_short:
       xfree(shortcut);
+too_short:
       preg->shortcut = NULL;
       DPRINT("tre_compile_bm: pattern compilation failed for fast matcher\n");
     }
