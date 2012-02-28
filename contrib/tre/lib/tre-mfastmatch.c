@@ -266,9 +266,9 @@ fail:
 	  pmatch->rm_so = beg;						\
 	  pmatch->rm_eo = end;						\
 	  pmatch->p = idx;						\
-	  ret = REG_OK;							\
-	  goto finish;							\
 	}								\
+      ret = REG_OK;							\
+      goto finish;							\
     } while (0);
 
 #define _WMSEARCH(data, pats, sizes, mlen, tbl, dshift)			\
@@ -305,8 +305,6 @@ fail:
 				  idx);					\
 			}						\
 		    }							\
-		  else							\
-		     continue;						\
 	      pos += 1;							\
             }								\
 	}								\
@@ -326,7 +324,7 @@ tre_wmexec(const wmsearch_t *wm, const void *str, size_t len,
 	   tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
 	   int eflags)
 {
-  wmentry_t *s_entry, *p_entry;
+  wmentry_t *s_entry = NULL, *p_entry = NULL;
   const tre_char_t *wide_str = str;
   const char *byte_str = str;
   size_t pos = (type == STR_WIDE) ? wm->wm : wm->m;
