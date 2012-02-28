@@ -58,8 +58,12 @@
   for (int i = 1; i < nr; i++)						\
     wm->m_field = siz_arr[i] < wm->m_field ? siz_arr[i] : wm->m_field;	\
 									\
-  wm->sh_field = hashtable_init((wm->m_field - 1) * nr * 2, WM_B *	\
-				char_size, sizeof(wmentry_t));		\
+  /*
+   * m - WM_B + 1 fragment per pattern plus extra space to reduce	\
+   * collisions.							\
+   */									\
+  wm->sh_field = hashtable_init((wm->m_field - WM_B + 1) * nr * 2,	\
+				WM_B * char_size, sizeof(wmentry_t));	\
   if (!wm->sh_field)							\
     {									\
       ret = REG_ESPACE;							\
@@ -73,7 +77,7 @@
 									\
       /* First fragment, treat special because it is a prefix */	\
       ret = hashtable_get(wm->sh_field, pat_arr[i], entry);		\
-      sh = siz_arr[i] - WM_B;						\
+      sh = wm->m_field - WM_B;						\
       switch (ret)							\
         {								\
           case HASH_NOTFOUND:						\
@@ -88,14 +92,15 @@
           case HASH_OK:							\
             entry->shift = entry->shift < sh ? entry->shift : sh;	\
             entry->pref_list[entry->pref++] = i;			\
+	    ret = hashtable_put(wm->sh_field, pat_arr[i], entry);	\
             if (ret != HASH_UPDATED)					\
               FAIL;							\
         }								\
       /* Intermediate fragments, only shift calculated */		\
-      for (int j = 1; j < siz_arr[i] - WM_B; j++)			\
+      for (int j = 1; j < wm->m_field - WM_B; j++)			\
         {								\
           ret = hashtable_get(wm->sh_field, &pat_arr[i][j], entry);	\
-          sh = siz_arr[i] - WM_B - j;					\
+          sh = wm->m_field - WM_B - j;					\
           switch (ret)							\
             {								\
               case HASH_NOTFOUND:					\
@@ -109,11 +114,13 @@
                 break;							\
               case HASH_OK:						\
                 entry->shift = entry->shift < sh ? entry->shift : sh;	\
+		ret = hashtable_put(wm->sh_field, &pat_arr[i][j],	\
+				    entry);				\
                 if (ret != HASH_UPDATED)				\
                 FAIL;							\
 	    }								\
         }								\
-      ret = hashtable_get(wm->sh_field, &pat_arr[i][n[i] - WM_B],	\
+      ret = hashtable_get(wm->sh_field, &pat_arr[i][wm->m_field - WM_B],\
 			  entry);					\
       switch (ret)							\
         {								\
@@ -122,36 +129,43 @@
             entry->suff = 1;						\
             entry->pref = 0;						\
             entry->suff_list[0] = i;					\
-            ret = hashtable_put(wm->sh_field, &pat_arr[i][n[i] - WM_B],	\
-				entry);					\
+            ret = hashtable_put(wm->sh_field, &pat_arr[i][wm->m_field -	\
+				WM_B], entry);				\
             if (ret != HASH_OK)						\
               FAIL;							\
           case HASH_OK:							\
             entry->shift = entry->shift < sh ? entry->shift : sh;	\
             entry->suff_list[entry->suff++] = i;			\
+	    ret = hashtable_put(wm->sh_field, &pat_arr[i][wm->m_field -	\
+				WM_B], entry);				\
             if (ret != HASH_UPDATED)					\
               FAIL;							\
         }								\
     }									\
   xfree(entry);
 
-#define _SAVE_PATTERNS(dst, s, type)					\
+#define _SAVE_PATTERNS(src, ss, dst, ds, type)				\
   do									\
     {									\
       ALLOC(dst, sizeof(type *) * nr);					\
-      ALLOC(s, sizeof(size_t) * nr);					\
+      ALLOC(ds, sizeof(size_t) * nr);					\
       for (int i = 0; i < nr; i++)					\
 	{								\
-	  ALLOC(dst[i], n[i] * sizeof(type));				\
-	  memcpy(dst[i], regex[i], n[i] * sizeof(type));		\
-	  s[i] = n[i];							\
+	  ALLOC(dst[i], ss[i] * sizeof(type));				\
+	  memcpy(dst[i], src[i], ss[i] * sizeof(type));			\
+	  ds[i] = ss[i];						\
 	}								\
     } while (0);
 
+#ifdef TRE_WCHAR
 #define SAVE_PATTERNS							\
-  _SAVE_PATTERNS(wm->pat, wm->siz, char)
+  _SAVE_PATTERNS(bregex, bn, wm->pat, wm->siz, char)
 #define SAVE_PATTERNS_WIDE						\
-  _SAVE_PATTERNS(wm->wpat, wm->wsiz, tre_char_t)
+  _SAVE_PATTERNS(regex, n, wm->wpat, wm->wsiz, tre_char_t)
+#else
+#define SAVE_PATTERNS							\
+  _SAVE_PATTERNS(regex, n, wm->pat, wm->siz, char)
+#endif
 
 #ifdef TRE_WCHAR
 #define PROC_WM(pat_arr, size_arr)					\
@@ -177,15 +191,15 @@ tre_wmcomp(wmsearch_t *wm, size_t nr, const tre_char_t **regex,
   wmentry_t *entry = NULL;
   int ret;
 #ifdef TRE_WCHAR
-  char **bregex;
-  size_t *bn;
+  char **bregex = NULL;
+  size_t *bn = NULL;
 #endif
 
   ALLOC(wm, sizeof(wmsearch_t));
+  wm->wshift = NULL;
+  wm->shift = NULL;
 
 #ifdef TRE_WCHAR
-  PROC_WM_WIDE(regex, n);
-
   ALLOC(bregex, sizeof(char *) * nr);
   ALLOC(bn, sizeof(size_t) * nr);
 
@@ -205,21 +219,33 @@ tre_wmcomp(wmsearch_t *wm, size_t nr, const tre_char_t **regex,
 
   wm->pat = bregex;
   wm->siz = bn;
+
+  PROC_WM_WIDE(regex, n);
   PROC_WM(bregex, bn);
+  SAVE_PATTERNS_WIDE;
+  SAVE_PATTERNS;
+
   for (int i = 0; i < nr; i++)
     xfree(bregex[i]);
   xfree(bregex);
-
-  SAVE_PATTERNS;
-  SAVE_PATTERNS_WIDE;
+  xfree(bn);
 #else
   PROC_WM(regex, n);
   SAVE_PATTERNS;
 #endif
 
   return REG_OK;
+
 fail:
 #ifdef TRE_WCHAR
+  if (bn)
+    xfree(bn);
+  if (bregex)
+    {
+      for (int i = 0; i < nr; i++)
+	xfree(bregex[i]);
+      xfree(bregex);
+    }
   if (wm->wshift)
     hashtable_free(wm->wshift);
 #endif
