@@ -1410,9 +1410,14 @@ tcp_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 					     */
 					    if (mtu <= tcp_maxmtu(&inc, NULL))
 						tcp_hc_updatemtu(&inc, mtu);
-					}
-
-					inp = (*notify)(inp, inetctlerrmap[cmd]);
+					    /*
+					     * Communicated the new MTU
+					     * directly to tcp_mtudisc().
+					     */
+					    inp = (*notify)(inp, mtu);
+					} else
+					    inp = (*notify)(inp,
+							inetctlerrmap[cmd]);
 				}
 			}
 			if (inp != NULL)
@@ -1656,12 +1661,15 @@ tcp_drop_syn_sent(struct inpcb *inp, int errno)
  * based on the new value in the route.  Also nudge TCP to send something,
  * since we know the packet we just sent was dropped.
  * This duplicates some code in the tcp_mss() function in tcp_input.c.
+ *
+ * XXX: errno is abused to directly communicate the new MTU.
  */
 struct inpcb *
 tcp_mtudisc(struct inpcb *inp, int errno)
 {
 	struct tcpcb *tp;
 	struct socket *so;
+	int mtu;
 
 	INP_WLOCK_ASSERT(inp);
 	if ((inp->inp_flags & INP_TIMEWAIT) ||
@@ -1671,7 +1679,12 @@ tcp_mtudisc(struct inpcb *inp, int errno)
 	tp = intotcpcb(inp);
 	KASSERT(tp != NULL, ("tcp_mtudisc: tp == NULL"));
 
-	tcp_mss_update(tp, -1, NULL, NULL);
+	/* Extract the MTU from errno for IPv4. */
+	if (errno > PRC_NCMDS)
+		mtu = errno;
+	else
+		mtu = -1:
+	tcp_mss_update(tp, mtu, NULL, NULL);
   
 	so = inp->inp_socket;
 	SOCKBUF_LOCK(&so->so_snd);
