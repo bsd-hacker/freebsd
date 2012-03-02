@@ -1683,7 +1683,7 @@ tcp_mtudisc(struct inpcb *inp, int errno)
 	if (errno > PRC_NCMDS)
 		mtu = errno;
 	else
-		mtu = -1:
+		mtu = -1;
 	tcp_mss_update(tp, mtu, NULL, NULL);
   
 	so = inp->inp_socket;
