@@ -1731,10 +1731,10 @@ tcp_maxmtu(struct in_conninfo *inc, int *flags)
 	}
 	if (sro.ro_rt != NULL) {
 		ifp = sro.ro_rt->rt_ifp;
-		if (sro.ro_rt->rt_rmx.rmx_mtu == 0)
-			maxmtu = ifp->if_mtu;
-		else
+		if (sro.ro_rt->rt_rmx.rmx_mtu > 0)
 			maxmtu = min(sro.ro_rt->rt_rmx.rmx_mtu, ifp->if_mtu);
+		else
+			maxmtu = ifp->if_mtu;
 
 		/* Report additional interface capabilities. */
 		if (flags != NULL) {

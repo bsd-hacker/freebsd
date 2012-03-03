@@ -309,7 +309,8 @@ again:
 	 * Calculate MTU.  If we have a route that is up, use that,
 	 * otherwise use the interface's MTU.
 	 */
-	if (rte != NULL && (rte->rt_flags & (RTF_UP|RTF_HOST))) {
+	if (rte != NULL && (rte->rt_flags & (RTF_UP|RTF_HOST)) &&
+	    rte->rt_rmx.rmx_mtu > 0) {
 		/*
 		 * This case can happen if the user changed the MTU
 		 * of an interface after enabling IP on it.  Because

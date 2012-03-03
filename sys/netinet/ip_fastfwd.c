@@ -534,7 +534,7 @@ passout:
 	/*
 	 * Check if packet fits MTU or if hardware will fragment for us
 	 */
-	if (ro.ro_rt->rt_rmx.rmx_mtu)
+	if (ro.ro_rt->rt_rmx.rmx_mtu > 0)
 		mtu = min(ro.ro_rt->rt_rmx.rmx_mtu, ifp->if_mtu);
 	else
 		mtu = ifp->if_mtu;

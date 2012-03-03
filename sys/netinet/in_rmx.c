@@ -104,7 +104,8 @@ in_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 	if (IN_MULTICAST(ntohl(sin->sin_addr.s_addr)))
 		rt->rt_flags |= RTF_MULTICAST;
 
-	if (!rt->rt_rmx.rmx_mtu && rt->rt_ifp)
+	if (rt->rt_rmx.rmx_mtu > 0 && rt->rt_ifp != NULL &&
+	    rt->rt_rmx.rmx_mtu > rt->rt_ifp->if_mtu)
 		rt->rt_rmx.rmx_mtu = rt->rt_ifp->if_mtu;
 
 	return (rn_addroute(v_arg, n_arg, head, treenodes));
