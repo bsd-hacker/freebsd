@@ -213,8 +213,8 @@ struct xsocket {
 /* can we write something to so? */
 #define	sowriteable(so) \
     ((sbspace(&(so)->so_snd) >= (so)->so_snd.sb_lowat && \
-	(((so)->so_state&SS_ISCONNECTED) || \
-	  ((so)->so_proto->pr_flags&PR_CONNREQUIRED)==0)) || \
+	(((so)->so_state & SS_ISCONNECTED) || \
+	  ((so)->so_proto->pr_flags & PR_CONNREQUIRED)==0)) || \
      ((so)->so_snd.sb_state & SBS_CANTSENDMORE) || \
      (so)->so_error)
 
