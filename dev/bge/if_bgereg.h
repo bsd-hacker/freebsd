@@ -2691,16 +2691,6 @@ struct bge_gib {
 #define	BGE_DMA_MAXADDR		0xFFFFFFFFFF
 #endif
 
-#ifdef PAE
-#define	BGE_DMA_BNDRY		0x80000000
-#else
-#if (BUS_SPACE_MAXADDR > 0xFFFFFFFF)
-#define	BGE_DMA_BNDRY		0x100000000
-#else
-#define	BGE_DMA_BNDRY		0
-#endif
-#endif
-
 /*
  * Ring structures. Most of these reside in host memory and we tell
  * the NIC where they are via the ring control blocks. The exceptions

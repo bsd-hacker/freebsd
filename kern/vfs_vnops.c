@@ -245,8 +245,11 @@ restart:
 	if ((error = VOP_OPEN(vp, fmode, cred, td, fp)) != 0)
 		goto bad;
 
-	if (fmode & FWRITE)
+	if (fmode & FWRITE) {
 		vp->v_writecount++;
+		CTR3(KTR_VFS, "%s: vp %p v_writecount increased to %d",
+		    __func__, vp, vp->v_writecount);
+	}
 	*flagp = fmode;
 	ASSERT_VOP_LOCKED(vp, "vn_open_cred");
 	if (!mpsafe)
@@ -309,6 +312,8 @@ vn_close(vp, flags, file_cred, td)
 		VNASSERT(vp->v_writecount > 0, vp, 
 		    ("vn_close: negative writecount"));
 		vp->v_writecount--;
+		CTR3(KTR_VFS, "%s: vp %p v_writecount decreased to %d",
+		    __func__, vp, vp->v_writecount);
 	}
 	error = VOP_CLOSE(vp, flags, file_cred, td);
 	vput(vp);
@@ -373,7 +378,7 @@ vn_rdwr(rw, vp, base, len, offset, segflg, ioflg, active_cred, file_cred,
 	int ioflg;
 	struct ucred *active_cred;
 	struct ucred *file_cred;
-	int *aresid;
+	ssize_t *aresid;
 	struct thread *td;
 {
 	struct uio auio;
@@ -470,7 +475,7 @@ vn_rdwr_inchunks(rw, vp, base, len, offset, segflg, ioflg, active_cred,
 	struct thread *td;
 {
 	int error = 0;
-	int iaresid;
+	ssize_t iaresid;
 
 	VFS_ASSERT_GIANT(vp->v_mount);
 

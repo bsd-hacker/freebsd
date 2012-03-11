@@ -30,7 +30,6 @@ mips/mips/cpu.c			standard
 mips/mips/elf_machdep.c		standard
 mips/mips/exception.S		standard
 mips/mips/gdb_machdep.c		standard
-# mips/mips/mainbus.c		standard
 mips/mips/pmap.c		standard
 mips/mips/trap.c		standard
 mips/mips/vm_machdep.c		standard
@@ -89,6 +88,13 @@ libkern/umoddi3.c		optional	isa_mips32
 #XXX: We can't use these versions, as strcmp.c is included conf/files
 #libkern/mips/strcmp.S		standard
 #libkern/mips/strncmp.S		standard
+
+compat/freebsd32/freebsd32_ioctl.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_misc.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_syscalls.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_sysent.c	optional	compat_freebsd32
+kern/imgact_elf32.c			optional	compat_freebsd32
+mips/mips/freebsd32_machdep.c		optional	compat_freebsd32
 
 kern/kern_clocksource.c		standard
 kern/link_elf_obj.c		standard

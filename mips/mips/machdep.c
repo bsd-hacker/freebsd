@@ -347,16 +347,15 @@ mips_vector_init(void)
 	bcopy(MipsTLBMiss, (void *)MIPS_UTLB_MISS_EXC_VEC,
 	      MipsTLBMissEnd - MipsTLBMiss);
 
-#if defined(CPU_CNMIPS) || defined(CPU_RMI) || defined(CPU_NLM)
-/* Fake, but sufficient, for the 32-bit with 64-bit hardware addresses  */
-	bcopy(MipsTLBMiss, (void *)MIPS3_XTLB_MISS_EXC_VEC,
+#ifdef __mips_n64
+	bcopy(MipsTLBMiss, (void *)MIPS_XTLB_MISS_EXC_VEC,
 	      MipsTLBMissEnd - MipsTLBMiss);
 #endif
 
-	bcopy(MipsException, (void *)MIPS3_GEN_EXC_VEC,
+	bcopy(MipsException, (void *)MIPS_GEN_EXC_VEC,
 	      MipsExceptionEnd - MipsException);
 
-	bcopy(MipsCache, (void *)MIPS3_CACHE_ERR_EXC_VEC,
+	bcopy(MipsCache, (void *)MIPS_CACHE_ERR_EXC_VEC,
 	      MipsCacheEnd - MipsCache);
 
 	/*
@@ -406,7 +405,7 @@ mips_postboot_fixup(void)
 void
 mips_generic_reset()
 {
-	((void(*)(void))(intptr_t)MIPS_VEC_RESET)();
+	((void(*)(void))MIPS_RESET_EXC_VEC)();
 }
 
 #ifdef SMP
