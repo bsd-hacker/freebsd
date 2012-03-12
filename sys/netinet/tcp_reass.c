@@ -85,11 +85,8 @@ SYSCTL_VNET_INT(_net_inet_tcp_reass, OID_AUTO, maxsegments, CTLFLAG_RDTUN,
     &VNET_NAME(tcp_reass_maxseg), 0,
     "Global maximum number of TCP Segments in Reassembly Queue");
 
-static VNET_DEFINE(int, tcp_reass_qsize) = 0;
-#define	V_tcp_reass_qsize		VNET(tcp_reass_qsize)
 SYSCTL_VNET_PROC(_net_inet_tcp_reass, OID_AUTO, cursegments,
-    CTLTYPE_INT | CTLFLAG_RD,
-    &VNET_NAME(tcp_reass_qsize), 0, &tcp_reass_sysctl_qsize, "I",
+    (CTLTYPE_INT | CTLFLAG_RD), NULL, 0, &tcp_reass_sysctl_qsize, "I",
     "Global number of TCP Segments currently in Reassembly Queue");
 
 static VNET_DEFINE(int, tcp_reass_overflows) = 0;
@@ -160,8 +157,10 @@ tcp_reass_flush(struct tcpcb *tp)
 static int
 tcp_reass_sysctl_qsize(SYSCTL_HANDLER_ARGS)
 {
-	V_tcp_reass_qsize = uma_zone_get_cur(V_tcp_reass_zone);
-	return (sysctl_handle_int(oidp, arg1, arg2, req));
+	int qsize;
+
+	qsize = uma_zone_get_cur(V_tcp_reass_zone);
+	return (sysctl_handle_int(oidp, &qsize, sizeof(qsize), req));
 }
 
 int
