@@ -236,6 +236,8 @@ mphyp_pte_change(mmu_t mmu, uintptr_t slot, struct lpte *pvo_pt, uint64_t vpn)
 	 * is safe, except for the scratch-page case. No CPUs on which we run
 	 * this code should be using scratch pages.
 	 */
+	KASSERT(!(pvo_pt->pte_hi & LPTE_LOCKED),
+	    ("Locked pages not supported on PHYP"));
 
 	/* XXX: optimization using H_PROTECT for common case? */
 	result = phyp_hcall(H_REMOVE, 0, slot, vpn);
@@ -289,6 +291,11 @@ mphyp_pte_insert(mmu_t mmu, u_int ptegidx, struct lpte *pvo_pt)
 	uint64_t index, junk;
 	u_int pteg_bktidx;
 
+	/* Check for locked pages, which we can't support on this system */
+	KASSERT(!(pvo_pt->pte_hi & LPTE_LOCKED),
+	    ("Locked pages not supported on PHYP"));
+
+	/* Initialize PTE */
 	pvo_pt->pte_hi |= LPTE_VALID;
 	pvo_pt->pte_hi &= ~LPTE_HID;
 	evicted.pte_hi = 0;

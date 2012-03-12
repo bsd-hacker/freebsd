@@ -555,9 +555,6 @@ moea64_probe_large_page(void)
 	uint16_t pvr = mfpvr() >> 16;
 
 	switch (pvr) {
-	case IBMPOWER7:
-		moea64_large_page_size = 0;
-		break;
 	case IBM970:
 	case IBM970FX:
 	case IBM970MP:
