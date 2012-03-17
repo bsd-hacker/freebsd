@@ -18,6 +18,33 @@ cmd()
 	$*
 }
 
+descr()
+{
+	cat <<EOL
+
+This test establishes that the very basic 802.11s multi-hop
+connectivity works.
+
+It:
+
+* creates four wtap instances
+* creates four vimage instances
+* creates one wlan vap for each wtap instance and places
+  each vap in one of the four vimage instances
+* sets up the visibility to the following:
+
+  A <-> B <-> C <-> D
+
+* does a ping test from each node to each other node.
+
+It is expected that the initial creation and discovery phase
+will take some time so the initial run will fail until discovery
+is done.  A future extension to the test suite should be to
+set lower/upper bounds on the discovery phase time.
+
+EOL
+}
+
 setup()
 {
 	# Create wtap/vimage nodes
@@ -102,8 +129,12 @@ case $1 in
 		teardown
 		exit 0
 	;;
+	'descr')
+		descr
+		exit 0
+	;;
 	*)
-		echo "$0 {setup | run | teardown}"
+		echo "$0 {setup | run | teardown | descr}"
 		exit 127
 	;;
 esac
