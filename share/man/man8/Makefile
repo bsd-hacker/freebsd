@@ -24,4 +24,6 @@ MLINKS+=yp.8 NIS.8 \
 	yp.8 nis.8 \
 	yp.8 YP.8
 
+SUBDIR=	man8.rc.d
+
 .include <bsd.prog.mk>

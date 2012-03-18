@@ -1,0 +1,110 @@
+.\" Copyright (c) 2012
+.\"	Hiroki Sato <hrs@FreeBSD.org>.	All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd January 26, 2012
+.Dt RC.D/IP6ADDRCTL 8
+.Os
+.Sh NAME
+.Nm ip6addrctl
+.Nd rc.d script for configuring address selection policy for IPv4 and IPv6
+.Sh SYNOPSIS
+.Nm
+.Oo fast|force|one Oc Ns Ar start|stop|restart|rcvar
+.Sh DESCRIPTION
+.Nm
+is an
+.Xr rc.d 8
+script to configure address selection policy for IPv4 and IPv6 by using
+.Xr ip6addrctl 8
+utility.
+.Sh COMMAND LINE ARGUMENTS
+The standard
+.Xr rc.d 8
+arguments are supported.
+For more information, see the section of
+.Fn run_rc_command
+in the
+.Xr rc 8
+manual page.
+.Sh CONFIGURATION VARIABLES
+The following
+.Xr rc.conf 5
+variables are supported.
+To show all of the supported variables and the default values,
+use
+.Li rcvar
+argument:
+.Pp
+.Bl -tag -width "01234567890123456789" -compact
+.It Va ip6addrctl_policy
+.Pq Vt str
+Specify an pre-defined address selection policy.
+The following keywords are valid:
+.Pp
+.Bl -tag -width "012345678912" -compact
+.It Li ipv4_prefer
+IPv4 is used for the source address when both IPv4 and IPv6 addresses can be
+used.
+.Pp
+.It Li ipv6_prefer
+IPv6 is used for the source address when both IPv4 and IPv6 addresses can be
+used.
+.Pp
+.It Li AUTO
+The policy will be selected based on the existence of the file
+.Pa /etc/ip6addrctl
+and the value of the
+.Va ipv6_activate_all_interfaces 
+.Xr rc.conf 5
+variable.
+If the file exists, it will be loaded as the policy.
+If the file does not exist and the variable is set to
+.Li YES ,
+.Va ipv6_prefer
+will be used.
+Otherwise,
+.Va ipv4_prefer
+will be used.
+.El
+.Pp
+.It Va ip6addrctl_verbose
+.Pq Vt bool
+The configured policy table will be displayed if set to
+.Li YES.
+.El
+.Pp
+.Sh SEE ALSO
+.Xr rc.conf 5 ,
+.Xr ip6addrctl 8 ,
+.Xr rc 8
+.Sh HISTORY
+The
+.Nm
+script appeared in
+.Fx 8.0 .
+.Sh AUTHORS
+This manual page was written by
+.An Hiroki Sato Aq hrs@FreeBSD.org .

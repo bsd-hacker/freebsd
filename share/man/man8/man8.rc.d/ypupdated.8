@@ -1,0 +1,93 @@
+.\" Copyright (c) 2012
+.\"	Hiroki Sato <hrs@FreeBSD.org>.	All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd January 26, 2012
+.Dt RC.D/YPUPDATED 8
+.Os
+.Sh NAME
+.Nm ypupdated
+.Nd rc.d script for
+.Xr ypupdated 8
+daemon
+.Sh SYNOPSIS
+.Nm
+.Oo fast|force|one Oc Ns Ar start|stop|restart|rcvar|status|poll
+.Sh DESCRIPTION
+.Nm
+is an
+.Xr rc.d 8
+script to control
+.Xr ypupdated 8
+daemon.
+.Sh COMMAND LINE ARGUMENTS
+The standard
+.Xr rc.d 8
+arguments are supported.
+For more information, see the section of
+.Fn run_rc_command
+in the
+.Xr rc 8
+manual page.
+.Sh CONFIGURATION VARIABLES
+The following
+.Xr rc.conf 5
+variables are supported.
+To show all of the supported variables and the default values,
+use
+.Li rcvar
+argument:
+.Pp
+.Bl -tag -width "01234567890123456789" -compact
+.It Va rpc_ypupdated_enable
+.Pq Vt bool
+Set to
+.Dq Li YES
+to start the
+.Xr ypupdated 8
+daemon at boot time.
+.Pp
+.It Va rpc_ypupdated_flags
+.Pq Vt str
+Specify command line flags to the
+.Xr ypupdated 8
+daemon.
+.El
+.Pp
+.Sh SEE ALSO
+.Xr rc.conf 5 ,
+.Xr rc 8 ,
+.Xr rc.d/nisdomain 8 ,
+.Xr rc.d/ypbind 8 ,
+.Xr ypbind 8 ,
+.Xr ypserv 8
+.Sh HISTORY
+The
+.Nm
+script appeared in
+.Fx 8.0 .
+.Sh AUTHORS
+This manual page was written by
+.An Hiroki Sato Aq hrs@FreeBSD.org .
