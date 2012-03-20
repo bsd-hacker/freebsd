@@ -106,12 +106,13 @@ struct g_part_alias_list {
 };
 
 SYSCTL_DECL(_kern_geom);
-static SYSCTL_NODE(_kern_geom, OID_AUTO, part, CTLFLAG_RW, 0,
+SYSCTL_NODE(_kern_geom, OID_AUTO, part, CTLFLAG_RW, 0,
     "GEOM_PART stuff");
 static u_int check_integrity = 1;
 TUNABLE_INT("kern.geom.part.check_integrity", &check_integrity);
-SYSCTL_UINT(_kern_geom_part, OID_AUTO, check_integrity, CTLFLAG_RW,
-    &check_integrity, 1, "Enable integrity checking");
+SYSCTL_UINT(_kern_geom_part, OID_AUTO, check_integrity,
+    CTLFLAG_RW | CTLFLAG_TUN, &check_integrity, 1,
+    "Enable integrity checking");
 
 /*
  * The GEOM partitioning class.
@@ -146,6 +147,7 @@ static struct g_class g_part_class = {
 };
 
 DECLARE_GEOM_CLASS(g_part_class, g_part);
+MODULE_VERSION(g_part, 0);
 
 /*
  * Support functions.

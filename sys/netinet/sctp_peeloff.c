@@ -55,10 +55,19 @@ sctp_can_peel_off(struct socket *head, sctp_assoc_t assoc_id)
 	struct sctp_tcb *stcb;
 	uint32_t state;
 
+	if (head == NULL) {
+		SCTP_LTRACE_ERR_RET(NULL, NULL, NULL, SCTP_FROM_SCTP_PEELOFF, EBADF);
+		return (EBADF);
+	}
 	inp = (struct sctp_inpcb *)head->so_pcb;
 	if (inp == NULL) {
-		SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_PEELOFF, EFAULT);
+		SCTP_LTRACE_ERR_RET(NULL, NULL, NULL, SCTP_FROM_SCTP_PEELOFF, EFAULT);
 		return (EFAULT);
+	}
+	if ((inp->sctp_flags & SCTP_PCB_FLAGS_TCPTYPE) ||
+	    (inp->sctp_flags & SCTP_PCB_FLAGS_IN_TCPPOOL)) {
+		SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_PEELOFF, EOPNOTSUPP);
+		return (EOPNOTSUPP);
 	}
 	stcb = sctp_findassociation_ep_asocid(inp, assoc_id, 1);
 	if (stcb == NULL) {

@@ -2256,6 +2256,7 @@ geom/part/g_part_apm.c		optional geom_part_apm
 geom/part/g_part_bsd.c		optional geom_part_bsd
 geom/part/g_part_ebr.c		optional geom_part_ebr
 geom/part/g_part_gpt.c		optional geom_part_gpt
+geom/part/g_part_ldm.c		optional geom_part_ldm
 geom/part/g_part_mbr.c		optional geom_part_mbr
 geom/part/g_part_pc98.c		optional geom_part_pc98
 geom/part/g_part_vtoc8.c	optional geom_part_vtoc8
@@ -2419,8 +2420,8 @@ kern/sched_ule.c		optional sched_ule
 kern/serdev_if.m		standard
 kern/stack_protector.c		standard \
 	compile-with "${NORMAL_C:N-fstack-protector*}"
-kern/subr_acl_nfs4.c		standard
-kern/subr_acl_posix1e.c		standard
+kern/subr_acl_nfs4.c		optional ufs_acl
+kern/subr_acl_posix1e.c		optional ufs_acl
 kern/subr_autoconf.c		standard
 kern/subr_blist.c		standard
 kern/subr_bus.c			standard
