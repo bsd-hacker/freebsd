@@ -74,6 +74,14 @@ struct sem_nameinfo {
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t sem_llock;
 static LIST_HEAD(,sem_nameinfo) sem_list = LIST_HEAD_INITIALIZER(sem_list);
+static int ncpu;
+
+static void
+check_mp(void)
+{
+	if (ncpu == 0)
+		ncpu = sysconf(_SC_NPROCESSORS_CONF);
+}
 
 static void
 sem_prefork()
@@ -99,6 +107,8 @@ sem_module_init(void)
 {
 	pthread_mutexattr_t ma;
 
+	check_mp();
+
 	_pthread_mutexattr_init(&ma);
 	_pthread_mutexattr_settype(&ma,  PTHREAD_MUTEX_RECURSIVE);
 	_pthread_mutex_init(&sem_llock, &ma);
@@ -121,6 +131,7 @@ sem_check_validity(sem_t *sem)
 int
 _sem_init(sem_t *sem, int pshared, unsigned int value)
 {
+	check_mp();
 
 	if (value > SEM_VALUE_MAX) {
 		errno = EINVAL;
@@ -367,7 +378,7 @@ loops:
 				return (0);
 		}
 	}
-	if (spins-- > 0)
+	if (ncpu > 1 && spins-- > 0)
 		goto loops;
 	return (EAGAIN);
 }
