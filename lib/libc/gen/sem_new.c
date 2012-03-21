@@ -412,7 +412,7 @@ _sem_timedwait(sem_t * __restrict sem,
 		if (_trywait(sem, SPIN_LOOPS) == 0)
 			return (0);
 
-		if (retval) {
+		if (retval != 0) {
 			_pthread_testcancel();
 			break;
 		}
