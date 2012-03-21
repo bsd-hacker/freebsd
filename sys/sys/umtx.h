@@ -55,7 +55,9 @@
 #define URWLOCK_READER_COUNT(c)	((c) & URWLOCK_MAX_READERS)
 
 /* _usem flags */
-#define SEM_NAMED	0x0002
+#define	SEM_NAMED	0x00000002
+#define	SEM_VER2	0x00000004
+#define	SEM_WAITERS	0x80000000
 
 /* op code for _umtx_op */
 #define	UMTX_OP_LOCK		0

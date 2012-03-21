@@ -2870,16 +2870,38 @@ do_sem_wait(struct thread *td, struct _usem *sem, struct _umtx_time *timeout)
 	umtxq_insert(uq);
 	umtxq_unlock(&uq->uq_key);
 
-	casuword32(__DEVOLATILE(uint32_t *, &sem->_has_waiters), 0, 1);
-	rmb();
-	count = fuword32(__DEVOLATILE(uint32_t *, &sem->_count));
-	if (count != 0) {
-		umtxq_lock(&uq->uq_key);
-		umtxq_unbusy(&uq->uq_key);
-		umtxq_remove(uq);
-		umtxq_unlock(&uq->uq_key);
-		umtx_key_release(&uq->uq_key);
-		return (0);
+	if (__predict_false((flags & SEM_VER2) == 0)) {
+		casuword32(__DEVOLATILE(uint32_t *, &sem->_has_waiters), 0, 1);
+		rmb();
+		count = fuword32(__DEVOLATILE(uint32_t *, &sem->_count));
+		if (count != 0) {
+			umtxq_lock(&uq->uq_key);
+			umtxq_unbusy(&uq->uq_key);
+			umtxq_remove(uq);
+			umtxq_unlock(&uq->uq_key);
+			umtx_key_release(&uq->uq_key);
+			return (0);
+		}
+	} else {
+		count = fuword32(__DEVOLATILE(uint32_t *, &sem->_count));
+		for (;;) {
+			if ((count & ~SEM_WAITERS) != 0) {
+				umtxq_lock(&uq->uq_key);
+				umtxq_unbusy(&uq->uq_key);
+				umtxq_remove(uq);
+				umtxq_unlock(&uq->uq_key);
+				umtx_key_release(&uq->uq_key);
+				return (0);
+			}
+			if ((count & SEM_WAITERS) == 0) {
+				int old = casuword32(__DEVOLATILE(uint32_t *,
+				  &sem->_count), count, count | SEM_WAITERS);
+				if (old == count)
+					break;
+				count = old;
+			} else
+				break;
+		}
 	}
 
 	umtxq_lock(&uq->uq_key);
@@ -2932,22 +2954,42 @@ static int
 do_sem_wake(struct thread *td, struct _usem *sem)
 {
 	struct umtx_key key;
-	int error, cnt, nwake;
-	uint32_t flags;
+	int error, nwait;
+	uint32_t flags, count;
 
 	flags = fuword32(&sem->_flags);
 	if ((error = umtx_key_get(sem, TYPE_SEM, GET_SHARE(flags), &key)) != 0)
 		return (error);	
 	umtxq_lock(&key);
 	umtxq_busy(&key);
-	cnt = umtxq_count(&key);
-	nwake = umtxq_signal(&key, 1);
-	if (cnt <= nwake) {
-		umtxq_unlock(&key);
-		error = suword32(
-		    __DEVOLATILE(uint32_t *, &sem->_has_waiters), 0);
-		umtxq_lock(&key);
+	nwait = umtxq_count(&key);
+	umtxq_unlock(&key);
+	if ((flags & SEM_VER2) != 0) {
+		error = 0;
+		count = fuword32(__DEVOLATILE(uint32_t *, &sem->_count));
+		for (;;) {
+			if (__predict_false((count & ~SEM_WAITERS) == __INT_MAX)) {
+				umtxq_lock(&key);
+				umtxq_unbusy(&key);
+				umtxq_unlock(&key);
+				return (ERANGE);
+			}
+			int new = count + 1;
+			if (nwait <= 1)
+				new &= ~SEM_WAITERS;
+			int old = casuword32(__DEVOLATILE(uint32_t *,
+			  &sem->_count), count, new);
+			if (old == count)
+				break;
+			count = old;
+		}
+	} else {
+		if (nwait <= 1)
+			error = suword32(
+			    __DEVOLATILE(uint32_t *, &sem->_has_waiters), 0);
 	}
+	umtxq_lock(&key);
+	umtxq_signal(&key, 1);
 	umtxq_unbusy(&key);
 	umtxq_unlock(&key);
 	umtx_key_release(&key);
