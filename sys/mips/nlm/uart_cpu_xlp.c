@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 
 #include <machine/bus.h>
+#include <machine/pmap.h>
 
 #include <dev/uart/uart.h>
 #include <dev/uart/uart_cpu.h>
@@ -66,7 +67,7 @@ bus_space_tag_t uart_bus_space_mem;
 int
 uart_cpu_eqres(struct uart_bas *b1, struct uart_bas *b2)
 {
-	return ((b1->bsh == b2->bsh && b1->bst == b2->bst) ? 1 : 0);
+	return (b1->bst == b2->bst && b1->bsh == b2->bsh);
 }
 
 int
@@ -75,7 +76,8 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 	di->ops = uart_getops(&uart_ns8250_class);
 	di->bas.chan = 0;
 	di->bas.bst = rmi_uart_bus_space;
-	di->bas.bsh = nlm_get_uart_regbase(0, 0);
+	di->bas.bsh = MIPS_PHYS_TO_DIRECT_UNCACHED(XLP_DEFAULT_IO_BASE +
+	   XLP_IO_UART_OFFSET(0, 0) + XLP_IO_PCI_HDRSZ);
 	
 	di->bas.regshft = 2;
 	/* divisor = rclk / (baudrate * 16); */
