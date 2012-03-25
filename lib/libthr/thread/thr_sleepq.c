@@ -90,7 +90,7 @@ _sleepq_unlock(void *wchan)
 	struct pthread *curthread = _get_curthread();
                     
 	sc = SC_LOOKUP(wchan);
-	THR_LOCK_RELEASE(curthread, &sc->sc_lock);
+	THR_LOCK_RELEASE_OPT(curthread, &sc->sc_lock);
 }
 
 struct sleepqueue *
