@@ -311,6 +311,24 @@ _pthread_mutex_destroy(pthread_mutex_t *mutex)
 		m = *mutex;						\
 	}
 
+static inline int
+user_mutex_trylock(struct umutex *m)
+{
+	return _thr_mtx_trylock(&m->m_owner);
+}
+
+static inline int 
+user_mutex_timedlock(struct umutex *m, const struct timespec *abstime)
+{
+	return _thr_mtx_timedlock(&m->m_owner, abstime);
+}
+
+static inline int
+user_mutex_unlock(struct umutex *m)
+{
+	return _thr_mtx_unlock(&m->m_owner);
+}
+
 static int
 mutex_trylock_common(pthread_mutex_t *mutex)
 {
@@ -319,15 +337,24 @@ mutex_trylock_common(pthread_mutex_t *mutex)
 	uint32_t id;
 	int ret;
 
-	id = TID(curthread);
 	if (m->m_flags & PMUTEX_FLAG_PRIVATE)
 		THR_CRITICAL_ENTER(curthread);
-	ret = _thr_umutex_trylock(&m->m_lock, id);
-	if (__predict_true(ret == 0)) {
-		ENQUEUE_MUTEX(curthread, m);
-	} else if (m->m_owner == curthread) {
+	if (__predict_true(is_user_mutex(&m->m_lock))) {
+		ret = user_mutex_trylock(&m->m_lock);
+		if (ret == 0) {
+			m->m_owner = curthread;
+			return (0);
+		}
+	} else {
+		id = TID(curthread);
+		ret = _thr_umutex_trylock(&m->m_lock, id);
+		if (ret == 0) {
+			ENQUEUE_MUTEX(curthread, m);
+			return (0);
+		}
+	}
+	if (m->m_owner == curthread)
 		ret = mutex_self_trylock(m);
-	} /* else {} */
 	if (ret && (m->m_flags & PMUTEX_FLAG_PRIVATE))
 		THR_CRITICAL_LEAVE(curthread);
 	return (ret);
@@ -347,24 +374,24 @@ static int
 mutex_lock_sleep(struct pthread *curthread, struct pthread_mutex *m,
 	const struct timespec *abstime)
 {
-	uint32_t	id, owner;
+	uint32_t	owner;
+	int	user_mutex;
 	int	count;
 	int	ret;
 
 	if (m->m_owner == curthread)
 		return mutex_self_lock(m, abstime);
 
-	id = TID(curthread);
+	user_mutex = is_user_mutex(&m->m_lock);
+
 	/*
 	 * For adaptive mutexes, spin for a bit in the expectation
 	 * that if the application requests this mutex type then
 	 * the lock is likely to be released quickly and it is
 	 * faster than entering the kernel
 	 */
-	if (__predict_false(
-		(m->m_lock.m_flags & 
-		 (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) != 0))
-			goto sleep_in_kernel;
+	if (__predict_false(!user_mutex))
+		goto sleep;
 
 	if (!_thr_is_smp)
 		goto yield_loop;
@@ -372,8 +399,8 @@ mutex_lock_sleep(struct pthread *curthread, struct pthread_mutex *m,
 	count = m->m_spinloops;
 	while (count--) {
 		owner = m->m_lock.m_owner;
-		if ((owner & ~UMUTEX_CONTESTED) == 0) {
-			if (atomic_cmpset_acq_32(&m->m_lock.m_owner, owner, id|owner)) {
+		if (owner == 0) {
+			if (user_mutex_trylock(&m->m_lock) == 0) {
 				ret = 0;
 				goto done;
 			}
@@ -386,28 +413,32 @@ yield_loop:
 	while (count--) {
 		_sched_yield();
 		owner = m->m_lock.m_owner;
-		if ((owner & ~UMUTEX_CONTESTED) == 0) {
-			if (atomic_cmpset_acq_32(&m->m_lock.m_owner, owner, id|owner)) {
+		if (owner == 0) {
+			if (user_mutex_trylock(&m->m_lock) == 0) {
 				ret = 0;
 				goto done;
 			}
 		}
 	}
 
-sleep_in_kernel:
-	if (abstime == NULL) {
-		ret = __thr_umutex_lock(&m->m_lock, id);
-	} else if (__predict_false(
-		   abstime->tv_nsec < 0 ||
-		   abstime->tv_nsec >= 1000000000)) {
+sleep:
+	if (__predict_false(abstime != NULL && 
+	    (abstime->tv_nsec < 0 || abstime->tv_nsec >= 1000000000))) {
 		ret = EINVAL;
 	} else {
-		ret = __thr_umutex_timedlock(&m->m_lock, id, abstime);
+		if (user_mutex)
+			ret = user_mutex_timedlock(&m->m_lock, abstime);
+		else	
+			ret = __thr_umutex_timedlock(&m->m_lock,
+				TID(_get_curthread()), abstime);
 	}
 done:
-	if (ret == 0)
-		ENQUEUE_MUTEX(curthread, m);
-
+	if (ret == 0) {
+		if (user_mutex)
+			m->m_owner = curthread;
+		else
+			ENQUEUE_MUTEX(curthread, m);
+	}
 	return (ret);
 }
 
@@ -420,12 +451,20 @@ mutex_lock_common(struct pthread_mutex *m,
 
 	if (!cvattach && m->m_flags & PMUTEX_FLAG_PRIVATE)
 		THR_CRITICAL_ENTER(curthread);
-	if (_thr_umutex_trylock2(&m->m_lock, TID(curthread)) == 0) {
-		ENQUEUE_MUTEX(curthread, m);
-		ret = 0;
+	if (__predict_true(is_user_mutex(&m->m_lock))) {
+		ret = user_mutex_trylock(&m->m_lock);
+		if (ret == 0) {
+			m->m_owner = curthread;
+			return (0);
+		}
 	} else {
-		ret = mutex_lock_sleep(curthread, m, abstime);
+		ret = _thr_umutex_trylock2(&m->m_lock, TID(curthread));
+		if (ret == 0) {
+			ENQUEUE_MUTEX(curthread, m);
+			return (0);
+		}
 	}
+	ret = mutex_lock_sleep(curthread, m, abstime);
 	if (ret && (m->m_flags & PMUTEX_FLAG_PRIVATE) && !cvattach)
 		THR_CRITICAL_LEAVE(curthread);
 	return (ret);
@@ -658,8 +697,13 @@ mutex_unlock_common(struct pthread_mutex *m, int cv)
         	} else
                 	defered = 0;
 
-		DEQUEUE_MUTEX(curthread, m);
-		_thr_umutex_unlock(&m->m_lock, id);
+		if (is_user_mutex(&m->m_lock)) {
+			m->m_owner = NULL;
+			user_mutex_unlock(&m->m_lock);
+		} else {
+			DEQUEUE_MUTEX(curthread, m);
+			_thr_umutex_unlock(&m->m_lock, id);
+		}
 
 		if (curthread->will_sleep == 0 && defered)  {
 			_thr_wake_all(curthread->defer_waiters,

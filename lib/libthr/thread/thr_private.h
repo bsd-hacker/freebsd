@@ -592,6 +592,14 @@ do {							\
 	_thr_ast(thrd);					\
 } while (0)
 
+#define	THR_LOCK_RELEASE_OPT(thrd, lck)			\
+do {							\
+	THR_ASSERT_LOCKLEVEL(thrd);			\
+	_thr_umutex_unlock_opt((lck), TID(thrd));	\
+	(thrd)->locklevel--;				\
+	_thr_ast(thrd);					\
+} while (0)
+
 #define	THR_LOCK(curthrd)		THR_LOCK_ACQUIRE(curthrd, &(curthrd)->lock)
 #define	THR_UNLOCK(curthrd)		THR_LOCK_RELEASE(curthrd, &(curthrd)->lock)
 #define	THR_THREAD_LOCK(curthrd, thr)	THR_LOCK_ACQUIRE(curthrd, &(thr)->lock)
@@ -886,6 +894,15 @@ static inline struct pthread *
 _sleepq_first(struct sleepqueue *sq)
 {
 	return TAILQ_FIRST(&sq->sq_blocked);
+}
+
+static inline int
+is_user_mutex(struct umutex *m)
+{
+	return ((m->m_flags &
+		 (UMUTEX_PRIO_PROTECT|
+                  UMUTEX_PRIO_INHERIT|
+                  USYNC_PROCESS_SHARED)) == 0);
 }
 
 void	_sleepq_init(void) __hidden;

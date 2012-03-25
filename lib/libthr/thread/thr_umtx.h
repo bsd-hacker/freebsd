@@ -40,9 +40,12 @@ int __thr_umutex_lock_spin(struct umutex *mtx, uint32_t id) __hidden;
 int __thr_umutex_timedlock(struct umutex *mtx, uint32_t id,
 	const struct timespec *timeout) __hidden;
 int __thr_umutex_unlock(struct umutex *mtx, uint32_t id) __hidden;
+int __thr_umutex_unlock_opt(struct umutex *mtx, uint32_t id) __hidden;
 int __thr_umutex_trylock(struct umutex *mtx) __hidden;
 int __thr_umutex_set_ceiling(struct umutex *mtx, uint32_t ceiling,
 	uint32_t *oldceiling) __hidden;
+int __thr_mtx_timedlock(volatile uint32_t *, const struct timespec *);
+int __thr_mtx_unlock(volatile uint32_t *);
 
 void _thr_umutex_init(struct umutex *mtx) __hidden;
 void _thr_urwlock_init(struct urwlock *rwl) __hidden;
@@ -127,6 +130,14 @@ _thr_umutex_unlock(struct umutex *mtx, uint32_t id)
 }
 
 static inline int
+_thr_umutex_unlock_opt(struct umutex *mtx, uint32_t id)
+{
+    if (atomic_cmpset_rel_32(&mtx->m_owner, id, UMUTEX_UNOWNED))
+	return (0);
+    return (__thr_umutex_unlock_opt(mtx, id));
+}
+
+static inline int
 _thr_rwlock_tryrdlock(struct urwlock *rwlock, int flags)
 {
 	int32_t state;
@@ -205,5 +216,30 @@ _thr_rwlock_unlock(struct urwlock *rwlock)
 		}
     	}
     	return (__thr_rwlock_unlock(rwlock));
+}
+
+/* simple mutex lock/unlock */
+static inline int
+_thr_mtx_trylock(volatile uint32_t *m)
+{
+	if (atomic_cmpset_acq_32(m, 0, 1))
+		return (0);
+	return (EBUSY);
+}
+
+static inline int
+_thr_mtx_timedlock(volatile uint32_t *m, const struct timespec *abstime)
+{
+	if (atomic_cmpset_acq_32(m, 0, 1))
+		return (0);
+	return __thr_mtx_timedlock(m, abstime);
+}
+
+static inline int
+_thr_mtx_unlock(volatile uint32_t *m)
+{
+	if (atomic_cmpset_rel_32(m, 1, 0))
+		return (0);
+	return __thr_mtx_unlock(m);
 }
 #endif

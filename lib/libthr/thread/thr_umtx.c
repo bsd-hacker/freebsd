@@ -157,6 +157,21 @@ __thr_umutex_unlock(struct umutex *mtx, uint32_t id)
 	return _umtx_op_err(mtx, UMTX_OP_MUTEX_UNLOCK, 0, 0, 0);
 }
 
+/* Unlock a never freed mutex */
+int
+__thr_umutex_unlock_opt(struct umutex *mtx, uint32_t id)
+{
+#ifndef __ia64__
+	/* XXX this logic has a race-condition on ia64. */
+	if ((mtx->m_flags & (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0) {
+		if (atomic_cmpset_rel_32(&mtx->m_owner, 
+		    id | UMUTEX_CONTESTED, UMUTEX_CONTESTED))
+			return _umtx_op_err(mtx, UMTX_OP_MUTEX_WAKE, 0, 0, 0);
+	}
+#endif
+	return _umtx_op_err(mtx, UMTX_OP_MUTEX_UNLOCK, 0, 0, 0);
+}
+
 int
 __thr_umutex_trylock(struct umutex *mtx)
 {
@@ -339,4 +354,37 @@ _thr_rwl_unlock(struct urwlock *rwlock)
 {
 	if (_thr_rwlock_unlock(rwlock))
 		PANIC("unlock error");
+}
+
+int 
+__thr_mtx_timedlock(volatile uint32_t *m, const struct timespec *abstime)
+{
+	uint32_t owner;
+	int ret = 0, error;
+
+	/* contested case */
+	do {
+		owner = *m;
+		if (owner == 2 || atomic_cmpset_acq_32(m, 1, 2)) {
+			error = _thr_umtx_timedwait_uint(m, 2,
+				CLOCK_REALTIME, abstime, 0);
+			if (error != 0 && error != EINTR) {
+				if (atomic_cmpset_acq_32(m, 0, 2))
+					ret = 0;
+				else
+					ret = error;
+				break;
+			}
+		}
+	} while (!atomic_cmpset_acq_32(m, 0, 2));
+	return (ret);
+}
+
+int
+__thr_mtx_unlock(volatile uint32_t *m)
+{
+	*m = 0;
+	wmb();
+	(void)_thr_umtx_wake(m, 1, 0);
+	return (0);
 }

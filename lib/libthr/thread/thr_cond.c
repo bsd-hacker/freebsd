@@ -290,13 +290,10 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	if ((error = _mutex_owned(curthread, mp)) != 0)
 		return (error);
 
-	if (curthread->attr.sched_policy != SCHED_OTHER ||
-	    (mp->m_lock.m_flags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT|
-		USYNC_PROCESS_SHARED)) != 0 ||
-	    (cvp->__flags & USYNC_PROCESS_SHARED) != 0)
-		return cond_wait_kernel(cvp, mp, abstime, cancel);
-	else
+	if (is_user_mutex(&mp->m_lock))
 		return cond_wait_user(cvp, mp, abstime, cancel);
+	else
+		return cond_wait_kernel(cvp, mp, abstime, cancel);
 }
 
 int
