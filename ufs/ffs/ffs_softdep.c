@@ -2848,7 +2848,7 @@ softdep_prealloc(vp, waitok)
 	 * work attached to it.
 	 */
 	if ((curthread->td_pflags & TDP_COWINPROGRESS) == 0)
-		ffs_syncvnode(vp, waitok);
+		ffs_syncvnode(vp, waitok, 0);
 	ACQUIRE_LOCK(&lk);
 	process_removes(vp);
 	process_truncates(vp);
@@ -2887,8 +2887,8 @@ softdep_prelink(dvp, vp)
 	stat_journal_low++;
 	FREE_LOCK(&lk);
 	if (vp)
-		ffs_syncvnode(vp, MNT_NOWAIT);
-	ffs_syncvnode(dvp, MNT_WAIT);
+		ffs_syncvnode(vp, MNT_NOWAIT, 0);
+	ffs_syncvnode(dvp, MNT_WAIT, 0);
 	ACQUIRE_LOCK(&lk);
 	/* Process vp before dvp as it may create .. removes. */
 	if (vp) {
@@ -6311,7 +6311,7 @@ softdep_journal_freeblocks(ip, cred, length, flags)
 		DIP_SET(ip, i_size, length);
 		ip->i_flag |= IN_CHANGE | IN_UPDATE;
 		allocbuf(bp, frags);
-		ffs_update(vp, MNT_NOWAIT);
+		ffs_update(vp, 0);
 		bawrite(bp);
 	} else if (lastoff != 0 && vp->v_type != VDIR) {
 		int size;
@@ -11841,8 +11841,8 @@ restart:
 					pagedep_new_block = pagedep->pd_state & NEWBLOCK;
 					FREE_LOCK(&lk);
 					locked = 0;
-					if (pagedep_new_block &&
-					    (error = ffs_syncvnode(pvp, MNT_WAIT))) {
+					if (pagedep_new_block && (error =
+					    ffs_syncvnode(pvp, MNT_WAIT, 0))) {
 						vput(pvp);
 						return (error);
 					}
@@ -12346,7 +12346,7 @@ flush_newblk_dep(vp, mp, lbn)
 		 * point at the newdirblk before the dependency
 		 * will go away.
 		 */
-		error = ffs_update(vp, MNT_WAIT);
+		error = ffs_update(vp, 1);
 		if (error)
 			break;
 		ACQUIRE_LOCK(&lk);
@@ -12382,7 +12382,7 @@ restart:
 		 */
 		if (dap->da_state & MKDIR_PARENT) {
 			FREE_LOCK(&lk);
-			if ((error = ffs_update(pvp, MNT_WAIT)) != 0)
+			if ((error = ffs_update(pvp, 1)) != 0)
 				break;
 			ACQUIRE_LOCK(&lk);
 			/*
@@ -12424,7 +12424,7 @@ restart:
 			 * disk.
 			 */
 			if (error == 0 && dap == LIST_FIRST(diraddhdp))
-				error = ffs_update(vp, MNT_WAIT);
+				error = ffs_update(vp, 1);
 			vput(vp);
 			if (error != 0)
 				break;
@@ -12481,7 +12481,7 @@ retry:
 			if ((error = ffs_vgetf(mp, inum, LK_EXCLUSIVE, &vp,
 			    FFSV_FORCEINSMQ)))
 				break;
-			error = ffs_update(vp, MNT_WAIT);
+			error = ffs_update(vp, 1);
 			vput(vp);
 			if (error)
 				break;
@@ -12683,7 +12683,7 @@ retry:
 				MNT_ILOCK(mp);
 				continue;
 			}
-			(void) ffs_syncvnode(lvp, MNT_NOWAIT);
+			(void) ffs_syncvnode(lvp, MNT_NOWAIT, 0);
 			vput(lvp);
 			MNT_ILOCK(mp);
 		}
@@ -12856,7 +12856,7 @@ clear_remove(td)
 				softdep_error("clear_remove: vget", error);
 				goto finish_write;
 			}
-			if ((error = ffs_syncvnode(vp, MNT_NOWAIT)))
+			if ((error = ffs_syncvnode(vp, MNT_NOWAIT, 0)))
 				softdep_error("clear_remove: fsync", error);
 			bo = &vp->v_bufobj;
 			BO_LOCK(bo);
@@ -12939,10 +12939,10 @@ clear_inodedeps(td)
 		}
 		vfs_unbusy(mp);
 		if (ino == lastino) {
-			if ((error = ffs_syncvnode(vp, MNT_WAIT)))
+			if ((error = ffs_syncvnode(vp, MNT_WAIT, 0)))
 				softdep_error("clear_inodedeps: fsync1", error);
 		} else {
-			if ((error = ffs_syncvnode(vp, MNT_NOWAIT)))
+			if ((error = ffs_syncvnode(vp, MNT_NOWAIT, 0)))
 				softdep_error("clear_inodedeps: fsync2", error);
 			BO_LOCK(&vp->v_bufobj);
 			drain_output(vp);

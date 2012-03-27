@@ -1149,6 +1149,7 @@ dev/ieee488/tnt4882.c		optional tnt4882
 dev/ieee488/upd7210.c		optional pcii | tnt4882
 dev/iicbus/ad7418.c		optional ad7418
 dev/iicbus/ds133x.c		optional ds133x
+dev/iicbus/ds1374.c		optional ds1374
 dev/iicbus/ds1672.c		optional ds1672
 dev/iicbus/icee.c		optional icee
 dev/iicbus/if_ic.c		optional ic
@@ -1160,6 +1161,7 @@ dev/iicbus/iicbus_if.m		optional iicbus
 dev/iicbus/iiconf.c		optional iicbus
 dev/iicbus/iicsmb.c		optional iicsmb				\
 	dependency	"iicbus_if.h"
+dev/iicbus/iicoc.c		optional iicoc
 dev/iir/iir.c			optional iir
 dev/iir/iir_ctrl.c		optional iir
 dev/iir/iir_pci.c		optional iir pci
@@ -1480,7 +1482,8 @@ dev/mps/mps.c			optional mps
 dev/mps/mps_config.c		optional mps
 dev/mps/mps_mapping.c		optional mps
 dev/mps/mps_pci.c		optional mps pci
-dev/mps/mps_sas.c		optional mps
+dev/mps/mps_sas.c		optional mps \
+	compile-with "${NORMAL_C} ${NO_WUNNEEDED_INTERNAL_DECL}"
 dev/mps/mps_sas_lsi.c		optional mps
 dev/mps/mps_table.c		optional mps
 dev/mps/mps_user.c		optional mps
@@ -2256,6 +2259,7 @@ geom/part/g_part_apm.c		optional geom_part_apm
 geom/part/g_part_bsd.c		optional geom_part_bsd
 geom/part/g_part_ebr.c		optional geom_part_ebr
 geom/part/g_part_gpt.c		optional geom_part_gpt
+geom/part/g_part_ldm.c		optional geom_part_ldm
 geom/part/g_part_mbr.c		optional geom_part_mbr
 geom/part/g_part_pc98.c		optional geom_part_pc98
 geom/part/g_part_vtoc8.c	optional geom_part_vtoc8
@@ -2419,8 +2423,8 @@ kern/sched_ule.c		optional sched_ule
 kern/serdev_if.m		standard
 kern/stack_protector.c		standard \
 	compile-with "${NORMAL_C:N-fstack-protector*}"
-kern/subr_acl_nfs4.c		standard
-kern/subr_acl_posix1e.c		standard
+kern/subr_acl_nfs4.c		optional ufs_acl
+kern/subr_acl_posix1e.c		optional ufs_acl
 kern/subr_autoconf.c		standard
 kern/subr_blist.c		standard
 kern/subr_bus.c			standard

@@ -42,7 +42,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
-#include "opt_cputype.h"
 #include "opt_ddb.h"
 
 #include <sys/param.h>
@@ -477,19 +476,6 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 	 * Setup any other CPU-Specific registers (Not MIPS Standard)
 	 * that are needed.
 	 */
-}
-/*
- * Convert kernel VA to physical address
- */
-u_long
-kvtop(void *addr)
-{
-	vm_offset_t va;
-
-	va = pmap_kextract((vm_offset_t)addr);
-	if (va == 0)
-		panic("kvtop: zero page frame");
-	return((intptr_t)va);
 }
 
 /*

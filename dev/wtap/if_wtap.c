@@ -322,7 +322,7 @@ wtap_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ],
 	    M_80211_VAP, M_NOWAIT | M_ZERO);
 	avp->id = sc->id;
 	avp->av_md = sc->sc_md;
-	avp->av_bcinterval = BEACON_INTRERVAL + 100*sc->id;
+	avp->av_bcinterval = msecs_to_ticks(BEACON_INTRERVAL + 100*sc->id);
 	vap = (struct ieee80211vap *) avp;
 	error = ieee80211_vap_setup(ic, vap, name, unit, IEEE80211_M_MBSS,
 	    flags | IEEE80211_CLONE_NOBEACONS, bssid, mac);
