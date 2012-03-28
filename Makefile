@@ -17,11 +17,10 @@ USE_AUTOTOOLS=	autoconf
 USE_CONFIGURE=	yes
 CONFIGURE_ENV+=	MD5SUM=${MD5} WGET=${TRUE} SHA256SUM=${SHA256}
 USE_GNOME=	gnomelibs
-LDFLAGS+=	-L${LOCALBASE}/include -L${LOCALBASE}/lib -L${LOCALBASE}/include/libxul
+LDFLAGS+=	-L${LOCALBASE}/include -L${LOCALBASE}/lib
 CPPFLAGS+=	-I${LOCALBASE}/include
 
-CONFIGURE_ARGS=	--with-gcj-home=${LOCALBASE}/lib/gcc46/gcj-4.6.4-12 \
-		--with-ecj-jar=${LOCALBASE}/share/java/classes/ecj-3.7.2.jar \
+CONFIGURE_ARGS=	--with-ecj-jar=${LOCALBASE}/share/java/classes/ecj-3.7.2.jar \
 		--with-xalan2-jar=${LOCALBASE}/share/java/classes/xalan.jar \
 		--with-xalan2-serializer-jar=${LOCALBASE}/share/java/classes/serializer.jar \
 		--with-xerces2-jar=${LOCALBASE}/share/java/classes/xercesImpl.jar \
