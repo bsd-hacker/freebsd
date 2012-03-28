@@ -2,7 +2,7 @@ PORTNAME=	icedtea6
 PORTVERSION=	1.10.6
 CATEGORIES=	java
 MASTER_SITES=	http://icedtea.classpath.org/download/source/:source1 \
-		http://icedtea.classpath.org/download/drops/:source2
+		http://icedtea.classpath.org/download/drops/:source2 \
 		http://download.java.net/openjdk/jdk6/promoted/b22/:source3
 DISTFILES=	icedtea6-${PORTVERSION}.tar.gz:source1 \
 		jaxp144_01.zip:source2 \
