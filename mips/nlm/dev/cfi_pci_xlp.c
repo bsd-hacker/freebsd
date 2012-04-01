@@ -24,35 +24,54 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#include "ucore.h"
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-int main(void)
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/conf.h>
+#include <sys/kernel.h>
+#include <sys/module.h>
+#include <machine/bus.h>
+#include <sys/rman.h>
+#include <machine/resource.h>
+
+#include <dev/pci/pcivar.h>
+
+#include <dev/cfi/cfi_var.h>
+
+#include <mips/nlm/hal/haldefs.h>
+#include <mips/nlm/hal/iomap.h>
+
+static int cfi_xlp_probe(device_t dev);
+
+static device_method_t cfi_xlp_methods[] = {
+	/* Device interface */
+	DEVMETHOD(device_probe,		cfi_xlp_probe),
+	DEVMETHOD(device_attach,	cfi_attach),
+	DEVMETHOD(device_detach,	cfi_detach),
+	DEVMETHOD_END
+};
+
+static driver_t cfi_xlp_driver = {
+	cfi_driver_name,
+	cfi_xlp_methods,
+	sizeof(struct cfi_softc),
+};
+
+static int
+cfi_xlp_probe(device_t dev)
 {
-#if 0
-	volatile unsigned int *pkt = 
-	    (volatile unsigned int *) (PACKET_MEMORY + PACKET_DATA_OFFSET);
-	int intf, hw_parser_error, context;
-#endif
-	unsigned int pktrdy;
-	int num_cachelines = 1518 / 64 ; /* pktsize / L3 cacheline size */
 
+	if (pci_get_vendor(dev) != PCI_VENDOR_NETLOGIC ||
+	    pci_get_device(dev) != PCI_DEVICE_ID_NLM_NOR)
+		return (ENXIO);
 
-	/* Spray packets to using distribution vector */
-	while (1) {
-		pktrdy = nlm_read_ucore_rxpktrdy();
-#if 0
-		intf = pktrdy & 0x1f;
-		context = (pktrdy >> 13) & 0x3ff;
-		hw_parser_error = (pktrdy >> 23) & 0x1;
-#endif
-		nlm_ucore_setup_poepktdistr(FWD_DIST_VEC, 0, 0, 0, 0);
-		nlm_ucore_pkt_done(num_cachelines, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		    0, 0);
-	}
-
-	return (0);
+	device_set_desc(dev, "Netlogic XLP NOR Bus");
+	return (cfi_probe(dev));
 }
+
+DRIVER_MODULE(cfi_xlp, pci, cfi_xlp_driver, cfi_devclass, 0, 0);
