@@ -84,7 +84,7 @@ vtc_tty_close(struct tty *tp)
 static void
 vtc_tty_outwakeup(struct tty *tp)
 {
-	char txbuf[4];
+	char txbuf[80];
 	struct vtc_te_softc *te;
 	__wchar_t utf32;
 	size_t nchars, bufidx;
@@ -94,47 +94,51 @@ vtc_tty_outwakeup(struct tty *tp)
 	if (te == NULL)
 		return;
 
-	bufidx = 0;
-	nchars = ttydisc_getc(tp, txbuf, sizeof(txbuf));
 	utf32 = te->te_utf32;
 	utfbytes = te->te_utfbytes;
-	while (bufidx < nchars) {
-		c = txbuf[bufidx++];
-		/*
-		 * Conditionalize on the two major character types:
-		 * initial and followup characters.
-		 */
-		if ((c & 0xc0) != 0x80) {
-			/* Initial characters. */
-			if (utfbytes != 0)
-				VTC_TE_WRITE(te, -1);
-			if ((c & 0xf8) == 0xf0) {
-				utf32 = c & 0x07;
-				utfbytes = 3;
-			} else if ((c & 0xf0) == 0xe0) {
-				utf32 = c & 0x0f;
-				utfbytes = 2;
-			} else if ((c & 0xe0) == 0xc0) {
-				utf32 = c & 0x1f;
-				utfbytes = 1;
+
+	nchars = ttydisc_getc(tp, txbuf, sizeof(txbuf));
+	while (nchars > 0) {
+		bufidx = 0;
+		while (bufidx < nchars) {
+			c = txbuf[bufidx++];
+			/*
+			 * Conditionalize on the two major character types:
+			 * initial and followup characters.
+			 */
+			if ((c & 0xc0) != 0x80) {
+				/* Initial characters. */
+				if (utfbytes != 0)
+					VTC_TE_WRITE(te, -1);
+				if ((c & 0xf8) == 0xf0) {
+					utf32 = c & 0x07;
+					utfbytes = 3;
+				} else if ((c & 0xf0) == 0xe0) {
+					utf32 = c & 0x0f;
+					utfbytes = 2;
+				} else if ((c & 0xe0) == 0xc0) {
+					utf32 = c & 0x1f;
+					utfbytes = 1;
+				} else {
+					KASSERT((c & 0x80) == 0x00, ("oops"));
+					utf32 = c & 0x7f;
+					utfbytes = 0;
+				}
 			} else {
-				KASSERT((c & 0x80) == 0x00, ("oops"));
-				utf32 = c & 0x7f;
-				utfbytes = 0;
+				/* Followup characters. */
+				KASSERT((c & 0xc0) == 0x80, ("oops"));
+				if (utfbytes > 0) {
+					utf32 = (utf32 << 6) + (c & 0x3f);
+					utfbytes--;
+				} else if (utfbytes == 0)
+					utfbytes = -1;
 			}
-		} else {
-			/* Followup characters. */
-			KASSERT((c & 0xc0) == 0x80, ("oops"));
-			if (utfbytes > 0) {
-				utf32 = (utf32 << 6) + (c & 0x3f);
-				utfbytes--;
-			}
-			else if (utfbytes == 0)
-				utfbytes = -1;
+			if (utfbytes == 0)
+				VTC_TE_WRITE(te, utf32);
 		}
-		if (utfbytes == 0)
-			VTC_TE_WRITE(te, utf32);
+		nchars = ttydisc_getc(tp, txbuf, sizeof(txbuf));
 	}
+
 	te->te_utf32 = utf32;
 	te->te_utfbytes = utfbytes;
 }
@@ -158,7 +162,7 @@ vtc_tty_ioctl(struct tty *tp, u_long cmd, caddr_t data, struct thread *td)
 	if (te == NULL)
 		return (ENXIO);
 
-	return (ENOTTY);
+	return (ENOIOCTL);
 }
 
 static int
@@ -170,6 +174,7 @@ vtc_tty_param(struct tty *tp, struct termios *t)
 	if (te == NULL)
 		return (ENODEV);
 
+	t->c_cflag |= CLOCAL;
 	return (0);
 }
 
