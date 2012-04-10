@@ -60,6 +60,7 @@ dev/syscons/scterm-teken.c	optional	sc
 dev/syscons/scvtb.c		optional	sc
 dev/uart/uart_cpu_sparc64.c	optional	uart
 dev/uart/uart_kbd_sun.c		optional	uart sc
+dev/vtc/vtout/vga/vga_cpu_sparc64.c optional	vtc
 kern/kern_clocksource.c		standard
 kern/syscalls.c			optional	ktr
 libkern/ffs.c			standard
