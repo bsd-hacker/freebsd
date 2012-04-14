@@ -6,10 +6,11 @@
 # + vimage - to configure/destroy vtap nodes
 
 # The name of the test that will be printed in the begining
+TEST_NBR="004"
 TEST_NAME="2 nodes and one is PROXY"
 
-# Global flags
-FLAG_QUIET=0
+# Return value from this test, 0 success failure otherwise
+TEST_RESULT=127
 
 # The number of nodes to test
 NBR_NODES=2
@@ -19,22 +20,13 @@ IP_SUBNET="192.168.2."
 
 cmd()
 {
-	if [ $FLAG_QUIET = 1 ]; then
-		echo "*** " $* >> output
-		$* >> output
-	else
-		echo "*** " $*
-		$*
-	fi
+	echo "***${TEST_NBR}*** " $*
+	$*
 }
 
 info()
 {
-	if [ $FLAG_QUIET = 1 ]; then
-		echo "*** " $* >> output
-	else
-		echo "*** " $*
-	fi
+	echo "***${TEST_NBR}*** " $*
 }
 
 descr()
@@ -73,8 +65,8 @@ EOL
 setup()
 {
 	# Initialize output file
-	echo "" > output
-	echo "TEST: ${TEST_NAME}"
+	info "TEST: ${TEST_NAME}"
+	info `date`
 
 	# Create wtap/vimage nodes
 	for i in `seq 1 ${NBR_NODES}`; do
@@ -155,15 +147,25 @@ run()
 		done
 	done
 	if [ $NBR_FAIL = 0 ]; then
-		echo "ALL TESTS PASSED"
+		info "ALL TESTS PASSED"
+		TEST_RESULT=0
 	else
-		echo "FAILED ${NBR_FAIL} of ${NBR_TESTS} TESTS"
+		info "FAILED ${NBR_FAIL} of ${NBR_TESTS} TESTS"
 	fi
 }
 
 teardown()
 {
 	cmd vis_map c
+	# Unlink all links
+	# XXX: this is a limitation of the current plugin,
+	# no way to reset vis_map without unload wtap.
+	n="`expr ${NBR_NODES} - 1`"
+	for i in `seq 0 ${n}`; do
+		j="`expr ${i} + 1`"
+		cmd vis_map d $i $j
+		cmd vis_map d $j $i
+	done
 	cmd jexec 2 ifconfig bridge0 destroy
 	# Bring epair back to host view, we bring both back
 	# otherwise a panic occurs, ie one is not enough.
@@ -181,6 +183,7 @@ teardown()
 		cmd vimage -d ${i}
 	done
 	cmd vimage -d 3
+	exit ${TEST_RESULT}
 }
 
 EXEC_SETUP=0
@@ -189,9 +192,6 @@ EXEC_TEARDOWN=0
 while [ "$#" -gt "0" ]
 do
 	case $1 in
-		-q)
-			FLAG_QUIET=1
-		;;
 		'all')
 			EXEC_SETUP=1
 			EXEC_RUN=1
@@ -211,7 +211,7 @@ do
 			exit 0
 		;;
                 *)
-			echo "$0 {all | setup | run | teardown | descr [-q]}"
+			echo "$0 {all | setup | run | teardown | descr}"
 			exit 127
 		;;
         esac
