@@ -296,6 +296,8 @@ typedef struct {
 #define	SHT_HIOS		0x6fffffff	/* Last of OS specific semantics */
 #define	SHT_LOPROC		0x70000000	/* reserved range for processor */
 #define	SHT_AMD64_UNWIND	0x70000001	/* unwind information */
+#define	SHT_MIPS_REGINFO	0x70000006
+#define	SHT_MIPS_OPTIONS	0x7000000d
 #define	SHT_MIPS_DWARF		0x7000001e	/* MIPS gcc uses MIPS_DWARF */
 #define	SHT_HIPROC		0x7fffffff	/* specific section header types */
 #define	SHT_LOUSER		0x80000000	/* reserved range for application */
@@ -633,6 +635,10 @@ typedef struct {
 #define	R_ARM_THM_SWI8		14
 #define	R_ARM_XPC25		15
 #define	R_ARM_THM_XPC22		16
+/* TLS relocations */
+#define	R_ARM_TLS_DTPMOD32	17	/* ID of module containing symbol */
+#define	R_ARM_TLS_DTPOFF32	18	/* Offset in TLS block */
+#define	R_ARM_TLS_TPOFF32	19	/* Offset in static TLS block */
 #define	R_ARM_COPY		20	/* Copy data from shared object. */
 #define	R_ARM_GLOB_DAT		21	/* Set GOT entry to data address. */
 #define	R_ARM_JUMP_SLOT		22	/* Set GOT entry to code address. */

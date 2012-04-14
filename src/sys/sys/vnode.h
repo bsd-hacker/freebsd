@@ -149,8 +149,8 @@ struct vnode {
 	struct	lock *v_vnlock;			/* u pointer to vnode lock */
 	int	v_holdcnt;			/* i prevents recycling. */
 	int	v_usecount;			/* i ref count of users */
-	u_long	v_iflag;			/* i vnode flags (see below) */
-	u_long	v_vflag;			/* v vnode flags */
+	u_int	v_iflag;			/* i vnode flags (see below) */
+	u_int	v_vflag;			/* v vnode flags */
 	int	v_writecount;			/* v ref count of writers */
 
 	/*
@@ -380,7 +380,6 @@ extern int		vttoif_tab[];
 #define	SKIPSYSTEM	0x0001	/* vflush: skip vnodes marked VSYSTEM */
 #define	FORCECLOSE	0x0002	/* vflush: force file closure */
 #define	WRITECLOSE	0x0004	/* vflush: only close writable files */
-#define	DOCLOSE		0x0008	/* vclean: close active files */
 #define	V_SAVE		0x0001	/* vinvalbuf: sync file first */
 #define	V_ALT		0x0002	/* vinvalbuf: invalidate only alternate bufs */
 #define	V_NORMAL	0x0004	/* vinvalbuf: invalidate only regular bufs */
@@ -538,6 +537,10 @@ void	assert_vop_unlocked(struct vnode *vp, const char *str);
  */
 #define VCALL(c) ((c)->a_desc->vdesc_call(c))
 
+#define DOINGASYNC(vp)	   					\
+	(((vp)->v_mount->mnt_kern_flag & MNTK_ASYNC) != 0 &&	\
+	 ((curthread->td_pflags & TDP_SYNCIO) == 0))
+
 /*
  * VMIO support inline
  */
@@ -579,12 +582,11 @@ struct vnode;
 
 /* cache_* may belong in namei.h. */
 #define	cache_enter(dvp, vp, cnp)					\
-	cache_enter_time(dvp, vp, cnp, NULL)
+	cache_enter_time(dvp, vp, cnp, NULL, NULL)
 void	cache_enter_time(struct vnode *dvp, struct vnode *vp,
-	    struct componentname *cnp, struct timespec *tsp);
-#define	cache_lookup(dvp, vpp, cnp)					\
-	cache_lookup_times(dvp, vpp, cnp, NULL, NULL)
-int	cache_lookup_times(struct vnode *dvp, struct vnode **vpp,
+	    struct componentname *cnp, struct timespec *tsp,
+	    struct timespec *dtsp);
+int	cache_lookup(struct vnode *dvp, struct vnode **vpp,
 	    struct componentname *cnp, struct timespec *tsp, int *ticksp);
 void	cache_purge(struct vnode *vp);
 void	cache_purge_negative(struct vnode *vp);
@@ -630,6 +632,7 @@ int	vget(struct vnode *vp, int lockflag, struct thread *td);
 void	vgone(struct vnode *vp);
 void	vhold(struct vnode *);
 void	vholdl(struct vnode *);
+void	vinactive(struct vnode *, struct thread *);
 int	vinvalbuf(struct vnode *vp, int save, int slpflag, int slptimeo);
 int	vtruncbuf(struct vnode *vp, struct ucred *cred, struct thread *td,
 	    off_t length, int blksize);
@@ -651,7 +654,7 @@ void	vn_pages_remove(struct vnode *vp, vm_pindex_t start, vm_pindex_t end);
 int	vn_pollrecord(struct vnode *vp, struct thread *p, int events);
 int	vn_rdwr(enum uio_rw rw, struct vnode *vp, void *base,
 	    int len, off_t offset, enum uio_seg segflg, int ioflg,
-	    struct ucred *active_cred, struct ucred *file_cred, int *aresid,
+	    struct ucred *active_cred, struct ucred *file_cred, ssize_t *aresid,
 	    struct thread *td);
 int	vn_rdwr_inchunks(enum uio_rw rw, struct vnode *vp, void *base,
 	    size_t len, off_t offset, enum uio_seg segflg, int ioflg,
@@ -701,6 +704,9 @@ int	vop_stdpathconf(struct vop_pathconf_args *);
 int	vop_stdpoll(struct vop_poll_args *);
 int	vop_stdvptocnp(struct vop_vptocnp_args *ap);
 int	vop_stdvptofh(struct vop_vptofh_args *ap);
+int	vop_stdunp_bind(struct vop_unp_bind_args *ap);
+int	vop_stdunp_connect(struct vop_unp_connect_args *ap);
+int	vop_stdunp_detach(struct vop_unp_detach_args *ap);
 int	vop_eopnotsupp(struct vop_generic_args *ap);
 int	vop_ebadf(struct vop_generic_args *ap);
 int	vop_einval(struct vop_generic_args *ap);
@@ -776,6 +782,9 @@ extern struct vop_vector default_vnodeops;
 #define VOP_ENOENT	((void*)(uintptr_t)vop_enoent)
 #define VOP_EOPNOTSUPP	((void*)(uintptr_t)vop_eopnotsupp)
 
+/* fifo_vnops.c */
+int	fifo_printinfo(struct vnode *);
+
 /* vfs_hash.c */
 typedef int vfs_hash_cmp_t(struct vnode *vp, void *arg);
 
@@ -790,6 +799,8 @@ struct dirent;
 int vfs_read_dirent(struct vop_readdir_args *ap, struct dirent *dp, off_t off);
 
 int vfs_unixify_accmode(accmode_t *accmode);
+
+void vfs_unp_reclaim(struct vnode *vp);
 
 int setfmode(struct thread *td, struct ucred *cred, struct vnode *vp, int mode);
 int setfown(struct thread *td, struct ucred *cred, struct vnode *vp, uid_t uid,

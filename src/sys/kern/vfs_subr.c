@@ -103,7 +103,6 @@ static int	flushbuflist(struct bufv *bufv, int flags, struct bufobj *bo,
 static void	syncer_shutdown(void *arg, int howto);
 static int	vtryrecycle(struct vnode *vp);
 static void	vbusy(struct vnode *vp);
-static void	vinactive(struct vnode *, struct thread *);
 static void	v_incr_usecount(struct vnode *);
 static void	v_decr_usecount(struct vnode *);
 static void	v_decr_useonly(struct vnode *);
@@ -2401,7 +2400,7 @@ vdropl(struct vnode *vp)
  * OWEINACT tracks whether a vnode missed a call to inactive due to a
  * failed lock upgrade.
  */
-static void
+void
 vinactive(struct vnode *vp, struct thread *td)
 {
 
@@ -2657,6 +2656,8 @@ vgonel(struct vnode *vp)
 			vinactive(vp, td);
 		VI_UNLOCK(vp);
 	}
+	if (vp->v_type == VSOCK)
+		vfs_unp_reclaim(vp);
 	/*
 	 * Reclaim the vnode.
 	 */
@@ -2940,6 +2941,7 @@ DB_SHOW_COMMAND(mount, db_show_mount)
 	MNT_KERN_FLAG(MNTK_REFEXPIRE);
 	MNT_KERN_FLAG(MNTK_EXTENDED_SHARED);
 	MNT_KERN_FLAG(MNTK_SHARED_WRITES);
+	MNT_KERN_FLAG(MNTK_NOASYNC);
 	MNT_KERN_FLAG(MNTK_UNMOUNT);
 	MNT_KERN_FLAG(MNTK_MWAIT);
 	MNT_KERN_FLAG(MNTK_SUSPEND);
@@ -2992,7 +2994,6 @@ DB_SHOW_COMMAND(mount, db_show_mount)
 	db_printf("    mnt_gen = %d\n", mp->mnt_gen);
 	db_printf("    mnt_nvnodelistsize = %d\n", mp->mnt_nvnodelistsize);
 	db_printf("    mnt_writeopcount = %d\n", mp->mnt_writeopcount);
-	db_printf("    mnt_noasync = %u\n", mp->mnt_noasync);
 	db_printf("    mnt_maxsymlinklen = %d\n", mp->mnt_maxsymlinklen);
 	db_printf("    mnt_iosize_max = %d\n", mp->mnt_iosize_max);
 	db_printf("    mnt_hashseed = %u\n", mp->mnt_hashseed);
@@ -3521,7 +3522,7 @@ sync_fsync(struct vop_fsync_args *ap)
 {
 	struct vnode *syncvp = ap->a_vp;
 	struct mount *mp = syncvp->v_mount;
-	int error;
+	int error, save;
 	struct bufobj *bo;
 
 	/*
@@ -3551,17 +3552,10 @@ sync_fsync(struct vop_fsync_args *ap)
 		vfs_unbusy(mp);
 		return (0);
 	}
-	MNT_ILOCK(mp);
-	mp->mnt_noasync++;
-	mp->mnt_kern_flag &= ~MNTK_ASYNC;
-	MNT_IUNLOCK(mp);
+	save = curthread_pflags_set(TDP_SYNCIO);
 	vfs_msync(mp, MNT_NOWAIT);
 	error = VFS_SYNC(mp, MNT_LAZY);
-	MNT_ILOCK(mp);
-	mp->mnt_noasync--;
-	if ((mp->mnt_flag & MNT_ASYNC) != 0 && mp->mnt_noasync == 0)
-		mp->mnt_kern_flag |= MNTK_ASYNC;
-	MNT_IUNLOCK(mp);
+	curthread_pflags_restore(save);
 	vn_finished_write(mp);
 	vfs_unbusy(mp);
 	return (error);

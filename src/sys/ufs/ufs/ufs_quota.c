@@ -1061,12 +1061,11 @@ qsync(struct mount *mp)
 again:
 	MNT_VNODE_FOREACH(vp, mp, mvp) {
 		VI_LOCK(vp);
-		MNT_IUNLOCK(mp);
 		if (vp->v_type == VNON) {
 			VI_UNLOCK(vp);
-			MNT_ILOCK(mp);
 			continue;
 		}
+		MNT_IUNLOCK(mp);
 		error = vget(vp, LK_EXCLUSIVE | LK_INTERLOCK, td);
 		if (error) {
 			MNT_ILOCK(mp);
@@ -1469,6 +1468,7 @@ dqrele(struct vnode *vp, struct dquot *dq)
 	if (dq == NODQUOT)
 		return;
 	DQH_LOCK();
+	KASSERT(dq->dq_cnt > 0, ("Lost dq %p reference 1", dq));
 	if (dq->dq_cnt > 1) {
 		dq->dq_cnt--;
 		DQH_UNLOCK();
@@ -1479,6 +1479,7 @@ sync:
 	(void) dqsync(vp, dq);
 
 	DQH_LOCK();
+	KASSERT(dq->dq_cnt > 0, ("Lost dq %p reference 2", dq));
 	if (--dq->dq_cnt > 0)
 	{
 		DQH_UNLOCK();
@@ -1658,6 +1659,7 @@ quotaref(vp, qrp)
 	 */
 	found = 0;
 	ip = VTOI(vp);
+	mtx_lock(&dqhlock);
 	for (i = 0; i < MAXQUOTAS; i++) {
 		if ((dq = ip->i_dquot[i]) == NODQUOT)
 			continue;
@@ -1665,6 +1667,7 @@ quotaref(vp, qrp)
 		qrp[i] = dq;
 		found++;
 	}
+	mtx_unlock(&dqhlock);
 	return (found);
 }
 
