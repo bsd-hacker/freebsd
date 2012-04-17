@@ -85,7 +85,7 @@ toedev_listen_stop(struct toedev *tod __unused, struct tcpcb *tp __unused)
 
 static void
 toedev_input(struct toedev *tod __unused, struct tcpcb *tp __unused,
-    struct mbuf *m __unused, int hlen __unused)
+    struct mbuf *m)
 {
 
 	m_freem(m);

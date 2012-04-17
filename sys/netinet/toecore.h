@@ -51,7 +51,7 @@ struct toedev {
 	int (*tod_listen_stop)(struct toedev *, struct tcpcb *);
 
 	/* Frame received by kernel for an offloaded connection */
-	void (*tod_input)(struct toedev *, struct tcpcb *, struct mbuf *, int);
+	void (*tod_input)(struct toedev *, struct tcpcb *, struct mbuf *);
 
 	/* Some data read */
 	void (*tod_rcvd)(struct toedev *, struct tcpcb *);
