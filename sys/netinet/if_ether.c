@@ -180,6 +180,17 @@ arptimer(void *arg)
 		    callout_active(&lle->la_timer)) {
 			callout_stop(&lle->la_timer);
 			LLE_REMREF(lle);
+
+			if (lle->la_flags != LLE_DELETED) {
+				int evt;
+
+				if (lle->la_flags & LLE_VALID)
+					evt = LLENTRY_EXPIRED;
+				else
+					evt = LLENTRY_TIMEDOUT;
+				EVENTHANDLER_INVOKE(lle_event, lle, evt);
+			}
+
 			pkts_dropped = llentry_free(lle);
 			ARPSTAT_ADD(dropped, pkts_dropped);
 			ARPSTAT_INC(timeouts);
@@ -312,7 +323,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	}
 retry:
 	IF_AFDATA_RLOCK(ifp);	
-	la = lla_lookup(LLTABLE(ifp), flags, dst);
+	la = *lle = lla_lookup(LLTABLE(ifp), flags, dst);
 	IF_AFDATA_RUNLOCK(ifp);	
 	if ((la == NULL) && ((flags & LLE_EXCLUSIVE) == 0)
 	    && ((ifp->if_flags & (IFF_NOARP | IFF_STATICARP)) == 0)) {		
@@ -344,7 +355,6 @@ retry:
 			la->la_preempt--;
 		}
 		
-		*lle = la;
 		error = 0;
 		goto done;
 	} 
@@ -727,6 +737,7 @@ match:
 		la->la_flags |= LLE_VALID;
 
 		EVENTHANDLER_INVOKE(arp_update_event, la);
+		EVENTHANDLER_INVOKE(lle_event, la, LLENTRY_RESOLVED);
 
 		if (!(la->la_flags & LLE_STATIC)) {
 			int canceled;
