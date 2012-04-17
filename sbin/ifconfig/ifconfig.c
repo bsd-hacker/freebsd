@@ -916,7 +916,7 @@ unsetifdescr(const char *val, int value, int s, const struct afswtch *afp)
 #define	IFCAPBITS \
 "\020\1RXCSUM\2TXCSUM\3NETCONS\4VLAN_MTU\5VLAN_HWTAGGING\6JUMBO_MTU\7POLLING" \
 "\10VLAN_HWCSUM\11TSO4\12TSO6\13LRO\14WOL_UCAST\15WOL_MCAST\16WOL_MAGIC" \
-"\21VLAN_HWFILTER\23VLAN_HWTSO\24LINKSTATE\25NETMAP"
+"\17TOE4\20TOE6\21VLAN_HWFILTER\23VLAN_HWTSO\24LINKSTATE\25NETMAP\26VLAN_TOE"
 
 /*
  * Print the status of the interface.  If an address family was
@@ -1203,6 +1203,8 @@ static struct cmd basic_cmds[] = {
 	DEF_CMD("-polling",	-IFCAP_POLLING,	setifcap),
 	DEF_CMD("tso",		IFCAP_TSO,	setifcap),
 	DEF_CMD("-tso",		-IFCAP_TSO,	setifcap),
+	DEF_CMD("toe",		IFCAP_TOE,	setifcap),
+	DEF_CMD("-toe",		-IFCAP_TOE,	setifcap),
 	DEF_CMD("lro",		IFCAP_LRO,	setifcap),
 	DEF_CMD("-lro",		-IFCAP_LRO,	setifcap),
 	DEF_CMD("wol",		IFCAP_WOL,	setifcap),
