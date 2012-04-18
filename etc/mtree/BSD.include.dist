@@ -76,6 +76,10 @@
             tr1
             ..
         ..
+        v1
+            ext
+            ..
+        ..
     ..
     cam
         ata
@@ -84,7 +88,7 @@
         ..
     ..
     clang
-        3.0
+        3.1
         ..
     ..
     crypto
@@ -95,6 +99,8 @@
         an
         ..
         bktr
+        ..
+        ciss
         ..
         firewire
         ..
@@ -145,8 +151,6 @@
         devfs
         ..
         fdescfs
-        ..
-        fifofs
         ..
         msdosfs
         ..
@@ -228,6 +232,8 @@
         ..
     ..
     kadm5
+    ..
+    krb5
     ..
     libmilter
     ..
@@ -322,5 +328,7 @@
         ..
     ..
     vm
+    ..
+    xlocale
     ..
 ..

@@ -10,6 +10,8 @@ SRCS=	Builtins.cpp \
 	FileManager.cpp \
 	FileSystemStatCache.cpp \
 	IdentifierTable.cpp \
+	LangOptions.cpp \
+	Module.cpp \
 	SourceLocation.cpp \
 	SourceManager.cpp \
 	TargetInfo.cpp \
@@ -28,6 +30,7 @@ TGHDRS=	DiagnosticAnalysisKinds \
 	DiagnosticLexKinds \
 	DiagnosticParseKinds \
 	DiagnosticSemaKinds \
+	DiagnosticSerializationKinds \
 	arm_neon
 
 .include "../clang.lib.mk"

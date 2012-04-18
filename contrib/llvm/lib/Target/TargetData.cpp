@@ -41,7 +41,7 @@ char TargetData::ID = 0;
 // Support for StructLayout
 //===----------------------------------------------------------------------===//
 
-StructLayout::StructLayout(const StructType *ST, const TargetData &TD) {
+StructLayout::StructLayout(StructType *ST, const TargetData &TD) {
   assert(!ST->isOpaque() && "Cannot get layout of opaque structs");
   StructAlignment = 0;
   StructSize = 0;
@@ -49,7 +49,7 @@ StructLayout::StructLayout(const StructType *ST, const TargetData &TD) {
 
   // Loop over each of the elements, placing them in memory.
   for (unsigned i = 0, e = NumElements; i != e; ++i) {
-    const Type *Ty = ST->getElementType(i);
+    Type *Ty = ST->getElementType(i);
     unsigned TyAlign = ST->isPacked() ? 1 : TD.getABITypeAlignment(Ty);
 
     // Add padding if necessary to align the data element properly.
@@ -125,20 +125,21 @@ const TargetAlignElem TargetData::InvalidAlignmentElem =
 //===----------------------------------------------------------------------===//
 
 /// getInt - Get an integer ignoring errors.
-static unsigned getInt(StringRef R) {
-  unsigned Result = 0;
+static int getInt(StringRef R) {
+  int Result = 0;
   R.getAsInteger(10, Result);
   return Result;
 }
 
-void TargetData::init(StringRef Desc) {
+void TargetData::init() {
   initializeTargetDataPass(*PassRegistry::getPassRegistry());
-  
+
   LayoutMap = 0;
   LittleEndian = false;
   PointerMemSize = 8;
   PointerABIAlign = 8;
   PointerPrefAlign = PointerABIAlign;
+  StackNaturalAlign = 0;
 
   // Default alignments
   setAlignment(INTEGER_ALIGN,   1,  1, 1);   // i1
@@ -146,11 +147,19 @@ void TargetData::init(StringRef Desc) {
   setAlignment(INTEGER_ALIGN,   2,  2, 16);  // i16
   setAlignment(INTEGER_ALIGN,   4,  4, 32);  // i32
   setAlignment(INTEGER_ALIGN,   4,  8, 64);  // i64
+  setAlignment(FLOAT_ALIGN,     2,  2, 16);  // half
   setAlignment(FLOAT_ALIGN,     4,  4, 32);  // float
   setAlignment(FLOAT_ALIGN,     8,  8, 64);  // double
+  setAlignment(FLOAT_ALIGN,    16, 16, 128); // ppcf128, quad, ...
   setAlignment(VECTOR_ALIGN,    8,  8, 64);  // v2i32, v1i64, ...
   setAlignment(VECTOR_ALIGN,   16, 16, 128); // v16i8, v8i16, v4i32, ...
   setAlignment(AGGREGATE_ALIGN, 0,  8,  0);  // struct
+}
+
+std::string TargetData::parseSpecifier(StringRef Desc, TargetData *td) {
+
+  if (td)
+    td->init();
 
   while (!Desc.empty()) {
     std::pair<StringRef, StringRef> Split = Desc.split('-');
@@ -168,28 +177,54 @@ void TargetData::init(StringRef Desc) {
 
     switch (Specifier[0]) {
     case 'E':
-      LittleEndian = false;
+      if (td)
+        td->LittleEndian = false;
       break;
     case 'e':
-      LittleEndian = true;
+      if (td)
+        td->LittleEndian = true;
       break;
-    case 'p':
+    case 'p': {
+      // Pointer size.
       Split = Token.split(':');
-      PointerMemSize = getInt(Split.first) / 8;
+      int PointerMemSizeBits = getInt(Split.first);
+      if (PointerMemSizeBits < 0 || PointerMemSizeBits % 8 != 0)
+        return "invalid pointer size, must be a positive 8-bit multiple";
+      if (td)
+        td->PointerMemSize = PointerMemSizeBits / 8;
+
+      // Pointer ABI alignment.
       Split = Split.second.split(':');
-      PointerABIAlign = getInt(Split.first) / 8;
+      int PointerABIAlignBits = getInt(Split.first);
+      if (PointerABIAlignBits < 0 || PointerABIAlignBits % 8 != 0) {
+        return "invalid pointer ABI alignment, "
+               "must be a positive 8-bit multiple";
+      }
+      if (td)
+        td->PointerABIAlign = PointerABIAlignBits / 8;
+
+      // Pointer preferred alignment.
       Split = Split.second.split(':');
-      PointerPrefAlign = getInt(Split.first) / 8;
-      if (PointerPrefAlign == 0)
-        PointerPrefAlign = PointerABIAlign;
+      int PointerPrefAlignBits = getInt(Split.first);
+      if (PointerPrefAlignBits < 0 || PointerPrefAlignBits % 8 != 0) {
+        return "invalid pointer preferred alignment, "
+               "must be a positive 8-bit multiple";
+      }
+      if (td) {
+        td->PointerPrefAlign = PointerPrefAlignBits / 8;
+        if (td->PointerPrefAlign == 0)
+          td->PointerPrefAlign = td->PointerABIAlign;
+      }
       break;
+    }
     case 'i':
     case 'v':
     case 'f':
     case 'a':
     case 's': {
       AlignTypeEnum AlignType;
-      switch (Specifier[0]) {
+      char field = Specifier[0];
+      switch (field) {
       default:
       case 'i': AlignType = INTEGER_ALIGN; break;
       case 'v': AlignType = VECTOR_ALIGN; break;
@@ -197,32 +232,66 @@ void TargetData::init(StringRef Desc) {
       case 'a': AlignType = AGGREGATE_ALIGN; break;
       case 's': AlignType = STACK_ALIGN; break;
       }
-      unsigned Size = getInt(Specifier.substr(1));
+      int Size = getInt(Specifier.substr(1));
+      if (Size < 0) {
+        return std::string("invalid ") + field + "-size field, "
+               "must be positive";
+      }
+
       Split = Token.split(':');
-      unsigned ABIAlign = getInt(Split.first) / 8;
+      int ABIAlignBits = getInt(Split.first);
+      if (ABIAlignBits < 0 || ABIAlignBits % 8 != 0) {
+        return std::string("invalid ") + field +"-abi-alignment field, "
+               "must be a positive 8-bit multiple";
+      }
+      unsigned ABIAlign = ABIAlignBits / 8;
 
       Split = Split.second.split(':');
-      unsigned PrefAlign = getInt(Split.first) / 8;
+
+      int PrefAlignBits = getInt(Split.first);
+      if (PrefAlignBits < 0 || PrefAlignBits % 8 != 0) {
+        return std::string("invalid ") + field +"-preferred-alignment field, "
+               "must be a positive 8-bit multiple";
+      }
+      unsigned PrefAlign = PrefAlignBits / 8;
       if (PrefAlign == 0)
         PrefAlign = ABIAlign;
-      setAlignment(AlignType, ABIAlign, PrefAlign, Size);
+      
+      if (td)
+        td->setAlignment(AlignType, ABIAlign, PrefAlign, Size);
       break;
     }
     case 'n':  // Native integer types.
       Specifier = Specifier.substr(1);
       do {
-        if (unsigned Width = getInt(Specifier))
-          LegalIntWidths.push_back(Width);
+        int Width = getInt(Specifier);
+        if (Width <= 0) {
+          return std::string("invalid native integer size \'") + Specifier.str() +
+                 "\', must be a positive integer.";
+        }
+        if (td && Width != 0)
+          td->LegalIntWidths.push_back(Width);
         Split = Token.split(':');
         Specifier = Split.first;
         Token = Split.second;
       } while (!Specifier.empty() || !Token.empty());
       break;
-
+    case 'S': { // Stack natural alignment.
+      int StackNaturalAlignBits = getInt(Specifier.substr(1));
+      if (StackNaturalAlignBits < 0 || StackNaturalAlignBits % 8 != 0) {
+        return "invalid natural stack alignment (S-field), "
+               "must be a positive 8-bit multiple";
+      }
+      if (td)
+        td->StackNaturalAlign = StackNaturalAlignBits / 8;
+      break;
+    }
     default:
       break;
     }
   }
+
+  return "";
 }
 
 /// Default ctor.
@@ -236,7 +305,9 @@ TargetData::TargetData() : ImmutablePass(ID) {
 
 TargetData::TargetData(const Module *M)
   : ImmutablePass(ID) {
-  init(M->getDataLayout());
+  std::string errMsg = parseSpecifier(M->getDataLayout(), this);
+  assert(errMsg == "" && "Module M has malformed target data layout string.");
+  (void)errMsg;
 }
 
 void
@@ -261,7 +332,7 @@ TargetData::setAlignment(AlignTypeEnum align_type, unsigned abi_align,
 /// preferred if ABIInfo = false) the target wants for the specified datatype.
 unsigned TargetData::getAlignmentInfo(AlignTypeEnum AlignType,
                                       uint32_t BitWidth, bool ABIInfo,
-                                      const Type *Ty) const {
+                                      Type *Ty) const {
   // Check to see if we have an exact match and remember the best match we see.
   int BestMatchIdx = -1;
   int LargestInt = -1;
@@ -302,7 +373,7 @@ unsigned TargetData::getAlignmentInfo(AlignTypeEnum AlignType,
       // If the alignment is not a power of 2, round up to the next power of 2.
       // This happens for non-power-of-2 length vectors.
       if (Align & (Align-1))
-        Align = llvm::NextPowerOf2(Align);
+        Align = NextPowerOf2(Align);
       return Align;
     }
   }
@@ -315,7 +386,7 @@ unsigned TargetData::getAlignmentInfo(AlignTypeEnum AlignType,
 namespace {
 
 class StructLayoutMap {
-  typedef DenseMap<const StructType*, StructLayout*> LayoutInfoTy;
+  typedef DenseMap<StructType*, StructLayout*> LayoutInfoTy;
   LayoutInfoTy LayoutInfo;
 
 public:
@@ -329,7 +400,7 @@ public:
     }
   }
 
-  StructLayout *&operator[](const StructType *STy) {
+  StructLayout *&operator[](StructType *STy) {
     return LayoutInfo[STy];
   }
 
@@ -343,7 +414,7 @@ TargetData::~TargetData() {
   delete static_cast<StructLayoutMap*>(LayoutMap);
 }
 
-const StructLayout *TargetData::getStructLayout(const StructType *Ty) const {
+const StructLayout *TargetData::getStructLayout(StructType *Ty) const {
   if (!LayoutMap)
     LayoutMap = new StructLayoutMap();
 
@@ -372,7 +443,9 @@ std::string TargetData::getStringRepresentation() const {
 
   OS << (LittleEndian ? "e" : "E")
      << "-p:" << PointerMemSize*8 << ':' << PointerABIAlign*8
-     << ':' << PointerPrefAlign*8;
+     << ':' << PointerPrefAlign*8
+     << "-S" << StackNaturalAlign*8;
+
   for (unsigned i = 0, e = Alignments.size(); i != e; ++i) {
     const TargetAlignElem &AI = Alignments[i];
     OS << '-' << (char)AI.AlignType << AI.TypeBitWidth << ':'
@@ -389,14 +462,14 @@ std::string TargetData::getStringRepresentation() const {
 }
 
 
-uint64_t TargetData::getTypeSizeInBits(const Type *Ty) const {
+uint64_t TargetData::getTypeSizeInBits(Type *Ty) const {
   assert(Ty->isSized() && "Cannot getTypeInfo() on a type that is unsized!");
   switch (Ty->getTypeID()) {
   case Type::LabelTyID:
   case Type::PointerTyID:
     return getPointerSizeInBits();
   case Type::ArrayTyID: {
-    const ArrayType *ATy = cast<ArrayType>(Ty);
+    ArrayType *ATy = cast<ArrayType>(Ty);
     return getTypeAllocSizeInBits(ATy->getElementType())*ATy->getNumElements();
   }
   case Type::StructTyID:
@@ -406,6 +479,8 @@ uint64_t TargetData::getTypeSizeInBits(const Type *Ty) const {
     return cast<IntegerType>(Ty)->getBitWidth();
   case Type::VoidTyID:
     return 8;
+  case Type::HalfTyID:
+    return 16;
   case Type::FloatTyID:
     return 32;
   case Type::DoubleTyID:
@@ -422,9 +497,7 @@ uint64_t TargetData::getTypeSizeInBits(const Type *Ty) const {
     return cast<VectorType>(Ty)->getBitWidth();
   default:
     llvm_unreachable("TargetData::getTypeSizeInBits(): Unsupported type");
-    break;
   }
-  return 0;
 }
 
 /*!
@@ -435,7 +508,7 @@ uint64_t TargetData::getTypeSizeInBits(const Type *Ty) const {
   Get the ABI (\a abi_or_pref == true) or preferred alignment (\a abi_or_pref
   == false) for the requested type \a Ty.
  */
-unsigned TargetData::getAlignment(const Type *Ty, bool abi_or_pref) const {
+unsigned TargetData::getAlignment(Type *Ty, bool abi_or_pref) const {
   int AlignType = -1;
 
   assert(Ty->isSized() && "Cannot getTypeInfo() on a type that is unsized!");
@@ -463,6 +536,7 @@ unsigned TargetData::getAlignment(const Type *Ty, bool abi_or_pref) const {
   case Type::VoidTyID:
     AlignType = INTEGER_ALIGN;
     break;
+  case Type::HalfTyID:
   case Type::FloatTyID:
   case Type::DoubleTyID:
   // PPC_FP128TyID and FP128TyID have different data contents, but the
@@ -478,14 +552,13 @@ unsigned TargetData::getAlignment(const Type *Ty, bool abi_or_pref) const {
     break;
   default:
     llvm_unreachable("Bad type for getAlignment!!!");
-    break;
   }
 
   return getAlignmentInfo((AlignTypeEnum)AlignType, getTypeSizeInBits(Ty),
                           abi_or_pref, Ty);
 }
 
-unsigned TargetData::getABITypeAlignment(const Type *Ty) const {
+unsigned TargetData::getABITypeAlignment(Type *Ty) const {
   return getAlignment(Ty, true);
 }
 
@@ -496,7 +569,7 @@ unsigned TargetData::getABIIntegerTypeAlignment(unsigned BitWidth) const {
 }
 
 
-unsigned TargetData::getCallFrameTypeAlignment(const Type *Ty) const {
+unsigned TargetData::getCallFrameTypeAlignment(Type *Ty) const {
   for (unsigned i = 0, e = Alignments.size(); i != e; ++i)
     if (Alignments[i].AlignType == STACK_ALIGN)
       return Alignments[i].ABIAlign;
@@ -504,11 +577,11 @@ unsigned TargetData::getCallFrameTypeAlignment(const Type *Ty) const {
   return getABITypeAlignment(Ty);
 }
 
-unsigned TargetData::getPrefTypeAlignment(const Type *Ty) const {
+unsigned TargetData::getPrefTypeAlignment(Type *Ty) const {
   return getAlignment(Ty, false);
 }
 
-unsigned TargetData::getPreferredTypeAlignmentShift(const Type *Ty) const {
+unsigned TargetData::getPreferredTypeAlignmentShift(Type *Ty) const {
   unsigned Align = getPrefTypeAlignment(Ty);
   assert(!(Align & (Align-1)) && "Alignment is not a power of two!");
   return Log2_32(Align);
@@ -521,16 +594,17 @@ IntegerType *TargetData::getIntPtrType(LLVMContext &C) const {
 }
 
 
-uint64_t TargetData::getIndexedOffset(const Type *ptrTy, Value* const* Indices,
-                                      unsigned NumIndices) const {
-  const Type *Ty = ptrTy;
+uint64_t TargetData::getIndexedOffset(Type *ptrTy,
+                                      ArrayRef<Value *> Indices) const {
+  Type *Ty = ptrTy;
   assert(Ty->isPointerTy() && "Illegal argument for getIndexedOffset()");
   uint64_t Result = 0;
 
   generic_gep_type_iterator<Value* const*>
-    TI = gep_type_begin(ptrTy, Indices, Indices+NumIndices);
-  for (unsigned CurIDX = 0; CurIDX != NumIndices; ++CurIDX, ++TI) {
-    if (const StructType *STy = dyn_cast<StructType>(*TI)) {
+    TI = gep_type_begin(ptrTy, Indices);
+  for (unsigned CurIDX = 0, EndIDX = Indices.size(); CurIDX != EndIDX;
+       ++CurIDX, ++TI) {
+    if (StructType *STy = dyn_cast<StructType>(*TI)) {
       assert(Indices[CurIDX]->getType() ==
              Type::getInt32Ty(ptrTy->getContext()) &&
              "Illegal struct idx");
@@ -561,7 +635,7 @@ uint64_t TargetData::getIndexedOffset(const Type *ptrTy, Value* const* Indices,
 /// global.  This includes an explicitly requested alignment (if the global
 /// has one).
 unsigned TargetData::getPreferredAlignment(const GlobalVariable *GV) const {
-  const Type *ElemType = GV->getType()->getElementType();
+  Type *ElemType = GV->getType()->getElementType();
   unsigned Alignment = getPrefTypeAlignment(ElemType);
   unsigned GVAlignment = GV->getAlignment();
   if (GVAlignment >= Alignment) {

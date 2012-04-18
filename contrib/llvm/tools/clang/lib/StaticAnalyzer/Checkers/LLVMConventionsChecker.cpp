@@ -17,8 +17,7 @@
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/StmtVisitor.h"
-#include <string>
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SmallString.h"
 
 using namespace clang;
 using namespace ento;
@@ -32,13 +31,13 @@ static bool IsLLVMStringRef(QualType T) {
   if (!RT)
     return false;
 
-  return llvm::StringRef(QualType(RT, 0).getAsString()) ==
-          "class llvm::StringRef";
+  return StringRef(QualType(RT, 0).getAsString()) ==
+          "class StringRef";
 }
 
 /// Check whether the declaration is semantically inside the top-level
 /// namespace named by ns.
-static bool InNamespace(const Decl *D, llvm::StringRef NS) {
+static bool InNamespace(const Decl *D, StringRef NS) {
   const NamespaceDecl *ND = dyn_cast<NamespaceDecl>(D->getDeclContext());
   if (!ND)
     return false;
@@ -109,15 +108,17 @@ static bool IsSmallVector(QualType T) {
 }
 
 //===----------------------------------------------------------------------===//
-// CHECK: a llvm::StringRef should not be bound to a temporary std::string whose
+// CHECK: a StringRef should not be bound to a temporary std::string whose
 // lifetime is shorter than the StringRef's.
 //===----------------------------------------------------------------------===//
 
 namespace {
 class StringRefCheckerVisitor : public StmtVisitor<StringRefCheckerVisitor> {
   BugReporter &BR;
+  const Decl *DeclWithIssue;
 public:
-  StringRefCheckerVisitor(BugReporter &br) : BR(br) {}
+  StringRefCheckerVisitor(const Decl *declWithIssue, BugReporter &br)
+    : BR(br), DeclWithIssue(declWithIssue) {}
   void VisitChildren(Stmt *S) {
     for (Stmt::child_iterator I = S->child_begin(), E = S->child_end() ;
       I != E; ++I)
@@ -132,7 +133,7 @@ private:
 } // end anonymous namespace
 
 static void CheckStringRefAssignedTemporary(const Decl *D, BugReporter &BR) {
-  StringRefCheckerVisitor walker(BR);
+  StringRefCheckerVisitor walker(D, BR);
   walker.Visit(D->getBody());
 }
 
@@ -150,7 +151,7 @@ void StringRefCheckerVisitor::VisitVarDecl(VarDecl *VD) {
     return;
 
   // Pattern match for:
-  // llvm::StringRef x = call() (where call returns std::string)
+  // StringRef x = call() (where call returns std::string)
   if (!IsLLVMStringRef(VD->getType()))
     return;
   ExprWithCleanups *Ex1 = dyn_cast<ExprWithCleanups>(Init);
@@ -175,9 +176,10 @@ void StringRefCheckerVisitor::VisitVarDecl(VarDecl *VD) {
   // Okay, badness!  Report an error.
   const char *desc = "StringRef should not be bound to temporary "
                      "std::string that it outlives";
-
-  BR.EmitBasicReport(desc, "LLVM Conventions", desc,
-                     VD->getLocStart(), Init->getSourceRange());
+  PathDiagnosticLocation VDLoc =
+    PathDiagnosticLocation::createBegin(VD, BR.getSourceManager());
+  BR.EmitBasicReport(DeclWithIssue, desc, "LLVM Conventions", desc,
+                     VDLoc, Init->getSourceRange());
 }
 
 //===----------------------------------------------------------------------===//
@@ -210,7 +212,7 @@ static bool IsPartOfAST(const CXXRecordDecl *R) {
 
 namespace {
 class ASTFieldVisitor {
-  llvm::SmallVector<FieldDecl*, 10> FieldChain;
+  SmallVector<FieldDecl*, 10> FieldChain;
   const CXXRecordDecl *Root;
   BugReporter &BR;
 public:
@@ -252,7 +254,7 @@ void ASTFieldVisitor::Visit(FieldDecl *D) {
 }
 
 void ASTFieldVisitor::ReportError(QualType T) {
-  llvm::SmallString<1024> buf;
+  SmallString<1024> buf;
   llvm::raw_svector_ostream os(buf);
 
   os << "AST class '" << Root->getName() << "' has a field '"
@@ -260,7 +262,7 @@ void ASTFieldVisitor::ReportError(QualType T) {
   if (FieldChain.size() > 1) {
     os << " via the following chain: ";
     bool isFirst = true;
-    for (llvm::SmallVectorImpl<FieldDecl*>::iterator I=FieldChain.begin(),
+    for (SmallVectorImpl<FieldDecl*>::iterator I=FieldChain.begin(),
          E=FieldChain.end(); I!=E; ++I) {
       if (!isFirst)
         os << '.';
@@ -279,8 +281,10 @@ void ASTFieldVisitor::ReportError(QualType T) {
   // just report warnings when we see an out-of-line method definition for a
   // class, as that heuristic doesn't always work (the complete definition of
   // the class may be in the header file, for example).
-  BR.EmitBasicReport("AST node allocates heap memory", "LLVM Conventions",
-                     os.str(), FieldChain.front()->getLocStart());
+  PathDiagnosticLocation L = PathDiagnosticLocation::createBegin(
+                               FieldChain.front(), BR.getSourceManager());
+  BR.EmitBasicReport(Root, "AST node allocates heap memory", "LLVM Conventions",
+                     os.str(), L);
 }
 
 //===----------------------------------------------------------------------===//
@@ -294,7 +298,7 @@ class LLVMConventionsChecker : public Checker<
 public:
   void checkASTDecl(const CXXRecordDecl *R, AnalysisManager& mgr,
                     BugReporter &BR) const {
-    if (R->isDefinition())
+    if (R->isCompleteDefinition())
       CheckASTMemory(R, BR);
   }
 

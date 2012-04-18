@@ -17,17 +17,16 @@
 using namespace clang;
 
 ASTConsumer *ASTMergeAction::CreateASTConsumer(CompilerInstance &CI,
-                                               llvm::StringRef InFile) {
+                                               StringRef InFile) {
   return AdaptedAction->CreateASTConsumer(CI, InFile);
 }
 
 bool ASTMergeAction::BeginSourceFileAction(CompilerInstance &CI,
-                                           llvm::StringRef Filename) {
+                                           StringRef Filename) {
   // FIXME: This is a hack. We need a better way to communicate the
   // AST file, compiler instance, and file name than member variables
   // of FrontendAction.
-  AdaptedAction->setCurrentFile(getCurrentFile(), getCurrentFileKind(),
-                                takeCurrentASTUnit());
+  AdaptedAction->setCurrentInput(getCurrentInput(), takeCurrentASTUnit());
   AdaptedAction->setCompilerInstance(&CI);
   return AdaptedAction->BeginSourceFileAction(CI, Filename);
 }
@@ -35,14 +34,14 @@ bool ASTMergeAction::BeginSourceFileAction(CompilerInstance &CI,
 void ASTMergeAction::ExecuteAction() {
   CompilerInstance &CI = getCompilerInstance();
   CI.getDiagnostics().getClient()->BeginSourceFile(
-                                         CI.getASTContext().getLangOptions());
+                                         CI.getASTContext().getLangOpts());
   CI.getDiagnostics().SetArgToStringFn(&FormatASTNodeDiagnosticArgument,
                                        &CI.getASTContext());
-  llvm::IntrusiveRefCntPtr<DiagnosticIDs>
+  IntrusiveRefCntPtr<DiagnosticIDs>
       DiagIDs(CI.getDiagnostics().getDiagnosticIDs());
   for (unsigned I = 0, N = ASTFiles.size(); I != N; ++I) {
-    llvm::IntrusiveRefCntPtr<Diagnostic>
-        Diags(new Diagnostic(DiagIDs, CI.getDiagnostics().getClient(),
+    IntrusiveRefCntPtr<DiagnosticsEngine>
+        Diags(new DiagnosticsEngine(DiagIDs, CI.getDiagnostics().getClient(),
                              /*ShouldOwnClient=*/false));
     ASTUnit *Unit = ASTUnit::LoadFromASTFile(ASTFiles[I], Diags,
                                              CI.getFileSystemOpts(), false);
@@ -80,8 +79,8 @@ void ASTMergeAction::EndSourceFileAction() {
 }
 
 ASTMergeAction::ASTMergeAction(FrontendAction *AdaptedAction,
-                               std::string *ASTFiles, unsigned NumASTFiles)
-  : AdaptedAction(AdaptedAction), ASTFiles(ASTFiles, ASTFiles + NumASTFiles) {
+                               ArrayRef<std::string> ASTFiles)
+  : AdaptedAction(AdaptedAction), ASTFiles(ASTFiles.begin(), ASTFiles.end()) {
   assert(AdaptedAction && "ASTMergeAction needs an action to adapt");
 }
 
@@ -93,8 +92,8 @@ bool ASTMergeAction::usesPreprocessorOnly() const {
   return AdaptedAction->usesPreprocessorOnly();
 }
 
-bool ASTMergeAction::usesCompleteTranslationUnit() {
-  return AdaptedAction->usesCompleteTranslationUnit();
+TranslationUnitKind ASTMergeAction::getTranslationUnitKind() {
+  return AdaptedAction->getTranslationUnitKind();
 }
 
 bool ASTMergeAction::hasPCHSupport() const {

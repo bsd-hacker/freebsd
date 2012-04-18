@@ -140,8 +140,6 @@ ScoreboardHazardRecognizer::getHazardType(SUnit *SU, int Stalls) {
 
       unsigned freeUnits = IS->getUnits();
       switch (IS->getReservationKind()) {
-      default:
-       assert(0 && "Invalid FU reservation");
       case InstrStage::Required:
         // Required FUs conflict with both reserved and required ones
         freeUnits &= ~ReservedScoreboard[StageCycle];
@@ -194,8 +192,6 @@ void ScoreboardHazardRecognizer::EmitInstruction(SUnit *SU) {
 
       unsigned freeUnits = IS->getUnits();
       switch (IS->getReservationKind()) {
-      default:
-       assert(0 && "Invalid FU reservation");
       case InstrStage::Required:
         // Required FUs conflict with both reserved and required ones
         freeUnits &= ~ReservedScoreboard[cycle + i];
@@ -213,7 +209,6 @@ void ScoreboardHazardRecognizer::EmitInstruction(SUnit *SU) {
         freeUnits = freeUnit & (freeUnit - 1);
       } while (freeUnits);
 
-      assert(freeUnit && "No function unit available!");
       if (IS->getReservationKind() == InstrStage::Required)
         RequiredScoreboard[cycle + i] |= freeUnit;
       else

@@ -1,4 +1,4 @@
-//===- PTXSubtarget.cpp - PTX Subtarget Information ---------------*- C++ -*-=//
+//===-- PTXSubtarget.cpp - PTX Subtarget Information ----------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,13 +14,15 @@
 #include "PTXSubtarget.h"
 #include "PTX.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
 #include "PTXGenSubtargetInfo.inc"
 
 using namespace llvm;
+
+void PTXSubtarget::anchor() { }
 
 PTXSubtarget::PTXSubtarget(const std::string &TT, const std::string &CPU,
                            const std::string &FS, bool is64Bit)
@@ -57,10 +59,10 @@ std::string PTXSubtarget::getTargetString() const {
 
 std::string PTXSubtarget::getPTXVersionString() const {
   switch(PTXVersion) {
-    default: llvm_unreachable("Unknown PTX version");
     case PTX_VERSION_2_0: return "2.0";
     case PTX_VERSION_2_1: return "2.1";
     case PTX_VERSION_2_2: return "2.2";
     case PTX_VERSION_2_3: return "2.3";
   }
+  llvm_unreachable("Invalid PTX version");
 }

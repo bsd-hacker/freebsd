@@ -3,7 +3,9 @@
 LIB=	llvmmipscodegen
 
 SRCDIR=	lib/Target/Mips
-SRCS=	MipsAsmPrinter.cpp \
+SRCS=	MipsAnalyzeImmediate.cpp \
+	MipsAsmPrinter.cpp \
+	MipsCodeEmitter.cpp \
 	MipsDelaySlotFiller.cpp \
 	MipsEmitGPRestore.cpp \
 	MipsExpandPseudo.cpp \
@@ -11,8 +13,9 @@ SRCS=	MipsAsmPrinter.cpp \
 	MipsISelDAGToDAG.cpp \
 	MipsISelLowering.cpp \
 	MipsInstrInfo.cpp \
+	MipsJITInfo.cpp \
 	MipsMCInstLower.cpp \
-	MipsMCSymbolRefExpr.cpp \
+	MipsMachineFunction.cpp \
 	MipsRegisterInfo.cpp \
 	MipsSelectionDAGInfo.cpp \
 	MipsSubtarget.cpp \
@@ -22,6 +25,7 @@ SRCS=	MipsAsmPrinter.cpp \
 TGHDRS=	Intrinsics \
 	MipsGenAsmWriter \
 	MipsGenCallingConv \
+	MipsGenCodeEmitter \
 	MipsGenDAGISel \
 	MipsGenInstrInfo \
 	MipsGenRegisterInfo \

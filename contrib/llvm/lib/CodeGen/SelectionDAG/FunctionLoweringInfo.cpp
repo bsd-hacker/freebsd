@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "function-lowering-info"
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
@@ -68,7 +69,7 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf) {
   GetReturnInfo(Fn->getReturnType(),
                 Fn->getAttributes().getRetAttributes(), Outs, TLI);
   CanLowerReturn = TLI.CanLowerReturn(Fn->getCallingConv(), *MF,
-				      Fn->isVarArg(),
+                                      Fn->isVarArg(),
                                       Outs, Fn->getContext());
 
   // Initialize the mapping of values to registers.  This is only set up for
@@ -78,7 +79,7 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf) {
   for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I != E; ++I)
     if (const AllocaInst *AI = dyn_cast<AllocaInst>(I))
       if (const ConstantInt *CUI = dyn_cast<ConstantInt>(AI->getArraySize())) {
-        const Type *Ty = AI->getAllocatedType();
+        Type *Ty = AI->getAllocatedType();
         uint64_t TySize = TLI.getTargetData()->getTypeAllocSize(Ty);
         unsigned Align =
           std::max((unsigned)TLI.getTargetData()->getPrefTypeAlignment(Ty),
@@ -92,14 +93,16 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf) {
         // candidate. I.e., it would trigger the creation of a stack protector.
         bool MayNeedSP =
           (AI->isArrayAllocation() ||
-           (TySize > 8 && isa<ArrayType>(Ty) &&
+           (TySize >= 8 && isa<ArrayType>(Ty) &&
             cast<ArrayType>(Ty)->getElementType()->isIntegerTy(8)));
         StaticAllocaMap[AI] =
-          MF->getFrameInfo()->CreateStackObject(TySize, Align, false, MayNeedSP);
+          MF->getFrameInfo()->CreateStackObject(TySize, Align, false,
+                                                MayNeedSP);
       }
 
   for (; BB != EB; ++BB)
-    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
+    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
+         I != E; ++I) {
       // Mark values used outside their block as exported, by allocating
       // a virtual register for them.
       if (isUsedOutsideOfDefiningBlock(I))
@@ -216,7 +219,7 @@ unsigned FunctionLoweringInfo::CreateReg(EVT VT) {
 /// In the case that the given value has struct or array type, this function
 /// will assign registers for each member or element.
 ///
-unsigned FunctionLoweringInfo::CreateRegs(const Type *Ty) {
+unsigned FunctionLoweringInfo::CreateRegs(Type *Ty) {
   SmallVector<EVT, 4> ValueVTs;
   ComputeValueVTs(TLI, Ty, ValueVTs);
 
@@ -260,7 +263,7 @@ FunctionLoweringInfo::GetLiveOutRegInfo(unsigned Reg, unsigned BitWidth) {
 /// ComputePHILiveOutRegInfo - Compute LiveOutInfo for a PHI's destination
 /// register based on the LiveOutInfo of its operands.
 void FunctionLoweringInfo::ComputePHILiveOutRegInfo(const PHINode *PN) {
-  const Type *Ty = PN->getType();
+  Type *Ty = PN->getType();
   if (!Ty->isIntegerTy() || Ty->isVectorTy())
     return;
 
@@ -351,26 +354,48 @@ void FunctionLoweringInfo::ComputePHILiveOutRegInfo(const PHINode *PN) {
   }
 }
 
-/// setByValArgumentFrameIndex - Record frame index for the byval
+/// setArgumentFrameIndex - Record frame index for the byval
 /// argument. This overrides previous frame index entry for this argument,
 /// if any.
-void FunctionLoweringInfo::setByValArgumentFrameIndex(const Argument *A,
-                                                      int FI) {
-  assert (A->hasByValAttr() && "Argument does not have byval attribute!");
+void FunctionLoweringInfo::setArgumentFrameIndex(const Argument *A,
+                                                 int FI) {
   ByValArgFrameIndexMap[A] = FI;
 }
 
-/// getByValArgumentFrameIndex - Get frame index for the byval argument.
+/// getArgumentFrameIndex - Get frame index for the byval argument.
 /// If the argument does not have any assigned frame index then 0 is
 /// returned.
-int FunctionLoweringInfo::getByValArgumentFrameIndex(const Argument *A) {
-  assert (A->hasByValAttr() && "Argument does not have byval attribute!");
+int FunctionLoweringInfo::getArgumentFrameIndex(const Argument *A) {
   DenseMap<const Argument *, int>::iterator I =
     ByValArgFrameIndexMap.find(A);
   if (I != ByValArgFrameIndexMap.end())
     return I->second;
-  DEBUG(dbgs() << "Argument does not have assigned frame index!");
+  DEBUG(dbgs() << "Argument does not have assigned frame index!\n");
   return 0;
+}
+
+/// ComputeUsesVAFloatArgument - Determine if any floating-point values are
+/// being passed to this variadic function, and set the MachineModuleInfo's
+/// usesVAFloatArgument flag if so. This flag is used to emit an undefined
+/// reference to _fltused on Windows, which will link in MSVCRT's
+/// floating-point support.
+void llvm::ComputeUsesVAFloatArgument(const CallInst &I,
+                                      MachineModuleInfo *MMI)
+{
+  FunctionType *FT = cast<FunctionType>(
+    I.getCalledValue()->getType()->getContainedType(0));
+  if (FT->isVarArg() && !MMI->usesVAFloatArgument()) {
+    for (unsigned i = 0, e = I.getNumArgOperands(); i != e; ++i) {
+      Type* T = I.getArgOperand(i)->getType();
+      for (po_iterator<Type*> i = po_begin(T), e = po_end(T);
+           i != e; ++i) {
+        if (i->isFloatingPointTy()) {
+          MMI->setUsesVAFloatArgument(true);
+          return;
+        }
+      }
+    }
+  }
 }
 
 /// AddCatchInfo - Extract the personality and type infos from an eh.selector
@@ -427,30 +452,33 @@ void llvm::AddCatchInfo(const CallInst &I, MachineModuleInfo *MMI,
   }
 }
 
-void llvm::CopyCatchInfo(const BasicBlock *SuccBB, const BasicBlock *LPad,
-                         MachineModuleInfo *MMI, FunctionLoweringInfo &FLI) {
-  SmallPtrSet<const BasicBlock*, 4> Visited;
+/// AddLandingPadInfo - Extract the exception handling information from the
+/// landingpad instruction and add them to the specified machine module info.
+void llvm::AddLandingPadInfo(const LandingPadInst &I, MachineModuleInfo &MMI,
+                             MachineBasicBlock *MBB) {
+  MMI.addPersonality(MBB,
+                     cast<Function>(I.getPersonalityFn()->stripPointerCasts()));
 
-  // The 'eh.selector' call may not be in the direct successor of a basic block,
-  // but could be several successors deeper. If we don't find it, try going one
-  // level further. <rdar://problem/8824861>
-  while (Visited.insert(SuccBB)) {
-    for (BasicBlock::const_iterator I = SuccBB->begin(), E = --SuccBB->end();
-         I != E; ++I)
-      if (const EHSelectorInst *EHSel = dyn_cast<EHSelectorInst>(I)) {
-        // Apply the catch info to LPad.
-        AddCatchInfo(*EHSel, MMI, FLI.MBBMap[LPad]);
-#ifndef NDEBUG
-        if (!FLI.MBBMap[SuccBB]->isLandingPad())
-          FLI.CatchInfoFound.insert(EHSel);
-#endif
-        return;
-      }
+  if (I.isCleanup())
+    MMI.addCleanup(MBB);
 
-    const BranchInst *Br = dyn_cast<BranchInst>(SuccBB->getTerminator());
-    if (Br && Br->isUnconditional())
-      SuccBB = Br->getSuccessor(0);
-    else
-      break;
+  // FIXME: New EH - Add the clauses in reverse order. This isn't 100% correct,
+  //        but we need to do it this way because of how the DWARF EH emitter
+  //        processes the clauses.
+  for (unsigned i = I.getNumClauses(); i != 0; --i) {
+    Value *Val = I.getClause(i - 1);
+    if (I.isCatch(i - 1)) {
+      MMI.addCatchTypeInfo(MBB,
+                           dyn_cast<GlobalVariable>(Val->stripPointerCasts()));
+    } else {
+      // Add filters in a list.
+      Constant *CVal = cast<Constant>(Val);
+      SmallVector<const GlobalVariable*, 4> FilterList;
+      for (User::op_iterator
+             II = CVal->op_begin(), IE = CVal->op_end(); II != IE; ++II)
+        FilterList.push_back(cast<GlobalVariable>((*II)->stripPointerCasts()));
+
+      MMI.addFilterTypeInfo(MBB, FilterList);
+    }
   }
 }

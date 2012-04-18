@@ -11,6 +11,7 @@
 #define INSTCOMBINE_INSTCOMBINE_H
 
 #include "InstCombineWorklist.h"
+#include "llvm/IntrinsicInst.h"
 #include "llvm/Operator.h"
 #include "llvm/Pass.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -21,6 +22,7 @@
 namespace llvm {
   class CallSite;
   class TargetData;
+  class TargetLibraryInfo;
   class DbgDeclareInst;
   class MemIntrinsic;
   class MemSetInst;
@@ -70,6 +72,7 @@ class LLVM_LIBRARY_VISIBILITY InstCombiner
                              : public FunctionPass,
                                public InstVisitor<InstCombiner, Instruction*> {
   TargetData *TD;
+  TargetLibraryInfo *TLI;
   bool MadeIRChange;
 public:
   /// Worklist - All of the instructions that need to be simplified.
@@ -91,8 +94,10 @@ public:
   bool DoOneIteration(Function &F, unsigned ItNum);
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const;
-                                 
+
   TargetData *getTargetData() const { return TD; }
+
+  TargetLibraryInfo *getTargetLibraryInfo() const { return TLI; }
 
   // Visitation implementation - Implement instruction combining for different
   // instruction types.  The semantics are as follows:
@@ -103,7 +108,7 @@ public:
   //
   Instruction *visitAdd(BinaryOperator &I);
   Instruction *visitFAdd(BinaryOperator &I);
-  Value *OptimizePointerDifference(Value *LHS, Value *RHS, const Type *Ty);
+  Value *OptimizePointerDifference(Value *LHS, Value *RHS, Type *Ty);
   Instruction *visitSub(BinaryOperator &I);
   Instruction *visitFSub(BinaryOperator &I);
   Instruction *visitMul(BinaryOperator &I);
@@ -192,15 +197,16 @@ public:
   Instruction *visitExtractElementInst(ExtractElementInst &EI);
   Instruction *visitShuffleVectorInst(ShuffleVectorInst &SVI);
   Instruction *visitExtractValueInst(ExtractValueInst &EV);
+  Instruction *visitLandingPadInst(LandingPadInst &LI);
 
   // visitInstruction - Specify what to return for unhandled instructions...
   Instruction *visitInstruction(Instruction &I) { return 0; }
 
 private:
-  bool ShouldChangeType(const Type *From, const Type *To) const;
+  bool ShouldChangeType(Type *From, Type *To) const;
   Value *dyn_castNegVal(Value *V) const;
   Value *dyn_castFNegVal(Value *V) const;
-  const Type *FindElementAtOffset(const Type *Ty, int64_t Offset, 
+  Type *FindElementAtOffset(Type *Ty, int64_t Offset, 
                                   SmallVectorImpl<Value*> &NewIndices);
   Instruction *FoldOpIntoSelect(Instruction &Op, SelectInst *SI);
                                  
@@ -209,12 +215,13 @@ private:
   /// the cast can be eliminated by some other simple transformation, we prefer
   /// to do the simplification first.
   bool ShouldOptimizeCast(Instruction::CastOps opcode,const Value *V,
-                          const Type *Ty);
+                          Type *Ty);
 
   Instruction *visitCallSite(CallSite CS);
   Instruction *tryOptimizeCall(CallInst *CI, const TargetData *TD);
   bool transformConstExprCastCall(CallSite CS);
-  Instruction *transformCallThroughTrampoline(CallSite CS);
+  Instruction *transformCallThroughTrampoline(CallSite CS,
+                                              IntrinsicInst *Tramp);
   Instruction *transformZExtICmp(ICmpInst *ICI, Instruction &CI,
                                  bool DoXform = true);
   Instruction *transformSExtICmp(ICmpInst *ICI, Instruction &CI);
@@ -284,9 +291,9 @@ public:
     return 0;  // Don't do anything with FI
   }
       
-  void ComputeMaskedBits(Value *V, const APInt &Mask, APInt &KnownZero,
+  void ComputeMaskedBits(Value *V, APInt &KnownZero,
                          APInt &KnownOne, unsigned Depth = 0) const {
-    return llvm::ComputeMaskedBits(V, Mask, KnownZero, KnownOne, TD, Depth);
+    return llvm::ComputeMaskedBits(V, KnownZero, KnownOne, TD, Depth);
   }
   
   bool MaskedValueIsZero(Value *V, const APInt &Mask, 
@@ -357,7 +364,7 @@ private:
   Instruction *SimplifyMemSet(MemSetInst *MI);
 
 
-  Value *EvaluateInDifferentType(Value *V, const Type *Ty, bool isSigned);
+  Value *EvaluateInDifferentType(Value *V, Type *Ty, bool isSigned);
 };
 
       

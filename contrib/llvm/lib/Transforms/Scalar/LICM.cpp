@@ -43,8 +43,11 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/Dominators.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/SSAUpdater.h"
+#include "llvm/Target/TargetData.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -84,6 +87,7 @@ namespace {
       AU.addPreserved<AliasAnalysis>();
       AU.addPreserved("scalar-evolution");
       AU.addPreservedID(LoopSimplifyID);
+      AU.addRequired<TargetLibraryInfo>();
     }
 
     bool doFinalization() {
@@ -95,6 +99,9 @@ namespace {
     AliasAnalysis *AA;       // Current AliasAnalysis information
     LoopInfo      *LI;       // Current LoopInfo
     DominatorTree *DT;       // Dominator Tree for the current Loop.
+
+    TargetData *TD;          // TargetData for constant folding.
+    TargetLibraryInfo *TLI;  // TargetLibraryInfo for constant folding.
 
     // State that is updated as we process loops.
     bool Changed;            // Set to true when we change anything.
@@ -151,6 +158,11 @@ namespace {
     ///
     bool isSafeToExecuteUnconditionally(Instruction &I);
 
+    /// isGuaranteedToExecute - Check that the instruction is guaranteed to
+    /// execute.
+    ///
+    bool isGuaranteedToExecute(Instruction &I);
+
     /// pointerInvalidatedByLoop - Return true if the body of this loop may
     /// store into the memory location pointed to by V.
     ///
@@ -172,6 +184,7 @@ INITIALIZE_PASS_BEGIN(LICM, "licm", "Loop Invariant Code Motion", false, false)
 INITIALIZE_PASS_DEPENDENCY(DominatorTree)
 INITIALIZE_PASS_DEPENDENCY(LoopInfo)
 INITIALIZE_PASS_DEPENDENCY(LoopSimplify)
+INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfo)
 INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
 INITIALIZE_PASS_END(LICM, "licm", "Loop Invariant Code Motion", false, false)
 
@@ -188,6 +201,9 @@ bool LICM::runOnLoop(Loop *L, LPPassManager &LPM) {
   LI = &getAnalysis<LoopInfo>();
   AA = &getAnalysis<AliasAnalysis>();
   DT = &getAnalysis<DominatorTree>();
+
+  TD = getAnalysisIfAvailable<TargetData>();
+  TLI = &getAnalysis<TargetLibraryInfo>();
 
   CurAST = new AliasSetTracker(*AA);
   // Collect Alias info from subloops.
@@ -328,7 +344,7 @@ void LICM::HoistRegion(DomTreeNode *N) {
       // Try constant folding this instruction.  If all the operands are
       // constants, it is technically hoistable, but it would be better to just
       // fold it.
-      if (Constant *C = ConstantFoldInstruction(&I)) {
+      if (Constant *C = ConstantFoldInstruction(&I, TD, TLI)) {
         DEBUG(dbgs() << "LICM folding inst: " << I << "  --> " << *C << '\n');
         CurAST->copyValue(&I, C);
         CurAST->deleteValue(&I);
@@ -357,12 +373,14 @@ void LICM::HoistRegion(DomTreeNode *N) {
 bool LICM::canSinkOrHoistInst(Instruction &I) {
   // Loads have extra constraints we have to verify before we can hoist them.
   if (LoadInst *LI = dyn_cast<LoadInst>(&I)) {
-    if (LI->isVolatile())
-      return false;        // Don't hoist volatile loads!
+    if (!LI->isUnordered())
+      return false;        // Don't hoist volatile/atomic loads!
 
     // Loads from constant memory are always safe to move, even if they end up
     // in the same alias set as something that ends up being modified.
     if (AA->pointsToConstantMemory(LI->getOperand(0)))
+      return true;
+    if (LI->getMetadata("invariant.load"))
       return true;
 
     // Don't hoist loads which have may-aliased stores in loop.
@@ -461,7 +479,7 @@ void LICM::sink(Instruction &I) {
     } else {
       // Move the instruction to the start of the exit block, after any PHI
       // nodes in it.
-      I.moveBefore(ExitBlocks[0]->getFirstNonPHI());
+      I.moveBefore(ExitBlocks[0]->getFirstInsertionPt());
 
       // This instruction is no longer in the AST for the current loop, because
       // we just sunk it out of the loop.  If we just sunk it into an outer
@@ -504,7 +522,7 @@ void LICM::sink(Instruction &I) {
       continue;
 
     // Insert the code after the last PHI node.
-    BasicBlock::iterator InsertPt = ExitBlock->getFirstNonPHI();
+    BasicBlock::iterator InsertPt = ExitBlock->getFirstInsertionPt();
 
     // If this is the first exit block processed, just move the original
     // instruction, otherwise clone the original instruction and insert
@@ -574,9 +592,13 @@ void LICM::hoist(Instruction &I) {
 ///
 bool LICM::isSafeToExecuteUnconditionally(Instruction &Inst) {
   // If it is not a trapping instruction, it is always safe to hoist.
-  if (Inst.isSafeToSpeculativelyExecute())
+  if (isSafeToSpeculativelyExecute(&Inst))
     return true;
 
+  return isGuaranteedToExecute(Inst);
+}
+
+bool LICM::isGuaranteedToExecute(Instruction &Inst) {
   // Otherwise we have to check to make sure that the instruction dominates all
   // of the exit blocks.  If it doesn't, then there is a path out of the loop
   // which does not execute this instruction, so we can't hoist it.
@@ -635,7 +657,7 @@ namespace {
       for (unsigned i = 0, e = LoopExitBlocks.size(); i != e; ++i) {
         BasicBlock *ExitBlock = LoopExitBlocks[i];
         Value *LiveInValue = SSA.GetValueInMiddleOfBlock(ExitBlock);
-        Instruction *InsertPos = ExitBlock->getFirstNonPHI();
+        Instruction *InsertPos = ExitBlock->getFirstInsertionPt();
         StoreInst *NewSI = new StoreInst(LiveInValue, SomePtr, InsertPos);
         NewSI->setAlignment(Alignment);
         NewSI->setDebugLoc(DL);
@@ -713,33 +735,40 @@ void LICM::PromoteAliasSet(AliasSet &AS) {
 
       // If there is an non-load/store instruction in the loop, we can't promote
       // it.
-      unsigned InstAlignment;
       if (LoadInst *load = dyn_cast<LoadInst>(Use)) {
-        assert(!cast<LoadInst>(Use)->isVolatile() && "AST broken");
-        InstAlignment = load->getAlignment();
+        assert(!load->isVolatile() && "AST broken");
+        if (!load->isSimple())
+          return;
       } else if (StoreInst *store = dyn_cast<StoreInst>(Use)) {
         // Stores *of* the pointer are not interesting, only stores *to* the
         // pointer.
         if (Use->getOperand(1) != ASIV)
           continue;
-        InstAlignment = store->getAlignment();
-        assert(!cast<StoreInst>(Use)->isVolatile() && "AST broken");
+        assert(!store->isVolatile() && "AST broken");
+        if (!store->isSimple())
+          return;
+
+        // Note that we only check GuaranteedToExecute inside the store case
+        // so that we do not introduce stores where they did not exist before
+        // (which would break the LLVM concurrency model).
+
+        // If the alignment of this instruction allows us to specify a more
+        // restrictive (and performant) alignment and if we are sure this
+        // instruction will be executed, update the alignment.
+        // Larger is better, with the exception of 0 being the best alignment.
+        unsigned InstAlignment = store->getAlignment();
+        if ((InstAlignment > Alignment || InstAlignment == 0)
+            && (Alignment != 0))
+          if (isGuaranteedToExecute(*Use)) {
+            GuaranteedToExecute = true;
+            Alignment = InstAlignment;
+          }
+
+        if (!GuaranteedToExecute)
+          GuaranteedToExecute = isGuaranteedToExecute(*Use);
+
       } else
         return; // Not a load or store.
-
-      // If the alignment of this instruction allows us to specify a more
-      // restrictive (and performant) alignment and if we are sure this
-      // instruction will be executed, update the alignment.
-      // Larger is better, with the exception of 0 being the best alignment.
-      if ((InstAlignment > Alignment || InstAlignment == 0)
-          && (Alignment != 0))
-        if (isSafeToExecuteUnconditionally(*Use)) {
-          GuaranteedToExecute = true;
-          Alignment = InstAlignment;
-        }
-
-      if (!GuaranteedToExecute)
-        GuaranteedToExecute = isSafeToExecuteUnconditionally(*Use);
 
       LoopUses.push_back(Use);
     }

@@ -1,4 +1,4 @@
-//====-- PTXSubtarget.h - Define Subtarget for the PTX ---------*- C++ -*--===//
+//===-- PTXSubtarget.h - Define Subtarget for the PTX -----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -23,6 +23,7 @@ namespace llvm {
 class StringRef;
 
   class PTXSubtarget : public PTXGenSubtargetInfo {
+      virtual void anchor(); 
     public:
 
       /**
@@ -114,7 +115,16 @@ class StringRef;
                (PTXTarget >= PTX_COMPUTE_2_0 && PTXTarget < PTX_LAST_COMPUTE);
       }
 
-    void ParseSubtargetFeatures(StringRef CPU, StringRef FS);
+      bool callsAreHandled() const {
+        return (PTXTarget >= PTX_SM_2_0 && PTXTarget < PTX_LAST_SM) ||
+               (PTXTarget >= PTX_COMPUTE_2_0 && PTXTarget < PTX_LAST_COMPUTE);
+      }
+
+      bool emitPtrAttribute() const {
+        return PTXVersion >= PTX_VERSION_2_2;
+      }
+
+      void ParseSubtargetFeatures(StringRef CPU, StringRef FS);
   }; // class PTXSubtarget
 } // namespace llvm
 

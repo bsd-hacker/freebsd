@@ -46,7 +46,8 @@ struct msgbuf {
 	u_int	   msg_cksum;		/* checksum of contents */
 	u_int	   msg_seqmod;		/* range for sequence numbers */
 	int	   msg_lastpri;		/* saved priority value */
-	int	   msg_needsnl;		/* set when newline needed */
+	u_int      msg_flags;
+#define MSGBUF_NEEDNL	0x01	/* set when newline needed */
 	struct mtx msg_lock;		/* mutex to protect the buffer */
 };
 
@@ -77,7 +78,7 @@ int	msgbuf_peekbytes(struct msgbuf *mbp, char *buf, int buflen,
 void	msgbuf_reinit(struct msgbuf *mbp, void *ptr, int size);
 
 #ifndef MSGBUF_SIZE
-#define	MSGBUF_SIZE	(32768 * 2)
+#define	MSGBUF_SIZE	(32768 * 3)
 #endif
 #endif /* KERNEL */
 

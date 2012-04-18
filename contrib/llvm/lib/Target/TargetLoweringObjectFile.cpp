@@ -28,45 +28,26 @@
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ADT/SmallString.h"
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
 //                              Generic Code
 //===----------------------------------------------------------------------===//
 
-TargetLoweringObjectFile::TargetLoweringObjectFile() :
-  Ctx(0),
-  TextSection(0),
-  DataSection(0),
-  BSSSection(0),
-  ReadOnlySection(0),
-  StaticCtorSection(0),
-  StaticDtorSection(0),
-  LSDASection(0),
-  CompactUnwindSection(0),
-  DwarfAbbrevSection(0),
-  DwarfInfoSection(0),
-  DwarfLineSection(0),
-  DwarfFrameSection(0),
-  DwarfPubNamesSection(0),
-  DwarfPubTypesSection(0),
-  DwarfDebugInlineSection(0),
-  DwarfStrSection(0),
-  DwarfLocSection(0),
-  DwarfARangesSection(0),
-  DwarfRangesSection(0),
-  DwarfMacroInfoSection(0),
-  TLSExtraDataSection(0),
-  CommDirectiveSupportsAlignment(true),
-  SupportsWeakOmittedEHFrame(true), 
-  IsFunctionEHFrameSymbolPrivate(true) {
+/// Initialize - this method must be called before any actual lowering is
+/// done.  This specifies the current context for codegen, and gives the
+/// lowering implementations a chance to set up their default sections.
+void TargetLoweringObjectFile::Initialize(MCContext &ctx,
+                                          const TargetMachine &TM) {
+  Ctx = &ctx;
+  InitMCObjectFileInfo(TM.getTargetTriple(),
+                       TM.getRelocationModel(), TM.getCodeModel(), *Ctx);
 }
-
+  
 TargetLoweringObjectFile::~TargetLoweringObjectFile() {
 }
 
-static bool isSuitableForBSS(const GlobalVariable *GV) {
+static bool isSuitableForBSS(const GlobalVariable *GV, bool NoZerosInBSS) {
   const Constant *C = GV->getInitializer();
 
   // Must have zero initializer.
@@ -91,31 +72,27 @@ static bool isSuitableForBSS(const GlobalVariable *GV) {
 
 /// IsNullTerminatedString - Return true if the specified constant (which is
 /// known to have a type that is an array of 1/2/4 byte elements) ends with a
-/// nul value and contains no other nuls in it.
+/// nul value and contains no other nuls in it.  Note that this is more general
+/// than ConstantDataSequential::isString because we allow 2 & 4 byte strings.
 static bool IsNullTerminatedString(const Constant *C) {
-  const ArrayType *ATy = cast<ArrayType>(C->getType());
-
-  // First check: is we have constant array of i8 terminated with zero
-  if (const ConstantArray *CVA = dyn_cast<ConstantArray>(C)) {
-    if (ATy->getNumElements() == 0) return false;
-
-    ConstantInt *Null =
-      dyn_cast<ConstantInt>(CVA->getOperand(ATy->getNumElements()-1));
-    if (Null == 0 || !Null->isZero())
+  // First check: is we have constant array terminated with zero
+  if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(C)) {
+    unsigned NumElts = CDS->getNumElements();
+    assert(NumElts != 0 && "Can't have an empty CDS");
+    
+    if (CDS->getElementAsInteger(NumElts-1) != 0)
       return false; // Not null terminated.
-
+    
     // Verify that the null doesn't occur anywhere else in the string.
-    for (unsigned i = 0, e = ATy->getNumElements()-1; i != e; ++i)
-      // Reject constantexpr elements etc.
-      if (!isa<ConstantInt>(CVA->getOperand(i)) ||
-          CVA->getOperand(i) == Null)
+    for (unsigned i = 0; i != NumElts-1; ++i)
+      if (CDS->getElementAsInteger(i) == 0)
         return false;
     return true;
   }
 
   // Another possibility: [1 x i8] zeroinitializer
   if (isa<ConstantAggregateZero>(C))
-    return ATy->getNumElements() == 1;
+    return cast<ArrayType>(C->getType())->getNumElements() == 1;
 
   return false;
 }
@@ -151,7 +128,7 @@ SectionKind TargetLoweringObjectFile::getKindForGlobal(const GlobalValue *GV,
 
   // Handle thread-local data first.
   if (GVar->isThreadLocal()) {
-    if (isSuitableForBSS(GVar))
+    if (isSuitableForBSS(GVar, TM.Options.NoZerosInBSS))
       return SectionKind::getThreadBSS();
     return SectionKind::getThreadData();
   }
@@ -161,7 +138,7 @@ SectionKind TargetLoweringObjectFile::getKindForGlobal(const GlobalValue *GV,
     return SectionKind::getCommon();
 
   // Variable can be easily put to BSS section.
-  if (isSuitableForBSS(GVar)) {
+  if (isSuitableForBSS(GVar, TM.Options.NoZerosInBSS)) {
     if (GVar->hasLocalLinkage())
       return SectionKind::getBSSLocal();
     else if (GVar->hasExternalLinkage())
@@ -178,7 +155,6 @@ SectionKind TargetLoweringObjectFile::getKindForGlobal(const GlobalValue *GV,
     // relocation, then we may have to drop this into a wriable data section
     // even though it is marked const.
     switch (C->getRelocationInfo()) {
-    default: assert(0 && "unknown relocation info kind");
     case Constant::NoRelocation:
       // If the global is required to have a unique address, it can't be put
       // into a mergable section: just drop it into the general read-only
@@ -188,8 +164,8 @@ SectionKind TargetLoweringObjectFile::getKindForGlobal(const GlobalValue *GV,
         
       // If initializer is a null-terminated string, put it in a "cstring"
       // section of the right width.
-      if (const ArrayType *ATy = dyn_cast<ArrayType>(C->getType())) {
-        if (const IntegerType *ITy =
+      if (ArrayType *ATy = dyn_cast<ArrayType>(C->getType())) {
+        if (IntegerType *ITy =
               dyn_cast<IntegerType>(ATy->getElementType())) {
           if ((ITy->getBitWidth() == 8 || ITy->getBitWidth() == 16 ||
                ITy->getBitWidth() == 32) &&
@@ -252,7 +228,6 @@ SectionKind TargetLoweringObjectFile::getKindForGlobal(const GlobalValue *GV,
     return SectionKind::getDataNoRel();
 
   switch (C->getRelocationInfo()) {
-  default: assert(0 && "unknown relocation info kind");
   case Constant::NoRelocation:
     return SectionKind::getDataNoRel();
   case Constant::LocalRelocation:
@@ -260,6 +235,7 @@ SectionKind TargetLoweringObjectFile::getKindForGlobal(const GlobalValue *GV,
   case Constant::GlobalRelocations:
     return SectionKind::getDataRel();
   }
+  llvm_unreachable("Invalid relocation");
 }
 
 /// SectionForGlobal - This method computes the appropriate section to emit
@@ -341,20 +317,3 @@ getExprForDwarfReference(const MCSymbol *Sym, unsigned Encoding,
   }
   }
 }
-
-unsigned TargetLoweringObjectFile::getPersonalityEncoding() const {
-  return dwarf::DW_EH_PE_absptr;
-}
-
-unsigned TargetLoweringObjectFile::getLSDAEncoding() const {
-  return dwarf::DW_EH_PE_absptr;
-}
-
-unsigned TargetLoweringObjectFile::getFDEEncoding(bool CFI) const {
-  return dwarf::DW_EH_PE_absptr;
-}
-
-unsigned TargetLoweringObjectFile::getTTypeEncoding() const {
-  return dwarf::DW_EH_PE_absptr;
-}
-

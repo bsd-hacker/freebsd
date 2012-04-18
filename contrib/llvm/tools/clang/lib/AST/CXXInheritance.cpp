@@ -23,12 +23,15 @@ using namespace clang;
 void CXXBasePaths::ComputeDeclsFound() {
   assert(NumDeclsFound == 0 && !DeclsFound &&
          "Already computed the set of declarations");
-  
-  std::set<NamedDecl *> Decls;
-  for (CXXBasePaths::paths_iterator Path = begin(), PathEnd = end();
-       Path != PathEnd; ++Path)
-    Decls.insert(*Path->Decls.first);
-  
+
+  SmallVector<NamedDecl *, 8> Decls;
+  for (paths_iterator Path = begin(), PathEnd = end(); Path != PathEnd; ++Path)
+    Decls.push_back(*Path->Decls.first);
+
+  // Eliminate duplicated decls.
+  llvm::array_pod_sort(Decls.begin(), Decls.end());
+  Decls.erase(std::unique(Decls.begin(), Decls.end()), Decls.end());
+
   NumDeclsFound = Decls.size();
   DeclsFound = new NamedDecl * [NumDeclsFound];
   std::copy(Decls.begin(), Decls.end(), DeclsFound);
@@ -119,7 +122,7 @@ bool CXXRecordDecl::isProvablyNotDerivedFrom(const CXXRecordDecl *Base) const {
 bool CXXRecordDecl::forallBases(ForallBasesCallback *BaseMatches,
                                 void *OpaqueData,
                                 bool AllowShortCircuit) const {
-  llvm::SmallVector<const CXXRecordDecl*, 8> Queue;
+  SmallVector<const CXXRecordDecl*, 8> Queue;
 
   const CXXRecordDecl *Record = this;
   bool AllMatches = true;
@@ -425,7 +428,7 @@ FindNestedNameSpecifierMember(const CXXBaseSpecifier *Specifier,
 
 void OverridingMethods::add(unsigned OverriddenSubobject, 
                             UniqueVirtualMethod Overriding) {
-  llvm::SmallVector<UniqueVirtualMethod, 4> &SubobjectOverrides
+  SmallVector<UniqueVirtualMethod, 4> &SubobjectOverrides
     = Overrides[OverriddenSubobject];
   if (std::find(SubobjectOverrides.begin(), SubobjectOverrides.end(), 
                 Overriding) == SubobjectOverrides.end())
@@ -556,7 +559,7 @@ void FinalOverriderCollector::Collect(const CXXRecordDecl *RD,
     // overrides.
     typedef std::pair<CXXMethodDecl::method_iterator, 
                       CXXMethodDecl::method_iterator> OverriddenMethods;
-    llvm::SmallVector<OverriddenMethods, 4> Stack;
+    SmallVector<OverriddenMethods, 4> Stack;
     Stack.push_back(std::make_pair(CanonM->begin_overridden_methods(),
                                    CanonM->end_overridden_methods()));
     while (!Stack.empty()) {
@@ -623,11 +626,11 @@ CXXRecordDecl::getFinalOverriders(CXXFinalOverriderMap &FinalOverriders) const {
                                   SOEnd = OM->second.end();
          SO != SOEnd; 
          ++SO) {
-      llvm::SmallVector<UniqueVirtualMethod, 4> &Overriding = SO->second;
+      SmallVector<UniqueVirtualMethod, 4> &Overriding = SO->second;
       if (Overriding.size() < 2)
         continue;
 
-      for (llvm::SmallVector<UniqueVirtualMethod, 4>::iterator 
+      for (SmallVector<UniqueVirtualMethod, 4>::iterator 
              Pos = Overriding.begin(), PosEnd = Overriding.end();
            Pos != PosEnd;
            /* increment in loop */) {
@@ -642,7 +645,7 @@ CXXRecordDecl::getFinalOverriders(CXXFinalOverriderMap &FinalOverriders) const {
         // in a base class subobject that hides the virtual base class
         // subobject.
         bool Hidden = false;
-        for (llvm::SmallVector<UniqueVirtualMethod, 4>::iterator
+        for (SmallVector<UniqueVirtualMethod, 4>::iterator
                OP = Overriding.begin(), OPEnd = Overriding.end();
              OP != OPEnd && !Hidden; 
              ++OP) {

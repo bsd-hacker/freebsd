@@ -28,11 +28,12 @@ class RegisterClassInfo {
   struct RCInfo {
     unsigned Tag;
     unsigned NumRegs;
+    bool ProperSubClass;
     OwningArrayPtr<unsigned> Order;
 
-    RCInfo() : Tag(0), NumRegs(0) {}
+    RCInfo() : Tag(0), NumRegs(0), ProperSubClass(false) {}
     operator ArrayRef<unsigned>() const {
-      return ArrayRef<unsigned>(Order.get(), NumRegs);
+      return makeArrayRef(Order.get(), NumRegs);
     }
   };
 
@@ -48,7 +49,7 @@ class RegisterClassInfo {
 
   // Callee saved registers of last MF. Assumed to be valid until the next
   // runOnFunction() call.
-  const unsigned *CalleeSaved;
+  const uint16_t *CalleeSaved;
 
   // Map register number to CalleeSaved index + 1;
   SmallVector<uint8_t, 4> CSRNum;
@@ -85,6 +86,16 @@ public:
   /// registers come last.
   ArrayRef<unsigned> getOrder(const TargetRegisterClass *RC) const {
     return get(RC);
+  }
+
+  /// isProperSubClass - Returns true if RC has a legal super-class with more
+  /// allocatable registers.
+  ///
+  /// Register classes like GR32_NOSP are not proper sub-classes because %esp
+  /// is not allocatable.  Similarly, tGPR is not a proper sub-class in Thumb
+  /// mode because the GPR super-class is not legal.
+  bool isProperSubClass(const TargetRegisterClass *RC) const {
+    return get(RC).ProperSubClass;
   }
 
   /// getLastCalleeSavedAlias - Returns the last callee saved register that

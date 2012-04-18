@@ -15,11 +15,8 @@
 #define LLVM_CLANG_AST_EXTERNAL_AST_SOURCE_H
 
 #include "clang/AST/DeclBase.h"
-#include <cassert>
-
-namespace llvm {
-template <class T> class SmallVectorImpl;
-}
+#include "clang/AST/CharUnits.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace clang {
 
@@ -129,16 +126,6 @@ public:
   virtual DeclContextLookupResult
   FindExternalVisibleDeclsByName(const DeclContext *DC, DeclarationName Name);
 
-  /// \brief Deserialize all the visible declarations from external storage.
-  ///
-  /// Name lookup deserializes visible declarations lazily, thus a DeclContext
-  /// may not have a complete name lookup table. This function deserializes
-  /// the rest of visible declarations from the external storage and completes
-  /// the name lookup table of the DeclContext.
-  ///
-  /// The default implementation of this method is a no-op.
-  virtual void MaterializeVisibleDecls(const DeclContext *DC);
-
   /// \brief Finds all declarations lexically contained within the given
   /// DeclContext, after applying an optional filter predicate.
   ///
@@ -151,22 +138,28 @@ public:
   /// The default implementation of this method is a no-op.
   virtual ExternalLoadResult FindExternalLexicalDecls(const DeclContext *DC,
                                         bool (*isKindWeWant)(Decl::Kind),
-                                        llvm::SmallVectorImpl<Decl*> &Result);
+                                        SmallVectorImpl<Decl*> &Result);
 
   /// \brief Finds all declarations lexically contained within the given
   /// DeclContext.
   ///
   /// \return true if an error occurred
   ExternalLoadResult FindExternalLexicalDecls(const DeclContext *DC,
-                                llvm::SmallVectorImpl<Decl*> &Result) {
+                                SmallVectorImpl<Decl*> &Result) {
     return FindExternalLexicalDecls(DC, 0, Result);
   }
 
   template <typename DeclTy>
   ExternalLoadResult FindExternalLexicalDeclsBy(const DeclContext *DC,
-                                  llvm::SmallVectorImpl<Decl*> &Result) {
+                                  SmallVectorImpl<Decl*> &Result) {
     return FindExternalLexicalDecls(DC, DeclTy::classofKind, Result);
   }
+
+  /// \brief Get the decls that are contained in a file in the Offset/Length
+  /// range. \arg Length can be 0 to indicate a point at \arg Offset instead of
+  /// a range. 
+  virtual void FindFileRegionDecls(FileID File, unsigned Offset,unsigned Length,
+                                   SmallVectorImpl<Decl *> &Decls) {}
 
   /// \brief Gives the external AST source an opportunity to complete
   /// an incomplete type.
@@ -205,6 +198,44 @@ public:
   /// The default implementation of this method is a no-op.
   virtual void PrintStats();
   
+  
+  /// \brief Perform layout on the given record.
+  ///
+  /// This routine allows the external AST source to provide an specific 
+  /// layout for a record, overriding the layout that would normally be
+  /// constructed. It is intended for clients who receive specific layout
+  /// details rather than source code (such as LLDB). The client is expected
+  /// to fill in the field offsets, base offsets, virtual base offsets, and
+  /// complete object size.
+  ///
+  /// \param Record The record whose layout is being requested.
+  ///
+  /// \param Size The final size of the record, in bits.
+  ///
+  /// \param Alignment The final alignment of the record, in bits.
+  ///
+  /// \param FieldOffsets The offset of each of the fields within the record,
+  /// expressed in bits. All of the fields must be provided with offsets.
+  ///
+  /// \param BaseOffsets The offset of each of the direct, non-virtual base
+  /// classes. If any bases are not given offsets, the bases will be laid 
+  /// out according to the ABI.
+  ///
+  /// \param VirtualBaseOffsets The offset of each of the virtual base classes
+  /// (either direct or not). If any bases are not given offsets, the bases will be laid 
+  /// out according to the ABI.
+  /// 
+  /// \returns true if the record layout was provided, false otherwise.
+  virtual bool 
+  layoutRecordType(const RecordDecl *Record,
+                   uint64_t &Size, uint64_t &Alignment,
+                   llvm::DenseMap<const FieldDecl *, uint64_t> &FieldOffsets,
+                 llvm::DenseMap<const CXXRecordDecl *, CharUnits> &BaseOffsets,
+          llvm::DenseMap<const CXXRecordDecl *, CharUnits> &VirtualBaseOffsets)
+  { 
+    return false;
+  }
+  
   //===--------------------------------------------------------------------===//
   // Queries for performance analysis.
   //===--------------------------------------------------------------------===//
@@ -231,15 +262,11 @@ protected:
   static DeclContextLookupResult
   SetExternalVisibleDeclsForName(const DeclContext *DC,
                                  DeclarationName Name,
-                                 llvm::SmallVectorImpl<NamedDecl*> &Decls);
+                                 ArrayRef<NamedDecl*> Decls);
 
   static DeclContextLookupResult
   SetNoExternalVisibleDeclsForName(const DeclContext *DC,
                                    DeclarationName Name);
-
-  void MaterializeVisibleDeclsForName(const DeclContext *DC,
-                                      DeclarationName Name,
-                                 llvm::SmallVectorImpl<NamedDecl*> &Decls);
 };
 
 /// \brief A lazy pointer to an AST node (of base type T) that resides
@@ -302,6 +329,178 @@ public:
       Ptr = reinterpret_cast<uint64_t>((Source->*Get)(Ptr >> 1));
     }
     return reinterpret_cast<T*>(Ptr);
+  }
+};
+
+/// \brief Represents a lazily-loaded vector of data.
+///
+/// The lazily-loaded vector of data contains data that is partially loaded
+/// from an external source and partially added by local translation. The 
+/// items loaded from the external source are loaded lazily, when needed for
+/// iteration over the complete vector.
+template<typename T, typename Source, 
+         void (Source::*Loader)(SmallVectorImpl<T>&),
+         unsigned LoadedStorage = 2, unsigned LocalStorage = 4>
+class LazyVector {
+  SmallVector<T, LoadedStorage> Loaded;
+  SmallVector<T, LocalStorage> Local;
+
+public:
+  // Iteration over the elements in the vector.
+  class iterator {
+    LazyVector *Self;
+    
+    /// \brief Position within the vector..
+    ///
+    /// In a complete iteration, the Position field walks the range [-M, N),
+    /// where negative values are used to indicate elements
+    /// loaded from the external source while non-negative values are used to
+    /// indicate elements added via \c push_back().
+    /// However, to provide iteration in source order (for, e.g., chained
+    /// precompiled headers), dereferencing the iterator flips the negative
+    /// values (corresponding to loaded entities), so that position -M 
+    /// corresponds to element 0 in the loaded entities vector, position -M+1
+    /// corresponds to element 1 in the loaded entities vector, etc. This
+    /// gives us a reasonably efficient, source-order walk.
+    int Position;
+    
+    friend class LazyVector;
+    
+  public:
+    typedef T                   value_type;
+    typedef value_type&         reference;
+    typedef value_type*         pointer;
+    typedef std::random_access_iterator_tag iterator_category;
+    typedef int                 difference_type;
+    
+    iterator() : Self(0), Position(0) { }
+    
+    iterator(LazyVector *Self, int Position) 
+      : Self(Self), Position(Position) { }
+    
+    reference operator*() const {
+      if (Position < 0)
+        return Self->Loaded.end()[Position];
+      return Self->Local[Position];
+    }
+    
+    pointer operator->() const {
+      if (Position < 0)
+        return &Self->Loaded.end()[Position];
+      
+      return &Self->Local[Position];        
+    }
+    
+    reference operator[](difference_type D) {
+      return *(*this + D);
+    }
+    
+    iterator &operator++() {
+      ++Position;
+      return *this;
+    }
+    
+    iterator operator++(int) {
+      iterator Prev(*this);
+      ++Position;
+      return Prev;
+    }
+    
+    iterator &operator--() {
+      --Position;
+      return *this;
+    }
+    
+    iterator operator--(int) {
+      iterator Prev(*this);
+      --Position;
+      return Prev;
+    }
+    
+    friend bool operator==(const iterator &X, const iterator &Y) {
+      return X.Position == Y.Position;
+    }
+    
+    friend bool operator!=(const iterator &X, const iterator &Y) {
+      return X.Position != Y.Position;
+    }
+    
+    friend bool operator<(const iterator &X, const iterator &Y) {
+      return X.Position < Y.Position;
+    }
+    
+    friend bool operator>(const iterator &X, const iterator &Y) {
+      return X.Position > Y.Position;
+    }
+    
+    friend bool operator<=(const iterator &X, const iterator &Y) {
+      return X.Position < Y.Position;
+    }
+    
+    friend bool operator>=(const iterator &X, const iterator &Y) {
+      return X.Position > Y.Position;
+    }
+    
+    friend iterator& operator+=(iterator &X, difference_type D) {
+      X.Position += D;
+      return X;
+    }
+    
+    friend iterator& operator-=(iterator &X, difference_type D) {
+      X.Position -= D;
+      return X;
+    }
+    
+    friend iterator operator+(iterator X, difference_type D) {
+      X.Position += D;
+      return X;
+    }
+    
+    friend iterator operator+(difference_type D, iterator X) {
+      X.Position += D;
+      return X;
+    }
+    
+    friend difference_type operator-(const iterator &X, const iterator &Y) {
+      return X.Position - Y.Position;
+    }
+    
+    friend iterator operator-(iterator X, difference_type D) {
+      X.Position -= D;
+      return X;
+    }
+  };
+  friend class iterator;
+  
+  iterator begin(Source *source, bool LocalOnly = false) {
+    if (LocalOnly)
+      return iterator(this, 0);
+    
+    if (source)
+      (source->*Loader)(Loaded);
+    return iterator(this, -(int)Loaded.size());
+  }
+  
+  iterator end() {
+    return iterator(this, Local.size());
+  }
+  
+  void push_back(const T& LocalValue) {
+    Local.push_back(LocalValue);
+  }
+  
+  void erase(iterator From, iterator To) {
+    if (From.Position < 0 && To.Position < 0) {
+      Loaded.erase(Loaded.end() + From.Position, Loaded.end() + To.Position);
+      return;
+    }
+    
+    if (From.Position < 0) {
+      Loaded.erase(Loaded.end() + From.Position, Loaded.end());
+      From = begin(0, true);
+    }
+    
+    Local.erase(Local.begin() + From.Position, Local.begin() + To.Position);
   }
 };
 

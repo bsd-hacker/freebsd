@@ -1,4 +1,4 @@
-//===- MBlazeSubtarget.cpp - MBlaze Subtarget Information -------*- C++ -*-===//
+//===-- MBlazeSubtarget.cpp - MBlaze Subtarget Information ----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,7 +15,7 @@
 #include "MBlaze.h"
 #include "MBlazeRegisterInfo.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR

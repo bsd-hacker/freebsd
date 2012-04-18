@@ -45,7 +45,8 @@ __FBSDID("$FreeBSD$");
 /* Hint to loader that we came from ZFS */
 #define	KARGS_FLAGS_ZFS		0x4
 
-#define PATH_CONFIG	"/boot.config"
+#define PATH_DOTCONFIG	"/boot.config"
+#define PATH_CONFIG	"/boot/config"
 #define PATH_BOOT3	"/boot/zfsloader"
 #define PATH_KERNEL	"/boot/kernel/kernel"
 
@@ -92,6 +93,7 @@ static const char *const dev_nm[NDEV] = {"ad", "da", "fd"};
 static const unsigned char dev_maj[NDEV] = {30, 4, 2};
 
 static char cmd[512];
+static char cmddup[512];
 static char kname[1024];
 static int comspeed = SIOSPD;
 static struct bootinfo bootinfo;
@@ -533,16 +535,22 @@ main(void)
 
     zfs_mount_pool(spa);
 
-    if (zfs_lookup(spa, PATH_CONFIG, &dn) == 0) {
+    if (zfs_lookup(spa, PATH_CONFIG, &dn) == 0 ||
+        zfs_lookup(spa, PATH_DOTCONFIG, &dn) == 0) {
 	off = 0;
 	zfs_read(spa, &dn, &off, cmd, sizeof(cmd));
     }
 
     if (*cmd) {
+	/*
+	 * Note that parse() is destructive to cmd[] and we also want
+	 * to honor RBX_QUIET option that could be present in cmd[].
+	 */
+	memcpy(cmddup, cmd, sizeof(cmd));
 	if (parse())
 	    autoboot = 0;
 	if (!OPT_CHECK(RBX_QUIET))
-	    printf("%s: %s", PATH_CONFIG, cmd);
+	    printf("%s: %s", PATH_CONFIG, cmddup);
 	/* Do not process this command twice */
 	*cmd = 0;
     }

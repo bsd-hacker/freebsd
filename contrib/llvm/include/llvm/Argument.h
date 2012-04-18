@@ -30,6 +30,7 @@ template<typename ValueSubClass, typename ItemParentClass>
 /// the function was called with.
 /// @brief LLVM Argument representation  
 class Argument : public Value, public ilist_node<Argument> {
+  virtual void anchor();
   Function *Parent;
 
   friend class SymbolTableListTraits<Argument, Function>;
@@ -39,7 +40,7 @@ public:
   /// Argument ctor - If Function argument is specified, this argument is
   /// inserted at the end of the argument list for the function.
   ///
-  explicit Argument(const Type *Ty, const Twine &Name = "", Function *F = 0);
+  explicit Argument(Type *Ty, const Twine &Name = "", Function *F = 0);
 
   inline const Function *getParent() const { return Parent; }
   inline       Function *getParent()       { return Parent; }

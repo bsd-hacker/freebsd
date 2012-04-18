@@ -133,7 +133,6 @@ devfs_alloc(int flags)
 
 	cdev = &cdp->cdp_c;
 
-	cdev->si_name = cdev->__si_namebuf;
 	LIST_INIT(&cdev->si_children);
 	vfs_timestamp(&ts);
 	cdev->si_atime = cdev->si_mtime = cdev->si_ctime = ts;
@@ -171,8 +170,7 @@ devfs_free(struct cdev *cdev)
 	cdp = cdev2priv(cdev);
 	if (cdev->si_cred != NULL)
 		crfree(cdev->si_cred);
-	if (cdp->cdp_inode > 0)
-		free_unr(devfs_inos, cdp->cdp_inode);
+	devfs_free_cdp_inode(cdp->cdp_inode);
 	if (cdp->cdp_maxdirent > 0) 
 		free(cdp->cdp_dirents, M_DEVFS2);
 	free(cdp, M_CDEVP);
@@ -394,7 +392,7 @@ devfs_delete(struct devfs_mount *dm, struct devfs_dirent *de, int flags)
 	mac_devfs_destroy(de);
 #endif
 	if (de->de_inode > DEVFS_ROOTINO) {
-		free_unr(devfs_inos, de->de_inode);
+		devfs_free_cdp_inode(de->de_inode);
 		de->de_inode = 0;
 	}
 	if (DEVFS_DE_DROP(de))
@@ -683,6 +681,21 @@ devfs_destroy(struct cdev *dev)
 	cdp = cdev2priv(dev);
 	cdp->cdp_flags &= ~CDP_ACTIVE;
 	devfs_generation++;
+}
+
+ino_t
+devfs_alloc_cdp_inode(void)
+{
+
+	return (alloc_unr(devfs_inos));
+}
+
+void
+devfs_free_cdp_inode(ino_t ino)
+{
+
+	if (ino > 0)
+		free_unr(devfs_inos, ino);
 }
 
 static void

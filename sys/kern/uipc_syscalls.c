@@ -171,7 +171,7 @@ getsock_cap(struct filedesc *fdp, int fd, cap_rights_t rights,
 #endif
 
 int
-socket(td, uap)
+sys_socket(td, uap)
 	struct thread *td;
 	struct socket_args /* {
 		int	domain;
@@ -210,7 +210,7 @@ socket(td, uap)
 
 /* ARGSUSED */
 int
-bind(td, uap)
+sys_bind(td, uap)
 	struct thread *td;
 	struct bind_args /* {
 		int	s;
@@ -259,7 +259,7 @@ kern_bind(td, fd, sa)
 
 /* ARGSUSED */
 int
-listen(td, uap)
+sys_listen(td, uap)
 	struct thread *td;
 	struct listen_args /* {
 		int	s;
@@ -495,7 +495,7 @@ done:
 }
 
 int
-accept(td, uap)
+sys_accept(td, uap)
 	struct thread *td;
 	struct accept_args *uap;
 {
@@ -516,7 +516,7 @@ oaccept(td, uap)
 
 /* ARGSUSED */
 int
-connect(td, uap)
+sys_connect(td, uap)
 	struct thread *td;
 	struct connect_args /* {
 		int	s;
@@ -664,7 +664,7 @@ free1:
 }
 
 int
-socketpair(struct thread *td, struct socketpair_args *uap)
+sys_socketpair(struct thread *td, struct socketpair_args *uap)
 {
 	int error, sv[2];
 
@@ -756,8 +756,8 @@ kern_sendit(td, s, mp, flags, control, segflg)
 	struct uio auio;
 	struct iovec *iov;
 	struct socket *so;
-	int i;
-	int len, error;
+	int i, error;
+	ssize_t len;
 	cap_rights_t rights;
 #ifdef KTRACE
 	struct uio *ktruio = NULL;
@@ -834,7 +834,7 @@ bad:
 }
 
 int
-sendto(td, uap)
+sys_sendto(td, uap)
 	struct thread *td;
 	struct sendto_args /* {
 		int	s;
@@ -918,7 +918,7 @@ osendmsg(td, uap)
 #endif
 
 int
-sendmsg(td, uap)
+sys_sendmsg(td, uap)
 	struct thread *td;
 	struct sendmsg_args /* {
 		int	s;
@@ -956,7 +956,7 @@ kern_recvit(td, s, mp, fromseg, controlp)
 	struct uio auio;
 	struct iovec *iov;
 	int i;
-	socklen_t len;
+	ssize_t len;
 	int error;
 	struct mbuf *m, *control = 0;
 	caddr_t ctlbuf;
@@ -1007,19 +1007,19 @@ kern_recvit(td, s, mp, fromseg, controlp)
 	    (mp->msg_control || controlp) ? &control : (struct mbuf **)0,
 	    &mp->msg_flags);
 	if (error) {
-		if (auio.uio_resid != (int)len && (error == ERESTART ||
+		if (auio.uio_resid != len && (error == ERESTART ||
 		    error == EINTR || error == EWOULDBLOCK))
 			error = 0;
 	}
 #ifdef KTRACE
 	if (ktruio != NULL) {
-		ktruio->uio_resid = (int)len - auio.uio_resid;
+		ktruio->uio_resid = len - auio.uio_resid;
 		ktrgenio(s, UIO_READ, ktruio, error);
 	}
 #endif
 	if (error)
 		goto out;
-	td->td_retval[0] = (int)len - auio.uio_resid;
+	td->td_retval[0] = len - auio.uio_resid;
 	if (mp->msg_name) {
 		len = mp->msg_namelen;
 		if (len <= 0 || fromsa == 0)
@@ -1128,7 +1128,7 @@ recvit(td, s, mp, namelenp)
 }
 
 int
-recvfrom(td, uap)
+sys_recvfrom(td, uap)
 	struct thread *td;
 	struct recvfrom_args /* {
 		int	s;
@@ -1171,7 +1171,7 @@ orecvfrom(td, uap)
 {
 
 	uap->flags |= MSG_COMPAT;
-	return (recvfrom(td, uap));
+	return (sys_recvfrom(td, uap));
 }
 #endif
 
@@ -1238,7 +1238,7 @@ orecvmsg(td, uap)
 #endif
 
 int
-recvmsg(td, uap)
+sys_recvmsg(td, uap)
 	struct thread *td;
 	struct recvmsg_args /* {
 		int	s;
@@ -1273,7 +1273,7 @@ recvmsg(td, uap)
 
 /* ARGSUSED */
 int
-shutdown(td, uap)
+sys_shutdown(td, uap)
 	struct thread *td;
 	struct shutdown_args /* {
 		int	s;
@@ -1297,7 +1297,7 @@ shutdown(td, uap)
 
 /* ARGSUSED */
 int
-setsockopt(td, uap)
+sys_setsockopt(td, uap)
 	struct thread *td;
 	struct setsockopt_args /* {
 		int	s;
@@ -1360,7 +1360,7 @@ kern_setsockopt(td, s, level, name, val, valseg, valsize)
 
 /* ARGSUSED */
 int
-getsockopt(td, uap)
+sys_getsockopt(td, uap)
 	struct thread *td;
 	struct getsockopt_args /* {
 		int	s;
@@ -1519,7 +1519,7 @@ bad:
 }
 
 int
-getsockname(td, uap)
+sys_getsockname(td, uap)
 	struct thread *td;
 	struct getsockname_args *uap;
 {
@@ -1624,7 +1624,7 @@ done:
 }
 
 int
-getpeername(td, uap)
+sys_getpeername(td, uap)
 	struct thread *td;
 	struct getpeername_args *uap;
 {
@@ -1764,7 +1764,7 @@ sf_buf_mext(void *addr, void *args)
  * specified, write the total number of bytes sent into *sbytes.
  */
 int
-sendfile(struct thread *td, struct sendfile_args *uap)
+sys_sendfile(struct thread *td, struct sendfile_args *uap)
 {
 
 	return (do_sendfile(td, uap, 0));
@@ -2086,7 +2086,8 @@ retry_space:
 			else if (uap->flags & SF_NODISKIO)
 				error = EBUSY;
 			else {
-				int bsize, resid;
+				int bsize;
+				ssize_t resid;
 
 				/*
 				 * Ensure that our page is still around
@@ -2300,7 +2301,7 @@ out:
  * XXX: We should make this loadable one day.
  */
 int
-sctp_peeloff(td, uap)
+sys_sctp_peeloff(td, uap)
 	struct thread *td;
 	struct sctp_peeloff_args /* {
 		int	sd;
@@ -2320,6 +2321,10 @@ sctp_peeloff(td, uap)
 	error = fgetsock(td, uap->sd, CAP_PEELOFF, &head, &fflag);
 	if (error)
 		goto done2;
+	if (head->so_proto->pr_protocol != IPPROTO_SCTP) {
+		error = EOPNOTSUPP;
+		goto done2;
+	}
 	error = sctp_can_peel_off(head, (sctp_assoc_t)uap->name);
 	if (error)
 		goto done2;
@@ -2387,7 +2392,7 @@ done2:
 }
 
 int
-sctp_generic_sendmsg (td, uap)
+sys_sctp_generic_sendmsg (td, uap)
 	struct thread *td;
 	struct sctp_generic_sendmsg_args /* {
 		int sd, 
@@ -2442,6 +2447,10 @@ sctp_generic_sendmsg (td, uap)
 	iov[0].iov_len = uap->mlen;
 
 	so = (struct socket *)fp->f_data;
+	if (so->so_proto->pr_protocol != IPPROTO_SCTP) {
+		error = EOPNOTSUPP;
+		goto sctp_bad;
+	}
 #ifdef MAC
 	error = mac_socket_check_send(td->td_ucred, so);
 	if (error)
@@ -2494,7 +2503,7 @@ sctp_bad2:
 }
 
 int
-sctp_generic_sendmsg_iov(td, uap)
+sys_sctp_generic_sendmsg_iov(td, uap)
 	struct thread *td;
 	struct sctp_generic_sendmsg_iov_args /* {
 		int sd, 
@@ -2510,7 +2519,8 @@ sctp_generic_sendmsg_iov(td, uap)
 	struct sctp_sndrcvinfo sinfo, *u_sinfo = NULL;
 	struct socket *so;
 	struct file *fp = NULL;
-	int error=0, len, i;
+	int error=0, i;
+	ssize_t len;
 	struct sockaddr *to = NULL;
 #ifdef KTRACE
 	struct uio *ktruio = NULL;
@@ -2555,6 +2565,10 @@ sctp_generic_sendmsg_iov(td, uap)
 #endif
 
 	so = (struct socket *)fp->f_data;
+	if (so->so_proto->pr_protocol != IPPROTO_SCTP) {
+		error = EOPNOTSUPP;
+		goto sctp_bad;
+	}
 #ifdef MAC
 	error = mac_socket_check_send(td->td_ucred, so);
 	if (error)
@@ -2616,7 +2630,7 @@ sctp_bad2:
 }
 
 int
-sctp_generic_recvmsg(td, uap)
+sys_sctp_generic_recvmsg(td, uap)
 	struct thread *td;
 	struct sctp_generic_recvmsg_args /* {
 		int sd, 
@@ -2637,7 +2651,8 @@ sctp_generic_recvmsg(td, uap)
 	struct file *fp = NULL;
 	struct sockaddr *fromsa;
 	int fromlen;
-	int len, i, msg_flags;
+	ssize_t len;
+	int i, msg_flags;
 	int error = 0;
 #ifdef KTRACE
 	struct uio *ktruio = NULL;
@@ -2659,6 +2674,10 @@ sctp_generic_recvmsg(td, uap)
 		goto out1;
 
 	so = fp->f_data;
+	if (so->so_proto->pr_protocol != IPPROTO_SCTP) {
+		error = EOPNOTSUPP;
+		goto out;
+	}
 #ifdef MAC
 	error = mac_socket_check_receive(td->td_ucred, so);
 	if (error) {
@@ -2711,7 +2730,7 @@ sctp_generic_recvmsg(td, uap)
 		    (struct sctp_sndrcvinfo *)&sinfo, 1);
 	CURVNET_RESTORE();
 	if (error) {
-		if (auio.uio_resid != (int)len && (error == ERESTART ||
+		if (auio.uio_resid != len && (error == ERESTART ||
 		    error == EINTR || error == EWOULDBLOCK))
 			error = 0;
 	} else {
@@ -2720,13 +2739,13 @@ sctp_generic_recvmsg(td, uap)
 	}
 #ifdef KTRACE
 	if (ktruio != NULL) {
-		ktruio->uio_resid = (int)len - auio.uio_resid;
+		ktruio->uio_resid = len - auio.uio_resid;
 		ktrgenio(uap->sd, UIO_READ, ktruio, error);
 	}
 #endif /* KTRACE */
 	if (error)
 		goto out;
-	td->td_retval[0] = (int)len - auio.uio_resid;
+	td->td_retval[0] = len - auio.uio_resid;
 
 	if (fromlen && uap->from) {
 		len = fromlen;
@@ -2734,7 +2753,7 @@ sctp_generic_recvmsg(td, uap)
 			len = 0;
 		else {
 			len = MIN(len, fromsa->sa_len);
-			error = copyout(fromsa, uap->from, (unsigned)len);
+			error = copyout(fromsa, uap->from, (size_t)len);
 			if (error)
 				goto out;
 		}

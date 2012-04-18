@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2000-2004 Dag-Erling Coïdan Smørgrav
+ * Copyright (c) 2000-2011 Dag-Erling Smørgrav
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -317,7 +317,7 @@ fetch(char *URL, const char *path)
 	struct stat sb, nsb;
 	struct xferstat xs;
 	FILE *f, *of;
-	size_t size, wr;
+	size_t size, readcnt, wr;
 	off_t count;
 	char flags[8];
 	const char *slash;
@@ -522,6 +522,12 @@ fetch(char *URL, const char *path)
 				    "does not match remote", path);
 				goto failure_keep;
 			}
+		} else if (url->offset > sb.st_size) {
+			/* gap between what we asked for and what we got */
+			warnx("%s: gap in resume mode", URL);
+			fclose(of);
+			of = NULL;
+			/* picked up again later */
 		} else if (us.size != -1) {
 			if (us.size == sb.st_size)
 				/* nothing to do */
@@ -534,7 +540,7 @@ fetch(char *URL, const char *path)
 				goto failure;
 			}
 			/* we got it, open local file */
-			if ((of = fopen(path, "a")) == NULL) {
+			if ((of = fopen(path, "r+")) == NULL) {
 				warn("%s: fopen()", path);
 				goto failure;
 			}
@@ -551,7 +557,15 @@ fetch(char *URL, const char *path)
 				fclose(of);
 				of = NULL;
 				sb = nsb;
+				/* picked up again later */
 			}
+		}
+		/* seek to where we left off */
+		if (of != NULL && fseeko(of, url->offset, SEEK_SET) != 0) {
+			warn("%s: fseeko()", path);
+			fclose(of);
+			of = NULL;
+			/* picked up again later */
 		}
 	} else if (m_flag && sb.st_size != -1) {
 		/* mirror mode, local file exists */
@@ -622,21 +636,26 @@ fetch(char *URL, const char *path)
 			stat_end(&xs);
 			siginfo = 0;
 		}
-		if ((size = fread(buf, 1, size, f)) == 0) {
+
+		if (size == 0)
+			break;
+
+		if ((readcnt = fread(buf, 1, size, f)) < size) {
 			if (ferror(f) && errno == EINTR && !sigint)
 				clearerr(f);
-			else
+			else if (readcnt == 0)
 				break;
 		}
-		stat_update(&xs, count += size);
-		for (ptr = buf; size > 0; ptr += wr, size -= wr)
-			if ((wr = fwrite(ptr, 1, size, of)) < size) {
+
+		stat_update(&xs, count += readcnt);
+		for (ptr = buf; readcnt > 0; ptr += wr, readcnt -= wr)
+			if ((wr = fwrite(ptr, 1, readcnt, of)) < readcnt) {
 				if (ferror(of) && errno == EINTR && !sigint)
 					clearerr(of);
 				else
 					break;
 			}
-		if (size != 0)
+		if (readcnt != 0)
 			break;
 	}
 	if (!sigalrm)

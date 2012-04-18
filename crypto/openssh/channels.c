@@ -1,4 +1,4 @@
-/* $OpenBSD: channels.c,v 1.310 2010/11/24 01:24:14 djm Exp $ */
+/* $OpenBSD: channels.c,v 1.311 2011/06/22 22:08:42 djm Exp $ */
 /* $FreeBSD$ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -824,7 +824,7 @@ channel_tcpwinsz(void)
 	u_int maxlen;
 
 	/* If we are not on a socket return 128KB. */
-	if (!packet_connection_is_on_socket()) 
+	if (!packet_connection_is_on_socket())
 		return (128 * 1024);
 
 	tcpwinsz = 0;
@@ -854,7 +854,7 @@ channel_pre_open(Channel *c, fd_set *readset, fd_set *writeset)
 
 	limit = MIN(compat20 ? c->remote_window : packet_get_maxsize(),
 	    2 * c->tcpwinsz);
-	
+
 	if (c->istate == CHAN_INPUT_OPEN &&
 	    limit > 0 &&
 	    buffer_len(&c->input) < limit &&
@@ -2687,10 +2687,10 @@ channel_set_af(int af)
 	IPv4or6 = af;
 }
 
-void 
+void
 channel_set_hpn(int disabled, u_int buf_size)
 {
-      	hpn_disabled = disabled;
+	hpn_disabled = disabled;
 	buffer_size = buf_size;
 	debug("HPN Disabled: %d, HPN Buffer Size: %d",
 	    hpn_disabled, buffer_size);
@@ -2856,10 +2856,10 @@ channel_setup_fwd_listener(int type, const char *listen_addr,
 			c = channel_new("port listener", type, sock, sock, -1,
 			    CHAN_TCP_WINDOW_DEFAULT, CHAN_TCP_PACKET_DEFAULT,
 			    0, "port listener", 1);
- 		else
- 			c = channel_new("port listener", type, sock, sock, -1,
- 		    	    buffer_size, CHAN_TCP_PACKET_DEFAULT,
- 		    	    0, "port listener", 1);
+		else
+			c = channel_new("port listener", type, sock, sock, -1,
+			    buffer_size, CHAN_TCP_PACKET_DEFAULT,
+			    0, "port listener", 1);
 		c->path = xstrdup(host);
 		c->host_port = port_to_connect;
 		c->listening_port = listen_port;
@@ -3638,7 +3638,7 @@ deny_input_open(int type, u_int32_t seq, void *ctxt)
  */
 void
 x11_request_forwarding_with_spoofing(int client_session_id, const char *disp,
-    const char *proto, const char *data)
+    const char *proto, const char *data, int want_reply)
 {
 	u_int data_len = (u_int) strlen(data) / 2;
 	u_int i, value;
@@ -3691,7 +3691,7 @@ x11_request_forwarding_with_spoofing(int client_session_id, const char *disp,
 
 	/* Send the request packet. */
 	if (compat20) {
-		channel_request_start(client_session_id, "x11-req", 0);
+		channel_request_start(client_session_id, "x11-req", want_reply);
 		packet_put_char(0);	/* XXX bool single connection */
 	} else {
 		packet_start(SSH_CMSG_X11_REQUEST_FORWARDING);

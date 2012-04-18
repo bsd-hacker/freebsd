@@ -23,7 +23,6 @@ namespace driver {
   class Compilation;
   class DerivedArgList;
   class Driver;
-  class HostInfo;
   class InputArgList;
   class JobAction;
   class ObjCRuntime;
@@ -32,15 +31,20 @@ namespace driver {
 /// ToolChain - Access to tools for a single platform.
 class ToolChain {
 public:
-  typedef llvm::SmallVector<std::string, 4> path_list;
+  typedef SmallVector<std::string, 4> path_list;
 
   enum CXXStdlibType {
     CST_Libcxx,
     CST_Libstdcxx
   };
 
+  enum RuntimeLibType {
+    RLT_CompilerRT,
+    RLT_Libgcc
+  };
+
 private:
-  const HostInfo &Host;
+  const Driver &D;
   const llvm::Triple Triple;
 
   /// The list of toolchain specific path prefixes to search for
@@ -52,7 +56,20 @@ private:
   path_list ProgramPaths;
 
 protected:
-  ToolChain(const HostInfo &Host, const llvm::Triple &_Triple);
+  ToolChain(const Driver &D, const llvm::Triple &T);
+
+  /// \name Utilities for implementing subclasses.
+  ///@{
+  static void addSystemInclude(const ArgList &DriverArgs,
+                               ArgStringList &CC1Args,
+                               const Twine &Path);
+  static void addExternCSystemInclude(const ArgList &DriverArgs,
+                                      ArgStringList &CC1Args,
+                                      const Twine &Path);
+  static void addSystemIncludes(const ArgList &DriverArgs,
+                                ArgStringList &CC1Args,
+                                ArrayRef<StringRef> Paths);
+  ///@}
 
 public:
   virtual ~ToolChain();
@@ -63,9 +80,9 @@ public:
   const llvm::Triple &getTriple() const { return Triple; }
 
   llvm::Triple::ArchType getArch() const { return Triple.getArch(); }
-  llvm::StringRef getArchName() const { return Triple.getArchName(); }
-  llvm::StringRef getPlatform() const { return Triple.getVendorName(); }
-  llvm::StringRef getOS() const { return Triple.getOSName(); }
+  StringRef getArchName() const { return Triple.getArchName(); }
+  StringRef getPlatform() const { return Triple.getVendorName(); }
+  StringRef getOS() const { return Triple.getOSName(); }
 
   std::string getTripleString() const {
     return Triple.getTriple();
@@ -131,7 +148,7 @@ public:
   /// IsObjCLegacyDispatchDefault - Does this tool chain set
   /// -fobjc-legacy-dispatch by default (this is only used with the non-fragile
   /// ABI).
-  virtual bool IsObjCLegacyDispatchDefault() const { return false; }
+  virtual bool IsObjCLegacyDispatchDefault() const { return true; }
 
   /// UseObjCMixedDispatchDefault - When using non-legacy dispatch, should the
   /// mixed dispatch method be used?
@@ -139,7 +156,14 @@ public:
 
   /// GetDefaultStackProtectorLevel - Get the default stack protector level for
   /// this tool chain (0=off, 1=on, 2=all).
-  virtual unsigned GetDefaultStackProtectorLevel() const { return 0; }
+  virtual unsigned GetDefaultStackProtectorLevel(bool KernelOrKext) const {
+    return 0;
+  }
+
+  /// GetDefaultRuntimeLibType - Get the default runtime library variant to use.
+  virtual RuntimeLibType GetDefaultRuntimeLibType() const {
+    return ToolChain::RLT_Libgcc;
+  }
 
   /// IsUnwindTablesDefault - Does this tool chain use -funwind-tables
   /// by default.
@@ -160,6 +184,9 @@ public:
   /// Does this tool chain support Objective-C garbage collection.
   virtual bool SupportsObjCGC() const { return true; }
 
+  /// Does this tool chain support Objective-C ARC.
+  virtual bool SupportsObjCARC() const { return true; }
+
   /// UseDwarfDebugFlags - Embed the compile options to clang into the Dwarf
   /// compile unit information.
   virtual bool UseDwarfDebugFlags() const { return false; }
@@ -169,20 +196,40 @@ public:
 
   /// ComputeLLVMTriple - Return the LLVM target triple to use, after taking
   /// command line arguments into account.
-  virtual std::string ComputeLLVMTriple(const ArgList &Args) const;
+  virtual std::string ComputeLLVMTriple(const ArgList &Args,
+                                 types::ID InputType = types::TY_INVALID) const;
 
   /// ComputeEffectiveClangTriple - Return the Clang triple to use for this
   /// target, which may take into account the command line arguments. For
   /// example, on Darwin the -mmacosx-version-min= command line argument (which
   /// sets the deployment target) determines the version in the triple passed to
   /// Clang.
-  virtual std::string ComputeEffectiveClangTriple(const ArgList &Args) const;
+  virtual std::string ComputeEffectiveClangTriple(const ArgList &Args,
+                                 types::ID InputType = types::TY_INVALID) const;
 
   /// configureObjCRuntime - Configure the known properties of the
   /// Objective-C runtime for this platform.
   ///
-  /// FIXME: this doesn't really belong here.
+  /// FIXME: this really belongs on some sort of DeploymentTarget abstraction
   virtual void configureObjCRuntime(ObjCRuntime &runtime) const;
+
+  /// hasBlocksRuntime - Given that the user is compiling with
+  /// -fblocks, does this tool chain guarantee the existence of a
+  /// blocks runtime?
+  ///
+  /// FIXME: this really belongs on some sort of DeploymentTarget abstraction
+  virtual bool hasBlocksRuntime() const { return true; }
+
+  /// \brief Add the clang cc1 arguments for system include paths.
+  ///
+  /// This routine is responsible for adding the necessary cc1 arguments to
+  /// include headers from standard system header directories.
+  virtual void AddClangSystemIncludeArgs(const ArgList &DriverArgs,
+                                         ArgStringList &CC1Args) const;
+
+  // GetRuntimeLibType - Determine the runtime library type to use with the
+  // given compilation arguments.
+  virtual RuntimeLibType GetRuntimeLibType(const ArgList &Args) const;
 
   // GetCXXStdlibType - Determine the C++ standard library type to use with the
   // given compilation arguments.
@@ -190,9 +237,8 @@ public:
 
   /// AddClangCXXStdlibIncludeArgs - Add the clang -cc1 level arguments to set
   /// the include paths to use for the given C++ standard library type.
-  virtual void AddClangCXXStdlibIncludeArgs(const ArgList &Args,
-                                            ArgStringList &CmdArgs,
-                                            bool ObjCXXAutoRefCount) const;
+  virtual void AddClangCXXStdlibIncludeArgs(const ArgList &DriverArgs,
+                                            ArgStringList &CC1Args) const;
 
   /// AddCXXStdlibLibArgs - Add the system specific linker arguments to use
   /// for the given C++ standard library type.

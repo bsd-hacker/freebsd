@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2002 Doug Rabson
- * Copyright (c) 1994-1995 Søren Schmidt
+ * Copyright (c) 1994-1995 SÃ¸ren Schmidt
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -209,7 +209,7 @@ linux_brk(struct thread *td, struct linux_brk_args *args)
 	old = (vm_offset_t)vm->vm_daddr + ctob(vm->vm_dsize);
 	new = (vm_offset_t)args->dsend;
 	tmp.nsize = (char *)new;
-	if (((caddr_t)new > vm->vm_daddr) && !obreak(td, &tmp))
+	if (((caddr_t)new > vm->vm_daddr) && !sys_obreak(td, &tmp))
 		td->td_retval[0] = (long)new;
 	else
 		td->td_retval[0] = (long)old;
@@ -229,9 +229,9 @@ linux_uselib(struct thread *td, struct linux_uselib_args *args)
 	struct vattr attr;
 	vm_offset_t vmaddr;
 	unsigned long file_offset;
-	vm_offset_t buffer;
 	unsigned long bss_size;
 	char *library;
+	ssize_t aresid;
 	int error;
 	int locked, vfslocked;
 
@@ -308,8 +308,8 @@ linux_uselib(struct thread *td, struct linux_uselib_args *args)
 	if (error)
 		goto cleanup;
 
-	/* Pull in executable header into kernel_map */
-	error = vm_mmap(kernel_map, (vm_offset_t *)&a_out, PAGE_SIZE,
+	/* Pull in executable header into exec_map */
+	error = vm_mmap(exec_map, (vm_offset_t *)&a_out, PAGE_SIZE,
 	    VM_PROT_READ, VM_PROT_READ, 0, OBJT_VNODE, vp, 0);
 	if (error)
 		goto cleanup;
@@ -402,24 +402,15 @@ linux_uselib(struct thread *td, struct linux_uselib_args *args)
 		if (error)
 			goto cleanup;
 
-		/* map file into kernel_map */
-		error = vm_mmap(kernel_map, &buffer,
-		    round_page(a_out->a_text + a_out->a_data + file_offset),
-		    VM_PROT_READ, VM_PROT_READ, 0, OBJT_VNODE, vp,
-		    trunc_page(file_offset));
-		if (error)
+		error = vn_rdwr(UIO_READ, vp, (void *)vmaddr, file_offset,
+		    a_out->a_text + a_out->a_data, UIO_USERSPACE, 0,
+		    td->td_ucred, NOCRED, &aresid, td);
+		if (error != 0)
 			goto cleanup;
-
-		/* copy from kernel VM space to user space */
-		error = copyout(PTRIN(buffer + file_offset),
-		    (void *)vmaddr, a_out->a_text + a_out->a_data);
-
-		/* release temporary kernel space */
-		vm_map_remove(kernel_map, buffer, buffer +
-		    round_page(a_out->a_text + a_out->a_data + file_offset));
-
-		if (error)
+		if (aresid != 0) {
+			error = ENOEXEC;
 			goto cleanup;
+		}
 	} else {
 #ifdef DEBUG
 		printf("uselib: Page aligned binary %lu\n", file_offset);
@@ -463,10 +454,9 @@ cleanup:
 		VFS_UNLOCK_GIANT(vfslocked);
 	}
 
-	/* Release the kernel mapping. */
+	/* Release the temporary mapping. */
 	if (a_out)
-		vm_map_remove(kernel_map, (vm_offset_t)a_out,
-		    (vm_offset_t)a_out + PAGE_SIZE);
+		kmem_free_wakeup(exec_map, (vm_offset_t)a_out, PAGE_SIZE);
 
 	return (error);
 }
@@ -609,7 +599,7 @@ linux_mremap(struct thread *td, struct linux_mremap_args *args)
 		bsd_args.addr =
 		    (caddr_t)((uintptr_t)args->addr + args->new_len);
 		bsd_args.len = args->old_len - args->new_len;
-		error = munmap(td, &bsd_args);
+		error = sys_munmap(td, &bsd_args);
 	}
 
 	td->td_retval[0] = error ? 0 : (uintptr_t)args->addr;
@@ -629,7 +619,7 @@ linux_msync(struct thread *td, struct linux_msync_args *args)
 	bsd_args.len = (uintptr_t)args->len;
 	bsd_args.flags = args->fl & ~LINUX_MS_SYNC;
 
-	return (msync(td, &bsd_args));
+	return (sys_msync(td, &bsd_args));
 }
 
 int
@@ -1085,7 +1075,7 @@ linux_nice(struct thread *td, struct linux_nice_args *args)
 	bsd_args.which = PRIO_PROCESS;
 	bsd_args.who = 0;		/* current process */
 	bsd_args.prio = args->inc;
-	return (setpriority(td, &bsd_args));
+	return (sys_setpriority(td, &bsd_args));
 }
 
 int
@@ -1317,7 +1307,7 @@ linux_sched_setscheduler(struct thread *td,
 
 	bsd.pid = args->pid;
 	bsd.param = (struct sched_param *)args->param;
-	return (sched_setscheduler(td, &bsd));
+	return (sys_sched_setscheduler(td, &bsd));
 }
 
 int
@@ -1333,7 +1323,7 @@ linux_sched_getscheduler(struct thread *td,
 #endif
 
 	bsd.pid = args->pid;
-	error = sched_getscheduler(td, &bsd);
+	error = sys_sched_getscheduler(td, &bsd);
 
 	switch (td->td_retval[0]) {
 	case SCHED_OTHER:
@@ -1374,7 +1364,7 @@ linux_sched_get_priority_max(struct thread *td,
 	default:
 		return (EINVAL);
 	}
-	return (sched_get_priority_max(td, &bsd));
+	return (sys_sched_get_priority_max(td, &bsd));
 }
 
 int
@@ -1401,7 +1391,7 @@ linux_sched_get_priority_min(struct thread *td,
 	default:
 		return (EINVAL);
 	}
-	return (sched_get_priority_min(td, &bsd));
+	return (sys_sched_get_priority_min(td, &bsd));
 }
 
 #define REBOOT_CAD_ON	0x89abcdef
@@ -1454,7 +1444,7 @@ linux_reboot(struct thread *td, struct linux_reboot_args *args)
 	default:
 		return (EINVAL);
 	}
-	return (reboot(td, &bsd_args));
+	return (sys_reboot(td, &bsd_args));
 }
 
 
@@ -1592,7 +1582,7 @@ linux_getsid(struct thread *td, struct linux_getsid_args *args)
 #endif
 
 	bsd.pid = args->pid;
-	return (getsid(td, &bsd));
+	return (sys_getsid(td, &bsd));
 }
 
 int
@@ -1615,7 +1605,7 @@ linux_getpriority(struct thread *td, struct linux_getpriority_args *args)
 
 	bsd_args.which = args->which;
 	bsd_args.who = args->who;
-	error = getpriority(td, &bsd_args);
+	error = sys_getpriority(td, &bsd_args);
 	td->td_retval[0] = 20 - td->td_retval[0];
 	return (error);
 }
@@ -1893,7 +1883,7 @@ linux_sched_getaffinity(struct thread *td,
 	cga.cpusetsize = sizeof(cpuset_t);
 	cga.mask = (cpuset_t *) args->user_mask_ptr;
 
-	if ((error = cpuset_getaffinity(td, &cga)) == 0)
+	if ((error = sys_cpuset_getaffinity(td, &cga)) == 0)
 		td->td_retval[0] = sizeof(cpuset_t);
 
 	return (error);
@@ -1922,5 +1912,5 @@ linux_sched_setaffinity(struct thread *td,
 	csa.cpusetsize = sizeof(cpuset_t);
 	csa.mask = (cpuset_t *) args->user_mask_ptr;
 
-	return (cpuset_setaffinity(td, &csa));
+	return (sys_cpuset_setaffinity(td, &csa));
 }

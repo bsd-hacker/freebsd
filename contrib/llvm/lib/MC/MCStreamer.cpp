@@ -22,7 +22,10 @@ using namespace llvm;
 
 MCStreamer::MCStreamer(MCContext &Ctx) : Context(Ctx), EmitEHFrame(true),
                                          EmitDebugFrame(false),
-                                         CurrentW64UnwindInfo(0) {
+                                         CurrentW64UnwindInfo(0),
+                                         LastSymbol(0),
+                                         UniqueCodeBeginSuffix(0),
+                                         UniqueDataBeginSuffix(0) {
   const MCSection *section = NULL;
   SectionStack.push_back(std::make_pair(section, section));
 }
@@ -90,17 +93,18 @@ void MCStreamer::EmitIntValue(uint64_t Value, unsigned Size,
 
 /// EmitULEB128Value - Special case of EmitULEB128Value that avoids the
 /// client having to pass in a MCExpr for constant integers.
-void MCStreamer::EmitULEB128IntValue(uint64_t Value, unsigned AddrSpace) {
-  SmallString<32> Tmp;
+void MCStreamer::EmitULEB128IntValue(uint64_t Value, unsigned AddrSpace,
+                                     unsigned Padding) {
+  SmallString<128> Tmp;
   raw_svector_ostream OSE(Tmp);
-  MCObjectWriter::EncodeULEB128(Value, OSE);
+  MCObjectWriter::EncodeULEB128(Value, OSE, Padding);
   EmitBytes(OSE.str(), AddrSpace);
 }
 
 /// EmitSLEB128Value - Special case of EmitSLEB128Value that avoids the
 /// client having to pass in a MCExpr for constant integers.
 void MCStreamer::EmitSLEB128IntValue(int64_t Value, unsigned AddrSpace) {
-  SmallString<32> Tmp;
+  SmallString<128> Tmp;
   raw_svector_ostream OSE(Tmp);
   MCObjectWriter::EncodeSLEB128(Value, OSE);
   EmitBytes(OSE.str(), AddrSpace);
@@ -124,6 +128,10 @@ void MCStreamer::EmitSymbolValue(const MCSymbol *Sym, unsigned Size,
                 AddrSpace);
 }
 
+void MCStreamer::EmitGPRel64Value(const MCExpr *Value) {
+  report_fatal_error("unsupported directive in streamer");
+}
+
 void MCStreamer::EmitGPRel32Value(const MCExpr *Value) {
   report_fatal_error("unsupported directive in streamer");
 }
@@ -138,8 +146,9 @@ void MCStreamer::EmitFill(uint64_t NumBytes, uint8_t FillValue,
 }
 
 bool MCStreamer::EmitDwarfFileDirective(unsigned FileNo,
+                                        StringRef Directory,
                                         StringRef Filename) {
-  return getContext().GetDwarfFile(Filename, FileNo) == 0;
+  return getContext().GetDwarfFile(Directory, Filename, FileNo) == 0;
 }
 
 void MCStreamer::EmitDwarfLocDirective(unsigned FileNo, unsigned Line,
@@ -171,10 +180,92 @@ void MCStreamer::EmitLabel(MCSymbol *Symbol) {
   assert(!Symbol->isVariable() && "Cannot emit a variable symbol!");
   assert(getCurrentSection() && "Cannot emit before setting section!");
   Symbol->setSection(*getCurrentSection());
+  LastSymbol = Symbol;
+}
 
-  StringRef Prefix = getContext().getAsmInfo().getPrivateGlobalPrefix();
-  if (!Symbol->getName().startswith(Prefix))
-    LastNonPrivate = Symbol;
+void MCStreamer::EmitDataRegion() {
+  if (RegionIndicator == Data) return;
+
+  MCContext &Context = getContext();
+  const MCAsmInfo &MAI = Context.getAsmInfo();
+  if (!MAI.getSupportsDataRegions()) return;
+
+  // Generate a unique symbol name.
+  MCSymbol *NewSym = Context.GetOrCreateSymbol(MAI.getDataBeginLabelName() +
+                                               Twine(UniqueDataBeginSuffix++));
+  EmitLabel(NewSym);
+
+  RegionIndicator = Data;
+}
+
+void MCStreamer::EmitCodeRegion() {
+  if (RegionIndicator == Code) return;
+
+  MCContext &Context = getContext();
+  const MCAsmInfo &MAI = Context.getAsmInfo();
+  if (!MAI.getSupportsDataRegions()) return;
+
+  // Generate a unique symbol name.
+  MCSymbol *NewSym = Context.GetOrCreateSymbol(MAI.getCodeBeginLabelName() +
+                                               Twine(UniqueCodeBeginSuffix++));
+  EmitLabel(NewSym);
+
+  RegionIndicator = Code;
+}
+
+void MCStreamer::EmitJumpTable8Region() {
+  if (RegionIndicator == JumpTable8) return;
+
+  MCContext &Context = getContext();
+  const MCAsmInfo &MAI = Context.getAsmInfo();
+  if (!MAI.getSupportsDataRegions()) return;
+
+  // Generate a unique symbol name.
+  MCSymbol *NewSym =
+    Context.GetOrCreateSymbol(MAI.getJumpTable8BeginLabelName() +
+                              Twine(UniqueDataBeginSuffix++));
+  EmitLabel(NewSym);
+
+  RegionIndicator = JumpTable8;
+}
+
+void MCStreamer::EmitJumpTable16Region() {
+  if (RegionIndicator == JumpTable16) return;
+
+  MCContext &Context = getContext();
+  const MCAsmInfo &MAI = Context.getAsmInfo();
+  if (!MAI.getSupportsDataRegions()) return;
+
+  // Generate a unique symbol name.
+  MCSymbol *NewSym =
+    Context.GetOrCreateSymbol(MAI.getJumpTable16BeginLabelName() +
+                              Twine(UniqueDataBeginSuffix++));
+  EmitLabel(NewSym);
+
+  RegionIndicator = JumpTable16;
+}
+
+
+void MCStreamer::EmitJumpTable32Region() {
+  if (RegionIndicator == JumpTable32) return;
+
+  MCContext &Context = getContext();
+  const MCAsmInfo &MAI = Context.getAsmInfo();
+  if (!MAI.getSupportsDataRegions()) return;
+
+  // Generate a unique symbol name.
+  MCSymbol *NewSym =
+    Context.GetOrCreateSymbol(MAI.getJumpTable32BeginLabelName() +
+                              Twine(UniqueDataBeginSuffix++));
+  EmitLabel(NewSym);
+
+  RegionIndicator = JumpTable32;
+}
+
+void MCStreamer::EmitCompactUnwindEncoding(uint32_t CompactUnwindEncoding) {
+  EnsureValidFrame();
+  MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
+  CurFrame->CompactUnwindEncoding = CompactUnwindEncoding;
 }
 
 void MCStreamer::EmitCFISections(bool EH, bool Debug) {
@@ -187,18 +278,42 @@ void MCStreamer::EmitCFIStartProc() {
   MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
   if (CurFrame && !CurFrame->End)
     report_fatal_error("Starting a frame before finishing the previous one!");
+
   MCDwarfFrameInfo Frame;
-  Frame.Begin = getContext().CreateTempSymbol();
-  Frame.Function = LastNonPrivate;
-  EmitLabel(Frame.Begin);
+  EmitCFIStartProcImpl(Frame);
+
   FrameInfos.push_back(Frame);
+  RegionIndicator = Code;
+}
+
+void MCStreamer::EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) {
+}
+
+void MCStreamer::RecordProcStart(MCDwarfFrameInfo &Frame) {
+  Frame.Function = LastSymbol;
+  // If the function is externally visible, we need to create a local
+  // symbol to avoid relocations.
+  StringRef Prefix = getContext().getAsmInfo().getPrivateGlobalPrefix();
+  if (LastSymbol && LastSymbol->getName().startswith(Prefix)) {
+    Frame.Begin = LastSymbol;
+  } else {
+    Frame.Begin = getContext().CreateTempSymbol();
+    EmitLabel(Frame.Begin);
+  }
 }
 
 void MCStreamer::EmitCFIEndProc() {
   EnsureValidFrame();
   MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
-  CurFrame->End = getContext().CreateTempSymbol();
-  EmitLabel(CurFrame->End);
+  EmitCFIEndProcImpl(*CurFrame);
+}
+
+void MCStreamer::EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame) {
+}
+
+void MCStreamer::RecordProcEnd(MCDwarfFrameInfo &Frame) {
+  Frame.End = getContext().CreateTempSymbol();
+  EmitLabel(Frame.End);
 }
 
 void MCStreamer::EmitCFIDefCfa(int64_t Register, int64_t Offset) {
@@ -287,7 +402,7 @@ void MCStreamer::EmitCFIRememberState() {
   MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
   MCSymbol *Label = getContext().CreateTempSymbol();
   EmitLabel(Label);
-  MCCFIInstruction Instruction(MCCFIInstruction::Remember, Label);
+  MCCFIInstruction Instruction(MCCFIInstruction::RememberState, Label);
   CurFrame->Instructions.push_back(Instruction);
 }
 
@@ -297,7 +412,7 @@ void MCStreamer::EmitCFIRestoreState() {
   MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
   MCSymbol *Label = getContext().CreateTempSymbol();
   EmitLabel(Label);
-  MCCFIInstruction Instruction(MCCFIInstruction::Restore, Label);
+  MCCFIInstruction Instruction(MCCFIInstruction::RestoreState, Label);
   CurFrame->Instructions.push_back(Instruction);
 }
 
@@ -308,6 +423,30 @@ void MCStreamer::EmitCFISameValue(int64_t Register) {
   EmitLabel(Label);
   MCCFIInstruction Instruction(MCCFIInstruction::SameValue, Label, Register);
   CurFrame->Instructions.push_back(Instruction);
+}
+
+void MCStreamer::EmitCFIRestore(int64_t Register) {
+  EnsureValidFrame();
+  MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
+  MCSymbol *Label = getContext().CreateTempSymbol();
+  EmitLabel(Label);
+  MCCFIInstruction Instruction(MCCFIInstruction::Restore, Label, Register);
+  CurFrame->Instructions.push_back(Instruction);
+}
+
+void MCStreamer::EmitCFIEscape(StringRef Values) {
+  EnsureValidFrame();
+  MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
+  MCSymbol *Label = getContext().CreateTempSymbol();
+  EmitLabel(Label);
+  MCCFIInstruction Instruction(MCCFIInstruction::Escape, Label, Values);
+  CurFrame->Instructions.push_back(Instruction);
+}
+
+void MCStreamer::EmitCFISignalFrame() {
+  EnsureValidFrame();
+  MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
+  CurFrame->IsSignalFrame = true;
 }
 
 void MCStreamer::setCurrentW64UnwindInfo(MCWin64EHUnwindInfo *Frame) {
@@ -460,6 +599,10 @@ void MCStreamer::EmitWin64EHEndProlog() {
   EmitLabel(CurFrame->PrologEnd);
 }
 
+void MCStreamer::EmitCOFFSecRel32(MCSymbol const *Symbol) {
+  llvm_unreachable("This file format doesn't support this directive");
+}
+
 void MCStreamer::EmitFnStart() {
   errs() << "Not implemented yet\n";
   abort();
@@ -531,4 +674,11 @@ void MCStreamer::EmitW64Tables() {
     return;
 
   MCWin64EHUnwindEmitter::Emit(*this);
+}
+
+void MCStreamer::Finish() {
+  if (!FrameInfos.empty() && !FrameInfos.back().End)
+    report_fatal_error("Unfinished frame!");
+
+  FinishImpl();
 }

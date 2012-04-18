@@ -13,10 +13,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
+#include "clang/AST/ExprObjC.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
+#include "llvm/ADT/SmallString.h"
 
 using namespace clang;
 using namespace ento;
@@ -25,34 +27,42 @@ namespace {
 class DereferenceChecker
     : public Checker< check::Location,
                         EventDispatcher<ImplicitNullDerefEvent> > {
-  mutable llvm::OwningPtr<BuiltinBug> BT_null;
-  mutable llvm::OwningPtr<BuiltinBug> BT_undef;
+  mutable OwningPtr<BuiltinBug> BT_null;
+  mutable OwningPtr<BuiltinBug> BT_undef;
 
 public:
-  void checkLocation(SVal location, bool isLoad, CheckerContext &C) const;
+  void checkLocation(SVal location, bool isLoad, const Stmt* S,
+                     CheckerContext &C) const;
 
-  static void AddDerefSource(llvm::raw_ostream &os,
-                             llvm::SmallVectorImpl<SourceRange> &Ranges,
-                             const Expr *Ex, bool loadedFrom = false);
+  static const MemRegion *AddDerefSource(raw_ostream &os,
+                             SmallVectorImpl<SourceRange> &Ranges,
+                             const Expr *Ex, const ProgramState *state,
+                             const LocationContext *LCtx,
+                             bool loadedFrom = false);
 };
 } // end anonymous namespace
 
-void DereferenceChecker::AddDerefSource(llvm::raw_ostream &os,
-                                     llvm::SmallVectorImpl<SourceRange> &Ranges,
-                                        const Expr *Ex,
-                                        bool loadedFrom) {
+const MemRegion *
+DereferenceChecker::AddDerefSource(raw_ostream &os,
+                                   SmallVectorImpl<SourceRange> &Ranges,
+                                   const Expr *Ex,
+                                   const ProgramState *state,
+                                   const LocationContext *LCtx,
+                                   bool loadedFrom) {
   Ex = Ex->IgnoreParenLValueCasts();
+  const MemRegion *sourceR = 0;
   switch (Ex->getStmtClass()) {
     default:
-      return;
+      break;
     case Stmt::DeclRefExprClass: {
       const DeclRefExpr *DR = cast<DeclRefExpr>(Ex);
       if (const VarDecl *VD = dyn_cast<VarDecl>(DR->getDecl())) {
         os << " (" << (loadedFrom ? "loaded from" : "from")
            << " variable '" <<  VD->getName() << "')";
         Ranges.push_back(DR->getSourceRange());
+        sourceR = state->getLValue(VD, LCtx).getAsRegion();
       }
-      return;
+      break;
     }
     case Stmt::MemberExprClass: {
       const MemberExpr *ME = cast<MemberExpr>(Ex);
@@ -63,9 +73,10 @@ void DereferenceChecker::AddDerefSource(llvm::raw_ostream &os,
       break;
     }
   }
+  return sourceR;
 }
 
-void DereferenceChecker::checkLocation(SVal l, bool isLoad,
+void DereferenceChecker::checkLocation(SVal l, bool isLoad, const Stmt* S,
                                        CheckerContext &C) const {
   // Check for dereference of an undefined value.
   if (l.isUndef()) {
@@ -73,10 +84,10 @@ void DereferenceChecker::checkLocation(SVal l, bool isLoad,
       if (!BT_undef)
         BT_undef.reset(new BuiltinBug("Dereference of undefined pointer value"));
 
-      EnhancedBugReport *report =
-        new EnhancedBugReport(*BT_undef, BT_undef->getDescription(), N);
-      report->addVisitorCreator(bugreporter::registerTrackNullOrUndefValue,
-                                bugreporter::GetDerefExpr(N));
+      BugReport *report =
+        new BugReport(*BT_undef, BT_undef->getDescription(), N);
+      report->addVisitor(bugreporter::getTrackNullOrUndefValueVisitor(N,
+                                        bugreporter::GetDerefExpr(N), report));
       C.EmitReport(report);
     }
     return;
@@ -88,9 +99,9 @@ void DereferenceChecker::checkLocation(SVal l, bool isLoad,
   if (!isa<Loc>(location))
     return;
 
-  const Stmt *S = C.getStmt();
-  const GRState *state = C.getState();
-  const GRState *notNullState, *nullState;
+  ProgramStateRef state = C.getState();
+  const LocationContext *LCtx = C.getLocationContext();
+  ProgramStateRef notNullState, nullState;
   llvm::tie(notNullState, nullState) = state->assume(location);
 
   // The explicit NULL case.
@@ -106,20 +117,24 @@ void DereferenceChecker::checkLocation(SVal l, bool isLoad,
       if (!BT_null)
         BT_null.reset(new BuiltinBug("Dereference of null pointer"));
 
-      llvm::SmallString<100> buf;
-      llvm::SmallVector<SourceRange, 2> Ranges;
+      SmallString<100> buf;
+      SmallVector<SourceRange, 2> Ranges;
       
       // Walk through lvalue casts to get the original expression
       // that syntactically caused the load.
       if (const Expr *expr = dyn_cast<Expr>(S))
         S = expr->IgnoreParenLValueCasts();
+      
+      const MemRegion *sourceR = 0;
 
       switch (S->getStmtClass()) {
         case Stmt::ArraySubscriptExprClass: {
           llvm::raw_svector_ostream os(buf);
           os << "Array access";
           const ArraySubscriptExpr *AE = cast<ArraySubscriptExpr>(S);
-          AddDerefSource(os, Ranges, AE->getBase()->IgnoreParenCasts());
+          sourceR =
+            AddDerefSource(os, Ranges, AE->getBase()->IgnoreParenCasts(),
+                           state.getPtr(), LCtx);
           os << " results in a null pointer dereference";
           break;
         }
@@ -127,7 +142,9 @@ void DereferenceChecker::checkLocation(SVal l, bool isLoad,
           llvm::raw_svector_ostream os(buf);
           os << "Dereference of null pointer";
           const UnaryOperator *U = cast<UnaryOperator>(S);
-          AddDerefSource(os, Ranges, U->getSubExpr()->IgnoreParens(), true);
+          sourceR =
+            AddDerefSource(os, Ranges, U->getSubExpr()->IgnoreParens(),
+                           state.getPtr(), LCtx, true);
           break;
         }
         case Stmt::MemberExprClass: {
@@ -136,7 +153,9 @@ void DereferenceChecker::checkLocation(SVal l, bool isLoad,
             llvm::raw_svector_ostream os(buf);
             os << "Access to field '" << M->getMemberNameInfo()
                << "' results in a dereference of a null pointer";
-            AddDerefSource(os, Ranges, M->getBase()->IgnoreParenCasts(), true);
+            sourceR =
+              AddDerefSource(os, Ranges, M->getBase()->IgnoreParenCasts(),
+                             state.getPtr(), LCtx, true);
           }
           break;
         }
@@ -157,17 +176,22 @@ void DereferenceChecker::checkLocation(SVal l, bool isLoad,
           break;
       }
 
-      EnhancedBugReport *report =
-        new EnhancedBugReport(*BT_null,
+      BugReport *report =
+        new BugReport(*BT_null,
                               buf.empty() ? BT_null->getDescription():buf.str(),
                               N);
 
-      report->addVisitorCreator(bugreporter::registerTrackNullOrUndefValue,
-                                bugreporter::GetDerefExpr(N));
+      report->addVisitor(bugreporter::getTrackNullOrUndefValueVisitor(N,
+                                        bugreporter::GetDerefExpr(N), report));
 
-      for (llvm::SmallVectorImpl<SourceRange>::iterator
+      for (SmallVectorImpl<SourceRange>::iterator
             I = Ranges.begin(), E = Ranges.end(); I!=E; ++I)
         report->addRange(*I);
+
+      if (sourceR) {
+        report->markInteresting(sourceR);
+        report->markInteresting(state->getRawSVal(loc::MemRegionVal(sourceR)));
+      }
 
       C.EmitReport(report);
       return;

@@ -26,6 +26,7 @@
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/ProfileInfo.h"
 #include "llvm/Target/TargetData.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Transforms/Utils/AddrModeMatcher.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -58,16 +59,23 @@ STATISTIC(NumMemoryInsts, "Number of memory instructions whose address "
 STATISTIC(NumExtsMoved,  "Number of [s|z]ext instructions combined with loads");
 STATISTIC(NumExtUses,    "Number of uses of [s|z]ext instructions optimized");
 STATISTIC(NumRetsDup,    "Number of return instructions duplicated");
+STATISTIC(NumDbgValueMoved, "Number of debug value instructions moved");
 
 static cl::opt<bool> DisableBranchOpts(
   "disable-cgp-branch-opts", cl::Hidden, cl::init(false),
   cl::desc("Disable branch optimizations in CodeGenPrepare"));
+
+// FIXME: Remove this abomination once all of the tests pass without it!
+static cl::opt<bool> DisableDeleteDeadBlocks(
+  "disable-cgp-delete-dead-blocks", cl::Hidden, cl::init(false),
+  cl::desc("Disable deleting dead blocks in CodeGenPrepare"));
 
 namespace {
   class CodeGenPrepare : public FunctionPass {
     /// TLI - Keep a pointer of a TargetLowering to consult for determining
     /// transformation profitability.
     const TargetLowering *TLI;
+    const TargetLibraryInfo *TLInfo;
     DominatorTree *DT;
     ProfileInfo *PFI;
     
@@ -96,6 +104,7 @@ namespace {
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.addPreserved<DominatorTree>();
       AU.addPreserved<ProfileInfo>();
+      AU.addRequired<TargetLibraryInfo>();
     }
 
   private:
@@ -104,17 +113,21 @@ namespace {
     void EliminateMostlyEmptyBlock(BasicBlock *BB);
     bool OptimizeBlock(BasicBlock &BB);
     bool OptimizeInst(Instruction *I);
-    bool OptimizeMemoryInst(Instruction *I, Value *Addr, const Type *AccessTy);
+    bool OptimizeMemoryInst(Instruction *I, Value *Addr, Type *AccessTy);
     bool OptimizeInlineAsmInst(CallInst *CS);
     bool OptimizeCallInst(CallInst *CI);
     bool MoveExtToFormExtLoad(Instruction *I);
     bool OptimizeExtUses(Instruction *I);
     bool DupRetToEnableTailCallOpts(ReturnInst *RI);
+    bool PlaceDbgValues(Function &F);
   };
 }
 
 char CodeGenPrepare::ID = 0;
-INITIALIZE_PASS(CodeGenPrepare, "codegenprepare",
+INITIALIZE_PASS_BEGIN(CodeGenPrepare, "codegenprepare",
+                "Optimize for code generation", false, false)
+INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfo)
+INITIALIZE_PASS_END(CodeGenPrepare, "codegenprepare",
                 "Optimize for code generation", false, false)
 
 FunctionPass *llvm::createCodeGenPreparePass(const TargetLowering *TLI) {
@@ -125,12 +138,18 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
   bool EverMadeChange = false;
 
   ModifiedDT = false;
+  TLInfo = &getAnalysis<TargetLibraryInfo>();
   DT = getAnalysisIfAvailable<DominatorTree>();
   PFI = getAnalysisIfAvailable<ProfileInfo>();
 
   // First pass, eliminate blocks that contain only PHI nodes and an
   // unconditional branch.
   EverMadeChange |= EliminateMostlyEmptyBlocks(F);
+
+  // llvm.dbg.value is far away from the value then iSel may not be able
+  // handle it properly. iSel will drop llvm.dbg.value if it can not 
+  // find a node corresponding to the value.
+  EverMadeChange |= PlaceDbgValues(F);
 
   bool MadeChange = true;
   while (MadeChange) {
@@ -146,8 +165,22 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
 
   if (!DisableBranchOpts) {
     MadeChange = false;
-    for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB)
+    SmallPtrSet<BasicBlock*, 8> WorkList;
+    for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+      SmallVector<BasicBlock*, 2> Successors(succ_begin(BB), succ_end(BB));
       MadeChange |= ConstantFoldTerminator(BB, true);
+      if (!MadeChange) continue;
+
+      for (SmallVectorImpl<BasicBlock*>::iterator
+             II = Successors.begin(), IE = Successors.end(); II != IE; ++II)
+        if (pred_begin(*II) == pred_end(*II))
+          WorkList.insert(*II);
+    }
+
+    if (!DisableDeleteDeadBlocks)
+      for (SmallPtrSet<BasicBlock*, 8>::iterator
+             I = WorkList.begin(), E = WorkList.end(); I != E; ++I)
+        DeleteDeadBlock(*I);
 
     if (MadeChange)
       ModifiedDT = true;
@@ -410,8 +443,7 @@ static bool OptimizeNoopCopyExpression(CastInst *CI, const TargetLowering &TLI){
     CastInst *&InsertedCast = InsertedCasts[UserBB];
 
     if (!InsertedCast) {
-      BasicBlock::iterator InsertPt = UserBB->getFirstNonPHI();
-
+      BasicBlock::iterator InsertPt = UserBB->getFirstInsertionPt();
       InsertedCast =
         CastInst::Create(CI->getOpcode(), CI->getOperand(0), CI->getType(), "",
                          InsertPt);
@@ -467,8 +499,7 @@ static bool OptimizeCmpExpression(CmpInst *CI) {
     CmpInst *&InsertedCmp = InsertedCmps[UserBB];
 
     if (!InsertedCmp) {
-      BasicBlock::iterator InsertPt = UserBB->getFirstNonPHI();
-
+      BasicBlock::iterator InsertPt = UserBB->getFirstInsertionPt();
       InsertedCmp =
         CmpInst::Create(CI->getOpcode(),
                         CI->getPredicate(),  CI->getOperand(0),
@@ -528,7 +559,7 @@ bool CodeGenPrepare::OptimizeCallInst(CallInst *CI) {
   IntrinsicInst *II = dyn_cast<IntrinsicInst>(CI);
   if (II && II->getIntrinsicID() == Intrinsic::objectsize) {
     bool Min = (cast<ConstantInt>(II->getArgOperand(1))->getZExtValue() == 1);
-    const Type *ReturnTy = CI->getType();
+    Type *ReturnTy = CI->getType();
     Constant *RetVal = ConstantInt::get(ReturnTy, Min ? 0 : -1ULL);    
     
     // Substituting this can cause recursive simplifications, which can
@@ -536,8 +567,8 @@ bool CodeGenPrepare::OptimizeCallInst(CallInst *CI) {
     // happens.
     WeakVH IterHandle(CurInstIterator);
     
-    ReplaceAndSimplifyAllUses(CI, RetVal, TLI ? TLI->getTargetData() : 0,
-                              ModifiedDT ? 0 : DT);
+    replaceAndRecursivelySimplify(CI, RetVal, TLI ? TLI->getTargetData() : 0,
+                                  TLInfo, ModifiedDT ? 0 : DT);
 
     // If the iterator instruction was recursively deleted, start over at the
     // start of the block.
@@ -548,24 +579,17 @@ bool CodeGenPrepare::OptimizeCallInst(CallInst *CI) {
     return true;
   }
 
+  if (II && TLI) {
+    SmallVector<Value*, 2> PtrOps;
+    Type *AccessTy;
+    if (TLI->GetAddrModeArguments(II, PtrOps, AccessTy))
+      while (!PtrOps.empty())
+        if (OptimizeMemoryInst(II, PtrOps.pop_back_val(), AccessTy))
+          return true;
+  }
+
   // From here on out we're working with named functions.
   if (CI->getCalledFunction() == 0) return false;
-
-  // llvm.dbg.value is far away from the value then iSel may not be able
-  // handle it properly. iSel will drop llvm.dbg.value if it can not 
-  // find a node corresponding to the value.
-  if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(CI))
-    if (Instruction *VI = dyn_cast_or_null<Instruction>(DVI->getValue()))
-      if (!VI->isTerminator() &&
-          (DVI->getParent() != VI->getParent() || DT->dominates(DVI, VI))) {
-        DEBUG(dbgs() << "Moving Debug Value before :\n" << *DVI << ' ' << *VI);
-        DVI->removeFromParent();
-        if (isa<PHINode>(VI))
-          DVI->insertBefore(VI->getParent()->getFirstNonPHI());
-        else
-          DVI->insertAfter(VI);
-        return true;
-      }
 
   // We'll need TargetData from here on out.
   const TargetData *TD = TLI ? TLI->getTargetData() : 0;
@@ -623,7 +647,7 @@ bool CodeGenPrepare::DupRetToEnableTailCallOpts(ReturnInst *RI) {
   // It's not safe to eliminate the sign / zero extension of the return value.
   // See llvm::isInTailCallPosition().
   const Function *F = BB->getParent();
-  unsigned CallerRetAttr = F->getAttributes().getRetAttributes();
+  Attributes CallerRetAttr = F->getAttributes().getRetAttributes();
   if ((CallerRetAttr & Attribute::ZExt) || (CallerRetAttr & Attribute::SExt))
     return false;
 
@@ -678,7 +702,7 @@ bool CodeGenPrepare::DupRetToEnableTailCallOpts(ReturnInst *RI) {
 
     // Conservatively require the attributes of the call to match those of the
     // return. Ignore noalias because it doesn't affect the call sequence.
-    unsigned CalleeRetAttr = CS.getAttributes().getRetAttributes();
+    Attributes CalleeRetAttr = CS.getAttributes().getRetAttributes();
     if ((CalleeRetAttr ^ CallerRetAttr) & ~Attribute::NoAlias)
       continue;
 
@@ -724,7 +748,7 @@ static bool IsNonLocalValue(Value *V, BasicBlock *BB) {
 /// This method is used to optimize both load/store and inline asms with memory
 /// operands.
 bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
-                                        const Type *AccessTy) {
+                                        Type *AccessTy) {
   Value *Repl = Addr;
   
   // Try to collapse single-value PHI nodes.  This is necessary to undo 
@@ -746,12 +770,10 @@ bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
     worklist.pop_back();
     
     // Break use-def graph loops.
-    if (Visited.count(V)) {
+    if (!Visited.insert(V)) {
       Consensus = 0;
       break;
     }
-    
-    Visited.insert(V);
     
     // For a PHI node, push all of its incoming values.
     if (PHINode *P = dyn_cast<PHINode>(V)) {
@@ -763,7 +785,7 @@ bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
     // For non-PHIs, determine the addressing mode being computed.
     SmallVector<Instruction*, 16> NewAddrModeInsts;
     ExtAddrMode NewAddrMode =
-      AddressingModeMatcher::Match(V, AccessTy,MemoryInst,
+      AddressingModeMatcher::Match(V, AccessTy, MemoryInst,
                                    NewAddrModeInsts, *TLI);
 
     // This check is broken into two cases with very similar code to avoid using
@@ -822,7 +844,7 @@ bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
   // Insert this computation right after this user.  Since our caller is
   // scanning from the top of the BB to the bottom, reuse of the expr are
   // guaranteed to happen later.
-  BasicBlock::iterator InsertPt = MemoryInst;
+  IRBuilder<> Builder(MemoryInst);
 
   // Now that we determined the addressing expression we want to use and know
   // that we have to sink it into this block.  Check to see if we have already
@@ -833,11 +855,11 @@ bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
     DEBUG(dbgs() << "CGP: Reusing nonlocal addrmode: " << AddrMode << " for "
                  << *MemoryInst);
     if (SunkAddr->getType() != Addr->getType())
-      SunkAddr = new BitCastInst(SunkAddr, Addr->getType(), "tmp", InsertPt);
+      SunkAddr = Builder.CreateBitCast(SunkAddr, Addr->getType());
   } else {
     DEBUG(dbgs() << "CGP: SINKING nonlocal addrmode: " << AddrMode << " for "
                  << *MemoryInst);
-    const Type *IntPtrTy =
+    Type *IntPtrTy =
           TLI->getTargetData()->getIntPtrType(AccessTy->getContext());
 
     Value *Result = 0;
@@ -850,10 +872,9 @@ bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
     if (AddrMode.BaseReg) {
       Value *V = AddrMode.BaseReg;
       if (V->getType()->isPointerTy())
-        V = new PtrToIntInst(V, IntPtrTy, "sunkaddr", InsertPt);
+        V = Builder.CreatePtrToInt(V, IntPtrTy, "sunkaddr");
       if (V->getType() != IntPtrTy)
-        V = CastInst::CreateIntegerCast(V, IntPtrTy, /*isSigned=*/true,
-                                        "sunkaddr", InsertPt);
+        V = Builder.CreateIntCast(V, IntPtrTy, /*isSigned=*/true, "sunkaddr");
       Result = V;
     }
 
@@ -863,29 +884,27 @@ bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
       if (V->getType() == IntPtrTy) {
         // done.
       } else if (V->getType()->isPointerTy()) {
-        V = new PtrToIntInst(V, IntPtrTy, "sunkaddr", InsertPt);
+        V = Builder.CreatePtrToInt(V, IntPtrTy, "sunkaddr");
       } else if (cast<IntegerType>(IntPtrTy)->getBitWidth() <
                  cast<IntegerType>(V->getType())->getBitWidth()) {
-        V = new TruncInst(V, IntPtrTy, "sunkaddr", InsertPt);
+        V = Builder.CreateTrunc(V, IntPtrTy, "sunkaddr");
       } else {
-        V = new SExtInst(V, IntPtrTy, "sunkaddr", InsertPt);
+        V = Builder.CreateSExt(V, IntPtrTy, "sunkaddr");
       }
       if (AddrMode.Scale != 1)
-        V = BinaryOperator::CreateMul(V, ConstantInt::get(IntPtrTy,
-                                                                AddrMode.Scale),
-                                      "sunkaddr", InsertPt);
+        V = Builder.CreateMul(V, ConstantInt::get(IntPtrTy, AddrMode.Scale),
+                              "sunkaddr");
       if (Result)
-        Result = BinaryOperator::CreateAdd(Result, V, "sunkaddr", InsertPt);
+        Result = Builder.CreateAdd(Result, V, "sunkaddr");
       else
         Result = V;
     }
 
     // Add in the BaseGV if present.
     if (AddrMode.BaseGV) {
-      Value *V = new PtrToIntInst(AddrMode.BaseGV, IntPtrTy, "sunkaddr",
-                                  InsertPt);
+      Value *V = Builder.CreatePtrToInt(AddrMode.BaseGV, IntPtrTy, "sunkaddr");
       if (Result)
-        Result = BinaryOperator::CreateAdd(Result, V, "sunkaddr", InsertPt);
+        Result = Builder.CreateAdd(Result, V, "sunkaddr");
       else
         Result = V;
     }
@@ -894,7 +913,7 @@ bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
     if (AddrMode.BaseOffs) {
       Value *V = ConstantInt::get(IntPtrTy, AddrMode.BaseOffs);
       if (Result)
-        Result = BinaryOperator::CreateAdd(Result, V, "sunkaddr", InsertPt);
+        Result = Builder.CreateAdd(Result, V, "sunkaddr");
       else
         Result = V;
     }
@@ -902,7 +921,7 @@ bool CodeGenPrepare::OptimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
     if (Result == 0)
       SunkAddr = Constant::getNullValue(Addr->getType());
     else
-      SunkAddr = new IntToPtrInst(Result, Addr->getType(), "sunkaddr",InsertPt);
+      SunkAddr = Builder.CreateIntToPtr(Result, Addr->getType(), "sunkaddr");
   }
 
   MemoryInst->replaceUsesOfWith(Repl, SunkAddr);
@@ -1059,8 +1078,7 @@ bool CodeGenPrepare::OptimizeExtUses(Instruction *I) {
     Instruction *&InsertedTrunc = InsertedTruncs[UserBB];
 
     if (!InsertedTrunc) {
-      BasicBlock::iterator InsertPt = UserBB->getFirstNonPHI();
-
+      BasicBlock::iterator InsertPt = UserBB->getFirstInsertionPt();
       InsertedTrunc = new TruncInst(I, Src->getType(), "", InsertPt);
     }
 
@@ -1157,5 +1175,36 @@ bool CodeGenPrepare::OptimizeBlock(BasicBlock &BB) {
   for (BasicBlock::iterator E = BB.end(); CurInstIterator != E; )
     MadeChange |= OptimizeInst(CurInstIterator++);
 
+  return MadeChange;
+}
+
+// llvm.dbg.value is far away from the value then iSel may not be able
+// handle it properly. iSel will drop llvm.dbg.value if it can not 
+// find a node corresponding to the value.
+bool CodeGenPrepare::PlaceDbgValues(Function &F) {
+  bool MadeChange = false;
+  for (Function::iterator I = F.begin(), E = F.end(); I != E; ++I) {
+    Instruction *PrevNonDbgInst = NULL;
+    for (BasicBlock::iterator BI = I->begin(), BE = I->end(); BI != BE;) {
+      Instruction *Insn = BI; ++BI;
+      DbgValueInst *DVI = dyn_cast<DbgValueInst>(Insn);
+      if (!DVI) {
+        PrevNonDbgInst = Insn;
+        continue;
+      }
+
+      Instruction *VI = dyn_cast_or_null<Instruction>(DVI->getValue());
+      if (VI && VI != PrevNonDbgInst && !VI->isTerminator()) {
+        DEBUG(dbgs() << "Moving Debug Value before :\n" << *DVI << ' ' << *VI);
+        DVI->removeFromParent();
+        if (isa<PHINode>(VI))
+          DVI->insertBefore(VI->getParent()->getFirstInsertionPt());
+        else
+          DVI->insertAfter(VI);
+        MadeChange = true;
+        ++NumDbgValueMoved;
+      }
+    }
+  }
   return MadeChange;
 }

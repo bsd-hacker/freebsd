@@ -1,4 +1,4 @@
-//===- SPUSubtarget.cpp - STI Cell SPU Subtarget Information --------------===//
+//===-- SPUSubtarget.cpp - STI Cell SPU Subtarget Information -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,8 +14,7 @@
 #include "SPUSubtarget.h"
 #include "SPU.h"
 #include "SPURegisterInfo.h"
-#include "llvm/Target/TargetRegistry.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/TargetRegistry.h"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR

@@ -17,7 +17,7 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineLocation.h"
+#include "llvm/MC/MachineLocation.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -77,7 +77,8 @@ void DwarfCFIException::EndModule() {
     // This is a temporary hack to keep sections in the same order they
     // were before. This lets us produce bit identical outputs while
     // transitioning to CFI.
-    Asm->OutStreamer.SwitchSection(TLOF.getEHFrameSection());
+    Asm->OutStreamer.SwitchSection(
+               const_cast<TargetLoweringObjectFile&>(TLOF).getEHFrameSection());
   }
 }
 
@@ -141,12 +142,14 @@ void DwarfCFIException::EndFunction() {
 
   Asm->OutStreamer.EmitCFIEndProc();
 
+  if (!shouldEmitPersonality)
+    return;
+
   Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("eh_func_end",
                                                 Asm->getFunctionNumber()));
 
   // Map all labels and get rid of any dead landing pads.
   MMI->TidyLandingPads();
 
-  if (shouldEmitPersonality)
-    EmitExceptionTable();
+  EmitExceptionTable();
 }

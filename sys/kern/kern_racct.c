@@ -35,8 +35,8 @@ __FBSDID("$FreeBSD$");
 #include "opt_kdtrace.h"
 
 #include <sys/param.h>
+#include <sys/systm.h>
 #include <sys/eventhandler.h>
-#include <sys/param.h>
 #include <sys/jail.h>
 #include <sys/kernel.h>
 #include <sys/kthread.h>
@@ -53,7 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sx.h>
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
-#include <sys/systm.h>
 #include <sys/umtx.h>
 
 #ifdef RCTL
@@ -261,19 +260,12 @@ racct_alloc_resource(struct racct *racct, int resource,
 	}
 }
 
-/*
- * Increase allocation of 'resource' by 'amount' for process 'p'.
- * Return 0 if it's below limits, or errno, if it's not.
- */
-int
-racct_add(struct proc *p, int resource, uint64_t amount)
+static int
+racct_add_locked(struct proc *p, int resource, uint64_t amount)
 {
 #ifdef RCTL
 	int error;
 #endif
-
-	if (p->p_flag & P_SYSTEM)
-		return (0);
 
 	SDT_PROBE(racct, kernel, rusage, add, p, resource, amount, 0, 0);
 
@@ -282,21 +274,33 @@ racct_add(struct proc *p, int resource, uint64_t amount)
 	 */
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 
-	mtx_lock(&racct_lock);
 #ifdef RCTL
 	error = rctl_enforce(p, resource, amount);
 	if (error && RACCT_IS_DENIABLE(resource)) {
 		SDT_PROBE(racct, kernel, rusage, add_failure, p, resource,
 		    amount, 0, 0);
-		mtx_unlock(&racct_lock);
 		return (error);
 	}
 #endif
 	racct_alloc_resource(p->p_racct, resource, amount);
 	racct_add_cred_locked(p->p_ucred, resource, amount);
-	mtx_unlock(&racct_lock);
 
 	return (0);
+}
+
+/*
+ * Increase allocation of 'resource' by 'amount' for process 'p'.
+ * Return 0 if it's below limits, or errno, if it's not.
+ */
+int
+racct_add(struct proc *p, int resource, uint64_t amount)
+{
+	int error;
+
+	mtx_lock(&racct_lock);
+	error = racct_add_locked(p, resource, amount);
+	mtx_unlock(&racct_lock);
+	return (error);
 }
 
 static void
@@ -337,9 +341,6 @@ void
 racct_add_force(struct proc *p, int resource, uint64_t amount)
 {
 
-	if (p->p_flag & P_SYSTEM)
-		return;
-
 	SDT_PROBE(racct, kernel, rusage, add_force, p, resource, amount, 0, 0);
 
 	/*
@@ -360,9 +361,6 @@ racct_set_locked(struct proc *p, int resource, uint64_t amount)
 #ifdef RCTL
 	int error;
 #endif
-
-	if (p->p_flag & P_SYSTEM)
-		return (0);
 
 	SDT_PROBE(racct, kernel, rusage, set, p, resource, amount, 0, 0);
 
@@ -418,9 +416,6 @@ void
 racct_set_force(struct proc *p, int resource, uint64_t amount)
 {
 	int64_t diff;
-
-	if (p->p_flag & P_SYSTEM)
-		return;
 
 	SDT_PROBE(racct, kernel, rusage, set, p, resource, amount, 0, 0);
 
@@ -479,9 +474,6 @@ racct_get_available(struct proc *p, int resource)
 void
 racct_sub(struct proc *p, int resource, uint64_t amount)
 {
-
-	if (p->p_flag & P_SYSTEM)
-		return;
 
 	SDT_PROBE(racct, kernel, rusage, sub, p, resource, amount, 0, 0);
 
@@ -549,15 +541,15 @@ racct_proc_fork(struct proc *parent, struct proc *child)
 	 */
 	racct_create(&child->p_racct);
 
-	/*
-	 * No resource accounting for kernel processes.
-	 */
-	if (child->p_flag & P_SYSTEM)
-		return (0);
-
 	PROC_LOCK(parent);
 	PROC_LOCK(child);
 	mtx_lock(&racct_lock);
+
+#ifdef RCTL
+	error = rctl_proc_fork(parent, child);
+	if (error != 0)
+		goto out;
+#endif
 
 	/*
 	 * Inherit resource usage.
@@ -569,37 +561,37 @@ racct_proc_fork(struct proc *parent, struct proc *child)
 
 		error = racct_set_locked(child, i,
 		    parent->p_racct->r_resources[i]);
-		if (error != 0) {
-			/*
-			 * XXX: The only purpose of these two lines is
-			 * to prevent from tripping checks in racct_destroy().
-			 */
-			for (i = 0; i <= RACCT_MAX; i++)
-				racct_set_locked(child, i, 0);
+		if (error != 0)
 			goto out;
-		}
 	}
 
-#ifdef RCTL
-	error = rctl_proc_fork(parent, child);
-	if (error != 0) {
-		/*
-		 * XXX: The only purpose of these two lines is to prevent from
-		 * tripping checks in racct_destroy().
-		 */
-		for (i = 0; i <= RACCT_MAX; i++)
-			racct_set_locked(child, i, 0);
-	}
-#endif
+	error = racct_add_locked(child, RACCT_NPROC, 1);
+	error += racct_add_locked(child, RACCT_NTHR, 1);
 
 out:
-	if (error != 0)
-		racct_destroy_locked(&child->p_racct);
 	mtx_unlock(&racct_lock);
 	PROC_UNLOCK(child);
 	PROC_UNLOCK(parent);
 
 	return (error);
+}
+
+/*
+ * Called at the end of fork1(), to handle rules that require the process
+ * to be fully initialized.
+ */
+void
+racct_proc_fork_done(struct proc *child)
+{
+
+#ifdef RCTL
+	PROC_LOCK(child);
+	mtx_lock(&racct_lock);
+	rctl_enforce(child, RACCT_NPROC, 0);
+	rctl_enforce(child, RACCT_NTHR, 0);
+	mtx_unlock(&racct_lock);
+	PROC_UNLOCK(child);
+#endif
 }
 
 void
@@ -684,6 +676,18 @@ racct_proc_ucred_changed(struct proc *p, struct ucred *oldcred,
 #endif
 }
 
+void
+racct_move(struct racct *dest, struct racct *src)
+{
+
+	mtx_lock(&racct_lock);
+
+	racct_add_racct(dest, src);
+	racct_sub_racct(src, src);
+
+	mtx_unlock(&racct_lock);
+}
+
 static void
 racctd(void)
 {
@@ -698,18 +702,13 @@ racctd(void)
 		FOREACH_PROC_IN_SYSTEM(p) {
 			if (p->p_state != PRS_NORMAL)
 				continue;
-			if (p->p_flag & P_SYSTEM)
-				continue;
 
 			microuptime(&wallclock);
 			timevalsub(&wallclock, &p->p_stats->p_start);
 			PROC_LOCK(p);
 			PROC_SLOCK(p);
-			FOREACH_THREAD_IN_PROC(p, td) {
+			FOREACH_THREAD_IN_PROC(p, td)
 				ruxagg(p, td);
-				thread_lock(td);
-				thread_unlock(td);
-			}
 			runtime = cputick2usec(p->p_rux.rux_runtime);
 			PROC_SUNLOCK(p);
 #ifdef notyet
@@ -723,7 +722,8 @@ racctd(void)
 			mtx_lock(&racct_lock);
 			racct_set_locked(p, RACCT_CPU, runtime);
 			racct_set_locked(p, RACCT_WALLCLOCK,
-			    wallclock.tv_sec * 1000000 + wallclock.tv_usec);
+			    (uint64_t)wallclock.tv_sec * 1000000 +
+			    wallclock.tv_usec);
 			mtx_unlock(&racct_lock);
 			PROC_UNLOCK(p);
 		}
@@ -824,6 +824,11 @@ racct_proc_fork(struct proc *parent, struct proc *child)
 {
 
 	return (0);
+}
+
+void
+racct_proc_fork_done(struct proc *child)
+{
 }
 
 void

@@ -104,7 +104,7 @@ MDNode *DebugLoc::getAsMDNode(const LLVMContext &Ctx) const {
   assert(Scope && "If scope is null, this should be isUnknown()");
   
   LLVMContext &Ctx2 = Scope->getContext();
-  const Type *Int32 = Type::getInt32Ty(Ctx2);
+  Type *Int32 = Type::getInt32Ty(Ctx2);
   Value *Elts[] = {
     ConstantInt::get(Int32, getLine()), ConstantInt::get(Int32, getCol()),
     Scope, IA
@@ -173,10 +173,7 @@ DebugLoc DenseMapInfo<DebugLoc>::getTombstoneKey() {
 }
 
 unsigned DenseMapInfo<DebugLoc>::getHashValue(const DebugLoc &Key) {
-  FoldingSetNodeID ID;
-  ID.AddInteger(Key.LineCol);
-  ID.AddInteger(Key.ScopeIdx);
-  return ID.ComputeHash();
+  return static_cast<unsigned>(hash_combine(Key.LineCol, Key.ScopeIdx));
 }
 
 bool DenseMapInfo<DebugLoc>::isEqual(const DebugLoc &LHS, const DebugLoc &RHS) {
@@ -240,7 +237,7 @@ int LLVMContextImpl::getOrAddScopeInlinedAtIdxEntry(MDNode *Scope, MDNode *IA,
 /// deleted - The MDNode this is pointing to got deleted, so this pointer needs
 /// to drop to null and we need remove our entry from the DenseMap.
 void DebugRecVH::deleted() {
-  // If this is a  non-canonical reference, just drop the value to null, we know
+  // If this is a non-canonical reference, just drop the value to null, we know
   // it doesn't have a map entry.
   if (Idx == 0) {
     setValPtr(0);

@@ -10,7 +10,7 @@
 #include "DAGISelMatcher.h"
 #include "CodeGenDAGPatterns.h"
 #include "CodeGenRegisters.h"
-#include "Record.h"
+#include "llvm/TableGen/Record.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -26,10 +26,10 @@ static MVT::SimpleValueType getRegisterValueType(Record *R,
   bool FoundRC = false;
   MVT::SimpleValueType VT = MVT::Other;
   const CodeGenRegister *Reg = T.getRegBank().getReg(R);
-  const std::vector<CodeGenRegisterClass> &RCs = T.getRegisterClasses();
+  ArrayRef<CodeGenRegisterClass*> RCs = T.getRegBank().getRegClasses();
 
   for (unsigned rc = 0, e = RCs.size(); rc != e; ++rc) {
-    const CodeGenRegisterClass &RC = RCs[rc];
+    const CodeGenRegisterClass &RC = *RCs[rc];
     if (!RC.contains(Reg))
       continue;
 
@@ -217,7 +217,7 @@ void MatcherGen::EmitLeafMatchCode(const TreePatternNode *N) {
 
   DefInit *DI = dynamic_cast<DefInit*>(N->getLeafValue());
   if (DI == 0) {
-    errs() << "Unknown leaf kind: " << *DI << "\n";
+    errs() << "Unknown leaf kind: " << *N << "\n";
     abort();
   }
 

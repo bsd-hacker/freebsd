@@ -1,4 +1,4 @@
-/*===- X86DisassemblerDecoder.c - Disassembler decoder -------------*- C -*-==*
+/*===-- X86DisassemblerDecoder.c - Disassembler decoder ------------*- C -*-===*
  *
  *                     The LLVM Compiler Infrastructure
  *
@@ -58,8 +58,8 @@ static InstructionContext contextForAttrs(uint8_t attrMask) {
  * @return            - TRUE if the ModR/M byte is required, FALSE otherwise.
  */
 static int modRMRequired(OpcodeType type,
-                                InstructionContext insnContext,
-                                uint8_t opcode) {
+                         InstructionContext insnContext,
+                         uint8_t opcode) {
   const struct ContextDecision* decision = 0;
   
   switch (type) {
@@ -82,11 +82,9 @@ static int modRMRequired(OpcodeType type,
     decision = &THREEBYTEA7_SYM;
     break;
   }
-  
+
   return decision->opcodeDecisions[insnContext].modRMDecisions[opcode].
     modrm_type != MODRM_ONEENTRY;
-  
-  return 0;
 }
 
 /*
@@ -103,12 +101,9 @@ static InstrUID decode(OpcodeType type,
                        InstructionContext insnContext,
                        uint8_t opcode,
                        uint8_t modRM) {
-  const struct ModRMDecision* dec;
+  const struct ModRMDecision* dec = 0;
   
   switch (type) {
-  default:
-    debug("Unknown opcode type");
-    return 0;
   case ONEBYTE:
     dec = &ONEBYTE_SYM.opcodeDecisions[insnContext].modRMDecisions[opcode];
     break;
@@ -134,14 +129,17 @@ static InstrUID decode(OpcodeType type,
     debug("Corrupt table!  Unknown modrm_type");
     return 0;
   case MODRM_ONEENTRY:
-    return dec->instructionIDs[0];
+    return modRMTable[dec->instructionIDs];
   case MODRM_SPLITRM:
     if (modFromModRM(modRM) == 0x3)
-      return dec->instructionIDs[1];
-    else
-      return dec->instructionIDs[0];
+      return modRMTable[dec->instructionIDs+1];
+    return modRMTable[dec->instructionIDs];
+  case MODRM_SPLITREG:
+    if (modFromModRM(modRM) == 0x3)
+      return modRMTable[dec->instructionIDs+((modRM & 0x38) >> 3)+8];
+    return modRMTable[dec->instructionIDs+((modRM & 0x38) >> 3)];
   case MODRM_FULL:
-    return dec->instructionIDs[modRM];
+    return modRMTable[dec->instructionIDs+modRM];
   }
 }
 
@@ -314,6 +312,15 @@ static int readPrefixes(struct InternalInstruction* insn) {
     
     if (consumeByte(insn, &byte))
       return -1;
+
+    /*
+     * If the first byte is a LOCK prefix break and let it be disassembled
+     * as a lock "instruction", by creating an <MCInst #xxxx LOCK_PREFIX>.
+     * FIXME there is currently no way to get the disassembler to print the
+     * lock prefix if it is not the first byte.
+     */
+    if (insn->readerCursor - 1 == insn->startLocation && byte == 0xf0)
+      break;
     
     switch (byte) {
     case 0xf0:  /* LOCK */
@@ -391,7 +398,7 @@ static int readPrefixes(struct InternalInstruction* insn) {
       return -1;
     }
     
-    if (insn->mode == MODE_64BIT || byte1 & 0x8) {
+    if (insn->mode == MODE_64BIT || (byte1 & 0xc0) == 0xc0) {
       insn->vexSize = 3;
       insn->necessaryPrefixLocation = insn->readerCursor - 1;
     }
@@ -406,12 +413,14 @@ static int readPrefixes(struct InternalInstruction* insn) {
       consumeByte(insn, &insn->vexPrefix[2]);
 
       /* We simulate the REX prefix for simplicity's sake */
-    
-      insn->rexPrefix = 0x40 
-                      | (wFromVEX3of3(insn->vexPrefix[2]) << 3)
-                      | (rFromVEX2of3(insn->vexPrefix[1]) << 2)
-                      | (xFromVEX2of3(insn->vexPrefix[1]) << 1)
-                      | (bFromVEX2of3(insn->vexPrefix[1]) << 0);
+   
+      if (insn->mode == MODE_64BIT) {
+        insn->rexPrefix = 0x40 
+                        | (wFromVEX3of3(insn->vexPrefix[2]) << 3)
+                        | (rFromVEX2of3(insn->vexPrefix[1]) << 2)
+                        | (xFromVEX2of3(insn->vexPrefix[1]) << 1)
+                        | (bFromVEX2of3(insn->vexPrefix[1]) << 0);
+      }
     
       switch (ppFromVEX3of3(insn->vexPrefix[2]))
       {
@@ -433,7 +442,7 @@ static int readPrefixes(struct InternalInstruction* insn) {
       return -1;
     }
       
-    if (insn->mode == MODE_64BIT || byte1 & 0x8) {
+    if (insn->mode == MODE_64BIT || (byte1 & 0xc0) == 0xc0) {
       insn->vexSize = 2;
     }
     else {
@@ -444,8 +453,10 @@ static int readPrefixes(struct InternalInstruction* insn) {
       insn->vexPrefix[0] = byte;
       consumeByte(insn, &insn->vexPrefix[1]);
         
-      insn->rexPrefix = 0x40 
-                      | (rFromVEX2of2(insn->vexPrefix[1]) << 2);
+      if (insn->mode == MODE_64BIT) {
+        insn->rexPrefix = 0x40 
+                        | (rFromVEX2of2(insn->vexPrefix[1]) << 2);
+      }
         
       switch (ppFromVEX2of2(insn->vexPrefix[1]))
       {
@@ -700,34 +711,6 @@ static BOOL is16BitEquvalent(const char* orig, const char* equiv) {
 }
 
 /*
- * is64BitEquivalent - Determines whether two instruction names refer to
- * equivalent instructions but one is 64-bit whereas the other is not.
- *
- * @param orig  - The instruction that is not 64-bit
- * @param equiv - The instruction that is 64-bit
- */
-static BOOL is64BitEquivalent(const char* orig, const char* equiv) {
-  off_t i;
-  
-  for (i = 0;; i++) {
-    if (orig[i] == '\0' && equiv[i] == '\0')
-      return TRUE;
-    if (orig[i] == '\0' || equiv[i] == '\0')
-      return FALSE;
-    if (orig[i] != equiv[i]) {
-      if ((orig[i] == 'W' || orig[i] == 'L') && equiv[i] == 'Q')
-        continue;
-      if ((orig[i] == '1' || orig[i] == '3') && equiv[i] == '6')
-        continue;
-      if ((orig[i] == '6' || orig[i] == '2') && equiv[i] == '4')
-        continue;
-      return FALSE;
-    }
-  }
-}
-
-
-/*
  * getID - Determines the ID of an instruction, consuming the ModR/M byte as 
  *   appropriate for extended and escape opcodes.  Determines the attributes and 
  *   context for the instruction before doing so.
@@ -736,7 +719,7 @@ static BOOL is64BitEquivalent(const char* orig, const char* equiv) {
  * @return      - 0 if the ModR/M could be read when needed or was not needed;
  *                nonzero otherwise.
  */
-static int getID(struct InternalInstruction* insn) {  
+static int getID(struct InternalInstruction* insn, void *miiArg) {
   uint8_t attrMask;
   uint16_t instructionID;
   
@@ -763,8 +746,6 @@ static int getID(struct InternalInstruction* insn) {
         break;
       }
     
-      if (wFromVEX3of3(insn->vexPrefix[2]))
-        attrMask |= ATTR_REXW;
       if (lFromVEX3of3(insn->vexPrefix[2]))
         attrMask |= ATTR_VEXL;
     }
@@ -789,63 +770,60 @@ static int getID(struct InternalInstruction* insn) {
     }
   }
   else {
-    if (insn->rexPrefix & 0x08)
-      attrMask |= ATTR_REXW;
-  
     if (isPrefixAtLocation(insn, 0x66, insn->necessaryPrefixLocation))
       attrMask |= ATTR_OPSIZE;
+    else if (isPrefixAtLocation(insn, 0x67, insn->necessaryPrefixLocation))
+      attrMask |= ATTR_ADSIZE;
     else if (isPrefixAtLocation(insn, 0xf3, insn->necessaryPrefixLocation))
       attrMask |= ATTR_XS;
     else if (isPrefixAtLocation(insn, 0xf2, insn->necessaryPrefixLocation))
       attrMask |= ATTR_XD;
-    
   }
+
+  if (insn->rexPrefix & 0x08)
+    attrMask |= ATTR_REXW;
 
   if (getIDWithAttrMask(&instructionID, insn, attrMask))
     return -1;
-  
+
   /* The following clauses compensate for limitations of the tables. */
-  
-  if ((attrMask & ATTR_XD) && (attrMask & ATTR_REXW)) {
+
+  if ((attrMask & ATTR_VEXL) && (attrMask & ATTR_REXW) &&
+      !(attrMask & ATTR_OPSIZE)) {
     /*
-     * Although for SSE instructions it is usually necessary to treat REX.W+F2
-     * as F2 for decode (in the absence of a 64BIT_REXW_XD category) there is
-     * an occasional instruction where F2 is incidental and REX.W is the more
-     * significant.  If the decoded instruction is 32-bit and adding REX.W
-     * instead of F2 changes a 32 to a 64, we adopt the new encoding.
+     * Some VEX instructions ignore the L-bit, but use the W-bit. Normally L-bit
+     * has precedence since there are no L-bit with W-bit entries in the tables.
+     * So if the L-bit isn't significant we should use the W-bit instead.
+     * We only need to do this if the instruction doesn't specify OpSize since
+     * there is a VEX_L_W_OPSIZE table.
      */
-    
+
     const struct InstructionSpecifier *spec;
-    uint16_t instructionIDWithREXw;
-    const struct InstructionSpecifier *specWithREXw;
-    
+    uint16_t instructionIDWithWBit;
+    const struct InstructionSpecifier *specWithWBit;
+
     spec = specifierForUID(instructionID);
-    
-    if (getIDWithAttrMask(&instructionIDWithREXw,
+
+    if (getIDWithAttrMask(&instructionIDWithWBit,
                           insn,
-                          attrMask & (~ATTR_XD))) {
-      /*
-       * Decoding with REX.w would yield nothing; give up and return original
-       * decode.
-       */
-      
+                          (attrMask & (~ATTR_VEXL)) | ATTR_REXW)) {
       insn->instructionID = instructionID;
       insn->spec = spec;
       return 0;
     }
-    
-    specWithREXw = specifierForUID(instructionIDWithREXw);
-    
-    if (is64BitEquivalent(spec->name, specWithREXw->name)) {
-      insn->instructionID = instructionIDWithREXw;
-      insn->spec = specWithREXw;
+
+    specWithWBit = specifierForUID(instructionIDWithWBit);
+
+    if (instructionID != instructionIDWithWBit) {
+      insn->instructionID = instructionIDWithWBit;
+      insn->spec = specWithWBit;
     } else {
       insn->instructionID = instructionID;
       insn->spec = spec;
     }
     return 0;
   }
-  
+
   if (insn->prefixPresent[0x66] && !(attrMask & ATTR_OPSIZE)) {
     /*
      * The instruction tables make no distinction between instructions that
@@ -857,7 +835,7 @@ static int getID(struct InternalInstruction* insn) {
     
     const struct InstructionSpecifier *spec;
     uint16_t instructionIDWithOpsize;
-    const struct InstructionSpecifier *specWithOpsize;
+    const char *specName, *specWithOpSizeName;
     
     spec = specifierForUID(instructionID);
     
@@ -874,15 +852,54 @@ static int getID(struct InternalInstruction* insn) {
       return 0;
     }
     
-    specWithOpsize = specifierForUID(instructionIDWithOpsize);
-    
-    if (is16BitEquvalent(spec->name, specWithOpsize->name)) {
+    specName = x86DisassemblerGetInstrName(instructionID, miiArg);
+    specWithOpSizeName =
+      x86DisassemblerGetInstrName(instructionIDWithOpsize, miiArg);
+
+    if (is16BitEquvalent(specName, specWithOpSizeName)) {
       insn->instructionID = instructionIDWithOpsize;
-      insn->spec = specWithOpsize;
+      insn->spec = specifierForUID(instructionIDWithOpsize);
     } else {
       insn->instructionID = instructionID;
       insn->spec = spec;
     }
+    return 0;
+  }
+
+  if (insn->opcodeType == ONEBYTE && insn->opcode == 0x90 &&
+      insn->rexPrefix & 0x01) {
+    /*
+     * NOOP shouldn't decode as NOOP if REX.b is set. Instead
+     * it should decode as XCHG %r8, %eax.
+     */
+
+    const struct InstructionSpecifier *spec;
+    uint16_t instructionIDWithNewOpcode;
+    const struct InstructionSpecifier *specWithNewOpcode;
+
+    spec = specifierForUID(instructionID);
+    
+    /* Borrow opcode from one of the other XCHGar opcodes */
+    insn->opcode = 0x91;
+   
+    if (getIDWithAttrMask(&instructionIDWithNewOpcode,
+                          insn,
+                          attrMask)) {
+      insn->opcode = 0x90;
+
+      insn->instructionID = instructionID;
+      insn->spec = spec;
+      return 0;
+    }
+
+    specWithNewOpcode = specifierForUID(instructionIDWithNewOpcode);
+
+    /* Change back */
+    insn->opcode = 0x90;
+
+    insn->instructionID = instructionIDWithNewOpcode;
+    insn->spec = specWithNewOpcode;
+
     return 0;
   }
   
@@ -1008,6 +1025,7 @@ static int readDisplacement(struct InternalInstruction* insn) {
     return 0;
   
   insn->consumedDisplacement = TRUE;
+  insn->displacementOffset = insn->readerCursor - insn->startLocation;
   
   switch (insn->eaDisplacement) {
   case EA_DISP_NONE:
@@ -1404,6 +1422,7 @@ static int readImmediate(struct InternalInstruction* insn, uint8_t size) {
     size = insn->immediateSize;
   else
     insn->immediateSize = size;
+  insn->immediateOffset = insn->readerCursor - insn->startLocation;
   
   switch (size) {
   case 1:
@@ -1434,11 +1453,10 @@ static int readImmediate(struct InternalInstruction* insn, uint8_t size) {
 }
 
 /*
- * readVVVV - Consumes an immediate operand from an instruction, given the
- *   desired operand size.
+ * readVVVV - Consumes vvvv from an instruction if it has a VEX prefix.
  *
  * @param insn  - The instruction whose operand is to be read.
- * @return      - 0 if the immediate was successfully consumed; nonzero
+ * @return      - 0 if the vvvv was successfully consumed; nonzero
  *                otherwise.
  */
 static int readVVVV(struct InternalInstruction* insn) {
@@ -1450,6 +1468,9 @@ static int readVVVV(struct InternalInstruction* insn) {
     insn->vvvv = vvvvFromVEX2of2(insn->vexPrefix[1]);
   else
     return -1;
+
+  if (insn->mode != MODE_64BIT)
+    insn->vvvv &= 0x7;
 
   return 0;
 }
@@ -1463,8 +1484,15 @@ static int readVVVV(struct InternalInstruction* insn) {
  */
 static int readOperands(struct InternalInstruction* insn) {
   int index;
+  int hasVVVV, needVVVV;
+  int sawRegImm = 0;
   
   dbgprintf(insn, "readOperands()");
+
+  /* If non-zero vvvv specified, need to make sure one of the operands
+     uses it. */
+  hasVVVV = !readVVVV(insn);
+  needVVVV = hasVVVV && (insn->vvvv != 0);
   
   for (index = 0; index < X86_MAX_OPERANDS; ++index) {
     switch (insn->spec->operands[index].encoding) {
@@ -1486,11 +1514,25 @@ static int readOperands(struct InternalInstruction* insn) {
       dbgprintf(insn, "We currently don't hande code-offset encodings");
       return -1;
     case ENCODING_IB:
+      if (sawRegImm) {
+        /* Saw a register immediate so don't read again and instead split the
+           previous immediate.  FIXME: This is a hack. */
+        insn->immediates[insn->numImmediatesConsumed] =
+          insn->immediates[insn->numImmediatesConsumed - 1] & 0xf;
+        ++insn->numImmediatesConsumed;
+        break;
+      }
       if (readImmediate(insn, 1))
         return -1;
       if (insn->spec->operands[index].type == TYPE_IMM3 &&
           insn->immediates[insn->numImmediatesConsumed - 1] > 7)
         return -1;
+      if (insn->spec->operands[index].type == TYPE_IMM5 &&
+          insn->immediates[insn->numImmediatesConsumed - 1] > 31)
+        return -1;
+      if (insn->spec->operands[index].type == TYPE_XMM128 ||
+          insn->spec->operands[index].type == TYPE_XMM256)
+        sawRegImm = 1;
       break;
     case ENCODING_IW:
       if (readImmediate(insn, 2))
@@ -1537,7 +1579,8 @@ static int readOperands(struct InternalInstruction* insn) {
         return -1;
       break;
     case ENCODING_VVVV:
-      if (readVVVV(insn))
+      needVVVV = 0; /* Mark that we have found a VVVV operand. */
+      if (!hasVVVV)
         return -1;
       if (fixupReg(insn, &insn->spec->operands[index]))
         return -1;
@@ -1549,6 +1592,9 @@ static int readOperands(struct InternalInstruction* insn) {
       return -1;
     }
   }
+
+  /* If we didn't find ENCODING_VVVV operand, but non-zero vvvv present, fail */
+  if (needVVVV) return -1;
   
   return 0;
 }
@@ -1578,6 +1624,7 @@ int decodeInstruction(struct InternalInstruction* insn,
                       void* readerArg,
                       dlog_t logger,
                       void* loggerArg,
+                      void* miiArg,
                       uint64_t startLoc,
                       DisassemblerMode mode) {
   memset(insn, 0, sizeof(struct InternalInstruction));
@@ -1593,7 +1640,7 @@ int decodeInstruction(struct InternalInstruction* insn,
   
   if (readPrefixes(insn)       ||
       readOpcode(insn)         ||
-      getID(insn)              ||
+      getID(insn, miiArg)      ||
       insn->instructionID == 0 ||
       readOperands(insn))
     return -1;

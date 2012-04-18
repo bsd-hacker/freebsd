@@ -36,7 +36,6 @@ extern "C" void LLVMLinkInMCJIT() {
 ExecutionEngine *MCJIT::createJIT(Module *M,
                                   std::string *ErrorStr,
                                   JITMemoryManager *JMM,
-                                  CodeGenOpt::Level OptLevel,
                                   bool GVsWithCode,
                                   TargetMachine *TM) {
   // Try to register the program as a source of symbols to resolve against.
@@ -46,8 +45,7 @@ ExecutionEngine *MCJIT::createJIT(Module *M,
 
   // If the target supports JIT code generation, create the JIT.
   if (TargetJITInfo *TJ = TM->getJITInfo())
-    return new MCJIT(M, TM, *TJ, new MCJITMemoryManager(JMM, M), OptLevel,
-                     GVsWithCode);
+    return new MCJIT(M, TM, *TJ, new MCJITMemoryManager(JMM, M), GVsWithCode);
 
   if (ErrorStr)
     *ErrorStr = "target does not support JIT code generation";
@@ -55,15 +53,15 @@ ExecutionEngine *MCJIT::createJIT(Module *M,
 }
 
 MCJIT::MCJIT(Module *m, TargetMachine *tm, TargetJITInfo &tji,
-             RTDyldMemoryManager *MM, CodeGenOpt::Level OptLevel,
-             bool AllocateGVsWithCode)
+             RTDyldMemoryManager *MM, bool AllocateGVsWithCode)
   : ExecutionEngine(m), TM(tm), MemMgr(MM), M(m), OS(Buffer), Dyld(MM) {
 
+  setTargetData(TM->getTargetData());
   PM.add(new TargetData(*TM->getTargetData()));
 
   // Turn the machine code intermediate representation into bytes in memory
   // that may be executed.
-  if (TM->addPassesToEmitMC(PM, Ctx, OS, CodeGenOpt::Default, false)) {
+  if (TM->addPassesToEmitMC(PM, Ctx, OS, false)) {
     report_fatal_error("Target does not support MC emission!");
   }
 
@@ -76,9 +74,9 @@ MCJIT::MCJIT(Module *m, TargetMachine *tm, TargetJITInfo &tji,
   OS.flush();
 
   // Load the object into the dynamic linker.
-  // FIXME: It would be nice to avoid making yet another copy.
-  MemoryBuffer *MB = MemoryBuffer::getMemBufferCopy(StringRef(Buffer.data(),
-                                                              Buffer.size()));
+  MemoryBuffer *MB = MemoryBuffer::getMemBuffer(StringRef(Buffer.data(),
+                                                          Buffer.size()),
+                                                "", false);
   if (Dyld.loadObject(MB))
     report_fatal_error(Dyld.getErrorString());
   // Resolve any relocations.
@@ -87,11 +85,11 @@ MCJIT::MCJIT(Module *m, TargetMachine *tm, TargetJITInfo &tji,
 
 MCJIT::~MCJIT() {
   delete MemMgr;
+  delete TM;
 }
 
 void *MCJIT::getPointerToBasicBlock(BasicBlock *BB) {
   report_fatal_error("not yet implemented");
-  return 0;
 }
 
 void *MCJIT::getPointerToFunction(Function *F) {
@@ -124,8 +122,8 @@ GenericValue MCJIT::runFunction(Function *F,
 
   void *FPtr = getPointerToFunction(F);
   assert(FPtr && "Pointer to fn's code was null after getPointerToFunction");
-  const FunctionType *FTy = F->getFunctionType();
-  const Type *RetTy = FTy->getReturnType();
+  FunctionType *FTy = F->getFunctionType();
+  Type *RetTy = FTy->getReturnType();
 
   assert((FTy->getNumParams() == ArgValues.size() ||
           (FTy->isVarArg() && FTy->getNumParams() <= ArgValues.size())) &&
@@ -210,12 +208,30 @@ GenericValue MCJIT::runFunction(Function *F,
     case Type::FP128TyID:
     case Type::PPC_FP128TyID:
       llvm_unreachable("long double not supported yet");
-      return rv;
     case Type::PointerTyID:
       return PTOGV(((void*(*)())(intptr_t)FPtr)());
     }
   }
 
-  assert("Full-featured argument passing not supported yet!");
-  return GenericValue();
+  llvm_unreachable("Full-featured argument passing not supported yet!");
+}
+
+void *MCJIT::getPointerToNamedFunction(const std::string &Name,
+                                       bool AbortOnFailure){
+  if (!isSymbolSearchingDisabled() && MemMgr) {
+    void *ptr = MemMgr->getPointerToNamedFunction(Name, false);
+    if (ptr)
+      return ptr;
+  }
+
+  /// If a LazyFunctionCreator is installed, use it to get/create the function.
+  if (LazyFunctionCreator)
+    if (void *RP = LazyFunctionCreator(Name))
+      return RP;
+
+  if (AbortOnFailure) {
+    report_fatal_error("Program used external function '"+Name+
+                      "' which could not be resolved!");
+  }
+  return 0;
 }

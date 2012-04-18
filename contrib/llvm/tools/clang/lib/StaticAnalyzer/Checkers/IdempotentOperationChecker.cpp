@@ -57,6 +57,7 @@
 #include "clang/AST/Stmt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -82,24 +83,23 @@ private:
 
   // False positive reduction methods
   static bool isSelfAssign(const Expr *LHS, const Expr *RHS);
-  static bool isUnused(const Expr *E, AnalysisContext *AC);
+  static bool isUnused(const Expr *E, AnalysisDeclContext *AC);
   static bool isTruncationExtensionAssignment(const Expr *LHS,
                                               const Expr *RHS);
-  static bool pathWasCompletelyAnalyzed(AnalysisContext *AC,
+  static bool pathWasCompletelyAnalyzed(AnalysisDeclContext *AC,
                                         const CFGBlock *CB,
                                         const CoreEngine &CE);
   static bool CanVary(const Expr *Ex,
-                      AnalysisContext *AC);
+                      AnalysisDeclContext *AC);
   static bool isConstantOrPseudoConstant(const DeclRefExpr *DR,
-                                         AnalysisContext *AC);
+                                         AnalysisDeclContext *AC);
   static bool containsNonLocalVarDecl(const Stmt *S);
 
   // Hash table and related data structures
   struct BinaryOperatorData {
-    BinaryOperatorData() : assumption(Possible), analysisContext(0) {}
+    BinaryOperatorData() : assumption(Possible) {}
 
     Assumption assumption;
-    AnalysisContext *analysisContext;
     ExplodedNodeSet explodedNodes; // Set of ExplodedNodes that refer to a
                                    // BinaryOperator
   };
@@ -117,8 +117,7 @@ void IdempotentOperationChecker::checkPreStmt(const BinaryOperator *B,
   // been created yet.
   BinaryOperatorData &Data = hash[B];
   Assumption &A = Data.assumption;
-  AnalysisContext *AC = C.getCurrentAnalysisContext();
-  Data.analysisContext = AC;
+  AnalysisDeclContext *AC = C.getCurrentAnalysisDeclContext();
 
   // If we already have visited this node on a path that does not contain an
   // idempotent operation, return immediately.
@@ -143,10 +142,10 @@ void IdempotentOperationChecker::checkPreStmt(const BinaryOperator *B,
         || containsNonLocalVarDecl(RHS);
   }
 
-  const GRState *state = C.getState();
-
-  SVal LHSVal = state->getSVal(LHS);
-  SVal RHSVal = state->getSVal(RHS);
+  ProgramStateRef state = C.getState();
+  const LocationContext *LCtx = C.getLocationContext();
+  SVal LHSVal = state->getSVal(LHS, LCtx);
+  SVal RHSVal = state->getSVal(RHS, LCtx);
 
   // If either value is unknown, we can't be 100% sure of all paths.
   if (LHSVal.isUnknownOrUndef() || RHSVal.isUnknownOrUndef()) {
@@ -351,8 +350,13 @@ void IdempotentOperationChecker::checkEndAnalysis(ExplodedGraph &G,
     // Unpack the hash contents
     const BinaryOperatorData &Data = i->second;
     const Assumption &A = Data.assumption;
-    AnalysisContext *AC = Data.analysisContext;
     const ExplodedNodeSet &ES = Data.explodedNodes;
+
+    // If there are no nodes accosted with the expression, nothing to report.
+    // FIXME: This is possible because the checker does part of processing in
+    // checkPreStmt and part in checkPostStmt.
+    if (ES.begin() == ES.end())
+      continue;
 
     const BinaryOperator *B = i->first;
 
@@ -363,6 +367,8 @@ void IdempotentOperationChecker::checkEndAnalysis(ExplodedGraph &G,
     // warning
     if (Eng.hasWorkRemaining()) {
       // If we can trace back
+      AnalysisDeclContext *AC = (*ES.begin())->getLocationContext()
+                                         ->getAnalysisDeclContext();
       if (!pathWasCompletelyAnalyzed(AC,
                                      AC->getCFGStmtMap()->getBlock(B),
                                      Eng.getCoreEngine()))
@@ -370,7 +376,7 @@ void IdempotentOperationChecker::checkEndAnalysis(ExplodedGraph &G,
     }
 
     // Select the error message and SourceRanges to report.
-    llvm::SmallString<128> buf;
+    SmallString<128> buf;
     llvm::raw_svector_ostream os(buf);
     bool LHSRelevant = false, RHSRelevant = false;
     switch (A) {
@@ -407,18 +413,18 @@ void IdempotentOperationChecker::checkEndAnalysis(ExplodedGraph &G,
 
     // Add a report for each ExplodedNode
     for (ExplodedNodeSet::iterator I = ES.begin(), E = ES.end(); I != E; ++I) {
-      EnhancedBugReport *report = new EnhancedBugReport(*BT, os.str(), *I);
+      BugReport *report = new BugReport(*BT, os.str(), *I);
 
       // Add source ranges and visitor hooks
       if (LHSRelevant) {
         const Expr *LHS = i->first->getLHS();
         report->addRange(LHS->getSourceRange());
-        report->addVisitorCreator(bugreporter::registerVarDeclsLastStore, LHS);
+        FindLastStoreBRVisitor::registerStatementVarDecls(*report, LHS);
       }
       if (RHSRelevant) {
         const Expr *RHS = i->first->getRHS();
         report->addRange(i->first->getRHS()->getSourceRange());
-        report->addVisitorCreator(bugreporter::registerVarDeclsLastStore, RHS);
+        FindLastStoreBRVisitor::registerStatementVarDecls(*report, RHS);
       }
 
       BR.EmitReport(report);
@@ -482,7 +488,7 @@ bool IdempotentOperationChecker::isSelfAssign(const Expr *LHS, const Expr *RHS) 
 // Returns true if the Expr points to a VarDecl that is not read anywhere
 // outside of self-assignments.
 bool IdempotentOperationChecker::isUnused(const Expr *E,
-                                          AnalysisContext *AC) {
+                                          AnalysisDeclContext *AC) {
   if (!E)
     return false;
 
@@ -526,7 +532,7 @@ bool IdempotentOperationChecker::isTruncationExtensionAssignment(
 // Returns false if a path to this block was not completely analyzed, or true
 // otherwise.
 bool
-IdempotentOperationChecker::pathWasCompletelyAnalyzed(AnalysisContext *AC,
+IdempotentOperationChecker::pathWasCompletelyAnalyzed(AnalysisDeclContext *AC,
                                                       const CFGBlock *CB,
                                                       const CoreEngine &CE) {
 
@@ -610,7 +616,7 @@ IdempotentOperationChecker::pathWasCompletelyAnalyzed(AnalysisContext *AC,
 // expression may also involve a variable that behaves like a constant. The
 // function returns true if the expression varies, and false otherwise.
 bool IdempotentOperationChecker::CanVary(const Expr *Ex,
-                                         AnalysisContext *AC) {
+                                         AnalysisDeclContext *AC) {
   // Parentheses and casts are irrelevant here
   Ex = Ex->IgnoreParenCasts();
 
@@ -644,7 +650,6 @@ bool IdempotentOperationChecker::CanVary(const Expr *Ex,
   case Stmt::InitListExprClass:
   case Stmt::DesignatedInitExprClass:
   case Stmt::BlockExprClass:
-  case Stmt::BlockDeclRefExprClass:
     return false;
 
   // Cases requiring custom logic
@@ -694,7 +699,7 @@ bool IdempotentOperationChecker::CanVary(const Expr *Ex,
 // Returns true if a DeclRefExpr is or behaves like a constant.
 bool IdempotentOperationChecker::isConstantOrPseudoConstant(
                                                           const DeclRefExpr *DR,
-                                                          AnalysisContext *AC) {
+                                                          AnalysisDeclContext *AC) {
   // Check if the type of the Decl is const-qualified
   if (DR->getType().isConstQualified())
     return true;

@@ -1,4 +1,4 @@
-//===- PTXRegisterInfo.cpp - PTX Register Information ---------------------===//
+//===-- PTXRegisterInfo.cpp - PTX Register Information --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,9 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PTX.h"
 #include "PTXRegisterInfo.h"
+#include "PTX.h"
 #include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -23,29 +26,13 @@
 using namespace llvm;
 
 PTXRegisterInfo::PTXRegisterInfo(PTXTargetMachine &TM,
-                                 const TargetInstrInfo &TII)
-  : PTXGenRegisterInfo() {
+                                 const TargetInstrInfo &tii)
+  // PTX does not have a return address register.
+  : PTXGenRegisterInfo(0), TII(tii) {
 }
 
-void PTXRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
-                                          int SPAdj,
-                                          RegScavenger *RS) const {
-  unsigned Index;
-  MachineInstr& MI = *II;
-
-  Index = 0;
-  while (!MI.getOperand(Index).isFI()) {
-    ++Index;
-    assert(Index < MI.getNumOperands() &&
-           "Instr does not have a FrameIndex operand!");
-  }
-
-  int FrameIndex = MI.getOperand(Index).getIndex();
-
-  DEBUG(dbgs() << "eliminateFrameIndex: " << MI);
-  DEBUG(dbgs() << "- SPAdj: " << SPAdj << "\n");
-  DEBUG(dbgs() << "- FrameIndex: " << FrameIndex << "\n");
-
-  // This frame index is post stack slot re-use assignments
-  MI.getOperand(Index).ChangeToImmediate(FrameIndex);
+void PTXRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator /*II*/,
+                                          int /*SPAdj*/,
+                                          RegScavenger * /*RS*/) const {
+  llvm_unreachable("FrameIndex should have been previously eliminated!");
 }

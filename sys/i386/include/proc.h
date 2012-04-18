@@ -51,6 +51,7 @@ struct proc_ldt {
 struct mdthread {
 	int	md_spinlock_count;	/* (k) */
 	register_t md_saved_flags;	/* (k) */
+	register_t md_spurflt_addr;	/* (k) Spurious page fault address. */
 };
 
 struct mdproc {
@@ -83,8 +84,6 @@ struct syscall_args {
 	register_t args[8];
 	int narg;
 };
-#define	HAVE_SYSCALL_ARGS_DEF 1
-
 #endif	/* _KERNEL */
 
 #endif /* !_MACHINE_PROC_H_ */

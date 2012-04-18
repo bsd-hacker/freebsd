@@ -16,10 +16,11 @@
 #include "X86InstrInfo.h"
 #include "llvm/GlobalValue.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/Target/TargetOptions.h"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
@@ -175,34 +176,65 @@ unsigned X86Subtarget::getSpecialAddressLatency() const {
 
 void X86Subtarget::AutoDetectSubtargetFeatures() {
   unsigned EAX = 0, EBX = 0, ECX = 0, EDX = 0;
+  unsigned MaxLevel;
   union {
     unsigned u[3];
     char     c[12];
   } text;
-  
-  if (X86_MC::GetCpuIDAndInfo(0, &EAX, text.u+0, text.u+2, text.u+1))
+
+  if (X86_MC::GetCpuIDAndInfo(0, &MaxLevel, text.u+0, text.u+2, text.u+1) ||
+      MaxLevel < 1)
     return;
 
   X86_MC::GetCpuIDAndInfo(0x1, &EAX, &EBX, &ECX, &EDX);
-  
-  if ((EDX >> 15) & 1) HasCMov = true;      ToggleFeature(X86::FeatureCMOV);
-  if ((EDX >> 23) & 1) X86SSELevel = MMX;   ToggleFeature(X86::FeatureMMX);
-  if ((EDX >> 25) & 1) X86SSELevel = SSE1;  ToggleFeature(X86::FeatureSSE1);
-  if ((EDX >> 26) & 1) X86SSELevel = SSE2;  ToggleFeature(X86::FeatureSSE2);
-  if (ECX & 0x1)       X86SSELevel = SSE3;  ToggleFeature(X86::FeatureSSE3);
-  if ((ECX >> 9)  & 1) X86SSELevel = SSSE3; ToggleFeature(X86::FeatureSSSE3);
-  if ((ECX >> 19) & 1) X86SSELevel = SSE41; ToggleFeature(X86::FeatureSSE41);
-  if ((ECX >> 20) & 1) X86SSELevel = SSE42; ToggleFeature(X86::FeatureSSE42);
+
+  if ((EDX >> 15) & 1) { HasCMov = true;      ToggleFeature(X86::FeatureCMOV); }
+  if ((EDX >> 23) & 1) { X86SSELevel = MMX;   ToggleFeature(X86::FeatureMMX);  }
+  if ((EDX >> 25) & 1) { X86SSELevel = SSE1;  ToggleFeature(X86::FeatureSSE1); }
+  if ((EDX >> 26) & 1) { X86SSELevel = SSE2;  ToggleFeature(X86::FeatureSSE2); }
+  if (ECX & 0x1)       { X86SSELevel = SSE3;  ToggleFeature(X86::FeatureSSE3); }
+  if ((ECX >> 9)  & 1) { X86SSELevel = SSSE3; ToggleFeature(X86::FeatureSSSE3);}
+  if ((ECX >> 19) & 1) { X86SSELevel = SSE41; ToggleFeature(X86::FeatureSSE41);}
+  if ((ECX >> 20) & 1) { X86SSELevel = SSE42; ToggleFeature(X86::FeatureSSE42);}
   // FIXME: AVX codegen support is not ready.
-  //if ((ECX >> 28) & 1) { HasAVX = true; } ToggleFeature(X86::FeatureAVX);
+  //if ((ECX >> 28) & 1) { X86SSELevel = AVX;  ToggleFeature(X86::FeatureAVX); }
 
   bool IsIntel = memcmp(text.c, "GenuineIntel", 12) == 0;
   bool IsAMD   = !IsIntel && memcmp(text.c, "AuthenticAMD", 12) == 0;
 
-  HasCLMUL = IsIntel && ((ECX >> 1) & 0x1);   ToggleFeature(X86::FeatureCLMUL);
-  HasFMA3  = IsIntel && ((ECX >> 12) & 0x1);  ToggleFeature(X86::FeatureFMA3);
-  HasPOPCNT = IsIntel && ((ECX >> 23) & 0x1); ToggleFeature(X86::FeaturePOPCNT);
-  HasAES   = IsIntel && ((ECX >> 25) & 0x1);  ToggleFeature(X86::FeatureAES);
+  if (IsIntel && ((ECX >> 1) & 0x1)) {
+    HasCLMUL = true;
+    ToggleFeature(X86::FeatureCLMUL);
+  }
+  if (IsIntel && ((ECX >> 12) & 0x1)) {
+    HasFMA3 = true;
+    ToggleFeature(X86::FeatureFMA3);
+  }
+  if (IsIntel && ((ECX >> 22) & 0x1)) {
+    HasMOVBE = true;
+    ToggleFeature(X86::FeatureMOVBE);
+  }
+  if (IsIntel && ((ECX >> 23) & 0x1)) {
+    HasPOPCNT = true;
+    ToggleFeature(X86::FeaturePOPCNT);
+  }
+  if (IsIntel && ((ECX >> 25) & 0x1)) {
+    HasAES = true;
+    ToggleFeature(X86::FeatureAES);
+  }
+  if (IsIntel && ((ECX >> 29) & 0x1)) {
+    HasF16C = true;
+    ToggleFeature(X86::FeatureF16C);
+  }
+  if (IsIntel && ((ECX >> 30) & 0x1)) {
+    HasRDRAND = true;
+    ToggleFeature(X86::FeatureRDRAND);
+  }
+
+  if ((ECX >> 13) & 0x1) {
+    HasCmpxchg16b = true;
+    ToggleFeature(X86::FeatureCMPXCHG16B);
+  }
 
   if (IsIntel || IsAMD) {
     // Determine if bit test memory instructions are slow.
@@ -213,24 +245,69 @@ void X86Subtarget::AutoDetectSubtargetFeatures() {
       IsBTMemSlow = true;
       ToggleFeature(X86::FeatureSlowBTMem);
     }
+
     // If it's Nehalem, unaligned memory access is fast.
+    // FIXME: Nehalem is family 6. Also include Westmere and later processors?
     if (Family == 15 && Model == 26) {
       IsUAMemFast = true;
       ToggleFeature(X86::FeatureFastUAMem);
     }
 
-    X86_MC::GetCpuIDAndInfo(0x80000001, &EAX, &EBX, &ECX, &EDX);
-    if ((EDX >> 29) & 0x1) {
-      HasX86_64 = true;
-      ToggleFeature(X86::Feature64Bit);
+    // Set processor type. Currently only Atom is detected.
+    if (Family == 6 && Model == 28) {
+      X86ProcFamily = IntelAtom;
+      ToggleFeature(X86::FeatureLeaForSP);
     }
-    if (IsAMD && ((ECX >> 6) & 0x1)) {
-      HasSSE4A = true;
-      ToggleFeature(X86::FeatureSSE4A);
+
+    unsigned MaxExtLevel;
+    X86_MC::GetCpuIDAndInfo(0x80000000, &MaxExtLevel, &EBX, &ECX, &EDX);
+
+    if (MaxExtLevel >= 0x80000001) {
+      X86_MC::GetCpuIDAndInfo(0x80000001, &EAX, &EBX, &ECX, &EDX);
+      if ((EDX >> 29) & 0x1) {
+        HasX86_64 = true;
+        ToggleFeature(X86::Feature64Bit);
+      }
+      if ((ECX >> 5) & 0x1) {
+        HasLZCNT = true;
+        ToggleFeature(X86::FeatureLZCNT);
+      }
+      if (IsAMD) {
+        if ((ECX >> 6) & 0x1) {
+          HasSSE4A = true;
+          ToggleFeature(X86::FeatureSSE4A);
+        }
+        if ((ECX >> 11) & 0x1) {
+          HasXOP = true;
+          ToggleFeature(X86::FeatureXOP);
+        }
+        if ((ECX >> 16) & 0x1) {
+          HasFMA4 = true;
+          ToggleFeature(X86::FeatureFMA4);
+        }
+      }
     }
-    if (IsAMD && ((ECX >> 16) & 0x1)) {
-      HasFMA4 = true;
-      ToggleFeature(X86::FeatureFMA4);
+  }
+
+  if (IsIntel && MaxLevel >= 7) {
+    if (!X86_MC::GetCpuIDAndInfoEx(0x7, 0x0, &EAX, &EBX, &ECX, &EDX)) {
+      if (EBX & 0x1) {
+        HasFSGSBase = true;
+        ToggleFeature(X86::FeatureFSGSBase);
+      }
+      if ((EBX >> 3) & 0x1) {
+        HasBMI = true;
+        ToggleFeature(X86::FeatureBMI);
+      }
+      // FIXME: AVX2 codegen support is not ready.
+      //if ((EBX >> 5) & 0x1) {
+      //  X86SSELevel = AVX2;
+      //  ToggleFeature(X86::FeatureAVX2);
+      //}
+      if ((EBX >> 8) & 0x1) {
+        HasBMI2 = true;
+        ToggleFeature(X86::FeatureBMI2);
+      }
     }
   }
 }
@@ -239,6 +316,7 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
                            const std::string &FS, 
                            unsigned StackAlignOverride, bool is64Bit)
   : X86GenSubtargetInfo(TT, CPU, FS)
+  , X86ProcFamily(Others)
   , PICStyle(PICStyles::None)
   , X86SSELevel(NoMMXSSE)
   , X863DNowLevel(NoThreeDNow)
@@ -246,24 +324,35 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   , HasX86_64(false)
   , HasPOPCNT(false)
   , HasSSE4A(false)
-  , HasAVX(false)
   , HasAES(false)
   , HasCLMUL(false)
   , HasFMA3(false)
   , HasFMA4(false)
+  , HasXOP(false)
+  , HasMOVBE(false)
+  , HasRDRAND(false)
+  , HasF16C(false)
+  , HasFSGSBase(false)
+  , HasLZCNT(false)
+  , HasBMI(false)
+  , HasBMI2(false)
   , IsBTMemSlow(false)
   , IsUAMemFast(false)
   , HasVectorUAMem(false)
-  , stackAlignment(8)
+  , HasCmpxchg16b(false)
+  , UseLeaForSP(false)
+  , PostRAScheduler(false)
+  , stackAlignment(4)
   // FIXME: this is a known good value for Yonah. How about others?
   , MaxInlineSizeThreshold(128)
   , TargetTriple(TT)
   , In64BitMode(is64Bit) {
   // Determine default and user specified characteristics
+  std::string CPUName = CPU;
   if (!FS.empty() || !CPU.empty()) {
-    std::string CPUName = CPU;
     if (CPUName.empty()) {
-#if defined (__x86_64__) || defined(__i386__)
+#if defined(i386) || defined(__i386__) || defined(__x86__) || defined(_M_IX86)\
+    || defined(__x86_64__) || defined(_M_AMD64) || defined (_M_X64)
       CPUName = sys::getHostCPUName();
 #else
       CPUName = "generic";
@@ -283,6 +372,13 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
     // If feature string is not empty, parse features string.
     ParseSubtargetFeatures(CPUName, FullFS);
   } else {
+    if (CPUName.empty()) {
+#if defined (__x86_64__) || defined(__i386__)
+      CPUName = sys::getHostCPUName();
+#else
+      CPUName = "generic";
+#endif
+    }
     // Otherwise, use CPUID to auto-detect feature set.
     AutoDetectSubtargetFeatures();
 
@@ -291,7 +387,7 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
       HasX86_64 = true; ToggleFeature(X86::Feature64Bit);
       HasCMov = true;   ToggleFeature(X86::FeatureCMOV);
 
-      if (!HasAVX && X86SSELevel < SSE2) {
+      if (X86SSELevel < SSE2) {
         X86SSELevel = SSE2;
         ToggleFeature(X86::FeatureSSE1);
         ToggleFeature(X86::FeatureSSE2);
@@ -299,14 +395,16 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
     }
   }
 
+  if (X86ProcFamily == IntelAtom) {
+    PostRAScheduler = true;
+    InstrItins = getInstrItineraryForCPU(CPUName);
+  }
+
   // It's important to keep the MCSubtargetInfo feature bits in sync with
   // target data structure which is shared with MC code emitter, etc.
   if (In64BitMode)
     ToggleFeature(X86::Mode64Bit);
 
-  if (HasAVX)
-    X86SSELevel = NoMMXSSE;
-    
   DEBUG(dbgs() << "Subtarget features: SSELevel " << X86SSELevel
                << ", 3DNowLevel " << X863DNowLevel
                << ", 64bit " << HasX86_64 << "\n");
@@ -320,4 +418,13 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   else if (isTargetDarwin() || isTargetFreeBSD() || isTargetLinux() ||
            isTargetSolaris() || In64BitMode)
     stackAlignment = 16;
+}
+
+bool X86Subtarget::enablePostRAScheduler(
+           CodeGenOpt::Level OptLevel,
+           TargetSubtargetInfo::AntiDepBreakMode& Mode,
+           RegClassVector& CriticalPathRCs) const {
+  Mode = TargetSubtargetInfo::ANTIDEP_CRITICAL;
+  CriticalPathRCs.clear();
+  return PostRAScheduler && OptLevel >= CodeGenOpt::Default;
 }

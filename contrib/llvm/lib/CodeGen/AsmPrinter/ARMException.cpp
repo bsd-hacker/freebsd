@@ -17,7 +17,6 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineLocation.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -27,16 +26,22 @@
 #include "llvm/Target/Mangler.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetFrameLowering.h"
-#include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 using namespace llvm;
+
+cl::opt<bool>
+EnableARMEHABIDescriptors("arm-enable-ehabi-descriptors", cl::Hidden,
+  cl::desc("Generate ARM EHABI tables with unwinding descriptors"),
+  cl::init(false));
+
 
 ARMException::ARMException(AsmPrinter *A)
   : DwarfException(A),
@@ -74,13 +79,15 @@ void ARMException::EndFunction() {
       Asm->OutStreamer.EmitPersonality(PerSym);
     }
 
-    // Map all labels and get rid of any dead landing pads.
-    MMI->TidyLandingPads();
+    if (EnableARMEHABIDescriptors) {
+      // Map all labels and get rid of any dead landing pads.
+      MMI->TidyLandingPads();
 
-    Asm->OutStreamer.EmitHandlerData();
+      Asm->OutStreamer.EmitHandlerData();
 
-    // Emit actual exception table
-    EmitExceptionTable();
+      // Emit actual exception table
+      EmitExceptionTable();
+    }
   }
 
   Asm->OutStreamer.EmitFnEnd();

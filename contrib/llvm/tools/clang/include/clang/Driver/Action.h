@@ -10,17 +10,9 @@
 #ifndef CLANG_DRIVER_ACTION_H_
 #define CLANG_DRIVER_ACTION_H_
 
-#include "llvm/ADT/SmallVector.h"
-
 #include "clang/Driver/Types.h"
 #include "clang/Driver/Util.h"
-
-#include "llvm/Support/Casting.h"
-using llvm::isa;
-using llvm::cast;
-using llvm::cast_or_null;
-using llvm::dyn_cast;
-using llvm::dyn_cast_or_null;
+#include "llvm/ADT/SmallVector.h"
 
 namespace clang {
 namespace driver {
@@ -47,14 +39,16 @@ public:
     PreprocessJobClass,
     PrecompileJobClass,
     AnalyzeJobClass,
+    MigrateJobClass,
     CompileJobClass,
     AssembleJobClass,
     LinkJobClass,
     LipoJobClass,
     DsymutilJobClass,
+    VerifyJobClass,
 
     JobClassFirst=PreprocessJobClass,
-    JobClassLast=DsymutilJobClass
+    JobClassLast=VerifyJobClass
   };
 
   static const char *getClassName(ActionClass AC);
@@ -101,6 +95,7 @@ public:
 };
 
 class InputAction : public Action {
+  virtual void anchor();
   const Arg &Input;
 public:
   InputAction(const Arg &_Input, types::ID _Type);
@@ -114,6 +109,7 @@ public:
 };
 
 class BindArchAction : public Action {
+  virtual void anchor();
   /// The architecture to bind, or 0 if the default architecture
   /// should be bound.
   const char *ArchName;
@@ -130,6 +126,7 @@ public:
 };
 
 class JobAction : public Action {
+  virtual void anchor();
 protected:
   JobAction(ActionClass Kind, Action *Input, types::ID Type);
   JobAction(ActionClass Kind, const ActionList &Inputs, types::ID Type);
@@ -143,6 +140,7 @@ public:
 };
 
 class PreprocessJobAction : public JobAction {
+  virtual void anchor();
 public:
   PreprocessJobAction(Action *Input, types::ID OutputType);
 
@@ -153,6 +151,7 @@ public:
 };
 
 class PrecompileJobAction : public JobAction {
+  virtual void anchor();
 public:
   PrecompileJobAction(Action *Input, types::ID OutputType);
 
@@ -163,6 +162,7 @@ public:
 };
 
 class AnalyzeJobAction : public JobAction {
+  virtual void anchor();
 public:
   AnalyzeJobAction(Action *Input, types::ID OutputType);
 
@@ -172,7 +172,19 @@ public:
   static bool classof(const AnalyzeJobAction *) { return true; }
 };
 
+class MigrateJobAction : public JobAction {
+  virtual void anchor();
+public:
+  MigrateJobAction(Action *Input, types::ID OutputType);
+
+  static bool classof(const Action *A) {
+    return A->getKind() == MigrateJobClass;
+  }
+  static bool classof(const MigrateJobAction *) { return true; }
+};
+
 class CompileJobAction : public JobAction {
+  virtual void anchor();
 public:
   CompileJobAction(Action *Input, types::ID OutputType);
 
@@ -183,6 +195,7 @@ public:
 };
 
 class AssembleJobAction : public JobAction {
+  virtual void anchor();
 public:
   AssembleJobAction(Action *Input, types::ID OutputType);
 
@@ -193,6 +206,7 @@ public:
 };
 
 class LinkJobAction : public JobAction {
+  virtual void anchor();
 public:
   LinkJobAction(ActionList &Inputs, types::ID Type);
 
@@ -203,6 +217,7 @@ public:
 };
 
 class LipoJobAction : public JobAction {
+  virtual void anchor();
 public:
   LipoJobAction(ActionList &Inputs, types::ID Type);
 
@@ -213,6 +228,7 @@ public:
 };
 
 class DsymutilJobAction : public JobAction {
+  virtual void anchor();
 public:
   DsymutilJobAction(ActionList &Inputs, types::ID Type);
 
@@ -220,6 +236,16 @@ public:
     return A->getKind() == DsymutilJobClass;
   }
   static bool classof(const DsymutilJobAction *) { return true; }
+};
+
+class VerifyJobAction : public JobAction {
+  virtual void anchor();
+public:
+  VerifyJobAction(ActionList &Inputs, types::ID Type);
+  static bool classof(const Action *A) {
+    return A->getKind() == VerifyJobClass;
+  }
+  static bool classof(const VerifyJobAction *) { return true; }
 };
 
 } // end namespace driver

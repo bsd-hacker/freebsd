@@ -11,13 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ALPHAMCTARGETDESC_H
-#define ALPHAMCTARGETDESC_H
+#ifndef MSP430MCTARGETDESC_H
+#define MSP430MCTARGETDESC_H
 
 namespace llvm {
-class MCSubtargetInfo;
 class Target;
-class StringRef;
 
 extern Target TheMSP430Target;
 

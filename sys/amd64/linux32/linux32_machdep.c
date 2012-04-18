@@ -658,7 +658,7 @@ linux_mmap_common(struct thread *td, l_uintptr_t addr, l_size_t len, l_int prot,
 		    (void *)bsd_args.addr, (int)bsd_args.len, bsd_args.prot,
 		    bsd_args.flags, bsd_args.fd, (int)bsd_args.pos);
 #endif
-	error = mmap(td, &bsd_args);
+	error = sys_mmap(td, &bsd_args);
 #ifdef DEBUG
 	if (ldebug(mmap))
 		printf("-> %s() return: 0x%x (0x%08x)\n",
@@ -677,7 +677,7 @@ linux_mprotect(struct thread *td, struct linux_mprotect_args *uap)
 	bsd_args.prot = uap->prot;
 	if (bsd_args.prot & (PROT_READ | PROT_WRITE | PROT_EXEC))
 		bsd_args.prot |= PROT_READ | PROT_EXEC;
-	return (mprotect(td, &bsd_args));
+	return (sys_mprotect(td, &bsd_args));
 }
 
 int
@@ -695,25 +695,6 @@ linux_iopl(struct thread *td, struct linux_iopl_args *args)
 	    (args->level * (PSL_IOPL / 3));
 
 	return (0);
-}
-
-int
-linux_pipe(struct thread *td, struct linux_pipe_args *args)
-{
-	int error;
-	int fildes[2];
-
-#ifdef DEBUG
-	if (ldebug(pipe))
-		printf(ARGS(pipe, "*"));
-#endif
-
-	error = kern_pipe(td, fildes);
-	if (error)
-		return (error);
-
-	/* XXX: Close descriptors on error. */
-	return (copyout(fildes, args->pipefds, sizeof fildes));
 }
 
 int
@@ -863,7 +844,7 @@ linux_ftruncate64(struct thread *td, struct linux_ftruncate64_args *args)
 
 	sa.fd = args->fd;
 	sa.length = args->length;
-	return ftruncate(td, &sa);
+	return sys_ftruncate(td, &sa);
 }
 
 int

@@ -41,7 +41,7 @@ static uint64_t LookupFieldBitOffset(CodeGen::CodeGenModule &CGM,
   // If we know have an implementation (and the ivar is in it) then
   // look up in the implementation layout.
   const ASTRecordLayout *RL;
-  if (ID && ID->getClassInterface() == Container)
+  if (ID && declaresSameEntity(ID->getClassInterface(), Container))
     RL = &CGM.getContext().getASTObjCImplementationLayout(ID);
   else
     RL = &CGM.getContext().getASTObjCInterfaceLayout(Container);
@@ -52,9 +52,8 @@ static uint64_t LookupFieldBitOffset(CodeGen::CodeGenModule &CGM,
   // implemented. This should be fixed to get the information from the layout
   // directly.
   unsigned Index = 0;
-  ObjCInterfaceDecl *IDecl = const_cast<ObjCInterfaceDecl*>(Container);
 
-  for (ObjCIvarDecl *IVD = IDecl->all_declared_ivar_begin(); 
+  for (const ObjCIvarDecl *IVD = Container->all_declared_ivar_begin(); 
        IVD; IVD = IVD->getNextIvar()) {
     if (Ivar == IVD)
       break;
@@ -86,15 +85,15 @@ LValue CGObjCRuntime::EmitValueForIvarAtOffset(CodeGen::CodeGenFunction &CGF,
                                                unsigned CVRQualifiers,
                                                llvm::Value *Offset) {
   // Compute (type*) ( (char *) BaseValue + Offset)
-  const llvm::Type *I8Ptr = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
+  llvm::Type *I8Ptr = CGF.Int8PtrTy;
   QualType IvarTy = Ivar->getType();
-  const llvm::Type *LTy = CGF.CGM.getTypes().ConvertTypeForMem(IvarTy);
+  llvm::Type *LTy = CGF.CGM.getTypes().ConvertTypeForMem(IvarTy);
   llvm::Value *V = CGF.Builder.CreateBitCast(BaseValue, I8Ptr);
   V = CGF.Builder.CreateInBoundsGEP(V, Offset, "add.ptr");
   V = CGF.Builder.CreateBitCast(V, llvm::PointerType::getUnqual(LTy));
 
   if (!Ivar->isBitField()) {
-    LValue LV = CGF.MakeAddrLValue(V, IvarTy);
+    LValue LV = CGF.MakeNaturalAlignAddrLValue(V, IvarTy);
     LV.getQuals().addCVRQualifiers(CVRQualifiers);
     return LV;
   }
@@ -118,10 +117,9 @@ LValue CGObjCRuntime::EmitValueForIvarAtOffset(CodeGen::CodeGenFunction &CGF,
   uint64_t TypeSizeInBits = CGF.CGM.getContext().toBits(RL.getSize());
   uint64_t FieldBitOffset = LookupFieldBitOffset(CGF.CGM, OID, 0, Ivar);
   uint64_t BitOffset = FieldBitOffset % CGF.CGM.getContext().getCharWidth();
-  uint64_t ContainingTypeAlign = CGF.CGM.getContext().Target.getCharAlign();
+  uint64_t ContainingTypeAlign = CGF.CGM.getContext().getTargetInfo().getCharAlign();
   uint64_t ContainingTypeSize = TypeSizeInBits - (FieldBitOffset - BitOffset);
-  uint64_t BitFieldSize =
-    Ivar->getBitWidth()->EvaluateAsInt(CGF.getContext()).getZExtValue();
+  uint64_t BitFieldSize = Ivar->getBitWidthValue(CGF.getContext());
 
   // Allocate a new CGBitFieldInfo object to describe this access.
   //
@@ -178,7 +176,7 @@ void CGObjCRuntime::EmitTryCatchStmt(CodeGenFunction &CGF,
     FinallyInfo.enter(CGF, Finally->getFinallyBody(),
                       beginCatchFn, endCatchFn, exceptionRethrowFn);
 
-  llvm::SmallVector<CatchHandler, 8> Handlers;
+  SmallVector<CatchHandler, 8> Handlers;
 
   // Enter the catch, if there is one.
   if (S.getNumCatchStmts()) {
@@ -212,7 +210,7 @@ void CGObjCRuntime::EmitTryCatchStmt(CodeGenFunction &CGF,
 
   // Leave the try.
   if (S.getNumCatchStmts())
-    CGF.EHStack.popCatch();
+    CGF.popCatchScope();
 
   // Remember where we were.
   CGBuilderTy::InsertPoint SavedIP = CGF.Builder.saveAndClearIP();
@@ -222,7 +220,7 @@ void CGObjCRuntime::EmitTryCatchStmt(CodeGenFunction &CGF,
     CatchHandler &Handler = Handlers[I];
 
     CGF.EmitBlock(Handler.Block);
-    llvm::Value *RawExn = CGF.Builder.CreateLoad(CGF.getExceptionSlot());
+    llvm::Value *RawExn = CGF.getExceptionFromSlot();
 
     // Enter the catch.
     llvm::Value *Exn = RawExn;
@@ -231,7 +229,7 @@ void CGObjCRuntime::EmitTryCatchStmt(CodeGenFunction &CGF,
       cast<llvm::CallInst>(Exn)->setDoesNotThrow();
     }
 
-    CodeGenFunction::RunCleanupsScope cleanups(CGF);
+    CodeGenFunction::LexicalScope cleanups(CGF, Handler.Body->getSourceRange());
 
     if (endCatchFn) {
       // Add a cleanup to leave the catch.
@@ -244,11 +242,28 @@ void CGObjCRuntime::EmitTryCatchStmt(CodeGenFunction &CGF,
 
     // Bind the catch parameter if it exists.
     if (const VarDecl *CatchParam = Handler.Variable) {
-      const llvm::Type *CatchType = CGF.ConvertType(CatchParam->getType());
+      llvm::Type *CatchType = CGF.ConvertType(CatchParam->getType());
       llvm::Value *CastExn = CGF.Builder.CreateBitCast(Exn, CatchType);
 
       CGF.EmitAutoVarDecl(*CatchParam);
-      CGF.Builder.CreateStore(CastExn, CGF.GetAddrOfLocalVar(CatchParam));
+
+      llvm::Value *CatchParamAddr = CGF.GetAddrOfLocalVar(CatchParam);
+
+      switch (CatchParam->getType().getQualifiers().getObjCLifetime()) {
+      case Qualifiers::OCL_Strong:
+        CastExn = CGF.EmitARCRetainNonBlock(CastExn);
+        // fallthrough
+
+      case Qualifiers::OCL_None:
+      case Qualifiers::OCL_ExplicitNone:
+      case Qualifiers::OCL_Autoreleasing:
+        CGF.Builder.CreateStore(CastExn, CatchParamAddr);
+        break;
+
+      case Qualifiers::OCL_Weak:
+        CGF.EmitARCInitWeak(CatchParamAddr, CastExn);
+        break;
+      }
     }
 
     CGF.ObjCEHValueStack.push_back(Exn);
@@ -289,21 +304,71 @@ void CGObjCRuntime::EmitAtSynchronizedStmt(CodeGenFunction &CGF,
                                            const ObjCAtSynchronizedStmt &S,
                                            llvm::Function *syncEnterFn,
                                            llvm::Function *syncExitFn) {
-  // Evaluate the lock operand.  This should dominate the cleanup.
-  llvm::Value *SyncArg =
-    CGF.EmitScalarExpr(S.getSynchExpr());
+  CodeGenFunction::RunCleanupsScope cleanups(CGF);
+
+  // Evaluate the lock operand.  This is guaranteed to dominate the
+  // ARC release and lock-release cleanups.
+  const Expr *lockExpr = S.getSynchExpr();
+  llvm::Value *lock;
+  if (CGF.getLangOpts().ObjCAutoRefCount) {
+    lock = CGF.EmitARCRetainScalarExpr(lockExpr);
+    lock = CGF.EmitObjCConsumeObject(lockExpr->getType(), lock);
+  } else {
+    lock = CGF.EmitScalarExpr(lockExpr);
+  }
+  lock = CGF.Builder.CreateBitCast(lock, CGF.VoidPtrTy);
 
   // Acquire the lock.
-  SyncArg = CGF.Builder.CreateBitCast(SyncArg, syncEnterFn->getFunctionType()->getParamType(0));
-  CGF.Builder.CreateCall(syncEnterFn, SyncArg);
+  CGF.Builder.CreateCall(syncEnterFn, lock)->setDoesNotThrow();
 
   // Register an all-paths cleanup to release the lock.
-  CGF.EHStack.pushCleanup<CallSyncExit>(NormalAndEHCleanup, syncExitFn,
-      SyncArg);
+  CGF.EHStack.pushCleanup<CallSyncExit>(NormalAndEHCleanup, syncExitFn, lock);
 
   // Emit the body of the statement.
   CGF.EmitStmt(S.getSynchBody());
+}
 
-  // Pop the lock-release cleanup.
-  CGF.PopCleanupBlock();
+/// Compute the pointer-to-function type to which a message send
+/// should be casted in order to correctly call the given method
+/// with the given arguments.
+///
+/// \param method - may be null
+/// \param resultType - the result type to use if there's no method
+/// \param argInfo - the actual arguments, including implicit ones
+CGObjCRuntime::MessageSendInfo
+CGObjCRuntime::getMessageSendInfo(const ObjCMethodDecl *method,
+                                  QualType resultType,
+                                  CallArgList &callArgs) {
+  // If there's a method, use information from that.
+  if (method) {
+    const CGFunctionInfo &signature =
+      CGM.getTypes().arrangeObjCMessageSendSignature(method, callArgs[0].Ty);
+
+    llvm::PointerType *signatureType =
+      CGM.getTypes().GetFunctionType(signature)->getPointerTo();
+
+    // If that's not variadic, there's no need to recompute the ABI
+    // arrangement.
+    if (!signature.isVariadic())
+      return MessageSendInfo(signature, signatureType);
+
+    // Otherwise, there is.
+    FunctionType::ExtInfo einfo = signature.getExtInfo();
+    const CGFunctionInfo &argsInfo =
+      CGM.getTypes().arrangeFunctionCall(resultType, callArgs, einfo,
+                                         signature.getRequiredArgs());
+
+    return MessageSendInfo(argsInfo, signatureType);
+  }
+
+  // There's no method;  just use a default CC.
+  const CGFunctionInfo &argsInfo =
+    CGM.getTypes().arrangeFunctionCall(resultType, callArgs, 
+                                       FunctionType::ExtInfo(),
+                                       RequiredArgs::All);
+
+  // Derive the signature to call from that.
+  llvm::PointerType *signatureType =
+    CGM.getTypes().GetFunctionType(argsInfo)->getPointerTo();
+  return MessageSendInfo(argsInfo, signatureType);
 }

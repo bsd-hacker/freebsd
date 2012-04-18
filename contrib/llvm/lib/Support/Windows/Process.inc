@@ -15,6 +15,7 @@
 #include <psapi.h>
 #include <malloc.h>
 #include <io.h>
+#include <direct.h>
 
 #ifdef __MINGW32__
  #if (HAVE_LIBPSAPI != 1)

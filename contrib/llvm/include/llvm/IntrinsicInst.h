@@ -170,7 +170,7 @@ namespace llvm {
       setArgOperand(4, V);
     }
 
-    const Type *getAlignmentType() const {
+    Type *getAlignmentType() const {
       return getArgOperand(3)->getType();
     }
 
@@ -271,34 +271,6 @@ namespace llvm {
     static inline bool classof(const MemMoveInst *) { return true; }
     static inline bool classof(const IntrinsicInst *I) {
       return I->getIntrinsicID() == Intrinsic::memmove;
-    }
-    static inline bool classof(const Value *V) {
-      return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
-    }
-  };
-
-  /// EHExceptionInst - This represents the llvm.eh.exception instruction.
-  ///
-  class EHExceptionInst : public IntrinsicInst {
-  public:
-    // Methods for support type inquiry through isa, cast, and dyn_cast:
-    static inline bool classof(const EHExceptionInst *) { return true; }
-    static inline bool classof(const IntrinsicInst *I) {
-      return I->getIntrinsicID() == Intrinsic::eh_exception;
-    }
-    static inline bool classof(const Value *V) {
-      return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
-    }
-  };
-
-  /// EHSelectorInst - This represents the llvm.eh.selector instruction.
-  ///
-  class EHSelectorInst : public IntrinsicInst {
-  public:
-    // Methods for support type inquiry through isa, cast, and dyn_cast:
-    static inline bool classof(const EHSelectorInst *) { return true; }
-    static inline bool classof(const IntrinsicInst *I) {
-      return I->getIntrinsicID() == Intrinsic::eh_selector;
     }
     static inline bool classof(const Value *V) {
       return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));

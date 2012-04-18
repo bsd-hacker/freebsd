@@ -59,7 +59,9 @@ struct schizo_softc {
 #define	SCHIZO_FLAGS_BSWAR		(1 << 0)
 #define	SCHIZO_FLAGS_XMODE		(1 << 1)
 
+	bus_addr_t			sc_cdma_map;
 	bus_addr_t			sc_cdma_clr;
+	uint32_t			sc_cdma_vec;
 	uint32_t			sc_cdma_state;
 #define	SCHIZO_CDMA_STATE_IDLE		(1 << 0)
 #define	SCHIZO_CDMA_STATE_PENDING	(1 << 1)
@@ -81,7 +83,6 @@ struct schizo_softc {
 	bus_space_handle_t		sc_pci_bh[STX_NRANGE];
 	bus_space_tag_t			sc_pci_cfgt;
 	bus_space_tag_t			sc_pci_iot;
-	bus_space_tag_t			sc_pci_memt;
 	bus_dma_tag_t			sc_pci_dmat;
 
 	uint32_t			sc_stats_dma_ce;

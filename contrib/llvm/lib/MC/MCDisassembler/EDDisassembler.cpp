@@ -22,23 +22,21 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
+#include "llvm/MC/MCTargetAsmLexer.h"
+#include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Target/TargetAsmLexer.h"
-#include "llvm/Target/TargetAsmParser.h"
-#include "llvm/Target/TargetRegistry.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetSelect.h"
+#include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-bool EDDisassembler::sInitialized = false;
 EDDisassembler::DisassemblerMap_t EDDisassembler::sDisassemblers;
 
 struct TripleMap {
@@ -50,8 +48,7 @@ static struct TripleMap triplemap[] = {
   { Triple::x86,          "i386-unknown-unknown"    },
   { Triple::x86_64,       "x86_64-unknown-unknown"  },
   { Triple::arm,          "arm-unknown-unknown"     },
-  { Triple::thumb,        "thumb-unknown-unknown"   },
-  { Triple::InvalidArch,  NULL,                     }
+  { Triple::thumb,        "thumb-unknown-unknown"   }
 };
 
 /// infoFromArch - Returns the TripleMap corresponding to a given architecture,
@@ -78,133 +75,116 @@ static const char *tripleFromArch(Triple::ArchType arch) {
 static int getLLVMSyntaxVariant(Triple::ArchType arch,
                                 EDDisassembler::AssemblySyntax syntax) {
   switch (syntax) {
-  default:
-    return -1;
   // Mappings below from X86AsmPrinter.cpp
   case EDDisassembler::kEDAssemblySyntaxX86ATT:
     if (arch == Triple::x86 || arch == Triple::x86_64)
       return 0;
-    else
-      return -1;
+    break;
   case EDDisassembler::kEDAssemblySyntaxX86Intel:
     if (arch == Triple::x86 || arch == Triple::x86_64)
       return 1;
-    else
-      return -1;
+    break;
   case EDDisassembler::kEDAssemblySyntaxARMUAL:
     if (arch == Triple::arm || arch == Triple::thumb)
       return 0;
-    else
-      return -1;
+    break;
   }
-}
 
-void EDDisassembler::initialize() {
-  if (sInitialized)
-    return;
-  
-  sInitialized = true;
-  
-  InitializeAllTargetInfos();
-  InitializeAllTargets();
-  InitializeAllMCAsmInfos();
-  InitializeAllAsmPrinters();
-  InitializeAllAsmParsers();
-  InitializeAllDisassemblers();
+  return -1;
 }
-
-#undef BRINGUP_TARGET
 
 EDDisassembler *EDDisassembler::getDisassembler(Triple::ArchType arch,
                                                 AssemblySyntax syntax) {
-  CPUKey key;
-  key.Arch = arch;
-  key.Syntax = syntax;
-  
-  EDDisassembler::DisassemblerMap_t::iterator i = sDisassemblers.find(key);
-  
-  if (i != sDisassemblers.end()) {
-    return i->second;
-  } else {
-    EDDisassembler* sdd = new EDDisassembler(key);
-    if (!sdd->valid()) {
-      delete sdd;
-      return NULL;
-    }
-    
-    sDisassemblers[key] = sdd;
-    
-    return sdd;
-  }
-  
-  return NULL;
+  const char *triple = tripleFromArch(arch);
+  return getDisassembler(StringRef(triple), syntax);
 }
 
 EDDisassembler *EDDisassembler::getDisassembler(StringRef str,
                                                 AssemblySyntax syntax) {
-  return getDisassembler(Triple(str).getArch(), syntax);
+  CPUKey key;
+  key.Triple = str.str();
+  key.Syntax = syntax;
+
+  EDDisassembler::DisassemblerMap_t::iterator i = sDisassemblers.find(key);
+
+  if (i != sDisassemblers.end()) {
+    return i->second;  
+  }
+
+  EDDisassembler *sdd = new EDDisassembler(key);
+  if (!sdd->valid()) {
+    delete sdd;
+    return NULL;
+  }
+
+  sDisassemblers[key] = sdd;
+
+  return sdd;
 }
 
 EDDisassembler::EDDisassembler(CPUKey &key) : 
   Valid(false), 
   HasSemantics(false), 
   ErrorStream(nulls()), 
-  Key(key) {
-  const char *triple = tripleFromArch(key.Arch);
-    
-  if (!triple)
-    return;
+  Key(key),
+  TgtTriple(key.Triple.c_str()) {        
   
-  LLVMSyntaxVariant = getLLVMSyntaxVariant(key.Arch, key.Syntax);
+  LLVMSyntaxVariant = getLLVMSyntaxVariant(TgtTriple.getArch(), key.Syntax);
   
   if (LLVMSyntaxVariant < 0)
     return;
   
-  std::string tripleString(triple);
+  std::string tripleString(key.Triple);
   std::string errorString;
   
-  Tgt = TargetRegistry::lookupTarget(tripleString, 
+  Tgt = TargetRegistry::lookupTarget(key.Triple, 
                                      errorString);
   
   if (!Tgt)
     return;
   
-  std::string CPU;
-  std::string featureString;
-  TargetMachine.reset(Tgt->createTargetMachine(tripleString, CPU,
-                                               featureString));
+  MRI.reset(Tgt->createMCRegInfo(tripleString));
 
-  const TargetRegisterInfo *registerInfo = TargetMachine->getRegisterInfo();
-  
-  if (!registerInfo)
+  if (!MRI)
     return;
-    
-  initMaps(*registerInfo);
+
+  initMaps(*MRI);
   
   AsmInfo.reset(Tgt->createMCAsmInfo(tripleString));
   
   if (!AsmInfo)
     return;
 
-  Disassembler.reset(Tgt->createMCDisassembler());
+  STI.reset(Tgt->createMCSubtargetInfo(tripleString, "", ""));
+  
+  if (!STI)
+    return;
+
+  Disassembler.reset(Tgt->createMCDisassembler(*STI));
   
   if (!Disassembler)
     return;
     
   InstInfos = Disassembler->getEDInfo();
-  
+
+  MII.reset(Tgt->createMCInstrInfo());
+
+  if (!MII)
+    return;
+
   InstString.reset(new std::string);
   InstStream.reset(new raw_string_ostream(*InstString));
-  InstPrinter.reset(Tgt->createMCInstPrinter(LLVMSyntaxVariant, *AsmInfo));
+  InstPrinter.reset(Tgt->createMCInstPrinter(LLVMSyntaxVariant, *AsmInfo,
+                                             *MII, *MRI, *STI));
   
   if (!InstPrinter)
     return;
     
   GenericAsmLexer.reset(new AsmLexer(*AsmInfo));
-  SpecificAsmLexer.reset(Tgt->createAsmLexer(*AsmInfo));
+  SpecificAsmLexer.reset(Tgt->createMCAsmLexer(*MRI, *AsmInfo));
   SpecificAsmLexer->InstallLexer(*GenericAsmLexer);
   
-  initMaps(*TargetMachine->getRegisterInfo());
+  initMaps(*MRI);
     
   Valid = true;
 }
@@ -247,14 +227,17 @@ EDInst *EDDisassembler::createInst(EDByteReaderCallback byteReader,
   MCInst* inst = new MCInst;
   uint64_t byteSize;
   
-  if (!Disassembler->getInstruction(*inst,
-                                    byteSize,
-                                    memoryObject,
-                                    address,
-                                    ErrorStream)) {
+  MCDisassembler::DecodeStatus S;
+  S = Disassembler->getInstruction(*inst, byteSize, memoryObject, address,
+                                   ErrorStream, nulls());
+  switch (S) {
+  case MCDisassembler::Fail:
+  case MCDisassembler::SoftFail:
+    // FIXME: Do something different on soft failure mode?
     delete inst;
     return NULL;
-  } else {
+    
+  case MCDisassembler::Success: {
     const llvm::EDInstInfo *thisInstInfo = NULL;
 
     if (InstInfos) {
@@ -264,9 +247,11 @@ EDInst *EDDisassembler::createInst(EDByteReaderCallback byteReader,
     EDInst* sdInst = new EDInst(inst, byteSize, *this, thisInstInfo);
     return sdInst;
   }
+  }
+  return NULL;
 }
 
-void EDDisassembler::initMaps(const TargetRegisterInfo &registerInfo) {
+void EDDisassembler::initMaps(const MCRegisterInfo &registerInfo) {
   unsigned numRegisters = registerInfo.getNumRegs();
   unsigned registerIndex;
   
@@ -277,7 +262,7 @@ void EDDisassembler::initMaps(const TargetRegisterInfo &registerInfo) {
     RegRMap[registerName] = registerIndex;
   }
   
-  switch (Key.Arch) {
+  switch (TgtTriple.getArch()) {
   default:
     break;
   case Triple::x86:
@@ -325,7 +310,7 @@ bool EDDisassembler::registerIsProgramCounter(unsigned registerID) {
 int EDDisassembler::printInst(std::string &str, MCInst &inst) {
   PrinterMutex.acquire();
   
-  InstPrinter->printInst(&inst, *InstStream);
+  InstPrinter->printInst(&inst, *InstStream, "");
   InstStream->flush();
   str = *InstString;
   InstString->clear();
@@ -335,13 +320,9 @@ int EDDisassembler::printInst(std::string &str, MCInst &inst) {
   return 0;
 }
 
-static void diag_handler(const SMDiagnostic &diag,
-                         void *context)
-{
-  if (context) {
-    EDDisassembler *disassembler = static_cast<EDDisassembler*>(context);
-    diag.Print("", disassembler->ErrorStream);
-  }
+static void diag_handler(const SMDiagnostic &diag, void *context) {
+  if (context)
+    diag.print("", static_cast<EDDisassembler*>(context)->ErrorStream);
 }
 
 int EDDisassembler::parseInst(SmallVectorImpl<MCParsedAsmOperand*> &operands,
@@ -349,7 +330,7 @@ int EDDisassembler::parseInst(SmallVectorImpl<MCParsedAsmOperand*> &operands,
                               const std::string &str) {
   int ret = 0;
   
-  switch (Key.Arch) {
+  switch (TgtTriple.getArch()) {
   default:
     return -1;
   case Triple::x86:
@@ -368,16 +349,15 @@ int EDDisassembler::parseInst(SmallVectorImpl<MCParsedAsmOperand*> &operands,
   SourceMgr sourceMgr;
   sourceMgr.setDiagHandler(diag_handler, static_cast<void*>(this));
   sourceMgr.AddNewSourceBuffer(buf, SMLoc()); // ownership of buf handed over
-  MCContext context(*AsmInfo, NULL);
+  MCContext context(*AsmInfo, *MRI, NULL);
   OwningPtr<MCStreamer> streamer(createNullStreamer(context));
-  OwningPtr<MCAsmParser> genericParser(createMCAsmParser(*Tgt, sourceMgr,
+  OwningPtr<MCAsmParser> genericParser(createMCAsmParser(sourceMgr,
                                                          context, *streamer,
                                                          *AsmInfo));
 
-  StringRef triple = tripleFromArch(Key.Arch);
-  OwningPtr<MCSubtargetInfo> STI(Tgt->createMCSubtargetInfo(triple, "", ""));
-  OwningPtr<TargetAsmParser> TargetParser(Tgt->createAsmParser(*STI,
-                                                               *genericParser));
+  OwningPtr<MCSubtargetInfo> STI(Tgt->createMCSubtargetInfo(Key.Triple.c_str(), "", ""));
+  OwningPtr<MCTargetAsmParser>
+    TargetParser(Tgt->createMCAsmParser(*STI, *genericParser));
   
   AsmToken OpcodeToken = genericParser->Lex();
   AsmToken NextToken = genericParser->Lex();  // consume next token, because specificParser expects us to

@@ -78,11 +78,9 @@ void Stmt::addStmtClass(StmtClass s) {
   ++getStmtInfoTableEntry(s).Counter;
 }
 
-static bool StatSwitch = false;
-
-bool Stmt::CollectingStats(bool Enable) {
-  if (Enable) StatSwitch = true;
-  return StatSwitch;
+bool Stmt::StatisticsEnabled = false;
+void Stmt::EnableStatistics() {
+  StatisticsEnabled = true;
 }
 
 Stmt *Stmt::IgnoreImplicit() {
@@ -95,6 +93,22 @@ Stmt *Stmt::IgnoreImplicit() {
     s = ice->getSubExpr();
 
   return s;
+}
+
+/// \brief Strip off all label-like statements.
+///
+/// This will strip off label statements, case statements, and default
+/// statements recursively.
+const Stmt *Stmt::stripLabelLikeStatements() const {
+  const Stmt *S = this;
+  while (true) {
+    if (const LabelStmt *LS = dyn_cast<LabelStmt>(S))
+      S = LS->getSubStmt();
+    else if (const SwitchCase *SC = dyn_cast<SwitchCase>(S))
+      S = SC->getSubStmt();
+    else
+      return S;
+  }
 }
 
 namespace {
@@ -148,7 +162,6 @@ Stmt::child_range Stmt::children() {
 #include "clang/AST/StmtNodes.inc"
   }
   llvm_unreachable("unknown statement kind!");
-  return child_range();
 }
 
 SourceRange Stmt::getSourceRange() const {
@@ -161,7 +174,72 @@ SourceRange Stmt::getSourceRange() const {
 #include "clang/AST/StmtNodes.inc"
   }
   llvm_unreachable("unknown statement kind!");
-  return SourceRange();
+}
+
+// Amusing macro metaprogramming hack: check whether a class provides
+// a more specific implementation of getLocStart() and getLocEnd().
+//
+// See also Expr.cpp:getExprLoc().
+namespace {
+  /// This implementation is used when a class provides a custom
+  /// implementation of getLocStart.
+  template <class S, class T>
+  SourceLocation getLocStartImpl(const Stmt *stmt,
+                                 SourceLocation (T::*v)() const) {
+    return static_cast<const S*>(stmt)->getLocStart();
+  }
+
+  /// This implementation is used when a class doesn't provide a custom
+  /// implementation of getLocStart.  Overload resolution should pick it over
+  /// the implementation above because it's more specialized according to
+  /// function template partial ordering.
+  template <class S>
+  SourceLocation getLocStartImpl(const Stmt *stmt,
+                                SourceLocation (Stmt::*v)() const) {
+    return static_cast<const S*>(stmt)->getSourceRange().getBegin();
+  }
+
+  /// This implementation is used when a class provides a custom
+  /// implementation of getLocEnd.
+  template <class S, class T>
+  SourceLocation getLocEndImpl(const Stmt *stmt,
+                               SourceLocation (T::*v)() const) {
+    return static_cast<const S*>(stmt)->getLocEnd();
+  }
+
+  /// This implementation is used when a class doesn't provide a custom
+  /// implementation of getLocEnd.  Overload resolution should pick it over
+  /// the implementation above because it's more specialized according to
+  /// function template partial ordering.
+  template <class S>
+  SourceLocation getLocEndImpl(const Stmt *stmt,
+                               SourceLocation (Stmt::*v)() const) {
+    return static_cast<const S*>(stmt)->getSourceRange().getEnd();
+  }
+}
+
+SourceLocation Stmt::getLocStart() const {
+  switch (getStmtClass()) {
+  case Stmt::NoStmtClass: llvm_unreachable("statement without class");
+#define ABSTRACT_STMT(type)
+#define STMT(type, base) \
+  case Stmt::type##Class: \
+    return getLocStartImpl<type>(this, &type::getLocStart);
+#include "clang/AST/StmtNodes.inc"
+  }
+  llvm_unreachable("unknown statement kind");
+}
+
+SourceLocation Stmt::getLocEnd() const {
+  switch (getStmtClass()) {
+  case Stmt::NoStmtClass: llvm_unreachable("statement without class");
+#define ABSTRACT_STMT(type)
+#define STMT(type, base) \
+  case Stmt::type##Class: \
+    return getLocEndImpl<type>(this, &type::getLocEnd);
+#include "clang/AST/StmtNodes.inc"
+  }
+  llvm_unreachable("unknown statement kind");
 }
 
 void CompoundStmt::setStmts(ASTContext &C, Stmt **Stmts, unsigned NumStmts) {
@@ -214,7 +292,7 @@ Expr *AsmStmt::getOutputExpr(unsigned i) {
 /// getOutputConstraint - Return the constraint string for the specified
 /// output operand.  All output constraints are known to be non-empty (either
 /// '=' or '+').
-llvm::StringRef AsmStmt::getOutputConstraint(unsigned i) const {
+StringRef AsmStmt::getOutputConstraint(unsigned i) const {
   return getOutputConstraintLiteral(i)->getString();
 }
 
@@ -238,7 +316,7 @@ void AsmStmt::setInputExpr(unsigned i, Expr *E) {
 
 /// getInputConstraint - Return the specified input constraint.  Unlike output
 /// constraints, these can be empty.
-llvm::StringRef AsmStmt::getInputConstraint(unsigned i) const {
+StringRef AsmStmt::getInputConstraint(unsigned i) const {
   return getInputConstraintLiteral(i)->getString();
 }
 
@@ -277,7 +355,7 @@ void AsmStmt::setOutputsAndInputsAndClobbers(ASTContext &C,
 /// getNamedOperand - Given a symbolic operand reference like %[foo],
 /// translate this into a numeric value needed to reference the same operand.
 /// This returns -1 if the operand name is invalid.
-int AsmStmt::getNamedOperand(llvm::StringRef SymbolicName) const {
+int AsmStmt::getNamedOperand(StringRef SymbolicName) const {
   unsigned NumPlusOperands = 0;
 
   // Check if this is an output operand.
@@ -297,9 +375,9 @@ int AsmStmt::getNamedOperand(llvm::StringRef SymbolicName) const {
 /// AnalyzeAsmString - Analyze the asm string of the current asm, decomposing
 /// it into pieces.  If the asm string is erroneous, emit errors and return
 /// true, otherwise return false.
-unsigned AsmStmt::AnalyzeAsmString(llvm::SmallVectorImpl<AsmStringPiece>&Pieces,
+unsigned AsmStmt::AnalyzeAsmString(SmallVectorImpl<AsmStringPiece>&Pieces,
                                    ASTContext &C, unsigned &DiagOffs) const {
-  llvm::StringRef Str = getAsmString()->getString();
+  StringRef Str = getAsmString()->getString();
   const char *StrStart = Str.begin();
   const char *StrEnd = Str.end();
   const char *CurPtr = StrStart;
@@ -326,7 +404,7 @@ unsigned AsmStmt::AnalyzeAsmString(llvm::SmallVectorImpl<AsmStringPiece>&Pieces,
   // asm string.
   std::string CurStringPiece;
 
-  bool HasVariants = !C.Target.hasNoAsmVariants();
+  bool HasVariants = !C.getTargetInfo().hasNoAsmVariants();
   
   while (1) {
     // Done with the string?
@@ -416,7 +494,7 @@ unsigned AsmStmt::AnalyzeAsmString(llvm::SmallVectorImpl<AsmStringPiece>&Pieces,
       if (NameEnd == CurPtr)
         return diag::err_asm_empty_symbolic_operand_name;
 
-      llvm::StringRef SymbolicName(CurPtr, NameEnd - CurPtr);
+      StringRef SymbolicName(CurPtr, NameEnd - CurPtr);
 
       int N = getNamedOperand(SymbolicName);
       if (N == -1) {
@@ -615,9 +693,9 @@ void IfStmt::setConditionVariable(ASTContext &C, VarDecl *V) {
     return;
   }
   
-  SubExprs[VAR] = new (C) DeclStmt(DeclGroupRef(V), 
-                                   V->getSourceRange().getBegin(),
-                                   V->getSourceRange().getEnd());
+  SourceRange VarRange = V->getSourceRange();
+  SubExprs[VAR] = new (C) DeclStmt(DeclGroupRef(V), VarRange.getBegin(),
+                                   VarRange.getEnd());
 }
 
 ForStmt::ForStmt(ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar, 
@@ -646,9 +724,9 @@ void ForStmt::setConditionVariable(ASTContext &C, VarDecl *V) {
     return;
   }
   
-  SubExprs[CONDVAR] = new (C) DeclStmt(DeclGroupRef(V), 
-                                       V->getSourceRange().getBegin(),
-                                       V->getSourceRange().getEnd());
+  SourceRange VarRange = V->getSourceRange();
+  SubExprs[CONDVAR] = new (C) DeclStmt(DeclGroupRef(V), VarRange.getBegin(),
+                                       VarRange.getEnd());
 }
 
 SwitchStmt::SwitchStmt(ASTContext &C, VarDecl *Var, Expr *cond) 
@@ -673,9 +751,9 @@ void SwitchStmt::setConditionVariable(ASTContext &C, VarDecl *V) {
     return;
   }
   
-  SubExprs[VAR] = new (C) DeclStmt(DeclGroupRef(V), 
-                                   V->getSourceRange().getBegin(),
-                                   V->getSourceRange().getEnd());
+  SourceRange VarRange = V->getSourceRange();
+  SubExprs[VAR] = new (C) DeclStmt(DeclGroupRef(V), VarRange.getBegin(),
+                                   VarRange.getEnd());
 }
 
 Stmt *SwitchCase::getSubStmt() {
@@ -706,10 +784,10 @@ void WhileStmt::setConditionVariable(ASTContext &C, VarDecl *V) {
     SubExprs[VAR] = 0;
     return;
   }
-  
-  SubExprs[VAR] = new (C) DeclStmt(DeclGroupRef(V), 
-                                   V->getSourceRange().getBegin(),
-                                   V->getSourceRange().getEnd());
+
+  SourceRange VarRange = V->getSourceRange();
+  SubExprs[VAR] = new (C) DeclStmt(DeclGroupRef(V), VarRange.getBegin(),
+                                   VarRange.getEnd());
 }
 
 // IndirectGotoStmt

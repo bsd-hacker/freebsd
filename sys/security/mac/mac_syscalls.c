@@ -77,7 +77,7 @@ __FBSDID("$FreeBSD$");
 FEATURE(security_mac, "Mandatory Access Control Framework support");
 
 int
-__mac_get_pid(struct thread *td, struct __mac_get_pid_args *uap)
+sys___mac_get_pid(struct thread *td, struct __mac_get_pid_args *uap)
 {
 	char *elements, *buffer;
 	struct mac mac;
@@ -126,7 +126,7 @@ __mac_get_pid(struct thread *td, struct __mac_get_pid_args *uap)
 }
 
 int
-__mac_get_proc(struct thread *td, struct __mac_get_proc_args *uap)
+sys___mac_get_proc(struct thread *td, struct __mac_get_proc_args *uap)
 {
 	char *elements, *buffer;
 	struct mac mac;
@@ -159,7 +159,7 @@ __mac_get_proc(struct thread *td, struct __mac_get_proc_args *uap)
 }
 
 int
-__mac_set_proc(struct thread *td, struct __mac_set_proc_args *uap)
+sys___mac_set_proc(struct thread *td, struct __mac_set_proc_args *uap)
 {
 	struct ucred *newcred, *oldcred;
 	struct label *intlabel;
@@ -220,7 +220,7 @@ out:
 }
 
 int
-__mac_get_fd(struct thread *td, struct __mac_get_fd_args *uap)
+sys___mac_get_fd(struct thread *td, struct __mac_get_fd_args *uap)
 {
 	char *elements, *buffer;
 	struct label *intlabel;
@@ -256,8 +256,10 @@ __mac_get_fd(struct thread *td, struct __mac_get_fd_args *uap)
 	switch (fp->f_type) {
 	case DTYPE_FIFO:
 	case DTYPE_VNODE:
-		if (!(mac_labeled & MPC_OBJECT_VNODE))
-			return (EINVAL);
+		if (!(mac_labeled & MPC_OBJECT_VNODE)) {
+			error = EINVAL;
+			goto out_fdrop;
+		}
 		vp = fp->f_vnode;
 		intlabel = mac_vnode_label_alloc();
 		vfslocked = VFS_LOCK_GIANT(vp->v_mount);
@@ -271,8 +273,10 @@ __mac_get_fd(struct thread *td, struct __mac_get_fd_args *uap)
 		break;
 
 	case DTYPE_PIPE:
-		if (!(mac_labeled & MPC_OBJECT_PIPE))
-			return (EINVAL);
+		if (!(mac_labeled & MPC_OBJECT_PIPE)) {
+			error = EINVAL;
+			goto out_fdrop;
+		}
 		pipe = fp->f_data;
 		intlabel = mac_pipe_label_alloc();
 		PIPE_LOCK(pipe);
@@ -284,8 +288,10 @@ __mac_get_fd(struct thread *td, struct __mac_get_fd_args *uap)
 		break;
 
 	case DTYPE_SOCKET:
-		if (!(mac_labeled & MPC_OBJECT_SOCKET))
-			return (EINVAL);
+		if (!(mac_labeled & MPC_OBJECT_SOCKET)) {
+			error = EINVAL;
+			goto out_fdrop;
+		}
 		so = fp->f_data;
 		intlabel = mac_socket_label_alloc(M_WAITOK);
 		SOCK_LOCK(so);
@@ -299,10 +305,10 @@ __mac_get_fd(struct thread *td, struct __mac_get_fd_args *uap)
 	default:
 		error = EINVAL;
 	}
-	fdrop(fp, td);
 	if (error == 0)
 		error = copyout(buffer, mac.m_string, strlen(buffer)+1);
-
+out_fdrop:
+	fdrop(fp, td);
 out:
 	free(buffer, M_MACTEMP);
 	free(elements, M_MACTEMP);
@@ -310,7 +316,7 @@ out:
 }
 
 int
-__mac_get_file(struct thread *td, struct __mac_get_file_args *uap)
+sys___mac_get_file(struct thread *td, struct __mac_get_file_args *uap)
 {
 	char *elements, *buffer;
 	struct nameidata nd;
@@ -363,7 +369,7 @@ out:
 }
 
 int
-__mac_get_link(struct thread *td, struct __mac_get_link_args *uap)
+sys___mac_get_link(struct thread *td, struct __mac_get_link_args *uap)
 {
 	char *elements, *buffer;
 	struct nameidata nd;
@@ -416,7 +422,7 @@ out:
 }
 
 int
-__mac_set_fd(struct thread *td, struct __mac_set_fd_args *uap)
+sys___mac_set_fd(struct thread *td, struct __mac_set_fd_args *uap)
 {
 	struct label *intlabel;
 	struct pipe *pipe;
@@ -450,8 +456,10 @@ __mac_set_fd(struct thread *td, struct __mac_set_fd_args *uap)
 	switch (fp->f_type) {
 	case DTYPE_FIFO:
 	case DTYPE_VNODE:
-		if (!(mac_labeled & MPC_OBJECT_VNODE))
-			return (EINVAL);
+		if (!(mac_labeled & MPC_OBJECT_VNODE)) {
+			error = EINVAL;
+			goto out_fdrop;
+		}
 		intlabel = mac_vnode_label_alloc();
 		error = mac_vnode_internalize_label(intlabel, buffer);
 		if (error) {
@@ -475,8 +483,10 @@ __mac_set_fd(struct thread *td, struct __mac_set_fd_args *uap)
 		break;
 
 	case DTYPE_PIPE:
-		if (!(mac_labeled & MPC_OBJECT_PIPE))
-			return (EINVAL);
+		if (!(mac_labeled & MPC_OBJECT_PIPE)) {
+			error = EINVAL;
+			goto out_fdrop;
+		}
 		intlabel = mac_pipe_label_alloc();
 		error = mac_pipe_internalize_label(intlabel, buffer);
 		if (error == 0) {
@@ -490,8 +500,10 @@ __mac_set_fd(struct thread *td, struct __mac_set_fd_args *uap)
 		break;
 
 	case DTYPE_SOCKET:
-		if (!(mac_labeled & MPC_OBJECT_SOCKET))
-			return (EINVAL);
+		if (!(mac_labeled & MPC_OBJECT_SOCKET)) {
+			error = EINVAL;
+			goto out_fdrop;
+		}
 		intlabel = mac_socket_label_alloc(M_WAITOK);
 		error = mac_socket_internalize_label(intlabel, buffer);
 		if (error == 0) {
@@ -505,6 +517,7 @@ __mac_set_fd(struct thread *td, struct __mac_set_fd_args *uap)
 	default:
 		error = EINVAL;
 	}
+out_fdrop:
 	fdrop(fp, td);
 out:
 	free(buffer, M_MACTEMP);
@@ -512,7 +525,7 @@ out:
 }
 
 int
-__mac_set_file(struct thread *td, struct __mac_set_file_args *uap)
+sys___mac_set_file(struct thread *td, struct __mac_set_file_args *uap)
 {
 	struct label *intlabel;
 	struct nameidata nd;
@@ -566,7 +579,7 @@ out:
 }
 
 int
-__mac_set_link(struct thread *td, struct __mac_set_link_args *uap)
+sys___mac_set_link(struct thread *td, struct __mac_set_link_args *uap)
 {
 	struct label *intlabel;
 	struct nameidata nd;
@@ -620,7 +633,7 @@ out:
 }
 
 int
-mac_syscall(struct thread *td, struct mac_syscall_args *uap)
+sys_mac_syscall(struct thread *td, struct mac_syscall_args *uap)
 {
 	struct mac_policy_conf *mpc;
 	char target[MAC_MAX_POLICY_NAME];
@@ -659,70 +672,70 @@ out:
 #else /* !MAC */
 
 int
-__mac_get_pid(struct thread *td, struct __mac_get_pid_args *uap)
+sys___mac_get_pid(struct thread *td, struct __mac_get_pid_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-__mac_get_proc(struct thread *td, struct __mac_get_proc_args *uap)
+sys___mac_get_proc(struct thread *td, struct __mac_get_proc_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-__mac_set_proc(struct thread *td, struct __mac_set_proc_args *uap)
+sys___mac_set_proc(struct thread *td, struct __mac_set_proc_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-__mac_get_fd(struct thread *td, struct __mac_get_fd_args *uap)
+sys___mac_get_fd(struct thread *td, struct __mac_get_fd_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-__mac_get_file(struct thread *td, struct __mac_get_file_args *uap)
+sys___mac_get_file(struct thread *td, struct __mac_get_file_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-__mac_get_link(struct thread *td, struct __mac_get_link_args *uap)
+sys___mac_get_link(struct thread *td, struct __mac_get_link_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-__mac_set_fd(struct thread *td, struct __mac_set_fd_args *uap)
+sys___mac_set_fd(struct thread *td, struct __mac_set_fd_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-__mac_set_file(struct thread *td, struct __mac_set_file_args *uap)
+sys___mac_set_file(struct thread *td, struct __mac_set_file_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-__mac_set_link(struct thread *td, struct __mac_set_link_args *uap)
+sys___mac_set_link(struct thread *td, struct __mac_set_link_args *uap)
 {
 
 	return (ENOSYS);
 }
 
 int
-mac_syscall(struct thread *td, struct mac_syscall_args *uap)
+sys_mac_syscall(struct thread *td, struct mac_syscall_args *uap)
 {
 
 	return (ENOSYS);

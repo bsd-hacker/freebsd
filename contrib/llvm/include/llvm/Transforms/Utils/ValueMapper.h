@@ -20,7 +20,7 @@
 namespace llvm {
   class Value;
   class Instruction;
-  typedef ValueMap<const Value *, TrackingVH<Value> > ValueToValueMapTy;
+  typedef ValueMap<const Value *, WeakVH> ValueToValueMapTy;
 
   /// ValueMapTypeRemapper - This is a class that can be implemented by clients
   /// to remap types when cloning constants and instructions.
@@ -66,12 +66,12 @@ namespace llvm {
   inline MDNode *MapValue(const MDNode *V, ValueToValueMapTy &VM,
                           RemapFlags Flags = RF_None,
                           ValueMapTypeRemapper *TypeMapper = 0) {
-    return (MDNode*)MapValue((const Value*)V, VM, Flags, TypeMapper);
+    return cast<MDNode>(MapValue((const Value*)V, VM, Flags, TypeMapper));
   }
   inline Constant *MapValue(const Constant *V, ValueToValueMapTy &VM,
                             RemapFlags Flags = RF_None,
                             ValueMapTypeRemapper *TypeMapper = 0) {
-    return (Constant*)MapValue((const Value*)V, VM, Flags, TypeMapper);
+    return cast<Constant>(MapValue((const Value*)V, VM, Flags, TypeMapper));
   }
   
 

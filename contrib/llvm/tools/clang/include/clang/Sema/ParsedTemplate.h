@@ -114,7 +114,7 @@ namespace clang {
     KindType Kind;
     
     /// \brief The actual template argument representation, which may be
-    /// an \c ActionBase::TypeTy* (for a type), an ActionBase::ExprTy* (for an
+    /// an \c ActionBase::TypeTy* (for a type), an Expr* (for an
     /// expression), or an ActionBase::TemplateTy (for a template).
     void *Arg;
 
@@ -141,7 +141,11 @@ namespace clang {
   struct TemplateIdAnnotation {
     /// \brief The nested-name-specifier that precedes the template name.
     CXXScopeSpec SS;
-    
+
+    /// TemplateKWLoc - The location of the template keyword within the
+    /// source.
+    SourceLocation TemplateKWLoc;
+
     /// TemplateNameLoc - The location of the template name within the
     /// source.
     SourceLocation TemplateNameLoc;

@@ -57,7 +57,7 @@ struct HMapHeader {
 /// HashHMapKey - This is the 'well known' hash function required by the file
 /// format, used to look up keys in the hash table.  The hash table uses simple
 /// linear probing based on this function.
-static inline unsigned HashHMapKey(llvm::StringRef Str) {
+static inline unsigned HashHMapKey(StringRef Str) {
   unsigned Result = 0;
   const char *S = Str.begin(), *End = Str.end();
 
@@ -81,7 +81,7 @@ const HeaderMap *HeaderMap::Create(const FileEntry *FE, FileManager &FM) {
   unsigned FileSize = FE->getSize();
   if (FileSize <= sizeof(HMapHeader)) return 0;
 
-  llvm::OwningPtr<const llvm::MemoryBuffer> FileBuffer(FM.getBufferForFile(FE));
+  OwningPtr<const llvm::MemoryBuffer> FileBuffer(FM.getBufferForFile(FE));
   if (FileBuffer == 0) return 0;  // Unreadable file?
   const char *FileStart = FileBuffer->getBufferStart();
 
@@ -200,7 +200,7 @@ void HeaderMap::dump() const {
 /// LookupFile - Check to see if the specified relative filename is located in
 /// this HeaderMap.  If so, open it and return its FileEntry.
 const FileEntry *HeaderMap::LookupFile(
-    llvm::StringRef Filename, FileManager &FM) const {
+    StringRef Filename, FileManager &FM) const {
   const HMapHeader &Hdr = getHeader();
   unsigned NumBuckets = getEndianAdjustedWord(Hdr.NumBuckets);
 
@@ -220,7 +220,7 @@ const FileEntry *HeaderMap::LookupFile(
 
     // If so, we have a match in the hash table.  Construct the destination
     // path.
-    llvm::SmallString<1024> DestPath;
+    SmallString<1024> DestPath;
     DestPath += getString(B.Prefix);
     DestPath += getString(B.Suffix);
     return FM.getFile(DestPath.str());

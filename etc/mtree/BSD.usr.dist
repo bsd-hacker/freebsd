@@ -93,6 +93,10 @@
                 intel_wpi
                 ..
             ..
+            llvm
+                clang
+                ..
+            ..
             ncurses
             ..
             ntp
@@ -205,6 +209,8 @@
             ..
             bootforth
             ..
+	    csh
+	    	..
             cvs
                 contrib
                 ..

@@ -15,8 +15,7 @@ using namespace clang;
 using namespace arcmt;
 
 bool CheckAction::BeginInvocation(CompilerInstance &CI) {
-  if (arcmt::checkForManualIssues(CI.getInvocation(), getCurrentFile(),
-                                  getCurrentFileKind(),
+  if (arcmt::checkForManualIssues(CI.getInvocation(), getCurrentInput(),
                                   CI.getDiagnostics().getClient()))
     return false; // errors, stop the action.
 
@@ -29,8 +28,7 @@ CheckAction::CheckAction(FrontendAction *WrappedAction)
   : WrapperFrontendAction(WrappedAction) {}
 
 bool ModifyAction::BeginInvocation(CompilerInstance &CI) {
-  return !arcmt::applyTransformations(CI.getInvocation(),
-                                      getCurrentFile(), getCurrentFileKind(),
+  return !arcmt::applyTransformations(CI.getInvocation(), getCurrentInput(),
                                       CI.getDiagnostics().getClient());
 }
 
@@ -38,16 +36,25 @@ ModifyAction::ModifyAction(FrontendAction *WrappedAction)
   : WrapperFrontendAction(WrappedAction) {}
 
 bool MigrateAction::BeginInvocation(CompilerInstance &CI) {
-  return !arcmt::migrateWithTemporaryFiles(CI.getInvocation(),
-                                           getCurrentFile(),
-                                           getCurrentFileKind(),
-                                           CI.getDiagnostics().getClient(),
-                                           MigrateDir);
+  if (arcmt::migrateWithTemporaryFiles(CI.getInvocation(),
+                                       getCurrentInput(),
+                                       CI.getDiagnostics().getClient(),
+                                       MigrateDir,
+                                       EmitPremigrationARCErros,
+                                       PlistOut))
+    return false; // errors, stop the action.
+
+  // We only want to see diagnostics emitted by migrateWithTemporaryFiles.
+  CI.getDiagnostics().setIgnoreAllWarnings(true);
+  return true;
 }
 
 MigrateAction::MigrateAction(FrontendAction *WrappedAction,
-                             llvm::StringRef migrateDir)
-  : WrapperFrontendAction(WrappedAction), MigrateDir(migrateDir) {
+                             StringRef migrateDir,
+                             StringRef plistOut,
+                             bool emitPremigrationARCErrors)
+  : WrapperFrontendAction(WrappedAction), MigrateDir(migrateDir),
+    PlistOut(plistOut), EmitPremigrationARCErros(emitPremigrationARCErrors) {
   if (MigrateDir.empty())
     MigrateDir = "."; // user current directory if none is given.
 }

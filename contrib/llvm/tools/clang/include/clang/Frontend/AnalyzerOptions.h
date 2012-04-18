@@ -20,7 +20,7 @@
 
 namespace clang {
 class ASTConsumer;
-class Diagnostic;
+class DiagnosticsEngine;
 class Preprocessor;
 class LangOptions;
 
@@ -53,6 +53,27 @@ enum AnalysisDiagClients {
 NUM_ANALYSIS_DIAG_CLIENTS
 };
 
+/// AnalysisPurgeModes - Set of available strategies for dead symbol removal.
+enum AnalysisPurgeMode {
+#define ANALYSIS_PURGE(NAME, CMDFLAG, DESC) NAME,
+#include "clang/Frontend/Analyses.def"
+NumPurgeModes
+};
+
+/// AnalysisIPAMode - Set of inter-procedural modes.
+enum AnalysisIPAMode {
+#define ANALYSIS_IPA(NAME, CMDFLAG, DESC) NAME,
+#include "clang/Frontend/Analyses.def"
+NumIPAModes
+};
+
+/// AnalysisInlineFunctionSelection - Set of inlining function selection heuristics.
+enum AnalysisInliningMode {
+#define ANALYSIS_INLINING_MODE(NAME, CMDFLAG, DESC) NAME,
+#include "clang/Frontend/Analyses.def"
+NumInliningModes
+};
+
 class AnalyzerOptions {
 public:
   /// \brief Pair of checker name and enable/disable.
@@ -60,6 +81,8 @@ public:
   AnalysisStores AnalysisStoreOpt;
   AnalysisConstraints AnalysisConstraintsOpt;
   AnalysisDiagClients AnalysisDiagOpt;
+  AnalysisPurgeMode AnalysisPurgeOpt;
+  AnalysisIPAMode IPAMode;
   std::string AnalyzeSpecificFunction;
   unsigned MaxNodes;
   unsigned MaxLoop;
@@ -68,35 +91,44 @@ public:
   unsigned AnalyzerDisplayProgress : 1;
   unsigned AnalyzeNestedBlocks : 1;
   unsigned EagerlyAssume : 1;
-  unsigned PurgeDead : 1;
   unsigned TrimGraph : 1;
   unsigned VisualizeEGDot : 1;
   unsigned VisualizeEGUbi : 1;
-  unsigned InlineCall : 1;
   unsigned UnoptimizedCFG : 1;
   unsigned CFGAddImplicitDtors : 1;
   unsigned CFGAddInitializers : 1;
   unsigned EagerlyTrimEGraph : 1;
+  unsigned PrintStats : 1;
+  unsigned NoRetryExhausted : 1;
+  unsigned InlineMaxStackDepth;
+  unsigned InlineMaxFunctionSize;
+  AnalysisInliningMode InliningMode;
 
 public:
   AnalyzerOptions() {
-    AnalysisStoreOpt = BasicStoreModel;
+    AnalysisStoreOpt = RegionStoreModel;
     AnalysisConstraintsOpt = RangeConstraintsModel;
     AnalysisDiagOpt = PD_HTML;
+    AnalysisPurgeOpt = PurgeStmt;
+    IPAMode = Inlining;
     ShowCheckerHelp = 0;
     AnalyzeAll = 0;
     AnalyzerDisplayProgress = 0;
     AnalyzeNestedBlocks = 0;
     EagerlyAssume = 0;
-    PurgeDead = 1;
     TrimGraph = 0;
     VisualizeEGDot = 0;
     VisualizeEGUbi = 0;
-    InlineCall = 0;
     UnoptimizedCFG = 0;
     CFGAddImplicitDtors = 0;
     CFGAddInitializers = 0;
     EagerlyTrimEGraph = 0;
+    PrintStats = 0;
+    NoRetryExhausted = 0;
+    // Cap the stack depth at 4 calls (5 stack frames, base + 4 calls).
+    InlineMaxStackDepth = 5;
+    InlineMaxFunctionSize = 200;
+    InliningMode = NoRedundancy;
   }
 };
 

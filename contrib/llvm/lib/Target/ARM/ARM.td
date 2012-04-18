@@ -1,4 +1,4 @@
-//===- ARM.td - Describe the ARM Target Machine ------------*- tablegen -*-===//
+//===-- ARM.td - Describe the ARM Target Machine -----------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -32,6 +32,9 @@ def FeatureVFP2 : SubtargetFeature<"vfp2", "HasVFPv2", "true",
 def FeatureVFP3 : SubtargetFeature<"vfp3", "HasVFPv3", "true",
                                    "Enable VFP3 instructions",
                                    [FeatureVFP2]>;
+def FeatureVFP4 : SubtargetFeature<"vfp4", "HasVFPv4", "true",
+                                   "Enable VFP4 instructions",
+                                   [FeatureVFP3]>;
 def FeatureNEON : SubtargetFeature<"neon", "HasNEON", "true",
                                    "Enable NEON instructions",
                                    [FeatureVFP3]>;
@@ -83,13 +86,22 @@ def FeatureAvoidPartialCPSR : SubtargetFeature<"avoid-partial-cpsr",
                                                "AvoidCPSRPartialUpdate", "true",
                                  "Avoid CPSR partial update for OOO execution">;
 
+// Some processors perform return stack prediction. CodeGen should avoid issue
+// "normal" call instructions to callees which do not return.
+def FeatureHasRAS : SubtargetFeature<"ras", "HasRAS", "true",
+                                     "Has return address stack">;
+
 /// Some M architectures don't have the DSP extension (v7E-M vs. v7M)
 def FeatureDSPThumb2 : SubtargetFeature<"t2dsp", "Thumb2DSP", "true",
-                                 "Supports v7 DSP instructions in Thumb2.">;
+                                 "Supports v7 DSP instructions in Thumb2">;
 
 // Multiprocessing extension.
 def FeatureMP : SubtargetFeature<"mp", "HasMPExtension", "true",
                                  "Supports Multiprocessing extension">;
+
+// M-series ISA?
+def FeatureMClass : SubtargetFeature<"mclass", "IsMClass", "true",
+                                     "Is microcontroller profile ('M' series)">;
 
 // ARM ISAs.
 def HasV4TOps   : SubtargetFeature<"v4t", "HasV4TOps", "true",
@@ -105,7 +117,7 @@ def HasV6Ops    : SubtargetFeature<"v6", "HasV6Ops", "true",
                                    [HasV5TEOps]>;
 def HasV6T2Ops  : SubtargetFeature<"v6t2", "HasV6T2Ops", "true",
                                    "Support ARM v6t2 instructions",
-                                   [HasV6Ops, FeatureThumb2, FeatureDSPThumb2]>;
+                                   [HasV6Ops, FeatureThumb2]>;
 def HasV7Ops    : SubtargetFeature<"v7", "HasV7Ops", "true",
                                    "Support ARM v7 instructions",
                                    [HasV6T2Ops]>;
@@ -182,35 +194,38 @@ def : Processor<"mpcore",           ARMV6Itineraries, [HasV6Ops, FeatureVFP2,
 
 // V6M Processors.
 def : Processor<"cortex-m0",        ARMV6Itineraries, [HasV6Ops, FeatureNoARM,
-                                                       FeatureDB]>;
+                                                       FeatureDB, FeatureMClass]>;
 
 // V6T2 Processors.
-def : Processor<"arm1156t2-s",      ARMV6Itineraries, [HasV6T2Ops]>;
+def : Processor<"arm1156t2-s",      ARMV6Itineraries, [HasV6T2Ops,
+                                                       FeatureDSPThumb2]>;
 def : Processor<"arm1156t2f-s",     ARMV6Itineraries, [HasV6T2Ops, FeatureVFP2,
-                                                       FeatureHasSlowFPVMLx]>;
+                                                       FeatureHasSlowFPVMLx,
+                                                       FeatureDSPThumb2]>;
 
 // V7a Processors.
 def : Processor<"cortex-a8",        CortexA8Itineraries,
                                     [ProcA8, HasV7Ops, FeatureNEON, FeatureDB,
-                                     FeatureDSPThumb2]>;
+                                     FeatureDSPThumb2, FeatureHasRAS]>;
 def : Processor<"cortex-a9",        CortexA9Itineraries,
                                     [ProcA9, HasV7Ops, FeatureNEON, FeatureDB,
-                                     FeatureDSPThumb2]>;
+                                     FeatureDSPThumb2, FeatureHasRAS]>;
 def : Processor<"cortex-a9-mp",     CortexA9Itineraries,
                                     [ProcA9, HasV7Ops, FeatureNEON, FeatureDB,
-                                     FeatureDSPThumb2, FeatureMP]>;
+                                     FeatureDSPThumb2, FeatureMP,
+                                     FeatureHasRAS]>;
 
 // V7M Processors.
 def : ProcNoItin<"cortex-m3",       [HasV7Ops,
                                      FeatureThumb2, FeatureNoARM, FeatureDB,
-                                     FeatureHWDiv]>;
+                                     FeatureHWDiv, FeatureMClass]>;
 
 // V7EM Processors.
 def : ProcNoItin<"cortex-m4",       [HasV7Ops,
                                      FeatureThumb2, FeatureNoARM, FeatureDB,
                                      FeatureHWDiv, FeatureDSPThumb2,
                                      FeatureT2XtPk, FeatureVFP2,
-                                     FeatureVFPOnlySP]>;
+                                     FeatureVFPOnlySP, FeatureMClass]>;
 
 //===----------------------------------------------------------------------===//
 // Register File Description

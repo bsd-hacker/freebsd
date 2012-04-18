@@ -15,16 +15,19 @@
 #ifndef LLVM_EXECUTION_ENGINE_H
 #define LLVM_EXECUTION_ENGINE_H
 
-#include <vector>
-#include <map>
-#include <string>
+#include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ValueMap.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ValueHandle.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
+#include <vector>
+#include <map>
+#include <string>
 
 namespace llvm {
 
@@ -40,6 +43,7 @@ class MachineCodeInfo;
 class Module;
 class MutexGuard;
 class TargetData;
+class Triple;
 class Type;
 
 /// \brief Helper class for helping synchronize access to the global address map
@@ -119,9 +123,7 @@ protected:
   /// optimize for the case where there is only one module.
   SmallVector<Module*, 1> Modules;
 
-  void setTargetData(const TargetData *td) {
-    TD = td;
-  }
+  void setTargetData(const TargetData *td) { TD = td; }
 
   /// getMemoryforGV - Allocate memory for a global variable.
   virtual char *getMemoryForGV(const GlobalVariable *GV);
@@ -133,18 +135,15 @@ protected:
     Module *M,
     std::string *ErrorStr,
     JITMemoryManager *JMM,
-    CodeGenOpt::Level OptLevel,
     bool GVsWithCode,
     TargetMachine *TM);
   static ExecutionEngine *(*MCJITCtor)(
     Module *M,
     std::string *ErrorStr,
     JITMemoryManager *JMM,
-    CodeGenOpt::Level OptLevel,
     bool GVsWithCode,
     TargetMachine *TM);
-  static ExecutionEngine *(*InterpCtor)(Module *M,
-                                        std::string *ErrorStr);
+  static ExecutionEngine *(*InterpCtor)(Module *M, std::string *ErrorStr);
 
   /// LazyFunctionCreator - If an unknown function is needed, this function
   /// pointer is invoked to create it.  If this returns null, the JIT will
@@ -186,7 +185,7 @@ public:
                                  bool ForceInterpreter = false,
                                  std::string *ErrorStr = 0,
                                  CodeGenOpt::Level OptLevel =
-                                   CodeGenOpt::Default,
+                                 CodeGenOpt::Default,
                                  bool GVsWithCode = true);
 
   /// createJIT - This is the factory method for creating a JIT for the current
@@ -199,10 +198,11 @@ public:
                                     std::string *ErrorStr = 0,
                                     JITMemoryManager *JMM = 0,
                                     CodeGenOpt::Level OptLevel =
-                                      CodeGenOpt::Default,
+                                    CodeGenOpt::Default,
                                     bool GVsWithCode = true,
+                                    Reloc::Model RM = Reloc::Default,
                                     CodeModel::Model CMM =
-                                      CodeModel::Default);
+                                    CodeModel::JITDefault);
 
   /// addModule - Add a Module to the list of modules that we can JIT from.
   /// Note that this takes ownership of the Module: when the ExecutionEngine is
@@ -228,6 +228,26 @@ public:
   /// and return the result.
   virtual GenericValue runFunction(Function *F,
                                 const std::vector<GenericValue> &ArgValues) = 0;
+
+  /// getPointerToNamedFunction - This method returns the address of the
+  /// specified function by using the dlsym function call.  As such it is only
+  /// useful for resolving library symbols, not code generated symbols.
+  ///
+  /// If AbortOnFailure is false and no function with the given name is
+  /// found, this function silently returns a null pointer. Otherwise,
+  /// it prints a message to stderr and aborts.
+  ///
+  virtual void *getPointerToNamedFunction(const std::string &Name,
+                                          bool AbortOnFailure = true) = 0;
+
+  /// mapSectionAddress - map a section to its target address space value.
+  /// Map the address of a JIT section as returned from the memory manager
+  /// to the address in the target process as the running code will see it.
+  /// This is the address which will be used for relocation resolution.
+  virtual void mapSectionAddress(void *LocalAddress, uint64_t TargetAddress) {
+    llvm_unreachable("Re-mapping of section addresses not supported with this "
+                     "EE!");
+  }
 
   /// runStaticConstructorsDestructors - This method is used to execute all of
   /// the static constructors or destructors for a program.
@@ -314,7 +334,7 @@ public:
   /// GenericValue *.  It is not a pointer to a GenericValue containing the
   /// address at which to store Val.
   void StoreValueToMemory(const GenericValue &Val, GenericValue *Ptr,
-                          const Type *Ty);
+                          Type *Ty);
 
   void InitializeMemory(const Constant *Init, void *Addr);
 
@@ -440,7 +460,7 @@ protected:
 
   GenericValue getConstantValue(const Constant *C);
   void LoadValueFromMemory(GenericValue &Result, GenericValue *Ptr,
-                           const Type *Ty);
+                           Type *Ty);
 };
 
 namespace EngineKind {
@@ -463,6 +483,8 @@ private:
   CodeGenOpt::Level OptLevel;
   JITMemoryManager *JMM;
   bool AllocateGVsWithCode;
+  TargetOptions Options;
+  Reloc::Model RelocModel;
   CodeModel::Model CMModel;
   std::string MArch;
   std::string MCPU;
@@ -475,8 +497,10 @@ private:
     ErrorStr = NULL;
     OptLevel = CodeGenOpt::Default;
     JMM = NULL;
+    Options = TargetOptions();
     AllocateGVsWithCode = false;
-    CMModel = CodeModel::Default;
+    RelocModel = Reloc::Default;
+    CMModel = CodeModel::JITDefault;
     UseMCJIT = false;
   }
 
@@ -517,8 +541,23 @@ public:
     return *this;
   }
 
+  /// setTargetOptions - Set the target options that the ExecutionEngine
+  /// target is using. Defaults to TargetOptions().
+  EngineBuilder &setTargetOptions(const TargetOptions &Opts) {
+    Options = Opts;
+    return *this;
+  }
+
+  /// setRelocationModel - Set the relocation model that the ExecutionEngine
+  /// target is using. Defaults to target specific default "Reloc::Default".
+  EngineBuilder &setRelocationModel(Reloc::Model RM) {
+    RelocModel = RM;
+    return *this;
+  }
+
   /// setCodeModel - Set the CodeModel that the ExecutionEngine target
-  /// data is using. Defaults to target specific default "CodeModel::Default".
+  /// data is using. Defaults to target specific default
+  /// "CodeModel::JITDefault".
   EngineBuilder &setCodeModel(CodeModel::Model M) {
     CMModel = M;
     return *this;
@@ -563,15 +602,20 @@ public:
     return *this;
   }
 
+  TargetMachine *selectTarget();
+
   /// selectTarget - Pick a target either via -march or by guessing the native
   /// arch.  Add any CPU features specified via -mcpu or -mattr.
-  static TargetMachine *selectTarget(Module *M,
-                                     StringRef MArch,
-                                     StringRef MCPU,
-                                     const SmallVectorImpl<std::string>& MAttrs,
-                                     std::string *Err);
+  TargetMachine *selectTarget(const Triple &TargetTriple,
+                              StringRef MArch,
+                              StringRef MCPU,
+                              const SmallVectorImpl<std::string>& MAttrs);
 
-  ExecutionEngine *create();
+  ExecutionEngine *create() {
+    return create(selectTarget());
+  }
+
+  ExecutionEngine *create(TargetMachine *TM);
 };
 
 } // End llvm namespace

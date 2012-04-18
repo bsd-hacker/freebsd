@@ -14,23 +14,27 @@ SRCS=	AnalysisBasedWarnings.cpp \
 	Sema.cpp \
 	SemaAccess.cpp \
 	SemaAttr.cpp \
-	SemaCXXCast.cpp \
 	SemaCXXScopeSpec.cpp \
+	SemaCast.cpp \
 	SemaChecking.cpp \
 	SemaCodeComplete.cpp \
+	SemaConsumer.cpp \
 	SemaDecl.cpp \
 	SemaDeclAttr.cpp \
 	SemaDeclCXX.cpp \
-	SemaExprMember.cpp \
 	SemaDeclObjC.cpp \
 	SemaExceptionSpec.cpp \
 	SemaExpr.cpp \
 	SemaExprCXX.cpp \
+	SemaExprMember.cpp \
 	SemaExprObjC.cpp \
+	SemaFixItUtils.cpp \
 	SemaInit.cpp \
+	SemaLambda.cpp \
 	SemaLookup.cpp \
 	SemaObjCProperty.cpp \
 	SemaOverload.cpp \
+	SemaPseudoObject.cpp \
 	SemaStmt.cpp \
 	SemaTemplate.cpp \
 	SemaTemplateDeduction.cpp \
@@ -41,6 +45,9 @@ SRCS=	AnalysisBasedWarnings.cpp \
 	TargetAttributesSema.cpp
 
 TGHDRS=	AttrList \
+	AttrParsedAttrKinds \
+	AttrParsedAttrList \
+	AttrTemplateInstantiate \
 	Attrs \
 	DeclNodes \
 	DiagnosticASTKinds \

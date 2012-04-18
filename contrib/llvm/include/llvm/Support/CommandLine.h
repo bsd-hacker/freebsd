@@ -40,7 +40,7 @@ namespace cl {
 //===----------------------------------------------------------------------===//
 // ParseCommandLineOptions - Command line option processing entry point.
 //
-void ParseCommandLineOptions(int argc, char **argv,
+void ParseCommandLineOptions(int argc, const char * const *argv,
                              const char *Overview = 0,
                              bool ReadResponseFiles = false);
 
@@ -59,6 +59,15 @@ void ParseEnvironmentOptions(const char *progName, const char *envvar,
 ///                     CommandLine utilities to print their own version string.
 void SetVersionPrinter(void (*func)());
 
+///===---------------------------------------------------------------------===//
+/// AddExtraVersionPrinter - Add an extra printer to use in addition to the
+///                          default one. This can be called multiple times,
+///                          and each time it adds a new function to the list
+///                          which will be called after the basic LLVM version
+///                          printing is complete. Each can then add additional
+///                          information specific to the tool.
+void AddExtraVersionPrinter(void (*func)());
+
 
 // PrintOptionValues - Print option values.
 // With -print-options print the difference between option values and defaults.
@@ -74,10 +83,10 @@ void MarkOptionsChanged();
 //
 
 enum NumOccurrencesFlag {      // Flags for the number of occurrences allowed
-  Optional        = 0x01,      // Zero or One occurrence
-  ZeroOrMore      = 0x02,      // Zero or more occurrences allowed
-  Required        = 0x03,      // One occurrence required
-  OneOrMore       = 0x04,      // One or more occurrences required
+  Optional        = 0x00,      // Zero or One occurrence
+  ZeroOrMore      = 0x01,      // Zero or more occurrences allowed
+  Required        = 0x02,      // One occurrence required
+  OneOrMore       = 0x03,      // One or more occurrences required
 
   // ConsumeAfter - Indicates that this option is fed anything that follows the
   // last positional argument required by the application (it is an error if
@@ -86,23 +95,20 @@ enum NumOccurrencesFlag {      // Flags for the number of occurrences allowed
   // found.  Once a filename is found, all of the succeeding arguments are
   // passed, unprocessed, to the ConsumeAfter option.
   //
-  ConsumeAfter    = 0x05,
-
-  OccurrencesMask  = 0x07
+  ConsumeAfter    = 0x04
 };
 
 enum ValueExpected {           // Is a value required for the option?
-  ValueOptional   = 0x08,      // The value can appear... or not
-  ValueRequired   = 0x10,      // The value is required to appear!
-  ValueDisallowed = 0x18,      // A value may not be specified (for flags)
-  ValueMask       = 0x18
+  // zero reserved for the unspecified value
+  ValueOptional   = 0x01,      // The value can appear... or not
+  ValueRequired   = 0x02,      // The value is required to appear!
+  ValueDisallowed = 0x03       // A value may not be specified (for flags)
 };
 
 enum OptionHidden {            // Control whether -help shows this option
-  NotHidden       = 0x20,      // Option included in -help & -help-hidden
-  Hidden          = 0x40,      // -help doesn't, but -help-hidden does
-  ReallyHidden    = 0x60,      // Neither -help nor -help-hidden show this arg
-  HiddenMask      = 0x60
+  NotHidden       = 0x00,      // Option included in -help & -help-hidden
+  Hidden          = 0x01,      // -help doesn't, but -help-hidden does
+  ReallyHidden    = 0x02       // Neither -help nor -help-hidden show this arg
 };
 
 // Formatting flags - This controls special features that the option might have
@@ -121,18 +127,16 @@ enum OptionHidden {            // Control whether -help shows this option
 //
 
 enum FormattingFlags {
-  NormalFormatting = 0x000,     // Nothing special
-  Positional       = 0x080,     // Is a positional argument, no '-' required
-  Prefix           = 0x100,     // Can this option directly prefix its value?
-  Grouping         = 0x180,     // Can this option group with other options?
-  FormattingMask   = 0x180      // Union of the above flags.
+  NormalFormatting = 0x00,     // Nothing special
+  Positional       = 0x01,     // Is a positional argument, no '-' required
+  Prefix           = 0x02,     // Can this option directly prefix its value?
+  Grouping         = 0x03      // Can this option group with other options?
 };
 
 enum MiscFlags {               // Miscellaneous flags to adjust argument
-  CommaSeparated     = 0x200,  // Should this cl::list split between commas?
-  PositionalEatsArgs = 0x400,  // Should this positional cl::list eat -args?
-  Sink               = 0x800,  // Should this cl::list eat all unknown options?
-  MiscMask           = 0xE00   // Union of the above flags.
+  CommaSeparated     = 0x01,  // Should this cl::list split between commas?
+  PositionalEatsArgs = 0x02,  // Should this positional cl::list eat -args?
+  Sink               = 0x04   // Should this cl::list eat all unknown options?
 };
 
 
@@ -159,7 +163,15 @@ class Option {
   virtual void anchor();
 
   int NumOccurrences;     // The number of times specified
-  int Flags;              // Flags for the argument
+  // Occurrences, HiddenFlag, and Formatting are all enum types but to avoid
+  // problems with signed enums in bitfields.
+  unsigned Occurrences : 3; // enum NumOccurrencesFlag
+  // not using the enum type for 'Value' because zero is an implementation
+  // detail representing the non-value
+  unsigned Value : 2;
+  unsigned HiddenFlag : 2; // enum OptionHidden
+  unsigned Formatting : 2; // enum FormattingFlags
+  unsigned Misc : 3;
   unsigned Position;      // Position of last occurrence of the option
   unsigned AdditionalVals;// Greater than 0 for multi-valued option.
   Option *NextRegistered; // Singly linked list of registered options.
@@ -169,21 +181,20 @@ public:
   const char *ValueStr;   // String describing what the value of this option is
 
   inline enum NumOccurrencesFlag getNumOccurrencesFlag() const {
-    return static_cast<enum NumOccurrencesFlag>(Flags & OccurrencesMask);
+    return (enum NumOccurrencesFlag)Occurrences;
   }
   inline enum ValueExpected getValueExpectedFlag() const {
-    int VE = Flags & ValueMask;
-    return VE ? static_cast<enum ValueExpected>(VE)
+    return Value ? ((enum ValueExpected)Value)
               : getValueExpectedFlagDefault();
   }
   inline enum OptionHidden getOptionHiddenFlag() const {
-    return static_cast<enum OptionHidden>(Flags & HiddenMask);
+    return (enum OptionHidden)HiddenFlag;
   }
   inline enum FormattingFlags getFormattingFlag() const {
-    return static_cast<enum FormattingFlags>(Flags & FormattingMask);
+    return (enum FormattingFlags)Formatting;
   }
   inline unsigned getMiscFlags() const {
-    return Flags & MiscMask;
+    return Misc;
   }
   inline unsigned getPosition() const { return Position; }
   inline unsigned getNumAdditionalVals() const { return AdditionalVals; }
@@ -197,27 +208,21 @@ public:
   void setArgStr(const char *S) { ArgStr = S; }
   void setDescription(const char *S) { HelpStr = S; }
   void setValueStr(const char *S) { ValueStr = S; }
-
-  void setFlag(unsigned Flag, unsigned FlagMask) {
-    Flags &= ~FlagMask;
-    Flags |= Flag;
-  }
-
   void setNumOccurrencesFlag(enum NumOccurrencesFlag Val) {
-    setFlag(Val, OccurrencesMask);
+    Occurrences = Val;
   }
-  void setValueExpectedFlag(enum ValueExpected Val) { setFlag(Val, ValueMask); }
-  void setHiddenFlag(enum OptionHidden Val) { setFlag(Val, HiddenMask); }
-  void setFormattingFlag(enum FormattingFlags V) { setFlag(V, FormattingMask); }
-  void setMiscFlag(enum MiscFlags M) { setFlag(M, M); }
+  void setValueExpectedFlag(enum ValueExpected Val) { Value = Val; }
+  void setHiddenFlag(enum OptionHidden Val) { HiddenFlag = Val; }
+  void setFormattingFlag(enum FormattingFlags V) { Formatting = V; }
+  void setMiscFlag(enum MiscFlags M) { Misc |= M; }
   void setPosition(unsigned pos) { Position = pos; }
 protected:
-  explicit Option(unsigned DefaultFlags)
-    : NumOccurrences(0), Flags(DefaultFlags | NormalFormatting), Position(0),
+  explicit Option(enum NumOccurrencesFlag Occurrences, 
+                  enum OptionHidden Hidden)
+    : NumOccurrences(0), Occurrences(Occurrences), HiddenFlag(Hidden), 
+      Formatting(NormalFormatting), Position(0),
       AdditionalVals(0), NextRegistered(0),
       ArgStr(""), HelpStr(""), ValueStr("") {
-    assert(getNumOccurrencesFlag() != 0 &&
-           getOptionHiddenFlag() != 0 && "Not all default flags specified!");
   }
 
   inline void setNumAdditionalVals(unsigned n) { AdditionalVals = n; }
@@ -317,6 +322,8 @@ LocationClass<Ty> location(Ty &L) { return LocationClass<Ty>(L); }
 struct GenericOptionValue {
   virtual ~GenericOptionValue() {}
   virtual bool compare(const GenericOptionValue &V) const = 0;
+private:
+  virtual void anchor();
 };
 
 template<class DataType> struct OptionValue;
@@ -330,7 +337,7 @@ struct OptionValueBase : public GenericOptionValue {
 
   bool hasValue() const { return false; }
 
-  const DataType &getValue() const { assert(false && "no default value"); }
+  const DataType &getValue() const { llvm_unreachable("no default value"); }
 
   // Some options may take their value from a different data type.
   template<class DT>
@@ -407,6 +414,8 @@ struct OptionValue<cl::boolOrDefault> : OptionValueCopy<cl::boolOrDefault> {
     setValue(V);
     return *this;
   }
+private:
+  virtual void anchor();
 };
 
 template<>
@@ -422,6 +431,8 @@ struct OptionValue<std::string> : OptionValueCopy<std::string> {
     setValue(V);
     return *this;
   }
+private:
+  virtual void anchor();
 };
 
 //===----------------------------------------------------------------------===//
@@ -797,6 +808,28 @@ public:
 EXTERN_TEMPLATE_INSTANTIATION(class basic_parser<unsigned>);
 
 //--------------------------------------------------
+// parser<unsigned long long>
+//
+template<>
+class parser<unsigned long long> : public basic_parser<unsigned long long> {
+public:
+  // parse - Return true on error.
+  bool parse(Option &O, StringRef ArgName, StringRef Arg,
+             unsigned long long &Val);
+
+  // getValueName - Overload in subclass to provide a better default value.
+  virtual const char *getValueName() const { return "uint"; }
+
+  void printOptionDiff(const Option &O, unsigned long long V, OptVal Default,
+                       size_t GlobalWidth) const;
+
+  // An out-of-line virtual method to provide a 'home' for this class.
+  virtual void anchor();
+};
+
+EXTERN_TEMPLATE_INSTANTIATION(class basic_parser<unsigned long long>);
+
+//--------------------------------------------------
 // parser<double>
 //
 template<>
@@ -1140,14 +1173,14 @@ public:
 
   // One option...
   template<class M0t>
-  explicit opt(const M0t &M0) : Option(Optional | NotHidden) {
+  explicit opt(const M0t &M0) : Option(Optional, NotHidden) {
     apply(M0, this);
     done();
   }
 
   // Two options...
   template<class M0t, class M1t>
-  opt(const M0t &M0, const M1t &M1) : Option(Optional | NotHidden) {
+  opt(const M0t &M0, const M1t &M1) : Option(Optional, NotHidden) {
     apply(M0, this); apply(M1, this);
     done();
   }
@@ -1155,21 +1188,21 @@ public:
   // Three options...
   template<class M0t, class M1t, class M2t>
   opt(const M0t &M0, const M1t &M1,
-      const M2t &M2) : Option(Optional | NotHidden) {
+      const M2t &M2) : Option(Optional, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this);
     done();
   }
   // Four options...
   template<class M0t, class M1t, class M2t, class M3t>
   opt(const M0t &M0, const M1t &M1, const M2t &M2,
-      const M3t &M3) : Option(Optional | NotHidden) {
+      const M3t &M3) : Option(Optional, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     done();
   }
   // Five options...
   template<class M0t, class M1t, class M2t, class M3t, class M4t>
   opt(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
-      const M4t &M4) : Option(Optional | NotHidden) {
+      const M4t &M4) : Option(Optional, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this);
     done();
@@ -1178,7 +1211,7 @@ public:
   template<class M0t, class M1t, class M2t, class M3t,
            class M4t, class M5t>
   opt(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
-      const M4t &M4, const M5t &M5) : Option(Optional | NotHidden) {
+      const M4t &M4, const M5t &M5) : Option(Optional, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this);
     done();
@@ -1188,7 +1221,7 @@ public:
            class M4t, class M5t, class M6t>
   opt(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
       const M4t &M4, const M5t &M5,
-      const M6t &M6) : Option(Optional | NotHidden) {
+      const M6t &M6) : Option(Optional, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this); apply(M6, this);
     done();
@@ -1198,7 +1231,7 @@ public:
            class M4t, class M5t, class M6t, class M7t>
   opt(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
       const M4t &M4, const M5t &M5, const M6t &M6,
-      const M7t &M7) : Option(Optional | NotHidden) {
+      const M7t &M7) : Option(Optional, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this); apply(M6, this); apply(M7, this);
     done();
@@ -1307,34 +1340,34 @@ public:
 
   // One option...
   template<class M0t>
-  explicit list(const M0t &M0) : Option(ZeroOrMore | NotHidden) {
+  explicit list(const M0t &M0) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this);
     done();
   }
   // Two options...
   template<class M0t, class M1t>
-  list(const M0t &M0, const M1t &M1) : Option(ZeroOrMore | NotHidden) {
+  list(const M0t &M0, const M1t &M1) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this);
     done();
   }
   // Three options...
   template<class M0t, class M1t, class M2t>
   list(const M0t &M0, const M1t &M1, const M2t &M2)
-    : Option(ZeroOrMore | NotHidden) {
+    : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this);
     done();
   }
   // Four options...
   template<class M0t, class M1t, class M2t, class M3t>
   list(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3)
-    : Option(ZeroOrMore | NotHidden) {
+    : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     done();
   }
   // Five options...
   template<class M0t, class M1t, class M2t, class M3t, class M4t>
   list(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
-       const M4t &M4) : Option(ZeroOrMore | NotHidden) {
+       const M4t &M4) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this);
     done();
@@ -1343,7 +1376,7 @@ public:
   template<class M0t, class M1t, class M2t, class M3t,
            class M4t, class M5t>
   list(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
-       const M4t &M4, const M5t &M5) : Option(ZeroOrMore | NotHidden) {
+       const M4t &M4, const M5t &M5) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this);
     done();
@@ -1353,7 +1386,7 @@ public:
            class M4t, class M5t, class M6t>
   list(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
        const M4t &M4, const M5t &M5, const M6t &M6)
-    : Option(ZeroOrMore | NotHidden) {
+    : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this); apply(M6, this);
     done();
@@ -1363,7 +1396,7 @@ public:
            class M4t, class M5t, class M6t, class M7t>
   list(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
        const M4t &M4, const M5t &M5, const M6t &M6,
-       const M7t &M7) : Option(ZeroOrMore | NotHidden) {
+       const M7t &M7) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this); apply(M6, this); apply(M7, this);
     done();
@@ -1505,34 +1538,34 @@ public:
 
   // One option...
   template<class M0t>
-  explicit bits(const M0t &M0) : Option(ZeroOrMore | NotHidden) {
+  explicit bits(const M0t &M0) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this);
     done();
   }
   // Two options...
   template<class M0t, class M1t>
-  bits(const M0t &M0, const M1t &M1) : Option(ZeroOrMore | NotHidden) {
+  bits(const M0t &M0, const M1t &M1) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this);
     done();
   }
   // Three options...
   template<class M0t, class M1t, class M2t>
   bits(const M0t &M0, const M1t &M1, const M2t &M2)
-    : Option(ZeroOrMore | NotHidden) {
+    : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this);
     done();
   }
   // Four options...
   template<class M0t, class M1t, class M2t, class M3t>
   bits(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3)
-    : Option(ZeroOrMore | NotHidden) {
+    : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     done();
   }
   // Five options...
   template<class M0t, class M1t, class M2t, class M3t, class M4t>
   bits(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
-       const M4t &M4) : Option(ZeroOrMore | NotHidden) {
+       const M4t &M4) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this);
     done();
@@ -1541,7 +1574,7 @@ public:
   template<class M0t, class M1t, class M2t, class M3t,
            class M4t, class M5t>
   bits(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
-       const M4t &M4, const M5t &M5) : Option(ZeroOrMore | NotHidden) {
+       const M4t &M4, const M5t &M5) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this);
     done();
@@ -1551,7 +1584,7 @@ public:
            class M4t, class M5t, class M6t>
   bits(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
        const M4t &M4, const M5t &M5, const M6t &M6)
-    : Option(ZeroOrMore | NotHidden) {
+    : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this); apply(M6, this);
     done();
@@ -1561,7 +1594,7 @@ public:
            class M4t, class M5t, class M6t, class M7t>
   bits(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3,
        const M4t &M4, const M5t &M5, const M6t &M6,
-       const M7t &M7) : Option(ZeroOrMore | NotHidden) {
+       const M7t &M7) : Option(ZeroOrMore, NotHidden) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     apply(M4, this); apply(M5, this); apply(M6, this); apply(M7, this);
     done();
@@ -1601,27 +1634,27 @@ public:
 
   // One option...
   template<class M0t>
-  explicit alias(const M0t &M0) : Option(Optional | Hidden), AliasFor(0) {
+  explicit alias(const M0t &M0) : Option(Optional, Hidden), AliasFor(0) {
     apply(M0, this);
     done();
   }
   // Two options...
   template<class M0t, class M1t>
-  alias(const M0t &M0, const M1t &M1) : Option(Optional | Hidden), AliasFor(0) {
+  alias(const M0t &M0, const M1t &M1) : Option(Optional, Hidden), AliasFor(0) {
     apply(M0, this); apply(M1, this);
     done();
   }
   // Three options...
   template<class M0t, class M1t, class M2t>
   alias(const M0t &M0, const M1t &M1, const M2t &M2)
-    : Option(Optional | Hidden), AliasFor(0) {
+    : Option(Optional, Hidden), AliasFor(0) {
     apply(M0, this); apply(M1, this); apply(M2, this);
     done();
   }
   // Four options...
   template<class M0t, class M1t, class M2t, class M3t>
   alias(const M0t &M0, const M1t &M1, const M2t &M2, const M3t &M3)
-    : Option(Optional | Hidden), AliasFor(0) {
+    : Option(Optional, Hidden), AliasFor(0) {
     apply(M0, this); apply(M1, this); apply(M2, this); apply(M3, this);
     done();
   }

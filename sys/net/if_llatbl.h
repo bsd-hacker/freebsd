@@ -59,6 +59,7 @@ struct llentry {
 	struct rwlock		 lle_lock;
 	struct lltable		 *lle_tbl;
 	struct llentries	 *lle_head;
+	void			(*lle_free)(struct lltable *, struct llentry *);
 	struct mbuf		 *la_hold;
 	int     		 la_numheld;  /* # of packets currently held */
 	time_t			 la_expire;
@@ -105,7 +106,6 @@ struct llentry {
 		("negative refcnt %d", (lle)->lle_refcnt));	\
 	(lle)->lle_refcnt++;					\
 } while (0)
-
 #define	LLE_REMREF(lle)	do {					\
 	LLE_WLOCK_ASSERT(lle);					\
 	KASSERT((lle)->lle_refcnt > 1,				\
@@ -115,7 +115,7 @@ struct llentry {
 
 #define	LLE_FREE_LOCKED(lle) do {				\
 	if ((lle)->lle_refcnt <= 1)				\
-		(lle)->lle_tbl->llt_free((lle)->lle_tbl, (lle));\
+		(lle)->lle_free((lle)->lle_tbl, (lle));\
 	else {							\
 		(lle)->lle_refcnt--;				\
 		LLE_WUNLOCK(lle);				\
@@ -151,7 +151,6 @@ struct lltable {
 	int			llt_af;
 	struct ifnet		*llt_ifp;
 
-	void			(*llt_free)(struct lltable *, struct llentry *);
 	void			(*llt_prefix_free)(struct lltable *,
 				    const struct sockaddr *prefix,
 				    const struct sockaddr *mask,

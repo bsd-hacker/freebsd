@@ -16,8 +16,12 @@
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/LexDiagnostic.h"
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/PathV2.h"
+#include "llvm/ADT/StringSwitch.h"
 using namespace clang;
 
 PPCallbacks::~PPCallbacks() {}
@@ -89,7 +93,14 @@ void Preprocessor::EnterSourceFile(FileID FID, const DirectoryLookup *CurDir,
       << std::string(SourceMgr.getBufferName(FileStart)) << "";
     return;
   }
-  
+
+  if (isCodeCompletionEnabled() &&
+      SourceMgr.getFileEntryForID(FID) == CodeCompletionFile) {
+    CodeCompletionFileLoc = SourceMgr.getLocForStartOfFile(FID);
+    CodeCompletionLoc =
+        CodeCompletionFileLoc.getLocWithOffset(CodeCompletionOffset);
+  }
+
   EnterSourceFileWithLexer(new Lexer(FID, InputFile, *this), CurDir);
   return;
 }
@@ -106,7 +117,9 @@ void Preprocessor::EnterSourceFileWithLexer(Lexer *TheLexer,
   CurLexer.reset(TheLexer);
   CurPPLexer = TheLexer;
   CurDirLookup = CurDir;
-
+  if (CurLexerKind != CLK_LexAfterModuleImport)
+    CurLexerKind = CLK_Lexer;
+  
   // Notify the client, if desired, that we are in a new source file.
   if (Callbacks && !CurLexer->Is_PragmaLexer) {
     SrcMgr::CharacteristicKind FileType =
@@ -128,7 +141,9 @@ void Preprocessor::EnterSourceFileWithPTH(PTHLexer *PL,
   CurDirLookup = CurDir;
   CurPTHLexer.reset(PL);
   CurPPLexer = CurPTHLexer.get();
-
+  if (CurLexerKind != CLK_LexAfterModuleImport)
+    CurLexerKind = CLK_PTHLexer;
+  
   // Notify the client, if desired, that we are in a new source file.
   if (Callbacks) {
     FileID FID = CurPPLexer->getFileID();
@@ -152,6 +167,8 @@ void Preprocessor::EnterMacro(Token &Tok, SourceLocation ILEnd,
     CurTokenLexer.reset(TokenLexerCache[--NumCachedTokenLexers]);
     CurTokenLexer->Init(Tok, ILEnd, Args);
   }
+  if (CurLexerKind != CLK_LexAfterModuleImport)
+    CurLexerKind = CLK_TokenLexer;
 }
 
 /// EnterTokenStream - Add a "macro" context to the top of the include stack,
@@ -181,6 +198,33 @@ void Preprocessor::EnterTokenStream(const Token *Toks, unsigned NumToks,
     CurTokenLexer.reset(TokenLexerCache[--NumCachedTokenLexers]);
     CurTokenLexer->Init(Toks, NumToks, DisableMacroExpansion, OwnsTokens);
   }
+  if (CurLexerKind != CLK_LexAfterModuleImport)
+    CurLexerKind = CLK_TokenLexer;
+}
+
+/// \brief Compute the relative path that names the given file relative to
+/// the given directory.
+static void computeRelativePath(FileManager &FM, const DirectoryEntry *Dir,
+                                const FileEntry *File,
+                                SmallString<128> &Result) {
+  Result.clear();
+
+  StringRef FilePath = File->getDir()->getName();
+  StringRef Path = FilePath;
+  while (!Path.empty()) {
+    if (const DirectoryEntry *CurDir = FM.getDirectory(Path)) {
+      if (CurDir == Dir) {
+        Result = FilePath.substr(Path.size());
+        llvm::sys::path::append(Result, 
+                                llvm::sys::path::filename(File->getName()));
+        return;
+      }
+    }
+    
+    Path = llvm::sys::path::parent_path(Path);
+  }
+  
+  Result = File->getName();
 }
 
 /// HandleEndOfFile - This callback is invoked when the lexer hits the end of
@@ -201,9 +245,53 @@ bool Preprocessor::HandleEndOfFile(Token &Result, bool isEndOfMacro) {
     }
   }
 
+  // Complain about reaching a true EOF within arc_cf_code_audited.
+  // We don't want to complain about reaching the end of a macro
+  // instantiation or a _Pragma.
+  if (PragmaARCCFCodeAuditedLoc.isValid() &&
+      !isEndOfMacro && !(CurLexer && CurLexer->Is_PragmaLexer)) {
+    Diag(PragmaARCCFCodeAuditedLoc, diag::err_pp_eof_in_arc_cf_code_audited);
+
+    // Recover by leaving immediately.
+    PragmaARCCFCodeAuditedLoc = SourceLocation();
+  }
+
   // If this is a #include'd file, pop it off the include stack and continue
   // lexing the #includer file.
   if (!IncludeMacroStack.empty()) {
+
+    // If we lexed the code-completion file, act as if we reached EOF.
+    if (isCodeCompletionEnabled() && CurPPLexer &&
+        SourceMgr.getLocForStartOfFile(CurPPLexer->getFileID()) ==
+            CodeCompletionFileLoc) {
+      if (CurLexer) {
+        Result.startToken();
+        CurLexer->FormTokenWithChars(Result, CurLexer->BufferEnd, tok::eof);
+        CurLexer.reset();
+      } else {
+        assert(CurPTHLexer && "Got EOF but no current lexer set!");
+        CurPTHLexer->getEOF(Result);
+        CurPTHLexer.reset();
+      }
+
+      CurPPLexer = 0;
+      return true;
+    }
+
+    if (!isEndOfMacro && CurPPLexer &&
+        SourceMgr.getIncludeLoc(CurPPLexer->getFileID()).isValid()) {
+      // Notify SourceManager to record the number of FileIDs that were created
+      // during lexing of the #include'd file.
+      unsigned NumFIDs =
+          SourceMgr.local_sloc_entry_size() -
+          CurPPLexer->getInitialNumSLocEntries() + 1/*#include'd file*/;
+      SourceMgr.setNumCreatedFIDsForFileID(CurPPLexer->getFileID(), NumFIDs);
+    }
+
+    FileID ExitedFID;
+    if (Callbacks && !isEndOfMacro && CurPPLexer)
+      ExitedFID = CurPPLexer->getFileID();
+    
     // We're done with the #included file.
     RemoveTopOfLexerStack();
 
@@ -212,7 +300,7 @@ bool Preprocessor::HandleEndOfFile(Token &Result, bool isEndOfMacro) {
       SrcMgr::CharacteristicKind FileType =
         SourceMgr.getFileCharacteristic(CurPPLexer->getSourceLocation());
       Callbacks->FileChanged(CurPPLexer->getSourceLocation(),
-                             PPCallbacks::ExitFile, FileType);
+                             PPCallbacks::ExitFile, FileType, ExitedFID);
     }
 
     // Client should lex another token.
@@ -240,15 +328,17 @@ bool Preprocessor::HandleEndOfFile(Token &Result, bool isEndOfMacro) {
     CurLexer->BufferPtr = EndPos;
     CurLexer->FormTokenWithChars(Result, EndPos, tok::eof);
 
-    // We're done with the #included file.
-    CurLexer.reset();
+    if (!isIncrementalProcessingEnabled())
+      // We're done with lexing.
+      CurLexer.reset();
   } else {
     assert(CurPTHLexer && "Got EOF but no current lexer set!");
     CurPTHLexer->getEOF(Result);
     CurPTHLexer.reset();
   }
-
-  CurPPLexer = 0;
+  
+  if (!isIncrementalProcessingEnabled())
+    CurPPLexer = 0;
 
   // This is the end of the top-level file. 'WarnUnusedMacroLocs' has collected
   // all macro locations that we need to warn because they are not used.
@@ -256,6 +346,48 @@ bool Preprocessor::HandleEndOfFile(Token &Result, bool isEndOfMacro) {
          I=WarnUnusedMacroLocs.begin(), E=WarnUnusedMacroLocs.end(); I!=E; ++I)
     Diag(*I, diag::pp_macro_not_used);
 
+  // If we are building a module that has an umbrella header, make sure that
+  // each of the headers within the directory covered by the umbrella header
+  // was actually included by the umbrella header.
+  if (Module *Mod = getCurrentModule()) {
+    if (Mod->getUmbrellaHeader()) {
+      SourceLocation StartLoc
+        = SourceMgr.getLocForStartOfFile(SourceMgr.getMainFileID());
+
+      if (getDiagnostics().getDiagnosticLevel(
+            diag::warn_uncovered_module_header, 
+            StartLoc) != DiagnosticsEngine::Ignored) {
+        ModuleMap &ModMap = getHeaderSearchInfo().getModuleMap();
+        typedef llvm::sys::fs::recursive_directory_iterator
+          recursive_directory_iterator;
+        const DirectoryEntry *Dir = Mod->getUmbrellaDir();
+        llvm::error_code EC;
+        for (recursive_directory_iterator Entry(Dir->getName(), EC), End;
+             Entry != End && !EC; Entry.increment(EC)) {
+          using llvm::StringSwitch;
+          
+          // Check whether this entry has an extension typically associated with
+          // headers.
+          if (!StringSwitch<bool>(llvm::sys::path::extension(Entry->path()))
+                 .Cases(".h", ".H", ".hh", ".hpp", true)
+                 .Default(false))
+            continue;
+
+          if (const FileEntry *Header = getFileManager().getFile(Entry->path()))
+            if (!getSourceManager().hasFileInfo(Header)) {
+              if (!ModMap.isHeaderInUnavailableModule(Header)) {
+                // Find the relative path that would access this header.
+                SmallString<128> RelativePath;
+                computeRelativePath(FileMgr, Dir, Header, RelativePath);              
+                Diag(StartLoc, diag::warn_uncovered_module_header)
+                  << RelativePath;
+              }
+            }
+        }
+      }
+    }
+  }
+  
   return true;
 }
 

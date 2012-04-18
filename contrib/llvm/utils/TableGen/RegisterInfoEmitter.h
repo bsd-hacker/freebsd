@@ -16,11 +16,13 @@
 #ifndef REGISTER_INFO_EMITTER_H
 #define REGISTER_INFO_EMITTER_H
 
-#include "TableGenBackend.h"
+#include "llvm/TableGen/TableGenBackend.h"
+#include <vector>
 
 namespace llvm {
 
 class CodeGenRegBank;
+struct CodeGenRegister;
 class CodeGenTarget;
 
 class RegisterInfoEmitter : public TableGenBackend {
@@ -44,6 +46,17 @@ public:
 
   // run - Output the register file description.
   void run(raw_ostream &o);
+
+private:
+  void EmitRegMapping(raw_ostream &o,
+                      const std::vector<CodeGenRegister*> &Regs, bool isCtor);
+  void EmitRegMappingTables(raw_ostream &o,
+                            const std::vector<CodeGenRegister*> &Regs,
+                            bool isCtor);
+  void EmitRegClasses(raw_ostream &OS, CodeGenTarget &Target);
+
+  void EmitRegUnitPressure(raw_ostream &OS, const CodeGenRegBank &RegBank,
+                           const std::string &ClassName);
 };
 
 } // End llvm namespace

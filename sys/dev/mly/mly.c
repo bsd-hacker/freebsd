@@ -392,7 +392,7 @@ mly_pci_attach(struct mly_softc *sc)
      * 
      * Note that all of these controllers are 64-bit capable.
      */
-    if (bus_dma_tag_create(NULL, 			/* parent */
+    if (bus_dma_tag_create(bus_get_dma_tag(sc->mly_dev),/* PCI parent */
 			   1, 0, 			/* alignment, boundary */
 			   BUS_SPACE_MAXADDR_32BIT,	/* lowaddr */
 			   BUS_SPACE_MAXADDR, 		/* highaddr */
@@ -1294,9 +1294,11 @@ mly_complete_event(struct mly_command *mc)
 static void
 mly_process_event(struct mly_softc *sc, struct mly_event *me)
 {
-    struct scsi_sense_data	*ssd = (struct scsi_sense_data *)&me->sense[0];
-    char			*fp, *tp;
-    int				bus, target, event, class, action;
+    struct scsi_sense_data_fixed *ssd;
+    char			 *fp, *tp;
+    int				 bus, target, event, class, action;
+
+    ssd = (struct scsi_sense_data_fixed *)&me->sense[0];
 
     /* 
      * Errors can be reported using vendor-unique sense data.  In this case, the

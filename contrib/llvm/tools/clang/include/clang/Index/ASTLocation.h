@@ -16,10 +16,7 @@
 
 #include "clang/AST/TypeLoc.h"
 #include "llvm/ADT/PointerIntPair.h"
-
-namespace llvm {
-  class raw_ostream;
-}
+#include "llvm/Support/Compiler.h"
 
 namespace clang {
   class Decl;
@@ -46,7 +43,7 @@ public:
   struct NamedRef {
     NamedDecl *ND;
     SourceLocation Loc;
-    
+
     NamedRef() : ND(0) { }
     NamedRef(NamedDecl *nd, SourceLocation loc) : ND(nd), Loc(loc) { }
   };
@@ -99,14 +96,14 @@ public:
 
   bool isValid() const { return ParentDecl.getPointer() != 0; }
   bool isInvalid() const { return !isValid(); }
-  
+
   NodeKind getKind() const {
     assert(isValid());
     return (NodeKind)ParentDecl.getInt();
   }
-  
+
   Decl *getParentDecl() const { return ParentDecl.getPointer(); }
-  
+
   Decl *AsDecl() const {
     assert(getKind() == N_Decl);
     return D;
@@ -125,14 +122,16 @@ public:
   }
 
   Decl *dyn_AsDecl() const { return isValid() && getKind() == N_Decl ? D : 0; }
-  Stmt *dyn_AsStmt() const { return isValid() && getKind() == N_Stmt ? Stm : 0; }
+  Stmt *dyn_AsStmt() const {
+    return isValid() && getKind() == N_Stmt ? Stm : 0;
+  }
   NamedRef dyn_AsNamedRef() const {
     return getKind() == N_Type ? AsNamedRef() : NamedRef();
   }
   TypeLoc dyn_AsTypeLoc() const {
     return getKind() == N_Type ? AsTypeLoc() : TypeLoc();
   }
-  
+
   bool isDecl() const { return isValid() && getKind() == N_Decl; }
   bool isStmt() const { return isValid() && getKind() == N_Stmt; }
   bool isNamedRef() const { return isValid() && getKind() == N_NamedRef; }
@@ -148,9 +147,9 @@ public:
     return const_cast<ASTLocation*>(this)->getReferencedDecl();
   }
 
-  SourceRange getSourceRange() const;
+  SourceRange getSourceRange() const LLVM_READONLY;
 
-  void print(llvm::raw_ostream &OS) const;
+  void print(raw_ostream &OS) const;
 };
 
 /// \brief Like ASTLocation but also contains the TranslationUnit that the

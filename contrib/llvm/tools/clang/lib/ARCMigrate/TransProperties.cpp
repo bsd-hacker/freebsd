@@ -40,12 +40,21 @@
 using namespace clang;
 using namespace arcmt;
 using namespace trans;
-using llvm::StringRef;
 
 namespace {
 
 class PropertiesRewriter {
+  MigrationContext &MigrateCtx;
   MigrationPass &Pass;
+  ObjCImplementationDecl *CurImplD;
+  
+  enum PropActionKind {
+    PropAction_None,
+    PropAction_RetainReplacedWithStrong,
+    PropAction_AssignRemoved,
+    PropAction_AssignRewritten,
+    PropAction_MaybeAddWeakOrUnsafe
+  };
 
   struct PropData {
     ObjCPropertyDecl *PropD;
@@ -55,26 +64,38 @@ class PropertiesRewriter {
     PropData(ObjCPropertyDecl *propD) : PropD(propD), IvarD(0), ImplD(0) { }
   };
 
-  typedef llvm::SmallVector<PropData, 2> PropsTy;
+  typedef SmallVector<PropData, 2> PropsTy;
   typedef std::map<unsigned, PropsTy> AtPropDeclsTy;
   AtPropDeclsTy AtProps;
+  llvm::DenseMap<IdentifierInfo *, PropActionKind> ActionOnProp;
 
 public:
-  PropertiesRewriter(MigrationPass &pass) : Pass(pass) { }
+  explicit PropertiesRewriter(MigrationContext &MigrateCtx)
+    : MigrateCtx(MigrateCtx), Pass(MigrateCtx.Pass) { }
+
+  static void collectProperties(ObjCContainerDecl *D, AtPropDeclsTy &AtProps,
+                                AtPropDeclsTy *PrevAtProps = 0) {
+    for (ObjCInterfaceDecl::prop_iterator
+           propI = D->prop_begin(),
+           propE = D->prop_end(); propI != propE; ++propI) {
+      if (propI->getAtLoc().isInvalid())
+        continue;
+      unsigned RawLoc = propI->getAtLoc().getRawEncoding();
+      if (PrevAtProps)
+        if (PrevAtProps->find(RawLoc) != PrevAtProps->end())
+          continue;
+      PropsTy &props = AtProps[RawLoc];
+      props.push_back(*propI);
+    }
+  }
 
   void doTransform(ObjCImplementationDecl *D) {
+    CurImplD = D;
     ObjCInterfaceDecl *iface = D->getClassInterface();
     if (!iface)
       return;
 
-    for (ObjCInterfaceDecl::prop_iterator
-           propI = iface->prop_begin(),
-           propE = iface->prop_end(); propI != propE; ++propI) {
-      if (propI->getAtLoc().isInvalid())
-        continue;
-      PropsTy &props = AtProps[propI->getAtLoc().getRawEncoding()];
-      props.push_back(*propI);
-    }
+    collectProperties(iface, AtProps);
 
     typedef DeclContext::specific_decl_iterator<ObjCPropertyImplDecl>
         prop_impl_iterator;
@@ -109,19 +130,66 @@ public:
            I = AtProps.begin(), E = AtProps.end(); I != E; ++I) {
       SourceLocation atLoc = SourceLocation::getFromRawEncoding(I->first);
       PropsTy &props = I->second;
-      QualType ty = getPropertyType(props);
-      if (!ty->isObjCRetainableType())
+      if (!getPropertyType(props)->isObjCRetainableType())
         continue;
-      if (hasIvarWithExplicitOwnership(props))
+      if (hasIvarWithExplicitARCOwnership(props))
         continue;
       
       Transaction Trans(Pass.TA);
       rewriteProperty(props, atLoc);
     }
+
+    AtPropDeclsTy AtExtProps;
+    // Look through extensions.
+    for (ObjCCategoryDecl *Cat = iface->getCategoryList();
+           Cat; Cat = Cat->getNextClassCategory())
+      if (Cat->IsClassExtension())
+        collectProperties(Cat, AtExtProps, &AtProps);
+
+    for (AtPropDeclsTy::iterator
+           I = AtExtProps.begin(), E = AtExtProps.end(); I != E; ++I) {
+      SourceLocation atLoc = SourceLocation::getFromRawEncoding(I->first);
+      PropsTy &props = I->second;
+      Transaction Trans(Pass.TA);
+      doActionForExtensionProp(props, atLoc);
+    }
   }
 
 private:
-  void rewriteProperty(PropsTy &props, SourceLocation atLoc) const {
+  void doPropAction(PropActionKind kind,
+                    PropsTy &props, SourceLocation atLoc,
+                    bool markAction = true) {
+    if (markAction)
+      for (PropsTy::iterator I = props.begin(), E = props.end(); I != E; ++I)
+        ActionOnProp[I->PropD->getIdentifier()] = kind;
+
+    switch (kind) {
+    case PropAction_None:
+      return;
+    case PropAction_RetainReplacedWithStrong: {
+      StringRef toAttr = "strong";
+      MigrateCtx.rewritePropertyAttribute("retain", toAttr, atLoc);
+      return;
+    }
+    case PropAction_AssignRemoved:
+      return removeAssignForDefaultStrong(props, atLoc);
+    case PropAction_AssignRewritten:
+      return rewriteAssign(props, atLoc);
+    case PropAction_MaybeAddWeakOrUnsafe:
+      return maybeAddWeakOrUnsafeUnretainedAttr(props, atLoc);
+    }
+  }
+
+  void doActionForExtensionProp(PropsTy &props, SourceLocation atLoc) {
+    llvm::DenseMap<IdentifierInfo *, PropActionKind>::iterator I;
+    I = ActionOnProp.find(props[0].PropD->getIdentifier());
+    if (I == ActionOnProp.end())
+      return;
+
+    doPropAction(I->second, props, atLoc, false);
+  }
+
+  void rewriteProperty(PropsTy &props, SourceLocation atLoc) {
     ObjCPropertyDecl::PropertyAttributeKind propAttrs = getPropertyAttrs(props);
     
     if (propAttrs & (ObjCPropertyDecl::OBJC_PR_copy |
@@ -131,29 +199,59 @@ private:
       return;
 
     if (propAttrs & ObjCPropertyDecl::OBJC_PR_retain) {
-      rewriteAttribute("retain", "strong", atLoc);
-      return;
+      // strong is the default.
+      return doPropAction(PropAction_RetainReplacedWithStrong, props, atLoc);
     }
 
-    if (propAttrs & ObjCPropertyDecl::OBJC_PR_assign)
-      return rewriteAssign(props, atLoc);
+    bool HasIvarAssignedAPlusOneObject = hasIvarAssignedAPlusOneObject(props);
 
-    return maybeAddWeakOrUnsafeUnretainedAttr(props, atLoc);
+    if (propAttrs & ObjCPropertyDecl::OBJC_PR_assign) {
+      if (HasIvarAssignedAPlusOneObject)
+        return doPropAction(PropAction_AssignRemoved, props, atLoc);
+      return doPropAction(PropAction_AssignRewritten, props, atLoc);
+    }
+
+    if (HasIvarAssignedAPlusOneObject ||
+        (Pass.isGCMigration() && !hasGCWeak(props, atLoc)))
+      return; // 'strong' by default.
+
+    return doPropAction(PropAction_MaybeAddWeakOrUnsafe, props, atLoc);
+  }
+
+  void removeAssignForDefaultStrong(PropsTy &props,
+                                    SourceLocation atLoc) const {
+    removeAttribute("retain", atLoc);
+    if (!removeAttribute("assign", atLoc))
+      return;
+
+    for (PropsTy::iterator I = props.begin(), E = props.end(); I != E; ++I) {
+      if (I->ImplD)
+        Pass.TA.clearDiagnostic(diag::err_arc_assign_property_ownership,
+                                I->ImplD->getLocation());
+    }
   }
 
   void rewriteAssign(PropsTy &props, SourceLocation atLoc) const {
-    bool canUseWeak = canApplyWeak(Pass.Ctx, getPropertyType(props));
+    bool canUseWeak = canApplyWeak(Pass.Ctx, getPropertyType(props),
+                                  /*AllowOnUnknownClass=*/Pass.isGCMigration());
+    const char *toWhich = 
+      (Pass.isGCMigration() && !hasGCWeak(props, atLoc)) ? "strong" :
+      (canUseWeak ? "weak" : "unsafe_unretained");
 
-    bool rewroteAttr = rewriteAttribute("assign",
-                                     canUseWeak ? "weak" : "unsafe_unretained",
-                                         atLoc);
+    bool rewroteAttr = rewriteAttribute("assign", toWhich, atLoc);
     if (!rewroteAttr)
       canUseWeak = false;
 
     for (PropsTy::iterator I = props.begin(), E = props.end(); I != E; ++I) {
-      if (isUserDeclared(I->IvarD))
-        Pass.TA.insert(I->IvarD->getLocation(),
-                       canUseWeak ? "__weak " : "__unsafe_unretained ");
+      if (isUserDeclared(I->IvarD)) {
+        if (I->IvarD &&
+            I->IvarD->getType().getObjCLifetime() != Qualifiers::OCL_Weak) {
+          const char *toWhich = 
+            (Pass.isGCMigration() && !hasGCWeak(props, atLoc)) ? "__strong " :
+              (canUseWeak ? "__weak " : "__unsafe_unretained ");
+          Pass.TA.insert(I->IvarD->getLocation(), toWhich);
+        }
+      }
       if (I->ImplD)
         Pass.TA.clearDiagnostic(diag::err_arc_assign_property_ownership,
                                 I->ImplD->getLocation());
@@ -162,21 +260,21 @@ private:
 
   void maybeAddWeakOrUnsafeUnretainedAttr(PropsTy &props,
                                           SourceLocation atLoc) const {
-    ObjCPropertyDecl::PropertyAttributeKind propAttrs = getPropertyAttrs(props);
-    if ((propAttrs & ObjCPropertyDecl::OBJC_PR_readonly) &&
-        hasNoBackingIvars(props))
-      return;
+    bool canUseWeak = canApplyWeak(Pass.Ctx, getPropertyType(props),
+                                  /*AllowOnUnknownClass=*/Pass.isGCMigration());
 
-    bool canUseWeak = canApplyWeak(Pass.Ctx, getPropertyType(props));
     bool addedAttr = addAttribute(canUseWeak ? "weak" : "unsafe_unretained",
                                   atLoc);
     if (!addedAttr)
       canUseWeak = false;
 
     for (PropsTy::iterator I = props.begin(), E = props.end(); I != E; ++I) {
-      if (isUserDeclared(I->IvarD))
-        Pass.TA.insert(I->IvarD->getLocation(),
-                       canUseWeak ? "__weak " : "__unsafe_unretained ");
+      if (isUserDeclared(I->IvarD)) {
+        if (I->IvarD &&
+            I->IvarD->getType().getObjCLifetime() != Qualifiers::OCL_Weak)
+          Pass.TA.insert(I->IvarD->getLocation(),
+                         canUseWeak ? "__weak " : "__unsafe_unretained ");
+      }
       if (I->ImplD) {
         Pass.TA.clearDiagnostic(diag::err_arc_assign_property_ownership,
                                 I->ImplD->getLocation());
@@ -187,111 +285,62 @@ private:
     }
   }
 
-  bool rewriteAttribute(llvm::StringRef fromAttr, llvm::StringRef toAttr,
+  bool removeAttribute(StringRef fromAttr, SourceLocation atLoc) const {
+    return MigrateCtx.removePropertyAttribute(fromAttr, atLoc);
+  }
+
+  bool rewriteAttribute(StringRef fromAttr, StringRef toAttr,
                         SourceLocation atLoc) const {
-    if (atLoc.isMacroID())
-      return false;
+    return MigrateCtx.rewritePropertyAttribute(fromAttr, toAttr, atLoc);
+  }
 
-    SourceManager &SM = Pass.Ctx.getSourceManager();
+  bool addAttribute(StringRef attr, SourceLocation atLoc) const {
+    return MigrateCtx.addPropertyAttribute(attr, atLoc);
+  }
 
-    // Break down the source location.
-    std::pair<FileID, unsigned> locInfo = SM.getDecomposedLoc(atLoc);
+  class PlusOneAssign : public RecursiveASTVisitor<PlusOneAssign> {
+    ObjCIvarDecl *Ivar;
+  public:
+    PlusOneAssign(ObjCIvarDecl *D) : Ivar(D) {}
 
-    // Try to load the file buffer.
-    bool invalidTemp = false;
-    llvm::StringRef file = SM.getBufferData(locInfo.first, &invalidTemp);
-    if (invalidTemp)
-      return false;
+    bool VisitBinAssign(BinaryOperator *E) {
+      Expr *lhs = E->getLHS()->IgnoreParenImpCasts();
+      if (ObjCIvarRefExpr *RE = dyn_cast<ObjCIvarRefExpr>(lhs)) {
+        if (RE->getDecl() != Ivar)
+          return true;
 
-    const char *tokenBegin = file.data() + locInfo.second;
+      if (ObjCMessageExpr *
+            ME = dyn_cast<ObjCMessageExpr>(E->getRHS()->IgnoreParenCasts()))
+        if (ME->getMethodFamily() == OMF_retain)
+          return false;
 
-    // Lex from the start of the given location.
-    Lexer lexer(SM.getLocForStartOfFile(locInfo.first),
-                Pass.Ctx.getLangOptions(),
-                file.begin(), tokenBegin, file.end());
-    Token tok;
-    lexer.LexFromRawLexer(tok);
-    if (tok.isNot(tok::at)) return false;
-    lexer.LexFromRawLexer(tok);
-    if (tok.isNot(tok::raw_identifier)) return false;
-    if (llvm::StringRef(tok.getRawIdentifierData(), tok.getLength())
-          != "property")
-      return false;
-    lexer.LexFromRawLexer(tok);
-    if (tok.isNot(tok::l_paren)) return false;
-    
-    lexer.LexFromRawLexer(tok);
-    if (tok.is(tok::r_paren))
-      return false;
+      ImplicitCastExpr *implCE = dyn_cast<ImplicitCastExpr>(E->getRHS());
+      while (implCE && implCE->getCastKind() ==  CK_BitCast)
+        implCE = dyn_cast<ImplicitCastExpr>(implCE->getSubExpr());
 
-    while (1) {
-      if (tok.isNot(tok::raw_identifier)) return false;
-      llvm::StringRef ident(tok.getRawIdentifierData(), tok.getLength());
-      if (ident == fromAttr) {
-        Pass.TA.replaceText(tok.getLocation(), fromAttr, toAttr);
-        return true;
+      if (implCE && implCE->getCastKind() == CK_ARCConsumeObject)
+        return false;
       }
 
-      do {
-        lexer.LexFromRawLexer(tok);
-      } while (tok.isNot(tok::comma) && tok.isNot(tok::r_paren));
-      if (tok.is(tok::r_paren))
-        break;
-      lexer.LexFromRawLexer(tok);
+      return true;
+    }
+  };
+
+  bool hasIvarAssignedAPlusOneObject(PropsTy &props) const {
+    for (PropsTy::iterator I = props.begin(), E = props.end(); I != E; ++I) {
+      PlusOneAssign oneAssign(I->IvarD);
+      bool notFound = oneAssign.TraverseDecl(CurImplD);
+      if (!notFound)
+        return true;
     }
 
     return false;
   }
 
-  bool addAttribute(llvm::StringRef attr, SourceLocation atLoc) const {
-    if (atLoc.isMacroID())
+  bool hasIvarWithExplicitARCOwnership(PropsTy &props) const {
+    if (Pass.isGCMigration())
       return false;
 
-    SourceManager &SM = Pass.Ctx.getSourceManager();
-
-    // Break down the source location.
-    std::pair<FileID, unsigned> locInfo = SM.getDecomposedLoc(atLoc);
-
-    // Try to load the file buffer.
-    bool invalidTemp = false;
-    llvm::StringRef file = SM.getBufferData(locInfo.first, &invalidTemp);
-    if (invalidTemp)
-      return false;
-
-    const char *tokenBegin = file.data() + locInfo.second;
-
-    // Lex from the start of the given location.
-    Lexer lexer(SM.getLocForStartOfFile(locInfo.first),
-                Pass.Ctx.getLangOptions(),
-                file.begin(), tokenBegin, file.end());
-    Token tok;
-    lexer.LexFromRawLexer(tok);
-    if (tok.isNot(tok::at)) return false;
-    lexer.LexFromRawLexer(tok);
-    if (tok.isNot(tok::raw_identifier)) return false;
-    if (llvm::StringRef(tok.getRawIdentifierData(), tok.getLength())
-          != "property")
-      return false;
-    lexer.LexFromRawLexer(tok);
-
-    if (tok.isNot(tok::l_paren)) {
-      Pass.TA.insert(tok.getLocation(), std::string("(") + attr.str() + ") ");
-      return true;
-    }
-    
-    lexer.LexFromRawLexer(tok);
-    if (tok.is(tok::r_paren)) {
-      Pass.TA.insert(tok.getLocation(), attr);
-      return true;
-    }
-
-    if (tok.isNot(tok::raw_identifier)) return false;
-
-    Pass.TA.insert(tok.getLocation(), std::string(attr) + ", ");
-    return true;
-  }
-
-  bool hasIvarWithExplicitOwnership(PropsTy &props) const {
     for (PropsTy::iterator I = props.begin(), E = props.end(); I != E; ++I) {
       if (isUserDeclared(I->IvarD)) {
         if (isa<AttributedType>(I->IvarD->getType()))
@@ -305,12 +354,21 @@ private:
     return false;    
   }
 
-  bool hasNoBackingIvars(PropsTy &props) const {
+  bool hasAllIvarsBacked(PropsTy &props) const {
     for (PropsTy::iterator I = props.begin(), E = props.end(); I != E; ++I)
-      if (I->IvarD)
+      if (!isUserDeclared(I->IvarD))
         return false;
 
     return true;
+  }
+
+  // \brief Returns true if all declarations in the @property have GC __weak.
+  bool hasGCWeak(PropsTy &props, SourceLocation atLoc) const {
+    if (!Pass.isGCMigration())
+      return false;
+    if (props.empty())
+      return false;
+    return MigrateCtx.AtPropsWeak.count(atLoc.getRawEncoding());
   }
 
   bool isUserDeclared(ObjCIvarDecl *ivarD) const {
@@ -319,11 +377,11 @@ private:
 
   QualType getPropertyType(PropsTy &props) const {
     assert(!props.empty());
-    QualType ty = props[0].PropD->getType();
+    QualType ty = props[0].PropD->getType().getUnqualifiedType();
 
 #ifndef NDEBUG
     for (PropsTy::iterator I = props.begin(), E = props.end(); I != E; ++I)
-      assert(ty == I->PropD->getType());
+      assert(ty == I->PropD->getType().getUnqualifiedType());
 #endif
 
     return ty;
@@ -344,21 +402,10 @@ private:
   }
 };
 
-class ImplementationChecker :
-                             public RecursiveASTVisitor<ImplementationChecker> {
-  MigrationPass &Pass;
-
-public:
-  ImplementationChecker(MigrationPass &pass) : Pass(pass) { }
-
-  bool TraverseObjCImplementationDecl(ObjCImplementationDecl *D) {
-    PropertiesRewriter(Pass).doTransform(D);
-    return true;
-  }
-};
-
 } // anonymous namespace
 
-void trans::rewriteProperties(MigrationPass &pass) {
-  ImplementationChecker(pass).TraverseDecl(pass.Ctx.getTranslationUnitDecl());
+void PropertyRewriteTraverser::traverseObjCImplementation(
+                                           ObjCImplementationContext &ImplCtx) {
+  PropertiesRewriter(ImplCtx.getMigrationContext())
+                                  .doTransform(ImplCtx.getImplementationDecl());
 }

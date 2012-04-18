@@ -95,13 +95,13 @@ setup_filesystems()
       exit_err "ERROR: The partition ${PARTDEV} does not exist. Failure in bsdlabel?"
     fi 
      
-    PARTFS="`cat ${PARTDIR}/${PART} | cut -d ':' -f 1`"
-    PARTMNT="`cat ${PARTDIR}/${PART} | cut -d ':' -f 2`"
-    PARTENC="`cat ${PARTDIR}/${PART} | cut -d ':' -f 3`"
-    PARTLABEL="`cat ${PARTDIR}/${PART} | cut -d ':' -f 4`"
-    PARTGEOM="`cat ${PARTDIR}/${PART} | cut -d ':' -f 5`"
-    PARTXTRAOPTS="`cat ${PARTDIR}/${PART} | cut -d ':' -f 6`"
-    PARTIMAGE="`cat ${PARTDIR}/${PART} | cut -d ':' -f 7`"
+    PARTFS="`cat ${PARTDIR}/${PART} | cut -d '#' -f 1`"
+    PARTMNT="`cat ${PARTDIR}/${PART} | cut -d '#' -f 2`"
+    PARTENC="`cat ${PARTDIR}/${PART} | cut -d '#' -f 3`"
+    PARTLABEL="`cat ${PARTDIR}/${PART} | cut -d '#' -f 4`"
+    PARTGEOM="`cat ${PARTDIR}/${PART} | cut -d '#' -f 5`"
+    PARTXTRAOPTS="`cat ${PARTDIR}/${PART} | cut -d '#' -f 6`"
+    PARTIMAGE="`cat ${PARTDIR}/${PART} | cut -d '#' -f 7`"
 
     # Make sure journaling isn't enabled on this device
     if [ -e "${PARTDEV}.journal" ]
@@ -138,7 +138,7 @@ setup_filesystems()
       UFS)
         echo_log "NEWFS: ${PARTDEV} - ${PARTFS}"
         sleep 2
-        rc_halt "newfs ${PARTDEV}${EXT}"
+        rc_halt "newfs ${PARTXTRAOPTS} ${PARTDEV}${EXT}"
         sleep 2
         rc_halt "sync"
         rc_halt "glabel label ${PARTLABEL} ${PARTDEV}${EXT}"
@@ -154,7 +154,7 @@ setup_filesystems()
       UFS+S)
         echo_log "NEWFS: ${PARTDEV} - ${PARTFS}"
         sleep 2
-        rc_halt "newfs -U ${PARTDEV}${EXT}"
+        rc_halt "newfs ${PARTXTRAOPTS} -U ${PARTDEV}${EXT}"
         sleep 2
         rc_halt "sync"
         rc_halt "glabel label ${PARTLABEL} ${PARTDEV}${EXT}"
@@ -169,7 +169,7 @@ setup_filesystems()
       UFS+SUJ)
         echo_log "NEWFS: ${PARTDEV} - ${PARTFS}"
         sleep 2
-        rc_halt "newfs -U ${PARTDEV}${EXT}"
+        rc_halt "newfs ${PARTXTRAOPTS} -U ${PARTDEV}${EXT}"
         sleep 2
         rc_halt "sync"
         rc_halt "tunefs -j enable ${PARTDEV}${EXT}"
@@ -192,7 +192,7 @@ setup_filesystems()
         sleep 2
         rc_halt "gjournal label -f ${PARTDEV}${EXT}"
         sleep 2
-        rc_halt "newfs -O 2 -J ${PARTDEV}${EXT}.journal"
+        rc_halt "newfs ${PARTXTRAOPTS} -O 2 -J ${PARTDEV}${EXT}.journal"
         sleep 2
         rc_halt "sync"
         rc_halt "glabel label ${PARTLABEL} ${PARTDEV}${EXT}.journal"

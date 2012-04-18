@@ -23,6 +23,7 @@
 #include "llvm/CodeGen/MachineCodeInfo.h"
 #include "llvm/ExecutionEngine/GenericValue.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/JITMemoryManager.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetJITInfo.h"
@@ -206,7 +207,6 @@ void DarwinRegisterFrame(void* FrameBegin) {
 ExecutionEngine *JIT::createJIT(Module *M,
                                 std::string *ErrorStr,
                                 JITMemoryManager *JMM,
-                                CodeGenOpt::Level OptLevel,
                                 bool GVsWithCode,
                                 TargetMachine *TM) {
   // Try to register the program as a source of symbols to resolve against.
@@ -216,7 +216,7 @@ ExecutionEngine *JIT::createJIT(Module *M,
 
   // If the target supports JIT code generation, create the JIT.
   if (TargetJITInfo *TJ = TM->getJITInfo()) {
-    return new JIT(M, *TM, *TJ, JMM, OptLevel, GVsWithCode);
+    return new JIT(M, *TM, *TJ, JMM, GVsWithCode);
   } else {
     if (ErrorStr)
       *ErrorStr = "target does not support JIT code generation";
@@ -268,9 +268,10 @@ extern "C" {
 }
 
 JIT::JIT(Module *M, TargetMachine &tm, TargetJITInfo &tji,
-         JITMemoryManager *JMM, CodeGenOpt::Level OptLevel, bool GVsWithCode)
-  : ExecutionEngine(M), TM(tm), TJI(tji), AllocateGVsWithCode(GVsWithCode),
-    isAlreadyCodeGenerating(false) {
+         JITMemoryManager *jmm, bool GVsWithCode)
+  : ExecutionEngine(M), TM(tm), TJI(tji),
+    JMM(jmm ? jmm : JITMemoryManager::CreateDefaultMemManager()),
+    AllocateGVsWithCode(GVsWithCode), isAlreadyCodeGenerating(false) {
   setTargetData(TM.getTargetData());
 
   jitstate = new JITState(M);
@@ -288,7 +289,7 @@ JIT::JIT(Module *M, TargetMachine &tm, TargetJITInfo &tji,
 
   // Turn the machine code intermediate representation into bytes in memory that
   // may be executed.
-  if (TM.addPassesToEmitMachineCode(PM, *JCE, OptLevel)) {
+  if (TM.addPassesToEmitMachineCode(PM, *JCE)) {
     report_fatal_error("Target does not support machine code emission!");
   }
 
@@ -323,6 +324,7 @@ JIT::~JIT() {
   AllJits->Remove(this);
   delete jitstate;
   delete JCE;
+  // JMM is a ownership of JCE, so we no need delete JMM here.
   delete &TM;
 }
 
@@ -341,7 +343,7 @@ void JIT::addModule(Module *M) {
 
     // Turn the machine code intermediate representation into bytes in memory
     // that may be executed.
-    if (TM.addPassesToEmitMachineCode(PM, *JCE, CodeGenOpt::Default)) {
+    if (TM.addPassesToEmitMachineCode(PM, *JCE)) {
       report_fatal_error("Target does not support machine code emission!");
     }
 
@@ -372,7 +374,7 @@ bool JIT::removeModule(Module *M) {
 
     // Turn the machine code intermediate representation into bytes in memory
     // that may be executed.
-    if (TM.addPassesToEmitMachineCode(PM, *JCE, CodeGenOpt::Default)) {
+    if (TM.addPassesToEmitMachineCode(PM, *JCE)) {
       report_fatal_error("Target does not support machine code emission!");
     }
 
@@ -390,8 +392,8 @@ GenericValue JIT::runFunction(Function *F,
 
   void *FPtr = getPointerToFunction(F);
   assert(FPtr && "Pointer to fn's code was null after getPointerToFunction");
-  const FunctionType *FTy = F->getFunctionType();
-  const Type *RetTy = FTy->getReturnType();
+  FunctionType *FTy = F->getFunctionType();
+  Type *RetTy = FTy->getReturnType();
 
   assert((FTy->getNumParams() == ArgValues.size() ||
           (FTy->isVarArg() && FTy->getNumParams() <= ArgValues.size())) &&
@@ -476,7 +478,6 @@ GenericValue JIT::runFunction(Function *F,
     case Type::FP128TyID:
     case Type::PPC_FP128TyID:
       llvm_unreachable("long double not supported yet");
-      return rv;
     case Type::PointerTyID:
       return PTOGV(((void*(*)())(intptr_t)FPtr)());
     }
@@ -500,7 +501,7 @@ GenericValue JIT::runFunction(Function *F,
   SmallVector<Value*, 8> Args;
   for (unsigned i = 0, e = ArgValues.size(); i != e; ++i) {
     Constant *C = 0;
-    const Type *ArgTy = FTy->getParamType(i);
+    Type *ArgTy = FTy->getParamType(i);
     const GenericValue &AV = ArgValues[i];
     switch (ArgTy->getTypeID()) {
     default: llvm_unreachable("Unknown argument type for function call!");
@@ -708,11 +709,31 @@ void *JIT::getPointerToBasicBlock(BasicBlock *BB) {
   if (I != getBasicBlockAddressMap(locked).end()) {
     return I->second;
   } else {
-    assert(0 && "JIT does not have BB address for address-of-label, was"
-           " it eliminated by optimizer?");
-    return 0;
+    llvm_unreachable("JIT does not have BB address for address-of-label, was"
+                     " it eliminated by optimizer?");
   }
 }
+
+void *JIT::getPointerToNamedFunction(const std::string &Name,
+                                     bool AbortOnFailure){
+  if (!isSymbolSearchingDisabled()) {
+    void *ptr = JMM->getPointerToNamedFunction(Name, false);
+    if (ptr)
+      return ptr;
+  }
+
+  /// If a LazyFunctionCreator is installed, use it to get/create the function.
+  if (LazyFunctionCreator)
+    if (void *RP = LazyFunctionCreator(Name))
+      return RP;
+
+  if (AbortOnFailure) {
+    report_fatal_error("Program used external function '"+Name+
+                      "' which could not be resolved!");
+  }
+  return 0;
+}
+
 
 /// getOrEmitGlobalVariable - Return the address of the specified global
 /// variable, possibly emitting it to memory if needed.  This is used by the
@@ -788,7 +809,7 @@ char* JIT::getMemoryForGV(const GlobalVariable* GV) {
   // be allocated into the same buffer, but in general globals are allocated
   // through the memory manager which puts them near the code but not in the
   // same buffer.
-  const Type *GlobalType = GV->getType()->getElementType();
+  Type *GlobalType = GV->getType()->getElementType();
   size_t S = getTargetData()->getTypeAllocSize(GlobalType);
   size_t A = getTargetData()->getPreferredAlignment(GV);
   if (GV->isThreadLocal()) {

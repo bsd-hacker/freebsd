@@ -14,18 +14,19 @@
 #ifndef LLVM_CLANG_AST_ATTR_H
 #define LLVM_CLANG_AST_ATTR_H
 
-#include "llvm/Support/Casting.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSwitch.h"
+#include "clang/Basic/LLVM.h"
 #include "clang/Basic/AttrKinds.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/VersionTuple.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstring>
 #include <algorithm>
-using llvm::dyn_cast;
 
 namespace clang {
   class ASTContext;
@@ -39,26 +40,24 @@ namespace clang {
 
 // Defined in ASTContext.h
 void *operator new(size_t Bytes, const clang::ASTContext &C,
-                   size_t Alignment = 16) throw ();
+                   size_t Alignment = 16);
 // FIXME: Being forced to not have a default argument here due to redeclaration
 //        rules on default arguments sucks
 void *operator new[](size_t Bytes, const clang::ASTContext &C,
-                     size_t Alignment) throw ();
+                     size_t Alignment);
 
 // It is good practice to pair new/delete operators.  Also, MSVC gives many
 // warnings if a matching delete overload is not declared, even though the
 // throw() spec guarantees it will not be implicitly called.
-void operator delete(void *Ptr, const clang::ASTContext &C, size_t)
-              throw ();
-void operator delete[](void *Ptr, const clang::ASTContext &C, size_t)
-              throw ();
+void operator delete(void *Ptr, const clang::ASTContext &C, size_t);
+void operator delete[](void *Ptr, const clang::ASTContext &C, size_t);
 
 namespace clang {
 
 /// Attr - This represents one attribute.
 class Attr {
 private:
-  SourceLocation Loc;
+  SourceRange Range;
   unsigned AttrKind : 16;
 
 protected:
@@ -67,11 +66,10 @@ protected:
   virtual ~Attr();
   
   void* operator new(size_t bytes) throw() {
-    assert(0 && "Attrs cannot be allocated with regular 'new'.");
-    return 0;
+    llvm_unreachable("Attrs cannot be allocated with regular 'new'.");
   }
   void operator delete(void* data) throw() {
-    assert(0 && "Attrs cannot be released with regular 'delete'.");
+    llvm_unreachable("Attrs cannot be released with regular 'delete'.");
   }
 
 public:
@@ -86,8 +84,8 @@ public:
   }
 
 protected:
-  Attr(attr::Kind AK, SourceLocation L)
-    : Loc(L), AttrKind(AK), Inherited(false) {}
+  Attr(attr::Kind AK, SourceRange R)
+    : Range(R), AttrKind(AK), Inherited(false) {}
 
 public:
 
@@ -95,22 +93,29 @@ public:
     return static_cast<attr::Kind>(AttrKind);
   }
 
-  SourceLocation getLocation() const { return Loc; }
-  void setLocation(SourceLocation L) { Loc = L; }
+  SourceLocation getLocation() const { return Range.getBegin(); }
+  SourceRange getRange() const { return Range; }
+  void setRange(SourceRange R) { Range = R; }
 
   bool isInherited() const { return Inherited; }
 
   // Clone this attribute.
   virtual Attr* clone(ASTContext &C) const = 0;
 
+  virtual bool isLateParsed() const { return false; }
+
+  // Pretty print this attribute.
+  virtual void printPretty(llvm::raw_ostream &OS, ASTContext &C) const = 0;
+
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Attr *) { return true; }
 };
 
 class InheritableAttr : public Attr {
+  virtual void anchor();
 protected:
-  InheritableAttr(attr::Kind AK, SourceLocation L)
-    : Attr(AK, L) {}
+  InheritableAttr(attr::Kind AK, SourceRange R)
+    : Attr(AK, R) {}
 
 public:
   void setInherited(bool I) { Inherited = I; }
@@ -123,9 +128,10 @@ public:
 };
 
 class InheritableParamAttr : public InheritableAttr {
+  virtual void anchor();
 protected:
-  InheritableParamAttr(attr::Kind AK, SourceLocation L)
-    : InheritableAttr(AK, L) {}
+  InheritableParamAttr(attr::Kind AK, SourceRange R)
+    : InheritableAttr(AK, R) {}
 
 public:
   // Implement isa/cast/dyncast/etc.
@@ -138,8 +144,8 @@ public:
 #include "clang/AST/Attrs.inc"
 
 /// AttrVec - A vector of Attr, which is how they are stored on the AST.
-typedef llvm::SmallVector<Attr*, 2> AttrVec;
-typedef llvm::SmallVector<const Attr*, 2> ConstAttrVec;
+typedef SmallVector<Attr*, 2> AttrVec;
+typedef SmallVector<const Attr*, 2> ConstAttrVec;
 
 /// DestroyAttrs - Destroy the contents of an AttrVec.
 inline void DestroyAttrs (AttrVec& V, ASTContext &C) {
@@ -159,12 +165,12 @@ class specific_attr_iterator {
   mutable AttrVec::const_iterator Current;
 
   void AdvanceToNext() const {
-    while (!llvm::isa<SpecificAttr>(*Current))
+    while (!isa<SpecificAttr>(*Current))
       ++Current;
   }
 
   void AdvanceToNext(AttrVec::const_iterator I) const {
-    while (Current != I && !llvm::isa<SpecificAttr>(*Current))
+    while (Current != I && !isa<SpecificAttr>(*Current))
       ++Current;
   }
 
@@ -180,11 +186,11 @@ public:
 
   reference operator*() const {
     AdvanceToNext();
-    return llvm::cast<SpecificAttr>(*Current);
+    return cast<SpecificAttr>(*Current);
   }
   pointer operator->() const {
     AdvanceToNext();
-    return llvm::cast<SpecificAttr>(*Current);
+    return cast<SpecificAttr>(*Current);
   }
 
   specific_attr_iterator& operator++() {

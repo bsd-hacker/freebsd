@@ -39,8 +39,7 @@
 #include "clang/AST/TypeVisitor.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SmallString.h"
 
 using namespace clang;
 
@@ -53,9 +52,9 @@ enum NodeState {
 };
 
 struct Node {
-  llvm::StringRef Name;
+  StringRef Name;
   NodeState State;
-  Node(llvm::StringRef name) : Name(name), State(NS_Attrs) {}
+  Node(StringRef name) : Name(name), State(NS_Attrs) {}
 
   bool isDoneWithAttrs() const { return State != NS_Attrs; }
 };
@@ -66,7 +65,6 @@ template <class Impl> struct XMLDeclVisitor {
 
   void dispatch(Decl *D) {
     switch (D->getKind()) {
-      default: llvm_unreachable("Decl that isn't part of DeclNodes.inc!");
 #define DECL(DERIVED, BASE) \
       case Decl::DERIVED: \
         DISPATCH(dispatch##DERIVED##DeclAttrs, DERIVED##Decl); \
@@ -121,7 +119,6 @@ template <class Impl> struct XMLTypeVisitor {
 
   void dispatch(Type *T) {
     switch (T->getTypeClass()) {
-      default: llvm_unreachable("Type that isn't part of TypeNodes.inc!");
 #define TYPE(DERIVED, BASE) \
       case Type::DERIVED: \
         DISPATCH(dispatch##DERIVED##TypeAttrs, DERIVED##Type); \
@@ -159,7 +156,7 @@ template <class Impl> struct XMLTypeVisitor {
 #undef DISPATCH  
 };
 
-static llvm::StringRef getTypeKindName(Type *T) {
+static StringRef getTypeKindName(Type *T) {
   switch (T->getTypeClass()) {
 #define TYPE(DERIVED, BASE) case Type::DERIVED: return #DERIVED "Type";
 #define ABSTRACT_TYPE(DERIVED, BASE)
@@ -167,16 +164,15 @@ static llvm::StringRef getTypeKindName(Type *T) {
   }
 
   llvm_unreachable("unknown type kind!");
-  return "unknown_type";
 }
 
 struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
                    public XMLTypeVisitor<XMLDumper> {
-  llvm::raw_ostream &out;
+  raw_ostream &out;
   ASTContext &Context;
-  llvm::SmallVector<Node, 16> Stack;
+  SmallVector<Node, 16> Stack;
   unsigned Indent;
-  explicit XMLDumper(llvm::raw_ostream &OS, ASTContext &context)
+  explicit XMLDumper(raw_ostream &OS, ASTContext &context)
     : out(OS), Context(context), Indent(0) {}
 
   void indent() {
@@ -185,7 +181,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   }
 
   /// Push a new node on the stack.
-  void push(llvm::StringRef name) {
+  void push(StringRef name) {
     if (!Stack.empty()) {
       assert(Stack.back().isDoneWithAttrs());
       if (Stack.back().State == NS_LazyChildren) {
@@ -200,7 +196,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   }
 
   /// Set the given attribute to the given value.
-  void set(llvm::StringRef attr, llvm::StringRef value) {
+  void set(StringRef attr, StringRef value) {
     assert(!Stack.empty() && !Stack.back().isDoneWithAttrs());
     out << ' ' << attr << '=' << '"' << value << '"'; // TODO: quotation
   }
@@ -226,8 +222,8 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
 
   //---- General utilities -------------------------------------------//
 
-  void setPointer(llvm::StringRef prop, const void *p) {
-    llvm::SmallString<10> buffer;
+  void setPointer(StringRef prop, const void *p) {
+    SmallString<10> buffer;
     llvm::raw_svector_ostream os(buffer);
     os << p;
     os.flush();
@@ -238,19 +234,19 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
     setPointer("ptr", p);
   }
 
-  void setInteger(llvm::StringRef prop, const llvm::APSInt &v) {
+  void setInteger(StringRef prop, const llvm::APSInt &v) {
     set(prop, v.toString(10));
   }
 
-  void setInteger(llvm::StringRef prop, unsigned n) {
-    llvm::SmallString<10> buffer;
+  void setInteger(StringRef prop, unsigned n) {
+    SmallString<10> buffer;
     llvm::raw_svector_ostream os(buffer);
     os << n;
     os.flush();
     set(prop, buffer);
   }
 
-  void setFlag(llvm::StringRef prop, bool flag) {
+  void setFlag(StringRef prop, bool flag) {
     if (flag) set(prop, "true");
   }
 
@@ -268,7 +264,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   class TemporaryContainer {
     XMLDumper &Dumper;
   public:
-    TemporaryContainer(XMLDumper &dumper, llvm::StringRef name)
+    TemporaryContainer(XMLDumper &dumper, StringRef name)
       : Dumper(dumper) {
       Dumper.push(name);
       Dumper.completeAttrs();
@@ -303,7 +299,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
     completeAttrs();
     pop();
   }
-  void visitDeclRef(llvm::StringRef Name, Decl *D) {
+  void visitDeclRef(StringRef Name, Decl *D) {
     TemporaryContainer C(*this, Name);
     if (D) visitDeclRef(D);
   }
@@ -324,7 +320,8 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
       break;
         
     case TemplateArgument::Declaration: {
-      visitDeclRef(A.getAsDecl());
+      if (Decl *D = A.getAsDecl())
+        visitDeclRef(D);
       break;
     }
     case TemplateArgument::Integral: {
@@ -411,7 +408,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   }
 
   template <class T> void visitRedeclarableAttrs(T *D) {
-    if (T *Prev = D->getPreviousDeclaration())
+    if (T *Prev = D->getPreviousDecl())
       setPointer("previous", Prev);
   }
 
@@ -423,7 +420,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
 
   // LinkageSpecDecl
   void visitLinkageSpecDeclAttrs(LinkageSpecDecl *D) {
-    llvm::StringRef lang = "";
+    StringRef lang = "";
     switch (D->getLanguage()) {
     case LinkageSpecDecl::lang_c: lang = "C"; break;
     case LinkageSpecDecl::lang_cxx: lang = "C++"; break;
@@ -465,7 +462,13 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
     if (D->getStorageClass() != SC_None)
       set("storage",
           VarDecl::getStorageClassSpecifierString(D->getStorageClass()));
-    setFlag("directinit", D->hasCXXDirectInitializer());
+    StringRef initStyle = "";
+    switch (D->getInitStyle()) {
+    case VarDecl::CInit: initStyle = "c"; break;
+    case VarDecl::CallInit: initStyle = "call"; break;
+    case VarDecl::ListInit: initStyle = "list"; break;
+    }
+    set("initstyle", initStyle);
     setFlag("nrvo", D->isNRVOVariable());
     // TODO: instantiation, etc.
   }
@@ -494,6 +497,10 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   void visitFunctionDeclChildren(FunctionDecl *D) {
     for (FunctionDecl::param_iterator
            I = D->param_begin(), E = D->param_end(); I != E; ++I)
+      dispatch(*I);
+    for (llvm::ArrayRef<NamedDecl*>::iterator
+           I = D->getDeclsInPrototypeScope().begin(), E = D->getDeclsInPrototypeScope().end();
+         I != E; ++I)
       dispatch(*I);
     if (D->doesThisDeclarationHaveABody())
       dispatch(D->getBody());
@@ -740,12 +747,6 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
     visitDeclContext(D);
   }
 
-  // ObjCClassDecl
-  void visitObjCClassDeclChildren(ObjCClassDecl *D) {
-    for (ObjCClassDecl::iterator I = D->begin(), E = D->end(); I != E; ++I)
-      visitDeclRef(I->getInterface());
-  }
-
   // ObjCInterfaceDecl
   void visitCategoryList(ObjCCategoryDecl *D) {
     if (!D) return;
@@ -756,7 +757,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   }
   void visitObjCInterfaceDeclAttrs(ObjCInterfaceDecl *D) {
     setPointer("typeptr", D->getTypeForDecl());
-    setFlag("forward_decl", D->isForwardDecl());
+    setFlag("forward_decl", !D->isThisDeclarationADefinition());
     setFlag("implicit_interface", D->isImplicitInterfaceDecl());
   }
   void visitObjCInterfaceDeclChildren(ObjCInterfaceDecl *D) {
@@ -816,18 +817,11 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
     }
   }
 
-  // ObjCForwardProtocolDecl
-  void visitObjCForwardProtocolDeclChildren(ObjCForwardProtocolDecl *D) {
-    for (ObjCForwardProtocolDecl::protocol_iterator
-           I = D->protocol_begin(), E = D->protocol_end(); I != E; ++I)
-      visitDeclRef(*I);
-  }
-
   // ObjCProtocolDecl
-  void visitObjCProtocolDeclAttrs(ObjCProtocolDecl *D) {
-    setFlag("forward_decl", D->isForwardDecl());
-  }
   void visitObjCProtocolDeclChildren(ObjCProtocolDecl *D) {
+    if (!D->isThisDeclarationADefinition())
+      return;
+    
     if (D->protocol_begin() != D->protocol_end()) {
       TemporaryContainer C(*this, "protocols");
       for (ObjCInterfaceDecl::protocol_iterator
@@ -836,6 +830,9 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
     }
   }
   void visitObjCProtocolDeclAsContext(ObjCProtocolDecl *D) {
+    if (!D->isThisDeclarationADefinition())
+      return;
+    
     visitDeclContext(D);
   }
 
@@ -860,7 +857,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   }
 
   // ObjCIvarDecl
-  void setAccessControl(llvm::StringRef prop, ObjCIvarDecl::AccessControl AC) {
+  void setAccessControl(StringRef prop, ObjCIvarDecl::AccessControl AC) {
     switch (AC) {
     case ObjCIvarDecl::None: return set(prop, "none");
     case ObjCIvarDecl::Private: return set(prop, "private");
@@ -1031,13 +1028,13 @@ void Decl::dumpXML() const {
   dumpXML(llvm::errs());
 }
 
-void Decl::dumpXML(llvm::raw_ostream &out) const {
+void Decl::dumpXML(raw_ostream &out) const {
   XMLDumper(out, getASTContext()).dispatch(const_cast<Decl*>(this));
 }
 
 #else /* ifndef NDEBUG */
 
 void Decl::dumpXML() const {}
-void Decl::dumpXML(llvm::raw_ostream &out) const {}
+void Decl::dumpXML(raw_ostream &out) const {}
 
 #endif

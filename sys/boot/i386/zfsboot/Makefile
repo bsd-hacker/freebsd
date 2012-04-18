@@ -15,12 +15,7 @@ ORG1=	0x7c00
 ORG2=	0x2000
 
 CFLAGS=	-DBOOTPROG=\"zfsboot\" \
-	-Os \
-	-fno-guess-branch-probability \
-	-fomit-frame-pointer \
-	-fno-unit-at-a-time \
-	-mno-align-long-strings \
-	-mrtd \
+	-O1 \
 	-DBOOT2 \
 	-DSIOPRT=${BOOT_COMCONSOLE_PORT} \
 	-DSIOFMT=${B2SIOFMT} \
@@ -35,11 +30,6 @@ CFLAGS=	-DBOOTPROG=\"zfsboot\" \
 	-Wmissing-declarations -Wmissing-prototypes -Wnested-externs \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
 	-Winline --param max-inline-insns-single=100
-
-.if ${CC:T:Mclang} == "clang"
-# XXX: clang integrated-as doesn't grok .codeNN directives yet
-CFLAGS+=	${.IMPSRC:T:Mzfsldr.S:C/^.+$/-no-integrated-as/}
-.endif
 
 LDFLAGS=-static -N --gc-sections
 
@@ -85,23 +75,17 @@ zfsboot.bin: zfsboot.out
 zfsboot.out: ${BTXCRT} zfsboot.o sio.o drv.o cons.o util.o
 	${LD} ${LDFLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC} ${LIBSTAND}
 
-zfsboot.o: zfsboot.s
-.if ${CC:T:Mclang} == "clang"
-	${CC} ${ACFLAGS} -c zfsboot.s
-.endif
-
 SRCS=	zfsboot.c
 
-zfsboot.s: zfsboot.c ${.CURDIR}/../../zfs/zfsimpl.c
-	${CC} ${CFLAGS} -S -o zfsboot.s.tmp ${.CURDIR}/zfsboot.c
-	sed -e '/align/d' -e '/nop/d' < zfsboot.s.tmp > zfsboot.s
-	rm -f zfsboot.s.tmp
-
 .if ${MACHINE_CPUARCH} == "amd64"
-beforedepend zfsboot.s: machine
+beforedepend zfsboot.o: machine
 CLEANFILES+=	machine
 machine:
 	ln -sf ${.CURDIR}/../../../i386/include machine
 .endif
 
 .include <bsd.prog.mk>
+
+# XXX: clang integrated-as doesn't grok .codeNN directives yet
+CFLAGS.zfsldr.S=	${CLANG_NO_IAS}
+CFLAGS+=		${CFLAGS.${.IMPSRC:T}}

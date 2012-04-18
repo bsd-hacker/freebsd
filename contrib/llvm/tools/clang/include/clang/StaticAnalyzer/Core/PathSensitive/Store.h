@@ -29,20 +29,21 @@ class StackFrameContext;
 
 namespace ento {
 
-class GRState;
-class GRStateManager;
+class CallOrObjCMessage;
+class ProgramState;
+class ProgramStateManager;
 class SubRegionMap;
 
 class StoreManager {
 protected:
   SValBuilder &svalBuilder;
-  GRStateManager &StateMgr;
+  ProgramStateManager &StateMgr;
 
   /// MRMgr - Manages region objects associated with this StoreManager.
   MemRegionManager &MRMgr;
   ASTContext &Ctx;
 
-  StoreManager(GRStateManager &stateMgr);
+  StoreManager(ProgramStateManager &stateMgr);
 
 public:
   virtual ~StoreManager() {}
@@ -54,13 +55,13 @@ public:
   ///   expected type of the returned value.  This is used if the value is
   ///   lazily computed.
   /// \return The value bound to the location \c loc.
-  virtual SVal Retrieve(Store store, Loc loc, QualType T = QualType()) = 0;
+  virtual SVal getBinding(Store store, Loc loc, QualType T = QualType()) = 0;
 
   /// Return a state with the specified value bound to the given location.
   /// \param[in] state The analysis state.
   /// \param[in] loc The symbolic memory location.
   /// \param[in] val The value to bind to location \c loc.
-  /// \return A pointer to a GRState object that contains the same bindings as
+  /// \return A pointer to a ProgramState object that contains the same bindings as
   ///   \c state with the addition of having the value specified by \c val bound
   ///   to the location given for \c loc.
   virtual StoreRef Bind(Store store, Loc loc, SVal val) = 0;
@@ -73,7 +74,7 @@ public:
   ///  for the compound literal and 'BegInit' and 'EndInit' represent an
   ///  array of initializer values.
   virtual StoreRef BindCompoundLiteral(Store store,
-                                       const CompoundLiteralExpr* cl,
+                                       const CompoundLiteralExpr *cl,
                                        const LocationContext *LC, SVal v) = 0;
 
   /// getInitialStore - Returns the initial "empty" store representing the
@@ -93,20 +94,14 @@ public:
     return svalBuilder.makeLoc(MRMgr.getVarRegion(VD, LC));
   }
 
-  virtual Loc getLValueString(const StringLiteral* S) {
-    return svalBuilder.makeLoc(MRMgr.getStringRegion(S));
-  }
-
-  Loc getLValueCompoundLiteral(const CompoundLiteralExpr* CL,
+  Loc getLValueCompoundLiteral(const CompoundLiteralExpr *CL,
                                const LocationContext *LC) {
     return loc::MemRegionVal(MRMgr.getCompoundLiteralRegion(CL, LC));
   }
 
-  virtual SVal getLValueIvar(const ObjCIvarDecl* decl, SVal base) {
-    return getLValueFieldOrIvar(decl, base);
-  }
+  virtual SVal getLValueIvar(const ObjCIvarDecl *decl, SVal base);
 
-  virtual SVal getLValueField(const FieldDecl* D, SVal Base) {
+  virtual SVal getLValueField(const FieldDecl *D, SVal Base) {
     return getLValueFieldOrIvar(D, Base);
   }
 
@@ -114,7 +109,7 @@ public:
 
   // FIXME: This should soon be eliminated altogether; clients should deal with
   // region extents directly.
-  virtual DefinedOrUnknownSVal getSizeInElements(const GRState *state, 
+  virtual DefinedOrUnknownSVal getSizeInElements(ProgramStateRef state, 
                                                  const MemRegion *region,
                                                  QualType EleTy) {
     return UnknownVal();
@@ -125,17 +120,26 @@ public:
   virtual SVal ArrayToPointer(Loc Array) = 0;
 
   /// Evaluates DerivedToBase casts.
-  virtual SVal evalDerivedToBase(SVal derived, QualType basePtrType) {
-    return UnknownVal();
-  }
+  virtual SVal evalDerivedToBase(SVal derived, QualType basePtrType) = 0;
+
+  /// \brief Evaluates C++ dynamic_cast cast.
+  /// The callback may result in the following 3 scenarios:
+  ///  - Successful cast (ex: derived is subclass of base).
+  ///  - Failed cast (ex: derived is definitely not a subclass of base).
+  ///  - We don't know (base is a symbolic region and we don't have 
+  ///    enough info to determine if the cast will succeed at run time).
+  /// The function returns an SVal representing the derived class; it's
+  /// valid only if Failed flag is set to false.
+  virtual SVal evalDynamicCast(SVal base, QualType derivedPtrType,
+                                 bool &Failed) = 0;
 
   class CastResult {
-    const GRState *state;
+    ProgramStateRef state;
     const MemRegion *region;
   public:
-    const GRState *getState() const { return state; }
+    ProgramStateRef getState() const { return state; }
     const MemRegion* getRegion() const { return region; }
-    CastResult(const GRState *s, const MemRegion* r = 0) : state(s), region(r){}
+    CastResult(ProgramStateRef s, const MemRegion* r = 0) : state(s), region(r){}
   };
 
   const ElementRegion *GetElementZeroRegion(const MemRegion *R, QualType T);
@@ -146,12 +150,14 @@ public:
   const MemRegion *castRegion(const MemRegion *region, QualType CastToTy);
 
   virtual StoreRef removeDeadBindings(Store store, const StackFrameContext *LCtx,
-                                      SymbolReaper& SymReaper,
-                      llvm::SmallVectorImpl<const MemRegion*>& RegionRoots) = 0;
+                                      SymbolReaper& SymReaper) = 0;
 
   virtual StoreRef BindDecl(Store store, const VarRegion *VR, SVal initVal) = 0;
 
   virtual StoreRef BindDeclWithNoInit(Store store, const VarRegion *VR) = 0;
+  
+  virtual bool includedInBindings(Store store,
+                                  const MemRegion *region) const = 0;
   
   /// If the StoreManager supports it, increment the reference count of
   /// the specified Store object.
@@ -163,7 +169,7 @@ public:
   virtual void decrementReferenceCount(Store store) {}
 
   typedef llvm::DenseSet<SymbolRef> InvalidatedSymbols;
-  typedef llvm::SmallVector<const MemRegion *, 8> InvalidatedRegions;
+  typedef SmallVector<const MemRegion *, 8> InvalidatedRegions;
 
   /// invalidateRegions - Clears out the specified regions from the store,
   ///  marking their values as unknown. Depending on the store, this may also
@@ -178,26 +184,27 @@ public:
   ///   symbols to mark the values of invalidated regions.
   /// \param[in,out] IS A set to fill with any symbols that are no longer
   ///   accessible. Pass \c NULL if this information will not be used.
-  /// \param[in] invalidateGlobals If \c true, any non-static global regions
-  ///   are invalidated as well.
+  /// \param[in] Call The call expression which will be used to determine which
+  ///   globals should get invalidated.
   /// \param[in,out] Regions A vector to fill with any regions being
   ///   invalidated. This should include any regions explicitly invalidated
   ///   even if they do not currently have bindings. Pass \c NULL if this
   ///   information will not be used.
   virtual StoreRef invalidateRegions(Store store,
-                                     const MemRegion * const *Begin,
-                                     const MemRegion * const *End,
+                                     ArrayRef<const MemRegion *> Regions,
                                      const Expr *E, unsigned Count,
+                                     const LocationContext *LCtx,
                                      InvalidatedSymbols &IS,
-                                     bool invalidateGlobals,
-                                     InvalidatedRegions *Regions) = 0;
+                                     const CallOrObjCMessage *Call,
+                                     InvalidatedRegions *Invalidated) = 0;
 
   /// enterStackFrame - Let the StoreManager to do something when execution
   /// engine is about to execute into a callee.
-  virtual StoreRef enterStackFrame(const GRState *state,
-                                   const StackFrameContext *frame);
+  virtual StoreRef enterStackFrame(ProgramStateRef state,
+                                   const LocationContext *callerCtx,
+                                   const StackFrameContext *calleeCtx);
 
-  virtual void print(Store store, llvm::raw_ostream& Out,
+  virtual void print(Store store, raw_ostream &Out,
                      const char* nl, const char *sep) = 0;
 
   class BindingsHandler {
@@ -205,6 +212,21 @@ public:
     virtual ~BindingsHandler();
     virtual bool HandleBinding(StoreManager& SMgr, Store store,
                                const MemRegion *region, SVal val) = 0;
+  };
+
+  class FindUniqueBinding :
+  public BindingsHandler {
+    SymbolRef Sym;
+    const MemRegion* Binding;
+    bool First;
+
+  public:
+    FindUniqueBinding(SymbolRef sym) : Sym(sym), Binding(0), First(true) {}
+
+    bool HandleBinding(StoreManager& SMgr, Store store, const MemRegion* R,
+                       SVal val);
+    operator bool() { return First && Binding; }
+    const MemRegion *getRegion() { return Binding; }
   };
 
   /// iterBindings - Iterate over the bindings in the Store.
@@ -217,11 +239,11 @@ protected:
   /// CastRetrievedVal - Used by subclasses of StoreManager to implement
   ///  implicit casts that arise from loads from regions that are reinterpreted
   ///  as another region.
-  SVal CastRetrievedVal(SVal val, const TypedRegion *region, QualType castTy,
-                        bool performTestOnly = true);
+  SVal CastRetrievedVal(SVal val, const TypedValueRegion *region, 
+                        QualType castTy, bool performTestOnly = true);
 
 private:
-  SVal getLValueFieldOrIvar(const Decl* decl, SVal base);
+  SVal getLValueFieldOrIvar(const Decl *decl, SVal base);
 };
 
 
@@ -257,10 +279,12 @@ inline StoreRef &StoreRef::operator=(StoreRef const &newStore) {
 /// SubRegionMap - An abstract interface that represents a queryable map
 ///  between MemRegion objects and their subregions.
 class SubRegionMap {
+  virtual void anchor();
 public:
   virtual ~SubRegionMap() {}
 
   class Visitor {
+    virtual void anchor();
   public:
     virtual ~Visitor() {}
     virtual bool Visit(const MemRegion* Parent, const MemRegion* SubRegion) = 0;
@@ -269,11 +293,9 @@ public:
   virtual bool iterSubRegions(const MemRegion *region, Visitor& V) const = 0;
 };
 
-// FIXME: Do we need to pass GRStateManager anymore?
-StoreManager *CreateBasicStoreManager(GRStateManager& StMgr);
-StoreManager *CreateRegionStoreManager(GRStateManager& StMgr);
-StoreManager *CreateFieldsOnlyRegionStoreManager(GRStateManager& StMgr);
-StoreManager *CreateFlatStoreManager(GRStateManager &StMgr);
+// FIXME: Do we need to pass ProgramStateManager anymore?
+StoreManager *CreateRegionStoreManager(ProgramStateManager& StMgr);
+StoreManager *CreateFieldsOnlyRegionStoreManager(ProgramStateManager& StMgr);
 
 } // end GR namespace
 

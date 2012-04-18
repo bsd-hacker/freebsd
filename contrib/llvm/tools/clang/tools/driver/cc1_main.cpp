@@ -27,9 +27,10 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetSelect.h"
+#include "llvm/LinkAllPasses.h"
 #include <cstdio>
 using namespace clang;
 
@@ -38,7 +39,7 @@ using namespace clang;
 //===----------------------------------------------------------------------===//
 
 static void LLVMErrorHandler(void *UserData, const std::string &Message) {
-  Diagnostic &Diags = *static_cast<Diagnostic*>(UserData);
+  DiagnosticsEngine &Diags = *static_cast<DiagnosticsEngine*>(UserData);
 
   Diags.Report(diag::err_fe_error_backend) << Message;
 
@@ -47,7 +48,7 @@ static void LLVMErrorHandler(void *UserData, const std::string &Message) {
 }
 
 // FIXME: Define the need for this testing away.
-static int cc1_test(Diagnostic &Diags,
+static int cc1_test(DiagnosticsEngine &Diags,
                     const char **ArgBegin, const char **ArgEnd) {
   using namespace clang::driver;
 
@@ -76,14 +77,15 @@ static int cc1_test(Diagnostic &Diags,
   // Create a compiler invocation.
   llvm::errs() << "cc1 creating invocation.\n";
   CompilerInvocation Invocation;
-  CompilerInvocation::CreateFromArgs(Invocation, ArgBegin, ArgEnd, Diags);
+  if (!CompilerInvocation::CreateFromArgs(Invocation, ArgBegin, ArgEnd, Diags))
+    return 1;
 
   // Convert the invocation back to argument strings.
   std::vector<std::string> InvocationArgs;
   Invocation.toArgs(InvocationArgs);
 
   // Dump the converted arguments.
-  llvm::SmallVector<const char*, 32> Invocation2Args;
+  SmallVector<const char*, 32> Invocation2Args;
   llvm::errs() << "invocation argv :";
   for (unsigned i = 0, e = InvocationArgs.size(); i != e; ++i) {
     Invocation2Args.push_back(InvocationArgs[i].c_str());
@@ -94,8 +96,9 @@ static int cc1_test(Diagnostic &Diags,
   // Convert those arguments to another invocation, and check that we got the
   // same thing.
   CompilerInvocation Invocation2;
-  CompilerInvocation::CreateFromArgs(Invocation2, Invocation2Args.begin(),
-                                     Invocation2Args.end(), Diags);
+  if (!CompilerInvocation::CreateFromArgs(Invocation2, Invocation2Args.begin(),
+                                          Invocation2Args.end(), Diags))
+    return 1;
 
   // FIXME: Implement CompilerInvocation comparison.
   if (true) {
@@ -114,29 +117,29 @@ static int cc1_test(Diagnostic &Diags,
 
 int cc1_main(const char **ArgBegin, const char **ArgEnd,
              const char *Argv0, void *MainAddr) {
-  llvm::OwningPtr<CompilerInstance> Clang(new CompilerInstance());
-  llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  OwningPtr<CompilerInstance> Clang(new CompilerInstance());
+  IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   // Run clang -cc1 test.
-  if (ArgBegin != ArgEnd && llvm::StringRef(ArgBegin[0]) == "-cc1test") {
-    Diagnostic Diags(DiagID, new TextDiagnosticPrinter(llvm::errs(), 
+  if (ArgBegin != ArgEnd && StringRef(ArgBegin[0]) == "-cc1test") {
+    DiagnosticsEngine Diags(DiagID, new TextDiagnosticPrinter(llvm::errs(), 
                                                        DiagnosticOptions()));
     return cc1_test(Diags, ArgBegin + 1, ArgEnd);
   }
 
   // Initialize targets first, so that --version shows registered targets.
   llvm::InitializeAllTargets();
-  llvm::InitializeAllMCAsmInfos();
-  llvm::InitializeAllMCSubtargetInfos();
+  llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
   llvm::InitializeAllAsmParsers();
 
   // Buffer diagnostics from argument parsing so that we can output them using a
   // well formed diagnostic object.
   TextDiagnosticBuffer *DiagsBuffer = new TextDiagnosticBuffer;
-  Diagnostic Diags(DiagID, DiagsBuffer);
-  CompilerInvocation::CreateFromArgs(Clang->getInvocation(), ArgBegin, ArgEnd,
-                                     Diags);
+  DiagnosticsEngine Diags(DiagID, DiagsBuffer);
+  bool Success;
+  Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(),
+                                               ArgBegin, ArgEnd, Diags);
 
   // Infer the builtin include path if unspecified.
   if (Clang->getHeaderSearchOpts().UseBuiltinIncludes &&
@@ -155,9 +158,11 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
                                   static_cast<void*>(&Clang->getDiagnostics()));
 
   DiagsBuffer->FlushDiagnostics(Clang->getDiagnostics());
+  if (!Success)
+    return 1;
 
   // Execute the frontend actions.
-  bool Success = ExecuteCompilerInvocation(Clang.get());
+  Success = ExecuteCompilerInvocation(Clang.get());
 
   // If any timers were active but haven't been destroyed yet, print their
   // results now.  This happens in -disable-free mode.

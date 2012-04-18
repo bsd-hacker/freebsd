@@ -943,7 +943,7 @@ aio_process(struct aiocblist *aiocbe)
 			}
 			if (sigpipe) {
 				PROC_LOCK(aiocbe->userproc);
-				psignal(aiocbe->userproc, SIGPIPE);
+				kern_psignal(aiocbe->userproc, SIGPIPE);
 				PROC_UNLOCK(aiocbe->userproc);
 			}
 		}
@@ -1057,7 +1057,7 @@ aio_daemon(void *_id)
 	aiop->aiothreadflags = 0;
 
 	/* The daemon resides in its own pgrp. */
-	setsid(td, NULL);
+	sys_setsid(td, NULL);
 
 	/*
 	 * Wakeup parent process.  (Parent sleeps to keep from blasting away
@@ -1524,6 +1524,7 @@ aio_aqueue(struct thread *td, struct aiocb *job, struct aioliojob *lj,
 	int error;
 	int fd, kqfd;
 	int jid;
+	u_short evflags;
 
 	if (p->p_aioinfo == NULL)
 		aio_init_aioinfo(p);
@@ -1550,6 +1551,12 @@ aio_aqueue(struct thread *td, struct aiocb *job, struct aioliojob *lj,
 		ops->store_error(job, error);
 		uma_zfree(aiocb_zone, aiocbe);
 		return (error);
+	}
+
+	/* XXX: aio_nbytes is later casted to signed types. */
+	if (aiocbe->uaiocb.aio_nbytes > INT_MAX) {
+		uma_zfree(aiocb_zone, aiocbe);
+		return (EINVAL);
 	}
 
 	if (aiocbe->uaiocb.aio_sigevent.sigev_notify != SIGEV_KEVENT &&
@@ -1640,10 +1647,15 @@ aio_aqueue(struct thread *td, struct aiocb *job, struct aioliojob *lj,
 
 	if (aiocbe->uaiocb.aio_sigevent.sigev_notify != SIGEV_KEVENT)
 		goto no_kqueue;
+	evflags = aiocbe->uaiocb.aio_sigevent.sigev_notify_kevent_flags;
+	if ((evflags & ~(EV_CLEAR | EV_DISPATCH | EV_ONESHOT)) != 0) {
+		error = EINVAL;
+		goto aqueue_fail;
+	}
 	kqfd = aiocbe->uaiocb.aio_sigevent.sigev_notify_kqueue;
 	kev.ident = (uintptr_t)aiocbe->uuaiocb;
 	kev.filter = EVFILT_AIO;
-	kev.flags = EV_ADD | EV_ENABLE | EV_FLAG1;
+	kev.flags = EV_ADD | EV_ENABLE | EV_FLAG1 | evflags;
 	kev.data = (intptr_t)aiocbe;
 	kev.udata = aiocbe->uaiocb.aio_sigevent.sigev_value.sival_ptr;
 	error = kqfd_register(kqfd, &kev, td, 1);
@@ -1867,7 +1879,7 @@ kern_aio_return(struct thread *td, struct aiocb *uaiocb, struct aiocb_ops *ops)
 }
 
 int
-aio_return(struct thread *td, struct aio_return_args *uap)
+sys_aio_return(struct thread *td, struct aio_return_args *uap)
 {
 
 	return (kern_aio_return(td, uap->aiocbp, &aiocb_ops));
@@ -1936,7 +1948,7 @@ RETURN:
 }
 
 int
-aio_suspend(struct thread *td, struct aio_suspend_args *uap)
+sys_aio_suspend(struct thread *td, struct aio_suspend_args *uap)
 {
 	struct timespec ts, *tsp;
 	struct aiocb **ujoblist;
@@ -1966,7 +1978,7 @@ aio_suspend(struct thread *td, struct aio_suspend_args *uap)
  * progress.
  */
 int
-aio_cancel(struct thread *td, struct aio_cancel_args *uap)
+sys_aio_cancel(struct thread *td, struct aio_cancel_args *uap)
 {
 	struct proc *p = td->td_proc;
 	struct kaioinfo *ki;
@@ -2106,7 +2118,7 @@ kern_aio_error(struct thread *td, struct aiocb *aiocbp, struct aiocb_ops *ops)
 }
 
 int
-aio_error(struct thread *td, struct aio_error_args *uap)
+sys_aio_error(struct thread *td, struct aio_error_args *uap)
 {
 
 	return (kern_aio_error(td, uap->aiocbp, &aiocb_ops));
@@ -2114,7 +2126,7 @@ aio_error(struct thread *td, struct aio_error_args *uap)
 
 /* syscall - asynchronous read from a file (REALTIME) */
 int
-oaio_read(struct thread *td, struct oaio_read_args *uap)
+sys_oaio_read(struct thread *td, struct oaio_read_args *uap)
 {
 
 	return (aio_aqueue(td, (struct aiocb *)uap->aiocbp, NULL, LIO_READ,
@@ -2122,7 +2134,7 @@ oaio_read(struct thread *td, struct oaio_read_args *uap)
 }
 
 int
-aio_read(struct thread *td, struct aio_read_args *uap)
+sys_aio_read(struct thread *td, struct aio_read_args *uap)
 {
 
 	return (aio_aqueue(td, uap->aiocbp, NULL, LIO_READ, &aiocb_ops));
@@ -2130,7 +2142,7 @@ aio_read(struct thread *td, struct aio_read_args *uap)
 
 /* syscall - asynchronous write to a file (REALTIME) */
 int
-oaio_write(struct thread *td, struct oaio_write_args *uap)
+sys_oaio_write(struct thread *td, struct oaio_write_args *uap)
 {
 
 	return (aio_aqueue(td, (struct aiocb *)uap->aiocbp, NULL, LIO_WRITE,
@@ -2138,7 +2150,7 @@ oaio_write(struct thread *td, struct oaio_write_args *uap)
 }
 
 int
-aio_write(struct thread *td, struct aio_write_args *uap)
+sys_aio_write(struct thread *td, struct aio_write_args *uap)
 {
 
 	return (aio_aqueue(td, uap->aiocbp, NULL, LIO_WRITE, &aiocb_ops));
@@ -2281,7 +2293,7 @@ kern_lio_listio(struct thread *td, int mode, struct aiocb * const *uacb_list,
 
 /* syscall - list directed I/O (REALTIME) */
 int
-olio_listio(struct thread *td, struct olio_listio_args *uap)
+sys_olio_listio(struct thread *td, struct olio_listio_args *uap)
 {
 	struct aiocb **acb_list;
 	struct sigevent *sigp, sig;
@@ -2318,7 +2330,7 @@ olio_listio(struct thread *td, struct olio_listio_args *uap)
 
 /* syscall - list directed I/O (REALTIME) */
 int
-lio_listio(struct thread *td, struct lio_listio_args *uap)
+sys_lio_listio(struct thread *td, struct lio_listio_args *uap)
 {
 	struct aiocb **acb_list;
 	struct sigevent *sigp, sig;
@@ -2465,7 +2477,7 @@ kern_aio_waitcomplete(struct thread *td, struct aiocb **aiocbp,
 }
 
 int
-aio_waitcomplete(struct thread *td, struct aio_waitcomplete_args *uap)
+sys_aio_waitcomplete(struct thread *td, struct aio_waitcomplete_args *uap)
 {
 	struct timespec ts, *tsp;
 	int error;
@@ -2498,7 +2510,7 @@ kern_aio_fsync(struct thread *td, int op, struct aiocb *aiocbp,
 }
 
 int
-aio_fsync(struct thread *td, struct aio_fsync_args *uap)
+sys_aio_fsync(struct thread *td, struct aio_fsync_args *uap)
 {
 
 	return (kern_aio_fsync(td, uap->op, uap->aiocbp, &aiocb_ops));
@@ -2529,10 +2541,13 @@ filt_aioattach(struct knote *kn)
 static void
 filt_aiodetach(struct knote *kn)
 {
-	struct aiocblist *aiocbe = kn->kn_ptr.p_aio;
+	struct knlist *knl;
 
-	if (!knlist_empty(&aiocbe->klist))
-		knlist_remove(&aiocbe->klist, kn, 0);
+	knl = &kn->kn_ptr.p_aio->klist;
+	knl->kl_lock(knl->kl_lockarg);
+	if (!knlist_empty(knl))
+		knlist_remove(knl, kn, 1);
+	knl->kl_unlock(knl->kl_lockarg);
 }
 
 /* kqueue filter function */
@@ -2574,10 +2589,13 @@ filt_lioattach(struct knote *kn)
 static void
 filt_liodetach(struct knote *kn)
 {
-	struct aioliojob * lj = kn->kn_ptr.p_lio;
+	struct knlist *knl;
 
-	if (!knlist_empty(&lj->klist))
-		knlist_remove(&lj->klist, kn, 0);
+	knl = &kn->kn_ptr.p_lio->klist;
+	knl->kl_lock(knl->kl_lockarg);
+	if (!knlist_empty(knl))
+		knlist_remove(knl, kn, 1);
+	knl->kl_unlock(knl->kl_lockarg);
 }
 
 /* kqueue filter function */
@@ -2688,6 +2706,7 @@ convert_sigevent32(struct sigevent32 *sig32, struct sigevent *sig)
 		break;
 	case SIGEV_KEVENT:
 		CP(*sig32, *sig, sigev_notify_kqueue);
+		CP(*sig32, *sig, sigev_notify_kevent_flags);
 		PTRIN_CP(*sig32, *sig, sigev_value.sival_ptr);
 		break;
 	default:
@@ -2836,7 +2855,7 @@ int
 freebsd32_aio_cancel(struct thread *td, struct freebsd32_aio_cancel_args *uap)
 {
 
-	return (aio_cancel(td, (struct aio_cancel_args *)uap));
+	return (sys_aio_cancel(td, (struct aio_cancel_args *)uap));
 }
 
 int

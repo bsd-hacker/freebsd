@@ -75,7 +75,8 @@ public:
     LeadingSpace  = 0x02,  // Whitespace exists before this token.
     DisableExpand = 0x04,  // This identifier may never be macro expanded.
     NeedsCleaning = 0x08,   // Contained an escaped newline or trigraph.
-    LeadingEmptyMacro = 0x10 // Empty macro exists before this token.
+    LeadingEmptyMacro = 0x10, // Empty macro exists before this token.
+    HasUDSuffix = 0x20     // This string or character literal has a ud-suffix.
   };
 
   tok::TokenKind getKind() const { return (tok::TokenKind)Kind; }
@@ -96,7 +97,10 @@ public:
   /// constant, string, etc.
   bool isLiteral() const {
     return is(tok::numeric_constant) || is(tok::char_constant) ||
-           is(tok::string_literal) || is(tok::wide_string_literal) ||
+           is(tok::wide_char_constant) || is(tok::utf16_char_constant) ||
+           is(tok::utf32_char_constant) || is(tok::string_literal) ||
+           is(tok::wide_string_literal) || is(tok::utf8_string_literal) ||
+           is(tok::utf16_string_literal) || is(tok::utf32_string_literal) ||
            is(tok::angle_string_literal);
   }
 
@@ -260,6 +264,9 @@ public:
     return (Flags & LeadingEmptyMacro) ? true : false;
   }
 
+  /// \brief Return true if this token is a string or character literal which
+  /// has a ud-suffix.
+  bool hasUDSuffix() const { return (Flags & HasUDSuffix) ? true : false; }
 };
 
 /// PPConditionalInfo - Information about the conditional stack (#if directives)

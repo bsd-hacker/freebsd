@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
  */
 
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -446,7 +447,6 @@ create_service(const int sock, const struct netconfig *nconf,
 	}
 	/* XXX: ignore error intentionally */
 	rpcb_set(YPPROG, YPVERS, nconf, &svcaddr);
-
 	freeaddrinfo(res0);
 	return (0);
 }
@@ -535,6 +535,9 @@ main(int argc, char *argv[])
 		_rpcfd = RPC_ANYFD;
 		unregister();
 	}
+
+	if (madvise(NULL, 0, MADV_PROTECT) != 0)
+		_msgout("madvise(): %s", strerror(errno));
 
 	/*
 	 * Create RPC service for each transport.

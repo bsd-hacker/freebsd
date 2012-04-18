@@ -17,7 +17,6 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineLocation.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -32,6 +31,7 @@
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Support/Dwarf.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
@@ -185,7 +185,7 @@ ComputeActionsTable(const SmallVectorImpl<const LandingPadInfo*> &LandingPads,
 /// CallToNoUnwindFunction - Return `true' if this is a call to a function
 /// marked `nounwind'. Return `false' otherwise.
 bool DwarfException::CallToNoUnwindFunction(const MachineInstr *MI) {
-  assert(MI->getDesc().isCall() && "This should be a call instruction!");
+  assert(MI->isCall() && "This should be a call instruction!");
 
   bool MarkedNoUnwind = false;
   bool SawFunc = false;
@@ -244,7 +244,7 @@ ComputeCallSiteTable(SmallVectorImpl<CallSiteEntry> &CallSites,
     for (MachineBasicBlock::const_iterator MI = I->begin(), E = I->end();
          MI != E; ++MI) {
       if (!MI->isLabel()) {
-        if (MI->getDesc().isCall())
+        if (MI->isCall())
           SawPotentiallyThrowing |= !CallToNoUnwindFunction(MI);
         continue;
       }
@@ -527,29 +527,24 @@ void DwarfException::EmitExceptionTable() {
          I = CallSites.begin(), E = CallSites.end(); I != E; ++I, ++idx) {
       const CallSiteEntry &S = *I;
 
-      if (VerboseAsm) {
-        // Emit comments that decode the call site.
-        Asm->OutStreamer.AddComment(Twine(">> Call Site ") +
-                                    llvm::utostr(idx) + " <<");
-        Asm->OutStreamer.AddComment(Twine("  On exception at call site ") +
-                                    llvm::utostr(idx));
-
-        if (S.Action == 0)
-          Asm->OutStreamer.AddComment("  Action: cleanup");
-        else
-          Asm->OutStreamer.AddComment(Twine("  Action: ") +
-                                      llvm::utostr((S.Action - 1) / 2 + 1));
-
-        Asm->OutStreamer.AddBlankLine();
-      }
-
       // Offset of the landing pad, counted in 16-byte bundles relative to the
       // @LPStart address.
+      if (VerboseAsm) {
+        Asm->OutStreamer.AddComment(">> Call Site " + Twine(idx) + " <<");
+        Asm->OutStreamer.AddComment("  On exception at call site "+Twine(idx));
+      }
       Asm->EmitULEB128(idx);
 
       // Offset of the first associated action record, relative to the start of
       // the action table. This value is biased by 1 (1 indicates the start of
       // the action table), and 0 indicates that there are no actions.
+      if (VerboseAsm) {
+        if (S.Action == 0)
+          Asm->OutStreamer.AddComment("  Action: cleanup");
+        else
+          Asm->OutStreamer.AddComment("  Action: " +
+                                      Twine((S.Action - 1) / 2 + 1));
+      }
       Asm->EmitULEB128(S.Action);
     }
   } else {
@@ -595,46 +590,42 @@ void DwarfException::EmitExceptionTable() {
       if (EndLabel == 0)
         EndLabel = Asm->GetTempSymbol("eh_func_end", Asm->getFunctionNumber());
 
-      if (VerboseAsm) {
-        // Emit comments that decode the call site.
-        Asm->OutStreamer.AddComment(Twine(">> Call Site ") +
-                                    llvm::utostr(++Entry) + " <<");
-        Asm->OutStreamer.AddComment(Twine("  Call between ") +
-                                    BeginLabel->getName() + " and " +
-                                    EndLabel->getName());
-
-        if (!S.PadLabel) {
-          Asm->OutStreamer.AddComment("    has no landing pad");
-        } else {
-          Asm->OutStreamer.AddComment(Twine("    jumps to ") +
-                                      S.PadLabel->getName());
-
-          if (S.Action == 0)
-            Asm->OutStreamer.AddComment("  On action: cleanup");
-          else
-            Asm->OutStreamer.AddComment(Twine("  On action: ") +
-                                        llvm::utostr((S.Action - 1) / 2 + 1));
-        }
-
-        Asm->OutStreamer.AddBlankLine();
-      }
 
       // Offset of the call site relative to the previous call site, counted in
       // number of 16-byte bundles. The first call site is counted relative to
       // the start of the procedure fragment.
+      if (VerboseAsm)
+        Asm->OutStreamer.AddComment(">> Call Site " + Twine(++Entry) + " <<");
       Asm->EmitLabelDifference(BeginLabel, EHFuncBeginSym, 4);
+      if (VerboseAsm)
+        Asm->OutStreamer.AddComment(Twine("  Call between ") +
+                                    BeginLabel->getName() + " and " +
+                                    EndLabel->getName());
       Asm->EmitLabelDifference(EndLabel, BeginLabel, 4);
 
       // Offset of the landing pad, counted in 16-byte bundles relative to the
       // @LPStart address.
-      if (!S.PadLabel)
+      if (!S.PadLabel) {
+        if (VerboseAsm)
+          Asm->OutStreamer.AddComment("    has no landing pad");
         Asm->OutStreamer.EmitIntValue(0, 4/*size*/, 0/*addrspace*/);
-      else
+      } else {
+        if (VerboseAsm)
+          Asm->OutStreamer.AddComment(Twine("    jumps to ") +
+                                      S.PadLabel->getName());
         Asm->EmitLabelDifference(S.PadLabel, EHFuncBeginSym, 4);
+      }
 
       // Offset of the first associated action record, relative to the start of
       // the action table. This value is biased by 1 (1 indicates the start of
       // the action table), and 0 indicates that there are no actions.
+      if (VerboseAsm) {
+        if (S.Action == 0)
+          Asm->OutStreamer.AddComment("  On action: cleanup");
+        else
+          Asm->OutStreamer.AddComment("  On action: " +
+                                      Twine((S.Action - 1) / 2 + 1));
+      }
       Asm->EmitULEB128(S.Action);
     }
   }
@@ -647,36 +638,37 @@ void DwarfException::EmitExceptionTable() {
 
     if (VerboseAsm) {
       // Emit comments that decode the action table.
-      Asm->OutStreamer.AddComment(Twine(">> Action Record ") +
-                                  llvm::utostr(++Entry) + " <<");
-      if (Action.ValueForTypeID >= 0)
-        Asm->OutStreamer.AddComment(Twine("  Catch TypeInfo ") +
-                                    llvm::itostr(Action.ValueForTypeID));
-      else 
-        Asm->OutStreamer.AddComment(Twine("  Filter TypeInfo ") +
-                                    llvm::itostr(Action.ValueForTypeID));
-
-      if (Action.NextAction == 0) {
-        Asm->OutStreamer.AddComment("  No further actions");
-      } else {
-        unsigned NextAction = Entry + (Action.NextAction + 1) / 2;
-        Asm->OutStreamer.AddComment(Twine("  Continue to action ") +
-                                    llvm::utostr(NextAction));
-      }
-
-      Asm->OutStreamer.AddBlankLine();
+      Asm->OutStreamer.AddComment(">> Action Record " + Twine(++Entry) + " <<");
     }
 
     // Type Filter
     //
     //   Used by the runtime to match the type of the thrown exception to the
     //   type of the catch clauses or the types in the exception specification.
+    if (VerboseAsm) {
+      if (Action.ValueForTypeID > 0)
+        Asm->OutStreamer.AddComment("  Catch TypeInfo " +
+                                    Twine(Action.ValueForTypeID));
+      else if (Action.ValueForTypeID < 0)
+        Asm->OutStreamer.AddComment("  Filter TypeInfo " +
+                                    Twine(Action.ValueForTypeID));
+      else
+        Asm->OutStreamer.AddComment("  Cleanup");
+    }
     Asm->EmitSLEB128(Action.ValueForTypeID);
 
     // Action Record
     //
     //   Self-relative signed displacement in bytes of the next action record,
     //   or 0 if there is no next action record.
+    if (VerboseAsm) {
+      if (Action.NextAction == 0) {
+        Asm->OutStreamer.AddComment("  No further actions");
+      } else {
+        unsigned NextAction = Entry + (Action.NextAction + 1) / 2;
+        Asm->OutStreamer.AddComment("  Continue to action "+Twine(NextAction));
+      }
+    }
     Asm->EmitSLEB128(Action.NextAction);
   }
 
@@ -691,7 +683,7 @@ void DwarfException::EmitExceptionTable() {
          I = TypeInfos.rbegin(), E = TypeInfos.rend(); I != E; ++I) {
     const GlobalVariable *GV = *I;
     if (VerboseAsm)
-      Asm->OutStreamer.AddComment(Twine("TypeInfo ") + llvm::utostr(Entry--));
+      Asm->OutStreamer.AddComment("TypeInfo " + Twine(Entry--));
     if (GV)
       Asm->EmitReference(GV, TTypeEncoding);
     else
@@ -711,7 +703,7 @@ void DwarfException::EmitExceptionTable() {
     if (VerboseAsm) {
       --Entry;
       if (TypeID != 0)
-        Asm->OutStreamer.AddComment(Twine("FilterInfo ") + llvm::itostr(Entry));
+        Asm->OutStreamer.AddComment("FilterInfo " + Twine(Entry));
     }
 
     Asm->EmitULEB128(TypeID);
@@ -723,17 +715,17 @@ void DwarfException::EmitExceptionTable() {
 /// EndModule - Emit all exception information that should come after the
 /// content.
 void DwarfException::EndModule() {
-  assert(0 && "Should be implemented");
+  llvm_unreachable("Should be implemented");
 }
 
 /// BeginFunction - Gather pre-function exception information. Assumes it's
 /// being emitted immediately after the function entry point.
 void DwarfException::BeginFunction(const MachineFunction *MF) {
-  assert(0 && "Should be implemented");
+  llvm_unreachable("Should be implemented");
 }
 
 /// EndFunction - Gather and emit post-function exception information.
 ///
 void DwarfException::EndFunction() {
-  assert(0 && "Should be implemented");
+  llvm_unreachable("Should be implemented");
 }

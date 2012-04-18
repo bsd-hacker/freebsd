@@ -1,4 +1,4 @@
-//===-- llvm/Target/X86/X86TargetObjectFile.h - X86 Object Info -*- C++ -*-===//
+//===-- X86TargetObjectFile.h - X86 Object Info -----------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,7 +15,6 @@
 #include "llvm/Target/TargetLoweringObjectFile.h"
 
 namespace llvm {
-  class X86TargetMachine;
 
   /// X8664_MachoTargetObjectFile - This TLOF implementation is used for Darwin
   /// x86-64.
@@ -31,28 +30,6 @@ namespace llvm {
     virtual MCSymbol *
     getCFIPersonalitySymbol(const GlobalValue *GV, Mangler *Mang,
                             MachineModuleInfo *MMI) const;
-  };
-
-  class X8632_ELFTargetObjectFile : public TargetLoweringObjectFileELF {
-    const X86TargetMachine &TM;
-  public:
-    X8632_ELFTargetObjectFile(const X86TargetMachine &tm)
-      :TM(tm) { }
-    virtual unsigned getPersonalityEncoding() const;
-    virtual unsigned getLSDAEncoding() const;
-    virtual unsigned getFDEEncoding(bool CFI) const;
-    virtual unsigned getTTypeEncoding() const;
-  };
-
-  class X8664_ELFTargetObjectFile : public TargetLoweringObjectFileELF {
-    const X86TargetMachine &TM;
-  public:
-    X8664_ELFTargetObjectFile(const X86TargetMachine &tm)
-      :TM(tm) { }
-    virtual unsigned getPersonalityEncoding() const;
-    virtual unsigned getLSDAEncoding() const;
-    virtual unsigned getFDEEncoding(bool CFI) const;
-    virtual unsigned getTTypeEncoding() const;
   };
 
 } // end namespace llvm

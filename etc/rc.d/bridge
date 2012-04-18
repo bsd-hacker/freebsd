@@ -26,8 +26,7 @@
 #
 
 # PROVIDE: bridge
-# REQUIRE: netif
-# BEFORE: SERVERS
+# REQUIRE: netif faith ppp stf
 # KEYWORD: nojail
 
 . /etc/rc.subr

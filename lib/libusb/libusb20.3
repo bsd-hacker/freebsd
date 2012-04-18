@@ -212,6 +212,10 @@ USB access library (libusb -lusb)
 .Fn libusb20_me_decode "const void *pdata" "uint16_t len" "void *pdecoded"
 .Ft "const uint8_t *"
 .Fn libusb20_desc_foreach "const struct libusb20_me_struct *me" "const uint8_t *pdesc"
+.Ft "const char *"
+.Fn libusb20_strerror "int code"
+.Ft "const char *"
+.Fn libusb20_error_name "int code"
 .
 .
 .Sh DESCRIPTION
@@ -231,7 +235,6 @@ applications should consider using
 .
 .Sh USB TRANSFER OPERATIONS
 .
-.Pp
 .
 .Fn libusb20_tr_close
 will release all kernel resources associated with an USB
@@ -530,7 +533,6 @@ with an USB transfer.
 .
 .Sh USB DEVICE OPERATIONS
 .
-.Pp
 .
 .Fn libusb20_dev_get_backend_name
 returns a zero terminated string describing the backend used.
@@ -538,7 +540,7 @@ returns a zero terminated string describing the backend used.
 .Pp
 .
 .Fn libusb20_dev_get_info
-retrieves the BSD specific usb_device_info structure into the memory location given by 
+retrieves the BSD specific usb_device_info structure into the memory location given by
 .Fa pinfo .
 The USB device given by
 .Fa pdev
@@ -610,10 +612,9 @@ The file descriptor can be used for polling purposes.
 .Pp
 .
 .Fn libusb20_dev_kernel_driver_active
-returns a non-zero value if a kernel driver is active on
-the given USB interface.
+returns zero if a kernel driver is active on the given USB interface.
 .
-Else zero is returned.
+Else a LIBUSB20_ERROR value is returned.
 .
 .Pp
 .
@@ -996,6 +997,21 @@ The total decoded length is returned.
 The buffer pointer cannot be NULL.
 .
 .
+.Sh USB DEBUGGING
+.Ft const char *
+.Fn libusb20_strerror "int code"
+Get the ASCII representation of the error given by the
+.Fa code
+argument.
+This function does not return NULL.
+.Pp
+.Ft const char *
+.Fn libusb20_error_name "int code"
+Get the ASCII representation of the error enum given by the
+.Fa code
+argument.
+This function does not return NULL.
+.
 .Sh FILES
 .
 .
@@ -1003,7 +1019,8 @@ The buffer pointer cannot be NULL.
 .Sh SEE ALSO
 .Xr usb 4 ,
 .Xr libusb 3 ,
-.Xr usbconfig 8
+.Xr usbconfig 8 ,
+.Xr usbdump 8
 .
 .
 .Sh HISTORY

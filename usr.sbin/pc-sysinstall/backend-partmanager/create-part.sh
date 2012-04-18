@@ -86,11 +86,16 @@ fi
 # If this is an empty disk, see if we need to create a new scheme for it
 gpart show ${DISK} >/dev/null 2>/dev/null
 if [ $? -eq 0 -a "${SLICENUM}" = "1" ] ; then
- gpart create -s ${TYPE} ${DISK}
+  if [ "${TYPE}" = "mbr" -o "${TYPE}" = "MBR" ] ; then 
+    flags="-s ${TYPE} -f active"
+  else
+    flags="-s ${TYPE}"
+  fi
+  gpart create ${flags} ${DISK}
 fi
 
 # If we have a starting block, use it
-if [ -z "$STARTBLOCK" ] ; then
+if [ -n "$STARTBLOCK" ] ; then
   sBLOCK="-b $STARTBLOCK"
 fi
 

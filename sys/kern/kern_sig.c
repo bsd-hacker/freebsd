@@ -136,7 +136,8 @@ static int	kern_forcesigexit = 1;
 SYSCTL_INT(_kern, OID_AUTO, forcesigexit, CTLFLAG_RW,
     &kern_forcesigexit, 0, "Force trap signal to be handled");
 
-SYSCTL_NODE(_kern, OID_AUTO, sigqueue, CTLFLAG_RW, 0, "POSIX real time signal");
+static SYSCTL_NODE(_kern, OID_AUTO, sigqueue, CTLFLAG_RW, 0,
+    "POSIX real time signal");
 
 static int	max_pending_per_proc = 128;
 SYSCTL_INT(_kern_sigqueue, OID_AUTO, max_pending_per_proc, CTLFLAG_RW,
@@ -193,40 +194,39 @@ SYSCTL_INT(_kern, OID_AUTO, nodump_coredump, CTLFLAG_RW, &set_core_nodump_flag,
 #define	SA_IGNORE	0x10		/* ignore by default */
 #define	SA_CONT		0x20		/* continue if suspended */
 #define	SA_CANTMASK	0x40		/* non-maskable, catchable */
-#define	SA_PROC		0x80		/* deliverable to any thread */
 
 static int sigproptbl[NSIG] = {
-        SA_KILL|SA_PROC,		/* SIGHUP */
-        SA_KILL|SA_PROC,		/* SIGINT */
-        SA_KILL|SA_CORE|SA_PROC,	/* SIGQUIT */
+        SA_KILL,			/* SIGHUP */
+        SA_KILL,			/* SIGINT */
+        SA_KILL|SA_CORE,		/* SIGQUIT */
         SA_KILL|SA_CORE,		/* SIGILL */
         SA_KILL|SA_CORE,		/* SIGTRAP */
         SA_KILL|SA_CORE,		/* SIGABRT */
-        SA_KILL|SA_CORE|SA_PROC,	/* SIGEMT */
+        SA_KILL|SA_CORE,		/* SIGEMT */
         SA_KILL|SA_CORE,		/* SIGFPE */
-        SA_KILL|SA_PROC,		/* SIGKILL */
+        SA_KILL,			/* SIGKILL */
         SA_KILL|SA_CORE,		/* SIGBUS */
         SA_KILL|SA_CORE,		/* SIGSEGV */
         SA_KILL|SA_CORE,		/* SIGSYS */
-        SA_KILL|SA_PROC,		/* SIGPIPE */
-        SA_KILL|SA_PROC,		/* SIGALRM */
-        SA_KILL|SA_PROC,		/* SIGTERM */
-        SA_IGNORE|SA_PROC,		/* SIGURG */
-        SA_STOP|SA_PROC,		/* SIGSTOP */
-        SA_STOP|SA_TTYSTOP|SA_PROC,	/* SIGTSTP */
-        SA_IGNORE|SA_CONT|SA_PROC,	/* SIGCONT */
-        SA_IGNORE|SA_PROC,		/* SIGCHLD */
-        SA_STOP|SA_TTYSTOP|SA_PROC,	/* SIGTTIN */
-        SA_STOP|SA_TTYSTOP|SA_PROC,	/* SIGTTOU */
-        SA_IGNORE|SA_PROC,		/* SIGIO */
+        SA_KILL,			/* SIGPIPE */
+        SA_KILL,			/* SIGALRM */
+        SA_KILL,			/* SIGTERM */
+        SA_IGNORE,			/* SIGURG */
+        SA_STOP,			/* SIGSTOP */
+        SA_STOP|SA_TTYSTOP,		/* SIGTSTP */
+        SA_IGNORE|SA_CONT,		/* SIGCONT */
+        SA_IGNORE,			/* SIGCHLD */
+        SA_STOP|SA_TTYSTOP,		/* SIGTTIN */
+        SA_STOP|SA_TTYSTOP,		/* SIGTTOU */
+        SA_IGNORE,			/* SIGIO */
         SA_KILL,			/* SIGXCPU */
         SA_KILL,			/* SIGXFSZ */
-        SA_KILL|SA_PROC,		/* SIGVTALRM */
-        SA_KILL|SA_PROC,		/* SIGPROF */
-        SA_IGNORE|SA_PROC,		/* SIGWINCH  */
-        SA_IGNORE|SA_PROC,		/* SIGINFO */
-        SA_KILL|SA_PROC,		/* SIGUSR1 */
-        SA_KILL|SA_PROC,		/* SIGUSR2 */
+        SA_KILL,			/* SIGVTALRM */
+        SA_KILL,			/* SIGPROF */
+        SA_IGNORE,			/* SIGWINCH  */
+        SA_IGNORE,			/* SIGINFO */
+        SA_KILL,			/* SIGUSR1 */
+        SA_KILL,			/* SIGUSR2 */
 };
 
 static void reschedule_signals(struct proc *p, sigset_t block, int flags);
@@ -784,7 +784,7 @@ struct sigaction_args {
 };
 #endif
 int
-sigaction(td, uap)
+sys_sigaction(td, uap)
 	struct thread *td;
 	register struct sigaction_args *uap;
 {
@@ -1035,7 +1035,7 @@ struct sigprocmask_args {
 };
 #endif
 int
-sigprocmask(td, uap)
+sys_sigprocmask(td, uap)
 	register struct thread *td;
 	struct sigprocmask_args *uap;
 {
@@ -1080,7 +1080,7 @@ osigprocmask(td, uap)
 #endif /* COMPAT_43 */
 
 int
-sigwait(struct thread *td, struct sigwait_args *uap)
+sys_sigwait(struct thread *td, struct sigwait_args *uap)
 {
 	ksiginfo_t ksi;
 	sigset_t set;
@@ -1094,6 +1094,8 @@ sigwait(struct thread *td, struct sigwait_args *uap)
 
 	error = kern_sigtimedwait(td, set, &ksi, NULL);
 	if (error) {
+		if (error == EINTR && td->td_proc->p_osrel < P_OSREL_SIGWAIT)
+			error = ERESTART;
 		if (error == ERESTART)
 			return (error);
 		td->td_retval[0] = error;
@@ -1106,7 +1108,7 @@ sigwait(struct thread *td, struct sigwait_args *uap)
 }
 
 int
-sigtimedwait(struct thread *td, struct sigtimedwait_args *uap)
+sys_sigtimedwait(struct thread *td, struct sigtimedwait_args *uap)
 {
 	struct timespec ts;
 	struct timespec *timeout;
@@ -1140,7 +1142,7 @@ sigtimedwait(struct thread *td, struct sigtimedwait_args *uap)
 }
 
 int
-sigwaitinfo(struct thread *td, struct sigwaitinfo_args *uap)
+sys_sigwaitinfo(struct thread *td, struct sigwaitinfo_args *uap)
 {
 	ksiginfo_t ksi;
 	sigset_t set;
@@ -1282,7 +1284,7 @@ struct sigpending_args {
 };
 #endif
 int
-sigpending(td, uap)
+sys_sigpending(td, uap)
 	struct thread *td;
 	struct sigpending_args *uap;
 {
@@ -1414,7 +1416,7 @@ struct sigsuspend_args {
 #endif
 /* ARGSUSED */
 int
-sigsuspend(td, uap)
+sys_sigsuspend(td, uap)
 	struct thread *td;
 	struct sigsuspend_args *uap;
 {
@@ -1463,6 +1465,8 @@ kern_sigsuspend(struct thread *td, sigset_t mask)
 		mtx_unlock(&p->p_sigacts->ps_mtx);
 	}
 	PROC_UNLOCK(p);
+	td->td_errno = EINTR;
+	td->td_pflags |= TDP_NERRNO;
 	return (EJUSTRETURN);
 }
 
@@ -1533,7 +1537,7 @@ struct sigaltstack_args {
 #endif
 /* ARGSUSED */
 int
-sigaltstack(td, uap)
+sys_sigaltstack(td, uap)
 	struct thread *td;
 	register struct sigaltstack_args *uap;
 {
@@ -1660,7 +1664,7 @@ struct kill_args {
 #endif
 /* ARGSUSED */
 int
-kill(struct thread *td, struct kill_args *uap)
+sys_kill(struct thread *td, struct kill_args *uap)
 {
 	ksiginfo_t ksi;
 	struct proc *p;
@@ -1702,7 +1706,7 @@ kill(struct thread *td, struct kill_args *uap)
 }
 
 int
-pdkill(td, uap)
+sys_pdkill(td, uap)
 	struct thread *td;
 	struct pdkill_args *uap;
 {
@@ -1721,7 +1725,7 @@ pdkill(td, uap)
 	AUDIT_ARG_PROCESS(p);
 	error = p_cansignal(td, p, uap->signum);
 	if (error == 0 && uap->signum)
-		psignal(p, uap->signum);
+		kern_psignal(p, uap->signum);
 	PROC_UNLOCK(p);
 	return (error);
 #else
@@ -1764,7 +1768,7 @@ struct sigqueue_args {
 };
 #endif
 int
-sigqueue(struct thread *td, struct sigqueue_args *uap)
+sys_sigqueue(struct thread *td, struct sigqueue_args *uap)
 {
 	ksiginfo_t ksi;
 	struct proc *p;
@@ -1952,7 +1956,7 @@ sigtd(struct proc *p, int sig, int prop)
  * side effects of this unwise possibility.
  */
 void
-psignal(struct proc *p, int sig)
+kern_psignal(struct proc *p, int sig)
 {
 	ksiginfo_t ksi;
 
@@ -2056,7 +2060,7 @@ tdsendsignal(struct proc *p, struct thread *td, int sig, ksiginfo_t *ksi)
 	 */
 	mtx_lock(&ps->ps_mtx);
 	if (SIGISMEMBER(ps->ps_sigignore, sig)) {
-		SDT_PROBE(proc, kernel, , signal_discard, ps, td, sig, 0, 0 );
+		SDT_PROBE(proc, kernel, , signal_discard, td, p, sig, 0, 0 );
 
 		mtx_unlock(&ps->ps_mtx);
 		if (ksi && (ksi->ksi_flags & KSI_INS))
@@ -2826,7 +2830,7 @@ killproc(p, why)
 	log(LOG_ERR, "pid %d (%s), uid %d, was killed: %s\n", p->p_pid, p->p_comm,
 		p->p_ucred ? p->p_ucred->cr_uid : -1, why);
 	p->p_flag |= P_WKILLED;
-	psignal(p, SIGKILL);
+	kern_psignal(p, SIGKILL);
 }
 
 /*
@@ -3309,7 +3313,7 @@ nosys(td, args)
 	struct proc *p = td->td_proc;
 
 	PROC_LOCK(p);
-	psignal(p, SIGSYS);
+	kern_psignal(p, SIGSYS);
 	PROC_UNLOCK(p);
 	return (ENOSYS);
 }
@@ -3339,7 +3343,7 @@ pgsigio(sigiop, sig, checkctty)
 	if (sigio->sio_pgid > 0) {
 		PROC_LOCK(sigio->sio_proc);
 		if (CANSIGIO(sigio->sio_ucred, sigio->sio_proc->p_ucred))
-			psignal(sigio->sio_proc, sig);
+			kern_psignal(sigio->sio_proc, sig);
 		PROC_UNLOCK(sigio->sio_proc);
 	} else if (sigio->sio_pgid < 0) {
 		struct proc *p;
@@ -3350,7 +3354,7 @@ pgsigio(sigiop, sig, checkctty)
 			if (p->p_state == PRS_NORMAL &&
 			    CANSIGIO(sigio->sio_ucred, p->p_ucred) &&
 			    (checkctty == 0 || (p->p_flag & P_CONTROLT)))
-				psignal(p, sig);
+				kern_psignal(p, sig);
 			PROC_UNLOCK(p);
 		}
 		PGRP_UNLOCK(sigio->sio_pgrp);

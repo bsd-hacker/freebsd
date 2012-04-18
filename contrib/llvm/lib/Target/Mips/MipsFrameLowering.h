@@ -1,4 +1,4 @@
-//==--- MipsFrameLowering.h - Define frame lowering for Mips --*- C++ -*---===//
+//===-- MipsFrameLowering.h - Define frame lowering for Mips ----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -27,7 +27,8 @@ protected:
 
 public:
   explicit MipsFrameLowering(const MipsSubtarget &sti)
-    : TargetFrameLowering(StackGrowsDown, 8, 0), STI(sti) {
+    : TargetFrameLowering(StackGrowsDown, sti.hasMips64() ? 16 : 8, 0),
+      STI(sti) {
   }
 
   bool targetHandlesStackFrameRounding() const;
@@ -39,8 +40,6 @@ public:
 
   bool hasFP(const MachineFunction &MF) const;
 
-  void getInitialFrameState(std::vector<MachineMove> &Moves) const;
-  
   void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                             RegScavenger *RS) const;
 };

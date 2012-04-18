@@ -67,11 +67,11 @@ class SIToFPInst;
 class StoreInst;
 class SwitchInst;
 class TargetData;
+class TargetLibraryInfo;
 class TargetLowering;
 class TruncInst;
 class UIToFPInst;
 class UnreachableInst;
-class UnwindInst;
 class VAArgInst;
 class ZExtInst;
 
@@ -129,13 +129,16 @@ private:
   /// Case - A struct to record the Value for a switch case, and the
   /// case's target basic block.
   struct Case {
-    Constant* Low;
-    Constant* High;
+    const Constant *Low;
+    const Constant *High;
     MachineBasicBlock* BB;
+    uint32_t ExtraWeight;
 
-    Case() : Low(0), High(0), BB(0) { }
-    Case(Constant* low, Constant* high, MachineBasicBlock* bb) :
-      Low(low), High(high), BB(bb) { }
+    Case() : Low(0), High(0), BB(0), ExtraWeight(0) { }
+    Case(const Constant *low, const Constant *high, MachineBasicBlock *bb,
+         uint32_t extraweight) : Low(low), High(high), BB(bb),
+         ExtraWeight(extraweight) { }
+
     APInt size() const {
       const APInt &rHigh = cast<ConstantInt>(High)->getValue();
       const APInt &rLow  = cast<ConstantInt>(Low)->getValue();
@@ -203,20 +206,30 @@ private:
     CaseBlock(ISD::CondCode cc, const Value *cmplhs, const Value *cmprhs,
               const Value *cmpmiddle,
               MachineBasicBlock *truebb, MachineBasicBlock *falsebb,
-              MachineBasicBlock *me)
+              MachineBasicBlock *me,
+              uint32_t trueweight = 0, uint32_t falseweight = 0)
       : CC(cc), CmpLHS(cmplhs), CmpMHS(cmpmiddle), CmpRHS(cmprhs),
-        TrueBB(truebb), FalseBB(falsebb), ThisBB(me) {}
+        TrueBB(truebb), FalseBB(falsebb), ThisBB(me),
+        TrueWeight(trueweight), FalseWeight(falseweight) { }
+
     // CC - the condition code to use for the case block's setcc node
     ISD::CondCode CC;
+
     // CmpLHS/CmpRHS/CmpMHS - The LHS/MHS/RHS of the comparison to emit.
     // Emit by default LHS op RHS. MHS is used for range comparisons:
     // If MHS is not null: (LHS <= MHS) and (MHS <= RHS).
     const Value *CmpLHS, *CmpMHS, *CmpRHS;
+
     // TrueBB/FalseBB - the block to branch to if the setcc is true/false.
     MachineBasicBlock *TrueBB, *FalseBB;
+
     // ThisBB - the block into which to emit the code for the setcc and branches
     MachineBasicBlock *ThisBB;
+
+    // TrueWeight/FalseWeight - branch weights.
+    uint32_t TrueWeight, FalseWeight;
   };
+
   struct JumpTable {
     JumpTable(unsigned R, unsigned J, MachineBasicBlock *M,
               MachineBasicBlock *D): Reg(R), JTI(J), MBB(M), Default(D) {}
@@ -281,6 +294,7 @@ public:
   SelectionDAG &DAG;
   const TargetData *TD;
   AliasAnalysis *AA;
+  const TargetLibraryInfo *LibInfo;
 
   /// SwitchCases - Vector of CaseBlock structures used to communicate
   /// SwitchInst code generation information.
@@ -307,6 +321,9 @@ public:
   /// GFI - Garbage collection metadata for the function.
   GCFunctionInfo *GFI;
 
+  /// LPadToCallSiteMap - Map a landing pad to the call site indexes.
+  DenseMap<MachineBasicBlock*, SmallVector<unsigned, 4> > LPadToCallSiteMap;
+
   /// HasTailCall - This is set to true if a call in the current
   /// block has been translated as a tail call. In this case,
   /// no subsequent DAG nodes should be created.
@@ -322,7 +339,8 @@ public:
       HasTailCall(false), Context(dag.getContext()) {
   }
 
-  void init(GCFunctionInfo *gfi, AliasAnalysis &aa);
+  void init(GCFunctionInfo *gfi, AliasAnalysis &aa,
+            const TargetLibraryInfo *li);
 
   /// clear - Clear out the current SelectionDAG and the associated
   /// state and prepare this SelectionDAGBuilder object to be used
@@ -435,8 +453,10 @@ private:
                                 MachineBasicBlock* Default,
                                 MachineBasicBlock *SwitchBB);
 
-  uint32_t getEdgeWeight(MachineBasicBlock *Src, MachineBasicBlock *Dst);
-  void addSuccessorWithWeight(MachineBasicBlock *Src, MachineBasicBlock *Dst);
+  uint32_t getEdgeWeight(const MachineBasicBlock *Src,
+                         const MachineBasicBlock *Dst) const;
+  void addSuccessorWithWeight(MachineBasicBlock *Src, MachineBasicBlock *Dst,
+                              uint32_t Weight = 0);
 public:
   void visitSwitchCase(CaseBlock &CB,
                        MachineBasicBlock *SwitchBB);
@@ -453,7 +473,7 @@ public:
 private:
   // These all get lowered before this pass.
   void visitInvoke(const InvokeInst &I);
-  void visitUnwind(const UnwindInst &I);
+  void visitResume(const ResumeInst &I);
 
   void visitBinary(const User &I, unsigned OpCode);
   void visitShift(const User &I, unsigned Opcode);
@@ -497,6 +517,7 @@ private:
 
   void visitExtractValue(const ExtractValueInst &I);
   void visitInsertValue(const InsertValueInst &I);
+  void visitLandingPad(const LandingPadInst &I);
 
   void visitGetElementPtr(const User &I);
   void visitSelect(const User &I);
@@ -504,10 +525,15 @@ private:
   void visitAlloca(const AllocaInst &I);
   void visitLoad(const LoadInst &I);
   void visitStore(const StoreInst &I);
+  void visitAtomicCmpXchg(const AtomicCmpXchgInst &I);
+  void visitAtomicRMW(const AtomicRMWInst &I);
+  void visitFence(const FenceInst &I);
   void visitPHI(const PHINode &I);
   void visitCall(const CallInst &I);
   bool visitMemCmpCall(const CallInst &I);
-  
+  void visitAtomicLoad(const LoadInst &I);
+  void visitAtomicStore(const StoreInst &I);
+
   void visitInlineAsm(ImmutableCallSite CS);
   const char *visitIntrinsicCall(const CallInst &I, unsigned Intrinsic);
   void visitTargetIntrinsic(const CallInst &I, unsigned Intrinsic);
@@ -530,9 +556,6 @@ private:
   void visitUserOp2(const Instruction &I) {
     llvm_unreachable("UserOp2 should not exist at instruction selection time!");
   }
-  
-  const char *implVisitBinaryAtomic(const CallInst& I, ISD::NodeType Op);
-  const char *implVisitAluOverflow(const CallInst &I, ISD::NodeType Op);
 
   void HandlePHINodesInSuccessorBlocks(const BasicBlock *LLVMBB);
 

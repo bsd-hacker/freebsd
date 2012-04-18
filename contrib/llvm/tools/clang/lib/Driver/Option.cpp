@@ -12,6 +12,7 @@
 #include "clang/Driver/Arg.h"
 #include "clang/Driver/ArgList.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cassert>
 #include <algorithm>
 using namespace clang::driver;
@@ -60,8 +61,6 @@ Option::~Option() {
 void Option::dump() const {
   llvm::errs() << "<";
   switch (Kind) {
-  default:
-    assert(0 && "Invalid kind");
 #define P(N) case N: llvm::errs() << #N; break
     P(GroupClass);
     P(InputClass);
@@ -114,8 +113,7 @@ OptionGroup::OptionGroup(OptSpecifier ID, const char *Name,
 }
 
 Arg *OptionGroup::accept(const ArgList &Args, unsigned &Index) const {
-  assert(0 && "accept() should never be called on an OptionGroup");
-  return 0;
+  llvm_unreachable("accept() should never be called on an OptionGroup");
 }
 
 InputOption::InputOption(OptSpecifier ID)
@@ -123,8 +121,7 @@ InputOption::InputOption(OptSpecifier ID)
 }
 
 Arg *InputOption::accept(const ArgList &Args, unsigned &Index) const {
-  assert(0 && "accept() should never be called on an InputOption");
-  return 0;
+  llvm_unreachable("accept() should never be called on an InputOption");
 }
 
 UnknownOption::UnknownOption(OptSpecifier ID)
@@ -132,8 +129,7 @@ UnknownOption::UnknownOption(OptSpecifier ID)
 }
 
 Arg *UnknownOption::accept(const ArgList &Args, unsigned &Index) const {
-  assert(0 && "accept() should never be called on an UnknownOption");
-  return 0;
+  llvm_unreachable("accept() should never be called on an UnknownOption");
 }
 
 FlagOption::FlagOption(OptSpecifier ID, const char *Name,

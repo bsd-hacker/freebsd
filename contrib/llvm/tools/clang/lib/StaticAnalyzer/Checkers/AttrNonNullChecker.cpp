@@ -24,7 +24,7 @@ using namespace ento;
 namespace {
 class AttrNonNullChecker
   : public Checker< check::PreStmt<CallExpr> > {
-  mutable llvm::OwningPtr<BugType> BT;
+  mutable OwningPtr<BugType> BT;
 public:
 
   void checkPreStmt(const CallExpr *CE, CheckerContext &C) const;
@@ -33,12 +33,13 @@ public:
 
 void AttrNonNullChecker::checkPreStmt(const CallExpr *CE,
                                       CheckerContext &C) const {
-  const GRState *state = C.getState();
+  ProgramStateRef state = C.getState();
+  const LocationContext *LCtx = C.getLocationContext();
 
   // Check if the callee has a 'nonnull' attribute.
-  SVal X = state->getSVal(CE->getCallee());
+  SVal X = state->getSVal(CE->getCallee(), LCtx);
 
-  const FunctionDecl* FD = X.getAsFunctionDecl();
+  const FunctionDecl *FD = X.getAsFunctionDecl();
   if (!FD)
     return;
 
@@ -55,7 +56,7 @@ void AttrNonNullChecker::checkPreStmt(const CallExpr *CE,
     if (!Att->isNonNull(idx))
       continue;
 
-    SVal V = state->getSVal(*I);
+    SVal V = state->getSVal(*I, LCtx);
     DefinedSVal *DV = dyn_cast<DefinedSVal>(&V);
 
     // If the value is unknown or undefined, we can't perform this check.
@@ -85,7 +86,7 @@ void AttrNonNullChecker::checkPreStmt(const CallExpr *CE,
     }
 
     ConstraintManager &CM = C.getConstraintManager();
-    const GRState *stateNotNull, *stateNull;
+    ProgramStateRef stateNotNull, stateNull;
     llvm::tie(stateNotNull, stateNull) = CM.assumeDual(state, *DV);
 
     if (stateNull && !stateNotNull) {
@@ -100,16 +101,15 @@ void AttrNonNullChecker::checkPreStmt(const CallExpr *CE,
           BT.reset(new BugType("Argument with 'nonnull' attribute passed null",
                                "API"));
 
-        EnhancedBugReport *R =
-          new EnhancedBugReport(*BT,
-                                "Null pointer passed as an argument to a "
-                                "'nonnull' parameter", errorNode);
+        BugReport *R =
+          new BugReport(*BT, "Null pointer passed as an argument to a "
+                             "'nonnull' parameter", errorNode);
 
         // Highlight the range of the argument that was null.
         const Expr *arg = *I;
         R->addRange(arg->getSourceRange());
-        R->addVisitorCreator(bugreporter::registerTrackNullOrUndefValue, arg);
-
+        R->addVisitor(bugreporter::getTrackNullOrUndefValueVisitor(errorNode,
+                                                                   arg, R));
         // Emit the bug report.
         C.EmitReport(R);
       }

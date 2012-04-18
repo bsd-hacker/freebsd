@@ -19,7 +19,7 @@
 
 #include "CodeGenRegisters.h"
 #include "CodeGenInstruction.h"
-#include "Record.h"
+#include "llvm/TableGen/Record.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 
@@ -91,6 +91,16 @@ public:
   ///
   Record *getAsmParser() const;
 
+  /// getAsmParserVariant - Return the AssmblyParserVariant definition for
+  /// this target.
+  ///
+  Record *getAsmParserVariant(unsigned i) const;
+
+  /// getAsmParserVariantCount - Return the AssmblyParserVariant definition 
+  /// available for this target.
+  ///
+  unsigned getAsmParserVariantCount() const;
+
   /// getAsmWriter - Return the AssemblyWriter definition for this target.
   ///
   Record *getAsmWriter() const;
@@ -105,10 +115,6 @@ public:
   const std::vector<Record*> &getRegAltNameIndices() const {
     if (RegAltNameIndices.empty()) ReadRegAltNameIndices();
     return RegAltNameIndices;
-  }
-
-  const std::vector<CodeGenRegisterClass> &getRegisterClasses() const {
-    return getRegBank().getRegClasses();
   }
 
   const CodeGenRegisterClass &getRegisterClass(Record *R) const {

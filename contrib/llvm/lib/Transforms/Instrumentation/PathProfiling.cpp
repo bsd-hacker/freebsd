@@ -374,7 +374,7 @@ namespace llvm {
   template<bool xcompile> class TypeBuilder<PathProfilingFunctionTable,
                                             xcompile> {
   public:
-    static const StructType *get(LLVMContext& C) {
+    static StructType *get(LLVMContext& C) {
       return( StructType::get(
                 TypeBuilder<types::i<32>, xcompile>::get(C), // type
                 TypeBuilder<types::i<32>, xcompile>::get(C), // array size
@@ -665,7 +665,7 @@ void BLInstrumentationDag::unlinkPhony() {
 // Generate a .dot graph to represent the DAG and pathNumbers
 void BLInstrumentationDag::generateDotGraph() {
   std::string errorInfo;
-  std::string functionName = getFunction().getNameStr();
+  std::string functionName = getFunction().getName().str();
   std::string filename = "pathdag." + functionName + ".dot";
 
   DEBUG (dbgs() << "Writing '" << filename << "'...\n");
@@ -750,7 +750,8 @@ Value* BLInstrumentationNode::getStartingPathNumber(){
 // Sets the Value of the pathNumber.  Used by the instrumentation code.
 void BLInstrumentationNode::setStartingPathNumber(Value* pathNumber) {
   DEBUG(dbgs() << "  SPN-" << getName() << " <-- " << (pathNumber ?
-                                                       pathNumber->getNameStr() : "unused") << "\n");
+                                                       pathNumber->getName() :
+                                                       "unused") << "\n");
   _startingPathNumber = pathNumber;
 }
 
@@ -760,7 +761,7 @@ Value* BLInstrumentationNode::getEndingPathNumber(){
 
 void BLInstrumentationNode::setEndingPathNumber(Value* pathNumber) {
   DEBUG(dbgs() << "  EPN-" << getName() << " <-- "
-        << (pathNumber ? pathNumber->getNameStr() : "unused") << "\n");
+               << (pathNumber ? pathNumber->getName() : "unused") << "\n");
   _endingPathNumber = pathNumber;
 }
 
@@ -909,7 +910,7 @@ BasicBlock::iterator PathProfiler::getInsertionPoint(BasicBlock* block, Value*
                                                      pathNumber) {
   if(pathNumber == NULL || isa<ConstantInt>(pathNumber)
      || (((Instruction*)(pathNumber))->getParent()) != block) {
-    return(block->getFirstNonPHI());
+    return(block->getFirstInsertionPt());
   } else {
     Instruction* pathNumberInst = (Instruction*) (pathNumber);
     BasicBlock::iterator insertPoint;
@@ -930,7 +931,7 @@ BasicBlock::iterator PathProfiler::getInsertionPoint(BasicBlock* block, Value*
 // A PHINode is created in the node, and its values initialized to -1U.
 void PathProfiler::preparePHI(BLInstrumentationNode* node) {
   BasicBlock* block = node->getBlock();
-  BasicBlock::iterator insertPoint = block->getFirstNonPHI();
+  BasicBlock::iterator insertPoint = block->getFirstInsertionPt();
   pred_iterator PB = pred_begin(node->getBlock()),
           PE = pred_end(node->getBlock());
   PHINode* phi = PHINode::Create(Type::getInt32Ty(*Context),
@@ -999,7 +1000,7 @@ void PathProfiler::insertNumberIncrement(BLInstrumentationNode* node,
   BasicBlock::iterator insertPoint;
 
   if( atBeginning )
-    insertPoint = block->getFirstNonPHI();
+    insertPoint = block->getFirstInsertionPt();
   else
     insertPoint = block->getTerminator();
 
@@ -1029,8 +1030,7 @@ void PathProfiler::insertCounterIncrement(Value* incValue,
     gepIndices[1] = incValue;
 
     GetElementPtrInst* pcPointer =
-      GetElementPtrInst::Create(dag->getCounterArray(),
-                                gepIndices.begin(), gepIndices.end(),
+      GetElementPtrInst::Create(dag->getCounterArray(), gepIndices,
                                 "counterInc", insertPoint);
 
     // Load from the array - call it oldPC
@@ -1140,7 +1140,7 @@ void PathProfiler::insertInstrumentationStartingAt(BLInstrumentationEdge* edge,
     }
 
     BasicBlock::iterator insertPoint = atBeginning ?
-      instrumentNode->getBlock()->getFirstNonPHI() :
+      instrumentNode->getBlock()->getFirstInsertionPt() :
       instrumentNode->getBlock()->getTerminator();
 
     // add information from the bottom edge, if it exists
@@ -1172,7 +1172,7 @@ void PathProfiler::insertInstrumentationStartingAt(BLInstrumentationEdge* edge,
   // Insert instrumentation if this is a normal edge
   else {
     BasicBlock::iterator insertPoint = atBeginning ?
-      instrumentNode->getBlock()->getFirstNonPHI() :
+      instrumentNode->getBlock()->getFirstInsertionPt() :
       instrumentNode->getBlock()->getTerminator();
 
     if( edge->isInitialization() ) { // initialize path number
@@ -1233,16 +1233,16 @@ void PathProfiler::insertInstrumentation(
          end = callEdges.end(); edge != end; edge++ ) {
     BLInstrumentationNode* node =
       (BLInstrumentationNode*)(*edge)->getSource();
-    BasicBlock::iterator insertPoint = node->getBlock()->getFirstNonPHI();
+    BasicBlock::iterator insertPoint = node->getBlock()->getFirstInsertionPt();
 
     // Find the first function call
     while( ((Instruction&)(*insertPoint)).getOpcode() != Instruction::Call )
       insertPoint++;
 
     DEBUG(dbgs() << "\nInstrumenting method call block '"
-          << node->getBlock()->getNameStr() << "'\n");
+                 << node->getBlock()->getName() << "'\n");
     DEBUG(dbgs() << "   Path number initialized: "
-          << ((node->getStartingPathNumber()) ? "yes" : "no") << "\n");
+                 << ((node->getStartingPathNumber()) ? "yes" : "no") << "\n");
 
     Value* newpn;
     if( node->getStartingPathNumber() ) {
@@ -1289,7 +1289,7 @@ void PathProfiler::runOnFunction(std::vector<Constant*> &ftInit,
 
   // Should we store the information in an array or hash
   if( dag.getNumberOfPaths() <= HASH_THRESHHOLD ) {
-    const Type* t = ArrayType::get(Type::getInt32Ty(*Context),
+    Type* t = ArrayType::get(Type::getInt32Ty(*Context),
                                    dag.getNumberOfPaths());
 
     dag.setCounterArray(new GlobalVariable(M, t, false,
@@ -1301,7 +1301,7 @@ void PathProfiler::runOnFunction(std::vector<Constant*> &ftInit,
 
   // Add to global function reference table
   unsigned type;
-  const Type* voidPtr = TypeBuilder<types::i<8>*, true>::get(*Context);
+  Type* voidPtr = TypeBuilder<types::i<8>*, true>::get(*Context);
 
   if( dag.getNumberOfPaths() <= HASH_THRESHHOLD )
     type = ProfilingArray;
@@ -1315,7 +1315,7 @@ void PathProfiler::runOnFunction(std::vector<Constant*> &ftInit,
     ConstantExpr::getBitCast(dag.getCounterArray(), voidPtr) :
     Constant::getNullValue(voidPtr);
 
-  const StructType* at = ftEntryTypeBuilder::get(*Context);
+  StructType* at = ftEntryTypeBuilder::get(*Context);
   ConstantStruct* functionEntry =
     (ConstantStruct*)ConstantStruct::get(at, entryArray);
   ftInit.push_back(functionEntry);
@@ -1371,7 +1371,7 @@ bool PathProfiler::runOnModule(Module &M) {
     if (F->isDeclaration())
       continue;
 
-    DEBUG(dbgs() << "Function: " << F->getNameStr() << "\n");
+    DEBUG(dbgs() << "Function: " << F->getName() << "\n");
     functionNumber++;
 
     // set function number
@@ -1379,8 +1379,8 @@ bool PathProfiler::runOnModule(Module &M) {
     runOnFunction(ftInit, *F, M);
   }
 
-  const Type *t = ftEntryTypeBuilder::get(*Context);
-  const ArrayType* ftArrayType = ArrayType::get(t, ftInit.size());
+  Type *t = ftEntryTypeBuilder::get(*Context);
+  ArrayType* ftArrayType = ArrayType::get(t, ftInit.size());
   Constant* ftInitConstant = ConstantArray::get(ftArrayType, ftInit);
 
   DEBUG(dbgs() << " ftArrayType:" << *ftArrayType << "\n");
@@ -1388,7 +1388,7 @@ bool PathProfiler::runOnModule(Module &M) {
   GlobalVariable* functionTable =
     new GlobalVariable(M, ftArrayType, false, GlobalValue::InternalLinkage,
                        ftInitConstant, "functionPathTable");
-  const Type *eltType = ftArrayType->getTypeAtIndex((unsigned)0);
+  Type *eltType = ftArrayType->getTypeAtIndex((unsigned)0);
   InsertProfilingInitCall(Main, "llvm_start_path_profiling", functionTable,
                           PointerType::getUnqual(eltType));
 

@@ -69,7 +69,7 @@ inline static void printEdgeCounter(ProfileInfo::Edge e,
                                     BasicBlock* b,
                                     unsigned i) {
   DEBUG(dbgs() << "--Edge Counter for " << (e) << " in " \
-               << ((b)?(b)->getNameStr():"0") << " (# " << (i) << ")\n");
+               << ((b)?(b)->getName():"0") << " (# " << (i) << ")\n");
 }
 
 bool OptimalEdgeProfiler::runOnModule(Module &M) {
@@ -112,8 +112,8 @@ bool OptimalEdgeProfiler::runOnModule(Module &M) {
   // be calculated from other edge counters on reading the profile info back
   // in.
 
-  const Type *Int32 = Type::getInt32Ty(M.getContext());
-  const ArrayType *ATy = ArrayType::get(Int32, NumEdges);
+  Type *Int32 = Type::getInt32Ty(M.getContext());
+  ArrayType *ATy = ArrayType::get(Int32, NumEdges);
   GlobalVariable *Counters =
     new GlobalVariable(M, ATy, false, GlobalValue::InternalLinkage,
                        Constant::getNullValue(ATy), "OptEdgeProfCounters");
@@ -127,7 +127,7 @@ bool OptimalEdgeProfiler::runOnModule(Module &M) {
   unsigned i = 0;
   for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F) {
     if (F->isDeclaration()) continue;
-    DEBUG(dbgs() << "Working on " << F->getNameStr() << "\n");
+    DEBUG(dbgs() << "Working on " << F->getName() << "\n");
 
     // Calculate a Maximum Spanning Tree with the edge weights determined by
     // ProfileEstimator. ProfileEstimator also assign weights to the virtual

@@ -16,6 +16,7 @@
 #define LLVM_CLANG_GR_ANALYSISMANAGER_H
 
 #include "clang/Analysis/AnalysisContext.h"
+#include "clang/Frontend/AnalyzerOptions.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
 
@@ -30,14 +31,14 @@ namespace ento {
   class CheckerManager;
 
 class AnalysisManager : public BugReporterData {
-  AnalysisContextManager AnaCtxMgr;
-  LocationContextManager LocCtxMgr;
+  virtual void anchor();
+  AnalysisDeclContextManager AnaCtxMgr;
 
   ASTContext &Ctx;
-  Diagnostic &Diags;
-  const LangOptions &LangInfo;
+  DiagnosticsEngine &Diags;
+  const LangOptions &LangOpts;
 
-  llvm::OwningPtr<PathDiagnosticClient> PD;
+  OwningPtr<PathDiagnosticConsumer> PD;
 
   // Configurable components creators.
   StoreManagerCreator CreateStoreMgr;
@@ -52,58 +53,77 @@ class AnalysisManager : public BugReporterData {
 
   enum AnalysisScope { ScopeTU, ScopeDecl } AScope;
 
-  // The maximum number of exploded nodes the analyzer will generate.
+  /// \brief The maximum number of exploded nodes the analyzer will generate.
   unsigned MaxNodes;
 
-  // The maximum number of times the analyzer visit a block.
+  /// \brief The maximum number of times the analyzer visits a block.
   unsigned MaxVisit;
 
   bool VisualizeEGDot;
   bool VisualizeEGUbi;
-  bool PurgeDead;
+  AnalysisPurgeMode PurgeDead;
 
-  /// EargerlyAssume - A flag indicating how the engine should handle
-  //   expressions such as: 'x = (y != 0)'.  When this flag is true then
-  //   the subexpression 'y != 0' will be eagerly assumed to be true or false,
-  //   thus evaluating it to the integers 0 or 1 respectively.  The upside
-  //   is that this can increase analysis precision until we have a better way
-  //   to lazily evaluate such logic.  The downside is that it eagerly
-  //   bifurcates paths.
+  /// \brief The flag regulates if we should eagerly assume evaluations of
+  /// conditionals, thus, bifurcating the path.
+  ///
+  /// EagerlyAssume - A flag indicating how the engine should handle
+  ///   expressions such as: 'x = (y != 0)'.  When this flag is true then
+  ///   the subexpression 'y != 0' will be eagerly assumed to be true or false,
+  ///   thus evaluating it to the integers 0 or 1 respectively.  The upside
+  ///   is that this can increase analysis precision until we have a better way
+  ///   to lazily evaluate such logic.  The downside is that it eagerly
+  ///   bifurcates paths.
   bool EagerlyAssume;
   bool TrimGraph;
-  bool InlineCall;
   bool EagerlyTrimEGraph;
 
 public:
-  AnalysisManager(ASTContext &ctx, Diagnostic &diags, 
-                  const LangOptions &lang, PathDiagnosticClient *pd,
+  // \brief inter-procedural analysis mode.
+  AnalysisIPAMode IPAMode;
+
+  // Settings for inlining tuning.
+  /// \brief The inlining stack depth limit.
+  unsigned InlineMaxStackDepth;
+  /// \brief The max number of basic blocks in a function being inlined.
+  unsigned InlineMaxFunctionSize;
+  /// \brief The mode of function selection used during inlining.
+  AnalysisInliningMode InliningMode;
+
+  /// \brief Do not re-analyze paths leading to exhausted nodes with a different
+  /// strategy. We get better code coverage when retry is enabled.
+  bool NoRetryExhausted;
+
+public:
+  AnalysisManager(ASTContext &ctx, DiagnosticsEngine &diags, 
+                  const LangOptions &lang, PathDiagnosticConsumer *pd,
                   StoreManagerCreator storemgr,
                   ConstraintManagerCreator constraintmgr, 
                   CheckerManager *checkerMgr,
                   idx::Indexer *idxer,
                   unsigned maxnodes, unsigned maxvisit,
-                  bool vizdot, bool vizubi, bool purge, bool eager, bool trim,
-                  bool inlinecall, bool useUnoptimizedCFG,
+                  bool vizdot, bool vizubi, AnalysisPurgeMode purge,
+                  bool eager, bool trim,
+                  bool useUnoptimizedCFG,
                   bool addImplicitDtors, bool addInitializers,
-                  bool eagerlyTrimEGraph)
+                  bool eagerlyTrimEGraph,
+                  AnalysisIPAMode ipa,
+                  unsigned inlineMaxStack,
+                  unsigned inlineMaxFunctionSize,
+                  AnalysisInliningMode inliningMode,
+                  bool NoRetry);
 
-    : AnaCtxMgr(useUnoptimizedCFG, addImplicitDtors, addInitializers),
-      Ctx(ctx), Diags(diags), LangInfo(lang), PD(pd),
-      CreateStoreMgr(storemgr), CreateConstraintMgr(constraintmgr),
-      CheckerMgr(checkerMgr), Idxer(idxer),
-      AScope(ScopeDecl), MaxNodes(maxnodes), MaxVisit(maxvisit),
-      VisualizeEGDot(vizdot), VisualizeEGUbi(vizubi), PurgeDead(purge),
-      EagerlyAssume(eager), TrimGraph(trim), InlineCall(inlinecall),
-      EagerlyTrimEGraph(eagerlyTrimEGraph) {}
-  
+  /// Construct a clone of the given AnalysisManager with the given ASTContext
+  /// and DiagnosticsEngine.
+  AnalysisManager(ASTContext &ctx, DiagnosticsEngine &diags,
+                  AnalysisManager &ParentAM);
+
   ~AnalysisManager() { FlushDiagnostics(); }
   
   void ClearContexts() {
-    LocCtxMgr.clear();
     AnaCtxMgr.clear();
   }
   
-  AnalysisContextManager& getAnalysisContextManager() {
+  AnalysisDeclContextManager& getAnalysisDeclContextManager() {
     return AnaCtxMgr;
   }
 
@@ -127,21 +147,21 @@ public:
     return getASTContext().getSourceManager();
   }
 
-  virtual Diagnostic &getDiagnostic() {
+  virtual DiagnosticsEngine &getDiagnostic() {
     return Diags;
   }
 
-  const LangOptions &getLangOptions() const {
-    return LangInfo;
+  const LangOptions &getLangOpts() const {
+    return LangOpts;
   }
 
-  virtual PathDiagnosticClient *getPathDiagnosticClient() {
+  virtual PathDiagnosticConsumer *getPathDiagnosticConsumer() {
     return PD.get();
   }
   
   void FlushDiagnostics() {
     if (PD.get())
-      PD->FlushDiagnostics();
+      PD->FlushDiagnostics(0);
   }
 
   unsigned getMaxNodes() const { return MaxNodes; }
@@ -160,60 +180,40 @@ public:
 
   bool shouldTrimGraph() const { return TrimGraph; }
 
-  bool shouldPurgeDead() const { return PurgeDead; }
+  AnalysisPurgeMode getPurgeMode() const { return PurgeDead; }
 
   bool shouldEagerlyAssume() const { return EagerlyAssume; }
 
-  bool shouldInlineCall() const { return InlineCall; }
+  bool shouldInlineCall() const { return (IPAMode == Inlining); }
 
   bool hasIndexer() const { return Idxer != 0; }
 
-  AnalysisContext *getAnalysisContextInAnotherTU(const Decl *D);
+  AnalysisDeclContext *getAnalysisDeclContextInAnotherTU(const Decl *D);
 
   CFG *getCFG(Decl const *D) {
     return AnaCtxMgr.getContext(D)->getCFG();
   }
 
-  LiveVariables *getLiveVariables(Decl const *D) {
-    return AnaCtxMgr.getContext(D)->getLiveVariables();
+  template <typename T>
+  T *getAnalysis(Decl const *D) {
+    return AnaCtxMgr.getContext(D)->getAnalysis<T>();
   }
 
   ParentMap &getParentMap(Decl const *D) {
     return AnaCtxMgr.getContext(D)->getParentMap();
   }
 
-  AnalysisContext *getAnalysisContext(const Decl *D) {
+  AnalysisDeclContext *getAnalysisDeclContext(const Decl *D) {
     return AnaCtxMgr.getContext(D);
   }
 
-  AnalysisContext *getAnalysisContext(const Decl *D, idx::TranslationUnit *TU) {
+  AnalysisDeclContext *getAnalysisDeclContext(const Decl *D, idx::TranslationUnit *TU) {
     return AnaCtxMgr.getContext(D, TU);
   }
 
-  const StackFrameContext *getStackFrame(AnalysisContext *Ctx,
-                                         LocationContext const *Parent,
-                                         const Stmt *S,
-                                         const CFGBlock *Blk, unsigned Idx) {
-    return LocCtxMgr.getStackFrame(Ctx, Parent, S, Blk, Idx);
-  }
-
-  // Get the top level stack frame.
-  const StackFrameContext *getStackFrame(Decl const *D, 
-                                         idx::TranslationUnit *TU) {
-    return LocCtxMgr.getStackFrame(AnaCtxMgr.getContext(D, TU), 0, 0, 0, 0);
-  }
-
-  // Get a stack frame with parent.
-  StackFrameContext const *getStackFrame(const Decl *D, 
-                                         LocationContext const *Parent,
-                                         const Stmt *S,
-                                         const CFGBlock *Blk, unsigned Idx) {
-    return LocCtxMgr.getStackFrame(AnaCtxMgr.getContext(D), Parent, S,
-                                   Blk,Idx);
-  }
 };
 
-} // end GR namespace
+} // enAnaCtxMgrspace
 
 } // end clang namespace
 

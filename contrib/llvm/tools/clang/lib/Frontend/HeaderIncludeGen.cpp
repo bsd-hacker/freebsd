@@ -11,13 +11,14 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Lex/Preprocessor.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
 namespace {
 class HeaderIncludesCallback : public PPCallbacks {
   SourceManager &SM;
-  llvm::raw_ostream *OutputFile;
+  raw_ostream *OutputFile;
   unsigned CurrentIncludeDepth;
   bool HasProcessedPredefines;
   bool OwnsOutputFile;
@@ -26,7 +27,7 @@ class HeaderIncludesCallback : public PPCallbacks {
 
 public:
   HeaderIncludesCallback(const Preprocessor *PP, bool ShowAllHeaders_,
-                         llvm::raw_ostream *OutputFile_, bool OwnsOutputFile_,
+                         raw_ostream *OutputFile_, bool OwnsOutputFile_,
                          bool ShowDepth_)
     : SM(PP->getSourceManager()), OutputFile(OutputFile_),
       CurrentIncludeDepth(0), HasProcessedPredefines(false),
@@ -39,13 +40,14 @@ public:
   }
 
   virtual void FileChanged(SourceLocation Loc, FileChangeReason Reason,
-                           SrcMgr::CharacteristicKind FileType);
+                           SrcMgr::CharacteristicKind FileType,
+                           FileID PrevFID);
 };
 }
 
 void clang::AttachHeaderIncludeGen(Preprocessor &PP, bool ShowAllHeaders,
-                                   llvm::StringRef OutputPath, bool ShowDepth) {
-  llvm::raw_ostream *OutputFile = &llvm::errs();
+                                   StringRef OutputPath, bool ShowDepth) {
+  raw_ostream *OutputFile = &llvm::errs();
   bool OwnsOutputFile = false;
 
   // Open the output file, if used.
@@ -72,7 +74,8 @@ void clang::AttachHeaderIncludeGen(Preprocessor &PP, bool ShowAllHeaders,
 
 void HeaderIncludesCallback::FileChanged(SourceLocation Loc,
                                          FileChangeReason Reason,
-                                       SrcMgr::CharacteristicKind NewFileType) {
+                                       SrcMgr::CharacteristicKind NewFileType,
+                                       FileID PrevFID) {
   // Unless we are exiting a #include, make sure to skip ahead to the line the
   // #include directive was at.
   PresumedLoc UserLoc = SM.getPresumedLoc(Loc);
@@ -105,10 +108,10 @@ void HeaderIncludesCallback::FileChanged(SourceLocation Loc,
   // are showing all headers.
   if (ShowHeader && Reason == PPCallbacks::EnterFile) {
     // Write to a temporary string to avoid unnecessary flushing on errs().
-    llvm::SmallString<512> Filename(UserLoc.getFilename());
+    SmallString<512> Filename(UserLoc.getFilename());
     Lexer::Stringify(Filename);
 
-    llvm::SmallString<256> Msg;
+    SmallString<256> Msg;
     if (ShowDepth) {
       // The main source file is at depth 1, so skip one dot.
       for (unsigned i = 1; i != CurrentIncludeDepth; ++i)

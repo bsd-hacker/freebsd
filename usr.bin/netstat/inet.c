@@ -1068,7 +1068,7 @@ icmp_stats(u_long off, const char *name, int af1 __unused, int proto __unused)
  * Dump IGMP statistics structure (pre 8.x kernel).
  */
 static void
-igmp_stats_live_old(u_long off, const char *name)
+igmp_stats_live_old(const char *name)
 {
 	struct oigmpstat oigmpstat, zerostat;
 	size_t len = sizeof(oigmpstat);
@@ -1128,7 +1128,7 @@ igmp_stats(u_long off, const char *name, int af1 __unused, int proto __unused)
 			return;
 		}
 		if (len < sizeof(igmpstat)) {
-			igmp_stats_live_old(off, name);
+			igmp_stats_live_old(name);
 			return;
 		}
 	}
@@ -1247,7 +1247,7 @@ inetprint(struct in_addr *in, int port, const char *proto, int num_port)
 	    sprintf(line, "%s.", inetname(in));
 	else
 	    sprintf(line, "%.*s.", (Aflag && !num_port) ? 12 : 16, inetname(in));
-	cp = index(line, '\0');
+	cp = strchr(line, '\0');
 	if (!num_port && port)
 		sp = getservbyport((int)port, proto);
 	if (sp || port == 0)

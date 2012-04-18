@@ -189,7 +189,7 @@ void Sema::ActOnPragmaOptionsAlign(PragmaOptionsAlignKind Kind,
 }
 
 void Sema::ActOnPragmaPack(PragmaPackKind Kind, IdentifierInfo *Name,
-                           ExprTy *alignment, SourceLocation PragmaLoc,
+                           Expr *alignment, SourceLocation PragmaLoc,
                            SourceLocation LParenLoc, SourceLocation RParenLoc) {
   Expr *Alignment = static_cast<Expr *>(alignment);
 
@@ -263,9 +263,6 @@ void Sema::ActOnPragmaPack(PragmaPackKind Kind, IdentifierInfo *Name,
         Context->setAlignment(AlignmentVal);
     }
     break;
-
-  default:
-    assert(0 && "Invalid #pragma pack kind.");
   }
 }
 
@@ -298,6 +295,18 @@ void Sema::ActOnPragmaUnused(const Token &IdTok, Scope *curScope,
     Diag(PragmaLoc, diag::warn_used_but_marked_unused) << Name;
 
   VD->addAttr(::new (Context) UnusedAttr(IdTok.getLocation(), Context));
+}
+
+void Sema::AddCFAuditedAttribute(Decl *D) {
+  SourceLocation Loc = PP.getPragmaARCCFCodeAuditedLoc();
+  if (!Loc.isValid()) return;
+
+  // Don't add a redundant or conflicting attribute.
+  if (D->hasAttr<CFAuditedTransferAttr>() ||
+      D->hasAttr<CFUnknownTransferAttr>())
+    return;
+
+  D->addAttr(::new (Context) CFAuditedTransferAttr(Loc, Context));
 }
 
 typedef std::vector<std::pair<unsigned, SourceLocation> > VisStack;
@@ -336,9 +345,9 @@ static void PushPragmaVisibility(Sema &S, unsigned type, SourceLocation loc) {
   Stack->push_back(std::make_pair(type, loc));
 }
 
-void Sema::ActOnPragmaVisibility(bool IsPush, const IdentifierInfo* VisType,
+void Sema::ActOnPragmaVisibility(const IdentifierInfo* VisType,
                                  SourceLocation PragmaLoc) {
-  if (IsPush) {
+  if (VisType) {
     // Compute visibility to use.
     VisibilityAttr::VisibilityType type;
     if (VisType->isStr("default"))
@@ -356,7 +365,7 @@ void Sema::ActOnPragmaVisibility(bool IsPush, const IdentifierInfo* VisType,
     }
     PushPragmaVisibility(*this, type, PragmaLoc);
   } else {
-    PopPragmaVisibility();
+    PopPragmaVisibility(false, PragmaLoc);
   }
 }
 
@@ -369,28 +378,49 @@ void Sema::ActOnPragmaFPContract(tok::OnOffSwitch OOS) {
     FPFeatures.fp_contract = 0; 
     break;
   case tok::OOS_DEFAULT:
-    FPFeatures.fp_contract = getLangOptions().DefaultFPContract;
+    FPFeatures.fp_contract = getLangOpts().DefaultFPContract;
     break;
   }
 }
 
-void Sema::PushNamespaceVisibilityAttr(const VisibilityAttr *Attr) {
+void Sema::PushNamespaceVisibilityAttr(const VisibilityAttr *Attr,
+                                       SourceLocation Loc) {
   // Visibility calculations will consider the namespace's visibility.
   // Here we just want to note that we're in a visibility context
   // which overrides any enclosing #pragma context, but doesn't itself
   // contribute visibility.
-  PushPragmaVisibility(*this, NoVisibility, SourceLocation());
+  PushPragmaVisibility(*this, NoVisibility, Loc);
 }
 
-void Sema::PopPragmaVisibility() {
-  // Pop visibility from stack, if there is one on the stack.
-  if (VisContext) {
-    VisStack *Stack = static_cast<VisStack*>(VisContext);
-
-    Stack->pop_back();
-    // To simplify the implementation, never keep around an empty stack.
-    if (Stack->empty())
-      FreeVisContext();
+void Sema::PopPragmaVisibility(bool IsNamespaceEnd, SourceLocation EndLoc) {
+  if (!VisContext) {
+    Diag(EndLoc, diag::err_pragma_pop_visibility_mismatch);
+    return;
   }
-  // FIXME: Add diag for pop without push.
+
+  // Pop visibility from stack
+  VisStack *Stack = static_cast<VisStack*>(VisContext);
+
+  const std::pair<unsigned, SourceLocation> *Back = &Stack->back();
+  bool StartsWithPragma = Back->first != NoVisibility;
+  if (StartsWithPragma && IsNamespaceEnd) {
+    Diag(Back->second, diag::err_pragma_push_visibility_mismatch);
+    Diag(EndLoc, diag::note_surrounding_namespace_ends_here);
+
+    // For better error recovery, eat all pushes inside the namespace.
+    do {
+      Stack->pop_back();
+      Back = &Stack->back();
+      StartsWithPragma = Back->first != NoVisibility;
+    } while (StartsWithPragma);
+  } else if (!StartsWithPragma && !IsNamespaceEnd) {
+    Diag(EndLoc, diag::err_pragma_pop_visibility_mismatch);
+    Diag(Back->second, diag::note_surrounding_namespace_starts_here);
+    return;
+  }
+
+  Stack->pop_back();
+  // To simplify the implementation, never keep around an empty stack.
+  if (Stack->empty())
+    FreeVisContext();
 }

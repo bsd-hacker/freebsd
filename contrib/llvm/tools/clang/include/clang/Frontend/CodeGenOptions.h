@@ -37,6 +37,7 @@ public:
 
   unsigned AsmVerbose        : 1; /// -dA, -fverbose-asm.
   unsigned ObjCAutoRefCountExceptions : 1; /// Whether ARC should be EH-safe.
+  unsigned CUDAIsDevice      : 1; /// Set when compiling for CUDA device.
   unsigned CXAAtExit         : 1; /// Use __cxa_atexit for calling destructors.
   unsigned CXXCtorDtorAliases: 1; /// Emit complete ctors/dtors as linker
                                   /// aliases to base ctors when possible.
@@ -49,6 +50,7 @@ public:
                                   /// internal state before optimizations are
                                   /// done.
   unsigned DisableRedZone    : 1; /// Set when -mno-red-zone is enabled.
+  unsigned DisableTailCalls  : 1; /// Do not emit tail calls.
   unsigned EmitDeclMetadata  : 1; /// Emit special metadata indicating what
                                   /// Decl* various IR entities came from.  Only
                                   /// useful when running CodeGen as a
@@ -70,9 +72,14 @@ public:
   unsigned MergeAllConstants : 1; /// Merge identical constants.
   unsigned NoCommon          : 1; /// Set when -fno-common or C++ is enabled.
   unsigned NoDwarf2CFIAsm    : 1; /// Set when -fno-dwarf2-cfi-asm is enabled.
+  unsigned NoDwarfDirectoryAsm : 1; /// Set when -fno-dwarf-directory-asm is
+                                    /// enabled.
   unsigned NoExecStack       : 1; /// Set when -Wa,--noexecstack is enabled.
+  unsigned NoGlobalMerge     : 1; /// Set when -mno-global-merge is enabled.
   unsigned NoImplicitFloat   : 1; /// Set when -mno-implicit-float is enabled.
   unsigned NoInfsFPMath      : 1; /// Assume FP arguments, results not +-Inf.
+  unsigned NoInline          : 1; /// Set when -fno-inline is enabled. Disables
+                                  /// use of the inline keyword.
   unsigned NoNaNsFPMath      : 1; /// Assume FP arguments, results not NaN.
   unsigned NoZeroInitializedInBSS : 1; /// -fno-zero-initialized-in-bss
   unsigned ObjCDispatchMethod : 2; /// Method of Objective-C dispatch to use.
@@ -87,6 +94,7 @@ public:
   unsigned SaveTempLabels    : 1; /// Save temporary labels.
   unsigned SimplifyLibCalls  : 1; /// Set when -fbuiltin is enabled.
   unsigned SoftFloat         : 1; /// -soft-float.
+  unsigned StrictEnums       : 1; /// Optimize based on strict enum definition.
   unsigned TimePasses        : 1; /// Set when -ftime-report is enabled.
   unsigned UnitAtATime       : 1; /// Unused. For mirroring GCC optimization
                                   /// selection.
@@ -101,6 +109,11 @@ public:
   unsigned VerifyModule      : 1; /// Control whether the module should be run
                                   /// through the LLVM Verifier.
 
+  unsigned StackRealignment  : 1; /// Control whether to permit stack
+                                  /// realignment.
+  unsigned StackAlignment;        /// Overrides default stack alignment,
+                                  /// if not 0.
+
   /// The code model to use (-mcmodel).
   std::string CodeModel;
 
@@ -111,6 +124,9 @@ public:
   /// Enable additional debugging information.
   std::string DebugPass;
 
+  /// The string to embed in debug information as the current working directory.
+  std::string DebugCompilationDir;
+
   /// The string to embed in the debug information for the compile unit, if
   /// non-empty.
   std::string DwarfDebugFlags;
@@ -120,6 +136,9 @@ public:
 
   /// The float precision limit to use, if non-empty.
   std::string LimitFloatPrecision;
+
+  /// The name of the bitcode file to link before optzns.
+  std::string LinkBitcodeFile;
 
   /// The kind of inlining to perform.
   InliningMethod Inlining;
@@ -132,6 +151,10 @@ public:
   /// The name of the relocation model to use.
   std::string RelocationModel;
 
+  /// If not an empty string, trap intrinsics are lowered to calls to this
+  /// function instead of to trap instructions.
+  std::string TrapFuncName;
+
   /// A list of command-line options to forward to the LLVM backend.
   std::vector<std::string> BackendOptions;
 
@@ -142,6 +165,7 @@ public:
 public:
   CodeGenOptions() {
     AsmVerbose = 0;
+    CUDAIsDevice = 0;
     CXAAtExit = 1;
     CXXCtorDtorAliases = 0;
     DataSections = 0;
@@ -150,6 +174,7 @@ public:
     DisableFPElim = 0;
     DisableLLVMOpts = 0;
     DisableRedZone = 0;
+    DisableTailCalls = 0;
     EmitDeclMetadata = 0;
     EmitGcovArcs = 0;
     EmitGcovNotes = 0;
@@ -165,6 +190,7 @@ public:
     NoDwarf2CFIAsm = 0;
     NoImplicitFloat = 0;
     NoInfsFPMath = 0;
+    NoInline = 0;
     NoNaNsFPMath = 0;
     NoZeroInitializedInBSS = 0;
     NumRegisterParameters = 0;
@@ -180,6 +206,7 @@ public:
     SaveTempLabels = 0;
     SimplifyLibCalls = 1;
     SoftFloat = 0;
+    StrictEnums = 0;
     TimePasses = 0;
     UnitAtATime = 1;
     UnrollLoops = 0;
@@ -187,6 +214,8 @@ public:
     UnwindTables = 0;
     UseRegisterSizedBitfieldAccess = 0;
     VerifyModule = 1;
+    StackRealignment = 0;
+    StackAlignment = 0;
 
     Inlining = NoInlining;
     RelocationModel = "pic";

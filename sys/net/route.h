@@ -49,8 +49,12 @@
 struct route {
 	struct	rtentry *ro_rt;
 	struct	llentry *ro_lle;
+	struct	in_ifaddr *ro_ia;
+	int		ro_flags;
 	struct	sockaddr ro_dst;
 };
+
+#define RT_CACHING_CONTEXT	0x1
 
 /*
  * These numbers are used by reliable protocols for determining
@@ -86,27 +90,7 @@ struct rt_metrics {
 #define	RTM_RTTUNIT	1000000	/* units for rtt, rttvar, as units per sec */
 #define	RTTTOPRHZ(r)	((r) / (RTM_RTTUNIT / PR_SLOWHZ))
 
-/* MRT compile-time constants */
-#ifdef _KERNEL
- #ifndef ROUTETABLES
-  #define RT_NUMFIBS 1
-  #define RT_MAXFIBS 1
- #else
-  /* while we use 4 bits in the mbuf flags, we are limited to 16 */
-  #define RT_MAXFIBS 16
-  #if ROUTETABLES > RT_MAXFIBS
-   #define RT_NUMFIBS RT_MAXFIBS
-   #error "ROUTETABLES defined too big"
-  #else
-   #if ROUTETABLES == 0
-    #define RT_NUMFIBS 1
-   #else
-    #define RT_NUMFIBS ROUTETABLES
-   #endif
-  #endif
- #endif
-#endif
-
+#define	RT_DEFAULT_FIB	0	/* Explicitly mark fib=0 restricted cases */
 extern u_int rt_numfibs;	/* number fo usable routing tables */
 /*
  * XXX kernel function pointer `rt_output' is visible to applications.
@@ -365,7 +349,9 @@ void	 rt_ieee80211msg(struct ifnet *, int, void *, size_t);
 void	 rt_ifannouncemsg(struct ifnet *, int);
 void	 rt_ifmsg(struct ifnet *);
 void	 rt_missmsg(int, struct rt_addrinfo *, int, int);
+void	 rt_missmsg_fib(int, struct rt_addrinfo *, int, int, int);
 void	 rt_newaddrmsg(int, struct ifaddr *, int, struct rtentry *);
+void	 rt_newaddrmsg_fib(int, struct ifaddr *, int, struct rtentry *, int);
 void	 rt_newmaddrmsg(int, struct ifmultiaddr *);
 int	 rt_setgate(struct rtentry *, struct sockaddr *, struct sockaddr *);
 void 	 rt_maskedcopy(struct sockaddr *, struct sockaddr *, struct sockaddr *);
@@ -399,8 +385,10 @@ void	 rtredirect(struct sockaddr *, struct sockaddr *,
 int	 rtrequest(int, struct sockaddr *,
 	    struct sockaddr *, struct sockaddr *, int, struct rtentry **);
 
+#ifndef BURN_BRIDGES
 /* defaults to "all" FIBs */
 int	 rtinit_fib(struct ifaddr *, int, int);
+#endif
 
 /* XXX MRT NEW VERSIONS THAT USE FIBs
  * For now the protocol indepedent versions are the same as the AF_INET ones

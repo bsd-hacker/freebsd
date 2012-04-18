@@ -14,6 +14,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Rewrite/FixItRewriter.h"
+#include "clang/Edit/Commit.h"
+#include "clang/Edit/EditsReceiver.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -25,23 +27,26 @@
 
 using namespace clang;
 
-FixItRewriter::FixItRewriter(Diagnostic &Diags, SourceManager &SourceMgr,
+FixItRewriter::FixItRewriter(DiagnosticsEngine &Diags, SourceManager &SourceMgr,
                              const LangOptions &LangOpts,
                              FixItOptions *FixItOpts)
   : Diags(Diags),
+    Editor(SourceMgr, LangOpts),
     Rewrite(SourceMgr, LangOpts),
     FixItOpts(FixItOpts),
-    NumFailures(0) {
+    NumFailures(0),
+    PrevDiagSilenced(false) {
+  OwnsClient = Diags.ownsClient();
   Client = Diags.takeClient();
   Diags.setClient(this);
 }
 
 FixItRewriter::~FixItRewriter() {
   Diags.takeClient();
-  Diags.setClient(Client);
+  Diags.setClient(Client, OwnsClient);
 }
 
-bool FixItRewriter::WriteFixedFile(FileID ID, llvm::raw_ostream &OS) {
+bool FixItRewriter::WriteFixedFile(FileID ID, raw_ostream &OS) {
   const RewriteBuffer *RewriteBuf = Rewrite.getRewriteBufferFor(ID);
   if (!RewriteBuf) return true;
   RewriteBuf->write(OS);
@@ -49,26 +54,57 @@ bool FixItRewriter::WriteFixedFile(FileID ID, llvm::raw_ostream &OS) {
   return false;
 }
 
-bool FixItRewriter::WriteFixedFiles() {
+namespace {
+
+class RewritesReceiver : public edit::EditsReceiver {
+  Rewriter &Rewrite;
+
+public:
+  RewritesReceiver(Rewriter &Rewrite) : Rewrite(Rewrite) { }
+
+  virtual void insert(SourceLocation loc, StringRef text) {
+    Rewrite.InsertText(loc, text);
+  }
+  virtual void replace(CharSourceRange range, StringRef text) {
+    Rewrite.ReplaceText(range.getBegin(), Rewrite.getRangeSize(range), text);
+  }
+};
+
+}
+
+bool FixItRewriter::WriteFixedFiles(
+            std::vector<std::pair<std::string, std::string> > *RewrittenFiles) {
   if (NumFailures > 0 && !FixItOpts->FixWhatYouCan) {
     Diag(FullSourceLoc(), diag::warn_fixit_no_changes);
     return true;
   }
 
+  RewritesReceiver Rec(Rewrite);
+  Editor.applyRewrites(Rec);
+
   for (iterator I = buffer_begin(), E = buffer_end(); I != E; ++I) {
     const FileEntry *Entry = Rewrite.getSourceMgr().getFileEntryForID(I->first);
-    std::string Filename = FixItOpts->RewriteFilename(Entry->getName());
+    int fd;
+    std::string Filename = FixItOpts->RewriteFilename(Entry->getName(), fd);
     std::string Err;
-    llvm::raw_fd_ostream OS(Filename.c_str(), Err,
-                            llvm::raw_fd_ostream::F_Binary);
+    OwningPtr<llvm::raw_fd_ostream> OS;
+    if (fd != -1) {
+      OS.reset(new llvm::raw_fd_ostream(fd, /*shouldClose=*/true));
+    } else {
+      OS.reset(new llvm::raw_fd_ostream(Filename.c_str(), Err,
+                                        llvm::raw_fd_ostream::F_Binary));
+    }
     if (!Err.empty()) {
       Diags.Report(clang::diag::err_fe_unable_to_open_output)
           << Filename << Err;
       continue;
     }
     RewriteBuffer &RewriteBuf = I->second;
-    RewriteBuf.write(OS);
-    OS.flush();
+    RewriteBuf.write(*OS);
+    OS->flush();
+
+    if (RewrittenFiles)
+      RewrittenFiles->push_back(std::make_pair(Entry->getName(), Filename));
   }
 
   return false;
@@ -78,62 +114,68 @@ bool FixItRewriter::IncludeInDiagnosticCounts() const {
   return Client ? Client->IncludeInDiagnosticCounts() : true;
 }
 
-void FixItRewriter::HandleDiagnostic(Diagnostic::Level DiagLevel,
-                                     const DiagnosticInfo &Info) {
+void FixItRewriter::HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                                     const Diagnostic &Info) {
   // Default implementation (Warnings/errors count).
-  DiagnosticClient::HandleDiagnostic(DiagLevel, Info);
+  DiagnosticConsumer::HandleDiagnostic(DiagLevel, Info);
 
-  Client->HandleDiagnostic(DiagLevel, Info);
+  if (!FixItOpts->Silent ||
+      DiagLevel >= DiagnosticsEngine::Error ||
+      (DiagLevel == DiagnosticsEngine::Note && !PrevDiagSilenced) ||
+      (DiagLevel > DiagnosticsEngine::Note && Info.getNumFixItHints())) {
+    Client->HandleDiagnostic(DiagLevel, Info);
+    PrevDiagSilenced = false;
+  } else {
+    PrevDiagSilenced = true;
+  }
 
   // Skip over any diagnostics that are ignored or notes.
-  if (DiagLevel <= Diagnostic::Note)
+  if (DiagLevel <= DiagnosticsEngine::Note)
     return;
+  // Skip over errors if we are only fixing warnings.
+  if (DiagLevel >= DiagnosticsEngine::Error && FixItOpts->FixOnlyWarnings) {
+    ++NumFailures;
+    return;
+  }
 
   // Make sure that we can perform all of the modifications we
   // in this diagnostic.
-  bool CanRewrite = Info.getNumFixItHints() > 0;
+  edit::Commit commit(Editor);
   for (unsigned Idx = 0, Last = Info.getNumFixItHints();
        Idx < Last; ++Idx) {
     const FixItHint &Hint = Info.getFixItHint(Idx);
-    if (Hint.RemoveRange.isValid() &&
-        Rewrite.getRangeSize(Hint.RemoveRange) == -1) {
-      CanRewrite = false;
-      break;
+
+    if (Hint.CodeToInsert.empty()) {
+      if (Hint.InsertFromRange.isValid())
+        commit.insertFromRange(Hint.RemoveRange.getBegin(),
+                           Hint.InsertFromRange, /*afterToken=*/false,
+                           Hint.BeforePreviousInsertions);
+      else
+        commit.remove(Hint.RemoveRange);
+    } else {
+      if (Hint.RemoveRange.isTokenRange() ||
+          Hint.RemoveRange.getBegin() != Hint.RemoveRange.getEnd())
+        commit.replace(Hint.RemoveRange, Hint.CodeToInsert);
+      else
+        commit.insert(Hint.RemoveRange.getBegin(), Hint.CodeToInsert,
+                    /*afterToken=*/false, Hint.BeforePreviousInsertions);
     }
   }
+  bool CanRewrite = Info.getNumFixItHints() > 0 && commit.isCommitable();
 
   if (!CanRewrite) {
     if (Info.getNumFixItHints() > 0)
       Diag(Info.getLocation(), diag::note_fixit_in_macro);
 
     // If this was an error, refuse to perform any rewriting.
-    if (DiagLevel == Diagnostic::Error || DiagLevel == Diagnostic::Fatal) {
+    if (DiagLevel >= DiagnosticsEngine::Error) {
       if (++NumFailures == 1)
         Diag(Info.getLocation(), diag::note_fixit_unfixed_error);
     }
     return;
   }
-
-  bool Failed = false;
-  for (unsigned Idx = 0, Last = Info.getNumFixItHints();
-       Idx < Last; ++Idx) {
-    const FixItHint &Hint = Info.getFixItHint(Idx);
-
-    if (Hint.CodeToInsert.empty()) {
-      // We're removing code.
-      if (Rewrite.RemoveText(Hint.RemoveRange))
-        Failed = true;
-      continue;
-    }
-
-    // We're replacing code.
-    if (Rewrite.ReplaceText(Hint.RemoveRange.getBegin(),
-                            Rewrite.getRangeSize(Hint.RemoveRange),
-                            Hint.CodeToInsert))
-      Failed = true;
-  }
-
-  if (Failed) {
+  
+  if (!Editor.commit(commit)) {
     ++NumFailures;
     Diag(Info.getLocation(), diag::note_fixit_failed);
     return;
@@ -153,6 +195,11 @@ void FixItRewriter::Diag(SourceLocation Loc, unsigned DiagID) {
   Diags.Report(Loc, DiagID);
   Diags.takeClient();
   Diags.setClient(this);
+}
+
+DiagnosticConsumer *FixItRewriter::clone(DiagnosticsEngine &Diags) const {
+  return new FixItRewriter(Diags, Diags.getSourceManager(), 
+                           Rewrite.getLangOpts(), FixItOpts);
 }
 
 FixItOptions::~FixItOptions() {}

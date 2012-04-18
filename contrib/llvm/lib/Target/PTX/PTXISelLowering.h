@@ -1,4 +1,4 @@
-//==-- PTXISelLowering.h - PTX DAG Lowering Interface ------------*- C++ -*-==//
+//===-- PTXISelLowering.h - PTX DAG Lowering Interface ----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -18,17 +18,18 @@
 #include "llvm/Target/TargetLowering.h"
 
 namespace llvm {
-class PTXSubtarget;
-class PTXTargetMachine;
 
 namespace PTXISD {
   enum NodeType {
     FIRST_NUMBER = ISD::BUILTIN_OP_END,
     LOAD_PARAM,
     STORE_PARAM,
+    READ_PARAM,
+    WRITE_PARAM,
     EXIT,
     RET,
-    COPY_ADDRESS
+    COPY_ADDRESS,
+    CALL
   };
 }                               // namespace PTXISD
 
@@ -60,7 +61,18 @@ class PTXTargetLowering : public TargetLowering {
                   DebugLoc dl,
                   SelectionDAG &DAG) const;
 
-    virtual MVT::SimpleValueType getSetCCResultType(EVT VT) const;
+    virtual SDValue
+      LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
+                bool isVarArg, bool doesNotRet, bool &isTailCall,
+                const SmallVectorImpl<ISD::OutputArg> &Outs,
+                const SmallVectorImpl<SDValue> &OutVals,
+                const SmallVectorImpl<ISD::InputArg> &Ins,
+                DebugLoc dl, SelectionDAG &DAG,
+                SmallVectorImpl<SDValue> &InVals) const;
+
+    virtual EVT getSetCCResultType(EVT VT) const;
+
+    virtual unsigned getNumRegisters(LLVMContext &Context, EVT VT);
 
   private:
     SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;

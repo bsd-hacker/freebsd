@@ -3,10 +3,15 @@
 LIB=	llvmmipsdesc
 
 SRCDIR=	lib/Target/Mips/MCTargetDesc
-SRCS=	MipsMCAsmInfo.cpp \
+SRCS=	MipsAsmBackend.cpp \
+	MipsELFObjectWriter.cpp \
+	MipsMCAsmInfo.cpp \
+	MipsMCCodeEmitter.cpp \
 	MipsMCTargetDesc.cpp
+CFLAGS+= -I${LLVM_SRCS}/${SRCDIR}/..
 
 TGHDRS=	MipsGenInstrInfo \
+	MipsGenMCCodeEmitter \
 	MipsGenRegisterInfo \
 	MipsGenSubtargetInfo
 

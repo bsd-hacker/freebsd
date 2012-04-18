@@ -19,17 +19,16 @@ using namespace clang::frontend;
 
 const LangStandard &LangStandard::getLangStandardForKind(Kind K) {
   switch (K) {
-  default:
-    llvm_unreachable("Invalid language kind!");
   case lang_unspecified:
     llvm::report_fatal_error("getLangStandardForKind() on unspecified kind");
 #define LANGSTANDARD(id, name, desc, features) \
     case lang_##id: return Lang_##id;
 #include "clang/Frontend/LangStandards.def"
   }
+  llvm_unreachable("Invalid language kind!");
 }
 
-const LangStandard *LangStandard::getLangStandardForName(llvm::StringRef Name) {
+const LangStandard *LangStandard::getLangStandardForName(StringRef Name) {
   Kind K = llvm::StringSwitch<Kind>(Name)
 #define LANGSTANDARD(id, name, desc, features) \
     .Case(name, lang_##id)

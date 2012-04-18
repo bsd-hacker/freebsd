@@ -41,7 +41,6 @@ Decl *ASTLocation::getReferencedDecl() {
     return 0;
 
   switch (getKind()) {
-  default: assert(0 && "Invalid Kind");
   case N_Type:
     return 0;
   case N_Decl:
@@ -51,8 +50,8 @@ Decl *ASTLocation::getReferencedDecl() {
   case N_Stmt:
     return getDeclFromExpr(Stm);
   }
-  
-  return 0;
+
+  llvm_unreachable("Invalid ASTLocation Kind!");
 }
 
 SourceRange ASTLocation::getSourceRange() const {
@@ -60,8 +59,6 @@ SourceRange ASTLocation::getSourceRange() const {
     return SourceRange();
 
   switch (getKind()) {
-  default: assert(0 && "Invalid Kind");
-    return SourceRange();
   case N_Decl:
     return D->getSourceRange();
   case N_Stmt:
@@ -71,11 +68,11 @@ SourceRange ASTLocation::getSourceRange() const {
   case N_Type:
     return AsTypeLoc().getLocalSourceRange();
   }
-  
-  return SourceRange();
+
+  llvm_unreachable("Invalid ASTLocation Kind!");
 }
 
-void ASTLocation::print(llvm::raw_ostream &OS) const {
+void ASTLocation::print(raw_ostream &OS) const {
   if (isInvalid()) {
     OS << "<< Invalid ASTLocation >>\n";
     return;
@@ -87,17 +84,17 @@ void ASTLocation::print(llvm::raw_ostream &OS) const {
   case N_Decl:
     OS << "[Decl: " << AsDecl()->getDeclKindName() << " ";
     if (const NamedDecl *ND = dyn_cast<NamedDecl>(AsDecl()))
-      OS << ND;
+      OS << *ND;
     break;
 
   case N_Stmt:
     OS << "[Stmt: " << AsStmt()->getStmtClassName() << " ";
-    AsStmt()->printPretty(OS, Ctx, 0, PrintingPolicy(Ctx.getLangOptions()));
+    AsStmt()->printPretty(OS, Ctx, 0, PrintingPolicy(Ctx.getLangOpts()));
     break;
     
   case N_NamedRef:
     OS << "[NamedRef: " << AsNamedRef().ND->getDeclKindName() << " ";
-    OS << AsNamedRef().ND;
+    OS << *AsNamedRef().ND;
     break;
     
   case N_Type: {

@@ -26,8 +26,8 @@
 #define DEBUG_TYPE "x86-codegen"
 #include "X86.h"
 #include "X86InstrInfo.h"
+#include "llvm/InlineAsm.h"
 #include "llvm/ADT/DepthFirstIterator.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -37,7 +37,6 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/InlineAsm.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -219,7 +218,7 @@ namespace {
     /// getSTReg - Return the X86::ST(i) register which contains the specified
     /// FP<RegNo> register.
     unsigned getSTReg(unsigned RegNo) const {
-      return StackTop - 1 - getSlot(RegNo) + llvm::X86::ST0;
+      return StackTop - 1 - getSlot(RegNo) + X86::ST0;
     }
 
     // pushReg - Push the specified FP<n> register onto the stack.
@@ -258,6 +257,21 @@ namespace {
       pushReg(AsReg);   // New register on top of stack
 
       BuildMI(*MBB, I, dl, TII->get(X86::LD_Frr)).addReg(STReg);
+    }
+
+    /// duplicatePendingSTBeforeKill - The instruction at I is about to kill
+    /// RegNo. If any PendingST registers still need the RegNo value, duplicate
+    /// them to new scratch registers.
+    void duplicatePendingSTBeforeKill(unsigned RegNo, MachineInstr *I) {
+      for (unsigned i = 0; i != NumPendingSTs; ++i) {
+        if (PendingST[i] != RegNo)
+          continue;
+        unsigned SR = getScratchReg();
+        DEBUG(dbgs() << "Duplicating pending ST" << i
+                     << " in FP" << RegNo << " to FP" << SR << '\n');
+        duplicateToTop(RegNo, SR, I);
+        PendingST[i] = SR;
+      }
     }
 
     /// popStackAfter - Pop the current value off of the top of the FP stack
@@ -406,6 +420,10 @@ bool FPS::processBasicBlock(MachineFunction &MF, MachineBasicBlock &BB) {
     if (MI->isCopy() && isFPCopy(MI))
       FPInstClass = X86II::SpecialFP;
 
+    if (MI->isImplicitDef() &&
+        X86::RFP80RegClass.contains(MI->getOperand(0).getReg()))
+      FPInstClass = X86II::SpecialFP;
+
     if (FPInstClass == X86II::NotFP)
       continue;  // Efficiently ignore non-fp insts!
 
@@ -461,6 +479,7 @@ bool FPS::processBasicBlock(MachineFunction &MF, MachineBasicBlock &BB) {
       }
       dumpStack();
     );
+    (void)PrevMI;
 
     Changed = true;
   }
@@ -550,8 +569,8 @@ void FPS::finishBlockStack() {
 
 namespace {
   struct TableEntry {
-    unsigned from;
-    unsigned to;
+    uint16_t from;
+    uint16_t to;
     bool operator<(const TableEntry &TE) const { return from < TE.from; }
     friend bool operator<(const TableEntry &TE, unsigned V) {
       return TE.from < V;
@@ -969,6 +988,9 @@ void FPS::handleOneArgFP(MachineBasicBlock::iterator &I) {
   unsigned Reg = getFPReg(MI->getOperand(NumOps-1));
   bool KillsSrc = MI->killsRegister(X86::FP0+Reg);
 
+  if (KillsSrc)
+    duplicatePendingSTBeforeKill(Reg, I);
+
   // FISTP64m is strange because there isn't a non-popping versions.
   // If we have one _and_ we don't want to pop the operand, duplicate the value
   // on the stack instead of moving it.  This ensure that popping the value is
@@ -1032,6 +1054,7 @@ void FPS::handleOneArgFPRW(MachineBasicBlock::iterator &I) {
   bool KillsSrc = MI->killsRegister(X86::FP0+Reg);
 
   if (KillsSrc) {
+    duplicatePendingSTBeforeKill(Reg, I);
     // If this is the last use of the source register, just make sure it's on
     // the top of the stack.
     moveToTop(Reg, I);
@@ -1318,6 +1341,7 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
 
       // When the source is killed, allocate a scratch FP register.
       if (KillsSrc) {
+        duplicatePendingSTBeforeKill(SrcFP, I);
         unsigned Slot = getSlot(SrcFP);
         unsigned SR = getScratchReg();
         PendingST[DstST] = SR;
@@ -1366,6 +1390,15 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
       // This could be made better, but would require substantial changes.
       duplicateToTop(SrcFP, DstFP, I);
     }
+    break;
+  }
+
+  case TargetOpcode::IMPLICIT_DEF: {
+    // All FP registers must be explicitly defined, so load a 0 instead.
+    unsigned Reg = MI->getOperand(0).getReg() - X86::FP0;
+    DEBUG(dbgs() << "Emitting LD_F0 for implicit FP" << Reg << '\n');
+    BuildMI(*MBB, I, MI->getDebugLoc(), TII->get(X86::LD_F0));
+    pushReg(Reg);
     break;
   }
 
@@ -1608,6 +1641,30 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
     }
     // Don't delete the inline asm!
     return;
+  }
+
+  case X86::WIN_FTOL_32:
+  case X86::WIN_FTOL_64: {
+    // Push the operand into ST0.
+    MachineOperand &Op = MI->getOperand(0);
+    assert(Op.isUse() && Op.isReg() &&
+      Op.getReg() >= X86::FP0 && Op.getReg() <= X86::FP6);
+    unsigned FPReg = getFPReg(Op);
+    if (Op.isKill())
+      moveToTop(FPReg, I);
+    else
+      duplicateToTop(FPReg, FPReg, I);
+
+    // Emit the call. This will pop the operand.
+    BuildMI(*MBB, I, MI->getDebugLoc(), TII->get(X86::CALLpcrel32))
+      .addExternalSymbol("_ftol2")
+      .addReg(X86::ST0, RegState::ImplicitKill)
+      .addReg(X86::EAX, RegState::Define | RegState::Implicit)
+      .addReg(X86::EDX, RegState::Define | RegState::Implicit)
+      .addReg(X86::EFLAGS, RegState::Define | RegState::Implicit);
+    --StackTop;
+
+    break;
   }
 
   case X86::RET:

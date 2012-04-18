@@ -58,7 +58,7 @@ llvm::MDNode *CodeGenTBAA::getChar() {
 
 /// getTBAAInfoForNamedType - Create a TBAA tree node with the given string
 /// as its identifier, and the given Parent node as its tree parent.
-llvm::MDNode *CodeGenTBAA::getTBAAInfoForNamedType(llvm::StringRef NameStr,
+llvm::MDNode *CodeGenTBAA::getTBAAInfoForNamedType(StringRef NameStr,
                                                    llvm::MDNode *Parent,
                                                    bool Readonly) {
   // Currently there is only one flag defined - the readonly flag.
@@ -75,7 +75,7 @@ llvm::MDNode *CodeGenTBAA::getTBAAInfoForNamedType(llvm::StringRef NameStr,
 
   // Create the mdnode.
   unsigned Len = llvm::array_lengthof(Ops) - !Flags;
-  return llvm::MDNode::get(VMContext, llvm::ArrayRef<llvm::Value*>(Ops, Len));
+  return llvm::MDNode::get(VMContext, llvm::makeArrayRef(Ops, Len));
 }
 
 static bool TypeHasMayAlias(QualType QTy) {
@@ -169,7 +169,7 @@ CodeGenTBAA::getTBAAInfo(QualType QTy) {
 
     // TODO: This is using the RTTI name. Is there a better way to get
     // a unique string for a type?
-    llvm::SmallString<256> OutName;
+    SmallString<256> OutName;
     llvm::raw_svector_ostream Out(OutName);
     MContext.mangleCXXRTTIName(QualType(ETy, 0), Out);
     Out.flush();
@@ -178,4 +178,8 @@ CodeGenTBAA::getTBAAInfo(QualType QTy) {
 
   // For now, handle any other kind of type conservatively.
   return MetadataCache[Ty] = getChar();
+}
+
+llvm::MDNode *CodeGenTBAA::getTBAAInfoForVTablePtr() {
+  return getTBAAInfoForNamedType("vtable pointer", getRoot());
 }

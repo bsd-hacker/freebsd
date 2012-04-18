@@ -17,13 +17,12 @@
 
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/TokenKinds.h"
+#include "clang/Basic/LLVM.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/PointerLikeTypeTraits.h"
 #include <cassert>
-#include <cctype>
 #include <string>
 
 namespace llvm {
@@ -48,23 +47,30 @@ namespace clang {
 /// variable or function name).  The preprocessor keeps this information in a
 /// set, and all tok::identifier tokens have a pointer to one of these.
 class IdentifierInfo {
-  // Note: DON'T make TokenID a 'tok::TokenKind'; MSVC will treat it as a
-  //       signed char and TokenKinds > 127 won't be handled correctly.
-  unsigned TokenID            : 8; // Front-end token ID or tok::identifier.
+  unsigned TokenID            : 9; // Front-end token ID or tok::identifier.
   // Objective-C keyword ('protocol' in '@protocol') or builtin (__builtin_inf).
   // First NUM_OBJC_KEYWORDS values are for Objective-C, the remaining values
   // are for builtins.
   unsigned ObjCOrBuiltinID    :11;
   bool HasMacro               : 1; // True if there is a #define for this.
   bool IsExtension            : 1; // True if identifier is a lang extension.
+  bool IsCXX11CompatKeyword   : 1; // True if identifier is a keyword in C++11.
   bool IsPoisoned             : 1; // True if identifier is poisoned.
   bool IsCPPOperatorKeyword   : 1; // True if ident is a C++ operator keyword.
   bool NeedsHandleIdentifier  : 1; // See "RecomputeNeedsHandleIdentifier".
-  bool IsFromAST              : 1; // True if identfier first appeared in an AST
-                                   // file and wasn't modified since.
+  bool IsFromAST              : 1; // True if identifier was loaded (at least 
+                                   // partially) from an AST file.
+  bool ChangedAfterLoad       : 1; // True if identifier has changed from the
+                                   // definition loaded from an AST file.
   bool RevertedTokenID        : 1; // True if RevertTokenIDToIdentifier was
                                    // called.
-  // 6 bits left in 32-bit word.
+  bool OutOfDate              : 1; // True if there may be additional
+                                   // information about this identifier
+                                   // stored externally.
+  bool IsModulesImport               : 1; // True if this is the 'import' contextual
+                                   // keyword.
+  // 1 bit left in 32-bit word.
+  
   void *FETokenInfo;               // Managed by the language front-end.
   llvm::StringMapEntry<IdentifierInfo*> *Entry;
 
@@ -113,8 +119,8 @@ public:
   }
 
   /// getName - Return the actual identifier string.
-  llvm::StringRef getName() const {
-    return llvm::StringRef(getNameStart(), getLength());
+  StringRef getName() const {
+    return StringRef(getNameStart(), getLength());
   }
 
   /// hasMacroDefinition - Return true if this identifier is #defined to some
@@ -130,7 +136,6 @@ public:
       NeedsHandleIdentifier = 1;
     else
       RecomputeNeedsHandleIdentifier();
-    IsFromAST = false;
   }
 
   /// getTokenID - If this is a source-language token (e.g. 'for'), this API
@@ -198,6 +203,19 @@ public:
       RecomputeNeedsHandleIdentifier();
   }
 
+  /// is/setIsCXX11CompatKeyword - Initialize information about whether or not
+  /// this language token is a keyword in C++11. This controls compatibility
+  /// warnings, and is only true when not parsing C++11. Once a compatibility
+  /// problem has been diagnosed with this keyword, the flag will be cleared.
+  bool isCXX11CompatKeyword() const { return IsCXX11CompatKeyword; }
+  void setIsCXX11CompatKeyword(bool Val) {
+    IsCXX11CompatKeyword = Val;
+    if (Val)
+      NeedsHandleIdentifier = 1;
+    else
+      RecomputeNeedsHandleIdentifier();
+  }
+
   /// setIsPoisoned - Mark this identifier as poisoned.  After poisoning, the
   /// Preprocessor will emit an error every time this token is used.
   void setIsPoisoned(bool Value = true) {
@@ -206,7 +224,6 @@ public:
       NeedsHandleIdentifier = 1;
     else
       RecomputeNeedsHandleIdentifier();
-    IsFromAST = false;
   }
 
   /// isPoisoned - Return true if this token has been poisoned.
@@ -238,8 +255,48 @@ public:
   /// from an AST file.
   bool isFromAST() const { return IsFromAST; }
 
-  void setIsFromAST(bool FromAST = true) { IsFromAST = FromAST; }
+  void setIsFromAST() { IsFromAST = true; }
 
+  /// \brief Determine whether this identifier has changed since it was loaded
+  /// from an AST file.
+  bool hasChangedSinceDeserialization() const {
+    return ChangedAfterLoad;
+  }
+  
+  /// \brief Note that this identifier has changed since it was loaded from
+  /// an AST file.
+  void setChangedSinceDeserialization() {
+    ChangedAfterLoad = true;
+  }
+
+  /// \brief Determine whether the information for this identifier is out of
+  /// date with respect to the external source.
+  bool isOutOfDate() const { return OutOfDate; }
+  
+  /// \brief Set whether the information for this identifier is out of
+  /// date with respect to the external source.
+  void setOutOfDate(bool OOD) {
+    OutOfDate = OOD;
+    if (OOD)
+      NeedsHandleIdentifier = true;
+    else
+      RecomputeNeedsHandleIdentifier();
+  }
+  
+  /// \brief Determine whether this is the contextual keyword
+  /// '__experimental_modules_import'.
+  bool isModulesImport() const { return IsModulesImport; }
+  
+  /// \brief Set whether this identifier is the contextual keyword 
+  /// '__experimental_modules_import'.
+  void setModulesImport(bool I) {
+    IsModulesImport = I;
+    if (I)
+      NeedsHandleIdentifier = true;
+    else
+      RecomputeNeedsHandleIdentifier();
+  }
+  
 private:
   /// RecomputeNeedsHandleIdentifier - The Preprocessor::HandleIdentifier does
   /// several special (but rare) things to identifiers of various sorts.  For
@@ -251,7 +308,8 @@ private:
   void RecomputeNeedsHandleIdentifier() {
     NeedsHandleIdentifier =
       (isPoisoned() | hasMacroDefinition() | isCPlusPlusOperatorKeyword() |
-       isExtensionToken());
+       isExtensionToken() | isCXX11CompatKeyword() || isOutOfDate() ||
+       isModulesImport());
   }
 };
 
@@ -299,8 +357,8 @@ public:
   /// advances the iterator for the following string.
   ///
   /// \returns The next string in the identifier table. If there is
-  /// no such string, returns an empty \c llvm::StringRef.
-  virtual llvm::StringRef Next() = 0;
+  /// no such string, returns an empty \c StringRef.
+  virtual StringRef Next() = 0;
 };
 
 /// IdentifierInfoLookup - An abstract class used by IdentifierTable that
@@ -314,7 +372,7 @@ public:
   ///  Unlike the version in IdentifierTable, this returns a pointer instead
   ///  of a reference.  If the pointer is NULL then the IdentifierInfo cannot
   ///  be found.
-  virtual IdentifierInfo* get(llvm::StringRef Name) = 0;
+  virtual IdentifierInfo* get(StringRef Name) = 0;
 
   /// \brief Retrieve an iterator into the set of all identifiers
   /// known to this identifier lookup source.
@@ -376,7 +434,7 @@ public:
 
   /// get - Return the identifier token info for the specified named identifier.
   ///
-  IdentifierInfo &get(llvm::StringRef Name) {
+  IdentifierInfo &get(StringRef Name) {
     llvm::StringMapEntry<IdentifierInfo*> &Entry =
       HashTable.GetOrCreateValue(Name);
 
@@ -405,9 +463,10 @@ public:
     return *II;
   }
 
-  IdentifierInfo &get(llvm::StringRef Name, tok::TokenKind TokenCode) {
+  IdentifierInfo &get(StringRef Name, tok::TokenKind TokenCode) {
     IdentifierInfo &II = get(Name);
     II.TokenID = TokenCode;
+    assert(II.TokenID == (unsigned) TokenCode && "TokenCode too large");
     return II;
   }
 
@@ -417,7 +476,7 @@ public:
   /// This is a version of get() meant for external sources that want to
   /// introduce or modify an identifier. If they called get(), they would
   /// likely end up in a recursion.
-  IdentifierInfo &getOwn(llvm::StringRef Name) {
+  IdentifierInfo &getOwn(StringRef Name) {
     llvm::StringMapEntry<IdentifierInfo*> &Entry =
       HashTable.GetOrCreateValue(Name);
 
@@ -432,6 +491,10 @@ public:
       // Make sure getName() knows how to find the IdentifierInfo
       // contents.
       II->Entry = &Entry;
+      
+      // If this is the 'import' contextual keyword, mark it as such.
+      if (Name.equals("import"))
+        II->setModulesImport(true);
     }
 
     return *II;
@@ -485,6 +548,7 @@ enum ObjCMethodFamily {
   // selector with the given name.
   OMF_autorelease,
   OMF_dealloc,
+  OMF_finalize,
   OMF_release,
   OMF_retain,
   OMF_retainCount,
@@ -507,7 +571,7 @@ enum { InvalidObjCMethodFamily = (1 << ObjCMethodFamilyBitWidth) - 1 };
 /// selectors that take no arguments and selectors that take 1 argument, which
 /// accounts for 78% of all selectors in Cocoa.h.
 class Selector {
-  friend class DiagnosticInfo;
+  friend class Diagnostic;
 
   enum IdentifierInfoFlag {
     // MultiKeywordSelector = 0.
@@ -595,7 +659,7 @@ public:
   ///
   /// \returns the name for this slot, which may be the empty string if no
   /// name was supplied.
-  llvm::StringRef getNameForSlot(unsigned argIndex) const;
+  StringRef getNameForSlot(unsigned argIndex) const;
   
   /// getAsString - Derive the full selector name (e.g. "foo:bar:") and return
   /// it as an std::string.
@@ -644,14 +708,7 @@ public:
   /// has been capitalized.
   static Selector constructSetterName(IdentifierTable &Idents,
                                       SelectorTable &SelTable,
-                                      const IdentifierInfo *Name) {
-    llvm::SmallString<100> SelectorName;
-    SelectorName = "set";
-    SelectorName += Name->getName();
-    SelectorName[3] = toupper(SelectorName[3]);
-    IdentifierInfo *SetterName = &Idents.get(SelectorName);
-    return SelTable.getUnarySelector(SetterName);
-  }
+                                      const IdentifierInfo *Name);
 };
 
 /// DeclarationNameExtra - Common base of the MultiKeywordSelector,

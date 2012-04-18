@@ -16,7 +16,8 @@ SRCS=	sshd.c auth-rhosts.c auth-passwd.c auth-rsa.c auth-rh-rsa.c \
 	auth2-gss.c gss-serv.c gss-serv-krb5.c \
 	loginrec.c auth-pam.c auth-shadow.c auth-sia.c md5crypt.c \
 	sftp-server.c sftp-common.c \
-	roaming_common.c roaming_serv.c
+	roaming_common.c roaming_serv.c \
+	sandbox-null.c sandbox-rlimit.c sandbox-systrace.c sandbox-darwin.c
 
 # gss-genr.c really belongs in libssh; see src/secure/lib/libssh/Makefile
 SRCS+=	gss-genr.c
@@ -39,21 +40,12 @@ DPADD+=	 ${LIBGSSAPI_KRB5} ${LIBGSSAPI} ${LIBKRB5} ${LIBASN1}
 LDADD+=	 -lgssapi_krb5 -lgssapi -lkrb5 -lasn1
 .endif
 
-.if defined(X11BASE)
-# Recommended /etc/make.conf setting is X11BASE=${LOCALBASE} for x.org
-# 7.x upgrade on <= 6.2, but LOCALBASE has moved out of scope of src/
-# so we need to provide the default for users with old make.conf
-# settings.
-LOCALBASE?=	/usr/local
-
-# Users may override either LOCALBASE or X11BASE to move the location
-# of xauth
-X11BASE?=	${LOCALBASE}
-CFLAGS+= -DXAUTH_PATH=\"${X11BASE}/bin/xauth\"
-.endif
-
 DPADD+=	${LIBCRYPTO} ${LIBCRYPT}
 LDADD+=	-lcrypto -lcrypt
+
+.if defined(LOCALBASE)
+CFLAGS+= -DXAUTH_PATH=\"${LOCALBASE}/bin/xauth\"
+.endif
 
 .include <bsd.prog.mk>
 

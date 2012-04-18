@@ -64,6 +64,8 @@ if [ $bootable = yes ]; then
 	cp $BASE/boot/mfsroot.gz $MNT/boot
     fi
     cp $BASE/boot/support.4th $MNT/boot
+    cp $BASE/boot/check-password.4th $MNT/boot
+    cp $BASE/boot/screen.4th $MNT/boot
     mv $MNT/boot/loader.efi $MNT/efi/boot/bootia64.efi
     umount $MNT
     mdconfig -d -u $md
@@ -74,6 +76,6 @@ fi
 
 echo "/dev/iso9660/$LABEL / cd9660 ro 0 0" > $BASE/etc/fstab
 makefs -t cd9660 $BOOTOPTS -o rockridge -o label=$LABEL $NAME $BASE $*
+rm $BASE/etc/fstab
 rm -f $EFIPART
-rm $1/etc/fstab
 exit 0

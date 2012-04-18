@@ -1,4 +1,4 @@
-//===- SparcRegisterInfo.h - Sparc Register Information Impl ----*- C++ -*-===//
+//===-- SparcRegisterInfo.h - Sparc Register Information Impl ---*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -32,7 +32,7 @@ struct SparcRegisterInfo : public SparcGenRegisterInfo {
   SparcRegisterInfo(SparcSubtarget &st, const TargetInstrInfo &tii);
 
   /// Code Generation virtual methods...
-  const unsigned *getCalleeSavedRegs(const MachineFunction *MF = 0) const;
+  const uint16_t *getCalleeSavedRegs(const MachineFunction *MF = 0) const;
 
   BitVector getReservedRegs(const MachineFunction &MF) const;
 
@@ -46,15 +46,11 @@ struct SparcRegisterInfo : public SparcGenRegisterInfo {
   void processFunctionBeforeFrameFinalized(MachineFunction &MF) const;
 
   // Debug information queries.
-  unsigned getRARegister() const;
   unsigned getFrameRegister(const MachineFunction &MF) const;
 
   // Exception handling queries.
   unsigned getEHExceptionRegister() const;
   unsigned getEHHandlerRegister() const;
-
-  int getDwarfRegNum(unsigned RegNum, bool isEH) const;
-  int getLLVMRegNum(unsigned RegNum, bool isEH) const;
 };
 
 } // end namespace llvm

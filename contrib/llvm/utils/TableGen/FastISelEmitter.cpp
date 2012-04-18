@@ -18,10 +18,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "FastISelEmitter.h"
-#include "Error.h"
-#include "Record.h"
+#include "llvm/TableGen/Error.h"
+#include "llvm/TableGen/Record.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/VectorExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 using namespace llvm;
@@ -280,7 +279,7 @@ struct OperandsSignature {
       } else if (Operands[i].isImm()) {
         OS << "uint64_t imm" << i;
       } else if (Operands[i].isFP()) {
-        OS << "ConstantFP *f" << i;
+        OS << "const ConstantFP *f" << i;
       } else {
         llvm_unreachable("Unknown operand kind!");
       }
@@ -504,7 +503,7 @@ void FastISelMap::collectPatterns(CodeGenDAGPatterns &CGP) {
 
     std::vector<std::string>* PhysRegInputs = new std::vector<std::string>();
     if (InstPatNode->getOperator()->getName() == "imm" ||
-        InstPatNode->getOperator()->getName() == "fpimmm")
+        InstPatNode->getOperator()->getName() == "fpimm")
       PhysRegInputs->push_back("");
     else {
       // Compute the PhysRegs used by the given pattern, and check that

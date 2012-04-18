@@ -9,10 +9,14 @@
 
 #include "clang/Driver/Job.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 #include <cassert>
 using namespace clang::driver;
 
 Job::~Job() {}
+
+void Command::anchor() {}
 
 Command::Command(const Action &_Source, const Tool &_Creator,
                  const char *_Executable, const ArgStringList &_Arguments)
@@ -26,6 +30,10 @@ JobList::JobList() : Job(JobListClass) {}
 JobList::~JobList() {
   for (iterator it = begin(), ie = end(); it != ie; ++it)
     delete *it;
+}
+
+void JobList::clear() {
+  DeleteContainerPointers(Jobs);
 }
 
 void Job::addCommand(Command *C) {

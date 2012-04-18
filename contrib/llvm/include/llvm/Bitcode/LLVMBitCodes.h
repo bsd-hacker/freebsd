@@ -29,23 +29,21 @@ namespace bitc {
 
     // Module sub-block id's.
     PARAMATTR_BLOCK_ID,
-    
-    /// TYPE_BLOCK_ID_OLD - This is the type descriptor block in LLVM 2.9 and
-    /// earlier, replaced with TYPE_BLOCK_ID2.  FIXME: Remove in LLVM 3.1.
-    TYPE_BLOCK_ID_OLD,
+
+    UNUSED_ID1,
     
     CONSTANTS_BLOCK_ID,
     FUNCTION_BLOCK_ID,
     
-    /// TYPE_SYMTAB_BLOCK_ID_OLD - This type descriptor is from LLVM 2.9 and
-    /// earlier bitcode files.  FIXME: Remove in LLVM 3.1
-    TYPE_SYMTAB_BLOCK_ID_OLD,
+    UNUSED_ID2,
     
     VALUE_SYMTAB_BLOCK_ID,
     METADATA_BLOCK_ID,
     METADATA_ATTACHMENT_ID,
     
-    TYPE_BLOCK_ID_NEW
+    TYPE_BLOCK_ID_NEW,
+
+    USELIST_BLOCK_ID
   };
 
 
@@ -63,10 +61,10 @@ namespace bitc {
     MODULE_CODE_GLOBALVAR   = 7,
 
     // FUNCTION:  [type, callingconv, isproto, linkage, paramattrs, alignment,
-    //             section, visibility]
+    //             section, visibility, gc, unnamed_addr]
     MODULE_CODE_FUNCTION    = 8,
 
-    // ALIAS: [alias type, aliasee val#, linkage]
+    // ALIAS: [alias type, aliasee val#, linkage, visibility]
     MODULE_CODE_ALIAS       = 9,
 
     /// MODULE_CODE_PURGEVALS: [numvals]
@@ -92,11 +90,12 @@ namespace bitc {
     TYPE_CODE_OPAQUE   =  6,    // OPAQUE
     TYPE_CODE_INTEGER  =  7,    // INTEGER: [width]
     TYPE_CODE_POINTER  =  8,    // POINTER: [pointee type]
-    TYPE_CODE_FUNCTION =  9,    // FUNCTION: [vararg, retty, paramty x N]
+
+    TYPE_CODE_FUNCTION_OLD = 9, // FUNCTION: [vararg, attrid, retty,
+                                //            paramty x N]
     
-    // FIXME: This is the encoding used for structs in LLVM 2.9 and earlier.
-    // REMOVE this in LLVM 3.1
-    TYPE_CODE_STRUCT_OLD = 10,  // STRUCT: [ispacked, eltty x N]
+    TYPE_CODE_HALF     =  10,   // HALF
+    
     TYPE_CODE_ARRAY    = 11,    // ARRAY: [numelts, eltty]
     TYPE_CODE_VECTOR   = 12,    // VECTOR: [numelts, eltty]
 
@@ -113,7 +112,9 @@ namespace bitc {
     
     TYPE_CODE_STRUCT_ANON = 18, // STRUCT_ANON: [ispacked, eltty x N]
     TYPE_CODE_STRUCT_NAME = 19, // STRUCT_NAME: [strchr x N]
-    TYPE_CODE_STRUCT_NAMED = 20 // STRUCT_NAMED: [ispacked, eltty x N]
+    TYPE_CODE_STRUCT_NAMED = 20,// STRUCT_NAMED: [ispacked, eltty x N]
+
+    TYPE_CODE_FUNCTION = 21     // FUNCTION: [vararg, retty, paramty x N]
   };
 
   // The type symbol table only has one code (TST_ENTRY_CODE).
@@ -163,7 +164,8 @@ namespace bitc {
     CST_CODE_INLINEASM     = 18,  // INLINEASM:     [sideeffect,asmstr,conststr]
     CST_CODE_CE_SHUFVEC_EX = 19,  // SHUFVEC_EX:    [opty, opval, opval, opval]
     CST_CODE_CE_INBOUNDS_GEP = 20,// INBOUNDS_GEP:  [n x operands]
-    CST_CODE_BLOCKADDRESS  = 21   // CST_CODE_BLOCKADDRESS [fnty, fnval, bb#]
+    CST_CODE_BLOCKADDRESS  = 21,  // CST_CODE_BLOCKADDRESS [fnty, fnval, bb#]
+    CST_CODE_DATA          = 22   // DATA:          [n x elements]
   };
 
   /// CastOpcodes - These are values used in the bitcode files to encode which
@@ -205,6 +207,23 @@ namespace bitc {
     BINOP_XOR  = 12
   };
 
+  /// These are values used in the bitcode files to encode AtomicRMW operations.
+  /// The values of these enums have no fixed relation to the LLVM IR enum
+  /// values.  Changing these will break compatibility with old files.
+  enum RMWOperations {
+    RMW_XCHG = 0,
+    RMW_ADD = 1,
+    RMW_SUB = 2,
+    RMW_AND = 3,
+    RMW_NAND = 4,
+    RMW_OR = 5,
+    RMW_XOR = 6,
+    RMW_MAX = 7,
+    RMW_MIN = 8,
+    RMW_UMAX = 9,
+    RMW_UMIN = 10
+  };
+
   /// OverflowingBinaryOperatorOptionalFlags - Flags for serializing
   /// OverflowingBinaryOperator's SubclassOptionalData contents.
   enum OverflowingBinaryOperatorOptionalFlags {
@@ -216,6 +235,23 @@ namespace bitc {
   /// PossiblyExactOperator's SubclassOptionalData contents.
   enum PossiblyExactOperatorOptionalFlags {
     PEO_EXACT = 0
+  };
+
+  /// Encoded AtomicOrdering values.
+  enum AtomicOrderingCodes {
+    ORDERING_NOTATOMIC = 0,
+    ORDERING_UNORDERED = 1,
+    ORDERING_MONOTONIC = 2,
+    ORDERING_ACQUIRE = 3,
+    ORDERING_RELEASE = 4,
+    ORDERING_ACQREL = 5,
+    ORDERING_SEQCST = 6
+  };
+
+  /// Encoded SynchronizationScope values.
+  enum AtomicSynchScopeCodes {
+    SYNCHSCOPE_SINGLETHREAD = 0,
+    SYNCHSCOPE_CROSSTHREAD = 1
   };
 
   // The function body block (FUNCTION_BLOCK_ID) describes function bodies.  It
@@ -236,7 +272,7 @@ namespace bitc {
     FUNC_CODE_INST_BR          = 11, // BR:         [bb#, bb#, cond] or [bb#]
     FUNC_CODE_INST_SWITCH      = 12, // SWITCH:     [opty, op0, op1, ...]
     FUNC_CODE_INST_INVOKE      = 13, // INVOKE:     [attr, fnty, op0,op1, ...]
-    FUNC_CODE_INST_UNWIND      = 14, // UNWIND
+    // 14 is unused.
     FUNC_CODE_INST_UNREACHABLE = 15, // UNREACHABLE
 
     FUNC_CODE_INST_PHI         = 16, // PHI:        [ty, val0,bb0, ...]
@@ -266,7 +302,23 @@ namespace bitc {
 
     FUNC_CODE_INST_CALL        = 34, // CALL:       [attr, fnty, fnid, args...]
 
-    FUNC_CODE_DEBUG_LOC        = 35  // DEBUG_LOC:  [Line,Col,ScopeVal, IAVal]
+    FUNC_CODE_DEBUG_LOC        = 35, // DEBUG_LOC:  [Line,Col,ScopeVal, IAVal]
+    FUNC_CODE_INST_FENCE       = 36, // FENCE: [ordering, synchscope]
+    FUNC_CODE_INST_CMPXCHG     = 37, // CMPXCHG: [ptrty,ptr,cmp,new, align, vol,
+                                     //           ordering, synchscope]
+    FUNC_CODE_INST_ATOMICRMW   = 38, // ATOMICRMW: [ptrty,ptr,val, operation,
+                                     //             align, vol,
+                                     //             ordering, synchscope]
+    FUNC_CODE_INST_RESUME      = 39, // RESUME:     [opval]
+    FUNC_CODE_INST_LANDINGPAD  = 40, // LANDINGPAD: [ty,val,val,num,id0,val0...]
+    FUNC_CODE_INST_LOADATOMIC  = 41, // LOAD: [opty, op, align, vol,
+                                     //        ordering, synchscope]
+    FUNC_CODE_INST_STOREATOMIC = 42  // STORE: [ptrty,ptr,val, align, vol
+                                     //         ordering, synchscope]
+  };
+
+  enum UseListCodes {
+    USELIST_CODE_ENTRY = 1   // USELIST_CODE_ENTRY: TBD.
   };
 } // End bitc namespace
 } // End llvm namespace

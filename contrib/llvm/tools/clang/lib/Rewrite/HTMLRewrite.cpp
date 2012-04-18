@@ -33,8 +33,8 @@ using namespace clang;
 void html::HighlightRange(Rewriter &R, SourceLocation B, SourceLocation E,
                           const char *StartTag, const char *EndTag) {
   SourceManager &SM = R.getSourceMgr();
-  B = SM.getInstantiationLoc(B);
-  E = SM.getInstantiationLoc(E);
+  B = SM.getExpansionLoc(B);
+  E = SM.getExpansionLoc(E);
   FileID FID = SM.getFileID(B);
   assert(SM.getFileID(E) == FID && "B/E not in the same file!");
 
@@ -140,10 +140,10 @@ void html::EscapeText(Rewriter &R, FileID FID,
       unsigned NumSpaces = 8-(ColNo&7);
       if (EscapeSpaces)
         RB.ReplaceText(FilePos, 1,
-                       llvm::StringRef("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+                       StringRef("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
                                        "&nbsp;&nbsp;&nbsp;", 6*NumSpaces));
       else
-        RB.ReplaceText(FilePos, 1, llvm::StringRef("        ", NumSpaces));
+        RB.ReplaceText(FilePos, 1, StringRef("        ", NumSpaces));
       ColNo += NumSpaces;
       break;
     }
@@ -209,7 +209,7 @@ std::string html::EscapeText(const std::string& s, bool EscapeSpaces,
 
 static void AddLineNumber(RewriteBuffer &RB, unsigned LineNo,
                           unsigned B, unsigned E) {
-  llvm::SmallString<256> Str;
+  SmallString<256> Str;
   llvm::raw_svector_ostream OS(Str);
 
   OS << "<tr><td class=\"num\" id=\"LN"
@@ -277,7 +277,7 @@ void html::AddHeaderFooterInternalBuiltinCSS(Rewriter& R, FileID FID,
   const char* FileEnd = Buf->getBufferEnd();
 
   SourceLocation StartLoc = R.getSourceMgr().getLocForStartOfFile(FID);
-  SourceLocation EndLoc = StartLoc.getFileLocWithOffset(FileEnd-FileStart);
+  SourceLocation EndLoc = StartLoc.getLocWithOffset(FileEnd-FileStart);
 
   std::string s;
   llvm::raw_string_ostream os(s);
@@ -292,7 +292,7 @@ void html::AddHeaderFooterInternalBuiltinCSS(Rewriter& R, FileID FID,
       " body { font-family:Helvetica, sans-serif; font-size:10pt }\n"
       " h1 { font-size:14pt }\n"
       " .code { border-collapse:collapse; width:100%; }\n"
-      " .code { font-family: \"Andale Mono\", monospace; font-size:10pt }\n"
+      " .code { font-family: \"Monospace\", monospace; font-size:10pt }\n"
       " .code { line-height: 1.2em }\n"
       " .comment { color: green; font-style: oblique }\n"
       " .keyword { color: blue }\n"
@@ -360,7 +360,7 @@ void html::SyntaxHighlight(Rewriter &R, FileID FID, const Preprocessor &PP) {
 
   const SourceManager &SM = PP.getSourceManager();
   const llvm::MemoryBuffer *FromFile = SM.getBuffer(FID);
-  Lexer L(FID, FromFile, SM, PP.getLangOptions());
+  Lexer L(FID, FromFile, SM, PP.getLangOpts());
   const char *BufferStart = L.getBufferStart();
 
   // Inform the preprocessor that we want to retain comments as tokens, so we
@@ -381,7 +381,6 @@ void html::SyntaxHighlight(Rewriter &R, FileID FID, const Preprocessor &PP) {
     default: break;
     case tok::identifier:
       llvm_unreachable("tok::identifier in raw lexing mode!");
-      break;
     case tok::raw_identifier: {
       // Fill in Result.IdentifierInfo and update the token kind,
       // looking up the identifier in the identifier table.
@@ -397,12 +396,20 @@ void html::SyntaxHighlight(Rewriter &R, FileID FID, const Preprocessor &PP) {
       HighlightRange(RB, TokOffs, TokOffs+TokLen, BufferStart,
                      "<span class='comment'>", "</span>");
       break;
+    case tok::utf8_string_literal:
+      // Chop off the u part of u8 prefix
+      ++TokOffs;
+      --TokLen;
+      // FALL THROUGH to chop the 8
     case tok::wide_string_literal:
-      // Chop off the L prefix
+    case tok::utf16_string_literal:
+    case tok::utf32_string_literal:
+      // Chop off the L, u, U or 8 prefix
       ++TokOffs;
       --TokLen;
       // FALL THROUGH.
     case tok::string_literal:
+      // FIXME: Exclude the optional ud-suffix from the highlighted range.
       HighlightRange(RB, TokOffs, TokOffs+TokLen, BufferStart,
                      "<span class='string_literal'>", "</span>");
       break;
@@ -433,17 +440,6 @@ void html::SyntaxHighlight(Rewriter &R, FileID FID, const Preprocessor &PP) {
   }
 }
 
-namespace {
-/// IgnoringDiagClient - This is a diagnostic client that just ignores all
-/// diags.
-class IgnoringDiagClient : public DiagnosticClient {
-  void HandleDiagnostic(Diagnostic::Level DiagLevel,
-                        const DiagnosticInfo &Info) {
-    // Just ignore it.
-  }
-};
-}
-
 /// HighlightMacros - This uses the macro table state from the end of the
 /// file, to re-expand macros and insert (into the HTML) information about the
 /// macro expansions.  This won't be perfectly perfect, but it will be
@@ -454,7 +450,7 @@ void html::HighlightMacros(Rewriter &R, FileID FID, const Preprocessor& PP) {
   std::vector<Token> TokenStream;
 
   const llvm::MemoryBuffer *FromFile = SM.getBuffer(FID);
-  Lexer L(FID, FromFile, SM, PP.getLangOptions());
+  Lexer L(FID, FromFile, SM, PP.getLangOpts());
 
   // Lex all the tokens in raw mode, to avoid entering #includes or expanding
   // macros.
@@ -486,14 +482,14 @@ void html::HighlightMacros(Rewriter &R, FileID FID, const Preprocessor& PP) {
 
   // Temporarily change the diagnostics object so that we ignore any generated
   // diagnostics from this pass.
-  Diagnostic TmpDiags(PP.getDiagnostics().getDiagnosticIDs(),
-                      new IgnoringDiagClient);
+  DiagnosticsEngine TmpDiags(PP.getDiagnostics().getDiagnosticIDs(),
+                      new IgnoringDiagConsumer);
 
   // FIXME: This is a huge hack; we reuse the input preprocessor because we want
   // its state, but we aren't actually changing it (we hope). This should really
   // construct a copy of the preprocessor.
   Preprocessor &TmpPP = const_cast<Preprocessor&>(PP);
-  Diagnostic *OldDiags = &TmpPP.getDiagnostics();
+  DiagnosticsEngine *OldDiags = &TmpPP.getDiagnostics();
   TmpPP.setDiagnostics(TmpDiags);
 
   // Inform the preprocessor that we don't want comments.
@@ -519,7 +515,7 @@ void html::HighlightMacros(Rewriter &R, FileID FID, const Preprocessor& PP) {
     // expansion by inserting a start tag before the macro expansion and
     // end tag after it.
     std::pair<SourceLocation, SourceLocation> LLoc =
-      SM.getInstantiationRange(Tok.getLocation());
+      SM.getExpansionRange(Tok.getLocation());
 
     // Ignore tokens whose instantiation location was not the main file.
     if (SM.getFileID(LLoc.first) != FID) {
@@ -542,7 +538,7 @@ void html::HighlightMacros(Rewriter &R, FileID FID, const Preprocessor& PP) {
     // instantiation.  It would be really nice to pop up a window with all the
     // spelling of the tokens or something.
     while (!Tok.is(tok::eof) &&
-           SM.getInstantiationLoc(Tok.getLocation()) == LLoc.first) {
+           SM.getExpansionLoc(Tok.getLocation()) == LLoc.first) {
       // Insert a newline if the macro expansion is getting large.
       if (LineLen > 60) {
         Expansion += "<br>";

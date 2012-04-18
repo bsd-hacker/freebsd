@@ -3,15 +3,10 @@
 PROG_CXX=tblgen
 
 SRCDIR=	utils/TableGen
-SRCS=	ARMDecoderEmitter.cpp \
-	AsmMatcherEmitter.cpp \
+SRCS=	AsmMatcherEmitter.cpp \
 	AsmWriterEmitter.cpp \
 	AsmWriterInst.cpp \
 	CallingConvEmitter.cpp \
-	ClangASTNodesEmitter.cpp \
-	ClangAttrEmitter.cpp \
-	ClangDiagnosticsEmitter.cpp \
-	ClangSACheckersEmitter.cpp \
 	CodeEmitterGen.cpp \
 	CodeGenDAGPatterns.cpp \
 	CodeGenInstruction.cpp \
@@ -22,32 +17,25 @@ SRCS=	ARMDecoderEmitter.cpp \
 	DAGISelMatcherEmitter.cpp \
 	DAGISelMatcherGen.cpp \
 	DAGISelMatcherOpt.cpp \
+	DFAPacketizerEmitter.cpp \
 	DisassemblerEmitter.cpp \
 	EDEmitter.cpp \
-	Error.cpp \
 	FastISelEmitter.cpp \
 	FixedLenDecoderEmitter.cpp \
-	InstrEnumEmitter.cpp \
 	InstrInfoEmitter.cpp \
 	IntrinsicEmitter.cpp \
-	LLVMCConfigurationEmitter.cpp \
-	NeonEmitter.cpp \
-	OptParserEmitter.cpp \
 	PseudoLoweringEmitter.cpp \
-	Record.cpp \
 	RegisterInfoEmitter.cpp \
 	SetTheory.cpp \
 	StringMatcher.cpp \
 	SubtargetEmitter.cpp \
-	TGLexer.cpp \
-	TGParser.cpp \
 	TGValueTypes.cpp \
 	TableGen.cpp \
-	TableGenBackend.cpp \
 	X86DisassemblerTables.cpp \
+	X86ModRMFilters.cpp \
 	X86RecognizableInstr.cpp
 LLVM_REQUIRES_EH=
 
-LIBDEPS=llvmsupport
+LIBDEPS=llvmtablegen llvmsupport
 
 .include "../clang.prog.mk"

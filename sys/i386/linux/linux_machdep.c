@@ -564,7 +564,7 @@ linux_mmap_common(struct thread *td, l_uintptr_t addr, l_size_t len, l_int prot,
 		    (void *)bsd_args.addr, bsd_args.len, bsd_args.prot,
 		    bsd_args.flags, bsd_args.fd, (int)bsd_args.pos);
 #endif
-	error = mmap(td, &bsd_args);
+	error = sys_mmap(td, &bsd_args);
 #ifdef DEBUG
 	if (ldebug(mmap))
 		printf("-> %s() return: 0x%x (0x%08x)\n",
@@ -583,26 +583,7 @@ linux_mprotect(struct thread *td, struct linux_mprotect_args *uap)
 	bsd_args.prot = uap->prot;
 	if (bsd_args.prot & (PROT_READ | PROT_WRITE | PROT_EXEC))
 		bsd_args.prot |= PROT_READ | PROT_EXEC;
-	return (mprotect(td, &bsd_args));
-}
-
-int
-linux_pipe(struct thread *td, struct linux_pipe_args *args)
-{
-	int error;
-	int fildes[2];
-
-#ifdef DEBUG
-	if (ldebug(pipe))
-		printf(ARGS(pipe, "*"));
-#endif
-
-	error = kern_pipe(td, fildes);
-	if (error)
-		return (error);
-
-	/* XXX: Close descriptors on error. */
-	return (copyout(fildes, args->pipefds, sizeof fildes));
+	return (sys_mprotect(td, &bsd_args));
 }
 
 int
@@ -844,7 +825,7 @@ linux_ftruncate64(struct thread *td, struct linux_ftruncate64_args *args)
 
 	sa.fd = args->fd;
 	sa.length = args->length;
-	return ftruncate(td, &sa);
+	return sys_ftruncate(td, &sa);
 }
 
 int
@@ -1000,31 +981,31 @@ linux_get_thread_area(struct thread *td, struct linux_get_thread_area_args *args
 int
 linux_timer_create(struct thread *td, struct linux_timer_create_args *args)
 {
-   	return ktimer_create(td, (struct ktimer_create_args *) args);
+   	return sys_ktimer_create(td, (struct ktimer_create_args *) args);
 }
 
 int
 linux_timer_settime(struct thread *td, struct linux_timer_settime_args *args)
 {
-   	return ktimer_settime(td, (struct ktimer_settime_args *) args);
+   	return sys_ktimer_settime(td, (struct ktimer_settime_args *) args);
 }
 
 int
 linux_timer_gettime(struct thread *td, struct linux_timer_gettime_args *args)
 {
-   	return ktimer_gettime(td, (struct ktimer_gettime_args *) args);
+   	return sys_ktimer_gettime(td, (struct ktimer_gettime_args *) args);
 }
 
 int
 linux_timer_getoverrun(struct thread *td, struct linux_timer_getoverrun_args *args)
 {
-   	return ktimer_getoverrun(td, (struct ktimer_getoverrun_args *) args);
+   	return sys_ktimer_getoverrun(td, (struct ktimer_getoverrun_args *) args);
 }
 
 int
 linux_timer_delete(struct thread *td, struct linux_timer_delete_args *args)
 {
-   	return ktimer_delete(td, (struct ktimer_delete_args *) args);
+   	return sys_ktimer_delete(td, (struct ktimer_delete_args *) args);
 }
 
 /* XXX: this wont work with module - convert it */
@@ -1032,7 +1013,7 @@ int
 linux_mq_open(struct thread *td, struct linux_mq_open_args *args)
 {
 #ifdef P1003_1B_MQUEUE
-   	return kmq_open(td, (struct kmq_open_args *) args);
+   	return sys_kmq_open(td, (struct kmq_open_args *) args);
 #else
 	return (ENOSYS);
 #endif
@@ -1042,7 +1023,7 @@ int
 linux_mq_unlink(struct thread *td, struct linux_mq_unlink_args *args)
 {
 #ifdef P1003_1B_MQUEUE
-   	return kmq_unlink(td, (struct kmq_unlink_args *) args);
+   	return sys_kmq_unlink(td, (struct kmq_unlink_args *) args);
 #else
 	return (ENOSYS);
 #endif
@@ -1052,7 +1033,7 @@ int
 linux_mq_timedsend(struct thread *td, struct linux_mq_timedsend_args *args)
 {
 #ifdef P1003_1B_MQUEUE
-   	return kmq_timedsend(td, (struct kmq_timedsend_args *) args);
+   	return sys_kmq_timedsend(td, (struct kmq_timedsend_args *) args);
 #else
 	return (ENOSYS);
 #endif
@@ -1062,7 +1043,7 @@ int
 linux_mq_timedreceive(struct thread *td, struct linux_mq_timedreceive_args *args)
 {
 #ifdef P1003_1B_MQUEUE
-   	return kmq_timedreceive(td, (struct kmq_timedreceive_args *) args);
+   	return sys_kmq_timedreceive(td, (struct kmq_timedreceive_args *) args);
 #else
 	return (ENOSYS);
 #endif
@@ -1072,7 +1053,7 @@ int
 linux_mq_notify(struct thread *td, struct linux_mq_notify_args *args)
 {
 #ifdef P1003_1B_MQUEUE
-	return kmq_notify(td, (struct kmq_notify_args *) args);
+	return sys_kmq_notify(td, (struct kmq_notify_args *) args);
 #else
 	return (ENOSYS);
 #endif
@@ -1082,7 +1063,7 @@ int
 linux_mq_getsetattr(struct thread *td, struct linux_mq_getsetattr_args *args)
 {
 #ifdef P1003_1B_MQUEUE
-   	return kmq_setattr(td, (struct kmq_setattr_args *) args);
+   	return sys_kmq_setattr(td, (struct kmq_setattr_args *) args);
 #else
 	return (ENOSYS);
 #endif

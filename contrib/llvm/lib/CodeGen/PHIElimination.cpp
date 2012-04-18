@@ -92,10 +92,14 @@ STATISTIC(NumCriticalEdgesSplit, "Number of critical edges split");
 STATISTIC(NumReused, "Number of reused lowered phis");
 
 char PHIElimination::ID = 0;
-INITIALIZE_PASS(PHIElimination, "phi-node-elimination",
-                "Eliminate PHI nodes for register allocation", false, false)
-
 char& llvm::PHIEliminationID = PHIElimination::ID;
+
+INITIALIZE_PASS_BEGIN(PHIElimination, "phi-node-elimination",
+                      "Eliminate PHI nodes for register allocation",
+                      false, false)
+INITIALIZE_PASS_DEPENDENCY(LiveVariables)
+INITIALIZE_PASS_END(PHIElimination, "phi-node-elimination",
+                    "Eliminate PHI nodes for register allocation", false, false)
 
 void PHIElimination::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addPreserved<LiveVariables>();
@@ -108,6 +112,9 @@ bool PHIElimination::runOnMachineFunction(MachineFunction &MF) {
   MRI = &MF.getRegInfo();
 
   bool Changed = false;
+
+  // This pass takes the function out of SSA form.
+  MRI->leaveSSA();
 
   // Split critical edges to help the coalescer
   if (!DisableEdgeSplitting) {
@@ -238,7 +245,6 @@ void PHIElimination::LowerAtomicPHINode(
       LiveVariables::VarInfo &VI = LV->getVarInfo(IncomingReg);
 
       // Increment use count of the newly created virtual register.
-      VI.NumUses++;
       LV->setPHIJoin(IncomingReg);
 
       // When we are reusing the incoming register, it may already have been
@@ -407,7 +413,7 @@ bool PHIElimination::SplitPHIEdges(MachineFunction &MF,
     return false;   // Quick exit for basic blocks without PHIs.
 
   bool Changed = false;
-  for (MachineBasicBlock::const_iterator BBI = MBB.begin(), BBE = MBB.end();
+  for (MachineBasicBlock::iterator BBI = MBB.begin(), BBE = MBB.end();
        BBI != BBE && BBI->isPHI(); ++BBI) {
     for (unsigned i = 1, e = BBI->getNumOperands(); i != e; i += 2) {
       unsigned Reg = BBI->getOperand(i).getReg();

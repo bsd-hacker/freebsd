@@ -540,15 +540,15 @@ static long double
     _TG_ATTRS
     __tg_fabs(long double __x) {return fabsl(__x);}
 
-static float _Complex
+static float
     _TG_ATTRS
     __tg_fabs(float _Complex __x) {return cabsf(__x);}
 
-static double _Complex
+static double
     _TG_ATTRS
     __tg_fabs(double _Complex __x) {return cabs(__x);}
 
-static long double _Complex
+static long double
     _TG_ATTRS
     __tg_fabs(long double _Complex __x) {return cabsl(__x);}
 
@@ -976,6 +976,23 @@ static long double
 #undef log2
 #define log2(__x) __tg_log2(__tg_promote1((__x))(__x))
 
+// logb
+
+static float
+    _TG_ATTRS
+    __tg_logb(float __x) {return logbf(__x);}
+
+static double
+    _TG_ATTRS
+    __tg_logb(double __x) {return logb(__x);}
+
+static long double
+    _TG_ATTRS
+    __tg_logb(long double __x) {return logbl(__x);}
+
+#undef logb
+#define logb(__x) __tg_logb(__tg_promote1((__x))(__x))
+
 // lrint
 
 static long
@@ -1049,19 +1066,18 @@ static long double
 
 static float
     _TG_ATTRS
-    __tg_nexttoward(float __x, float __y) {return nexttowardf(__x, __y);}
+    __tg_nexttoward(float __x, long double __y) {return nexttowardf(__x, __y);}
 
 static double
     _TG_ATTRS
-    __tg_nexttoward(double __x, double __y) {return nexttoward(__x, __y);}
+    __tg_nexttoward(double __x, long double __y) {return nexttoward(__x, __y);}
 
 static long double
     _TG_ATTRS
     __tg_nexttoward(long double __x, long double __y) {return nexttowardl(__x, __y);}
 
 #undef nexttoward
-#define nexttoward(__x, __y) __tg_nexttoward(__tg_promote2((__x), (__y))(__x), \
-                                             __tg_promote2((__x), (__y))(__y))
+#define nexttoward(__x, __y) __tg_nexttoward(__tg_promote1((__x))(__x), (__y))
 
 // remainder
 

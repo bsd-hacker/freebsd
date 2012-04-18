@@ -1,4 +1,4 @@
-//===- SparcSubtarget.cpp - SPARC Subtarget Information -------------------===//
+//===-- SparcSubtarget.cpp - SPARC Subtarget Information ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,13 +13,15 @@
 
 #include "SparcSubtarget.h"
 #include "Sparc.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
 #include "SparcGenSubtargetInfo.inc"
 
 using namespace llvm;
+
+void SparcSubtarget::anchor() { }
 
 SparcSubtarget::SparcSubtarget(const std::string &TT, const std::string &CPU,
                                const std::string &FS,  bool is64Bit) :

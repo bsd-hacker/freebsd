@@ -23,7 +23,6 @@
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
-#include "llvm/Target/TargetRegistry.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
 #include "llvm/ADT/OwningPtr.h"
@@ -45,6 +44,7 @@ TEMPLATE_INSTANTIATION(class basic_parser<bool>);
 TEMPLATE_INSTANTIATION(class basic_parser<boolOrDefault>);
 TEMPLATE_INSTANTIATION(class basic_parser<int>);
 TEMPLATE_INSTANTIATION(class basic_parser<unsigned>);
+TEMPLATE_INSTANTIATION(class basic_parser<unsigned long long>);
 TEMPLATE_INSTANTIATION(class basic_parser<double>);
 TEMPLATE_INSTANTIATION(class basic_parser<float>);
 TEMPLATE_INSTANTIATION(class basic_parser<std::string>);
@@ -57,12 +57,16 @@ TEMPLATE_INSTANTIATION(class opt<char>);
 TEMPLATE_INSTANTIATION(class opt<bool>);
 } } // end namespace llvm::cl
 
+void GenericOptionValue::anchor() {}
+void OptionValue<boolOrDefault>::anchor() {}
+void OptionValue<std::string>::anchor() {}
 void Option::anchor() {}
 void basic_parser_impl::anchor() {}
 void parser<bool>::anchor() {}
 void parser<boolOrDefault>::anchor() {}
 void parser<int>::anchor() {}
 void parser<unsigned>::anchor() {}
+void parser<unsigned long long>::anchor() {}
 void parser<double>::anchor() {}
 void parser<float>::anchor() {}
 void parser<std::string>::anchor() {}
@@ -262,8 +266,8 @@ static bool CommaSeparateAndAddOccurence(Option *Handler, unsigned pos,
 /// and a null value (StringRef()).  The later is accepted for arguments that
 /// don't allow a value (-foo) the former is rejected (-foo=).
 static inline bool ProvideOption(Option *Handler, StringRef ArgName,
-                                 StringRef Value, int argc, char **argv,
-                                 int &i) {
+                                 StringRef Value, int argc,
+                                 const char *const *argv, int &i) {
   // Is this a multi-argument option?
   unsigned NumAdditionalVals = Handler->getNumAdditionalVals();
 
@@ -288,12 +292,6 @@ static inline bool ProvideOption(Option *Handler, StringRef ArgName,
     break;
   case ValueOptional:
     break;
-
-  default:
-    errs() << ProgramName
-         << ": Bad ValueMask flag! CommandLine usage error:"
-         << Handler->getValueExpectedFlag() << "\n";
-    llvm_unreachable(0);
   }
 
   // If this isn't a multi-arg option, just run the handler.
@@ -497,10 +495,10 @@ void cl::ParseEnvironmentOptions(const char *progName, const char *envVar,
 /// ExpandResponseFiles - Copy the contents of argv into newArgv,
 /// substituting the contents of the response files for the arguments
 /// of type @file.
-static void ExpandResponseFiles(unsigned argc, char** argv,
+static void ExpandResponseFiles(unsigned argc, const char*const* argv,
                                 std::vector<char*>& newArgv) {
   for (unsigned i = 1; i != argc; ++i) {
-    char *arg = argv[i];
+    const char *arg = argv[i];
 
     if (arg[0] == '@') {
       sys::PathWithStatus respFile(++arg);
@@ -530,7 +528,7 @@ static void ExpandResponseFiles(unsigned argc, char** argv,
   }
 }
 
-void cl::ParseCommandLineOptions(int argc, char **argv,
+void cl::ParseCommandLineOptions(int argc, const char * const *argv,
                                  const char *Overview, bool ReadResponseFiles) {
   // Process all registered options.
   SmallVector<Option*, 4> PositionalOpts;
@@ -884,7 +882,6 @@ bool Option::addOccurrence(unsigned pos, StringRef ArgName,
   case OneOrMore:
   case ZeroOrMore:
   case ConsumeAfter: break;
-  default: return error("bad num occurrences flag value!");
   }
 
   return handleOccurrence(pos, ArgName, Value);
@@ -1000,6 +997,16 @@ bool parser<int>::parse(Option &O, StringRef ArgName,
 //
 bool parser<unsigned>::parse(Option &O, StringRef ArgName,
                              StringRef Arg, unsigned &Value) {
+
+  if (Arg.getAsInteger(0, Value))
+    return O.error("'" + Arg + "' value invalid for uint argument!");
+  return false;
+}
+
+// parser<unsigned long long> implementation
+//
+bool parser<unsigned long long>::parse(Option &O, StringRef ArgName,
+                                      StringRef Arg, unsigned long long &Value){
 
   if (Arg.getAsInteger(0, Value))
     return O.error("'" + Arg + "' value invalid for uint argument!");
@@ -1151,6 +1158,7 @@ PRINT_OPT_DIFF(bool)
 PRINT_OPT_DIFF(boolOrDefault)
 PRINT_OPT_DIFF(int)
 PRINT_OPT_DIFF(unsigned)
+PRINT_OPT_DIFF(unsigned long long)
 PRINT_OPT_DIFF(double)
 PRINT_OPT_DIFF(float)
 PRINT_OPT_DIFF(char)
@@ -1183,7 +1191,7 @@ printOptionNoValue(const Option &O, size_t GlobalWidth) const {
 static int OptNameCompare(const void *LHS, const void *RHS) {
   typedef std::pair<const char *, Option*> pair_ty;
 
-  return strcmp(((pair_ty*)LHS)->first, ((pair_ty*)RHS)->first);
+  return strcmp(((const pair_ty*)LHS)->first, ((const pair_ty*)RHS)->first);
 }
 
 // Copy Options into a vector so we can sort them as we like.
@@ -1330,17 +1338,14 @@ void cl::PrintOptionValues() {
 
 static void (*OverrideVersionPrinter)() = 0;
 
-static int TargetArraySortFn(const void *LHS, const void *RHS) {
-  typedef std::pair<const char *, const Target*> pair_ty;
-  return strcmp(((const pair_ty*)LHS)->first, ((const pair_ty*)RHS)->first);
-}
+static std::vector<void (*)()>* ExtraVersionPrinters = 0;
 
 namespace {
 class VersionPrinter {
 public:
   void print() {
     raw_ostream &OS = outs();
-    OS << "Low Level Virtual Machine (http://llvm.org/):\n"
+    OS << "LLVM (http://llvm.org/):\n"
        << "  " << PACKAGE_NAME << " version " << PACKAGE_VERSION;
 #ifdef LLVM_VERSION_INFO
     OS << LLVM_VERSION_INFO;
@@ -1357,41 +1362,31 @@ public:
     std::string CPU = sys::getHostCPUName();
     if (CPU == "generic") CPU = "(unknown)";
     OS << ".\n"
-#if defined(ENABLE_TIMESTAMPS) && ENABLE_TIMESTAMPS == 1
+#if (ENABLE_TIMESTAMPS == 1)
        << "  Built " << __DATE__ << " (" << __TIME__ << ").\n"
 #endif
-       << "  Host: " << sys::getHostTriple() << '\n'
-       << "  Host CPU: " << CPU << '\n'
-       << '\n'
-       << "  Registered Targets:\n";
-
-    std::vector<std::pair<const char *, const Target*> > Targets;
-    size_t Width = 0;
-    for (TargetRegistry::iterator it = TargetRegistry::begin(),
-           ie = TargetRegistry::end(); it != ie; ++it) {
-      Targets.push_back(std::make_pair(it->getName(), &*it));
-      Width = std::max(Width, strlen(Targets.back().first));
-    }
-    if (!Targets.empty())
-      qsort(&Targets[0], Targets.size(), sizeof(Targets[0]),
-            TargetArraySortFn);
-
-    for (unsigned i = 0, e = Targets.size(); i != e; ++i) {
-      OS << "    " << Targets[i].first;
-      OS.indent(Width - strlen(Targets[i].first)) << " - "
-             << Targets[i].second->getShortDescription() << '\n';
-    }
-    if (Targets.empty())
-      OS << "    (none)\n";
+       << "  Default target: " << sys::getDefaultTargetTriple() << '\n'
+       << "  Host CPU: " << CPU << '\n';
   }
   void operator=(bool OptionWasSpecified) {
     if (!OptionWasSpecified) return;
 
-    if (OverrideVersionPrinter == 0) {
-      print();
+    if (OverrideVersionPrinter != 0) {
+      (*OverrideVersionPrinter)();
       exit(1);
     }
-    (*OverrideVersionPrinter)();
+    print();
+
+    // Iterate over any registered extra printers and call them to add further
+    // information.
+    if (ExtraVersionPrinters != 0) {
+      outs() << '\n';
+      for (std::vector<void (*)()>::iterator I = ExtraVersionPrinters->begin(),
+                                             E = ExtraVersionPrinters->end();
+           I != E; ++I)
+        (*I)();
+    }
+
     exit(1);
   }
 };
@@ -1423,4 +1418,11 @@ void cl::PrintVersionMessage() {
 
 void cl::SetVersionPrinter(void (*func)()) {
   OverrideVersionPrinter = func;
+}
+
+void cl::AddExtraVersionPrinter(void (*func)()) {
+  if (ExtraVersionPrinters == 0)
+    ExtraVersionPrinters = new std::vector<void (*)()>;
+
+  ExtraVersionPrinters->push_back(func);
 }

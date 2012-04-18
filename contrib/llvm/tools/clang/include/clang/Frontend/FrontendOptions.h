@@ -11,7 +11,6 @@
 #define LLVM_CLANG_FRONTEND_FRONTENDOPTIONS_H
 
 #include "clang/Frontend/CommandLineSourceLoc.h"
-#include "clang/Frontend/FrontendAction.h"
 #include "llvm/ADT/StringRef.h"
 #include <string>
 #include <vector>
@@ -24,7 +23,6 @@ namespace frontend {
     ASTDumpXML,             ///< Parse ASTs and dump them in XML.
     ASTPrint,               ///< Parse ASTs and print them.
     ASTView,                ///< Parse ASTs and view them in Graphviz.
-    CreateModule,           ///< Create module definition
     DumpRawTokens,          ///< Dump out raw tokens.
     DumpTokens,             ///< Dump out preprocessed tokens.
     EmitAssembly,           ///< Emit a .s file.
@@ -35,6 +33,7 @@ namespace frontend {
     EmitCodeGenOnly,        ///< Generate machine code, but don't emit anything.
     EmitObj,                ///< Emit a .o file.
     FixIt,                  ///< Parse and apply any fixits to the source.
+    GenerateModule,         ///< Generate pre-compiled module.
     GeneratePCH,            ///< Generate pre-compiled header.
     GeneratePTH,            ///< Generate pre-tokenized header.
     InitOnly,               ///< Only execute frontend initialization.
@@ -43,14 +42,50 @@ namespace frontend {
     PrintDeclContext,       ///< Print DeclContext and their Decls.
     PrintPreamble,          ///< Print the "preamble" of the input file
     PrintPreprocessedInput, ///< -E mode.
+    PubnamesDump,           ///< Print all of the "public" names in the source.
     RewriteMacros,          ///< Expand macros but not #includes.
     RewriteObjC,            ///< ObjC->C Rewriter.
     RewriteTest,            ///< Rewriter playground
     RunAnalysis,            ///< Run one or more source code analyses.
+    MigrateSource,          ///< Run migrator.
     RunPreprocessorOnly     ///< Just lex, no output.
   };
 }
 
+enum InputKind {
+  IK_None,
+  IK_Asm,
+  IK_C,
+  IK_CXX,
+  IK_ObjC,
+  IK_ObjCXX,
+  IK_PreprocessedC,
+  IK_PreprocessedCXX,
+  IK_PreprocessedObjC,
+  IK_PreprocessedObjCXX,
+  IK_OpenCL,
+  IK_CUDA,
+  IK_AST,
+  IK_LLVM_IR
+};
+
+  
+/// \brief An input file for the front end.
+struct FrontendInputFile {
+  /// \brief The file name, or "-" to read from standard input.
+  std::string File;
+
+  /// \brief The kind of input, e.g., C source, AST file, LLVM IR.
+  InputKind Kind;
+
+  /// \brief Whether we're dealing with a 'system' input (vs. a 'user' input).
+  bool IsSystem;
+  
+  FrontendInputFile() : Kind(IK_None) { }
+  FrontendInputFile(StringRef File, InputKind Kind, bool IsSystem = false)
+    : File(File.str()), Kind(Kind), IsSystem(IsSystem) { }
+};
+  
 /// FrontendOptions - Options for controlling the behavior of the frontend.
 class FrontendOptions {
 public:
@@ -58,9 +93,6 @@ public:
   unsigned RelocatablePCH : 1;             ///< When generating PCH files,
                                            /// instruct the AST writer to create
                                            /// relocatable PCH files.
-  unsigned ChainedPCH : 1;                 ///< When generating PCH files,
-                                           /// instruct the AST writer to create
-                                           /// chained PCH files.
   unsigned ShowHelp : 1;                   ///< Show the -help text.
   unsigned ShowMacrosInCodeCompletion : 1; ///< Show macros in code completion
                                            /// results.
@@ -75,6 +107,15 @@ public:
   unsigned ShowVersion : 1;                ///< Show the -version text.
   unsigned FixWhatYouCan : 1;              ///< Apply fixes even if there are
                                            /// unfixable errors.
+  unsigned FixOnlyWarnings : 1;            ///< Apply fixes only for warnings.
+  unsigned FixAndRecompile : 1;            ///< Apply fixes and recompile.
+  unsigned FixToTemporaries : 1;           ///< Apply fixes to temporary files.
+  unsigned ARCMTMigrateEmitARCErrors : 1;  /// Emit ARC errors even if the
+                                           /// migrator can fix them
+  unsigned SkipFunctionBodies : 1;         ///< Skip over function bodies to
+                                           /// speed up parsing in cases you do
+                                           /// not need them (e.g. with code
+                                           /// completion).
 
   enum {
     ARCMT_None,
@@ -83,10 +124,20 @@ public:
     ARCMT_Migrate
   } ARCMTAction;
 
-  std::string ARCMTMigrateDir;
+  enum {
+    ObjCMT_None = 0,
+    /// \brief Enable migration to modern ObjC literals.
+    ObjCMT_Literals = 0x1,
+    /// \brief Enable migration to modern ObjC subscripting.
+    ObjCMT_Subscripting = 0x2
+  };
+  unsigned ObjCMTAction;
+
+  std::string MTMigrateDir;
+  std::string ARCMTMigrateReportOut;
 
   /// The input files and their types.
-  std::vector<std::pair<InputKind, std::string> > Inputs;
+  std::vector<FrontendInputFile> Inputs;
 
   /// The output file, if any.
   std::string OutputFile;
@@ -118,20 +169,20 @@ public:
   /// \brief The list of AST files to merge.
   std::vector<std::string> ASTMergeFiles;
 
-  /// \brief The list of modules to import.
-  std::vector<std::string> Modules;
-
   /// \brief A list of arguments to forward to LLVM's option processing; this
   /// should only be used for debugging and experimental features.
   std::vector<std::string> LLVMArgs;
 
+  /// \brief File name of the file that will provide record layouts
+  /// (in the format produced by -fdump-record-layouts).
+  std::string OverrideRecordLayoutsFile;
+  
 public:
   FrontendOptions() {
     DisableFree = 0;
     ProgramAction = frontend::ParseSyntaxOnly;
     ActionName = "";
     RelocatablePCH = 0;
-    ChainedPCH = 0;
     ShowHelp = 0;
     ShowMacrosInCodeCompletion = 0;
     ShowCodePatternsInCodeCompletion = 0;
@@ -140,6 +191,9 @@ public:
     ShowTimers = 0;
     ShowVersion = 0;
     ARCMTAction = ARCMT_None;
+    ARCMTMigrateEmitARCErrors = 0;
+    SkipFunctionBodies = 0;
+    ObjCMTAction = ObjCMT_None;
   }
 
   /// getInputKindForExtension - Return the appropriate input kind for a file
@@ -147,7 +201,7 @@ public:
   ///
   /// \return The input kind for the extension, or IK_None if the extension is
   /// not recognized.
-  static InputKind getInputKindForExtension(llvm::StringRef Extension);
+  static InputKind getInputKindForExtension(StringRef Extension);
 };
 
 }  // end namespace clang

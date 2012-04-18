@@ -13,13 +13,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "CodeGenDAGPatterns.h"
-#include "Error.h"
-#include "Record.h"
+#include "llvm/TableGen/Error.h"
+#include "llvm/TableGen/Record.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
-#include <set>
+#include "llvm/Support/ErrorHandling.h"
 #include <algorithm>
+#include <cstdio>
+#include <set>
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -629,11 +631,11 @@ TreePredicateFn::TreePredicateFn(TreePattern *N) : PatFragRec(N) {
 }
 
 std::string TreePredicateFn::getPredCode() const {
-  return PatFragRec->getRecord()->getValueAsCode("PredicateCode");
+  return PatFragRec->getRecord()->getValueAsString("PredicateCode");
 }
 
 std::string TreePredicateFn::getImmCode() const {
-  return PatFragRec->getRecord()->getValueAsCode("ImmediateCode");
+  return PatFragRec->getRecord()->getValueAsString("ImmediateCode");
 }
 
 
@@ -748,7 +750,7 @@ std::string PatternToMatch::getPredicateCheck() const {
 #ifndef NDEBUG
         Def->dump();
 #endif
-        assert(0 && "Unknown predicate type!");
+        llvm_unreachable("Unknown predicate type!");
       }
       if (!PredicateCheck.empty())
         PredicateCheck += " && ";
@@ -839,7 +841,6 @@ bool SDTypeConstraint::ApplyTypeConstraint(TreePatternNode *N,
   TreePatternNode *NodeToApply = getOperandNum(OperandNo, N, NodeInfo, ResNo);
 
   switch (ConstraintType) {
-  default: assert(0 && "Unknown constraint type!");
   case SDTCisVT:
     // Operand must be a particular type.
     return NodeToApply->UpdateNodeType(ResNo, x.SDTCisVT_Info.VT, TP);
@@ -913,7 +914,7 @@ bool SDTypeConstraint::ApplyTypeConstraint(TreePatternNode *N,
       EnforceVectorSubVectorTypeIs(NodeToApply->getExtType(ResNo), TP);
   }
   }
-  return false;
+  llvm_unreachable("Invalid ConstraintType!");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1609,10 +1610,9 @@ bool TreePatternNode::ApplyTypeConstraints(TreePattern &TP, bool NotRegisters) {
         MadeChange |= Child->UpdateNodeType(ChildResNo, MVT::iPTR, TP);
       } else if (OperandNode->getName() == "unknown") {
         // Nothing to do.
-      } else {
-        assert(0 && "Unknown operand type!");
-        abort();
-      }
+      } else
+        llvm_unreachable("Unknown operand type!");
+
       MadeChange |= Child->ApplyTypeConstraints(TP, NotRegisters);
     }
 
@@ -1747,9 +1747,10 @@ TreePatternNode *TreePattern::ParseTreePattern(Init *TheInit, StringRef OpName){
     // TreePatternNode of its own.  For example:
     ///   (foo GPR, imm) -> (foo GPR, (imm))
     if (R->isSubClassOf("SDNode") || R->isSubClassOf("PatFrag"))
-      return ParseTreePattern(new DagInit(DI, "",
-                          std::vector<std::pair<Init*, std::string> >()),
-                              OpName);
+      return ParseTreePattern(
+        DagInit::get(DI, "",
+                     std::vector<std::pair<Init*, std::string> >()),
+        OpName);
 
     // Input argument?
     TreePatternNode *Res = new TreePatternNode(DI, 1);
@@ -1771,7 +1772,7 @@ TreePatternNode *TreePattern::ParseTreePattern(Init *TheInit, StringRef OpName){
 
   if (BitsInit *BI = dynamic_cast<BitsInit*>(TheInit)) {
     // Turn this into an IntInit.
-    Init *II = BI->convertInitializerTo(new IntRecTy());
+    Init *II = BI->convertInitializerTo(IntRecTy::get());
     if (II == 0 || !dynamic_cast<IntInit*>(II))
       error("Bits value must be constants!");
     return ParseTreePattern(II, OpName);
@@ -1860,7 +1861,7 @@ TreePatternNode *TreePattern::ParseTreePattern(Init *TheInit, StringRef OpName){
     else // Otherwise, no chain.
       Operator = getDAGPatterns().get_intrinsic_wo_chain_sdnode();
 
-    TreePatternNode *IIDNode = new TreePatternNode(new IntInit(IID), 1);
+    TreePatternNode *IIDNode = new TreePatternNode(IntInit::get(IID), 1);
     Children.insert(Children.begin(), IIDNode);
   }
 
@@ -2070,7 +2071,7 @@ void CodeGenDAGPatterns::ParseNodeTransforms() {
   while (!Xforms.empty()) {
     Record *XFormNode = Xforms.back();
     Record *SDNode = XFormNode->getValueAsDef("Opcode");
-    std::string Code = XFormNode->getValueAsCode("XFormFunction");
+    std::string Code = XFormNode->getValueAsString("XFormFunction");
     SDNodeXForms.insert(std::make_pair(XFormNode, NodeXForm(SDNode, Code)));
 
     Xforms.pop_back();
@@ -2180,7 +2181,7 @@ void CodeGenDAGPatterns::ParseDefaultOperands() {
 
   // Find some SDNode.
   assert(!SDNodes.empty() && "No SDNodes parsed?");
-  Init *SomeSDNode = new DefInit(SDNodes.begin()->first);
+  Init *SomeSDNode = DefInit::get(SDNodes.begin()->first);
 
   for (unsigned iter = 0; iter != 2; ++iter) {
     for (unsigned i = 0, e = DefaultOps[iter].size(); i != e; ++i) {
@@ -2192,7 +2193,7 @@ void CodeGenDAGPatterns::ParseDefaultOperands() {
       for (unsigned op = 0, e = DefaultInfo->getNumArgs(); op != e; ++op)
         Ops.push_back(std::make_pair(DefaultInfo->getArg(op),
                                      DefaultInfo->getArgName(op)));
-      DagInit *DI = new DagInit(SomeSDNode, "", Ops);
+      DagInit *DI = DagInit::get(SomeSDNode, "", Ops);
 
       // Create a TreePattern to parse this.
       TreePattern P(DefaultOps[iter][i], DI, false, *this);
@@ -2828,6 +2829,12 @@ void CodeGenDAGPatterns::InferInstructionFlags() {
     InstInfo.isBitcast = IsBitcast;
     InstInfo.hasSideEffects = HasSideEffects;
     InstInfo.Operands.isVariadic = IsVariadic;
+
+    // Sanity checks.
+    if (InstInfo.isReMaterializable && InstInfo.hasSideEffects)
+      throw TGError(InstInfo.TheDef->getLoc(), "The instruction " +
+                    InstInfo.TheDef->getName() +
+                    " is rematerializable AND has unmodeled side effects?");
   }
 }
 

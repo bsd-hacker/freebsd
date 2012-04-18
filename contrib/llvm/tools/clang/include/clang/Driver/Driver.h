@@ -13,8 +13,10 @@
 #include "clang/Basic/Diagnostic.h"
 
 #include "clang/Driver/Phases.h"
+#include "clang/Driver/Types.h"
 #include "clang/Driver/Util.h"
 
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/Path.h" // FIXME: Kill when CompilationInfo
@@ -24,16 +26,16 @@
 #include <string>
 
 namespace llvm {
-  class raw_ostream;
   template<typename T> class ArrayRef;
 }
 namespace clang {
 namespace driver {
   class Action;
+  class Arg;
   class ArgList;
+  class Command;
   class Compilation;
   class DerivedArgList;
-  class HostInfo;
   class InputArgList;
   class InputInfo;
   class JobAction;
@@ -45,7 +47,7 @@ namespace driver {
 class Driver {
   OptTable *Opts;
 
-  Diagnostic &Diags;
+  DiagnosticsEngine &Diags;
 
 public:
   // Diag - Forwarding function for diagnostics.
@@ -75,7 +77,7 @@ public:
   /// functionality.
   /// FIXME: This type of customization should be removed in favor of the
   /// universal driver when it is ready.
-  typedef llvm::SmallVector<std::string, 4> prefix_list;
+  typedef SmallVector<std::string, 4> prefix_list;
   prefix_list PrefixDirs;
 
   /// sysroot, if present
@@ -84,18 +86,14 @@ public:
   /// If the standard library is used
   bool UseStdLib;
 
-  /// Default host triple.
-  std::string DefaultHostTriple;
+  /// Default target triple.
+  std::string DefaultTargetTriple;
 
   /// Default name for linked images (e.g., "a.out").
   std::string DefaultImageName;
 
   /// Driver title to use with help.
   std::string DriverTitle;
-
-  /// Host information for the platform the driver is running as. This
-  /// will generally be the actual host platform, but not always.
-  const HostInfo *Host;
 
   /// Information about the host which can be overridden by the user.
   std::string HostBits, HostMachine, HostSystem, HostRelease;
@@ -109,10 +107,13 @@ public:
   /// The file to log CC_LOG_DIAGNOSTICS output to, if enabled.
   const char *CCLogDiagnosticsFilename;
 
+  /// A list of inputs and their types for the given arguments.
+  typedef SmallVector<std::pair<types::ID, const Arg*>, 16> InputList;
+
   /// Whether the driver should follow g++ like behavior.
   unsigned CCCIsCXX : 1;
 
-  /// Whether the driver is just the preprocessor
+  /// Whether the driver is just the preprocessor.
   unsigned CCCIsCPP : 1;
 
   /// Echo commands while executing (in -v style).
@@ -133,6 +134,9 @@ public:
   /// to CCLogDiagnosticsFilename or to stderr, in a stable machine readable
   /// format.
   unsigned CCLogDiagnostics : 1;
+
+  /// Whether the driver is generating diagnostics for debugging purposes.
+  unsigned CCGenDiagnostics : 1;
 
 private:
   /// Name to use when invoking gcc/g++.
@@ -167,17 +171,29 @@ private:
   std::list<std::string> TempFiles;
   std::list<std::string> ResultFiles;
 
+  /// \brief Cache of all the ToolChains in use by the driver.
+  ///
+  /// This maps from the string representation of a triple to a ToolChain
+  /// created targetting that triple. The driver owns all the ToolChain objects
+  /// stored in it, and will clean them up when torn down.
+  mutable llvm::StringMap<ToolChain *> ToolChains;
+
 private:
   /// TranslateInputArgs - Create a new derived argument list from the input
   /// arguments, after applying the standard argument translations.
   DerivedArgList *TranslateInputArgs(const InputArgList &Args) const;
 
+  // getFinalPhase - Determine which compilation mode we are in and record 
+  // which option we used to determine the final phase.
+  phases::ID getFinalPhase(const DerivedArgList &DAL, Arg **FinalPhaseArg = 0)
+    const;
+
 public:
-  Driver(llvm::StringRef _ClangExecutable,
-         llvm::StringRef _DefaultHostTriple,
-         llvm::StringRef _DefaultImageName,
-         bool IsProduction, bool CXXIsProduction,
-         Diagnostic &_Diags);
+  Driver(StringRef _ClangExecutable,
+         StringRef _DefaultTargetTriple,
+         StringRef _DefaultImageName,
+         bool IsProduction,
+         DiagnosticsEngine &_Diags);
   ~Driver();
 
   /// @name Accessors
@@ -189,7 +205,7 @@ public:
 
   const OptTable &getOpts() const { return *Opts; }
 
-  const Diagnostic &getDiags() const { return Diags; }
+  const DiagnosticsEngine &getDiags() const { return Diags; }
 
   bool getCheckInputsExist() const { return CheckInputsExist; }
 
@@ -209,7 +225,7 @@ public:
       return InstalledDir.c_str();
     return Dir.c_str();
   }
-  void setInstalledDir(llvm::StringRef Value) {
+  void setInstalledDir(StringRef Value) {
     InstalledDir = Value;
   }
 
@@ -224,14 +240,24 @@ public:
   /// argument vector. A null return value does not necessarily
   /// indicate an error condition, the diagnostics should be queried
   /// to determine if an error occurred.
-  Compilation *BuildCompilation(llvm::ArrayRef<const char *> Args);
+  Compilation *BuildCompilation(ArrayRef<const char *> Args);
 
   /// @name Driver Steps
   /// @{
 
   /// ParseArgStrings - Parse the given list of strings into an
   /// ArgList.
-  InputArgList *ParseArgStrings(llvm::ArrayRef<const char *> Args);
+  InputArgList *ParseArgStrings(ArrayRef<const char *> Args);
+
+  /// BuildInputs - Construct the list of inputs and their types from 
+  /// the given arguments.
+  ///
+  /// \param TC - The default host tool chain.
+  /// \param Args - The input arguments.
+  /// \param Inputs - The list to store the resulting compilation 
+  /// inputs onto.
+  void BuildInputs(const ToolChain &TC, const DerivedArgList &Args,
+                   InputList &Inputs) const;
 
   /// BuildActions - Construct the list of actions to perform for the
   /// given arguments, which are only done for a single architecture.
@@ -240,7 +266,7 @@ public:
   /// \param Args - The input arguments.
   /// \param Actions - The list to store the resulting actions onto.
   void BuildActions(const ToolChain &TC, const DerivedArgList &Args,
-                    ActionList &Actions) const;
+                    const InputList &Inputs, ActionList &Actions) const;
 
   /// BuildUniversalActions - Construct the list of actions to perform
   /// for the given arguments, which may require a universal build.
@@ -249,6 +275,7 @@ public:
   /// \param Args - The input arguments.
   /// \param Actions - The list to store the resulting actions onto.
   void BuildUniversalActions(const ToolChain &TC, const DerivedArgList &Args,
+                             const InputList &BAInputs,
                              ActionList &Actions) const;
 
   /// BuildJobs - Bind actions to concrete tools and translate
@@ -263,7 +290,14 @@ public:
   /// This routine handles additional processing that must be done in addition
   /// to just running the subprocesses, for example reporting errors, removing
   /// temporary files, etc.
-  int ExecuteCompilation(const Compilation &C) const;
+  int ExecuteCompilation(const Compilation &C,
+                         const Command *&FailingCommand) const;
+  
+  /// generateCompilationDiagnostics - Generate diagnostics information 
+  /// including preprocessed source file(s).
+  /// 
+  void generateCompilationDiagnostics(Compilation &C,
+                                      const Command *FailingCommand);
 
   /// @}
   /// @name Helper Methods
@@ -281,7 +315,7 @@ public:
   void PrintOptions(const ArgList &Args) const;
 
   /// PrintVersion - Print the driver version.
-  void PrintVersion(const Compilation &C, llvm::raw_ostream &OS) const;
+  void PrintVersion(const Compilation &C, raw_ostream &OS) const;
 
   /// GetFilePath - Lookup \arg Name in the list of file search paths.
   ///
@@ -342,15 +376,11 @@ public:
                                  const char *BaseInput,
                                  bool AtTopLevel) const;
 
-  /// GetTemporaryPath - Return the pathname of a temporary file to
-  /// use as part of compilation; the file will have the given suffix.
+  /// GetTemporaryPath - Return the pathname of a temporary file to use 
+  /// as part of compilation; the file will have the given prefix and suffix.
   ///
   /// GCC goes to extra lengths here to be a bit more robust.
-  std::string GetTemporaryPath(const char *Suffix) const;
-
-  /// GetHostInfo - Construct a new host info object for the given
-  /// host triple.
-  const HostInfo *GetHostInfo(const char *HostTriple) const;
+  std::string GetTemporaryPath(StringRef Prefix, const char *Suffix) const;
 
   /// ShouldUseClangCompilar - Should the clang compiler be used to
   /// handle this action.
@@ -359,8 +389,17 @@ public:
 
   bool IsUsingLTO(const ArgList &Args) const;
 
+private:
+  /// \brief Retrieves a ToolChain for a particular target triple.
+  ///
+  /// Will cache ToolChains for the life of the driver object, and create them
+  /// on-demand.
+  const ToolChain &getToolChain(const ArgList &Args,
+                                StringRef DarwinArchName = "") const;
+
   /// @}
 
+public:
   /// GetReleaseVersion - Parse (([0-9]+)(.([0-9]+)(.([0-9]+)?))?)? and
   /// return the grouped values as integers. Numbers which are not
   /// provided are set to 0.

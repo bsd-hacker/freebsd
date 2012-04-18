@@ -98,8 +98,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/unwind.h>
 #include <machine/vmparam.h>
 
-SYSCTL_NODE(_hw, OID_AUTO, freq, CTLFLAG_RD, 0, "");
-SYSCTL_NODE(_machdep, OID_AUTO, cpu, CTLFLAG_RD, 0, "");
+static SYSCTL_NODE(_hw, OID_AUTO, freq, CTLFLAG_RD, 0, "");
+static SYSCTL_NODE(_machdep, OID_AUTO, cpu, CTLFLAG_RD, 0, "");
 
 static u_int bus_freq;
 SYSCTL_UINT(_hw_freq, OID_AUTO, bus, CTLFLAG_RD, &bus_freq, 0,
@@ -245,7 +245,7 @@ identifycpu(void)
 
 	printf("CPU: %s (", model_name);
 	if (cpu_freq)
-		printf("%u Mhz ", cpu_freq);
+		printf("%u MHz ", cpu_freq);
 	printf("%s)\n", family_name);
 	printf("  Origin = \"%s\"  Revision = %d\n", vendor, revision);
 	printf("  Features = 0x%b\n", (u_int32_t) features,
@@ -1155,7 +1155,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
  * MPSAFE
  */
 int
-sigreturn(struct thread *td,
+sys_sigreturn(struct thread *td,
 	struct sigreturn_args /* {
 		ucontext_t *sigcntxp;
 	} */ *uap)
@@ -1192,7 +1192,7 @@ int
 freebsd4_sigreturn(struct thread *td, struct freebsd4_sigreturn_args *uap)
 {
 
-	return sigreturn(td, (struct sigreturn_args *)uap);
+	return sys_sigreturn(td, (struct sigreturn_args *)uap);
 }
 #endif
 

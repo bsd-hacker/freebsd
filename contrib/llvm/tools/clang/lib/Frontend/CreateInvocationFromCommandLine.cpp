@@ -29,8 +29,8 @@ using namespace clang;
 /// \return A CompilerInvocation, or 0 if none was built for the given
 /// argument vector.
 CompilerInvocation *
-clang::createInvocationFromCommandLine(llvm::ArrayRef<const char *> ArgList,
-                                   llvm::IntrusiveRefCntPtr<Diagnostic> Diags) {
+clang::createInvocationFromCommandLine(ArrayRef<const char *> ArgList,
+                            IntrusiveRefCntPtr<DiagnosticsEngine> Diags) {
   if (!Diags.getPtr()) {
     // No diagnostics engine was provided, so create our own diagnostics object
     // with the default options.
@@ -39,7 +39,7 @@ clang::createInvocationFromCommandLine(llvm::ArrayRef<const char *> ArgList,
                                                 ArgList.begin());
   }
 
-  llvm::SmallVector<const char *, 16> Args;
+  SmallVector<const char *, 16> Args;
   Args.push_back("<clang>"); // FIXME: Remove dummy argument.
   Args.insert(Args.end(), ArgList.begin(), ArgList.end());
 
@@ -48,13 +48,13 @@ clang::createInvocationFromCommandLine(llvm::ArrayRef<const char *> ArgList,
   Args.push_back("-fsyntax-only");
 
   // FIXME: We shouldn't have to pass in the path info.
-  driver::Driver TheDriver("clang", llvm::sys::getHostTriple(),
-                           "a.out", false, false, *Diags);
+  driver::Driver TheDriver("clang", llvm::sys::getDefaultTargetTriple(),
+                           "a.out", false, *Diags);
 
   // Don't check that inputs exist, they may have been remapped.
   TheDriver.setCheckInputsExist(false);
 
-  llvm::OwningPtr<driver::Compilation> C(TheDriver.BuildCompilation(Args));
+  OwningPtr<driver::Compilation> C(TheDriver.BuildCompilation(Args));
 
   // Just print the cc1 options if -### was present.
   if (C->getArgs().hasArg(driver::options::OPT__HASH_HASH_HASH)) {
@@ -66,7 +66,7 @@ clang::createInvocationFromCommandLine(llvm::ArrayRef<const char *> ArgList,
   // failed.
   const driver::JobList &Jobs = C->getJobs();
   if (Jobs.size() != 1 || !isa<driver::Command>(*Jobs.begin())) {
-    llvm::SmallString<256> Msg;
+    SmallString<256> Msg;
     llvm::raw_svector_ostream OS(Msg);
     C->PrintJob(OS, C->getJobs(), "; ", true);
     Diags->Report(diag::err_fe_expected_compiler_job) << OS.str();
@@ -74,17 +74,18 @@ clang::createInvocationFromCommandLine(llvm::ArrayRef<const char *> ArgList,
   }
 
   const driver::Command *Cmd = cast<driver::Command>(*Jobs.begin());
-  if (llvm::StringRef(Cmd->getCreator().getName()) != "clang") {
+  if (StringRef(Cmd->getCreator().getName()) != "clang") {
     Diags->Report(diag::err_fe_expected_clang_command);
     return 0;
   }
 
   const driver::ArgStringList &CCArgs = Cmd->getArguments();
-  CompilerInvocation *CI = new CompilerInvocation();
-  CompilerInvocation::CreateFromArgs(*CI,
+  OwningPtr<CompilerInvocation> CI(new CompilerInvocation());
+  if (!CompilerInvocation::CreateFromArgs(*CI,
                                      const_cast<const char **>(CCArgs.data()),
                                      const_cast<const char **>(CCArgs.data()) +
                                      CCArgs.size(),
-                                     *Diags);
-  return CI;
+                                     *Diags))
+    return 0;
+  return CI.take();
 }

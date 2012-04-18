@@ -6,12 +6,17 @@ SRCDIR=	tools/clang/lib/ARCMigrate
 SRCS=	ARCMT.cpp \
 	ARCMTActions.cpp \
 	FileRemapper.cpp \
+	ObjCMT.cpp \
+	PlistReporter.cpp \
+	TransAPIUses.cpp \
 	TransARCAssign.cpp \
 	TransAutoreleasePool.cpp \
 	TransBlockObjCVariable.cpp \
 	TransEmptyStatementsAndDealloc.cpp \
 	TransformActions.cpp \
 	Transforms.cpp \
+	TransGCAttrs.cpp \
+	TransGCCalls.cpp \
 	TransProperties.cpp \
 	TransRetainReleaseDealloc.cpp \
 	TransUnbridgedCasts.cpp \
@@ -19,6 +24,7 @@ SRCS=	ARCMT.cpp \
 	TransZeroOutPropsInDealloc.cpp
 
 TGHDRS=	AttrList \
+	AttrParsedAttrList \
 	Attrs \
 	DeclNodes \
 	DiagnosticCommonKinds \

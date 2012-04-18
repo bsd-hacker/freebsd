@@ -102,7 +102,7 @@ struct fork_args {
 
 /* ARGSUSED */
 int
-fork(struct thread *td, struct fork_args *uap)
+sys_fork(struct thread *td, struct fork_args *uap)
 {
 	int error;
 	struct proc *p2;
@@ -117,7 +117,7 @@ fork(struct thread *td, struct fork_args *uap)
 
 /* ARGUSED */
 int
-pdfork(td, uap)
+sys_pdfork(td, uap)
 	struct thread *td;
 	struct pdfork_args *uap;
 {
@@ -145,7 +145,7 @@ pdfork(td, uap)
 
 /* ARGSUSED */
 int
-vfork(struct thread *td, struct vfork_args *uap)
+sys_vfork(struct thread *td, struct vfork_args *uap)
 {
 	int error, flags;
 	struct proc *p2;
@@ -164,7 +164,7 @@ vfork(struct thread *td, struct vfork_args *uap)
 }
 
 int
-rfork(struct thread *td, struct rfork_args *uap)
+sys_rfork(struct thread *td, struct rfork_args *uap)
 {
 	struct proc *p2;
 	int error;
@@ -559,7 +559,7 @@ do_fork(struct thread *td, int flags, struct proc *p2, struct thread *td2,
 			 * to commit suicide.
 			 */
 			PROC_LOCK(p2);
-			psignal(p2, SIGKILL);
+			kern_psignal(p2, SIGKILL);
 			PROC_UNLOCK(p2);
 		} else
 			PROC_UNLOCK(p1->p_leader);
@@ -590,6 +590,7 @@ do_fork(struct thread *td, int flags, struct proc *p2, struct thread *td2,
 	LIST_INSERT_AFTER(p1, p2, p_pglist);
 	PGRP_UNLOCK(p1->p_pgrp);
 	LIST_INIT(&p2->p_children);
+	LIST_INIT(&p2->p_orphans);
 
 	callout_init(&p2->p_itcallout, CALLOUT_MPSAFE);
 
@@ -707,6 +708,10 @@ do_fork(struct thread *td, int flags, struct proc *p2, struct thread *td2,
 		_PHOLD(p2);
 		p2_held = 1;
 	}
+	if (flags & RFPPWAIT) {
+		td->td_pflags |= TDP_RFPPWAIT;
+		td->td_rfppwait_p = p2;
+	}
 	PROC_UNLOCK(p2);
 	if ((flags & RFSTOPPED) == 0) {
 		/*
@@ -739,14 +744,6 @@ do_fork(struct thread *td, int flags, struct proc *p2, struct thread *td2,
 		cv_wait(&p2->p_dbgwait, &p2->p_mtx);
 	if (p2_held)
 		_PRELE(p2);
-
-	/*
-	 * Preserve synchronization semantics of vfork.  If waiting for
-	 * child to exec or exit, set P_PPWAIT on child, and sleep on our
-	 * proc (in case of exit).
-	 */
-	while (p2->p_flag & P_PPWAIT)
-		cv_wait(&p2->p_pwait, &p2->p_mtx);
 	PROC_UNLOCK(p2);
 }
 
@@ -806,14 +803,6 @@ fork1(struct thread *td, int flags, int pages, struct proc **procp,
 		return (fork_norfproc(td, flags));
 	}
 
-#ifdef RACCT
-	PROC_LOCK(p1);
-	error = racct_add(p1, RACCT_NPROC, 1);
-	PROC_UNLOCK(p1);
-	if (error != 0)
-		return (EAGAIN);
-#endif
-
 #ifdef PROCDESC
 	/*
 	 * If required, create a process descriptor in the parent first; we
@@ -822,14 +811,8 @@ fork1(struct thread *td, int flags, int pages, struct proc **procp,
 	 */
 	if (flags & RFPROCDESC) {
 		error = falloc(td, &fp_procdesc, procdescp, 0);
-		if (error != 0) {
-#ifdef RACCT
-			PROC_LOCK(p1);
-			racct_sub(p1, RACCT_NPROC, 1);
-			PROC_UNLOCK(p1);
-#endif
+		if (error != 0)
 			return (error);
-		}
 	}
 #endif
 
@@ -877,11 +860,6 @@ fork1(struct thread *td, int flags, int pages, struct proc **procp,
 		}
 	} else
 		vm2 = NULL;
-#ifdef MAC
-	mac_proc_init(newproc);
-#endif
-	knlist_init_mtx(&newproc->p_klist, &newproc->p_mtx);
-	STAILQ_INIT(&newproc->p_ktr);
 
 	/*
 	 * XXX: This is ugly; when we copy resource usage, we need to bump
@@ -897,6 +875,12 @@ fork1(struct thread *td, int flags, int pages, struct proc **procp,
 		error = EAGAIN;
 		goto fail1;
 	}
+
+#ifdef MAC
+	mac_proc_init(newproc);
+#endif
+	knlist_init_mtx(&newproc->p_klist, &newproc->p_mtx);
+	STAILQ_INIT(&newproc->p_ktr);
 
 	/* We have to lock the process tree while we look for a pid. */
 	sx_slock(&proctree_lock);
@@ -914,19 +898,6 @@ fork1(struct thread *td, int flags, int pages, struct proc **procp,
 		error = EAGAIN;
 		goto fail;
 	}
-
-#ifdef RACCT
-	/*
-	 * After fork, there is exactly one thread running.
-	 */
-	PROC_LOCK(newproc);
-	error = racct_set(newproc, RACCT_NTHR, 1);
-	PROC_UNLOCK(newproc);
-	if (error != 0) {
-		error = EAGAIN;
-		goto fail;
-	}
-#endif
 
 	/*
 	 * Increment the count of procs running with this uid. Don't allow
@@ -954,12 +925,12 @@ fork1(struct thread *td, int flags, int pages, struct proc **procp,
 		if (flags & RFPROCDESC)
 			procdesc_finit(newproc->p_procdesc, fp_procdesc);
 #endif
+		racct_proc_fork_done(newproc);
 		return (0);
 	}
 
 	error = EAGAIN;
 fail:
-	racct_proc_exit(newproc);
 	sx_sunlock(&proctree_lock);
 	if (ppsratecheck(&lastfail, &curfail, 1))
 		printf("maxproc limit exceeded by uid %i, please see tuning(7) and login.conf(5).\n",
@@ -969,6 +940,7 @@ fail:
 	mac_proc_destroy(newproc);
 #endif
 fail1:
+	racct_proc_exit(newproc);
 	if (vm2 != NULL)
 		vmspace_free(vm2);
 	uma_zfree(proc_zone, newproc);
@@ -977,11 +949,6 @@ fail1:
 		fdrop(fp_procdesc, td);
 #endif
 	pause("fork", hz / 2);
-#ifdef RACCT
-	PROC_LOCK(p1);
-	racct_sub(p1, RACCT_NPROC, 1);
-	PROC_UNLOCK(p1);
-#endif
 	return (error);
 }
 
@@ -1065,7 +1032,9 @@ fork_return(struct thread *td, struct trapframe *frame)
 			p->p_oppid = p->p_pptr->p_pid;
 			proc_reparent(p, dbg);
 			sx_xunlock(&proctree_lock);
+			td->td_dbgflags |= TDB_CHILD;
 			ptracestop(td, SIGSTOP);
+			td->td_dbgflags &= ~TDB_CHILD;
 		} else {
 			/*
 			 * ... otherwise clear the request.
