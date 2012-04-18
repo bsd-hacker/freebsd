@@ -48,20 +48,42 @@ fi
 if [ $# -ne 2 ] ; then
 	error "usage: $0 src dst"
 fi
-src="$1"
-dst="$2"
+
+fqsrc="$1"
+case $fqsrc in
+*:*)
+	src="${fqsrc#*:}"
+	srczfs="ssh ${fqsrc%%:*} zfs"
+	;;
+*)
+	src="${fqsrc}"
+	srczfs="zfs"
+	;;
+esac
+
+fqdst="$2"
+case $fqdst in
+*:*)
+	dst="${fqdst#*:}"
+	dstzfs="ssh ${fqdst%%:*} zfs"
+	;;
+*)
+	dst="${fqdst}"
+	dstzfs="zfs"
+	;;
+esac
 
 # Check src / dst datasets
-if ! zfs list "$src" >/dev/null 2>&1 ; then
-	error "'$src' is not a valid dataset"
+if ! $srczfs list "$src" >/dev/null 2>&1 ; then
+	error "'$fqsrc' is not a valid dataset"
 fi
-if ! zfs list "$dst" >/dev/null 2>&1 ; then
-	error "'$dst' is not a valid dataset"
+if ! $dstzfs list "$dst" >/dev/null 2>&1 ; then
+	error "'$fqdst' is not a valid dataset"
 fi
-if [ "$src" = "$dst" ] ; then
+if [ "$fqsrc" = "$fqdst" ] ; then
 	error "source and destination must be different datasets"
 fi
-if [ "${src#$dst/}" != "$src" -o "${dst#$src/}" != "$dst" ] ; then
+if [ "${fqsrc#$fqdst/}" != "$fqsrc" -o "${fqdst#$fqsrc/}" != "$fqdst" ] ; then
 	error "source and destination must be non-overlapping datasets"
 fi
 case src in
@@ -77,12 +99,12 @@ fi
 now=$(date +%Y%m%d-%H%M%S)
 beg=$(date +%s)
 this="bak-$now"
-last=$(zfs list -t snapshot | cut -d' ' -f1 | grep "^$dst$sub@bak-" | sort | tail -1)
+last=$($dstzfs list -t snapshot | cut -d' ' -f1 | grep "^$dst$sub@bak-" | sort | tail -1)
 if [ -z "$last" ] ; then
 	# First time
-	info "It looks like this is the first backup from $src to $dst." \
-	    "Continuing will DESTROY the contents of $dst, including any" \
-	    "preexisting snapshots, and replace them with the contents of $src."
+	info "It looks like this is the first backup from $fqsrc to $fqdst." \
+	    "Continuing will DESTROY the contents of $fqdst, including any" \
+	    "preexisting snapshots, and replace them with the contents of $fqsrc."
 	while :; do
 		echo -n "Are you sure you want to proceed? (yes/no) "
 		read answer
@@ -95,17 +117,17 @@ if [ -z "$last" ] ; then
 			;;
 		esac
 	done
-	zfs snapshot -r "$src@$this" || error "snapshot failed"
-	zfs send $verbose -R "$src@$this" |
-		zfs receive $verbose -F -d -u "$dst"
+	$srczfs snapshot -r "$src@$this" || error "snapshot failed"
+	$srczfs send $verbose -R "$src@$this" |
+		$dstzfs receive $verbose -F -d -u "$dst"
 else
 	# Subsequent times
 	last="${last#*@}"
-	zfs list "$src@$last" >/dev/null || error "failed to determine last backup"
-	zfs snapshot -r "$src@$this" || error "snapshot failed"
-	zfs send $verbose -R -I "$src@$last" "$src@$this" |
-		zfs receive $verbose -F -d -u "$dst"
-	zfs destroy -r "$src@$last"
+	$srczfs list "$src@$last" >/dev/null || error "failed to determine last backup"
+	$srczfs snapshot -r "$src@$this" || error "snapshot failed"
+	$srczfs send $verbose -R -I "$src@$last" "$src@$this" |
+		$dstzfs receive $verbose -F -d -u "$dst"
+	$srczfs destroy -r "$src@$last"
 fi
 end=$(date +%s)
-info "Backup from $src to $dst completed in $((end - beg)) seconds"
+#info "Backup from $fqsrc to $fqdst completed in $((end - beg)) seconds"
