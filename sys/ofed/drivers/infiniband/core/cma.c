@@ -1478,6 +1478,7 @@ static int cma_iw_listen(struct rdma_id_private *id_priv, int backlog)
 	struct sockaddr_in *sin;
 
 	id_priv->cm_id.iw = iw_create_cm_id(id_priv->id.device,
+					    id_priv->sock,
 					    iw_conn_req_handler,
 					    id_priv);
 	if (IS_ERR(id_priv->cm_id.iw))
@@ -2055,7 +2056,16 @@ static int cma_bind_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
 				((struct sockaddr_in6 *) dst_addr)->sin6_scope_id;
 		}
 	}
-	return rdma_bind_addr(id, src_addr);
+	if (!cma_any_addr(src_addr))
+		return rdma_bind_addr(id, src_addr);
+	else {
+		struct sockaddr_in addr_in;
+
+        	memset(&addr_in, 0, sizeof addr_in);
+        	addr_in.sin_family = dst_addr->sa_family;
+        	addr_in.sin_len = sizeof addr_in;
+        	return rdma_bind_addr(id, (struct sockaddr *) &addr_in);
+	}
 }
 
 int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
@@ -2604,7 +2614,8 @@ static int cma_connect_iw(struct rdma_id_private *id_priv,
 	int ret;
 	struct iw_cm_conn_param iw_param;
 
-	cm_id = iw_create_cm_id(id_priv->id.device, cma_iw_handler, id_priv);
+	cm_id = iw_create_cm_id(id_priv->id.device, id_priv->sock,
+				cma_iw_handler, id_priv);
 	if (IS_ERR(cm_id)) {
 		ret = PTR_ERR(cm_id);
 		goto out;
