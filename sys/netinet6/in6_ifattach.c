@@ -697,13 +697,6 @@ in6_ifattach(struct ifnet *ifp, struct ifnet *altifp)
 	struct in6_ifaddr *ia;
 	struct in6_addr in6;
 
-	/* some of the interfaces are inherently not IPv6 capable */
-	switch (ifp->if_type) {
-	case IFT_PFLOG:
-	case IFT_PFSYNC:
-		return;
-	}
-
 	/*
 	 * quirks based on interface type
 	 */
@@ -793,6 +786,9 @@ in6_ifdetach(struct ifnet *ifp)
 	struct sockaddr_in6 sin6;
 	struct in6_multi_mship *imm;
 
+	if (ifp->if_afdata[AF_INET6] == NULL)
+		return;
+	
 	/* remove neighbor management table */
 	nd6_purge(ifp);
 

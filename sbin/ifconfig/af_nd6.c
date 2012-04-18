@@ -153,7 +153,8 @@ nd6_status(int s)
 	}
 	error = ioctl(s6, SIOCGIFINFO_IN6, &nd);
 	if (error) {
-		warn("ioctl(SIOCGIFINFO_IN6)");
+		if (errno != EPFNOSUPPORT)
+			warn("ioctl(SIOCGIFINFO_IN6)");
 		close(s6);
 		return;
 	}

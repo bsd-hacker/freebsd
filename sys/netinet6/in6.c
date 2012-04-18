@@ -434,6 +434,9 @@ in6_control(struct socket *so, u_long cmd, caddr_t data,
 		sa6 = NULL;
 		break;
 	}
+	if (sa6 != NULL && ifp->if_afdata[AF_INET6] == NULL)
+		return (EPFNOSUPPORT);
+
 	if (sa6 && sa6->sin6_family == AF_INET6) {
 		if (sa6->sin6_scope_id != 0)
 			error = sa6_embedscope(sa6, 0);
@@ -2697,6 +2700,14 @@ void *
 in6_domifattach(struct ifnet *ifp)
 {
 	struct in6_ifextra *ext;
+
+	/* some of the interfaces are inherently not IPv6 capable */
+	switch (ifp->if_type) {
+	case IFT_PFLOG:
+	case IFT_PFSYNC:
+	case IFT_USB:
+		return (NULL);
+	}
 
 	ext = (struct in6_ifextra *)malloc(sizeof(*ext), M_IFADDR, M_WAITOK);
 	bzero(ext, sizeof(*ext));
