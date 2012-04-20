@@ -59,10 +59,10 @@ static int tavor_quirk = 0;
 module_param_named(tavor_quirk, tavor_quirk, int, 0644);
 MODULE_PARM_DESC(tavor_quirk, "Tavor performance quirk: limit MTU to 1K if > 0");
 
-int unify_tcp_port_space = 0;
+int unify_tcp_port_space = 1;
 module_param(unify_tcp_port_space, int, 0644);
 MODULE_PARM_DESC(unify_tcp_port_space, "Unify the host TCP and RDMA port "
-		 "space allocation (default=0)");
+		 "space allocation (default=1)");
 
 #define CMA_CM_RESPONSE_TIMEOUT 20
 #define CMA_MAX_CM_RETRIES 15
@@ -2257,6 +2257,12 @@ static int cma_get_tcp_port(struct rdma_id_private *id_priv)
 		sock_release(sock);
 		return ret;
 	}
+/*
+ * sock_getname does not seem to work here and it seems more similar to getpeername.
+ * Instead something like kern_getsockname should be used. Till that change is done
+ * lets disable the below code.
+ */
+#if 0
 	size = ip_addr_size((struct sockaddr *) &id_priv->id.route.addr.src_addr);
 	ret = sock_getname(sock,
 			(struct sockaddr *) &id_priv->id.route.addr.src_addr,
@@ -2265,6 +2271,7 @@ static int cma_get_tcp_port(struct rdma_id_private *id_priv)
 		sock_release(sock);
 		return ret;
 	}
+#endif
 	id_priv->sock = sock;
 	return 0;
 }
