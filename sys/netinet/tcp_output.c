@@ -196,7 +196,7 @@ tcp_output(struct tcpcb *tp)
 
 #ifdef TCP_OFFLOAD
 	if (tp->t_flags & TF_TOE)
-		tcp_offload_output(tp);
+		return (tcp_offload_output(tp));
 #endif
 
 	/*
