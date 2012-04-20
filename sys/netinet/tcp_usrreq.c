@@ -553,6 +553,7 @@ tcp6_usr_connect(struct socket *so, struct sockaddr *nam, struct thread *td)
 	    (error = tcp_offload_connect(so, nam)) == 0)
 		goto out;
 #endif
+	tcp_timer_activate(tp, TT_KEEP, TP_KEEPINIT(tp));
 	error = tcp_output(tp);
 
 out:
@@ -1218,7 +1219,6 @@ tcp6_connect(struct tcpcb *tp, struct sockaddr *nam, struct thread *td)
 	soisconnecting(so);
 	TCPSTAT_INC(tcps_connattempt);
 	tp->t_state = TCPS_SYN_SENT;
-	tcp_timer_activate(tp, TT_KEEP, TP_KEEPINIT(tp));
 	tp->iss = tcp_new_isn(tp);
 	tcp_sendseqinit(tp);
 
