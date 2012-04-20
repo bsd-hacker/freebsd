@@ -1,4 +1,4 @@
- $FreeBSD$
+# $FreeBSD$
 SUBDIR= cxgb
 SUBDIR+= cxgb_t3fw
 SUBDIR+= tom
