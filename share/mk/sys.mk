@@ -13,7 +13,7 @@ unix		?=	We run FreeBSD, not UNIX.
 # and/or endian.  This is called MACHINE_CPU in NetBSD, but that's used
 # for something different in FreeBSD.
 #
-MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/armeb/arm/:C/powerpc64/powerpc/}
+MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C/powerpc64/powerpc/}
 .endif
 
 # If the special target .POSIX appears (without prerequisites or
@@ -31,23 +31,23 @@ MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/armeb/arm/:C/powerpc
 .SUFFIXES:	.out .a .ln .o .c .cc .cpp .cxx .C .m .F .f .e .r .y .l .S .asm .s .cl .p .h .sh
 .endif
 
-AR		?=	ar
+AR		?=	${__X}ar
 .if defined(%POSIX)
 ARFLAGS		?=	-rv
 .else
 ARFLAGS		?=	rl
 .endif
-RANLIB		?=	ranlib
+RANLIB		?=	${__X}ranlib
 
-AS		?=	as
+AS		?=	${__X}as
 AFLAGS		?=
 ACFLAGS		?=
 
 .if defined(%POSIX)
-CC		?=	c89
+CC		?=	${__X}c89
 CFLAGS		?=	-O
 .else
-CC		?=	cc
+CC		?=	${__X}cc
 .if ${MACHINE_CPUARCH} == "arm" || ${MACHINE_CPUARCH} == "mips"
 CFLAGS		?=	-O -pipe
 .else
@@ -73,11 +73,11 @@ CTFFLAGS	+=	-g
 #CFLAGS		+=	-g
 .endif
 
-CXX		?=	c++
+CXX		?=	${__X}c++
 CXXFLAGS	?=	${CFLAGS:N-std=*:N-Wnested-externs:N-W*-prototypes:N-Wno-pointer-sign:N-Wold-style-definition}
 PO_CXXFLAGS	?=	${CXXFLAGS}
 
-CPP		?=	cpp
+CPP		?=	${__X}cpp
 
 .if empty(.MAKEFLAGS:M-s)
 ECHO		?=	echo
@@ -111,7 +111,7 @@ INSTALL		?=	install
 LEX		?=	lex
 LFLAGS		?=
 
-LD		?=	ld
+LD		?=	${__X}ld
 LDFLAGS		?=
 
 LINT		?=	lint
@@ -122,6 +122,10 @@ LINTOBJKERNFLAGS?=	${LINTOBJFLAGS}
 LINTLIBFLAGS	?=	-cghapbxu -C ${LIB}
 
 MAKE		?=	make
+
+.if !defined(%POSIX)
+NM		?=	${__X}nm
+.endif
 
 OBJC		?=	cc
 OBJCFLAGS	?=	${OBJCINCLUDES} ${CFLAGS} -Wno-import

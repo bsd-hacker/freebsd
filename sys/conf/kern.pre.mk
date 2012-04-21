@@ -6,7 +6,7 @@
 .include <bsd.own.mk>
 
 # backwards compat option for older systems.
-MACHINE_CPUARCH?=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/armeb/arm/:C/powerpc64/powerpc/}
+MACHINE_CPUARCH?=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C/powerpc64/powerpc/}
 
 # Can be overridden by makeoptions or /etc/make.conf
 KERNEL_KO?=	kernel
@@ -19,9 +19,9 @@ M=		${MACHINE_CPUARCH}
 
 AWK?=		awk
 LINT?=		lint
-NM?=		nm
-OBJCOPY?=	objcopy
-SIZE?=		size
+NM?=		${__X}nm
+OBJCOPY?=	${__X}objcopy
+SIZE?=		${__X}size
 
 .if defined(DEBUG)
 _MINUS_O=	-O
