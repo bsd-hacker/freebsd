@@ -135,6 +135,8 @@ class Index(object):
             try:
                 (name, path, prefix, comment, descr, maintainer, categories, bdep,
                  rdep, www, edep, pdep, fdep) = i.rstrip().split("|")
+                if path == "/usr/ports/ports-mgmt/pkg":
+                    pkgdep = name
 
                 if targets is None or name in targets:
                     lines.append((name, bdep, rdep, edep, pdep, fdep))
@@ -149,7 +151,14 @@ class Index(object):
 
         print "[MASTER] Phase 2"
         for (name, bdep, rdep, edep, pdep, fdep) in lines:
-            ports[name].setdeps(bdep, rdep, edep, pdep, fdep)
+            if not pkgng:
+                ports[name].setdeps(bdep, rdep, edep, pdep, fdep, "")
+                continue
+
+            if name == pkgdep:
+                ports[name].setdeps(bdep, rdep, edep, pdep, fdep, "")
+            else:
+                ports[name].setdeps(bdep, rdep, edep, pdep, fdep, pkgdep)
 
         lines = None
         del lines
@@ -168,7 +177,7 @@ class Port(object):
 
         __slots__ = ["name", "path", "prefix", "comment", "descr",
                      "maintainer", "www", "bdep", "rdep", "edep", "pdep",
-                     "fdep", "alldep", "parents",  "depth", "categories"]
+                     "fdep", "pkgdep", "alldep", "parents",  "depth", "categories"]
 
         self.name = name
         self.path = path
@@ -185,6 +194,7 @@ class Port(object):
         self.edep = []
         self.pdep = []
         self.fdep = []
+        self.pkgdep = []
 
         self.alldep = []
         self.parents = []
@@ -225,6 +235,7 @@ they still need to know about us as dependencies etc """
         self.pdep = None
         self.bdep = None
         self.rdep = None
+        self.pkgdep = None
         self.alldep = None
         self.parents = None
 
@@ -267,13 +278,18 @@ they still need to know about us as dependencies etc """
                 pkg.rdep.remove(self)
             except ValueError:
                 pass
+            try:
+                pkg.pkgdep.remove(self)
+            except ValueError:
+                pass
             pkg.alldep.remove(self)
 
         sys.exc_clear()
 
         self.remove()
 
-    def setdeps(self, bdep, rdep, edep, pdep, fdep):
+    def setdeps(self, bdep, rdep, edep, pdep, fdep, pkgdep):
+        self.pkgdep = [ports[p] for p in pkgdep.split()]
         self.fdep = [ports[p] for p in fdep.split()]
         self.edep = [ports[p] for p in edep.split()]
         self.pdep = [ports[p] for p in pdep.split()]
@@ -281,7 +297,7 @@ they still need to know about us as dependencies etc """
         self.rdep = [ports[p] for p in rdep.split()]
 
         self.alldep = list(set(chain(self.fdep, self.edep, self.pdep,
-                                     self.bdep, self.rdep)))
+                                     self.bdep, self.rdep, self.pkgdep)))
 
         for p in self.alldep:
             p.parents.append(self)
@@ -443,7 +459,8 @@ class worker(threading.Thread):
                  'ED':" ".join([p.name + p.sufx for p in pkg.edep]),
                  'PD':" ".join([p.name + p.sufx for p in pkg.pdep]),
                  'BD':" ".join([p.name + p.sufx for p in pkg.bdep]),
-                 'RD':" ".join([p.name + p.sufx for p in pkg.rdep])}
+                 'RD':" ".join([p.name + p.sufx for p in pkg.rdep]),
+                 'PKGD':" ".join([p.name + p.sufx for p in pkg.pkgdep])}
 	    for var in ["NOCLEAN", "NO_RESTRICTED", "NOPLISTCHECK", "NO_DISTFILES", "FETCH_ORIGINAL", "TRYBROKEN", "PORTBUILD_CHECKOUT", "PORTBUILD_DATA" ]:
 	         if var in os.environ:
 		     runenv[var] = os.environ.get(var)
@@ -520,7 +537,8 @@ class worker(threading.Thread):
         wrk.start()
 
 def main(arch, branch, buildid, args):
-    global index, pkg_sufx
+    global index, pkg_sufx, pkgng
+    pkgng = False
 
     basedir=os.path.realpath(pbd+"/"+arch+"/"+branch+"/builds/"+buildid)
     buildid=basedir.split("/")[-1]
@@ -543,6 +561,9 @@ def main(arch, branch, buildid, args):
     if not pkg_sufx:
         print "error: pkg_sufx not defined in portbuild.conf"
         sys.exit(1)
+
+    if pkg_sufx == ".txz":
+        pkgng = True
 
     print "[MASTER] Parsing INDEX..."
     index = Index(indexfile)

@@ -130,6 +130,7 @@ PD=$2
 FD=$3
 BD=$4
 RD=$5
+PKGD=$6
 
 builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 
@@ -141,8 +142,8 @@ unset __MAKE_CONF
 # set overrides for make.conf
 export BACKUP_FTP_SITE=${CLIENT_BACKUP_FTP_SITE}
 
-pkgname=$(basename $6 ${pkg_sufx})
-dirname=$7
+pkgname=$(basename $7 ${pkg_sufx})
+dirname=$8
 shift 2
 
 echo $pkgname
@@ -303,7 +304,7 @@ for i in ${ARCHS_REQUIRING_AOUT_COMPAT}; do
   fi
 done
 
-set x $ED $FD $PD $BD $RD
+set x $ED $FD $PD $BD $RD $PKGD
 shift 1
 while [ $# -gt 0 ]; do
   # XXX MCL more hard-coding
@@ -340,7 +341,7 @@ fi
 if [ "${error}" = 0 ]; then
 # phase 1, make checksum
 # Needs to be chroot not jail so that port can be fetched
-  chroot ${chroot} /buildscript ${dirname} 1 "$ED" "$PD" "$FD" "$BD" "$RD" 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
+  chroot ${chroot} /buildscript ${dirname} 1 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
   if [ -f ${chroot}/tmp/status ]; then
     error=$(cat ${chroot}/tmp/status)
   else
@@ -355,10 +356,10 @@ if [ "${error}" = 0 ]; then
 
   if [ "${use_jail}" = 1 ]; then
     ifconfig lo0 alias 127.${ip1}.${ip2}.${ip3}/32
-    jail -J ${chroot}/tmp/jail.id ${chroot} jail-${chrootpid} 127.${ip1}.${ip2}.${ip3} /usr/bin/env JAIL_ADDR=127.${ip1}.${ip2}.${ip3} HTTP_PROXY=${http_proxy} /usr/bin/nice -n $nice /buildscript ${dirname} 2 "$ED" "$PD" "$FD" "$BD" "$RD" > ${chroot}/tmp/${pkgname}.log2 2>&1
+    jail -J ${chroot}/tmp/jail.id ${chroot} jail-${chrootpid} 127.${ip1}.${ip2}.${ip3} /usr/bin/env JAIL_ADDR=127.${ip1}.${ip2}.${ip3} HTTP_PROXY=${http_proxy} /usr/bin/nice -n $nice /buildscript ${dirname} 2 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" > ${chroot}/tmp/${pkgname}.log2 2>&1
     ifconfig lo0 delete 127.${ip1}.${ip2}.${ip3}
   else
-    chroot ${chroot} /usr/bin/nice -n ${nice} /buildscript ${dirname} 2 "$ED" "$PD" "$FD" "$BD" "$RD" > ${chroot}/tmp/${pkgname}.log2 2>&1
+    chroot ${chroot} /usr/bin/nice -n ${nice} /buildscript ${dirname} 2 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" > ${chroot}/tmp/${pkgname}.log2 2>&1
   fi
 
   grep pnohang ${chroot}/tmp/${pkgname}.log2

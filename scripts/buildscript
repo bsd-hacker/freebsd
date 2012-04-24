@@ -59,6 +59,11 @@ add_pkg() {
         pkg_cmd_info="pkg info -e"
         pkg_cmd_add="pkg add"
       fi
+      if [ $use_pkgng = "yes" -a ${i%-*} = "pkg" ]; then
+        tar xf $i -C . -s ",/.*/,,g" "*/pkg-static"
+        pkg_cmd_add="./pkg-static add"
+        pkg_cmd_info="./pkg-static info"
+      fi
       eval $pkg_cmd_info $base
       if [ $? -eq 0 ]; then
         echo "skipping $base, already added"
@@ -75,7 +80,6 @@ add_pkg() {
 
 del_pkg() {
   pkgs=$*
-
   cd /tmp/depends
   # XXX TODO more hard-coding
   export PKG_PATH=/tmp/depends
@@ -109,7 +113,7 @@ del_pkg() {
         if [ $use_pkgng = "no" ]; then
           leftover=$(cd /var/db/pkg && find * -type d -maxdepth 1)
         else
-          leftover=$(pkg info -qa)
+          leftover=$(pkg info -qa | grep -vw "${PKGD}")
         fi
         echo "deleted list =\""$dellist"\", packages to delete ="\"$delpkg\"
         echo "The following packages were left behind (perhaps your dependency list is incomplete):"
@@ -144,6 +148,7 @@ PD=$4
 FD=$5
 BD=$6
 RD=$7
+PKGD=$8
 
 #export PATH=/ccache/libexec/ccache/:$PATH
 #export CCACHE_PATH=/usr/bin:/usr/local/bin
@@ -159,11 +164,9 @@ restr=$(make -V RESTRICTED)
 pkg_sufx=${PKG_SUFX}
 
 # Use pkgng if available.
-if [ -x /usr/sbin/pkg ]; then
-  use_pkgng="yes"
-else
-  use_pkgng="no"
-fi
+#if [ -x /usr/sbin/pkg ]; then
+use_pkgng="no"
+grep -q WITH_PKGNG /etc/make.conf && use_pkgng="yes"
 
 # Keep restricted distfiles in a subdirectory for extra protection
 # against leakage
@@ -190,6 +193,7 @@ if [ $phase = 1 ]; then
   echo "EXTRACT_DEPENDS=${ED}"
   echo "BUILD_DEPENDS=${BD}"
   echo "RUN_DEPENDS=${RD}"
+  echo "PKG_DEPENDS=${PKGD}"
 
   echo "prefixes: LOCALBASE=${L}"
 
@@ -213,6 +217,8 @@ if [ $phase = 1 ]; then
 ./usr/local/etc/gconf
 ./var/db/fontconfig
 EOF
+  add_pkg $PKGD
+
   # Record a "pristine" mtree.
   mtree -X /tmp/mtree.preexclude -xcn -k uid,gid,mode -p / > /tmp/mtree.pristine
 
@@ -400,15 +406,15 @@ EOF
     cd /var/db/pkg
     leftover=$(find * -type d -maxdepth 1 2> /dev/null)
   else
-    leftover=$(pkg info -qa)
+    leftover=$(pkg info -qa | grep -vw "${PKGD}")
   fi
 
-  if [ -n "$leftover" ]; then
-    echo "leftover packages:" $leftover
-    del_pkg $leftover
-    echo "1" > /tmp/status
-    cleanup 0
-  fi
+#  if [ -n "$leftover" -a "$leftover" != "${PKGD}" ]; then
+#    echo "leftover packages:" $leftover
+#    del_pkg $leftover
+#    echo "1" > /tmp/status
+#    cleanup 0
+#  fi
 
   # Compare the state of the filesystem now to clean system (should again be clean)
   mtree -X /tmp/mtree.preexclude -x -f /tmp/mtree.pristine -p / | egrep -v "^(${L}/var|${L}/lib/X11/xserver/SecurityPolicy|${L}/share/nls/POSIX|${L}/share/nls/en_US.US-ASCII|etc/services|compat |usr/X11R6 |etc/manpath.config|etc/.*.bak|${L}/info/dir|${L}/lib/X11/fonts/.*/fonts\.|usr/local/man/..( |/man. )|${L}/lib/X11/fonts/TrueType )" > /tmp/list3
