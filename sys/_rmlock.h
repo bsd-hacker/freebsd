@@ -35,18 +35,18 @@
 /* 
  * XXXUPS remove as soon as we have per cpu variable
  * linker sets and  can define rm_queue in _rm_lock.h
-*/
+ */
 #include <sys/pcpu.h>
 /*
  * Mostly reader/occasional writer lock.
  */
 
-LIST_HEAD(rmpriolist,rm_priotracker);
+TAILQ_HEAD(rmpriolist, rm_priotracker);
 
 struct rmlock {
 	struct lock_object lock_object; 
 	volatile cpuset_t rm_writecpus;
-	LIST_HEAD(,rm_priotracker) rm_activeReaders;
+	TAILQ_HEAD(, rm_priotracker) rm_activeReaders;
 	union {
 		struct mtx _rm_lock_mtx;
 		struct sx _rm_lock_sx;
@@ -60,7 +60,7 @@ struct rm_priotracker {
 	struct rmlock *rmp_rmlock;
 	struct thread *rmp_thread;
 	int rmp_flags;
-	LIST_ENTRY(rm_priotracker) rmp_qentry;
+	TAILQ_ENTRY(rm_priotracker) rmp_qentry;
 };
 
 #endif /* !_SYS__RMLOCK_H_ */

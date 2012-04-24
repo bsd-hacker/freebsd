@@ -102,15 +102,25 @@ assert_rm(const struct lock_object *lock, int what)
 static void
 lock_rm(struct lock_object *lock, int how)
 {
+	struct rmlock *rm;
 
-	panic("lock_rm called");
+	rm = (struct rmlock *)lock;
+	if (how)
+		rm_wlock(rm);
+	else
+		panic("lock_rm called in shared mode");
 }
 
 static int
 unlock_rm(struct lock_object *lock)
 {
+	struct rmlock *rm;
 
-	panic("unlock_rm called");
+	rm = (struct rmlock *)lock;
+	if (!rm_wowned(rm))
+		panic("unlock_rm called without exclusive lock held");
+	rm_wunlock(rm);
+	return (1);
 }
 
 #ifdef KDTRACE_HOOKS
@@ -167,6 +177,7 @@ rm_tracker_remove(struct pcpu *pc, struct rm_priotracker *tracker)
 static void
 rm_cleanIPI(void *arg)
 {
+	TAILQ_HEAD(,rm_priotracker) tmp_list = TAILQ_HEAD_INITIALIZER(tmp_list);
 	struct pcpu *pc;
 	struct rmlock *rm = arg;
 	struct rm_priotracker *tracker;
@@ -178,12 +189,12 @@ rm_cleanIPI(void *arg)
 		tracker = (struct rm_priotracker *)queue;
 		if (tracker->rmp_rmlock == rm && tracker->rmp_flags == 0) {
 			tracker->rmp_flags = RMPF_ONQUEUE;
-			mtx_lock_spin(&rm_spinlock);
-			LIST_INSERT_HEAD(&rm->rm_activeReaders, tracker,
-			    rmp_qentry);
-			mtx_unlock_spin(&rm_spinlock);
+			TAILQ_INSERT_HEAD(&tmp_list, tracker, rmp_qentry);
 		}
 	}
+	mtx_lock_spin(&rm_spinlock);
+	TAILQ_CONCAT(&rm->rm_activeReaders, &tmp_list, rmp_qentry);
+	mtx_unlock_spin(&rm_spinlock);
 }
 
 CTASSERT((RM_SLEEPABLE & LO_CLASSFLAGS) == RM_SLEEPABLE);
@@ -199,7 +210,7 @@ rm_init_flags(struct rmlock *rm, const char *name, int opts)
 	if (opts & RM_RECURSE)
 		liflags |= LO_RECURSABLE;
 	rm->rm_writecpus = all_cpus;
-	LIST_INIT(&rm->rm_activeReaders);
+	TAILQ_INIT(&rm->rm_activeReaders);
 	if (opts & RM_SLEEPABLE) {
 		liflags |= RM_SLEEPABLE;
 		sx_init_flags(&rm->rm_lock_sx, "rmlock_sx", SX_RECURSE);
@@ -227,7 +238,7 @@ rm_destroy(struct rmlock *rm)
 }
 
 int
-rm_wowned(const struct rmlock *rm)
+rm_wowned(struct rmlock *rm)
 {
 
 	if (rm->lock_object.lo_flags & RM_SLEEPABLE)
@@ -294,7 +305,7 @@ _rm_rlock_hard(struct rmlock *rm, struct rm_priotracker *tracker, int trylock)
 			if ((atracker->rmp_rmlock == rm) &&
 			    (atracker->rmp_thread == tracker->rmp_thread)) {
 				mtx_lock_spin(&rm_spinlock);
-				LIST_INSERT_HEAD(&rm->rm_activeReaders,
+				TAILQ_INSERT_HEAD(&rm->rm_activeReaders,
 				    tracker, rmp_qentry);
 				tracker->rmp_flags = RMPF_ONQUEUE;
 				mtx_unlock_spin(&rm_spinlock);
@@ -390,7 +401,8 @@ _rm_unlock_hard(struct thread *td,struct rm_priotracker *tracker)
 		return;
 
 	mtx_lock_spin(&rm_spinlock);
-	LIST_REMOVE(tracker, rmp_qentry);
+	TAILQ_REMOVE(&tracker->rmp_rmlock->rm_activeReaders, tracker,
+	    rmp_qentry);
 
 	if (tracker->rmp_flags & RMPF_SIGNAL) {
 		struct rmlock *rm;
@@ -468,7 +480,7 @@ _rm_wlock(struct rmlock *rm)
 #endif
 
 		mtx_lock_spin(&rm_spinlock);
-		while ((prio = LIST_FIRST(&rm->rm_activeReaders)) != NULL) {
+		while ((prio = TAILQ_FIRST(&rm->rm_activeReaders)) != NULL) {
 			ts = turnstile_trywait(&rm->lock_object);
 			prio->rmp_flags = RMPF_ONQUEUE | RMPF_SIGNAL;
 			mtx_unlock_spin(&rm_spinlock);
@@ -609,3 +621,92 @@ _rm_runlock_debug(struct rmlock *rm, struct rm_priotracker *tracker,
 }
 
 #endif
+
+#ifdef INVARIANT_SUPPORT
+void
+_rm_assert(struct rmlock *rm, int what, const char *file, int line)
+{
+#ifndef WITNESS
+	struct pcpu *pc;
+	struct rm_queue *queue;
+	struct rm_priotracker *atracker;
+	int cnt;
+#endif
+
+	if (panicstr != NULL)
+		return;
+	switch (what) {
+	case RM_LOCKED:
+	case RM_LOCKED | RM_RECURSED:
+	case RM_LOCKED | RM_NOTRECURSED:
+	case RM_RLOCKED | RM_RECURSED:
+	case RM_RLOCKED | RM_NOTRECURSED:
+	case RM_RLOCKED:
+#ifdef WITNESS
+		witness_assert(&rm->lock_object, what, file, line);
+#else
+		if ((what == RM_RLOCKED) && rm_wowned(rm))
+			panic("Lock %s writelocked @ %s:%d\n",
+			    rm->lock_object.lo_name, file, line);
+
+		critical_enter();
+		pc = pcpu_find(curcpu);
+		cnt = 0;
+		for (queue = pc->pc_rm_queue.rmq_next;
+		    queue != &pc->pc_rm_queue; queue = queue->rmq_next) {
+			atracker = (struct rm_priotracker *)queue;
+			if ((atracker->rmp_rmlock == rm) &&
+			    (atracker->rmp_thread == curthread))
+				cnt++;
+		}
+		critical_exit();
+
+		if ((cnt == 0) && !rm_wowned(rm))
+			panic("Lock %s not %slocked @ %s:%d\n",
+			    rm->lock_object.lo_name, (what == RM_RLOCKED) ?
+			    "read " : "", file, line);
+		if (cnt > 2) {
+			if (what & RA_NOTRECURSED)
+				panic("Lock %s recursed @ %s:%d\n",
+				    rm->lock_object.lo_name, file, line);
+		} else if (what & RA_RECURSED)
+			panic("Lock %s not recursed @ %s:%d\n",
+			    rm->lock_object.lo_name, file, line);
+#endif
+		break;
+	case RM_WLOCKED:
+		if (!rm_wowned(rm))
+			panic("Lock %s not writelocked @ %s:%d\n",
+			    rm->lock_object.lo_name, file, line);
+		break;
+	case RM_UNLOCKED:
+#ifdef WITNESS
+		witness_assert(&rm->lock_object, what, file, line);
+#else
+		if (rm_wowned(rm))
+			panic("Lock %s writelocked @ %s:%d\n",
+			    rm->lock_object.lo_name, file, line);
+
+		critical_enter();
+		pc = pcpu_find(curcpu);
+		cnt = 0;
+		for (queue = pc->pc_rm_queue.rmq_next;
+		    queue != &pc->pc_rm_queue; queue = queue->rmq_next) {
+			atracker = (struct rm_priotracker *)queue;
+			if ((atracker->rmp_rmlock == rm) &&
+			    (atracker->rmp_thread == curthread))
+				cnt++;
+		}
+		critical_exit();
+
+		if (cnt != 0)
+			panic("Lock %s readlocked @ %s:%d\n",
+			    rm->lock_object.lo_name, file, line);
+#endif
+		break;
+	default:
+		panic("Unknown rm lock assertion: %d @ %s:%d", what, file,
+		    line);
+	}
+}
+#endif /* INVARIANT_SUPPORT */
