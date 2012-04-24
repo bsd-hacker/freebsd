@@ -119,12 +119,11 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	int mtu;
 	int n;	/* scratchpad */
 	int error = 0;
-	int nortfree = 0;
 	struct sockaddr_in *dst;
+	struct sockaddr_in dstn;
 	struct in_ifaddr *ia = NULL;
 	int isbroadcast, sw_csum;
-	struct route iproute;
-	struct rtentry *rte;	/* cache for ro->ro_rt */
+	struct rtlookup rtl;
 	struct in_addr odst;
 #ifdef IPFIREWALL_FORWARD
 	struct m_tag *fwd_tag = NULL;
@@ -143,28 +142,9 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 		}
 	}
 
-	if (ro == NULL) {
-		ro = &iproute;
-		bzero(ro, sizeof (*ro));
-
-#ifdef FLOWTABLE
-		{
-			struct flentry *fle;
-			
-			/*
-			 * The flow table returns route entries valid for up to 30
-			 * seconds; we rely on the remainder of ip_output() taking no
-			 * longer than that long for the stability of ro_rt.  The
-			 * flow ID assignment must have happened before this point.
-			 */
-			if ((fle = flowtable_lookup_mbuf(V_ip_ft, m, AF_INET)) != NULL) {
-				flow_to_route(fle, ro);
-				nortfree = 1;
-			}
-		}
-#endif
-	}
-
+	/*
+	 * Insert IP options.
+	 */
 	if (opt) {
 		int len = 0;
 		m = ip_insertoptions(m, opt, &len);
@@ -194,36 +174,20 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 		hlen = ip->ip_hl << 2;
 	}
 
-	dst = (struct sockaddr_in *)&ro->ro_dst;
+	if (ro != NULL) {
+		/* XXXAO: May use dst for nexthop. */
+		if (ro->ro_rt != NULL)
+			RTFREE(ro->ro_rt);
+		ro = NULL;
+	}
+	bzero(&rtl, sizeof(rtl));
 again:
-	/*
-	 * If there is a cached route,
-	 * check that it is to the same destination
-	 * and is still up.  If not, free it and try again.
-	 * The address family should also be checked in case of sharing the
-	 * cache with IPv6.
-	 */
-	rte = ro->ro_rt;
-	if (rte && ((rte->rt_flags & RTF_UP) == 0 ||
-		    rte->rt_ifp == NULL ||
-		    !RT_LINK_IS_UP(rte->rt_ifp) ||
-			  dst->sin_family != AF_INET ||
-			  dst->sin_addr.s_addr != ip->ip_dst.s_addr)) {
-		if (!nortfree)
-			RTFREE(rte);
-		rte = ro->ro_rt = (struct rtentry *)NULL;
-		ro->ro_lle = (struct llentry *)NULL;
-	}
-#ifdef IPFIREWALL_FORWARD
-	if (rte == NULL && fwd_tag == NULL) {
-#else
-	if (rte == NULL) {
-#endif
-		bzero(dst, sizeof(*dst));
-		dst->sin_family = AF_INET;
-		dst->sin_len = sizeof(*dst);
-		dst->sin_addr = ip->ip_dst;
-	}
+	dst = &dstn;
+	bzero(dst, sizeof(*dst));
+	dst->sin_family = AF_INET;
+	dst->sin_len = sizeof(*dst);
+	dst->sin_addr = ip->ip_dst;
+
 	/*
 	 * If routing to interface only, short circuit routing lookup.
 	 * The use of an all-ones broadcast address implies this; an
@@ -263,24 +227,13 @@ again:
 		isbroadcast = 0;	/* fool gcc */
 	} else {
 		/*
-		 * We want to do any cloning requested by the link layer,
-		 * as this is probably required in all cases for correct
-		 * operation (as it is for ARP).
+		 * Look up the route to the destination.
 		 */
-		if (rte == NULL) {
-#ifdef RADIX_MPATH
-			rtalloc_mpath_fib(ro,
-			    ntohl(ip->ip_src.s_addr ^ ip->ip_dst.s_addr),
-			    inp ? inp->inp_inc.inc_fibnum : M_GETFIB(m));
-#else
-			in_rtalloc_ign(ro, 0,
-			    inp ? inp->inp_inc.inc_fibnum : M_GETFIB(m));
-#endif
-			rte = ro->ro_rt;
-		}
-		if (rte == NULL ||
-		    rte->rt_ifp == NULL ||
-		    !RT_LINK_IS_UP(rte->rt_ifp)) {
+		rtl.rtl_dst = (struct sockaddr *)dst;
+		rtl.rtl_gw = (struct sockaddr *)dst;
+		rtl.rtl_ifp = ifp;
+
+		if (rtlookup_fib(&rtl, inp ? inp->inp_inc.inc_fibnum : M_GETFIB(m), 0)) {
 #ifdef IPSEC
 			/*
 			 * There is no route for this packet, but it is
@@ -294,38 +247,29 @@ again:
 			error = EHOSTUNREACH;
 			goto bad;
 		}
-		ia = ifatoia(rte->rt_ifa);
+		ifp = rtl.rtl_ifp;
+		ia = (struct in_ifaddr *)rtl.rtl_ifa;
 		ifa_ref(&ia->ia_ifa);
-		ifp = rte->rt_ifp;
-		rte->rt_rmx.rmx_pksent++;
-		if (rte->rt_flags & RTF_GATEWAY)
-			dst = (struct sockaddr_in *)rte->rt_gateway;
-		if (rte->rt_flags & RTF_HOST)
-			isbroadcast = (rte->rt_flags & RTF_BROADCAST);
+		if (rtl.rtl_flags & RTF_HOST)
+			isbroadcast = (rtl.rtl_flags & RTF_BROADCAST);
 		else
 			isbroadcast = in_broadcast(dst->sin_addr, ifp);
 	}
+	KASSERT(ifp != NULL, ("%s: ifp is NULL", __func__));
+
 	/*
 	 * Calculate MTU.  If we have a route that is up, use that,
 	 * otherwise use the interface's MTU.
 	 */
-	if (rte != NULL && (rte->rt_flags & (RTF_UP|RTF_HOST))) {
-		/*
-		 * This case can happen if the user changed the MTU
-		 * of an interface after enabling IP on it.  Because
-		 * most netifs don't keep track of routes pointing to
-		 * them, there is no way for one to update all its
-		 * routes when the MTU is changed.
-		 */
-		if (rte->rt_rmx.rmx_mtu > ifp->if_mtu)
-			rte->rt_rmx.rmx_mtu = ifp->if_mtu;
-		mtu = rte->rt_rmx.rmx_mtu;
-	} else {
+	if (rtl.rtl_mtu > 0)
+		mtu = min(rtl.rtl_mtu, ifp->if_mtu);
+	else
 		mtu = ifp->if_mtu;
-	}
+
 	/* Catch a possible divide by zero later. */
-	KASSERT(mtu > 0, ("%s: mtu %d <= 0, rte=%p (rt_flags=0x%08x) ifp=%p",
-	    __func__, mtu, rte, (rte != NULL) ? rte->rt_flags : 0, ifp));
+	KASSERT(mtu > 0, ("%s: mtu %d <= 0, rtl=%p (rtl_flags=0x%08x) ifp=%p",
+	    __func__, mtu, &rtl, rtl.rtl_flags, ifp));
+
 	if (IN_MULTICAST(ntohl(ip->ip_dst.s_addr))) {
 		m->m_flags |= M_MCAST;
 		/*
@@ -333,7 +277,7 @@ again:
 		 * still points to the address in "ro".  (It may have been
 		 * changed to point to a gateway address, above.)
 		 */
-		dst = (struct sockaddr_in *)&ro->ro_dst;
+		//dst = (struct sockaddr_in *)&ro->ro_dst;
 		/*
 		 * See if the caller provided any multicast options
 		 */
@@ -546,12 +490,12 @@ sendit:
 			    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
 			m->m_pkthdr.csum_data = 0xffff;
 		}
+		m->m_pkthdr.csum_flags |=
+			    CSUM_IP_CHECKED | CSUM_IP_VALID;
 #ifdef SCTP
 		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
 			m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
 #endif
-		m->m_pkthdr.csum_flags |=
-			    CSUM_IP_CHECKED | CSUM_IP_VALID;
 
 		error = netisr_queue(NETISR_IP, m);
 		goto done;
@@ -559,7 +503,6 @@ sendit:
 	/* Or forward to some other address? */
 	fwd_tag = m_tag_find(m, PACKET_TAG_IPFORWARD, NULL);
 	if (fwd_tag) {
-		dst = (struct sockaddr_in *)&ro->ro_dst;
 		bcopy((fwd_tag+1), dst, sizeof(struct sockaddr_in));
 		m->m_flags |= M_SKIP_FIREWALL;
 		m_tag_delete(m, fwd_tag);
@@ -629,7 +572,7 @@ passout:
 		 */
 		m->m_flags &= ~(M_PROTOFLAGS);
 		error = (*ifp->if_output)(ifp, m,
-		    		(struct sockaddr *)dst, ro);
+		    		(struct sockaddr *)dst, NULL);
 		goto done;
 	}
 
@@ -649,7 +592,7 @@ passout:
 		goto bad;
 	for (; m; m = m0) {
 		m0 = m->m_nextpkt;
-		m->m_nextpkt = 0;
+		m->m_nextpkt = NULL;
 		if (error == 0) {
 			/* Record statistics for this interface address. */
 			if (ia != NULL) {
@@ -663,7 +606,7 @@ passout:
 			m->m_flags &= ~(M_PROTOFLAGS);
 
 			error = (*ifp->if_output)(ifp, m,
-			    (struct sockaddr *)dst, ro);
+			    (struct sockaddr *)dst, NULL);
 		} else
 			m_freem(m);
 	}
@@ -672,9 +615,6 @@ passout:
 		IPSTAT_INC(ips_fragmented);
 
 done:
-	if (ro == &iproute && ro->ro_rt && !nortfree) {
-		RTFREE(ro->ro_rt);
-	}
 	if (ia != NULL)
 		ifa_free(&ia->ia_ifa);
 	return (error);

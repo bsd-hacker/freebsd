@@ -1232,7 +1232,7 @@ timer:
 		ip->ip_off |= IP_DF;
 
 	error = ip_output(m, tp->t_inpcb->inp_options, NULL,
-	    ((so->so_options & SO_DONTROUTE) ? IP_ROUTETOIF : 0), 0,
+	    ((so->so_options & SO_DONTROUTE) ? IP_ROUTETOIF : 0), NULL,
 	    tp->t_inpcb);
     }
 #endif /* INET */

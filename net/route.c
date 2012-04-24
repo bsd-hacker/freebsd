@@ -425,6 +425,55 @@ done:
 	return (newrt);
 }
 
+int
+rtlookup_fib(struct rtlookup *rtl, u_int fibnum, int flags)
+{
+	struct radix_node_head *rnh;
+	struct radix_node *rn;
+	struct rtentry *rt;
+	struct rm_priotracker tracker;
+
+	KASSERT((fibnum < rt_numfibs),
+	    ("%s: bad fibnum", __func__));
+
+	switch (rtl->rtl_dst->sa_family) {
+	case AF_INET:
+	case AF_INET6:
+		break;
+	default:
+		fibnum = 0;
+	}
+
+	rnh = rt_tables_get_rnh(fibnum, rtl->rtl_dst->sa_family);
+	if (rnh == NULL) {
+		V_rtstat.rts_unreach++;
+		return (ENETUNREACH);
+	}
+
+	/* Look up the address in the table for that Address Family. */
+	RADIX_NODE_HEAD_RLOCK(rnh, &tracker);
+	rn = rnh->rnh_matchaddr(rtl->rtl_dst, rnh);
+	if (rn == NULL || (rn->rn_flags & RNF_ROOT))
+		return (ENETUNREACH);
+
+	rt = RNTORT(rn);
+	if (rt->rt_flags & (RTF_REJECT | RTF_BLACKHOLE))
+		return (ENETUNREACH);
+
+	/* Only copy DST when a gateway, otherwise route to interface. */
+	if (rtl->rtl_gw != NULL && rt->rt_flags & RTF_GATEWAY)
+		bcopy(rt->rt_gateway, rtl->rtl_gw, SA_SIZE(rt->rt_gateway));
+	rtl->rtl_ifp = rt->rt_ifp;
+	rtl->rtl_ifa = rt->rt_ifa;
+	rtl->rtl_mtu = rt->rt_rmx.rmx_mtu;
+	rtl->rtl_flags = rt->rt_flags;
+	if (flags & RTL_PKSENT)
+		rt->rt_rmx.rmx_pksent++;	/* racy but ok - XXX WHY?*/
+	RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
+
+	return (0);
+}
+
 /*
  * Remove a reference count from an rtentry.
  * If the count gets low enough, take it out of the routing table

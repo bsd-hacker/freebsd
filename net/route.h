@@ -83,6 +83,20 @@ struct rt_metrics {
 };
 
 /*
+ * Pointers to structures on the stack for pure routing
+ * table lookups.
+ */
+struct rtlookup {
+	struct sockaddr *rtl_dst;	/* Request */
+	struct sockaddr *rtl_gw;	/* Answer */
+	struct ifnet *rtl_ifp;		/* Answer */
+	struct ifaddr *rtl_ifa;		/* Answer */
+	u_long	rtl_mtu;		/* Answer */
+	int 	rtl_flags;		/* Answer */
+};
+#define	RTL_PKSENT	0x0001  /* increment packet sent counter */
+
+/*
  * rmx_rtt and rmx_rttvar are stored as microseconds;
  * RTTTOPRHZ(rtt) converts to a value suitable for use
  * by a protocol slowtimo counter.
@@ -120,13 +134,13 @@ struct rtentry {
 	 */
 #define	rt_key(r)	(*((struct sockaddr **)(&(r)->rt_nodes->rn_key)))
 #define	rt_mask(r)	(*((struct sockaddr **)(&(r)->rt_nodes->rn_mask)))
-	struct	sockaddr *rt_gateway;	/* value */
 	int	rt_flags;		/* up/down?, host/net */
-	int	rt_refcnt;		/* # held references */
+	struct	sockaddr *rt_gateway;	/* the answer: nexthop to use */
 	struct	ifnet *rt_ifp;		/* the answer: interface to use */
 	struct	ifaddr *rt_ifa;		/* the answer: interface address to use */
 	struct	rt_metrics_lite rt_rmx;	/* metrics used by rx'ing protocols */
 	u_int	rt_fibnum;		/* which FIB */
+	int	rt_refcnt;		/* # held references */
 #ifdef _KERNEL
 	/* XXX ugly, user apps use this definition but don't have a mtx def */
 	struct	mtx rt_mtx;		/* mutex for routing entry */
@@ -399,6 +413,7 @@ void	 rtalloc_ign_fib(struct route *ro, u_long ignflags, u_int fibnum);
 void	 rtalloc_fib(struct route *ro, u_int fibnum);
 struct rtentry *rtalloc1_fib(struct sockaddr *, int, u_long, u_int);
 int	 rtioctl_fib(u_long, caddr_t, u_int);
+int	 rtlookup_fib(struct rtlookup *, u_int, int);
 void	 rtredirect_fib(struct sockaddr *, struct sockaddr *,
 	    struct sockaddr *, int, struct sockaddr *, u_int);
 int	 rtrequest_fib(int, struct sockaddr *,
