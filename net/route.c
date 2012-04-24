@@ -52,6 +52,8 @@
 #include <sys/proc.h>
 #include <sys/domain.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/rmlock.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -339,7 +341,7 @@ rtalloc_ign_fib(struct route *ro, u_long ignore, u_int fibnum)
 
 /*
  * Look up the route that matches the address given
- * Or, at least try.. Create a cloned route if needed.
+ * Or, at least try.
  *
  * The returned route, if any, is locked.
  */
@@ -351,13 +353,13 @@ rtalloc1(struct sockaddr *dst, int report, u_long ignflags)
 }
 
 struct rtentry *
-rtalloc1_fib(struct sockaddr *dst, int report, u_long ignflags,
-		    u_int fibnum)
+rtalloc1_fib(struct sockaddr *dst, int report, u_long ignflags, u_int fibnum)
 {
 	struct radix_node_head *rnh;
 	struct radix_node *rn;
 	struct rtentry *newrt;
 	struct rt_addrinfo info;
+	struct rm_priotracker tracker;
 	int err = 0, msgtype = RTM_MISS;
 	int needlock;
 
@@ -381,22 +383,23 @@ rtalloc1_fib(struct sockaddr *dst, int report, u_long ignflags,
 	 */
 	needlock = !(ignflags & RTF_RNH_LOCKED);
 	if (needlock)
-		RADIX_NODE_HEAD_RLOCK(rnh);
-#ifdef INVARIANTS	
+		RADIX_NODE_HEAD_RLOCK(rnh, &tracker);
+#ifdef INVARIANTS
 	else
-		RADIX_NODE_HEAD_LOCK_ASSERT(rnh);
+		RADIX_NODE_HEAD_RLOCK_ASSERT(rnh);
 #endif
+
 	rn = rnh->rnh_matchaddr(dst, rnh);
 	if (rn && ((rn->rn_flags & RNF_ROOT) == 0)) {
 		newrt = RNTORT(rn);
 		RT_LOCK(newrt);
 		RT_ADDREF(newrt);
 		if (needlock)
-			RADIX_NODE_HEAD_RUNLOCK(rnh);
+			RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
 		goto done;
 
 	} else if (needlock)
-		RADIX_NODE_HEAD_RUNLOCK(rnh);
+		RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
 	
 	/*
 	 * Either we hit the root or couldn't find any match,
@@ -1085,8 +1088,11 @@ rtrequest1_fib(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt,
 	flags &= ~RTF_RNH_LOCKED;
 	if (needlock)
 		RADIX_NODE_HEAD_LOCK(rnh);
+#ifdef INVARIANTS
 	else
 		RADIX_NODE_HEAD_LOCK_ASSERT(rnh);
+#endif
+
 	/*
 	 * If we are adding a host route then we don't want to put
 	 * a netmask in the tree, nor do we want to clone it.

@@ -51,6 +51,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/mbuf.h>
 #include <sys/syslog.h>
 #include <sys/callout.h>
+#include <sys/lock.h>
+#include <sys/rmlock.h>
 
 #include <net/if.h>
 #include <net/route.h>
@@ -77,7 +79,7 @@ in_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 	struct rtentry *rt = (struct rtentry *)treenodes;
 	struct sockaddr_in *sin = (struct sockaddr_in *)rt_key(rt);
 
-	RADIX_NODE_HEAD_WLOCK_ASSERT(head);
+	RADIX_NODE_HEAD_LOCK_ASSERT(head);
 	/*
 	 * A little bit of help for both IP output and input:
 	 *   For host routes, we make sure that RTF_BROADCAST
@@ -205,7 +207,7 @@ in_rtqkill(struct radix_node *rn, void *rock)
 	struct rtentry *rt = (struct rtentry *)rn;
 	int err;
 
-	RADIX_NODE_HEAD_WLOCK_ASSERT(ap->rnh);
+	RADIX_NODE_HEAD_LOCK_ASSERT(ap->rnh);
 
 	if (rt->rt_flags & RTPRF_OURS) {
 		ap->found++;

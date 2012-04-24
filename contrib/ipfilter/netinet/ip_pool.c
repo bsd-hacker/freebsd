@@ -51,6 +51,8 @@ struct file;
 #endif
 #if defined(__FreeBSD_version) && (__FreeBSD_version >= 300000)
 # include <sys/malloc.h>
+# include <sys/lock.h>
+# include <sys/rmlock.h>
 #endif
 
 #if defined(SOLARIS2) && !defined(_KERNEL)

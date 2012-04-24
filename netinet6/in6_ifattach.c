@@ -42,6 +42,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/syslog.h>
 #include <sys/md5.h>
+#include <sys/lock.h>
+#include <sys/rmlock.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>

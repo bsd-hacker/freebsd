@@ -51,6 +51,7 @@
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/rmlock.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -576,6 +577,7 @@ route_output(struct mbuf *m, struct socket *so)
 	int len, error = 0;
 	struct ifnet *ifp = NULL;
 	union sockaddr_union saun;
+	struct rm_priotracker tracker;
 	sa_family_t saf = AF_UNSPEC;
 
 #define senderr(e) { error = e; goto flush;}
@@ -708,11 +710,11 @@ route_output(struct mbuf *m, struct socket *so)
 		    info.rti_info[RTAX_DST]->sa_family);
 		if (rnh == NULL)
 			senderr(EAFNOSUPPORT);
-		RADIX_NODE_HEAD_RLOCK(rnh);
+		RADIX_NODE_HEAD_RLOCK(rnh, &tracker);
 		rt = (struct rtentry *) rnh->rnh_lookup(info.rti_info[RTAX_DST],
 			info.rti_info[RTAX_NETMASK], rnh);
 		if (rt == NULL) {	/* XXX looks bogus */
-			RADIX_NODE_HEAD_RUNLOCK(rnh);
+			RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
 			senderr(ESRCH);
 		}
 #ifdef RADIX_MPATH
@@ -728,7 +730,7 @@ route_output(struct mbuf *m, struct socket *so)
 		    (rtm->rtm_type != RTM_GET || info.rti_info[RTAX_GATEWAY])) {
 			rt = rt_mpath_matchgate(rt, info.rti_info[RTAX_GATEWAY]);
 			if (!rt) {
-				RADIX_NODE_HEAD_RUNLOCK(rnh);
+				RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
 				senderr(ESRCH);
 			}
 		}
@@ -760,13 +762,13 @@ route_output(struct mbuf *m, struct socket *so)
 			 */
 			rt = (struct rtentry *)rnh->rnh_matchaddr(&laddr, rnh);
 			if (rt == NULL) {
-				RADIX_NODE_HEAD_RUNLOCK(rnh);
+				RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
 				senderr(ESRCH);
 			}
 		} 
 		RT_LOCK(rt);
 		RT_ADDREF(rt);
-		RADIX_NODE_HEAD_RUNLOCK(rnh);
+		RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
 
 		/* 
 		 * Fix for PR: 82974
@@ -1838,6 +1840,7 @@ sysctl_rtsock(SYSCTL_HANDLER_ARGS)
 	int	i, lim, error = EINVAL;
 	u_char	af;
 	struct	walkarg w;
+	struct rm_priotracker tracker;
 
 	name ++;
 	namelen--;
@@ -1884,10 +1887,10 @@ sysctl_rtsock(SYSCTL_HANDLER_ARGS)
 		for (error = 0; error == 0 && i <= lim; i++) {
 			rnh = rt_tables_get_rnh(req->td->td_proc->p_fibnum, i);
 			if (rnh != NULL) {
-				RADIX_NODE_HEAD_RLOCK(rnh); 
+				RADIX_NODE_HEAD_RLOCK(rnh, &tracker);
 			    	error = rnh->rnh_walktree(rnh,
 				    sysctl_dumpentry, &w);
-				RADIX_NODE_HEAD_RUNLOCK(rnh);
+				RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
 			} else if (af != 0)
 				error = EAFNOSUPPORT;
 		}

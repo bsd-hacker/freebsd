@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/jail.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
+#include <sys/rmlock.h> 
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/mount.h>
@@ -427,6 +428,7 @@ vfs_export_lookup(struct mount *mp, struct sockaddr *nam)
 	register struct netcred *np;
 	register struct radix_node_head *rnh;
 	struct sockaddr *saddr;
+	struct rm_priotracker tracker;
 
 	nep = mp->mnt_export;
 	if (nep == NULL)
@@ -440,10 +442,10 @@ vfs_export_lookup(struct mount *mp, struct sockaddr *nam)
 			saddr = nam;
 			rnh = nep->ne_rtable[saddr->sa_family];
 			if (rnh != NULL) {
-				RADIX_NODE_HEAD_RLOCK(rnh);
+				RADIX_NODE_HEAD_RLOCK(rnh, &tracker);
 				np = (struct netcred *)
 				    (*rnh->rnh_matchaddr)(saddr, rnh);
-				RADIX_NODE_HEAD_RUNLOCK(rnh);
+				RADIX_NODE_HEAD_RUNLOCK(rnh, &tracker);
 				if (np && np->netc_rnodes->rn_flags & RNF_ROOT)
 					np = NULL;
 			}

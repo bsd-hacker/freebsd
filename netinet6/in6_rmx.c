@@ -87,6 +87,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rwlock.h>
 #include <sys/syslog.h>
 #include <sys/callout.h>
+#include <sys/rmlock.h>
 
 #include <net/if.h>
 #include <net/route.h>
@@ -124,7 +125,7 @@ in6_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 	struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)rt_key(rt);
 	struct radix_node *ret;
 
-	RADIX_NODE_HEAD_WLOCK_ASSERT(head);
+	RADIX_NODE_HEAD_LOCK_ASSERT(head);
 	if (IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr))
 		rt->rt_flags |= RTF_MULTICAST;
 
@@ -247,7 +248,7 @@ in6_rtqkill(struct radix_node *rn, void *rock)
 	struct rtentry *rt = (struct rtentry *)rn;
 	int err;
 
-	RADIX_NODE_HEAD_WLOCK_ASSERT(ap->rnh);
+	RADIX_NODE_HEAD_LOCK_ASSERT(ap->rnh);
 
 	if (rt->rt_flags & RTPRF_OURS) {
 		ap->found++;

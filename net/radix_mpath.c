@@ -45,6 +45,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/domain.h>
 #include <sys/syslog.h>
+#include <sys/lock.h>
+#include <sys/rmlock.h>
 #include <net/radix.h>
 #include <net/radix_mpath.h>
 #include <net/route.h>
