@@ -3,37 +3,26 @@
 
 # client-side script to clean up a chroot
 
-kill_procs()
-{
-    dir=$1
-    mount=$2
-
-    pids="XXX"
-    while [ ! -z "${pids}" ]; do
-	pids=$(fstat -f "${dir}${mount}" | tail +2 | awk '{print $3}' | sort -u)
-	if [ ! -z "${pids}" ]; then
-	    echo "clean-chroot: Killing off pids in ${dir}"
-	    ps -p $pids
-	    kill -KILL ${pids} 2> /dev/null
-	    sleep 2
-	fi
-    done
-}
-
 cleanup_mount() {
     chroot=$1
     mount=$2
+
+    chrootnb=${chroot##*/}
+    #chroot dir
+    branch=${chroot%/*}
+    #buildid dir
+    branch=${branch%/*}
+    #branch dir
+    branch=${branch%/*}
+    #branch name
+    branch=${branch##*/}
+
+    jname=${branch}-${chrootnb}
+
+    # Stop the jail if running
+    jls -qj ${jname} > /dev/null 2>&1 && jail -r ${jname}
     
-    if [ -d ${chroot}${mount} ]; then
-	mdir=$(fstat -f ${chroot}${mount} | head -2 | tail -1 | awk '{print $5}')
-	if [ "${mdir}" = "MOUNT" ]; then
-	    umount -f ${chroot}${mount} || echo "clean-chroot: Cleanup of ${chroot}${mount} on $(hostname) failed!"
-	fi
-	if [ "${mdir}" = "${chroot}${mount}" ]; then
-	    kill_procs ${chroot} ${mount}
-	    umount -f ${chroot}${mount} || echo "clean-chroot: Cleanup of ${chroot}${mount} on $(hostname) failed!" 
-	fi
-    fi
+    umount -f ${chroot}${mount} || echo "clean-chroot: Cleanup of ${chroot}${mount} on $(hostname) failed!"
 }
 
 arch=$1
@@ -78,9 +67,12 @@ for i in ${ARCHS_REQUIRING_LINPROCFS}; do
     fi
 done
 
-for i in /a/ports /usr/src /dev /root/.ccache; do
+for i in /a/ports /usr/src /dev; do
     cleanup_mount ${chroot} ${i}
 done
+if [ ! -z "${ccache_dir}" ]; then
+    cleanup_mount ${chroot} /root/.ccache
+fi
 
 if [ "${use_zfs}" = "1" ]; then
     cleanup_mount ${chroot} ""

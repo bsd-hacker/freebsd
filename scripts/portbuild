@@ -46,11 +46,12 @@ copypkg()
 
 bailout()
 {
-  chroot=$1
+  jname=$1
   clean=$2
   error=$3
   pkgname=$4
 
+  jail -r $jname
   echo -n "$pkgname failed unexpectedly on $(hostname) at "
   date
 
@@ -61,13 +62,14 @@ arch=$1
 branch=$2
 buildid=$3
 chroot=$4
+jname=${branch}-${chroot##*/}
 shift 4
 
 # Default niceness value
 nice=0
 
 if [ ! -d ${pbd}/${arch}/ ]; then
-  bailout ${chroot} 0 255 ${pkgname}
+  bailout ${jname} 0 255 ${pkgname}
 fi
 . ${pbd}/${arch}/client.conf
 . ${pbd}/${arch}/common.conf
@@ -81,7 +83,7 @@ fi
 # if buildenv isn't there, then ${pbd} is probably the default, which for
 # some reason you have not populated.
 if [ ! -f ${pbd}/scripts/buildenv ]; then
-  bailout ${chroot} 0 255 ${pkgname}
+  bailout ${jname} 0 255 ${pkgname}
 fi
 . ${pbd}/scripts/buildenv
 
@@ -186,7 +188,7 @@ echo "building ${pkgname} in ${chroot}"
 bindist=${buildroot}/${branch}/${buildid}/tarballs/bindist.tar
 bindistlocal=${buildroot}/${branch}/${buildid}/tarballs/bindist-$(hostname).tar
 if [ ! -f $bindist ]; then
-  bailout ${chroot} ${clean} 255 ${pkgname}
+  bailout ${jname} ${clean} 255 ${pkgname}
 fi
 
 if [ -f ${chroot}/.notready ]; then
@@ -194,6 +196,16 @@ if [ -f ${chroot}/.notready ]; then
   if [ -f ${bindistlocal} ]; then
     tar -C ${chroot} -xpf ${bindistlocal}
   fi
+  # jexec -U root will have the right arch in uname -m and uname -p
+  LOGIN_ENV=",UNAME_p=${arch},UNAME_m=${arch}"
+  sed -i "" -e "s/:\(setenv.*\):/:\1${LOGIN_ENV}:/" ${chroot}/etc/login.conf
+  cap_mkdb ${chroot}/etc/login.conf
+
+  cat >> ${chroot}/etc/make.conf << EOF
+ARCH=${arch}
+MACHINE=${arch}
+MACHINE_ARCH=${arch}
+EOF
   # allow additional (not replacement!) knobs for make.conf
   if [ -f ${builddir}/make.conf.client ]; then
       cat ${builddir}/make.conf.client >> ${chroot}/etc/make.conf
@@ -208,20 +220,11 @@ if [ -f ${chroot}/.notready ]; then
   touch ${chroot}/.ready
 fi
 
-if [ "${use_jail}" = "1" ]; then
-  # Figure out jail IP addr
-  chrootpid=$(basename ${chroot})
-  ipbase=$((${chrootpid}+2))
-  ip1=$(($ipbase /(256*256)))
-  ip2=$((($ipbase - ($ip1*256*256)) /256))
-  ip3=$((($ipbase - ($ip1*256*256) - ($ip2*256))))
-fi
-
-trap "bailout ${chroot} ${clean} ${error} ${pkgname}" 1 2 3 9 10 11 15
+trap "bailout ${jname} ${clean} ${error} ${pkgname}" 1 2 3 9 10 11 15
 
 rm -rf ${chroot}/tmp/*
-cd ${chroot}/tmp || bailout ${chroot} ${clean} 255 ${pkgname}
-mkdir -p depends distfiles packages || bailout ${chroot} ${clean} 255 ${pkgname}
+cd ${chroot}/tmp || bailout ${jname} ${clean} 255 ${pkgname}
+mkdir -p depends distfiles packages || bailout ${jname} ${clean} 255 ${pkgname}
 
 echo "building ${pkgname} on $(hostname)" | tee ${chroot}/tmp/${pkgname}.log
 echo "in directory ${chroot}" | tee -a ${chroot}/tmp/${pkgname}.log
@@ -247,12 +250,12 @@ if [ ! -z "${ccache_dir}" ]; then
   fi
 fi
 
-mount_fs ${builddir}/ports ${chroot}/a/ports ${CLIENT_NFS_MASTER} || bailout ${chroot} ${clean} 255 ${pkgname}
+mount_fs ${builddir}/ports ${chroot}/a/ports ${CLIENT_NFS_MASTER} || bailout ${jname} ${clean} 255 ${pkgname}
 ln -sf ../a/ports ${chroot}/usr/ports
 
-mkdir -p ${chroot}/usr/src || bailout ${chroot} ${clean} 255 ${pkgname}
+mkdir -p ${chroot}/usr/src || bailout ${jname} ${clean} 255 ${pkgname}
 
-mount_fs ${builddir}/src ${chroot}${CLIENT_SRCBASE} ${CLIENT_NFS_MASTER} || bailout ${chroot} ${clean} 255 ${pkgname}
+mount_fs ${builddir}/src ${chroot}${CLIENT_SRCBASE} ${CLIENT_NFS_MASTER} || bailout ${jname} ${clean} 255 ${pkgname}
 
 # set overrides for uname
 buildenv.client ${arch} ${chroot}${CLIENT_SRCBASE}
@@ -283,26 +286,20 @@ mtree -deU -f ${chroot}/a/ports/Templates/BSD.local.dist -p ${chroot}${LOCALBASE
 for i in ${ARCHS_REQUIRING_LINPROCFS}; do
   if [ ${i} = ${arch} ]; then
     # JDK ports need linprocfs :(
-    mkdir -p ${chroot}/compat/linux/proc || bailout ${chroot} ${clean} 255 ${pkgname}
-    mount -t linprocfs linprocfs ${chroot}/compat/linux/proc || bailout ${chroot} ${clean} 255 ${pkgname}
+    mkdir -p ${chroot}/compat/linux/proc || bailout ${jname} ${clean} 255 ${pkgname}
+    mount -t linprocfs linprocfs ${chroot}/compat/linux/proc || bailout ${jname} ${clean} 255 ${pkgname}
     break
   fi
 done
 
-_ldconfig_dirs="/lib /usr/lib /usr/lib/compat"
-ldconfig_dirs=""
-for i in ${_ldconfig_dirs}; do
-  if [ -d ${chroot}/${i} ]; then
-    ldconfig_dirs="${ldconfig_dirs} ${i}"
-  fi
-done
-chroot ${chroot} /sbin/ldconfig ${ldconfig_dirs}
-for i in ${ARCHS_REQUIRING_AOUT_COMPAT}; do
-  if [ ${i} = ${arch} ]; then
-	chroot ${chroot} /sbin/ldconfig -aout /usr/lib/aout /usr/lib/compat/aout
-	break
-  fi
-done
+# Start a jail 
+# XXX bapt: the network 127.0.0.1 allows ports like postfix do not fail querying a network
+# device
+jail -c persist name=${jname} ip4.addr=127.0.0.1 ip6=disable path=${chroot} \
+	host.hostname=${jname} allow.sysvipc allow.socket_af allow.raw_sockets \
+	allow.enforce_statfs allow.chflags_allowed
+
+jexec -U root ${jname} /usr/sbin/service ldconfig start
 
 set x $ED $FD $PD $BD $RD $PKGD
 shift 1
@@ -316,7 +313,7 @@ while [ $# -gt 0 ]; do
     # XXX MCL more hard-coding
     if [ ! -f ${chroot}/tmp/depends/$1 ]; then
       echo "ERROR: Couldn't copy $1" | tee -a ${chroot}/tmp/${pkgname}.log
-      bailout ${chroot} ${clean} 255 ${pkgname}
+      bailout ${jname} ${clean} 255 ${pkgname}
     fi
   fi
   shift
@@ -327,7 +324,7 @@ cp -p /tmp/${buildid}/scripts/buildscript ${chroot}
 # phase 0, compile pnohang if necessary
 if [ ! -f /tmp/${buildid}/sources/pnohang ]; then
   cp -p /tmp/${buildid}/sources/pnohang.c ${chroot}
-  chroot ${chroot} /usr/bin/gcc -o /pnohang -Wall /pnohang.c 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
+  jexec -U root ${jname} /usr/bin/gcc -o /pnohang -Wall /pnohang.c 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
   if [ $? -ne 0 ]; then
     error=255
   else
@@ -340,8 +337,16 @@ fi
 
 if [ "${error}" = 0 ]; then
 # phase 1, make checksum
-# Needs to be chroot not jail so that port can be fetched
-  chroot ${chroot} /buildscript ${dirname} 1 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
+# restart the jail with network for the fetch part
+  jail -r ${jname}
+  jail -c persist name=${jname} ip4=inherit ip6=inherit path=${chroot} \
+	host.hostname=${jname} allow.sysvipc allow.socket_af allow.raw_sockets \
+	allow.enforce_statfs allow.chflags_allowed
+  jexec -U root ${jname} /buildscript ${dirname} 1 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
+  jail -r ${jname}
+  jail -c persist name=${jname} ip4.addr=127.0.0.1 ip6=disable path=${chroot} \
+	host.hostname=${jname} allow.sysvipc allow.socket_af allow.raw_sockets \
+	allow.enforce_statfs allow.chflags_allowed
   if [ -f ${chroot}/tmp/status ]; then
     error=$(cat ${chroot}/tmp/status)
   else
@@ -354,13 +359,7 @@ if [ "${error}" = 0 ]; then
 # phase 2, make package
   ln -sf ${pkgname}.log2 ${chroot}/tmp/make.log
 
-  if [ "${use_jail}" = 1 ]; then
-    ifconfig lo0 alias 127.${ip1}.${ip2}.${ip3}/32
-    jail -J ${chroot}/tmp/jail.id ${chroot} jail-${chrootpid} 127.${ip1}.${ip2}.${ip3} /usr/bin/env JAIL_ADDR=127.${ip1}.${ip2}.${ip3} HTTP_PROXY=${http_proxy} /usr/bin/nice -n $nice /buildscript ${dirname} 2 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" > ${chroot}/tmp/${pkgname}.log2 2>&1
-    ifconfig lo0 delete 127.${ip1}.${ip2}.${ip3}
-  else
-    chroot ${chroot} /usr/bin/nice -n ${nice} /buildscript ${dirname} 2 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" > ${chroot}/tmp/${pkgname}.log2 2>&1
-  fi
+  jexec -U root ${jname} /usr/bin/nice -n ${nice} /buildscript ${dirname} 2 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" > ${chroot}/tmp/${pkgname}.log2 2>&1
 
   grep pnohang ${chroot}/tmp/${pkgname}.log2
   cat ${chroot}/tmp/${pkgname}.log2 >> ${chroot}/tmp/${pkgname}.log
@@ -368,6 +367,7 @@ if [ "${error}" = 0 ]; then
   error=$(cat ${chroot}/tmp/status)
 fi
 
+jail -r ${jname}
 rm -rf ${chroot}/${WRKDIRPREFIX}
 
 # Record build completion time for ganglia

@@ -17,62 +17,34 @@ REMOVE_NOTINUSE_CHROOT_TIME=60
 
 #VERBOSE=1
 
-kill_procs()
-{
-    dir=$1
-
-    pids="XXX"
-    while [ ! -z "${pids}" ]; do
-	pids=$(fstat -f "$dir" | tail +2 | awk '{print $3}' | sort -u)
-	if [ ! -z "${pids}" ]; then
-	    echo "cleanup-chroots: Killing off pids in ${dir} on $(hostname)"
-	    ps -p $pids
-	    kill -KILL ${pids} 2> /dev/null
-	    sleep 2
-	    echo
-	fi
-    done
-}
-
-# clean up a single mount
-cleanup_mount() {
-    chroot=$1
-    mount=$2
-
-    if [ -d ${chroot}${mount} ]; then
-	mdir=$(fstat -f ${chroot}${mount} | head -2 | tail -1 | awk '{print $5}')
-	if [ "${mdir}" = "MOUNT" ]; then
-	    umount ${chroot}${mount} || echo "cleanup-chroots: Cleanup of ${chroot}${mount} on $(hostname) failed!"
-	fi
-	if [ "${mdir}" = "${chroot}${mount}" ]; then
-	    kill_procs ${chroot}${mount}
-	    umount ${chroot}${mount} || echo "cleanup-chroots: Cleanup of ${chroot}${mount} on $(hostname) failed!"
-	fi
-    fi
-}
-
 # cleanup all mounts (old NFS, devfs, linux), as well as mds
 cleanup_all() {
     chroot=$1
 
-    mounts=$(mount | grep ${chroot} | awk '{print $3}')
-    if [ ! -z "${mounts}" ]; then
-	if [ $VERBOSE ]; then
-	    echo "cleanup-chroots: trying to kill off mounts:"
-	    echo ${mounts}
-	    echo
-	fi
-	for j in ${mounts}; do
-	    umount ${j} || cleanup_mount ${j}
-	done
-	# XXX MCL is this redundant with the above?
-	umount ${chroot}/compat/linux/proc || cleanup_mount ${chroot}/compat/linux/proc
-    fi
-    if [ "${use_zfs}" != "1" -a "${use_md_swap}" = "1" ]; then
-	chrootnum=$(basename ${chroot})
-	umount -f /dev/md${chroot}
-	mdconfig -d -u ${chrootnum}
-    fi
+    chrootnb=${chroot##*/}
+    #chroot dir
+    branch=${chroot%/*}
+    #buildid dir
+    branch=${branch%/*}
+    #branch dir
+    branch=${branch%/*}
+    #branch name
+    branch=${branch##*/}
+
+    jname=${branch}-${chrootnb}
+
+    # Stop the jail if running
+    jls -qj ${jname} > /dev/null 2>&1 && jail -r ${jname}
+
+    # umounting normal device
+    for MNT in $( mount | awk -v mnt="${chroot}/" 'BEGIN{ gsub(/\//, "\\\/", mnt); } { if ($3 ~ mnt && $1 !~ /\/dev\/md/ ) { print $3 }}' |  sort -r ); do
+	umount -f ${MNT}
+    done
+    # umount md device if any
+    for unit in $(mount | awk -v mnt="${chroot}" 'BEGIN{ gsub(/\//, "\\\/", mnt); } { if ($3 ~ mnt && $1 ~ /\/dev\/md/ ) { sub(/\/dev\/md/, "", $1); print $1 }}' | sort -r); do
+	umount -f /dev/md${unit}
+	mdconfig -d -u ${unit}
+    done
 }
 
 # note: uname is not being overridden (should not need client.conf here)
