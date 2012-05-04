@@ -1,0 +1,172 @@
+.\" Copyright (c) 2012 Yar Tikhiy
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd May 4, 2012
+.Dt SUPERVISE 8
+.Os
+.Sh NAME
+.Nm rcguard
+.Nd "guard an rc.d service process from failure"
+.Sh SYNOPSIS
+.Nm
+.Op Fl fv
+.Fl p Ar pidfile
+.Op Fl s Ar sig_stop
+.Op Fl t Ar timeout
+.Ar service
+.Ar command
+.Sh DESCRIPTION
+The
+.Nm
+auxiliary daemon can monitor an individual
+.Pa rc.d
+service process such as a daemon and restart it, should it crash.
+The
+.Nm
+daemon is not to be started by the user:
+It is intended for the internal use by the
+.Pa rc.d
+system.
+It can be enabled on an individual service by setting its
+respective
+.Va ${name}_guard
+variable in
+.Xr rc.conf 5 ,
+which is an
+.Xr rc.subr 8
+feature.
+.Pp
+The options and arguments are as follows:
+.Bl -tag -width ".Fl s Ar sig_stop"
+.It Fl f
+Run in foreground instead of daemonizing itself.
+Useful in combination with a
+.Fl v
+option.
+.It Fl p Ar pidfile
+The PID file of the process to monitor.
+This is a mandatory option because
+.Nm
+needs to learn the PID of the watched process.
+Own PID file name of the
+.Nm
+instance is formed by appending an
+.Dq Li rcguard
+suffix to
+.Ar pidfile .
+.It Fl s Ar sig_stop
+The signal used to shut the monitored process down,
+corresponding to the
+.Va sig_stop
+variable set by the
+.Pa rc.d
+script.
+If the process terminates on this signal, it will not be restarted.
+In the absence of any
+.Fl s
+option, termination on any signal will be interpreted as crash and
+the service will be restarted.
+.It Fl t Ar timeout
+The timeout to wait for the service PID file as specified with a
+.Fl p
+option.
+Since there is no direct synchronization between
+.Nm
+and the service it monitors, the service can fully start and create
+its PID file well after
+.Nm
+was started.
+For this reason,
+.Nm
+will wait at least
+.Ar timeout
+seconds for a valid PID file to appear.
+The default timeout is 60 seconds.
+.It Fl v
+Increase verbosity level.
+Currently two levels above normal, non-verbose, mode are supported.
+Useful in combination with a
+.Fl f
+option.
+.It Ar service
+The name of the service to monitor or the absolute path name
+of its
+.Pa rc.d
+script .
+If
+.Ar service
+is specified by its name,
+.Xr service 8
+will be used to control it.
+Note well that due to a
+.Xr service 8
+limitation,
+.Ar service 
+currently has to be the name of the
+.Pa rc.d
+script itself rather than the internal name set in the
+.Va name
+variable.
+At the same time, specifying
+.Ar service
+by the absolute path name of its
+.Pa rc.d
+script is unambiguous and free of that caveat.
+.It Ar command
+The
+.Pa rc.d
+command to be used to restart the service in case it fails,
+such as
+.Dq Li restart
+or
+.Dq Li onestart .
+.El
+.Pp
+By default, if the monitored process terminated on a signal,
+it is assumed to have crashed and will be restarted, but if
+it exited, it is assumed to have shut down cleanly and will
+not be restarted.
+This behavior can be adjusted with a
+.Fl s
+option to specify a single signal also meaning a clean shutdown.
+This way the monitored service can be stopped by
+.Pa rc.d
+without having to communicate with its instance of
+.Nm .
+.Sh SEE ALSO
+.Xr rc.conf 5 ,
+.Xr rc 8 ,
+.Xr rc.subr 8 ,
+.Xr service 8
+.Sh HISTORY
+The
+.Nm
+manual page first appeared in
+.Fx 9.0 .
+.Sh AUTHORS
+This
+manual page was written by
+.An Yar Tikhiy Aq yar@FreeBSD.org .
