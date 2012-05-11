@@ -305,6 +305,8 @@ in6_control(struct socket *so, u_long cmd, caddr_t data,
 
 	if (ifp == NULL)
 		return (EOPNOTSUPP);
+ 	if (ifp->if_afdata[AF_INET6] == NULL)
+		return (EPFNOSUPPORT);
 
 	switch (cmd) {
 	case SIOCSNDFLUSH_IN6:
