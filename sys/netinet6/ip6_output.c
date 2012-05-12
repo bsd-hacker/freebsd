@@ -981,7 +981,7 @@ passout:
 			ia6->ia_ifa.if_obytes += m->m_pkthdr.len;
 			ifa_free(&ia6->ia_ifa);
 		}
-		error = nd6_output(ifp, origifp, m, dst, ro->ro_rt);
+		error = nd6_output(ifp, origifp, m, dst, ro);
 		goto done;
 	}
 
@@ -1120,7 +1120,7 @@ sendorfree:
 				ia->ia_ifa.if_opackets++;
 				ia->ia_ifa.if_obytes += m->m_pkthdr.len;
 			}
-			error = nd6_output(ifp, origifp, m, dst, ro->ro_rt);
+			error = nd6_output(ifp, origifp, m, dst, ro);
 		} else
 			m_freem(m);
 	}

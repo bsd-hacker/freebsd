@@ -1104,6 +1104,7 @@ tcp_connect(struct tcpcb *tp, struct sockaddr *nam, struct thread *td)
 		goto out;
 	}
 	inp->inp_laddr = laddr;
+	in_pcbrtalloc(inp);
 	in_pcbrehash(inp);
 	INP_HASH_WUNLOCK(&V_tcbinfo);
 

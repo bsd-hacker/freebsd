@@ -146,8 +146,29 @@ int
 ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst, int shared);
 static VNET_DEFINE(int, ether_ipfw);
 #define	V_ether_ipfw	VNET(ether_ipfw)
-#endif
 
+
+static __inline void
+update_cached_lle(struct route *ro, struct llentry *lle, struct ifnet *ifp,
+	struct sockaddr *dst)
+{
+
+	if (lle == ro->ro_lle ||
+	    (ro->ro_flags & RT_CACHING_CONTEXT) == 0)
+		return;
+
+	IF_AFDATA_RLOCK(ifp);	
+	lle = lla_lookup(LLTABLE(ifp), LLE_EXCLUSIVE, dst);
+	IF_AFDATA_RUNLOCK(ifp);	
+	if (lle != NULL) {
+		LLE_ADDREF(lle);
+		LLE_WUNLOCK(lle);
+		if (ro->ro_lle != NULL)
+			LLE_FREE(ro->ro_lle);
+		ro->ro_lle = lle;
+	}
+}
+#endif
 
 /*
  * Ethernet output routine.
@@ -198,6 +219,8 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		type = htons(ETHERTYPE_IP);
+		if (ro != NULL)
+			update_cached_lle(ro, lle, ifp, dst);
 		break;
 	case AF_ARP:
 	{
@@ -236,6 +259,8 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		if (error)
 			return error;
 		type = htons(ETHERTYPE_IPV6);
+		if (ro != NULL)
+			update_cached_lle(ro, lle, ifp, dst);
 		break;
 #endif
 #ifdef IPX

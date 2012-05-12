@@ -146,7 +146,6 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	if (ro == NULL) {
 		ro = &iproute;
 		bzero(ro, sizeof (*ro));
-
 #ifdef FLOWTABLE
 		{
 			struct flentry *fle;
@@ -163,6 +162,9 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 			}
 		}
 #endif
+	} else {
+		nortfree = 1;
+		ia = ro->ro_ia;
 	}
 
 	if (opt) {
@@ -277,6 +279,7 @@ again:
 			    inp ? inp->inp_inc.inc_fibnum : M_GETFIB(m));
 #endif
 			rte = ro->ro_rt;
+			nortfree = 0;
 		}
 		if (rte == NULL ||
 		    rte->rt_ifp == NULL ||
@@ -672,9 +675,11 @@ passout:
 		IPSTAT_INC(ips_fragmented);
 
 done:
-	if (ro == &iproute && ro->ro_rt && !nortfree) {
+	if (nortfree)
+		return (error);
+
+	if (ro->ro_rt)
 		RTFREE(ro->ro_rt);
-	}
 	if (ia != NULL)
 		ifa_free(&ia->ia_ifa);
 	return (error);

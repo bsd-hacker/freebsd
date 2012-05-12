@@ -627,7 +627,7 @@ skip_routing:
 #endif /* IPFIREWALL_FORWARD */
 
 pass:
-	error = nd6_output(rt->rt_ifp, origifp, m, dst, rt);
+	error = nd6_output(rt->rt_ifp, origifp, m, dst, &rin6);
 	if (error) {
 		in6_ifstat_inc(rt->rt_ifp, ifs6_out_discard);
 		V_ip6stat.ip6s_cantforward++;

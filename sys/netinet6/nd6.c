@@ -1822,10 +1822,10 @@ nd6_slowtimo(void *arg)
 
 int
 nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
-    struct sockaddr_in6 *dst, struct rtentry *rt0)
+    struct sockaddr_in6 *dst, struct route_in6 *ro)
 {
 
-	return (nd6_output_lle(ifp, origifp, m0, dst, rt0, NULL, NULL));
+	return (nd6_output_lle(ifp, origifp, m0, dst, ro->ro_rt, ro->ro_lle, NULL));
 }
 
 
@@ -1851,6 +1851,7 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	int error = 0;
 	int flags = 0;
 	int ip6len;
+	struct route ro;
 
 #ifdef INVARIANTS
 	if (lle != NULL) {
@@ -2078,7 +2079,9 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 		return ((*ifp->if_output)(origifp, m, (struct sockaddr *)dst,
 		    NULL));
 	}
-	error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst, NULL);
+	ro.ro_rt = rt0;
+	ro.ro_lle = ln;
+	error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst, &ro);
 	return (error);
 
   bad:

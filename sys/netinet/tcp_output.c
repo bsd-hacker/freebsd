@@ -169,6 +169,15 @@ tcp_output(struct tcpcb *tp)
 	struct ip *ip = NULL;
 	struct ipovly *ipov = NULL;
 	struct tcphdr *th;
+#ifdef INET
+	struct sockaddr_in *sin;
+	struct route iproute, *ro = NULL;
+#endif
+#ifdef INET6
+	struct sockaddr_in6 *sin6;
+	struct route_in6 iproute6, *ro6 = NULL;
+#endif
+	struct inpcb *inp;
 	u_char opt[TCP_MAXOLEN];
 	unsigned ipoptlen, optlen, hdrlen;
 #ifdef IPSEC
@@ -189,7 +198,8 @@ tcp_output(struct tcpcb *tp)
 	isipv6 = (tp->t_inpcb->inp_vflag & INP_IPV6) != 0;
 #endif
 
-	INP_WLOCK_ASSERT(tp->t_inpcb);
+	inp = tp->t_inpcb;
+	INP_WLOCK_ASSERT(inp);
 
 	/*
 	 * Determine length of data that should be transmitted,
@@ -1203,11 +1213,27 @@ timer:
 		 */
 		ip6->ip6_hlim = in6_selecthlim(tp->t_inpcb, NULL);
 
+	if (in_rt_valid(inp)) {
+		ro6 = &iproute6;
+		sin6 = (struct sockaddr_in6 *)&ro6->ro_dst;
+		sin6->sin6_family = AF_INET6;
+		sin6->sin6_len = sizeof(struct sockaddr_in6);
+		memcpy(&sin6->sin6_addr.s6_addr, &inp->in6p_faddr.s6_addr, 16);
+		ro6->ro_rt = inp->inp_rt;
+		ro6->ro_lle = inp->inp_lle;
+		ro6->ro_flags |= RT_CACHING_CONTEXT;
+	} else
+		ro6 = NULL;
+
 		/* TODO: IPv6 IP6TOS_ECT bit on */
 		error = ip6_output(m,
-			    tp->t_inpcb->in6p_outputopts, NULL,
+			    tp->t_inpcb->in6p_outputopts, ro6,
 			    ((so->so_options & SO_DONTROUTE) ?
 			    IP_ROUTETOIF : 0), NULL, NULL, tp->t_inpcb);
+		if (ro6 != NULL && ro6->ro_lle != NULL && 
+		    inp->inp_lle != ro6->ro_lle)
+			inp->inp_lle = ro6->ro_lle;
+
 	}
 #endif /* INET6 */
 #if defined(INET) && defined(INET6)
@@ -1231,9 +1257,25 @@ timer:
 	if (V_path_mtu_discovery && tp->t_maxopd > V_tcp_minmss)
 		ip->ip_off |= IP_DF;
 
-	error = ip_output(m, tp->t_inpcb->inp_options, NULL,
+	if (in_rt_valid(inp)) {
+		ro = &iproute;
+		sin = (struct sockaddr_in *)&ro->ro_dst;
+		sin->sin_family = AF_INET;
+		sin->sin_len = sizeof(struct sockaddr_in);
+		sin->sin_addr.s_addr = inp->inp_faddr.s_addr;
+		ro->ro_rt = inp->inp_rt;
+		ro->ro_lle = inp->inp_lle;
+		ro->ro_ia = inp->inp_ifaddr;
+		ro->ro_flags |= RT_CACHING_CONTEXT;
+	} else
+		ro = NULL;
+
+	error = ip_output(m, tp->t_inpcb->inp_options, ro,
 	    ((so->so_options & SO_DONTROUTE) ? IP_ROUTETOIF : 0), 0,
 	    tp->t_inpcb);
+	if (ro != NULL && ro->ro_lle != NULL && inp->inp_lle != ro->ro_lle)
+		inp->inp_lle = ro->ro_lle;
+
     }
 #endif /* INET */
 	if (error) {
