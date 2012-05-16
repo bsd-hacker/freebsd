@@ -137,10 +137,13 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 {
 	char buf[64];
 	struct uart_class *class;
-	phandle_t node, chosen;
+	phandle_t node, parent, chosen;
 	pcell_t shift, br, rclk;
-	u_long start, size, pbase, psize;
-	int err;
+	u_long start, size;
+	struct fdt_range ranges[8];
+	struct fdt_range *rptr = ranges;
+	int err, addr_cells, par_addr_cells, size_cells;
+	int nranges;
 
 	uart_bus_space_mem = fdtbus_bs_tag;
 	uart_bus_space_io = NULL;
@@ -168,6 +171,21 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 	if (OF_finddevice(buf) != node)
 		/* Only stdin == stdout is supported. */
 		return (ENXIO);
+
+	/*
+	 * Retrieve UART device parent bus
+	 */
+	if ((parent = OF_parent(node)) <= 0)
+		return (ENXIO);
+	if (fdt_addrsize_cells(parent, &addr_cells, &size_cells))
+		return (ENXIO);
+	if ((par_addr_cells = fdt_parent_addr_cells(parent)) > 2)
+		return (ENXIO);
+	nranges = fdt_read_ranges(parent, &rptr, addr_cells, 
+	    par_addr_cells, size_cells);
+	if (nranges <= 0)
+		return (ENXIO);
+
 	/*
 	 * Retrieve serial attributes.
 	 */
@@ -203,8 +221,11 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 	if (err)
 		return (ENXIO);
 
-	fdt_get_range(OF_parent(node), 0, &pbase, &psize);
-	start += pbase;
+	/* 
+	 * XXX this will not work with uart sitting on
+	 * simplebus nested in other simplebus.
+	 */
+	start += fdt_ranges_lookup(ranges, nranges, start, size);
 
 	return (bus_space_map(di->bas.bst, start, size, 0, &di->bas.bsh));
 }

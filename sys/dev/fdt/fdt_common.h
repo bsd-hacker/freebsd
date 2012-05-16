@@ -40,6 +40,12 @@
 
 #define DI_MAX_INTR_NUM	8
 
+struct fdt_range {
+	u_long	base;
+	u_long	parent;
+	u_long	size;
+};
+
 struct fdt_pci_range {
 	u_long	base_pci;
 	u_long	base_parent;
@@ -90,8 +96,11 @@ int fdt_data_verify(void *, int);
 phandle_t fdt_find_compatible(phandle_t, const char *, int);
 int fdt_get_mem_regions(struct mem_region *, int *, uint32_t *);
 int fdt_get_phyaddr(phandle_t, device_t, int *, void **);
-int fdt_get_range(phandle_t, int, u_long *, u_long *);
 int fdt_immr_addr(vm_offset_t);
+int fdt_read_ranges(phandle_t node, struct fdt_range **ranges, int addr_cells,
+    int par_addr_cells, int size_cels);
+u_long fdt_ranges_lookup(struct fdt_range *ranges, int nranges, u_long addr,
+    u_long size);
 int fdt_regsize(phandle_t, u_long *, u_long *);
 int fdt_intr_decode(phandle_t, pcell_t *, int *, int *, int *);
 int fdt_intr_to_rl(phandle_t, struct resource_list *, struct fdt_sense_level *);
@@ -107,7 +116,7 @@ int fdt_pci_ranges_decode(phandle_t, struct fdt_pci_range *,
     struct fdt_pci_range *);
 int fdt_pci_route_intr(int, int, int, int, struct fdt_pci_intr *, int *);
 int fdt_ranges_verify(pcell_t *, int, int, int, int);
-int fdt_reg_to_rl(phandle_t, struct resource_list *);
+int fdt_reg_to_rl(phandle_t, struct resource_list *, struct fdt_range *, int);
 int fdt_pm(phandle_t);
 
 #endif /* _FDT_COMMON_H_ */

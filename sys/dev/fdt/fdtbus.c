@@ -290,7 +290,7 @@ newbus_device_create(device_t dev_par, phandle_t node, char *name, char *type,
 
 	resource_list_init(&di->di_res);
 
-	if (fdt_reg_to_rl(node, &di->di_res)) {
+	if (fdt_reg_to_rl(node, &di->di_res, NULL, 0)) {
 		device_printf(child, "could not process 'reg' property\n");
 		newbus_device_destroy(child);
 		child = NULL;
@@ -378,9 +378,7 @@ newbus_pci_create(device_t dev_par, phandle_t dt_node, u_long par_base,
 	}
 
 	/* Calculate address range relative to base. */
-	par_base &= 0x000ffffful;
-	start &= 0x000ffffful;
-	start += par_base + fdt_immr_va;
+	start += par_base;
 	if (count == 0)
 		count = par_size;
 	end = start + count - 1;
@@ -487,6 +485,7 @@ fdtbus_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	struct rman *rm;
 	struct fdtbus_devinfo *di;
 	struct resource_list_entry *rle;
+	bus_space_handle_t bsh;
 	int needactivate;
 
 	/*
@@ -541,8 +540,16 @@ fdtbus_alloc_resource(device_t bus, device_t child, int type, int *rid,
 
 	if (type == SYS_RES_IOPORT || type == SYS_RES_MEMORY) {
 		/* XXX endianess should be set based on SOC node */
+		if (bus_space_map(fdtbus_bs_tag, rman_get_start(res),
+		    rman_get_size(res), 0, &bsh))
+			printf("cannot map memory on 0x%lx\n",
+			    rman_get_start(res));
+
 		rman_set_bustag(res, fdtbus_bs_tag);
-		rman_set_bushandle(res, rman_get_start(res));
+		rman_set_bushandle(res, bsh);
+
+		debugf("%s: virtual register space: 0x%lx\n",
+		    device_get_name(child), bsh);
 	}
 
 	if (needactivate)

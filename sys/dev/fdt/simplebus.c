@@ -59,8 +59,10 @@ __FBSDID("$FreeBSD$");
 static MALLOC_DEFINE(M_SIMPLEBUS, "simplebus", "simplebus devices information");
 
 struct simplebus_softc {
-	int	sc_addr_cells;
-	int	sc_size_cells;
+	int			sc_addr_cells;
+	int			sc_size_cells;
+	struct fdt_range *	sc_ranges;
+	int			sc_ranges_count;
 };
 
 struct simplebus_devinfo {
@@ -129,6 +131,7 @@ static driver_t simplebus_driver = {
 devclass_t simplebus_devclass;
 
 DRIVER_MODULE(simplebus, fdtbus, simplebus_driver, simplebus_devclass, 0, 0);
+DRIVER_MODULE(simplebus, simplebus, simplebus_driver, simplebus_devclass, 0, 0);
 
 static int
 simplebus_probe(device_t dev)
@@ -146,11 +149,48 @@ static int
 simplebus_attach(device_t dev)
 {
 	device_t dev_child;
+	device_t parent;
 	struct simplebus_devinfo *di;
 	struct simplebus_softc *sc;
+	struct simplebus_softc *parent_sc;
 	phandle_t dt_node, dt_child;
+	int i, par_addr_cells;
 
 	sc = device_get_softc(dev);
+	dt_node = ofw_bus_get_node(dev);
+
+	if ((fdt_addrsize_cells(dt_node, &sc->sc_addr_cells, &sc->sc_size_cells)) != 0)
+		return (ENXIO);	
+
+	/*
+	 * Process 'ranges' property
+	 */
+	par_addr_cells = fdt_parent_addr_cells(dt_node);
+	if (par_addr_cells > 2)
+		return (ERANGE);
+
+	sc->sc_ranges_count = fdt_read_ranges(dt_node, &sc->sc_ranges,
+	    sc->sc_addr_cells, par_addr_cells, sc->sc_size_cells);
+	if (sc->sc_ranges_count <= 0)
+		device_printf(dev, "WARNING: could not read bus ranges.");
+
+	/*
+	 * Check if we're nested. If so, look up parent simplebus
+	 * ranges and merge it with ours.
+	 */
+	parent = device_get_parent(dev);
+
+	if (device_get_devclass(parent) == simplebus_devclass) {
+		parent_sc = device_get_softc(parent);
+		for (i = 0; i < sc->sc_ranges_count; i++) {
+			sc->sc_ranges[i].parent += fdt_ranges_lookup(
+			    parent_sc->sc_ranges,
+			    parent_sc->sc_ranges_count,
+			    sc->sc_ranges[i].parent,
+			    sc->sc_ranges[i].size);
+		}
+	}
+
 
 	/*
 	 * Walk simple-bus and add direct subordinates as our children.
@@ -175,7 +215,9 @@ simplebus_attach(device_t dev)
 		}
 
 		resource_list_init(&di->di_res);
-		if (fdt_reg_to_rl(dt_child, &di->di_res)) {
+
+		if (fdt_reg_to_rl(dt_child, &di->di_res, sc->sc_ranges,
+		    sc->sc_ranges_count)) {
 			device_printf(dev,
 			    "%s: could not process 'reg' "
 			    "property\n", di->di_ofw.obd_name);

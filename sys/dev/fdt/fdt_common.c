@@ -64,12 +64,30 @@ vm_offset_t fdt_immr_va;
 vm_offset_t fdt_immr_size;
 
 int
-fdt_get_range(phandle_t node, int range_id, u_long *base, u_long *size)
+fdt_immr_addr(vm_offset_t immr_va)
 {
 	pcell_t ranges[6], *rangesptr;
+	phandle_t node;
+	u_long base, size;
 	pcell_t addr_cells, size_cells, par_addr_cells;
 	int len, tuple_size, tuples;
 
+	/*
+	 * Try to access the SOC node directly i.e. through /aliases/.
+	 */
+	if ((node = OF_finddevice("soc")) != -1)
+		if (fdt_is_compatible_strict(node, "simple-bus"))
+			goto moveon;
+	/*
+	 * Find the node the long way.
+	 */
+	if ((node = OF_finddevice("/")) == -1)
+		return (ENXIO);
+
+	if ((node = fdt_find_compatible(node, "simple-bus", 1)) == 0)
+		return (ENXIO);
+
+moveon:
 	if ((fdt_addrsize_cells(node, &addr_cells, &size_cells)) != 0)
 		return (ENXIO);
 	/*
@@ -82,14 +100,6 @@ fdt_get_range(phandle_t node, int range_id, u_long *base, u_long *size)
 	len = OF_getproplen(node, "ranges");
 	if (len > sizeof(ranges))
 		return (ENOMEM);
-	if (len == 0) {
-		*base = 0;
-		*size = ULONG_MAX;
-		return (0);
-	}
-
-	if (!(range_id < len))
-		return (ERANGE);
 
 	if (OF_getprop(node, "ranges", ranges, sizeof(ranges)) <= 0)
 		return (EINVAL);
@@ -102,48 +112,81 @@ fdt_get_range(phandle_t node, int range_id, u_long *base, u_long *size)
 	    addr_cells, size_cells)) {
 		return (ERANGE);
 	}
-	*base = 0;
-	*size = 0;
-	rangesptr = &ranges[range_id];
+	base = 0;
+	size = 0;
+	rangesptr = &ranges[0];
 
-	*base = fdt_data_get((void *)rangesptr, addr_cells);
+	base = fdt_data_get((void *)rangesptr, addr_cells);
 	rangesptr += addr_cells;
-	*base += fdt_data_get((void *)rangesptr, par_addr_cells);
+	base += fdt_data_get((void *)rangesptr, par_addr_cells);
 	rangesptr += par_addr_cells;
-	*size = fdt_data_get((void *)rangesptr, size_cells);
+	size = fdt_data_get((void *)rangesptr, size_cells);
+
+	fdt_immr_pa = base;
+	fdt_immr_va = immr_va;
+	fdt_immr_size = size;
+
 	return (0);
 }
 
 int
-fdt_immr_addr(vm_offset_t immr_va)
+fdt_read_ranges(phandle_t node, struct fdt_range **ranges, int addr_cells,
+    int par_addr_cells, int size_cells)
 {
-	phandle_t node;
-	u_long base, size;
-	int r;
+	static pcell_t data[128];
+	pcell_t *ptr;
+	int i, len, tuple_size, ranges_count;
+	
+	len = OF_getprop(node, "ranges", (void *)&data, sizeof data);
+	tuple_size = addr_cells + par_addr_cells + size_cells;
+	ranges_count = len != 0 ? len / tuple_size / sizeof(pcell_t) : 1;
 
-	/*
-	 * Try to access the SOC node directly i.e. through /aliases/.
-	 */
-	if ((node = OF_finddevice("soc")) != 0)
-		if (fdt_is_compatible_strict(node, "simple-bus"))
-			goto moveon;
-	/*
-	 * Find the node the long way.
-	 */
-	if ((node = OF_finddevice("/")) == 0)
-		return (ENXIO);
+	debugf("tuple_size=%d ranges_count=%d\n", tuple_size, ranges_count);
+	
+	ptr = data;
 
-	if ((node = fdt_find_compatible(node, "simple-bus", 1)) == 0)
-		return (ENXIO);
-
-moveon:
-	if ((r = fdt_get_range(node, 0, &base, &size)) == 0) {
-		fdt_immr_pa = base;
-		fdt_immr_va = immr_va;
-		fdt_immr_size = size;
+	if (*ranges == NULL)
+		*ranges = malloc(sizeof(struct fdt_range) * ranges_count, 
+		    M_TEMP, M_WAITOK | M_ZERO);
+	
+	/* empty ranges case */
+	if (len == 0) {
+		(*ranges)[0].base = 0l;
+		(*ranges)[0].parent = 0l;
+		(*ranges)[0].size = ~0l;
+		return (1);
 	}
 
-	return (r);
+	for (i = 0; i < ranges_count; i++) {
+		(*ranges)[i].base = fdt_data_get((void *)ptr, addr_cells);
+		ptr += addr_cells;
+		(*ranges)[i].parent = fdt_data_get((void *)ptr, par_addr_cells);
+		ptr += par_addr_cells;
+		(*ranges)[i].size = fdt_data_get((void *)ptr, size_cells); 
+		ptr += size_cells;
+		
+		debugf("new range: base=%lx parent=%lx size=%lx\n",
+		    (*ranges)[i].base, (*ranges[i]).parent, 
+		    (*ranges)[i].size);
+	}
+	
+	return (ranges_count);
+}
+
+__inline u_long
+fdt_ranges_lookup(struct fdt_range *ranges, int nranges, u_long addr,
+    u_long size)
+{
+	int n;
+
+	for (n = 0; n < nranges; n++) {
+		if (ranges[n].base <= addr && (ranges[n].base + 
+		    ranges[n].size >= addr + size - 1)) {
+			return ranges[n].parent;
+		}
+	}
+
+	return 0;
 }
 
 /*
@@ -419,19 +462,17 @@ fdt_regsize(phandle_t node, u_long *base, u_long *size)
 }
 
 int
-fdt_reg_to_rl(phandle_t node, struct resource_list *rl)
+fdt_reg_to_rl(phandle_t node, struct resource_list *rl,
+    struct fdt_range *ranges, int ranges_count)
 {
-	u_long start, end, count;
+	u_long start, end, count, parent;
 	pcell_t *reg, *regptr;
 	pcell_t addr_cells, size_cells;
 	int tuple_size, tuples;
 	int i, rv;
-	long vaddr;
-	long busaddr, bussize;
 
 	if (fdt_addrsize_cells(OF_parent(node), &addr_cells, &size_cells) != 0)
 		return (ENXIO);
-	fdt_get_range(OF_parent(node), 0, &busaddr, &bussize);
 
 	tuple_size = sizeof(pcell_t) * (addr_cells + size_cells);
 	tuples = OF_getprop_alloc(node, "reg", tuple_size, (void **)&reg);
@@ -453,15 +494,22 @@ fdt_reg_to_rl(phandle_t node, struct resource_list *rl)
 		reg += addr_cells + size_cells;
 
 		/* Calculate address range relative to base. */
-		start += busaddr;
-		if (bus_space_map(fdtbus_bs_tag, start, count, 0, &vaddr) != 0)
-			panic("Couldn't map the device memory");
-		end = vaddr + count - 1;
+		parent = 0;
 
-		debugf("reg addr start = %lx, end = %lx, count = %lx\n", vaddr,
+		if (ranges == NULL)
+			goto moveon;
+
+		parent = fdt_ranges_lookup(ranges, ranges_count, start, count);
+
+moveon:
+
+		start = parent + start;
+		end = start + count - 1;
+
+		debugf("reg addr start = %lx, end = %lx, count = %lx\n", start,
 		    end, count);
 
-		resource_list_add(rl, SYS_RES_MEMORY, i, vaddr, end,
+		resource_list_add(rl, SYS_RES_MEMORY, i, start, end,
 		    count);
 	}
 	rv = 0;
