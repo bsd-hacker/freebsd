@@ -3062,7 +3062,7 @@ again_with_private_addresses_allowed:
 				continue;
 			}
 		} else {
-			printf("Stcb is null - no print\n");
+			SCTP_PRINTF("Stcb is null - no print\n");
 		}
 		atomic_add_int(&sifa->refcount, 1);
 		goto out;
@@ -3430,7 +3430,7 @@ sctp_find_cmsg(int c_type, void *data, struct mbuf *control, size_t cpsize)
 					}
 					m_copydata(control, at + CMSG_ALIGN(sizeof(struct cmsghdr)), sizeof(struct sctp_authinfo), (caddr_t)&authinfo);
 					sndrcvinfo->sinfo_keynumber_valid = 1;
-					sndrcvinfo->sinfo_keynumber = authinfo.auth_keyid;
+					sndrcvinfo->sinfo_keynumber = authinfo.auth_keynumber;
 					break;
 				default:
 					return (found);
@@ -3714,12 +3714,10 @@ sctp_add_cookie(struct mbuf *init, int init_offset,
 	if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
 		struct mbuf *mat;
 
-		mat = copy_init;
-		while (mat) {
+		for (mat = copy_init; mat; mat = SCTP_BUF_NEXT(mat)) {
 			if (SCTP_BUF_IS_EXTENDED(mat)) {
 				sctp_log_mb(mat, SCTP_MBUF_ICOPY);
 			}
-			mat = SCTP_BUF_NEXT(mat);
 		}
 	}
 #endif
@@ -3734,12 +3732,10 @@ sctp_add_cookie(struct mbuf *init, int init_offset,
 	if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
 		struct mbuf *mat;
 
-		mat = copy_initack;
-		while (mat) {
+		for (mat = copy_initack; mat; mat = SCTP_BUF_NEXT(mat)) {
 			if (SCTP_BUF_IS_EXTENDED(mat)) {
 				sctp_log_mb(mat, SCTP_MBUF_ICOPY);
 			}
-			mat = SCTP_BUF_NEXT(mat);
 		}
 	}
 #endif
@@ -3819,8 +3815,7 @@ sctp_handle_no_route(struct sctp_tcb *stcb,
 			if ((net->dest_state & SCTP_ADDR_REACHABLE) && stcb) {
 				SCTPDBG(SCTP_DEBUG_OUTPUT1, "no route takes interface %p down\n", net);
 				sctp_ulp_notify(SCTP_NOTIFY_INTERFACE_DOWN,
-				    stcb,
-				    SCTP_FAILED_THRESHOLD,
+				    stcb, 0,
 				    (void *)net,
 				    so_locked);
 				net->dest_state &= ~SCTP_ADDR_REACHABLE;
@@ -6096,14 +6091,14 @@ sctp_prune_prsctp(struct sctp_tcb *stcb,
 						 * if the mbuf is here
 						 */
 						int ret_spc;
-						int cause;
+						uint8_t sent;
 
 						if (chk->sent > SCTP_DATAGRAM_UNSENT)
-							cause = SCTP_RESPONSE_TO_USER_REQ | SCTP_NOTIFY_DATAGRAM_SENT;
+							sent = 1;
 						else
-							cause = SCTP_RESPONSE_TO_USER_REQ | SCTP_NOTIFY_DATAGRAM_UNSENT;
+							sent = 0;
 						ret_spc = sctp_release_pr_sctp_chunk(stcb, chk,
-						    cause,
+						    sent,
 						    SCTP_SO_LOCKED);
 						freed_spc += ret_spc;
 						if (freed_spc >= dataout) {
@@ -6126,8 +6121,7 @@ sctp_prune_prsctp(struct sctp_tcb *stcb,
 						int ret_spc;
 
 						ret_spc = sctp_release_pr_sctp_chunk(stcb, chk,
-						    SCTP_RESPONSE_TO_USER_REQ | SCTP_NOTIFY_DATAGRAM_UNSENT,
-						    SCTP_SO_LOCKED);
+						    0, SCTP_SO_LOCKED);
 
 						freed_spc += ret_spc;
 						if (freed_spc >= dataout) {
@@ -6446,12 +6440,10 @@ error_out:
 			if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
 				struct mbuf *mat;
 
-				mat = appendchain;
-				while (mat) {
+				for (mat = appendchain; mat; mat = SCTP_BUF_NEXT(mat)) {
 					if (SCTP_BUF_IS_EXTENDED(mat)) {
 						sctp_log_mb(mat, SCTP_MBUF_ICOPY);
 					}
-					mat = SCTP_BUF_NEXT(mat);
 				}
 			}
 #endif
@@ -6547,12 +6539,10 @@ sctp_sendall_iterator(struct sctp_inpcb *inp, struct sctp_tcb *stcb, void *ptr,
 		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
 			struct mbuf *mat;
 
-			mat = m;
-			while (mat) {
+			for (mat = m; mat; mat = SCTP_BUF_NEXT(mat)) {
 				if (SCTP_BUF_IS_EXTENDED(mat)) {
 					sctp_log_mb(mat, SCTP_MBUF_ICOPY);
 				}
-				mat = SCTP_BUF_NEXT(mat);
 			}
 		}
 #endif
@@ -6581,9 +6571,7 @@ sctp_sendall_iterator(struct sctp_inpcb *inp, struct sctp_tcb *stcb, void *ptr,
 			 * dis-appearing on us.
 			 */
 			atomic_add_int(&stcb->asoc.refcnt, 1);
-			sctp_abort_an_association(inp, stcb,
-			    SCTP_RESPONSE_TO_USER_REQ,
-			    m, SCTP_SO_NOT_LOCKED);
+			sctp_abort_an_association(inp, stcb, m, SCTP_SO_NOT_LOCKED);
 			/*
 			 * sctp_abort_an_association calls sctp_free_asoc()
 			 * free association will NOT free it since we
@@ -6677,7 +6665,6 @@ sctp_sendall_iterator(struct sctp_inpcb *inp, struct sctp_tcb *stcb, void *ptr,
 				abort_anyway:
 						atomic_add_int(&stcb->asoc.refcnt, 1);
 						sctp_abort_an_association(stcb->sctp_ep, stcb,
-						    SCTP_RESPONSE_TO_USER_REQ,
 						    NULL, SCTP_SO_NOT_LOCKED);
 						atomic_add_int(&stcb->asoc.refcnt, -1);
 						goto no_chunk_output;
@@ -7350,12 +7337,10 @@ dont_do_it:
 		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
 			struct mbuf *mat;
 
-			mat = chk->data;
-			while (mat) {
+			for (mat = chk->data; mat; mat = SCTP_BUF_NEXT(mat)) {
 				if (SCTP_BUF_IS_EXTENDED(mat)) {
 					sctp_log_mb(mat, SCTP_MBUF_ICOPY);
 				}
-				mat = SCTP_BUF_NEXT(mat);
 			}
 		}
 #endif
@@ -8953,12 +8938,10 @@ sctp_send_cookie_echo(struct mbuf *m,
 			if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
 				struct mbuf *mat;
 
-				mat = cookie;
-				while (mat) {
+				for (mat = cookie; mat; mat = SCTP_BUF_NEXT(mat)) {
 					if (SCTP_BUF_IS_EXTENDED(mat)) {
 						sctp_log_mb(mat, SCTP_MBUF_ICOPY);
 					}
-					mat = SCTP_BUF_NEXT(mat);
 				}
 			}
 #endif
@@ -9027,12 +9010,10 @@ sctp_send_heartbeat_ack(struct sctp_tcb *stcb,
 	if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
 		struct mbuf *mat;
 
-		mat = outchain;
-		while (mat) {
+		for (mat = outchain; mat; mat = SCTP_BUF_NEXT(mat)) {
 			if (SCTP_BUF_IS_EXTENDED(mat)) {
 				sctp_log_mb(mat, SCTP_MBUF_ICOPY);
 			}
-			mat = SCTP_BUF_NEXT(mat);
 		}
 	}
 #endif
@@ -9313,12 +9294,10 @@ sctp_send_asconf_ack(struct sctp_tcb *stcb)
 		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
 			struct mbuf *mat;
 
-			mat = m_ack;
-			while (mat) {
+			for (mat = m_ack; mat; mat = SCTP_BUF_NEXT(mat)) {
 				if (SCTP_BUF_IS_EXTENDED(mat)) {
 					sctp_log_mb(mat, SCTP_MBUF_ICOPY);
 				}
-				mat = SCTP_BUF_NEXT(mat);
 			}
 		}
 #endif
@@ -9509,7 +9488,7 @@ sctp_chunk_retransmission(struct sctp_inpcb *inp,
 			continue;
 		}
 		if (chk->data == NULL) {
-			printf("TSN:%x chk->snd_count:%d chk->sent:%d can't retran - no data\n",
+			SCTP_PRINTF("TSN:%x chk->snd_count:%d chk->sent:%d can't retran - no data\n",
 			    chk->rec.data.TSN_seq, chk->snd_count, chk->sent);
 			continue;
 		}
@@ -9520,7 +9499,7 @@ sctp_chunk_retransmission(struct sctp_inpcb *inp,
 			    chk->snd_count,
 			    SCTP_BASE_SYSCTL(sctp_max_retran_chunk));
 			atomic_add_int(&stcb->asoc.refcnt, 1);
-			sctp_abort_an_association(stcb->sctp_ep, stcb, 0, NULL, so_locked);
+			sctp_abort_an_association(stcb->sctp_ep, stcb, NULL, so_locked);
 			SCTP_TCB_LOCK(stcb);
 			atomic_subtract_int(&stcb->asoc.refcnt, 1);
 			return (SCTP_RETRAN_EXIT);
@@ -13154,9 +13133,7 @@ sctp_lower_sosend(struct socket *so,
 		atomic_add_int(&stcb->asoc.refcnt, -1);
 		free_cnt_applied = 0;
 		/* release this lock, otherwise we hang on ourselves */
-		sctp_abort_an_association(stcb->sctp_ep, stcb,
-		    SCTP_RESPONSE_TO_USER_REQ,
-		    mm, SCTP_SO_LOCKED);
+		sctp_abort_an_association(stcb->sctp_ep, stcb, mm, SCTP_SO_LOCKED);
 		/* now relock the stcb so everything is sane */
 		hold_tcblock = 0;
 		stcb = NULL;
@@ -13633,8 +13610,7 @@ skip_preblock:
 dataless_eof:
 	/* EOF thing ? */
 	if ((srcv->sinfo_flags & SCTP_EOF) &&
-	    (got_all_of_the_send == 1) &&
-	    (stcb->sctp_ep->sctp_flags & SCTP_PCB_FLAGS_UDPTYPE)) {
+	    (got_all_of_the_send == 1)) {
 		int cnt;
 
 		SCTP_STAT_INCR(sctps_sends_with_eof);
@@ -13711,7 +13687,6 @@ dataless_eof:
 						free_cnt_applied = 0;
 					}
 					sctp_abort_an_association(stcb->sctp_ep, stcb,
-					    SCTP_RESPONSE_TO_USER_REQ,
 					    NULL, SCTP_SO_LOCKED);
 					/*
 					 * now relock the stcb so everything
@@ -13856,7 +13831,7 @@ out_unlocked:
 	if (inp) {
 		sctp_validate_no_locks(inp);
 	} else {
-		printf("Warning - inp is NULL so cant validate locks\n");
+		SCTP_PRINTF("Warning - inp is NULL so cant validate locks\n");
 	}
 #endif
 	if (top) {

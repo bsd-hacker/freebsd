@@ -28,6 +28,7 @@ huge_palloc(size_t size, size_t alignment, bool zero)
 	void *ret;
 	size_t csize;
 	extent_node_t *node;
+	bool is_zeroed;
 
 	/* Allocate one or more contiguous chunks for this request. */
 
@@ -42,7 +43,12 @@ huge_palloc(size_t size, size_t alignment, bool zero)
 	if (node == NULL)
 		return (NULL);
 
-	ret = chunk_alloc(csize, alignment, false, &zero);
+	/*
+	 * Copy zero into is_zeroed and pass the copy to chunk_alloc(), so that
+	 * it is possible to make correct junk/zero fill decisions below.
+	 */
+	is_zeroed = zero;
+	ret = chunk_alloc(csize, alignment, false, &is_zeroed);
 	if (ret == NULL) {
 		base_node_dealloc(node);
 		return (NULL);
@@ -64,7 +70,7 @@ huge_palloc(size_t size, size_t alignment, bool zero)
 	if (config_fill && zero == false) {
 		if (opt_junk)
 			memset(ret, 0xa5, csize);
-		else if (opt_zero)
+		else if (opt_zero && is_zeroed == false)
 			memset(ret, 0, csize);
 	}
 
@@ -134,11 +140,11 @@ huge_ralloc(void *ptr, size_t oldsize, size_t size, size_t extra,
 	 */
 	copysize = (size < oldsize) ? size : oldsize;
 
+#ifdef JEMALLOC_MREMAP
 	/*
 	 * Use mremap(2) if this is a huge-->huge reallocation, and neither the
 	 * source nor the destination are in dss.
 	 */
-#ifdef JEMALLOC_MREMAP_FIXED
 	if (oldsize >= chunksize && (config_dss == false || (chunk_in_dss(ptr)
 	    == false && chunk_in_dss(ret) == false))) {
 		size_t newsize = huge_salloc(ret);
@@ -162,7 +168,7 @@ huge_ralloc(void *ptr, size_t oldsize, size_t size, size_t extra,
 			 */
 			char buf[BUFERROR_BUF];
 
-			buferror(errno, buf, sizeof(buf));
+			buferror(buf, sizeof(buf));
 			malloc_printf("<jemalloc>: Error in mremap(): %s\n",
 			    buf);
 			if (opt_abort)

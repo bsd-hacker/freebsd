@@ -351,7 +351,7 @@ struct ath_softc {
 	struct ath_stats	sc_stats;	/* interface statistics */
 	struct ath_tx_aggr_stats	sc_aggr_stats;
 	struct ath_intr_stats	sc_intr_stats;
-	int			sc_debug;
+	uint64_t		sc_debug;
 	int			sc_nvaps;	/* # vaps */
 	int			sc_nstavaps;	/* # station vaps */
 	int			sc_nmeshvaps;	/* # mbss vaps */
@@ -1011,6 +1011,8 @@ void	ath_intr(void *);
 	((*(_ah)->ah_isFastClockEnabled)((_ah)))
 #define	ath_hal_radar_wait(_ah, _chan) \
 	((*(_ah)->ah_radarWait)((_ah), (_chan)))
+#define	ath_hal_get_mib_cycle_counts(_ah, _sample) \
+	((*(_ah)->ah_getMibCycleCounts)((_ah), (_sample)))
 #define	ath_hal_get_chan_ext_busy(_ah) \
 	((*(_ah)->ah_get11nExtBusy)((_ah)))
 

@@ -148,7 +148,8 @@ nd6_status(int s)
 	memset(&nd, 0, sizeof(nd));
 	strncpy(nd.ifname, ifr.ifr_name, sizeof(nd.ifname));
 	if ((s6 = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
-		warn("socket(AF_INET6, SOCK_DGRAM)");
+		if (errno != EPROTONOSUPPORT)
+			warn("socket(AF_INET6, SOCK_DGRAM)");
 		return;
 	}
 	error = ioctl(s6, SIOCGIFINFO_IN6, &nd);
