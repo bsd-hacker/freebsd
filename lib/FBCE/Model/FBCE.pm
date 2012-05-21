@@ -5,6 +5,8 @@ use base 'Catalyst::Model::DBIC::Schema';
 
 __PACKAGE__->config(
     schema_class => 'FBCE::Schema',
+    
+    
 );
 
 =head1 NAME
@@ -35,5 +37,3 @@ it under the same terms as Perl itself.
 =cut
 
 1;
-
-# $FreeBSD$
