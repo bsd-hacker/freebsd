@@ -57,6 +57,7 @@ __PACKAGE__->table("persons");
 =head2 password
 
   data_type: 'text'
+  default_value: '*'
   is_nullable: 0
   original: {data_type => "varchar"}
 
@@ -114,9 +115,10 @@ __PACKAGE__->add_columns(
   },
   "password",
   {
-    data_type   => "text",
-    is_nullable => 0,
-    original    => { data_type => "varchar" },
+    data_type     => "text",
+    default_value => "*",
+    is_nullable   => 0,
+    original      => { data_type => "varchar" },
   },
   "admin",
   { data_type => "boolean", default_value => \"false", is_nullable => 0 },
@@ -204,8 +206,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07022 @ 2012-05-07 16:18:46
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:C2SLY4P5C5iAf42VtNDqgQ
+# Created by DBIx::Class::Schema::Loader v0.07024 @ 2012-05-21 23:49:53
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:QtgEo2NXwa8v6FRHUuQ/Lg
 
 use Crypt::SaltedHash;
 use Digest::MD5 qw(md5_hex);
