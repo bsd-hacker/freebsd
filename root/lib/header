@@ -1,0 +1,5 @@
+<div class="header">
+<h1 class="title">[% title | html %]</h1>
+[% PROCESS lib/navigation %]
+[% PROCESS lib/loginout %]
+</div>

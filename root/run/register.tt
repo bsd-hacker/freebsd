@@ -1,0 +1,28 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+[% PROCESS run/when %]
+
+[% IF nominating == 0 %]
+<p>To register as a candidate in the election, enter the following information:</p>
+<ul>
+  <li>A short slogan which will appear next to your name on the list of candidates and at the top of your candidate page;</li>
+  <li>A longer statement about your background, why you are running and what you intend to do if elected.</li>
+</ul>
+<form method="post" action="">
+  <p>Slogan</p>
+  <input name="short" size="80" maxlength="64" value="[% short | html %]"/>
+  <p>Statement (<a href="http://search.cpan.org/~chromatic/Text-WikiFormat-0.79/lib/Text/WikiFormat.pm#Wiki_Format">WikiFormat</a>)</p>
+  <textarea name="long" cols="80" rows="24">[% long | html %]</textarea>
+  <div>
+    <input type="submit" name="submit" value="I choose to run!"/>
+    <input type="submit" name="cancel" value="Ah, screw this."/>
+    <input type="reset" value="Undo"/>
+  </div>
+</form>
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

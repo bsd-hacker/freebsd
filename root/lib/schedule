@@ -1,0 +1,16 @@
+<div class="schedule">
+  <dl>
+    <dt>Application period begins</dt>
+    <dd>[% INCLUDE lib/datetime dt=nominating_starts %]</dd>
+    <dt>Application period ends</dt>
+    <dd>[% INCLUDE lib/datetime dt=nominating_ends %]</dd>
+    <dt>Voting begins</dt>
+    <dd>[% INCLUDE lib/datetime dt=voting_starts %]</dd>
+    <dt>Voting ends</dt>
+    <dd>[% INCLUDE lib/datetime dt=voting_ends %]</dd>
+    <dt>Results announced</dt>
+    <dd>[% INCLUDE lib/datetime dt=announcement %]</dd>
+    <dt>New core team takes office</dt>
+    <dd>[% INCLUDE lib/date dt=investiture %]</dd>
+  </dl>
+</div>

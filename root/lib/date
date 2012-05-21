@@ -1,0 +1,1 @@
+[% dt.day_name %], [% dt.day %] [% dt.month_name %] [% dt.year %]

@@ -1,0 +1,5 @@
+[% IF voting < 0 %]
+  <p>The voting period starts on [% INCLUDE lib/datetime dt=voting_starts %].</p>
+[% ELSIF voting > 0 %]
+  <p>The voting period ended on [% INCLUDE lib/datetime dt=voting_ends %].</p>
+[% END %]

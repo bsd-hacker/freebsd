@@ -1,0 +1,55 @@
+body {
+	font-family: sans-serif;
+	background-color: #eef;
+}
+
+a:active {
+	color: #903;
+}
+
+a {
+	color: #309;
+	text-decoration: none;
+}
+
+a:hover {
+	color: #cce;
+	background-color: #309;
+}
+
+blockquote {
+	margin-left: 6ex;
+	width: 80ex;
+}
+
+.schedule {
+	margin-left: 2ex;
+}
+
+.vote {
+	margin-left: 2ex;
+}
+
+.message {
+	font-weight: bold;
+}
+
+.error {
+	color: red;
+}
+
+td, th {
+	text-align: left;
+	vertical-align: baseline;
+}
+
+.login {
+	width: 30%;
+	margin-left: auto;
+	margin-right: auto;
+	margin-top: 20%;
+}
+
+.login td {
+	text-align: right;
+}

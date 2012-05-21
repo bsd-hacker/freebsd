@@ -1,0 +1,45 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<h2>Election results</h2>
+
+[% IF voting < 0 %]
+<p>Voting has not yet started.</p>
+[% ELSIF voting == 0 %]
+<p>Voting is still ongoing.</p>
+[% ELSIF !announced %]
+<p>Voting is complete, but the results have not yet been made public.</p>
+[% ELSE %]
+
+[% IF candidates.count == 0 %]
+<p>There were no candidates.</p>
+[% ELSIF voted == 0 %]
+<p>No votes were cast.</p>
+[% ELSE %]
+<p>[% voted %] out of [% voters.count %] voters ([% voted / voters.count * 100 | format('%.1f') %]%) have cast [% votes %] out of [% voters.count * max_votes %] ([% votes / (voters.count * max_votes) * 100 | format('%.1f') %]%) votes.</p>
+<table class="results">
+  <tr>
+    <th>Rank</th>
+    <th>Votes</th>
+    <th>Share</th>
+    <th>Candidate</th>
+  </tr>
+  [% i = 0 %]
+  [% WHILE (candidate = results.next) %]
+  [% i = i + 1 %]
+  [% login = results.login %]
+  <tr class="[% IF i <= max_votes %]elected [% END %][% IF candidate.incumbent %]incumbent [% END %]candidate">
+    <td class="num">[% i %]</td>
+    <td class="num">[% candidate.votes %]</td>
+    <td class="num">[% candidate.votes / voted * 100 | format('%.1f') %]%</td>
+    <td><a href="[% c.uri_for('/see/candidate', candidate.login) | html %]">[% candidate.realname | html %] ([% candidate.login %])</a></td>
+  </tr>
+  [% END %]
+</table>
+[% END %]
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

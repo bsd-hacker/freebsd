@@ -1,0 +1,15 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+[% IF nominating < 0 %]
+<p>The nomination period has not yet started.</p>
+[% ELSIF nominating > 0 %]
+<p>The nomination period has ended.</p>
+[% ELSE %]
+<p>How the heck did you get here?</p>
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

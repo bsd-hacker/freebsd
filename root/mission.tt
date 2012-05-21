@@ -1,0 +1,67 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<h2>What does core@ do?</h2>
+
+<p>Wes Peters wrote the following for the 2004 election.  It is somewhat dated, but apart from the mention of the Technical Review Board, which has since been disbanded, it is still a pretty good explanation of the core team's work.</p>
+
+<blockquote>
+  <p>Our primary responsibilities are:</p>
+  
+  <ol>
+    <li>
+      <p>Approve new FreeBSD team members.  Currently this includes src committers and administrative roles such as Security Officer, Ports Manager, Docs Manager, Admins, and Release Engineers.  With the exception of committers, most of these are not too hard; we often have a ready pool of talented people waiting for a need to fulfill.</p>
+      
+      <p>The chore of approving committers has gotten better since we established some guidelines for those proposing a new committer.  Wilko now does the brute work of making sure the proposer has adequately summarized the proposee's past contributions to FreeBSD and other bodies of work. Sometimes it takes longer than proposers would like, but this is mostly due to travel and other time and communications issues.</p>
+
+      <p>That said, reviewing and approving committers is the brunt of Core Team work, which is IMHO really good news.</p>
+    </li>
+    <li>
+      <p>Resolving disputes.  This is the not-so-fun part of the job.</p>
+
+      <p>In resolving technical disputes we attempt to involve a few other trusted committers who have expertise in the target area to review the proposals and we often come to an agreement on how the opposing sides can work together.  This isn't perfect, but it has resulted in significant hurdles being cleared in 5.x development.  The Technical Review Board grew out of this experience.</p>
+
+      <p>I personally do not feel the TRB has been able to achieve everything we (Core) wanted from it, but am certain that is because we (Core) didn't establish it with clear enough guidelines on what it was supposed to accomplish and how it might go about accomplishing that.  The work our current TRB has done has been very good and I appreciate their willingness to help, but it's not at all clear to committers how to approach the TRB, what to approach the TRB with, or what to expect from them as a result. The next Core Team will have this on their agenda.</p>
+
+      <p>Disputes also means personality clashes.  For all the cries of the &ldquo;shut up and code&rdquo; crowd, these disputes are inevitable in a project with almost 200 people actively contributing.  This is by far the hardest part of being a Core Team member.  The mandate here is clear; we are to do what is best for FreeBSD.  What that means is often not clear: we have basic disagreements on what &ldquo;FreeBSD&rdquo; is.  It is an operating system, but an operating system is made of many parts, but it is also an entire computing system, including the ports infrastructure, a number of critical applications without which the operating system itself is of little consequence, and FreeBSD is also the community of developers and users.</p>
+
+      <p>Our disputes tend to fall into two categories.  The first category is simple, two (or more) people who want to accomplish the same goal using different means.  This is the more frequent type of conflict we address, and we can usually (but not always) solve it by reminding the combatants they really are trying to accomplish the same thing, and by getting them to actually share information rather than hurl accusations at each other.</p>
+
+      <p>The second category of dispute tends to split two different classes or types of developers, which I will call the &ldquo;fast movers&rdquo; and the &ldquo;big thinkers.&rdquo; When a fast mover sees a problem, he wants to understand what is failing, find a way to fix it, and move on.  Big thinkers, on the other hand, want to understand the underlying causes of the failure and fix the system so that not only is this problem fixed, but similar problems won't crop up in the future.</p>
+
+      <p>Note: this does not imply that big thinkers are incapable of moving quickly, or that fast movers are incapable of understanding the entire architecture. It's just the essential difference between someone who builds race cars and someone who works on the pit crew.</p>
+
+      <p>It is unfortunate that these two different types of engineers find themselves in violent disagreement so often, because both are absolutely necessary for success.  Imagine a race team with a bunch of white-coated engineers manning the pits, or a rock star race car driver running a finite element analysis on front-wing downforce over a range of speeds.  Not really gonna win races, are we?</p>
+
+      <p>These disagreements tend to be the most acrimonious and the most damaging to FreeBSD.  The operating system itself is relatively resilient to these disagreements in the long run; if some ill-advised code creeps in and gets used much, it will be fixed or replaced before long.  The real damage done to &ldquo;FreeBSD&rdquo; is within the community, both in the corps of committers and in the relationships with users.  These flare-ups inevitably become public, and then publicized, and then pundits are once again wagging their tongues about how the FreeBSD guys can't get along together.</p>
+
+      <p>Handling these disputes absolutely sucks.  Nobody wins, and FreeBSD <em>always</em>loses.  Everyone who gets involved in these ends up looking like a fool in public to some extent, and everyone involved in FreeBSD by association.</p>
+
+      <p>Sorry, I'll climb down off that soapbox now.</p>
+    </li>
+
+    <li>
+      <p>Guide FreeBSD by developing and maintaining policies.  This is the &ldquo;book keeping&rdquo; part we all love to hate.  Most of us do not like being rules lawyers, and this Core Team has done a very good job of avoiding that tendency.  We strive to develop rules that are clear and simple and free of &ldquo;lawyerese&rdquo;.</p>
+
+      <p>Many of our policies are very simple, and we place a lot of responsibility on key players.  The Security Officer and the Release Engineer in particular have quite free rein over the entire system.  The CVS Meister has complete control over the source repository, which is really our crown jewel.  This is in fitting with general FreeBSD trust model, where we trust each and every committer to follow the rules, commit good code, and not break FreeBSD.</p>
+
+      <p>We currently have a couple of open policy items.  One that leaps to mind is the spam filtering issue.  What we have in place now seems to have soothed the ruffled feathers over spam filters, but we have an open action item to define the purpose and goals of freebsd.org email addresses so everyone involved can make decisions based on that, rather than how everyone feels about SPAM and Alfred's love life at this moment.  This is a pretty good example of what &ldquo;policy making&rdquo; in FreeBSD is about.</p>
+    </li>
+  </ol>
+
+  <p>That's my summation of what it is to be a Core Team member.  I hope we have a really good batch of candidates to chose from again.</p>
+
+  <p><b>OPINION ALERT!</b></p>
+
+  <p>The following are my opinions, not those of FreeBSD, the Core Team, or any other entity, legal or otherwise:</p>
+
+  <p>If you are considering standing for election and you find yourself disinterested in or disbelieving of any of the above three job aspects, think long and hard about taking on this task.  At the end of two years you will have been dragged forcefully through the need for each of the above.</p>
+
+  <p>Also, if you're not going to stick around for two years, spare us the drama and don't run.  This is a big commitment.  Go back and read the committers handbook again.  Your job is to make sure those rules and guidelines are followed, to make them better where they need improvement, and to make sure those who have agreed to follow them do so and at least &ldquo;do no harm&rdquo; to FreeBSD in the process.</p>
+
+  <p>If you don't love FreeBSD&mdash;all of FreeBSD&mdash;enough, this job is not for you.</p>
+</blockquote>
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

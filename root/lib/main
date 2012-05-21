@@ -1,0 +1,3 @@
+<div class="main [% c.controller.path_prefix %]">
+[% content %]
+</div>

@@ -1,0 +1,5 @@
+[% IF nominating < 0 %]
+  <p>The nomination period starts on [% INCLUDE lib/datetime dt=nominating_starts %].</p>
+[% ELSIF nominating > 0 %]
+  <p>The nomination period ended on [% INCLUDE lib/datetime dt=nominating_ends %].</p>
+[% END %]

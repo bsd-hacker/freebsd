@@ -1,0 +1,7 @@
+% sudo /usr/local/etc/rc.d/postgresql initdb
+% sudo /usr/local/etc/rc.d/postgresql start
+% sudo -u pgsql createuser -s des
+% createuser -S -D -R fbce
+% createdb -E utf8 -O fbce fbce
+% psql -f db/fbce.sql fbce fbce 
+% ./db/update.sh

@@ -1,0 +1,24 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+[% IF nominating < 0 %]
+  <p>The nomination period starts on [% INCLUDE lib/datetime dt=nominating_starts %].</p>
+[% ELSIF candidates.count == 0 %]
+<p>There are no candidates yet.</p>
+[% ELSE %]
+[% IF candidates.count == 1 %]
+<p>The following person has registered as a candidate in the election:</p>
+[% ELSE %]
+<p>The following [% candidates.count %] people have registered as candidates in the election:</p>
+[% END %]
+<ul>
+  [% WHILE (candidate = candidates.next) %]
+  <li>[% candidate.name | html %]: <a href="[% c.uri_for('/see/candidate', candidate.login) | html %]">[% candidate.statement.short | html %]</a></li>
+  [% END %]
+</ul>
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

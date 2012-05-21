@@ -1,0 +1,235 @@
+/*
+ * Body
+ */
+body {
+    font-family: sans-serif;
+    background-color: #fff;
+    margin: 5% auto 5% auto;
+    min-width: 400px;
+    width: 80%;
+    max-width: 800px;
+}
+
+/*
+ * General formatting
+ */
+a {
+    text-decoration: none;
+    color: #900;
+}
+
+a:hover, a:focus {
+    background-color: #fee;
+}
+
+th {
+    text-align: left;
+}
+
+/*
+ * Title
+ */
+.title {
+    display: block;
+    padding: 6pt;
+    font-size: 200%;
+    font-weight: bold;
+}
+
+/*
+ * Navigation bar
+ */
+.navigation {
+    display: block;
+    margin: 0;
+    padding: 2pt;
+    border-top: thin solid black;
+    border-bottom: thin solid black;
+    text-align: center;
+    background-color: #fc6;
+    color: #900;
+}
+
+.navigation ul {
+    margin: 0;
+    padding: 0;
+}
+
+.navigation li {
+    display: inline;
+    padding: 0;
+    margin: 0;
+}
+
+.navigation a {
+    padding: 2pt 2em 2pt 2em;
+    margin: 0;
+    // font-size: 120%;
+    text-transform: uppercase;
+    font-weight: bold;
+    color: #900;
+}
+
+.navigation a:hover, .navigation a:focus {
+    background-color: #900;
+    color: #fc6;
+}
+
+/*
+ * Date / time, name and login / logout link
+ */
+.loginout {
+    display: block;
+    margin: 0;
+    padding: 3pt;
+    text-align: right;
+    font-size: 75%;
+    font-style: italic;
+}
+
+.datetime {
+    float: left;
+}
+
+/*
+ * Content
+ */
+.main {
+    display: block;
+    padding: 6pt;
+    min-height: 400px;
+    overflow: auto;
+}
+
+/*
+ * Footer
+ */
+.footer {
+    padding: 3pt 0 3pt 0;
+    border-top: thin solid black;
+    border-bottom: thin solid black;
+    background-color: #fc6;
+    text-align: center;
+    font-size: 75%;
+    font-style: italic;
+}
+
+/*
+ * Front page
+ */
+.schedule {
+    margin-left: 2ex;
+}
+
+.schedule dt {
+    font-weight: bold;
+    padding-bottom: 3pt;
+}
+
+.schedule dd {
+    padding-bottom: 3pt;
+}
+
+/*
+ * Login page
+ */
+.loginform {
+    display: block;
+    width: 50%;
+    margin: 25% auto 0 auto;
+}
+
+.loginform fieldset {
+    padding: 12pt;
+    border: thin solid #900;
+}
+
+.loginform legend {
+    padding: 0.5ex;
+    font-size: large;
+    font-weight: bold;
+    color: #900;
+    // background-color: #fc6;
+}
+
+.loginform div {
+    padding: 6pt;
+    white-space: nowrap;
+    text-align: right;
+}
+
+/*
+ * Candidate
+ */
+.candidate-portrait {
+    float: left;
+}
+
+.candidate-name {
+    font-size: 141%;
+    font-weight: bold;
+}
+
+.statement {
+    margin: 16px 48px 32px 48px;
+}
+    
+.see .statement {
+    margin-left: 128px;
+    margin-right: 88px;
+    margin-bottom: 40px;
+}
+
+.statement:before {
+    content: url('/static/images/lquotes.png');
+    float: left;
+    margin-left: -40px;
+}
+
+.statement:after {
+    content: url('/static/images/rquotes.png');
+    float: right;
+    margin-right: -40px;
+    margin-top: -32px;
+}
+
+.statement-title {
+}
+
+.statement-body {
+}
+
+/*
+blockquote {
+    margin-left: 6ex;
+    width: 80ex;
+}
+
+.vote {
+    margin-left: 2ex;
+}
+
+.message {
+    font-weight: bold;
+}
+
+.error {
+    color: red;
+}
+
+td, th {
+    text-align: left;
+    vertical-align: baseline;
+}
+
+.login {
+    width: 30%;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 20%;
+}
+
+.login td {
+    text-align: right;
+}
+*/

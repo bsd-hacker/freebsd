@@ -1,0 +1,11 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<a name="bylaws"></a>
+<h2>Core Bylaws</h2>
+[% PROCESS lib/bylaws %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

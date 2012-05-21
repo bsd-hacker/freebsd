@@ -1,0 +1,81 @@
+[% WRAPPER lib/html_top %]
+<script type="text/javascript">
+  function setTotal(n) {
+    var total = document.getElementById("total");
+    total.innerHTML = new Number(n).toString();
+    if (n > [% max_votes ? max_votes : 0 %])
+      total.style.color = "red";
+    else
+      total.style.color = total.parentNode.style.color;
+  }
+
+  function updateTotal() {
+    var inputs = document.getElementsByTagName("input");
+    var total = 0;
+    for (var i = 0; i < inputs.length; i++) {
+	  if (inputs[i].checked == true)
+	    total++;
+	}
+	setTotal(total);
+  }
+
+  function initTotal() {
+    setTotal([% voted_for.keys.size %]);
+    document.getElementById("totalrow").style.visibility = "visible";
+  }
+</script>
+[% END %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+[% PROCESS vote/when %]
+[% IF voting == 0 %]
+  [% IF candidates.count == 0 %]
+  <p>There are no candidates to vote for.</p>
+  [% ELSE %]
+  <p>You may vote for up to [% max_votes %] candidates from the list below.  You can modify your vote at any time until voting closes (see the <a href="[% c.uri_for('/') | html %]#schedule">schedule</a> on the front page).</p>
+  <form method="POST" action="" onreset="setTotal([% voted_for.keys.size %])">
+    <table class="vote">
+      [% IF vote_ok.defined %]
+      <tr>
+	<td colspan="3">
+	  <p class="message">Your vote was registered.  You may change it at any time until voting closes.</p>
+	</td>
+      </tr>
+      [% END %]
+      [% IF error.defined %]
+      <tr>
+	<td colspan="3">
+	  <p class="error">[% error | html %]</p>
+	</td>
+      </tr>
+      [% END %]
+      [% WHILE (candidate = candidates.next) %]
+      [% login = candidate.login %]
+      <tr>
+	<td><input type="checkbox" name="vote_for_[% login %]" id="vote_for_[% login %]"[% IF voted_for.$login %] checked="checked"[% END %] onclick="updateTotal()"/></td>
+	<td><label for="vote_for_[% login %]">[% candidate.name | html %]</label></td>
+	<td><a href="[% c.uri_for('/see/candidate', login) | html %]">[% candidate.statement.short | html %]</a></td>
+      </tr>
+      [% END %]
+      <tr id="totalrow" style="visibility: collapse">
+	<td style="text-align: center;" id="total">X</td>
+	<td colspan="2">votes cast</td>
+      </tr>
+      <tr>
+	<td colspan="3">
+	  <p>
+	    <input type="reset" name="reset" value="Reset"/>
+	    <input type="submit" name="vote" value="Vote!"/>
+	    <input type="submit" name="cancel" value="[% IF voted_for.size == 0 %]Not yet.[% ELSE %]Don't change.[% END %]"/>
+	  </p>
+	</td>
+      </tr>
+    </table>
+  </form>
+  [% END %]
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

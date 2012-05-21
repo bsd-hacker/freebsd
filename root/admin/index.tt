@@ -1,0 +1,44 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<h2>Election results</h2>
+
+[% IF voting < 0 %]
+<p>Voting has not yet started.</p>
+[% ELSE %]
+[% IF voting == 0 %]
+<p>NOTE: Voting is still ongoing&mdash;these are not the final results!</p>
+[% END %]
+[% IF candidates.count == 0 %]
+<p>There are no candidates.</p>
+[% ELSIF voted.count == 0 %]
+<p>No votes have been cast yet.</p>
+[% ELSE %]
+<p>[% voted.count %] out of [% voters.count %] voters ([% voted.count / voters.count * 100 | format('%.1f') %]%) have cast [% votes.count %] out of [% voters.count * max_votes %] ([% votes.count / (voters.count * max_votes) * 100 | format('%.1f') %]%) votes.</p>
+
+<table class="results">
+  <tr>
+    <th>Rank</th>
+    <th>Votes</th>
+    <th>Share</th>
+    <th>Candidate</th>
+  </tr>
+  [% i = 0 %]
+  [% WHILE (candidate = results.next) %]
+  [% i = i + 1 %]
+  [% login = results.login %]
+  <tr[% IF candidate.incumbent %] class="incumbent"[% END %]>
+    <td class="num">[% i %]</td>
+    <td class="num">[% candidate.votes %]</td>
+    <td class="num">[% candidate.votes / voted.count * 100 | format('%.1f') %]%</td>
+    <td><a href="mailto:[% candidate.login | html %]@freebsd.org %]">[% candidate.realname | html %] ([% candidate.login %])</a></td>
+  </tr>
+  [% END %]
+</table>
+[% END %]
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

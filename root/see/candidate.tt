@@ -1,0 +1,16 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<img class="candidate-portrait" src="[% candidate.gravatar | html %]"/>
+<h2 class="candidate-name">[% candidate.name | html %] ([% candidate.login %])</h2>
+<div class="statement">
+  <h3 class="statement-title">[% candidate.statement.short | html %]</h3>
+  <div class="statement-body">
+    [% candidate.statement.long_html %]
+  </div>
+</div>
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

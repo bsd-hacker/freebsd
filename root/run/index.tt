@@ -1,0 +1,28 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+[% PROCESS run/when %]
+
+[% IF user.statement.defined %]
+<p>You have registered as a candidate in the 2010 FreeBSD Core Team election.  You have provided the following statement:</p>
+
+<div class="statement"> 
+  <h3 class="statement-title">[% user.statement.short | html %]</h3>
+  <div class="statement-body">
+    [% user.statement.long_html %]
+  </div>
+</div>
+[% END %]
+
+[% IF nominating == 0 %]
+  [% IF user.statement.defined %]
+<p>You can <a href="[% c.uri_for('/run/edit') | html %]">edit your statement</a> or <a href="[% c.uri_for('/run/withdraw') | html %]">withdraw your candidacy</a>.</p>
+  [% ELSE %]
+<p>You can <a href="[% c.uri_for('/run/register') | html %]">register your candidacy</a> in the 2010 FreeBSD Core Team election.</p>
+  [% END %]
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

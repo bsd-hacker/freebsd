@@ -1,0 +1,22 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<p>Pursuant to the FreeBSD core <a href="[% c.uri_for('/bylaws') | html %]">bylaws</a>, a core team election [% IF nominating < 0 %]will be[% ELSIF voting > 0 %]was[% ELSE %]is being[% END %] held this year.  The schedule [% IF voting > 0 %]was[% ELSE %]is[% END %] as follows:</p>
+
+<a name="schedule"></a>
+[% PROCESS lib/schedule %]
+
+[% IF announced %]
+<p>The <a href="[% c.uri_for('/result') | html %]">official result</a> is now available.</p>
+[% END %]
+
+<!--
+<h2>What does core@ do?</h2>
+   
+<p>You can find some (admittedly subjective) information about this <a href="[% c.uri_for('/mission') | html %]">here</a>.</p>
+-->
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

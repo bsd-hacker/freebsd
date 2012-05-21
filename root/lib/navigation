@@ -1,0 +1,12 @@
+<div class="navigation">
+  <ul>
+    <li><a href="[% c.uri_for('/') | html %]">Home</a></li>
+    [% IF nominating == 0 %]<li><a href="[% c.uri_for('/run') | html %]">Run</a></li>[% END %]
+    [% IF nominating >= 0 %]<li><a href="[% c.uri_for('/see') | html %]">Candidates</a></li>[% END %]
+    [% IF voting == 0 %]<li><a href="[% c.uri_for('/vote') | html %]">Vote</a></li>[% END %]
+    [% IF announced %]<li><a href="[% c.uri_for('/result') | html %]">Result</a></li>[% END %]
+    [% IF user.admin %]
+    <li><a href="[% c.uri_for('/admin') | html %]">Admin</a></li>
+    [% END %]
+  </ul>
+</div>
