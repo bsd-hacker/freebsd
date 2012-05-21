@@ -2,7 +2,7 @@
 [% PROCESS lib/header %]
 [% WRAPPER lib/main %]
 
-<img class="candidate-portrait" src="[% candidate.gravatar | html %]"/>
+<img class="candidate-portrait" src="[% candidate.gravatar(c.request.secure ? 'https' : 'http') | html %]?s=64&d=mm"/>
 <h2 class="candidate-name">[% candidate.name | html %] ([% candidate.login %])</h2>
 <div class="statement">
   <h3 class="statement-title">[% candidate.statement.short | html %]</h3>
