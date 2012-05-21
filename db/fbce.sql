@@ -15,8 +15,10 @@ create table persons (
         votes integer not null default 0,
         unique(login)
 );
-insert into persons(login, realname, password, admin)
-    values('des', 'Dag-Erling Smørgrav', '*', true);
+insert into persons(login, realname, password, active, admin)
+    values('des', 'Dag-Erling Smørgrav', '*', true, true);
+insert into persons(login, realname, password, active, admin)
+    values('kenneth36', 'Kenneth (36)', '*', true, false);
 
 drop table if exists statements cascade;
 create table statements (
