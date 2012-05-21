@@ -7,7 +7,7 @@ create table persons (
         id serial primary key,
         login varchar not null,
         realname varchar null,
-        password varchar not null,
+        password varchar not null default '*',
         admin boolean not null default false,
 	active boolean not null default false,
         incumbent boolean not null default false,
