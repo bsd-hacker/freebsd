@@ -4,3 +4,5 @@ use Catalyst::ScriptRunner;
 Catalyst::ScriptRunner->run('FBCE', 'User');
 
 1;
+
+# $FreeBSD$

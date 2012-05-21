@@ -133,3 +133,5 @@ sub long_html($) {
 }
 
 1;
+
+# $FreeBSD$

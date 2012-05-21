@@ -89,6 +89,6 @@ __PACKAGE__->add_columns(
 # Created by DBIx::Class::Schema::Loader v0.07022 @ 2012-05-02 18:58:53
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:DoGyNz+8Hk6gsoM9TPLzHw
 
-
-# You can replace this text with custom content, and it will be preserved on regeneration
 1;
+
+# $FreeBSD$

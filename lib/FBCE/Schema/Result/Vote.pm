@@ -134,6 +134,6 @@ __PACKAGE__->belongs_to(
 # Created by DBIx::Class::Schema::Loader v0.07022 @ 2012-05-02 18:58:53
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:gBIEgDR5kVbXd4B6h3LRQg
 
-
-# You can replace this text with custom content, and it will be preserved on regeneration
 1;
+
+# $FreeBSD$

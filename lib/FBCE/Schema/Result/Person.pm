@@ -268,3 +268,5 @@ sub gravatar($) {
 }
 
 1;
+
+# $FreeBSD$
