@@ -1,13 +1,6 @@
--- drop table if exists config cascade;
--- create table config (
---         key varchar not null primary key,
---         value varchar not null,
---         unique(key)
--- );
--- insert into config values('reg_open', '2010-06-09T00:00:00');
--- insert into config values('reg_close', '2010-06-16T00:00:00');
--- insert into config values('vote_open', '2010-06-17T00:00:00');
--- insert into config values('vote_close', '2010-07-14T00:00:00');
+--
+-- $FreeBSD$
+--
 
 drop table if exists persons cascade;
 create table persons (
@@ -50,5 +43,3 @@ create view results as
     select persons.id, persons.login as login, persons.realname as realname, persons.incumbent, count(votes.*) as votes
     from persons join votes on persons.id = votes.candidate
     group by persons.id, persons.login, persons.realname, persons.incumbent;
-
--- select * from results order by votes limit 9;
