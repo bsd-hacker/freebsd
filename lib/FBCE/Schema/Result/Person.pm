@@ -216,7 +216,7 @@ use Digest::MD5 qw(md5_hex);
 sub set_password($$) {
     my ($self, $password) = @_;
 
-    my $csh = new Crypt::SaltedHash(algorithm => 'MD5');
+    my $csh = new Crypt::SaltedHash(algorithm => 'SHA-1');
     $csh->add($password);
     $self->set_column(password => $csh->generate());
     $self->update()
