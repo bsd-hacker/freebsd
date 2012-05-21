@@ -1,7 +1,7 @@
 package FBCE::Model::Schedule;
 use Moose;
 use MooseX::Types::Common::Numeric qw(PositiveInt);
-use MooseX::Types::DateTime::MoreCoercions qw(DateTime);
+use MooseX::Types::DateTime::MoreCoercions qw(DateTime Duration);
 use DateTime;
 use namespace::autoclean;
 
@@ -64,6 +64,14 @@ has max_votes => (
     isa => PositiveInt,
     is => 'ro',
     required => 1
+);
+
+# XXX does not belong here
+has cutoff => (
+    isa => Duration,
+    coerce => 1,
+    is => 'ro',
+    required => 1,
 );
 
 sub _phase($$$) {
