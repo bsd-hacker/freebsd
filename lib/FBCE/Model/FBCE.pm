@@ -5,12 +5,6 @@ use base 'Catalyst::Model::DBIC::Schema';
 
 __PACKAGE__->config(
     schema_class => 'FBCE::Schema',
-    
-    connect_info => {
-        dsn => 'dbi:Pg:dbname=fbce',
-        user => 'fbce',
-        password => '',
-    }
 );
 
 =head1 NAME
