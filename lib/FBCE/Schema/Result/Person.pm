@@ -260,11 +260,15 @@ sub commit($) {
 #
 # Gravatar URL
 #
-sub gravatar($) {
-    my ($self) = @_;
+sub gravatar($;$) {
+    my ($self, $scheme) = @_;
 
     my $md5 = md5_hex($self->login . "\@freebsd.org");
-    return "http://www.gravatar.com/avatar/$md5";
+    if ($scheme eq 'https') {
+	return "https://secure.gravatar.com/avatar/$md5";
+    } else {
+	return "http://www.gravatar.com/avatar/$md5";
+    }
 }
 
 1;
