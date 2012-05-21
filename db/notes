@@ -1,3 +1,5 @@
+# $FreeBSD$
+
 % sudo /usr/local/etc/rc.d/postgresql initdb
 % sudo /usr/local/etc/rc.d/postgresql start
 % sudo -u pgsql createuser -s des
