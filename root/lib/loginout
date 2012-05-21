@@ -1,8 +1,8 @@
 <div class="loginout">
   <div class="datetime">[% PROCESS lib/datetime dt=now %]</div>
   [% IF user %]
-  Logged in as [% user.name | html %] &ndash; <a href="[% c.uri_for('/logout') | html %]">Log out</a>
+  Logged in as [% user.name | html %] ([% IF user.active %]active[% ELSE %]inactive[% END %]) &ndash; <a href="[% c.uri_for('/logout') | html %]">Log out</a>
   [% ELSE %]
-  <a href="[% c.uri_for('/login') | html %]">Log in</a>
+  <a href="[% c.uri_for('/login', { action => c.req.uri }) | html %]">Log in</a>
   [% END %]
 </div>
