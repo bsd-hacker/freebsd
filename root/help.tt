@@ -1,0 +1,11 @@
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<a name="help"></a>
+<h2>Help</h2>
+[% PROCESS lib/help %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

@@ -48,7 +48,7 @@ sub auto :Private {
     $c->stash(max_votes => $schedule->{'max_votes'});
 
     # Authentication
-    if ($c->request->path !~ m/^(login|logout|bylaws|mission|static\/.*)?$/) {
+    if ($c->request->path !~ m/^(login|logout|bylaws|help|static\/.*)?$/) {
 	if (!$c->user_exists) {
 	    $c->stash(action => $c->uri_for());
 	    $c->stash(template => 'login.tt');
@@ -101,7 +101,7 @@ sub bylaws :Local :Args(0) {
 
 }
 
-sub mission :Local :Args(0) {
+sub help :Local :Args(0) {
     my ($self, $c) = @_;
 
 }
