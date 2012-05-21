@@ -29,7 +29,10 @@
 [% WRAPPER lib/main %]
 
 [% PROCESS vote/when %]
-[% IF voting == 0 %]
+
+[% IF !user.active %]
+<p>You are not qualified to vote in the election.  If you believe this is incorrect, please contact the election administrator.</p>
+[% ELSIF voting == 0 %]
   [% IF candidates.count == 0 %]
   <p>There are no candidates to vote for.</p>
   [% ELSE %]
@@ -54,7 +57,7 @@
       [% login = candidate.login %]
       <tr>
 	<td><input type="checkbox" name="vote_for_[% login %]" id="vote_for_[% login %]"[% IF voted_for.$login %] checked="checked"[% END %] onclick="updateTotal()"/></td>
-	<td><label for="vote_for_[% login %]">[% candidate.name | html %]</label></td>
+	<td><label for="vote_for_[% login %]">[% candidate.name | html %]:</label></td>
 	<td><a href="[% c.uri_for('/see/candidate', login) | html %]">[% candidate.statement.short | html %]</a></td>
       </tr>
       [% END %]

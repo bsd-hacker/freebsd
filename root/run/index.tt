@@ -4,7 +4,9 @@
 
 [% PROCESS run/when %]
 
-[% IF user.statement.defined %]
+[% IF !user.active %]
+<p>You are not qualified to run in the election.  If you believe this is incorrect, please contact the election administrator.</p>
+[% ELSIF user.statement.defined %]
 <p>You have registered as a candidate in the 2010 FreeBSD Core Team election.  You have provided the following statement:</p>
 
 <div class="statement"> 
@@ -13,14 +15,11 @@
     [% user.statement.long_html %]
   </div>
 </div>
-[% END %]
-
-[% IF nominating == 0 %]
-  [% IF user.statement.defined %]
+  [% IF nominating == 0 %]
 <p>You can <a href="[% c.uri_for('/run/edit') | html %]">edit your statement</a> or <a href="[% c.uri_for('/run/withdraw') | html %]">withdraw your candidacy</a>.</p>
-  [% ELSE %]
-<p>You can <a href="[% c.uri_for('/run/register') | html %]">register your candidacy</a> in the 2010 FreeBSD Core Team election.</p>
   [% END %]
+[% ELSIF nominating == 0 %]
+<p>You can <a href="[% c.uri_for('/run/register') | html %]">register your candidacy</a> in the election.</p>
 [% END %]
 
 [% END %]

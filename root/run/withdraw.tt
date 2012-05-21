@@ -2,12 +2,18 @@
 [% PROCESS lib/header %]
 [% WRAPPER lib/main %]
 
+[% IF !user.active %]
+<p>You are not qualified to run in the election.  If you believe this is incorrect, please contact the election administrator.</p>
+[% ELSIF !user.statement.defined %]
+<p>You have not registered as a candidate.</p>
+[% ELSE %]
 <p>Are you sure you want to withdraw your candidacy?  Note that your statement will be permanently deleted from the database; if you change your mind, you will have to start over.</p>
 
 <form method="post" action="">
   <input type="submit" name="submit" value="I'm outta here!"/>
   <input type="submit" name="cancel" value="No, I'll stay."/>
 </form>
+[% END %]
 
 [% END %]
 [% PROCESS lib/footer %]
