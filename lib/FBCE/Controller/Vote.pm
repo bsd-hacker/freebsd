@@ -25,8 +25,8 @@ sub index :Path :Args(0) {
 
     my $user = $c->user->get_object();
     $c->stash(user => $user);
-    if ($c->stash->{'phase'} != 0) {
-	return;
+    if ($c->stash->{'voting'} != 0 || !$user->active) {
+	$c->detach();
     }
     my $p = $c->req->params;
     if ($p->{cancel}) {
@@ -79,7 +79,7 @@ sub index :Path :Args(0) {
 
 #     $c->authenticate();
 #     my $user = $c->user->get_object();
-#     if ($c->stash->{'phase'} != 0) {
+#     if ($c->stash->{'voting'} != 0 || !$user->active) {
 # 	$c->res->redirect($c->uri_for('/vote'));
 # 	$c->detach();
 #     }

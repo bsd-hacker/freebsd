@@ -33,7 +33,7 @@ sub register :Local :Args(0) {
 
 #    $c->authenticate();
     my $user = $c->user->get_object();
-    if ($c->stash->{'nominating'} != 0) {
+    if ($c->stash->{'nominating'} != 0 || !$user->active) {
 	$c->res->redirect($c->uri_for('/run'));
 	$c->detach();
     }
@@ -64,7 +64,7 @@ sub edit :Local :Args(0) {
 
 #    $c->authenticate();
     my $user = $c->user->get_object();
-    if ($c->stash->{'nominating'} != 0) {
+    if ($c->stash->{'nominating'} != 0 || !$user->active) {
 	$c->res->redirect($c->uri_for('/run'));
 	$c->detach();
     }
@@ -94,7 +94,7 @@ sub withdraw :Local :Args(0) {
 
 #    $c->authenticate();
     my $user = $c->user->get_object();
-    if ($c->stash->{'nominating'} != 0) {
+    if ($c->stash->{'nominating'} != 0 || !$user->active) {
 	$c->res->redirect($c->uri_for('/run'));
 	$c->detach();
     }
