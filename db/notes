@@ -7,3 +7,4 @@
 % createdb -E utf8 -O fbce fbce
 % psql -f db/fbce.sql fbce fbce 
 % ./db/update.sh
+% perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("altinn")'
