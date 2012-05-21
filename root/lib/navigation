@@ -8,5 +8,6 @@
     [% IF user.admin %]
     <li><a href="[% c.uri_for('/admin') | html %]">Admin</a></li>
     [% END %]
+    <li><a href="[% c.uri_for('/help') | html %]">Help</a></li>
   </ul>
 </div>
