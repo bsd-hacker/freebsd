@@ -32,7 +32,8 @@
     <td class="num">[% i %]</td>
     <td class="num">[% candidate.votes %]</td>
     <td class="num">[% candidate.votes / voted.count * 100 | format('%.1f') %]%</td>
-    <td><a href="mailto:[% candidate.login | html %]@freebsd.org %]">[% candidate.realname | html %] ([% candidate.login %])</a></td>
+    <!--td><a href="mailto:[% candidate.email | html %]">[% candidate.realname | html %] ([% candidate.login %])</a></td-->
+    <td><a href="[% c.uri_for('/see/candidate', candidate.login) %]">[% candidate.realname | html %] ([% candidate.login %])</a></td>
   </tr>
   [% END %]
 </table>
