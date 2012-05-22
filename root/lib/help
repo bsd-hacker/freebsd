@@ -1,0 +1,66 @@
+<h3>What is this?</h3>
+
+<p>This is the website for the 2012 FreeBSD core team elections.  See the <a href="[% c.uri_for('/bylaws') | html %]">bylaws</a> and the schedule posted on the front page for additional information on the election rules.</p>
+
+<h3>Who has access?</h3>
+
+<p>Anyone with a valid commit bit in at least one of FreeBSD's repositories (src, doc, ports) can log in with their FreeBSD user name.  However, only active committers, i.e. those who have made at least one commit in the twelve months preceding the election, are allowed to run or vote in the election.  Inactive committers can only observe.</p>
+
+[% IF user %]
+  [% IF user.active %]
+<p>You are registered as an active committer, and are qualified to run and vote in the election.</p>
+  [% ELSE %]
+<p>You are not registered as an active committer, and are therefore not qualified to run or vote in the election.  If you believe this is incorrect, please contact the election administrator.</p>
+  [% END %]
+[% ELSE %]
+<p>When you are logged in, your status (active or inactive) will be visible next to your name in the top right corner.</p>
+[% END %]
+
+<h3>How do I log in?</h3>
+
+[% IF user %]
+<p>You're already logged in, you big dummy.</p>
+[% ELSE %]
+<p>Click the <a href="[% c.uri_for('/login') | html %]">Log in</a> link below the navigation bar.  Or the one right here.</p>
+[% IF nominating >= 0 || voting >= 0 %]
+<p>If you have a valid FreeBSD commit bit but you haven't received a password, please contact the election administrator.</p>
+[% END %]
+[% END %]
+
+<h3>How do I run?</h3>
+
+[% PROCESS run/when %]
+
+[% IF nominating == 0 %]
+  [% IF !user %]
+<p>You must be logged in to run for election.</p>
+  [% ELSIF !user.active %]
+<p>You are not registered as an active committer, and are therefore not qualified to run in the election.  If you believe this is incorrect, please contact the election administrator.</p>
+  [% ELSE %]
+<p>Click the <a href="[% c.uri_for('/run') | html %]">Run</a> link in the navigation bar (or the one right here).  You will be asked to enter a slogan and a statement of intent.</p>
+  [% END %]
+[% END %]
+
+<h3>How do I see who's running?</h3>
+
+[% IF nominating < 0 %]
+<p>The application period hasn't started yet.</p>
+[% ELSIF !user %]
+<p>You must be logged in to see the list of candidates.</p>
+[% ELSE %]
+<p>Click the <a href="[% c.uri_for('/see') | html %]">Candidates</a> link in the navigation bar (or the one right here).</p>
+[% END %]
+
+<h3>How do I vote?</h3>
+
+[% PROCESS vote/when %]
+
+[% IF voting == 0 %]
+  [% IF !user %]
+<p>You must be logged in to vote.</p>
+  [% ELSIF !user.active %]
+<p>You are not registered as an active committer, and are therefore not qualified to run in the election.  If you believe this is incorrect, please contact the election administrator.</p>
+  [% ELSE %]
+<p>Click the <a href="[% c.uri_for('/vote') | html %]">Vote</a> link in the navigation bar (or the one right here) and select up to [% max_votes %] candidates.  You can change your vote at any time until the election ends.</p>
+  [% END %]
+[% END %]
