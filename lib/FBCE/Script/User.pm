@@ -4,6 +4,7 @@ use Moose;
 use MooseX::Types::Common::Numeric qw/PositiveInt/;
 use MooseX::Types::Moose qw/Str Bool Int/;
 use FBCE;
+use Archive::Tar;
 use LWP::UserAgent;
 use namespace::autoclean;
 
@@ -28,6 +29,9 @@ our %lwp_options = (
 
 # Cutoff URLs for various repos
 sub cutoff_url($) { "http://people.freebsd.org/~peter/$_[0].cutoff.txt" }
+
+# Name of password tarball
+our $pwtar = 'fbce-passwords.tgz';
 
 #
 # Download and parse Peter Wemm's cutoff list for a specific repo
@@ -98,10 +102,10 @@ sub cmd_list(@) {
 	   'name');
     foreach my $person ($persons->all()) {
 	printf("%-16s%-8s%-8s%s\n",
-	       $person->login(),
-	       $person->active() ? 'yes' : 'no',
-	       $person->admin() ? 'yes' : 'no',
-	       $person->name());
+	       $person->login,
+	       $person->active ? 'yes' : 'no',
+	       $person->admin ? 'yes' : 'no',
+	       $person->name);
     }
 }
 
@@ -114,6 +118,7 @@ sub cmd_smash(@) {
     my $persons = FBCE->model('FBCE::Person')->search();
     my $schema = $persons->result_source()->schema();
     $schema->txn_do(sub {
+	$persons->reset();
 	while (my $person = $persons->next) {
 	    $person->update({ active => 0 });
 	}
@@ -164,6 +169,143 @@ sub cmd_pull(@) {
     });
 }
 
+#
+# Set each user's realname column based on their gecos
+#
+sub cmd_gecos(@) {
+    my ($self, $pwfn) = @_;
+
+    my %gecos;
+
+    # read passwd file
+    $pwfn //= "/etc/passwd";
+    open(my $pwfh, '<', $pwfn)
+	or die("$pwfn: $!\n");
+    warn("reading names from $pwfn\n")
+	if $self->debug;
+    while (<$pwfh>) {
+	chomp($_);
+	my @pwent = split(':', $_);
+	next unless @pwent == 7;
+	next unless $pwent[4] =~ m/^([^,]+)/;
+	$gecos{$pwent[0]} = $1;
+    }
+    close($pwfh);
+
+    # update the database
+    my $persons = FBCE->model('FBCE::Person')->
+	search({}, { order_by => 'login' });
+    my $schema = $persons->result_source()->schema();
+    my $n;
+    $schema->txn_do(sub {
+	warn("setting names in the database\n")
+	    if $self->debug;
+	$n = 0;
+	$persons->reset();
+	while (my $person = $persons->next) {
+	    my $login = $person->login;
+	    my $gecos = $gecos{$login};
+	    next unless $gecos;
+	    next if $person->realname;
+	    $person->update({ realname => $gecos });
+	    ++$n;
+	}
+	warn("$n record(s) updated\n")
+	    if $self->debug;
+    });
+}
+
+#
+# Use sysutils/pwgen2 to generate random passwords
+#
+sub pwgen($$;$) {
+    my ($self, $n, $len) = @_;
+
+    $len ||= 12;
+    warn("generating $n $len-character passwords\n")
+	if $self->debug;
+
+    # Set up a pipe and fork a child
+    my $pid = open(my $pipe, '-|');
+    if (!defined($pid)) {
+	# fork failed
+	die("fork(): $!\n");
+    } elsif ($pid == 0) {
+	# child process - run pwgen
+	# ugh hardcoded...
+        exec('/usr/local/bin/pwgen', '-can', $len, $n);
+        die("child: exec(): $!\n");
+    }
+
+    # read output from child
+    my @passwords;
+    while (<$pipe>) {
+	m/^([0-9A-Za-z]{$len})$/
+	    or die("invalid output from pwgen\n");
+	push(@passwords, $1);
+    }
+
+    # check exit status
+    if (waitpid($pid, 0) != $pid) {
+        if ($? & 0xff) {
+            die(sprintf("pwgen caught signal %d\n", $? & 0x7f));
+        } elsif ($? >> 8) {
+            die(sprintf("pwgen exited with code %d\n", $? >> 8));
+        } else {
+            die("waitpid(): $!\n");
+        }
+    }
+    close($pipe);
+
+    # sanity check and we're done
+    die(sprintf("expected %d passwords, got %d\n", $n, @passwords))
+	unless @passwords == $n;
+    warn("got $n passwords as expected\n")
+	if $self->debug;
+    return @passwords;
+}
+
+#
+# Generate passwords for all users.  Use with caution!
+#
+sub cmd_pwgen(@) {
+    my ($self, @users) = @_;
+
+    # please don't overwrite an existing password tarball...
+    die("$pwtar exists, delete or move and try again\n")
+	if -e $pwtar;
+
+    # generate enough passwords for everybody
+    my $persons = FBCE->model('FBCE::Person')->
+	search({ password => '*' }, { order_by => 'login' });
+    my $n = $persons->count();
+    my @passwords = $self->pwgen($n);
+
+    # create the archive
+    my $tar = Archive::Tar->new();
+
+    # update the database and the archive
+    my $schema = $persons->result_source()->schema();
+    $schema->txn_do(sub {
+	warn("setting the passwords in the database\n")
+	    if $self->debug;
+	$persons->reset();
+	while (my $person = $persons->next) {
+	    my ($login, $password) = ($person->login, shift(@passwords));
+	    # printf("%s\t%s\n", $person->login, $password);
+	    warn("setting password for $login\n")
+		if $self->debug;
+	    $person->set_password($password);
+	    $tar->add_data("$login/election-password", "$password\n",
+			   { uname => $login, gname => $login });
+	}
+	warn("writing the tar file\n")
+	    if $self->debug;
+	$tar->write($pwtar, COMPRESS_GZIP)
+	    or die($tar->error());
+    });
+}
+
 sub run($) {
     my ($self) = @_;
 
@@ -178,6 +320,10 @@ sub run($) {
 	$self->cmd_smash(@{$self->extra_argv});
     } elsif ($command eq 'pull') {
 	$self->cmd_pull(@{$self->extra_argv});
+    } elsif ($command eq 'gecos') {
+	$self->cmd_gecos(@{$self->extra_argv});
+    } elsif ($command eq 'pwgen') {
+	$self->cmd_pwgen(@{$self->extra_argv});
     } else {
 	die("unrecognized command.\n");
     }
