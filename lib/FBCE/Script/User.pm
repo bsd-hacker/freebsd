@@ -297,7 +297,7 @@ sub cmd_pwgen(@) {
 		if $self->debug;
 	    $person->set_password($password);
 	    $tar->add_data("$login/election-password", "$password\n",
-			   { uname => $login, gname => $login });
+			   { uname => $login, gname => $login, mode => 0400 });
 	}
 	warn("writing the tar file\n")
 	    if $self->debug;
