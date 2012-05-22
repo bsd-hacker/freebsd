@@ -1,10 +1,31 @@
 # $FreeBSD$
 
-% sudo /usr/local/etc/rc.d/postgresql initdb
-% sudo /usr/local/etc/rc.d/postgresql start
-% sudo -u pgsql createuser -s des
-% createuser -S -D -R fbce
-% createdb -E utf8 -O fbce fbce
-% psql -f db/fbce.sql fbce fbce 
-% ./db/update.sh
-% perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("altinn")'
+# Initialize PostgreSQL
+sudo /usr/local/etc/rc.d/postgresql initdb
+sudo /usr/local/etc/rc.d/postgresql start
+
+# Create a superuser for myself
+sudo -u pgsql createuser -s des
+
+# Create a regular user and database for FBCE
+createuser -S -D -R fbce
+createdb -E utf8 -O fbce fbce
+
+# Create the schema
+psql -f db/fbce.sql fbce fbce 
+
+# Regenerate the DBIC schema
+./db/update.sh
+
+# One-liner to set a user's password
+perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("altinn")'
+
+# Pull users from peter@'s cutoff list
+./script/fbce_user.pl pull
+
+# Get a copy of freefall's passwd map and load people's names from it
+ssh freefall ypcat passwd | iconv -f iso8859-1 -t utf-8 >freefall-nis-passwd-utf8
+./script/fbce_user.pl gecos freefall-nis-passwd-utf8
+
+# Generate new passwords for everybody that doesn't already have one
+./script/fbce_user.pl pwgen
