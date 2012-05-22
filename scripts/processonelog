@@ -122,7 +122,7 @@ elif bzgrep -qE "((Can't|unable to) open display|Cannot open /dev/tty for read|R
   reason="DISPLAY"; tag="display"
 elif bzgrep -qE '(No checksum recorded for|(Maybe|Either) .* is out of date, or)' $1; then
   reason="distinfo_update"; tag="distinfo"
-elif bzgrep -qE "Member name contains .\.\." $1; then
+elif bzgrep -qE "(error.*hostname nor servname provided|fetch:.*No address record|Member name contains .\.\.)" $1; then
   reason="fetch"; tag="fetch"
 elif bzgrep -qE "(pnohang: killing make checksum|fetch: transfer timed out)" $1; then
   reason="fetch_timeout"; tag="fetch-timeout"
@@ -176,6 +176,10 @@ elif bzgrep -q "pkg_create: make_dist: tar command failed with code" $1; then
   reason="PLIST"; tag="plist"
 elif bzgrep -q "Segmentation fault" $1; then
   reason="segfault"; tag="segfault"
+
+# note: searching for string-not-found here (builds that terminated early)
+elif [ ! bzgrep -qE "^build of .* ended at" $1 ]; then
+  reason="cluster"; tag="cluster"
 
 else
   reason="???"; tag="unknown"
