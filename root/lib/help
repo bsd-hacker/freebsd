@@ -29,16 +29,16 @@
 
 <h3>How do I run?</h3>
 
-[% PROCESS run/when %]
-
-[% IF nominating == 0 %]
-  [% IF !user %]
+[% IF nominating < 0 %]
+<p>Come back when the application period starts, on [% INCLUDE lib/datetime dt=nominating_starts %].</p>
+[% ELSIF nominating > 0 %]
+<p>The application period ended on [% INCLUDE lib/datetime dt=nominating_ends %].</p>
+[% ELSIF !user %]
 <p>You must be logged in to run for election.</p>
-  [% ELSIF !user.active %]
+[% ELSIF !user.active %]
 <p>You are not registered as an active committer, and are therefore not qualified to run in the election.  If you believe this is incorrect, please contact the election administrator.</p>
-  [% ELSE %]
+[% ELSE %]
 <p>Click the <a href="[% c.uri_for('/run') | html %]">Run</a> link in the navigation bar (or the one right here).  You will be asked to enter a slogan and a statement of intent.</p>
-  [% END %]
 [% END %]
 
 <h3>How do I see who's running?</h3>
@@ -53,14 +53,14 @@
 
 <h3>How do I vote?</h3>
 
-[% PROCESS vote/when %]
-
-[% IF voting == 0 %]
-  [% IF !user %]
+[% IF voting < 0 %]
+<p>Come back when the voting period starts, on [% INCLUDE lib/datetime dt=voting_starts %].</p>
+[% ELSIF voting > 0 %]
+<p>The voting period ended on [% INCLUDE lib/datetime dt=voting_ends %].</p>
+[% ELSIF !user %]
 <p>You must be logged in to vote.</p>
-  [% ELSIF !user.active %]
+[% ELSIF !user.active %]
 <p>You are not registered as an active committer, and are therefore not qualified to run in the election.  If you believe this is incorrect, please contact the election administrator.</p>
-  [% ELSE %]
+[% ELSE %]
 <p>Click the <a href="[% c.uri_for('/vote') | html %]">Vote</a> link in the navigation bar (or the one right here) and select up to [% max_votes %] candidates.  You can change your vote at any time until the election ends.</p>
-  [% END %]
 [% END %]
