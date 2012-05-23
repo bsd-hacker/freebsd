@@ -58,10 +58,10 @@ sub retrieve_commit_data($$) {
 	#
 	# The first column is the date of the last commit.  The second
 	# column is "ok" if this committer has a commit bit in this
-	# repo, "visitor" if they have a commit bit in a different
-	# repo or "-" if they are retired.  The third and fourth
-	# columns are not relevant to us.  The fifth is the freefall
-	# login.
+	# repo, "doc" or "visitor" if they have a commit bit in a
+	# different repo or "-" if they are retired.  The third and
+	# fourth columns are not relevant to us.  The fifth is the
+	# freefall login.
 	#
 	next unless m/^(\d\d\d\d)(\d\d)(\d\d)\s+
                        (?:\w+)\s+
