@@ -27,21 +27,21 @@ our %lwp_options = (
     keep_alive => 1,
 );
 
-# Cutoff URLs for various repos
-sub cutoff_url($) { "http://people.freebsd.org/~peter/$_[0].cutoff.txt" }
+# Survey URLs for various repos
+sub survey_url($) { "http://people.freebsd.org/~peter/$_[0].total.txt" }
 
 # Name of password tarball
 our $pwtar = 'fbce-passwords.tgz';
 
 #
-# Download and parse Peter Wemm's cutoff list for a specific repo
+# Download and parse Peter Wemm's survey for a specific repo
 #
-sub retrieve_cutoff_data($$) {
+sub retrieve_commit_data($$) {
     my ($self, $repo) = @_;
 
     # create new user agent unless one already exists
     $self->{user_agent} //= LWP::UserAgent->new(%lwp_options);
-    my $url = cutoff_url($repo);
+    my $url = survey_url($repo);
     my $req = HTTP::Request->new(GET => $url);
     warn("Retrieving $url...\n")
 	if $self->debug;
@@ -49,8 +49,8 @@ sub retrieve_cutoff_data($$) {
     if (!$res->is_success()) {
 	die("$url: " . $res->status_line() . "\n");
     }
-    my $cutoff = $res->decoded_content();
-    foreach (split('\n', $cutoff)) {
+    my $survey = $res->decoded_content();
+    foreach (split('\n', $survey)) {
 	#
 	# Each line looks like this:
 	#
@@ -64,7 +64,7 @@ sub retrieve_cutoff_data($$) {
 	# login.
 	#
 	next unless m/^(\d\d\d\d)(\d\d)(\d\d)\s+
-                       (?:ok|visitor)\s+
+                       (?:\w+)\s+
                        (?:\d+)\s+
                        (?:\d+)\s+
                        (\w+)\s*$/x &&
@@ -74,12 +74,12 @@ sub retrieve_cutoff_data($$) {
 	my $login = $4;
 	if (defined($self->{committers}->{$login}) &&
 	    DateTime->compare($date, $self->{committers}->{$login}) < 0) {
-	    warn(sprintf("skipping %s: %s < %s\n", $login, $date->ymd(),
-			 $self->{committers}->{$login}->ymd()))
-		if $self->debug;
+#	    warn(sprintf("skipping %s: %s < %s\n", $login, $date->ymd(),
+#			 $self->{committers}->{$login}->ymd()))
+#		if $self->debug;
 	} else {
-	    warn(sprintf("adding %s: %s (%s)\n", $login, $date->ymd(), $repo))
-		if $self->debug;
+#	    warn(sprintf("adding %s: %s (%s)\n", $login, $date->ymd(), $repo))
+#		if $self->debug;
 	    $self->{committers}->{$login} = $date;
 	}
     }
@@ -147,7 +147,7 @@ sub cmd_pull(@) {
 
     # pull "last commit" data for src, ports and doc / www repos
     foreach my $repo (qw(src ports docwww)) {
-	$self->retrieve_cutoff_data($repo);
+	$self->retrieve_commit_data($repo);
     }
 
     # insert it into the database
@@ -158,13 +158,19 @@ sub cmd_pull(@) {
 	    my $person = $persons->find_or_new({ login => $login });
 	    my $active =
 		DateTime->compare($last_commit, $cutoff_date) >= 0 ? 1 : 0;
-	    warn(sprintf("%s %s (%s)\n",
-			 $person->in_storage() ? 'updating' : 'inserting',
-			 $person->login(),
-			 $active ? 'active' : 'inactive'))
-		if $self->debug;
-	    $person->set_column(active => $active);
-	    $person->update_or_insert();
+	    if ($person->in_storage()) {
+		if ($active != $person->active) {
+		    warn(sprintf("updating %s: %s -> %s\n",
+				 $person->login,
+				 $person->active ? 'active' : 'inactive',
+				 $active ? 'active' : 'inactive'))
+			if $self->debug;
+		    $person->update({ active => $active });
+		}
+	    } else {
+		$person->set_column(active => $active);
+		$person->insert();
+	    }
 	}
     });
 }
