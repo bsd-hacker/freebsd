@@ -26,6 +26,12 @@ $VERSION = eval $VERSION;
 __PACKAGE__->config(
     name => 'FBCE',
     view => 'HTML',
+    'Plugin::ConfigLoader' => {
+	substitutions => {
+	    UID => sub { $< },
+	    PID => sub { $$ },
+	},
+    },
     'Plugin::Static::Simple' => {
 	dirs => [ 'static' ],
     },
