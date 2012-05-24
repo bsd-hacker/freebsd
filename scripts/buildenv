@@ -135,6 +135,7 @@ buildenv () {
     # set make.conf.  Consumed by both 'make index' and 'makeworld'.
     # First, must explicitly _unset_ pointyhat's native one.
     export __MAKE_CONF=/dev/null
+
     # allow for per-build make.conf
     if [ -f ${builddir}/make.conf.server ]; then
 	export __MAKE_CONF=${builddir}/make.conf.server
@@ -144,6 +145,13 @@ buildenv () {
 #	if [ -f ${builddir}/make.conf ]; then
 #	    export __MAKE_CONF=${pbd}/${arch}/make.conf
 #	fi
+    fi
+
+    # allow for per-build src.conf
+    if [ -f ${builddir}/src.conf.server ]; then
+	export SRCCONF=${builddir}/src.conf.server
+    else
+	export SRCCONF=/dev/null
     fi
 }
 

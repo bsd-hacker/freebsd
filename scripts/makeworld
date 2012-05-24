@@ -4,26 +4,43 @@
 # XXX lockfile and interlock with mkbindist to avoid overlapping
 # builds
 
-if [ $# -lt 3 ]; then
-        echo "usage: makeworld arch branch buildid [args]"
-        exit 1
+if [ $# -lt 2 ]; then
+  echo "usage: makeworld <arch> <branch> [<buildid>] [args]"
+  exit 1
 fi
 
 arch=$1
 branch=$2
-buildid=$3
-shift 3
+shift 2
+
+buildid="latest"
+if [ $# -gt 0 ]; then
+  case "$1" in
+    -client)
+      ;;
+    -nocvs|-novcs)
+      ;;
+    *)
+      buildid="$1"
+      shift
+      ;;
+  esac
+fi
 
 pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
 pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 builddir=${pbd}/${arch}/${branch}/builds/${buildid}
+if [ ! -d ${builddir} ]; then
+    echo "build directory ${builddir} does not exist!"
+    exit 1
+fi
 
 . ${pbc}/conf/server.conf
 . ${pbc}/conf/common.conf
 . ${pbd}/${arch}/portbuild.conf
-if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
-    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+if [ -f ${builddir}/portbuild.conf ]; then
+    . ${builddir}/portbuild.conf
 fi
 # NB: we can't use buildenv because it sets ARCH and MACHINE_ARCH that
 # confuses cross-builds
@@ -57,14 +74,23 @@ if [ "$client" = "1" ]; then
 	shift 1
 else
 	SRC_BASE=${builddir}/src
+
 	# allow for per-build make.conf
 	if [ -f ${builddir}/make.conf.server ]; then
 	    export __MAKE_CONF=${builddir}/make.conf.server
 	else
 	    export __MAKE_CONF=/dev/null
 	fi
+
+	# allow for per-build src.conf
+	if [ -f ${builddir}/src.conf.server ]; then
+	    export SRCCONF=${builddir}/src.conf.server
+	else
+	    export SRCCONF=/dev/null
+	fi
 fi
-cd ${SRC_BASE}
+
+cd ${SRC_BASE} || exit $?
 
 if [ "$novcs" = "0" ]; then
 	echo "==> Updating source tree"

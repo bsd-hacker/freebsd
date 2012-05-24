@@ -3,7 +3,7 @@
 # XXX merge with makeworld?
 
 usage () {
-  echo "usage: mkbindist <arch> <branch> <buildid>"
+  echo "usage: mkbindist <arch> <branch> [<buildid>]"
   exit 1
 }
 
@@ -16,22 +16,33 @@ cleandir() {
     fi
 }
 
-if [ $# -lt 3 ]; then
+if [ $# -lt 2 ]; then
   usage
 fi
 
 arch=$1
 branch=$2
-buildid=$3
-shift 3
+shift 2
+ 
+buildid="latest"
+if [ $# -gt 0 ]; then
+    buildid="$1"
+    shift
+fi
 
 pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
 pbd=${PORTBUILD_DATA:-/var/portbuild}
 
+builddir=${pbd}/${arch}/${branch}/builds/${buildid}
+if [ ! -d ${builddir} ]; then
+    echo "build directory ${builddir} does not exist!"
+    exit 1
+fi
+ 
 . ${pbc}/conf/server.conf
 . ${pbd}/${arch}/portbuild.conf
-if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
-    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+if [ -f ${builddir}/portbuild.conf ]; then
+    . ${builddir}/portbuild.conf
 fi
 
 . ${pbc}/scripts/buildenv
@@ -41,13 +52,7 @@ if ! validate_env ${arch} ${branch}; then
     exit 1
 fi
 
-here=${pbd}/${arch}/${branch}/builds/${buildid}
-if [ ! -d ${here} ]; then
-    echo "Invalid build ID ${buildid}"
-    exit 1
-fi
-
-tmpdir=${here}/bindist/tmp
+tmpdir=${builddir}/bindist/tmp
 
 # Clean up ${tmpdir}
 cleandir ${tmpdir}
@@ -64,25 +69,25 @@ cd ${destdir}; find -dx . | \
 cd ${tmpdir}
 
 # Customize the tmpdir
-if [ -s "${here}/bindist/delete" ]; then
-  sed -e "s,^,${tmpdir}," ${here}/bindist/delete | xargs rm -rf
+if [ -s "${builddir}/bindist/delete" ]; then
+  sed -e "s,^,${tmpdir}," ${builddir}/bindist/delete | xargs rm -rf
 fi
-if [ -s "${here}/bindist/dirlist" ]; then
-  cat "${here}/bindist/dirlist" | xargs mkdir -p 
+if [ -s "${builddir}/bindist/dirlist" ]; then
+  cat "${builddir}/bindist/dirlist" | xargs mkdir -p 
 fi
 # XXX MCL seems to be obsoleted by individual files in clients/?
-if [ -d ${here}/bindist/files ]; then
-  cd ${here}/bindist/files; find -dx . | cpio -dump ${tmpdir}
+if [ -d ${builddir}/bindist/files ]; then
+  cd ${builddir}/bindist/files; find -dx . | cpio -dump ${tmpdir}
 fi
 
 # Post-processing of installed world
 date '+%Y%m%d' > ${tmpdir}/var/db/port.mkversion
 
 # Create the tarball
-tar cfCj ${here}/.bindist.tbz ${tmpdir} .
-mv -f ${here}/.bindist.tbz ${here}/bindist.tbz
-md5 ${here}/bindist.tbz > ${here}/bindist.tbz.md5
+tar cfCj ${builddir}/.bindist.tbz ${tmpdir} .
+mv -f ${builddir}/.bindist.tbz ${builddir}/bindist.tbz
+md5 ${builddir}/bindist.tbz > ${builddir}/bindist.tbz.md5
 
 # Clean up
-cd ${here}
+cd ${builddir}
 cleandir ${tmpdir}
