@@ -20,6 +20,14 @@ has debug => (
     documentation => q{Debugging mode},
 );
 
+has dryrun => (
+    traits        => [qw(Getopt)],
+    cmd_aliases   => 'n',
+    isa           => Bool,
+    is            => 'ro',
+    documentation => q{Dry run},
+);
+
 # XXX should be traits
 our %lwp_options = (
     timeout => 10,
@@ -124,6 +132,8 @@ sub cmd_smash(@) {
 	while (my $person = $persons->next) {
 	    $person->update({ active => 0 });
 	}
+	$schema->txn_rollback()
+	    if $self->dryrun;
     });
 }
 
@@ -170,6 +180,8 @@ sub cmd_pull(@) {
 		$person->insert();
 	    }
 	}
+	$schema->txn_rollback()
+	    if $self->dryrun;
     });
 }
 
@@ -219,6 +231,8 @@ sub cmd_gecos(@) {
 	}
 	warn("$n record(s) updated\n")
 	    if $self->debug;
+	$schema->txn_rollback()
+	    if $self->dryrun;
     });
 }
 
@@ -313,6 +327,8 @@ sub cmd_pwgen(@) {
 	    if $self->debug;
 	$tar->write($pwtar, COMPRESS_GZIP)
 	    or die($tar->error());
+	$schema->txn_rollback()
+	    if $self->dryrun;
     });
 }
 
