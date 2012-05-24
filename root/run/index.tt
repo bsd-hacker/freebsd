@@ -7,7 +7,7 @@
 [% IF !user.active %]
 <p>You are not qualified to run in the election.  If you believe this is incorrect, please contact the election administrator.</p>
 [% ELSIF user.statement.defined %]
-<p>You have registered as a candidate in the 2010 FreeBSD Core Team election.  You have provided the following statement:</p>
+<p>You have registered as a candidate in the [% title %].  You have provided the following statement:</p>
 
 <div class="statement"> 
   <h3 class="statement-title">[% user.statement.short | html %]</h3>
