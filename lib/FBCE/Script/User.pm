@@ -89,10 +89,10 @@ sub retrieve_commit_data($$) {
 # List existing users
 #
 sub cmd_list(@) {
-    my ($self) = @_;
+    my ($self, @argv) = @_;
 
     die("too many arguments")
-	if @{$self->ARGV};
+	if @argv;
     my $persons = FBCE->model('FBCE::Person')->
 	search({}, { order_by => 'login' });
     printf("%-16s%-8s%-8s%s\n",
@@ -113,8 +113,10 @@ sub cmd_list(@) {
 # Mark all users inactive
 #
 sub cmd_smash(@) {
-    my ($self) = @_;
+    my ($self, @argv) = @_;
 
+    die("too many arguments")
+	if @argv;
     my $persons = FBCE->model('FBCE::Person')->search();
     my $schema = $persons->result_source()->schema();
     $schema->txn_do(sub {
@@ -130,17 +132,13 @@ sub cmd_smash(@) {
 # don't already have one, and set the active bit.
 #
 sub cmd_pull(@) {
-    my ($self) = @_;
+    my ($self, @argv) = @_;
 
-    # cutoff duration from config
-    my $cutoff_duration = FBCE->model('Schedule')->cutoff;
+    die("too many arguments")
+	if @argv;
 
-    # cutoff date: start out with current time (UTC)
-    my $cutoff_date = DateTime->now(time_zone => 'UTC');
-    # round down to midnight
-    $cutoff_date->set(hour => 0, minute => 0, second => 0);
-    # subtract the cutoff duration
-    $cutoff_date->subtract_duration($cutoff_duration);
+    # retrieve cutoff date
+    my $cutoff_date = FBCE->model('Rules')->cutoff_date;
     warn(sprintf("Setting cutoff date to %sT%sZ\n",
 		 $cutoff_date->ymd(), $cutoff_date->hms()))
 	if $self->debug;
@@ -179,9 +177,12 @@ sub cmd_pull(@) {
 # Set each user's realname column based on their gecos
 #
 sub cmd_gecos(@) {
-    my ($self, $pwfn) = @_;
+    my ($self, $pwfn, @argv) = @_;
 
     my %gecos;
+
+    die("too many arguments")
+	if @argv;
 
     # read passwd file
     $pwfn //= "/etc/passwd";
@@ -275,7 +276,10 @@ sub pwgen($$;$) {
 # Generate passwords for all users.  Use with caution!
 #
 sub cmd_pwgen(@) {
-    my ($self, @users) = @_;
+    my ($self, @argv) = @_;
+
+    die("too many arguments")
+	if @argv;
 
     # please don't overwrite an existing password tarball...
     die("$pwtar exists, delete or move and try again\n")

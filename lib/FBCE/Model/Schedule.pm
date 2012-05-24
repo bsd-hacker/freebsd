@@ -59,21 +59,6 @@ has investiture => (
     required => 1
 );
 
-# XXX does not belong here
-has max_votes => (
-    isa => PositiveInt,
-    is => 'ro',
-    required => 1
-);
-
-# XXX does not belong here
-has cutoff => (
-    isa => Duration,
-    coerce => 1,
-    is => 'ro',
-    required => 1,
-);
-
 sub _phase($$$) {
     my ($self, $phase, $now) = @_;
 
@@ -121,3 +106,5 @@ it under the same terms as Perl itself.
 __PACKAGE__->meta->make_immutable;
 
 1;
+
+# $FreeBSD$
