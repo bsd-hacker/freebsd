@@ -39,7 +39,6 @@ sub cutoff_date($) {
 	$cutoff_date =
 	    FBCE->model('Schedule')->nominating_starts - $self->cutoff;
 	$cutoff_date->set(hour => 0, minute => 0, second => 0);
-	print STDERR $cutoff_date->ymd();
     }
     return $cutoff_date;
 }
