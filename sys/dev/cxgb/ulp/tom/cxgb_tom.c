@@ -260,6 +260,7 @@ t3_tom_activate(struct adapter *sc)
 	tod->tod_syncache_added = t3_syncache_added;
 	tod->tod_syncache_removed = t3_syncache_removed;
 	tod->tod_syncache_respond = t3_syncache_respond;
+	tod->tod_offload_socket = t3_offload_socket;
 
 	/* port MTUs */
 	mtus = sc->port[0].ifp->if_mtu;

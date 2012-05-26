@@ -1737,8 +1737,8 @@ int krping_doit(char *cmd)
 		case 'm':
                         cb->memlimit = optint;
                         if (cb->memlimit < 1) {
-                                log(LOG_ERR, "Invalid memory limit %lu\n"
-                                       ,cb->memlimit);
+                                log(LOG_ERR, "Invalid memory limit %ju\n",
+				    cb->memlimit);
                                 ret = EINVAL;
                         } else
                                 DEBUG_LOG(PFX "memory limit %d\n", (int)optint);

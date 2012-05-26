@@ -109,6 +109,8 @@ struct synq_entry {
 	int tid;
 	struct mbuf *m;			/* backpointer to containing mbuf */
 	struct listen_ctx *lctx;	/* backpointer to listen ctx */
+	struct cpl_pass_establish *cpl;
+	struct toepcb *toep;
 	struct l2t_entry *e;
 	uint32_t iss;
 	uint32_t ts;
@@ -273,4 +275,5 @@ void t3_syncache_removed(struct toedev *, void *);
 int t3_syncache_respond(struct toedev *, void *, struct mbuf *);
 int do_abort_req_synqe(struct sge_qset *, struct rsp_desc *, struct mbuf *);
 int do_abort_rpl_synqe(struct sge_qset *, struct rsp_desc *, struct mbuf *);
+void t3_offload_socket(struct toedev *, void *, struct socket *);
 #endif

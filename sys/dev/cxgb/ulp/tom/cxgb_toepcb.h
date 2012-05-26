@@ -43,6 +43,7 @@
 #define TP_CPL_DONE		(1 << 8)
 #define TP_IS_A_SYNQ_ENTRY	(1 << 9)
 #define TP_ABORT_RPL_SENT	(1 << 10)
+#define TP_SEND_FIN          	(1 << 11)
 
 struct toepcb {
 	TAILQ_ENTRY(toepcb) link; /* toep_list */

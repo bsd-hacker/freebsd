@@ -1033,10 +1033,9 @@ process_close_complete(struct iwch_ep *ep)
 					     IWCH_QP_ATTR_NEXT_STATE,
 					     &attrs, 1);
 		}
-		if (ep->parent_ep) {
-			((struct iwch_listen_ep *)ep->parent_ep)->child_ep = NULL;
+		if (ep->parent_ep)
 			close_socket(&ep->com, 1);
-		} else
+		else
 			close_socket(&ep->com, 0);
 		close_complete_upcall(ep);
 		__state_set(&ep->com, DEAD);
@@ -1072,11 +1071,11 @@ terminate(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 {
 	struct adapter *sc = qs->adap;
 	struct tom_data *td = sc->tom_softc;
-        struct cpl_rdma_ec_status *rep = (void *)r;
-        unsigned int tid = GET_TID(rep);
-        struct toepcb *toep = lookup_tid(&td->tid_maps, tid);
+	uint32_t hash = *((uint32_t *)r + 1);
+	unsigned int tid = ntohl(hash) >> 8 & 0xfffff;
+	struct toepcb *toep = lookup_tid(&td->tid_maps, tid);
 	struct socket *so = toep->tp_inp->inp_socket;
-        struct iwch_ep *ep = so->so_rcv.sb_upcallarg;
+	struct iwch_ep *ep = so->so_rcv.sb_upcallarg;
 
 	if (state_read(&ep->com) != FPDU_MODE)
 		goto done;
@@ -1418,11 +1417,6 @@ iwch_destroy_listen(struct iw_cm_id *cm_id)
 
 	CTR2(KTR_IW_CXGB, "%s ep %p", __FUNCTION__, ep);
 
-	/* lets clean any connected child if there are */
-	if (ep->child_ep) {
-		if (ep->child_ep->com.so->so_state & SS_ISCONNECTED)
-			close_socket(&ep->child_ep->com, 1);
-	}
 	state_set(&ep->com, DEAD);
 	close_socket(&ep->com, 0);
 	cm_id->rem_ref(cm_id);
@@ -1607,8 +1601,6 @@ process_newconn(struct iwch_ep *parent_ep)
 	child_ep->com.cm_id = NULL;
 	child_ep->com.thread = parent_ep->com.thread;
 	child_ep->parent_ep = parent_ep;
-	/* Save child reference in parent_ep which could be used for cleanup */
-	((struct iwch_listen_ep *)parent_ep)->child_ep = child_ep;
 
 	free(remote, M_SONAME);
 	get_ep(&parent_ep->com);

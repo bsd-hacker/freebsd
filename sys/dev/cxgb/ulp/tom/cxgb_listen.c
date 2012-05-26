@@ -413,6 +413,21 @@ pass_accept_req_to_protohdrs(const struct cpl_pass_accept_req *cpl,
 		to->to_flags |= TOF_SACKPERM;
 }
 
+static inline void
+hold_synqe(struct synq_entry *synqe)
+{
+
+	refcount_acquire(&synqe->refcnt);
+}
+
+static inline void
+release_synqe(struct synq_entry *synqe)
+{
+
+	if (refcount_release(&synqe->refcnt))
+		m_freem(synqe->m);
+}
+
 /*
  * Use the trailing space in the mbuf in which the PASS_ACCEPT_REQ arrived to
  * store some state temporarily.  There will be enough room in the mbuf's
@@ -428,7 +443,7 @@ mbuf_to_synq_entry(struct mbuf *m)
 	int buflen;
 
 	if (__predict_false(M_TRAILINGSPACE(m) < len)) {
-	    panic("%s: no room for synq_entry (%ld, %d)\n", __func__,
+	    panic("%s: no room for synq_entry (%td, %d)\n", __func__,
 	    M_TRAILINGSPACE(m), len);
 	}
 
@@ -538,46 +553,25 @@ do_pass_accept_req(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 
 	INP_INFO_WLOCK(&V_tcbinfo);
 
-	/* Check if the 4-tuple is already in use by the host stack. */
-	inp = in_pcblookup(&V_tcbinfo, inc.inc_faddr, inc.inc_fport,
-	    inc.inc_laddr, inc.inc_lport, INPLOOKUP_WLOCKPCB, ifp);
-	if (inp) {
-		INP_WLOCK_ASSERT(inp);
-		if ((inp->inp_flags & INP_TIMEWAIT) == 0) {
-			INP_WUNLOCK(inp);
-			INP_INFO_WUNLOCK(&V_tcbinfo);
-			REJECT_PASS_ACCEPT();
-		}
-
-		/*
-		 * In TIME_WAIT, try to reuse the 4-tuple if possible.
-		 * tcp_twcheck always unlocks the inp.
-		 */
-		if (!tcp_twcheck(inp, &to, &th, NULL, 0)) {
-			INP_UNLOCK_ASSERT(inp);
-			INP_INFO_WUNLOCK(&V_tcbinfo);
-			REJECT_PASS_ACCEPT();	/* let the kernel deal with it. */
-		}
-
-		INP_UNLOCK_ASSERT(inp);
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+	/* Don't offload if the 4-tuple is already in use */
+	if (toe_4tuple_check(&inc, &th, ifp) != 0) {
+		INP_INFO_WUNLOCK(&V_tcbinfo);
+		REJECT_PASS_ACCEPT();
 	}
 
 	inp = lctx->inp;	/* listening socket (not owned by the TOE) */
 	INP_WLOCK(inp);
-	if (inp->inp_flags & INP_DROPPED) {
+	if (__predict_false(inp->inp_flags & INP_DROPPED)) {
 		/*
 		 * The listening socket has closed.  The reply from the TOE to
 		 * our CPL_CLOSE_LISTSRV_REQ will ultimately release all
 		 * resources tied to this listen context.
 		 */
 		INP_WUNLOCK(inp);
+		INP_INFO_WUNLOCK(&V_tcbinfo);
 		REJECT_PASS_ACCEPT();
 	}
 	so = inp->inp_socket;
-
-	/* Will tell the hardware to respond with a SYN/ACK */
-	CTR3(KTR_CXGB, "%s: stid %u, tid %u, OK", __func__, stid, tid);
 
 	/* Reuse the mbuf that delivered the CPL to us */
 	synqe = mbuf_to_synq_entry(m);
@@ -587,16 +581,17 @@ do_pass_accept_req(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	synqe->tid = tid;
 	synqe->e = e;
 	synqe->opt0h = calc_opt0h(so, 0, 0, e);
-#ifdef notyet
 	synqe->qset = pi->first_qset + (arc4random() % pi->nqsets);
-#else
-	synqe->qset = 0;
-#endif
 	SOCKBUF_LOCK(&so->so_rcv);
 	synqe->rx_credits = min(select_rcv_wnd(so) >> 10, M_RCV_BUFSIZ);
 	SOCKBUF_UNLOCK(&so->so_rcv);
 	refcount_init(&synqe->refcnt, 1);
 	atomic_store_rel_int(&synqe->reply, RPL_OK);
+
+	insert_tid(td, synqe, tid);
+	TAILQ_INSERT_TAIL(&lctx->synq, synqe, link);
+	hold_synqe(synqe);
+	hold_lctx(lctx);
 
 	/* syncache_add releases both pcbinfo and pcb locks */
 	toe_syncache_add(&inc, &to, &th, inp, tod, synqe);
@@ -610,28 +605,52 @@ do_pass_accept_req(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	 * The kernel is free to retry syncache_respond but we'll ignore it due
 	 * to RPL_DONT.
 	 */
-	if (atomic_cmpset_int(&synqe->reply, RPL_OK, RPL_DONT))
+	if (atomic_cmpset_int(&synqe->reply, RPL_OK, RPL_DONT)) {
+
+		INP_WLOCK(inp);
+		if (__predict_false(inp->inp_flags & INP_DROPPED)) {
+			/* listener closed.  synqe must have been aborted. */
+			KASSERT(synqe->flags & TP_ABORT_SHUTDOWN,
+			    ("%s: listener %p closed but synqe %p not aborted",
+			    __func__, inp, synqe));
+
+			CTR5(KTR_CXGB,
+			    "%s: stid %u, tid %u, lctx %p, synqe %p, ABORTED",
+			    __func__, stid, tid, lctx, synqe);
+			INP_WUNLOCK(inp);
+			release_synqe(synqe);
+			return (__LINE__);
+		}
+
+		KASSERT(!(synqe->flags & TP_ABORT_SHUTDOWN),
+		    ("%s: synqe %p aborted, but listener %p not dropped.",
+		    __func__, synqe, inp));
+
+		TAILQ_REMOVE(&lctx->synq, synqe, link);
+		release_synqe(synqe);	/* removed from synq list */
+		inp = release_lctx(td, lctx);
+		if (inp)
+			INP_WUNLOCK(inp);
+
+		release_synqe(synqe);	/* about to exit function */
 		REJECT_PASS_ACCEPT();
+	}
 
 	KASSERT(synqe->reply == RPL_DONE,
 	    ("%s: reply %d", __func__, synqe->reply));
 
-	TAILQ_INSERT_HEAD(&lctx->synq, synqe, link);
-	hold_lctx(lctx);	/* Each synq entry has a ref on its lctx */
-	insert_tid(td, synqe, tid);
-
+	CTR3(KTR_CXGB, "%s: stid %u, tid %u, OK", __func__, stid, tid);
+	release_synqe(synqe);
 	return (0);
 
 reject:
 	CTR4(KTR_CXGB, "%s: stid %u, tid %u, REJECT (%d)", __func__, stid, tid,
 	    reject_reason);
 
-	if (synqe == NULL || refcount_release(&synqe->refcnt))
+	if (synqe == NULL)
 		m_freem(m);
-
 	if (e)
 		l2t_release(td->l2t, e);
-
 	queue_tid_release(tod, tid);
 
 	return (0);
@@ -688,10 +707,13 @@ do_pass_establish(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	CTR5(KTR_CXGB, "%s: stid %u, tid %u, lctx %p, inp_flags 0x%x",
 	    __func__, stid, tid, lctx, inp->inp_flags);
 
+	KASSERT(qs->idx == synqe->qset,
+	    ("%s qset mismatch %d %d", __func__, qs->idx, synqe->qset));
+
 	INP_INFO_WLOCK(&V_tcbinfo);	/* for syncache_expand */
 	INP_WLOCK(inp);
 
-	if (inp->inp_flags & INP_DROPPED) {
+	if (__predict_false(inp->inp_flags & INP_DROPPED)) {
 		/*
 		 * The listening socket has closed.  The TOM must have aborted
 		 * all the embryonic connections (including this one) that were
@@ -713,8 +735,8 @@ do_pass_establish(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	to.to_tsecr = synqe->ts;
 	th.th_ack = synqe->iss + 1;
 
-	so = inp->inp_socket;
-	if (!toe_syncache_expand(&inc, &to, &th, &so) || so == NULL) {
+	toep = toepcb_alloc(tod);
+	if (toep == NULL) {
 reset:
 		t3_send_reset_synqe(tod, synqe);
 		INP_WUNLOCK(inp);
@@ -722,36 +744,28 @@ reset:
 		m_freem(m);
 		return (0);
 	}
+	toep->tp_qset = qs->idx;
+	toep->tp_l2t = synqe->e;
+	toep->tp_tid = tid;
+	toep->tp_rx_credits = synqe->rx_credits;
 
-	toep = toepcb_alloc(tod);
-	if (toep == NULL)
+	synqe->toep = toep;
+	synqe->cpl = cpl;
+
+	so = inp->inp_socket;
+	if (!toe_syncache_expand(&inc, &to, &th, &so) || so == NULL) {
+		toepcb_free(toep);
 		goto reset;
+	}
 
 	/* Remove the synq entry and release its reference on the lctx */
 	TAILQ_REMOVE(&lctx->synq, synqe, link);
 	inp = release_lctx(td, lctx);
 	if (inp)
 		INP_WUNLOCK(inp);
-
-	KASSERT(qs->idx == synqe->qset,
-	    ("%s qset mismatch %d %d", __func__, qs->idx, synqe->qset));
-
-	toep->tp_qset = qs->idx;
-	toep->tp_l2t = synqe->e;
-	toep->tp_tid = tid;
-	toep->tp_rx_credits = synqe->rx_credits;
-	update_tid(td, toep, tid);
-
-	inp = sotoinpcb(so);	/* Brand new socket, not the listening socket */
-	INP_WLOCK(inp);
-
-	offload_socket(so, toep);
-	make_established(so, cpl->snd_isn, cpl->rcv_isn, cpl->tcp_opt);
-
-	INP_WUNLOCK(inp);
 	INP_INFO_WUNLOCK(&V_tcbinfo);
+	release_synqe(synqe);
 
-	m_freem(synqe->m);
 	m_freem(m);
 	return (0);
 }
@@ -821,11 +835,7 @@ t3_listen_start(struct toedev *tod, struct tcpcb *tp)
 	if (listen_hash_find(td, inp) != NULL)
 		goto done;	/* already setup */
 
-#ifdef notyet
 	lctx = alloc_lctx(td, inp, pi->first_qset);
-#else
-	lctx = alloc_lctx(td, inp, 0);
-#endif
 	if (lctx == NULL) {
 		log(LOG_ERR,
 		    "%s: listen request ignored, %s couldn't allocate lctx\n",
@@ -905,7 +915,7 @@ t3_syncache_added(struct toedev *tod __unused, void *arg)
 {
 	struct synq_entry *synqe = arg;
 
-	refcount_acquire(&synqe->refcnt);
+	hold_synqe(synqe);
 }
 
 void
@@ -913,8 +923,7 @@ t3_syncache_removed(struct toedev *tod __unused, void *arg)
 {
 	struct synq_entry *synqe = arg;
 
-	if (refcount_release(&synqe->refcnt))
-		m_freem(synqe->m);
+	release_synqe(synqe);
 }
 
 /* XXX */
@@ -1025,7 +1034,7 @@ do_abort_req_synqe(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 			INP_WUNLOCK(inp);
 		release_tid(tod, tid, qs->idx);
 		l2t_release(td->l2t, synqe->e);
-		m_freem(synqe->m);
+		release_synqe(synqe);
 	}
 
 	send_abort_rpl(tod, tid, qs->idx);
@@ -1064,7 +1073,7 @@ do_abort_rpl_synqe(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 				INP_WUNLOCK(inp);
 			release_tid(tod, tid, qs->idx);
 			l2t_release(td->l2t, synqe->e);
-			m_freem(synqe->m);
+			release_synqe(synqe);
 		}
 	}
 
@@ -1084,7 +1093,6 @@ t3_send_reset_synqe(struct toedev *tod, struct synq_entry *synqe)
 	struct inpcb *inp = lctx->inp;
 #endif
 
-	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
 	INP_WLOCK_ASSERT(inp);
 
 	CTR4(KTR_CXGB, "%s: tid %d, synqe %p (%x)", __func__, tid, synqe,
@@ -1107,4 +1115,24 @@ t3_send_reset_synqe(struct toedev *tod, struct synq_entry *synqe)
 	req->cmd = CPL_ABORT_SEND_RST;
 
 	l2t_send(sc, m, synqe->e);
+}
+
+void
+t3_offload_socket(struct toedev *tod, void *arg, struct socket *so)
+{
+	struct adapter *sc = tod->tod_softc;
+	struct tom_data *td = sc->tom_softc;
+	struct synq_entry *synqe = arg;
+#ifdef INVARIANTS
+	struct inpcb *inp = sotoinpcb(so);
+#endif
+	struct cpl_pass_establish *cpl = synqe->cpl;
+	struct toepcb *toep = synqe->toep;
+
+	INP_INFO_LOCK_ASSERT(&V_tcbinfo); /* prevents bad race with accept() */
+	INP_WLOCK_ASSERT(inp);
+
+	offload_socket(so, toep);
+	make_established(so, cpl->snd_isn, cpl->rcv_isn, cpl->tcp_opt);
+	update_tid(td, toep, synqe->tid);
 }

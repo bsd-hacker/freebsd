@@ -175,26 +175,8 @@ toepcb_detach(struct inpcb *inp)
 	    toep, inp, tp);
 
 	tp->t_toe = NULL;
+	tp->t_flags &= ~TF_TOE;
 	toep->tp_flags &= ~TP_ATTACHED;
-
-	/*
-	 * Verify that the tcpcb really is going away.  tcp_input shouldn't be
-	 * able to find this inp, or should see it in TIME_WAIT.  Otherwise
-	 * there's a risk of tod_input with no way for the TOE driver to reach
-	 * its toepcb (we just cleared it).
-	 *
-	 * The inp should be DROPPED already or about to go to TIME_WAIT (it
-	 * can't be in TIME_WAIT already).  There is no way to be certain that
-	 * code that runs after this routine will actually call twstart as it
-	 * should (while holding the inp's lock throughout), so we do the best
-	 * we can by asserting that the current TCP state is something from
-	 * which we can transition to TIME_WAIT.
-	 */
-	KASSERT(inp->inp_flags & INP_DROPPED ||	/* dropped already */
-	    (!(inp->inp_flags & INP_TIMEWAIT) &&	/* not in TIME_WAIT */
-	    (tp->t_state == TCPS_FIN_WAIT_1 || tp->t_state == TCPS_FIN_WAIT_2 ||
-	    tp->t_state == TCPS_CLOSING)),
-	    ("%s: inp %p detached too early?", __func__, inp));
 
 	if (toep->tp_flags & TP_CPL_DONE)
 		t3_release_offload_resources(toep);
@@ -341,6 +323,28 @@ t3_process_tid_release_list(void *data, int pending)
 	mtx_unlock(&td->tid_release_lock);
 }
 
+static void
+close_conn(struct adapter *sc, struct toepcb *toep)
+{
+	struct mbuf *m;
+	struct cpl_close_con_req *req;
+
+	if (toep->tp_flags & TP_FIN_SENT)
+		return;
+
+	m = M_GETHDR_OFLD(toep->tp_qset, CPL_PRIORITY_DATA, req);
+	if (m == NULL)
+		CXGB_UNIMPLEMENTED();
+
+	req->wr.wrh_hi = htonl(V_WR_OP(FW_WROPCODE_OFLD_CLOSE_CON));
+	req->wr.wrh_lo = htonl(V_WR_TID(toep->tp_tid));
+	OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_CLOSE_CON_REQ, toep->tp_tid));
+	req->rsvd = 0;
+
+	toep->tp_flags |= TP_FIN_SENT;
+	t3_offload_tx(sc, m);
+}
+
 static inline void
 make_tx_data_wr(struct socket *so, struct tx_data_wr *req, int len,
     struct mbuf *tail)
@@ -431,11 +435,6 @@ t3_push_frames(struct socket *so, int req_completion)
 	struct tx_data_wr *wr;
 
 	inp_lock_assert(tp->t_inpcb);
-
-	/* TCP state or socket state not suitable for sending data */
-	if (tp->t_state == TCPS_SYN_SENT || tp->t_state == TCPS_CLOSED ||
-	    (so_state_get(so) & (SS_ISDISCONNECTING | SS_ISDISCONNECTED)))
-		return (0);
 
 	snd = so_sockbuf_snd(so);
 	SOCKBUF_LOCK(snd);
@@ -557,16 +556,18 @@ t3_push_frames(struct socket *so, int req_completion)
 	}
 out:
 	SOCKBUF_UNLOCK(snd);
+
+	if (sndptr == NULL && (toep->tp_flags & TP_SEND_FIN))
+		close_conn(sc, toep);
+
 	return (total_bytes);
 }
 
 static int
-send_rx_credits(struct toepcb *toep, int credits)
+send_rx_credits(struct adapter *sc, struct toepcb *toep, int credits)
 {
 	struct mbuf *m;
 	struct cpl_rx_data_ack *req;
-	struct toedev *tod = toep->tp_tod;
-	struct adapter *sc = tod->tod_softc;
 	uint32_t dack = F_RX_DACK_CHANGE | V_RX_DACK_MODE(1);
 
 	m = M_GETHDR_OFLD(toep->tp_qset, CPL_PRIORITY_CONTROL, req);
@@ -584,6 +585,7 @@ send_rx_credits(struct toepcb *toep, int credits)
 void
 t3_rcvd(struct toedev *tod, struct tcpcb *tp)
 {
+	struct adapter *sc = tod->tod_softc;
 	struct inpcb *inp = tp->t_inpcb;
 	struct socket *so = inp->inp_socket;
 	struct sockbuf *so_rcv = &so->so_rcv;
@@ -603,7 +605,7 @@ t3_rcvd(struct toedev *tod, struct tcpcb *tp)
 	if (must_send || toep->tp_rx_credits >= 15 * 1024) {
 		int credits;
 
-		credits = send_rx_credits(toep, toep->tp_rx_credits);
+		credits = send_rx_credits(sc, toep, toep->tp_rx_credits);
 		toep->tp_rx_credits -= credits;
 		tp->rcv_wnd += credits;
 		tp->rcv_adv += credits;
@@ -628,13 +630,12 @@ do_rx_urg_notify(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 int
 t3_send_fin(struct toedev *tod, struct tcpcb *tp)
 {
-	struct mbuf *m;
 	struct toepcb *toep = tp->t_toe;
-	struct adapter *sc = tod->tod_softc;
-	struct cpl_close_con_req *req;
 	struct inpcb *inp = tp->t_inpcb;
 	struct socket *so = inp_inpcbtosocket(inp);
+#if defined(KTR)
 	unsigned int tid = toep->tp_tid;
+#endif
 
 	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
 	INP_WLOCK_ASSERT(inp);
@@ -642,23 +643,8 @@ t3_send_fin(struct toedev *tod, struct tcpcb *tp)
 	CTR4(KTR_CXGB, "%s: tid %d, toep %p, flags %x", __func__, tid, toep,
 	    toep->tp_flags);
 
-	if (tp->t_state != TCPS_SYN_SENT)
-		t3_push_frames(so, 1);
-
-	if (toep->tp_flags & TP_FIN_SENT)
-		return (0);
-
-	m = M_GETHDR_OFLD(toep->tp_qset, CPL_PRIORITY_DATA, req);
-	if (m == NULL)
-		CXGB_UNIMPLEMENTED();
-
-	req->wr.wrh_hi = htonl(V_WR_OP(FW_WROPCODE_OFLD_CLOSE_CON));
-	req->wr.wrh_lo = htonl(V_WR_TID(tid));
-	OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_CLOSE_CON_REQ, tid));
-	req->rsvd = 0;
-
-	toep->tp_flags |= TP_FIN_SENT;
-	t3_offload_tx(sc, m);
+	toep->tp_flags |= TP_SEND_FIN;
+	t3_push_frames(so, 1);
 
 	return (0);
 }
@@ -787,8 +773,12 @@ offload_socket(struct socket *so, struct toepcb *toep)
 	INP_WLOCK_ASSERT(inp);
 
 	/* Update socket */
+	SOCKBUF_LOCK(&so->so_snd);
 	so_sockbuf_snd(so)->sb_flags |= SB_NOCOALESCE;
+	SOCKBUF_UNLOCK(&so->so_snd);
+	SOCKBUF_LOCK(&so->so_rcv);
 	so_sockbuf_rcv(so)->sb_flags |= SB_NOCOALESCE;
+	SOCKBUF_UNLOCK(&so->so_rcv);
 
 	/* Update TCP PCB */
 	tp->tod = toep->tp_tod;
@@ -921,26 +911,28 @@ do_act_open_rpl(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	unsigned int atid = G_TID(ntohl(rpl->atid));
 	struct toepcb *toep = lookup_atid(&td->tid_maps, atid);
 	struct inpcb *inp = toep->tp_inp;
-	struct tcpcb *tp;
+	struct tcpcb *tp = intotcpcb(inp);
+	int s = rpl->status;
 
-	CTR3(KTR_CXGB, "%s: atid %u, status %u ", __func__, atid, rpl->status);
+	CTR3(KTR_CXGB, "%s: atid %u, status %u ", __func__, atid, s);
 
 	free_atid(&td->tid_maps, atid);
 	toep->tp_tid = -1;
 
-	if (act_open_has_tid(rpl->status))
+	if (act_open_has_tid(s))
 		queue_tid_release(tod, GET_TID(rpl));
 
-	INP_INFO_WLOCK(&V_tcbinfo);	/* for tcp_drop */
-	INP_WLOCK(inp);
-	if (!(inp->inp_flags & INP_DROPPED)) {
-		tp = intotcpcb(inp);
-		tp = tcp_drop(tp, act_open_rpl_status_to_errno(rpl->status));
-		if (tp == NULL)
-			INP_WLOCK(inp);	/* re-acquire */
+	if (s == CPL_ERR_TCAM_FULL || s == CPL_ERR_CONN_EXIST) {
+		INP_WLOCK(inp);
+		toe_connect_failed(tod, tp, EAGAIN);
+		toepcb_release(toep);	/* unlocks inp */
+	} else {
+		INP_INFO_WLOCK(&V_tcbinfo);
+		INP_WLOCK(inp);
+		toe_connect_failed(tod, tp, act_open_rpl_status_to_errno(s));
+		toepcb_release(toep);	/* unlocks inp */
+		INP_INFO_WUNLOCK(&V_tcbinfo);
 	}
-	toepcb_release(toep);
-	INP_INFO_WUNLOCK(&V_tcbinfo);
 
 	m_freem(m);
 	return (0);
@@ -983,11 +975,7 @@ t3_connect(struct toedev *tod, struct socket *so,
 	if (atid < 0)
 		goto failed;
 
-#ifdef notyet
 	qset = pi->first_qset + (arc4random() % pi->nqsets);
-#else
-	qset = 0;
-#endif
 
 	m = M_GETHDR_OFLD(qset, CPL_PRIORITY_CONTROL, cpl);
 	if (m == NULL)
@@ -1241,7 +1229,7 @@ do_peer_close(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	tp = intotcpcb(inp);
 
 	CTR5(KTR_CXGB, "%s: tid %u (%s), toep_flags 0x%x, inp %p", __func__,
-	    tid, tcpstates[tp->t_state], toep->tp_flags, toep->tp_inp);
+	    tid, tp ? tcpstates[tp->t_state] : "no tp" , toep->tp_flags, inp);
 
 	if (toep->tp_flags & TP_ABORT_RPL_PENDING)
 		goto done;
@@ -1303,15 +1291,14 @@ do_close_con_rpl(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	INP_WLOCK(inp);
 	tp = intotcpcb(inp);
 
-	so = inp_inpcbtosocket(tp->t_inpcb);	
-
 	CTR4(KTR_CXGB, "%s: tid %u (%s), toep_flags 0x%x", __func__, tid,
-	    tcpstates[tp->t_state], toep->tp_flags);
-
-	tp->snd_una = ntohl(rpl->snd_nxt) - 1;  /* exclude FIN */
+	    tp ? tcpstates[tp->t_state] : "no tp", toep->tp_flags);
 
 	if ((toep->tp_flags & TP_ABORT_RPL_PENDING))
 		goto done;
+
+	so = inp_inpcbtosocket(inp);
+	tp->snd_una = ntohl(rpl->snd_nxt) - 1;  /* exclude FIN */
 
 	switch (tp->t_state) {
 	case TCPS_CLOSING:
@@ -1331,16 +1318,9 @@ release:
 		goto release;
 
 	case TCPS_FIN_WAIT_1:
+		if (so->so_rcv.sb_state & SBS_CANTRCVMORE)
+			soisdisconnected(so);
 		tp->t_state = TCPS_FIN_WAIT_2;
-		if ((so_options_get(so) & SO_LINGER) &&
-		    so_linger_get(so) == 0) {
-
-			if (tcp_close(tp))
-				inp_wunlock(tp->t_inpcb);
-			INP_INFO_WUNLOCK(&V_tcbinfo);
-			m_freem(m);
-			return (0);
-		}
 		break;
 	default:
 		log(LOG_ERR,

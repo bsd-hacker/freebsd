@@ -58,12 +58,6 @@ struct tom_tunables {
 enum {
 	CPL_PRIORITY_DATA = 0,     /* data messages */
 	CPL_PRIORITY_CONTROL = 1   /* offload control messages */
-#ifdef notyet
-	CPL_PRIORITY_SETUP = 1,	   /* connection setup messages */
-	CPL_PRIORITY_TEARDOWN = 0, /* connection teardown messages */
-	CPL_PRIORITY_LISTEN = 1,   /* listen start/stop messages */
-	CPL_PRIORITY_ACK = 1,      /* RX ACK messages */
-#endif
 };
 
 #define S_HDR_NDESC	0

@@ -165,7 +165,6 @@ struct iwch_listen_ep {
 	struct iwch_ep_common com;
 	unsigned int stid;
 	int backlog;
-	struct iwch_ep *child_ep;
 };
 
 struct iwch_ep {
