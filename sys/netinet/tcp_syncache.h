@@ -68,7 +68,7 @@ struct syncache {
 	u_int8_t	sc_requested_s_scale:4,
 			sc_requested_r_scale:4;
 	u_int16_t	sc_flags;
-#ifdef TCP_OFFLOAD
+#if defined(TCP_OFFLOAD) || !defined(TCP_OFFLOAD_DISABLE)
 	struct toedev	*sc_tod;		/* entry added by this TOE */
 	void		*sc_todctx;		/* TOE driver context */
 #endif
