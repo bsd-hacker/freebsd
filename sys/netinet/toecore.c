@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #define TCPSTATES
 #include <netinet/tcp.h>
 #include <netinet/tcp_fsm.h>
+#include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/tcp_syncache.h>
 #include <netinet/tcp_offload.h>
@@ -154,6 +155,14 @@ toedev_syncache_respond(struct toedev *tod __unused, void *ctx __unused,
 }
 
 static void
+toedev_offload_socket(struct toedev *tod __unused, void *ctx __unused,
+    struct socket *so __unused)
+{
+
+	return;
+}
+
+static void
 toedev_ctloutput(struct toedev *tod __unused, struct tcpcb *tp __unused,
     int sopt_dir __unused, int sopt_name __unused)
 {
@@ -247,6 +256,7 @@ init_toedev(struct toedev *tod)
 	tod->tod_syncache_added = toedev_syncache_added;
 	tod->tod_syncache_removed = toedev_syncache_removed;
 	tod->tod_syncache_respond = toedev_syncache_respond;
+	tod->tod_offload_socket = toedev_offload_socket;
 	tod->tod_ctloutput = toedev_ctloutput;
 }
 
@@ -322,6 +332,41 @@ toe_syncache_expand(struct in_conninfo *inc, struct tcpopt *to,
 	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
 
 	return (syncache_expand(inc, to, th, lsop, NULL));
+}
+
+/*
+ * General purpose check to see if a 4-tuple is in use by the kernel.  If a TCP
+ * header (presumably for an incoming SYN) is also provided, an existing 4-tuple
+ * in TIME_WAIT may be assassinated freeing it up for re-use.
+ *
+ * Note that the TCP header must have been run through tcp_fields_to_host() or
+ * equivalent.
+ */
+int
+toe_4tuple_check(struct in_conninfo *inc, struct tcphdr *th, struct ifnet *ifp)
+{
+	struct inpcb *inp;
+
+	if (inc->inc_flags & INC_ISIPV6)
+		return (ENOSYS);	/* XXX: implement */
+
+	inp = in_pcblookup(&V_tcbinfo, inc->inc_faddr, inc->inc_fport,
+	    inc->inc_laddr, inc->inc_lport, INPLOOKUP_WLOCKPCB, ifp);
+	if (inp != NULL) {
+		INP_WLOCK_ASSERT(inp);
+
+		if ((inp->inp_flags & INP_TIMEWAIT) && th != NULL) {
+
+			INP_INFO_WLOCK_ASSERT(&V_tcbinfo); /* for twcheck */
+			if (!tcp_twcheck(inp, NULL, th, NULL, 0))
+				return (EADDRINUSE);
+		} else {
+			INP_WUNLOCK(inp);
+			return (EADDRINUSE);
+		}
+	}
+
+	return (0);
 }
 
 static void
@@ -415,6 +460,41 @@ toe_l2_resolve(struct toedev *tod, struct ifnet *ifp, struct sockaddr *sa,
 	}
 
 	return (rc);
+}
+
+void
+toe_connect_failed(struct toedev *tod, struct tcpcb *tp, int err)
+{
+	struct inpcb *inp = tp->t_inpcb;
+
+	INP_WLOCK_ASSERT(inp);
+	KASSERT(tp->t_flags & TF_TOE,
+	    ("%s: tp %p not offloaded.", __func__, tp));
+
+	if (!(inp->inp_flags & INP_DROPPED)) {
+		if (err == EAGAIN) {
+
+			/*
+			 * Temporary failure during offload, take this PCB back.
+			 * Detach from the TOE driver and do the rest of what
+			 * TCP's pru_connect would have done if the connection
+			 * wasn't offloaded.
+			 */
+
+			tod->tod_pcb_detach(tod, tp);
+			KASSERT(!(tp->t_flags & TF_TOE),
+			    ("%s: tp %p still offloaded.", __func__, tp));
+			tcp_timer_activate(tp, TT_KEEP, TP_KEEPINIT(tp));
+			(void) tcp_output(tp);
+		} else {
+
+			INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+			tp = tcp_drop(tp, err);
+			if (tp == NULL)
+				INP_WLOCK(inp);	/* re-acquire */
+		}
+	}
+	INP_WLOCK_ASSERT(inp);
 }
 
 static int

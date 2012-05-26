@@ -80,6 +80,7 @@ struct toedev {
 	void (*tod_syncache_added)(struct toedev *, void *);
 	void (*tod_syncache_removed)(struct toedev *, void *);
 	int (*tod_syncache_respond)(struct toedev *, void *, struct mbuf *);
+	void (*tod_offload_socket)(struct toedev *, void *, struct socket *);
 
 	/* TCP socket option */
 	void (*tod_ctloutput)(struct toedev *, struct tcpcb *, int, int);
@@ -105,8 +106,12 @@ int  unregister_toedev(struct toedev *);
 int toe_l2_resolve(struct toedev *, struct ifnet *, struct sockaddr *,
     uint8_t *, uint16_t *);
 
+void toe_connect_failed(struct toedev *, struct tcpcb *, int);
+
 void toe_syncache_add(struct in_conninfo *, struct tcpopt *, struct tcphdr *,
     struct inpcb *, void *, void *);
 int  toe_syncache_expand(struct in_conninfo *, struct tcpopt *, struct tcphdr *,
     struct socket **);
+
+int toe_4tuple_check(struct in_conninfo *, struct tcphdr *, struct ifnet *);
 #endif

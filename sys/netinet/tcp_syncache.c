@@ -858,6 +858,18 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	if (sc->sc_rxmits > 1)
 		tp->snd_cwnd = tp->t_maxseg;
 
+#ifdef TCP_OFFLOAD
+	/*
+	 * Allow a TOE driver to install its hooks.  Note that we hold the
+	 * pcbinfo lock too and that prevents tcp_usr_accept from accepting a
+	 * new connection before the TOE driver has done its thing.
+	 */
+	if (ADDED_BY_TOE(sc)) {
+		struct toedev *tod = sc->sc_tod;
+
+		tod->tod_offload_socket(tod, sc->sc_todctx, so);
+	}
+#endif
 	/*
 	 * Copy and activate timers.
 	 */
