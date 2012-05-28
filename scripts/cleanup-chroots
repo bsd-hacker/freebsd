@@ -14,6 +14,7 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 REMOVE_EMPTY_BUILD_TIME=10080
 REMOVE_INUSE_CHROOT_TIME=7200
 REMOVE_NOTINUSE_CHROOT_TIME=60
+REMOVE_NOTINUSE_CLAIM_CHROOT_TIME=60
 
 #VERBOSE=1
 
@@ -161,5 +162,20 @@ if [ ! -z "${stale_builds}" ]; then
 	    done
 	fi
 	rm -rf ${build}
+    done
+fi
+
+# cleanup claim-chroots that failed (usually due to ssh timeout after
+# copy to client)
+# XXX MCL assuming that mktemp using /tmp in claim-chroot
+stale_claim_chroots=$(find /tmp -name claim-chroot.* -prune -mmin +${REMOVE_NOTINUSE_CLAIM_CHROOT_TIME} 2> /dev/null)
+if [ ! -z "${stale_claim_chroots}" ]; then
+    if [ $VERBOSE ]; then
+	echo "cleanup-chroots: suspected stale claim_chroots on $(hostname):"
+	echo ${stale_claim_chroots}
+	echo
+    fi
+    for claim_chroot in ${stale_claim_chroots}; do
+	rm -rf ${claim_chroot}
     done
 fi
