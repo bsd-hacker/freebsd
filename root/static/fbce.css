@@ -171,11 +171,21 @@ th {
     font-weight: bold;
 }
 
+.see .candidate-incumbent {
+    font-style: italic;
+    font-size: 120%;
+    margin-top: -1ex;
+}
+
 .statement {
-    margin: 16px 48px 32px 48px;
+    margin-top: 16px;
+    margin-left: 48px;
+    margin-right: 48px;
+    margin-bottom: 32px;
 }
     
 .see .statement {
+    margin-top: 16px;
     margin-left: 128px;
     margin-right: 88px;
     margin-bottom: 40px;
@@ -199,38 +209,3 @@ th {
 
 .statement-body {
 }
-
-/*
-blockquote {
-    margin-left: 6ex;
-    width: 80ex;
-}
-
-.vote {
-    margin-left: 2ex;
-}
-
-.message {
-    font-weight: bold;
-}
-
-.error {
-    color: red;
-}
-
-td, th {
-    text-align: left;
-    vertical-align: baseline;
-}
-
-.login {
-    width: 30%;
-    margin-left: auto;
-    margin-right: auto;
-    margin-top: 20%;
-}
-
-.login td {
-    text-align: right;
-}
-*/
