@@ -9,7 +9,7 @@
     <dt>Voting ends</dt>
     <dd>[% INCLUDE lib/datetime dt=voting_ends %]</dd>
     <dt>Results announced</dt>
-    <dd>[% INCLUDE lib/datetime dt=announcement %]</dd>
+    <dd>[% INCLUDE lib/date dt=announcement %]</dd>
     <dt>New core team takes office</dt>
     <dd>[% INCLUDE lib/date dt=investiture %]</dd>
   </dl>
