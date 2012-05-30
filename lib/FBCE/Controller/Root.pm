@@ -33,7 +33,7 @@ sub auto :Private {
     $c->stash(title => FBCE->config->{'title'});
     my $now = DateTime->now();
     $c->stash(now => $now);
-    my $schedule = $c->comp('FBCE::Model::Schedule');
+    my $schedule = FBCE->model('Schedule');
     foreach my $phase ("nominating", "voting") {
 	foreach my $endpoint ("${phase}_starts", "${phase}_ends") {
 	    $c->stash($endpoint => $schedule->{$endpoint});
@@ -44,8 +44,9 @@ sub auto :Private {
     $c->stash(nominating => $schedule->nominating($now));
     $c->stash(voting => $schedule->voting($now));
     $c->stash(announced => $schedule->announced($now));
-    # XXX does not really belong in FBCE::Schedule
-    $c->stash(max_votes => $schedule->{'max_votes'});
+
+    my $rules = FBCE->model('Rules');
+    $c->stash(max_votes => $rules->{'max_votes'});
 
     # Authentication
     if ($c->request->path !~ m/^(login|logout|bylaws|help|static\/.*)?$/) {
