@@ -14,7 +14,7 @@
 [% END %]
 <ul>
   [% WHILE (candidate = candidates.next) %]
-  <li>[% candidate.name | html %][% IF candidate.incumbent %][% END %][% IF candidate.incumbent %] (incumbent)[% END %]: <a href="[% c.uri_for('/see/candidate', candidate.login) | html %]">[% candidate.statement.short | html %]</a></li>
+  <li>[% candidate.name | html %][% IF candidate.incumbent %] (incumbent)[% END %]: <a href="[% c.uri_for('/see/candidate', candidate.login) | html %]">[% candidate.statement.short | html %]</a></li>
   [% END %]
 </ul>
 [% END %]
