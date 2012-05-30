@@ -57,7 +57,7 @@
       [% login = candidate.login %]
       <tr>
 	<td><input type="checkbox" name="vote_for_[% login %]" id="vote_for_[% login %]"[% IF voted_for.$login %] checked="checked"[% END %] onclick="updateTotal()"/></td>
-	<td><label for="vote_for_[% login %]">[% candidate.name | html %]:</label></td>
+	<td><label for="vote_for_[% login %]">[% candidate.name | html %][% IF candidate.incumbent %] (incumbent)[% END %]:</label></td>
 	<td><a href="[% c.uri_for('/see/candidate', login) | html %]">[% candidate.statement.short | html %]</a></td>
       </tr>
       [% END %]
