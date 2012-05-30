@@ -129,7 +129,8 @@ use Text::WikiFormat;
 sub long_html($) {
     my ($self) = @_;
 
-    return Text::WikiFormat::format($self->long, {}, { implicit_links => 0 });
+    return Text::WikiFormat::format($self->long, {}, {
+	implicit_links => 0, extended => 1, absolute_links => 1 });
 }
 
 1;
