@@ -28,12 +28,12 @@
   [% WHILE (candidate = results.next) %]
   [% i = i + 1 %]
   [% login = results.login %]
-  <tr[% IF candidate.incumbent %] class="incumbent"[% END %]>
+  <tr>
     <td class="num">[% i %]</td>
     <td class="num">[% candidate.votes %]</td>
     <td class="num">[% candidate.votes / voted.count * 100 | format('%.1f') %]%</td>
     <!--td><a href="mailto:[% candidate.email | html %]">[% candidate.realname | html %] ([% candidate.login %])</a></td-->
-    <td><a href="[% c.uri_for('/see/candidate', candidate.login) %]">[% candidate.realname | html %] ([% candidate.login %])</a></td>
+    <td><a href="[% c.uri_for('/see/candidate', candidate.login) %]">[% candidate.realname | html %]</a>[% IF candidate.incumbent %] (incumbent)[% END %]</td>
   </tr>
   [% END %]
 </table>

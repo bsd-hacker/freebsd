@@ -33,7 +33,7 @@
     <td class="num">[% i %]</td>
     <td class="num">[% candidate.votes %]</td>
     <td class="num">[% candidate.votes / voted * 100 | format('%.1f') %]%</td>
-    <td><a href="[% c.uri_for('/see/candidate', candidate.login) | html %]">[% candidate.realname | html %] ([% candidate.login %])</a></td>
+    <td><a href="[% c.uri_for('/see/candidate', candidate.login) | html %]">[% candidate.realname | html %]</a>[% IF candidate.incumbent %] (incumbent)[% END %]</td>
   </tr>
   [% END %]
 </table>
