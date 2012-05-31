@@ -46,3 +46,6 @@ CLEANFILES+=	${_ET}.h ${_ET}.c
 .endfor
 
 .endif # defined(SRCS)
+
+ASN1_COMPILE=	../../tools/asn1_compile/asn1_compile
+SLC=		../../tools/slc/slc
