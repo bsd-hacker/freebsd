@@ -41,6 +41,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/fnv_hash.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
+#include <net/ethernet.h>
+#include <net/if.h>
+#include <net/if_types.h>
+#include <net/if_vlan_var.h>
 #include <net/route.h>
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
@@ -976,13 +980,14 @@ do_pass_accept_req(struct sge_iq *iq, const struct rss_header *rss,
 	struct tcphdr th;
 	struct tcpopt to;
 	struct port_info *pi;
-	struct ifnet *ifp;
+	struct ifnet *ifp, *ifp_vlan = NULL;
 	struct l2t_entry *e = NULL;
 	struct rtentry *rt;
 	struct sockaddr_in nam;
 	int rscale, mtu_idx, rx_credits, rxqid;
 	struct synq_entry *synqe = NULL;
 	int reject_reason;
+	uint16_t vid;
 #ifdef INVARIANTS
 	unsigned int opcode = G_CPL_OPCODE(be32toh(OPCODE_TID(cpl)));
 #endif
@@ -1014,6 +1019,17 @@ do_pass_accept_req(struct sge_iq *iq, const struct rss_header *rss,
 		REJECT_PASS_ACCEPT();
 
 	/*
+	 * Don't offload if the SYN had a VLAN tag and the vid doesn't match
+	 * anything on this interface.
+	 */
+	vid = EVL_VLANOFTAG(be16toh(cpl->vlan));
+	if (vid != 0xfff) {
+		ifp_vlan = VLAN_DEVAT(ifp, vid);
+		if (ifp_vlan == NULL)
+			REJECT_PASS_ACCEPT();
+	}
+
+	/*
 	 * Don't offload if the peer requested a TCP option that's not known to
 	 * the silicon.
 	 */
@@ -1037,7 +1053,8 @@ do_pass_accept_req(struct sge_iq *iq, const struct rss_header *rss,
 		RT_UNLOCK(rt);
 		nexthop = rt->rt_flags & RTF_GATEWAY ? rt->rt_gateway :
 		    (struct sockaddr *)&nam;
-		if (rt->rt_ifp == ifp)
+		if (rt->rt_ifp == ifp ||
+		    (ifp_vlan != NULL && rt->rt_ifp == ifp_vlan))
 			e = t4_l2t_get(pi, rt->rt_ifp, nexthop);
 		RTFREE(rt);
 		if (e == NULL)
@@ -1188,7 +1205,6 @@ reject:
 	release_tid(sc, tid, lctx->ctrlq);
 
 	if (__predict_true(m != NULL)) {
-		m->m_pkthdr.rcvif = ifp;	/* yes, again */
 		m_adj(m, sizeof(*cpl));
 		m->m_pkthdr.csum_flags |= (CSUM_IP_CHECKED | CSUM_IP_VALID |
 		    CSUM_DATA_VALID | CSUM_PSEUDO_HDR);

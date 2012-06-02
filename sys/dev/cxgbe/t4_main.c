@@ -301,6 +301,8 @@ static void reg_block_dump(struct adapter *, uint8_t *, unsigned int,
     unsigned int);
 static void t4_get_regs(struct adapter *, struct t4_regdump *, uint8_t *);
 static void cxgbe_tick(void *);
+static void cxgbe_vlan_config(void *, struct ifnet *, uint16_t);
+static void cxgbe_vlan_unconfig(void *, struct ifnet *, uint16_t);
 static int cpl_not_handled(struct sge_iq *, const struct rss_header *,
     struct mbuf *);
 static int t4_sysctls(struct adapter *);
@@ -850,6 +852,11 @@ cxgbe_attach(device_t dev)
 	    cxgbe_media_status);
 	build_medialist(pi);
 
+	pi->vlan_c = EVENTHANDLER_REGISTER(vlan_config, cxgbe_vlan_config, ifp,
+	    EVENTHANDLER_PRI_ANY);
+	pi->vlan_u = EVENTHANDLER_REGISTER(vlan_unconfig, cxgbe_vlan_unconfig,
+	    ifp, EVENTHANDLER_PRI_ANY);
+
 	ether_ifattach(ifp, pi->hw_addr);
 
 #ifdef TCP_OFFLOAD
@@ -881,6 +888,11 @@ cxgbe_detach(device_t dev)
 		mtx_sleep(&sc->flags, &sc->sc_lock, 0, "t4detach", 0);
 	SET_BUSY(sc);
 	ADAPTER_UNLOCK(sc);
+
+	if (pi->vlan_c)
+		EVENTHANDLER_DEREGISTER(vlan_config, pi->vlan_c);
+	if (pi->vlan_u)
+		EVENTHANDLER_DEREGISTER(vlan_unconfig, pi->vlan_u);
 
 	PORT_LOCK(pi);
 	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
@@ -2890,6 +2902,30 @@ cxgbe_tick(void *arg)
 
 	callout_schedule(&pi->tick, hz);
 	PORT_UNLOCK(pi);
+}
+
+static void
+cxgbe_vlan_config(void *arg, struct ifnet *ifp, uint16_t vid)
+{
+	struct ifnet *vlan;
+
+	if (arg != ifp)
+		return;
+
+	vlan = VLAN_DEVAT(ifp, vid);
+	VLAN_SETCOOKIE(vlan, ifp);
+}
+
+static void
+cxgbe_vlan_unconfig(void *arg, struct ifnet *ifp, uint16_t vid)
+{
+	struct ifnet *vlan;
+
+	if (arg != ifp)
+		return;
+
+	vlan = VLAN_DEVAT(ifp, vid);
+	VLAN_SETCOOKIE(vlan, NULL);
 }
 
 static int

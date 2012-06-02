@@ -39,6 +39,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/domain.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
+#include <net/ethernet.h>
+#include <net/if.h>
+#include <net/if_types.h>
+#include <net/if_vlan_var.h>
 #include <net/route.h>
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
@@ -273,8 +277,8 @@ t4_connect(struct toedev *tod, struct socket *so, struct rtentry *rt,
 	struct wrqe *wr = NULL;
 	struct cpl_act_open_req *cpl;
 	struct l2t_entry *e = NULL;
-	struct ifnet *ifp = rt->rt_ifp;		/* XXX: may not be cxgbe */
-	struct port_info *pi = ifp->if_softc;	/* XXX: wrong for VLAN etc. */
+	struct ifnet *rt_ifp = rt->rt_ifp;
+	struct port_info *pi;
 	int atid = -1, mtu_idx, rscale, qid_atid, rc = ENOMEM;
 	struct inpcb *inp = sotoinpcb(so);
 	struct tcpcb *tp = intotcpcb(inp);
@@ -284,6 +288,17 @@ t4_connect(struct toedev *tod, struct socket *so, struct rtentry *rt,
 	if (nam->sa_family != AF_INET)
 		CXGBE_UNIMPLEMENTED("IPv6 connect");
 
+	if (rt_ifp->if_type == IFT_ETHER)
+		pi = rt_ifp->if_softc;
+	else if (rt_ifp->if_type == IFT_L2VLAN) {
+		struct ifnet *ifp = VLAN_COOKIE(rt_ifp);
+
+		pi = ifp->if_softc;
+	} else if (rt_ifp->if_type == IFT_IEEE8023ADLAG)
+		return (ENOSYS);	/* XXX: implement lagg support */
+	else
+		return (ENOTSUP);
+
 	toep = alloc_toepcb(pi, -1, -1, M_NOWAIT);
 	if (toep == NULL)
 		goto failed;
@@ -292,7 +307,7 @@ t4_connect(struct toedev *tod, struct socket *so, struct rtentry *rt,
 	if (atid < 0)
 		goto failed;
 
-	e = t4_l2t_get(pi, rt->rt_ifp,
+	e = t4_l2t_get(pi, rt_ifp,
 	    rt->rt_flags & RTF_GATEWAY ? rt->rt_gateway : nam);
 	if (e == NULL)
 		goto failed;

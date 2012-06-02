@@ -86,8 +86,6 @@ struct toedev {
 	void (*tod_ctloutput)(struct toedev *, struct tcpcb *, int, int);
 };
 
-#define TOEDEV(ifp) ((ifp)->if_llsoftc)
-
 #include <sys/eventhandler.h>
 typedef	void (*tcp_offload_listen_start_fn)(void *, struct tcpcb *);
 typedef	void (*tcp_offload_listen_stop_fn)(void *, struct tcpcb *);
