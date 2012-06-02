@@ -214,7 +214,6 @@ struct port_info {
 	struct port_stats stats;
 
 	eventhandler_tag vlan_c;
-	eventhandler_tag vlan_u;
 
 	struct callout tick;
 	struct sysctl_ctx_list ctx;	/* from ifconfig up to driver detach */
