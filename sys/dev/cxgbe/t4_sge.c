@@ -863,7 +863,8 @@ service_iq(struct sge_iq *iq, int budget)
 				break;
 
 			default:
-				panic("%s: rsp_type %u", __func__, rsp_type);
+				sc->an_handler(iq, ctrl);
+				break;
 			}
 
 			iq_next(iq);

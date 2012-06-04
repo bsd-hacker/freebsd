@@ -304,6 +304,7 @@ static void cxgbe_tick(void *);
 static void cxgbe_vlan_config(void *, struct ifnet *, uint16_t);
 static int cpl_not_handled(struct sge_iq *, const struct rss_header *,
     struct mbuf *);
+static int an_not_handled(struct sge_iq *, const struct rsp_ctrl *);
 static int t4_sysctls(struct adapter *);
 static int cxgbe_sysctls(struct port_info *);
 static int sysctl_int_array(SYSCTL_HANDLER_ARGS);
@@ -443,6 +444,7 @@ t4_attach(device_t dev)
 		goto done; /* error message displayed already */
 
 	memset(sc->chan_map, 0xff, sizeof(sc->chan_map));
+	sc->an_handler = an_not_handled;
 	for (i = 0; i < ARRAY_SIZE(sc->cpl_handler); i++)
 		sc->cpl_handler[i] = cpl_not_handled;
 	t4_register_cpl_handler(sc, CPL_SET_TCB_RPL, filter_rpl);
@@ -2914,6 +2916,7 @@ cxgbe_vlan_config(void *arg, struct ifnet *ifp, uint16_t vid)
 static int
 cpl_not_handled(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 {
+
 #ifdef INVARIANTS
 	panic("%s: opcode 0x%02x on iq %p with payload %p",
 	    __func__, rss->opcode, iq, m);
@@ -2935,6 +2938,31 @@ t4_register_cpl_handler(struct adapter *sc, int opcode, cpl_handler_t h)
 
 	new = h ? (uintptr_t)h : (uintptr_t)cpl_not_handled;
 	loc = (uintptr_t *) &sc->cpl_handler[opcode];
+	atomic_store_rel_ptr(loc, new);
+
+	return (0);
+}
+
+static int
+an_not_handled(struct sge_iq *iq, const struct rsp_ctrl *ctrl)
+{
+
+#ifdef INVARIANTS
+	panic("%s: async notification on iq %p (ctrl %p)", __func__, iq, ctrl);
+#else
+	log(LOG_ERR, "%s: async notification on iq %p (ctrl %p)",
+	    __func__, iq, ctrl);
+#endif
+	return (EDOOFUS);
+}
+
+int
+t4_register_an_handler(struct adapter *sc, an_handler_t h)
+{
+	uintptr_t *loc, new;
+
+	new = h ? (uintptr_t)h : (uintptr_t)an_not_handled;
+	loc = (uintptr_t *) &sc->an_handler;
 	atomic_store_rel_ptr(loc, new);
 
 	return (0);

@@ -508,6 +508,7 @@ struct sge {
 struct rss_header;
 typedef int (*cpl_handler_t)(struct sge_iq *, const struct rss_header *,
     struct mbuf *);
+typedef int (*an_handler_t)(struct sge_iq *, const struct rsp_ctrl *);
 
 struct adapter {
 	SLIST_ENTRY(adapter) link;
@@ -579,7 +580,8 @@ struct adapter {
 	TAILQ_HEAD(, sge_fl) sfl;
 	struct callout sfl_callout;
 
-	cpl_handler_t cpl_handler[256] __aligned(CACHE_LINE_SIZE);
+	an_handler_t an_handler __aligned(CACHE_LINE_SIZE);
+	cpl_handler_t cpl_handler[256];
 };
 
 #define ADAPTER_LOCK(sc)		mtx_lock(&(sc)->sc_lock)
@@ -737,6 +739,7 @@ void t4_os_portmod_changed(const struct adapter *, int);
 void t4_os_link_changed(struct adapter *, int, int);
 void t4_iterate(void (*)(struct adapter *, void *), void *);
 int t4_register_cpl_handler(struct adapter *, int, cpl_handler_t);
+int t4_register_an_handler(struct adapter *, an_handler_t);
 
 /* t4_sge.c */
 void t4_sge_modload(void);
