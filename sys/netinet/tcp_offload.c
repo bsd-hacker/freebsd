@@ -75,14 +75,10 @@ tcp_offload_connect(struct socket *so, struct sockaddr *nam)
 
 	ifp = rt->rt_ifp;
 
-#ifdef INET
 	if (nam->sa_family == AF_INET && !(ifp->if_capenable & IFCAP_TOE4))
 		goto done;
-#endif
-#ifdef INET6
 	if (nam->sa_family == AF_INET6 && !(ifp->if_capenable & IFCAP_TOE6))
 		goto done;
-#endif
 
 	tod = TOEDEV(ifp);
 	if (tod != NULL)

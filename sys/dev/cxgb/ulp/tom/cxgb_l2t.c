@@ -29,6 +29,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -456,3 +457,4 @@ t3_init_l2t_cpl_handlers(struct adapter *sc)
 {
 	t3_register_cpl_handler(sc, CPL_L2T_WRITE_RPL, do_l2t_write_rpl);
 }
+#endif

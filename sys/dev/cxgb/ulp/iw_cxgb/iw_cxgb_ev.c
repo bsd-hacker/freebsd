@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -258,3 +259,4 @@ done:
 	mtx_unlock(&chp->lock);
 	iwch_qp_rem_ref(&qhp->ibqp);
 }
+#endif

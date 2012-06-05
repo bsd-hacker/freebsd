@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <linux/idr.h>
 #include <ulp/iw_cxgb/iw_cxgb_ib_intfc.h>
 
+#ifdef TCP_OFFLOAD
 #include <cxgb_include.h>
 #include <ulp/iw_cxgb/iw_cxgb_wr.h>
 #include <ulp/iw_cxgb/iw_cxgb_hal.h>
@@ -248,6 +249,7 @@ iwch_mod_unload(void)
 
 	return (0);
 }
+#endif	/* TCP_OFFLOAD */
 
 #undef MODULE_VERSION
 #include <sys/module.h>
@@ -257,6 +259,7 @@ iwch_modevent(module_t mod, int cmd, void *arg)
 {
 	int rc = 0;
 
+#ifdef TCP_OFFLOAD
 	switch (cmd) {
 	case MOD_LOAD:
 		rc = iwch_mod_load();
@@ -277,7 +280,10 @@ iwch_modevent(module_t mod, int cmd, void *arg)
 	default:
 		rc = EINVAL;
 	}
-
+#else
+	printf("iw_cxgb: compiled without TCP_OFFLOAD support.\n");
+	rc = EOPNOTSUPP;
+#endif
 	return (rc);
 }
 

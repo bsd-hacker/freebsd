@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -236,3 +237,4 @@ int build_phys_page_list(struct ib_phys_buf *buffer_list,
 	return 0;
 
 }
+#endif

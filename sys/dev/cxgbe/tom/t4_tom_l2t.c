@@ -28,6 +28,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -401,3 +402,4 @@ found:
 	update_entry(sc, e, lladdr, vtag);
 	mtx_unlock(&e->lock);
 }
+#endif

@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -1728,3 +1729,4 @@ iwch_cm_term_cpl(struct adapter *sc)
 	t3_register_cpl_handler(sc, CPL_RDMA_TERMINATE, NULL);
 	t3_register_cpl_handler(sc, CPL_RDMA_EC_STATUS, NULL);
 }
+#endif

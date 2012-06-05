@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/types.h>
+#include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/ktr.h>
 #include <sys/module.h>
@@ -47,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_fsm.h>
 #include <netinet/toecore.h>
 
+#ifdef TCP_OFFLOAD
 #include "common/common.h"
 #include "common/t4_msg.h"
 #include "common/t4_regs.h"
@@ -714,12 +716,14 @@ t4_tom_mod_unload(void)
 
 	return (0);
 }
+#endif	/* TCP_OFFLOAD */
 
 static int
 t4_tom_modevent(module_t mod, int cmd, void *arg)
 {
 	int rc = 0;
 
+#ifdef TCP_OFFLOAD
 	switch (cmd) {
 	case MOD_LOAD:
 		rc = t4_tom_mod_load();
@@ -732,7 +736,10 @@ t4_tom_modevent(module_t mod, int cmd, void *arg)
 	default:
 		rc = EINVAL;
 	}
-
+#else
+	printf("t4_tom: compiled without TCP_OFFLOAD support.\n");
+	rc = EOPNOTSUPP;
+#endif
 	return (rc);
 }
 

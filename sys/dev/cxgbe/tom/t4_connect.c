@@ -30,6 +30,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/kernel.h>
@@ -373,3 +374,4 @@ failed:
 
 	return (rc);
 }
+#endif

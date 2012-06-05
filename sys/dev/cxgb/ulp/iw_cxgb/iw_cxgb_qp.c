@@ -1,4 +1,3 @@
-
 /**************************************************************************
 
 Copyright (c) 2007, Chelsio Inc.
@@ -32,6 +31,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -1104,3 +1104,4 @@ out:
 	CTR2(KTR_IW_CXGB, "%s exit state %d", __FUNCTION__, qhp->attr.state);
 	return ret;
 }
+#endif

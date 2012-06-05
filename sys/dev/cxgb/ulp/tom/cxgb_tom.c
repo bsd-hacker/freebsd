@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp.h>
 #include <netinet/toecore.h>
 
+#ifdef TCP_OFFLOAD
 #include "cxgb_include.h"
 #include "ulp/tom/cxgb_tom.h"
 #include "ulp/tom/cxgb_l2t.h"
@@ -357,12 +358,14 @@ t3_tom_mod_unload(void)
 
 	return (0);
 }
+#endif	/* ifdef TCP_OFFLOAD */
 
 static int
 t3_tom_modevent(module_t mod, int cmd, void *arg)
 {
 	int rc = 0;
 
+#ifdef TCP_OFFLOAD
 	switch (cmd) {
 	case MOD_LOAD:
 		rc = t3_tom_mod_load();
@@ -375,7 +378,9 @@ t3_tom_modevent(module_t mod, int cmd, void *arg)
 	default:
 		rc = EINVAL;
 	}
-
+#else
+	rc = EOPNOTSUPP;
+#endif
 	return (rc);
 }
 

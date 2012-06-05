@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -372,3 +373,4 @@ void cxio_hal_rqtpool_destroy(struct cxio_rdev *rdev_p)
 {
 	gen_pool_destroy(rdev_p->rqt_pool);
 }
+#endif

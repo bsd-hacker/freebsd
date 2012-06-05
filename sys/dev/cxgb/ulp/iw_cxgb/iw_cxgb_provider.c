@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -1153,3 +1154,4 @@ void iwch_unregister_device(struct iwch_dev *dev)
 	cxfree(dev->ibdev.iwcm);
 	return;
 }
+#endif

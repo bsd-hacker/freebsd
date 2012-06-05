@@ -29,6 +29,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/fcntl.h>
@@ -1859,3 +1860,4 @@ t3_init_cpl_io(struct adapter *sc)
 	t3_register_cpl_handler(sc, CPL_SMT_WRITE_RPL, do_smt_write_rpl);
 	t3_register_cpl_handler(sc, CPL_SET_TCB_RPL, do_set_tcb_rpl);
 }
+#endif

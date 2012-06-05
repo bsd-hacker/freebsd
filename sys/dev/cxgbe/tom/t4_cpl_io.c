@@ -30,6 +30,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/kernel.h>
@@ -1255,3 +1256,4 @@ t4_init_cpl_io_handlers(struct adapter *sc)
 	t4_register_cpl_handler(sc, CPL_RX_DATA, do_rx_data);
 	t4_register_cpl_handler(sc, CPL_FW4_ACK, do_fw4_ack);
 }
+#endif

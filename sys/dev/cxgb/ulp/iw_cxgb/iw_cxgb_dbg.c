@@ -67,7 +67,7 @@ __FBSDID("$FreeBSD$");
 #include <linux/idr.h>
 #include <ulp/iw_cxgb/iw_cxgb_ib_intfc.h>
 
-#ifdef INVARIANTS
+#if defined(INVARIANTS) && defined(TCP_OFFLOAD)
 #include <cxgb_include.h>
 #include <ulp/iw_cxgb/iw_cxgb_wr.h>
 #include <ulp/iw_cxgb/iw_cxgb_hal.h>

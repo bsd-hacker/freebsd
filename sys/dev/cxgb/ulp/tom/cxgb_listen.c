@@ -29,6 +29,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 
+#ifdef TCP_OFFLOAD
 #include <sys/param.h>
 #include <sys/refcount.h>
 #include <sys/socket.h>
@@ -1136,3 +1137,4 @@ t3_offload_socket(struct toedev *tod, void *arg, struct socket *so)
 	make_established(so, cpl->snd_isn, cpl->rcv_isn, cpl->tcp_opt);
 	update_tid(td, toep, synqe->tid);
 }
+#endif
