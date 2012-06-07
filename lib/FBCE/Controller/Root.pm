@@ -30,10 +30,10 @@ sub auto :Private {
     my ($self, $c) = @_;
 
     # Stash schedule information etc.
-    $c->stash(title => FBCE->config->{'title'});
+    $c->stash(title => $c->config->{'title'});
     my $now = DateTime->now();
     $c->stash(now => $now);
-    my $schedule = FBCE->model('Schedule');
+    my $schedule = $c->model('Schedule');
     foreach my $phase ("nominating", "voting") {
 	foreach my $endpoint ("${phase}_starts", "${phase}_ends") {
 	    $c->stash($endpoint => $schedule->{$endpoint});
@@ -45,7 +45,7 @@ sub auto :Private {
     $c->stash(voting => $schedule->voting($now));
     $c->stash(announced => $schedule->announced($now));
 
-    my $rules = FBCE->model('Rules');
+    my $rules = $c->model('Rules');
     $c->stash(max_votes => $rules->{'max_votes'});
 
     # Authentication
