@@ -5,8 +5,10 @@
     total.innerHTML = new Number(n).toString();
     if (n > [% max_votes ? max_votes : 0 %])
       total.style.color = "red";
+    else if (n == [% max_votes ? max_votes : 0 %])
+      total.style.color = "green";
     else
-      total.style.color = total.parentNode.style.color;
+      total.style.color = "orange";
   }
 
   function updateTotal() {
