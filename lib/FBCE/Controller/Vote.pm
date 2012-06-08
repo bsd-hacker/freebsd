@@ -47,7 +47,8 @@ sub index :Path :Args(0) {
 	}
 	$candidates->reset;
 	if (scalar keys %vote_for > $c->stash->{'max_votes'}) {
-	    $error = "You can only vote for $c->stash->{'max_votes'} candidates.";
+	    $c->stash(error => "You can only vote for " .
+		      $c->stash->{'max_votes'} . " candidates.");
 	} else {
 	    my $schema = $user->result_source->schema;
 	    $schema->txn_do(sub {
@@ -57,7 +58,7 @@ sub index :Path :Args(0) {
 		}
 	    });
 	    if ($@) {
-		$error = "Database error!";
+		$c->stash(error => "Database error!");
 	    } else {
 		$c->stash(vote_ok => 1);
 	    }
@@ -68,9 +69,7 @@ sub index :Path :Args(0) {
 	    $voted_for{$vote->candidate->login} = 1;
 	}
     }
-    $c->stash(error => $error);
     $c->stash(candidates => $candidates);
-    $c->stash(max_votes => $c->stash->{'max_votes'});
     $c->stash(voted_for => \%voted_for);
 }
 
