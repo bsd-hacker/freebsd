@@ -101,6 +101,16 @@ th {
     overflow: auto;
 }
 
+.info {
+    color: green;
+    font-weight: bold;
+}
+
+.error {
+    color: red;
+    font-weight: bold;
+}
+
 /*
  * Footer
  */
@@ -128,6 +138,14 @@ th {
 
 .schedule dd {
     padding-bottom: 3pt;
+}
+
+/*
+ * Voting
+ */
+.vote .votebox {
+    width: 2ex;
+    text-align: center;
 }
 
 /*
