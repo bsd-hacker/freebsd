@@ -409,7 +409,7 @@ pmap_bootstrap(vm_paddr_t firstaddr)
  	/*
 	 * Initialize the global pv list lock.
 	 */
-	rw_init(&pvh_global_lock, "pvh global");
+	rw_init(&pvh_global_lock, "pv global");
 
 	LIST_INIT(&allpmaps);
 

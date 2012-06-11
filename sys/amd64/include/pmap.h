@@ -264,6 +264,8 @@ typedef struct pmap	*pmap_t;
 extern struct pmap	kernel_pmap_store;
 #define kernel_pmap	(&kernel_pmap_store)
 
+#define	PMAP_ASSERT_LOCKED(pmap) \
+				mtx_assert(&(pmap)->pm_mtx, MA_OWNED)
 #define	PMAP_LOCK(pmap)		mtx_lock(&(pmap)->pm_mtx)
 #define	PMAP_LOCK_ASSERT(pmap, type) \
 				mtx_assert(&(pmap)->pm_mtx, (type))

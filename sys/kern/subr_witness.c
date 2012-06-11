@@ -605,7 +605,9 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "vm object", &lock_class_mtx_sleep },
 	{ "page lock", &lock_class_mtx_sleep },
 	{ "vm page queue mutex", &lock_class_mtx_sleep },
+	{ "pv global", &lock_class_rw },
 	{ "pmap", &lock_class_mtx_sleep },
+	{ "pv list", &lock_class_mtx_sleep },
 	{ NULL, NULL },
 	/*
 	 * kqueue/VFS interaction
