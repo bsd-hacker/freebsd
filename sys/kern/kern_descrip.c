@@ -114,7 +114,9 @@ static uma_zone_t file_zone;
 #define DUP_FIXED	0x1	/* Force fixed allocation */
 #define DUP_FCNTL	0x2	/* fcntl()-style errors */
 
-static int do_dup(struct thread *td, int flags, int old, int new,
+static int	closefp(struct filedesc *fdp, int fd, struct file *fp,
+    struct thread *td);
+static int	do_dup(struct thread *td, int flags, int old, int new,
     register_t *retval);
 static int	fd_first_free(struct filedesc *, int, int);
 static int	fd_last_used(struct filedesc *, int, int);
@@ -243,7 +245,7 @@ fd_last_used(struct filedesc *fdp, int low, int size)
 static int
 fdisused(struct filedesc *fdp, int fd)
 {
-        KASSERT(fd >= 0 && fd < fdp->fd_nfiles,
+        KASSERT((unsigned int)fd < fdp->fd_nfiles,
             ("file descriptor %d out of range (0, %d)", fd, fdp->fd_nfiles));
 	return ((fdp->fd_map[NDSLOT(fd)] & NDBIT(fd)) != 0);
 }
@@ -799,7 +801,7 @@ do_dup(struct thread *td, int flags, int old, int new,
 	struct proc *p;
 	struct file *fp;
 	struct file *delfp;
-	int error, holdleaders, maxfd;
+	int error, maxfd;
 
 	p = td->td_proc;
 	fdp = p->p_fd;
@@ -871,39 +873,10 @@ do_dup(struct thread *td, int flags, int old, int new,
 		}
 	}
 
-	/*
-	 * If the old file changed out from under us then treat it as a
-	 * bad file descriptor.  Userland should do its own locking to
-	 * avoid this case.
-	 */
-	if (fdp->fd_ofiles[old] != fp) {
-		/* we've allocated a descriptor which we won't use */
-		if (fdp->fd_ofiles[new] == NULL)
-			fdunused(fdp, new);
-		FILEDESC_XUNLOCK(fdp);
-		fdrop(fp, td);
-		return (EBADF);
-	}
+	KASSERT(fp == fdp->fd_ofiles[old], ("old fd has been modified"));
 	KASSERT(old != new, ("new fd is same as old"));
 
-	/*
-	 * Save info on the descriptor being overwritten.  We cannot close
-	 * it without introducing an ownership race for the slot, since we
-	 * need to drop the filedesc lock to call closef().
-	 *
-	 * XXX this duplicates parts of close().
-	 */
 	delfp = fdp->fd_ofiles[new];
-	holdleaders = 0;
-	if (delfp != NULL && td->td_proc->p_fdtol != NULL) {
-		/*
-		 * Ask fdfree() to sleep to ensure that all relevant
-		 * process leaders can be traversed in closef().
-		 */
-		fdp->fd_holdleaderscount++;
-		holdleaders = 1;
-	}
-
 	/*
 	 * Duplicate the source descriptor.
 	 */
@@ -913,37 +886,13 @@ do_dup(struct thread *td, int flags, int old, int new,
 		fdp->fd_lastfile = new;
 	*retval = new;
 
-	/*
-	 * If we dup'd over a valid file, we now own the reference to it
-	 * and must dispose of it using closef() semantics (as if a
-	 * close() were performed on it).
-	 *
-	 * XXX this duplicates parts of close().
-	 */
 	if (delfp != NULL) {
-		knote_fdclose(td, new);
-		/*
-		 * When we're closing an fd with a capability, we need to
-		 * notify mqueue if the underlying object is of type mqueue.
-		 */
-		(void)cap_funwrap(delfp, 0, &fp);
-		if (fp->f_type == DTYPE_MQUEUE)
-			mq_fdclose(td, new, fp);
-		FILEDESC_XUNLOCK(fdp);
-		(void) closef(delfp, td);
-		if (holdleaders) {
-			FILEDESC_XLOCK(fdp);
-			fdp->fd_holdleaderscount--;
-			if (fdp->fd_holdleaderscount == 0 &&
-			    fdp->fd_holdleaderswakeup != 0) {
-				fdp->fd_holdleaderswakeup = 0;
-				wakeup(&fdp->fd_holdleaderscount);
-			}
-			FILEDESC_XUNLOCK(fdp);
-		}
+		(void) closefp(fdp, new, delfp, td);
+		/* closefp() drops the FILEDESC lock for us. */
 	} else {
 		FILEDESC_XUNLOCK(fdp);
 	}
+
 	return (0);
 }
 
@@ -1167,48 +1116,16 @@ fgetown(sigiop)
 }
 
 /*
- * Close a file descriptor.
+ * Function drops the filedesc lock on return.
  */
-#ifndef _SYS_SYSPROTO_H_
-struct close_args {
-	int     fd;
-};
-#endif
-/* ARGSUSED */
-int
-sys_close(td, uap)
-	struct thread *td;
-	struct close_args *uap;
+static int
+closefp(struct filedesc *fdp, int fd, struct file *fp, struct thread *td)
 {
+	struct file *fp_object;
+	int error, holdleaders;
 
-	return (kern_close(td, uap->fd));
-}
+	FILEDESC_XLOCK_ASSERT(fdp);
 
-int
-kern_close(td, fd)
-	struct thread *td;
-	int fd;
-{
-	struct filedesc *fdp;
-	struct file *fp, *fp_object;
-	int error;
-	int holdleaders;
-
-	error = 0;
-	holdleaders = 0;
-	fdp = td->td_proc->p_fd;
-
-	AUDIT_SYSCLOSE(td, fd);
-
-	FILEDESC_XLOCK(fdp);
-	if ((unsigned)fd >= fdp->fd_nfiles ||
-	    (fp = fdp->fd_ofiles[fd]) == NULL) {
-		FILEDESC_XUNLOCK(fdp);
-		return (EBADF);
-	}
-	fdp->fd_ofiles[fd] = NULL;
-	fdp->fd_ofileflags[fd] = 0;
-	fdunused(fdp, fd);
 	if (td->td_proc->p_fdtol != NULL) {
 		/*
 		 * Ask fdfree() to sleep to ensure that all relevant
@@ -1216,6 +1133,8 @@ kern_close(td, fd)
 		 */
 		fdp->fd_holdleaderscount++;
 		holdleaders = 1;
+	} else {
+		holdleaders = 0;
 	}
 
 	/*
@@ -1247,6 +1166,50 @@ kern_close(td, fd)
 		FILEDESC_XUNLOCK(fdp);
 	}
 	return (error);
+}
+
+/*
+ * Close a file descriptor.
+ */
+#ifndef _SYS_SYSPROTO_H_
+struct close_args {
+	int     fd;
+};
+#endif
+/* ARGSUSED */
+int
+sys_close(td, uap)
+	struct thread *td;
+	struct close_args *uap;
+{
+
+	return (kern_close(td, uap->fd));
+}
+
+int
+kern_close(td, fd)
+	struct thread *td;
+	int fd;
+{
+	struct filedesc *fdp;
+	struct file *fp;
+
+	fdp = td->td_proc->p_fd;
+
+	AUDIT_SYSCLOSE(td, fd);
+
+	FILEDESC_XLOCK(fdp);
+	if ((unsigned)fd >= fdp->fd_nfiles ||
+	    (fp = fdp->fd_ofiles[fd]) == NULL) {
+		FILEDESC_XUNLOCK(fdp);
+		return (EBADF);
+	}
+	fdp->fd_ofiles[fd] = NULL;
+	fdp->fd_ofileflags[fd] = 0;
+	fdunused(fdp, fd);
+
+	/* closefp() drops the FILEDESC lock for us. */
+	return (closefp(fdp, fd, fp, td));
 }
 
 /*
@@ -2249,7 +2212,7 @@ fget_unlocked(struct filedesc *fdp, int fd)
 	struct file *fp;
 	u_int count;
 
-	if (fd < 0 || fd >= fdp->fd_nfiles)
+	if ((unsigned int)fd >= fdp->fd_nfiles)
 		return (NULL);
 	/*
 	 * Fetch the descriptor locklessly.  We avoid fdrop() races by
@@ -2635,7 +2598,7 @@ dupfdopen(struct thread *td, struct filedesc *fdp, int indx, int dfd, int mode, 
 	 * closed, then reject.
 	 */
 	FILEDESC_XLOCK(fdp);
-	if (dfd < 0 || dfd >= fdp->fd_nfiles ||
+	if ((unsigned int)dfd >= fdp->fd_nfiles ||
 	    (wfp = fdp->fd_ofiles[dfd]) == NULL) {
 		FILEDESC_XUNLOCK(fdp);
 		return (EBADF);

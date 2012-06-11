@@ -216,9 +216,7 @@ struct ath_buf {
 		    bfs_istxfrag:1,	/* is fragmented */
 		    bfs_ismrr:1,	/* do multi-rate TX retry */
 		    bfs_doprot:1,	/* do RTS/CTS based protection */
-		    bfs_doratelookup:1,	/* do rate lookup before each TX */
-		    bfs_need_seqno:1,	/* need to assign a seqno for aggr */
-		    bfs_seqno_assigned:1;	/* seqno has been assigned */
+		    bfs_doratelookup:1;	/* do rate lookup before each TX */
 
 		int bfs_nfl;		/* next fragment length */
 
@@ -303,6 +301,9 @@ struct ath_txq {
 #define	ATH_TXQ_UNLOCK(_tq)		mtx_unlock(&(_tq)->axq_lock)
 #define	ATH_TXQ_LOCK_ASSERT(_tq)	mtx_assert(&(_tq)->axq_lock, MA_OWNED)
 #define	ATH_TXQ_IS_LOCKED(_tq)		mtx_owned(&(_tq)->axq_lock)
+
+#define	ATH_TID_LOCK_ASSERT(_sc, _tid)	\
+	    ATH_TXQ_LOCK_ASSERT((_sc)->sc_ac2q[(_tid)->ac])
 
 #define ATH_TXQ_INSERT_HEAD(_tq, _elm, _field) do { \
 	TAILQ_INSERT_HEAD(&(_tq)->axq_q, (_elm), _field); \
