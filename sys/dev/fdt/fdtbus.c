@@ -599,9 +599,8 @@ fdtbus_setup_intr(device_t bus, device_t child, struct resource *res,
 	cpu_establish_hardintr(device_get_nameunit(child), 
 		filter, ihand, arg, rman_get_start(res), flags, cookiep);
 #elif defined(__arm__)
-	arm_setup_irqhandler(device_get_nameunit(child),
+	arm_setup_irqhandler(child,
 	    filter, ihand, arg, rman_get_start(res), flags, cookiep);
-	arm_unmask_irq(rman_get_start(res));
 	err = 0;
 #endif
 

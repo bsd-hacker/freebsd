@@ -39,6 +39,33 @@
 #ifndef _MACHINE_INTR_H_
 #define _MACHINE_INTR_H_
 
+#include <machine/psl.h>
+#include <dev/ofw/openfirm.h>
+
+#include "opt_global.h"
+
+#if defined(ARM_INTRNG)
+
+#define	NIRQ		255
+#define	NPIC		16
+#define	INTR_CONTROLLER	INTR_MD1
+
+struct arm_intr_data {
+	void *			arg;
+	struct trapframe *	tf;
+};
+
+int arm_fdt_map_irq(phandle_t ic, int irq);
+const char *arm_describe_irq(int irq);
+void arm_register_pic(device_t dev);
+void arm_unregister_pic(device_t dev);
+void arm_dispatch_irq(device_t dev, struct trapframe *tf, int irq);
+void arm_setup_irqhandler(device_t dev, int (*)(void*), void (*)(void*), 
+    void *, int, int, void **);    
+int arm_remove_irqhandler(int, void *);
+
+#else
+
 /* XXX move to std.* files? */
 #ifdef CPU_XSCALE_81342
 #define NIRQ		128
@@ -56,8 +83,6 @@
 #define NIRQ		32
 #endif
 
-#include <machine/psl.h>
-
 int arm_get_next_irq(int);
 void arm_mask_irq(uintptr_t);
 void arm_unmask_irq(uintptr_t);
@@ -65,6 +90,8 @@ void arm_setup_irqhandler(const char *, int (*)(void*), void (*)(void*),
     void *, int, int, void **);    
 int arm_remove_irqhandler(int, void *);
 extern void (*arm_post_filter)(void *);
+
+#endif	/* !ARM_INTRNG */
 
 void gic_init_secondary(void);
 

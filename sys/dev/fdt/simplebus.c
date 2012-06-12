@@ -78,7 +78,7 @@ struct simplebus_devinfo {
  */
 static int simplebus_probe(device_t);
 static int simplebus_attach(device_t);
-
+static int simplebus_print_irqs(struct resource_list *);
 static int simplebus_print_child(device_t, device_t);
 static int simplebus_setup_intr(device_t, device_t, struct resource *, int,
     driver_filter_t *, driver_intr_t *, void *, void **);
@@ -258,6 +258,27 @@ simplebus_attach(device_t dev)
 }
 
 static int
+simplebus_print_irqs(struct resource_list *rl)
+{
+	struct resource_list_entry *rle;
+	int printed, retval;
+
+	printed = 0;
+	retval = 0;
+
+	STAILQ_FOREACH(rle, rl, link) {
+		if (rle->type != SYS_RES_IRQ)
+			continue;
+
+		retval += printf("%s", printed ? "," : " irq ");
+		retval += printf("%s", FDT_DESCRIBE_IRQ(rle->start));
+		printed++;
+	}
+
+	return (retval);
+}
+
+static int
 simplebus_print_child(device_t dev, device_t child)
 {
 	struct simplebus_devinfo *di;
@@ -270,7 +291,7 @@ simplebus_print_child(device_t dev, device_t child)
 	rv = 0;
 	rv += bus_print_child_header(dev, child);
 	rv += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-	rv += resource_list_print_type(rl, "irq", SYS_RES_IRQ, "%ld");
+	rv += simplebus_print_irqs(rl);
 	rv += bus_print_child_footer(dev, child);
 
 	return (rv);

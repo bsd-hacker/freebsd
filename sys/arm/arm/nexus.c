@@ -61,6 +61,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 #include <machine/intr.h>
 
+#include "pic_if.h"
+
 static MALLOC_DEFINE(M_NEXUSDEV, "nexusdev", "Nexus device");
 
 struct nexus_device {
@@ -70,6 +72,7 @@ struct nexus_device {
 #define DEVTONX(dev)	((struct nexus_device *)device_get_ivars(dev))
 
 static struct rman mem_rman;
+static device_t nexus_dev;
 
 static	int nexus_probe(device_t);
 static	int nexus_attach(device_t);
@@ -82,6 +85,11 @@ static	int nexus_activate_resource(device_t, device_t, int, int,
 static int nexus_setup_intr(device_t dev, device_t child, struct resource *res,
     int flags, driver_filter_t *filt, driver_intr_t *intr, void *arg, void **cookiep);
 static int nexus_teardown_intr(device_t, device_t, struct resource *, void *);
+static void nexus_pic_config(device_t, int, enum intr_trigger, enum intr_polarity);
+static void nexus_pic_mask(device_t, int);
+static void nexus_pic_unmask(device_t, int);
+static void nexus_pic_eoi(device_t, int);
+void arm_handler_execute(struct trapframe *tf, int irqnb);
 
 static device_method_t nexus_methods[] = {
 	/* Device interface */
@@ -94,6 +102,11 @@ static device_method_t nexus_methods[] = {
 	DEVMETHOD(bus_activate_resource,	nexus_activate_resource),
 	DEVMETHOD(bus_setup_intr,	nexus_setup_intr),
 	DEVMETHOD(bus_teardown_intr,	nexus_teardown_intr),
+	/* Interrupt controller interface */
+	DEVMETHOD(pic_config,		nexus_pic_config),
+	DEVMETHOD(pic_mask,		nexus_pic_mask),
+	DEVMETHOD(pic_unmask,		nexus_pic_unmask),
+	DEVMETHOD(pic_eoi,		nexus_pic_eoi),
 	{ 0, 0 }
 };
 
@@ -107,9 +120,8 @@ static devclass_t nexus_devclass;
 static int
 nexus_probe(device_t dev)
 {
-
 	device_quiet(dev);	/* suppress attach message for neatness */
-
+	
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -121,7 +133,7 @@ nexus_setup_intr(device_t dev, device_t child, struct resource *res, int flags,
 	if ((rman_get_flags(res) & RF_SHAREABLE) == 0)
 		flags |= INTR_EXCL;
 
-	arm_setup_irqhandler(device_get_nameunit(child), 
+	arm_setup_irqhandler(child, 
 	    filt, intr, arg, rman_get_start(res), flags, cookiep);
 	return (0);
 }
@@ -143,6 +155,10 @@ nexus_attach(device_t dev)
 	mem_rman.rm_descr = "I/O memory addresses";
 	if (rman_init(&mem_rman) || rman_manage_region(&mem_rman, 0, ~0))
 		panic("nexus_probe mem_rman");
+
+	/* Register core interrupt controller */
+	nexus_dev = dev;
+	arm_register_pic(dev);
 
 	/*
 	 * First, deal with the children we know about already
@@ -248,6 +264,38 @@ nexus_activate_resource(device_t bus, device_t child, int type, int rid,
 		rman_set_bushandle(r, (bus_space_handle_t) vaddr);
 	}
 	return (rman_activate_resource(r));
+}
+
+static void
+nexus_pic_config(device_t bus, int irq, enum intr_trigger trig,
+    enum intr_polarity pol)
+{
+	/* unused */
+}
+
+static void
+nexus_pic_mask(device_t bus, int irq)
+{
+	/* unused */
+}
+
+static void
+nexus_pic_unmask(device_t bus, int irq)
+{
+	/* unused */
+}
+
+static void
+nexus_pic_eoi(device_t bus, int irq)
+{
+	/* unused */
+}
+
+void
+arm_handler_execute(struct trapframe *tf, int irqnb)
+{
+	/* Dispatch root interrupt from core */
+	arm_dispatch_irq(nexus_dev, tf, 0);
 }
 
 DRIVER_MODULE(nexus, root, nexus_driver, nexus_devclass, 0, 0);

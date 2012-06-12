@@ -561,7 +561,7 @@ fdt_intr_to_rl(phandle_t node, struct resource_list *rl,
 	 */
 	if (OF_getprop(node, "interrupt-parent", &iph, sizeof(iph)) <= 0) {
 		debugf("no intr-parent phandle\n");
-		intr_par = OF_parent(node);
+		intr_par = 0xffffffff;
 	} else {
 		iph = fdt32_to_cpu(iph);
 		intr_par = OF_instance_to_package(iph);
@@ -571,8 +571,8 @@ fdt_intr_to_rl(phandle_t node, struct resource_list *rl,
 	    sizeof(intr_cells)) <= 0) {
 		debugf("no intr-cells defined, defaulting to 1\n");
 		intr_cells = 1;
-	}
-	intr_cells = fdt32_to_cpu(intr_cells);
+	} else
+		intr_cells = fdt32_to_cpu(intr_cells);
 
 	intr_num = OF_getprop_alloc(node, "interrupts",
 	    intr_cells * sizeof(pcell_t), (void **)&intr);
