@@ -13,8 +13,8 @@ import zfs
 # List of filesystems to backup
 # XXX MCL
 backuplist=["a", "a/nfs", "a/local", "a/portbuild",
-            "a/portbuild/amd64", "a/portbuild/i386",
-            "a/portbuild/ia64", "a/portbuild/powerprc",
+            "a/portbuild/amd64", "a/portbuild/arm", "a/portbuild/i386",
+            "a/portbuild/ia64", "a/portbuild/powerpc",
             "a/portbuild/sparc64"]
 
 # Directory to store backups
