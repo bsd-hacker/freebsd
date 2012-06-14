@@ -2901,11 +2901,17 @@ scsi_error_action(struct ccb_scsiio *csio, struct scsi_inquiry_data *inq_data,
 					  SSQ_PRINT_SENSE;
 			}
 		}
+		if ((action & SS_MASK) >= SS_START &&
+		    (sense_flags & SF_NO_RECOVERY)) {
+			action &= ~SS_MASK;
+			action |= SS_FAIL;
+		} else if ((action & SS_MASK) == SS_RETRY &&
+		    (sense_flags & SF_NO_RETRY)) {
+			action &= ~SS_MASK;
+			action |= SS_FAIL;
+		}
+
 	}
-#ifdef _KERNEL
-	if (bootverbose)
-		sense_flags |= SF_PRINT_ALWAYS;
-#endif
 	if ((sense_flags & SF_PRINT_ALWAYS) != 0)
 		action |= SSQ_PRINT_SENSE;
 	else if ((sense_flags & SF_NO_PRINT) != 0)
@@ -3058,6 +3064,10 @@ scsi_command_string(struct cam_device *device, struct ccb_scsiio *csio,
 			    scsi_cdb_string(csio->cdb_io.cdb_bytes, cdb_str,
 					    sizeof(cdb_str)));
 	}
+
+#ifdef _KERNEL
+	xpt_free_ccb((union ccb *)cgd);
+#endif
 
 	return(0);
 }
@@ -5727,6 +5737,66 @@ scsi_send_diagnostic(struct ccb_scsiio *csio, u_int32_t retries,
 			| (self_test      ? SSD_SELFTEST : 0)
 			| (page_format    ? SSD_PF       : 0);
 	scsi_ulto2b(param_list_length, scsi_cmd->length);
+
+	cam_fill_csio(csio,
+		      retries,
+		      cbfcnp,
+		      /*flags*/param_list_length ? CAM_DIR_OUT : CAM_DIR_NONE,
+		      tag_action,
+		      data_ptr,
+		      param_list_length,
+		      sense_len,
+		      sizeof(*scsi_cmd),
+		      timeout);
+}
+
+void
+scsi_read_buffer(struct ccb_scsiio *csio, u_int32_t retries,
+			void (*cbfcnp)(struct cam_periph *, union ccb*),
+			uint8_t tag_action, int mode,
+			uint8_t buffer_id, u_int32_t offset,
+			uint8_t *data_ptr, uint32_t allocation_length,
+			uint8_t sense_len, uint32_t timeout)
+{
+	struct scsi_read_buffer *scsi_cmd;
+
+	scsi_cmd = (struct scsi_read_buffer *)&csio->cdb_io.cdb_bytes;
+	memset(scsi_cmd, 0, sizeof(*scsi_cmd));
+	scsi_cmd->opcode = READ_BUFFER;
+	scsi_cmd->byte2 = mode;
+	scsi_cmd->buffer_id = buffer_id;
+	scsi_ulto3b(offset, scsi_cmd->offset);
+	scsi_ulto3b(allocation_length, scsi_cmd->length);
+
+	cam_fill_csio(csio,
+		      retries,
+		      cbfcnp,
+		      /*flags*/CAM_DIR_IN,
+		      tag_action,
+		      data_ptr,
+		      allocation_length,
+		      sense_len,
+		      sizeof(*scsi_cmd),
+		      timeout);
+}
+
+void
+scsi_write_buffer(struct ccb_scsiio *csio, u_int32_t retries,
+			void (*cbfcnp)(struct cam_periph *, union ccb *),
+			uint8_t tag_action, int mode,
+			uint8_t buffer_id, u_int32_t offset,
+			uint8_t *data_ptr, uint32_t param_list_length,
+			uint8_t sense_len, uint32_t timeout)
+{
+	struct scsi_write_buffer *scsi_cmd;
+
+	scsi_cmd = (struct scsi_write_buffer *)&csio->cdb_io.cdb_bytes;
+	memset(scsi_cmd, 0, sizeof(*scsi_cmd));
+	scsi_cmd->opcode = WRITE_BUFFER;
+	scsi_cmd->byte2 = mode;
+	scsi_cmd->buffer_id = buffer_id;
+	scsi_ulto3b(offset, scsi_cmd->offset);
+	scsi_ulto3b(param_list_length, scsi_cmd->length);
 
 	cam_fill_csio(csio,
 		      retries,

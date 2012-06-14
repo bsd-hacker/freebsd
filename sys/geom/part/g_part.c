@@ -83,6 +83,7 @@ struct g_part_alias_list {
 	{ "fat32", G_PART_ALIAS_MS_FAT32 },
 	{ "freebsd", G_PART_ALIAS_FREEBSD },
 	{ "freebsd-boot", G_PART_ALIAS_FREEBSD_BOOT },
+	{ "freebsd-nandfs", G_PART_ALIAS_FREEBSD_NANDFS },
 	{ "freebsd-swap", G_PART_ALIAS_FREEBSD_SWAP },
 	{ "freebsd-ufs", G_PART_ALIAS_FREEBSD_UFS },
 	{ "freebsd-vinum", G_PART_ALIAS_FREEBSD_VINUM },
@@ -103,6 +104,9 @@ struct g_part_alias_list {
 	{ "netbsd-lfs", G_PART_ALIAS_NETBSD_LFS },
 	{ "netbsd-raid", G_PART_ALIAS_NETBSD_RAID },
 	{ "netbsd-swap", G_PART_ALIAS_NETBSD_SWAP },
+	{ "vmware-vmfs", G_PART_ALIAS_VMFS },
+	{ "vmware-vmkdiag", G_PART_ALIAS_VMKDIAG },
+	{ "vmware-reserved", G_PART_ALIAS_VMRESERVED },
 };
 
 SYSCTL_DECL(_kern_geom);
@@ -2211,23 +2215,32 @@ g_part_unload_event(void *arg, int flag)
 int
 g_part_modevent(module_t mod, int type, struct g_part_scheme *scheme)
 {
+	struct g_part_scheme *iter;
 	uintptr_t arg;
 	int error;
 
+	error = 0;
 	switch (type) {
 	case MOD_LOAD:
-		TAILQ_INSERT_TAIL(&g_part_schemes, scheme, scheme_list);
-
-		error = g_retaste(&g_part_class);
-		if (error)
-			TAILQ_REMOVE(&g_part_schemes, scheme, scheme_list);
+		TAILQ_FOREACH(iter, &g_part_schemes, scheme_list) {
+			if (scheme == iter) {
+				printf("GEOM_PART: scheme %s is already "
+				    "registered!\n", scheme->name);
+				break;
+			}
+		}
+		if (iter == NULL) {
+			TAILQ_INSERT_TAIL(&g_part_schemes, scheme,
+			    scheme_list);
+			g_retaste(&g_part_class);
+		}
 		break;
 	case MOD_UNLOAD:
 		arg = (uintptr_t)scheme;
 		error = g_waitfor_event(g_part_unload_event, &arg, M_WAITOK,
 		    NULL);
-		if (!error)
-			error = (arg == (uintptr_t)scheme) ? EDOOFUS : arg;
+		if (error == 0)
+			error = arg;
 		break;
 	default:
 		error = EOPNOTSUPP;

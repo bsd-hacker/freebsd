@@ -2744,6 +2744,10 @@ setfflags(td, vp, flags)
 	struct mount *mp;
 	struct vattr vattr;
 
+	/* We can't support the value matching VNOVAL. */
+	if (flags == VNOVAL)
+		return (EOPNOTSUPP);
+
 	/*
 	 * Prevent non-root users from setting flags on devices.  When
 	 * a device is reused, users can retain ownership of the device
@@ -4132,7 +4136,8 @@ sys_getdirentries(td, uap)
 	long base;
 	int error;
 
-	error = kern_getdirentries(td, uap->fd, uap->buf, uap->count, &base);
+	error = kern_getdirentries(td, uap->fd, uap->buf, uap->count, &base,
+	    NULL, UIO_USERSPACE);
 	if (error)
 		return (error);
 	if (uap->basep != NULL)
@@ -4142,7 +4147,7 @@ sys_getdirentries(td, uap)
 
 int
 kern_getdirentries(struct thread *td, int fd, char *buf, u_int count,
-    long *basep)
+    long *basep, ssize_t *residp, enum uio_seg bufseg)
 {
 	struct vnode *vp;
 	struct file *fp;
@@ -4176,7 +4181,7 @@ unionread:
 	auio.uio_iov = &aiov;
 	auio.uio_iovcnt = 1;
 	auio.uio_rw = UIO_READ;
-	auio.uio_segflg = UIO_USERSPACE;
+	auio.uio_segflg = bufseg;
 	auio.uio_td = td;
 	vn_lock(vp, LK_SHARED | LK_RETRY);
 	AUDIT_ARG_VNODE1(vp);
@@ -4209,6 +4214,8 @@ unionread:
 	VOP_UNLOCK(vp, 0);
 	VFS_UNLOCK_GIANT(vfslocked);
 	*basep = loff;
+	if (residp != NULL)
+		*residp = auio.uio_resid;
 	td->td_retval[0] = count - auio.uio_resid;
 fail:
 	fdrop(fp, td);
@@ -4330,12 +4337,10 @@ getvnode(struct filedesc *fdp, int fd, cap_rights_t rights,
 	struct file *fp;
 #ifdef CAPABILITIES
 	struct file *fp_fromcap;
-#endif
 	int error;
+#endif
 
-	error = 0;
-	fp = NULL;
-	if ((fdp == NULL) || (fp = fget_unlocked(fdp, fd)) == NULL)
+	if (fdp == NULL || (fp = fget_unlocked(fdp, fd)) == NULL)
 		return (EBADF);
 #ifdef CAPABILITIES
 	/*
@@ -4477,17 +4482,12 @@ sys_fhopen(td, uap)
 		int flags;
 	} */ *uap;
 {
-	struct proc *p = td->td_proc;
 	struct mount *mp;
 	struct vnode *vp;
 	struct fhandle fhp;
-	struct vattr vat;
-	struct vattr *vap = &vat;
 	struct flock lf;
 	struct file *fp;
-	register struct filedesc *fdp = p->p_fd;
 	int fmode, error, type;
-	accmode_t accmode;
 	struct file *nfp;
 	int vfslocked;
 	int indx;
@@ -4495,6 +4495,7 @@ sys_fhopen(td, uap)
 	error = priv_check(td, PRIV_VFS_FHOPEN);
 	if (error)
 		return (error);
+	indx = -1;
 	fmode = FFLAGS(uap->flags);
 	/* why not allow a non-read/write open for our lockd? */
 	if (((fmode & (FREAD | FWRITE)) == 0) || (fmode & O_CREAT))
@@ -4510,109 +4511,40 @@ sys_fhopen(td, uap)
 	/* now give me my vnode, it gets returned to me locked */
 	error = VFS_FHTOVP(mp, &fhp.fh_fid, LK_EXCLUSIVE, &vp);
 	vfs_unbusy(mp);
-	if (error)
-		goto out;
-	/*
-	 * from now on we have to make sure not
-	 * to forget about the vnode
-	 * any error that causes an abort must vput(vp)
-	 * just set error = err and 'goto bad;'.
-	 */
-
-	/*
-	 * from vn_open
-	 */
-	if (vp->v_type == VLNK) {
-		error = EMLINK;
-		goto bad;
-	}
-	if (vp->v_type == VSOCK) {
-		error = EOPNOTSUPP;
-		goto bad;
-	}
-	if (vp->v_type != VDIR && fmode & O_DIRECTORY) {
-		error = ENOTDIR;
-		goto bad;
-	}
-	accmode = 0;
-	if (fmode & (FWRITE | O_TRUNC)) {
-		if (vp->v_type == VDIR) {
-			error = EISDIR;
-			goto bad;
-		}
-		error = vn_writechk(vp);
-		if (error)
-			goto bad;
-		accmode |= VWRITE;
-	}
-	if (fmode & FREAD)
-		accmode |= VREAD;
-	if ((fmode & O_APPEND) && (fmode & FWRITE))
-		accmode |= VAPPEND;
-#ifdef MAC
-	error = mac_vnode_check_open(td->td_ucred, vp, accmode);
-	if (error)
-		goto bad;
-#endif
-	if (accmode) {
-		error = VOP_ACCESS(vp, accmode, td->td_ucred, td);
-		if (error)
-			goto bad;
-	}
-	if (fmode & O_TRUNC) {
-		vfs_ref(mp);
-		VOP_UNLOCK(vp, 0);				/* XXX */
-		if ((error = vn_start_write(NULL, &mp, V_WAIT | PCATCH)) != 0) {
-			vrele(vp);
-			vfs_rel(mp);
-			goto out;
-		}
-		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);	/* XXX */
-		vfs_rel(mp);
-#ifdef MAC
-		/*
-		 * We don't yet have fp->f_cred, so use td->td_ucred, which
-		 * should be right.
-		 */
-		error = mac_vnode_check_write(td->td_ucred, td->td_ucred, vp);
-		if (error == 0) {
-#endif
-			VATTR_NULL(vap);
-			vap->va_size = 0;
-			error = VOP_SETATTR(vp, vap, td->td_ucred);
-#ifdef MAC
-		}
-#endif
-		vn_finished_write(mp);
-		if (error)
-			goto bad;
-	}
-	error = VOP_OPEN(vp, fmode, td->td_ucred, td, NULL);
-	if (error)
-		goto bad;
-
-	if (fmode & FWRITE) {
-		vp->v_writecount++;
-		CTR3(KTR_VFS, "%s: vp %p v_writecount increased to %d",
-		    __func__, vp, vp->v_writecount);
+	if (error) {
+		VFS_UNLOCK_GIANT(vfslocked);
+		return (error);
 	}
 
-	/*
-	 * end of vn_open code
-	 */
+	error = falloc_noinstall(td, &nfp);
+	if (error) {
+		vput(vp);
+		VFS_UNLOCK_GIANT(vfslocked);
+		return (error);
+ 	}
 
-	if ((error = falloc(td, &nfp, &indx, fmode)) != 0) {
-		if (fmode & FWRITE) {
-			vp->v_writecount--;
-			CTR3(KTR_VFS, "%s: vp %p v_writecount decreased to %d",
-			    __func__, vp, vp->v_writecount);
-		}
-		goto bad;
-	}
 	/* An extra reference on `nfp' has been held for us by falloc(). */
 	fp = nfp;
-	nfp->f_vnode = vp;
-	finit(nfp, fmode & FMASK, DTYPE_VNODE, vp, &vnops);
+#ifdef INVARIANTS
+	td->td_dupfd = -1;
+#endif
+	error = vn_open_vnode(vp, fmode, td->td_ucred, td, fp);
+	if (error) {
+		KASSERT(fp->f_ops == &badfileops,
+		    ("VOP_OPEN in fhopen() set f_ops"));
+		KASSERT(td->td_dupfd < 0,
+		    ("fhopen() encountered fdopen()"));
+
+		vput(vp);
+		goto bad;
+	}
+#ifdef INVARIANTS
+	td->td_dupfd = 0;
+#endif
+	fp->f_vnode = vp;
+	fp->f_seqcount = 1;
+	finit(fp, fmode & FMASK, DTYPE_VNODE, vp, &vnops);
+	VOP_UNLOCK(vp, 0);
 	if (fmode & (O_EXLOCK | O_SHLOCK)) {
 		lf.l_whence = SEEK_SET;
 		lf.l_start = 0;
@@ -4624,36 +4556,22 @@ sys_fhopen(td, uap)
 		type = F_FLOCK;
 		if ((fmode & FNONBLOCK) == 0)
 			type |= F_WAIT;
-		VOP_UNLOCK(vp, 0);
 		if ((error = VOP_ADVLOCK(vp, (caddr_t)fp, F_SETLK, &lf,
-			    type)) != 0) {
-			/*
-			 * The lock request failed.  Normally close the
-			 * descriptor but handle the case where someone might
-			 * have dup()d or close()d it when we weren't looking.
-			 */
-			fdclose(fdp, fp, indx, td);
-
-			/*
-			 * release our private reference
-			 */
-			fdrop(fp, td);
-			goto out;
-		}
-		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+			    type)) != 0)
+			goto bad;
 		atomic_set_int(&fp->f_flag, FHASLOCK);
 	}
+	if (fmode & O_TRUNC) {
+		error = fo_truncate(fp, 0, td->td_ucred, td);
+		if (error)
+			goto bad;
+	}
 
-	VOP_UNLOCK(vp, 0);
-	fdrop(fp, td);
-	VFS_UNLOCK_GIANT(vfslocked);
-	td->td_retval[0] = indx;
-	return (0);
-
+	error = finstall(td, fp, &indx, fmode);
 bad:
-	vput(vp);
-out:
 	VFS_UNLOCK_GIANT(vfslocked);
+	fdrop(fp, td);
+	td->td_retval[0] = indx;
 	return (error);
 }
 
@@ -4675,16 +4593,28 @@ sys_fhstat(td, uap)
 	} */ *uap;
 {
 	struct stat sb;
-	fhandle_t fh;
+	struct fhandle fh;
+	int error;
+
+	error = copyin(uap->u_fhp, &fh, sizeof(fh));
+	if (error != 0)
+		return (error);
+	error = kern_fhstat(td, fh, &sb);
+	if (error != 0)
+		return (error);
+	error = copyout(&sb, uap->sb, sizeof(sb));
+	return (error);
+}
+
+int
+kern_fhstat(struct thread *td, struct fhandle fh, struct stat *sb)
+{
 	struct mount *mp;
 	struct vnode *vp;
 	int vfslocked;
 	int error;
 
 	error = priv_check(td, PRIV_VFS_FHSTAT);
-	if (error)
-		return (error);
-	error = copyin(uap->u_fhp, &fh, sizeof(fhandle_t));
 	if (error)
 		return (error);
 	if ((mp = vfs_busyfs(&fh.fh_fsid)) == NULL)
@@ -4696,12 +4626,9 @@ sys_fhstat(td, uap)
 		VFS_UNLOCK_GIANT(vfslocked);
 		return (error);
 	}
-	error = vn_stat(vp, &sb, td->td_ucred, NOCRED, td);
+	error = vn_stat(vp, sb, td->td_ucred, NOCRED, td);
 	vput(vp);
 	VFS_UNLOCK_GIANT(vfslocked);
-	if (error)
-		return (error);
-	error = copyout(&sb, uap->sb, sizeof(sb));
 	return (error);
 }
 

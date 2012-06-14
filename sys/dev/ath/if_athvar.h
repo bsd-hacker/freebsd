@@ -44,6 +44,14 @@
 #define	ATH_TIMEOUT		1000
 
 /*
+ * There is a separate TX ath_buf pool for management frames.
+ * This ensures that management frames such as probe responses
+ * and BAR frames can be transmitted during periods of high
+ * TX activity.
+ */
+#define	ATH_MGMT_TXBUF		32
+
+/*
  * 802.11n requires more TX and RX buffers to do AMPDU.
  */
 #ifdef	ATH_ENABLE_11N
@@ -106,6 +114,9 @@ struct ath_tid {
 	TAILQ_ENTRY(ath_tid)	axq_qelem;
 	int			sched;
 	int			paused;	/* >0 if the TID has been paused */
+	int			addba_tx_pending;	/* TX ADDBA pending */
+	int			bar_wait;	/* waiting for BAR */
+	int			bar_tx;		/* BAR TXed */
 
 	/*
 	 * Is the TID being cleaned up after a transition
@@ -169,11 +180,15 @@ struct ath_node {
 	((((x)%(mul)) >= ((mul)/2)) ? ((x) + ((mul) - 1)) / (mul) : (x)/(mul))
 #define	ATH_RSSI(x)		ATH_EP_RND(x, HAL_RSSI_EP_MULTIPLIER)
 
+typedef enum {
+	ATH_BUFTYPE_NORMAL	= 0,
+	ATH_BUFTYPE_MGMT	= 1,
+} ath_buf_type_t;
+
 struct ath_buf {
 	TAILQ_ENTRY(ath_buf)	bf_list;
 	struct ath_buf *	bf_next;	/* next buffer in the aggregate */
 	int			bf_nseg;
-	uint16_t		bf_txflags;	/* tx descriptor flags */
 	uint16_t		bf_flags;	/* status flags (below) */
 	struct ath_desc		*bf_desc;	/* virtual addr of desc */
 	struct ath_desc_status	bf_status;	/* tx/rx status */
@@ -205,18 +220,17 @@ struct ath_buf {
 		uint16_t bfs_nframes;	/* number of frames in aggregate */
 		uint16_t bfs_ndelim;	/* number of delims for padding */
 
-		int bfs_aggr:1;		/* part of aggregate? */
-		int bfs_aggrburst:1;	/* part of aggregate burst? */
-		int bfs_isretried:1;	/* retried frame? */
-		int bfs_dobaw:1;	/* actually check against BAW? */
-		int bfs_addedbaw:1;	/* has been added to the BAW */
-		int bfs_shpream:1;	/* use short preamble */
-		int bfs_istxfrag:1;	/* is fragmented */
-		int bfs_ismrr:1;	/* do multi-rate TX retry */
-		int bfs_doprot:1;	/* do RTS/CTS based protection */
-		int bfs_doratelookup:1;	/* do rate lookup before each TX */
-		int bfs_need_seqno:1;	/* need to assign a seqno for aggregation */
-		int bfs_seqno_assigned:1;	/* seqno has been assigned */
+		u_int32_t bfs_aggr:1,		/* part of aggregate? */
+		    bfs_aggrburst:1,	/* part of aggregate burst? */
+		    bfs_isretried:1,	/* retried frame? */
+		    bfs_dobaw:1,	/* actually check against BAW? */
+		    bfs_addedbaw:1,	/* has been added to the BAW */
+		    bfs_shpream:1,	/* use short preamble */
+		    bfs_istxfrag:1,	/* is fragmented */
+		    bfs_ismrr:1,	/* do multi-rate TX retry */
+		    bfs_doprot:1,	/* do RTS/CTS based protection */
+		    bfs_doratelookup:1;	/* do rate lookup before each TX */
+
 		int bfs_nfl;		/* next fragment length */
 
 		/*
@@ -227,7 +241,7 @@ struct ath_buf {
 		int bfs_pktlen;		/* length of this packet */
 		int bfs_hdrlen;		/* length of this packet header */
 		uint16_t bfs_al;	/* length of aggregate */
-		int bfs_flags;		/* HAL descriptor flags */
+		int bfs_txflags;	/* HAL (tx) descriptor flags */
 		int bfs_txrate0;	/* first TX rate */
 		int bfs_try0;		/* first try count */
 		uint8_t bfs_ctsrate0;	/* Non-zero - use this as ctsrate */
@@ -235,7 +249,6 @@ struct ath_buf {
 		int bfs_txpower;	/* tx power */
 		int bfs_txantenna;	/* TX antenna config */
 		enum ieee80211_protmode bfs_protmode;
-		HAL_11N_RATE_SERIES bfs_rc11n[ATH_RC_NUM];	/* 11n TX series */
 		int bfs_ctsrate;	/* CTS rate */
 		int bfs_ctsduration;	/* CTS duration (pre-11n NICs) */
 		struct ath_rc_series bfs_rc[ATH_RC_NUM];	/* non-11n TX series */
@@ -243,6 +256,7 @@ struct ath_buf {
 };
 typedef TAILQ_HEAD(ath_bufhead_s, ath_buf) ath_bufhead;
 
+#define	ATH_BUF_MGMT	0x00000001	/* (tx) desc is a mgmt desc */
 #define	ATH_BUF_BUSY	0x00000002	/* (tx) desc owned by h/w */
 
 /*
@@ -302,6 +316,9 @@ struct ath_txq {
 #define	ATH_TXQ_LOCK_ASSERT(_tq)	mtx_assert(&(_tq)->axq_lock, MA_OWNED)
 #define	ATH_TXQ_IS_LOCKED(_tq)		mtx_owned(&(_tq)->axq_lock)
 
+#define	ATH_TID_LOCK_ASSERT(_sc, _tid)	\
+	    ATH_TXQ_LOCK_ASSERT((_sc)->sc_ac2q[(_tid)->ac])
+
 #define ATH_TXQ_INSERT_HEAD(_tq, _elm, _field) do { \
 	TAILQ_INSERT_HEAD(&(_tq)->axq_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
@@ -348,7 +365,8 @@ struct ath_softc {
 	struct ifnet		*sc_ifp;	/* interface common */
 	struct ath_stats	sc_stats;	/* interface statistics */
 	struct ath_tx_aggr_stats	sc_aggr_stats;
-	int			sc_debug;
+	struct ath_intr_stats	sc_intr_stats;
+	uint64_t		sc_debug;
 	int			sc_nvaps;	/* # vaps */
 	int			sc_nstavaps;	/* # station vaps */
 	int			sc_nmeshvaps;	/* # mbss vaps */
@@ -483,6 +501,8 @@ struct ath_softc {
 
 	struct ath_descdma	sc_txdma;	/* TX descriptors */
 	ath_bufhead		sc_txbuf;	/* transmit buffer */
+	struct ath_descdma	sc_txdma_mgmt;	/* mgmt TX descriptors */
+	ath_bufhead		sc_txbuf_mgmt;	/* mgmt transmit buffer */
 	struct mtx		sc_txbuflock;	/* txbuf lock */
 	char			sc_txname[12];	/* e.g. "ath0_buf" */
 	u_int			sc_txqsetup;	/* h/w queues setup */
@@ -490,6 +510,7 @@ struct ath_softc {
 	struct ath_txq		sc_txq[HAL_NUM_TX_QUEUES];
 	struct ath_txq		*sc_ac2q[5];	/* WME AC -> h/w q map */ 
 	struct task		sc_txtask;	/* tx int processing */
+	struct task		sc_txqtask;	/* tx proc processing */
 	int			sc_wd_timer;	/* count down for wd timer */
 	struct callout		sc_wd_ch;	/* tx watchdog timer */
 	struct ath_tx_radiotap_header sc_tx_th;
@@ -504,6 +525,7 @@ struct ath_softc {
 	struct task		sc_bmisstask;	/* bmiss int processing */
 	struct task		sc_bstucktask;	/* stuck beacon processing */
 	struct task		sc_resettask;	/* interface reset task */
+	struct task		sc_fataltask;	/* fatal task */
 	enum {
 		OK,				/* no change needed */
 		UPDATE,				/* update pending */
@@ -531,6 +553,7 @@ struct ath_softc {
 	uint16_t		*sc_eepromdata;	/* Local eeprom data, if AR9100 */
 	int			sc_txchainmask;	/* currently configured TX chainmask */
 	int			sc_rxchainmask;	/* currently configured RX chainmask */
+	int			sc_rts_aggr_limit;	/* TX limit on RTS aggregates */
 
 	/* Queue limits */
 
@@ -956,10 +979,10 @@ void	ath_intr(void *);
 	((*(_ah)->ah_setupFirstTxDesc)((_ah), (_ds), (_aggrlen), (_flags), \
 	(_txpower), (_txr0), (_txtr0), (_antm), (_rcr), (_rcd)))
 #define	ath_hal_chaintxdesc(_ah, _ds, _pktlen, _hdrlen, _type, _keyix, \
-	_cipher, _delims, _seglen, _first, _last) \
+	_cipher, _delims, _seglen, _first, _last, _lastaggr) \
 	((*(_ah)->ah_chainTxDesc)((_ah), (_ds), (_pktlen), (_hdrlen), \
 	(_type), (_keyix), (_cipher), (_delims), (_seglen), \
-	(_first), (_last)))
+	(_first), (_last), (_lastaggr)))
 #define	ath_hal_setuplasttxdesc(_ah, _ds, _ds0) \
 	((*(_ah)->ah_setupLastTxDesc)((_ah), (_ds), (_ds0)))
 
@@ -989,6 +1012,14 @@ void	ath_intr(void *);
 	((*(_ah)->ah_gpioSetIntr)((_ah), (_gpio), (_b)))
 
 /*
+ * PCIe suspend/resume/poweron/poweroff related macros
+ */
+#define	ath_hal_enablepcie(_ah, _restore, _poweroff) \
+	((*(_ah)->ah_configPCIE)((_ah), (_restore), (_poweroff)))
+#define	ath_hal_disablepcie(_ah) \
+	((*(_ah)->ah_disablePCIE)((_ah)))
+
+/*
  * This is badly-named; you need to set the correct parameters
  * to begin to receive useful radar events; and even then
  * it doesn't "enable" DFS. See the ath_dfs/null/ module for
@@ -1005,6 +1036,8 @@ void	ath_intr(void *);
 	((*(_ah)->ah_isFastClockEnabled)((_ah)))
 #define	ath_hal_radar_wait(_ah, _chan) \
 	((*(_ah)->ah_radarWait)((_ah), (_chan)))
+#define	ath_hal_get_mib_cycle_counts(_ah, _sample) \
+	((*(_ah)->ah_getMibCycleCounts)((_ah), (_sample)))
 #define	ath_hal_get_chan_ext_busy(_ah) \
 	((*(_ah)->ah_get11nExtBusy)((_ah)))
 

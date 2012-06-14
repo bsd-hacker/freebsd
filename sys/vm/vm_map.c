@@ -1300,6 +1300,8 @@ charged:
 	new_entry->protection = prot;
 	new_entry->max_protection = max;
 	new_entry->wired_count = 0;
+	new_entry->read_ahead = VM_FAULT_READ_AHEAD_INIT;
+	new_entry->next_read = OFF_TO_IDX(offset);
 
 	KASSERT(cred == NULL || !ENTRY_CHARGED(new_entry),
 	    ("OVERCOMMIT: vm_map_insert leaks vm_map %p", new_entry));
@@ -3526,7 +3528,7 @@ Retry:
 		}
 
 		rv = vm_map_insert(map, NULL, 0, addr, stack_entry->start,
-		    p->p_sysent->sv_stackprot, VM_PROT_ALL, 0);
+		    next_entry->protection, next_entry->max_protection, 0);
 
 		/* Adjust the available stack space by the amount we grew. */
 		if (rv == KERN_SUCCESS) {

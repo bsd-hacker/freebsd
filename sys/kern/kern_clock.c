@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_kdb.h"
 #include "opt_device_polling.h"
 #include "opt_hwpmc_hooks.h"
+#include "opt_kdtrace.h"
 #include "opt_ntp.h"
 #include "opt_watchdog.h"
 
@@ -56,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/resource.h>
 #include <sys/resourcevar.h>
 #include <sys/sched.h>
+#include <sys/sdt.h>
 #include <sys/signalvar.h>
 #include <sys/sleepqueue.h>
 #include <sys/smp.h>
@@ -74,6 +76,8 @@ __FBSDID("$FreeBSD$");
 
 #ifdef HWPMC_HOOKS
 #include <sys/pmckern.h>
+PMC_SOFT_DEFINE( , , clock, hard);
+PMC_SOFT_DEFINE( , , clock, stat);
 #endif
 
 #ifdef DEVICE_POLLING
@@ -85,6 +89,9 @@ SYSINIT(clocks, SI_SUB_CLOCKS, SI_ORDER_FIRST, initclocks, NULL);
 
 /* Spin-lock protecting profiling statistics. */
 static struct mtx time_lock;
+
+SDT_PROVIDER_DECLARE(sched);
+SDT_PROBE_DEFINE2(sched, , , tick, tick, "struct thread *", "struct proc *");
 
 static int
 sysctl_kern_cp_time(SYSCTL_HANDLER_ARGS)
@@ -446,9 +453,11 @@ hardclock_cpu(int usermode)
 	td->td_flags |= flags;
 	thread_unlock(td);
 
-#ifdef	HWPMC_HOOKS
+#ifdef HWPMC_HOOKS
 	if (PMC_CPU_HAS_SAMPLES(PCPU_GET(cpuid)))
 		PMC_CALL_HOOK_UNLOCKED(curthread, PMC_FN_DO_SAMPLES, NULL);
+	if (td->td_intr_frame != NULL)
+		PMC_SOFT_CALL_TF( , , clock, hard, td->td_intr_frame);
 #endif
 	callout_tick();
 }
@@ -537,6 +546,8 @@ hardclock_cnt(int cnt, int usermode)
 #ifdef	HWPMC_HOOKS
 	if (PMC_CPU_HAS_SAMPLES(PCPU_GET(cpuid)))
 		PMC_CALL_HOOK_UNLOCKED(curthread, PMC_FN_DO_SAMPLES, NULL);
+	if (td->td_intr_frame != NULL)
+		PMC_SOFT_CALL_TF( , , clock, hard, td->td_intr_frame);
 #endif
 	callout_tick();
 	/* We are in charge to handle this tick duty. */
@@ -754,10 +765,15 @@ statclock_cnt(int cnt, int usermode)
 		ru->ru_maxrss = rss;
 	KTR_POINT2(KTR_SCHED, "thread", sched_tdname(td), "statclock",
 	    "prio:%d", td->td_priority, "stathz:%d", (stathz)?stathz:hz);
+	SDT_PROBE2(sched, , , tick, td, td->td_proc);
 	thread_lock_flags(td, MTX_QUIET);
 	for ( ; cnt > 0; cnt--)
 		sched_clock(td);
 	thread_unlock(td);
+#ifdef HWPMC_HOOKS
+	if (td->td_intr_frame != NULL)
+		PMC_SOFT_CALL_TF( , , clock, stat, td->td_intr_frame);
+#endif
 }
 
 void
