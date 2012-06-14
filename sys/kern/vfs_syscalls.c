@@ -1093,8 +1093,7 @@ kern_openat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 	struct file *fp;
 	struct vnode *vp;
 	int cmode;
-	struct file *nfp;
-	int type, indx = -1, error, error_open;
+	int type, indx = -1, error;
 	struct flock lf;
 	struct nameidata nd;
 	int vfslocked;
@@ -1111,19 +1110,22 @@ kern_openat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 	if (flags & O_EXEC) {
 		if (flags & O_ACCMODE)
 			return (EINVAL);
-	} else if ((flags & O_ACCMODE) == O_ACCMODE)
+	} else if ((flags & O_ACCMODE) == O_ACCMODE) {
 		return (EINVAL);
-	else
+	} else {
 		flags = FFLAGS(flags);
+	}
 
 	/*
-	 * allocate the file descriptor, but don't install a descriptor yet
+	 * Allocate the file descriptor, but don't install a descriptor yet.
 	 */
-	error = falloc_noinstall(td, &nfp);
+	error = falloc_noinstall(td, &fp);
 	if (error)
 		return (error);
-	/* An extra reference on `nfp' has been held for us by falloc_noinstall(). */
-	fp = nfp;
+	/*
+	 * An extra reference on `fp' has been held for us by
+	 * falloc_noinstall().
+	 */
 	/* Set the flags early so the finit in devfs can pick them up. */
 	fp->f_flag = flags & FMASK;
 	cmode = ((mode &~ fdp->fd_cmask) & ALLPERMS) &~ S_ISTXT;
@@ -1141,36 +1143,24 @@ kern_openat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 			goto success;
 
 		/*
-		 * handle special fdopen() case.  bleh.  dupfdopen() is
-		 * responsible for dropping the old contents of ofiles[indx]
-		 * if it succeeds.
+		 * Handle special fdopen() case. bleh.
 		 *
 		 * Don't do this for relative (capability) lookups; we don't
 		 * understand exactly what would happen, and we don't think
 		 * that it ever should.
 		 */
-		if ((nd.ni_strictrelative == 0) &&
+		if (nd.ni_strictrelative == 0 &&
 		    (error == ENODEV || error == ENXIO) &&
-		    (td->td_dupfd >= 0)) {
-			/* XXX from fdopen */
-			error_open = error;
-			if ((error = finstall(td, fp, &indx, flags)) != 0)
-				goto bad_unlocked;
-			if ((error = dupfdopen(td, fdp, indx, td->td_dupfd,
-			    flags, error_open)) == 0)
+		    td->td_dupfd >= 0) {
+			error = dupfdopen(td, fdp, td->td_dupfd, flags, error,
+			    &indx);
+			if (error == 0)
 				goto success;
 		}
-		/*
-		 * Clean up the descriptor, but only if another thread hadn't
-		 * replaced or closed it.
-		 */
-		if (indx != -1)
-			fdclose(fdp, fp, indx, td);
-		fdrop(fp, td);
 
 		if (error == ERESTART)
 			error = EINTR;
-		return (error);
+		goto bad_unlocked;
 	}
 	td->td_dupfd = 0;
 	vfslocked = NDHASGIANT(&nd);
@@ -1206,7 +1196,7 @@ kern_openat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 		if ((flags & FNONBLOCK) == 0)
 			type |= F_WAIT;
 		if ((error = VOP_ADVLOCK(vp, (caddr_t)fp, F_SETLK, &lf,
-			    type)) != 0)
+		    type)) != 0)
 			goto bad;
 		atomic_set_int(&fp->f_flag, FHASLOCK);
 	}
@@ -1247,10 +1237,8 @@ success:
 bad:
 	VFS_UNLOCK_GIANT(vfslocked);
 bad_unlocked:
-	if (indx != -1)
-		fdclose(fdp, fp, indx, td);
+	KASSERT(indx == -1, ("indx=%d, should be -1", indx));
 	fdrop(fp, td);
-	td->td_retval[0] = -1;
 	return (error);
 }
 
@@ -4488,7 +4476,6 @@ sys_fhopen(td, uap)
 	struct flock lf;
 	struct file *fp;
 	int fmode, error, type;
-	struct file *nfp;
 	int vfslocked;
 	int indx;
 
@@ -4516,15 +4503,17 @@ sys_fhopen(td, uap)
 		return (error);
 	}
 
-	error = falloc_noinstall(td, &nfp);
+	error = falloc_noinstall(td, &fp);
 	if (error) {
 		vput(vp);
 		VFS_UNLOCK_GIANT(vfslocked);
 		return (error);
- 	}
+	}
+	/*
+	 * An extra reference on `fp' has been held for us by
+	 * falloc_noinstall().
+	 */
 
-	/* An extra reference on `nfp' has been held for us by falloc(). */
-	fp = nfp;
 #ifdef INVARIANTS
 	td->td_dupfd = -1;
 #endif
@@ -4557,7 +4546,7 @@ sys_fhopen(td, uap)
 		if ((fmode & FNONBLOCK) == 0)
 			type |= F_WAIT;
 		if ((error = VOP_ADVLOCK(vp, (caddr_t)fp, F_SETLK, &lf,
-			    type)) != 0)
+		    type)) != 0)
 			goto bad;
 		atomic_set_int(&fp->f_flag, FHASLOCK);
 	}

@@ -524,7 +524,9 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 		| IEEE80211_C_SHPREAMBLE	/* short preamble supported */
 		| IEEE80211_C_SHSLOT		/* short slot time supported */
 		| IEEE80211_C_WPA		/* capable of WPA1+WPA2 */
+#ifndef	ATH_ENABLE_11N
 		| IEEE80211_C_BGSCAN		/* capable of bg scanning */
+#endif
 		| IEEE80211_C_TXFRAG		/* handle tx frags */
 #ifdef	ATH_ENABLE_DFS
 		| IEEE80211_C_DFS		/* Enable radar detection */
@@ -659,12 +661,6 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 		    tx_chainmask);
 		(void) ath_hal_settxchainmask(sc->sc_ah, tx_chainmask);
 	}
-
-	/*
-	 * The if_ath 11n support is completely not ready for normal use.
-	 * Enabling this option will likely break everything and everything.
-	 * Don't think of doing that unless you know what you're doing.
-	 */
 
 #ifdef	ATH_ENABLE_11N
 	/*
@@ -2239,8 +2235,22 @@ _ath_getbuf_locked(struct ath_softc *sc, ath_buf_type_t btype)
 	if (bf != NULL && (bf->bf_flags & ATH_BUF_BUSY) == 0) {
 		if (btype == ATH_BUFTYPE_MGMT)
 			TAILQ_REMOVE(&sc->sc_txbuf_mgmt, bf, bf_list);
-		else
+		else {
 			TAILQ_REMOVE(&sc->sc_txbuf, bf, bf_list);
+			sc->sc_txbuf_cnt--;
+
+			/*
+			 * This shuldn't happen; however just to be
+			 * safe print a warning and fudge the txbuf
+			 * count.
+			 */
+			if (sc->sc_txbuf_cnt < 0) {
+				device_printf(sc->sc_dev,
+				    "%s: sc_txbuf_cnt < 0?\n",
+				    __func__);
+				sc->sc_txbuf_cnt = 0;
+			}
+		}
 	} else
 		bf = NULL;
 
@@ -2367,6 +2377,7 @@ ath_start(struct ifnet *ifp)
 		    "%s: sc_inreset_cnt > 0; bailing\n", __func__);
 		ATH_PCU_UNLOCK(sc);
 		IF_LOCK(&ifp->if_snd);
+		sc->sc_stats.ast_tx_qstop++;
 		ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 		IF_UNLOCK(&ifp->if_snd);
 		return;
@@ -2375,6 +2386,17 @@ ath_start(struct ifnet *ifp)
 	ATH_PCU_UNLOCK(sc);
 
 	for (;;) {
+		ATH_TXBUF_LOCK(sc);
+		if (sc->sc_txbuf_cnt <= sc->sc_txq_data_minfree) {
+			/* XXX increment counter? */
+			ATH_TXBUF_UNLOCK(sc);
+			IF_LOCK(&ifp->if_snd);
+			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+			IF_UNLOCK(&ifp->if_snd);
+			break;
+		}
+		ATH_TXBUF_UNLOCK(sc);
+		
 		/*
 		 * Grab a TX buffer and associated resources.
 		 */
@@ -2883,6 +2905,7 @@ ath_desc_alloc(struct ath_softc *sc)
 		ath_descdma_cleanup(sc, &sc->sc_rxdma, &sc->sc_rxbuf);
 		return error;
 	}
+	sc->sc_txbuf_cnt = ath_txbuf;
 
 	error = ath_descdma_setup(sc, &sc->sc_txdma_mgmt, &sc->sc_txbuf_mgmt,
 			"tx_mgmt", ath_txbuf_mgmt, ATH_TXDESC);
@@ -3686,8 +3709,17 @@ ath_returnbuf_tail(struct ath_softc *sc, struct ath_buf *bf)
 
 	if (bf->bf_flags & ATH_BUF_MGMT)
 		TAILQ_INSERT_TAIL(&sc->sc_txbuf_mgmt, bf, bf_list);
-	else
+	else {
 		TAILQ_INSERT_TAIL(&sc->sc_txbuf, bf, bf_list);
+		sc->sc_txbuf_cnt++;
+		if (sc->sc_txbuf_cnt > ath_txbuf) {
+			device_printf(sc->sc_dev,
+			    "%s: sc_txbuf_cnt > %d?\n",
+			    __func__,
+			    ath_txbuf);
+			sc->sc_txbuf_cnt = ath_txbuf;
+		}
+	}
 }
 
 void
@@ -3698,8 +3730,17 @@ ath_returnbuf_head(struct ath_softc *sc, struct ath_buf *bf)
 
 	if (bf->bf_flags & ATH_BUF_MGMT)
 		TAILQ_INSERT_HEAD(&sc->sc_txbuf_mgmt, bf, bf_list);
-	else
+	else {
 		TAILQ_INSERT_HEAD(&sc->sc_txbuf, bf, bf_list);
+		sc->sc_txbuf_cnt++;
+		if (sc->sc_txbuf_cnt > ATH_TXBUF) {
+			device_printf(sc->sc_dev,
+			    "%s: sc_txbuf_cnt > %d?\n",
+			    __func__,
+			    ATH_TXBUF);
+			sc->sc_txbuf_cnt = ATH_TXBUF;
+		}
+	}
 }
 
 /*

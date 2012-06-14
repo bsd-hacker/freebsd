@@ -100,7 +100,7 @@ struct pcb {
 	register_t	pcb_xsmask;
 
 	/* fpu context for suspend/resume */
-	void *		pcb_fpususpend;
+	void		*pcb_fpususpend;
 
 	struct savefpu	*pcb_save;
 
