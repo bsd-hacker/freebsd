@@ -2587,7 +2587,7 @@ pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va)
 	/*
 	 * Demote the pv entry.  This depends on the earlier demotion
 	 * of the mapping.  Specifically, the (re)creation of a per-
-	 * page pv entry might trigger the execution of pmap_collect(),
+	 * page pv entry might trigger the execution of pmap_pv_reclaim(),
 	 * which might reclaim a newly (re)created per-page pv entry
 	 * and destroy the associated mapping.  In order to destroy
 	 * the mapping, the PDE must have already changed from mapping
@@ -4450,8 +4450,9 @@ small_mappings:
 		pmap = PV_PMAP(pv);
 		PMAP_LOCK(pmap);
 		pde = pmap_pde(pmap, pv->pv_va);
-		KASSERT((*pde & PG_PS) == 0, ("pmap_clear_write: found"
-		    " a 2mpage in page %p's pv list", m));
+		KASSERT((*pde & PG_PS) == 0,
+		    ("pmap_remove_write: found a 2mpage in page %p's pv list",
+		    m));
 		pte = pmap_pde_to_pte(pde, pv->pv_va);
 retry:
 		oldpte = *pte;
