@@ -241,7 +241,7 @@ struct	pv_chunk;
 
 struct md_page {
 	TAILQ_HEAD(,pv_entry)	pv_list;
-	int			write_mappings;
+	u_int			write_mappings;
 	int			pat_mode;
 };
 
