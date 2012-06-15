@@ -128,12 +128,12 @@ static const char *tcptimers[] =
 /*
  * Force a time value to be in a certain range.
  */
-#define	TCPT_RANGESET(tv, value, tvmin, tvmax) do { \
-	(tv) = (value) + tcp_rexmit_slop; \
-	if ((u_long)(tv) < (u_long)(tvmin)) \
-		(tv) = (tvmin); \
-	if ((u_long)(tv) > (u_long)(tvmax)) \
-		(tv) = (tvmax); \
+#define	TCPT_RANGESET(tv, value, tvmin, tvmax) do {	\
+	(tv) = (value) + tcp_rexmit_slop;		\
+	if ((u_long)(tv) < (u_long)(tvmin))		\
+		(tv) = (tvmin);				\
+	if ((u_long)(tv) > (u_long)(tvmax))		\
+		(tv) = (tvmax);				\
 } while(0)
 
 #ifdef _KERNEL
