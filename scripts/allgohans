@@ -12,7 +12,7 @@ doarch() {
     if [ -f "${pbd}/${arch}/portbuild.conf" ]; then
 	. ${pbd}/${arch}/portbuild.conf
     else
-	echo "Invalid arch"
+	echo "Invalid arch $arch"
 	exit 1
     fi
 
