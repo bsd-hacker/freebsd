@@ -104,12 +104,27 @@ def show_machines( session ):
     for machine in machines:
 
         print
+        # String
         print "name: %s" % machine.name
-        # list
-        print "acl: " + str( machine.acl )
-        # boolean
+        # Integer
+        print "maxjobs: " + str( machine.maxjobs )
+        # Integer
+        print "osversion: " + str( machine.osversion )
+        # Integer
+        print "arch: " + str( machine.arch )
+        # String
+        print "domain: " + machine.domain
+        # String
+        print "primarypool: " + machine.primarypool
+        # PickleType
+        print "pools: " + str( machine.pools )
+        # Integer
+        print "numcpus: " + str( machine.numcpus )
+        # Boolean
         print "haszfs: " + str( machine.haszfs )
-        # boolean
+        # PickleType
+        print "acl: " + str( machine.acl )
+        # Boolean
         print "online: " + str( machine.online )
 
 
