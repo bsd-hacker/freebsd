@@ -201,11 +201,22 @@ const struct pmap_devmap at91_devmap[] = {
 	{ 0, 0, 0, 0, 0, }
 };
 
+#ifdef LINUX_BOOT_ABI
+extern int membanks;
+extern int memstart[];
+extern int memsize[];
+#endif
+
 long
 at91_ramsize(void)
 {
 	uint32_t cr, mr;
 	int banks, rows, cols, bw;
+#ifdef LINUX_BOOT_ABI
+	// If we found any ATAGs that were for memory, return the first bank.
+	if (membanks > 0)
+		return memsize[0];
+#endif
 
 	if (at91_is_rm92()) {
 		uint32_t *SDRAMC = (uint32_t *)(AT91_BASE + AT91RM92_SDRAMC_BASE);
@@ -392,8 +403,8 @@ initarm(struct arm_boot_params *abp)
 	uint32_t memsize;
 	vm_offset_t lastaddr;
 
+	lastaddr = parse_boot_param(abp);
 	set_cpufuncs();
-	lastaddr = fake_preload_metadata();
 	pcpu_init(pcpup, 0, sizeof(struct pcpu));
 	PCPU_SET(curthread, &thread0);
 
@@ -552,19 +563,8 @@ initarm(struct arm_boot_params *abp)
 	arm_vector_init(ARM_VECTORS_HIGH, ARM_VEC_ALL);
 
 	pmap_curmaxkvaddr = afterkern + L1_S_SIZE * (KERNEL_PT_KERN_NUM - 1);
-
-	/*
-	 * ARM_USE_SMALL_ALLOC uses dump_avail, so it must be filled before
-	 * calling pmap_bootstrap.
-	 */
-	dump_avail[0] = PHYSADDR;
-	dump_avail[1] = PHYSADDR + memsize;
-	dump_avail[2] = 0;
-	dump_avail[3] = 0;
-
-	pmap_bootstrap(freemempos,
-	    KERNVIRTADDR + 3 * memsize,
-	    &kernel_l1pt);
+	arm_dump_avail_init(memsize, sizeof(dump_avail)/sizeof(dump_avail[0]));
+	pmap_bootstrap(freemempos, KERNVIRTADDR + 3 * memsize, &kernel_l1pt);
 	msgbufp = (void*)msgbufpv.pv_va;
 	msgbufinit(msgbufp, msgbufsize);
 	mutex_init();
@@ -582,4 +582,41 @@ initarm(struct arm_boot_params *abp)
 	kdb_init();
 	return ((void *)(kernelstack.pv_va + USPACE_SVC_STACK_TOP -
 	    sizeof(struct pcb)));
+}
+
+/*
+ * These functions are handled elsewhere, so make them nops here.
+ */
+void
+cpu_startprofclock(void)
+{
+
+}
+
+void
+cpu_stopprofclock(void)
+{
+
+}
+
+void
+cpu_initclocks(void)
+{
+
+}
+
+void
+DELAY(int n)
+{
+	if (soc_data.delay)
+		soc_data.delay(n);
+}
+
+void
+cpu_reset(void)
+{
+	if (soc_data.reset)
+		soc_data.reset();
+	while (1)
+		continue;
 }

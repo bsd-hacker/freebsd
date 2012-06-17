@@ -184,7 +184,7 @@ ath_txfrag_cleanup(struct ath_softc *sc,
 	TAILQ_FOREACH_SAFE(bf, frags, bf_list, next) {
 		/* NB: bf assumed clean */
 		TAILQ_REMOVE(frags, bf, bf_list);
-		TAILQ_INSERT_HEAD(&sc->sc_txbuf, bf, bf_list);
+		ath_returnbuf_head(sc, bf);
 		ieee80211_node_decref(ni);
 	}
 }
@@ -203,7 +203,8 @@ ath_txfrag_setup(struct ath_softc *sc, ath_bufhead *frags,
 
 	ATH_TXBUF_LOCK(sc);
 	for (m = m0->m_nextpkt; m != NULL; m = m->m_nextpkt) {
-		bf = _ath_getbuf_locked(sc);
+		/* XXX non-management? */
+		bf = _ath_getbuf_locked(sc, ATH_BUFTYPE_NORMAL);
 		if (bf == NULL) {	/* out of buffers, cleanup */
 			device_printf(sc->sc_dev, "%s: no buffer?\n",
 			    __func__);
@@ -1307,7 +1308,28 @@ ath_tx_normal_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 		return EIO;
 	}
 
-	/* Check if the TXQ wouldn't match what the hardware TXQ is! */
+	/*
+	 * There are two known scenarios where the frame AC doesn't match
+	 * what the destination TXQ is.
+	 *
+	 * + non-QoS frames (eg management?) that the net80211 stack has
+	 *   assigned a higher AC to, but since it's a non-QoS TID, it's
+	 *   being thrown into TID 16.  TID 16 gets the AC_BE queue.
+	 *   It's quite possible that management frames should just be
+	 *   direct dispatched to hardware rather than go via the software
+	 *   queue; that should be investigated in the future.  There are
+	 *   some specific scenarios where this doesn't make sense, mostly
+	 *   surrounding ADDBA request/response - hence why that is special
+	 *   cased.
+	 *
+	 * + Multicast frames going into the VAP mcast queue.  That shows up
+	 *   as "TXQ 11".
+	 *
+	 * This driver should eventually support separate TID and TXQ locking,
+	 * allowing for arbitrary AC frames to appear on arbitrary software
+	 * queues, being queued to the "correct" hardware queue when needed.
+	 */
+#if 0
 	if (txq != sc->sc_ac2q[pri]) {
 		device_printf(sc->sc_dev,
 		    "%s: txq=%p (%d), pri=%d, pri txq=%p (%d)\n",
@@ -1318,6 +1340,7 @@ ath_tx_normal_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 		    sc->sc_ac2q[pri],
 		    sc->sc_ac2q[pri]->axq_qnum);
 	}
+#endif
 
 	/*
 	 * Calculate miscellaneous flags.
@@ -1878,7 +1901,7 @@ ath_raw_xmit(struct ieee80211_node *ni, struct mbuf *m,
 	/*
 	 * Grab a TX buffer and associated resources.
 	 */
-	bf = ath_getbuf(sc);
+	bf = ath_getbuf(sc, ATH_BUFTYPE_MGMT);
 	if (bf == NULL) {
 		sc->sc_stats.ast_tx_nobuf++;
 		m_freem(m);
@@ -1916,7 +1939,7 @@ ath_raw_xmit(struct ieee80211_node *ni, struct mbuf *m,
 	return 0;
 bad2:
 	ATH_TXBUF_LOCK(sc);
-	TAILQ_INSERT_HEAD(&sc->sc_txbuf, bf, bf_list);
+	ath_returnbuf_head(sc, bf);
 	ATH_TXBUF_UNLOCK(sc);
 bad:
 	ATH_PCU_LOCK(sc);
@@ -3137,7 +3160,7 @@ ath_tx_retry_clone(struct ath_softc *sc, struct ath_node *an,
 		 * the list.)
 		 */
 		ATH_TXBUF_LOCK(sc);
-		TAILQ_INSERT_HEAD(&sc->sc_txbuf, nbf, bf_list);
+		ath_returnbuf_head(sc, nbf);
 		ATH_TXBUF_UNLOCK(sc);
 		return NULL;
 	}

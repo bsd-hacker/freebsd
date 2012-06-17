@@ -89,9 +89,11 @@ static void		acpi_wakeup_cpus(struct acpi_softc *);
 #define ACPI_PAGETABLES	0
 #endif
 
-#define	WAKECODE_VADDR(sc)	((sc)->acpi_wakeaddr + (ACPI_PAGETABLES * PAGE_SIZE))
-#define	WAKECODE_PADDR(sc)	((sc)->acpi_wakephys + (ACPI_PAGETABLES * PAGE_SIZE))
-#define	WAKECODE_FIXUP(offset, type, val) do	{	\
+#define	WAKECODE_VADDR(sc)				\
+    ((sc)->acpi_wakeaddr + (ACPI_PAGETABLES * PAGE_SIZE))
+#define	WAKECODE_PADDR(sc)				\
+    ((sc)->acpi_wakephys + (ACPI_PAGETABLES * PAGE_SIZE))
+#define	WAKECODE_FIXUP(offset, type, val)	do {	\
 	type	*addr;					\
 	addr = (type *)(WAKECODE_VADDR(sc) + offset);	\
 	*addr = val;					\
@@ -118,49 +120,7 @@ acpi_wakeup_ap(struct acpi_softc *sc, int cpu)
 	WAKECODE_FIXUP(wakeup_gdt + 2, uint64_t,
 	    susppcbs[cpu]->pcb_gdt.rd_base);
 
-	/* do an INIT IPI: assert RESET */
-	lapic_ipi_raw(APIC_DEST_DESTFLD | APIC_TRIGMOD_EDGE |
-	    APIC_LEVEL_ASSERT | APIC_DESTMODE_PHY | APIC_DELMODE_INIT, apic_id);
-
-	/* wait for pending status end */
-	lapic_ipi_wait(-1);
-
-	/* do an INIT IPI: deassert RESET */
-	lapic_ipi_raw(APIC_DEST_ALLESELF | APIC_TRIGMOD_LEVEL |
-	    APIC_LEVEL_DEASSERT | APIC_DESTMODE_PHY | APIC_DELMODE_INIT, 0);
-
-	/* wait for pending status end */
-	DELAY(10000);		/* wait ~10mS */
-	lapic_ipi_wait(-1);
-
-	/*
-	 * next we do a STARTUP IPI: the previous INIT IPI might still be
-	 * latched, (P5 bug) this 1st STARTUP would then terminate
-	 * immediately, and the previously started INIT IPI would continue. OR
-	 * the previous INIT IPI has already run. and this STARTUP IPI will
-	 * run. OR the previous INIT IPI was ignored. and this STARTUP IPI
-	 * will run.
-	 */
-
-	/* do a STARTUP IPI */
-	lapic_ipi_raw(APIC_DEST_DESTFLD | APIC_TRIGMOD_EDGE |
-	    APIC_LEVEL_DEASSERT | APIC_DESTMODE_PHY | APIC_DELMODE_STARTUP |
-	    vector, apic_id);
-	lapic_ipi_wait(-1);
-	DELAY(200);		/* wait ~200uS */
-
-	/*
-	 * finally we do a 2nd STARTUP IPI: this 2nd STARTUP IPI should run IF
-	 * the previous STARTUP IPI was cancelled by a latched INIT IPI. OR
-	 * this STARTUP IPI will be ignored, as only ONE STARTUP IPI is
-	 * recognized after hardware RESET or INIT IPI.
-	 */
-
-	lapic_ipi_raw(APIC_DEST_DESTFLD | APIC_TRIGMOD_EDGE |
-	    APIC_LEVEL_DEASSERT | APIC_DESTMODE_PHY | APIC_DELMODE_STARTUP |
-	    vector, apic_id);
-	lapic_ipi_wait(-1);
-	DELAY(200);		/* wait ~200uS */
+	ipi_startup(apic_id, vector);
 
 	/* Wait up to 5 seconds for it to resume. */
 	for (ms = 0; ms < 5000; ms++) {
@@ -252,7 +212,9 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 		WAKECODE_FIXUP(resume_beep, uint8_t, (acpi_resume_beep != 0));
 		WAKECODE_FIXUP(reset_video, uint8_t, (acpi_reset_video != 0));
 
+#ifndef __amd64__
 		WAKECODE_FIXUP(wakeup_cr4, register_t, susppcbs[0]->pcb_cr4);
+#endif
 		WAKECODE_FIXUP(wakeup_pcb, struct pcb *, susppcbs[0]);
 		WAKECODE_FIXUP(wakeup_gdt, uint16_t,
 		    susppcbs[0]->pcb_gdt.rd_limit);
@@ -290,9 +252,6 @@ acpi_wakeup_machdep(struct acpi_softc *sc, int state, int sleep_result,
 		/* Wakeup MD procedures in interrupt disabled context */
 		if (sleep_result == 1) {
 			pmap_init_pat();
-#if 0
-			load_cr3(susppcbs[0]->pcb_cr3);
-#endif
 			initializecpu();
 			PCPU_SET(switchtime, 0);
 			PCPU_SET(switchticks, ticks);
@@ -342,7 +301,8 @@ acpi_alloc_wakeup_handler(void)
 	if (EVENTHANDLER_REGISTER(power_resume, acpi_stop_beep, NULL,
 	    EVENTHANDLER_PRI_LAST) == NULL) {
 		printf("%s: can't register event handler\n", __func__);
-		contigfree(wakeaddr, (ACPI_PAGETABLES + 1) * PAGE_SIZE, M_DEVBUF);
+		contigfree(wakeaddr, (ACPI_PAGETABLES + 1) * PAGE_SIZE,
+		    M_DEVBUF);
 		return (NULL);
 	}
 	susppcbs = malloc(mp_ncpus * sizeof(*susppcbs), M_DEVBUF, M_WAITOK);
@@ -390,17 +350,14 @@ acpi_install_wakeup_handler(struct acpi_softc *sc)
 
 	/* Save pointers to some global data. */
 	WAKECODE_FIXUP(wakeup_ret, void *, resumectx);
-#ifdef __amd64__
-	WAKECODE_FIXUP(wakeup_cr3, uint64_t, KPML4phys);
-#else
+#ifndef __amd64__
 #ifdef PAE
 	WAKECODE_FIXUP(wakeup_cr3, register_t, vtophys(kernel_pmap->pm_pdpt));
 #else
 	WAKECODE_FIXUP(wakeup_cr3, register_t, vtophys(kernel_pmap->pm_pdir));
 #endif
-#endif
 
-#ifdef __amd64__
+#else
 	/* Build temporary page tables below realmode code. */
 	pt4 = wakeaddr;
 	pt3 = pt4 + (PAGE_SIZE) / sizeof(uint64_t);
