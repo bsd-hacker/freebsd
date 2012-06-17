@@ -722,7 +722,10 @@ class Machine(Base):
                 (prio, starttime, next) = self.blocked[0]
             except IndexError:
                 # No more jobs to run
-                self.curjobs -= 1
+                if self.curjobs > 0:
+                    self.curjobs -= 1
+                else:
+                    print "self.curjobs was zero for %s!" % str( self )
                 return
             
             # Try to make the job runabble
