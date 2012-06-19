@@ -1512,7 +1512,7 @@ vlan_capabilities(struct ifvlan *ifv)
 	 * changes then IFCAP_VLAN_TOE should be promoted to a full capability
 	 * with its own bit.
 	 */
-#define IFCAP_VLAN_TOE IFCAP_TOE
+#define	IFCAP_VLAN_TOE IFCAP_TOE
 	if (p->if_capabilities & IFCAP_VLAN_TOE)
 		ifp->if_capabilities |= p->if_capabilities & IFCAP_TOE;
 	if (p->if_capenable & IFCAP_VLAN_TOE) {

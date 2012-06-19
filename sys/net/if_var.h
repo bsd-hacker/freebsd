@@ -209,8 +209,6 @@ struct ifnet {
 	void	*if_pspare[8];		/* 1 netmap, 7 TDB */
 };
 
-#define	TOEDEV(ifp)	((ifp)->if_llsoftc)
-
 typedef void if_init_f_t(void *);
 
 /*
@@ -713,6 +711,8 @@ drbr_inuse(struct ifnet *ifp, struct buf_ring *br)
  */
 #define	IF_MINMTU	72
 #define	IF_MAXMTU	65535
+
+#define	TOEDEV(ifp)	((ifp)->if_llsoftc)
 
 #endif /* _KERNEL */
 

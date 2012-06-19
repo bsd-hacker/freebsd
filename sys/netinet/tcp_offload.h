@@ -28,7 +28,7 @@
  */
 
 #ifndef _NETINET_TCP_OFFLOAD_H_
-#define _NETINET_TCP_OFFLOAD_H_
+#define	_NETINET_TCP_OFFLOAD_H_
 
 #ifndef _KERNEL
 #error "no user-serviceable parts inside"

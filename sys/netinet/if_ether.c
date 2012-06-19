@@ -323,7 +323,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	}
 retry:
 	IF_AFDATA_RLOCK(ifp);	
-	la = *lle = lla_lookup(LLTABLE(ifp), flags, dst);
+	la = lla_lookup(LLTABLE(ifp), flags, dst);
 	IF_AFDATA_RUNLOCK(ifp);	
 	if ((la == NULL) && ((flags & LLE_EXCLUSIVE) == 0)
 	    && ((ifp->if_flags & (IFF_NOARP | IFF_STATICARP)) == 0)) {		
@@ -355,6 +355,7 @@ retry:
 			la->la_preempt--;
 		}
 		
+		*lle = la;
 		error = 0;
 		goto done;
 	} 
@@ -736,7 +737,6 @@ match:
 		(void)memcpy(&la->ll_addr, ar_sha(ah), ifp->if_addrlen);
 		la->la_flags |= LLE_VALID;
 
-		EVENTHANDLER_INVOKE(arp_update_event, la);
 		EVENTHANDLER_INVOKE(lle_event, la, LLENTRY_RESOLVED);
 
 		if (!(la->la_flags & LLE_STATIC)) {

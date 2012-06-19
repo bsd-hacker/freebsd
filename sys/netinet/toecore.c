@@ -28,6 +28,9 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_inet.h"
+#include "opt_inet6.h"
+
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
@@ -37,17 +40,19 @@ __FBSDID("$FreeBSD$");
 #include <sys/sockopt.h>
 #include <sys/sysctl.h>
 #include <sys/socket.h>
+
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_types.h>
 #include <net/if_vlan_var.h>
 #include <net/if_llatbl.h>
 #include <net/route.h>
+
 #include <netinet/if_ether.h>
 #include <netinet/in.h>
+#include <netinet/in_pcb.h>
 #include <netinet/in_var.h>
 #include <netinet6/nd6.h>
-#include <netinet/in_pcb.h>
 #define TCPSTATES
 #include <netinet/tcp.h>
 #include <netinet/tcp_fsm.h>
@@ -59,8 +64,10 @@ __FBSDID("$FreeBSD$");
 
 static struct mtx toedev_lock;
 static TAILQ_HEAD(, toedev) toedev_list;
-static eventhandler_tag listen_start_eh, listen_stop_eh;
-static eventhandler_tag lle_event_eh, route_redirect_eh;
+static eventhandler_tag listen_start_eh;
+static eventhandler_tag listen_stop_eh;
+static eventhandler_tag lle_event_eh;
+static eventhandler_tag route_redirect_eh;
 
 static int
 toedev_connect(struct toedev *tod __unused, struct socket *so __unused,
@@ -176,7 +183,7 @@ toedev_ctloutput(struct toedev *tod __unused, struct tcpcb *tp __unused,
 static void
 toe_listen_start(struct inpcb *inp, void *arg)
 {
-	struct toedev *t = arg, *tod;
+	struct toedev *t, *tod;
 	struct tcpcb *tp;
 
 	INP_WLOCK_ASSERT(inp);
@@ -190,6 +197,7 @@ toe_listen_start(struct inpcb *inp, void *arg)
 	if (tp->t_state != TCPS_LISTEN)
 		return;
 
+	t = arg;
 	mtx_lock(&toedev_lock);
 	TAILQ_FOREACH(tod, &toedev_list, link) {
 		if (t == NULL || t == tod)
@@ -307,7 +315,7 @@ unregister_toedev(struct toedev *tod)
 		}
 	}
 	KASSERT(registered_toedevs >= 0,
-	    ("%s: registered_toedevs < 0", __func__));
+	    ("%s: registered_toedevs (%d) < 0", __func__, registered_toedevs));
 	mtx_unlock(&toedev_lock);
 	return (rc);
 }
@@ -374,9 +382,9 @@ toe_lle_event(void *arg __unused, struct llentry *lle, int evt)
 {
 	struct toedev *tod;
 	struct ifnet *ifp;
-	uint8_t *lladdr;
-	uint16_t vtag = 0xfff;
 	struct sockaddr *sa;
+	uint8_t *lladdr;
+	uint16_t vtag;
 
 	LLE_WLOCK_ASSERT(lle);
 
@@ -384,7 +392,8 @@ toe_lle_event(void *arg __unused, struct llentry *lle, int evt)
 	sa = L3_ADDR(lle);
 
 	KASSERT(sa->sa_family == AF_INET || sa->sa_family == AF_INET6,
-	    ("%s: lle_event but sa !INET && !INET6", __func__));
+	    ("%s: lle_event %d for lle %p but sa %p !INET && !INET6",
+	    __func__, evt, lle, sa));
 
 	/*
 	 * Not interested if the interface's TOE capability is not enabled.
@@ -397,6 +406,7 @@ toe_lle_event(void *arg __unused, struct llentry *lle, int evt)
 	if (tod == NULL)
 		return;
 
+	vtag = 0xfff;
 	if (evt != LLENTRY_RESOLVED) {
 
 		/*
@@ -426,6 +436,7 @@ static void
 toe_route_redirect_event(void *arg __unused, struct rtentry *rt0,
     struct rtentry *rt1, struct sockaddr *sa)
 {
+
 	return;
 }
 
@@ -442,12 +453,16 @@ toe_l2_resolve(struct toedev *tod, struct ifnet *ifp, struct sockaddr *sa,
 	int rc;
 
 	switch (sa->sa_family) {
+#ifdef INET
 	case AF_INET:
 		rc = arpresolve(ifp, NULL, NULL, sa, lladdr, &lle);
 		break;
+#endif
+#ifdef INET6
 	case AF_INET6:
 		rc = nd6_storelladdr(ifp, NULL, sa, lladdr, &lle);
 		break;
+#endif
 	default:
 		return (EPROTONOSUPPORT);
 	}
@@ -547,7 +562,7 @@ toecore_mod_handler(module_t mod, int cmd, void *arg)
 	if (cmd == MOD_UNLOAD)
 		return (toecore_unload());
 
-	return (0);
+	return (EOPNOTSUPP);
 }
 
 static moduledata_t mod_data= {

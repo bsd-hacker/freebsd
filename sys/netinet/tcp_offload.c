@@ -111,7 +111,7 @@ tcp_offload_input(struct tcpcb *tp, struct mbuf *m)
 {
 	struct toedev *tod = tp->tod;
 
-	KASSERT(tod != NULL, ("%s: tp->tod is NULL", __func__));
+	KASSERT(tod != NULL, ("%s: tp->tod is NULL, tp %p", __func__, tp));
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
 	tod->tod_input(tod, tp, m);
@@ -123,7 +123,7 @@ tcp_offload_output(struct tcpcb *tp)
 	struct toedev *tod = tp->tod;
 	int error, flags;
 
-	KASSERT(tod != NULL, ("%s: tp->tod is NULL", __func__));
+	KASSERT(tod != NULL, ("%s: tp->tod is NULL, tp %p", __func__, tp));
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
 	flags = tcp_outflags[tp->t_state];
@@ -147,7 +147,7 @@ tcp_offload_rcvd(struct tcpcb *tp)
 {
 	struct toedev *tod = tp->tod;
 
-	KASSERT(tod != NULL, ("%s: tp->tod is NULL", __func__));
+	KASSERT(tod != NULL, ("%s: tp->tod is NULL, tp %p", __func__, tp));
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
 	tod->tod_rcvd(tod, tp);
@@ -158,7 +158,7 @@ tcp_offload_ctloutput(struct tcpcb *tp, int sopt_dir, int sopt_name)
 {
 	struct toedev *tod = tp->tod;
 
-	KASSERT(tod != NULL, ("%s: tp->tod is NULL", __func__));
+	KASSERT(tod != NULL, ("%s: tp->tod is NULL, tp %p", __func__, tp));
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
 	tod->tod_ctloutput(tod, tp, sopt_dir, sopt_name);
@@ -169,7 +169,7 @@ tcp_offload_detach(struct tcpcb *tp)
 {
 	struct toedev *tod = tp->tod;
 
-	KASSERT(tod != NULL, ("%s: tp->tod is NULL", __func__));
+	KASSERT(tod != NULL, ("%s: tp->tod is NULL, tp %p", __func__, tp));
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
 	tod->tod_pcb_detach(tod, tp);

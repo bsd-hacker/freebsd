@@ -24,11 +24,10 @@
  * SUCH DAMAGE.
  *
  * $FreeBSD$
- *
  */
 
 #ifndef _NETINET_TOE_H_
-#define _NETINET_TOE_H_
+#define	_NETINET_TOE_H_
 
 #ifndef _KERNEL
 #error "no user-serviceable parts inside"
@@ -42,7 +41,10 @@ struct toedev {
 	TAILQ_ENTRY(toedev) link;	/* glue for toedev_list */
 	void *tod_softc;		/* TOE driver private data */
 
-	/* Active open. */
+	/*
+	 * Active open.  If a failure occurs, it is reported back by the driver
+	 * via toe_connect_failed.
+	 */
 	int (*tod_connect)(struct toedev *, struct socket *, struct rtentry *,
 	    struct sockaddr *);
 
@@ -50,25 +52,38 @@ struct toedev {
 	int (*tod_listen_start)(struct toedev *, struct tcpcb *);
 	int (*tod_listen_stop)(struct toedev *, struct tcpcb *);
 
-	/* Frame received by kernel for an offloaded connection */
+	/*
+	 * The kernel uses this routine to pass on any frame it receives for an
+	 * offloaded connection to the TOE driver.  This is an unusual event.
+	 */
 	void (*tod_input)(struct toedev *, struct tcpcb *, struct mbuf *);
 
-	/* Some data read */
+	/*
+	 * This is called by the kernel during pru_rcvd for an offloaded TCP
+	 * connection and provides an opportunity for the TOE driver to manage
+	 * its rx window and credits.
+	 */
 	void (*tod_rcvd)(struct toedev *, struct tcpcb *);
 
-	/* Output data, if any is waiting to be sent out. */
+	/*
+	 * Transmit routine.  The kernel calls this to have the TOE driver
+	 * evaluate whether there is data to be transmitted, and transmit it.
+	 */
 	int (*tod_output)(struct toedev *, struct tcpcb *);
 
-	/* Immediate teardown, send RST to peer */
+	/* Immediate teardown: send RST to peer. */
 	int (*tod_send_rst)(struct toedev *, struct tcpcb *);
 
-	/* Orderly disconnect, send FIN to the peer */
+	/* Initiate orderly disconnect by sending FIN to the peer. */
 	int (*tod_send_fin)(struct toedev *, struct tcpcb *);
 
-	/* Kernel is done with the TCP PCB */
+	/* Called to indicate that the kernel is done with this TCP PCB. */
 	void (*tod_pcb_detach)(struct toedev *, struct tcpcb *);
 
-	/* Information about an L2 entry is now available. */
+	/*
+	 * The kernel calls this once it has information about an L2 entry that
+	 * the TOE driver enquired about previously (via toe_l2_resolve).
+	 */
 	void (*tod_l2_update)(struct toedev *, struct ifnet *,
 	    struct sockaddr *, uint8_t *, uint16_t);
 
@@ -93,13 +108,13 @@ EVENTHANDLER_DECLARE(tcp_offload_listen_start, tcp_offload_listen_start_fn);
 EVENTHANDLER_DECLARE(tcp_offload_listen_stop, tcp_offload_listen_stop_fn);
 
 void init_toedev(struct toedev *);
-int  register_toedev(struct toedev *);
-int  unregister_toedev(struct toedev *);
+int register_toedev(struct toedev *);
+int unregister_toedev(struct toedev *);
 
 /*
- * General interface for looking up L2 information for an IP or IPv6 address.
- * If an answer is not available right away then the TOE driver's tod_l2_update
- * will be called later.
+ * General interface for looking up L2 information for an IP address.  If an
+ * answer is not available right away then the TOE driver's tod_l2_update will
+ * be called later.
  */
 int toe_l2_resolve(struct toedev *, struct ifnet *, struct sockaddr *,
     uint8_t *, uint16_t *);
