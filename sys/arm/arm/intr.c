@@ -61,6 +61,15 @@ void	arm_handler_execute(struct trapframe *, int);
 
 void (*arm_post_filter)(void *) = NULL;
 
+const char *
+arm_describe_irq(int irq)
+{
+	static char buffer[8];
+
+	sprintf(buffer, "%d", irq);
+	return (buffer);
+}
+
 void
 arm_setup_irqhandler(const char *name, driver_filter_t *filt, 
     void (*hand)(void*), void *arg, int irq, int flags, void **cookiep)

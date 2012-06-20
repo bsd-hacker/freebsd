@@ -9,6 +9,7 @@ arm/arm/cpufunc_asm_arm10.S			standard
 arm/arm/cpufunc_asm_arm11.S			standard
 arm/arm/cpufunc_asm_armv7.S			standard
 arm/arm/irq_dispatch.S				standard
+arm/arm/intr.c					standard
 
 arm/ti/bus_space.c				standard
 arm/ti/common.c					standard

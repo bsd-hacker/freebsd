@@ -7,6 +7,7 @@ arm/econa/uart_bus_ec.c		optional	uart
 arm/econa/uart_cpu_ec.c		optional	uart
 dev/uart/uart_dev_ns8250.c	optional	uart
 arm/arm/irq_dispatch.S		standard
+arm/arm/intr.c			standard
 arm/arm/bus_space_generic.c		standard
 arm/econa/ehci_ebus.c	standard	ehci
 arm/econa/ohci_ec.c	standard	ohci

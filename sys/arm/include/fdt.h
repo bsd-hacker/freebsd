@@ -41,12 +41,25 @@
 #include <machine/pmap.h>
 #include <machine/intr.h>
 
+#if defined(ARM_INTRNG)
+
 /* Max interrupt number */
 #define FDT_INTR_MAX	(0xffff)
 
 /* Map phandle/intpin pair to global IRQ number */ 
 #define	FDT_MAP_IRQ(node, pin)	(arm_fdt_map_irq(node, pin))
 #define	FDT_DESCRIBE_IRQ(irq)	(arm_describe_irq(irq))
+
+#else
+
+/* Max interrupt number */
+#define FDT_INTR_MAX	NIRQ
+
+/* Map phandle/intpin pair to global IRQ number */ 
+#define	FDT_MAP_IRQ(node, pin)	(pin)
+#define	FDT_DESCRIBE_IRQ(irq)	(arm_describe_irq(irq))
+
+#endif	/* ARM_INTRNG */
 
 /*
  * Bus space tag. XXX endianess info needs to be derived from the blob.

@@ -21,6 +21,7 @@ arm/arm/cpufunc_asm_armv7.S	standard
 arm/arm/cpufunc_asm_sheeva.S	standard
 arm/arm/cpufunc_asm_pj4b.S	standard
 arm/arm/irq_dispatch.S		standard
+arm/arm/intr.c			standard
 
 arm/mv/bus_space.c		standard
 arm/mv/common.c			standard

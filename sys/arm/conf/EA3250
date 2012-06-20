@@ -26,6 +26,7 @@ options 	BOOTP_NFSROOT
 options 	BOOTP_NFSV3
 options 	BOOTP_WIRED_TO=lpe0
 options		ARM_INTRNG
+options		VERBOSE_INIT_ARM
 
 #options 	ROOTDEVNAME=\"ufs:/dev/da0a\"
 

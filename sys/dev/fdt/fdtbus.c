@@ -599,8 +599,13 @@ fdtbus_setup_intr(device_t bus, device_t child, struct resource *res,
 	cpu_establish_hardintr(device_get_nameunit(child), 
 		filter, ihand, arg, rman_get_start(res), flags, cookiep);
 #elif defined(__arm__)
+#if defined(ARM_INTRNG)
 	arm_setup_irqhandler(child,
 	    filter, ihand, arg, rman_get_start(res), flags, cookiep);
+#else
+	arm_setup_irqhandler(device_get_nameunit(child),
+	    filter, ihand, arg, rman_get_start(res), flags, cookiep);
+#endif	/* ARM_INTRNG */
 	err = 0;
 #endif
 

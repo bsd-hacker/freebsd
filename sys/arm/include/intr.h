@@ -56,7 +56,6 @@ struct arm_intr_data {
 };
 
 int arm_fdt_map_irq(phandle_t ic, int irq);
-const char *arm_describe_irq(int irq);
 void arm_register_pic(device_t dev);
 void arm_unregister_pic(device_t dev);
 void arm_dispatch_irq(device_t dev, struct trapframe *tf, int irq);
@@ -93,6 +92,7 @@ extern void (*arm_post_filter)(void *);
 
 #endif	/* !ARM_INTRNG */
 
+const char *arm_describe_irq(int irq);
 void gic_init_secondary(void);
 
 #endif	/* _MACHINE_INTR_H */
