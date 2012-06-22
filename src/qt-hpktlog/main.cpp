@@ -92,13 +92,16 @@ main(int argc, char *argv[])
 	else
 		usage();
 
+	// Ensure the chip is correct
+	ps.SetChipId(type);
+
 	// Connect the ps source -> mainapp handler
 	QObject::connect(&ps, SIGNAL(emitRadarEntry(struct radar_entry)),
 	    &m, SLOT(getRadarEntry(struct radar_entry)));
 
 	// Now that it's connected, begin firing off events
 	// by opening a file
-	if (ps.Load(argv[2]) == false) {
+	if (ps.OpenLive(argv[2]) == false) {
 		err(1, "open");
 	}
 

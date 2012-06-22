@@ -26,11 +26,15 @@ class PktSource : public QObject {
 	private:
 		pcap_t *PcapHdl;
 		int timerId;
+		int chipid;
 
 	public:
-		PktSource() : PcapHdl(NULL), timerId(-1) { };
+		PktSource() : PcapHdl(NULL), timerId(-1), chipid(0) { };
 		~PktSource();
+		void SetChipId(int chip_id) { chipid = chip_id; };
+		int GetChipId() { return (chipid); };
 		bool Load(const char *filename);
+		bool OpenLive(const char *ifname);
 		void Close();
 
 	signals:

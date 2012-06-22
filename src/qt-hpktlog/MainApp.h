@@ -33,10 +33,21 @@ class MainApp : public QMainWindow
 		std::vector<double> q_dur;
 		std::vector<double> q_rssi;
 
+		// TODO	When rendering the screen, we only want to do it
+		//	every say, 3ms.
+
 	public:
 		MainApp(QMainWindow *parent = 0);
 		~MainApp();
+
+		// Replot the screen.  This does the actual work of
+		// taking the current set of dur/rssi values and plotting
+		// them.
+
+		// It doesn't do any pacing of the rendering requests.
 		void RePlot();
+
+		void timerEvent(QTimerEvent *event);
 
 	public slots:
 		void getRadarEntry(struct radar_entry re);

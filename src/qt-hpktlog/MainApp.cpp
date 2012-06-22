@@ -26,7 +26,7 @@ MainApp::MainApp(QMainWindow *parent)
 	// Scale
 	// y-scale?
 	q_plot->setAxisScale(QwtPlot::xBottom, 0.0, 256.0);
-	q_plot->setAxisScale(QwtPlot::yLeft, -128.0, 128.0);
+	q_plot->setAxisScale(QwtPlot::yLeft, -16.0, 80.0);
 
 	// The default is a single 1 pixel dot.
 	// This makes it very difficult to see.
@@ -88,4 +88,10 @@ MainApp::RePlot()
 	/* Plot */
 	q_plot->replot();
 	q_plot->show();
+}
+
+void
+MainApp::timerEvent(QTimerEvent *event)
+{
+
 }
