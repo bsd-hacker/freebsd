@@ -7,6 +7,7 @@
 #include "qwt_plot.h"
 #include "qwt_plot_curve.h"
 #include "qwt_plot_histogram.h"
+#include "qwt_symbol.h"
 
 #include "libradarpkt/pkt.h"
 #include "PktLogData.h"
@@ -22,16 +23,25 @@ void
 plotSet(QwtPlot *p, PktLogData *pl)
 {
 	QwtPlotCurve *c = new QwtPlotCurve("curve");
-
+	QwtSymbol *s = new QwtSymbol();
 	std::vector<double> dur;
 	std::vector<double> rssi;
 
+	// The default is a single 1 pixel dot.
+	// This makes it very difficult to see.
+	s->setStyle(QwtSymbol::Cross);
+	s->setSize(2, 2);
+
 	p->setTitle("Example");
+
 	//p->setAutoLegend(true);
 	//p->setLegendPos(Qwt::Bottom);
 
 	// Curve Plot - dots, == scatterplot
 	c->setStyle(QwtPlotCurve::Dots);
+	// And set the symbol type, a default dot is not really
+	// all that helpful.
+	c->setSymbol(s);
 
 	/* Load in values */
 	dur = pl->GetDuration();
