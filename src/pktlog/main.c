@@ -94,7 +94,7 @@ pkt_handle(int chip, const char *pkt, int len)
 	/*
 	 * TODO: Print the summary record
 	 */
-	//pkt_print(&re);
+	pkt_print(&re);
 }
 
 static pcap_t *
