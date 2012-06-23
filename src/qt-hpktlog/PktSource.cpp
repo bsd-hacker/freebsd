@@ -41,6 +41,8 @@ PktSource::Load(const char *filename)
 	//Kick-start the first timer!
 	timerId = startTimer(1);
 
+	isLive = false;
+
 	return (true);
 }
 
@@ -96,6 +98,7 @@ PktSource::OpenLive(const char *ifname)
 
 	//Kick-start the first timer!
 	timerId = startTimer(2);
+	isLive = true;
 
 	return (true);
 
@@ -127,64 +130,62 @@ PktSource::timerEvent(QTimerEvent *event)
 
 //	printf("%s: timer event!\n", __func__);
 
-	r = pcap_next_ex(PcapHdl, &hdr, &pkt);
+	while (1) {
+		r = pcap_next_ex(PcapHdl, &hdr, &pkt);
 
-	// Error? Delete the timer.
-	if (r < 0) {
-		killTimer(timerId);
-		timerId = -1;
-		printf("%s: final event (r=%d), finish timer!\n",
-		    __func__,
-		    r);
-		this->Close();
-		return;
+		// Error? Delete the timer.
+		if (r < 0) {
+			killTimer(timerId);
+			timerId = -1;
+			printf("%s: final event (r=%d), finish timer!\n",
+			    __func__,
+			    r);
+			this->Close();
+			return;
+		}
+
+		// Nothing available? Just skip until the next
+		// check.
+		if (r == 0)
+			break;
+
+		rt = (struct ieee80211_radiotap_header *) pkt;
+		if (rt->it_version != 0) {
+			printf("%s: unknown version (%d)\n",
+			    __func__,
+			    rt->it_version);
+			break;
+		}
+
+		// TODO: just assume AR5416 for now..
+		switch (chipid) {
+		case CHIP_AR5416:
+			r = ar5416_radar_decode(rt,
+			    (pkt + le16toh(rt->it_len)),
+			    hdr->caplen - le16toh(rt->it_len), &re);
+			break;
+		case CHIP_AR9280:
+			r = ar9280_radar_decode(rt,
+			    (pkt + le16toh(rt->it_len)),
+			    hdr->caplen - le16toh(rt->it_len), &re);
+			break;
+		default:
+			printf("%s: unknown chip id? (%d)\n",
+			    __func__,
+			    chipid);
+		}
+
+		// Error? Skip to the next one.
+		if (r <= 0) {
+			printf("%s: parse failed\n", __func__);
+		} else {
+			// The actual event may be delayed; so i either have
+			// to pass a reference (not pointer), _or_ a copy.
+			emit emitRadarEntry(re);
+		}
+
+		// Break out of the loop if we're not live
+		if (! isLive)
+			break;
 	}
-
-	// Nothing available? Just skip
-	if (r == 0) {
-		return;
-	}
-
-	rt = (struct ieee80211_radiotap_header *) pkt;
-	if (rt->it_version != 0) {
-		printf("%s: unknown version (%d)\n",
-		    __func__,
-		    rt->it_version);
-		return;
-	}
-
-	// TODO: just assume AR5416 for now..
-	switch (chipid) {
-	case CHIP_AR5416:
-		r = ar5416_radar_decode(rt,
-		    (pkt + le16toh(rt->it_len)),
-		    hdr->caplen - le16toh(rt->it_len), &re);
-		break;
-	case CHIP_AR9280:
-		r = ar9280_radar_decode(rt,
-		    (pkt + le16toh(rt->it_len)),
-		    hdr->caplen - le16toh(rt->it_len), &re);
-		break;
-	default:
-		printf("%s: unknown chip id? (%d)\n",
-		    __func__,
-		    chipid);
-	}
-	// Error? Just wait for the next one?
-	if (r == 0) {
-		printf("%s: parse failed\n", __func__);
-		return;
-	}
-
-#if 0
-	printf("%s: parsed: tsf=%llu, rssi=%d, dur=%d\n",
-	    __func__,
-	    (unsigned long long) re.re_timestamp,
-	    re.re_rssi,
-	    re.re_dur);
-#endif
-
-	// The actual event may be delayed; so i either have
-	// to pass a reference (not pointer), _or_ a copy.
-	emit emitRadarEntry(re);
 }

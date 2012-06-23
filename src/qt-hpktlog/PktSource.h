@@ -27,9 +27,12 @@ class PktSource : public QObject {
 		pcap_t *PcapHdl;
 		int timerId;
 		int chipid;
+		bool isLive;
 
 	public:
-		PktSource() : PcapHdl(NULL), timerId(-1), chipid(0) { };
+		PktSource() : PcapHdl(NULL), timerId(-1), chipid(0),
+		    isLive(false) { };
+
 		~PktSource();
 		void SetChipId(int chip_id) { chipid = chip_id; };
 		int GetChipId() { return (chipid); };

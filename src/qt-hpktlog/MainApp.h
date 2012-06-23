@@ -7,11 +7,14 @@
 
 #include <QtCore/QObject>
 #include <QtGui/QMainWindow>
+#include <QtCore/QVector>
 
 #include "qwt_plot.h"
 #include "qwt_plot_curve.h"
+#include "qwt_plot_spectrocurve.h"
 #include "qwt_plot_histogram.h"
 #include "qwt_symbol.h"
+#include "qwt_point_3d.h"
 
 #include "libradarpkt/pkt.h"
 
@@ -23,7 +26,7 @@ class MainApp : public QMainWindow
 		// Why can't we just use references, rather than
 		// pointers?
 		QwtPlot *q_plot;
-		QwtPlotCurve *q_curve;
+		QwtPlotSpectroCurve *q_curve;
 		QwtSymbol *q_symbol;
 
 		// How many entries to keep in the histogram
@@ -32,6 +35,7 @@ class MainApp : public QMainWindow
 		// Our histogram data
 		std::vector<double> q_dur;
 		std::vector<double> q_rssi;
+		QVector<QwtPoint3D> q_points;
 
 		// TODO	When rendering the screen, we only want to do it
 		//	every say, 3ms.

@@ -5,6 +5,7 @@
 
 #include "qwt_plot.h"
 #include "qwt_plot_curve.h"
+#include "qwt_plot_spectrocurve.h"
 #include "qwt_plot_histogram.h"
 #include "qwt_symbol.h"
 
@@ -35,9 +36,10 @@ MainApp::MainApp(QMainWindow *parent)
 	q_symbol->setSize(2, 2);
 
 	// And now, the default curve
-	q_curve = new QwtPlotCurve("curve");
-	q_curve->setStyle(QwtPlotCurve::Dots);
-	q_curve->setSymbol(q_symbol);
+	q_curve = new QwtPlotSpectroCurve("curve");
+	//q_curve->setStyle(QwtPlotCurve::Dots);
+	//q_curve->setSymbol(q_symbol);
+	q_curve->setPenWidth(4);
 	q_curve->attach(q_plot);
 
 	q_plot->show();
@@ -46,7 +48,13 @@ MainApp::MainApp(QMainWindow *parent)
 MainApp::~MainApp()
 {
 
-	/* XXX TIDYUP */
+	/* XXX correct order? */
+	if (q_symbol)
+		delete q_symbol;
+	if (q_curve)
+		delete q_curve;
+	if (q_plot)
+		delete q_plot;
 }
 
 //
@@ -65,12 +73,18 @@ MainApp::getRadarEntry(struct radar_entry re)
 	q_dur.insert(q_dur.begin(), (float) re.re_dur);
 	q_rssi.insert(q_rssi.begin(), (float) re.re_rssi);
 
+	q_points.insert(q_points.begin(),
+	    QwtPoint3D(
+	    (float) re.re_dur,
+	    (float) re.re_rssi,
+	    (float) re.re_rssi * 25.0));
+
 	// If we're too big, delete the first entry
-	if (q_dur.size() > num_entries) {
+	if (q_points.size() > num_entries) {
 		q_dur.pop_back();
 		q_rssi.pop_back();
+		q_points.pop_back();
 	}
-
 
 	// Trim the head entries if the array is too big
 	// (maybe we should use a queue, not a vector?)
@@ -83,7 +97,7 @@ void
 MainApp::RePlot()
 {
 	// Plot them
-	q_curve->setSamples(&q_dur[0], &q_rssi[0], q_dur.size());
+	q_curve->setSamples(q_points);
 
 	/* Plot */
 	q_plot->replot();
