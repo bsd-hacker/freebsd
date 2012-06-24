@@ -1,3 +1,5 @@
+#include <string>
+
 #include <QtGui/QWidget>
 #include <QtGui/QFileDialog>
 #include <QtGui/QMessageBox>
@@ -62,6 +64,13 @@ MainApp::~MainApp()
 		delete q_curve;
 	if (q_plot)
 		delete q_plot;
+}
+
+void
+MainApp::SetTitle(std::string s)
+{
+
+	q_plot->setTitle(QString::fromStdString(s));
 }
 
 //

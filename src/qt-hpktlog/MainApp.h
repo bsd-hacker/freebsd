@@ -2,6 +2,7 @@
 #define	__MAINAPP_H__
 
 #include <vector>
+#include <string>
 
 #include <pcap.h>
 #include <sys/types.h>
@@ -63,6 +64,8 @@ class MainApp : public QMainWindow
 		void RePlot();
 
 		void timerEvent(QTimerEvent *event);
+
+		void SetTitle(std::string s);
 
 	public slots:
 		void getRadarEntry(struct radar_entry re);

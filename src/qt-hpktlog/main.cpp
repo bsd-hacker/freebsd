@@ -79,6 +79,7 @@ main(int argc, char *argv[])
 	QApplication a(argc, argv);
 	PktSource ps;
 	MainApp m;
+	std::string title;
 
 	int type = 0;
 
@@ -94,6 +95,12 @@ main(int argc, char *argv[])
 
 	// Ensure the chip is correct
 	ps.SetChipId(type);
+	title = "Scatterplot ";
+	title.append(argv[1]);
+	title.append(" (");
+	title.append(argv[2]);
+	title.append(")");
+	m.SetTitle(title);
 
 	// Connect the ps source -> mainapp handler
 	QObject::connect(&ps, SIGNAL(emitRadarEntry(struct radar_entry)),
