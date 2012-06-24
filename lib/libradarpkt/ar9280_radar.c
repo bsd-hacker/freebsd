@@ -65,7 +65,7 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	 * XXX which rssi should we use?
 	 * XXX ext rssi?
 	 */
-	comb_rssi = rx->wr_antsignal;
+	comb_rssi = rx->wr_v.vh_rssi;	/* Combined RSSI */
 	pri_rssi = rx->wr_v.rssi_ctl[0];
 	ext_rssi = rx->wr_v.rssi_ext[0];
 	nf = rx->wr_antnoise;
@@ -75,6 +75,15 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 		printf("short radar frame\n");
 		return (0);
 	}
+
+	/*
+	 * XXX TODO: there's lots of other things that need to be
+	 * done with the RSSI and pulse durations.  It's quite likely
+	 * that the pkt format should just have all of those
+	 * (pri/ext/comb RSSI, flags, pri/ext pulse duration) and then
+	 * the "decided" values to match the logic in the current
+	 * HAL/DFS code, so they can all be plotted as appropriate.
+	 */
 
 #if 0
 	printf("tsf: %lld", tsf);
@@ -91,10 +100,10 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 #endif
 
 	re->re_timestamp = tsf;
-	re->re_rssi = comb_rssi;	/* XXX extension rssi? */
+	re->re_rssi = pri_rssi;	/* XXX extension rssi? */
 	re->re_dur = pkt[len - 3];	/* XXX extension duration? */
+	re->re_freq = 0;
 	/* XXX flags? */
-	/* XXX freq? */
 
 	return(1);
 }
