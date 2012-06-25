@@ -46,6 +46,7 @@ pkt_handle(int chip, const char *pkt, int len)
 	struct ieee80211_radiotap_header *rh;
 	uint8_t rssi, nf;
 	struct radar_entry re;
+	int r;
 
 	/* XXX assume it's a radiotap frame */
 	rh = (struct ieee80211_radiotap_header *) pkt;
@@ -85,16 +86,17 @@ pkt_handle(int chip, const char *pkt, int len)
 #endif
 
 	if (chip == CHIP_AR5416)
-		ar5416_radar_decode(rh, pkt + rh->it_len, len - rh->it_len,
+		r = ar5416_radar_decode(rh, pkt + rh->it_len, len - rh->it_len,
 		    &re);
 	else if (chip == CHIP_AR9280)
-		ar9280_radar_decode(rh, pkt + rh->it_len, len - rh->it_len,
+		r = ar9280_radar_decode(rh, pkt + rh->it_len, len - rh->it_len,
 		    &re);
 
 	/*
 	 * TODO: Print the summary record
 	 */
-	pkt_print(&re);
+	if (r)
+		pkt_print(&re);
 }
 
 static pcap_t *
