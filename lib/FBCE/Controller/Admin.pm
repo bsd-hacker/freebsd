@@ -30,14 +30,14 @@ sub index :Path :Args(0) {
 	$c->detach();
     }
     my $voters = $c->model('FBCE::Person')->
-	search(undef, { order_by => 'login' });
+	search_rs({ active => 1 }, { order_by => 'login' });
     my $candidates = $c->model('FBCE::Statement')->
-	search_related('person', {}, { order_by => 'login' });
+	search_related_rs('person', {}, { order_by => 'login' });
     my $voted = $c->model('FBCE::Vote')->
-	search_related('voter', {}, { distinct => 1 });
+	search_related_rs('voter', {}, { distinct => 1 });
     my $votes = $c->model('FBCE::Vote');
     my $results = $c->model('FBCE::Result')->
-	search(undef, { order_by => { -desc => 'votes' } });
+	search_rs(undef, { order_by => [ { -desc => 'votes' }, { -asc => 'login' } ] });
     $c->stash(voters => $voters);
     $c->stash(candidates => $candidates);
     $c->stash(voted => $voted);

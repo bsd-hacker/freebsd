@@ -25,15 +25,15 @@ sub index :Path :Args(0) {
     my ($self, $c) = @_;
 
     $c->stash(voters => $c->model('FBCE::Person')->
-	      search_rs(undef, { order_by => 'login' }));
+	      search_rs({ active => 1 }, { order_by => 'login' }));
     $c->stash(candidates => $c->model('FBCE::Statement')->
-	      search_related('person', {}, { order_by => 'login' }));
+	      search_related_rs('person', {}, { order_by => 'login' }));
     if ($c->stash->{'announced'}) {
 	$c->stash(voted => $c->model('FBCE::Vote')->
-		  search_related('voter', {}, { distinct => 1 })->count);
+		  search_related_rs('voter', {}, { distinct => 1 })->count);
 	$c->stash(votes => $c->model('FBCE::Vote')->count);
 	$c->stash(results => $c->model('FBCE::Result')->
-		  search_rs(undef, { order_by => { -desc => 'votes' } }));
+		  search_rs(undef, { order_by => [ { -desc => 'votes' }, { -asc => 'login' } ] }));
     } else {
 	$c->stash(voted => 0, votes => 0, results => undef);
     }
