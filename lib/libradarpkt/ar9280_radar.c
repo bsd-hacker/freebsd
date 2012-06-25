@@ -99,6 +99,27 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	    );
 #endif
 
+	/*
+	 * XXX TODO:
+	 *
+	 * The radar event is timestamped by the MAC the end of the event.
+	 * To work around this particular issue, a "best guess" of the event
+	 * start time involves its duration.
+	 *
+	 * For the AR5416 we can fake this as we know that in 5GHz mode
+	 * the MAC clock is 40MHz, so we can just convert the duration to
+	 * a microsecond value and subtract that from the TSF.
+	 * This also holds true for the AR9130/AR9160 in 5GHz mode.
+	 *
+	 * However, for the AR9280, 5GHz operation may be in "fast clock"
+	 * mode, where the duration is actually not 0.8uS, but slightly
+	 * smaller.
+	 *
+	 * Since there's currently no way to record this information in
+	 * the vendor radiotap header (but there should be, hint hint)
+	 * should have a flags field somewhere which includes (among other
+	 * things) whether the pulse duration is based on 40MHz or 44MHz.
+	 */
 	re->re_timestamp = tsf;
 	re->re_rssi = pri_rssi;	/* XXX extension rssi? */
 	re->re_dur = pkt[len - 3];	/* XXX extension duration? */

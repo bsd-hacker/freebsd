@@ -89,6 +89,18 @@ ar5416_radar_decode(struct ieee80211_radiotap_header *rh,
 	 */
 	re->re_rssi = rssi;
 
+	/*
+	 * XXX TODO:
+	 *
+	 * The radar event is timestamped by the MAC the end of the event.
+	 * To work around this particular issue, a "best guess" of the event
+	 * start time involves its duration.
+	 *
+	 * For the AR5416 we can fake this as we know that in 5GHz mode
+	 * the MAC clock is 40MHz, so we can just convert the duration to
+	 * a microsecond value and subtract that from the TSF.
+	 */
+
 	re->re_timestamp = tsf;
 	/* XXX TODO: re->re_freq */
 	re->re_dur = pkt[len - 1] & 0xff;
