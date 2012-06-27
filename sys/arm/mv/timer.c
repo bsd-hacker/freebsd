@@ -55,12 +55,6 @@ __FBSDID("$FreeBSD$");
 #define INITIAL_TIMECOUNTER	(0xffffffff)
 #define MAX_WATCHDOG_TICKS	(0xffffffff)
 
-#if defined(SOC_MV_ARMADAXP)
-#define MV_CLOCK_SRC		get_l2clk()
-#else
-#define MV_CLOCK_SRC		get_tclk()
-#endif
-
 struct mv_timer_softc {
 	struct resource	*	timer_res[2];
 	bus_space_tag_t		timer_bst;
@@ -122,9 +116,7 @@ mv_timer_attach(device_t dev)
 	int	error;
 	void	*ihl;
 	struct	mv_timer_softc *sc;
-#if !defined(SOC_MV_ARMADAXP)
 	uint32_t irq_cause, irq_mask;
-#endif
 
 	if (timer_softc != NULL)
 		return (ENXIO);
@@ -153,21 +145,18 @@ mv_timer_attach(device_t dev)
 	}
 
 	mv_setup_timers();
-#if !defined(SOC_MV_ARMADAXP)
 	irq_cause = read_cpu_ctrl(BRIDGE_IRQ_CAUSE);
-        irq_cause &= IRQ_TIMER0_CLR;
-
+	irq_cause &= ~(IRQ_TIMER0);
 	write_cpu_ctrl(BRIDGE_IRQ_CAUSE, irq_cause);
 	irq_mask = read_cpu_ctrl(BRIDGE_IRQ_MASK);
 	irq_mask |= IRQ_TIMER0_MASK;
 	irq_mask &= ~IRQ_TIMER1_MASK;
 	write_cpu_ctrl(BRIDGE_IRQ_MASK, irq_mask);
-#endif
+
 	sc->et.et_name = "CPUTimer0";
 	sc->et.et_flags = ET_FLAGS_PERIODIC | ET_FLAGS_ONESHOT;
 	sc->et.et_quality = 1000;
-
-	sc->et.et_frequency = MV_CLOCK_SRC;
+	sc->et.et_frequency = get_tclk();
 	sc->et.et_min_period.sec = 0;
 	sc->et.et_min_period.frac =
 	    ((0x00000002LLU << 32) / sc->et.et_frequency) << 32;
@@ -178,7 +167,7 @@ mv_timer_attach(device_t dev)
 	sc->et.et_stop = mv_timer_stop;
 	sc->et.et_priv = sc;
 	et_register(&sc->et);
-	mv_timer_timecounter.tc_frequency = MV_CLOCK_SRC;
+	mv_timer_timecounter.tc_frequency = get_tclk();
 	tc_init(&mv_timer_timecounter);
 
 	return (0);
@@ -191,7 +180,7 @@ mv_hardclock(void *arg)
 	uint32_t irq_cause;
 
 	irq_cause = read_cpu_ctrl(BRIDGE_IRQ_CAUSE);
-	irq_cause &= IRQ_TIMER0_CLR;
+	irq_cause &= ~(IRQ_TIMER0);
 	write_cpu_ctrl(BRIDGE_IRQ_CAUSE, irq_cause);
 
 	sc = (struct mv_timer_softc *)arg;
@@ -246,7 +235,7 @@ DELAY(int usec)
 	}
 
 	val = mv_get_timer(1);
-	nticks = ((MV_CLOCK_SRC / 1000000 + 1) * usec);
+	nticks = ((get_tclk() / 1000000 + 1) * usec);
 
 	while (nticks > 0) {
 		val_temp = mv_get_timer(1);
@@ -302,20 +291,16 @@ mv_set_timer_rel(uint32_t timer, uint32_t val)
 static void
 mv_watchdog_enable(void)
 {
-	uint32_t val, irq_cause;
-#if !defined(SOC_MV_ARMADAXP)
-	uint32_t irq_mask;
-#endif
+	uint32_t val;
+	uint32_t irq_cause, irq_mask;
 
 	irq_cause = read_cpu_ctrl(BRIDGE_IRQ_CAUSE);
-	irq_cause &= IRQ_TIMER_WD_CLR;
+	irq_cause &= ~(IRQ_TIMER_WD);
 	write_cpu_ctrl(BRIDGE_IRQ_CAUSE, irq_cause);
 
-#if !defined(SOC_MV_ARMADAXP)
 	irq_mask = read_cpu_ctrl(BRIDGE_IRQ_MASK);
 	irq_mask |= IRQ_TIMER_WD_MASK;
 	write_cpu_ctrl(BRIDGE_IRQ_MASK, irq_mask);
-#endif
 
 	val = read_cpu_ctrl(RSTOUTn_MASK);
 	val |= WD_RST_OUT_EN;
@@ -329,10 +314,8 @@ mv_watchdog_enable(void)
 static void
 mv_watchdog_disable(void)
 {
-	uint32_t val, irq_cause;
-#if !defined(SOC_MV_ARMADAXP)
-	uint32_t irq_mask;
-#endif
+	uint32_t val;
+	uint32_t irq_cause, irq_mask;
 
 	val = mv_get_timer_control();
 	val &= ~(CPU_TIMER_WD_EN | CPU_TIMER_WD_AUTO);
@@ -342,14 +325,12 @@ mv_watchdog_disable(void)
 	val &= ~WD_RST_OUT_EN;
 	write_cpu_ctrl(RSTOUTn_MASK, val);
 
-#if !defined(SOC_MV_ARMADAXP)
 	irq_mask = read_cpu_ctrl(BRIDGE_IRQ_MASK);
 	irq_mask &= ~(IRQ_TIMER_WD_MASK);
 	write_cpu_ctrl(BRIDGE_IRQ_MASK, irq_mask);
-#endif
 
 	irq_cause = read_cpu_ctrl(BRIDGE_IRQ_CAUSE);
-	irq_cause &= IRQ_TIMER_WD_CLR;
+	irq_cause &= ~(IRQ_TIMER_WD);
 	write_cpu_ctrl(BRIDGE_IRQ_CAUSE, irq_cause);
 }
 
@@ -372,7 +353,7 @@ mv_watchdog_event(void *arg, unsigned int cmd, int *error)
 		 * watchdog(9)
 		 */
 		ns = (uint64_t)1 << (cmd & WD_INTERVAL);
-		ticks = (uint64_t)(ns * MV_CLOCK_SRC) / 1000000000;
+		ticks = (uint64_t)(ns * get_tclk()) / 1000000000;
 		if (ticks > MAX_WATCHDOG_TICKS)
 			mv_watchdog_disable();
 		else {

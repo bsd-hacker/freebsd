@@ -305,4 +305,9 @@
 				  0x0 0x00100000>;
 		};
 	};
+
+	chosen {
+		stdin = "serial0";
+		stdout = "serial0";
+	};
 };

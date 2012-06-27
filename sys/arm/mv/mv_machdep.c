@@ -755,6 +755,7 @@ static struct pmap_devmap fdt_devmap[FDT_DEVMAP_MAX] = {
 	{ 0, 0, 0, 0, 0, }
 };
 
+#if 0
 static int
 platform_sram_devmap(struct pmap_devmap *map)
 {
@@ -792,6 +793,7 @@ out:
 	return (ENOENT);
 
 }
+#endif
 
 /*
  * Construct pmap_devmap[] with DT-derived config data.
@@ -800,12 +802,16 @@ static int
 platform_devmap_init(void)
 {
 	phandle_t root, child;
-	int i;
+	pcell_t bank_count;
+	u_long base, size;
+	int i, num_mapped;
+
+	i = 0;
+	pmap_devmap_bootstrap_table = &fdt_devmap[0];
 
 	/*
 	 * IMMR range.
 	 */
-	i = 0;
 	fdt_devmap[i].pd_va = fdt_immr_va;
 	fdt_devmap[i].pd_pa = fdt_immr_pa;
 	fdt_devmap[i].pd_size = fdt_immr_size;
@@ -814,35 +820,53 @@ platform_devmap_init(void)
 	i++;
 
 	/*
-	 * SRAM range.
-	 */
-	if (i < FDT_DEVMAP_MAX)
-		if (platform_sram_devmap(&fdt_devmap[i]) == 0)
-			i++;
-
-	/*
-	 * PCI range(s).
+	 * PCI range(s) and localbus.
 	 */
 	if ((root = OF_finddevice("/")) == -1)
 		return (ENXIO);
-	for (child = OF_child(root); child != 0; child = OF_peer(child))
-		if (fdt_is_type(child, "pci") || fdt_is_type(child, "pciep")) {
+
+	for (child = OF_child(root); child != 0; child = OF_peer(child)) {
+		if (fdt_is_type(child, "pci")) {
 			/*
 			 * Check space: each PCI node will consume 2 devmap
 			 * entries.
 			 */
-			if (i + 1 >= FDT_DEVMAP_MAX)
+			if (i + 1 >= FDT_DEVMAP_MAX) {
 				return (ENOMEM);
+			}
 
 			/*
 			 * XXX this should account for PCI and multiple ranges
 			 * of a given kind.
 			 */
-			if (fdt_pci_devmap(child, &fdt_devmap[i], MV_PCI_VA_IO_BASE,
-				    MV_PCI_VA_MEM_BASE) != 0)
+			if (fdt_pci_devmap(child, &fdt_devmap[i],
+			    MV_PCIE_IO_BASE, MV_PCIE_MEM_BASE) != 0)
 				return (ENXIO);
 			i += 2;
 		}
+
+		if (fdt_is_compatible(child, "mrvl,lbc")) {
+			/* Check available space */
+			if (OF_getprop(child, "bank-count", (void *)&bank_count,
+			    sizeof(bank_count)) <= 0)
+				/* If no property, use default value */
+				bank_count = 1;
+			else
+				bank_count = fdt32_to_cpu(bank_count);
+
+			if ((i + bank_count) >= FDT_DEVMAP_MAX)
+				return (ENOMEM);
+
+			/* Add all localbus ranges to device map */
+			num_mapped = 0;
+
+			if (fdt_localbus_devmap(child, &fdt_devmap[i],
+			    (int)bank_count, &num_mapped) != 0)
+				return (ENXIO);
+
+			i += num_mapped;
+		}
+	}
 
 	/*
 	 * CESA SRAM range.
@@ -851,9 +875,25 @@ platform_devmap_init(void)
 		if (fdt_is_compatible(child, "mrvl,cesa-sram"))
 			goto moveon;
 
-	pmap_devmap_bootstrap_table = &fdt_devmap[0];
+	if ((child = fdt_find_compatible(root, "mrvl,cesa-sram", 0)) == 0)
+		/* No CESA SRAM node. */
+		return (0);
+moveon:
+	if (i >= FDT_DEVMAP_MAX)
+		return (ENOMEM);
+
+	if (fdt_regsize(child, &base, &size) != 0)
+		return (EINVAL);
+
+	fdt_devmap[i].pd_va = MV_CESA_SRAM_BASE; /* XXX */
+	fdt_devmap[i].pd_pa = base;
+	fdt_devmap[i].pd_size = size;
+	fdt_devmap[i].pd_prot = VM_PROT_READ | VM_PROT_WRITE;
+	fdt_devmap[i].pd_cache = PTE_NOCACHE;
+
 	return (0);
 }
+
 
 struct arm32_dma_range *
 bus_dma_get_range(void)
