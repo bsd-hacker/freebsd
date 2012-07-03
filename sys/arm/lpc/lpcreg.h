@@ -31,7 +31,6 @@
 #define	LPC_DEV_P5_PHYS_BASE		0x20000000
 #define	LPC_DEV_P6_PHYS_BASE		0x30000000
 #define	LPC_DEV_BASE			0xd0000000
-#define	LPC_DEV_SIZE			0x10000000
 
 /*
  * Interrupt controller (from UM10326: LPC32x0 User manual, page 87)
@@ -522,6 +521,7 @@
  * GPIO (from UM10326: LPC32x0 User manual, page 606)
  */
 #define	LPC_GPIO_BASE			(LPC_DEV_BASE + 0x28000)
+#define	LPC_GPIO_SIZE			0x4000
 #define	LPC_GPIO_P0_COUNT		8
 #define	LPC_GPIO_P1_COUNT		24
 #define	LPC_GPIO_P2_COUNT		13

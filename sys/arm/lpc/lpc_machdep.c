@@ -72,6 +72,7 @@ __FBSDID("$FreeBSD$");
 
 #include <arm/lpc/lpcreg.h>
 #include <arm/lpc/lpcvar.h>
+#include <arm/lpc/lpc_early_uart.h>
 
 #include <dev/ic/ns16550.h>
 
@@ -131,8 +132,6 @@ extern u_int undefined_handler_address;
 extern vm_offset_t pmap_bootstrap_lastaddr;
 extern int *end;
 
-struct pv_addr kernel_pt_table[KERNEL_PT_MAX];
-
 /* Physical and virtual addresses for some global pages */
 
 vm_paddr_t phys_avail[10];
@@ -148,6 +147,10 @@ struct pv_addr undstack;
 struct pv_addr abtstack;
 struct pv_addr kernelstack;
 
+struct pv_addr arm_bootstrap_l2pt[KERNEL_PT_MAX];
+vm_offset_t arm_free_va, arm_free_pa, arm_allocated_va;
+vm_offset_t arm_start_va, arm_start_pa;
+
 static struct trapframe proc0_tf;
 
 static struct mem_region availmem_regions[FDT_MEM_REGIONS];
@@ -155,10 +158,16 @@ static int availmem_regions_sz;
 
 static void print_kenv(void);
 static void print_kernel_section_addr(void);
+static void arm_valloc_pages(struct pv_addr *, size_t, size_t);
+static void arm_bootstrap_pagetables(uint32_t, struct pv_addr *, struct pv_addr *);
+static void *arm_mmu_init(uint32_t, uint32_t);
 
 static void physmap_init(void);
 static int platform_devmap_init(void);
 
+#define round_up_to(_val, _size)	(((_val) + ((_size) - 1)) & (~((_size) - 1)))
+#define	round_down_to(_val, _size)	((_val) & (~((_size) - 1)))
+	
 static char *
 kenv_next(char *cp)
 {
@@ -297,16 +306,208 @@ physmap_init(void)
 	phys_avail[j + 1] = 0;
 }
 
+static void
+arm_valloc_pages(struct pv_addr *result, size_t npages, size_t boundary)
+{
+	npages *= PAGE_SIZE;
+	boundary *= PAGE_SIZE;
+
+	/* First, round up to specified boundary */
+	arm_free_pa = round_up_to(arm_free_pa, boundary);
+	arm_free_va = round_up_to(arm_free_va, boundary);
+
+	result->pv_pa = arm_free_pa;
+	arm_free_pa += npages;
+	result->pv_va = arm_free_va;
+	arm_free_va += npages;
+	arm_allocated_va += npages;
+	memset((void *)result->pv_va, 0, npages);
+}
+
+static void
+arm_bootstrap_pagetables(uint32_t memsize, struct pv_addr *vectors, struct pv_addr *l1pt)
+{
+	struct pv_addr *l2pt = arm_bootstrap_l2pt;
+	vm_offset_t l2_start;
+	vm_offset_t pagetables_size = 0;
+	int l2_needed = 1; /* vectors */
+	int i;
+
+	/* Allocate L1 pagetable */
+	arm_valloc_pages(l1pt, L1_TABLE_SIZE / PAGE_SIZE, L1_TABLE_SIZE / PAGE_SIZE);
+	pagetables_size += L1_TABLE_SIZE;
+
+	/* 
+	 * Calculate number of needed L2 pagetables: we are starting with 
+	 * one needed to map vectors page
+	 */
+	l2_start = round_down_to(arm_free_va, L1_S_SIZE);
+	/* Add needed number of tables to hold vm_page array */
+	l2_needed += ((memsize / PAGE_SIZE) * sizeof(struct vm_page) >> L1_S_SHIFT) + 1;
+	/* And then to map kernel text and data and associated structures */
+	l2_needed += (arm_free_va - l2_start) >> L1_S_SHIFT;
+	/* 
+	 * Finally, round up to 4 to not waste space, as we can fit 4
+	 * pagetables on one page
+	 */
+	l2_needed = round_up_to(l2_needed, 4);
+
+	/* Allocate L2 page tables */
+	arm_valloc_pages(&l2pt[0], (l2_needed * L2_TABLE_SIZE_REAL) / PAGE_SIZE, 1);
+	pagetables_size += (l2_needed * L2_TABLE_SIZE_REAL);
+	
+	for (i = 0; i < l2_needed; i++) {
+		/* Fill in L2 page table addresses */
+		if (i != 0) {
+			l2pt[i].pv_pa = l2pt[0].pv_pa + (i * L2_TABLE_SIZE_REAL);
+			l2pt[i].pv_va = l2pt[0].pv_va + (i * L2_TABLE_SIZE_REAL);
+		}
+
+		/* Don't link last L2 table now, as it should be linked at vectors region */
+		if (i == l2_needed - 1)
+			break;
+
+		pmap_link_l2pt(l1pt->pv_va, l2_start + (i * L1_S_SIZE), &l2pt[i]);
+	}
+
+	/* Tell pmap about currently maximum mapped VA address */
+	pmap_curmaxkvaddr = round_up_to(arm_free_va, L1_S_SIZE);
+
+	/* Link and map vectors page */
+	pmap_link_l2pt(l1pt->pv_va, ARM_VECTORS_HIGH, &l2pt[l2_needed - 1]);
+	pmap_map_entry(l1pt->pv_va, ARM_VECTORS_HIGH, vectors->pv_pa,
+	    VM_PROT_READ|VM_PROT_WRITE, PTE_CACHE);
+	
+	/* Map kernel and structures */
+	pmap_map_chunk(l1pt->pv_va, arm_start_va, arm_start_pa,
+	    arm_allocated_va - pagetables_size,
+	    VM_PROT_READ|VM_PROT_WRITE, PTE_CACHE);
+	
+	/* Map pagetables itself: L1 */
+	pmap_map_chunk(l1pt->pv_va, l1pt->pv_va, l1pt->pv_pa, L1_TABLE_SIZE,
+	    VM_PROT_READ|VM_PROT_WRITE, PTE_PAGETABLE);
+	
+	/* and L2 */
+	pmap_map_chunk(l1pt->pv_va, l2pt[0].pv_va, l2pt[0].pv_pa, 
+	    L2_TABLE_SIZE_REAL * l2_needed,
+	    VM_PROT_READ|VM_PROT_WRITE, PTE_PAGETABLE);
+}
+
+static void *
+arm_mmu_init(uint32_t memsize, uint32_t lastaddr)
+{
+	struct pv_addr pagetable;
+	struct pv_addr dpcpu;
+
+	arm_start_va = KERNVIRTADDR;
+	arm_start_pa = KERNPHYSADDR;
+	arm_free_va = round_up_to(lastaddr, PAGE_SIZE);
+	arm_free_pa = arm_free_va + (KERNPHYSADDR - KERNVIRTADDR);
+	arm_allocated_va = arm_free_va - arm_start_va;
+
+	/*
+	 * Allocate a page for the system page mapped to 0x00000000
+	 * or 0xffff0000. This page will just contain the system vectors
+	 * and can be shared by all processes.
+	 */
+	arm_valloc_pages(&systempage, 1, 1);
+
+	/* Allocate dynamic per-cpu area. */
+	arm_valloc_pages(&dpcpu, DPCPU_SIZE / PAGE_SIZE, 1);
+	dpcpu_init((void *)dpcpu.pv_va, 0);
+
+	/* Allocate stacks for all modes */
+	arm_valloc_pages(&irqstack, IRQ_STACK_SIZE, 1);
+	arm_valloc_pages(&abtstack, ABT_STACK_SIZE, 1);
+	arm_valloc_pages(&undstack, UND_STACK_SIZE, 1);
+	arm_valloc_pages(&kernelstack, KSTACK_PAGES, 1);
+
+	init_param1();
+
+	/* Allocate space for message buffer */
+	arm_valloc_pages(&msgbufpv, round_page(msgbufsize) / PAGE_SIZE, 1);
+	
+	/* Construct bootstrap pagetables */
+	arm_bootstrap_pagetables(memsize, &systempage, &pagetable);
+
+	/* Map pmap_devmap[] entries */
+	if (platform_devmap_init() != 0)
+		while (1);
+	
+	pmap_devmap_bootstrap(pagetable.pv_va, pmap_devmap_bootstrap_table);
+	
+	/* Launch our bootstrap pagetable */
+	cpu_domains((DOMAIN_CLIENT << (PMAP_DOMAIN_KERNEL * 2)) |
+	    DOMAIN_CLIENT);
+	setttb(pagetable.pv_pa);
+	cpu_tlb_flushID();
+	cpu_domains(DOMAIN_CLIENT << (PMAP_DOMAIN_KERNEL * 2));
+
+	/*
+	 * Pages were allocated during the secondary bootstrap for the
+	 * stacks for different CPU modes.
+	 * We must now set the r13 registers in the different CPU modes to
+	 * point to these stacks.
+	 * Since the ARM stacks use STMFD etc. we must set r13 to the top end
+	 * of the stack memory.
+	 */
+	cpu_control(CPU_CONTROL_MMU_ENABLE, CPU_CONTROL_MMU_ENABLE);
+	set_stackptr(PSR_IRQ32_MODE,
+	    irqstack.pv_va + IRQ_STACK_SIZE * PAGE_SIZE);
+	set_stackptr(PSR_ABT32_MODE,
+	    abtstack.pv_va + ABT_STACK_SIZE * PAGE_SIZE);
+	set_stackptr(PSR_UND32_MODE,
+	    undstack.pv_va + UND_STACK_SIZE * PAGE_SIZE);
+
+	/*
+	 * We must now clean the cache again....
+	 * Cleaning may be done by reading new data to displace any
+	 * dirty data in the cache. This will have happened in setttb()
+	 * but since we are boot strapping the addresses used for the read
+	 * may have just been remapped and thus the cache could be out
+	 * of sync. A re-clean after the switch will cure this.
+	 * After booting there are no gross relocations of the kernel thus
+	 * this problem will not occur after initarm().
+	 */
+	cpu_idcache_wbinv_all();
+
+	/* Set stack for exception handlers */
+	data_abort_handler_address = (u_int)data_abort_handler;
+	prefetch_abort_handler_address = (u_int)prefetch_abort_handler;
+	undefined_handler_address = (u_int)undefinedinstruction_bounce;
+	undefined_init();
+
+	proc_linkup0(&proc0, &thread0);
+	thread0.td_kstack = kernelstack.pv_va;
+	thread0.td_kstack_pages = KSTACK_PAGES;
+	thread0.td_pcb = (struct pcb *)
+	    (thread0.td_kstack + KSTACK_PAGES * PAGE_SIZE) - 1;
+	thread0.td_pcb->pcb_flags = 0;
+	thread0.td_frame = &proc0_tf;
+	pcpup->pc_curpcb = thread0.td_pcb;
+
+	arm_vector_init(ARM_VECTORS_HIGH, ARM_VEC_ALL);
+
+	dump_avail[0] = 0;
+	dump_avail[1] = memsize;
+	dump_avail[2] = 0;
+	dump_avail[3] = 0;
+
+	pmap_bootstrap(arm_free_va, pmap_bootstrap_lastaddr, &pagetable);
+	msgbufp = (void *)msgbufpv.pv_va;
+	msgbufinit(msgbufp, msgbufsize);
+
+	return ((void *)(kernelstack.pv_va + USPACE_SVC_STACK_TOP -
+	    sizeof(struct pcb)));
+}
+
 void *
 initarm(void *mdp, void *unused __unused)
 {
-	struct pv_addr kernel_l1pt;
-	struct pv_addr dpcpu;
-	vm_offset_t dtbp, freemempos, l2_start, lastaddr;
-	uint32_t memsize, l2size;
+	vm_offset_t dtbp, lastaddr;
+	uint32_t memsize;
 	void *kmdp;
-	u_int l1pagetable;
-	int i = 0, j = 0;
+	void *sp;
 
 	kmdp = NULL;
 	lastaddr = 0;
@@ -367,150 +568,21 @@ initarm(void *mdp, void *unused __unused)
 
 	if (fdt_immr_addr(LPC_DEV_BASE) != 0)
 		while (1);
-
+	
 	/* Platform-specific initialisation */
 	pmap_bootstrap_lastaddr = fdt_immr_va - ARM_NOCACHE_KVA_SIZE;
 
 	pcpu_init(pcpup, 0, sizeof(struct pcpu));
 	PCPU_SET(curthread, &thread0);
 
-	/* Calculate number of L2 tables needed for mapping vm_page_array */
-	l2size = (memsize / PAGE_SIZE) * sizeof(struct vm_page);
-	l2size = (l2size >> L1_S_SHIFT) + 1;
-
-	/*
-	 * Add one table for end of kernel map, one for stacks, msgbuf and
-	 * L1 and L2 tables map and one for vectors map.
-	 */
-	l2size += 3;
-
-	/* Make it divisible by 4 */
-	l2size = (l2size + 3) & ~3;
-
-#define KERNEL_TEXT_BASE (KERNBASE)
-	freemempos = (lastaddr + PAGE_MASK) & ~PAGE_MASK;
-
-	/* Define a macro to simplify memory allocation */
-#define valloc_pages(var, np)                   \
-	alloc_pages((var).pv_va, (np));         \
-	(var).pv_pa = (var).pv_va + (KERNPHYSADDR - KERNVIRTADDR);
-
-#define alloc_pages(var, np)			\
-	(var) = freemempos;		\
-	freemempos += (np * PAGE_SIZE);		\
-	memset((char *)(var), 0, ((np) * PAGE_SIZE));
-
-	while (((freemempos - L1_TABLE_SIZE) & (L1_TABLE_SIZE - 1)) != 0)
-		freemempos += PAGE_SIZE;
-	valloc_pages(kernel_l1pt, L1_TABLE_SIZE / PAGE_SIZE);
-
-	for (i = 0; i < l2size; ++i) {
-		if (!(i % (PAGE_SIZE / L2_TABLE_SIZE_REAL))) {
-			valloc_pages(kernel_pt_table[i],
-			    L2_TABLE_SIZE / PAGE_SIZE);
-			j = i;
-		} else {
-			kernel_pt_table[i].pv_va = kernel_pt_table[j].pv_va +
-			    L2_TABLE_SIZE_REAL * (i - j);
-			kernel_pt_table[i].pv_pa =
-			    kernel_pt_table[i].pv_va - KERNVIRTADDR +
-			    KERNPHYSADDR;
-
-		}
-	}
-	/*
-	 * Allocate a page for the system page mapped to 0x00000000
-	 * or 0xffff0000. This page will just contain the system vectors
-	 * and can be shared by all processes.
-	 */
-	valloc_pages(systempage, 1);
-
-	/* Allocate dynamic per-cpu area. */
-	valloc_pages(dpcpu, DPCPU_SIZE / PAGE_SIZE);
-	dpcpu_init((void *)dpcpu.pv_va, 0);
-
-	/* Allocate stacks for all modes */
-	valloc_pages(irqstack, IRQ_STACK_SIZE);
-	valloc_pages(abtstack, ABT_STACK_SIZE);
-	valloc_pages(undstack, UND_STACK_SIZE);
-	valloc_pages(kernelstack, KSTACK_PAGES);
-
-	init_param1();
-
-	valloc_pages(msgbufpv, round_page(msgbufsize) / PAGE_SIZE);
-
-	/*
-	 * Now we start construction of the L1 page table
-	 * We start by mapping the L2 page tables into the L1.
-	 * This means that we can replace L1 mappings later on if necessary
-	 */
-	l1pagetable = kernel_l1pt.pv_va;
-
-	/*
-	 * Try to map as much as possible of kernel text and data using
-	 * 1MB section mapping and for the rest of initial kernel address
-	 * space use L2 coarse tables.
-	 *
-	 * Link L2 tables for mapping remainder of kernel (modulo 1MB)
-	 * and kernel structures
-	 */
-	l2_start = lastaddr & ~(L1_S_OFFSET);
-	for (i = 0 ; i < l2size - 1; i++)
-		pmap_link_l2pt(l1pagetable, l2_start + i * L1_S_SIZE,
-		    &kernel_pt_table[i]);
-
-	pmap_curmaxkvaddr = l2_start + (l2size - 1) * L1_S_SIZE;
-	
-	/* Map kernel code and data */
-	pmap_map_chunk(l1pagetable, KERNVIRTADDR, KERNPHYSADDR,
-	   (((uint32_t)(lastaddr) - KERNVIRTADDR) + PAGE_MASK) & ~PAGE_MASK,
-	    VM_PROT_READ|VM_PROT_WRITE, PTE_CACHE);
-
-
-	/* Map L1 directory and allocated L2 page tables */
-	pmap_map_chunk(l1pagetable, kernel_l1pt.pv_va, kernel_l1pt.pv_pa,
-	    L1_TABLE_SIZE, VM_PROT_READ|VM_PROT_WRITE, PTE_PAGETABLE);
-
-	pmap_map_chunk(l1pagetable, kernel_pt_table[0].pv_va,
-	    kernel_pt_table[0].pv_pa,
-	    L2_TABLE_SIZE_REAL * l2size,
-	    VM_PROT_READ|VM_PROT_WRITE, PTE_PAGETABLE);
-
-	/* Map allocated DPCPU, stacks and msgbuf */
-	pmap_map_chunk(l1pagetable, dpcpu.pv_va, dpcpu.pv_pa,
-	    freemempos - dpcpu.pv_va,
-	    VM_PROT_READ|VM_PROT_WRITE, PTE_CACHE);
-
-	/* Link and map the vector page */
-	pmap_link_l2pt(l1pagetable, ARM_VECTORS_HIGH,
-	    &kernel_pt_table[l2size - 1]);
-	pmap_map_entry(l1pagetable, ARM_VECTORS_HIGH, systempage.pv_pa,
-	    VM_PROT_READ|VM_PROT_WRITE, PTE_CACHE);
-
-	/* Map pmap_devmap[] entries */
-	if (platform_devmap_init() != 0)
-		while (1);
-	pmap_devmap_bootstrap(l1pagetable, pmap_devmap_bootstrap_table);
-
-	cpu_domains((DOMAIN_CLIENT << (PMAP_DOMAIN_KERNEL * 2)) |
-	    DOMAIN_CLIENT);
-	setttb(kernel_l1pt.pv_pa);
-	cpu_tlb_flushID();
-	cpu_domains(DOMAIN_CLIENT << (PMAP_DOMAIN_KERNEL * 2));
+	/* Initialize MMU */
+	sp = arm_mmu_init(memsize, lastaddr);
 
 	/*
 	 * Only after the SOC registers block is mapped we can perform device
 	 * tree fixups, as they may attempt to read parameters from hardware.
 	 */
 	OF_interpret("perform-fixup", 0);
-
-#if 0
-	/*
-	 * Initialize GPIO as early as possible.
-	 */
-	if (platform_gpio_init() != 0)
-		while (1);
-#endif
 
 	cninit();
 	
@@ -523,59 +595,6 @@ initarm(void *mdp, void *unused __unused)
 	print_kernel_section_addr();
 	print_kenv();
 
-	/*
-	 * Pages were allocated during the secondary bootstrap for the
-	 * stacks for different CPU modes.
-	 * We must now set the r13 registers in the different CPU modes to
-	 * point to these stacks.
-	 * Since the ARM stacks use STMFD etc. we must set r13 to the top end
-	 * of the stack memory.
-	 */
-	cpu_control(CPU_CONTROL_MMU_ENABLE, CPU_CONTROL_MMU_ENABLE);
-	set_stackptr(PSR_IRQ32_MODE,
-	    irqstack.pv_va + IRQ_STACK_SIZE * PAGE_SIZE);
-	set_stackptr(PSR_ABT32_MODE,
-	    abtstack.pv_va + ABT_STACK_SIZE * PAGE_SIZE);
-	set_stackptr(PSR_UND32_MODE,
-	    undstack.pv_va + UND_STACK_SIZE * PAGE_SIZE);
-
-	/*
-	 * We must now clean the cache again....
-	 * Cleaning may be done by reading new data to displace any
-	 * dirty data in the cache. This will have happened in setttb()
-	 * but since we are boot strapping the addresses used for the read
-	 * may have just been remapped and thus the cache could be out
-	 * of sync. A re-clean after the switch will cure this.
-	 * After booting there are no gross relocations of the kernel thus
-	 * this problem will not occur after initarm().
-	 */
-	cpu_idcache_wbinv_all();
-
-	/* Set stack for exception handlers */
-	data_abort_handler_address = (u_int)data_abort_handler;
-	prefetch_abort_handler_address = (u_int)prefetch_abort_handler;
-	undefined_handler_address = (u_int)undefinedinstruction_bounce;
-	undefined_init();
-
-	proc_linkup0(&proc0, &thread0);
-	thread0.td_kstack = kernelstack.pv_va;
-	thread0.td_kstack_pages = KSTACK_PAGES;
-	thread0.td_pcb = (struct pcb *)
-	    (thread0.td_kstack + KSTACK_PAGES * PAGE_SIZE) - 1;
-	thread0.td_pcb->pcb_flags = 0;
-	thread0.td_frame = &proc0_tf;
-	pcpup->pc_curpcb = thread0.td_pcb;
-
-	arm_vector_init(ARM_VECTORS_HIGH, ARM_VEC_ALL);
-
-	dump_avail[0] = 0;
-	dump_avail[1] = memsize;
-	dump_avail[2] = 0;
-	dump_avail[3] = 0;
-
-	pmap_bootstrap(freemempos, pmap_bootstrap_lastaddr, &kernel_l1pt);
-	msgbufp = (void *)msgbufpv.pv_va;
-	msgbufinit(msgbufp, msgbufsize);
 	mutex_init();
 
 	/*
@@ -591,8 +610,8 @@ initarm(void *mdp, void *unused __unused)
 	/* Do basic tuning, hz etc */
 	init_param2(physmem);
 	kdb_init();
-	return ((void *)(kernelstack.pv_va + USPACE_SVC_STACK_TOP -
-	    sizeof(struct pcb)));
+
+	return (sp);
 }
 
 #define FDT_DEVMAP_MAX	(1 + 2 + 1 + 1)
