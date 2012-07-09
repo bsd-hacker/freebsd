@@ -629,6 +629,7 @@ void pmap_update(pmap_t);
  * static mappings of devices, created at bootstrap time.
  */
 struct pmap_devmap {
+	const char *	pd_name;	/* FDT device handle */
 	vm_offset_t	pd_va;		/* virtual address */
 	vm_paddr_t	pd_pa;		/* physical address */
 	vm_size_t	pd_size;	/* size of region */
@@ -636,8 +637,13 @@ struct pmap_devmap {
 	int		pd_cache;	/* cache attributes */
 };
 
+#define	DEVMAP_FDT(_name, _prot, _cache)	{_name, 0, 0, 0, _prot, _cache}
+#define	DEVMAP_ENTRY(_pa, _size, _prot, _cache)	{NULL, 0, _pa, _size, _prot, _cache}
+#define	DEVMAP_END				{NULL, 0, 0, 0, 0, 0}
+
 const struct pmap_devmap *pmap_devmap_find_pa(vm_paddr_t, vm_size_t);
 const struct pmap_devmap *pmap_devmap_find_va(vm_offset_t, vm_size_t);
+const struct pmap_devmap *pmap_devmap_find_name(const char *name);
 
 void	pmap_devmap_bootstrap(vm_offset_t, const struct pmap_devmap *);
 void	pmap_devmap_register(const struct pmap_devmap *);

@@ -45,14 +45,17 @@ __FBSDID("$FreeBSD: projects/armv6/sys/dev/uart/uart_dev_lpc_ns8250.c 228136 201
 #define	DEFAULT_RCLK		(13 * 1000 * 1000)
 #define	LPC_UART_NO(_bas)	(((_bas->bsh) - LPC_UART_BASE) >> 15)
 
+static bus_space_handle_t uartctrl_bsh;
+static bus_space_handle_t clkpwr_bsh;
+
 #define	lpc_ns8250_get_auxreg(_bas, _reg)	\
-    bus_space_read_4((_bas)->bst, LPC_UART_CONTROL_BASE, _reg)
+    bus_space_read_4((_bas)->bst, uartctrl_bsh, _reg)
 #define	lpc_ns8250_set_auxreg(_bas, _reg, _val)	\
-    bus_space_write_4((_bas)->bst, LPC_UART_CONTROL_BASE, _reg, _val);
+    bus_space_write_4((_bas)->bst, uartctrl_bsh, _reg, _val);
 #define	lpc_ns8250_get_clkreg(_bas, _reg)	\
-    bus_space_read_4((_bas)->bst, LPC_CLKPWR_BASE, (_reg))
+    bus_space_read_4((_bas)->bst, clkpwr_bsh, (_reg))
 #define	lpc_ns8250_set_clkreg(_bas, _reg, _val)	\
-    bus_space_write_4((_bas)->bst, LPC_CLKPWR_BASE, (_reg), (_val))
+    bus_space_write_4((_bas)->bst, clkpwr_bsh, (_reg), (_val))
 
 /*
  * Clear pending interrupts. THRE is cleared by reading IIR. Data
@@ -292,6 +295,9 @@ lpc_ns8250_init(struct uart_bas *bas, int baudrate, int databits, int stopbits,
 	u_char	ier;
 	u_long	clkmode;
 	
+	bus_space_map(bas->bst, LPC_UART_CONTROL_BASE, LPC_UART_CONTROL_SIZE, 0, &uartctrl_bsh);
+	bus_space_map(bas->bst, LPC_CLKPWR_BASE, LPC_CLKPWR_SIZE, 0, &clkpwr_bsh);
+
 	/* Enable UART clock */
 	clkmode = lpc_ns8250_get_auxreg(bas, LPC_UART_CLKMODE);
 	lpc_ns8250_set_auxreg(bas, LPC_UART_CLKMODE,

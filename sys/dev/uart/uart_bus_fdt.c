@@ -135,9 +135,8 @@ uart_cpu_eqres(struct uart_bas *b1, struct uart_bas *b2)
 int
 uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 {
-	char buf[64];
 	struct uart_class *class;
-	phandle_t node, parent, chosen;
+	phandle_t node, parent;
 	pcell_t shift, br, rclk;
 	u_long start, size;
 	struct fdt_range ranges[8];
@@ -160,16 +159,7 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 	/*
 	 * Retrieve /chosen/std{in,out}.
 	 */
-	if ((chosen = OF_finddevice("/chosen")) == -1)
-		return (ENXIO);
-	if (OF_getprop(chosen, "stdin", buf, sizeof(buf)) <= 0)
-		return (ENXIO);
-	if ((node = OF_finddevice(buf)) == -1)
-		return (ENXIO);
-	if (OF_getprop(chosen, "stdout", buf, sizeof(buf)) <= 0)
-		return (ENXIO);
-	if (OF_finddevice(buf) != node)
-		/* Only stdin == stdout is supported. */
+	if ((node = fdt_lookup_console_uart()) == -1)
 		return (ENXIO);
 
 	/*
