@@ -18,6 +18,7 @@ arm/arm/db_interface.c		optional	ddb
 arm/arm/db_trace.c		optional	ddb
 arm/arm/disassem.c		optional	ddb
 arm/arm/dump_machdep.c		standard
+arm/arm/early_uart.c		optional	arm_early_debug
 arm/arm/elf_machdep.c		standard
 arm/arm/exception.S		standard
 arm/arm/fiq.c			standard
