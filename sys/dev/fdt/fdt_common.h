@@ -97,6 +97,7 @@ phandle_t fdt_find_compatible(phandle_t, const char *, int);
 int fdt_get_mem_regions(struct mem_region *, int *, uint32_t *);
 int fdt_get_phyaddr(phandle_t, device_t, int *, void **);
 int fdt_immr_addr(vm_offset_t);
+phandle_t fdt_lookup_console_uart(void);
 int fdt_read_ranges(phandle_t node, struct fdt_range **ranges, int addr_cells,
     int par_addr_cells, int size_cels);
 u_long fdt_ranges_lookup(struct fdt_range *ranges, int nranges, u_long addr,

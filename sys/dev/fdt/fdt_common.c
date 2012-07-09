@@ -129,6 +129,30 @@ moveon:
 	return (0);
 }
 
+phandle_t
+fdt_lookup_console_uart(void)
+{
+	char buf[64];
+	phandle_t node, chosen;
+
+	/*
+	 * Retrieve /chosen/std{in,out}.
+	 */
+	if ((chosen = OF_finddevice("/chosen")) == -1)
+		return (-1);
+	if (OF_getprop(chosen, "stdin", buf, sizeof(buf)) <= 0)
+		return (-1);
+	if ((node = OF_finddevice(buf)) == -1)
+		return (-1);
+	if (OF_getprop(chosen, "stdout", buf, sizeof(buf)) <= 0)
+		return (-1);
+	if (OF_finddevice(buf) != node)
+		/* Only stdin == stdout is supported. */
+		return (-1);
+
+	return (node);
+}
+
 int
 fdt_read_ranges(phandle_t node, struct fdt_range **ranges, int addr_cells,
     int par_addr_cells, int size_cells)
