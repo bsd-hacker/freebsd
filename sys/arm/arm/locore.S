@@ -34,6 +34,7 @@
  */
 
 #include "assym.s"
+#include "opt_global.h"
 #include <sys/syscall.h>
 #include <machine/asm.h>
 #include <machine/armreg.h>
@@ -240,6 +241,9 @@ mmu_init_table:
 	MMU_INIT(PHYSADDR, PHYSADDR , 64, L1_TYPE_S|L1_S_C|L1_S_AP(AP_KRW))
 	/* map VA 0xc0000000..0xc3ffffff to PA */
 	MMU_INIT(KERNBASE, PHYSADDR, 64, L1_TYPE_S|L1_S_C|L1_S_AP(AP_KRW))
+#if defined(ARM_EARLY_DEBUG)
+	MMU_INIT(ARM_EARLY_UART_VA & L1_S_FRAME, ARM_EARLY_UART_PA & L1_S_FRAME, 64, L1_TYPE_S|L1_S_AP(AP_KRW))
+#endif
 #else
 	MMU_INIT(PHYSADDR, PHYSADDR , 64, L1_TYPE_S|L1_SHARED|L1_S_C|L1_S_AP(AP_KRW))
 	/* map VA 0xc0000000..0xc3ffffff to PA */
