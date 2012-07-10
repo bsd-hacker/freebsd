@@ -36,7 +36,7 @@ uint32_t lpc_pwr_read(device_t, int);
 void lpc_pwr_write(device_t, int, uint32_t);
 
 /* GPIO */
-void platform_gpio_init(void);
+void platform_gpio_init(bus_space_handle_t bsh);
 int lpc_gpio_set_flags(device_t, int, int);
 int lpc_gpio_set_state(device_t, int, int);
 int lpc_gpio_get_state(device_t, int, int *);

@@ -30,7 +30,7 @@
 #define	LPC_DEV_PHYS_BASE		0x40000000
 #define	LPC_DEV_P5_PHYS_BASE		0x20000000
 #define	LPC_DEV_P6_PHYS_BASE		0x30000000
-#define	LPC_DEV_BASE			0xd0000000
+#define	LPC_DEV_BASE			LPC_DEV_PHYS_BASE
 
 /*
  * Interrupt controller (from UM10326: LPC32x0 User manual, page 87)
@@ -87,6 +87,7 @@
  * Clocking and power control. (from UM10326: LPC32x0 User manual, page 58)
  */
 #define	LPC_CLKPWR_BASE			(LPC_DEV_BASE + 0x4000)
+#define	LPC_CLKPWR_SIZE			0x4000
 #define	LPC_CLKPWR_PWR_CTRL		0x44
 #define	LPC_CLKPWR_OSC_CTRL		0x4c
 #define	LPC_CLKPWR_SYSCLK_CTRL		0x50
@@ -188,6 +189,7 @@
 /* Additional UART registers */
 #define	LPC_UART_BASE			(LPC_DEV_BASE + 0x80000)
 #define	LPC_UART_CONTROL_BASE		(LPC_DEV_BASE + 0x54000)
+#define	LPC_UART_CONTROL_SIZE		0x1000
 #define	LPC_UART5_BASE			(LPC_DEV_BASE + 0x90000)
 #define	LPC_UART_CTRL			0x00
 #define	LPC_UART_CLKMODE		0x04

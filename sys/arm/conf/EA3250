@@ -10,7 +10,7 @@ hints		"EA3250.hints"
 
 makeoptions	MODULES_OVERRIDE=""
 
-#makeoptions	DEBUG=-g		#Build kernel with gdb(1) debug symbols
+makeoptions	DEBUG=-g		#Build kernel with gdb(1) debug symbols
 makeoptions	WERROR="-Werror"
 
 options 	SCHED_4BSD		#4BSD scheduler
@@ -27,6 +27,10 @@ options 	BOOTP_NFSV3
 options 	BOOTP_WIRED_TO=lpe0
 options		ARM_INTRNG
 options		VERBOSE_INIT_ARM
+
+options		ARM_EARLY_DEBUG
+options		ARM_EARLY_UART_PA=0x40090000
+options		ARM_EARLY_UART_VA=0xd0090000
 
 #options 	ROOTDEVNAME=\"ufs:/dev/da0a\"
 

@@ -501,14 +501,23 @@ lpc_gpio_get_state(device_t dev, int pin, int *state)
 }
 
 void
-platform_gpio_init()
+platform_gpio_init(bus_space_handle_t bsh)
 {
+#if 0
+	bus_space_handle bsh;
+
+	/* Map GPIO registers */
+	bus_space_map(fdtbus_bs_tag, gpio->pd_pa, gpio->pd_size, 0, &bsh);
+#endif
 	/* Preset SPI devices CS pins to one */
 	bus_space_write_4(fdtbus_bs_tag, 
-	    LPC_GPIO_BASE, LPC_GPIO_P3_OUTP_SET,
+	    bsh, LPC_GPIO_P3_OUTP_SET,
 	    1 << (SSD1289_CS_PIN - LPC_GPIO_GPO_00(0)) |
 	    1 << (SSD1289_DC_PIN - LPC_GPIO_GPO_00(0)) |
 	    1 << (ADS7846_CS_PIN - LPC_GPIO_GPO_00(0)));	
+
+	bus_space_write_4(fdtbus_bs_tag, bsh, 0x100,
+	    (1<<12)|(1<<10)|(1<<9)|(1<<8)|(1<<6)|(1<<5));
 }
 
 static device_method_t lpc_gpio_methods[] = {
