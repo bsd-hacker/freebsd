@@ -67,6 +67,7 @@ options 	SYSVMSG			#SYSV-style message queues
 options 	SYSVSEM			#SYSV-style semaphores
 options 	_KPOSIX_PRIORITY_SCHEDULING #Posix P1003_1B real-time extensions
 options 	KBD_INSTALL_CDEV	# install a CDEV entry in /dev
+options		ARM_INTRNG
 
 options 	PREEMPTION
 
@@ -91,7 +92,7 @@ device		gpio
 
 device		pty
 
-device		pl310			#  PL310 L2 cache controller
+#device		pl310			#  PL310 L2 cache controller
 # Debugging for use in -current
 #options		VERBOSE_SYSINIT		#Enable verbose sysinit messages
 options 	KDB
