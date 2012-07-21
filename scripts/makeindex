@@ -53,7 +53,7 @@ export LOCALBASE=/nonexistentlocal
 INDEX_PORTS=.
 if [ -n "$target" ]; then
   if [ -f "$target" ]; then
-    INDEX_PORTS=$(cat $target | tr '\n' ' ')
+    INDEX_PORTS=$(grep -v "^#" $target | tr '\n' ' ')
   else
     echo "File $target doesn't exist. Exiting."
     exit 1

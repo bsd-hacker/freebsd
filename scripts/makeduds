@@ -47,7 +47,7 @@ export PORT_DBDIR=/nonexistentport
 DUDS_PORTS=.
 if [ -n "$target" ]; then
   if [ -f "$target" ]; then
-    DUDS_PORTS=$(cat $target | tr '\n' ' ')
+    DUDS_PORTS=$(grep -v "^#" $target | tr '\n' ' ')
   else
     echo "File $target doesn't exist. Exiting."
     exit 1

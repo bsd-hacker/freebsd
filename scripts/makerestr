@@ -40,7 +40,7 @@ export PORT_DBDIR=/nonexistentport
 RESTR_PORTS=.
 if [ -n "$target" ]; then
   if [ -f "$target" ]; then
-    RESTR_PORTS=$(cat $target | tr '\n' ' ')
+    RESTR_PORTS=$(grep -v "^#" $target | tr '\n' ' ')
   else
     echo "File $target doesn't exist. Exiting."
     exit 1
