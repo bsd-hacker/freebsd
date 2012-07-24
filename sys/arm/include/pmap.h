@@ -637,9 +637,12 @@ struct pmap_devmap {
 	int		pd_cache;	/* cache attributes */
 };
 
-#define	DEVMAP_FDT(_name, _prot, _cache)	{_name, 0, 0, 0, _prot, _cache}
-#define	DEVMAP_ENTRY(_pa, _size, _prot, _cache)	{NULL, 0, _pa, _size, _prot, _cache}
-#define	DEVMAP_END				{NULL, 0, 0, 0, 0, 0}
+#define	DEVMAP_FDT(_name, _prot, _cache) \
+	{_name, 0, 0, 0, _prot, _cache}
+#define	DEVMAP_ENTRY(_pa, _size, _prot, _cache) \
+	{NULL, 0, _pa, _size, _prot, _cache}
+#define	DEVMAP_END\
+	{NULL, 0, 0, 0, 0, 0}
 
 const struct pmap_devmap *pmap_devmap_find_pa(vm_paddr_t, vm_size_t);
 const struct pmap_devmap *pmap_devmap_find_va(vm_offset_t, vm_size_t);

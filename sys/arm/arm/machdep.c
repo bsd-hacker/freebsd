@@ -928,26 +928,24 @@ arm_process_devmap(struct pmap_devmap *devmap)
 
 			if (node == -1)
 				goto notfound;
-
+			
 			if ((parent = OF_parent(node)) <= 0)
 				goto notfound;
-
+			
 			if (fdt_addrsize_cells(parent, &addr_cells, &size_cells))
 				goto notfound;
+
+			fdt_regsize(node, &start, &size);
 			
 			if ((par_addr_cells = fdt_parent_addr_cells(parent)) > 2)
-				goto notfound;
+				goto noparent;
 			
 			nranges = fdt_read_ranges(parent, &rptr, addr_cells, 
 			    par_addr_cells, size_cells);
 			
-			if (nranges <= 0)
-				goto notfound;
-
-			fdt_regsize(node, &start, &size);
-
-			start += fdt_ranges_lookup(ranges, nranges, start, size);
-
+			if (nranges > 0)
+				start += fdt_ranges_lookup(ranges, nranges, start, size);
+noparent:
 			entry->pd_pa = rounddown(start, PAGE_SIZE);
 			entry->pd_size = roundup(size, PAGE_SIZE);
 
