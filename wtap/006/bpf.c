@@ -39,7 +39,7 @@ hwmp_recv_action_meshpath(const struct ieee80211_frame *wh,
 		{
 			printf("PREQ with ");
 			preq = (struct ieee80211_meshpreq_ie *)iefrm;
-			if (preq->preq_flags & IEEE80211_MESHPREQ_FLAGS_PR) {
+			if (preq->preq_flags & IEEE80211_MESHPREQ_FLAGS_GATE) {
 				printf("GateAnnouncement!\n");
 				return 0;
 			} else {
