@@ -166,7 +166,7 @@ pkg_sufx=${PKG_SUFX}
 # Use pkgng if available.
 #if [ -x /usr/sbin/pkg ]; then
 use_pkgng="no"
-grep "^WITH_PKGNG[      ]*=" make.conf | sed -e "s/.*=//;s/ //"  | grep "[Yy][Ee][Ss]$" && use_pkgng="yes"
+grep "^WITH_PKGNG[      ]*=" /etc/make.conf | sed -e "s/.*=//;s/ //"  | grep "[Yy][Ee][Ss]$" && use_pkgng="yes"
 
 # Keep restricted distfiles in a subdirectory for extra protection
 # against leakage
