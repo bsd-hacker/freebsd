@@ -70,6 +70,20 @@ add_pkg() {
       else
         eval $pkg_cmd_add $i
         if [ $? -ne 0 ]; then
+# XXX MCL this is where the truncated packages kill us.
+#         echo "begin debug block"
+#         echo
+#         echo "remember, you are in a chroot, with dir ${dir}"
+#         echo
+#         echo "PKG_PATH is $PKG_PATH and contains"
+#         ls -al $PKG_PATH
+#         echo
+#         df -g
+#         echo
+#         ps axwwl
+#         echo
+#         echo "end debug block"
+# XXX MCL this is where the truncated packages kill us.
           echo "error in dependency $i, exiting"
           cleanup 0
         fi
@@ -166,7 +180,7 @@ pkg_sufx=${PKG_SUFX}
 # Use pkgng if available.
 #if [ -x /usr/sbin/pkg ]; then
 use_pkgng="no"
-grep "^WITH_PKGNG[      ]*=" /etc/make.conf | sed -e "s/.*=//;s/ //"  | grep "[Yy][Ee][Ss]$" && use_pkgng="yes"
+grep "^WITH_PKGNG[      ]*=" /etc/make.conf | sed -e "s/.*=//;s/ //"  | grep -q "[Yy][Ee][Ss]$" && use_pkgng="yes"
 
 # Keep restricted distfiles in a subdirectory for extra protection
 # against leakage
@@ -267,6 +281,7 @@ else
   echo "================================================================"
   echo "====================<phase 4: make build>===================="
 
+# XXX MCL this is where the truncated packages kill us.
   add_pkg ${BD}
 
   # Files we do not care about changing between pre-build and post-cleanup
@@ -429,10 +444,10 @@ EOF
     grep -vE ' (extra|missing)$' /tmp/list3 > /tmp/list6
     if [ "x${NOPLISTCHECK}" = "x" ]; then
       if grep -vq "$L/etc/" /tmp/list4; then
-        #echo "1" > /tmp/status
+        echo "1" > /tmp/status
       fi
       if [ -s /tmp/list5 ]; then
-        #echo "1" > /tmp/status
+        echo "1" > /tmp/status
       fi
     fi
     echo "================================================================"
