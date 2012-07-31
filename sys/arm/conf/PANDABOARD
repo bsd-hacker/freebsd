@@ -71,9 +71,13 @@ options		ARM_INTRNG
 
 options 	PREEMPTION
 
+options		ARM_EARLY_DEBUG
+options		ARM_EARLY_UART_PA=0x48020000
+options		ARM_EARLY_UART_VA=0xd8020000
+
 # MMC/SD/SDIO Card slot support
-device		mmc				# mmc/sd bus
-device		mmcsd			# mmc/sd flash cards
+#device		mmc				# mmc/sd bus
+#device		mmcsd			# mmc/sd flash cards
 
 # I2C support
 device		iicbus
@@ -92,7 +96,7 @@ device		gpio
 
 device		pty
 
-#device		pl310			#  PL310 L2 cache controller
+device		pl310			#  PL310 L2 cache controller
 # Debugging for use in -current
 #options		VERBOSE_SYSINIT		#Enable verbose sysinit messages
 options 	KDB
