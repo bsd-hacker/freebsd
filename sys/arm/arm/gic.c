@@ -166,7 +166,9 @@ arm_gic_attach(device_t dev)
 	if (bus_alloc_resources(dev, arm_gic_spec, sc->gic_res)) {
 		device_printf(dev, "could not allocate resources\n");
 		return (ENXIO);
-	} 
+	}
+
+	sc->gic_dev = dev;	
 
 	/* Distributor Interface */
 	sc->gic_d_bst = rman_get_bustag(sc->gic_res[0]);
@@ -282,7 +284,7 @@ static void
 arm_gic_unmask(device_t dev, int irq)
 {
 	struct arm_gic_softc *sc = device_get_softc(dev);
-	
+
 	gic_c_write_4(sc, GICC_EOIR, irq);
 	gic_d_write_4(sc, GICD_ISENABLER(irq >> 5), (1UL << (irq & 0x1F)));
 }

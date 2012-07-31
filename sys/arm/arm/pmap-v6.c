@@ -3713,7 +3713,10 @@ pmap_devmap_bootstrap(vm_offset_t l1pt, const struct pmap_devmap *table)
 
 	pmap_devmap_table = table;
 
-	for (i = 0; pmap_devmap_table[i].pd_size != 0; i++) {
+	for (i = 0; pmap_devmap_table[i].pd_size != 0 || pmap_devmap_table[i].pd_name != NULL ; i++) {
+		if (pmap_devmap_table[i].pd_size == 0)
+			continue;
+
 #ifdef VERBOSE_INIT_ARM
 		printf("devmap: %08x -> %08x @ %08x\n",
 		    pmap_devmap_table[i].pd_pa,
@@ -3733,17 +3736,18 @@ const struct pmap_devmap *
 pmap_devmap_find_pa(vm_paddr_t pa, vm_size_t size)
 {
 	int i;
-
+	
 	if (pmap_devmap_table == NULL)
 		return (NULL);
-
-	for (i = 0; pmap_devmap_table[i].pd_size != 0; i++) {
+	
+	for (i = 0; pmap_devmap_table[i].pd_name != NULL ||
+	    pmap_devmap_table[i].pd_size != 0; i++) {
 		if (pa >= pmap_devmap_table[i].pd_pa &&
 		    pa + size <= pmap_devmap_table[i].pd_pa +
 				 pmap_devmap_table[i].pd_size)
 			return (&pmap_devmap_table[i]);
 	}
-
+	
 	return (NULL);
 }
 
@@ -3755,10 +3759,28 @@ pmap_devmap_find_va(vm_offset_t va, vm_size_t size)
 	if (pmap_devmap_table == NULL)
 		return (NULL);
 
-	for (i = 0; pmap_devmap_table[i].pd_size != 0; i++) {
+	for (i = 0; pmap_devmap_table[i].pd_name != NULL || 
+	    pmap_devmap_table[i].pd_size != 0; i++) {
 		if (va >= pmap_devmap_table[i].pd_va &&
 		    va + size <= pmap_devmap_table[i].pd_va +
 				 pmap_devmap_table[i].pd_size)
+			return (&pmap_devmap_table[i]);
+	}
+
+	return (NULL);
+}
+
+const struct pmap_devmap *
+pmap_devmap_find_name(const char *name)
+{
+	int i;
+
+	if (pmap_devmap_table == NULL)
+		return (NULL);
+
+	for (i = 0; pmap_devmap_table[i].pd_name != NULL ||
+	    pmap_devmap_table[i].pd_size != 0; i++) {
+		if (!strcmp(name, pmap_devmap_table[i].pd_name))
 			return (&pmap_devmap_table[i]);
 	}
 

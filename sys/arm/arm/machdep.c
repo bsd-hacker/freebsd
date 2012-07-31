@@ -883,7 +883,7 @@ arm_bootstrap_pagetables(uint32_t memsize, struct pv_addr *vectors, struct pv_ad
 	/* Link and map vectors page */
 	pmap_link_l2pt(l1pt->pv_va, ARM_VECTORS_HIGH, &l2pt[l2_needed - 1]);
 	pmap_map_entry(l1pt->pv_va, ARM_VECTORS_HIGH, vectors->pv_pa,
-	    VM_PROT_READ|VM_PROT_WRITE, PTE_CACHE);
+	    VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE, PTE_CACHE);
 	
 	/* Map kernel and structures */
 	pmap_map_chunk(l1pt->pv_va, arm_start_va, arm_start_pa,
