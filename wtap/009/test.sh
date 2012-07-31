@@ -48,6 +48,8 @@ It:
 
 * node A filters out B with ACL deny policy
 * node B should not flood with PEER OPEN
+* node A changed ACL policy to open
+* does a ping test from each node to each other node.
 
 EOL
 }
@@ -101,18 +103,46 @@ run()
 {
 	NBR_TESTS=1 NBR_FAIL=0
 
-	cmd sleep 10
+	# chicken egg problem, this is default value
+	cmd sleep 5 #net.wlan.mesh.backofftimeout=5
 	n="`expr ${NBR_NODES} - 1`"
 	for i in `seq 0 ${n}`; do
 		vnet="`expr ${i} + 1`"
 		cmd cat /dev/wtap${i} > wtap${i}.debug
 	done
-	TMP=`cat wtap${i}.debug | grep "send PEER OPEN" | wc -l`
+	TMP=`cat wtap${i}.debug | grep "OPEN SENT -> HOLDING" | wc -l`
 
-	if [ $TMP -gt "3" ]; then # 3 is just random, should read from sysctl.
+	NBR_HOLDING="2" #net.wlan.mesh.maxholding=2
+
+	if [ $TMP -gt "$NBR_HOLDING" ]; then
 		info "node B is flooding!"
 		NBR_FAIL="`expr ${NBR_FAIL} + 1`"
 	fi
+
+	# Now remove ACL policy and see if we can ping
+	cmd jexec 1 ifconfig wlan0 mac:open
+
+	# Test connectivity from each node to each other node
+	for i in `seq 1 ${NBR_NODES}`; do
+		for j in `seq 1 ${NBR_NODES}`; do
+			if [ "$i" != "$j" ]; then
+				# From vimage '$i' to vimage '$j'..
+				info "Checking ${i} -> ${j}.."
+				NBR_TESTS="`expr ${NBR_TESTS} + 1`"
+				# Return after a single successful packet
+				cmd jexec $i ping -q -t 5 -c 5 \
+				    -o ${IP_SUBNET}${j}
+
+				if [ "$?" = "0" ]; then
+					info "CHECK: ${i} -> ${j}: SUCCESS"
+				else
+					info "CHECK: ${i} -> ${j}: FAILURE"
+					NBR_FAIL="`expr ${NBR_FAIL} + 1`"
+				fi
+			fi
+		done
+	done
+
 
 	if [ $NBR_FAIL = 0 ]; then
 		info "ALL TESTS PASSED"
