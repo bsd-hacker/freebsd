@@ -232,6 +232,7 @@ void	pmap_bootstrap(vm_offset_t, vm_offset_t, struct pv_addr *);
 int	pmap_change_attr(vm_offset_t, vm_size_t, int);
 void	pmap_kenter(vm_offset_t va, vm_paddr_t pa);
 void	pmap_kenter_nocache(vm_offset_t va, vm_paddr_t pa);
+void	pmap_kenter_device(vm_offset_t va, vm_paddr_t pa);
 void	*pmap_kenter_temp(vm_paddr_t pa, int i);
 void 	pmap_kenter_user(vm_offset_t va, vm_paddr_t pa);
 void	pmap_kremove(vm_offset_t);

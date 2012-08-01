@@ -2859,6 +2859,13 @@ pmap_kenter_nocache(vm_offset_t va, vm_paddr_t pa)
 }
 
 void
+pmap_kenter_device(vm_offset_t va, vm_paddr_t pa)
+{
+
+	pmap_kenter_nocache(va, pa);
+}
+
+void
 pmap_kenter_user(vm_offset_t va, vm_paddr_t pa)
 {
 

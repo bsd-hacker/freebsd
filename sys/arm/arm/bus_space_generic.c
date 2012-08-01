@@ -80,12 +80,10 @@ generic_bs_map(void *t, bus_addr_t bpa, bus_size_t size, int flags,
 	*bshp = va + offset;
 
 	for (pa = startpa; pa < endpa; pa += PAGE_SIZE, va += PAGE_SIZE) {
-		pmap_kenter(va, pa);
-		pte = vtopte(va);
-		if (!(flags & BUS_SPACE_MAP_CACHEABLE)) {
-			*pte &= ~L2_S_CACHE_MASK;
-			PTE_SYNC(pte);
-		}
+		if (flags & BUS_SPACE_MAP_CACHEABLE)
+			pmap_kenter(va, pa);
+		else
+			pmap_kenter_device(va, pa);
 	}
 
 	return (0);

@@ -336,6 +336,7 @@ struct l2_dtable {
 /* pmap_kenter_internal flags */
 #define KENTER_CACHE	0x1
 #define KENTER_USER	0x2
+#define	KENTER_DEVICE	0x4
 
 /*
  * Given an L1 table index, calculate the corresponding l2_dtable index
@@ -2072,6 +2073,9 @@ pmap_kenter_internal(vm_offset_t va, vm_offset_t pa, int flags)
 		*pte = L2_S_PROTO | pa | pte_l2_s_cache_mode;
 		pmap_set_prot(pte, VM_PROT_READ | VM_PROT_WRITE,
 		    flags & KENTER_USER);
+	} else if (flags & KENTER_DEVICE) {
+		*pte = L2_S_PROTO | pa | l2s_mem_types[PTE_DEVICE];
+		pmap_set_prot(pte, VM_PROT_READ|VM_PROT_WRITE, 0);
 	} else {
 		*pte = L2_S_PROTO | pa;
 		pmap_set_prot(pte, VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE,
@@ -2095,6 +2099,13 @@ pmap_kenter_nocache(vm_offset_t va, vm_paddr_t pa)
 {
 
 	pmap_kenter_internal(va, pa, 0);
+}
+
+void
+pmap_kenter_device(vm_offset_t va, vm_paddr_t pa)
+{
+
+	pmap_kenter_internal(va, pa, KENTER_DEVICE);
 }
 
 void
