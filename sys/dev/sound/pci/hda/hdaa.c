@@ -612,10 +612,11 @@ hdaa_sense_init(struct hdaa_devinfo *devinfo)
 		if (w == NULL || w->enable == 0 || w->type !=
 		    HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
 			continue;
-		if (HDA_PARAM_AUDIO_WIDGET_CAP_UNSOL_CAP(w->param.widget_cap) &&
-		    w->unsol < 0) {
-			w->unsol = HDAC_UNSOL_ALLOC(
-			    device_get_parent(devinfo->dev), devinfo->dev, w->nid);
+		if (HDA_PARAM_AUDIO_WIDGET_CAP_UNSOL_CAP(w->param.widget_cap)) {
+			if (w->unsol < 0)
+				w->unsol = HDAC_UNSOL_ALLOC(
+				    device_get_parent(devinfo->dev),
+				    devinfo->dev, w->nid);
 			hda_command(devinfo->dev,
 			    HDA_CMD_SET_UNSOLICITED_RESPONSE(0, w->nid,
 			    HDA_CMD_SET_UNSOLICITED_RESPONSE_ENABLE | w->unsol));
@@ -6202,12 +6203,14 @@ hdaa_resume(device_t dev)
 static int
 hdaa_probe(device_t dev)
 {
+	const char *pdesc;
 	char buf[128];
 
 	if (hda_get_node_type(dev) != HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO)
 		return (ENXIO);
-	snprintf(buf, sizeof(buf), "%s Audio Function Group",
-	    device_get_desc(device_get_parent(dev)));
+	pdesc = device_get_desc(device_get_parent(dev));
+	snprintf(buf, sizeof(buf), "%.*s Audio Function Group",
+	    (int)(strlen(pdesc) - 10), pdesc);
 	device_set_desc_copy(dev, buf);
 	return (BUS_PROBE_DEFAULT);
 }
@@ -6564,6 +6567,7 @@ hdaa_pcm_probe(device_t dev)
 	struct hdaa_pcm_devinfo *pdevinfo =
 	    (struct hdaa_pcm_devinfo *)device_get_ivars(dev);
 	struct hdaa_devinfo *devinfo = pdevinfo->devinfo;
+	const char *pdesc;
 	char chans1[8], chans2[8];
 	char buf[128];
 	int loc1, loc2, t1, t2;
@@ -6609,8 +6613,9 @@ hdaa_pcm_probe(device_t dev)
 		t1 = -2;
 	if (pdevinfo->digital)
 		t1 = -2;
-	snprintf(buf, sizeof(buf), "%s PCM (%s%s%s%s%s%s%s%s%s)",
-	    device_get_desc(device_get_parent(device_get_parent(dev))),
+	pdesc = device_get_desc(device_get_parent(dev));
+	snprintf(buf, sizeof(buf), "%.*s (%s%s%s%s%s%s%s%s%s)",
+	    (int)(strlen(pdesc) - 21), pdesc,
 	    loc1 >= 0 ? HDA_LOCS[loc1] : "", loc1 >= 0 ? " " : "",
 	    (pdevinfo->digital == 0x7)?"HDMI/DP":
 	    ((pdevinfo->digital == 0x5)?"DisplayPort":

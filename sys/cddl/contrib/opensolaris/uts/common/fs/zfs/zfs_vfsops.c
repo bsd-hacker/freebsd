@@ -60,6 +60,7 @@
 #include <sys/dmu_objset.h>
 #include <sys/spa_boot.h>
 #include <sys/sa.h>
+#include <sys/jail.h>
 #include "zfs_comutil.h"
 
 struct mtx zfs_debug_mtx;
@@ -1533,6 +1534,9 @@ zfs_mount(vfs_t *vfsp)
 	int		error = 0;
 	int		canwrite;
 
+	if (!prison_allow(td->td_ucred, PR_ALLOW_MOUNT_ZFS))
+		return (EPERM);
+
 	if (vfs_getopt(vfsp->mnt_optnew, "from", (void **)&osname, NULL))
 		return (EINVAL);
 
@@ -2274,7 +2278,7 @@ void
 zfs_init(void)
 {
 
-	printf("ZFS filesystem version " ZPL_VERSION_STRING "\n");
+	printf("ZFS filesystem version: " ZPL_VERSION_STRING "\n");
 
 	/*
 	 * Initialize .zfs directory structures

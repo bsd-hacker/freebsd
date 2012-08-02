@@ -57,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/pioctl.h>
 #include <sys/namei.h>
 #include <sys/resourcevar.h>
+#include <sys/sched.h>
 #include <sys/sdt.h>
 #include <sys/sf_buf.h>
 #include <sys/syscallsubr.h>
@@ -442,8 +443,10 @@ interpret:
 		/*
 		 * Some might argue that CAP_READ and/or CAP_MMAP should also
 		 * be required here; such arguments will be entertained.
+		 *
+		 * Descriptors opened only with O_EXEC or O_RDONLY are allowed.
 		 */
-		error = fgetvp_read(td, args->fd, CAP_FEXECVE, &binvp);
+		error = fgetvp_exec(td, args->fd, CAP_FEXECVE, &binvp);
 		if (error)
 			goto exec_fail;
 		vfslocked = VFS_LOCK_GIANT(binvp->v_mount);
@@ -636,6 +639,9 @@ interpret:
 	else if (vn_commname(binvp, p->p_comm, sizeof(p->p_comm)) != 0)
 		bcopy(fexecv_proc_title, p->p_comm, sizeof(fexecv_proc_title));
 	bcopy(p->p_comm, td->td_name, sizeof(td->td_name));
+#ifdef KTR
+	sched_clear_tdname(td);
+#endif
 
 	/*
 	 * mark as execed, wakeup the process that vforked (if any) and tell
@@ -1506,65 +1512,4 @@ exec_unregister(execsw_arg)
 		free(execsw, M_TEMP);
 	execsw = newexecsw;
 	return (0);
-}
-
-static vm_object_t shared_page_obj;
-static int shared_page_free;
-
-int
-shared_page_fill(int size, int align, const char *data)
-{
-	vm_page_t m;
-	struct sf_buf *s;
-	vm_offset_t sk;
-	int res;
-
-	VM_OBJECT_LOCK(shared_page_obj);
-	m = vm_page_grab(shared_page_obj, 0, VM_ALLOC_RETRY);
-	res = roundup(shared_page_free, align);
-	if (res + size >= IDX_TO_OFF(shared_page_obj->size))
-		res = -1;
-	else {
-		VM_OBJECT_UNLOCK(shared_page_obj);
-		s = sf_buf_alloc(m, SFB_DEFAULT);
-		sk = sf_buf_kva(s);
-		bcopy(data, (void *)(sk + res), size);
-		shared_page_free = res + size;
-		sf_buf_free(s);
-		VM_OBJECT_LOCK(shared_page_obj);
-	}
-	vm_page_wakeup(m);
-	VM_OBJECT_UNLOCK(shared_page_obj);
-	return (res);
-}
-
-static void
-shared_page_init(void *dummy __unused)
-{
-	vm_page_t m;
-
-	shared_page_obj = vm_pager_allocate(OBJT_PHYS, 0, PAGE_SIZE,
-	    VM_PROT_DEFAULT, 0, NULL);
-	VM_OBJECT_LOCK(shared_page_obj);
-	m = vm_page_grab(shared_page_obj, 0, VM_ALLOC_RETRY | VM_ALLOC_NOBUSY |
-	    VM_ALLOC_ZERO);
-	m->valid = VM_PAGE_BITS_ALL;
-	VM_OBJECT_UNLOCK(shared_page_obj);
-}
-
-SYSINIT(shp, SI_SUB_EXEC, SI_ORDER_FIRST, (sysinit_cfunc_t)shared_page_init,
-    NULL);
-
-void
-exec_sysvec_init(void *param)
-{
-	struct sysentvec *sv;
-
-	sv = (struct sysentvec *)param;
-
-	if ((sv->sv_flags & SV_SHP) == 0)
-		return;
-	sv->sv_shared_page_obj = shared_page_obj;
-	sv->sv_sigcode_base = sv->sv_shared_page_base +
-	    shared_page_fill(*(sv->sv_szsigcode), 16, sv->sv_sigcode);
 }

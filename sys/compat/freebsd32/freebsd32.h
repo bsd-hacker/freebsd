@@ -42,8 +42,17 @@
 #define PTROUT_CP(src,dst,fld) \
 	do { (dst).fld = PTROUT((src).fld); } while (0)
 
+/*
+ * Being a newer port, 32-bit FreeBSD/MIPS uses 64-bit time_t.
+ */
+#ifdef __mips__
+typedef	int64_t	time32_t;
+#else
+typedef	int32_t	time32_t;
+#endif
+
 struct timeval32 {
-	int32_t	tv_sec;
+	time32_t tv_sec;
 	int32_t tv_usec;
 };
 #define TV_CP(src,dst,fld) do {			\
@@ -52,7 +61,7 @@ struct timeval32 {
 } while (0)
 
 struct timespec32 {
-	int32_t tv_sec;
+	time32_t tv_sec;
 	int32_t tv_nsec;
 };
 #define TS_CP(src,dst,fld) do {			\
@@ -297,7 +306,7 @@ struct kinfo_proc32 {
 	u_int	ki_estcpu;
 	u_int	ki_slptime;
 	u_int	ki_swtime;
-	int	ki_spareint1;
+	u_int	ki_cow;
 	u_int64_t ki_runtime;
 	struct	timeval32 ki_start;
 	struct	timeval32 ki_childtime;

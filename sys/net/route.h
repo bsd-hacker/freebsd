@@ -54,7 +54,8 @@ struct route {
 	struct	sockaddr ro_dst;
 };
 
-#define RT_CACHING_CONTEXT	0x1
+#define	RT_CACHING_CONTEXT	0x1	/* XXX: not used anywhere */
+#define	RT_NORTREF		0x2	/* doesn't hold reference on ro_rt */
 
 /*
  * These numbers are used by reliable protocols for determining
@@ -89,27 +90,6 @@ struct rt_metrics {
  */
 #define	RTM_RTTUNIT	1000000	/* units for rtt, rttvar, as units per sec */
 #define	RTTTOPRHZ(r)	((r) / (RTM_RTTUNIT / PR_SLOWHZ))
-
-/* MRT compile-time constants */
-#ifdef _KERNEL
- #ifndef ROUTETABLES
-  #define RT_NUMFIBS 1
-  #define RT_MAXFIBS 1
- #else
-  /* while we use 4 bits in the mbuf flags, we are limited to 16 */
-  #define RT_MAXFIBS 16
-  #if ROUTETABLES > RT_MAXFIBS
-   #define RT_NUMFIBS RT_MAXFIBS
-   #error "ROUTETABLES defined too big"
-  #else
-   #if ROUTETABLES == 0
-    #define RT_NUMFIBS 1
-   #else
-    #define RT_NUMFIBS ROUTETABLES
-   #endif
-  #endif
- #endif
-#endif
 
 #define	RT_DEFAULT_FIB	0	/* Explicitly mark fib=0 restricted cases */
 extern u_int rt_numfibs;	/* number fo usable routing tables */
@@ -360,6 +340,18 @@ struct rt_addrinfo {
 #define	RTFREE(_rt) do {					\
 	RT_LOCK(_rt);						\
 	RTFREE_LOCKED(_rt);					\
+} while (0)
+
+#define	RO_RTFREE(_ro) do {					\
+	if ((_ro)->ro_rt) {					\
+		if ((_ro)->ro_flags & RT_NORTREF) {		\
+			(_ro)->ro_flags &= ~RT_NORTREF;		\
+			(_ro)->ro_rt = NULL;			\
+		} else {					\
+			RT_LOCK((_ro)->ro_rt);			\
+			RTFREE_LOCKED((_ro)->ro_rt);		\
+		}						\
+	}							\
 } while (0)
 
 struct radix_node_head *rt_tables_get_rnh(int, int);

@@ -395,6 +395,7 @@ nfsvno_namei(struct nfsrv_descript *nd, struct nameidata *ndp,
 	cnp->cn_thread = p;
 	ndp->ni_startdir = dp;
 	ndp->ni_rootdir = rootvnode;
+	ndp->ni_topdir = NULL;
 
 	if (!lockleaf)
 		cnp->cn_flags |= LOCKLEAF;
@@ -504,11 +505,10 @@ nfsvno_namei(struct nfsrv_descript *nd, struct nameidata *ndp,
 
 out:
 	if (error) {
-		uma_zfree(namei_zone, cnp->cn_pnbuf);
+		nfsvno_relpathbuf(ndp);
 		ndp->ni_vp = NULL;
 		ndp->ni_dvp = NULL;
 		ndp->ni_startdir = NULL;
-		cnp->cn_flags &= ~HASBUF;
 	} else if ((ndp->ni_cnd.cn_flags & (WANTPARENT|LOCKPARENT)) == 0) {
 		ndp->ni_dvp = NULL;
 	}
@@ -1046,6 +1046,8 @@ nfsvno_removesub(struct nameidata *ndp, int is_v4, struct ucred *cred,
 	else
 		vput(ndp->ni_dvp);
 	vput(vp);
+	if ((ndp->ni_cnd.cn_flags & SAVENAME) != 0)
+		nfsvno_relpathbuf(ndp);
 	NFSEXITCODE(error);
 	return (error);
 }
@@ -1085,6 +1087,8 @@ out:
 	else
 		vput(ndp->ni_dvp);
 	vput(vp);
+	if ((ndp->ni_cnd.cn_flags & SAVENAME) != 0)
+		nfsvno_relpathbuf(ndp);
 	NFSEXITCODE(error);
 	return (error);
 }
@@ -2906,12 +2910,14 @@ nfsd_mntinit(void)
 	inited = 1;
 	nfsv4root_mnt.mnt_flag = (MNT_RDONLY | MNT_EXPORTED);
 	TAILQ_INIT(&nfsv4root_mnt.mnt_nvnodelist);
+	TAILQ_INIT(&nfsv4root_mnt.mnt_activevnodelist);
 	nfsv4root_mnt.mnt_export = NULL;
 	TAILQ_INIT(&nfsv4root_opt);
 	TAILQ_INIT(&nfsv4root_newopt);
 	nfsv4root_mnt.mnt_opt = &nfsv4root_opt;
 	nfsv4root_mnt.mnt_optnew = &nfsv4root_newopt;
 	nfsv4root_mnt.mnt_nvnodelistsize = 0;
+	nfsv4root_mnt.mnt_activevnodelistsize = 0;
 }
 
 /*

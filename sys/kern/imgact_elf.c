@@ -83,7 +83,7 @@ __FBSDID("$FreeBSD$");
 
 static int __elfN(check_header)(const Elf_Ehdr *hdr);
 static Elf_Brandinfo *__elfN(get_brandinfo)(struct image_params *imgp,
-    const char *interp, int32_t *osrel);
+    const char *interp, int interp_name_len, int32_t *osrel);
 static int __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
     u_long *entry, size_t pagesize);
 static int __elfN(load_section)(struct image_params *imgp, vm_offset_t offset,
@@ -254,7 +254,7 @@ __elfN(brand_inuse)(Elf_Brandinfo *entry)
 
 static Elf_Brandinfo *
 __elfN(get_brandinfo)(struct image_params *imgp, const char *interp,
-    int32_t *osrel)
+    int interp_name_len, int32_t *osrel)
 {
 	const Elf_Ehdr *hdr = (const Elf_Ehdr *)imgp->image_header;
 	Elf_Brandinfo *bi;
@@ -300,7 +300,10 @@ __elfN(get_brandinfo)(struct image_params *imgp, const char *interp,
 			if (bi == NULL || bi->flags & BI_BRAND_NOTE_MANDATORY)
 				continue;
 			if (hdr->e_machine == bi->machine &&
-			    strcmp(interp, bi->interp_path) == 0)
+			    /* ELF image p_filesz includes terminating zero */
+			    strlen(bi->interp_path) + 1 == interp_name_len &&
+			    strncmp(interp, bi->interp_path, interp_name_len)
+			    == 0)
 				return (bi);
 		}
 	}
@@ -722,7 +725,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 	u_long seg_size, seg_addr;
 	u_long addr, baddr, et_dyn_addr, entry = 0, proghdr = 0;
 	int32_t osrel = 0;
-	int error = 0, i, n;
+	int error = 0, i, n, interp_name_len = 0;
 	const char *interp = NULL, *newinterp = NULL;
 	Elf_Brandinfo *brand_info;
 	char *path;
@@ -763,9 +766,11 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		case PT_INTERP:
 			/* Path to interpreter */
 			if (phdr[i].p_filesz > MAXPATHLEN ||
-			    phdr[i].p_offset + phdr[i].p_filesz > PAGE_SIZE)
+			    phdr[i].p_offset >= PAGE_SIZE ||
+			    phdr[i].p_offset + phdr[i].p_filesz >= PAGE_SIZE)
 				return (ENOEXEC);
 			interp = imgp->image_header + phdr[i].p_offset;
+			interp_name_len = phdr[i].p_filesz;
 			break;
 		case PT_GNU_STACK:
 			if (__elfN(nxstack))
@@ -775,7 +780,8 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		}
 	}
 
-	brand_info = __elfN(get_brandinfo)(imgp, interp, &osrel);
+	brand_info = __elfN(get_brandinfo)(imgp, interp, interp_name_len,
+	    &osrel);
 	if (brand_info == NULL) {
 		uprintf("ELF binary type \"%u\" not known.\n",
 		    hdr->e_ident[EI_OSABI]);
@@ -1010,6 +1016,10 @@ __elfN(freebsd_fixup)(register_t **stack_base, struct image_params *imgp)
 	if (imgp->pagesizes != 0) {
 		AUXARGS_ENTRY(pos, AT_PAGESIZES, imgp->pagesizes);
 		AUXARGS_ENTRY(pos, AT_PAGESIZESLEN, imgp->pagesizeslen);
+	}
+	if (imgp->sysent->sv_timekeep_base != 0) {
+		AUXARGS_ENTRY(pos, AT_TIMEKEEP,
+		    imgp->sysent->sv_timekeep_base);
 	}
 	AUXARGS_ENTRY(pos, AT_STACKPROT, imgp->sysent->sv_shared_page_obj
 	    != NULL && imgp->stack_prot != 0 ? imgp->stack_prot :
@@ -1549,33 +1559,16 @@ __elfN(putnote)(void *dst, size_t *off, const char *name, int type,
 	*off += roundup2(note.n_descsz, sizeof(Elf_Size));
 }
 
-/*
- * Try to find the appropriate ABI-note section for checknote,
- * fetch the osreldate for binary from the ELF OSABI-note. Only the
- * first page of the image is searched, the same as for headers.
- */
 static boolean_t
-__elfN(check_note)(struct image_params *imgp, Elf_Brandnote *checknote,
-    int32_t *osrel)
+__elfN(parse_notes)(struct image_params *imgp, Elf_Brandnote *checknote,
+    int32_t *osrel, const Elf_Phdr *pnote)
 {
 	const Elf_Note *note, *note0, *note_end;
-	const Elf_Phdr *phdr, *pnote;
-	const Elf_Ehdr *hdr;
 	const char *note_name;
 	int i;
 
-	pnote = NULL;
-	hdr = (const Elf_Ehdr *)imgp->image_header;
-	phdr = (const Elf_Phdr *)(imgp->image_header + hdr->e_phoff);
-
-	for (i = 0; i < hdr->e_phnum; i++) {
-		if (phdr[i].p_type == PT_NOTE) {
-			pnote = &phdr[i];
-			break;
-		}
-	}
-
 	if (pnote == NULL || pnote->p_offset >= PAGE_SIZE ||
+	    pnote->p_filesz > PAGE_SIZE ||
 	    pnote->p_offset + pnote->p_filesz >= PAGE_SIZE)
 		return (FALSE);
 
@@ -1583,15 +1576,17 @@ __elfN(check_note)(struct image_params *imgp, Elf_Brandnote *checknote,
 	note_end = (const Elf_Note *)(imgp->image_header +
 	    pnote->p_offset + pnote->p_filesz);
 	for (i = 0; i < 100 && note >= note0 && note < note_end; i++) {
-		if (!aligned(note, Elf32_Addr))
+		if (!aligned(note, Elf32_Addr) || (const char *)note_end -
+		    (const char *)note < sizeof(Elf_Note))
 			return (FALSE);
 		if (note->n_namesz != checknote->hdr.n_namesz ||
 		    note->n_descsz != checknote->hdr.n_descsz ||
 		    note->n_type != checknote->hdr.n_type)
 			goto nextnote;
 		note_name = (const char *)(note + 1);
-		if (strncmp(checknote->vendor, note_name,
-		    checknote->hdr.n_namesz) != 0)
+		if (note_name + checknote->hdr.n_namesz >=
+		    (const char *)note_end || strncmp(checknote->vendor,
+		    note_name, checknote->hdr.n_namesz) != 0)
 			goto nextnote;
 
 		/*
@@ -1610,6 +1605,31 @@ nextnote:
 	}
 
 	return (FALSE);
+}
+
+/*
+ * Try to find the appropriate ABI-note section for checknote,
+ * fetch the osreldate for binary from the ELF OSABI-note. Only the
+ * first page of the image is searched, the same as for headers.
+ */
+static boolean_t
+__elfN(check_note)(struct image_params *imgp, Elf_Brandnote *checknote,
+    int32_t *osrel)
+{
+	const Elf_Phdr *phdr;
+	const Elf_Ehdr *hdr;
+	int i;
+
+	hdr = (const Elf_Ehdr *)imgp->image_header;
+	phdr = (const Elf_Phdr *)(imgp->image_header + hdr->e_phoff);
+
+	for (i = 0; i < hdr->e_phnum; i++) {
+		if (phdr[i].p_type == PT_NOTE &&
+		    __elfN(parse_notes)(imgp, checknote, osrel, &phdr[i]))
+			return (TRUE);
+	}
+	return (FALSE);
+
 }
 
 /*

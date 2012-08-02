@@ -25,7 +25,7 @@
 
 /*
  * $FreeBSD$
- * $Id: netmap_kern.h 9795 2011-12-02 11:39:08Z luigi $
+ * $Id: netmap_kern.h 11343 2012-07-03 09:08:38Z luigi $
  *
  * The header contains the definitions of constants and function
  * prototypes used only in kernelspace.
@@ -34,22 +34,50 @@
 #ifndef _NET_NETMAP_KERN_H_
 #define _NET_NETMAP_KERN_H_
 
+#define NETMAP_MEM2    // use the new memory allocator
+
 #if defined(__FreeBSD__)
+#define likely(x)	__builtin_expect(!!(x), 1)
+#define unlikely(x)	__builtin_expect(!!(x), 0)
+
 #define	NM_LOCK_T	struct mtx
 #define	NM_SELINFO_T	struct selinfo
 #define	MBUF_LEN(m)	((m)->m_pkthdr.len)
 #define	NM_SEND_UP(ifp, m)	((ifp)->if_input)(ifp, m)
-#elif defined (__linux__)
+#elif defined (linux)
 #define	NM_LOCK_T	spinlock_t
 #define	NM_SELINFO_T	wait_queue_head_t
 #define	MBUF_LEN(m)	((m)->len)
 #define	NM_SEND_UP(ifp, m)	netif_rx(m)
-#else
-#error unsupported platform
+
+#ifndef DEV_NETMAP
+#define DEV_NETMAP
 #endif
 
-#ifdef MALLOC_DECLARE
-MALLOC_DECLARE(M_NETMAP);
+/*
+ * IFCAP_NETMAP goes into net_device's flags (if_capabilities)
+ * and priv_flags (if_capenable). The latter used to be 16 bits
+ * up to linux 2.6.36, so we need to use a 16 bit value on older
+ * platforms and tolerate the clash with IFF_DYNAMIC and IFF_BRIDGE_PORT.
+ * For the 32-bit value, 0x100000 (bit 20) has no clashes up to 3.3.1
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37)
+#define IFCAP_NETMAP	0x8000
+#else
+#define IFCAP_NETMAP	0x100000
+#endif
+
+#elif defined (__APPLE__)
+#warning apple support is experimental
+#define likely(x)	__builtin_expect(!!(x), 1)
+#define unlikely(x)	__builtin_expect(!!(x), 0)
+#define	NM_LOCK_T	IOLock *
+#define	NM_SELINFO_T	struct selinfo
+#define	MBUF_LEN(m)	((m)->m_pkthdr.len)
+#define	NM_SEND_UP(ifp, m)	((ifp)->if_input)(ifp, m)
+
+#else
+#error unsupported platform
 #endif
 
 #define ND(format, ...)
@@ -65,7 +93,14 @@ MALLOC_DECLARE(M_NETMAP);
 struct netmap_adapter;
 
 /*
- * private, kernel view of a ring.
+ * private, kernel view of a ring. Keeps track of the status of
+ * a ring across system calls.
+ *
+ *	nr_hwcur	index of the next buffer to refill.
+ *			It corresponds to ring->cur - ring->reserved
+ *
+ *	nr_hwavail	the number of slots "owned" by userspace.
+ *			nr_hwavail =:= ring->avail + ring->reserved
  *
  * The indexes in the NIC and netmap rings are offset by nkr_hwofs slots.
  * This is so that, on a reset, buffers owned by userspace are not
@@ -79,7 +114,7 @@ struct netmap_kring {
 	u_int nr_hwcur;
 	int nr_hwavail;
 	u_int nr_kflags;	/* private driver flags */
-#define NKR_PENDINTR   0x1     // Pending interrupt.
+#define NKR_PENDINTR	0x1	// Pending interrupt.
 	u_int nkr_num_slots;
 
 	int	nkr_hwofs;	/* offset between NIC and netmap ring */
@@ -97,19 +132,25 @@ struct netmap_adapter {
 	int refcount; /* number of user-space descriptors using this
 			 interface, which is equal to the number of
 			 struct netmap_if objs in the mapped region. */
+	/*
+	 * The selwakeup in the interrupt thread can use per-ring
+	 * and/or global wait queues. We track how many clients
+	 * of each type we have so we can optimize the drivers,
+	 * and especially avoid huge contention on the locks.
+	 */
+	int na_single;	/* threads attached to a single hw queue */
+	int na_multi;	/* threads attached to multiple hw queues */
 
 	int separate_locks; /* set if the interface suports different
 			       locks for rx, tx and core. */
 
-	u_int num_queues; /* number of tx/rx queue pairs: this is
-			   a duplicate field needed to simplify the
-			   signature of ``netmap_detach``. */
+	u_int num_rx_rings; /* number of tx/rx ring pairs */
+	u_int num_tx_rings; // if nonzero, overrides num_rx_rings
 
 	u_int num_tx_desc; /* number of descriptor in each queue */
 	u_int num_rx_desc;
-	u_int buff_size;	
+	//u_int buff_size;	// XXX deprecate, use NETMAP_BUF_SIZE
 
-	//u_int	flags;	// XXX unused
 	/* tx_rings and rx_rings are private but allocated
 	 * as a contiguous chunk of memory. Each array has
 	 * N+1 entries, for the adapter queues and for the host queue.
@@ -117,11 +158,11 @@ struct netmap_adapter {
 	struct netmap_kring *tx_rings; /* array of TX rings. */
 	struct netmap_kring *rx_rings; /* array of RX rings. */
 
+	NM_SELINFO_T tx_si, rx_si;	/* global wait queues */
+
 	/* copy of if_qflush and if_transmit pointers, to intercept
 	 * packets from the network stack when netmap is active.
-	 * XXX probably if_qflush is not necessary.
 	 */
-	//void    (*if_qflush)(struct ifnet *);	// XXX unused
 	int     (*if_transmit)(struct ifnet *, struct mbuf *);
 
 	/* references to the ifnet and device routines, used by
@@ -135,6 +176,12 @@ struct netmap_adapter {
 	void (*nm_lock)(struct ifnet *, int what, u_int ringid);
 	int (*nm_txsync)(struct ifnet *, u_int ring, int lock);
 	int (*nm_rxsync)(struct ifnet *, u_int ring, int lock);
+
+	int bdg_port;
+#ifdef linux
+	struct net_device_ops nm_ndo;
+	int if_refcount;	// XXX additions for bridge
+#endif /* linux */
 };
 
 /*
@@ -194,8 +241,8 @@ struct netmap_slot *netmap_reset(struct netmap_adapter *na,
 	enum txrx tx, int n, u_int new_cur);
 int netmap_ring_reinit(struct netmap_kring *);
 
-extern int netmap_buf_size;
-#define NETMAP_BUF_SIZE netmap_buf_size
+extern u_int netmap_buf_size;
+#define NETMAP_BUF_SIZE	netmap_buf_size
 extern int netmap_mitigate;
 extern int netmap_no_pendintr;
 extern u_int netmap_total_buffers;
@@ -222,6 +269,7 @@ enum {                                  /* verbose flags */
 #define	NA(_ifp)	((struct netmap_adapter *)WNA(_ifp))
 
 
+#ifdef __FreeBSD__
 /* Callback invoked by the dma machinery after a successfull dmamap_load */
 static void netmap_dmamap_cb(__unused void *arg,
     __unused bus_dma_segment_t * segs, __unused int nseg, __unused int error)
@@ -249,59 +297,94 @@ netmap_reload_map(bus_dma_tag_t tag, bus_dmamap_t map, void *buf)
 		    netmap_dmamap_cb, NULL, BUS_DMA_NOWAIT);
 	}
 }
+#else /* linux */
+
+/*
+ * XXX How do we redefine these functions:
+ *
+ * on linux we need
+ *	dma_map_single(&pdev->dev, virt_addr, len, direction)
+ *	dma_unmap_single(&adapter->pdev->dev, phys_addr, len, direction
+ * The len can be implicit (on netmap it is NETMAP_BUF_SIZE)
+ * unfortunately the direction is not, so we need to change
+ * something to have a cross API
+ */
+#define netmap_load_map(_t, _m, _b)
+#define netmap_reload_map(_t, _m, _b)
+#if 0
+	struct e1000_buffer *buffer_info =  &tx_ring->buffer_info[l];
+	/* set time_stamp *before* dma to help avoid a possible race */
+	buffer_info->time_stamp = jiffies;
+	buffer_info->mapped_as_page = false;
+	buffer_info->length = len;
+	//buffer_info->next_to_watch = l;
+	/* reload dma map */
+	dma_unmap_single(&adapter->pdev->dev, buffer_info->dma,
+			NETMAP_BUF_SIZE, DMA_TO_DEVICE);
+	buffer_info->dma = dma_map_single(&adapter->pdev->dev,
+			addr, NETMAP_BUF_SIZE, DMA_TO_DEVICE);
+
+	if (dma_mapping_error(&adapter->pdev->dev, buffer_info->dma)) {
+		D("dma mapping error");
+		/* goto dma_error; See e1000_put_txbuf() */
+		/* XXX reset */
+	}
+	tx_desc->buffer_addr = htole64(buffer_info->dma); //XXX
+
+#endif
+
+/*
+ * The bus_dmamap_sync() can be one of wmb() or rmb() depending on direction.
+ */
+#define bus_dmamap_sync(_a, _b, _c)
+
+#endif /* linux */
 
 /*
  * functions to map NIC to KRING indexes (n2k) and vice versa (k2n)
  */
 static inline int
-netmap_ridx_n2k(struct netmap_adapter *na, int ring, int nic_idx)
+netmap_idx_n2k(struct netmap_kring *kr, int idx)
 {
-	int kring_idx = nic_idx + na->rx_rings[ring].nkr_hwofs;
-	if (kring_idx < 0)
-		return kring_idx + na->num_rx_desc;
-	else if (kring_idx < na->num_rx_desc)
-		return kring_idx;
+	int n = kr->nkr_num_slots;
+	idx += kr->nkr_hwofs;
+	if (idx < 0)
+		return idx + n;
+	else if (idx < n)
+		return idx;
 	else
-		return kring_idx - na->num_rx_desc;
-}
-
-static inline int
-netmap_tidx_n2k(struct netmap_adapter *na, int ring, int nic_idx)
-{
-	int kring_idx = nic_idx + na->tx_rings[ring].nkr_hwofs;
-	if (kring_idx < 0)
-		return kring_idx + na->num_tx_desc;
-	else if (kring_idx < na->num_tx_desc)
-		return kring_idx;
-	else
-		return kring_idx - na->num_tx_desc;
+		return idx - n;
 }
 
 
 static inline int
-netmap_ridx_k2n(struct netmap_adapter *na, int ring, int kring_idx)
+netmap_idx_k2n(struct netmap_kring *kr, int idx)
 {
-	int nic_idx = kring_idx - na->rx_rings[ring].nkr_hwofs;
-	if (nic_idx < 0)
-		return nic_idx + na->num_rx_desc;
-	else if (nic_idx < na->num_rx_desc)
-		return nic_idx;
+	int n = kr->nkr_num_slots;
+	idx -= kr->nkr_hwofs;
+	if (idx < 0)
+		return idx + n;
+	else if (idx < n)
+		return idx;
 	else
-		return nic_idx - na->num_rx_desc;
+		return idx - n;
 }
 
 
-static inline int
-netmap_tidx_k2n(struct netmap_adapter *na, int ring, int kring_idx)
-{
-	int nic_idx = kring_idx - na->tx_rings[ring].nkr_hwofs;
-	if (nic_idx < 0)
-		return nic_idx + na->num_tx_desc;
-	else if (nic_idx < na->num_tx_desc)
-		return nic_idx;
-	else
-		return nic_idx - na->num_tx_desc;
-}
+#ifdef NETMAP_MEM2
+/* Entries of the look-up table. */
+struct lut_entry {
+	void *vaddr;		/* virtual address. */
+	vm_paddr_t paddr;	/* phisical address. */
+};
+
+struct netmap_obj_pool;
+extern struct lut_entry *netmap_buffer_lut;
+#define NMB_VA(i)	(netmap_buffer_lut[i].vaddr)
+#define NMB_PA(i)	(netmap_buffer_lut[i].paddr)
+#else /* NETMAP_MEM1 */
+#define NMB_VA(i)	(netmap_buffer_base + (i * NETMAP_BUF_SIZE) )
+#endif /* NETMAP_MEM2 */
 
 /*
  * NMB return the virtual address of a buffer (buffer 0 on bad index)
@@ -311,25 +394,25 @@ static inline void *
 NMB(struct netmap_slot *slot)
 {
 	uint32_t i = slot->buf_idx;
-	return (i >= netmap_total_buffers) ? netmap_buffer_base :
-		netmap_buffer_base + (i *NETMAP_BUF_SIZE);
+	return (unlikely(i >= netmap_total_buffers)) ?  NMB_VA(0) : NMB_VA(i);
 }
 
 static inline void *
 PNMB(struct netmap_slot *slot, uint64_t *pp)
 {
 	uint32_t i = slot->buf_idx;
-	void *ret = (i >= netmap_total_buffers) ? netmap_buffer_base :
-		netmap_buffer_base + (i *NETMAP_BUF_SIZE);
+	void *ret = (i >= netmap_total_buffers) ? NMB_VA(0) : NMB_VA(i);
+#ifdef NETMAP_MEM2
+	*pp = (i >= netmap_total_buffers) ? NMB_PA(0) : NMB_PA(i);
+#else
 	*pp = vtophys(ret);
+#endif
 	return ret;
 }
 
 /* default functions to handle rx/tx interrupts */
 int netmap_rx_irq(struct ifnet *, int, int *);
 #define netmap_tx_irq(_n, _q) netmap_rx_irq(_n, _q, NULL)
-#ifdef __linux__
-#define bus_dmamap_sync(_a, _b, _c) // wmb() or rmb() ?
-netdev_tx_t netmap_start_linux(struct sk_buff *skb, struct net_device *dev);
-#endif
+
+extern int netmap_copy;
 #endif /* _NET_NETMAP_KERN_H_ */

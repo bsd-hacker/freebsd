@@ -48,7 +48,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20120215
+#define ACPI_CA_VERSION                 0x20120711
 
 #include <contrib/dev/acpica/include/acconfig.h>
 #include <contrib/dev/acpica/include/actypes.h>
@@ -201,6 +201,22 @@ AcpiFree (
 
 
 /*
+ * ACPI table load/unload interfaces
+ */
+ACPI_STATUS
+AcpiLoadTable (
+    ACPI_TABLE_HEADER       *Table);
+
+ACPI_STATUS
+AcpiUnloadParentTable (
+    ACPI_HANDLE             Object);
+
+ACPI_STATUS
+AcpiLoadTables (
+    void);
+
+
+/*
  * ACPI table manipulation interfaces
  */
 ACPI_STATUS
@@ -210,10 +226,6 @@ AcpiReallocateRootTable (
 ACPI_STATUS
 AcpiFindRootPointer (
     ACPI_SIZE               *RsdpAddress);
-
-ACPI_STATUS
-AcpiLoadTables (
-    void);
 
 ACPI_STATUS
 AcpiGetTableHeader (
@@ -674,7 +686,8 @@ AcpiEnterSleepStatePrep (
 
 ACPI_STATUS
 AcpiEnterSleepState (
-    UINT8                   SleepState);
+    UINT8                   SleepState,
+    UINT8                   Flags);
 
 ACPI_HW_DEPENDENT_RETURN_STATUS (
 ACPI_STATUS
@@ -683,7 +696,8 @@ AcpiEnterSleepStateS4bios (
 
 ACPI_STATUS
 AcpiLeaveSleepStatePrep (
-    UINT8                   SleepState);
+    UINT8                   SleepState,
+    UINT8                   Flags);
 
 ACPI_STATUS
 AcpiLeaveSleepState (
@@ -750,6 +764,20 @@ AcpiWarning (
 
 void ACPI_INTERNAL_VAR_XFACE
 AcpiInfo (
+    const char              *ModuleName,
+    UINT32                  LineNumber,
+    const char              *Format,
+    ...) ACPI_PRINTF_LIKE(3);
+
+void ACPI_INTERNAL_VAR_XFACE
+AcpiBiosError (
+    const char              *ModuleName,
+    UINT32                  LineNumber,
+    const char              *Format,
+    ...) ACPI_PRINTF_LIKE(3);
+
+void ACPI_INTERNAL_VAR_XFACE
+AcpiBiosWarning (
     const char              *ModuleName,
     UINT32                  LineNumber,
     const char              *Format,

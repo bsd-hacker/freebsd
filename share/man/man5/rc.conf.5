@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd February 11, 2012
+.Dd July 22, 2012
 .Dt RC.CONF 5
 .Os
 .Sh NAME
@@ -200,7 +200,7 @@ to handle device added, removed or unknown events from the kernel.
 .Pq Vt bool
 Run
 .Xr ddb 8
-to install 
+to install
 .Xr ddb 4
 scripts at boot time.
 .It Va ddb_config
@@ -386,7 +386,7 @@ is used to set the hostname via DHCP,
 this variable should be set to an empty string.
 If this value remains unset when the system is done booting
 your console login will display the default hostname of
-.Dq Amnesiac.
+.Dq Amnesiac .
 .It Va nisdomainname
 .Pq Vt str
 The NIS domain name of this host, or
@@ -501,6 +501,16 @@ to enable firewall event logging.
 This is equivalent to the
 .Dv IPFIREWALL_VERBOSE
 kernel option.
+.It Va firewall_logif
+.Pq Vt bool
+Set to
+.Dq Li YES
+to create pseudo interface
+.Li ipfw0
+for logging.
+For more details, see
+.Xr ipfw 8
+manual page.
 .It Va firewall_flags
 .Pq Vt str
 Flags passed to
@@ -1273,7 +1283,7 @@ options in this variable, in addition to the
 file.
 For instance, to configure an
 .Xr ath 4
-wireless device in station mode with an address obtained 
+wireless device in station mode with an address obtained
 via DHCP, using WPA authentication and 802.11b mode, it is
 possible to use something like:
 .Bd -literal
@@ -1299,6 +1309,7 @@ ifconfig_ed0_name="net0"
 ifconfig_net0="inet 192.0.2.1 netmask 0xffffff00"
 .Ed
 .It Va ipv6_enable
+.Pq Vt bool
 This variable is deprecated.
 Use
 .Va ifconfig_ Ns Ao Ar interface Ac Ns _ipv6
@@ -1306,7 +1317,6 @@ and
 .Va ipv6_activate_all_interfaces
 if necessary.
 .Pp
-.Pq Vt bool
 If the variable is
 .Dq Li YES ,
 .Dq Li inet6 accept_rtadv
@@ -1317,12 +1327,12 @@ and the
 is defined as
 .Dq Li YES .
 .It Va ipv6_prefer
+.Pq Vt bool
 This variable is deprecated.
 Use
 .Va ip6addrctl_policy
 instead.
 .Pp
-.Pq Vt bool
 If the variable is
 .Dq Li YES ,
 the default address selection policy table set by
@@ -1427,7 +1437,7 @@ Note that ICMPv6 Router Advertisement messages will be
 accepted even when
 .Va net.inet6.ip6.forwarding
 is 1
-.Pq packet fowarding is enabled
+.Pq packet forwarding is enabled
 when
 .Va net.inet6.ip6.rfc6204w3
 is set to 1.
@@ -1449,7 +1459,8 @@ Aliases should be set by
 .Va ifconfig_ Ns Ao Ar interface Ac Ns Va _alias Ns Aq Ar n
 with
 .Dq Li inet6
-keyword.  For example:
+keyword.
+For example:
 .Bd -literal
 ifconfig_ed0_ipv6="inet6 2001:db8:1::1 prefixlen 64"
 ifconfig_ed0_alias0="inet6 2001:db8:2::1 prefixlen 64"
@@ -1552,14 +1563,17 @@ If
 .Dq Li AUTO
 is specified, it attempts to read a file
 .Pa /etc/ip6addrctl.conf
-first.  If this file is found,
+first.
+If this file is found,
 .Xr ip6addrctl 8
-reads and installs it.  If not found, a policy is automatically set
+reads and installs it.
+If not found, a policy is automatically set
 according to
 .Va ipv6_activate_all_interfaces
 variable; if the variable is set to
 .Dq Li YES
-the IPv6-preferred one is used.  Otherwise IPv4-preferred.
+the IPv6-preferred one is used.
+Otherwise IPv4-preferred.
 .Pp
 The default value of
 .Va ip6addrctl_enable
@@ -2082,6 +2096,19 @@ If
 is set to
 .Dq Li YES
 this is the path to Kerberos 5 Password-Changing Daemon.
+.It Va kfd_enable
+.Pq Vt bool
+Set to
+.Dq Li YES
+to start
+.Xr kfd 8 ,
+the Kerberos 5 ticket forwarding daemon, at the boot time.
+.It Va kfd_program
+.Pq Vt str
+Path to
+.Xr kfd 8
+(default
+.Pa /usr/libexec/kfd ) .
 .It Va rwhod_enable
 .Pq Vt bool
 If set to
@@ -2907,6 +2934,34 @@ If set to
 .Dq Li YES
 this enables IPv4 mapped IPv6 address communication (like
 .Li ::ffff:a.b.c.d ) .
+.It Va rtsold_enable
+.Pq Vt bool
+Set to
+.Dq Li YES
+to enable the
+.Xr rtsold 8
+daemon to send ICMPv6 Router Solicitation messages.
+.It Va rtsold_flags
+.Pq Vt str
+If
+.Va rtsold_enable
+is set to
+.Dq Li YES ,
+these are the flags to pass to
+.Xr rtsold 8 .
+.It Va rtsol_flags
+.Pq Vt str
+For interfaces configured with the
+.Dq Li inet6 accept_rtadv
+keyword, these are the flags to pass to
+.Xr rtsol 8 .
+.Pp
+Note that
+.Va rtsold_enable
+is mutually exclusive to
+.Va rtsol_flags ;
+.Va rtsold_enable
+takes precedence.
 .It Va atm_enable
 .Pq Vt bool
 Set to
@@ -3269,9 +3324,10 @@ is enabled, and a
 daemon is started for a non-default port, the
 .Va "moused_" Ns Ar XXX Ns Va "_flags"
 set of options has precedence over and replaces the default
-.Va moused_flags (where
+.Va moused_flags
+(where
 .Ar XXX
-is the name of the non-default port, i.e.\&
+is the name of the non-default port, i.e.,\&
 .Ar ums0 ) .
 By setting
 .Va "moused_" Ns Ar XXX Ns Va "_flags"
@@ -3750,11 +3806,11 @@ indicates that the highest frequency (less power savings) should be used.
 If set to
 .Dq Li NO ,
 any configured jails will not be started.
-.It jail_parallel_start
+.It Va jail_parallel_start
 .Pq Vt bool
 If set to
-.Dq Li YES
-all configured jails will be started in the background (= in parallel).
+.Dq Li YES ,
+all configured jails will be started in the background (in parallel).
 .It Va jail_list
 .Pq Vt str
 A space separated list of names for jails.

@@ -635,7 +635,7 @@ sofree(struct socket *so)
 	    so->so_qstate & SQ_COMP, so->so_qstate & SQ_INCOMP));
 	if (so->so_options & SO_ACCEPTCONN) {
 		KASSERT((TAILQ_EMPTY(&so->so_comp)), ("sofree: so_comp populated"));
-		KASSERT((TAILQ_EMPTY(&so->so_incomp)), ("sofree: so_comp populated"));
+		KASSERT((TAILQ_EMPTY(&so->so_incomp)), ("sofree: so_incomp populated"));
 	}
 	SOCK_UNLOCK(so);
 	ACCEPT_UNLOCK();
@@ -887,7 +887,8 @@ sosend_copyin(struct uio *uio, struct mbuf **retmp, int atomic, long *space,
     int flags)
 {
 	struct mbuf *m, **mp, *top;
-	long len, resid;
+	long len;
+	ssize_t resid;
 	int error;
 #ifdef ZERO_COPY_SOCKETS
 	int cow_send;
@@ -987,7 +988,8 @@ int
 sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
     struct mbuf *top, struct mbuf *control, int flags, struct thread *td)
 {
-	long space, resid;
+	long space;
+	ssize_t resid;
 	int clen = 0, error, dontroute;
 #ifdef ZERO_COPY_SOCKETS
 	int atomic = sosendallatonce(so) || top;
@@ -1159,7 +1161,8 @@ int
 sosend_generic(struct socket *so, struct sockaddr *addr, struct uio *uio,
     struct mbuf *top, struct mbuf *control, int flags, struct thread *td)
 {
-	long space, resid;
+	long space;
+	ssize_t resid;
 	int clen = 0, error, dontroute;
 	int atomic = sosendallatonce(so) || top;
 
@@ -1456,11 +1459,12 @@ soreceive_generic(struct socket *so, struct sockaddr **psa, struct uio *uio,
     struct mbuf **mp0, struct mbuf **controlp, int *flagsp)
 {
 	struct mbuf *m, **mp;
-	int flags, len, error, offset;
+	int flags, error, offset;
+	ssize_t len;
 	struct protosw *pr = so->so_proto;
 	struct mbuf *nextrecord;
 	int moff, type = 0;
-	int orig_resid = uio->uio_resid;
+	ssize_t orig_resid = uio->uio_resid;
 
 	mp = mp0;
 	if (psa != NULL)
@@ -2119,7 +2123,8 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
     struct mbuf **mp0, struct mbuf **controlp, int *flagsp)
 {
 	struct mbuf *m, *m2;
-	int flags, len, error;
+	int flags, error;
+	ssize_t len;
 	struct protosw *pr = so->so_proto;
 	struct mbuf *nextrecord;
 
@@ -2442,7 +2447,7 @@ sosetopt(struct socket *so, struct sockopt *sopt)
 	CURVNET_SET(so->so_vnet);
 	error = 0;
 	if (sopt->sopt_level != SOL_SOCKET) {
-		if (so->so_proto && so->so_proto->pr_ctloutput) {
+		if (so->so_proto->pr_ctloutput != NULL) {
 			error = (*so->so_proto->pr_ctloutput)(so, sopt);
 			CURVNET_RESTORE();
 			return (error);
@@ -2499,21 +2504,19 @@ sosetopt(struct socket *so, struct sockopt *sopt)
 		case SO_SETFIB:
 			error = sooptcopyin(sopt, &optval, sizeof optval,
 					    sizeof optval);
+			if (error)
+				goto bad;
+
 			if (optval < 0 || optval >= rt_numfibs) {
 				error = EINVAL;
 				goto bad;
 			}
-			if (so->so_proto != NULL &&
-			   ((so->so_proto->pr_domain->dom_family == PF_INET) ||
+			if (((so->so_proto->pr_domain->dom_family == PF_INET) ||
 			   (so->so_proto->pr_domain->dom_family == PF_INET6) ||
-			   (so->so_proto->pr_domain->dom_family == PF_ROUTE))) {
+			   (so->so_proto->pr_domain->dom_family == PF_ROUTE)))
 				so->so_fibnum = optval;
-				/* Note: ignore error */
-				if (so->so_proto->pr_ctloutput)
-					(*so->so_proto->pr_ctloutput)(so, sopt);
-			} else {
+			else
 				so->so_fibnum = 0;
-			}
 			break;
 
 		case SO_USER_COOKIE:
@@ -2636,11 +2639,8 @@ sosetopt(struct socket *so, struct sockopt *sopt)
 			error = ENOPROTOOPT;
 			break;
 		}
-		if (error == 0 && so->so_proto != NULL &&
-		    so->so_proto->pr_ctloutput != NULL) {
-			(void) ((*so->so_proto->pr_ctloutput)
-				  (so, sopt));
-		}
+		if (error == 0 && so->so_proto->pr_ctloutput != NULL)
+			(void)(*so->so_proto->pr_ctloutput)(so, sopt);
 	}
 bad:
 	CURVNET_RESTORE();
@@ -2690,7 +2690,7 @@ sogetopt(struct socket *so, struct sockopt *sopt)
 	CURVNET_SET(so->so_vnet);
 	error = 0;
 	if (sopt->sopt_level != SOL_SOCKET) {
-		if (so->so_proto && so->so_proto->pr_ctloutput)
+		if (so->so_proto->pr_ctloutput != NULL)
 			error = (*so->so_proto->pr_ctloutput)(so, sopt);
 		else
 			error = ENOPROTOOPT;
@@ -2730,6 +2730,10 @@ integer:
 
 		case SO_TYPE:
 			optval = so->so_type;
+			goto integer;
+
+		case SO_PROTOCOL:
+			optval = so->so_proto->pr_protocol;
 			goto integer;
 
 		case SO_ERROR:

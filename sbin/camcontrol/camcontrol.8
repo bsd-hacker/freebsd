@@ -27,7 +27,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd November 24, 2011
+.Dd June 4, 2012
 .Dt CAMCONTROL 8
 .Os
 .Sh NAME
@@ -175,6 +175,7 @@
 .Op Fl S
 .Op Fl X
 .Op Fl c
+.Op Fl p
 .Aq all|off|bus Ns Op :target Ns Op :lun
 .Nm
 .Ic tags
@@ -496,6 +497,8 @@ is specified,
 .Nm
 will print out the number of defects given in the READ DEFECT DATA header
 returned from the drive.
+Some drives will report 0 defects if neither the primary or grown defect
+lists are requested.
 .It Ic modepage
 Allows the user to display and optionally edit a SCSI mode page.
 The mode
@@ -599,7 +602,7 @@ If the format is
 11 result registers will be written to standard output in hex.
 .El
 .It Ic smpcmd
-Allows the user to send an arbitrary Serial 
+Allows the user to send an arbitrary Serial
 Management Protocol (SMP) command to a device.
 The
 .Ic smpcmd
@@ -660,7 +663,7 @@ argument is required to specify the PHY to operate on.
 .Bl -tag -width 17n
 .It Fl p Ar phy
 Specify the PHY to operate on.
-This argument is required. 
+This argument is required.
 .It Fl l
 Request the long request/response format.
 Not all SMP targets support the long response format.
@@ -737,7 +740,7 @@ Set the partial pathway timeout value, in microseconds.
 See the
 .Tn ANSI
 .Tn SAS
-Protcol Layer (SPL)
+Protocol Layer (SPL)
 specification for more information on this field.
 .It Fl a Ar enable|disable
 Enable or disable SATA slumber phy power conditions.
@@ -796,6 +799,8 @@ Enable CAM_DEBUG_XPT printfs.
 Enable CAM_DEBUG_CDB printfs.
 This will cause the kernel to print out the
 SCSI CDBs sent to the specified device(s).
+.It Fl p
+Enable CAM_DEBUG_PROBE printfs.
 .It all
 Enable debugging for all devices.
 .It off
@@ -1106,7 +1111,7 @@ Do not ask for confirmation.
 Run in simulation mode.
 Packet sizes that will be sent are shown, but no actual packet is sent to the
 device.
-No confimation is asked in simulation mode.
+No confirmation is asked in simulation mode.
 .It Fl v
 Besides showing sense information in case of a failure, the verbose option
 causes
@@ -1228,7 +1233,6 @@ camcontrol negotiate -n da -u 3 -R 20.000 -O 15 -a
 Negotiate a sync rate of 20MHz and an offset of 15 with da3.
 Then send a
 Test Unit Ready command to make the settings take effect.
-.Pp
 .Bd -literal -offset indent
 camcontrol smpcmd ses0 -v -r 4 "40 0 00 0" -R 1020 "s9 i1"
 .Ed

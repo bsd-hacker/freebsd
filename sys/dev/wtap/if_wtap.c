@@ -40,6 +40,13 @@
 #include <net80211/ieee80211_ratectl.h>
 #include "if_medium.h"
 
+/*
+ * This _requires_ vimage to be useful.
+ */
+#ifndef	VIMAGE
+#error	if_wtap requires VIMAGE.
+#endif	/* VIMAGE */
+
 /* device for IOCTL and read/write for debuggin purposes */
 /* Function prototypes */
 static	d_open_t	wtap_node_open;
@@ -223,8 +230,10 @@ wtap_beacon_intrp(void *arg)
 	struct ieee80211vap *vap = arg;
 	struct mbuf *m;
 
-	KASSERT(vap->iv_state >= IEEE80211_S_RUN,
-	    ("not running, state %d", vap->iv_state));
+	if (vap->iv_state < IEEE80211_S_RUN) {
+	    DWTAP_PRINTF("Skip beacon, not running, state %d", vap->iv_state);
+	    return ;
+	}
 	DWTAP_PRINTF("[%d] beacon intrp\n", avp->id);	//burst mode
 	/*
 	 * Update dynamic beacon contents.  If this returns
@@ -282,6 +291,8 @@ wtap_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		default:
 			goto bad;
 		}
+	} else if (nstate == IEEE80211_S_INIT) {
+		callout_stop(&avp->av_swba);
 	}
 	return 0;
 bad:
@@ -315,7 +326,7 @@ wtap_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ],
 	    M_80211_VAP, M_NOWAIT | M_ZERO);
 	avp->id = sc->id;
 	avp->av_md = sc->sc_md;
-	avp->av_bcinterval = BEACON_INTRERVAL + 100*sc->id;
+	avp->av_bcinterval = msecs_to_ticks(BEACON_INTRERVAL + 100*sc->id);
 	vap = (struct ieee80211vap *) avp;
 	error = ieee80211_vap_setup(ic, vap, name, unit, IEEE80211_M_MBSS,
 	    flags | IEEE80211_CLONE_NOBEACONS, bssid, mac);

@@ -748,6 +748,8 @@
 
       &hwlist.ahc;
 
+      &hwlist.ahci;
+
       &hwlist.ahd;
 
       &hwlist.aic;
@@ -788,6 +790,8 @@
 
       &hwlist.ips;
 
+      &hwlist.isci;
+
       &hwlist.isp;
 
       &hwlist.mfi;
@@ -815,6 +819,8 @@
       &hwlist.nsp;
 
       &hwlist.pst;
+
+      &hwlist.siis;
 
       &hwlist.stg;
 
@@ -892,6 +898,8 @@
 
       &hwlist.bge;
 
+      &hwlist.bxe;
+
       &hwlist.cas;
 
       &hwlist.cdce;
@@ -953,6 +961,8 @@
       &hwlist.nve;
 
       &hwlist.nxge;
+
+      &hwlist.oce;
 
       &hwlist.pcn;
 
@@ -1048,6 +1058,8 @@
       &hwlist.ath;
 
       &hwlist.bwi;
+
+      &hwlist.bwn;
 
       <para>[&arch.i386;, &arch.amd64;] Intel PRO/Wireless 2100
 	MiniPCI network adapter (&man.ipw.4; driver)</para>
@@ -1404,6 +1416,8 @@
       &hwlist.snd.gusc;
 
       &hwlist.snd.hda;
+
+      &hwlist.snd.hdspe;
 
       &hwlist.snd.ich;
 

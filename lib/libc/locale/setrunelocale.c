@@ -38,6 +38,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#define __RUNETYPE_INTERNAL 1
+
 #include <runetype.h>
 #include <errno.h>
 #include <limits.h>
@@ -50,13 +52,21 @@ __FBSDID("$FreeBSD$");
 #include "mblocal.h"
 #include "setlocale.h"
 
+#undef _CurrentRuneLocale
+extern _RuneLocale const *_CurrentRuneLocale;
+#ifndef __NO_TLS
+/*
+ * A cached version of the runes for this thread.  Used by ctype.h
+ */
+_Thread_local const _RuneLocale *_ThreadRuneLocale;
+#endif
+
 extern int __mb_sb_limit;
 
 extern _RuneLocale	*_Read_RuneMagi(FILE *);
 
 static int		__setrunelocale(struct xlocale_ctype *l, const char *);
 
-#define __collate_load_error (table->__collate_load_error)
 #define __collate_substitute_nontrivial (table->__collate_substitute_nontrivial)
 #define __collate_substitute_table_ptr (table->__collate_substitute_table_ptr)
 #define __collate_char_pri_table_ptr (table->__collate_char_pri_table_ptr)
@@ -72,9 +82,21 @@ static void destruct_ctype(void *v)
 		free(l->runes);
 	free(l);
 }
-_RuneLocale *__getCurrentRuneLocale(void)
+
+const _RuneLocale *__getCurrentRuneLocale(void)
 {
 	return XLOCALE_CTYPE(__get_locale())->runes;
+}
+
+static void free_runes(_RuneLocale *rl)
+{
+	/* FIXME: The "EUC" check here is a hideous abstraction violation. */
+	if ((rl != &_DefaultRuneLocale) && (rl)) {
+		if (strcmp(rl->__encoding, "EUC") == 0) {
+			free(rl->__variable);
+		}
+		free(rl);
+	}
 }
 
 static int
@@ -90,6 +112,7 @@ __setrunelocale(struct xlocale_ctype *l, const char *encoding)
 	 * The "C" and "POSIX" locale are always here.
 	 */
 	if (strcmp(encoding, "C") == 0 || strcmp(encoding, "POSIX") == 0) {
+		free_runes(saved.runes);
 		(void) _none_init(l, (_RuneLocale*)&_DefaultRuneLocale);
 		return (0);
 	}
@@ -141,13 +164,7 @@ __setrunelocale(struct xlocale_ctype *l, const char *encoding)
 
 	if (ret == 0) {
 		/* Free the old runes if it exists. */
-		/* FIXME: The "EUC" check here is a hideous abstraction violation. */
-		if ((saved.runes != &_DefaultRuneLocale) && (saved.runes)) {
-			if (strcmp(saved.runes->__encoding, "EUC") == 0) {
-				free(saved.runes->__variable);
-			}
-			free(saved.runes);
-		}
+		free_runes(saved.runes);
 	} else {
 		/* Restore the saved version if this failed. */
 		memcpy(l, &saved, sizeof(struct xlocale_ctype));
@@ -168,9 +185,24 @@ __wrap_setrunelocale(const char *locale)
 	}
 	__mb_cur_max = __xlocale_global_ctype.__mb_cur_max;
 	__mb_sb_limit = __xlocale_global_ctype.__mb_sb_limit;
+	_CurrentRuneLocale = __xlocale_global_ctype.runes;
 	return (_LDP_LOADED);
 }
-void *__ctype_load(const char *locale, locale_t unused)
+
+#ifndef __NO_TLS
+void
+__set_thread_rune_locale(locale_t loc) {
+
+	if (loc == NULL) {
+		_ThreadRuneLocale = &_DefaultRuneLocale;
+	} else {
+		_ThreadRuneLocale = XLOCALE_CTYPE(loc)->runes;
+	}
+}
+#endif
+
+void *
+__ctype_load(const char *locale, locale_t unused)
 {
 	struct xlocale_ctype *l = calloc(sizeof(struct xlocale_ctype), 1);
 	l->header.header.destructor = destruct_ctype;

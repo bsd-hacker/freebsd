@@ -1,5 +1,5 @@
 $FreeBSD$
-/*$NetBSD: miidevs,v 1.104 2011/11/12 11:10:49 sekiya Exp $*/
+/*$NetBSD: miidevs,v 1.105 2011/11/25 23:28:14 jakllsch Exp $*/
 
 /*-
  * Copyright (c) 1998, 1999 The NetBSD Foundation, Inc.
@@ -52,7 +52,7 @@ oui AMD				0x00001a	Advanced Micro Devices
 oui BROADCOM			0x001018	Broadcom Corporation
 oui BROADCOM2			0x000af7	Broadcom Corporation
 oui BROADCOM3			0x001be9	Broadcom Corporation
-oui CICADA			0x0003F1	Cicada Semiconductor
+oui CICADA			0x0003f1	Cicada Semiconductor
 oui DAVICOM			0x00606e	Davicom Semiconductor
 oui ENABLESEMI			0x0010dd	Enable Semiconductor
 oui ICPLUS			0x0090c3	IC Plus Corp.
@@ -71,6 +71,7 @@ oui SEEQ			0x00a07d	Seeq Technology
 oui SIS				0x00e006	Silicon Integrated Systems
 oui TI				0x080028	Texas Instruments
 oui TSC				0x00c039	TDK Semiconductor
+oui VITESSE			0x0001c1	Vitesse Semiconductor
 oui XAQTI			0x00e0ae	XaQti Corp.
 
 /* Some Intel 82553's use an alternative OUI. */
@@ -179,6 +180,7 @@ model BROADCOM2 BCM5784		0x003a BCM5784 10/100/1000baseT PHY
 model BROADCOM2 BCM5709C	0x003c BCM5709 10/100/1000baseT PHY
 model BROADCOM2 BCM5761		0x003d BCM5761 10/100/1000baseT PHY
 model BROADCOM2 BCM5709S	0x003f BCM5709S 1000/2500baseSX PHY
+model BROADCOM3 BCM57780	0x0019 BCM57780 1000BASE-T media interface
 model BROADCOM3 BCM5717C	0x0020 BCM5717C 1000BASE-T media interface
 model BROADCOM3 BCM5719C	0x0022 BCM5719C 1000BASE-T media interface
 model BROADCOM3 BCM57765	0x0024 BCM57765 1000BASE-T media interface
@@ -189,6 +191,7 @@ model xxBROADCOM_ALT1 BCM5906	0x0004 BCM5906 10/100baseTX media interface
 model xxCICADA CS8201		0x0001 Cicada CS8201 10/100/1000TX PHY
 model xxCICADA CS8204		0x0004 Cicada CS8204 10/100/1000TX PHY
 model xxCICADA VSC8211		0x000b Cicada VSC8211 10/100/1000TX PHY
+model xxCICADA VSC8221		0x0015 Cicada CS8201 10/100/1000TX PHY
 model xxCICADA CS8201A		0x0020 Cicada CS8201 10/100/1000TX PHY
 model xxCICADA CS8201B		0x0021 Cicada CS8201 10/100/1000TX PHY
 model xxCICADA CS8244		0x002c Cicada CS8244 10/100/1000TX PHY
@@ -279,6 +282,7 @@ model xxNATSEMI DP83847		0x0003 DP83847 10/100 media interface
 model xxNATSEMI DP83891		0x0005 DP83891 1000BASE-T media interface
 model xxNATSEMI DP83861		0x0006 DP83861 1000BASE-T media interface
 model xxNATSEMI DP83865		0x0007 DP83865 1000BASE-T media interface
+model xxNATSEMI DP83849		0x000a DP83849 10/100 media interface
 
 /* PMC Sierra PHYs */
 model xxPMCSIERRA PM8351	0x0000 PM8351 OctalPHY Gigabit interface
@@ -315,6 +319,9 @@ model TI TNETE2101		0x0003 TNETE2101 media interface
 /* TDK Semiconductor PHYs */
 model xxTSC 78Q2120		0x0014 78Q2120 10/100 media interface
 model xxTSC 78Q2121		0x0015 78Q2121 100BASE-TX media interface
+
+/* Vitesse Semiconductor */
+model xxVITESSE VSC8641		0x0003 Vitesse VSC8641 10/100/1000TX PHY
 
 /* XaQti Corp. PHYs */
 model xxXAQTI XMACII		0x0000 XaQti Corp. XMAC II gigabit interface

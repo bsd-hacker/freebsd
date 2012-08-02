@@ -96,9 +96,10 @@ __FBSDID("$FreeBSD$");
  */
 #define	IEEE80211_AMPDU_SUBFRAME_DEFAULT		32
 
-#define	ATH_AGGR_DELIM_SZ	4	/* delimiter size   */
+#define	ATH_AGGR_DELIM_SZ	4	/* delimiter size */
 #define	ATH_AGGR_MINPLEN	256	/* in bytes, minimum packet length */
-#define	ATH_AGGR_ENCRYPTDELIM	10	/* number of delimiters for encryption padding */
+/* number of delimiters for encryption padding */
+#define	ATH_AGGR_ENCRYPTDELIM	10
 
 /*
  * returns delimiter padding required given the packet length
@@ -245,7 +246,7 @@ ath_tx_rate_fill_rcflags(struct ath_softc *sc, struct ath_buf *bf)
 		 */
 		rc[i].ratecode = rate;
 
-		if (bf->bf_state.bfs_flags &
+		if (bf->bf_state.bfs_txflags &
 		    (HAL_TXDESC_RTSENA | HAL_TXDESC_CTSENA))
 			rc[i].flags |= ATH_RC_RTSCTS_FLAG;
 
@@ -414,7 +415,7 @@ ath_get_aggr_limit(struct ath_softc *sc, struct ath_buf *bf)
 	int amin = 65530;
 	int i;
 
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < ATH_RC_NUM; i++) {
 		if (bf->bf_state.bfs_rc[i].tries == 0)
 			continue;
 		amin = MIN(amin, bf->bf_state.bfs_rc[i].max4msframelen);
@@ -438,14 +439,13 @@ static void
 ath_rateseries_setup(struct ath_softc *sc, struct ieee80211_node *ni,
     struct ath_buf *bf, HAL_11N_RATE_SERIES *series)
 {
-#define	HT_RC_2_STREAMS(_rc)	((((_rc) & 0x78) >> 3) + 1)
 	struct ieee80211com *ic = ni->ni_ic;
 	struct ath_hal *ah = sc->sc_ah;
 	HAL_BOOL shortPreamble = AH_FALSE;
 	const HAL_RATE_TABLE *rt = sc->sc_currates;
 	int i;
 	int pktlen;
-	int flags = bf->bf_state.bfs_flags;
+	int flags = bf->bf_state.bfs_txflags;
 	struct ath_rc_series *rc = bf->bf_state.bfs_rc;
 
 	if ((ic->ic_flags & IEEE80211_F_SHPREAMBLE) &&
@@ -466,7 +466,7 @@ ath_rateseries_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 	 * XXX fields.
 	 */
 	memset(series, 0, sizeof(HAL_11N_RATE_SERIES) * 4);
-	for (i = 0; i < 4;  i++) {
+	for (i = 0; i < ATH_RC_NUM;  i++) {
 		/* Only set flags for actual TX attempts */
 		if (rc[i].tries == 0)
 			continue;
@@ -511,8 +511,13 @@ ath_rateseries_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 			series[i].RateFlags |= HAL_RATESERIES_HALFGI;
 
 		series[i].Rate = rt->info[rc[i].rix].rateCode;
+		series[i].RateIndex = rc[i].rix;
+		series[i].tx_power_cap = 0x3f;	/* XXX for now */
 
-		/* PktDuration doesn't include slot, ACK, RTS, etc timing - it's just the packet duration */
+		/*
+		 * PktDuration doesn't include slot, ACK, RTS, etc timing -
+		 * it's just the packet duration
+		 */
 		if (series[i].Rate & IEEE80211_RATE_MCS) {
 			series[i].PktDuration =
 			    ath_computedur_ht(pktlen
@@ -528,16 +533,16 @@ ath_rateseries_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 			    rt, pktlen, rc[i].rix, shortPreamble);
 		}
 	}
-#undef	HT_RC_2_STREAMS
 }
 
 #if 0
 static void
-ath_rateseries_print(HAL_11N_RATE_SERIES *series)
+ath_rateseries_print(struct ath_softc *sc, HAL_11N_RATE_SERIES *series)
 {
 	int i;
-	for (i = 0; i < 4; i++) {
-		printf("series %d: rate %x; tries %d; pktDuration %d; chSel %d; rateFlags %x\n",
+	for (i = 0; i < ATH_RC_NUM; i++) {
+		device_printf(sc->sc_dev ,"series %d: rate %x; tries %d; "
+		    "pktDuration %d; chSel %d; rateFlags %x\n",
 		    i,
 		    series[i].Rate,
 		    series[i].Tries,
@@ -555,47 +560,38 @@ ath_rateseries_print(HAL_11N_RATE_SERIES *series)
  * This isn't useful for sending beacon frames, which has different needs
  * wrt what's passed into the rate scenario function.
  */
-
 void
 ath_buf_set_rate(struct ath_softc *sc, struct ieee80211_node *ni,
     struct ath_buf *bf)
 {
 	HAL_11N_RATE_SERIES series[4];
 	struct ath_desc *ds = bf->bf_desc;
-	struct ath_desc *lastds = NULL;
 	struct ath_hal *ah = sc->sc_ah;
 	int is_pspoll = (bf->bf_state.bfs_atype == HAL_PKT_TYPE_PSPOLL);
 	int ctsrate = bf->bf_state.bfs_ctsrate;
-	int flags = bf->bf_state.bfs_flags;
+	int flags = bf->bf_state.bfs_txflags;
 
 	/* Setup rate scenario */
 	memset(&series, 0, sizeof(series));
 
 	ath_rateseries_setup(sc, ni, bf, series);
 
-	/* Enforce AR5416 aggregate limit - can't do RTS w/ an agg frame > 8k */
-
-	/* Enforce RTS and CTS are mutually exclusive */
-
-	/* Get a pointer to the last tx descriptor in the list */
-	lastds = bf->bf_lastds;
-
 #if 0
 	printf("pktlen: %d; flags 0x%x\n", pktlen, flags);
-	ath_rateseries_print(series);
+	ath_rateseries_print(sc, series);
 #endif
 
 	/* Set rate scenario */
+	/*
+	 * Note: Don't allow hardware to override the duration on
+	 * ps-poll packets.
+	 */
 	ath_hal_set11nratescenario(ah, ds,
 	    !is_pspoll,	/* whether to override the duration or not */
-			/* don't allow hardware to override the duration on ps-poll packets */
 	    ctsrate,	/* rts/cts rate */
 	    series,	/* 11n rate series */
 	    4,		/* number of series */
 	    flags);
-
-	/* Setup the last descriptor in the chain */
-	ath_hal_setuplasttxdesc(ah, lastds, ds);
 
 	/* Set burst duration */
 	/*
@@ -630,8 +626,9 @@ ath_buf_set_rate(struct ath_softc *sc, struct ieee80211_node *ni,
  * descriptor setup, and ath_buf_set_rate() will configure the
  * rate control.
  *
- * Note that the TID lock is only grabbed when dequeuing packets from
- * the TID queue. If some code in another thread adds to the head of this
+ * The TID lock is required for the entirety of this function.
+ *
+ * If some code in another thread adds to the head of this
  * list, very strange behaviour will occur. Since retransmission is the
  * only reason this will occur, and this routine is designed to be called
  * from within the scheduler task, it won't ever clash with the completion
@@ -641,8 +638,8 @@ ath_buf_set_rate(struct ath_softc *sc, struct ieee80211_node *ni,
  * dispatch aggregate frames to the hardware), please keep this in mind.
  */
 ATH_AGGR_STATUS
-ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an, struct ath_tid *tid,
-    ath_bufhead *bf_q)
+ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an,
+    struct ath_tid *tid, ath_bufhead *bf_q)
 {
 	//struct ieee80211_node *ni = &an->an_node;
 	struct ath_buf *bf, *bf_first = NULL, *bf_prev = NULL;
@@ -707,24 +704,6 @@ ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an, struct ath_tid *tid,
 		 */
 
 		/*
-		 * If the packet has a sequence number, do not
-		 * step outside of the block-ack window.
-		 */
-		if (! BAW_WITHIN(tap->txa_start, tap->txa_wnd,
-		    SEQNO(bf->bf_state.bfs_seqno))) {
-		    status = ATH_AGGR_BAW_CLOSED;
-		    break;
-		}
-
-		/*
-		 * XXX TODO: AR5416 has an 8K aggregation size limit
-		 * when RTS is enabled, and RTS is required for dual-stream
-		 * rates.
-		 *
-		 * For now, limit all aggregates for the AR5416 to be 8K.
-		 */
-
-		/*
 		 * do not exceed aggregation limit
 		 */
 		al_delta = ATH_AGGR_DELIM_SZ + bf->bf_state.bfs_pktlen;
@@ -735,11 +714,46 @@ ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an, struct ath_tid *tid,
 		}
 
 		/*
+		 * If RTS/CTS is set on the first frame, enforce
+		 * the RTS aggregate limit.
+		 */
+		if (bf_first->bf_state.bfs_txflags &
+		    (HAL_TXDESC_CTSENA | HAL_TXDESC_RTSENA)) {
+			if (nframes &&
+			   (sc->sc_rts_aggr_limit <
+			     (al + bpad + al_delta + prev_al))) {
+				status = ATH_AGGR_8K_LIMITED;
+				break;
+			}
+		}
+
+		/*
 		 * Do not exceed subframe limit.
 		 */
 		if ((nframes + prev_frames) >= MIN((h_baw),
 		    IEEE80211_AMPDU_SUBFRAME_DEFAULT)) {
 			status = ATH_AGGR_LIMITED;
+			break;
+		}
+
+		/*
+		 * If the current frame has an RTS/CTS configuration
+		 * that differs from the first frame, override the
+		 * subsequent frame with this config.
+		 */
+		bf->bf_state.bfs_txflags &=
+		    (HAL_TXDESC_RTSENA | HAL_TXDESC_CTSENA);
+		bf->bf_state.bfs_txflags |=
+		    bf_first->bf_state.bfs_txflags &
+		    (HAL_TXDESC_RTSENA | HAL_TXDESC_CTSENA);
+
+		/*
+		 * If the packet has a sequence number, do not
+		 * step outside of the block-ack window.
+		 */
+		if (! BAW_WITHIN(tap->txa_start, tap->txa_wnd,
+		    SEQNO(bf->bf_state.bfs_seqno))) {
+			status = ATH_AGGR_BAW_CLOSED;
 			break;
 		}
 
@@ -753,19 +767,14 @@ ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an, struct ath_tid *tid,
 		bf->bf_state.bfs_addedbaw = 1;
 
 		/*
-		 * XXX TODO: If any frame in the aggregate requires RTS/CTS,
-		 * set the first frame.
-		 */
-
-		/*
 		 * XXX enforce ACK for aggregate frames (this needs to be
 		 * XXX handled more gracefully?
 		 */
-		if (bf->bf_state.bfs_flags & HAL_TXDESC_NOACK) {
+		if (bf->bf_state.bfs_txflags & HAL_TXDESC_NOACK) {
 			device_printf(sc->sc_dev,
 			    "%s: HAL_TXDESC_NOACK set for an aggregate frame?\n",
 			    __func__);
-			bf->bf_state.bfs_flags &= (~HAL_TXDESC_NOACK);
+			bf->bf_state.bfs_txflags &= (~HAL_TXDESC_NOACK);
 		}
 
 		/*

@@ -28,8 +28,6 @@
 #include "bsdtar_platform.h"
 #include <stdio.h>
 
-#include "matching.h"
-
 #define	DEFAULT_BYTES_PER_BLOCK	(20*512)
 
 /*
@@ -46,13 +44,11 @@ struct bsdtar {
 	const char	 *create_format; /* -F format */
 	char		 *pending_chdir; /* -C dir */
 	const char	 *names_from_file; /* -T file */
-	time_t		  newer_ctime_sec; /* --newer/--newer-than */
-	long		  newer_ctime_nsec; /* --newer/--newer-than */
-	time_t		  newer_mtime_sec; /* --newer-mtime */
-	long		  newer_mtime_nsec; /* --newer-mtime-than */
 	int		  bytes_per_block; /* -b block_size */
+	int		  bytes_in_last_block; /* See -b handling. */
 	int		  verbose;   /* -v */
 	int		  extract_flags; /* Flags for extract operation */
+	int		  readdisk_flags; /* Flags for read disk operation */
 	int		  strip_components; /* Remove this many leading dirs */
 	int		  gid;  /* --gid */
 	const char	 *gname; /* --gname */
@@ -64,13 +60,12 @@ struct bsdtar {
 	const char	 *compress_program;
 	char		  option_absolute_paths; /* -P */
 	char		  option_chroot; /* --chroot */
-	char		  option_dont_traverse_mounts; /* --one-file-system */
 	char		  option_fast_read; /* --fast-read */
 	const char	 *option_options; /* --options */
-	char		  option_honor_nodump; /* --nodump */
 	char		  option_interactive; /* -w */
 	char		  option_no_owner; /* -o */
 	char		  option_no_subdirs; /* -n */
+	char		  option_numeric_owner; /* --numeric-owner */
 	char		  option_null; /* --null */
 	char		  option_stdout; /* -O */
 	char		  option_totals; /* --totals */
@@ -78,13 +73,17 @@ struct bsdtar {
 	char		  option_warn_links; /* --check-links */
 	char		  day_first; /* show day before month in -tv output */
 
+	/* Option parser state */
+	int		  getopt_state;
+	char		 *getopt_word;
+
 	/* If >= 0, then close this when done. */
 	int		  fd;
 
 	/* Miscellaneous state information */
 	int		  argc;
 	char		**argv;
-	const char	 *optarg;
+	const char	 *argument;
 	size_t		  gs_width; /* For 'list_item' in read.c */
 	size_t		  u_width; /* for 'list_item' in read.c */
 	uid_t		  user_uid; /* UID running this program */
@@ -101,7 +100,9 @@ struct bsdtar {
 	struct archive_dir	*archive_dir;	/* for write.c */
 	struct name_cache	*gname_cache;	/* for write.c */
 	char			*buff;		/* for write.c */
-	struct lafe_matching	*matching;	/* for matching.c */
+	size_t			 buff_size;	/* for write.c */
+	int			 first_fs;	/* for write.c */
+	struct archive		*matching;	/* for matching.c */
 	struct security		*security;	/* for read.c */
 	struct name_cache	*uname_cache;	/* for write.c */
 	struct siginfo_data	*siginfo;	/* for siginfo.c */
@@ -112,6 +113,7 @@ struct bsdtar {
 enum {
 	OPTION_CHECK_LINKS = 1,
 	OPTION_CHROOT,
+	OPTION_DISABLE_COPYFILE,
 	OPTION_EXCLUDE,
 	OPTION_FORMAT,
 	OPTION_GID,
@@ -119,6 +121,7 @@ enum {
 	OPTION_HELP,
 	OPTION_INCLUDE,
 	OPTION_KEEP_NEWER_FILES,
+	OPTION_LZIP,
 	OPTION_LZMA,
 	OPTION_NEWER_CTIME,
 	OPTION_NEWER_CTIME_THAN,
@@ -141,7 +144,6 @@ enum {
 	OPTION_VERSION
 };
 
-
 int	bsdtar_getopt(struct bsdtar *);
 void	do_chdir(struct bsdtar *);
 int	edit_pathname(struct bsdtar *, struct archive_entry *);
@@ -160,6 +162,6 @@ int	yes(const char *fmt, ...);
 
 #if HAVE_REGEX_H
 void	add_substitution(struct bsdtar *, const char *);
-int	apply_substitution(struct bsdtar *, const char *, char **, int);
+int	apply_substitution(struct bsdtar *, const char *, char **, int, int);
 void	cleanup_substitution(struct bsdtar *);
 #endif

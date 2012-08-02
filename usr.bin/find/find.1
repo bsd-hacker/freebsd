@@ -31,7 +31,7 @@
 .\"	@(#)find.1	8.7 (Berkeley) 5/9/95
 .\" $FreeBSD$
 .\"
-.Dd September 28, 2011
+.Dd July 25, 2012
 .Dt FIND 1
 .Os
 .Sh NAME
@@ -126,36 +126,15 @@ as an effective alternative.
 .It Fl d
 Cause
 .Nm
-to perform a depth-first traversal, i.e., directories
-are visited in post-order and all entries in a directory will be acted
-on before the directory itself.
-By default,
-.Nm
-visits directories in pre-order, i.e., before their contents.
-Note, the default is
-.Em not
-a breadth-first traversal.
+to perform a depth-first traversal.
 .Pp
-This option is equivalent to the
+This option is a BSD-specific equivalent of the
 .Ic -depth
-primary of
+primary specified by
 .St -p1003.1-2001 .
-The
-.Fl d
-option
-can be useful when
-.Nm
-is used with
-.Xr cpio 1
-to process files that are contained in directories with unusual permissions.
-It ensures that you have write permission while you are placing files in a
-directory, then sets the directory's permissions as the last thing.
-.It Fl f
-Specify a file hierarchy for
-.Nm
-to traverse.
-File hierarchies may also be specified as the operands immediately
-following the options.
+Refer to its description under
+.Sx PRIMARIES
+for more information.
 .It Fl s
 Cause
 .Nm
@@ -177,7 +156,6 @@ This option is equivalent to the deprecated
 primary.
 .El
 .Sh PRIMARIES
-.Pp
 All primaries which take a numeric argument allow the number to be
 preceded by a plus sign
 .Pq Dq Li +
@@ -302,7 +280,7 @@ Please refer to the
 .Ic -atime
 primary description for information on supported time units.
 .It Ic -d
-Same as 
+Non-portable, BSD-specific version of
 .Ic depth .
 GNU find implements this as a primary in mistaken emulation of
 .Fx
@@ -320,12 +298,37 @@ character in its pathname relative to
 .Dq Pa \&.
 for security reasons.
 Depth-first traversal processing is implied by this option.
+The
+.Ic -delete
+primary will fail to delete a directory if it is not empty.
 Following symlinks is incompatible with this option.
 .It Ic -depth
 Always true;
-same as the
+same as the non-portable
 .Fl d
 option.
+Cause
+.Nm
+to perform a depth-first traversal, i.e., directories
+are visited in post-order and all entries in a directory will be acted
+on before the directory itself.
+By default,
+.Nm
+visits directories in pre-order, i.e., before their contents.
+Note, the default is
+.Em not
+a breadth-first traversal.
+.Pp
+The
+.Ic -depth
+primary
+can be useful when
+.Nm
+is used with
+.Xr cpio 1
+to process files that are contained in directories with unusual permissions.
+It ensures that you have write permission while you are placing files in a
+directory, then sets the directory's permissions as the last thing.
 .It Ic -depth Ar n
 True if the depth of the file relative to the starting point of the traversal
 is
@@ -451,12 +454,12 @@ is being executed and the latter matches any file system which is
 mounted read-only.
 .It Ic -gid Ar gname
 The same thing as
-.Ar -group Ar gname 
+.Ar -group Ar gname
 for compatibility with GNU find.
 GNU find imposes a restriction that
-.Ar gname 
+.Ar gname
 is numeric, while
-.Xr find 1 
+.Xr find 1
 does not.
 .It Ic -group Ar gname
 True if the file belongs to the group
@@ -467,7 +470,9 @@ is numeric and there is no such group name, then
 .Ar gname
 is treated as a group ID.
 .It Ic -ignore_readdir_race
-This option is for GNU find compatibility and is ignored.
+Ignore errors because a file or a directory is deleted
+after reading the name from a directory.
+This option does not affect errors occurring on starting points.
 .It Ic -ilname Ar pattern
 Like
 .Ic -lname ,
@@ -489,7 +494,7 @@ Like
 .Ic -regex ,
 but the match is case insensitive.
 .It Ic -iwholename Ar pattern
-The same thing as 
+The same thing as
 .Ic -ipath ,
 for GNU find compatibility.
 .It Ic -links Ar n
@@ -545,7 +550,7 @@ minutes.
 Same as
 .Ic -newer .
 .It Ic -mount
-The same thing as 
+The same thing as
 .Ic -xdev ,
 for GNU find compatibility.
 .It Ic -mtime Ar n Ns Op Cm smhdw
@@ -615,10 +620,12 @@ is equivalent to
 .It Ic -nogroup
 True if the file belongs to an unknown group.
 .It Ic -noignore_readdir_race
-This option is for GNU find compatibility and is ignored.
+Turn off the effect of
+.Ic -ignore_readdir_race .
+This is default behaviour.
 .It Ic -noleaf
 This option is for GNU find compatibility.
-In GNU find it disables an optimization not relevant to 
+In GNU find it disables an optimization not relevant to
 .Xr find 1 ,
 so it is ignored.
 .It Ic -nouser
@@ -754,7 +761,7 @@ True if the file is a hard link to
 If the command option
 .Ic -L
 is specified, it is also true if the file is a symbolic link and
-points to 
+points to
 .Ar name .
 .It Ic -size Ar n Ns Op Cm ckMGTP
 True if the file's size, rounded up, in 512-byte blocks is
@@ -807,12 +814,12 @@ socket
 .El
 .It Ic -uid Ar uname
 The same thing as
-.Ar -user Ar uname 
+.Ar -user Ar uname
 for compatibility with GNU find.
 GNU find imposes a restriction that
-.Ar uname 
+.Ar uname
 is numeric, while
-.Xr find 1 
+.Xr find 1
 does not.
 .It Ic -user Ar uname
 True if the file belongs to the user
@@ -823,7 +830,7 @@ is numeric and there is no such user name, then
 .Ar uname
 is treated as a user ID.
 .It Ic -wholename Ar pattern
-The same thing as 
+The same thing as
 .Ic -path ,
 for GNU find compatibility.
 .El

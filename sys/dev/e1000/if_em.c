@@ -193,13 +193,14 @@ static int	em_detach(device_t);
 static int	em_shutdown(device_t);
 static int	em_suspend(device_t);
 static int	em_resume(device_t);
-static void	em_start(struct ifnet *);
-static void	em_start_locked(struct ifnet *, struct tx_ring *);
 #ifdef EM_MULTIQUEUE
 static int	em_mq_start(struct ifnet *, struct mbuf *);
 static int	em_mq_start_locked(struct ifnet *,
 		    struct tx_ring *, struct mbuf *);
 static void	em_qflush(struct ifnet *);
+#else
+static void	em_start(struct ifnet *);
+static void	em_start_locked(struct ifnet *, struct tx_ring *);
 #endif
 static int	em_ioctl(struct ifnet *, u_long, caddr_t);
 static void	em_init(void *);
@@ -234,7 +235,7 @@ static void	em_enable_intr(struct adapter *);
 static void	em_disable_intr(struct adapter *);
 static void	em_update_stats_counters(struct adapter *);
 static void	em_add_hw_stats(struct adapter *adapter);
-static bool	em_txeof(struct tx_ring *);
+static void	em_txeof(struct tx_ring *);
 static bool	em_rxeof(struct rx_ring *, int, int *);
 #ifndef __NO_STRICT_ALIGNMENT
 static int	em_fixup_rx(struct rx_ring *);
@@ -288,6 +289,7 @@ static void	em_handle_link(void *context, int pending);
 static void	em_set_sysctl_value(struct adapter *, const char *,
 		    const char *, int *, int);
 static int	em_set_flowcntl(SYSCTL_HANDLER_ARGS);
+static int	em_sysctl_eee(SYSCTL_HANDLER_ARGS);
 
 static __inline void em_rx_discard(struct rx_ring *, int);
 
@@ -388,7 +390,7 @@ SYSCTL_INT(_hw_em, OID_AUTO, rx_process_limit, CTLFLAG_RDTUN,
     "at a time, -1 means unlimited");
 
 /* Energy efficient ethernet - default to OFF */
-static int eee_setting = 0;
+static int eee_setting = 1;
 TUNABLE_INT("hw.em.eee_setting", &eee_setting);
 SYSCTL_INT(_hw_em, OID_AUTO, eee_setting, CTLFLAG_RDTUN, &eee_setting, 0,
     "Enable Energy Efficient Ethernet");
@@ -635,9 +637,12 @@ em_attach(device_t dev)
 		    " due to SOL/IDER session.\n");
 
 	/* Sysctl for setting Energy Efficient Ethernet */
-	em_set_sysctl_value(adapter, "eee_control",
-	    "enable Energy Efficient Ethernet",
-	    &hw->dev_spec.ich8lan.eee_disable, eee_setting);
+	hw->dev_spec.ich8lan.eee_disable = eee_setting;
+	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
+	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
+	    OID_AUTO, "eee_control", CTLTYPE_INT|CTLFLAG_RW,
+	    adapter, 0, em_sysctl_eee, "I",
+	    "Disable Energy Efficient Ethernet");
 
 	/*
 	** Start from a known state, this is
@@ -847,6 +852,7 @@ static int
 em_resume(device_t dev)
 {
 	struct adapter *adapter = device_get_softc(dev);
+	struct tx_ring	*txr = adapter->tx_rings;
 	struct ifnet *ifp = adapter->ifp;
 
 	EM_CORE_LOCK(adapter);
@@ -854,8 +860,22 @@ em_resume(device_t dev)
 		e1000_resume_workarounds_pchlan(&adapter->hw);
 	em_init_locked(adapter);
 	em_init_manageability(adapter);
+
+	if ((ifp->if_flags & IFF_UP) &&
+	    (ifp->if_drv_flags & IFF_DRV_RUNNING) && adapter->link_active) {
+		for (int i = 0; i < adapter->num_queues; i++, txr++) {
+			EM_TX_LOCK(txr);
+#ifdef EM_MULTIQUEUE
+			if (!drbr_empty(ifp, txr->br))
+				em_mq_start_locked(ifp, txr, NULL);
+#else
+			if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+				em_start_locked(ifp, txr);
+#endif
+			EM_TX_UNLOCK(txr);
+		}
+	}
 	EM_CORE_UNLOCK(adapter);
-	em_start(ifp);
 
 	return bus_generic_resume(dev);
 }
@@ -959,7 +979,7 @@ em_qflush(struct ifnet *ifp)
 	}
 	if_qflush(ifp);
 }
-#endif /* EM_MULTIQUEUE */
+#else  /* !EM_MULTIQUEUE */
 
 static void
 em_start_locked(struct ifnet *ifp, struct tx_ring *txr)
@@ -1020,14 +1040,9 @@ em_start(struct ifnet *ifp)
 		em_start_locked(ifp, txr);
 		EM_TX_UNLOCK(txr);
 	}
-	/*
-	** If we went inactive schedule
-	** a task to clean up.
-	*/
-	if (ifp->if_drv_flags & IFF_DRV_OACTIVE)
-		taskqueue_enqueue(txr->tq, &txr->tx_task);
 	return;
 }
+#endif /* EM_MULTIQUEUE */
 
 /*********************************************************************
  *  Ioctl entry point
@@ -1424,7 +1439,8 @@ em_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
 	if (!drbr_empty(ifp, txr->br))
 		em_mq_start_locked(ifp, txr, NULL);
 #else
-	em_start_locked(ifp, txr);
+	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+		em_start_locked(ifp, txr);
 #endif
 	EM_TX_UNLOCK(txr);
 
@@ -1497,10 +1513,11 @@ em_handle_que(void *context, int pending)
 		if (!drbr_empty(ifp, txr->br))
 			em_mq_start_locked(ifp, txr, NULL);
 #else
-		em_start_locked(ifp, txr);
+		if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+			em_start_locked(ifp, txr);
 #endif
 		EM_TX_UNLOCK(txr);
-		if (more || (ifp->if_drv_flags & IFF_DRV_OACTIVE)) {
+		if (more) {
 			taskqueue_enqueue(adapter->tq, &adapter->que_task);
 			return;
 		}
@@ -1521,17 +1538,21 @@ em_msix_tx(void *arg)
 {
 	struct tx_ring *txr = arg;
 	struct adapter *adapter = txr->adapter;
-	bool		more;
+	struct ifnet	*ifp = adapter->ifp;
 
 	++txr->tx_irq;
 	EM_TX_LOCK(txr);
-	more = em_txeof(txr);
+	em_txeof(txr);
+#ifdef EM_MULTIQUEUE
+	if (!drbr_empty(ifp, txr->br))
+		em_mq_start_locked(ifp, txr, NULL);
+#else
+	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+		em_start_locked(ifp, txr);
+#endif
+	/* Reenable this interrupt */
+	E1000_WRITE_REG(&adapter->hw, E1000_IMS, txr->ims);
 	EM_TX_UNLOCK(txr);
-	if (more)
-		taskqueue_enqueue(txr->tq, &txr->tx_task);
-	else
-		/* Reenable this interrupt */
-		E1000_WRITE_REG(&adapter->hw, E1000_IMS, txr->ims);
 	return;
 }
 
@@ -1609,7 +1630,8 @@ em_handle_tx(void *context, int pending)
 	if (!drbr_empty(ifp, txr->br))
 		em_mq_start_locked(ifp, txr, NULL);
 #else
-	em_start_locked(ifp, txr);
+	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+		em_start_locked(ifp, txr);
 #endif
 	E1000_WRITE_REG(&adapter->hw, E1000_IMS, txr->ims);
 	EM_TX_UNLOCK(txr);
@@ -1619,6 +1641,7 @@ static void
 em_handle_link(void *context, int pending)
 {
 	struct adapter	*adapter = context;
+	struct tx_ring	*txr = adapter->tx_rings;
 	struct ifnet *ifp = adapter->ifp;
 
 	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
@@ -1630,6 +1653,19 @@ em_handle_link(void *context, int pending)
 	callout_reset(&adapter->timer, hz, em_local_timer, adapter);
 	E1000_WRITE_REG(&adapter->hw, E1000_IMS,
 	    EM_MSIX_LINK | E1000_IMS_LSC);
+	if (adapter->link_active) {
+		for (int i = 0; i < adapter->num_queues; i++, txr++) {
+			EM_TX_LOCK(txr);
+#ifdef EM_MULTIQUEUE
+			if (!drbr_empty(ifp, txr->br))
+				em_mq_start_locked(ifp, txr, NULL);
+#else
+			if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+				em_start_locked(ifp, txr);
+#endif
+			EM_TX_UNLOCK(txr);
+		}
+	}
 	EM_CORE_UNLOCK(adapter);
 }
 
@@ -2902,20 +2938,21 @@ em_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_softc = adapter;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = em_ioctl;
+#ifdef EM_MULTIQUEUE
+	/* Multiqueue stack interface */
+	ifp->if_transmit = em_mq_start;
+	ifp->if_qflush = em_qflush;
+#else
 	ifp->if_start = em_start;
 	IFQ_SET_MAXLEN(&ifp->if_snd, adapter->num_tx_desc - 1);
 	ifp->if_snd.ifq_drv_maxlen = adapter->num_tx_desc - 1;
 	IFQ_SET_READY(&ifp->if_snd);
+#endif	
 
 	ether_ifattach(ifp, adapter->hw.mac.addr);
 
 	ifp->if_capabilities = ifp->if_capenable = 0;
 
-#ifdef EM_MULTIQUEUE
-	/* Multiqueue stack interface */
-	ifp->if_transmit = em_mq_start;
-	ifp->if_qflush = em_qflush;
-#endif	
 
 	ifp->if_capabilities |= IFCAP_HWCSUM | IFCAP_VLAN_HWCSUM;
 	ifp->if_capabilities |= IFCAP_TSO4;
@@ -3296,7 +3333,7 @@ em_setup_transmit_ring(struct tx_ring *txr)
 		}
 #ifdef DEV_NETMAP
 		if (slot) {
-			int si = netmap_tidx_n2k(na, txr->me, i);
+			int si = netmap_idx_n2k(&na->tx_rings[txr->me], i);
 			uint64_t paddr;
 			void *addr;
 
@@ -3742,7 +3779,7 @@ em_tso_setup(struct tx_ring *txr, struct mbuf *mp, int ip_off,
  *  tx_buffer is put back on the free queue.
  *
  **********************************************************************/
-static bool
+static void
 em_txeof(struct tx_ring *txr)
 {
 	struct adapter	*adapter = txr->adapter;
@@ -3759,17 +3796,17 @@ em_txeof(struct tx_ring *txr)
 		selwakeuppri(&na->tx_rings[txr->me].si, PI_NET);
 		EM_TX_UNLOCK(txr);
 		EM_CORE_LOCK(adapter);
-		selwakeuppri(&na->tx_rings[na->num_queues + 1].si, PI_NET);
+		selwakeuppri(&na->tx_si, PI_NET);
 		EM_CORE_UNLOCK(adapter);
 		EM_TX_LOCK(txr);
-		return (FALSE);
+		return;
 	}
 #endif /* DEV_NETMAP */
 
 	/* No work, make sure watchdog is off */
         if (txr->tx_avail == adapter->num_tx_desc) {
 		txr->queue_status = EM_QUEUE_IDLE;
-                return (FALSE);
+                return;
 	}
 
 	processed = 0;
@@ -3858,10 +3895,7 @@ em_txeof(struct tx_ring *txr)
 	/* Disable watchdog if all clean */
 	if (txr->tx_avail == adapter->num_tx_desc) {
 		txr->queue_status = EM_QUEUE_IDLE;
-		return (FALSE);
 	} 
-
-	return (TRUE);
 }
 
 
@@ -4016,7 +4050,7 @@ em_setup_receive_ring(struct rx_ring *rxr)
 	struct	adapter 	*adapter = rxr->adapter;
 	struct em_buffer	*rxbuf;
 	bus_dma_segment_t	seg[1];
-	int			rsize, nsegs, error;
+	int			rsize, nsegs, error = 0;
 #ifdef DEV_NETMAP
 	struct netmap_adapter *na = NA(adapter->ifp);
 	struct netmap_slot *slot;
@@ -4051,7 +4085,7 @@ em_setup_receive_ring(struct rx_ring *rxr)
 		rxbuf = &rxr->rx_buffers[j];
 #ifdef DEV_NETMAP
 		if (slot) {
-			int si = netmap_ridx_n2k(na, rxr->me, j);
+			int si = netmap_idx_n2k(&na->rx_rings[rxr->me], j);
 			uint64_t paddr;
 			void *addr;
 
@@ -4370,10 +4404,11 @@ em_rxeof(struct rx_ring *rxr, int count, int *done)
 	if (ifp->if_capenable & IFCAP_NETMAP) {
 		struct netmap_adapter *na = NA(ifp);
 
+		na->rx_rings[rxr->me].nr_kflags |= NKR_PENDINTR;
 		selwakeuppri(&na->rx_rings[rxr->me].si, PI_NET);
 		EM_RX_UNLOCK(rxr);
 		EM_CORE_LOCK(adapter);
-		selwakeuppri(&na->rx_rings[na->num_queues + 1].si, PI_NET);
+		selwakeuppri(&na->rx_si, PI_NET);
 		EM_CORE_UNLOCK(adapter);
 		return (0);
 	}
@@ -5664,6 +5699,27 @@ em_set_flowcntl(SYSCTL_HANDLER_ARGS)
         return (error);
 }
 
+/*
+** Manage Energy Efficient Ethernet:
+** Control values:
+**     0/1 - enabled/disabled
+*/
+static int
+em_sysctl_eee(SYSCTL_HANDLER_ARGS)
+{
+       struct adapter *adapter = (struct adapter *) arg1;
+       int             error, value;
+
+       value = adapter->hw.dev_spec.ich8lan.eee_disable;
+       error = sysctl_handle_int(oidp, &value, 0, req);
+       if (error || req->newptr == NULL)
+               return (error);
+       EM_CORE_LOCK(adapter);
+       adapter->hw.dev_spec.ich8lan.eee_disable = (value != 0);
+       em_init_locked(adapter);
+       EM_CORE_UNLOCK(adapter);
+       return (0);
+}
 
 static int
 em_sysctl_debug_info(SYSCTL_HANDLER_ARGS)

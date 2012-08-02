@@ -123,6 +123,9 @@ struct vop_vector default_vnodeops = {
 	.vop_unlock =		vop_stdunlock,
 	.vop_vptocnp =		vop_stdvptocnp,
 	.vop_vptofh =		vop_stdvptofh,
+	.vop_unp_bind =		vop_stdunp_bind,
+	.vop_unp_connect =	vop_stdunp_connect,
+	.vop_unp_detach =	vop_stdunp_detach,
 };
 
 /*
@@ -340,8 +343,8 @@ dirent_exists(struct vnode *vp, const char *dirname, struct thread *td)
 		if (error)
 			goto out;
 
-		if ((dp->d_type != DT_WHT) &&
-		    !strcmp(dp->d_name, dirname)) {
+		if (dp->d_type != DT_WHT && dp->d_fileno != 0 &&
+		    strcmp(dp->d_name, dirname) == 0) {
 			found = 1;
 			goto out;
 		}
@@ -643,8 +646,17 @@ loop2:
 		if ((bp->b_vflags & BV_SCANNED) != 0)
 			continue;
 		bp->b_vflags |= BV_SCANNED;
-		if (BUF_LOCK(bp, LK_EXCLUSIVE | LK_NOWAIT, NULL))
-			continue;
+		if (BUF_LOCK(bp, LK_EXCLUSIVE | LK_NOWAIT, NULL)) {
+			if (ap->a_waitfor != MNT_WAIT)
+				continue;
+			if (BUF_LOCK(bp,
+			    LK_EXCLUSIVE | LK_INTERLOCK | LK_SLEEPFAIL,
+			    BO_MTX(bo)) != 0) {
+				BO_LOCK(bo);
+				goto loop1;
+			}
+			BO_LOCK(bo);
+		}
 		BO_UNLOCK(bo);
 		KASSERT(bp->b_bufobj == bo,
 		    ("bp %p wrong b_bufobj %p should be %p",
@@ -1037,6 +1049,30 @@ vop_stdadvise(struct vop_advise_args *ap)
 	return (error);
 }
 
+int
+vop_stdunp_bind(struct vop_unp_bind_args *ap)
+{
+
+	ap->a_vp->v_socket = ap->a_socket;
+	return (0);
+}
+
+int
+vop_stdunp_connect(struct vop_unp_connect_args *ap)
+{
+
+	*ap->a_socket = ap->a_vp->v_socket;
+	return (0);
+}
+
+int
+vop_stdunp_detach(struct vop_unp_detach_args *ap)
+{
+
+	ap->a_vp->v_socket = NULL;
+	return (0);
+}
+
 /*
  * vfs default ops
  * used to fill the vfs function table to get reasonable default return values.
@@ -1087,18 +1123,15 @@ vfs_stdsync(mp, waitfor)
 	/*
 	 * Force stale buffer cache information to be flushed.
 	 */
-	MNT_ILOCK(mp);
 loop:
-	MNT_VNODE_FOREACH(vp, mp, mvp) {
-		/* bv_cnt is an acceptable race here. */
-		if (vp->v_bufobj.bo_dirty.bv_cnt == 0)
+	MNT_VNODE_FOREACH_ALL(vp, mp, mvp) {
+		if (vp->v_bufobj.bo_dirty.bv_cnt == 0) {
+			VI_UNLOCK(vp);
 			continue;
-		VI_LOCK(vp);
-		MNT_IUNLOCK(mp);
+		}
 		if ((error = vget(vp, lockreq, td)) != 0) {
-			MNT_ILOCK(mp);
 			if (error == ENOENT) {
-				MNT_VNODE_FOREACH_ABORT_ILOCKED(mp, mvp);
+				MNT_VNODE_FOREACH_ALL_ABORT(mp, mvp);
 				goto loop;
 			}
 			continue;
@@ -1107,9 +1140,7 @@ loop:
 		if (error)
 			allerror = error;
 		vput(vp);
-		MNT_ILOCK(mp);
 	}
-	MNT_IUNLOCK(mp);
 	return (allerror);
 }
 

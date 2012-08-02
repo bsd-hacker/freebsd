@@ -8,6 +8,7 @@ LDIRS=	BSD_daemon \
 	FreeBSD_version \
 	IPv6 \
 	bootforth \
+	csh \
 	cvsup \
 	diskless \
 	drivers \
@@ -19,6 +20,7 @@ LDIRS=	BSD_daemon \
 	ipfw \
 	jails \
 	kld \
+	libusb20 \
 	libvgl \
 	mdoc \
 	netgraph \
@@ -49,6 +51,7 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	bootforth/menu.4th \
 	bootforth/menuconf.4th \
 	bootforth/screen.4th \
+	csh/dot.cshrc \
 	cvsup/README \
 	cvsup/cvs-supfile \
 	cvsup/doc-supfile \
@@ -108,6 +111,12 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	kld/syscall/module/syscall.c \
 	kld/syscall/test/Makefile \
 	kld/syscall/test/call.c \
+	libusb20/Makefile \
+	libusb20/README \
+	libusb20/aux.c \
+	libusb20/aux.h \
+	libusb20/bulk.c \
+	libusb20/control.c \
 	libvgl/Makefile \
 	libvgl/demo.c \
 	mdoc/POSIX-copyright \

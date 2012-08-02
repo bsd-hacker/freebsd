@@ -15,6 +15,10 @@
 #
 .sinclude "${.CURDIR}/${LIBC_ARCH}/sys/Makefile.inc"
 
+SRCS+= clock_gettime.c gettimeofday.c __vdso_gettimeofday.c
+NOASM+=  clock_gettime.o gettimeofday.o
+PSEUDO+= _clock_gettime.o _gettimeofday.o
+
 # Sources common to both syscall interfaces:
 SRCS+=	stack_protector.c stack_protector_compat.c __error.c
 .if !defined(WITHOUT_SYSCALL_COMPAT)
@@ -165,7 +169,7 @@ MLINKS+=jail.2 jail_attach.2 \
 	jail.2 jail_remove.2 \
 	jail.2 jail_set.2
 MLINKS+=kldunload.2 kldunloadf.2
-MLINKS+=kqueue.2 kevent.2
+MLINKS+=kqueue.2 kevent.2 kqueue.2 EV_SET.3
 MLINKS+=link.2 linkat.2
 MLINKS+=madvise.2 posix_madvise.2
 MLINKS+=mkdir.2 mkdirat.2

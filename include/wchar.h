@@ -88,10 +88,8 @@ typedef	__wint_t	wint_t;
 #define	_WINT_T_DECLARED
 #endif
 
-#ifndef	WCHAR_MIN 
-#define	WCHAR_MIN	__INT_MIN
-#define	WCHAR_MAX	__INT_MAX
-#endif
+#define	WCHAR_MIN	__WCHAR_MIN
+#define	WCHAR_MAX	__WCHAR_MAX
 
 #ifndef WEOF
 #define	WEOF 	((wint_t)-1)
@@ -223,6 +221,10 @@ size_t	wcsnrtombs(char * __restrict, const wchar_t ** __restrict, size_t,
 wchar_t	*fgetwln(FILE * __restrict, size_t * __restrict);
 size_t	wcslcat(wchar_t *, const wchar_t *, size_t);
 size_t	wcslcpy(wchar_t *, const wchar_t *, size_t);
+#endif
+
+#if __POSIX_VISIBLE >= 200809 || defined(_XLOCALE_H_)
+#include <xlocale/_wchar.h>
 #endif
 __END_DECLS
 

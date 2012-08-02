@@ -713,6 +713,12 @@ ural_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		ni = ieee80211_ref_node(vap->iv_bss);
 
 		if (vap->iv_opmode != IEEE80211_M_MONITOR) {
+			if (ic->ic_bsschan == IEEE80211_CHAN_ANYC) {
+				RAL_UNLOCK(sc);
+				IEEE80211_LOCK(ic);
+				ieee80211_free_node(ni);
+				return (-1);
+			}
 			ural_update_slot(ic->ic_ifp);
 			ural_set_txpreamble(sc);
 			ural_set_basicrates(sc, ic->ic_bsschan);
@@ -800,7 +806,7 @@ tr_setup:
 			STAILQ_REMOVE_HEAD(&sc->tx_q, next);
 			m = data->m;
 
-			if (m->m_pkthdr.len > (RAL_FRAME_SIZE + RAL_TX_DESC_SIZE)) {
+			if (m->m_pkthdr.len > (int)(RAL_FRAME_SIZE + RAL_TX_DESC_SIZE)) {
 				DPRINTFN(0, "data overflow, %u bytes\n",
 				    m->m_pkthdr.len);
 				m->m_pkthdr.len = (RAL_FRAME_SIZE + RAL_TX_DESC_SIZE);
@@ -881,7 +887,7 @@ ural_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		DPRINTFN(15, "rx done, actlen=%d\n", len);
 
-		if (len < RAL_RX_DESC_SIZE + IEEE80211_MIN_LEN) {
+		if (len < (int)(RAL_RX_DESC_SIZE + IEEE80211_MIN_LEN)) {
 			DPRINTF("%s: xfer too short %d\n",
 			    device_get_nameunit(sc->sc_dev), len);
 			ifp->if_ierrors++;
@@ -1054,7 +1060,12 @@ ural_tx_bcn(struct ural_softc *sc, struct mbuf *m0, struct ieee80211_node *ni)
 		ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 		m_freem(m0);
 		ieee80211_free_node(ni);
-		return EIO;
+		return (EIO);
+	}
+	if (ic->ic_bsschan == IEEE80211_CHAN_ANYC) {
+		m_freem(m0);
+		ieee80211_free_node(ni);
+		return (ENXIO);
 	}
 	data = STAILQ_FIRST(&sc->tx_free);
 	STAILQ_REMOVE_HEAD(&sc->tx_free, next);
@@ -1950,7 +1961,7 @@ ural_read_eeprom(struct ural_softc *sc)
 static int
 ural_bbp_init(struct ural_softc *sc)
 {
-#define N(a)	(sizeof (a) / sizeof ((a)[0]))
+#define N(a)	((int)(sizeof (a) / sizeof ((a)[0])))
 	int i, ntries;
 
 	/* wait for BBP to be ready */
@@ -2034,7 +2045,7 @@ ural_set_rxantenna(struct ural_softc *sc, int antenna)
 static void
 ural_init_locked(struct ural_softc *sc)
 {
-#define N(a)	(sizeof (a) / sizeof ((a)[0]))
+#define N(a)	((int)(sizeof (a) / sizeof ((a)[0])))
 	struct ifnet *ifp = sc->sc_ifp;
 	struct ieee80211com *ic = ifp->if_l2com;
 	uint16_t tmp;

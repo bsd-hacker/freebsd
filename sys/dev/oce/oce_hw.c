@@ -203,12 +203,12 @@ void oce_get_pci_capabilities(POCE_SOFTC sc)
 {
 	uint32_t val;
 
-	if (pci_find_extcap(sc->dev, PCIY_PCIX, &val) == 0) {
+	if (pci_find_cap(sc->dev, PCIY_PCIX, &val) == 0) {
 		if (val != 0) 
 			sc->flags |= OCE_FLAGS_PCIX;
 	}
 
-	if (pci_find_extcap(sc->dev, PCIY_EXPRESS, &val) == 0) {
+	if (pci_find_cap(sc->dev, PCIY_EXPRESS, &val) == 0) {
 		if (val != 0) {
 			uint16_t link_status =
 			    pci_read_config(sc->dev, val + 0x12, 2);
@@ -219,12 +219,12 @@ void oce_get_pci_capabilities(POCE_SOFTC sc)
 		}
 	}
 
-	if (pci_find_extcap(sc->dev, PCIY_MSI, &val) == 0) {
+	if (pci_find_cap(sc->dev, PCIY_MSI, &val) == 0) {
 		if (val != 0)
 			sc->flags |= OCE_FLAGS_MSI_CAPABLE;
 	}
 
-	if (pci_find_extcap(sc->dev, PCIY_MSIX, &val) == 0) {
+	if (pci_find_cap(sc->dev, PCIY_MSIX, &val) == 0) {
 		if (val != 0) {
 			val = pci_msix_count(sc->dev);
 			sc->flags |= OCE_FLAGS_MSIX_CAPABLE;
@@ -340,8 +340,10 @@ oce_hw_shutdown(POCE_SOFTC sc)
 	oce_stats_free(sc);
 	/* disable hardware interrupts */
 	oce_hw_intr_disable(sc);
+#if defined(INET6) || defined(INET)
 	/* Free LRO resources */
 	oce_free_lro(sc);
+#endif
 	/* Release queue*/
 	oce_queue_release_all(sc);
 	/*Delete Network Interface*/
@@ -494,11 +496,16 @@ oce_hw_start(POCE_SOFTC sc)
 
 	rc = oce_start_mq(sc->mq);
 	
-	/* we need to get MCC aync events.
-	   So enable intrs and also arm first EQ
+	/* we need to get MCC aync events. So enable intrs and arm
+	   first EQ, Other EQs will be armed after interface is UP 
 	*/
 	oce_hw_intr_enable(sc);
 	oce_arm_eq(sc, sc->eq[0]->eq_id, 0, TRUE, FALSE);
+
+	/* Send first mcc cmd and after that we get gracious
+	   MCC notifications from FW
+	*/
+	oce_first_mcc_cmd(sc);
 
 	return rc;
 }
@@ -537,8 +544,8 @@ oce_hw_intr_disable(POCE_SOFTC sc)
 
 
 /**
- * @brief               Function for hardware update multicast filter
- * @param sc            software handle to the device
+ * @brief		Function for hardware update multicast filter
+ * @param sc		software handle to the device
  */
 int
 oce_hw_update_multicast(POCE_SOFTC sc)

@@ -9,7 +9,7 @@ SRCS+=  __getosreldate.c __xuname.c \
 	_thread_init.c \
 	alarm.c arc4random.c assert.c aux.c basename.c check_utility_compat.c \
 	clock.c closedir.c confstr.c \
-	crypt.c ctermid.c daemon.c devname.c dirname.c disklabel.c \
+	crypt.c ctermid.c daemon.c devname.c dirfd.c dirname.c disklabel.c \
 	dlfcn.c drand48.c elf_utils.c erand48.c err.c errlst.c errno.c \
 	exec.c fdevname.c feature_present.c fmtcheck.c fmtmsg.c fnmatch.c \
 	fpclassify.c frexp.c fstab.c ftok.c fts.c fts-compat.c ftw.c \
@@ -54,7 +54,7 @@ SYM_MAPS+=${.CURDIR}/gen/Symbol.map
 MAN+=	alarm.3 arc4random.3 \
 	basename.3 check_utility_compat.3 clock.3 \
 	confstr.3 ctermid.3 daemon.3 devname.3 directory.3 dirname.3 \
-	dladdr.3 dlinfo.3 dllockinit.3 dlopen.3 \
+	dl_iterate_phdr.3 dladdr.3 dlinfo.3 dllockinit.3 dlopen.3 \
 	err.3 exec.3 \
 	feature_present.3 fmtcheck.3 fmtmsg.3 fnmatch.3 fpclassify.3 frexp.3 \
 	ftok.3 fts.3 ftw.3 \

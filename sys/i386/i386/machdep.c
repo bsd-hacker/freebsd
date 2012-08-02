@@ -40,7 +40,9 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_apic.h"
 #include "opt_atalk.h"
+#include "opt_atpic.h"
 #include "opt_compat.h"
 #include "opt_cpu.h"
 #include "opt_ddb.h"
@@ -73,6 +75,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/linker.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
+#include <sys/memrange.h>
 #include <sys/msgbuf.h>
 #include <sys/mutex.h>
 #include <sys/pcpu.h>
@@ -135,6 +138,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/smp.h>
 #endif
 
+#ifdef DEV_APIC
+#include <machine/apicvar.h>
+#endif
+
 #ifdef DEV_ISA
 #include <x86/isa/icu.h>
 #endif
@@ -174,7 +181,6 @@ extern void dblfault_handler(void);
 extern void printcpuinfo(void);	/* XXX header file */
 extern void finishidentcpu(void);
 extern void panicifcpuunsupported(void);
-extern void initializecpu(void);
 
 #define	CS_SECURE(cs)		(ISPL(cs) == SEL_UPL)
 #define	EFL_SECURE(ef, oef)	((((ef) ^ (oef)) & ~PSL_USERCHANGE) == 0)
@@ -241,6 +247,8 @@ static struct trapframe proc0_tf;
 struct pcpu __pcpu[MAXCPU];
 
 struct mtx icu_lock;
+
+struct mem_range_softc mem_range_softc;
 
 static void
 cpu_startup(dummy)
@@ -330,6 +338,11 @@ cpu_startup(dummy)
 #ifndef XEN
 	cpu_setregs();
 #endif
+
+	/*
+	 * Add BSP as an interrupt target.
+	 */
+	intr_add_cpu(0);
 }
 
 /*
@@ -459,7 +472,13 @@ osendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	}
 
 	regs->tf_esp = (int)fp;
-	regs->tf_eip = PS_STRINGS - szosigcode;
+	if (p->p_sysent->sv_sigcode_base != 0) {
+		regs->tf_eip = p->p_sysent->sv_sigcode_base + szsigcode -
+		    szosigcode;
+	} else {
+		/* a.out sysentvec does not use shared page */
+		regs->tf_eip = p->p_sysent->sv_psstrings - szosigcode;
+	}
 	regs->tf_eflags &= ~(PSL_T | PSL_D);
 	regs->tf_cs = _ucodesel;
 	regs->tf_ds = _udatasel;
@@ -586,7 +605,8 @@ freebsd4_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	}
 
 	regs->tf_esp = (int)sfp;
-	regs->tf_eip = PS_STRINGS - szfreebsd4_sigcode;
+	regs->tf_eip = p->p_sysent->sv_sigcode_base + szsigcode -
+	    szfreebsd4_sigcode;
 	regs->tf_eflags &= ~(PSL_T | PSL_D);
 	regs->tf_cs = _ucodesel;
 	regs->tf_ds = _udatasel;
@@ -737,7 +757,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	}
 
 	regs->tf_esp = (int)sfp;
-	regs->tf_eip = PS_STRINGS - *(p->p_sysent->sv_szsigcode);
+	regs->tf_eip = p->p_sysent->sv_sigcode_base;
 	regs->tf_eflags &= ~(PSL_T | PSL_D);
 	regs->tf_cs = _ucodesel;
 	regs->tf_ds = _udatasel;
@@ -1586,7 +1606,7 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
                 pcb->pcb_dr3 = 0;
                 pcb->pcb_dr6 = 0;
                 pcb->pcb_dr7 = 0;
-                if (pcb == PCPU_GET(curpcb)) {
+                if (pcb == curpcb) {
 		        /*
 			 * Clear the debug registers on the running
 			 * CPU, otherwise they will end up affecting
@@ -2165,7 +2185,7 @@ getmemsize(int first)
 	pt_entry_t *pte;
 	quad_t dcons_addr, dcons_size;
 #ifndef XEN
-	int hasbrokenint12, i;
+	int hasbrokenint12, i, res;
 	u_int extmem;
 	struct vm86frame vmf;
 	struct vm86context vmc;
@@ -2250,7 +2270,8 @@ getmemsize(int first)
 	pmap_kenter(KERNBASE + (1 << PAGE_SHIFT), 1 << PAGE_SHIFT);
 	vmc.npages = 0;
 	smap = (void *)vm86_addpage(&vmc, 1, KERNBASE + (1 << PAGE_SHIFT));
-	vm86_getptr(&vmc, (vm_offset_t)smap, &vmf.vmf_es, &vmf.vmf_di);
+	res = vm86_getptr(&vmc, (vm_offset_t)smap, &vmf.vmf_es, &vmf.vmf_di);
+	KASSERT(res != 0, ("vm86_getptr() failed: address not found"));
 
 	vmf.vmf_ebx = 0;
 	do {
@@ -2712,8 +2733,22 @@ init386(first)
 		printf("WARNING: loader(8) metadata is missing!\n");
 
 #ifdef DEV_ISA
+#ifdef DEV_ATPIC
 	elcr_probe();
 	atpic_startup();
+#else
+	/* Reset and mask the atpics and leave them shut down. */
+	atpic_reset();
+
+	/*
+	 * Point the ICU spurious interrupt vectors at the APIC spurious
+	 * interrupt handler.
+	 */
+	setidt(IDT_IO_INTS + 7, IDTVEC(spuriousint), SDT_SYS386IGT, SEL_KPL,
+	    GSEL(GCODE_SEL, SEL_KPL));
+	setidt(IDT_IO_INTS + 15, IDTVEC(spuriousint), SDT_SYS386IGT, SEL_KPL,
+	    GSEL(GCODE_SEL, SEL_KPL));
+#endif
 #endif
 
 #ifdef DDB
@@ -2971,8 +3006,22 @@ init386(first)
 		printf("WARNING: loader(8) metadata is missing!\n");
 
 #ifdef DEV_ISA
+#ifdef DEV_ATPIC
 	elcr_probe();
 	atpic_startup();
+#else
+	/* Reset and mask the atpics and leave them shut down. */
+	atpic_reset();
+
+	/*
+	 * Point the ICU spurious interrupt vectors at the APIC spurious
+	 * interrupt handler.
+	 */
+	setidt(IDT_IO_INTS + 7, IDTVEC(spuriousint), SDT_SYS386IGT, SEL_KPL,
+	    GSEL(GCODE_SEL, SEL_KPL));
+	setidt(IDT_IO_INTS + 15, IDTVEC(spuriousint), SDT_SYS386IGT, SEL_KPL,
+	    GSEL(GCODE_SEL, SEL_KPL));
+#endif
 #endif
 
 #ifdef DDB
