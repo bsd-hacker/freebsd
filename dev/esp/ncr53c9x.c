@@ -2038,6 +2038,10 @@ gotit:
 			}
 			break;
 
+        case MSG_IGN_WIDE_RESIDUE:
+            NCR_MSGS(("ignore_wide_residue "));
+            break;
+
 		default:
 			NCR_MSGS(("ident "));
 			xpt_print_path(ecb->ccb->ccb_h.path);
