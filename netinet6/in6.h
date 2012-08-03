@@ -235,37 +235,37 @@ extern const struct in6_addr in6addr_linklocal_allv2routers;
  * Unspecified
  */
 #define IN6_IS_ADDR_UNSPECIFIED(a)	\
-	((*(const u_int32_t *)(const void *)(&(a)->s6_addr[0]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[4]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[8]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[12]) == 0))
+	((a)->__u6_addr.__u6_addr32[0] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[1] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[2] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[3] == 0)
 
 /*
  * Loopback
  */
 #define IN6_IS_ADDR_LOOPBACK(a)		\
-	((*(const u_int32_t *)(const void *)(&(a)->s6_addr[0]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[4]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[8]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[12]) == ntohl(1)))
+	((a)->__u6_addr.__u6_addr32[0] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[1] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[2] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[3] == ntohl(1))
 
 /*
  * IPv4 compatible
  */
 #define IN6_IS_ADDR_V4COMPAT(a)		\
-	((*(const u_int32_t *)(const void *)(&(a)->s6_addr[0]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[4]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[8]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[12]) != 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[12]) != ntohl(1)))
+	((a)->__u6_addr.__u6_addr32[0] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[1] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[2] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[3] != 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[3] != ntohl(1))
 
 /*
  * Mapped
  */
 #define IN6_IS_ADDR_V4MAPPED(a)		      \
-	((*(const u_int32_t *)(const void *)(&(a)->s6_addr[0]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[4]) == 0) &&	\
-	 (*(const u_int32_t *)(const void *)(&(a)->s6_addr[8]) == ntohl(0x0000ffff)))
+	((a)->__u6_addr.__u6_addr32[0] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[1] == 0 &&	\
+	 (a)->__u6_addr.__u6_addr32[2] == ntohl(0x0000ffff))
 
 /*
  * KAME Scope Values
@@ -632,7 +632,9 @@ struct ip6_mtuinfo {
 
 #ifdef _KERNEL
 struct cmsghdr;
+struct ip6_hdr;
 
+int	in6_cksum_pseudo(struct ip6_hdr *, uint32_t, uint8_t, uint16_t);
 int	in6_cksum __P((struct mbuf *, u_int8_t, u_int32_t, u_int32_t));
 int	in6_localaddr __P((struct in6_addr *));
 int	in6_localip(struct in6_addr *);

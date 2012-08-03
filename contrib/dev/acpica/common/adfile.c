@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2011, Intel Corp.
+ * Copyright (C) 2000 - 2012, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -298,20 +298,24 @@ FlSplitInputPathname (
         return (AE_NO_MEMORY);
     }
 
-    Substring = strrchr (DirectoryPath, '\\');
+    /* Convert backslashes to slashes in the entire path */
+
+    UtConvertBackslashes (DirectoryPath);
+
+    /* Backup to last slash or colon */
+
+    Substring = strrchr (DirectoryPath, '/');
     if (!Substring)
     {
-        Substring = strrchr (DirectoryPath, '/');
-        if (!Substring)
-        {
-            Substring = strrchr (DirectoryPath, ':');
-        }
+        Substring = strrchr (DirectoryPath, ':');
     }
+
+    /* Extract the simple filename */
 
     if (!Substring)
     {
+        Filename = FlStrdup (DirectoryPath);
         DirectoryPath[0] = 0;
-        Filename = FlStrdup (InputPath);
     }
     else
     {
@@ -326,7 +330,6 @@ FlSplitInputPathname (
 
     *OutDirectoryPath = DirectoryPath;
     *OutFilename = Filename;
-
     return (AE_OK);
 }
 

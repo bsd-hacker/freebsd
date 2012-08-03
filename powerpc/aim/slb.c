@@ -139,7 +139,7 @@ make_new_leaf(uint64_t esid, uint64_t slbv, struct slbtnode *parent)
 	 * that a lockless searcher always sees a valid path through
 	 * the tree.
 	 */
-	powerpc_sync();
+	mb();
 
 	idx = esid2idx(esid, parent->ua_level);
 	parent->u.ua_child[idx] = child;
@@ -187,7 +187,7 @@ make_intermediate(uint64_t esid, struct slbtnode *parent)
 	idx = esid2idx(child->ua_base, inter->ua_level);
 	inter->u.ua_child[idx] = child;
 	setbit(&inter->ua_alloc, idx);
-	powerpc_sync();
+	mb();
 
 	/* Set up parent to point to intermediate node ... */
 	idx = esid2idx(inter->ua_base, parent->ua_level);
@@ -409,15 +409,11 @@ slb_alloc_tree(void)
 
 /* Lock entries mapping kernel text and stacks */
 
-#define SLB_SPILLABLE(slbe) \
-	(((slbe & SLBE_ESID_MASK) < VM_MIN_KERNEL_ADDRESS && \
-	    (slbe & SLBE_ESID_MASK) > 16*SEGMENT_LENGTH) || \
-	    (slbe & SLBE_ESID_MASK) > VM_MAX_KERNEL_ADDRESS)
 void
 slb_insert_kernel(uint64_t slbe, uint64_t slbv)
 {
 	struct slb *slbcache;
-	int i, j;
+	int i;
 
 	/* We don't want to be preempted while modifying the kernel map */
 	critical_enter();
@@ -437,15 +433,9 @@ slb_insert_kernel(uint64_t slbe, uint64_t slbv)
 			slbcache[USER_SLB_SLOT].slbe = 1;
 	}
 
-	for (i = mftb() % n_slbs, j = 0; j < n_slbs; j++, i = (i+1) % n_slbs) {
-		if (i == USER_SLB_SLOT)
-			continue;
-
-		if (SLB_SPILLABLE(slbcache[i].slbe))
-			break;
-	}
-
-	KASSERT(j < n_slbs, ("All kernel SLB slots locked!"));
+	i = mftb() % n_slbs;
+	if (i == USER_SLB_SLOT)
+			i = (i+1) % n_slbs;
 
 fillkernslb:
 	KASSERT(i != USER_SLB_SLOT,

@@ -1279,8 +1279,9 @@ mpt_execute_req_a64(void *arg, bus_dma_segment_t *dm_segs, int nseg, int error)
 	char *mpt_off;
 	union ccb *ccb;
 	struct mpt_softc *mpt;
-	int seg, first_lim;
-	uint32_t flags, nxt_off;
+	bus_addr_t chain_list_addr;
+	int first_lim, seg, this_seg_lim;
+	uint32_t addr, cur_off, flags, nxt_off, tf;
 	void *sglp = NULL;
 	MSG_REQUEST_HEADER *hdrp;
 	SGE_SIMPLE64 *se;
@@ -1356,7 +1357,7 @@ bad:
 			MPT_TGT_STATE(mpt, cmd_req)->req = NULL;
 		}
 		ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
-		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d\n", __LINE__));
+		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d", __LINE__));
 		xpt_done(ccb);
 		CAMLOCK_2_MPTLOCK(mpt);
 		mpt_free_request(mpt, req);
@@ -1434,16 +1435,20 @@ bad:
 
 	se = (SGE_SIMPLE64 *) sglp;
 	for (seg = 0; seg < first_lim; seg++, se++, dm_segs++) {
-		uint32_t tf;
-
+		tf = flags;
 		memset(se, 0, sizeof (*se));
+		MPI_pSGE_SET_LENGTH(se, dm_segs->ds_len);
 		se->Address.Low = htole32(dm_segs->ds_addr & 0xffffffff);
 		if (sizeof(bus_addr_t) > 4) {
-			se->Address.High =
-			    htole32(((uint64_t)dm_segs->ds_addr) >> 32);
+			addr = ((uint64_t)dm_segs->ds_addr) >> 32;
+			/* SAS1078 36GB limitation WAR */
+			if (mpt->is_1078 && (((uint64_t)dm_segs->ds_addr +
+			    MPI_SGE_LENGTH(se->FlagsLength)) >> 32) == 9) {
+				addr |= (1 << 31);
+				tf |= MPI_SGE_FLAGS_LOCAL_ADDRESS;
+			}
+			se->Address.High = htole32(addr);
 		}
-		MPI_pSGE_SET_LENGTH(se, dm_segs->ds_len);
-		tf = flags;
 		if (seg == first_lim - 1) {
 			tf |= MPI_SGE_FLAGS_LAST_ELEMENT;
 		}
@@ -1468,15 +1473,11 @@ bad:
 
 	/*
 	 * Make up the rest of the data segments out of a chain element
-	 * (contiained in the current request frame) which points to
+	 * (contained in the current request frame) which points to
 	 * SIMPLE64 elements in the next request frame, possibly ending
 	 * with *another* chain element (if there's more).
 	 */
 	while (seg < nseg) {
-		int this_seg_lim;
-		uint32_t tf, cur_off;
-		bus_addr_t chain_list_addr;
-
 		/*
 		 * Point to the chain descriptor. Note that the chain
 		 * descriptor is at the end of the *previous* list (whether
@@ -1504,7 +1505,7 @@ bad:
 		nxt_off += MPT_RQSL(mpt);
 
 		/*
-		 * Now initialized the chain descriptor.
+		 * Now initialize the chain descriptor.
 		 */
 		memset(ce, 0, sizeof (*ce));
 
@@ -1554,16 +1555,24 @@ bad:
 		 * set the end of list and end of buffer flags.
 		 */
 		while (seg < this_seg_lim) {
+			tf = flags;
 			memset(se, 0, sizeof (*se));
+			MPI_pSGE_SET_LENGTH(se, dm_segs->ds_len);
 			se->Address.Low = htole32(dm_segs->ds_addr &
 			    0xffffffff);
 			if (sizeof (bus_addr_t) > 4) {
-				se->Address.High =
-				    htole32(((uint64_t)dm_segs->ds_addr) >> 32);
+				addr = ((uint64_t)dm_segs->ds_addr) >> 32;
+				/* SAS1078 36GB limitation WAR */
+				if (mpt->is_1078 &&
+				    (((uint64_t)dm_segs->ds_addr +
+				    MPI_SGE_LENGTH(se->FlagsLength)) >>
+				    32) == 9) {
+					addr |= (1 << 31);
+					tf |= MPI_SGE_FLAGS_LOCAL_ADDRESS;
+				}
+				se->Address.High = htole32(addr);
 			}
-			MPI_pSGE_SET_LENGTH(se, dm_segs->ds_len);
-			tf = flags;
-			if (seg ==  this_seg_lim - 1) {
+			if (seg == this_seg_lim - 1) {
 				tf |=	MPI_SGE_FLAGS_LAST_ELEMENT;
 			}
 			if (seg == nseg - 1) {
@@ -1634,7 +1643,7 @@ out:
 			bus_dmamap_unload(mpt->buffer_dmat, req->dmap);
 		}
 		ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
-		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d\n", __LINE__));
+		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d", __LINE__));
 		xpt_done(ccb);
 		CAMLOCK_2_MPTLOCK(mpt);
 		mpt_free_request(mpt, req);
@@ -1759,7 +1768,7 @@ bad:
 			MPT_TGT_STATE(mpt, cmd_req)->req = NULL;
 		}
 		ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
-		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d\n", __LINE__));
+		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d", __LINE__));
 		xpt_done(ccb);
 		CAMLOCK_2_MPTLOCK(mpt);
 		mpt_free_request(mpt, req);
@@ -1868,7 +1877,7 @@ bad:
 
 	/*
 	 * Make up the rest of the data segments out of a chain element
-	 * (contiained in the current request frame) which points to
+	 * (contained in the current request frame) which points to
 	 * SIMPLE32 elements in the next request frame, possibly ending
 	 * with *another* chain element (if there's more).
 	 */
@@ -1904,7 +1913,7 @@ bad:
 		nxt_off += MPT_RQSL(mpt);
 
 		/*
-		 * Now initialized the chain descriptor.
+		 * Now initialize the chain descriptor.
 		 */
 		memset(ce, 0, sizeof (*ce));
 
@@ -1958,7 +1967,7 @@ bad:
 
 			MPI_pSGE_SET_LENGTH(se, dm_segs->ds_len);
 			tf = flags;
-			if (seg ==  this_seg_lim - 1) {
+			if (seg == this_seg_lim - 1) {
 				tf |=	MPI_SGE_FLAGS_LAST_ELEMENT;
 			}
 			if (seg == nseg - 1) {
@@ -2029,7 +2038,7 @@ out:
 			bus_dmamap_unload(mpt->buffer_dmat, req->dmap);
 		}
 		ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
-		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d\n", __LINE__));
+		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d", __LINE__));
 		xpt_done(ccb);
 		CAMLOCK_2_MPTLOCK(mpt);
 		mpt_free_request(mpt, req);
@@ -2737,7 +2746,7 @@ mpt_scsi_reply_handler(struct mpt_softc *mpt, request_t *req,
 		mpt_prt(mpt, "mpt_scsi_reply_handler: %p:%u complete\n",
 		    req, req->serno);
 	}
-	KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d\n", __LINE__));
+	KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d", __LINE__));
 	MPTLOCK_2_CAMLOCK(mpt);
 	xpt_done(ccb);
 	CAMLOCK_2_MPTLOCK(mpt);
@@ -3178,7 +3187,7 @@ mpt_scsi_reply_frame_handler(struct mpt_softc *mpt, request_t *req,
 		else
 			ccb->csio.sense_resid = 0;
 
-		bzero(&ccb->csio.sense_data, sizeof(&ccb->csio.sense_data));
+		bzero(&ccb->csio.sense_data, sizeof(ccb->csio.sense_data));
 		bcopy(req->sense_vbuf, &ccb->csio.sense_data,
 		    min(ccb->csio.sense_len, sense_returned));
 	}
@@ -3402,7 +3411,7 @@ mpt_action(struct cam_sim *sim, union ccb *ccb)
 		CAMLOCK_2_MPTLOCK(mpt);
 		switch (accb->ccb_h.func_code) {
 		case XPT_ACCEPT_TARGET_IO:
-		case XPT_IMMED_NOTIFY:
+		case XPT_IMMEDIATE_NOTIFY:
 			ccb->ccb_h.status = mpt_abort_target_ccb(mpt, ccb);
 			break;
 		case XPT_CONT_TARGET_IO:
@@ -3652,7 +3661,7 @@ mpt_action(struct cam_sim *sim, union ccb *ccb)
 			break;
 		}
 		mpt_calc_geometry(ccg, /*extended*/1);
-		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d\n", __LINE__));
+		KASSERT(ccb->ccb_h.status, ("zero ccb sts at %d", __LINE__));
 		break;
 	}
 	case XPT_PATH_INQ:		/* Path routing inquiry */
@@ -3776,8 +3785,8 @@ mpt_action(struct cam_sim *sim, union ccb *ccb)
 		}
 		break;
 	}
-	case XPT_NOTIFY_ACK:		/* recycle notify ack */
-	case XPT_IMMED_NOTIFY:		/* Add Immediate Notify Resource */
+	case XPT_NOTIFY_ACKNOWLEDGE:	/* recycle notify ack */
+	case XPT_IMMEDIATE_NOTIFY:	/* Add Immediate Notify Resource */
 	case XPT_ACCEPT_TARGET_IO:	/* Add Accept Target IO Resource */
 	{
 		tgt_resource_t *trtp;
@@ -3804,7 +3813,7 @@ mpt_action(struct cam_sim *sim, union ccb *ccb)
 			    "Put FREE ATIO %p lun %d\n", ccb, lun);
 			STAILQ_INSERT_TAIL(&trtp->atios, &ccb->ccb_h,
 			    sim_links.stqe);
-		} else if (ccb->ccb_h.func_code == XPT_IMMED_NOTIFY) {
+		} else if (ccb->ccb_h.func_code == XPT_IMMEDIATE_NOTIFY) {
 			mpt_lprt(mpt, MPT_PRT_DEBUG1,
 			    "Put FREE INOT lun %d\n", lun);
 			STAILQ_INSERT_TAIL(&trtp->inots, &ccb->ccb_h,
@@ -4551,7 +4560,7 @@ mpt_target_start_io(struct mpt_softc *mpt, union ccb *ccb)
 		request_t *req;
 
 		KASSERT((ccb->ccb_h.flags & CAM_DIR_MASK) != CAM_DIR_NONE,
-		    ("dxfer_len %u but direction is NONE\n", csio->dxfer_len));
+		    ("dxfer_len %u but direction is NONE", csio->dxfer_len));
 
 		if ((req = mpt_get_request(mpt, FALSE)) == NULL) {
 			if (mpt->outofbeer == 0) {
@@ -4813,7 +4822,7 @@ mpt_abort_target_ccb(struct mpt_softc *mpt, union ccb *ccb)
 
 	if (accb->ccb_h.func_code == XPT_ACCEPT_TARGET_IO) {
 		lp = &trtp->atios;
-	} else if (accb->ccb_h.func_code == XPT_IMMED_NOTIFY) {
+	} else if (accb->ccb_h.func_code == XPT_IMMEDIATE_NOTIFY) {
 		lp = &trtp->inots;
 	} else {
 		return (CAM_REQ_INVALID);
@@ -5034,11 +5043,11 @@ static void
 mpt_scsi_tgt_tsk_mgmt(struct mpt_softc *mpt, request_t *req, mpt_task_mgmt_t fc,
     tgt_resource_t *trtp, int init_id)
 {
-	struct ccb_immed_notify *inot;
+	struct ccb_immediate_notify *inot;
 	mpt_tgt_state_t *tgt;
 
 	tgt = MPT_TGT_STATE(mpt, req);
-	inot = (struct ccb_immed_notify *) STAILQ_FIRST(&trtp->inots);
+	inot = (struct ccb_immediate_notify *) STAILQ_FIRST(&trtp->inots);
 	if (inot == NULL) {
 		mpt_lprt(mpt, MPT_PRT_WARN, "no INOTSs- sending back BSY\n");
 		mpt_scsi_tgt_status(mpt, NULL, req, SCSI_STATUS_BUSY, NULL);
@@ -5048,35 +5057,35 @@ mpt_scsi_tgt_tsk_mgmt(struct mpt_softc *mpt, request_t *req, mpt_task_mgmt_t fc,
 	mpt_lprt(mpt, MPT_PRT_DEBUG1,
 	    "Get FREE INOT %p lun %d\n", inot, inot->ccb_h.target_lun);
 
-	memset(&inot->sense_data, 0, sizeof (inot->sense_data));
-	inot->sense_len = 0;
-	memset(inot->message_args, 0, sizeof (inot->message_args));
 	inot->initiator_id = init_id;	/* XXX */
-
 	/*
 	 * This is a somewhat grotesque attempt to map from task management
 	 * to old style SCSI messages. God help us all.
 	 */
 	switch (fc) {
 	case MPT_ABORT_TASK_SET:
-		inot->message_args[0] = MSG_ABORT_TAG;
+		inot->arg = MSG_ABORT_TAG;
 		break;
 	case MPT_CLEAR_TASK_SET:
-		inot->message_args[0] = MSG_CLEAR_TASK_SET;
+		inot->arg = MSG_CLEAR_TASK_SET;
 		break;
 	case MPT_TARGET_RESET:
-		inot->message_args[0] = MSG_TARGET_RESET;
+		inot->arg = MSG_TARGET_RESET;
 		break;
 	case MPT_CLEAR_ACA:
-		inot->message_args[0] = MSG_CLEAR_ACA;
+		inot->arg = MSG_CLEAR_ACA;
 		break;
 	case MPT_TERMINATE_TASK:
-		inot->message_args[0] = MSG_ABORT_TAG;
+		inot->arg = MSG_ABORT_TAG;
 		break;
 	default:
-		inot->message_args[0] = MSG_NOOP;
+		inot->arg = MSG_NOOP;
 		break;
 	}
+	/*
+	 * XXX KDM we need the sequence/tag number for the target of the
+	 * task management operation, especially if it is an abort.
+	 */
 	tgt->ccb = (union ccb *) inot;
 	inot->ccb_h.status = CAM_MESSAGE_RECV|CAM_DEV_QFRZN;
 	MPTLOCK_2_CAMLOCK(mpt);
@@ -5455,7 +5464,7 @@ mpt_scsi_tgt_reply_handler(struct mpt_softc *mpt, request_t *req,
 				mpt_set_ccb_status(ccb, CAM_REQ_CMP);
 				ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
 				KASSERT(ccb->ccb_h.status,
-				    ("zero ccb sts at %d\n", __LINE__));
+				    ("zero ccb sts at %d", __LINE__));
 				tgt->state = TGT_STATE_IN_CAM;
 				if (mpt->outofbeer) {
 					ccb->ccb_h.status |= CAM_RELEASE_SIMQ;
@@ -5517,7 +5526,7 @@ mpt_scsi_tgt_reply_handler(struct mpt_softc *mpt, request_t *req,
 				mpt_set_ccb_status(ccb, CAM_REQ_CMP);
 				ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
 				KASSERT(ccb->ccb_h.status,
-				    ("ZERO ccb sts at %d\n", __LINE__));
+				    ("ZERO ccb sts at %d", __LINE__));
 				tgt->ccb = NULL;
 			} else {
 				mpt_lprt(mpt, MPT_PRT_DEBUG,
@@ -5589,7 +5598,7 @@ mpt_scsi_tgt_reply_handler(struct mpt_softc *mpt, request_t *req,
 		}
 		tgt = MPT_TGT_STATE(mpt, req);
 		KASSERT(tgt->state == TGT_STATE_LOADING,
-		    ("bad state 0x%x on reply to buffer post\n", tgt->state));
+		    ("bad state 0x%x on reply to buffer post", tgt->state));
 		mpt_assign_serno(mpt, req);
 		tgt->state = TGT_STATE_LOADED;
 		break;

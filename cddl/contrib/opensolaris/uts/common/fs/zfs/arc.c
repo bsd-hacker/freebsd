@@ -464,10 +464,10 @@ static uint64_t		arc_loaned_bytes;
 static uint64_t		arc_meta_used;
 static uint64_t		arc_meta_limit;
 static uint64_t		arc_meta_max = 0;
-SYSCTL_UQUAD(_vfs_zfs, OID_AUTO, arc_meta_used, CTLFLAG_RDTUN,
-    &arc_meta_used, 0, "ARC metadata used");
-SYSCTL_UQUAD(_vfs_zfs, OID_AUTO, arc_meta_limit, CTLFLAG_RDTUN,
-    &arc_meta_limit, 0, "ARC metadata limit");
+SYSCTL_UQUAD(_vfs_zfs, OID_AUTO, arc_meta_used, CTLFLAG_RD, &arc_meta_used, 0,
+    "ARC metadata used");
+SYSCTL_UQUAD(_vfs_zfs, OID_AUTO, arc_meta_limit, CTLFLAG_RW, &arc_meta_limit, 0,
+    "ARC metadata limit");
 
 typedef struct l2arc_buf_hdr l2arc_buf_hdr_t;
 
@@ -2794,9 +2794,11 @@ arc_read_done(zio_t *zio)
 	callback_list = hdr->b_acb;
 	ASSERT(callback_list != NULL);
 	if (BP_SHOULD_BYTESWAP(zio->io_bp) && zio->io_error == 0) {
+		dmu_object_byteswap_t bswap =
+		    DMU_OT_BYTESWAP(BP_GET_TYPE(zio->io_bp));
 		arc_byteswap_func_t *func = BP_GET_LEVEL(zio->io_bp) > 0 ?
 		    byteswap_uint64_array :
-		    dmu_ot[BP_GET_TYPE(zio->io_bp)].ot_byteswap;
+		    dmu_ot_byteswap[bswap].ob_func;
 		func(buf->b_data, hdr->b_size);
 	}
 

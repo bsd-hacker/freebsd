@@ -520,7 +520,7 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "udpinp", &lock_class_rw },
 	{ "in_multi_mtx", &lock_class_mtx_sleep },
 	{ "igmp_mtx", &lock_class_mtx_sleep },
-	{ "if_addr_mtx", &lock_class_mtx_sleep },
+	{ "if_addr_lock", &lock_class_rw },
 	{ NULL, NULL },
 	/*
 	 * IPv6 multicast:
@@ -529,7 +529,7 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "udpinp", &lock_class_rw },
 	{ "in6_multi_mtx", &lock_class_mtx_sleep },
 	{ "mld_mtx", &lock_class_mtx_sleep },
-	{ "if_addr_mtx", &lock_class_mtx_sleep },
+	{ "if_addr_lock", &lock_class_rw },
 	{ NULL, NULL },
 	/*
 	 * UNIX Domain Sockets
@@ -563,7 +563,7 @@ static struct witness_order_list_entry order_lists[] = {
 	 * BPF
 	 */
 	{ "bpf global lock", &lock_class_mtx_sleep },
-	{ "bpf interface lock", &lock_class_mtx_sleep },
+	{ "bpf interface lock", &lock_class_rw },
 	{ "bpf cdev lock", &lock_class_mtx_sleep },
 	{ NULL, NULL },
 	/*
@@ -593,19 +593,22 @@ static struct witness_order_list_entry order_lists[] = {
 	/*
 	 * CDEV
 	 */
-	{ "system map", &lock_class_mtx_sleep },
-	{ "vm page queue mutex", &lock_class_mtx_sleep },
+	{ "vm map (system)", &lock_class_mtx_sleep },
+	{ "vm page queue", &lock_class_mtx_sleep },
 	{ "vnode interlock", &lock_class_mtx_sleep },
 	{ "cdev", &lock_class_mtx_sleep },
 	{ NULL, NULL },
 	/*
 	 * VM
-	 * 
 	 */
+	{ "vm map (user)", &lock_class_sx },
 	{ "vm object", &lock_class_mtx_sleep },
-	{ "page lock", &lock_class_mtx_sleep },
-	{ "vm page queue mutex", &lock_class_mtx_sleep },
+	{ "vm page", &lock_class_mtx_sleep },
+	{ "vm page queue", &lock_class_mtx_sleep },
+	{ "pmap pv global", &lock_class_rw },
 	{ "pmap", &lock_class_mtx_sleep },
+	{ "pmap pv list", &lock_class_rw },
+	{ "vm page free queue", &lock_class_mtx_sleep },
 	{ NULL, NULL },
 	/*
 	 * kqueue/VFS interaction

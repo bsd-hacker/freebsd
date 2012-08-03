@@ -165,8 +165,7 @@ ipsec_process_done(struct mbuf *m, struct ipsecrequest *isr)
 	 */
 	if (isr->next) {
 		V_ipsec4stat.ips_out_bundlesa++;
-		sav = isr->next->sav;
-		saidx = &sav->sah->saidx;
+		/* XXX-BZ currently only support same AF bundles. */
 		switch (saidx->dst.sa.sa_family) {
 #ifdef INET
 		case AF_INET:
@@ -867,7 +866,7 @@ ipsec6_output_tunnel(struct ipsec_output_state *state, struct secpolicy *sp, int
 			dst6->sin6_family = AF_INET6;
 			dst6->sin6_len = sizeof(*dst6);
 			dst6->sin6_addr = ip6->ip6_dst;
-			rtalloc(state->ro);
+			rtalloc_ign_fib(state->ro, 0UL, M_GETFIB(m));
 		}
 		if (state->ro->ro_rt == NULL) {
 			V_ip6stat.ip6s_noroute++;

@@ -924,7 +924,6 @@ add_vif(struct vifctl *vifcp)
     vifp->v_pkt_out   = 0;
     vifp->v_bytes_in  = 0;
     vifp->v_bytes_out = 0;
-    bzero(&vifp->v_route, sizeof(vifp->v_route));
 
     /* Adjust numvifs up if the vifi is higher than numvifs */
     if (V_numvifs <= vifcp->vifc_vifi)
@@ -1702,7 +1701,7 @@ send_packet(struct vif *vifp, struct mbuf *m)
 	 * should get rejected because they appear to come from
 	 * the loopback interface, thus preventing looping.
 	 */
-	error = ip_output(m, NULL, &vifp->v_route, IP_FORWARDING, &imo, NULL);
+	error = ip_output(m, NULL, NULL, IP_FORWARDING, &imo, NULL);
 	CTR3(KTR_IPMF, "%s: vif %td err %d", __func__,
 	    (ptrdiff_t)(vifp - V_viftable), error);
 }
@@ -2822,7 +2821,7 @@ vnet_mroute_init(const void *unused __unused)
 	callout_init(&V_bw_meter_ch, CALLOUT_MPSAFE);
 }
 
-VNET_SYSINIT(vnet_mroute_init, SI_SUB_PSEUDO, SI_ORDER_MIDDLE, vnet_mroute_init,
+VNET_SYSINIT(vnet_mroute_init, SI_SUB_PSEUDO, SI_ORDER_ANY, vnet_mroute_init,
 	NULL);
 
 static void
@@ -2945,4 +2944,4 @@ static moduledata_t ip_mroutemod = {
     0
 };
 
-DECLARE_MODULE(ip_mroute, ip_mroutemod, SI_SUB_PSEUDO, SI_ORDER_ANY);
+DECLARE_MODULE(ip_mroute, ip_mroutemod, SI_SUB_PSEUDO, SI_ORDER_MIDDLE);

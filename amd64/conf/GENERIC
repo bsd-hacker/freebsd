@@ -22,11 +22,13 @@ cpu		HAMMER
 ident		GENERIC
 
 makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
+makeoptions	WITH_CTF=1		# Run ctfconvert(1) for DTrace support
 
 options 	SCHED_ULE		# ULE scheduler
 options 	PREEMPTION		# Enable kernel thread preemption
 options 	INET			# InterNETworking
 options 	INET6			# IPv6 communications protocols
+options 	TCP_OFFLOAD		# TCP offload
 options 	SCTP			# Stream Control Transmission Protocol
 options 	FFS			# Berkeley Fast Filesystem
 options 	SOFTUPDATES		# Enable FFS soft updates support
@@ -43,6 +45,7 @@ options 	CD9660			# ISO 9660 Filesystem
 options 	PROCFS			# Process filesystem (requires PSEUDOFS)
 options 	PSEUDOFS		# Pseudo-filesystem framework
 options 	GEOM_PART_GPT		# GUID Partition Tables.
+options 	GEOM_RAID		# Soft RAID functionality.
 options 	GEOM_LABEL		# Provides labelization
 options 	COMPAT_FREEBSD32	# Compatible with i386 binaries
 options 	COMPAT_FREEBSD4		# Compatible with FreeBSD4
@@ -63,8 +66,9 @@ options 	AUDIT			# Security event auditing
 options 	CAPABILITY_MODE		# Capsicum capability mode
 options 	CAPABILITIES		# Capsicum capabilities
 options 	MAC			# TrustedBSD MAC Framework
-#options 	KDTRACE_FRAME		# Ensure frames are compiled in
-#options 	KDTRACE_HOOKS		# Kernel DTrace hooks
+options 	KDTRACE_FRAME		# Ensure frames are compiled in
+options 	KDTRACE_HOOKS		# Kernel DTrace hooks
+options 	DDB_CTF			# Kernel ELF linker loads CTF data
 options 	INCLUDE_CONFIG_FILE     # Include this file in kernel
 
 # Debugging support.  Always need this:
@@ -123,6 +127,7 @@ device		adv		# Advansys SCSI adapters
 device		adw		# Advansys wide SCSI adapters
 device		aic		# Adaptec 15[012]x SCSI adapters, AIC-6[23]60.
 device		bt		# Buslogic/Mylex MultiMaster SCSI adapters
+device		isci		# Intel C600 SAS controller
 
 # ATA/SCSI peripherals
 device		scbus		# SCSI bus (required for ATA/SCSI)
@@ -131,7 +136,8 @@ device		da		# Direct Access (disks)
 device		sa		# Sequential Access (tape etc)
 device		cd		# CD
 device		pass		# Passthrough device (direct ATA/SCSI access)
-device		ses		# SCSI Environmental Services (and SAF-TE)
+device		ses		# Enclosure Services (SES and SAF-TE)
+device		ctl		# CAM Target Layer
 
 # RAID controllers interfaced to the SCSI subsystem
 device		amr		# AMI MegaRAID
@@ -146,6 +152,7 @@ device		iir		# Intel Integrated RAID
 device		ips		# IBM (Adaptec) ServeRAID
 device		mly		# Mylex AcceleRAID/eXtremeRAID
 device		twa		# 3ware 9000 series PATA/SATA RAID
+device		tws		# LSI 3ware 9750 SATA+SAS 6Gb/s RAID controller
 
 # RAID controllers
 device		aac		# Adaptec FSA RAID
@@ -156,7 +163,6 @@ device		mlx		# Mylex DAC960 family
 #XXX pointer/int warnings
 #device		pst		# Promise Supertrak SX6000
 device		twe		# 3ware ATA RAID
-device		tws		# LSI 3ware 9750 SATA+SAS 6Gb/s RAID controller
 
 # atkbdc0 controls both the keyboard and the PS/2 mouse
 device		atkbdc		# AT keyboard controller
@@ -166,6 +172,7 @@ device		psm		# PS/2 mouse
 device		kbdmux		# keyboard multiplexer
 
 device		vga		# VGA video card driver
+options 	VESA		# Add support for VESA BIOS Extensions (VBE)
 
 device		splash		# Splash screen and screen saver support
 
@@ -215,9 +222,12 @@ device		ale		# Atheros AR8121/AR8113/AR8114 Ethernet
 device		bce		# Broadcom BCM5706/BCM5708 Gigabit Ethernet
 device		bfe		# Broadcom BCM440x 10/100 Ethernet
 device		bge		# Broadcom BCM570xx Gigabit Ethernet
+device		cas		# Sun Cassini/Cassini+ and NS DP83065 Saturn
 device		dc		# DEC/Intel 21143 and various workalikes
 device		et		# Agere ET1310 10/100/Gigabit Ethernet
 device		fxp		# Intel EtherExpress PRO/100B (82557, 82558)
+device		gem		# Sun GEM/Sun ERI/Apple GMAC
+device		hme		# Sun HME (Happy Meal Ethernet)
 device		jme		# JMicron JMC250 Gigabit/JMC260 Fast Ethernet
 device		lge		# Level 1 LXT1001 gigabit Ethernet
 device		msk		# Marvell/SysKonnect Yukon II Gigabit Ethernet
@@ -264,6 +274,8 @@ device		ath		# Atheros NIC's
 device		ath_pci		# Atheros pci/cardbus glue
 device		ath_hal		# pci/cardbus chip support
 options 	AH_SUPPORT_AR5416	# enable AR5416 tx/rx descriptors
+options 	AH_AR5416_INTERRUPT_MITIGATION	# AR5416 interrupt mitigation
+options 	ATH_ENABLE_11N	# Enable 802.11n support for AR5416 and later
 device		ath_rate_sample	# SampleRate tx rate control for ath
 #device		bwi		# Broadcom BCM430x/BCM431x wireless NICs.
 #device		bwn		# Broadcom BCM43xx wireless NICs.
@@ -282,7 +294,6 @@ device		random		# Entropy device
 device		ether		# Ethernet support
 device		vlan		# 802.1Q VLAN support
 device		tun		# Packet tunnel.
-device		pty		# BSD-style compatibility pseudo ttys
 device		md		# Memory "disks"
 device		gif		# IPv6 and IPv4 tunneling
 device		faith		# IPv6-to-IPv4 relaying (translation)
@@ -300,39 +311,8 @@ device		ohci		# OHCI PCI->USB interface
 device		ehci		# EHCI PCI->USB interface (USB 2.0)
 device		xhci		# XHCI PCI->USB interface (USB 3.0)
 device		usb		# USB Bus (required)
-#device		udbp		# USB Double Bulk Pipe devices (needs netgraph)
-device		uhid		# "Human Interface Devices"
 device		ukbd		# Keyboard
-device		ulpt		# Printer
 device		umass		# Disks/Mass storage - Requires scbus and da
-device		ums		# Mouse
-device		urio		# Diamond Rio 500 MP3 player
-# USB Serial devices
-device		u3g		# USB-based 3G modems (Option, Huawei, Sierra)
-device		uark		# Technologies ARK3116 based serial adapters
-device		ubsa		# Belkin F5U103 and compatible serial adapters
-device		uftdi		# For FTDI usb serial adapters
-device		uipaq		# Some WinCE based devices
-device		uplcom		# Prolific PL-2303 serial adapters
-device		uslcom		# SI Labs CP2101/CP2102 serial adapters
-device		uvisor		# Visor and Palm devices
-device		uvscom		# USB serial support for DDI pocket's PHS
-# USB Ethernet, requires miibus
-device		aue		# ADMtek USB Ethernet
-device		axe		# ASIX Electronics USB Ethernet
-device		cdce		# Generic USB over Ethernet
-device		cue		# CATC USB Ethernet
-device		kue		# Kawasaki LSI USB Ethernet
-device		rue		# RealTek RTL8150 USB Ethernet
-device		udav		# Davicom DM9601E USB
-# USB Wireless
-device		rum		# Ralink Technology RT2501USB wireless NICs
-device		run		# Ralink Technology RT2700/RT2800/RT3000 NICs.
-device		uath		# Atheros AR5523 wireless NICs
-device		upgt		# Conexant/Intersil PrismGT wireless NICs.
-device		ural		# Ralink Technology RT2500USB wireless NICs
-device		urtw		# Realtek RTL8187B/L wireless NICs
-device		zyd		# ZyDAS zd1211/zd1211b wireless NICs
 
 # FireWire support
 device		firewire	# FireWire bus code
@@ -345,10 +325,12 @@ device		dcons_crom	# Configuration ROM for dcons
 
 # Sound support
 device		sound		# Generic sound driver (required)
+device		snd_cmi		# CMedia CMI8338/CMI8738
+device		snd_csa		# Crystal Semiconductor CS461x/428x
+device		snd_emu10kx	# Creative SoundBlaster Live! and Audigy
 device		snd_es137x	# Ensoniq AudioPCI ES137x
 device		snd_hda		# Intel High Definition Audio
 device		snd_ich		# Intel, NVidia and other ICH AC'97 Audio
-device		snd_uaudio	# USB Audio
 device		snd_via8233	# VIA VT8233x Audio
 
 # MMC/SD

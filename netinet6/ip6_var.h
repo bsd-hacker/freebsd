@@ -388,9 +388,9 @@ char *	ip6_get_prevhdr __P((struct mbuf *, int));
 int	ip6_nexthdr __P((struct mbuf *, int, int, int *));
 int	ip6_lasthdr __P((struct mbuf *, int, int, int *));
 
-struct ip6aux *ip6_addaux __P((struct mbuf *));
+#ifdef __notyet__
 struct ip6aux *ip6_findaux __P((struct mbuf *));
-void	ip6_delaux __P((struct mbuf *));
+#endif
 
 extern int	(*ip6_mforward)(struct ip6_hdr *, struct ifnet *,
     struct mbuf *);
@@ -445,6 +445,9 @@ int	in6_selectsrc(struct sockaddr_in6 *, struct ip6_pktopts *,
 int in6_selectroute __P((struct sockaddr_in6 *, struct ip6_pktopts *,
 	struct ip6_moptions *, struct route_in6 *, struct ifnet **,
 	struct rtentry **));
+int	in6_selectroute_fib(struct sockaddr_in6 *, struct ip6_pktopts *,
+	    struct ip6_moptions *, struct route_in6 *, struct ifnet **,
+	    struct rtentry **, u_int);
 u_int32_t ip6_randomid __P((void));
 u_int32_t ip6_randomflowlabel __P((void));
 #endif /* _KERNEL */

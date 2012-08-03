@@ -457,7 +457,7 @@ vm_reserv_alloc_contig(vm_object_t object, vm_pindex_t pindex, u_long npages,
 		m += VM_LEVEL_0_NPAGES;
 		first += VM_LEVEL_0_NPAGES;
 		allocpages -= VM_LEVEL_0_NPAGES;
-	} while (allocpages > VM_LEVEL_0_NPAGES);
+	} while (allocpages > 0);
 	return (m_ret);
 
 	/*
@@ -652,11 +652,13 @@ vm_reserv_free_page(vm_page_t m)
 
 	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
 	rv = vm_reserv_from_page(m);
-	if (rv->object != NULL) {
-		vm_reserv_depopulate(rv);
-		return (TRUE);
-	}
-	return (FALSE);
+	if (rv->object == NULL)
+		return (FALSE);
+	if ((m->flags & PG_CACHED) != 0 && m->pool != VM_FREEPOOL_CACHE)
+		vm_phys_set_pool(VM_FREEPOOL_CACHE, rv->pages,
+		    VM_LEVEL_0_ORDER);
+	vm_reserv_depopulate(rv);
+	return (TRUE);
 }
 
 /*

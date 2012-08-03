@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2011, Intel Corp.
+ * Copyright (C) 2000 - 2012, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -108,9 +108,9 @@
 #endif
 
 #ifdef ACPI_HELP_APP
-#define ACPI_DEBUG_OUTPUT
 #define ACPI_APPLICATION
 #define ACPI_SINGLE_THREADED
+#define ACPI_NO_ERROR_MESSAGES
 #endif
 
 /* Linkable ACPICA library */

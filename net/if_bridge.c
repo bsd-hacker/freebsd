@@ -144,10 +144,10 @@ __FBSDID("$FreeBSD$");
 #define	BRIDGE_RTHASH_MASK		(BRIDGE_RTHASH_SIZE - 1)
 
 /*
- * Maximum number of addresses to cache.
+ * Default maximum number of addresses to cache.
  */
 #ifndef BRIDGE_RTABLE_MAX
-#define	BRIDGE_RTABLE_MAX		100
+#define	BRIDGE_RTABLE_MAX		2000
 #endif
 
 /*
@@ -333,6 +333,10 @@ static int	bridge_ip6_checkbasic(struct mbuf **mp);
 #endif /* INET6 */
 static int	bridge_fragment(struct ifnet *, struct mbuf *,
 		    struct ether_header *, int, struct llc *);
+static void	bridge_linkstate(struct ifnet *ifp);
+static void	bridge_linkcheck(struct bridge_softc *sc);
+
+extern void (*bridge_linkstate_p)(struct ifnet *ifp);
 
 /* The default bridge vlan is 1 (IEEE 802.1Q-2003 Table 9-2) */
 #define	VLANTAGOF(_m)	\
@@ -355,19 +359,26 @@ static int pfil_local_phys = 0; /* run pfil hooks on the physical interface for
                                    locally destined packets */
 static int log_stp   = 0;   /* log STP state changes */
 static int bridge_inherit_mac = 0;   /* share MAC with first bridge member */
+TUNABLE_INT("net.link.bridge.pfil_onlyip", &pfil_onlyip);
 SYSCTL_INT(_net_link_bridge, OID_AUTO, pfil_onlyip, CTLFLAG_RW,
     &pfil_onlyip, 0, "Only pass IP packets when pfil is enabled");
+TUNABLE_INT("net.link.bridge.ipfw_arp", &pfil_ipfw_arp);
 SYSCTL_INT(_net_link_bridge, OID_AUTO, ipfw_arp, CTLFLAG_RW,
     &pfil_ipfw_arp, 0, "Filter ARP packets through IPFW layer2");
+TUNABLE_INT("net.link.bridge.pfil_bridge", &pfil_bridge);
 SYSCTL_INT(_net_link_bridge, OID_AUTO, pfil_bridge, CTLFLAG_RW,
     &pfil_bridge, 0, "Packet filter on the bridge interface");
+TUNABLE_INT("net.link.bridge.pfil_member", &pfil_member);
 SYSCTL_INT(_net_link_bridge, OID_AUTO, pfil_member, CTLFLAG_RW,
     &pfil_member, 0, "Packet filter on the member interface");
+TUNABLE_INT("net.link.bridge.pfil_local_phys", &pfil_local_phys);
 SYSCTL_INT(_net_link_bridge, OID_AUTO, pfil_local_phys, CTLFLAG_RW,
     &pfil_local_phys, 0,
     "Packet filter on the physical interface for locally destined packets");
+TUNABLE_INT("net.link.bridge.log_stp", &log_stp);
 SYSCTL_INT(_net_link_bridge, OID_AUTO, log_stp, CTLFLAG_RW,
     &log_stp, 0, "Log STP state changes");
+TUNABLE_INT("net.link.bridge.inherit_mac", &bridge_inherit_mac);
 SYSCTL_INT(_net_link_bridge, OID_AUTO, inherit_mac, CTLFLAG_RW,
     &bridge_inherit_mac, 0,
     "Inherit MAC address from the first bridge member");
@@ -489,6 +500,7 @@ bridge_modevent(module_t mod, int type, void *data)
 		bridge_input_p = bridge_input;
 		bridge_output_p = bridge_output;
 		bridge_dn_p = bridge_dummynet;
+		bridge_linkstate_p = bridge_linkstate;
 		bridge_detach_cookie = EVENTHANDLER_REGISTER(
 		    ifnet_departure_event, bridge_ifdetach, NULL,
 		    EVENTHANDLER_PRI_ANY);
@@ -501,6 +513,7 @@ bridge_modevent(module_t mod, int type, void *data)
 		bridge_input_p = NULL;
 		bridge_output_p = NULL;
 		bridge_dn_p = NULL;
+		bridge_linkstate_p = NULL;
 		mtx_destroy(&bridge_list_mtx);
 		break;
 	default:
@@ -952,6 +965,7 @@ bridge_delete_member(struct bridge_softc *sc, struct bridge_iflist *bif,
 		EVENTHANDLER_INVOKE(iflladdr_event, sc->sc_ifp);
 	}
 
+	bridge_linkcheck(sc);
 	bridge_mutecaps(sc);	/* recalcuate now this interface is removed */
 	bridge_rtdelete(sc, ifs, IFBF_FLUSHALL);
 	KASSERT(bif->bif_addrcnt == 0,
@@ -1079,17 +1093,16 @@ bridge_ioctl_add(struct bridge_softc *sc, void *arg)
 
 	/* Set interface capabilities to the intersection set of all members */
 	bridge_mutecaps(sc);
+	bridge_linkcheck(sc);
 
+	/* Place the interface into promiscuous mode */
 	switch (ifs->if_type) {
-	case IFT_ETHER:
-	case IFT_L2VLAN:
-		/*
-		 * Place the interface into promiscuous mode.
-		 */
-		BRIDGE_UNLOCK(sc);
-		error = ifpromisc(ifs, 1);
-		BRIDGE_LOCK(sc);
-		break;
+		case IFT_ETHER:
+		case IFT_L2VLAN:
+			BRIDGE_UNLOCK(sc);
+			error = ifpromisc(ifs, 1);
+			BRIDGE_LOCK(sc);
+			break;
 	}
 	if (error)
 		bridge_delete_member(sc, bif, 0);
@@ -1798,8 +1811,10 @@ bridge_enqueue(struct bridge_softc *sc, struct ifnet *dst_ifp, struct mbuf *m)
 			m->m_flags &= ~M_VLANTAG;
 		}
 
-		if (err == 0)
-			dst_ifp->if_transmit(dst_ifp, m);
+		if ((err = dst_ifp->if_transmit(dst_ifp, m))) {
+			m_freem(m0);
+			break;
+		}
 	}
 
 	if (err == 0) {
@@ -2208,11 +2223,9 @@ bridge_input(struct ifnet *ifp, struct mbuf *m)
 		/* Tap off 802.1D packets; they do not get forwarded. */
 		if (memcmp(eh->ether_dhost, bstp_etheraddr,
 		    ETHER_ADDR_LEN) == 0) {
-			m = bstp_input(&bif->bif_stp, ifp, m);
-			if (m == NULL) {
-				BRIDGE_UNLOCK(sc);
-				return (NULL);
-			}
+			bstp_input(&bif->bif_stp, ifp, m); /* consumes mbuf */
+			BRIDGE_UNLOCK(sc);
+			return (NULL);
 		}
 
 		if ((bif->bif_flags & IFBIF_STP) &&
@@ -3469,4 +3482,47 @@ out:
 	if (m != NULL)
 		m_freem(m);
 	return (error);
+}
+
+static void
+bridge_linkstate(struct ifnet *ifp)
+{
+	struct bridge_softc *sc = ifp->if_bridge;
+	struct bridge_iflist *bif;
+
+	BRIDGE_LOCK(sc);
+	bif = bridge_lookup_member_if(sc, ifp);
+	if (bif == NULL) {
+		BRIDGE_UNLOCK(sc);
+		return;
+	}
+	bridge_linkcheck(sc);
+	BRIDGE_UNLOCK(sc);
+
+	bstp_linkstate(&bif->bif_stp);
+}
+
+static void
+bridge_linkcheck(struct bridge_softc *sc)
+{
+	struct bridge_iflist *bif;
+	int new_link, hasls;
+
+	BRIDGE_LOCK_ASSERT(sc);
+	new_link = LINK_STATE_DOWN;
+	hasls = 0;
+	/* Our link is considered up if at least one of our ports is active */
+	LIST_FOREACH(bif, &sc->sc_iflist, bif_next) {
+		if (bif->bif_ifp->if_capabilities & IFCAP_LINKSTATE)
+			hasls++;
+		if (bif->bif_ifp->if_link_state == LINK_STATE_UP) {
+			new_link = LINK_STATE_UP;
+			break;
+		}
+	}
+	if (!LIST_EMPTY(&sc->sc_iflist) && !hasls) {
+		/* If no interfaces support link-state then we default to up */
+		new_link = LINK_STATE_UP;
+	}
+	if_link_state_change(sc->sc_ifp, new_link);
 }

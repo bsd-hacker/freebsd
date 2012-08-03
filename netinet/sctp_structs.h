@@ -1,7 +1,7 @@
 /*-
  * Copyright (c) 2001-2008, by Cisco Systems, Inc. All rights reserved.
- * Copyright (c) 2008-2011, by Randall Stewart. All rights reserved.
- * Copyright (c) 2008-2011, by Michael Tuexen. All rights reserved.
+ * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
+ * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,13 +30,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $KAME: sctp_structs.h,v 1.13 2005/03/06 16:04:18 itojun Exp $	 */
-
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#ifndef __sctp_structs_h__
-#define __sctp_structs_h__
+#ifndef _NETINET_SCTP_STRUCTS_H_
+#define _NETINET_SCTP_STRUCTS_H_
 
 #include <netinet/sctp_os.h>
 #include <netinet/sctp_header.h>
@@ -416,7 +414,7 @@ TAILQ_HEAD(sctpchunk_listhead, sctp_tmit_chunk);
 #define CHUNK_FLAGS_PR_SCTP_BUF	        SCTP_PR_SCTP_BUF
 #define CHUNK_FLAGS_PR_SCTP_RTX         SCTP_PR_SCTP_RTX
 
-/* The upper byte is used a a bit mask */
+/* The upper byte is used as a bit mask */
 #define CHUNK_FLAGS_FRAGMENT_OK	        0x0100
 
 struct chk_id {
@@ -1095,6 +1093,7 @@ struct sctp_association {
 	uint16_t streamincnt;
 	uint16_t streamoutcnt;
 	uint16_t strm_realoutsize;
+	uint16_t strm_pending_add_size;
 	/* my maximum number of retrans of INIT and SEND */
 	/* copied from SCTP but should be individually setable */
 	uint16_t max_init_times;
@@ -1156,6 +1155,9 @@ struct sctp_association {
 	/* Flag to tell if ECN is allowed */
 	uint8_t ecn_allowed;
 
+	/* Did the peer make the stream config (add out) request */
+	uint8_t peer_req_out;
+
 	/* flag to indicate if peer can do asconf */
 	uint8_t peer_supports_asconf;
 	/* EY - flag to indicate if peer can do nr_sack */
@@ -1166,6 +1168,7 @@ struct sctp_association {
 	uint8_t peer_supports_auth;
 	/* stream resets are supported by the peer */
 	uint8_t peer_supports_strreset;
+	uint8_t local_strreset_support;
 
 	uint8_t peer_supports_nat;
 	/*

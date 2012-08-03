@@ -1,6 +1,6 @@
 /******************************************************************************
 
-  Copyright (c) 2001-2011, Intel Corporation 
+  Copyright (c) 2001-2012, Intel Corporation 
   All rights reserved.
   
   Redistribution and use in source and binary forms, with or without 
@@ -85,7 +85,7 @@
 /*********************************************************************
  *  Legacy Em Driver version:
  *********************************************************************/
-char lem_driver_version[] = "1.0.4";
+char lem_driver_version[] = "1.0.5";
 
 /*********************************************************************
  *  PCI Device ID Table
@@ -239,15 +239,12 @@ static void     lem_enable_wakeup(device_t);
 static int	lem_enable_phy_wakeup(struct adapter *);
 static void	lem_led_func(void *, int);
 
-#ifdef EM_LEGACY_IRQ
 static void	lem_intr(void *);
-#else /* FAST IRQ */
 static int	lem_irq_fast(void *);
 static void	lem_handle_rxtx(void *context, int pending);
 static void	lem_handle_link(void *context, int pending);
 static void	lem_add_rx_process_limit(struct adapter *, const char *,
 		    const char *, int *, int);
-#endif /* ~EM_LEGACY_IRQ */
 
 #ifdef DEVICE_POLLING
 static poll_handler_t lem_poll;
@@ -304,11 +301,13 @@ TUNABLE_INT("hw.em.txd", &lem_txd);
 TUNABLE_INT("hw.em.smart_pwr_down", &lem_smart_pwr_down);
 TUNABLE_INT("hw.em.sbp", &lem_debug_sbp);
 
-#ifndef EM_LEGACY_IRQ
+/* Interrupt style - default to fast */
+static int lem_use_legacy_irq = 0;
+TUNABLE_INT("hw.em.use_legacy_irq", &lem_use_legacy_irq);
+
 /* How many packets rxeof tries to clean at a time */
 static int lem_rx_process_limit = 100;
 TUNABLE_INT("hw.em.rx_process_limit", &lem_rx_process_limit);
-#endif
 
 /* Flow control setting - default to FULL */
 static int lem_fc_setting = e1000_fc_full;
@@ -450,12 +449,10 @@ lem_attach(device_t dev)
 		    lem_tx_abs_int_delay_dflt);
 	}
 
-#ifndef EM_LEGACY_IRQ
 	/* Sysctls for limiting the amount of work done in the taskqueue */
 	lem_add_rx_process_limit(adapter, "rx_processing_limit",
 	    "max number of rx packets to process", &adapter->rx_process_limit,
 	    lem_rx_process_limit);
-#endif
 
         /* Sysctl for setting the interface flow control */
 	lem_set_flow_cntrl(adapter, "flow_control",
@@ -1197,22 +1194,6 @@ lem_init_locked(struct adapter *adapter)
 	callout_reset(&adapter->timer, hz, lem_local_timer, adapter);
 	e1000_clear_hw_cntrs_base_generic(&adapter->hw);
 
-	/* MSI/X configuration for 82574 */
-	if (adapter->hw.mac.type == e1000_82574) {
-		int tmp;
-		tmp = E1000_READ_REG(&adapter->hw, E1000_CTRL_EXT);
-		tmp |= E1000_CTRL_EXT_PBA_CLR;
-		E1000_WRITE_REG(&adapter->hw, E1000_CTRL_EXT, tmp);
-		/*
-		** Set the IVAR - interrupt vector routing.
-		** Each nibble represents a vector, high bit
-		** is enable, other 3 bits are the MSIX table
-		** entry, we map RXQ0 to 0, TXQ0 to 1, and
-		** Link (other) to 2, hence the magic number.
-		*/
-		E1000_WRITE_REG(&adapter->hw, E1000_IVAR, 0x800A0908);
-	}
-
 #ifdef DEVICE_POLLING
 	/*
 	 * Only enable interrupts if we are not polling, make sure
@@ -1281,7 +1262,6 @@ lem_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
 }
 #endif /* DEVICE_POLLING */
 
-#ifdef EM_LEGACY_IRQ 
 /*********************************************************************
  *
  *  Legacy Interrupt Service routine  
@@ -1295,7 +1275,8 @@ lem_intr(void *arg)
 	u32		reg_icr;
 
 
-	if (ifp->if_capenable & IFCAP_POLLING)
+	if ((ifp->if_capenable & IFCAP_POLLING) ||
+	    ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0))
 		return;
 
 	EM_CORE_LOCK(adapter);
@@ -1303,11 +1284,10 @@ lem_intr(void *arg)
 	if (reg_icr & E1000_ICR_RXO)
 		adapter->rx_overruns++;
 
-	if ((reg_icr == 0xffffffff) || (reg_icr == 0))
-			goto out;
-
-	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
-			goto out;
+	if ((reg_icr == 0xffffffff) || (reg_icr == 0)) {
+		EM_CORE_UNLOCK(adapter);
+		return;
+	}
 
 	if (reg_icr & (E1000_ICR_RXSEQ | E1000_ICR_LSC)) {
 		callout_stop(&adapter->timer);
@@ -1317,23 +1297,22 @@ lem_intr(void *arg)
 		lem_tx_purge(adapter);
 		callout_reset(&adapter->timer, hz,
 		    lem_local_timer, adapter);
-		goto out;
+		EM_CORE_UNLOCK(adapter);
+		return;
 	}
 
-	EM_TX_LOCK(adapter);
+	EM_CORE_UNLOCK(adapter);
 	lem_rxeof(adapter, -1, NULL);
+
+	EM_TX_LOCK(adapter);
 	lem_txeof(adapter);
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING &&
 	    !IFQ_DRV_IS_EMPTY(&ifp->if_snd))
 		lem_start_locked(ifp);
 	EM_TX_UNLOCK(adapter);
-
-out:
-	EM_CORE_UNLOCK(adapter);
 	return;
 }
 
-#else /* EM_FAST_IRQ, then fast interrupt routines only */
 
 static void
 lem_handle_link(void *context, int pending)
@@ -1417,7 +1396,6 @@ lem_irq_fast(void *arg)
 		adapter->rx_overruns++;
 	return FILTER_HANDLED;
 }
-#endif /* ~EM_LEGACY_IRQ */
 
 
 /*********************************************************************
@@ -2214,19 +2192,21 @@ lem_allocate_irq(struct adapter *adapter)
 		return (ENXIO);
 	}
 
-#ifdef EM_LEGACY_IRQ
-	/* We do Legacy setup */
-	if ((error = bus_setup_intr(dev, adapter->res[0],
-	    INTR_TYPE_NET | INTR_MPSAFE, NULL, lem_intr, adapter,
-	    &adapter->tag[0])) != 0) {
-		device_printf(dev, "Failed to register interrupt handler");
-		return (error);
+	/* Do Legacy setup? */
+	if (lem_use_legacy_irq) {
+		if ((error = bus_setup_intr(dev, adapter->res[0],
+	    	    INTR_TYPE_NET | INTR_MPSAFE, NULL, lem_intr, adapter,
+	    	    &adapter->tag[0])) != 0) {
+			device_printf(dev,
+			    "Failed to register interrupt handler");
+			return (error);
+		}
+		return (0);
 	}
 
-#else /* FAST_IRQ */
 	/*
-	 * Try allocating a fast interrupt and the associated deferred
-	 * processing contexts.
+	 * Use a Fast interrupt and the associated
+	 * deferred processing contexts.
 	 */
 	TASK_INIT(&adapter->rxtx_task, 0, lem_handle_rxtx, adapter);
 	TASK_INIT(&adapter->link_task, 0, lem_handle_link, adapter);
@@ -2243,7 +2223,6 @@ lem_allocate_irq(struct adapter *adapter)
 		adapter->tq = NULL;
 		return (error);
 	}
-#endif  /* EM_LEGACY_IRQ */
 	
 	return (0);
 }
@@ -2354,7 +2333,6 @@ lem_setup_interface(device_t dev, struct adapter *adapter)
 		return (-1);
 	}
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
-	ifp->if_mtu = ETHERMTU;
 	ifp->if_init =  lem_init;
 	ifp->if_softc = adapter;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
@@ -2669,18 +2647,15 @@ lem_setup_transmit_structures(struct adapter *adapter)
 		tx_buffer->m_head = NULL;
 #ifdef DEV_NETMAP
 		if (slot) {
-			/* slot si is mapped to the i-th NIC-ring entry */
-			int si = i + na->tx_rings[0].nkr_hwofs;
+			/* the i-th NIC entry goes to slot si */
+			int si = netmap_idx_n2k(&na->tx_rings[0], i);
+			uint64_t paddr;
 			void *addr;
 
-			if (si > na->num_tx_desc)
-				si -= na->num_tx_desc;
-			addr = NMB(slot + si);
-			adapter->tx_desc_base[si].buffer_addr =
-			    htole64(vtophys(addr));
+			addr = PNMB(slot + si, &paddr);
+			adapter->tx_desc_base[si].buffer_addr = htole64(paddr);
 			/* reload the map for netmap mode */
-			netmap_load_map(adapter->txtag,
-			    tx_buffer->map, addr, na->buff_size);
+			netmap_load_map(adapter->txtag, tx_buffer->map, addr);
 		}
 #endif /* DEV_NETMAP */
 		tx_buffer->next_eop = -1;
@@ -3246,18 +3221,15 @@ lem_setup_receive_structures(struct adapter *adapter)
 	for (i = 0; i < adapter->num_rx_desc; i++) {
 #ifdef DEV_NETMAP
 		if (slot) {
-			/* slot si is mapped to the i-th NIC-ring entry */
-			int si = i + na->rx_rings[0].nkr_hwofs;
+			/* the i-th NIC entry goes to slot si */
+			int si = netmap_idx_n2k(&na->rx_rings[0], i);
+			uint64_t paddr;
 			void *addr;
 
-			if (si > na->num_rx_desc)
-				si -= na->num_rx_desc;
-			addr = NMB(slot + si);
-			netmap_load_map(adapter->rxtag,
-			    rx_buffer->map, addr, na->buff_size);
+			addr = PNMB(slot + si, &paddr);
+			netmap_load_map(adapter->rxtag, rx_buffer->map, addr);
 			/* Update descriptor */
-			adapter->rx_desc_base[i].buffer_addr =
-			    htole64(vtophys(addr));
+			adapter->rx_desc_base[i].buffer_addr = htole64(paddr);
 			continue;
 		}
 #endif /* DEV_NETMAP */
@@ -3307,20 +3279,6 @@ lem_initialize_receive_unit(struct adapter *adapter)
 		 */
 		E1000_WRITE_REG(&adapter->hw, E1000_ITR, DEFAULT_ITR);
 	}
-
-	/*
-	** When using MSIX interrupts we need to throttle
-	** using the EITR register (82574 only)
-	*/
-	if (adapter->msix)
-		for (int i = 0; i < 4; i++)
-			E1000_WRITE_REG(&adapter->hw,
-			    E1000_EITR_82574(i), DEFAULT_ITR);
-
-	/* Disable accelerated ackknowledge */
-	if (adapter->hw.mac.type == e1000_82574)
-		E1000_WRITE_REG(&adapter->hw,
-		    E1000_RFCTL, E1000_RFCTL_ACK_DIS);
 
 	/* Setup the Base and Length of the Rx Descriptor Ring */
 	bus_addr = adapter->rxdma.dma_paddr;
@@ -3482,7 +3440,9 @@ lem_rxeof(struct adapter *adapter, int count, int *done)
 
 #ifdef DEV_NETMAP
 	if (ifp->if_capenable & IFCAP_NETMAP) {
-		selwakeuppri(&NA(ifp)->rx_rings[0].si, PI_NET);
+		struct netmap_adapter *na = NA(ifp);
+		na->rx_rings[0].nr_kflags |= NKR_PENDINTR;
+		selwakeuppri(&na->rx_rings[0].si, PI_NET);
 		EM_RX_UNLOCK(adapter);
 		return (0);
 	}
@@ -3591,8 +3551,7 @@ lem_rxeof(struct adapter *adapter, int count, int *done)
 #endif
 				if (status & E1000_RXD_STAT_VP) {
 					adapter->fmp->m_pkthdr.ether_vtag =
-					    (le16toh(current_desc->special) &
-					    E1000_RXD_SPC_VLAN_MASK);
+					    le16toh(current_desc->special);
 					adapter->fmp->m_flags |= M_VLANTAG;
 				}
 #ifndef __NO_STRICT_ALIGNMENT
@@ -3840,10 +3799,6 @@ lem_enable_intr(struct adapter *adapter)
 	struct e1000_hw *hw = &adapter->hw;
 	u32 ims_mask = IMS_ENABLE_MASK;
 
-	if (adapter->msix) {
-		E1000_WRITE_REG(hw, EM_EIAC, EM_MSIX_MASK);
-		ims_mask |= EM_MSIX_MASK;
-	} 
 	E1000_WRITE_REG(hw, E1000_IMS, ims_mask);
 }
 
@@ -3852,9 +3807,7 @@ lem_disable_intr(struct adapter *adapter)
 {
 	struct e1000_hw *hw = &adapter->hw;
 
-	if (adapter->msix)
-		E1000_WRITE_REG(hw, EM_EIAC, 0);
-	E1000_WRITE_REG(&adapter->hw, E1000_IMC, 0xffffffff);
+	E1000_WRITE_REG(hw, E1000_IMC, 0xffffffff);
 }
 
 /*
@@ -4688,7 +4641,6 @@ lem_set_flow_cntrl(struct adapter *adapter, const char *name,
 	    OID_AUTO, name, CTLTYPE_INT|CTLFLAG_RW, limit, value, description);
 }
 
-#ifndef EM_LEGACY_IRQ
 static void
 lem_add_rx_process_limit(struct adapter *adapter, const char *name,
 	const char *description, int *limit, int value)
@@ -4698,4 +4650,3 @@ lem_add_rx_process_limit(struct adapter *adapter, const char *name,
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(adapter->dev)),
 	    OID_AUTO, name, CTLTYPE_INT|CTLFLAG_RW, limit, value, description);
 }
-#endif

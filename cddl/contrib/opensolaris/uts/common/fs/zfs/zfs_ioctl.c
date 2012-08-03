@@ -18,13 +18,15 @@
  *
  * CDDL HEADER END
  */
+
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011 Pawel Jakub Dawidek <pawel@dawidek.net>.
+ * Copyright (c) 2011-2012 Pawel Jakub Dawidek <pawel@dawidek.net>.
  * All rights reserved.
  * Portions Copyright 2011 Martin Matuska <mm@FreeBSD.org>
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
- * Copyright (c) 2011 by Delphix. All rights reserved.
+ * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -57,6 +59,7 @@
 #include <sys/dsl_prop.h>
 #include <sys/dsl_deleg.h>
 #include <sys/dmu_objset.h>
+#include <sys/dmu_impl.h>
 #include <sys/sunddi.h>
 #include <sys/policy.h>
 #include <sys/zone.h>
@@ -80,6 +83,12 @@
 #include "zfs_ioctl_compat.h"
 
 CTASSERT(sizeof(zfs_cmd_t) < IOCPARM_MAX);
+
+static int snapshot_list_prefetch;
+SYSCTL_DECL(_vfs_zfs);
+TUNABLE_INT("vfs.zfs.snapshot_list_prefetch", &snapshot_list_prefetch);
+SYSCTL_INT(_vfs_zfs, OID_AUTO, snapshot_list_prefetch, CTLFLAG_RW,
+    &snapshot_list_prefetch, 0, "Prefetch data when listing snapshots");
 
 static struct cdev *zfsdev;
 
@@ -1149,6 +1158,8 @@ getzfsvfs(const char *dsname, zfsvfs_t **zfvp)
 /*
  * Find a zfsvfs_t for a mounted filesystem, or create our own, in which
  * case its z_vfs will be NULL, and it will be opened as the owner.
+ * If 'writer' is set, the z_teardown_lock will be held for RW_WRITER,
+ * which prevents all vnode ops from running.
  */
 static int
 zfsvfs_hold(const char *name, void *tag, zfsvfs_t **zfvp, boolean_t writer)
@@ -1212,7 +1223,7 @@ zfs_ioc_pool_create(zfs_cmd_t *zc)
 
 		(void) nvlist_lookup_uint64(props,
 		    zpool_prop_to_name(ZPOOL_PROP_VERSION), &version);
-		if (version < SPA_VERSION_INITIAL || version > SPA_VERSION) {
+		if (!SPA_VERSION_IS_SUPPORTED(version)) {
 			error = EINVAL;
 			goto pool_props_bad;
 		}
@@ -1336,6 +1347,15 @@ zfs_ioc_pool_configs(zfs_cmd_t *zc)
 	return (error);
 }
 
+/*
+ * inputs:
+ * zc_name		name of the pool
+ *
+ * outputs:
+ * zc_cookie		real errno
+ * zc_nvlist_dst	config nvlist
+ * zc_nvlist_dst_size	size of config nvlist
+ */
 static int
 zfs_ioc_pool_stats(zfs_cmd_t *zc)
 {
@@ -1437,7 +1457,8 @@ zfs_ioc_pool_upgrade(zfs_cmd_t *zc)
 	if ((error = spa_open(zc->zc_name, &spa, FTAG)) != 0)
 		return (error);
 
-	if (zc->zc_cookie < spa_version(spa) || zc->zc_cookie > SPA_VERSION) {
+	if (zc->zc_cookie < spa_version(spa) ||
+	    !SPA_VERSION_IS_SUPPORTED(zc->zc_cookie)) {
 		spa_close(spa, FTAG);
 		return (EINVAL);
 	}
@@ -2030,6 +2051,7 @@ top:
  * zc_name		name of filesystem
  * zc_cookie		zap cursor
  * zc_nvlist_dst_size	size of buffer for property nvlist
+ * zc_simple		when set, only name is requested
  *
  * outputs:
  * zc_name		name of next snapshot
@@ -2044,7 +2066,7 @@ zfs_ioc_snapshot_list_next(zfs_cmd_t *zc)
 	int error;
 
 top:
-	if (zc->zc_cookie == 0)
+	if (snapshot_list_prefetch && zc->zc_cookie == 0 && !zc->zc_simple)
 		(void) dmu_objset_find(zc->zc_name, dmu_objset_prefetch,
 		    NULL, DS_FIND_SNAPSHOTS);
 
@@ -2066,7 +2088,7 @@ top:
 	    zc->zc_name + strlen(zc->zc_name), &zc->zc_obj, &zc->zc_cookie,
 	    NULL);
 
-	if (error == 0) {
+	if (error == 0 && !zc->zc_simple) {
 		dsl_dataset_t *ds;
 		dsl_pool_t *dp = os->os_dsl_dataset->ds_dir->dd_pool;
 
@@ -3926,7 +3948,8 @@ zfs_ioc_send(zfs_cmd_t *zc)
 		}
 
 		off = fp->f_offset;
-		error = dmu_sendbackup(tosnap, fromsnap, zc->zc_obj, fp, &off);
+		error = dmu_send(tosnap, fromsnap, zc->zc_obj,
+		    zc->zc_cookie, fp, &off);
 
 		if (off >= 0 && off <= MAXOFFSET_T)
 			fp->f_offset = off;
@@ -3934,6 +3957,49 @@ zfs_ioc_send(zfs_cmd_t *zc)
 	}
 	if (dsfrom)
 		dsl_dataset_rele(dsfrom, FTAG);
+	dsl_dataset_rele(ds, FTAG);
+	return (error);
+}
+
+/*
+ * inputs:
+ * zc_name	name of snapshot on which to report progress
+ * zc_cookie	file descriptor of send stream
+ *
+ * outputs:
+ * zc_cookie	number of bytes written in send stream thus far
+ */
+static int
+zfs_ioc_send_progress(zfs_cmd_t *zc)
+{
+	dsl_dataset_t *ds;
+	dmu_sendarg_t *dsp = NULL;
+	int error;
+
+	if ((error = dsl_dataset_hold(zc->zc_name, FTAG, &ds)) != 0)
+		return (error);
+
+	mutex_enter(&ds->ds_sendstream_lock);
+
+	/*
+	 * Iterate over all the send streams currently active on this dataset.
+	 * If there's one which matches the specified file descriptor _and_ the
+	 * stream was started by the current process, return the progress of
+	 * that stream.
+	 */
+	for (dsp = list_head(&ds->ds_sendstreams); dsp != NULL;
+	    dsp = list_next(&ds->ds_sendstreams, dsp)) {
+		if (dsp->dsa_outfd == zc->zc_cookie &&
+		    dsp->dsa_proc == curproc)
+			break;
+	}
+
+	if (dsp != NULL)
+		zc->zc_cookie = *(dsp->dsa_off);
+	else
+		error = ENOENT;
+
+	mutex_exit(&ds->ds_sendstream_lock);
 	dsl_dataset_rele(ds, FTAG);
 	return (error);
 }
@@ -4072,6 +4138,22 @@ zfs_ioc_clear(zfs_cmd_t *zc)
 	return (error);
 }
 
+static int
+zfs_ioc_pool_reopen(zfs_cmd_t *zc)
+{
+	spa_t *spa;
+	int error;
+
+	error = spa_open(zc->zc_name, &spa, FTAG);
+	if (error)
+		return (error);
+
+	spa_vdev_state_enter(spa, SCL_NONE);
+	vdev_reopen(spa->spa_root_vdev);
+	(void) spa_vdev_state_exit(spa, NULL, 0);
+	spa_close(spa, FTAG);
+	return (0);
+}
 /*
  * inputs:
  * zc_name	name of filesystem
@@ -4939,7 +5021,11 @@ static zfs_ioc_vec_t zfs_ioc_vec[] = {
 	{ zfs_ioc_space_written, zfs_secpolicy_read, DATASET_NAME, B_FALSE,
 	    B_TRUE },
 	{ zfs_ioc_space_snaps, zfs_secpolicy_read, DATASET_NAME, B_FALSE,
-	    B_TRUE }
+	    B_TRUE },
+	{ zfs_ioc_send_progress, zfs_secpolicy_read, DATASET_NAME, B_FALSE,
+	    B_FALSE },
+	{ zfs_ioc_pool_reopen, zfs_secpolicy_config, POOL_NAME, B_TRUE,
+	    B_TRUE },
 };
 
 int
@@ -5379,7 +5465,7 @@ zfs_modevent(module_t mod, int type, void *unused __unused)
 		tsd_create(&zfs_fsyncer_key, NULL);
 		tsd_create(&rrw_tsd_key, NULL);
 
-		printf("ZFS storage pool version " SPA_VERSION_STRING "\n");
+		printf("ZFS storage pool version: features support (" SPA_VERSION_STRING ")\n");
 		root_mount_rel(zfs_root_token);
 
 		zfsdev_init();
@@ -5416,3 +5502,4 @@ static moduledata_t zfs_mod = {
 DECLARE_MODULE(zfsctrl, zfs_mod, SI_SUB_VFS, SI_ORDER_ANY);
 MODULE_DEPEND(zfsctrl, opensolaris, 1, 1, 1);
 MODULE_DEPEND(zfsctrl, krpc, 1, 1, 1);
+MODULE_DEPEND(zfsctrl, acl_nfs4, 1, 1, 1);

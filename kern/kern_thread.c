@@ -27,6 +27,7 @@
  */
 
 #include "opt_witness.h"
+#include "opt_kdtrace.h"
 #include "opt_hwpmc_hooks.h"
 
 #include <sys/cdefs.h>
@@ -38,7 +39,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
+#include <sys/rangelock.h>
 #include <sys/resourcevar.h>
+#include <sys/sdt.h>
 #include <sys/smp.h>
 #include <sys/sched.h>
 #include <sys/sleepqueue.h>
@@ -58,6 +61,10 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_extern.h>
 #include <vm/uma.h>
 #include <sys/eventhandler.h>
+
+SDT_PROVIDER_DECLARE(proc);
+SDT_PROBE_DEFINE(proc, , , lwp_exit, lwp-exit);
+
 
 /*
  * thread related storage.
@@ -199,6 +206,7 @@ thread_init(void *mem, int size, int flags)
 
 	td->td_sleepqueue = sleepq_alloc();
 	td->td_turnstile = turnstile_alloc();
+	td->td_rlqe = NULL;
 	EVENTHANDLER_INVOKE(thread_init, td);
 	td->td_sched = (struct td_sched *)&td[1];
 	umtx_thread_init(td);
@@ -216,6 +224,7 @@ thread_fini(void *mem, int size)
 
 	td = (struct thread *)mem;
 	EVENTHANDLER_INVOKE(thread_fini, td);
+	rlqentry_free(td->td_rlqe);
 	turnstile_free(td->td_turnstile);
 	sleepq_free(td->td_sleepqueue);
 	umtx_thread_fini(td);
@@ -381,7 +390,7 @@ thread_free(struct thread *td)
 void
 thread_exit(void)
 {
-	uint64_t new_switchtime;
+	uint64_t runtime, new_switchtime;
 	struct thread *td;
 	struct thread *td2;
 	struct proc *p;
@@ -410,15 +419,6 @@ thread_exit(void)
 	 */
 	cpu_thread_exit(td);	/* XXXSMP */
 
-	/* Do the same timestamp bookkeeping that mi_switch() would do. */
-	new_switchtime = cpu_ticks();
-	p->p_rux.rux_runtime += (new_switchtime - PCPU_GET(switchtime));
-	PCPU_SET(switchtime, new_switchtime);
-	PCPU_SET(switchticks, ticks);
-	PCPU_INC(cnt.v_swtch);
-	/* Save our resource usage in our process. */
-	td->td_ru.ru_nvcsw++;
-	rucollect(&p->p_ru, &td->td_ru);
 	/*
 	 * The last thread is left attached to the process
 	 * So that the whole bundle gets recycled. Skip
@@ -467,7 +467,21 @@ thread_exit(void)
 		PMC_SWITCH_CONTEXT(td, PMC_FN_CSW_OUT);
 #endif
 	PROC_UNLOCK(p);
+
+	/* Do the same timestamp bookkeeping that mi_switch() would do. */
+	new_switchtime = cpu_ticks();
+	runtime = new_switchtime - PCPU_GET(switchtime);
+	td->td_runtime += runtime;
+	td->td_incruntime += runtime;
+	PCPU_SET(switchtime, new_switchtime);
+	PCPU_SET(switchticks, ticks);
+	PCPU_INC(cnt.v_swtch);
+
+	/* Save our resource usage in our process. */
+	td->td_ru.ru_nvcsw++;
 	ruxagg(p, td);
+	rucollect(&p->p_ru, &td->td_ru);
+
 	thread_lock(td);
 	PROC_SUNLOCK(p);
 	td->td_state = TDS_INACTIVE;

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2011, Intel Corp.
+ * Copyright (C) 2000 - 2012, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -112,8 +112,7 @@ AcpiDbDisplayTemplate (
 
 void
 AcpiDbUnloadAcpiTable (
-    char                    *TableArg,
-    char                    *InstanceArg);
+    char                    *Name);
 
 void
 AcpiDbSendNotify (
@@ -137,18 +136,20 @@ void
 AcpiDbDisplayResources (
     char                    *ObjectArg);
 
+ACPI_HW_DEPENDENT_RETURN_VOID (
 void
 AcpiDbDisplayGpes (
-    void);
+    void))
 
 void
 AcpiDbDisplayHandlers (
     void);
 
+ACPI_HW_DEPENDENT_RETURN_VOID (
 void
 AcpiDbGenerateGpe (
     char                    *GpeArg,
-    char                    *BlockArg);
+    char                    *BlockArg))
 
 
 /*
@@ -403,7 +404,7 @@ AcpiDbLocalNsLookup (
     char                    *Name);
 
 void
-AcpiDbUInt32ToHexString (
+AcpiDbUint32ToHexString (
     UINT32                  Value,
     char                    *Buffer);
 

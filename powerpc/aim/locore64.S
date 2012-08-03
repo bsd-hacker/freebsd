@@ -115,7 +115,7 @@ kernel_text:
  * segment!
  */
 	.text
-ASENTRY(__start)
+ASENTRY_NOPROF(__start)
 	li	8,0
 	li	9,0x100
 	mtctr	9
@@ -164,12 +164,13 @@ ASENTRY(__start)
 	bl	OF_initial_setup
 	nop
 
-	lis	4,end@ha
-	addi	4,4,end@l
-	mr	5,4
-
 	lis	3,kernbase@ha
 	addi	3,3,kernbase@l
+
+	lis	4,end@ha
+	addi	4,4,end@l
+	add	4,4,3
+	mr	5,4
 
 	/* Restore the argument pointer and length */
 	mr	6,20
@@ -202,7 +203,7 @@ tocbase:
  * or the (currently used) C code optimized, so it doesn't use any non-volatile
  * registers.
  */
-ASENTRY(setfault)
+ASENTRY_NOPROF(setfault)
 	mflr	0
 	mfcr	12
 	mfsprg	4,0

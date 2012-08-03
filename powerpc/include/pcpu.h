@@ -55,7 +55,9 @@ struct pmap;
 
 #define PCPU_MD_AIM64_FIELDS						\
 	struct slb	pc_slb[64];					\
-	struct slb	**pc_userslb;
+	struct slb	**pc_userslb;					\
+	register_t	pc_slbsave[18];					\
+	uint8_t		pc_slbstack[1024];
 
 #ifdef __powerpc64__
 #define PCPU_MD_AIM_FIELDS	PCPU_MD_AIM64_FIELDS
@@ -113,7 +115,7 @@ struct pmap;
 	PCPU_MD_COMMON_FIELDS	\
 	PCPU_MD_AIM_FIELDS
 #endif
-#ifdef E500
+#if defined(BOOKE)
 #define	PCPU_MD_FIELDS		\
 	PCPU_MD_COMMON_FIELDS	\
 	PCPU_MD_BOOKE_FIELDS

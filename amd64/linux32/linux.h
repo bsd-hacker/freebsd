@@ -1,7 +1,7 @@
 /*-
  * Copyright (c) 2004 Tim J. Robbins
  * Copyright (c) 2001 Doug Rabson
- * Copyright (c) 1994-1996 Søren Schmidt
+ * Copyright (c) 1994-1996 SÃ¸ren Schmidt
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,7 @@ extern u_char linux_debug_map[];
 #define	ldebug(name)	isclr(linux_debug_map, LINUX_SYS_linux_ ## name)
 #define	ARGS(nm, fmt)	"linux(%ld): "#nm"("fmt")\n", (long)td->td_proc->p_pid
 #define	LMSG(fmt)	"linux(%ld): "fmt"\n", (long)td->td_proc->p_pid
+#define	LINUX_DTRACE	linuxulator32
 
 #ifdef MALLOC_DECLARE
 MALLOC_DECLARE(M_LINUX);

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2011, Intel Corp.
+ * Copyright (C) 2000 - 2012, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -226,7 +226,7 @@ DtCreateAllTemplates (
     }
 
     /*
-     * Create the "special ACPI tables:
+     * Create the special ACPI tables:
      * 1) DSDT/SSDT are AML tables, not data tables
      * 2) FACS and RSDP have non-standard headers
      */

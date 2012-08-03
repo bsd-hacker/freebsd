@@ -611,7 +611,7 @@ passin:
 	 * into the stack for SIMPLEX interfaces handled by ether_output().
 	 */
 	if (ifp != NULL && ifp->if_flags & IFF_BROADCAST) {
-		IF_ADDR_LOCK(ifp);
+		IF_ADDR_RLOCK(ifp);
 	        TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
@@ -619,18 +619,18 @@ passin:
 			if (satosin(&ia->ia_broadaddr)->sin_addr.s_addr ==
 			    ip->ip_dst.s_addr) {
 				ifa_ref(ifa);
-				IF_ADDR_UNLOCK(ifp);
+				IF_ADDR_RUNLOCK(ifp);
 				goto ours;
 			}
 #ifdef BOOTP_COMPAT
 			if (IA_SIN(ia)->sin_addr.s_addr == INADDR_ANY) {
 				ifa_ref(ifa);
-				IF_ADDR_UNLOCK(ifp);
+				IF_ADDR_RUNLOCK(ifp);
 				goto ours;
 			}
 #endif
 		}
-		IF_ADDR_UNLOCK(ifp);
+		IF_ADDR_RUNLOCK(ifp);
 		ia = NULL;
 	}
 	/* RFC 3927 2.7: Do not forward datagrams for 169.254.0.0/16. */
@@ -1495,8 +1495,7 @@ ip_forward(struct mbuf *m, int srcrt)
 
 	if (error == EMSGSIZE && ro.ro_rt)
 		mtu = ro.ro_rt->rt_rmx.rmx_mtu;
-	if (ro.ro_rt)
-		RTFREE(ro.ro_rt);
+	RO_RTFREE(&ro);
 
 	if (error)
 		IPSTAT_INC(ips_cantforward);
@@ -1681,6 +1680,12 @@ makedummy:
 		}
 		*mp = sbcreatecontrol((caddr_t) sdl2, sdl2->sdl_len,
 			IP_RECVIF, IPPROTO_IP);
+		if (*mp)
+			mp = &(*mp)->m_next;
+	}
+	if (inp->inp_flags & INP_RECVTOS) {
+		*mp = sbcreatecontrol((caddr_t) &ip->ip_tos,
+		    sizeof(u_char), IP_RECVTOS, IPPROTO_IP);
 		if (*mp)
 			mp = &(*mp)->m_next;
 	}

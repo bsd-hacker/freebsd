@@ -66,9 +66,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/sysproto.h>
 #include <sys/vnode.h>
-#ifdef SW_WATCHDOG
 #include <sys/watchdog.h>
-#endif
 
 #include <ddb/ddb.h>
 
@@ -123,7 +121,7 @@ SYSCTL_INT(_kern, OID_AUTO, sync_on_panic, CTLFLAG_RW | CTLFLAG_TUN,
 	&sync_on_panic, 0, "Do a sync before rebooting from a panic");
 TUNABLE_INT("kern.sync_on_panic", &sync_on_panic);
 
-static int stop_scheduler_on_panic = 0;
+static int stop_scheduler_on_panic = 1;
 SYSCTL_INT(_kern, OID_AUTO, stop_scheduler_on_panic, CTLFLAG_RW | CTLFLAG_TUN,
     &stop_scheduler_on_panic, 0, "stop scheduler upon entering panic");
 TUNABLE_INT("kern.stop_scheduler_on_panic", &stop_scheduler_on_panic);
@@ -145,14 +143,13 @@ SYSCTL_INT(_kern_shutdown, OID_AUTO, show_busybufs, CTLFLAG_RW,
  */
 const char *panicstr;
 
-int stop_scheduler;			/* system stopped CPUs for panic */
 int dumping;				/* system is dumping */
 int rebooting;				/* system is rebooting */
 static struct dumperinfo dumper;	/* our selected dumper */
 
 /* Context information for dump-debuggers. */
 static struct pcb dumppcb;		/* Registers. */
-static lwpid_t dumptid;			/* Thread ID. */
+lwpid_t dumptid;			/* Thread ID. */
 
 static void poweroff_wait(void *, int);
 static void shutdown_halt(void *junk, int howto);
@@ -335,9 +332,7 @@ kern_reboot(int howto)
 
 		waittime = 0;
 
-#ifdef SW_WATCHDOG
 		wdog_kern_pat(WD_LASTVAL);
-#endif
 		sys_sync(curthread, NULL);
 
 		/*
@@ -363,9 +358,8 @@ kern_reboot(int howto)
 			if (nbusy < pbusy)
 				iter = 0;
 			pbusy = nbusy;
-#ifdef SW_WATCHDOG
+
 			wdog_kern_pat(WD_LASTVAL);
-#endif
 			sys_sync(curthread, NULL);
 
 #ifdef PREEMPTION
@@ -597,7 +591,7 @@ panic(const char *fmt, ...)
 		 * stop_scheduler_on_panic is true, then stop_scheduler will
 		 * always be set.  Even if panic has been entered from kdb.
 		 */
-		stop_scheduler = 1;
+		td->td_stopsched = 1;
 	}
 #endif
 

@@ -135,6 +135,7 @@ ar5416StopTxDma(struct ath_hal *ah, u_int q)
 #define set11nRateFlags(_series, _index) \
         ((_series)[_index].RateFlags & HAL_RATESERIES_2040 ? AR_2040_##_index : 0) \
         |((_series)[_index].RateFlags & HAL_RATESERIES_HALFGI ? AR_GI##_index : 0) \
+        |((_series)[_index].RateFlags & HAL_RATESERIES_STBC ? AR_STBC##_index : 0) \
         |SM((_series)[_index].ChSel, AR_ChainSel##_index)
 
 /*
@@ -338,13 +339,15 @@ ar5416ChainTxDesc(struct ath_hal *ah, struct ath_desc *ds,
 	uint8_t delims,
 	u_int segLen,
 	HAL_BOOL firstSeg,
-	HAL_BOOL lastSeg)
+	HAL_BOOL lastSeg,
+	HAL_BOOL lastAggr)
 {
 	struct ar5416_desc *ads = AR5416DESC(ds);
 	uint32_t *ds_txstatus = AR5416_DS_TXSTATUS(ah,ads);
 	struct ath_hal_5416 *ahp = AH5416(ah);
 
 	int isaggr = 0;
+	uint32_t last_aggr = 0;
 	
 	(void) hdrLen;
 	(void) ah;
@@ -355,6 +358,8 @@ ar5416ChainTxDesc(struct ath_hal *ah, struct ath_desc *ds,
 	if (type == HAL_PKT_TYPE_AMPDU) {
 		type = HAL_PKT_TYPE_NORMAL;
 		isaggr = 1;
+		if (lastAggr == AH_FALSE)
+			last_aggr = AR_MoreAggr;
 	}
 
 	/*
@@ -372,8 +377,19 @@ ar5416ChainTxDesc(struct ath_hal *ah, struct ath_desc *ds,
 	 * Note: VEOL should only be for the last descriptor in the chain.
 	 */
 	ads->ds_ctl0 = (pktLen & AR_FrameLen);
+
+	/*
+	 * For aggregates:
+	 * + IsAggr must be set for all descriptors of all subframes of
+	 *   the aggregate
+	 * + MoreAggr must be set for all descriptors of all subframes
+	 *   of the aggregate EXCEPT the last subframe;
+	 * + MoreAggr must be _CLEAR_ for all descrpitors of the last
+	 *   subframe of the aggregate.
+	 */
 	ads->ds_ctl1 = (type << AR_FrameType_S)
-			| (isaggr ? (AR_IsAggr | AR_MoreAggr) : 0);
+			| (isaggr ? (AR_IsAggr | last_aggr) : 0);
+
 	ads->ds_ctl2 = 0;
 	ads->ds_ctl3 = 0;
 	if (keyIx != HAL_TXKEYIX_INVALID) {
@@ -483,7 +499,6 @@ ar5416SetupLastTxDesc(struct ath_hal *ah, struct ath_desc *ds,
 	ads->ds_ctl2 = AR5416DESC_CONST(ds0)->ds_ctl2;
 	ads->ds_ctl3 = AR5416DESC_CONST(ds0)->ds_ctl3;
 #endif
-	
 	return AH_TRUE;
 }
 
@@ -713,16 +728,14 @@ ar5416Set11nRateScenario(struct ath_hal *ah, struct ath_desc *ds,
 }
 
 void
-ar5416Set11nAggrFirst(struct ath_hal *ah, struct ath_desc *ds,
-    u_int aggrLen, u_int numDelims)
+ar5416Set11nAggrFirst(struct ath_hal *ah, struct ath_desc *ds, u_int aggrLen)
 {
 	struct ar5416_desc *ads = AR5416DESC(ds);
 
 	ads->ds_ctl1 |= (AR_IsAggr | AR_MoreAggr);
 
 	ads->ds_ctl6 &= ~(AR_AggrLen | AR_PadDelim);
-	ads->ds_ctl6 |= SM(aggrLen, AR_AggrLen) |
-	    SM(numDelims, AR_PadDelim);
+	ads->ds_ctl6 |= SM(aggrLen, AR_AggrLen);
 }
 
 void

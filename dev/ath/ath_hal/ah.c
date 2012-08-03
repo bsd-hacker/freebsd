@@ -630,6 +630,35 @@ ath_hal_getcapability(struct ath_hal *ah, HAL_CAPABILITY_TYPE type,
 	case HAL_CAP_REG_FLAG:
 		*result = AH_PRIVATE(ah)->ah_currentRDext;
 		return HAL_OK;
+	case HAL_CAP_ENHANCED_DMA_SUPPORT:
+		return pCap->halEnhancedDmaSupport ? HAL_OK : HAL_ENOTSUPP;
+	case HAL_CAP_NUM_TXMAPS:
+		*result = pCap->halNumTxMaps;
+		return HAL_OK;
+	case HAL_CAP_TXDESCLEN:
+		*result = pCap->halTxDescLen;
+		return HAL_OK;
+	case HAL_CAP_TXSTATUSLEN:
+		*result = pCap->halTxStatusLen;
+		return HAL_OK;
+	case HAL_CAP_RXSTATUSLEN:
+		*result = pCap->halRxStatusLen;
+		return HAL_OK;
+	case HAL_CAP_RXFIFODEPTH:
+		switch (capability) {
+		case HAL_RX_QUEUE_HP:
+			*result = pCap->halRxHpFifoDepth;
+			return HAL_OK;
+		case HAL_RX_QUEUE_LP:
+			*result = pCap->halRxLpFifoDepth;
+			return HAL_OK;
+		default:
+			return HAL_ENOTSUPP;
+	}
+	case HAL_CAP_RXBUFSIZE:
+	case HAL_CAP_NUM_MR_RETRIES:
+		*result = pCap->halNumMRRetries;
+		return HAL_OK;
 	case HAL_CAP_BT_COEX:
 		return pCap->halBtCoexSupport ? HAL_OK : HAL_ENOTSUPP;
 	case HAL_CAP_HT20_SGI:
@@ -667,6 +696,7 @@ ath_hal_getcapability(struct ath_hal *ah, HAL_CAPABILITY_TYPE type,
 		return pCap->halHasBBReadWar? HAL_OK : HAL_ENOTSUPP;
 	case HAL_CAP_SERIALISE_WAR:		/* PCI register serialisation */
 		return pCap->halSerialiseRegWar ? HAL_OK : HAL_ENOTSUPP;
+
 	default:
 		return HAL_EINVAL;
 	}
@@ -1265,4 +1295,28 @@ ath_hal_getcca(struct ath_hal *ah)
 	if (ath_hal_getcapability(ah, HAL_CAP_DIAG, 0, &diag) != HAL_OK)
 		return 1;
 	return ((diag & 0x500000) == 0);
+}
+
+/*
+ * This routine is only needed when supporting EEPROM-in-RAM setups
+ * (eg embedded SoCs and on-board PCI/PCIe devices.)
+ */
+/* NB: This is in 16 bit words; not bytes */
+/* XXX This doesn't belong here!  */
+#define ATH_DATA_EEPROM_SIZE    2048
+
+HAL_BOOL
+ath_hal_EepromDataRead(struct ath_hal *ah, u_int off, uint16_t *data)
+{
+	if (ah->ah_eepromdata == AH_NULL) {
+		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: no eeprom data!\n", __func__);
+		return AH_FALSE;
+	}
+	if (off > ATH_DATA_EEPROM_SIZE) {
+		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: offset %x > %x\n",
+		    __func__, off, ATH_DATA_EEPROM_SIZE);
+		return AH_FALSE;
+	}
+	(*data) = ah->ah_eepromdata[off];
+	return AH_TRUE;
 }

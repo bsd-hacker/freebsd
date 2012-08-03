@@ -81,9 +81,11 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/tcp_syncache.h>
-#include <netinet/tcp_offload.h>
 #ifdef INET6
 #include <netinet6/tcp6_var.h>
+#endif
+#ifdef TCP_OFFLOAD
+#include <netinet/toecore.h>
 #endif
 
 #ifdef IPSEC
@@ -110,10 +112,8 @@ SYSCTL_VNET_INT(_net_inet_tcp, OID_AUTO, syncookies_only, CTLFLAG_RW,
     &VNET_NAME(tcp_syncookiesonly), 0,
     "Use only TCP SYN cookies");
 
-#ifdef TCP_OFFLOAD_DISABLE
-#define TOEPCB_ISSET(sc) (0)
-#else
-#define TOEPCB_ISSET(sc) ((sc)->sc_toepcb != NULL)
+#ifdef TCP_OFFLOAD
+#define ADDED_BY_TOE(sc) ((sc)->sc_tod != NULL)
 #endif
 
 static void	 syncache_drop(struct syncache *, struct syncache_head *);
@@ -332,6 +332,14 @@ syncache_insert(struct syncache *sc, struct syncache_head *sch)
 	TAILQ_INSERT_HEAD(&sch->sch_bucket, sc, sc_hash);
 	sch->sch_length++;
 
+#ifdef TCP_OFFLOAD
+	if (ADDED_BY_TOE(sc)) {
+		struct toedev *tod = sc->sc_tod;
+
+		tod->tod_syncache_added(tod, sc->sc_todctx);
+	}
+#endif
+
 	/* Reinitialize the bucket row's timer. */
 	if (sch->sch_length == 1)
 		sch->sch_nextc = ticks + INT_MAX;
@@ -356,10 +364,14 @@ syncache_drop(struct syncache *sc, struct syncache_head *sch)
 	TAILQ_REMOVE(&sch->sch_bucket, sc, sc_hash);
 	sch->sch_length--;
 
-#ifndef TCP_OFFLOAD_DISABLE
-	if (sc->sc_tu)
-		sc->sc_tu->tu_syncache_event(TOE_SC_DROP, sc->sc_toepcb);
-#endif		    
+#ifdef TCP_OFFLOAD
+	if (ADDED_BY_TOE(sc)) {
+		struct toedev *tod = sc->sc_tod;
+
+		tod->tod_syncache_removed(tod, sc->sc_todctx);
+	}
+#endif
+
 	syncache_free(sc);
 	V_tcp_syncache.cache_count--;
 }
@@ -819,7 +831,7 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		if (sc->sc_flags & SCF_TIMESTAMP) {
 			tp->t_flags |= TF_REQ_TSTMP|TF_RCVD_TSTMP;
 			tp->ts_recent = sc->sc_tsreflect;
-			tp->ts_recent_age = ticks;
+			tp->ts_recent_age = tcp_ts_getticks();
 			tp->ts_offset = sc->sc_tsoff;
 		}
 #ifdef TCP_SIGNATURE
@@ -845,7 +857,27 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	 */
 	if (sc->sc_rxmits > 1)
 		tp->snd_cwnd = tp->t_maxseg;
-	tcp_timer_activate(tp, TT_KEEP, tcp_keepinit);
+
+#ifdef TCP_OFFLOAD
+	/*
+	 * Allow a TOE driver to install its hooks.  Note that we hold the
+	 * pcbinfo lock too and that prevents tcp_usr_accept from accepting a
+	 * new connection before the TOE driver has done its thing.
+	 */
+	if (ADDED_BY_TOE(sc)) {
+		struct toedev *tod = sc->sc_tod;
+
+		tod->tod_offload_socket(tod, sc->sc_todctx, so);
+	}
+#endif
+	/*
+	 * Copy and activate timers.
+	 */
+	tp->t_keepinit = sototcpcb(lso)->t_keepinit;
+	tp->t_keepidle = sototcpcb(lso)->t_keepidle;
+	tp->t_keepintvl = sototcpcb(lso)->t_keepintvl;
+	tp->t_keepcnt = sototcpcb(lso)->t_keepcnt;
+	tcp_timer_activate(tp, TT_KEEP, TP_KEEPINIT(tp));
 
 	INP_WUNLOCK(inp);
 
@@ -918,6 +950,13 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 		/* Pull out the entry to unlock the bucket row. */
 		TAILQ_REMOVE(&sch->sch_bucket, sc, sc_hash);
 		sch->sch_length--;
+#ifdef TCP_OFFLOAD
+		if (ADDED_BY_TOE(sc)) {
+			struct toedev *tod = sc->sc_tod;
+
+			tod->tod_syncache_removed(tod, sc->sc_todctx);
+		}
+#endif
 		V_tcp_syncache.cache_count--;
 		SCH_UNLOCK(sch);
 	}
@@ -926,7 +965,7 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	 * Segment validation:
 	 * ACK must match our initial sequence number + 1 (the SYN|ACK).
 	 */
-	if (th->th_ack != sc->sc_iss + 1 && !TOEPCB_ISSET(sc)) {
+	if (th->th_ack != sc->sc_iss + 1) {
 		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
 			log(LOG_DEBUG, "%s; %s: ACK %u != ISS+1 %u, segment "
 			    "rejected\n", s, __func__, th->th_ack, sc->sc_iss);
@@ -937,9 +976,8 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	 * The SEQ must fall in the window starting at the received
 	 * initial receive sequence number + 1 (the SYN).
 	 */
-	if ((SEQ_LEQ(th->th_seq, sc->sc_irs) ||
-	    SEQ_GT(th->th_seq, sc->sc_irs + sc->sc_wnd)) &&
-	    !TOEPCB_ISSET(sc)) {
+	if (SEQ_LEQ(th->th_seq, sc->sc_irs) ||
+	    SEQ_GT(th->th_seq, sc->sc_irs + sc->sc_wnd)) {
 		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
 			log(LOG_DEBUG, "%s; %s: SEQ %u != IRS+1 %u, segment "
 			    "rejected\n", s, __func__, th->th_seq, sc->sc_irs);
@@ -956,8 +994,7 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	 * If timestamps were negotiated the reflected timestamp
 	 * must be equal to what we actually sent in the SYN|ACK.
 	 */
-	if ((to->to_flags & TOF_TS) && to->to_tsecr != sc->sc_ts &&
-	    !TOEPCB_ISSET(sc)) {
+	if ((to->to_flags & TOF_TS) && to->to_tsecr != sc->sc_ts) {
 		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
 			log(LOG_DEBUG, "%s; %s: TSECR %u != TS %u, "
 			    "segment rejected\n",
@@ -985,25 +1022,6 @@ failed:
 	return (0);
 }
 
-int
-tcp_offload_syncache_expand(struct in_conninfo *inc, struct toeopt *toeo,
-    struct tcphdr *th, struct socket **lsop, struct mbuf *m)
-{
-	struct tcpopt to;
-	int rc;
-
-	bzero(&to, sizeof(struct tcpopt));
-	to.to_mss = toeo->to_mss;
-	to.to_wscale = toeo->to_wscale;
-	to.to_flags = toeo->to_flags;
-	
-	INP_INFO_WLOCK(&V_tcbinfo);
-	rc = syncache_expand(inc, &to, th, lsop, m);
-	INP_INFO_WUNLOCK(&V_tcbinfo);
-
-	return (rc);
-}
-
 /*
  * Given a LISTEN socket and an inbound SYN request, add
  * this to the syn cache, and send back a segment:
@@ -1017,10 +1035,10 @@ tcp_offload_syncache_expand(struct in_conninfo *inc, struct toeopt *toeo,
  * consume all available buffer space if it were ACKed.  By not ACKing
  * the data, we avoid this DoS scenario.
  */
-static void
-_syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
-    struct inpcb *inp, struct socket **lsop, struct mbuf *m,
-    struct toe_usrreqs *tu, void *toepcb)
+void
+syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
+    struct inpcb *inp, struct socket **lsop, struct mbuf *m, void *tod,
+    void *todctx)
 {
 	struct tcpcb *tp;
 	struct socket *so;
@@ -1106,11 +1124,6 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	sc = syncache_lookup(inc, &sch);	/* returns locked entry */
 	SCH_LOCK_ASSERT(sch);
 	if (sc != NULL) {
-#ifndef TCP_OFFLOAD_DISABLE
-		if (sc->sc_tu)
-			sc->sc_tu->tu_syncache_event(TOE_SC_ENTRY_PRESENT,
-			    sc->sc_toepcb);
-#endif		    
 		TCPSTAT_INC(tcps_sc_dupsyn);
 		if (ipopts) {
 			/*
@@ -1143,7 +1156,7 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 			    s, __func__);
 			free(s, M_TCPLOG);
 		}
-		if (!TOEPCB_ISSET(sc) && syncache_respond(sc) == 0) {
+		if (syncache_respond(sc) == 0) {
 			sc->sc_rxmits = 0;
 			syncache_timeout(sc, sch, 1);
 			TCPSTAT_INC(tcps_sndacks);
@@ -1194,9 +1207,9 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 		sc->sc_ip_tos = ip_tos;
 		sc->sc_ip_ttl = ip_ttl;
 	}
-#ifndef TCP_OFFLOAD_DISABLE	
-	sc->sc_tu = tu;
-	sc->sc_toepcb = toepcb;
+#ifdef TCP_OFFLOAD
+	sc->sc_tod = tod;
+	sc->sc_todctx = todctx;
 #endif
 	sc->sc_irs = th->th_seq;
 	sc->sc_iss = arc4random();
@@ -1218,7 +1231,7 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 		 */
 		if (to->to_flags & TOF_TS) {
 			sc->sc_tsreflect = to->to_tsval;
-			sc->sc_ts = ticks;
+			sc->sc_ts = tcp_ts_getticks();
 			sc->sc_flags |= SCF_TIMESTAMP;
 		}
 		if (to->to_flags & TOF_SCALE) {
@@ -1291,7 +1304,7 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	/*
 	 * Do a standard 3-way handshake.
 	 */
-	if (TOEPCB_ISSET(sc) || syncache_respond(sc) == 0) {
+	if (syncache_respond(sc) == 0) {
 		if (V_tcp_syncookies && V_tcp_syncookiesonly && sc != &scs)
 			syncache_free(sc);
 		else if (sc != &scs)
@@ -1465,11 +1478,12 @@ syncache_respond(struct syncache *sc)
 		optlen = 0;
 
 	M_SETFIB(m, sc->sc_inc.inc_fibnum);
+	m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
 #ifdef INET6
 	if (sc->sc_inc.inc_flags & INC_ISIPV6) {
-		th->th_sum = 0;
-		th->th_sum = in6_cksum(m, IPPROTO_TCP, hlen,
-				       tlen + optlen - hlen);
+		m->m_pkthdr.csum_flags = CSUM_TCP_IPV6;
+		th->th_sum = in6_cksum_pseudo(ip6, tlen + optlen - hlen,
+		    IPPROTO_TCP, 0);
 		ip6->ip6_hlim = in6_selecthlim(NULL, NULL);
 		error = ip6_output(m, NULL, NULL, 0, NULL, NULL, NULL);
 	}
@@ -1479,39 +1493,22 @@ syncache_respond(struct syncache *sc)
 #endif
 #ifdef INET
 	{
+		m->m_pkthdr.csum_flags = CSUM_TCP;
 		th->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
 		    htons(tlen + optlen - hlen + IPPROTO_TCP));
-		m->m_pkthdr.csum_flags = CSUM_TCP;
-		m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+#ifdef TCP_OFFLOAD
+		if (ADDED_BY_TOE(sc)) {
+			struct toedev *tod = sc->sc_tod;
+
+			error = tod->tod_syncache_respond(tod, sc->sc_todctx, m);
+
+			return (error);
+		}
+#endif
 		error = ip_output(m, sc->sc_ipopts, NULL, 0, NULL, NULL);
 	}
 #endif
 	return (error);
-}
-
-void
-syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
-    struct inpcb *inp, struct socket **lsop, struct mbuf *m)
-{
-	_syncache_add(inc, to, th, inp, lsop, m, NULL, NULL);
-}
-
-void
-tcp_offload_syncache_add(struct in_conninfo *inc, struct toeopt *toeo,
-    struct tcphdr *th, struct inpcb *inp, struct socket **lsop,
-    struct toe_usrreqs *tu, void *toepcb)
-{
-	struct tcpopt to;
-
-	bzero(&to, sizeof(struct tcpopt));
-	to.to_mss = toeo->to_mss;
-	to.to_wscale = toeo->to_wscale;
-	to.to_flags = toeo->to_flags;
-
-	INP_INFO_WLOCK(&V_tcbinfo);
-	INP_WLOCK(inp);
-
-	_syncache_add(inc, &to, th, inp, lsop, NULL, tu, toepcb);
 }
 
 /*
@@ -1659,7 +1656,7 @@ syncookie_generate(struct syncache_head *sch, struct syncache *sc,
 		data |= md5_buffer[2] << 10;		/* more digest bits */
 		data ^= md5_buffer[3];
 		sc->sc_ts = data;
-		sc->sc_tsoff = data - ticks;		/* after XOR */
+		sc->sc_tsoff = data - tcp_ts_getticks();	/* after XOR */
 	}
 
 	TCPSTAT_INC(tcps_sc_sendcookie);
@@ -1744,7 +1741,7 @@ syncookie_lookup(struct in_conninfo *inc, struct syncache_head *sch,
 		sc->sc_flags |= SCF_TIMESTAMP;
 		sc->sc_tsreflect = to->to_tsval;
 		sc->sc_ts = to->to_tsecr;
-		sc->sc_tsoff = to->to_tsecr - ticks;
+		sc->sc_tsoff = to->to_tsecr - tcp_ts_getticks();
 		sc->sc_flags |= (data & 0x1) ? SCF_SIGNATURE : 0;
 		sc->sc_flags |= ((data >> 1) & 0x1) ? SCF_SACK : 0;
 		sc->sc_requested_s_scale = min((data >> 2) & 0xf,

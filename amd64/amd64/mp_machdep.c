@@ -99,7 +99,7 @@ char *nmi_stack;
 void *dpcpu;
 
 struct pcb stoppcbs[MAXCPU];
-struct pcb **susppcbs = NULL;
+struct pcb **susppcbs;
 
 /* Variables needed for SMP tlb shootdown. */
 vm_offset_t smp_tlb_addr1;
@@ -784,8 +784,6 @@ init_secondary(void)
  * We tell the I/O APIC code about all the CPUs we want to receive
  * interrupts.  If we don't want certain CPUs to receive IRQs we
  * can simply not tell the I/O APIC code about them in this function.
- * We also do not tell it about the BSP since it tells itself about
- * the BSP internally to work with UP kernels and on UP machines.
  */
 static void
 set_interrupt_apic_ids(void)
@@ -795,8 +793,6 @@ set_interrupt_apic_ids(void)
 	for (i = 0; i < MAXCPU; i++) {
 		apic_id = cpu_apic_ids[i];
 		if (apic_id == -1)
-			continue;
-		if (cpu_info[apic_id].cpu_bsp)
 			continue;
 		if (cpu_info[apic_id].cpu_disabled)
 			continue;
@@ -985,6 +981,60 @@ start_ap(int apic_id)
 	/* used as a watchpoint to signal AP startup */
 	cpus = mp_naps;
 
+	ipi_startup(apic_id, vector);
+
+	/* Wait up to 5 seconds for it to start. */
+	for (ms = 0; ms < 5000; ms++) {
+		if (mp_naps > cpus)
+			return 1;	/* return SUCCESS */
+		DELAY(1000);
+	}
+	return 0;		/* return FAILURE */
+}
+
+#ifdef COUNT_XINVLTLB_HITS
+u_int xhits_gbl[MAXCPU];
+u_int xhits_pg[MAXCPU];
+u_int xhits_rng[MAXCPU];
+static SYSCTL_NODE(_debug, OID_AUTO, xhits, CTLFLAG_RW, 0, "");
+SYSCTL_OPAQUE(_debug_xhits, OID_AUTO, global, CTLFLAG_RW, &xhits_gbl,
+    sizeof(xhits_gbl), "IU", "");
+SYSCTL_OPAQUE(_debug_xhits, OID_AUTO, page, CTLFLAG_RW, &xhits_pg,
+    sizeof(xhits_pg), "IU", "");
+SYSCTL_OPAQUE(_debug_xhits, OID_AUTO, range, CTLFLAG_RW, &xhits_rng,
+    sizeof(xhits_rng), "IU", "");
+
+u_int ipi_global;
+u_int ipi_page;
+u_int ipi_range;
+u_int ipi_range_size;
+SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_global, CTLFLAG_RW, &ipi_global, 0, "");
+SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_page, CTLFLAG_RW, &ipi_page, 0, "");
+SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_range, CTLFLAG_RW, &ipi_range, 0, "");
+SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_range_size, CTLFLAG_RW,
+    &ipi_range_size, 0, "");
+
+u_int ipi_masked_global;
+u_int ipi_masked_page;
+u_int ipi_masked_range;
+u_int ipi_masked_range_size;
+SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_global, CTLFLAG_RW,
+    &ipi_masked_global, 0, "");
+SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_page, CTLFLAG_RW,
+    &ipi_masked_page, 0, "");
+SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_range, CTLFLAG_RW,
+    &ipi_masked_range, 0, "");
+SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_range_size, CTLFLAG_RW,
+    &ipi_masked_range_size, 0, "");
+#endif /* COUNT_XINVLTLB_HITS */
+
+/*
+ * Init and startup IPI.
+ */
+void
+ipi_startup(int apic_id, int vector)
+{
+
 	/*
 	 * first we do an INIT/RESET IPI this INIT IPI might be run, reseting
 	 * and running the target CPU. OR this INIT IPI might be latched (P5
@@ -1035,51 +1085,7 @@ start_ap(int apic_id)
 	    vector, apic_id);
 	lapic_ipi_wait(-1);
 	DELAY(200);		/* wait ~200uS */
-
-	/* Wait up to 5 seconds for it to start. */
-	for (ms = 0; ms < 5000; ms++) {
-		if (mp_naps > cpus)
-			return 1;	/* return SUCCESS */
-		DELAY(1000);
-	}
-	return 0;		/* return FAILURE */
 }
-
-#ifdef COUNT_XINVLTLB_HITS
-u_int xhits_gbl[MAXCPU];
-u_int xhits_pg[MAXCPU];
-u_int xhits_rng[MAXCPU];
-static SYSCTL_NODE(_debug, OID_AUTO, xhits, CTLFLAG_RW, 0, "");
-SYSCTL_OPAQUE(_debug_xhits, OID_AUTO, global, CTLFLAG_RW, &xhits_gbl,
-    sizeof(xhits_gbl), "IU", "");
-SYSCTL_OPAQUE(_debug_xhits, OID_AUTO, page, CTLFLAG_RW, &xhits_pg,
-    sizeof(xhits_pg), "IU", "");
-SYSCTL_OPAQUE(_debug_xhits, OID_AUTO, range, CTLFLAG_RW, &xhits_rng,
-    sizeof(xhits_rng), "IU", "");
-
-u_int ipi_global;
-u_int ipi_page;
-u_int ipi_range;
-u_int ipi_range_size;
-SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_global, CTLFLAG_RW, &ipi_global, 0, "");
-SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_page, CTLFLAG_RW, &ipi_page, 0, "");
-SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_range, CTLFLAG_RW, &ipi_range, 0, "");
-SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_range_size, CTLFLAG_RW,
-    &ipi_range_size, 0, "");
-
-u_int ipi_masked_global;
-u_int ipi_masked_page;
-u_int ipi_masked_range;
-u_int ipi_masked_range_size;
-SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_global, CTLFLAG_RW,
-    &ipi_masked_global, 0, "");
-SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_page, CTLFLAG_RW,
-    &ipi_masked_page, 0, "");
-SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_range, CTLFLAG_RW,
-    &ipi_masked_range, 0, "");
-SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_range_size, CTLFLAG_RW,
-    &ipi_masked_range_size, 0, "");
-#endif /* COUNT_XINVLTLB_HITS */
 
 /*
  * Send an IPI to specified CPU handling the bitmap logic.
@@ -1413,21 +1419,22 @@ cpustop_handler(void)
 void
 cpususpend_handler(void)
 {
-	register_t cr3, rf;
 	u_int cpu;
 
 	cpu = PCPU_GET(cpuid);
 
-	rf = intr_disable();
-	cr3 = rcr3();
-
 	if (savectx(susppcbs[cpu])) {
+		ctx_fpusave(susppcbs[cpu]->pcb_fpususpend);
 		wbinvd();
-		CPU_SET_ATOMIC(cpu, &stopped_cpus);
+		CPU_SET_ATOMIC(cpu, &suspended_cpus);
 	} else {
 		pmap_init_pat();
+		initializecpu();
 		PCPU_SET(switchtime, 0);
 		PCPU_SET(switchticks, ticks);
+
+		/* Indicate that we are resumed */
+		CPU_CLR_ATOMIC(cpu, &suspended_cpus);
 	}
 
 	/* Wait for resume */
@@ -1435,13 +1442,10 @@ cpususpend_handler(void)
 		ia32_pause();
 
 	CPU_CLR_ATOMIC(cpu, &started_cpus);
-	CPU_CLR_ATOMIC(cpu, &stopped_cpus);
 
-	/* Restore CR3 and enable interrupts */
-	load_cr3(cr3);
+	/* Resume MCA and local APIC */
 	mca_resume();
 	lapic_setup(0);
-	intr_restore(rf);
 }
 
 /*
@@ -1477,6 +1481,8 @@ mp_ipi_intrcnt(void *dummy)
 		intrcnt_add(buf, &ipi_invlrng_counts[i]);
 		snprintf(buf, sizeof(buf), "cpu%d:invlpg", i);
 		intrcnt_add(buf, &ipi_invlpg_counts[i]);
+		snprintf(buf, sizeof(buf), "cpu%d:invlcache", i);
+		intrcnt_add(buf, &ipi_invlcache_counts[i]);
 		snprintf(buf, sizeof(buf), "cpu%d:preempt", i);
 		intrcnt_add(buf, &ipi_preempt_counts[i]);
 		snprintf(buf, sizeof(buf), "cpu%d:ast", i);

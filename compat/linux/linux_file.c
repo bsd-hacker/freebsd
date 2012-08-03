@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 1994-1995 Søren Schmidt
+ * Copyright (c) 1994-1995 SÃ¸ren Schmidt
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -68,6 +68,9 @@ __FBSDID("$FreeBSD$");
 #endif
 #include <compat/linux/linux_util.h>
 #include <compat/linux/linux_file.h>
+
+/* XXX */
+int	do_pipe(struct thread *td, int fildes[2], int flags);
 
 int
 linux_creat(struct thread *td, struct linux_creat_args *args)
@@ -354,15 +357,16 @@ getdents_common(struct thread *td, struct linux_getdents64_args *args,
 		return (EBADF);
 	}
 
+	off = foffset_lock(fp, 0);
 	vp = fp->f_vnode;
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
 	if (vp->v_type != VDIR) {
 		VFS_UNLOCK_GIANT(vfslocked);
+		foffset_unlock(fp, off, 0);
 		fdrop(fp, td);
 		return (EINVAL);
 	}
 
-	off = fp->f_offset;
 
 	buflen = max(LINUX_DIRBLKSIZ, nbytes);
 	buflen = min(buflen, MAXBSIZE);
@@ -511,7 +515,6 @@ getdents_common(struct thread *td, struct linux_getdents64_args *args,
 		goto eof;
 	}
 
-	fp->f_offset = off;
 	if (justone)
 		nbytes = resid + linuxreclen;
 
@@ -524,6 +527,7 @@ out:
 
 	VOP_UNLOCK(vp, 0);
 	VFS_UNLOCK_GIANT(vfslocked);
+	foffset_unlock(fp, off, 0);
 	fdrop(fp, td);
 	free(buf, M_TEMP);
 	free(lbuf, M_TEMP);
@@ -1574,4 +1578,50 @@ linux_fadvise64_64(struct thread *td, struct linux_fadvise64_64_args *args)
 		return (EINVAL);
 	return (kern_posix_fadvise(td, args->fd, args->offset, args->len,
 	    advice));
+}
+
+int
+linux_pipe(struct thread *td, struct linux_pipe_args *args)
+{
+	int fildes[2];
+	int error;
+
+#ifdef DEBUG
+	if (ldebug(pipe))
+		printf(ARGS(pipe, "*"));
+#endif
+
+	error = do_pipe(td, fildes, 0);
+	if (error)
+		return (error);
+
+	/* XXX: Close descriptors on error. */
+	return (copyout(fildes, args->pipefds, sizeof(fildes)));
+}
+
+int
+linux_pipe2(struct thread *td, struct linux_pipe2_args *args)
+{
+	int fildes[2];
+	int error, flags;
+
+#ifdef DEBUG
+	if (ldebug(pipe2))
+		printf(ARGS(pipe2, "*, %d"), args->flags);
+#endif
+
+	if ((args->flags & ~(LINUX_O_NONBLOCK | LINUX_O_CLOEXEC)) != 0)
+		return (EINVAL);
+
+	flags = 0;
+	if ((args->flags & LINUX_O_NONBLOCK) != 0)
+		flags |= O_NONBLOCK;
+	if ((args->flags & LINUX_O_CLOEXEC) != 0)
+		flags |= O_CLOEXEC;
+	error = do_pipe(td, fildes, flags);
+	if (error)
+		return (error);
+
+	/* XXX: Close descriptors on error. */
+	return (copyout(fildes, args->pipefds, sizeof(fildes)));
 }

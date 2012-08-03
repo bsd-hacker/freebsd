@@ -106,6 +106,8 @@ static driver_t isp_sbus_driver = {
 };
 static devclass_t isp_devclass;
 DRIVER_MODULE(isp, sbus, isp_sbus_driver, isp_devclass, 0, 0);
+MODULE_DEPEND(isp, cam, 1, 1, 1);
+MODULE_DEPEND(isp, firmware, 1, 1, 1);
 
 static int
 isp_sbus_probe(device_t dev)
@@ -598,7 +600,7 @@ dma2(void *arg, bus_dma_segment_t *dm_segs, int nseg, int error)
 		ddir = ISP_NOXFR;
 	}
 
-	if (isp_send_cmd(isp, rq, dm_segs, nseg, XS_XFRLEN(csio), ddir) != CMD_QUEUED) {
+	if (isp_send_cmd(isp, rq, dm_segs, nseg, XS_XFRLEN(csio), ddir, NULL) != CMD_QUEUED) {
 		mp->error = MUSHERR_NOQENTRIES;
 	}
 }

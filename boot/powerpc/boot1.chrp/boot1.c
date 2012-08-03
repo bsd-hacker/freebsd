@@ -45,7 +45,6 @@ static char bootargs[128];
 static ofwh_t bootdev;
 
 static struct fs fs;
-static ino_t inomap;
 static char blkbuf[BSIZEMAX];
 static unsigned int fsblks;
 
@@ -76,6 +75,8 @@ static int __puts(const char *s, putc_func_t *putc, void *arg);
 static int __sputc(char c, void *arg);
 static char *__uitoa(char *buf, u_int val, int base);
 static char *__ultoa(char *buf, u_long val, int base);
+
+void __syncicache(void *, int);
 
 /*
  * Open Firmware interface functions
@@ -490,7 +491,7 @@ load(const char *fname)
 	Elf32_Ehdr eh;
 	Elf32_Phdr ph;
 	caddr_t p;
-	ino_t ino;
+	ufs_ino_t ino;
 	int i;
 
 	if ((ino = lookup(fname)) == 0) {
@@ -523,6 +524,7 @@ load(const char *fname)
 		}
 		if (ph.p_filesz != ph.p_memsz)
 			bzero(p + ph.p_filesz, ph.p_memsz - ph.p_filesz);
+		__syncicache(p, ph.p_memsz);
 	}
 	ofw_close(bootdev);
 	(*(void (*)(void *, int, ofwfp_t, char *, int))eh.e_entry)(NULL, 0, 

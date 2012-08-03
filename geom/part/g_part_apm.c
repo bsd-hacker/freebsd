@@ -102,7 +102,7 @@ static struct g_part_scheme g_part_apm_scheme = {
 	sizeof(struct g_part_apm_table),
 	.gps_entrysz = sizeof(struct g_part_apm_entry),
 	.gps_minent = 16,
-	.gps_maxent = INT_MAX,
+	.gps_maxent = 4096,
 };
 G_PART_SCHEME_DECLARE(g_part_apm);
 
@@ -157,6 +157,11 @@ apm_parse_type(const char *type, char *buf, size_t bufsz)
 	alias = g_part_alias_name(G_PART_ALIAS_FREEBSD);
 	if (!strcasecmp(type, alias)) {
 		strcpy(buf, APM_ENT_TYPE_FREEBSD);
+		return (0);
+	}
+	alias = g_part_alias_name(G_PART_ALIAS_FREEBSD_NANDFS);
+	if (!strcasecmp(type, alias)) {
+		strcpy(buf, APM_ENT_TYPE_FREEBSD_NANDFS);
 		return (0);
 	}
 	alias = g_part_alias_name(G_PART_ALIAS_FREEBSD_SWAP);
@@ -485,6 +490,8 @@ g_part_apm_type(struct g_part_table *basetable, struct g_part_entry *baseentry,
 		return (g_part_alias_name(G_PART_ALIAS_APPLE_UFS));
 	if (!strcmp(type, APM_ENT_TYPE_FREEBSD))
 		return (g_part_alias_name(G_PART_ALIAS_FREEBSD));
+	if (!strcmp(type, APM_ENT_TYPE_FREEBSD_NANDFS))
+		return (g_part_alias_name(G_PART_ALIAS_FREEBSD_NANDFS));
 	if (!strcmp(type, APM_ENT_TYPE_FREEBSD_SWAP))
 		return (g_part_alias_name(G_PART_ALIAS_FREEBSD_SWAP));
 	if (!strcmp(type, APM_ENT_TYPE_FREEBSD_UFS))

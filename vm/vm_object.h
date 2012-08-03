@@ -76,8 +76,21 @@
  *
  *	vm_object_t		Virtual memory object.
  *
+ *	The root of cached pages pool is protected by both the per-object mutex
+ *	and the free pages queue mutex.
+ *	On insert in the cache splay tree, the per-object mutex is expected
+ *	to be already held and the free pages queue mutex will be
+ *	acquired during the operation too.
+ *	On remove and lookup from the cache splay tree, only the free
+ *	pages queue mutex is expected to be locked.
+ *	These rules allow for reliably checking for the presence of cached
+ *	pages with only the per-object lock held, thereby reducing contention
+ *	for the free pages queue mutex.
+ *
  * List of locks
  *	(c)	const until freed
+ *	(o)	per-object mutex
+ *	(f)	free pages queue mutex
  *
  */
 
@@ -96,13 +109,13 @@ struct vm_object {
 	objtype_t type;			/* type of pager */
 	u_short flags;			/* see below */
 	u_short pg_color;		/* (c) color of first page in obj */
-	u_short paging_in_progress;	/* Paging (in or out) so don't collapse or destroy */
+	u_int paging_in_progress;	/* Paging (in or out) so don't collapse or destroy */
 	int resident_page_count;	/* number of resident pages */
 	struct vm_object *backing_object; /* object that I'm a shadow of */
 	vm_ooffset_t backing_object_offset;/* Offset in backing object */
 	TAILQ_ENTRY(vm_object) pager_object_list; /* list of all objects of this pager type */
 	LIST_HEAD(, vm_reserv) rvq;	/* list of reservations */
-	vm_page_t cache;		/* root of the cache page splay tree */
+	vm_page_t cache;		/* (o + f) root of the cache page splay tree */
 	void *handle;
 	union {
 		/*
@@ -112,6 +125,7 @@ struct vm_object {
 		 */
 		struct {
 			off_t vnp_size;
+			vm_ooffset_t writemappings;
 		} vnp;
 
 		/*
@@ -224,9 +238,10 @@ void vm_object_destroy (vm_object_t);
 void vm_object_terminate (vm_object_t);
 void vm_object_set_writeable_dirty (vm_object_t);
 void vm_object_init (void);
+void vm_object_madvise(vm_object_t, vm_pindex_t, vm_pindex_t, int);
 void vm_object_page_cache(vm_object_t object, vm_pindex_t start,
     vm_pindex_t end);
-void vm_object_page_clean(vm_object_t object, vm_ooffset_t start,
+boolean_t vm_object_page_clean(vm_object_t object, vm_ooffset_t start,
     vm_ooffset_t end, int flags);
 void vm_object_page_remove(vm_object_t object, vm_pindex_t start,
     vm_pindex_t end, int options);
@@ -237,9 +252,8 @@ void vm_object_reference_locked(vm_object_t);
 int  vm_object_set_memattr(vm_object_t object, vm_memattr_t memattr);
 void vm_object_shadow (vm_object_t *, vm_ooffset_t *, vm_size_t);
 void vm_object_split(vm_map_entry_t);
-void vm_object_sync(vm_object_t, vm_ooffset_t, vm_size_t, boolean_t,
+boolean_t vm_object_sync(vm_object_t, vm_ooffset_t, vm_size_t, boolean_t,
     boolean_t);
-void vm_object_madvise (vm_object_t, vm_pindex_t, int, int);
 #endif				/* _KERNEL */
 
 #endif				/* _VM_OBJECT_ */
