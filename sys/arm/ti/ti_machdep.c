@@ -97,21 +97,6 @@ __FBSDID("$FreeBSD$");
 #define debugf(fmt, args...)
 #endif
 
-/* Start of address space used for bootstrap map */
-#define DEVMAP_BOOTSTRAP_MAP_START	0xE0000000
-
-/*
- * This is the number of L2 page tables required for covering max
- * (hypothetical) memsize of 4GB and all kernel mappings (vectors, msgbuf,
- * stacks etc.), uprounded to be divisible by 4.
- */
-#define KERNEL_PT_MAX	78
-
-/* Define various stack sizes in pages */
-#define IRQ_STACK_SIZE	1
-#define ABT_STACK_SIZE	1
-#define UND_STACK_SIZE	1
-
 extern unsigned char kernbase[];
 extern unsigned char _etext[];
 extern unsigned char _edata[];
@@ -123,8 +108,6 @@ extern vm_offset_t ksym_start, ksym_end;
 #endif
 
 extern int *end;
-
-struct pv_addr kernel_pt_table[KERNEL_PT_MAX];
 
 const struct pmap_devmap *pmap_devmap_bootstrap_table;
 
@@ -249,9 +232,6 @@ initarm(void *mdp, void *unused __unused)
 	if (fdt_get_mem_regions(availmem_regions, &availmem_regions_sz,
 	    &memsize) != 0)
 		while(1);
-
-//	if (fdt_immr_addr(OMAP44XX_L4_PERIPH_VBASE) != 0)
-//		while (1);
 
 	/* Platform-specific initialisation */
 	pcpu0_init();
