@@ -585,7 +585,7 @@ fdt_intr_to_rl(phandle_t node, struct resource_list *rl,
 	 */
 	if (OF_getprop(node, "interrupt-parent", &iph, sizeof(iph)) <= 0) {
 		debugf("no intr-parent phandle\n");
-		intr_par = 0xffffffff;
+		intr_par = 0xffffffff; /* XXX should be #defined */
 	} else {
 		iph = fdt32_to_cpu(iph);
 		intr_par = OF_instance_to_package(iph);
@@ -609,10 +609,16 @@ fdt_intr_to_rl(phandle_t node, struct resource_list *rl,
 		interrupt = -1;
 		trig = pol = 0;
 
-		if (fdt_intr_decode(intr_par, &intr[i * intr_cells],
-		    &interrupt, &trig, &pol) != 0) {
-			rv = ENXIO;
-			goto out;
+		if (intr_par != 0xffffffff) {
+			if (fdt_intr_decode(intr_par, &intr[i * intr_cells],
+			    &interrupt, &trig, &pol) != 0) {
+				rv = ENXIO;
+				goto out;
+			}
+		} else {
+			interrupt = fdt32_to_cpu(intr[i * intr_cells]);
+			trig = INTR_TRIGGER_CONFORM;
+			pol = INTR_POLARITY_CONFORM;
 		}
 
 		if (interrupt < 0) {
