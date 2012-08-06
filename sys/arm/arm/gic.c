@@ -228,8 +228,7 @@ arm_gic_attach(device_t dev)
 static int
 arm_gic_intr(void *arg)
 {
-	struct arm_intr_data *id = (struct arm_intr_data *)arg;
-	struct arm_gic_softc *sc = (struct arm_gic_softc *)id->arg;
+	struct arm_gic_softc *sc = (struct arm_gic_softc *)arg;
 	uint32_t active_irq, last_irq = 0;
 
 	active_irq = gic_c_read_4(sc, GICC_IAR);
@@ -251,7 +250,7 @@ arm_gic_intr(void *arg)
 	}
 	
 	gic_c_write_4(sc, GICC_EOIR, active_irq);
-	arm_dispatch_irq(sc->gic_dev, id->tf, active_irq);
+	arm_dispatch_irq(sc->gic_dev, NULL, active_irq);
 
 	return (FILTER_HANDLED);
 }

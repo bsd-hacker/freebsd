@@ -69,7 +69,6 @@ typedef void (*mask_fn)(void *);
 struct arm_intr_controller {
 	device_t		ic_dev;
 	phandle_t		ic_node;
-	struct arm_intr_data	ic_id;
 };
 
 struct arm_intr_handler {
@@ -92,7 +91,6 @@ void
 arm_dispatch_irq(device_t dev, struct trapframe *tf, int irq)
 {
 	struct arm_intr_handler *ih = NULL;
-	void *arg;
 	int i;
 
 	debugf("pic %s, tf %p, irq %d\n", device_get_nameunit(dev), tf, irq);
@@ -109,12 +107,6 @@ arm_dispatch_irq(device_t dev, struct trapframe *tf, int irq)
 		panic("arm_dispatch_irq: unknown irq");
 
 	debugf("requested by %s\n", device_get_nameunit(ih->ih_dev));
-
-	arg = tf;
-
-	/* XXX */
-	for (i = 0; arm_pics[i].ic_dev != NULL; i++)
-		arm_pics[i].ic_id.tf = tf;
 
 	ih->ih_intrcnt++;
 	if (intr_event_handle(ih->ih_event, tf) != 0) {
@@ -222,7 +214,6 @@ arm_setup_irqhandler(device_t dev, driver_filter_t *filt,
 {
 	struct arm_intr_controller *pic;
 	struct arm_intr_handler *ih;
-	struct arm_intr_data *id;
 	int error;
 
 	if (irq < 0)
@@ -263,28 +254,17 @@ arm_setup_irqhandler(device_t dev, driver_filter_t *filt,
 #endif
 	}
 
-	if (flags & INTR_CONTROLLER) {
-		struct arm_intr_controller *pic = NULL;
-		int i;
-		for (i = 0; i < NPIC; i++) {
-			if (arm_pics[i].ic_dev == dev)
-				pic = &arm_pics[i];
-		}
-
-		id = &pic->ic_id;
-		id->arg = arg;
-		arg = id;
-	}
-
 	intr_event_add_handler(ih->ih_event, device_get_nameunit(dev), filt, hand, arg,
 	    intr_priority(flags), flags, cookiep);
 
 	debugf("done\n");
+	*cookiep = ih;
 }
 
 int
 arm_remove_irqhandler(int irq, void *cookie)
 {
+	struct arm_intr_handler *ih = (struct arm_intr_handler *)ih;
 	/*
 	struct intr_event *event;
 	int error;

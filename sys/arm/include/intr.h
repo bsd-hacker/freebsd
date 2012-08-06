@@ -40,6 +40,7 @@
 #define _MACHINE_INTR_H_
 
 #include <machine/psl.h>
+#include <machine/pcb.h>
 #include <dev/ofw/openfirm.h>
 
 #include "opt_global.h"
@@ -49,11 +50,6 @@
 #define	NIRQ		255
 #define	NPIC		16
 #define	INTR_CONTROLLER	INTR_MD1
-
-struct arm_intr_data {
-	void *			arg;
-	struct trapframe *	tf;
-};
 
 int arm_fdt_map_irq(phandle_t ic, int irq);
 void arm_register_pic(device_t dev);
