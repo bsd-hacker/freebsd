@@ -1442,14 +1442,18 @@ nfs_sync(struct mount *mp, int waitfor)
 
 	td = curthread;
 
+#if 0
 	MNT_ILOCK(mp);
+#endif
 	/*
 	 * If a forced dismount is in progress, return from here so that
 	 * the umount(2) syscall doesn't get stuck in VFS_SYNC() before
 	 * calling VFS_UNMOUNT().
 	 */
 	if ((mp->mnt_kern_flag & MNTK_UNMOUNTF) != 0) {
+#if 0
 		MNT_IUNLOCK(mp);
+#endif
 		return (EBADF);
 	}
 
