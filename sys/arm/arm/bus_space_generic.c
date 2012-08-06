@@ -61,7 +61,6 @@ generic_bs_map(void *t, bus_addr_t bpa, bus_size_t size, int flags,
 	const struct pmap_devmap *pd;
 	vm_paddr_t startpa, endpa, pa, offset;
 	vm_offset_t va;
-	pt_entry_t *pte;
 
 	if ((pd = pmap_devmap_find_pa(bpa, size)) != NULL) {
 		/* Device was statically mapped. */
