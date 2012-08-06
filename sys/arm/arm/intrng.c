@@ -73,11 +73,10 @@ struct arm_intr_controller {
 
 struct arm_intr_handler {
 	device_t		ih_dev;
-	int			ih_intrcnt;
+	int			ih_intrcnt_idx;
 	int			ih_irq;
 	struct intr_event *	ih_event;
 	struct arm_intr_controller *ih_pic;
-	struct arm_intr_controller *ih_self;
 };
 
 static void arm_mask_irq(void *);
@@ -86,6 +85,9 @@ static void arm_eoi(void *);
 
 static struct arm_intr_handler arm_intrs[NIRQ];
 static struct arm_intr_controller arm_pics[NPIC];
+
+static int intrcnt_index = 0;
+static int last_printed = 0;
 
 void
 arm_dispatch_irq(device_t dev, struct trapframe *tf, int irq)
@@ -108,7 +110,7 @@ arm_dispatch_irq(device_t dev, struct trapframe *tf, int irq)
 
 	debugf("requested by %s\n", device_get_nameunit(ih->ih_dev));
 
-	ih->ih_intrcnt++;
+	intrcnt[ih->ih_intrcnt_idx]++;
 	if (intr_event_handle(ih->ih_event, tf) != 0) {
 		/* Stray IRQ */
 		arm_mask_irq(ih);
@@ -241,44 +243,45 @@ arm_setup_irqhandler(device_t dev, driver_filter_t *filt,
 
 		arm_unmask_irq(ih);
 
-		debugf("self interrupt controller %p\n", ih->ih_self);
-#if 0
 		last_printed += 
 		    snprintf(intrnames + last_printed,
-		    MAXCOMLEN + 1,
-		    "irq%d: %s", irq, device_get_nameunit(dev));
+		    MAXCOMLEN + 1, "%s:%d: %s",
+		    device_get_nameunit(pic->ic_dev),
+		    ih->ih_irq, device_get_nameunit(dev));
+		
 		last_printed++;
-		intrcnt_tab[irq] = intrcnt_index;
+		ih->ih_intrcnt_idx = intrcnt_index;
 		intrcnt_index++;
 		
-#endif
 	}
 
 	intr_event_add_handler(ih->ih_event, device_get_nameunit(dev), filt, hand, arg,
 	    intr_priority(flags), flags, cookiep);
-
-	debugf("done\n");
-	*cookiep = ih;
 }
 
 int
 arm_remove_irqhandler(int irq, void *cookie)
 {
-	struct arm_intr_handler *ih = (struct arm_intr_handler *)ih;
-	/*
-	struct intr_event *event;
+	struct arm_intr_controller *pic;
+	struct arm_intr_handler *ih;
 	int error;
 
-	event = intr_events[irq];
-	arm_mask_irq(irq);
-	
+	if (irq < 0)
+		return (ENXIO);
+
+	pic = &arm_pics[IRQ_PIC_IDX(irq)];
+	ih = arm_lookup_intr_handler(pic->ic_dev, IRQ_VECTOR_IDX(irq));
+
+	if (ih->ih_event == NULL)
+		return (ENXIO);
+
+	arm_mask_irq(ih);
 	error = intr_event_remove_handler(cookie);
 
-	if (!TAILQ_EMPTY(&event->ie_handlers))
-		arm_unmask_irq(irq);
+	if (!TAILQ_EMPTY(&ih->ih_event->ie_handlers))
+		arm_unmask_irq(ih);
+
 	return (error);
-	*/
-	return (ENXIO);
 }
 
 void
