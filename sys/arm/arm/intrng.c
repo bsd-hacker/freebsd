@@ -54,8 +54,6 @@ __FBSDID("$FreeBSD$");
 #define	IRQ_PIC_IDX(_irq)	((_irq >> 8) & 0xff)
 #define	IRQ_VECTOR_IDX(_irq)	((_irq) & 0xff)
 #define	IRQ_GEN(_pic, _irq)	(((_pic) << 8) | ((_irq) & 0xff))
-#define	CORE_PIC_IDX		(0)
-#define	CORE_PIC_NODE		(0xffffffff)
 
 #ifdef DEBUG
 #define debugf(fmt, args...) do { printf("%s(): ", __func__);	\

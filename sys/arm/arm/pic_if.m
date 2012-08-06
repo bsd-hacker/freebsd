@@ -27,8 +27,16 @@
 #
 
 #include <sys/bus.h>
+#include <sys/cpuset.h>
 
 INTERFACE pic;
+
+CODE {
+	static void null_pic_ipi(device_t dev, cpuset_t cpus, int ipi)
+	{
+		return;
+	}
+};
 
 METHOD void config {
 	device_t	dev;
@@ -52,3 +60,8 @@ METHOD void unmask {
 	int		irq;
 };
 
+METHOD void ipi {
+	device_t	dev;
+	cpuset_t	cpus;
+	int		ipi;
+} DEFAULT null_pic_ipi;

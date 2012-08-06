@@ -83,5 +83,9 @@ platform_mp_start_ap(void)
 void
 platform_ipi_send(cpuset_t cpus, u_int ipi)
 {
-	pic_ipi_send(cpus, ipi);
+	device_t gic = devclass_get_device(devclass_find("gic"), 0);
+	if (gic == NULL)
+		panic("no interrupt controler to send IPI");
+
+	pic_ipi_send(gic, cpus, ipi);
 }

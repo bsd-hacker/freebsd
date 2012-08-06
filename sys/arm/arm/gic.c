@@ -112,6 +112,7 @@ static void arm_gic_config(device_t, int, enum intr_trigger, enum intr_polarity)
 static void arm_gic_eoi(device_t, int);
 static void arm_gic_mask(device_t, int);
 static void arm_gic_unmask(device_t, int);
+static void arm_gic_ipi(device_t, cpuset_t, int);
 
 #define	gic_c_read_4(_sc, _reg)		\
     bus_space_read_4((_sc)->gic_c_bst, (_sc)->gic_c_bsh, (_reg))
@@ -288,6 +289,19 @@ arm_gic_unmask(device_t dev, int irq)
 	gic_d_write_4(sc, GICD_ISENABLER(irq >> 5), (1UL << (irq & 0x1F)));
 }
 
+static void
+arm_gic_ipi(device_t dev, cpuset_t cpus, int ipi)
+{
+	struct arm_gic_softc *sc = device_get_softc(dev);
+	uint32_t val = 0, i;
+
+	for (i = 0; i < MAXCPU; i++)
+		if (CPU_ISSET(i, &cpus))
+			val |= 1 << (16 + i);
+
+	gic_d_write_4(sc, GICD_SGIR(0), val | ipi);
+}
+
 static device_method_t arm_gic_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		arm_gic_probe),
@@ -298,6 +312,7 @@ static device_method_t arm_gic_methods[] = {
 	DEVMETHOD(pic_mask,		arm_gic_mask),
 	DEVMETHOD(pic_unmask,		arm_gic_unmask),
 	DEVMETHOD(pic_eoi,		arm_gic_eoi),
+	DEVMETHOD(pic_ipi,		arm_gic_ipi),
 	{ 0, 0 }
 };
 
@@ -312,18 +327,6 @@ static devclass_t arm_gic_devclass;
 DRIVER_MODULE(gic, simplebus, arm_gic_driver, arm_gic_devclass, 0, 0);
 
 #ifdef SMP
-void
-pic_ipi_send(cpuset_t cpus, u_int ipi)
-{
-	uint32_t val = 0, i;
-
-	for (i = 0; i < MAXCPU; i++)
-		if (CPU_ISSET(i, &cpus))
-			val |= 1 << (16 + i);
-	gic_d_write_4(arm_gic_sc, GICD_SGIR(0), val | ipi);
-	
-}
-
 int
 pic_ipi_get(int i)
 {

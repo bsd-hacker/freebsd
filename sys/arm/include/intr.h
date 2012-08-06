@@ -50,6 +50,8 @@
 #define	NIRQ		255
 #define	NPIC		16
 #define	INTR_CONTROLLER	INTR_MD1
+#define	CORE_PIC_IDX	(0)
+#define	CORE_PIC_NODE	(0xffffffff)
 
 int arm_fdt_map_irq(phandle_t ic, int irq);
 void arm_register_pic(device_t dev);
