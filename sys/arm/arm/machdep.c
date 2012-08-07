@@ -151,7 +151,8 @@ extern vm_offset_t ksym_start, ksym_end;
 
 static void arm_valloc_pages(struct pv_addr *, size_t, size_t);
 static void arm_process_devmap(struct pmap_devmap *);
-static void arm_bootstrap_pagetables(uint32_t, struct pv_addr *, struct pv_addr *);
+static void arm_bootstrap_pagetables(uint32_t, struct pv_addr *,
+    struct pv_addr *, int);
 
 void
 sendsig(catcher, ksi, mask)
@@ -822,14 +823,17 @@ arm_valloc_pages(struct pv_addr *result, size_t npages, size_t boundary)
 }
 
 static void
-arm_bootstrap_pagetables(uint32_t memsize, struct pv_addr *vectors, struct pv_addr *l1pt)
+arm_bootstrap_pagetables(uint32_t memsize, struct pv_addr *vectors, struct pv_addr *l1pt, int high_vectors)
 {
 	struct pv_addr *l2pt = arm_bootstrap_l2pt;
+	vm_offset_t vectors_va;
 	vm_offset_t l2_start;
 	vm_offset_t pagetables_size = 0;
 	int l2_needed;
 	int l2_devmap;
 	int i, j;
+
+	vectors_va = high_vectors ? ARM_VECTORS_HIGH : ARM_VECTORS_LOW;
 
 	/* Allocate L1 pagetable */
 	arm_valloc_pages(l1pt, L1_TABLE_SIZE / PAGE_SIZE, L1_TABLE_SIZE / PAGE_SIZE);
@@ -881,8 +885,8 @@ arm_bootstrap_pagetables(uint32_t memsize, struct pv_addr *vectors, struct pv_ad
 	}
 
 	/* Link and map vectors page */
-	pmap_link_l2pt(l1pt->pv_va, ARM_VECTORS_HIGH, &l2pt[l2_needed - 1]);
-	pmap_map_entry(l1pt->pv_va, ARM_VECTORS_HIGH, vectors->pv_pa,
+	pmap_link_l2pt(l1pt->pv_va, vectors_va, &l2pt[l2_needed - 1]);
+	pmap_map_entry(l1pt->pv_va, vectors_va, vectors->pv_pa,
 	    VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE, PTE_CACHE);
 	
 	/* Map kernel and structures */
@@ -1005,7 +1009,7 @@ arm_mmu_init(uint32_t memsize, uint32_t lastaddr, int high_vectors)
 	arm_process_devmap(arm_pmap_devmap);
 
 	/* Construct bootstrap pagetables */
-	arm_bootstrap_pagetables(memsize, &systempage, &pagetable);
+	arm_bootstrap_pagetables(memsize, &systempage, &pagetable, high_vectors);
 	pmap_devmap_bootstrap(pagetable.pv_va, arm_pmap_devmap);
 	
 	edebugf("L1 table pa=0x%x va=0x%x\n", pagetable.pv_pa, pagetable.pv_va);
@@ -1053,7 +1057,8 @@ arm_mmu_init(uint32_t memsize, uint32_t lastaddr, int high_vectors)
 	undefined_init();
 
 	init_proc0(kernelstack.pv_va);
-	arm_vector_init(ARM_VECTORS_HIGH, ARM_VEC_ALL);
+	arm_vector_init(high_vectors ? ARM_VECTORS_HIGH : ARM_VECTORS_LOW,
+	    ARM_VEC_ALL);
 
 	dump_avail[0] = 0;
 	dump_avail[1] = memsize;
