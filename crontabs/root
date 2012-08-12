@@ -10,6 +10,7 @@ TERM=xterm
 8,18,28,38,48,58 * * * * su ports-amd64 -c "lockf -k -t 0 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs amd64" > /dev/null 2>&1
 0,10,20,30,40,50 * * * * su ports-powerpc -c "lockf -k -t 0 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs powerpc" > /dev/null 2>&1
 1,11,21,31,41,51 * * * * su ports-arm -c "lockf -k -t 1 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs arm" > /dev/null 2>&1
+7,17,27,37,47,57 * * * * su ports-mips -c "lockf -k -t 1 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs mips" > /dev/null 2>&1
 #
 # Compress old logs to save space
 #
