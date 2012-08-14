@@ -120,8 +120,6 @@ extern u_int data_abort_handler_address;
 extern u_int prefetch_abort_handler_address;
 extern u_int undefined_handler_address;
 
-extern vm_offset_t pmap_bootstrap_lastaddr;
-
 struct pv_addr systempage;
 struct pv_addr msgbufpv;
 struct pv_addr irqstack;
@@ -129,7 +127,7 @@ struct pv_addr undstack;
 struct pv_addr abtstack;
 struct pv_addr kernelstack;
 
-extern struct pmap_devmap arm_pmap_devmap[];
+extern struct pmap_devmap arm_pmap_devmap[] __attribute__((weak));
 struct pv_addr arm_bootstrap_l2pt[128];
 vm_offset_t arm_free_va, arm_free_pa, arm_allocated_va;
 vm_offset_t arm_start_va, arm_start_pa;
@@ -980,7 +978,7 @@ arm_mmu_init(uint32_t memsize, uint32_t lastaddr, int high_vectors)
 	arm_allocated_va = arm_free_va - arm_start_va;
 	pmap_bootstrap_lastaddr = ARM_DEVMAP_START - ARM_NOCACHE_KVA_SIZE;
 	
-	edebugf("arm_free_va=0x%x arm_free_pa=0x%x\n", arm_start_va, arm_free_va);
+	edebugf("arm_start_va=0x%x arm_free_va=0x%x\n", arm_start_va, arm_free_va);
 	edebugf("using %s vectors address\n", high_vectors ? "high" : "low");
 
 	/*
