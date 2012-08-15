@@ -128,22 +128,16 @@ extern int *end;
 
 struct pv_addr kernel_pt_table[KERNEL_PT_MAX];
 
-/* Physical and virtual addresses for some global pages */
-vm_paddr_t phys_avail[10];
-vm_paddr_t dump_avail[4];
 vm_offset_t physical_pages;
-vm_offset_t pmap_bootstrap_lastaddr;
 vm_paddr_t pmap_pa;
 
 const struct pmap_devmap *pmap_devmap_bootstrap_table;
-struct pv_addr systempage;
-struct pv_addr msgbufpv;
-struct pv_addr irqstack;
-struct pv_addr undstack;
-struct pv_addr abtstack;
-struct pv_addr kernelstack;
-
-void set_stackptrs(int cpu);
+extern struct pv_addr systempage;
+extern struct pv_addr msgbufpv;
+extern struct pv_addr irqstack;
+extern struct pv_addr undstack;
+extern struct pv_addr abtstack;
+extern struct pv_addr kernelstack;
 
 static struct mem_region availmem_regions[FDT_MEM_REGIONS];
 static int availmem_regions_sz;
@@ -151,7 +145,6 @@ static int availmem_regions_sz;
 static void print_kenv(void);
 static void print_kernel_section_addr(void);
 
-static void physmap_init(void);
 static int platform_devmap_init(void);
 static int platform_mpp_init(void);
 
@@ -197,110 +190,6 @@ print_kernel_section_addr(void)
 	debugf(" _edata         = 0x%08x\n", (uint32_t)_edata);
 	debugf(" __bss_start    = 0x%08x\n", (uint32_t)__bss_start);
 	debugf(" _end           = 0x%08x\n", (uint32_t)_end);
-}
-
-static void
-physmap_init(void)
-{
-	int i, j, cnt;
-	vm_offset_t phys_kernelend, kernload;
-	uint32_t s, e, sz;
-	struct mem_region *mp, *mp1;
-
-	phys_kernelend = KERNPHYSADDR + (virtual_avail - KERNVIRTADDR);
-	kernload = KERNPHYSADDR;
-
-	/*
-	 * Remove kernel physical address range from avail
-	 * regions list. Page align all regions.
-	 * Non-page aligned memory isn't very interesting to us.
-	 * Also, sort the entries for ascending addresses.
-	 */
-	sz = 0;
-	cnt = availmem_regions_sz;
-	debugf("processing avail regions:\n");
-	for (mp = availmem_regions; mp->mr_size; mp++) {
-		s = mp->mr_start;
-		e = mp->mr_start + mp->mr_size;
-		debugf(" %08x-%08x -> ", s, e);
-		/* Check whether this region holds all of the kernel. */
-		if (s < kernload && e > phys_kernelend) {
-			availmem_regions[cnt].mr_start = phys_kernelend;
-			availmem_regions[cnt++].mr_size = e - phys_kernelend;
-			e = kernload;
-		}
-		/* Look whether this regions starts within the kernel. */
-		if (s >= kernload && s < phys_kernelend) {
-			if (e <= phys_kernelend)
-				goto empty;
-			s = phys_kernelend;
-		}
-		/* Now look whether this region ends within the kernel. */
-		if (e > kernload && e <= phys_kernelend) {
-			if (s >= kernload) {
-				goto empty;
-			}
-			e = kernload;
-		}
-		/* Now page align the start and size of the region. */
-		s = round_page(s);
-		e = trunc_page(e);
-		if (e < s)
-			e = s;
-		sz = e - s;
-		debugf("%08x-%08x = %x\n", s, e, sz);
-
-		/* Check whether some memory is left here. */
-		if (sz == 0) {
-		empty:
-			printf("skipping\n");
-			bcopy(mp + 1, mp,
-			    (cnt - (mp - availmem_regions)) * sizeof(*mp));
-			cnt--;
-			mp--;
-			continue;
-		}
-
-		/* Do an insertion sort. */
-		for (mp1 = availmem_regions; mp1 < mp; mp1++)
-			if (s < mp1->mr_start)
-				break;
-		if (mp1 < mp) {
-			bcopy(mp1, mp1 + 1, (char *)mp - (char *)mp1);
-			mp1->mr_start = s;
-			mp1->mr_size = sz;
-		} else {
-			mp->mr_start = s;
-			mp->mr_size = sz;
-		}
-	}
-	availmem_regions_sz = cnt;
-
-	/* Fill in phys_avail table, based on availmem_regions */
-	debugf("fill in phys_avail:\n");
-	for (i = 0, j = 0; i < availmem_regions_sz; i++, j += 2) {
-
-		debugf(" region: 0x%08x - 0x%08x (0x%08x)\n",
-		    availmem_regions[i].mr_start,
-		    availmem_regions[i].mr_start + availmem_regions[i].mr_size,
-		    availmem_regions[i].mr_size);
-
-		/* 
-		 * We should not map the page at PA 0x0000000, the VM can't
-		 * handle it, as pmap_extract() == 0 means failure.
-		 */
-		if (availmem_regions[i].mr_start > 0 ||
-		    availmem_regions[i].mr_size > PAGE_SIZE) {
-			phys_avail[j] = availmem_regions[i].mr_start;
-			if (phys_avail[j] == 0)
-				phys_avail[j] += PAGE_SIZE;
-			phys_avail[j + 1] = availmem_regions[i].mr_start +
-			    availmem_regions[i].mr_size;
-		} else
-			j -= 2;
-	}
-	phys_avail[j] = 0;
-	phys_avail[j + 1] = 0;
 }
 
 void *
@@ -586,25 +475,13 @@ initarm(void *mdp, void *unused __unused)
 	/*
 	 * Prepare map of physical memory regions available to vm subsystem.
 	 */
-	physmap_init();
+	physmap_init(availmem_regions, availmem_regions_sz);
 
 	/* Do basic tuning, hz etc */
 	init_param2(physmem);
 	kdb_init();
 	return ((void *)(kernelstack.pv_va + USPACE_SVC_STACK_TOP -
 	    sizeof(struct pcb)));
-}
-
-void
-set_stackptrs(int cpu)
-{
-
-	set_stackptr(PSR_IRQ32_MODE,
-	    irqstack.pv_va + ((IRQ_STACK_SIZE * PAGE_SIZE) * (cpu + 1)));
-	set_stackptr(PSR_ABT32_MODE,
-	    abtstack.pv_va + ((ABT_STACK_SIZE * PAGE_SIZE) * (cpu + 1)));
-	set_stackptr(PSR_UND32_MODE,
-	    undstack.pv_va + ((UND_STACK_SIZE * PAGE_SIZE) * (cpu + 1)));
 }
 
 #define MPP_PIN_MAX		68
