@@ -132,18 +132,16 @@ extern int *end;
 #endif
 /* Physical and virtual addresses for some global pages */
 
-vm_paddr_t phys_avail[10];
-vm_paddr_t dump_avail[4];
 vm_paddr_t physical_start;
 vm_paddr_t physical_end;
 vm_paddr_t physical_freestart;
 vm_offset_t physical_pages;
 
-struct pv_addr systempage;
-struct pv_addr irqstack;
-struct pv_addr undstack;
-struct pv_addr abtstack;
-struct pv_addr kernelstack;
+extern struct pv_addr systempage;
+extern struct pv_addr irqstack;
+extern struct pv_addr undstack;
+extern struct pv_addr abtstack;
+extern struct pv_addr kernelstack;
 
 /* Static device mappings. */
 static const struct pmap_devmap assabet_devmap[] = {
@@ -152,6 +150,7 @@ static const struct pmap_devmap assabet_devmap[] = {
 	 * with the MMU on or off.
 	 */
 	{
+		NULL,
 		SACOM1_VBASE,
 		SACOM1_BASE,
 		SACOM1_SIZE,
@@ -159,6 +158,7 @@ static const struct pmap_devmap assabet_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		SAIPIC_BASE,
 		SAIPIC_BASE,
 		SAIPIC_SIZE,
@@ -166,6 +166,7 @@ static const struct pmap_devmap assabet_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		0,
 		0,
 		0,

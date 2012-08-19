@@ -121,16 +121,16 @@ extern int *end;
 
 /* Physical and virtual addresses for some global pages */
 
-vm_paddr_t phys_avail[PXA2X0_SDRAM_BANKS * 2 + 4];
-vm_paddr_t dump_avail[PXA2X0_SDRAM_BANKS * 2 + 4];
+//vm_paddr_t phys_avail[PXA2X0_SDRAM_BANKS * 2 + 4];
+//vm_paddr_t dump_avail[PXA2X0_SDRAM_BANKS * 2 + 4];
 vm_offset_t physical_pages;
 
-struct pv_addr systempage;
-struct pv_addr msgbufpv;
-struct pv_addr irqstack;
-struct pv_addr undstack;
-struct pv_addr abtstack;
-struct pv_addr kernelstack;
+extern struct pv_addr systempage;
+extern struct pv_addr msgbufpv;
+extern struct pv_addr irqstack;
+extern struct pv_addr undstack;
+extern struct pv_addr abtstack;
+extern struct pv_addr kernelstack;
 struct pv_addr minidataclean;
 
 static void	pxa_probe_sdram(bus_space_tag_t, bus_space_handle_t,
@@ -143,13 +143,14 @@ static const struct pmap_devmap pxa_devmap[] = {
 	 * up user-space.
 	 */
 	{
+		NULL,
 		PXA2X0_PERIPH_START + PXA2X0_PERIPH_OFFSET,
 		PXA2X0_PERIPH_START,
 		PXA250_PERIPH_END - PXA2X0_PERIPH_START,
 		VM_PROT_READ|VM_PROT_WRITE,
 		PTE_NOCACHE,
 	},
-	{ 0, 0, 0, 0, 0, }
+	{ NULL, 0, 0, 0, 0, 0, }
 };
 
 #define SDRAM_START 0xa0000000

@@ -125,96 +125,94 @@ extern int *end;
 
 /* Physical and virtual addresses for some global pages */
 
-vm_paddr_t phys_avail[10];
-vm_paddr_t dump_avail[4];
 vm_offset_t physical_pages;
 
-struct pv_addr systempage;
-struct pv_addr msgbufpv;
-struct pv_addr irqstack;
-struct pv_addr undstack;
-struct pv_addr abtstack;
-struct pv_addr kernelstack;
+extern struct pv_addr systempage;
+extern struct pv_addr msgbufpv;
+extern struct pv_addr irqstack;
+extern struct pv_addr undstack;
+extern struct pv_addr abtstack;
+extern struct pv_addr kernelstack;
 struct pv_addr minidataclean;
 
 /* Static device mappings. */
 static const struct pmap_devmap ixp425_devmap[] = {
 	/* Physical/Virtual address for I/O space */
-    { IXP425_IO_VBASE, IXP425_IO_HWBASE, IXP425_IO_SIZE,
+    { NULL, IXP425_IO_VBASE, IXP425_IO_HWBASE, IXP425_IO_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* Expansion Bus */
-    { IXP425_EXP_VBASE, IXP425_EXP_HWBASE, IXP425_EXP_SIZE,
+    { NULL, IXP425_EXP_VBASE, IXP425_EXP_HWBASE, IXP425_EXP_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* CFI Flash on the Expansion Bus */
-    { IXP425_EXP_BUS_CS0_VBASE, IXP425_EXP_BUS_CS0_HWBASE,
+    { NULL, IXP425_EXP_BUS_CS0_VBASE, IXP425_EXP_BUS_CS0_HWBASE,
       IXP425_EXP_BUS_CS0_SIZE, VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* IXP425 PCI Configuration */
-    { IXP425_PCI_VBASE, IXP425_PCI_HWBASE, IXP425_PCI_SIZE,
+    { NULL, IXP425_PCI_VBASE, IXP425_PCI_HWBASE, IXP425_PCI_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* SDRAM Controller */
-    { IXP425_MCU_VBASE, IXP425_MCU_HWBASE, IXP425_MCU_SIZE,
+    { NULL, IXP425_MCU_VBASE, IXP425_MCU_HWBASE, IXP425_MCU_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* PCI Memory Space */
-    { IXP425_PCI_MEM_VBASE, IXP425_PCI_MEM_HWBASE, IXP425_PCI_MEM_SIZE,
+    { NULL, IXP425_PCI_MEM_VBASE, IXP425_PCI_MEM_HWBASE, IXP425_PCI_MEM_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* Q-Mgr Memory Space */
-    { IXP425_QMGR_VBASE, IXP425_QMGR_HWBASE, IXP425_QMGR_SIZE,
+    { NULL, IXP425_QMGR_VBASE, IXP425_QMGR_HWBASE, IXP425_QMGR_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
-    { 0 },
+    { NULL, 0 },
 };
 
 /* Static device mappings. */
 static const struct pmap_devmap ixp435_devmap[] = {
 	/* Physical/Virtual address for I/O space */
-    { IXP425_IO_VBASE, IXP425_IO_HWBASE, IXP425_IO_SIZE,
+    { NULL, IXP425_IO_VBASE, IXP425_IO_HWBASE, IXP425_IO_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
-    { IXP425_EXP_VBASE, IXP425_EXP_HWBASE, IXP425_EXP_SIZE,
+    { NULL, IXP425_EXP_VBASE, IXP425_EXP_HWBASE, IXP425_EXP_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* IXP425 PCI Configuration */
-    { IXP425_PCI_VBASE, IXP425_PCI_HWBASE, IXP425_PCI_SIZE,
+    { NULL, IXP425_PCI_VBASE, IXP425_PCI_HWBASE, IXP425_PCI_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* DDRII Controller NB: mapped same place as IXP425 */
-    { IXP425_MCU_VBASE, IXP435_MCU_HWBASE, IXP425_MCU_SIZE,
+    { NULL, IXP425_MCU_VBASE, IXP435_MCU_HWBASE, IXP425_MCU_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* PCI Memory Space */
-    { IXP425_PCI_MEM_VBASE, IXP425_PCI_MEM_HWBASE, IXP425_PCI_MEM_SIZE,
+    { NULL, IXP425_PCI_MEM_VBASE, IXP425_PCI_MEM_HWBASE, IXP425_PCI_MEM_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* Q-Mgr Memory Space */
-    { IXP425_QMGR_VBASE, IXP425_QMGR_HWBASE, IXP425_QMGR_SIZE,
+    { NULL, IXP425_QMGR_VBASE, IXP425_QMGR_HWBASE, IXP425_QMGR_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* CFI Flash on the Expansion Bus */
-    { IXP425_EXP_BUS_CS0_VBASE, IXP425_EXP_BUS_CS0_HWBASE,
+    { NULL, IXP425_EXP_BUS_CS0_VBASE, IXP425_EXP_BUS_CS0_HWBASE,
       IXP425_EXP_BUS_CS0_SIZE, VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* USB1 Memory Space */
-    { IXP435_USB1_VBASE, IXP435_USB1_HWBASE, IXP435_USB1_SIZE,
+    { NULL, IXP435_USB1_VBASE, IXP435_USB1_HWBASE, IXP435_USB1_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 	/* USB2 Memory Space */
-    { IXP435_USB2_VBASE, IXP435_USB2_HWBASE, IXP435_USB2_SIZE,
+    { NULL, IXP435_USB2_VBASE, IXP435_USB2_HWBASE, IXP435_USB2_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* GPS Memory Space */
-    { CAMBRIA_GPS_VBASE, CAMBRIA_GPS_HWBASE, CAMBRIA_GPS_SIZE,
+    { NULL, CAMBRIA_GPS_VBASE, CAMBRIA_GPS_HWBASE, CAMBRIA_GPS_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
 	/* RS485 Memory Space */
-    { CAMBRIA_RS485_VBASE, CAMBRIA_RS485_HWBASE, CAMBRIA_RS485_SIZE,
+    { NULL, CAMBRIA_RS485_VBASE, CAMBRIA_RS485_HWBASE, CAMBRIA_RS485_SIZE,
       VM_PROT_READ|VM_PROT_WRITE, PTE_NOCACHE, },
 
-    { 0 }
+    { NULL, 0 }
 };
 
 extern vm_offset_t xscale_cache_clean_addr;

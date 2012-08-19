@@ -123,17 +123,14 @@ extern void *_end;
 extern int *end;
 
 /* Physical and virtual addresses for some global pages */
-
-vm_paddr_t phys_avail[10];
-vm_paddr_t dump_avail[4];
 vm_offset_t physical_pages;
 
-struct pv_addr systempage;
-struct pv_addr msgbufpv;
-struct pv_addr irqstack;
-struct pv_addr undstack;
-struct pv_addr abtstack;
-struct pv_addr kernelstack;
+extern struct pv_addr systempage;
+extern struct pv_addr msgbufpv;
+extern struct pv_addr irqstack;
+extern struct pv_addr undstack;
+extern struct pv_addr abtstack;
+extern struct pv_addr kernelstack;
 
 #define	_A(a)	((a) & ~L1_S_OFFSET)
 #define	_S(s)	(((s) + L1_S_SIZE - 1) & ~(L1_S_SIZE-1))
@@ -144,6 +141,7 @@ static const struct pmap_devmap s3c24x0_devmap[] = {
 	 * Map the devices we need early on.
 	 */
 	{
+		NULL,
 		_A(S3C24X0_CLKMAN_BASE),
 		_A(S3C24X0_CLKMAN_PA_BASE),
 		_S(S3C24X0_CLKMAN_SIZE),
@@ -151,6 +149,7 @@ static const struct pmap_devmap s3c24x0_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		_A(S3C24X0_GPIO_BASE),
 		_A(S3C24X0_GPIO_PA_BASE),
 		_S(S3C2410_GPIO_SIZE),
@@ -158,6 +157,7 @@ static const struct pmap_devmap s3c24x0_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		_A(S3C24X0_INTCTL_BASE),
 		_A(S3C24X0_INTCTL_PA_BASE),
 		_S(S3C24X0_INTCTL_SIZE),
@@ -165,6 +165,7 @@ static const struct pmap_devmap s3c24x0_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		_A(S3C24X0_TIMER_BASE),
 		_A(S3C24X0_TIMER_PA_BASE),
 		_S(S3C24X0_TIMER_SIZE),
@@ -172,6 +173,7 @@ static const struct pmap_devmap s3c24x0_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		_A(S3C24X0_UART0_BASE),
 		_A(S3C24X0_UART0_PA_BASE),
 		_S(S3C24X0_UART_PA_BASE(3) - S3C24X0_UART0_PA_BASE),
@@ -179,6 +181,7 @@ static const struct pmap_devmap s3c24x0_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		_A(S3C24X0_WDT_BASE),
 		_A(S3C24X0_WDT_PA_BASE),
 		_S(S3C24X0_WDT_SIZE),
@@ -186,6 +189,7 @@ static const struct pmap_devmap s3c24x0_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		0,
 		0,
 		0,

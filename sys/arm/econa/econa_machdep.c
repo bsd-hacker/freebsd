@@ -108,17 +108,14 @@ extern void *_end;
 extern int *end;
 
 /* Physical and virtual addresses for some global pages */
-
-vm_paddr_t phys_avail[10];
-vm_paddr_t dump_avail[4];
 vm_offset_t physical_pages;
 
-struct pv_addr systempage;
-struct pv_addr msgbufpv;
-struct pv_addr irqstack;
-struct pv_addr undstack;
-struct pv_addr abtstack;
-struct pv_addr kernelstack;
+extern struct pv_addr systempage;
+extern struct pv_addr msgbufpv;
+extern struct pv_addr irqstack;
+extern struct pv_addr undstack;
+extern struct pv_addr abtstack;
+extern struct pv_addr kernelstack;
 
 static void *boot_arg1;
 static void *boot_arg2;
@@ -129,6 +126,7 @@ static const struct pmap_devmap econa_devmap[] = {
 		/*
 		 * This maps DDR SDRAM
 		 */
+		NULL,
 		ECONA_SDRAM_BASE, /*virtual*/
 		ECONA_SDRAM_BASE, /*physical*/
 		ECONA_SDRAM_SIZE, /*size*/
@@ -144,6 +142,7 @@ static const struct pmap_devmap econa_devmap[] = {
 		 * This maps the interrupt controller, the UART
 		 * and the timer.
 		 */
+		NULL,
 		ECONA_IO_BASE, /*virtual*/
 		ECONA_IO_BASE, /*physical*/
 		ECONA_IO_SIZE, /*size*/
@@ -154,6 +153,7 @@ static const struct pmap_devmap econa_devmap[] = {
 		/*
 		 * OHCI + EHCI
 		 */
+		NULL,
 		ECONA_OHCI_VBASE, /*virtual*/
 		ECONA_OHCI_PBASE, /*physical*/
 		ECONA_USB_SIZE, /*size*/
@@ -164,6 +164,7 @@ static const struct pmap_devmap econa_devmap[] = {
 		/*
 		 * CFI
 		 */
+		NULL,
 		ECONA_CFI_VBASE, /*virtual*/
 		ECONA_CFI_PBASE, /*physical*/
 		ECONA_CFI_SIZE,
@@ -171,6 +172,7 @@ static const struct pmap_devmap econa_devmap[] = {
 		PTE_NOCACHE,
 	},
 	{
+		NULL,
 		0,
 		0,
 		0,

@@ -2,6 +2,7 @@
 arm/arm/bus_space_generic.c		standard
 arm/arm/cpufunc_asm_xscale.S		standard
 arm/arm/irq_dispatch.S			standard
+arm/arm/intr.c				standard
 arm/xscale/ixp425/ixp425.c		standard
 arm/xscale/ixp425/ixp425_mem.c		standard
 arm/xscale/ixp425/ixp425_space.c	standard

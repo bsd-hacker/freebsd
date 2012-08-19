@@ -120,17 +120,14 @@ extern void *_end;
 extern int *end;
 
 /* Physical and virtual addresses for some global pages */
-
-vm_paddr_t phys_avail[10];
-vm_paddr_t dump_avail[4];
 vm_offset_t physical_pages;
 
-struct pv_addr systempage;
-struct pv_addr msgbufpv;
-struct pv_addr irqstack;
-struct pv_addr undstack;
-struct pv_addr abtstack;
-struct pv_addr kernelstack;
+extern struct pv_addr systempage;
+extern struct pv_addr msgbufpv;
+extern struct pv_addr irqstack;
+extern struct pv_addr undstack;
+extern struct pv_addr abtstack;
+extern struct pv_addr kernelstack;
 struct pv_addr minidataclean;
 
 #define IQ80321_OBIO_BASE 0xfe800000UL
@@ -142,6 +139,7 @@ static const struct pmap_devmap iq80321_devmap[] = {
 	 * with the MMU on or off.
 	 */
 	    {
+		    NULL,
 		    IQ80321_OBIO_BASE,
 		    IQ80321_OBIO_BASE,
 		    IQ80321_OBIO_SIZE,
@@ -149,14 +147,15 @@ static const struct pmap_devmap iq80321_devmap[] = {
 		    PTE_NOCACHE,
 	    },
 	    {
+		    NULL,
 	    	    IQ80321_IOW_VBASE,
 		    VERDE_OUT_XLATE_IO_WIN0_BASE,
 		    VERDE_OUT_XLATE_IO_WIN_SIZE,
 		    VM_PROT_READ|VM_PROT_WRITE,
 		    PTE_NOCACHE,
 	    },
-	    
 	    {
+		    NULL,
 		    IQ80321_80321_VBASE,
 		    VERDE_PMMR_BASE,
 		    VERDE_PMMR_SIZE,
@@ -164,6 +163,7 @@ static const struct pmap_devmap iq80321_devmap[] = {
 		    PTE_NOCACHE,
 	    },
 	    {
+		    NULL,
 		    0,
 		    0,
 		    0,

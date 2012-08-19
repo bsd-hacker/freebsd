@@ -117,17 +117,14 @@ extern void *_end;
 extern int *end;
 
 /* Physical and virtual addresses for some global pages */
-
-vm_paddr_t phys_avail[10];
-vm_paddr_t dump_avail[4];
 vm_offset_t physical_pages;
 
-struct pv_addr systempage;
-struct pv_addr msgbufpv;
-struct pv_addr irqstack;
-struct pv_addr undstack;
-struct pv_addr abtstack;
-struct pv_addr kernelstack;
+extern struct pv_addr systempage;
+extern struct pv_addr msgbufpv;
+extern struct pv_addr irqstack;
+extern struct pv_addr undstack;
+extern struct pv_addr abtstack;
+extern struct pv_addr kernelstack;
 
 static void *boot_arg1;
 static void *boot_arg2;
@@ -144,6 +141,7 @@ const struct pmap_devmap at91_devmap[] = {
 		 * and the timer. Other devices should use newbus to
 		 * map their memory anyway.
 		 */
+		NULL,
 		0xdff00000,
 		0xfff00000,
 		0x00100000,
@@ -166,6 +164,7 @@ const struct pmap_devmap at91_devmap[] = {
 		 * on this chip select for a VA/PA mapping.
 		 */
 		/* Internal Memory 1MB  */
+		NULL,
 		AT91RM92_OHCI_BASE,
 		AT91RM92_OHCI_PA_BASE,
 		0x00100000,
@@ -174,6 +173,7 @@ const struct pmap_devmap at91_devmap[] = {
 	},
 	{
 		/* CompactFlash controller. Portion of EBI CS4 1MB */
+		NULL,
 		AT91RM92_CF_BASE,
 		AT91RM92_CF_PA_BASE,
 		0x00100000,
@@ -184,6 +184,7 @@ const struct pmap_devmap at91_devmap[] = {
 	 * addresses mapping is the same. */
 	{
 		/* Internal Memory 1MB  */
+		NULL,
 		AT91SAM9G20_OHCI_BASE,
 		AT91SAM9G20_OHCI_PA_BASE,
 		0x00100000,
@@ -192,13 +193,14 @@ const struct pmap_devmap at91_devmap[] = {
 	},
 	{
 		/* EBI CS3 256MB */
+		NULL,
 		AT91SAM9G20_NAND_BASE,
 		AT91SAM9G20_NAND_PA_BASE,
 		AT91SAM9G20_NAND_SIZE,
 		VM_PROT_READ|VM_PROT_WRITE,
 		PTE_NOCACHE,
 	},
-	{ 0, 0, 0, 0, 0, }
+	{ NULL, 0, 0, 0, 0, 0, }
 };
 
 long
