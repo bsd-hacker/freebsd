@@ -124,15 +124,14 @@ lpc_intc_attach(device_t dev)
 static int
 lpc_intc_intr(void *arg)
 {
-	struct arm_intr_data *id = (struct arm_intr_data *)arg;
-	struct lpc_intc_softc *sc = (struct lpc_intc_softc *)id->arg;
+	struct lpc_intc_softc *sc = (struct lpc_intc_softc *)arg;
 	uint32_t value;
 	int i;
 
 	value = intc_read_4(sc, LPC_INTC_SR);
 	for (i = 0; i < 32; i++) {
 		if (value & (1 << i))
-			arm_dispatch_irq(sc->li_dev, id->tf, i);
+			arm_dispatch_irq(sc->li_dev, NULL, i);
 	}
 
 	return (FILTER_HANDLED);
