@@ -95,8 +95,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/vmparam.h>
 #include <machine/sysarch.h>
 
+#if defined(FDT)
 #include <dev/fdt/fdt_common.h>
 #include <dev/ofw/openfirm.h>
+#endif
 
 /* Define various stack sizes in pages */
 #define IRQ_STACK_SIZE	1
@@ -905,19 +907,23 @@ arm_bootstrap_pagetables(uint32_t memsize, struct pv_addr *vectors, struct pv_ad
 static void
 arm_process_devmap(struct pmap_devmap *devmap)
 {
+#if defined(FDT)
 	struct fdt_range ranges[8];
 	struct fdt_range *rptr = ranges;
-	struct pmap_devmap *entry;
 	phandle_t node, parent;
-	vm_offset_t totalsize = 0;
 	u_long start, size;
 	int addr_cells, size_cells, par_addr_cells;
-	int nranges, i;
+	int nranges;
+#endif
+	struct pmap_devmap *entry;
+	vm_offset_t totalsize = 0;
+	int i;
 
 	edebugf("processing devmap entries\n");
 
 	for (i = 0; devmap[i].pd_name != NULL || devmap[i].pd_pa != 0; i++) {
 		entry = &devmap[i];
+#if defined(FDT)
 		if (entry->pd_name != NULL) {
 
 			edebugf("fdt %s: ", entry->pd_name);
@@ -955,6 +961,7 @@ noparent:
 			edebugf("entry: ");
 
 notfound:
+#endif
 		entry->pd_va = ARM_DEVMAP_START + totalsize;
 		totalsize += entry->pd_size;
 		eprintf("pa=0x%x va=0x%x size=0x%x\n", entry->pd_pa, entry->pd_va, entry->pd_size);
@@ -963,7 +970,6 @@ notfound:
 	edebugf("total mapped size: 0x%x\n", totalsize);
 	arm_devmap_size = totalsize;
 }
-
 
 void *
 arm_mmu_init(uint32_t memsize, uint32_t lastaddr, int high_vectors)
