@@ -169,10 +169,11 @@ ti_aintc_intr(void *arg)
 	if ((active_irq & 0xffffff80)) {
 		device_printf(sc->sc_dev,
 		    "Spurious interrupt detected (0x%08x)\n", active_irq);
-		return -1;
+		return FILTER_HANDLED;
 	}
 
-	return active_irq;
+	arm_dispatch_irq(sc->sc_dev, NULL, active_irq);
+	return FILTER_HANDLED;
 }
 
 static void
