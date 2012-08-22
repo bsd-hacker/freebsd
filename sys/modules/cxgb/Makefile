@@ -1,8 +1,8 @@
 # $FreeBSD$
 SUBDIR= cxgb
 SUBDIR+= cxgb_t3fw
-#SUBDIR+= ${_tom}
-#SUBDIR+= ${_iw_cxgb}
+SUBDIR+= ${_tom}
+SUBDIR+= ${_iw_cxgb}
 
 .if ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386"
 _tom=		tom
