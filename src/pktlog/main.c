@@ -6,9 +6,11 @@
 
 #include <pcap.h>
 
+#include "net80211/ieee80211.h"
 #include "net80211/ieee80211_radiotap.h"
 
 #include "libradarpkt/pkt.h"
+#include "libradarpkt/ar5212_radar.h"
 #include "libradarpkt/ar5416_radar.h"
 #include "libradarpkt/ar9280_radar.h"
 
@@ -84,8 +86,10 @@ pkt_handle(int chip, const char *pkt, int len)
 		return;
 	}
 #endif
-
-	if (chip == CHIP_AR5416)
+	if (chip == CHIP_AR5212)
+		r = ar5212_radar_decode(rh, pkt + rh->it_len, len - rh->it_len,
+		    &re);
+	else if (chip == CHIP_AR5416)
 		r = ar5416_radar_decode(rh, pkt + rh->it_len, len - rh->it_len,
 		    &re);
 	else if (chip == CHIP_AR9280)
@@ -151,7 +155,7 @@ static void
 usage(const char *progname)
 {
 
-	printf("Usage: %s <ar5416|ar9280> <file|if> <filename|ifname>\n",
+	printf("Usage: %s <ar5212|ar5416|ar9280> <file|if> <filename|ifname>\n",
 	    progname);
 }
 
@@ -171,7 +175,9 @@ main(int argc, const char *argv[])
 		exit(255);
 	}
 
-	if (strcmp(argv[1], "ar5416") == 0) {
+	if (strcmp(argv[1], "ar5212") == 0) {
+		chip = CHIP_AR5212;
+	} else if (strcmp(argv[1], "ar5416") == 0) {
 		chip = CHIP_AR5416;
 	} else if (strcmp(argv[1], "ar9280") == 0) {
 		chip = CHIP_AR9280;
