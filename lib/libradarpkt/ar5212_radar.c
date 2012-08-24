@@ -34,8 +34,10 @@
 #include <sys/endian.h>
 #include <string.h>	/* for memcpy() */
 
+/* Headers required for the ioctl interface */
 #include <sys/socket.h>
 #include <net/if.h>
+#include <sys/queue.h>
 
 #include "net80211/ieee80211.h"
 #include "net80211/ieee80211_radiotap.h"
@@ -43,62 +45,46 @@
 #include "dev/ath/if_athioctl.h"
 
 #include "pkt.h"
-#include "ar9280_radar.h"
 
-/* Relevant for Sowl and later */
-#define	EXT_CH_RADAR_EARLY_FOUND	0x04
-#define	EXT_CH_RADAR_FOUND	0x02
-#define	PRI_CH_RADAR_FOUND	0x01
+#include "ar5212_radar.h"
 
 int
-ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
+ar5212_radar_decode(struct ieee80211_radiotap_header *rh,
     const unsigned char *pkt, int len, struct radar_entry *re)
 {
 	uint64_t tsf;
-	int8_t comb_rssi, pri_rssi, ext_rssi, nf;
+	int8_t rssi, nf;
 	struct ath_rx_radiotap_header *rx =
 	    (struct ath_rx_radiotap_header *) rh;
 
 	/* XXX we should really be implementing a real radiotap parser */
 	tsf = le64toh(rx->wr_tsf);
 
-	/*
-	 * XXX which rssi should we use?
-	 * XXX ext rssi?
-	 */
-	comb_rssi = rx->wr_v.vh_rssi;	/* Combined RSSI */
-	pri_rssi = rx->wr_v.rssi_ctl[0];
-	ext_rssi = rx->wr_v.rssi_ext[0];
+	rssi = rx->wr_v.vh_rssi;
 	nf = rx->wr_antnoise;
 
-	/* Last three bytes are the radar parameters */
-	if (len < 3) {
+	/* Last byte is the pulse width */
+	if (len < 1) {
 		printf("short radar frame\n");
 		return (0);
 	}
 
-	/*
-	 * XXX TODO: there's lots of other things that need to be
-	 * done with the RSSI and pulse durations.  It's quite likely
-	 * that the pkt format should just have all of those
-	 * (pri/ext/comb RSSI, flags, pri/ext pulse duration) and then
-	 * the "decided" values to match the logic in the current
-	 * HAL/DFS code, so they can all be plotted as appropriate.
-	 */
-
 #if 0
-	printf("tsf: %lld", tsf);
-	printf(" len: %d", len);
-	printf(" rssi %d/%d", comb_rssi, nf);
-	printf(", pri/ext rssi: %d/%d", pri_rssi, ext_rssi);
-	printf(" pri: %u", pkt[len - 3] & 0xff);
-	printf(" ext: %u", pkt[len - 2] & 0xff);
-	printf(" flags: %s %s %s\n",
-	    pkt[len - 1] & PRI_CH_RADAR_FOUND ? "pri" : "",
-	    pkt[len - 1] & EXT_CH_RADAR_FOUND ? "ext" : "",
-	    pkt[len - 1] & EXT_CH_RADAR_EARLY_FOUND ? "extearly" : ""
-	    );
+	printf("phyerr: %d ", rx->wr_v.vh_phyerr_code);
+	printf("ts: %lld", tsf);
+	printf("\tit_present: %x", le32toh(rh->it_present));
+	printf("\tlen: %d", len);
+	printf("\trssi: %d, nf: %d", rssi, nf);
+	printf("\tpri: %u", pkt[len - 1] & 0xff);
+	printf("\n");
 #endif
+
+	/*
+	 * If RSSI > 0x80, it's a negative RSSI. We store it signed
+	 * so we can at least log that it was negative in order to
+	 * plot it. The radar code IIRC just tosses it.
+	 */
+	re->re_rssi = rssi;
 
 	/*
 	 * XXX TODO:
@@ -106,26 +92,13 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	 * The radar event is timestamped by the MAC the end of the event.
 	 * To work around this particular issue, a "best guess" of the event
 	 * start time involves its duration.
-	 *
-	 * For the AR5416 we can fake this as we know that in 5GHz mode
-	 * the MAC clock is 40MHz, so we can just convert the duration to
-	 * a microsecond value and subtract that from the TSF.
-	 * This also holds true for the AR9130/AR9160 in 5GHz mode.
-	 *
-	 * However, for the AR9280, 5GHz operation may be in "fast clock"
-	 * mode, where the duration is actually not 0.8uS, but slightly
-	 * smaller.
-	 *
-	 * Since there's currently no way to record this information in
-	 * the vendor radiotap header (but there should be, hint hint)
-	 * should have a flags field somewhere which includes (among other
-	 * things) whether the pulse duration is based on 40MHz or 44MHz.
 	 */
+
 	re->re_timestamp = tsf;
-	re->re_rssi = pri_rssi;	/* XXX extension rssi? */
-	re->re_dur = pkt[len - 3];	/* XXX extension duration? */
+	/* XXX TODO: re->re_freq */
+	re->re_dur = pkt[len - 1] & 0xff;
+	/* XXX TODO: also store ctl/ext RSSI, and some flags */
 	re->re_freq = 0;
-	/* XXX flags? */
 
 	return(1);
 }

@@ -39,7 +39,7 @@
 #include <net/if.h>
 #include <sys/queue.h>
 
-//#include "net80211/ieee80211_var.h"
+#include "net80211/ieee80211.h"
 #include "net80211/ieee80211_radiotap.h"
 
 #include "dev/ath/if_athioctl.h"
