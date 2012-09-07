@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 
 #include <vm/vm.h>
+#include <vm/vm_param.h>
 #include <vm/vm_extern.h>
 #include <vm/vm_page.h>
 #include <vm/vm_object.h>
@@ -217,42 +218,18 @@ ncl_getpages(struct vop_getpages_args *ap)
 			    ("nfs_getpages: page %p is dirty", m));
 		} else {
 			/*
-			 * Read operation was short.  If no error occured
-			 * we may have hit a zero-fill section.   We simply
-			 * leave valid set to 0.
+			 * Read operation was short.  If no error
+			 * occured we may have hit a zero-fill
+			 * section.  We leave valid set to 0, and page
+			 * is freed by vm_page_readahead_finish() if
+			 * its index is not equal to requested, or
+			 * page is zeroed and set valid by
+			 * vm_pager_get_pages() for requested page.
 			 */
 			;
 		}
-		if (i != ap->a_reqpage) {
-			/*
-			 * Whether or not to leave the page activated is up in
-			 * the air, but we should put the page on a page queue
-			 * somewhere (it already is in the object).  Result:
-			 * It appears that emperical results show that
-			 * deactivating pages is best.
-			 */
-
-			/*
-			 * Just in case someone was asking for this page we
-			 * now tell them that it is ok to use.
-			 */
-			if (!error) {
-				if (m->oflags & VPO_WANTED) {
-					vm_page_lock(m);
-					vm_page_activate(m);
-					vm_page_unlock(m);
-				} else {
-					vm_page_lock(m);
-					vm_page_deactivate(m);
-					vm_page_unlock(m);
-				}
-				vm_page_wakeup(m);
-			} else {
-				vm_page_lock(m);
-				vm_page_free(m);
-				vm_page_unlock(m);
-			}
-		}
+		if (i != ap->a_reqpage)
+			vm_page_readahead_finish(m);
 	}
 	VM_OBJECT_UNLOCK(object);
 	return (0);
@@ -722,7 +699,7 @@ ncl_bioread(struct vnode *vp, struct uio *uio, int ioflag, struct ucred *cred)
 	    };
 
 	    if (n > 0) {
-		    error = uiomove(bp->b_data + on, (int)n, uio);
+		    error = vn_io_fault_uiomove(bp->b_data + on, (int)n, uio);
 	    }
 	    if (vp->v_type == VLNK)
 		n = 0;
@@ -897,7 +874,7 @@ ncl_write(struct vop_write_args *ap)
 	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	daddr_t lbn;
 	int bcount;
-	int bp_cached, n, on, error = 0;
+	int bp_cached, n, on, error = 0, error1;
 	size_t orig_resid, local_resid;
 	off_t orig_size, tmp_off;
 
@@ -1203,7 +1180,7 @@ again:
 		}
 
 		local_resid = uio->uio_resid;
-		error = uiomove((char *)bp->b_data + on, n, uio);
+		error = vn_io_fault_uiomove((char *)bp->b_data + on, n, uio);
 
 		if (error != 0 && !bp_cached) {
 			/*
@@ -1259,9 +1236,12 @@ again:
 		if ((ioflag & IO_SYNC)) {
 			if (ioflag & IO_INVAL)
 				bp->b_flags |= B_NOCACHE;
-			error = bwrite(bp);
-			if (error)
+			error1 = bwrite(bp);
+			if (error1 != 0) {
+				if (error == 0)
+					error = error1;
 				break;
+			}
 		} else if ((n + on) == biosize) {
 			bp->b_flags |= B_ASYNC;
 			(void) ncl_writebp(bp, 0, NULL);

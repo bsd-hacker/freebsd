@@ -984,6 +984,7 @@ struct ata_pass_16 {
 #define	WRITE_10		0x2A
 #define	POSITION_TO_ELEMENT	0x2B
 #define	WRITE_VERIFY_10		0x2E
+#define	VERIFY_10		0x2F
 #define	SYNCHRONIZE_CACHE	0x35
 #define	READ_DEFECT_DATA_10	0x37
 #define	WRITE_BUFFER            0x3B
@@ -2388,6 +2389,8 @@ int		scsi_devid_match(uint8_t *rhs, size_t rhs_len,
 
 void scsi_extract_sense(struct scsi_sense_data *sense, int *error_code,
 			int *sense_key, int *asc, int *ascq);
+int scsi_extract_sense_ccb(union ccb *ccb, int *error_code, int *sense_key,
+			   int *asc, int *ascq);
 void scsi_extract_sense_len(struct scsi_sense_data *sense,
 			    u_int sense_len, int *error_code, int *sense_key,
 			    int *asc, int *ascq, int show_errors);

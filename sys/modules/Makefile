@@ -72,11 +72,13 @@ SUBDIR=	\
 	${_coff} \
 	${_coretemp} \
 	${_cp} \
+	${_cpsw} \
 	${_cpuctl} \
 	${_cpufreq} \
 	${_crypto} \
 	${_cryptodev} \
 	${_cs} \
+	${_ct} \
 	${_ctau} \
 	${_cxgb} \
 	cxgbe \
@@ -106,7 +108,7 @@ SUBDIR=	\
 	fdc \
 	fdescfs \
 	${_fe} \
-	${_filemon} \
+	filemon \
 	firewire \
 	firmware \
 	${_fxp} \
@@ -314,6 +316,7 @@ SUBDIR=	\
 	${_ti} \
 	tl \
 	tmpfs \
+	${_toecore} \
 	${_tpm} \
 	trm \
 	${_twa} \
@@ -359,10 +362,6 @@ SUBDIR=	\
 	${_zfs} \
 	zlib \
 
-.if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
-_filemon=	filemon
-.endif
-
 .if ${MACHINE_CPUARCH} != "powerpc" && ${MACHINE_CPUARCH} != "arm" && \
 	${MACHINE_CPUARCH} != "mips"
 _syscons=	syscons
@@ -392,6 +391,7 @@ _random=	random
 .if (${MK_INET_SUPPORT} != "no" || ${MK_INET6_SUPPORT} != "no") || \
 	defined(ALL_MODULES)
 _carp=	carp
+_toecore=	toecore
 .endif
 
 .if ${MK_INET_SUPPORT} != "no" || defined(ALL_MODULES)
@@ -608,6 +608,7 @@ _x86bios=	x86bios
 .elif ${MACHINE} == "pc98"
 _canbepm=	canbepm
 _canbus=	canbus
+_ct=		ct
 _pmc=		pmc
 _snc=		snc
 .endif
@@ -737,6 +738,7 @@ _zfs=		zfs
 
 .if ${MACHINE_CPUARCH} == "arm"
 _cfi=		cfi
+_cpsw=		cpsw
 .endif
 
 .if ${MACHINE_CPUARCH} == "ia64"

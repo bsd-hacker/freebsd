@@ -292,16 +292,13 @@ vm_page_startup(vm_offset_t vaddr)
 	end = phys_avail[biggestone+1];
 
 	/*
-	 * Initialize the locks.
+	 * Initialize the page and queue locks.
 	 */
-	mtx_init(&vm_page_queue_mtx, "vm page queue mutex", NULL, MTX_DEF |
+	mtx_init(&vm_page_queue_mtx, "vm page queue", NULL, MTX_DEF |
 	    MTX_RECURSE);
-	mtx_init(&vm_page_queue_free_mtx, "vm page queue free mutex", NULL,
-	    MTX_DEF);
-
-	/* Setup page locks. */
+	mtx_init(&vm_page_queue_free_mtx, "vm page free queue", NULL, MTX_DEF);
 	for (i = 0; i < PA_LOCK_COUNT; i++)
-		mtx_init(&pa_lock[i].data, "page lock", NULL, MTX_DEF);
+		mtx_init(&pa_lock[i].data, "vm page", NULL, MTX_DEF);
 
 	/*
 	 * Initialize the queue headers for the hold queue, the active queue,
@@ -451,63 +448,6 @@ vm_page_startup(vm_offset_t vaddr)
 	vm_reserv_init();
 #endif
 	return (vaddr);
-}
-
-
-CTASSERT(offsetof(struct vm_page, aflags) % sizeof(uint32_t) == 0);
-
-void
-vm_page_aflag_set(vm_page_t m, uint8_t bits)
-{
-	uint32_t *addr, val;
-
-	/*
-	 * The PGA_WRITEABLE flag can only be set if the page is managed and
-	 * VPO_BUSY.  Currently, this flag is only set by pmap_enter().
-	 */
-	KASSERT((bits & PGA_WRITEABLE) == 0 ||
-	    (m->oflags & (VPO_UNMANAGED | VPO_BUSY)) == VPO_BUSY,
-	    ("PGA_WRITEABLE and !VPO_BUSY"));
-
-	/*
-	 * We want to use atomic updates for m->aflags, which is a
-	 * byte wide.  Not all architectures provide atomic operations
-	 * on the single-byte destination.  Punt and access the whole
-	 * 4-byte word with an atomic update.  Parallel non-atomic
-	 * updates to the fields included in the update by proximity
-	 * are handled properly by atomics.
-	 */
-	addr = (void *)&m->aflags;
-	MPASS(((uintptr_t)addr & (sizeof(uint32_t) - 1)) == 0);
-	val = bits;
-#if BYTE_ORDER == BIG_ENDIAN
-	val <<= 24;
-#endif
-	atomic_set_32(addr, val);
-} 
-
-void
-vm_page_aflag_clear(vm_page_t m, uint8_t bits)
-{
-	uint32_t *addr, val;
-
-	/*
-	 * The PGA_REFERENCED flag can only be cleared if the object
-	 * containing the page is locked.
-	 */
-	KASSERT((bits & PGA_REFERENCED) == 0 || VM_OBJECT_LOCKED(m->object),
-	    ("PGA_REFERENCED and !VM_OBJECT_LOCKED"));
-
-	/*
-	 * See the comment in vm_page_aflag_set().
-	 */
-	addr = (void *)&m->aflags;
-	MPASS(((uintptr_t)addr & (sizeof(uint32_t) - 1)) == 0);
-	val = bits;
-#if BYTE_ORDER == BIG_ENDIAN
-	val <<= 24;
-#endif
-	atomic_clear_32(addr, val);
 }
 
 void
@@ -755,6 +695,45 @@ vm_page_free_zero(vm_page_t m)
 }
 
 /*
+ * Unbusy and handle the page queueing for a page from the VOP_GETPAGES()
+ * array which is not the request page.
+ */
+void
+vm_page_readahead_finish(vm_page_t m)
+{
+
+	if (m->valid != 0) {
+		/*
+		 * Since the page is not the requested page, whether
+		 * it should be activated or deactivated is not
+		 * obvious.  Empirical results have shown that
+		 * deactivating the page is usually the best choice,
+		 * unless the page is wanted by another thread.
+		 */
+		if (m->oflags & VPO_WANTED) {
+			vm_page_lock(m);
+			vm_page_activate(m);
+			vm_page_unlock(m);
+		} else {
+			vm_page_lock(m);
+			vm_page_deactivate(m);
+			vm_page_unlock(m);
+		}
+		vm_page_wakeup(m);
+	} else {
+		/*
+		 * Free the completely invalid page.  Such page state
+		 * occurs due to the short read operation which did
+		 * not covered our page at all, or in case when a read
+		 * error happens.
+		 */
+		vm_page_lock(m);
+		vm_page_free(m);
+		vm_page_unlock(m);
+	}
+}
+
+/*
  *	vm_page_sleep:
  *
  *	Sleep and release the page and page queues locks.
@@ -783,7 +762,7 @@ vm_page_sleep(vm_page_t m, const char *msg)
 }
 
 /*
- *	vm_page_dirty:
+ *	vm_page_dirty_KBI:		[ internal use only ]
  *
  *	Set all bits in the page's dirty field.
  *
@@ -791,11 +770,14 @@ vm_page_sleep(vm_page_t m, const char *msg)
  *	call is made from the machine-independent layer.
  *
  *	See vm_page_clear_dirty_mask().
+ *
+ *	This function should only be called by vm_page_dirty().
  */
 void
-vm_page_dirty(vm_page_t m)
+vm_page_dirty_KBI(vm_page_t m)
 {
 
+	/* These assertions refer to this operation by its public name. */
 	KASSERT((m->flags & PG_CACHED) == 0,
 	    ("vm_page_dirty: page in cache!"));
 	KASSERT(!VM_PAGE_IS_FREE(m),
@@ -930,7 +912,7 @@ vm_page_insert(vm_page_t m, vm_object_t object, vm_pindex_t pindex)
 	 * Since we are inserting a new and possibly dirty page,
 	 * update the object's OBJ_MIGHTBEDIRTY flag.
 	 */
-	if (m->aflags & PGA_WRITEABLE)
+	if (pmap_page_is_write_mapped(m))
 		vm_object_set_writeable_dirty(object);
 }
 
@@ -1684,7 +1666,7 @@ retry:
 	}
 	for (m = m_ret; m < &m_ret[npages]; m++) {
 		m->aflags = 0;
-		m->flags &= flags;
+		m->flags = (m->flags | PG_NODUMP) & flags;
 		if ((req & VM_ALLOC_WIRED) != 0)
 			m->wire_count = 1;
 		/* Unmanaged pages don't use "act_count". */
@@ -2675,11 +2657,11 @@ vm_page_clear_dirty_mask(vm_page_t m, vm_page_bits_t pagebits)
 
 	/*
 	 * If the object is locked and the page is neither VPO_BUSY nor
-	 * PGA_WRITEABLE, then the page's dirty field cannot possibly be
+	 * write mapped, then the page's dirty field cannot possibly be
 	 * set by a concurrent pmap operation.
 	 */
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
-	if ((m->oflags & VPO_BUSY) == 0 && (m->aflags & PGA_WRITEABLE) == 0)
+	if ((m->oflags & VPO_BUSY) == 0 && !pmap_page_is_write_mapped(m))
 		m->dirty &= ~pagebits;
 	else {
 		/*

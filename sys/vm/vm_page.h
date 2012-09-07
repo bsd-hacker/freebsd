@@ -237,20 +237,23 @@ extern struct vpglocks pa_lock[];
 #endif
 
 #define	vm_page_queue_free_mtx	vm_page_queue_free_lock.data
+
 /*
- * These are the flags defined for vm_page.
- *
- * aflags are updated by atomic accesses. Use the vm_page_aflag_set()
- * and vm_page_aflag_clear() functions to set and clear the flags.
+ * The vm_page's aflags are updated using atomic operations.  To set or clear
+ * these flags, the functions vm_page_aflag_set() and vm_page_aflag_clear()
+ * must be used.  Neither these flags nor these functions are part of the KBI.
  *
  * PGA_REFERENCED may be cleared only if the object containing the page is
- * locked.
+ * locked.  It is set by both the MI and MD VM layers.  However, kernel
+ * loadable modules should not directly set this flag.  They should call
+ * vm_page_reference() instead.
  *
  * PGA_WRITEABLE is set exclusively on managed pages by pmap_enter().  When it
- * does so, the page must be VPO_BUSY.
+ * does so, the page must be VPO_BUSY.  The MI VM layer must never access this
+ * flag directly.  Instead, it should call pmap_page_is_write_mapped().
  *
  * PGA_EXECUTABLE may be set by pmap routines, and indicates that a page has
- * at least one executable mapping. It is not consumed by the VM layer.
+ * at least one executable mapping.  It is not consumed by the MI VM layer.
  */
 #define	PGA_WRITEABLE	0x01		/* page may be mapped writeable */
 #define	PGA_REFERENCED	0x02		/* page has been referenced */
@@ -262,12 +265,12 @@ extern struct vpglocks pa_lock[];
  */
 #define	PG_CACHED	0x01		/* page is cached */
 #define	PG_FREE		0x02		/* page is free */
-#define	PG_FICTITIOUS	0x04		/* physical page doesn't exist (O) */
+#define	PG_FICTITIOUS	0x04		/* physical page doesn't exist */
 #define	PG_ZERO		0x08		/* page is zeroed */
 #define	PG_MARKER	0x10		/* special queue marker page */
 #define	PG_SLAB		0x20		/* object pointer is actually a slab */
 #define	PG_WINATCFLS	0x40		/* flush dirty page on inactive q */
-#define	PG_NODUMP	0x80		/* don't include this page in the dump */
+#define	PG_NODUMP	0x80		/* don't include this page in a dump */
 
 /*
  * Misc constants.
@@ -279,7 +282,9 @@ extern struct vpglocks pa_lock[];
 
 #ifdef _KERNEL
 
-#include <vm/vm_param.h>
+#include <sys/systm.h>
+
+#include <machine/atomic.h>
 
 /*
  * Each pageable resident page falls into one of five lists:
@@ -308,7 +313,6 @@ extern struct vpglocks pa_lock[];
  *
  */
 
-struct vnode;
 extern int vm_page_zero_count;
 
 extern vm_page_t vm_page_array;		/* First resident page in table */
@@ -348,8 +352,6 @@ extern struct vpglocks vm_page_queue_lock;
 #define	VM_ALLOC_COUNT_SHIFT	16
 #define	VM_ALLOC_COUNT(count)	((count) << VM_ALLOC_COUNT_SHIFT)
 
-void vm_page_aflag_set(vm_page_t m, uint8_t bits);
-void vm_page_aflag_clear(vm_page_t m, uint8_t bits);
 void vm_page_busy(vm_page_t m);
 void vm_page_flash(vm_page_t m);
 void vm_page_io_start(vm_page_t m);
@@ -358,7 +360,6 @@ void vm_page_hold(vm_page_t mem);
 void vm_page_unhold(vm_page_t mem);
 void vm_page_free(vm_page_t m);
 void vm_page_free_zero(vm_page_t m);
-void vm_page_dirty(vm_page_t m);
 void vm_page_wakeup(vm_page_t m);
 
 void vm_pageq_remove(vm_page_t m);
@@ -387,6 +388,7 @@ vm_page_t vm_page_next(vm_page_t m);
 int vm_page_pa_tryrelock(pmap_t, vm_paddr_t, vm_paddr_t *);
 vm_page_t vm_page_prev(vm_page_t m);
 void vm_page_putfake(vm_page_t m);
+void vm_page_readahead_finish(vm_page_t m);
 void vm_page_reference(vm_page_t m);
 void vm_page_remove (vm_page_t);
 void vm_page_rename (vm_page_t, vm_object_t, vm_pindex_t);
@@ -412,6 +414,7 @@ void vm_page_cowfault (vm_page_t);
 int vm_page_cowsetup(vm_page_t);
 void vm_page_cowclear (vm_page_t);
 
+void vm_page_dirty_KBI(vm_page_t m);
 void vm_page_lock_KBI(vm_page_t m, const char *file, int line);
 void vm_page_unlock_KBI(vm_page_t m, const char *file, int line);
 int vm_page_trylock_KBI(vm_page_t m, const char *file, int line);
@@ -425,6 +428,97 @@ void vm_page_object_lock_assert(vm_page_t m);
 #else
 #define	VM_PAGE_OBJECT_LOCK_ASSERT(m)	(void)0
 #endif
+
+/*
+ * We want to use atomic updates for the aflags field, which is 8 bits wide.
+ * However, not all architectures support atomic operations on 8-bit
+ * destinations.  In order that we can easily use a 32-bit operation, we
+ * require that the aflags field be 32-bit aligned.
+ */
+CTASSERT(offsetof(struct vm_page, aflags) % sizeof(uint32_t) == 0);
+
+/*
+ *	Clear the given bits in the specified page.
+ */
+static inline void
+vm_page_aflag_clear(vm_page_t m, uint8_t bits)
+{
+	uint32_t *addr, val;
+
+	/*
+	 * The PGA_REFERENCED flag can only be cleared if the object
+	 * containing the page is locked.
+	 */
+	if ((bits & PGA_REFERENCED) != 0)
+		VM_PAGE_OBJECT_LOCK_ASSERT(m);
+
+	/*
+	 * Access the whole 32-bit word containing the aflags field with an
+	 * atomic update.  Parallel non-atomic updates to the other fields
+	 * within this word are handled properly by the atomic update.
+	 */
+	addr = (void *)&m->aflags;
+	KASSERT(((uintptr_t)addr & (sizeof(uint32_t) - 1)) == 0,
+	    ("vm_page_aflag_clear: aflags is misaligned"));
+	val = bits;
+#if BYTE_ORDER == BIG_ENDIAN
+	val <<= 24;
+#endif
+	atomic_clear_32(addr, val);
+}
+
+/*
+ *	Set the given bits in the specified page.
+ */
+static inline void
+vm_page_aflag_set(vm_page_t m, uint8_t bits)
+{
+	uint32_t *addr, val;
+
+	/*
+	 * The PGA_WRITEABLE flag can only be set if the page is managed and
+	 * VPO_BUSY.  Currently, this flag is only set by pmap_enter().
+	 */
+	KASSERT((bits & PGA_WRITEABLE) == 0 ||
+	    (m->oflags & (VPO_UNMANAGED | VPO_BUSY)) == VPO_BUSY,
+	    ("vm_page_aflag_set: PGA_WRITEABLE and !VPO_BUSY"));
+
+	/*
+	 * Access the whole 32-bit word containing the aflags field with an
+	 * atomic update.  Parallel non-atomic updates to the other fields
+	 * within this word are handled properly by the atomic update.
+	 */
+	addr = (void *)&m->aflags;
+	KASSERT(((uintptr_t)addr & (sizeof(uint32_t) - 1)) == 0,
+	    ("vm_page_aflag_set: aflags is misaligned"));
+	val = bits;
+#if BYTE_ORDER == BIG_ENDIAN
+	val <<= 24;
+#endif
+	atomic_set_32(addr, val);
+} 
+
+/*
+ *	vm_page_dirty:
+ *
+ *	Set all bits in the page's dirty field.
+ *
+ *	The object containing the specified page must be locked if the
+ *	call is made from the machine-independent layer.
+ *
+ *	See vm_page_clear_dirty_mask().
+ */
+static __inline void
+vm_page_dirty(vm_page_t m)
+{
+
+	/* Use vm_page_dirty_KBI() under INVARIANTS to save memory. */
+#if defined(KLD_MODULE) || defined(INVARIANTS)
+	vm_page_dirty_KBI(m);
+#else
+	m->dirty = VM_PAGE_BITS_ALL;
+#endif
+}
 
 /*
  *	vm_page_sleep_if_busy:

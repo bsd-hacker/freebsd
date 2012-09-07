@@ -105,6 +105,7 @@ struct filedesc_to_leader {
 					    SX_NOTRECURSED)
 #define	FILEDESC_XLOCK_ASSERT(fdp)	sx_assert(&(fdp)->fd_sx, SX_XLOCKED | \
 					    SX_NOTRECURSED)
+#define	FILEDESC_UNLOCK_ASSERT(fdp)	sx_assert(&(fdp)->fd_sx, SX_UNLOCKED)
 
 struct thread;
 
@@ -141,7 +142,12 @@ static __inline struct file *
 fget_locked(struct filedesc *fdp, int fd)
 {
 
-	return ((unsigned int)fd >= fdp->fd_nfiles ? NULL : fdp->fd_ofiles[fd]);
+	FILEDESC_LOCK_ASSERT(fdp);
+
+	if (fd < 0 || fd >= fdp->fd_nfiles)
+		return (NULL);
+
+	return (fdp->fd_ofiles[fd]);
 }
 
 #endif /* _KERNEL */

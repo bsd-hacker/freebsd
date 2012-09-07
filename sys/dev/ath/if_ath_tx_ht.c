@@ -96,9 +96,10 @@ __FBSDID("$FreeBSD$");
  */
 #define	IEEE80211_AMPDU_SUBFRAME_DEFAULT		32
 
-#define	ATH_AGGR_DELIM_SZ	4	/* delimiter size   */
+#define	ATH_AGGR_DELIM_SZ	4	/* delimiter size */
 #define	ATH_AGGR_MINPLEN	256	/* in bytes, minimum packet length */
-#define	ATH_AGGR_ENCRYPTDELIM	10	/* number of delimiters for encryption padding */
+/* number of delimiters for encryption padding */
+#define	ATH_AGGR_ENCRYPTDELIM	10
 
 /*
  * returns delimiter padding required given the packet length
@@ -414,7 +415,7 @@ ath_get_aggr_limit(struct ath_softc *sc, struct ath_buf *bf)
 	int amin = 65530;
 	int i;
 
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < ATH_RC_NUM; i++) {
 		if (bf->bf_state.bfs_rc[i].tries == 0)
 			continue;
 		amin = MIN(amin, bf->bf_state.bfs_rc[i].max4msframelen);
@@ -465,7 +466,7 @@ ath_rateseries_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 	 * XXX fields.
 	 */
 	memset(series, 0, sizeof(HAL_11N_RATE_SERIES) * 4);
-	for (i = 0; i < 4;  i++) {
+	for (i = 0; i < ATH_RC_NUM;  i++) {
 		/* Only set flags for actual TX attempts */
 		if (rc[i].tries == 0)
 			continue;
@@ -510,8 +511,13 @@ ath_rateseries_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 			series[i].RateFlags |= HAL_RATESERIES_HALFGI;
 
 		series[i].Rate = rt->info[rc[i].rix].rateCode;
+		series[i].RateIndex = rc[i].rix;
+		series[i].tx_power_cap = 0x3f;	/* XXX for now */
 
-		/* PktDuration doesn't include slot, ACK, RTS, etc timing - it's just the packet duration */
+		/*
+		 * PktDuration doesn't include slot, ACK, RTS, etc timing -
+		 * it's just the packet duration
+		 */
 		if (series[i].Rate & IEEE80211_RATE_MCS) {
 			series[i].PktDuration =
 			    ath_computedur_ht(pktlen
@@ -531,11 +537,12 @@ ath_rateseries_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 
 #if 0
 static void
-ath_rateseries_print(HAL_11N_RATE_SERIES *series)
+ath_rateseries_print(struct ath_softc *sc, HAL_11N_RATE_SERIES *series)
 {
 	int i;
-	for (i = 0; i < 4; i++) {
-		printf("series %d: rate %x; tries %d; pktDuration %d; chSel %d; rateFlags %x\n",
+	for (i = 0; i < ATH_RC_NUM; i++) {
+		device_printf(sc->sc_dev ,"series %d: rate %x; tries %d; "
+		    "pktDuration %d; chSel %d; rateFlags %x\n",
 		    i,
 		    series[i].Rate,
 		    series[i].Tries,
@@ -553,14 +560,12 @@ ath_rateseries_print(HAL_11N_RATE_SERIES *series)
  * This isn't useful for sending beacon frames, which has different needs
  * wrt what's passed into the rate scenario function.
  */
-
 void
 ath_buf_set_rate(struct ath_softc *sc, struct ieee80211_node *ni,
     struct ath_buf *bf)
 {
 	HAL_11N_RATE_SERIES series[4];
 	struct ath_desc *ds = bf->bf_desc;
-	struct ath_desc *lastds = NULL;
 	struct ath_hal *ah = sc->sc_ah;
 	int is_pspoll = (bf->bf_state.bfs_atype == HAL_PKT_TYPE_PSPOLL);
 	int ctsrate = bf->bf_state.bfs_ctsrate;
@@ -571,29 +576,22 @@ ath_buf_set_rate(struct ath_softc *sc, struct ieee80211_node *ni,
 
 	ath_rateseries_setup(sc, ni, bf, series);
 
-	/* Enforce AR5416 aggregate limit - can't do RTS w/ an agg frame > 8k */
-
-	/* Enforce RTS and CTS are mutually exclusive */
-
-	/* Get a pointer to the last tx descriptor in the list */
-	lastds = bf->bf_lastds;
-
 #if 0
 	printf("pktlen: %d; flags 0x%x\n", pktlen, flags);
-	ath_rateseries_print(series);
+	ath_rateseries_print(sc, series);
 #endif
 
 	/* Set rate scenario */
+	/*
+	 * Note: Don't allow hardware to override the duration on
+	 * ps-poll packets.
+	 */
 	ath_hal_set11nratescenario(ah, ds,
 	    !is_pspoll,	/* whether to override the duration or not */
-			/* don't allow hardware to override the duration on ps-poll packets */
 	    ctsrate,	/* rts/cts rate */
 	    series,	/* 11n rate series */
 	    4,		/* number of series */
 	    flags);
-
-	/* Setup the last descriptor in the chain */
-	ath_hal_setuplasttxdesc(ah, lastds, ds);
 
 	/* Set burst duration */
 	/*
@@ -628,8 +626,9 @@ ath_buf_set_rate(struct ath_softc *sc, struct ieee80211_node *ni,
  * descriptor setup, and ath_buf_set_rate() will configure the
  * rate control.
  *
- * Note that the TID lock is only grabbed when dequeuing packets from
- * the TID queue. If some code in another thread adds to the head of this
+ * The TID lock is required for the entirety of this function.
+ *
+ * If some code in another thread adds to the head of this
  * list, very strange behaviour will occur. Since retransmission is the
  * only reason this will occur, and this routine is designed to be called
  * from within the scheduler task, it won't ever clash with the completion
@@ -639,8 +638,8 @@ ath_buf_set_rate(struct ath_softc *sc, struct ieee80211_node *ni,
  * dispatch aggregate frames to the hardware), please keep this in mind.
  */
 ATH_AGGR_STATUS
-ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an, struct ath_tid *tid,
-    ath_bufhead *bf_q)
+ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an,
+    struct ath_tid *tid, ath_bufhead *bf_q)
 {
 	//struct ieee80211_node *ni = &an->an_node;
 	struct ath_buf *bf, *bf_first = NULL, *bf_prev = NULL;

@@ -125,6 +125,7 @@ struct twe_softc
     u_int16_t		twe_aen_queue[TWE_Q_LENGTH];	/* AENs queued for userland tool(s) */
     int			twe_aen_head, twe_aen_tail;	/* ringbuffer pointers for AEN queue */
     int			twe_wait_aen;    		/* wait-for-aen notification */
+    char		twe_aen_buf[80];		/* AEN format buffer */
 
     /* controller status */
     int			twe_state;
@@ -134,6 +135,7 @@ struct twe_softc
 #define TWE_STATE_SUSPEND	(1<<3)	/* controller is suspended */
 #define TWE_STATE_FRZN		(1<<4)	/* got EINPROGRESS */
 #define TWE_STATE_CTLR_BUSY	(1<<5)	/* controller cmd queue full */
+#define	TWE_STATE_DETACHING	(1<<6)	/* controller is being shut down */
     int			twe_host_id;
     struct twe_qstat	twe_qstat[TWEQ_COUNT];	/* queue statistics */
 
@@ -209,46 +211,31 @@ twe_initq_ ## name (struct twe_softc *sc)				\
 static __inline void							\
 twe_enqueue_ ## name (struct twe_request *tr)				\
 {									\
-    int		s;							\
-									\
-    s = splbio();							\
     TAILQ_INSERT_TAIL(&tr->tr_sc->twe_ ## name, tr, tr_link);		\
     TWEQ_ADD(tr->tr_sc, index);						\
-    splx(s);								\
 }									\
 static __inline void							\
 twe_requeue_ ## name (struct twe_request *tr)				\
 {									\
-    int		s;							\
-									\
-    s = splbio();							\
     TAILQ_INSERT_HEAD(&tr->tr_sc->twe_ ## name, tr, tr_link);		\
     TWEQ_ADD(tr->tr_sc, index);						\
-    splx(s);								\
 }									\
 static __inline struct twe_request *					\
 twe_dequeue_ ## name (struct twe_softc *sc)				\
 {									\
     struct twe_request	*tr;						\
-    int			s;						\
 									\
-    s = splbio();							\
     if ((tr = TAILQ_FIRST(&sc->twe_ ## name)) != NULL) {		\
 	TAILQ_REMOVE(&sc->twe_ ## name, tr, tr_link);			\
 	TWEQ_REMOVE(sc, index);						\
     }									\
-    splx(s);								\
     return(tr);								\
 }									\
 static __inline void							\
 twe_remove_ ## name (struct twe_request *tr)				\
 {									\
-    int			s;						\
-									\
-    s = splbio();							\
     TAILQ_REMOVE(&tr->tr_sc->twe_ ## name, tr, tr_link);		\
     TWEQ_REMOVE(tr->tr_sc, index);					\
-    splx(s);								\
 }
 
 TWEQ_REQUEST_QUEUE(free, TWEQ_FREE)
@@ -269,25 +256,18 @@ twe_initq_bio(struct twe_softc *sc)
 static __inline void
 twe_enqueue_bio(struct twe_softc *sc, twe_bio *bp)
 {
-    int		s;
-
-    s = splbio();
     TWE_BIO_QINSERT(sc->twe_bioq, bp);
     TWEQ_ADD(sc, TWEQ_BIO);
-    splx(s);
 }
 
 static __inline twe_bio *
 twe_dequeue_bio(struct twe_softc *sc)
 {
-    int		s;
     twe_bio	*bp;
 
-    s = splbio();
     if ((bp = TWE_BIO_QFIRST(sc->twe_bioq)) != NULL) {
 	TWE_BIO_QREMOVE(sc->twe_bioq, bp);
 	TWEQ_REMOVE(sc, TWEQ_BIO);
     }
-    splx(s);
     return(bp);
 }

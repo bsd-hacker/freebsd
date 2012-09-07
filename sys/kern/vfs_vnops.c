@@ -229,8 +229,10 @@ int
 vn_open_vnode(struct vnode *vp, int fmode, struct ucred *cred,
     struct thread *td, struct file *fp)
 {
+	struct mount *mp;
 	accmode_t accmode;
-	int error;
+	struct flock lf;
+	int error, have_flock, lock_flags, type;
 
 	VFS_ASSERT_GIANT(vp->v_mount);
 	if (vp->v_type == VLNK)
@@ -271,6 +273,51 @@ vn_open_vnode(struct vnode *vp, int fmode, struct ucred *cred,
 	if ((error = VOP_OPEN(vp, fmode, cred, td, fp)) != 0)
 		return (error);
 
+	if (fmode & (O_EXLOCK | O_SHLOCK)) {
+		KASSERT(fp != NULL, ("open with flock requires fp"));
+		lock_flags = VOP_ISLOCKED(vp);
+		VOP_UNLOCK(vp, 0);
+		lf.l_whence = SEEK_SET;
+		lf.l_start = 0;
+		lf.l_len = 0;
+		if (fmode & O_EXLOCK)
+			lf.l_type = F_WRLCK;
+		else
+			lf.l_type = F_RDLCK;
+		type = F_FLOCK;
+		if ((fmode & FNONBLOCK) == 0)
+			type |= F_WAIT;
+		error = VOP_ADVLOCK(vp, (caddr_t)fp, F_SETLK, &lf, type);
+		have_flock = (error == 0);
+		vn_lock(vp, lock_flags | LK_RETRY);
+		if (error == 0 && vp->v_iflag & VI_DOOMED)
+			error = ENOENT;
+		/*
+		 * Another thread might have used this vnode as an
+		 * executable while the vnode lock was dropped.
+		 * Ensure the vnode is still able to be opened for
+		 * writing after the lock has been obtained.
+		 */
+		if (error == 0 && accmode & VWRITE)
+			error = vn_writechk(vp);
+		if (error) {
+			VOP_UNLOCK(vp, 0);
+			if (have_flock) {
+				lf.l_whence = SEEK_SET;
+				lf.l_start = 0;
+				lf.l_len = 0;
+				lf.l_type = F_UNLCK;
+				(void) VOP_ADVLOCK(vp, fp, F_UNLCK, &lf,
+				    F_FLOCK);
+			}
+			vn_start_write(vp, &mp, V_WAIT);
+			vn_lock(vp, lock_flags | LK_RETRY);
+			(void)VOP_CLOSE(vp, fmode, cred, td);
+			vn_finished_write(mp);
+			return (error);
+		}
+		fp->f_flag |= FHASLOCK;
+	}
 	if (fmode & FWRITE) {
 		vp->v_writecount++;
 		CTR3(KTR_VFS, "%s: vp %p v_writecount increased to %d",
@@ -527,6 +574,110 @@ vn_rdwr_inchunks(rw, vp, base, len, offset, segflg, ioflg, active_cred,
 	return (error);
 }
 
+off_t
+foffset_lock(struct file *fp, int flags)
+{
+	struct mtx *mtxp;
+	off_t res;
+
+	KASSERT((flags & FOF_OFFSET) == 0, ("FOF_OFFSET passed"));
+
+#if OFF_MAX <= LONG_MAX
+	/*
+	 * Caller only wants the current f_offset value.  Assume that
+	 * the long and shorter integer types reads are atomic.
+	 */
+	if ((flags & FOF_NOLOCK) != 0)
+		return (fp->f_offset);
+#endif
+
+	/*
+	 * According to McKusick the vn lock was protecting f_offset here.
+	 * It is now protected by the FOFFSET_LOCKED flag.
+	 */
+	mtxp = mtx_pool_find(mtxpool_sleep, fp);
+	mtx_lock(mtxp);
+	if ((flags & FOF_NOLOCK) == 0) {
+		while (fp->f_vnread_flags & FOFFSET_LOCKED) {
+			fp->f_vnread_flags |= FOFFSET_LOCK_WAITING;
+			msleep(&fp->f_vnread_flags, mtxp, PUSER -1,
+			    "vofflock", 0);
+		}
+		fp->f_vnread_flags |= FOFFSET_LOCKED;
+	}
+	res = fp->f_offset;
+	mtx_unlock(mtxp);
+	return (res);
+}
+
+void
+foffset_unlock(struct file *fp, off_t val, int flags)
+{
+	struct mtx *mtxp;
+
+	KASSERT((flags & FOF_OFFSET) == 0, ("FOF_OFFSET passed"));
+
+#if OFF_MAX <= LONG_MAX
+	if ((flags & FOF_NOLOCK) != 0) {
+		if ((flags & FOF_NOUPDATE) == 0)
+			fp->f_offset = val;
+		if ((flags & FOF_NEXTOFF) != 0)
+			fp->f_nextoff = val;
+		return;
+	}
+#endif
+
+	mtxp = mtx_pool_find(mtxpool_sleep, fp);
+	mtx_lock(mtxp);
+	if ((flags & FOF_NOUPDATE) == 0)
+		fp->f_offset = val;
+	if ((flags & FOF_NEXTOFF) != 0)
+		fp->f_nextoff = val;
+	if ((flags & FOF_NOLOCK) == 0) {
+		KASSERT((fp->f_vnread_flags & FOFFSET_LOCKED) != 0,
+		    ("Lost FOFFSET_LOCKED"));
+		if (fp->f_vnread_flags & FOFFSET_LOCK_WAITING)
+			wakeup(&fp->f_vnread_flags);
+		fp->f_vnread_flags = 0;
+	}
+	mtx_unlock(mtxp);
+}
+
+void
+foffset_lock_uio(struct file *fp, struct uio *uio, int flags)
+{
+
+	if ((flags & FOF_OFFSET) == 0)
+		uio->uio_offset = foffset_lock(fp, flags);
+}
+
+void
+foffset_unlock_uio(struct file *fp, struct uio *uio, int flags)
+{
+
+	if ((flags & FOF_OFFSET) == 0)
+		foffset_unlock(fp, uio->uio_offset, flags);
+}
+
+static int
+get_advice(struct file *fp, struct uio *uio)
+{
+	struct mtx *mtxp;
+	int ret;
+
+	ret = POSIX_FADV_NORMAL;
+	if (fp->f_advice == NULL)
+		return (ret);
+
+	mtxp = mtx_pool_find(mtxpool_sleep, fp);
+	mtx_lock(mtxp);
+	if (uio->uio_offset >= fp->f_advice->fa_start &&
+	    uio->uio_offset + uio->uio_resid <= fp->f_advice->fa_end)
+		ret = fp->f_advice->fa_advice;
+	mtx_unlock(mtxp);
+	return (ret);
+}
+
 /*
  * File table vnode read routine.
  */
@@ -539,44 +690,22 @@ vn_read(fp, uio, active_cred, flags, td)
 	struct thread *td;
 {
 	struct vnode *vp;
-	int error, ioflag;
 	struct mtx *mtxp;
+	int error, ioflag;
 	int advice, vfslocked;
-	off_t offset;
+	off_t offset, start, end;
 
 	KASSERT(uio->uio_td == td, ("uio_td %p is not td %p",
 	    uio->uio_td, td));
-	mtxp = NULL;
+	KASSERT(flags & FOF_OFFSET, ("No FOF_OFFSET"));
 	vp = fp->f_vnode;
 	ioflag = 0;
 	if (fp->f_flag & FNONBLOCK)
 		ioflag |= IO_NDELAY;
 	if (fp->f_flag & O_DIRECT)
 		ioflag |= IO_DIRECT;
-	advice = POSIX_FADV_NORMAL;
+	advice = get_advice(fp, uio);
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
-	/*
-	 * According to McKusick the vn lock was protecting f_offset here.
-	 * It is now protected by the FOFFSET_LOCKED flag.
-	 */
-	if ((flags & FOF_OFFSET) == 0 || fp->f_advice != NULL) {
-		mtxp = mtx_pool_find(mtxpool_sleep, fp);
-		mtx_lock(mtxp);
-		if ((flags & FOF_OFFSET) == 0) {
-			while (fp->f_vnread_flags & FOFFSET_LOCKED) {
-				fp->f_vnread_flags |= FOFFSET_LOCK_WAITING;
-				msleep(&fp->f_vnread_flags, mtxp, PUSER -1,
-				    "vnread offlock", 0);
-			}
-			fp->f_vnread_flags |= FOFFSET_LOCKED;
-			uio->uio_offset = fp->f_offset;
-		}
-		if (fp->f_advice != NULL &&
-		    uio->uio_offset >= fp->f_advice->fa_start &&
-		    uio->uio_offset + uio->uio_resid <= fp->f_advice->fa_end)
-			advice = fp->f_advice->fa_advice;
-		mtx_unlock(mtxp);
-	}
 	vn_lock(vp, LK_SHARED | LK_RETRY);
 
 	switch (advice) {
@@ -596,20 +725,42 @@ vn_read(fp, uio, active_cred, flags, td)
 	if (error == 0)
 #endif
 		error = VOP_READ(vp, uio, ioflag, fp->f_cred);
-	if ((flags & FOF_OFFSET) == 0) {
-		fp->f_offset = uio->uio_offset;
-		mtx_lock(mtxp);
-		if (fp->f_vnread_flags & FOFFSET_LOCK_WAITING)
-			wakeup(&fp->f_vnread_flags);
-		fp->f_vnread_flags = 0;
-		mtx_unlock(mtxp);
-	}
 	fp->f_nextoff = uio->uio_offset;
 	VOP_UNLOCK(vp, 0);
 	if (error == 0 && advice == POSIX_FADV_NOREUSE &&
-	    offset != uio->uio_offset)
-		error = VOP_ADVISE(vp, offset, uio->uio_offset - 1,
-		    POSIX_FADV_DONTNEED);
+	    offset != uio->uio_offset) {
+		/*
+		 * Use POSIX_FADV_DONTNEED to flush clean pages and
+		 * buffers for the backing file after a
+		 * POSIX_FADV_NOREUSE read(2).  To optimize the common
+		 * case of using POSIX_FADV_NOREUSE with sequential
+		 * access, track the previous implicit DONTNEED
+		 * request and grow this request to include the
+		 * current read(2) in addition to the previous
+		 * DONTNEED.  With purely sequential access this will
+		 * cause the DONTNEED requests to continously grow to
+		 * cover all of the previously read regions of the
+		 * file.  This allows filesystem blocks that are
+		 * accessed by multiple calls to read(2) to be flushed
+		 * once the last read(2) finishes.
+		 */
+		start = offset;
+		end = uio->uio_offset - 1;
+		mtxp = mtx_pool_find(mtxpool_sleep, fp);
+		mtx_lock(mtxp);
+		if (fp->f_advice != NULL &&
+		    fp->f_advice->fa_advice == POSIX_FADV_NOREUSE) {
+			if (start != 0 && fp->f_advice->fa_prevend + 1 == start)
+				start = fp->f_advice->fa_prevstart;
+			else if (fp->f_advice->fa_prevstart != 0 &&
+			    fp->f_advice->fa_prevstart == end + 1)
+				end = fp->f_advice->fa_prevend;
+			fp->f_advice->fa_prevstart = start;
+			fp->f_advice->fa_prevend = end;
+		}
+		mtx_unlock(mtxp);
+		error = VOP_ADVISE(vp, start, end, POSIX_FADV_DONTNEED);
+	}
 	VFS_UNLOCK_GIANT(vfslocked);
 	return (error);
 }
@@ -627,12 +778,14 @@ vn_write(fp, uio, active_cred, flags, td)
 {
 	struct vnode *vp;
 	struct mount *mp;
-	int error, ioflag, lock_flags;
 	struct mtx *mtxp;
+	int error, ioflag, lock_flags;
 	int advice, vfslocked;
+	off_t offset, start, end;
 
 	KASSERT(uio->uio_td == td, ("uio_td %p is not td %p",
 	    uio->uio_td, td));
+	KASSERT(flags & FOF_OFFSET, ("No FOF_OFFSET"));
 	vp = fp->f_vnode;
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
 	if (vp->v_type == VREG)
@@ -651,6 +804,8 @@ vn_write(fp, uio, active_cred, flags, td)
 	if (vp->v_type != VCHR &&
 	    (error = vn_start_write(vp, &mp, V_WAIT | PCATCH)) != 0)
 		goto unlock;
+
+	advice = get_advice(fp, uio);
  
 	if ((MNT_SHARED_WRITES(mp) ||
 	    ((mp == NULL) && MNT_SHARED_WRITES(vp->v_mount))) &&
@@ -661,46 +816,77 @@ vn_write(fp, uio, active_cred, flags, td)
 	}
 
 	vn_lock(vp, lock_flags | LK_RETRY);
-	if ((flags & FOF_OFFSET) == 0)
-		uio->uio_offset = fp->f_offset;
-	advice = POSIX_FADV_NORMAL;
-	if (fp->f_advice != NULL) {
-		mtxp = mtx_pool_find(mtxpool_sleep, fp);
-		mtx_lock(mtxp);
-		if (fp->f_advice != NULL &&
-		    uio->uio_offset >= fp->f_advice->fa_start &&
-		    uio->uio_offset + uio->uio_resid <= fp->f_advice->fa_end)
-			advice = fp->f_advice->fa_advice;
-		mtx_unlock(mtxp);
-	}
 	switch (advice) {
 	case POSIX_FADV_NORMAL:
 	case POSIX_FADV_SEQUENTIAL:
+	case POSIX_FADV_NOREUSE:
 		ioflag |= sequential_heuristic(uio, fp);
 		break;
 	case POSIX_FADV_RANDOM:
 		/* XXX: Is this correct? */
 		break;
-	case POSIX_FADV_NOREUSE:
-		/*
-		 * Request the underlying FS to discard the buffers
-		 * and pages after the I/O is complete.
-		 */
-		ioflag |= IO_DIRECT;
-		break;
 	}
+	offset = uio->uio_offset;
 
 #ifdef MAC
 	error = mac_vnode_check_write(active_cred, fp->f_cred, vp);
 	if (error == 0)
 #endif
 		error = VOP_WRITE(vp, uio, ioflag, fp->f_cred);
-	if ((flags & FOF_OFFSET) == 0)
-		fp->f_offset = uio->uio_offset;
 	fp->f_nextoff = uio->uio_offset;
 	VOP_UNLOCK(vp, 0);
 	if (vp->v_type != VCHR)
 		vn_finished_write(mp);
+	if (error == 0 && advice == POSIX_FADV_NOREUSE &&
+	    offset != uio->uio_offset) {
+		/*
+		 * Use POSIX_FADV_DONTNEED to flush clean pages and
+		 * buffers for the backing file after a
+		 * POSIX_FADV_NOREUSE write(2).  To optimize the
+		 * common case of using POSIX_FADV_NOREUSE with
+		 * sequential access, track the previous implicit
+		 * DONTNEED request and grow this request to include
+		 * the current write(2) in addition to the previous
+		 * DONTNEED.  With purely sequential access this will
+		 * cause the DONTNEED requests to continously grow to
+		 * cover all of the previously written regions of the
+		 * file.
+		 *
+		 * Note that the blocks just written are almost
+		 * certainly still dirty, so this only works when
+		 * VOP_ADVISE() calls from subsequent writes push out
+		 * the data written by this write(2) once the backing
+		 * buffers are clean.  However, as compared to forcing
+		 * IO_DIRECT, this gives much saner behavior.  Write
+		 * clustering is still allowed, and clean pages are
+		 * merely moved to the cache page queue rather than
+		 * outright thrown away.  This means a subsequent
+		 * read(2) can still avoid hitting the disk if the
+		 * pages have not been reclaimed.
+		 *
+		 * This does make POSIX_FADV_NOREUSE largely useless
+		 * with non-sequential access.  However, sequential
+		 * access is the more common use case and the flag is
+		 * merely advisory.
+		 */
+		start = offset;
+		end = uio->uio_offset - 1;
+		mtxp = mtx_pool_find(mtxpool_sleep, fp);
+		mtx_lock(mtxp);
+		if (fp->f_advice != NULL &&
+		    fp->f_advice->fa_advice == POSIX_FADV_NOREUSE) {
+			if (start != 0 && fp->f_advice->fa_prevend + 1 == start)
+				start = fp->f_advice->fa_prevstart;
+			else if (fp->f_advice->fa_prevstart != 0 &&
+			    fp->f_advice->fa_prevstart == end + 1)
+				end = fp->f_advice->fa_prevend;
+			fp->f_advice->fa_prevstart = start;
+			fp->f_advice->fa_prevend = end;
+		}
+		mtx_unlock(mtxp);
+		error = VOP_ADVISE(vp, start, end, POSIX_FADV_DONTNEED);
+	}
+	
 unlock:
 	VFS_UNLOCK_GIANT(vfslocked);
 	return (error);
@@ -770,11 +956,15 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	else
 		doio = vn_write;
 	vp = fp->f_vnode;
+	foffset_lock_uio(fp, uio, flags);
+
 	if (uio->uio_segflg != UIO_USERSPACE || vp->v_type != VREG ||
 	    ((mp = vp->v_mount) != NULL &&
 	    (mp->mnt_kern_flag & MNTK_NO_IOPF) == 0) ||
-	    !vn_io_fault_enable)
-		return (doio(fp, uio, active_cred, flags, td));
+	    !vn_io_fault_enable) {
+		error = doio(fp, uio, active_cred, flags | FOF_OFFSET, td);
+		goto out_last;
+	}
 
 	/*
 	 * The UFS follows IO_UNIT directive and replays back both
@@ -807,7 +997,7 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	}
 
 	save = vm_fault_disable_pagefaults();
-	error = doio(fp, uio, active_cred, flags, td);
+	error = doio(fp, uio, active_cred, flags | FOF_OFFSET, td);
 	if (error != EFAULT)
 		goto out;
 
@@ -858,7 +1048,8 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 		td->td_ma = ma;
 		td->td_ma_cnt = cnt;
 
-		error = doio(fp, &short_uio, active_cred, flags, td);
+		error = doio(fp, &short_uio, active_cred, flags | FOF_OFFSET,
+		    td);
 		vm_page_unhold_pages(ma, cnt);
 		adv = len - short_uio.uio_resid;
 
@@ -881,6 +1072,8 @@ out:
 	vm_fault_enable_pagefaults(save);
 	vn_rangelock_unlock(vp, rl_cookie);
 	free(uio_clone, M_IOV);
+out_last:
+	foffset_unlock_uio(fp, uio, flags);
 	return (error);
 }
 
@@ -1254,19 +1447,22 @@ vn_closefile(fp, td)
 	int error;
 
 	vp = fp->f_vnode;
+	fp->f_ops = &badfileops;
 
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
+	if (fp->f_type == DTYPE_VNODE && fp->f_flag & FHASLOCK)
+		vref(vp);
+
+	error = vn_close(vp, fp->f_flag, fp->f_cred, td);
+
 	if (fp->f_type == DTYPE_VNODE && fp->f_flag & FHASLOCK) {
 		lf.l_whence = SEEK_SET;
 		lf.l_start = 0;
 		lf.l_len = 0;
 		lf.l_type = F_UNLCK;
 		(void) VOP_ADVLOCK(vp, fp, F_UNLCK, &lf, F_FLOCK);
+		vrele(vp);
 	}
-
-	fp->f_ops = &badfileops;
-
-	error = vn_close(vp, fp->f_flag, fp->f_cred, td);
 	VFS_UNLOCK_GIANT(vfslocked);
 	return (error);
 }

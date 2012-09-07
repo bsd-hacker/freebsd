@@ -93,6 +93,9 @@ dump_free(dmu_sendarg_t *dsp, uint64_t object, uint64_t offset,
 {
 	struct drr_free *drrf = &(dsp->dsa_drr->drr_u.drr_free);
 
+	if (length != -1ULL && offset + length < offset)
+		length = -1ULL;
+
 	/*
 	 * If there is a pending op, but it's not PENDING_FREE, push it out,
 	 * since free block aggregation can only be done for blocks of the
@@ -1645,13 +1648,6 @@ dmu_recv_existing_end(dmu_recv_cookie_t *drc)
 	struct recvendsyncarg resa;
 	dsl_dataset_t *ds = drc->drc_logical_ds;
 	int err, myerr;
-
-	/*
-	 * XXX hack; seems the ds is still dirty and dsl_pool_zil_clean()
-	 * expects it to have a ds_user_ptr (and zil), but clone_swap()
-	 * can close it.
-	 */
-	txg_wait_synced(ds->ds_dir->dd_pool, 0);
 
 	if (dsl_dataset_tryown(ds, FALSE, dmu_recv_tag)) {
 		err = dsl_dataset_clone_swap(drc->drc_real_ds, ds,
