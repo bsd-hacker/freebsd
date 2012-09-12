@@ -42,6 +42,7 @@
 #include <subversion-1/svn_error.h>
 #include <subversion-1/svn_path.h>
 #include <subversion-1/svn_ra.h>
+#include <subversion-1/svn_version.h>
 
 #include "svnsup/svnsup.h"
 

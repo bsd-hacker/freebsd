@@ -61,7 +61,11 @@ distill(const char *url, unsigned long revision, const char *ofn)
 	SVNSUP_APR_ERROR(status, "apr_pool_create()");
 
 	/* canonicalize URL */
+#if SVN_VER_MAJOR == 1 && SVN_VER_MINOR < 7
 	url = svn_path_canonicalize(url, pool);
+#else
+	url = svn_uri_canonicalize(url, pool);
+#endif
 
 	/* set up our authentication system */
 	/* XXX check for errors */
@@ -74,9 +78,22 @@ distill(const char *url, unsigned long revision, const char *ofn)
 
 	/* open a connection to the repo */
 	config = apr_hash_make(pool);
+#if SVN_VER_MAJOR == 1 && SVN_VER_MINOR < 7
 	error = svn_ra_open3(&ra_session, url, NULL, &ra_callbacks,
 	    NULL, config, pool);
 	SVNSUP_SVN_ERROR(error, "svn_ra_open3()");
+#else
+        for (;;) {
+		const char *curl = NULL;
+		error = svn_ra_open4(&ra_session, &curl, url, NULL,
+		    &ra_callbacks, NULL, config, pool);
+		if (curl == NULL)
+			break;
+		SVNSUP_DEBUG("redirected to %s\n", curl);
+		url = curl;
+	}
+	SVNSUP_SVN_ERROR(error, "svn_ra_open3()");
+#endif
 
 	/* get repo uuid */
 	error = svn_ra_get_uuid2(ra_session, &uuid, pool);
