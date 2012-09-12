@@ -27,6 +27,11 @@
  * $FreeBSD$
  */
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <netinet/in.h>
+
 #include <assert.h>
 #include <limits.h>
 #include <stddef.h>
@@ -76,7 +81,7 @@ typedef void (*func_ptr)(void);
 #define describe(type)							\
 	do {								\
 		struct s_##t { char bump; type t; };			\
-		printf("%-12s %12zd %12zd\n", #type,			\
+		printf("%-20s %12zd %12zd\n", #type,			\
 		    sizeof(type) * 8,					\
 		    offsetof(struct s_##t, t) * 8);			\
 	} while (0)					
@@ -84,8 +89,8 @@ typedef void (*func_ptr)(void);
 static void
 sizes(void)
 {
-	printf("type                 size    alignment\n");
-	printf("--------------------------------------\n");
+	printf("type                         size    alignment\n");
+	printf("----------------------------------------------\n");
 	describe(char);
 	describe(short);
 	describe(int);
@@ -102,6 +107,11 @@ sizes(void)
 	describe(func_ptr);
 	describe(wchar_t);
 	describe(sig_atomic_t);
+	describe(socklen_t);
+	describe(struct sockaddr);
+	describe(struct sockaddr_un);
+	describe(struct sockaddr_in);
+	describe(struct sockaddr_in6);
 }
 
 int
