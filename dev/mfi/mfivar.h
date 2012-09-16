@@ -61,7 +61,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 #include <sys/taskqueue.h>
-#include <machine/atomic.h>
+#include "opt_mfi.h"
 
 /*
  * SCSI structures and definitions are used from here, but no linking
@@ -106,7 +106,6 @@ struct mfi_command {
 #define MFI_ON_MFIQ_READY	(1<<6)
 #define MFI_ON_MFIQ_BUSY	(1<<7)
 #define MFI_ON_MFIQ_MASK	((1<<5)|(1<<6)|(1<<7))
-	int			cm_aen_abort;
 	uint8_t			retry_for_fw_reset;
 	void			(* cm_complete)(struct mfi_command *cm);
 	void			*cm_private;
@@ -149,19 +148,19 @@ struct mfi_aen {
 };
 
 struct mfi_skinny_dma_info {
-	bus_dma_tag_t	dmat[514];
-	bus_dmamap_t	dmamap[514];
-	uint32_t	mem[514];
-	int		noofmaps;
+	bus_dma_tag_t			dmat[514];
+	bus_dmamap_t			dmamap[514];
+	uint32_t			mem[514];
+	int				noofmaps;
+};
+
+struct megasas_sge
+{
+	bus_addr_t			phys_addr;
+	uint32_t			length;
 };
 
 struct mfi_cmd_tbolt;
-typedef struct {
-	volatile unsigned int val;
-} atomic_t;
-
-#define	atomic_read(v)	((v)->val)
-#define	atomic_set(v,i)	((v)->val - (i))
 
 struct mfi_softc {
 	device_t			mfi_dev;
@@ -178,7 +177,7 @@ struct mfi_softc {
 	// Start: LSIP200113393
 	bus_dma_tag_t			verbuf_h_dmat;
 	bus_dmamap_t			verbuf_h_dmamap;
-	uint32_t			verbuf_h_busaddr;
+	bus_addr_t			verbuf_h_busaddr;
 	uint32_t			*verbuf;
 	void				*kbuff_arr[MAX_IOCTL_SGE];
 	bus_dma_tag_t			mfi_kbuff_arr_dmat[2];
@@ -217,9 +216,13 @@ struct mfi_softc {
 
 	TAILQ_HEAD(,mfi_evt_queue_elm)	mfi_evt_queue;
 	struct task			mfi_evt_task;
+	struct task			mfi_map_sync_task;
 	TAILQ_HEAD(,mfi_aen)		mfi_aen_pids;
 	struct mfi_command		*mfi_aen_cm;
 	struct mfi_command		*mfi_skinny_cm;
+	struct mfi_command		*mfi_map_sync_cm;
+	int				cm_aen_abort;
+	int				cm_map_abort;
 	uint32_t			mfi_aen_triggered;
 	uint32_t			mfi_poll_waiting;
 	uint32_t			mfi_boot_seq_num;
@@ -230,7 +233,7 @@ struct mfi_softc {
 
 	bus_dma_tag_t			mfi_sense_dmat;
 	bus_dmamap_t			mfi_sense_dmamap;
-	uint32_t			mfi_sense_busaddr;
+	bus_addr_t			mfi_sense_busaddr;
 	struct mfi_sense		*mfi_sense;
 
 	struct resource			*mfi_irq;
@@ -240,7 +243,6 @@ struct mfi_softc {
 	struct intr_config_hook		mfi_ich;
 	eventhandler_tag		eh;
 	/* OCR flags */
-	atomic_t fw_reset_no_pci_access;
 	uint8_t adpreset;
 	uint8_t issuepend_done;
 	uint8_t disableOnlineCtrlReset;
@@ -305,8 +307,6 @@ struct mfi_softc {
 	/* ThunderBolt */
 	uint32_t			mfi_tbolt;
 	uint32_t			MFA_enabled;
-	uint64_t			map_id;
-	struct mfi_command 		*map_update_cmd;
 	/* Single Reply structure size */
 	uint16_t			reply_size;
 	/* Singler message size. */
@@ -320,7 +320,6 @@ struct mfi_softc {
 	uint8_t	*			request_message_pool;
 	uint8_t *			request_message_pool_align;
 	uint8_t *			request_desc_pool;
-	//uint32_t			request_desc_busaddr;
 	bus_addr_t			request_msg_busaddr;
 	bus_addr_t			reply_frame_busaddr;
 	bus_addr_t			sg_frame_busaddr;
@@ -419,7 +418,10 @@ extern int mfi_tbolt_alloc_cmd(struct mfi_softc *sc);
 extern int mfi_tbolt_send_frame(struct mfi_softc *sc, struct mfi_command *cm);
 extern int mfi_tbolt_adp_reset(struct mfi_softc *sc);
 extern int mfi_tbolt_reset(struct mfi_softc *sc);
-extern int mfi_tbolt_sync_map_info(struct mfi_softc *sc);
+extern void mfi_tbolt_sync_map_info(struct mfi_softc *sc);
+extern void mfi_handle_map_sync(void *context, int pending);
+extern int mfi_dcmd_command(struct mfi_softc *, struct mfi_command **,
+		    uint32_t, void **, size_t);
 
 #define MFIQ_ADD(sc, qname)					\
 	do {							\
@@ -582,7 +584,7 @@ SYSCTL_DECL(_hw_mfi);
 #define MFI_CMD_TIMEOUT 30
 #define MFI_SYS_PD_IO	0
 #define MFI_LD_IO	1
-#define SKINNY_MEMORY 0x02000000
+#define MFI_SKINNY_MEMORY 0x02000000
 #define MFI_MAXPHYS (128 * 1024)
 
 #ifdef MFI_DEBUG

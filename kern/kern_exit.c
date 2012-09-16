@@ -100,6 +100,18 @@ SDT_PROBE_ARGTYPE(proc, kernel, , exit, 0, "int");
 /* Hook for NFS teardown procedure. */
 void (*nlminfo_release_p)(struct proc *p);
 
+static void
+clear_orphan(struct proc *p)
+{
+
+	PROC_LOCK_ASSERT(p, MA_OWNED);
+
+	if (p->p_flag & P_ORPHAN) {
+		LIST_REMOVE(p, p_orphan);
+		p->p_flag &= ~P_ORPHAN;
+	}
+}
+
 /*
  * exit -- death of process.
  */
@@ -145,8 +157,8 @@ exit1(struct thread *td, int rv)
 	PROC_LOCK(p);
 	while (p->p_flag & P_HADTHREADS) {
 		/*
-		 * First check if some other thread got here before us..
-		 * if so, act apropriatly, (exit or suspend);
+		 * First check if some other thread got here before us.
+		 * If so, act appropriately: exit or suspend.
 		 */
 		thread_suspend_check(0);
 
@@ -167,7 +179,7 @@ exit1(struct thread *td, int rv)
 		 * re-check all suspension request, the thread should
 		 * either be suspended there or exit.
 		 */
-		if (! thread_single(SINGLE_EXIT))
+		if (!thread_single(SINGLE_EXIT))
 			break;
 
 		/*
@@ -186,6 +198,14 @@ exit1(struct thread *td, int rv)
 	 * via PIOCCONT.
 	 */
 	_STOPEVENT(p, S_EXIT, rv);
+
+	/*
+	 * Ignore any pending request to stop due to a stop signal.
+	 * Once P_WEXIT is set, future requests will be ignored as
+	 * well.
+	 */
+	p->p_flag &= ~P_STOPPED_SIG;
+	KASSERT(!P_SHOULDSTOP(p), ("exiting process is stopped"));
 
 	/*
 	 * Note that we are exiting and do another wakeup of anyone in
@@ -418,11 +438,27 @@ exit1(struct thread *td, int rv)
 		if (q->p_flag & P_TRACED) {
 			struct thread *temp;
 
+			/*
+			 * Since q was found on our children list, the
+			 * proc_reparent() call moved q to the orphan
+			 * list due to present P_TRACED flag. Clear
+			 * orphan link for q now while q is locked.
+			 */
+			clear_orphan(q);
 			q->p_flag &= ~(P_TRACED | P_STOPPED_TRACE);
 			FOREACH_THREAD_IN_PROC(q, temp)
 				temp->td_dbgflags &= ~TDB_SUSPEND;
 			kern_psignal(q, SIGKILL);
 		}
+		PROC_UNLOCK(q);
+	}
+
+	/*
+	 * Also get rid of our orphans.
+	 */
+	while ((q = LIST_FIRST(&p->p_orphans)) != NULL) {
+		PROC_LOCK(q);
+		clear_orphan(q);
 		PROC_UNLOCK(q);
 	}
 
@@ -739,10 +775,7 @@ proc_reap(struct thread *td, struct proc *p, int *status, int options,
 	sx_xunlock(&allproc_lock);
 	LIST_REMOVE(p, p_sibling);
 	PROC_LOCK(p);
-	if (p->p_flag & P_ORPHAN) {
-		LIST_REMOVE(p, p_orphan);
-		p->p_flag &= ~P_ORPHAN;
-	}
+	clear_orphan(p);
 	PROC_UNLOCK(p);
 	leavepgrp(p);
 #ifdef PROCDESC
@@ -987,10 +1020,7 @@ proc_reparent(struct proc *child, struct proc *parent)
 	LIST_REMOVE(child, p_sibling);
 	LIST_INSERT_HEAD(&parent->p_children, child, p_sibling);
 
-	if (child->p_flag & P_ORPHAN) {
-		LIST_REMOVE(child, p_orphan);
-		child->p_flag &= ~P_ORPHAN;
-	}
+	clear_orphan(child);
 	if (child->p_flag & P_TRACED) {
 		LIST_INSERT_HEAD(&child->p_pptr->p_orphans, child, p_orphan);
 		child->p_flag |= P_ORPHAN;

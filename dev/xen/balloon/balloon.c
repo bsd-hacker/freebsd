@@ -140,7 +140,7 @@ balloon_retrieve(void)
 	STAILQ_REMOVE_HEAD(&ballooned_pages, list);
 
 	page = entry->page;
-	free(entry, M_DEVBUF);
+	free(entry, M_BALLOON);
 	
 	bs.balloon_low--;
 
@@ -435,6 +435,9 @@ static void
 balloon_init_watcher(void *arg)
 {
 	int err;
+
+	if (!is_running_on_xen())
+		return;
 
 	err = xs_register_watch(&target_watch);
 	if (err)

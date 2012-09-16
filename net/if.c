@@ -124,7 +124,7 @@ static MALLOC_DEFINE(M_IFDESCR, "ifdescr", "ifnet descriptions");
 static struct sx ifdescr_sx;
 SX_SYSINIT(ifdescr_sx, &ifdescr_sx, "ifnet descr");
 
-void	(*bstp_linkstate_p)(struct ifnet *ifp, int state);
+void	(*bridge_linkstate_p)(struct ifnet *ifp);
 void	(*ng_ether_link_state_p)(struct ifnet *ifp, int state);
 void	(*lagg_linkstate_p)(struct ifnet *ifp, int state);
 /* These are external hooks for CARP. */
@@ -1084,6 +1084,7 @@ if_addgroup(struct ifnet *ifp, const char *groupname)
 	struct ifg_list		*ifgl;
 	struct ifg_group	*ifg = NULL;
 	struct ifg_member	*ifgm;
+	int 			 new = 0;
 
 	if (groupname[0] && groupname[strlen(groupname) - 1] >= '0' &&
 	    groupname[strlen(groupname) - 1] <= '9')
@@ -1124,8 +1125,8 @@ if_addgroup(struct ifnet *ifp, const char *groupname)
 		strlcpy(ifg->ifg_group, groupname, sizeof(ifg->ifg_group));
 		ifg->ifg_refcnt = 0;
 		TAILQ_INIT(&ifg->ifg_members);
-		EVENTHANDLER_INVOKE(group_attach_event, ifg);
 		TAILQ_INSERT_TAIL(&V_ifg_head, ifg, ifg_next);
+		new = 1;
 	}
 
 	ifg->ifg_refcnt++;
@@ -1139,6 +1140,8 @@ if_addgroup(struct ifnet *ifp, const char *groupname)
 
 	IFNET_WUNLOCK();
 
+	if (new)
+		EVENTHANDLER_INVOKE(group_attach_event, ifg);
 	EVENTHANDLER_INVOKE(group_change_event, groupname);
 
 	return (0);
@@ -1177,10 +1180,11 @@ if_delgroup(struct ifnet *ifp, const char *groupname)
 
 	if (--ifgl->ifgl_group->ifg_refcnt == 0) {
 		TAILQ_REMOVE(&V_ifg_head, ifgl->ifgl_group, ifg_next);
+		IFNET_WUNLOCK();
 		EVENTHANDLER_INVOKE(group_detach_event, ifgl->ifgl_group);
 		free(ifgl->ifgl_group, M_TEMP);
-	}
-	IFNET_WUNLOCK();
+	} else
+		IFNET_WUNLOCK();
 
 	free(ifgl, M_TEMP);
 
@@ -1221,11 +1225,12 @@ if_delgroups(struct ifnet *ifp)
 
 		if (--ifgl->ifgl_group->ifg_refcnt == 0) {
 			TAILQ_REMOVE(&V_ifg_head, ifgl->ifgl_group, ifg_next);
+			IFNET_WUNLOCK();
 			EVENTHANDLER_INVOKE(group_detach_event,
 			    ifgl->ifgl_group);
 			free(ifgl->ifgl_group, M_TEMP);
-		}
-		IFNET_WUNLOCK();
+		} else
+			IFNET_WUNLOCK();
 
 		free(ifgl, M_TEMP);
 
@@ -1909,14 +1914,10 @@ do_link_state_change(void *arg, int pending)
 		(*ng_ether_link_state_p)(ifp, link_state);
 	if (ifp->if_carp)
 		(*carp_linkstate_p)(ifp);
-	if (ifp->if_bridge) {
-		KASSERT(bstp_linkstate_p != NULL,("if_bridge bstp not loaded!"));
-		(*bstp_linkstate_p)(ifp, link_state);
-	}
-	if (ifp->if_lagg) {
-		KASSERT(lagg_linkstate_p != NULL,("if_lagg not loaded!"));
+	if (ifp->if_bridge)
+		(*bridge_linkstate_p)(ifp);
+	if (ifp->if_lagg)
 		(*lagg_linkstate_p)(ifp, link_state);
-	}
 
 	if (IS_DEFAULT_VNET(curvnet))
 		devctl_notify("IFNET", ifp->if_xname,

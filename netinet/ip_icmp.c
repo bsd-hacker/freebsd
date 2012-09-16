@@ -675,8 +675,6 @@ icmp_reflect(struct mbuf *m)
 		goto done;	/* Ip_output() will check for broadcast */
 	}
 
-	m_addr_changed(m);
-
 	t = ip->ip_dst;
 	ip->ip_dst = ip->ip_src;
 
@@ -965,7 +963,8 @@ badport_bandlim(int which)
 		{ "icmp tstamp response" },
 		{ "closed port RST response" },
 		{ "open port RST response" },
-		{ "icmp6 unreach response" }
+		{ "icmp6 unreach response" },
+		{ "sctp ootb response" }
 	};
 
 	/*

@@ -136,7 +136,8 @@ syscallenter(struct thread *td, struct syscall_args *sa)
 		AUDIT_SYSCALL_EXIT(error, td);
 
 		/* Save the latest error return value. */
-		td->td_errno = error;
+		if ((td->td_pflags & TDP_NERRNO) == 0)
+			td->td_errno = error;
 
 #ifdef KDTRACE_HOOKS
 		/*
@@ -171,18 +172,6 @@ syscallret(struct thread *td, int error, struct syscall_args *sa __unused)
 	p = td->td_proc;
 
 	/*
-	 * Check for misbehavior.
-	 */
-	WITNESS_WARN(WARN_PANIC, NULL, "System call %s returning",
-	    syscallname(p, sa->code));
-	KASSERT(td->td_critnest == 0,
-	    ("System call %s returning in a critical section",
-	    syscallname(p, sa->code)));
-	KASSERT(td->td_locks == 0,
-	    ("System call %s returning with %d locks held",
-	     syscallname(p, sa->code), td->td_locks));
-
-	/*
 	 * Handle reschedule and other end-of-syscall issues
 	 */
 	userret(td, td->td_frame);
@@ -191,9 +180,12 @@ syscallret(struct thread *td, int error, struct syscall_args *sa __unused)
 	    syscallname(p, sa->code), td, td->td_proc->p_pid, td->td_name);
 
 #ifdef KTRACE
-	if (KTRPOINT(td, KTR_SYSRET))
-		ktrsysret(sa->code, error, td->td_retval[0]);
+	if (KTRPOINT(td, KTR_SYSRET)) {
+		ktrsysret(sa->code, (td->td_pflags & TDP_NERRNO) == 0 ?
+		    error : td->td_errno, td->td_retval[0]);
+	}
 #endif
+	td->td_pflags &= ~TDP_NERRNO;
 
 	if (p->p_flag & P_TRACED) {
 		traced = 1;
