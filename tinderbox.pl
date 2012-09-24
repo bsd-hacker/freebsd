@@ -95,6 +95,13 @@ my @svncmds = (
     '/usr/local/bin/svn',
 );
 
+my @svnversioncmds = (
+    '/usr/bin/svnversion',
+    '/usr/local/bin/svnversion',
+);
+
+my $svnattempts = 4;
+
 BEGIN {
     ($starttime) = POSIX::times();
 }
@@ -598,8 +605,18 @@ MAIN:{
 	    } else {
 		push(@svnargs, "checkout", $svnbase, $srcdir);
 	    }
-	    spawn($svncmd, @svnargs)
-		or error("unable to check out the source tree");
+	    for (0..$svnattempts) {
+		last if spawn($svncmd, @svnargs);
+		error("unable to check out the source tree")
+		    if ($_ == $svnattempts);
+		my $delay = 30 * ($_ + 1);
+		warning("sleeping $delay s and retrying...");
+		sleep($delay);
+	    }
+	    my $svnversioncmd = [grep({ -x } @svnversioncmds)]->[0]
+		or error("unable to locate svnversion binary");
+	    my $svnversion = `$svnversioncmd $srcdir`;
+	    message("At svn revision $svnversion");
 	} elsif (defined($cvsup)) {
 	    logstage("cvsupping the source tree");
 	    open(my $fh, ">", "$sandbox/supfile")
