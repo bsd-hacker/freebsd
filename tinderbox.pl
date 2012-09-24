@@ -77,6 +77,8 @@ my %lint;
 
 my $starttime;
 
+my $unamecmd = '/usr/bin/uname';
+
 my @cvscmds = (
     '/usr/bin/cvs',
     '/usr/local/bin/cvs',
@@ -418,7 +420,7 @@ MAIN:{
     tzset();
 
     # Set defaults
-    $hostname = `/usr/bin/uname -n`;
+    $hostname = `$unamecmd -n`;
     chomp($hostname);
     $branch = "HEAD";
     $jobs = 0;
@@ -457,10 +459,10 @@ MAIN:{
     }
     $branch = ($1 eq 'CURRENT') ? 'HEAD' : $1;
     if (!defined($arch)) {
-	$arch = `/usr/bin/uname -p`;
+	$arch = `$unamecmd -p`;
 	chomp($arch);
 	if (!defined($machine)) {
-	    $machine = `/usr/bin/uname -m`;
+	    $machine = `$unamecmd -m`;
 	    chomp($machine);
 	}
     }
@@ -526,7 +528,7 @@ MAIN:{
     open(STDERR, ">&STDOUT");
     $| = 1;
     logstage("tinderbox $VERSION running on $hostname");
-    logstage(`/usr/bin/uname -a`);
+    logstage(`$unamecmd -a`);
     logstage("starting $branch tinderbox run for $arch/$machine");
     $SIG{__DIE__} = \&sigdie;
     $SIG{__WARN__} = \&sigwarn;
