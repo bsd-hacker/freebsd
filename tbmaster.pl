@@ -348,7 +348,7 @@ sub tinderbox($$$) {
 	    s/\Q$objdir\E/\/obj/g;
 	}
 	print($full $_);
-	if (/^TB ---/ || /^>>> / || /^(?:At|Updated to) revision \d+\.$/) {
+	if (/^TB ---/ || /^>>> /) {
 	    if ($error) {
 		$summary .= join('', @lines);
 		print($brief join('', @lines));
