@@ -32,9 +32,10 @@ micro = 0
 import argparse
 import logging
 import re
+import textwrap
 
 def error_explain(error):
-	if verbosity > 0: print error['explanation']
+	if verbosity > 0: print textwrap.fill(error['explanation'], initial_indent='==> ', subsequent_indent='    ')
 
 def error(type, line_number, filename):
 	logging.error("[%d]%s: %s " % (line_number, filename, errors[type]['message']))
@@ -42,6 +43,10 @@ def error(type, line_number, filename):
 
 def check_quoted(string):
 	return True if string[0] == '"' or string[0] == "'" else False
+
+def mandatory(var):
+	mand = ['enable']
+	return True if var.split('_')[-1] in mand else False
 
 def get_value(var, line):
 	n = re.match('%s=(\S*)$' % var, line)
@@ -51,11 +56,7 @@ def get_value(var, line):
 	else:
 		return False
 
-def do_rclint(filename):
-	logging.debug('Suck in file %s' % filename)
-	lines=[line.rstrip('\n') for line in open(filename)]
-	num = 0
-
+def check_header(lines, num, filename):
 	# Basic order; shebang, copyright, RCSId, gap, rcorder
 
 	logging.debug('Check shebang')
@@ -97,8 +98,9 @@ def do_rclint(filename):
 	if re.match('# [PRBK]', lines[num]):
 		error('rcorder_order', num, filename)
 
-	documentation_line = num
+	return num
 
+def check_intro(lines, num, filename):
 	logging.debug('Checking sourcing lines')
 	while lines[num] == '' or lines[num][0] == '#':
 		num += 1
@@ -130,7 +132,67 @@ def do_rclint(filename):
 		error('rcvar_incorrect', num, filename)
 	else:
 		num += 1
-	
+
+	logging.debug('Checking load_rc_config')
+	if lines[num] == '':
+		num += 1
+	else:
+		error('rcvar_extra', num, filename)
+
+	if re.match('load_rc_config (?:\$name|%s)' % name, lines[num]):
+		num += 1
+	else:
+		error('load_rc_config_missing', num, filename)
+
+	if lines[num] == '':
+		num += 1
+	else:
+		error('load_rc_config_extra', num, filename)
+
+	return num
+
+def check_defaults(lines, num, filename):
+	logging.debug('Checking defaults set')
+
+	default = { }
+	try:
+	    while lines[num] != '':
+		while lines[num][0] == '#' or lines[num][:4] == 'eval': num += 1
+		if lines[num][0] == ':':
+			# Shorthand set self-default assignment
+			(target, operator, value) = re.match(': \${([^:=]+)(:?=)([^}]+)}', lines[num]).groups()
+			if operator == ':=' and not mandatory(target):
+				error('defaults_non_mandatory_colon', num, filename)
+			elif operator == '=' and mandatory(target):
+				error('defaults_mandatory_colon', num, filename)
+
+		else:
+			# Longhand set default assignment
+			(target, source, operator, value) = re.match('([^=]+)=\${([^:-]+)(:?-)([^}]+)}', lines[num]).groups()
+			if target == source:
+				error('defaults_old_style', num, filename)
+
+			if operator == ':-' and not mandatory(target):
+				error('defaults_non_mandatory_colon', num, filename)
+			elif operator == '-' and mandatory(target):
+				error('defaults_mandatory_colon', num, filename)
+
+		if check_quoted(value):
+			error('defaults_value_quoted', num, filename)
+
+		num += 1
+	except:
+		error('defaults_invalid', num, filename)
+
+def do_rclint(filename):
+	logging.debug('Suck in file %s' % filename)
+	lines=[line.rstrip('\n') for line in open(filename)]
+	begin_num = 0
+
+	endofheader_num = check_header(lines, begin_num, filename)
+	endofintro_num = check_intro(lines, endofheader_num, filename)
+	endofdefaults_num = check_defaults(lines, endofintro_num, filename)
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('filenames', nargs = '+')
@@ -151,7 +213,7 @@ try:
 		for e in f.readlines():
 			if e[0] == '#' or len(e) == 1:
 				continue
-			e = e.split(':')
+			e = e.split('\\')
 			errors[e[0]] = { 'message': e[1], 'explanation': e[2] }
 except:
 	logging.error('Cannot open database for language %s' % errordb)
