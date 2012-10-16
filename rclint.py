@@ -34,12 +34,27 @@ import logging
 import re
 import textwrap
 
-def error_explain(error):
-	if verbosity > 0: print textwrap.fill(error['explanation'], initial_indent='==> ', subsequent_indent='    ')
+def read_db(dbname, language):
+    try:
+	with open('%s.%s' % (dbname, language)) as f:
+		logging.debug('Sucking in %s database' % dbname)
+		contents = { }
+		for e in f.readlines():
+			if not e or e[0] == '#':
+				continue
+			e = e.split('	')
+			contents[e[0]] = e[1:]
+    except:
+	logging.error('Cannot open %s database for language %s' % (dbname, language))
+	exit()
+    return contents
+
+def explain(error):
+	if verbosity > 0: print textwrap.fill(error[1], initial_indent='==> ', subsequent_indent='    ')
 
 def error(type, line_number, filename):
-	logging.error("[%d]%s: %s " % (line_number, filename, errors[type]['message']))
-	error_explain(errors[type])
+	logging.error("[%d]%s: %s " % (line_number, filename, errors[type][0]))
+	explain(errors[type])
 
 def check_quoted(string):
 	return True if string[0] == '"' or string[0] == "'" else False
@@ -49,12 +64,12 @@ def mandatory(var):
 	return True if var.split('_')[-1] in mand else False
 
 def get_value(var, line):
-	n = re.match('%s=(\S*)$' % var, line)
-	if n:
-		value=n.group(1)
-		return value
-	else:
-		return False
+	try:	return re.match('%s=(\S+)$' % var, line).group(1)
+	except:	return False
+
+def get_assignment(line):
+	try: return re.match('(\S+)=(\S+)$', line).groups()
+	except: return False
 
 def check_header(lines, num, filename):
 	# Basic order; shebang, copyright, RCSId, gap, rcorder
@@ -156,7 +171,7 @@ def check_defaults(lines, num, filename):
 
 	default = { }
 	try:
-	    while lines[num] != '':
+	    while lines[num]:
 		while lines[num][0] == '#' or lines[num][:4] == 'eval': num += 1
 		if lines[num][0] == ':':
 			# Shorthand set self-default assignment
@@ -184,15 +199,99 @@ def check_defaults(lines, num, filename):
 	except:
 		error('defaults_invalid', num, filename)
 
+	# Allow line breaks in the middle; if we put
+	# gaps in that's usually good style.  Lookahead!
+	if lines[num+1] and (':' in lines[num+1] or '-' in lines[num+1]):
+		return check_defaults(lines, num, filename)
+	else:
+		return num
+
+def check_definitions(lines, num, filename):
+	logging.debug('Checking the basic definitions')
+
+	num += 1
+
+	while lines[num]:
+		while lines[num][0] == '#' or lines[num][:4] == 'eval': num += 1
+		try:
+			(var, value) = get_assignment(lines[num])
+		except:
+			error('definitions_missing', num, filename)
+			return num
+
+		if check_quoted(value):
+			if ' ' not in lines[num] and '	' not in lines[num]:
+				error('definitions_quoted', num, filename)
+		num += 1
+
+	# As in check_defaults, allow line breaks in the middle; if we put
+	# gaps in that's usually good style.  Lookahead!
+	if lines[num+1] and '=' in lines[num+1]:
+		return check_definitions(lines, num, filename)
+	else:
+		return num
+
+def check_functions(lines, num, filename):
+	logging.debug('Now checking functions')
+
+	num += 1
+	func = { }
+
+	while lines[num]:
+		while not lines[num] or lines[num][0] == '#': num += 1
+
+		if lines[num][-2:] != '()':
+			if lines[num][-1] == '{':
+				error('functions_brace_inline', num, filename)
+			else:
+				logging.debug('No functions left!')
+				return num
+		if ' ' in lines[num]:
+			error('functions_spaces', num, filename)
+		func['name'] = lines[num][:-2]
+
+		num += 1
+		if lines[num] != '{':
+			error('functions_brace_missing', num, filename)
+
+		num += 1
+		tmp = num
+		try:
+			while lines[num] != '}':
+				tmp += 1
+				if lines[num] and lines[num][0] != '#':
+					func['length'] += 1 
+		except:
+			error('functions_neverending', num, filename)
+			return num
+
+		if func['length'] == 1:
+			error('functions_short', num, filename)
+
+def general_checks(lines, filename):
+	logging.debug('Checking for unrecommended sequences')
+	for num in range(0, len(lines)):
+		for regex in problems.keys():
+			if lines[num] and re.search(regex, lines[num]):
+				logging.warn("[%d]%s: %s " % (num, filename, problems[key][1]))
+				explain(problem)
+
 def do_rclint(filename):
 	logging.debug('Suck in file %s' % filename)
-	lines=[line.rstrip('\n') for line in open(filename)]
-	begin_num = 0
+	try:
+		lines=[line.rstrip('\n') for line in open(filename)]
+	except: 
+		logging.error('Cannot open %s for testing' % filename)
+		return
+	lineno = { 'begin': 0 }
 
-	endofheader_num = check_header(lines, begin_num, filename)
-	endofintro_num = check_intro(lines, endofheader_num, filename)
-	endofdefaults_num = check_defaults(lines, endofintro_num, filename)
+	lineno['header'] = check_header(lines, lineno['begin'], filename)
+	lineno['intro'] = check_intro(lines, lineno['header'], filename)
+	lineno['defaults'] = check_defaults(lines, lineno['intro'], filename)
+	lineno['definitions'] = check_definitions(lines, lineno['defaults'], filename)
+	lineno['functions'] = check_functions(lines, lineno['definitions'], filename)
 
+	general_checks(lines, filename)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('filenames', nargs = '+')
@@ -202,22 +301,10 @@ parser.add_argument('-v', action='count', help='raises debug level; provides det
 args = parser.parse_args()
 
 verbosity = args.v
-errordb = 'errors.%s' % args.language[0]
+logging.basicConfig(level=logging.DEBUG if verbosity > 1 else logging.ERROR)
 
-logging.basicConfig(level=(logging.DEBUG if verbosity > 1 else logging.ERROR))
-
-try:
-	with open(errordb) as f:
-		logging.debug('Sucking in error database')
-		errors = {}
-		for e in f.readlines():
-			if e[0] == '#' or len(e) == 1:
-				continue
-			e = e.split('\\')
-			errors[e[0]] = { 'message': e[1], 'explanation': e[2] }
-except:
-	logging.error('Cannot open database for language %s' % errordb)
-	exit()
+errors = read_db('errors', args.language[0])
+problems = read_db('problems', args.language[0])
 
 for file in args.filenames:
 	do_rclint(file)

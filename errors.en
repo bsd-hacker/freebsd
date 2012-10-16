@@ -1,31 +1,42 @@
-# Rigid format of this file; backslash-separated tuples to define
+# Rigid format of this file; tab-separated tuples to define
 # error messages and explanations.
+# Yes, tab isn't a great separator; alternatives that aren't
+# regex chars would be gratefully heard
 # format as follows:
-error_id\message\explanation
+error_id	message	explanation
 
-defaults_invalid\Invalid lines in defaults block.\Allowed are variable assignments (including eval statements) and comments.  A blank line ends the block.
-defaults_mandatory_colon\Override blanks in mandatory values (:=/:- vs =/-)\Values that must not be blank (such as _enable) should be set by default as ${var:=value}; thus disallowing blank values (man sh)
-defaults_non_mandatory_colon\Do not clobber blank values for non-mandatory variables\Syntax for variables that are not mandatory is ${var=value}; including := will override var="" set in rc.conf (man sh)
-defaults_old_style\Prefer condensed version for setting default values of variables\When setting the default value for a variable, it is much less verbose and clearer to use the : ${variable=var} notation, as well as it being obvious that the source and destination variable are the same
-defaults_value_quoted\Do not quote values set by default\With the syntax ${variable=value}, value can even contain spaces and does not need quoting
+defaults_invalid	Invalid lines in defaults block.	Allowed are variable assignments (including eval statements) and comments.  A blank line ends the block.
+defaults_mandatory_colon	Override blanks in mandatory values (:=/:- vs =/-)	Values that must not be blank (such as _enable) should be set by default as ${var:=value}; thus disallowing blank values (man sh)
+defaults_non_mandatory_colon	Do not clobber blank values for non-mandatory variables	Syntax for variables that are not mandatory is ${var=value}; including := will override var="" set in rc.conf (man sh)
+defaults_old_style	Prefer condensed version for setting default values of variables	When setting the default value for a variable, it is much less verbose and clearer to use the : ${variable=var} notation, as well as it being obvious that the source and destination variable are the same
+defaults_value_quoted	Do not quote values set by default	With the syntax ${variable=value}, value can even contain spaces and does not need quoting
 
-load_rc_config_extra\load_rc_config not followed by blank line\The load_rc_config line must form its own block
-load_rc_config_missing\load_rc_config is late, incorrect or missing\Directly following the name/rcvar block must be load_rc_config $name, unquoted
+definitions_missing	Definitions block missing	Following the default definitions must be other definitions (such as command, command_args)
+definitions_quoted	Do not quote values of variables	Unless the value contains spaces/tabs, do not quote variable assignments
 
-name_missing\name is set late or not at all\Directly following the sourcing of scripts must follow setting of the variable name
-name_quoted\name is quoted\Do not quote the value of name.  If it has spaces, use underscores
+functions_brace_inline	Braces should have their own lines	Do not put a brace on the same line as the function definition; it should have its own line
+functions_brace_missing	Function definition does not start with a brace	The function definition must begin with an opening brace on its own line, and end with a closing brace on its own line
+functions_neverending	Unclosed function block	Functions must end with a closing brace on its own line
+functions_short	One-line functions discouraged; put command directly in variable	It is wasteful to write a function just for one command.  It is possible to put commands directly inside declarations; name_prestart="install -d -o $name_user /var/run/$name" for example
+functions_spaces	No spaces allowed in function definitions	Do not separate the function name from the parentheses with spaces; func() not func ()
 
-rc_subr_late\rc.subr sourcing late or nonexistent\The first non-comment non-blank line in any rc file must be sourcing /etc/rc.subr
+load_rc_config_extra	load_rc_config not followed by blank line	The load_rc_config line must form its own block
+load_rc_config_missing	load_rc_config is late, incorrect or missing	Directly following the name/rcvar block must be load_rc_config $name, unquoted
 
-rcorder_keyword_freebsd\Do not include FreeBSD in the KEYWORD rcorder line\Historically FreeBSD scripts were marked in the KEYWORD section.  This is no longer necessary
-rcorder_missing\Missing rcorder block\Following the FreeBSD RCSId keyword must be nothing but empty comment lines and an rcorder block
-rcorder_order\rcorder block in the wrong order; should be PROVIDE/REQUIRE/BEFORE/KEYWORD\See the article on RC scripting
+name_missing	name is set late or not at all	Directly following the sourcing of scripts must follow setting of the variable name
+name_quoted	name is quoted	Do not quote the value of name.  If it has spaces, use underscores
 
-rcvar_extra\extra lines in name/rcvar block\Order should be [blank line]/name=/rcvar=/[blank line]
-rcvar_incorrect\rcvar is not set correctly\rcvar must be directly set to name_enable.  Do not quote, and do not use indirection; ${name}_enable is slower than example_enable
-rcvar_missing\rcvar is set late or not at all\Setting rcvar must be done straight after setting name
-rcvar_quoted\rcvar is quoted\Do not quote the value of rcvar
+rc_subr_late	rc.subr sourcing late or nonexistent	The first non-comment non-blank line in any rc file must be sourcing /etc/rc.subr
 
-rcsid\Missing FreeBSD RCSId keyword\All rc scripts must contain a line beginning # $FreeBSD$.  Do not include blank lines without comment markers at the beginning (#) until the script begins
+rcorder_keyword_freebsd	Do not include FreeBSD in the KEYWORD rcorder line	Historically FreeBSD scripts were marked in the KEYWORD section.  This is no longer necessary
+rcorder_missing	Missing rcorder block	Following the FreeBSD RCSId keyword must be nothing but empty comment lines and an rcorder block
+rcorder_order	rcorder block in the wrong order; should be PROVIDE/REQUIRE/BEFORE/KEYWORD	See the article on RC scripting
 
-shebang\Incorrect shebang used\All rc scripts must start with the correct shebang; #!/bin/sh
+rcvar_extra	extra lines in name/rcvar block	Order should be [blank line]/name=/rcvar=/[blank line]
+rcvar_incorrect	rcvar is not set correctly	rcvar must be directly set to name_enable.  Do not quote, and do not use indirection; ${name}_enable is slower than example_enable
+rcvar_missing	rcvar is set late or not at all	Setting rcvar must be done straight after setting name
+rcvar_quoted	rcvar is quoted	Do not quote the value of rcvar
+
+rcsid	Missing FreeBSD RCSId keyword	All rc scripts must contain a line beginning # $FreeBSD$.  Do not include blank lines without comment markers at the beginning (#) until the script begins
+
+shebang	Incorrect shebang used	All rc scripts must start with the correct shebang; #!/bin/sh
