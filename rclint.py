@@ -36,262 +36,270 @@ import textwrap
 
 def read_db(dbname, language):
     try:
-	with open('%s.%s' % (dbname, language)) as f:
-		logging.debug('Sucking in %s database' % dbname)
-		contents = { }
-		for e in f.readlines():
-			if not e or e[0] == '#':
-				continue
-			e = e.split('	')
-			contents[e[0]] = e[1:]
+        with open('%s.%s' % (dbname, language)) as f:
+            logging.debug('Sucking in %s database' % dbname)
+            contents = { }
+            for e in f.readlines():
+                if not e or e[0] == '#':
+                    continue
+                e = e.split('	')
+                contents[e[0]] = e[1:]
     except:
-	logging.error('Cannot open %s database for language %s' % (dbname, language))
-	exit()
+        logging.error('Cannot open %s database for language %s' % (dbname, language))
+        exit()
     return contents
 
 def explain(error):
-	if verbosity > 0: print textwrap.fill(error[1], initial_indent='==> ', subsequent_indent='    ')
+    if verbosity > 0:
+        print textwrap.fill(error[1],
+                            initial_indent='==> ', subsequent_indent='    ')
 
 def error(type, line_number, filename):
-	logging.error("[%d]%s: %s " % (line_number, filename, errors[type][0]))
-	explain(errors[type])
+    logging.error("[%d]%s: %s " % (line_number, filename, errors[type][0]))
+    explain(errors[type])
 
 def check_quoted(string):
-	return True if string[0] == '"' or string[0] == "'" else False
+    return True if string[0] == '"' or string[0] == "'" else False
 
 def mandatory(var):
-	mand = ['enable']
-	return True if var.split('_')[-1] in mand else False
+    mand = ['enable']
+    return True if var.split('_')[-1] in mand else False
 
 def get_value(var, line):
-	try:	return re.match('%s=(\S+)$' % var, line).group(1)
-	except:	return False
+    try:
+        return re.match('%s=(\S+)$' % var, line).group(1)
+    except:
+        return False
 
 def get_assignment(line):
-	try: return re.match('(\S+)=(\S+)$', line).groups()
-	except: return False
+    try:
+        return re.match('(\S+)=(\S+)$', line).groups()
+    except:
+        return False
 
 def check_header(lines, num, filename):
-	# Basic order; shebang, copyright, RCSId, gap, rcorder
+    # Basic order; shebang, copyright, RCSId, gap, rcorder
 
-	logging.debug('Check shebang')
-	if lines[num] != '#!/bin/sh':
-		error('shebang', num, filename)
+    logging.debug('Check shebang')
+    if lines[num] != '#!/bin/sh':
+        error('shebang', num, filename)
 
-	logging.debug('Skipping license')
-	num += 1
-	while (not re.match('# \$FreeBSD[:$]', lines[num]) and
-	    (lines[num] == '' or lines[num][0] == '#')):
-		num += 1
+    logging.debug('Skipping license')
+    num += 1
+    while (not re.match('# \$FreeBSD[:$]', lines[num]) and
+          (lines[num] == '' or lines[num][0] == '#')):
+        num += 1
 
-	logging.debug('Checking for RCSId')
-	if not re.match('# \$FreeBSD[:$]', lines[num]):
-		error('rcsid', num, filename)
+    logging.debug('Checking for RCSId')
+    if not re.match('# \$FreeBSD[:$]', lines[num]):
+        error('rcsid', num, filename)
 
-	num += 1
-	while lines[num] == '#' or lines[num] == '': num += 1
+    num += 1
+    while lines[num] == '#' or lines[num] == '': num += 1
 
-	logging.debug('Checking rcorder order and sucking in names')
-	if not re.match('# [PRBK]', lines[num]):
-		error('rcorder_missing', num, filename)
-	orders = ['provide', 'require', 'before', 'keyword']
-	index = 0
-	rcorder = { o: [] for o in orders }
-	while index < 4:
-		order = orders[index]
-		try:
-			for result in re.match('# %s: (.*)' % order.upper(),
-			    lines[num]).group(1).split(' '):
-				rcorder[order].append(result)
-			num += 1
-		except:
-			index += 1
+    logging.debug('Checking rcorder order and sucking in names')
+    if not re.match('# [PRBK]', lines[num]):
+        error('rcorder_missing', num, filename)
+    orders = ['provide', 'require', 'before', 'keyword']
+    index = 0
+    rcorder = {o: [] for o in orders}
+    while index < 4:
+        order = orders[index]
+        try:
+            for result in re.match('# %s: (.*)' % order.upper(),
+                                   lines[num]).group(1).split(' '):
+                rcorder[order].append(result)
+            num += 1
+        except:
+            index += 1
 
-	if 'FreeBSD' in rcorder['keyword']:
-		error('rcorder_keyword_freebsd', num, filename)
+    if 'FreeBSD' in rcorder['keyword']:
+        error('rcorder_keyword_freebsd', num, filename)
 
-	if re.match('# [PRBK]', lines[num]):
-		error('rcorder_order', num, filename)
+    if re.match('# [PRBK]', lines[num]):
+        error('rcorder_order', num, filename)
 
-	return num
+    return num
 
 def check_intro(lines, num, filename):
-	logging.debug('Checking sourcing lines')
-	while lines[num] == '' or lines[num][0] == '#':
-		num += 1
+    logging.debug('Checking sourcing lines')
+    while lines[num] == '' or lines[num][0] == '#':
+        num += 1
 
-	if lines[num] != '. /etc/rc.subr':
-		error('rc_subr_late', num, filename)
+    if lines[num] != '. /etc/rc.subr':
+        error('rc_subr_late', num, filename)
 
-	logging.debug('Checking name assignment')
-	while lines[num] == '' or lines[num][0] == '#' or lines[num][0] == '.':
-		num += 1
+    logging.debug('Checking name assignment')
+    while lines[num] == '' or lines[num][0] == '#' or lines[num][0] == '.':
+        num += 1
 
-	name = get_value('name', lines[num])
-	if not name:
-		error('name_missing', num, filename)
-	elif check_quoted(name):
-		error('name_quoted', num, filename)
-	else:
-		logging.debug('name discovered as %s' % name)
-		num += 1
+    name = get_value('name', lines[num])
+    if not name:
+        error('name_missing', num, filename)
+    elif check_quoted(name):
+        error('name_quoted', num, filename)
+    else:
+        logging.debug('name discovered as %s' % name)
+        num += 1
 
-	logging.debug('Checking rcvar')
-	rcvar = get_value('rcvar', lines[num])
-	logging.debug('rcvar discovered as %s' % rcvar if rcvar else 'rcvar not discovered')
-	if not rcvar:
-		error('rcvar_missing', num, filename)
-	elif check_quoted(rcvar):
-		error('rcvar_quoted', num, filename)
-	elif rcvar != '%s_enable' % name:
-		error('rcvar_incorrect', num, filename)
-	else:
-		num += 1
+    logging.debug('Checking rcvar')
+    rcvar = get_value('rcvar', lines[num])
+    logging.debug('rcvar discovered as %s' % rcvar if rcvar else 'rcvar not discovered')
 
-	logging.debug('Checking load_rc_config')
-	if lines[num] == '':
-		num += 1
-	else:
-		error('rcvar_extra', num, filename)
+    if not rcvar:
+        error('rcvar_missing', num, filename)
+    elif check_quoted(rcvar):
+        error('rcvar_quoted', num, filename)
+    elif rcvar != '%s_enable' % name:
+        error('rcvar_incorrect', num, filename)
+    else:
+        num += 1
 
-	if re.match('load_rc_config (?:\$name|%s)' % name, lines[num]):
-		num += 1
-	else:
-		error('load_rc_config_missing', num, filename)
+    logging.debug('Checking load_rc_config')
+    if lines[num] == '':
+        num += 1
+    else:
+        error('rcvar_extra', num, filename)
 
-	if lines[num] == '':
-		num += 1
-	else:
-		error('load_rc_config_extra', num, filename)
+    if re.match('load_rc_config (?:\$name|%s)' % name, lines[num]):
+        num += 1
+    else:
+        error('load_rc_config_missing', num, filename)
 
-	return num
+    if lines[num] == '':
+        num += 1
+    else:
+        error('load_rc_config_extra', num, filename)
+
+    return num
 
 def check_defaults(lines, num, filename):
-	logging.debug('Checking defaults set')
+    logging.debug('Checking defaults set')
 
-	default = { }
-	try:
-	    while lines[num]:
-		while lines[num][0] == '#' or lines[num][:4] == 'eval': num += 1
-		if lines[num][0] == ':':
-			# Shorthand set self-default assignment
-			(target, operator, value) = re.match(': \${([^:=]+)(:?=)([^}]+)}', lines[num]).groups()
-			if operator == ':=' and not mandatory(target):
-				error('defaults_non_mandatory_colon', num, filename)
-			elif operator == '=' and mandatory(target):
-				error('defaults_mandatory_colon', num, filename)
+    default = { }
+    try:
+        while lines[num]:
+            while lines[num][0] == '#' or lines[num][:4] == 'eval':
+                num += 1
+            if lines[num][0] == ':':
+                # Shorthand set self-default assignment
+                (target, operator, value) = re.match(': \${([^:=]+)(:?=)([^}]+)}', lines[num]).groups()
+                if operator == ':=' and not mandatory(target):
+                    error('defaults_non_mandatory_colon', num, filename)
+                elif operator == '=' and mandatory(target):
+                    error('defaults_mandatory_colon', num, filename)
 
-		else:
-			# Longhand set default assignment
-			(target, source, operator, value) = re.match('([^=]+)=\${([^:-]+)(:?-)([^}]+)}', lines[num]).groups()
-			if target == source:
-				error('defaults_old_style', num, filename)
+            else:
+                # Longhand set default assignment
+                (target, source, operator, value) = re.match('([^=]+)=\${([^:-]+)(:?-)([^}]+)}', lines[num]).groups()
+                if target == source:
+                    error('defaults_old_style', num, filename)
 
-			if operator == ':-' and not mandatory(target):
-				error('defaults_non_mandatory_colon', num, filename)
-			elif operator == '-' and mandatory(target):
-				error('defaults_mandatory_colon', num, filename)
+                if operator == ':-' and not mandatory(target):
+                    error('defaults_non_mandatory_colon', num, filename)
+                elif operator == '-' and mandatory(target):
+                    error('defaults_mandatory_colon', num, filename)
 
-		if check_quoted(value):
-			error('defaults_value_quoted', num, filename)
+            if check_quoted(value):
+                error('defaults_value_quoted', num, filename)
 
-		num += 1
-	except:
-		error('defaults_invalid', num, filename)
+            num += 1
+    except:
+        error('defaults_invalid', num, filename)
 
-	# Allow line breaks in the middle; if we put
-	# gaps in that's usually good style.  Lookahead!
-	if lines[num+1] and (':' in lines[num+1] or '-' in lines[num+1]):
-		return check_defaults(lines, num, filename)
-	else:
-		return num
+    # Allow line breaks in the middle; if we put
+    # gaps in that's usually good style.  Lookahead!
+    if lines[num+1] and (':' in lines[num+1] or '-' in lines[num+1]):
+        return check_defaults(lines, num, filename)
+    else:
+        return num
 
 def check_definitions(lines, num, filename):
-	logging.debug('Checking the basic definitions')
+    logging.debug('Checking the basic definitions')
 
-	num += 1
+    num += 1
 
-	while lines[num]:
-		while lines[num][0] == '#' or lines[num][:4] == 'eval': num += 1
-		try:
-			(var, value) = get_assignment(lines[num])
-		except:
-			error('definitions_missing', num, filename)
-			return num
+    while lines[num]:
+        while lines[num][0] == '#' or lines[num][:4] == 'eval': num += 1
+        try:
+            (var, value) = get_assignment(lines[num])
+        except:
+            error('definitions_missing', num, filename)
+            return num
 
-		if check_quoted(value):
-			if ' ' not in lines[num] and '	' not in lines[num]:
-				error('definitions_quoted', num, filename)
-		num += 1
+        if check_quoted(value):
+            if ' ' not in lines[num] and '	' not in lines[num]:
+                error('definitions_quoted', num, filename)
+        num += 1
 
-	# As in check_defaults, allow line breaks in the middle; if we put
-	# gaps in that's usually good style.  Lookahead!
-	if lines[num+1] and '=' in lines[num+1]:
-		return check_definitions(lines, num, filename)
-	else:
-		return num
+    # As in check_defaults, allow line breaks in the middle; if we put
+    # gaps in that's usually good style.  Lookahead!
+    if lines[num+1] and '=' in lines[num+1]:
+        return check_definitions(lines, num, filename)
+    else:
+        return num
 
 def check_functions(lines, num, filename):
-	logging.debug('Now checking functions')
+    logging.debug('Now checking functions')
 
-	num += 1
-	func = { }
+    num += 1
+    func = { }
 
-	while lines[num]:
-		while not lines[num] or lines[num][0] == '#': num += 1
+    while lines[num]:
+        while not lines[num] or lines[num][0] == '#': num += 1
 
-		if lines[num][-2:] != '()':
-			if lines[num][-1] == '{':
-				error('functions_brace_inline', num, filename)
-			else:
-				logging.debug('No functions left!')
-				return num
-		if ' ' in lines[num]:
-			error('functions_spaces', num, filename)
-		func['name'] = lines[num][:-2]
+        if lines[num][-2:] != '()':
+            if lines[num][-1] == '{':
+                error('functions_brace_inline', num, filename)
+            else:
+                logging.debug('No functions left!')
+                return num
+        if ' ' in lines[num]:
+            error('functions_spaces', num, filename)
+        func['name'] = lines[num][:-2]
 
-		num += 1
-		if lines[num] != '{':
-			error('functions_brace_missing', num, filename)
+        num += 1
+        if lines[num] != '{':
+            error('functions_brace_missing', num, filename)
 
-		num += 1
-		tmp = num
-		try:
-			while lines[num] != '}':
-				tmp += 1
-				if lines[num] and lines[num][0] != '#':
-					func['length'] += 1 
-		except:
-			error('functions_neverending', num, filename)
-			return num
+        num += 1
+        tmp = num
+        try:
+            while lines[num] != '}':
+                tmp += 1
+                if lines[num] and lines[num][0] != '#':
+                    func['length'] += 1 
+        except:
+            error('functions_neverending', num, filename)
+            return num
 
-		if func['length'] == 1:
-			error('functions_short', num, filename)
+        if func['length'] == 1:
+            error('functions_short', num, filename)
 
 def general_checks(lines, filename):
-	logging.debug('Checking for unrecommended sequences')
-	for num in range(0, len(lines)):
-		for regex in problems.keys():
-			if lines[num] and re.search(regex, lines[num]):
-				logging.warn("[%d]%s: %s " % (num, filename, problems[key][1]))
-				explain(problem)
+    logging.debug('Checking for unrecommended sequences')
+    for num in range(0, len(lines)):
+        for regex in problems.keys():
+            if lines[num] and re.search(regex, lines[num]):
+                logging.warn("[%d]%s: %s " % (num, filename, problems[key][1]))
+                explain(problem)
 
 def do_rclint(filename):
-	logging.debug('Suck in file %s' % filename)
-	try:
-		lines=[line.rstrip('\n') for line in open(filename)]
-	except: 
-		logging.error('Cannot open %s for testing' % filename)
-		return
-	lineno = { 'begin': 0 }
+    logging.debug('Suck in file %s' % filename)
+    try:
+        lines=[line.rstrip('\n') for line in open(filename)]
+    except: 
+        logging.error('Cannot open %s for testing' % filename)
+        return
+    lineno = {'begin': 0}
 
-	lineno['header'] = check_header(lines, lineno['begin'], filename)
-	lineno['intro'] = check_intro(lines, lineno['header'], filename)
-	lineno['defaults'] = check_defaults(lines, lineno['intro'], filename)
-	lineno['definitions'] = check_definitions(lines, lineno['defaults'], filename)
-	lineno['functions'] = check_functions(lines, lineno['definitions'], filename)
+    lineno['header'] = check_header(lines, lineno['begin'], filename)
+    lineno['intro'] = check_intro(lines, lineno['header'], filename)
+    lineno['defaults'] = check_defaults(lines, lineno['intro'], filename)
+    lineno['definitions'] = check_definitions(lines, lineno['defaults'], filename)
+    lineno['functions'] = check_functions(lines, lineno['definitions'], filename)
 
-	general_checks(lines, filename)
+    general_checks(lines, filename)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('filenames', nargs = '+')
@@ -307,4 +315,4 @@ errors = read_db('errors', args.language[0])
 problems = read_db('problems', args.language[0])
 
 for file in args.filenames:
-	do_rclint(file)
+    do_rclint(file)
