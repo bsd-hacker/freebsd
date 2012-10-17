@@ -39,4 +39,9 @@ rcvar_quoted	rcvar is quoted	Do not quote the value of rcvar
 
 rcsid	Missing FreeBSD RCSId keyword	All rc scripts must contain a line beginning # $FreeBSD$.  Do not include blank lines without comment markers at the beginning (#) until the script begins
 
+run_rc_argument	Incorrect argument to run_rc_command	The last line of the file should be run_rc_command $1
+run_rc_cruft	Order of rc file incorrect	Order of the rc file should be shebang/header/$FreeBSD$/setting defaults/setting other definitions/defining functions.  Do not include unassociated shell commands, and blocks must be separated by single blank lines.  Single blank lines may appear inside the defaults, definitions and functions blocks.
+run_rc_followed	run_rc_command line is not the last line in the file	Do not write anything after the run_rc_command line
+run_rc_quoted	Quoted argument to run_rc_command	No need to quote the argument to run_rc_command
+
 shebang	Incorrect shebang used	All rc scripts must start with the correct shebang; #!/bin/sh

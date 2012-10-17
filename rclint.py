@@ -55,7 +55,7 @@ def explain(error):
                             initial_indent='==> ', subsequent_indent='    ')
 
 def error(type, line_number, filename):
-    logging.error("[%d]%s: %s " % (line_number, filename, errors[type][0]))
+    logging.error("[%d]%s: %s " % (line_number + 1, filename, errors[type][0]))
     explain(errors[type])
 
 def check_quoted(string):
@@ -73,7 +73,7 @@ def get_value(var, line):
 
 def get_assignment(line):
     try:
-        return re.match('(\S+)=(\S+)$', line).groups()
+        return re.match('(\S+)=(.+)$', line).groups()
     except:
         return False
 
@@ -246,7 +246,8 @@ def check_functions(lines, num, filename):
     func = { }
 
     while lines[num]:
-        while not lines[num] or lines[num][0] == '#': num += 1
+        while not lines[num] or lines[num][0] == '#':
+            num += 1
 
         if lines[num][-2:] != '()':
             if lines[num][-1] == '{':
@@ -257,16 +258,18 @@ def check_functions(lines, num, filename):
         if ' ' in lines[num]:
             error('functions_spaces', num, filename)
         func['name'] = lines[num][:-2]
+        func['length'] = 0
 
         num += 1
         if lines[num] != '{':
             error('functions_brace_missing', num, filename)
 
         num += 1
-        tmp = num
+
         try:
             while lines[num] != '}':
-                tmp += 1
+                print lines[num]
+                num += 1
                 if lines[num] and lines[num][0] != '#':
                     func['length'] += 1 
         except:
@@ -276,13 +279,43 @@ def check_functions(lines, num, filename):
         if func['length'] == 1:
             error('functions_short', num, filename)
 
+    print lines[num]
+    print lines[num+1]
+    print lines[num+2]
+
+    if lines[num+2] and '{' in lines[num+2]:
+        return check_functions(lines, num, filename)
+    else:
+        return num
+
+def check_run_rc(lines, num, filename):
+    logging.debug('Checking the last line of the file contains run_rc_command')
+
+    while not lines[num] or lines[num][0] == '#':
+        num += 1
+
+    try:
+        arg = re.match('run_rc_command (.*)$', lines[num]).group(1)
+        if check_quoted(arg):
+            error('run_rc_quoted', num, filename)
+        elif arg != r'$1':
+            error('run_rc_argument', num, filename)
+
+        if num < len(lines) - 1:
+            error('run_rc_followed', num, filename)
+    except:
+        error('run_rc_cruft', num, filename)
+
 def general_checks(lines, filename):
-    logging.debug('Checking for unrecommended sequences')
-    for num in range(0, len(lines)):
+    logging.debug('Checking for unrecommended sequences and orphan commands')
+    # Don't use regex on last line, it must contain run_rc_command, which fails
+    # unassociated shell command test.  We already hacked for load_rc_config
+    for num in range(0, len(lines) - 1):
         for regex in problems.keys():
             if lines[num] and re.search(regex, lines[num]):
-                logging.warn("[%d]%s: %s " % (num, filename, problems[key][1]))
-                explain(problem)
+                logging.warn("[%d]%s: %s " % (num + 1, filename,
+                             problems[regex][0]))
+                explain(problems[regex])
 
 def do_rclint(filename):
     logging.debug('Suck in file %s' % filename)
@@ -298,6 +331,7 @@ def do_rclint(filename):
     lineno['defaults'] = check_defaults(lines, lineno['intro'], filename)
     lineno['definitions'] = check_definitions(lines, lineno['defaults'], filename)
     lineno['functions'] = check_functions(lines, lineno['definitions'], filename)
+    check_run_rc(lines, lineno['functions'], filename)
 
     general_checks(lines, filename)
 
@@ -309,7 +343,7 @@ parser.add_argument('-v', action='count', help='raises debug level; provides det
 args = parser.parse_args()
 
 verbosity = args.v
-logging.basicConfig(level=logging.DEBUG if verbosity > 1 else logging.ERROR)
+logging.basicConfig(level=logging.DEBUG if verbosity > 1 else logging.WARN)
 
 errors = read_db('errors', args.language[0])
 problems = read_db('problems', args.language[0])

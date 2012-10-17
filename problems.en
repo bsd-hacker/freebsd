@@ -1,2 +1,3 @@
 # Format of this file: regex<TAB>short_explanation<TAB>explanation
-regex	explain	explanation
+#regex	explain	explanation
+^[^#{}.l\s][^-=()]*[^)]$	Unassociated shell command	Do not put shell commands outside functions-- it slows down rc on boot and every invocation of the rc file
