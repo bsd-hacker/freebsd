@@ -121,6 +121,7 @@ device		hptiop		# Highpoint RocketRaid 3xxx series
 device		isp		# Qlogic family
 #device		ispfw		# Firmware for QLogic HBAs- normally a module
 device		mpt		# LSI-Logic MPT-Fusion
+device		mps		# LSI-Logic MPT-Fusion 2
 #device		ncr		# NCR/Symbios Logic
 device		sym		# NCR/Symbios Logic (newer chipsets + those of `ncr')
 device		trm		# Tekram DC395U/UW/F DC315U adapters
@@ -306,7 +307,7 @@ device		wpi		# Intel 3945ABG wireless NICs.
 device		loop		# Network loopback
 device		random		# Entropy device
 options 	PADLOCK_RNG	# VIA Padlock RNG
-options 	IVY_RNG		# Intel Bull Mountain RNG
+options 	RDRAND_RNG	# Intel Bull Mountain RNG
 device		ether		# Ethernet support
 device		vlan		# 802.1Q VLAN support
 device		tun		# Packet tunnel.

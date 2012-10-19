@@ -392,7 +392,7 @@ g_disk_start(struct bio *bp)
 			error = ENOIOCTL;
 		break;
 	case BIO_FLUSH:
-		g_trace(G_T_TOPOLOGY, "g_disk_flushcache(%s)",
+		g_trace(G_T_BIO, "g_disk_flushcache(%s)",
 		    bp->bio_to->name);
 		if (!(dp->d_flags & DISKFLAG_CANFLUSHCACHE)) {
 			error = EOPNOTSUPP;
@@ -636,9 +636,14 @@ disk_gone(struct disk *dp)
 	struct g_provider *pp;
 
 	gp = dp->d_geom;
-	if (gp != NULL)
-		LIST_FOREACH(pp, &gp->provider, provider)
+	if (gp != NULL) {
+		pp = LIST_FIRST(&gp->provider);
+		if (pp != NULL) {
+			KASSERT(LIST_NEXT(pp, provider) == NULL,
+			    ("geom %p has more than one provider", gp));
 			g_wither_provider(pp, ENXIO);
+		}
+	}
 }
 
 void

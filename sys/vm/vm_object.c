@@ -456,7 +456,7 @@ vm_object_vndeallocate(vm_object_t object)
 			VOP_UNLOCK(vp, 0);
 		} else {
 			if (object->ref_count == 0)
-				vp->v_vflag &= ~VV_TEXT;
+				VOP_UNSET_TEXT(vp);
 			VM_OBJECT_UNLOCK(object);
 			vput(vp);
 		}
@@ -820,7 +820,6 @@ vm_object_page_clean(vm_object_t object, vm_ooffset_t start, vm_ooffset_t end,
 	int curgeneration, n, pagerflags;
 	boolean_t clearobjflags, eio, res;
 
-	mtx_assert(&vm_page_queue_mtx, MA_NOTOWNED);
 	VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
 	KASSERT(object->type == OBJT_VNODE, ("Not a vnode object"));
 	if ((object->flags & OBJ_MIGHTBEDIRTY) == 0 ||
@@ -906,7 +905,6 @@ vm_object_page_collect_flush(vm_object_t object, vm_page_t p, int pagerflags,
 	vm_page_t ma[vm_pageout_page_count], p_first, tp;
 	int count, i, mreq, runlen;
 
-	mtx_assert(&vm_page_queue_mtx, MA_NOTOWNED);
 	vm_page_lock_assert(p, MA_NOTOWNED);
 	VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
 
@@ -1918,8 +1916,13 @@ again:
 		if ((options & OBJPR_NOTMAPPED) == 0) {
 			pmap_remove_all(p);
 			/* Account for removal of wired mappings. */
-			if (wirings != 0)
-				p->wire_count -= wirings;
+			if (wirings != 0) {
+				KASSERT(p->wire_count == wirings,
+				    ("inconsistent wire count %d %d %p",
+				    p->wire_count, wirings, p));
+				p->wire_count = 0;
+				atomic_subtract_int(&cnt.v_wire_count, 1);
+			}
 		}
 		vm_page_free(p);
 		vm_page_unlock(p);

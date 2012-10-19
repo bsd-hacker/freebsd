@@ -572,7 +572,7 @@ dmu_tx_count_free(dmu_tx_hold_t *txh, uint64_t off, uint64_t len)
 		    (dn->dn_indblkshift - SPA_BLKPTRSHIFT);
 
 		while (level++ < maxlevel) {
-			txh->txh_memory_tohold += MIN(blkcnt, (nl1blks >> epbs))
+			txh->txh_memory_tohold += MAX(MIN(blkcnt, nl1blks), 1)
 			    << dn->dn_indblkshift;
 			blkcnt = 1 + (blkcnt >> epbs);
 		}
@@ -911,7 +911,7 @@ dmu_tx_try_assign(dmu_tx_t *tx, uint64_t txg_how)
 	uint64_t memory, asize, fsize, usize;
 	uint64_t towrite, tofree, tooverwrite, tounref, tohold, fudge;
 
-	ASSERT3U(tx->tx_txg, ==, 0);
+	ASSERT0(tx->tx_txg);
 
 	if (tx->tx_err)
 		return (tx->tx_err);
