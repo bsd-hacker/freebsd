@@ -1040,8 +1040,8 @@ LIST_HEAD(sqphead, sleepq_prof);
 struct sqphead sleepq_prof_free;
 struct sqphead sleepq_hash[SC_TABLESIZE];
 static struct sleepq_prof sleepq_profent[SLEEPQ_PROF_LOCATIONS];
-static struct mtx sleepq_prof_lock;
-MTX_SYSINIT(sleepq_prof_lock, &sleepq_prof_lock, "sleepq_prof", MTX_SPIN);
+
+static MTX_DEF_SYSINIT(sleepq_prof_lock, "sleepq_prof", MTX_SPIN);
 
 static void
 sleepq_profile(const char *wmesg)

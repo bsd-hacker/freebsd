@@ -82,8 +82,7 @@ static void	at_aarpinput(struct ifnet *ifp, struct mbuf *m);
 #define	AARPTAB_SIZE	(AARPTAB_BSIZ * AARPTAB_NB)
 static struct aarptab	aarptab[AARPTAB_SIZE];
 
-struct mtx	aarptab_mtx;
-MTX_SYSINIT(aarptab_mtx, &aarptab_mtx, "aarptab_mtx", MTX_DEF);
+MTX_DEF_SYSINIT(aarptab_mtx, "aarptab_mtx", MTX_DEF);
 
 #define	AARPTAB_HASH(a)	((((a).s_net << 8) + (a).s_node) % AARPTAB_NB)
 

@@ -306,7 +306,8 @@ vm_sync_icache(vm_map_t map, vm_offset_t va, vm_offset_t sz)
 struct kstack_cache_entry *kstack_cache;
 static int kstack_cache_size = 128;
 static int kstacks;
-static struct mtx kstack_cache_mtx;
+static MTX_DEF_SYSINIT(kstack_cache_mtx, "kstkch", MTX_DEF);
+
 SYSCTL_INT(_vm, OID_AUTO, kstack_cache_size, CTLFLAG_RW, &kstack_cache_size, 0,
     "");
 SYSCTL_INT(_vm, OID_AUTO, kstacks, CTLFLAG_RD, &kstacks, 0,
@@ -486,7 +487,6 @@ kstack_cache_init(void *nulll)
 	    EVENTHANDLER_PRI_ANY);
 }
 
-MTX_SYSINIT(kstack_cache, &kstack_cache_mtx, "kstkch", MTX_DEF);
 SYSINIT(vm_kstacks, SI_SUB_KTHREAD_INIT, SI_ORDER_ANY, kstack_cache_init, NULL);
 
 #ifndef NO_SWAPPING

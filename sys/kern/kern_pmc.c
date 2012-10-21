@@ -100,11 +100,10 @@ TUNABLE_INT(PMC_SYSCTL_NAME_PREFIX "softevents", &pmc_softevents);
 SYSCTL_INT(_kern_hwpmc, OID_AUTO, softevents, CTLFLAG_TUN|CTLFLAG_RD,
     &pmc_softevents, 0, "maximum number of soft events");
 
-struct mtx pmc_softs_mtx;
 int pmc_softs_count;
 struct pmc_soft **pmc_softs;
 
-MTX_SYSINIT(pmc_soft_mtx, &pmc_softs_mtx, "pmc-softs", MTX_SPIN);
+MTX_DEF_SYSINIT(pmc_softs_mtx, "pmc-softs", MTX_SPIN);
 
 static void
 pmc_init_sx(void)

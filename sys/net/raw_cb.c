@@ -56,7 +56,7 @@
  *	redo address binding to allow wildcards
  */
 
-struct mtx rawcb_mtx;
+MTX_DEF_SYSINIT(rawcb_mtx, "rawcb", MTX_DEF);
 VNET_DEFINE(struct rawcb_list_head, rawcb_list);
 
 static SYSCTL_NODE(_net, OID_AUTO, raw, CTLFLAG_RW, 0,

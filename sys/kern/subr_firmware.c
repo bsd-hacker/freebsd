@@ -134,8 +134,7 @@ static struct task firmware_unload_task;
 /*
  * This mutex protects accesses to the firmware table.
  */
-static struct mtx firmware_mtx;
-MTX_SYSINIT(firmware, &firmware_mtx, "firmware table", MTX_DEF);
+static MTX_DEF_SYSINIT(firmware_mtx, "firmware table", MTX_DEF);
 
 /*
  * Helper function to lookup a name.

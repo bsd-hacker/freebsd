@@ -94,8 +94,7 @@ static MALLOC_DEFINE(M_IPMSOURCE, "ip_msource",
  * any need for in_multi itself to be virtualized -- it is bound to an ifp
  * anyway no matter what happens.
  */
-struct mtx in_multi_mtx;
-MTX_SYSINIT(in_multi_mtx, &in_multi_mtx, "in_multi_mtx", MTX_DEF);
+MTX_DEF_SYSINIT(in_multi_mtx, "in_multi_mtx", MTX_DEF);
 
 /*
  * Functions with non-static linkage defined in this file should be

@@ -86,8 +86,7 @@ static int		tcp_debx;
  * two parts, one of which saves connection and other state into the global
  * array (locked by tcp_debug_mtx).
  */
-struct mtx		tcp_debug_mtx;
-MTX_SYSINIT(tcp_debug_mtx, &tcp_debug_mtx, "tcp_debug_mtx", MTX_DEF);
+MTX_DEF_SYSINIT(tcp_debug_mtx, "tcp_debug_mtx", MTX_DEF);
 
 /*
  * Save TCP state at a given moment; optionally, both tcpcb and TCP packet

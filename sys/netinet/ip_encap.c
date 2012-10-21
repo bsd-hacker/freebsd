@@ -101,8 +101,7 @@ static void encap_fillarg(struct mbuf *, const struct encaptab *);
 /*
  * All global variables in ip_encap.c are locked using encapmtx.
  */
-static struct mtx encapmtx;
-MTX_SYSINIT(encapmtx, &encapmtx, "encapmtx", MTX_DEF);
+static MTX_DEF_SYSINIT(encapmtx, "encapmtx", MTX_DEF);
 LIST_HEAD(, encaptab) encaptab = LIST_HEAD_INITIALIZER(encaptab);
 
 /*

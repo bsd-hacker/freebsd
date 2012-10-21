@@ -49,8 +49,6 @@
 #include <net/raw_cb.h>
 #include <net/vnet.h>
 
-MTX_SYSINIT(rawcb_mtx, &rawcb_mtx, "rawcb", MTX_DEF);
-
 /*
  * Initialize raw connection block q.
  */

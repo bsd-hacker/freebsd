@@ -56,8 +56,8 @@ __FBSDID("$FreeBSD$");
 static TAILQ_HEAD(, intr_config_hook) intr_config_hook_list =
 	TAILQ_HEAD_INITIALIZER(intr_config_hook_list);
 static struct intr_config_hook *next_to_notify;
-static struct mtx intr_config_hook_lock;
-MTX_SYSINIT(intr_config_hook, &intr_config_hook_lock, "intr config", MTX_DEF);
+
+static MTX_DEF_SYSINIT(intr_config_hook_lock, "intr config", MTX_DEF);
 
 /* ARGSUSED */
 static void run_interrupt_driven_config_hooks(void);

@@ -87,8 +87,7 @@ static uma_zone_t mount_zone;
 struct mntlist mountlist = TAILQ_HEAD_INITIALIZER(mountlist);
 
 /* For any iteration/modification of mountlist */
-struct mtx mountlist_mtx;
-MTX_SYSINIT(mountlist, &mountlist_mtx, "mountlist", MTX_DEF);
+MTX_DEF_SYSINIT(mountlist_mtx, "mountlist", MTX_DEF);
 
 /*
  * Global opts, taken by all filesystems

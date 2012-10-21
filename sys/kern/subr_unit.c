@@ -92,9 +92,7 @@ static MALLOC_DEFINE(M_UNIT, "Unitno", "Unit number allocation");
 #define Malloc(foo) malloc(foo, M_UNIT, M_WAITOK | M_ZERO)
 #define Free(foo) free(foo, M_UNIT)
 
-static struct mtx unitmtx;
-
-MTX_SYSINIT(unit, &unitmtx, "unit# allocation", MTX_DEF);
+static MTX_DEF_SYSINIT(unitmtx, "unit# allocation", MTX_DEF);
 
 #else /* ...USERLAND */
 

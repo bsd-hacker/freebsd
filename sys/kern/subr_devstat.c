@@ -102,8 +102,8 @@ static int devstat_num_devs;
 static long devstat_generation = 1;
 static int devstat_version = DEVSTAT_VERSION;
 static int devstat_current_devnumber;
-static struct mtx devstat_mutex;
-MTX_SYSINIT(devstat_mutex, &devstat_mutex, "devstat", MTX_DEF);
+
+static MTX_DEF_SYSINIT(devstat_mutex, "devstat", MTX_DEF);
 
 static struct devstatlist device_statq = STAILQ_HEAD_INITIALIZER(device_statq);
 static struct devstat *devstat_alloc(void);
