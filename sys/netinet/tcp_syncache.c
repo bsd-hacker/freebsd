@@ -966,7 +966,6 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 			tod->tod_syncache_removed(tod, sc->sc_todctx);
 		}
 #endif
-		V_tcp_syncache.cache_count--;
 		SCH_UNLOCK(sch);
 	}
 
