@@ -412,9 +412,9 @@ struct mtx_args {
 	int		 ma_opts;
 };
 
-#define	MTX_DEF_SYSINIT(name, mtx, desc, opts)				\
+#define	MTX_DEF_SYSINIT(name, desc, opts)				\
 	MTX_GLOBAL(name);						\
-	MTX_SYSINIT(name, mtx, desc, opts)
+	MTX_SYSINIT(name, &name, desc, opts)
 
 #define	MTX_SYSINIT(name, mtx, desc, opts)				\
 	static struct mtx_args name##_args = {				\
