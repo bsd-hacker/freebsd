@@ -411,6 +411,18 @@ struct mtx_args {
 	SYSUNINIT(name##_mtx_sysuninit, SI_SUB_LOCK, SI_ORDER_MIDDLE,	\
 	    mtx_destroy, (mtx))
 
+#define	MTX_GLOBAL(name)						\
+	struct {							\
+        	struct mtx (name);					\
+	} __aligned(CACHE_LINE_SIZE) (name);
+
+#define	MTX_GLOBAL_STATIC(name)						\
+	static struct {							\
+		struct mtx (name);					\
+	} __aligned(CACHE_LINE_SIZE) (name);
+
+#define	MTX_GLB(name)	(&(name.name))
+
 /*
  * The INVARIANTS-enabled mtx_assert() functionality.
  *

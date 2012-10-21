@@ -215,8 +215,8 @@ MTX_SYSINIT(accept_mtx, &accept_mtx, "accept", MTX_DEF);
  * so_global_mtx protects so_gencnt, numopensockets, and the per-socket
  * so_gencnt field.
  */
-static struct mtx so_global_mtx;
-MTX_SYSINIT(so_global_mtx, &so_global_mtx, "so_glabel", MTX_DEF);
+MTX_GLOBAL_STATIC(so_global_mtx);
+MTX_SYSINIT(so_global_mtx, MTX_GLB(so_global_mtx), "so_glabel", MTX_DEF);
 
 /*
  * General IPC sysctl name space, used by sockets and a variety of other IPC
@@ -324,7 +324,7 @@ soalloc(struct vnet *vnet)
 	sx_init(&so->so_snd.sb_sx, "so_snd_sx");
 	sx_init(&so->so_rcv.sb_sx, "so_rcv_sx");
 	TAILQ_INIT(&so->so_aiojobq);
-	mtx_lock(&so_global_mtx);
+	mtx_lock(MTX_GLB(so_global_mtx));
 	so->so_gencnt = ++so_gencnt;
 	++numopensockets;
 #ifdef VIMAGE
@@ -333,7 +333,7 @@ soalloc(struct vnet *vnet)
 	vnet->vnet_sockcnt++;
 	so->so_vnet = vnet;
 #endif
-	mtx_unlock(&so_global_mtx);
+	mtx_unlock(MTX_GLB(so_global_mtx));
 	return (so);
 }
 
@@ -349,7 +349,7 @@ sodealloc(struct socket *so)
 	KASSERT(so->so_count == 0, ("sodealloc(): so_count %d", so->so_count));
 	KASSERT(so->so_pcb == NULL, ("sodealloc(): so_pcb != NULL"));
 
-	mtx_lock(&so_global_mtx);
+	mtx_lock(MTX_GLB(so_global_mtx));
 	so->so_gencnt = ++so_gencnt;
 	--numopensockets;	/* Could be below, but faster here. */
 #ifdef VIMAGE
@@ -357,7 +357,7 @@ sodealloc(struct socket *so)
 	    __func__, __LINE__, so));
 	so->so_vnet->vnet_sockcnt--;
 #endif
-	mtx_unlock(&so_global_mtx);
+	mtx_unlock(MTX_GLB(so_global_mtx));
 	if (so->so_rcv.sb_hiwat)
 		(void)chgsbsize(so->so_cred->cr_uidinfo,
 		    &so->so_rcv.sb_hiwat, 0, RLIM_INFINITY);
