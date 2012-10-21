@@ -394,11 +394,27 @@ do {									\
 	return (_val);							\
 } while (0)
 
+/*
+ * Helper macros to prevent global mutexes to share a cache line
+ * on SMP systems.
+ */
+#ifdef SMP
+#define	MTX_GLOBAL(name)						\
+	struct mtx __aligned(CACHE_LINE_SIZE) (name)
+#else /* SMP */
+#define	MTX_GLOBAL(name)						\
+	struct mtx (name)
+#endif /* SMP */
+
 struct mtx_args {
 	struct mtx	*ma_mtx;
 	const char 	*ma_desc;
 	int		 ma_opts;
 };
+
+#define	MTX_DEF_SYSINIT(name, mtx, desc, opts)				\
+	MTX_GLOBAL(name);						\
+	MTX_SYSINIT(name, mtx, desc, opts)
 
 #define	MTX_SYSINIT(name, mtx, desc, opts)				\
 	static struct mtx_args name##_args = {				\
@@ -410,19 +426,6 @@ struct mtx_args {
 	    mtx_sysinit, &name##_args);					\
 	SYSUNINIT(name##_mtx_sysuninit, SI_SUB_LOCK, SI_ORDER_MIDDLE,	\
 	    mtx_destroy, (mtx))
-
-/*
- * Helper macros to prevent global mutexes to share a cache line
- * on SMP systems.
- */
-#ifdef SMP
-#define	MTX_GLOBAL(name)						\
-	struct mtx __aligned(CACHE_LINE_SIZE) (name)
-
-#else /* SMP */
-#define	MTX_GLOBAL(name)						\
-	struct mtx (name)
-#endif /* SMP */
 
 /*
  * The INVARIANTS-enabled mtx_assert() functionality.
