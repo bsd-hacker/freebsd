@@ -411,16 +411,32 @@ struct mtx_args {
 	SYSUNINIT(name##_mtx_sysuninit, SI_SUB_LOCK, SI_ORDER_MIDDLE,	\
 	    mtx_destroy, (mtx))
 
+/*
+ * Helper macros to prevent global mutexes to share a cache line
+ * on SMP systems.
+ * MTX_GLB(name) abstracts the access to the structure encapsulated
+ * mutexes.
+ */
+#ifdef SMP
 #define	MTX_GLOBAL(name)						\
 	struct {							\
         	struct mtx (name);					\
-	} __aligned(CACHE_LINE_SIZE) (name);
+	} __aligned(CACHE_LINE_SIZE) (name)
 
 #define	MTX_GLOBAL_STATIC(name)						\
 	static struct {							\
 		struct mtx (name);					\
-	} __aligned(CACHE_LINE_SIZE) (name);
-
+	} __aligned(CACHE_LINE_SIZE) (name)
+#else /* SMP */
+#define	MTX_GLOBAL(name)						\
+	struct {							\
+		struct mtx (name);					\
+	} (name)
+#define MTX_GLOBAL_STATIC(name)						\
+	static struct {							\
+		struct mtx (name);					\
+	} (name)
+#endif /* SMP */
 #define	MTX_GLB(name)	(&(name.name))
 
 /*
