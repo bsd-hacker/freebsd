@@ -91,8 +91,8 @@ size_t		*lens;
 mregex_t	 preg;
 
 /* Filename exclusion/inclusion patterns */
-unsigned int	 fpatterns, fpattern_sz;
-unsigned int	 dpatterns, dpattern_sz;
+unsigned int	fpatterns, dpatterns;
+static unsigned int fpattern_sz, dpattern_sz;
 struct epat	*dpattern, *fpattern;
 
 /* For regex errors  */
