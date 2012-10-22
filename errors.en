@@ -13,7 +13,9 @@ functions_short	One-line functions discouraged; put command directly in variable
 
 orphaned_line	Orphaned line	Do not put unassociated shell commands inside rc scripts; put them inside functions
 
+rcorder_keyword_freebsd	Do not include FreeBSD in the KEYWORD rcorder line	Historically FreeBSD scripts were marked in the KEYWORD section.  This is no longer necessary
 rcorder_order	rcorder block in the wrong order; should be PROVIDE/REQUIRE/BEFORE/KEYWORD	See the article on RC scripting
+rcvar_incorrect	rcvar is not set correctly	rcvar must be directly set to name_enable.  Do not quote, and do not use indirection; ${name}_enable is slower than example_enable
 
 shebang	Incorrect shebang used	All rc scripts must start with the correct shebang; #!/bin/sh
 
@@ -27,23 +29,6 @@ value_quoted	Do not quote values unless necessary	Unless there are spaces in the
 
 
 
-defaults_invalid	Invalid lines in defaults block.	Allowed are variable assignments (including eval statements) and comments.  A blank line ends the block.
-
-definitions_missing	Definitions block missing	Following the default definitions must be other definitions (such as command, command_args)
-
-load_rc_config_extra	load_rc_config not followed by blank line	The load_rc_config line must form its own block
-load_rc_config_missing	load_rc_config is late, incorrect or missing	Directly following the name/rcvar block must be load_rc_config $name, unquoted
-
-name_missing	name is set late or not at all	Directly following the sourcing of scripts must follow setting of the variable name
-name_quoted	name is quoted	Do not quote the value of name.  If it has spaces, use underscores
-
-rc_subr_late	rc.subr sourcing late or nonexistent	The first non-comment non-blank line in any rc file must be sourcing /etc/rc.subr
-
-rcorder_keyword_freebsd	Do not include FreeBSD in the KEYWORD rcorder line	Historically FreeBSD scripts were marked in the KEYWORD section.  This is no longer necessary
-rcorder_missing	Missing rcorder block	Following the FreeBSD RCSId keyword must be nothing but empty comment lines and an rcorder block
-
-rcvar_extra	extra lines in name/rcvar block	Order should be [blank line]/name=/rcvar=/[blank line]
-rcvar_incorrect	rcvar is not set correctly	rcvar must be directly set to name_enable.  Do not quote, and do not use indirection; ${name}_enable is slower than example_enable
 rcvar_missing	rcvar is set late or not at all	Setting rcvar must be done straight after setting name
 rcvar_quoted	rcvar is quoted	Do not quote the value of rcvar
 
