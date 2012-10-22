@@ -30,6 +30,8 @@ MAJOR = 0
 MINOR = 0
 MICRO = 0
 
+DATADIR = '.'
+
 import argparse
 import logging
 import re
@@ -38,7 +40,7 @@ import textwrap
 class Db:
     def __init__(self, dbname, language):
         self._contents = []
-        with open('%s.%s' % (dbname, language)) as f:
+        with open('%s/%s.%s' % (DATADIR, dbname, language)) as f:
             logging.debug('Sucking in %s database' % dbname)
             for e in f.readlines():
                 e = e.rstrip('\n')
