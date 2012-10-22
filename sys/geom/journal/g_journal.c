@@ -73,8 +73,7 @@ CTASSERT(sizeof(struct g_journal_header) <= 512);
 CTASSERT(sizeof(struct g_journal_record_header) <= 512);
 
 static MALLOC_DEFINE(M_JOURNAL, "journal_data", "GEOM_JOURNAL Data");
-static struct mtx g_journal_cache_mtx;
-MTX_SYSINIT(g_journal_cache, &g_journal_cache_mtx, "cache usage", MTX_DEF);
+static MTX_DEF_SYSINIT(g_journal_cache_mtx, "cache usage", MTX_DEF);
 
 const struct g_journal_desc *g_journal_filesystems[] = {
 	&g_journal_ufs,

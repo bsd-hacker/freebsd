@@ -73,12 +73,10 @@ static struct fileops devfs_ops_f;
 
 static MALLOC_DEFINE(M_CDEVPDATA, "DEVFSP", "Metainfo for cdev-fp data");
 
-struct mtx	devfs_de_interlock;
-MTX_SYSINIT(devfs_de_interlock, &devfs_de_interlock, "devfs interlock", MTX_DEF);
+MTX_DEF_SYSINIT(devfs_de_interlock, "devfs interlock", MTX_DEF);
 struct sx	clone_drain_lock;
 SX_SYSINIT(clone_drain_lock, &clone_drain_lock, "clone events drain lock");
-struct mtx	cdevpriv_mtx;
-MTX_SYSINIT(cdevpriv_mtx, &cdevpriv_mtx, "cdevpriv lock", MTX_DEF);
+MTX_DEF_SYSINIT(cdevpriv_mtx, "cdevpriv lock", MTX_DEF);
 
 static int
 devfs_fp_check(struct file *fp, struct cdev **devp, struct cdevsw **dswp,

@@ -991,12 +991,27 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 			    "rejected\n", s, __func__, th->th_seq, sc->sc_irs);
 		goto failed;
 	}
-
+	/*
+	 * If timestamps were not negotiated we don't expect them.
+	 */
 	if (!(sc->sc_flags & SCF_TIMESTAMP) && (to->to_flags & TOF_TS)) {
 		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
 			log(LOG_DEBUG, "%s; %s: Timestamp not expected, "
 			    "segment rejected\n", s, __func__);
 		goto failed;
+	}
+	/*
+	 * If timestamps were negotiated every packet is required
+	 * to carry them.
+	 *  RFC1323, Section X
+	 */
+	if ((sc->sc_flags & SCF_TIMESTAMP) && !(to->to_flags & TOF_TS)) {
+		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
+			log(LOG_DEBUG, "%s; %s: Timestamp expected, "
+			    "rfc violation ignored\n", s, __func__);
+#if 0
+		goto failed;
+#endif
 	}
 	/*
 	 * If timestamps were negotiated the reflected timestamp

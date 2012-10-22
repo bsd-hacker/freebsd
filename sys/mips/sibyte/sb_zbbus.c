@@ -44,9 +44,7 @@ __FBSDID("$FreeBSD$");
 
 static MALLOC_DEFINE(M_INTMAP, "sb1250 intmap", "Sibyte 1250 Interrupt Mapper");
 
-static struct mtx zbbus_intr_mtx;
-MTX_SYSINIT(zbbus_intr_mtx, &zbbus_intr_mtx, "zbbus_intr_mask/unmask lock",
-	    MTX_SPIN);
+static MTX_DEF_SYSINIT(zbbus_intr_mtx, "zbbus_intr_mask/unmask lock", MTX_SPIN);
 
 /*
  * This array holds the mapping between a MIPS hard interrupt and the

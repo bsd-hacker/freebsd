@@ -83,8 +83,7 @@ typedef void (*smbios_callback_t)(struct smbios_structure_header *, void *);
 
 static struct ipmi_get_info ipmi_info;
 static int ipmi_probed;
-static struct mtx ipmi_info_mtx;
-MTX_SYSINIT(ipmi_info, &ipmi_info_mtx, "ipmi info", MTX_DEF);
+static MTX_DEF_SYSINIT(ipmi_info_mtx, "ipmi info", MTX_DEF);
 
 static void	ipmi_smbios_probe(struct ipmi_get_info *);
 static int	smbios_cksum(struct smbios_eps *);

@@ -993,8 +993,7 @@ static	void softdep_disk_write_complete(struct buf *);
 static	void softdep_deallocate_dependencies(struct buf *);
 static	int softdep_count_dependencies(struct buf *bp, int);
 
-static struct mtx lk;
-MTX_SYSINIT(softdep_lock, &lk, "Softdep Lock", MTX_DEF);
+static MTX_DEF_SYSINIT(lk, "Softdep Lock", MTX_DEF);
 
 #define TRY_ACQUIRE_LOCK(lk)		mtx_trylock(lk)
 #define ACQUIRE_LOCK(lk)		mtx_lock(lk)

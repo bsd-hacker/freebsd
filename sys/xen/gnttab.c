@@ -49,7 +49,8 @@ static unsigned int nr_grant_frames;
 static unsigned int boot_max_nr_grant_frames;
 static int gnttab_free_count;
 static grant_ref_t gnttab_free_head;
-static struct mtx gnttab_list_lock;
+
+static MTX_DEF_SYSINIT(gnttab_list_lock, "GNTTAB LOCK", MTX_DEF); 
 
 static grant_entry_t *shared;
 
@@ -706,4 +707,3 @@ ini_nomem:
 
 }
 
-MTX_SYSINIT(gnttab, &gnttab_list_lock, "GNTTAB LOCK", MTX_DEF); 

@@ -46,8 +46,7 @@ __FBSDID("$FreeBSD$");
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
 
-struct mtx cvm_oct_mdio_mtx;
-MTX_SYSINIT(cvm_oct_mdio, &cvm_oct_mdio_mtx, "MDIO", MTX_DEF);
+MTX_DEF_SYSINIT(cvm_oct_mdio_mtx, "MDIO", MTX_DEF);
 
 /**
  * Perform an MII read. Called by the generic MII routines

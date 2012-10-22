@@ -211,8 +211,7 @@ SYSCTL_INT(_hw_snd, OID_AUTO, syncdelay, CTLFLAG_RW,
  * Clients should acquire this lock @b without holding any channel locks
  * before touching syncgroups or the main syncgroup list.
  */
-struct mtx snd_pcm_syncgroups_mtx;
-MTX_SYSINIT(pcm_syncgroup, &snd_pcm_syncgroups_mtx, "PCM channel sync group lock", MTX_DEF);
+MTX_DEF_SYSINIT(snd_pcm_syncgroups_mtx, "PCM channel sync group lock", MTX_DEF);
 /**
  * @brief syncgroups' master list
  *

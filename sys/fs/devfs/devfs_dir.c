@@ -52,8 +52,7 @@ static LIST_HEAD(, dirlistent) devfs_dirlist =
 
 static MALLOC_DEFINE(M_DEVFS4, "DEVFS4", "DEVFS directory list");
 
-static struct mtx dirlist_mtx;
-MTX_SYSINIT(dirlist_mtx, &dirlist_mtx, "devfs dirlist lock", MTX_DEF);
+static MTX_DEF_SYSINIT(dirlist_mtx, "devfs dirlist lock", MTX_DEF);
 
 /* Returns 1 if the path is in the directory list. */
 int

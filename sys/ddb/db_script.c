@@ -111,8 +111,7 @@ static char	db_static_buffer[DB_MAXSCRIPTLEN];
  * processes.  Sysctl procedures acquire db_script_mtx before accessing the
  * global script data structures.
  */
-static struct mtx 	db_script_mtx;
-MTX_SYSINIT(db_script_mtx, &db_script_mtx, "db_script_mtx", MTX_DEF);
+static MTX_DEF_SYSINIT(db_script_mtx, "db_script_mtx", MTX_DEF);
 
 /*
  * Some script names have special meaning, such as those executed

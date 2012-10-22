@@ -136,8 +136,7 @@ ffs_sync_snap(mp, waitfor)
 FEATURE(ffs_snapshot, "FFS snapshot support");
 
 LIST_HEAD(, snapdata) snapfree;
-static struct mtx snapfree_lock;
-MTX_SYSINIT(ffs_snapfree, &snapfree_lock, "snapdata free list", MTX_DEF);
+static MTX_DEF_SYSINIT(snapfree_lock, "snapdata free list", MTX_DEF);
 
 static int cgaccount(int, struct vnode *, struct buf *, int);
 static int expunge_ufs1(struct vnode *, struct inode *, struct fs *,

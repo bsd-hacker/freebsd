@@ -125,8 +125,7 @@ static __inline void	sbni_outsb(struct sbni_softc *, u_char *, u_int);
 static u_int32_t crc32tab[];
 
 #ifdef SBNI_DUAL_COMPOUND
-static struct mtx headlist_lock;
-MTX_SYSINIT(headlist_lock, &headlist_lock, "sbni headlist", MTX_DEF);
+static MTX_DEF_SYSINIT(headlist_lock, "sbni headlist", MTX_DEF);
 static struct sbni_softc *sbni_headlist;
 #endif
 
