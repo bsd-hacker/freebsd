@@ -52,7 +52,13 @@ struct packet_filter_hook {
 	int	(*pfil_func)(void *, struct mbuf **, struct ifnet *, int,
 		    struct inpcb *);
 	void	*pfil_arg;
+	int	 pfil_cookie;
+	uint8_t	 pfil_order;
 };
+
+#define	PFIL_ORDER_FIRST	  0
+#define	PFIL_ORDER_DEFAULT	200
+#define	PFIL_ORDER_LAST		255
 
 #define PFIL_IN		0x00000001
 #define PFIL_OUT	0x00000002
@@ -89,10 +95,16 @@ struct pfil_head {
 
 int	pfil_add_hook(int (*func)(void *, struct mbuf **, struct ifnet *,
 	    int, struct inpcb *), void *, int, struct pfil_head *);
+int	pfil_add_hook_order(int (*func)(void *, struct mbuf **, struct ifnet *,
+	    int, struct inpcb *), void *, int, uint8_t, struct pfil_head *);
+int	pfil_get_cookie(int (*func)(void *, struct mbuf **, struct ifnet *,
+	    int, struct inpcb *), void *, int, struct pfil_head *);
 int	pfil_remove_hook(int (*func)(void *, struct mbuf **, struct ifnet *,
 	    int, struct inpcb *), void *, int, struct pfil_head *);
 int	pfil_run_hooks(struct pfil_head *, struct mbuf **, struct ifnet *,
 	    int, struct inpcb *inp);
+int	pfil_run_inject(struct pfil_head *, struct mbuf **, struct ifnet *,
+	    int, struct inpcb *inp, int cookie);
 
 struct rm_priotracker;	/* Do not require including rmlock header */
 int pfil_try_rlock(struct pfil_head *, struct rm_priotracker *);

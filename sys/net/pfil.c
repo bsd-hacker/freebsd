@@ -49,7 +49,8 @@
 
 static MTX_DEF_SYSINIT(pfil_global_lock, "pfil_head_list lock", MTX_DEF);
 
-static int pfil_list_add(pfil_list_t *, struct packet_filter_hook *, int);
+static int pfil_list_add(pfil_list_t *, struct packet_filter_hook *, int,
+    uint8_t);
 
 static int pfil_list_remove(pfil_list_t *,
     int (*)(void *, struct mbuf **, struct ifnet *, int, struct inpcb *),
@@ -63,10 +64,21 @@ VNET_DEFINE(struct rmlock, pfil_lock);
 
 /*
  * pfil_run_hooks() runs the specified packet filter hooks.
+ *
+ * The cookie, if set, skips all hooks before the hook with
+ * the same cookie and continues with the next hook after it.
  */
 int
 pfil_run_hooks(struct pfil_head *ph, struct mbuf **mp, struct ifnet *ifp,
     int dir, struct inpcb *inp)
+{
+
+	return (pfil_run_inject(ph, mp, ifp, dir, inp, 0));
+}
+
+int
+pfil_run_inject(struct pfil_head *ph, struct mbuf **mp, struct ifnet *ifp,
+    int dir, struct inpcb *inp, int cookie)
 {
 	struct rm_priotracker rmpt;
 	struct packet_filter_hook *pfh;
@@ -77,6 +89,12 @@ pfil_run_hooks(struct pfil_head *ph, struct mbuf **mp, struct ifnet *ifp,
 	KASSERT(ph->ph_nhooks >= 0, ("Pfil hook count dropped < 0"));
 	for (pfh = pfil_hook_get(dir, ph); pfh != NULL;
 	     pfh = TAILQ_NEXT(pfh, pfil_link)) {
+		if (cookie != 0) {
+			/* Continue on the next hook. */
+			if (pfh->pfil_cookie == cookie)
+				cookie = 0;
+			continue;
+		}
 		if (pfh->pfil_func != NULL) {
 			rv = (*pfh->pfil_func)(pfh->pfil_arg, &m, ifp, dir,
 			    inp);
@@ -213,10 +231,20 @@ pfil_head_get(int type, u_long val)
  *	PFIL_OUT	call me on outgoing packets
  *	PFIL_ALL	call me on all of the above
  *	PFIL_WAITOK	OK to call malloc with M_WAITOK.
+ *
+ * The cookie is simply is a random value that should be unique.
  */
 int
 pfil_add_hook(int (*func)(void *, struct mbuf **, struct ifnet *, int,
   struct inpcb *), void *arg, int flags, struct pfil_head *ph)
+{
+
+	return (pfil_add_hook_order(func, arg, flags, PFIL_ORDER_DEFAULT, ph));
+}
+
+int
+pfil_add_hook_order(int (*func)(void *, struct mbuf **, struct ifnet *, int,
+  struct inpcb *), void *arg, int flags, uint8_t order, struct pfil_head *ph)
 {
 	struct packet_filter_hook *pfh1 = NULL;
 	struct packet_filter_hook *pfh2 = NULL;
@@ -229,6 +257,10 @@ pfil_add_hook(int (*func)(void *, struct mbuf **, struct ifnet *, int,
 			err = ENOMEM;
 			goto error;
 		}
+		pfh1->pfil_func = func;
+		pfh1->pfil_arg = arg;
+		pfh1->pfil_cookie = (int)random();
+		pfh1->pfil_order = order;
 	}
 	if (flags & PFIL_OUT) {
 		pfh2 = (struct packet_filter_hook *)malloc(sizeof(*pfh1),
@@ -237,20 +269,20 @@ pfil_add_hook(int (*func)(void *, struct mbuf **, struct ifnet *, int,
 			err = ENOMEM;
 			goto error;
 		}
+		pfh2->pfil_func = func;
+		pfh2->pfil_arg = arg;
+		pfh2->pfil_cookie = (int)random();
+		pfh2->pfil_order = order;
 	}
 	PFIL_WLOCK(ph);
 	if (flags & PFIL_IN) {
-		pfh1->pfil_func = func;
-		pfh1->pfil_arg = arg;
-		err = pfil_list_add(&ph->ph_in, pfh1, flags & ~PFIL_OUT);
+		err = pfil_list_add(&ph->ph_in, pfh1, flags & ~PFIL_OUT, order);
 		if (err)
 			goto locked_error;
 		ph->ph_nhooks++;
 	}
 	if (flags & PFIL_OUT) {
-		pfh2->pfil_func = func;
-		pfh2->pfil_arg = arg;
-		err = pfil_list_add(&ph->ph_out, pfh2, flags & ~PFIL_IN);
+		err = pfil_list_add(&ph->ph_out, pfh2, flags & ~PFIL_IN, order);
 		if (err) {
 			if (flags & PFIL_IN)
 				pfil_list_remove(&ph->ph_in, func, arg);
@@ -295,8 +327,35 @@ pfil_remove_hook(int (*func)(void *, struct mbuf **, struct ifnet *, int,
 	return (err);
 }
 
+int
+pfil_get_cookie(int (*func)(void *, struct mbuf **, struct ifnet *, int,
+    struct inpcb *), void *arg, int flags, struct pfil_head *ph)
+{
+	pfil_list_t *list;
+	struct packet_filter_hook *pfh;
+	struct rm_priotracker tracker;
+	int cookie = 0;
+
+	PFIL_RLOCK(ph, &tracker);
+	if (flags & PFIL_IN)
+		list = &ph->ph_in;
+	else if (flags & PFIL_OUT)
+		list = &ph->ph_out;
+	else
+		goto out;
+
+	TAILQ_FOREACH(pfh, list, pfil_link)
+		if (pfh->pfil_func == func &&
+		    pfh->pfil_arg == arg)
+			cookie = pfh->pfil_cookie;
+out:
+	PFIL_RUNLOCK(ph, &tracker);
+	return (cookie);
+}
+
 static int
-pfil_list_add(pfil_list_t *list, struct packet_filter_hook *pfh1, int flags)
+pfil_list_add(pfil_list_t *list, struct packet_filter_hook *pfh1, int flags,
+    uint8_t order)
 {
 	struct packet_filter_hook *pfh;
 
@@ -312,10 +371,24 @@ pfil_list_add(pfil_list_t *list, struct packet_filter_hook *pfh1, int flags)
 	 * Insert the input list in reverse order of the output list so that
 	 * the same path is followed in or out of the kernel.
 	 */
-	if (flags & PFIL_IN)
-		TAILQ_INSERT_HEAD(list, pfh1, pfil_link);
-	else
-		TAILQ_INSERT_TAIL(list, pfh1, pfil_link);
+	if (flags & PFIL_IN) {
+		TAILQ_FOREACH(pfh, list, pfil_link) {
+			if (pfh->pfil_order <= order)
+				break;
+		}
+		if (pfh == NULL)
+			TAILQ_INSERT_HEAD(list, pfh1, pfil_link);
+		else
+			TAILQ_INSERT_BEFORE(pfh, pfh1, pfil_link);
+	} else {
+		TAILQ_FOREACH_REVERSE(pfh, list, pfil_list, pfil_link)
+			if (pfh->pfil_order >= order)
+				break;
+		if (pfh == NULL)
+			TAILQ_INSERT_TAIL(list, pfh1, pfil_link);
+		else
+			TAILQ_INSERT_AFTER(list, pfh, pfh1, pfil_link);
+	}
 	return (0);
 }
 
