@@ -28,7 +28,7 @@ __version__ = '$FreeBSD$'
 
 MAJOR = 0
 MINOR = 0
-MICRO = 0
+MICRO = 1
 
 DATADIR = '.'
 
@@ -47,6 +47,8 @@ class Db:
                 if not e or e[0] == '#':
                     continue
                 self._contents.append(e.split('\t'))
+        # Count the errors and bail if too many
+        self.count = 0
 
     def _get(self, key, index):
         for c in self._contents:
@@ -60,16 +62,27 @@ class Db:
     def explanation(self, key):
         return self._get(key, 2)
 
-    def give(self, key, num):
+    def give(self, key, num=-1, level='error'):
         err = self.error(key)
         if err:
-            logging.error('[%d]: %s ' % (num+1, err))
+            if level == 'error':
+                logging.error('[%d]: %s ' % (num+1, err))
+            if level == 'warn':
+                logging.warn('[%d]: %s ' % (num+1, err))
             if verbosity > 0:
                 print(textwrap.fill(self.explanation(key),
                                     initial_indent='==> ',
                                     subsequent_indent='    '))
         else:
             logging.error('No such error: %s' % key)
+        self.count += 1
+        if self.count > 10:
+            hint = '  Try rerunning with -v option for extra details.' if verbosity == 0 else ''
+            logging.error('Error threshold reached-- further errors are unlikely to be helpful.  Fix the errors and rerun.' + hint)
+            exit()
+
+    def warn(self, key, num=-1, level='warn'):
+        self.give(key, num, level)
 
 class Statement:
     def __init__(self, line, number):
@@ -136,6 +149,9 @@ class Variable(Statement):
         match = re.match(r': \${([^\s:=]+)(:?=)([^}]+)}', line)
         return match.groups() if match else False
 
+    def is_empty(self):
+        return False if re.match('[\'"]?[^\'"]+[\'"]?', self.value) else True
+
 class Comment:
     def __init__(self, line, number):
         self.value = line if line and line[0] == '#' else False
@@ -178,7 +194,9 @@ class RcsId:
 
 class Function:
     def __init__(self, lines, num):
-        if lines[1] and lines[1][0] == '{':
+        if lines[0] and lines[0][-1] == '{':
+            error.give('functions_inline_brace', num)
+        elif lines[1] and lines[1][0] == '{':
             try:
                 self.name = re.match(r'([\S_]+)\(\)$', lines[0]).group(1)
             except:
@@ -195,7 +213,7 @@ class Function:
             # Remove { and } lines from length
             self.length -= 2
             logging.debug('Found function %s' % self.name)
-        else:
+        if not hasattr(self, 'value'):
             self.value = False
 
     def short(self):
@@ -206,6 +224,29 @@ class Function:
 
     def contains_line(self, line):
         return True if line in self.linenumbers() else False
+
+def get(objlist, name):
+    for o in objlist:
+        if o.name == name:
+            return o
+    else:
+        return False
+
+def do_ports_checking(lineobj, filename):
+    logging.debug('Now on ports-specific section')
+    logging.debug('Checking for defaults clobbering blank values')
+    for var in lineobj['Variable']:
+        if var.type in ('longhand', 'shorthand'):
+            if var.name.split('_')[-1] not in ('enable') and var.clobber:
+                error.give('variables_defaults_non_mandatory_colon', var.line)
+            elif not var.clobber and var.name.split('_')[-1] in ('enable'):
+                error.give('variables_defaults_mandatory_colon', var.line)
+            if var.type == 'longhand' and var.name == var.source:
+                error.give('variables_defaults_old_style', var.line)
+    return
+
+def do_src_checking(lineobj, filename):
+    return
 
 def do_rclint(filename):
     logging.debug('Suck in file %s' % filename)
@@ -248,7 +289,11 @@ def do_rclint(filename):
 
     logging.debug('Checking shebang')
     if len(lineobj['Shebang']) < 1:
-        error.give('shebang', num)
+        error.give('shebang')
+
+    logging.debug('Checking RcsId')
+    if len(lineobj['RcsId']) < 1:
+        error.give('rcsid')
 
     logging.debug('Checking order of file')
     linenumbers = []
@@ -279,7 +324,7 @@ def do_rclint(filename):
             linenumbers.append(s.line)
 
     if sorted(linenumbers) != linenumbers:
-        error.give('file_order', 0)
+        error.give('file_order')
 
     logging.debug('Checking all lines are accounted for')
     for obj in list(lineobj.keys()):
@@ -299,9 +344,16 @@ def do_rclint(filename):
     if sorted(linenumbers) != linenumbers:
         error.give('rcorder_order')
 
+    shutdownkeyword = False
     for o in lineobj['Rcorder']:
-        if o.type == 'KEYWORD' and 'freebsd' in [v.lower() for v in o.value]:
-            error.give('rcorder_keyword_freebsd', o.line)
+        if o.type == 'KEYWORD':
+            if 'freebsd' in [v.lower() for v in o.value]:
+                error.give('rcorder_keyword_freebsd', o.line)
+            elif 'shutdown' in o.value:
+                shutdownkeyword = True
+
+    if not shutdownkeyword:
+        error.warn('rcorder_keyword_shutdown')
 
     logging.debug('Checking order of variables')
     linenumbers = []
@@ -310,12 +362,16 @@ def do_rclint(filename):
             if var.type in typ:
                 linenumbers.append(var.line)
     if sorted(linenumbers) != linenumbers:
-        error.give('variables_order', 0)
+        error.give('variables_order')
 
-    logging.debug('Checking for pointless quoting')
+    logging.debug('Checking for pointless quoting and empty variables')
     for obj in lineobj['Variable']+lineobj['Statement']:
         if obj.pointless_quoted():
             error.give('value_quoted', obj.line)
+
+    for v in lineobj['Variable']:
+        if v.is_empty():
+            error.give('value_empty', v.line)
 
     logging.debug('Checking for rcvar set correctly')
     for var in lineobj['Variable']:
@@ -328,28 +384,50 @@ def do_rclint(filename):
             except:
                 error.give('file_order', var.line)
     
-    logging.debug('Checking for short functions')
+    logging.debug('Checking for function issues')
     for function in lineobj['Function']:
         if function.short():
             error.give('functions_short', function.line)
+        for l in function.value:
+            if 'chown' in l:
+                error.warn('functions_chown', function.line)
 
-    logging.debug('Checking for defaults clobbering blank values')
-    for var in lineobj['Variable']:
-        if var.type in ('longhand', 'shorthand'):
-            if var.name.split('_')[-1] not in ('enable') and var.clobber:
-                error.give('variables_defaults_non_mandatory_colon', var.line)
-            elif not var.clobber and var.name.split('_')[-1] in ('enable'):
-                error.give('variables_defaults_mandatory_colon', var.line)
-            if var.type == 'longhand' and var.name == var.source:
-                error.give('variables_defaults_old_style', var.line)
+    logging.debug('Checking for run_rc_command')
+    for s in lineobj['Statement']:
+        if s.type == 'run_rc_command':
+            if '$1' not in s.value:
+                error.give('run_rc_argument', s.line)
+
+    # Strip .in from filename
+    logging.debug('Checking $name agrees with PROVIDE and filename')
+    fn = filename[:-3] if filename[-3:] == '.in' else filename
+    n = get(lineobj['Variable'], 'name').value
+    rcordervars = []
+    for r in lineobj['Rcorder']:
+        if r.type != 'PROVIDE':
+            continue
+        for v in r.value:
+            rcordervars.append(v)
+
+    if n != fn or n not in rcordervars:
+        error.give('name_mismatch')
+
+    if mode == 'ports':
+        do_ports_checking(lineobj, filename)
+    if mode == 'base':
+        do_base_checking(lineobj, filename)
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument('filenames', nargs = '+')
-parser.add_argument('--language', nargs = 1, type=str, default = ['en'], help = 'sets the language that errors are reported in')
+parser.add_argument('filenames', nargs='+')
+parser.add_argument('--language', nargs=1, type=str, default=['en'], help='sets the language that errors are reported in')
 parser.add_argument('-v', action='count', help='raises debug level; provides detailed explanations of errors')
 parser.add_argument('--version', action='version', version='%s.%s.%s-%s'%(MAJOR, MINOR, MICRO, __version__))
+parser.add_argument('-b', action='store_true', help='chooses base RC script mode')
+parser.add_argument('-p', action='store_true', help='chooses ports RC script mode (default)')
 
 args = parser.parse_args()
+mode = 'base' if args.b else 'ports'
 
 verbosity = args.v
 logging.basicConfig(level=logging.DEBUG if verbosity > 1 else logging.WARN)

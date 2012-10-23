@@ -1,3 +1,4 @@
+# $FreeBSD$
 # Rigid format of this file; tab-separated tuples to define
 # error messages and explanations.
 # Yes, tab isn't a great separator; alternatives that aren't
@@ -7,15 +8,25 @@ error_id	message	explanation
 
 file_order	Order of rc file incorrect	Order of the rc file should be shebang/header/$FreeBSD$/sourcing rc_subr/name/rcvar/load_rc_config/setting defaults/setting other definitions/defining functions.  Do not include unassociated shell commands, and blocks must be separated by single blank lines.  Single blank lines may appear inside the defaults, definitions and functions blocks
 
+functions_chown	Useless use of chown?	Using chown in functions can nearly always be replaced with appropriate use of install(1)
+functions_inline_brace	Inline brace in function	Put the opening brace for a function ({) on its own line
 functions_neverending	Unclosed function block	Functions must end with a closing brace on its own line
 functions_problem	Function incorrectly defined	Functions should not have spaces in the definition
 functions_short	One-line functions discouraged; put command directly in variable	It is wasteful to write a function just for one command.  It is possible to put commands directly inside declarations; name_prestart="install -d -o $name_user /var/run/$name" for example
 
-orphaned_line	Orphaned line	Do not put unassociated shell commands inside rc scripts; put them inside functions
+name_mismatch	Mismatched filename/PROVIDE/$name	Convention dictates that the filename, PROVIDE line and $name should be the same value
+
+orphaned_line	Orphaned line	Do not put unassociated shell commands inside rc scripts; put them inside functions.  Normally they can go inside a start_precmd function
 
 rcorder_keyword_freebsd	Do not include FreeBSD in the KEYWORD rcorder line	Historically FreeBSD scripts were marked in the KEYWORD section.  This is no longer necessary
+rcorder_keyword_shutdown	Persistent service?  Needs shutdown KEYWORD	Missing shutdown KEYWORD; if the script starts a service that is persistent, it should have KEYWORD: shutdown in rcorder block
 rcorder_order	rcorder block in the wrong order; should be PROVIDE/REQUIRE/BEFORE/KEYWORD	See the article on RC scripting
+
+rcsid	Missing FreeBSD RCSId keyword	All rc scripts must contain a line beginning # $FreeBSD$.  Do not include blank lines without comment markers at the beginning (#) until the script begins
+
 rcvar_incorrect	rcvar is not set correctly	rcvar must be directly set to name_enable.  Do not quote, and do not use indirection; ${name}_enable is slower than example_enable
+
+run_rc_argument	Incorrect argument to run_rc_command	The last line of the file should be run_rc_command $1
 
 shebang	Incorrect shebang used	All rc scripts must start with the correct shebang; #!/bin/sh
 
@@ -24,17 +35,12 @@ variables_defaults_non_mandatory_colon	Do not clobber blank values for non-manda
 variables_defaults_old_style	Prefer condensed version for setting default values of variables	When setting the default value for a variable, it is much less verbose and clearer to use the : ${variable=var} notation, as well as it being obvious that the source and destination variable are the same
 variables_order	Order of variables incorrect	Order of the variables should be setting defaults then setting other variables
 
+value_empty	Empty variable assignment	There is almost never a need to assign an empty value to a variable; sh does not require initialisation.  This line can almost certainly be removed
 value_quoted	Do not quote values unless necessary	Unless there are spaces in the value, quotes are unnecessary.  With the syntax ${variable=value}, value can even contain spaces and does not need quoting
 
 
 
 
-rcvar_missing	rcvar is set late or not at all	Setting rcvar must be done straight after setting name
-rcvar_quoted	rcvar is quoted	Do not quote the value of rcvar
-
-rcsid	Missing FreeBSD RCSId keyword	All rc scripts must contain a line beginning # $FreeBSD$.  Do not include blank lines without comment markers at the beginning (#) until the script begins
-
-run_rc_argument	Incorrect argument to run_rc_command	The last line of the file should be run_rc_command $1
 run_rc_followed	run_rc_command line is not the last line in the file	Do not write anything after the run_rc_command line
 run_rc_quoted	Quoted argument to run_rc_command	No need to quote the argument to run_rc_command
 
