@@ -65,9 +65,9 @@ class Db:
         if err:
             logging.error('[%d]: %s ' % (num+1, err))
             if verbosity > 0:
-                print textwrap.fill(self.explanation(key),
+                print(textwrap.fill(self.explanation(key),
                                     initial_indent='==> ',
-                                    subsequent_indent='    ')
+                                    subsequent_indent='    '))
         else:
             logging.error('No such error: %s' % key)
 
@@ -202,7 +202,7 @@ class Function:
         return True if self.length <= 1 else False
 
     def linenumbers(self):
-        return range(self.line, self.line+self.length+3)
+        return list(range(self.line, self.line+self.length+3))
 
     def contains_line(self, line):
         return True if line in self.linenumbers() else False
@@ -220,7 +220,7 @@ def do_rclint(filename):
                'Statement': []}
 
     for num in range(0, len(lines)):
-        for obj in lineobj.keys():
+        for obj in list(lineobj.keys()):
             tmp = eval(obj)(lines[num], num)
             if tmp.value != False:
                 lineobj[obj].append(tmp)
@@ -282,7 +282,7 @@ def do_rclint(filename):
         error.give('file_order', 0)
 
     logging.debug('Checking all lines are accounted for')
-    for obj in lineobj.keys():
+    for obj in list(lineobj.keys()):
         for o in lineobj[obj]:
             linenumbers.append(o.line)
     for r in range(0, len(lines)):
@@ -358,5 +358,5 @@ error = Db('errors', args.language[0])
 # problem = Db('problems', args.language[0])
 
 for f in args.filenames:
-    print('Checking %s' % f)
+    print(('Checking %s' % f))
     do_rclint(f)
