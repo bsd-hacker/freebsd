@@ -70,9 +70,9 @@ class Db:
             if level == 'warn':
                 logging.warn('[%d]: %s ' % (num+1, err))
             if verbosity > 0:
-                print(textwrap.fill(self.explanation(key),
+                print((textwrap.fill(self.explanation(key),
                                     initial_indent='==> ',
-                                    subsequent_indent='    '))
+                                    subsequent_indent='    ')))
         else:
             logging.error('No such error: %s' % key)
         self.count += 1
