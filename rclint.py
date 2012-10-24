@@ -237,7 +237,7 @@ def do_ports_checking(lineobj, filename):
     logging.debug('Checking for defaults clobbering blank values')
     for var in lineobj['Variable']:
         if var.type in ('longhand', 'shorthand'):
-            if var.name.split('_')[-1] not in ('enable') and var.clobber:
+            if var.name.split('_')[-1] not in ('enable', 'user') and var.clobber:
                 error.give('variables_defaults_non_mandatory_colon', var.line)
             elif not var.clobber and var.name.split('_')[-1] in ('enable'):
                 error.give('variables_defaults_mandatory_colon', var.line)
