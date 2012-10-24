@@ -399,6 +399,12 @@ do {									\
  * on SMP systems.
  */
 #ifdef SMP
+#define	MTX_ALIGN	__aligned(CACHE_LINE_SIZE)
+#else
+#define	MTX_ALIGN
+#endif
+
+#ifdef SMP
 #define	MTX_GLOBAL(name)						\
 	struct mtx __aligned(CACHE_LINE_SIZE) (name)
 #else /* SMP */
