@@ -772,9 +772,12 @@ send:
 			 * Limit a burst to IP_MAXPACKET minus IP,
 			 * TCP and options length to keep ip->ip_len
 			 * from overflowing.
+			 * Deduct max_linkhdr as well to prevent the
+			 * eventual DMA chain from exceeding IP_MAXPACKET
+			 * (64K) as well.
 			 */
-			if (len > IP_MAXPACKET - hdrlen) {
-				len = IP_MAXPACKET - hdrlen;
+			if (len > IP_MAXPACKET - (hdrlen + max_linkhdr)) {
+				len = IP_MAXPACKET - (hdrlen + max_linkhdr);
 				sendalot = 1;
 			}
 
@@ -805,7 +808,7 @@ send:
 	} else
 		tso = 0;
 
-	KASSERT(len + hdrlen + ipoptlen <= IP_MAXPACKET,
+	KASSERT(len + hdrlen + ipoptlen + max_linkhdr <= IP_MAXPACKET,
 	    ("%s: len > IP_MAXPACKET", __func__));
 
 /*#ifdef DIAGNOSTIC*/
