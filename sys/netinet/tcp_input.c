@@ -121,7 +121,7 @@ __FBSDID("$FreeBSD$");
 const int tcprexmtthresh = 3;
 
 VNET_DEFINE(struct tcpstat, tcpstat);
-SYSCTL_VNET_STRUCT(_net_inet_tcp, TCPCTL_STATS, stats, CTLFLAG_RW,
+SYSCTL_VNET_STRUCT(_net_inet_tcp, TCPCTL_STATS, stats, CTLFLAG_RD,
     &VNET_NAME(tcpstat), tcpstat,
     "TCP statistics (struct tcpstat, netinet/tcp_var.h)");
 
