@@ -47,7 +47,8 @@ static MALLOC_DEFINE(M_SNP, "snp", "tty snoop device");
 
 /* XXX: should be mtx, but TTY can be locked by Giant. */
 #if 0
-static MTX_DEF_SYSINIT(snp_register_lock,
+static struct mtx	snp_register_lock;
+MTX_SYSINIT(snp_register_lock, &snp_register_lock,
     "tty snoop registration", MTX_DEF);
 #define	SNP_LOCK()	mtx_lock(&snp_register_lock)
 #define	SNP_UNLOCK()	mtx_unlock(&snp_register_lock)

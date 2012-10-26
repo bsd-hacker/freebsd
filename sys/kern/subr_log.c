@@ -93,8 +93,8 @@ static struct logsoftc {
 
 int			log_open;	/* also used in log() */
 static struct cv	log_wakeup;
-
-MTX_DEF_SYSINIT(msgbuf_lock, "msgbuf lock", MTX_DEF);
+struct mtx		msgbuf_lock;
+MTX_SYSINIT(msgbuf_lock, &msgbuf_lock, "msgbuf lock", MTX_DEF);
 
 /* Times per second to check for a pending syslog wakeup. */
 static int	log_wakeups_per_second = 5;

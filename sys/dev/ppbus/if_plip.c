@@ -156,7 +156,8 @@ struct lp_data {
 	void		*sc_intr_cookie;
 };
 
-static MTX_DEF_SYSINIT(lp_tables_lock, "plip tables", MTX_DEF);
+static struct mtx lp_tables_lock;
+MTX_SYSINIT(lp_tables, &lp_tables_lock, "plip tables", MTX_DEF);
 
 /* Tables for the lp# interface */
 static u_char *txmith;

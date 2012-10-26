@@ -149,7 +149,8 @@ extern struct mtx			acpi_mutex;
 #define ACPI_UNLOCK(sys)		mtx_unlock(&sys##_mutex)
 #define ACPI_LOCK_ASSERT(sys)		mtx_assert(&sys##_mutex, MA_OWNED);
 #define ACPI_LOCK_DECL(sys, name)				\
-	static MTX_DEF_SYSINIT(sys##_mutex, name, MTX_DEF)
+	static struct mtx sys##_mutex;				\
+	MTX_SYSINIT(sys##_mutex, &sys##_mutex, name, MTX_DEF)
 #define ACPI_SERIAL_BEGIN(sys)		sx_xlock(&sys##_sxlock)
 #define ACPI_SERIAL_END(sys)		sx_xunlock(&sys##_sxlock)
 #define ACPI_SERIAL_ASSERT(sys)		sx_assert(&sys##_sxlock, SX_XLOCKED);

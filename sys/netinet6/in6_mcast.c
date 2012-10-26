@@ -103,7 +103,8 @@ RB_GENERATE(ip6_msource_tree, ip6_msource, im6s_link, ip6_msource_cmp);
  * any need for in6_multi itself to be virtualized -- it is bound to an ifp
  * anyway no matter what happens.
  */
-MTX_DEF_SYSINIT(in6_multi_mtx, "in6_multi_mtx", MTX_DEF);
+struct mtx in6_multi_mtx;
+MTX_SYSINIT(in6_multi_mtx, &in6_multi_mtx, "in6_multi_mtx", MTX_DEF);
 
 static void	im6f_commit(struct in6_mfilter *);
 static int	im6f_get_source(struct in6_mfilter *imf,

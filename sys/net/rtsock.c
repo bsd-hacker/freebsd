@@ -167,7 +167,8 @@ static struct {
 	int	any_count;	/* total attached */
 } route_cb;
 
-MTX_DEF_SYSINIT(rtsock_mtx, "rtsock route_cb lock", MTX_DEF);
+struct mtx rtsock_mtx;
+MTX_SYSINIT(rtsock, &rtsock_mtx, "rtsock route_cb lock", MTX_DEF);
 
 #define	RTSOCK_LOCK()	mtx_lock(&rtsock_mtx)
 #define	RTSOCK_UNLOCK()	mtx_unlock(&rtsock_mtx)

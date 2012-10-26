@@ -156,7 +156,9 @@ static TAILQ_HEAD(,bus_dmamap) dmamap_freelist =
 #define BUSDMA_STATIC_MAPS	500
 static struct bus_dmamap map_pool[BUSDMA_STATIC_MAPS];
 
-static MTX_DEF_SYSINIT(busdma_mtx, "busdma lock", MTX_DEF);
+static struct mtx busdma_mtx;
+
+MTX_SYSINIT(busdma_mtx, &busdma_mtx, "busdma lock", MTX_DEF);
 
 static void init_bounce_pages(void *dummy);
 static int alloc_bounce_zone(bus_dma_tag_t dmat);

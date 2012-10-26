@@ -97,11 +97,12 @@ static int		 array_ptr = 0;
 static int		 array_size = 8192;
 static int		 random_id_collisions = 0;
 static int		 random_id_total = 0;
+static struct mtx	 ip_id_mtx;
 
 static void	ip_initid(void);
 static int	sysctl_ip_id_change(SYSCTL_HANDLER_ARGS);
 
-static MTX_DEF_SYSINIT(ip_id_mtx, "ip_id_mtx", MTX_DEF);
+MTX_SYSINIT(ip_id_mtx, &ip_id_mtx, "ip_id_mtx", MTX_DEF);
 
 SYSCTL_DECL(_net_inet_ip);
 SYSCTL_PROC(_net_inet_ip, OID_AUTO, random_id_period, CTLTYPE_INT|CTLFLAG_RW,

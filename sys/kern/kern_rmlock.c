@@ -118,7 +118,9 @@ owner_rm(const struct lock_object *lock, struct thread **owner)
 }
 #endif
 
-static MTX_DEF_SYSINIT(rm_spinlock, "rm_spinlock", MTX_SPIN);
+static struct mtx rm_spinlock;
+
+MTX_SYSINIT(rm_spinlock, &rm_spinlock, "rm_spinlock", MTX_SPIN);
 
 /*
  * Add or remove tracker from per-cpu list.

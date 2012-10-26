@@ -70,7 +70,9 @@
  * XXX This is a global lock for now; it should be pushed to
  * a per-device lock in some platform-independent fashion.
  */
-MTX_DEF_SYSINIT(ah_regser_mtx, "Atheros register access mutex", MTX_SPIN);
+struct mtx ah_regser_mtx;
+MTX_SYSINIT(ah_regser, &ah_regser_mtx, "Atheros register access mutex",
+    MTX_SPIN);
 
 extern	void ath_hal_printf(struct ath_hal *, const char*, ...)
 		__printflike(2,3);

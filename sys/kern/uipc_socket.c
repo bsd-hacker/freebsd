@@ -236,13 +236,15 @@ SYSCTL_INT(_kern_ipc_zero_copy, OID_AUTO, send, CTLFLAG_RW,
  * accept_mtx locks down per-socket fields relating to accept queues.  See
  * socketvar.h for an annotation of the protected fields of struct socket.
  */
-MTX_DEF_SYSINIT(accept_mtx, "accept", MTX_DEF);
+struct mtx	accept_mtx;
+MTX_SYSINIT(accept_mtx, &accept_mtx, "accept", MTX_DEF);
 
 /*
  * so_global_mtx protects so_gencnt, numopensockets, and the per-socket
  * so_gencnt field.
  */
-static MTX_DEF_SYSINIT(so_global_mtx, "so_glabel", MTX_DEF);
+static struct mtx	so_global_mtx;
+MTX_SYSINIT(so_global_mtx, &so_global_mtx, "so_glabel", MTX_DEF);
 
 /*
  * General IPC sysctl name space, used by sockets and a variety of other IPC

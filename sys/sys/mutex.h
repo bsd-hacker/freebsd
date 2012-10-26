@@ -394,33 +394,11 @@ do {									\
 	return (_val);							\
 } while (0)
 
-/*
- * Helper macros to prevent global mutexes to share a cache line
- * on SMP systems.
- */
-#ifdef SMP
-#define	MTX_ALIGN	__aligned(CACHE_LINE_SIZE)
-#else
-#define	MTX_ALIGN
-#endif
-
-#ifdef SMP
-#define	MTX_GLOBAL(name)						\
-	struct mtx __aligned(CACHE_LINE_SIZE) (name)
-#else /* SMP */
-#define	MTX_GLOBAL(name)						\
-	struct mtx (name)
-#endif /* SMP */
-
 struct mtx_args {
 	struct mtx	*ma_mtx;
 	const char 	*ma_desc;
 	int		 ma_opts;
 };
-
-#define	MTX_DEF_SYSINIT(name, desc, opts)				\
-	MTX_GLOBAL(name);						\
-	MTX_SYSINIT(name, &name, desc, opts)
 
 #define	MTX_SYSINIT(name, mtx, desc, opts)				\
 	static struct mtx_args name##_args = {				\

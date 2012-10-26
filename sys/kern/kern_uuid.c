@@ -73,7 +73,8 @@ CTASSERT(sizeof(struct uuid_private) == 16);
 
 static struct uuid_private uuid_last;
 
-static MTX_DEF_SYSINIT(uuid_mutex, "UUID generator mutex lock", MTX_DEF);
+static struct mtx uuid_mutex;
+MTX_SYSINIT(uuid_lock, &uuid_mutex, "UUID generator mutex lock", MTX_DEF);
 
 /*
  * Return the first MAC address we encounter or, if none was found,

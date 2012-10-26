@@ -73,7 +73,8 @@ static MALLOC_DEFINE(M_FAIL_POINT, "Fail Points", "fail points system");
 #define fp_free(ptr) free(ptr, M_FAIL_POINT)
 #define fp_malloc(size, flags) malloc((size), M_FAIL_POINT, (flags))
 
-static MTX_DEF_SYSINIT(g_fp_mtx, "fail point mtx", MTX_DEF);
+static struct mtx g_fp_mtx;
+MTX_SYSINIT(g_fp_mtx, &g_fp_mtx, "fail point mtx", MTX_DEF);
 #define FP_LOCK()	mtx_lock(&g_fp_mtx)
 #define FP_UNLOCK()	mtx_unlock(&g_fp_mtx)
 

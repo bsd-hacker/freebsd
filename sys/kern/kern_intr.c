@@ -95,8 +95,8 @@ SYSCTL_INT(_hw, OID_AUTO, intr_storm_threshold, CTLFLAG_RW,
     "Number of consecutive interrupts before storm protection is enabled");
 static TAILQ_HEAD(, intr_event) event_list =
     TAILQ_HEAD_INITIALIZER(event_list);
-
-static MTX_DEF_SYSINIT(event_lock, "intr event list", MTX_DEF);
+static struct mtx event_lock;
+MTX_SYSINIT(intr_event_list, &event_lock, "intr event list", MTX_DEF);
 
 static void	intr_event_update(struct intr_event *ie);
 #ifdef INTR_FILTER

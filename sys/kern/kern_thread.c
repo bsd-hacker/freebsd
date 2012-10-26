@@ -72,8 +72,8 @@ SDT_PROBE_DEFINE(proc, , , lwp_exit, lwp-exit);
 static uma_zone_t thread_zone;
 
 TAILQ_HEAD(, thread) zombie_threads = TAILQ_HEAD_INITIALIZER(zombie_threads);
-
-static MTX_DEF_SYSINIT(zombie_lock, "zombie lock", MTX_SPIN);
+static struct mtx zombie_lock;
+MTX_SYSINIT(zombie_lock, &zombie_lock, "zombie lock", MTX_SPIN);
 
 static void thread_zombie(struct thread *);
 

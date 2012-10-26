@@ -47,7 +47,8 @@
 #include <net/if.h>
 #include <net/pfil.h>
 
-static MTX_DEF_SYSINIT(pfil_global_lock, "pfil_head_list lock", MTX_DEF);
+static struct mtx pfil_global_lock;
+MTX_SYSINIT(pfil_global_lock, &pfil_global_lock, "pfil_head_list lock", MTX_DEF);
 
 static int pfil_list_add(pfil_list_t *, struct packet_filter_hook *, int,
     uint8_t);

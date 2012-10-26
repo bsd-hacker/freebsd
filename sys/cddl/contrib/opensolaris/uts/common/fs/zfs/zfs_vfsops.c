@@ -63,7 +63,8 @@
 #include <sys/jail.h>
 #include "zfs_comutil.h"
 
-MTX_DEF_SYSINIT(zfs_debug_mtx, "zfs_debug", MTX_DEF);
+struct mtx zfs_debug_mtx;
+MTX_SYSINIT(zfs_debug_mtx, &zfs_debug_mtx, "zfs_debug", MTX_DEF);
 
 SYSCTL_NODE(_vfs, OID_AUTO, zfs, CTLFLAG_RW, 0, "ZFS file system");
 

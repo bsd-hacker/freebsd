@@ -74,7 +74,8 @@ static MALLOC_DEFINE(M_KQUEUE, "kqueue", "memory for kqueue system");
  * This lock is used if multiple kq locks are required.  This possibly
  * should be made into a per proc lock.
  */
-static MTX_DEF_SYSINIT(kq_global, "kqueue order", MTX_DEF);
+static struct mtx	kq_global;
+MTX_SYSINIT(kq_global, &kq_global, "kqueue order", MTX_DEF);
 #define KQ_GLOBAL_LOCK(lck, haslck)	do {	\
 	if (!haslck)				\
 		mtx_lock(lck);			\
@@ -268,7 +269,9 @@ extern struct filterops fs_filtops;
 /*
  * Table for for all system-defined filters.
  */
-static MTX_DEF_SYSINIT(filterops_lock, "protect sysfilt_ops", MTX_DEF);
+static struct mtx	filterops_lock;
+MTX_SYSINIT(kqueue_filterops, &filterops_lock, "protect sysfilt_ops",
+	MTX_DEF);
 static struct {
 	struct filterops *for_fop;
 	int for_refcnt;
@@ -1879,8 +1882,9 @@ knlist_empty(struct knlist *knl)
 	return SLIST_EMPTY(&knl->kl_list);
 }
 
-static MTX_DEF_SYSINIT(knlist_lock, "knlist lock for lockless objects",
-    MTX_DEF);
+static struct mtx	knlist_lock;
+MTX_SYSINIT(knlist_lock, &knlist_lock, "knlist lock for lockless objects",
+	MTX_DEF);
 static void knlist_mtx_lock(void *arg);
 static void knlist_mtx_unlock(void *arg);
 

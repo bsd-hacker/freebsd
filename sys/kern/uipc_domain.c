@@ -75,8 +75,8 @@ static void	pfslowtimo(void *);
 
 struct domain *domains;		/* registered protocol domains */
 int domain_init_status = 0;
-
-static MTX_DEF_SYSINIT(dom_mtx, "domain list", MTX_DEF);
+static struct mtx dom_mtx;		/* domain list lock */
+MTX_SYSINIT(domain, &dom_mtx, "domain list", MTX_DEF);
 
 /*
  * Dummy protocol specific user requests function pointer array.

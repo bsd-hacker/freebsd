@@ -79,7 +79,8 @@ __FBSDID("$FreeBSD$");
  * our own global mutex for struct ifnet.  Non-ideal, but should help in the
  * SMP environment.
  */
-MTX_DEF_SYSINIT(mac_ifnet_mtx, "mac_ifnet", MTX_DEF);
+struct mtx mac_ifnet_mtx;
+MTX_SYSINIT(mac_ifnet_mtx, &mac_ifnet_mtx, "mac_ifnet", MTX_DEF);
 
 /*
  * Retrieve the label associated with an mbuf by searching for the tag.

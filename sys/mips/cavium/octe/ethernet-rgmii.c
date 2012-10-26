@@ -52,7 +52,9 @@ __FBSDID("$FreeBSD$");
 extern int octeon_is_simulation(void);
 extern struct ifnet *cvm_oct_device[];
 
-static MTX_DEF_SYSINIT(global_register_lock, "RGMII Global", MTX_SPIN);
+static struct mtx global_register_lock;
+MTX_SYSINIT(global_register_lock, &global_register_lock,
+	    "RGMII Global", MTX_SPIN);
 
 static int number_rgmii_ports;
 

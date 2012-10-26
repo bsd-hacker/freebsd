@@ -146,8 +146,9 @@ int vm_pageout_pages_needed;	/* flag saying that the pageout daemon needs pages 
 #if !defined(NO_SWAPPING)
 static int vm_pageout_req_swapout;	/* XXX */
 static int vm_daemon_needed;
+static struct mtx vm_daemon_mtx;
 /* Allow for use by vm_pageout before vm_daemon is initialized. */
-static MTX_DEF_SYSINIT(vm_daemon_mtx, "vm daemon", MTX_DEF);
+MTX_SYSINIT(vm_daemon, &vm_daemon_mtx, "vm daemon", MTX_DEF);
 #endif
 static int vm_max_launder = 32;
 static int vm_pageout_stats_max=0, vm_pageout_stats_interval = 0;

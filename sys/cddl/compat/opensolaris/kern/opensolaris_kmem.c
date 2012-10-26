@@ -58,7 +58,8 @@ struct kmem_item {
 	LIST_ENTRY(kmem_item) next;
 };
 static LIST_HEAD(, kmem_item) kmem_items;
-static MTX_DEF_SYSINIT(kmem_items_mtx, "kmem_items", MTX_DEF);
+static struct mtx kmem_items_mtx;
+MTX_SYSINIT(kmem_items_mtx, &kmem_items_mtx, "kmem_items", MTX_DEF);
 #endif	/* KMEM_DEBUG */
 
 void *

@@ -232,7 +232,8 @@ static dtrace_helpers_t *dtrace_deferred_pid;	/* deferred helper list */
 static dtrace_enabling_t *dtrace_retained;	/* list of retained enablings */
 static dtrace_dynvar_t	dtrace_dynhash_sink;	/* end of dynamic hash chains */
 #if !defined(sun)
-static MTX_DEF_SYSINIT(dtrace_unr_mtx, "Unique resource identifier", MTX_DEF);
+static struct mtx	dtrace_unr_mtx;
+MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx, "Unique resource identifier", MTX_DEF);
 int		dtrace_in_probe;	/* non-zero if executing a probe */
 #if defined(__i386__) || defined(__amd64__) || defined(__mips__)
 uintptr_t	dtrace_in_probe_addr;	/* Address of invop when already in probe */

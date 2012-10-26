@@ -35,7 +35,8 @@ __FBSDID("$FreeBSD$");
 #ifdef _KERNEL
 #include <sys/kernel.h>
 
-MTX_DEF_SYSINIT(atomic_mtx, "atomic", MTX_DEF);
+struct mtx atomic_mtx;
+MTX_SYSINIT(atomic, &atomic_mtx, "atomic", MTX_DEF);
 #else
 #include <pthread.h>
 

@@ -64,7 +64,9 @@ LIST_HEAD(hhookheadhead, hhook_head);
 VNET_DEFINE(struct hhookheadhead, hhook_head_list);
 #define	V_hhook_head_list VNET(hhook_head_list)
 
-static MTX_DEF_SYSINIT(hhook_head_list_lock, "hhook_head list lock", MTX_DEF);
+static struct mtx hhook_head_list_lock;
+MTX_SYSINIT(hhookheadlistlock, &hhook_head_list_lock, "hhook_head list lock",
+    MTX_DEF);
 
 /* Private function prototypes. */
 static void hhook_head_destroy(struct hhook_head *hhh);

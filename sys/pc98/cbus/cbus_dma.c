@@ -72,7 +72,8 @@ static u_int8_t	dma_bounced = 0;
 static u_int8_t	dma_busy = 0;		/* Used in isa_dmastart() */
 static u_int8_t	dma_inuse = 0;		/* User for acquire/release */
 static u_int8_t dma_auto_mode = 0;
-static MTX_DEF_SYSINIT(isa_dma_lock, "isa DMA lock", MTX_DEF);
+static struct mtx isa_dma_lock;
+MTX_SYSINIT(isa_dma_lock, &isa_dma_lock, "isa DMA lock", MTX_DEF);
 
 #define VALID_DMA_MASK (3)
 

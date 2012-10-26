@@ -47,7 +47,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/socketvar.h>
 #include <sys/queue.h>
 
-static MTX_DEF_SYSINIT(accept_filter_mtx, "accept_filter_mtx", MTX_DEF);
+static struct mtx accept_filter_mtx;
+MTX_SYSINIT(accept_filter, &accept_filter_mtx, "accept_filter_mtx",
+	MTX_DEF);
 #define	ACCEPT_FILTER_LOCK()	mtx_lock(&accept_filter_mtx)
 #define	ACCEPT_FILTER_UNLOCK()	mtx_unlock(&accept_filter_mtx)
 

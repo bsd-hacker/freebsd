@@ -1481,7 +1481,9 @@ nfs_mknod(struct vop_mknod_args *ap)
 	return (nfs_mknodrpc(ap->a_dvp, ap->a_vpp, ap->a_cnp, ap->a_vap));
 }
 
-static MTX_DEF_SYSINIT(nfs_cverf_mtx, "NFS create verifier mutex", MTX_DEF);
+static struct mtx nfs_cverf_mtx;
+MTX_SYSINIT(nfs_cverf_mtx, &nfs_cverf_mtx, "NFS create verifier mutex",
+    MTX_DEF);
 
 static nfsquad_t
 nfs_get_cverf(void)

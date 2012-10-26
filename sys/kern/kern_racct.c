@@ -63,7 +63,8 @@ __FBSDID("$FreeBSD$");
 
 FEATURE(racct, "Resource Accounting");
 
-static MTX_DEF_SYSINIT(racct_lock, "racct lock", MTX_DEF);
+static struct mtx racct_lock;
+MTX_SYSINIT(racct_lock, &racct_lock, "racct lock", MTX_DEF);
 
 static uma_zone_t racct_zone;
 
