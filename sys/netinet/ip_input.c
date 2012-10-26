@@ -509,7 +509,9 @@ tooshort:
 	dchg = (odst.s_addr != ip->ip_dst.s_addr);
 	ifp = m->m_pkthdr.rcvif;
 
-#ifdef IPFIREWALL_FORWARD
+	if (V_pfilforward == 0)
+		goto passin;
+
 	if (m->m_flags & M_FASTFWD_OURS) {
 		m->m_flags &= ~M_FASTFWD_OURS;
 		goto ours;
@@ -523,7 +525,6 @@ tooshort:
 		ip_forward(m, dchg);
 		return;
 	}
-#endif /* IPFIREWALL_FORWARD */
 
 passin:
 
@@ -728,7 +729,6 @@ ours:
 		ip = mtod(m, struct ip *);
 		/* Get the header length of the reassembled packet */
 		hlen = ip->ip_hl << 2;
-		ip_len = ntohs(ip->ip_len);
 	}
 
 #ifdef IPSEC
@@ -904,7 +904,7 @@ found:
 		 * Make sure that fragments have a data length
 		 * that's a non-zero multiple of 8 bytes.
 		 */
-		if (ntohs(ip->ip_len) == 0 || (ntohs(ip->ip_len & 0x7) != 0)) {
+		if (ip->ip_len == htons(0) || (ntohs(ip->ip_len) & 0x7) != 0) {
 			IPSTAT_INC(ips_toosmall); /* XXX */
 			goto dropfrag;
 		}

@@ -270,6 +270,10 @@ cddl/contrib/opensolaris/uts/common/zmod/trees.c			optional zfs compile-with "${
 cddl/contrib/opensolaris/uts/common/zmod/zmod.c				optional zfs compile-with "${ZFS_C}"
 cddl/contrib/opensolaris/uts/common/zmod/zmod_subr.c			optional zfs compile-with "${ZFS_C}"
 cddl/contrib/opensolaris/uts/common/zmod/zutil.c			optional zfs compile-with "${ZFS_C}"
+compat/freebsd32/freebsd32_ioctl.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_misc.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_syscalls.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_sysent.c	optional	compat_freebsd32
 contrib/altq/altq/altq_cbq.c	optional altq \
 	compile-with "${NORMAL_C}"
 contrib/altq/altq/altq_cdnr.c	optional altq
@@ -1251,6 +1255,19 @@ dev/ep/if_ep_mca.c		optional ep mca
 dev/ep/if_ep_pccard.c		optional ep pccard
 dev/esp/esp_pci.c		optional esp pci
 dev/esp/ncr53c9x.c		optional esp
+dev/etherswitch/arswitch/arswitch.c		optional arswitch
+dev/etherswitch/arswitch/arswitch_reg.c		optional arswitch
+dev/etherswitch/arswitch/arswitch_phy.c		optional arswitch
+dev/etherswitch/arswitch/arswitch_8216.c	optional arswitch
+dev/etherswitch/arswitch/arswitch_8226.c	optional arswitch
+dev/etherswitch/arswitch/arswitch_8316.c	optional arswitch
+dev/etherswitch/arswitch/arswitch_7240.c	optional arswitch
+dev/etherswitch/etherswitch.c	optional etherswitch
+dev/etherswitch/etherswitch_if.m	optional etherswitch
+dev/etherswitch/mdio_if.m	optional miiproxy
+dev/etherswitch/mdio.c		optional miiproxy
+dev/etherswitch/miiproxy.c	optional miiproxy
+dev/etherswitch/rtl8366/rtl8366rb.c		optional rtl8366rb
 dev/ex/if_ex.c			optional ex
 dev/ex/if_ex_isa.c		optional ex isa
 dev/ex/if_ex_pccard.c		optional ex pccard
@@ -1759,6 +1776,12 @@ dev/oce/oce_mbox.c		optional oce pci
 dev/oce/oce_queue.c		optional oce pci
 dev/oce/oce_sysctl.c		optional oce pci
 dev/oce/oce_util.c		optional oce pci
+dev/ofw/ofw_bus_if.m		optional fdt
+dev/ofw/ofw_bus_subr.c		optional fdt
+dev/ofw/ofw_fdt.c		optional fdt
+dev/ofw/ofw_if.m		optional fdt   
+dev/ofw/openfirm.c		optional fdt
+dev/ofw/openfirmio.c		optional fdt
 dev/patm/if_patm.c		optional patm pci
 dev/patm/if_patm_attach.c	optional patm pci
 dev/patm/if_patm_intr.c		optional patm pci
@@ -2303,6 +2326,16 @@ wpi.fw			optional wpifw					\
 	clean		"wpi.fw"
 dev/xe/if_xe.c			optional xe
 dev/xe/if_xe_pccard.c		optional xe pccard
+dev/xen/balloon/balloon.c	optional xen | xenhvm
+dev/xen/blkfront/blkfront.c	optional xen | xenhvm
+dev/xen/blkback/blkback.c	optional xen | xenhvm
+dev/xen/console/console.c	optional xen
+dev/xen/console/xencons_ring.c	optional xen
+dev/xen/control/control.c	optional xen | xenhvm
+dev/xen/netback/netback.c	optional xen | xenhvm
+dev/xen/netfront/netfront.c	optional xen | xenhvm
+dev/xen/xenpci/xenpci.c		optional xenpci
+dev/xen/xenpci/evtchn.c         optional xenpci
 dev/xl/if_xl.c			optional xl pci
 dev/xl/xlphy.c			optional xl pci
 fs/deadfs/dead_vnops.c		standard
@@ -2544,6 +2577,7 @@ kern/clock_if.m			standard
 kern/cpufreq_if.m		standard
 kern/device_if.m		standard
 kern/imgact_elf.c		standard
+kern/imgact_elf32.c		optional	compat_freebsd32
 kern/imgact_shell.c		standard
 kern/inflate.c			optional gzip
 kern/init_main.c		standard
@@ -2691,7 +2725,7 @@ kern/tty_pts.c			standard
 kern/tty_tty.c			standard
 kern/tty_ttydisc.c		standard
 kern/uipc_accf.c		optional inet
-kern/uipc_cow.c			optional zero_copy_sockets
+kern/uipc_cow.c			optional socket_send_cow
 kern/uipc_debug.c		optional ddb
 kern/uipc_domain.c		standard
 kern/uipc_mbuf.c		standard
@@ -3584,13 +3618,6 @@ vm/vm_reserv.c			standard
 vm/vm_unix.c			standard
 vm/vm_zeroidle.c		standard
 vm/vnode_pager.c		standard
-xdr/xdr.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
-xdr/xdr_array.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
-xdr/xdr_mbuf.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
-xdr/xdr_mem.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
-xdr/xdr_reference.c		optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
-xdr/xdr_sizeof.c		optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
-
 xen/gnttab.c			optional xen | xenhvm
 xen/features.c			optional xen | xenhvm
 xen/evtchn/evtchn.c		optional xen
@@ -3603,30 +3630,9 @@ xen/xenbus/xenbusb_front.c	optional xen | xenhvm
 xen/xenbus/xenbusb_back.c	optional xen | xenhvm
 xen/xenstore/xenstore.c		optional xen | xenhvm
 xen/xenstore/xenstore_dev.c	optional xen | xenhvm
-dev/xen/balloon/balloon.c	optional xen | xenhvm
-dev/xen/blkfront/blkfront.c	optional xen | xenhvm
-dev/xen/blkback/blkback.c	optional xen | xenhvm
-dev/xen/console/console.c	optional xen
-dev/xen/console/xencons_ring.c	optional xen
-dev/xen/control/control.c	optional xen | xenhvm
-dev/xen/netback/netback.c	optional xen | xenhvm
-dev/xen/netfront/netfront.c	optional xen | xenhvm
-dev/xen/xenpci/xenpci.c		optional xenpci
-dev/xen/xenpci/evtchn.c         optional xenpci
-
-dev/etherswitch/mdio_if.m	optional miiproxy
-dev/etherswitch/mdio.c		optional miiproxy
-dev/etherswitch/miiproxy.c	optional miiproxy
-
-dev/etherswitch/etherswitch.c	optional etherswitch
-dev/etherswitch/etherswitch_if.m	optional etherswitch
-
-dev/etherswitch/rtl8366/rtl8366rb.c		optional rtl8366rb
-
-dev/etherswitch/arswitch/arswitch.c		optional arswitch
-dev/etherswitch/arswitch/arswitch_reg.c		optional arswitch
-dev/etherswitch/arswitch/arswitch_phy.c		optional arswitch
-dev/etherswitch/arswitch/arswitch_8216.c	optional arswitch
-dev/etherswitch/arswitch/arswitch_8226.c	optional arswitch
-dev/etherswitch/arswitch/arswitch_8316.c	optional arswitch
-dev/etherswitch/arswitch/arswitch_7240.c	optional arswitch
+xdr/xdr.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
+xdr/xdr_array.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
+xdr/xdr_mbuf.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
+xdr/xdr_mem.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
+xdr/xdr_reference.c		optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
+xdr/xdr_sizeof.c		optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd

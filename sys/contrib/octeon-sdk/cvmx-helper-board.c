@@ -586,6 +586,11 @@ int cvmx_helper_board_get_mii_address(int ipd_port)
 		return -1;
 	    }
 #endif
+#if defined(OCTEON_VENDOR_RADISYS)
+	case CVMX_BOARD_TYPE_CUST_RADISYS_RSYS4GBE:
+	    /* No MII.  */
+	    return -1;
+#endif
     }
 
     /* Some unknown board. Somebody forgot to update this function... */
@@ -1295,6 +1300,14 @@ int __cvmx_helper_board_interface_probe(int interface, int supported_ports)
 	    if (interface == 1)
 	        return 12;
 	    break;
+#endif
+#if defined(OCTEON_VENDOR_RADISYS)
+	case CVMX_BOARD_TYPE_CUST_RADISYS_RSYS4GBE:
+	    if (interface == 0)
+		    return 13;
+	    if (interface == 1)
+		    return 8;
+	    return 0;
 #endif
     }
 #ifdef CVMX_BUILD_FOR_UBOOT
