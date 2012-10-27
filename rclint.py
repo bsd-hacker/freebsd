@@ -429,7 +429,7 @@ parser.add_argument('-p', action='store_true', help='chooses ports RC script mod
 args = parser.parse_args()
 mode = 'base' if args.b else 'ports'
 
-verbosity = args.v
+verbosity = args.v if args.v != None else 0
 logging.basicConfig(level=logging.DEBUG if verbosity > 1 else logging.WARN)
 
 error = Db('errors', args.language[0])
