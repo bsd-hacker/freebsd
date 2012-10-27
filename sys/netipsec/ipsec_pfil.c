@@ -94,6 +94,41 @@ extern	struct protosw inetsw[];
  *     tunnel have to be made.
  *     This should be represented as virtual interfaces in the kernel.
  *
+ *
+ *      +   +--------------------------------------+ip_enqueue()
+ *      |   |                                             ^
+ *      v   v                                             |
+ *    ip_input()                                          |
+ *        +                                               |
+ *        |                                               |
+ *        v                                               |
+ *  pfil_run_hooks()+---+                                 |
+ *                      |                                 |
+ *                      v                                 |
+ *               ipsec_pfil_run()+------>AH|ESP?          |
+ *                      +                 +  +            |
+ *                      |              no |  | yes        |
+ *                      |     policy?<----+  |            |
+ *                      |      +  +          |            |
+ *                      |   no |  | yes      |            |
+ *                      |<-----+  |          v            |
+ *                      |         |    verify/decrypt     |
+ *                      |         |   no +   +            |
+ *                      |         X------+   |            |
+ *                      |        drop        v            |
+ *                      |                 next_hdr        |
+ *                      |                   +  +          |
+ *                      |             other |  | ip       +
+ *                      |<------------------+  +------>find_if()
+ *                      |
+ *                      v
+ *                next_pfil_hook()
+ *        v             +
+ *        |             |
+ *        |<------------+
+ *        |
+ *        v
+ *
  * Next steps:
  *  - Implement 1 in a pfil hook to block non-encrypted packets.
  *  - Implement 2 in a pfil hook to in-path transform transport mode packets.
