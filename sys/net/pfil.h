@@ -57,6 +57,7 @@ struct packet_filter_hook {
 	void	*pfil_arg;
 	int	 pfil_cookie;
 	uint8_t	 pfil_order;
+	char	*pfil_name;
 };
 
 #define	PFIL_ORDER_FIRST	  0
@@ -99,7 +100,8 @@ struct pfil_head {
 int	pfil_add_hook(int (*func)(void *, struct mbuf **, struct ifnet *,
 	    int, struct inpcb *), void *, int, struct pfil_head *);
 int	pfil_add_hook_order(int (*func)(void *, struct mbuf **, struct ifnet *,
-	    int, struct inpcb *), void *, int, uint8_t, struct pfil_head *);
+	    int, struct inpcb *), void *, char *, int, uint8_t,
+	    struct pfil_head *);
 int	pfil_get_cookie(int (*func)(void *, struct mbuf **, struct ifnet *,
 	    int, struct inpcb *), void *, int, struct pfil_head *);
 int	pfil_remove_hook(int (*func)(void *, struct mbuf **, struct ifnet *,

@@ -246,12 +246,14 @@ pfil_add_hook(int (*func)(void *, struct mbuf **, struct ifnet *, int,
   struct inpcb *), void *arg, int flags, struct pfil_head *ph)
 {
 
-	return (pfil_add_hook_order(func, arg, flags, PFIL_ORDER_DEFAULT, ph));
+	return (pfil_add_hook_order(func, arg, "unknown", flags,
+	    PFIL_ORDER_DEFAULT, ph));
 }
 
 int
 pfil_add_hook_order(int (*func)(void *, struct mbuf **, struct ifnet *, int,
-  struct inpcb *), void *arg, int flags, uint8_t order, struct pfil_head *ph)
+    struct inpcb *), void *arg, char *name, int flags, uint8_t order,
+    struct pfil_head *ph)
 {
 	struct packet_filter_hook *pfh1 = NULL;
 	struct packet_filter_hook *pfh2 = NULL;
@@ -268,6 +270,7 @@ pfil_add_hook_order(int (*func)(void *, struct mbuf **, struct ifnet *, int,
 		pfh1->pfil_arg = arg;
 		pfh1->pfil_cookie = (int)random();
 		pfh1->pfil_order = order;
+		pfh1->pfil_name = name;
 	}
 	if (flags & PFIL_OUT) {
 		pfh2 = (struct packet_filter_hook *)malloc(sizeof(*pfh1),
@@ -280,6 +283,7 @@ pfil_add_hook_order(int (*func)(void *, struct mbuf **, struct ifnet *, int,
 		pfh2->pfil_arg = arg;
 		pfh2->pfil_cookie = (int)random();
 		pfh2->pfil_order = order;
+		pfh2->pfil_name = name;
 	}
 	PFIL_WLOCK(ph);
 	if (flags & PFIL_IN) {
