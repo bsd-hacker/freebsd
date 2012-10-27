@@ -73,6 +73,39 @@ extern	struct protosw inetsw[];
 
 /*
  * Implement IPSec as pfil hook for host mode.
+ *
+ * Theory of operation.
+ *
+ * IPSec performs a couple of funtions that attach to different parts
+ * in the IP[46] network stack:
+ *  1. It enforces a packet encyption policy so that non-encrypted
+ *     packets to certain destinations are not allow to pass through.
+ *     This is firewall like, with deciding factor being the security
+ *     policy and the state of the packet.
+ *  2. It provides encryption/authentication of packet between two
+ *     hosts on their IP addresses.  This is a transformation process
+ *     that keeps the source/destination IP adresses intact and
+ *     encrypts the payload.
+ *     This is called transport mode and can be done directly and
+ *     transparently in the IP input and output path.
+ *  3. It provides an encrypted tunnel between two hosts like a
+ *     virtual interface and encapsulates complete packets in it.
+ *     Here routing decisions on which packets to send into a particular
+ *     tunnel have to be made.
+ *     This should be represented as virtual interfaces in the kernel.
+ *
+ * Next steps:
+ *  - Implement 1 in a pfil hook to block non-encrypted packets.
+ *  - Implement 2 in a pfil hook to in-path transform transport mode packets.
+ *  - Implement per tunnel virtual ipsec interfaces.
+ *  - Implement capturing of AH/ESP protocol type in pfil hook. If it
+ *    is transport mode, transform the packet and continue with next
+ *    pfil hook. If it is tunnel mode decapsulated the packet and
+ *    re-inject it into ip_input() as originating from that virtual
+ *    tunnel interface.
+ *  - Implement crypto process-to-completion in addition to callback.
+ *  - Add better support for NIC based ipsec offloading.
+ *  - Clean up the mtags.
  */
 
 static int
@@ -82,11 +115,43 @@ ipsec_pfil_run(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 	struct ip *ip = mtod(*m, struct ip *);
 	struct m_tag *mtag;
 	struct tdb_ident *tdbi;
-	struct secpolicy *sp;
+	struct secpolicy *sp = NULL;
+	struct in_ifaddr *ia;
+	int match = 0;
+	int checkif = 0;
 	int error = 0;
 
 	switch (dir) {
 	case PFIL_IN:
+		if (ip->ip_p & (IPPROTO_AH | IPPROTO_ESP)) {
+			/*
+			 * If the packet is for us do a transform.
+			 * We're effectively filtering the traffic.
+			 *
+			 * If it was transport mode, re-inject into
+			 * next pfil hook.
+			 *
+			 * If it was tunnel mode, re-inject into
+			 * ip_input() with new source interface.
+			 */
+			IN_IFADDR_RLOCK();
+			LIST_FOREACH(ia, INADDR_HASH(ip->ip_dst.s_addr), ia_hash) {
+				if (IA_SIN(ia)->sin_addr.s_addr == ip->ip_dst.s_addr &&
+				    (!checkif || ia->ia_ifp == ifp))
+					match = 1;
+			}
+			IN_IFADDR_RUNLOCK();
+			if (!match)
+				return (0);	/* Not for us, pass on. */
+
+			error = ipsec4_common_input(*m, (ip->ip_hl << 2),
+			    ip->ip_p);
+			if (error)
+				goto drop;
+			*m = NULL;		/* mbuf was consumed. */
+			return (0);
+		}
+
 		/*
 		 * The input path doesn't do a transform.
 		 */
@@ -225,7 +290,6 @@ ipsec_pfil_run(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 		if (error == ENOENT)
 			error = 0;
 		goto drop;
-
 		break;
 
 	default:
