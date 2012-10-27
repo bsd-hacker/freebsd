@@ -3135,6 +3135,7 @@ netipsec/ipsec.c		optional ipsec inet | ipsec inet6
 netipsec/ipsec_input.c		optional ipsec inet | ipsec inet6
 netipsec/ipsec_mbuf.c		optional ipsec inet | ipsec inet6
 netipsec/ipsec_output.c		optional ipsec inet | ipsec inet6
+netipsec/ipsec_pfil.c		optional ipsec inet | ipsec inet6
 netipsec/key.c			optional ipsec inet | ipsec inet6
 netipsec/key_debug.c		optional ipsec inet | ipsec inet6
 netipsec/keysock.c		optional ipsec inet | ipsec inet6
