@@ -9,6 +9,7 @@ error_id	message	explanation
 file_order	Order of rc file incorrect	Order of the rc file should be shebang/header/$FreeBSD$/sourcing rc_subr/name/rcvar/load_rc_config/setting defaults/setting other definitions/defining functions.  Do not include unassociated shell commands, and blocks must be separated by single blank lines.  Single blank lines may appear inside the defaults, definitions and functions blocks
 
 functions_chown	Useless use of chown?	Using chown in functions can nearly always be replaced with appropriate use of install(1)
+functions_indent	Unindented function contents	Style dictates that indentation of rc scripts should be tabs.  Ensure that function contents are indented
 functions_inline_brace	Inline brace in function	Put the opening brace for a function ({) on its own line
 functions_neverending	Unclosed function block	Functions must end with a closing brace on its own line
 functions_problem	Function incorrectly defined	Functions should not have spaces in the definition
@@ -31,7 +32,7 @@ run_rc_argument	Incorrect argument to run_rc_command	The last line of the file s
 shebang	Incorrect shebang used	All rc scripts must start with the correct shebang; #!/bin/sh
 
 variables_defaults_mandatory_colon	Override blanks in mandatory values (:=/:- vs =/-)	Values that must not be blank (such as _enable) should be set by default as ${var:=value}; thus disallowing blank values (man sh)
-variables_defaults_non_mandatory_colon	Do not clobber blank values for non-mandatory variables	Syntax for variables that are not mandatory is ${var=value}; including := will override var="" set in rc.conf (man sh)
+variables_defaults_non_mandatory_colon	Do not clobber blank values for non-mandatory variables	Syntax for variables that are not mandatory is ${var=value}; including := will override var="" set in rc.conf (man sh).  If this variable is mandatory just for this script, then ignore this error
 variables_defaults_old_style	Prefer condensed version for setting default values of variables	When setting the default value for a variable, it is much less verbose and clearer to use the : ${variable=var} notation, as well as it being obvious that the source and destination variable are the same
 variables_order	Order of variables incorrect	Order of the variables should be setting defaults then setting other variables
 

@@ -194,7 +194,7 @@ class RcsId:
 
 class Function:
     def __init__(self, lines, num):
-        if lines[0] and lines[0][-1] == '{':
+        if len(lines[0]) > 1 and lines[0][-1] == '{':
             error.give('functions_inline_brace', num)
         elif lines[1] and lines[1][0] == '{':
             try:
@@ -210,6 +210,8 @@ class Function:
                     error.give('functions_neverending', num)
                     break
                 self.value.append(lines[self.length])
+                if self.value[-1] and self.value[-1][0] not in '\t {}':
+                    error.give('functions_indent', num + self.length)
             # Remove { and } lines from length
             self.length -= 2
             logging.debug('Found function %s' % self.name)
