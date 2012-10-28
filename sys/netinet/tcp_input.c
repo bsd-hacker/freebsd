@@ -373,7 +373,7 @@ cc_conn_init(struct tcpcb *tp)
 		/* Per RFC5681 Section 3.1 */
 		if (tp->t_maxseg > 2190)
 			tp->snd_cwnd = 2 * tp->t_maxseg;
-		if (tp->t_maxseg > 1095)
+		else if (tp->t_maxseg > 1095)
 			tp->snd_cwnd = 3 * tp->t_maxseg;
 		else
 			tp->snd_cwnd = 4 * tp->t_maxseg;
