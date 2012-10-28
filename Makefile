@@ -41,3 +41,7 @@ tarball:
 	${CP} ${FILES} rclint-${VERSION} && \
 	${TAR} cvfz rclint-${VERSION}.tar.gz rclint-${VERSION} && \
 	${RM} -rf rclint-${VERSION}
+	if [ "`id -un`@`hostname -s`" = "crees@pegasus" ]; then \
+		sudo cp rclint-${VERSION}.tar.gz /usr/local/www/data/dist/rclint/ &&\
+		scp rclint-${VERSION}.tar.gz freefall.FreeBSD.org:public_distfiles/rclint/; \
+	fi

@@ -28,7 +28,7 @@ __version__ = '$FreeBSD$'
 
 MAJOR = 0
 MINOR = 0
-MICRO = 1
+MICRO = 2
 
 DATADIR = '.'
 
@@ -401,6 +401,7 @@ def do_rclint(filename):
     # Strip .in from filename
     logging.debug('Checking $name agrees with PROVIDE and filename')
     fn = filename[:-3] if filename[-3:] == '.in' else filename
+    fn = fn.split('/')[-1].replace('-', '_')
     n = get(lineobj['Variable'], 'name').value
     rcordervars = []
     for r in lineobj['Rcorder']:
