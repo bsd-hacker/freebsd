@@ -1584,7 +1584,7 @@ again:
 		n = m->m_next;
 		if (n == NULL)
 			break;
-		if (!M_WRITABLE(m) &&
+		if (M_WRITABLE(m) &&
 		    n->m_len < M_TRAILINGSPACE(m)) {
 			bcopy(mtod(n, void *), mtod(m, char *) + m->m_len,
 				n->m_len);

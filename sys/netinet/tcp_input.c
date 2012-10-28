@@ -162,10 +162,10 @@ SYSCTL_VNET_INT(_net_inet_tcp, OID_AUTO, rfc3390, CTLFLAG_RW,
 SYSCTL_NODE(_net_inet_tcp, OID_AUTO, experimental, CTLFLAG_RW, 0,
     "Experimental TCP extensions");
 
-VNET_DEFINE(int, tcp_do_initcwnd10) = 0;
+VNET_DEFINE(int, tcp_do_initcwnd10) = 1;
 SYSCTL_VNET_INT(_net_inet_tcp_experimental, OID_AUTO, initcwnd10, CTLFLAG_RW,
     &VNET_NAME(tcp_do_initcwnd10), 0,
-    "Enable draft-ietf-tcpm-initcwnd-03 (Increasing initial CWND to 10)");
+    "Enable draft-ietf-tcpm-initcwnd-05 (Increasing initial CWND to 10)");
 
 VNET_DEFINE(int, tcp_do_rfc3465) = 1;
 SYSCTL_VNET_INT(_net_inet_tcp, OID_AUTO, rfc3465, CTLFLAG_RW,
@@ -355,7 +355,7 @@ cc_conn_init(struct tcpcb *tp)
 	 *
 	 * RFC5681 Section 3.1 specifies the default conservative values.
 	 * RFC3390 specifies slightly more aggressive values.
-	 * draft-ietf-tcpm-initcwnd-03 increases it to ten segments.
+	 * Draft-ietf-tcpm-initcwnd-05 increases it to ten segments.
 	 *
 	 * If a SYN or SYN/ACK was lost and retransmitted, we have to
 	 * reduce the initial CWND to one segment as congestion is likely
@@ -2768,14 +2768,14 @@ step6:
 	     (th->th_ack == tp->snd_wl2 &&
 	      (SEQ_GT(th->th_seq + tlen, tp->snd_wl1) ||
 	      (th->th_seq == tp->snd_wl1 && tlen == 0 && tiwin > tp->snd_wnd))))) {
+#if 0
 		char *s;
-
 		if ((s = tcp_log_addrs(&tp->t_inpcb->inp_inc, th, NULL, NULL))) {
 			log(LOG_DEBUG, "%s; %s: window update %lu -> %lu\n",
 			    s, __func__, tp->snd_wnd, tiwin);
 			free(s, M_TCPLOG);
 		}
-
+#endif
 		/* Keep track of pure window updates. */
 		if (th->th_seq == tp->snd_wl1 && tlen == 0 &&
 		    tiwin > tp->snd_wnd)
@@ -3365,9 +3365,8 @@ tcp_xmit_timer(struct tcpcb *tp, int rtt)
 /*
  * Determine a reasonable value for maxseg size.
  * If the route is known, check route for mtu.
- * If none, use an mss that can be handled on the outgoing
- * interface without forcing IP to fragment.
- * If no route is found, route has no mtu,
+ * If none, use an mss that can be handled on the outgoing interface
+ * without forcing IP to fragment.  If no route is found, route has no mtu,
  * or the destination isn't local, use a default, hopefully conservative
  * size (usually 512 or the default IP max size, but no more than the mtu
  * of the interface), as we can't discover anything about intervening

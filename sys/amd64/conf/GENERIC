@@ -71,6 +71,10 @@ options 	KDTRACE_HOOKS		# Kernel DTrace hooks
 options 	DDB_CTF			# Kernel ELF linker loads CTF data
 options 	INCLUDE_CONFIG_FILE     # Include this file in kernel
 
+options		IPSEC
+device		crypto
+device		enc
+
 # Debugging support.  Always need this:
 options 	KDB			# Enable kernel debugger support.
 # For minimum debugger support (stable branch) use:
