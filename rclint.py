@@ -28,7 +28,7 @@ __version__ = '$FreeBSD$'
 
 MAJOR = 0
 MINOR = 0
-MICRO = 2
+MICRO = 3
 
 DATADIR = '.'
 
@@ -194,7 +194,7 @@ class Rcorder:
         self.line = comment.line
         result = comment.match('# ([A-Z]+): (.+)')
         if result:
-            (self.type, self.value) = (result[0], result[1:])
+            (self.type, self.value) = (result[0], result[1].split())
         else:
             self.value = False
 
@@ -416,7 +416,7 @@ def do_rclint(filename):
     logging.debug('Checking for run_rc_command')
     for s in lineobj['Statement']:
         if s.type == 'run_rc_command':
-            if '$1' not in s.value:
+            if '$1' not in s.value and '$*' not in s.value:
                 error.give('run_rc_argument', s.line)
 
     # Strip .in from filename
