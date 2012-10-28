@@ -76,7 +76,7 @@ class Db:
         else:
             logging.error('No such error: %s' % key)
         self.count += 1
-        if self.count > 10:
+        if self.count > 10 and beaucoup_errors == False:
             hint = '  Try rerunning with -v option for extra details.' if verbosity == 0 else ''
             logging.error('Error threshold reached-- further errors are unlikely to be helpful.  Fix the errors and rerun.' + hint)
             exit()
@@ -85,14 +85,18 @@ class Db:
         self.give(key, num, level)
 
 class Statement:
-    def __init__(self, line, number):
+    def __init__(self, lines, number):
         types = {'.': 'source', 'load_rc_config': 'load_rc_config',
                  'run_rc_command': 'run_rc_command'}
-        spl = line.split(' ')
+        self.length = 1
+        spl = lines[number].split(' ')
         if spl[0] in types:
             self.name = spl[0]
             self.type = types[spl[0]]
             self.value = ' '.join(spl[1:])
+            while self.value[-1] == '\\':
+                self.value = ' '.join((self.value[:-1], lines[num+self.length]))
+                self.length += 1
             self.line = number
         else:
             self.value = False
@@ -112,7 +116,9 @@ class Statement:
         return False
 
 class Variable(Statement):
-    def __init__(self, line, number):
+    def __init__(self, lines, number):
+        line = lines[number]
+        self.length = 1
         basic = re.compile(r'([^\s=]+)=(.*)')
         result = basic.match(line)
         if result:
@@ -123,11 +129,19 @@ class Variable(Statement):
                 self.type = 'longhand'
             else:
                 (self.name, self.value) = result.groups()
+                while self.value[-1] == '\\':
+                    self.value = ' '.join((self.value[:-1],
+                                           lines[number+self.length]))
+                    self.length += 1
                 self.type = (
                     'init' if self.name in ('name', 'rcvar') else 'basic')
 
         elif line[:4] == 'eval':
             self.value = line
+            while self.value[-1] == '\\':
+                self.value = ' '.join(self.value[:-1],
+                                      lines[number+self.length])
+                self.length += 1
             self.name = line
             self.type = 'eval'
         else:
@@ -153,7 +167,8 @@ class Variable(Statement):
         return False if re.match('[\'"]?[^\'"]+[\'"]?', self.value) else True
 
 class Comment:
-    def __init__(self, line, number):
+    def __init__(self, lines, number):
+        line = lines[number]
         self.value = line if line and line[0] == '#' else False
         self.line = number
 
@@ -264,7 +279,7 @@ def do_rclint(filename):
 
     for num in range(0, len(lines)):
         for obj in list(lineobj.keys()):
-            tmp = eval(obj)(lines[num], num)
+            tmp = eval(obj)(lines, num)
             if tmp.value != False:
                 lineobj[obj].append(tmp)
                 break
@@ -331,7 +346,11 @@ def do_rclint(filename):
     logging.debug('Checking all lines are accounted for')
     for obj in list(lineobj.keys()):
         for o in lineobj[obj]:
-            linenumbers.append(o.line)
+            if hasattr(o, 'length'):
+                for l in range(0, o.length):
+                    linenumbers.append(o.line+l)
+            else:
+                linenumbers.append(o.line)
     for r in range(0, len(lines)):
         if r not in linenumbers and lines[r] != '':
             if True not in [f.contains_line(r) for f in lineobj['Function']]:
@@ -428,9 +447,11 @@ parser.add_argument('-v', action='count', help='raises debug level; provides det
 parser.add_argument('--version', action='version', version='%s.%s.%s-%s'%(MAJOR, MINOR, MICRO, __version__))
 parser.add_argument('-b', action='store_true', help='chooses base RC script mode')
 parser.add_argument('-p', action='store_true', help='chooses ports RC script mode (default)')
+parser.add_argument('-k', action='store_true', help='tells rclint to carry on reporting even if there are over 10 errors')
 
 args = parser.parse_args()
 mode = 'base' if args.b else 'ports'
+beaucoup_errors = args.k
 
 verbosity = args.v if args.v != None else 0
 logging.basicConfig(level=logging.DEBUG if verbosity > 1 else logging.WARN)
