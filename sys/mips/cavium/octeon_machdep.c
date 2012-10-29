@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ptrace.h>
 #include <sys/reboot.h>
 #include <sys/signalvar.h>
+#include <sys/sysctl.h>
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
 #include <sys/time.h>
@@ -74,6 +75,7 @@ __FBSDID("$FreeBSD$");
 
 #include <contrib/octeon-sdk/cvmx.h>
 #include <contrib/octeon-sdk/cvmx-bootmem.h>
+#include <contrib/octeon-sdk/cvmx-ebt3000.h>
 #include <contrib/octeon-sdk/cvmx-interrupt.h>
 #include <contrib/octeon-sdk/cvmx-version.h>
 
@@ -157,88 +159,6 @@ void
 platform_reset(void)
 {
 	cvmx_write_csr(CVMX_CIU_SOFT_RST, 1);
-}
-
-void
-octeon_led_write_char(int char_position, char val)
-{
-	uint64_t ptr = (OCTEON_CHAR_LED_BASE_ADDR | 0xf8);
-
-	if (octeon_is_simulation())
-		return;
-
-	char_position &= 0x7;  /* only 8 chars */
-	ptr += char_position;
-	oct_write8_x8(ptr, val);
-}
-
-void
-octeon_led_write_char0(char val)
-{
-	uint64_t ptr = (OCTEON_CHAR_LED_BASE_ADDR | 0xf8);
-
-	if (octeon_is_simulation())
-		return;
-	oct_write8_x8(ptr, val);
-}
-
-void
-octeon_led_write_hexchar(int char_position, char hexval)
-{
-	uint64_t ptr = (OCTEON_CHAR_LED_BASE_ADDR | 0xf8);
-	char char1, char2;
-
-	if (octeon_is_simulation())
-		return;
-
-	char1 = (hexval >> 4) & 0x0f; char1 = (char1 < 10)?char1+'0':char1+'7';
-	char2 = (hexval  & 0x0f); char2 = (char2 < 10)?char2+'0':char2+'7';
-	char_position &= 0x7;  /* only 8 chars */
-	if (char_position > 6)
-		char_position = 6;
-	ptr += char_position;
-	oct_write8_x8(ptr, char1);
-	ptr++;
-	oct_write8_x8(ptr, char2);
-}
-
-void
-octeon_led_write_string(const char *str)
-{
-	uint64_t ptr = (OCTEON_CHAR_LED_BASE_ADDR | 0xf8);
-	int i;
-
-	if (octeon_is_simulation())
-		return;
-
-	for (i=0; i<8; i++, ptr++) {
-		if (str && *str)
-			oct_write8_x8(ptr, *str++);
-		else
-			oct_write8_x8(ptr, ' ');
-		(void)cvmx_read_csr(CVMX_MIO_BOOT_BIST_STAT);
-	}
-}
-
-static char progress[8] = { '-', '/', '|', '\\', '-', '/', '|', '\\'};
-
-void
-octeon_led_run_wheel(int *prog_count, int led_position)
-{
-	if (octeon_is_simulation())
-		return;
-	octeon_led_write_char(led_position, progress[*prog_count]);
-	*prog_count += 1;
-	*prog_count &= 0x7;
-}
-
-void
-octeon_led_write_hex(uint32_t wl)
-{
-	char nbuf[80];
-
-	sprintf(nbuf, "%X", wl);
-	octeon_led_write_string(nbuf);
 }
 
 /*
@@ -447,6 +367,46 @@ octeon_get_timecount(struct timecounter *tc)
 	return ((unsigned)octeon_get_ticks());
 }
 
+static int
+sysctl_machdep_led_display(SYSCTL_HANDLER_ARGS)
+{
+	size_t buflen;
+	char buf[9];
+	int error;
+
+	if (req->newptr == NULL)
+		return (EINVAL);
+
+	if (cvmx_sysinfo_get()->led_display_base_addr == 0)
+		return (ENODEV);
+
+	/*
+	 * Revision 1.x of the EBT3000 only supports 4 characters, but
+	 * other devices support 8.
+	 */
+	if (cvmx_sysinfo_get()->board_type == CVMX_BOARD_TYPE_EBT3000 &&
+	    cvmx_sysinfo_get()->board_rev_major == 1)
+		buflen = 4;
+	else
+		buflen = 8;
+
+	if (req->newlen > buflen)
+		return (E2BIG);
+
+	error = SYSCTL_IN(req, buf, req->newlen);
+	if (error != 0)
+		return (error);
+
+	buf[req->newlen] = '\0';
+	ebt3000_str_write(buf);
+
+	return (0);
+}
+
+SYSCTL_PROC(_machdep, OID_AUTO, led_display, CTLTYPE_STRING | CTLFLAG_WR,
+    NULL, 0, sysctl_machdep_led_display, "A",
+    "String to display on LED display");
+
 /**
  * version of printf that works better in exception context.
  *
@@ -593,13 +553,19 @@ octeon_process_app_desc_ver_6(void)
 					octeon_bootinfo->board_rev_major,
 					octeon_bootinfo->board_rev_minor,
 					octeon_bootinfo->eclock_hz);
-	memcpy(cvmx_sysinfo_get()->mac_addr_base, octeon_bootinfo->mac_addr_base, 6);
+	memcpy(cvmx_sysinfo_get()->mac_addr_base,
+	       octeon_bootinfo->mac_addr_base, 6);
 	cvmx_sysinfo_get()->mac_addr_count = octeon_bootinfo->mac_addr_count;
 	cvmx_sysinfo_get()->compact_flash_common_base_addr = 
 		octeon_bootinfo->compact_flash_common_base_addr;
 	cvmx_sysinfo_get()->compact_flash_attribute_base_addr = 
 		octeon_bootinfo->compact_flash_attribute_base_addr;
 	cvmx_sysinfo_get()->core_mask = octeon_bootinfo->core_mask;
+	cvmx_sysinfo_get()->led_display_base_addr =
+		octeon_bootinfo->led_display_base_addr;
+	memcpy(cvmx_sysinfo_get()->board_serial_number,
+	       octeon_bootinfo->board_serial_number,
+	       sizeof cvmx_sysinfo_get()->board_serial_number);
 }
 
 static void
@@ -615,6 +581,18 @@ octeon_boot_params_init(register_t ptr)
 	octeon_process_app_desc_ver_6();
 
 	KASSERT(octeon_bootinfo != NULL, ("octeon_bootinfo should be set"));
+
+	if (cvmx_sysinfo_get()->led_display_base_addr != 0) {
+		/*
+		 * Revision 1.x of the EBT3000 only supports 4 characters, but
+		 * other devices support 8.
+		 */
+		if (cvmx_sysinfo_get()->board_type == CVMX_BOARD_TYPE_EBT3000 &&
+		    cvmx_sysinfo_get()->board_rev_major == 1)
+			ebt3000_str_write("FBSD");
+		else
+			ebt3000_str_write("FreeBSD!");
+	}
 
 	if (cvmx_sysinfo_get()->phy_mem_desc_addr == (uint64_t)0)
 		panic("Your boot loader did not supply a memory descriptor.");
@@ -656,5 +634,6 @@ octeon_boot_params_init(register_t ptr)
 #endif
 	strcpy(cpu_model, octeon_model_get_string(cvmx_get_proc_id()));
 	printf("Model: %s\n", cpu_model);
+	printf("Serial number: %s\n", cvmx_sysinfo_get()->board_serial_number);
 }
 /* impEND: This stuff should move back into the Cavium SDK */
