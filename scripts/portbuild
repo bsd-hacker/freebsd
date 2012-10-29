@@ -261,6 +261,7 @@ mount_fs ${builddir}/src ${chroot}${CLIENT_SRCBASE} ${CLIENT_NFS_MASTER} || bail
 buildenv.client ${arch} ${chroot}${CLIENT_SRCBASE}
 
 mount -t devfs foo ${chroot}/dev
+mount -t fdescfs fdesc ${chroot}/dev/fd
 umount -f ${chroot}/compat/linux/proc > /dev/null 2>&1
 
 # just in case...
