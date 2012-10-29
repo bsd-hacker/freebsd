@@ -73,20 +73,6 @@
 
 #include <opencrypto/cryptodev.h>
 
-/*
- * Return header size in bytes.  The old protocol did not support
- * the replay counter; the new protocol always includes the counter.
- */
-#define HDRSIZE(sav) \
-	(((sav)->flags & SADB_X_EXT_OLD) ? \
-		sizeof (struct ah) : sizeof (struct ah) + sizeof (u_int32_t))
-/* 
- * Return authenticator size in bytes.  The old protocol is known
- * to use a fixed 16-byte authenticator.  The new algorithm use 12-byte
- * authenticator.
- */
-#define	AUTHSIZE(sav)	ah_authsize(sav)
-
 VNET_DEFINE(int, ah_enable) = 1;	/* control flow of packets with AH */
 VNET_DEFINE(int, ah_cleartos) = 1;	/* clear ip_tos when doing AH calc */
 VNET_DEFINE(struct ahstat, ahstat);
@@ -106,6 +92,7 @@ static unsigned char ipseczeroes[256];	/* larger than an ip6 extension hdr */
 static int ah_input_cb(struct cryptop*);
 static int ah_output_cb(struct cryptop*);
 
+/* Return authenticator size in bytes. */
 static int
 ah_authsize(struct secasvar *sav)
 {
@@ -167,11 +154,12 @@ ah_hdrsiz(struct secasvar *sav)
 		int authsize;
 		IPSEC_ASSERT(sav->tdb_authalgxform != NULL, ("null xform"));
 		/*XXX not right for null algorithm--does it matter??*/
-		authsize = AUTHSIZE(sav);
-		size = roundup(authsize, sizeof (u_int32_t)) + HDRSIZE(sav);
+		authsize = ah_authsize(sav);
+		size = roundup(authsize, sizeof (u_int32_t)) +
+			sizeof(struct ipsec_ah);
 	} else {
 		/* default guess */
-		size = sizeof (struct ah) + sizeof (u_int32_t) + 16;
+		size = sizeof (struct ipsec_ah) + 16;
 	}
 	return size;
 }
@@ -225,7 +213,7 @@ ah_init0(struct secasvar *sav, struct xformsw *xsp, struct cryptoini *cria)
 	cria->cri_alg = sav->tdb_authalgxform->type;
 	cria->cri_klen = _KEYBITS(sav->key_auth);
 	cria->cri_key = sav->key_auth->key_data;
-	cria->cri_mlen = AUTHSIZE(sav);
+	cria->cri_mlen = ah_authsize(sav);
 
 	return 0;
 }
@@ -565,7 +553,7 @@ ah_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 	struct tdb_ident *tdbi;
 	struct tdb_crypto *tc;
 	struct m_tag *mtag;
-	struct newah *ah;
+	struct ipsec_ah *ah;
 	int hl, rplen, authsize;
 
 	struct cryptodesc *crda;
@@ -577,10 +565,10 @@ ah_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 		("null authentication xform"));
 
 	/* Figure out header size. */
-	rplen = HDRSIZE(sav);
+	rplen = sizeof(struct ipsec_ah);
 
 	/* XXX don't pullup, just copy header */
-	IP6_EXTHDR_GET(ah, struct newah *, m, skip, rplen);
+	IP6_EXTHDR_GET(ah, struct ipsec_ah *, m, skip, rplen);
 	if (ah == NULL) {
 		DPRINTF(("ah_input: cannot pullup header\n"));
 		V_ahstat.ahs_hdrops++;		/*XXX*/
@@ -600,11 +588,11 @@ ah_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 	/* Verify AH header length. */
 	hl = ah->ah_len * sizeof (u_int32_t);
 	ahx = sav->tdb_authalgxform;
-	authsize = AUTHSIZE(sav);
-	if (hl != authsize + rplen - sizeof (struct ah)) {
+	authsize = ah_authsize(sav);
+	if (hl != authsize + rplen - sizeof (struct ipsec_ah)) {
 		DPRINTF(("%s: bad authenticator length %u (expecting %lu)"
 			" for packet in SA %s/%08lx\n", __func__,
-			hl, (u_long) (authsize + rplen - sizeof (struct ah)),
+			hl, (u_long) (authsize + rplen - sizeof (struct ipsec_ah)),
 			ipsec_address(&sav->sah->saidx.dst),
 			(u_long) ntohl(sav->spi)));
 		V_ahstat.ahs_badauthl++;
@@ -779,8 +767,8 @@ ah_input_cb(struct cryptop *crp)
 	}
 
 	/* Figure out header size. */
-	rplen = HDRSIZE(sav);
-	authsize = AUTHSIZE(sav);
+	rplen = sizeof(struct ipsec_ah);
+	authsize = ah_authsize(sav);
 
 	/* Copy authenticator off the packet. */
 	m_copydata(m, skip + rplen, authsize, calc);
@@ -826,7 +814,7 @@ ah_input_cb(struct cryptop *crp)
 	if (sav->replay) {
 		u_int32_t seq;
 
-		m_copydata(m, skip + offsetof(struct newah, ah_seq),
+		m_copydata(m, skip + offsetof(struct ipsec_ah, ah_seq),
 			   sizeof (seq), (caddr_t) &seq);
 		if (ipsec_updatereplay(ntohl(seq), sav)) {
 			V_ahstat.ahs_replay++;
@@ -897,7 +885,7 @@ ah_output(
 	u_int16_t iplen;
 	int error, rplen, authsize, maxpacketsize, roff;
 	u_int8_t prot;
-	struct newah *ah;
+	struct ipsec_ah *ah;
 
 	sav = isr->sav;
 	IPSEC_ASSERT(sav != NULL, ("null SA"));
@@ -907,7 +895,7 @@ ah_output(
 	V_ahstat.ahs_output++;
 
 	/* Figure out header size. */
-	rplen = HDRSIZE(sav);
+	rplen = sizeof(struct ipsec_ah);
 
 	/* Check for maximum packet size violations. */
 	switch (sav->sah->saidx.dst.sa.sa_family) {
@@ -931,7 +919,7 @@ ah_output(
 		error = EPFNOSUPPORT;
 		goto bad;
 	}
-	authsize = AUTHSIZE(sav);
+	authsize = ah_authsize(sav);
 	if (rplen + authsize + m->m_pkthdr.len > maxpacketsize) {
 		DPRINTF(("%s: packet in SA %s/%08lx got too big "
 		    "(len %u, max len %u)\n", __func__,
@@ -973,11 +961,11 @@ ah_output(
 	 * The AH header is guaranteed by m_makespace() to be in
 	 * contiguous memory, at roff bytes offset into the returned mbuf.
 	 */
-	ah = (struct newah *)(mtod(mi, caddr_t) + roff);
+	ah = (struct ipsec_ah *)(mtod(mi, caddr_t) + roff);
 
 	/* Initialize the AH header. */
 	m_copydata(m, protoff, sizeof(u_int8_t), (caddr_t) &ah->ah_nxt);
-	ah->ah_len = (rplen + authsize - sizeof(struct ah)) / sizeof(u_int32_t);
+	ah->ah_len = (rplen + authsize - sizeof(struct ipsec_ah)) / sizeof(u_int32_t);
 	ah->ah_reserve = 0;
 	ah->ah_spi = sav->spi;
 
@@ -1185,7 +1173,7 @@ ah_output_cb(struct cryptop *crp)
 		 * Corrupt HMAC if we want to test integrity verification of
 		 * the other side.
 		 */
-		alen = AUTHSIZE(sav);
+		alen = ah_authsize(sav);
 		m_copyback(m, m->m_pkthdr.len - alen, alen, ipseczeroes);
 	}
 #endif
