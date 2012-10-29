@@ -99,9 +99,6 @@ ah_authsize(struct secasvar *sav)
 
 	IPSEC_ASSERT(sav != NULL, ("%s: sav == NULL", __func__));
 
-	if (sav->flags & SADB_X_EXT_OLD)
-		return 16;
-
 	switch (sav->alg_auth) {
 	case SADB_X_AALG_SHA2_256:
 		return 16;
@@ -185,11 +182,9 @@ ah_init0(struct secasvar *sav, struct xformsw *xsp, struct cryptoini *cria)
 	 * later during protocol processing.
 	 */
 	/* NB: replay state is setup elsewhere (sigh) */
-	if (((sav->flags&SADB_X_EXT_OLD) == 0) ^ (sav->replay != NULL)) {
-		DPRINTF(("%s: replay state block inconsistency, "
-			"%s algorithm %s replay state\n", __func__,
-			(sav->flags & SADB_X_EXT_OLD) ? "old" : "new",
-			sav->replay == NULL ? "without" : "with"));
+	if (sav->replay == NULL) {
+		DPRINTF(("%s: replay state block inconsistency\n",
+			 __func__));
 		return EINVAL;
 	}
 	if (sav->key_auth == NULL) {

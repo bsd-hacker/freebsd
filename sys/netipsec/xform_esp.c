@@ -127,10 +127,7 @@ esp_hdrsiz(struct secasvar *sav)
 		/*XXX not right for null algorithm--does it matter??*/
 		IPSEC_ASSERT(sav->tdb_encalgxform != NULL,
 			("SA with null xform"));
-		if (sav->flags & SADB_X_EXT_OLD)
-			size = sizeof (struct esp);
-		else
-			size = sizeof (struct newesp);
+		size = sizeof (struct ipsec_esp);
 		size += sav->tdb_encalgxform->blocksize + 9;
 		/*XXX need alg check???*/
 		if (sav->tdb_authalgxform != NULL && sav->replay)
@@ -144,7 +141,7 @@ esp_hdrsiz(struct secasvar *sav)
 		 * + sizeof (next header field)
 		 * + max icv supported.
 		 */
-		size = sizeof (struct newesp) + EALG_MAX_BLOCK_LEN + 9 + 16;
+		size = sizeof (struct ipsec_esp) + EALG_MAX_BLOCK_LEN + 9 + 16;
 	}
 	return size;
 }
@@ -171,7 +168,7 @@ esp_init(struct secasvar *sav, struct xformsw *xsp)
 			 __func__, txform->name));
 		return EINVAL;
 	}
-	if ((sav->flags&(SADB_X_EXT_OLD|SADB_X_EXT_IV4B)) == SADB_X_EXT_IV4B) {
+	if ((sav->flags & SADB_X_EXT_IV4B) == SADB_X_EXT_IV4B) {
 		DPRINTF(("%s: 4-byte IV not supported with protocol\n",
 			__func__));
 		return EINVAL;
@@ -267,7 +264,7 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 	struct tdb_crypto *tc;
 	int plen, alen, hlen;
 	struct m_tag *mtag;
-	struct newesp *esp;
+	struct ipsec_esp *esp;
 
 	struct cryptodesc *crde;
 	struct cryptop *crp;
@@ -285,16 +282,13 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 	}
 
 	/* XXX don't pullup, just copy header */
-	IP6_EXTHDR_GET(esp, struct newesp *, m, skip, sizeof (struct newesp));
+	IP6_EXTHDR_GET(esp, struct ipsec_esp *, m, skip, sizeof (struct ipsec_esp));
 
 	esph = sav->tdb_authalgxform;
 	espx = sav->tdb_encalgxform;
 
 	/* Determine the ESP header length */
-	if (sav->flags & SADB_X_EXT_OLD)
-		hlen = sizeof (struct esp) + sav->ivlen;
-	else
-		hlen = sizeof (struct newesp) + sav->ivlen;
+	hlen = sizeof (struct ipsec_esp) + sav->ivlen;
 	/* Authenticator hash size */
 	if (esph != NULL) {
 		switch (esph->type) {
@@ -564,7 +558,7 @@ esp_input_cb(struct cryptop *crp)
 	if (sav->replay) {
 		u_int32_t seq;
 
-		m_copydata(m, skip + offsetof(struct newesp, esp_seq),
+		m_copydata(m, skip + offsetof(struct ipsec_esp, esp_seq),
 			   sizeof (seq), (caddr_t) &seq);
 		if (ipsec_updatereplay(ntohl(seq), sav)) {
 			DPRINTF(("%s: packet replay check for %s\n", __func__,
@@ -576,10 +570,7 @@ esp_input_cb(struct cryptop *crp)
 	}
 
 	/* Determine the ESP header length */
-	if (sav->flags & SADB_X_EXT_OLD)
-		hlen = sizeof (struct esp) + sav->ivlen;
-	else
-		hlen = sizeof (struct newesp) + sav->ivlen;
+	hlen = sizeof (struct ipsec_esp) + sav->ivlen;
 
 	/* Remove the ESP header and IV from the mbuf. */
 	error = m_striphdr(m, skip, hlen);
@@ -687,10 +678,7 @@ esp_output(
 	espx = sav->tdb_encalgxform;
 	IPSEC_ASSERT(espx != NULL, ("null encoding xform"));
 
-	if (sav->flags & SADB_X_EXT_OLD)
-		hlen = sizeof (struct esp) + sav->ivlen;
-	else
-		hlen = sizeof (struct newesp) + sav->ivlen;
+	hlen = sizeof (struct ipsec_esp) + sav->ivlen;
 
 	rlen = m->m_pkthdr.len - skip;	/* Raw payload length. */
 	/*

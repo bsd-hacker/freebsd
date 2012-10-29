@@ -861,9 +861,9 @@ esp6_ctlinput(int cmd, struct sockaddr *sa, void *d)
 			int valid;
 
 			/* check header length before using m_copydata */
-			if (m->m_pkthdr.len < off + sizeof (struct esp))
+			if (m->m_pkthdr.len < off + sizeof (struct ipsec_esp))
 				return;
-			m_copydata(m, off + offsetof(struct esp, esp_spi),
+			m_copydata(m, off + offsetof(struct ipsec_esp, esp_spi),
 				sizeof(u_int32_t), (caddr_t) &spi);
 			/*
 			 * Check to see if we have a valid SA corresponding to
