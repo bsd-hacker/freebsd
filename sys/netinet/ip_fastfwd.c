@@ -522,7 +522,7 @@ passout:
 		mtu = ifp->if_mtu;
 
 	if (ip_len <= mtu ||
-	    (ifp->if_hwassist & CSUM_FRAGMENT && (ip_off & IP_DF) == 0)) {
+	    (ifp->if_hwassist & CSUM_IPFRAG && (ip_off & IP_DF) == 0)) {
 		/*
 		 * Send off the packet via outgoing interface
 		 */

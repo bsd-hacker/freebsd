@@ -601,7 +601,7 @@ passout:
 	 */
 	if (ip_len <= mtu ||
 	    (m->m_pkthdr.csum_flags & ifp->if_hwassist & CSUM_TSO) != 0 ||
-	    ((ip_off & IP_DF) == 0 && (ifp->if_hwassist & CSUM_FRAGMENT))) {
+	    ((ip_off & IP_DF) == 0 && (ifp->if_hwassist & CSUM_IPFRAG))) {
 		ip->ip_sum = 0;
 		if (m->m_pkthdr.csum_flags & CSUM_IP & ~ifp->if_hwassist) {
 			ip->ip_sum = in_cksum(m, hlen);
