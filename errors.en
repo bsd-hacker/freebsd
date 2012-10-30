@@ -25,7 +25,7 @@ rcorder_order	rcorder block in the wrong order; should be PROVIDE/REQUIRE/BEFORE
 
 rcsid	Missing FreeBSD RCSId keyword	All rc scripts must contain a line beginning # $FreeBSD$.  Do not include blank lines without comment markers at the beginning (#) until the script begins
 
-rcvar_incorrect	rcvar is not set correctly	rcvar must be directly set to name_enable.  Do not quote, and do not use indirection; ${name}_enable is slower than example_enable
+rcvar_incorrect	rcvar is not set correctly	rcvar must be directly set to name_enable.  Do not quote, and do not use indirection; ${name}_enable is slower than example_enable.  `set_rcvar` was removed from FreeBSD in January 2012, so definitely do not use that
 
 run_rc_argument	Incorrect argument to run_rc_command	The last line of the file should be run_rc_command $1
 
