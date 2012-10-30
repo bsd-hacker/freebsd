@@ -127,7 +127,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/sysctl.h>
 
-#define TI_CSUM_FEATURES	(CSUM_IP | CSUM_TCP | CSUM_UDP | CSUM_IP_FRAGS)
+#define TI_CSUM_FEATURES	(CSUM_IP | CSUM_TCP | CSUM_UDP)
 /*
  * We can only turn on header splitting if we're using extended receive
  * BDs.
