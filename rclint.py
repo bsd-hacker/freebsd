@@ -109,11 +109,10 @@ class Statement:
 
     def pointless_quoted(self):
         if self.quoted():
-            if self.type == 'shorthand':
-                return True
-            elif ' ' not in self.value and '\t' not in self.value:
-                return True
-        return False
+            for char in self.value:
+                if char in ' \t|&;<>()$`\\\"\'':
+                    return False
+        return True
 
 class Variable(Statement):
     def __init__(self, lines, number):
