@@ -281,7 +281,7 @@ struct mbuf {
 #define	CSUM_UDP		0x0004		/* will csum UDP */
 #define	CSUM_IPFRAG		0x0008		/* IP fragmentation offload */
 #define	CSUM_UFO		0x0010		/* UDP fragmentation offload */
-#define	CSUM_TSO		0x0020		/* TCP segmentation offliad */
+#define	CSUM_TSO		0x0020		/* TCP segmentation offload */
 #define	CSUM_SCTP		0x0040		/* will csum SCTP */
 #define CSUM_SCTP_IPV6		0x0080		/* will csum IPv6/SCTP */
 
