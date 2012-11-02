@@ -719,6 +719,7 @@ SYSCTL_STRING(_kern_shutdown, OID_AUTO, dumpdevname, CTLFLAG_RD,
 int
 set_dumper(struct dumperinfo *di, const char *devname)
 {
+	size_t wantcopy;
 
 	if (di == NULL) {
 		bzero(&dumper, sizeof dumper);
@@ -728,8 +729,8 @@ set_dumper(struct dumperinfo *di, const char *devname)
 	if (dumper.dumper != NULL)
 		return (EBUSY);
 	dumper = *di;
-	strlcpy(dumpdevname, devname, sizeof(dumpdevname));
-	if (strlen(dumpdevname) != strlen(devname)) {
+	wantcopy = strlcpy(dumpdevname, devname, sizeof(dumpdevname));
+	if (wantcopy >= sizeof(dumpdevname)) {
 		printf("set_dumper: device name truncated from '%s' -> '%s'\n",
 			devname, dumpdevname);
 	}
