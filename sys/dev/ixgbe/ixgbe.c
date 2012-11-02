@@ -165,8 +165,8 @@ static int	ixgbe_dma_malloc(struct adapter *, bus_size_t,
 static void     ixgbe_dma_free(struct adapter *, struct ixgbe_dma_alloc *);
 static void	ixgbe_add_rx_process_limit(struct adapter *, const char *,
 		    const char *, int *, int);
-static bool	ixgbe_tx_ctx_setup(struct tx_ring *, struct mbuf *);
-static bool	ixgbe_tso_setup(struct tx_ring *, struct mbuf *, u32 *, u32 *);
+static bool	ixgbe_offload_setup(struct tx_ring *, struct mbuf *, u32 *,
+		    u32 *);
 static void	ixgbe_set_ivar(struct adapter *, u8, u8, s8);
 static void	ixgbe_configure_ivars(struct adapter *);
 static u8 *	ixgbe_mc_array_itr(struct ixgbe_hw *, u8 **, u32 *);
@@ -1726,7 +1726,6 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 {
 	struct adapter  *adapter = txr->adapter;
 	u32		olinfo_status = 0, cmd_type_len;
-	u32		paylen = 0;
 	int             i, j, error, nsegs;
 	int		first, last = 0;
 	struct mbuf	*m_head;
@@ -1740,9 +1739,6 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 	/* Basic descriptor defines */
         cmd_type_len = (IXGBE_ADVTXD_DTYP_DATA |
 	    IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT);
-
-	if (m_head->m_flags & M_VLANTAG)
-        	cmd_type_len |= IXGBE_ADVTXD_DCMD_VLE;
 
         /*
          * Important to capture the first descriptor
@@ -1807,16 +1803,18 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 	** this becomes the first descriptor of 
 	** a packet.
 	*/
-	if (m_head->m_pkthdr.csum_flags & CSUM_TSO) {
-		if (ixgbe_tso_setup(txr, m_head, &paylen, &olinfo_status)) {
-			cmd_type_len |= IXGBE_ADVTXD_DCMD_TSE;
-			olinfo_status |= IXGBE_TXD_POPTS_TXSM << 8;
-			olinfo_status |= paylen << IXGBE_ADVTXD_PAYLEN_SHIFT;
+	if ((m_head->m_flags & M_VLANTAG) ||
+	    (m_head->m_pkthdr.csum_flags &
+	     (CSUM_IP|CSUM_TCP|CSUM_TCP_IPV6|CSUM_TSO|CSUM_UDP|CSUM_UDP_IPV6|
+	      CSUM_UFO|CSUM_SCTP|CSUM_SCTP_IPV6))) {
+		if (ixgbe_offload_setup(txr, m_head, &cmd_type_len,
+		    &olinfo_status))
 			++adapter->tso_tx;
-		} else
+		else
 			return (ENXIO);
-	} else if (ixgbe_tx_ctx_setup(txr, m_head))
-		olinfo_status |= IXGBE_TXD_POPTS_TXSM << 8;
+	} else
+		olinfo_status |= m_head->m_pkthdr.len <<
+		    IXGBE_ADVTXD_PAYLEN_SHIFT;
 
 #ifdef IXGBE_IEEE1588
         /* This is changing soon to an mtag detection */
@@ -1834,10 +1832,6 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 		}
 	}
 #endif
-        /* Record payload length */
-	if (paylen == 0)
-        	olinfo_status |= m_head->m_pkthdr.len <<
-		    IXGBE_ADVTXD_PAYLEN_SHIFT;
 
 	i = txr->next_avail_desc;
 	for (j = 0; j < nsegs; j++) {
@@ -1851,7 +1845,7 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 
 		txd->read.buffer_addr = segaddr;
 		txd->read.cmd_type_len = htole32(txr->txd_cmd |
-		    cmd_type_len |seglen);
+		    cmd_type_len | seglen);
 		txd->read.olinfo_status = htole32(olinfo_status);
 		last = i; /* descriptor that will get completion IRQ */
 
@@ -3220,157 +3214,40 @@ ixgbe_free_transmit_buffers(struct tx_ring *txr)
 	return;
 }
 
-/*********************************************************************
- *
- *  Advanced Context Descriptor setup for VLAN or CSUM
- *
- **********************************************************************/
-
-static bool
-ixgbe_tx_ctx_setup(struct tx_ring *txr, struct mbuf *mp)
-{
-	struct adapter *adapter = txr->adapter;
-	struct ixgbe_adv_tx_context_desc *TXD;
-	struct ixgbe_tx_buf        *tx_buffer;
-	u32 vlan_macip_lens = 0, type_tucmd_mlhl = 0;
-	struct ether_vlan_header *eh;
-	struct ip *ip;
-	struct ip6_hdr *ip6;
-	int  ehdrlen, ip_hlen = 0;
-	u16	etype;
-	u8	ipproto = 0;
-	bool	offload = TRUE;
-	int ctxd = txr->next_avail_desc;
-	u16 vtag = 0;
-
-
-	if ((mp->m_pkthdr.csum_flags & CSUM_OFFLOAD) == 0)
-		offload = FALSE;
-
-	tx_buffer = &txr->tx_buffers[ctxd];
-	TXD = (struct ixgbe_adv_tx_context_desc *) &txr->tx_base[ctxd];
-
-	/*
-	** In advanced descriptors the vlan tag must 
-	** be placed into the descriptor itself.
-	*/
-	if (mp->m_flags & M_VLANTAG) {
-		vtag = htole16(mp->m_pkthdr.ether_vtag);
-		vlan_macip_lens |= (vtag << IXGBE_ADVTXD_VLAN_SHIFT);
-	} else if (offload == FALSE)
-		return FALSE;
-
-	/*
-	 * Determine where frame payload starts.
-	 * Jump over vlan headers if already present,
-	 * helpful for QinQ too.
-	 */
-	eh = mtod(mp, struct ether_vlan_header *);
-	if (eh->evl_encap_proto == htons(ETHERTYPE_VLAN)) {
-		etype = ntohs(eh->evl_proto);
-		ehdrlen = ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN;
-	} else {
-		etype = ntohs(eh->evl_encap_proto);
-		ehdrlen = ETHER_HDR_LEN;
-	}
-
-	/* Set the ether header length */
-	vlan_macip_lens |= ehdrlen << IXGBE_ADVTXD_MACLEN_SHIFT;
-
-	switch (etype) {
-		case ETHERTYPE_IP:
-			ip = (struct ip *)(mp->m_data + ehdrlen);
-			ip_hlen = ip->ip_hl << 2;
-			ipproto = ip->ip_p;
-			type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_IPV4;
-			break;
-		case ETHERTYPE_IPV6:
-			ip6 = (struct ip6_hdr *)(mp->m_data + ehdrlen);
-			ip_hlen = sizeof(struct ip6_hdr);
-			/* XXX-BZ this will go badly in case of ext hdrs. */
-			ipproto = ip6->ip6_nxt;
-			type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_IPV6;
-			break;
-		default:
-			offload = FALSE;
-			break;
-	}
-
-	vlan_macip_lens |= ip_hlen;
-	type_tucmd_mlhl |= IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYP_CTXT;
-
-	switch (ipproto) {
-		case IPPROTO_TCP:
-			if (mp->m_pkthdr.csum_flags & CSUM_TCP)
-				type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_L4T_TCP;
-			break;
-
-		case IPPROTO_UDP:
-			if (mp->m_pkthdr.csum_flags & CSUM_UDP)
-				type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_L4T_UDP;
-			break;
-
-#if __FreeBSD_version >= 800000
-		case IPPROTO_SCTP:
-			if (mp->m_pkthdr.csum_flags & CSUM_SCTP)
-				type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_L4T_SCTP;
-			break;
-#endif
-		default:
-			offload = FALSE;
-			break;
-	}
-
-	/* Now copy bits into descriptor */
-	TXD->vlan_macip_lens |= htole32(vlan_macip_lens);
-	TXD->type_tucmd_mlhl |= htole32(type_tucmd_mlhl);
-	TXD->seqnum_seed = htole32(0);
-	TXD->mss_l4len_idx = htole32(0);
-
-	tx_buffer->m_head = NULL;
-	tx_buffer->eop_index = -1;
-
-	/* We've consumed the first desc, adjust counters */
-	if (++ctxd == adapter->num_tx_desc)
-		ctxd = 0;
-	txr->next_avail_desc = ctxd;
-	--txr->tx_avail;
-
-        return (offload);
-}
-
 /**********************************************************************
  *
+ *  Advanced Context Descriptor setup for VLAN or CSUM.
  *  Setup work for hardware segmentation offload (TSO) on
- *  adapters using advanced tx descriptors
+ *  adapters using advanced tx descriptors.
  *
  **********************************************************************/
 static bool
-ixgbe_tso_setup(struct tx_ring *txr, struct mbuf *mp, u32 *paylen,
+ixgbe_offload_setup(struct tx_ring *txr, struct mbuf *m, u32 *cmd_type_len,
     u32 *olinfo_status)
 {
 	struct adapter *adapter = txr->adapter;
 	struct ixgbe_adv_tx_context_desc *TXD;
 	struct ixgbe_tx_buf        *tx_buffer;
 	u32 vlan_macip_lens = 0, type_tucmd_mlhl = 0;
-	u32 mss_l4len_idx = 0, len;
-	u16 vtag = 0, eh_type;
-	int ctxd, ehdrlen, ip_hlen, tcp_hlen;
 	struct ether_vlan_header *eh;
-#ifdef INET6
-	struct ip6_hdr *ip6;
-#endif
 #ifdef INET
 	struct ip *ip;
 #endif
+#ifdef INET6
+	struct ip6_hdr *ip6;
+#endif
 	struct tcphdr *th;
-
+	int ctxd, ehdrlen, ip_hlen = 0, l4_hlen = 0;
+	u32 mss_l4len_idx = 0;
+	u32 paylen = m->m_pkthdr.len;
+	u16 vtag = 0, eh_type;
+	u8  ipproto = 0;
 
 	/*
 	 * Determine where frame payload starts.
 	 * Jump over vlan headers if already present
 	 */
-	eh = mtod(mp, struct ether_vlan_header *);
+	eh = mtod(m, struct ether_vlan_header *);
 	if (eh->evl_encap_proto == htons(ETHERTYPE_VLAN)) {
 		ehdrlen = ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN;
 		eh_type = eh->evl_proto;
@@ -3378,74 +3255,97 @@ ixgbe_tso_setup(struct tx_ring *txr, struct mbuf *mp, u32 *paylen,
 		ehdrlen = ETHER_HDR_LEN;
 		eh_type = eh->evl_encap_proto;
 	}
+	if (m->m_flags & M_VLANTAG) {
+		vtag = htole16(m->m_pkthdr.ether_vtag);
+		vlan_macip_lens |= vtag << IXGBE_ADVTXD_VLAN_SHIFT;
+		*cmd_type_len |= IXGBE_ADVTXD_DCMD_VLE;
+	}
 
-        /* Ensure we have at least the IP+TCP header in the first mbuf. */
-	len = ehdrlen + sizeof(struct tcphdr);
+	/* Set the ether header length */
+	vlan_macip_lens |= ehdrlen << IXGBE_ADVTXD_MACLEN_SHIFT;
+
 	switch (ntohs(eh_type)) {
+#ifdef INET
+	case ETHERTYPE_IP:
+		ip = mtod(m + ehdrlen, struct ip *);
+		ip_hlen = ip->ip_hl << 2;
+		ipproto = ip->ip_p;
+		if (m->m_pkthdr.csum_flags & CSUM_IP) {
+			ip->ip_sum = 0;
+			*olinfo_status |= IXGBE_TXD_POPTS_IXSM << 8;
+		}
+		type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_IPV4;
+		break;
+#endif
 #ifdef INET6
 	case ETHERTYPE_IPV6:
-		if (mp->m_len < len + sizeof(struct ip6_hdr))
-			return FALSE;
-		ip6 = (struct ip6_hdr *)(mp->m_data + ehdrlen);
-		/* XXX-BZ For now we do not pretend to support ext. hdrs. */
-		if (ip6->ip6_nxt != IPPROTO_TCP)
-			return FALSE;
+		ip6 = mtod(m + ehdrlen, struct ip6_hdr *);
 		ip_hlen = sizeof(struct ip6_hdr);
-		th = (struct tcphdr *)((caddr_t)ip6 + ip_hlen);
-		th->th_sum = in6_cksum_pseudo(ip6, 0, IPPROTO_TCP, 0);
+		ipproto = ip6->ip6_nxt;
 		type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_IPV6;
 		break;
 #endif
-#ifdef INET
-	case ETHERTYPE_IP:
-		if (mp->m_len < len + sizeof(struct ip))
-			return FALSE;
-		ip = (struct ip *)(mp->m_data + ehdrlen);
-		if (ip->ip_p != IPPROTO_TCP)
-			return FALSE;
-		ip->ip_sum = 0;
-		ip_hlen = ip->ip_hl << 2;
-		th = (struct tcphdr *)((caddr_t)ip + ip_hlen);
-		th->th_sum = in_pseudo(ip->ip_src.s_addr,
-		    ip->ip_dst.s_addr, htons(IPPROTO_TCP));
-		type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_IPV4;
-		/* Tell transmit desc to also do IPv4 checksum. */
-		*olinfo_status |= IXGBE_TXD_POPTS_IXSM << 8;
-		break;
-#endif
 	default:
-		panic("%s: CSUM_TSO but no supported IP version (0x%04x)",
-		    __func__, ntohs(eh_type));
+		return (FALSE);
 		break;
 	}
 
+	vlan_macip_lens |= ip_hlen;
+
+	switch (ipproto) {
+	case IPPROTO_TCP:
+		th = mtod(m + ehdrlen + ip_hlen, struct tcphdr *);
+		l4_hlen = th->th_off << 2;
+		if (m->m_pkthdr.csum_flags & (CSUM_TCP | CSUM_TCP_IPV6))
+			*olinfo_status |= IXGBE_TXD_POPTS_TXSM << 8;
+		if (m->m_pkthdr.csum_flags & (CSUM_TSO | 0)) {
+			*cmd_type_len |= IXGBE_ADVTXD_DCMD_TSE;
+			paylen -= ehdrlen + ip_hlen + l4_hlen;
+		}
+		type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_L4T_TCP;
+		break;
+
+	case IPPROTO_UDP:
+		l4_hlen = sizeof(struct udphdr);
+		if (m->m_pkthdr.csum_flags & (CSUM_UDP | CSUM_UDP_IPV6))
+			*olinfo_status |= IXGBE_TXD_POPTS_TXSM << 8;
+		if (m->m_pkthdr.csum_flags & (CSUM_UFO | 0)) {
+			*cmd_type_len |= IXGBE_ADVTXD_DCMD_TSE;
+			paylen -= ehdrlen + ip_hlen + l4_hlen;
+		}
+		type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_L4T_UDP;
+		break;
+
+#if __FreeBSD_version >= 800000
+	case IPPROTO_SCTP:
+		if (m->m_pkthdr.csum_flags & (CSUM_SCTP | CSUM_SCTP_IPV6))
+			*olinfo_status |= IXGBE_TXD_POPTS_TXSM << 8;
+		type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_L4T_SCTP;
+		break;
+#endif
+	default:
+		/* Only IP header checksumming or nothing. */
+		break;
+	}
+
+	/* This is used in the transmit desc in encap */
+	*olinfo_status |= paylen << IXGBE_ADVTXD_PAYLEN_SHIFT;
+
+	/* Descriptor context setup starts here. */
 	ctxd = txr->next_avail_desc;
 	tx_buffer = &txr->tx_buffers[ctxd];
 	TXD = (struct ixgbe_adv_tx_context_desc *) &txr->tx_base[ctxd];
 
-	tcp_hlen = th->th_off << 2;
-
-	/* This is used in the transmit desc in encap */
-	*paylen = mp->m_pkthdr.len - ehdrlen - ip_hlen - tcp_hlen;
-
-	/* VLAN MACLEN IPLEN */
-	if (mp->m_flags & M_VLANTAG) {
-		vtag = htole16(mp->m_pkthdr.ether_vtag);
-                vlan_macip_lens |= (vtag << IXGBE_ADVTXD_VLAN_SHIFT);
-	}
-
-	vlan_macip_lens |= ehdrlen << IXGBE_ADVTXD_MACLEN_SHIFT;
-	vlan_macip_lens |= ip_hlen;
-	TXD->vlan_macip_lens |= htole32(vlan_macip_lens);
-
 	/* ADV DTYPE TUCMD */
 	type_tucmd_mlhl |= IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYP_CTXT;
-	type_tucmd_mlhl |= IXGBE_ADVTXD_TUCMD_L4T_TCP;
 	TXD->type_tucmd_mlhl |= htole32(type_tucmd_mlhl);
 
+	/* VLAN MAC LEN */
+	TXD->vlan_macip_lens |= htole32(vlan_macip_lens);
+
 	/* MSS L4LEN IDX */
-	mss_l4len_idx |= (mp->m_pkthdr.tso_segsz << IXGBE_ADVTXD_MSS_SHIFT);
-	mss_l4len_idx |= (tcp_hlen << IXGBE_ADVTXD_L4LEN_SHIFT);
+	mss_l4len_idx |= (m->m_pkthdr.tso_segsz << IXGBE_ADVTXD_MSS_SHIFT);
+	mss_l4len_idx |= (l4_hlen << IXGBE_ADVTXD_L4LEN_SHIFT);
 	TXD->mss_l4len_idx = htole32(mss_l4len_idx);
 
 	TXD->seqnum_seed = htole32(0);
@@ -3457,7 +3357,8 @@ ixgbe_tso_setup(struct tx_ring *txr, struct mbuf *mp, u32 *paylen,
 
 	txr->tx_avail--;
 	txr->next_avail_desc = ctxd;
-	return TRUE;
+
+	return (TRUE);
 }
 
 #ifdef IXGBE_FDIR
