@@ -991,6 +991,22 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 			    "rejected\n", s, __func__, th->th_seq, sc->sc_irs);
 		goto failed;
 	}
+
+	/*
+	 * If timestamps were present in the SYN and we accepted
+	 * them in our SYN|ACK we require them to be present from
+	 * now on. And vice versa.
+	 *  RFC1323, Section 3.2
+	 */
+	if ((sc->sc_flags & SCF_TIMESTAMP) && !(to->to_flags & TOF_TS)) {
+		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
+			log(LOG_DEBUG, "%s; %s: Timestamp missing, "
+			    "rfc violation ignored\n", s, __func__);
+#if 0
+		goto failed;
+#endif
+	}
+
 	/*
 	 * If timestamps were not negotiated we don't expect them.
 	 */
@@ -1000,19 +1016,7 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 			    "segment rejected\n", s, __func__);
 		goto failed;
 	}
-	/*
-	 * If timestamps were negotiated every packet is required
-	 * to carry them.
-	 *  RFC1323, Section X
-	 */
-	if ((sc->sc_flags & SCF_TIMESTAMP) && !(to->to_flags & TOF_TS)) {
-		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
-			log(LOG_DEBUG, "%s; %s: Timestamp expected, "
-			    "rfc violation ignored\n", s, __func__);
-#if 0
-		goto failed;
-#endif
-	}
+
 	/*
 	 * If timestamps were negotiated the reflected timestamp
 	 * must be equal to what we actually sent in the SYN|ACK.
