@@ -76,6 +76,7 @@ __FBSDID("$FreeBSD$");
 #include <contrib/octeon-sdk/cvmx.h>
 #include <contrib/octeon-sdk/cvmx-bootmem.h>
 #include <contrib/octeon-sdk/cvmx-ebt3000.h>
+#include <contrib/octeon-sdk/cvmx-helper-cfg.h>
 #include <contrib/octeon-sdk/cvmx-interrupt.h>
 #include <contrib/octeon-sdk/cvmx-version.h>
 
@@ -128,9 +129,6 @@ static const struct octeon_feature_description octeon_feature_descriptions[] = {
 	{ OCTEON_FEATURE_CN68XX_WQE,		"CN68XX_WQE" },
 	{ 0,					NULL }
 };
-
-uint64_t ciu_get_en_reg_addr_new(int corenum, int intx, int enx, int ciu_ip);
-void ciu_dump_interrutps_enabled(int core_num, int intx, int enx, int ciu_ip);
 
 static uint64_t octeon_get_ticks(void);
 static unsigned octeon_get_timecount(struct timecounter *tc);
@@ -213,7 +211,7 @@ octeon_memory_init(void)
 
 	phys_end = round_page(MIPS_KSEG0_TO_PHYS((vm_offset_t)&end));
 
-	if (octeon_is_simulation()) {
+	if (cvmx_sysinfo_get()->board_type == CVMX_BOARD_TYPE_SIM) {
 		/* Simulator we limit to 96 meg */
 		phys_avail[0] = phys_end;
 		phys_avail[1] = 96 << 20;
@@ -520,17 +518,6 @@ cvmx_bootinfo_t *octeon_bootinfo;
 
 static octeon_boot_descriptor_t *app_desc_ptr;
 
-int
-octeon_is_simulation(void)
-{
-	switch (cvmx_sysinfo_get()->board_type) {
-	case CVMX_BOARD_TYPE_SIM:
-		return 1;
-	default:
-		return 0;
-	}
-}
-
 static void
 octeon_process_app_desc_ver_6(void)
 {
@@ -597,6 +584,10 @@ octeon_boot_params_init(register_t ptr)
 	if (cvmx_sysinfo_get()->phy_mem_desc_addr == (uint64_t)0)
 		panic("Your boot loader did not supply a memory descriptor.");
 	cvmx_bootmem_init(cvmx_sysinfo_get()->phy_mem_desc_addr);
+
+	octeon_feature_init();
+
+	__cvmx_helper_cfg_init();
 
         printf("Boot Descriptor Ver: %u -> %u/%u",
                app_desc_ptr->desc_version, octeon_bootinfo->major_version,

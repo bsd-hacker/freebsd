@@ -590,7 +590,7 @@ static void cf_swap_ascii (unsigned char str1[], char str2[])
 
 static int cf_probe (device_t dev)
 {
-    	if (octeon_is_simulation())
+    	if (cvmx_sysinfo_get()->board_type == CVMX_BOARD_TYPE_SIM)
 		return (ENXIO);
 
 	if (device_get_unit(dev) != 0) {
@@ -618,10 +618,12 @@ static void cf_identify (driver_t *drv, device_t parent)
 	cvmx_mio_boot_reg_cfgx_t cfg;
 	uint64_t phys_base;
 	
-    	if (octeon_is_simulation())
+    	if (cvmx_sysinfo_get()->board_type == CVMX_BOARD_TYPE_SIM)
 		return;
 
 	phys_base = cvmx_sysinfo_get()->compact_flash_common_base_addr;
+	if (phys_base == 0)
+		return;
 	base_addr = cvmx_phys_to_ptr(phys_base);
 
         for (bus_region = 0; bus_region < 8; bus_region++)
@@ -694,7 +696,7 @@ static int cf_attach (device_t dev)
 	struct cf_priv *cf_priv;
 	int error;
 
-    	if (octeon_is_simulation())
+    	if (cvmx_sysinfo_get()->board_type == CVMX_BOARD_TYPE_SIM)
 		return (ENXIO);
 
 	cf_priv = device_get_softc(dev);

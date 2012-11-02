@@ -307,6 +307,7 @@ initarm(struct arm_boot_params *abp)
 	struct pv_addr dpcpu;
 	vm_offset_t dtbp, freemempos, l2_start, lastaddr;
 	uint32_t memsize, l2size;
+	char *env;
 	void *kmdp;
 	u_int l1pagetable;
 	int i = 0, j = 0, err_devmap = 0;
@@ -492,6 +493,10 @@ initarm(struct arm_boot_params *abp)
 	print_kernel_section_addr();
 	print_kenv();
 
+	env = getenv("kernelname");
+	if (env != NULL)
+		strlcpy(kernelname, env, sizeof(kernelname));
+
 	if (err_devmap != 0)
 		printf("WARNING: could not fully configure devmap, error=%d\n",
 		    err_devmap);
@@ -542,11 +547,6 @@ initarm(struct arm_boot_params *abp)
 	 */
 	physmap_init();
 
-	/*
-	 * Set initial values of GPIO output ports
-	 */
-	platform_gpio_init();
-
 	/* Do basic tuning, hz etc */
 	init_param2(physmem);
 	kdb_init();
@@ -569,6 +569,11 @@ initarm_lastaddr(void)
 void
 initarm_gpio_init(void)
 {
+
+	/*
+	 * Set initial values of GPIO output ports
+	 */
+	platform_gpio_init();
 }
 
 void

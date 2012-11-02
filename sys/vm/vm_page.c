@@ -116,10 +116,10 @@ __FBSDID("$FreeBSD$");
  */
 
 struct vpgqueues vm_page_queues[PQ_COUNT];
-struct vpglocks vm_page_queue_lock;
-struct vpglocks vm_page_queue_free_lock;
+struct mtx_padalign vm_page_queue_mtx;
+struct mtx_padalign vm_page_queue_free_mtx;
 
-struct vpglocks	pa_lock[PA_LOCK_COUNT];
+struct mtx_padalign pa_lock[PA_LOCK_COUNT];
 
 vm_page_t vm_page_array;
 long vm_page_array_size;
@@ -298,7 +298,7 @@ vm_page_startup(vm_offset_t vaddr)
 	    MTX_RECURSE);
 	mtx_init(&vm_page_queue_free_mtx, "vm page free queue", NULL, MTX_DEF);
 	for (i = 0; i < PA_LOCK_COUNT; i++)
-		mtx_init(&pa_lock[i].data, "vm page", NULL, MTX_DEF);
+		mtx_init(&pa_lock[i], "vm page", NULL, MTX_DEF);
 
 	/*
 	 * Initialize the queue headers for the hold queue, the active queue,
@@ -2277,9 +2277,9 @@ vm_page_cache(vm_page_t m)
 	if ((m->oflags & (VPO_UNMANAGED | VPO_BUSY)) || m->busy ||
 	    m->hold_count || m->wire_count)
 		panic("vm_page_cache: attempting to cache busy page");
-	pmap_remove_all(m);
-	if (m->dirty != 0)
-		panic("vm_page_cache: page %p is dirty", m);
+	KASSERT(!pmap_page_is_mapped(m),
+	    ("vm_page_cache: page %p is mapped", m));
+	KASSERT(m->dirty == 0, ("vm_page_cache: page %p is dirty", m));
 	if (m->valid == 0 || object->type == OBJT_DEFAULT ||
 	    (object->type == OBJT_SWAP &&
 	    !vm_pager_has_page(object, m->pindex, NULL, NULL))) {

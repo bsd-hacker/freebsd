@@ -389,6 +389,16 @@ options 	GDB
 options 	SYSCTL_DEBUG
 
 #
+# Enable textdump by default, this disables kernel core dumps.
+#
+options		TEXTDUMP_PREFERRED
+
+#
+# Enable extra debug messages while performing textdumps.
+#
+options		TEXTDUMP_VERBOSE
+
+#
 # NO_SYSCTL_DESCR omits the sysctl node descriptions to save space in the
 # resulting kernel.
 options		NO_SYSCTL_DESCR
@@ -2141,12 +2151,6 @@ device		ral		# Ralink Technology RT2500 wireless NICs.
 # only works for Tigon II chips, and has no effect for Tigon I chips.
 # This option requires the TI_SF_BUF_JUMBO option above.
 #options 	TI_JUMBO_HDRSPLIT
-
-#
-# Use header splitting feature on bce(4) adapters.
-# This may help to reduce the amount of jumbo-sized memory buffers used.
-#
-options		BCE_JUMBO_HDRSPLIT
 
 # These two options allow manipulating the mbuf cluster size and mbuf size,
 # respectively.  Be very careful with NIC driver modules when changing
