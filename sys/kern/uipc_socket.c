@@ -519,6 +519,7 @@ sonewconn(struct socket *head, int connstatus)
 		    __func__, head->so_pcb);
 		return (NULL);
 	}
+	/* XXXAO: "so" is not locked. */
 	if ((head->so_options & SO_ACCEPTFILTER) != 0)
 		connstatus = 0;
 	so->so_head = head;

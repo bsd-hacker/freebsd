@@ -1034,6 +1034,8 @@ relocked:
 	 * attempt or the completion of a previous one.  Because listen
 	 * sockets are never in TCPS_ESTABLISHED, the V_tcbinfo lock will be
 	 * held in this case.
+	 *
+	 * XXXAO: "so" is not locked!
 	 */
 	if (so->so_options & SO_ACCEPTCONN) {
 		struct in_conninfo inc;
