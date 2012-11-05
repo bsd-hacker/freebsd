@@ -228,7 +228,7 @@ again:
 	tso = 0;
 	mtu = 0;
 	off = tp->snd_nxt - tp->snd_una;
-	sendwin = min(tp->snd_wnd, tp->snd_cwnd);
+	sendwin = ulmax(ulmin(tp->snd_wnd - off, tp->snd_cwnd), 0);
 
 	flags = tcp_outflags[tp->t_state];
 	/*
@@ -249,7 +249,7 @@ again:
 	    (p = tcp_sack_output(tp, &sack_bytes_rxmt))) {
 		long cwin;
 		
-		cwin = min(tp->snd_wnd, tp->snd_cwnd) - sack_bytes_rxmt;
+		cwin = ulmin(tp->snd_wnd - off, tp->snd_cwnd) - sack_bytes_rxmt;
 		if (cwin < 0)
 			cwin = 0;
 		/* Do not retransmit SACK segments beyond snd_recover */
@@ -355,7 +355,7 @@ after_sack_rexmit:
 			 * sending new data, having retransmitted all the
 			 * data possible in the scoreboard.
 			 */
-			len = ((long)ulmin(so->so_snd.sb_cc, tp->snd_wnd) 
+			len = ((long)ulmin(so->so_snd.sb_cc, tp->snd_wnd - off)
 			       - off);
 			/*
 			 * Don't remove this (len > 0) check !
