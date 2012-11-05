@@ -159,7 +159,7 @@ footer() {
 #
 # Create "default" output, sorted on portname
 #
-header "<th>Port</th><th>Aff.</th><th>Size</th><th>CVS</th><th>Maintainer</th><th>Reason</th><th>Build date</th>"
+header "<th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><th>Maintainer</th><th>Reason</th><th>Build date</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort .logs/.all | while read line; do
@@ -178,7 +178,7 @@ sort .logs/.all | while read line; do
     affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
-    echo "<td><a href=\"${VCSWEB}/ports/$5\">$5</a></td>" >> $of
+    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
     echo "<td>$mailto</td>" >> $of
     echo "<td>" >> $of
 
@@ -200,7 +200,7 @@ mv -f $of index.html
 #
 # Create output by category
 #
-header "<th>CVS</th><th>Aff.</th><th>Size</th><th>Port</th><th>Maintainer</th><th>Reason</th><th>Build date</th>"
+header "<th>SVN</th><th>Aff.</th><th>Size</th><th>Port</th><th>Maintainer</th><th>Reason</th><th>Build date</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +4 .logs/.all | while read line; do
@@ -214,7 +214,7 @@ sort -t \| +4 .logs/.all | while read line; do
 
     echo "<tr>" >> $of
 
-    echo "<td><a href=\"${VCSWEB}/ports/$5\">$5</a></td>" >> $of
+    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
 
     affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
@@ -241,7 +241,7 @@ mv -f $of index-category.html
 #
 # Create output by maintainer
 #
-header "<th>Maintainer</th><th>Port</th><th>Aff.</th><th>Size</th><th>CVS</th><th>Reason</th><th>Build date</th>"
+header "<th>Maintainer</th><th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><th>Reason</th><th>Build date</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +5 .logs/.all | while read line; do
@@ -261,7 +261,7 @@ sort -t \| +5 .logs/.all | while read line; do
     affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
-    echo "<td><a href=\"${VCSWEB}/ports/$5\">$5</a></td>" >> $of
+    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
 
     echo "<td>" >> $of
     test "$9" = "broken" && echo "<font color=\"red\">[B]</font>" >> $of
@@ -282,7 +282,7 @@ mv -f $of index-maintainer.html
 #
 # Create output by error
 #
-header "<th>Reason</th><th>Port</th><th>Aff.</th><th>Size</th><th>CVS</th><th>Maintainer</th><th>Build date</th>"
+header "<th>Reason</th><th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><th>Maintainer</th><th>Build date</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +7 .logs/.all | while read line; do
@@ -307,7 +307,7 @@ sort -t \| +7 .logs/.all | while read line; do
     affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
-    echo "<td><a href=\"${VCSWEB}/ports/$5\">$5</a></td>" >> $of
+    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
     echo "<td>$mailto</td>" >> $of
 
     date=`echo ${10} | sed -e "s/_/ /g"`
@@ -323,7 +323,7 @@ mv -f $of index-reason.html
 #
 # Create output by builddate
 #
-header "<th>Build date</th><th>Port</th><th>Aff.</th><th>Size</th><th>CVS</th><th>Maintainer</th><th>Reason</th>"
+header "<th>Build date</th><th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><th>Maintainer</th><th>Reason</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +9 .logs/.all | while read line; do
@@ -346,7 +346,7 @@ sort -t \| +9 .logs/.all | while read line; do
     affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
-    echo "<td><a href=\"${VCSWEB}/ports/$5\">$5</a></td>" >> $of
+    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
     echo "<td>$mailto</td>" >> $of
 
     echo "<td>" >> $of

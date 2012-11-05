@@ -60,7 +60,7 @@ sort -r -n -k 4 -t \| failure > newfailure
 IFS='|'
 while read dir name ver date last count; do
     echo "<tr>" >> $of
-    echo "<td><a href=\"${VCSWEB}/ports/$dir\">$dir</a></td>" >> $of
+    echo "<td><a href=\"${VCSWEB}/$dir\">$dir</a></td>" >> $of
     if [ -L ${pbd}/${arch}/${branch}/latest/${dir} ]; then
       err=$(readlink ${pbd}/${arch}/${branch}/latest/${dir})
       echo "<td><a href=\"${arch}-errorlogs/$(basename $(dirname ${err}))/$(basename ${err})\">$ver</a></td>" >> $of
@@ -69,7 +69,7 @@ while read dir name ver date last count; do
     fi
 
 #    echo "<td align=\"right\">$affby</td><td align=\"right\">$4 Kb</td>" >> $of
-#    echo "<td><a href=\"${VCSWEB}/ports/$5\">$5</a></td>" >> $of
+#    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
 #    echo "<td><a href=\"mailto:$6\">$6</a></td>" >> $of
 #    echo "<td>" >> $of
 
