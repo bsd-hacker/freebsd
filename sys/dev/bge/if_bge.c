@@ -78,9 +78,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
+#include <sys/proc.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
-#include <sys/taskqueue.h>
 
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -403,9 +403,9 @@ static struct mbuf *bge_setup_tso(struct bge_softc *, struct mbuf *,
     uint16_t *, uint16_t *);
 static int bge_encap(struct bge_softc *, struct mbuf **, uint32_t *);
 
-static void bge_intr(void *);
-static int bge_msi_intr(void *);
-static void bge_intr_task(void *, int);
+static int bge_intr_filter(void *);
+static void bge_ithr_msix(void *);
+static void bge_ithr(void *);
 static void bge_start_locked(struct ifnet *);
 static void bge_start(struct ifnet *);
 static int bge_ioctl(struct ifnet *, u_long, caddr_t);
@@ -3221,7 +3221,6 @@ bge_attach(device_t dev)
 	sc->bge_dev = dev;
 
 	BGE_LOCK_INIT(sc, device_get_nameunit(dev));
-	TASK_INIT(&sc->bge_intr_task, 0, bge_intr_task, sc);
 	callout_init_mtx(&sc->bge_stat_ch, &sc->bge_mtx, 0);
 
 	/*
@@ -3837,23 +3836,13 @@ again:
 		/* Take advantage of single-shot MSI. */
 		CSR_WRITE_4(sc, BGE_MSI_MODE, CSR_READ_4(sc, BGE_MSI_MODE) &
 		    ~BGE_MSIMODE_ONE_SHOT_DISABLE);
-		sc->bge_tq = taskqueue_create_fast("bge_taskq", M_WAITOK,
-		    taskqueue_thread_enqueue, &sc->bge_tq);
-		if (sc->bge_tq == NULL) {
-			device_printf(dev, "could not create taskqueue.\n");
-			ether_ifdetach(ifp);
-			error = ENOMEM;
-			goto fail;
-		}
-		taskqueue_start_threads(&sc->bge_tq, 1, PI_NET, "%s taskq",
-		    device_get_nameunit(sc->bge_dev));
 		error = bus_setup_intr(dev, sc->bge_irq,
-		    INTR_TYPE_NET | INTR_MPSAFE, bge_msi_intr, NULL, sc,
-		    &sc->bge_intrhand);
+		    INTR_TYPE_NET | INTR_MPSAFE, bge_intr_filter,
+		    bge_ithr_msix, sc, &sc->bge_intrhand);
 	} else
 		error = bus_setup_intr(dev, sc->bge_irq,
-		    INTR_TYPE_NET | INTR_MPSAFE, NULL, bge_intr, sc,
-		    &sc->bge_intrhand);
+		    INTR_TYPE_NET | INTR_MPSAFE, bge_intr_filter,
+		    bge_ithr, sc, &sc->bge_intrhand);
 
 	if (error) {
 		ether_ifdetach(ifp);
@@ -3888,9 +3877,6 @@ bge_detach(device_t dev)
 		callout_drain(&sc->bge_stat_ch);
 	}
 
-	if (sc->bge_tq)
-		taskqueue_drain(sc->bge_tq, &sc->bge_intr_task);
-
 	if (sc->bge_flags & BGE_FLAG_TBI) {
 		ifmedia_removeall(&sc->bge_ifmedia);
 	} else {
@@ -3909,9 +3895,6 @@ bge_release_resources(struct bge_softc *sc)
 	device_t dev;
 
 	dev = sc->bge_dev;
-
-	if (sc->bge_tq != NULL)
-		taskqueue_free(sc->bge_tq);
 
 	if (sc->bge_intrhand != NULL)
 		bus_teardown_intr(dev, sc->bge_irq, sc->bge_intrhand);
@@ -4221,6 +4204,7 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod, int holdlck)
 {
 	struct ifnet *ifp;
 	int rx_npkts = 0, stdcnt = 0, jumbocnt = 0;
+	int pkts = 0;
 	uint16_t rx_cons;
 
 	rx_cons = sc->bge_rx_saved_considx;
@@ -4325,6 +4309,10 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod, int holdlck)
 		if (holdlck != 0) {
 			BGE_UNLOCK(sc);
 			(*ifp->if_input)(ifp, m);
+			if (++pkts > 10) {
+				maybe_yield();
+				pkts = 0;
+			}
 			BGE_LOCK(sc);
 		} else
 			(*ifp->if_input)(ifp, m);
@@ -4499,7 +4487,7 @@ bge_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
 #endif /* DEVICE_POLLING */
 
 static int
-bge_msi_intr(void *arg)
+bge_intr_filter(void *arg)
 {
 	struct bge_softc *sc;
 
@@ -4508,12 +4496,11 @@ bge_msi_intr(void *arg)
 	 * This interrupt is not shared and controller already
 	 * disabled further interrupt.
 	 */
-	taskqueue_enqueue(sc->bge_tq, &sc->bge_intr_task);
-	return (FILTER_HANDLED);
+	return (FILTER_SCHEDULE_THREAD);
 }
 
 static void
-bge_intr_task(void *arg, int pending)
+bge_ithr_msix(void *arg)
 {
 	struct bge_softc *sc;
 	struct ifnet *ifp;
@@ -4567,10 +4554,11 @@ bge_intr_task(void *arg, int pending)
 			bge_start_locked(ifp);
 	}
 	BGE_UNLOCK(sc);
+	return;
 }
 
 static void
-bge_intr(void *xsc)
+bge_ithr(void *xsc)
 {
 	struct bge_softc *sc;
 	struct ifnet *ifp;
@@ -4648,6 +4636,7 @@ bge_intr(void *xsc)
 		bge_start_locked(ifp);
 
 	BGE_UNLOCK(sc);
+	return;
 }
 
 static void
