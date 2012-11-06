@@ -33,7 +33,6 @@
 /*$FreeBSD$*/
 
 #ifdef HAVE_KERNEL_OPTION_HEADERS
-#include "opt_device_polling.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #endif
@@ -292,10 +291,6 @@ static int	em_set_flowcntl(SYSCTL_HANDLER_ARGS);
 static int	em_sysctl_eee(SYSCTL_HANDLER_ARGS);
 
 static __inline void em_rx_discard(struct rx_ring *, int);
-
-#ifdef DEVICE_POLLING
-static poll_handler_t em_poll;
-#endif /* POLLING */
 
 /*********************************************************************
  *  FreeBSD Device Interface Entry Points
@@ -772,11 +767,6 @@ em_detach(device_t dev)
 		return (EBUSY);
 	}
 
-#ifdef DEVICE_POLLING
-	if (ifp->if_capenable & IFCAP_POLLING)
-		ether_poll_deregister(ifp);
-#endif
-
 	if (adapter->led_dev != NULL)
 		led_destroy(adapter->led_dev);
 
@@ -1162,10 +1152,7 @@ em_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 			EM_CORE_LOCK(adapter);
 			em_disable_intr(adapter);
 			em_set_multi(adapter);
-#ifdef DEVICE_POLLING
-			if (!(ifp->if_capenable & IFCAP_POLLING))
-#endif
-				em_enable_intr(adapter);
+			em_enable_intr(adapter);
 			EM_CORE_UNLOCK(adapter);
 		}
 		break;
@@ -1192,26 +1179,7 @@ em_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		IOCTL_DEBUGOUT("ioctl rcv'd: SIOCSIFCAP (Set Capabilities)");
 		reinit = 0;
 		mask = ifr->ifr_reqcap ^ ifp->if_capenable;
-#ifdef DEVICE_POLLING
-		if (mask & IFCAP_POLLING) {
-			if (ifr->ifr_reqcap & IFCAP_POLLING) {
-				error = ether_poll_register(em_poll, ifp);
-				if (error)
-					return (error);
-				EM_CORE_LOCK(adapter);
-				em_disable_intr(adapter);
-				ifp->if_capenable |= IFCAP_POLLING;
-				EM_CORE_UNLOCK(adapter);
-			} else {
-				error = ether_poll_deregister(ifp);
-				/* Enable interrupt even in error case */
-				EM_CORE_LOCK(adapter);
-				em_enable_intr(adapter);
-				ifp->if_capenable &= ~IFCAP_POLLING;
-				EM_CORE_UNLOCK(adapter);
-			}
-		}
-#endif
+
 		if (mask & IFCAP_HWCSUM) {
 			ifp->if_capenable ^= IFCAP_HWCSUM;
 			reinit = 1;
@@ -1373,16 +1341,7 @@ em_init_locked(struct adapter *adapter)
 		E1000_WRITE_REG(&adapter->hw, E1000_IVAR, adapter->ivars);
 	}
 
-#ifdef DEVICE_POLLING
-	/*
-	 * Only enable interrupts if we are not polling, make sure
-	 * they are off otherwise.
-	 */
-	if (ifp->if_capenable & IFCAP_POLLING)
-		em_disable_intr(adapter);
-	else
-#endif /* DEVICE_POLLING */
-		em_enable_intr(adapter);
+	em_enable_intr(adapter);
 
 	/* AMT based hardware can now take control from firmware */
 	if (adapter->has_manage && adapter->has_amt)
@@ -1398,58 +1357,6 @@ em_init(void *arg)
 	em_init_locked(adapter);
 	EM_CORE_UNLOCK(adapter);
 }
-
-
-#ifdef DEVICE_POLLING
-/*********************************************************************
- *
- *  Legacy polling routine: note this only works with single queue
- *
- *********************************************************************/
-static int
-em_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
-{
-	struct adapter *adapter = ifp->if_softc;
-	struct tx_ring	*txr = adapter->tx_rings;
-	struct rx_ring	*rxr = adapter->rx_rings;
-	u32		reg_icr;
-	int		rx_done;
-
-	EM_CORE_LOCK(adapter);
-	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
-		EM_CORE_UNLOCK(adapter);
-		return (0);
-	}
-
-	if (cmd == POLL_AND_CHECK_STATUS) {
-		reg_icr = E1000_READ_REG(&adapter->hw, E1000_ICR);
-		if (reg_icr & (E1000_ICR_RXSEQ | E1000_ICR_LSC)) {
-			callout_stop(&adapter->timer);
-			adapter->hw.mac.get_link_status = 1;
-			em_update_link_status(adapter);
-			callout_reset(&adapter->timer, hz,
-			    em_local_timer, adapter);
-		}
-	}
-	EM_CORE_UNLOCK(adapter);
-
-	em_rxeof(rxr, count, &rx_done);
-
-	EM_TX_LOCK(txr);
-	em_txeof(txr);
-#ifdef EM_MULTIQUEUE
-	if (!drbr_empty(ifp, txr->br))
-		em_mq_start_locked(ifp, txr, NULL);
-#else
-	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
-		em_start_locked(ifp, txr);
-#endif
-	EM_TX_UNLOCK(txr);
-
-	return (rx_done);
-}
-#endif /* DEVICE_POLLING */
-
 
 /*********************************************************************
  *
@@ -2256,10 +2163,8 @@ em_local_timer(void *arg)
 	
 	adapter->pause_frames = 0;
 	callout_reset(&adapter->timer, hz, em_local_timer, adapter);
-#ifndef DEVICE_POLLING
 	/* Trigger an RX interrupt to guarantee mbuf refresh */
 	E1000_WRITE_REG(&adapter->hw, E1000_ICS, trigger);
-#endif
 	return;
 hung:
 	/* Looks like we're hung */
@@ -2979,10 +2884,6 @@ em_setup_interface(device_t dev, struct adapter *adapter)
 	** enable this and get full hardware tag filtering.
 	*/
 	ifp->if_capabilities |= IFCAP_VLAN_HWFILTER;
-
-#ifdef DEVICE_POLLING
-	ifp->if_capabilities |= IFCAP_POLLING;
-#endif
 
 	/* Enable only WOL MAGIC by default */
 	if (adapter->wol) {
@@ -4388,7 +4289,6 @@ em_initialize_receive_unit(struct adapter *adapter)
  *  We loop at most count times if count is > 0, or until done if
  *  count < 0.
  *  
- *  For polling we also now return the number of cleaned packets
  *********************************************************************/
 static bool
 em_rxeof(struct rx_ring *rxr, int count, int *done)
