@@ -278,16 +278,16 @@ init_param2(long physpages)
 		maxusers = physpages / (2 * 1024 * 1024 / PAGE_SIZE);
 		if (maxusers < 32)
 			maxusers = 32;
+#ifdef VM_MAX_AUTOTUNE_MAXUSERS
+		if (maxusers > VM_MAX_AUTOTUNE_MAXUSERS)
+			maxusers = VM_MAX_AUTOTUNE_MAXUSERS;
+#endif
 		/*
-		 * Clips maxusers to 384 on machines with <= 4GB RAM or 32bit.
-		 * Scales it down 6x for large memory machines.
+		 * Scales down the function in which maxusers grows once
+		 * we hit 384
 		 */
-		if (maxusers > 384) {
-			if (sizeof(void *) <= 4)
-			    maxusers = 384;
-			else
-			    maxusers = 384 + ((maxusers - 384) / 6);
-		}
+		if (maxusers > 384)
+			maxusers = 384 + ((maxusers - 384) / 4);
 	}
 
 	/*
