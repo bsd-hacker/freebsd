@@ -112,6 +112,14 @@ struct mbuf;
 #include <net/radix_mpath.h>
 #endif
 #endif
+struct rtgw {
+	struct	ifnet *rtgw_ifp;	/* the answer: interface to use */
+	struct	sockaddr *rtgw_gateway;	/* value */
+	uint16_t rtgw_flags;		/* nexthop flags */
+	uint8_t	rtgw_priority;		/* nexthop weight */
+};
+#define	RTGW_VALID	0x00000001
+
 struct rtentry {
 	struct	radix_node rt_nodes[2];	/* tree glue, and other values */
 	/*
@@ -121,18 +129,19 @@ struct rtentry {
 	 */
 #define	rt_key(r)	(*((struct sockaddr **)(&(r)->rt_nodes->rn_key)))
 #define	rt_mask(r)	(*((struct sockaddr **)(&(r)->rt_nodes->rn_mask)))
-	struct	sockaddr *rt_gateway;	/* value */
 	int	rt_flags;		/* up/down?, host/net */
-	int	rt_refcnt;		/* # held references */
-	struct	ifnet *rt_ifp;		/* the answer: interface to use */
+	struct	rtgw rt_gw[8];		/* equal cost multipath */
 	struct	ifaddr *rt_ifa;		/* the answer: interface address to use */
 	struct	rt_metrics_lite rt_rmx;	/* metrics used by rx'ing protocols */
 	u_int	rt_fibnum;		/* which FIB */
+	int	rt_refcnt;		/* # held references */
 #ifdef _KERNEL
 	/* XXX ugly, user apps use this definition but don't have a mtx def */
 	struct	mtx rt_mtx;		/* mutex for routing entry */
 #endif
 };
+#define	rt_ifp		rt_gw[0].rtgw_ifp
+#define	rt_gateway	rt_gw[0].rtgw_gateway
 
 /*
  * Following structure necessary for 4.3 compatibility;
@@ -141,11 +150,11 @@ struct rtentry {
 struct ortentry {
 	u_long	rt_hash;		/* to speed lookups */
 	struct	sockaddr rt_dst;	/* key */
-	struct	sockaddr rt_gateway;	/* value */
+	struct	sockaddr rt_gateway_o;	/* value */
 	short	rt_flags;		/* up/down?, host/net */
 	short	rt_refcnt;		/* # held references */
 	u_long	rt_use;			/* raw # packets forwarded */
-	struct	ifnet *rt_ifp;		/* the answer: interface to use */
+	struct	ifnet *rt_ifp_o;	/* the answer: interface to use */
 };
 
 #define rt_use rt_rmx.rmx_pksent
