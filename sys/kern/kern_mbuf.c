@@ -102,6 +102,30 @@ int nmbjumbo9;			/* limits number of 9k jumbo clusters */
 int nmbjumbo16;			/* limits number of 16k jumbo clusters */
 struct mbstat mbstat;
 
+static int 
+nmbclusters_from_physpages(void)
+{
+	long factor;
+	long rv;
+    
+	factor = physmem / (2 * 1024 * 1024 / PAGE_SIZE);
+	if (factor < 32)
+		factor = 32;
+	/* after 384, switch scale to 1/4 */
+	if (factor > 384)
+		factor = 384 + (factor - 384) / 4;
+	rv = 1024 + factor * 64;
+	/*
+	 * allow a platform specific override to prevent exhausting
+	 * kernel memory on large memory + small address space machines.
+	 */
+#ifdef MAX_AUTOTUNE_NMBCLUSTERS
+	if (rv > MAX_AUTOTUNE_NMBCLUSTERS)
+		rv = MAX_AUTOTUNE_NMBCLUSTERS
+#endif
+	return (rv);
+}
+
 /*
  * tunable_mbinit() has to be run before init_maxsockets() thus
  * the SYSINIT order below is SI_ORDER_MIDDLE while init_maxsockets()
@@ -114,7 +138,7 @@ tunable_mbinit(void *dummy)
 	/* This has to be done before VM init. */
 	TUNABLE_INT_FETCH("kern.ipc.nmbclusters", &nmbclusters);
 	if (nmbclusters == 0)
-		nmbclusters = 1024 + maxusers * 64;
+		nmbclusters = nmbclusters_from_physpages();
 
 	TUNABLE_INT_FETCH("kern.ipc.nmbjumbop", &nmbjumbop);
 	if (nmbjumbop == 0)

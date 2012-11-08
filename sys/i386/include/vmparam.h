@@ -202,4 +202,9 @@
 
 #define	ZERO_REGION_SIZE	(64 * 1024)	/* 64KB */
 
+#ifndef MAX_AUTOTUNE_NMBCLUSTERS
+/* old maxusers max value. */
+#define MAX_AUTOTUNE_NMBCLUSTERS (1024 + 384 * 64)
+#endif
+
 #endif /* _MACHINE_VMPARAM_H_ */
