@@ -120,8 +120,8 @@ tunable_mbinit(void *dummy)
 		nmbclusters = 1024 + maxusers * 64;
 #endif 
 #ifdef VM_MAX_AUTOTUNE_NMBCLUSTERS
-		if (rv > VM_MAX_AUTOTUNE_NMBCLUSTERS)
-			rv = VM_MAX_AUTOTUNE_NMBCLUSTERS;
+		if (nmbclusters > VM_MAX_AUTOTUNE_NMBCLUSTERS)
+			nmbclusters = VM_MAX_AUTOTUNE_NMBCLUSTERS;
 #endif
 	}
 
