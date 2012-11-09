@@ -4190,6 +4190,94 @@ bge_rxreuse_jumbo(struct bge_softc *sc, int i)
 	BGE_INC(sc->bge_jumbo, BGE_JUMBO_RX_RING_CNT);
 }
 
+struct mbuf *
+bge_rx_packet(struct ifnet *ifp, struct bge_rx_bd *rx, uint16_t rxidx,
+    struct bge_softc *sc) {
+	struct mbuf *m = NULL;
+
+	if (rx->bge_flags & BGE_RXBDFLAG_JUMBO_RING) {
+		m = sc->bge_cdata.bge_rx_jumbo_chain[rxidx];
+		if (rx->bge_flags & BGE_RXBDFLAG_ERROR) {
+			bge_rxreuse_jumbo(sc, rxidx);
+			return (NULL);
+		}
+		if (bge_newbuf_jumbo(sc, rxidx) != 0) {
+			bge_rxreuse_jumbo(sc, rxidx);
+			ifp->if_iqdrops++;
+			return (NULL);
+		}
+		BGE_INC(sc->bge_jumbo, BGE_JUMBO_RX_RING_CNT);
+	} else {
+		m = sc->bge_cdata.bge_rx_std_chain[rxidx];
+		if (rx->bge_flags & BGE_RXBDFLAG_ERROR) {
+			bge_rxreuse_std(sc, rxidx);
+			return (NULL);
+		}
+		if (bge_newbuf_std(sc, rxidx) != 0) {
+			bge_rxreuse_std(sc, rxidx);
+			ifp->if_iqdrops++;
+			return (NULL);
+		}
+		BGE_INC(sc->bge_std, BGE_STD_RX_RING_CNT);
+	}
+	m->m_pkthdr.len = m->m_len = rx->bge_len - ETHER_CRC_LEN;
+	m->m_pkthdr.rcvif = ifp;
+
+	if ((ifp->if_capenable & IFCAP_RXCSUM) &&
+	    BGE_IS_5717_PLUS(sc)) {
+		if ((rx->bge_flags & BGE_RXBDFLAG_IPV6) == 0) {
+			if (rx->bge_flags & BGE_RXBDFLAG_IP_CSUM) {
+				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				if ((rx->bge_error_flag &
+				    BGE_RXERRFLAG_IP_CSUM_NOK) == 0)
+					m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+			}
+			if (rx->bge_flags & BGE_RXBDFLAG_TCP_UDP_CSUM) {
+				m->m_pkthdr.csum_data =
+				    rx->bge_tcp_udp_csum;
+				m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
+				    CSUM_PSEUDO_HDR;
+			}
+		}
+	} else if (ifp->if_capenable & IFCAP_RXCSUM) {
+		if (rx->bge_flags & BGE_RXBDFLAG_IP_CSUM) {
+			m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+			if ((rx->bge_ip_csum ^ 0xFFFF) == 0)
+				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+		}
+		if (rx->bge_flags & BGE_RXBDFLAG_TCP_UDP_CSUM &&
+		    m->m_pkthdr.len >= ETHER_MIN_NOPAD) {
+			m->m_pkthdr.csum_data =
+			    rx->bge_tcp_udp_csum;
+			m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
+			    CSUM_PSEUDO_HDR;
+		}
+	}
+
+	/*
+	 * If we received a packet with a vlan tag,
+	 * attach that information to the packet.
+	 */
+	if (ifp->if_capenable & IFCAP_VLAN_HWTAGGING &&
+	    rx->bge_flags & BGE_RXBDFLAG_VLAN_TAG) {
+		m->m_pkthdr.ether_vtag = rx->bge_vlan_tag;
+		m->m_flags |= M_VLANTAG;
+	}
+
+#ifndef __NO_STRICT_ALIGNMENT
+	/*
+	 * For architectures with strict alignment we must make sure
+	 * the payload is aligned.
+	 */
+	if (sc->bge_flags & BGE_FLAG_RX_ALIGNBUG) {
+		bcopy(m->m_data, m->m_data + ETHER_ALIGN, m->m-len);
+		m->m_data += ETHER_ALIGN;
+	}
+#endif
+	ifp->if_ipackets++;
+	return (m);
+}
+
 /*
  * Frame reception handling. This is called if there's a frame
  * on the receive return list.
@@ -4198,14 +4286,14 @@ bge_rxreuse_jumbo(struct bge_softc *sc, int i)
  * 1) the frame is from the jumbo receive ring
  * 2) the frame is from the standard receive ring
  */
-
 static int
-bge_rxeof(struct bge_softc *sc, uint16_t rx_prod, int holdlck)
+bge_rxeof(struct bge_softc *sc, uint16_t rx_prod)
 {
 	struct ifnet *ifp;
 	int rx_npkts = 0, stdcnt = 0, jumbocnt = 0;
 	int pkts = 0;
 	uint16_t rx_cons;
+	struct mbuf *m = NULL, n = NULL;
 
 	rx_cons = sc->bge_rx_saved_considx;
 
@@ -4228,119 +4316,41 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod, int holdlck)
 	while (rx_cons != rx_prod) {
 		struct bge_rx_bd	*cur_rx;
 		uint32_t		rxidx;
-		struct mbuf		*m = NULL;
-		uint16_t		vlan_tag = 0;
-		int			have_tag = 0;
-
-#ifdef DEVICE_POLLING
-		if (ifp->if_capenable & IFCAP_POLLING) {
-			if (sc->rxcycles <= 0)
-				break;
-			sc->rxcycles--;
-		}
-#endif
+		struct mbuf		*mm;
 
 		cur_rx = &sc->bge_ldata.bge_rx_return_ring[rx_cons];
 
 		rxidx = cur_rx->bge_idx;
 		BGE_INC(rx_cons, sc->bge_return_ring_cnt);
 
-		if (ifp->if_capenable & IFCAP_VLAN_HWTAGGING &&
-		    cur_rx->bge_flags & BGE_RXBDFLAG_VLAN_TAG) {
-			have_tag = 1;
-			vlan_tag = cur_rx->bge_vlan_tag;
-		}
-
-		if (cur_rx->bge_flags & BGE_RXBDFLAG_JUMBO_RING) {
-			jumbocnt++;
-			m = sc->bge_cdata.bge_rx_jumbo_chain[rxidx];
-			if (cur_rx->bge_flags & BGE_RXBDFLAG_ERROR) {
-				bge_rxreuse_jumbo(sc, rxidx);
-				continue;
-			}
-			if (bge_newbuf_jumbo(sc, rxidx) != 0) {
-				bge_rxreuse_jumbo(sc, rxidx);
-				ifp->if_iqdrops++;
-				continue;
-			}
-			BGE_INC(sc->bge_jumbo, BGE_JUMBO_RX_RING_CNT);
-		} else {
-			stdcnt++;
-			m = sc->bge_cdata.bge_rx_std_chain[rxidx];
-			if (cur_rx->bge_flags & BGE_RXBDFLAG_ERROR) {
-				bge_rxreuse_std(sc, rxidx);
-				continue;
-			}
-			if (bge_newbuf_std(sc, rxidx) != 0) {
-				bge_rxreuse_std(sc, rxidx);
-				ifp->if_iqdrops++;
-				continue;
-			}
-			BGE_INC(sc->bge_std, BGE_STD_RX_RING_CNT);
-		}
-
-		ifp->if_ipackets++;
-#ifndef __NO_STRICT_ALIGNMENT
-		/*
-		 * For architectures with strict alignment we must make sure
-		 * the payload is aligned.
-		 */
-		if (sc->bge_flags & BGE_FLAG_RX_ALIGNBUG) {
-			bcopy(m->m_data, m->m_data + ETHER_ALIGN,
-			    cur_rx->bge_len);
-			m->m_data += ETHER_ALIGN;
-		}
-#endif
-		m->m_pkthdr.len = m->m_len = cur_rx->bge_len - ETHER_CRC_LEN;
-		m->m_pkthdr.rcvif = ifp;
-
-		if (ifp->if_capenable & IFCAP_RXCSUM)
-			bge_rxcsum(sc, cur_rx, m);
-
-		/*
-		 * If we received a packet with a vlan tag,
-		 * attach that information to the packet.
-		 */
-		if (have_tag) {
-			m->m_pkthdr.ether_vtag = vlan_tag;
-			m->m_flags |= M_VLANTAG;
-		}
-
-		if (holdlck != 0) {
-			BGE_UNLOCK(sc);
-			(*ifp->if_input)(ifp, m);
-			if (++pkts > 10) {
-				maybe_yield();
-				pkts = 0;
-			}
-			BGE_LOCK(sc);
+		mm = bge_rx_packet(ifp, cur_rx, rxidx, sc);
+		if (mm != NULL) {
+			if (n != NULL)
+				n->m_nextpkt = mm;
+			else
+				m = n = mm;
 		} else
-			(*ifp->if_input)(ifp, m);
-		rx_npkts++;
-
-		if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
-			return (rx_npkts);
+			continue;
 	}
 
 	bus_dmamap_sync(sc->bge_cdata.bge_rx_return_ring_tag,
 	    sc->bge_cdata.bge_rx_return_ring_map, BUS_DMASYNC_PREREAD);
-	if (stdcnt > 0)
+	if (stdcnt > 0) {
 		bus_dmamap_sync(sc->bge_cdata.bge_rx_std_ring_tag,
 		    sc->bge_cdata.bge_rx_std_ring_map, BUS_DMASYNC_PREWRITE);
-
-	if (jumbocnt > 0)
-		bus_dmamap_sync(sc->bge_cdata.bge_rx_jumbo_ring_tag,
-		    sc->bge_cdata.bge_rx_jumbo_ring_map, BUS_DMASYNC_PREWRITE);
-
-	sc->bge_rx_saved_considx = rx_cons;
-	bge_writembx(sc, BGE_MBX_RX_CONS0_LO, sc->bge_rx_saved_considx);
-	if (stdcnt)
 		bge_writembx(sc, BGE_MBX_RX_STD_PROD_LO, (sc->bge_std +
 		    BGE_STD_RX_RING_CNT - 1) % BGE_STD_RX_RING_CNT);
-	if (jumbocnt)
+	}
+	if (jumbocnt > 0) {
+		bus_dmamap_sync(sc->bge_cdata.bge_rx_jumbo_ring_tag,
+		    sc->bge_cdata.bge_rx_jumbo_ring_map, BUS_DMASYNC_PREWRITE);
 		bge_writembx(sc, BGE_MBX_RX_JUMBO_PROD_LO, (sc->bge_jumbo +
 		    BGE_JUMBO_RX_RING_CNT - 1) % BGE_JUMBO_RX_RING_CNT);
-#ifdef notyet
+	}
+	sc->bge_rx_saved_considx = rx_cons;
+	bge_writembx(sc, BGE_MBX_RX_CONS0_LO, sc->bge_rx_saved_considx);
+
+#if 0
 	/*
 	 * This register wraps very quickly under heavy packet drops.
 	 * If you need correct statistics, you can enable this check.
@@ -4348,42 +4358,19 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod, int holdlck)
 	if (BGE_IS_5705_PLUS(sc))
 		ifp->if_ierrors += CSR_READ_4(sc, BGE_RXLP_LOCSTAT_IFIN_DROPS);
 #endif
+
+        BGE_UNLOCK(sc);
+        while (m != NULL) {
+                /* n = SLIST_REMOVE_HEAD(m, nxtpkt); /*
+                n = m;
+                m = n->m_nextpkt;
+                n->m_nextpkt = NULL;
+                (*ifp->if_input)(ifp, n);
+        }
+        maybe_yield();
+        BGE_LOCK(sc);
+
 	return (rx_npkts);
-}
-
-static void
-bge_rxcsum(struct bge_softc *sc, struct bge_rx_bd *cur_rx, struct mbuf *m)
-{
-
-	if (BGE_IS_5717_PLUS(sc)) {
-		if ((cur_rx->bge_flags & BGE_RXBDFLAG_IPV6) == 0) {
-			if (cur_rx->bge_flags & BGE_RXBDFLAG_IP_CSUM) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
-				if ((cur_rx->bge_error_flag &
-				    BGE_RXERRFLAG_IP_CSUM_NOK) == 0)
-					m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
-			}
-			if (cur_rx->bge_flags & BGE_RXBDFLAG_TCP_UDP_CSUM) {
-				m->m_pkthdr.csum_data =
-				    cur_rx->bge_tcp_udp_csum;
-				m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
-				    CSUM_PSEUDO_HDR;
-			}
-		}
-	} else {
-		if (cur_rx->bge_flags & BGE_RXBDFLAG_IP_CSUM) {
-			m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
-			if ((cur_rx->bge_ip_csum ^ 0xFFFF) == 0)
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
-		}
-		if (cur_rx->bge_flags & BGE_RXBDFLAG_TCP_UDP_CSUM &&
-		    m->m_pkthdr.len >= ETHER_MIN_NOPAD) {
-			m->m_pkthdr.csum_data =
-			    cur_rx->bge_tcp_udp_csum;
-			m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
-			    CSUM_PSEUDO_HDR;
-		}
-	}
 }
 
 static void
@@ -4554,7 +4541,6 @@ bge_ithr_msix(void *arg)
 			bge_start_locked(ifp);
 	}
 	BGE_UNLOCK(sc);
-	return;
 }
 
 static void
@@ -4636,7 +4622,6 @@ bge_ithr(void *xsc)
 		bge_start_locked(ifp);
 
 	BGE_UNLOCK(sc);
-	return;
 }
 
 static void
