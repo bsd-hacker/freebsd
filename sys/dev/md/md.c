@@ -110,6 +110,10 @@ static int md_malloc_wait;
 SYSCTL_INT(_vm, OID_AUTO, md_malloc_wait, CTLFLAG_RW, &md_malloc_wait, 0,
     "Allow malloc to wait for memory allocations");
 
+#if defined(MD_ROOT) && !defined(MD_ROOT_FSTYPE)
+#define	MD_ROOT_FSTYPE	"ufs"
+#endif
+
 #if defined(MD_ROOT) && defined(MD_ROOT_SIZE)
 /*
  * Preloaded image gets put here.
@@ -673,6 +677,15 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 				sched_unpin();
 				vm_page_wakeup(m);
 				break;
+			} else if (rv == VM_PAGER_FAIL) {
+				/*
+				 * Pager does not have the page.  Zero
+				 * the allocated page, and mark it as
+				 * valid. Do not set dirty, the page
+				 * can be recreated if thrown out.
+				 */
+				bzero((void *)sf_buf_kva(sf), PAGE_SIZE);
+				m->valid = VM_PAGE_BITS_ALL;
 			}
 			bcopy((void *)(sf_buf_kva(sf) + offs), p, len);
 			cpu_flush_dcache(p, len);
@@ -1328,7 +1341,7 @@ md_preloaded(u_char *image, size_t length)
 	sc->start = mdstart_preload;
 #ifdef MD_ROOT
 	if (sc->unit == 0)
-		rootdevnames[0] = "ufs:/dev/md0";
+		rootdevnames[0] = MD_ROOT_FSTYPE ":/dev/md0";
 #endif
 	mdinit(sc);
 }

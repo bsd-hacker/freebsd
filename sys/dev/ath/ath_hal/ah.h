@@ -570,6 +570,15 @@ typedef enum {
 	HAL_GPIO_INTR_DISABLE		= 2
 } HAL_GPIO_INTR_TYPE;
 
+typedef struct halCounters {
+    u_int32_t   tx_frame_count;
+    u_int32_t   rx_frame_count;
+    u_int32_t   rx_clear_count;
+    u_int32_t   cycle_count;
+    u_int8_t    is_rx_active;     // true (1) or false (0)
+    u_int8_t    is_tx_active;     // true (1) or false (0)
+} HAL_COUNTERS;
+
 typedef enum {
 	HAL_RFGAIN_INACTIVE		= 0,
 	HAL_RFGAIN_READ_REQUESTED	= 1,
@@ -1206,6 +1215,9 @@ typedef struct
 	int ath_hal_enable_ani;	/* should set this.. */
 	int ath_hal_cwm_ignore_ext_cca;
 	int ath_hal_show_bb_panic;
+	int ath_hal_ant_ctrl_comm2g_switch_enable;
+	int ath_hal_ext_atten_margin_cfg;
+	int ath_hal_war70c;
 } HAL_OPS_CONFIG;
 
 /*
@@ -1314,6 +1326,7 @@ struct ath_hal {
 	void	  __ahdecl(*ah_setupTxStatusRing)(struct ath_hal *,
 				void *ts_start, uint32_t ts_paddr_start,
 				uint16_t size);
+	void	  __ahdecl(*ah_getTxRawTxDesc)(struct ath_hal *, u_int32_t *);
 
 	/* Receive Functions */
 	uint32_t __ahdecl(*ah_getRxDP)(struct ath_hal*, HAL_RX_QUEUE);
@@ -1469,7 +1482,7 @@ struct ath_hal {
 				void *, u_int, HAL_PKT_TYPE, u_int, u_int,
 				u_int);
 	void	  __ahdecl(*ah_set11nAggrFirst)(struct ath_hal *,
-				struct ath_desc *, u_int);
+				struct ath_desc *, u_int, u_int);
 	void	  __ahdecl(*ah_set11nAggrMiddle)(struct ath_hal *,
 	    			struct ath_desc *, u_int);
 	void	  __ahdecl(*ah_set11nAggrLast)(struct ath_hal *,
