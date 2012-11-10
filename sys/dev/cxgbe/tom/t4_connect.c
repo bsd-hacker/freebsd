@@ -279,7 +279,7 @@ t4_connect(struct toedev *tod, struct socket *so, struct rtentry *rt,
 	struct wrqe *wr = NULL;
 	struct cpl_act_open_req *cpl;
 	struct l2t_entry *e = NULL;
-	struct ifnet *rt_ifp = rt->rt_ifp;
+	struct ifnet *ifp = rt->rt_ifp;
 	struct port_info *pi;
 	int atid = -1, mtu_idx, rscale, qid_atid, rc = ENOMEM;
 	struct inpcb *inp = sotoinpcb(so);
@@ -290,13 +290,13 @@ t4_connect(struct toedev *tod, struct socket *so, struct rtentry *rt,
 	if (nam->sa_family != AF_INET)
 		CXGBE_UNIMPLEMENTED("IPv6 connect");
 
-	if (rt_ifp->if_type == IFT_ETHER)
-		pi = rt_ifp->if_softc;
-	else if (rt_ifp->if_type == IFT_L2VLAN) {
-		struct ifnet *ifp = VLAN_COOKIE(rt_ifp);
-
+	if (ifp->if_type == IFT_ETHER)
 		pi = ifp->if_softc;
-	} else if (rt_ifp->if_type == IFT_IEEE8023ADLAG)
+	else if (ifp->if_type == IFT_L2VLAN) {
+		struct ifnet *ifp_v = VLAN_COOKIE(ifp);
+
+		pi = ifp_v->if_softc;
+	} else if (ifp->if_type == IFT_IEEE8023ADLAG)
 		return (ENOSYS);	/* XXX: implement lagg support */
 	else
 		return (ENOTSUP);
@@ -309,7 +309,7 @@ t4_connect(struct toedev *tod, struct socket *so, struct rtentry *rt,
 	if (atid < 0)
 		goto failed;
 
-	e = t4_l2t_get(pi, rt_ifp,
+	e = t4_l2t_get(pi, ifp,
 	    rt->rt_flags & RTF_GATEWAY ? rt->rt_gateway : nam);
 	if (e == NULL)
 		goto failed;
