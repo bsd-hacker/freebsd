@@ -915,6 +915,7 @@ struct mbuf	*m_pullup(struct mbuf *, int);
 int		m_sanity(struct mbuf *, int);
 struct mbuf	*m_split(struct mbuf *, int, int);
 struct mbuf	*m_uiotombuf(struct uio *, int, int, int, int);
+struct mbuf	*m_uiotosfmbuf(struct uio *, int, int, int, int);
 struct mbuf	*m_unshare(struct mbuf *, int how);
 
 /*-

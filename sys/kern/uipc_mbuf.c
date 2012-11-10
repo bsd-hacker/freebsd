@@ -43,10 +43,16 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
+#include <sys/mutex.h>
+#include <sys/sf_buf.h>
 #include <sys/sysctl.h>
 #include <sys/domain.h>
+#include <sys/proc.h>
 #include <sys/protosw.h>
 #include <sys/uio.h>
+
+#include <vm/vm_extern.h>
+#include <vm/vm_map.h>
 
 int	max_linkhdr;
 int	max_protohdr;
@@ -1772,6 +1778,107 @@ m_uiotombuf(struct uio *uio, int how, int len, int align, int flags)
 	}
 	KASSERT(progress == total, ("%s: progress != total", __func__));
 
+	return (m);
+}
+
+/*
+ * Turn the contents of uio into a sfbuf attached mbuf chain.
+ */
+#define	STACKPAGES	32
+struct mbuf *
+m_uiotosfmbuf(struct uio *uio, int how, int len, int align, int flags)
+{
+	vm_page_t pp[STACKPAGES], p;
+	struct vm_map *map;
+	struct iovec *iov;
+	struct sf_buf *sf;
+	struct mbuf *m, *m0, *n;
+	int iolen, pages, mallocfree;
+	vm_offset_t uva, kva;
+	vm_size_t plen;
+
+	m = n = NULL;
+	map = &curproc->p_vmspace->vm_map;
+	mallocfree = 0;
+
+	while (uio->uio_iovcnt > 0 && uio->uio_resid > 0) {
+
+		iov = uio->uio_iov;
+		iolen = iov->iov_len;
+		uva = (vm_offset_t)iov->iov_base;
+
+		if (iolen == 0) {
+			uio->uio_iov++;
+			uio->uio_iovcnt--;
+			continue;
+		}
+
+		pages = howmany(uva + iov->iov_len - (uva & PAGE_MASK), PAGE_SIZE);
+		if (pages > STACKPAGES) {
+			p = malloc(pages * sizeof(vm_page_t), M_TEMP, how);
+			if (p == NULL)
+				goto out;
+			mallocfree = 1;
+		} else
+			p = pp[0];
+
+		/* Verify that access to the given address is allowed from user-space. */
+		if (vm_fault_quick_hold_pages(map, uva, plen, VM_PROT_READ, &p, pages) < 0)
+			goto out;
+
+		while (--pages) {
+			m0 = m_get(how, MT_DATA);
+			if (m0 == NULL)
+				goto out;
+			sf = sf_buf_alloc(p, SFB_CATCH);
+			if (sf == NULL)
+				goto out;
+
+			vm_page_lock(p);
+			vm_page_wire(p);
+			vm_page_unhold(p);
+			vm_page_unlock(p);
+
+			/* attach to mbuf */
+			kva = sf_buf_kva(sf);
+			plen = PAGE_SIZE - (kva & PAGE_MASK);
+			MEXTADD(m0, kva, PAGE_SIZE, sf_buf_mext,
+			    NULL, sf, M_RDONLY, EXT_SFBUF);
+			m0->m_len = plen;
+			m0->m_data = (caddr_t)kva + (PAGE_SIZE - plen);
+
+			iov->iov_len -= iolen;
+			uio->uio_offset += iolen;
+
+			if (n != NULL) {
+				n->m_next = m0;
+				n = m0;
+			} else
+				m = n = m0;
+
+			p++;
+		}
+
+		if (mallocfree)
+			free(p, M_TEMP);
+
+		uio->uio_offset = 0;
+		uio->uio_resid -= iolen;
+		uio->uio_iov++;
+		uio->uio_iovcnt--;
+	}
+
+out:
+	while (--pages) {
+		vm_page_lock(p);
+		vm_page_unhold(p);
+		if (p->wire_count == 0 && p->object == NULL)
+			vm_page_free(p);
+		vm_page_unlock(p);
+		p++;
+	}
+	if (mallocfree)
+		free(p, M_TEMP);
 	return (m);
 }
 
