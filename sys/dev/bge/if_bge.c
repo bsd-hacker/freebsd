@@ -390,8 +390,7 @@ static int bge_get_eaddr_eeprom(struct bge_softc *, uint8_t[]);
 static int bge_get_eaddr(struct bge_softc *, uint8_t[]);
 
 static void bge_txeof(struct bge_softc *, uint16_t);
-static void bge_rxcsum(struct bge_softc *, struct bge_rx_bd *, struct mbuf *);
-static int bge_rxeof(struct bge_softc *, uint16_t, int);
+static int bge_rxeof(struct bge_softc *, uint16_t);
 
 static void bge_asf_driver_up (struct bge_softc *);
 static void bge_tick(void *);
@@ -4190,9 +4189,9 @@ bge_rxreuse_jumbo(struct bge_softc *sc, int i)
 	BGE_INC(sc->bge_jumbo, BGE_JUMBO_RX_RING_CNT);
 }
 
-struct mbuf *
-bge_rx_packet(struct ifnet *ifp, struct bge_rx_bd *rx, uint16_t rxidx,
-    struct bge_softc *sc) {
+static struct mbuf *
+bge_rx_packet(struct bge_softc *sc, struct bge_rx_bd *rx, uint16_t rxidx,
+    struct ifnet *ifp) {
 	struct mbuf *m = NULL;
 
 	if (rx->bge_flags & BGE_RXBDFLAG_JUMBO_RING) {
@@ -4293,7 +4292,7 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod)
 	int rx_npkts = 0, stdcnt = 0, jumbocnt = 0;
 	int pkts = 0;
 	uint16_t rx_cons;
-	struct mbuf *m = NULL, n = NULL;
+	struct mbuf *m = NULL, *n = NULL;
 
 	rx_cons = sc->bge_rx_saved_considx;
 
@@ -4323,7 +4322,7 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod)
 		rxidx = cur_rx->bge_idx;
 		BGE_INC(rx_cons, sc->bge_return_ring_cnt);
 
-		mm = bge_rx_packet(ifp, cur_rx, rxidx, sc);
+		mm = bge_rx_packet(sc, cur_rx, rxidx, ifp);
 		if (mm != NULL) {
 			if (n != NULL)
 				n->m_nextpkt = mm;
@@ -4331,6 +4330,7 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod)
 				m = n = mm;
 		} else
 			continue;
+		pkts++;
 	}
 
 	bus_dmamap_sync(sc->bge_cdata.bge_rx_return_ring_tag,
@@ -4361,7 +4361,7 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod)
 
         BGE_UNLOCK(sc);
         while (m != NULL) {
-                /* n = SLIST_REMOVE_HEAD(m, nxtpkt); /*
+                /* n = SLIST_REMOVE_HEAD(m, nxtpkt); */
                 n = m;
                 m = n->m_nextpkt;
                 n->m_nextpkt = NULL;
@@ -4459,7 +4459,7 @@ bge_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
 			bge_link_upd(sc);
 
 	sc->rxcycles = count;
-	rx_npkts = bge_rxeof(sc, rx_prod, 1);
+	rx_npkts = bge_rxeof(sc, rx_prod);
 	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
 		BGE_UNLOCK(sc);
 		return (rx_npkts);
@@ -4531,7 +4531,7 @@ bge_ithr_msix(void *arg)
 	    sc->bge_rx_saved_considx != rx_prod) {
 		/* Check RX return ring producer/consumer. */
 		BGE_UNLOCK(sc);
-		bge_rxeof(sc, rx_prod, 0);
+		bge_rxeof(sc, rx_prod);
 		BGE_LOCK(sc);
 	}
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
@@ -4609,7 +4609,7 @@ bge_ithr(void *xsc)
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 		/* Check RX return ring producer/consumer. */
-		bge_rxeof(sc, rx_prod, 1);
+		bge_rxeof(sc, rx_prod);
 	}
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
