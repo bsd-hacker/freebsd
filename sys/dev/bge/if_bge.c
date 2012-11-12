@@ -390,7 +390,7 @@ static int bge_get_eaddr_eeprom(struct bge_softc *, uint8_t[]);
 static int bge_get_eaddr(struct bge_softc *, uint8_t[]);
 
 static void bge_txeof(struct bge_softc *, uint16_t);
-static int bge_rxeof(struct bge_softc *, uint16_t);
+static void bge_rx(struct bge_softc *, uint16_t);
 
 static void bge_asf_driver_up (struct bge_softc *);
 static void bge_tick(void *);
@@ -398,12 +398,11 @@ static void bge_stats_clear_regs(struct bge_softc *);
 static void bge_stats_update(struct bge_softc *);
 static void bge_stats_update_regs(struct bge_softc *);
 static struct mbuf *bge_check_short_dma(struct mbuf *);
-static struct mbuf *bge_setup_tso(struct bge_softc *, struct mbuf *,
-    uint16_t *, uint16_t *);
+static void bge_setup_tso(struct bge_softc *, struct mbuf *, uint16_t *,
+    uint16_t *);
 static int bge_encap(struct bge_softc *, struct mbuf **, uint32_t *);
 
 static int bge_intr_filter(void *);
-static void bge_ithr_msix(void *);
 static void bge_ithr(void *);
 static void bge_start_locked(struct ifnet *);
 static void bge_start(struct ifnet *);
@@ -3835,13 +3834,10 @@ again:
 		/* Take advantage of single-shot MSI. */
 		CSR_WRITE_4(sc, BGE_MSI_MODE, CSR_READ_4(sc, BGE_MSI_MODE) &
 		    ~BGE_MSIMODE_ONE_SHOT_DISABLE);
-		error = bus_setup_intr(dev, sc->bge_irq,
-		    INTR_TYPE_NET | INTR_MPSAFE, bge_intr_filter,
-		    bge_ithr_msix, sc, &sc->bge_intrhand);
-	} else
-		error = bus_setup_intr(dev, sc->bge_irq,
-		    INTR_TYPE_NET | INTR_MPSAFE, bge_intr_filter,
-		    bge_ithr, sc, &sc->bge_intrhand);
+	}
+	error = bus_setup_intr(dev, sc->bge_irq,
+	    INTR_TYPE_NET | INTR_MPSAFE, bge_intr_filter,
+	    bge_ithr, sc, &sc->bge_intrhand);
 
 	if (error) {
 		ether_ifdetach(ifp);
@@ -4273,39 +4269,33 @@ bge_rx_packet(struct bge_softc *sc, struct bge_rx_bd *rx, uint16_t rxidx,
 		m->m_data += ETHER_ALIGN;
 	}
 #endif
-	ifp->if_ipackets++;
 	return (m);
 }
 
 /*
  * Frame reception handling. This is called if there's a frame
  * on the receive return list.
- *
- * Note: we have to be able to handle two possibilities here:
- * 1) the frame is from the jumbo receive ring
- * 2) the frame is from the standard receive ring
  */
-static int
-bge_rxeof(struct bge_softc *sc, uint16_t rx_prod)
+static void
+bge_rx(struct bge_softc *sc, uint16_t rx_prod)
 {
 	struct ifnet *ifp;
-	int rx_npkts = 0, stdcnt = 0, jumbocnt = 0;
-	int pkts = 0;
+	int rx_npkts = 0;
 	uint16_t rx_cons;
-	struct mbuf *m = NULL, *n = NULL;
+	struct mbuf *m = NULL, *m0, *n = NULL;
 
 	rx_cons = sc->bge_rx_saved_considx;
-
-	/* Nothing to do. */
 	if (rx_cons == rx_prod)
-		return (rx_npkts);
+		return;
 
 	ifp = sc->bge_ifp;
 
 	bus_dmamap_sync(sc->bge_cdata.bge_rx_return_ring_tag,
 	    sc->bge_cdata.bge_rx_return_ring_map, BUS_DMASYNC_POSTREAD);
+
 	bus_dmamap_sync(sc->bge_cdata.bge_rx_std_ring_tag,
 	    sc->bge_cdata.bge_rx_std_ring_map, BUS_DMASYNC_POSTWRITE);
+
 	if (BGE_IS_JUMBO_CAPABLE(sc) &&
 	    ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN + ETHER_VLAN_ENCAP_LEN >
 	    (MCLBYTES - ETHER_ALIGN))
@@ -4315,39 +4305,40 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod)
 	while (rx_cons != rx_prod) {
 		struct bge_rx_bd	*cur_rx;
 		uint32_t		rxidx;
-		struct mbuf		*mm;
 
 		cur_rx = &sc->bge_ldata.bge_rx_return_ring[rx_cons];
 
 		rxidx = cur_rx->bge_idx;
 		BGE_INC(rx_cons, sc->bge_return_ring_cnt);
 
-		mm = bge_rx_packet(sc, cur_rx, rxidx, ifp);
-		if (mm != NULL) {
-			if (n != NULL)
-				n->m_nextpkt = mm;
-			else
-				m = n = mm;
-		} else
+		m0 = bge_rx_packet(sc, cur_rx, rxidx, ifp);
+		if (m0 == NULL)
 			continue;
-		pkts++;
-	}
 
-	bus_dmamap_sync(sc->bge_cdata.bge_rx_return_ring_tag,
-	    sc->bge_cdata.bge_rx_return_ring_map, BUS_DMASYNC_PREREAD);
-	if (stdcnt > 0) {
-		bus_dmamap_sync(sc->bge_cdata.bge_rx_std_ring_tag,
-		    sc->bge_cdata.bge_rx_std_ring_map, BUS_DMASYNC_PREWRITE);
-		bge_writembx(sc, BGE_MBX_RX_STD_PROD_LO, (sc->bge_std +
-		    BGE_STD_RX_RING_CNT - 1) % BGE_STD_RX_RING_CNT);
+		if (n != NULL) {
+			n->m_nextpkt = m0;
+			n = m0;
+		} else
+			m = n = m0;
+
+		rx_npkts++;
 	}
-	if (jumbocnt > 0) {
+	sc->bge_rx_saved_considx = rx_cons;
+
+	bus_dmamap_sync(sc->bge_cdata.bge_rx_std_ring_tag,
+	    sc->bge_cdata.bge_rx_std_ring_map, BUS_DMASYNC_PREWRITE);
+	bge_writembx(sc, BGE_MBX_RX_STD_PROD_LO, (sc->bge_std +
+	    BGE_STD_RX_RING_CNT - 1) % BGE_STD_RX_RING_CNT);
+
+	if (BGE_IS_JUMBO_CAPABLE(sc)) {
 		bus_dmamap_sync(sc->bge_cdata.bge_rx_jumbo_ring_tag,
 		    sc->bge_cdata.bge_rx_jumbo_ring_map, BUS_DMASYNC_PREWRITE);
 		bge_writembx(sc, BGE_MBX_RX_JUMBO_PROD_LO, (sc->bge_jumbo +
 		    BGE_JUMBO_RX_RING_CNT - 1) % BGE_JUMBO_RX_RING_CNT);
 	}
-	sc->bge_rx_saved_considx = rx_cons;
+
+	bus_dmamap_sync(sc->bge_cdata.bge_rx_return_ring_tag,
+	    sc->bge_cdata.bge_rx_return_ring_map, BUS_DMASYNC_PREREAD);
 	bge_writembx(sc, BGE_MBX_RX_CONS0_LO, sc->bge_rx_saved_considx);
 
 #if 0
@@ -4359,18 +4350,18 @@ bge_rxeof(struct bge_softc *sc, uint16_t rx_prod)
 		ifp->if_ierrors += CSR_READ_4(sc, BGE_RXLP_LOCSTAT_IFIN_DROPS);
 #endif
 
-        BGE_UNLOCK(sc);
-        while (m != NULL) {
-                /* n = SLIST_REMOVE_HEAD(m, nxtpkt); */
-                n = m;
-                m = n->m_nextpkt;
-                n->m_nextpkt = NULL;
-                (*ifp->if_input)(ifp, n);
-        }
-        maybe_yield();
-        BGE_LOCK(sc);
+	BGE_UNLOCK(sc);
+	while ((n = m) != NULL) {
+		/* n = SLIST_REMOVE_HEAD(m, nxtpkt); */
+		m = n->m_nextpkt;
+		n->m_nextpkt = NULL;
+		(*ifp->if_input)(ifp, n);
+		ifp->if_ipackets++;
+		maybe_yield();
+	}
+	BGE_LOCK(sc);
 
-	return (rx_npkts);
+	return;
 }
 
 static void
@@ -4418,67 +4409,20 @@ bge_txeof(struct bge_softc *sc, uint16_t tx_cons)
 		sc->bge_timer = 0;
 }
 
-#ifdef DEVICE_POLLING
-static int
-bge_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
-{
-	struct bge_softc *sc = ifp->if_softc;
-	uint16_t rx_prod, tx_cons;
-	uint32_t statusword;
-	int rx_npkts = 0;
-
-	BGE_LOCK(sc);
-	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
-		BGE_UNLOCK(sc);
-		return (rx_npkts);
-	}
-
-	bus_dmamap_sync(sc->bge_cdata.bge_status_tag,
-	    sc->bge_cdata.bge_status_map,
-	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
-	/* Fetch updates from the status block. */
-	rx_prod = sc->bge_ldata.bge_status_block->bge_idx[0].bge_rx_prod_idx;
-	tx_cons = sc->bge_ldata.bge_status_block->bge_idx[0].bge_tx_cons_idx;
-
-	statusword = sc->bge_ldata.bge_status_block->bge_status;
-	/* Clear the status so the next pass only sees the changes. */
-	sc->bge_ldata.bge_status_block->bge_status = 0;
-
-	bus_dmamap_sync(sc->bge_cdata.bge_status_tag,
-	    sc->bge_cdata.bge_status_map,
-	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
-
-	/* Note link event. It will be processed by POLL_AND_CHECK_STATUS. */
-	if (statusword & BGE_STATFLAG_LINKSTATE_CHANGED)
-		sc->bge_link_evt++;
-
-	if (cmd == POLL_AND_CHECK_STATUS)
-		if ((sc->bge_asicrev == BGE_ASICREV_BCM5700 &&
-		    sc->bge_chipid != BGE_CHIPID_BCM5700_B2) ||
-		    sc->bge_link_evt || (sc->bge_flags & BGE_FLAG_TBI))
-			bge_link_upd(sc);
-
-	sc->rxcycles = count;
-	rx_npkts = bge_rxeof(sc, rx_prod);
-	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
-		BGE_UNLOCK(sc);
-		return (rx_npkts);
-	}
-	bge_txeof(sc, tx_cons);
-	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
-		bge_start_locked(ifp);
-
-	BGE_UNLOCK(sc);
-	return (rx_npkts);
-}
-#endif /* DEVICE_POLLING */
-
 static int
 bge_intr_filter(void *arg)
 {
 	struct bge_softc *sc;
+	uint32_t status;
 
 	sc = (struct bge_softc *)arg;
+
+	/* Do the mandatory PCI flush as well as get the link status. */
+	if (!(sc->bge_flags & BGE_FLAG_MSI)) {
+		status = CSR_READ_4(sc, BGE_MAC_STS);
+		if (!status)
+			return (FILTER_STRAY);
+	}
 	/*
 	 * This interrupt is not shared and controller already
 	 * disabled further interrupt.
@@ -4487,12 +4431,13 @@ bge_intr_filter(void *arg)
 }
 
 static void
-bge_ithr_msix(void *arg)
+bge_ithr(void *arg)
 {
 	struct bge_softc *sc;
 	struct ifnet *ifp;
-	uint32_t status, status_tag;
+	uint32_t statusword, status_tag;
 	uint16_t rx_prod, tx_cons;
+	int work = 1;
 
 	sc = (struct bge_softc *)arg;
 	ifp = sc->bge_ifp;
@@ -4503,123 +4448,53 @@ bge_ithr_msix(void *arg)
 		return;
 	}
 
-	/* Get updated status block. */
-	bus_dmamap_sync(sc->bge_cdata.bge_status_tag,
-	    sc->bge_cdata.bge_status_map,
-	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+	do {
 
-	/* Save producer/consumer indices. */
-	rx_prod = sc->bge_ldata.bge_status_block->bge_idx[0].bge_rx_prod_idx;
-	tx_cons = sc->bge_ldata.bge_status_block->bge_idx[0].bge_tx_cons_idx;
-	status = sc->bge_ldata.bge_status_block->bge_status;
-	status_tag = sc->bge_ldata.bge_status_block->bge_status_tag << 24;
-	/* Dirty the status flag. */
-	sc->bge_ldata.bge_status_block->bge_status = 0;
-	bus_dmamap_sync(sc->bge_cdata.bge_status_tag,
-	    sc->bge_cdata.bge_status_map,
-	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
-	if ((sc->bge_flags & BGE_FLAG_TAGGED_STATUS) == 0)
-		status_tag = 0;
+		/* Do the mandatory PCI flush as well as get the link status. */
+		if (!(sc->bge_flags & BGE_FLAG_MSI))
+			statusword = CSR_READ_4(sc, BGE_MAC_STS) & BGE_MACSTAT_LINK_CHANGED;
 
-	if ((status & BGE_STATFLAG_LINKSTATE_CHANGED) != 0)
-		bge_link_upd(sc);
+		/* Get updated status block. */
+		bus_dmamap_sync(sc->bge_cdata.bge_status_tag,
+		    sc->bge_cdata.bge_status_map,
+		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+
+		/* Save producer/consumer indices. */
+		rx_prod = sc->bge_ldata.bge_status_block->bge_idx[0].bge_rx_prod_idx;
+		tx_cons = sc->bge_ldata.bge_status_block->bge_idx[0].bge_tx_cons_idx;
+
+		statusword = sc->bge_ldata.bge_status_block->bge_status;
+		status_tag = sc->bge_ldata.bge_status_block->bge_status_tag << 24;
+		sc->bge_ldata.bge_status_block->bge_status = 0;
+
+		/* Clear the status so the next pass only sees the changes. */
+		bus_dmamap_sync(sc->bge_cdata.bge_status_tag,
+		    sc->bge_cdata.bge_status_map,
+		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+
+		if ((sc->bge_flags & BGE_FLAG_TAGGED_STATUS) == 0)
+			status_tag = 0;
+
+		if ((sc->bge_asicrev == BGE_ASICREV_BCM5700 &&
+		    sc->bge_chipid != BGE_CHIPID_BCM5700_B2) ||
+		    statusword & BGE_STATFLAG_LINKSTATE_CHANGED ||
+		    sc->bge_link_evt || (sc->bge_flags & BGE_FLAG_TBI))
+			bge_link_upd(sc);
+
+		/* Check TX ring producer/consumer. */
+		bge_txeof(sc, tx_cons);
+
+		/* Check RX return ring producer/consumer. */
+		bge_rx(sc, rx_prod);
+
+		if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+			bge_start_locked(ifp);
+
+		maybe_yield();
+	} while (work);
 
 	/* Let controller work. */
 	bge_writembx(sc, BGE_MBX_IRQ0_LO, status_tag);
-
-	if (ifp->if_drv_flags & IFF_DRV_RUNNING &&
-	    sc->bge_rx_saved_considx != rx_prod) {
-		/* Check RX return ring producer/consumer. */
-		BGE_UNLOCK(sc);
-		bge_rxeof(sc, rx_prod);
-		BGE_LOCK(sc);
-	}
-	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
-		/* Check TX ring producer/consumer. */
-		bge_txeof(sc, tx_cons);
-		if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
-			bge_start_locked(ifp);
-	}
-	BGE_UNLOCK(sc);
-}
-
-static void
-bge_ithr(void *xsc)
-{
-	struct bge_softc *sc;
-	struct ifnet *ifp;
-	uint32_t statusword;
-	uint16_t rx_prod, tx_cons;
-
-	sc = xsc;
-
-	BGE_LOCK(sc);
-
-	ifp = sc->bge_ifp;
-
-#ifdef DEVICE_POLLING
-	if (ifp->if_capenable & IFCAP_POLLING) {
-		BGE_UNLOCK(sc);
-		return;
-	}
-#endif
-
-	/*
-	 * Ack the interrupt by writing something to BGE_MBX_IRQ0_LO.  Don't
-	 * disable interrupts by writing nonzero like we used to, since with
-	 * our current organization this just gives complications and
-	 * pessimizations for re-enabling interrupts.  We used to have races
-	 * instead of the necessary complications.  Disabling interrupts
-	 * would just reduce the chance of a status update while we are
-	 * running (by switching to the interrupt-mode coalescence
-	 * parameters), but this chance is already very low so it is more
-	 * efficient to get another interrupt than prevent it.
-	 *
-	 * We do the ack first to ensure another interrupt if there is a
-	 * status update after the ack.  We don't check for the status
-	 * changing later because it is more efficient to get another
-	 * interrupt than prevent it, not quite as above (not checking is
-	 * a smaller optimization than not toggling the interrupt enable,
-	 * since checking doesn't involve PCI accesses and toggling require
-	 * the status check).  So toggling would probably be a pessimization
-	 * even with MSI.  It would only be needed for using a task queue.
-	 */
-	bge_writembx(sc, BGE_MBX_IRQ0_LO, 0);
-
-	/*
-	 * Do the mandatory PCI flush as well as get the link status.
-	 */
-	statusword = CSR_READ_4(sc, BGE_MAC_STS) & BGE_MACSTAT_LINK_CHANGED;
-
-	/* Make sure the descriptor ring indexes are coherent. */
-	bus_dmamap_sync(sc->bge_cdata.bge_status_tag,
-	    sc->bge_cdata.bge_status_map,
-	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
-	rx_prod = sc->bge_ldata.bge_status_block->bge_idx[0].bge_rx_prod_idx;
-	tx_cons = sc->bge_ldata.bge_status_block->bge_idx[0].bge_tx_cons_idx;
-	sc->bge_ldata.bge_status_block->bge_status = 0;
-	bus_dmamap_sync(sc->bge_cdata.bge_status_tag,
-	    sc->bge_cdata.bge_status_map,
-	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
-
-	if ((sc->bge_asicrev == BGE_ASICREV_BCM5700 &&
-	    sc->bge_chipid != BGE_CHIPID_BCM5700_B2) ||
-	    statusword || sc->bge_link_evt)
-		bge_link_upd(sc);
-
-	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
-		/* Check RX return ring producer/consumer. */
-		bge_rxeof(sc, rx_prod);
-	}
-
-	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
-		/* Check TX ring producer/consumer. */
-		bge_txeof(sc, tx_cons);
-	}
-
-	if (ifp->if_drv_flags & IFF_DRV_RUNNING &&
-	    !IFQ_DRV_IS_EMPTY(&ifp->if_snd))
-		bge_start_locked(ifp);
 
 	BGE_UNLOCK(sc);
 }
@@ -4962,46 +4837,25 @@ bge_check_short_dma(struct mbuf *m)
 	return (n);
 }
 
-static struct mbuf *
+static void
 bge_setup_tso(struct bge_softc *sc, struct mbuf *m, uint16_t *mss,
     uint16_t *flags)
 {
 	struct ip *ip;
 	struct tcphdr *tcp;
-	struct mbuf *n;
 	uint16_t hlen;
-	uint32_t poff;
 
-	if (M_WRITABLE(m) == 0) {
-		/* Get a writable copy. */
-		n = m_dup(m, M_DONTWAIT);
-		m_freem(m);
-		if (n == NULL)
-			return (NULL);
-		m = n;
-	}
-	m = m_pullup(m, sizeof(struct ether_header) + sizeof(struct ip));
-	if (m == NULL)
-		return (NULL);
-	ip = (struct ip *)(mtod(m, char *) + sizeof(struct ether_header));
-	poff = sizeof(struct ether_header) + (ip->ip_hl << 2);
-	m = m_pullup(m, poff + sizeof(struct tcphdr));
-	if (m == NULL)
-		return (NULL);
-	tcp = (struct tcphdr *)(mtod(m, char *) + poff);
-	m = m_pullup(m, poff + (tcp->th_off << 2));
-	if (m == NULL)
-		return (NULL);
+	ip = mtod(m + sizeof(struct ether_header), struct ip *);
+	tcp = mtod(m + sizeof(struct ether_header) + (ip->ip_hl << 2), struct tcphdr *);
+
 	/*
 	 * It seems controller doesn't modify IP length and TCP pseudo
 	 * checksum. These checksum computed by upper stack should be 0.
 	 */
 	*mss = m->m_pkthdr.tso_segsz;
-	ip = (struct ip *)(mtod(m, char *) + sizeof(struct ether_header));
 	ip->ip_sum = 0;
 	ip->ip_len = htons(*mss + (ip->ip_hl << 2) + (tcp->th_off << 2));
 	/* Clear pseudo checksum computed by TCP stack. */
-	tcp = (struct tcphdr *)(mtod(m, char *) + poff);
 	tcp->th_sum = 0;
 	/*
 	 * Broadcom controllers uses different descriptor format for
@@ -5031,7 +4885,6 @@ bge_setup_tso(struct bge_softc *sc, struct mbuf *m, uint16_t *mss,
 		 */
 		*mss |= (hlen << 11);
 	}
-	return (m);
 }
 
 /*
@@ -5052,17 +4905,15 @@ bge_encap(struct bge_softc *sc, struct mbuf **m_head, uint32_t *txidx)
 	csum_flags = 0;
 	mss = 0;
 	vlan_tag = 0;
-	if ((sc->bge_flags & BGE_FLAG_SHORT_DMA_BUG) != 0 &&
+	if ((sc->bge_flags & BGE_FLAG_SHORT_DMA_BUG) &&
 	    m->m_next != NULL) {
 		*m_head = bge_check_short_dma(m);
 		if (*m_head == NULL)
 			return (ENOBUFS);
 		m = *m_head;
 	}
-	if ((m->m_pkthdr.csum_flags & CSUM_TSO) != 0) {
-		*m_head = m = bge_setup_tso(sc, m, &mss, &csum_flags);
-		if (*m_head == NULL)
-			return (ENOBUFS);
+	if (m->m_pkthdr.csum_flags & CSUM_TSO) {
+		bge_setup_tso(sc, m, &mss, &csum_flags);
 		csum_flags |= BGE_TXBDFLAG_CPU_PRE_DMA |
 		    BGE_TXBDFLAG_CPU_POST_DMA;
 	} else if ((m->m_pkthdr.csum_flags & sc->bge_csum_features) != 0) {
@@ -5079,12 +4930,12 @@ bge_encap(struct bge_softc *sc, struct mbuf **m_head, uint32_t *txidx)
 		}
 	}
 
-	if ((m->m_pkthdr.csum_flags & CSUM_TSO) == 0) {
+	if (!(m->m_pkthdr.csum_flags & CSUM_TSO)) {
 		if (sc->bge_flags & BGE_FLAG_JUMBO_FRAME &&
 		    m->m_pkthdr.len > ETHER_MAX_LEN)
 			csum_flags |= BGE_TXBDFLAG_JUMBO_FRAME;
 		if (sc->bge_forced_collapse > 0 &&
-		    (sc->bge_flags & BGE_FLAG_PCIE) != 0 && m->m_next != NULL) {
+		    (sc->bge_flags & BGE_FLAG_PCIE) && m->m_next != NULL) {
 			/*
 			 * Forcedly collapse mbuf chains to overcome hardware
 			 * limitation which only support a single outstanding
@@ -5119,7 +4970,7 @@ bge_encap(struct bge_softc *sc, struct mbuf **m_head, uint32_t *txidx)
 			*m_head = NULL;
 			return (error);
 		}
-	} else if (error != 0)
+	} else if (error)
 		return (error);
 
 	/* Check if we have enough free send BDs. */
