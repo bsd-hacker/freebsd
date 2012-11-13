@@ -229,13 +229,16 @@ static char *	tcp_log_addr(struct in_conninfo *inc, struct tcphdr *th,
 		    void *ip4hdr, const void *ip6hdr);
 
 /*
- * Target size of TCP PCB hash tables. Must be a power of two.
+ * Minimal size of TCP PCB hash tables. Must be a power of two.
  *
  * Note that this can be overridden by the kernel environment
  * variable net.inet.tcp.tcbhashsize
  */
-#ifndef TCBHASHSIZE
-#define TCBHASHSIZE	512
+#ifndef TCBMINHASHSIZE
+#define TCBMINHASHSIZE	512
+#endif
+#ifndef TCBPORTHASHSIZE
+#define TCBPORTHASHSIZE	512
 #endif
 
 /*
@@ -285,7 +288,6 @@ tcp_inpcb_init(void *mem, int size, int flags)
 void
 tcp_init(void)
 {
-	int hashsize;
 
 	if (hhook_head_register(HHOOK_TYPE_TCP, HHOOK_TCP_EST_IN,
 	    &V_tcp_hhh[HHOOK_TCP_EST_IN], HHOOK_NOWAIT|HHOOK_HEADISINVNET) != 0)
@@ -294,15 +296,17 @@ tcp_init(void)
 	    &V_tcp_hhh[HHOOK_TCP_EST_OUT], HHOOK_NOWAIT|HHOOK_HEADISINVNET) != 0)
 		printf("%s: WARNING: unable to register helper hook\n", __func__);
 
-	hashsize = TCBHASHSIZE;
-	TUNABLE_INT_FETCH("net.inet.tcp.tcbhashsize", &hashsize);
-	if (!powerof2(hashsize)) {
-		printf("WARNING: TCB hash size not a power of 2\n");
-		hashsize = 512; /* safe default */
+	tcp_tcbhashsize = 0x1 << fls((maxsockets / 8) - 1);
+	TUNABLE_INT_FETCH("net.inet.tcp.tcbhashsize", &tcp_tcbhashsize);
+	if (!powerof2(tcp_tcbhashsize) ||
+	    tcp_tcbhashsize < TCBMINHASHSIZE) {
+		printf("WARNING: TCB hash size not a power of 2 or too small\n");
+		tcp_tcbhashsize = TCBMINHASHSIZE;
 	}
-	in_pcbinfo_init(&V_tcbinfo, "tcp", &V_tcb, hashsize, hashsize,
-	    "tcp_inpcb", tcp_inpcb_init, NULL, UMA_ZONE_NOFREE,
-	    IPI_HASHFIELDS_4TUPLE);
+
+	in_pcbinfo_init(&V_tcbinfo, "tcp", &V_tcb, tcp_tcbhashsize,
+	    TCBPORTHASHSIZE, "tcp_inpcb", tcp_inpcb_init, NULL,
+	    UMA_ZONE_NOFREE, IPI_HASHFIELDS_4TUPLE);
 
 	/*
 	 * These have to be type stable for the benefit of the timers.
@@ -336,7 +340,6 @@ tcp_init(void)
 		tcp_rexmit_min = 1;
 	tcp_rexmit_slop = TCPTV_CPU_VAR;
 	tcp_finwait2_timeout = TCPTV_FINWAIT2_TIMEOUT;
-	tcp_tcbhashsize = hashsize;
 
 	TUNABLE_INT_FETCH("net.inet.tcp.soreceive_stream", &tcp_soreceive_stream);
 	if (tcp_soreceive_stream) {
