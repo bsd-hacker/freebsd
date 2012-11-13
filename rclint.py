@@ -66,9 +66,9 @@ class Db:
         err = self.error(key)
         if err:
             if level == 'error':
-                logging.error('[%s:%d]: %s ' % ("error", num+1, err))
+                logging.error('[%d]: %s ' % (num+1, err))
             if level == 'warn':
-                logging.warn('[%s:%d]: %s ' % ("warning", num+1, err))
+                logging.warn('[%d]: %s ' % (num+1, err))
             if verbosity > 0:
                 print((textwrap.fill(self.explanation(key),
                                     initial_indent='==> ',
@@ -78,7 +78,7 @@ class Db:
         self.count += 1
         if self.count > 10 and beaucoup_errors == False:
             hint = '  Try rerunning with -v option for extra details.' if verbosity == 0 else ''
-            logging.error('Error threshold reached-- further errors are unlikely to be helpful.  Fix the errors and rerun.' + hint)
+            logging.error('Error threshold reached-- further errors are unlikely to be helpful.  Fix the errors and rerun.  The -k option will cause rclint to continue for as many errors as it finds.' + hint)
             exit()
 
     def warn(self, key, num=-1, level='warn'):
@@ -113,6 +113,12 @@ class Statement:
                 if char in ' \t|&;<>()$`\\\"\'':
                     return False
         return True
+
+    def get_value(self):
+        if self.quoted():
+            return self.value[1:-1]
+        else:
+            return self.value
 
 class Variable(Statement):
     def __init__(self, lines, number):
@@ -396,7 +402,7 @@ def do_rclint(filename):
     logging.debug('Checking for rcvar set correctly')
     for var in lineobj['Variable']:
         if var.name == 'name':
-            progname = var.value
+            progname = var.get_value()
         elif var.name == 'rcvar':
             try:
                 if progname + '_enable' not in var.value:
@@ -422,7 +428,7 @@ def do_rclint(filename):
     logging.debug('Checking $name agrees with PROVIDE and filename')
     fn = filename[:-3] if filename[-3:] == '.in' else filename
     fn = fn.split('/')[-1].replace('-', '_')
-    n = get(lineobj['Variable'], 'name').value
+    n = get(lineobj['Variable'], 'name').get_value()
     rcordervars = []
     for r in lineobj['Rcorder']:
         if r.type != 'PROVIDE':
