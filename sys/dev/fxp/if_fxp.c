@@ -637,9 +637,7 @@ fxp_attach(device_t dev)
 	 * too, but that's already enabled by the code above.
 	 * Be careful to do this only on the right devices.
 	 */
-	if (sc->revision == FXP_REV_82550 || sc->revision == FXP_REV_82550_C ||
-	    sc->revision == FXP_REV_82551_E || sc->revision == FXP_REV_82551_F
-	    || sc->revision == FXP_REV_82551_10) {
+	if (sc->revision >= FXP_REV_82550) {
 		sc->rfa_size = sizeof (struct fxp_rfa);
 		sc->tx_cmd = FXP_CB_COMMAND_IPCBXMIT;
 		sc->flags |= FXP_FLAG_EXT_RFA;
@@ -1471,7 +1469,6 @@ fxp_encap(struct fxp_softc *sc, struct mbuf **m_head)
 		/* Compute total TCP payload. */
 		tcp_payload = m->m_pkthdr.len - ip_off - (ip->ip_hl << 2);
 		tcp_payload -= tcp->th_off << 2;
-		*m_head = m;
 	} else if (m->m_pkthdr.csum_flags & FXP_CSUM_FEATURES) {
 		/*
 		 * Deal with TCP/IP checksum offload. Note that
@@ -1735,14 +1732,15 @@ static void
 fxp_rxcsum(struct fxp_softc *sc, struct ifnet *ifp, struct mbuf *m,
     uint16_t status, int pos)
 {
+#if 0
 	struct ether_header *eh;
 	struct ip *ip;
 	struct udphdr *uh;
 	int32_t hlen, len, pktlen, temp32;
 	uint16_t csum, *opts;
-
-	if ((sc->flags & FXP_FLAG_82559_RXCSUM) == 0) {
-		if ((status & FXP_RFA_STATUS_PARSE) != 0) {
+#endif
+	if (!(sc->flags & FXP_FLAG_82559_RXCSUM)) {
+		if (status & FXP_RFA_STATUS_PARSE) {
 			if (status & FXP_RFDX_CS_IP_CSUM_BIT_VALID)
 				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
 			if (status & FXP_RFDX_CS_IP_CSUM_VALID)
@@ -1757,6 +1755,11 @@ fxp_rxcsum(struct fxp_softc *sc, struct ifnet *ifp, struct mbuf *m,
 		return;
 	}
 
+	/*
+	 * XXXAO: Does it really make sense to touch the packet
+	 * when the checksum feature on 559 is so lame?
+	 */
+#if 0
 	pktlen = m->m_pkthdr.len;
 	if (pktlen < sizeof(struct ether_header) + sizeof(struct ip))
 		return;
@@ -1805,8 +1808,10 @@ fxp_rxcsum(struct fxp_softc *sc, struct ifnet *ifp, struct mbuf *m,
 			csum = temp32 & 65535;
 		}
 	}
+	/* XXXAO: Missing subtraction of ip_hdr checksum? */
 	m->m_pkthdr.csum_flags |= CSUM_DATA_VALID;
 	m->m_pkthdr.csum_data = csum;
+#endif
 }
 
 /*
@@ -1827,8 +1832,10 @@ fxp_rx(struct fxp_softc *sc, struct ifnet *ifp)
 	struct fxp_rx *rxp;
 	struct fxp_rfa *rfa;
 	struct mbuf *m, *n, *m0;
-	int len, rnr = 0;
-	uint16_t status;
+	int rnr = 0;
+	uint16_t len, status, vlan;
+
+	m = n = NULL;		/* gcc */
 
 	for (;;) {
 		rxp = sc->fxp_desc.rx_head;
@@ -1852,12 +1859,13 @@ fxp_rx(struct fxp_softc *sc, struct ifnet *ifp)
 		 * actual_size are flags set by the controller
 		 * upon completion), and drop the packet in case
 		 * of bogus length or CRC errors.
-		 * Adjust for appended checksum bytes.
+		 * Adjust for appended checksum word for 559
+		 * checksum offload 'feature'.
 		 */
 		len = le16toh(rfa->actual_size) & 0x3fff;
 		if ((sc->flags & FXP_FLAG_82559_RXCSUM) &&
 		    (ifp->if_capenable & IFCAP_RXCSUM))
-			len -= ETHER_CRC_LEN;
+			len -= 2;
 
 		if (len < (int)sizeof(struct ether_header) ||
 		    len > (MCLBYTES - ETHER_ALIGN - sc->rfa_size) ||
@@ -1867,12 +1875,14 @@ fxp_rx(struct fxp_softc *sc, struct ifnet *ifp)
 			fxp_add_rfabuf(sc, rxp);
 			continue;
 		}
-		if (1 == 0 && len <= MHLEN - ETHER_ALIGN &&
-		    (m0 = m_get(M_NOWAIT, MT_DATA)) != NULL) {
+		vlan = ntohs(rfa->rfax_vlan_id);
+
+		if (len <= MHLEN - ETHER_ALIGN &&
+		    (m0 = m_gethdr(M_NOWAIT, MT_DATA)) != NULL) {
 			/* Copy stuff over. */
-			m_adj(m0, ETHER_ALIGN);
-			(void)m_append(m0, len,
-			    (caddr_t)(&rxp->rx_mbuf->m_ext.ext_buf));
+			m0->m_data += ETHER_ALIGN;
+			(void)m_append(m0, len, mtod(rxp->rx_mbuf, caddr_t));
+			rfa = NULL;
 			fxp_discard_rfabuf(sc, rxp);
 		} else if (fxp_new_rfabuf(sc, rxp) > 0) {
 			/*
@@ -1896,8 +1906,7 @@ fxp_rx(struct fxp_softc *sc, struct ifnet *ifp)
 
 		if ((ifp->if_capenable & IFCAP_VLAN_HWTAGGING) != 0 &&
 		    (status & FXP_RFA_STATUS_VLAN) != 0) {
-			m0->m_pkthdr.ether_vtag =
-			    ntohs(rfa->rfax_vlan_id);
+			m0->m_pkthdr.ether_vtag = vlan;
 			m0->m_flags |= M_VLANTAG;
 		}
 
