@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/proc.h>
 #include <sys/rman.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
@@ -218,11 +219,11 @@ static int		fxp_suspend(device_t dev);
 static int		fxp_resume(device_t dev);
 
 static const struct fxp_ident *fxp_find_ident(device_t dev);
-static void		fxp_intr(void *xsc);
 static void		fxp_rxcsum(struct fxp_softc *sc, struct ifnet *ifp,
 			    struct mbuf *m, uint16_t status, int pos);
-static int		fxp_intr_body(struct fxp_softc *sc, struct ifnet *ifp,
-			    uint8_t statack, int count);
+static struct mbuf *	fxp_rx(struct fxp_softc *sc, struct ifnet *ifp);
+static int		fxp_intr(void *xsc);
+static void		fxp_ithread(void *xsc);
 static void 		fxp_init(void *xsc);
 static void 		fxp_init_body(struct fxp_softc *sc, int);
 static void 		fxp_tick(void *xsc);
@@ -898,7 +899,7 @@ fxp_attach(device_t dev)
 	 * Hook our interrupt after all initialization is complete.
 	 */
 	error = bus_setup_intr(dev, sc->fxp_res[1], INTR_TYPE_NET | INTR_MPSAFE,
-			       NULL, fxp_intr, sc, &sc->ih);
+			       fxp_intr, fxp_ithread, sc, &sc->ih);
 	if (error) {
 		device_printf(dev, "could not setup irq\n");
 		ether_ifdetach(sc->ifp);
@@ -1445,50 +1446,15 @@ fxp_encap(struct fxp_softc *sc, struct mbuf **m_head)
 		struct ip *ip;
 		uint32_t ip_off, poff;
 
-		if (M_WRITABLE(*m_head) == 0) {
-			/* Get a writable copy. */
-			m = m_dup(*m_head, M_DONTWAIT);
-			m_freem(*m_head);
-			if (m == NULL) {
-				*m_head = NULL;
-				return (ENOBUFS);
-			}
-			*m_head = m;
-		}
 		ip_off = sizeof(struct ether_header);
-		m = m_pullup(*m_head, ip_off);
-		if (m == NULL) {
-			*m_head = NULL;
-			return (ENOBUFS);
-		}
 		eh = mtod(m, struct ether_header *);
 		/* Check the existence of VLAN tag. */
 		if (eh->ether_type == htons(ETHERTYPE_VLAN)) {
 			ip_off = sizeof(struct ether_vlan_header);
-			m = m_pullup(m, ip_off);
-			if (m == NULL) {
-				*m_head = NULL;
-				return (ENOBUFS);
-			}
-		}
-		m = m_pullup(m, ip_off + sizeof(struct ip));
-		if (m == NULL) {
-			*m_head = NULL;
-			return (ENOBUFS);
 		}
 		ip = (struct ip *)(mtod(m, char *) + ip_off);
 		poff = ip_off + (ip->ip_hl << 2);
-		m = m_pullup(m, poff + sizeof(struct tcphdr));
-		if (m == NULL) {
-			*m_head = NULL;
-			return (ENOBUFS);
-		}
 		tcp = (struct tcphdr *)(mtod(m, char *) + poff);
-		m = m_pullup(m, poff + (tcp->th_off << 2));
-		if (m == NULL) {
-			*m_head = NULL;
-			return (ENOBUFS);
-		}
 
 		/*
 		 * Since 82550/82551 doesn't modify IP length and pseudo
@@ -1707,45 +1673,31 @@ fxp_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
 /*
  * Process interface interrupts.
  */
-static void
+static int
 fxp_intr(void *xsc)
 {
 	struct fxp_softc *sc = xsc;
-	struct ifnet *ifp = sc->ifp;
+	int ret;
 	uint8_t statack;
 
-	FXP_LOCK(sc);
-	if (sc->suspended) {
-		FXP_UNLOCK(sc);
-		return;
+	statack = CSR_READ_1(sc, FXP_CSR_SCB_STATACK);
+	/*
+	 * It should not be possible to have all bits set; the
+	 * FXP_SCB_INTR_SWI bit always returns 0 on a read.  If
+	 * all bits are set, this may indicate that the card has
+	 * been physically ejected, so ignore it.
+	 */
+	switch (statack) {
+	case 0x00:		/* Not our interrupt. */
+	case 0xff:		/* Card ejected. */
+		ret = FILTER_STRAY;
+		break;
+	default:
+		CSR_WRITE_1(sc, FXP_CSR_SCB_INTRCNTL, FXP_SCB_INTR_DISABLE);
+		ret = FILTER_SCHEDULE_THREAD;
+		break;
 	}
-
-#ifdef DEVICE_POLLING
-	if (ifp->if_capenable & IFCAP_POLLING) {
-		FXP_UNLOCK(sc);
-		return;
-	}
-#endif
-	while ((statack = CSR_READ_1(sc, FXP_CSR_SCB_STATACK)) != 0) {
-		/*
-		 * It should not be possible to have all bits set; the
-		 * FXP_SCB_INTR_SWI bit always returns 0 on a read.  If
-		 * all bits are set, this may indicate that the card has
-		 * been physically ejected, so ignore it.
-		 */
-		if (statack == 0xff) {
-			FXP_UNLOCK(sc);
-			return;
-		}
-
-		/*
-		 * First ACK all the interrupts in this pass.
-		 */
-		CSR_WRITE_1(sc, FXP_CSR_SCB_STATACK, statack);
-		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0)
-			fxp_intr_body(sc, ifp, statack, -1);
-	}
-	FXP_UNLOCK(sc);
+	return (ret);
 }
 
 static void
@@ -1857,172 +1809,198 @@ fxp_rxcsum(struct fxp_softc *sc, struct ifnet *ifp, struct mbuf *m,
 	m->m_pkthdr.csum_data = csum;
 }
 
-static int
-fxp_intr_body(struct fxp_softc *sc, struct ifnet *ifp, uint8_t statack,
-    int count)
+/*
+ * Process receiver interrupts. If a no-resource (RNR)
+ * condition exists, get whatever packets we can and
+ * re-start the receiver.
+ *
+ * When using polling, we do not process the list to completion,
+ * so when we get an RNR interrupt we must defer the restart
+ * until we hit the last buffer with the C bit set.
+ * If we run out of cycles and rfa_headm has the C bit set,
+ * record the pending RNR in the FXP_FLAG_DEFERRED_RNR flag so
+ * that the info will be used in the subsequent polling cycle.
+ */
+static struct mbuf *
+fxp_rx(struct fxp_softc *sc, struct ifnet *ifp)
 {
-	struct mbuf *m;
 	struct fxp_rx *rxp;
 	struct fxp_rfa *rfa;
-	int rnr = (statack & FXP_SCB_STATACK_RNR) ? 1 : 0;
-	int rx_npkts;
+	struct mbuf *m, *n, *m0;
+	int len, rnr = 0;
 	uint16_t status;
 
-	rx_npkts = 0;
-	FXP_LOCK_ASSERT(sc, MA_OWNED);
-
-	if (rnr)
-		sc->rnr++;
-#ifdef DEVICE_POLLING
-	/* Pick up a deferred RNR condition if `count' ran out last time. */
-	if (sc->flags & FXP_FLAG_DEFERRED_RNR) {
-		sc->flags &= ~FXP_FLAG_DEFERRED_RNR;
-		rnr = 1;
-	}
-#endif
-
-	/*
-	 * Free any finished transmit mbuf chains.
-	 *
-	 * Handle the CNA event likt a CXTNO event. It used to
-	 * be that this event (control unit not ready) was not
-	 * encountered, but it is now with the SMPng modifications.
-	 * The exact sequence of events that occur when the interface
-	 * is brought up are different now, and if this event
-	 * goes unhandled, the configuration/rxfilter setup sequence
-	 * can stall for several seconds. The result is that no
-	 * packets go out onto the wire for about 5 to 10 seconds
-	 * after the interface is ifconfig'ed for the first time.
-	 */
-	if (statack & (FXP_SCB_STATACK_CXTNO | FXP_SCB_STATACK_CNA))
-		fxp_txeof(sc);
-
-	/*
-	 * Try to start more packets transmitting.
-	 */
-	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
-		fxp_start_body(ifp);
-
-	/*
-	 * Just return if nothing happened on the receive side.
-	 */
-	if (!rnr && (statack & FXP_SCB_STATACK_FR) == 0)
-		return (rx_npkts);
-
-	/*
-	 * Process receiver interrupts. If a no-resource (RNR)
-	 * condition exists, get whatever packets we can and
-	 * re-start the receiver.
-	 *
-	 * When using polling, we do not process the list to completion,
-	 * so when we get an RNR interrupt we must defer the restart
-	 * until we hit the last buffer with the C bit set.
-	 * If we run out of cycles and rfa_headm has the C bit set,
-	 * record the pending RNR in the FXP_FLAG_DEFERRED_RNR flag so
-	 * that the info will be used in the subsequent polling cycle.
-	 */
 	for (;;) {
 		rxp = sc->fxp_desc.rx_head;
-		m = rxp->rx_mbuf;
-		rfa = (struct fxp_rfa *)(m->m_ext.ext_buf +
-		    RFA_ALIGNMENT_FUDGE);
+		m0 = rxp->rx_mbuf;
+		rfa = (struct fxp_rfa *)(m0->m_ext.ext_buf + ETHER_ALIGN);
+
 		bus_dmamap_sync(sc->fxp_rxmtag, rxp->rx_map,
 		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
-#ifdef DEVICE_POLLING /* loop at most count times if count >=0 */
-		if (count >= 0 && count-- == 0) {
-			if (rnr) {
-				/* Defer RNR processing until the next time. */
-				sc->flags |= FXP_FLAG_DEFERRED_RNR;
-				rnr = 0;
-			}
-			break;
-		}
-#endif /* DEVICE_POLLING */
-
 		status = le16toh(rfa->rfa_status);
-		if ((status & FXP_RFA_STATUS_C) == 0)
+		if (!(status & FXP_RFA_STATUS_C))
 			break;
-
-		if ((status & FXP_RFA_STATUS_RNR) != 0)
+		if (status & FXP_RFA_STATUS_RNR)
 			rnr++;
-		/*
-		 * Advance head forward.
-		 */
+
+		/* Advance head forward. */
 		sc->fxp_desc.rx_head = rxp->rx_next;
 
 		/*
-		 * Add a new buffer to the receive chain.
-		 * If this fails, the old buffer is recycled
-		 * instead.
+		 * Fetch packet length (the top 2 bits of
+		 * actual_size are flags set by the controller
+		 * upon completion), and drop the packet in case
+		 * of bogus length or CRC errors.
+		 * Adjust for appended checksum bytes.
 		 */
-		if (fxp_new_rfabuf(sc, rxp) == 0) {
-			int total_len;
+		len = le16toh(rfa->actual_size) & 0x3fff;
+		if ((sc->flags & FXP_FLAG_82559_RXCSUM) &&
+		    (ifp->if_capenable & IFCAP_RXCSUM))
+			len -= ETHER_CRC_LEN;
 
-			/*
-			 * Fetch packet length (the top 2 bits of
-			 * actual_size are flags set by the controller
-			 * upon completion), and drop the packet in case
-			 * of bogus length or CRC errors.
-			 */
-			total_len = le16toh(rfa->actual_size) & 0x3fff;
-			if ((sc->flags & FXP_FLAG_82559_RXCSUM) != 0 &&
-			    (ifp->if_capenable & IFCAP_RXCSUM) != 0) {
-				/* Adjust for appended checksum bytes. */
-				total_len -= 2;
-			}
-			if (total_len < (int)sizeof(struct ether_header) ||
-			    total_len > (MCLBYTES - RFA_ALIGNMENT_FUDGE -
-			    sc->rfa_size) ||
-			    status & (FXP_RFA_STATUS_CRC |
-			    FXP_RFA_STATUS_ALIGN | FXP_RFA_STATUS_OVERRUN)) {
-				m_freem(m);
-				fxp_add_rfabuf(sc, rxp);
-				continue;
-			}
-
-			m->m_pkthdr.len = m->m_len = total_len;
-			m->m_pkthdr.rcvif = ifp;
-
-                        /* Do IP checksum checking. */
-			if ((ifp->if_capenable & IFCAP_RXCSUM) != 0)
-				fxp_rxcsum(sc, ifp, m, status, total_len);
-			if ((ifp->if_capenable & IFCAP_VLAN_HWTAGGING) != 0 &&
-			    (status & FXP_RFA_STATUS_VLAN) != 0) {
-				m->m_pkthdr.ether_vtag =
-				    ntohs(rfa->rfax_vlan_id);
-				m->m_flags |= M_VLANTAG;
-			}
-			/*
-			 * Drop locks before calling if_input() since it
-			 * may re-enter fxp_start() in the netisr case.
-			 * This would result in a lock reversal.  Better
-			 * performance might be obtained by chaining all
-			 * packets received, dropping the lock, and then
-			 * calling if_input() on each one.
-			 */
-			FXP_UNLOCK(sc);
-			(*ifp->if_input)(ifp, m);
-			FXP_LOCK(sc);
-			rx_npkts++;
-			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
-				return (rx_npkts);
-		} else {
-			/* Reuse RFA and loaded DMA map. */
-			ifp->if_iqdrops++;
+		if (len < (int)sizeof(struct ether_header) ||
+		    len > (MCLBYTES - ETHER_ALIGN - sc->rfa_size) ||
+		    (status & (FXP_RFA_STATUS_CRC | FXP_RFA_STATUS_ALIGN |
+		    FXP_RFA_STATUS_OVERRUN))) {
 			fxp_discard_rfabuf(sc, rxp);
+			fxp_add_rfabuf(sc, rxp);
+			continue;
+		}
+		if (1 == 0 && len <= MHLEN - ETHER_ALIGN &&
+		    (m0 = m_get(M_NOWAIT, MT_DATA)) != NULL) {
+			/* Copy stuff over. */
+			m_adj(m0, ETHER_ALIGN);
+			(void)m_append(m0, len,
+			    (caddr_t)(&rxp->rx_mbuf->m_ext.ext_buf));
+			fxp_discard_rfabuf(sc, rxp);
+		} else if (fxp_new_rfabuf(sc, rxp) > 0) {
+			/*
+			 * Adding a new buffer to the receive chain failed,
+			 * the old buffer is recycled instead.
+			 * Reuse RFA and loaded DMA map.
+			 */
+			fxp_discard_rfabuf(sc, rxp);
+			fxp_add_rfabuf(sc, rxp);
+			ifp->if_iqdrops++;
+			continue;
 		}
 		fxp_add_rfabuf(sc, rxp);
+		
+		m0->m_pkthdr.len = m0->m_len = len;
+		m0->m_pkthdr.rcvif = ifp;
+
+		/* Do IP checksum checking. */
+		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0)
+			fxp_rxcsum(sc, ifp, m0, status, len);
+
+		if ((ifp->if_capenable & IFCAP_VLAN_HWTAGGING) != 0 &&
+		    (status & FXP_RFA_STATUS_VLAN) != 0) {
+			m0->m_pkthdr.ether_vtag =
+			    ntohs(rfa->rfax_vlan_id);
+			m0->m_flags |= M_VLANTAG;
+		}
+
+		/* Append mbuf. */
+		if (m != NULL) {
+			n->m_nextpkt = m0;
+			n = m0;
+		} else
+			m = n = m0;
 	}
+
+	/* Restart rx microengine after out of rx buffer event. */
 	if (rnr) {
 		fxp_scb_wait(sc);
 		CSR_WRITE_4(sc, FXP_CSR_SCB_GENERAL,
 		    sc->fxp_desc.rx_head->rx_addr);
 		fxp_scb_cmd(sc, FXP_SCB_COMMAND_RU_START);
 	}
-	return (rx_npkts);
+
+	return (m);
 }
 
+static void
+fxp_ithread(void *xsc)
+{
+	struct fxp_softc *sc = xsc;
+	struct ifnet *ifp = sc->ifp;
+	struct mbuf *m, *n;
+	uint8_t statack;
+
+	FXP_LOCK(sc);
+
+	while ((statack = CSR_READ_1(sc, FXP_CSR_SCB_STATACK)) != 0x00) {
+		/*
+		 * Read and acknowledge all interrupt sources.
+		 * Further interrupts are already disabled.
+		 */
+		if (statack == 0xff) {
+			FXP_UNLOCK(sc);
+			return;
+		}
+		CSR_WRITE_1(sc, FXP_CSR_SCB_STATACK, statack);
+
+		/*
+		 * Free any finished transmit mbuf chains.
+		 *
+		 * Handle the CNA event like a CXTNO event. It used to
+		 * be that this event (control unit not ready) was not
+		 * encountered, but it is now with the SMPng modifications.
+		 * The exact sequence of events that occur when the interface
+		 * is brought up are different now, and if this event
+		 * goes unhandled, the configuration/rxfilter setup sequence
+		 * can stall for several seconds. The result is that no
+		 * packets go out onto the wire for about 5 to 10 seconds
+		 * after the interface is ifconfig'ed for the first time.
+		 */
+		if (statack & (FXP_SCB_STATACK_CXTNO | FXP_SCB_STATACK_CNA))
+			fxp_txeof(sc);
+
+		/* Try to start more packets transmitting. */
+		if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+			fxp_start_body(ifp);
+
+		/* Just return if nothing happened on the receive side. */
+		if ((statack & (FXP_SCB_STATACK_FR | FXP_SCB_STATACK_RNR)) == 0)
+			break;
+
+		/* Pull packets from rx DMA ring and refill the ring. */
+		m = fxp_rx(sc, ifp);
+
+		/*
+		 * Push rx packets up into the stack.
+		 * Drop locks before calling if_input() since it
+		 * may re-enter fxp_start() in the netisr case.
+		 * This would result in a lock reversal.
+		 */
+		FXP_UNLOCK(sc);
+		while (m != NULL) {
+			n = m;
+			m = n->m_nextpkt;
+			n->m_nextpkt = NULL;
+			(*ifp->if_input)(ifp, n);
+			maybe_yield();
+		}
+		FXP_LOCK(sc);
+	}
+
+	FXP_UNLOCK(sc);
+	/* Re-enable interrupts. */
+	CSR_WRITE_1(sc, FXP_CSR_SCB_INTRCNTL, 0);
+}
+
+/*
+ * Update packet in/out/collision statistics. The i82557 doesn't
+ * allow you to access these counters without doing a fairly
+ * expensive DMA to get _all_ of the statistics it maintains, so
+ * we do this operation here only once per second. The statistics
+ * counters in the kernel are updated from the previous dump-stats
+ * DMA and then a new dump-stats DMA is started. The on-chip
+ * counters are zeroed when the DMA completes. If we can't start
+ * the DMA immediately, we don't wait - we just prepare to read
+ * them again next time.
+ */
 static void
 fxp_update_stats(struct fxp_softc *sc)
 {
@@ -2098,17 +2076,6 @@ fxp_update_stats(struct fxp_softc *sc)
 	}
 }
 
-/*
- * Update packet in/out/collision statistics. The i82557 doesn't
- * allow you to access these counters without doing a fairly
- * expensive DMA to get _all_ of the statistics it maintains, so
- * we do this operation here only once per second. The statistics
- * counters in the kernel are updated from the previous dump-stats
- * DMA and then a new dump-stats DMA is started. The on-chip
- * counters are zeroed when the DMA completes. If we can't start
- * the DMA immediately, we don't wait - we just prepare to read
- * them again next time.
- */
 static void
 fxp_tick(void *xsc)
 {
@@ -2636,7 +2603,7 @@ fxp_new_rfabuf(struct fxp_softc *sc, struct fxp_rx *rxp)
 	 * Move the data pointer up so that the incoming data packet
 	 * will be 32-bit aligned.
 	 */
-	m->m_data += RFA_ALIGNMENT_FUDGE;
+	m->m_data += ETHER_ALIGN;
 
 	/*
 	 * Get a pointer to the base of the mbuf cluster and move
@@ -2644,12 +2611,12 @@ fxp_new_rfabuf(struct fxp_softc *sc, struct fxp_rx *rxp)
 	 */
 	rfa = mtod(m, struct fxp_rfa *);
 	m->m_data += sc->rfa_size;
-	rfa->size = htole16(MCLBYTES - sc->rfa_size - RFA_ALIGNMENT_FUDGE);
+	rfa->size = htole16(MCLBYTES - sc->rfa_size - ETHER_ALIGN);
 
 	rfa->rfa_status = 0;
 	rfa->rfa_control = htole16(FXP_RFA_CONTROL_EL);
 	rfa->actual_size = 0;
-	m->m_len = m->m_pkthdr.len = MCLBYTES - RFA_ALIGNMENT_FUDGE -
+	m->m_len = m->m_pkthdr.len = MCLBYTES - ETHER_ALIGN -
 	    sc->rfa_size;
 
 	/*
@@ -2663,7 +2630,7 @@ fxp_new_rfabuf(struct fxp_softc *sc, struct fxp_rx *rxp)
 
 	/* Map the RFA into DMA memory. */
 	error = bus_dmamap_load(sc->fxp_rxmtag, sc->spare_map, rfa,
-	    MCLBYTES - RFA_ALIGNMENT_FUDGE, fxp_dma_map_addr,
+	    MCLBYTES - ETHER_ALIGN, fxp_dma_map_addr,
 	    &rxp->rx_addr, BUS_DMA_NOWAIT);
 	if (error) {
 		m_freem(m);
@@ -2695,7 +2662,7 @@ fxp_add_rfabuf(struct fxp_softc *sc, struct fxp_rx *rxp)
 	if (sc->fxp_desc.rx_head != NULL) {
 		p_rx = sc->fxp_desc.rx_tail;
 		p_rfa = (struct fxp_rfa *)
-		    (p_rx->rx_mbuf->m_ext.ext_buf + RFA_ALIGNMENT_FUDGE);
+		    (p_rx->rx_mbuf->m_ext.ext_buf + ETHER_ALIGN);
 		p_rx->rx_next = rxp;
 		le32enc(&p_rfa->link_addr, rxp->rx_addr);
 		p_rfa->rfa_control = 0;
@@ -2720,7 +2687,7 @@ fxp_discard_rfabuf(struct fxp_softc *sc, struct fxp_rx *rxp)
 	 * Move the data pointer up so that the incoming data packet
 	 * will be 32-bit aligned.
 	 */
-	m->m_data += RFA_ALIGNMENT_FUDGE;
+	m->m_data += ETHER_ALIGN;
 
 	/*
 	 * Get a pointer to the base of the mbuf cluster and move
@@ -2728,7 +2695,7 @@ fxp_discard_rfabuf(struct fxp_softc *sc, struct fxp_rx *rxp)
 	 */
 	rfa = mtod(m, struct fxp_rfa *);
 	m->m_data += sc->rfa_size;
-	rfa->size = htole16(MCLBYTES - sc->rfa_size - RFA_ALIGNMENT_FUDGE);
+	rfa->size = htole16(MCLBYTES - sc->rfa_size - ETHER_ALIGN);
 
 	rfa->rfa_status = 0;
 	rfa->rfa_control = htole16(FXP_RFA_CONTROL_EL);
