@@ -66,9 +66,9 @@ class Db:
         err = self.error(key)
         if err:
             if level == 'error':
-                logging.error('[%d]: %s ' % (num+1, err))
+                logging.error('[%s:%d]: %s ' % ("error", num+1, err))
             if level == 'warn':
-                logging.warn('[%d]: %s ' % (num+1, err))
+                logging.warn('[%s:%d]: %s ' % ("warning", num+1, err))
             if verbosity > 0:
                 print((textwrap.fill(self.explanation(key),
                                     initial_indent='==> ',
