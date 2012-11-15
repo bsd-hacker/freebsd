@@ -221,7 +221,7 @@ static int		fxp_resume(device_t dev);
 static const struct fxp_ident *fxp_find_ident(device_t dev);
 static void		fxp_rxcsum(struct fxp_softc *sc, struct ifnet *ifp,
 			    struct mbuf *m, uint16_t status, int pos);
-static struct mbuf *	fxp_rx(struct fxp_softc *sc, struct ifnet *ifp);
+static struct mbuf *	fxp_rx(struct fxp_softc *sc, struct ifnet *ifp, int rnr);
 static int		fxp_intr(void *xsc);
 static void		fxp_ithread(void *xsc);
 static void 		fxp_init(void *xsc);
@@ -903,6 +903,7 @@ fxp_attach(device_t dev)
 		ether_ifdetach(sc->ifp);
 		goto fail;
 	}
+	bus_describe_intr(dev, sc->fxp_res[1], sc->ih, "rx/tx ithread");
 
 	/*
 	 * Configure hardware to reject magic frames otherwise
@@ -1690,6 +1691,10 @@ fxp_intr(void *xsc)
 		ret = FILTER_STRAY;
 		break;
 	default:
+		/*
+		 * Disable further interrupts until the ithread
+		 * is done with TXeof/RX and link state handling.
+		 */
 		CSR_WRITE_1(sc, FXP_CSR_SCB_INTRCNTL, FXP_SCB_INTR_DISABLE);
 		ret = FILTER_SCHEDULE_THREAD;
 		break;
@@ -1815,25 +1820,17 @@ fxp_rxcsum(struct fxp_softc *sc, struct ifnet *ifp, struct mbuf *m,
 }
 
 /*
- * Process receiver interrupts. If a no-resource (RNR)
- * condition exists, get whatever packets we can and
- * re-start the receiver.
- *
- * When using polling, we do not process the list to completion,
- * so when we get an RNR interrupt we must defer the restart
- * until we hit the last buffer with the C bit set.
- * If we run out of cycles and rfa_headm has the C bit set,
- * record the pending RNR in the FXP_FLAG_DEFERRED_RNR flag so
- * that the info will be used in the subsequent polling cycle.
+ * Process frames on the receive DMA ring.
+ * If a no-resource (RNR) condition exists,
+ * restart the receiver.
  */
 static struct mbuf *
-fxp_rx(struct fxp_softc *sc, struct ifnet *ifp)
+fxp_rx(struct fxp_softc *sc, struct ifnet *ifp, int rnr)
 {
 	struct fxp_rx *rxp;
 	struct fxp_rfa *rfa;
 	struct mbuf *m, *n, *m0;
-	int rnr = 0;
-	uint16_t len, status, vlan;
+	uint16_t len, status, asize, vlan;
 
 	m = n = NULL;		/* gcc */
 
@@ -1846,40 +1843,56 @@ fxp_rx(struct fxp_softc *sc, struct ifnet *ifp)
 		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
 		status = le16toh(rfa->rfa_status);
-		if (!(status & FXP_RFA_STATUS_C))
+		asize = le16toh(rfa->actual_size);
+
+		/*
+		 * Stop if we hit the head of the RX queue
+		 * or the controller isn't yet done with
+		 * DMA'ing the packet.
+		 */
+		if (!(status & FXP_RFA_STATUS_C) ||
+		    !(asize & FXP_PFA_ASIZE_EOF))
 			break;
-		if (status & FXP_RFA_STATUS_RNR)
-			rnr++;
 
 		/* Advance head forward. */
 		sc->fxp_desc.rx_head = rxp->rx_next;
 
 		/*
-		 * Fetch packet length (the top 2 bits of
-		 * actual_size are flags set by the controller
-		 * upon completion), and drop the packet in case
-		 * of bogus length or CRC errors.
-		 * Adjust for appended checksum word for 559
-		 * checksum offload 'feature'.
+		 * Drop packet and reuse mbuf when errors
+		 * during reception were encountered.
 		 */
-		len = le16toh(rfa->actual_size) & 0x3fff;
-		if ((sc->flags & FXP_FLAG_82559_RXCSUM) &&
-		    (ifp->if_capenable & IFCAP_RXCSUM))
-			len -= 2;
-
-		if (len < (int)sizeof(struct ether_header) ||
-		    len > (MCLBYTES - ETHER_ALIGN - sc->rfa_size) ||
-		    (status & (FXP_RFA_STATUS_CRC | FXP_RFA_STATUS_ALIGN |
-		    FXP_RFA_STATUS_OVERRUN))) {
+		if (!(status & FXP_RFA_STATUS_OK)) {
 			fxp_discard_rfabuf(sc, rxp);
 			fxp_add_rfabuf(sc, rxp);
 			continue;
 		}
+
+		/*
+		 * Fetch packet length (the top 2 bits of
+		 * actual_size are flags set by the controller
+		 * upon completion).
+		 * Adjust for appended checksum word for 82559
+		 * checksum offload 'feature'.
+		 */
+		len = (asize & 0x3fff);
+		if ((sc->flags & FXP_FLAG_82559_RXCSUM) &&
+		    (ifp->if_capenable & IFCAP_RXCSUM))
+			len -= 2;
+
+		/*
+		 * Save vlan information before losing access
+		 * to receive descriptor.
+		 */
 		vlan = ntohs(rfa->rfax_vlan_id);
 
+		/*
+		 * If the packet fits an mbuf then allocate
+		 * one and copy it over.  The mbuf cluster
+		 * can remain in the RX DMA ring and gets
+		 * recycled for another packet.
+		 */
 		if (len <= MHLEN - ETHER_ALIGN &&
 		    (m0 = m_gethdr(M_NOWAIT, MT_DATA)) != NULL) {
-			/* Copy stuff over. */
 			m0->m_data += ETHER_ALIGN;
 			(void)m_append(m0, len, mtod(rxp->rx_mbuf, caddr_t));
 			rfa = NULL;
@@ -1896,7 +1909,7 @@ fxp_rx(struct fxp_softc *sc, struct ifnet *ifp)
 			continue;
 		}
 		fxp_add_rfabuf(sc, rxp);
-		
+
 		m0->m_pkthdr.len = m0->m_len = len;
 		m0->m_pkthdr.rcvif = ifp;
 
@@ -1937,18 +1950,23 @@ fxp_ithread(void *xsc)
 	struct mbuf *m, *n;
 	uint8_t statack;
 
-	FXP_LOCK(sc);
-
+	/*
+	 * Loop while the chip indicates work.
+	 * The control status register is contiguously updated,
+	 * even when raising interrupts is disabled.
+	 */
 	while ((statack = CSR_READ_1(sc, FXP_CSR_SCB_STATACK)) != 0x00) {
 		/*
-		 * Read and acknowledge all interrupt sources.
-		 * Further interrupts are already disabled.
+		 * Read and acknowledge all interrupt sources
+		 * unless we have an eject event.
 		 */
 		if (statack == 0xff) {
 			FXP_UNLOCK(sc);
 			return;
 		}
 		CSR_WRITE_1(sc, FXP_CSR_SCB_STATACK, statack);
+
+		FXP_LOCK(sc);
 
 		/*
 		 * Free any finished transmit mbuf chains.
@@ -1966,7 +1984,7 @@ fxp_ithread(void *xsc)
 		if (statack & (FXP_SCB_STATACK_CXTNO | FXP_SCB_STATACK_CNA))
 			fxp_txeof(sc);
 
-		/* Try to start more packets transmitting. */
+		/* Add more packets to the tx DMA ring. */
 		if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
 			fxp_start_body(ifp);
 
@@ -1975,7 +1993,7 @@ fxp_ithread(void *xsc)
 			break;
 
 		/* Pull packets from rx DMA ring and refill the ring. */
-		m = fxp_rx(sc, ifp);
+		m = fxp_rx(sc, ifp, (statack & FXP_SCB_STATACK_RNR));
 
 		/*
 		 * Push rx packets up into the stack.
@@ -1991,11 +2009,11 @@ fxp_ithread(void *xsc)
 			(*ifp->if_input)(ifp, n);
 			maybe_yield();
 		}
-		FXP_LOCK(sc);
 	}
 
-	FXP_UNLOCK(sc);
-	/* Re-enable interrupts. */
+	/*
+	 * Enable interrupts again.
+	 */
 	CSR_WRITE_1(sc, FXP_CSR_SCB_INTRCNTL, 0);
 }
 
@@ -2674,7 +2692,7 @@ fxp_add_rfabuf(struct fxp_softc *sc, struct fxp_rx *rxp)
 		    (p_rx->rx_mbuf->m_ext.ext_buf + ETHER_ALIGN);
 		p_rx->rx_next = rxp;
 		le32enc(&p_rfa->link_addr, rxp->rx_addr);
-		p_rfa->rfa_control = 0;
+		p_rfa->rfa_control = 0;		/* No longer EL. */
 		bus_dmamap_sync(sc->fxp_rxmtag, p_rx->rx_map,
 		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 	} else {

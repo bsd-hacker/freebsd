@@ -375,8 +375,8 @@ struct fxp_rfa {
 #define FXP_RFA_STATUS_TL	0x0020	/* type/length */
 #define FXP_RFA_STATUS_FTS	0x0080	/* frame too short */
 #define FXP_RFA_STATUS_OVERRUN	0x0100	/* DMA overrun */
-#define FXP_RFA_STATUS_RNR	0x0200	/* no resources */
-#define FXP_RFA_STATUS_ALIGN	0x0400	/* alignment error */
+#define FXP_RFA_STATUS_RBS	0x0200	/* ran out of buffer space */
+#define FXP_RFA_STATUS_CRCALIGN	0x0400	/* alignment error */
 #define FXP_RFA_STATUS_CRC	0x0800	/* CRC error */
 #define FXP_RFA_STATUS_VLAN	0x1000	/* VLAN tagged frame */
 #define FXP_RFA_STATUS_OK	0x2000	/* packet received okay */
@@ -385,6 +385,8 @@ struct fxp_rfa {
 #define FXP_RFA_CONTROL_H	0x10	/* header RFD */
 #define FXP_RFA_CONTROL_S	0x4000	/* suspend after reception */
 #define FXP_RFA_CONTROL_EL	0x8000	/* end of list */
+#define FXP_PFA_ASIZE_EOF	0x8000	/* completed placing data */
+#define FXP_PFA_ASIZE_F		0x4000	/* updated count field */
 
 /* Bits in the 'csum_sts' byte */
 #define FXP_RFDX_CS_TCPUDP_CSUM_BIT_VALID	0x10
