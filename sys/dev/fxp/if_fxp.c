@@ -33,11 +33,6 @@ __FBSDID("$FreeBSD$");
 /*
  * Intel EtherExpress Pro/100B PCI Fast Ethernet driver
  */
-
-#ifdef HAVE_KERNEL_OPTION_HEADERS
-#include "opt_device_polling.h"
-#endif
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -860,11 +855,6 @@ fxp_attach(device_t dev)
 		ifp->if_capenable |= IFCAP_WOL_MAGIC;
 	}
 
-#ifdef DEVICE_POLLING
-	/* Inform the world we support polling. */
-	ifp->if_capabilities |= IFCAP_POLLING;
-#endif
-
 	/*
 	 * Attach the interface.
 	 */
@@ -1002,11 +992,6 @@ static int
 fxp_detach(device_t dev)
 {
 	struct fxp_softc *sc = device_get_softc(dev);
-
-#ifdef DEVICE_POLLING
-	if (sc->ifp->if_capenable & IFCAP_POLLING)
-		ether_poll_deregister(sc->ifp);
-#endif
 
 	FXP_LOCK(sc);
 	/*
@@ -1629,44 +1614,6 @@ fxp_encap(struct fxp_softc *sc, struct mbuf **m_head)
 
 	return (0);
 }
-
-#ifdef DEVICE_POLLING
-static poll_handler_t fxp_poll;
-
-static int
-fxp_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
-{
-	struct fxp_softc *sc = ifp->if_softc;
-	uint8_t statack;
-	int rx_npkts = 0;
-
-	FXP_LOCK(sc);
-	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
-		FXP_UNLOCK(sc);
-		return (rx_npkts);
-	}
-
-	statack = FXP_SCB_STATACK_CXTNO | FXP_SCB_STATACK_CNA |
-	    FXP_SCB_STATACK_FR;
-	if (cmd == POLL_AND_CHECK_STATUS) {
-		uint8_t tmp;
-
-		tmp = CSR_READ_1(sc, FXP_CSR_SCB_STATACK);
-		if (tmp == 0xff || tmp == 0) {
-			FXP_UNLOCK(sc);
-			return (rx_npkts); /* nothing to do */
-		}
-		tmp &= ~statack;
-		/* ack what we can */
-		if (tmp != 0)
-			CSR_WRITE_1(sc, FXP_CSR_SCB_STATACK, tmp);
-		statack |= tmp;
-	}
-	rx_npkts = fxp_intr_body(sc, ifp, statack, count);
-	FXP_UNLOCK(sc);
-	return (rx_npkts);
-}
-#endif /* DEVICE_POLLING */
 
 /*
  * Process interface interrupts.
@@ -2540,15 +2487,6 @@ fxp_init_body(struct fxp_softc *sc, int setmedia)
 	/*
 	 * Enable interrupts.
 	 */
-#ifdef DEVICE_POLLING
-	/*
-	 * ... but only do that if we are not polling. And because (presumably)
-	 * the default is interrupts on, we need to disable them explicitly!
-	 */
-	if (ifp->if_capenable & IFCAP_POLLING )
-		CSR_WRITE_1(sc, FXP_CSR_SCB_INTRCNTL, FXP_SCB_INTR_DISABLE);
-	else
-#endif /* DEVICE_POLLING */
 	CSR_WRITE_1(sc, FXP_CSR_SCB_INTRCNTL, 0);
 
 	/*
@@ -2864,27 +2802,6 @@ fxp_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	case SIOCSIFCAP:
 		reinit = 0;
 		mask = ifp->if_capenable ^ ifr->ifr_reqcap;
-#ifdef DEVICE_POLLING
-		if (mask & IFCAP_POLLING) {
-			if (ifr->ifr_reqcap & IFCAP_POLLING) {
-				error = ether_poll_register(fxp_poll, ifp);
-				if (error)
-					return(error);
-				FXP_LOCK(sc);
-				CSR_WRITE_1(sc, FXP_CSR_SCB_INTRCNTL,
-				    FXP_SCB_INTR_DISABLE);
-				ifp->if_capenable |= IFCAP_POLLING;
-				FXP_UNLOCK(sc);
-			} else {
-				error = ether_poll_deregister(ifp);
-				/* Enable interrupts in any case */
-				FXP_LOCK(sc);
-				CSR_WRITE_1(sc, FXP_CSR_SCB_INTRCNTL, 0);
-				ifp->if_capenable &= ~IFCAP_POLLING;
-				FXP_UNLOCK(sc);
-			}
-		}
-#endif
 		FXP_LOCK(sc);
 		if ((mask & IFCAP_TXCSUM) != 0 &&
 		    (ifp->if_capabilities & IFCAP_TXCSUM) != 0) {
