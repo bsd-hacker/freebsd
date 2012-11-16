@@ -62,9 +62,9 @@ if [ ! -d ${head}/ports ]; then
 fi
 if [ ! -d .svn ]; then
   if [ $VERBOSE ]; then
-      echo "svn checkout svn+ssh://svn.freebsd.org/ports/head ${head}/ports"
+      echo "svn checkout svn://svn.freebsd.org/ports/head ${head}/ports"
   fi
-  svn checkout svn+ssh://svn.freebsd.org/ports/head ${head}/ports || finish 1
+  svn checkout svn://svn.freebsd.org/ports/head ${head}/ports || finish 1
 else
   if [ $VERBOSE ]; then
       echo "svn up"

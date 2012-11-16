@@ -77,9 +77,9 @@ for branch in $SRC_BRANCHES; do
     if [ ! -d .svn ]; then
       if [ $VERBOSE ]; then
         # XXX MCL 20121115 gotta do the substitution here!
-        echo "svn checkout svn+ssh://svn.freebsd.org/base/head ${mountpoint}/src"
+        echo "svn checkout svn://svn.freebsd.org/base/head ${mountpoint}/src"
       fi
-      #svn checkout svn+ssh://svn.freebsd.org/base/head ${mountpoint}/src || finish 1
+      #svn checkout svn://svn.freebsd.org/base/head ${mountpoint}/src || finish 1
     else
       if [ $VERBOSE ]; then
         echo "svn up"
