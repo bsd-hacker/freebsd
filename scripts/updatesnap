@@ -74,26 +74,26 @@ for branch in $SRC_BRANCHES; do
     if [ ! -d ${mountpoint}/src ]; then
       mkdir ${mountpoint}/src || finish 1
     fi
-    if [ ! -d .svn ]; then
+    if [ ! -d ${mountpoint}/src/.svn ]; then
       if [ $VERBOSE ]; then
-        # XXX MCL 20121115 gotta do the substitution here!
+        # XXX MCL 20121115 gotta do the substitution here, if it's not head!
         echo "svn checkout svn://svn.freebsd.org/base/head ${mountpoint}/src"
       fi
-      #svn checkout svn://svn.freebsd.org/base/head ${mountpoint}/src || finish 1
+      svn checkout svn://svn.freebsd.org/base/head ${mountpoint}/src || finish 1
     else
       if [ $VERBOSE ]; then
         echo "svn up"
       fi
-      #svn up || finish 1
+      svn up || finish 1
     fi
     echo ${fulldate} > src/.updated
     # hack for zfs breakiness
     find . -group wheel|xargs chgrp portmgr
     snapdate=$(stamp ${fulldate})
     if [ $VERBOSE ]; then
-      echo "#zfs snapshot ${zbase_prefix}${branch}/src@${snapdate}"
+      echo "zfs snapshot ${zbase_prefix}${branch}/src@${snapdate}"
     fi
-    #zfs snapshot ${zbase_prefix}${branch}/src@${snapdate} || finish 1
+    zfs snapshot ${zbase_prefix}${branch}/src@${snapdate} || finish 1
 done
 
 finish 0
