@@ -7,13 +7,19 @@ pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
 
 . ${pbc}/conf/server.conf
 
-base=${ZFS_MOUNTPOINT}/${SNAP_PORTS_DIRECTORY}
-zbase=${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}
+base=${ZFS_MOUNTPOINT}/${SNAP_DIRECTORY}
+zbase=${ZFS_VOLUME}/${SNAP_DIRECTORY}
+head=${ZFS_MOUNTPOINT}/${SNAP_PORTS_DIRECTORY}
+zhead=${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}
 
-supstamp() {
-	fulldate=$1
-        date -j -f %+ "${fulldate}" +%Y.%m.%d.%H.%M.%S
-}
+VERBOSE=1
+
+# XXX MCL 20121115 try to switch to SVN
+#supstamp() {
+#	fulldate=$1
+#        date -j -f %+ "${fulldate}" +%Y.%m.%d.%H.%M.%S
+#}
+# XXX MCL 20121115 try to switch to SVN
 
 stamp() {
 	fulldate=$1
@@ -36,18 +42,57 @@ echo "Started at $(date)"
 # We need to preserve group writability so portmgr group can write
 umask 002
 
-cd ${base}
+# create /a/snap/ if not already there
+if [ ! -d ${base} ]; then
+  echo "creating new base directory using ${base}"
+  mkdir -p ${base} || finish 1
+  echo "zfs create -o mountpoint=${base} ${zbase}"
+  zfs create -o mountpoint=${base} ${zbase} || finish 1
+  chown -R portmgr:portmgr ${base}
+  chmod -R g+w ${base}
+fi
+
+# create /a/snap/ports-head/ if not already there
+if [ ! -d ${head} ]; then
+  echo "creating new ports-head directory using ${head}"
+  mkdir ${head} || finish 1
+  echo "zfs create -o mountpoint=${head} ${zhead}"
+  zfs create -o mountpoint=${head} ${zhead} || finish 1
+  chown -R portmgr:portmgr ${head}
+  chmod -R g+w ${head}
+fi
+
+cd ${head}
 fulldate=$(date)
-supdate=$(supstamp ${fulldate})
-cat ${PORTS_MASTER_SUPFILE} | \
-  sed "s|%%DATE%%|${supdate}|;s|%%PREFIX%%|${base}|" \
-  > ${PORTS_SUPFILE}.now
+# XXX MCL 20121115 try to switch to SVN
+#supdate=$(supstamp ${fulldate})
+#cat ${PORTS_MASTER_SUPFILE} | \
+#  sed "s|%%DATE%%|${supdate}|;s|%%PREFIX%%|${head}|" \
+#  > ${PORTS_SUPFILE}.now
 # example destination directory: /a/snap/ports-head/ports/
-csup -L 2 ${PORTS_SUPFILE}.now > ports-csup.log
+#csup -L 2 ${PORTS_SUPFILE}.now > ports-csup.log
+# XXX MCL 20121115 try to switch to SVN
+if [ ! -d ${head}/ports ]; then
+  mkdir ${head}/ports || finish 1
+fi
+if [ ! -d .svn ]; then
+  if [ $VERBOSE ]; then
+      echo "svn checkout svn+ssh://svn.freebsd.org/ports/head ${head}/ports"
+  fi
+  svn checkout svn+ssh://svn.freebsd.org/ports/head ${head}/ports || finish 1
+else
+  if [ $VERBOSE ]; then
+      echo "#svn up"
+  fi
+  #svn up || finish 1
+fi
 echo ${fulldate} > ports/.updated
 # hack for zfs breakiness
 find . -group wheel|xargs chgrp portmgr
 snapdate=$(stamp ${fulldate})
-zfs snapshot ${zbase}/ports@${snapdate}
+if [ $VERBOSE ]; then
+    echo "#zfs snapshot ${zhead}/ports@${snapdate}"
+fi
+zfs snapshot ${zhead}/ports@${snapdate} || finish 1
 
 finish 0
