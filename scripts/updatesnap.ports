@@ -74,9 +74,9 @@ if [ ! -d ${head}/ports/.svn ]; then
   svn checkout svn://svn.freebsd.org/ports/head ${head}/ports || finish 1
 else
   if [ $VERBOSE ]; then
-      echo "svn up"
+      echo "svn up ${head}/ports"
   fi
-  svn up || finish 1
+  svn up ${head}/ports || finish 1
 fi
 echo ${fulldate} > ports/.updated
 # hack for zfs breakiness
