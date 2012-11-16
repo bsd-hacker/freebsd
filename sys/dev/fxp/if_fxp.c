@@ -1333,8 +1333,6 @@ fxp_start_body(struct ifnet *ifp)
 	    IFF_DRV_RUNNING)
 		return;
 
-	if (sc->tx_queued > FXP_NTXCB_HIWAT)
-		fxp_txeof(sc);
 	/*
 	 * We're finished if there is nothing more to add to the list or if
 	 * we're all filled up with buffers to transmit.
@@ -1444,8 +1442,6 @@ fxp_encap(struct fxp_softc *sc, struct mbuf **m_head)
 		 * Since 82550/82551 doesn't modify IP length and pseudo
 		 * checksum in the first frame driver should compute it.
 		 */
-		ip = (struct ip *)(mtod(m, char *) + ip_off);
-		tcp = (struct tcphdr *)(mtod(m, char *) + poff);
 		ip->ip_sum = 0;
 		ip->ip_len = htons(m->m_pkthdr.tso_segsz + (ip->ip_hl << 2) +
 		    (tcp->th_off << 2));
@@ -1897,6 +1893,8 @@ fxp_ithread(void *xsc)
 	struct mbuf *m, *n;
 	uint8_t statack;
 
+	FXP_LOCK(sc);
+
 	/*
 	 * Loop while the chip indicates work.
 	 * The control status register is contiguously updated,
@@ -1912,8 +1910,6 @@ fxp_ithread(void *xsc)
 			return;
 		}
 		CSR_WRITE_1(sc, FXP_CSR_SCB_STATACK, statack);
-
-		FXP_LOCK(sc);
 
 		/*
 		 * Free any finished transmit mbuf chains.
@@ -1956,7 +1952,9 @@ fxp_ithread(void *xsc)
 			(*ifp->if_input)(ifp, n);
 			maybe_yield();
 		}
+		FXP_LOCK(sc);
 	}
+	FXP_UNLOCK(sc);
 
 	/*
 	 * Enable interrupts again.
