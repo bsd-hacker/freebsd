@@ -14,13 +14,6 @@ zbase_prefix=${ZFS_VOLUME}/${SNAP_DIRECTORY}/${SRC_DIRECTORY_PREFIX}
 
 VERBOSE=1
 
-# XXX MCL 20121115 try to switch to SVN
-#supstamp() {
-#	fulldate=$1
-#        date -j -f %+ "${fulldate}" +%Y.%m.%d.%H.%M.%S
-#}
-# XXX MCL 20121115 try to switch to SVN
-
 stamp() {
 	fulldate=$1
         date -j -f %+ "${fulldate}" +%Y%m%d%H%M%S
@@ -74,22 +67,10 @@ for branch in $SRC_BRANCHES; do
   fi
   cd ${mountpoint}
   fulldate=$(date)
-# XXX MCL 20121115 try to switch to SVN
-#  supdate=$(supstamp ${fulldate})
-#  eval tag=\$SRC_BRANCH_${branch}_TAG
-#  if [ ! -f ${SRC_MASTER_SUPFILE} ]; then
-#    echo "${SRC_MASTER_SUPFILE} does not exist!"
-#  else
-#    sed "s|%%DATE%%|${supdate}|;s|%%PREFIX%%|${mountpoint}|;s|%%TAG%%|${tag}|" \
-#      ${SRC_MASTER_SUPFILE} > ${SRC_SUPFILE}.${branch}.now
-#    # example destination directory: /a/snap/src-7/src/ (tricky!)
-#    if [ $VERBOSE ]; then
-#      echo "csup -L 2 ${SRC_SUPFILE}.${branch}.now > src-csup.${branch}.log"
-#    fi
-#    csup -L 2 ${SRC_SUPFILE}.${branch}.now > src-csup.${branch}.log
-# XXX MCL 20121115 try to switch to SVN
+
+    # TODO: fix identation post-rework
+
     # example destination directory: /a/snap/src-7/src/ (tricky!)
-    echo "XXX now at `pwd -P`"
     if [ ! -d ${mountpoint}/src ]; then
       mkdir ${mountpoint}/src || finish 1
     fi
@@ -105,7 +86,6 @@ for branch in $SRC_BRANCHES; do
       fi
       #svn up || finish 1
     fi
-# XXX MCL 20121115 try to switch to SVN
     echo ${fulldate} > src/.updated
     # hack for zfs breakiness
     find . -group wheel|xargs chgrp portmgr
@@ -114,9 +94,6 @@ for branch in $SRC_BRANCHES; do
       echo "#zfs snapshot ${zbase_prefix}${branch}/src@${snapdate}"
     fi
     #zfs snapshot ${zbase_prefix}${branch}/src@${snapdate} || finish 1
-# XXX MCL 20121115 try to switch to SVN
-#  fi
-# XXX MCL 20121115 try to switch to SVN
 done
 
 finish 0

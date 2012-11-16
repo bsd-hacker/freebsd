@@ -14,13 +14,6 @@ zhead=${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}
 
 VERBOSE=1
 
-# XXX MCL 20121115 try to switch to SVN
-#supstamp() {
-#	fulldate=$1
-#        date -j -f %+ "${fulldate}" +%Y.%m.%d.%H.%M.%S
-#}
-# XXX MCL 20121115 try to switch to SVN
-
 stamp() {
 	fulldate=$1
         date -j -f %+ "${fulldate}" +%Y%m%d%H%M%S
@@ -64,14 +57,6 @@ fi
 
 cd ${head}
 fulldate=$(date)
-# XXX MCL 20121115 try to switch to SVN
-#supdate=$(supstamp ${fulldate})
-#cat ${PORTS_MASTER_SUPFILE} | \
-#  sed "s|%%DATE%%|${supdate}|;s|%%PREFIX%%|${head}|" \
-#  > ${PORTS_SUPFILE}.now
-# example destination directory: /a/snap/ports-head/ports/
-#csup -L 2 ${PORTS_SUPFILE}.now > ports-csup.log
-# XXX MCL 20121115 try to switch to SVN
 if [ ! -d ${head}/ports ]; then
   mkdir ${head}/ports || finish 1
 fi
@@ -82,16 +67,16 @@ if [ ! -d .svn ]; then
   svn checkout svn+ssh://svn.freebsd.org/ports/head ${head}/ports || finish 1
 else
   if [ $VERBOSE ]; then
-      echo "#svn up"
+      echo "svn up"
   fi
-  #svn up || finish 1
+  svn up || finish 1
 fi
 echo ${fulldate} > ports/.updated
 # hack for zfs breakiness
 find . -group wheel|xargs chgrp portmgr
 snapdate=$(stamp ${fulldate})
 if [ $VERBOSE ]; then
-    echo "#zfs snapshot ${zhead}/ports@${snapdate}"
+  echo "zfs snapshot ${zhead}/ports@${snapdate}"
 fi
 zfs snapshot ${zhead}/ports@${snapdate} || finish 1
 
