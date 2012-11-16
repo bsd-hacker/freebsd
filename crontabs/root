@@ -28,8 +28,8 @@ TERM=xterm
 # XXX MCL script not yet converted
 #50 3 * * * lockf -t 0 -k /var/run/busybusybusy.lock /var/portbuild/scripts/zexpire
 
-# CVS update of ports
+# VCS update of ports
 0 */3 * * * lockf -t 0 -k /var/run/updatesnap.ports.lock /var/portbuild/scripts/updatesnap.ports
-# CVS update of src
+# VCS update of src
 # NOTE: temporarily halt this whenever RELENG_X is being tagged
 0 2 * * * lockf -t 0 -k /var/run/updatesnap.lock /var/portbuild/scripts/updatesnap
