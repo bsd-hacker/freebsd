@@ -55,12 +55,19 @@ if [ ! -d ${head} ]; then
   chmod -R g+w ${head}
 fi
 
+# create /a/snap/ports-head/ports/ if not already there
+if [ ! -d ${head}/ports ]; then
+  echo "creating new ports-head/ports directory using ${head}/ports"
+  mkdir ${head}/ports || finish 1
+  echo "zfs create -o mountpoint=${head}/ports ${zhead}/ports"
+  zfs create -o mountpoint=${head}/ports ${zhead}/ports || finish 1
+  chown -R portmgr:portmgr ${head}/ports
+  chmod -R g+w ${head}/ports
+fi
+
 cd ${head}
 fulldate=$(date)
-if [ ! -d ${head}/ports ]; then
-  mkdir ${head}/ports || finish 1
-fi
-if [ ! -d .svn ]; then
+if [ ! -d ${head}/ports/.svn ]; then
   if [ $VERBOSE ]; then
       echo "svn checkout svn://svn.freebsd.org/ports/head ${head}/ports"
   fi
