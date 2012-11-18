@@ -139,6 +139,11 @@ MALLOC_DECLARE(SCTP_M_MCORE);
 #endif
 
 /*
+ * Protocol family specific mbuf flag overlays.
+ */
+#define	M_NOTIFICATION		M_PROTO5	/* SCTP notification */
+
+/*
  * Macros to expand out globals defined by various modules
  * to either a real global or a virtualized instance of one,
  * depending on whether VIMAGE is defined.

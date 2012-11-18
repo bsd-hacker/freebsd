@@ -210,8 +210,6 @@ struct mbuf {
  */
 #define	M_FIB		0xF0000000 /* steal some bits to store fib number. */
 
-#define	M_NOTIFICATION	M_PROTO5    /* SCTP notification */
-
 /*
  * Flags to purge when crossing layers.
  */
