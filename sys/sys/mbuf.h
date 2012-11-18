@@ -363,7 +363,7 @@ struct mbuf {
 #define	CSUM_IP_FRAGO	0x00000110	/* IP  fragmentation offload 	*/
 #define	CSUM_IP_UFO	0x00000230	/* UDP fragmentation offload	*/
 #define	CSUM_IP_TSO	0x00000450	/* TCP  segmentation offload	*/
-#define CSUM_IP_SCO	0x00000890	/* SCTP chunking offload	*/
+#define	CSUM_IP_SCO	0x00000890	/* SCTP chunking offload	*/
 
 /* IPv6 csum offload	0x0---0000				*/
 					/* IPv6 hdr has no csum	*/
@@ -374,9 +374,7 @@ struct mbuf {
 #define	CSUM_IP6_FRAGO	0x00200000	/* IPv6 frag		*/
 #define	CSUM_IP6_UFO	0x00220000	/* IPv6/UFO		*/
 #define	CSUM_IP6_TSO	0x00440000	/* IPv6/TSO		*/
-#define CSUM_IP6_SCO	0x00880000	 * SCTP chunk offload	*/
-
-#define	CSUM_RSS_HT_XX	0x00000001-F
+#define	CSUM_IP6_SCO	0x00880000	 * SCTP chunk offload	*/
 
 /* Definition compatiblity with < 20121118, goes away after tree pruning */
 #define	CSUM_UDP	CSUM_IP_UDP
@@ -393,7 +391,7 @@ struct mbuf {
 #define	CSUM_DATA_VALID	CSUM_L4_VALID	/* csum_data field is valid */
 #define	CSUM_SCTP_VALID	CSUM_L4_VALID	/* SCTP checksum is valid */
 
-#define CSUM_PSEUDO_HDR	0x00000001	/* XXX csum_data has pseudo hdr */
+#define	CSUM_PSEUDO_HDR	0x00000001	/* XXX csum_data has pseudo hdr */
 #define	CSUM_DELAY_DATA_IPV6	(CSUM_TCP_IPV6 | CSUM_UDP_IPV6)
 #define	CSUM_DATA_VALID_IPV6	CSUM_DATA_VALID
 #define	CSUM_DELAY_DATA		(CSUM_TCP | CSUM_UDP)
