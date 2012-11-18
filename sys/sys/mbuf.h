@@ -120,9 +120,17 @@ struct pkthdr {
 	uint32_t	 flowid;	/* packet's 4-tuple system
 					 * flow identifier
 					 */
-	/* variables for hardware checksum */
-	int		 csum_flags;	/* flags regarding checksum */
-	int		 csum_data;	/* data field used by csum routines */
+	/* Variables for various hardware offload features.		*/
+	int		 csum_flags;	/* flags regarding checksum	*/
+	union {
+		int	 cd_data;	/* data field for csum routines	*/
+		struct {
+			uint8_t	l2hlen;	/* layer 2 header length	*/
+			uint8_t	l3hlen;	/* layer 3 header length	*/
+			uint8_t	l4hlen;	/* layer 4 header length	*/
+			uint8_t	unused; /* unused			*/
+		} PHCD_hdr;
+	} PH_cd;
 	u_int16_t	 tso_segsz;	/* TSO segment size */
 	union {
 		u_int16_t vt_vtag;	/* Ethernet 802.1p+q vlan tag */
@@ -130,6 +138,10 @@ struct pkthdr {
 	} PH_vt;
 	SLIST_HEAD(packet_tags, m_tag) tags; /* list of packet tags */
 };
+#define	csum_data	PH_cd.cd_data
+#define	csum_l2hlen	PH_cd.PHCD_hdr.l2hlen
+#define	csum_l3hlen	PH_cd.PHCD_hdr.l3hlen
+#define	csum_l4hlen	PH_cd.PHCD_hdr.l4hlen
 #define ether_vtag	PH_vt.vt_vtag
 
 /*
