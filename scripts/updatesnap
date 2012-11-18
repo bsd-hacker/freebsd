@@ -74,17 +74,17 @@ for branch in $SRC_BRANCHES; do
     if [ ! -d ${mountpoint}/src ]; then
       mkdir ${mountpoint}/src || finish 1
     fi
-    if [ ! -d ${mountpoint}/src/.svn ]; then
+    if [ ! -d ${mountpoint}/src/${VCS_SUBDIR} ]; then
       if [ $VERBOSE ]; then
         # XXX MCL 20121115 gotta do the substitution here, if it's not head!
-        echo "svn checkout svn://svn.freebsd.org/base/head ${mountpoint}/src"
+        echo "${VCS_CHECKOUT_COMMAND} ${VCS_SRC_REPOSITORY}/head ${mountpoint}/src"
       fi
-      svn checkout svn://svn.freebsd.org/base/head ${mountpoint}/src || finish 1
+      ${VCS_CHECKOUT_COMMAND} ${VCS_SRC_REPOSITORY}/head ${mountpoint}/src || finish 1
     else
       if [ $VERBOSE ]; then
-        echo "svn up ${mountpoint}/src"
+        echo "${VCS_UPDATE_COMMAND} ${mountpoint}/src"
       fi
-      svn up ${mountpoint}/src || finish 1
+      ${VCS_UPDATE_COMMAND} ${mountpoint}/src || finish 1
     fi
     echo ${fulldate} > src/.updated
     # hack for zfs breakiness
