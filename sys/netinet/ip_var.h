@@ -160,7 +160,7 @@ void	kmod_ipstat_dec(int statnum);
 #define IP_ALLOWBROADCAST	SO_BROADCAST	/* 0x20 can send broadcast packets */
 
 /*
- * mbuf flag used by ip_fastfwd
+ * Protocol family specific mbuf flag overlays.
  */
 #define	M_FASTFWD_OURS		M_PROTO1	/* changed dst to local */
 #define	M_IP_NEXTHOP		M_PROTO2	/* explicit ip nexthop */
