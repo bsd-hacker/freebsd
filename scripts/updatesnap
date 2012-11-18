@@ -75,11 +75,11 @@ for branch in $SRC_BRANCHES; do
       mkdir ${mountpoint}/src || finish 1
     fi
     if [ ! -d ${mountpoint}/src/${VCS_SUBDIR} ]; then
+      eval subdir=\$SRC_BRANCH_${branch}_SUBDIR
       if [ $VERBOSE ]; then
-        # XXX MCL 20121115 gotta do the substitution here, if it's not head!
-        echo "${VCS_CHECKOUT_COMMAND} ${VCS_SRC_REPOSITORY}/head ${mountpoint}/src"
+        echo "${VCS_CHECKOUT_COMMAND} ${VCS_SRC_REPOSITORY}/${subdir} ${mountpoint}/src"
       fi
-      ${VCS_CHECKOUT_COMMAND} ${VCS_SRC_REPOSITORY}/head ${mountpoint}/src || finish 1
+      ${VCS_CHECKOUT_COMMAND} ${VCS_SRC_REPOSITORY}/${subdir} ${mountpoint}/src || finish 1
     else
       if [ $VERBOSE ]; then
         echo "${VCS_UPDATE_COMMAND} ${mountpoint}/src"
