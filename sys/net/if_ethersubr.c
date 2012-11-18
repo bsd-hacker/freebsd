@@ -328,6 +328,21 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 			sizeof(eh->ether_shost));
 
 	/*
+	 * Fill in ethernet header length for checksum offload features.
+	 * NB: The vlan header length must not be specified with hardware
+	 * vlan insertion.
+	 */
+	if (m->m_pkthdr.csum_flags) {
+		uint8_t ehlen;
+
+		if (eh->ether_type == ntohs(ETHERTYPE_VLAN))
+			ehlen = sizeof(struct ether_vlan_header);
+		else
+			ehlen = sizeof(struct ether_header);
+		m->m_pkthdr.csum_l2hlen += ehlen;
+	}
+
+	/*
 	 * If a simplex interface, and the packet is being sent to our
 	 * Ethernet address or a broadcast address, loopback a copy.
 	 * XXX To make a simplex device behave exactly like a duplex

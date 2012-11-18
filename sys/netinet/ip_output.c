@@ -582,6 +582,7 @@ passout:
 	}
 
 	m->m_pkthdr.csum_flags |= CSUM_IP;
+	m->m_pkthdr.csum_l3hlen += ip_len;
 	if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA & ~ifp->if_hwassist) {
 		in_delayed_cksum(m);
 		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;

@@ -1227,7 +1227,7 @@ udp_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr,
 		ui->ui_sum = in_pseudo(ui->ui_src.s_addr, faddr.s_addr,
 		    htons((u_short)len + sizeof(struct udphdr) + IPPROTO_UDP));
 		m->m_pkthdr.csum_flags = CSUM_UDP;
-		m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
+		m->m_pkthdr.csum_l4hlen = sizeof(struct udphdr);
 	} else
 		ui->ui_sum = 0;
 	((struct ip *)ui)->ip_len = htons(sizeof(struct udpiphdr) + len);

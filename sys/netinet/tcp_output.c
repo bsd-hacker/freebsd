@@ -1078,7 +1078,7 @@ send:
 	 * checksum extended header and data.
 	 */
 	m->m_pkthdr.len = hdrlen + len; /* in6_cksum() need this */
-	m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+	m->m_pkthdr.csum_l4hlen = sizeof(struct tcphdr) + optlen;
 #ifdef INET6
 	if (isipv6) {
 		/*

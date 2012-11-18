@@ -1030,6 +1030,9 @@ passout:
 			ia6->ia_ifa.if_obytes += m->m_pkthdr.len;
 			ifa_free(&ia6->ia_ifa);
 		}
+		if (m->m_pkthdr.csum_flags &
+		    (CSUM_UDP_IPV6|CSUM_TCP_IPV6|CSUM_SCTP_IPV6|CSUM_TSO))
+			m->m_pkthdr.csum_l3hlen += sizeof(struct ip6_hdr);
 		error = nd6_output(ifp, origifp, m, dst, ro->ro_rt);
 		goto done;
 	}
