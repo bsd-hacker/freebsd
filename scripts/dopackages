@@ -30,9 +30,9 @@ usage () {
     echo "       -nochecksubdirs  : Do not check the SUBDIRS"
     echo "       -norestr         : Do not build the restricted.sh file"
     echo "       -nosrc           : Do not update the src tree"
-    echo "       -srcvcs          : Update the src tree via CVS, don't use a pre-existing snapshot"
+    echo "       -srcvcs          : Update the src tree via ${VCS}, don't use a pre-existing snapshot"
     echo "       -noports         : Do not update the ports tree"
-    echo "       -portsvcs        : Update the ports tree via CVS, don't use a pre-existing snapshot"
+    echo "       -portsvcs        : Update the ports tree via ${VCS}, don't use a pre-existing snapshot"
     echo "       -noplistcheck    : Don't check the plist during the build"
     echo "       -nodistfiles     : Don't collect distfiles"
     echo "       -fetch-original  : Fetch from original MASTER_SITE"
@@ -482,6 +482,7 @@ if [ "$skipstart" = 0 ]; then
 	    cd ${PORTSDIR}
 	    updated=$(date '+%Y/%m/%d %H:%M')
 	    echo ${updated} > ${builddir}/.updated
+	    # XXX MCL 20121117 this is not right!
 	    ${VCS} ${VCS_UPDATE_DATE} "${updated}"
 	    # XXX Check for conflicts
 	else
