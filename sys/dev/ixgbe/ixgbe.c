@@ -1823,7 +1823,7 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 	if ((m_head->m_flags & M_VLANTAG) ||
 	    (m_head->m_pkthdr.csum_flags &
 	     (CSUM_IP|CSUM_TCP|CSUM_TCP_IPV6|CSUM_TSO|CSUM_UDP|CSUM_UDP_IPV6|
-	      CSUM_UFO|CSUM_SCTP|CSUM_SCTP_IPV6))) {
+	      CSUM_SCTP|CSUM_SCTP_IPV6))) {
 		if (ixgbe_offload_setup(txr, m_head, &cmd_type_len,
 		    &olinfo_status))
 			++adapter->tso_tx;
@@ -3328,7 +3328,7 @@ ixgbe_offload_setup(struct tx_ring *txr, struct mbuf *m, u32 *cmd_type_len,
 		l4_hlen = sizeof(struct udphdr);
 		if (m->m_pkthdr.csum_flags & (CSUM_UDP | CSUM_UDP_IPV6))
 			*olinfo_status |= IXGBE_TXD_POPTS_TXSM << 8;
-		if (m->m_pkthdr.csum_flags & (CSUM_UFO | 0)) {
+		if (m->m_pkthdr.csum_flags & (CSUM_IP_UFO | 0)) {
 			*cmd_type_len |= IXGBE_ADVTXD_DCMD_TSE;
 			paylen -= ehdrlen + ip_hlen + l4_hlen;
 		}
@@ -4722,7 +4722,7 @@ ixgbe_rx_checksum(u32 staterr, struct mbuf * mp, u32 ptype)
 			mp->m_pkthdr.csum_flags = 0;
 	}
 	if (status & IXGBE_RXD_STAT_L4CS) {
-		u16 type = (CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
+		u32 type = (CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
 #if __FreeBSD_version >= 800000
 		if (sctp)
 			type = CSUM_SCTP_VALID;

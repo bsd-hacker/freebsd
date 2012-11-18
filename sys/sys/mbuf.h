@@ -287,32 +287,117 @@ struct mbuf {
 /*
  * Flags indicating hw checksum support and sw checksum requirements.  This
  * field can be directly tested against if_data.ifi_hwassist.
+ *
+ * The offloading flags are used on the inbound and outbound packet path.
+ * These two path behave differently.
+ * Please note that the IPv6 header doesn't have a checksum.
+ *
+ * Inbound:
+ *  The NIC can support calculation of the checksum of the IP header, UDP,
+ *  TCP and SCTP checksums.  When the hardware calculated the checksum of
+ *  the L3 or L4 header it sets the CALCULATED bit.  If the calculated
+ *  checksum also matches the original checksum in the packet it sets th
+ *  VALID bit.  The VALID bit MUST NOT be set without the corresponding
+ *  CALCULATED bit.  All L3+ packets, even with mismatched checksums are
+ *  delivered up the network stack.  The protocol specific input routines
+ *  then can drop the packet.  When doing L3 forwarding only the L3 checksum
+ *  must be checked, a packet is to be forwarded even if the L4 checksum has
+ *  a mismatch.
+ *  The protocol type (eg. IPv4 or IPv6; UDP, TCP or SCTP) doesn't have to
+ *  be stored in the bits because it follows from the packet content.
+ *  XXXAO: See how encapsulated checksum verification can be handled.
+ *
+ *  NB: A driver MUST NOT do checksumming in software just to set the checksum
+ *  offload bits.
+ *  NB: A driver MUST NOT set any of the CALCULATED or VALID bits if it didn't
+ *  actually perform the nescessary checksum calculations.
+ *
+ * Outbound:
+ *  The NIC can support calculation and insertion of the IP header, UDP,
+ *  TCP and SCTP checksums. Additionally it can support segmentation of
+ *  large TCP sends and IP level fragmentation of large UDP packets.
+ *  The TCP and UDP layers generally calculate only the pseudo checksum
+ *  WITHOUT a length value and put it into the L4 header checksum field.
+ *  The same checksum value is also put into the csum_pseudo field.  SCTP
+ *  (thankfully) doesn't include a pseudo header in its checksum.  The
+ *  NIC may ignore the pseudo header checksum and do its own calculations
+ *  entirely based on the packet content.
+ *
+ *  More advanced features are TCP segmentation offload and UDP fragmentation
+ *  offload.  Whenever these flags are set, the upper layers will set the
+ *  csum_l(2-4)hlen fields.  The aggregated sum of the header length will
+ *  be present contiguously in the first mbuf.  The csum_pseudo is as before.
+ *  Packets for segmentation/fragmentation do not exceed IP_MAXLEN (64K)
+ *  including L3 headers.  However the additional L2 headers come on top
+ *  and put the entire frame above 64K.  This has to be accounted for in
+ *  the driver and its DMA setup.  Segmentation and fragmentation features
+ *  are protocol dependent and each protocol has to be defined.
+ *  L4 seg/fragmentation offload always implies L4 and L3 checksum offloading
+ *  as well.  However they are always explicitly specified as well.
+ *
+ *  NB: A driver can blindly verify the above to be true and simply test
+ *  the first mbuf's length againt the aggregated csum_l(2-4)hlen.  If is
+ *  too short it can just drop the packet and return EINVAL.  Additionally
+ *  it should verify the mbuf chain's intergrity with m_sanity() in a KASSERT.
  */
-#define	CSUM_IP			0x0001		/* will csum IP */
-#define	CSUM_TCP		0x0002		/* will csum TCP */
-#define	CSUM_UDP		0x0004		/* will csum UDP */
-#define	CSUM_IPFRAG		0x0008		/* IP fragmentation offload */
-#define	CSUM_UFO		0x0010		/* UDP fragmentation offload */
-#define	CSUM_TSO		0x0020		/* TCP segmentation offload */
-#define	CSUM_SCTP		0x0040		/* will csum SCTP */
-#define CSUM_SCTP_IPV6		0x0080		/* will csum IPv6/SCTP */
 
-#define	CSUM_IP_CHECKED		0x0100		/* did csum IP */
-#define	CSUM_IP_VALID		0x0200		/*   ... the csum is valid */
-#define	CSUM_DATA_VALID		0x0400		/* csum_data field is valid */
-#define	CSUM_PSEUDO_HDR		0x0800		/* csum_data has pseudo hdr */
-#define	CSUM_SCTP_VALID		0x1000		/* SCTP checksum is valid */
-#define	CSUM_UDP_IPV6		0x2000		/* will csum IPv6/UDP */
-#define	CSUM_TCP_IPV6		0x4000		/* will csum IPv6/TCP */
-/*	CSUM_TSO_IPV6		0x8000		will do IPv6/TSO */
+/* Inbound flags. */
+#define	MCSUM_INFLAGS(m)	((m)->csum_flags & \
+			0xF0000000)
 
-/*	CSUM_FRAGMENT_IPV6	0x10000		will do IPv6 fragementation */
+#define	CSUM_L3_CALC	0x10000000	/* IP hdr csum calculated	*/
+#define	CSUM_L3_VALID	0x20000000	/* IP hdr csum equal calculated	*/
+#define	CSUM_L4_CALC	0x40000000	/* UDP/TCP/SCTP csum calculated	*/
+#define	CSUM_L4_VALID	0x80000000	/* UDP/TCP/SCTP csum eq. calc.	*/
 
+/* Outboud flags, tested against ifi_hwassist. */
+#define	MCSUM_OUTFLAGS(m)	((m)->csum_flags & \
+			0x0FFFFFF0)
+
+/* IPv4 csum offload	0x0000---0				*/
+#define	CSUM_IP		0x00000010	/* will csum IP header	*/
+#define	CSUM_IP_UDP	0x00000030	/* will csum UDP	*/
+#define	CSUM_IP_TCP	0x00000050	/* will csum TCP	*/
+#define	CSUM_IP_SCTP	0x00000090	/* will csum SCTP	*/
+
+#define	CSUM_IP_FRAGO	0x00000110	/* IP  fragmentation offload 	*/
+#define	CSUM_IP_UFO	0x00000230	/* UDP fragmentation offload	*/
+#define	CSUM_IP_TSO	0x00000450	/* TCP  segmentation offload	*/
+#define CSUM_IP_SCO	0x00000890	/* SCTP chunking offload	*/
+
+/* IPv6 csum offload	0x0---0000				*/
+					/* IPv6 hdr has no csum	*/
+#define	CSUM_IP6_UDP	0x00020000	/* will csum IPv6/UDP	*/
+#define	CSUM_IP6_TCP	0x00040000	/* will csum IPv6/TCP	*/
+#define CSUM_IP6_SCTP	0x00080000	/* will csum IPv6/SCTP	*/
+
+#define	CSUM_IP6_FRAGO	0x00200000	/* IPv6 frag		*/
+#define	CSUM_IP6_UFO	0x00220000	/* IPv6/UFO		*/
+#define	CSUM_IP6_TSO	0x00440000	/* IPv6/TSO		*/
+#define CSUM_IP6_SCO	0x00880000	 * SCTP chunk offload	*/
+
+#define	CSUM_RSS_HT_XX	0x00000001-F
+
+/* Definition compatiblity with < 20121118, goes away after tree pruning */
+#define	CSUM_UDP	CSUM_IP_UDP
+#define	CSUM_TCP	CSUM_IP_TCP
+#define	CSUM_SCTP	CSUM_IP_SCTP
+#define	CSUM_TSO	CSUM_IP_TSO
+#define	CSUM_IPFRAG	CSUM_IP_FRAGO
+#define	CSUM_UDP_IPV6	CSUM_IP6_UDP	/* will csum IPv6/UDP */
+#define	CSUM_TCP_IPV6	CSUM_IP6_TCP	/* will csum IPv6/TCP */
+#define	CSUM_SCTP_IPV6	CSUM_IP6_SCTP	/* will csum IPv6/SCTP */
+
+#define	CSUM_IP_CHECKED	CSUM_L3_CALC	/* did csum IP */
+#define	CSUM_IP_VALID	CSUM_L3_VALID	/*   ... the csum is valid */
+#define	CSUM_DATA_VALID	CSUM_L4_VALID	/* csum_data field is valid */
+#define	CSUM_SCTP_VALID	CSUM_L4_VALID	/* SCTP checksum is valid */
+
+#define CSUM_PSEUDO_HDR	0x00000001	/* XXX csum_data has pseudo hdr */
 #define	CSUM_DELAY_DATA_IPV6	(CSUM_TCP_IPV6 | CSUM_UDP_IPV6)
 #define	CSUM_DATA_VALID_IPV6	CSUM_DATA_VALID
-
 #define	CSUM_DELAY_DATA		(CSUM_TCP | CSUM_UDP)
-#define	CSUM_DELAY_IP		(CSUM_IP)	/* Only v4, no v6 IP hdr csum */
+#define	CSUM_DELAY_IP		(CSUM_IP)
 
 /*
  * mbuf types.
