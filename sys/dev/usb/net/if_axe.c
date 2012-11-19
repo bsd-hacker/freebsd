@@ -1131,14 +1131,14 @@ axe_rxeof(struct usb_ether *ue, struct usb_page_cache *pc, unsigned int offset,
 	if (csum_hdr != NULL && csum_hdr->cstatus & AXE_CSUM_HDR_L3_TYPE_IPV4) {
 		if ((csum_hdr->cstatus & (AXE_CSUM_HDR_L4_CSUM_ERR |
 		    AXE_CSUM_HDR_L3_CSUM_ERR)) == 0) {
-			m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED |
-			    CSUM_IP_VALID;
+			m->m_pkthdr.csum_flags |= CSUM_L3_CALC |
+			    CSUM_L3_VALID;
 			if ((csum_hdr->cstatus & AXE_CSUM_HDR_L4_TYPE_MASK) ==
 			    AXE_CSUM_HDR_L4_TYPE_TCP ||
 			    (csum_hdr->cstatus & AXE_CSUM_HDR_L4_TYPE_MASK) ==
 			    AXE_CSUM_HDR_L4_TYPE_UDP) {
 				m->m_pkthdr.csum_flags |=
-				    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}

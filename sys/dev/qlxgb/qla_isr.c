@@ -132,7 +132,7 @@ qla_rx_intr(qla_host_t *ha, uint64_t data, uint32_t sds_idx,
 	}
 
 	if (status == Q8_STAT_DESC_STATUS_CHKSUM_OK) {
-		mp->m_pkthdr.csum_flags = (CSUM_IP_CHECKED | CSUM_IP_VALID);
+		mp->m_pkthdr.csum_flags = (CSUM_L3_CALC | CSUM_L3_VALID);
 	} else {
 		mp->m_pkthdr.csum_flags = 0;
 	}

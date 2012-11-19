@@ -97,8 +97,8 @@ mxge_lro_flush(struct mxge_slice_state *ss, struct lro_entry *lro)
 			mxge_csum_generic((uint16_t*)ip,
 					      sizeof (*ip));
 
-		lro->m_head->m_pkthdr.csum_flags = CSUM_IP_CHECKED |
-			CSUM_IP_VALID | CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+		lro->m_head->m_pkthdr.csum_flags = CSUM_L3_CALC |
+			CSUM_L3_VALID | CSUM_L4_CALC | CSUM_L4_VALID;
 		lro->m_head->m_pkthdr.csum_data = 0xffff;
 		lro->m_head->m_pkthdr.len = lro->len;
 

@@ -944,15 +944,15 @@ lge_rxeof(sc, cnt)
 
 		/* Do IP checksum checking. */
 		if (rxsts & LGE_RXSTS_ISIP)
-			m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+			m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 		if (!(rxsts & LGE_RXSTS_IPCSUMERR))
-			m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+			m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 		if ((rxsts & LGE_RXSTS_ISTCP &&
 		    !(rxsts & LGE_RXSTS_TCPCSUMERR)) ||
 		    (rxsts & LGE_RXSTS_ISUDP &&
 		    !(rxsts & LGE_RXSTS_UDPCSUMERR))) {
 			m->m_pkthdr.csum_flags |=
-			    CSUM_DATA_VALID|CSUM_PSEUDO_HDR;
+			    CSUM_L4_CALC|CSUM_L4_VALID;
 			m->m_pkthdr.csum_data = 0xffff;
 		}
 

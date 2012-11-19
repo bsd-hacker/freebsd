@@ -1726,17 +1726,17 @@ stge_rxeof(struct stge_softc *sc)
 			if ((ifp->if_capenable & IFCAP_RXCSUM) != 0) {
 				if ((status & RFD_IPDetected) != 0) {
 					m->m_pkthdr.csum_flags |=
-						CSUM_IP_CHECKED;
+						CSUM_L3_CALC;
 					if ((status & RFD_IPError) == 0)
 						m->m_pkthdr.csum_flags |=
-						    CSUM_IP_VALID;
+						    CSUM_L3_VALID;
 				}
 				if (((status & RFD_TCPDetected) != 0 &&
 				    (status & RFD_TCPError) == 0) ||
 				    ((status & RFD_UDPDetected) != 0 &&
 				    (status & RFD_UDPError) == 0)) {
 					m->m_pkthdr.csum_flags |=
-					    (CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
+					    (CSUM_L4_CALC | CSUM_L4_VALID);
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 			}

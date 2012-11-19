@@ -1221,8 +1221,8 @@ reject:
 
 	if (__predict_true(m != NULL)) {
 		m_adj(m, sizeof(*cpl));
-		m->m_pkthdr.csum_flags |= (CSUM_IP_CHECKED | CSUM_IP_VALID |
-		    CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
+		m->m_pkthdr.csum_flags |= (CSUM_L3_CALC | CSUM_L3_VALID |
+		    CSUM_L4_CALC | CSUM_L4_VALID);
 		m->m_pkthdr.csum_data = 0xffff;
 		ifp->if_input(ifp, m);
 	}

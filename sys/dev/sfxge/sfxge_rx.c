@@ -295,9 +295,9 @@ sfxge_rx_deliver(struct sfxge_softc *sc, struct sfxge_rx_sw_desc *rx_desc)
 
 	/* Convert checksum flags */
 	csum_flags = (rx_desc->flags & EFX_CKSUM_IPV4) ?
-		(CSUM_IP_CHECKED | CSUM_IP_VALID) : 0;
+		(CSUM_L3_CALC | CSUM_L3_VALID) : 0;
 	if (rx_desc->flags & EFX_CKSUM_TCPUDP)
-		csum_flags |= CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+		csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 
 #ifdef SFXGE_HAVE_MQ
 	/* The hash covers a 4-tuple for TCP only */
@@ -336,13 +336,13 @@ sfxge_lro_deliver(struct sfxge_lro_state *st, struct sfxge_lro_conn *c)
 		iph->ip_sum = 0;
 		iph->ip_sum = in_cksum_hdr(iph);
 		c_th = (struct tcphdr *)(iph + 1);
-		csum_flags = (CSUM_DATA_VALID | CSUM_PSEUDO_HDR |
-			      CSUM_IP_CHECKED | CSUM_IP_VALID);
+		csum_flags = (CSUM_L4_CALC | CSUM_L4_VALID |
+			      CSUM_L3_CALC | CSUM_L4_VALID);
 	} else {
 		struct ip6_hdr *iph = c->nh;
 		iph->ip6_plen = htons(iph->ip6_plen);
 		c_th = (struct tcphdr *)(iph + 1);
-		csum_flags = CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+		csum_flags = CSUM_L4_CALC | CSUM_L4_VALID;
 	}
 
 	c_th->th_win = c->th_last->th_win;

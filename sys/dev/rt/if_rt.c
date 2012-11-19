@@ -1712,8 +1712,8 @@ rt_rx_eof(struct rt_softc *sc, int limit)
 				}
 			}
 			if ((desc_flags & RXDSXR_SRC_IP_CSUM_FAIL) != 0) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 			m->m_flags &= ~M_HASFCS;

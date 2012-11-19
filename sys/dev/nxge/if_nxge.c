@@ -2434,9 +2434,10 @@ _exit:
 void
 xge_set_mbuf_cflags(mbuf_t pkt)
 {
-	pkt->m_pkthdr.csum_flags = CSUM_IP_CHECKED;
-	pkt->m_pkthdr.csum_flags |= CSUM_IP_VALID;
-	pkt->m_pkthdr.csum_flags |= (CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
+	/* XXXAO: Is this really unconditionally true? */
+	pkt->m_pkthdr.csum_flags = CSUM_L3_CALC;
+	pkt->m_pkthdr.csum_flags |= CSUM_L3_VALID;
+	pkt->m_pkthdr.csum_flags |= (CSUM_L4_CALC | CSUM_L4_VALID);
 	pkt->m_pkthdr.csum_data = htons(0xffff);
 }
 

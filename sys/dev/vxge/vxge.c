@@ -1113,10 +1113,10 @@ vxge_rx_checksum(vxge_hal_ring_rxd_info_t ext_info, mbuf_t mbuf_up)
 
 		mbuf_up->m_pkthdr.csum_data = htons(0xffff);
 
-		mbuf_up->m_pkthdr.csum_flags = CSUM_IP_CHECKED;
-		mbuf_up->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+		mbuf_up->m_pkthdr.csum_flags = CSUM_L3_CALC;
+		mbuf_up->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 		mbuf_up->m_pkthdr.csum_flags |=
-		    (CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
+		    (CSUM_L4_CALC | CSUM_L4_VALID);
 
 	} else {
 

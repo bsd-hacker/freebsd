@@ -1847,17 +1847,17 @@ tsec_offload_process_frame(struct tsec_softc *sc, struct mbuf *m)
 	protocol = rx_fcb.protocol;
 
 	if (TSEC_RX_FCB_IP_CSUM_CHECKED(flags)) {
-		csum_flags |= CSUM_IP_CHECKED;
+		csum_flags |= CSUM_L3_CALC;
 
 		if ((flags & TSEC_RX_FCB_IP_CSUM_ERROR) == 0)
-			csum_flags |= CSUM_IP_VALID;
+			csum_flags |= CSUM_L3_VALID;
 	}
 
 	if ((protocol == IPPROTO_TCP || protocol == IPPROTO_UDP) &&
 	    TSEC_RX_FCB_TCP_UDP_CSUM_CHECKED(flags) &&
 	    (flags & TSEC_RX_FCB_TCP_UDP_CSUM_ERROR) == 0) {
 
-		csum_flags |= CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+		csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 		m->m_pkthdr.csum_data = 0xFFFF;
 	}
 

@@ -3098,13 +3098,13 @@ msk_rxcsum(struct msk_if_softc *sc_if, uint32_t control, struct mbuf *m)
 
 	if ((sc_if->msk_flags & MSK_FLAG_DESCV2) != 0) {
 		if ((control & (CSS_IPV4 | CSS_IPFRAG)) == CSS_IPV4) {
-			m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+			m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 			if ((control & CSS_IPV4_CSUM_OK) != 0)
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 			if ((control & (CSS_TCP | CSS_UDP)) != 0 &&
 			    (control & (CSS_TCPUDP_CSUM_OK)) != 0) {
-				m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
-				    CSUM_PSEUDO_HDR;
+				m->m_pkthdr.csum_flags |= CSUM_L4_CALC |
+				    CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}
@@ -3173,7 +3173,7 @@ msk_rxcsum(struct msk_if_softc *sc_if, uint32_t control, struct mbuf *m)
 			csum = temp32 & 65535;
 		}
 	}
-	m->m_pkthdr.csum_flags |= CSUM_DATA_VALID;
+	m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 	m->m_pkthdr.csum_data = csum;
 }
 

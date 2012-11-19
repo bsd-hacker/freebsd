@@ -1255,13 +1255,13 @@ oce_rx(struct oce_rq *rq, uint32_t rqe_idx, struct oce_nic_rx_cqe *cqe)
 			if (IF_CSUM_ENABLED(sc)) {
 				if (cqe->u0.s.l4_cksum_pass) {
 					pd->mbuf->m_pkthdr.csum_flags |=
-					    (CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
+					    (CSUM_L4_CALC | CSUM_L4_VALID);
 					pd->mbuf->m_pkthdr.csum_data = 0xffff;
 				}
 				if (cqe->u0.s.ip_cksum_pass) {
 					if (!cqe->u0.s.ip_ver) { /* IPV4 */
 						pd->mbuf->m_pkthdr.csum_flags |=
-						(CSUM_IP_CHECKED|CSUM_IP_VALID);
+						(CSUM_L3_CALC|CSUM_L3_VALID);
 					}
 				}
 			}

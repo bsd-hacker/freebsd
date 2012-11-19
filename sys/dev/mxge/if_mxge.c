@@ -2045,13 +2045,12 @@ mxge_encap(struct mxge_slice_state *ss, struct mbuf *m)
 	ifp = sc->ifp;
 	tx = &ss->tx;
 
-	ip_off = sizeof (struct ether_header);
+	ip_off = m->m_pkthdr.csum_l2hlen;
 #ifdef MXGE_NEW_VLAN_API
 	if (m->m_flags & M_VLANTAG) {
 		m = mxge_vlan_tag_insert(m);
 		if (__predict_false(m == NULL))
 			goto drop;
-		ip_off += ETHER_VLAN_ENCAP_LEN;
 	}
 #endif
 	/* (try to) map the frame for DMA */
@@ -2096,18 +2095,12 @@ mxge_encap(struct mxge_slice_state *ss, struct mbuf *m)
 	flags = MXGEFW_FLAGS_NO_TSO;
 
 	/* checksum offloading? */
-	if (m->m_pkthdr.csum_flags & (CSUM_DELAY_DATA)) {
+	if (m->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 		/* ensure ip header is in first mbuf, copy
 		   it to a scratch buffer if not */
-		if (__predict_false(m->m_len < ip_off + sizeof (*ip))) {
-			m_copydata(m, 0, ip_off + sizeof (*ip),
-				   ss->scratch);
-			ip = (struct ip *)(ss->scratch + ip_off);
-		} else {
-			ip = (struct ip *)(mtod(m, char *) + ip_off);
-		}
+		ip = mtodo(m, ip_off, struct ip *);
 		cksum_offset = ip_off + (ip->ip_hl << 2);
-		pseudo_hdr_offset = cksum_offset +  m->m_pkthdr.csum_data;
+		pseudo_hdr_offset = cksum_offset + m->m_pkthdr.csum_l3hlen;
 		pseudo_hdr_offset = htobe16(pseudo_hdr_offset);
 		req->cksum_offset = cksum_offset;
 		flags |= MXGEFW_FLAGS_CKSUM;
@@ -2595,7 +2588,7 @@ mxge_rx_done_big(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 		   we could not do LRO on.  Tell the stack that the
 		   checksum is good */
 		m->m_pkthdr.csum_data = 0xffff;
-		m->m_pkthdr.csum_flags = CSUM_PSEUDO_HDR | CSUM_DATA_VALID;
+		m->m_pkthdr.csum_flags = CSUM_L4_CALC | CSUM_L4_VALID;
 	}
 	/* flowid only valid if RSS hashing is enabled */
 	if (sc->num_slices > 1) {
@@ -2660,7 +2653,7 @@ mxge_rx_done_small(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 		   we could not do LRO on.  Tell the stack that the
 		   checksum is good */
 		m->m_pkthdr.csum_data = 0xffff;
-		m->m_pkthdr.csum_flags = CSUM_PSEUDO_HDR | CSUM_DATA_VALID;
+		m->m_pkthdr.csum_flags = CSUM_L4_CALC | CSUM_L4_VALID;
 	}
 	/* flowid only valid if RSS hashing is enabled */
 	if (sc->num_slices > 1) {

@@ -2705,9 +2705,9 @@ sk_rxcksum(ifp, m, csum)
 		 */
 		return;
 	}
-	m->m_pkthdr.csum_flags = CSUM_IP_CHECKED;
+	m->m_pkthdr.csum_flags = CSUM_L3_CALC;
 	if (ipcsum == 0xffff)
-		m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+		m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 }
 
 static __inline int

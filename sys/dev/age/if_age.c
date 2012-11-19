@@ -2383,13 +2383,13 @@ age_rxeof(struct age_softc *sc, struct rx_rdesc *rxrd)
 			 */
 			if ((ifp->if_capenable & IFCAP_RXCSUM) != 0 &&
 			    (status & AGE_RRD_IPV4) != 0) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 				if ((status & AGE_RRD_IPCSUM_NOK) == 0)
-					m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+					m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 				if ((status & (AGE_RRD_TCP | AGE_RRD_UDP)) &&
 				    (status & AGE_RRD_TCP_UDPCSUM_NOK) == 0) {
 					m->m_pkthdr.csum_flags |=
-					    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+					    CSUM_L4_CALC | CSUM_L4_VALID;
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 				/*

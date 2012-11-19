@@ -592,7 +592,7 @@ sfxge_if_transmit(struct ifnet *ifp, struct mbuf *m)
 	}
 
 	/* Pick the desired transmit queue. */
-	if (m->m_pkthdr.csum_flags & (CSUM_DELAY_DATA | CSUM_TSO)) {
+	if (m->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP|CSUM_TSO)) {
 		int index = 0;
 
 		if (m->m_flags & M_FLOWID) {
@@ -601,7 +601,7 @@ sfxge_if_transmit(struct ifnet *ifp, struct mbuf *m)
 			index = sc->rx_indir_table[hash % SFXGE_RX_SCALE_MAX];
 		}
 		txq = sc->txq[SFXGE_TXQ_IP_TCP_UDP_CKSUM + index];
-	} else if (m->m_pkthdr.csum_flags & CSUM_DELAY_IP) {
+	} else if (m->m_pkthdr.csum_flags & CSUM_IP) {
 		txq = sc->txq[SFXGE_TXQ_IP_CKSUM];
 	} else {
 		txq = sc->txq[SFXGE_TXQ_NON_CKSUM];

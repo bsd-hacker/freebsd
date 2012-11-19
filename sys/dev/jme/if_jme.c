@@ -2605,16 +2605,16 @@ jme_rxeof(struct jme_softc *sc)
 			/* Set checksum information. */
 			if ((ifp->if_capenable & IFCAP_RXCSUM) != 0 &&
 			    (flags & JME_RD_IPV4) != 0) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 				if ((flags & JME_RD_IPCSUM) != 0)
-					m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+					m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 				if (((flags & JME_RD_MORE_FRAG) == 0) &&
 				    ((flags & (JME_RD_TCP | JME_RD_TCPCSUM)) ==
 				    (JME_RD_TCP | JME_RD_TCPCSUM) ||
 				    (flags & (JME_RD_UDP | JME_RD_UDPCSUM)) ==
 				    (JME_RD_UDP | JME_RD_UDPCSUM))) {
 					m->m_pkthdr.csum_flags |=
-					    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+					    CSUM_L4_CALC | CSUM_L4_VALID;
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 			}

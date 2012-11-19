@@ -1916,15 +1916,15 @@ again:
 		if (ifp->if_capenable & IFCAP_RXCSUM) {
 			/* Do IP checksum checking. */
 			if (rxstat & XL_RXSTAT_IPCKOK)
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 			if (!(rxstat & XL_RXSTAT_IPCKERR))
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 			if ((rxstat & XL_RXSTAT_TCPCOK &&
 			     !(rxstat & XL_RXSTAT_TCPCKERR)) ||
 			    (rxstat & XL_RXSTAT_UDPCKOK &&
 			     !(rxstat & XL_RXSTAT_UDPCKERR))) {
 				m->m_pkthdr.csum_flags |=
-					CSUM_DATA_VALID|CSUM_PSEUDO_HDR;
+					CSUM_L4_CALC|CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}

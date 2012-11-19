@@ -2866,14 +2866,16 @@ ti_rxeof(struct ti_softc *sc)
 
 		if (ifp->if_capenable & IFCAP_RXCSUM) {
 			if (cur_rx->ti_flags & TI_BDFLAG_IP_CKSUM) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 				if ((cur_rx->ti_ip_cksum ^ 0xffff) == 0)
-					m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+					m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 			}
 			if (cur_rx->ti_flags & TI_BDFLAG_TCP_UDP_CKSUM) {
 				m->m_pkthdr.csum_data =
 				    cur_rx->ti_tcp_udp_cksum;
-				m->m_pkthdr.csum_flags |= CSUM_DATA_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L4_CALC;
+				/* XXXAO: look at specs. */
+				m->m_pkthdr.csum_flags |= CSUM_L4_VALID;
 			}
 		}
 
@@ -3167,7 +3169,7 @@ ti_start_locked(struct ifnet *ifp)
 		 * (paranoia -- may not actually be needed)
 		 */
 		if (m_head->m_flags & M_FIRSTFRAG &&
-		    m_head->m_pkthdr.csum_flags & (CSUM_DELAY_DATA)) {
+		    m_head->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 			if ((TI_TX_RING_CNT - sc->ti_txcnt) <
 			    m_head->m_pkthdr.csum_data + 16) {
 				IFQ_DRV_PREPEND(&ifp->if_snd, m_head);

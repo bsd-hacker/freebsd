@@ -539,7 +539,7 @@ gem_rxcksum(struct mbuf *m, uint64_t flags)
 			cksum = temp32 & 65535;
 		}
 	}
-	m->m_pkthdr.csum_flags |= CSUM_DATA_VALID;
+	m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 	m->m_pkthdr.csum_data = cksum;
 }
 

@@ -936,15 +936,15 @@ txp_rx_reclaim(struct txp_softc *sc, struct txp_rx_ring *r, int count)
 		rx_stat = le32toh(rxd->rx_stat);
 		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0) {
 			if ((rx_stat & RX_STAT_IPCKSUMBAD) != 0)
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 			else if ((rx_stat & RX_STAT_IPCKSUMGOOD) != 0)
 				m->m_pkthdr.csum_flags |=
-				    CSUM_IP_CHECKED|CSUM_IP_VALID;
+				    CSUM_L3_CALC|CSUM_L3_VALID;
 
 			if ((rx_stat & RX_STAT_TCPCKSUMGOOD) != 0 ||
 			    (rx_stat & RX_STAT_UDPCKSUMGOOD) != 0) {
 				m->m_pkthdr.csum_flags |=
-				    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}

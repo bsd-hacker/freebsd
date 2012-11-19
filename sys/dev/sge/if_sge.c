@@ -1183,13 +1183,13 @@ sge_rxeof(struct sge_softc *sc)
 			if ((rxinfo & RDC_IP_CSUM) != 0 &&
 			    (rxinfo & RDC_IP_CSUM_OK) != 0)
 				m->m_pkthdr.csum_flags |=
-				    CSUM_IP_CHECKED | CSUM_IP_VALID;
+				    CSUM_L3_CALC | CSUM_L3_VALID;
 			if (((rxinfo & RDC_TCP_CSUM) != 0 &&
 			    (rxinfo & RDC_TCP_CSUM_OK) != 0) ||
 			    ((rxinfo & RDC_UDP_CSUM) != 0 &&
 			    (rxinfo & RDC_UDP_CSUM_OK) != 0)) {
 				m->m_pkthdr.csum_flags |=
-				    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}

@@ -2281,10 +2281,10 @@ re_rxeof(struct rl_softc *sc, int *rx_npktsp)
 				/* Check IP header checksum */
 				if (rxstat & RL_RDESC_STAT_PROTOID)
 					m->m_pkthdr.csum_flags |=
-					    CSUM_IP_CHECKED;
+					    CSUM_L3_CALC;
 				if (!(rxstat & RL_RDESC_STAT_IPSUMBAD))
 					m->m_pkthdr.csum_flags |=
-					    CSUM_IP_VALID;
+					    CSUM_L3_VALID;
 
 				/* Check TCP/UDP checksum */
 				if ((RL_TCPPKT(rxstat) &&
@@ -2292,7 +2292,7 @@ re_rxeof(struct rl_softc *sc, int *rx_npktsp)
 				    (RL_UDPPKT(rxstat) &&
 				     !(rxstat & RL_RDESC_STAT_UDPSUMBAD))) {
 					m->m_pkthdr.csum_flags |=
-						CSUM_DATA_VALID|CSUM_PSEUDO_HDR;
+						CSUM_L4_CALC|CSUM_L4_VALID;
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 			} else {
@@ -2302,17 +2302,17 @@ re_rxeof(struct rl_softc *sc, int *rx_npktsp)
 				if ((rxstat & RL_RDESC_STAT_PROTOID) &&
 				    (rxvlan & RL_RDESC_IPV4))
 					m->m_pkthdr.csum_flags |=
-					    CSUM_IP_CHECKED;
+					    CSUM_L3_CALC;
 				if (!(rxstat & RL_RDESC_STAT_IPSUMBAD) &&
 				    (rxvlan & RL_RDESC_IPV4))
 					m->m_pkthdr.csum_flags |=
-					    CSUM_IP_VALID;
+					    CSUM_L3_VALID;
 				if (((rxstat & RL_RDESC_STAT_TCP) &&
 				    !(rxstat & RL_RDESC_STAT_TCPSUMBAD)) ||
 				    ((rxstat & RL_RDESC_STAT_UDP) &&
 				    !(rxstat & RL_RDESC_STAT_UDPSUMBAD))) {
 					m->m_pkthdr.csum_flags |=
-						CSUM_DATA_VALID|CSUM_PSEUDO_HDR;
+						CSUM_L4_CALC|CSUM_L4_CALC;
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 			}

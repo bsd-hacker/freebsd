@@ -2165,12 +2165,12 @@ nfe_rxeof(struct nfe_softc *sc, int count, int *rx_npktsp)
 
 		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0) {
 			if ((flags & NFE_RX_IP_CSUMOK) != 0) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 				if ((flags & NFE_RX_TCP_CSUMOK) != 0 ||
 				    (flags & NFE_RX_UDP_CSUMOK) != 0) {
 					m->m_pkthdr.csum_flags |=
-					    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+					    CSUM_L4_CALC | CSUM_L4_VALID;
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 			}
@@ -2281,12 +2281,12 @@ nfe_jrxeof(struct nfe_softc *sc, int count, int *rx_npktsp)
 
 		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0) {
 			if ((flags & NFE_RX_IP_CSUMOK) != 0) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 				if ((flags & NFE_RX_TCP_CSUMOK) != 0 ||
 				    (flags & NFE_RX_UDP_CSUMOK) != 0) {
 					m->m_pkthdr.csum_flags |=
-					    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+					    CSUM_L4_CALC | CSUM_L4_VALID;
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 			}

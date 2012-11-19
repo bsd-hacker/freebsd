@@ -4672,8 +4672,8 @@ igb_rx_input(struct rx_ring *rxr, struct ifnet *ifp, struct mbuf *m, u32 ptype)
 	    (ptype & E1000_RXDADV_PKTTYPE_ETQF) == 0 &&
 	    (ptype & (E1000_RXDADV_PKTTYPE_IPV4 | E1000_RXDADV_PKTTYPE_TCP)) ==
 	    (E1000_RXDADV_PKTTYPE_IPV4 | E1000_RXDADV_PKTTYPE_TCP) &&
-	    (m->m_pkthdr.csum_flags & (CSUM_DATA_VALID | CSUM_PSEUDO_HDR)) == 
-	    (CSUM_DATA_VALID | CSUM_PSEUDO_HDR)) {
+	    (m->m_pkthdr.csum_flags & (CSUM_L4_CALC | CSUM_L4_VALID)) == 
+	    (CSUM_L4_CALC | CSUM_L4_VALID)) {
 		/*
 		 * Send to the stack if:
 		 **  - LRO not enabled, or
@@ -4938,23 +4938,18 @@ igb_rx_checksum(u32 staterr, struct mbuf *mp, u32 ptype)
 		/* Did it pass? */
 		if (!(errors & E1000_RXD_ERR_IPE)) {
 			/* IP Checksum Good */
-			mp->m_pkthdr.csum_flags = CSUM_IP_CHECKED;
-			mp->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+			mp->m_pkthdr.csum_flags |= CSUM_L3_CALC;
+			mp->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 		} else
 			mp->m_pkthdr.csum_flags = 0;
 	}
 
 	if (status & (E1000_RXD_STAT_TCPCS | E1000_RXD_STAT_UDPCS)) {
-		u32 type = (CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
-#if __FreeBSD_version >= 800000
-		if (sctp) /* reassign */
-			type = CSUM_SCTP_VALID;
-#endif
 		/* Did it pass? */
 		if (!(errors & E1000_RXD_ERR_TCPE)) {
-			mp->m_pkthdr.csum_flags |= type;
-			if (sctp == 0)
-				mp->m_pkthdr.csum_data = htons(0xffff);
+			mp->m_pkthdr.csum_flags |= CSUM_L4_CALC;
+			mp->m_pkthdr.csum_flags |= CSUM_L4_VALID;
+			mp->m_pkthdr.csum_data = htons(0xffff);
 		}
 	}
 	return;

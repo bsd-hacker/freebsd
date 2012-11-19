@@ -2429,16 +2429,16 @@ ale_rxcsum(struct ale_softc *sc, struct mbuf *m, uint32_t status)
 	char *p;
 
 	ifp = sc->ale_ifp;
-	m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+	m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 	if ((status & ALE_RD_IPCSUM_NOK) == 0)
-		m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+		m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 
 	if ((sc->ale_flags & ALE_FLAG_RXCSUM_BUG) == 0) {
 		if (((status & ALE_RD_IPV4_FRAG) == 0) &&
 		    ((status & (ALE_RD_TCP | ALE_RD_UDP)) != 0) &&
 		    ((status & ALE_RD_TCP_UDPCSUM_NOK) == 0)) {
 			m->m_pkthdr.csum_flags |=
-			    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+			    CSUM_L4_CALC | CSUM_L4_VALID;
 			m->m_pkthdr.csum_data = 0xffff;
 		}
 	} else {
@@ -2454,8 +2454,8 @@ ale_rxcsum(struct ale_softc *sc, struct mbuf *m, uint32_t status)
 			ip = (struct ip *)p;
 			if (ip->ip_off != 0 && (status & ALE_RD_IPV4_DF) == 0)
 				return;
-			m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
-			    CSUM_PSEUDO_HDR;
+			m->m_pkthdr.csum_flags |= CSUM_L4_CALC |
+			    CSUM_L4_VALID;
 			m->m_pkthdr.csum_data = 0xffff;
 		}
 	}

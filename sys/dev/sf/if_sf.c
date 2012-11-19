@@ -1619,8 +1619,8 @@ sf_rxeof(struct sf_softc *sc)
 				    SF_RXSTAT2_UDP)) != 0) {
 					if ((status2 & SF_RXSTAT2_CSUM_OK)) {
 						m->m_pkthdr.csum_flags =
-						    CSUM_DATA_VALID |
-						    CSUM_PSEUDO_HDR;
+						    CSUM_L4_CALC |
+						    CSUM_L4_VALID;
 						m->m_pkthdr.csum_data = 0xffff;
 					}
 				}
@@ -1631,7 +1631,7 @@ sf_rxeof(struct sf_softc *sc)
 				    SF_RXSTAT2_UDP)) != 0) {
 					if ((status2 & SF_RXSTAT2_PCSUM_OK)) {
 						m->m_pkthdr.csum_flags =
-						    CSUM_DATA_VALID;
+						    CSUM_L4_CALC; /*XXXAO*/
 						m->m_pkthdr.csum_data =
 						    (status &
 						    SF_RX_CMPDESC_CSUM2);

@@ -2268,8 +2268,8 @@ ixgb_receive_checksum(struct adapter * adapter,
 		/* Did it pass? */
 		if (!(rx_desc->errors & IXGB_RX_DESC_ERRORS_IPE)) {
 			/* IP Checksum Good */
-			mp->m_pkthdr.csum_flags = CSUM_IP_CHECKED;
-			mp->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+			mp->m_pkthdr.csum_flags |= CSUM_L3_CALC;
+			mp->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 
 		} else {
 			mp->m_pkthdr.csum_flags = 0;
@@ -2278,8 +2278,8 @@ ixgb_receive_checksum(struct adapter * adapter,
 	if (rx_desc->status & IXGB_RX_DESC_STATUS_TCPCS) {
 		/* Did it pass? */
 		if (!(rx_desc->errors & IXGB_RX_DESC_ERRORS_TCPE)) {
-			mp->m_pkthdr.csum_flags |=
-				(CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
+			mp->m_pkthdr.csum_flags |= CSUM_L4_CALC;
+			mp->m_pkthdr.csum_flags |= CSUM_L4_VALID;
 			mp->m_pkthdr.csum_data = htons(0xffff);
 		}
 	}

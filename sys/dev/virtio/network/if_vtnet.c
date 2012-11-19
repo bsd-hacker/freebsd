@@ -1445,7 +1445,7 @@ vtnet_rx_csum(struct vtnet_softc *sc, struct mbuf *m,
 	 * The IP header checksum is almost certainly valid but I'm
 	 * uncertain if that is guaranteed.
 	 *
-	 * m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED | CSUM_IP_VALID;
+	 * m->m_pkthdr.csum_flags |= CSUM_L3_CALC | CSUM_L3_VALID;
 	 */
 
 	switch (ip_proto) {
@@ -1460,12 +1460,12 @@ vtnet_rx_csum(struct vtnet_softc *sc, struct mbuf *m,
 		/* FALLTHROUGH */
 
 	case IPPROTO_TCP:
-		m->m_pkthdr.csum_flags |= CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+		m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 		m->m_pkthdr.csum_data = 0xFFFF;
 		break;
 
 	case IPPROTO_SCTP:
-		m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+		m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 		break;
 	}
 
@@ -1523,12 +1523,12 @@ vtnet_rx_csum(struct vtnet_softc *sc, struct mbuf *m,
 		/* FALLTHROUGH */
 
 	case offsetof(struct tcphdr, th_sum):
-		m->m_pkthdr.csum_flags |= CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+		m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 		m->m_pkthdr.csum_data = 0xFFFF;
 		break;
 
 	case offsetof(struct sctphdr, checksum):
-		m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+		m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 		break;
 
 	default:

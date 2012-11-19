@@ -1553,15 +1553,15 @@ vge_rxeof(struct vge_softc *sc, int count)
 		    (rxctl & VGE_RDCTL_FRAG) == 0) {
 			/* Check IP header checksum */
 			if ((rxctl & VGE_RDCTL_IPPKT) != 0)
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 			if ((rxctl & VGE_RDCTL_IPCSUMOK) != 0)
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 
 			/* Check TCP/UDP checksum */
 			if (rxctl & (VGE_RDCTL_TCPPKT | VGE_RDCTL_UDPPKT) &&
 			    rxctl & VGE_RDCTL_PROTOCSUMOK) {
 				m->m_pkthdr.csum_flags |=
-				    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}

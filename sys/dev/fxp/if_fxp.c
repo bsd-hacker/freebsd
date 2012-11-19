@@ -1690,13 +1690,13 @@ fxp_rxcsum(struct fxp_softc *sc, struct ifnet *ifp, struct mbuf *m,
 	if (!(sc->flags & FXP_FLAG_82559_RXCSUM)) {
 		if (status & FXP_RFA_STATUS_PARSE) {
 			if (status & FXP_RFDX_CS_IP_CSUM_BIT_VALID)
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 			if (status & FXP_RFDX_CS_IP_CSUM_VALID)
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 			if ((status & FXP_RFDX_CS_TCPUDP_CSUM_BIT_VALID) &&
 			    (status & FXP_RFDX_CS_TCPUDP_CSUM_VALID)) {
-				m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
-				    CSUM_PSEUDO_HDR;
+				m->m_pkthdr.csum_flags |= CSUM_L4_CALC;
+				m->m_pkthdr.csum_flags |= CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}

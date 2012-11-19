@@ -14753,8 +14753,9 @@ bxe_tpa_stop(struct bxe_softc *sc, struct bxe_fastpath *fp, uint16_t queue,
 	m->m_pkthdr.len = m->m_len = len;
 
 	/* Mark the checksums valid (taken care of by firmware). */
-	m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED | CSUM_IP_VALID |
-	    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+	/* XXXAO: Is this really unconditionally true? */
+	m->m_pkthdr.csum_flags |= CSUM_L3_CALC | CSUM_L3_VALID |
+	    CSUM_L4_CALC | CSUM_L4_VALID;
 	m->m_pkthdr.csum_data = 0xffff;
 
 	/* Aggregate all of the SGEs into a single mbuf. */
@@ -15002,7 +15003,7 @@ bxe_rxeof(struct bxe_fastpath *fp)
 				    !(cqe->fast_path_cqe.status_flags &
 				    ETH_FAST_PATH_RX_CQE_IP_XSUM_NO_VALIDATION_FLG)) {
 					m->m_pkthdr.csum_flags |=
-					    CSUM_IP_CHECKED;
+					    CSUM_L3_CALC;
 					if (__predict_false(cqe_fp_flags &
 					    ETH_FAST_PATH_RX_CQE_IP_BAD_XSUM_FLG)) {
 						DBPRINT(sc, BXE_WARN_SEND,
@@ -15010,7 +15011,7 @@ bxe_rxeof(struct bxe_fastpath *fp)
 						    __FUNCTION__);
 					} else
 						m->m_pkthdr.csum_flags |=
-						    CSUM_IP_VALID;
+						    CSUM_L3_VALID;
 				}
 
 				/* Check for a valid TCP/UDP frame. */
@@ -15026,8 +15027,8 @@ bxe_rxeof(struct bxe_fastpath *fp)
 					} else {
 						m->m_pkthdr.csum_data = 0xFFFF;
 						m->m_pkthdr.csum_flags |=
-						    (CSUM_DATA_VALID |
-						    CSUM_PSEUDO_HDR);
+						    (CSUM_L4_CALC |
+						     CSUM_L4_VALID);
 					}
 				}
 			}

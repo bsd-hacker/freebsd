@@ -1569,15 +1569,15 @@ nge_rxeof(struct nge_softc *sc)
 		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0) {
 			/* Do IP checksum checking. */
 			if ((extsts & NGE_RXEXTSTS_IPPKT) != 0)
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 			if ((extsts & NGE_RXEXTSTS_IPCSUMERR) == 0)
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 			if ((extsts & NGE_RXEXTSTS_TCPPKT &&
 			    !(extsts & NGE_RXEXTSTS_TCPCSUMERR)) ||
 			    (extsts & NGE_RXEXTSTS_UDPPKT &&
 			    !(extsts & NGE_RXEXTSTS_UDPCSUMERR))) {
 				m->m_pkthdr.csum_flags |=
-				    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}

@@ -1027,10 +1027,10 @@ xnb_pkt2mbufc_csum(char *buffer, size_t buflen)
 
 	pMbuf = xnb_pkt2mbufc(&pkt, xnb_unit_pvt.ifp);
 	XNB_ASSERT(M_TRAILINGSPACE(pMbuf) >= size);
-	XNB_ASSERT(pMbuf->m_pkthdr.csum_flags & CSUM_IP_CHECKED);
-	XNB_ASSERT(pMbuf->m_pkthdr.csum_flags & CSUM_IP_VALID);
-	XNB_ASSERT(pMbuf->m_pkthdr.csum_flags & CSUM_DATA_VALID);
-	XNB_ASSERT(pMbuf->m_pkthdr.csum_flags & CSUM_PSEUDO_HDR);
+	XNB_ASSERT(pMbuf->m_pkthdr.csum_flags & CSUM_L3_CALC);
+	XNB_ASSERT(pMbuf->m_pkthdr.csum_flags & CSUM_L3_VALID);
+	XNB_ASSERT(pMbuf->m_pkthdr.csum_flags & CSUM_L4_CALC);
+	XNB_ASSERT(pMbuf->m_pkthdr.csum_flags & CSUM_L4_VALID);
 	safe_m_freem(&pMbuf);
 }
 
@@ -2121,8 +2121,8 @@ xnb_add_mbuf_cksum_arp(char *buffer, size_t buflen)
 	mbufc->m_len = pkt_len;
 	mbufc->m_pkthdr.len = pkt_len;
 	/* indicate that the netfront uses hw-assisted checksums */
-	mbufc->m_pkthdr.csum_flags = CSUM_IP_CHECKED | CSUM_IP_VALID   |
-				CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+	mbufc->m_pkthdr.csum_flags = CSUM_L3_CALC | CSUM_L3_VALID   |
+				CSUM_L4_CALC | CSUM_L4_VALID;
 
 	/* Make a backup copy of the packet */
 	bcopy(mtod(mbufc, const void*), pkt_orig, pkt_len);
@@ -2226,8 +2226,8 @@ xnb_add_mbuf_cksum_icmp(char *buffer, size_t buflen)
 	mbufc->m_len = pkt_len;
 	mbufc->m_pkthdr.len = pkt_len;
 	/* indicate that the netfront uses hw-assisted checksums */
-	mbufc->m_pkthdr.csum_flags = CSUM_IP_CHECKED | CSUM_IP_VALID   |
-				CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+	mbufc->m_pkthdr.csum_flags = CSUM_L3_CALC | CSUM_L3_VALID   |
+				CSUM_L4_CALC | CSUM_L4_VALID;
 
 	bcopy(mtod(mbufc, const void*), pkt_orig, icmp_len);
 	/* Function under test */
@@ -2283,8 +2283,8 @@ xnb_add_mbuf_cksum_udp(char *buffer, size_t buflen)
 	mbufc->m_len = pkt_len;
 	mbufc->m_pkthdr.len = pkt_len;
 	/* indicate that the netfront uses hw-assisted checksums */
-	mbufc->m_pkthdr.csum_flags = CSUM_IP_CHECKED | CSUM_IP_VALID   |
-				CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+	mbufc->m_pkthdr.csum_flags = CSUM_L3_CALC | CSUM_L3_VALID   |
+				CSUM_L4_CALC | CSUM_L4_VALID;
 
 	/* Function under test */
 	xnb_add_mbuf_cksum(mbufc);
@@ -2374,8 +2374,8 @@ xnb_add_mbuf_cksum_tcp(char *buffer, size_t buflen)
 	mbufc->m_len = pkt_len;
 	mbufc->m_pkthdr.len = pkt_len;
 	/* indicate that the netfront uses hw-assisted checksums */
-	mbufc->m_pkthdr.csum_flags = CSUM_IP_CHECKED | CSUM_IP_VALID   |
-				CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+	mbufc->m_pkthdr.csum_flags = CSUM_L3_CALC | CSUM_L3_VALID   |
+				CSUM_L4_CALC | CSUM_L4_VALID;
 
 	/* Function under test */
 	xnb_add_mbuf_cksum(mbufc);

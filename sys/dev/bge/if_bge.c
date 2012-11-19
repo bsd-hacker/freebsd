@@ -120,7 +120,7 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bge/if_bgereg.h>
 
-#define	BGE_CSUM_FEATURES	(CSUM_IP | CSUM_TCP)
+#define	BGE_CSUM_FEATURES	(CSUM_IP | CSUM_IP_TCP)
 #define	ETHER_MIN_NOPAD		(ETHER_MIN_LEN - ETHER_CRC_LEN) /* i.e., 60 */
 
 MODULE_DEPEND(bge, pci, 1, 1, 1);
@@ -3647,7 +3647,7 @@ bge_attach(device_t dev)
 	/* Initialize checksum features to use. */
 	sc->bge_csum_features = BGE_CSUM_FEATURES;
 	if (sc->bge_forced_udpcsum != 0)
-		sc->bge_csum_features |= CSUM_UDP;
+		sc->bge_csum_features |= CSUM_IP_UDP;
 
 	/* Set up ifnet structure */
 	ifp = sc->bge_ifp = if_alloc(IFT_ETHER);
@@ -3669,7 +3669,7 @@ bge_attach(device_t dev)
 	ifp->if_capabilities = IFCAP_HWCSUM | IFCAP_VLAN_HWTAGGING |
 	    IFCAP_VLAN_MTU;
 	if ((sc->bge_flags & (BGE_FLAG_TSO | BGE_FLAG_TSO3)) != 0) {
-		ifp->if_hwassist |= CSUM_TSO;
+		ifp->if_hwassist |= CSUM_IP_TSO;
 		ifp->if_capabilities |= IFCAP_TSO4 | IFCAP_VLAN_HWTSO;
 	}
 #ifdef IFCAP_VLAN_HWCSUM
@@ -4222,30 +4222,30 @@ bge_rx_packet(struct bge_softc *sc, struct bge_rx_bd *rx, uint16_t rxidx,
 	    BGE_IS_5717_PLUS(sc)) {
 		if ((rx->bge_flags & BGE_RXBDFLAG_IPV6) == 0) {
 			if (rx->bge_flags & BGE_RXBDFLAG_IP_CSUM) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 				if ((rx->bge_error_flag &
 				    BGE_RXERRFLAG_IP_CSUM_NOK) == 0)
-					m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+					m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 			}
 			if (rx->bge_flags & BGE_RXBDFLAG_TCP_UDP_CSUM) {
 				m->m_pkthdr.csum_data =
 				    rx->bge_tcp_udp_csum;
-				m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
-				    CSUM_PSEUDO_HDR;
+				m->m_pkthdr.csum_flags |= CSUM_L4_CALC |
+				    CSUM_L4_VALID;
 			}
 		}
 	} else if (ifp->if_capenable & IFCAP_RXCSUM) {
 		if (rx->bge_flags & BGE_RXBDFLAG_IP_CSUM) {
-			m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+			m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 			if ((rx->bge_ip_csum ^ 0xFFFF) == 0)
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 		}
 		if (rx->bge_flags & BGE_RXBDFLAG_TCP_UDP_CSUM &&
 		    m->m_pkthdr.len >= ETHER_MIN_NOPAD) {
 			m->m_pkthdr.csum_data =
 			    rx->bge_tcp_udp_csum;
-			m->m_pkthdr.csum_flags |= CSUM_DATA_VALID |
-			    CSUM_PSEUDO_HDR;
+			m->m_pkthdr.csum_flags |= CSUM_L4_CALC |
+			    CSUM_L4_VALID;
 		}
 	}
 

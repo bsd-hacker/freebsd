@@ -1459,12 +1459,12 @@ ndis_rxeof(adapter, packets, pktcnt)
 				if (csum->u.ntc_rxflags &
 				    NDIS_RXCSUM_IP_PASSED)
 					m0->m_pkthdr.csum_flags |=
-					    CSUM_IP_CHECKED|CSUM_IP_VALID;
+					    CSUM_L3_CALC|CSUM_L3_VALID;
 				if (csum->u.ntc_rxflags &
 				    (NDIS_RXCSUM_TCP_PASSED |
 				    NDIS_RXCSUM_UDP_PASSED)) {
 					m0->m_pkthdr.csum_flags |=
-					    CSUM_DATA_VALID|CSUM_PSEUDO_HDR;
+					    CSUM_L4_CALC|CSUM_L4_VALID;
 					m0->m_pkthdr.csum_data = 0xFFFF;
 				}
 			}

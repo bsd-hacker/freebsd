@@ -1383,12 +1383,12 @@ vr_rxeof(struct vr_softc *sc)
 		    (rxstat & VR_RXSTAT_FRAG) == 0 &&
 		    (rxctl & VR_RXCTL_IP) != 0) {
 			/* Checksum is valid for non-fragmented IP packets. */
-			m->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+			m->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 			if ((rxctl & VR_RXCTL_IPOK) == VR_RXCTL_IPOK) {
-				m->m_pkthdr.csum_flags |= CSUM_IP_VALID;
+				m->m_pkthdr.csum_flags |= CSUM_L3_VALID;
 				if (rxctl & (VR_RXCTL_TCP | VR_RXCTL_UDP)) {
 					m->m_pkthdr.csum_flags |=
-					    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+					    CSUM_L4_CALC | CSUM_L4_VALID;
 					if ((rxctl & VR_RXCTL_TCPUDPOK) != 0)
 						m->m_pkthdr.csum_data = 0xffff;
 				}

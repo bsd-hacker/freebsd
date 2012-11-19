@@ -1661,12 +1661,12 @@ mge_offload_process_frame(struct ifnet *ifp, struct mbuf *frame,
 
 	if (ifp->if_capenable & IFCAP_RXCSUM) {
 		if ((status & MGE_RX_L3_IS_IP) && (status & MGE_RX_IP_OK))
-			csum_flags |= CSUM_IP_CHECKED | CSUM_IP_VALID;
+			csum_flags |= CSUM_L3_CALC | CSUM_L3_VALID;
 
 		if ((bufsize & MGE_RX_IP_FRAGMENT) == 0 &&
 		    (MGE_RX_L4_IS_TCP(status) || MGE_RX_L4_IS_UDP(status)) &&
 		    (status & MGE_RX_L4_CSUM_OK)) {
-			csum_flags |= CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+			csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 			frame->m_pkthdr.csum_data = 0xFFFF;
 		}
 

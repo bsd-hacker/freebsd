@@ -6825,12 +6825,12 @@ bce_rx_intr(struct bce_softc *sc)
 			/* Check for an IP datagram. */
 		 	if (!(status & L2_FHDR_STATUS_SPLIT) &&
 			    (status & L2_FHDR_STATUS_IP_DATAGRAM)) {
-				m0->m_pkthdr.csum_flags |= CSUM_IP_CHECKED;
+				m0->m_pkthdr.csum_flags |= CSUM_L3_CALC;
 				DBRUN(sc->csum_offload_ip++);
 				/* Check if the IP checksum is valid. */
 				if ((l2fhdr->l2_fhdr_ip_xsum ^ 0xffff) == 0)
 					m0->m_pkthdr.csum_flags |=
-					    CSUM_IP_VALID;
+					    CSUM_L3_VALID;
 			}
 
 			/* Check for a valid TCP/UDP frame. */
@@ -6844,8 +6844,7 @@ bce_rx_intr(struct bce_softc *sc)
 					m0->m_pkthdr.csum_data =
 					    l2fhdr->l2_fhdr_tcp_udp_xsum;
 					m0->m_pkthdr.csum_flags |=
-					    (CSUM_DATA_VALID
-					    | CSUM_PSEUDO_HDR);
+					    (CSUM_L4_CALC | CSUM_L4_VALID);
 				}
 			}
 		}

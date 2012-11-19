@@ -2655,13 +2655,13 @@ t3_rx_eth(struct adapter *adap, struct mbuf *m, int ethpad)
 
 		if (ifp->if_capenable & IFCAP_RXCSUM &&
 		    eh_type == htons(ETHERTYPE_IP)) {
-			m->m_pkthdr.csum_flags = (CSUM_IP_CHECKED |
-			    CSUM_IP_VALID | CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
+			/* XXXAO: Is this really unconditionally true? */
+			m->m_pkthdr.csum_flags = (CSUM_L3_CALC | CSUM_L3_VALID |
+			    CSUM_L4_CALC | CSUM_L4_VALID);
 			m->m_pkthdr.csum_data = 0xffff;
 		} else if (ifp->if_capenable & IFCAP_RXCSUM_IPV6 &&
 		    eh_type == htons(ETHERTYPE_IPV6)) {
-			m->m_pkthdr.csum_flags = (CSUM_DATA_VALID_IPV6 |
-			    CSUM_PSEUDO_HDR);
+			m->m_pkthdr.csum_flags = (CSUM_L4_CALC | CSUM_L4_VALID);
 			m->m_pkthdr.csum_data = 0xffff;
 		}
 	}
