@@ -261,7 +261,7 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 	 */
 
 	if (mcl->m_pkthdr.rcvif == NULL &&
-	    mcl->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
+	    mcl->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP))
 		ldt = 1;
 
 	c = mtod(mcl, char *);
@@ -368,9 +368,9 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 			break;
 		}
 		/* No hw checksum offloading: do it ourselves */
-		if ((mcl->m_pkthdr.csum_flags & CSUM_DELAY_DATA) == 0) {
+		if ((mcl->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) == 0) {
 			in_delayed_cksum(mcl);
-			mcl->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+			mcl->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
 		}
 	}
 	args->m = mcl;

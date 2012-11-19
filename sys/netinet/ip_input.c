@@ -435,18 +435,19 @@ ip_input(struct mbuf *m)
 		}
 	}
 
-	if (m->m_pkthdr.csum_flags & CSUM_IP_CHECKED) {
-		sum = !(m->m_pkthdr.csum_flags & CSUM_IP_VALID);
-	} else {
-		if (hlen == sizeof(struct ip)) {
-			sum = in_cksum_hdr(ip);
-		} else {
-			sum = in_cksum(m, hlen);
-		}
-	}
-	if (sum) {
+	if ((m->m_pkthdr.csum_flags & (CSUM_L3_CALC|CSUM_L3_VALID)) ==
+	    CSUM_L3_CALC) {
 		IPSTAT_INC(ips_badsum);
 		goto bad;
+	} else if (!(m->m_pkthdr.csum_flags & CSUM_L3_VALID)) {
+		if (hlen == sizeof(struct ip))
+			sum = in_cksum_hdr(ip);
+		else
+			sum = in_cksum(m, hlen);
+		if (sum) {
+			IPSTAT_INC(ips_badsum);
+			goto bad;
+		}
 	}
 
 #ifdef ALTQ

@@ -904,7 +904,7 @@ siftr_chkpkt(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 	siftr_siftdata(pn, inp, tp, INP_IPV4, dir, inp_locally_locked);
 
 	if (siftr_generate_hashes) {
-		if ((*m)->m_pkthdr.csum_flags & CSUM_TCP) {
+		if ((*m)->m_pkthdr.csum_flags & CSUM_IP_TCP) {
 			/*
 			 * For outbound packets, the TCP checksum isn't
 			 * calculated yet. This is a problem for our packet
@@ -915,7 +915,7 @@ siftr_chkpkt(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 			 * software. We unset the CSUM_TCP flag so the lower
 			 * layers don't recalc it.
 			 */
-			(*m)->m_pkthdr.csum_flags &= ~CSUM_TCP;
+			(*m)->m_pkthdr.csum_flags &= ~CSUM_IP_TCP;
 
 			/*
 			 * Calculate the TCP checksum in software and assign

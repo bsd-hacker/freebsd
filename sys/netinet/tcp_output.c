@@ -1085,7 +1085,7 @@ send:
 		 * ip6_plen is not need to be filled now, and will be filled
 		 * in ip6_output.
 		 */
-		m->m_pkthdr.csum_flags = CSUM_TCP_IPV6;
+		m->m_pkthdr.csum_flags = CSUM_IP6_TCP;
 		th->th_sum = in6_cksum_pseudo(ip6, sizeof(struct tcphdr) +
 		    optlen + len, IPPROTO_TCP, 0);
 	}
@@ -1095,7 +1095,7 @@ send:
 #endif
 #ifdef INET
 	{
-		m->m_pkthdr.csum_flags = CSUM_TCP;
+		m->m_pkthdr.csum_flags = CSUM_IP_TCP;
 		th->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
 		    htons(sizeof(struct tcphdr) + IPPROTO_TCP + len + optlen));
 
@@ -1113,7 +1113,10 @@ send:
 	if (tso) {
 		KASSERT(len > tp->t_maxopd - optlen,
 		    ("%s: len <= tso_segsz", __func__));
-		m->m_pkthdr.csum_flags |= CSUM_TSO;
+		if (isipv6)
+			m->m_pkthdr.csum_flags |= CSUM_IP6_TSO;
+		else
+			m->m_pkthdr.csum_flags |= CSUM_IP_TSO;
 		m->m_pkthdr.tso_segsz = tp->t_maxopd - optlen;
 	}
 

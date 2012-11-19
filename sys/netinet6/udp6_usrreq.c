@@ -183,7 +183,7 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 	int plen, ulen;
 	struct sockaddr_in6 fromsa;
 	struct m_tag *fwd_tag;
-	uint16_t uh_sum;
+	uint16_t uh_sum = 0;
 
 	ifp = m->m_pkthdr.rcvif;
 	ip6 = mtod(m, struct ip6_hdr *);
@@ -228,14 +228,10 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 		goto badunlocked;
 	}
 
-	if (m->m_pkthdr.csum_flags & CSUM_DATA_VALID_IPV6) {
-		if (m->m_pkthdr.csum_flags & CSUM_PSEUDO_HDR)
-			uh_sum = m->m_pkthdr.csum_data;
-		else
-			uh_sum = in6_cksum_pseudo(ip6, ulen,
-			    IPPROTO_UDP, m->m_pkthdr.csum_data);
-		uh_sum ^= 0xffff;
-	} else
+	if ((m->m_pkthdr.csum_flags & (CSUM_L4_CALC|CSUM_L4_VALID)) ==
+	    CSUM_L4_CALC) {
+		uh_sum = 1;
+	} else if (!(m->m_pkthdr.csum_flags & CSUM_L4_VALID))
 		uh_sum = in6_cksum(m, IPPROTO_UDP, off, ulen);
 
 	if (uh_sum != 0) {
@@ -780,8 +776,8 @@ udp6_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr6,
 		ip6->ip6_dst	= *faddr;
 
 		udp6->uh_sum = in6_cksum_pseudo(ip6, plen, IPPROTO_UDP, 0);
-		m->m_pkthdr.csum_flags = CSUM_UDP_IPV6;
-		m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
+		m->m_pkthdr.csum_flags = CSUM_IP6_UDP;
+		m->m_pkthdr.csum_l4hlen = sizeof(struct udphdr);
 
 		flags = 0;
 

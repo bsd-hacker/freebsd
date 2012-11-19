@@ -2375,9 +2375,9 @@ pim_register_prepare(struct ip *ip, struct mbuf *m)
     int mtu;
 
     /* Take care of delayed checksums */
-    if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+    if (m->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 	in_delayed_cksum(m);
-	m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+	m->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
     }
 
     /*

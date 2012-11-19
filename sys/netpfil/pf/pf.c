@@ -5240,9 +5240,10 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 
 	/* Copied from FreeBSD 10.0-CURRENT ip_output. */
 	m0->m_pkthdr.csum_flags |= CSUM_IP;
-	if (m0->m_pkthdr.csum_flags & CSUM_DELAY_DATA & ~ifp->if_hwassist) {
+	if (m0->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP) &
+	    ~ifp->if_hwassist) {
 		in_delayed_cksum(m0);
-		m0->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+		m0->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
 	}
 #ifdef SCTP
 	if (m0->m_pkthdr.csum_flags & CSUM_SCTP & ~ifp->if_hwassist) {
@@ -5439,22 +5440,12 @@ bad:
 #endif /* INET6 */
 
 /*
- * FreeBSD supports cksum offloads for the following drivers.
- *  em(4), fxp(4), ixgb(4), lge(4), ndis(4), nge(4), re(4),
- *   ti(4), txp(4), xl(4)
+ * CSUM_L4_CALC | CSUM_L4_VALID :
+ *  network driver performed cksum
  *
- * CSUM_DATA_VALID | CSUM_PSEUDO_HDR :
- *  network driver performed cksum including pseudo header, need to verify
- *   csum_data
- * CSUM_DATA_VALID :
- *  network driver performed cksum, needs to additional pseudo header
- *  cksum computation with partial csum_data(i.e. lack of H/W support for
- *  pseudo header, for instance hme(4), sk(4) and possibly gem(4))
- *
- * After validating the cksum of packet, set both flag CSUM_DATA_VALID and
- * CSUM_PSEUDO_HDR in order to avoid recomputation of the cksum in upper
- * TCP/UDP layer.
- * Also, set csum_data to 0xffff to force cksum validation.
+ * After validating the layer 4 cksum of packet, set both flag CSUM_L4_CALC
+ * and CSUM_L4 in order to avoid recomputation of the cksum in upper TCP/UDP
+ * layer.
  */
 static int
 pf_check_proto_cksum(struct mbuf *m, int off, int len, u_int8_t p, sa_family_t af)
@@ -5470,30 +5461,16 @@ pf_check_proto_cksum(struct mbuf *m, int off, int len, u_int8_t p, sa_family_t a
 
 	switch (p) {
 	case IPPROTO_TCP:
-		if (m->m_pkthdr.csum_flags & CSUM_DATA_VALID) {
-			if (m->m_pkthdr.csum_flags & CSUM_PSEUDO_HDR) {
-				sum = m->m_pkthdr.csum_data;
-			} else {
-				ip = mtod(m, struct ip *);
-				sum = in_pseudo(ip->ip_src.s_addr,
-				ip->ip_dst.s_addr, htonl((u_short)len +
-				m->m_pkthdr.csum_data + IPPROTO_TCP));
-			}
-			sum ^= 0xffff;
-			++hw_assist;
-		}
-		break;
 	case IPPROTO_UDP:
-		if (m->m_pkthdr.csum_flags & CSUM_DATA_VALID) {
-			if (m->m_pkthdr.csum_flags & CSUM_PSEUDO_HDR) {
-				sum = m->m_pkthdr.csum_data;
-			} else {
-				ip = mtod(m, struct ip *);
-				sum = in_pseudo(ip->ip_src.s_addr,
-				ip->ip_dst.s_addr, htonl((u_short)len +
-				m->m_pkthdr.csum_data + IPPROTO_UDP));
-			}
-			sum ^= 0xffff;
+		if ((m->m_pkthdr.csum_flags & (CSUM_L4_CALC|CSUM_L4_VALID)) ==
+		    (CSUM_L4_CALC|CSUM_L4_VALID)) {
+			/* Checksum is valid. */
+			ip = mtod(m, struct ip *);
+			++hw_assist;
+		} else if ((m->m_pkthdr.csum_flags &
+		    (CSUM_L4_CALC|CSUM_L4_VALID)) == CSUM_L4_CALC) {
+			/* Checksum is invalid. */
+			sum = 1;
 			++hw_assist;
 		}
 		break;
@@ -5565,8 +5542,7 @@ pf_check_proto_cksum(struct mbuf *m, int off, int len, u_int8_t p, sa_family_t a
 	} else {
 		if (p == IPPROTO_TCP || p == IPPROTO_UDP) {
 			m->m_pkthdr.csum_flags |=
-			    (CSUM_DATA_VALID | CSUM_PSEUDO_HDR);
-			m->m_pkthdr.csum_data = 0xffff;
+			    (CSUM_L4_CALC | CSUM_L4_VALID);
 		}
 	}
 	return (0);

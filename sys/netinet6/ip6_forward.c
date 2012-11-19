@@ -577,14 +577,16 @@ skip_routing:
 			m->m_flags |= M_FASTFWD_OURS;
 			if (m->m_pkthdr.rcvif == NULL)
 				m->m_pkthdr.rcvif = V_loif;
-			if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA_IPV6) {
+			if (m->m_pkthdr.csum_flags &
+			    (CSUM_IP6_UDP|CSUM_IP6_TCP)) {
 				m->m_pkthdr.csum_flags |=
-				    CSUM_DATA_VALID_IPV6 | CSUM_PSEUDO_HDR;
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 #ifdef SCTP
-			if (m->m_pkthdr.csum_flags & CSUM_SCTP_IPV6)
-				m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+			if (m->m_pkthdr.csum_flags & CSUM_IP6_SCTP)
+				m->m_pkthdr.csum_flags |=
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 #endif
 			error = netisr_queue(NETISR_IPV6, m);
 			goto out;
@@ -596,14 +598,13 @@ skip_routing:
 	if (m->m_flags & M_FASTFWD_OURS) {
 		if (m->m_pkthdr.rcvif == NULL)
 			m->m_pkthdr.rcvif = V_loif;
-		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA_IPV6) {
-			m->m_pkthdr.csum_flags |=
-			    CSUM_DATA_VALID_IPV6 | CSUM_PSEUDO_HDR;
+		if (m->m_pkthdr.csum_flags & (CSUM_IP6_UDP|CSUM_IP6_TCP)) {
+			m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 			m->m_pkthdr.csum_data = 0xffff;
 		}
 #ifdef SCTP
-		if (m->m_pkthdr.csum_flags & CSUM_SCTP_IPV6)
-			m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+		if (m->m_pkthdr.csum_flags & CSUM_IP6_SCTP)
+			m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 #endif
 		error = netisr_queue(NETISR_IPV6, m);
 		goto out;

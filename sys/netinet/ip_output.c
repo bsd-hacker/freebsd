@@ -518,41 +518,31 @@ sendit:
 			m->m_flags |= M_FASTFWD_OURS;
 			if (m->m_pkthdr.rcvif == NULL)
 				m->m_pkthdr.rcvif = V_loif;
-			if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+			/* Pretend that the checksum was verified by hw. */
+			if (m->m_pkthdr.csum_flags & CSUM_IP)
 				m->m_pkthdr.csum_flags |=
-				    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
-				m->m_pkthdr.csum_data = 0xffff;
-			}
-			m->m_pkthdr.csum_flags |=
-			    CSUM_IP_CHECKED | CSUM_IP_VALID;
-#ifdef SCTP
-			if (m->m_pkthdr.csum_flags & CSUM_SCTP)
-				m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
-#endif
+				    CSUM_L3_CALC | CSUM_L3_VALID;
+			if (m->m_pkthdr.csum_flags &
+			    (CSUM_UDP|CSUM_TCP|CSUM_SCTP))
+				m->m_pkthdr.csum_flags |=
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 			error = netisr_queue(NETISR_IP, m);
 			goto done;
-		} else {
-			if (ia != NULL)
-				ifa_free(&ia->ia_ifa);
-			goto again;	/* Redo the routing table lookup. */
 		}
+		if (ia != NULL)
+			ifa_free(&ia->ia_ifa);
+		goto again;	/* Redo the routing table lookup. */
 	}
 
 	/* See if local, if yes, send it to netisr with IP_FASTFWD_OURS. */
 	if (m->m_flags & M_FASTFWD_OURS) {
 		if (m->m_pkthdr.rcvif == NULL)
 			m->m_pkthdr.rcvif = V_loif;
-		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
-			m->m_pkthdr.csum_flags |=
-			    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
-			m->m_pkthdr.csum_data = 0xffff;
-		}
-#ifdef SCTP
-		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
-			m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
-#endif
-		m->m_pkthdr.csum_flags |=
-			    CSUM_IP_CHECKED | CSUM_IP_VALID;
+		/* Pretend that the checksum was verified by hw. */
+		if (m->m_pkthdr.csum_flags & CSUM_IP)
+			m->m_pkthdr.csum_flags |= CSUM_L3_CALC | CSUM_L3_VALID;
+		if (m->m_pkthdr.csum_flags & (CSUM_UDP|CSUM_TCP|CSUM_SCTP))
+			m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 
 		error = netisr_queue(NETISR_IP, m);
 		goto done;
@@ -583,14 +573,15 @@ passout:
 
 	m->m_pkthdr.csum_flags |= CSUM_IP;
 	m->m_pkthdr.csum_l3hlen += ip_len;
-	if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA & ~ifp->if_hwassist) {
+	if (m->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP) &
+	    ~ifp->if_hwassist) {
 		in_delayed_cksum(m);
-		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+		m->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
 	}
 #ifdef SCTP
-	if (m->m_pkthdr.csum_flags & CSUM_SCTP & ~ifp->if_hwassist) {
+	else if (m->m_pkthdr.csum_flags & CSUM_IP_SCTP & ~ifp->if_hwassist) {
 		sctp_delayed_cksum(m, (uint32_t)(ip->ip_hl << 2));
-		m->m_pkthdr.csum_flags &= ~CSUM_SCTP;
+		m->m_pkthdr.csum_flags &= ~CSUM_IP_SCTP;
 	}
 #endif
 
@@ -599,8 +590,8 @@ passout:
 	 * care of the fragmentation for us, we can just send directly.
 	 */
 	if (ip_len <= mtu ||
-	    (m->m_pkthdr.csum_flags & ifp->if_hwassist & CSUM_TSO) != 0 ||
-	    ((ip_off & IP_DF) == 0 && (ifp->if_hwassist & CSUM_IPFRAG))) {
+	    (m->m_pkthdr.csum_flags & ifp->if_hwassist & CSUM_IP_TSO) != 0 ||
+	    ((ip_off & IP_DF) == 0 && (ifp->if_hwassist & CSUM_IP_FRAGO))) {
 		ip->ip_sum = 0;
 		if (m->m_pkthdr.csum_flags & CSUM_IP & ~ifp->if_hwassist) {
 			ip->ip_sum = in_cksum(m, hlen);
@@ -609,12 +600,12 @@ passout:
 
 		/*
 		 * Record statistics for this interface address.
-		 * With CSUM_TSO the byte/packet count will be slightly
+		 * With CSUM_IP_TSO the byte/packet count will be slightly
 		 * incorrect because we count the IP+TCP headers only
 		 * once instead of for every generated packet.
 		 */
 		if (!(flags & IP_FORWARDING) && ia) {
-			if (m->m_pkthdr.csum_flags & CSUM_TSO)
+			if (m->m_pkthdr.csum_flags & CSUM_IP_TSO)
 				ia->ia_ifa.if_opackets +=
 				    m->m_pkthdr.len / m->m_pkthdr.tso_segsz;
 			else
@@ -636,7 +627,7 @@ passout:
 	}
 
 	/* Balk when DF bit is set or the interface didn't support TSO. */
-	if ((ip_off & IP_DF) || (m->m_pkthdr.csum_flags & CSUM_TSO)) {
+	if ((ip_off & IP_DF) || (m->m_pkthdr.csum_flags & CSUM_IP_TSO)) {
 		error = EMSGSIZE;
 		IPSTAT_INC(ips_cantfrag);
 		goto bad;
@@ -724,14 +715,14 @@ ip_fragment(struct ip *ip, struct mbuf **m_frag, int mtu,
 	 * If the interface will not calculate checksums on
 	 * fragmented packets, then do it here.
 	 */
-	if (m0->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+	if (m0->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 		in_delayed_cksum(m0);
-		m0->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+		m0->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
 	}
 #ifdef SCTP
-	if (m0->m_pkthdr.csum_flags & CSUM_SCTP) {
+	if (m0->m_pkthdr.csum_flags & CSUM_IP_SCTP) {
 		sctp_delayed_cksum(m0, hlen);
-		m0->m_pkthdr.csum_flags &= ~CSUM_SCTP;
+		m0->m_pkthdr.csum_flags &= ~CSUM_IP_SCTP;
 	}
 #endif
 	if (len > PAGE_SIZE) {
@@ -872,7 +863,7 @@ in_delayed_cksum(struct mbuf *m)
 	offset = ip->ip_hl << 2 ;
 	ip_len = ntohs(ip->ip_len);
 	csum = in_cksum_skip(m, ip_len, offset);
-	if (m->m_pkthdr.csum_flags & CSUM_UDP && csum == 0)
+	if (m->m_pkthdr.csum_flags & CSUM_IP_UDP && csum == 0)
 		csum = 0xffff;
 	offset += m->m_pkthdr.csum_data;	/* checksum offset */
 
@@ -1296,11 +1287,11 @@ ip_mloopback(struct ifnet *ifp, struct mbuf *m, struct sockaddr_in *dst,
 		copym = m_pullup(copym, hlen);
 	if (copym != NULL) {
 		/* If needed, compute the checksum and mark it as valid. */
-		if (copym->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+		if (copym->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 			in_delayed_cksum(copym);
-			copym->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+			copym->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
 			copym->m_pkthdr.csum_flags |=
-			    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+			    CSUM_L4_CALC | CSUM_L4_VALID;
 			copym->m_pkthdr.csum_data = 0xffff;
 		}
 		/*

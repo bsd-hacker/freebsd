@@ -230,23 +230,25 @@ ip_fastforward(struct mbuf *m)
 	/*
 	 * Checksum correct?
 	 */
-	if (m->m_pkthdr.csum_flags & CSUM_IP_CHECKED)
-		sum = !(m->m_pkthdr.csum_flags & CSUM_IP_VALID);
-	else {
+	if ((m->m_pkthdr.csum_flags & (CSUM_L3_CALC | CSUM_L3_VALID)) ==
+	    CSUM_L3_CALC) {
+		IPSTAT_INC(ips_badsum);
+		goto drop;
+	} else if (!(m->m_pkthdr.csum_flags & CSUM_L3_VALID)) {
 		if (hlen == sizeof(struct ip))
 			sum = in_cksum_hdr(ip);
 		else
 			sum = in_cksum(m, hlen);
+		if (sum) {
+			IPSTAT_INC(ips_badsum);
+			goto drop;
+		}
+		/*
+		 * Remember that we have checked the IP header and found
+		 * it valid.
+		 */
+		m->m_pkthdr.csum_flags |= (CSUM_L3_CALC | CSUM_L3_VALID);
 	}
-	if (sum) {
-		IPSTAT_INC(ips_badsum);
-		goto drop;
-	}
-
-	/*
-	 * Remember that we have checked the IP header and found it valid.
-	 */
-	m->m_pkthdr.csum_flags |= (CSUM_IP_CHECKED | CSUM_IP_VALID);
 
 	ip_len = ntohs(ip->ip_len);
 
@@ -523,7 +525,7 @@ passout:
 		mtu = ifp->if_mtu;
 
 	if (ip_len <= mtu ||
-	    (ifp->if_hwassist & CSUM_IPFRAG && (ip_off & IP_DF) == 0)) {
+	    ((ifp->if_hwassist & CSUM_IP_FRAGO) && (ip_off & IP_DF) == 0)) {
 		/*
 		 * Send off the packet via outgoing interface
 		 */

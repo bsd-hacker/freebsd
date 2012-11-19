@@ -614,16 +614,13 @@ tcp_input(struct mbuf *m, int off0)
 		ip6 = mtod(m, struct ip6_hdr *);
 		th = (struct tcphdr *)((caddr_t)ip6 + off0);
 		tlen = sizeof(*ip6) + ntohs(ip6->ip6_plen) - off0;
-		if (m->m_pkthdr.csum_flags & CSUM_DATA_VALID_IPV6) {
-			if (m->m_pkthdr.csum_flags & CSUM_PSEUDO_HDR)
-				th->th_sum = m->m_pkthdr.csum_data;
-			else
-				th->th_sum = in6_cksum_pseudo(ip6, tlen,
-				    IPPROTO_TCP, m->m_pkthdr.csum_data);
-			th->th_sum ^= 0xffff;
-		} else
-			th->th_sum = in6_cksum(m, IPPROTO_TCP, off0, tlen);
-		if (th->th_sum) {
+
+		if ((m->m_pkthdr.csum_flags & (CSUM_L4_CALC|CSUM_L4_VALID)) ==
+		    CSUM_L4_CALC) {
+			TCPSTAT_INC(tcps_rcvbadsum);
+			goto drop;
+		} else if (!(m->m_pkthdr.csum_flags & CSUM_L4_VALID) &&
+		    in6_cksum(m, IPPROTO_TCP, off0, tlen)) {
 			TCPSTAT_INC(tcps_rcvbadsum);
 			goto drop;
 		}
@@ -666,16 +663,11 @@ tcp_input(struct mbuf *m, int off0)
 		th = (struct tcphdr *)((caddr_t)ip + off0);
 		tlen = ntohs(ip->ip_len) - off0;
 
-		if (m->m_pkthdr.csum_flags & CSUM_DATA_VALID) {
-			if (m->m_pkthdr.csum_flags & CSUM_PSEUDO_HDR)
-				th->th_sum = m->m_pkthdr.csum_data;
-			else
-				th->th_sum = in_pseudo(ip->ip_src.s_addr,
-				    ip->ip_dst.s_addr,
-				    htonl(m->m_pkthdr.csum_data + tlen +
-				    IPPROTO_TCP));
-			th->th_sum ^= 0xffff;
-		} else {
+		if ((m->m_pkthdr.csum_flags & (CSUM_L4_CALC|CSUM_L4_VALID)) ==
+		    CSUM_L4_CALC) {
+			TCPSTAT_INC(tcps_rcvbadsum);
+			goto drop;
+		} else if (!(m->m_pkthdr.csum_flags & CSUM_L4_VALID)) {
 			struct ipovly *ipov = (struct ipovly *)ip;
 
 			/*
@@ -685,10 +677,11 @@ tcp_input(struct mbuf *m, int off0)
 			bzero(ipov->ih_x1, sizeof(ipov->ih_x1));
 			ipov->ih_len = htons(tlen);
 			th->th_sum = in_cksum(m, len);
-		}
-		if (th->th_sum) {
-			TCPSTAT_INC(tcps_rcvbadsum);
-			goto drop;
+
+			if (th->th_sum) {
+				TCPSTAT_INC(tcps_rcvbadsum);
+				goto drop;
+			}
 		}
 		/* Re-initialization for later version check */
 		ip->ip_v = IPVERSION;
@@ -3610,7 +3603,7 @@ tcp_mss(struct tcpcb *tp, int offer)
 	SOCKBUF_UNLOCK(&so->so_rcv);
 
 	/* Check the interface for TSO capabilities. */
-	if (mtuflags & CSUM_TSO)
+	if (mtuflags & CSUM_IP_TSO)
 		tp->t_flags |= TF_TSO;
 }
 

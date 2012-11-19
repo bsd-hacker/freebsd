@@ -307,15 +307,15 @@ ip6_output(struct mbuf *m0, struct ip6_pktopts *opt,
 		/*
 		 * Do delayed checksums now, as we may send before returning.
 		 */
-		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA_IPV6) {
+		if (m->m_pkthdr.csum_flags & (CSUM_IP6_UDP|CSUM_IP6_TCP)) {
 			plen = m->m_pkthdr.len - sizeof(*ip6);
 			in6_delayed_cksum(m, plen, sizeof(struct ip6_hdr));
-			m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA_IPV6;
+			m->m_pkthdr.csum_flags &= ~(CSUM_IP6_UDP|CSUM_IP6_TCP);
 		}
 #ifdef SCTP
-		if (m->m_pkthdr.csum_flags & CSUM_SCTP_IPV6) {
+		if (m->m_pkthdr.csum_flags & CSUM_IP6_SCTP) {
 			sctp_delayed_cksum(m, sizeof(struct ip6_hdr));
-			m->m_pkthdr.csum_flags &= ~CSUM_SCTP_IPV6;
+			m->m_pkthdr.csum_flags &= ~CSUM_IP6_SCTP;
 		}
 #endif
 	case 0:                 /* No IPSec */
@@ -898,14 +898,16 @@ again:
 			m->m_flags |= M_FASTFWD_OURS;
 			if (m->m_pkthdr.rcvif == NULL)
 				m->m_pkthdr.rcvif = V_loif;
-			if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA_IPV6) {
+			if (m->m_pkthdr.csum_flags &
+			    (CSUM_IP6_UDP|CSUM_IP6_TCP)) {
 				m->m_pkthdr.csum_flags |=
-				    CSUM_DATA_VALID_IPV6 | CSUM_PSEUDO_HDR;
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 #ifdef SCTP
 			if (m->m_pkthdr.csum_flags & CSUM_SCTP_IPV6)
-				m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+				m->m_pkthdr.csum_flags |=
+				    CSUM_L4_CALC | CSUM_L4_VALID;
 #endif
 			error = netisr_queue(NETISR_IPV6, m);
 			goto done;
@@ -917,14 +919,14 @@ again:
 	if (m->m_flags & M_FASTFWD_OURS) {
 		if (m->m_pkthdr.rcvif == NULL)
 			m->m_pkthdr.rcvif = V_loif;
-		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA_IPV6) {
+		if (m->m_pkthdr.csum_flags & (CSUM_IP6_UDP|CSUM_IP6_TCP)) {
 			m->m_pkthdr.csum_flags |=
-			    CSUM_DATA_VALID_IPV6 | CSUM_PSEUDO_HDR;
+			    CSUM_L4_CALC | CSUM_L4_VALID;
 			m->m_pkthdr.csum_data = 0xffff;
 		}
 #ifdef SCTP
 		if (m->m_pkthdr.csum_flags & CSUM_SCTP_IPV6)
-			m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+			m->m_pkthdr.csum_flags |= CSUM_L4_CALC | CSUM_L4_VALID;
 #endif
 		error = netisr_queue(NETISR_IPV6, m);
 		goto done;
@@ -972,13 +974,13 @@ passout:
 	 * XXX-BZ  Need a framework to know when the NIC can handle it, even
 	 * with ext. hdrs.
 	 */
-	if (sw_csum & CSUM_DELAY_DATA_IPV6) {
-		sw_csum &= ~CSUM_DELAY_DATA_IPV6;
+	if (sw_csum & (CSUM_IP6_UDP|CSUM_IP6_TCP)) {
+		sw_csum &= ~(CSUM_IP6_UDP|CSUM_IP6_TCP);
 		in6_delayed_cksum(m, plen, sizeof(struct ip6_hdr));
 	}
 #ifdef SCTP
-	if (sw_csum & CSUM_SCTP_IPV6) {
-		sw_csum &= ~CSUM_SCTP_IPV6;
+	if (sw_csum & CSUM_IP6_SCTP) {
+		sw_csum &= ~CSUM_IP6_SCTP;
 		sctp_delayed_cksum(m, sizeof(struct ip6_hdr));
 	}
 #endif
@@ -1091,14 +1093,14 @@ passout:
 		 * fragmented packets, then do it here.
 		 * XXX-BZ handle the hw offloading case.  Need flags.
 		 */
-		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA_IPV6) {
+		if (m->m_pkthdr.csum_flags & (CSUM_IP6_UDP|CSUM_IP6_TCP)) {
 			in6_delayed_cksum(m, plen, hlen);
-			m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA_IPV6;
+			m->m_pkthdr.csum_flags &= ~(CSUM_IP6_UDP|CSUM_IP6_TCP);
 		}
 #ifdef SCTP
-		if (m->m_pkthdr.csum_flags & CSUM_SCTP_IPV6) {
+		if (m->m_pkthdr.csum_flags & CSUM_IP6_SCTP) {
 			sctp_delayed_cksum(m, hlen);
-			m->m_pkthdr.csum_flags &= ~CSUM_SCTP_IPV6;
+			m->m_pkthdr.csum_flags &= ~CSUM_IP6_SCTP;
 		}
 #endif
 		mnext = &m->m_nextpkt;

@@ -366,8 +366,8 @@ typedef struct callout sctp_os_timer_t;
 #define SCTP_RELEASE_HEADER(m)
 #define SCTP_RELEASE_PKT(m)	sctp_m_freem(m)
 #define SCTP_ENABLE_UDP_CSUM(m) do { \
-					m->m_pkthdr.csum_flags = CSUM_UDP; \
-					m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum); \
+					m->m_pkthdr.csum_flags = CSUM_IP_UDP; \
+					m->m_pkthdr.csum_l4hlen = sizeof(struct udphdr); \
 				} while (0)
 
 #define SCTP_GET_PKT_VRFID(m, vrf_id)  ((vrf_id = SCTP_DEFAULT_VRFID) != SCTP_DEFAULT_VRFID)

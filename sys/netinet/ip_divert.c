@@ -207,14 +207,14 @@ divert_packet(struct mbuf *m, int incoming)
 	ip = mtod(m, struct ip *);
 
 	/* Delayed checksums are currently not compatible with divert. */
-	if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+	if (m->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 		in_delayed_cksum(m);
-		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+		m->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
 	}
 #ifdef SCTP
-	if (m->m_pkthdr.csum_flags & CSUM_SCTP) {
+	if (m->m_pkthdr.csum_flags & CSUM_IP_SCTP) {
 		sctp_delayed_cksum(m, (uint32_t)(ip->ip_hl << 2));
-		m->m_pkthdr.csum_flags &= ~CSUM_SCTP;
+		m->m_pkthdr.csum_flags &= ~CSUM_IP_SCTP;
 	}
 #endif
 	bzero(&divsrc, sizeof(divsrc));

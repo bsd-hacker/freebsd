@@ -211,8 +211,8 @@ tcp_lro_flush(struct lro_ctrl *lc, struct lro_entry *le)
 			ip6 = le->le_ip6;
 			ip6->ip6_plen = p_len;
 			th = (struct tcphdr *)(ip6 + 1);
-			le->m_head->m_pkthdr.csum_flags = CSUM_DATA_VALID |
-			    CSUM_PSEUDO_HDR;
+			le->m_head->m_pkthdr.csum_flags = CSUM_L4_CALC |
+			    CSUM_L4_VALID;
 			le->p_len += ETHER_HDR_LEN + sizeof(*ip6);
 			break;
 		}
@@ -242,8 +242,8 @@ tcp_lro_flush(struct lro_ctrl *lc, struct lro_entry *le)
 #endif
 			ip4->ip_len = p_len;
 			th = (struct tcphdr *)(ip4 + 1);
-			le->m_head->m_pkthdr.csum_flags = CSUM_DATA_VALID |
-			    CSUM_PSEUDO_HDR | CSUM_IP_CHECKED | CSUM_IP_VALID;
+			le->m_head->m_pkthdr.csum_flags = CSUM_L4_CALC |
+			    CSUM_L4_VALID | CSUM_L3_CALC | CSUM_L3_VALID;
 			le->p_len += ETHER_HDR_LEN;
 			break;
 		}
@@ -310,7 +310,6 @@ static int
 tcp_lro_rx_ipv4(struct lro_ctrl *lc, struct mbuf *m, struct ip *ip4,
     struct tcphdr **th)
 {
-	int csum_flags;
 	uint16_t csum;
 
 	if (ip4->ip_p != IPPROTO_TCP)
@@ -325,18 +324,17 @@ tcp_lro_rx_ipv4(struct lro_ctrl *lc, struct mbuf *m, struct ip *ip4,
 		return (TCP_LRO_CANNOT);
 
 	/* Legacy IP has a header checksum that needs to be correct. */
-	csum_flags = m->m_pkthdr.csum_flags;
-	if (csum_flags & CSUM_IP_CHECKED) {
-		if (__predict_false((csum_flags & CSUM_IP_VALID) == 0)) {
-			lc->lro_bad_csum++;
-			return (TCP_LRO_CANNOT);
-		}
-	} else {
+	if ((m->m_pkthdr.csum_flags & (CSUM_L3_CALC | CSUM_L3_VALID)) ==
+	    CSUM_L3_CALC) {
+		lc->lro_bad_csum++;
+		return (TCP_LRO_CANNOT);
+	} else if (!(m->m_pkthdr.csum_flags & CSUM_L3_VALID)) {
 		csum = in_cksum_hdr(ip4);
 		if (__predict_false((csum ^ 0xffff) != 0)) {
 			lc->lro_bad_csum++;
 			return (TCP_LRO_CANNOT);
 		}
+		m->m_pkthdr.csum_flags |= (CSUM_L3_CALC | CSUM_L3_VALID);
 	}
 
 	/* Find the TCP header (we assured there are no IP options). */

@@ -623,12 +623,10 @@ tcp_respond(struct tcpcb *tp, void *ipgen, struct tcphdr *th, struct mbuf *m,
 		nth->th_win = htons((u_short)win);
 	nth->th_urp = 0;
 
-	m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+	m->m_pkthdr.csum_l4hlen = sizeof(struct tcphdr);
 #ifdef INET6
 	if (isipv6) {
-		m->m_pkthdr.csum_flags = CSUM_TCP_IPV6;
-		nth->th_sum = in6_cksum_pseudo(ip6,
-		    tlen - sizeof(struct ip6_hdr), IPPROTO_TCP, 0);
+		m->m_pkthdr.csum_flags = CSUM_IP6_TCP;
 		ip6->ip6_hlim = in6_selecthlim(tp != NULL ? tp->t_inpcb :
 		    NULL, NULL);
 	}
@@ -638,9 +636,7 @@ tcp_respond(struct tcpcb *tp, void *ipgen, struct tcphdr *th, struct mbuf *m,
 #endif
 #ifdef INET
 	{
-		m->m_pkthdr.csum_flags = CSUM_TCP;
-		nth->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
-		    htons((u_short)(tlen - sizeof(struct ip) + ip->ip_p)));
+		m->m_pkthdr.csum_flags = CSUM_IP_TCP;
 	}
 #endif /* INET */
 #ifdef TCPDEBUG
@@ -1744,8 +1740,8 @@ tcp_maxmtu(struct in_conninfo *inc, int *flags)
 		/* Report additional interface capabilities. */
 		if (flags != NULL) {
 			if (ifp->if_capenable & IFCAP_TSO4 &&
-			    ifp->if_hwassist & CSUM_TSO)
-				*flags |= CSUM_TSO;
+			    ifp->if_hwassist & CSUM_IP_TSO)
+				*flags |= CSUM_IP_TSO;
 		}
 		RTFREE(sro.ro_rt);
 	}
@@ -1781,8 +1777,8 @@ tcp_maxmtu6(struct in_conninfo *inc, int *flags)
 		/* Report additional interface capabilities. */
 		if (flags != NULL) {
 			if (ifp->if_capenable & IFCAP_TSO6 &&
-			    ifp->if_hwassist & CSUM_TSO)
-				*flags |= CSUM_TSO;
+			    ifp->if_hwassist & CSUM_IP6_TSO)
+				*flags |= CSUM_IP6_TSO;
 		}
 		RTFREE(sro6.ro_rt);
 	}

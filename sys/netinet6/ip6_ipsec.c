@@ -288,11 +288,11 @@ ip6_ipsec_output(struct mbuf **m, struct inpcb *inp, int *flags, int *error,
 		 * For IPv6 we do delayed checksums in ip6_output.c.
 		 */
 #ifdef INET
-		if ((*m)->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+		if ((*m)->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 			ipseclog((LOG_DEBUG,
 			    "%s: we do not support IPv4 over IPv6", __func__));
 			in_delayed_cksum(*m);
-			(*m)->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+			(*m)->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
 		}
 #endif
 

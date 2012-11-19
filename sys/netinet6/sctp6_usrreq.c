@@ -169,9 +169,15 @@ sctp6_input(struct mbuf **i_pak, int *offp, int proto)
 #if defined(SCTP_WITH_NO_CSUM)
 	SCTP_STAT_INCR(sctps_recvnocrc);
 #else
-	if (m->m_pkthdr.csum_flags & CSUM_SCTP_VALID) {
+	if ((m->m_pkthdr.csum_flags & (CSUM_L4_CALC|CSUM_L4_VALID)) ==
+	    (CSUM_L4_CALC | CSUM_L4_VALID)) {
 		SCTP_STAT_INCR(sctps_recvhwcrc);
 		compute_crc = 0;
+	} else if ((m->m_pkthdr.csum_flags & (CSUM_L4_CALC|CSUM_L4_VALID)) ==
+	    CSUM_L4_CALC) {
+		SCTP_STAT_INCR(sctps_badsum);
+		SCTP_STAT_INCR_COUNTER32(sctps_checksumerrors);
+		goto out;
 	} else {
 		SCTP_STAT_INCR(sctps_recvswcrc);
 		compute_crc = 1;

@@ -1509,12 +1509,10 @@ syncache_respond(struct syncache *sc)
 		optlen = 0;
 
 	M_SETFIB(m, sc->sc_inc.inc_fibnum);
-	m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+	m->m_pkthdr.csum_l4hlen = sizeof(struct tcphdr) + optlen;
 #ifdef INET6
 	if (sc->sc_inc.inc_flags & INC_ISIPV6) {
-		m->m_pkthdr.csum_flags = CSUM_TCP_IPV6;
-		th->th_sum = in6_cksum_pseudo(ip6, tlen + optlen - hlen,
-		    IPPROTO_TCP, 0);
+		m->m_pkthdr.csum_flags = CSUM_IP6_TCP;
 		ip6->ip6_hlim = in6_selecthlim(NULL, NULL);
 		error = ip6_output(m, NULL, NULL, 0, NULL, NULL, NULL);
 	}
@@ -1524,9 +1522,7 @@ syncache_respond(struct syncache *sc)
 #endif
 #ifdef INET
 	{
-		m->m_pkthdr.csum_flags = CSUM_TCP;
-		th->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
-		    htons(tlen + optlen - hlen + IPPROTO_TCP));
+		m->m_pkthdr.csum_flags = CSUM_IP_TCP;
 #ifdef TCP_OFFLOAD
 		if (ADDED_BY_TOE(sc)) {
 			struct toedev *tod = sc->sc_tod;

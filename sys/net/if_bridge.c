@@ -3263,8 +3263,8 @@ bridge_ip_checkbasic(struct mbuf **mp)
 		if (ip == NULL) goto bad;
 	}
 
-	if (m->m_pkthdr.csum_flags & CSUM_IP_CHECKED) {
-		sum = !(m->m_pkthdr.csum_flags & CSUM_IP_VALID);
+	if (m->m_pkthdr.csum_flags & CSUM_L3_CALC) {
+		sum = !(m->m_pkthdr.csum_flags & CSUM_L3_VALID);
 	} else {
 		if (hlen == sizeof(struct ip)) {
 			sum = in_cksum_hdr(ip);

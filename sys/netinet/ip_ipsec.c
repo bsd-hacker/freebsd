@@ -327,16 +327,16 @@ ip_ipsec_output(struct mbuf **m, struct inpcb *inp, int *flags, int *error)
 		 * Do delayed checksums now because we send before
 		 * this is done in the normal processing path.
 		 */
-		if ((*m)->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+		if ((*m)->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 			in_delayed_cksum(*m);
-			(*m)->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+			(*m)->m_pkthdr.csum_flags &= ~(CSUM_IP_UDP|CSUM_IP_TCP);
 		}
 #ifdef SCTP
-		if ((*m)->m_pkthdr.csum_flags & CSUM_SCTP) {
+		if ((*m)->m_pkthdr.csum_flags & CSUM_IP_SCTP) {
 			struct ip *ip = mtod(*m, struct ip *);
 
 			sctp_delayed_cksum(*m, (uint32_t)(ip->ip_hl << 2));
-			(*m)->m_pkthdr.csum_flags &= ~CSUM_SCTP;
+			(*m)->m_pkthdr.csum_flags &= ~CSUM_IP_SCTP;
 		}
 #endif
 

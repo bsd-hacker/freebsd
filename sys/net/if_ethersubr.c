@@ -299,12 +299,10 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	if (lle != NULL && (lle->la_flags & LLE_IFADDR)) {
 		int csum_flags = 0;
 		if (m->m_pkthdr.csum_flags & CSUM_IP)
-			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
-		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
-			csum_flags |= (CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
-		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
-			csum_flags |= CSUM_SCTP_VALID;
-		m->m_pkthdr.csum_flags |= csum_flags;
+			csum_flags |= (CSUM_L3_CALC|CSUM_L3_VALID);
+		if (m->m_pkthdr.csum_flags & (CSUM_UDP|CSUM_TCP|CSUM_SCTP))
+			csum_flags |= (CSUM_L4_CALC|CSUM_L4_VALID);
+		m->m_pkthdr.csum_flags = csum_flags;
 		m->m_pkthdr.csum_data = 0xffff;
 		return (if_simloop(ifp, m, dst->sa_family, 0));
 	}
@@ -356,11 +354,9 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		int csum_flags = 0;
 
 		if (m->m_pkthdr.csum_flags & CSUM_IP)
-			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
-		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
-			csum_flags |= (CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
-		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
-			csum_flags |= CSUM_SCTP_VALID;
+			csum_flags |= (CSUM_L3_CALC|CSUM_L3_VALID);
+		if (m->m_pkthdr.csum_flags & (CSUM_UDP|CSUM_TCP|CSUM_SCTP))
+			csum_flags |= (CSUM_L4_CALC|CSUM_L4_VALID);
 
 		if (m->m_flags & M_BCAST) {
 			struct mbuf *n;
@@ -379,16 +375,12 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 			 */
 			if ((n = m_dup(m, M_DONTWAIT)) != NULL) {
 				n->m_pkthdr.csum_flags |= csum_flags;
-				if (csum_flags & CSUM_DATA_VALID)
-					n->m_pkthdr.csum_data = 0xffff;
 				(void)if_simloop(ifp, n, dst->sa_family, hlen);
 			} else
 				ifp->if_iqdrops++;
 		} else if (bcmp(eh->ether_dhost, eh->ether_shost,
 				ETHER_ADDR_LEN) == 0) {
 			m->m_pkthdr.csum_flags |= csum_flags;
-			if (csum_flags & CSUM_DATA_VALID)
-				m->m_pkthdr.csum_data = 0xffff;
 			(void) if_simloop(ifp, m, dst->sa_family, hlen);
 			return (0);	/* XXX */
 		}

@@ -410,19 +410,15 @@ udp_input(struct mbuf *m, int off)
 
 	/*
 	 * Checksum extended UDP header and data.
+	 * NB: UDP doesn't require the checksum to be present.
 	 */
 	if (uh->uh_sum) {
-		u_short uh_sum;
+		u_short uh_sum = 0;
 
-		if (m->m_pkthdr.csum_flags & CSUM_DATA_VALID) {
-			if (m->m_pkthdr.csum_flags & CSUM_PSEUDO_HDR)
-				uh_sum = m->m_pkthdr.csum_data;
-			else
-				uh_sum = in_pseudo(ip->ip_src.s_addr,
-				    ip->ip_dst.s_addr, htonl((u_short)len +
-				    m->m_pkthdr.csum_data + IPPROTO_UDP));
-			uh_sum ^= 0xffff;
-		} else {
+		if ((m->m_pkthdr.csum_flags & (CSUM_L4_CALC|CSUM_L4_VALID)) ==
+		    CSUM_L4_CALC) {
+			uh_sum = 0x1;	/* Failed checksum check. */
+		} else if (!(m->m_pkthdr.csum_flags & CSUM_L4_VALID)) {
 			char b[9];
 
 			bcopy(((struct ipovly *)ip)->ih_x1, b, 9);
@@ -1226,7 +1222,7 @@ udp_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr,
 			faddr.s_addr = INADDR_BROADCAST;
 		ui->ui_sum = in_pseudo(ui->ui_src.s_addr, faddr.s_addr,
 		    htons((u_short)len + sizeof(struct udphdr) + IPPROTO_UDP));
-		m->m_pkthdr.csum_flags = CSUM_UDP;
+		m->m_pkthdr.csum_flags = CSUM_IP_UDP;
 		m->m_pkthdr.csum_l4hlen = sizeof(struct udphdr);
 	} else
 		ui->ui_sum = 0;
@@ -1387,8 +1383,8 @@ udp4_espdecap(struct inpcb *inp, struct mbuf *m, int off)
 	 * We cannot yet update the cksums so clear any
 	 * h/w cksum flags as they are no longer valid.
 	 */
-	if (m->m_pkthdr.csum_flags & CSUM_DATA_VALID)
-		m->m_pkthdr.csum_flags &= ~(CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
+	if (m->m_pkthdr.csum_flags & CSUM_L4_CALC)
+		m->m_pkthdr.csum_flags &= ~(CSUM_L4_CALC|CSUM_L4_VALID);
 
 	(void) ipsec4_common_input(m, iphlen, ip->ip_p);
 	return (NULL);			/* NB: consumed, bypass processing. */

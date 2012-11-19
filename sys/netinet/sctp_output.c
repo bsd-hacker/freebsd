@@ -4129,7 +4129,7 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 #if defined(SCTP_WITH_NO_CSUM)
 				SCTP_STAT_INCR(sctps_sendnocrc);
 #else
-				m->m_pkthdr.csum_flags = CSUM_SCTP;
+				m->m_pkthdr.csum_flags = CSUM_IP_SCTP;
 				m->m_pkthdr.csum_l4hlen = sizeof(struct sctphdr);
 				SCTP_STAT_INCR(sctps_sendhwcrc);
 #endif
@@ -4478,7 +4478,7 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 #if defined(SCTP_WITH_NO_CSUM)
 				SCTP_STAT_INCR(sctps_sendnocrc);
 #else
-				m->m_pkthdr.csum_flags = CSUM_SCTP_IPV6;
+				m->m_pkthdr.csum_flags = CSUM_IP6_SCTP;
 				m->m_pkthdr.csum_l4hlen = sizeof(struct sctphdr);
 				SCTP_STAT_INCR(sctps_sendhwcrc);
 #endif
@@ -11005,7 +11005,7 @@ sctp_send_resp_msg(struct sockaddr *src, struct sockaddr *dst,
 #if defined(SCTP_WITH_NO_CSUM)
 			SCTP_STAT_INCR(sctps_sendnocrc);
 #else
-			mout->m_pkthdr.csum_flags = CSUM_SCTP;
+			mout->m_pkthdr.csum_flags = CSUM_IP_SCTP;
 			mout->m_pkthdr.csum_l4hlen = sizeof(struct sctphdr);
 			SCTP_STAT_INCR(sctps_sendhwcrc);
 #endif
@@ -11035,7 +11035,7 @@ sctp_send_resp_msg(struct sockaddr *src, struct sockaddr *dst,
 #if defined(SCTP_WITH_NO_CSUM)
 			SCTP_STAT_INCR(sctps_sendnocrc);
 #else
-			mout->m_pkthdr.csum_flags = CSUM_SCTP_IPV6;
+			mout->m_pkthdr.csum_flags = CSUM_IP6_SCTP;
 			mout->m_pkthdr.csum_l4hlen = sizeof(struct sctphdr);
 			SCTP_STAT_INCR(sctps_sendhwcrc);
 #endif
