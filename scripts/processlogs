@@ -183,13 +183,13 @@ sort .logs/.all | while read line; do
     if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
        vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
     else
-       vcsweb="\?"
+       vcsweb='?'
     fi
     echo "<td>$vcsweb</td>" >> $of
     if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
        maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
     else
-       maintainer="\?"
+       maintainer='?'
     fi
     echo "<td>$maintainer</td>" >> $of
     echo "<td>" >> $of
@@ -200,7 +200,7 @@ sort .logs/.all | while read line; do
 
     datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
     if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
-       datestamp="\?"
+       datestamp='?'
     fi
     echo "<td>$datestamp</td>" >> $of
 
@@ -233,7 +233,7 @@ sort -t \| +4 .logs/.all | while read line; do
     if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
        vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
     else
-       vcsweb="\?"
+       vcsweb='?'
     fi
     echo "<td>$vcsweb</td>" >> $of
 
@@ -244,7 +244,7 @@ sort -t \| +4 .logs/.all | while read line; do
     if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
        maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
     else
-       maintainer="\?"
+       maintainer='?'
     fi
     echo "<td>$maintainer</td>" >> $of
 
@@ -255,7 +255,7 @@ sort -t \| +4 .logs/.all | while read line; do
 
     datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
     if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
-       datestamp="\?"
+       datestamp='?'
     fi
     echo "<td>$datestamp</td>" >> $of
 
@@ -288,7 +288,7 @@ sort -t \| +5 .logs/.all | while read line; do
     if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
        maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
     else
-       maintainer="\?"
+       maintainer='?'
     fi
     echo "<td>$maintainer</td>" >> $of
     echo "<td><a href=\"http://${MASTER_URL}/errorlogs/${arch}-errorlogs/${baselogdir}/$1\">$2</a></td>" >> $of
@@ -299,7 +299,7 @@ sort -t \| +5 .logs/.all | while read line; do
     if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
        vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
     else
-       vcsweb="\?"
+       vcsweb='?'
     fi
     echo "<td>$vcsweb</td>" >> $of
 
@@ -310,7 +310,7 @@ sort -t \| +5 .logs/.all | while read line; do
 
     datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
     if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
-       datestamp="\?"
+       datestamp='?'
     fi
     echo "<td>$datestamp</td>" >> $of
 
@@ -353,19 +353,19 @@ sort -t \| +7 .logs/.all | while read line; do
     if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
        vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
     else
-       vcsweb="\?"
+       vcsweb='?'
     fi
     echo "<td>$vcsweb</td>" >> $of
     if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
        maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
     else
-       maintainer="\?"
+       maintainer='?'
     fi
     echo "<td>$maintainer</td>" >> $of
 
     datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
     if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
-       datestamp="\?"
+       datestamp='?'
     fi
     echo "<td>$datestamp</td>" >> $of
 
@@ -397,7 +397,7 @@ sort -t \| +9 .logs/.all | while read line; do
 
     datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
     if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
-       datestamp="\?"
+       datestamp='?'
     fi
     echo "<td>$datestamp</td>" >> $of
 
@@ -409,13 +409,13 @@ sort -t \| +9 .logs/.all | while read line; do
     if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
        vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
     else
-       vcsweb="\?"
+       vcsweb='?'
     fi
     echo "<td>$vcsweb</td>" >> $of
     if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
        maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
     else
-       maintainer="\?"
+       maintainer='?'
     fi
     echo "<td>$maintainer</td>" >> $of
 
