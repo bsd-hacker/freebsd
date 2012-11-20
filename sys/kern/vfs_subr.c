@@ -1111,10 +1111,6 @@ insmntque_stddtr(struct vnode *vp, void *dtr_arg)
 
 	vp->v_data = NULL;
 	vp->v_op = &dead_vnodeops;
-	/* XXX non mp-safe fs may still call insmntque with vnode
-	   unlocked */
-	if (!VOP_ISLOCKED(vp))
-		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	vgone(vp);
 	vput(vp);
 }
@@ -1126,7 +1122,6 @@ int
 insmntque1(struct vnode *vp, struct mount *mp,
 	void (*dtr)(struct vnode *, void *), void *dtr_arg)
 {
-	int locked;
 
 	KASSERT(vp->v_mount == NULL,
 		("insmntque: vnode already on per mount vnode list"));
@@ -1144,18 +1139,15 @@ insmntque1(struct vnode *vp, struct mount *mp,
 	 */
 	MNT_ILOCK(mp);
 	VI_LOCK(vp);
-	if ((mp->mnt_kern_flag & MNTK_NOINSMNTQ) != 0 &&
+	if (((mp->mnt_kern_flag & MNTK_NOINSMNTQ) != 0 &&
 	    ((mp->mnt_kern_flag & MNTK_UNMOUNTF) != 0 ||
-	     mp->mnt_nvnodelistsize == 0)) {
-		locked = VOP_ISLOCKED(vp);
-		if (!locked || (locked == LK_EXCLUSIVE &&
-		     (vp->v_vflag & VV_FORCEINSMQ) == 0)) {
-			VI_UNLOCK(vp);
-			MNT_IUNLOCK(mp);
-			if (dtr != NULL)
-				dtr(vp, dtr_arg);
-			return (EBUSY);
-		}
+	    mp->mnt_nvnodelistsize == 0)) &&
+	    (vp->v_vflag & VV_FORCEINSMQ) == 0) {
+		VI_UNLOCK(vp);
+		MNT_IUNLOCK(mp);
+		if (dtr != NULL)
+			dtr(vp, dtr_arg);
+		return (EBUSY);
 	}
 	vp->v_mount = mp;
 	MNT_REF(mp);
@@ -3988,7 +3980,8 @@ void
 assert_vop_locked(struct vnode *vp, const char *str)
 {
 
-	if (!IGNORE_LOCK(vp) && VOP_ISLOCKED(vp) == 0)
+	if (!IGNORE_LOCK(vp) &&
+	    (VOP_ISLOCKED(vp) == 0 || VOP_ISLOCKED(vp) == LK_EXCLOTHER))
 		vfs_badlock("is not locked but should be", str, vp);
 }
 
@@ -4104,35 +4097,11 @@ vop_strategy_pre(void *ap)
 void
 vop_lookup_pre(void *ap)
 {
-#ifdef DEBUG_VFS_LOCKS
-	struct vop_lookup_args *a;
-	struct vnode *dvp;
-
-	a = ap;
-	dvp = a->a_dvp;
-	ASSERT_VI_UNLOCKED(dvp, "VOP_LOOKUP");
-	ASSERT_VOP_LOCKED(dvp, "VOP_LOOKUP");
-#endif
 }
 
 void
 vop_lookup_post(void *ap, int rc)
 {
-#ifdef DEBUG_VFS_LOCKS
-	struct vop_lookup_args *a;
-	struct vnode *dvp;
-	struct vnode *vp;
-
-	a = ap;
-	dvp = a->a_dvp;
-	vp = *(a->a_vpp);
-
-	ASSERT_VI_UNLOCKED(dvp, "VOP_LOOKUP");
-	ASSERT_VOP_LOCKED(dvp, "VOP_LOOKUP");
-
-	if (!rc)
-		ASSERT_VOP_LOCKED(vp, "VOP_LOOKUP (child)");
-#endif
 }
 
 void
