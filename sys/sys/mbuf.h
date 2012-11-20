@@ -342,7 +342,7 @@ struct mbuf {
  */
 
 /* Inbound flags. */
-#define	MCSUM_INFLAGS(m)	((m)->csum_flags & \
+#define	MCSUM_INFLAGS(m)	((m)->m_pkthdr.csum_flags & \
 			0xF0000000)
 
 #define	CSUM_L3_CALC	0x10000000	/* IP hdr csum calculated	*/
@@ -351,7 +351,7 @@ struct mbuf {
 #define	CSUM_L4_VALID	0x80000000	/* UDP/TCP/SCTP csum eq. calc.	*/
 
 /* Outboud flags, tested against ifi_hwassist. */
-#define	MCSUM_OUTFLAGS(m)	((m)->csum_flags & \
+#define	MCSUM_OUTFLAGS(m)	((m)->m_pkthdr.csum_flags & \
 			0x0FFFFFF0)
 
 /* IPv4 csum offload	0x0000---0				*/
@@ -366,15 +366,15 @@ struct mbuf {
 #define	CSUM_IP_SCO	0x00000890	/* SCTP chunking offload	*/
 
 /* IPv6 csum offload	0x0---0000				*/
-					/* IPv6 hdr has no csum	*/
-#define	CSUM_IP6_UDP	0x00020000	/* will csum IPv6/UDP	*/
-#define	CSUM_IP6_TCP	0x00040000	/* will csum IPv6/TCP	*/
-#define CSUM_IP6_SCTP	0x00080000	/* will csum IPv6/SCTP	*/
+#define	CSUM_IP6	0x00010000	/* NB: IPv6 hdr has no csum	*/
+#define	CSUM_IP6_UDP	0x00030000	/* will csum IPv6/UDP	*/
+#define	CSUM_IP6_TCP	0x00050000	/* will csum IPv6/TCP	*/
+#define CSUM_IP6_SCTP	0x00090000	/* will csum IPv6/SCTP	*/
 
 #define	CSUM_IP6_FRAGO	0x00200000	/* IPv6 frag		*/
 #define	CSUM_IP6_UFO	0x00220000	/* IPv6/UFO		*/
 #define	CSUM_IP6_TSO	0x00440000	/* IPv6/TSO		*/
-#define	CSUM_IP6_SCO	0x00880000	 * SCTP chunk offload	*/
+#define	CSUM_IP6_SCO	0x00880000	/* SCTP chunk offload	*/
 
 /* Definition compatiblity with < 20121118, goes away after tree pruning */
 #define	CSUM_UDP	CSUM_IP_UDP
@@ -386,6 +386,7 @@ struct mbuf {
 #define	CSUM_TCP_IPV6	CSUM_IP6_TCP	/* will csum IPv6/TCP */
 #define	CSUM_SCTP_IPV6	CSUM_IP6_SCTP	/* will csum IPv6/SCTP */
 
+#if 0
 #define	CSUM_IP_CHECKED	CSUM_L3_CALC	/* did csum IP */
 #define	CSUM_IP_VALID	CSUM_L3_VALID	/*   ... the csum is valid */
 #define	CSUM_DATA_VALID	CSUM_L4_VALID	/* csum_data field is valid */
@@ -396,6 +397,7 @@ struct mbuf {
 #define	CSUM_DATA_VALID_IPV6	CSUM_DATA_VALID
 #define	CSUM_DELAY_DATA		(CSUM_TCP | CSUM_UDP)
 #define	CSUM_DELAY_IP		(CSUM_IP)
+#endif
 
 /*
  * mbuf types.
