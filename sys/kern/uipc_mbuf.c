@@ -420,6 +420,220 @@ m_sanity(struct mbuf *m0, int sanitize)
 		else
 			M_SANITY_ACTION("m_pkthdr.len != mbuf chain length");
 	}
+
+	/*
+	 * Verify the integrity of the checksum and offload parameters.
+	 */
+	if (m->m_pkthdr.csum_flags) {
+		int cflags = m->m_pkthdr.csum_flags;
+
+		/* Mixing of in and outboud flags is not permitted. */
+		if (MCSUM_INFLAGS(m) && MCSUM_OUTFLAGS(m))
+			M_SANITY_ACTION("in and outbound csum flags present");
+
+		/* The inbound checksum flags must be consistent. */
+		if ((cflags & (CSUM_L3_CALC|CSUM_L3_VALID)) == CSUM_L3_VALID)
+			M_SANITY_ACTION("CSUM_L3_VALID but not CSUM_L3_CALC");
+		if ((cflags & (CSUM_L4_CALC|CSUM_L4_VALID)) == CSUM_L4_VALID)
+			M_SANITY_ACTION("CSUM_L4_VALID but not CSUM_L4_CALC");
+
+		/*
+		 * Validate the l[2-4]hlen fields against first mbuf length.
+		 * The headers must be present and contiguous in the first
+		 * mbuf when offload capabilities are used.
+		 */
+		if (MCSUM_OUTFLAGS(m)) {
+			/*
+			 * When seg/fragmentation offload is specified the
+			 * segment size of the resulting packets is required.
+			 */
+			if (cflags & (CSUM_IP_UFO|CSUM_IP_TSO|CSUM_IP_SCO|
+			    CSUM_IP6_UFO|CSUM_IP6_TSO|CSUM_IP6_SCO)) {
+				if (m->m_pkthdr.tso_segsz == 0)
+					M_SANITY_ACTION("unspecified tso_segsz");
+				if (m->m_pkthdr.tso_segsz >= m->m_pkthdr.len)
+					M_SANITY_ACTION("tso_segsz >= pkthdr.len");
+			}
+			/* The headers must be in the first mbuf. */
+			if (m->m_len < m->m_pkthdr.csum_l2hlen)
+				M_SANITY_ACTION("csum_l2hlen > m_len");
+			if (m->m_len < m->m_pkthdr.csum_l2hlen +
+			    m->m_pkthdr.csum_l3hlen)
+				M_SANITY_ACTION("csum_l{2+3}hlen > m_len");
+			if (m->m_len < m->m_pkthdr.csum_l2hlen +
+			    m->m_pkthdr.csum_l3hlen + m->m_pkthdr.csum_l3hlen)
+				M_SANITY_ACTION("csum_l{2+3+4}hlen > m_len");
+		}
+
+		/* Layer 4 capabilities depend on lower layers. */
+		if (cflags & (CSUM_IP_UFO|CSUM_IP_TSO|CSUM_IP_SCO)) {
+			if (!(cflags & CSUM_IP))
+				M_SANITY_ACTION("IP offload w/o IP hdr csum");
+			if ((cflags & (CSUM_IP_UFO|CSUM_IP_UDP)) !=
+			    (CSUM_IP_UFO|CSUM_IP_UDP))
+				M_SANITY_ACTION("UDP frag offload w/o UDP csum");
+			if ((cflags & (CSUM_IP_TSO|CSUM_IP_TCP)) !=
+			    (CSUM_IP_TSO|CSUM_IP_TCP))
+				M_SANITY_ACTION("TCP seg offload w/o TCP csum");
+			if ((cflags & (CSUM_IP_SCO|CSUM_IP_SCTP)) !=
+			    (CSUM_IP_SCO|CSUM_IP_SCTP))
+				M_SANITY_ACTION("SCTP chunk offl w/o SCTP csum");
+		}
+		if (cflags & (CSUM_IP6_UFO|CSUM_IP6_TSO|CSUM_IP6_SCO)) {
+			if ((cflags & (CSUM_IP6_UFO|CSUM_IP6_UDP)) !=
+			    (CSUM_IP6_UFO|CSUM_IP6_UDP))
+				M_SANITY_ACTION("UDP frag offload w/o UDP csum");
+			if ((cflags & (CSUM_IP6_TSO|CSUM_IP6_TCP)) !=
+			    (CSUM_IP6_TSO|CSUM_IP6_TCP))
+				M_SANITY_ACTION("TCP seg offload w/o TCP csum");
+			if ((cflags & (CSUM_IP6_SCO|CSUM_IP6_SCTP)) !=
+			    (CSUM_IP_SCO|CSUM_IP6_SCTP))
+				M_SANITY_ACTION("SCTP chunk offl w/o SCTP csum");
+		}
+		/* IP and IP6 flags may not be combined. */
+		if ((cflags & (CSUM_IP|CSUM_IP_UDP|CSUM_IP_TCP|CSUM_IP_SCTP)) &&
+		    (cflags & (CSUM_IP6|CSUM_IP6_UDP|CSUM_IP6_TCP|CSUM_IP6_SCTP)))
+			M_SANITY_ACTION("IPv4 and IPv6 csum flags present");
+
+#ifdef notyet
+		/*
+		 * For now offload capabilities are only supported
+		 * on ethernet NICs so we can assume an ethernet header.
+		 */
+		if (m->m_pkthdr.csum_l2hlen > 0) {
+			struct ether_vlan_header *evh;
+			int l2hlen = 0;
+
+			evh = mtodo(m, l2hlen);
+			l3proto = ntonh(evh->evl_encap_proto);
+
+			switch (l3proto) {
+			case ETHERTYPE_IP:
+			case ETHERTYPE_IPV6:
+				l2hlen += sizeof(struct ether_header);
+				break;
+			case ETHERTYPE_VLAN:
+				/* XXXAO: VLAN header stacking. */
+				l2hlen += sizeof(struct ether_vlan_header);
+				l3proto = ntohs(evh->evl_proto);
+				break;
+			default:
+				break;
+			}
+			if (l2hlen != m->m_pkthdr.csum_l2hlen)
+				M_SANITY_ACTION("l2hlen != csum_l2hlen");
+			if (l3proto != ETHERTYPE_IP &&
+			    l3proto != ETHERTYPE_IPV6)
+				M_SANITY_ACTION("unsupported l3 protocol");
+		}
+
+		/*
+		 * Check layer 3 headers and length.
+		 */
+		if (m->m_pkthdr.csum_l3hlen > 0) {
+			int l3hlen = 0;
+
+			switch (cflags & (CSUM_IP|CSUM_IP6)) {
+			case CSUM_IP: {
+				struct ip *ip;
+
+				ip = mtodo(m, l2hlen);
+				if (ip->ip_v != IPVERSION)
+					M_SANITY_ACTION("");
+				if (ip->ip_hl << 2 != sizeof(struct ip))
+					M_SANITY_ACTION("");
+				l3hlen += (ip->ip_hl << 2);
+
+				if (m->m_pkthdr.len != ntohs(ip->ip_len) +
+				    m->m_pkthdr.csum_l2hlen)
+					M_SANITY_ACTION("");
+				l4proto = ip->ip_p;
+			    }
+				break;
+			case CSUM_IP6: {
+				struct ip6_hdr *ip6;
+
+				if ((ip6->ip6_vfc & IPV6_VERSION_MASK) !=
+				    IPV6_VERSION)
+					M_SANITY_ACTION("");
+				do {
+					ip6 = mtodo(m, l2hlen);
+					l4proto = ip6->ip6_nxt;
+				} while (extension headers);
+
+				if (m->m_pkthdr.len != ntohs() +
+				    m->m_pkthdr.csum_l2hlen)
+					M_SANITY_ACTION("");
+			    }
+				break;
+			default:
+				break;
+			}
+			if (l3hlen != m->m_pkthdr.csum_l3hlen)
+				M_SANITY_ACTION("");
+			if (l4proto != IPPROTO_UDP &&
+			    l4proto != IPPROTO_TCP &&
+			    l4proto != IPPROTO_SCTP)
+				M_SANITY_ACTION("");
+		}
+
+		/*
+		 * Check layer 4 headers and length.
+		 */
+		if (m->m_pkthdr.csum_l4hlen > 0) {
+
+			switch (cflags & (CSUM_IP_UFO|CSUM_IP6_UFO|
+					  CSUM_IP_TSO|CSUM_IP6_TSO|
+					  CSUM_IP_SCTP|CSUM_IP6_SCTP)) {
+			case CSUM_IP_UFO:
+			case CSUM_IP6_UFO: {
+				struct udphdr *udp;
+
+				udp = mtodo(m, l2hlen + l3hlen);
+				/* Check pseudo csum. */
+				sum = ip_pseudo();
+				if (sum != th->th_sum)
+					M_SANITY_ACTION();
+
+				l4hlen = sizeof(struct udphdr);
+			    }
+				break;
+			case CSUM_IP_TSO:
+			case CSUM_IP6_TSO: {
+				struct tcphdr *th;
+
+				th = mtodo(m, l2hlen + l3hlen);
+				/* Check pseudo csum. */
+				sum = ip_pseudo();
+				if (sum != th->th_sum)
+					M_SANITY_ACTION();
+
+				l4hlen = th->th_off << 2;
+			    }
+				break;
+			case CSUM_IP_SCTP:
+			case CSUM_IP6_SCTP: {
+				struct sctphdr *sctp;
+				struct sctp_chunkhdr *sctp_ch;
+
+				sctp = mtodo(m, l2hlen + l3hlen);
+				/* Thankfully SCTP doesn't have a pseudo hdr. */
+				l4hlen = sizeof(struct sctphdr);
+			    }
+				break;
+			default:
+				M_SANITY_ACTION();
+				break;
+			}
+			if (l4hlen != m->m_pkthdr.csum_l4hlen)
+				M_SANITY_ACTION("");
+
+		} else if (cflags & (CSUM_IP_UFO|CSUM_IP6_UFO|
+				     CSUM_IP_TSO|CSUM_IP6_TSO|
+				     CSUM_IP_SCTP|CSUM_IP6_SCTP))
+			M_SANITY_ACTION("l4 offload w/o l4hlen");
+#endif
+	}
 	return 1;
 
 #undef	M_SANITY_ACTION
