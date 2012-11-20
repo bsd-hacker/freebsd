@@ -166,29 +166,43 @@ sort .logs/.all | while read line; do
     IFS="|"
     set -- ${line}
     unset IFS
-    mailto="$6"
-    if [ "$6" != "" ] ; then
-       mailto="<a href=\"mailto:$6\">$6</a>"
-    fi
+    affby=$3
+    size=$4
+    vcsweb=$5
+    maintainer=$6
+    reason=$7
+    datestamp=${10}
 
     echo "<tr>" >> $of
 
     echo "<td><a href=\"http://${MASTER_URL}/errorlogs/${arch}-errorlogs/${baselogdir}/$1\">$2</a></td>" >> $of
 
-    affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
-    echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
-    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
-    echo "<td>$mailto</td>" >> $of
+    echo "<td align=\"right\">${affby}</td>" >> $of
+    echo "<td align=\"right\">$size Kb</td>" >> $of
+    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
+       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    else
+       vcsweb="\?"
+    fi
+    echo "<td>$vcsweb</td>" >> $of
+    if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
+       maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
+    else
+       maintainer="\?"
+    fi
+    echo "<td>$maintainer</td>" >> $of
     echo "<td>" >> $of
 
     test "$9" = "broken" && echo "<font color=\"red\">[B]</font>" >> $of
-    reason="$7"
     echo "<a href=\"http://${MASTER_URL}/#$8\">$reason</a>" >> $of
     echo "</td>" >> $of
 
-    date=`echo ${10} | sed -e "s/_/ /g"`
-    echo "<td>$date</td>" >> $of
+    datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
+    if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
+       datestamp="\?"
+    fi
+    echo "<td>$datestamp</td>" >> $of
 
     echo "</tr>" >> $of
 done
@@ -205,31 +219,45 @@ header "<th>SVN</th><th>Aff.</th><th>Size</th><th>Port</th><th>Maintainer</th><t
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +4 .logs/.all | while read line; do
     IFS="|"
-    set -- $line
+    set -- ${line}
     unset IFS
-    mailto="$6"
-    if [ "$6" != "" ] ; then
-       mailto="<a href=\"mailto:$6\">$6</a>"
-    fi
+    affby=$3
+    size=$4
+    vcsweb=$5
+    maintainer=$6
+    reason=$7
+    datestamp=${10}
 
     echo "<tr>" >> $of
 
-    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
+    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
+       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    else
+       vcsweb="\?"
+    fi
+    echo "<td>$vcsweb</td>" >> $of
 
-    affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
-    echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
+    echo "<td align=\"right\">${affby}</td>" >> $of
+    echo "<td align=\"right\">$size Kb</td>" >> $of
     echo "<td><a href=\"http://${MASTER_URL}/errorlogs/${arch}-errorlogs/${baselogdir}/$1\">$2</a></td>" >> $of
-    echo "<td>$mailto</td>" >> $of
+    if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
+       maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
+    else
+       maintainer="\?"
+    fi
+    echo "<td>$maintainer</td>" >> $of
 
     echo "<td>" >> $of
     test "$9" = "broken" && echo "<font color=\"red\">[B]</font>" >> $of
-    reason="$7"
     echo "<a href=\"http://${MASTER_URL}/#$8\">$reason</a>" >> $of
     echo "</td>" >> $of
 
-    date=`echo ${10} | sed -e "s/_/ /g"`
-    echo "<td>$date</td>" >> $of
+    datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
+    if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
+       datestamp="\?"
+    fi
+    echo "<td>$datestamp</td>" >> $of
 
     echo "</tr>" >> $of
 done
@@ -246,31 +274,45 @@ header "<th>Maintainer</th><th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><t
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +5 .logs/.all | while read line; do
     IFS="|"
-    set -- $line
+    set -- ${line}
     unset IFS
-    mailto="$6"
-    if [ "$6" != "" ] ; then
-       mailto="<a href=\"mailto:$6\">$6</a>"
-    fi
+    affby=$3
+    size=$4
+    vcsweb=$5
+    maintainer=$6
+    reason=$7
+    datestamp=${10}
 
     echo "<tr>" >> $of
 
-    echo "<td>$mailto</td>" >> $of
+    if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
+       maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
+    else
+       maintainer="\?"
+    fi
+    echo "<td>$maintainer</td>" >> $of
     echo "<td><a href=\"http://${MASTER_URL}/errorlogs/${arch}-errorlogs/${baselogdir}/$1\">$2</a></td>" >> $of
 
-    affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
-    echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
-    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
+    echo "<td align=\"right\">${affby}</td>" >> $of
+    echo "<td align=\"right\">$size Kb</td>" >> $of
+    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
+       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    else
+       vcsweb="\?"
+    fi
+    echo "<td>$vcsweb</td>" >> $of
 
     echo "<td>" >> $of
     test "$9" = "broken" && echo "<font color=\"red\">[B]</font>" >> $of
-    reason="$7"
     echo "<a href=\"http://${MASTER_URL}/#$8\">$reason</a>" >> $of
     echo "</td>" >> $of
 
-    date=`echo ${10} | sed -e "s/_/ /g"`
-    echo "<td>$date</td>" >> $of
+    datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
+    if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
+       datestamp="\?"
+    fi
+    echo "<td>$datestamp</td>" >> $of
 
     echo "</tr>" >> $of
 done
@@ -289,29 +331,43 @@ sort -t \| +7 .logs/.all | while read line; do
     IFS="|"
     set -- ${line}
     unset IFS
-    mailto="$6"
-    if [ "$6" != "" ] ; then
-       mailto="<a href=\"mailto:$6\">$6</a>"
-    fi
+    affby=$3
+    size=$4
+    vcsweb=$5
+    maintainer=$6
+    reason=$7
+    datestamp=${10}
 
     echo "<tr>" >> $of
 
     echo "<td>" >> $of
     test "$9" = "broken" && echo "<font color=\"red\">[B]</font>" >> $of
-    reason="$7"
     echo "<a href=\"http://${MASTER_URL}/#$8\">$reason</a>" >> $of
     echo "</td>" >> $of
 
     echo "<td><a href=\"http://${MASTER_URL}/errorlogs/${arch}-errorlogs/${baselogdir}/$1\">$2</a></td>" >> $of
 
-    affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
-    echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
-    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
-    echo "<td>$mailto</td>" >> $of
+    echo "<td align=\"right\">${affby}</td>" >> $of
+    echo "<td align=\"right\">$size Kb</td>" >> $of
+    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
+       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    else
+       vcsweb="\?"
+    fi
+    echo "<td>$vcsweb</td>" >> $of
+    if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
+       maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
+    else
+       maintainer="\?"
+    fi
+    echo "<td>$maintainer</td>" >> $of
 
-    date=`echo ${10} | sed -e "s/_/ /g"`
-    echo "<td>$date</td>" >> $of
+    datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
+    if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
+       datestamp="\?"
+    fi
+    echo "<td>$datestamp</td>" >> $of
 
     echo "</tr>" >> $of
 done
@@ -330,28 +386,41 @@ sort -t \| +9 .logs/.all | while read line; do
     IFS="|"
     set -- ${line}
     unset IFS
-
-    mailto="$6"
-    if [ "$6" != "" ] ; then
-       mailto="<a href=\"mailto:$6\">$6</a>"
-    fi
+    affby=$3
+    size=$4
+    vcsweb=$5
+    maintainer=$6
+    reason=$7
+    datestamp=${10}
 
     echo "<tr>" >> $of
 
-    date=`echo ${10} | sed -e "s/_/ /g"`
-    echo "<td>$date</td>" >> $of
+    datestamp=`echo ${datestamp} | sed -e "s/_/ /g"`
+    if [ "$datestamp" == "" -o "$datestamp" == "NONE" ] ; then
+       datestamp="\?"
+    fi
+    echo "<td>$datestamp</td>" >> $of
 
     echo "<td><a href=\"http://${MASTER_URL}/errorlogs/${arch}-errorlogs/${baselogdir}/$1\">$2</a></td>" >> $of
 
-    affby="$3"
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
-    echo "<td align=\"right\">${affby}</td><td align=\"right\">$4 Kb</td>" >> $of
-    echo "<td><a href=\"${VCSWEB}/$5\">$5</a></td>" >> $of
-    echo "<td>$mailto</td>" >> $of
+    echo "<td align=\"right\">${affby}</td>" >> $of
+    echo "<td align=\"right\">$size Kb</td>" >> $of
+    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
+       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    else
+       vcsweb="\?"
+    fi
+    echo "<td>$vcsweb</td>" >> $of
+    if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
+       maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
+    else
+       maintainer="\?"
+    fi
+    echo "<td>$maintainer</td>" >> $of
 
     echo "<td>" >> $of
     test "$9" = "broken" && echo "<font color=\"red\">[B]</font>" >> $of
-    reason="$7"
     echo "<a href=\"http://${MASTER_URL}/#$8\">$reason</a>" >> $of
     echo "</td>" >> $of
 
