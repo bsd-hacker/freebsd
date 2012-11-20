@@ -1332,7 +1332,7 @@ fr_info_t *fin;
 INLINE void fr_checkv4sum(fin)
 fr_info_t *fin;
 {
-#ifdef CSUM_DATA_VALID
+#ifdef CSUM_L4_VALID
 	int manual = 0;
 	u_short sum;
 	ip_t *ip;
@@ -1351,9 +1351,9 @@ fr_info_t *fin;
 	}
 	ip = fin->fin_ip;
 
-	if (m->m_pkthdr.csum_flags & CSUM_DATA_VALID) {
-		if (m->m_pkthdr.csum_flags & CSUM_PSEUDO_HDR)
-			sum = m->m_pkthdr.csum_data;
+	if (m->m_pkthdr.csum_flags & CSUM_L4_CALC) {
+		if (m->m_pkthdr.csum_flags & CSUM_L4_VALID)
+			sum = 0xffff;
 		else
 			sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
 					htonl(m->m_pkthdr.csum_data +
