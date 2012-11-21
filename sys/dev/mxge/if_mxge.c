@@ -2593,7 +2593,7 @@ mxge_rx_done_big(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 	/* flowid only valid if RSS hashing is enabled */
 	if (sc->num_slices > 1) {
 		m->m_pkthdr.flowid = (ss - sc->ss);
-		m->m_flags |= M_FLOWID;
+		CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 	}
 	/* pass the frame up the stack */
 	(*ifp->if_input)(ifp, m);
@@ -2658,7 +2658,7 @@ mxge_rx_done_small(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 	/* flowid only valid if RSS hashing is enabled */
 	if (sc->num_slices > 1) {
 		m->m_pkthdr.flowid = (ss - sc->ss);
-		m->m_flags |= M_FLOWID;
+		CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 	}
 	/* pass the frame up the stack */
 	(*ifp->if_input)(ifp, m);

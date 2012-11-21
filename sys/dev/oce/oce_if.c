@@ -485,7 +485,7 @@ oce_multiq_start(struct ifnet *ifp, struct mbuf *m)
 	int queue_index = 0;
 	int status = 0;
 	
-	if ((m->m_flags & M_FLOWID) != 0)
+	if (CSUM_HASH_GET(m) != 0)
 		queue_index = m->m_pkthdr.flowid % sc->nwqs;
 	
 	wq = sc->wq[queue_index];
@@ -1280,7 +1280,7 @@ oce_rx(struct oce_rq *rq, uint32_t rqe_idx, struct oce_nic_rx_cqe *cqe)
 		m->m_pkthdr.rcvif = sc->ifp;
 #if __FreeBSD_version >= 800000
 		m->m_pkthdr.flowid = rq->queue_index;
-		m->m_flags |= M_FLOWID;
+		CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 #endif
 		/* This deternies if vlan tag is Valid */
 		if (oce_cqe_vtp_valid(sc, cqe)) { 

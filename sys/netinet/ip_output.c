@@ -140,7 +140,7 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 		M_SETFIB(m, inp->inp_inc.inc_fibnum);
 		if (inp->inp_flags & (INP_HW_FLOWID|INP_SW_FLOWID)) {
 			m->m_pkthdr.flowid = inp->inp_flowid;
-			m->m_flags |= M_FLOWID;
+			CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 		}
 	}
 

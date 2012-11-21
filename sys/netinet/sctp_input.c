@@ -6015,7 +6015,7 @@ sctp_input_with_port(struct mbuf *i_pak, int off, uint16_t port)
 	    m->m_pkthdr.len,
 	    if_name(m->m_pkthdr.rcvif),
 	    m->m_pkthdr.csum_flags);
-	if (m->m_flags & M_FLOWID) {
+	if (CSUM_HASH_GET(m)) {
 		mflowid = m->m_pkthdr.flowid;
 		use_mflowid = 1;
 	} else {
@@ -6112,7 +6112,7 @@ sctp_input(struct mbuf *m, int off)
 	uint32_t flowid, tag;
 
 	if (mp_ncpus > 1) {
-		if (m->m_flags & M_FLOWID) {
+		if (CSUM_HASH_GET(m)) {
 			flowid = m->m_pkthdr.flowid;
 		} else {
 			/*
@@ -6131,7 +6131,7 @@ sctp_input(struct mbuf *m, int off)
 			tag = htonl(sh->v_tag);
 			flowid = tag ^ ntohs(sh->dest_port) ^ ntohs(sh->src_port);
 			m->m_pkthdr.flowid = flowid;
-			m->m_flags |= M_FLOWID;
+			CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 		}
 		cpu_to_use = sctp_cpuarry[flowid % mp_ncpus];
 		sctp_queue_to_mcore(m, off, cpu_to_use);

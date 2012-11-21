@@ -660,7 +660,7 @@ vxge_mq_send(ifnet_t ifp, mbuf_t m_head)
 
 	if (vdev->config.tx_steering) {
 		i = vxge_vpath_get(vdev, m_head);
-	} else if ((m_head->m_flags & M_FLOWID) != 0) {
+	} else if (CSUM_HASH_GET(m_head) != 0) {
 		i = m_head->m_pkthdr.flowid % vdev->no_of_vpath;
 	}
 
@@ -1070,7 +1070,7 @@ vxge_rx_compl(vxge_hal_vpath_h vpath_handle, vxge_hal_rxd_h rxdh,
 		vxge_rx_checksum(ext_info, mbuf_up);
 
 #if __FreeBSD_version >= 800000
-		mbuf_up->m_flags |= M_FLOWID;
+		CSUM_HASH_SET(mbuf_up, CSUM_HASH_OPAQUE);
 		mbuf_up->m_pkthdr.flowid = vpath->vp_index;
 #endif
 		/* Post-Read sync for buffers */

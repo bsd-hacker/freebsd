@@ -1739,7 +1739,7 @@ cxgb_transmit(struct ifnet *ifp, struct mbuf *m)
 		return (0);
 	}
 	
-	if (m->m_flags & M_FLOWID)
+	if (CSUM_HASH_GET(m))
 		qidx = (m->m_pkthdr.flowid % pi->nqsets) + pi->first_qset;
 
 	qs = &pi->adapter->sge.qs[qidx];
@@ -2906,7 +2906,7 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			eop = get_packet(adap, drop_thresh, qs, mh, r);
 			if (eop) {
 				if (r->rss_hdr.hash_type && !adap->timestamp)
-					mh->mh_head->m_flags |= M_FLOWID;
+					CSUM_HASH_SET(mh->mh_head, CSUM_HASH_OPAQUE);
 				mh->mh_head->m_pkthdr.flowid = rss_hash;
 			}
 			

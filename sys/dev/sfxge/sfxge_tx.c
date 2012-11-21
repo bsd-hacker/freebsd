@@ -595,7 +595,7 @@ sfxge_if_transmit(struct ifnet *ifp, struct mbuf *m)
 	if (m->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP|CSUM_TSO)) {
 		int index = 0;
 
-		if (m->m_flags & M_FLOWID) {
+		if (CSUM_HASH_GET(m)) {
 			uint32_t hash = m->m_pkthdr.flowid;
 
 			index = sc->rx_indir_table[hash % SFXGE_RX_SCALE_MAX];

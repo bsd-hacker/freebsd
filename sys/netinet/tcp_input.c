@@ -876,7 +876,7 @@ findpcb:
 	}
 	INP_WLOCK_ASSERT(inp);
 	if (!(inp->inp_flags & INP_HW_FLOWID)
-	    && (m->m_flags & M_FLOWID)
+	    && (CSUM_HASH_GET(m))
 	    && ((inp->inp_socket == NULL)
 		|| !(inp->inp_socket->so_options & SO_ACCEPTCONN))) {
 		inp->inp_flags |= INP_HW_FLOWID;

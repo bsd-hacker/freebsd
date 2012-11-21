@@ -9455,7 +9455,7 @@ bxe_tx_mq_start(struct ifnet *ifp, struct mbuf *m)
 	fp_index = 0;
 
 	/* If using flow ID, assign the TX queue based on the flow ID. */
-	if ((m->m_flags & M_FLOWID) != 0)
+	if (CSUM_HASH_GET(m) != 0)
 		fp_index = m->m_pkthdr.flowid % sc->num_queues;
 
 	/* Select the fastpath TX queue for the frame. */
@@ -15047,7 +15047,7 @@ bxe_rxeof(struct bxe_fastpath *fp)
 #if __FreeBSD_version >= 800000
 			/* Tell OS what RSS queue was used for this flow. */
 			m->m_pkthdr.flowid = fp->index;
-			m->m_flags |= M_FLOWID;
+			CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 #endif
 
 			/* Last chance to check for problems. */

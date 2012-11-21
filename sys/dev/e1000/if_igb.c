@@ -952,7 +952,7 @@ igb_mq_start(struct ifnet *ifp, struct mbuf *m)
 	int 			i, err = 0;
 
 	/* Which queue to use */
-	if ((m->m_flags & M_FLOWID) != 0)
+	if (CSUM_HASH_GET(m) != 0)
 		i = m->m_pkthdr.flowid % adapter->num_queues;
 	else
 		i = curcpu % adapter->num_queues;
@@ -4855,7 +4855,7 @@ igb_rxeof(struct igb_queue *que, int count, int *done)
 			}
 #if __FreeBSD_version >= 800000
 			rxr->fmp->m_pkthdr.flowid = que->msix;
-			rxr->fmp->m_flags |= M_FLOWID;
+			CSUM_HASH_SET(rxr->fmp, CSUM_HASH_OPAQUE);
 #endif
 			sendmp = rxr->fmp;
 			/* Make sure to set M_PKTHDR. */

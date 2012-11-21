@@ -3957,11 +3957,11 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 				}
 #endif
 				m->m_pkthdr.flowid = net->flowid;
-				m->m_flags |= M_FLOWID;
+				CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 			} else {
 				if (use_mflowid != 0) {
 					m->m_pkthdr.flowid = mflowid;
-					m->m_flags |= M_FLOWID;
+					CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 				}
 			}
 			packet_length = sctp_calculate_len(m);
@@ -4246,11 +4246,11 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 				}
 #endif
 				m->m_pkthdr.flowid = net->flowid;
-				m->m_flags |= M_FLOWID;
+				CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 			} else {
 				if (use_mflowid != 0) {
 					m->m_pkthdr.flowid = mflowid;
-					m->m_flags |= M_FLOWID;
+					CSUM_HASH_SET(m, CSUM_HASH_OPAQUE);
 				}
 			}
 			packet_length = sctp_calculate_len(m);
@@ -10881,7 +10881,7 @@ sctp_send_resp_msg(struct sockaddr *src, struct sockaddr *dst,
 	SCTP_BUF_NEXT(mout) = cause;
 	if (use_mflowid != 0) {
 		mout->m_pkthdr.flowid = mflowid;
-		mout->m_flags |= M_FLOWID;
+		CSUM_HASH_SET(mout, CSUM_HASH_OPAQUE);
 	}
 #ifdef INET
 	ip = NULL;

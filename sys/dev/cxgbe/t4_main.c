@@ -1171,7 +1171,7 @@ cxgbe_transmit(struct ifnet *ifp, struct mbuf *m)
 		return (ENETDOWN);
 	}
 
-	if (m->m_flags & M_FLOWID)
+	if (CSUM_HASH_GET(m))
 		txq += (m->m_pkthdr.flowid % pi->ntxq);
 	br = txq->br;
 

@@ -113,7 +113,7 @@ sctp6_input_with_port(struct mbuf **i_pak, int *offp, uint16_t port)
 	    m->m_pkthdr.len,
 	    if_name(m->m_pkthdr.rcvif),
 	    m->m_pkthdr.csum_flags);
-	if (m->m_flags & M_FLOWID) {
+	if (CSUM_HASH_GET(m)) {
 		mflowid = m->m_pkthdr.flowid;
 		use_mflowid = 1;
 	} else {

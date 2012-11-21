@@ -1695,7 +1695,7 @@ m_print(const struct mbuf *m, int maxlen, void (*func)(const struct mbuf *))
 			    m2->m_pkthdr.csum_flags, M_CSUM_FLAG_BITS,
 			    m2->m_pkthdr.csum_l2hlen, m2->m_pkthdr.csum_l3hlen,
 			    m2->m_pkthdr.csum_l4hlen, m2->m_pkthdr.tso_segsz,
-			    m2->m_pkthdr.ether_vtag, M_HASHTYPE_GET(m2));
+			    m2->m_pkthdr.ether_vtag, CSUM_HASH_GET(m2));
 
 			for (mt = SLIST_FIRST(&m2->m_pkthdr.tags); mt != NULL;
 			     mt = SLIST_NEXT(mt, m_tag_link)) {

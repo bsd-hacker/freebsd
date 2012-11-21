@@ -812,7 +812,7 @@ ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 	int 		i = 0, err = 0;
 
 	/* Which queue to use */
-	if ((m->m_flags & M_FLOWID) != 0)
+	if (CSUM_HASH_GET(m) != 0)
 		i = m->m_pkthdr.flowid % adapter->num_queues;
 	else
 		i = curcpu % adapter->num_queues;
@@ -4640,7 +4640,7 @@ ixgbe_rxeof(struct ix_queue *que, int count)
 				ixgbe_rx_checksum(staterr, sendmp, ptype);
 #if __FreeBSD_version >= 800000
 			sendmp->m_pkthdr.flowid = que->msix;
-			sendmp->m_flags |= M_FLOWID;
+			CSUM_HASH_SET(sendmp, CSUM_HASH_OPAQUE);
 #endif
 		}
 next_desc:
