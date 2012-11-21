@@ -481,7 +481,7 @@ if [ "$skipstart" = 0 ]; then
 	    echo "================================================"
 	    cd ${PORTSDIR}
 	    updated=$(date '+%Y/%m/%d %H:%M')
-	    echo ${updated} > ${builddir}/.updated
+	    echo ${updated} > ${builddir}/ports/.updated
 	    # XXX MCL 20121117 this is not right!
 	    ${VCS} ${VCS_UPDATE_DATE} "${updated}"
 	    # XXX Check for conflicts
@@ -492,7 +492,7 @@ if [ "$skipstart" = 0 ]; then
 	fi
     else
 	# XXX MCL why???
-	# XXX rm -f ${builddir}/.updated
+	# XXX rm -f ${builddir}/ports/.updated
     fi
 
     if [ "$incremental" = 1 ]; then
@@ -610,11 +610,11 @@ if [ "$skipstart" = 0 ]; then
     ln -sf ${newlogs} ${builddir}/logs
     
     echo "error logs in ${newerrors}"
-    if [ -f "${builddir}/.updated" ]; then
-	cp -p ${builddir}/.updated ${newerrors}/.updated
-	cp -p ${builddir}/.updated ${newlogs}/.updated
+    if [ -f "${builddir}/ports/.updated" ]; then
+	cp -p ${builddir}/ports/.updated ${newerrors}/.updated
+	cp -p ${builddir}/ports/.updated ${newlogs}/.updated
     else
-	rm -f ${newerrors}/.updated ${newlogs}/.updated
+	rm -f ${newerrors}/ports/.updated ${newlogs}/.updated
     fi
     cp -p ${builddir}/duds ${newerrors}/duds
     cp -p ${builddir}/duds ${newlogs}/duds
