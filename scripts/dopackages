@@ -482,8 +482,8 @@ if [ "$skipstart" = 0 ]; then
 	    cd ${PORTSDIR}
 	    updated=$(date '+%Y/%m/%d %H:%M')
 	    echo ${updated} > ${builddir}/ports/.updated
-	    # XXX MCL 20121117 this is not right!
-	    ${VCS} ${VCS_UPDATE_DATE} "${updated}"
+	    # XXX MCL 20121120 not yet tested.
+	    ${VCS_UPDATE_COMMAND} ${builddir}/ports || mailexit 1
 	    # XXX Check for conflicts
 	else
 	    # echo "XXX at build portsupdate portsupdate ${arch} ${branch} ${buildid} $@ "
@@ -517,7 +517,8 @@ if [ "$skipstart" = 0 ]; then
 		# with the ports update
 		updated=$(date)
 	    fi
-	    ${VCS} ${VCS_UPDATE_ARGS} "${updated}"
+	    # XXX MCL 20121120 not yet tested.
+	    ${VCS_UPDATE_COMMAND} ${SRC_BASE} || mailexit 1
 	    # XXX Check for conflicts
 	else
 	    build srcupdate ${arch} ${branch} ${buildid} $@ 
