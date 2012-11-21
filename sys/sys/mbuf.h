@@ -216,6 +216,12 @@ struct mbuf {
 #define	M_FLOWID	0x00400000 /* deprecated: flowid is valid */
 #define	M_HASHTYPEBITS	0x0F000000 /* mask of bits holding flowid hash type */
 
+#define M_FLAG_BITS \
+    "\20\27FLOWID\26PROTO8\25PROTO7\24PROTO6\23NOFREE\22PROMISC" \
+    "\21VLANTAG\20FREELIST\17SKIP_FIREWALL\16LASTFRAG\15FIRSTFRAG"  \
+    "\14FRAG\13MCAST\12BCAST\11PROTO5\10PROTO4\7PROTO3\6PROTO2" \
+    "\5PROTO1\4RDONLY\3EOR\2PKTHDR\1EXT"	/* for use with m_print */
+
 /*
  * For RELENG_{6,7} steal these flags for limited multiple routing table
  * support. In RELENG_8 and beyond, use just one flag and a tag.
@@ -283,6 +289,9 @@ struct mbuf {
 #define	EXT_MOD_TYPE	200	/* custom module's ext_buf type */
 #define	EXT_DISPOSABLE	300	/* can throw this buffer away w/page flipping */
 #define	EXT_EXTREF	400	/* has externally maintained ref_cnt ptr */
+
+#define M_EXT_TYPE_BITS \
+    "\20\16ext_EXTREF\15ext_DISPOSABLE\14ext_MOD_TYPE\13ext_NET_DRV"
 
 /*
  * Flags indicating hw checksum support and sw checksum requirements.  This
@@ -375,6 +384,13 @@ struct mbuf {
 #define	CSUM_IP6_UFO	0x00220000	/* IPv6/UFO		*/
 #define	CSUM_IP6_TSO	0x00440000	/* IPv6/TSO		*/
 #define	CSUM_IP6_SCO	0x00880000	/* SCTP chunk offload	*/
+
+#define M_CSUM_FLAG_BITS \
+    "\20\40csum_L4_VALID\37csum_L4_CALC\36csum_L3_VALID\35csum_L3_CALC" \
+    "\30csum_IP6_SCO\27csum_IP6_TSO\26csum_IP6_UFO\25csum_IP6_FRAG0"    \
+    "\24csum_IP6_SCTP\23csum_IP6_TCP\22csum_IP6_UDP\21csum_IP6"         \
+    "\14csum_IP_SCO\13csum_IP_TSO\12csum_IP_UFO\11csum_IP_FRAG0"        \
+    "\10csum_IP_SCTP\7csum_IP_TCP\6csum_IP_UDP\5csum_IP"
 
 /* Definition compatiblity with < 20121118, goes away after tree pruning */
 #define	CSUM_UDP	CSUM_IP_UDP
@@ -1006,7 +1022,8 @@ u_int		 m_length(struct mbuf *, struct mbuf **);
 int		 m_mbuftouio(struct uio *, struct mbuf *, int);
 void		 m_move_pkthdr(struct mbuf *, struct mbuf *);
 struct mbuf	*m_prepend(struct mbuf *, int, int);
-void		 m_print(const struct mbuf *, int);
+void		 m_print(const struct mbuf *, int,
+		    void (*)(const struct mbuf *));
 struct mbuf	*m_pulldown(struct mbuf *, int, int, int *);
 struct mbuf	*m_pullup(struct mbuf *, int);
 int		m_sanity(struct mbuf *, int);
@@ -1064,6 +1081,9 @@ struct mbuf	*m_unshare(struct mbuf *, int how);
  * The tag will then be treated as described above.
  */
 #define	MTAG_PERSISTENT				0x800
+
+#define MTAG_FLAG_BITS \
+    "\20\14mtag_PERSISTENT"
 
 #define	PACKET_TAG_NONE				0  /* Nadda */
 

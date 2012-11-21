@@ -1623,15 +1623,19 @@ m_getptr(struct mbuf *m, int loc, int *off)
 	return (NULL);
 }
 
+/*
+ * Print all information on an mbuf.
+ */
 void
-m_print(const struct mbuf *m, int maxlen)
+m_print(const struct mbuf *m, int maxlen, void (*func)(const struct mbuf *))
 {
 	int len;
 	int pdata;
 	const struct mbuf *m2;
+	struct m_tag *mt;
 
 	if (m == NULL) {
-		printf("mbuf: %p\n", m);
+		printf("mbuf = %p\n", m);
 		return;
 	}
 
@@ -1639,23 +1643,86 @@ m_print(const struct mbuf *m, int maxlen)
 		len = m->m_pkthdr.len;
 	else
 		len = -1;
-	m2 = m;
-	while (m2 != NULL && (len == -1 || len)) {
+
+	for (m2 = m; m2 != NULL && (len == -1 || len); m2 = m2->m_next) {
 		pdata = m2->m_len;
 		if (maxlen != -1 && pdata > maxlen)
 			pdata = maxlen;
-		printf("mbuf: %p len: %d, next: %p, %b%s", m2, m2->m_len,
-		    m2->m_next, m2->m_flags, "\20\20freelist\17skipfw"
-		    "\11proto5\10proto4\7proto3\6proto2\5proto1\4rdonly"
-		    "\3eor\2pkthdr\1ext", pdata ? "" : "\n");
+
+		printf("mbuf = 0x%p\n"
+			"\t m_next = 0x%p\n"
+			"\t m_data = 0x%p\n"
+			"\t  m_len = %u\n"
+			"\tm_flags = 0x%8X\n"
+			"\tm_flags = %b\n"
+			"\t m_type = %u\n",
+		    m2, m2->m_next, m2->m_data, m2->m_len, m2->m_flags,
+		    (m2->m_flags & 0xFFFFFF), M_FLAG_BITS, m2->m_type);
+
+		if (m2->m_flags & M_EXT) {
+			printf(" m_ext:\n"
+				"\t ext_buf = 0x%p\n"
+				"\text_free = 0x%p\n"
+				"\text_arg1 = 0x%p\n"
+				"\text_arg2 = 0x%p\n"
+				"\text_size = %u\n"
+				"\t ref_cnt = %u (0x%p)\n"
+				"\text_type = %X %b\n",
+			    m2->m_ext.ext_buf, m2->m_ext.ext_free,
+			    m2->m_ext.ext_arg1, m2->m_ext.ext_arg2,
+			    m2->m_ext.ext_size, (*m2->m_ext.ref_cnt),
+			    m2->m_ext.ref_cnt, (m2->m_type & 0xFF),
+			    (m2->m_type & 0xF00), M_EXT_TYPE_BITS);
+		}
+
+		if (m2->m_flags & M_PKTHDR) {
+			printf(" m_pkthdr:\n"
+				"\t      rcvif = 0x%p"
+				"\t     header = 0x%p\n"
+				"\t        len = %u\n"
+				"\t     flowid = 0x%X\n"
+				"\t csum_flags = 0x%8X\n"
+				"\t csum_flags = %b\n"
+				"\tcsum_l2hlen = %u\n"
+				"\tcsum_l3hlen = %u\n"
+				"\tcsum_l4hlen = %u\n"
+				"\t  tso_segsz = %u\n"
+				"\t ether_vtag = 0x%X\n"
+				"\t  hash_type = 0x%X\n",
+			    m2->m_pkthdr.rcvif, m2->m_pkthdr.header,
+			    m2->m_pkthdr.len, m2->m_pkthdr.flowid,
+			    m2->m_pkthdr.csum_flags,
+			    m2->m_pkthdr.csum_flags, M_CSUM_FLAG_BITS,
+			    m2->m_pkthdr.csum_l2hlen, m2->m_pkthdr.csum_l3hlen,
+			    m2->m_pkthdr.csum_l4hlen, m2->m_pkthdr.tso_segsz,
+			    m2->m_pkthdr.ether_vtag, M_HASHTYPE_GET(m2));
+
+			for (mt = SLIST_FIRST(&m2->m_pkthdr.tags); mt != NULL;
+			     mt = SLIST_NEXT(mt, m_tag_link)) {
+				printf(" m_tag:\n"
+					"\t    m_tag_id = %u %b\n"
+					"\t   m_tag_len = %u\n"
+					"\tm_tag_cookie = 0x%X\n"
+					"\t  m_tag_free = 0x%p\n",
+				    (mt->m_tag_id & 0xFF),
+				    (mt->m_tag_id & 0xF00), MTAG_FLAG_BITS,
+				    mt->m_tag_len, mt->m_tag_cookie,
+				    mt->m_tag_free);
+				printf("\tm_tag data:\n");
+				printf("\t %*D\n",
+				    mt->m_tag_len, (u_char *)(mt + 1), " ");
+			}
+		}
+
 		if (pdata)
-			printf(", %*D\n", pdata, (u_char *)m2->m_data, "-");
+			printf(", %*D\n", pdata, (u_char *)m2->m_data, " ");
 		if (len != -1)
 			len -= m2->m_len;
-		m2 = m2->m_next;
 	}
 	if (len > 0)
 		printf("%d bytes unaccounted for.\n", len);
+	if (func != NULL)
+		(*func)(m);
 	return;
 }
 
