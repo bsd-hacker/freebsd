@@ -94,9 +94,8 @@ cd ${SRC_BASE} || exit $?
 
 if [ "$novcs" = "0" ]; then
 	echo "==> Updating source tree"
-	eval tag=\$SRC_BRANCH_${branch}_TAG
-	# XXX MCL 20121117 this is not right!
-  	${VCS} ${VCS_UPDATE_TAG} ${tag} || exit $?
+	# XXX MCL 20121120 not yet tested.
+	${VCS_UPDATE_COMMAND} ${SRC_BASE} || exit $?
 fi
 
 echo "==> Starting make buildworld"
