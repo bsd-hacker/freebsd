@@ -159,7 +159,7 @@ footer() {
 #
 # Create "default" output, sorted on portname
 #
-header "<th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><th>Maintainer</th><th>Reason</th><th>Build date</th>"
+header "<th>Port</th><th>Aff.</th><th>Size</th><th>${VCS}</th><th>Maintainer</th><th>Reason</th><th>Build date</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort .logs/.all | while read line; do
@@ -214,7 +214,7 @@ mv -f $of index.html
 #
 # Create output by category
 #
-header "<th>SVN</th><th>Aff.</th><th>Size</th><th>Port</th><th>Maintainer</th><th>Reason</th><th>Build date</th>"
+header "<th>${VCS}</th><th>Aff.</th><th>Size</th><th>Port</th><th>Maintainer</th><th>Reason</th><th>Build date</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +4 .logs/.all | while read line; do
@@ -269,7 +269,7 @@ mv -f $of index-category.html
 #
 # Create output by maintainer
 #
-header "<th>Maintainer</th><th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><th>Reason</th><th>Build date</th>"
+header "<th>Maintainer</th><th>Port</th><th>Aff.</th><th>Size</th><th>${VCS}</th><th>Reason</th><th>Build date</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +5 .logs/.all | while read line; do
@@ -324,7 +324,7 @@ mv -f $of index-maintainer.html
 #
 # Create output by error
 #
-header "<th>Reason</th><th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><th>Maintainer</th><th>Build date</th>"
+header "<th>Reason</th><th>Port</th><th>Aff.</th><th>Size</th><th>${VCS}</th><th>Maintainer</th><th>Build date</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +7 .logs/.all | while read line; do
@@ -379,7 +379,7 @@ mv -f $of index-reason.html
 #
 # Create output by builddate
 #
-header "<th>Build date</th><th>Port</th><th>Aff.</th><th>Size</th><th>SVN</th><th>Maintainer</th><th>Reason</th>"
+header "<th>Build date</th><th>Port</th><th>Aff.</th><th>Size</th><th>${VCS}</th><th>Maintainer</th><th>Reason</th>"
 
 if [ ${n_logs} -gt 0 ]; then
 sort -t \| +9 .logs/.all | while read line; do
