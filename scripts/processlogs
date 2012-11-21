@@ -168,7 +168,7 @@ sort .logs/.all | while read line; do
     unset IFS
     affby=$3
     size=$4
-    vcsweb=$5
+    portname=$5
     maintainer=$6
     reason=$7
     datestamp=${10}
@@ -180,12 +180,12 @@ sort .logs/.all | while read line; do
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td>" >> $of
     echo "<td align=\"right\">$size Kb</td>" >> $of
-    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
-       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    if [ "$portname" != "" -a "$portname" != "NONE" ] ; then
+       portname="<a href=\"${VCSWEB}/$portname\">$portname</a>"
     else
-       vcsweb='?'
+       portname='?'
     fi
-    echo "<td>$vcsweb</td>" >> $of
+    echo "<td>$portname</td>" >> $of
     if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
        maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
     else
@@ -223,19 +223,19 @@ sort -t \| +4 .logs/.all | while read line; do
     unset IFS
     affby=$3
     size=$4
-    vcsweb=$5
+    portname=$5
     maintainer=$6
     reason=$7
     datestamp=${10}
 
     echo "<tr>" >> $of
 
-    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
-       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    if [ "$portname" != "" -a "$portname" != "NONE" ] ; then
+       portname="<a href=\"${VCSWEB}/$portname\">$portname</a>"
     else
-       vcsweb='?'
+       portname='?'
     fi
-    echo "<td>$vcsweb</td>" >> $of
+    echo "<td>$portname</td>" >> $of
 
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td>" >> $of
@@ -278,7 +278,7 @@ sort -t \| +5 .logs/.all | while read line; do
     unset IFS
     affby=$3
     size=$4
-    vcsweb=$5
+    portname=$5
     maintainer=$6
     reason=$7
     datestamp=${10}
@@ -296,12 +296,12 @@ sort -t \| +5 .logs/.all | while read line; do
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td>" >> $of
     echo "<td align=\"right\">$size Kb</td>" >> $of
-    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
-       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    if [ "$portname" != "" -a "$portname" != "NONE" ] ; then
+       portname="<a href=\"${VCSWEB}/$portname\">$portname</a>"
     else
-       vcsweb='?'
+       portname='?'
     fi
-    echo "<td>$vcsweb</td>" >> $of
+    echo "<td>$portname</td>" >> $of
 
     echo "<td>" >> $of
     test "$9" = "broken" && echo "<font color=\"red\">[B]</font>" >> $of
@@ -333,7 +333,7 @@ sort -t \| +7 .logs/.all | while read line; do
     unset IFS
     affby=$3
     size=$4
-    vcsweb=$5
+    portname=$5
     maintainer=$6
     reason=$7
     datestamp=${10}
@@ -350,12 +350,12 @@ sort -t \| +7 .logs/.all | while read line; do
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td>" >> $of
     echo "<td align=\"right\">$size Kb</td>" >> $of
-    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
-       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    if [ "$portname" != "" -a "$portname" != "NONE" ] ; then
+       portname="<a href=\"${VCSWEB}/$portname\">$portname</a>"
     else
-       vcsweb='?'
+       portname='?'
     fi
-    echo "<td>$vcsweb</td>" >> $of
+    echo "<td>$portname</td>" >> $of
     if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
        maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
     else
@@ -388,7 +388,7 @@ sort -t \| +9 .logs/.all | while read line; do
     unset IFS
     affby=$3
     size=$4
-    vcsweb=$5
+    portname=$5
     maintainer=$6
     reason=$7
     datestamp=${10}
@@ -406,12 +406,12 @@ sort -t \| +9 .logs/.all | while read line; do
     test "${affby}" = "0" -o "${affby}" = "-1" && affby="&nbsp;"
     echo "<td align=\"right\">${affby}</td>" >> $of
     echo "<td align=\"right\">$size Kb</td>" >> $of
-    if [ "$vcsweb" != "" -a "$vcsweb" != "NONE" ] ; then
-       vcsweb="<a href=\"vcsweb:$vcsweb\">$vcsweb</a>"
+    if [ "$portname" != "" -a "$portname" != "NONE" ] ; then
+       portname="<a href=\"${VCSWEB}/$portname\">$portname</a>"
     else
-       vcsweb='?'
+       portname='?'
     fi
-    echo "<td>$vcsweb</td>" >> $of
+    echo "<td>$portname</td>" >> $of
     if [ "$maintainer" != "" -a "$maintainer" != "NONE" ] ; then
        maintainer="<a href=\"mailto:$maintainer\">$maintainer</a>"
     else
