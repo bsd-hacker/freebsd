@@ -308,8 +308,8 @@ write_footer () {
   echo "<ul>" >> ${TMPFILE}
   # MCL removed 20090808 -- this takes way too long
   #echo "<li><b>latest log</b> is the date of the latest logfile.</li>" >> ${TMPFILE}
-  echo "<li><b>updated</b> is the date of the latest tree update done by the script.  It may be inaccurate if a manual checkout was done later.</li>" >> ${TMPFILE}
-  echo "<li><b>INDEX</b> is number of ports in the INDEX file built from the latest tree update.</li>" >> ${TMPFILE}
+  echo "<li><b>updated</b> is the date of the latest ports tree update done by the script.  It may be inaccurate if a manual checkout was done later.</li>" >> ${TMPFILE}
+  echo "<li><b>INDEX</b> is number of ports in the INDEX file built from the latest ports tree.</li>" >> ${TMPFILE}
   echo "<li><b>build logs</b> is number of packages attempted.  Note: if a run was restarted, you may see duplicates here.</li>" >> ${TMPFILE}
   echo "<li><b>packages</b> is number of packages successfully built.  Note: if a run was restarted, you may see duplicates here.</li>" >> ${TMPFILE}
   echo "<li><b>errors</b> is number of packages that failed.  Note: if a run was restarted, you may see duplicates here.</li>" >> ${TMPFILE}
