@@ -90,7 +90,6 @@ struct mb_args {
  */
 struct m_hdr {
 	struct mbuf	*mh_next;	/* next buffer in chain */
-	struct mbuf	*mh_nextpkt;	/* next chain in queue/record */
 	caddr_t		 mh_data;	/* location of data */
 	int		 mh_len;	/* amount of data in this mbuf */
 	int		 mh_flags;	/* flags; see below */
@@ -114,6 +113,7 @@ struct m_tag {
  */
 struct pkthdr {
 	struct ifnet	*rcvif;		/* rcv interface */
+	struct mbuf	*ph_nextpkt;	/* next chain in queue/record */
 	/* variables for ip and tcp reassembly */
 	void		*header;	/* pointer to packet header */
 	int		 len;		/* total packet length */
@@ -181,9 +181,9 @@ struct mbuf {
 #define	m_data		m_hdr.mh_data
 #define	m_type		m_hdr.mh_type
 #define	m_flags		m_hdr.mh_flags
-#define	m_nextpkt	m_hdr.mh_nextpkt
 #define	m_act		m_nextpkt
 #define	m_pkthdr	M_dat.MH.MH_pkthdr
+#define	m_nextpkt	M_dat.MH.MH_pkthdr.ph_nextpkt
 #define	m_ext		M_dat.MH.MH_dat.MH_ext
 #define	m_pktdat	M_dat.MH.MH_dat.MH_databuf
 #define	m_dat		M_dat.M_databuf
