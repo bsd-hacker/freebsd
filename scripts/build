@@ -52,6 +52,32 @@ do_create() {
     buildid=$3
     shift 3
 
+    # exit if arch-specific directory does not already exist or is
+    # not manageable by ports-<arch>:portmgr.
+    archdir=${pbd}/${arch}
+    if [ ! -d ${archdir} ]; then
+        echo "${archdir} must exist and be owned by ports-${arch}:portmgr mode 77x."
+        exit 1
+    fi
+    chown -R ports-${arch}:portmgr ${archdir} || exit 1
+    chmod 775 ${archdir} || exit 1
+
+    # create zfs instance for arch if it does not already exist
+    archfs=${ZFS_VOLUME}/portbuild/${arch}
+    if ! test_fs "${archfs}"; then
+      zfs create -o mountpoint=${archdir} ${newfs} || exit 1
+      chown -R ports-${arch}:portmgr ${archdir}
+      chmod -R g+w ${archdir}
+    fi
+
+    # create .ssh/ directory if it does not already exist 
+    sshdir=${pbd}/${arch}/.ssh
+    if [ ! -d ${sshdir} ]; then
+	mkdir -p ${sshdir} || exit 1
+	chown -R ports-${arch}:portmgr ${sshdir}
+	chmod 700 ${sshdir}
+    fi
+
     # create overall archive directory if it does not already exist 
     archivedir=${pbd}/${arch}/archive
     if [ ! -d ${archivedir} ]; then
@@ -107,7 +133,31 @@ do_create() {
     # create the link for building packages for latest build
     ln -sf ${builddir} ${pbab}/builds/latest
 
-    # create the links for the webserver
+    # create clients/ directory if it does not already exist 
+    clientsdir=${pbd}/${arch}/clients
+    if [ ! -d ${clientsdir} ]; then
+	mkdir -p ${clientsdir} || exit 1
+	chown -R ports-${arch}:portmgr ${clientsdir}
+	chmod -R g+w ${clientsdir}
+    fi
+
+    # create loads/ directory if it does not already exist 
+    loadsdir=${pbd}/${arch}/loads
+    if [ ! -d ${loadsdir} ]; then
+	mkdir -p ${loadsdir} || exit 1
+	chown -R ports-${arch}:portmgr ${loadsdir}
+	chmod -R g+w ${loadsdir}
+    fi
+
+    # create empty mlist file if it does not already exist 
+    mlist=${pbd}/${arch}/mlist
+    if [ ! -d ${mlist} ]; then
+	touch ${mlist} || exit 1
+	chown -R ports-${arch}:portmgr ${mlist}
+	chmod -R g+w ${mlist}
+    fi
+
+    # create the links for the webserver under ../errorlogs/
     errorlogs=${pbd}/errorlogs
 
     ln -s ${buildsdir}/latest/bak/errors ${errorlogs}/${arch}-${branch}-previous
