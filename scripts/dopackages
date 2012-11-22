@@ -59,18 +59,18 @@ shift 4
 . ${pbc}/scripts/buildenv
 validate_env ${arch} ${branch} || usage
 
+if [ -f ${pbd}/${arch}/portbuild.conf ]; then
+    . ${pbd}/${arch}/portbuild.conf
+else
+    echo "file ${pbd}/${arch}/portbuild.conf must exist!"
+    exit 1
+fi
+
 # XXX MCL too early to do this here.
 buildid=$(resolve ${pbd} ${arch} ${branch} ${buildid})
 if [ -z "${buildid}" ]; then
     echo "Invalid build ID ${buildid}"
     exit 1
-fi
-
-if [ -f ${pbd}/${arch}/portbuild.conf ]; then
-    . ${pbc}/conf/server.conf
-    . ${pbd}/${arch}/portbuild.conf
-else
-    usage
 fi
 
 pbab=${pbd}/${arch}/${branch}
