@@ -2098,7 +2098,7 @@ mxge_encap(struct mxge_slice_state *ss, struct mbuf *m)
 	if (m->m_pkthdr.csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) {
 		/* ensure ip header is in first mbuf, copy
 		   it to a scratch buffer if not */
-		ip = mtodo(m, ip_off, struct ip *);
+		ip = mtodo(m, ip_off);
 		cksum_offset = ip_off + (ip->ip_hl << 2);
 		pseudo_hdr_offset = cksum_offset + m->m_pkthdr.csum_l3hlen;
 		pseudo_hdr_offset = htobe16(pseudo_hdr_offset);

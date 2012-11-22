@@ -64,10 +64,10 @@
  * type:
  *
  * mtod(m, t)	-- Convert mbuf pointer to data pointer of correct type.
- * mtodo(m, o, t) - Same as above but with offset 'o' into data.
+ * mtodo(m, o)	-- Same as above but with offset 'o' into data.
  */
 #define	mtod(m, t)	((t)((m)->m_data))
-#define	mtodo(m, o, t)	((t)(((m)->m_data) + (o)))
+#define	mtodo(m, o)	((void *)(((m)->m_data) + (o)))
 
 /*
  * Argument structure passed to UMA routines during mbuf and packet
