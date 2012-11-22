@@ -74,6 +74,18 @@ pfil_run_hooks(struct pfil_head *ph, struct mbuf **mp, struct ifnet *ifp,
 	return (pfil_run_inject(ph, mp, ifp, dir, inp, 0));
 }
 
+static struct packet_filter_hook *
+pfil_hook_get(int dir, struct pfil_head *ph)
+{
+
+	if (dir == PFIL_IN)
+		return (TAILQ_FIRST(&ph->ph_in));
+	else if (dir == PFIL_OUT)
+		return (TAILQ_FIRST(&ph->ph_out));
+	else
+		return (NULL);
+}
+
 int
 pfil_run_inject(struct pfil_head *ph, struct mbuf **mp, struct ifnet *ifp,
     int dir, struct inpcb *inp, int cookie)
