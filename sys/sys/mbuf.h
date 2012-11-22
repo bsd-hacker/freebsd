@@ -79,12 +79,6 @@ struct mb_args {
 };
 #endif /* _KERNEL */
 
-#if defined(__LP64__)
-#define M_HDR_PAD    6
-#else
-#define M_HDR_PAD    2
-#endif
-
 /*
  * Header present at the beginning of every mbuf.
  */
@@ -94,8 +88,7 @@ struct m_hdr {
 	int		 mh_len;	/* amount of data in this mbuf */
 	int		 mh_flags;	/* flags; see below */
 	short		 mh_type;	/* type of data in this mbuf */
-	uint8_t          pad[M_HDR_PAD];/* word align                  */
-};
+} __aligned(sizeof(void *));
 
 /*
  * Packet tag structure (see below for details).
@@ -137,7 +130,7 @@ struct pkthdr {
 		u_int16_t vt_nrecs;	/* # of IGMPv3 records in this chain */
 	} PH_vt;
 	SLIST_HEAD(packet_tags, m_tag) tags; /* list of packet tags */
-};
+} __aligned(sizeof(void *));
 #define	csum_data	PH_cd.cd_data
 #define	csum_l2hlen	PH_cd.PHCD_hdr.l2hlen
 #define	csum_l3hlen	PH_cd.PHCD_hdr.l3hlen
@@ -157,7 +150,7 @@ struct m_ext {
 	u_int		 ext_size;	/* size of buffer, for ext_free */
 	volatile u_int	*ref_cnt;	/* pointer to ref count info */
 	int		 ext_type;	/* type of external storage */
-};
+} __aligned(sizeof(void *));
 
 /*
  * The core of the mbuf object along with some shortcut defines for practical
