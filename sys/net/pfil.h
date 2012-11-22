@@ -53,11 +53,11 @@ typedef	int	(*pfil_func_t)(void *, struct mbuf **, struct ifnet *, int,
  */
 struct packet_filter_hook {
         TAILQ_ENTRY(packet_filter_hook) pfil_chain;
-	pfil_func_t	pfil_func;
-	void	*pfil_arg;
-	int	 pfil_cookie;
-	uint8_t	 pfil_order;
-	char	*pfil_name;
+	pfil_func_t	 pfil_func;
+	void		*pfil_arg;
+	int		 pfil_cookie;
+	uint8_t		 pfil_order;
+	char		*pfil_name;
 };
 
 #define	PFIL_ORDER_FIRST	  0
@@ -81,15 +81,15 @@ typedef	TAILQ_HEAD(pfil_chain, packet_filter_hook) pfil_chain_t;
  * For packet is then run through the hook chain for inspection.
  */
 struct pfil_head {
-	pfil_chain_t	ph_in;
-	pfil_chain_t	ph_out;
-	int		ph_type;
-	int		ph_nhooks;
+	pfil_chain_t	 ph_in;
+	pfil_chain_t	 ph_out;
+	int		 ph_type;
+	int		 ph_nhooks;
+	int		 flags;
 	struct rmlock	*ph_plock;	/* Pointer to the used lock */
-	struct rmlock	ph_lock;	/* Private lock storage */
-	int		flags;
+	struct rmlock	 ph_lock;	/* Private lock storage */
 	union {
-		u_long		phu_val;
+		u_long		 phu_val;
 		void		*phu_ptr;
 	} ph_un;
 #define	ph_af		ph_un.phu_val
@@ -98,11 +98,17 @@ struct pfil_head {
 };
 
 /* Public functions for pfil head management by protocols. */
+struct	pfil_head *pfil_head_get(int, u_long);
+int	pfil_head_register(struct pfil_head *);
+int	pfil_head_unregister(struct pfil_head *);
+
+/* Public functions for pfil hook management by protocols. */
 int	pfil_add_hook(pfil_func_t, void *, int, struct pfil_head *);
 int	pfil_add_hook_order(pfil_func_t, void *, char *, int, uint8_t,
 	    struct pfil_head *);
 int	pfil_get_cookie(pfil_func_t, void *, int, struct pfil_head *);
 int	pfil_remove_hook(pfil_func_t, void *, int, struct pfil_head *);
+#define	PFIL_HOOKED(p) ((p)->ph_nhooks > 0)
 
 /* Public functions to run the packet inspection by protocols. */
 int	pfil_run_hooks(struct pfil_head *, struct mbuf **, struct ifnet *,
@@ -110,7 +116,8 @@ int	pfil_run_hooks(struct pfil_head *, struct mbuf **, struct ifnet *,
 int	pfil_run_inject(struct pfil_head *, struct mbuf **, struct ifnet *,
 	    int, struct inpcb *inp, int cookie);
 
-struct rm_priotracker;	/* Do not require including rmlock header */
+/* Locking functions for pfil_head to run the hook chain. */
+struct	rm_priotracker;	/* Do not require including rmlock header */
 int	pfil_try_rlock(struct pfil_head *, struct rm_priotracker *);
 void	pfil_rlock(struct pfil_head *, struct rm_priotracker *);
 void	pfil_runlock(struct pfil_head *, struct rm_priotracker *);
@@ -118,15 +125,16 @@ void	pfil_wlock(struct pfil_head *);
 void	pfil_wunlock(struct pfil_head *);
 int	pfil_wowned(struct pfil_head *ph);
 
-int	pfil_head_register(struct pfil_head *);
-int	pfil_head_unregister(struct pfil_head *);
+#define PFIL_TRY_RLOCK(p, t)	rm_try_rlock((p)->ph_plock, (t))
+#define PFIL_RLOCK(p, t)	rm_rlock((p)->ph_plock, (t))
+#define PFIL_WLOCK(p)		rm_wlock((p)->ph_plock)
+#define PFIL_RUNLOCK(p, t)	rm_runlock((p)->ph_plock, (t))
+#define PFIL_WUNLOCK(p)		rm_wunlock((p)->ph_plock)
+#define PFIL_WOWNED(p)		rm_wowned((p)->ph_plock)
 
-struct	pfil_head *pfil_head_get(int, u_long);
-
-#define	PFIL_HOOKED(p) ((p)->ph_nhooks > 0)
-#define	PFIL_LOCK_INIT_REAL(l, t)	\
+#define	PFIL_LOCK_INIT_REAL(l, t)			\
 	rm_init_flags(l, "PFil " t " rmlock", RM_RECURSE)
-#define	PFIL_LOCK_DESTROY_REAL(l)	\
+#define	PFIL_LOCK_DESTROY_REAL(l)			\
 	rm_destroy(l)
 #define	PFIL_LOCK_INIT(p)	do {			\
 	if ((p)->flags & PFIL_FLAG_PRIVATE_LOCK) {	\
@@ -139,13 +147,9 @@ struct	pfil_head *pfil_head_get(int, u_long);
 	if ((p)->flags & PFIL_FLAG_PRIVATE_LOCK)	\
 		PFIL_LOCK_DESTROY_REAL((p)->ph_plock);	\
 } while (0)
-#define PFIL_TRY_RLOCK(p, t)	rm_try_rlock((p)->ph_plock, (t))
-#define PFIL_RLOCK(p, t)	rm_rlock((p)->ph_plock, (t))
-#define PFIL_WLOCK(p)		rm_wlock((p)->ph_plock)
-#define PFIL_RUNLOCK(p, t)	rm_runlock((p)->ph_plock, (t))
-#define PFIL_WUNLOCK(p)		rm_wunlock((p)->ph_plock)
-#define PFIL_WOWNED(p)		rm_wowned((p)->ph_plock)
-#define PFIL_LIST_LOCK()	mtx_lock(&pfil_global_lock)
-#define PFIL_LIST_UNLOCK()	mtx_unlock(&pfil_global_lock)
+
+/* Internal locking macros for global/vnet pfil_head_list. */
+#define PFIL_HEADLIST_LOCK()	mtx_lock(&pfil_global_lock)
+#define PFIL_HEADLIST_UNLOCK()	mtx_unlock(&pfil_global_lock)
 
 #endif /* _NET_PFIL_H_ */
