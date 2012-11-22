@@ -143,13 +143,13 @@ struct pkthdr {
  */
 struct m_ext {
 	caddr_t		 ext_buf;	/* start of buffer */
+	volatile u_int	*ref_cnt;	/* pointer to ref count info */
+	u_int		 ext_size;	/* size of buffer, for ext_free */
+	int		 ext_type;	/* type of external storage */
 	void		(*ext_free)	/* free routine if not the usual */
 			    (void *, void *);
 	void		*ext_arg1;	/* optional argument pointer */
 	void		*ext_arg2;	/* optional argument pointer */
-	u_int		 ext_size;	/* size of buffer, for ext_free */
-	volatile u_int	*ref_cnt;	/* pointer to ref count info */
-	int		 ext_type;	/* type of external storage */
 } __aligned(sizeof(void *));
 
 /*
