@@ -52,17 +52,31 @@ do_create() {
     buildid=$3
     shift 3
 
+    # create overall archive directory if it does not already exist 
     archivedir=${pbd}/${arch}/archive
-
-    # create directory for all build logs
-    buildlogsdir=${archivedir}/buildlogs
-    if [ ! -d ${buildlogsdir} ]; then
-	mkdir -p ${buildlogsdir} || exit 1
+    if [ ! -d ${archivedir} ]; then
+	mkdir -p ${archivedir} || exit 1
 	chown -R ports-${arch}:portmgr ${archivedir}
 	chmod -R g+w ${archivedir}
     fi
 
-    # create directory for all builds for buildenv
+    # create archive directory for all build logs if it does not already exist
+    buildlogsdir=${archivedir}/buildlogs
+    if [ ! -d ${buildlogsdir} ]; then
+	mkdir -p ${buildlogsdir} || exit 1
+	chown -R ports-${arch}:portmgr ${buildlogsdir}
+	chmod -R g+w ${buildlogsdir}
+    fi
+
+    # create archive directory for all errorlogs if it does not already exist
+    errorlogsdir=${archivedir}/errorlogs
+    if [ ! -d ${errorlogsdir} ]; then
+	mkdir -p ${errorlogsdir} || exit 1
+	chown -R ports-${arch}:portmgr ${errorlogsdir}
+	chmod -R g+w ${errorlogsdir}
+    fi
+
+    # create directory for all builds for buildenv if it does not already exist
     buildsdir=${pbab}/builds
     if [ ! -d ${buildsdir} ]; then
 	mkdir -p ${buildsdir} || exit 1
@@ -70,7 +84,7 @@ do_create() {
 	chmod -R g+w ${pbab}
     fi
 
-    # create directory for latest build for buildenv
+    # create directory for latest build for buildenv if it does not already exist
     builddir=$(realpath ${buildsdir})/${buildid}
     if [ -d ${builddir} ]; then
 	echo "Can't create ${builddir}, it already exists"
@@ -102,6 +116,15 @@ do_create() {
     ln -s ${buildsdir}/latest/logs ${errorlogs}/${arch}-${branch}-latest-logs
     ln -s ${buildsdir}/latest/bak/packages ${errorlogs}/${arch}-${branch}-packages-previous
     ln -s ${buildsdir}/latest/packages ${errorlogs}/${arch}-${branch}-packages-latest
+
+    buildlogs_archive_link=${errorlogs}/${arch}-buildlogs
+    if [ ! -e ${buildlogs_archive_link} ]; then
+      ln -s ${archivedir}/buildlogs ${buildlogs_archive_link}
+    fi
+    errorlogs_archive_link=${errorlogs}/${arch}-errorlogs
+    if [ ! -e ${errorlogs_archive_link} ]; then
+      ln -s ${archivedir}/errorlogs ${errorlogs_archive_link}
+    fi
 
     echo "New build ID is ${buildid}"
 }
