@@ -28,7 +28,7 @@ shift 4
 if [ -f ${pbd}/${arch}/portbuild.conf ]; then
     . ${pbd}/${arch}/portbuild.conf
 else
-    echo "Invalid arch ${arch}"
+    echo "Cannot find file ${pbd}/${arch}/portbuild.conf"
     exit 1
 fi
 if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
