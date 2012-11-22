@@ -48,10 +48,11 @@ typedef	int	(*pfil_func_t)(void *, struct mbuf **, struct ifnet *, int,
 
 /*
  * The packet filter hooks are designed for anything to call them to
- * possibly intercept the packet.
+ * possibly intercept the packet.  Multiple filter hooks are chained
+ * together and after each other in the specified order.
  */
 struct packet_filter_hook {
-        TAILQ_ENTRY(packet_filter_hook) pfil_link;
+        TAILQ_ENTRY(packet_filter_hook) pfil_chain;
 	pfil_func_t	pfil_func;
 	void	*pfil_arg;
 	int	 pfil_cookie;
@@ -68,16 +69,20 @@ struct packet_filter_hook {
 #define PFIL_WAITOK	0x00000004
 #define PFIL_ALL	(PFIL_IN|PFIL_OUT)
 
-typedef	TAILQ_HEAD(pfil_list, packet_filter_hook) pfil_list_t;
+typedef	TAILQ_HEAD(pfil_chain, packet_filter_hook) pfil_chain_t;
 
 #define	PFIL_TYPE_AF		1	/* key is AF_* type */
 #define	PFIL_TYPE_IFNET		2	/* key is ifnet pointer */
 
 #define	PFIL_FLAG_PRIVATE_LOCK	0x01	/* Personal lock instead of global */
 
+/*
+ * A pfil head is created by each protocol or packet intercept point.
+ * For packet is then run through the hook chain for inspection.
+ */
 struct pfil_head {
-	pfil_list_t	ph_in;
-	pfil_list_t	ph_out;
+	pfil_chain_t	ph_in;
+	pfil_chain_t	ph_out;
 	int		ph_type;
 	int		ph_nhooks;
 	struct rmlock	*ph_plock;	/* Pointer to the used lock */
@@ -92,12 +97,14 @@ struct pfil_head {
 	LIST_ENTRY(pfil_head) ph_list;
 };
 
+/* Public functions for pfil head management by protocols. */
 int	pfil_add_hook(pfil_func_t, void *, int, struct pfil_head *);
 int	pfil_add_hook_order(pfil_func_t, void *, char *, int, uint8_t,
 	    struct pfil_head *);
 int	pfil_get_cookie(pfil_func_t, void *, int, struct pfil_head *);
 int	pfil_remove_hook(pfil_func_t, void *, int, struct pfil_head *);
 
+/* Public functions to run the packet inspection by protocols. */
 int	pfil_run_hooks(struct pfil_head *, struct mbuf **, struct ifnet *,
 	    int, struct inpcb *inp);
 int	pfil_run_inject(struct pfil_head *, struct mbuf **, struct ifnet *,

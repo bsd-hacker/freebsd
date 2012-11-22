@@ -50,9 +50,9 @@
 static struct mtx pfil_global_lock;
 MTX_SYSINIT(pfil_global_lock, &pfil_global_lock, "pfil_head_list lock", MTX_DEF);
 
-static int pfil_list_add(pfil_list_t *, struct packet_filter_hook *, int,
-    uint8_t);
-static int pfil_list_remove(pfil_list_t *, pfil_func_t, void *);
+static int 	pfil_chain_add(pfil_chain_t *, struct packet_filter_hook *,
+		    int, uint8_t);
+static int	pfil_chain_remove(pfil_chain_t *, pfil_func_t, void *);
 
 LIST_HEAD(pfilheadhead, pfil_head);
 VNET_DEFINE(struct pfilheadhead, pfil_head_list);
@@ -63,8 +63,9 @@ VNET_DEFINE(struct rmlock, pfil_lock);
 /*
  * pfil_run_hooks() runs the specified packet filter hooks.
  *
- * The cookie, if set, skips all hooks before the hook with
- * the same cookie and continues with the next hook after it.
+ * The cookie, if set, skips all hooks before and including
+ * the hook with the same cookie and continues with the next
+ * hook after it.
  */
 int
 pfil_run_hooks(struct pfil_head *ph, struct mbuf **mp, struct ifnet *ifp,
@@ -75,7 +76,7 @@ pfil_run_hooks(struct pfil_head *ph, struct mbuf **mp, struct ifnet *ifp,
 }
 
 static struct packet_filter_hook *
-pfil_hook_get(int dir, struct pfil_head *ph)
+pfil_chain_get(int dir, struct pfil_head *ph)
 {
 
 	if (dir == PFIL_IN)
@@ -97,8 +98,8 @@ pfil_run_inject(struct pfil_head *ph, struct mbuf **mp, struct ifnet *ifp,
 
 	PFIL_RLOCK(ph, &rmpt);
 	KASSERT(ph->ph_nhooks >= 0, ("Pfil hook count dropped < 0"));
-	for (pfh = pfil_hook_get(dir, ph); pfh != NULL;
-	     pfh = TAILQ_NEXT(pfh, pfil_link)) {
+	for (pfh = pfil_chain_get(dir, ph); pfh != NULL;
+	     pfh = TAILQ_NEXT(pfh, pfil_chain)) {
 		if (cookie != 0) {
 			/* Continue on the next hook. */
 			if (pfh->pfil_cookie == cookie)
@@ -171,6 +172,7 @@ pfil_wowned(struct pfil_head *ph)
 {
 	return PFIL_WOWNED(ph);
 }
+
 /*
  * pfil_head_register() registers a pfil_head with the packet filter hook
  * mechanism.
@@ -210,9 +212,9 @@ pfil_head_unregister(struct pfil_head *ph)
 	PFIL_LIST_LOCK();
 	LIST_REMOVE(ph, ph_list);
 	PFIL_LIST_UNLOCK();
-	TAILQ_FOREACH_SAFE(pfh, &ph->ph_in, pfil_link, pfnext)
+	TAILQ_FOREACH_SAFE(pfh, &ph->ph_in, pfil_chain, pfnext)
 		free(pfh, M_IFADDR);
-	TAILQ_FOREACH_SAFE(pfh, &ph->ph_out, pfil_link, pfnext)
+	TAILQ_FOREACH_SAFE(pfh, &ph->ph_out, pfil_chain, pfnext)
 		free(pfh, M_IFADDR);
 	PFIL_LOCK_DESTROY(ph);
 	return (0);
@@ -288,16 +290,16 @@ pfil_add_hook_order(pfil_func_t func, void *arg, char *name, int flags,
 	}
 	PFIL_WLOCK(ph);
 	if (flags & PFIL_IN) {
-		err = pfil_list_add(&ph->ph_in, pfh1, flags & ~PFIL_OUT, order);
+		err = pfil_chain_add(&ph->ph_in, pfh1, flags & ~PFIL_OUT, order);
 		if (err)
 			goto locked_error;
 		ph->ph_nhooks++;
 	}
 	if (flags & PFIL_OUT) {
-		err = pfil_list_add(&ph->ph_out, pfh2, flags & ~PFIL_IN, order);
+		err = pfil_chain_add(&ph->ph_out, pfh2, flags & ~PFIL_IN, order);
 		if (err) {
 			if (flags & PFIL_IN)
-				pfil_list_remove(&ph->ph_in, func, arg);
+				pfil_chain_remove(&ph->ph_in, func, arg);
 			goto locked_error;
 		}
 		ph->ph_nhooks++;
@@ -325,12 +327,12 @@ pfil_remove_hook(pfil_func_t func, void *arg, int flags, struct pfil_head *ph)
 
 	PFIL_WLOCK(ph);
 	if (flags & PFIL_IN) {
-		err = pfil_list_remove(&ph->ph_in, func, arg);
+		err = pfil_chain_remove(&ph->ph_in, func, arg);
 		if (err == 0)
 			ph->ph_nhooks--;
 	}
 	if ((err == 0) && (flags & PFIL_OUT)) {
-		err = pfil_list_remove(&ph->ph_out, func, arg);
+		err = pfil_chain_remove(&ph->ph_out, func, arg);
 		if (err == 0)
 			ph->ph_nhooks--;
 	}
@@ -341,20 +343,20 @@ pfil_remove_hook(pfil_func_t func, void *arg, int flags, struct pfil_head *ph)
 int
 pfil_get_cookie(pfil_func_t func, void *arg, int flags, struct pfil_head *ph)
 {
-	pfil_list_t *list;
+	pfil_chain_t *chain;
 	struct packet_filter_hook *pfh;
 	struct rm_priotracker tracker;
 	int cookie = 0;
 
 	PFIL_RLOCK(ph, &tracker);
 	if (flags & PFIL_IN)
-		list = &ph->ph_in;
+		chain = &ph->ph_in;
 	else if (flags & PFIL_OUT)
-		list = &ph->ph_out;
+		chain = &ph->ph_out;
 	else
 		goto out;
 
-	TAILQ_FOREACH(pfh, list, pfil_link)
+	TAILQ_FOREACH(pfh, chain, pfil_chain)
 		if (pfh->pfil_func == func &&
 		    pfh->pfil_arg == arg)
 			cookie = pfh->pfil_cookie;
@@ -363,8 +365,11 @@ out:
 	return (cookie);
 }
 
+/*
+ * Internal: Add a new pfil hook into a hook chain.
+ */
 static int
-pfil_list_add(pfil_list_t *list, struct packet_filter_hook *pfh1, int flags,
+pfil_chain_add(pfil_chain_t *chain, struct packet_filter_hook *pfh1, int flags,
     uint8_t order)
 {
 	struct packet_filter_hook *pfh;
@@ -372,7 +377,7 @@ pfil_list_add(pfil_list_t *list, struct packet_filter_hook *pfh1, int flags,
 	/*
 	 * First make sure the hook is not already there.
 	 */
-	TAILQ_FOREACH(pfh, list, pfil_link)
+	TAILQ_FOREACH(pfh, chain, pfil_chain)
 		if (pfh->pfil_func == pfh1->pfil_func &&
 		    pfh->pfil_arg == pfh1->pfil_arg)
 			return (EEXIST);
@@ -382,38 +387,37 @@ pfil_list_add(pfil_list_t *list, struct packet_filter_hook *pfh1, int flags,
 	 * the same path is followed in or out of the kernel.
 	 */
 	if (flags & PFIL_IN) {
-		TAILQ_FOREACH(pfh, list, pfil_link) {
+		TAILQ_FOREACH(pfh, chain, pfil_chain) {
 			if (pfh->pfil_order <= order)
 				break;
 		}
 		if (pfh == NULL)
-			TAILQ_INSERT_HEAD(list, pfh1, pfil_link);
+			TAILQ_INSERT_HEAD(chain, pfh1, pfil_chain);
 		else
-			TAILQ_INSERT_BEFORE(pfh, pfh1, pfil_link);
+			TAILQ_INSERT_BEFORE(pfh, pfh1, pfil_chain);
 	} else {
-		TAILQ_FOREACH_REVERSE(pfh, list, pfil_list, pfil_link)
+		TAILQ_FOREACH_REVERSE(pfh, chain, pfil_chain, pfil_chain)
 			if (pfh->pfil_order >= order)
 				break;
 		if (pfh == NULL)
-			TAILQ_INSERT_TAIL(list, pfh1, pfil_link);
+			TAILQ_INSERT_TAIL(chain, pfh1, pfil_chain);
 		else
-			TAILQ_INSERT_AFTER(list, pfh, pfh1, pfil_link);
+			TAILQ_INSERT_AFTER(chain, pfh, pfh1, pfil_chain);
 	}
 	return (0);
 }
 
 /*
- * pfil_list_remove is an internal function that takes a function off the
- * specified list.
+ * Internal: Remove a pfil hook from a hook chain.
  */
 static int
-pfil_list_remove(pfil_list_t *list, pfil_func_t func, void *arg)
+pfil_chain_remove(pfil_chain_t *chain, pfil_func_t func, void *arg)
 {
 	struct packet_filter_hook *pfh;
 
-	TAILQ_FOREACH(pfh, list, pfil_link)
+	TAILQ_FOREACH(pfh, chain, pfil_chain)
 		if (pfh->pfil_func == func && pfh->pfil_arg == arg) {
-			TAILQ_REMOVE(list, pfh, pfil_link);
+			TAILQ_REMOVE(chain, pfh, pfil_chain);
 			free(pfh, M_IFADDR);
 			return (0);
 		}
@@ -440,7 +444,8 @@ static int
 vnet_pfil_uninit(const void *unused)
 {
 
-	/*  XXX should panic if list is not empty */
+	KASSERT(LIST_EMPTY(&V_pfil_head_list),
+	    ("%s: pfil_head_list %p not empty", __func__, &V_pfil_head_list));
 	PFIL_LOCK_DESTROY_REAL(&V_pfil_lock);
 	return (0);
 }
