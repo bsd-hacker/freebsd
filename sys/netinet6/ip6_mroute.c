@@ -153,7 +153,6 @@ static int pim6_encapcheck(const struct mbuf *, int, int, void *);
 static VNET_DEFINE(int, ip6_mrouter_ver) = 0;
 #define	V_ip6_mrouter_ver	VNET(ip6_mrouter_ver)
 
-SYSCTL_DECL(_net_inet6);
 SYSCTL_DECL(_net_inet6_ip6);
 static SYSCTL_NODE(_net_inet6, IPPROTO_PIM, pim, CTLFLAG_RW, 0, "PIM");
 
