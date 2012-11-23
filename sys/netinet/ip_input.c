@@ -298,7 +298,8 @@ ip_init(void)
 	/* Initialize packet filter hooks. */
 	V_inet_pfil_hook.ph_type = PFIL_TYPE_AF;
 	V_inet_pfil_hook.ph_af = AF_INET;
-	if ((i = pfil_head_register(&V_inet_pfil_hook)) != 0)
+	if ((i = pfil_head_register(&V_inet_pfil_hook,
+	     SYSCTL_STATIC_CHILDREN(_net_inet))) != 0)
 		printf("%s: WARNING: unable to register pfil hook, "
 			"error %d\n", __func__, i);
 

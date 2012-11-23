@@ -38,6 +38,7 @@
 #include <sys/_mutex.h>
 #include <sys/lock.h>
 #include <sys/rmlock.h>
+#include <sys/sysctl.h>
 
 struct mbuf;
 struct ifnet;
@@ -58,6 +59,8 @@ struct packet_filter_hook {
 	int		 pfil_cookie;
 	uint8_t		 pfil_order;
 	char		*pfil_name;
+	struct sysctl_oid *pfil_sysctl_oid;
+	struct pfil_head *pfil_head;
 };
 
 #define	PFIL_ORDER_FIRST	  0
@@ -94,12 +97,15 @@ struct pfil_head {
 	} ph_un;
 #define	ph_af		ph_un.phu_val
 #define	ph_ifnet	ph_un.phu_ptr
+	struct sysctl_ctx_list	*ph_sysctl_ctx;
+	struct sysctl_oid	*ph_sysctl_oid_in;
+	struct sysctl_oid	*ph_sysctl_oid_out;
 	LIST_ENTRY(pfil_head) ph_list;
 };
 
 /* Public functions for pfil head management by protocols. */
 struct	pfil_head *pfil_head_get(int, u_long);
-int	pfil_head_register(struct pfil_head *);
+int	pfil_head_register(struct pfil_head *, struct sysctl_oid_list *);
 int	pfil_head_unregister(struct pfil_head *);
 
 /* Public functions for pfil hook management by protocols. */

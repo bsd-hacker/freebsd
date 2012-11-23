@@ -48,6 +48,7 @@
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
+#include <sys/types.h>
 
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -686,7 +687,8 @@ vnet_ether_init(__unused void *arg)
 	/* Initialize packet filter hooks. */
 	V_link_pfil_hook.ph_type = PFIL_TYPE_AF;
 	V_link_pfil_hook.ph_af = AF_LINK;
-	if ((i = pfil_head_register(&V_link_pfil_hook)) != 0)
+	if ((i = pfil_head_register(&V_link_pfil_hook,
+	     SYSCTL_STATIC_CHILDREN(_net_link_ether))) != 0)
 		printf("%s: WARNING: unable to register pfil link hook, "
 			"error %d\n", __func__, i);
 }
