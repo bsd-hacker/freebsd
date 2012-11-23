@@ -1,0 +1,115 @@
+#!/bin/sh
+
+# server-side script to add an architecture.  Should be run as root.
+
+# configurable variables
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pbc}/scripts
+
+test_fs() {
+  local fs=$1
+
+  zfs list -Ht filesystem ${fs} > /dev/null 2>&1
+}
+
+usage () {
+    echo "usage: $0 arch"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+arch=$1
+
+. ${pbc}/conf/server.conf
+
+# validate arch.  this somewhat duplicates buildenv.
+valid_arch=0
+for i in ${SUPPORTED_ARCHS}; do
+    if [ ${i} = ${arch} ]; then
+        valid_arch=1
+        break
+    fi
+done
+if [ $valid_arch = 0 ]; then
+    echo "You must first add ${arch} to SUPPORTED_ARCHS in ${pbc}/conf/server.conf."
+    echo "Currently supported archs are: ${SUPPORTED_ARCHS}."
+    exit 1
+fi
+
+# create arch-specific directory if it does not already exist.
+# Exit if it is not manageable by ports-<arch>:portmgr.
+archdir=${pbd}/${arch}
+if [ ! -d ${archdir} ]; then
+  echo "The ${archdir} directory does not exist.  I'll create it for you."
+  mkdir -p ${archdir} || exit 1
+  chown -R ports-${arch}:portmgr ${archdir} || exit 1
+  chmod 775 ${archdir} || exit 1
+fi
+
+# create zfs instance for arch if it does not already exist.  (duplicates 'build')
+archfs=${ZFS_VOLUME}/portbuild/${arch}
+if ! test_fs "${archfs}"; then
+  echo "The ${archfs} filesystem does not exist.  I'll create and mount it for you."
+  zfs create -o mountpoint=${archdir} ${archfs} || exit 1
+  chown -R ports-${arch}:portmgr ${archdir} || exit 1
+  chmod -R g+w ${archdir} || exit 1
+fi
+
+# create .ssh/ directory if it does not already exist.  (duplicates 'build')
+sshdir=${archdir}/.ssh
+if [ ! -d ${sshdir} ]; then
+  echo "The ${sshdir} directory does not exist.  I'll create it for you, but you will need to populate it."
+  mkdir -p ${sshdir} || exit 1
+  chown -R ports-${arch}:portmgr ${sshdir} || exit 1
+  chmod 700 ${sshdir} || exit 1
+fi
+
+conf=${archdir}/portbuild.conf
+if [ ! -e ${conf} ]; then
+  echo "${conf} does not exist.  I'll try to create it, but you may not like the defaults."
+  cat >> ${conf} << EOF
+arch=${arch}
+client_user=ports-${arch}
+user=ports-${arch}
+
+pb=/var/portbuild
+rsync_gzip=-z
+scp_cmd="/usr/bin/scp"
+ssh_cmd="/usr/bin/ssh"
+sudo_cmd="sudo -H"
+
+disconnected=1
+http_proxy="http://localhost:3128/"
+mailto=root@`hostname`
+md_size=11g
+pkg_sufx=".tbz"
+scratchdir=/usr3/pkgbuild
+squid_dir=/usr2/squid
+use_jail=1
+use_md_swap=1
+use_zfs=0
+EOF
+fi
+chown -R ports-${arch}:portmgr ${conf} || exit 1
+chmod 775 ${conf} || exit 1
+
+qm=${pbc}/qmanager/qmanager.py
+if [ ! -x $qm ]; then
+  echo "you need to install qmanager under /var/portbuild/qmanager/ and re-run this script."
+  exit 1
+else
+  running=`ps ax | grep -v grep | grep $qm`
+  if [ -z "${running}" ]; then
+    echo "qmanager is not running.  run /usr/local/etc/rc.d/qmanager.sh and re-run this script."
+    exit 1
+  else
+    echo "adding ${arch} to qmanager ..."
+    python ${pbc}/qmanager/qclient add_acl name=ports-${arch} uidlist=ports-${arch} gidlist=portmgr sense=1
+    echo "... done."
+  fi
+fi
