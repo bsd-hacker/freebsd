@@ -498,6 +498,9 @@ struct	in6_rrenumreq {
 #endif
 
 #ifdef _KERNEL
+#ifdef SYSCTL_DECL
+SYSCTL_DECL(_net_inet6);
+#endif
 VNET_DECLARE(struct in6_ifaddrhead, in6_ifaddrhead);
 #define	V_in6_ifaddrhead		VNET(in6_ifaddrhead)
 
