@@ -53,9 +53,10 @@ fi
 
 # create zfs instance for arch if it does not already exist.  (duplicates 'build')
 archfs=${ZFS_VOLUME}/portbuild/${arch}
+mountpoint=$(realpath ${archdir})
 if ! test_fs "${archfs}"; then
   echo "The ${archfs} filesystem does not exist.  I'll create and mount it for you."
-  zfs create -o mountpoint=${archdir} ${archfs} || exit 1
+  zfs create -o mountpoint=${mountpoint} ${archfs} || exit 1
   chown -R ports-${arch}:portmgr ${archdir} || exit 1
   chmod -R g+w ${archdir} || exit 1
 fi
@@ -96,7 +97,7 @@ use_zfs=0
 EOF
 fi
 chown -R ports-${arch}:portmgr ${conf} || exit 1
-chmod 775 ${conf} || exit 1
+chmod 664 ${conf} || exit 1
 
 qm=${pbc}/qmanager/qmanager.py
 if [ ! -x $qm ]; then
