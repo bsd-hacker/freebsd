@@ -363,6 +363,10 @@ struct ether_addr {
 
 #ifdef _KERNEL
 
+#ifdef SYSCTL_DECL
+SYSCTL_DECL(_net_link_ether);
+#endif
+
 struct ifnet;
 struct mbuf;
 struct route;
