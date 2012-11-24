@@ -65,7 +65,7 @@ do_create() {
     # create zfs instance for arch if it does not already exist
     archfs=${ZFS_VOLUME}/portbuild/${arch}
     if ! test_fs "${archfs}"; then
-      zfs create -o mountpoint=${archdir} ${newfs} || exit 1
+      zfs create -o mountpoint=${archdir} ${archfs} || exit 1
       chown -R ports-${arch}:portmgr ${archdir}
       chmod -R g+w ${archdir}
     fi
