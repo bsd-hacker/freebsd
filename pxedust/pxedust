@@ -1,0 +1,170 @@
+#!/bin/sh
+#
+# script to generate a PXE-bootable image for package building nodes, complete
+#   with merged customization.  MCL 20121123
+#
+# note: must be run as root.
+#
+
+#
+# ------------- you should not need to do anything after this -------------
+#
+# (at least, once the script is completed)
+
+if [ -z "${BRANCH}" \
+  -o -z "${INSTALLDIR}" \
+  -o -z "${PXEFILES}" \
+  -o -z "${SITE}" \
+  -o -z "${SRCDIR}" \
+  -o -z "${TARGET}" ]; then
+  echo "$0: the following must all be set: BRANCH INSTALLDIR PXEFILES SITE SRCDIR TARGET"
+  echo "$0: you may optionally set: N_TASKS"
+  exit 1
+fi
+
+if [ -z ${N_TASKS} ]; then
+  N_TASKS=8
+fi
+
+DESTDIR="${INSTALLDIR}/${TARGET}-${BRANCH}"
+
+ARCH_PACKAGES="${PXEFILES}/ARCH_PACKAGES"
+ARCH_SPECIFIC="${PXEFILES}/ARCH_SPECIFIC"
+NODE_GENERIC="${PXEFILES}/NODE_GENERIC"
+SITE_SPECIFIC="${PXEFILES}/SITE_SPECIFIC"
+
+TARGET_ARCH="${TARGET}"
+
+COMMON_ENV="TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} DESTDIR=${DESTDIR}"
+
+KERNCONF="PACKAGE_NODE_${TARGET}"
+
+LOGFILE="diff.out"
+
+# using a src directory, populate a dst directory, or note differences
+setup () {
+  srcdir=$1
+  dstdir=$2
+  logfile=$3
+
+  echo "setting up files in ${dstdir} ..."
+
+  dirs=`cd ${srcdir} && find . -type d -print`
+  for dir in $dirs; do
+    echo "src dir is ${srcdir}/$dir"
+    if [ ! -d ${dstdir}/$dir ]; then
+      echo "create and populate dst dir ${dstdir}/$dir"
+      echo "(cd ${srcdir}/$dir; find -dx . | cpio -dump ${dstdir}/$dir)"
+      (cd ${srcdir}/$dir; find -dx . | cpio -dump ${dstdir}/$dir)
+    else
+      echo "dst dir ${dstdir}/$dir exists"
+      files=`cd ${srcdir}/$dir && find . -type f -maxdepth 1 -print`
+      for file in $files; do
+        echo "thinking about file ${srcdir}/$dir/$file"  # XXX DEBUG
+        if [ -e ${dstdir}/$dir/$file ]; then
+          echo "cmp ${srcdir}/$dir/$file ${dstdir}/$dir/$file > /dev/null 2> /dev/null"  # XXX DEBUG
+          cmp ${srcdir}/$dir/$file ${dstdir}/$dir/$file > /dev/null 2> /dev/null
+          if [ $? != 0 ]; then
+            echo "diff ${srcdir}/$dir/$file ${dstdir}/$dir/$file" >> ${logfile}
+            diff -ruN ${srcdir}/$dir/$file ${dstdir}/$dir/$file >> ${logfile}
+            echo >> ${logfile}
+          else
+            echo "same files: ${srcdir}/$dir/$file ${dstdir}/$dir/$file"
+          fi
+        else
+          echo "cp -p ${srcdir}/$dir/$file ${dstdir}/$dir/$file"
+          cp -p ${srcdir}/$dir/$file ${dstdir}/$dir/$file
+        fi
+      done
+    fi
+  done
+}
+
+id=$(id -u)
+if [ ${id} -ne 0 ]; then
+  echo "you need to run this script as root."
+  exit 1
+fi
+
+kernconfdir="${SRCDIR}/sys/${TARGET}/conf"
+kernconf="${kernconfdir}/${KERNCONF}"
+if [ ! -f ${kernconf} ]; then
+  standard_kernconfdir="${PXEFILES}/ARCH_SPECIFIC/${TARGET}/kernconf"
+  standard_kernconf="${standard_kernconfdir}/${KERNCONF}"
+  if [ ! -f ${standard_kernconf} ]; then
+    echo "missing standard kernel config file: ${standard_kernconf}"
+    exit 1
+  else
+    cp -p ${standard_kernconf} ${kernconfdir}/ || exit 1
+  fi
+fi
+
+mkdir -p ${DESTDIR}
+
+cd ${SRCDIR} || exit 1
+echo "make ${COMMON_ENV} -j${N_TASKS} buildworld"
+#make ${COMMON_ENV} -j${N_TASKS} buildworld || exit 1
+echo "make ${COMMON_ENV} buildkernel KERNCONF=${KERNCONF}"
+#make ${COMMON_ENV} buildkernel KERNCONF=${KERNCONF} || exit 1
+echo "make ${COMMON_ENV} installkernel KERNCONF=${KERNCONF}"
+#make ${COMMON_ENV} installkernel KERNCONF=${KERNCONF} || exit 1
+echo "make ${COMMON_ENV} installworld"
+#make ${COMMON_ENV} installworld || exit 1
+echo "make ${COMMON_ENV} distribution"
+#make ${COMMON_ENV} distribution || exit 1
+echo "make distribution: finished."
+echo
+
+#mkdir -p ${DESTDIR}/usr2 || exit 1
+#mkdir -p ${DESTDIR}/usr3 || exit 1
+
+cp /dev/null ${LOGFILE}
+
+# create a jail.  needed for packages.
+jname=${TARGET}-${BRANCH}-`basename $0`
+jail -c persist name=${jname} ip4.addr=127.0.0.1 ip6=disable path=${DESTDIR} \
+        host.hostname=${jname}
+portsdir="/usr/ports"
+packagedir="${portsdir}/packages/All"
+
+# copy over packages for that arch/branch.
+# note the intentionally ommitted /.
+setup ${ARCH_PACKAGES}/${TARGET}/${BRANCH} ${DESTDIR}${packagedir} ${LOGFILE}
+echo
+
+# install the packages
+jexec -U root ${jname} /bin/ls -al /usr/ports/packages/All
+packages=`jexec -U root ${jname} /usr/bin/find ${packagedir} -type f -maxdepth 1`
+for package in ${packages}; do
+  echo "adding ${package} in ${jname}"
+  # pre-pkgng
+  jexec -U root ${jname} /usr/sbin/pkg_add -f ${package}
+  # pkgng
+  # jexec -U root ${jname} /usr/sbin/pkg add ${package}
+done
+echo
+
+jail -r ${jname}
+
+# create files in conf/default/etc.  Some will be overridden below.
+#setup ${DESTDIR}/etc ${DESTDIR}/conf/default/etc ${LOGFILE}
+echo
+
+# override (or create) files that are specific to an architecture
+# (including overrides of package configs)
+#setup ${ARCH_SPECIFIC}/${TARGET} ${DESTDIR} ${LOGFILE}
+echo
+
+# override (or create) files that are generic to all nodes
+#setup ${NODE_GENERIC} ${DESTDIR} ${LOGFILE}
+echo
+
+# override (or create) files that are specific to a site
+#setup ${SITE_SPECIFIC}/${SITE} ${DESTDIR} ${LOGFILE}
+echo
+
+echo "finished."
+echo "  be sure to check ${LOGFILE} for things that have to be adjusted manually:"
+ls -al ${LOGFILE}
+
+exit 0

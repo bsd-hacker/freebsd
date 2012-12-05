@@ -1,0 +1,78 @@
+#!/bin/sh
+#
+# script to generate packages to be install in pxe-bootable images.
+#   MCL 20121123
+#
+# note: must be run as root.
+#
+
+REQUIRED_PORTS="ports-mgmt/pkg"
+REQUIRED_PORTS="${REQUIRED_PORTS} net/rsync"
+# dependencies for sudo.  I'm getting tired of fighting tonight.
+REQUIRED_PORTS="${REQUIRED_PORTS} devel/gettext"
+REQUIRED_PORTS="${REQUIRED_PORTS} devel/libtool"
+REQUIRED_PORTS="${REQUIRED_PORTS} converters/libiconv"
+REQUIRED_PORTS="${REQUIRED_PORTS} security/sudo"
+# XXX
+#REQUIRED_PORTS="${REQUIRED_PORTS} XXX"
+
+#
+# ------------- you should not need to do anything after this -------------
+#
+# (at least, once the script is completed)
+
+if [ -z "${BRANCH}" \
+  -o -z "${BUILDID}" \
+  -o -z "${INSTALLDIR}" \
+  -o -z "${PORTSDIR}" \
+  -o -z "${PXEFILES}" \
+  -o -z "${TARGET}" ]; then
+  echo "$0: the following must all be set: BRANCH BUILDID INSTALLDIR PORTSDIR PXEFILES TARGET"
+  exit 1
+fi
+
+DESTDIR="${INSTALLDIR}/${TARGET}-${BRANCH}"
+
+ARCH_PACKAGES="${PXEFILES}/ARCH_PACKAGES"
+
+id=$(id -u)
+if [ ${id} -ne 0 ]; then
+  echo "you need to run this script as root."
+  exit 1
+fi
+
+# XXX MCL turn off due to 9.0R not having kickstart.  ARGH!
+#export WITH_PKGNG=yes
+
+WHERETO=${ARCH_PACKAGES}/${TARGET}/${BRANCH}
+
+mkdir -p ${WHERETO} || exit 1
+chown ports-${TARGET}:portmgr ${WHERETO} || exit 1
+cd ${WHERETO} || exit 1
+
+# XXX MCL FRUSTRATED
+export PORTSDIR="/var/portbuild/${ARCH}/${BRANCH}/builds/${BUILDID}/ports"
+
+# make the packages
+for port in ${REQUIRED_PORTS}; do
+  pkgname=`cd ${PORTSDIR}/${port} && make -V PKGNAME`
+  pkg_sufx=`cd ${PORTSDIR}/${port} && make -V PKG_SUFX`
+  if [ -z "${pkgname}" ]; then
+    echo "could not figure out PKGNAME for $port!"
+  else
+    package="${WHERETO}/${pkgname}${pkg_sufx}"
+    if [ -e ${package} ]; then
+      echo "skipping ${package} since it already exists"
+    else
+      echo "making ${package}"
+      dir=`cd ${PORTSDIR}/${port} && make -V PACKAGES`
+      mkdir -p ${dir}
+      cd ${PORTSDIR}/${port} && make -DFORCE_PKG_REGISTER package
+    fi
+  fi
+done
+
+echo "copying `ls -l ${PORTSDIR}/packages/All/`"
+cp -p ${PORTSDIR}/packages/All/* ${WHERETO} || exit 1
+
+exit 0
