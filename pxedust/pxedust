@@ -103,20 +103,20 @@ mkdir -p ${DESTDIR}
 
 cd ${SRCDIR} || exit 1
 echo "make ${COMMON_ENV} -j${N_TASKS} buildworld"
-#make ${COMMON_ENV} -j${N_TASKS} buildworld || exit 1
+make ${COMMON_ENV} -j${N_TASKS} buildworld || exit 1
 echo "make ${COMMON_ENV} buildkernel KERNCONF=${KERNCONF}"
-#make ${COMMON_ENV} buildkernel KERNCONF=${KERNCONF} || exit 1
+make ${COMMON_ENV} buildkernel KERNCONF=${KERNCONF} || exit 1
 echo "make ${COMMON_ENV} installkernel KERNCONF=${KERNCONF}"
-#make ${COMMON_ENV} installkernel KERNCONF=${KERNCONF} || exit 1
+make ${COMMON_ENV} installkernel KERNCONF=${KERNCONF} || exit 1
 echo "make ${COMMON_ENV} installworld"
-#make ${COMMON_ENV} installworld || exit 1
+make ${COMMON_ENV} installworld || exit 1
 echo "make ${COMMON_ENV} distribution"
-#make ${COMMON_ENV} distribution || exit 1
+make ${COMMON_ENV} distribution || exit 1
 echo "make distribution: finished."
 echo
 
-#mkdir -p ${DESTDIR}/usr2 || exit 1
-#mkdir -p ${DESTDIR}/usr3 || exit 1
+mkdir -p ${DESTDIR}/usr2 || exit 1
+mkdir -p ${DESTDIR}/usr3 || exit 1
 
 cp /dev/null ${LOGFILE}
 
@@ -147,20 +147,20 @@ echo
 jail -r ${jname}
 
 # create files in conf/default/etc.  Some will be overridden below.
-#setup ${DESTDIR}/etc ${DESTDIR}/conf/default/etc ${LOGFILE}
+setup ${DESTDIR}/etc ${DESTDIR}/conf/default/etc ${LOGFILE}
 echo
 
 # override (or create) files that are specific to an architecture
 # (including overrides of package configs)
-#setup ${ARCH_SPECIFIC}/${TARGET} ${DESTDIR} ${LOGFILE}
+setup ${ARCH_SPECIFIC}/${TARGET} ${DESTDIR} ${LOGFILE}
 echo
 
 # override (or create) files that are generic to all nodes
-#setup ${NODE_GENERIC} ${DESTDIR} ${LOGFILE}
+setup ${NODE_GENERIC} ${DESTDIR} ${LOGFILE}
 echo
 
 # override (or create) files that are specific to a site
-#setup ${SITE_SPECIFIC}/${SITE} ${DESTDIR} ${LOGFILE}
+setup ${SITE_SPECIFIC}/${SITE} ${DESTDIR} ${LOGFILE}
 echo
 
 echo "finished."
