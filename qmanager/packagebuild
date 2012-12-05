@@ -648,7 +648,7 @@ def main(arch, branch, buildid, args):
                 job.attempts = job.attempts + 1
                 # XXX MCL in theory, if all this code worked correctly,
                 # this condition would never trigger.  In practice,
-                # however, it does, so bomb out before filling portmgr's
+                # however, it does, so bomb out before filling someone's
                 # mbox.
                 # XXX MCL 20110422 perhaps this code has been fixed now;
                 # XXX it did not use to work:
