@@ -353,7 +353,7 @@ for arch in ${SUPPORTED_ARCHS}; do
 done
 
 # then display all the non-mainstream builds (probably only of interest
-#   to portmgr; would break up the logical flow of the above)
+#   to administrative types; would break up the logical flow of the above)
 #   examples: 8.1; 8-exp; 8-exp-gettext; 8.1R
 for arch in ${SUPPORTED_ARCHS}; do
 

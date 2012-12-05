@@ -9,7 +9,7 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pbc}/scripts
 
-# writable by portmgr
+# make writable by group
 umask 002
 
 journalname="journal"

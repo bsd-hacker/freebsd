@@ -167,11 +167,11 @@ buildenv.client() {
 
     # manually override results of uname(1)
     export UNAME_m=${arch}
-    export UNAME_n=freebsd.org
+    export UNAME_n=localhost
     export UNAME_p=${arch}
     export UNAME_r=${OSREL}-${BRANCH}
     export UNAME_s=FreeBSD
-    export UNAME_v="FreeBSD ${OSREL}-${BRANCH} #0: $(date)     portmgr@freebsd.org:/usr/src/sys/magic/kernel/path"
+    export UNAME_v="FreeBSD ${OSREL}-${BRANCH} #0: $(date)     nobody@localhost:/usr/src/sys/magic/kernel/path"
 }
 
 #
