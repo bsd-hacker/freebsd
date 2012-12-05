@@ -19,13 +19,17 @@ usage () {
     exit 1
 }
 
+if [ ! -e ${pbc}/conf/server.conf ] ; then
+    echo "You must first create ${pbc}/conf/server.conf."
+    exit 1
+fi
+. ${pbc}/conf/server.conf
+
 if [ $# -lt 1 ]; then
     usage
 fi
 
 arch=$1
-
-. ${pbc}/conf/server.conf
 
 # validate arch.  this somewhat duplicates buildenv.
 valid_arch=0
@@ -41,13 +45,20 @@ if [ $valid_arch = 0 ]; then
     exit 1
 fi
 
+uid=ports-${arch}
+if [ ! -z "${PORTBUILD_GROUP}" ]; then
+    gid=${PORTBUILD_GROUP}
+else
+    gid=${uid}
+fi
+
 # create arch-specific directory if it does not already exist.
-# Exit if it is not manageable by ports-<arch>:portmgr.
+# Exit if it is not manageable by uid:gid.
 archdir=${pbd}/${arch}
 if [ ! -d ${archdir} ]; then
   echo "The ${archdir} directory does not exist.  I'll create it for you."
   mkdir -p ${archdir} || exit 1
-  chown -R ports-${arch}:portmgr ${archdir} || exit 1
+  chown -R ${uid}:${gid} ${archdir} || exit 1
   chmod 775 ${archdir} || exit 1
 fi
 
@@ -57,7 +68,7 @@ mountpoint=$(realpath ${archdir})
 if ! test_fs "${archfs}"; then
   echo "The ${archfs} filesystem does not exist.  I'll create and mount it for you."
   zfs create -o mountpoint=${mountpoint} ${archfs} || exit 1
-  chown -R ports-${arch}:portmgr ${archdir} || exit 1
+  chown -R ${uid}:${gid} ${archdir} || exit 1
   chmod -R g+w ${archdir} || exit 1
 fi
 
@@ -66,8 +77,16 @@ sshdir=${archdir}/.ssh
 if [ ! -d ${sshdir} ]; then
   echo "The ${sshdir} directory does not exist.  I'll create it for you, but you will need to populate it."
   mkdir -p ${sshdir} || exit 1
-  chown -R ports-${arch}:portmgr ${sshdir} || exit 1
+  chown -R ${uid}:${gid} ${sshdir} || exit 1
   chmod 700 ${sshdir} || exit 1
+fi
+
+mlist=${archdir}/mlist
+if [ ! -e ${mlist} ]; then
+  echo "${mlist} does not exist.  I'll create an empty one."
+  touch ${mlist} 
+  chown -R ${uid}:${gid} ${mlist} || exit 1
+  chmod 664 ${mlist} || exit 1
 fi
 
 conf=${archdir}/portbuild.conf
@@ -75,8 +94,8 @@ if [ ! -e ${conf} ]; then
   echo "${conf} does not exist.  I'll try to create it, but you may not like the defaults."
   cat >> ${conf} << EOF
 arch=${arch}
-client_user=ports-${arch}
-user=ports-${arch}
+client_user=${uid}
+user=${uid}
 
 pb=/var/portbuild
 rsync_gzip=-z
@@ -95,13 +114,13 @@ use_jail=1
 use_md_swap=1
 use_zfs=0
 EOF
+  chown -R ${uid}:${gid} ${conf} || exit 1
+  chmod 664 ${conf} || exit 1
 fi
-chown -R ports-${arch}:portmgr ${conf} || exit 1
-chmod 664 ${conf} || exit 1
 
 qm=${pbc}/qmanager/qmanager.py
 if [ ! -x $qm ]; then
-  echo "you need to install qmanager under /var/portbuild/qmanager/ and re-run this script."
+  echo "you need to install qmanager under ${pbc}/qmanager/ and re-run this script."
   exit 1
 else
   running=`ps ax | grep -v grep | grep $qm`
@@ -110,7 +129,7 @@ else
     exit 1
   else
     echo "adding ${arch} to qmanager ..."
-    python ${pbc}/qmanager/qclient add_acl name=ports-${arch} uidlist=ports-${arch} gidlist=portmgr sense=1
+    python ${pbc}/qmanager/qclient add_acl name=ports-${arch} uidlist=${uid} gidlist=${gid} sense=1
     echo "... done."
   fi
 fi
