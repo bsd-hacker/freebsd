@@ -32,8 +32,15 @@ finish() {
 begin=$(date +%s)
 echo "Started at $(date)"
 
-# We need to preserve group writability so portmgr group can write
+# We need to preserve group writability
 umask 002
+
+uid=${PORTBUILD_USER}
+if [ ! -z "${PORTBUILD_GROUP}" ]; then
+    gid=${PORTBUILD_GROUP}
+else
+    gid=${uid}
+fi
 
 # create /a/snap if not already there
 if [ ! -d ${base} ]; then
@@ -41,7 +48,7 @@ if [ ! -d ${base} ]; then
   mkdir -p ${base} || finish 1
   echo "zfs create -o mountpoint=${base} ${zbase}"
   zfs create -o mountpoint=${base} ${zbase} || finish 1
-  chown -R portmgr:portmgr ${base}
+  chown -R ${uid}:${gid} ${base}
   chmod -R g+w ${base}
 fi
 
@@ -53,7 +60,7 @@ for branch in $SRC_BRANCHES; do
     mkdir ${mountpoint} || finish 1
     echo "zfs create -o mountpoint=${mountpoint} ${zbase_prefix}${branch}"
     zfs create -o mountpoint=${mountpoint} ${zbase_prefix}${branch} || finish 1
-    chown -R portmgr:portmgr ${mountpoint}
+    chown -R ${uid}:${gid} ${mountpoint}
     chmod -R g+w ${mountpoint}
   fi
   # create /a/snap/src-<branch>/src if not already there
@@ -62,7 +69,7 @@ for branch in $SRC_BRANCHES; do
     mkdir ${mountpoint}/src || finish 1
     echo "zfs create -o mountpoint=${mountpoint}/src ${zbase_prefix}${branch}/src"
     zfs create -o mountpoint=${mountpoint}/src ${zbase_prefix}${branch}/src || finish 1
-    chown -R portmgr:portmgr ${mountpoint}/src
+    chown -R ${uid}:${gid} ${mountpoint}/src
     chmod -R g+w ${mountpoint}/src
   fi
   cd ${mountpoint}
@@ -88,7 +95,7 @@ for branch in $SRC_BRANCHES; do
     fi
     echo ${fulldate} > src/.updated
     # hack for zfs breakiness
-    find . -group wheel|xargs chgrp portmgr
+    find . -group wheel | xargs chgrp ${gid}
     snapdate=$(stamp ${fulldate})
     if [ $VERBOSE ]; then
       echo "zfs snapshot ${zbase_prefix}${branch}/src@${snapdate}"

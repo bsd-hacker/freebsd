@@ -58,13 +58,17 @@ def process(cmd, sockfile):
 
 config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
 BUILDPROXY_SOCKET_FILE = config.get( 'BUILDPROXY_SOCKET_FILE' )
+PORTBUILD_GROUP = config.get( 'PORTBUILD_GROUP' )
 
 if os.path.exists(BUILDPROXY_SOCKET_FILE):
     os.unlink(BUILDPROXY_SOCKET_FILE)
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.bind(BUILDPROXY_SOCKET_FILE)
-os.chmod(BUILDPROXY_SOCKET_FILE, 0660)
-os.chown(BUILDPROXY_SOCKET_FILE, -1, getgidbyname('portmgr'))
+if not PORTBUILD_GROUP:
+    os.chmod(BUILDPROXY_SOCKET_FILE, 0600)
+else:
+    os.chmod(BUILDPROXY_SOCKET_FILE, 0660)
+    os.chown(BUILDPROXY_SOCKET_FILE, -1, getgidbyname(PORTBUILD_GROUP))
 
 s.listen(10)
 

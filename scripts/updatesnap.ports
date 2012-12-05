@@ -32,8 +32,15 @@ finish() {
 begin=$(date +%s)
 echo "Started at $(date)"
 
-# We need to preserve group writability so portmgr group can write
+# We need to preserve group writability
 umask 002
+
+uid=${PORTBUILD_USER}
+if [ ! -z "${PORTBUILD_GROUP}" ]; then
+    gid=${PORTBUILD_GROUP}
+else
+    gid=${uid}
+fi
 
 # create /a/snap/ if not already there
 if [ ! -d ${base} ]; then
@@ -41,7 +48,7 @@ if [ ! -d ${base} ]; then
   mkdir -p ${base} || finish 1
   echo "zfs create -o mountpoint=${base} ${zbase}"
   zfs create -o mountpoint=${base} ${zbase} || finish 1
-  chown -R portmgr:portmgr ${base}
+  chown -R ${uid}:${gid} ${base}
   chmod -R g+w ${base}
 fi
 
@@ -51,7 +58,7 @@ if [ ! -d ${head} ]; then
   mkdir ${head} || finish 1
   echo "zfs create -o mountpoint=${head} ${zhead}"
   zfs create -o mountpoint=${head} ${zhead} || finish 1
-  chown -R portmgr:portmgr ${head}
+  chown -R ${uid}:${gid} ${head}
   chmod -R g+w ${head}
 fi
 
@@ -61,7 +68,7 @@ if [ ! -d ${head}/ports ]; then
   mkdir ${head}/ports || finish 1
   echo "zfs create -o mountpoint=${head}/ports ${zhead}/ports"
   zfs create -o mountpoint=${head}/ports ${zhead}/ports || finish 1
-  chown -R portmgr:portmgr ${head}/ports
+  chown -R ${uid}:${gid} ${head}/ports
   chmod -R g+w ${head}/ports
 fi
 
@@ -80,7 +87,7 @@ else
 fi
 echo ${fulldate} > ports/.updated
 # hack for zfs breakiness
-find . -group wheel|xargs chgrp portmgr
+find . -group wheel | xargs chgrp ${gid}
 snapdate=$(stamp ${fulldate})
 if [ $VERBOSE ]; then
   echo "zfs snapshot ${zhead}/ports@${snapdate}"
