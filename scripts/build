@@ -53,20 +53,20 @@ do_create() {
     shift 3
 
     # exit if arch-specific directory does not already exist or is
-    # not manageable by ports-<arch>:portmgr.
+    # not manageable by uid:gid.
     archdir=${pbd}/${arch}
     if [ ! -d ${archdir} ]; then
-        echo "${archdir} must exist and be owned by ports-${arch}:portmgr mode 77x."
+        echo "${archdir} must exist and be owned by ${uid}:${gid} mode 77x."
         exit 1
     fi
-    chown -R ports-${arch}:portmgr ${archdir} || exit 1
+    chown -R ${uid}:${gid} ${archdir} || exit 1
     chmod 775 ${archdir} || exit 1
 
     # create zfs instance for arch if it does not already exist
     archfs=${ZFS_VOLUME}/portbuild/${arch}
     if ! test_fs "${archfs}"; then
       zfs create -o mountpoint=${archdir} ${archfs} || exit 1
-      chown -R ports-${arch}:portmgr ${archdir}
+      chown -R ${uid}:${gid} ${archdir}
       chmod -R g+w ${archdir}
     fi
 
@@ -74,7 +74,7 @@ do_create() {
     sshdir=${pbd}/${arch}/.ssh
     if [ ! -d ${sshdir} ]; then
 	mkdir -p ${sshdir} || exit 1
-	chown -R ports-${arch}:portmgr ${sshdir}
+	chown -R ${uid}:${gid} ${sshdir}
 	chmod 700 ${sshdir}
     fi
 
@@ -82,7 +82,7 @@ do_create() {
     archivedir=${pbd}/${arch}/archive
     if [ ! -d ${archivedir} ]; then
 	mkdir -p ${archivedir} || exit 1
-	chown -R ports-${arch}:portmgr ${archivedir}
+	chown -R ${uid}:${gid} ${archivedir}
 	chmod -R g+w ${archivedir}
     fi
 
@@ -90,7 +90,7 @@ do_create() {
     buildlogsdir=${archivedir}/buildlogs
     if [ ! -d ${buildlogsdir} ]; then
 	mkdir -p ${buildlogsdir} || exit 1
-	chown -R ports-${arch}:portmgr ${buildlogsdir}
+	chown -R ${uid}:${gid} ${buildlogsdir}
 	chmod -R g+w ${buildlogsdir}
     fi
 
@@ -98,7 +98,7 @@ do_create() {
     errorlogsdir=${archivedir}/errorlogs
     if [ ! -d ${errorlogsdir} ]; then
 	mkdir -p ${errorlogsdir} || exit 1
-	chown -R ports-${arch}:portmgr ${errorlogsdir}
+	chown -R ${uid}:${gid} ${errorlogsdir}
 	chmod -R g+w ${errorlogsdir}
     fi
 
@@ -106,7 +106,7 @@ do_create() {
     buildsdir=${pbab}/builds
     if [ ! -d ${buildsdir} ]; then
 	mkdir -p ${buildsdir} || exit 1
-	chown -R ports-${arch}:portmgr ${pbab}
+	chown -R ${uid}:${gid} ${pbab}
 	chmod -R g+w ${pbab}
     fi
 
@@ -121,7 +121,7 @@ do_create() {
     mountpoint=${builddir}
     newfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}
     zfs create -o mountpoint=${mountpoint} ${newfs} || exit 1
-    chown -R ports-${arch}:portmgr ${mountpoint}
+    chown -R ${uid}:${gid} ${mountpoint}
     chmod -R g+w ${mountpoint}
 
     # populate ports for latest build on buildenv
@@ -137,7 +137,7 @@ do_create() {
     clientsdir=${pbd}/${arch}/clients
     if [ ! -d ${clientsdir} ]; then
 	mkdir -p ${clientsdir} || exit 1
-	chown -R ports-${arch}:portmgr ${clientsdir}
+	chown -R ${uid}:${gid} ${clientsdir}
 	chmod -R g+w ${clientsdir}
     fi
 
@@ -145,7 +145,7 @@ do_create() {
     loadsdir=${pbd}/${arch}/loads
     if [ ! -d ${loadsdir} ]; then
 	mkdir -p ${loadsdir} || exit 1
-	chown -R ports-${arch}:portmgr ${loadsdir}
+	chown -R ${uid}:${gid} ${loadsdir}
 	chmod -R g+w ${loadsdir}
     fi
 
@@ -153,7 +153,7 @@ do_create() {
     mlist=${pbd}/${arch}/mlist
     if [ ! -d ${mlist} ]; then
 	touch ${mlist} || exit 1
-	chown -R ports-${arch}:portmgr ${mlist}
+	chown -R ${uid}:${gid} ${mlist}
 	chmod -R g+w ${mlist}
     fi
 
@@ -521,7 +521,7 @@ proxy_root() {
     exit ${error}
 }
 
-# Run a command as the ports-${arch} user if root
+# Run a command as the ${uid} user if root
 proxy_user() {
     cmd=$1
     arch=$2
@@ -536,7 +536,7 @@ proxy_user() {
 	eval "do_${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
 	error=$?
     else
-	su ports-${arch} -c "${pbc}/scripts/build ${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
+	su ${uid} -c "${pbc}/scripts/build ${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
 	error=$?
     fi
 
@@ -566,6 +566,13 @@ shift 3
 pbab=${pbd}/${arch}/${branch}
 
 validate_env ${arch} ${branch} || exit 1
+
+uid=ports-${arch}
+if [ ! -z "${PORTBUILD_GROUP}" ]; then
+    gid=${PORTBUILD_GROUP}
+else
+    gid=${uid}
+fi
 
 # Not every command requires a buildid as arg
 if [ $# -ge 1 ]; then
