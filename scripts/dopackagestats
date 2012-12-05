@@ -337,8 +337,8 @@ write_header
 #     (i.e. where build = branch, e.g. "7", "10")
 for arch in ${SUPPORTED_ARCHS}; do
 
-  cd ${pbd}/${arch}
-  builds=`ls | \
+  builds=`cd ${pbd}/${arch} 2> /dev/null && \
+    ls 2> /dev/null | \
     grep "${SRC_BRANCHES_PATTERN}$" | \
     sort -n`
   if [ ! -z "$builds" ]; then
@@ -357,8 +357,8 @@ done
 #   examples: 8.1; 8-exp; 8-exp-gettext; 8.1R
 for arch in ${SUPPORTED_ARCHS}; do
 
-  cd ${pbd}/${arch}
-  branches=`ls | \
+  branches=`cd ${pbd}/${arch} 2> /dev/null && \
+    ls 2> /dev/null | \
     grep "${SRC_BRANCHES_PATTERN}[-\.]" | \
     sed -e "s@[-\.].*@@" | \
     uniq | \
