@@ -296,17 +296,20 @@ logging.getLogger('').addHandler(log_console)
 
 while True:
     for arch in arches:
+        now = set()
         try:
             now = mlist[arch]
         except KeyError:
             mlistfile="%s/%s/mlist" % (pbd, arch)
             try:
                 f = file(mlistfile, "r")
+                now=set(mach.rstrip() for mach in f.readlines())
+                try:
+                    f.close()
+                except:
+                    pass
             except OSError, error:
-                raise
-
-            now=set(mach.rstrip() for mach in f.readlines())
-            f.close()
+                print "pollmachine: could not find %s, skipping" % mlistfile
 
         gone = machines[arch].difference(now)
         new = now.difference(machines[arch])
