@@ -41,13 +41,27 @@ if [ ${id} -ne 0 ]; then
   exit 1
 fi
 
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+
+. ${pbc}/conf/server.conf
+
 # XXX MCL turn off due to 9.0R not having kickstart.  ARGH!
 #export WITH_PKGNG=yes
 
 WHERETO=${ARCH_PACKAGES}/${TARGET}/${BRANCH}
 
+# We need to preserve group writability
+umask 002
+
+uid=ports-${TARGET}
+if [ ! -z "${PORTBUILD_GROUP}" ]; then
+    gid=${PORTBUILD_GROUP}
+else
+    gid=${uid}
+fi
+
 mkdir -p ${WHERETO} || exit 1
-chown ports-${TARGET}:portmgr ${WHERETO} || exit 1
+chown ${uid}:${gid} ${WHERETO} || exit 1
 cd ${WHERETO} || exit 1
 
 # XXX MCL FRUSTRATED
