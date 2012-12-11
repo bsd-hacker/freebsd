@@ -344,7 +344,7 @@ kern_accept(struct thread *td, int s, struct sockaddr **name,
 	struct filedesc *fdp;
 	struct file *headfp, *nfp = NULL;
 	struct sockaddr *sa = NULL;
-	int error;
+	int error, more;
 	struct socket *head, *so;
 	int fd;
 	u_int fflag;
@@ -375,6 +375,7 @@ kern_accept(struct thread *td, int s, struct sockaddr **name,
 	error = falloc(td, &nfp, &fd, 0);
 	if (error)
 		goto done;
+again:
 	ACCEPT_LOCK();
 	if ((head->so_state & SS_NBIO) && TAILQ_EMPTY(&head->so_comp)) {
 		ACCEPT_UNLOCK();
@@ -418,6 +419,7 @@ kern_accept(struct thread *td, int s, struct sockaddr **name,
 	so->so_head = NULL;
 
 	SOCK_UNLOCK(so);
+	more = !TAILQ_EMPTY(&head->so_comp);
 	ACCEPT_UNLOCK();
 
 	/* An extra reference on `nfp' has been held for us by falloc(). */
@@ -445,6 +447,18 @@ kern_accept(struct thread *td, int s, struct sockaddr **name,
 		 */
 		if (name)
 			*namelen = 0;
+
+		/*
+		 * If we have more sockets waiting in the accept
+		 * queue try the next one.  No need to return an
+		 * error and do a round-trip to usespace.
+		 */
+		if (more) {
+			SOCK_LOCK(so);
+			soclose(so);
+			goto again;
+		}
+
 		goto noconnection;
 	}
 	if (sa == NULL) {
