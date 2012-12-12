@@ -81,9 +81,9 @@ if [ ! -d ${head}/ports/${VCS_SUBDIR} ]; then
   ${VCS_CHECKOUT_COMMAND} ${VCS_PORTS_REPOSITORY}/head ${head}/ports || finish 1
 else
   if [ $VERBOSE ]; then
-    echo "${VCS_UPDATE_COMMAND} ${head}/ports"
+    echo "${VCS_OVERWRITE_COMMAND} ${head}/ports"
   fi
-  ${VCS_UPDATE_COMMAND} ${head}/ports || finish 1
+  ${VCS_OVERWRITE_COMMAND} ${head}/ports || finish 1
 fi
 echo ${fulldate} > ports/.updated
 # hack for zfs breakiness
