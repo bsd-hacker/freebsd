@@ -18,7 +18,7 @@ TERM=xterm
 50 5 * * * lockf -t 0 -k /var/run/busybusybusy.lock find /var/portbuild/*/archive/ -name \*.log -mtime +7 | xargs bzip2 -9f
 #
 # Clean up old chroots on client machines
-30 * * * * /var/portbuild/scripts/do-cleanup-chroots
+30 * * * * /var/portbuild/scripts/do-cleanup-chroots all
 
 # Backup ZFS filesystems
 # XXX MCL script not yet converted
