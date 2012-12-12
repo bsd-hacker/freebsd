@@ -81,6 +81,14 @@ if [ ! -d ${sshdir} ]; then
   chmod 700 ${sshdir} || exit 1
 fi
 
+lockfiles=${archdir}/lockfiles
+if [ ! -d ${lockfiles} ]; then
+  echo "The ${lockfiles} directory does not exist.  I'll create it for you."
+  mkdir -p ${lockfiles} || exit 1
+  chown -R ${uid}:${gid} ${lockfiles} || exit 1
+  chmod -R g+w ${lockfiles} || exit 1
+fi
+
 mlist=${archdir}/mlist
 if [ ! -e ${mlist} ]; then
   echo "${mlist} does not exist.  I'll create an empty one."
