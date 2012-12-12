@@ -157,8 +157,16 @@ do_create() {
 	chmod -R g+w ${mlist}
     fi
 
-    # create the links for the webserver under ../errorlogs/
+    # create the links for the webserver under ../errorlogs/.  Note
+    # non ports-<arch> ownership of this directory!
     errorlogs=${pbd}/errorlogs
+    portbuild_uid=${PORTBUILD_USER}
+    if [ ! -d ${errorlogs} ]; then
+        echo "${errorlogs} must exist and be owned by ${portbuild_uid}:${gid} mode 77x."
+        exit 1
+    fi
+    chown -R ${portbuild_uid}:${gid} ${errorlogs} || exit 1
+    chmod 775 ${errorlogs} || exit 1
 
     ln -s ${buildsdir}/latest/bak/errors ${errorlogs}/${arch}-${branch}-previous
     ln -s ${buildsdir}/latest/bak/logs ${errorlogs}/${arch}-${branch}-previous-logs
