@@ -134,7 +134,7 @@ do_create() {
     ln -sf ${builddir} ${pbab}/builds/latest
 
     # create clients/ directory if it does not already exist 
-    clientsdir=${pbd}/${arch}/clients
+    clientsdir=${pbab}/clients
     if [ ! -d ${clientsdir} ]; then
 	mkdir -p ${clientsdir} || exit 1
 	chown -R ${uid}:${gid} ${clientsdir}
@@ -142,15 +142,23 @@ do_create() {
     fi
 
     # create loads/ directory if it does not already exist 
-    loadsdir=${pbd}/${arch}/loads
+    loadsdir=${pbab}/loads
     if [ ! -d ${loadsdir} ]; then
 	mkdir -p ${loadsdir} || exit 1
 	chown -R ${uid}:${gid} ${loadsdir}
 	chmod -R g+w ${loadsdir}
     fi
 
+    # create lockfiles/ directory if it does not already exist 
+    lockfiles=${pbab}/lockfiles
+    if [ ! -d ${lockfiles} ]; then
+        mkdir -p ${lockfiles} || exit 1
+        chown -R ${uid}:${gid} ${lockfiles}
+        chmod -R g+w ${lockfiles}
+    fi
+
     # create empty mlist file if it does not already exist 
-    mlist=${pbd}/${arch}/mlist
+    mlist=${pbab}/mlist
     if [ ! -d ${mlist} ]; then
 	touch ${mlist} || exit 1
 	chown -R ${uid}:${gid} ${mlist}
