@@ -126,7 +126,7 @@ EOF
   chmod 664 ${conf} || exit 1
 fi
 
-qm=${pbc}/qmanager/qmanager.py
+qm=qmanager.py
 if [ ! -x $qm ]; then
   echo "you need to install qmanager under ${pbc}/qmanager/ and re-run this script."
   exit 1
