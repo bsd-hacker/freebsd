@@ -127,7 +127,7 @@ EOF
 fi
 
 qm=qmanager.py
-if [ ! -x $qm ]; then
+if [ ! -x ${pbc}/qmanager/$qm ]; then
   echo "you need to install qmanager under ${pbc}/qmanager/ and re-run this script."
   exit 1
 else
