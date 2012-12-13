@@ -9,6 +9,8 @@
 pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
 pbd=${PORTBUILD_DATA:-/var/portbuild}
 
+#VERBOSE=1
+
 arch=$1
 branch=$2
 buildid=$3
@@ -100,7 +102,9 @@ case "${chrootdata}" in
 	;;
 esac
 
-# echo "Got ${chrootdata} from ${host}"
+if [ $VERBOSE ]; then
+    echo "Got ${chrootdata} from ${host}"
+fi
 
 set -- ${chrootdata}
 if [ $# -ge 2 ]; then
