@@ -8,6 +8,8 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pbc}/scripts
 
+QMANAGER=qmanager.py
+
 test_fs() {
   local fs=$1
 
@@ -45,7 +47,11 @@ if [ $valid_arch = 0 ]; then
     exit 1
 fi
 
-uid=ports-${arch}
+if [ ! -z "${PORTBUILD_USER}" ]; then
+    uid=${PORTBUILD_USER}
+else
+    uid=ports-${arch}
+fi
 if [ ! -z "${PORTBUILD_GROUP}" ]; then
     gid=${PORTBUILD_GROUP}
 else
@@ -126,18 +132,17 @@ EOF
   chmod 664 ${conf} || exit 1
 fi
 
-qm=qmanager.py
-if [ ! -x ${pbc}/qmanager/$qm ]; then
-  echo "you need to install qmanager under ${pbc}/qmanager/ and re-run this script."
+if [ ! -x ${pbc}/qmanager/${QMANAGER} ]; then
+  echo "you need to install ${QMANAGER} under ${pbc}/qmanager/ and re-run this script."
   exit 1
 else
   running=`ps ax | grep -v grep | grep $qm`
   if [ -z "${running}" ]; then
-    echo "qmanager is not running.  run /usr/local/etc/rc.d/qmanager.sh and re-run this script."
+    echo "${QMANAGER} is not running.  run /usr/local/etc/rc.d/qmanager.sh and re-run this script."
     exit 1
   else
     echo "adding ${arch} to qmanager ..."
-    python ${pbc}/qmanager/qclient add_acl name=ports-${arch} uidlist=${uid} gidlist=${gid} sense=1
+    python ${pbc}/qmanager/qclient add_acl name=${uid} uidlist=${uid} gidlist=${gid} sense=1
     echo "... done."
   fi
 fi
