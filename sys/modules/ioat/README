@@ -1,0 +1,34 @@
+FreeBSD Crystal Beach DMA driver
+==========================================
+* Driver is named ioat(4)
+* Driver only supports copy and null operations.  Null operations may be used
+   to insert descriptors which only trigger an interrupt.
+* Note that copy operation takes bus addresses as parameters, not virtual
+   addresses.
+* Copies larger than max transfer size (1MB) are not supported, and will
+   panic the system explicitly.  Future versions will likely support this by
+   breaking up the transfer into smaller sizes.
+* There are 8 CB-DMA channels per CPU package.  Each channel will be
+   represented by a struct ioat_softc data structure.  
+* There is an ioat_test.c module in the driver, and an ioatcontrol.c
+   application that can be used to both test the driver as well as understand
+   how to interface with the driver.  App uses a /dev/ioat_test device node
+   to send IOCTLs which will cause the driver to:
+	* run a loop a number of times as requested by the app
+	* each loop will allocate two chunks of memory, write data patterns
+	   to each, submit a DMA request to copy one buffer to the other,
+	   and compare the contents in the callback, reporting an error if one
+	   is found
+   The ioat_test.c module needs to be enabled in the driver Makefile to use it.
+   To build the app from /sys/modules/ioat directory:  make ioatcontrol
+   To run the app:  ./ioatcontrol <channel #> <num_loops>
+* Debug prints are enabled by defining IOAT_LOGGING, which is currently the
+   default in the Makefile.  Verbosity is 0 by default (only critical errors)
+   but can be increased by doing one of the following:
+	* from command line, before driver is loaded:
+		kenv hw.ioat.debug_level=3
+	* add the following to /boot/loader.conf
+		hw.ioat.debug_level=3
+
+
+
