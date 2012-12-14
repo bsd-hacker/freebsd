@@ -5,6 +5,17 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 . ${pbc}/conf/server.conf
 
+if [ ! -z "${PORTBUILD_USER}" ]; then
+    uid=${PORTBUILD_USER}
+else
+    uid=ports-${arch}
+fi
+if [ ! -z "${PORTBUILD_GROUP}" ]; then
+    gid=${PORTBUILD_GROUP}
+else
+    gid=${uid}
+fi
+
 doarch() {
     arch=$1
     shift
@@ -31,29 +42,26 @@ doarch() {
 	    # If we need to scp first, the command given in the parameters is the local
 	    # path, which we need to upload first. The command will return the remote
 	    # temporary file, which we can subsequently execute. So this isn't really scp.
-	    cmdpath=$(su ports-${arch} -c "cat ${cmd} | ${ssh_cmd} ${client_user}@$i 't=\$(mktemp -t ${cmd##*/}); cat >\$t; echo \$t; chmod 755 \$t'")
+	    cmdpath=$(su ${uid} -c "cat ${cmd} | ${ssh_cmd} ${client_user}@$i 't=\$(mktemp -t ${cmd##*/}); cat >\$t; echo \$t; chmod 755 \$t'")
 	    case ${cmdpath} in /tmp/*) ;; *) echo "Failed to scp ${cmd} to $i."; return 1;; esac
 	fi
-	lockf -t 60 ${pbd}/${arch}/lockfiles/lock.$i su ports-${arch} -c "${ssh_cmd} ${client_user}@$i ${sudo_cmd} ${cmdpath} $@"
+	lockf -t 60 ${pbd}/${arch}/lockfiles/lock.$i su ${uid} -c "${ssh_cmd} ${client_user}@$i ${sudo_cmd} ${cmdpath} $@"
 	result=$?
 	if [ $result -ne 0 ]; then
 	    echo "could not execute command ${cmdpath} $@ on $i: $result"
 	fi
 	if [ ${scpfirst} -ne 0 ]; then
-	    su ports-${arch} -c "${ssh_cmd} ${client_user}@$i 'rm -f ${cmdpath}'"
+	    su ${uid} -c "${ssh_cmd} ${client_user}@$i 'rm -f ${cmdpath}'"
 	fi
     done
 }
 
-id=$(whoami)
-if [ "${id}" = "root" ]; then
-	arch=$1
-	shift
-	root=1
-else
-	arch=$(echo $id | sed s,ports-,,)
-	root=0
+arch=$1
+if [ -z "${arch}" ]; then
+	echo "usage: $0 <arch> [-q] [-scp]"
+	exit 1
 fi
+shift
 
 # XXX - Have to convert this to getopt().
 if [ "$1" = "-q" ]; then
