@@ -166,7 +166,7 @@ do_create() {
     fi
 
     # create the links for the webserver under ../errorlogs/.  Note
-    # non ports-<arch> ownership of this directory!
+    # possibly different ownership of this directory!
     errorlogs=${pbd}/errorlogs
     portbuild_uid=${PORTBUILD_USER}
     if [ ! -d ${errorlogs} ]; then
@@ -583,7 +583,11 @@ pbab=${pbd}/${arch}/${branch}
 
 validate_env ${arch} ${branch} || exit 1
 
-uid=ports-${arch}
+if [ ! -z "${PORTBUILD_USER}" ]; then
+    uid=${PORTBUILD_USER}
+else
+    uid=ports-${arch}
+fi
 if [ ! -z "${PORTBUILD_GROUP}" ]; then
     gid=${PORTBUILD_GROUP}
 else

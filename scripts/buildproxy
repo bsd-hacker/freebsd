@@ -25,7 +25,7 @@ def validate(uid, arch):
     if uid == 0:
         return True
 
-    if getuidbyname("ports-%s" % arch) == uid:
+    if getuidbyname(portbuild_uid) == uid:
         return True
 
     return False
@@ -58,17 +58,24 @@ def process(cmd, sockfile):
 
 config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
 BUILDPROXY_SOCKET_FILE = config.get( 'BUILDPROXY_SOCKET_FILE' )
+PORTBUILD_USER = config.get( 'PORTBUILD_USER' )
 PORTBUILD_GROUP = config.get( 'PORTBUILD_GROUP' )
+
+portbuild_uid = PORTBUILD_USER
+if not portbuild_uid:
+    portbuild_uid = "ports-" + arch
 
 if os.path.exists(BUILDPROXY_SOCKET_FILE):
     os.unlink(BUILDPROXY_SOCKET_FILE)
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.bind(BUILDPROXY_SOCKET_FILE)
-if not PORTBUILD_GROUP:
-    os.chmod(BUILDPROXY_SOCKET_FILE, 0600)
-else:
-    os.chmod(BUILDPROXY_SOCKET_FILE, 0660)
-    os.chown(BUILDPROXY_SOCKET_FILE, -1, getgidbyname(PORTBUILD_GROUP))
+os.chmod(BUILDPROXY_SOCKET_FILE, 0600)
+if PORTBUILD_USER:
+    if PORTBUILD_GROUP:
+        os.chown(BUILDPROXY_SOCKET_FILE, getuidbyname(PORTBUILD_USER), getgidbyname(PORTBUILD_GROUP))
+        os.chmod(BUILDPROXY_SOCKET_FILE, 0660)
+    else:
+        os.chown(BUILDPROXY_SOCKET_FILE, getuidbyname(PORTBUILD_USER), -1)
 
 s.listen(10)
 
