@@ -115,8 +115,13 @@ make ${COMMON_ENV} distribution || exit 1
 echo "make distribution: finished."
 echo
 
-mkdir -p ${DESTDIR}/usr2 || exit 1
-mkdir -p ${DESTDIR}/usr3 || exit 1
+# XXX MCL must be some way to decrease the hard-coding here
+mkdir -p ${DESTDIR}/usr2/portbuild || exit 1
+mkdir -p ${DESTDIR}/usr2/squid || exit 1
+# best choice for 1 spindle
+mkdir -p ${DESTDIR}/usr2/pkgbuild || exit 1
+# best choice for 2 spindles
+mkdir -p ${DESTDIR}/usr3/pkgbuild || exit 1
 
 cp /dev/null ${LOGFILE}
 
