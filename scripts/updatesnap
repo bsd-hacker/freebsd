@@ -32,9 +32,6 @@ finish() {
 begin=$(date +%s)
 echo "Started at $(date)"
 
-# We need to preserve group writability
-umask 002
-
 uid=${PORTBUILD_USER}
 if [ ! -z "${PORTBUILD_GROUP}" ]; then
     gid=${PORTBUILD_GROUP}
@@ -93,7 +90,6 @@ for branch in $SRC_BRANCHES; do
       fi
       ${VCS_OVERWRITE_COMMAND} ${mountpoint}/src || finish 1
     fi
-    echo ${fulldate} > src/.updated
     # hack for zfs breakiness
     find . -group wheel | xargs chgrp ${gid}
     snapdate=$(stamp ${fulldate})
@@ -101,6 +97,7 @@ for branch in $SRC_BRANCHES; do
       echo "zfs snapshot ${zbase_prefix}${branch}/src@${snapdate}"
     fi
     zfs snapshot ${zbase_prefix}${branch}/src@${snapdate} || finish 1
+    echo ${fulldate} > src/.updated
 done
 
 finish 0
