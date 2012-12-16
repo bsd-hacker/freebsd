@@ -9,9 +9,6 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pbc}/scripts
 
-# make writable by group
-umask 002
-
 journalname="journal"
 
 usage () {
@@ -480,11 +477,11 @@ if [ "$skipstart" = 0 ]; then
 	    echo "updating ${PORTSDIR} from ${VCS}"
 	    echo "================================================"
 	    cd ${PORTSDIR}
-	    updated=$(date '+%Y/%m/%d %H:%M')
-	    echo ${updated} > ${builddir}/ports/.updated
 	    # XXX MCL 20121120 not yet tested.
 	    ${VCS_UPDATE_COMMAND} ${builddir}/ports || mailexit 1
 	    # XXX Check for conflicts
+	    updated=$(date '+%Y/%m/%d %H:%M')
+	    echo ${updated} > ${builddir}/ports/.updated
 	else
 	    # echo "XXX at build portsupdate portsupdate ${arch} ${branch} ${buildid} $@ "
 	    build portsupdate ${arch} ${branch} ${buildid} $@ 
@@ -700,7 +697,7 @@ if [ "$nobuild" = 0 ]; then
     fi
 
     # Compile ptimeout.
-    /usr/bin/gcc -o ${builddir}/ptimeout -Wall ${pbc}/sources/ptimeout.c
+    /usr/bin/cc -o ${builddir}/ptimeout -Wall ${pbc}/sources/ptimeout.c
     
     dobuild ${pbc} ${arch} ${branch} ${builddir}
     
