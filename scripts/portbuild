@@ -328,7 +328,9 @@ if [ ! -f /tmp/${buildid}/sources/pnohang ]; then
   if [ $? -ne 0 ]; then
     error=255
   else
-    chown ports-${arch} ${chroot}/pnohang
+    # XXX MCL 20121214 as a test, just delete this and add a chmod
+    # chown ports-${arch} ${chroot}/pnohang
+    chmod 555 ${chroot}/pnohang
     cp -p ${chroot}/pnohang /tmp/${buildid}/sources/
   fi
 else
