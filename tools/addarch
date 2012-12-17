@@ -136,7 +136,7 @@ if [ ! -x ${pbc}/qmanager/${QMANAGER} ]; then
   echo "you need to install ${QMANAGER} under ${pbc}/qmanager/ and re-run this script."
   exit 1
 else
-  running=`ps ax | grep -v grep | grep $qm`
+  running=`ps ax | grep -v grep | grep ${QMANAGER}`
   if [ -z "${running}" ]; then
     echo "${QMANAGER} is not running.  run /usr/local/etc/rc.d/qmanager.sh and re-run this script."
     exit 1
