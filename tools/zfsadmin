@@ -1,0 +1,41 @@
+#!/bin/sh
+
+# server-side script to setup delegated zfs administration.  Should be run as root.
+
+# configurable variables
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pbc}/scripts
+
+if [ `id -u` != 0 ]; then
+    echo "$0 must be run as root."
+    exit 1
+fi
+if [ ! -e ${pbc}/conf/server.conf ] ; then
+    echo "You must first create ${pbc}/conf/server.conf."
+    exit 1
+fi
+. ${pbc}/conf/server.conf
+
+if [ -z "${ZFS_VOLUME}" ]; then
+    echo "You must define ZFS_VOLUME in ${pbc}/conf/server.conf."
+    exit 1
+fi
+if [ -z "${ZFS_PERMISSIONSET}" ]; then
+    echo "You must define ZFS_PERMISSIONSET in ${pbc}/conf/server.conf."
+    exit 1
+fi
+if [ -z "${PORTBUILD_USER}" ]; then
+    echo "You must define PORTBUILD_USER in ${pbc}/conf/server.conf."
+    exit 1
+fi
+
+# create the "zfsadmin" permission set.
+zfs allow -s @zfsadmin ${ZFS_PERMISSIONSET} ${ZFS_VOLUME}
+
+# delegate the "zfsadmin" permission set to the PORTBUILD_USER.
+zfs allow -u ${PORTBUILD_USER} @zfsadmin ${ZFS_VOLUME}
+
+echo "result of operation:"
+zfs allow ${ZFS_VOLUME}
