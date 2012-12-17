@@ -78,14 +78,14 @@ if ! test_fs "${archfs}"; then
   chmod -R g+w ${archdir} || exit 1
 fi
 
-# create .ssh/ directory if it does not already exist.  (duplicates 'build')
-sshdir=${archdir}/.ssh
-if [ ! -d ${sshdir} ]; then
-  echo "The ${sshdir} directory does not exist.  I'll create it for you, but you will need to populate it."
-  mkdir -p ${sshdir} || exit 1
-  chown -R ${uid}:${gid} ${sshdir} || exit 1
-  chmod 700 ${sshdir} || exit 1
-fi
+## create .ssh/ directory if it does not already exist.  (duplicates 'build')
+#sshdir=${archdir}/.ssh
+#if [ ! -d ${sshdir} ]; then
+#  echo "The ${sshdir} directory does not exist.  I'll create it for you, but you will need to populate it."
+#  mkdir -p ${sshdir} || exit 1
+#  chown -R ${uid}:${gid} ${sshdir} || exit 1
+#  chmod 700 ${sshdir} || exit 1
+#fi
 
 lockfiles=${archdir}/lockfiles
 if [ ! -d ${lockfiles} ]; then
