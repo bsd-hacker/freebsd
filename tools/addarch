@@ -142,7 +142,7 @@ else
     exit 1
   else
     echo "adding ${arch} to qmanager ..."
-    python ${pbc}/qmanager/qclient add_acl name=${uid} uidlist=${uid} gidlist=${gid} sense=1
+    python ${pbc}/qmanager/qclient add_acl name=ports-${arch} uidlist=${uid} gidlist=${gid} sense=1
     echo "... done."
   fi
 fi
