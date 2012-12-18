@@ -6,8 +6,6 @@
 pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
 pbd=${PORTBUILD_DATA:-/var/portbuild}
 
-PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pbc}/scripts
-
 if [ `id -u` != 0 ]; then
     echo "$0 must be run as root."
     exit 1
@@ -31,11 +29,15 @@ if [ -z "${PORTBUILD_USER}" ]; then
     exit 1
 fi
 
-# create the "zfsadmin" permission set.
-zfs allow -s @zfsadmin ${ZFS_PERMISSIONSET} ${ZFS_VOLUME}
+# reset the "zfsadmin" permission set if it already exists. 
+zfs unallow -s @zfsadmin ${ZFS_VOLUME} 2> /dev/null   
+zfs unallow -u ${PORTBUILD_USER} ${ZFS_VOLUME} 2> /dev/null
 
-# delegate the "zfsadmin" permission set to the PORTBUILD_USER.
-zfs allow -u ${PORTBUILD_USER} @zfsadmin ${ZFS_VOLUME}
+# create the "zfsadmin" permission set.
+zfs allow -s @zfsadmin ${ZFS_PERMISSIONSET} ${ZFS_VOLUME} || exit 1
+
+# delegate the "zfsadmin" permission set to the PORTBUILD_USER. 
+zfs allow -u ${PORTBUILD_USER} @zfsadmin ${ZFS_VOLUME} || exit 1
 
 echo "result of operation:"
 zfs allow ${ZFS_VOLUME}
