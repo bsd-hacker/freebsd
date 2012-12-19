@@ -651,7 +651,7 @@ MAIN:{
 	    or die("$etcdir: $!\n");
     }
     for (my $n = 0; $n < @configs; ++$n) {
-	$configs[$n] =~ m/^(\w+)$/
+	$configs[$n] =~ m/^([\w-]+)$/
 	    or die("invalid config: $configs[$n]\n");
 	$configs[$n] = $1;
     }
