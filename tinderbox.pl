@@ -33,7 +33,7 @@ use Fcntl qw(:DEFAULT :flock);
 use POSIX;
 use Getopt::Long;
 
-my $VERSION	= "2.9";
+my $VERSION	= "2.10";
 my $COPYRIGHT	= "Copyright (c) 2003-2012 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
@@ -71,6 +71,7 @@ my %cmds = (
     'kernels'	=> 0,
     'install'	=> 0,
     'release'	=> 0,
+    'version'	=> 0,
 );
 my %kernels;
 my %lint;
@@ -613,10 +614,6 @@ MAIN:{
 		warning("sleeping $delay s and retrying...");
 		sleep($delay);
 	    }
-	    my $svnversioncmd = [grep({ -x } @svnversioncmds)]->[0]
-		or error("unable to locate svnversion binary");
-	    my $svnversion = `$svnversioncmd $srcdir`;
-	    message("At svn revision $svnversion");
 	} elsif (defined($cvsup)) {
 	    logstage("cvsupping the source tree");
 	    open(my $fh, ">", "$sandbox/supfile")
@@ -688,6 +685,24 @@ MAIN:{
 		or error("failed to apply patch to source tree");
 	} else {
 	    warning("$patch does not exist");
+	}
+    }
+
+    # Print source tree version information
+    if ($cmds{'version'}) {
+	if (defined($svnbase)) {
+	    my $svncmd = [grep({ -x } @svncmds)]->[0]
+		or error("unable to locate svn binary");
+	    my $svnversioncmd = [grep({ -x } @svnversioncmds)]->[0]
+		or error("unable to locate svnversion binary");
+	    if ($verbose) {
+		spawn($svncmd, "stat", $srcdir)
+		    or error("unable to stat source tree");
+	    }
+	    my $svnversion = `$svnversioncmd $srcdir`; # XXX
+	    message("At svn revision $svnversion");
+	} else {
+	    warning("the 'version' target is only supported for svn");
 	}
     }
 

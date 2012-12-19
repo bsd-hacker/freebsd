@@ -33,7 +33,7 @@ use Fcntl qw(:DEFAULT :flock);
 use POSIX;
 use Getopt::Long;
 
-my $VERSION	= "2.9";
+my $VERSION	= "2.10";
 my $COPYRIGHT	= "Copyright (c) 2003-2012 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
