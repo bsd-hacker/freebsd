@@ -33,8 +33,8 @@ use Fcntl qw(:DEFAULT :flock);
 use POSIX;
 use Getopt::Long;
 
-my $VERSION	= "2.6";
-my $COPYRIGHT	= "Copyright (c) 2003-2011 Dag-Erling Coïdan Smørgrav. " .
+my $VERSION	= "2.9";
+my $COPYRIGHT	= "Copyright (c) 2003-2012 Dag-Erling Coïdan Smørgrav. " .
 		  "All rights reserved.";
 
 my $abbreviate;			# Abbreviate path names in log file
@@ -52,15 +52,15 @@ my %INITIAL_CONFIG = (
     'COPTFLAGS'	=> '',
     'COMMENT'	=> '',
     'CVSUP'	=> '',
-    'ENV'	=> [],
+    'ENV'	=> [ ],
     'HOSTNAME'	=> '',
     'JOBS'	=> '',
     'LOGDIR'	=> '%%SANDBOX%%/logs',
     'OBJDIR'	=> '',
-    'OPTIONS'	=> [],
+    'OPTIONS'	=> [ ],
     'PATCH'	=> '',
     'PLATFORMS'	=> [ 'i386' ],
-    'RECIPIENT'	=> '',
+    'RECIPIENT'	=> [ '%%SENDER%%' ],
     'REPOSITORY'=> '',
     'SANDBOX'	=> '/tmp/tinderbox',
     'SENDER'	=> '',
@@ -111,13 +111,33 @@ sub expand($) {
 
     return "??$key??"
 	unless exists($CONFIG{uc($key)});
-    return $CONFIG{uc($key)}
-	if (ref($CONFIG{uc($key)}));
-    my $str = $CONFIG{uc($key)};
-    while ($str =~ s/\%\%(\w+)\%\%/expand($1)/eg) {
-	# nothing
+    my $value = $CONFIG{uc($key)};
+    my @elements = ref($value) ? @{$value} : $value;
+    my @expanded;
+    while (@elements) {
+	my $elem = shift(@elements);
+	if (ref($elem)) {
+	    # prepend to queue for further processing
+	    unshift(@elements, @{$elem});
+	} elsif ($elem =~ m/^\%\%(\w+)\%\%$/) {
+	    # prepend to queue for further processing
+	    # note - can expand to a list
+	    unshift(@elements, expand($1));
+	} else {
+	    $elem =~ s/\%\%(\w+)\%\%/expand($1)/eg;
+	    push(@expanded, $elem);
+	}
     }
-    return ($key =~ m/[A-Z]/) ? $str : lc($str);
+    if ($key !~ m/[A-Z]/) {
+	@expanded = map { lc($_) } @expanded;
+    }
+    if (ref($value)) {
+	return @expanded;
+    } elsif (@expanded != 1) {
+	die("expand($key): expected one value, got ", int(@expanded), "\n");
+    } else {
+	return $expanded[0];
+    }
 }
 
 #
@@ -289,7 +309,7 @@ sub tinderbox($$$) {
     }
 
     # Fork and start the tinderbox
-    my @args = @{$CONFIG{'OPTIONS'}};
+    my @args = expand('OPTIONS');
     push(@args, "--hostname=" . expand('HOSTNAME'));
     push(@args, "--sandbox=" . realpath(expand('SANDBOX')));
     push(@args, "--srcdir=" . realpath(expand('SRCDIR')))
@@ -311,8 +331,8 @@ sub tinderbox($$$) {
 	if ($CONFIG{'SVNBASE'});
     push(@args, "--timeout=" . expand('TIMEOUT'))
 	if ($CONFIG{'TIMEOUT'});
-    push(@args, @{$CONFIG{'TARGETS'}});
-    push(@args, @{$CONFIG{'ENV'}});
+    push(@args, expand('TARGETS'));
+    push(@args, expand('ENV'));
     push(@args, "CFLAGS=" . expand('CFLAGS'))
 	if ($CONFIG{'CFLAGS'});
     push(@args, "COPTFLAGS=" . expand('COPTFLAGS'))
@@ -397,10 +417,17 @@ sub tinderbox($$$) {
     # Record result in history file
     history($start, $end, !$error);
 
+    # Filter recipients
+    my @recipients = expand('RECIPIENT');
+    if (!$ENV{'MAGIC_SAUCE'} ||
+	$ENV{'MAGIC_SAUCE'} ne 'FREEBSD_TINDERBOX') {
+	@recipients = grep { ! m/\@freebsd\.org/i } @recipients;
+    }
+
     # Mail out error reports
-    if ($error && $CONFIG{'RECIPIENT'}) {
+    if ($error && @recipients) {
 	my $sender = expand('SENDER');
-	my $recipient = expand('RECIPIENT');
+	my $recipient = join(', ', @recipients);
 	my $subject = expand('SUBJECT');
 	if ($CONFIG{'URLBASE'}) {
 	    $summary .= "\n\n" . expand('URLBASE') . "$logfile.full";
@@ -512,8 +539,8 @@ sub tbmaster($) {
 
     my $stopfile = expand('SANDBOX') . "/stop";
     my @jobs;
-    foreach my $branch (@{$CONFIG{'BRANCHES'}}) {
-	foreach my $platform (@{$CONFIG{'PLATFORMS'}}) {
+    foreach my $branch (expand('BRANCHES')) {
+	foreach my $platform (expand('PLATFORMS')) {
 	    next if (%platforms && !$platforms{$platform});
 	    my ($arch, $machine) = split('/', $platform, 2);
 	    $machine = $arch

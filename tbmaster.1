@@ -1,5 +1,5 @@
 .\"-
-.\" Copyright (c) 2003-2011 Dag-Erling Coïdan Smørgrav
+.\" Copyright (c) 2003-2012 Dag-Erling Coïdan Smørgrav
 .\" All rights reserved.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd November 12, 2008
+.Dd December 18, 2012
 .Dt TBMASTER 1
 .Os
 .Sh NAME
@@ -59,12 +59,12 @@ respectively.
 The name of the configuration to use.
 If specified multiple times, all listed configurations will be run in
 sequence.
-The default is the hostname minus the domain part.
+The default value is the hostname minus the domain part.
 .It Fl d , Fl -dump
 Dumps the configuration and exits without running the tinderbox.
 .It Fl e Ar DIR , Fl -etcdir Ns = Ns Ar DIR
 The directory where configuration files are located.
-The default is
+The default value is
 .Pa $HOME/etc .
 .It Fl l Ar FILE
 The name of a file to lock upon startup.
@@ -73,8 +73,8 @@ If the lock is already held by another process,
 will terminate immediately rather than block.
 .It Fl n Ar ncpu
 The number of concurrent jobs to run.
-The default is the number of CPUs in the machine, or 1 if that number
-could not be determined.
+The default value is the number of CPUs in the machine, or 1 if that
+number could not be determined.
 .El
 .Ss Configuration
 The
@@ -197,6 +197,14 @@ The default value is
 .Pq Vt single
 The machine currently being built for.
 Read-only.
+.It OBJDIR
+.Pq Vt single
+The object directory.
+There is no default value; see the
+.Xr tinderbox 1
+script's
+.Fl -objdir
+option for details.
 .It OPTIONS
 .Pq Vt multiple
 A list of additional options to pass to the
@@ -222,9 +230,16 @@ the architecture name.
 The default value is
 .Dq i386 .
 .It RECIPIENT
-.Pq Vt single
-The address to which failure reports should be mailed.
-No default value.
+.Pq Vt multiple
+The addresses to which failure reports should be mailed.
+The default value is
+.Dq %%SENDER%% .
+.Pp
+To avoid unintentional spamming,
+.Nm
+will strip recipients in the
+.Li freebsd.org
+domain from this list unless the correct magic sauce is used.
 .It REPOSITORY
 .Pq Vt single
 The location of the
@@ -244,6 +259,12 @@ No default value.
 .It SRCDIR
 .Pq Vt single
 The source directory.
+There is no default value; see the
+.Xr tinderbox 1
+script's
+.Fl -srcdir
+option for details.
+.Pp
 Normally, a separate directory within the sandbox will be used for
 each build.
 Using a shared source directory for all builds reduces disk space
@@ -261,45 +282,47 @@ The subject to use on failure reports.
 The default value is
 .Dq Tinderbox failure on %%arch%%/%%machine%% .
 .It SVNBASE
+.Pq Vt single
 The URL to the base of the Subversion repository.
 .It TARGETS
 .Pq Vt multiple
-A list of targets (commands) to specify to the
+A list of targets (commands) to pass to the
 .Xr tinderbox 1
 script.
-The default is
+The default value is
 .Dq world .
 .It TIMEOUT
+.Pq Vt single
 The number of seconds after which each tinderbox invocation will time
 out.
 No default value.
 .It TINDERBOX
+.Pq Vt single
 The location of the
 .Xr tinderbox 1
 script.
 The default value is
 .Dq %%HOME%%/bin/tinderbox .
 .It URLBASE
+.Pq Vt single
 If defined, a URL constructed by appending the file name of the full
-log file to the expanded value of this variable will be appended to
+log file to the expanded value of this variable will be included in
 failure reports.
-No default value.
+There is no default value.
 .El
-.Pp
-Fields which are left undefined are filled in from the
-.Dq global
-setup.
 .Ss Variable Substitution
-All single-valued configuration variables are subject to variable
-substitution immediately before use.
-If a variable's value contains strings of the form
+All configuration variables are subject to variable substitution
+immediately before use:
+.Bl -bullet
+.It
+If a single-value variable contains substrings of the form
 .Va %%VAR%%
 or
 .Va %%var%% ,
-those strings are replaced with the values of the corresponding
-variables.
+those substrings are replaced with the values of the corresponding
+variables, after recursive substitution.
 The difference between the first and the second form is that the
-latter expands to lower-case.
+latter is converted to lower-case before use.
 For instance,
 .Dq %%BRANCH%%
 might expand to
@@ -308,6 +331,18 @@ while
 .Dq %%branch%%
 would expand to
 .Dq releng_4 .
+.It
+If an element of a multiple-value variable is of the form
+.Va %%VAR%%
+or
+.Va %%var%%
+and the corresponding variable is a multiple-value variable, recursive
+substitution is first performed on that variable, and the resulting
+values are included individually in the result.
+.It
+Otherwise, elements of multiple-value variables are expanded
+individually according to the same rules as single-value variables.
+.El
 .Sh SEE ALSO
 .Xr perl 1 ,
 .Xr tinderbox 1
