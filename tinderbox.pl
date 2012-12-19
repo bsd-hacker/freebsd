@@ -27,7 +27,7 @@
 # $FreeBSD$
 #
 
-use 5.006_001;
+use v5.10.1;
 use strict;
 use Fcntl qw(:DEFAULT :flock);
 use POSIX;
