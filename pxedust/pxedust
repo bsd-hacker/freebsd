@@ -39,7 +39,7 @@ COMMON_ENV="TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} DESTDIR=${DESTDIR}"
 
 KERNCONF="PACKAGE_NODE_${TARGET}"
 
-LOGFILE="diff.out"
+LOGFILE="`pwd -P`/diff.out"
 
 # using a src directory, populate a dst directory, or note differences
 setup () {
