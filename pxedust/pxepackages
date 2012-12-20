@@ -86,7 +86,8 @@ for port in ${REQUIRED_PORTS}; do
   fi
 done
 
+mkdir -p ${WHERETO}/packages/All || exit 1
 echo "copying `ls -l ${PORTSDIR}/../packages/All/`"
-cp -p ${PORTSDIR}/../packages/All/* ${WHERETO} || exit 1
+cp -p ${PORTSDIR}/../packages/All/* ${WHERETO}/packages/All || exit 1
 
 exit 0
