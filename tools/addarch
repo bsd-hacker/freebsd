@@ -141,6 +141,8 @@ else
     echo "${QMANAGER} is not running.  run /usr/local/etc/rc.d/qmanager.sh and re-run this script."
     exit 1
   else
+    echo "adding default entry to qmanager ..."
+    python ${pbc}/qmanager/qclient add_acl name=deny_all uidlist= gidlist= sense=0
     echo "adding ${arch} to qmanager ..."
     python ${pbc}/qmanager/qclient add_acl name=ports-${arch} uidlist=${uid} gidlist=${gid} sense=1
     echo "... done."
