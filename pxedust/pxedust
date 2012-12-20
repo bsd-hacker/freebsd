@@ -39,7 +39,9 @@ COMMON_ENV="TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} DESTDIR=${DESTDIR}"
 
 KERNCONF="PACKAGE_NODE_${TARGET}"
 
-LOGFILE="`pwd -P`/diff.out"
+WHEREFROM="`pwd -P`"
+LOGFILE="${WHEREFROM}/diff.out"
+FIXUP="${WHEREFROM}/fixup.sh"
 
 # using a src directory, populate a dst directory, or note differences
 setup () {
@@ -171,5 +173,8 @@ echo
 echo "finished."
 echo "  be sure to check ${LOGFILE} for things that have to be adjusted manually:"
 ls -al ${LOGFILE}
+
+grep "^diff" ${LOGFILE} | sed -e "s/^diff/cp -p/" > ${FIXUP}
+echo "  if the < files are a strict superset of the > files, you can just run 'sh ${FIXUP}' ."
 
 exit 0
