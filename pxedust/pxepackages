@@ -50,9 +50,6 @@ pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
 
 WHERETO=${ARCH_PACKAGES}/${TARGET}/${BRANCH}
 
-# We need to preserve group writability
-umask 002
-
 uid=ports-${TARGET}
 if [ ! -z "${PORTBUILD_GROUP}" ]; then
     gid=${PORTBUILD_GROUP}
@@ -73,21 +70,19 @@ for port in ${REQUIRED_PORTS}; do
   pkg_sufx=`cd ${PORTSDIR}/${port} && make -V PKG_SUFX`
   if [ -z "${pkgname}" ]; then
     echo "could not figure out PKGNAME for $port!"
+    exit 1
   else
-    package="${WHERETO}/${pkgname}${pkg_sufx}"
-    if [ -e ${package} ]; then
+    package="${pkgname}${pkg_sufx}"
+    if [ -f ${WHERETO}/${package} ]; then
       echo "skipping ${package} since it already exists"
     else
       echo "making ${package}"
       dir=`cd ${PORTSDIR}/${port} && make -V PACKAGES`
       mkdir -p ${dir}
-      cd ${PORTSDIR}/${port} && make -DFORCE_PKG_REGISTER package
+      cd ${PORTSDIR}/${port} && make -DFORCE_PKG_REGISTER package || exit 1
+      cp -p ${dir}/${package} ${WHERETO} || exit 1
     fi
   fi
 done
-
-mkdir -p ${WHERETO}/packages/All || exit 1
-echo "copying `ls -l ${PORTSDIR}/../packages/All/`"
-cp -p ${PORTSDIR}/../packages/All/* ${WHERETO}/packages/All || exit 1
 
 exit 0
