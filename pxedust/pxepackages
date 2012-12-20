@@ -86,7 +86,7 @@ for port in ${REQUIRED_PORTS}; do
   fi
 done
 
-echo "copying `ls -l ${PORTSDIR}/packages/All/`"
-cp -p ${PORTSDIR}/packages/All/* ${WHERETO} || exit 1
+echo "copying `ls -l ${PORTSDIR}/../packages/All/`"
+cp -p ${PORTSDIR}/../packages/All/* ${WHERETO} || exit 1
 
 exit 0
