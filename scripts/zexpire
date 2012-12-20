@@ -13,7 +13,6 @@ VERBOSE=	True
 
 # List of filesystems to expire
 expirelist=(("a", 14), 
-            ("a/portbuild", 14),
             ("a/portbuild/amd64", 14),
             ("a/portbuild/arm", 14),
             ("a/portbuild/i386", 14),
