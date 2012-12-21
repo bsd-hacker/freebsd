@@ -22,6 +22,8 @@ config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
 BUILDPROXY_SOCKET_FILE = config.get( 'BUILDPROXY_SOCKET_FILE' )
 
 try:
+    code = None
+
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.connect(BUILDPROXY_SOCKET_FILE)
 
