@@ -42,7 +42,6 @@ if [ -z "${ZFS_PERMISSIONSET}" ]; then
   ZFS_PERMISSIONSET="${DEFAULT_ZFS_PERMISSIONSET}"
 fi
 
-# XXX MCL copy to setup instructions
 # sprinkle magic fairy dust to help delegate permissions
 sysctl vfs.usermount=1
 sysctl vfs.zfs.super_owner=1
