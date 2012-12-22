@@ -1806,18 +1806,18 @@ struct bxe_softc {
 #define	mb()		__asm volatile("mfence" ::: "memory")
 #define	wmb()		__asm volatile("sfence" ::: "memory")
 #define	rmb()		__asm volatile("lfence" ::: "memory")
+#else
+#define	mb()
+#define	rmb()
+#define	wmb()
+#endif
+#endif
+
 static __inline void
 prefetch(void *x)
 {
 	__asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
 }
-#else
-#define	mb()
-#define	rmb()
-#define	wmb()
-#define	prefetch()
-#endif
-#endif
 
 #define	BXE_RX_ALIGN		(1 << BXE_RX_ALIGN_SHIFT)
 
