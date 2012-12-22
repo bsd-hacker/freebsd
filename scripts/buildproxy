@@ -25,6 +25,11 @@ def validate(uid, arch):
     if uid == 0:
         return True
 
+    # old theory
+    if getuidbyname("ports-%s" % arch) == uid:
+        return True 
+
+    # new theory
     if getuidbyname(portbuild_uid) == uid:
         return True
 
