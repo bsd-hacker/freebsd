@@ -11,6 +11,8 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 # duplication.
 quoted_subdirs="'/src' '/ports' ''"
 
+#DISABLE_PROXY = True
+
 # XXX unused
 get_latest_snap() {
     snap=$1
@@ -522,6 +524,10 @@ proxy_root() {
     shift 5
     args=$@
 
+if DISABLE_PROXY:
+	eval "do_${cmd} ${arch} ${branch} ${buildid} ${builddir} ${args}"
+	error=$?
+else:
     id=$(id -u)
     if [ ${id} != "0" ]; then
 	${pbc}/scripts/buildproxy-client "build ${cmd} ${arch} ${branch} ${buildid} ${args}"
@@ -533,6 +539,7 @@ proxy_root() {
 	eval "do_${cmd} ${arch} ${branch} ${buildid} ${builddir} ${args}"
 	error=$?
     fi
+fi
 
     exit ${error}
 }
@@ -547,6 +554,10 @@ proxy_user() {
     shift 5
     args=$@
 
+if DISABLE_PROXY:
+	eval "do_${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
+	error=$?
+else:
     id=$(id -u)
     if [ ${id} != "0" ]; then
 	eval "do_${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
@@ -555,6 +566,7 @@ proxy_user() {
 	su ${uid} -c "${pbc}/scripts/build ${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
 	error=$?
     fi
+fi
 
     exit ${error}
 }
