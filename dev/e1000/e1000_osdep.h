@@ -107,18 +107,6 @@ typedef boolean_t	bool;
 #define __le32		u32
 #define __le64		u64
 
-#if __FreeBSD_version < 800000 /* Now in HEAD */
-#if defined(__i386__) || defined(__amd64__)
-#define mb()	__asm volatile("mfence" ::: "memory")
-#define wmb()	__asm volatile("sfence" ::: "memory")
-#define rmb()	__asm volatile("lfence" ::: "memory")
-#else
-#define mb()
-#define rmb()
-#define wmb()
-#endif
-#endif /*__FreeBSD_version < 800000 */
-
 #if defined(__i386__) || defined(__amd64__)
 static __inline
 void prefetch(void *x)

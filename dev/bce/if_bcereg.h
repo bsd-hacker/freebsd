@@ -544,12 +544,10 @@ default: DBPRINT(sc, BCE_INSANE_PHY,					\
 #if __FreeBSD_version < 800054
 #if defined(__i386__) || defined(__amd64__)
 #define mb()    __asm volatile("mfence" ::: "memory")
-#define wmb()   __asm volatile("sfence" ::: "memory")
 #define rmb()   __asm volatile("lfence" ::: "memory")
 #else
 #define mb()
 #define rmb()
-#define wmb()
 #endif
 #endif
 

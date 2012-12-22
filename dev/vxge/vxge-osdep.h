@@ -262,12 +262,8 @@ typedef vxge_dma_alloc_t	pci_dma_acc_h;
 /* Write memory	barrier	*/
 #if __FreeBSD_version <	800000
 #if defined(__i386__) || defined(__amd64__)
-#define	mb()  __asm volatile("mfence" ::: "memory")
 #define	wmb() __asm volatile("sfence" ::: "memory")
-#define	rmb() __asm volatile("lfence" ::: "memory")
 #else
-#define	mb()
-#define	rmb()
 #define	wmb()
 #endif
 #endif
