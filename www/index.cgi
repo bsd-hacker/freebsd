@@ -157,7 +157,7 @@ MAIN:{
     opendir(DIR, $DIR)
 	or die("$DIR: $!\n");
     foreach (readdir(DIR)) {
-	next unless m/^tinderbox-(\w+)-(\w+)-(\w+)-(\w+)\.(brief|full)$/;
+	next unless m/^tinderbox-([\w-]+)-(\w+)-(\w+)-(\w+)\.(brief|full)$/;
 	$CONFIGS{$1}->{$2} = $ARCHES{$3}->{$4} = 1;
     }
     closedir(DIR);
