@@ -12,7 +12,7 @@ code		meaning					sent by
 255	error: copy failed				portbuild
 401	error: could not connect			qmanagerhandler
 402	error: machine modified but unknown		qmanager
-202	error: job would block				qmanagerobj
+403	error: job would block				qmanagerobj
 404	error: no such job to release/reconnect		qmanager
 406	error: machine modified but input error		qmanager
 407	error: bogus connection/release request		qmanager
