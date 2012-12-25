@@ -229,9 +229,7 @@
 #define	__alignof(x)	__offsetof(struct { char __a; x __b; }, __b)
 #endif
 
-#if defined(__GNUC__) && 						\
-    ((defined(__clang__) && __has_builtin(__builtin_prefetch)) ||	\
-    __GNUC_PREREQ__(3, 0))
+#if defined(__GNUC__) && __GNUC_PREREQ__(3, 0)
 #define	PRFTCH_RD	0
 #define	PRFTCH_WR	1
 
