@@ -3367,7 +3367,7 @@ ixv_rxeof(struct ix_queue *que, int count)
 			if (nextp == adapter->num_rx_desc)
 				nextp = 0;
 			nbuf = &rxr->rx_buffers[nextp];
-			prefetch(nbuf);
+			ixgbe_prefetch(nbuf);
 		}
 		/*
 		** The header mbuf is ONLY used when header 

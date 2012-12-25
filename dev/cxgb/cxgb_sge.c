@@ -1381,7 +1381,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 	txsd = &txq->sdesc[txq->pidx];
 	sgl = txq->txq_sgl;
 
-	prefetch(txd);
+	cxgb_prefetch(txd);
 	m0 = *m;
 
 	mtx_assert(&qs->lock, MA_OWNED);
@@ -2139,8 +2139,8 @@ t3_free_tx_desc(struct sge_qset *qs, int reclaimable, int queue)
 
 	mtx_assert(&qs->lock, MA_OWNED);
 	while (reclaimable--) {
-		prefetch(q->sdesc[(cidx + 1) & mask].m);
-		prefetch(q->sdesc[(cidx + 2) & mask].m);
+		cxgb_prefetch(q->sdesc[(cidx + 1) & mask].m);
+		cxgb_prefetch(q->sdesc[(cidx + 2) & mask].m);
 
 		if (txsd->m != NULL) {
 			if (txsd->flags & TX_SW_DESC_MAPPED) {
@@ -2700,10 +2700,10 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 	int ret = 0;
 
 	mask = fl->size - 1;
-	prefetch(fl->sdesc[(cidx + 1) & mask].m);
-	prefetch(fl->sdesc[(cidx + 2) & mask].m);
-	prefetch(fl->sdesc[(cidx + 1) & mask].rxsd_cl);
-	prefetch(fl->sdesc[(cidx + 2) & mask].rxsd_cl);	
+	cxgb_prefetch(fl->sdesc[(cidx + 1) & mask].m);
+	cxgb_prefetch(fl->sdesc[(cidx + 2) & mask].m);
+	cxgb_prefetch(fl->sdesc[(cidx + 1) & mask].rxsd_cl);
+	cxgb_prefetch(fl->sdesc[(cidx + 2) & mask].rxsd_cl);	
 
 	fl->credits--;
 	bus_dmamap_sync(fl->entry_tag, sd->map, BUS_DMASYNC_POSTREAD);

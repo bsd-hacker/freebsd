@@ -3,7 +3,7 @@
 
 /* $FreeBSD$ */
 
-#undef prefetch
+#undef cxgb_prefetch
 #undef WARN_ON
 #undef max_t
 #undef udelay

@@ -136,15 +136,7 @@ typedef boolean_t	bool;
 #endif
 #endif
 
-#if defined(__i386__) || defined(__amd64__)
-static __inline
-void prefetch(void *x)
-{
-	__asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
-}
-#else
-#define prefetch(x)
-#endif
+#define	ixgbe_prefetch(x)	prefetch(x, PRFTCH_RD, PRFTCH_L3)
 
 /*
  * Optimized bcopy thanks to Luigi Rizzo's investigative work.  Assumes

@@ -158,7 +158,6 @@ SYSCTL_INT(_dev_netmap, OID_AUTO, bridge, CTLFLAG_RW, &netmap_bridge, 0 , "");
 #include <sys/endian.h>
 #include <sys/refcount.h>
 #endif /* __FreeBSD__ */
-#define prefetch(x)	__builtin_prefetch(x)
 #endif /* !linux */
 
 static void bdg_netmap_attach(struct ifnet *ifp);
@@ -2133,7 +2132,7 @@ bdg_netmap_txsync(struct ifnet *ifp, u_int ring_nr, int do_lock)
 		int len = ft[ft_i].len = slot->len;
 		char *buf = ft[ft_i].buf = NMB(slot);
 
-		prefetch(buf);
+		prefetch(buf, PRFTCH_RD, PRFTCH_L3);
 		if (unlikely(len < 14))
 			continue;
 		if (unlikely(++ft_i == netmap_bridge))

@@ -61,6 +61,9 @@
 #include <vm/vm.h>
 #include <vm/vm_object.h>
 
+#ifdef prefetch
+#undef	prefetch
+#endif
 #define	prefetch(x)
 
 struct list_head {

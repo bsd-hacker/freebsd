@@ -107,16 +107,6 @@ typedef boolean_t	bool;
 #define __le32		u32
 #define __le64		u64
 
-#if defined(__i386__) || defined(__amd64__)
-static __inline
-void prefetch(void *x)
-{
-	__asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
-}
-#else
-#define prefetch(x)
-#endif
-
 struct e1000_osdep
 {
 	bus_space_tag_t    mem_bus_space_tag;

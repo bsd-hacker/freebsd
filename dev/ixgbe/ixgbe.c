@@ -3654,7 +3654,7 @@ ixgbe_txeof(struct tx_ring *txr)
 			buf = txr->tx_buffers;
 			txd = txr->tx_base;
 		}
-		prefetch(txd);
+		ixgbe_prefetch(txd);
 	} while (__predict_true(--limit));
 
 	bus_dmamap_sync(txr->txdma.dma_tag, txr->txdma.dma_map,
@@ -4447,7 +4447,7 @@ ixgbe_rxeof(struct ix_queue *que)
 					nextp = 0;
 			}
 			nbuf = &rxr->rx_buffers[nextp];
-			prefetch(nbuf);
+			ixgbe_prefetch(nbuf);
 		}
 		/*
 		** Rather than using the fmp/lmp global pointers

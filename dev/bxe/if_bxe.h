@@ -1813,12 +1813,6 @@ struct bxe_softc {
 #endif
 #endif
 
-static __inline void
-prefetch(void *x)
-{
-	__asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
-}
-
 #define	BXE_RX_ALIGN		(1 << BXE_RX_ALIGN_SHIFT)
 
 #define	PAGE_ALIGN(addr)	(((addr) + PAGE_SIZE - 1) & (~PAGE_MASK))

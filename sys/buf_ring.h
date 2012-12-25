@@ -193,9 +193,10 @@ buf_ring_dequeue_sc(struct buf_ring *br)
 
 #ifdef PREFETCH_DEFINED	
 	if (cons_next != prod_tail) {		
-		prefetch(br->br_ring[cons_next]);
+		prefetch(br->br_ring[cons_next], PRFTCH_RD, PRFTCH_L3);
 		if (cons_next_next != prod_tail) 
-			prefetch(br->br_ring[cons_next_next]);
+			prefetch(br->br_ring[cons_next_next], PRFTCH_RD,
+			    PRFTCH_L3);
 	}
 #endif
 	br->br_cons_head = cons_next;

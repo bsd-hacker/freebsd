@@ -229,6 +229,20 @@
 #define	__alignof(x)	__offsetof(struct { char __a; x __b; }, __b)
 #endif
 
+#if defined(__GNUC__) && 						\
+    ((defined(__clang__) && __has_builtin(__builtin_prefetch)) ||	\
+    __GNUC_PREREQ__(3, 0))
+#define	PRFTCH_RD	0
+#define	PRFTCH_WR	1
+
+#define	PRFTCH_L0	0
+#define	PRFTCH_L1	1
+#define	PRFTCH_L2	2
+#define	PRFTCH_L3	3
+
+#define	prefetch(x, y, z)	__builtin_prefetch(x, y, z)
+#endif
+
 /*
  * Keywords added in C11.
  */

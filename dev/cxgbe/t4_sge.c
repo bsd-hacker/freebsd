@@ -1300,8 +1300,8 @@ t4_eth_tx(struct ifnet *ifp, struct sge_txq *txq, struct mbuf *m)
 	KASSERT((eq->flags & EQ_TYPEMASK) == EQ_ETH,
 	    ("%s: eq type %d", __func__, eq->flags & EQ_TYPEMASK));
 
-	prefetch(&eq->desc[eq->pidx]);
-	prefetch(&txq->sdesc[eq->pidx]);
+	cxgbe_prefetch(&eq->desc[eq->pidx]);
+	cxgbe_prefetch(&txq->sdesc[eq->pidx]);
 
 	txpkts.npkt = 0;/* indicates there's nothing in txpkts */
 	coalescing = 0;
@@ -3373,7 +3373,7 @@ reclaim_tx_descs(struct sge_txq *txq, int can_reclaim, int n)
 	txmaps = &txq->txmaps;
 	txm = &txmaps->maps[txmaps->map_cidx];
 	if (maps)
-		prefetch(txm->m);
+		cxgbe_prefetch(txm->m);
 
 	eq->avail += reclaimed;
 	KASSERT(eq->avail < eq->cap,	/* avail tops out at (cap - 1) */
@@ -3389,7 +3389,7 @@ reclaim_tx_descs(struct sge_txq *txq, int can_reclaim, int n)
 		next = txm + 1;
 		if (__predict_false(txmaps->map_cidx + 1 == txmaps->map_total))
 			next = txmaps->maps;
-		prefetch(next->m);
+		cxgbe_prefetch(next->m);
 
 		bus_dmamap_unload(txq->tx_tag, txm->map);
 		m_freem(txm->m);

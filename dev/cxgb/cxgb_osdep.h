@@ -117,12 +117,6 @@ struct t3_mbuf_hdr {
 						*/
 #if defined(__i386__) || defined(__amd64__)  
 
-static __inline
-void prefetch(void *x) 
-{ 
-        __asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
-}
-
 #define smp_mb() mb()
 
 #define L1_CACHE_BYTES 128
@@ -137,9 +131,10 @@ extern void kdb_backtrace(void);
 
 #else 
 #define smp_mb()
-#define prefetch(x)
 #define L1_CACHE_BYTES 32
 #endif
+
+#define	cxgb_prefetch(x)	prefetch(x, PRFTCH_RD, PRFTCH_L3)
 
 #define DBG_RX          (1 << 0)
 static const int debug_flags = DBG_RX;

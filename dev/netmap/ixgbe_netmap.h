@@ -263,9 +263,9 @@ ixgbe_netmap_txsync(struct ifnet *ifp, u_int ring_nr, int do_lock)
 	 */
 	j = kring->nr_hwcur;
 	if (j != k) {	/* we have new packets to send */
-		prefetch(&ring->slot[j]);
+		ixgbe_prefetch(&ring->slot[j]);
 		l = netmap_idx_k2n(kring, j); /* NIC index */
-		prefetch(&txr->tx_buffers[l]);
+		ixgbe_prefetch(&txr->tx_buffers[l]);
 		for (n = 0; j != k; n++) {
 			/*
 			 * Collect per-slot info.
@@ -294,8 +294,8 @@ ixgbe_netmap_txsync(struct ifnet *ifp, u_int ring_nr, int do_lock)
 
 			j = (j == lim) ? 0 : j + 1;
 			l = (l == lim) ? 0 : l + 1;
-			prefetch(&ring->slot[j]);
-			prefetch(&txr->tx_buffers[l]);
+			ixgbe_prefetch(&ring->slot[j]);
+			ixgbe_prefetch(&txr->tx_buffers[l]);
 
 			/*
 			 * Quick check for valid addr and len.
