@@ -122,6 +122,11 @@ static struct {
 	{0x43931002, 0x00, "ATI IXP700",	0},
 	{0x43941002, 0x00, "ATI IXP800",	0},
 	{0x43951002, 0x00, "ATI IXP800",	0},
+	{0x78001022, 0x00, "AMD Hudson-2",	0},
+	{0x78011022, 0x00, "AMD Hudson-2",	0},
+	{0x78021022, 0x00, "AMD Hudson-2",	0},
+	{0x78031022, 0x00, "AMD Hudson-2",	0},
+	{0x78041022, 0x00, "AMD Hudson-2",	0},
 	{0x06121b21, 0x00, "ASMedia ASM1061",	0},
 	{0x26528086, 0x00, "Intel ICH6",	AHCI_Q_NOFORCE},
 	{0x26538086, 0x00, "Intel ICH6M",	AHCI_Q_NOFORCE},
@@ -543,7 +548,7 @@ ahci_ctlr_reset(device_t dev)
 	struct ahci_controller *ctlr = device_get_softc(dev);
 	int timeout;
 
-	if (pci_read_config(dev, 0x00, 4) == 0x28298086 &&
+	if (pci_read_config(dev, PCIR_DEVVENDOR, 4) == 0x28298086 &&
 	    (pci_read_config(dev, 0x92, 1) & 0xfe) == 0x04)
 		pci_write_config(dev, 0x92, 0x01, 1);
 	/* Enable AHCI mode */
