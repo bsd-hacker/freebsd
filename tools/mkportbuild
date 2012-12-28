@@ -42,7 +42,7 @@ if [ -z "${ZFS_PERMISSIONSET}" ]; then
   ZFS_PERMISSIONSET="${DEFAULT_ZFS_PERMISSIONSET}"
 fi
 
-# sprinkle magic fairy dust to help delegate permissions
+# sprinkle magic fairy dust to help delegate zfs permissions
 sysctl vfs.usermount=1
 sysctl vfs.zfs.super_owner=1
 
