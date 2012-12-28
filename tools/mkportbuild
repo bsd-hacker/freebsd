@@ -51,12 +51,12 @@ if [ -z "${name}" ]; then
   echo "ZFS volume ${ZFS_VOLUME} does not exist.  You must create it first."
   exit 1
 fi
+
 mountpoint=`zfs list -H -t filesystem -o mountpoint ${ZFS_VOLUME}`
-if [ -z "${mountpoint}" ]; then
-  echo "ZFS volume ${ZFS_VOLUME} is not mounted.  I'll mount it for you."
-  zfs mount ${ZFS_VOLUME} || exit 1
+if [ ! -z "${mountpoint}" ]; then
+  echo "ZFS volume ${ZFS_VOLUME} is mounted.  I'll unmount it for you then remount it later."
+  zfs umount ${ZFS_VOLUME} || exit 1
 fi
-chown ${PORTBUILD_USER}:${PORTBUILD_USER} ${ZFS_MOUNTPOINT} || exit 1
 
 # reset the "zfsadmin" permission set if it already exists. 
 zfs unallow -s @zfsadmin ${ZFS_VOLUME} 2> /dev/null   
@@ -72,6 +72,13 @@ zfs allow -lu ${PORTBUILD_USER} @zfsadmin ${ZFS_VOLUME} || exit 1
 echo "results of ZFS operations:"
 zfs list ${ZFS_VOLUME}
 zfs allow ${ZFS_VOLUME}
+
+chown ${PORTBUILD_USER}:${PORTBUILD_USER} ${ZFS_MOUNTPOINT} || exit 1
+mountpoint=`zfs list -H -t filesystem -o mountpoint ${ZFS_VOLUME}`
+if [ -z "${mountpoint}" ]; then
+  echo "ZFS volume ${ZFS_VOLUME} is not mounted.  I'll remount it for you."
+  su -m ${PORTBUILD_USER} -c "zfs mount ${ZFS_VOLUME}" || exit 1
+fi
 
 # create a place to hold the repository
 if [ ! -d ${ZFS_MOUNTPOINT}/portbuild ]; then
