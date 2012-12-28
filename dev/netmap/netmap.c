@@ -98,6 +98,9 @@ MALLOC_DEFINE(M_NETMAP, "netmap", "Network memory map");
 #include <net/netmap.h>
 #include <dev/netmap/netmap_kern.h>
 
+#define	MEMFETCH(var)							\
+	(__DEVOLATILE(__typeof(var), *((volatile __typeof(var) *)&var)))
+
 u_int netmap_total_buffers;
 u_int netmap_buf_size;
 char *netmap_buffer_base;	/* address of an invalid buffer */
@@ -1081,10 +1084,7 @@ error:
 			error = ENXIO;
 			break;
 		}
-		rmb(); /* make sure following reads are not from cache */
-
-
-		ifp = priv->np_ifp;	/* we have a reference */
+		ifp = MEMFETCH(priv->np_ifp);
 
 		if (ifp == NULL) {
 			D("Internal error: nifp != NULL && ifp == NULL");
@@ -1194,9 +1194,7 @@ netmap_poll(struct cdev *dev, int events, struct thread *td)
 		D("No if registered");
 		return POLLERR;
 	}
-	rmb(); /* make sure following reads are not from cache */
-
-	ifp = priv->np_ifp;
+	ifp = MEMFETCH(priv->np_ifp);
 	// XXX check for deleting() ?
 	if ( (ifp->if_capenable & IFCAP_NETMAP) == 0)
 		return POLLERR;

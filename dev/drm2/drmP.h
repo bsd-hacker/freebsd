@@ -263,11 +263,9 @@ typedef int32_t s32;
 typedef int16_t s16;
 typedef int8_t s8;
 
-/* DRM_READMEMORYBARRIER() prevents reordering of reads.
- * DRM_WRITEMEMORYBARRIER() prevents reordering of writes.
+/* DRM_WRITEMEMORYBARRIER() prevents reordering of writes.
  * DRM_MEMORYBARRIER() prevents reordering of reads and writes.
  */
-#define DRM_READMEMORYBARRIER()		rmb()
 #define DRM_WRITEMEMORYBARRIER()	wmb()
 #define DRM_MEMORYBARRIER()		mb()
 

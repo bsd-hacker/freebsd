@@ -525,8 +525,7 @@ virtqueue_dequeue(struct virtqueue *vq, uint32_t *len)
 	used_idx = vq->vq_used_cons_idx++ & (vq->vq_nentries - 1);
 	uep = &vq->vq_ring.used->ring[used_idx];
 
-	rmb();
-	desc_idx = (uint16_t) uep->id;
+	desc_idx = (uint16_t)atomic_load_acq_32(&uep->id);
 	if (len != NULL)
 		*len = uep->len;
 

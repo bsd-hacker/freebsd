@@ -701,8 +701,7 @@ u32 drm_vblank_count_and_time(struct drm_device *dev, int crtc,
 	do {
 		cur_vblank = atomic_read(&dev->_vblank_count[crtc]);
 		*vblanktime = vblanktimestamp(dev, crtc, cur_vblank);
-		rmb();
-	} while (cur_vblank != atomic_read(&dev->_vblank_count[crtc]));
+	} while (cur_vblank != atomic_read_acq(&dev->_vblank_count[crtc]));
 
 	return cur_vblank;
 }
