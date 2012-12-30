@@ -88,4 +88,14 @@ fi
 echo "checking out the repository ..."
 su -m ${PORTBUILD_USER} -c "${VCS_CHECKOUT_COMMAND} ${VCS_PORTBUILD_REPOSITORY} ${ZFS_MOUNTPOINT}/portbuild" || exit 1
 
-echo "$0: done.  You should now be able to edit files in ${ZFS_MOUNTPOINT}/portbuild/conf."
+echo "$0: you should now be able to edit files in ${ZFS_MOUNTPOINT}/portbuild/conf."
+
+# create convenience directories.  failure is annoying but non-fatal.
+extra_dirs="lockfiles log"
+for extra_dir in ${extra_dirs}; do
+  if [ ! -d ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} ]; then
+    su -m ${PORTBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/${extra_dir}"
+  fi
+done
+
+echo "$0: done."
