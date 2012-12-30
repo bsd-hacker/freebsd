@@ -33,6 +33,8 @@
 #define vBufA		0x0200	/* register A */
 #define vDirB		0x0400	/* data direction register */
 #define vDirA		0x0600	/* data direction register */
+#define vT1C		0x0800	/* Timer 1 counter Lo */
+#define vT1CH		0x0a00	/* Timer 1 counter Hi */
 #define vSR		0x1400	/* shift register */
 #define vACR		0x1600	/* aux control register */
 #define vPCR		0x1800	/* peripheral control register */

@@ -53,24 +53,40 @@ __FBSDID("$FreeBSD$");
 #include <machine/pcb.h>
 #include <machine/platform.h>
 #include <machine/md_var.h>
+#include <machine/setjmp.h>
 #include <machine/smp.h>
 
 #include "pic_if.h"
 
 extern struct pcpu __pcpu[MAXCPU];
 
+extern void *ap_pcpu;
 volatile static int ap_awake;
 volatile static u_int ap_letgo;
-volatile static u_quad_t ap_timebase;
+volatile u_quad_t ap_timebase;
 static u_int ipi_msg_cnt[32];
 static struct mtx ap_boot_mtx;
 struct pcb stoppcbs[MAXCPU];
+int longfault(faultbuf, int);
 
 void
 machdep_ap_bootstrap(void)
 {
+	jmp_buf *restore;
+#ifdef __powerpc64__
+	/* Writing to the time base register is hypervisor-privileged */
+	if (mfmsr() & PSL_HV)
+		mttb(ap_timebase);
+#else
+	mttb(ap_timebase);
+#endif
 	/* Set up important bits on the CPU (HID registers, etc.) */
 	cpudep_ap_setup();
+
+	restore = PCPU_GET(restore);
+	if (restore != NULL) {
+		longjmp(*restore, 1);
+	}
 
 	/* Set PIR */
 	PCPU_SET(pir, mfspr(SPR_PIR));
@@ -80,14 +96,7 @@ machdep_ap_bootstrap(void)
 	while (ap_letgo == 0)
 		;
 
-	/* Initialize DEC and TB, sync with the BSP values */
-#ifdef __powerpc64__
-	/* Writing to the time base register is hypervisor-privileged */
-	if (mfmsr() & PSL_HV)
-		mttb(ap_timebase);
-#else
-	mttb(ap_timebase);
-#endif
+	/* Initialize DEC, sync with the BSP values */
 	decr_ap_init();
 
 	/* Serialize console output and AP count increment */
@@ -201,10 +210,12 @@ cpu_mp_unleash(void *dummy)
 	struct pcpu *pc;
 	int cpus, timeout;
 
-	if (mp_ncpus <= 1)
-		return;
-
 	mtx_init(&ap_boot_mtx, "ap boot", NULL, MTX_SPIN);
+
+	if (mp_ncpus <= 1) {
+		ap_letgo = 1;
+		return;
+	}
 
 	cpus = 0;
 	smp_cpus = 0;

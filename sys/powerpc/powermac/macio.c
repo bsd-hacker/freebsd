@@ -69,12 +69,17 @@ struct macio_softc {
 	/* FCR registers */
 	int          sc_memrid;
 	struct resource	*sc_memr;
+	int          sc_rev;
+	int          sc_devid;
+	uint32_t     saved_fcrs[6];
 };
 
 static MALLOC_DEFINE(M_MACIO, "macio", "macio device information");
 
 static int  macio_probe(device_t);
 static int  macio_attach(device_t);
+static int  macio_suspend(device_t);
+static int  macio_resume(device_t);
 static int  macio_print_child(device_t dev, device_t child);
 static void macio_probe_nomatch(device_t, device_t);
 static struct   resource *macio_alloc_resource(device_t, device_t, int, int *,
@@ -97,8 +102,8 @@ static device_method_t macio_methods[] = {
 	DEVMETHOD(device_attach,        macio_attach),
 	DEVMETHOD(device_detach,        bus_generic_detach),
 	DEVMETHOD(device_shutdown,      bus_generic_shutdown),
-	DEVMETHOD(device_suspend,       bus_generic_suspend),
-	DEVMETHOD(device_resume,        bus_generic_resume),
+	DEVMETHOD(device_suspend,       macio_suspend),
+	DEVMETHOD(device_resume,        macio_resume),
 	
 	/* Bus interface */
 	DEVMETHOD(bus_print_child,      macio_print_child),
@@ -317,6 +322,13 @@ macio_attach(device_t dev)
 		    "rman_manage_region() failed. error = %d\n", error);
 		return (error);
 	}
+
+	/*
+	 * If possible, get the device ID and revision ID.
+	 */
+	OF_getprop(root, "revision-id", &sc->sc_rev, sizeof(sc->sc_rev));
+	OF_getprop(root, "device-id", &sc->sc_devid, sizeof(sc->sc_devid));
+
 
 	/*
 	 * Iterate through the sub-devices
@@ -604,4 +616,97 @@ macio_get_devinfo(device_t dev, device_t child)
 
 	dinfo = device_get_ivars(child);
 	return (&dinfo->mdi_obdinfo);
+}
+
+static int macio_suspend(device_t dev)
+{
+	int error;
+	uint32_t temp;
+	struct macio_softc *sc = device_get_softc(dev);
+
+	error = bus_generic_suspend(dev);
+
+	if (error)
+		return (error);
+
+	sc->saved_fcrs[0] = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
+	sc->saved_fcrs[1] = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
+	sc->saved_fcrs[2] = bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
+	sc->saved_fcrs[3] = bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
+
+	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
+	temp |= FCR0_USB_REF_SUSPEND;
+	temp &= ~(FCR0_SCCA_ENABLE | FCR0_SCCB_ENABLE |
+			FCR0_SCC_CELL_ENABLE | FCR0_IRDA_ENABLE |
+			FCR0_IRDA_CLK32_ENABLE |
+			FCR0_IRDA_CLK19_ENABLE);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, temp);
+	DELAY(1000);
+
+	if (sc->sc_devid == 0x22) {
+		temp = bus_read_4(sc->sc_memr, KEYLARGO_MEDIABAY);
+		temp |= KEYLARGO_MB0_DEV_ENABLE;
+		bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, temp);
+	}
+
+	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
+	temp &= ~(FCR1_AUDIO_SEL_22MCLK | FCR1_AUDIO_CLK_ENABLE |
+			FCR1_AUDIO_CLKOUT_ENABLE | FCR1_AUDIO_CELL_ENABLE |
+			FCR1_I2S0_CELL_ENABLE | FCR1_I2S0_CLK_ENABLE |
+			FCR1_I2S0_ENABLE |
+			FCR1_I2S1_CELL_ENABLE | FCR1_I2S1_CLK_ENABLE |
+			FCR1_I2S1_ENABLE |
+			FCR1_EIDE0_ENABLE | FCR1_EIDE0_RESET | 
+			FCR1_EIDE1_ENABLE | FCR1_EIDE1_RESET |
+			FCR1_UIDE_ENABLE
+		 );
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, temp);
+
+	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
+	temp &= ~FCR2_IOBUS_ENABLE;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, temp);
+
+	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
+	temp |= (FCR3_SHUTDOWN_PLL_KW6 | FCR3_SHUTDOWN_PLL_KW4 |
+			FCR3_SHUTDOWN_PLL_KW35 | FCR3_SHUTDOWN_PLL_KW12);
+	temp &= ~(FCR3_CLK_66_ENABLE | FCR3_CLK_49_ENABLE |
+			FCR3_CLK_45_ENABLE | FCR3_CLK_31_ENABLE |
+			FCR3_TMR_CLK18_ENABLE | FCR3_I2S1_CLK18_ENABLE |
+			FCR3_I2S0_CLK18_ENABLE | FCR3_VA_CLK16_ENABLE);
+	if (sc->sc_rev >= 2)
+		temp |= (FCR3_SHUTDOWN_PLL_2X | FCR3_SHUTDOWN_PLL_TOTAL);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, temp);
+	/* Delay for a millisecond to let things settle. */
+	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
+	DELAY(1000);
+
+	return (0);
+}
+
+static int macio_resume(device_t dev)
+{
+	struct macio_softc *sc = device_get_softc(dev);
+
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, sc->saved_fcrs[0]);
+	bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
+	DELAY(10);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, sc->saved_fcrs[1]);
+	bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
+	DELAY(10);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, sc->saved_fcrs[2]);
+	bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
+	DELAY(10);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, sc->saved_fcrs[3]);
+	bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
+	DELAY(10);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR4, sc->saved_fcrs[4]);
+	bus_read_4(sc->sc_memr, KEYLARGO_FCR4);
+	DELAY(10);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->saved_fcrs[5]);
+	bus_read_4(sc->sc_memr, KEYLARGO_FCR5);
+	DELAY(10);
+
+	bus_generic_resume(dev);
+
+	return (0);
 }
