@@ -72,6 +72,12 @@ CONFIG_FILENAME="server.conf"
 
 config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
 QMANAGER_SOCKET_FILE = config.get( 'QMANAGER_SOCKET_FILE' )
+PORTBUILD_USER = config.get( 'PORTBUILD_USER' )
+
+# added 20121229 as a fallback.  no longer recommended!
+portbuild_uid = 0
+if PORTBUILD_USER:
+    portbuild_uid = getuidbyname( PORTBUILD_USER )
 
 DEBUG = False
 VERBOSE = False
@@ -132,7 +138,7 @@ class Worker(object):
     def do_add(self, conn):
         """ Add a machine """
 
-        if conn.uid != 0:
+        if conn.uid != portbuild_uid:
             conn.send(408)
             return
 
@@ -161,7 +167,7 @@ class Worker(object):
     def do_delete(self, conn):
         """ Delete a machine """
 
-        if conn.uid != 0:
+        if conn.uid != portbuild_uid:
             conn.send(408)
             return
 
@@ -187,7 +193,7 @@ class Worker(object):
     def do_update(self, conn):
         """ Update a machine """
 
-        if conn.uid != 0:
+        if conn.uid != portbuild_uid:
             conn.send(408)
             return
 
@@ -233,7 +239,8 @@ class Worker(object):
     def do_add_acl(self, conn):
         """ Add an ACL """
 
-        if conn.uid != 0:
+        print conn.uid
+        if conn.uid != portbuild_uid:
             conn.send(408)
             return
 
@@ -260,7 +267,7 @@ class Worker(object):
     def do_update_acl(self, conn):
         """ Update an ACL """
 
-        if conn.uid != 0:
+        if conn.uid != portbuild_uid:
             conn.send(408)
             return
 
@@ -306,7 +313,7 @@ class Worker(object):
     def do_del_acl(self, conn):
         """ Delete an ACL """
 
-        if conn.uid != 0:
+        if conn.uid != portbuild_uid:
             conn.send(408)
             return
 
@@ -388,11 +395,11 @@ class Worker(object):
             return
 
         try:
-            if job.owner != conn.uid and conn.uid != 0:
+            if job.owner != conn.uid and conn.uid != portbuild_uid:
                 conn.send(408)
                 return
         except Exception, e:
-            print "would have failed at 'if job.owner != conn.uid and conn.uid != 0'"
+            print "would have failed at 'if job.owner != conn.uid and conn.uid != portbuild_uid'"
             print e
             try:
                 print job
