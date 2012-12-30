@@ -2,9 +2,31 @@
 # (/tmp/crontab.GlSF7IFIHx installed on Tue Nov 20 19:57:41 2012)
 # (Cron version -- $FreeBSD: release/9.0.0/usr.sbin/cron/crontab/crontab.c 185041 2008-11-18 00:39:50Z matteo $)
 #
-# portmgr crontab
+# portbuild crontab
 #
-SCRIPTS="/var/portbuild/scripts/"
-ERRORLOGS="/var/portbuild/errorlogs/"
+PORTBUILD="/a/portbuild"
+ERRORLOGS="${PORTBUILD}/errorlogs/"
+LOCKFILES="${PORTBUILD}/lockfiles/"
+SCRIPTS="${PORTBUILD}/scripts/"
 #
-0,15,30,45	*	*	*	*	cd ${ERRORLOGS} && ${SCRIPTS}/dopackagestats
+# Update package statistics
+#
+#0,15,30,45 * * * *		cd ${ERRORLOGS} && ${SCRIPTS}/dopackagestats
+#
+# Update logs.  Uncomment the ones for architectures you support.
+#
+#0,10,20,30,40,50 * * * *	lockf -k -t 0 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs amd64 > /dev/null 2>&1
+#1,11,21,31,41,51 * * * *	lockf -k -t 1 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs arm > /dev/null 2>&1
+#2,12,22,32,42,52 * * * *	lockf -k -t 0 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs i386 > /dev/null 2>&1
+#3,13,23,33,43,53 * * * *	lockf -k -t 0 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs ia64 > /dev/null 2>&1
+#4,14,24,34,44,54 * * * *	lockf -k -t 0 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs mips > /dev/null 2>&1
+#5,15,25,35,45,55 * * * *	lockf -k -t 1 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs powerpc > /dev/null 2>&1
+#6,16,26,36,46,56 * * * *	lockf -k -t 0 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs sparc64 > /dev/null 2>&1
+#
+# VCS update of ports
+#
+#0 */3 * * *			lockf -t 0 -k ${LOCKFILES}/updatesnap.ports.lock ${SCRIPTS}/updatesnap.ports
+#
+# VCS update of src
+#
+#0 2 * * *			lockf -t 0 -k ${LOCKFILES}/updatesnap.lock ${SCRIPTS}/updatesnap
