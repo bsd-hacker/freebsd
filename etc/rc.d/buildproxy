@@ -1,4 +1,7 @@
 #!/bin/sh
+#
+# installed by the portbuild application
+#
 export PATH=/usr/local/bin:${PATH}
 
 pb=/var/portbuild
