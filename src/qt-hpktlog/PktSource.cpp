@@ -8,6 +8,7 @@
 #include "PktSource.h"
 
 #include "libradarpkt/pkt.h"
+#include "libradarpkt/ar5212_radar.h"
 #include "libradarpkt/ar5416_radar.h"
 #include "libradarpkt/ar9280_radar.h"
 
@@ -161,6 +162,11 @@ PktSource::timerEvent(QTimerEvent *event)
 		switch (chipid) {
 		case CHIP_AR5416:
 			r = ar5416_radar_decode(rt,
+			    (pkt + le16toh(rt->it_len)),
+			    hdr->caplen - le16toh(rt->it_len), &re);
+			break;
+		case CHIP_AR5212:
+			r = ar5212_radar_decode(rt,
 			    (pkt + le16toh(rt->it_len)),
 			    hdr->caplen - le16toh(rt->it_len), &re);
 			break;
