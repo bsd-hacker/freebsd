@@ -1,6 +1,6 @@
 PROG=	fft_eval
 
-SRCS=	fft_eval.c
+SRCS=	fft_eval.c fft_linux.c
 
 CFLAGS+=	-I/usr/local/include -L/usr/local/lib
 
