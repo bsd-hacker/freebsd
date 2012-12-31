@@ -35,6 +35,31 @@
 extern "C" {
 #endif
 
+#define	PKT_NUM_BINS	64
+
+#define	MAX_SPECTRAL_SCAN_SAMPLES_PER_PKT	64
+
+struct radar_fft_bin {
+	int32_t	dBm;
+	int32_t	adj_mag;
+	uint8_t	raw_mag;	/* original magnitude */
+	uint8_t	bitmap;	/* whether this is strong/weak */
+	uint8_t	pad[2];
+};
+
+struct radar_fft_entry {
+	int is_ht40;	/* 1=HT40, 0=HT20 */
+
+	struct {
+		struct radar_fft_bin bins[PKT_NUM_BINS];
+		uint8_t	max_index;
+		uint8_t	bitmap_weight;
+		uint16_t	max_magnitude;
+	} pri, ext;
+
+	uint8_t	max_exp;
+};
+
 struct radar_entry {
 	uint64_t	re_timestamp;
 	uint32_t	re_freq;
@@ -45,6 +70,10 @@ struct radar_entry {
 	 */
 	int32_t		re_rssi;
 	uint32_t	re_dur;
+
+	/* XXX make these optional at some point */
+	int 		re_num_spectral_entries;
+	struct radar_fft_entry re_spectral_entries[MAX_SPECTRAL_SCAN_SAMPLES_PER_PKT];
 };
 
 #ifdef	__cplusplus
