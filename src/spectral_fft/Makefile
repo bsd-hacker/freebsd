@@ -1,10 +1,11 @@
+PROG=	fft_eval
+
 SRCS=	fft_eval.c
 
-CFLAGS+=	-I/usr/local/include
-LDFLAGS+=	-L/usr/local/lib
-LDLIBS+=	-lSDL -lSDL_ttf
+CFLAGS+=	-I/usr/local/include -L/usr/local/lib
 
-all:	fft_eval
+LDADD+=	-lSDL -lSDL_ttf
 
-clean:
-	rm -f *.o fft_eval
+NO_MAN=	1
+
+.include <bsd.prog.mk>
