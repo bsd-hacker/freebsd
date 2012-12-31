@@ -32,6 +32,7 @@
 
 #include "fft_eval.h"
 #include "fft_linux.h"
+#include "fft_freebsd.h"
 
 #define WIDTH	1600
 #define HEIGHT	650
@@ -395,7 +396,7 @@ int main(int argc, char *argv[])
 
 	fprintf(stderr, "WARNING: Experimental Software! Don't trust anything you see. :)\n");
 	fprintf(stderr, "\n");
-	scanresults_n = read_scandata_linux(argv[1], &result_list);
+	scanresults_n = read_scandata_freebsd(argv[1], &result_list);
 	if (scanresults_n < 0) {
 		fprintf(stderr, "Couldn't read scanfile ...\n");
 		usage(argc, argv);
