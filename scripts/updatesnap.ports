@@ -42,9 +42,7 @@ fi
 # create /a/snap/ if not already there
 if [ ! -d ${base} ]; then
   echo "creating new base directory using ${base}"
-  mkdir -p ${base} || finish 1
-  echo "zfs create -o mountpoint=${base} ${zbase}"
-  zfs create -o mountpoint=${base} ${zbase} || finish 1
+  zfs create ${zbase} || finish 1
   chown -R ${uid}:${gid} ${base}
   chmod -R g+w ${base}
 fi
@@ -52,9 +50,7 @@ fi
 # create /a/snap/ports-head/ if not already there
 if [ ! -d ${head} ]; then
   echo "creating new ports-head directory using ${head}"
-  mkdir ${head} || finish 1
-  echo "zfs create -o mountpoint=${head} ${zhead}"
-  zfs create -o mountpoint=${head} ${zhead} || finish 1
+  zfs create ${zhead} || finish 1
   chown -R ${uid}:${gid} ${head}
   chmod -R g+w ${head}
 fi
@@ -62,9 +58,7 @@ fi
 # create /a/snap/ports-head/ports/ if not already there
 if [ ! -d ${head}/ports ]; then
   echo "creating new ports-head/ports directory using ${head}/ports"
-  mkdir ${head}/ports || finish 1
-  echo "zfs create -o mountpoint=${head}/ports ${zhead}/ports"
-  zfs create -o mountpoint=${head}/ports ${zhead}/ports || finish 1
+  zfs create ${zhead}/ports || finish 1
   chown -R ${uid}:${gid} ${head}/ports
   chmod -R g+w ${head}/ports
 fi

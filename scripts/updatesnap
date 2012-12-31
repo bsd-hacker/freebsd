@@ -42,30 +42,24 @@ fi
 # create /a/snap if not already there
 if [ ! -d ${base} ]; then
   echo "creating new base directory using ${base}"
-  mkdir -p ${base} || finish 1
-  echo "zfs create -o mountpoint=${base} ${zbase}"
-  zfs create -o mountpoint=${base} ${zbase} || finish 1
+  zfs create ${zbase} || finish 1
   chown -R ${uid}:${gid} ${base}
   chmod -R g+w ${base}
 fi
 
 for branch in $SRC_BRANCHES; do
-  mountpoint=${base_prefix}${branch}
   # create /a/snap/src-<branch> if not already there
+  mountpoint=${base_prefix}${branch}
   if [ ! -d ${mountpoint} ]; then
     echo "creating new source branch using ${mountpoint}"
-    mkdir ${mountpoint} || finish 1
-    echo "zfs create -o mountpoint=${mountpoint} ${zbase_prefix}${branch}"
-    zfs create -o mountpoint=${mountpoint} ${zbase_prefix}${branch} || finish 1
+    zfs create ${zbase_prefix}${branch} || finish 1
     chown -R ${uid}:${gid} ${mountpoint}
     chmod -R g+w ${mountpoint}
   fi
   # create /a/snap/src-<branch>/src if not already there
   if [ ! -d ${mountpoint}/src ]; then
     echo "creating new source branch subdirectory using ${mountpoint}/src"
-    mkdir ${mountpoint}/src || finish 1
-    echo "zfs create -o mountpoint=${mountpoint}/src ${zbase_prefix}${branch}/src"
-    zfs create -o mountpoint=${mountpoint}/src ${zbase_prefix}${branch}/src || finish 1
+    zfs create ${zbase_prefix}${branch}/src || finish 1
     chown -R ${uid}:${gid} ${mountpoint}/src
     chmod -R g+w ${mountpoint}/src
   fi
