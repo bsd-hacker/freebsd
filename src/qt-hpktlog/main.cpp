@@ -12,6 +12,7 @@
 
 #include "libradarpkt/pkt.h"
 #include "libradarpkt/ar5416_radar.h"
+#include "libradarpkt/ar5212_radar.h"
 #include "libradarpkt/ar9280_radar.h"
 
 
@@ -69,7 +70,7 @@ plotSet(QwtPlot *p, PktLogData *pl)
 static void
 usage()
 {
-	printf("usage: <ar5416|ar9280> <ifname>\n");
+	printf("usage: <ar5212|ar5416|ar9280> <ifname>\n");
 	exit(127);
 }
 
@@ -88,6 +89,8 @@ main(int argc, char *argv[])
 
 	if (strcmp(argv[1], "ar5416")== 0)
 		type = CHIP_AR5416;
+	else if (strcmp(argv[1], "ar5212")== 0)
+		type = CHIP_AR5212;
 	else if (strcmp(argv[1], "ar9280")== 0)
 		type = CHIP_AR9280;
 	else

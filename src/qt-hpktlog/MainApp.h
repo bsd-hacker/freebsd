@@ -20,9 +20,7 @@
 
 #include "libradarpkt/pkt.h"
 
-#define		MAX_RSSI		256
-#define		MAX_PULSEDUR		256
-#define		MAX_HEATCNT		254
+#include "HeatMap.h"
 
 class MainApp : public QMainWindow
 {
@@ -36,7 +34,7 @@ class MainApp : public QMainWindow
 		QwtSymbol *q_symbol;
 
 		// How many entries to keep in the histogram
-		size_t num_entries;
+		int num_entries;
 
 		// Our old-style histogram data
 		std::vector<double> q_dur;
@@ -45,9 +43,8 @@ class MainApp : public QMainWindow
 		// and the new-style histogram data
 		QVector<QwtPoint3D> q_points;
 
-		// Now, an array of items, for "heat" data
-		// XXX this really should be another class..
-		uint8_t heat_map[MAX_RSSI][MAX_PULSEDUR];
+		// "Heat" map data
+		HeatMap *hm;
 
 		// TODO	When rendering the screen, we only want to do it
 		//	every say, 3ms.

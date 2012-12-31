@@ -12,6 +12,6 @@ QMAKE_CFLAGS=	-g -ggdb -DATH_ENABLE_RADIOTAP_VENDOR_EXT
 QMAKE_CXXFLAGS=	-g -ggdb -DATH_ENABLE_RADIOTAP_VENDOR_EXT
 
 # Input
-HEADERS += MainApp.h PktSource.h
+HEADERS += HeatMap.h MainApp.h PktSource.h
 # FORMS += PlotWindow.ui MainWindow.ui
-SOURCES += MainApp.cpp PktSource.cpp main.cpp
+SOURCES += HeatMap.cpp MainApp.cpp PktSource.cpp main.cpp

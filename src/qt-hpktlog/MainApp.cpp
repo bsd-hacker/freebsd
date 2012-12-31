@@ -11,17 +11,14 @@
 #include "qwt_plot_histogram.h"
 #include "qwt_symbol.h"
 
+#include "HeatMap.h"
+
 #include "MainApp.h"
 
 MainApp::MainApp(QMainWindow *parent)
 {
 
-	// Blank the heat map
-	for (int i = 0; i < MAX_RSSI; i++) {
-		for (int j = 0; j < MAX_PULSEDUR; j++) {
-			heat_map[i][j] = 0;
-		}
-	}
+	hm = new HeatMap();
 
 	// How many entries to keep in the FIFO
 	num_entries = 128;
@@ -64,6 +61,8 @@ MainApp::~MainApp()
 		delete q_curve;
 	if (q_plot)
 		delete q_plot;
+
+	delete hm;
 }
 
 void
@@ -90,16 +89,14 @@ MainApp::getRadarEntry(struct radar_entry re)
 	q_rssi.insert(q_rssi.begin(), (float) re.re_rssi);
 
 
-	// Update the heat map for the current pixel, topping out at 65535
-	// entries (ie, don't overflow.)
-	if (heat_map[re.re_rssi % MAX_RSSI][re.re_dur % MAX_PULSEDUR] < MAX_HEATCNT)
-		heat_map[re.re_rssi % MAX_RSSI][re.re_dur % MAX_PULSEDUR]++;
+	// Update the heat map for the current sample
+	hm->incr(re.re_rssi, re.re_dur);
 
 	q_points.insert(q_points.begin(),
 	    QwtPoint3D(
 	    (float) re.re_dur,
 	    (float) re.re_rssi,
-	    (float) heat_map[re.re_rssi % MAX_RSSI][re.re_dur % MAX_PULSEDUR] * 100.0));
+	    (float) hm->get(re.re_rssi, re.re_dur) * 100.0));
 
 	// If we're too big, delete the first entry
 	if (q_points.size() > num_entries) {
@@ -107,8 +104,7 @@ MainApp::getRadarEntry(struct radar_entry re)
 		uint8_t rssi, dur;
 		rssi = q_rssi[q_rssi.size() - 1];
 		dur = q_dur[q_dur.size() - 1];
-		if (heat_map[rssi % MAX_RSSI][dur % MAX_PULSEDUR] > 0)
-			heat_map[rssi % MAX_RSSI][dur % MAX_PULSEDUR]--;
+		hm->decr(rssi, dur);
 
 		// Remove the tail entry
 		q_dur.pop_back();
