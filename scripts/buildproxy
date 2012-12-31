@@ -66,9 +66,11 @@ BUILDPROXY_SOCKET_FILE = config.get( 'BUILDPROXY_SOCKET_FILE' )
 PORTBUILD_USER = config.get( 'PORTBUILD_USER' )
 PORTBUILD_GROUP = config.get( 'PORTBUILD_GROUP' )
 
-portbuild_uid = PORTBUILD_USER
-if not portbuild_uid:
-    portbuild_uid = "ports-" + arch
+portbuild_user = PORTBUILD_USER
+if not portbuild_user:
+    # XXX MCL 20121229 probably does not work.
+    portbuild_user = "ports-" + arch
+portbuild_uid = getuidbyname( PORTBUILD_USER )
 
 if os.path.exists(BUILDPROXY_SOCKET_FILE):
     os.unlink(BUILDPROXY_SOCKET_FILE)
@@ -77,10 +79,10 @@ s.bind(BUILDPROXY_SOCKET_FILE)
 os.chmod(BUILDPROXY_SOCKET_FILE, 0600)
 if PORTBUILD_USER:
     if PORTBUILD_GROUP:
-        os.chown(BUILDPROXY_SOCKET_FILE, getuidbyname(PORTBUILD_USER), getgidbyname(PORTBUILD_GROUP))
+        os.chown(BUILDPROXY_SOCKET_FILE, portbuild_uid, getgidbyname(PORTBUILD_GROUP))
         os.chmod(BUILDPROXY_SOCKET_FILE, 0660)
     else:
-        os.chown(BUILDPROXY_SOCKET_FILE, getuidbyname(PORTBUILD_USER), -1)
+        os.chown(BUILDPROXY_SOCKET_FILE, portbuild_uid, -1)
 
 s.listen(10)
 
