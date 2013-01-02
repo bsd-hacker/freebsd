@@ -112,6 +112,26 @@ convert_data(struct spectral_ht20_msg *msg)
 }
 #endif
 
+static int
+ar9280_radar_spectral_print(struct radar_fft_entry *fe)
+{
+	int i;
+	printf("PRI:  max index=%d, magnitude=%d, bitmap weight=%d, max_exp=%d\n",
+	    fe->pri.max_index,
+	    fe->pri.max_magnitude,
+	    fe->pri.bitmap_weight,
+	    fe->max_exp);
+
+	for (i = 0; i < 56; i++) {
+		if (i % 8 == 0)
+		    printf("PRI: %d:", i);
+		printf("%02x ", fe->pri.bins[i].raw_mag);
+		if (i % 8 == 7)
+		    printf("\n");
+	}
+	printf("\n");
+}
+
 /* XXX why do we need this? */
 static int8_t
 fix_max_index(uint8_t max_index)
@@ -146,7 +166,7 @@ ar9280_radar_spectral_decode_ht20(struct ieee80211_radiotap_header *rh,
 	    ((pkt[56] & 0xc0) >> 6) |
 	    ((pkt[58] & 0x03) << 10);
 	fe->pri.bitmap_weight = pkt[56] & 0x3f;
-	fe->pri.max_index = fix_max_index(pkt[58] & 0x3f);
+	fe->pri.max_index = (pkt[58] & 0x3f);
 	fe->max_exp = pkt[59] & 0x0f;
 
 	/* Decode each bin - the dBm calculation will come later */
@@ -188,6 +208,7 @@ ar9280_radar_spectral_decode(struct ieee80211_radiotap_header *rh,
 		if (ar9280_radar_spectral_decode_ht20(rh, fr, fr_len, re, i) != 0) {
 			break;
 		}
+		ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
 		fr_len -= AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
 		fr += AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
 		if (fr_len < 0)
@@ -239,7 +260,7 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	 * HAL/DFS code, so they can all be plotted as appropriate.
 	 */
 
-#if 0
+#if 1
 	printf("tsf: %lld", tsf);
 	printf(" len: %d", len);
 	printf(" rssi %d/%d", comb_rssi, nf);
@@ -276,7 +297,8 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	 * things) whether the pulse duration is based on 40MHz or 44MHz.
 	 */
 	re->re_timestamp = tsf;
-	re->re_rssi = pri_rssi;	/* XXX extension rssi? */
+	//re->re_rssi = pri_rssi;	/* XXX extension rssi? */
+	re->re_rssi = comb_rssi;	/* XXX comb for spectral scan? or not? */
 	re->re_dur = pkt[len - 3];	/* XXX extension duration? */
 	re->re_freq = 2412;	/* XXX DO this! */
 	re->re_num_spectral_entries = 0;
