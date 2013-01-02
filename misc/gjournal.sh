@@ -30,6 +30,8 @@
 
 # Deadlock scenario based on kern/154228, fixed in r217880.
 
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+
 . ../default.cfg
 
 size="2g"
