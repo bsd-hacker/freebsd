@@ -72,14 +72,6 @@ do_create() {
       chmod -R g+w ${archdir}
     fi
 
-#    # create .ssh/ directory if it does not already exist 
-#    sshdir=${pbd}/${arch}/.ssh
-#    if [ ! -d ${sshdir} ]; then
-#	mkdir -p ${sshdir} || exit 1
-#	chown -R ${uid}:${gid} ${sshdir}
-#	chmod 700 ${sshdir}
-#    fi
-
     # create overall archive directory if it does not already exist 
     archivedir=${pbd}/${arch}/archive
     if [ ! -d ${archivedir} ]; then
