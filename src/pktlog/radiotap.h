@@ -175,6 +175,17 @@ struct ieee80211_radiotap_header {
  *
  *     Number of unicast retries a transmitted frame used.
  *
+ * IEEE80211_RADIOTAP_XCHANNEL          uint32_t        bitmap
+ *                                      uint16_t        MHz
+ *                                      uint8_t         channel number
+ *                                      int8_t          .5 dBm
+ *
+ *      Extended channel specification: flags (see below) followed by
+ *      frequency in MHz, the corresponding IEEE channel number, and
+ *      finally the maximum regulatory transmit power cap in .5 dBm
+ *      units.  This property supersedes IEEE80211_RADIOTAP_CHANNEL
+ *      and only one of the two should be present.
+ *
  * IEEE80211_RADIOTAP_MCS	u8, u8, u8		unitless
  *
  *     Contains a bitmap of known fields/flags, the flags, and
@@ -203,7 +214,7 @@ enum ieee80211_radiotap_type {
 	IEEE80211_RADIOTAP_TX_FLAGS = 15,
 	IEEE80211_RADIOTAP_RTS_RETRIES = 16,
 	IEEE80211_RADIOTAP_DATA_RETRIES = 17,
-
+	IEEE80211_RADIOTAP_XCHANNEL = 18,
 	IEEE80211_RADIOTAP_MCS = 19,
 	IEEE80211_RADIOTAP_AMPDU_STATUS = 20,
 
@@ -222,6 +233,9 @@ enum ieee80211_radiotap_type {
 #define	IEEE80211_CHAN_PASSIVE	0x0200	/* Only passive scan allowed */
 #define	IEEE80211_CHAN_DYN	0x0400	/* Dynamic CCK-OFDM channel */
 #define	IEEE80211_CHAN_GFSK	0x0800	/* GFSK channel (FHSS PHY) */
+#define	IEEE80211_CHAN_HT20	0x00010000 /* HT 20 channel */
+#define	IEEE80211_CHAN_HT40U	0x00020000 /* HT 40 channel w/ ext above */
+#define	IEEE80211_CHAN_HT40D	0x00040000 /* HT 40 channel w/ ext below */
 
 /* For IEEE80211_RADIOTAP_FLAGS */
 #define	IEEE80211_RADIOTAP_F_CFP	0x01	/* sent/received
