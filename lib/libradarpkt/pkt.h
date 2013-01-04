@@ -62,7 +62,16 @@ struct radar_fft_entry {
 
 struct radar_entry {
 	uint64_t	re_timestamp;
+
+	/* Primary frequency */
 	uint32_t	re_freq;
+
+	/* Secondary channel frequency, if applicable */
+	uint32_t	re_freq_sec;
+
+	/* Channel width */
+	uint32_t	re_freqwidth;
+
 	/*
 	 * The hardware may give it to us as a negative number;
 	 * eg CCK decode which can use self-correlation to decode

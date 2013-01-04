@@ -300,7 +300,7 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	//re->re_rssi = pri_rssi;	/* XXX extension rssi? */
 	re->re_rssi = comb_rssi;	/* XXX comb for spectral scan? or not? */
 	re->re_dur = pkt[len - 3];	/* XXX extension duration? */
-	re->re_freq = 2412;	/* XXX DO this! */
+	re->re_freq = 0;
 	re->re_num_spectral_entries = 0;
 	/* XXX flags? */
 
