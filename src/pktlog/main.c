@@ -14,6 +14,17 @@
 #include "libradarpkt/ar5416_radar.h"
 #include "libradarpkt/ar9280_radar.h"
 
+#include "chan.h"
+
+/* from _ieee80211.h */
+#define      IEEE80211_CHAN_HT40U    0x00020000 /* HT 40 channel w/ ext above */
+#define      IEEE80211_CHAN_HT40D    0x00040000 /* HT 40 channel w/ ext below */
+
+// non-HT
+// 0x00200140
+// HT, not HT40
+// 0x00210140
+
 /*
  * Compile up a rule that's bound to be useful - it only matches on
  * radar errors.
@@ -35,9 +46,11 @@ pkt_compile(pcap_t *p, struct bpf_program *fp)
 static void
 pkt_print(struct radar_entry *re)
 {
-	printf("ts: %llu, freq=%u, rssi=%d, dur=%d\n",
+	printf("ts: %llu, freq=%u, freqsec=%d, chwidth=%d, rssi=%d, dur=%d\n",
 	    re->re_timestamp,
 	    re->re_freq,
+	    re->re_freq_sec,
+	    re->re_freqwidth,
 	    re->re_rssi,
 	    re->re_dur);
 }
@@ -49,6 +62,7 @@ pkt_handle(int chip, const char *pkt, int len)
 	uint8_t rssi, nf;
 	struct radar_entry re;
 	int r;
+	struct xchan x;
 
 	/* XXX assume it's a radiotap frame */
 	rh = (struct ieee80211_radiotap_header *) pkt;
@@ -86,6 +100,16 @@ pkt_handle(int chip, const char *pkt, int len)
 		return;
 	}
 #endif
+
+	/*
+	 * Do a frequency lookup.
+	 */
+	/* XXX rh->it_len should be endian checked?! */
+	if (pkt_lookup_chan((char *) pkt, len, &x) != 0) {
+		printf("%s: channel lookup failed\n", __func__);
+		return;
+	}
+
 	if (chip == CHIP_AR5212)
 		r = ar5212_radar_decode(rh, pkt + rh->it_len, len - rh->it_len,
 		    &re);
@@ -96,11 +120,32 @@ pkt_handle(int chip, const char *pkt, int len)
 		r = ar9280_radar_decode(rh, pkt + rh->it_len, len - rh->it_len,
 		    &re);
 
+	/* Update the channel/frequency information */
+	re.re_freq = x.freq;
+
+	if (x.flags & IEEE80211_CHAN_QUARTER) {
+		re.re_freq_sec = 0;
+		re.re_freqwidth = 5;
+	} else if (x.flags & IEEE80211_CHAN_HALF) {
+		re.re_freq_sec = 0;
+		re.re_freqwidth = 10;
+	} else if (x.flags & IEEE80211_CHAN_HT40U) {
+		re.re_freq_sec = re.re_freq + 20;
+		re.re_freqwidth = 40;
+	} else if (x.flags & IEEE80211_CHAN_HT40D) {
+		re.re_freq_sec = re.re_freq - 20;
+		re.re_freqwidth = 40;
+	} else {
+		re.re_freq_sec = 0;
+		re.re_freqwidth = 20;
+	}
+
 	/*
 	 * TODO: Print the summary record
 	 */
-	if (r)
+	if (r) {
 		pkt_print(&re);
+	}
 }
 
 static pcap_t *
