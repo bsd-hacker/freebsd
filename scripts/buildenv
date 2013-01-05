@@ -141,10 +141,9 @@ buildenv () {
 	export __MAKE_CONF=${builddir}/make.conf.server
     else
 	# allow for per-arch make.conf
-	# XXX MCL NOTYET the ones that are there are set up for pxeworld.  WRONG!
-#	if [ -f ${builddir}/make.conf ]; then
-#	    export __MAKE_CONF=${pbd}/${arch}/make.conf
-#	fi
+ 	if [ -f ${builddir}/make.conf ]; then
+ 	    export __MAKE_CONF=${pbd}/${arch}/make.conf
+ 	fi
     fi
 
     # allow for per-build src.conf
