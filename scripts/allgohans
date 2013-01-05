@@ -20,9 +20,7 @@ doarch() {
     arch=$1
     shift
 
-    if [ -f "${pbd}/${arch}/portbuild.conf" ]; then
-	. ${pbd}/${arch}/portbuild.conf
-    else
+    if [ ! -f "${pbd}/${arch}/portbuild.conf" ]; then
 	echo "can't find ${pbd}/${arch}/portbuild.conf"
 	exit 1
     fi
