@@ -39,6 +39,7 @@ SUBDIR=	adduser \
 	kldxref \
 	mailwrapper \
 	makefs \
+	makevd \
 	manctl \
 	memcontrol \
 	mergemaster \

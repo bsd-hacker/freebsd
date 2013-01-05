@@ -1,0 +1,111 @@
+.\"
+.\" Copyright (c) 2011
+.\"	Hiroki Sato <hrs@FreeBSD.org> All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY WASABI SYSTEMS, INC. ``AS IS'' AND ANY
+.\" EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+.\" PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL WASABI SYSTEMS, INC BE
+.\" LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+.\" CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+.\" SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+.\" BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+.\" WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+.\" OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+.\" ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd January 6, 2013
+.Dt MAKEVD 8
+.Os
+.Sh NAME
+.Nm makevd
+.Nd create a virtual disk image from a file system image
+.Sh SYNOPSIS
+.Nm
+.Op Fl B Ar byte-order
+.Op Fl o Ar image-options
+.Op Fl t Ar image-type
+.Ar input-image-file
+.Sh DESCRIPTION
+The utility
+.Nm
+creates a virtual disk image from the file system image specified in
+.Ar input-image-file .
+The output file name can be specified by using
+.Op Fl o Ar imagename
+option.
+If not specified, it will be determined by the
+.Ar input-image-file .
+The options are as follows:
+.Bl -tag -width flag
+.It Fl B Ar byte-order
+Set the byte order of the image to
+.Ar byte-order .
+Valid byte orders are
+.Ql 4321 ,
+.Ql big ,
+or
+.Ql be
+for big endian, and
+.Ql 1234 ,
+.Ql little ,
+or
+.Ql le
+for little endian.
+Some file systems may have a fixed byte order; in those cases this
+argument will be ignored.
+.Ar image-options
+is a comma separated list of options.
+Valid image specific options are detailed below.
+.It Fl t Ar image-type
+Create an
+.Ar image-type
+virtual disk image.
+The following image types are supported:
+.Bl -tag -width cd9660 -offset indent
+.It Sy vmdk
+VMWare Virtual Machine DisK (VMDK) Format.
+.It Sy raw
+No conversion (default).
+.El
+.El
+.\"
+.\"
+.Ss VMDK-specific options
+.Sy vmdk
+images have VMDK-specific parameters that may be provided.
+Some are optional, and some are mandatory.
+Each of the options consists of a keyword, an equal sign
+.Pq Ql = ,
+and a value.
+The following keywords are supported:
+.Pp
+.Bl -tag -width optimization -offset indent -compact
+.It Fl o Sy uuid
+UUID for the image.  Mandatory.
+.El
+.Sh SEE ALSO
+.Xr uuidgen 1
+.Sh HISTORY
+The
+.Nm
+utility first appeared in
+.Fx 10.0
+.Sh AUTHORS
+.An Hiroki Sato
+.Aq hrs@FreeBSD.org
+.Sh BUGS
+The
+.Fl B Ar byte-order
+option does not work yet.
