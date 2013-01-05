@@ -36,7 +36,7 @@ NAME=$1; shift
 # Create an ISO image
 publisher="The FreeBSD Project.  http://www.freebsd.org/"
 echo "/dev/iso9660/$LABEL / cd9660 ro 0 0" > $1/etc/fstab
-makefs -t cd9660 -o rockridge -o label="$LABEL" -o publisher="$publisher" ${NAME}.tmp $*
+makefs -t cd9660 -B be -o rockridge -o label="$LABEL" -o publisher="$publisher" ${NAME}.tmp $*
 rm $1/etc/fstab
 
 if [ "x$BOPT" != "x-b" ]; then
@@ -50,7 +50,7 @@ BOOTFSIMG="${TMPIMGDIR}/bootfs.img"
 # Create a boot filesystem
 mkdir -p "${BOOTFSDIR}/boot"
 cp $4/boot/loader "${BOOTFSDIR}/boot"
-makefs -t ffs -M 512k "${BOOTFSIMG}" "${BOOTFSDIR}"
+makefs -t ffs -B be -M 512k "${BOOTFSIMG}" "${BOOTFSDIR}"
 dd if=$4/boot/boot1 of="${BOOTFSIMG}" bs=512 conv=notrunc,sync
 
 # Create a boot ISO image
@@ -62,6 +62,9 @@ ISOCYLS=$(( (${ISOBLKS} + (${CYLSIZE} - 1)) / ${CYLSIZE} ))
 BOOTFSSIZE=$(stat -f %z "${BOOTFSIMG}")
 BOOTFSBLKS=$(( (${BOOTFSSIZE} + 511) / 512 ))
 BOOTFSCYLS=$(( (${BOOTFSBLKS} + (${CYLSIZE} - 1)) / ${CYLSIZE} ))
+
+ENDCYL=$(( ${ISOCYLS} + ${BOOTFSCYLS} ))
+NSECTS=$(( ${ENDCYL} * 1 * ${CYLSIZE} ))
 
 dd if=${NAME}.tmp of=${NAME} bs=${CYLSIZE}b conv=notrunc,sync
 dd if=${BOOTFSIMG} of=${NAME} bs=${CYLSIZE}b seek=${ISOCYLS} conv=notrunc,sync
@@ -75,7 +78,7 @@ cat <<EOT | sunlabel -R ${MD} /dev/stdin
 text: FreeBSD_Install cyl ${ENDCYL} alt 2 hd 1 sec ${CYLSIZE}
 bytes/sector: 512
 sectors/cylinder: ${CYLSIZE}
-sectors/unit: ${ENDCYL}
+sectors/unit: ${NSECTS}
 
 8 partitions:
 #
