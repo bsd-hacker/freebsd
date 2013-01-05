@@ -11,7 +11,7 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 # duplication.
 quoted_subdirs="'/src' '/ports' ''"
 
-#DISABLE_PROXY=1
+DISABLE_PROXY=1
 
 # XXX unused
 get_latest_snap() {
@@ -67,9 +67,9 @@ do_create() {
     # create zfs instance for arch if it does not already exist
     archfs=${ZFS_VOLUME}/portbuild/${arch}
     if ! test_fs "${archfs}"; then
-      zfs create -o mountpoint=${archdir} ${archfs} || exit 1
-      chown -R ${uid}:${gid} ${archdir}
-      chmod -R g+w ${archdir}
+      zfs create ${archfs} || exit 1
+      #chown -R ${uid}:${gid} ${archdir}
+      #chmod -R g+w ${archdir}
     fi
 
     # create overall archive directory if it does not already exist 
@@ -96,32 +96,32 @@ do_create() {
 	chmod -R g+w ${errorlogsdir}
     fi
 
-    # create directory for all builds for buildenv if it does not already exist
-    buildsdir=${pbab}/builds
-    if [ ! -d ${buildsdir} ]; then
-	mkdir -p ${buildsdir} || exit 1
-	chown -R ${uid}:${gid} ${pbab}
-	chmod -R g+w ${pbab}
+    # create zfs instance for buildenv if it does not already exist
+    branchfs=${archfs}/${branch}
+    if ! test_fs "${branchfs}"; then
+        zfs create ${branchfs} || exit 1
     fi
 
-    # create directory for latest build for buildenv if it does not already exist
-    builddir=$(realpath ${buildsdir})/${buildid}
-    if [ -d ${builddir} ]; then
-	echo "Can't create ${builddir}, it already exists"
-	exit 1
+    # create zfs instance for all builds for buildenv if it does not already exist
+    buildsfs=${branchfs}/builds
+    if ! test_fs "${buildsfs}"; then
+        zfs create ${buildsfs} || exit 1
     fi
 
     # create zfs instance for latest build on buildenv
-    mountpoint=${builddir}
-    newfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}
-    zfs create -o mountpoint=${mountpoint} ${newfs} || exit 1
-    chown -R ${uid}:${gid} ${mountpoint}
-    chmod -R g+w ${mountpoint}
+    newfs=${buildsfs}/${buildid}
+    if ! test_fs "${newfs}"; then
+        zfs create ${newfs} || exit 1
+    fi
+
+    builddir=$(realpath ${buildsdir})/${buildid}
 
     # populate ports for latest build on buildenv
+    # XXX MCL builddir now unused
     do_portsupdate_inner ${arch} ${branch} ${buildid} ${builddir} $@
 
     # populate src for latest build on buildenv
+    # XXX MCL builddir now unused
     do_srcupdate_inner ${arch} ${branch} ${buildid} ${builddir} $@
 
     # create the link for building packages for latest build
@@ -207,13 +207,17 @@ do_clone() {
     tmp=${tmp%/}
     newbuilddir="${tmp%/*}/${newid}"
 
-    oldfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}
-    newfs=${ZFS_VOLUME}/portbuild/${arch}/${newid}
+    # XXX MCL 20130103
+    #oldfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}
+    #newfs=${ZFS_VOLUME}/portbuild/${arch}/${newid}
+    oldfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}
+    newfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${newid}
 
-    zfs snapshot ${oldfs}@${newid}
-    zfs clone ${oldfs}@${newid} ${newfs}
-    zfs set mountpoint=${newbuilddir} ${newfs}
-    zfs promote ${newfs}
+    zfs snapshot ${oldfs}@${newid} || exit 1
+    zfs clone ${oldfs}@${newid} ${newfs} || exit 1
+    # XXX MCL 20130103
+    # zfs set mountpoint=${newbuilddir} ${newfs} || exit 1
+    zfs promote ${newfs} || exit 1
 
     if zfs list -H -t filesystem ${oldfs}/ports 2> /dev/null; then
 	portsnap=${oldfs}/ports@${newid}
@@ -253,7 +257,9 @@ do_portsupdate() {
 	shift
     fi
 
-    destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} /ports || exit 1
+    # XXX MCL 20130103
+    #destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} /ports || exit 1
+    destroy_fs ${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds ${buildid} /ports || exit 1
 
     if [ "${arg}" = "-umount" ]; then
 	return
@@ -270,16 +276,19 @@ do_portsupdate_inner() {
     builddir=$4
     shift 4
 
-    echo "================================================"
-    echo "Reimaging ZFS ports tree on ${builddir}/ports"
-    echo "================================================"
-
-    portsfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}/ports
+    # XXX MCL 20130103
+    # portsfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}/ports
+    portsfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}/ports
     now=$(now)
 
-    zfs snapshot ${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}/ports@${now}
-    zfs clone ${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}/ports@${now} ${portsfs}
-    zfs set mountpoint=${builddir}/ports ${portsfs}
+    echo "================================================"
+    #echo "Reimaging ZFS ports tree on ${builddir}/ports"
+    echo "Reimaging ZFS ports tree on ${portsfs}"
+    echo "================================================"
+
+    zfs snapshot ${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}/ports@${now} || exit 1
+    zfs clone ${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}/ports@${now} ${portsfs} || exit 1
+    #zfs set mountpoint=${builddir}/ports ${portsfs} || exit 1
 }
 
 do_srcupdate() {
@@ -293,7 +302,9 @@ do_srcupdate() {
 	shift
     fi
 
-    destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} /src || exit 1
+    # XXX MCL 20130103
+    #destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} /src || exit 1
+    destroy_fs ${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds ${buildid} /src || exit 1
 
     if [ "${arg}" = "-umount" ]; then
 	return
@@ -310,17 +321,20 @@ do_srcupdate_inner() {
     builddir=$4
     shift 4
 
-    echo "================================================"
-    echo "Reimaging ZFS src tree on ${builddir}/src"
-    echo "================================================"
-
     strippedbranch=${branch%%[-\.]*}
-    srcfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}/src
+    # XXX MCL 20130103
+    #srcfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}/src
+    srcfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}/src
     now=$(now)
 
-    zfs snapshot ${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}${strippedbranch}/src@${now}
-    zfs clone ${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}${strippedbranch}/src@${now} ${srcfs}
-    zfs set mountpoint=${builddir}/src ${srcfs}
+    echo "================================================"
+    #echo "Reimaging ZFS src tree on ${builddir}/src"
+    echo "Reimaging ZFS src tree on ${srcfs}"
+    echo "================================================"
+
+    zfs snapshot ${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}${strippedbranch}/src@${now} || exit 1
+    zfs clone ${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}${strippedbranch}/src@${now} ${srcfs} || exit 1
+    #zfs set mountpoint=${builddir}/src ${srcfs} || exit 1
 }
 
 cleanup_client() {
@@ -486,7 +500,9 @@ do_destroy() {
     # perform sanity check to prevent e.g. "latest" being destroyed
     # before "previous"
     for quoted_subdir in $quoted_subdirs; do
-	fullfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}`echo $quoted_subdir | sed -e "s/'//g"`
+        # XXX MCL 20130103
+	#fullfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}`echo $quoted_subdir | sed -e "s/'//g"`
+	fullfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}`echo $quoted_subdir | sed -e "s/'//g"`
 	if test_fs "${fullfs}"; then
 	    child=$(get_latest_child ${fullfs})
 	    parent=$(get_parent ${fullfs})
@@ -499,7 +515,9 @@ do_destroy() {
 
     # now ok to do the actual destroy.
     for quoted_subdir in $quoted_subdirs; do
-    	destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} `echo $quoted_subdir | sed -e "s/'//g"` || exit 1
+        # XXX MCL 20130103
+    	#destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} `echo $quoted_subdir | sed -e "s/'//g"` || exit 1
+    	destroy_fs ${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds ${buildid} `echo $quoted_subdir | sed -e "s/'//g"` || exit 1
     done
 
     rmdir ${builddir}
