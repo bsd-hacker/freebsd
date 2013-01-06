@@ -78,22 +78,23 @@ vmdk_makeim(struct iminfo *imi)
 	if (vmdkfilebase == '\0')
 		vmdkfilebase = vmdkfile;
 
-	imh->magicNumber = SPARSE_MAGICNUMBER;
-	imh->version = SPARSE_VERSION_DEFAULT;
-	imh->flags = 1;
-	imh->capacity = 0;
-	imh->grainSize = 16;
-        imh->descriptorOffset = (sizeof(*imh) + 511) / 512;
-        imh->descriptorSize = (sizeof(desc) + 511) / 512;
-        imh->numGTEsPerGT = 512;
-        imh->rgdOffset = 0;
-        imh->gdOffset = 0;
-        imh->overHead = imh->descriptorOffset + imh->descriptorSize;
-        imh->uncleanShutdown = 0;
-        imh->singleEndLineChar = '\n';
-        imh->nonEndLineChar = ' ';
-        imh->doubleEndLineChar1 = '\r';
-        imh->doubleEndLineChar2 = '\n';
+	/* All of the fields are in LE byte order. */
+	imh->magicNumber = htole32(SEH_MAGICNUMBER);
+	imh->version = htole32(SEH_VERSION_DEFAULT);
+	imh->flags = htole32(1);
+	imh->capacity = htole64(0);
+	imh->grainSize = htole64(16);
+	imh->descriptorOffset = htole64((sizeof(*imh) + 511) / 512);
+	imh->descriptorSize = htole64((sizeof(desc) + 511) / 512);
+	imh->numGTEsPerGT = htole32(512);
+	imh->rgdOffset = htole64(0);
+	imh->gdOffset = htole64(0);
+	imh->overHead = htole64(imh->descriptorOffset + imh->descriptorSize);
+	imh->uncleanShutdown = 0;
+	imh->singleEndLineChar = '\n';
+	imh->nonEndLineChar = ' ';
+	imh->doubleEndLineChar1 = '\r';
+	imh->doubleEndLineChar2 = '\n';
 
 	sectors = 63;
 	heads = 16;

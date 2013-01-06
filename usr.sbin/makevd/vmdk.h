@@ -38,9 +38,12 @@ typedef uint16_t uint16;
 typedef uint8_t uint8;
 typedef uint8_t Bool;
 
+/* All of the fields are in LE byte order. */
 struct SparseExtentHeader {
 	uint32	     magicNumber;
+#define	SEH_MAGICNUMBER		(0x564d444b)	/* "VMDK" */
 	uint32	     version;
+#define	SEH_VERSION_DEFAULT	(2)
 	uint32	     flags;
 	SectorType   capacity;
 	SectorType   grainSize;
@@ -58,13 +61,5 @@ struct SparseExtentHeader {
 	uint16	     compressAlgorithm;
 	uint8	     pad[433];
 } __attribute__((__packed__));
-
-#if _BYTE_ORDER == _BIG_ENDIAN
-#define	SPARSE_MAGICNUMBER		(0x4b444d56)	/* 'K' 'D' 'M' 'V' */
-#else
-#define	SPARSE_MAGICNUMBER		(0x564d444b)	/* 'V' 'M' 'D' 'K' */
-#endif
-
-#define	SPARSE_VERSION_DEFAULT		2
 
 #endif	/* _VMDK_H */
