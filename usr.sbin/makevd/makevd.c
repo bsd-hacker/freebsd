@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 
 #include "makevd.h"
 #include "vmdk.h"
+#include "vhd.h"
 
 static LIST_HEAD(optlisthead_t, optlist) oplhead;
 
@@ -50,6 +51,7 @@ static struct imtype {
 	const char	*imt_type;
 	int		(*imt_makeim)(struct iminfo *);
 } imtypes[] = {
+	{ "vhd", vhd_makeim },
 	{ "vmdk", vmdk_makeim },
 	{ "none", raw_makeim },
 	{ "raw", raw_makeim },

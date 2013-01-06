@@ -74,6 +74,8 @@ Create an
 virtual disk image.
 The following image types are supported:
 .Bl -tag -width cd9660 -offset indent
+.It Sy vhd
+Microsoft Virtual Hard Disk (VHD) Image Format.
 .It Sy vmdk
 VMWare Virtual Machine DisK (VMDK) Format.
 .It Sy raw
@@ -82,6 +84,19 @@ No conversion (default).
 .El
 .\"
 .\"
+.Ss VHD-specific options
+.Sy vhd
+images have VHD-specific parameters that may be provided.
+Some are optional, and some are mandatory.
+Each of the options consists of a keyword, an equal sign
+.Pq Ql = ,
+and a value.
+The following keywords are supported:
+.Pp
+.Bl -tag -width optimization -offset indent -compact
+.It Fl o Sy uuid
+UUID for the image.  Mandatory.
+.El
 .Ss VMDK-specific options
 .Sy vmdk
 images have VMDK-specific parameters that may be provided.

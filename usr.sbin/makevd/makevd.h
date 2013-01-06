@@ -49,6 +49,7 @@ struct optlist {
 	char *opl_val;
 };
 
+int	vhd_makeim(struct iminfo *);
 int	vmdk_makeim(struct iminfo *);
 int	raw_makeim(struct iminfo *);
 
