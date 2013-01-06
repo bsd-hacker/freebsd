@@ -1,0 +1,23 @@
+$FreeBSD$
+
+How to test:
+
+1. Put world into $PWD/root/ directory.
+
+2. Type the following commands:
+
+# makefs -t ffs -b 20% boot.fs root
+# size=$$(stat -f %z boot.fs)
+# ssize=$$(( 50 + ($$size + (1024*1024-1)) / (1024*1024) ))
+# dd if=/dev/zero of=boot.img bs=1024x1024 count=1 seek=$$ssize conv=notrunc,noerror,sparse
+# mdconfig -a -t vnode -f boot.img -u 11
+# fdisk -IB /dev/md11
+# gpart create -s BSD md11s1
+# gpart add -t freebsd-ufs md11s1
+# dd if=boot.fs of=/dev/md11s1a bs=1m conv=sync,notrunc,noerror,sparse
+# gpart bootcode -b /boot/boot md11s1
+# mdconfig -d -u 11
+# makevd -t vmdk -o uuid=`uuidgen` -o imagename=boot boot.img
+# makevd -t vhd -o uuid=`uuidgen` -o imagename=boot boot.img
+
+3. You can use boot.vmdk or boot.vhd as a virtual disk file.
