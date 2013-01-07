@@ -11,10 +11,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS
  * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
@@ -30,6 +30,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
@@ -47,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 
 #include "makevd.h"
+#include "common.h"
 #include "vhd.h"
 
 static uint32_t vhd_checksum(struct HardDiskFooter *);
@@ -54,16 +56,20 @@ static uint32_t vhd_checksum(struct HardDiskFooter *);
 int
 vhd_makeim(struct iminfo *imi)
 {
-	struct HardDiskFooter DHF, *imh;
+	struct HardDiskFooter HDF = VHD_HDF_FIXEDHDD_INIT;
+	struct HardDiskFooter *imh;
+	struct blhead_t blhead;
+	struct blist *bl;
 	uint64_t sectors, heads, cylinders, imagesize;
 	uint8_t uuid[16];
 	char vhdfile[PATH_MAX + 10];
 	char buf[BUFSIZ];
 	char *p, *q;
-	ssize_t len0, len = 0;
+	ssize_t len = 0;
 	int ifd, ofd;
 
-	imh = &DHF;
+	TAILQ_INIT(&blhead);
+	imh = &HDF;
 	ifd = imi->imi_fd;
 	imagesize = imi->imi_size;
 
@@ -119,14 +125,7 @@ vhd_makeim(struct iminfo *imi)
 		err(EX_CANTCREAT, "%s", vhdfile);
 
 	/* All of the fields are in BE byte order. */
-	imh->Cookie = htobe64(HDF_COOKIE);
-	imh->Features = htobe32(HDF_FEATURES_RES);
-	imh->FileFormatVersion = htobe32(HDF_FILEFORMATVERSION_DEFAULT);
-	imh->DataOffset = htobe32(HDF_DATAOFFSET_FIXEDHDD);
 	imh->TimeStamp = 0; /* XXX */
-	imh->CreatorApplication = htobe32(HDF_CREATORAPP_VPC);
-	imh->CreatorVersion = htobe32(HDF_CREATORVERSION_VPC2004);
-	imh->CreatorHostOS = htobe32(HDF_CREATORHOSTOS_WIN);
 	imh->OriginalSize = htobe64(imagesize);
 	imh->CurrentSize = htobe64(imagesize);
 
@@ -141,33 +140,28 @@ vhd_makeim(struct iminfo *imi)
 	imh->DiskGeometry.heads = heads;
 	imh->DiskGeometry.sectcyl = sectors;
 
-	imh->DiskType = htobe32(HDF_DISKTYPE_FIXEDHDD);
 	memcpy((char *)imh->UniqueId, (char *)&uuid, sizeof(imh->UniqueId));
-	imh->SavedState = 0;
 
 	imh->Checksum = htobe32(vhd_checksum(imh));
 
-	for (;;) {
-		len0 = read(ifd, buf, sizeof(buf));
-		if (len0 == 0)
-			break;
-		if (len0 < 0) {
-			warn("read error");
-			return (1);
-		}
-		len = write(ofd, buf, len0);
-		if (len < 0) {
-			warn("write error");
-			return (1);
-		}
-	}
-	len0 = write(ofd, imh, sizeof(*imh));
-	if (len0 != sizeof(*imh)) {
-		warn("write error");
-		return (1);
-	}
+	bl = calloc(1, sizeof(*bl));
+	if (bl == NULL)
+		err(EX_OSERR, NULL);
+	bl->bl_type = BL_RAWCOPY;
+	bl->bl_name = "Rawcopy";
+	bl->bl_tf.blf_fd = ifd;
+	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
 
-	return (0);
+	bl = calloc(1, sizeof(*bl));
+	if (bl == NULL)
+		err(EX_OSERR, NULL);
+	bl->bl_type = BL_RAWDATA;
+	bl->bl_name = "Hard Disk Footer";
+	bl->bl_tr.blr_data = imh;
+	bl->bl_tr.blr_len = sizeof(*imh);
+	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
+
+	return (dispatch_bl(ofd, &blhead));
 }
 
 static uint32_t

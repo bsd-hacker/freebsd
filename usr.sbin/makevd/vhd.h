@@ -11,10 +11,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -69,6 +69,18 @@ struct HardDiskFooter {
 	uint8_t		SavedState;
 	char		Reserved[427];
 } __attribute__((__packed__));
+
+#define	VHD_HDF_FIXEDHDD_INIT	{					\
+	.Cookie = htobe64(HDF_COOKIE),					\
+	.Features = htobe32(HDF_FEATURES_RES),				\
+	.FileFormatVersion = htobe32(HDF_FILEFORMATVERSION_DEFAULT),	\
+	.DataOffset = htobe32(HDF_DATAOFFSET_FIXEDHDD),			\
+	.CreatorApplication = htobe32(HDF_CREATORAPP_VPC),		\
+	.CreatorVersion = htobe32(HDF_CREATORVERSION_VPC2004),		\
+	.CreatorHostOS = htobe32(HDF_CREATORHOSTOS_WIN),		\
+	.DiskType = htobe32(HDF_DISKTYPE_FIXEDHDD),			\
+	.SavedState = 0,						\
+	}
 
 struct DynamicDiskHeader {
 	uint64_t	Cookie;

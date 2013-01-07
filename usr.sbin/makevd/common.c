@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011
+ * Copyright (c) 2013
  *	Hiroki Sato <hrs@FreeBSD.org>  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,52 +31,78 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/queue.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/uio.h>
 
 #include <err.h>
-#include <fcntl.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
-#include <sysexits.h>
 
-#include "makevd.h"
 #include "common.h"
 
+static int rawcopy(int, int);
+static int writebuf(int, void *, ssize_t);
+
 int
-raw_makeim(struct iminfo *imi)
+dispatch_bl(int ofd, struct blhead_t *blhead)
 {
-	struct blhead_t blhead;
 	struct blist *bl;
-	char rawfile[PATH_MAX + 10];
-	int ifd, ofd;
+	int error;
 
-	TAILQ_INIT(&blhead);
-	ifd = imi->imi_fd;
+	TAILQ_FOREACH(bl, blhead, bl_next) {
+		printf("processing section: %s\n", bl->bl_name);
+		switch (bl->bl_type) {
+		case BL_RAWCOPY:
+			error = rawcopy(ofd, bl->bl_tf.blf_fd);
+			break;
+		case BL_RAWDATA:
+			error = writebuf(ofd, bl->bl_tr.blr_data,
+			    bl->bl_tr.blr_len);
+			break;
+		default:
+			error = 1;
+			break;
+		}
+		if (error)
+			return (error);
+	}
+	return (0);
+}
 
-	if (strcmp(imi->imi_imagename, "-") == 0)
-		ofd = STDOUT_FILENO;
-	else {
-		snprintf(rawfile, sizeof(rawfile), "%s.raw",
-		    imi->imi_imagename);
-		ofd = open(rawfile, O_WRONLY|O_CREAT|O_TRUNC,
-		    S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
-		if (ofd < 0)
-			err(EX_CANTCREAT, "%s", rawfile);
+static int
+rawcopy(int ofd, int ifd)
+{
+	ssize_t len0, len = 0;
+	char buf[BUFSIZ];
+
+	for (;;) {
+		len0 = read(ifd, buf, sizeof(buf));
+		if (len0 == 0)
+			break;
+		if (len0 < 0) {
+			warn("read error");
+			return (1);
+		}
+		len = write(ofd, buf, len0);
+		if (len < 0) {
+			warn("write error");
+			return (1);
+		}
+	}
+	return (0);
+}
+
+static int
+writebuf(int ofd, void *buf, ssize_t len)
+{
+	ssize_t len0;
+	u_char *p;
+
+	p = (u_char *)buf;
+	len0 = write(ofd, p, len);
+	if (len0 != len) {
+		warn("write error");
+		return (1);
 	}
 
-	bl = calloc(1, sizeof(*bl));
-	if (bl == NULL)
-		err(EX_OSERR, NULL);
-	bl->bl_type = BL_RAWCOPY;
-	bl->bl_name = "rawcopy";
-	bl->bl_tf.blf_fd = ifd;
-
-	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
-
-	return (dispatch_bl(ofd, &blhead));
+	return (0);
 }

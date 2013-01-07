@@ -11,10 +11,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -61,5 +61,21 @@ struct SparseExtentHeader {
 	uint16	     compressAlgorithm;
 	uint8	     pad[433];
 } __attribute__((__packed__));
+
+#define	VMDK_SEH_HOSTEDSPARSE_INIT	{			\
+	.magicNumber = htole32(SEH_MAGICNUMBER),		\
+	.version = htole32(SEH_VERSION_DEFAULT),		\
+	.flags = htole32(1),					\
+	.capacity = htole64(0),					\
+	.grainSize = htole64(16),				\
+	.numGTEsPerGT = htole32(512),				\
+	.rgdOffset = htole64(0),				\
+	.gdOffset = htole64(0),					\
+	.uncleanShutdown = 0,					\
+	.singleEndLineChar = '\n',				\
+	.nonEndLineChar = ' ',					\
+	.doubleEndLineChar1 = '\r',				\
+	.doubleEndLineChar2 = '\n',				\
+	 }
 
 #endif	/* _VMDK_H */

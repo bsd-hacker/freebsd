@@ -3,6 +3,7 @@
 PROG=	makevd
 MAN=	makevd.8
 SRCS=	makevd.c \
+	common.c \
 	raw.c \
 	vhd.c \
 	vmdk.c
