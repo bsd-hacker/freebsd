@@ -8,7 +8,7 @@
 
 #define	FFT_HISTOGRAM_SIZE	\
 	    ((6000-2300)*FFT_HISTOGRAM_RESOLUTION)
-#define	FFT_HISTOGRAM_HISTORY_DEPTH	10
+#define	FFT_HISTOGRAM_HISTORY_DEPTH	20
 
 struct fft_histogram_data {
 	/* XXX should struct-ize these! */
