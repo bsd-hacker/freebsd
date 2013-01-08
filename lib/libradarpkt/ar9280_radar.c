@@ -63,6 +63,8 @@
 #define	AR9280_SPECTRAL_SAMPLE_SIZE_HT20	60
 #define	AR9280_SPECTRAL_SAMPLE_SIZE_HT40	135
 
+#define	NUM_SPECTRAL_ENTRIES_HT20		56
+
 /*
  * GPLed snippet from Zefir on the linux-wireless list; rewrite this
  * soon!
@@ -85,8 +87,8 @@
 int
 convert_data_ht20(struct radar_entry *re, struct radar_fft_entry *fe)
 {
-	int dc_pwr_idx = AR9280_SPECTRAL_SAMPLE_SIZE_HT20 / 2;
-	int pwr_count = AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
+	int dc_pwr_idx = NUM_SPECTRAL_ENTRIES_HT20 / 2;
+	int pwr_count = NUM_SPECTRAL_ENTRIES_HT20;
 	int i;
 	int nf0 = -96;	/* XXX populate re with this first! */
 	float bsum = 0.0;
