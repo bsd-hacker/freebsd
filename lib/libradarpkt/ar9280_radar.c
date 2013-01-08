@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <sys/endian.h>
 #include <string.h>	/* for memcpy() */
+#include <math.h>
 
 #include <sys/socket.h>
 #include <net/if.h>
@@ -66,56 +67,64 @@
  * GPLed snippet from Zefir on the linux-wireless list; rewrite this
  * soon!
  */
-#if 0
+#if 1
 /*
  * In my system the post-processed FFT raw data is transferred via a netlink
  * interface to a spectral_proxy, that forwards it to a connected host for real-time
  * inspection and visualization.
-
+ *
  * The interpretation of the data is as follows: the reported values are given as
  * magnitudes, which need to be scaled and converted to absolute power values based
  * on the packets noise floor and RSSI values as follows:
  * bin_sum = 10*log(sum[i=1..56](b(i)^2)
  * power(i) = noise_floor + RSSI + 10*log(b(i)^2) - bin_sum
-
+ *
  * The code fragment to convert magnitude to absolute power values looks like this
  * (assuming you transferred the FFT and magnitude data to user space):
-*/
-bool
-convert_data(struct spectral_ht20_msg *msg)
+ */
+int
+convert_data_ht20(struct radar_entry *re, struct radar_fft_entry *fe)
 {
-       uint8_t *bin_pwr = msg->bin;
-       uint8_t *dc_pwr = msg->bin + SPECTRAL_NUM_BINS / 2;
-       int pwr_count = SPECTRAL_NUM_BINS;
-       int8_t rssi = msg->rssi;
-       int8_t max_scale = 1 << msg->max_exp;
-       int16_t max_mag = msg->max_magnitude;
-       int i;
-       int nf0 = msg->noise_floor;
+	int dc_pwr_idx = AR9280_SPECTRAL_SAMPLE_SIZE_HT20 / 2;
+	int pwr_count = AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
+	int i;
+	int nf0 = -96;	/* XXX populate re with this first! */
+	float bsum = 0.0;
 
-       float bsum = 0.0;
+	/* DC value is invalid -> interpolate */
+	fe->pri.bins[dc_pwr_idx].raw_mag =
+	    (fe->pri.bins[dc_pwr_idx - 1].raw_mag + fe->pri.bins[dc_pwr_idx + 1].raw_mag) / 2;
+	/* XXX adj mag? */
+	fe->pri.bins[dc_pwr_idx].adj_mag =
+	    fe->pri.bins[dc_pwr_idx].raw_mag << fe->max_exp;
 
-       // DC value is invalid -> interpolate
-       *dc_pwr = (dc_pwr[-1] + dc_pwr[1]) / 2;
+	/* Calculate the total power - use pre-adjusted magnitudes */
+	for (i = 0; i < pwr_count; i++)
+		bsum += (float) (fe->pri.bins[i].adj_mag) * (float) (fe->pri.bins[i].adj_mag);
+	bsum = log10f(bsum) * 10.0;
 
-       for (i = 0; i < pwr_count; i++)
-               bsum += (bin_pwr[i] * max_scale) * (bin_pwr[i] * max_scale);
-       bsum = log10f(bsum) * 10;
+	/*
+	 * Given the current NF/RSSI value, calculate an absolute dBm, then
+	 * break each part up into its consitutent component.
+	 */
+	for (i = 0; i < pwr_count; i++) {
+		float pwr_val;
+		int16_t val = fe->pri.bins[i].adj_mag;
 
-       for (i = 0; i < pwr_count; i++) {
-               float pwr_val;
-               int16_t val = bin_pwr[i];
+		if (val == 0)
+			val = 1;
 
-               if (val == 0)
-                       val = 1;
+		pwr_val = 20.0 * log10f((float) val);
+		pwr_val += (float) nf0 + (float) re->re_rssi - bsum;
 
-               pwr_val = 20 * log10f((float) val * max_scale);
-               pwr_val += nf0 + rssi - bsum;
-
-               val = pwr_val;
-               bin_pwr[i] = val;
-       }
-       return true;
+		fe->pri.bins[i].dBm = pwr_val;
+#if 0
+		printf("  [%d] %d -> %d, ", i, fe->pri.bins[i].adj_mag,
+		    fe->pri.bins[i].dBm);
+#endif
+	}
+//	printf("\n");
+	return (1);
 }
 #endif
 
@@ -181,6 +190,9 @@ ar9280_radar_spectral_decode_ht20(struct ieee80211_radiotap_header *rh,
 		fe->pri.bins[i].raw_mag = pkt[i];
 		fe->pri.bins[i].adj_mag = fe->pri.bins[i].raw_mag << fe->max_exp;
 	}
+
+	/* Convert to dBm */
+	(void) convert_data_ht20(re, fe);
 
 	/* Return OK */
 	return (0);
