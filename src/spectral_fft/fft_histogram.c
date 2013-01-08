@@ -80,7 +80,7 @@ fft_add_sample(struct radar_entry *re, struct radar_fft_entry *fe)
 		if (fdata.max_pts[fidx] == 0 || fe->pri.bins[i].dBm > fdata.max_pts[fidx]) {
 			fdata.max_pts[fidx] = fe->pri.bins[i].dBm;
 		} else {
-			fdata.max_pts[fidx] = ((fdata.max_pts[fidx] * 997) + (fe->pri.bins[i].dBm * 3)) / 1000;
+			fdata.max_pts[fidx] = ((fdata.max_pts[fidx] * 975) + (fe->pri.bins[i].dBm * 25)) / 1000;
 		}
 	}
 }
