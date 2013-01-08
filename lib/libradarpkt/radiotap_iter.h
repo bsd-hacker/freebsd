@@ -2,7 +2,6 @@
 #define __RADIOTAP_ITER_H
 
 #include <stdint.h>
-#include "radiotap.h"
 
 /* Radiotap header iteration
  *   implemented in radiotap.c

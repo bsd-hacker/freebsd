@@ -16,6 +16,8 @@
 #include "radiotap_iter.h"
 #include "platform.h"
 
+#include "net80211/ieee80211_radiotap.h"
+
 /* function prototypes and related defs are in radiotap_iter.h */
 
 static const struct radiotap_align_size rtap_namespace_sizes[] = {
@@ -243,7 +245,7 @@ int ieee80211_radiotap_iterator_next(
 			align = 1;
 			size = 0;
 			break;
-		case IEEE80211_RADIOTAP_VENDOR_NAMESPACE:
+		case IEEE80211_RADIOTAP_VENDOREXT:
 			align = 2;
 			size = 6;
 			break;
@@ -290,7 +292,7 @@ int ieee80211_radiotap_iterator_next(
 		if (pad)
 			iterator->_arg += align - pad;
 
-		if (iterator->_arg_index % 32 == IEEE80211_RADIOTAP_VENDOR_NAMESPACE) {
+		if (iterator->_arg_index % 32 == IEEE80211_RADIOTAP_VENDOREXT) {
 			int vnslen;
 
 			if ((unsigned long)iterator->_arg + size -
@@ -336,7 +338,7 @@ int ieee80211_radiotap_iterator_next(
 
 		/* these special ones are valid in each bitmap word */
 		switch (iterator->_arg_index % 32) {
-		case IEEE80211_RADIOTAP_VENDOR_NAMESPACE:
+		case IEEE80211_RADIOTAP_VENDOREXT:
 			iterator->_reset_on_ext = 1;
 
 			iterator->is_radiotap_ns = 0;
@@ -347,7 +349,7 @@ int ieee80211_radiotap_iterator_next(
 			 * to vendor namespace.
 			 */
 			iterator->this_arg_index =
-				IEEE80211_RADIOTAP_VENDOR_NAMESPACE;
+				IEEE80211_RADIOTAP_VENDOREXT;
 			if (!iterator->current_namespace)
 				hit = 1;
 			goto next_entry;

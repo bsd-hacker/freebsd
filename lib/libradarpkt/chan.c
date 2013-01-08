@@ -3,7 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "radiotap.h"
+#include "net80211/ieee80211_radiotap.h"
+
 #include "radiotap_iter.h"
 
 #include "chan.h"
