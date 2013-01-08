@@ -70,7 +70,7 @@ pkt_handle_single(struct radar_entry *re)
 		result->sample.tsf = re->re_timestamp;
 		/* XXX 56 = numspectralbins */
 		for (j = 0; j < 56; j++) {
-			result->sample.data[j] = re->re_spectral_entries[i].pri.bins[j].raw_mag;
+			result->sample.data[j] = re->re_spectral_entries[i].pri.bins[j].dBm;
 		}
 
 		/* add it to the list */
@@ -150,7 +150,7 @@ pkt_handle(int chip, const char *pkt, int len)
 
 	/* XXX do something about it */
 	if (r) {
-		pkt_print(&re);
+		//pkt_print(&re);
 		pkt_handle_single(&re);
 	}
 }

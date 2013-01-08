@@ -212,31 +212,20 @@ int draw_picture(int highlight, int startfreq)
 
 
 	rnum = 0;
-	for (result = result_list; result ; result = result->next) {
-		int datamax = 0, datamin = 65536;
-		int datasquaresum = 0;
+	for (result = result_list; result ; result = result->next, rnum++) {
 
-		for (i = 0; i < SPECTRAL_HT20_NUM_BINS; i++) {
-			int data;
-
-			data = result->sample.data[i] * result->sample.data[i];
-			datasquaresum += data;
-			if (data > datamax) datamax = data;
-			if (data < datamin) datamin = data;
-		}
+		if (rnum != highlight)
+			continue;
 
 		if (rnum == highlight) {
 			/* prints some statistical data about the currently selected 
 			 * data sample and auxiliary data. */
-			printf("result[%03d]: freq %04d rssi %03d, noise %03d, max_magnitude %04d max_index %03d bitmap_weight %03d tsf %llu | ", 
+			printf("result[%03d]: freq %04d rssi %03d, noise %03d, max_magnitude %04d max_index %03d bitmap_weight %03d tsf %llu\n",
 				rnum, result->sample.freq, result->sample.rssi, result->sample.noise,
 				result->sample.max_magnitude, result->sample.max_index, result->sample.bitmap_weight,
 				result->sample.tsf);
-			printf("datamax = %d, datamin = %d, datasquaresum = %d\n", datamax, datamin, datasquaresum);
-
 			highlight_freq = result->sample.freq;
 		}
-
 
 		for (i = 0; i < SPECTRAL_HT20_NUM_BINS; i++) {
 			float freq;
@@ -249,10 +238,10 @@ int draw_picture(int highlight, int startfreq)
 			/* This is where the "magic" happens: interpret the signal
 			 * to output some kind of data which looks useful.  */
 
-			data = result->sample.data[i];
-			if (data == 0)
-				data = 1;
-			signal = result->sample.noise + result->sample.rssi + 20 * log10f(data) - log10f(datasquaresum) * 10;
+			signal = result->sample.data[i];
+			printf("  signal[%d]: %f\n", i, signal);
+			if (signal == 0)
+				signal = 1;
 
 			y = 400 - (400.0 + Y_SCALE * signal);
 
@@ -268,7 +257,6 @@ int draw_picture(int highlight, int startfreq)
 				continue;
 
 		}
-		rnum++;
 	}
 
 	SDL_BlitSurface(surface, NULL, screen, NULL);

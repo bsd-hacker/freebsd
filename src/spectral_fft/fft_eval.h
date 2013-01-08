@@ -5,6 +5,7 @@ typedef int8_t s8;
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint64_t u64;
+typedef int16_t s16;
 
 /* taken from ath9k.h */
 #define SPECTRAL_HT20_NUM_BINS          56
@@ -34,7 +35,7 @@ struct fft_sample_ht20 {
 
         u64 tsf;
 
-        u16 data[SPECTRAL_HT20_NUM_BINS];
+        s16 data[SPECTRAL_HT20_NUM_BINS];
 } __attribute__((packed));
 
 
