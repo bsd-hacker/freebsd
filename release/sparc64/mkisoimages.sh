@@ -30,7 +30,7 @@ fi
 case $1 in
 -b)	BOPT=$1; shift ;;
 esac
-LABEL=$1; shift
+LABEL=`echo $1 | tr '[:lower:]' '[:upper:]'`; shift
 NAME=$1; shift
 
 # Create an ISO image
