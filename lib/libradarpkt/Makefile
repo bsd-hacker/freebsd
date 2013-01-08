@@ -8,7 +8,7 @@ SRCS+=	radiotap_iter.c chan.c
 # and include it, but I digress..
 
 CFLAGS+=	-I/home/adrian/work/freebsd/ath/head/src/sys -g -ggdb	\
-	    -DATH_ENABLE_RADIOTAP_VENDOR_EXT -g -ggdb
+	    -DATH_ENABLE_RADIOTAP_VENDOR_EXT -g -ggdb -pthread
 
 NO_MAN=	1
 
