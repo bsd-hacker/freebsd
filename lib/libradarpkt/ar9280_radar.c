@@ -45,6 +45,13 @@
 #include "pkt.h"
 #include "ar9280_radar.h"
 
+/* Decode the channel */
+#include "chan.h"
+
+/* from _ieee80211.h */
+#define	IEEE80211_CHAN_HT40U	0x00020000 /* HT 40 channel w/ ext above */
+#define	IEEE80211_CHAN_HT40D	0x00040000 /* HT 40 channel w/ ext below */
+
 /* Relevant on Merlin and later */
 #define	CH_SPECTRAL_EVENT		0x10
 /* Relevant for Sowl and later */
@@ -208,7 +215,7 @@ ar9280_radar_spectral_decode(struct ieee80211_radiotap_header *rh,
 		if (ar9280_radar_spectral_decode_ht20(rh, fr, fr_len, re, i) != 0) {
 			break;
 		}
-		ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
+//		ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
 		fr_len -= AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
 		fr += AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
 		if (fr_len < 0)
@@ -232,6 +239,7 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	int8_t comb_rssi, pri_rssi, ext_rssi, nf;
 	struct ath_rx_radiotap_header *rx =
 	    (struct ath_rx_radiotap_header *) rh;
+	struct xchan x;
 
 	/* XXX we should really be implementing a real radiotap parser */
 	tsf = le64toh(rx->wr_tsf);
@@ -260,7 +268,7 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	 * HAL/DFS code, so they can all be plotted as appropriate.
 	 */
 
-#if 1
+#if 0
 	printf("tsf: %lld", tsf);
 	printf(" len: %d", len);
 	printf(" rssi %d/%d", comb_rssi, nf);
@@ -300,9 +308,36 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	//re->re_rssi = pri_rssi;	/* XXX extension rssi? */
 	re->re_rssi = comb_rssi;	/* XXX comb for spectral scan? or not? */
 	re->re_dur = pkt[len - 3];	/* XXX extension duration? */
-	re->re_freq = 0;
 	re->re_num_spectral_entries = 0;
 	/* XXX flags? */
+
+	/*
+	 * Update the channel frequency information before we decode
+	 * the spectral or radar FFT payload.
+	 */
+	re->re_freq = 0;
+	/* XXX endian convert len */
+	if (pkt_lookup_chan((char *) rh, rh->it_len, &x) == 0) {
+		/* Update the channel/frequency information */
+		re->re_freq = x.freq;
+
+		if (x.flags & IEEE80211_CHAN_QUARTER) {
+			re->re_freq_sec = 0;
+			re->re_freqwidth = 5;
+		} else if (x.flags & IEEE80211_CHAN_HALF) {
+			re->re_freq_sec = 0;
+			re->re_freqwidth = 10;
+		} else if (x.flags & IEEE80211_CHAN_HT40U) {
+			re->re_freq_sec = re->re_freq + 20;
+			re->re_freqwidth = 40;
+		} else if (x.flags & IEEE80211_CHAN_HT40D) {
+			re->re_freq_sec = re->re_freq - 20;
+			re->re_freqwidth = 40;
+		} else {
+			re->re_freq_sec = 0;
+			re->re_freqwidth = 20;
+		}
+	}
 
 	if (pkt[len - 1] & CH_SPECTRAL_EVENT) {
 		(void) ar9280_radar_spectral_decode(rh, pkt, len - 3, re);
