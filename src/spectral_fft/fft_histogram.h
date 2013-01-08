@@ -8,16 +8,20 @@
 
 #define	FFT_HISTOGRAM_SIZE	\
 	    ((6000-2300)*FFT_HISTOGRAM_RESOLUTION)
+#define	FFT_HISTOGRAM_HISTORY_DEPTH	10
 
 struct fft_histogram_data {
-	int	avg_pts[FFT_HISTOGRAM_SIZE];
-	int	max_pts[FFT_HISTOGRAM_SIZE];
+	/* XXX should struct-ize these! */
+	int16_t	avg_pts[FFT_HISTOGRAM_SIZE][FFT_HISTOGRAM_HISTORY_DEPTH];
+	int16_t avg_pts_cur[FFT_HISTOGRAM_SIZE];
+
+	int16_t	max_pts[FFT_HISTOGRAM_SIZE];
 };
 
 extern	void fft_histogram_init(void);
 extern	void fft_add_sample(struct radar_entry *re,
 	    struct radar_fft_entry *fe);
-extern int fft_fetch_freq_avg(int freqKhz);
-extern int fft_fetch_freq_max(int freqKhz);
+extern int16_t * fft_fetch_freq_avg(int freqKhz);
+extern int16_t fft_fetch_freq_max(int freqKhz);
 
 #endif

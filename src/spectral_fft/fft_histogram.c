@@ -58,6 +58,7 @@ fft_add_sample(struct radar_entry *re, struct radar_fft_entry *fe)
 	float ffreq;
 	int i;
 	int fidx;
+	int cur;
 
 	for (i = 0; i < SPECTRAL_HT20_NUM_BINS; i++) {
 		/* Calculate frequency of the given event */
@@ -74,7 +75,13 @@ fft_add_sample(struct radar_entry *re, struct radar_fft_entry *fe)
 			continue;
 
 		/* Rolling/decaying average */
-		fdata.avg_pts[fidx] = (((fdata.avg_pts[fidx] * 100) / 90) + fe->pri.bins[i].dBm) / 2;
+		cur = fdata.avg_pts_cur[fidx];
+		if (fdata.avg_pts[fidx][cur] == 0) {
+			fdata.avg_pts[fidx][cur] = fe->pri.bins[i].dBm;
+		} else {
+			fdata.avg_pts[fidx][cur] = (((fdata.avg_pts[fidx][cur] * 100) / 90) + fe->pri.bins[i].dBm) / 2;
+		}
+		fdata.avg_pts_cur[fidx] = (fdata.avg_pts_cur[fidx] + 1) % FFT_HISTOGRAM_HISTORY_DEPTH;
 
 		/* Max */
 		if (fdata.max_pts[fidx] == 0 || fe->pri.bins[i].dBm > fdata.max_pts[fidx]) {
@@ -85,18 +92,19 @@ fft_add_sample(struct radar_entry *re, struct radar_fft_entry *fe)
 	}
 }
 
-int
+int16_t *
 fft_fetch_freq_avg(int freqKhz)
 {
 	int fidx;
 
 	fidx = freq2fidx(freqKhz);
 	if (fidx < 0)
-		return -180; /* XXX */
+		return NULL;
 
 	return fdata.avg_pts[fidx];
 }
-int
+
+int16_t
 fft_fetch_freq_max(int freqKhz)
 {
 	int fidx;

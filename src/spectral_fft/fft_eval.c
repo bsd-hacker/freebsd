@@ -130,17 +130,26 @@ int pixel(Uint32 *pixels, int x, int y, Uint32 color)
 	return 0;
 }
 
-
 #define SIZE 2
+
+/* Is this pixel in the viewport? */
+static int
+is_in_viewport(int x, int y)
+{
+	if (x - SIZE < 0 || x + SIZE >= WIDTH)
+		return 0;
+	if (y - SIZE < 0 || y + SIZE >= HEIGHT)
+		return 0;
+	return (1);
+}
+
 /* this function blends a 2*SIZE x 2*SIZE blob at the given position with
  * the defined opacity. */
 int bigpixel(Uint32 *pixels, int x, int y, Uint32 color, uint8_t opacity)
 {
 	int x1, y1;
 
-	if (x - SIZE < 0 || x + SIZE >= WIDTH)
-		return -1;
-	if (y - SIZE < 0 || y + SIZE >= HEIGHT)
+	if (! is_in_viewport(x, y))
 		return -1;
 
 	for (x1 = x - SIZE; x1 < x + SIZE; x1++)
@@ -188,7 +197,7 @@ int render_text(SDL_Surface *surface, char *text, int x, int y)
 int draw_picture(int highlight, int startfreq)
 {
 	Uint32 *pixels, color, opacity;
-	int x, y, i, rnum;
+	int x, y, i, rnum, j;
 	int highlight_freq = startfreq + 20;
 	char text[1024];
 	struct scanresult *result;
@@ -227,24 +236,38 @@ int draw_picture(int highlight, int startfreq)
 
 	/* Render 2300 -> 6000 in 1MHz increments, but using KHz math */
 	/* .. as right now the canvas is .. quite large. */
+	/* XXX should just do it based on the current viewport! */
 	for (i = 2300*1000; i < 6000*1000; i+= 250) {
 		float signal;
 		int freqKhz = i;
+		int16_t *s;
 
 		x = X_SCALE * (freqKhz - (startfreq * 1000)) / 1000;
 
-		/* Fetch dBm value at the given frequency in KHz */
-		signal = (float) fft_fetch_freq_avg(freqKhz);
-		color = BMASK | AMASK;
-		opacity = 64;
-		y = 400 - (400.0 + Y_SCALE * signal);
-		if (bigpixel(pixels, x, y, color, opacity) < 0)
+		if (x < 0 || x > WIDTH)
 			continue;
+
+		/* Fetch dBm value at the given frequency in KHz */
+		s = fft_fetch_freq_avg(freqKhz);
+		if (s == NULL)
+			continue;
+
+		for (j = 0; j < FFT_HISTOGRAM_HISTORY_DEPTH; j++) {
+			if (s[j] == 0)
+				continue;
+			signal = (float) s[j];
+			color = BMASK | AMASK;
+			opacity = 64;
+			y = 400 - (400.0 + Y_SCALE * signal);
+			if (bigpixel(pixels, x, y, color, opacity) < 0)
+				continue;
+		}
+
 
 		/* .. and the max */
 		signal = (float) fft_fetch_freq_max(freqKhz);
 		color = RMASK | AMASK;
-		opacity = 255;
+		opacity = 128;
 		y = 400 - (400.0 + Y_SCALE * signal);
 		if (bigpixel(pixels, x, y, color, opacity) < 0)
 			continue;
@@ -337,6 +360,15 @@ void graphics_main(void)
 			case SDLK_PAGEDOWN:
 				accel+= 2;
 				scroll = 1;
+				break;
+			case SDLK_HOME:
+				startfreq = 2300;
+				accel = 0;
+				break;
+			case SDLK_END:
+				startfreq = 5100;
+				accel = 0;
+				break;
 			default:
 				break;
 			}
