@@ -1,10 +1,10 @@
 PROG=	fft_eval
 
-SRCS=	fft_eval.c fft_linux.c fft_freebsd.c
+SRCS=	fft_eval.c fft_freebsd.c fft_histogram.c
 
-CFLAGS+=	-I/usr/local/include -L/usr/local/lib -I../../lib/ -L../../lib/libradarpkt
+CFLAGS+=	-I/usr/local/include -L/usr/local/lib -I../../lib/ -L../../lib/libradarpkt -pthread
 
-LDADD+=	-lSDL -lSDL_ttf -lradarpkt -lpcap
+LDADD+=	-lSDL -lSDL_ttf -lradarpkt -lpcap -pthread
 
 NO_MAN=	1
 

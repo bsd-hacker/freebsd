@@ -27,18 +27,32 @@
 #include <errno.h>
 #include <stdio.h>
 #include <math.h>
+#include <pcap.h>
+#include <pthread.h>
+#include <unistd.h>
+
 #include <SDL/SDL.h>
 #include <SDL/SDL_ttf.h>
 
 #include "fft_eval.h"
-#include "fft_linux.h"
+
+#include "net80211/ieee80211.h"
+#include "net80211/ieee80211_radiotap.h"
+
+#include "libradarpkt/pkt.h"
+#include "libradarpkt/ar5212_radar.h"
+#include "libradarpkt/ar5416_radar.h"
+#include "libradarpkt/ar9280_radar.h"
+
+#include "fft_eval.h"
 #include "fft_freebsd.h"
+#include "fft_histogram.h"
 
 #define WIDTH	1600
 #define HEIGHT	650
 #define BPP	32
 
-#define X_SCALE	10
+#define X_SCALE	5
 #define Y_SCALE	4
 
 #define	RMASK 	0x000000ff
@@ -49,11 +63,12 @@
 #define	BBITS	16
 #define	AMASK	0xff000000
 
+/* XXX ew globals */
+pthread_mutex_t mtx_histogram;
+int g_do_update = 0;
 
 SDL_Surface *screen = NULL;
 TTF_Font *font = NULL;
-struct scanresult *result_list;
-int scanresults_n = 0;
 
 int graphics_init_sdl(void)
 {
@@ -116,7 +131,7 @@ int pixel(Uint32 *pixels, int x, int y, Uint32 color)
 }
 
 
-#define SIZE 3
+#define SIZE 2
 /* this function blends a 2*SIZE x 2*SIZE blob at the given position with
  * the defined opacity. */
 int bigpixel(Uint32 *pixels, int x, int y, Uint32 color, uint8_t opacity)
@@ -186,7 +201,7 @@ int draw_picture(int highlight, int startfreq)
 			pixels[x + y * WIDTH] = AMASK;
 
 	/* vertical lines (frequency) */
-	for (i = 2300; i < 6000; i += 10) {
+	for (i = 2300; i < 6000; i += 20) {
 		x = (X_SCALE * (i - startfreq));
 
 		if (x < 0 || x > WIDTH)
@@ -210,53 +225,26 @@ int draw_picture(int highlight, int startfreq)
 		render_text(surface, text, 5, y - 15);
 	}
 
+	/* Render 2300 -> 6000 in 1MHz increments, but using KHz math */
+	/* .. as right now the canvas is .. quite large. */
+	for (i = 2300*1000; i < 6000*1000; i+= 250) {
+		float signal;
+		int freqKhz = i;
 
-	rnum = 0;
-	for (result = result_list; result ; result = result->next, rnum++) {
+		/* Fetch dBm value at the given frequency in KHz */
+		signal = (float) fft_fetch_freq(freqKhz);
+		x = X_SCALE * (freqKhz - (startfreq * 1000)) / 1000;
 
-		if (rnum != highlight)
+		y = 400 - (400.0 + Y_SCALE * signal);
+
+		color = RMASK | AMASK;
+		opacity = 255;
+
+//		printf("  (%d) %d,%d\n", freqKhz, x, y);
+
+		if (bigpixel(pixels, x, y, color, opacity) < 0)
 			continue;
 
-		if (rnum == highlight) {
-			/* prints some statistical data about the currently selected 
-			 * data sample and auxiliary data. */
-			printf("result[%03d]: freq %04d rssi %03d, noise %03d, max_magnitude %04d max_index %03d bitmap_weight %03d tsf %llu\n",
-				rnum, result->sample.freq, result->sample.rssi, result->sample.noise,
-				result->sample.max_magnitude, result->sample.max_index, result->sample.bitmap_weight,
-				result->sample.tsf);
-			highlight_freq = result->sample.freq;
-		}
-
-		for (i = 0; i < SPECTRAL_HT20_NUM_BINS; i++) {
-			float freq;
-			float signal;
-			int data;
-			freq = result->sample.freq - 10.0 + ((20.0 * i) / SPECTRAL_HT20_NUM_BINS);
-			
-			x = (X_SCALE * (freq - startfreq));
-
-			/* This is where the "magic" happens: interpret the signal
-			 * to output some kind of data which looks useful.  */
-
-			signal = result->sample.data[i];
-			printf("  signal[%d]: %f\n", i, signal);
-			if (signal == 0)
-				signal = 1;
-
-			y = 400 - (400.0 + Y_SCALE * signal);
-
-			if (rnum == highlight) {
-				color = RMASK | AMASK;
-				opacity = 255;
-			} else {
-				color = BMASK | AMASK;
-				opacity = 30;
-			}
-
-			if (bigpixel(pixels, x, y, color, opacity) < 0)
-				continue;
-
-		}
 	}
 
 	SDL_BlitSurface(surface, NULL, screen, NULL);
@@ -285,6 +273,13 @@ void graphics_main(void)
 	}
 	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 	while (!quit) {
+		pthread_mutex_lock(&mtx_histogram);
+		if (g_do_update == 1) {
+			change = 1;	/* XXX always render */
+			g_do_update = 0;
+		}
+		pthread_mutex_unlock(&mtx_histogram);
+
 		if (change) {
 			highlight_freq = draw_picture(highlight, startfreq);
 			change = 0;
@@ -305,10 +300,10 @@ void graphics_main(void)
 				accel = 100;
 		}
 
-		if (accel)
+//		if (accel)
 			SDL_PollEvent(&event);
-		else
-			SDL_WaitEvent(&event);
+//		else
+//			SDL_WaitEvent(&event);
 
 		switch (event.type) {
 		case SDL_QUIT:
@@ -316,6 +311,7 @@ void graphics_main(void)
 			break;
 		case SDL_KEYDOWN:
 			switch (event.key.keysym.sym) {
+#if 0
 			case SDLK_LEFT:
 				if (highlight > 0) {
 					highlight--;
@@ -330,6 +326,7 @@ void graphics_main(void)
 					change = 1;
 				}
 				break;
+#endif
 			case SDLK_PAGEUP:
 				accel-= 2;
 				scroll = 1;
@@ -375,8 +372,25 @@ void usage(int argc, char *argv[])
 
 }
 
+static void
+fft_eval_cb(struct radar_entry *re, void *cbdata)
+{
+	struct radar_fft_entry *fe;
+	int i;
+
+	pthread_mutex_lock(&mtx_histogram);
+	for (i = 0; i < re->re_num_spectral_entries; i++) {
+		fft_add_sample(re, &re->re_spectral_entries[i]);
+	}
+	g_do_update = 1;
+	pthread_mutex_unlock(&mtx_histogram);
+
+}
+
 int main(int argc, char *argv[])
 {
+	int ret;
+
 	if (argc < 2) {
 		usage(argc, argv);
 		return -1;
@@ -384,8 +398,15 @@ int main(int argc, char *argv[])
 
 	fprintf(stderr, "WARNING: Experimental Software! Don't trust anything you see. :)\n");
 	fprintf(stderr, "\n");
-	scanresults_n = read_scandata_freebsd(argv[1], &result_list);
-	if (scanresults_n < 0) {
+
+	/* Setup radar entry callback */
+	pthread_mutex_init(&mtx_histogram, NULL);
+	set_scandata_callback(fft_eval_cb, NULL);
+
+	/* Fetch data */
+	ret = read_scandata_freebsd(argv[1], NULL);
+
+	if (ret < 0) {
 		fprintf(stderr, "Couldn't read scanfile ...\n");
 		usage(argc, argv);
 		return -1;

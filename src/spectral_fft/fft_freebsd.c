@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <err.h>
+#include <unistd.h>
 #include <string.h>
 #include <netinet/in.h>	/* for ntohl etc */
+#include <pthread.h>
 
 #include <pcap.h>
 
@@ -17,12 +19,18 @@
 #include "fft_eval.h"
 #include "fft_freebsd.h"
 
-/*
- * XXX ew, static variables
- */
-int n_spectral_samples = 0;
-struct scanresult **result_head;
-struct scanresult *result_tail;
+static scandata_cb cb_cb = NULL;
+static void * cb_cbdata = NULL;
+pthread_t main_pthread;
+pcap_t * g_p;
+int g_chip = 0;
+
+void
+set_scandata_callback(scandata_cb cb, void *cbdata)
+{
+	cb_cb = cb;
+	cb_cbdata = cbdata;
+}
 
 /*
  * Compile up a rule that's bound to be useful - it only matches on
@@ -31,7 +39,6 @@ struct scanresult *result_tail;
  * tcpdump -ni wlan0 -y IEEE802_11_RADIO -x -X -s0 -v -ve \
  *    'radio[73] == 0x2 && (radio[72] == 5 || radio[72] == 24)
  */
-
 #define	PKTRULE "radio[73] == 0x2 && (radio[72] == 5 || radio[72] == 24)"
 
 static int
@@ -45,42 +52,14 @@ pkt_compile(pcap_t *p, struct bpf_program *fp)
 static void
 pkt_handle_single(struct radar_entry *re)
 {
-	int i, j;
-	struct scanresult *result;
+	/* Call our callback w/ the radar entry */
+	if (cb_cb)
+		cb_cb(re, cb_cbdata);
 
-	for (i = 0; i < re->re_num_spectral_entries; i++) {
-		result = malloc(sizeof(*result));
-		if (result == NULL) {
-			/* Skip on malloc failure */
-			warn("%s: malloc", __func__);
-			continue;
-		}
-
-		/* Fill out the result, assuming HT20 for now */
-		result->sample.tlv.type = ATH_FFT_SAMPLE_HT20;
-		result->sample.tlv.length = sizeof(result->sample);	/* XXX right? */
-
-		result->sample.freq = re->re_freq;
-		result->sample.rssi = re->re_rssi;
-		result->sample.noise = -95;	/* XXX extract from header */
-		result->sample.max_magnitude = re->re_spectral_entries[i].pri.max_magnitude;
-		result->sample.max_index = re->re_spectral_entries[i].pri.max_index;
-		result->sample.bitmap_weight = re->re_spectral_entries[i].pri.bitmap_weight;
-		/* XXX no max_exp? */
-		result->sample.tsf = re->re_timestamp;
-		/* XXX 56 = numspectralbins */
-		for (j = 0; j < 56; j++) {
-			result->sample.data[j] = re->re_spectral_entries[i].pri.bins[j].dBm;
-		}
-
-		/* add it to the list */
-		if (result_tail)
-			result_tail->next = result;
-		else
-			(*result_head) = result;
-		result_tail = result;
-		n_spectral_samples++;
-	}
+#if 0
+	/* Sleep for a bit */
+	usleep(100 * 1000);	/* 100ms */
+#endif
 }
 
 static void
@@ -211,23 +190,44 @@ usage(const char *progname)
 	    progname);
 }
 
+static void *
+fft_pcap_thread_main(void *arg)
+{
+	const unsigned char *pkt;
+	struct pcap_pkthdr *hdr;
+	int len, r;
+
+	/*
+	 * Iterate over frames, looking for radiotap frames
+	 * which have PHY errors.
+	 *
+	 * XXX We should compile a filter for this, but the
+	 * XXX access method is a non-standard hack atm.
+	 */
+	while ((r = pcap_next_ex(g_p, &hdr, &pkt)) >= 0) {
+#if 0
+		printf("capture: len=%d, caplen=%d\n",
+		    hdr->len, hdr->caplen);
+#endif
+		if (r > 0)
+			pkt_handle(g_chip, pkt, hdr->caplen);
+	}
+
+	return (NULL);
+}
+
+
 int
 open_device(const char *dev_str, const char *chip_str, const char *mode)
 {
 	char *dev;
-	pcap_t * p;
 	const char *fname;
-	const unsigned char *pkt;
-	struct pcap_pkthdr *hdr;
-	int len, r;
-	int chip = 0;
-
 	if (strcmp(chip_str, "ar5212") == 0) {
-		chip = CHIP_AR5212;
+		g_chip = CHIP_AR5212;
 	} else if (strcmp(chip_str, "ar5416") == 0) {
-		chip = CHIP_AR5416;
+		g_chip = CHIP_AR5416;
 	} else if (strcmp(chip_str, "ar9280") == 0) {
-		chip = CHIP_AR9280;
+		g_chip = CHIP_AR9280;
 	} else {
 		usage("main");
 		exit(255);
@@ -237,34 +237,23 @@ open_device(const char *dev_str, const char *chip_str, const char *mode)
 	fname = dev_str;
 
 	if (strcmp(mode, "file") == 0) {
-		p = open_offline(fname);
+		g_p = open_offline(fname);
 	} else if (strcmp(mode, "if") == 0) {
-		p = open_online(fname);
+		g_p = open_online(fname);
 	} else {
 		usage("main");
 		exit(255);
 	}
 
-	if (p == NULL)
+	if (g_p == NULL)
 		exit(255);
 
-	/*
-	 * Iterate over frames, looking for radiotap frames
-	 * which have PHY errors.
-	 *
-	 * XXX We should compile a filter for this, but the
-	 * XXX access method is a non-standard hack atm.
-	 */
-	while ((r = pcap_next_ex(p, &hdr, &pkt)) >= 0) {
-#if 0
-		printf("capture: len=%d, caplen=%d\n",
-		    hdr->len, hdr->caplen);
-#endif
-		if (r > 0)
-			pkt_handle(chip, pkt, hdr->caplen);
+	/* Create data source thread */
+	if (pthread_create(&main_pthread, NULL,
+	    fft_pcap_thread_main, NULL) != 0) {
+		warnx("pthread_create");
+		return(-1);
 	}
-
-	pcap_close(p);
 
 	/* XXX for now */
 	return (0);
@@ -274,13 +263,6 @@ int
 read_scandata_freebsd(char *fname, struct scanresult **result)
 {
 
-	/* XXX for now, return/do nothing */
-
-	n_spectral_samples = 0;
-	result_head = result;
-	result_tail = (*result);
-
-	(void) open_device(fname, "ar9280", "file");
-
-	return n_spectral_samples;
+	(void) open_device("wlan0", "ar9280", "if");
+	return (0);
 }
