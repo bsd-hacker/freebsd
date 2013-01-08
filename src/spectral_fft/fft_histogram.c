@@ -70,30 +70,40 @@ fft_add_sample(struct radar_entry *re, struct radar_fft_entry *fe)
 			continue;
 
 		/* XXX until i figure out what's going on */
-		if (fe->pri.bins[i].dBm == 0 || fe->pri.bins[i].dBm < -185)
+		if (fe->pri.bins[i].dBm == 0 || fe->pri.bins[i].dBm < -185) // || fe->pri.bins[i].dBm > -10)
 			continue;
 
-		/* Store the current dBm value */
-		fdata.pts[fidx] = fe->pri.bins[i].dBm;
+		/* Rolling/decaying average */
+		fdata.avg_pts[fidx] = (((fdata.avg_pts[fidx] * 100) / 90) + fe->pri.bins[i].dBm) / 2;
+
+		/* Max */
+		if (fdata.max_pts[fidx] == 0 || fe->pri.bins[i].dBm > fdata.max_pts[fidx]) {
+			fdata.max_pts[fidx] = fe->pri.bins[i].dBm;
+		} else {
+			fdata.max_pts[fidx] = ((fdata.max_pts[fidx] * 997) + (fe->pri.bins[i].dBm * 3)) / 1000;
+		}
 	}
 }
 
 int
-fft_fetch_freq(int freqKhz)
+fft_fetch_freq_avg(int freqKhz)
 {
 	int fidx;
 
 	fidx = freq2fidx(freqKhz);
 	if (fidx < 0)
-		return -150; /* XXX */
+		return -180; /* XXX */
 
-#if 0
-	printf("%s: khz=%d, fidx=%d, val=%d\n",
-	    __func__,
-	    freqKhz,
-	    fidx,
-	    fdata.pts[fidx]);
-#endif
+	return fdata.avg_pts[fidx];
+}
+int
+fft_fetch_freq_max(int freqKhz)
+{
+	int fidx;
 
-	return fdata.pts[fidx];
+	fidx = freq2fidx(freqKhz);
+	if (fidx < 0)
+		return -180; /* XXX */
+
+	return fdata.max_pts[fidx];
 }

@@ -231,20 +231,23 @@ int draw_picture(int highlight, int startfreq)
 		float signal;
 		int freqKhz = i;
 
-		/* Fetch dBm value at the given frequency in KHz */
-		signal = (float) fft_fetch_freq(freqKhz);
 		x = X_SCALE * (freqKhz - (startfreq * 1000)) / 1000;
 
+		/* Fetch dBm value at the given frequency in KHz */
+		signal = (float) fft_fetch_freq_avg(freqKhz);
+		color = BMASK | AMASK;
+		opacity = 64;
 		y = 400 - (400.0 + Y_SCALE * signal);
-
-		color = RMASK | AMASK;
-		opacity = 255;
-
-//		printf("  (%d) %d,%d\n", freqKhz, x, y);
-
 		if (bigpixel(pixels, x, y, color, opacity) < 0)
 			continue;
 
+		/* .. and the max */
+		signal = (float) fft_fetch_freq_max(freqKhz);
+		color = RMASK | AMASK;
+		opacity = 255;
+		y = 400 - (400.0 + Y_SCALE * signal);
+		if (bigpixel(pixels, x, y, color, opacity) < 0)
+			continue;
 	}
 
 	SDL_BlitSurface(surface, NULL, screen, NULL);

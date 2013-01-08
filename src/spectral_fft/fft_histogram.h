@@ -10,12 +10,14 @@
 	    ((6000-2300)*FFT_HISTOGRAM_RESOLUTION)
 
 struct fft_histogram_data {
-	int	pts[FFT_HISTOGRAM_SIZE];
+	int	avg_pts[FFT_HISTOGRAM_SIZE];
+	int	max_pts[FFT_HISTOGRAM_SIZE];
 };
 
 extern	void fft_histogram_init(void);
 extern	void fft_add_sample(struct radar_entry *re,
 	    struct radar_fft_entry *fe);
-extern int fft_fetch_freq(int freqKhz);
+extern int fft_fetch_freq_avg(int freqKhz);
+extern int fft_fetch_freq_max(int freqKhz);
 
 #endif
