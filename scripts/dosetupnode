@@ -24,6 +24,9 @@ buildid=$3
 nodelist=$4
 shift 4
 
+# XXX MCL 20121216 in theory if the slaves become owner 'portbuild' you won't need this.
+sudo_cmd=
+
 . ${pbc}/conf/server.conf
 if [ -f ${pbd}/${arch}/portbuild.conf ]; then
     . ${pbd}/${arch}/portbuild.conf
@@ -86,8 +89,17 @@ setup() {
 	    ${client_user}@${node}:/var/portbuild/
 	checkerror $? || (echo "Copying scripts to ${node} failed"; return 1)
 
-	# conf files (e.g. client.conf and common.conf) can be symlinks outside
-	# this dir, so copy the actual files
+	# copy the default conf files (i.e., client.conf and common.conf) in case
+        # they are not overriden by per-buildenv ones, and have not been symlinked
+	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${pbd}/conf/client.conf \
+	    ${client_user}@${node}:${pbd}/${arch}
+	checkerror $? || (echo "Copying client.conf to ${node} failed"; return 1)
+	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${pbd}/conf/common.conf \
+	    ${client_user}@${node}:${pbd}/${arch}
+	checkerror $? || (echo "Copying common.conf to ${node} failed"; return 1)
+
+	# per-buildenv conf files (e.g., client.conf and common.conf) can be symlinks
+        # outside this dir, so copy the actual files
 	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${pbd}/${arch}/*.conf \
 	    ${client_user}@${node}:${pbd}/${arch}
 	checkerror $? || (echo "Copying *.conf to ${node} failed"; return 1)
