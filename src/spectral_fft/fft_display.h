@@ -1,6 +1,13 @@
 #ifndef	__FFT_DISPLAY_H__
 #define	__FFT_DISPLAY_H__
 
+#define	WIDTH	1600
+#define	HEIGHT	650
+#define	BPP	32
+
+#define	X_SCALE	5
+#define	Y_SCALE	4
+
 struct fft_display {
 	SDL_Surface *screen;
 	TTF_Font *font;

@@ -36,6 +36,10 @@
 
 #include "fft_eval.h"
 
+/*
+ * This is needed for fft_histogram, which currently
+ * manipulates fft_radar_entry structs.
+ */
 #if 1
 #include "net80211/ieee80211.h"
 #include "net80211/ieee80211_radiotap.h"
@@ -49,13 +53,6 @@
 #include "fft_histogram.h"
 
 #include "fft_display.h"
-
-#define WIDTH	1600
-#define HEIGHT	650
-#define BPP	32
-
-#define X_SCALE	5
-#define Y_SCALE	4
 
 #define	RMASK 	0x000000ff
 #define RBITS	0

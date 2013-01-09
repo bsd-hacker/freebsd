@@ -49,21 +49,6 @@
 #include "fft_histogram.h"
 #include "fft_display.h"
 
-#define WIDTH	1600
-#define HEIGHT	650
-#define BPP	32
-
-#define X_SCALE	5
-#define Y_SCALE	4
-
-#define	RMASK 	0x000000ff
-#define RBITS	0
-#define	GMASK	0x0000ff00
-#define GBITS	8
-#define	BMASK	0x00ff0000
-#define	BBITS	16
-#define	AMASK	0xff000000
-
 /* XXX ew globals */
 pthread_mutex_t mtx_histogram;
 int g_do_update = 0;
@@ -188,11 +173,11 @@ void graphics_main(struct fft_display *fdisp)
 				}
 				break;
 #endif
-			case SDLK_PAGEUP:
+			case SDLK_LEFT:
 				accel-= 2;
 				scroll = 1;
 				break;
-			case SDLK_PAGEDOWN:
+			case SDLK_RIGHT:
 				accel+= 2;
 				scroll = 1;
 				break;
@@ -217,8 +202,8 @@ void graphics_main(struct fft_display *fdisp)
 		}
 		if (startfreq < 2300)		startfreq = 2300;
 		if (startfreq > 6000)		startfreq = 6000;
-		if (accel < -20)		accel = -20;
-		if (accel >  20)		accel = 20;
+		if (accel < -40)		accel = -40;
+		if (accel >  40)		accel = 40;
 	}
 }
 
