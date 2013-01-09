@@ -55,6 +55,7 @@ struct fft_app {
 	SDL_Surface *screen;
 	TTF_Font *font;
 	struct fft_display *fdisp;
+	struct fft_histogram *fh;
 };
 
 int graphics_init_sdl(struct fft_app *fap)
@@ -236,7 +237,7 @@ fft_eval_cb(struct radar_entry *re, void *cbdata)
 
 	pthread_mutex_lock(&fap->mtx_histogram);
 	for (i = 0; i < re->re_num_spectral_entries; i++) {
-		fft_add_sample(re, &re->re_spectral_entries[i]);
+		fft_add_sample(fap->fh, re, &re->re_spectral_entries[i]);
 	}
 	fap->g_do_update = 1;
 	pthread_mutex_unlock(&fap->mtx_histogram);
@@ -261,6 +262,11 @@ int main(int argc, char *argv[])
 		errx(127, "calloc");
 	}
 
+	/* Setup histogram data */
+	fap->fh = fft_histogram_init();
+	if (! fap->fh)
+		exit(127);
+
 	/* Setup radar entry callback */
 	pthread_mutex_init(&fap->mtx_histogram, NULL);
 	set_scandata_callback(fft_eval_cb, fap);
@@ -274,7 +280,7 @@ int main(int argc, char *argv[])
 
 	/* Setup fft display */
 
-	fap->fdisp = fft_display_create(fap->screen, fap->font);
+	fap->fdisp = fft_display_create(fap->screen, fap->font, fap->fh);
 	if (fap->fdisp == NULL)
 		exit(127);
 

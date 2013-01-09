@@ -186,7 +186,8 @@ render_text(struct fft_display *fdisp, SDL_Surface *surface,
 }
 
 struct fft_display *
-fft_display_create(SDL_Surface *screen, TTF_Font *font)
+fft_display_create(SDL_Surface *screen, TTF_Font *font,
+    struct fft_histogram *fh)
 {
 	struct fft_display *fdisp;
 
@@ -197,6 +198,7 @@ fft_display_create(SDL_Surface *screen, TTF_Font *font)
 	}
 	fdisp->screen = screen;
 	fdisp->font = font;
+	fdisp->fh = fh;
 	return (fdisp);
 }
 
@@ -270,7 +272,7 @@ fft_display_draw_picture(struct fft_display *fdisp, int highlight,
 			continue;
 
 		/* Fetch dBm value at the given frequency in KHz */
-		s = fft_fetch_freq_avg(freqKhz);
+		s = fft_fetch_freq_avg(fdisp->fh, freqKhz);
 		if (s == NULL)
 			continue;
 
@@ -287,7 +289,7 @@ fft_display_draw_picture(struct fft_display *fdisp, int highlight,
 
 
 		/* .. and the max */
-		signal = (float) fft_fetch_freq_max(freqKhz);
+		signal = (float) fft_fetch_freq_max(fdisp->fh, freqKhz);
 		color = RMASK | AMASK;
 		opacity = 128;
 		y = 400 - (400.0 + Y_SCALE * signal);

@@ -18,10 +18,14 @@ struct fft_histogram_data {
 	int16_t	max_pts[FFT_HISTOGRAM_SIZE];
 };
 
-extern	void fft_histogram_init(void);
-extern	void fft_add_sample(struct radar_entry *re,
-	    struct radar_fft_entry *fe);
-extern int16_t * fft_fetch_freq_avg(int freqKhz);
-extern int16_t fft_fetch_freq_max(int freqKhz);
+struct fft_histogram {
+	struct fft_histogram_data d;
+};
+
+extern	struct fft_histogram * fft_histogram_init(void);
+extern	void fft_add_sample(struct fft_histogram *,
+	    struct radar_entry *re, struct radar_fft_entry *fe);
+extern int16_t * fft_fetch_freq_avg(struct fft_histogram *, int freqKhz);
+extern int16_t fft_fetch_freq_max(struct fft_histogram *, int freqKhz);
 
 #endif

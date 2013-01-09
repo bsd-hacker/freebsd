@@ -19,18 +19,24 @@
 
 #include "fft_histogram.h"
 
-struct fft_histogram_data fdata;
-
 /* XXX ew */
 #define SPECTRAL_HT20_NUM_BINS          56
 
-void
+struct fft_histogram *
 fft_histogram_init(void)
 {
-	bzero(&fdata, sizeof(fdata));
+	struct fft_histogram *fh;
+
+	fh = calloc(1, sizeof(*fh));
+	if (fh == NULL) {
+		warn("%s: calloc", __func__);
+		return (NULL);
+	}
+
+	return (fh);
 }
 
-int
+static int
 freq2fidx(int freqKhz)
 {
 	int freqMhz = freqKhz / 1000;
@@ -53,7 +59,8 @@ freq2fidx(int freqKhz)
 }
 
 void
-fft_add_sample(struct radar_entry *re, struct radar_fft_entry *fe)
+fft_add_sample(struct fft_histogram *fh, struct radar_entry *re,
+    struct radar_fft_entry *fe)
 {
 	float ffreq;
 	int i;
@@ -75,25 +82,25 @@ fft_add_sample(struct radar_entry *re, struct radar_fft_entry *fe)
 			continue;
 
 		/* Rolling/decaying average */
-		cur = fdata.avg_pts_cur[fidx];
-		if (fdata.avg_pts[fidx][cur] == 0) {
-			fdata.avg_pts[fidx][cur] = fe->pri.bins[i].dBm;
+		cur = fh->d.avg_pts_cur[fidx];
+		if (fh->d.avg_pts[fidx][cur] == 0) {
+			fh->d.avg_pts[fidx][cur] = fe->pri.bins[i].dBm;
 		} else {
-			fdata.avg_pts[fidx][cur] = (((fdata.avg_pts[fidx][cur] * 100) / 90) + fe->pri.bins[i].dBm) / 2;
+			fh->d.avg_pts[fidx][cur] = (((fh->d.avg_pts[fidx][cur] * 100) / 90) + fe->pri.bins[i].dBm) / 2;
 		}
-		fdata.avg_pts_cur[fidx] = (fdata.avg_pts_cur[fidx] + 1) % FFT_HISTOGRAM_HISTORY_DEPTH;
+		fh->d.avg_pts_cur[fidx] = (fh->d.avg_pts_cur[fidx] + 1) % FFT_HISTOGRAM_HISTORY_DEPTH;
 
 		/* Max */
-		if (fdata.max_pts[fidx] == 0 || fe->pri.bins[i].dBm > fdata.max_pts[fidx]) {
-			fdata.max_pts[fidx] = fe->pri.bins[i].dBm;
+		if (fh->d.max_pts[fidx] == 0 || fe->pri.bins[i].dBm > fh->d.max_pts[fidx]) {
+			fh->d.max_pts[fidx] = fe->pri.bins[i].dBm;
 		} else {
-			fdata.max_pts[fidx] = ((fdata.max_pts[fidx] * 975) + (fe->pri.bins[i].dBm * 25)) / 1000;
+			fh->d.max_pts[fidx] = ((fh->d.max_pts[fidx] * 975) + (fe->pri.bins[i].dBm * 25)) / 1000;
 		}
 	}
 }
 
 int16_t *
-fft_fetch_freq_avg(int freqKhz)
+fft_fetch_freq_avg(struct fft_histogram *fh, int freqKhz)
 {
 	int fidx;
 
@@ -101,11 +108,11 @@ fft_fetch_freq_avg(int freqKhz)
 	if (fidx < 0)
 		return NULL;
 
-	return fdata.avg_pts[fidx];
+	return fh->d.avg_pts[fidx];
 }
 
 int16_t
-fft_fetch_freq_max(int freqKhz)
+fft_fetch_freq_max(struct fft_histogram *fh, int freqKhz)
 {
 	int fidx;
 
@@ -113,5 +120,5 @@ fft_fetch_freq_max(int freqKhz)
 	if (fidx < 0)
 		return -180; /* XXX */
 
-	return fdata.max_pts[fidx];
+	return fh->d.max_pts[fidx];
 }

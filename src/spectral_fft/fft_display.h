@@ -11,10 +11,11 @@
 struct fft_display {
 	SDL_Surface *screen;
 	TTF_Font *font;
+	struct fft_histogram *fh;
 };
 
 extern	struct fft_display * fft_display_create(SDL_Surface *screen,
-	    TTF_Font *font);
+	    TTF_Font *font, struct fft_histogram *fh);
 extern	void fft_display_destroy(struct fft_display *disp);
 extern	int fft_display_draw_picture(struct fft_display *fdisp,
 	    int highlight, int startfreq);
