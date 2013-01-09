@@ -49,13 +49,23 @@
 #include "fft_histogram.h"
 #include "fft_display.h"
 
+/* 10 a second for now, the rendering is too inefficient otherwise? */
+#define	RENDER_PERIOD_MSEC	100
+
+#define	LCL_EVENT_RENDER	69
+
 struct fft_app {
 	pthread_mutex_t mtx_histogram;
-	int g_do_update;
 	SDL_Surface *screen;
+	SDL_TimerID rendering_timer_id;
+	int g_do_update;
 	TTF_Font *font;
 	struct fft_display *fdisp;
 	struct fft_histogram *fh;
+	int highlight_freq;
+	int startfreq;
+	int accel;
+	int scroll;
 };
 
 int graphics_init_sdl(struct fft_app *fap)
@@ -107,6 +117,63 @@ void graphics_quit_sdl(void)
 	SDL_Quit();
 }
 
+static void
+graphics_render(struct fft_app *fap)
+{
+
+//	printf("render: %d MHz\n", fap->startfreq);
+
+	if (!fap->scroll) {
+		/* move to highlighted object */
+		if (fap->highlight_freq - 20 < fap->startfreq)
+			fap->accel = -10;
+		if (fap->highlight_freq > (fap->startfreq + WIDTH/X_SCALE))
+			fap->accel = 10;
+		
+		/* if we are "far off", move a little bit faster */
+		if (fap->highlight_freq + 300 < fap->startfreq)
+			fap->accel = -100;
+
+		if (fap->highlight_freq - 300 > (fap->startfreq + WIDTH/X_SCALE))
+			fap->accel = 100;
+	}
+
+	if (fap->accel) {
+		fap->startfreq += fap->accel;
+		if (fap->accel > 0)
+			fap->accel--;
+		if (fap->accel < 0)
+			fap->accel++;
+	}
+
+	/* Cap rendering offset */
+	if (fap->startfreq < 2300)
+		fap->startfreq = 2300;
+	if (fap->startfreq > 6000)
+		fap->startfreq = 6000;
+
+	/* .. and now, render */
+	fft_display_draw_picture(fap->fdisp, fap->highlight_freq,
+	    fap->startfreq);
+
+}
+
+static uint32_t
+graphics_draw_event(uint32_t interval, void *cbdata)
+{
+	struct fft_app *fap = cbdata;
+	SDL_Event event;
+
+	event.type = SDL_USEREVENT;
+	event.user.code = LCL_EVENT_RENDER;
+	event.user.data1 = 0;
+	event.user.data2 = 0;
+
+	SDL_PushEvent(&event);
+
+	return (RENDER_PERIOD_MSEC);
+}
+
 /*
  * graphics_main - sets up the data and holds the mainloop.
  *
@@ -115,98 +182,54 @@ void graphics_main(struct fft_app *fap)
 {
 	SDL_Event event;
 	int quit = 0;
-	int highlight = 0;
-	int change = 1, scroll = 0;
-	int startfreq = 2350, accel = 0;
-	int highlight_freq = startfreq;
 
 	while (!quit) {
-		pthread_mutex_lock(&fap->mtx_histogram);
-		if (fap->g_do_update == 1) {
-			change = 1;	/* XXX always render */
-			fap->g_do_update = 0;
-		}
-		pthread_mutex_unlock(&fap->mtx_histogram);
 
-		if (change) {
-			highlight_freq = fft_display_draw_picture(fap->fdisp,
-			    highlight, startfreq);
-			change = 0;
-		}
-
-		if (!scroll) {
-			/* move to highlighted object */
-			if (highlight_freq - 20 < startfreq)
-				accel = -10;
-			if (highlight_freq > (startfreq + WIDTH/X_SCALE))
-				accel = 10;
-			
-			/* if we are "far off", move a little bit faster */
-			if (highlight_freq + 300 < startfreq)
-				accel = -100;
-	
-			if (highlight_freq - 300 > (startfreq + WIDTH/X_SCALE))
-				accel = 100;
-		}
-
-//		if (accel)
-			SDL_PollEvent(&event);
-//		else
-//			SDL_WaitEvent(&event);
+		/* Wait for the next event */
+		SDL_WaitEvent(&event);
 
 		switch (event.type) {
+		case SDL_USEREVENT:
+			switch (event.user.code) {
+				case LCL_EVENT_RENDER:
+					graphics_render(fap);
+					break;
+				default:
+					break;
+			}
+			break;
 		case SDL_QUIT:
 			quit = 1;
 			break;
 		case SDL_KEYDOWN:
 			switch (event.key.keysym.sym) {
-#if 0
 			case SDLK_LEFT:
-				if (highlight > 0) {
-					highlight--;
-					scroll = 0;
-					change = 1;
-				}
+				fap->accel-= 2;
+				fap->scroll = 1;
 				break;
 			case SDLK_RIGHT:
-				if (highlight < scanresults_n - 1){
-					highlight++;
-					scroll = 0;
-					change = 1;
-				}
-				break;
-#endif
-			case SDLK_LEFT:
-				accel-= 2;
-				scroll = 1;
-				break;
-			case SDLK_RIGHT:
-				accel+= 2;
-				scroll = 1;
+				fap->accel+= 2;
+				fap->scroll = 1;
 				break;
 			case SDLK_HOME:
-				startfreq = 2300;
-				accel = 0;
+				fap->startfreq = 2300;
+				fap->accel = 0;
 				break;
 			case SDLK_END:
-				startfreq = 5100;
-				accel = 0;
+				fap->startfreq = 5100;
+				fap->accel = 0;
 				break;
 			default:
 				break;
 			}
 			break;
 		}
-		if (accel) {
-			startfreq += accel;
-			if (accel > 0)			accel--;
-			if (accel < 0)			accel++;
-			change = 1;
-		}
-		if (startfreq < 2300)		startfreq = 2300;
-		if (startfreq > 6000)		startfreq = 6000;
-		if (accel < -40)		accel = -40;
-		if (accel >  40)		accel = 40;
+
+		/* Cap acceleration */
+		if (fap->accel < -40)
+			fap->accel = -40;
+		if (fap->accel >  40)
+			fap->accel = 40;
 	}
 }
 
@@ -262,6 +285,10 @@ int main(int argc, char *argv[])
 		errx(127, "calloc");
 	}
 
+	/* Setup rendering details */
+	fap->startfreq = 2350;
+	fap->highlight_freq = 2350;
+
 	/* Setup histogram data */
 	fap->fh = fft_histogram_init();
 	if (! fap->fh)
@@ -279,19 +306,22 @@ int main(int argc, char *argv[])
 	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 
 	/* Setup fft display */
-
 	fap->fdisp = fft_display_create(fap->screen, fap->font, fap->fh);
 	if (fap->fdisp == NULL)
 		exit(127);
 
 	/* Fetch data */
 	ret = read_scandata_freebsd(argv[1], NULL);
-
 	if (ret < 0) {
 		fprintf(stderr, "Couldn't read scanfile ...\n");
 		usage(argc, argv);
 		return -1;
 	}
+
+	/* Begin rendering timer */
+	fap->rendering_timer_id = SDL_AddTimer(RENDER_PERIOD_MSEC,
+	    graphics_draw_event, fap);
+
 	graphics_main(fap);
 
 	graphics_quit_sdl();
