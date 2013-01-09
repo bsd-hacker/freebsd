@@ -26,8 +26,8 @@
 
 #include <errno.h>
 #include <stdio.h>
-#include <math.h>
 #include <pcap.h>
+#include <err.h>
 #include <pthread.h>
 #include <unistd.h>
 
@@ -49,13 +49,15 @@
 #include "fft_histogram.h"
 #include "fft_display.h"
 
-/* XXX ew globals */
-pthread_mutex_t mtx_histogram;
-int g_do_update = 0;
-SDL_Surface *screen = NULL;
-TTF_Font *font = NULL;
+struct fft_app {
+	pthread_mutex_t mtx_histogram;
+	int g_do_update;
+	SDL_Surface *screen;
+	TTF_Font *font;
+	struct fft_display *fdisp;
+};
 
-int graphics_init_sdl(void)
+int graphics_init_sdl(struct fft_app *fap)
 {
 	SDL_VideoInfo *VideoInfo;
 	int SDLFlags;
@@ -83,15 +85,15 @@ int graphics_init_sdl(void)
 	}
 
 	SDL_WM_SetCaption("FFT eval", "FFT eval");
-	screen = SDL_SetVideoMode(WIDTH, HEIGHT, BPP, SDLFlags);
+	fap->screen = SDL_SetVideoMode(WIDTH, HEIGHT, BPP, SDLFlags);
 
 	if (TTF_Init() < 0) {
 		fprintf(stderr, "Initializing SDL TTF failed\n");
 		return -1;
 	}
 
-	font = TTF_OpenFont("font/LiberationSans-Regular.ttf", 14);
-	if (!font) {
+	fap->font = TTF_OpenFont("font/LiberationSans-Regular.ttf", 14);
+	if (! fap->font) {
 		fprintf(stderr, "Opening font failed\n");
 		return -1;
 	}
@@ -108,7 +110,7 @@ void graphics_quit_sdl(void)
  * graphics_main - sets up the data and holds the mainloop.
  *
  */
-void graphics_main(struct fft_display *fdisp)
+void graphics_main(struct fft_app *fap)
 {
 	SDL_Event event;
 	int quit = 0;
@@ -118,15 +120,15 @@ void graphics_main(struct fft_display *fdisp)
 	int highlight_freq = startfreq;
 
 	while (!quit) {
-		pthread_mutex_lock(&mtx_histogram);
-		if (g_do_update == 1) {
+		pthread_mutex_lock(&fap->mtx_histogram);
+		if (fap->g_do_update == 1) {
 			change = 1;	/* XXX always render */
-			g_do_update = 0;
+			fap->g_do_update = 0;
 		}
-		pthread_mutex_unlock(&mtx_histogram);
+		pthread_mutex_unlock(&fap->mtx_histogram);
 
 		if (change) {
-			highlight_freq = fft_display_draw_picture(fdisp,
+			highlight_freq = fft_display_draw_picture(fap->fdisp,
 			    highlight, startfreq);
 			change = 0;
 		}
@@ -228,22 +230,23 @@ void usage(int argc, char *argv[])
 static void
 fft_eval_cb(struct radar_entry *re, void *cbdata)
 {
+	struct fft_app *fap = cbdata;
 	struct radar_fft_entry *fe;
 	int i;
 
-	pthread_mutex_lock(&mtx_histogram);
+	pthread_mutex_lock(&fap->mtx_histogram);
 	for (i = 0; i < re->re_num_spectral_entries; i++) {
 		fft_add_sample(re, &re->re_spectral_entries[i]);
 	}
-	g_do_update = 1;
-	pthread_mutex_unlock(&mtx_histogram);
+	fap->g_do_update = 1;
+	pthread_mutex_unlock(&fap->mtx_histogram);
 
 }
 
 int main(int argc, char *argv[])
 {
 	int ret;
-	struct fft_display *fdisp;
+	struct fft_app *fap;
 
 	if (argc < 2) {
 		usage(argc, argv);
@@ -253,12 +256,17 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "WARNING: Experimental Software! Don't trust anything you see. :)\n");
 	fprintf(stderr, "\n");
 
+	fap = calloc(1, sizeof(*fap));
+	if (! fap) {
+		errx(127, "calloc");
+	}
+
 	/* Setup radar entry callback */
-	pthread_mutex_init(&mtx_histogram, NULL);
-	set_scandata_callback(fft_eval_cb, NULL);
+	pthread_mutex_init(&fap->mtx_histogram, NULL);
+	set_scandata_callback(fft_eval_cb, fap);
 
 	/* Setup graphics */
-	if (graphics_init_sdl() < 0) {
+	if (graphics_init_sdl(fap) < 0) {
 		fprintf(stderr, "Failed to initialize graphics.\n");
 		exit(127);
 	}
@@ -266,8 +274,8 @@ int main(int argc, char *argv[])
 
 	/* Setup fft display */
 
-	fdisp = fft_display_create(screen, font);
-	if (fdisp == NULL)
+	fap->fdisp = fft_display_create(fap->screen, fap->font);
+	if (fap->fdisp == NULL)
 		exit(127);
 
 	/* Fetch data */
@@ -278,7 +286,7 @@ int main(int argc, char *argv[])
 		usage(argc, argv);
 		return -1;
 	}
-	graphics_main(fdisp);
+	graphics_main(fap);
 
 	graphics_quit_sdl();
 
