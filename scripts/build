@@ -114,15 +114,14 @@ do_create() {
         zfs create ${newfs} || exit 1
     fi
 
+    buildsdir=${pbab}/builds
     builddir=$(realpath ${buildsdir})/${buildid}
 
     # populate ports for latest build on buildenv
-    # XXX MCL builddir now unused
-    do_portsupdate_inner ${arch} ${branch} ${buildid} ${builddir} $@
+    do_portsupdate_inner ${arch} ${branch} ${buildid} $@
 
     # populate src for latest build on buildenv
-    # XXX MCL builddir now unused
-    do_srcupdate_inner ${arch} ${branch} ${buildid} ${builddir} $@
+    do_srcupdate_inner ${arch} ${branch} ${buildid} $@
 
     # create the link for building packages for latest build
     ln -sf ${builddir} ${pbab}/builds/latest
@@ -207,16 +206,11 @@ do_clone() {
     tmp=${tmp%/}
     newbuilddir="${tmp%/*}/${newid}"
 
-    # XXX MCL 20130103
-    #oldfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}
-    #newfs=${ZFS_VOLUME}/portbuild/${arch}/${newid}
     oldfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}
     newfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${newid}
 
     zfs snapshot ${oldfs}@${newid} || exit 1
     zfs clone ${oldfs}@${newid} ${newfs} || exit 1
-    # XXX MCL 20130103
-    # zfs set mountpoint=${newbuilddir} ${newfs} || exit 1
     zfs promote ${newfs} || exit 1
 
     if zfs list -H -t filesystem ${oldfs}/ports 2> /dev/null; then
@@ -257,8 +251,6 @@ do_portsupdate() {
 	shift
     fi
 
-    # XXX MCL 20130103
-    #destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} /ports || exit 1
     destroy_fs ${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds ${buildid} /ports || exit 1
 
     if [ "${arg}" = "-umount" ]; then
@@ -266,18 +258,15 @@ do_portsupdate() {
     fi
 
     echo
-    do_portsupdate_inner ${arch} ${branch} ${buildid} ${builddir} $@
+    do_portsupdate_inner ${arch} ${branch} ${buildid} $@
 }
 
 do_portsupdate_inner() {
     arch=$1
     branch=$2
     buildid=$3
-    builddir=$4
     shift 4
 
-    # XXX MCL 20130103
-    # portsfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}/ports
     portsfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}/ports
     now=$(now)
 
@@ -288,7 +277,6 @@ do_portsupdate_inner() {
 
     zfs snapshot ${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}/ports@${now} || exit 1
     zfs clone ${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}/ports@${now} ${portsfs} || exit 1
-    #zfs set mountpoint=${builddir}/ports ${portsfs} || exit 1
 }
 
 do_srcupdate() {
@@ -302,8 +290,6 @@ do_srcupdate() {
 	shift
     fi
 
-    # XXX MCL 20130103
-    #destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} /src || exit 1
     destroy_fs ${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds ${buildid} /src || exit 1
 
     if [ "${arg}" = "-umount" ]; then
@@ -311,19 +297,16 @@ do_srcupdate() {
     fi
 
     echo
-    do_srcupdate_inner ${arch} ${branch} ${buildid} ${builddir} $@
+    do_srcupdate_inner ${arch} ${branch} ${buildid} $@
 }
 
 do_srcupdate_inner() {
     arch=$1
     branch=$2
     buildid=$3
-    builddir=$4
     shift 4
 
     strippedbranch=${branch%%[-\.]*}
-    # XXX MCL 20130103
-    #srcfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}/src
     srcfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}/src
     now=$(now)
 
@@ -334,7 +317,6 @@ do_srcupdate_inner() {
 
     zfs snapshot ${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}${strippedbranch}/src@${now} || exit 1
     zfs clone ${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}${strippedbranch}/src@${now} ${srcfs} || exit 1
-    #zfs set mountpoint=${builddir}/src ${srcfs} || exit 1
 }
 
 cleanup_client() {
@@ -500,8 +482,6 @@ do_destroy() {
     # perform sanity check to prevent e.g. "latest" being destroyed
     # before "previous"
     for quoted_subdir in $quoted_subdirs; do
-        # XXX MCL 20130103
-	#fullfs=${ZFS_VOLUME}/portbuild/${arch}/${buildid}`echo $quoted_subdir | sed -e "s/'//g"`
 	fullfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}`echo $quoted_subdir | sed -e "s/'//g"`
 	if test_fs "${fullfs}"; then
 	    child=$(get_latest_child ${fullfs})
@@ -515,8 +495,6 @@ do_destroy() {
 
     # now ok to do the actual destroy.
     for quoted_subdir in $quoted_subdirs; do
-        # XXX MCL 20130103
-    	#destroy_fs ${ZFS_VOLUME}/portbuild/${arch} ${buildid} `echo $quoted_subdir | sed -e "s/'//g"` || exit 1
     	destroy_fs ${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds ${buildid} `echo $quoted_subdir | sed -e "s/'//g"` || exit 1
     done
 
