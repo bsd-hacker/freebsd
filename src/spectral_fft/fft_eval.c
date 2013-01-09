@@ -156,14 +156,58 @@ int bigpixel(Uint32 *pixels, int x, int y, Uint32 color, uint8_t opacity)
 	for (y1 = y - SIZE; y1 < y + SIZE; y1++) {
 		Uint32 r, g, b;
 
-		r = ((pixels[x1 + y1 * WIDTH] & RMASK) >> RBITS) + ((((color & RMASK) >> RBITS) * opacity) / 255);
+		r = ((pixels[x1 + y1 * WIDTH] & RMASK) >> RBITS) +
+		    ((((color & RMASK) >> RBITS) * opacity) / 255);
 		if (r > 255) r = 255;
-		g = ((pixels[x1 + y1 * WIDTH] & GMASK) >> GBITS) + ((((color & GMASK) >> GBITS) * opacity) / 255);
+
+		g = ((pixels[x1 + y1 * WIDTH] & GMASK) >> GBITS) +
+		    ((((color & GMASK) >> GBITS) * opacity) / 255);
 		if (g > 255) g = 255;
-		b = ((pixels[x1 + y1 * WIDTH] & BMASK) >> BBITS) + ((((color & BMASK) >> BBITS) * opacity) / 255);
+
+		b = ((pixels[x1 + y1 * WIDTH] & BMASK) >> BBITS) +
+		    ((((color & BMASK) >> BBITS) * opacity) / 255);
 		if (b > 255) b = 255;
 
-		pixels[x1 + y1 * WIDTH] = r << RBITS | g << GBITS | b << BBITS | (color & AMASK);
+		pixels[x1 + y1 * WIDTH] = r << RBITS |
+		    g << GBITS | b << BBITS | (color & AMASK);
+	}
+	return 0;
+}
+
+int bighotpixel(Uint32 *pixels, int x, int y, Uint32 color, uint8_t opacity)
+{
+	int x1, y1;
+
+	if (! is_in_viewport(x, y))
+		return -1;
+
+	for (x1 = x - SIZE; x1 < x + SIZE; x1++)
+	for (y1 = y - SIZE; y1 < y + SIZE; y1++) {
+		Uint32 r, g, b;
+
+		r = ((pixels[x1 + y1 * WIDTH] & RMASK) >> RBITS) +
+		    ((((color & RMASK) >> RBITS) * opacity) / 255);
+		if (r > 255) r = 255;
+
+		g = ((pixels[x1 + y1 * WIDTH] & GMASK) >> GBITS) +
+		    ((((color & GMASK) >> GBITS) * opacity) / 255);
+		if (g > 255) g = 255;
+
+		/* If we've capped out blue, increment red */
+		b = ((pixels[x1 + y1 * WIDTH] & BMASK) >> BBITS);
+		if (b > 248) {
+			/* green bumped by bluemask */
+			g = ((pixels[x1 + y1 * WIDTH] & GMASK) >> GBITS) +
+			    ((((color & BMASK) >> BBITS) * (opacity/2)) / 255);
+			if (g > 255) g = 255;
+		} else {
+			b = ((pixels[x1 + y1 * WIDTH] & BMASK) >> BBITS) +
+			    ((((color & BMASK) >> BBITS) * opacity) / 255);
+			if (b > 255) b = 255;
+		}
+
+		pixels[x1 + y1 * WIDTH] = r << RBITS |
+		    g << GBITS | b << BBITS | (color & AMASK);
 	}
 	return 0;
 }
@@ -259,7 +303,7 @@ int draw_picture(int highlight, int startfreq)
 			color = BMASK | AMASK;
 			opacity = 64;
 			y = 400 - (400.0 + Y_SCALE * signal);
-			if (bigpixel(pixels, x, y, color, opacity) < 0)
+			if (bighotpixel(pixels, x, y, color, opacity) < 0)
 				continue;
 		}
 
