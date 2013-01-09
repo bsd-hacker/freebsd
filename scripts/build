@@ -265,13 +265,12 @@ do_portsupdate_inner() {
     arch=$1
     branch=$2
     buildid=$3
-    shift 4
+    shift 3
 
     portsfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}/ports
     now=$(now)
 
     echo "================================================"
-    #echo "Reimaging ZFS ports tree on ${builddir}/ports"
     echo "Reimaging ZFS ports tree on ${portsfs}"
     echo "================================================"
 
@@ -304,14 +303,13 @@ do_srcupdate_inner() {
     arch=$1
     branch=$2
     buildid=$3
-    shift 4
+    shift 3
 
     strippedbranch=${branch%%[-\.]*}
     srcfs=${ZFS_VOLUME}/portbuild/${arch}/${branch}/builds/${buildid}/src
     now=$(now)
 
     echo "================================================"
-    #echo "Reimaging ZFS src tree on ${builddir}/src"
     echo "Reimaging ZFS src tree on ${srcfs}"
     echo "================================================"
 
