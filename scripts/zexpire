@@ -18,32 +18,10 @@ import zfs
 CONFIG_SUBDIR="conf"
 CONFIG_FILENAME="server.conf"
 
-ENABLED	=	False
+ENABLED	=	True
 VERBOSE=	True
 
-## List of filesystems to expire
-## XXX MCL so much hardcoding.
-#expirelist=(("a", 14), 
-#            ("a/portbuild/amd64", 14),
-#            ("a/portbuild/arm", 14),
-#            ("a/portbuild/i386", 14),
-#            ("a/portbuild/ia64", 14),
-#            ("a/portbuild/mips", 14),
-#            ("a/portbuild/powerpc", 14),
-#            ("a/portbuild/sparc64", 14),
-#            ("a/portbuild/sun4v", 14),
-#            ("a/snap", 7),
-#            ("a/snap/ports-head", 2),
-#            ("a/snap/ports-head/ports", 2),
-#            ("a/snap/src-7", 2),
-#            ("a/snap/src-7/src", 2),
-#            ("a/snap/src-8", 2),
-#            ("a/snap/src-8/src", 2),
-#            ("a/snap/src-9", 2),
-#            ("a/snap/src-9/src", 2),
-#            ("a/snap/src-10", 2),
-#            ("a/snap/src-10/src", 2))
-expirelist2={}
+expirelist={}
 
 now = datetime.datetime.now()
 print "zexpire: starting at " + now.ctime()
@@ -82,43 +60,36 @@ if not ZFS_SNAPSHOT_EXPIRATION:
     print "you must define ZFS_SNAPSHOT_EXPIRATION"
     sys.exit( 1 )
 
-#print portbuild_directory
-#print snap_directory
-#print supported_archs
-#print ZFS_DEFAULT_EXPIRATION
-#print ZFS_SNAPSHOT_EXPIRATION
-
-expirelist2[ ZFS_VOLUME ] = ZFS_DEFAULT_EXPIRATION
-expirelist2[ portbuild_directory ] = ZFS_DEFAULT_EXPIRATION
+expirelist[ ZFS_VOLUME ] = ZFS_DEFAULT_EXPIRATION
+expirelist[ portbuild_directory ] = ZFS_DEFAULT_EXPIRATION
 for arch in supported_archs:
-    expirelist2[ os.path.join( portbuild_directory, arch ) ] = ZFS_DEFAULT_EXPIRATION
-expirelist2[ snap_directory ] = ZFS_SNAPSHOT_EXPIRATION
+    expirelist[ os.path.join( portbuild_directory, arch ) ] = ZFS_DEFAULT_EXPIRATION
+expirelist[ snap_directory ] = ZFS_SNAPSHOT_EXPIRATION
 try:
     snapdirs = os.listdir( snap_mountpoint )
     for snapdir in snapdirs:
         subdir = os.path.join( snap_mountpoint, snapdir )
         tmp = os.path.join( snap_directory, snapdir )
-        expirelist2[ tmp ] = ZFS_SNAPSHOT_EXPIRATION
+        expirelist[ tmp ] = ZFS_SNAPSHOT_EXPIRATION
         try:
             snapsubdirs = os.listdir( subdir )
             for snapsubdir in snapsubdirs:
-                expirelist2[ os.path.join( tmp, snapsubdir ) ] = ZFS_SNAPSHOT_EXPIRATION
+                expirelist[ os.path.join( tmp, snapsubdir ) ] = ZFS_SNAPSHOT_EXPIRATION
         except:
             pass
 except:
     pass
 
-keys = expirelist2.keys()
+keys = expirelist.keys()
 keys.sort()
 for key in keys:
     fs = key
     maxage = 2
     try:
-        maxage = int( expirelist2[ key ] )
+        maxage = int( expirelist[ key ] )
     except:
         pass
 
-#for (fs, maxage) in expirelist:
     print
 
     if VERBOSE:
