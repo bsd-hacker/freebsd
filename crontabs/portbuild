@@ -1,6 +1,9 @@
 #
 # portbuild crontab
 #
+PATH=/root/bin:/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:/usr/local/sbin:/usr/local/bin:/a/portbuild/scripts
+TERM=xterm
+
 PORTBUILD="/a/portbuild"
 ERRORLOGS="${PORTBUILD}/errorlogs/"
 LOCKFILES="${PORTBUILD}/lockfiles/"
