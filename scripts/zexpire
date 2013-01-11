@@ -2,41 +2,123 @@
 #
 # Expire old snapshots
 
-import sys, commands, datetime, os
+import sys, commands, datetime, os, string
 
-sys.path.insert(0, '/var/portbuild/lib/python')
+pbc = os.getenv('PORTBUILD_CHECKOUT') \
+    if os.getenv('PORTBUILD_CHECKOUT') else "/a/portbuild"
+pbd = os.getenv('PORTBUILD_DATA') \
+    if os.getenv('PORTBUILD_DATA') else "/a/portbuild"
 
+sys.path.insert(0, '%s/lib/python' % pbc)
+
+from freebsd import *
+from freebsd_config import *
 import zfs
 
-ENABLED	=	True
+CONFIG_SUBDIR="conf"
+CONFIG_FILENAME="server.conf"
+
+ENABLED	=	False
 VERBOSE=	True
 
-# List of filesystems to expire
-expirelist=(("a", 14), 
-            ("a/portbuild/amd64", 14),
-            ("a/portbuild/arm", 14),
-            ("a/portbuild/i386", 14),
-            ("a/portbuild/ia64", 14),
-            ("a/portbuild/mips", 14),
-            ("a/portbuild/powerpc", 14),
-            ("a/portbuild/sparc64", 14),
-            ("a/portbuild/sun4v", 14),
-            ("a/snap", 7),
-            ("a/snap/ports-head", 2),
-            ("a/snap/ports-head/ports", 2),
-            ("a/snap/src-7", 2),
-            ("a/snap/src-7/src", 2),
-            ("a/snap/src-8", 2),
-            ("a/snap/src-8/src", 2),
-            ("a/snap/src-9", 2),
-            ("a/snap/src-9/src", 2),
-            ("a/snap/src-10", 2),
-            ("a/snap/src-10/src", 2))
+## List of filesystems to expire
+## XXX MCL so much hardcoding.
+#expirelist=(("a", 14), 
+#            ("a/portbuild/amd64", 14),
+#            ("a/portbuild/arm", 14),
+#            ("a/portbuild/i386", 14),
+#            ("a/portbuild/ia64", 14),
+#            ("a/portbuild/mips", 14),
+#            ("a/portbuild/powerpc", 14),
+#            ("a/portbuild/sparc64", 14),
+#            ("a/portbuild/sun4v", 14),
+#            ("a/snap", 7),
+#            ("a/snap/ports-head", 2),
+#            ("a/snap/ports-head/ports", 2),
+#            ("a/snap/src-7", 2),
+#            ("a/snap/src-7/src", 2),
+#            ("a/snap/src-8", 2),
+#            ("a/snap/src-8/src", 2),
+#            ("a/snap/src-9", 2),
+#            ("a/snap/src-9/src", 2),
+#            ("a/snap/src-10", 2),
+#            ("a/snap/src-10/src", 2))
+expirelist2={}
 
 now = datetime.datetime.now()
 print "zexpire: starting at " + now.ctime()
 
-for (fs, maxage) in expirelist:
+config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
+ZFS_VOLUME = config.get( 'ZFS_VOLUME' )
+if not ZFS_VOLUME:
+    print "you must define ZFS_VOLUME"
+    sys.exit( 1 )
+ZFS_MOUNTPOINT = config.get( 'ZFS_MOUNTPOINT' )
+if not ZFS_MOUNTPOINT:
+    print "you must define ZFS_MOUNTPOINT"
+    sys.exit( 1 )
+PORTBUILD_DIRECTORY = config.get( 'PORTBUILD_DIRECTORY' )
+if not PORTBUILD_DIRECTORY:
+    print "you must define PORTBUILD_DIRECTORY"
+    sys.exit( 1 )
+portbuild_directory = os.path.join( ZFS_VOLUME, PORTBUILD_DIRECTORY )
+SNAP_DIRECTORY = config.get( 'SNAP_DIRECTORY' )
+if not SNAP_DIRECTORY:
+    print "you must define SNAP_DIRECTORY"
+    sys.exit( 1 )
+snap_directory = os.path.join( ZFS_VOLUME, SNAP_DIRECTORY )
+snap_mountpoint = os.path.join( ZFS_MOUNTPOINT, SNAP_DIRECTORY )
+SUPPORTED_ARCHS = config.get( 'SUPPORTED_ARCHS' )
+if not SUPPORTED_ARCHS:
+    print "you must define SUPPORTED_ARCHS"
+    sys.exit( 1 )
+supported_archs = string.split( SUPPORTED_ARCHS )
+ZFS_DEFAULT_EXPIRATION = config.get( 'ZFS_DEFAULT_EXPIRATION' )
+if not ZFS_DEFAULT_EXPIRATION:
+    print "you must define ZFS_DEFAULT_EXPIRATION"
+    sys.exit( 1 )
+ZFS_SNAPSHOT_EXPIRATION = config.get( 'ZFS_SNAPSHOT_EXPIRATION' )
+if not ZFS_SNAPSHOT_EXPIRATION:
+    print "you must define ZFS_SNAPSHOT_EXPIRATION"
+    sys.exit( 1 )
+
+#print portbuild_directory
+#print snap_directory
+#print supported_archs
+#print ZFS_DEFAULT_EXPIRATION
+#print ZFS_SNAPSHOT_EXPIRATION
+
+expirelist2[ ZFS_VOLUME ] = ZFS_DEFAULT_EXPIRATION
+expirelist2[ portbuild_directory ] = ZFS_DEFAULT_EXPIRATION
+for arch in supported_archs:
+    expirelist2[ os.path.join( portbuild_directory, arch ) ] = ZFS_DEFAULT_EXPIRATION
+expirelist2[ snap_directory ] = ZFS_SNAPSHOT_EXPIRATION
+try:
+    snapdirs = os.listdir( snap_mountpoint )
+    for snapdir in snapdirs:
+        subdir = os.path.join( snap_mountpoint, snapdir )
+        tmp = os.path.join( snap_directory, snapdir )
+        expirelist2[ tmp ] = ZFS_SNAPSHOT_EXPIRATION
+        try:
+            snapsubdirs = os.listdir( subdir )
+            for snapsubdir in snapsubdirs:
+                expirelist2[ os.path.join( tmp, snapsubdir ) ] = ZFS_SNAPSHOT_EXPIRATION
+        except:
+            pass
+except:
+    pass
+
+keys = expirelist2.keys()
+keys.sort()
+for key in keys:
+    fs = key
+    maxage = 2
+    try:
+        maxage = int( expirelist2[ key ] )
+    except:
+        pass
+
+#for (fs, maxage) in expirelist:
     print
 
     if VERBOSE:
