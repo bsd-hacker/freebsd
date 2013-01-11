@@ -4,10 +4,9 @@
 PATH=/root/bin:/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:/usr/local/sbin:/usr/local/bin:/a/portbuild/scripts
 TERM=xterm
 
-PORTBUILD="/a/portbuild"
-ERRORLOGS="${PORTBUILD}/errorlogs/"
-LOCKFILES="${PORTBUILD}/lockfiles/"
-SCRIPTS="${PORTBUILD}/scripts/"
+ERRORLOGS=/a/portbuild/errorlogs/
+LOCKFILES=/a/portbuild/lockfiles/
+SCRIPTS=/a/portbuild/scripts/
 #
 # Update package statistics
 #
@@ -30,3 +29,20 @@ SCRIPTS="${PORTBUILD}/scripts/"
 # VCS update of src
 #
 #0 2 * * *			lockf -t 0 -k ${LOCKFILES}/updatesnap.lock ${SCRIPTS}/updatesnap
+#
+# XXX MCL 20130111 the last things from root crontab
+#
+# Compress old logs to save space
+#
+# XXX MCL this is totally naive and livelocks the machine.  XXX TODO
+#50 5 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock find /a/portbuild/*/archive/ -name \*.log -mtime +7 | xargs bzip2 -9f
+#
+# Clean up old chroots on client machines
+#30 * * * *			${SCRIPTS}/do-cleanup-chroots all
+#
+# Backup ZFS filesystems
+# XXX MCL script not yet converted
+#50 4 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zbackup
+#
+# Expire old ZFS snapshots
+#50 3 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zexpire
