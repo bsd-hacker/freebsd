@@ -26,6 +26,8 @@ LIBZFSBOOT=	${.OBJDIR}/../../zfs/libzfsboot.a
 # Enable PXE TFTP or NFS support, not both.
 .if defined(LOADER_TFTP_SUPPORT)
 CFLAGS+=	-DLOADER_TFTP_SUPPORT
+.elif defined(LOADER_HTTP_SUPPORT)
+CFLAGS+=	-DLOADER_HTTP_SUPPORT
 .else
 CFLAGS+=	-DLOADER_NFS_SUPPORT
 .endif
@@ -36,6 +38,9 @@ HAVE_BCACHE=	yes
 # Enable PnP and ISA-PnP code.
 HAVE_PNP=	yes
 HAVE_ISABUS=	yes
+
+# Enable more pxe_http functions
+#CFLAGS+=	-DPXE_MORE
 
 .if ${MK_FORTH} != "no"
 # Enable BootForth
@@ -66,11 +71,14 @@ CFLAGS+=	-Wall
 LDFLAGS=	-static -Ttext 0x0
 
 # i386 standalone support library
-LIBI386=	${.OBJDIR}/../libi386/libi386.a
+LIBI386=	${.OBJDIR}/../libi386/libi386.a ${.OBJDIR}/../pxehttp/libpxe_http.a
 CFLAGS+=	-I${.CURDIR}/..
 
 # BTX components
 CFLAGS+=	-I${.CURDIR}/../btx/lib
+
+# PXE HTTP components
+CFLAGS+=	-I$(.CURDIR)/../pxe_http
 
 # Debug me!
 #CFLAGS+=	-g

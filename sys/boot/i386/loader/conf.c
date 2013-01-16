@@ -45,6 +45,11 @@ __FBSDID("$FreeBSD$");
  * XXX as libi386 and biosboot merge, some of these can become linker sets.
  */
 
+#ifdef LOADER_HTTP_SUPORT
+#undef LOADER_NFS_SUPPORT
+#undef LOADER_TFTP_SUPPO
+#endif
+
 #if defined(LOADER_NFS_SUPPORT) && defined(LOADER_TFTP_SUPPORT)
 #error "Cannot have both tftp and nfs support yet."
 #endif
@@ -57,7 +62,8 @@ extern struct devsw fwohci;
 struct devsw *devsw[] = {
     &bioscd,
     &biosdisk,
-#if defined(LOADER_NFS_SUPPORT) || defined(LOADER_TFTP_SUPPORT)
+#if defined(LOADER_NFS_SUPPORT) || defined(LOADER_TFTP_SUPPORT) || \
+	defined(LOADER_HTTP_SUPPORT)	
     &pxedisk,
 #endif
 #if defined(LOADER_FIREWIRE_SUPPORT)
@@ -69,14 +75,32 @@ struct devsw *devsw[] = {
     NULL
 };
 
+#if defined(LOADER_HTTP_SUPPORT)
+/* free as much as possible memory, by removing unused by PXE filesystems */
+#undef LOADER_EXT2_SUPPORT
+#undef LOADER_DOS_SUPPORT
+#undef LOADER_CD9660_SUPPORT
+#undef LOADER_SPLITFS_SUPPORT
+#undef LOADER_NFS_SUPPORT 
+#undef LOADER_TFTP_SUPPORT
+#else
+#define LOADER_NFS_SUPPORT 
+#endif
+
 struct fs_ops *file_system[] = {
 #if defined(LOADER_ZFS_SUPPORT)
     &zfs_fsops,
 #endif
     &ufs_fsops,
+#if defined(LOADER_EXT2_SUPPORT)
     &ext2fs_fsops,
+#endif
+#if defined(LOADER_DOS_SUPPORT)
     &dosfs_fsops,
+#endif
+#if defined(LOADER_CD9660_SUPPORT)
     &cd9660_fsops,
+#endif
 #if defined(LOADER_NANDFS_SUPPORT)
     &nandfs_fsops,
 #endif
@@ -94,6 +118,9 @@ struct fs_ops *file_system[] = {
 #endif
 #ifdef LOADER_TFTP_SUPPORT
     &tftp_fsops,
+#endif
+#ifdef LOADER_HTTP_SUPPORT
+    &http_fsops,
 #endif
     NULL
 };
