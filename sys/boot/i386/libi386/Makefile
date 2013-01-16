@@ -48,7 +48,7 @@ CFLAGS+= -Dalloca=__builtin_alloca
 CFLAGS+=	-I${.CURDIR}/../../common -I${.CURDIR}/../common \
 		-I${.CURDIR}/../btx/lib \
 		-I${.CURDIR}/../../../contrib/dev/acpica/include \
-		-I${.CURDIR}/../../.. -I.
+		-I${.CURDIR}/../../.. -I. -I${.CURDIR}/../pxe_http/
 # the location of libstand
 CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand/
 

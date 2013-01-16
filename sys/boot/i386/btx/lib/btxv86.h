@@ -64,4 +64,9 @@ extern u_int32_t	__args;
 void __exit(int) __attribute__((__noreturn__));
 void __exec(caddr_t, ...);
 
+/*
+ *  Installs interrupt handler function for interrupt int_num.
+ *  caddr_t - in userspace.
+ */
+void __isr_install(caddr_t isr, uint16_t int_num);
 #endif /* !_BTXV86_H_ */

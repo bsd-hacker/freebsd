@@ -24,6 +24,7 @@
 #
 		.global __exit
 		.global __exec
+		.global __isr_install
 #
 # Constants.
 #
@@ -38,3 +39,8 @@ __exit: 	xorl %eax,%eax			# BTX system
 #
 __exec: 	movl $0x1,%eax			# BTX system
 		int $INT_SYS			#  call 0x1
+#
+# System call: isr_install
+#
+__isr_install: 	movl $0x2,%eax			# BTX system
+		int $INT_SYS			#  call 0x2

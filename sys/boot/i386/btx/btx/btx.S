@@ -52,7 +52,8 @@
 		.set SEL_RDATA,0x20		# Real mode data
 		.set SEL_UCODE,0x28|3		# User code
 		.set SEL_UDATA,0x30|3		# User data
-		.set SEL_TSS,0x38		# TSS
+		.set SEL_TSS,0x38				# TSS
+		.set SEL_CALLGATE,0x40	# super2user callgate
 /*
  * Task state segment fields.
  */
@@ -62,8 +63,9 @@
 /*
  * System calls.
  */
-		.set SYS_EXIT,0x0		# Exit
-		.set SYS_EXEC,0x1		# Exec
+		.set SYS_EXIT,0x0					# Exit
+		.set SYS_EXEC,0x1					# Exec
+		.set SYS_ISR_INSTALL,0x2	# ISR_install
 /*
  * Fields in V86 interface structure.
  */
@@ -366,7 +368,6 @@ except.2:	pushl 0x50(%esp,1)		# Set ESP
 		popl %es			#  data
 		movl %esp,%ebx			# Stack frame
 		movl $dmpfmt,%esi		# Dump format string
-		movl $MEM_BUF,%edi		# Buffer
 		pushl %edi			# Dump to
 		call dump			#  buffer
 		popl %esi			#  and
@@ -690,7 +691,9 @@ rret_tramp.3:	popl %es			# Restore
 /*
  * System Call.
  */
-intx30: 	cmpl $SYS_EXEC,%eax		# Exec system call?
+intx30:     cmpl $SYS_ISR_INSTALL, %eax # is isr_install?
+		je intx30.2         #  yes
+		cmpl $SYS_EXEC,%eax     # Exec system call?
 		jne intx30.1			# No
 		pushl %ss			# Set up
 		popl %es			#  all
@@ -707,6 +710,74 @@ intx30: 	cmpl $SYS_EXEC,%eax		# Exec system call?
 		call *%eax			#  program
 intx30.1:	orb $0x1,%ss:btx_hdr+0x7	# Flag reboot
 		jmp exit			# Exit
+/*
+ *	Here we need to modify IDT in such way, that at interrupt handle
+ *  will be run isr_trump, which role is to run provided function
+ *  in user space.
+ */
+intx30.2:
+		cli
+		pushl %edi
+		pushl %ebx
+		pushw %ds
+		pushw %dx
+
+		pushl %ss			# Set up
+		popl %ds			#  registers
+		
+
+ 		movl $MEM_USR,%ebx		# User base address
+		addl 0x18(%esp,1),%ebx		# getting user stack head
+		addl $0x04, %ebx		#  first parameter
+
+		movl (%ebx), %eax
+		movw 0x2(%ebx), %dx
+		xchgw %dx, %bx
+
+/*
+ * updating call gate
+ */
+		movl $callgate, %edi
+		movw %ax, (%edi)		# +0: store offset 00..15
+		shr $0x10 ,%eax			# getting high word
+		movw %ax, 0x06(%edi)		# +6: handler offset 16..31
+/*
+ * installing handler
+ */
+/*
+ *  NOTE: it seems nothing else must be done
+ */
+		popw %dx
+		popw %ds
+		popl %ebx		
+		popl %edi
+		sti	
+		iret				# return from syscall
+
+user_isr_call:
+/*
+ * NOTE: isr must use lret to return and restore SS, ESP, CS, EIP.
+*/
+		pushl %ds			# saving ds
+		pushl %edi
+		movl $SEL_SDATA, %eax		#
+		movl %eax, %ds			
+						
+		movl $callgate, %edi
+		movw (%edi), %ax
+		popl %edi		
+
+		cmpw $0x0000, %ax
+		je isr_ret
+		
+		lcall $SEL_CALLGATE,$0x00000000 # far call via callgate selector
+			# offset is ignored
+isr_ret:
+		
+
+		popl %ds
+
+		iret				# return from interrupt handler
 /*
  * Dump structure [EBX] to [EDI], using format string [ESI].
  */
@@ -1000,6 +1071,7 @@ gdt:		.word 0x0,0x0,0x0,0x0		# Null entry
 		.word 0xffff,MEM_USR,0xfa00,0xcf# SEL_UCODE
 		.word 0xffff,MEM_USR,0xf200,0xcf# SEL_UDATA
 tss_desc:	.word _TSSLM,MEM_TSS,0x8900,0x0 # SEL_TSS
+callgate:	.word 0x0, SEL_UCODE,0xec00,0x0 # SEL_CALLGATE
 gdt.1:
 /*
  * Pseudo-descriptors.
