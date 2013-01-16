@@ -38,6 +38,8 @@
  * It's for your own good. :)
  */
 
+#ifndef PXEHEADERINCLUDES
+#define PXEHEADERINCLUDES
 /* It seems that intel didn't think about ABI,
  * either that or 16bit ABI != 32bit ABI (which seems reasonable)
  * I have to thank Intel for the hair loss I incurred trying to figure
@@ -511,3 +513,4 @@ typedef struct {
 typedef struct {
 	PXENV_STATUS_t	Status;
 } PACKED t_PXENV_STOP_BASE;
+#endif

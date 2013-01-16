@@ -33,6 +33,9 @@ __FBSDID("$FreeBSD$");
 #if defined(LOADER_ZFS_SUPPORT)
 #include "../zfs/libzfs.h"
 #endif
+#if defined(LOADER_HTTP_SUPPORT)
+#include "pxehttp/httpfs.h"
+#endif
 
 /*
  * We could use linker sets for some or all of these, but
@@ -47,7 +50,7 @@ __FBSDID("$FreeBSD$");
 
 #ifdef LOADER_HTTP_SUPORT
 #undef LOADER_NFS_SUPPORT
-#undef LOADER_TFTP_SUPPO
+#undef LOADER_TFTP_SUPPORT
 #endif
 
 #if defined(LOADER_NFS_SUPPORT) && defined(LOADER_TFTP_SUPPORT)

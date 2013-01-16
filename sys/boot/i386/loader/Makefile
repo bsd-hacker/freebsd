@@ -78,7 +78,7 @@ CFLAGS+=	-I${.CURDIR}/..
 CFLAGS+=	-I${.CURDIR}/../btx/lib
 
 # PXE HTTP components
-CFLAGS+=	-I$(.CURDIR)/../pxe_http
+CFLAGS+=	-I$(.CURDIR)/../pxehttp
 
 # Debug me!
 #CFLAGS+=	-g
