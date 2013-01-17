@@ -431,7 +431,7 @@ pxe_core_install_isr()
 	pxe_memset(&v86, 0, sizeof(v86));
 
 	v86.ctl  = V86_ADDR | V86_CALLF | V86_FLAGS;
-	v86.addr = (VTOPSEG(__isr_install) << 16) | VTOPOFF(__isr_install);
+	v86.addr = (VTOPSEG(__pxe_isr_install) << 16) | VTOPOFF(__pxe_isr_install);
 	v86.eax = int_num;
 	v86.ebx = VTOPSEG(__pxe_isr);
 	v86.edx = VTOPOFF(__pxe_isr);
@@ -490,7 +490,7 @@ pxe_core_remove_isr()
 	pxe_memset(&v86, 0, sizeof(v86));
 
 	v86.ctl  = V86_ADDR | V86_CALLF | V86_FLAGS;
-	v86.addr = (VTOPSEG(__isr_install) << 16) | VTOPOFF(__isr_install);
+	v86.addr = (VTOPSEG(__pxe_isr_install) << 16) | VTOPOFF(__pxe_isr_install);
 
 	uint8_t int_num = (__pxe_nic_irq < 8) ?
 			   __pxe_nic_irq + 0x08 : __pxe_nic_irq + 0x68;	
@@ -1103,20 +1103,4 @@ pxe_set_ip(uint8_t id, const PXE_IPADDR *new_ip)
 	if (id < PXE_IP_MAX) {
 		pxe_memcpy(new_ip, &core_ips[id], sizeof(PXE_IPADDR));
 	}
-}
-
-/* getsecs() - returns time in seconds
- * in:
- *      none
- * out:
- *      elapsed time in seconds
- */
-time_t
-getsecs()
-{
-	time_t secs = 0;
-	 
-	time(&secs);
-	
-	return (secs);
 }

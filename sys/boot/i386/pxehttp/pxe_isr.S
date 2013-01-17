@@ -34,8 +34,8 @@
 		.globl	__pxe_entry_off, __pxe_entry_seg
 		.globl	__pxe_entry_off2, __pxe_entry_seg2		
 		.globl  __pxe_call
-		.globl  __isr_install
-		.globl  __isr_remove
+		.globl  __pxe_isr_install
+		.globl  __pxe_isr_remove
 		.globl	__pxe_isr
 		.globl	__chained_irq_off
 		.globl	__chained_irq_seg
@@ -287,7 +287,7 @@ pxe_isr.2:
 		.byte	0xcb
 
 /*
- * __isr_install() - installs interrupt handler for provided IRQ,
+ * __pxe_isr_install() - installs interrupt handler for provided IRQ,
  *		saves previous ("chained") handler
  * in:
  * 	AX - interrupt number (not IRQ)
@@ -297,7 +297,7 @@ pxe_isr.2:
  *	BX - chained ISR segment
  *      DX - chained ISR offset
  */
-__isr_install:	
+__pxe_isr_install:	
 		cli				# no interrupts
 		pushl   %edi			# saving affected registers
 		pushw	%ds			#
@@ -322,7 +322,7 @@ __isr_install:
 		.byte	0xcb			# back to vm86
 
 
-/* __isr_remove() - uninstalls ISR
+/* __pxe_isr_remove() - uninstalls ISR
  * Adopted from Intel PXE SDK
  * removes interrupt handler for provided IRQ, restores previous handler
  * in:
@@ -331,7 +331,7 @@ __isr_install:
  * out:
  *	none
  */
-__isr_remove:	pushf
+__pxe_isr_remove:	pushf
 		pushl	%ebx
 		
 		shlw    $2, %bx			# calculating offset of
@@ -341,7 +341,7 @@ __isr_remove:	pushf
 
 		movw	%es:(%bx), %ax		# get offset to current handler
 
-isr_remove.3:	#movl   chained_irq_off, %eax	# getting old chained handler
+pxe_isr_remove.3:	#movl   chained_irq_off, %eax	# getting old chained handler
 		#movl   %eax, %es:(%bx)		# restore it
 
 /*
@@ -350,7 +350,7 @@ isr_remove.3:	#movl   chained_irq_off, %eax	# getting old chained handler
  *		call    unmask_int		# unmasking
  **/
 
-isr_remove.fin:
+pxe_isr_remove.fin:
 #		movl    $0x0, chained_irq_off
 		popl	%ebx
 		popf

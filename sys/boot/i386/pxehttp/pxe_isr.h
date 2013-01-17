@@ -54,7 +54,7 @@ extern void __pxe_call(void);	/* PXE API call */
 extern void __pxe_isr(void);	/* PXE API call */
 
 extern void	__mask_irq(void);	/* masks irq */
-extern void	__isr_install(void);	/* installs handler for interrupt */
+extern void	__pxe_isr_install(void);/* installs handler for interrupt */
 extern void	__isr_remove(void);	/* remove handler, ! not working ! now */
 extern void	__mem_copy(void);	/* copies memory in vm86 mode */
 
