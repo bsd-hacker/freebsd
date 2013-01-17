@@ -91,6 +91,31 @@ sprintf(char *buf, const char *cfmt, ...)
 	return retval;
 }
 
+int
+snprintf(char *buf, size_t size, const char *cfmt, ...)
+{
+        int retval;
+        va_list ap;
+        size_t  maxsize = (size > 1) ? size - 1 : 0;
+                        
+        if (maxsize == 0) {
+                buf[0] = '\0';
+                return (0);
+        }
+
+        va_start(ap, cfmt);
+        retval = kvprintf(cfmt, NULL, (void *)buf, 10, ap);
+
+        if (retval < maxsize)
+                buf[retval] = '\0';
+        else
+                buf[maxsize] = '\0';
+        
+        va_end(ap);
+        
+        return (retval);
+}
+
 void
 vsprintf(char *buf, const char *cfmt, va_list ap)
 {
