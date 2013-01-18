@@ -296,11 +296,11 @@ pxe_open(struct open_file *f, ...)
 	}
 	if (rootip.s_addr == 0) {
 #ifdef PXEHTTP_UDP_FOR_LIBSTAND
-			gateip.s_addr = pxe_get_ip(PXE_IP_GATEWAY)->ip;
-			rootip.s_addr = pxe_get_ip(PXE_IP_ROOT)->ip;
-			netmask = pxe_get_ip(PXE_IP_NETMASK)->ip;
-			myip.s_addr = pxe_get_ip(PXE_IP_MY)->ip;
-			nameip.s_addr = pxe_get_ip(PXE_IP_NAMESERVER)->ip;
+		gateip.s_addr = pxe_get_ip(PXE_IP_GATEWAY)->ip;
+		rootip.s_addr = pxe_get_ip(PXE_IP_ROOT)->ip;
+		netmask = pxe_get_ip(PXE_IP_NETMASK)->ip;
+		myip.s_addr = pxe_get_ip(PXE_IP_MY)->ip;
+		nameip.s_addr = pxe_get_ip(PXE_IP_NAMESERVER)->ip;
 #else
 		/*
 		 * Do a bootp/dhcp request to find out where our

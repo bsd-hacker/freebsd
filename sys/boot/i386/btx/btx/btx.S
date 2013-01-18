@@ -368,6 +368,7 @@ except.2:	pushl 0x50(%esp,1)		# Set ESP
 		popl %es			#  data
 		movl %esp,%ebx			# Stack frame
 		movl $dmpfmt,%esi		# Dump format string
+		movl $MEM_BUF,%edi              # Buffer
 		pushl %edi			# Dump to
 		call dump			#  buffer
 		popl %esi			#  and
