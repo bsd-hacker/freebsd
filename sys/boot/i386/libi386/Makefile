@@ -42,13 +42,21 @@ CFLAGS+= -DSMBIOS_LITTLE_ENDIAN_UUID
 # Include simple terminal emulation (cons25-compatible)
 CFLAGS+= -DTERM_EMU
 
+# Enable PXE debugging
+#CDLAGS+= -DPXE_DEBUG
+
+# Allow pxe_http perform udpread/udpwrite
+.if defined(PXEHTTP_UDP_FOR_LIBSTAND)
+CFLAGS+= -DPXEHTTP_UDP_FOR_LIBSTAND
+.endif
+
 # XXX: make alloca() useable
 CFLAGS+= -Dalloca=__builtin_alloca
 
 CFLAGS+=	-I${.CURDIR}/../../common -I${.CURDIR}/../common \
 		-I${.CURDIR}/../btx/lib \
 		-I${.CURDIR}/../../../contrib/dev/acpica/include \
-		-I${.CURDIR}/../../.. -I. -I${.CURDIR}/../pxe_http/
+		-I${.CURDIR}/../../.. -I. -I${.CURDIR}/../pxehttp/
 # the location of libstand
 CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand/
 

@@ -39,23 +39,32 @@ __FBSDID("$FreeBSD$");
 
 #include <net.h>
 #include <netif.h>
+#ifdef LOADER_NFS_SUPPORT
 #include <nfsv2.h>
+#endif
 #include <iodesc.h>
 
 #include <bootp.h>
 #include <bootstrap.h>
 #include "btxv86.h"
 #include "pxe.h"
+#include "pxe_core.h"
+#include "pxe_dhcp.h"
+#include "pxe_isr.h"
+#include "pxe_ip.h"
+#include "pxe_udp.h"
 
+#define	PXE_TFTP_BUFFER_SIZE	512
+#ifdef PXEHTTP_UDP_FOR_LIBSTAND
 /*
  * Allocate the PXE buffers statically instead of sticking grimy fingers into
  * BTX's private data area.  The scratch buffer is used to send information to
  * the PXE BIOS, and the data buffer is used to receive data from the PXE BIOS.
  */
 #define	PXE_BUFFER_SIZE		0x2000
-#define	PXE_TFTP_BUFFER_SIZE	512
 static char	scratch_buffer[PXE_BUFFER_SIZE];
 static char	data_buffer[PXE_BUFFER_SIZE];
+#endif
 
 static pxenv_t	*pxenv_p = NULL;        /* PXENV+ */
 static pxe_t	*pxe_p   = NULL;	/* !PXE */
@@ -159,6 +168,12 @@ pxe_enable(void *pxeinfo)
 static int
 pxe_init(void)
 {
+#ifdef PXEHTTP_UDP_FOR_LIBSTAND
+	if (__pxe_nic_irq != 0)
+		return (2);
+		
+	return pxe_core_init(pxenv_p, pxe_p);
+#else
 	t_PXENV_GET_CACHED_INFO	*gci_p;
 	int	counter;
 	uint8_t checksum;
@@ -243,6 +258,7 @@ pxe_init(void)
 	bcopy(PTOV((gci_p->Buffer.segment << 4) + gci_p->Buffer.offset),
 	      &bootplayer, gci_p->BufferSize);
 	return (1);
+#endif
 }
 
 
@@ -279,6 +295,13 @@ pxe_open(struct open_file *f, ...)
 		printf("pxe_open: netif_open() succeeded\n");
 	}
 	if (rootip.s_addr == 0) {
+#ifdef PXEHTTP_UDP_FOR_LIBSTAND
+			gateip.s_addr = pxe_get_ip(PXE_IP_GATEWAY)->ip;
+			rootip.s_addr = pxe_get_ip(PXE_IP_ROOT)->ip;
+			netmask = pxe_get_ip(PXE_IP_NETMASK)->ip;
+			myip.s_addr = pxe_get_ip(PXE_IP_MY)->ip;
+			nameip.s_addr = pxe_get_ip(PXE_IP_NAMESERVER)->ip;
+#else
 		/*
 		 * Do a bootp/dhcp request to find out where our
 		 * NFS/TFTP server is.  Even if we dont get back
@@ -286,6 +309,7 @@ pxe_open(struct open_file *f, ...)
 		 * which brought us to life and a default rootpath.
 		 */
 		bootp(pxe_sock, BOOTP_PXE);
+#endif
 		if (rootip.s_addr == 0)
 			rootip.s_addr = bootplayer.sip;
 		if (!rootpath[0])
@@ -633,6 +657,27 @@ pxe_netif_put(struct iodesc *desc, void *pkt, size_t len)
 ssize_t
 sendudp(struct iodesc *h, void *pkt, size_t len)
 {
+#ifdef PXEHTTP_UDP_FOR_LIBSTAND
+#ifdef PXE_DEBUG_HELL
+  printf("sendudp(): sending %u bytes  from me:%u -> %s:%u\n",
+    len, ntohs(h->myport),
+    inet_ntoa(h->destip), ntohs(h->destport));
+#endif /* PXE_DEBUG_HELL */
+  void *ipdata = pkt - sizeof(PXE_UDP_PACKET);
+
+  PXE_IPADDR  dst;
+  dst.ip = h->destip.s_addr;
+
+  if (!pxe_udp_send(ipdata, &dst, ntohs(h->destport),
+    ntohs(h->myport), len + sizeof(PXE_UDP_PACKET)))
+  {
+    printf("sendudp(): failed\n");
+    return (-1);
+  }
+
+  return (len);
+
+#else /* PXEHTTP_UDP_FOR_LIBSTAND */
 	t_PXENV_UDP_WRITE *udpwrite_p = (t_PXENV_UDP_WRITE *)scratch_buffer;
 	bzero(udpwrite_p, sizeof(*udpwrite_p));
 	
@@ -661,11 +706,34 @@ sendudp(struct iodesc *h, void *pkt, size_t len)
 		return -1;
 	}
 	return len;
+#endif /* PXEHTTP_UDP_FOR_LIBSTATND */
 }
 
 ssize_t
 readudp(struct iodesc *h, void *pkt, size_t len, time_t timeout)
 {
+#ifdef PXEHTTP_UDP_FOR_LIBSTAND
+  PXE_UDP_DGRAM dgram;
+  struct udphdr *uh = (struct udphdr *) pkt - 1;
+
+  /* process any queued incoming packets */
+  pxe_core_recv_packets();
+
+  /* reading from default socket */
+  int recv = pxe_udp_read(NULL, pkt, len, &dgram);
+
+  if (recv == -1) {
+    printf("readudp(): failed\n");
+    return (-1);
+  }
+#ifdef PXE_DEBUG_HELL
+  printf("readudp(): received %d(%u/%u) bytes from %u port\n",
+      recv, len, dgram.size, dgram.src_port);
+#endif
+  uh->uh_sport = htons(dgram.src_port);
+
+  return (recv);
+#else /* PXEHTTP_UDP_FOR_LIBSTAND */
 	t_PXENV_UDP_READ *udpread_p = (t_PXENV_UDP_READ *)scratch_buffer;
 	struct udphdr *uh = NULL;
 	
@@ -693,4 +761,5 @@ readudp(struct iodesc *h, void *pkt, size_t len, time_t timeout)
 	bcopy(data_buffer, pkt, udpread_p->buffer_size);
 	uh->uh_sport = udpread_p->s_port;
 	return udpread_p->buffer_size;
+#endif /* PXEHTTP_UDP_FOR_LIBSTAND */
 }
