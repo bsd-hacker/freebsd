@@ -56,15 +56,15 @@ dd if=$4/boot/boot1 of="${BOOTFSIMG}" bs=512 conv=notrunc,sync
 # Create a boot ISO image
 : ${CYLSIZE:=640}
 ISOSIZE=$(stat -f %z ${NAME}.tmp)
-ISOBLKS=$(( (${ISOSIZE} + 511) / 512 ))
-ISOCYLS=$(( (${ISOBLKS} + (${CYLSIZE} - 1)) / ${CYLSIZE} ))
+ISOBLKS=$(((${ISOSIZE} + 511) / 512))
+ISOCYLS=$(((${ISOBLKS} + (${CYLSIZE} - 1)) / ${CYLSIZE}))
 
 BOOTFSSIZE=$(stat -f %z "${BOOTFSIMG}")
-BOOTFSBLKS=$(( (${BOOTFSSIZE} + 511) / 512 ))
-BOOTFSCYLS=$(( (${BOOTFSBLKS} + (${CYLSIZE} - 1)) / ${CYLSIZE} ))
+BOOTFSBLKS=$(((${BOOTFSSIZE} + 511) / 512))
+BOOTFSCYLS=$(((${BOOTFSBLKS} + (${CYLSIZE} - 1)) / ${CYLSIZE}))
 
-ENDCYL=$(( ${ISOCYLS} + ${BOOTFSCYLS} ))
-NSECTS=$(( ${ENDCYL} * 1 * ${CYLSIZE} ))
+ENDCYL=$((${ISOCYLS} + ${BOOTFSCYLS}))
+NSECTS=$((${ENDCYL} * 1 * ${CYLSIZE}))
 
 dd if=${NAME}.tmp of=${NAME} bs=${CYLSIZE}b conv=notrunc,sync
 dd if=${BOOTFSIMG} of=${NAME} bs=${CYLSIZE}b seek=${ISOCYLS} conv=notrunc,sync
@@ -73,21 +73,10 @@ dd if=/dev/zero of=${NAME} bs=${CYLSIZE}b seek=${ENDCYL} count=2 conv=notrunc,sy
 rm -rf ${NAME}.tmp ${TMPIMGDIR}
 
 # Write VTOC8 label to boot ISO image
-MD=`mdconfig -a -t vnode -f ${NAME}`
-cat <<EOT | sunlabel -R ${MD} /dev/stdin
-text: FreeBSD_Install cyl ${ENDCYL} alt 2 hd 1 sec ${CYLSIZE}
-bytes/sector: 512
-sectors/cylinder: ${CYLSIZE}
-sectors/unit: ${NSECTS}
-
-8 partitions:
-#
-# Size is in sectors.
-# Offset is in cylinders.
-#       size            offset          tag             flag
-#       ----------      ----------      ----------      ----
-  c:    *               0               backup          rm
-  a:    ${ISOBLKS}      0               usr             rm
-  f:    ${BOOTFSBLKS}   ${ISOCYLS}      root            rm
-EOT
+MD=`mdconfig -a -t vnode -S 512 -y 1 -x ${CYLSIZE} -f ${NAME}`
+gpart create -s VTOC8 ${MD}
+# !4: usr, for ISO image part
+gpart add -i 1 -s $((${ISOCYLS} * ${CYLSIZE} * 512))b -t \!4 ${MD}
+# !2: root, for bootfs part.
+gpart add -i 6 -s $((${BOOTFSCYLS} * ${CYLSIZE} * 512))b -t \!2 ${MD}
 mdconfig -d -u ${MD#md}
