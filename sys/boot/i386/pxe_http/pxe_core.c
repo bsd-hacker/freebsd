@@ -86,62 +86,61 @@ static int			pxe_state = PXE_DOWN;
 void
 pxe_core_update_bootp()
 {
-        const PXE_IPADDR	*paddr = pxe_get_ip(PXE_IP_ROOT);
-	int			i = 0;
-	char			temp[20];
+    const PXE_IPADDR	*paddr = pxe_get_ip(PXE_IP_ROOT);
+		int			i = 0;
+		char			temp[20];
 	
-        if (paddr->ip == 0)
-                pxe_set_ip(PXE_IP_ROOT, pxe_get_ip(PXE_IP_SERVER));
+    if (paddr->ip == 0)
+        pxe_set_ip(PXE_IP_ROOT, pxe_get_ip(PXE_IP_SERVER));
 
-	struct in_addr tmp_in;
+		struct in_addr tmp_in;
 
-        tmp_in.s_addr = pxe_get_ip(PXE_IP_GATEWAY)->ip;
-        setenv("boot.netif.gateway", inet_ntoa(tmp_in), 1);
+    tmp_in.s_addr = pxe_get_ip(PXE_IP_GATEWAY)->ip;
+    setenv("boot.netif.gateway", inet_ntoa(tmp_in), 1);
 
 	/* initing route tables, using DHCP reply data */	
-	pxe_ip_route_init(pxe_get_ip(PXE_IP_GATEWAY));
+		pxe_ip_route_init(pxe_get_ip(PXE_IP_GATEWAY));
 	
 #ifdef PXE_DEBUG
-        printf("pxe_open: gateway ip:  %s\n", inet_ntoa(tmp_in));
+   printf("pxe_open: gateway ip:  %s\n", inet_ntoa(tmp_in));
 #endif
 
-        tmp_in.s_addr = pxe_get_ip(PXE_IP_MY)->ip;
-        setenv("boot.netif.ip", inet_ntoa(tmp_in), 1);
+   tmp_in.s_addr = pxe_get_ip(PXE_IP_MY)->ip;
+   setenv("boot.netif.ip", inet_ntoa(tmp_in), 1);
 
-        tmp_in.s_addr = pxe_get_ip(PXE_IP_NETMASK)->ip;
-        setenv("boot.netif.netmask", inet_ntoa(tmp_in), 1);
+   tmp_in.s_addr = pxe_get_ip(PXE_IP_NETMASK)->ip;
+   setenv("boot.netif.netmask", inet_ntoa(tmp_in), 1);
 
-        sprintf(temp, "%6D", pxe_get_mymac(), ":");
-        setenv("boot.netif.hwaddr", temp, 1);
+   sprintf(temp, "%6D", pxe_get_mymac(), ":");
+   setenv("boot.netif.hwaddr", temp, 1);
 
-        if (!rootpath[1])
-                strcpy(rootpath, PXENFSROOTPATH);
+   if (!rootpath[1])
+       strcpy(rootpath, PXENFSROOTPATH);
 	
-        for (i = 0; rootpath[i] != '\0' && i < FNAME_SIZE; i++)
+		printf("rootpath: %s\n", rootpath);
+   for (i = 0; rootpath[i] != '\0' && i < FNAME_SIZE; i++)
 		if (rootpath[i] == ':')
-		        break;
+	    break;
 
-        if (i && i != FNAME_SIZE && rootpath[i] == ':') {
+    if (i && i != FNAME_SIZE && rootpath[i] == ':') {
+      rootpath[i++] = '\0';
+      const PXE_IPADDR *root_addr = pxe_gethostbyname(rootpath);
+      pxe_set_ip(PXE_IP_ROOT, root_addr);
 
-                rootpath[i++] = '\0';
-
-                const PXE_IPADDR *root_addr = pxe_gethostbyname(rootpath);
-                pxe_set_ip(PXE_IP_ROOT, root_addr);
-
-                pxe_memcpy(rootpath, servername, i);
-                pxe_memcpy(&rootpath[i], &rootpath[0],
-		    strlen(&rootpath[i]) + 1);
-	}
+      pxe_memcpy(rootpath, servername, i);
+      pxe_memcpy(&rootpath[i], &rootpath[0],
+		  strlen(&rootpath[i]) + 1);
+		}
 	
-	tmp_in.s_addr = pxe_get_ip(PXE_IP_ROOT)->ip;
+		tmp_in.s_addr = pxe_get_ip(PXE_IP_ROOT)->ip;
 
 #ifdef PXE_DEBUG
-        printf("pxe_open: server addr: %s\n", inet_ntoa(tmp_in));
-        printf("pxe_open: server path:  %s\n", rootpath);
+    printf("pxe_open: server addr: %s\n", inet_ntoa(tmp_in));
+    printf("pxe_open: server path:  %s\n", rootpath);
 #endif
 #ifdef LOADER_NFS_SUPPORT
-        setenv("boot.nfsroot.server", inet_ntoa(tmp_in), 1);
-        setenv("boot.nfsroot.path", rootpath, 1);
+    setenv("boot.nfsroot.server", inet_ntoa(tmp_in), 1);
+    setenv("boot.nfsroot.path", rootpath, 1);
 #endif
 }
 
@@ -368,6 +367,9 @@ pxe_core_init(pxenv_t *pxenv_p, pxe_t* pxe_p)
 	/* trying to get gateway/nameserver info from DHCP server */
 	pxe_dhcp_query(bootplayer->ident);
 	pxe_core_update_bootp();
+#else
+	pxe_set_ip(PXE_IP_WWW, pxe_get_ip(PXE_IP_SERVER));
+	pxe_set_ip(PXE_IP_ROOT, pxe_get_ip(PXE_IP_SERVER));
 #endif
 
 #ifdef PXE_CORE_DEBUG
