@@ -1,0 +1,1253 @@
+Contents
+----------
+
+1. Introduction
+
+	1.2. Setting up
+
+		1.2.1. DHCP configuration
+		1.2.2. TFTP configuration
+		1.2.3. Web-server configuration
+		1.2.4. loader.rc configuratuion
+
+2. Project organisation
+
+	2.1. Code modules
+	2.2. Naming conventions
+	2.3. Understanding logical structure of code
+
+3. API usage
+
+	3.1. Base information
+	3.2. PXE sockets API overview
+
+		3.2.1. PXE API socket details
+
+	3.3. Quick Reference to API, available for user code
+
+		3.3.1. pxe_arp module
+		3.3.2. pxe_await module
+		3.3.3. pxe_buffer module
+		3.3.4. pxe_connection module
+		3.3.5. pxe_core module
+		3.3.6. pxe_dhcp module
+		3.3.7. pxe_dns module
+		3.3.8. pxe_filter module
+		3.3.9. pxe_http module
+		3.3.10. httpfs module
+		3.3.11. pxe_icmp module
+		3.3.12. pxe_ip module
+		3.3.13. pxe_isr module
+		3.3.14. pxe_mem module
+		3.3.15. pxe_sock module
+		3.3.16. pxe_segment module
+		3.3.17. pxe_tcp module
+		3.3.18. pxe_udp module
+
+4. Debugging, testing and tuning pxe_http library.
+
+	4.1. Using 'pxe' loader's command
+	4.2. Defining debug macroses
+	4.3. Tuning
+	4.4. NFS loading with pxe_http
+
+1. Introduction 
+----------------
+
+		pxe_http library is user space implementation of simplified
+	TCP/IP4 stack with support of sockets. Socket implementation is similar
+	to common sockets, but differs, so I call this variant of sockets -
+	"PXE sockets"
+
+		features (read: simpliest ever implementation of):
+			* supports TCP/UDP PXE sockets
+			* DHCP client
+			* DNS client
+			* http based filesystem
+			* ICMP echo
+
+1.1. Requirements
+------------------
+
+			To use pxeboot with extensions from pxe_http library
+		you need:
+		* DHCP server
+			- any DHCP server with support of some options
+			  (see below).  In example of configuration files
+			  ISC DHCP v.3.0.5 was used.
+		* TFTP server
+		* Web server - I've used Apache 1.3.34
+
+
+1.2. Setting it up
+-------------------
+
+		In most cases, it's the same as for usual pxeboot. Main
+	difference is in configuration file of DHCP server and in usage of
+	Web-server.
+
+
+1.2.1. DHCP configuration
+-------------------------
+
+		Here is example of configuration:
+
+		# /etc/dhcpd.conf example
+		#
+		ddns-update-style none;
+		server-name "DHCPserver";
+		server-identifier 192.168.0.4;
+		default-lease-time 7200;
+		max-lease-time 7200;
+	
+		#
+		# significant options for correct working of pxeboot
+		#
+
+		# your LAN subnet mask
+		option subnet-mask 255.255.255.0;
+
+		# default gateway to use
+		option routers 192.168.0.1;
+
+		# name of file to download via TFTP
+		filename "pxeboot";
+
+		# name server, used for resolving of domain names
+		option domain-name-servers 192.168.0.1;
+
+		# ip address of web server
+		option www-server 192.168.0.2;
+
+		# path, where nessesary files are stored on web server
+		option root-path "th.lan:/path/to/root";
+
+		subnet 192.168.0.0 netmask 255.255.255.0 {
+        		next-server 192.168.0.4;
+	        	range 192.168.0.10 192.168.0.20;
+		}
+        	
+		/*  end of example */
+
+	NOTES:
+		1. www-server option is used only if root-path is absent in
+		   DHCP reply. In that case assumed, that /boot directory is
+		   placed in DocumentRoot of web-server.
+		2. format of root-path has such format: "server:/path". It's
+		   possible use both IP's and domain names for server. /path is
+		   relative to DocumentRoot of web-server. In example above
+		   files are stored at /usr/local/www/data/path/to/root,
+		   assuming that /usr/local/www/data - is DocumentRoot.
+		3. DHCP options are not greater then 255 bytes. So, root-path
+		   must satisfy this requirement.
+
+
+1.2.2. TFTP configuration
+--------------------------
+
+		Same as usually. pxe_http doesn't directly use this protocol.
+
+
+1.2.3. Web-server configuration
+--------------------------------
+
+		Just copy all from "/boot" directory to
+	/DocumentRoot/path/to/root.
+	
+	NOTES:
+		1. Need to be sure, that partial downloading and keep-alive
+		   connections are supported by server. e.g. for Apache 1.x,
+		   check this options:
+
+			KeepAlive On
+			MaxKeepAliveRequests 10		# well, choose best for
+							# server
+			KeepAliveTimeout 15		# more then 2 seconds
+							# is good enough
+
+		2. loader checks gzipped versions of files first, it's good
+		   idea to compress every needed file. e.g.
+				beastie.4th.gz
+				device.hints
+				frames.4th.gz
+				loader.4th.gz
+				loader.conf
+				loader.help.gz
+				loader.rc
+				mfsroot.gz
+				screen.4th.gz
+				support.4th.gz
+				/kernel/kernel.gz
+
+1.2.4. loader.rc configuratuion
+--------------------------------
+
+		HTTP downloading of kernel is not all need to startup system
+	correctly. The main question is where will be root filesystem after
+	booting of kernel. The simpliest way - is to use RAM drive with
+	installation tools or ready to work system.
+		Here is example of changes to loader.rc, that instructs loader
+	to download RAM-drive image (in this example, common mfsroot.gz found
+	in boot.flp floppy image file)
+
+
+	\ Includes additional commands
+	include /boot/loader.4th
+
+	\ Reads and processes loader.conf variables
+	start
+
+	\ Tests for password -- executes autoboot first if a password was defined
+	check-password
+
+	\ Load in the boot menu
+	include /boot/beastie.4th
+
+	\ pxe_http changes:
+	echo "loading RAM-drive image"
+	load -t mfs_root /boot/mfsroot
+	set vfs.root.mountfrom="ufs:/dev/md0c"
+	\
+
+	\ Start the boot menu
+	beastie-start
+
+	/* end of example */
+
+		Of course, it's possible to set any other filesystem to work
+	as root, e,g, NFS and not use RAM drive.
+		
+2. Project organisation
+------------------------
+
+2.1. Code modules
+------------------
+
+	All project code is divided into following modules:
+		pxe_arp        - ARP protocol				(3.3.1)
+		pxe_await      - provides functions for awaiting	(3.3.2)
+		pxe_buffer     - implements cyclic buffers		(3.3.3)
+		pxe_connection - TCP connection related functions	(3.3.4)
+		pxe_core       - provides calls to PXE API		(3.3.5)
+		pxe_dhcp       - DHCP client				(3.3.6)
+		pxe_dns        - DNS client				(3.3.7)
+		pxe_filter     - incoming packet filters		(3.3.8)
+		pxe_http       - HTTP related functions			(3.3.9)
+		httpfs         - http based file system			(3.3.10)
+		pxe_icmp       - ICMP protocol				(3.3.11)
+		pxe_ip         - IP protocol				(3.3.12)
+		pxe_isr        - assembler side support for PXE API
+				 calling				(3.3.13)
+		pxe_mem        - memory work routines			(3.3.14)
+		pxe_sock       - simple sockets				(3.3.15)
+		pxe_segment    - TCP segments				(3.3.16)
+		pxe_tcp        - TCP protocol				(3.3.17)
+		pxe_udp        - UDP protocol				(3.3.18)
+
+2.2. Naming conventions
+------------------------
+
+		Most of functions, that may be called directly by user API uses
+	pxe_ prefix.
+		Functions related to some module have subprefix of this module,
+	e.g. pxe_dhcp_query() - function related to DHCP module.
+		All structures, that are used have typedef equivalent with
+	naming in upper case. e.g. struct pxe_ipaddr has equivalent PXE_IPADDR.
+	This is done to have similar to existing pxe.h declarations from libi386.
+
+
+2.3. Understanding logical structure of code
+---------------------------------------------
+
+		Logicallly all modules may be divided to parts.
+
+	        Part 1: PXE API related modules (pxe_isr, pxe_core)
+		Part 2: base protocols related (pxe_ip, pxe_udp)
+		Part 3: sockets related (pxe_sock)
+		Part 4: other protocols (pxe_dns, pxe_dhcp)
+		Part 5: utility (pxe_mem, pxe_buffer)
+
+		Some modules may be used independently, other depend on some
+	lower level modules.
+
+		In run-time, many calls to sockets functions start packet
+	recieving or packet sending functions. Sending is more simplier and may
+	be assumed in many cases just as wrappers to PXE API. But receiving is
+	a little bit more complicated. Receiving functions start
+	pxe_core_recv_packets()	function in cycle to get packets.
+		After receiving of packet, it's handling depends on it's type:
+	ARP, IP or other. ARP packets directly provided to handler
+	pxe_arp_protocol(), IP packets are provided to registered handler of IP
+	stack protocol, other packets are ignored.
+		Registration of handler (except ARP) is performed during
+	initialisation time of module with usage of pxe_core_register() function,
+	which register handler for IP stack protocol number.
+		So, packet is provided to handler, but it may be fragmented,
+	thus before processing it must be recieved completely. But in some cases
+	packet may be not interesting for protocol (unexpected packet, dublicated
+	or something else) and it's possible to determiny if this packet useful
+	just by examining of packet header.
+		If packet is fragmented - it firstly provided to handler with
+	flag PXE_CORE_FRAG. Handler returns appropriate value if is interested in
+	whole packet, packet is read completely from input queue of fragments and
+	provided again with flag PXE_CORE_HANDLE. Otherwise packet is dropped
+	in core by reading of all it's fragments from incoming queue.
+		Packet structure provides just buffer with received packet and
+	size of packet. All pxe_core module send/recieve functions work with
+	PXE_PACKET structure.
+		TCP and UDP protocols are checking filters in theirs handlers.
+	This helps to filter out packets that are not interesting for protocol
+	(e.g. to port that is not listening)
+		Socket and filter structures are separated. Socket provides
+	buffers for incoming and outcoming data. Filters may be used without
+	sockets, e.g. for TCP connections in TIME_WAIT state. For active
+	connection filter is used to determiny in which receiving buffer (in
+	which socket) must be placed incoming data.
+
+
+3. API usage
+-------------
+
+		Here much attention paid to sockets, other pxe_http API
+	may be used less frequently.
+
+3.1. Base information
+-----------------------
+
+		User code must perform initialisation of pxe_core module (which
+	is performed currently in loader during pxe_enable() call). After this
+	sockets related functions become available.
+
+	pxe_core_init() performs initialisation of pxe_core module and starts
+	initialisation routines of other modules. It inits TCP, UDP, ARP and
+	etc modules, however in most of cases it's possible skip theirs
+	initialisation if module's functions are unused.
+		Work is finished by pxe_core_shutdown() function.
+
+
+3.2. PXE sockets API overview
+-------------------------------
+
+		PXE sockets API differs from common sockets. It's more simplier
+	and has some limitations due user space implementations. All socket
+	related functions are declared in pxe_sock.h header
+
+		Socket is created by pxe_socket() call. After usage socket must
+	be closed by pxe_close() call. Result of pxe_socket() is integer
+	descriptor associated with socket. After creating socket is unbinded
+	and not connected.
+		pxe_sendto(), pxe_connect(), pxe_bind() functions performs
+	binding and connecting. After successful calling of one of them - socket
+	is in active state. It's possible to perform reading and sending from/to
+	socket. Cause socket API may use buffers to optimize packet sending
+	process, user code must call pxe_flush() functions to be sure, that
+	data is really processed to sending module.
+		While receiving need to keep in memory, that if UDP datagram is
+	not readed completely by one call of pxe_recv() in this implementation
+	rest of datagram is omited and lost for user code.
+		All incoming and outcoming data is written to socket buffers,
+	that have default sizes 16Kb and 4Kb. If buffers are full, next calls
+	related to writing or reading data will fail.
+
+
+3.2.1. PXE API socket details
+------------------------------
+
+	/* Here is simple example of API usage. */
+
+	int socket = pxe_socket();
+	/* if result is not -1, then socket variable contains value,
+	 * assosiated with socket structure. Call differs from common sockets,
+	 * there are no domain, type and protocol parameters.
+	 * Cause domain is always AF_INET now. others are use in pxe_connect()
+	 * call.
+	 */
+	
+	int result = pxe_connect(socket, &hh->addr, 80, PXE_TCP_PROTOCOL);
+	/*  This call creates filter, associates it with socket and establishes
+	 * communication if needed.
+	 * Parameters are socket, remote ip address (PXE_IPADDR)m remote port
+	 * and one of PXE_UDP_PROTOCOL and PXE_TCP_PROTOCOL protocols.
+	 */
+	
+	if (result == -1) {
+		pxe_close(socket);
+		/* any socket must be closed, even if it was not really used
+		 * or conencted. pxe_close() call releases used internal
+		 * structures. After this call any other operations with
+		 * 'socket' descriptor are invalid. 
+		 */
+		return (0);
+	}
+
+	/* pxe_send() function sends data to socket. As usual, there is no
+	 * guarantee, that whole buffer is transmited. And actually for TCP
+	 * protocol, this call just places data to buffer. User code have no
+	 * knowledge if data is really sent to network. if current segment is
+	 * not fullly used, data may stay in buffer infinitely.
+	 */	
+	if (len != pxe_send(socket, hh->buf, len)) {
+		/* failed to send data, at least whole buffer */
+		pxe_close(socket);
+		return (0);
+	}
+
+	/* if user code need guarantee, that data is sent to remote host, it
+	 * must call pxe_flush(). It forces sending of any data, that must be
+	 * sent.
+	 */
+	if (pxe_flush(socket) == -1) {
+		/* failed to flush socket */
+		pxe_close(socket);
+		return (0);
+	}
+
+	/* perform reading cycle */
+
+	while (count < maxsize) {
+		/* pxe_recv() is similar to recv() call for common sockets,
+		 * but have no flags parameter
+		 */
+		result = pxe_recv(socket, &data[count], maxsize - count);
+		
+		if (result == -1) {	/* failed to recv */
+			break;
+		}
+		
+		if (result == 0)	/* nothing received yet */
+			continue;       
+
+		count += result;
+	}
+
+	pxe_close(socket);
+
+
+	/* End of example */
+
+
+3.3 Quick Reference to API, available for user code
+----------------------------------------------------
+
+		This overview covers functions and macro definitions that
+	may be usefull for user code.
+
+
+3.3.1 pxe_arp module
+---------------------
+
+		This module is used mainly by internal code while sending IP
+	packets.
+
+macro definitions:
+
+MAX_ARP_ENTRIES		- how much may be ARP table in size. If ARP table full
+			and new	MAC must be placed, then one of older entry is
+			replaced by new. Default number is 4.
+
+PXE_MAX_ARP_TRY		- how much trys will be peformed when sending ARP
+			requests, before say MAC search failed. Default: 3
+
+PXE_TIME_TO_DIE		- how much time to wait ARP reply in milliseconds.
+			Default: 5000 ms.
+
+PXE_ARP_SNIFF		- sometimes it's usefull to get senders MACs from
+			incoming requests (this may save time, MAC may be found
+			in table without requesting it by ARP module itself).
+			But if network is big enough - ARP table will be
+			updated too often. By default this option is defined.
+
+
+functions:
+
+void pxe_arp_init()
+	- inits pxe_arp module. Usually this call is performed from
+	pxe_core_init()
+
+const MAC_ADDR *pxe_arp_ip4mac(const PXE_IPADDR *addr)
+	- returns MAC address for requested IP address
+
+void pxe_arp_stats()
+	- shows ARP table. Available if defined PXE_MORE macro.
+
+
+3.3.2 pxe_await module
+-----------------------
+
+		Implements awaiting mechanism. Many operations are performed
+	similar	in protocol implementations. Usually, packet is sended and
+	application awaits for reply. pxe_await() function helps to simplify
+	code in such case.
+		It starts await callback function with some flags and counts
+	timeouts, try count. 
+
+		Here is example of awaiting:
+
+	/* we start awaiting, with dns_await() calllback function, maximum 4
+	 * trys, each try 20 seconds and waiting data static_wait_data.
+	 * Waiting data - is some data associated with current awaiting, it's
+	 * used by await callback function.
+	 */
+	if (!pxe_await(dns_await, 4, 20000, &static_wait_data))
+		return (NULL);
+
+	/*  pxe_await() returns 1 if awaiting was successfull (await function
+	 * returned PXE_AWAIT_COMPLETED flag)
+	 */
+
+	/* it's an awaiting function. pxe_await() provides current function,
+	 * current try number, time exceeded from start of try, pointer to
+	 * associated wait data.
+	 */
+	int
+	dns_await(uint8_t function, uint16_t try_number, uint32_t timeout,
+		  void *data)
+	{
+		/* cast to our type of wait data */
+		PXE_DNS_WAIT_DATA	*wait_data = (PXE_DNS_WAIT_DATA *)data;
+
+		switch(function) {
+
+		case PXE_AWAIT_STARTTRY:
+			/* is called at start of each try 
+			 * Here must be performed any await initialisation
+			 * (e.g. request packet sending )
+			 */
+			if (!dns_request(wait_data)) {
+				/* if initialisation of try failed, try more */
+				return (PXE_AWAIT_NEXTTRY); 
+			}
+			/* otherwise return success result of await function */
+			break;
+		
+		case PXE_AWAIT_FINISHTRY: 
+			/* this function is called at the end of any try (even
+			 * if try was successful). Here cleanup must be
+			 * performed.
+			 */
+			if (wait_data->socket != -1)
+				pxe_close(wait_data->socket);
+			
+			wait_data->id += 1;
+			break;
+
+		case PXE_AWAIT_NEWPACKETS:
+			/* while waiting this function called if new packets
+			 * were received by pxe_core_recv_packets(). Actually
+			 * it may be not packets we are waiting for, may be
+			 * even not packets with out protocol. Here we must
+			 * check for new usefull for us packets, receive 
+			 * new data if any.
+			 */
+			size = pxe_recv(wait_data->socket, wait_data->data,
+				    wait_data->size);
+
+			parse_dns_reply(wait_data);
+			
+			if (wait_data->result.ip != 0) {
+				/* return success of awaiting. This may be
+				 * returned from any function
+				 */
+			        return (PXE_AWAIT_COMPLETED);
+			}
+			
+			/* if await was not completed, continue waiting */
+			return (PXE_AWAIT_CONTINUE);
+			break;
+	
+			case PXE_AWAIT_END:
+			/* this called if await is ended without any result */
+			default:
+				break;
+		}
+	
+		return (PXE_AWAIT_OK);
+	}
+
+	/* end of example */
+
+		So, wait data used for providing and receiving data while
+	awaiting. pxe_await() performs unified working with code, needed for
+	waiting of incoming packets.
+
+macro definitions:
+
+TIME_DELTA_MS		- delay between iterations during awaitng. At each
+			iteration are checked:
+			* receiving of new packet. If received - awaiting
+			 function with PXE_AWAIT_NEWPACKETS function is called.
+			* try timeout. if timeout exceeds maximum timeout -
+			 awaiting  function with PXE_AWAIT_FINISHTRY and
+			 PXE_AWAIT_STARTTRY flags sequentially are called.
+			* try count. if try count exceeds maximum - awaiting
+			 function with PXE_AWAIT_ENDED flag is called. This
+			 means that await failed.
+			 Default: 1
+
+TIME_DELTA		- default: 1000, same as TIME_DELTA_MS, but in ticks
+			 for delay.
+
+
+3.3.3 pxe_buffer module
+------------------------
+	
+		This module provides reading and writing of cyclic buffers.
+	It's not used directly by user code.
+
+macro definitions:
+
+PXE_POOL_SLOTS 		- if defined, then statical allocation of buffers is
+			used. Otherwise buffers are allocated at run-time from
+			heap with pxe_alloc() function. Current statical
+			allocation algorithm is simple and square, there are
+			two big buffers data storages divided in slots (by
+			default 2).
+				Each slot has size equal to
+			PXE_DEFAULT_RECV_BUFSIZE or PXE_DEFAULT_SEND_BUFSIZE.
+			Depending on requested size in pxe_buffer_alloc()
+			function data allocated from one of stoarge and
+			related	slot marked busy. When pxe_buffer_free() called,
+			slot marked as free.
+				Default: undefined
+
+PXE_DEFAULT_RECV_BUFSIZE - size of receiving buffer. Default: 16392
+
+PXE_DEFAULT_SEND_BUFSIZE - size of sending buffer. Default: 4096
+
+
+3.3.4 pxe_connection module
+----------------------------
+
+		This module is one of TCP related modules. It implements
+	connection entity. TCP connection is logical structure, that have
+	needed by TCP protocol counters and states.
+		User code is not directly works with this module.
+
+macro definitions:
+
+PXE_MAX_TCP_CONNECTIONS		- how much simultaneous connections may be.
+
+
+functions:
+
+void pxe_connection_stats()
+	- returns connections statistics. Available if PXE_MORE macro is
+	defined.
+
+
+3.3.5 pxe_core module
+----------------------
+
+		This module performs lowlevel work with PXE API: initialisation,
+	receiving/sending of packets, provides information functions.
+		In most cases, user code doesn't uses this module directly.
+
+macro definitions:
+
+PXE_BUFFER_SIZE 	- size of core buffers, used in PXE API calling,
+			  Default: 4096
+
+PXE_CORE_STATIC_BUFFERS	- if defined, core buffers are allocated statically.
+			Otherwise they are allocated in heap. Default: defined
+
+functions:
+
+int pxe_core_recv_packets()
+	- recieves all packets waiting in incoming queue of NIC, and calls
+	appropriate protocols if needed
+
+
+void pxe_core_register(uint8_t ip_proto, pxe_protocol_call proc)
+	- registers IP stack protocol, associates protocol number and handler.
+
+const MAC_ADDR *pxe_get_mymac()
+	- returns MAC of NIC, for which PXE API is used.
+
+const PXE_IPADDR *pxe_get_ip(uint8_t id)
+	- returns of stored IP, for provided id.
+	id may be:
+		PXE_IP_MY		- NIC IP address
+		PXE_IP_NET		- network adrress
+		PXE_IP_NETMASK		- network mask
+		PXE_IP_NAMESERVER	- nameserver to use in name resolving
+		PXE_IP_GATEWAY		- default gateway
+		PXE_IP_BROADCAST	- broadcast address
+		PXE_IP_SERVER		- server from which loading of pxeboot
+					  was performed
+		PXE_IP_WWW		- IP address of http-server
+		PXE_IP_ROOT		- IP adddress of server, where root
+					  file system is situated. Currently
+					  it's synonym for PXE_IP_WWW
+
+void pxe_set_ip(uint8_t id, const PXE_IPADDR *ip)
+	- sets value by it's id.
+
+time_t	pxe_get_secs()
+	- returns time in seconds. Used in timeout and resend checking.
+
+types:
+
+typedef int (*pxe_protocol_call)(PXE_PACKET *pack, uint8_t function)
+	- protocol callback function type
+
+
+3.3.6. pxe_dhcp module
+-----------------------
+
+		This module implements simple DHCP client, used to obtain
+	gateway, nameserver and other information.
+
+
+macro definitions:
+
+PXE_BOOTP_USE_LIBSTAND	- use bootp() function provided by libstand instead
+	of own DHCP client. NOTE: bootp() doesn't set nameip (nameserver ip
+	structure), thus DNS resolving will be impossible. Default: undefined
+	
+	NOTE: to use bootp(), also UDP_DEFAULT_SOCKET macro must be defined.
+
+
+functions:
+
+void pxe_dhcp_query(uint32_t xid)
+	- sends DHCPDISCOVER packet and sets core_ips, if gets reply.
+
+
+3.3.6. pxe_dns module
+----------------------
+
+		This module provides domain name resolving. Actually
+	A and CNAME resource records are supported.
+
+macro definitions:
+
+PXE_MAX_DNS_TIMEOUT	- max time to wait DNS reply in milliseconds.
+			Default: 10 seconds
+
+PXE_MAX_DNS_TRYS	- how many times to try to resend request,
+			if there is no reply. Default: 3
+
+PXE_DNS_MAX_PACKET_SIZE	- maximum UDP packet size in bytes. Default: 512.
+			This DNS client doesn't support TCP for resolving.
+
+functions:
+
+const PXE_IPADDR *pxe_gethostbyname(char *name)
+	- returns IP, if resolved, for provided domain name. 
+
+uint32_t pxe_convert_ipstr(char *str)
+	- converts string value of ipv4 to uint32_t value.
+
+
+3.3.8. pxe_filter module
+-------------------------
+
+		This module is not supposed to be used by user code directly.
+	It implements filtering of incoming IP packets. It's used by UDP and
+	TCP modules for sorting packets in appropriate socket.
+		Module provides functions for adding and removing filters.
+	Each filter contains source/destination ip:port definition and masks
+	for all of them. Usage of masks gives opportunity to recieve data
+	from subnet, or subset of ports.
+
+functions:
+
+void pxe_filter_init()
+	- inits filter module structures such as list of free filter entries.
+
+void pxe_filter_stats()
+	- show active filters information. Used for debugging. Available if
+	PXE_MORE macro defined.
+
+
+3.3.9. pxe_http module
+-----------------------
+
+		pxe_http implements functions for getting files via HTTP.
+	Most of it's functions are used only by httpfs module.
+		At opening file pxe_exists() function is called, which
+	gets filesize (if possible) by HEAD method of request and opens
+	connection to file. Result of pxe_exists() call is keep-alive
+	connection to file.
+		pxe_get() function gets needed data and reestablishes
+	connection if needed.
+		if PXE_MORE defined - pxe_get_close() function becomes
+	available. It opens connection, gets portion of data and closes
+	connection. It's rather not optimal usage of http connections,
+	but some times it may be needed (e.g. for servers, where keep
+	alive connections are prohibited).
+
+macro definitions:
+
+PXE_MAX_HTTP_HDRLEN	- buffer size for generating/getting http header.
+			Default: 1024 bytes.
+
+functions:
+
+int pxe_fetch(char *server, char *filename, off_t from, size_t size)
+	- testing function, gets file from server ()may be partially) and
+	outputs received data to screen. Available if PXE_MORE defined.
+
+
+3.3.10. httpfs module
+----------------------
+
+		httpfs is filesystem, available via HTTP. It is read-only
+	filesystem, mainly with sequential access to files. It exports
+	file operations structure and is not used directly by user code.
+		httpfs module may support some kind of caching: it requests
+	more data per request then it's needed at http_read() call and
+	reads this data later. Such approach speed ups connections speed
+	and reduces server load.
+		This opportunity is available if PXE_HTTPFS_CACHING macro
+	is defined.
+
+
+3.3.11. pxe_icmp module
+------------------------
+
+		pxe_icmp module provides some basic functionality of ICMP
+	protocol: echo requesting/replying.
+		Module is unavailable, if PXE_MORE undefined.
+
+
+macro definitions:
+
+PXE_ICMP_TIMEOUT	- timeout in milliseconds when waiting echo reply.
+		Default: 5000 ms.
+
+
+functions:
+
+int pxe_ping(const PXE_IPADDR *ip, int count, int flags)
+	- works similar to usual ping, sends echo request and shows timeout
+	before echo reply.
+
+int pxe_icmp_init()
+	- inits module
+
+
+3.3.12. pxe_ip module
+----------------------
+
+		This module implemets IP protocol functions, also it works
+	with routing table. It also declares PXE_IPADDR, that is used widely.
+
+macro definitions:
+
+PXE_MAX_ROUTES	- route table size. Default: 4, usually used 2 entries.
+
+
+functions:
+
+uint16_t pxe_ip_checksum(const void *data, size_t size)
+	- calculates checksum for provided block of data.
+
+
+void pxe_ip_route_init(const PXE_IPADDR *def_gw)
+	- inits routing table, sets default gateway
+
+
+int pxe_ip_route_add(const PXE_IPADDR *net, uint32_t mask,
+	const PXE_IPADDR *gw)
+	- adds route to routing table 
+
+int pxe_ip_route_del(const PXE_IPADDR *net, uint32_t mask,
+	const PXE_IPADDR *gw)
+	- dels route from routing table 
+
+uint32_t pxe_ip_get_netmask(const PXE_IPADDR *ip)
+	- returns class based netmask for ip.
+
+int pxe_ip_route_default(const PXE_IPADDR *gw)
+	- adds default gateway 
+
+int pxe_ip_send(void *data, const PXE_IPADDR *dst, uint8_t protocol,
+	uint16_t size)
+	-  sends ip packet with provided data. There must be space for
+	IP header in buffer, pointed by data.
+
+void pxe_ip_route_stat()
+	- show route table. Available if PXE_MORE defined
+
+
+3.3.13. pxe_isr module
+-----------------------
+
+		Contains assembler side functions, used in pxe_core.
+	User code has no direct access to them.
+		There supported: installation/removing of interrupt handler,
+	interrupt handler and wrapper for PXE API calls.
+
+
+3.3.14. pxe_mem module
+-----------------------
+
+		Actually this module just a wrapper to bcopy(), alloc() and free()
+	functions. That's done to make pxe_http library more portable.
+		But in fact, pxe_http depends much on other libstand functions,
+	such as printf(), strcpy() and etc. So this module is not very usefull and
+	will be probably removed in future.
+
+
+3.3.15. pxe_sock module
+------------------------
+
+		Most used by user code module. Contains implementation of
+	pxe_http sockets API.
+
+
+macro definitions:
+
+PXE_DEFAULT_SOCKETS	- count of sockets used at the same time. If all
+			socket structures are used, next socket creating calls
+			and API that depends on it, will fail. Default: 4
+
+
+PXE_SOCKET_TIMEOUT	- how long pxe_recv() will be wiating incoming data per
+			call before return error. Default: 30000 ms
+
+PXE_SOCKET_CHECK_TIMEOUT - If pxe_recv() waits incoming data and have big free
+			space in buffer, and in case of TCP protocol it may notice
+			remote server about this by sending empty packet (with
+			no data) acking current state, so remote host updates
+			knowledge about	receiving window of client and sends new
+			data.
+				That option specifies how long pxe_recv() will
+			be waiting before checking TCP connection. In fast
+			environments like LAN it speed ups connection when huge
+			amount of data is transmitted, in WAN it's not very
+			useful.
+				Default: 100 ms. This option works only if
+			PXE_TCP_AGRESSIVE macro is defined.
+
+PXE_SOCKET_ACCURATE	- adds extra socket validating at head of every
+			socket related function, available to user.
+			By default: defined.
+
+functions:
+
+void	pxe_sock_init()
+	- inits socket API module.
+
+void	pxe_sock_stats()
+	- prints out to screen socket usage statistics. Available if PXE_MORE
+	macro defined.
+
+int	pxe_sock_state(int socket)
+	- return current socket state. May be one of this states:
+	PXE_SOCKET_BINDED, PXE_SOCKET_CONNECTED, PXE_SOCKET_ESTABLISHED.
+	It may be used for checking, if connection was breaked.
+
+
+int	pxe_sendto(int socket, const PXE_IPADDR *dst, uint16_t port,
+	    void *data, uint16_t size)
+	-  sends to provided ip/port, updating filter for socket. If
+	socket is not connected, connects it. Blocking operation.
+
+int	pxe_connect(int socket, const PXE_IPADDR *ip, uint16_t port,
+	    uint8_t proto)
+	- establishes connection to remote host and updates needed filter
+	structures.
+
+int	pxe_send(int socket, void *buf, uint16_t buflen)
+	- sends data to socket, blocking operation till successfull sending
+	or error.
+
+int	pxe_recv(int socket, void *buf, uint16_t buflen)
+	- receives data from socket. Blocks till timeout, error or
+	successfull result.
+
+int	pxe_socket()
+	- creates new socket. Every socket must be closed after usage by
+	pxe_close() call.
+
+int	pxe_bind(int socket, const PXE_IPADDR *ip, uint16_t port,
+	    uint8_t proto)
+	- binds local ip, port for socket. Used e,g, by DHCP.
+
+int	pxe_flush(int socket)
+	- flushes sending buffer. After this call user code may be sure that
+	data was transmitted to network, but may be not received by remote
+	host yet.
+
+int	pxe_close(int socket)
+	- closes socket.
+
+uint16_t pxe_next_port()
+	- returns next available local port. It just increments at each call.
+
+
+3.3.16. pxe_segment module
+---------------------------
+
+		Part of TCP related modules. Contains functions used internally
+	for creating and sending TCP segments.
+		pxe_segment module uses memory space of sending buffer manually
+	without buffer writing functions. 
+		Buffer is divided to PXE_TCP_BLOCK_COUNT blocks, each block
+	is divided to PXE_TCP_CHUNK_COUNT chunks, by default 64 chunks at all
+	with size 64 bytes for each (for default buffer size 4096).
+		Packets may be "small" (e.g. system packets ACK, RST and etc)
+	and contain no user data. In such case usualy will be enough one chunk
+	for packet. Also packets may be "big", but not bigger than one block
+	size minus segment descriptor structure. If packet exclusevely uses
+	all chunks in block it gives about 460 user data per segment.
+		For client-side usage this must be enough.
+
+macro definitions:
+
+PXE_RESEND_TIME		- if during this time segment was not acked, it will be
+			resent. At every resend try this value will be increased.
+			Default: 1 second
+
+PXE_RESEND_TRYS		- how much resend trys to do. Default: 3
+
+PXE_TCP_BLOCK_COUNT     - how much blocks in memory buffer for segments.
+
+PXE_TCP_CHUNK_COUNT     - how much chhunks in buffer for segments.
+
+
+3.3.17. pxe_tcp module
+-----------------------
+
+		TCP related module. Implements handling of incoming packets,
+	it's functions are used internally.
+
+macro definitions:
+
+PXE_TCP_MSL		- maximum segment life time in milliseconds.
+			Used only in TINE_WAIT state. Default: 60000 ms.
+
+PXE_TCP_SYSBUF_SIZE	-  buffer size used for system messages for packets
+			without real connection. It may be for closed or
+			unxexisting connections. In such case there is no
+			bufer for outcoming segments, but module needs to send
+			at least RST. Default: 64 bytes.
+
+PXE_TCP_MSS		- maximum segment size. For Ethernet LAN it's 1460,
+			but for internet connections it may be useful to
+			use smaller segment size, e.g. 1260. Default: 1260
+
+functions:
+
+void pxe_tcp_init()
+	- inits TCP module. Usually started automatically from pxe_core_init()
+
+
+3.3.18. pxe_udp module
+-----------------------
+
+        	Implements UDP protocol. May be used without sockets API.
+
+macro definitions:
+
+UDP_DEFAULT_SOCKET	- if defined, "default UDP socket" is created. All
+			filtered out data goes to this socket. It was added
+			to support udpread() and udpsend() functions, used
+			by libstand itself. Also it may be used for working
+			with UDP module, skipping direct work with sockets API.
+			Default: undefined.
+
+functions:
+
+void pxe_udp_init()
+	- UDP module init
+
+void pxe_udp_shutdown()
+	- UDP module shutdown routine
+
+int pxe_udp_send(void *data, const PXE_IPADDR *dst, uint16_t dst_port,
+	uint16_t src_port, uint16_t size)
+	- sends udp packet.
+
+
+int pxe_udp_read(PXE_SOCKET *sock, void *tobuf, uint16_t buflen,
+	PXE_UDP_DGRAM *dgram_out)
+	-  reads data from udp socket. if sock == NULL, "default"
+	socket is assumed.
+
+
+4. Debugging, testing and tuning pxe_http library.
+--------------------------------------------------
+
+		pxe_http library has built-in testing functions, that may be
+	started from loader's console. For this PXE_MORE macro must be defined
+	while compiling loader and pxe_http itself.
+		After this 'pxe' command appears in list of available commands.
+	
+	
+4.1. Using 'pxe' loader's command
+----------------------------------
+
+		This commands helps to test working od pxe_http library and
+	contains one really usefull function ping.
+		While loading pxe_http gets gateway, nameserver & etc
+	information from DHCP server. In case if there is any error (e.g.
+	DHCP packet contains no information about nameserver) this must be
+	set manually for correct working of code.
+
+	command 'arp':
+		- this command test ARP protocol related functions.
+
+		 Example: pxe arp stats 
+				-  shows current arp table. It contains same
+				values as usual.
+			  pxe arp ip4.addres 
+				- trys to get MAC address of provided ip using
+				ARP protocol.
+
+	command 'await':
+		- used to test how implemented ICMP echo request and ARP
+		 request replying.
+
+		 Example: pxe await 
+				- starts infinte loop, in which will be
+				processed received packets. It's usefull for
+				testing ARP and ICMP request/replies. "Infinte"
+				means there is no exit from it without resetting
+				of PC.
+
+	command 'filters':
+		- shows current filters usage information.
+
+ 		 Example: pxe filters
+				- shows current filters usage. If all is ok,
+				sockets closed correctly, filters are free -
+				you will see something like "0/8 filters".
+				If there is connected socket, or there was
+				error somewhere in implementation - you will
+				see filters related info (source/destination
+				ip/ports, binded socket).
+
+	command 'ns':
+		- used to see and modify default nameserver.
+
+		 Example: pxe ns
+				- shows nameserver
+
+		 	  pxe ns ip4.addr
+				- sets nameserver to specified ip address.
+
+
+	command 'ping':
+		- performs similar actions to well known ping command. It sends
+		 echo requests and gets replies, calculating timeouts.
+
+		 Example: pxe ping ip4.addr
+				- performs sending five icmp echo requests to
+				specified ip address.
+
+	command 'resolve':
+		- performs sending DNS requests and extracts A or CNAME answers
+		 from nameserver replies. 
+
+		 Example: pxe resolve domain.name
+				- performs domain name resolution, using default
+				nameserver.
+
+	command 'route':
+		- works with routing table and used for ip based protocols.
+		 IP packet routed to first found route, routes are searched
+		 sequentially from start of table to end..
+
+		 Example: pxe route print 
+				- shows current routing table.
+
+			  pxe route add default ip4.addr
+				- sets default gateway
+
+			  pxe route add net4.addr gw4.addr
+				- sets gateway for network. Mask for network is
+				generated automatically from net address, CIDR
+				is not supported.
+
+			  pxe route del net4.addf gw4.addr 
+				- removes route from table.
+
+	command 'socket':
+		- currently just shows statistics related to active sockets.
+
+		 Example: pxe socket stats
+				- show active sockets information.
+
+
+4.2. Defining debug macroses
+-----------------------------
+
+		All debug macroses divided in groups to provide more flexible
+	debugging of exact module. There are two levels of debugging:
+	first just adds _DEBUG suffix to macro, next _DEBUG_HELL. Second one
+	as expected from it's naming - provides more information.
+		All this macro definitions are situated in project Makefile.
+
+
+macro definitions:
+
+PXE_DEBUG
+PXE_DEBUG_HELL		- common modules debuging. This macroses adds debug
+			information output toi all modules, that are not
+			covered by macroses below.
+
+			NOTE: defining PXE_DEBUG macro doesn't defines
+			 e.g. PXE_CORE_DEBUG. It must be set manually.
+
+PXE_CORE_DEBUG
+PXE_CORE_DEBUG_HELL	- pxe_core module debuging
+
+PXE_TCP_DEBUG
+PXE_TCP_DEBUG_HELL	- related to TCP modules debuging
+
+PXE_IP_DEBUG
+PXE_IP_DEBUG_HELL	- IP module debug. Includes routing.
+
+PXE_ARP_DEBUG
+PXE_ARP_DEBUG_HELL	- ARP module debug
+
+PXE_HTTP_DEBUG
+PXE_HTTP_DEBUG_HELL	- httpfs and pxe_http module debugging
+
+PXE_MORE		- adds functions, used to out to screen information
+			about filters, sockets and etc usage.
+
+4.3. Tuning
+------------
+
+		Well, pxe_http library developed as library that implements
+	client sockets API. But, it may be used in different environments and
+	thus may have different behaviour e,g, in LAN and in WAN.
+		In most cases it works well in both cases, but if not - here is
+	some hints that may be usefull.
+
+		In LAN usually packet loss is small and speed is fast, so
+	it may be good idea to define PXE_TCP_AGRRESIVE macro (see 3.3.15).
+		PXE_TCP_MSS may me set to 1460 without any doubts.
+		Buffer sizes may be set higher (3.3.3). 16K for incoming
+	traffic is good enough for WAN connections, but for LAN it may be set
+	higher. If big UDP datagrams are sended, send buffer must be set to
+	such space, in which it may fit.
+		Also all timeouts may be smaller. For example, first candidate
+	for it is TIME_DELTA (3.3.2)
+
+		Next point - what buffers use: statically allocated or
+	dinamically. Default variant is best (at least, I think so) but
+	it may be not bad idea to play with PXE_CORE_STATIC_BUFFERS and 
+	PXE_POOL_COUNT.
+
+		It may be usefull to turn off httpfs caching. Using of
+	caching speed ups getting of file, but anyway undefining of
+	PXE_HTTPFS_CACHING still gives working code.
+
+
+4.4. NFS loading with pxe_http
+-------------------------------
+
+		Original pxeboot has ability to load kernel, loader.rc and etc.
+	pke_http may provide udpread()/udpsend() functions needed for that.
+
+		undefine:	loader/Makefile: LOADER_HTTP_SUPPORT
+		define:		pxe_http/pxe_udp.h: UDP_DEFAULT_SOCKET
+				pxe_http/pxe_dhcp.h: PXE_BOOTP_USE_LIBSTAND
+				libi386/Makefile: PXEHTTP_UDP_FOR_LIBSTAND
+
+	After that - NFS loader must work, as well as TFTP.		

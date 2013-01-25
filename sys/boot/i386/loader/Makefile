@@ -7,11 +7,18 @@ NEWVERSWHAT=	"bootstrap loader" i386
 # architecture-specific loader code
 SRCS=		main.c conf.c vers.c
 
+# Enable HTTP support for PXE
+.if defined(LOADER_HTTP_SUPPORT)
+CFLAGS+=	-DLOADER_HTTP_SUPPORT
+CFLAGS+=	-DPXE_MORE
+.else
 # Enable PXE TFTP or NFS support, not both.
 .if defined(LOADER_TFTP_SUPPORT)
 CFLAGS+=	-DLOADER_TFTP_SUPPORT
 .else
 CFLAGS+=	-DLOADER_NFS_SUPPORT
+.endif
+
 .endif
 
 # Enable PnP and ISA-PnP code.
@@ -44,12 +51,12 @@ CFLAGS+=	-Wall
 LDFLAGS=	-static -Ttext 0x0
 
 # i386 standalone support library
-LIBI386=	${.OBJDIR}/../libi386/libi386.a
+LIBI386=	${.OBJDIR}/../libi386/libi386.a ${.OBJDIR}/../pxe_http/libpxe_http.a
 CFLAGS+=	-I${.CURDIR}/..
 
 # BTX components
 CFLAGS+=	-I${.CURDIR}/../btx/lib
-
+CFLAGS+=	-I$(.CURDIR)/../pxe_http
 # Debug me!
 #CFLAGS+=	-g
 #LDFLAGS+=	-g
@@ -73,7 +80,7 @@ loader.help: help.common help.i386
 
 .PATH: ${.CURDIR}/../../forth 
 FILES=	loader loader.help loader.4th support.4th loader.conf
-FILES+= screen.4th frames.4th
+FILES+= screen.4th frames.4th beastie.4th
 # XXX INSTALLFLAGS_loader= -b
 FILESMODE_loader= ${BINMODE} -b
 FILESDIR_loader.conf=	/boot/defaults

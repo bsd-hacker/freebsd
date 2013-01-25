@@ -7,7 +7,7 @@ SRCS=	biosacpi.c bioscd.c biosdisk.c biosmem.c biospnp.c \
 	biospci.c biossmap.c bootinfo.c bootinfo32.c bootinfo64.c \
 	comconsole.c devicename.c elf32_freebsd.c \
 	elf64_freebsd.c gatea20.c \
-	i386_copy.c i386_module.c nullconsole.c pxe.c pxetramp.s \
+	i386_copy.c i386_module.c nullconsole.c pxe.c \
 	time.c vidconsole.c amd64_tramp.S
 
 BOOT_COMCONSOLE_PORT?= 0x3f8
@@ -23,10 +23,14 @@ CFLAGS+= -DDISK_DEBUG
 
 # Include simple terminal emulation (cons25-compatible)
 CFLAGS+= -DTERM_EMU
+CDLAGS+= -DPXE_DEBUG
+
+# allow pxe_http perform udpread/udpwrite
+CFLAGS+= -DPXEHTTP_UDP_FOR_LIBSTAND
 
 CFLAGS+=	-I${.CURDIR}/../../common -I${.CURDIR}/../btx/lib \
 		-I${.CURDIR}/../../../contrib/dev/acpica \
-		-I${.CURDIR}/../../.. -I.
+		-I${.CURDIR}/../../.. -I. -I${.CURDIR}/../pxe_http/
 # the location of libstand
 CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand/
 
