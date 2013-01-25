@@ -1,0 +1,30 @@
+Here is 'http support for PXE' project snapshot at 19th of August
+(last submit during GSoC).
+
+There was post GSoC submit and may be will be ready next changes at time you are
+reading this sentence, so repository contents differs from this tarball. Also,
+deleted at the end phase of project files (e.g. pxe_mutex module) and unused
+after all (btx_mod directory) are not included to this tarball.
+
+Other related (may be even useful) info may be found at:
+
+ * blog.freebsdish.org/taleks
+	- project related blog
+	
+ * wiki.freebsd.org/http_support_for_PXE
+	- wiki project page
+	
+ * perforce.freebsd.org/depotTreeBrowser.cgi?FSPC=//depot/projects/soc2007/taleks%2dpxe%5fhttp&HIDEDEL=NO
+	- web interface to perforce repository with project
+
+
+Directories structure:
+    
+    pxe_http library, main developed code:
+    /project/*.*
+    
+    also, there were made changes to already existed code:
+    /project/libstand_mod	- modified files of libs/libstand library
+    /project/loader_mod	- modified files of i386/loader code
+    /project/libi386_mod 	- modified files of i386/libi386
+    /project/i386_mod		- modified Makefile of i386 folder

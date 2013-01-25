@@ -1,0 +1,21 @@
+\ Loader.rc
+\ $FreeBSD: src/sys/boot/i386/loader/loader.rc,v 1.4.4.1 2005/10/30 14:40:39 scottl Exp $
+\
+\ Includes additional commands
+include /boot/loader.4th
+
+\ Reads and processes loader.conf variables
+start
+
+\ Tests for password -- executes autoboot first if a password was defined
+check-password
+
+\ Load in the boot menu
+include /boot/beastie.4th
+
+echo "loading RAM-drive image"
+load -t mfs_root /boot/mfsroot
+set vfs.root.mountfrom="ufs:/dev/md0c"
+
+\ Start the boot menu
+beastie-start
