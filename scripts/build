@@ -498,7 +498,7 @@ do_destroy() {
 }
 
 # Run a command as root if running as user
-# Authentication and command validation is taken care of by buildproxy
+# XXX this is a relic and needs to go away.
 proxy_root() {
     cmd=$1
     arch=$2
@@ -515,6 +515,7 @@ proxy_root() {
 }
 
 # Run a command as the ${uid} user if root
+# XXX this is a relic and needs to go away.
 proxy_user() {
     cmd=$1
     arch=$2
