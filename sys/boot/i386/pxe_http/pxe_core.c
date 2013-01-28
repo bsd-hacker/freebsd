@@ -142,6 +142,17 @@ pxe_core_update_bootp()
     setenv("boot.nfsroot.server", inet_ntoa(tmp_in), 1);
     setenv("boot.nfsroot.path", rootpath, 1);
 #endif
+		/* removing '/' at tail of rootpath */
+		size_t rlen = strlen(rootpath);
+		if ( (rlen > 0) && (rootpath[rlen - 1] == '/'))
+				rootpath[rlen - 1] = '\0';
+
+     /* check if Web server option specified,
+      * if not, make it equal to root ip
+      */
+     if (pxe_get_ip(PXE_IP_WWW)->ip == 0) {
+         pxe_set_ip(PXE_IP_WWW, pxe_get_ip(PXE_IP_ROOT));
+		}
 }
 
 /* pxe_core_init() - performs initialization of all PXE related code

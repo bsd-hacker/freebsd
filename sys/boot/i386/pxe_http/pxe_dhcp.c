@@ -441,6 +441,7 @@ pxe_dhcp_query(uint32_t xid)
 	
 	addr.ip = rootip.s_addr;
 	pxe_set_ip(PXE_IP_ROOT, &addr);
+  pxe_set_ip(PXE_IP_WWW, &addr);
 	
 	/* "network route". direct connect for those addresses */
 	pxe_ip_route_add(pxe_get_ip(PXE_IP_MY), netmask, NULL);
