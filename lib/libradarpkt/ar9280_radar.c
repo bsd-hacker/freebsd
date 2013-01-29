@@ -64,6 +64,11 @@
 #define	AR9280_SPECTRAL_SAMPLE_SIZE_HT40	135
 
 #define	NUM_SPECTRAL_ENTRIES_HT20		56
+#define	NUM_SPECTRAL_ENTRIES_HT40		128
+
+#ifndef	MIN
+#define	MIN(a,b)	(((a)<(b))?(a):(b))
+#endif
 
 /*
  * GPLed snippet from Zefir on the linux-wireless list; rewrite this
@@ -87,23 +92,40 @@
 int
 convert_data_ht20(struct radar_entry *re, struct radar_fft_entry *fe)
 {
-	int dc_pwr_idx = NUM_SPECTRAL_ENTRIES_HT20 / 2;
-	int pwr_count = NUM_SPECTRAL_ENTRIES_HT20;
+//	int dc_pwr_idx = NUM_SPECTRAL_ENTRIES_HT20 / 2;
+	int pwr_count = fe->num_bins;
 	int i;
-	int nf0 = -96;	/* XXX populate re with this first! */
-	float bsum = 0.0;
+	float bsum_lower = 0.0, bsum_upper = 0.0;
 
+#if 0
+	/*
+	 * Commented out here - DC is different for HT20/HT40, so this
+	 * logic won't work for HT40.
+	 */
 	/* DC value is invalid -> interpolate */
-	fe->pri.bins[dc_pwr_idx].raw_mag =
-	    (fe->pri.bins[dc_pwr_idx - 1].raw_mag + fe->pri.bins[dc_pwr_idx + 1].raw_mag) / 2;
+	fe->bins[dc_pwr_idx].raw_mag =
+	    (fe->bins[dc_pwr_idx - 1].raw_mag + fe->bins[dc_pwr_idx + 1].raw_mag) / 2;
 	/* XXX adj mag? */
-	fe->pri.bins[dc_pwr_idx].adj_mag =
-	    fe->pri.bins[dc_pwr_idx].raw_mag << fe->max_exp;
+	fe->bins[dc_pwr_idx].adj_mag =
+	    fe->bins[dc_pwr_idx].raw_mag << fe->max_exp;
+#endif
 
-	/* Calculate the total power - use pre-adjusted magnitudes */
-	for (i = 0; i < pwr_count; i++)
-		bsum += (float) (fe->pri.bins[i].adj_mag) * (float) (fe->pri.bins[i].adj_mag);
-	bsum = log10f(bsum) * 10.0;
+	/* Calculate the total power for both lower and upper halves */
+	if (! fe->is_ht40) {
+		for (i = 0; i < 56; i++)
+			bsum_lower += (float) (fe->bins[i].adj_mag) * (float) (fe->bins[i].adj_mag);
+		bsum_lower = log10f(bsum_lower) * 10.0;
+	}
+
+	if (fe->is_ht40) {
+		for (i = 0; i < 64; i++)
+			bsum_lower += (float) (fe->bins[i].adj_mag) * (float) (fe->bins[i].adj_mag);
+		bsum_lower = log10f(bsum_lower) * 10.0;
+
+		for (i = 64; i < 128; i++)
+			bsum_upper += (float) (fe->bins[i].adj_mag) * (float) (fe->bins[i].adj_mag);
+		bsum_upper = log10f(bsum_upper) * 10.0;
+	}
 
 	/*
 	 * Given the current NF/RSSI value, calculate an absolute dBm, then
@@ -111,18 +133,24 @@ convert_data_ht20(struct radar_entry *re, struct radar_fft_entry *fe)
 	 */
 	for (i = 0; i < pwr_count; i++) {
 		float pwr_val;
-		int16_t val = fe->pri.bins[i].adj_mag;
+		int16_t val = fe->bins[i].adj_mag;
 
 		if (val == 0)
 			val = 1;
 
 		pwr_val = 20.0 * log10f((float) val);
-		pwr_val += (float) nf0 + (float) re->re_rssi - bsum;
 
-		fe->pri.bins[i].dBm = pwr_val;
+		/* Use upper if i >= bin 64; captures both HT20 and HT40 modes */
+		if (i < 64) {
+			pwr_val += (float) fe->lower.nf + (float) fe->lower.rssi - bsum_lower;
+		} else {
+			pwr_val += (float) fe->upper.nf + (float) fe->upper.rssi - bsum_upper;
+		}
+
+		fe->bins[i].dBm = pwr_val;
 #if 0
-		printf("  [%d] %d -> %d, ", i, fe->pri.bins[i].adj_mag,
-		    fe->pri.bins[i].dBm);
+		printf("  [%d] %d -> %d, ", i, fe->bins[i].adj_mag,
+		    fe->bins[i].dBm);
 #endif
 	}
 //	printf("\n");
@@ -134,16 +162,25 @@ static int
 ar9280_radar_spectral_print(struct radar_fft_entry *fe)
 {
 	int i;
-	printf("PRI:  max index=%d, magnitude=%d, bitmap weight=%d, max_exp=%d\n",
-	    fe->pri.max_index,
-	    fe->pri.max_magnitude,
-	    fe->pri.bitmap_weight,
-	    fe->max_exp);
+	printf("LOWER:  max index=%d, magnitude=%d, bitmap weight=%d, max_exp=%d, is_ht40=%d, num_bins=%d\n",
+	    fe->lower.max_index,
+	    fe->lower.max_magnitude,
+	    fe->lower.bitmap_weight,
+	    fe->max_exp,
+	    fe->is_ht40,
+	    fe->num_bins);
+	if (fe->is_ht40) {
+		printf("UPPER:  max index=%d, magnitude=%d, bitmap weight=%d\n",
+		    fe->upper.max_index,
+		    fe->upper.max_magnitude,
+		    fe->upper.bitmap_weight);
 
-	for (i = 0; i < 56; i++) {
+	}
+
+	for (i = 0; i < fe->num_bins; i++) {
 		if (i % 8 == 0)
 		    printf("PRI: %d:", i);
-		printf("%02x ", fe->pri.bins[i].raw_mag);
+		printf("%02x ", fe->bins[i].raw_mag);
 		if (i % 8 == 7)
 		    printf("\n");
 	}
@@ -176,25 +213,123 @@ ar9280_radar_spectral_decode_ht20(struct ieee80211_radiotap_header *rh,
 	}
 
 	fe = &re->re_spectral_entries[cur_sample];
+	fe->num_bins = 56;
+	fe->is_ht40 = 0;
 
 	/* Decode the bitmap weight, magnitude, max index */
-
-	fe->pri.max_magnitude =
+	fe->lower.max_magnitude =
 	    (pkt[57] << 2) |
 	    ((pkt[56] & 0xc0) >> 6) |
 	    ((pkt[58] & 0x03) << 10);
-	fe->pri.bitmap_weight = pkt[56] & 0x3f;
-	fe->pri.max_index = (pkt[58] & 0x3f);
+	fe->lower.bitmap_weight = pkt[56] & 0x3f;
+	fe->lower.max_index = (pkt[58] & 0x3f);
 	fe->max_exp = pkt[59] & 0x0f;
 
 	/* Decode each bin - the dBm calculation will come later */
 	for (i = 0; i < 56; i++) {
-		fe->pri.bins[i].raw_mag = pkt[i];
-		fe->pri.bins[i].adj_mag = fe->pri.bins[i].raw_mag << fe->max_exp;
+		fe->bins[i].raw_mag = pkt[i];
+		fe->bins[i].adj_mag = fe->bins[i].raw_mag << fe->max_exp;
 	}
+
+	/*
+	 * Chain 0 ctl RSSI is used here.
+	 */
+	fe->lower.rssi = re->re_pri_rssi;
+	fe->lower.nf = re->re_nf;
 
 	/* Convert to dBm */
 	(void) convert_data_ht20(re, fe);
+
+	/* Return OK */
+	return (0);
+}
+
+/*
+ * Decode the HT40 spectral data.
+ *
+ * The HT40 spectral data is lower and upper, rather than primary and
+ * extension channel.  Pri/Ext is needed to map the relevant RSSI and NF
+ * values to the right side, for dBm calculations.  That's it.
+ */
+static int
+ar9280_radar_spectral_decode_ht40(struct ieee80211_radiotap_header *rh,
+    const unsigned char *pkt, int len, struct radar_entry *re,
+    int cur_sample)
+{
+	int i;
+	struct radar_fft_entry *fe;
+
+	if (len < AR9280_SPECTRAL_SAMPLE_SIZE_HT40) {
+		printf("%s: got %d bytes, wanted %d bytes\n", __func__, len, AR9280_SPECTRAL_SAMPLE_SIZE_HT40);
+		return (-1);
+	}
+
+	fe = &re->re_spectral_entries[cur_sample];
+
+	/* max_exp is shared among lower and upper samples */
+	fe->max_exp = pkt[134] & 0x0f;
+	fe->is_ht40 = 1;
+	fe->num_bins = 128;
+
+	/*
+	 * Decode the bitmap weight, magnitude, max index for the
+	 * lower bin.
+	 */
+	fe->lower.max_magnitude =
+	    (pkt[129] << 2) |
+	    ((pkt[128] & 0xc0) >> 6) |
+	    ((pkt[130] & 0x03) << 10);
+	fe->lower.bitmap_weight = pkt[128] & 0x3f;
+	fe->lower.max_index = (pkt[130] & 0x3f);
+
+	/*
+	 * Decode the bitmap weight, magnitude, max index for
+	 * the upper bin.
+	 */
+	fe->upper.max_magnitude =
+	    (pkt[132] << 2) |
+	    ((pkt[131] & 0xc0) >> 6) |
+	    ((pkt[133] & 0x03) << 10);
+	fe->upper.bitmap_weight = pkt[131] & 0x3f;
+	fe->upper.max_index = (pkt[133] & 0x3f);
+
+	/* Decode each bin - the dBm calculation will come later */
+	for (i = 0; i < 128; i++) {
+		fe->bins[i].raw_mag = pkt[i];
+		fe->bins[i].adj_mag = fe->bins[i].raw_mag << fe->max_exp;
+	}
+
+	/*
+	 * Populate the lower/upper NF and RSSI based on whether the
+	 * configured channel is HT40U or HT40D.
+	 *
+	 * The PRI/EXT RSSI needs swapping to match the lower/upper
+	 * organisation of the FFT here.
+	 */
+	if (re->re_flags & IEEE80211_CHAN_HT40D) {
+		/*
+		 * The primary channel is 'upper'; the extension channel
+		 * is 'lower'.
+		 */
+		fe->lower.rssi = re->re_ext_rssi;
+		fe->upper.rssi = re->re_pri_rssi;
+		fe->lower.nf = re->re_nf;
+		fe->upper.nf = re->re_nf;
+	} else {
+		/*
+		 * The primary channel is 'lower'; the extension channel
+		 * is 'upper'.
+		 */
+		fe->lower.rssi = re->re_pri_rssi;
+		fe->upper.rssi = re->re_ext_rssi;
+		fe->lower.nf = re->re_nf;
+		fe->upper.nf = re->re_nf;
+	}
+
+#if 1
+	/* Convert to dBm */
+	(void) convert_data_ht20(re, fe);
+#endif
 
 	/* Return OK */
 	return (0);
@@ -222,16 +357,23 @@ ar9280_radar_spectral_decode(struct ieee80211_radiotap_header *rh,
 	const unsigned char *fr = pkt;
 	int fr_len = len;
 
-	
 	for (i = 0; i < MAX_SPECTRAL_SCAN_SAMPLES_PER_PKT; i++) {
 		/* HT20 or HT40? */
-		/* XXX hard-code HT20 */
-		if (ar9280_radar_spectral_decode_ht20(rh, fr, fr_len, re, i) != 0) {
-			break;
+		if (re->re_flags & (IEEE80211_CHAN_HT40U | IEEE80211_CHAN_HT40D)) {
+			if (ar9280_radar_spectral_decode_ht40(rh, fr, fr_len, re, i) != 0) {
+				break;
+			}
+			ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
+			fr_len -= AR9280_SPECTRAL_SAMPLE_SIZE_HT40;
+			fr += AR9280_SPECTRAL_SAMPLE_SIZE_HT40;
+		} else {
+			if (ar9280_radar_spectral_decode_ht20(rh, fr, fr_len, re, i) != 0) {
+				break;
+			}
+			ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
+			fr_len -= AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
+			fr += AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
 		}
-//		ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
-		fr_len -= AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
-		fr += AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
 		if (fr_len < 0)
 			break;
 	}
@@ -319,42 +461,65 @@ ar9280_radar_decode(struct ieee80211_radiotap_header *rh,
 	 * things) whether the pulse duration is based on 40MHz or 44MHz.
 	 */
 	re->re_timestamp = tsf;
+
 	//re->re_rssi = pri_rssi;	/* XXX extension rssi? */
-	re->re_rssi = comb_rssi;	/* XXX comb for spectral scan? or not? */
+	re->re_rssi = (int) comb_rssi;	/* XXX comb for spectral scan? or not? */
 	re->re_dur = pkt[len - 3];	/* XXX extension duration? */
 	re->re_num_spectral_entries = 0;
+	re->re_nf = nf;
 	/* XXX flags? */
+
+	/* Spectral scan on Merlin uses chain 0 only */
+	re->re_pri_rssi = (int) rx->wr_v.rssi_ctl[0];
+	re->re_ext_rssi = (int) rx->wr_v.rssi_ext[0];
+
+	/*
+	 * XXX hack if the driver is giving us unsigned rssi values, sigh.
+	 */
+	if (re->re_pri_rssi > 127)
+		re->re_pri_rssi = 254 - re->re_pri_rssi;
+	if (re->re_ext_rssi > 127)
+		re->re_ext_rssi = 254 - re->re_ext_rssi;
 
 	/*
 	 * Update the channel frequency information before we decode
 	 * the spectral or radar FFT payload.
 	 */
 	re->re_freq = 0;
+	re->re_freq_centre = 0;
+	re->re_flags = 0;
+
 	/* XXX endian convert len */
 	if (pkt_lookup_chan((char *) rh, rh->it_len, &x) == 0) {
 		/* Update the channel/frequency information */
 		re->re_freq = x.freq;
+		re->re_flags = x.flags;
 
 		if (x.flags & IEEE80211_CHAN_QUARTER) {
 			re->re_freq_sec = 0;
 			re->re_freqwidth = 5;
+			re->re_freq_centre = re->re_freq;
 		} else if (x.flags & IEEE80211_CHAN_HALF) {
 			re->re_freq_sec = 0;
 			re->re_freqwidth = 10;
+			re->re_freq_centre = re->re_freq;
 		} else if (x.flags & IEEE80211_CHAN_HT40U) {
 			re->re_freq_sec = re->re_freq + 20;
 			re->re_freqwidth = 40;
+			re->re_freq_centre = re->re_freq + 10;
 		} else if (x.flags & IEEE80211_CHAN_HT40D) {
 			re->re_freq_sec = re->re_freq - 20;
 			re->re_freqwidth = 40;
+			re->re_freq_centre = re->re_freq - 10;
 		} else {
 			re->re_freq_sec = 0;
 			re->re_freqwidth = 20;
+			re->re_freq_centre = re->re_freq;
 		}
 	}
 
 	if (pkt[len - 1] & CH_SPECTRAL_EVENT) {
-		(void) ar9280_radar_spectral_decode(rh, pkt, len - 3, re);
+			(void) ar9280_radar_spectral_decode(rh, pkt, len - 3, re);
 	}
 
 	return(1);

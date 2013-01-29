@@ -35,9 +35,9 @@
 extern "C" {
 #endif
 
-#define	PKT_NUM_BINS	64
+#define	PKT_NUM_BINS	128
 
-#define	MAX_SPECTRAL_SCAN_SAMPLES_PER_PKT	64
+#define	MAX_SPECTRAL_SCAN_SAMPLES_PER_PKT	128
 
 struct radar_fft_bin {
 	int32_t	dBm;
@@ -51,13 +51,16 @@ struct radar_fft_entry {
 	int is_ht40;	/* 1=HT40, 0=HT20 */
 
 	struct {
-		struct radar_fft_bin bins[PKT_NUM_BINS];
+		int nf, rssi;
 		uint8_t	max_index;
 		uint8_t	bitmap_weight;
 		uint16_t	max_magnitude;
-	} pri, ext;
+	} lower, upper;
+
+	struct radar_fft_bin bins[PKT_NUM_BINS];
 
 	uint8_t	max_exp;
+	uint8_t	num_bins;	/* 56 or 128 */
 };
 
 struct radar_entry {
@@ -66,11 +69,20 @@ struct radar_entry {
 	/* Primary frequency */
 	uint32_t	re_freq;
 
+	/* Flags */
+	uint32_t	re_flags;
+
 	/* Secondary channel frequency, if applicable */
 	uint32_t	re_freq_sec;
 
 	/* Channel width */
 	uint32_t	re_freqwidth;
+
+	/*
+	 * True event frequency centre - for spectral scan and
+	 * radar FFTs.
+	 */
+	uint32_t	re_freq_centre;
 
 	/*
 	 * The hardware may give it to us as a negative number;
@@ -79,6 +91,15 @@ struct radar_entry {
 	 */
 	int32_t		re_rssi;
 	uint32_t	re_dur;
+	int32_t		re_nf;
+
+	/*
+	 * Store the spectral scan primary/extension channel
+	 * RSSI here, which will be used by the spectral scan
+	 * FFT code to calculate dBm values.
+	 */
+	int32_t		re_pri_rssi;
+	int32_t		re_ext_rssi;
 
 	/* XXX make these optional at some point */
 	int 		re_num_spectral_entries;
