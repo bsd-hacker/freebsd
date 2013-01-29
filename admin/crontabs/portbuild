@@ -22,16 +22,6 @@ SCRIPTS=/a/portbuild/scripts/
 #5,15,25,35,45,55 * * * *	lockf -k -t 1 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs powerpc > /dev/null 2>&1
 #6,16,26,36,46,56 * * * *	lockf -k -t 0 ${LOCKFILES}/dologs.lock ${SCRIPTS}/dologs sparc64 > /dev/null 2>&1
 #
-# VCS update of ports
-#
-#0 */3 * * *			lockf -t 0 -k ${LOCKFILES}/updatesnap.ports.lock ${SCRIPTS}/updatesnap.ports
-#
-# VCS update of src
-#
-#0 2 * * *			lockf -t 0 -k ${LOCKFILES}/updatesnap.lock ${SCRIPTS}/updatesnap
-#
-# XXX MCL 20130111 the last things from root crontab
-#
 # Compress old logs to save space
 #
 # XXX MCL this is totally naive and livelocks the machine.  XXX TODO
@@ -42,7 +32,9 @@ SCRIPTS=/a/portbuild/scripts/
 #
 # Backup ZFS filesystems
 # XXX MCL script not yet converted
+# will have to split this up
 #50 4 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zbackup
 #
 # Expire old ZFS snapshots
+# will have to split this up, too
 #50 3 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zexpire
