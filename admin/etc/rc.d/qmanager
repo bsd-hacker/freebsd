@@ -2,6 +2,10 @@
 #
 # installed by the portbuild application
 #
+
+# PROVIDE: qmanager
+# REQUIRE: LOGIN cleanvar
+
 export PATH=/usr/local/bin:${PATH}
 
 pb=/var/portbuild
