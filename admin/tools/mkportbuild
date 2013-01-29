@@ -7,6 +7,7 @@
 #
 
 DEFAULT_PORTBUILD_USER="portbuild"
+DEFAULT_SRCBUILD_USER="srcbuild"
 DEFAULT_VCS_CHECKOUT_COMMAND="svn checkout"
 DEFAULT_VCS_REPOSITORY="svn://svn.FreeBSD.org"
 DEFAULT_ZFS_VOLUME="a"
@@ -19,6 +20,10 @@ fi
 
 if [ -z "${PORTBUILD_USER}" ]; then
   echo "You must export PORTBUILD_USER, for example, export PORTBUILD_USER=${DEFAULT_PORTBUILD_USER}."
+  exit 1
+fi
+if [ -z "${SRCBUILD_USER}" ]; then
+  echo "You must export SRCBUILD_USER, for example, export SRCBUILD_USER=${DEFAULT_SRCBUILD_USER}."
   exit 1
 fi
 if [ -z "${VCS_CHECKOUT_COMMAND}" ]; then
@@ -52,37 +57,55 @@ if [ -z "${name}" ]; then
   exit 1
 fi
 
-mountpoint=`zfs list -H -t filesystem -o mountpoint ${ZFS_VOLUME}`
-if [ ! -z "${mountpoint}" ]; then
+mounted=`zfs list -H -t filesystem -o mounted ${ZFS_VOLUME}`
+if [ ! -z "${mounted}" ]; then
   echo "ZFS volume ${ZFS_VOLUME} is mounted.  I'll unmount it for you then remount it later."
-  zfs umount ${ZFS_VOLUME} || exit 1
+  zfs umount ${ZFS_VOLUME} 2> /dev/null
 fi
 
-# reset the "zfsadmin" permission set if it already exists. 
-zfs unallow -s @zfsadmin ${ZFS_VOLUME} 2> /dev/null   
+# create a place to hold all portbuild-managed files.  All other ZFS_VOLUME
+# files are managed by srcbuild.
+if [ ! -d ${ZFS_MOUNTPOINT}/portbuild ]; then
+  zfs create ${ZFS_VOLUME}/portbuild || exit 1
+fi
+
+# reset the "zfsalladmin" permission set if it already exists. 
+zfs unallow -s @zfsalladmin ${ZFS_VOLUME} 2> /dev/null   
+zfs unallow -u ${SRCBUILD_USER} ${ZFS_VOLUME} 2> /dev/null
+
+# reset the "zfsportbuildadmin" permission set if it already exists. 
+zfs unallow -s @zfsportbuildadmin ${ZFS_VOLUME} 2> /dev/null   
 zfs unallow -u ${PORTBUILD_USER} ${ZFS_VOLUME} 2> /dev/null
 
-# create the "zfsadmin" permission set.
-zfs allow -s @zfsadmin ${ZFS_PERMISSIONSET} ${ZFS_VOLUME} || exit 1
+# create the "zfsalladmin" permission set.
+zfs allow -s @zfsalladmin ${ZFS_PERMISSIONSET} ${ZFS_VOLUME} || exit 1
 
-# delegate the "zfsadmin" permission set to the PORTBUILD_USER. 
-zfs allow -du ${PORTBUILD_USER} @zfsadmin ${ZFS_VOLUME} || exit 1
-zfs allow -lu ${PORTBUILD_USER} @zfsadmin ${ZFS_VOLUME} || exit 1
+# create the "zfsportbuildadmin" permission set.
+zfs allow -s @zfsportbuildadmin ${ZFS_PERMISSIONSET} ${ZFS_VOLUME}/portbuild || exit 1
+
+# delegate the "zfsalladmin" permission set to the SRCBUILD_USER. 
+zfs allow -du ${SRCBUILD_USER} @zfsalladmin ${ZFS_VOLUME} || exit 1
+zfs allow -lu ${SRCBUILD_USER} @zfsalladmin ${ZFS_VOLUME} || exit 1
+
+mounted=`zfs list -H -t filesystem -o mounted ${ZFS_VOLUME}`
+if [ -z "${mounted}" -o "${mounted}" = "no" ]; then
+  echo "ZFS volume ${ZFS_VOLUME} is not mounted.  I'll remount it for you."
+  zfs mount ${ZFS_VOLUME} || exit 1
+fi
+
+df -g
+
+# delegate the "zfsportbuildadmin" permission set to the PORTBUILD_USER. 
+zfs allow -du ${PORTBUILD_USER} @zfsportbuildadmin ${ZFS_VOLUME}/portbuild || exit 1
 
 echo "results of ZFS operations:"
 zfs list ${ZFS_VOLUME}
 zfs allow ${ZFS_VOLUME}
 
-chown ${PORTBUILD_USER}:${PORTBUILD_USER} ${ZFS_MOUNTPOINT} || exit 1
-mountpoint=`zfs list -H -t filesystem -o mountpoint ${ZFS_VOLUME}`
-if [ -z "${mountpoint}" ]; then
-  echo "ZFS volume ${ZFS_VOLUME} is not mounted.  I'll remount it for you."
-  su -m ${PORTBUILD_USER} -c "zfs mount ${ZFS_VOLUME}" || exit 1
-fi
-
-# create a place to hold the repository
-if [ ! -d ${ZFS_MOUNTPOINT}/portbuild ]; then
-  su -m ${PORTBUILD_USER} -c "zfs create ${ZFS_VOLUME}/portbuild" || exit 1
+mounted=`zfs list -H -t filesystem -o mounted ${ZFS_VOLUME}/portbuild`
+if [ -z "${mounted}" -o "${mounted}" = "no" ]; then
+  echo "ZFS volume ${ZFS_VOLUME}/portbuild is not mounted.  I'll (re)mount it for you."
+  zfs mount ${ZFS_VOLUME}/portbuild || exit 1
 fi
 
 echo "checking out the repository ..."
