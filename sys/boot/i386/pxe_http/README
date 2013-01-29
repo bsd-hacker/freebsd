@@ -1250,4 +1250,4 @@ PXE_MORE		- adds functions, used to out to screen information
 				pxe_http/pxe_dhcp.h: PXE_BOOTP_USE_LIBSTAND
 				libi386/Makefile: PXEHTTP_UDP_FOR_LIBSTAND
 
-	After that - NFS loader must work, as well as TFTP.		
+	After that - NFS loader must work, as well as TFTP.
