@@ -1,0 +1,25 @@
+#
+# srcbuild crontab
+#
+PATH=/root/bin:/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:/usr/local/sbin:/usr/local/bin:/a/portbuild/admin/scripts
+TERM=xterm
+
+LOCKFILES=/a/portbuild/admin/lockfiles/
+SCRIPTS=/a/portbuild/admin/scripts/
+#
+# VCS update of ports
+#
+#0 */3 * * *			lockf -t 0 -k ${LOCKFILES}/updatesnap.ports.lock ${SCRIPTS}/updatesnap.ports
+#
+#
+# VCS update of src
+#
+#0 2 * * *			lockf -t 0 -k ${LOCKFILES}/updatesnap.lock ${SCRIPTS}/updatesnap
+#
+# Backup ZFS filesystems
+# XXX MCL script not yet converted
+#50 4 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zbackup
+#
+# Expire old ZFS snapshots
+# XXX MCL have to split this one up, too
+#50 3 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zexpire
