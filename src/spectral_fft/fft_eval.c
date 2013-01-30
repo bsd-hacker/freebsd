@@ -49,8 +49,8 @@
 #include "fft_histogram.h"
 #include "fft_display.h"
 
-/* 10 a second for now, the rendering is too inefficient otherwise? */
-#define	RENDER_PERIOD_MSEC	100
+/* 5 a second for now, the rendering is too inefficient otherwise? */
+#define	RENDER_PERIOD_MSEC	200
 
 #define	LCL_EVENT_RENDER	69
 
@@ -200,6 +200,7 @@ void graphics_main(struct fft_app *fap)
 			break;
 		case SDL_QUIT:
 			quit = 1;
+			printf("quit!\n");
 			break;
 		case SDL_KEYDOWN:
 			switch (event.key.keysym.sym) {

@@ -67,7 +67,7 @@ pkt_print(struct radar_entry *re)
 {
 	printf("ts: %llu, freq=%u, rssi=%d, dur=%d, nsamples=%d\n",
 	    re->re_timestamp,
-	    re->re_freq,
+	    re->re_freq_centre,
 	    re->re_rssi,
 	    re->re_dur,
 	    re->re_num_spectral_entries);
