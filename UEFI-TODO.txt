@@ -22,3 +22,9 @@ Part the Fourth: Making our install media UEFI compatible.
 
 - Work out how to make our install media UEFI compatible.
 - Make our install media UEFI compatible.
+
+Part the Miscellaneous:
+
+- Add __attribute__((ms_abi)) support to clang/llvm.
+- Try to work out a sane arrangement for sys/boot that makes it easier to
+  deal with the whole 32/64-bit thing.
