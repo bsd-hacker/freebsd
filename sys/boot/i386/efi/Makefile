@@ -70,7 +70,7 @@ loader.efi: loader.sym
 		exit 1; \
 	fi
 	${OBJCOPY} -j .text -j .sdata -j .data \
-                -j .dynamic -j .dynsym  -j .rel.dyn \
+                -j .dynamic -j .dynsym -j .rel.dyn \
                 -j .rela.dyn -j .reloc -j .eh_frame \
 	        --target=${EFI_TARGET} ${.ALLSRC} ${.TARGET}
 
