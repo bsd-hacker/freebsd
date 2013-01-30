@@ -142,9 +142,9 @@ convert_data_ht20(struct radar_entry *re, struct radar_fft_entry *fe)
 
 		/* Use upper if i >= bin 64; captures both HT20 and HT40 modes */
 		if (i < 64) {
-			pwr_val += (float) fe->lower.nf + (float) fe->lower.rssi - bsum_lower;
+			pwr_val += (float) fe->lower.nf + ((float) fe->lower.rssi / 2.0) - bsum_lower;
 		} else {
-			pwr_val += (float) fe->upper.nf + (float) fe->upper.rssi - bsum_upper;
+			pwr_val += (float) fe->upper.nf + ((float) fe->upper.rssi / 2.0) - bsum_upper;
 		}
 
 		fe->bins[i].dBm = pwr_val;
@@ -260,7 +260,10 @@ ar9280_radar_spectral_decode_ht40(struct ieee80211_radiotap_header *rh,
 	struct radar_fft_entry *fe;
 
 	if (len < AR9280_SPECTRAL_SAMPLE_SIZE_HT40) {
-		printf("%s: got %d bytes, wanted %d bytes\n", __func__, len, AR9280_SPECTRAL_SAMPLE_SIZE_HT40);
+		printf("%s: got %d bytes, wanted %d bytes\n",
+		    __func__,
+		    len,
+		    AR9280_SPECTRAL_SAMPLE_SIZE_HT40);
 		return (-1);
 	}
 
@@ -358,24 +361,25 @@ ar9280_radar_spectral_decode(struct ieee80211_radiotap_header *rh,
 	int fr_len = len;
 
 	for (i = 0; i < MAX_SPECTRAL_SCAN_SAMPLES_PER_PKT; i++) {
+		if (fr_len <= 0)
+			break;
+
 		/* HT20 or HT40? */
 		if (re->re_flags & (IEEE80211_CHAN_HT40U | IEEE80211_CHAN_HT40D)) {
 			if (ar9280_radar_spectral_decode_ht40(rh, fr, fr_len, re, i) != 0) {
 				break;
 			}
-			ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
+			//ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
 			fr_len -= AR9280_SPECTRAL_SAMPLE_SIZE_HT40;
 			fr += AR9280_SPECTRAL_SAMPLE_SIZE_HT40;
 		} else {
 			if (ar9280_radar_spectral_decode_ht20(rh, fr, fr_len, re, i) != 0) {
 				break;
 			}
-			ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
+			//ar9280_radar_spectral_print(&re->re_spectral_entries[i]);
 			fr_len -= AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
 			fr += AR9280_SPECTRAL_SAMPLE_SIZE_HT20;
 		}
-		if (fr_len < 0)
-			break;
 	}
 
 //	printf("  Spectral: %d samples\n", i);
