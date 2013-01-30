@@ -226,6 +226,23 @@ fft_display_draw_picture(struct fft_display *fdisp, int highlight,
 	char text[1024];
 	struct scanresult *result;
 	SDL_Surface *surface;
+	static int chans[] = {
+	    2412, 2417, 2422, 2427,
+	    2432, 2437, 2442, 2447,
+	    2452, 2457, 2462, 2467,
+	    2472, 2484,
+
+	    5180, 5200, 5220, 5240,
+	    5260, 5280, 5300, 5320,
+	    5500, 5520, 5540, 5560,
+	    5580, 5600, 4950, 5620,
+	    4955, 5640, 4960, 5660,
+	    4965, 5680, 4970, 5700,
+	    4975, 5745, 4980, 5765,
+	    5120, 5785, 5140, 5805,
+	    5160, 5825
+	};
+	static int nchans = 48;
 
 	surface = SDL_CreateRGBSurface(SDL_SWSURFACE, WIDTH, HEIGHT, BPP, RMASK, GMASK, BMASK, AMASK);
 	pixels = (Uint32 *) surface->pixels;
@@ -234,7 +251,7 @@ fft_display_draw_picture(struct fft_display *fdisp, int highlight,
 			pixels[x + y * WIDTH] = AMASK;
 
 	/* vertical lines (frequency) */
-	for (i = 2300; i < 6000; i += 20) {
+	for (i = 2300; i < 6000; i += 10) {
 		x = (X_SCALE * (i - startfreq));
 
 		if (x < 0 || x > WIDTH)
@@ -243,8 +260,21 @@ fft_display_draw_picture(struct fft_display *fdisp, int highlight,
 		for (y = 0; y < HEIGHT - 20; y++)
 			pixels[x + y * WIDTH] = 0x40404040 | AMASK;
 
-		snprintf(text, sizeof(text), "%d MHz", i);
-		render_text(fdisp, surface, text, x - 30, HEIGHT - 20);
+		if (i % 20 == 0) {
+			snprintf(text, sizeof(text), "%d MHz", i);
+			render_text(fdisp, surface, text, x - 30, HEIGHT - 20);
+		}
+	}
+
+	/* and now, the channel lines, at least for channels 1-14 */
+	for (i = 0; i < nchans; i++) {
+		x = (X_SCALE * (chans[i] - startfreq));
+		if (x < 0 || x > WIDTH)
+
+			continue;
+
+		for (y = 0; y < HEIGHT - 20; y++)
+			pixels[x + y * WIDTH] = 0x808080FF | AMASK;
 	}
 
 	/* horizontal lines (dBm) */
@@ -286,7 +316,6 @@ fft_display_draw_picture(struct fft_display *fdisp, int highlight,
 			if (bighotpixel(pixels, x, y, color, opacity) < 0)
 				continue;
 		}
-
 
 		/* .. and the max */
 		signal = (float) fft_fetch_freq_max(fdisp->fh, freqKhz);
