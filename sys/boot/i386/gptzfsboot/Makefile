@@ -36,6 +36,11 @@ CFLAGS=	-DBOOTPROG=\"gptzfsboot\" \
 
 LDFLAGS=-static -N --gc-sections
 
+.if ${MACHINE_CPUARCH} == "amd64"
+LDFLAGS+=	-m elf_i386_fbsd
+LIBSTAND=	/usr/lib32/libstand.a
+.endif
+
 # Pick up ../Makefile.inc early.
 .include <bsd.init.mk>
 
