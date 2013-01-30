@@ -56,14 +56,20 @@ CFLAGS+=	-m32 -I.
 CFLAGS+=	-m32 -mcpu=powerpc -I.
 .endif
 
-CFLAGS+=	-I${FICLDIR} -I${FICLDIR}/${MACHINE_CPUARCH:S/amd64/i386/} \
+.if ${MACHINE_CPUARCH} == "amd64" && !defined(FICL64)
+FICL_CPUARCH=	${FICLDIR}/i386
+.else
+FICL_CPUARCH=	${FICLDIR}/${MACHINE_CPUARCH}
+.endif
+
+CFLAGS+=	-I${FICLDIR} -I${FICL_CPUARCH} \
 		-I${FICLDIR}/../common
 
 softcore.c: ${SOFTWORDS} softcore.awk
 	(cd ${FICLDIR}/softwords; cat ${SOFTWORDS} \
 	    | awk -f softcore.awk -v datestamp="`LC_ALL=C date`") > ${.TARGET}
 
-.if ${MACHINE_CPUARCH} == "amd64"
+.if ${MACHINE_CPUARCH} == "amd64" && !defined(FICL64)
 .if !exists(machine)
 ${SRCS:M*.c:R:S/$/.o/g}: machine
 

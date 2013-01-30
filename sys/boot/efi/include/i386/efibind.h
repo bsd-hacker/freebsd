@@ -155,6 +155,11 @@ typedef uint32_t   UINTN;
 // RUNTIME_CODE - pragma macro for declaring runtime code    
 //
 
+/* XXX: This attribute only works on gcc >= 4.7 for now. */
+#ifdef	__amd64__
+#define	EFIAPI	__attribute__((ms_abi))
+#endif
+
 #ifndef EFIAPI                  // Forces EFI calling conventions reguardless of compiler options 
     #if _MSC_EXTENSIONS
         #define EFIAPI __cdecl  // Force C calling convention for Microsoft C compiler 

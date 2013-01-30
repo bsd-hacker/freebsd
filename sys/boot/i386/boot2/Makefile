@@ -26,7 +26,7 @@ CFLAGS=	-Os \
 	-fno-guess-branch-probability \
 	-fomit-frame-pointer \
 	-fno-unit-at-a-time \
-	-mno-align-long-strings \
+	-Wl,-mno-align-long-strings \
 	-mrtd \
 	-mregparm=3 \
 	-DUSE_XREAD \
@@ -59,7 +59,8 @@ boot1: boot1.out
 	objcopy -S -O binary boot1.out ${.TARGET}
 
 boot1.out: boot1.o
-	${LD} ${LDFLAGS} -e start -Ttext ${ORG1} -o ${.TARGET} boot1.o
+	${LD} ${LDFLAGS} -m elf_i386_fbsd -e start -Ttext ${ORG1} \
+	    -o ${.TARGET} boot1.o
 
 CLEANFILES+=	boot2 boot2.ld boot2.ldr boot2.bin boot2.out boot2.o \
 		boot2.s boot2.s.tmp boot2.h sio.o
@@ -80,7 +81,8 @@ boot2.bin: boot2.out
 	objcopy -S -O binary boot2.out ${.TARGET}
 
 boot2.out: ${BTXCRT} boot2.o sio.o
-	${LD} ${LDFLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC}
+	${LD} ${LDFLAGS} -m elf_i386_fbsd -Ttext ${ORG2} -o ${.TARGET} \
+	    ${.ALLSRC}
 
 boot2.o: boot2.s
 	${CC} ${ACFLAGS} -c boot2.s

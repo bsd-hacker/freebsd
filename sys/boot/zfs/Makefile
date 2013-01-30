@@ -12,20 +12,22 @@ CFLAGS+=	-I${.CURDIR}/../../cddl/boot/zfs
 
 CFLAGS+=	-ffreestanding
 .if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
+.if !defined(ZFS64)
 CFLAGS+=	-march=i386
 CFLAGS+=	-mpreferred-stack-boundary=2
+.endif
 CFLAGS+=	-mno-mmx -mno-3dnow -mno-sse -mno-sse2 -mno-sse3 -msoft-float
 .endif
 .if ${MACHINE_CPUARCH} == "powerpc" || ${MACHINE_CPUARCH} == "arm"
 CFLAGS+=	-msoft-float
 .endif
-.if ${MACHINE_CPUARCH} == "amd64"
+.if ${MACHINE_CPUARCH} == "amd64" && !defined(ZFS64)
 CFLAGS+=	-m32
 .endif
 
 CFLAGS+=	-Wformat -Wall
 
-.if ${MACHINE_CPUARCH} == "amd64"
+.if ${MACHINE_CPUARCH} == "amd64" && !defined(ZFS64)
 CLEANFILES+=    machine
 machine:
 	ln -sf ${.CURDIR}/../../i386/include machine
@@ -33,7 +35,7 @@ machine:
 
 .include <bsd.lib.mk>
 
-.if ${MACHINE_CPUARCH} == "amd64"
+.if ${MACHINE_CPUARCH} == "amd64" && !defined(ZFS64)
 .if !exists(machine)
 beforedepend ${OBJS}: machine
 .endif
