@@ -260,9 +260,9 @@ open_device(const char *dev_str, const char *chip_str, const char *mode)
 }
 
 int
-read_scandata_freebsd(char *fname, struct scanresult **result)
+read_scandata_freebsd(char *chip, char *mode, char *fname)
 {
 
-	(void) open_device("wlan0", "ar9280", "if");
+	(void) open_device(fname, chip, mode);
 	return (0);
 }
