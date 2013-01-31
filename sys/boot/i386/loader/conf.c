@@ -30,7 +30,7 @@ __FBSDID("$FreeBSD$");
 #include <stand.h>
 #include <bootstrap.h>
 #include "libi386/libi386.h"
-
+#include "pxe_http/httpfs.h"
 /*
  * We could use linker sets for some or all of these, but
  * then we would have to control what ended up linked into
@@ -54,7 +54,8 @@ extern struct devsw fwohci;
 struct devsw *devsw[] = {
     &bioscd,
     &biosdisk,
-#if defined(LOADER_NFS_SUPPORT) || defined(LOADER_TFTP_SUPPORT)
+#if defined(LOADER_NFS_SUPPORT) || defined(LOADER_TFTP_SUPPORT) || \
+    defined(LOADER_HTTP_SUPPORT)
     &pxedisk,
 #endif
 #if defined(LOADER_FIREWIRE_SUPPORT)
@@ -65,10 +66,16 @@ struct devsw *devsw[] = {
 
 struct fs_ops *file_system[] = {
     &ufs_fsops,
+/*
+ * Taking these out of HTTP support for now as this makes us too large
+ * to boot.  sbruno 31jan2013
+ */
+#ifndef LOADER_HTTP_SUPPORT 
     &ext2fs_fsops,
     &dosfs_fsops,
     &cd9660_fsops,
     &splitfs_fsops,
+#endif
 #ifdef LOADER_GZIP_SUPPORT
     &gzipfs_fsops,
 #endif
@@ -80,6 +87,9 @@ struct fs_ops *file_system[] = {
 #endif
 #ifdef LOADER_TFTP_SUPPORT
     &tftp_fsops,
+#endif
+#ifdef LOADER_HTTP_SUPPORT
+    &http_fsops,
 #endif
     NULL
 };
