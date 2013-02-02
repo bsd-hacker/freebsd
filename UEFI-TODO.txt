@@ -5,8 +5,9 @@ Part the First: 64-bit EFI loader
 + Make libstand build natively as 64-bit on amd64.
 + Adjust non-EFI boot code to use /usr/lib32/libstand.a.
 - Test that the other boot code still actually works.
-- Add bits to build 64-bit loader.efi.
-- Make sure that loader.efi can actually load a kernel and hand off to it.
++ Add bits to build 64-bit loader.efi.
++ Make sure that loader.efi can actually load a kernel and hand off to it.
+- Clean up loader.efi to propery exit UEFI and to allocate memory properly.
 
 Part the Second: Booting an amd64 kernel from the 64-bit EFI loader
 
