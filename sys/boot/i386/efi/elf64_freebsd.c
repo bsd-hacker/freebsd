@@ -1,0 +1,143 @@
+/*-
+ * Copyright (c) 1998 Michael Smith <msmith@freebsd.org>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
+#define __ELF_WORD_SIZE 64
+#include <sys/param.h>
+#include <sys/exec.h>
+#include <sys/linker.h>
+#include <string.h>
+#include <machine/bootinfo.h>
+#include <machine/elf.h>
+#include <stand.h>
+
+#include <efi.h>
+#include <efilib.h>
+
+#include "bootstrap.h"
+#include "../libi386/libi386.h"
+#include "../btx/lib/btxv86.h"
+
+extern int bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp);
+
+static int	elf64_exec(struct preloaded_file *amp);
+static int	elf64_obj_exec(struct preloaded_file *amp);
+
+struct file_format amd64_elf = { elf64_loadfile, elf64_exec };
+struct file_format amd64_elf_obj = { elf64_obj_loadfile, elf64_obj_exec };
+
+#define PG_V    0x001
+#define PG_RW   0x002
+#define PG_U    0x004
+#define PG_PS   0x080
+
+typedef u_int64_t p4_entry_t;
+typedef u_int64_t p3_entry_t;
+typedef u_int64_t p2_entry_t;
+static p4_entry_t *PT4;
+static p3_entry_t *PT3;
+static p2_entry_t *PT2;
+
+/*
+ * There is an ELF kernel and one or more ELF modules loaded.  
+ * We wish to start executing the kernel image, so make such 
+ * preparations as are required, and do so.
+ */
+static int
+elf64_exec(struct preloaded_file *fp)
+{
+    struct file_metadata	*md;
+    Elf_Ehdr 			*ehdr;
+    vm_offset_t			modulep, kernend, pagetable;
+    uint32_t			mp, ke;
+    int				err, i;
+
+    if ((md = file_findmetadata(fp, MODINFOMD_ELFHDR)) == NULL)
+	return(EFTYPE);
+    ehdr = (Elf_Ehdr *)&(md->md_data);
+
+    err = bi_load64(fp->f_args, &modulep, &kernend);
+    if (err != 0)
+	return(err);
+
+    PT4 = (p4_entry_t *)0x00000000fffff000;
+    err = BS->AllocatePages(AllocateMaxAddress, EfiLoaderData, 3,
+        (EFI_PHYSICAL_ADDRESS *)&PT4);
+    bzero(PT4, 3 * PAGE_SIZE);
+
+    PT3 = &PT4[512];
+    PT2 = &PT3[512];
+
+    /*
+     * This is kinda brutal, but every single 1GB VM memory segment points to
+     * the same first 1GB of physical memory.  But it is more than adequate.
+     */
+    for (i = 0; i < 512; i++) {
+        /* Each slot of the level 4 pages points to the same level 3 page */
+        PT4[i] = (p4_entry_t)PT3;
+        PT4[i] |= PG_V | PG_RW | PG_U;
+
+        /* Each slot of the level 3 pages points to the same level 2 page */
+        PT3[i] = (p3_entry_t)PT2;
+        PT3[i] |= PG_V | PG_RW | PG_U;
+
+        /* The level 2 page slots are mapped with 2MB pages for 1GB. */
+        PT2[i] = i * (2 * 1024 * 1024);
+        PT2[i] |= PG_V | PG_RW | PG_PS | PG_U;
+    }
+
+    printf("Start @ 0x%lx ...\n", ehdr->e_entry);
+
+    ldr_enter(fp->f_name);
+
+    dev_cleanup();
+
+    mp = modulep & 0xffffffff;
+    ke = kernend & 0xffffffff;
+    pagetable = (uintptr_t)PT4;
+    __asm __volatile(
+        "movl	%0, %%eax;"
+        "pushq  %%rax;"
+        "movl	%1, %%eax;"
+        "salq   $32, %%rax;"
+        "pushq	%%rax;"
+        "movq	%2, %%rax;"
+        "pushq	%%rax;"
+        "movq	%3, %%rax;"
+        "movq	%%rax, %%cr3;"
+        "ret"
+    :: "r" (ke), "r" (mp), "r" (ehdr->e_entry), "r" (PT4));
+
+    panic("exec returned");
+}
+
+static int
+elf64_obj_exec(struct preloaded_file *fp)
+{
+	return (EFTYPE);
+}
