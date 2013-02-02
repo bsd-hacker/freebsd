@@ -19,7 +19,7 @@ SRCS+=	start.S
 CFLAGS+=	-fPIC
 CFLAGS+=	-I.
 CFLAGS+=	-I${.CURDIR}/../../efi/include
-CFLAGS+=	-I${.CURDIR}/../../efi/include/i386
+CFLAGS+=	-I${.CURDIR}/../../efi/include/${MACHINE_CPUARCH}
 
 .if ${MK_FORTH} != "no"
 BOOT_FORTH=	yes
