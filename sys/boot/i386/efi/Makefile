@@ -17,6 +17,7 @@ SRCS+=	i386_copy.c bootinfo.c autoload.c devicename.c efimd.c
 SRCS+=	start.S
 
 CFLAGS+=	-fPIC
+CFLAGS+=	-I.
 CFLAGS+=	-I${.CURDIR}/../../efi/include
 CFLAGS+=	-I${.CURDIR}/../../efi/include/i386
 
@@ -82,3 +83,11 @@ DPADD=		${LIBFICL} ${LIBEFI} ${LIBSTAND}
 LDADD=		${LIBFICL} ${LIBEFI} ${LIBSTAND}
 
 .include <bsd.prog.mk>
+
+
+.if ${MACHINE_CPUARCH} == "amd64"
+beforedepend ${OBJS}: machine
+CLEANFILES+=   machine
+machine:
+	ln -sf ${.CURDIR}/../../../amd64/include machine
+.endif
