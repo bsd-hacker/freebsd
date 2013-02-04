@@ -85,7 +85,7 @@ void	pxe_sock_init();
 /* int	pxe_socket_alloc(); */
 
 /* frees socket structure */
-/* int	pxe_socket_free(int socket); (/
+/* int	pxe_socket_free(int socket); */
 
 /* shows socket usage statistics */
 void	pxe_sock_stats();

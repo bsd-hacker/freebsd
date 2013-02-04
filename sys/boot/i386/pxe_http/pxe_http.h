@@ -58,7 +58,7 @@ typedef struct pxe_http_handle {
 	off_t		offset;		/* current offset in bytes from
 					 * beginning of file */
 #ifdef PXE_HTTPFS_CACHING
-/*	off_t		cache_start;	/* cached block, to reduce http requests */
+	off_t		cache_start;	/* cached block, to reduce http requests */
 	uint16_t	cache_size;	/* size of cached block */
 #endif
 	size_t		size;		/* file size if known */
