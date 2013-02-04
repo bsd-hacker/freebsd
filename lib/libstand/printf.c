@@ -57,7 +57,7 @@ __FBSDID("$FreeBSD$");
 #define MAXNBUF (sizeof(intmax_t) * CHAR_BIT + 1)
 
 static char	*ksprintn (char *buf, uintmax_t num, int base, int *len, int upper);
-static int	kvprintf(char const *fmt, void (*func)(int), void *arg, int radix, va_list ap);
+static int	kvprintf(char const *fmt, void (*func)(int), void *arg, int radix, size_t size, va_list ap);
 
 int
 printf(const char *fmt, ...)
@@ -66,7 +66,7 @@ printf(const char *fmt, ...)
 	int retval;
 
 	va_start(ap, fmt);
-	retval = kvprintf(fmt, putchar, NULL, 10, ap);
+	retval = kvprintf(fmt, putchar, NULL, 10, 0, ap);
 	va_end(ap);
 	return retval;
 }
@@ -75,7 +75,7 @@ void
 vprintf(const char *fmt, va_list ap)
 {
 
-	kvprintf(fmt, putchar, NULL, 10, ap);
+	kvprintf(fmt, putchar, NULL, 10, 0, ap);
 }
 
 int
@@ -85,8 +85,32 @@ sprintf(char *buf, const char *cfmt, ...)
 	va_list ap;
 
 	va_start(ap, cfmt);
-	retval = kvprintf(cfmt, NULL, (void *)buf, 10, ap);
+	retval = kvprintf(cfmt, NULL, (void *)buf, 10, 0, ap);
 	buf[retval] = '\0';
+	va_end(ap);
+	return retval;
+}
+
+int
+snprintf(char *buf, size_t size, const char *cfmt, ...)
+{
+	int retval;
+	va_list ap;
+	size_t	maxsize = (size > 1) ? size - 1 : 0;
+	
+	if (maxsize == 0) {
+		buf[0] = '\0';
+		return (0);
+	}
+
+	va_start(ap, cfmt);
+	retval = kvprintf(cfmt, NULL, (void *)buf, 10, maxsize, ap);
+
+	if (retval < maxsize)
+		buf[retval] = '\0';
+	else
+		buf[maxsize] = '\0';
+	
 	va_end(ap);
 	return retval;
 }
@@ -96,7 +120,7 @@ vsprintf(char *buf, const char *cfmt, va_list ap)
 {
 	int	retval;
 	
-	retval = kvprintf(cfmt, NULL, (void *)buf, 10, ap);
+	retval = kvprintf(cfmt, NULL, (void *)buf, 10, 0, ap);
 	buf[retval] = '\0';
 }
 
@@ -149,9 +173,10 @@ ksprintn(char *nbuf, uintmax_t num, int base, int *lenp, int upper)
  *		("%*D", len, ptr, " " -> XX XX XX XX ...
  */
 static int
-kvprintf(char const *fmt, void (*func)(int), void *arg, int radix, va_list ap)
+kvprintf(char const *fmt, void (*func)(int), void *arg, int radix, size_t maxsize, va_list ap)
 {
-#define PCHAR(c) {int cc=(c); if (func) (*func)(cc); else *d++ = cc; retval++; }
+#define PCHAR(c) { int cc=(c); if (func) (*func)(cc); else *d++ = cc; retval++; \
+                   if (maxsize && (retval == maxsize)) return (retval); }
 	char nbuf[MAXNBUF];
 	char *d;
 	const char *p, *percent, *q;
