@@ -32,19 +32,11 @@ __FBSDID("$FreeBSD$");
 #include <efi.h>
 #include <efilib.h>
 
-#include <libi386.h>
 #include <machine/bootinfo.h>
+#include <machine/efi.h>
+#include <machine/metadata.h>
 
-#define EFI_INTEL_FPSWA		\
-    {0xc41b6531,0x97b9,0x11d3,{0x9a,0x29,0x00,0x90,0x27,0x3f,0xc1,0x4d}}
-
-static EFI_GUID fpswa_guid = EFI_INTEL_FPSWA;
-
-/* DIG64 Headless Console & Debug Port Table. */
-#define	HCDP_TABLE_GUID		\
-    {0xf951938d,0x620b,0x42ef,{0x82,0x79,0xa8,0x4b,0x79,0x61,0x78,0x98}}
-
-static EFI_GUID hcdp_guid = HCDP_TABLE_GUID;
+#include "bootstrap.h"
 
 static UINTN mapkey;
 
@@ -56,27 +48,17 @@ ldr_alloc(vm_offset_t va)
 }
 
 int
-ldr_bootinfo(struct bootinfo *bi, uint64_t *bi_addr)
+ldr_bootinfo(struct preloaded_file *kfp)
 {
-	VOID *fpswa;
 	EFI_MEMORY_DESCRIPTOR *mm;
 	EFI_PHYSICAL_ADDRESS addr;
-	EFI_HANDLE handle;
 	EFI_STATUS status;
-	size_t bisz;
+	size_t efisz;
 	UINTN mmsz, pages, sz;
 	UINT32 mmver;
+	struct efi_header *efihdr;
 
-	bi->bi_systab = (uint64_t)ST;
-	bi->bi_hcdp = (uint64_t)efi_get_table(&hcdp_guid);
-
-	sz = sizeof(EFI_HANDLE);
-	status = BS->LocateHandle(ByProtocol, &fpswa_guid, 0, &sz, &handle);
-	if (status == 0)
-		status = BS->HandleProtocol(handle, &fpswa_guid, &fpswa);
-	bi->bi_fpswa = (status == 0) ? (uint64_t)fpswa : 0;
-
-	bisz = (sizeof(struct bootinfo) + 0x0f) & ~0x0f;
+        efisz = (sizeof(struct efi_header) + 0xf) & ~0xf;
 
 	/*
 	 * Allocate enough pages to hold the bootinfo block and the memory
@@ -90,8 +72,8 @@ ldr_bootinfo(struct bootinfo *bi, uint64_t *bi_addr)
 	sz = 0;
 	BS->GetMemoryMap(&sz, NULL, &mapkey, &mmsz, &mmver);
 	sz += mmsz;
-	sz = (sz + 15) & ~15;
-	pages = EFI_SIZE_TO_PAGES(sz + bisz);
+	sz = (sz + 0xf) & ~0xf;
+	pages = EFI_SIZE_TO_PAGES(sz + efisz);
 	status = BS->AllocatePages(AllocateAnyPages, EfiLoaderData, pages,
 	    &addr);
 	if (EFI_ERROR(status)) {
@@ -105,21 +87,22 @@ ldr_bootinfo(struct bootinfo *bi, uint64_t *bi_addr)
 	 * memory map on a 16-byte boundary (the bootinfo block is page
 	 * aligned).
 	 */
-	*bi_addr = addr;
-	mm = (void *)(addr + bisz);
-	sz = (EFI_PAGE_SIZE * pages) - bisz;
+	efihdr = (struct efi_header *)addr;
+	mm = (void *)((uint8_t *)efihdr + efisz);
+	sz = (EFI_PAGE_SIZE * pages) - efisz;
 	status = BS->GetMemoryMap(&sz, mm, &mapkey, &mmsz, &mmver);
 	if (EFI_ERROR(status)) {
 		printf("%s: GetMemoryMap() returned 0x%lx\n", __func__,
 		    (long)status);
 		return (EINVAL);
 	}
-	bi->bi_memmap = (uint64_t)mm;
-	bi->bi_memmap_size = sz;
-	bi->bi_memdesc_size = mmsz;
-	bi->bi_memdesc_version = mmver;
 
-	bcopy(bi, (void *)(*bi_addr), sizeof(*bi));
+	efihdr->memory_size = sz;
+	efihdr->descriptor_size = mmsz;
+	efihdr->descriptor_version = mmver;
+
+	file_addmetadata(kfp, MODINFOMD_EFI, efisz + sz, efihdr);
+
 	return (0);
 }
 

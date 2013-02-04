@@ -37,7 +37,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/specialreg.h>
 #include "bootstrap.h"
 #include "libi386.h"
-#include "btxv86.h"
 
 /*
  * Copy module-related data into the load area, where it can be
@@ -126,6 +125,8 @@ bi_copymodules64(vm_offset_t addr)
     return(addr);
 }
 
+extern int ldr_bootinfo(struct preloaded_file *kfp);
+
 /*
  * Load the information expected by an amd64 kernel.
  *
@@ -190,7 +191,7 @@ bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
     file_addmetadata(kfp, MODINFOMD_HOWTO, sizeof howto, &howto);
     file_addmetadata(kfp, MODINFOMD_ENVP, sizeof envp, &envp);
     file_addmetadata(kfp, MODINFOMD_KERNEND, sizeof kernend, &kernend);
-    /*bios_addsmapdata(kfp);*/
+    ldr_bootinfo(kfp);
 
     /* Figure out the size and location of the metadata */
     *modulep = addr;
