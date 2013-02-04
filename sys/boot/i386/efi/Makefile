@@ -20,6 +20,9 @@ CFLAGS+=	-fPIC
 CFLAGS+=	-I.
 CFLAGS+=	-I${.CURDIR}/../../efi/include
 CFLAGS+=	-I${.CURDIR}/../../efi/include/${MACHINE_CPUARCH}
+CFLAGS+=	-I${.CURDIR}/../../../contrib/dev/acpica/include
+CFLAGS+=	-I${.CURDIR}/../../..
+
 
 .if ${MK_FORTH} != "no"
 BOOT_FORTH=	yes
@@ -78,6 +81,7 @@ loader.efi: loader.sym
 LIBEFI=		${.OBJDIR}/../../efi/libefi/libefi.a
 CFLAGS+=	-I${.CURDIR}/../libi386
 CFLAGS+=	-I${.CURDIR}/../btx/lib
+CFLAGS+=	-I${.CURDIR}/../../common
 
 DPADD=		${LIBFICL} ${LIBEFI} ${LIBSTAND}
 LDADD=		${LIBFICL} ${LIBEFI} ${LIBSTAND}
