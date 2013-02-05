@@ -38,10 +38,10 @@ __FBSDID("$FreeBSD$");
 #include <strings.h>
 
 void
-test_preexisting ()
+test_preexisting()
 {
 	/* 
-	 * use a pre-existing buffer
+	 * Use a pre-existing buffer.
 	 */
 
 	char buf[512];
@@ -53,56 +53,60 @@ test_preexisting ()
 	size_t nofw, nofr;
 	int rc;
 
-	/* open a FILE * using fmemopen */
-	fp = fmemopen (buf, sizeof buf, "w");
-	assert (fp != NULL);
+	/* Open a FILE * using fmemopen. */
+	fp = fmemopen(buf, sizeof(buf), "w");
+	assert(fp != NULL);
 
-	/* write to the buffer */
-	nofw = fwrite (str, 1, sizeof str, fp);
-	assert (nofw == sizeof str);
+	/* Write to the buffer. */
+	nofw = fwrite(str, 1, sizeof(str), fp);
+	assert(nofw == sizeof(str));
 
-	/* close the FILE * */
-	rc = fclose (fp);
-	assert (rc == 0);
+	/* Close the FILE *. */
+	rc = fclose(fp);
+	assert(rc == 0);
 
-	/* re-open the FILE * to read back the data */
-	fp = fmemopen (buf, sizeof buf, "r");
-	assert (fp != NULL);
+	/* Re-open the FILE * to read back the data. */
+	fp = fmemopen(buf, sizeof(buf), "r");
+	assert(fp != NULL);
 
-	/* read from the buffer */
-	bzero (buf2, sizeof buf2);
-	nofr = fread (buf2, 1, sizeof buf2, fp);
-	assert (nofr == sizeof buf2);
+	/* Read from the buffer. */
+	bzero(buf2, sizeof(buf2));
+	nofr = fread(buf2, 1, sizeof(buf2), fp);
+	assert(nofr == sizeof(buf2));
 
-	/* since a write on a FILE * retrieved by fmemopen
+	/* 
+	 * Since a write on a FILE * retrieved by fmemopen
 	 * will add a '\0' (if there's space), we can check
-	 * the strings for equality */
-	assert (strcmp(str, buf2) == 0);
+	 * the strings for equality.
+	 */
+	assert(strcmp(str, buf2) == 0);
 
-	/* close the FILE * */
-	rc = fclose (fp);
-	assert (rc == 0);
+	/* Close the FILE *. */
+	rc = fclose(fp);
+	assert(rc == 0);
 
-	/* now open a FILE * on the first 4 bytes of the string */
-	fp = fmemopen (str, 4, "w");
-	assert (fp != NULL);
+	/* Now open a FILE * on the first 4 bytes of the string. */
+	fp = fmemopen(str, 4, "w");
+	assert(fp != NULL);
 
-	/* try to write more bytes than we shoud, we'll get a short count (4) */
-	nofw = fwrite (str2, 1, sizeof str2, fp);
-	assert (nofw == 4);
+	/*
+	 * Try to write more bytes than we shoud, we'll get a short count (4).
+	 */
+	nofw = fwrite(str2, 1, sizeof(str2), fp);
+	assert(nofw == 4);
 
-	/* close the FILE * */
-	rc = fclose (fp);
+	/* Close the FILE *. */
+	rc = fclose(fp);
 
-	/* check that the string was not modified after the first 4 bytes */
-	assert (strcmp (str, str3) == 0);
+	/* Check that the string was not modified after the first 4 bytes. */
+	assert(strcmp(str, str3) == 0);
 }
 
 void
-test_autoalloc ()
+test_autoalloc()
 {
 	/* 
-	 * let fmemopen allocate the buffer
+	 * Let fmemopen allocate the buffer.
 	 */
 
 	char str[] = "A quick test";
@@ -111,33 +115,138 @@ test_autoalloc ()
 	size_t nofw, nofr, i;
 	int rc;
 
-	/* open a FILE * using fmemopen */
-	fp = fmemopen (NULL, 512, "w");
-	assert (fp != NULL);
+	/* Open a FILE * using fmemopen. */
+	fp = fmemopen(NULL, 512, "w+");
+	assert(fp != NULL);
 
 	/* fill the buffer */
 	for (i = 0; i < 512; i++) {
-		nofw = fwrite ("a", 1, 1, fp);
-		assert (nofw == 1);
+		nofw = fwrite("a", 1, 1, fp);
+		assert(nofw == 1);
 	}
 
-	/* get the current position into the stream */
-	pos = ftell (fp);
-	assert (pos == 512);
+	/* Get the current position into the stream. */
+	pos = ftell(fp);
+	assert(pos == 512);
 
-	/* try to write past the end, we should get a short object count (0) */
-	nofw = fwrite ("a", 1, 1, fp);
-	assert (nofw == 0);
+	/* 
+	 * Try to write past the end, we should get a short object count (0)
+	 */
+	nofw = fwrite("a", 1, 1, fp);
+	assert(nofw == 0);
 
-	/* close the FILE * */
-	rc = fclose (fp);
-	assert (rc == 0);
+	/* Close the FILE *. */
+	rc = fclose(fp);
+	assert(rc == 0);
+}
+
+void
+test_data_length()
+{
+	/*
+	 * Here we test that a read operation doesn't go past the end of the
+	 * data actually written, and that a SEEK_END seeks from the end of the
+	 * data, not of the whole buffer.
+	 */
+	FILE *fp;
+	char buf[512] = {'\0'};
+	char str[]  = "Test data length. ";
+	char str2[] = "Do we have two sentences?";
+	char str3[sizeof(str) + sizeof(str2) -1];
+	long pos;
+	size_t nofw, nofr;
+	int rc;
+
+	/* Open a FILE * for updating our buffer. */
+	fp = fmemopen(buf, sizeof(buf), "w+");
+	assert(fp != NULL);
+
+	/* Write our string into the buffer. */
+	nofw = fwrite(str, 1, sizeof(str), fp);
+	assert(nofw == sizeof(str));
+
+	/* 
+	 * Now seek to the end and check that ftell
+	 * gives us sizeof(str).
+	 */
+	rc = fseek(fp, 0, SEEK_END);
+	assert(rc == 0);
+	pos = ftell(fp);
+	assert(pos == sizeof(str));
+
+	/* Close the FILE *. */
+	rc = fclose(fp);
+	assert(rc == 0);
+
+	/* Reopen the buffer for appending. */
+	fp = fmemopen(buf, sizeof(buf), "a+");
+	assert(fp != NULL);
+
+	/* We should now be writing after the first string. */
+	nofw = fwrite(str2, 1, sizeof(str2), fp);
+	assert(nofw == sizeof(str2));
+
+	/* Rewind the FILE *. */
+	rc = fseek(fp, 0, SEEK_SET);
+	assert(rc == 0);
+
+	/* Make sure we're at the beginning. */
+	pos = ftell(fp);
+	assert(pos == 0);
+
+	/* Read the whole buffer. */
+	nofr = fread(str3, 1, sizeof(buf), fp);
+	assert(nofr == sizeof(str3));
+
+	/* Make sure the two strings are there. */
+	assert(strncmp(str3, str, sizeof(str) - 1) == 0);
+	assert(strncmp(str3 + sizeof(str) - 1, str2, sizeof(str2)) == 0);
+
+	/* Close the FILE *. */
+	rc = fclose(fp);
+	assert(rc == 0);
+}
+
+void
+test_binary()
+{
+	/*
+	 * Make sure that NULL bytes are never appended when opening a buffer
+	 * in binary mode.
+	 */
+
+	FILE *fp;
+	char buf[20];
+	char str[] = "Test";
+	size_t nofw;
+	int rc, i;
+
+	/* Pre-fill the buffer. */
+	memset(buf, 'A', sizeof(buf));
+
+	/* Open a FILE * in binary mode. */
+	fp = fmemopen(buf, sizeof(buf), "w+b");
+	assert(fp != NULL);
+
+	/* Write some data into it. */
+	nofw = fwrite(str, 1, strlen(str), fp);
+	assert(nofw == strlen(str));
+
+	/* Make sure that the buffer doesn't contain any NULL bytes. */
+	for (i = 0; i < sizeof(buf); i++)
+		assert(buf[i] != '\0');
+
+	/* Close the FILE *. */
+	rc = fclose(fp);
+	assert(rc == 0);
 }
 
 int
-main (void)
+main(void)
 {
-	test_autoalloc   ();
-	test_preexisting ();
+	test_autoalloc();
+	test_preexisting();
+	test_data_length();
+	test_binary();
 	return (0);
 }
