@@ -24,11 +24,17 @@ LIBZFS=		${.OBJDIR}/../../zfs/libzfsboot.a
 LIBZFS=
 .endif
 
+# Enable HTTP support for PXE
+.if defined(LOADER_HTTP_SUPPORT)
+CFLAGS+=	-DLOADER_HTTP_SUPPORT
+CFLAGS+=	-DPXE_MORE
+.else
 # Enable PXE TFTP or NFS support, not both.
 .if defined(LOADER_TFTP_SUPPORT)
 CFLAGS+=	-DLOADER_TFTP_SUPPORT
 .else
 CFLAGS+=	-DLOADER_NFS_SUPPORT
+.endif
 .endif
 
 # Include bcache code.
@@ -70,6 +76,10 @@ CFLAGS+=	-I${.CURDIR}/..
 # BTX components
 CFLAGS+=	-I${.CURDIR}/../btx/lib
 
+# pxe_http components 
+LIBHTTP=	 ${.OBJDIR}/../pxe_http/libpxe_http.a
+CFLAGS+=	-I$(.CURDIR)/../pxe_http
+
 # Debug me!
 #CFLAGS+=	-g
 #LDFLAGS+=	-g
@@ -105,8 +115,8 @@ FILES+=	loader.rc
 # XXX crt0.o needs to be first for pxeboot(8) to work
 OBJS=	${BTXCRT} 
 
-DPADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFS} ${LIBI386} ${LIBSTAND}
-LDADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFS} ${LIBI386} -lstand
+DPADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFS} ${LIBI386} ${LIBHTTP} ${LIBSTAND}
+LDADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFS} ${LIBI386} ${LIBHTTP} -lstand
 
 .include <bsd.prog.mk>
 

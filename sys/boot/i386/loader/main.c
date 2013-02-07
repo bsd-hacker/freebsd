@@ -42,6 +42,19 @@ __FBSDID("$FreeBSD$");
 #include "libi386/libi386.h"
 #include "btxv86.h"
 
+#ifdef PXE_MORE
+#include "pxe_arp.h"
+#include "pxe_connection.h"
+#include "pxe_dns.h"
+#include "pxe_filter.h"
+#include "pxe_http.h"
+#include "pxe_icmp.h"
+#include "pxe_ip.h"
+#include "pxe_sock.h"
+#include "pxe_tcp.h"
+#include "pxe_udp.h"
+#endif
+
 #define	KARGS_FLAGS_CD		0x1
 #define	KARGS_FLAGS_PXE		0x2
 #define	KARGS_FLAGS_ZFS		0x4
@@ -316,6 +329,343 @@ command_heap(int argc, char *argv[])
       sbrk(0), heap_top);
     return(CMD_OK);
 }
+
+/* added for pxe_http */
+#ifdef PXE_MORE
+static int
+command_route(int argc, char *argv[])
+{
+    PXE_IPADDR net;
+    PXE_IPADDR gw;
+
+    if (argc < 2) {
+	printf("use: route add|del|print [default|net_addr gw_addr] \n");
+	return (CMD_OK);
+    } 
+
+    if (!strcmp(argv[1], "print")) {
+    	pxe_ip_route_stat();
+	return (CMD_OK);
+    }
+    
+    if (argc < 4) {
+	printf("use: route add|del default|net_addr gw_addr\n");
+	return (CMD_OK);
+    }
+	
+    if ( (strcmp(argv[1], "add") != 0) && (strcmp(argv[1], "del") != 0))
+    	return (CMD_OK);
+    
+    if (!strcmp(argv[2], "default")) {
+	
+	if (!strcmp(argv[1], "del")) {
+	    printf("Cannot delete default gateway.\n");
+	    return (CMD_OK);
+	}
+		
+	gw.ip = pxe_convert_ipstr(argv[3]);
+		
+	pxe_ip_route_default(&gw);
+	    
+	return (CMD_OK);
+    }
+	
+    gw.ip = pxe_convert_ipstr(argv[3]);
+    net.ip = pxe_convert_ipstr(argv[2]);
+	
+    if (!strcmp(argv[1], "add")) {
+	pxe_ip_route_add(&net, pxe_ip_get_netmask(&net), &gw);
+	return (CMD_OK);
+    }
+
+    pxe_ip_route_del(&net, pxe_ip_get_netmask(&net), &gw);
+    
+    return (CMD_OK);
+}
+
+static int
+command_arp(int argc, char *argv[])
+{
+    PXE_IPADDR *ip;
+
+    if (argc > 1) {
+	
+	if (strcmp(argv[1], "stats") != 0)
+	    ip = pxe_gethostbyname(argv[1]);
+	else {
+	    pxe_arp_stats();
+	    return (CMD_OK);
+	}
+
+    } else {
+	printf("use: arp ip4_address|stats\n");
+	return (CMD_OK);
+    }
+    
+    printf("searching ip: %s\n", (ip != NULL) ? inet_ntoa(ip->ip) : "?");
+    
+    const uint8_t* mac = (const uint8_t *)pxe_arp_ip4mac(ip);
+
+    if (mac != NULL)
+           printf("MAC: %6D\n", mac, ":");
+    else
+	   printf("MAC search failed.\n");
+								   
+    return (CMD_OK);
+}
+
+static int
+command_ping(int argc, char *argv[])
+{
+    PXE_IPADDR* ip = NULL;
+
+    pxe_icmp_init();
+
+    if (argc > 1)
+	ip = pxe_gethostbyname(argv[1]);
+    else {
+	printf("use: ping ip4_address\n");
+	return (CMD_OK);
+    }
+
+    pxe_ping(ip, 5, 1);
+								   
+    return (CMD_OK);
+}
+
+static int
+command_await()
+{
+
+    while (1) {
+        if (!pxe_core_recv_packets()) {
+	    twiddle();
+	    delay(10000);
+	}
+    }
+    
+    return (0);
+}
+
+static int
+command_sock(int argc, char *argv[])
+{
+    if (argc < 2) {
+    	printf("use: socket stats|tcptest\n");
+	return (CMD_OK);
+    }
+    
+    if (!strcmp(argv[1], "stats")) {
+	pxe_sock_stats();
+	return (CMD_OK);
+    }
+    
+    if (argc < 3) {
+    	printf("use: socket tcptest ip4.addr\n");
+	return (CMD_OK);
+    }
+    
+    if (!strcmp(argv[1], "tcptest")) {
+	int socket = pxe_socket();
+	PXE_IPADDR	ip;
+	uint32_t	bps = 0;
+	uint32_t	start_time = 0;
+	int		index2 = 0;	
+	    
+	ip.ip = pxe_convert_ipstr(argv[2]);
+	    
+	int res = pxe_connect(socket, &ip, 26, PXE_TCP_PROTOCOL);
+
+	if (res == -1)
+	    printf("tcptest: failed to connect socket.\n");
+	else {
+	    int index = 0;
+	    int recvc = 0;
+	    uint8_t  data;
+	    start_time = pxe_get_secs();
+
+	    index = 0;
+	    recvc = 0;
+		    
+	    data = 1;
+
+	    while ( data != 0) {
+	        recvc = pxe_recv(socket, &data, 1);
+			    
+	        if (recvc == -1) {
+		    printf("tcptest: %d bytes recv, but next failed.\n", index);
+		    pxe_close(socket);
+		    return (CMD_OK);
+		}
+			    
+		if (recvc == 0) {
+		    printf("!");
+		    continue;
+		}
+			    
+		recvc = (index % 149) + 1; 
+
+		if (data == 0) {
+		    printf("tcptest: end of test.\n");
+		    break;
+		}
+			    
+		if (data != recvc)
+		    printf("tcptest: error: step %d, waited %d, got %d.\n",
+		        index, recvc, data);
+
+		index += 1;
+		index2 += 1;
+			    
+		if ( index2 > 100000) {
+		    uint32_t delta = pxe_get_secs() - start_time;
+		    bps = ((double)index) / ((delta != 0) ? delta : 1);
+
+		    printf("tcptest: %d bytes received, %d bytes/sec.\n",
+		        index, bps);
+			    
+		    index2 = 0;
+		}
+	    }
+		    
+	    uint32_t delta = pxe_get_secs() - start_time;
+	    bps = ((double)index) / ((delta != 0) ? delta : 1);
+		    
+	    printf("tcptest: ok (recv: %d), avg %d bytes/sec.\n", index, bps);
+	}
+	pxe_close(socket);
+    }
+    
+    return (CMD_OK);
+}
+
+static int
+command_resolve(int argc, char *argv[])
+{
+    if (argc < 2) {
+    	printf("use: resolve dns_name\n");
+	return (CMD_OK);
+    }
+    
+    PXE_IPADDR	*ip;
+    
+    char*	name = argv[1];
+
+    ip = pxe_gethostbyname(name);
+    
+    if ( (ip == NULL) || (ip->ip == 0))
+        printf("failed to resolve domain %s\n", name);
+    else
+	printf("%s resolved as %s\n", name, inet_ntoa(ip->ip));
+    
+    return (CMD_OK);
+}
+
+static int
+command_ns(int argc, char *argv[])
+{
+    PXE_IPADDR	*ip;
+    
+    if (argc == 1) {
+	ip = pxe_get_ip(PXE_IP_NAMESERVER);
+	
+    	printf("primary nameserver: %s\n", inet_ntoa(ip->ip));
+
+	return (CMD_OK);
+    }
+    
+    PXE_IPADDR	addr;
+    
+    addr.ip = pxe_convert_ipstr(argv[1]);
+    
+    if (addr.ip != 0)
+	pxe_set_ip(PXE_IP_NAMESERVER, &addr);
+    else
+	printf("Syntax error in ip address.\n");
+    
+    return (CMD_OK);
+}
+
+static int
+command_fetch(int argc, char *argv[])
+{
+    if (argc == 1) {
+	printf("usage: fetch server/path/to/file.ext\n");
+	return (CMD_OK);
+    }
+
+    char *server_name = argv[1];
+    char *filename = server_name;
+
+    while (*filename) {
+        if (*filename == '/') {
+	    *filename = '\0';
+	    ++filename;
+	    break;
+        }
+        ++filename;
+    }
+    
+    /* retrieve all file */
+    pxe_fetch(server_name, filename, 0LL, 0L);
+    
+    return (CMD_OK);
+}
+
+COMMAND_SET(pxe, "pxe", "pxe test module", command_pxe);
+
+static int
+command_pxe(int argc, char *argv[])
+{
+    if (argc<2) {
+        printf("PXE test module (built at %s %s)\n", __DATE__, __TIME__);
+        printf("  use: pxe arp|await|connections|fetch|filters|\n"
+	       "\tping|resolve|route|socket\n");
+	return (CMD_OK);
+    } 
+
+    if (!strcmp(argv[1], "arp"))
+	return command_arp(argc - 1, &argv[1]);
+	
+    if (!strcmp(argv[1], "ping"))
+	return command_ping(argc - 1, &argv[1]);
+	
+    if (!strcmp(argv[1], "route"))
+	return command_route(argc - 1, &argv[1]);
+
+    if (!strcmp(argv[1], "filters")) {
+	pxe_filter_stats();
+	return (CMD_OK);
+    }
+	
+    if (!strcmp(argv[1], "socket"))
+	return command_sock(argc - 1, &argv[1]);
+	
+    if (!strcmp(argv[1], "resolve"))
+	return command_resolve(argc - 1, &argv[1]);
+	
+    if (!strcmp(argv[1], "ns"))
+	return command_ns(argc - 1, &argv[1]);
+	
+	
+    if (!strcmp(argv[1], "await"))
+	return command_await();
+	
+    if (!strcmp(argv[1], "connections")) {
+	pxe_connection_stats();
+	return (CMD_OK);
+    }
+    
+    if (!strcmp(argv[1], "fetch")) {
+	return command_fetch(argc - 1, &argv[1]);
+    }
+
+    printf("unknown pxe command '%s'\n", argv[1]);
+    
+    return (CMD_OK);
+}
+/* pxe_http add end */
+#endif
 
 /* ISA bus access functions for PnP, derived from <machine/cpufunc.h> */
 static int		
