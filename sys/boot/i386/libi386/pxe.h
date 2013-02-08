@@ -48,6 +48,9 @@
  * structures passed into PXE
  * Question: does this really work for PXE's expected ABI?
  */
+#ifndef __PXE__H__
+#define __PXE__H__
+
 #define	PACKED		__packed
 
 #define	S_SIZE(s)	s, sizeof(s) - 1
@@ -147,7 +150,7 @@ typedef struct {
 	PXENV_STATUS_t	Status;
 	ADDR32_t	ProtocolIni;	/* Phys addr of a copy of the driver module */
 	uint8_t		reserved[8];
-} PACKED t_PXENV_UNDI_INITALIZE;
+} PACKED t_PXENV_UNDI_INITIALIZE;
 
 
 #define	MAXNUM_MCADDR		8
@@ -511,3 +514,5 @@ typedef struct {
 typedef struct {
 	PXENV_STATUS_t	Status;
 } PACKED t_PXENV_STOP_BASE;
+
+#endif

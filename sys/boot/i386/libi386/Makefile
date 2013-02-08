@@ -7,16 +7,18 @@ SRCS=	biosacpi.c bioscd.c biosdisk.c biosmem.c biospnp.c \
 	biospci.c biossmap.c bootinfo.c bootinfo32.c bootinfo64.c \
 	comconsole.c devicename.c elf32_freebsd.c \
 	elf64_freebsd.c \
-	i386_copy.c i386_module.c nullconsole.c pxe.c pxetramp.s \
+	i386_copy.c i386_module.c nullconsole.c pxe.c \
 	smbios.c time.c vidconsole.c amd64_tramp.S spinconsole.c
 .PATH:	${.CURDIR}/../../zfs
 SRCS+=	devicename_stubs.c
 
-# Enable PXE TFTP or NFS support, not both.
+# Enable PXE to fetch things via HTTP, TFTP or NFS.
+.if !defined(LOADER_HTTP_SUPPORT)
 .if defined(LOADER_TFTP_SUPPORT)
 CFLAGS+=	-DLOADER_TFTP_SUPPORT
 .else
 CFLAGS+=	-DLOADER_NFS_SUPPORT
+.endif
 .endif
 
 BOOT_COMCONSOLE_PORT?= 0x3f8
@@ -42,13 +44,19 @@ CFLAGS+= -DSMBIOS_LITTLE_ENDIAN_UUID
 # Include simple terminal emulation (cons25-compatible)
 CFLAGS+= -DTERM_EMU
 
+# allow pxe_http perform udpread/udpwrite
+CFLAGS+= -DPXEHTTP_UDP_FOR_LIBSTAND
+
+# enable debug of pxe_http
+CDLAGS+= -DPXE_DEBUG
+
 # XXX: make alloca() useable
 CFLAGS+= -Dalloca=__builtin_alloca
 
 CFLAGS+=	-I${.CURDIR}/../../common -I${.CURDIR}/../common \
 		-I${.CURDIR}/../btx/lib \
 		-I${.CURDIR}/../../../contrib/dev/acpica/include \
-		-I${.CURDIR}/../../.. -I.
+		-I${.CURDIR}/../../.. -I. -I${.CURDIR}/../pxe_http
 # the location of libstand
 CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand/
 
