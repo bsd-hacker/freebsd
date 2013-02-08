@@ -1,5 +1,7 @@
 # pxe_http project
 #
+.include	<bsd.prog.mk>
+
 LIB=		pxe_http
 INTERNALLIB=
 
@@ -11,6 +13,10 @@ SRCS=	pxe_isr.S pxe_mem.c pxe_buffer.c pxe_await.c pxe_arp.c pxe_ip.c \
 CFLAGS+=	-I${.CURDIR}/../../common -I${.CURDIR}/../btx/lib \
 		-I${.CURDIR}/../../../contrib/dev/acpica \
 		-I${.CURDIR}/../../.. -I. -I$(.CURDIR)/.. -I${.CURDIR}/../libi386/
+
+CFLAGS.pxe_isr.S=	${CLANG_NO_IAS}
+CFLAGS+=                ${CFLAGS.${.IMPSRC:T}}
+
 # the location of libstand
 CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand/
 
