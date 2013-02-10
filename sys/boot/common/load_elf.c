@@ -50,6 +50,13 @@ __FBSDID("$FreeBSD$");
 #define ELF_TARG_MACH   EM_X86_64
 #endif
 
+#if defined(__amd64__) && __ELF_WORD_SIZE == 32
+#undef ELF_TARG_CLASS
+#undef ELF_TARG_MACH
+#define ELF_TARG_CLASS  ELFCLASS32
+#define ELF_TARG_MACH   EM_386
+#endif
+
 typedef struct elf_file {
     Elf_Phdr 	*ph;
     Elf_Ehdr	*ehdr;
@@ -595,6 +602,13 @@ struct mod_metadata64 {
 	u_int64_t	md_data;	/* specific data */
 	u_int64_t	md_cval;	/* common string label */
 };
+#elif defined(__amd64__) && __ELF_WORD_SIZE == 32
+struct mod_metadata32 {
+	int		md_version;	/* structure version MDTV_* */  
+	int		md_type;	/* type of entry MDT_* */
+	u_int32_t	md_data;	/* specific data */
+	u_int32_t	md_cval;	/* common string label */
+};
 #endif
 
 int
@@ -603,6 +617,8 @@ __elfN(parse_modmetadata)(struct preloaded_file *fp, elf_file_t ef)
     struct mod_metadata md;
 #if (defined(__i386__) || defined(__powerpc__)) && __ELF_WORD_SIZE == 64
     struct mod_metadata64 md64;
+#elif defined(__amd64__) && __ELF_WORD_SIZE == 32
+    struct mod_metadata32 md32;
 #endif
     struct mod_depend *mdepend;
     struct mod_version mver;
@@ -638,6 +654,18 @@ __elfN(parse_modmetadata)(struct preloaded_file *fp, elf_file_t ef)
 	md.md_type = md64.md_type;
 	md.md_cval = (const char *)(uintptr_t)md64.md_cval;
 	md.md_data = (void *)(uintptr_t)md64.md_data;
+#elif defined(__amd64__) && __ELF_WORD_SIZE == 32
+	COPYOUT(v, &md32, sizeof(md32));
+	error = __elfN(reloc_ptr)(fp, ef, v, &md32, sizeof(md32));
+	if (error == EOPNOTSUPP) {
+	    md32.md_cval += ef->off;
+	    md32.md_data += ef->off;
+	} else if (error != 0)
+	    return (error);
+	md.md_version = md32.md_version;
+	md.md_type = md32.md_type;
+	md.md_cval = (const char *)(uintptr_t)md32.md_cval;
+	md.md_data = (void *)(uintptr_t)md32.md_data;
 #else
 	COPYOUT(v, &md, sizeof(md));
 	error = __elfN(reloc_ptr)(fp, ef, v, &md, sizeof(md));
