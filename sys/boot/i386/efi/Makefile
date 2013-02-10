@@ -11,7 +11,7 @@ INTERNALPROG=
 
 # architecture-specific loader code
 SRCS=	main.c exec.c conf.c vers.c reloc.c elf32_freebsd.c elf64_freebsd.c
-SRCS+=	i386_copy.c bootinfo.c bootinfo64.c autoload.c devicename.c efimd.c
+SRCS+=	x86_efi_copy.c bootinfo.c bootinfo64.c autoload.c devicename.c efimd.c
 
 .PATH:	${.CURDIR}/${MACHINE_CPUARCH}
 SRCS+=	start.S

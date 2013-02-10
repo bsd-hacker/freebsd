@@ -49,6 +49,8 @@ __FBSDID("$FreeBSD$");
 #include "actypes.h"
 #include "actbl.h"
 
+#include "x86_efi_copy.h"
+
 static EFI_GUID acpi_guid = ACPI_TABLE_GUID;
 static EFI_GUID acpi20_guid = ACPI_20_TABLE_GUID;
 
@@ -154,6 +156,8 @@ elf64_exec(struct preloaded_file *fp)
     ldr_enter(fp->f_name);
 
     dev_cleanup();
+
+    x86_efi_copy_finish();
 
     mp = modulep & 0xffffffff;
     ke = kernend & 0xffffffff;

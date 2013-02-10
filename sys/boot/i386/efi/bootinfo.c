@@ -41,6 +41,8 @@ __FBSDID("$FreeBSD$");
 #include "libi386.h"
 #include <machine/bootinfo.h>
 
+#include "x86_efi_copy.h"
+
 /*
  * Return a 'boothowto' value corresponding to the kernel arguments in
  * (kargs) and any relevant environment variables.
@@ -120,24 +122,24 @@ bi_copyenv(vm_offset_t start)
 	/* Traverse the environment. */
 	for (ep = environ; ep != NULL; ep = ep->ev_next) {
 		len = strlen(ep->ev_name);
-		if (i386_copyin(ep->ev_name, addr, len) != len)
+		if (x86_efi_copyin(ep->ev_name, addr, len) != len)
 			break;
 		addr += len;
-		if (i386_copyin("=", addr, 1) != 1)
+		if (x86_efi_copyin("=", addr, 1) != 1)
 			break;
 		addr++;
 		if (ep->ev_value != NULL) {
 			len = strlen(ep->ev_value);
-			if (i386_copyin(ep->ev_value, addr, len) != len)
+			if (x86_efi_copyin(ep->ev_value, addr, len) != len)
 				break;
 			addr += len;
 		}
-		if (i386_copyin("", addr, 1) != 1)
+		if (x86_efi_copyin("", addr, 1) != 1)
 			break;
 		last = ++addr;
 	}
 
-	if (i386_copyin("", last++, 1) != 1)
+	if (x86_efi_copyin("", last++, 1) != 1)
 		last = start;
 	return(last);
 }
@@ -160,14 +162,14 @@ bi_copyenv(vm_offset_t start)
  */
 #define COPY32(v, a) {				\
     u_int32_t	x = (v);			\
-    i386_copyin(&x, a, sizeof(x));		\
+    x86_efi_copyin(&x, a, sizeof(x));		\
     a += sizeof(x);				\
 }
 
 #define MOD_STR(t, a, s) {			\
     COPY32(t, a);				\
     COPY32(strlen(s) + 1, a);			\
-    i386_copyin(s, a, strlen(s) + 1);		\
+    x86_efi_copyin(s, a, strlen(s) + 1);		\
     a += roundup(strlen(s) + 1, sizeof(u_int64_t));\
 }
 
@@ -178,7 +180,7 @@ bi_copyenv(vm_offset_t start)
 #define MOD_VAR(t, a, s) {			\
     COPY32(t, a);				\
     COPY32(sizeof(s), a);			\
-    i386_copyin(&s, a, sizeof(s));		\
+    x86_efi_copyin(&s, a, sizeof(s));		\
     a += roundup(sizeof(s), sizeof(u_int64_t));	\
 }
 
@@ -188,7 +190,7 @@ bi_copyenv(vm_offset_t start)
 #define MOD_METADATA(a, mm) {			\
     COPY32(MODINFO_METADATA | mm->md_type, a);	\
     COPY32(mm->md_size, a);			\
-    i386_copyin(mm->md_data, a, mm->md_size);	\
+    x86_efi_copyin(mm->md_data, a, mm->md_size);	\
     a += roundup(mm->md_size, sizeof(u_int64_t));\
 }
 

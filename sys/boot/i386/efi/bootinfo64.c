@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/specialreg.h>
 #include "bootstrap.h"
 #include "libi386.h"
+#include "x86_efi_copy.h"
 
 /*
  * Copy module-related data into the load area, where it can be
@@ -57,7 +58,7 @@ __FBSDID("$FreeBSD$");
 #define COPY32(v, a, c) {			\
     u_int32_t	x = (v);			\
     if (c)					\
-	i386_copyin(&x, a, sizeof(x));		\
+	x86_efi_copyin(&x, a, sizeof(x));	\
     a += sizeof(x);				\
 }
 
@@ -65,7 +66,7 @@ __FBSDID("$FreeBSD$");
     COPY32(t, a, c);				\
     COPY32(strlen(s) + 1, a, c);		\
     if (c)					\
-	i386_copyin(s, a, strlen(s) + 1);	\
+	x86_efi_copyin(s, a, strlen(s) + 1);	\
     a += roundup(strlen(s) + 1, sizeof(u_int64_t));\
 }
 
@@ -77,7 +78,7 @@ __FBSDID("$FreeBSD$");
     COPY32(t, a, c);				\
     COPY32(sizeof(s), a, c);			\
     if (c)					\
-	i386_copyin(&s, a, sizeof(s));		\
+	x86_efi_copyin(&s, a, sizeof(s));	\
     a += roundup(sizeof(s), sizeof(u_int64_t));	\
 }
 
@@ -88,7 +89,7 @@ __FBSDID("$FreeBSD$");
     COPY32(MODINFO_METADATA | mm->md_type, a, c); \
     COPY32(mm->md_size, a, c);			\
     if (c)					\
-	i386_copyin(mm->md_data, a, mm->md_size); \
+	x86_efi_copyin(mm->md_data, a, mm->md_size); \
     a += roundup(mm->md_size, sizeof(u_int64_t));\
 }
 
