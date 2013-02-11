@@ -27,10 +27,19 @@ if [ -z "${PORTBUILD_USER}" ]; then
   echo "You must export PORTBUILD_USER, for example, export PORTBUILD_USER=${DEFAULT_PORTBUILD_USER}."
   exit 1
 fi
+if [ ! `id ${PORTBUILD_USER} 2> /dev/null` ]; then
+  echo "User ${PORTBUILD_USER} must exist."
+  exit 1
+fi
 if [ -z "${SRCBUILD_USER}" ]; then
   echo "You must export SRCBUILD_USER, for example, export SRCBUILD_USER=${DEFAULT_SRCBUILD_USER}."
   exit 1
 fi
+if [ ! `id ${SRCBUILD_USER} 2> /dev/null` ]; then
+  echo "User ${SRCBUILD_USER} must exist."
+  exit 1
+fi
+
 if [ -z "${VCS_CHECKOUT_COMMAND}" ]; then
   VCS_CHECKOUT_COMMAND="${DEFAULT_VCS_CHECKOUT_COMMAND}"
 fi
@@ -74,7 +83,8 @@ fi
 
 # create a place to hold all portbuild-managed files.  All other ZFS_VOLUME
 # files are managed by srcbuild.
-if [ ! -d ${ZFS_MOUNTPOINT}/portbuild ]; then
+name=`zfs list -H -t filesystem -o name ${ZFS_VOLUME}/portbuild`
+if [ -z "${name}" ]; then
   echo "ZFS volume ${ZFS_VOLUME}/portbuild does not exist.  I'll create it for you."
   zfs create ${ZFS_VOLUME}/portbuild || exit 1
 fi
