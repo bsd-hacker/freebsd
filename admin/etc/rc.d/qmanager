@@ -8,19 +8,20 @@
 
 export PATH=/usr/local/bin:${PATH}
 
-pb=/var/portbuild
+pb=${portbuild_base:-/a/portbuild}
 config_file=${pb}/conf/server.conf
 
 if [ ! -f ${config_file} ]; then
   echo "$0: ${config_file} must exist!"
   exit 1
 fi
+
+. ${config_file}
+
 if [ -z "${PORTBUILD_USER}" ]; then
   echo "$0: You must define PORTBUILD_USER in ${config_file}."
   exit 1
 fi
-
-. ${config_file}
 
 case $1 in
     start)
