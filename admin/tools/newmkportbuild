@@ -16,7 +16,7 @@ DEFAULT_ZFS_PERMISSIONSET_SNAPS="clone,snapshot"
 SNAP_DIRECTORY=snap
 
 # ownership of direct subdirectories of DEFAULT_ZFS_VOLUME
-SRCBUILD_OWNED_SUBDIRS="chroot pxeroot ${SNAP_DIRECTORY}"
+SRCBUILD_OWNED_SUBDIRS="pxeroot ${SNAP_DIRECTORY} worlddir"
 PORTBUILD_OWNED_SUBDIRS="portbuild"
 
 if [ `id -u` != 0 ]; then
