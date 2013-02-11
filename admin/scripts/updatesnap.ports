@@ -5,6 +5,7 @@
 
 pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
 
+. ${pbc}/admin/conf/admin.conf
 . ${pbc}/conf/server.conf
 
 base=${ZFS_MOUNTPOINT}/${SNAP_DIRECTORY}

@@ -27,8 +27,8 @@ if [ $# -gt 0 ]; then
   esac
 fi
 
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 if [ ! -d ${builddir} ]; then
@@ -36,6 +36,7 @@ if [ ! -d ${builddir} ]; then
     exit 1
 fi
 
+. ${pbc}/admin/conf/admin.conf
 . ${pbc}/conf/server.conf
 . ${pbc}/conf/common.conf
 . ${pbd}/${arch}/portbuild.conf
