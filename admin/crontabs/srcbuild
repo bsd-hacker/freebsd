@@ -21,5 +21,4 @@ SCRIPTS=/a/portbuild/admin/scripts/
 #50 4 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zbackup
 #
 # Expire old ZFS snapshots
-# XXX MCL have to split this one up, too
 #50 3 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zexpire

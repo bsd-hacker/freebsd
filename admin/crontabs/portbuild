@@ -29,12 +29,3 @@ SCRIPTS=/a/portbuild/scripts/
 #
 # Clean up old chroots on client machines
 #30 * * * *			${SCRIPTS}/do-cleanup-chroots all
-#
-# Backup ZFS filesystems
-# XXX MCL script not yet converted
-# will have to split this up
-#50 4 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zbackup
-#
-# Expire old ZFS snapshots
-# will have to split this up, too
-#50 3 * * *			lockf -t 0 -k ${LOCKFILES}/busybusybusy.lock ${SCRIPTS}/zexpire
