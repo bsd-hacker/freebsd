@@ -3,7 +3,7 @@
 # Update the master ports tree that is used by package builds
 # and other consumers
 
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
 
 . ${pbc}/conf/server.conf
 
