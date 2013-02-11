@@ -414,9 +414,9 @@ put on a CDROM.</p>
 <p>Notes on the building process:</p>
 
 <ul>
-<li><em>Every</em> port is built in its own chroot environment
+<li><em>Every</em> port is built in its own jailed environment
 , starting with an
-empty <tt>/usr/local</tt> and <tt>/usr/X11R6</tt>. <a name=
+empty <tt>/usr/local</tt>. <a name=
 "pkgadd">The dependencies are installed as packages</a> just before
 the build. You can see the list of dependencies on the third line
 of the log -- the "foo.tgz bar.tgz" stuff are the dependencies. To
