@@ -67,7 +67,7 @@ if [ -z "${name}" ]; then
 fi
 
 mounted=`zfs list -H -t filesystem -o mounted ${ZFS_VOLUME}`
-if [ ! -z "${mounted}" ]; then
+if [ -z "${mounted}" -o "${mounted}" = "no" ]; then
   echo "ZFS volume ${ZFS_VOLUME} is mounted.  I'll unmount it for you then remount it later."
   zfs umount ${ZFS_VOLUME} 2> /dev/null
 fi
