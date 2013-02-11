@@ -135,25 +135,11 @@ if [ -z "${mounted}" -o "${mounted}" = "no" ]; then
 fi
 chown ${SRCBUILD_USER} ${ZFS_MOUNTPOINT} 2> /dev/null
 
-# (re)mount various subdirectories to be managed by srcbuild.
-for subdir in ${SRCBUILD_OWNED_SUBDIRS}; do
-  mounted=`zfs list -H -t filesystem -o mounted ${ZFS_VOLUME}/${subdir}`
-  if [ -z "${mounted}" -o "${mounted}" = "no" ]; then
-    echo "ZFS volume ${ZFS_VOLUME}/${subdir} is not mounted.  I'll (re)mount it for you."
-    zfs mount ${ZFS_VOLUME}/${subdir} || exit 1
-  fi
-  chown ${SRCBUILD_USER} ${ZFS_MOUNTPOINT}/${subdir} 2> /dev/null
-done
-
 # delegate the "zfsportbuildadmin" permission set to the PORTBUILD_USER. 
 zfs allow -du ${PORTBUILD_USER} @zfsportbuildadmin ${ZFS_VOLUME}/portbuild || exit 1
 
 # delegate the "zfssnapadmin" permission set to the PORTBUILD_USER.
 zfs allow -du ${PORTBUILD_USER} @zfssnapadmin ${ZFS_VOLUME}/${SNAP_DIRECTORY} || exit 1
-
-echo "results of ZFS operations:"
-zfs list ${ZFS_VOLUME}
-zfs allow ${ZFS_VOLUME}
 
 # (re)mount various subdirectories to be managed by portbuild.
 for subdir in ${PORTBUILD_OWNED_SUBDIRS}; do
@@ -164,6 +150,20 @@ for subdir in ${PORTBUILD_OWNED_SUBDIRS}; do
   fi
   chown ${PORTBUILD_USER} ${ZFS_MOUNTPOINT}/${subdir} 2> /dev/null
 done
+
+# (re)mount various subdirectories to be managed by srcbuild.
+for subdir in ${SRCBUILD_OWNED_SUBDIRS}; do
+  mounted=`zfs list -H -t filesystem -o mounted ${ZFS_VOLUME}/${subdir}`
+  if [ -z "${mounted}" -o "${mounted}" = "no" ]; then
+    echo "ZFS volume ${ZFS_VOLUME}/${subdir} is not mounted.  I'll (re)mount it for you."
+    zfs mount ${ZFS_VOLUME}/${subdir} || exit 1
+  fi
+  chown ${SRCBUILD_USER} ${ZFS_MOUNTPOINT}/${subdir} 2> /dev/null
+done
+
+echo "results of ZFS operations:"
+zfs list ${ZFS_VOLUME}
+zfs allow ${ZFS_VOLUME}
 
 echo "checking out the repository as user ${PORTBUILD_USER} ..."
 su -m ${PORTBUILD_USER} -c "${VCS_CHECKOUT_COMMAND} ${VCS_PORTBUILD_REPOSITORY} ${ZFS_MOUNTPOINT}/portbuild" || exit 1
