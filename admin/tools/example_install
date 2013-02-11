@@ -1,0 +1,12 @@
+#!/bin/sh
+#
+# example script to drive mkportbuild
+#
+export PORTBUILD_USER=portbuild
+export SRCBUILD_USER=srcbuild
+export ZFS_VOLUME=a
+export ZFS_MOUNTPOINT=/a
+export VCS_REPOSITORY=svn://svn0.us-east.FreeBSD.org
+mkdir -p tmp
+svn checkout ${VCS_REPOSITORY}/base/projects/portbuild/admin/tools tmp
+sh -x ./tmp/newmkportbuild
