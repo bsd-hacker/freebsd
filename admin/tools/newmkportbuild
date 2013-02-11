@@ -37,7 +37,7 @@ fi
 if [ -z "${VCS_PORTBUILD_REPOSITORY}" ]; then
   echo "You have not set VCS_PORTBUILD_REPOSITORY.  I will try to set it from VCS_REPOSITORY."
   if [ -z "${VCS_REPOSITORY}" ]; then
-    echo "You have not set VCS_REPOSITORY.  I will use the default, ${DEFAULT_VCS_REPOSITORY}."
+    echo "You have not set VCS_REPOSITORY.  I will use the default: ${DEFAULT_VCS_REPOSITORY}."
     VCS_REPOSITORY=${DEFAULT_VCS_REPOSITORY}
   fi
   VCS_PORTBUILD_REPOSITORY="${VCS_REPOSITORY}/base/projects/portbuild"
@@ -48,11 +48,11 @@ if [ -z "${ZFS_VOLUME}" ]; then
 fi
 ZFS_MOUNTPOINT="/${ZFS_VOLUME}"
 if [ -z "${ZFS_PERMISSIONSET}" ]; then
-  echo "You have not set ZFS_PERMISSIONSET.  I will use the default, ${DEFAULT_ZFS_PERMISSIONSET}."
+  echo "You have not set ZFS_PERMISSIONSET.  I will use the default: ${DEFAULT_ZFS_PERMISSIONSET}."
   ZFS_PERMISSIONSET="${DEFAULT_ZFS_PERMISSIONSET}"
 fi
 if [ -z "${ZFS_PERMISSIONSET_SNAPS}" ]; then
-  echo "You have not set ZFS_PERMISSIONSET_SNAPS.  I will use the default, ${DEFAULT_ZFS_PERMISSIONSET_SNAPS}."
+  echo "You have not set ZFS_PERMISSIONSET_SNAPS.  I will use the default: ${DEFAULT_ZFS_PERMISSIONSET_SNAPS}."
   ZFS_PERMISSIONSET_SNAPS="${DEFAULT_ZFS_PERMISSIONSET_SNAPS}"
 fi
 
