@@ -36,11 +36,11 @@ import os
 import sys
 
 pbc = os.getenv('PORTBUILD_CHECKOUT') \
-    if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
+    if os.getenv('PORTBUILD_CHECKOUT') else "/a/portbuild"
 pbd = os.getenv('PORTBUILD_DATA') \
-    if os.getenv('PORTBUILD_DATA') else "/var/portbuild"
+    if os.getenv('PORTBUILD_DATA') else "/a/portbuild"
 
-sys.path.insert(0, '%s/lib/python' % pbc)
+sys.path.insert(0, '%s/admin/lib/python' % pbc)
 
 from qmanagerclient import *
 from freebsd_config import *
@@ -444,6 +444,8 @@ class worker(threading.Thread):
 
         self.setDaemon(True)
 
+    # NOTE 20130211: only use ${pbc}/scripts here, *not* ${pbc}/admin/scripts,
+    # for privilege separation purposes.
     def run(self): 
         pkg = self.job
 

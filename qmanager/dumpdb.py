@@ -5,11 +5,9 @@
 import sys, os, threading, socket, Queue 
 
 pbc = os.getenv('PORTBUILD_CHECKOUT') \
-    if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
-pbd = os.getenv('PORTBUILD_DATA') \
-    if os.getenv('PORTBUILD_DATA') else "/var/portbuild"
+    if os.getenv('PORTBUILD_CHECKOUT') else "/a/portbuild"
 
-sys.path.insert(0, '%s/lib/python' % pbc)
+sys.path.insert(0, '%s/admin/lib/python' % pbc)
 
 from signal import *
 from sys import exc_info
