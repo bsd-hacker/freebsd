@@ -79,6 +79,9 @@ zfs unallow -u ${SRCBUILD_USER} ${ZFS_VOLUME} 2> /dev/null
 
 # reset the "zfsportbuildadmin" permission set if it already exists. 
 zfs unallow -s @zfsportbuildadmin ${ZFS_VOLUME} 2> /dev/null   
+
+# reset the "zfssnapadmin" permission set if it already exists.
+zfs unallow -s @zfssnapadmin ${ZFS_VOLUME} 2> /dev/null   
 zfs unallow -u ${PORTBUILD_USER} ${ZFS_VOLUME} 2> /dev/null
 
 # create the "zfsalladmin" permission set.
@@ -86,6 +89,9 @@ zfs allow -s @zfsalladmin ${ZFS_PERMISSIONSET} ${ZFS_VOLUME} || exit 1
 
 # create the "zfsportbuildadmin" permission set.
 zfs allow -s @zfsportbuildadmin ${ZFS_PERMISSIONSET} ${ZFS_VOLUME}/portbuild || exit 1
+
+# create the "zfssnapadmin" permission set.
+zfs allow -s @zfssnapadmin ${ZFS_PERMISSIONSET_SNAPS} ${ZFS_VOLUME}/${SNAP_DIRECTORY} || exit 1
 
 # delegate the "zfsalladmin" permission set to the SRCBUILD_USER. 
 zfs allow -du ${SRCBUILD_USER} @zfsalladmin ${ZFS_VOLUME} || exit 1
@@ -115,6 +121,9 @@ done
 # delegate the "zfsportbuildadmin" permission set to the PORTBUILD_USER. 
 zfs allow -du ${PORTBUILD_USER} @zfsportbuildadmin ${ZFS_VOLUME}/portbuild || exit 1
 
+# delegate the "zfssnapadmin" permission set to the PORTBUILD_USER.
+zfs allow -du ${PORTBUILD_USER} @zfssnapadmin ${ZFS_VOLUME}/${SNAP_DIRECTORY} || exit 1
+
 echo "results of ZFS operations:"
 zfs list ${ZFS_VOLUME}
 zfs allow ${ZFS_VOLUME}
@@ -136,6 +145,9 @@ done
 
 echo "checking out the repository as user ${PORTBUILD_USER} ..."
 su -m ${PORTBUILD_USER} -c "${VCS_CHECKOUT_COMMAND} ${VCS_PORTBUILD_REPOSITORY} ${ZFS_MOUNTPOINT}/portbuild" || exit 1
+
+# XXX MCL now have to move some directories over, create different
+# XXX MCL ownerships, and so forth.
 
 echo "$0: you should now be able to edit files in ${ZFS_MOUNTPOINT}/portbuild/conf."
 
