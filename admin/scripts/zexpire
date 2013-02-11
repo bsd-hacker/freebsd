@@ -6,10 +6,8 @@ import sys, commands, datetime, os, string
 
 pbc = os.getenv('PORTBUILD_CHECKOUT') \
     if os.getenv('PORTBUILD_CHECKOUT') else "/a/portbuild"
-pbd = os.getenv('PORTBUILD_DATA') \
-    if os.getenv('PORTBUILD_DATA') else "/a/portbuild"
 
-sys.path.insert(0, '%s/lib/python' % pbc)
+sys.path.insert(0, '%s/admin/lib/python' % pbc)
 
 from freebsd import *
 from freebsd_config import *

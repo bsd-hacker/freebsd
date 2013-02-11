@@ -6,7 +6,10 @@
 import commands, datetime, sys, os, bz2
 from signal import *
 
-sys.path.insert(0, '/var/portbuild/lib/python')
+pbc = os.getenv('PORTBUILD_CHECKOUT') \
+    if os.getenv('PORTBUILD_CHECKOUT') else "/a/portbuild"
+
+sys.path.insert(0, '%s/admin/lib/python' % pbc)
 
 import zfs
 
