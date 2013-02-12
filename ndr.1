@@ -1,0 +1,134 @@
+.\"-
+.\" Copyright (c) 2007 Dag-Erling Smørgrav
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd March 20, 2007
+.Dt NDR 1
+.Os
+.Sh NAME
+.Nm ndr
+.Nd network-assisted disk recovery
+.Sh SYNOPSIS
+.Nm
+.Op Fl v
+.Op Fl a Ar addr
+.Op Fl d Ar dir
+.Op Fl p Ar port
+.Fl s
+.Nm
+.Op Fl v
+.Op Fl a Ar addr
+.Op Fl p Ar port
+.Fl c
+.Ar device
+.Ar host
+.Op Ar port
+.Sh DESCRIPTION
+The
+.Nm
+utility attempts to recover the contents of a damaged disk over the
+network.
+One instance of
+.Nm
+runs in client mode on the machine to which the damaged disk is
+attached.
+Another instance runs in server mode on a separate machine.
+.Pp
+When the client contacts the server and announces the device which is
+to be recovered, the server creates a file of the appropriate size and
+starts requesting blocks of data from the client.
+As recovery progresses, the server keeps track of recovered and failed
+blocks in a separate file.
+Thus, both the server and the client can be interrupted and restarted
+without losing progress.
+This is particularly useful when a disk is so badly damaged that the
+client machine crashes during recovery.
+.Pp
+The following options are available:
+.Bl -tag -width Fl
+.It Fl a Ar addr
+Bind to the specified address.
+.It Fl c
+Work in client mode.
+The name of the device to recover, the name or address of the server,
+and (optionally) the server's port number must be specified on the
+command line after all other options.
+.It Fl d Ar dir
+In server mode, work from the specified directory.
+For each client that connects to the server, a subdirectory named
+after the IP address of the client is created within the working
+directory.
+The data and map files for each device are stored in directories named
+after the device within each client directory.
+.It Fl p Ar port
+Bind to the specified port.
+.It Fl s
+Work in server mode.
+.It Fl v
+Increase the verbosity level.
+Specifying this option more than once may result in overwhelming
+amounts of debugging output.
+.El
+.Sh EXAMPLES
+Start a server which will listen on port 6543 at the address
+corresponding to
+.Pa ndr.example.com ,
+store the data it receives in
+.Pa /var/ndr ,
+and show a moderate amount of debugging information:
+.Bd -literal -offset indent
+ndr -s -a ndr.example.com -p 6543 -d /var/ndr -v
+.Ed
+.Pp
+Start a client which will transfer the contents of
+.Pa /dev/ad4
+to the server running on port 6543 on
+.Pa ndr.example.com :
+.Bd -literal -offset indent
+ndr -c /dev/ad4 ndr.example.com 6543
+.Ed
+.Pp
+The following
+.Xr hexdump 1
+command line displays the contents of a map file:
+.Bd -literal -offset indent
+hexdump -v -e '"%07.7_ax " 64/1 "%_c" "\\n"' map
+.Ed
+.Pp
+Each output line starts with a hexadecimal offset followed by 64 ASCII
+characters, each representing one block of the device.
+Successfully recovered blocks are marked with a hash sign.
+Blocks which have failed but will be retried are marked with a digit
+reflecting the number of attempts that have been made.
+Blocks which
+.Nm
+has given up on are marked with an asterisk.
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+utility and this manual page were written by
+.An Dag-Erling Sm\(/orgrav Aq des@FreeBSD.org .
