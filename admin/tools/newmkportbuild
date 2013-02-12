@@ -15,9 +15,10 @@ DEFAULT_ZFS_PERMISSIONSET="clone,create,destroy,mount,promote,rename,rollback,se
 DEFAULT_ZFS_PERMISSIONSET_SNAPS="clone,snapshot"
 SNAP_DIRECTORY=snap
 
-# ownership of direct subdirectories of DEFAULT_ZFS_VOLUME
+# define ownership of direct subdirectories of DEFAULT_ZFS_VOLUME
 SRCBUILD_OWNED_SUBDIRS="pxeroot ${SNAP_DIRECTORY} worlddir"
 PORTBUILD_OWNED_SUBDIRS="portbuild"
+PORTBUILD_OWNED_SUBSUBDIRS="lockfiles log"
 
 if [ `id -u` != 0 ]; then
   echo "$0 must be run as root."
@@ -171,13 +172,14 @@ su -m ${PORTBUILD_USER} -c "${VCS_CHECKOUT_COMMAND} ${VCS_PORTBUILD_REPOSITORY} 
 # XXX MCL now have to move some directories over, create different
 # XXX MCL ownerships, and so forth.
 
-echo -n "$0: you should now be able to edit files in ${ZFS_MOUNTPOINT}/portbuild/admin/conf"
-echo " and ${ZFS_MOUNTPOINT}/portbuild/conf."
+echo "$0: you should now be able to edit files in the following directories:"
+echo "$0: in ${ZFS_MOUNTPOINT}/portbuild/admin/conf as ${SRCBUILD_USER}, and"
+echo "$0: in ${ZFS_MOUNTPOINT}/portbuild/conf as ${PORTBUILD_USER}."
 
 # create convenience directories for PORTBUILD_USER.  failure is annoying
 # but non-fatal.
-extra_dirs="lockfiles log"
-for extra_dir in ${extra_dirs}; do
+PORTBUILD_OWNED_SUBSUBDIRS="lockfiles log"
+for extra_dir in ${PORTBUILD_OWNED_SUBSUBDIRS}; do
   if [ ! -d ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} ]; then
     su -m ${PORTBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/${extra_dir}"
   fi
