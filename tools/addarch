@@ -21,6 +21,12 @@ usage () {
     exit 1
 }
 
+if [ ! -e ${pbc}/admin/conf/admin.conf ] ; then
+    echo "You must first create ${pbc}/admin/conf/admin.conf."
+    exit 1
+fi
+. ${pbc}/admin/conf/admin.conf
+
 if [ ! -e ${pbc}/conf/server.conf ] ; then
     echo "You must first create ${pbc}/conf/server.conf."
     exit 1
@@ -42,7 +48,7 @@ for i in ${SUPPORTED_ARCHS}; do
     fi
 done
 if [ $valid_arch = 0 ]; then
-    echo "You must first add ${arch} to SUPPORTED_ARCHS in ${pbc}/conf/server.conf."
+    echo "You must first add ${arch} to SUPPORTED_ARCHS in ${pbc}/admin/conf/admin.conf."
     echo "Currently supported archs are: ${SUPPORTED_ARCHS}."
     exit 1
 fi
@@ -50,7 +56,8 @@ fi
 if [ ! -z "${PORTBUILD_USER}" ]; then
     uid=${PORTBUILD_USER}
 else
-    uid=ports-${arch}
+    echo "You must first define PORTBUILD_USER in ${pbc}/admin/conf/admin.conf."
+    exit 1
 fi
 if [ ! -z "${PORTBUILD_GROUP}" ]; then
     gid=${PORTBUILD_GROUP}
@@ -64,8 +71,8 @@ archfs=${ZFS_VOLUME}/portbuild/${arch}
 if ! test_fs "${archfs}"; then
   echo "The ${archfs} filesystem does not exist.  I'll create and mount it for you."
   zfs create ${archfs} || exit 1
-  chown -R ${uid}:${gid} ${archdir} || exit 1
-  chmod -R g+w ${archdir} || exit 1
+# chown -R ${uid}:${gid} ${archdir} || exit 1
+# chmod -R g+w ${archdir} || exit 1
 fi
 
 loads=${archdir}/loads
