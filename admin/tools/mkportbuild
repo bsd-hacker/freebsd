@@ -142,9 +142,11 @@ chown ${SRCBUILD_USER} ${ZFS_MOUNTPOINT} 2> /dev/null
 
 # delegate the "zfsportbuildadmin" permission set to the PORTBUILD_USER. 
 zfs allow -du ${PORTBUILD_USER} @zfsportbuildadmin ${ZFS_VOLUME}/portbuild || exit 1
+zfs allow -lu ${PORTBUILD_USER} @zfsportbuildadmin ${ZFS_VOLUME}/portbuild || exit 1
 
 # delegate the "zfssnapadmin" permission set to the PORTBUILD_USER.
 zfs allow -du ${PORTBUILD_USER} @zfssnapadmin ${ZFS_VOLUME}/${SNAP_DIRECTORY} || exit 1
+zfs allow -lu ${PORTBUILD_USER} @zfssnapadmin ${ZFS_VOLUME}/${SNAP_DIRECTORY} || exit 1
 
 # (re)mount various subdirectories to be managed by portbuild.
 for subdir in ${PORTBUILD_OWNED_SUBDIRS}; do
