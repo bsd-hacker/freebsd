@@ -15,10 +15,14 @@ DEFAULT_ZFS_PERMISSIONSET="clone,create,destroy,mount,promote,rename,rollback,se
 DEFAULT_ZFS_PERMISSIONSET_SNAPS="clone,snapshot"
 SNAP_DIRECTORY=snap
 
-# define ownership of direct subdirectories of DEFAULT_ZFS_VOLUME
+# define ownership of subdirectories of DEFAULT_ZFS_VOLUME/
 SRCBUILD_OWNED_SUBDIRS="pxeroot ${SNAP_DIRECTORY} worlddir"
 PORTBUILD_OWNED_SUBDIRS="portbuild"
-PORTBUILD_OWNED_SUBSUBDIRS="lockfiles log"
+
+# define ownership of subdirectories of DEFAULT_ZFS_VOLUME/portbuild/
+SRCBUILD_OWNED_VCS_SUBDIRS="admin docs"
+PORTBUILD_OWNED_VCS_SUBDIRS="conf errorlogs qmanager scripts sources tools"
+PORTBUILD_OWNED_CONVENIENCE_SUBDIRS="lockfiles log"
 
 if [ `id -u` != 0 ]; then
   echo "$0 must be run as root."
@@ -166,11 +170,31 @@ echo "results of ZFS operations:"
 zfs list ${ZFS_VOLUME}
 zfs allow ${ZFS_VOLUME}
 
-echo "checking out the repository as user ${PORTBUILD_USER} ..."
-su -m ${PORTBUILD_USER} -c "${VCS_CHECKOUT_COMMAND} ${VCS_PORTBUILD_REPOSITORY} ${ZFS_MOUNTPOINT}/portbuild" || exit 1
+# perform the repository magic to allow SRCBUILD_USER to edit everything,
+# but PORTBUILD_USER to only edit files under its own responsibility.
+chown ${SRCBUILD_USER}:${PORTBUILD_USER} ${ZFS_VOLUME}/portbuild
+chmod 775 ${ZFS_VOLUME}/portbuild
 
-# XXX MCL now have to move some directories over, create different
-# XXX MCL ownerships, and so forth.
+PORTBUILD_OWNED_VCS_SUBDIRS="conf errorlogs qmanager scripts sources tools"
+SRCBUILD_OWNED_VCS_SUBDIRS="admin docs"
+
+for subdir in ${PORTBUILD_OWNED_VCS_SUBDIRS}; do
+  echo "checking out the ${subdir} repository as user ${PORTBUILD_USER} ..."
+  mkdir ${ZFS_VOLUME}/portbuild/${subdir}
+  chown ${PORTBUILD_USER}:${PORTBUILD_USER} ${ZFS_VOLUME}/portbuild/${subdir}
+  chmod 755 ${ZFS_VOLUME}/portbuild/${subdir}
+  echo "su -m ${PORTBUILD_USER} -c \"svn checkout ${VCS_REPOSITORY}/base/projects/portbuild/${subdir} ${ZFS_VOLUME}/portbuild/${subdir}\""
+  su -m ${PORTBUILD_USER} -c "svn checkout ${VCS_REPOSITORY}/base/projects/portbuild/${subdir} ${ZFS_VOLUME}/portbuild/${subdir}"
+done
+
+for subdir in ${SRCBUILD_OWNED_VCS_SUBDIRS}; do
+  echo "checking out the ${subdir} repository as user ${SRCBUILD_USER} ..."
+  mkdir ${ZFS_VOLUME}/portbuild/${subdir}
+  chown ${SRCBUILD_USER}:${SRCBUILD_USER} ${ZFS_VOLUME}/portbuild/${subdir}
+  chmod 755 ${ZFS_VOLUME}/portbuild/${subdir}
+  echo "su -m ${SRCBUILD_USER} -c \"svn checkout ${VCS_REPOSITORY}/base/projects/portbuild/${subdir} ${ZFS_VOLUME}/portbuild/${subdir}\""
+  su -m ${SRCBUILD_USER} -c "svn checkout ${VCS_REPOSITORY}/base/projects/portbuild/${subdir} ${ZFS_VOLUME}/portbuild/${subdir}"
+done
 
 echo "$0: you should now be able to edit files in the following directories:"
 echo "$0: in ${ZFS_MOUNTPOINT}/portbuild/admin/conf as ${SRCBUILD_USER}, and"
@@ -178,8 +202,8 @@ echo "$0: in ${ZFS_MOUNTPOINT}/portbuild/conf as ${PORTBUILD_USER}."
 
 # create convenience directories for PORTBUILD_USER.  failure is annoying
 # but non-fatal.
-PORTBUILD_OWNED_SUBSUBDIRS="lockfiles log"
-for extra_dir in ${PORTBUILD_OWNED_SUBSUBDIRS}; do
+PORTBUILD_OWNED_CONVENIENCE_SUBDIRS="lockfiles log"
+for extra_dir in ${PORTBUILD_OWNED_CONVENIENCE_SUBDIRS}; do
   if [ ! -d ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} ]; then
     su -m ${PORTBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/${extra_dir}"
   fi
