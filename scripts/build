@@ -56,42 +56,32 @@ do_create() {
     # not manageable by uid:gid.
     archdir=${pbd}/${arch}
     if [ ! -d ${archdir} ]; then
-        echo "${archdir} must exist and be owned by ${uid}:${gid} mode 77x."
+        echo "${archdir} must exist."
         exit 1
     fi
-    chown -R ${uid}:${gid} ${archdir} || exit 1
-    chmod 775 ${archdir} || exit 1
 
     # create zfs instance for arch if it does not already exist
     archfs=${ZFS_VOLUME}/portbuild/${arch}
     if ! test_fs "${archfs}"; then
       zfs create ${archfs} || exit 1
-      #chown -R ${uid}:${gid} ${archdir}
-      #chmod -R g+w ${archdir}
     fi
 
     # create overall archive directory if it does not already exist 
     archivedir=${pbd}/${arch}/archive
     if [ ! -d ${archivedir} ]; then
 	mkdir -p ${archivedir} || exit 1
-	chown -R ${uid}:${gid} ${archivedir}
-	chmod -R g+w ${archivedir}
     fi
 
     # create archive directory for all build logs if it does not already exist
     buildlogsdir=${archivedir}/buildlogs
     if [ ! -d ${buildlogsdir} ]; then
 	mkdir -p ${buildlogsdir} || exit 1
-	chown -R ${uid}:${gid} ${buildlogsdir}
-	chmod -R g+w ${buildlogsdir}
     fi
 
     # create archive directory for all errorlogs if it does not already exist
     errorlogsdir=${archivedir}/errorlogs
     if [ ! -d ${errorlogsdir} ]; then
 	mkdir -p ${errorlogsdir} || exit 1
-	chown -R ${uid}:${gid} ${errorlogsdir}
-	chmod -R g+w ${errorlogsdir}
     fi
 
     # create zfs instance for buildenv if it does not already exist
@@ -128,44 +118,32 @@ do_create() {
     clientsdir=${pbd}/${arch}/clients
     if [ ! -d ${clientsdir} ]; then
 	mkdir -p ${clientsdir} || exit 1
-	chown -R ${uid}:${gid} ${clientsdir}
-	chmod -R g+w ${clientsdir}
     fi
 
     # create loads/ directory if it does not already exist 
     loadsdir=${pbd}/${arch}/loads
     if [ ! -d ${loadsdir} ]; then
 	mkdir -p ${loadsdir} || exit 1
-	chown -R ${uid}:${gid} ${loadsdir}
-	chmod -R g+w ${loadsdir}
     fi
 
     # create lockfiles/ directory if it does not already exist 
     lockfiles=${pbd}/${arch}/lockfiles
     if [ ! -d ${lockfiles} ]; then
         mkdir -p ${lockfiles} || exit 1
-        chown -R ${uid}:${gid} ${lockfiles}
-        chmod -R g+w ${lockfiles}
     fi
 
     # create empty mlist file if it does not already exist 
     mlist=${pbd}/${arch}/mlist
     if [ ! -d ${mlist} ]; then
 	touch ${mlist} || exit 1
-	chown -R ${uid}:${gid} ${mlist}
-	chmod -R g+w ${mlist}
     fi
 
     # create the links for the webserver under ../errorlogs/.  Note
     # possibly different ownership of this directory!
     errorlogs=${pbd}/errorlogs
-    portbuild_uid=${PORTBUILD_USER}
     if [ ! -d ${errorlogs} ]; then
-        echo "${errorlogs} must exist and be owned by ${portbuild_uid}:${gid} mode 77x."
-        exit 1
+	mkdir -p ${archivedir} || exit 1
     fi
-    chown -R ${portbuild_uid}:${gid} ${errorlogs} || exit 1
-    chmod 775 ${errorlogs} || exit 1
 
     ln -s ${buildsdir}/latest/bak/errors ${errorlogs}/${arch}-${branch}-previous
     ln -s ${buildsdir}/latest/bak/logs ${errorlogs}/${arch}-${branch}-previous-logs
@@ -547,6 +525,7 @@ arch=$2
 branch=$3
 shift 3
 
+. ${pbc}/admin/conf/admin.conf
 . ${pbc}/conf/server.conf
 . ${pbd}/${arch}/portbuild.conf
 . ${pbc}/scripts/buildenv
@@ -554,17 +533,6 @@ shift 3
 pbab=${pbd}/${arch}/${branch}
 
 validate_env ${arch} ${branch} || exit 1
-
-if [ ! -z "${PORTBUILD_USER}" ]; then
-    uid=${PORTBUILD_USER}
-else
-    uid=ports-${arch}
-fi
-if [ ! -z "${PORTBUILD_GROUP}" ]; then
-    gid=${PORTBUILD_GROUP}
-else
-    gid=${uid}
-fi
 
 # Not every command requires a buildid as arg
 if [ $# -ge 1 ]; then

@@ -51,6 +51,7 @@ buildid=$3
 datestamp=$4
 shift 4
 
+. ${pbc}/admin/conf/admin.conf
 . ${pbc}/conf/server.conf
 . ${pbc}/conf/common.conf
 . ${pbc}/scripts/buildenv

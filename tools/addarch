@@ -28,6 +28,11 @@ fi
 . ${pbc}/admin/conf/admin.conf
 
 if [ ! -e ${pbc}/conf/server.conf ] ; then
+    echo "You must first create ${pbc}/admin/conf/admin.conf."
+    exit 1
+fi
+. ${pbc}/admin/conf/admin.conf
+if [ ! -e ${pbc}/conf/server.conf ] ; then
     echo "You must first create ${pbc}/conf/server.conf."
     exit 1
 fi
@@ -71,32 +76,24 @@ archfs=${ZFS_VOLUME}/portbuild/${arch}
 if ! test_fs "${archfs}"; then
   echo "The ${archfs} filesystem does not exist.  I'll create and mount it for you."
   zfs create ${archfs} || exit 1
-# chown -R ${uid}:${gid} ${archdir} || exit 1
-# chmod -R g+w ${archdir} || exit 1
 fi
 
 loads=${archdir}/loads
 if [ ! -d ${loads} ]; then
   echo "The ${loads} directory does not exist.  I'll create it for you."
   mkdir -p ${loads} || exit 1
-  chown -R ${uid}:${gid} ${loads} || exit 1
-  chmod -R g+w ${loads} || exit 1
 fi
 
 lockfiles=${archdir}/lockfiles
 if [ ! -d ${lockfiles} ]; then
   echo "The ${lockfiles} directory does not exist.  I'll create it for you."
   mkdir -p ${lockfiles} || exit 1
-  chown -R ${uid}:${gid} ${lockfiles} || exit 1
-  chmod -R g+w ${lockfiles} || exit 1
 fi
 
 mlist=${archdir}/mlist
 if [ ! -e ${mlist} ]; then
   echo "${mlist} does not exist.  I'll create an empty one."
   touch ${mlist} 
-  chown -R ${uid}:${gid} ${mlist} || exit 1
-  chmod 664 ${mlist} || exit 1
 fi
 
 conf=${archdir}/portbuild.conf

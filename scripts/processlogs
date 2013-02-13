@@ -42,6 +42,7 @@ errorscript=$scriptdir/processonelog
 pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
 pbd=${PORTBUILD_DATA:-/var/portbuild}
 
+. ${pbc}/admin/conf/admin.conf
 . ${pbc}/conf/server.conf
 . ${pbd}/${arch}/portbuild.conf
 
