@@ -208,7 +208,7 @@ echo "$0: in ${ZFS_MOUNTPOINT}/portbuild/conf as ${PORTBUILD_USER}."
 # but non-fatal.
 for extra_dir in ${PORTBUILD_OWNED_CONVENIENCE_SUBDIRS}; do
   if [ ! -d ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} ]; then
-    su -m ${PORTBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} 2> /dev/null" || exit 1
+    su -m ${PORTBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/${extra_dir}" 2> /dev/null || exit 1
   fi
   chgrp ${PORTBUILD_USER} ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} 2> /dev/null
 done
@@ -216,7 +216,7 @@ done
 # create convenience directories for SRCBUILD_USER.
 for extra_dir in ${SRCBUILD_OWNED_CONVENIENCE_SUBDIRS}; do
   if [ ! -d ${ZFS_MOUNTPOINT}/portbuild/admin/${extra_dir} ]; then
-    su -m ${SRCBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/admin/${extra_dir} 2> /dev/null" || exit 1
+    su -m ${SRCBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/admin/${extra_dir}" 2> /dev/null || exit 1
   fi
   chgrp ${SRCBUILD_USER} ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} 2> /dev/null
 done
