@@ -73,6 +73,7 @@ QMANAGER_SOCKET_FILE = config.get( 'QMANAGER_SOCKET_FILE' )
 PORTBUILD_USER = config.get( 'PORTBUILD_USER' )
 
 # added 20121229 as a fallback.  no longer recommended!
+# XXX MCL 20130128 all uses of portbuild_uid need to go away.
 portbuild_uid = 0
 if PORTBUILD_USER:
     portbuild_uid = getuidbyname( PORTBUILD_USER )
