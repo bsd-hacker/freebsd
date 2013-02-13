@@ -22,6 +22,7 @@ PORTBUILD_OWNED_SUBDIRS="portbuild"
 # define ownership of subdirectories of DEFAULT_ZFS_VOLUME/portbuild/
 SRCBUILD_OWNED_VCS_SUBDIRS="admin docs"
 PORTBUILD_OWNED_VCS_SUBDIRS="conf errorlogs qmanager scripts sources tools"
+SRCBUILD_OWNED_CONVENIENCE_SUBDIRS="lockfiles"
 PORTBUILD_OWNED_CONVENIENCE_SUBDIRS="lockfiles log"
 
 if [ `id -u` != 0 ]; then
@@ -214,6 +215,15 @@ for extra_dir in ${PORTBUILD_OWNED_CONVENIENCE_SUBDIRS}; do
     su -m ${PORTBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} 2> /dev/null" || exit 1
   fi
   chgrp ${PORTBUILD_USER} ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} 2> /dev/null
+done
+
+# create convenience directories for SRCBUILD_USER.
+SRCBUILD_OWNED_CONVENIENCE_SUBDIRS="lockfiles log"
+for extra_dir in ${SRCBUILD_OWNED_CONVENIENCE_SUBDIRS}; do
+  if [ ! -d ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} ]; then
+    su -m ${SRCBUILD_USER} -c "mkdir ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} 2> /dev/null" || exit 1
+  fi
+  chgrp ${SRCBUILD_USER} ${ZFS_MOUNTPOINT}/portbuild/${extra_dir} 2> /dev/null
 done
 
 echo "$0: done."
