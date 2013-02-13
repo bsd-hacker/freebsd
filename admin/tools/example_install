@@ -23,4 +23,4 @@ export VCS_REPOSITORY=svn://svn0.us-east.FreeBSD.org
 #
 mkdir -p tmp
 svn checkout ${VCS_REPOSITORY}/base/projects/portbuild/admin/tools tmp
-sh -x ./tmp/newmkportbuild
+sh -x ./tmp/mkportbuild
