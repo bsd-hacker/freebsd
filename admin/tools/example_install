@@ -1,12 +1,26 @@
 #!/bin/sh
 #
-# example script to drive mkportbuild
+# example script to drive the "mkportbuild" kickstart file
 #
 export PORTBUILD_USER=portbuild
 export SRCBUILD_USER=srcbuild
 export ZFS_VOLUME=a
 export ZFS_MOUNTPOINT=/a
 export VCS_REPOSITORY=svn://svn0.us-east.FreeBSD.org
+
+#
+# create the zpool.  the examples here are just suggestions and need to be
+# customized for your site.
+#
+# simple examples:
+# zpool create ${ZFS_VOLUME} da1
+# zpool create ${ZFS_VOLUME} gprootfs 
+# more complex example:
+# zpool create ${ZFS_VOLUME} mirror da1 da2 mirror da3 da4 mirror da5 da6 mirror da7 da8
+
+#
+# check out the kickstart file and run it
+#
 mkdir -p tmp
 svn checkout ${VCS_REPOSITORY}/base/projects/portbuild/admin/tools tmp
 sh -x ./tmp/newmkportbuild
