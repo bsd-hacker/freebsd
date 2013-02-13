@@ -24,7 +24,7 @@
 #     - ACL list might change!
 #          - take machine offline, update ACL/arch/etc, reboot, bring online
 
-import sys, threading, socket
+import sys, threading, socket, string
 from time import sleep
 import os, subprocess, logging
 
@@ -42,14 +42,13 @@ sys.path.insert(0, '%s/lib/python' % pbc)
 from freebsd import *
 from freebsd_config import *
 
-CONFIG_SUBDIR="conf"
-CONFIG_FILENAME="server.conf"
+CONFIG_SUBDIR="admin/conf"
+CONFIG_FILENAME="admin.conf"
 
-if len(sys.argv) < 1:
-    print "Usage: %s <arch> [<arch> ...]" % sys.argv[0]
-    sys.exit(1)
+config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
+SUPPORTED_ARCHS = config.get( 'SUPPORTED_ARCHS' )
+arches = string.split( SUPPORTED_ARCHS )
 
-arches=set()
 mlist={}
 polldelay=0
 for i in sys.argv[1:]:
@@ -57,21 +56,8 @@ for i in sys.argv[1:]:
         polldelay = 180
         continue
 
-    if "/" in i:
-        item=i.partition("/")
-        arch=item[0]
-        mach=item[2]
-        arches.add(arch)
-        try:
-            mlist[arch].add(mach)
-        except KeyError:
-            mlist[arch] = set((mach,))
-    else:
-        arches.add(i)
-
 # set of machines for each arch
 machines={}
-# XXX MCL would be nice to remove this hardwiring
 for i in arches:
     machines[i]=set()
 
@@ -281,19 +267,13 @@ class MachinePoll(threading.Thread):
             logging.info("%s finished polling for %s" % ( str(self), self.mach ))
 
     def setup(self, branch, buildid, args = ""):
-        uid = PORTBUILD_USER
-        if not uid:
-            uid = "ports-" + self.arch
-        cmd = "su %s -c \"%s/scripts/dosetupnode %s %s %s %s %s\""\
-            % (uid, pbc, self.arch, branch, buildid, self.mach, args)
+        cmd = "%s/scripts/dosetupnode %s %s %s %s %s"\
+            % (pbc, self.arch, branch, buildid, self.mach, args)
         child = subprocess.Popen(cmd, shell=True, stderr = subprocess.STDOUT,
                                  stdout = subprocess.PIPE)
         err = child.wait()
         out = "".join(child.stdout.readlines())
         return (err, out)
-
-config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
-PORTBUILD_USER = config.get( 'PORTBUILD_USER' )
 
 logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(message)s',
