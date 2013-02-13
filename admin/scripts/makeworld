@@ -49,6 +49,7 @@ fi
 export TARGET_ARCH=${arch}
 # Workaround needed for zfs - 20090321 erwin
 export NO_FSCHG=1
+export MAKEOBJDIRPREFIX=${WORLDDIR}/obj
 
 client=0
 novcs=0
