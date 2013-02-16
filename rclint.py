@@ -28,7 +28,7 @@ __version__ = '$FreeBSD$'
 
 MAJOR = 0
 MINOR = 0
-MICRO = 3
+MICRO = 4
 
 DATADIR = '.'
 
@@ -108,10 +108,11 @@ class Statement:
             return False
 
     def pointless_quoted(self):
-        if self.quoted():
-            for char in self.value:
-                if char in ' \t|&;<>()$`\\\"\'':
-                    return False
+        if not self.quoted():
+            return False
+        for char in self.value:
+            if char in ' \t|&;<>()$`\\\"\'':
+                return False
         return True
 
     def get_value(self):

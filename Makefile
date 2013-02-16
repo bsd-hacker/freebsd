@@ -21,6 +21,9 @@ FILES=	${SCRIPT} errors.en problems.en
 
 .PHONY: majorbump minorbump microbump release
 
+all:
+	@${ECHO} majorbump, minorbump, microbump and tarball are valid targets
+
 majorbump:
 	M=$$(expr ${VERSION_MAJOR} + 1); \
 	${SED} -i '' -e "s,^\(MAJOR = \).*,\1$$M," ${SCRIPT}
