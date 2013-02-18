@@ -28,7 +28,7 @@ __version__ = '$FreeBSD$'
 
 MAJOR = 0
 MINOR = 0
-MICRO = 4
+MICRO = 5
 
 DATADIR = '.'
 
@@ -112,7 +112,7 @@ class Statement:
     def pointless_quoted(self):
         if not self.quoted():
             return False
-        for char in self.value:
+        for char in self.value[1:-1]:
             if char in ' \t|&;<>()$`\\\"\'':
                 return False
         return True
@@ -298,7 +298,7 @@ def do_rclint(filename):
     for num in range(0, len(lines)):
         for obj in list(lineobj.keys()):
             tmp = eval(obj)(lines, num)
-            if not tmp.value:
+            if tmp.value:
                 lineobj[obj].append(tmp)
                 break
 
