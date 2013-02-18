@@ -97,7 +97,7 @@ class Statement:
             self.type = types[spl[0]]
             self.value = ' '.join(spl[1:])
             while self.value[-1] == '\\':
-                self.value = ' '.join((self.value[:-1], lines[num+self.length]))
+                self.value = ' '.join((self.value[:-1], lines[number+self.length]))
                 self.length += 1
             self.line = number
         else:
@@ -455,7 +455,7 @@ def do_rclint(filename):
     if mode == 'ports':
         do_ports_checking(lineobj, filename)
     if mode == 'base':
-        do_base_checking(lineobj, filename)
+        do_src_checking(lineobj, filename)
 
 
 parser = argparse.ArgumentParser()
