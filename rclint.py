@@ -37,6 +37,7 @@ import logging
 import re
 import textwrap
 
+
 class Db:
     def __init__(self, dbname, language):
         self._contents = []
@@ -76,13 +77,14 @@ class Db:
         else:
             logging.error('No such error: %s' % key)
         self.count += 1
-        if self.count > 10 and beaucoup_errors == False:
+        if self.count > 10 and not beaucoup_errors:
             hint = '  Try rerunning with -v option for extra details.' if verbosity == 0 else ''
             logging.error('Error threshold reached-- further errors are unlikely to be helpful.  Fix the errors and rerun.  The -k option will cause rclint to continue for as many errors as it finds.' + hint)
             exit()
 
     def warn(self, key, num=-1, level='warn'):
         self.give(key, num, level)
+
 
 class Statement:
     def __init__(self, lines, number):
@@ -121,6 +123,7 @@ class Statement:
         else:
             return self.value
 
+
 class Variable(Statement):
     def __init__(self, lines, number):
         line = lines[number]
@@ -156,7 +159,7 @@ class Variable(Statement):
                 (self.name, assignment, self.value) = is_shorthand
                 self.clobber = True if assignment[0] == ':' else False
                 self.type = 'shorthand'
-        
+
         if not hasattr(self, 'value'):
             self.value = False
         self.line = number
@@ -172,6 +175,7 @@ class Variable(Statement):
     def is_empty(self):
         return False if re.match('[\'"]?[^\'"]+[\'"]?', self.value) else True
 
+
 class Comment:
     def __init__(self, lines, number):
         line = lines[number]
@@ -185,6 +189,7 @@ class Comment:
         else:
             return False
 
+
 class Shebang:
     def __init__(self, comment):
         self.line = comment.line
@@ -195,6 +200,7 @@ class Shebang:
         else:
             self.value = False
 
+
 class Rcorder:
     def __init__(self, comment):
         self.line = comment.line
@@ -204,6 +210,7 @@ class Rcorder:
         else:
             self.value = False
 
+
 class RcsId:
     def __init__(self, comment):
         self.line = comment.line
@@ -212,6 +219,7 @@ class RcsId:
             self.value = result[0]
         else:
             self.value = False
+
 
 class Function:
     def __init__(self, lines, num):
@@ -248,12 +256,14 @@ class Function:
     def contains_line(self, line):
         return True if line in self.linenumbers() else False
 
+
 def get(objlist, name):
     for o in objlist:
         if o.name == name:
             return o
     else:
         return False
+
 
 def do_ports_checking(lineobj, filename):
     logging.debug('Now on ports-specific section')
@@ -268,8 +278,10 @@ def do_ports_checking(lineobj, filename):
                 error.give('variables_defaults_old_style', var.line)
     return
 
+
 def do_src_checking(lineobj, filename):
     return
+
 
 def do_rclint(filename):
     logging.debug('Suck in file %s' % filename)
@@ -286,7 +298,7 @@ def do_rclint(filename):
     for num in range(0, len(lines)):
         for obj in list(lineobj.keys()):
             tmp = eval(obj)(lines, num)
-            if tmp.value != False:
+            if not tmp.value:
                 lineobj[obj].append(tmp)
                 break
 
@@ -410,7 +422,7 @@ def do_rclint(filename):
                     error.give('rcvar_incorrect', var.line)
             except:
                 error.give('file_order', var.line)
-    
+
     logging.debug('Checking for function issues')
     for function in lineobj['Function']:
         if function.short():
@@ -450,7 +462,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('filenames', nargs='+')
 parser.add_argument('--language', nargs=1, type=str, default=['en'], help='sets the language that errors are reported in')
 parser.add_argument('-v', action='count', help='raises debug level; provides detailed explanations of errors')
-parser.add_argument('--version', action='version', version='%s.%s.%s-%s'%(MAJOR, MINOR, MICRO, __version__))
+parser.add_argument('--version', action='version', version='%s.%s.%s-%s' %(MAJOR, MINOR, MICRO, __version__))
 parser.add_argument('-b', action='store_true', help='chooses base RC script mode')
 parser.add_argument('-p', action='store_true', help='chooses ports RC script mode (default)')
 parser.add_argument('-k', action='store_true', help='tells rclint to carry on reporting even if there are over 10 errors')
@@ -459,7 +471,7 @@ args = parser.parse_args()
 mode = 'base' if args.b else 'ports'
 beaucoup_errors = args.k
 
-verbosity = args.v if args.v != None else 0
+verbosity = args.v if args.v is not None else 0
 logging.basicConfig(level=logging.DEBUG if verbosity > 1 else logging.WARN)
 
 error = Db('errors', args.language[0])
