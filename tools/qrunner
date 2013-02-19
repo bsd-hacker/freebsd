@@ -1,0 +1,13 @@
+#!/bin/sh
+#
+# periodic job to queue PRs.  modified by linimon 20100526 to add
+#    countermeasure for spam attacks.
+#
+QUEUE_DIR="/home/gnats/gnats-queue"
+#
+/usr/local/bin/python /home/gnats/tools/abuseHandler.py $QUEUE_DIR
+# for debugging
+#ls -al `realpath $QUEUE_DIR`
+# for debugging
+# /usr/local/libexec/gnats/queue-pr --run >/dev/null
+/usr/local/libexec/gnats/queue-pr --run
