@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# create an HTML page corresponding to annotated PRs
+
+script_dir="/home/gnats/tools"
+
+DEFAULT_FILENAME="annotated_prs.txt"
+
+input_filename=$1
+if [ -z "$input_filename" ]; then
+  input_filename="/home/`whoami`/public_html/$DEFAULT_FILENAME"
+fi
+output_filename=`echo $input_filename | sed -e "s/txt/html/"`
+
+html_mode=$2
+if [ -z "$html_mode" ]; then
+  html_mode="1"
+fi
+  
+perl $script_dir/do_generate_annotated_prs.pl $input_filename $html_mode > $output_filename.tmp && mv $output_filename.tmp $output_filename

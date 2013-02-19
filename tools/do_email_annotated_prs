@@ -1,0 +1,64 @@
+#!/bin/sh
+
+# send customized email corresponding to email template.  Might or might
+# not be "PRs assigned to".  Kind of overlaps email_annotated_prs.
+
+# set this to non-null when testing changes
+#DEVELOPMENT="yes"
+
+user=$1
+input_filename=$2
+html_mode=$3
+
+SCRIPT_DIR="/home/gnats/tools"
+DEFAULT_FILENAME="pr_email_template.txt"
+BOILERPLATE="$SCRIPT_DIR/email_boilerplate.txt"
+SENDMAIL="/usr/sbin/sendmail -odi -fowner-bugmaster@FreeBSD.org -oem"
+
+if [ ! -z "$DEVELOPMENT" ]; then
+  # development:
+  TO_BUGMASTER="linimon@FreeBSD.org"
+fi
+
+if [ -z "$user" ]; then
+  echo "usage: do_email_annotated_prs [user] [filename] [html_mode]"
+  exit 1
+fi
+
+# copied verbatim from gnatsreport.sh
+  targ=`echo ${user} | grep @`
+  if [ "${targ}" = "" ]; then
+    targ=${user}@FreeBSD.org
+  else
+    targ=${user}
+  fi
+  if [ -z "$DEVELOPMENT" ]; then
+    mail_to=${targ}
+  else
+    mail_to=${TO_BUGMASTER}
+  fi
+
+if [ -z "$input_filename" ]; then
+  # look for fallback if not explicitly specified
+  input_filename="/home/$user/public_html/$DEFAULT_FILENAME"
+  if [ -e $input_filename ]; then
+    echo "default template $input_filename not found."
+    exit 1
+  fi
+fi
+
+if [ -z "$html_mode" ]; then
+  html_mode="0"
+fi
+
+# now send the mail
+  (
+    echo "From: FreeBSD bugmaster <bugmaster@freebsd.org>"
+    echo "To: ${user}"
+    echo "Subject: Current problem reports customized for ${targ}"
+    echo ""
+    perl $SCRIPT_DIR/do_generate_annotated_prs.pl $input_filename $html_mode
+    cat $BOILERPLATE
+  ) | ${SENDMAIL} ${mail_to}
+
+exit 0

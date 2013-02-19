@@ -1,0 +1,25 @@
+
+Notes:
+
+generated on freefall via:
+
+  ~gnats/tools/do_email_annotated_prs [user] [filename] [html_mode]
+
+user is mandatory.
+
+If you do not specify filename the script will look for a file named
+pr_emailtemplate.txt in ~[user]/public_html/.
+
+html_mode may be 1 to send HTML mail, or 0 or omitted not to.
+
+The input format is fairly free-form: any line that starts with a numeric
+is magically assumed to be a PR number; otherwise it is simply copied to
+the output.  The magic string %QUERY_PR is a metadirective.
+
+Closed PRs are automagically filtered out by default, but can be shown
+if desired.
+
+Note: to view an individual PR, use:
+  http://www.freebsd.org/cgi/query-pr.cgi?pr=[number].
+
+Send comments to linimon@FreeBSD.org.

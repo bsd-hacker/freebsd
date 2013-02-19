@@ -1,0 +1,40 @@
+#!/bin/sh
+
+# send email corresponding to email template
+
+user=$1
+targ=$2
+mail_to=$3
+input_filename=$4
+html_mode=$5
+
+DEFAULT_FILENAME="pr_email_template.txt"
+
+SCRIPT_DIR="/home/gnats/tools"
+BOILERPLATE="$SCRIPT_DIR/email_boilerplate.txt"
+SENDMAIL="/usr/sbin/sendmail -odi -fowner-bugmaster@FreeBSD.org -oem"
+
+if [ -z "$user" -o -z "$targ" -o -z "$mail_to" ]; then
+  echo "usage: email_annotated_prs [user] [mail_to] [filename] [html_mode]"
+  exit 1
+fi
+
+if [ -z "$input_filename" ]; then
+  # XXX MCL use fallback if not exists
+  # XXX MCL template not yet generalized!
+  input_filename="/home/$user/public_html/$DEFAULT_FILENAME"
+fi
+
+if [ -z "$html_mode" ]; then
+  html_mode="1"
+fi
+  
+# now send the mail
+  (
+    echo "From: FreeBSD bugmaster <bugmaster@freebsd.org>"
+    echo "To: ${user}"
+    echo "Subject: Current problem reports assigned to ${targ}"
+    echo ""
+    perl $SCRIPT_DIR/do_generate_annotated_prs.pl $input_filename $html_mode
+    cat $BOILERPLATE
+  ) | ${SENDMAIL} ${mail_to}
