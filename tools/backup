@@ -1,0 +1,8 @@
+#!/bin/sh
+
+. ~gnats/tools/common.sh
+
+set -e
+cd ~gnats
+[ -d "${backupdir}" ] || mkdir "${backupdir}"
+tar zcf "${backupdir}/$(date '+gnats.%Y%m%d.%H%M.tar.gz')" ${categories}
