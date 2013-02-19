@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# pick a random PR with the tag 'tag' and possibly in category 'category'.
+# $1: tag.  $2: category.
+#
+# author: linimon
+#
+if [ -z "$1" ]; then
+  TAG=patch
+else
+  TAG=$1
+fi
+if [ -z "$2" ]; then
+  CATEGORY=kern
+else
+  CATEGORY=$2
+fi
+#
+query-pr -c $CATEGORY -t "\["$TAG"\]" -q -x -r freebsd-bugs | \
+  /usr/games/random -f - | \
+  head -1

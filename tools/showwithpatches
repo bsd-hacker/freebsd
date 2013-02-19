@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# show all PRs with the tag [patch]
+#
+# author: linimon
+#
+query-pr -i -x -t '\[patch\]'
