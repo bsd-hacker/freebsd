@@ -1,0 +1,62 @@
+#!/bin/sh
+#
+# If we're editing the PR, then make the requested substitution with sed.
+# Otherwise, we're editing the reason, so run the user's editor.
+
+if [ `echo $1 | cut -c1-10` = "/tmp/chng." ]; then
+	if [ -n "$PR_MESSAGE" ]; then
+		echo "$PR_MESSAGE" > $1
+	else
+		# check to see if there is a $EDITOR; if not, use vi
+		[ -z "$OVISUAL" ] &&
+			if [ -z "$OEDITOR" ]; then
+				OVISUAL=vi
+			else
+				OVISUAL="$OEDITOR"
+			fi
+
+		cp $1 $1~
+
+		EDIT="y"
+
+		while [ "$EDIT" = "y" -o "$EDIT" = "Y" ]; do
+			$OVISUAL $1
+			if cmp -s $1 $1~; then
+				echo -n "Reason not modified, do you want to re-edit? (y/n) "
+				read EDIT
+			else
+				EDIT="n"
+			fi
+		done
+
+		rm -f $1~
+	fi
+
+	cat $1 | grep -v "^GNATS:" | fmt -w 72 > $1~
+	cp $1~ $1
+	rm -f $1~
+else
+
+	if [ "$NEW_RESP" != "" ]; then
+		cp $1 $1~
+		sed -e "/^>Responsible:/s/[^   ]*\$/$NEW_RESP/" < $1~ > $1
+		rm -f $1~
+	fi
+
+	if [ "$NEW_STATE" != "" ]; then
+		cp $1 $1~
+		sed -e "/^>State:/s/[^   ]*\$/$NEW_STATE/" < $1~ > $1
+		rm -f $1~
+	fi
+
+	if [ "$NEW_CLASS" != "" ]; then
+		cp $1 $1~
+		sed -e "/^>Class:/s/[^   ]*\$/$NEW_CLASS/" < $1~ > $1
+		rm -f $1~
+	fi
+
+	if [ "$NEW_NOTIFY" != "" ]; then
+		cp $1 $1~
+		sed -e "/^X-GNATS-Notify:/s/[^	 ]*\$/$NEW_NOTIFY/" < $1~ > $1
+	fi
+fi

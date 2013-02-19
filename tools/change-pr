@@ -1,0 +1,315 @@
+#!/bin/sh
+#
+# AUTHORS:
+# Renato Botelho <garga@FreeBSD.org>
+# Marcus Alves Grando <mnag@FreeBSD.org>
+# Eitan Adler <eadler@FreeBSD.org> (current maintainer)
+#
+# CONTRIBUTORS:
+# Sergey Matveychuk <sem@FreeBSD.org>
+# Vasil Dimov <vd@FreeBSD.org>
+#
+# More information: change-pr -h
+#
+
+version="3.2.0";
+
+SPECIAL_RESP="amd64 apache eclipse emulation gnome ia64 java kde openoffice \
+              perl pgsql x11 freebsd-amd64 freebsd-apache freebsd-eclipse \
+	      gecko \
+              freebsd-emulation freebsd-gnome freebsd-ia64 freebsd-java \
+              freebsd-kde freebsd-openoffice freebsd-perl freebsd-x11 \
+              freebsd-ports-bugs \
+	      ports-secteam
+	      secteam
+	      gnats-admin"
+
+print_usage () {
+	echo "Usage: $0 [-hoafjpsc] [-Cx] [-t|-T committer] [-n email] [-m message] PR ..."
+}
+
+print_help () {
+	echo "change-pr: Try to make your life with gnats a bit better"
+	echo "version: $version";
+	echo ""
+	print_usage
+	echo ""
+	echo "Parameters:"
+	echo ""
+	echo "-h		- This help"
+	echo ""
+	echo "-o		- Change >State to open"
+	echo "-a		- Change >State to analyzed"
+	echo "-f		- Change >State to feedback"
+	echo "-p		- Change >State to patched"
+	echo "-s		- Change >State to suspended"
+	echo "-c		- Change >State to closed"
+	echo ""
+	echo "-t		- Change >Responsible to you"
+	echo "-T committer	- Change >Responsible to committer"
+	echo "-n email		- Change >X-GNATS-Notify to email"
+	echo ""
+	echo "-Cx		- Change >Class field, where x could be:"
+	echo "s		- sw-bug"
+	echo "d		- doc-bug"
+	echo "c		- change-request"
+	echo "u		- update"
+	echo "m		- maintainer-update"
+	echo ""
+	echo "-j		- Change >Category to junk"
+	echo ""
+	echo "-m message	- Use message to log the change"
+	echo ""
+	echo "To see the synopsis of PRs when you are using one of the"
+	echo "symlinks (e.g. close-pr) set an env var SHOW_SYNOPSIS=1"
+	echo ""
+	echo "When responsible of a PR is not freebsd-*, script will ask"
+	echo "you to confirm the change. You can set the default answer"
+	echo "using TAKE_PR_DEFAULT to 'Y' or 'N', and, can disable the"
+	echo "question setting TAKE_PR_BATCH=1 envvar."
+	exit 0
+}
+
+get_RESP () {
+	if [ -n "$PR_MESSAGE" ]
+	then
+		RESP="$PR_MESSAGE";
+		return;
+	fi;
+	if [ -f ~/.$MODULE ]; then
+		CONF=~/.$MODULE
+	else
+		CONF=~gnats/tools/changeprconf/.$MODULE.default
+	fi
+
+	if [ ! -f $CONF ]; then
+		exit 0
+	fi
+
+	SHOW=${SHOW_SYNOPSIS-N}
+
+	if [ "$SHOW" != "N" ]; then
+		for PR in $*; do
+			echo -n "$PR - "
+			echo `/usr/local/bin/query-pr $PR | grep '^>Synopsis:' | sed 's,^>Synopsis:[ \t]*,,'`
+		done
+
+		echo ""
+	fi
+
+	echo "Choose:"
+	NUM=1
+	for x in `cat $CONF | sed 's/ /___/g'`; do
+		i=`echo $x | sed 's/___/ /g; s/\"//g'`
+		echo "[$NUM] $i"
+		eval TEXT$NUM=\"$i\"
+		NUM=`expr $NUM + 1`
+	done
+
+	echo -n "or put your text here: "
+	read TMPRESP
+
+	if [ "$TMPRESP" != "" -a "`echo $TMPRESP | sed 's/[0-9]*//g'`" = "" ]; then
+		eval TEXT=\$TEXT$TMPRESP
+		if [ "$TEXT" != "" ]; then
+			TMPRESP="$TEXT"
+		else
+			TMPRESP=""
+		fi
+	fi
+
+	eval RESP=\$TMPRESP
+}
+
+MODULE=`basename $0`
+MODULEPATH=`echo $0 | sed "s,/$MODULE,,"`
+
+while getopts hoafprscm:ntT:C:j o; do
+	case "$o" in
+		h)	print_help;;
+		o)	NEW_STATE=open;;
+		a)	NEW_STATE=analyzed;;
+		f)	NEW_STATE=feedback;;
+		p)	NEW_STATE=patched;;
+		r)	echo "This option is now deprecated." > /dev/stderr;
+			exit 1;;
+		s)	NEW_STATE=suspended;;
+		c)	NEW_STATE=closed
+			CHG_RESP=1;;
+		t)	CHG_RESP=1
+			CHK_RESP=0
+			NEW_RESP=`whoami`;;
+		T)	CHG_RESP=1
+			CHK_RESP=1
+			NEW_RESP="$OPTARG";;
+		n)	NEW_NOTIFY="$OPTARG";;
+		m)	PR_MESSAGE="$OPTARG";;
+		C)	NEW_CLASS_OPT="$OPTARG";;
+		j)	NEW_CAT=junk;;
+		[?])	print_usage
+			exit 1;;
+	esac
+done
+shift `expr $OPTIND - 1`
+
+if [ $# -eq 0 ]; then
+	print_usage
+	exit 1
+fi
+
+if [ "$MODULE" = "close-pr" ]; then
+	if [ $# -lt 1 ]; then
+		echo "Usage: $0 PR ..."
+		exit 0
+	fi
+
+	get_RESP $*
+
+	$MODULEPATH/change-pr -c -m "$RESP" $*
+	exit 0
+elif [ "$MODULE" = "forward-pr" ]; then
+	if [ $# -lt 2 ]; then
+		echo "Usage: $0 USER PR ..."
+		exit 0
+	fi
+	user="$1";
+	shift;
+	get_RESP $*
+
+	$MODULEPATH/change-pr -m "$RESP" -T $user $*
+	exit 0
+elif [ "$MODULE" = "portmgr-pr" ]; then
+	if [ $# -lt 1 ]; then
+		echo "Usage: $0 PR ..."
+		exit 0
+	fi
+
+	get_RESP $*
+
+	$MODULEPATH/change-pr -T portmgr -m "$RESP" $*
+	exit 0
+elif [ "$MODULE" = "feedback-pr" ]; then
+	if [ $# -lt 1 ]; then
+		echo "Usage: $0 PR ..."
+		exit 0
+	fi
+
+	get_RESP $*
+
+	$MODULEPATH/change-pr -f -m "$RESP" $*
+	exit 0
+elif [ "$MODULE" = "analyzed-pr" ]; then
+	if [ $# -lt 1 ]; then
+		echo "Usage: $0 PR ..."
+		exit 0
+	fi
+
+	get_RESP $*
+
+	$MODULEPATH/change-pr -a -m "$RESP" $*
+	exit 0
+elif [ "$MODULE" = "open-pr" ]; then
+	if [ $# -lt 1 ]; then
+		echo "Usage: $0 PR ..."
+		exit 0
+	fi
+
+	get_RESP $*
+
+	$MODULEPATH/change-pr -o -m "$RESP" $*
+	exit 0
+elif [ "$MODULE" = "take-pr" ]; then
+	if [ $# -lt 1 ]; then
+		echo "Usage: $0 PR ..."
+		exit 0
+	fi
+
+	get_RESP $*
+
+	$MODULEPATH/change-pr -t -m "$RESP" $*
+	exit 0
+elif [ "$MODULE" = "repocopy-pr" ]; then
+	echo "This state is no longer active." >/dev/stderr
+	exit 1
+elif [ "$MODULE" = "junk-pr" ]; then
+	if [ $# -lt 1 ]; then
+		echo "Usage: $0 PR ..."
+		exit 0
+	fi
+
+	get_RESP $*
+
+	$MODULEPATH/change-pr -j -c -T gnats-admin -m "$RESP" $*
+	exit 0
+else
+fi
+
+NEW_CLASS=""
+case "$NEW_CLASS_OPT" in
+	s)	NEW_CLASS="sw-bug";;
+	d)	NEW_CLASS="doc-bug";;
+	c)	NEW_CLASS="change-request";;
+	u)	NEW_CLASS="update";;
+	m)	NEW_CLASS="maintainer-update";;
+esac
+
+if [ -z "$NEW_STATE" -a -z "$CHG_RESP" -a -z "$NEW_CLASS" ]; then
+	print_usage
+	exit 1
+fi
+
+SPECIAL=0;
+if [ "$CHK_RESP" = "1" -a "$NEW_RESP" != "" ]; then
+	if [ "`expr $NEW_RESP : '\([^-]*\)'`" != "freebsd" ]; then
+		for RESP in $SPECIAL_RESP; do
+			if [ "$NEW_RESP" = "$RESP" ]; then
+				SPECIAL=1;
+			fi
+		done
+		id $NEW_RESP >/dev/null 2>&1
+		if [ $? -ne 0 -a $SPECIAL -ne 1 ]; then
+			echo >&2 "Error: $NEW_RESP is an invalid committer."
+			exit 1
+		fi
+	fi
+fi
+
+for PR in $*; do
+	CONT="${TAKE_PR_DEFAULT-Y}"
+
+	ENT_PR=`query-pr $PR 2>&1`
+	if [ $? -ne 0 ]; then
+		echo >&2 "PR $PR not found"
+		continue
+	fi
+
+	if [ "$CHG_RESP" = "1" ]; then
+		RESP=`echo $ENT_PR | sed -E 's/^.*>Responsible: *([^ ]*).*$/\1/'`
+		FREEBSD_RESP=`expr $RESP : '\([^-]*\)'`
+
+		if [ "$FREEBSD_RESP" != "freebsd" -a "$RESP" != "`whoami`" -a -z "$TAKE_PR_BATCH" ]; then
+			echo -n "The actual Responsible of PR $PR is $RESP. Continue? (y/n) [${TAKE_PR_DEFAULT-Y}]: "
+			read CONT
+
+			if [ "$CONT" = "" ]; then
+				CONT="${TAKE_PR_DEFAULT-Y}"
+			fi
+		fi
+	fi
+
+	if [ "$CONT" = "Y" -o "$CONT" = "y" ]; then
+		TMP=$MODULEPATH/change-pr.helper
+		/usr/bin/env \
+			OEDITOR="$EDITOR" \
+			OVISUAL="$VISUAL" \
+			VISUAL="$TMP" \
+			EDITOR= \
+			NEW_CAT="$NEW_CAT" \
+			NEW_CLASS="$NEW_CLASS" \
+			NEW_RESP="$NEW_RESP" \
+			NEW_NOTIFY=$NEW_NOTIFY \
+			NEW_STATE="$NEW_STATE" \
+			PR_MESSAGE="$PR_MESSAGE" \
+				/usr/local/bin/edit-pr $PR
+	fi
+done
