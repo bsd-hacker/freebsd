@@ -1,0 +1,11 @@
+#!/bin/sh
+#
+# get a list of all tags in GNATS Synopses
+#
+# author: linimon
+#
+query-pr -i -x -t '^\['  | \
+  cut -f 3 -d \| | \
+  tr "[:upper:]" "[:lower:]" | \
+  sed -e "s@\].*@@;s@\[@@;s@^ @@g;s@ \$@@g" | \
+  sort

@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# show all the PRs corresponding to 'tag'.
+#
+# author: linimon
+#
+query-pr -i -x -t '\['$1'\]'

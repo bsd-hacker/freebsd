@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# show a list of all tags in GNATS Synopses
+#
+# author: linimon
+#
+/home/gnats/tools/getalltags | uniq -c -i

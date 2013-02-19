@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# Show all (non-ports/www/docs) PRs that do not appear to contain a
+# subsystem tag in their title
+
+query-pr -q -x | \
+  awk '$3 !~ /ports|www|docs/ { print }' | \
+  sed 's/\[patch\]//Ig;s/\[request\]//Ig' | \
+  egrep -v '\([123456789]\)|\[*\]'

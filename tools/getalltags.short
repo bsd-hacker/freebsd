@@ -1,0 +1,47 @@
+#!/bin/sh
+#
+# get list of all tags in GNATS Synopses, but with things that aren't
+# legitimate classifications pruned
+#
+# author: linimon
+#
+/home/gnats/tools/getalltags | \
+  grep -v "/" | \
+  grep -v "^boot$" | \
+  grep -v "bug" | \
+  grep -v "build" | \
+  grep -v "crash" | \
+  grep -v "^deps$" | \
+  grep -v "^error" | \
+  grep -v "feature" | \
+  grep -v "fix" | \
+  grep -v "freeze" | \
+  grep -v "hang" | \
+  grep -v "^install$" | \
+  grep -v "^lor$" | \
+  grep -v "maintainer" | \
+  grep -v "^new$" | \
+  grep -v "^new driver" | \
+  grep -v "^new port" | \
+  grep -v "^new util$" | \
+  grep -v "panic" | \
+  grep -v "partial" | \
+  grep -v "patch" | \
+  grep -v "ports" | \
+  grep -v "proposal" | \
+  grep -v "quirk" | \
+  grep -v "^race" | \
+  grep -v "reboot" | \
+  grep -v "regression" | \
+  grep -v "repo copy" | \
+  grep -v "repocopy" | \
+  grep -v "request" | \
+  grep -v "^rfc" | \
+  grep -v "^rfe" | \
+  grep -v "security" | \
+  grep -v "timeout" | \
+  grep -v "trap" | \
+  grep -v "unbreak" | \
+  grep -v "update" | \
+  grep -v "wish" | \
+  grep -v "workaround"

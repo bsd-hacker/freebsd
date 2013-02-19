@@ -1,0 +1,8 @@
+#!/bin/sh
+#
+# show a list of all tags in GNATS Synopses, but with things that aren't
+# legitimate classifications pruned
+#
+# author: linimon
+#
+/home/gnats/tools/getalltags.short | uniq -c -i
