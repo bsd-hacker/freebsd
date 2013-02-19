@@ -1,0 +1,55 @@
+#!/bin/sh
+# kick gnats-aa to do the auto-assignment of ports-PRs
+# need to have Category=ports and cat/name in Synopsis
+#
+# gnats-aa in /hub/g/hubgnats/gnats-aa/incoming-PRs/bin/
+# logs in /hub/g/hubgnats/gnats-aa/incoming-PRs/log/foo
+
+#set -x
+
+kickit()
+{
+    # kick gnats-aa
+    echo "now I'm kicking gnats-aa by mail..."
+    query-pr -F ${1} | grep -vi responsible | sendmail gnats-aa@freebsd.org
+    rc=${?}
+    if [ ${rc} -gt 0 ] ; then
+      echo "exit status ${rc}!"
+    else
+      echo "done!"
+    fi
+    exit ${rc}
+}
+
+checkpr()
+{
+  PR=${1}
+  if [ `query-pr ${PR} | wc -l` -gt 1 ] ; then
+  else
+    echo "query-pr matched no PRs, please check! (${PR})"
+    return 1
+  fi
+  if [ `query-pr ${PR} | grep Category | grep -i ports | wc -l` -eq 0 ] ; then
+    echo "PR not category ports"
+    return 1
+  fi
+  # check to see, if we can figure out category/portname from Synopsis
+
+  if [ `query-pr ${PR} | grep -i responsible | \
+	grep -i freebsd-ports-bugs | wc -l` -eq 0 ] ; then
+    echo "Hint! Hint! Responsible should be set to freebsd-ports-bugs"
+  fi
+}
+
+if [ $# -gt 0 ] ; then
+  PR=${1}
+  # check if PR is there...
+  checkpr ${PR}
+  if [ ${?} -eq 0 ] ; then
+    kickit ${PR}
+    exit ${rc}
+  fi
+else
+  echo "${0} (pr-number)"
+fi
+
