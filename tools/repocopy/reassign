@@ -1,0 +1,5 @@
+#!/bin/sh
+# Reassign a PR
+#
+THISDIR=`dirname $0`
+OEDITOR=$EDITOR OVISUAL=$VISUAL VISUAL=reassign.helper EDITOR= edit-pr $*

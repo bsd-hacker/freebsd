@@ -1,0 +1,21 @@
+#!/bin/sh --
+# $Id$
+
+PATH=${PATH}:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin; export PATH
+THISDIR=`dirname $0`
+
+usage() {
+	echo Usage: `basename $0` state > /dev/stderr
+}
+
+if [ ${#} -ne 1 ]; then
+	usage
+	exit 1
+fi
+
+STATE=$1
+
+for committer in `${THISDIR}/nagtargets ${STATE}`
+  do
+	${THISDIR}/autonagger ${committer} ${STATE}
+  done

@@ -1,0 +1,11 @@
+#* Separate reminders to portmgr and cvs every 3 days, but only if there
+#  is anything waiting
+5 5 * * */3 /c/gnats/tools/repocopy/reporter portmgr repocopy
+5 5 * * */3 /c/gnats/tools/repocopy/reporter cvs repocopy
+#* if a repocopy has been performed and is back in the hands of a
+#  committer, they should get a reminder every other day nagging them to
+#  finish their deer.
+5 6 * * */2 /c/gnats/tools/repocopy/nag repocopy
+#* after two weeks in portmgr's hands, they'll automatically be assigned
+#  to cvs.
+5 7 * * * /c/gnats/tools/repocopy/timeouts 1209600 cvs portmgr

@@ -1,0 +1,43 @@
+#!/bin/sh --
+# $Id: timeouts,v 1.2 2004/02/10 18:32:14 setantae Exp $
+#
+# Script used to find PRs that have been unmodifed for $1 seconds,
+# optionally limited to those for whom $3 is responsible, and assign
+# them to $2
+
+PATH=${PATH}:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin; export PATH
+QUERY_PR="/usr/local/bin/query-pr"
+THISDIR=`dirname $0`
+REASSIGN="${THISDIR}/reassign"
+SEENLIST="${THISDIR}/reassigned"
+PATH=${PATH}:${THISDIR}; export PATH
+
+usage() {
+        echo Usage: `basename $0` timeout assign-to [responsible] > /dev/stderr
+}
+
+if [ ${#} -ne 2 ]; then
+	if [ ${#} -ne 3 ]; then
+	        usage
+       		exit 1
+	fi
+	RESPONSIBLE=" -r $3"
+fi
+TIMEOUT=$1
+ASSIGN_TO=$2
+
+for id in `${QUERY_PR} -q -s repocopy ${RESPONSIBLE} 2>/dev/null| awk '{print $1}'`; do
+	DONE=`grep -c $id ${SEENLIST}`
+	if [ ${DONE} -eq 0 ]; then
+		now=`date +%s`
+		mtime="`${QUERY_PR} ${id} | grep Last-Modified: | \
+			sed -E -e 's/^.*Modified:[[:space:]]*//' \
+				-e 's/[[:space:]]\+[[:digit:]]{4}[[:space:]]/ /'`"
+ 		utc="`date -j -f '%+' \"${mtime}\" '+%s'`"
+ 		diff="`echo ${now}-${utc} | bc`"
+ 		if [ ${diff} -ge ${TIMEOUT} ]; then
+			ASSIGN_TO=${ASSIGN_TO} ${REASSIGN} $id && echo "$id # " `date` >> ${SEENLIST}
+ 		fi
+	fi
+done
+

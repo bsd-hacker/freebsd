@@ -1,0 +1,39 @@
+#!/bin/sh --
+# $Id$
+#
+# Script to autonag $1 about PRs in state $2
+#
+MAIL=/usr/bin/mail
+PATH=${PATH}:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin; export PATH
+QUERY_PR="/usr/local/bin/query-pr"
+
+usage() {
+	echo Usage: `basename $0` responsible state > /dev/stderr
+}
+
+if [ ${#} -ne 2 ]; then
+	usage
+	exit 1
+fi
+
+WHO=$1
+STATE=$2
+
+PRS=`${QUERY_PR} -q -s ${STATE} -r ${WHO} 2>/dev/null`
+
+if [ -z "${PRS}" ]; then
+	exit 0
+fi
+
+${MAIL} -s "PRs in state ${STATE} assigned to ${WHO}" -b bugmeister ${WHO} << EOM
+
+The following PRs in the ${STATE} state require your attention.
+
+${PRS}
+
+Thank you,
+
+The Automated Repocopy Nagger.
+(/c/gnats/tools/repocopy/).
+
+EOM

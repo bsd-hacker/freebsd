@@ -1,0 +1,22 @@
+#!/bin/sh --
+# $Id$
+#
+# Output a list of users with PRs in state $1
+#
+PATH=${PATH}:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin; export PATH
+QUERY_PR="/usr/local/bin/query-pr"
+
+usage() {
+	echo Usage: `basename $0` state > /dev/stderr
+}
+
+if [ ${#} -ne 1 ]; then
+	usage
+	exit 1
+fi
+
+STATE=$1
+
+${QUERY_PR} -q -s ${STATE} 2>/dev/null | awk '{print $2}' | sort \
+	 | uniq | grep -v ^cvs$ | grep -Ev ^[dps]cvs$ | grep -v ^portmgr$
+

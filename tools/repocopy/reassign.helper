@@ -1,0 +1,27 @@
+#!/bin/sh
+#
+# If we're editing the PR, then make the requested substitution with sed.
+# Otherwise, we're editing the reason, so copy it over.
+
+PATH=${PATH}:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin; export PATH
+THISDIR=`dirname $0`
+
+if [ -z ${ASSIGN_TO} ]; then
+	echo ASSIGN_TO not set > /dev/stderr
+	exit 1
+fi
+# gnats4
+#if [ `echo $1 | cut -c1-7,14-19` = "/tmp/ep/chng." ]; then
+if [ `echo $1 | cut -c1-10` = "/tmp/chng." ]; then
+
+	cp ${THISDIR}/reasons $1
+
+else
+
+	cp $1 $1~
+	sed -e	"/^>Responsible:/s/[^ 	]*$/${ASSIGN_TO}/" \
+		< $1~ > $1
+	rm $1~
+
+fi
+
