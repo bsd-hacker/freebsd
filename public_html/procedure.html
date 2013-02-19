@@ -1,0 +1,36 @@
+<html>
+  <head>
+    <title>Maintenance Procedure</title>
+  </head>
+  <body>
+    <h1>Gnats Maintenance Procedures</h1>
+
+    <p>Before any maintenance is performed on Gnats, the following steps
+      must be taken to prevent database corruption:</p>
+
+    <ul>
+      <li>Stop the queue and any cron'ed maintenance tasks by commenting out
+        the contents of the <tt>gnats</tt> user's <tt>crontab</tt>.</li>
+
+      <li>Make sure the <tt>gnats-adm/locks</tt> directory is empty, then
+        <tt>chmod 0</tt> it to disable <tt>edit-pr(1)</tt>.</li>
+
+      <li>Take a complete backup of the Gnats database, in case something
+        goes wrong.</li>
+    </ul>
+
+    <p>If you need to restore the database from backup, <b>take care not to
+      clobber the queue directory!</b></p>
+
+    <p>Once maintenance is complete, the database needs to be unfrozen so
+      work on it can resume:</p>
+
+    <ul>
+      <li>Re-enable <tt>edit-pr(1)</tt> by setting the lock directory's
+        access mode back to 0755.</li>
+
+      <li>Restart the queue by un-commenting the <tt>gnats</tt> user's
+        <tt>crontab</tt>.</li>
+    </ul>
+  </body>
+</html>

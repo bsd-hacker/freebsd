@@ -1,0 +1,31 @@
+#
+#                  User access levels with the GNATS daemon.
+#
+# Any line which begins with a `#' is considered a comment, and GNATS
+# will ignore it. 
+#
+# Each entry has the format:
+# 
+#	userid:password:access-level:database-alias
+#
+#       Wildcard characters are supported for userid, password and database.
+#            "*" matches anything; "?" matches any single character
+#
+#       * userid:   a user id to gain access to gnatsd
+#       * password: a password for the user
+#       * access-level: (default = edit)
+#               deny     - gnatsd closes the connection
+#               none     - no further access until userid and password given
+#               view     - query and view PRs with Confidential=no only
+#               viewconf - query and view PRs with Confidential=yes
+#               edit     - full edit  access
+#               admin    - full admin access (not currently used)
+#         This overrides (increases but never lowers) the access level given
+#         as the default for the user's host in the /etc/gnatsd.conf file.
+#       * database-alias: a comma-separated list of database aliases to
+#         match alias entries from the second field of the database file
+#         /etc/gnats-db.conf. This field is only used in /etc/gnatsd.access.
+#         It's ignored in gnatsd-adm/gnatsd.access since this file is already
+#         database specific.
+#
+#*:*:view:

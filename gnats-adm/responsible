@@ -1,0 +1,40 @@
+#
+#		  People responsible for a given PR.
+#
+# Any line which begins with a `#' is considered a comment, and GNATS
+# will ignore it. 
+#
+# Each entry has the format:
+#
+#	person:full name:address
+#
+# * The `person' can either be an abbreviated name, or the person's
+#   username (local to the GNATS site) which should be listed in the PR.
+# * The `full name' is simply their name, as in "Diane Williams".
+# * The `address' field is either empty for local addresses, or should
+#   the electronic mail address of the person.
+#
+# You MUST have this entry for GNATS to work.
+#
+gnats-admin: GNATS administrator:
+#
+# Local changes
+#
+core: FreeBSD core team:
+freebsd-advocacy: FreeBSD advocacy mailing list:
+freebsd-alpha: FreeBSD Alpha mailing list:
+freebsd-amd64: FreeBSD amd64 mailing list:
+freebsd-arm: FreeBSD arm mailing list:
+freebsd-bugs: FreeBSD bugs mailing list:
+freebsd-doc: FreeBSD doc mailing list:
+freebsd-i386: FreeBSD i386 mailing list:
+freebsd-ia64: FreeBSD IA64 mailing list:
+freebsd-java: FreeBSD Java mailing list:
+freebsd-ports-bugs: FreeBSD ports mailing list:
+#freebsd-powerpc: FreeBSD PowerPC mailing list:
+freebsd-sparc64: FreeBSD Sparc mailing list:
+freebsd-standards: FreeBSD Standards mailing list:
+freebsd-threads: FreeBSD Threads mailing list:
+freebsd-usb: FreeBSD USB mailing list:
+freebsd-www: FreeBSD WWW mailing list:
+cvs: FreeBSD Repomeisters:

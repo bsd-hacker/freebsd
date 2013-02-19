@@ -1,0 +1,67 @@
+#		    Possible states for a PR.
+#
+# Any line which begins with a `#' is considered a comment, and GNATS
+# will ignore it. 
+#
+# Each entry has the format:
+#
+# 	state[:type[:description]]
+#
+# that is, any of the following are okay:
+#
+#	suspended
+#	suspended:closed
+#	suspended:closed:No solution yet, work on it also suspended for the time being.
+#	suspended::No solution yet, work on it also suspended for the time being.
+#
+# * `state' is the name of the state; it can contain alphanumerics,
+#   "-", "_", and ".", but no other characters.
+#
+# * `type' is the optional name of the state type; it can contain
+#   alphanumerics, "-", "_", and ".", but no other characters. The
+#   only defined state types are "open" and "closed". The "open" state
+#   isn't currently used for anything. Changing the state of a PR to
+#   any state of type "closed" will set the Closed-Date field with a
+#   time stamp. Changing the state of a PR from one "closed" state to
+#   another will leave the Closed-Date field as it was. Changing the
+#   state of a PR from any state of type "closed" to a non-closed
+#   state will clear the Closed-Date field.  The "--skip-closed"
+#   option of query-pr and nquery-pr looks at the state types for the
+#   "closed" type, not for a state name of "closed".
+#
+#   `description' is an optional one-line description of what this
+#   state means.  Any character is okay in the description; a newline
+#   ends it, however.  GNATS does not currently use the description,
+#   other than to include it in the --list-states command, but certain
+#   external tools (such as TkGnats) look for it, so it's a good
+#   idea include one for every state.
+#
+# The first listed state is the default state for an incoming Problem
+# Report.  The last listed state is considered one of the final
+# ("closed") states for a Problem Report and will be forced to have a
+# type of "closed". Once a PR is in this state, its life-cycle is
+# usually over unless someone re-opens it.
+
+# It is recommended that the first state always be "open", as some
+# external tools may look for this to determine whether or not a PR
+# has been acted on.  Change at your own risk.
+
+open::Default state for a new problem report.
+
+# The middle states are what you think is useful; customize them as
+# you wish.  You can add or delete states here; it is not required
+# that there be three of them. Depending on your definition of the
+# suspended state, you may want to set its type to be "closed".
+
+analyzed::The problem is understood and a solution is being sought.
+suspended::Valid, but suspended due to lack of information or resources.
+feedback::Awaiting further information from originator or community.
+patched::Patch committed, awaiting MFC and / or further testing.
+repocopy::Awaiting a repocopy before further action can be taken.
+
+# Where old PRs go to die.  Like "open", there may be external tools
+# which look for this state to know if a PR is still active.  Change
+# at your own risk. The last state will be forced to be a "closed" type
+# even if you specify something else.
+
+closed:closed:Issue has been resolved or abandoned.

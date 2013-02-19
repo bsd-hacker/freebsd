@@ -1,0 +1,12 @@
+#	Use this file to store mappings between submitter IDs and their
+#	senders' email addresses.
+#
+#	Entries are of the form:
+#
+#submitter-id:address-fragment
+#
+#	where submitter-id is a valid submitter ID, and address-fragment
+#	is a full or partial e-mail address.  Fragments are compared to the
+#	end of the "From:" header of a Problem Report.  GNATS ignores the
+#	trailing ">" of an incoming e-mail address, so you don't need to
+#	include it in an address fragment.

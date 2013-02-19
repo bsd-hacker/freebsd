@@ -1,0 +1,43 @@
+#		    Possible classes for a PR.
+#
+# Any line which begins with a `#' is considered a comment, and GNATS
+# will ignore it. 
+#
+# Each entry has the format:
+#
+# 	class[:type[:description]]
+#
+# that is, either of the following is okay:
+#
+#	sw-bug
+#	sw-bug:class
+#	sw-bug:class:Software bug
+#	sw-bug::Software bug
+#
+# * `class' is the name of the class; it can contain alphanumerics,
+#   "-", "_", and ".", but no other characters.
+#
+# * `type' is the optional name of the class type; it can contain
+#   alphanumerics, "-", "_", and ".", but no other characters. The
+#   only defined class type is "class", but it's not actually used 
+#   for anything.
+#
+#   `description' is an optional one-line description of what this
+#   class means.  Any character is okay in the description; a newline
+#   ends it, however.  GNATS does not currently use the description,
+#   other than to include it in the --list-classes command, but
+#   certain external tools (such as TkGnats) look for it, so it's
+#   a good idea include one for every class.
+#
+# The first listed class is the default class for an incoming Problem
+# Report.
+
+sw-bug::Problem requiring a correction to software.
+doc-bug::Problem requiring a correction or improvement in documentation.
+support::A support problem or question.
+change-request::Suggested change in functionality.
+mistaken::Not a problem, bad PR submission.
+duplicate::Duplicate of another existing PR.
+wish::A wishlist request.
+update::Non-maintainer request to update/change software.
+maintainer-update::Maintainer request to update/change software.

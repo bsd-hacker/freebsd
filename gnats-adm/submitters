@@ -1,0 +1,27 @@
+#
+#		    submitters database for GNATS
+#
+# Any line which begins with a `#' is considered a comment, and GNATS
+# will ignore it. 
+#
+# Each entry has the format:
+# 
+#	submitter:full submitter name:type:response-time:contact:notify-others
+#
+#	* submitter: The name of the site, customer, etc., sending the
+#	  report in.
+#	* full submitter name: The description, like `Foo Widgets Inc.'.
+#	* submitter type: Can be contract type, level of expertise, etc.
+#	* response time: If configured with `NOTIFY' set to `TRUE', GNATS
+#	  will use this field to schedule when at_pr should notify the
+#	  gnats-admin and gnats-manager that the PR wasn't analyzed
+#	  within the agreed response time.
+#	* contact: Principal contact for the submitter.
+#	* notify: Others who should be Cc'd on any PRs coming from
+#	  this submitter.
+#
+#
+# The following submitter is mandatory for GNATS to work.
+# The submitter field should be the same as your configured DEFAULT_SUBMITTER.
+#
+current-users:Submitted from a FreeBSD-current user:none:-1::

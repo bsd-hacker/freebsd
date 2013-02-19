@@ -1,0 +1,46 @@
+#                   Possible categories for a PR.
+#
+# Any line which begins with a `#' is considered a comment, and GNATS
+# will ignore it.
+#
+# Each entry has the format:
+#
+#       category:description:responsible:notify
+#
+# * `category' is the name of the classification for the PR.
+# * `description' can be a normal text description for the
+#   category, like "Development Tools" for the `tools' category.
+# * `responsible' gives the name (which can be found in the remote
+#   file) of the person who will be given responsibility for any PR
+#   appearing in this category.
+# * `notify' are other email addresses which should be given copies of
+#    any PR in this category.
+#
+# The following category is mandatory for GNATS to work.
+#
+pending: Misfiled PRs : gnats-admin : freebsd-bugbusters@freebsd.org
+#
+# Other categories
+#
+advocacy: Advocacy : freebsd-advocacy :
+alpha: Architecture (alpha) specific : freebsd-alpha :
+amd64: Architecture (amd64) specific : freebsd-amd64 :
+arm: Architecture (arm) specific : freebsd-arm :
+bin: All other sources : freebsd-bugs :
+conf: Configuration files : freebsd-bugs :
+docs: Documentation : freebsd-doc :
+gnu: GNU sources : freebsd-bugs :
+i386: Architecture (i386) specific : freebsd-i386 :
+ia64: Architecture (ia64) specific : freebsd-ia64 :
+java: Java support : freebsd-java :
+junk: Wastebin : gnats-admin :
+kern: Kernel sources : freebsd-bugs :
+misc: Miscellaneous : freebsd-bugs :
+ports: The ports collection : freebsd-ports-bugs :
+powerpc: Architecture (powerpc) specific : freebsd-ppc :
+sparc64: Architecture (sparc) specific : freebsd-sparc64 :
+standards: Standards conformance issues : freebsd-standards :
+sun4v: Architecture (sun4v) specific : freebsd-sparc64 :
+threads: Threading issues : freebsd-threads :
+usb: USB issues: freebsd-usb :
+www: FreeBSD website : freebsd-www :
