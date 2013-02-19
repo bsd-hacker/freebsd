@@ -1,0 +1,30 @@
+#
+# crontab for GNATS on freefall.freebsd.org
+#
+# synced with master version by linimon on 20070725
+#
+SCRIPT_HOME=/home/gnats/tools
+#
+#minute	hour	mday	month	wday	command
+#
+#*/10 * * * * /usr/bin/lockf -s -t 5 /home/gnats/.lock /usr/local/libexec/gnats/queue-pr --run >/dev/null
+
+# 20100526 mcl: this is now our countermeasure.
+*/10 * * * * /usr/bin/lockf -s -t 5 /home/gnats/.lock ${SCRIPT_HOME}/qrunner
+
+# Seems to be failing to update more and more often -- ceri, 2004/05/18
+4 4 * * * ${SCRIPT_HOME}/reindex.sh
+#
+6 11 * * 1 ${SCRIPT_HOME}/gnatsreport.sh
+
+#* Separate reminders to portmgr and cvs every 3 days, but only if there
+#  is anything waiting
+5 5 * * */3 ${SCRIPT_HOME}/repocopy/reporter portmgr repocopy
+5 5 * * */3 ${SCRIPT_HOME}/repocopy/reporter cvs repocopy
+#* if a repocopy has been performed and is back in the hands of a
+#  committer, they should get a reminder every other day nagging them to
+#  finish their deer.
+5 6 * * */2 ${SCRIPT_HOME}/repocopy/nag repocopy
+#* after two weeks in portmgr's hands, they'll automatically be assigned
+#  to cvs.
+5 7 * * * ${SCRIPT_HOME}/repocopy/timeouts 1209600 cvs portmgr
