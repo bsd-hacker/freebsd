@@ -11,6 +11,7 @@ DEFAULT_SRCBUILD_USER="srcbuild"
 DEFAULT_VCS_CHECKOUT_COMMAND="svn checkout"
 DEFAULT_VCS_REPOSITORY="svn://svn.FreeBSD.org"
 DEFAULT_ZFS_VOLUME="a"
+DEFAULT_ZFS_MOUNTPOINT="/a"
 DEFAULT_ZFS_PERMISSIONSET="clone,create,destroy,mount,promote,rename,rollback,send,share,snapshot"
 DEFAULT_ZFS_PERMISSIONSET_SNAPS="clone,snapshot"
 SNAP_DIRECTORY=snap
@@ -46,6 +47,10 @@ if [ ! `id -u ${SRCBUILD_USER} 2> /dev/null` ]; then
   echo "User ${SRCBUILD_USER} must exist."
   exit 1
 fi
+if [ -z "${ZFS_MOUNTPOINT}" ]; then
+  echo "You must export ZFS_MOUNTPOINT, for example, export ZFS_MOUNTPOINT=${DEFAULT_ZFS_MOUNTPOINT}."
+  exit 1
+fi
 
 if [ -z "${VCS_CHECKOUT_COMMAND}" ]; then
   VCS_CHECKOUT_COMMAND="${DEFAULT_VCS_CHECKOUT_COMMAND}"
@@ -63,7 +68,6 @@ if [ -z "${ZFS_VOLUME}" ]; then
   echo "You must export ZFS_VOLUME, for example, export ZFS_VOLUME=${DEFAULT_ZFS_VOLUME}."
   exit 1
 fi
-ZFS_MOUNTPOINT="/${ZFS_VOLUME}"
 
 if [ -z "${ZFS_PERMISSIONSET}" ]; then
   echo "You have not set ZFS_PERMISSIONSET.  I will use the default: ${DEFAULT_ZFS_PERMISSIONSET}."
