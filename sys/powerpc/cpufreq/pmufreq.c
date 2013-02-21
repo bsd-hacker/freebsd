@@ -194,7 +194,6 @@ pmufreq_set(device_t dev, const struct cf_setting *set)
 	if (error == 0)
 		sc->curfreq = set->freq;
 
-	printf("exit from here\n");
 	return error;
 }
 

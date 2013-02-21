@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/kernel.h>
 #include <sys/clock.h>
+#include <sys/proc.h>
 #include <sys/reboot.h>
 #include <sys/sysctl.h>
 
@@ -1113,6 +1114,8 @@ void pmu_sleep_int(void)
 		while (1)
 			mtmsr(msr);
 	}
+	pcpup->pc_curthread = curthread;
+	pcpup->pc_curpcb = curthread->td_pcb;
 	pmap_activate(curthread);
 	powerpc_sync();
 	mtspr(SPR_SPRG0, sprgs[0]);
@@ -1132,7 +1135,8 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 	int error;
 	struct pmu_softc *sc = arg1;
 	uint8_t clrcmd[] = {PMU_PWR_CLR_POWERUP_EVENTS, 0xff, 0xff};
-	uint8_t setcmd[] = {PMU_PWR_SET_POWERUP_EVENTS, 0, PMU_PWR_WAKEUP_LID_OPEN|PMU_PWR_WAKEUP_KEY};
+	uint8_t setcmd[] = {PMU_PWR_SET_POWERUP_EVENTS, 0,
+	    PMU_PWR_WAKEUP_LID_OPEN|PMU_PWR_WAKEUP_KEY};
 	uint8_t sleepcmd[] = {'M', 'A', 'T', 'T'};
 	uint8_t resp[16];
 	uint8_t reg;
@@ -1167,43 +1171,9 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 		mtx_unlock(&Giant);
 	}
 	mtx_unlock(&sc->sc_mutex);
-	printf("failure: %d\n", error);
 	DEVICE_RESUME(root_bus);
 
 	return (error);
-}
-
-static void
-pmu_print_registers(void)
-{
-	register_t reg;
-	int i;
-
-	printf("curthread: %p\n", curthread);
-	printf("srr0: %"PRIxPTR"\n", mfspr(SPR_SRR0));
-	printf("DBAT0U %"PRIxPTR"\n", mfspr(SPR_DBAT0U));
-	printf("DBAT0L %"PRIxPTR"\n", mfspr(SPR_DBAT0L));
-	printf("DBAT1U %"PRIxPTR"\n", mfspr(SPR_DBAT1U));
-	printf("DBAT1L %"PRIxPTR"\n", mfspr(SPR_DBAT1L));
-	printf("DBAT2U %"PRIxPTR"\n", mfspr(SPR_DBAT2U));
-	printf("DBAT2L %"PRIxPTR"\n", mfspr(SPR_DBAT2L));
-	printf("DBAT3U %"PRIxPTR"\n", mfspr(SPR_DBAT3U));
-	printf("DBAT3L %"PRIxPTR"\n", mfspr(SPR_DBAT3L));
-	printf("IBAT0U %"PRIxPTR"\n", mfspr(SPR_IBAT0U));
-	printf("IBAT0L %"PRIxPTR"\n", mfspr(SPR_IBAT0L));
-	printf("IBAT1U %"PRIxPTR"\n", mfspr(SPR_IBAT1U));
-	printf("IBAT1L %"PRIxPTR"\n", mfspr(SPR_IBAT1L));
-	printf("IBAT2U %"PRIxPTR"\n", mfspr(SPR_IBAT2U));
-	printf("IBAT2L %"PRIxPTR"\n", mfspr(SPR_IBAT2L));
-	printf("IBAT3U %"PRIxPTR"\n", mfspr(SPR_IBAT3U));
-	printf("IBAT3L %"PRIxPTR"\n", mfspr(SPR_IBAT3L));
-
-	for (i = 0; i < 16; i++) {
-		reg = mfsrin(i << ADDR_SR_SHFT);
-		printf("sr%d = %"PRIxPTR"\n", i, reg);
-	}
-	reg = mfspr(SPR_SDR1);
-	printf("SDR1 = %"PRIxPTR"\n", reg);
 }
 
 int
@@ -1226,16 +1196,13 @@ pmu_set_speed(int high_speed)
 	else
 		sleepcmd[4] = 1;
 
-	mtx_lock(&sc->sc_mutex);
 	pmu_send(sc, PMU_CPU_SPEED, 5, sleepcmd, 16, resp);
-	mtx_unlock(&sc->sc_mutex);
 	pmu_print_registers();
 	unin_chip_sleep(NULL, 1);
 	pmu_sleep_int();
 	unin_chip_resume(NULL);
 
 	pmu_print_registers();
-//	mtdec(1);
 	spinlock_exit();
 	pmu_write_reg(sc, vIER, 0x90);
 
