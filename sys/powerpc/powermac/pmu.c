@@ -1197,12 +1197,10 @@ pmu_set_speed(int high_speed)
 		sleepcmd[4] = 1;
 
 	pmu_send(sc, PMU_CPU_SPEED, 5, sleepcmd, 16, resp);
-	pmu_print_registers();
 	unin_chip_sleep(NULL, 1);
 	pmu_sleep_int();
 	unin_chip_resume(NULL);
 
-	pmu_print_registers();
 	spinlock_exit();
 	pmu_write_reg(sc, vIER, 0x90);
 

@@ -66,7 +66,6 @@ static MALLOC_DEFINE(M_UNIN, "unin", "unin device information");
 static int  unin_chip_probe(device_t);
 static int  unin_chip_attach(device_t);
 static int  unin_chip_suspend(device_t);
-//static int  unin_chip_resume(device_t);
 
 /*
  * Bus interface.
