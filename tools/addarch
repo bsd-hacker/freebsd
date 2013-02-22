@@ -104,7 +104,7 @@ arch=${arch}
 client_user=${uid}
 user=${uid}
 
-pb=/var/portbuild
+pb=/a/portbuild
 rsync_gzip=-z
 scp_cmd="/usr/bin/scp"
 ssh_cmd="/usr/bin/ssh"
