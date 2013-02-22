@@ -131,7 +131,7 @@ if [ ! -x ${pbc}/qmanager/${QMANAGER} ]; then
 else
   running=`ps ax | grep -v grep | grep ${QMANAGER}`
   if [ -z "${running}" ]; then
-    echo "${QMANAGER} is not running.  run /usr/local/etc/rc.d/qmanager.sh and re-run this script."
+    echo "${QMANAGER} is not running.  run '/usr/local/etc/rc.d/qmanager start' and re-run this script."
     exit 1
   else
     echo "adding default entry to qmanager ..."
