@@ -6,8 +6,8 @@
 # NOTE: rearranged 20100615 to not have to be linked to dopackages.N
 
 # configurable variables
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 if [ $# -lt 3 ]; then
     echo "usage: $0 <arch> <branch> <buildid> [<args> ...]"

@@ -4,8 +4,8 @@
 # main server-side script to run a package build
 
 # configurable variables
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pbc}/scripts
 

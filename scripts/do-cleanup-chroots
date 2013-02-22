@@ -3,7 +3,7 @@
 # clean up stale chroots on all client machines.
 #
 
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
 
 arch=$0
 if [ -z "$arch" ]; then

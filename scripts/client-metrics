@@ -6,7 +6,7 @@
 #       - max vnodes
 #       - number of packages built in the past hour
 
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 arch=$(uname -m)
 me=$(hostname)

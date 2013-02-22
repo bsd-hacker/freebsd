@@ -10,8 +10,8 @@ if [ $# -lt 3 ]; then
 fi
 
 # configurable variables
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 arch=$1
 branch=$2

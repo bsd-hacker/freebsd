@@ -15,8 +15,8 @@ export INDEX_JOBS=1
 # For debugging purposes only
 #export INDEX_VERBOSE=1
 
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 usage () {
   echo "usage: makeindex arch branch buildid [target]"

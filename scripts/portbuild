@@ -8,7 +8,7 @@
 
 # usage: $0 ARCH BRANCH BUILDID CHROOT [-noclean] [-norestr] [-noplistcheck] [-distfiles] [-fetch-original] [-trybroken] PKGNAME.tgz DIRNAME [DEPENDENCY.tgz ...]
 
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 mount_fs()
 {

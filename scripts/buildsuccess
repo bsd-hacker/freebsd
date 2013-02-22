@@ -3,8 +3,8 @@
 # buildsuccess <arch> <branch> <buildid> <pkgname>
 
 # configurable variables
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 usage () {
   echo "usage: buildsuccess arch branch buildid pkgname"

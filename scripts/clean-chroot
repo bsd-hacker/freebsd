@@ -31,7 +31,7 @@ buildid=$3
 chroot=$4
 clean=$5
 
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 . ${pbd}/${arch}/client.conf
 . ${pbd}/${arch}/common.conf

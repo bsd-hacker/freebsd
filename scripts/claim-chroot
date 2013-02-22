@@ -18,7 +18,7 @@
 # could use a lockf lock, and be able to tell if the setup process was
 # still running or died prematurely
 
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 usage () {
     echo "usage: claim-chroot arch branch buildid"

@@ -5,7 +5,7 @@ if [ $# != 1 ]; then
   exit 1
 fi
 
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
 
 echo ${pbc}/scripts/cppackages $1 | at + 1 minute
 atq

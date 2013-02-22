@@ -4,8 +4,8 @@
 # server-side script to handle various commands common to builds
 
 # configurable variables
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 # subdirectories to process.  yes, this is a hack, but it saves code
 # duplication.

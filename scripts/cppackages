@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # configurable variables
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 . ${pbd}/portbuild.conf
 

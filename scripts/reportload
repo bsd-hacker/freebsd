@@ -3,7 +3,7 @@
 
 # client script to report load to the server.
 
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 # note: uname is not being overridden
 arch=$(uname -m)

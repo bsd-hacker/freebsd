@@ -15,7 +15,7 @@ REMOVE_SETUPNODE_TIME=1440
 
 #VERBOSE=1
 
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 # note: uname is not being overridden (should not need client.conf here)
 arch=$(uname -m)

@@ -6,8 +6,8 @@
 #
 # server-side script to dispatch the job to a host via the ptimeout script.
 
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 #VERBOSE=1
 

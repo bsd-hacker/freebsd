@@ -15,8 +15,8 @@
 # scripts/ and ${arch}/ directories (e.g. after client reboot)
 
 # configurable variables
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 arch=$1
 branch=$2
@@ -86,7 +86,7 @@ setup() {
     if [ "${norsync}" -eq 0 ]; then
 	# create one master copy in the default directory
 	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -l -p --delete ${pbc}/scripts ${pbc}/sources \
-	    ${client_user}@${node}:/var/portbuild/
+	    ${client_user}@${node}:/a/portbuild/
 	checkerror $? || (echo "Copying scripts to ${node} failed"; return 1)
 
 	# copy the default conf files (i.e., client.conf and common.conf) in case

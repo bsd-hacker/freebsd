@@ -7,7 +7,7 @@
 # port builds that have timed out or shut down uncleanly) and prunes
 # them to reclaim space.
 
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 # XXX TODO promote
 # all times are in minutes

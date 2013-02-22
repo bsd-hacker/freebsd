@@ -4,8 +4,8 @@
 arch=$1
 versions="latest full"
 
-pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
-pbd=${PORTBUILD_DATA:-/var/portbuild}
+pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
+pbd=${PORTBUILD_DATA:-/a/portbuild}
 
 . ${pbc}/conf/server.conf
 . ${pbd}/${arch}/portbuild.conf

@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Script run on the clients, to set them up in preparation for building
-# packages.  This includes setting up parts of the /var/portbuild
+# packages.  This includes setting up parts of the /a/portbuild
 # directory hierarchy, the portbuild script and the bindist.tar file
 # for populating the build chroots.
 
