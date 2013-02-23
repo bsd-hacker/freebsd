@@ -208,15 +208,15 @@ static int
 translate_traps(int signal, int trap_code)
 {
 	if (signal != SIGBUS)
-		return signal;
+		return (signal);
 	switch (trap_code) {
 	case T_PROTFLT:
 	case T_TSSFLT:
 	case T_DOUBLEFLT:
 	case T_PAGEFLT:
-		return SIGSEGV;
+		return (SIGSEGV);
 	default:
-		return signal;
+		return (signal);
 	}
 }
 
@@ -695,7 +695,7 @@ linux_sigreturn(struct thread *td, struct linux_sigreturn_args *args)
 	 * allowing it is fairly harmless.
 	 */
 	if (!EFLAGS_SECURE(eflags & ~PSL_RF, regs->tf_eflags & ~PSL_RF))
-		return(EINVAL);
+		return (EINVAL);
 
 	/*
 	 * Don't allow users to load a valid privileged %cs.  Let the
@@ -710,7 +710,7 @@ linux_sigreturn(struct thread *td, struct linux_sigreturn_args *args)
 		ksi.ksi_trapno = T_PROTFLT;
 		ksi.ksi_addr = (void *)regs->tf_eip;
 		trapsignal(td, &ksi);
-		return(EINVAL);
+		return (EINVAL);
 	}
 
 	lmask.__bits[0] = frame.sf_sc.sc_mask;
@@ -796,7 +796,7 @@ linux_rt_sigreturn(struct thread *td, struct linux_rt_sigreturn_args *args)
 	 * allowing it is fairly harmless.
 	 */
 	if (!EFLAGS_SECURE(eflags & ~PSL_RF, regs->tf_eflags & ~PSL_RF))
-		return(EINVAL);
+		return (EINVAL);
 
 	/*
 	 * Don't allow users to load a valid privileged %cs.  Let the
@@ -811,7 +811,7 @@ linux_rt_sigreturn(struct thread *td, struct linux_rt_sigreturn_args *args)
 		ksi.ksi_trapno = T_PROTFLT;
 		ksi.ksi_addr = (void *)regs->tf_eip;
 		trapsignal(td, &ksi);
-		return(EINVAL);
+		return (EINVAL);
 	}
 
 	linux_to_bsd_sigset(&uc.uc_sigmask, &bmask);
@@ -1162,9 +1162,9 @@ linux_elf_modevent(module_t mod, int type, void *data)
 			printf("Could not deinstall ELF interpreter entry\n");
 		break;
 	default:
-		return EOPNOTSUPP;
+		return (EOPNOTSUPP);
 	}
-	return error;
+	return (error);
 }
 
 static moduledata_t linux_elf_mod = {
