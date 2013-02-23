@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/smp.h>
 #include <sys/sched.h>
 #include <sys/sleepqueue.h>
+#include <sys/sysent.h>
 #include <sys/selinfo.h>
 #include <sys/turnstile.h>
 #include <sys/ktr.h>
@@ -801,6 +802,12 @@ thread_suspend_check(int return_instead)
 		 */
 		if ((p->p_flag & P_SINGLE_EXIT) && (p->p_singlethread != td)) {
 			PROC_UNLOCK(p);
+			/*
+			 * Let thread to do cleanup work before die.
+			 */
+			if (__predict_false(p->p_sysent->sv_thread_detach != NULL))
+				(p->p_sysent->sv_thread_detach)(td);
+
 			tidhash_remove(td);
 			PROC_LOCK(p);
 			tdsigcleanup(td);
