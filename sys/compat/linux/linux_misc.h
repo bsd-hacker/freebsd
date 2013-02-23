@@ -88,10 +88,6 @@ extern const char *linux_platform;
 #define	LINUX_CLONE_CHILD_CLEARTID	0x00200000
 #define	LINUX_CLONE_CHILD_SETTID	0x01000000
 
-#define	LINUX_THREADING_FLAGS					\
-	(LINUX_CLONE_VM | LINUX_CLONE_FS | LINUX_CLONE_FILES |	\
-	LINUX_CLONE_SIGHAND | LINUX_CLONE_THREAD)
-
 /* Scheduling policies */
 #define	LINUX_SCHED_OTHER	0
 #define	LINUX_SCHED_FIFO	1
@@ -122,4 +118,5 @@ int linux_common_wait(struct thread *td, int pid, int *status,
 int linux_set_upcall_kse(struct thread *td, register_t stack);
 int linux_set_cloned_tls(struct thread *td, void *desc);
 struct thread	*linux_tdfind(struct thread *, lwpid_t, pid_t);
+
 #endif	/* _LINUX_MISC_H_ */
