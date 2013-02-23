@@ -223,6 +223,7 @@ int	kern_symlink(struct thread *td, char *path, char *link,
 	    enum uio_seg segflg);
 int	kern_symlinkat(struct thread *td, char *path1, int fd, char *path2,
 	    enum uio_seg segflg);
+int	kern_thr_alloc(struct proc *, int pages, struct thread **);
 int	kern_thr_exit(struct thread *td);
 int	kern_thr_new(struct thread *td, struct thr_param *param);
 int	kern_thr_suspend(struct thread *td, struct timespec *tsp);
