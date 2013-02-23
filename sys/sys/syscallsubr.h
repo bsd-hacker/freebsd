@@ -54,6 +54,7 @@ struct sendfile_args;
 struct sockaddr;
 struct stat;
 struct thr_param;
+struct sched_param;
 struct __wrusage;
 
 int	kern___getcwd(struct thread *td, u_char *buf, enum uio_seg bufseg,
@@ -180,6 +181,14 @@ int	kern_renameat(struct thread *td, int oldfd, char *old, int newfd,
 int	kern_rmdir(struct thread *td, char *path, enum uio_seg pathseg);
 int	kern_rmdirat(struct thread *td, int fd, char *path,
 	    enum uio_seg pathseg);
+int	kern_sched_getparam(struct thread *td, struct thread *targettd,
+	    struct sched_param *param);
+int	kern_sched_getscheduler(struct thread *td, struct thread *targettd,
+	    int *policy);
+int	kern_sched_setparam(struct thread *td, struct thread *targettd,
+	    struct sched_param *param);
+int	kern_sched_setscheduler(struct thread *td, struct thread *targettd,
+	    int policy, struct sched_param *param);
 int	kern_sched_rr_get_interval(struct thread *td, struct thread *targettd,
 	    struct timespec *ts);
 int	kern_semctl(struct thread *td, int semid, int semnum, int cmd,
