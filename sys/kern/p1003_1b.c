@@ -269,38 +269,42 @@ sys_sched_rr_get_interval(struct thread *td,
     struct sched_rr_get_interval_args *uap)
 {
 	struct timespec timespec;
+	struct thread *targettd;
+	struct proc *p;
 	int error;
 
-	error = kern_sched_rr_get_interval(td, uap->pid, &timespec);
+	if (uap->pid == 0) {
+		targettd = td;
+		p = td->td_proc;
+		PROC_LOCK(p);
+	} else {
+		p = pfind(uap->pid);
+		if (p == NULL)
+			return (ESRCH);
+		targettd = FIRST_THREAD_IN_PROC(p);
+	}
+
+	error = kern_sched_rr_get_interval(td, targettd, &timespec);
 	if (error == 0)
 		error = copyout(&timespec, uap->interval, sizeof(timespec));
 	return (error);
 }
 
 int
-kern_sched_rr_get_interval(struct thread *td, pid_t pid,
+kern_sched_rr_get_interval(struct thread *td, struct thread *targettd,
     struct timespec *ts)
 {
-	int e;
-	struct thread *targettd;
 	struct proc *targetp;
+	int error;
 
-	if (pid == 0) {
-		targettd = td;
-		targetp = td->td_proc;
-		PROC_LOCK(targetp);
-	} else {
-		targetp = pfind(pid);
-		if (targetp == NULL)
-			return (ESRCH);
-		targettd = FIRST_THREAD_IN_PROC(targetp);
-	}
+	targetp = targettd->td_proc;
+	PROC_LOCK_ASSERT(targetp, MA_OWNED);
 
-	e = p_cansee(td, targetp);
-	if (e == 0)
-		e = ksched_rr_get_interval(ksched, targettd, ts);
+	error = p_cansee(td, targetp);
+	if (error == 0)
+		error = ksched_rr_get_interval(ksched, targettd, ts);
 	PROC_UNLOCK(targetp);
-	return (e);
+	return (error);
 }
 
 #endif

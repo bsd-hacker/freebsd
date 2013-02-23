@@ -180,7 +180,7 @@ int	kern_renameat(struct thread *td, int oldfd, char *old, int newfd,
 int	kern_rmdir(struct thread *td, char *path, enum uio_seg pathseg);
 int	kern_rmdirat(struct thread *td, int fd, char *path,
 	    enum uio_seg pathseg);
-int	kern_sched_rr_get_interval(struct thread *td, pid_t pid,
+int	kern_sched_rr_get_interval(struct thread *td, struct thread *targettd,
 	    struct timespec *ts);
 int	kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 	    union semun *arg, register_t *rval);

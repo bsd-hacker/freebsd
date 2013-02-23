@@ -1925,3 +1925,31 @@ linux_sched_setaffinity(struct thread *td,
 
 	return (sys_cpuset_setaffinity(td, &csa));
 }
+
+int
+linux_sched_rr_get_interval(struct thread *td,
+    struct linux_sched_rr_get_interval_args *uap)
+{
+	struct timespec ts;
+	struct l_timespec lts;
+	struct thread *tdt;
+	struct proc *p;
+	int error;
+
+	if (uap->pid == 0) {
+		tdt = td;
+		PROC_LOCK(tdt->td_proc);
+	} else {
+		p = pfind(uap->pid);
+		if (p == NULL)
+			return (ESRCH);
+		tdt = FIRST_THREAD_IN_PROC(p);
+	}
+
+	error = kern_sched_rr_get_interval(td, tdt, &ts);
+	if (error != 0)
+		return (error);
+	lts.tv_sec = ts.tv_sec;
+	lts.tv_nsec = ts.tv_nsec;
+	return (copyout(&lts, uap->interval, sizeof(lts)));
+}
