@@ -644,33 +644,40 @@ void
 ksiginfo_to_lsiginfo(ksiginfo_t *ksi, l_siginfo_t *lsi, l_int sig)
 {
 
+	siginfo_to_lsiginfo(&ksi->ksi_info, lsi, sig);
+}
+
+void
+siginfo_to_lsiginfo(siginfo_t *si, l_siginfo_t *lsi, l_int sig)
+{
+
 	lsi->lsi_signo = sig;
-	lsi->lsi_code = ksi->ksi_code;
+	lsi->lsi_code = si->si_code;
 
 	switch (sig) {
 	case LINUX_SIGPOLL:
 		/* XXX si_fd? */
-		lsi->lsi_band = ksi->ksi_band;
+		lsi->lsi_band = si->si_band;
 		break;
 	case LINUX_SIGCHLD:
-		lsi->lsi_pid = ksi->ksi_pid;
-		lsi->lsi_uid = ksi->ksi_uid;
-		lsi->lsi_status = ksi->ksi_status;
+		lsi->lsi_pid = si->si_pid;
+		lsi->lsi_uid = si->si_uid;
+		lsi->lsi_status = si->si_status;
 		break;
 	case LINUX_SIGBUS:
 	case LINUX_SIGILL:
 	case LINUX_SIGFPE:
 	case LINUX_SIGSEGV:
-		lsi->lsi_addr = PTROUT(ksi->ksi_addr);
+		lsi->lsi_addr = PTROUT(si->si_addr);
 		break;
 	default:
 		/* XXX SI_TIMER etc... */
-		lsi->lsi_pid = ksi->ksi_pid;
-		lsi->lsi_uid = ksi->ksi_uid;
+		lsi->lsi_pid = si->si_pid;
+		lsi->lsi_uid = si->si_uid;
 		break;
 	}
 	if (sig >= LINUX_SIGRTMIN) {
-		lsi->lsi_int = ksi->ksi_info.si_value.sival_int;
-		lsi->lsi_ptr = PTROUT(ksi->ksi_info.si_value.sival_ptr);
+		lsi->lsi_int = si->si_value.sival_int;
+		lsi->lsi_ptr = PTROUT(si->si_value.sival_ptr);
 	}
 }
