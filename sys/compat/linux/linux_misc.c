@@ -1944,6 +1944,9 @@ linux_sched_rr_get_interval(struct thread *td,
 	struct thread *tdt;
 	int error;
 
+	if (uap->pid < 0)
+		return (EINVAL);
+
 	tdt = linux_tdfind(td, uap->pid, -1);
 	if (tdt == NULL)
 		return (ESRCH);
