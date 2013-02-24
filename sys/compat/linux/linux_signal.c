@@ -681,3 +681,50 @@ siginfo_to_lsiginfo(siginfo_t *si, l_siginfo_t *lsi, l_int sig)
 		lsi->lsi_ptr = PTROUT(si->si_value.sival_ptr);
 	}
 }
+
+void
+lsiginfo_to_ksiginfo(l_siginfo_t *lsi, ksiginfo_t *ksi, int sig)
+{
+
+	ksi->ksi_signo = sig;
+	ksi->ksi_code = lsi->lsi_code;
+	ksi->ksi_pid = lsi->lsi_pid;
+	ksi->ksi_uid = lsi->lsi_uid;
+	ksi->ksi_status = lsi->lsi_status;
+	ksi->ksi_addr = PTRIN(lsi->lsi_addr);
+	ksi->ksi_info.si_value.sival_int = lsi->lsi_int;
+}
+
+int
+linux_rt_sigqueueinfo(struct thread *td, struct linux_rt_sigqueueinfo_args *args)
+{
+	l_siginfo_t linfo;
+	struct proc *p;
+	ksiginfo_t ksi;
+	int error;
+	int sig;
+
+	if (!LINUX_SIG_VALID(args->sig))
+		return (EINVAL);
+
+	if ((error = copyin(args->info, &linfo, sizeof(linfo))))
+		return (error);
+
+	if (linfo.lsi_code >= 0)
+		return (EPERM);
+
+	if (args->sig > 0 && args->sig <= LINUX_SIGTBLSZ)
+		sig = linux_to_bsd_signal[_SIG_IDX(args->sig)];
+	else
+		sig = args->sig;
+
+	error = ESRCH;
+	if ((p = pfind(args->pid)) != NULL ||
+	    (p = zpfind(args->pid)) != NULL) {
+		ksiginfo_init(&ksi);
+		lsiginfo_to_ksiginfo(&linfo, &ksi, sig);
+		error = tdsendsignal(p, NULL, sig, &ksi);
+		PROC_UNLOCK(p);
+	}
+	return (error);
+}
