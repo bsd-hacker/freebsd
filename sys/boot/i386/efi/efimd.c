@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/metadata.h>
 
 #include "bootstrap.h"
+#include "efifb.h"
 
 static UINTN mapkey;
 
@@ -100,6 +101,8 @@ ldr_bootinfo(struct preloaded_file *kfp)
 	efihdr->memory_size = sz;
 	efihdr->descriptor_size = mmsz;
 	efihdr->descriptor_version = mmver;
+
+	efi_find_framebuffer(efihdr);
 
 	file_addmetadata(kfp, MODINFOMD_EFI, efisz + sz, efihdr);
 
