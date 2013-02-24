@@ -193,7 +193,7 @@ class Comment:
 class Shebang:
     def __init__(self, comment):
         self.line = comment.line
-        result = comment.match(r'#!(\S+)\s*(.*)')
+        result = comment.match(r'^#!(\S+)\s*(.*)')
         if result:
             self.value = result[0]
             self.args = result[1]
@@ -323,7 +323,7 @@ def do_rclint(filename):
     logging.debug('OK, done collecting variables.  Time to check!')
 
     logging.debug('Checking shebang')
-    if len(lineobj['Shebang']) < 1:
+    if lineobj['Shebang'][0].value == False:
         error.give('shebang')
 
     logging.debug('Checking RcsId')
