@@ -74,6 +74,13 @@ static p4_entry_t *PT4;
 static p3_entry_t *PT3;
 static p2_entry_t *PT2;
 
+static void (*trampoline)(uint64_t stack, void *copy_finish, uint64_t kernend,
+			  uint64_t modulep, p4_entry_t *pagetable,
+			  uint64_t entry);
+
+extern uintptr_t amd64_tramp;
+extern uint32_t amd64_tramp_size;
+
 /*
  * There is an ELF kernel and one or more ELF modules loaded.  
  * We wish to start executing the kernel image, so make such 
@@ -84,8 +91,7 @@ elf64_exec(struct preloaded_file *fp)
 {
     struct file_metadata	*md;
     Elf_Ehdr 			*ehdr;
-    vm_offset_t			modulep, kernend, pagetable;
-    uint32_t			mp, ke;
+    vm_offset_t			modulep, kernend, trampcode, trampstack;
     int				err, i;
     ACPI_TABLE_RSDP		*rsdp;
     char			buf[24];
@@ -121,10 +127,18 @@ elf64_exec(struct preloaded_file *fp)
         return(EFTYPE);
     ehdr = (Elf_Ehdr *)&(md->md_data);
 
-    PT4 = (p4_entry_t *)0x00000000fffff000;
+    trampcode = (vm_offset_t)0x0000000040000000;
+    err = BS->AllocatePages(AllocateMaxAddress, EfiLoaderData, 1,
+        (EFI_PHYSICAL_ADDRESS *)&trampcode);
+    bzero((void *)trampcode, EFI_PAGE_SIZE);
+    trampstack = trampcode + EFI_PAGE_SIZE - 8;
+    bcopy((void *)&amd64_tramp, (void *)trampcode, amd64_tramp_size);
+    trampoline = (void *)trampcode;
+
+    PT4 = (p4_entry_t *)0x0000000040000000;
     err = BS->AllocatePages(AllocateMaxAddress, EfiLoaderData, 3,
         (EFI_PHYSICAL_ADDRESS *)&PT4);
-    bzero(PT4, 3 * PAGE_SIZE);
+    bzero(PT4, 3 * EFI_PAGE_SIZE);
 
     PT3 = &PT4[512];
     PT2 = &PT3[512];
@@ -157,23 +171,8 @@ elf64_exec(struct preloaded_file *fp)
 
     dev_cleanup();
 
-    x86_efi_copy_finish();
-
-    mp = modulep & 0xffffffff;
-    ke = kernend & 0xffffffff;
-    pagetable = (uintptr_t)PT4;
-    __asm __volatile(
-        "movl	%0, %%eax;"
-        "pushq  %%rax;"
-        "movl	%1, %%eax;"
-        "salq   $32, %%rax;"
-        "pushq	%%rax;"
-        "movq	%2, %%rax;"
-        "pushq	%%rax;"
-        "movq	%3, %%rax;"
-        "movq	%%rax, %%cr3;"
-        "ret"
-    :: "r" (ke), "r" (mp), "r" (ehdr->e_entry), "r" (PT4));
+    trampoline(trampstack, x86_efi_copy_finish, kernend, modulep, PT4,
+        ehdr->e_entry);
 
     panic("exec returned");
 }
