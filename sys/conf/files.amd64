@@ -32,7 +32,7 @@ ia32_assym.h			standard				\
 	no-obj no-implicit-rule before-depend				\
 	clean		"ia32_assym.h"
 #
-font.h				optional	sc_dflt_font		\
+font.h				optional	sc_dflt_font 		\
 	compile-with	"uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x16.fnt && file2c 'static u_char dflt_font_16[16*256] = {' '};' < ${SC_DFLT_FONT}-8x16 > font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x14.fnt && file2c 'static u_char dflt_font_14[14*256] = {' '};' < ${SC_DFLT_FONT}-8x14 >> font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x8.fnt && file2c 'static u_char dflt_font_8[8*256] = {' '};' < ${SC_DFLT_FONT}-8x8 >> font.h"									\
 	no-obj no-implicit-rule before-depend				\
 	clean		"font.h ${SC_DFLT_FONT}-8x14 ${SC_DFLT_FONT}-8x16 ${SC_DFLT_FONT}-8x8"
@@ -165,6 +165,7 @@ dev/ed/if_ed_isa.c		optional	ed isa
 dev/ed/if_ed_wd80x3.c		optional	ed isa
 dev/ed/if_ed_hpp.c		optional	ed isa ed_hpp
 dev/ed/if_ed_sic.c		optional	ed isa ed_sic
+dev/fb/efifb.c			optional	fb | efifb
 dev/fb/fb.c			optional	fb | vga
 dev/fb/s3_pci.c			optional	s3pci
 dev/fb/vesa.c			optional	vga vesa
@@ -269,6 +270,7 @@ dev/sio/sio_pci.c		optional	sio pci
 dev/sio/sio_puc.c		optional	sio puc
 dev/speaker/spkr.c		optional	speaker
 dev/syscons/apm/apm_saver.c	optional	apm_saver apm
+dev/syscons/scgfbrndr.c		optional	sc efifb
 dev/syscons/scterm-teken.c	optional	sc
 dev/syscons/scvesactl.c		optional	sc vga vesa
 dev/syscons/scvgarndr.c		optional	sc vga
