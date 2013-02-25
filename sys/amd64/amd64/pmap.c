@@ -529,7 +529,7 @@ nkpt_init(vm_paddr_t addr)
 	nkpt = pt_pages;
 }
 
-static void
+void
 create_pagetables(vm_paddr_t *firstaddr)
 {
 	int i, j, ndm1g, nkpdpe;
@@ -646,11 +646,6 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 {
 	vm_offset_t va;
 	pt_entry_t *pte, *unused;
-
-	/*
-	 * Create an initial set of page tables to run the kernel in.
-	 */
-	create_pagetables(firstaddr);
 
 	virtual_avail = (vm_offset_t) KERNBASE + *firstaddr;
 	virtual_avail = pmap_kmem_choose(virtual_avail);

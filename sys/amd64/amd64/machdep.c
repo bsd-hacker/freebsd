@@ -1525,16 +1525,13 @@ add_efi_map_entries(struct efi_header *efihdr, vm_paddr_t *physmap,
  *
  * XXX first should be vm_paddr_t.
  */
-static void
-getmemsize(caddr_t kmdp, u_int64_t first)
+static int
+parsememmap(caddr_t kmdp, u_int64_t first, vm_paddr_t *physmap)
 {
-	int i, physmap_idx, pa_indx, da_indx;
-	vm_paddr_t pa, physmap[PHYSMAP_SIZE];
-	u_long physmem_start, physmem_tunable, memtest;
-	pt_entry_t *pte;
+	int i, physmap_idx;
+	u_long physmem_tunable;
 	struct bios_smap *smapbase;
 	struct efi_header *efihdr;
-	quad_t dcons_addr, dcons_size;
 
 	bzero(physmap, sizeof(physmap));
 	basemem = 0;
@@ -1548,12 +1545,8 @@ getmemsize(caddr_t kmdp, u_int64_t first)
 		panic("No BIOS smap or EFI map info from loader!");
 
 	if (efihdr != NULL) {
-		if (boothowto & RB_VERBOSE)
-			printf("Using EFI memory map.\n");
 		add_efi_map_entries(efihdr, physmap, &physmap_idx);
 	} else {
-		if (boothowto & RB_VERBOSE)
-			printf("Using BIOS SMAP memory map.\n");
 		add_smap_entries(smapbase, physmap, &physmap_idx);
 	}
 
@@ -1591,6 +1584,29 @@ getmemsize(caddr_t kmdp, u_int64_t first)
 		Maxmem = atop(physmem_tunable);
 
 	/*
+	 * Don't allow MAXMEM or hw.physmem to extend the amount of memory
+	 * in the system.
+	 */
+	if (Maxmem > atop(physmap[physmap_idx + 1]))
+		Maxmem = atop(physmap[physmap_idx + 1]);
+
+	return (physmap_idx);
+}
+
+static void
+getmemsize(vm_paddr_t first, vm_paddr_t *physmap, int physmap_idx)
+{
+	u_long physmem_start, memtest;
+	int i, pa_indx, da_indx;
+	vm_paddr_t pa;
+	pt_entry_t *pte;
+	quad_t dcons_addr, dcons_size;
+
+	if (atop(physmap[physmap_idx + 1]) != Maxmem &&
+	    (boothowto & RB_VERBOSE))
+		printf("Physical memory use set to %ldK\n", Maxmem * 4);
+
+	/*
 	 * By default enable the memory test on real hardware, and disable
 	 * it if we appear to be running in a VM.  This avoids touching all
 	 * pages unnecessarily, which doesn't matter on real hardware but is
@@ -1599,17 +1615,6 @@ getmemsize(caddr_t kmdp, u_int64_t first)
 	 */
 	memtest = (vm_guest > VM_GUEST_NO) ? 0 : 1;
 	TUNABLE_ULONG_FETCH("hw.memtest.tests", &memtest);
-
-	/*
-	 * Don't allow MAXMEM or hw.physmem to extend the amount of memory
-	 * in the system.
-	 */
-	if (Maxmem > atop(physmap[physmap_idx + 1]))
-		Maxmem = atop(physmap[physmap_idx + 1]);
-
-	if (atop(physmap[physmap_idx + 1]) != Maxmem &&
-	    (boothowto & RB_VERBOSE))
-		printf("Physical memory use set to %ldK\n", Maxmem * 4);
 
 	/* call pmap initialization to make new kernel address space */
 	pmap_bootstrap(&first);
@@ -1797,6 +1802,8 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 	u_int64_t msr;
 	char *env;
 	size_t kstack0_sz;
+	vm_paddr_t physmap[PHYSMAP_SIZE];
+	int physmap_idx;
 
 	thread0.td_kstack = physfree + KERNBASE;
 	thread0.td_kstack_pages = KSTACK_PAGES;
@@ -1906,6 +1913,9 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 	 */
 	i8254_init();
 
+	physmap_idx = parsememmap(kmdp, physfree, physmap);
+	create_pagetables(&physfree);
+
 	/*
 	 * Initialize the console before we print anything out.
 	 */
@@ -1970,7 +1980,7 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 	wrmsr(MSR_STAR, msr);
 	wrmsr(MSR_SF_MASK, PSL_NT|PSL_T|PSL_I|PSL_C|PSL_D);
 
-	getmemsize(kmdp, physfree);
+	getmemsize(physfree, physmap, physmap_idx);
 	init_param2(physmem);
 
 	/* now running on new page tables, configured,and u/iom is accessible */
