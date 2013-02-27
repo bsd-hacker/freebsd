@@ -53,7 +53,10 @@ efi_register_handles(struct devsw *sw, EFI_HANDLE *handles,
 	entry = (entry == NULL) ? malloc(sz) : realloc(entry, sz);
 	for (unit = 0; idx < nentries; idx++, unit++) {
 		entry[idx].handle = handles[unit];
-		entry[idx].alias = aliases[unit];
+		if (aliases != NULL)
+			entry[idx].alias = aliases[unit];
+		else
+			entry[idx].alias = NULL;
 		entry[idx].dev = sw;
 		entry[idx].unit = unit;
 	}
