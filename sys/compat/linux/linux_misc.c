@@ -2015,3 +2015,58 @@ linux_to_bsd_waitopts(int options, int *bsdopts)
 		*bsdopts |= WLINUXCLONE;
 }
 
+int
+linux_prlimit64(struct thread *td, struct linux_prlimit64_args *args)
+{
+	struct rlimit rlim;
+	struct proc *p;
+	u_int which;
+	int error;
+
+#ifdef DEBUG
+	if (ldebug(prlimit64))
+		printf(ARGS(prlimit64, "%d, %d, %p, %p"), args->pid,
+		    args->resource, (void *)args->new, (void *)args->old);
+#endif
+
+	if (args->resource >= LINUX_RLIM_NLIMITS)
+		return (EINVAL);
+
+	which = linux_to_bsd_resource[args->resource];
+	if (which == -1)
+		return (EINVAL);
+
+	if (args->pid == 0) {
+		p = td->td_proc;
+		PROC_LOCK(p);
+	} else {
+		p = pfind(args->pid);
+		if (p == NULL)
+			return (ESRCH);
+	}
+	error = p_cansee(td, p);
+	if (error) {
+		PROC_UNLOCK(p);
+		return (EPERM);
+	}
+
+	_PHOLD(p);
+
+	if (args->old) {
+		lim_rlimit(p, which, &rlim);
+		PROC_UNLOCK(p);
+		error = copyout(&rlim, args->old, sizeof(rlim));
+		if (error)
+			goto out;
+	} else
+		PROC_UNLOCK(p);
+
+	if (args->new) {
+		error = copyin(args->new, &rlim, sizeof(rlim));
+		if (error == 0)
+			error = kern_proc_setrlimit(td, p, which, &rlim);
+	}
+out:
+	PRELE(p);
+	return (error);
+}
