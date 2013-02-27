@@ -119,10 +119,10 @@ efipart_init(void)
 			node->SubType = END_ENTIRE_DEVICE_PATH_SUBTYPE;
 			status = BS->LocateDevicePath(&blkio_guid, &devpath,
 			    &handle);
+			if (EFI_ERROR(status))
+				continue;
 			hout[nout] = handle;
 			aliases[nout] = hin[n];
-			if (EFI_ERROR(status))
-				printf("shit\n");
 		} else
 			hout[nout] = hin[n];
 		nout++;
