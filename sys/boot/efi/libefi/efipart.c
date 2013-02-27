@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <efiprot.h>
 
 static EFI_GUID blkio_guid = BLOCK_IO_PROTOCOL;
+static EFI_GUID devpath_guid = DEVICE_PATH_PROTOCOL;
 
 static int efipart_init(void);
 static int efipart_strategy(void *, int, daddr_t, size_t, char *, size_t *);
@@ -62,9 +63,11 @@ static int
 efipart_init(void) 
 {
 	EFI_BLOCK_IO *blkio;
-	EFI_HANDLE *hin, *hout, *aliases;
+	EFI_DEVICE_PATH *devpath, *node;
+	EFI_HANDLE *hin, *hout, *aliases, handle;
 	EFI_STATUS status;
 	UINTN sz;
+	CHAR16 *path;
 	u_int n, nin, nout;
 	int err;
 
@@ -90,12 +93,38 @@ efipart_init(void)
 	bzero(aliases, nin * sizeof(EFI_HANDLE));
 
 	for (n = 0; n < nin; n++) {
+		status = BS->HandleProtocol(hin[n], &devpath_guid, &devpath);
+		if (EFI_ERROR(status)) {
+			continue;
+		}
+		node = devpath;
+		while (!IsDevicePathEnd(NextDevicePathNode(node)))
+			node = NextDevicePathNode(node);
 		status = BS->HandleProtocol(hin[n], &blkio_guid, &blkio);
 		if (EFI_ERROR(status))
 			continue;
 		if (!blkio->Media->LogicalPartition)
 			continue;
-		hout[nout] = hin[n];
+
+		/*
+		 * If we come across a logical partition of subtype CDROM
+		 * it doesn't refer to the CD filesystem itself, but rather
+		 * to any usable El Torito boot image on it. In this case
+		 * we try to find the parent device and add that instead as
+		 * that will be the CD filesystem.
+		 */
+		if (DevicePathType(node) == MEDIA_DEVICE_PATH &&
+		    DevicePathSubType(node) == MEDIA_CDROM_DP) {
+			node->Type = END_DEVICE_PATH_TYPE;
+			node->SubType = END_ENTIRE_DEVICE_PATH_SUBTYPE;
+			status = BS->LocateDevicePath(&blkio_guid, &devpath,
+			    &handle);
+			hout[nout] = handle;
+			aliases[nout] = hin[n];
+			if (EFI_ERROR(status))
+				printf("shit\n");
+		} else
+			hout[nout] = hin[n];
 		nout++;
 	}
 
