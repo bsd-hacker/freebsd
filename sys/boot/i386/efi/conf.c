@@ -54,14 +54,10 @@ struct netif_driver *netif_drivers[] = {
 
 extern struct file_format amd64_elf;
 extern struct file_format amd64_elf_obj;
-extern struct file_format i386_elf;
-extern struct file_format i386_elf_obj;
 
 struct file_format *file_formats[] = {
 	&amd64_elf,
 	&amd64_elf_obj,
-	&i386_elf,
-	&i386_elf_obj,
 	NULL
 };
 
