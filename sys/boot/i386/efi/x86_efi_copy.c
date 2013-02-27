@@ -56,7 +56,6 @@ x86_efi_copy_init(void)
 		return (status);
 	}
 
-	printf("x86_efi_copyinit>>> staging=0x%016x\n", staging);
 	return (0);
 }
 
