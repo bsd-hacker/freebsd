@@ -1,6 +1,6 @@
 /******************************************************************************
 
-Copyright (c) 2006-2009, Myricom Inc.
+Copyright (c) 2006-2013, Myricom Inc.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -288,35 +288,43 @@ mxge_dma_free(mxge_dma_t *dma)
 static int
 mxge_parse_strings(mxge_softc_t *sc)
 {
-#define MXGE_NEXT_STRING(p) while(ptr < limit && *ptr++)
-
-	char *ptr, *limit;
-	int i, found_mac;
+	char *ptr;
+	int i, found_mac, found_sn2;
+	char *endptr;
 
 	ptr = sc->eeprom_strings;
-	limit = sc->eeprom_strings + MXGE_EEPROM_STRINGS_SIZE;
 	found_mac = 0;
-	while (ptr < limit && *ptr != '\0') {
-		if (memcmp(ptr, "MAC=", 4) == 0) {
-			ptr += 1;
-			sc->mac_addr_string = ptr;
-			for (i = 0; i < 6; i++) {
-				ptr += 3;
-				if ((ptr + 2) > limit)
+	found_sn2 = 0;
+	while (*ptr != '\0') {
+		if (strncmp(ptr, "MAC=", 4) == 0) {
+			ptr += 4;
+			for (i = 0;;) {
+				sc->mac_addr[i] = strtoul(ptr, &endptr, 16);
+				if (endptr - ptr != 2)
 					goto abort;
-				sc->mac_addr[i] = strtoul(ptr, NULL, 16);
-				found_mac = 1;
+				ptr = endptr;
+				if (++i == 6)
+					break;
+				if (*ptr++ != ':')
+					goto abort;
 			}
-		} else if (memcmp(ptr, "PC=", 3) == 0) {
+			found_mac = 1;
+		} else if (strncmp(ptr, "PC=", 3) == 0) {
 			ptr += 3;
-			strncpy(sc->product_code_string, ptr,
-				sizeof (sc->product_code_string) - 1);
-		} else if (memcmp(ptr, "SN=", 3) == 0) {
+			strlcpy(sc->product_code_string, ptr,
+			    sizeof(sc->product_code_string));
+		} else if (!found_sn2 && (strncmp(ptr, "SN=", 3) == 0)) {
 			ptr += 3;
-			strncpy(sc->serial_number_string, ptr,
-				sizeof (sc->serial_number_string) - 1);
+			strlcpy(sc->serial_number_string, ptr,
+			    sizeof(sc->serial_number_string));
+		} else if (strncmp(ptr, "SN2=", 4) == 0) {
+			/* SN2 takes precedence over SN */
+			ptr += 4;
+			found_sn2 = 1;
+			strlcpy(sc->serial_number_string, ptr,
+			    sizeof(sc->serial_number_string));
 		}
-		MXGE_NEXT_STRING(ptr);
+		while (*ptr++ != '\0') {}
 	}
 
 	if (found_mac)
@@ -581,9 +589,10 @@ mxge_firmware_probe(mxge_softc_t *sc)
 
 	/* 
 	 * Run a DMA test which watches for unaligned completions and
-	 * aborts on the first one seen.
+	 * aborts on the first one seen.  Not required on Z8ES or newer.
 	 */
-
+	if (pci_get_revid(sc->dev) >= MXGE_PCI_REV_Z8ES)
+		return 0;
 	status = mxge_dma_test(sc, MXGEFW_CMD_UNALIGNED_TEST);
 	if (status == 0)
 		return 0; /* keep the aligned firmware */
@@ -641,12 +650,6 @@ abort:
 	return (mxge_load_firmware(sc, 0));
 }
 
-union qualhack
-{
-        const char *ro_char;
-        char *rw_char;
-};
-
 static int
 mxge_validate_firmware(mxge_softc_t *sc, const mcp_gen_header_t *hdr)
 {
@@ -659,7 +662,7 @@ mxge_validate_firmware(mxge_softc_t *sc, const mcp_gen_header_t *hdr)
 	}
 
 	/* save firmware version for sysctl */
-	strncpy(sc->fw_version, hdr->version, sizeof (sc->fw_version));
+	strlcpy(sc->fw_version, hdr->version, sizeof(sc->fw_version));
 	if (mxge_verbose)
 		device_printf(sc->dev, "firmware id: %s\n", hdr->version);
 
@@ -3317,8 +3320,6 @@ mxge_alloc_slice_rings(struct mxge_slice_state *ss, int rx_ring_entries,
 	size_t bytes;
 	int err, i;
 
-	err = ENOMEM;
-
 	/* allocate per-slice receive resources */
 
 	ss->rx_small.mask = ss->rx_big.mask = rx_ring_entries - 1;
@@ -3327,24 +3328,16 @@ mxge_alloc_slice_rings(struct mxge_slice_state *ss, int rx_ring_entries,
 	/* allocate the rx shadow rings */
 	bytes = rx_ring_entries * sizeof (*ss->rx_small.shadow);
 	ss->rx_small.shadow = malloc(bytes, M_DEVBUF, M_ZERO|M_WAITOK);
-	if (ss->rx_small.shadow == NULL)
-		return err;
 
 	bytes = rx_ring_entries * sizeof (*ss->rx_big.shadow);
 	ss->rx_big.shadow = malloc(bytes, M_DEVBUF, M_ZERO|M_WAITOK);
-	if (ss->rx_big.shadow == NULL)
-		return err;
 
 	/* allocate the rx host info rings */
 	bytes = rx_ring_entries * sizeof (*ss->rx_small.info);
 	ss->rx_small.info = malloc(bytes, M_DEVBUF, M_ZERO|M_WAITOK);
-	if (ss->rx_small.info == NULL)
-		return err;
 
 	bytes = rx_ring_entries * sizeof (*ss->rx_big.info);
 	ss->rx_big.info = malloc(bytes, M_DEVBUF, M_ZERO|M_WAITOK);
-	if (ss->rx_big.info == NULL)
-		return err;
 
 	/* allocate the rx busdma resources */
 	err = bus_dma_tag_create(sc->parent_dmat,	/* parent */
@@ -3441,8 +3434,6 @@ mxge_alloc_slice_rings(struct mxge_slice_state *ss, int rx_ring_entries,
 	bytes = 8 + 
 		sizeof (*ss->tx.req_list) * (ss->tx.max_desc + 4);
 	ss->tx.req_bytes = malloc(bytes, M_DEVBUF, M_WAITOK);
-	if (ss->tx.req_bytes == NULL)
-		return err;
 	/* ensure req_list entries are aligned to 8 bytes */
 	ss->tx.req_list = (mcp_kreq_ether_send_t *)
 		((unsigned long)(ss->tx.req_bytes + 7) & ~7UL);
@@ -3451,14 +3442,10 @@ mxge_alloc_slice_rings(struct mxge_slice_state *ss, int rx_ring_entries,
 	bytes = sizeof (*ss->tx.seg_list) * ss->tx.max_desc;
 	ss->tx.seg_list = (bus_dma_segment_t *) 
 		malloc(bytes, M_DEVBUF, M_WAITOK);
-	if (ss->tx.seg_list == NULL)
-		return err;
 
 	/* allocate the tx host info ring */
 	bytes = tx_ring_entries * sizeof (*ss->tx.info);
 	ss->tx.info = malloc(bytes, M_DEVBUF, M_ZERO|M_WAITOK);
-	if (ss->tx.info == NULL)
-		return err;
 	
 	/* allocate the tx busdma resources */
 	err = bus_dma_tag_create(sc->parent_dmat,	/* parent */
