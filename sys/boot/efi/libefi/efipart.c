@@ -62,7 +62,7 @@ static int
 efipart_init(void) 
 {
 	EFI_BLOCK_IO *blkio;
-	EFI_HANDLE *hin, *hout;
+	EFI_HANDLE *hin, *hout, *aliases;
 	EFI_STATUS status;
 	UINTN sz;
 	u_int n, nin, nout;
@@ -72,7 +72,7 @@ efipart_init(void)
 	hin = NULL;
 	status = BS->LocateHandle(ByProtocol, &blkio_guid, 0, &sz, 0);
 	if (status == EFI_BUFFER_TOO_SMALL) {
-		hin = (EFI_HANDLE *)malloc(sz * 2);
+		hin = (EFI_HANDLE *)malloc(sz * 3);
 		status = BS->LocateHandle(ByProtocol, &blkio_guid, 0, &sz,
 		    hin);
 		if (EFI_ERROR(status))
@@ -84,7 +84,10 @@ efipart_init(void)
 	/* Filter handles to only include FreeBSD partitions. */
 	nin = sz / sizeof(EFI_HANDLE);
 	hout = hin + nin;
+	aliases = hout + nin;
 	nout = 0;
+
+	bzero(aliases, nin * sizeof(EFI_HANDLE));
 
 	for (n = 0; n < nin; n++) {
 		status = BS->HandleProtocol(hin[n], &blkio_guid, &blkio);
@@ -96,7 +99,7 @@ efipart_init(void)
 		nout++;
 	}
 
-	err = efi_register_handles(&efipart_dev, hout, nout);
+	err = efi_register_handles(&efipart_dev, hout, aliases, nout);
 	free(hin);
 	return (err);
 }
