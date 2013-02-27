@@ -32,7 +32,6 @@ __FBSDID("$FreeBSD$");
 #include <efi.h>
 #include <efilib.h>
 
-#include <machine/bootinfo.h>
 #include <machine/efi.h>
 #include <machine/metadata.h>
 
