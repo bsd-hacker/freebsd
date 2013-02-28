@@ -16,7 +16,7 @@ amd64_tramp:
 	movq	%r8,%r14
 	movq	%r9,%r15
 
-	call	%rsi		/* Call copy_finish so we're all ready to go. */
+	callq	*%rsi		/* Call copy_finish so we're all ready to go. */
 
 	pushq	%r12		/* Push kernend. */
 	salq	$32,%r13	/* Shift modulep and push it. */
