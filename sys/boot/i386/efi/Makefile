@@ -21,7 +21,6 @@ CFLAGS+=	-I${.CURDIR}/../../efi/include/${MACHINE_CPUARCH}
 CFLAGS+=	-I${.CURDIR}/../../../contrib/dev/acpica/include
 CFLAGS+=	-I${.CURDIR}/../../..
 
-
 .if ${MK_FORTH} != "no"
 BOOT_FORTH=	yes
 CFLAGS+=	-DBOOT_FORTH
