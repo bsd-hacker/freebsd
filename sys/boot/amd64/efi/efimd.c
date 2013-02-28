@@ -36,7 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/metadata.h>
 
 #include "bootstrap.h"
-#include "efifb.h"
+#include "framebuffer.h"
 
 static UINTN mapkey;
 
