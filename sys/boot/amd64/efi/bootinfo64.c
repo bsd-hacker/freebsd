@@ -28,14 +28,120 @@
 __FBSDID("$FreeBSD$");
 
 #include <stand.h>
+#include <string.h>
 #include <sys/param.h>
 #include <sys/reboot.h>
 #include <sys/linker.h>
 #include <machine/cpufunc.h>
 #include <machine/psl.h>
 #include <machine/specialreg.h>
+
+#include <efi.h>
+#include <efilib.h>
+
 #include "bootstrap.h"
 #include "x86_efi.h"
+
+/*
+ * Return a 'boothowto' value corresponding to the kernel arguments in
+ * (kargs) and any relevant environment variables.
+ */
+static struct 
+{
+	const char	*ev;
+	int		mask;
+} howto_names[] = {
+	{ "boot_askname",	RB_ASKNAME},
+	{ "boot_cdrom",		RB_CDROM},
+	{ "boot_ddb",		RB_KDB},
+	{ "boot_dfltroot",	RB_DFLTROOT},
+	{ "boot_gdb",		RB_GDB},
+	{ "boot_multicons",	RB_MULTIPLE},
+	{ "boot_mute",		RB_MUTE},
+	{ "boot_pause",		RB_PAUSE},
+	{ "boot_serial",	RB_SERIAL},
+	{ "boot_single",	RB_SINGLE},
+	{ "boot_verbose",	RB_VERBOSE},
+	{ NULL,	0}
+};
+
+static const char howto_switches[] = "aCdrgDmphsv";
+static int howto_masks[] = {
+	RB_ASKNAME, RB_CDROM, RB_KDB, RB_DFLTROOT, RB_GDB, RB_MULTIPLE,
+	RB_MUTE, RB_PAUSE, RB_SERIAL, RB_SINGLE, RB_VERBOSE
+};
+
+static int
+bi_getboothowto(char *kargs)
+{
+	const char *sw;
+	char *opts;
+	int howto, i;
+
+	howto = 0;
+
+	/* Get the boot options from the environment first. */
+	for (i = 0; howto_names[i].ev != NULL; i++) {
+		if (getenv(howto_names[i].ev) != NULL)
+			howto |= howto_names[i].mask;
+	}
+
+	/* Parse kargs */
+	if (kargs == NULL)
+		return (howto);
+
+	opts = strchr(kargs, '-');
+	while (opts != NULL) {
+		while (*(++opts) != '\0') {
+			sw = strchr(howto_switches, *opts);
+			if (sw == NULL)
+				break;
+			howto |= howto_masks[sw - howto_switches];
+		}
+		opts = strchr(opts, '-');
+	}
+
+	return (howto);
+}
+
+/*
+ * Copy the environment into the load area starting at (addr).
+ * Each variable is formatted as <name>=<value>, with a single nul
+ * separating each variable, and a double nul terminating the environment.
+ */
+static vm_offset_t
+bi_copyenv(vm_offset_t start)
+{
+	struct env_var *ep;
+	vm_offset_t addr, last;
+	size_t len;
+
+	addr = last = start;
+
+	/* Traverse the environment. */
+	for (ep = environ; ep != NULL; ep = ep->ev_next) {
+		len = strlen(ep->ev_name);
+		if (x86_efi_copyin(ep->ev_name, addr, len) != len)
+			break;
+		addr += len;
+		if (x86_efi_copyin("=", addr, 1) != 1)
+			break;
+		addr++;
+		if (ep->ev_value != NULL) {
+			len = strlen(ep->ev_value);
+			if (x86_efi_copyin(ep->ev_value, addr, len) != len)
+				break;
+			addr += len;
+		}
+		if (x86_efi_copyin("", addr, 1) != 1)
+			break;
+		last = ++addr;
+	}
+
+	if (x86_efi_copyin("", last++, 1) != 1)
+		last = start;
+	return(last);
+}
 
 /*
  * Copy module-related data into the load area, where it can be
