@@ -93,6 +93,7 @@ elf64_exec(struct preloaded_file *fp)
     ACPI_TABLE_RSDP		*rsdp;
     char			buf[24];
     int				revision;
+    EFI_STATUS			status;
 
     rsdp = efi_get_table(&acpi20_guid);
     if (rsdp == NULL) {
@@ -164,7 +165,12 @@ elf64_exec(struct preloaded_file *fp)
 
     printf("Start @ 0x%lx ...\n", ehdr->e_entry);
 
-    ldr_enter(fp->f_name);
+    status = BS->ExitBootServices(IH, x86_efi_mapkey);
+    if (EFI_ERROR(status)) {
+        printf("%s: ExitBootServices() returned 0x%lx\n", __func__,
+            (long)status);
+        return (EINVAL);
+    }
 
     dev_cleanup();
 

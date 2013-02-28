@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 1998 Michael Smith <msmith@freebsd.org>
+ * Copyright (c) 2004, 2006 Marcel Moolenaar
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,6 +34,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/reboot.h>
 #include <sys/linker.h>
 #include <machine/cpufunc.h>
+#include <machine/efi.h>
+#include <machine/metadata.h>
 #include <machine/psl.h>
 #include <machine/specialreg.h>
 
@@ -40,7 +43,10 @@ __FBSDID("$FreeBSD$");
 #include <efilib.h>
 
 #include "bootstrap.h"
+#include "framebuffer.h"
 #include "x86_efi.h"
+
+UINTN x86_efi_mapkey;
 
 /*
  * Return a 'boothowto' value corresponding to the kernel arguments in
@@ -229,7 +235,66 @@ bi_copymodules64(vm_offset_t addr)
 	return(addr);
 }
 
-extern int ldr_bootinfo(struct preloaded_file *kfp);
+static int
+ldr_bootinfo(struct preloaded_file *kfp)
+{
+	EFI_MEMORY_DESCRIPTOR *mm;
+	EFI_PHYSICAL_ADDRESS addr;
+	EFI_STATUS status;
+	size_t efisz;
+	UINTN mmsz, pages, sz;
+	UINT32 mmver;
+	struct efi_header *efihdr;
+
+        efisz = (sizeof(struct efi_header) + 0xf) & ~0xf;
+
+	/*
+	 * Allocate enough pages to hold the bootinfo block and the memory
+	 * map EFI will return to us. The memory map has an unknown size,
+	 * so we have to determine that first. Note that the AllocatePages
+	 * call can itself modify the memory map, so we have to take that
+	 * into account as well. The changes to the memory map are caused
+	 * by splitting a range of free memory into two (AFAICT), so that
+	 * one is marked as being loader data.
+	 */
+	sz = 0;
+	BS->GetMemoryMap(&sz, NULL, &x86_efi_mapkey, &mmsz, &mmver);
+	sz += mmsz;
+	sz = (sz + 0xf) & ~0xf;
+	pages = EFI_SIZE_TO_PAGES(sz + efisz);
+	status = BS->AllocatePages(AllocateAnyPages, EfiLoaderData, pages,
+	    &addr);
+	if (EFI_ERROR(status)) {
+		printf("%s: AllocatePages() returned 0x%lx\n", __func__,
+		    (long)status);
+		return (ENOMEM);
+	}
+
+	/*
+	 * Read the memory map and stash it after bootinfo. Align the
+	 * memory map on a 16-byte boundary (the bootinfo block is page
+	 * aligned).
+	 */
+	efihdr = (struct efi_header *)addr;
+	mm = (void *)((uint8_t *)efihdr + efisz);
+	sz = (EFI_PAGE_SIZE * pages) - efisz;
+	status = BS->GetMemoryMap(&sz, mm, &x86_efi_mapkey, &mmsz, &mmver);
+	if (EFI_ERROR(status)) {
+		printf("%s: GetMemoryMap() returned 0x%lx\n", __func__,
+		    (long)status);
+		return (EINVAL);
+	}
+
+	efihdr->memory_size = sz;
+	efihdr->descriptor_size = mmsz;
+	efihdr->descriptor_version = mmver;
+
+	efi_find_framebuffer(efihdr);
+
+	file_addmetadata(kfp, MODINFOMD_EFI, efisz + sz, efihdr);
+
+	return (0);
+}
 
 /*
  * Load the information expected by an amd64 kernel.
