@@ -209,7 +209,7 @@ bi_copyenv(vm_offset_t start)
 }
 
 static vm_offset_t
-bi_copymodules64(vm_offset_t addr)
+bi_copymodules(vm_offset_t addr)
 {
 	struct preloaded_file	*fp;
 	struct file_metadata	*md;
@@ -236,7 +236,7 @@ bi_copymodules64(vm_offset_t addr)
 }
 
 static int
-ldr_bootinfo(struct preloaded_file *kfp)
+bi_load_efi_data(struct preloaded_file *kfp)
 {
 	EFI_MEMORY_DESCRIPTOR *mm;
 	EFI_PHYSICAL_ADDRESS addr;
@@ -306,7 +306,7 @@ ldr_bootinfo(struct preloaded_file *kfp)
  * - Module metadata are formatted and placed in kernel space.
  */
 int
-bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
+bi_load(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
 {
 	struct preloaded_file	*xp, *kfp;
 	struct devdesc		*rootdev;
@@ -360,11 +360,12 @@ bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
 	file_addmetadata(kfp, MODINFOMD_HOWTO, sizeof howto, &howto);
 	file_addmetadata(kfp, MODINFOMD_ENVP, sizeof envp, &envp);
 	file_addmetadata(kfp, MODINFOMD_KERNEND, sizeof kernend, &kernend);
-	ldr_bootinfo(kfp);
+
+	bi_load_efi_data(kfp);
 
 	/* Figure out the size and location of the metadata */
 	*modulep = addr;
-	size = bi_copymodules64(0);
+	size = bi_copymodules(0);
 	kernend = roundup(addr + size, PAGE_SIZE);
 	*kernendp = kernend;
 
@@ -373,7 +374,7 @@ bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
 	bcopy(&kernend, md->md_data, sizeof kernend);
 
 	/* copy module list and metadata */
-	(void)bi_copymodules64(addr);
+	(void)bi_copymodules(addr);
 
 	return(0);
 }

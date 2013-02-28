@@ -51,7 +51,7 @@ __FBSDID("$FreeBSD$");
 static EFI_GUID acpi_guid = ACPI_TABLE_GUID;
 static EFI_GUID acpi20_guid = ACPI_20_TABLE_GUID;
 
-extern int bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp);
+extern int bi_load(char *args, vm_offset_t *modulep, vm_offset_t *kernendp);
 
 static int	elf64_exec(struct preloaded_file *amp);
 static int	elf64_obj_exec(struct preloaded_file *amp);
@@ -159,7 +159,7 @@ elf64_exec(struct preloaded_file *fp)
         PT2[i] |= PG_V | PG_RW | PG_PS | PG_U;
     }
 
-    err = bi_load64(fp->f_args, &modulep, &kernend);
+    err = bi_load(fp->f_args, &modulep, &kernend);
     if (err != 0)
 	return(err);
 
