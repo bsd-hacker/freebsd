@@ -53,75 +53,74 @@ __FBSDID("$FreeBSD$");
  * MOD_SIZE	sizeof(size_t)		module size
  * MOD_METADATA	(variable)		type-specific metadata
  */
-#define COPY32(v, a, c) {			\
-    u_int32_t	x = (v);			\
-    if (c)					\
-	x86_efi_copyin(&x, a, sizeof(x));	\
-    a += sizeof(x);				\
+#define COPY32(v, a, c) {				\
+	u_int32_t x = (v);				\
+	if (c)						\
+	x86_efi_copyin(&x, a, sizeof(x));		\
+	a += sizeof(x);					\
 }
 
-#define MOD_STR(t, a, s, c) {			\
-    COPY32(t, a, c);				\
-    COPY32(strlen(s) + 1, a, c);		\
-    if (c)					\
-	x86_efi_copyin(s, a, strlen(s) + 1);	\
-    a += roundup(strlen(s) + 1, sizeof(u_int64_t));\
+#define MOD_STR(t, a, s, c) {				\
+	COPY32(t, a, c);				\
+	COPY32(strlen(s) + 1, a, c);			\
+	if (c)						\
+	x86_efi_copyin(s, a, strlen(s) + 1);		\
+	a += roundup(strlen(s) + 1, sizeof(u_int64_t));	\
 }
 
 #define MOD_NAME(a, s, c)	MOD_STR(MODINFO_NAME, a, s, c)
 #define MOD_TYPE(a, s, c)	MOD_STR(MODINFO_TYPE, a, s, c)
 #define MOD_ARGS(a, s, c)	MOD_STR(MODINFO_ARGS, a, s, c)
 
-#define MOD_VAR(t, a, s, c) {			\
-    COPY32(t, a, c);				\
-    COPY32(sizeof(s), a, c);			\
-    if (c)					\
-	x86_efi_copyin(&s, a, sizeof(s));	\
-    a += roundup(sizeof(s), sizeof(u_int64_t));	\
+#define MOD_VAR(t, a, s, c) {				\
+	COPY32(t, a, c);				\
+	COPY32(sizeof(s), a, c);			\
+	if (c)						\
+	x86_efi_copyin(&s, a, sizeof(s));		\
+	a += roundup(sizeof(s), sizeof(u_int64_t));	\
 }
 
 #define MOD_ADDR(a, s, c)	MOD_VAR(MODINFO_ADDR, a, s, c)
 #define MOD_SIZE(a, s, c)	MOD_VAR(MODINFO_SIZE, a, s, c)
 
-#define MOD_METADATA(a, mm, c) {		\
-    COPY32(MODINFO_METADATA | mm->md_type, a, c); \
-    COPY32(mm->md_size, a, c);			\
-    if (c)					\
-	x86_efi_copyin(mm->md_data, a, mm->md_size); \
-    a += roundup(mm->md_size, sizeof(u_int64_t));\
+#define MOD_METADATA(a, mm, c) {			\
+	COPY32(MODINFO_METADATA | mm->md_type, a, c);	\
+	COPY32(mm->md_size, a, c);			\
+	if (c)						\
+	x86_efi_copyin(mm->md_data, a, mm->md_size);	\
+	a += roundup(mm->md_size, sizeof(u_int64_t));	\
 }
 
-#define MOD_END(a, c) {				\
-    COPY32(MODINFO_END, a, c);			\
-    COPY32(0, a, c);				\
+#define MOD_END(a, c) {					\
+	COPY32(MODINFO_END, a, c);			\
+	COPY32(0, a, c);				\
 }
 
 static vm_offset_t
 bi_copymodules64(vm_offset_t addr)
 {
-    struct preloaded_file	*fp;
-    struct file_metadata	*md;
-    int				c;
-    u_int64_t			v;
+	struct preloaded_file	*fp;
+	struct file_metadata	*md;
+	int			c;
+	u_int64_t		v;
 
-    c = addr != 0;
-    /* start with the first module on the list, should be the kernel */
-    for (fp = file_findfile(NULL, NULL); fp != NULL; fp = fp->f_next) {
-
-	MOD_NAME(addr, fp->f_name, c);	/* this field must come first */
-	MOD_TYPE(addr, fp->f_type, c);
-	if (fp->f_args)
-	    MOD_ARGS(addr, fp->f_args, c);
-	v = fp->f_addr;
-	MOD_ADDR(addr, v, c);
-	v = fp->f_size;
-	MOD_SIZE(addr, v, c);
-	for (md = fp->f_metadata; md != NULL; md = md->md_next)
-	    if (!(md->md_type & MODINFOMD_NOCOPY))
-		MOD_METADATA(addr, md, c);
-    }
-    MOD_END(addr, c);
-    return(addr);
+	c = addr != 0;
+	/* start with the first module on the list, should be the kernel */
+	for (fp = file_findfile(NULL, NULL); fp != NULL; fp = fp->f_next) {
+		MOD_NAME(addr, fp->f_name, c);	/* this field must come first */
+		MOD_TYPE(addr, fp->f_type, c);
+		if (fp->f_args)
+			MOD_ARGS(addr, fp->f_args, c);
+		v = fp->f_addr;
+		MOD_ADDR(addr, v, c);
+		v = fp->f_size;
+		MOD_SIZE(addr, v, c);
+		for (md = fp->f_metadata; md != NULL; md = md->md_next)
+			if (!(md->md_type & MODINFOMD_NOCOPY))
+				MOD_METADATA(addr, md, c);
+	}
+	MOD_END(addr, c);
+	return(addr);
 }
 
 extern int ldr_bootinfo(struct preloaded_file *kfp);
@@ -138,72 +137,72 @@ extern int ldr_bootinfo(struct preloaded_file *kfp);
 int
 bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
 {
-    struct preloaded_file	*xp, *kfp;
-    struct devdesc		*rootdev;
-    struct file_metadata	*md;
-    vm_offset_t			addr;
-    u_int64_t			kernend;
-    u_int64_t			envp;
-    vm_offset_t			size;
-    char			*rootdevname;
-    int				howto;
+	struct preloaded_file	*xp, *kfp;
+	struct devdesc		*rootdev;
+	struct file_metadata	*md;
+	vm_offset_t		addr;
+	u_int64_t		kernend;
+	u_int64_t		envp;
+	vm_offset_t		size;
+	char			*rootdevname;
+	int			howto;
 
-    howto = bi_getboothowto(args);
+	howto = bi_getboothowto(args);
 
-    /* 
-     * Allow the environment variable 'rootdev' to override the supplied device 
-     * This should perhaps go to MI code and/or have $rootdev tested/set by
-     * MI code before launching the kernel.
-     */
-    rootdevname = getenv("rootdev");
-    x86_efi_getdev((void **)(&rootdev), rootdevname, NULL);
-    if (rootdev == NULL) {		/* bad $rootdev/$currdev */
-	printf("can't determine root device\n");
-	return(EINVAL);
-    }
+	/* 
+	 * Allow the environment variable 'rootdev' to override the supplied
+	 * device. This should perhaps go to MI code and/or have $rootdev
+	 * tested/set by MI code before launching the kernel.
+	 */
+	rootdevname = getenv("rootdev");
+	x86_efi_getdev((void **)(&rootdev), rootdevname, NULL);
+	if (rootdev == NULL) {		/* bad $rootdev/$currdev */
+		printf("can't determine root device\n");
+		return(EINVAL);
+	}
 
-    /* Try reading the /etc/fstab file to select the root device */
-    getrootmount(x86_efi_fmtdev((void *)rootdev));
+	/* Try reading the /etc/fstab file to select the root device */
+	getrootmount(x86_efi_fmtdev((void *)rootdev));
 
-    /* find the last module in the chain */
-    addr = 0;
-    for (xp = file_findfile(NULL, NULL); xp != NULL; xp = xp->f_next) {
+	/* find the last module in the chain */
+	addr = 0;
+	for (xp = file_findfile(NULL, NULL); xp != NULL; xp = xp->f_next) {
 	if (addr < (xp->f_addr + xp->f_size))
-	    addr = xp->f_addr + xp->f_size;
-    }
-    /* pad to a page boundary */
-    addr = roundup(addr, PAGE_SIZE);
+		addr = xp->f_addr + xp->f_size;
+	}
+	/* pad to a page boundary */
+	addr = roundup(addr, PAGE_SIZE);
 
-    /* copy our environment */
-    envp = addr;
-    addr = bi_copyenv(addr);
+	/* copy our environment */
+	envp = addr;
+	addr = bi_copyenv(addr);
 
-    /* pad to a page boundary */
-    addr = roundup(addr, PAGE_SIZE);
+	/* pad to a page boundary */
+	addr = roundup(addr, PAGE_SIZE);
 
-    kfp = file_findfile(NULL, "elf kernel");
-    if (kfp == NULL)
-      kfp = file_findfile(NULL, "elf64 kernel");
-    if (kfp == NULL)
+	kfp = file_findfile(NULL, "elf kernel");
+	if (kfp == NULL)
+		kfp = file_findfile(NULL, "elf64 kernel");
+	if (kfp == NULL)
 	panic("can't find kernel file");
-    kernend = 0;	/* fill it in later */
-    file_addmetadata(kfp, MODINFOMD_HOWTO, sizeof howto, &howto);
-    file_addmetadata(kfp, MODINFOMD_ENVP, sizeof envp, &envp);
-    file_addmetadata(kfp, MODINFOMD_KERNEND, sizeof kernend, &kernend);
-    ldr_bootinfo(kfp);
+	kernend = 0;	/* fill it in later */
+	file_addmetadata(kfp, MODINFOMD_HOWTO, sizeof howto, &howto);
+	file_addmetadata(kfp, MODINFOMD_ENVP, sizeof envp, &envp);
+	file_addmetadata(kfp, MODINFOMD_KERNEND, sizeof kernend, &kernend);
+	ldr_bootinfo(kfp);
 
-    /* Figure out the size and location of the metadata */
-    *modulep = addr;
-    size = bi_copymodules64(0);
-    kernend = roundup(addr + size, PAGE_SIZE);
-    *kernendp = kernend;
+	/* Figure out the size and location of the metadata */
+	*modulep = addr;
+	size = bi_copymodules64(0);
+	kernend = roundup(addr + size, PAGE_SIZE);
+	*kernendp = kernend;
 
-    /* patch MODINFOMD_KERNEND */
-    md = file_findmetadata(kfp, MODINFOMD_KERNEND);
-    bcopy(&kernend, md->md_data, sizeof kernend);
+	/* patch MODINFOMD_KERNEND */
+	md = file_findmetadata(kfp, MODINFOMD_KERNEND);
+	bcopy(&kernend, md->md_data, sizeof kernend);
 
-    /* copy module list and metadata */
-    (void)bi_copymodules64(addr);
+	/* copy module list and metadata */
+	(void)bi_copymodules64(addr);
 
-    return(0);
+	return(0);
 }
