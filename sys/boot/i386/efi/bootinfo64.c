@@ -35,8 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/psl.h>
 #include <machine/specialreg.h>
 #include "bootstrap.h"
-#include "libi386.h"
-#include "x86_efi_copy.h"
+#include "x86_efi.h"
 
 /*
  * Copy module-related data into the load area, where it can be
@@ -140,7 +139,7 @@ int
 bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
 {
     struct preloaded_file	*xp, *kfp;
-    struct i386_devdesc		*rootdev;
+    struct devdesc		*rootdev;
     struct file_metadata	*md;
     vm_offset_t			addr;
     u_int64_t			kernend;
@@ -157,14 +156,14 @@ bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
      * MI code before launching the kernel.
      */
     rootdevname = getenv("rootdev");
-    i386_getdev((void **)(&rootdev), rootdevname, NULL);
+    x86_efi_getdev((void **)(&rootdev), rootdevname, NULL);
     if (rootdev == NULL) {		/* bad $rootdev/$currdev */
 	printf("can't determine root device\n");
 	return(EINVAL);
     }
 
     /* Try reading the /etc/fstab file to select the root device */
-    getrootmount(i386_fmtdev((void *)rootdev));
+    getrootmount(x86_efi_fmtdev((void *)rootdev));
 
     /* find the last module in the chain */
     addr = 0;

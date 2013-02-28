@@ -38,9 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <efilib.h>
 
 #include "bootstrap.h"
-#include "libi386.h"
-
-#include "x86_efi_copy.h"
+#include "x86_efi.h"
 
 /*
  * Return a 'boothowto' value corresponding to the kernel arguments in

@@ -31,6 +31,12 @@
 #ifndef	_X86_EFI_COPY_H_
 #define	_X86_EFI_COPY_H_
 
+int	x86_efi_autoload(void);
+
+int	x86_efi_getdev(void **vdev, const char *devspec, const char **path);
+char	*x86_efi_fmtdev(void *vdev);
+int	x86_efi_setcurrdev(struct env_var *ev, int flags, const void *value);
+
 int	x86_efi_copy_init(void);
 void	x86_efi_copy_finish(void);
 

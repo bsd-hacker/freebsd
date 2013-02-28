@@ -48,7 +48,7 @@ __FBSDID("$FreeBSD$");
 #include "actypes.h"
 #include "actbl.h"
 
-#include "x86_efi_copy.h"
+#include "x86_efi.h"
 
 static EFI_GUID acpi_guid = ACPI_TABLE_GUID;
 static EFI_GUID acpi20_guid = ACPI_20_TABLE_GUID;
