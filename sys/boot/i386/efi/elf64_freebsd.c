@@ -39,8 +39,6 @@ __FBSDID("$FreeBSD$");
 #include <efilib.h>
 
 #include "bootstrap.h"
-#include "../libi386/libi386.h"
-#include "../btx/lib/btxv86.h"
 
 #include "platform/acfreebsd.h"
 #include "acconfig.h"
