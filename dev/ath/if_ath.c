@@ -111,6 +111,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/ath/if_ath_rx_edma.h>
 #include <dev/ath/if_ath_tx_edma.h>
 #include <dev/ath/if_ath_beacon.h>
+#include <dev/ath/if_ath_spectral.h>
 #include <dev/ath/if_athdfs.h>
 
 #ifdef ATH_TX99_DIAG
@@ -432,8 +433,11 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	TASK_INIT(&sc->sc_bmisstask, 0, ath_bmiss_proc, sc);
 	TASK_INIT(&sc->sc_bstucktask,0, ath_bstuck_proc, sc);
 	TASK_INIT(&sc->sc_resettask,0, ath_reset_proc, sc);
-	TASK_INIT(&sc->sc_txqtask,0, ath_txq_sched_tasklet, sc);
-	TASK_INIT(&sc->sc_fataltask,0, ath_fatal_proc, sc);
+	TASK_INIT(&sc->sc_txqtask, 0, ath_txq_sched_tasklet, sc);
+	TASK_INIT(&sc->sc_fataltask, 0, ath_fatal_proc, sc);
+
+	/* XXX make this a higher priority taskqueue? */
+	TASK_INIT(&sc->sc_txpkttask, 0, ath_start_task, sc);
 
 	/*
 	 * Allocate hardware transmit queues: one queue for
@@ -506,6 +510,14 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	if (! ath_dfs_attach(sc)) {
 		device_printf(sc->sc_dev,
 		    "%s: unable to attach DFS\n", __func__);
+		error = EIO;
+		goto bad2;
+	}
+
+	/* Attach spectral module */
+	if (ath_spectral_attach(sc) < 0) {
+		device_printf(sc->sc_dev,
+		    "%s: unable to attach spectral\n", __func__);
 		error = EIO;
 		goto bad2;
 	}
@@ -769,6 +781,28 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 		ic->ic_txstream = txs;
 		ic->ic_rxstream = rxs;
 
+		/*
+		 * Setup TX and RX STBC based on what the HAL allows and
+		 * the currently configured chainmask set.
+		 * Ie - don't enable STBC TX if only one chain is enabled.
+		 * STBC RX is fine on a single RX chain; it just won't
+		 * provide any real benefit.
+		 */
+		if (ath_hal_getcapability(ah, HAL_CAP_RX_STBC, 0,
+		    NULL) == HAL_OK) {
+			sc->sc_rx_stbc = 1;
+			device_printf(sc->sc_dev,
+			    "[HT] 1 stream STBC receive enabled\n");
+			ic->ic_htcaps |= IEEE80211_HTCAP_RXSTBC_1STREAM;
+		}
+		if (txs > 1 && ath_hal_getcapability(ah, HAL_CAP_TX_STBC, 0,
+		    NULL) == HAL_OK) {
+			sc->sc_tx_stbc = 1;
+			device_printf(sc->sc_dev,
+			    "[HT] 1 stream STBC transmit enabled\n");
+			ic->ic_htcaps |= IEEE80211_HTCAP_TXSTBC;
+		}
+
 		(void) ath_hal_getcapability(ah, HAL_CAP_RTS_AGGR_LIMIT, 1,
 		    &sc->sc_rts_aggr_limit);
 		if (sc->sc_rts_aggr_limit != (64 * 1024))
@@ -787,6 +821,8 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	sc->sc_hwq_limit = ATH_AGGR_MIN_QDEPTH;
 	sc->sc_tid_hwq_lo = ATH_AGGR_SCHED_LOW;
 	sc->sc_tid_hwq_hi = ATH_AGGR_SCHED_HIGH;
+	sc->sc_aggr_limit = ATH_AGGR_MAXSIZE;
+	sc->sc_delim_min_pad = 0;
 
 	/*
 	 * Check if the hardware requires PCI register serialisation.
@@ -962,11 +998,10 @@ ath_detach(struct ath_softc *sc)
 		sc->sc_tx99->detach(sc->sc_tx99);
 #endif
 	ath_rate_detach(sc->sc_rc);
-
 #ifdef	ATH_DEBUG_ALQ
 	if_ath_alq_tidyup(&sc->sc_alq);
 #endif
-
+	ath_spectral_detach(sc);
 	ath_dfs_detach(sc);
 	ath_desc_free(sc);
 	ath_txdma_teardown(sc);
@@ -1463,6 +1498,26 @@ ath_reset_keycache(struct ath_softc *sc)
 	ieee80211_crypto_reload_keys(ic);
 }
 
+/*
+ * Fetch the current chainmask configuration based on the current
+ * operating channel and options.
+ */
+static void
+ath_update_chainmasks(struct ath_softc *sc, struct ieee80211_channel *chan)
+{
+
+	/*
+	 * Set TX chainmask to the currently configured chainmask;
+	 * the TX chainmask depends upon the current operating mode.
+	 */
+	sc->sc_cur_rxchainmask = sc->sc_rxchainmask;
+	if (IEEE80211_IS_CHAN_HT(chan)) {
+		sc->sc_cur_txchainmask = sc->sc_txchainmask;
+	} else {
+		sc->sc_cur_txchainmask = 1;
+	}
+}
+
 void
 ath_resume(struct ath_softc *sc)
 {
@@ -1481,6 +1536,10 @@ ath_resume(struct ath_softc *sc)
 	 * Must reset the chip before we reload the
 	 * keycache as we were powered down on suspend.
 	 */
+	ath_update_chainmasks(sc,
+	    sc->sc_curchan != NULL ? sc->sc_curchan : ic->ic_curchan);
+	ath_hal_setchainmasks(sc->sc_ah, sc->sc_cur_txchainmask,
+	    sc->sc_cur_rxchainmask);
 	ath_hal_reset(ah, sc->sc_opmode,
 	    sc->sc_curchan != NULL ? sc->sc_curchan : ic->ic_curchan,
 	    AH_FALSE, &status);
@@ -1488,6 +1547,9 @@ ath_resume(struct ath_softc *sc)
 
 	/* Let DFS at it in case it's a DFS channel */
 	ath_dfs_radar_enable(sc, ic->ic_curchan);
+
+	/* Let spectral at in case spectral is enabled */
+	ath_spectral_enable(sc, ic->ic_curchan);
 
 	/* Restore the LED configuration */
 	ath_led_config(sc);
@@ -1574,6 +1636,10 @@ ath_intr(void *arg)
 	ath_hal_getisr(ah, &status);		/* NB: clears ISR too */
 	DPRINTF(sc, ATH_DEBUG_INTR, "%s: status 0x%x\n", __func__, status);
 	ATH_KTR(sc, ATH_KTR_INTERRUPTS, 1, "ath_intr: mask=0x%.8x", status);
+#ifdef	ATH_DEBUG_ALQ
+	if_ath_alq_post_intr(&sc->sc_alq, status, ah->ah_intrstate,
+	    ah->ah_syncstate);
+#endif	/* ATH_DEBUG_ALQ */
 #ifdef	ATH_KTR_INTR_DEBUG
 	ATH_KTR(sc, ATH_KTR_INTERRUPTS, 5,
 	    "ath_intr: ISR=0x%.8x, ISR_S0=0x%.8x, ISR_S1=0x%.8x, ISR_S2=0x%.8x, ISR_S5=0x%.8x",
@@ -1850,11 +1916,19 @@ ath_bmiss_proc(void *arg, int pending)
 
 	DPRINTF(sc, ATH_DEBUG_ANY, "%s: pending %u\n", __func__, pending);
 
+	/*
+	 * Do a reset upon any becaon miss event.
+	 *
+	 * It may be a non-recognised RX clear hang which needs a reset
+	 * to clear.
+	 */
 	if (ath_hal_gethangstate(sc->sc_ah, 0xff, &hangs) && hangs != 0) {
-		if_printf(ifp, "bb hang detected (0x%x), resetting\n", hangs);
 		ath_reset(ifp, ATH_RESET_NOLOSS);
-	} else
+		if_printf(ifp, "bb hang detected (0x%x), resetting\n", hangs);
+	} else {
+		ath_reset(ifp, ATH_RESET_NOLOSS);
 		ieee80211_beacon_miss(ifp->if_l2com);
+	}
 }
 
 /*
@@ -1907,6 +1981,9 @@ ath_init(void *arg)
 	 * and then setup of the interrupt mask.
 	 */
 	ath_settkipmic(sc);
+	ath_update_chainmasks(sc, ic->ic_curchan);
+	ath_hal_setchainmasks(sc->sc_ah, sc->sc_cur_txchainmask,
+	    sc->sc_cur_rxchainmask);
 	if (!ath_hal_reset(ah, sc->sc_opmode, ic->ic_curchan, AH_FALSE, &status)) {
 		if_printf(ifp, "unable to reset hardware; hal status %u\n",
 			status);
@@ -1917,6 +1994,9 @@ ath_init(void *arg)
 
 	/* Let DFS at it in case it's a DFS channel */
 	ath_dfs_radar_enable(sc, ic->ic_curchan);
+
+	/* Let spectral at in case spectral is enabled */
+	ath_spectral_enable(sc, ic->ic_curchan);
 
 	/*
 	 * Likewise this is set during reset so update
@@ -1954,6 +2034,7 @@ ath_init(void *arg)
 	 */
 	sc->sc_imask = HAL_INT_RX | HAL_INT_TX
 		  | HAL_INT_RXEOL | HAL_INT_RXORN
+		  | HAL_INT_TXURN
 		  | HAL_INT_FATAL | HAL_INT_GLOBAL;
 
 	/*
@@ -2218,6 +2299,9 @@ ath_reset(struct ifnet *ifp, ATH_RESET_TYPE reset_type)
 
 	ath_settkipmic(sc);		/* configure TKIP MIC handling */
 	/* NB: indicate channel change so we do a full reset */
+	ath_update_chainmasks(sc, ic->ic_curchan);
+	ath_hal_setchainmasks(sc->sc_ah, sc->sc_cur_txchainmask,
+	    sc->sc_cur_rxchainmask);
 	if (!ath_hal_reset(ah, sc->sc_opmode, ic->ic_curchan, AH_TRUE, &status))
 		if_printf(ifp, "%s: unable to reset hardware; hal status %u\n",
 			__func__, status);
@@ -2225,6 +2309,9 @@ ath_reset(struct ifnet *ifp, ATH_RESET_TYPE reset_type)
 
 	/* Let DFS at it in case it's a DFS channel */
 	ath_dfs_radar_enable(sc, ic->ic_curchan);
+
+	/* Let spectral at in case spectral is enabled */
+	ath_spectral_enable(sc, ic->ic_curchan);
 
 	if (ath_startrecv(sc) != 0)	/* restart recv */
 		if_printf(ifp, "%s: unable to start recv logic\n", __func__);
@@ -2435,6 +2522,14 @@ ath_buf_clone(struct ath_softc *sc, const struct ath_buf *bf)
 	tbf->bf_flags = bf->bf_flags & ~ATH_BUF_BUSY;
 	tbf->bf_status = bf->bf_status;
 	tbf->bf_m = bf->bf_m;
+	/*
+	 * XXX Copy the node reference, the caller is responsible
+	 * for deleting the node reference before it frees its
+	 * buffer.
+	 *
+	 * XXX It's done like this so we don't call the net80211
+	 * code whilst having active TX queue locks held.
+	 */
 	tbf->bf_node = bf->bf_node;
 	/* will be setup by the chain/setup function */
 	tbf->bf_lastds = NULL;
@@ -2646,7 +2741,6 @@ ath_start(struct ifnet *ifp)
 	}
 	ATH_KTR(sc, ATH_KTR_TX, 1, "ath_start: finished; npkts=%d", npkts);
 }
-
 static int
 ath_media_change(struct ifnet *ifp)
 {
@@ -3546,17 +3640,24 @@ ath_tx_update_stats(struct ath_softc *sc, struct ath_tx_status *ts,
 		if (ts->ts_status & HAL_TXERR_TIMER_EXPIRED)
 			sc->sc_stats.ast_tx_timerexpired++;
 
-		if (ts->ts_status & HAL_TX_DATA_UNDERRUN)
-			sc->sc_stats.ast_tx_data_underrun++;
-		if (ts->ts_status & HAL_TX_DELIM_UNDERRUN)
-			sc->sc_stats.ast_tx_delim_underrun++;
-
 		if (bf->bf_m->m_flags & M_FF)
 			sc->sc_stats.ast_ff_txerr++;
 	}
 	/* XXX when is this valid? */
-	if (ts->ts_status & HAL_TX_DESC_CFG_ERR)
+	if (ts->ts_flags & HAL_TX_DESC_CFG_ERR)
 		sc->sc_stats.ast_tx_desccfgerr++;
+	/*
+	 * This can be valid for successful frame transmission!
+	 * If there's a TX FIFO underrun during aggregate transmission,
+	 * the MAC will pad the rest of the aggregate with delimiters.
+	 * If a BA is returned, the frame is marked as "OK" and it's up
+	 * to the TX completion code to notice which frames weren't
+	 * successfully transmitted.
+	 */
+	if (ts->ts_flags & HAL_TX_DATA_UNDERRUN)
+		sc->sc_stats.ast_tx_data_underrun++;
+	if (ts->ts_flags & HAL_TX_DELIM_UNDERRUN)
+		sc->sc_stats.ast_tx_delim_underrun++;
 
 	sr = ts->ts_shortretry;
 	lr = ts->ts_longretry;
@@ -3582,12 +3683,14 @@ ath_tx_default_comp(struct ath_softc *sc, struct ath_buf *bf, int fail)
 		st = ((bf->bf_state.bfs_txflags & HAL_TXDESC_NOACK) == 0) ?
 		    ts->ts_status : HAL_TXERR_XRETRY;
 
+#if 0
 	if (bf->bf_state.bfs_dobaw)
 		device_printf(sc->sc_dev,
 		    "%s: bf %p: seqno %d: dobaw should've been cleared!\n",
 		    __func__,
 		    bf,
 		    SEQNO(bf->bf_state.bfs_seqno));
+#endif
 	if (bf->bf_next != NULL)
 		device_printf(sc->sc_dev,
 		    "%s: bf %p: seqno %d: bf_next not NULL!\n",
@@ -3852,7 +3955,7 @@ ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq, int dosched)
 		ieee80211_ff_flush(ic, txq->axq_ac);
 #endif
 
-	/* Kick the TXQ scheduler */
+	/* Kick the software TXQ scheduler */
 	if (dosched) {
 		ATH_TX_LOCK(sc);
 		ath_txq_sched(sc, txq);
@@ -4389,6 +4492,9 @@ ath_chan_set(struct ath_softc *sc, struct ieee80211_channel *chan)
 		 */
 		ath_draintxq(sc, ATH_RESET_FULL);	/* clear pending tx frames */
 
+		ath_update_chainmasks(sc, chan);
+		ath_hal_setchainmasks(sc->sc_ah, sc->sc_cur_txchainmask,
+		    sc->sc_cur_rxchainmask);
 		if (!ath_hal_reset(ah, sc->sc_opmode, chan, AH_TRUE, &status)) {
 			if_printf(ifp, "%s: unable to reset "
 			    "channel %u (%u MHz, flags 0x%x), hal status %u\n",
@@ -4401,6 +4507,9 @@ ath_chan_set(struct ath_softc *sc, struct ieee80211_channel *chan)
 
 		/* Let DFS at it in case it's a DFS channel */
 		ath_dfs_radar_enable(sc, chan);
+
+		/* Let spectral at in case spectral is enabled */
+		ath_spectral_enable(sc, chan);
 
 		/*
 		 * Re-enable rx framework.
@@ -4697,6 +4806,7 @@ ath_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 	int i, error, stamode;
 	u_int32_t rfilt;
 	int csa_run_transition = 0;
+
 	static const HAL_LED_STATE leds[] = {
 	    HAL_LED_INIT,	/* IEEE80211_S_INIT */
 	    HAL_LED_SCAN,	/* IEEE80211_S_SCAN */
@@ -4841,10 +4951,32 @@ ath_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			 * force a beacon update so we pick up a lack of
 			 * beacons from an AP in CAC and thus force a
 			 * scan.
+			 *
+			 * And, there's also corner cases here where
+			 * after a scan, the AP may have disappeared.
+			 * In that case, we may not receive an actual
+			 * beacon to update the beacon timer and thus we
+			 * won't get notified of the missing beacons.
 			 */
 			sc->sc_syncbeacon = 1;
+#if 0
 			if (csa_run_transition)
+#endif
 				ath_beacon_config(sc, vap);
+
+			/*
+			 * PR: kern/175227
+			 *
+			 * Reconfigure beacons during reset; as otherwise
+			 * we won't get the beacon timers reprogrammed
+			 * after a reset and thus we won't pick up a
+			 * beacon miss interrupt.
+			 *
+			 * Hopefully we'll see a beacon before the BMISS
+			 * timer fires (too often), leading to a STA
+			 * disassociation.
+			 */
+			sc->sc_beacons = 1;
 			break;
 		case IEEE80211_M_MONITOR:
 			/*
@@ -5384,6 +5516,9 @@ ath_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		error = ath_ioctl_phyerr(sc,(struct ath_diag*) ifr);
 		break;
 #endif
+	case SIOCGATHSPECTRAL:
+		error = ath_ioctl_spectral(sc,(struct ath_diag*) ifr);
+		break;
 	case SIOCGATHNODERATESTATS:
 		error = ath_ioctl_ratestats(sc, (struct ath_rateioctl *) ifr);
 		break;
@@ -5620,7 +5755,7 @@ ath_node_set_tim(struct ieee80211_node *ni, int enable)
 	struct ath_vap *avp = ATH_VAP(ni->ni_vap);
 
 	/*
-	 * Some operating omdes don't set av_set_tim(), so don't
+	 * Some operating modes don't set av_set_tim(), so don't
 	 * update it here.
 	 */
 	if (avp->av_set_tim == NULL)

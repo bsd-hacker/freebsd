@@ -692,6 +692,10 @@ ath_hal_getcapability(struct ath_hal *ah, HAL_CAPABILITY_TYPE type,
 		return pCap->hal4AddrAggrSupport ? HAL_OK : HAL_ENOTSUPP;
 	case HAL_CAP_EXT_CHAN_DFS:
 		return pCap->halExtChanDfsSupport ? HAL_OK : HAL_ENOTSUPP;
+	case HAL_CAP_RX_STBC:
+		return pCap->halRxStbcSupport ? HAL_OK : HAL_ENOTSUPP;
+	case HAL_CAP_TX_STBC:
+		return pCap->halTxStbcSupport ? HAL_OK : HAL_ENOTSUPP;
 	case HAL_CAP_COMBINED_RADAR_RSSI:
 		return pCap->halUseCombinedRadarRssi ? HAL_OK : HAL_ENOTSUPP;
 	case HAL_CAP_AUTO_SLEEP:
@@ -734,6 +738,8 @@ ath_hal_getcapability(struct ath_hal *ah, HAL_CAPABILITY_TYPE type,
 		return HAL_OK;
 	case HAL_CAP_BT_COEX:
 		return pCap->halBtCoexSupport ? HAL_OK : HAL_ENOTSUPP;
+	case HAL_CAP_SPECTRAL_SCAN:
+		return pCap->halSpectralScanSupport ? HAL_OK : HAL_ENOTSUPP;
 	case HAL_CAP_HT20_SGI:
 		return pCap->halHTSGI20Support ? HAL_OK : HAL_ENOTSUPP;
 	case HAL_CAP_RXTSTAMP_PREC:	/* rx desc tstamp precision (bits) */

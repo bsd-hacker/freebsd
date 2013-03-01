@@ -153,6 +153,8 @@ static DPCPU_DEFINE(struct pcpu_state, timerstate);
 	(((uint64_t)0x8000000000000000 + ((bt)->frac >> 2)) /		\
 	    ((bt)->frac >> 1))
 
+#define	SBT2FREQ(sbt)	((SBT_1S + ((sbt) >> 1)) / (sbt))
+
 /*
  * Timer broadcast IPI handler.
  */
@@ -317,14 +319,16 @@ getnextevent(struct bintime *event)
 	nonidle = !state->idle;
 	if ((timer->et_flags & ET_FLAGS_PERCPU) == 0) {
 #ifdef SMP
-		CPU_FOREACH(cpu) {
-			if (curcpu == cpu)
-				continue;
-			state = DPCPU_ID_PTR(cpu, timerstate);
-			nonidle += !state->idle;
-			if (bintime_cmp(event, &state->nextevent, >)) {
-				*event = state->nextevent;
-				c = cpu;
+		if (smp_started) {
+			CPU_FOREACH(cpu) {
+				if (curcpu == cpu)
+					continue;
+				state = DPCPU_ID_PTR(cpu, timerstate);
+				nonidle += !state->idle;
+				if (bintime_cmp(event, &state->nextevent, >)) {
+					*event = state->nextevent;
+					c = cpu;
+				}
 			}
 		}
 #endif
@@ -440,7 +444,7 @@ loadtimer(struct bintime *now, int start)
 			    new.sec, (u_int)(new.frac >> 32));
 			*next = new;
 			bintime_add(next, now);
-			et_start(timer, &new, &timerperiod);
+			et_start(timer, bttosbt(new), bttosbt(timerperiod));
 		}
 	} else {
 		getnextevent(&new);
@@ -452,7 +456,7 @@ loadtimer(struct bintime *now, int start)
 		if (!eq) {
 			*next = new;
 			bintime_sub(&new, now);
-			et_start(timer, &new, NULL);
+			et_start(timer, bttosbt(new), 0);
 		}
 	}
 }
@@ -601,13 +605,13 @@ round_freq(struct eventtimer *et, int freq)
 			div = 1 << (flsl(div + div / 2) - 1);
 		freq = (et->et_frequency + div / 2) / div;
 	}
-	if (et->et_min_period.sec > 0)
+	if (et->et_min_period > SBT_1S)
 		panic("Event timer \"%s\" doesn't support sub-second periods!",
 		    et->et_name);
-	else if (et->et_min_period.frac != 0)
-		freq = min(freq, BT2FREQ(&et->et_min_period));
-	if (et->et_max_period.sec == 0 && et->et_max_period.frac != 0)
-		freq = max(freq, BT2FREQ(&et->et_max_period));
+	else if (et->et_min_period != 0)
+		freq = min(freq, SBT2FREQ(et->et_min_period));
+	if (et->et_max_period < SBT_1S && et->et_max_period != 0)
+		freq = max(freq, SBT2FREQ(et->et_max_period));
 	return (freq);
 }
 
@@ -730,12 +734,15 @@ cpu_startprofclock(void)
 {
 
 	ET_LOCK();
-	if (periodic) {
-		configtimer(0);
-		profiling = 1;
-		configtimer(1);
+	if (profiling == 0) {
+		if (periodic) {
+			configtimer(0);
+			profiling = 1;
+			configtimer(1);
+		} else
+			profiling = 1;
 	} else
-		profiling = 1;
+		profiling++;
 	ET_UNLOCK();
 }
 
@@ -747,19 +754,22 @@ cpu_stopprofclock(void)
 {
 
 	ET_LOCK();
-	if (periodic) {
-		configtimer(0);
+	if (profiling == 1) {
+		if (periodic) {
+			configtimer(0);
+			profiling = 0;
+			configtimer(1);
+		} else
 		profiling = 0;
-		configtimer(1);
 	} else
-		profiling = 0;
+		profiling--;
 	ET_UNLOCK();
 }
 
 /*
  * Switch to idle mode (all ticks handled).
  */
-void
+sbintime_t
 cpu_idleclock(void)
 {
 	struct bintime now, t;
@@ -771,7 +781,7 @@ cpu_idleclock(void)
 	    || curcpu == CPU_FIRST()
 #endif
 	    )
-		return;
+		return (-1);
 	state = DPCPU_PTR(timerstate);
 	if (periodic)
 		now = state->now;
@@ -787,6 +797,8 @@ cpu_idleclock(void)
 	if (!periodic)
 		loadtimer(&now, 0);
 	ET_HW_UNLOCK(state);
+	bintime_sub(&t, &now);
+	return (MAX(bttosbt(t), 0));
 }
 
 /*

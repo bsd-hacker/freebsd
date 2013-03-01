@@ -217,7 +217,6 @@ static struct rwlock_padalign pvh_global_lock;
 
 /* Data for the pv entry allocation mechanism */
 static uma_zone_t pvzone;
-static struct vm_object pvzone_obj;
 static int pv_entry_count = 0, pv_entry_max = 0, pv_entry_high_water = 0;
 
 #define PV_ENTRY_ZONE_MIN	2048	/* min pv entries in uma zone */
@@ -1343,7 +1342,7 @@ mmu_booke_init(mmu_t mmu)
 	TUNABLE_INT_FETCH("vm.pmap.pv_entries", &pv_entry_max);
 	pv_entry_high_water = 9 * (pv_entry_max / 10);
 
-	uma_zone_set_obj(pvzone, &pvzone_obj, pv_entry_max);
+	uma_zone_reserve_kva(pvzone, pv_entry_max);
 
 	/* Pre-fill pvzone with initial number of pv entries. */
 	uma_prealloc(pvzone, PV_ENTRY_ZONE_MIN);
@@ -1561,9 +1560,8 @@ mmu_booke_enter_locked(mmu_t mmu, pmap_t pmap, vm_offset_t va, vm_page_t m,
 		KASSERT((va <= VM_MAXUSER_ADDRESS),
 		    ("mmu_booke_enter_locked: user pmap, non user va"));
 	}
-	KASSERT((m->oflags & (VPO_UNMANAGED | VPO_BUSY)) != 0 ||
-	    VM_OBJECT_LOCKED(m->object),
-	    ("mmu_booke_enter_locked: page %p is not busy", m));
+	if ((m->oflags & (VPO_UNMANAGED | VPO_BUSY)) == 0)
+		VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 

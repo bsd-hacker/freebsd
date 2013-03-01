@@ -2666,9 +2666,8 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	KASSERT(va < UPT_MIN_ADDRESS || va >= UPT_MAX_ADDRESS,
 	    ("pmap_enter: invalid to pmap_enter page table pages (va: 0x%x)",
 	    va));
-	KASSERT((m->oflags & (VPO_UNMANAGED | VPO_BUSY)) != 0 ||
-	    VM_OBJECT_LOCKED(m->object),
-	    ("pmap_enter: page %p is not busy", m));
+	if ((m->oflags & (VPO_UNMANAGED | VPO_BUSY)) == 0)
+		VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 
 	mpte = NULL;
 
@@ -3973,7 +3972,7 @@ pmap_mapdev_attr(vm_paddr_t pa, vm_size_t size, int mode)
 	vm_size_t tmpsize;
 
 	offset = pa & PAGE_MASK;
-	size = roundup(offset + size, PAGE_SIZE);
+	size = round_page(offset + size);
 	pa = pa & PG_FRAME;
 
 	if (pa < KERNLOAD && pa + size <= KERNLOAD)
@@ -4013,7 +4012,7 @@ pmap_unmapdev(vm_offset_t va, vm_size_t size)
 		return;
 	base = trunc_page(va);
 	offset = va & PAGE_MASK;
-	size = roundup(offset + size, PAGE_SIZE);
+	size = round_page(offset + size);
 	kmem_free(kernel_map, base, size);
 }
 
@@ -4105,7 +4104,7 @@ pmap_change_attr(vm_offset_t va, vm_size_t size, int mode)
 
 	base = trunc_page(va);
 	offset = va & PAGE_MASK;
-	size = roundup(offset + size, PAGE_SIZE);
+	size = round_page(offset + size);
 
 	/* Only supported on kernel virtual addresses. */
 	if (base <= VM_MAXUSER_ADDRESS)

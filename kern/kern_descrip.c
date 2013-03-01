@@ -776,11 +776,13 @@ kern_fcntl(struct thread *td, int fd, int cmd, intptr_t arg)
 		}
 		fhold(fp);
 		FILEDESC_SUNLOCK(fdp);
-		if (arg != 0) {
+		if (arg >= 0) {
 			vp = fp->f_vnode;
 			error = vn_lock(vp, LK_SHARED);
-			if (error != 0)
-				goto readahead_vnlock_fail;
+			if (error != 0) {
+				fdrop(fp, td);
+				break;
+			}
 			bsize = fp->f_vnode->v_mount->mnt_stat.f_iosize;
 			VOP_UNLOCK(vp, 0);
 			fp->f_seqcount = (arg + bsize - 1) / bsize;
@@ -788,7 +790,6 @@ kern_fcntl(struct thread *td, int fd, int cmd, intptr_t arg)
 				new = old = fp->f_flag;
 				new |= FRDAHEAD;
 			} while (!atomic_cmpset_rel_int(&fp->f_flag, old, new));
-		readahead_vnlock_fail:;
 		} else {
 			do {
 				new = old = fp->f_flag;
@@ -854,9 +855,7 @@ do_dup(struct thread *td, int flags, int old, int new,
 	/*
 	 * If the caller specified a file descriptor, make sure the file
 	 * table is large enough to hold it, and grab it.  Otherwise, just
-	 * allocate a new descriptor the usual way.  Since the filedesc
-	 * lock may be temporarily dropped in the process, we have to look
-	 * out for a race.
+	 * allocate a new descriptor the usual way.
 	 */
 	if (flags & DUP_FIXED) {
 		if (new >= fdp->fd_nfiles) {
@@ -1426,8 +1425,7 @@ fdgrowtable(struct filedesc *fdp, int nfd)
 
 	FILEDESC_XLOCK_ASSERT(fdp);
 
-	KASSERT(fdp->fd_nfiles > 0,
-	    ("zero-length file table"));
+	KASSERT(fdp->fd_nfiles > 0, ("zero-length file table"));
 
 	/* save old values */
 	onfiles = fdp->fd_nfiles;
@@ -1448,13 +1446,11 @@ fdgrowtable(struct filedesc *fdp, int nfd)
 	 * it on the freelist.  We place the struct freetable in the
 	 * middle so we don't have to worry about padding.
 	 */
-	ntable = malloc(nnfiles * sizeof(*ntable) +
-	    sizeof(struct freetable) +
-	    nnfiles * sizeof(*nfileflags),
-	    M_FILEDESC, M_ZERO | M_WAITOK);
+	ntable = malloc(nnfiles * sizeof(*ntable) + sizeof(struct freetable) +
+	    nnfiles * sizeof(*nfileflags), M_FILEDESC, M_ZERO | M_WAITOK);
 	nfileflags = (char *)&ntable[nnfiles] + sizeof(struct freetable);
-	nmap = malloc(NDSLOTS(nnfiles) * NDSLOTSIZE,
-	    M_FILEDESC, M_ZERO | M_WAITOK);
+	nmap = malloc(NDSLOTS(nnfiles) * NDSLOTSIZE, M_FILEDESC,
+	    M_ZERO | M_WAITOK);
 
 	/* copy the old data over and point at the new tables */
 	memcpy(ntable, otable, onfiles * sizeof(*otable));
@@ -1948,11 +1944,11 @@ fdfree(struct thread *td)
 	fdp->fd_jdir = NULL;
 	FILEDESC_XUNLOCK(fdp);
 
-	if (cdir)
+	if (cdir != NULL)
 		vrele(cdir);
-	if (rdir)
+	if (rdir != NULL)
 		vrele(rdir);
-	if (jdir)
+	if (jdir != NULL)
 		vrele(jdir);
 
 	fddrop(fdp);
