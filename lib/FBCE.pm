@@ -13,7 +13,7 @@ use Catalyst qw/
     Session::State::Cookie
     Session::Store::FastMmap
     Static::Simple
-    Unicode
+    Unicode::Encoding
 /;
 
 extends 'Catalyst';
