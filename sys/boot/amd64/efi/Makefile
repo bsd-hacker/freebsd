@@ -2,7 +2,6 @@
 
 NO_MAN=
 WITHOUT_SSP=
-BUILDING_EFI=
 
 .include <bsd.own.mk>
 
@@ -76,8 +75,6 @@ loader.efi: loader.sym
 	        --target=${EFI_TARGET} ${.ALLSRC} ${.TARGET}
 
 LIBEFI=		${.OBJDIR}/../../efi/libefi/libefi.a
-CFLAGS+=	-I${.CURDIR}/../libi386
-CFLAGS+=	-I${.CURDIR}/../btx/lib
 CFLAGS+=	-I${.CURDIR}/../../common
 
 DPADD=		${LIBFICL} ${LIBEFI} ${LIBSTAND}
