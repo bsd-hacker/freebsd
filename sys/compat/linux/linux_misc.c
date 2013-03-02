@@ -118,7 +118,7 @@ struct l_sysinfo {
 };
 
 struct l_pselect6arg {
-	l_sigset_t	*ss;
+	l_uintptr_t	ss;
 	l_size_t	ss_len;
 };
 
@@ -2095,7 +2095,7 @@ linux_pselect6(struct thread *td, struct linux_pselect6_args *args)
 			return (error);
 		if (lpse6.ss_len != sizeof(l_ss))
 			return (EINVAL);
-		error = copyin(lpse6.ss, &l_ss, sizeof(l_ss));
+		error = copyin(PTRIN(lpse6.ss), &l_ss, sizeof(l_ss));
 		if (error)
 			return (error);
 		linux_to_bsd_sigset(&l_ss, &ss);
