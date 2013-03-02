@@ -522,6 +522,13 @@ linux_mmap_common(struct thread *td, l_uintptr_t addr, l_size_t len, l_int prot,
 	fp = NULL;
 
 	/*
+	 * Linux do not allow an offset which is not
+	 * modulo the pagesize.
+	 */
+	if (pos & PAGE_MASK)
+		return (EINVAL);
+
+	/*
 	 * Linux mmap(2):
 	 * You must specify exactly one of MAP_SHARED and MAP_PRIVATE
 	 */
