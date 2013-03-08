@@ -2089,19 +2089,22 @@ linux_pselect6(struct thread *td, struct linux_pselect6_args *args)
 	sigset_t ss;
 	int error;
 
+	ssp = NULL;
 	if (args->sig) {
 		error = copyin(args->sig, &lpse6, sizeof(lpse6));
 		if (error)
 			return (error);
 		if (lpse6.ss_len != sizeof(l_ss))
 			return (EINVAL);
-		error = copyin(PTRIN(lpse6.ss), &l_ss, sizeof(l_ss));
-		if (error)
-			return (error);
-		linux_to_bsd_sigset(&l_ss, &ss);
-		ssp = &ss;
-	} else
-		ssp = NULL;
+		if (lpse6.ss != 0) {
+			error = copyin(PTRIN(lpse6.ss), &l_ss,
+			    sizeof(l_ss));
+			if (error)
+				return (error);
+			linux_to_bsd_sigset(&l_ss, &ss);
+			ssp = &ss;
+		}
+	}
 
 	/*
 	 * Currently glibc changes nanosecond number to microsecond.
