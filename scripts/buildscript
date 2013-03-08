@@ -180,7 +180,7 @@ pkg_sufx=${PKG_SUFX}
 # Use pkgng if available.
 #if [ -x /usr/sbin/pkg ]; then
 use_pkgng="no"
-grep "^WITH_PKGNG[      ]*=" /etc/make.conf | sed -e "s/.*=//;s/ //"  | grep -q "[Yy][Ee][Ss]$" && use_pkgng="yes"
+make -f /usr/ports/Mk/bsd.port.mk -V WITH_PKGNG | grep -q "[Yy][Ee][Ss]$" && use_pkgng="yes"
 
 # Keep restricted distfiles in a subdirectory for extra protection
 # against leakage
