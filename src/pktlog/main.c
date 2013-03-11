@@ -14,7 +14,7 @@
 #include "libradarpkt/ar5416_radar.h"
 #include "libradarpkt/ar9280_radar.h"
 
-#include "chan.h"
+#include "libradarpkt/chan.h"
 
 /* from _ieee80211.h */
 #define      IEEE80211_CHAN_HT40U    0x00020000 /* HT 40 channel w/ ext above */
