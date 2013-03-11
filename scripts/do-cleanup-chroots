@@ -5,7 +5,7 @@
 
 pbc=${PORTBUILD_CHECKOUT:-/a/portbuild}
 
-arch=$0
+arch=$1
 if [ -z "$arch" ]; then
   arch=all
 fi
