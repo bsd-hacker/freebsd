@@ -1184,7 +1184,7 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 
 	KASSERT((object != NULL) == ((req & VM_ALLOC_NOOBJ) == 0),
 	    ("vm_page_alloc: inconsistent object/req"));
-	if (object != NULL && (req & VM_ALLOC_IFCACHED) == 0)
+	if (object != NULL)
 		VM_OBJECT_ASSERT_WLOCKED(object);
 
 	req_class = req & VM_ALLOC_CLASS_MASK;
