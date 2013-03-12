@@ -2655,7 +2655,7 @@ vm_page_is_valid(vm_page_t m, int base, int size)
 
 	VM_OBJECT_ASSERT_LOCKED(m->object);
 	bits = vm_page_bits(base, size);
-	return (m->valid && ((m->valid & bits) == bits));
+	return (m->valid != 0 && (m->valid & bits) == bits);
 }
 
 /*
