@@ -655,7 +655,8 @@ m_last(struct mbuf *m)
 #define	MGETHDR(m, how, type)	((m) = m_gethdr((how), (type)))
 #define	MCLGET(m, how)		m_clget((m), (how))
 #define	MEXTADD(m, buf, size, free, arg1, arg2, flags, type)		\
-    m_extadd((m), (caddr_t)(buf), (size), (free),(arg1),(arg2),(flags), (type))
+    (void )m_extadd((m), (caddr_t)(buf), (size), (free), (arg1), (arg2),\
+    (flags), (type), M_NOWAIT)
 #define	m_getm(m, len, how, type)					\
     m_getm2((m), (len), (how), (type), M_PKTHDR)
 
@@ -780,8 +781,8 @@ int		 m_apply(struct mbuf *, int, int,
 		    int (*)(void *, void *, u_int), void *);
 int		 m_append(struct mbuf *, int, c_caddr_t);
 void		 m_cat(struct mbuf *, struct mbuf *);
-void		 m_extadd(struct mbuf *, caddr_t, u_int,
-		    void (*)(void *, void *), void *, void *, int, int);
+int		 m_extadd(struct mbuf *, caddr_t, u_int,
+		    void (*)(void *, void *), void *, void *, int, int, int);
 struct mbuf	*m_collapse(struct mbuf *, int, int);
 void		 m_copyback(struct mbuf *, int, int, c_caddr_t);
 void		 m_copydata(const struct mbuf *, int, int, caddr_t);
@@ -800,7 +801,7 @@ int		 m_dup_pkthdr(struct mbuf *, struct mbuf *, int);
 u_int		 m_fixhdr(struct mbuf *);
 struct mbuf	*m_fragment(struct mbuf *, int, int);
 void		 m_freem(struct mbuf *);
-struct mbuf	*m_get2(int, short, int, int);
+struct mbuf	*m_get2(int, int, short, int);
 struct mbuf	*m_getjcl(int, short, int, int);
 struct mbuf	*m_getm2(struct mbuf *, int, int, short, int);
 struct mbuf	*m_getptr(struct mbuf *, int, int *);
