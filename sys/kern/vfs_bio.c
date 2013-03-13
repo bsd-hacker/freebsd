@@ -1389,7 +1389,7 @@ brelse(struct buf *bp)
 		 */
 		resid = bp->b_bufsize;
 		foff = bp->b_offset;
-		VM_OBJECT_RLOCK(obj);
+		VM_OBJECT_WLOCK(obj);
 		for (i = 0; i < bp->b_npages; i++) {
 			int had_bogus = 0;
 
@@ -1437,7 +1437,7 @@ brelse(struct buf *bp)
 			resid -= PAGE_SIZE - (foff & PAGE_MASK);
 			foff = (foff + PAGE_SIZE) & ~(off_t)PAGE_MASK;
 		}
-		VM_OBJECT_RUNLOCK(obj);
+		VM_OBJECT_WUNLOCK(obj);
 		if (bp->b_flags & (B_INVAL | B_RELBUF))
 			vfs_vmio_release(bp);
 
