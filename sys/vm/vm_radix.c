@@ -375,6 +375,9 @@ vm_radix_insert(struct vm_radix *rtree, vm_pindex_t index, vm_page_t page)
 	int slot;
 	uint16_t clev;
 
+	KASSERT(index == page->pindex, ("%s: index != page->pindex",
+	    __func__));
+
 	/*
 	 * The owner of record for root is not really important because it
 	 * will never be used.
@@ -442,7 +445,7 @@ vm_radix_insert(struct vm_radix *rtree, vm_pindex_t index, vm_page_t page)
 	 * Setup the new intermediate node and add the 2 children: the
 	 * new object and the older edge.
 	 */
-	tmp2 = vm_radix_node_get(vm_radix_trimkey(page->pindex, clev - 1), 2,
+	tmp2 = vm_radix_node_get(vm_radix_trimkey(index, clev - 1), 2,
 	    clev);
 	rnode->rn_child[slot] = tmp2;
 	vm_radix_addpage(tmp2, index, clev, page);
