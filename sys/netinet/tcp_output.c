@@ -736,6 +736,9 @@ send:
 		if (tp->t_flags & TF_SIGNATURE)
 			to.to_flags |= TOF_SIGNATURE;
 #endif /* TCP_SIGNATURE */
+		/* TCP-AO (RFC5925). */
+		if (tp->t_flags & TF_AO)
+			to.to_flags |= TOF_AO;
 
 		/* Processing the options. */
 		hdrlen += optlen = tcp_addoptions(&to, opt);
@@ -1501,6 +1504,26 @@ tcp_addoptions(struct tcpopt *to, u_char *optp)
 			to->to_signature = optp;
 			while (siglen--)
 				 *optp++ = 0;
+			break;
+			}
+		case TOF_AO:
+			{
+			int siglen = tcp_ao_siglen(tp);
+
+			while (!optlen || optlen % 4 != 2) {
+				optlen += TCPOLEN_NOP;
+				*optp++ = TCPOPT_NOP;
+			}
+			if (TCP_MAXOLEN - optlen < TCPOLEN_AO_MIN + siglen)
+				continue;
+			optlen += TCPOLEN_AO_MIN;
+			*optp++ = TCPOPT_AO;
+			*optp++ = TCPOLEN_AO_MIN + siglen;
+			*optp++ = tcp_ao_keyid(tp);	/* keyid */
+			*optp++ = tcp_ao_nextkeyid(tp);	/* nextkeyid */
+			to->to_signature = optp;
+			while (siglen--)
+				*optp++ = 0;
 			break;
 			}
 		case TOF_SACK:

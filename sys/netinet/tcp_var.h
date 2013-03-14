@@ -245,6 +245,7 @@ struct tcpcb {
 #define	TF_ECN_SND_ECE	0x10000000	/* ECN ECE in queue */
 #define	TF_CONGRECOVERY	0x20000000	/* congestion recovery mode */
 #define	TF_WASCRECOVERY	0x40000000	/* was in congestion recovery */
+#define	TF_AO		0x80000000	/* require TCP-AO digests (RFC5925)
 
 #define	IN_FASTRECOVERY(t_flags)	(t_flags & TF_FASTRECOVERY)
 #define	ENTER_FASTRECOVERY(t_flags)	t_flags |= TF_FASTRECOVERY
@@ -297,11 +298,15 @@ struct tcpopt {
 #define	TOF_TS		0x0010		/* timestamp */
 #define	TOF_SIGNATURE	0x0040		/* TCP-MD5 signature option (RFC2385) */
 #define	TOF_SACK	0x0080		/* Peer sent SACK option */
-#define	TOF_MAXOPT	0x0100
+#define	TOF_AO		0x0100		/* TCP-AO authentication (RFC5925) */
+#define	TOF_MAXOPT	0x0200
 	u_int32_t	to_tsval;	/* new timestamp */
 	u_int32_t	to_tsecr;	/* reflected timestamp */
 	u_char		*to_sacks;	/* pointer to the first SACK blocks */
-	u_char		*to_signature;	/* pointer to the TCP-MD5 signature */
+	u_char		*to_signature;	/* pointer to the MD5/AO signature */
+	u_int8_t	to_siglen;	/* length of signature */
+	u_int8_t	to_ao_keyid	/* current TCP-AO keyid */
+	u_int8_t	tp_ao_nextkeyid	/* receive next TCP-AO keyid */
 	u_int16_t	to_mss;		/* maximum segment size */
 	u_int8_t	to_wscale;	/* window scaling */
 	u_int8_t	to_nsacks;	/* number of SACK blocks */

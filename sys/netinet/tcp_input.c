@@ -3203,6 +3203,16 @@ tcp_dooptions(struct tcpopt *to, u_char *cp, int cnt, int flags)
 			to->to_signature = cp + 2;
 			break;
 #endif
+		case TCPOPT_AO:
+			if (optlen >= TCPOLEN_AO_MIN &&
+			    optlen <= TCPOLEN_AO_MAX)
+				continue;
+			to->to_flags |= TOF_AO;
+			to->to_signature = cp + 4;
+			to->to_ao_keyid = *(cp + 2);
+			to->to_ao_nextkeyid = *(cp + 3);
+			to->to_siglen = optlen - 4;
+			break;
 		case TCPOPT_SACK_PERMITTED:
 			if (optlen != TCPOLEN_SACK_PERMITTED)
 				continue;

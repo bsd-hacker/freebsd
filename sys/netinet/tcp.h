@@ -98,6 +98,8 @@ struct tcphdr {
 #define	TCPOPT_SIGNATURE	19		/* Keyed MD5: RFC 2385 */
 #define	   TCPOLEN_SIGNATURE		18
 #define	TCPOPT_AO		29
+#define	   TCPOLEN_AO_MIN		4
+#define	   TCPOLEN_AO_MAX		40
 
 /* Miscellaneous constants */
 #define	MAX_SACK_BLKS	6	/* Max # SACK blocks stored at receiver side */
