@@ -248,6 +248,18 @@ struct ip6_frag {
 #endif /* BYTE_ORDER == LITTLE_ENDIAN */
 
 /*
+ * This is the real IPv6 pseudo header, used for computing the TCP and UDP
+ * checksums.
+ */
+struct ip6pseudo {
+	struct in6_addr	ip6pseudo_src;	/* source internet address */
+	struct in6_addr	ip6pseudo_dst;	/* destination internet address */
+	u_int32_t	ip6pseudo_len;	/* payload length */
+	u_int16_t	ip6pseudo_pad;	/* padding (zero) */
+	u_int16_t	ip6pseudo_p;	/* next-header (protocol) */
+};
+
+/*
  * Internet implementation parameters.
  */
 #define IPV6_MAXHLIM	255	/* maximum hoplimit */
