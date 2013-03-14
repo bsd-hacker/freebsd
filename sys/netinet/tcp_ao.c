@@ -50,3 +50,212 @@
  *  legacy tcp-md5 can be brought and integrated into the tcp-ao framework.
  */
 
+/*
+ * The code below is skeleton code and not functional yet.
+ */
+
+/*
+ * The hash over the header has to be pieced together and a couple of
+ * fields need manipulation, like zero'ing and byte order conversion.
+ * Instead of doing it in-place and calling the hash update function
+ * for each we just copy everything into one place in the right order.
+ */
+struct tcp_ao_thopt {
+	struct tcphdr th;
+	uint8_t tho[TCP_MAXOLEN];
+};
+struct tcp_ao_pseudo {
+	uint32_t tap_sne;	/* sequence number extension */
+	union {
+		struct tap_ip {
+			struct ippseudo tap_ph4;
+			struct tcp_ao_thopt tap_th;
+		} tap_ip;
+		struct tap_ip6 {
+			struct ip6_phdr tap_ph6;
+			struct tcp_ao_thopt tap_th;
+		} tap_ip6;
+	} tap;
+	int tap_type;
+	int tap_len;
+} __packed;
+#define tap4	tap.tap_ip
+#define tap6	tap.tap_ip6
+
+/* Convenient functions not yet in existence. */
+ip_hdr2pseudo(struct ip *ip, struct ippseudo *ipp);
+ip6_hdr2pseudo(struct ip6_hdr *ip6, struct ip6pseudo *ipp6);
+ip_inc2pseudo(struct in_conninfo *inc, struct ippseudo *ipp);
+ip6_inc2pseudo(struct in_conninfo *inc, struct ip6pseudo *ipp6);
+
+/*
+ * Computation the authentication hash and return the result of the hash
+ * comparison.  Return values:
+ *  0     = success
+ *  EAUTH = authentication failed
+ *  other = authentication failed
+ */
+static int
+tcp_ao_mac(struct tcpcb *tp, struct tcp_ao_key *tk, struct in_conninfo *inc,
+    struct tcphdr *th, struct tcpopt *to, struct mbuf *m)
+{
+	int moff, mlen, thlen;
+	struct tcp_ao_pseudo ph;
+	struct tcp_ao_thopt *tho;
+	uint8_t hash[MAXHASHLEN];
+
+	/*
+	 * Set up the virtual sequence number extension that is part of
+	 * the authentication hash.
+	 */
+	if (tp != NULL)
+		ph.tap_sne = tp->t_ao->tao_sne;
+	else
+		ph.tap_sne = 0;
+
+	/* Fill in pseudo headers. */
+	switch(inc->inc_flags & INC_ISIPV6) {
+	case 0:
+		ip_inc2pseudo(inc, &ph.tap4.tap_ph4);
+		ph.tap_len += sizeof(ph.tap4.tap_ph4);
+		tho = &ph.tap4.tap_th;
+		break;
+	case INC_ISIPV6:
+		ip6_hdr2pseudo(inc, &ph.tap6.tap_ph6);
+		ph.tap_len += sizeof(ph.tap6.tap_ph6);
+		tho = &ph.tap6.tap_th;
+		break;
+	default:
+		error = EINVAL;
+		goto out;
+	}
+	ph.tap_len += sizeof(ph.tap_sne);
+
+	/* Fill in tcpheader including options. */
+	thlen = th->th_off << 2;
+	bcopy(th, tho, thlen);
+	ph.tap_len += thlen;
+
+	/* Zero out checksum and mac field and swap to network byte order. */
+	tho->th.th_sum = 0;
+	bzero(&tho->tho + (to->to_signature - (th + 1)), to->to_siglen);
+	tcp_fields_to_net(&tho);
+
+	/* Set up the mbuf length fields. */
+	moff = thlen;
+	mlen = m_length(m, NULL) - thlen;
+
+	switch(tk->algo) {
+	case TCP_AO_HMAC_SHA_1_96:
+		error = tcp_ao_sha1(tk->key, ph, m, moff, mlen, hash);
+		break;
+	case TCP_AO_AES_128_CMAC_96:
+		error = tcp_ao_cmac(tk->key, ph, m, moff, mlen, hash);
+		break;
+	case TCP_AO_TCPMD5:
+		error = tcp_ao_md5(tk->key, ph, m, moff, mlen, hash);
+		break;
+	default:
+		error = EINVAL;
+		goto out;
+	}
+	if (error)
+		goto out;
+
+	/* Compare result to segment signature. */
+	if (bcmp(hash, to->to_signature, tk->tk_hashlen));
+		error = EAUTH;
+
+out:
+	return (error);
+}
+
+/*
+ * Note: Can't use cryptodev because of callback based non-inline
+ * processing.  Also complexity to set up a crypto session is too high
+ * and requires a couple of malloc's.
+ */
+
+/*
+ * Compute RFC5925+RFC5926 compliant HMAC-SHA1 authentication MAC of
+ * a tcp segment.
+ * XXX: HMAC_SHA1 doesn't exist yet.
+ */
+static int
+tcp_ao_sha1(uint32_t key[static SHA1_BLOCK_LENGTH], struct pseudo *ph,
+    struct mbuf *m, int moff, int mlen, uint8_t hash[static SHA1_RESULTLEN])
+{
+	HMAC_SHA1_CTX ctx;
+	int error = 0;
+
+	HMAC_SHA1_Init(&ctx, key, SHA1_BLOCK_LENGTH);
+
+	/* Pseudo header. */
+	HMAC_SHA1_Update(&ctx, ph, ph->tap_len);
+
+	error = m_apply(m, moff, mlen, HMAC_SHA1_Update, &ctx);
+	if (error)
+		goto out;
+
+	HMAC_SHA1_Final(hash, &ctx);
+out:
+	bzero(&ctx, sizeof(ctx));
+	return (error);
+}
+
+/*
+ * Compute RFC5925+RFC5926 compliant AES-128-CMAC authentication MAC of
+ * a tcp segment.
+ */
+static int
+tcp_ao_cmac(uint32_t key[static AES_CMAC_KEY_LENGTH], struct pseudo *ph,
+    struct mbuf *m, int moff, int mlen, uint8_t hash[static AES_CMAC_DIGEST_LENGTH])
+{
+	AES_CMAC_CTX ctx;
+	int error = 0;
+
+	AES_CMAC_Init(&ctx);
+	AES_CMAC_SetKey(&ctx, key);
+
+	AES_CMAC_Update(&ctx, ph, ph->tap_len);
+
+	error = m_apply(m, moff, mlen, AES_CMAC_Update, &ctx);
+	if (error)
+		goto out;
+
+	AES_CMAC_Final(hash, &ctx);
+out:
+	bzero(&ctx, sizeof(ctx));
+	return (error);
+}
+
+/*
+ * Compute RFC2385 compliant MD5 authentication MAC of a tcp segment.
+ * Note that the SNE does not apply, the key comes last and the tcp options
+ * are not included.
+ */
+static int
+tcp_ao_md5(uint32_t key[static MD5_BLOCK_LENGTH], struct pseudo *ph,
+    struct mbuf *m, int moff, int mlen, uint8_t hash[static MD5_DIGEST_LENGTH])
+{
+	MD5_CTX ctx;
+	int error = 0, len;
+
+	MD5Init(&ctx);
+
+	len = ph->tap_len - sizeof(*ph->tap_sne) - sizeof(struct tcp_ao_thopt);
+	len += sizeof(struct tcphdr);
+	MD5Update(&ctx, &ph->tap, len;
+
+	error = m_apply(m, moff, mlen, AES_CMAC_Update, &ctx);
+	if (error)
+		goto out;
+
+	MD5Update(&ctx, key, MD5_BLOCK_LENGTH);
+
+	MD5Final(hash, &ctx);
+out:
+	bzero(%ctx, sizeof(ctx));
+	return (error);
+}
+
