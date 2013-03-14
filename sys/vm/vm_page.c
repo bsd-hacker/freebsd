@@ -485,9 +485,9 @@ void
 vm_page_flash(vm_page_t m)
 {
 
-	VM_OBJECT_ASSERT_WLOCKED(m->object);
-	if (m->oflags & VPO_WANTED) {
-		m->oflags &= ~VPO_WANTED;
+	vm_page_lock_assert(m, MA_OWNED);
+	if (m->flags & PG_WANTED) {
+		m->flags &= ~PG_WANTED;
 		wakeup(m);
 	}
 }
@@ -506,7 +506,9 @@ vm_page_wakeup(vm_page_t m)
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
 	KASSERT(m->oflags & VPO_BUSY, ("vm_page_wakeup: page not busy!!!"));
 	m->oflags &= ~VPO_BUSY;
+	vm_page_lock(m);
 	vm_page_flash(m);
+	vm_page_unlock(m);
 }
 
 void
@@ -524,8 +526,11 @@ vm_page_io_finish(vm_page_t m)
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
 	KASSERT(m->busy > 0, ("vm_page_io_finish: page %p is not busy", m));
 	m->busy--;
-	if (m->busy == 0)
+	if (m->busy == 0) {
+		vm_page_lock(m);
 		vm_page_flash(m);
+		vm_page_unlock(m);
+	}
 }
 
 /*
@@ -719,15 +724,12 @@ vm_page_readahead_finish(vm_page_t m)
 		 * deactivating the page is usually the best choice,
 		 * unless the page is wanted by another thread.
 		 */
-		if (m->oflags & VPO_WANTED) {
-			vm_page_lock(m);
+		vm_page_lock(m);
+		if (m->flags & PG_WANTED)
 			vm_page_activate(m);
-			vm_page_unlock(m);
-		} else {
-			vm_page_lock(m);
+		else
 			vm_page_deactivate(m);
-			vm_page_unlock(m);
-		}
+		vm_page_unlock(m);
 		vm_page_wakeup(m);
 	} else {
 		/*
@@ -743,29 +745,43 @@ vm_page_readahead_finish(vm_page_t m)
 }
 
 /*
- *	vm_page_sleep:
+ *	vm_page_sleep_if_busy:
  *
- *	Sleep and release the page lock.
+ *	Sleep and release the page queues lock if VPO_BUSY is set or,
+ *	if also_m_busy is TRUE, busy is non-zero.  Returns TRUE if the
+ *	thread slept and the page queues lock was released.
+ *	Otherwise, retains the page queues lock and returns FALSE.
  *
- *	The object containing the given page must be locked.
+ *	The given page and object containing it must be locked.
  */
-void
-vm_page_sleep(vm_page_t m, const char *msg)
+int
+vm_page_sleep_if_busy(vm_page_t m, int also_m_busy, const char *msg)
 {
 
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
-	if (mtx_owned(vm_page_lockptr(m)))
-		vm_page_unlock(m);
+	if ((m->oflags & VPO_BUSY) || (also_m_busy && m->busy)) {
+		VM_OBJECT_WUNLOCK(m->object);
+		vm_page_sleep(m, msg);
+		VM_OBJECT_WLOCK(m->object);
+		return (TRUE);
+	}
+	return (FALSE);
+}
 
-	/*
-	 * It's possible that while we sleep, the page will get
-	 * unbusied and freed.  If we are holding the object
-	 * lock, we will assume we hold a reference to the object
-	 * such that even if m->object changes, we can re-lock
-	 * it.
-	 */
-	m->oflags |= VPO_WANTED;
-	VM_OBJECT_SLEEP(m->object, m, PVM, msg, 0);
+/*
+ *	vm_page_sleep_onpage:
+ *
+ *	Sleep and release the page lock, using the page pointer as wchan.
+ *
+ *	The given page must be locked.
+ */
+int
+vm_page_sleep_onpage(vm_page_t m, int pri, const char *wmesg, int  timo)
+{
+
+	vm_page_lock_assert(m, MA_OWNED);
+	m->flags |= PG_WANTED;
+	return (msleep(m, vm_page_lockptr(m), pri | PDROP, wmesg, timo));
 }
 
 /*
@@ -2320,6 +2336,7 @@ retrylookup:
 			 * likely to reclaim it.
 			 */
 			vm_page_aflag_set(m, PGA_REFERENCED);
+			vm_page_lock(m);
 			vm_page_sleep(m, "pgrbwt");
 			goto retrylookup;
 		} else {

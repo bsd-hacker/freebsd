@@ -283,7 +283,10 @@ retry:
 			if (m != NULL) {
 				if ((m->oflags & VPO_BUSY) != 0 ||
 				    m->busy != 0) {
+					vm_page_lock(m);
+					VM_OBJECT_WUNLOCK(object);
 					vm_page_sleep(m, "shmtrc");
+					VM_OBJECT_WLOCK(object);
 					goto retry;
 				}
 			} else if (vm_pager_has_page(object, idx, NULL, NULL)) {

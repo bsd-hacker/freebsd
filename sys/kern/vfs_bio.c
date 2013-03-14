@@ -3053,12 +3053,12 @@ allocbuf(struct buf *bp, int size)
 					m = bp->b_pages[i];
 					KASSERT(m != bogus_page,
 					    ("allocbuf: bogus page found"));
-					while (vm_page_sleep_if_busy(m, TRUE,
-					    "biodep"))
-						continue;
+					do {
+						vm_page_lock(m);
+					} while (vm_page_sleep_if_busy(m, TRUE,
+					    "biodep"));
 
 					bp->b_pages[i] = NULL;
-					vm_page_lock(m);
 					vm_page_unwire(m, 0);
 					vm_page_unlock(m);
 				}
@@ -3581,8 +3581,12 @@ vfs_drain_busy_pages(struct buf *bp)
 		if ((m->oflags & VPO_BUSY) != 0) {
 			for (; last_busied < i; last_busied++)
 				vm_page_busy(bp->b_pages[last_busied]);
-			while ((m->oflags & VPO_BUSY) != 0)
+			while ((m->oflags & VPO_BUSY) != 0) {
+				vm_page_lock(m);
+				VM_OBJECT_WUNLOCK(bp->b_bufobj->bo_object);
 				vm_page_sleep(m, "vbpage");
+				VM_OBJECT_WLOCK(bp->b_bufobj->bo_object);
+			}
 		}
 	}
 	for (i = 0; i < last_busied; i++)

@@ -513,8 +513,8 @@ tmpfs_mappedread(vm_object_t vobj, vm_object_t tobj, size_t len, struct uio *uio
 	offset = addr & PAGE_MASK;
 	tlen = MIN(PAGE_SIZE - offset, len);
 
-	VM_OBJECT_WLOCK(vobj);
 lookupvpg:
+	VM_OBJECT_WLOCK(vobj);
 	if (((m = vm_page_lookup(vobj, idx)) != NULL) &&
 	    vm_page_is_valid(m, offset, tlen)) {
 		if ((m->oflags & VPO_BUSY) != 0) {
@@ -523,6 +523,8 @@ lookupvpg:
 			 * that the page daemon is less likely to reclaim it.  
 			 */
 			vm_page_reference(m);
+			vm_page_lock(m);
+			VM_OBJECT_WUNLOCK(vobj);
 			vm_page_sleep(m, "tmfsmr");
 			goto lookupvpg;
 		}
@@ -542,6 +544,8 @@ lookupvpg:
 			 * that the page daemon is less likely to reclaim it.  
 			 */
 			vm_page_reference(m);
+			vm_page_lock(m);
+			VM_OBJECT_WUNLOCK(vobj);
 			vm_page_sleep(m, "tmfsmr");
 			goto lookupvpg;
 		}
@@ -636,8 +640,8 @@ tmpfs_mappedwrite(vm_object_t vobj, vm_object_t tobj, size_t len, struct uio *ui
 	offset = addr & PAGE_MASK;
 	tlen = MIN(PAGE_SIZE - offset, len);
 
-	VM_OBJECT_WLOCK(vobj);
 lookupvpg:
+	VM_OBJECT_WLOCK(vobj);
 	if (((vpg = vm_page_lookup(vobj, idx)) != NULL) &&
 	    vm_page_is_valid(vpg, offset, tlen)) {
 		if ((vpg->oflags & VPO_BUSY) != 0) {
@@ -646,6 +650,8 @@ lookupvpg:
 			 * that the page daemon is less likely to reclaim it.  
 			 */
 			vm_page_reference(vpg);
+			vm_page_lock(vpg);
+			VM_OBJECT_WUNLOCK(vobj);
 			vm_page_sleep(vpg, "tmfsmw");
 			goto lookupvpg;
 		}

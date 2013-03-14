@@ -1868,15 +1868,12 @@ fuse_vnop_getpages(struct vop_getpages_args *ap)
 			 * now tell them that it is ok to use.
 			 */
 			if (!error) {
-				if (m->oflags & VPO_WANTED) {
-					fuse_vm_page_lock(m);
+				fuse_vm_page_lock(m);
+				if (m->flags & PG_WANTED)
 					vm_page_activate(m);
-					fuse_vm_page_unlock(m);
-				} else {
-					fuse_vm_page_lock(m);
+				else
 					vm_page_deactivate(m);
-					fuse_vm_page_unlock(m);
-				}
+				fuse_vm_page_unlock(m);
 				vm_page_wakeup(m);
 			} else {
 				fuse_vm_page_lock(m);

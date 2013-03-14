@@ -1211,13 +1211,15 @@ swap_pager_getpages(vm_object_t object, vm_page_t *m, int count, int reqpage)
 	 */
 	VM_OBJECT_WLOCK(object);
 	while ((mreq->oflags & VPO_SWAPINPROG) != 0) {
-		mreq->oflags |= VPO_WANTED;
 		PCPU_INC(cnt.v_intrans);
-		if (VM_OBJECT_SLEEP(object, mreq, PSWP, "swread", hz * 20)) {
+		vm_page_lock(mreq);
+		VM_OBJECT_WUNLOCK(object);
+		if (vm_page_sleep_onpage(mreq, PSWP, "swread", hz * 20)) {
 			printf(
 "swap_pager: indefinite wait buffer: bufobj: %p, blkno: %jd, size: %ld\n",
 			    bp->b_bufobj, (intmax_t)bp->b_blkno, bp->b_bcount);
 		}
+		VM_OBJECT_WLOCK(object);
 	}
 
 	/*
@@ -1531,8 +1533,11 @@ swp_pager_async_iodone(struct buf *bp)
 				m->valid = 0;
 				if (i != bp->b_pager.pg_reqpage)
 					swp_pager_free_nrpage(m);
-				else
+				else {
+					vm_page_lock(m);
 					vm_page_flash(m);
+					vm_page_unlock(m);
+				}
 				/*
 				 * If i == bp->b_pager.pg_reqpage, do not wake
 				 * the page up.  The caller needs to.
@@ -1585,8 +1590,11 @@ swp_pager_async_iodone(struct buf *bp)
 				vm_page_deactivate(m);
 				vm_page_unlock(m);
 				vm_page_wakeup(m);
-			} else
+			} else {
+				vm_page_lock(m);
 				vm_page_flash(m);
+				vm_page_unlock(m);
+			}
 		} else {
 			/*
 			 * For write success, clear the dirty

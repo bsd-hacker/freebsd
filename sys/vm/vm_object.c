@@ -391,7 +391,7 @@ vm_object_pip_wait(vm_object_t object, char *waitid)
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	while (object->paging_in_progress) {
 		object->flags |= OBJ_PIPWNT;
-		VM_OBJECT_SLEEP(object, object, PVM, waitid, 0);
+		VM_OBJECT_SLEEP(object, object, PVM, waitid);
 	}
 }
 
@@ -584,7 +584,7 @@ retry:
 						VM_OBJECT_WUNLOCK(robject);
 						object->flags |= OBJ_PIPWNT;
 						VM_OBJECT_SLEEP(object, object,
-						    PDROP | PVM, "objde2", 0);
+						    PDROP | PVM, "objde2");
 						VM_OBJECT_WLOCK(robject);
 						temp = robject->backing_object;
 						if (object == temp) {
@@ -844,6 +844,7 @@ rescan:
 		np = TAILQ_NEXT(p, listq);
 		if (p->valid == 0)
 			continue;
+		vm_page_lock(p);
 		if (vm_page_sleep_if_busy(p, TRUE, "vpcwai")) {
 			if (object->generation != curgeneration) {
 				if ((flags & OBJPC_SYNC) != 0)
@@ -854,6 +855,7 @@ rescan:
 			np = vm_page_find_least(object, pi);
 			continue;
 		}
+		vm_page_unlock(p);
 		if (!vm_object_page_remove_write(p, flags, &clearobjflags))
 			continue;
 
@@ -1138,11 +1140,10 @@ shadowlookup:
 				 */
 				vm_page_aflag_set(m, PGA_REFERENCED);
 			}
-			vm_page_unlock(m);
 			if (object != tobject)
 				VM_OBJECT_WUNLOCK(object);
-			m->oflags |= VPO_WANTED;
-			VM_OBJECT_SLEEP(tobject, m, PDROP | PVM, "madvpo", 0);
+			VM_OBJECT_WUNLOCK(tobject);
+			vm_page_sleep(m, "madvpo");
 			VM_OBJECT_WLOCK(object);
   			goto relookup;
 		}
@@ -1339,8 +1340,10 @@ retry:
 		 */
 		if ((m->oflags & VPO_BUSY) || m->busy) {
 			VM_OBJECT_WUNLOCK(new_object);
-			m->oflags |= VPO_WANTED;
-			VM_OBJECT_SLEEP(orig_object, m, PVM, "spltwt", 0);
+			vm_page_lock(m);
+			VM_OBJECT_WUNLOCK(orig_object);
+			vm_page_sleep(m, "spltwt");
+			VM_OBJECT_WLOCK(orig_object);
 			VM_OBJECT_WLOCK(new_object);
 			goto retry;
 		}
@@ -1497,9 +1500,9 @@ vm_object_backing_scan(vm_object_t object, int op)
 			} else if (op & OBSC_COLLAPSE_WAIT) {
 				if ((p->oflags & VPO_BUSY) || p->busy) {
 					VM_OBJECT_WUNLOCK(object);
-					p->oflags |= VPO_WANTED;
-					VM_OBJECT_SLEEP(backing_object, p,
-					    PDROP | PVM, "vmocol", 0);
+					vm_page_lock(p);
+					VM_OBJECT_WUNLOCK(backing_object);
+					vm_page_sleep(p, "vmocol");
 					VM_OBJECT_WLOCK(object);
 					VM_OBJECT_WLOCK(backing_object);
 					/*

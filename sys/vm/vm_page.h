@@ -166,7 +166,7 @@ struct vm_page {
  *
  */
 #define	VPO_BUSY	0x01		/* page is in transit */
-#define	VPO_WANTED	0x02		/* someone is waiting for page */
+#define	VPO_UNUSED02	0x02		/* --available-- */
 #define	VPO_UNMANAGED	0x04		/* no PV management for page */
 #define	VPO_SWAPINPROG	0x08		/* swap I/O in progress on page */
 #define	VPO_NOSYNC	0x10		/* do not collect for syncer */
@@ -270,6 +270,7 @@ extern struct mtx_padalign pa_lock[];
 #define	PG_WINATCFLS	0x0040		/* flush dirty page on inactive q */
 #define	PG_NODUMP	0x0080		/* don't include this page in a dump */
 #define	PG_UNHOLDFREE	0x0100		/* delayed free of a held page */
+#define	PG_WANTED	0x0200		/* someone is waiting for page */
 
 /*
  * Misc constants.
@@ -401,7 +402,8 @@ void vm_page_rename (vm_page_t, vm_object_t, vm_pindex_t);
 void vm_page_requeue(vm_page_t m);
 void vm_page_requeue_locked(vm_page_t m);
 void vm_page_set_valid_range(vm_page_t m, int base, int size);
-void vm_page_sleep(vm_page_t m, const char *msg);
+int vm_page_sleep_if_busy(vm_page_t m, int also_m_busy, const char *msg);
+int vm_page_sleep_onpage(vm_page_t m, int pri, const char *msg, int timo);
 vm_offset_t vm_page_startup(vm_offset_t vaddr);
 void vm_page_unhold_pages(vm_page_t *ma, int count);
 void vm_page_unwire (vm_page_t, int);
@@ -527,6 +529,21 @@ vm_page_dirty(vm_page_t m)
 }
 
 /*
+ *	vm_page_sleep:
+ *
+ *	Convenience wrapper around vm_page_sleep_onpage(), passing
+ *	PVM priority and 0 timeout values.  Unlocks the page upon return.
+ *
+ *	The page must be locked.
+ */
+static __inline void
+vm_page_sleep(vm_page_t m, const char *msg)
+{
+
+	vm_page_sleep_onpage(m, PVM, msg, 0);
+}
+
+/*
  *	vm_page_remque:
  *
  *	If the given page is in a page queue, then remove it from that page
@@ -540,27 +557,6 @@ vm_page_remque(vm_page_t m)
 
 	if (m->queue != PQ_NONE)
 		vm_page_dequeue(m);
-}
-
-/*
- *	vm_page_sleep_if_busy:
- *
- *	Sleep and release the page queues lock if VPO_BUSY is set or,
- *	if also_m_busy is TRUE, busy is non-zero.  Returns TRUE if the
- *	thread slept and the page queues lock was released.
- *	Otherwise, retains the page queues lock and returns FALSE.
- *
- *	The object containing the given page must be locked.
- */
-static __inline int
-vm_page_sleep_if_busy(vm_page_t m, int also_m_busy, const char *msg)
-{
-
-	if ((m->oflags & VPO_BUSY) || (also_m_busy && m->busy)) {
-		vm_page_sleep(m, msg);
-		return (TRUE);
-	}
-	return (FALSE);
 }
 
 /*

@@ -1285,7 +1285,10 @@ retry:
 			if (m != NULL) {
 				if ((m->oflags & VPO_BUSY) != 0 ||
 				    m->busy != 0) {
+					vm_page_lock(m);
+					VM_OBJECT_WUNLOCK(uobj);
 					vm_page_sleep(m, "tmfssz");
+					VM_OBJECT_WLOCK(uobj);
 					goto retry;
 				}
 				MPASS(m->valid == VM_PAGE_BITS_ALL);

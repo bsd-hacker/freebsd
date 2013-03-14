@@ -215,7 +215,10 @@ reserve:
 
 	VM_OBJECT_WLOCK(vm_obj);
 	if ((m->flags & VPO_BUSY) != 0) {
+		vm_page_lock(m);
+		VM_OBJECT_WUNLOCK(vm_obj);
 		vm_page_sleep(m, "ttmpbs");
+		VM_OBJECT_WLOCK(vm_obj);
 		ttm_mem_io_unlock(man);
 		ttm_bo_unreserve(bo);
 		goto retry;

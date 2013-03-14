@@ -1421,7 +1421,10 @@ unlocked_vmobj:
 
 	if ((m->flags & VPO_BUSY) != 0) {
 		DRM_UNLOCK(dev);
+		vm_page_lock(m);
+		VM_OBJECT_WUNLOCK(vm_obj);
 		vm_page_sleep(m, "915pbs");
+		VM_OBJECT_WLOCK(vm_obj);
 		goto retry;
 	}
 	m->valid = VM_PAGE_BITS_ALL;
@@ -2309,14 +2312,17 @@ i915_gem_release_mmap(struct drm_i915_gem_object *obj)
 	if (devobj != NULL) {
 		page_count = OFF_TO_IDX(obj->base.size);
 
-		VM_OBJECT_WLOCK(devobj);
 retry:
+		VM_OBJECT_WLOCK(devobj);
 		for (i = 0; i < page_count; i++) {
 			m = vm_page_lookup(devobj, i);
 			if (m == NULL)
 				continue;
+			vm_page_lock(m);
+			VM_OBJECT_WUNLOCK(devobj);
 			if (vm_page_sleep_if_busy(m, true, "915unm"))
 				goto retry;
+			vm_page_unlock(m);
 			cdev_pager_free_page(devobj, m);
 		}
 		VM_OBJECT_WUNLOCK(devobj);

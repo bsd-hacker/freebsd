@@ -216,8 +216,8 @@ extern struct vm_object kmem_object_store;
 	rw_rlock(&(object)->lock)
 #define	VM_OBJECT_RUNLOCK(object)					\
 	rw_runlock(&(object)->lock)
-#define	VM_OBJECT_SLEEP(object, wchan, pri, wmesg, timo)		\
-	rw_sleep((wchan), &(object)->lock, (pri), (wmesg), (timo))
+#define	VM_OBJECT_SLEEP(object, wchan, pri, wmesg)			\
+	rw_sleep((wchan), &(object)->lock, (pri), (wmesg), 0)
 #define	VM_OBJECT_TRYRLOCK(object)					\
 	rw_try_rlock(&(object)->lock)
 #define	VM_OBJECT_TRYWLOCK(object)					\
