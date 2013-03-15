@@ -55,6 +55,157 @@
  */
 
 /*
+ * There two types of key derivation in TCP-AO.
+ * One is to create the session key from the imported master key.
+ * It involves individual session parameters like the ip addresses,
+ * port numbers and inititial sequence numbers.
+ * The other is in additional step for certain MAC algorithms when
+ * the user supplied key is not exactly the required key MAC size.
+ * Here we have to run the key through a special round of key
+ * derivation first to get the desired key length.
+ */
+
+/*
+ * Context for key derivation.
+ */
+union tcp_ao_kdf_ctx {
+	struct ip4 {
+		struct in_addr src, dst;
+		uint16_t sport, dport;
+		uint32_t irs, iss;
+	} ip4_ctx;
+	struct ip6 {
+		struct in6_addr src, dst;
+		uint16_t sport, dport;
+		uint32_t irs, iss;
+	} ip6_ctx;
+	int len;
+};
+
+/*
+ * Key derivation for sessions and the derived master keys.
+ * Return values:
+ *  0      = success
+ *  EINVAL = invalid input, typically insufficient length
+ *  other  = key derivation failed
+ */
+static int
+tcp_ao_kdf(struct in_conninfo *inc, struct tcphdr *th, uint8_t *out,
+    int outlen)
+{
+	int error = 0;
+	struct tcp_ao_kdf_ctx tak;
+
+	/* Fill in context for traffic keys. */
+	switch (inc->inc_flags & INC_ISIPV6) {
+	case 0:
+		tak.ip4_ctx.src = inc->ie_faddr;
+		tak.ip4_ctx.dst = inc->ie_laddr;
+		tak.ip4_ctx.irs = htonl(th->th_ack);
+		tak.ip4_ctx.iss = htonl(th->th_seq);
+		tak.len = sizeof(tak.ip4_ctx);
+		break;
+	case INC_ISIPV6:
+		tak.ip6_ctx.src = inc->ie6_faddr;
+		tak.ip6_ctx.dst = inc->ie6_laddr;
+		tak.ip6_ctx.irs = htonl(th->th_ack);
+		tak.ip6_ctx.iss = htonl(th->th_seq);
+		tak.len = sizeof(tak.ip6_ctx);
+		break;
+	default:
+		error = EINVAL;
+		goto out;
+	}
+
+	switch (kdf) {
+	case TCP_AO_HMAC_SHA_1_96:
+		error = tcp_ao_kdf_hmac(key, keylen, out, outlen, &tak);
+		break;
+	case TCP_AO_AES_128_CMAC_96:
+		error = tcp_ao_kdf_cmac(key, keylen, out, outlen, &tak);
+		break;
+	case TCP_AO_TCPMD5:
+		error = tcp_ao_kdf_cmac(key, keylen, out, outlen, &tak);
+		break;
+	default:
+		error = EINVAL;
+	}
+	if (error)
+		goto out;
+
+	return (error);
+}
+
+static int
+tcp_ao_kdf_hmac(uint8_t *key, int keylen , uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tak)
+{
+	HMAC_SHA_CTX ctx;
+	uint8_t res[SHA1_DIGEST_LENGTH];
+	char *label = "TCP-AO";
+	int error = 0;
+	uint8_t i;
+
+	for (i = 0; outlen > 0; outlen -= SHA1_DIGEST_LENGTH, i++) {
+		HMAC_SHA1_Init(&ctx, key, keylen);
+
+		HMAC_SHA1_Update(&ctx, &i, sizeof(i));
+		HMAC_SHA1_Update(&ctx, label, sizeof(*label));
+		if (tak != NULL)
+			HMAC_SHA1_Update(&ctx, tak, tak->len);
+		HMAC_SHA1_Final(res, &ctx);
+
+		bcopy(res, out, min(outlen, SHA1_DIGEST_LENGTH));
+		out += SHA1_DIGEST_LENGTH;
+	}
+	return (error);
+}
+
+static int
+tcp_ao_kdf_cmac(uint8_t *key, int keylen, uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tak)
+{
+	AES_CMAC_CTX ctx;
+	uint8_t res[AES_CMAC_DIGEST_LENGTH];
+	uint8_t zero[AES_CMAC_KEY_LENGTH];
+	int error = 0;
+
+	if (tak == NULL) {
+		bzero(zero, sizeof(*zero));
+		AES_CMAC_Init(&ctx);
+		AES_CMAC_SetKey(&ctx, zero);
+		AES_CMAC_Update(&ctx, key, keylen);
+		AES_CMAC_Final(res, &ctx);
+		bcopy(res, out, min(outlen, AES_CMAC_DIGEST_LENGTH));
+	}
+
+	if (keylen != AES_CMAC_KEY_LENGTH)
+		return (EINVAL);
+
+	for (i = 0; outlen > 0; outlen -= AES_CMAC_DIGEST_LENGTH, i++) {
+		AES_CMAC_Init(&ctx);
+		AES_CMAC_SetKey(&ctx, key);
+		AES_CMAC_Update(&ctx, &i, sizeof(i));
+		AES_CMAC_Update(&ctx, label, sizeof(*label));
+		AES_CMAC_Update(&ctx, tak, tak->len);
+		AES_CMAC_Final(res, &ctx);
+
+		bcopy(res, out, min(outlen, AES_CMAC_DIGEST_LENGTH));
+		out += AES_CMAC_DIGEST_LENGTH;
+	}
+	return (error);
+}
+
+static int
+tcp_ao_kfd_md5(uint8_t *key, int keylen, uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tak)
+{
+	/* XXX: No key derivation happens. */
+	return (0);
+}
+
+
+/*
  * The hash over the header has to be pieced together and a couple of
  * fields need manipulation, like zero'ing and byte order conversion.
  * Instead of doing it in-place and calling the hash update function
