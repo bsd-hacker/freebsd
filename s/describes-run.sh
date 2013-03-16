@@ -81,10 +81,18 @@ else
 fi
 
 # Clean up
-umount ${JAILDIR}/dev
-umount ${JAILDIR}/tmp
-umount ${JAILDIR}/usr/ports
-umount ${JAILDIR}
+while ! umount ${JAILDIR}/dev; do
+	sleep 1
+done
+while ! umount ${JAILDIR}/tmp; do
+	sleep 1
+done
+while ! umount ${JAILDIR}/usr/ports; do
+	sleep 1
+done
+while ! umount ${JAILDIR}; do
+	sleep 1
+done
 mdconfig -d -u ${JAILMD}
 mdconfig -d -u ${TMPMD}
 devfs rule -s ${RULESET} delset

@@ -59,7 +59,9 @@ echo "portsnap|`date "+%s"`|`sha256 -q ${WORKDIR}/tINDEX`" > ${WORKDIR}/tag
 tar -czf ${TARBALL} -C ${WORKDIR} tag tINDEX INDEX.gz files
 
 # Unmount and delete the snapshot disk
-umount /dev/md${SNAPMD}
+while ! umount /dev/md${SNAPMD}; do
+	sleep 1
+done
 mdconfig -d -u ${SNAPMD}
 
 # Delete temporary directories

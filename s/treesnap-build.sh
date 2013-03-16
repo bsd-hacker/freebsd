@@ -35,7 +35,9 @@ echo "`date`: Building snapshot tarballs"
 sh -e s/treesnap-mktars-all.sh ${PORTSDIR} ${SNAP} ${SNAP}/INDEX ${TMP}
 
 # Unmount the ports tree
-umount /dev/md${PORTSMD}
+while ! umount /dev/md${PORTSMD}; do
+	sleep 1
+done
 
 # Perform index describes
 for N in ${DESCRIBES}; do

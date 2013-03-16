@@ -81,7 +81,9 @@ fi
 rm ${SIGDIR}/*.ssl
 
 # Unmount and delete the snapshot disk
-umount /dev/md${SNAPMD}
+while ! umount /dev/md${SNAPMD}; do
+	sleep 1
+done
 mdconfig -d -u ${SNAPMD}
 
 # Delete indexes
