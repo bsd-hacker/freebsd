@@ -9,7 +9,7 @@ CFLAGS+=-DCOMPAT_FREEBSD32 -DCOMPAT_LINUX32
 
 KMOD=	linux
 SRCS=	linux_fork.c linux${SFX}_dummy.c linux_emul.c linux_file.c \
-	linux_futex.c linux_getcwd.c linux_ioctl.c linux_ipc.c \
+	linux_futex.c linux_getcwd.c linux_ioctl.c linux_ipc.c linux_vdso.c \
 	linux${SFX}_machdep.c linux_mib.c linux_misc.c linux_signal.c \
 	linux_socket.c linux_stats.c linux_sysctl.c linux${SFX}_sysent.c \
 	linux${SFX}_sysvec.c linux_uid16.c linux_util.c linux_time.c \
@@ -22,7 +22,9 @@ SRCS+=  opt_kstack_pages.h opt_nfs.h opt_compat.h opt_hwpmc_hooks.h
 SRCS+=	opt_apic.h
 .endif
 
-OBJS=	linux${SFX}_locore.o linux${SFX}_support.o
+VDSO=	linux${SFX}_vdso
+
+OBJS=	linux${SFX}_support.o ${VDSO}.so
 
 .if ${MACHINE_CPUARCH} == "i386"
 SRCS+=	linux_ptrace.c imgact_linux.c opt_cpu.h
@@ -36,7 +38,7 @@ EXPORT_SYMS+=	linux_ifname
 EXPORT_SYMS+=	linux_ioctl_register_handler
 EXPORT_SYMS+=	linux_ioctl_unregister_handler
 
-CLEANFILES=	linux${SFX}_assym.h linux${SFX}_genassym.o
+CLEANFILES=	linux${SFX}_assym.h linux${SFX}_genassym.o linux${SFX}_locore.o
 
 linux${SFX}_assym.h: linux${SFX}_genassym.o
 .if exists(@)
@@ -45,8 +47,22 @@ linux${SFX}_assym.h: @/kern/genassym.sh
 	sh @/kern/genassym.sh linux${SFX}_genassym.o > ${.TARGET}
 
 linux${SFX}_locore.o: linux${SFX}_locore.s linux${SFX}_assym.h
-	${CC} -c -x assembler-with-cpp -DLOCORE ${CFLAGS} \
+	${CC} -x assembler-with-cpp -DLOCORE -m32 -shared -s			\
+	-pipe -I. -I@ -Werror -Wall -fno-common -nostdinc -nostdlib		\
+	-fno-omit-frame-pointer							\
+	-Wl,-T${.CURDIR}/../../${MACHINE_CPUARCH}/linux${SFX}/${VDSO}.lds.s	\
+	-Wl,-soname=${VDSO}.so.1,--eh-frame-hdr,-fPIC,-warn-common		\
 	    ${.IMPSRC} -o ${.TARGET}
+
+.if ${MACHINE_CPUARCH} == "amd64"
+${VDSO}.so: linux${SFX}_locore.o
+	${OBJCOPY} --input binary --output elf64-x86-64-freebsd			\
+	    --binary-architecture i386 linux${SFX}_locore.o ${.TARGET}
+.else
+${VDSO}.so: linux${SFX}_locore.o
+	${OBJCOPY} --input binary --output elf32-i386-freebsd			\
+	    --binary-architecture i386 linux${SFX}_locore.o ${.TARGET}
+.endif
 
 linux${SFX}_support.o: linux${SFX}_support.s assym.s linux${SFX}_assym.h
 	${CC} -c -x assembler-with-cpp -DLOCORE ${CFLAGS} \

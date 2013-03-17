@@ -71,9 +71,9 @@ __FBSDID("$FreeBSD$");
 #include <compat/linux/linux_misc.h>
 #include <compat/linux/linux_signal.h>
 #include <compat/linux/linux_util.h>
+#include <compat/linux/linux_vdso.h>
 
 MODULE_VERSION(linux, 1);
-
 MALLOC_DEFINE(M_LINUX, "linux", "Linux mode structures");
 
 #if BYTE_ORDER == LITTLE_ENDIAN
@@ -93,8 +93,11 @@ MALLOC_DEFINE(M_LINUX, "linux", "Linux mode structures");
 
 #define	LINUX_PS_STRINGS	(LINUX_USRSTACK - sizeof(struct ps_strings))
 
-extern char linux_sigcode[];
-extern int linux_szsigcode;
+static int linux_szsigcode;
+static vm_object_t linux_shared_page_obj;
+static char *linux_shared_page_mapping;
+extern char _binary_linux_locore_o_start;
+extern char _binary_linux_locore_o_end;
 
 extern struct sysent linux_sysent[LINUX_SYS_MAXSYSCALL];
 
@@ -110,6 +113,8 @@ static void	exec_linux_setregs(struct thread *td,
 		    struct image_params *imgp, u_long stack);
 static register_t *linux_copyout_strings(struct image_params *imgp);
 static boolean_t linux_trans_osrel(const Elf_Note *note, int32_t *osrel);
+static void	linux_vdso_install(void *param);
+static void	linux_vdso_deinstall(void *param);
 
 static int linux_szplatform;
 const char *linux_platform;
@@ -198,6 +203,10 @@ static int _bsd_to_linux_trapcode[] = {
      _bsd_to_linux_trapcode[(code)]: \
      LINUX_T_UNKNOWN)
 
+LINUX_VDSO_SYM_DEFINE(linux_sigcode);
+LINUX_VDSO_SYM_DEFINE(linux_rt_sigcode);
+LINUX_VDSO_SYM_DEFINE(linux_vsyscall);
+
 /*
  * If FreeBSD & Linux have a difference of opinion about what a trap
  * means, deal with it here.
@@ -253,6 +262,11 @@ elf_linux_fixup(register_t **stack_base, struct image_params *imgp)
 	uplatform = (Elf32_Addr *)((caddr_t)arginfo - linux_szplatform);
 	args = (Elf32_Auxargs *)imgp->auxargs;
 	pos = *stack_base + (imgp->args->argc + imgp->args->envc + 2);
+
+	AUXARGS_ENTRY(pos, LINUX_AT_SYSINFO_EHDR,
+	    imgp->proc->p_sysent->sv_shared_page_base);
+	AUXARGS_ENTRY(pos, LINUX_AT_SYSINFO,
+	    LINUX_VDSO_SYM_VALUE(linux_vsyscall));
 
 	AUXARGS_ENTRY(pos, LINUX_AT_HWCAP, cpu_feature);
 
@@ -401,7 +415,6 @@ linux_copyout_strings(struct image_params *imgp)
 
 
 extern int _ucodesel, _udatasel;
-extern unsigned long linux_sznonrtsigcode;
 
 static void
 linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
@@ -478,6 +491,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	frame.sf_sc.uc_mcontext.sc_esi    = regs->tf_esi;
 	frame.sf_sc.uc_mcontext.sc_ebp    = regs->tf_ebp;
 	frame.sf_sc.uc_mcontext.sc_ebx    = regs->tf_ebx;
+	frame.sf_sc.uc_mcontext.sc_esp    = regs->tf_esp;
 	frame.sf_sc.uc_mcontext.sc_edx    = regs->tf_edx;
 	frame.sf_sc.uc_mcontext.sc_ecx    = regs->tf_ecx;
 	frame.sf_sc.uc_mcontext.sc_eax    = regs->tf_eax;
@@ -515,7 +529,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 * Build context to run handler in.
 	 */
 	regs->tf_esp = (int)fp;
-	regs->tf_eip = p->p_sysent->sv_sigcode_base + linux_sznonrtsigcode;
+	regs->tf_eip = LINUX_VDSO_SYM_VALUE(linux_rt_sigcode);
 	regs->tf_eflags &= ~(PSL_T | PSL_VM | PSL_D);
 	regs->tf_cs = _ucodesel;
 	regs->tf_ds = _udatasel;
@@ -606,6 +620,7 @@ linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	frame.sf_sc.sc_esi    = regs->tf_esi;
 	frame.sf_sc.sc_ebp    = regs->tf_ebp;
 	frame.sf_sc.sc_ebx    = regs->tf_ebx;
+	frame.sf_sc.sc_esp    = regs->tf_esp;
 	frame.sf_sc.sc_edx    = regs->tf_edx;
 	frame.sf_sc.sc_ecx    = regs->tf_ecx;
 	frame.sf_sc.sc_eax    = regs->tf_eax;
@@ -634,7 +649,7 @@ linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 * Build context to run handler in.
 	 */
 	regs->tf_esp = (int)fp;
-	regs->tf_eip = p->p_sysent->sv_sigcode_base;
+	regs->tf_eip = LINUX_VDSO_SYM_VALUE(linux_sigcode);
 	regs->tf_eflags &= ~(PSL_T | PSL_VM | PSL_D);
 	regs->tf_cs = _ucodesel;
 	regs->tf_ds = _udatasel;
@@ -970,7 +985,7 @@ struct sysentvec linux_sysvec = {
 	.sv_transtrap	= translate_traps,
 	.sv_fixup	= linux_fixup,
 	.sv_sendsig	= linux_sendsig,
-	.sv_sigcode	= linux_sigcode,
+	.sv_sigcode	= &_binary_linux_locore_o_start,
 	.sv_szsigcode	= &linux_szsigcode,
 	.sv_prepsyscall	= NULL,
 	.sv_name	= "Linux a.out",
@@ -1009,7 +1024,7 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_transtrap	= translate_traps,
 	.sv_fixup	= elf_linux_fixup,
 	.sv_sendsig	= linux_sendsig,
-	.sv_sigcode	= linux_sigcode,
+	.sv_sigcode	= &_binary_linux_locore_o_start,
 	.sv_szsigcode	= &linux_szsigcode,
 	.sv_prepsyscall	= NULL,
 	.sv_name	= "Linux ELF",
@@ -1035,7 +1050,39 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_schedtail	= linux_schedtail,
 	.sv_thread_detach = linux_thread_detach
 };
-INIT_SYSENTVEC(elf_sysvec, &elf_linux_sysvec);
+
+static void
+linux_vdso_install(void *param)
+{
+
+	linux_szsigcode = (&_binary_linux_locore_o_end - 
+	    &_binary_linux_locore_o_start);
+
+	if (linux_szsigcode > elf_linux_sysvec.sv_shared_page_len)
+		panic("Linux invalid vdso size\n");
+
+	__elfN(linux_vdso_fixup)(&elf_linux_sysvec);
+
+	linux_shared_page_obj = __elfN(linux_shared_page_init)
+	    (&linux_shared_page_mapping);
+
+	__elfN(linux_vdso_reloc)(&elf_linux_sysvec, 0);
+
+	bcopy(elf_linux_sysvec.sv_sigcode, linux_shared_page_mapping,
+	    linux_szsigcode);
+	elf_linux_sysvec.sv_shared_page_obj = linux_shared_page_obj;
+}
+SYSINIT(elf_linux_vdso_init, SI_SUB_EXEC, SI_ORDER_ANY,
+    (sysinit_cfunc_t)linux_vdso_install, NULL);
+
+static void
+linux_vdso_deinstall(void *param)
+{
+
+	__elfN(linux_shared_page_fini)(linux_shared_page_obj);
+};
+SYSUNINIT(elf_linux_vdso_uninit, SI_SUB_EXEC, SI_ORDER_FIRST,
+    (sysinit_cfunc_t)linux_vdso_deinstall, NULL);
 
 static char GNU_ABI_VENDOR[] = "GNU";
 static int GNULINUX_ABI_DESC = 0;
