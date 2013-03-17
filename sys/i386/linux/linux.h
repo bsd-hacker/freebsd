@@ -494,7 +494,6 @@ struct l_rt_sigframe {
 };
 
 extern struct sysentvec linux_sysvec;
-extern struct sysentvec elf_linux_sysvec;
 
 /*
  * open/fcntl flags
