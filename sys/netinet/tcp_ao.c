@@ -45,7 +45,8 @@
  * Discussion:
  *  the key management can be done in two ways: via the ipsec key interface
  *  or through the setsockopt() api.  Analyse which one is better to handle
- *  in the kernel and for userspace applications.
+ *  in the kernel and for userspace applications.  The setsockopt() API is
+ *  the winner and will be used.
  *
  *  legacy tcp-md5 can be brought and integrated into the tcp-ao framework.
  */

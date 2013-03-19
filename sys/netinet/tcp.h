@@ -162,6 +162,7 @@ struct tcphdr {
 #define TCP_NOPUSH	4	/* don't push last block of write */
 #define TCP_NOOPT	8	/* don't use TCP options */
 #define TCP_MD5SIG	16	/* use MD5 digests (RFC2385) */
+#define TCP_AO		17	/* configure TCP-AO digests (RFC5925) */
 #define	TCP_INFO	32	/* retrieve tcp_info structure */
 #define	TCP_CONGESTION	64	/* get/set congestion control algorithm */
 #define	TCP_KEEPINIT	128	/* N, time to establish connection */
