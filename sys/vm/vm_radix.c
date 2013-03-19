@@ -35,14 +35,21 @@
  * of this code must achieve highest possible performance.
  *
  * The implementation takes into account the following rationale:
- * - Size of the nodes should be as small as possible.
- * - There is no bias toward lookup operations over inserts or removes,
- *   and vice-versa.
- * - On average not many nodes are expected to be full, hence level
- *   compression may just complicate things.
+ * - Size of the nodes should be as small as possible but still big enough
+ *   to avoid a large maximum depth for the trie.  This is a balance
+ *   between the necessity to not wire too much physical memory for the nodes
+ *   and the necessity to avoid too much cache pollution during the trie
+ *   operations.
+ * - There is not a huge bias toward the number of lookup operations over
+ *   the number of insert and remove operations.  This basically implies
+ *   that optimizations supposedly helping one operation but hurting the
+ *   other might be carefully evaluated.
+ * - On average not many nodes are expected to be fully populated, hence
+ *   level compression may just complicate things.
  */
 
 #include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #include "opt_ddb.h"
 
@@ -104,7 +111,7 @@ vm_radix_node_get(vm_pindex_t owner, uint16_t count, uint16_t clevel)
 {
 	struct vm_radix_node *rnode;
 
-	rnode = uma_zalloc(vm_radix_node_zone, M_NOWAIT | M_ZERO);
+	rnode = uma_zalloc(vm_radix_node_zone, M_NOWAIT);
 
 	/*
 	 * The required number of nodes should already be pre-allocated
@@ -308,6 +315,7 @@ vm_radix_reclaim_allnodes_int(struct vm_radix_node *rnode)
 			continue;
 		if (vm_radix_node_page(rnode->rn_child[slot]) == NULL)
 			vm_radix_reclaim_allnodes_int(rnode->rn_child[slot]);
+		rnode->rn_child[slot] = NULL;
 		rnode->rn_count--;
 	}
 	vm_radix_node_put(rnode);
@@ -321,13 +329,30 @@ static void
 vm_radix_node_zone_dtor(void *mem, int size __unused, void *arg __unused)
 {
 	struct vm_radix_node *rnode;
+	int slot;
 
 	rnode = mem;
 	KASSERT(rnode->rn_count == 0,
-	    ("vm_radix_node_put: Freeing node %p with %d children\n", mem,
+	    ("vm_radix_node_put: rnode %p has %d children", rnode,
 	    rnode->rn_count));
+	for (slot = 0; slot < VM_RADIX_COUNT; slot++)
+		KASSERT(rnode->rn_child[slot] == NULL,
+		    ("vm_radix_node_put: rnode %p has a child", rnode));
 }
 #endif
+
+/*
+ * Radix node zone initializer.
+ */
+static int
+vm_radix_node_zone_init(void *mem, int size __unused, int flags __unused)
+{
+	struct vm_radix_node *rnode;
+
+	rnode = mem;
+	memset(rnode->rn_child, 0, sizeof(rnode->rn_child));
+	return (0);
+}
 
 /*
  * Pre-allocate intermediate nodes from the UMA slab zone.
@@ -359,7 +384,8 @@ vm_radix_init(void)
 #else
 	    NULL,
 #endif
-	    NULL, NULL, VM_RADIX_PAD, UMA_ZONE_VM | UMA_ZONE_NOFREE);
+	    vm_radix_node_zone_init, NULL, VM_RADIX_PAD, UMA_ZONE_VM |
+	    UMA_ZONE_NOFREE);
 }
 
 /*
@@ -367,16 +393,15 @@ vm_radix_init(void)
  * Panics if the key already exists.
  */
 void
-vm_radix_insert(struct vm_radix *rtree, vm_pindex_t index, vm_page_t page)
+vm_radix_insert(struct vm_radix *rtree, vm_page_t page)
 {
-	vm_pindex_t newind;
+	vm_pindex_t index, newind;
 	struct vm_radix_node *rnode, *tmp, *tmp2;
 	vm_page_t m;
 	int slot;
 	uint16_t clev;
 
-	KASSERT(index == page->pindex, ("%s: index != page->pindex",
-	    __func__));
+	index = page->pindex;
 
 	/*
 	 * The owner of record for root is not really important because it
@@ -507,7 +532,7 @@ restart:
 
 		/*
 		 * If the keys differ before the current bisection node
-		 * the search key might rollback to the earlierst
+		 * the search key might rollback to the earliest
 		 * available bisection node, or to the smaller value
 		 * in the current domain (if the owner is bigger than the
 		 * search key).
@@ -596,7 +621,7 @@ restart:
 
 		/*
 		 * If the keys differ before the current bisection node
-		 * the search key might rollback to the earlierst
+		 * the search key might rollback to the earliest
 		 * available bisection node, or to the higher value
 		 * in the current domain (if the owner is smaller than the
 		 * search key).

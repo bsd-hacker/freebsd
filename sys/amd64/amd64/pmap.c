@@ -1533,7 +1533,7 @@ pmap_insert_pt_page(pmap_t pmap, vm_page_t mpte)
 {
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	vm_radix_insert(&pmap->pm_root, mpte->pindex, mpte);
+	vm_radix_insert(&pmap->pm_root, mpte);
 }
 
 /*
@@ -4233,6 +4233,32 @@ pmap_copy_page(vm_page_t msrc, vm_page_t mdst)
 	vm_offset_t dst = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(mdst));
 
 	pagecopy((void *)src, (void *)dst);
+}
+
+int unmapped_buf_allowed = 1;
+
+void
+pmap_copy_pages(vm_page_t ma[], vm_offset_t a_offset, vm_page_t mb[],
+    vm_offset_t b_offset, int xfersize)
+{
+	void *a_cp, *b_cp;
+	vm_offset_t a_pg_offset, b_pg_offset;
+	int cnt;
+
+	while (xfersize > 0) {
+		a_pg_offset = a_offset & PAGE_MASK;
+		cnt = min(xfersize, PAGE_SIZE - a_pg_offset);
+		a_cp = (char *)PHYS_TO_DMAP(ma[a_offset >> PAGE_SHIFT]->
+		    phys_addr) + a_pg_offset;
+		b_pg_offset = b_offset & PAGE_MASK;
+		cnt = min(cnt, PAGE_SIZE - b_pg_offset);
+		b_cp = (char *)PHYS_TO_DMAP(mb[b_offset >> PAGE_SHIFT]->
+		    phys_addr) + b_pg_offset;
+		bcopy(a_cp, b_cp, cnt);
+		a_offset += cnt;
+		b_offset += cnt;
+		xfersize -= cnt;
+	}
 }
 
 /*
