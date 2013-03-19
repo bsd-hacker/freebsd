@@ -575,7 +575,7 @@ struct proc {
 	u_short		p_acflag;	/* (c) Accounting flags. */
 	struct proc	*p_peers;	/* (r) */
 	struct proc	*p_leader;	/* (b) */
-	void		*p_unused;	/*     */
+	void		*p_emuldata;	/* (c) Emulator state data. */
 	struct label	*p_label;	/* (*) Proc (not subject) MAC label. */
 	struct p_sched	*p_sched;	/* (*) Scheduler-specific data. */
 	STAILQ_HEAD(, ktr_request)	p_ktr;	/* (o) KTR event queue. */
