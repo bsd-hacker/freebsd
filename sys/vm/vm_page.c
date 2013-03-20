@@ -2337,7 +2337,9 @@ retrylookup:
 			 */
 			vm_page_aflag_set(m, PGA_REFERENCED);
 			vm_page_lock(m);
+			VM_OBJECT_WUNLOCK(object);
 			vm_page_sleep(m, "pgrbwt");
+			VM_OBJECT_WLOCK(object);
 			goto retrylookup;
 		} else {
 			if ((allocflags & VM_ALLOC_WIRED) != 0) {
