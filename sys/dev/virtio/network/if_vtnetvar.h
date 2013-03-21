@@ -32,36 +32,50 @@
 struct vtnet_softc;
 
 struct vtnet_statistics {
-	unsigned long	mbuf_alloc_failed;
+	uint64_t	mbuf_alloc_failed;
 
-	unsigned long	rx_frame_too_large;
-	unsigned long	rx_enq_replacement_failed;
-	unsigned long	rx_mergeable_failed;
-	unsigned long	rx_csum_bad_ethtype;
-	unsigned long	rx_csum_bad_start;
-	unsigned long	rx_csum_bad_ipproto;
-	unsigned long	rx_csum_bad_offset;
-	unsigned long	rx_csum_failed;
-	unsigned long	rx_csum_offloaded;
-	unsigned long	rx_task_rescheduled;
+	uint64_t	rx_frame_too_large;
+	uint64_t	rx_enq_replacement_failed;
+	uint64_t	rx_mergeable_failed;
+	uint64_t	rx_csum_bad_ethtype;
+	uint64_t	rx_csum_bad_ipproto;
+	uint64_t	rx_csum_bad_offset;
+	uint64_t	rx_csum_bad_proto;
+	uint64_t	tx_csum_bad_ethtype;
+	uint64_t	tx_tso_bad_ethtype;
+	uint64_t	tx_tso_not_tcp;
 
-	unsigned long	tx_csum_offloaded;
-	unsigned long	tx_tso_offloaded;
-	unsigned long	tx_csum_bad_ethtype;
-	unsigned long	tx_tso_bad_ethtype;
-	unsigned long	tx_task_rescheduled;
+	/*
+	 * These are accumulated from each Rx/Tx queue.
+	 */
+	uint64_t	rx_csum_failed;
+	uint64_t	rx_csum_offloaded;
+	uint64_t	rx_task_rescheduled;
+	uint64_t	tx_csum_offloaded;
+	uint64_t	tx_tso_offloaded;
+	uint64_t	tx_task_rescheduled;
+};
+
+struct vtnet_rxq_stats {
+	uint64_t	vrxs_ipackets;	/* if_ipackets */
+	uint64_t	vrxs_ibytes;	/* if_ibytes */
+	uint64_t	vrxs_iqdrops;	/* if_iqdrops */
+	uint64_t	vrxs_ierrors;	/* if_ierrors */
+	uint64_t	vrxs_discarded;
+	uint64_t	vrxs_csum;
+	uint64_t	vrxs_csum_failed;
+	uint64_t	vrxs_rescheduled;
 };
 
 struct vtnet_rxq {
 	struct mtx		 vtnrx_mtx;
 	struct vtnet_softc	*vtnrx_sc;
 	struct virtqueue	*vtnrx_vq;
-	int			 vtnrx_size;
 	int			 vtnrx_id;
 	int			 vtnrx_process_limit;
-	int			 vtnrx_tq_running;
+	struct vtnet_rxq_stats	 vtnrx_stats;
 	struct taskqueue	*vtnrx_tq;
-	struct task		 vtnrx_task;
+	struct task		 vtnrx_intrtask;
 	char			 vtnrx_name[16];
 } __aligned(CACHE_LINE_SIZE);
 
@@ -72,10 +86,14 @@ struct vtnet_rxq {
 #define VTNET_RXQ_LOCK_ASSERT_NOTOWNED(_rxq)	\
     mtx_assert(&(_rxq)->vtnrx_mtx, MA_NOTOWNED)
 
-enum vtnet_txq_state {
-	VTNET_TXQ_STATE_IDLE,
-	VTNET_TXQ_STATE_WORKING,
-	VTNET_TXQ_STATE_HUNG,
+struct vtnet_txq_stats {
+	uint64_t vtxs_opackets;	/* if_opackets */
+	uint64_t vtxs_obytes;	/* if_obytes */
+	uint64_t vtxs_omcasts;	/* if_omcasts */
+	uint64_t vtxs_csum;
+	uint64_t vtxs_tso;
+	uint64_t vtxs_collapsed;
+	uint64_t vtxs_rescheduled;
 };
 
 struct vtnet_txq {
@@ -83,13 +101,14 @@ struct vtnet_txq {
 	struct vtnet_softc	*vtntx_sc;
 	struct virtqueue	*vtntx_vq;
 	struct buf_ring		*vtntx_br;
-	enum vtnet_txq_state	 vtntx_state;
 	int			 vtntx_id;
-	int			 vtntx_size;
 	int			 vtntx_watchdog;
-	int			 vtntx_tq_running;
+	struct vtnet_txq_stats	 vtntx_stats;
 	struct taskqueue	*vtntx_tq;
-	struct task		 vtntx_task;
+	struct task		 vtntx_intrtask;
+#ifndef VTNET_LEGACY_TX
+	struct task		 vtntx_defrtask;
+#endif
 	char			 vtntx_name[16];
 } __aligned(CACHE_LINE_SIZE);
 
@@ -147,6 +166,13 @@ struct vtnet_softc {
  * Maximum number of queue pairs we will autoconfigure to.
  */
 #define VTNET_MAX_QUEUE_PAIRS	8
+
+/*
+ * Additional completed entries can appear in a virtqueue before we can
+ * reenable interrupts. Number of times to retry before scheduling the
+ * taskqueue to process the completed entries.
+ */
+#define VTNET_INTR_DISABLE_RETRIES	4
 
 /*
  * Fake the media type. The host does not provide us with any real media
@@ -217,6 +243,9 @@ CTASSERT(sizeof(struct vtnet_mac_filter) <= PAGE_SIZE);
 #define VTNET_TX_TIMEOUT	5
 #define VTNET_CSUM_OFFLOAD	(CSUM_TCP | CSUM_UDP | CSUM_SCTP)
 #define VTNET_CSUM_OFFLOAD_IPV6	(CSUM_TCP_IPV6 | CSUM_UDP_IPV6 | CSUM_SCTP_IPV6)
+
+#define VTNET_CSUM_ALL_OFFLOAD	\
+    (VTNET_CSUM_OFFLOAD | VTNET_CSUM_OFFLOAD_IPV6 | CSUM_TSO)
 
 /* Features desired/implemented by this driver. */
 #define VTNET_FEATURES \

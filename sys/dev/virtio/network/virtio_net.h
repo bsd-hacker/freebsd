@@ -73,6 +73,7 @@ struct virtio_net_config {
  */
 struct virtio_net_hdr {
 #define VIRTIO_NET_HDR_F_NEEDS_CSUM	1	/* Use csum_start,csum_offset*/
+#define VIRTIO_NET_HDR_F_DATA_VALID	2	/* Csum is valid */
 	uint8_t	flags;
 #define VIRTIO_NET_HDR_GSO_NONE		0	/* Not a GSO frame */
 #define VIRTIO_NET_HDR_GSO_TCPV4	1	/* GSO frame, IPv4 TCP (TSO) */
@@ -177,17 +178,17 @@ struct virtio_net_ctrl_mac {
 /*
  * Control Receive Flow Steering
  *
- * The command VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET
- * enables Receive Flow Steering, specifying the number of the transmit and
- * receive queues that will be used. After the command is consumed and acked by
- * the device, the device will not steer new packets on receive virtqueues
- * other than specified nor read from transmit virtqueues other than specified.
- * Accordingly, driver should not transmit new packets  on virtqueues other than
- * specified.
+ * The command VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET enables Receive Flow
+ * Steering, specifying the number of the transmit and receive queues
+ * that will be used. After the command is consumed and acked by the
+ * device, the device will not steer new packets on receive virtqueues
+ * other than specified nor read from transmit virtqueues other than
+ * specified. Accordingly, driver should not transmit new packets on
+ * virtqueues other than specified.
  */
 struct virtio_net_ctrl_mq {
-	uint16_t virtqueue_pairs;
-};
+	uint16_t	virtqueue_pairs;
+} __packed;
 
 #define VIRTIO_NET_CTRL_MQ	4
 #define VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET		0
