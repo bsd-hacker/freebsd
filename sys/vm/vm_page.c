@@ -757,12 +757,21 @@ vm_page_readahead_finish(vm_page_t m)
 int
 vm_page_sleep_if_busy(vm_page_t m, int also_m_busy, const char *msg)
 {
+	vm_object_t obj;
 
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
 	if ((m->oflags & VPO_BUSY) || (also_m_busy && m->busy)) {
-		VM_OBJECT_WUNLOCK(m->object);
+		/*
+		 * The page-specific object must be cached because page
+		 * identity can change during the sleep, causing the
+		 * re-lock of a different object.
+		 * It is assumed that a reference to the object is already
+		 * held by the callers.
+		 */
+		obj = m->object;
+		VM_OBJECT_WUNLOCK(obj);
 		vm_page_sleep(m, msg);
-		VM_OBJECT_WLOCK(m->object);
+		VM_OBJECT_WLOCK(obj);
 		return (TRUE);
 	}
 	return (FALSE);
