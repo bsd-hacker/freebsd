@@ -2516,8 +2516,8 @@ i915_gem_wire_page(vm_object_t object, vm_pindex_t pindex)
 	}
 	vm_page_lock(m);
 	vm_page_wire(m);
+	vm_page_wakeup_locked(m);
 	vm_page_unlock(m);
-	vm_page_wakeup(m);
 	atomic_add_long(&i915_gem_wired_pages_cnt, 1);
 	return (m);
 }

@@ -493,22 +493,39 @@ vm_page_flash(vm_page_t m)
 }
 
 /*
- *      vm_page_wakeup:
+ *	vm_page_wakeup:
  *
- *      clear the VPO_BUSY flag and wakeup anyone waiting for the
- *      page.
+ *	clear the VPO_BUSY flag and wakeup anyone waiting for the
+ *	page.
  *
+ *	The object containing the page must be locked.
  */
 void
 vm_page_wakeup(vm_page_t m)
 {
 
+	vm_page_lock(m);
+	vm_page_wakeup_locked(m);
+	vm_page_unlock(m);
+}
+
+/*
+ *      vm_page_wakeup_locked:
+ *
+ *      clear the VPO_BUSY flag and wakeup anyone waiting for the
+ *      page.
+ *
+ *	The page and the object containing the page must be locked.
+ */
+void
+vm_page_wakeup_locked(vm_page_t m)
+{
+
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
+	vm_page_lock_assert(m, MA_OWNED);
 	KASSERT(m->oflags & VPO_BUSY, ("vm_page_wakeup: page not busy!!!"));
 	m->oflags &= ~VPO_BUSY;
-	vm_page_lock(m);
 	vm_page_flash(m);
-	vm_page_unlock(m);
 }
 
 void
@@ -729,8 +746,8 @@ vm_page_readahead_finish(vm_page_t m)
 			vm_page_activate(m);
 		else
 			vm_page_deactivate(m);
+		vm_page_wakeup_locked(m);
 		vm_page_unlock(m);
-		vm_page_wakeup(m);
 	} else {
 		/*
 		 * Free the completely invalid page.  Such page state
@@ -897,6 +914,7 @@ void
 vm_page_remove(vm_page_t m)
 {
 	vm_object_t object;
+	boolean_t lockacq;
 
 	if ((m->oflags & VPO_UNMANAGED) == 0)
 		vm_page_lock_assert(m, MA_OWNED);
@@ -905,7 +923,15 @@ vm_page_remove(vm_page_t m)
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	if (m->oflags & VPO_BUSY) {
 		m->oflags &= ~VPO_BUSY;
+		lockacq = FALSE;
+		if ((m->oflags & VPO_UNMANAGED) != 0 &&
+		    !mtx_owned(vm_page_lockptr(m))) {
+			lockacq = TRUE;
+			vm_page_lock(m);
+		}
 		vm_page_flash(m);
+		if (lockacq)
+			vm_page_unlock(m);
 	}
 
 	/*

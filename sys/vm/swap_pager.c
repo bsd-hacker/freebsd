@@ -1597,8 +1597,8 @@ swp_pager_async_iodone(struct buf *bp)
 			if (i != bp->b_pager.pg_reqpage) {
 				vm_page_lock(m);
 				vm_page_deactivate(m);
+				vm_page_wakeup_locked(m);
 				vm_page_unlock(m);
-				vm_page_wakeup(m);
 			} else {
 				vm_page_lock(m);
 				vm_page_flash(m);
@@ -1718,8 +1718,8 @@ swp_pager_force_pagein(vm_object_t object, vm_pindex_t pindex)
 		vm_page_dirty(m);
 		vm_page_lock(m);
 		vm_page_activate(m);
+		vm_page_wakeup_locked(m);
 		vm_page_unlock(m);
-		vm_page_wakeup(m);
 		vm_pager_page_unswapped(m);
 		return;
 	}
@@ -1730,8 +1730,8 @@ swp_pager_force_pagein(vm_object_t object, vm_pindex_t pindex)
 	vm_page_dirty(m);
 	vm_page_lock(m);
 	vm_page_deactivate(m);
+	vm_page_wakeup_locked(m);
 	vm_page_unlock(m);
-	vm_page_wakeup(m);
 	vm_pager_page_unswapped(m);
 }
 

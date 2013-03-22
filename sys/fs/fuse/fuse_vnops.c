@@ -1873,8 +1873,8 @@ fuse_vnop_getpages(struct vop_getpages_args *ap)
 					vm_page_activate(m);
 				else
 					vm_page_deactivate(m);
+				vm_page_wakeup_locked(m);
 				fuse_vm_page_unlock(m);
-				vm_page_wakeup(m);
 			} else {
 				fuse_vm_page_lock(m);
 				vm_page_free(m);

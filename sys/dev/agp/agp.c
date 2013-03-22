@@ -626,9 +626,9 @@ bad:
 	VM_OBJECT_ASSERT_WLOCKED(mem->am_obj);
 	for (k = 0; k < mem->am_size; k += PAGE_SIZE) {
 		m = vm_page_lookup(mem->am_obj, OFF_TO_IDX(k));
-		if (k >= i)
-			vm_page_wakeup(m);
 		vm_page_lock(m);
+		if (k >= i)
+			vm_page_wakeup_locked(m);
 		vm_page_unwire(m, 0);
 		vm_page_unlock(m);
 	}

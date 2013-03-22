@@ -879,8 +879,8 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			} else
 				vm_pager_page_unswapped(m);
 		}
-		vm_page_wakeup(m);
 		vm_page_lock(m);
+		vm_page_wakeup_locked(m);
 		if (bp->bio_cmd == BIO_DELETE && len == PAGE_SIZE)
 			vm_page_free(m);
 		else

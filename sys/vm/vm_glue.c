@@ -258,8 +258,8 @@ vm_imgact_hold_page(vm_object_t object, vm_ooffset_t offset)
 	}
 	vm_page_lock(m);
 	vm_page_hold(m);
+	vm_page_wakeup_locked(m);
 	vm_page_unlock(m);
-	vm_page_wakeup(m);
 out:
 	VM_OBJECT_WUNLOCK(object);
 	return (m);

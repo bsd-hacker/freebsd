@@ -141,8 +141,8 @@ static inline void
 release_page(struct faultstate *fs)
 {
 
-	vm_page_wakeup(fs->m);
 	vm_page_lock(fs->m);
+	vm_page_wakeup_locked(fs->m);
 	vm_page_deactivate(fs->m);
 	vm_page_unlock(fs->m);
 	fs->m = NULL;
@@ -934,8 +934,8 @@ vnode_locked:
 		*m_hold = fs.m;
 		vm_page_hold(fs.m);
 	}
+	vm_page_wakeup_locked(fs.m);
 	vm_page_unlock(fs.m);
-	vm_page_wakeup(fs.m);
 
 	/*
 	 * Unlock everything, and return
@@ -1361,13 +1361,14 @@ vm_fault_copy_entry(vm_map_t dst_map, vm_map_t src_map,
 
 			vm_page_lock(dst_m);
 			vm_page_wire(dst_m);
+			vm_page_wakeup_locked(dst_m);
 			vm_page_unlock(dst_m);
 		} else {
 			vm_page_lock(dst_m);
 			vm_page_activate(dst_m);
+			vm_page_wakeup_locked(dst_m);
 			vm_page_unlock(dst_m);
 		}
-		vm_page_wakeup(dst_m);
 	}
 	VM_OBJECT_WUNLOCK(dst_object);
 	if (upgrade) {

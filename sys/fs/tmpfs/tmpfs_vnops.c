@@ -468,8 +468,8 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	VM_OBJECT_WLOCK(tobj);
 	vm_page_lock(m);
 	vm_page_unwire(m, TRUE);
+	vm_page_wakeup_locked(m);
 	vm_page_unlock(m);
-	vm_page_wakeup(m);
 	VM_OBJECT_WUNLOCK(tobj);
 
 	return (error);
@@ -696,8 +696,8 @@ lookupvpg:
 	}
 	vm_page_lock(tpg);
 	vm_page_unwire(tpg, TRUE);
+	vm_page_wakeup_locked(tpg);
 	vm_page_unlock(tpg);
-	vm_page_wakeup(tpg);
 out:
 	VM_OBJECT_WUNLOCK(tobj);
 	if (vpg != NULL) {
