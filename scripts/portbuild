@@ -200,6 +200,8 @@ if [ -f ${chroot}/.notready ]; then
   LOGIN_ENV=",UNAME_p=${arch},UNAME_m=${arch}"
   sed -i "" -e "s/:\(setenv.*\):/:\1${LOGIN_ENV}:/" ${chroot}/etc/login.conf
   cap_mkdb ${chroot}/etc/login.conf
+  #XXX workaround bug leaking user 5201 for unknown reasons
+  chown root:wheel ${chroot}/etc/passwd ${chroot}/etc/group ${chroot}/etc/master.passwd ${chroot}/etc/pwd.db ${chroot}/etc/spwd.db
 
   cat >> ${chroot}/etc/make.conf << EOF
 ARCH=${arch}
