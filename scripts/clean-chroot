@@ -67,7 +67,7 @@ for i in ${ARCHS_REQUIRING_LINPROCFS}; do
     fi
 done
 
-for i in /a/ports /usr/src /dev; do
+for i in /a/ports /usr/src /dev/fd /dev; do
     cleanup_mount ${chroot} ${i}
 done
 if [ ! -z "${ccache_dir}" ]; then
