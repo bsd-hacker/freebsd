@@ -350,7 +350,7 @@ if [ "${error}" = 0 ]; then
   jail -r ${jname}
   jail -c persist name=${jname} ip4=inherit ip6=inherit path=${chroot} \
 	host.hostname=${jname} allow.sysvipc allow.socket_af allow.raw_sockets allow.chflags
-  jexec -U root ${jname} /buildscript ${dirname} 1 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
+  jexec -U root ${jname} /bin/sh /buildscript ${dirname} 1 "$ED" "$PD" "$FD" "$BD" "$RD" "$PKGD" 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
   jail -r ${jname}
   jail -c persist name=${jname} ip4.addr=127.0.0.1 ip6=disable path=${chroot} \
 	host.hostname=${jname} allow.sysvipc allow.socket_af allow.raw_sockets allow.chflags
