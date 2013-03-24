@@ -108,7 +108,7 @@ postcopy() {
 	if [ "${buildid}" != "-" -a "${branch}" != "-" ]; then
 	    mkdir -p ${wrkdir}/chroot
 	    if [ "${use_zfs}" -eq 1 ]; then
-		zbase=${scratchdir#/}
+		zbase=zroot/a
 		zfs create ${zbase}/${branch} || true
 		zfs create ${zbase}/${branch}/${buildid} || true
 		zfs create ${zbase}/${branch}/${buildid}/world || true
