@@ -142,7 +142,7 @@ ath_edma_tx_fifo_fill(struct ath_softc *sc, struct ath_txq *txq)
 	struct ath_buf *bf;
 	int i = 0;
 
-	ATH_TX_LOCK_ASSERT(sc);
+	ATH_TXQ_LOCK_ASSERT(txq);
 
 	DPRINTF(sc, ATH_DEBUG_TX_PROC, "%s: called\n", __func__);
 
@@ -181,9 +181,8 @@ ath_edma_dma_restart(struct ath_softc *sc, struct ath_txq *txq)
 	    txq,
 	    txq->axq_qnum);
 
-	ATH_TX_LOCK_ASSERT(sc);
+	ATH_TXQ_LOCK_ASSERT(txq);
 	ath_edma_tx_fifo_fill(sc, txq);
-
 }
 
 /*
@@ -204,7 +203,7 @@ ath_edma_xmit_handoff_hw(struct ath_softc *sc, struct ath_txq *txq,
 {
 	struct ath_hal *ah = sc->sc_ah;
 
-	ATH_TX_LOCK_ASSERT(sc);
+	ATH_TXQ_LOCK(txq);
 
 	KASSERT((bf->bf_flags & ATH_BUF_BUSY) == 0,
 	    ("%s: busy status 0x%x", __func__, bf->bf_flags));
@@ -235,6 +234,7 @@ ath_edma_xmit_handoff_hw(struct ath_softc *sc, struct ath_txq *txq,
 		txq->axq_fifo_depth++;
 		ath_hal_txstart(ah, txq->axq_qnum);
 	}
+	ATH_TXQ_UNLOCK(txq);
 }
 
 /*
@@ -249,10 +249,11 @@ ath_edma_xmit_handoff_mcast(struct ath_softc *sc, struct ath_txq *txq,
     struct ath_buf *bf)
 {
 
-	ATH_TX_LOCK_ASSERT(sc);
+	ATH_TXQ_LOCK_ASSERT(txq);
 	KASSERT((bf->bf_flags & ATH_BUF_BUSY) == 0,
 	    ("%s: busy status 0x%x", __func__, bf->bf_flags));
 
+	ATH_TXQ_LOCK(txq);
 	/*
 	 * XXX this is mostly duplicated in ath_tx_handoff_mcast().
 	 */
@@ -279,6 +280,7 @@ ath_edma_xmit_handoff_mcast(struct ath_softc *sc, struct ath_txq *txq,
 
 	ATH_TXQ_INSERT_TAIL(txq, bf, bf_list);
 	ath_hal_gettxdesclinkptr(sc->sc_ah, bf->bf_lastds, &txq->axq_link);
+	ATH_TXQ_UNLOCK(txq);
 }
 
 /*
@@ -302,8 +304,6 @@ static void
 ath_edma_xmit_handoff(struct ath_softc *sc, struct ath_txq *txq,
     struct ath_buf *bf)
 {
-
-	ATH_TX_LOCK_ASSERT(sc);
 
 	DPRINTF(sc, ATH_DEBUG_XMIT_DESC,
 	    "%s: called; bf=%p, txq=%p, qnum=%d\n",
@@ -526,7 +526,7 @@ ath_edma_tx_processq(struct ath_softc *sc, int dosched)
 
 		txq = &sc->sc_txq[ts.ts_queue_id];
 
-		ATH_TX_LOCK(sc);
+		ATH_TXQ_LOCK(txq);
 		bf = TAILQ_FIRST(&txq->axq_q);
 
 		DPRINTF(sc, ATH_DEBUG_TX_PROC, "%s: qcuid=%d, bf=%p\n",
@@ -554,7 +554,7 @@ ath_edma_tx_processq(struct ath_softc *sc, int dosched)
 			txq->axq_aggr_depth--;
 		txq->axq_fifo_depth --;
 		/* XXX assert FIFO depth >= 0 */
-		ATH_TX_UNLOCK(sc);
+		ATH_TXQ_UNLOCK(txq);
 
 		/*
 		 * First we need to make sure ts_rate is valid.
@@ -636,11 +636,11 @@ ath_edma_tx_processq(struct ath_softc *sc, int dosched)
 		 * to begin validating that things are somewhat
 		 * working.
 		 */
-		ATH_TX_LOCK(sc);
+		ATH_TXQ_LOCK(txq);
 		if (dosched && txq->axq_fifo_depth == 0) {
 			ath_edma_tx_fifo_fill(sc, txq);
 		}
-		ATH_TX_UNLOCK(sc);
+		ATH_TXQ_UNLOCK(txq);
 	}
 
 	sc->sc_wd_timer = 0;

@@ -702,6 +702,8 @@ ath_tx_handoff_mcast(struct ath_softc *sc, struct ath_txq *txq,
 
 	KASSERT((bf->bf_flags & ATH_BUF_BUSY) == 0,
 	     ("%s: busy status 0x%x", __func__, bf->bf_flags));
+
+	ATH_TXQ_LOCK(txq);
 	if (txq->axq_link != NULL) {
 		struct ath_buf *last = ATH_TXQ_LAST(txq, axq_q_s);
 		struct ieee80211_frame *wh;
@@ -717,6 +719,7 @@ ath_tx_handoff_mcast(struct ath_softc *sc, struct ath_txq *txq,
 	}
 	ATH_TXQ_INSERT_TAIL(txq, bf, bf_list);
 	ath_hal_gettxdesclinkptr(sc->sc_ah, bf->bf_lastds, &txq->axq_link);
+	ATH_TXQ_UNLOCK(txq);
 }
 
 /*
@@ -774,6 +777,7 @@ ath_tx_handoff_hw(struct ath_softc *sc, struct ath_txq *txq,
 
 	/* For now, so not to generate whitespace diffs */
 	if (1) {
+		ATH_TXQ_LOCK(txq);
 #ifdef IEEE80211_SUPPORT_TDMA
 		int qbusy;
 
@@ -899,6 +903,7 @@ ath_tx_handoff_hw(struct ath_softc *sc, struct ath_txq *txq,
 			txq->axq_aggr_depth++;
 		ath_hal_gettxdesclinkptr(ah, bf->bf_lastds, &txq->axq_link);
 		ath_hal_txstart(ah, txq->axq_qnum);
+		ATH_TXQ_UNLOCK(txq);
 		ATH_KTR(sc, ATH_KTR_TX, 1,
 		    "ath_tx_handoff: txq=%u, txstart", txq->axq_qnum);
 	}
@@ -915,8 +920,7 @@ ath_legacy_tx_dma_restart(struct ath_softc *sc, struct ath_txq *txq)
 	struct ath_hal *ah = sc->sc_ah;
 	struct ath_buf *bf, *bf_last;
 
-	ATH_TX_LOCK_ASSERT(sc);
-
+	ATH_TXQ_LOCK_ASSERT(txq);
 	/* This is always going to be cleared, empty or not */
 	txq->axq_flags &= ~ATH_TXQ_PUTPENDING;
 
@@ -1834,6 +1838,7 @@ ath_tx_start(struct ath_softc *sc, struct ieee80211_node *ni,
 	bf->bf_state.bfs_tx_queue = txq->axq_qnum;
 	bf->bf_state.bfs_pri = pri;
 
+#if 1
 	/*
 	 * When servicing one or more stations in power-save mode
 	 * (or) if there is some mcast data waiting on the mcast
@@ -1842,7 +1847,7 @@ ath_tx_start(struct ath_softc *sc, struct ieee80211_node *ni,
 	 *
 	 * TODO: we should lock the mcastq before we check the length.
 	 */
-	if (ismcast && (vap->iv_ps_sta || avp->av_mcastq.axq_depth)) {
+	if (sc->sc_cabq_enable && ismcast && (vap->iv_ps_sta || avp->av_mcastq.axq_depth)) {
 		txq = &avp->av_mcastq;
 		/*
 		 * Mark the frame as eventually belonging on the CAB
@@ -1851,6 +1856,7 @@ ath_tx_start(struct ath_softc *sc, struct ieee80211_node *ni,
 		 */
 		bf->bf_state.bfs_tx_queue = sc->sc_cabq->axq_qnum;
 	}
+#endif
 
 	/* Do the generic frame setup */
 	/* XXX should just bzero the bf_state? */
@@ -3380,6 +3386,11 @@ ath_tx_tid_drain_pkt(struct ath_softc *sc, struct ath_node *an,
 			    __func__, SEQNO(bf->bf_state.bfs_seqno));
 #endif
 	}
+
+	/* Strip it out of an aggregate list if it was in one */
+	bf->bf_next = NULL;
+
+	/* Insert on the free queue to be freed by the caller */
 	TAILQ_INSERT_TAIL(bf_cq, bf, bf_list);
 }
 
