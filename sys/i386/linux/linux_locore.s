@@ -16,7 +16,7 @@ NON_GPROF_ENTRY(linux_sigcode)
 	call .getip0
 .getip0:
 	popl	%eax
-	add	$11, %eax
+	add	$.startsigcode-.getip0, %eax	/* ret address */
 	push	%eax
 	jmp	*LINUX_SIGF_HANDLER(%ebx)
 .startsigcode:
@@ -33,7 +33,7 @@ NON_GPROF_ENTRY(linux_rt_sigcode)
 	call	.getip1
 .getip1:
 	popl	%eax
-	add	$11, %eax
+	add	$.startrtsigcode-.getip1, %eax	/* ret address */
 	push	%eax
 	jmp	*LINUX_RT_SIGF_HANDLER(%edi)
 .startrtsigcode:
