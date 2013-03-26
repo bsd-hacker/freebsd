@@ -44,7 +44,7 @@
  * 
  * On a connect all keys except those belonging to that peer are removed.
  *
- * If a key that is changed that is in active use, packet loss may result.
+ * If a key that is in active use is changed, packet loss may result.
  *
  * Keys are not shared between sockets.  Adding and removing keys has to be
  * done on each socket where the peer address applies.  This is not much
@@ -53,14 +53,11 @@
  * Since applications tend to pass the key string unmodified it may be better
  * to specify the socket interface to be in base64 instead of an array of
  * uint8_t.  That would allow a human readable string to represent more bit
- * variance per byte.
+ * variance per byte, though the overall entropy doesn't change for a given
+ * key length.
  *
- * Configured keys on a socket can be retrieved as follows:
- *  getsockopt(so, IPPROTO_TCP, TCP_AO, tcp_ao_sopt, sizeof(*tcp_ao_sopt));
- *
- * All configured peers and key indexs are returned in the supplied vector.
- * If the vector is too small the result is truncated.  The number of keys
- * is returned in tao_keycnt.  No actual keys are returned or exposed.
+ * The active key index on a connected socket can be retrieved as follows:
+ *  getsockopt(so, IPPROTO_TCP, TCP_AO, int, sizeof(int));
  *
  * This interface may continue to evolve as the implementation matures and
  * handling experience is gained.  These structs should be moved to tcp.h
@@ -69,48 +66,36 @@
 
 /*
  * TCP-AO key interface struct passed to setsockopt().
+ * Per peer structures referenced from tcp_ao_sopt.
+ * The commands normally apply to a particular keyidx and peer combination.
  */
-struct tcp_ao_sopt {
-	int		 tao_flags;		/* flags for this operation */
-	int		 tao_keycnt;		/* number of keys in vector */
-	struct tcp_ao_key *tao_keyv;		/* pointer to key vector */
+struct tcp_ao_ssopt {
+	uint16_t	tao_cmd;		/* command, add, remove key */
+	uint16_t	tao_flags;		/* flags */
+	uint8_t		tao_keyidx;		/* key index per peer */
+	uint8_t		tao_algo;		/* MAC algorithm */
+	struct sockaddr_storage
+			tao_peer;		/* this key applies to ... */
+	uint8_t		tao_key[];		/* key string */
 };
+
+/*
+ * Commands for the tao_cmd field.
+ */
+#define TAO_CMD_ADD			1	/* add or replace key */
+#define TAO_CMD_DELIDX			2	/* delete keyidx|peer */
+#define TAO_CMD_DELPEER			3	/* delete all idx for peer */
+#define TAO_CMD_FLUSH			4	/* delete all keys */
 
 /*
  * Flags for the tao_flags field.
  */
-#define TAO_SOPT_REPLACE	0x00000001	/* replace full set */
+#define	TAO_FLAGS_ACTIVE		0x0001	/* active key index for SYN */
 
 /*
- * Per peer structures referenced from tcp_ao_sopt.
- * The commands normally apply to a particular keyidx and peer combination.
+ * MAC and KDF pairs for the tao_algo field.
  */
-struct tcp_ao_key {
-	uint8_t		 taok_cmd;		/* command, add, remove key */
-	uint8_t		 taok_flags;		/* flags for key */
-	uint8_t		 taok_algo;		/* MAC algorithm */
-	uint8_t		 taok_keyidx;		/* key index per peer */
-	int		 taok_keylen;		/* length of key */
-	uint8_t		*taok_key;		/* key string */
-	struct sockaddr	*taok_peer;		/* this key applies to ... */
-};
-
-/*
- * Commands for the taok_cmd field.
- */
-#define TAOK_CMD_ADD			1	/* add or replace key */
-#define TAOK_CMD_DELETE			2	/* delete key keyidx|peer */
-#define TAOK_CMD_DELETEALL		3	/* delete all idx for peer */
-
-/*
- * Flags for the taok_flags field.
- */
-#define	TAOK_FLAGS_ACTIVE		0x01	/* active key index for SYN */
-
-/*
- * MAC and KDF pairs for keys.
- */
-#define TAOK_ALGO_MD5SIG		1	/* legacy compatibility */
-#define TAOK_ALGO_HMAC-SHA-1-96		2	/* RFC5926, Section 2.2 */
-#define TAOK_ALGO_AES-128-CMAC-96	3	/* RFC5926, Section 2.2 */
+#define TAO_ALGO_MD5SIG			1	/* legacy compatibility */
+#define TAO_ALGO_HMAC-SHA-1-96		2	/* RFC5926, Section 2.2 */
+#define TAO_ALGO_AES-128-CMAC-96	3	/* RFC5926, Section 2.2 */
 
