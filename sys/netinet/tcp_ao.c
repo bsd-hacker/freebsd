@@ -55,6 +55,260 @@
  * The code below is skeleton code and not functional yet.
  */
 
+MALLOC_DEFINE(M_TCPAO, "tcp_ao", "TCP-AO peer and key structures");
+
+int
+tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len)
+{
+	srtuct tcp_ao_cb *c;
+	struct tcp_ao_peer *p;
+	struct tcp_ao_key *k;
+	int error;
+
+	switch (tao->tao_peer.sa_family) {
+	case AF_INET:
+		if (tao->tao_peer.sa_len != sizeof(struct sockaddr_in))
+			error = EINVAL;
+		break;
+	case AF_INET6:
+		if (tao->tao_peer.sa_len != sizeof(struct sockaddr_in6))
+			error = EINVAL;
+		break;
+	default:
+		error = EINVAL;
+	}
+	if (error)
+		goto out;
+
+	c = tp->t_ao;
+
+	switch (tao->tao_cmd) {
+	case TAO_CMD_ADD:
+		switch (tao->tao_algo) {
+		case TAO_ALGO_MD5SIG:
+		case TAO_ALGO_HMAC-SHA-1-96:
+		case TAO_ALGO_AES-128-CMAC-96:
+			break;
+		default:
+			error = EINVAL;
+			goto out;
+		}
+
+		/* Insert or overwrite */
+		if ((p = tcp_ao_peer_add(c, tao)) == NULL) {
+			error = EINVAL;
+			break;
+		}
+		if (tp->t_state > TCPS_LISTEN &&
+		    p->tap_activekey == tao->tao_keyidx) {
+			error = EINVAL;
+			break;
+		}
+		if ((k = tcp_ao_key_add(p, tao, taolen - sizeof(*tao)) == NULL) {
+			error = EINVAL;
+		}
+		break;
+
+	case TAO_CMD_DELIDX:
+		/* Can't remove active index */
+		if ((p = tcp_ao_peer_find(c, tao)) == NULL) {
+			error = EINVAL;
+			break;
+		}
+		if (tp->t_state > TCPS_LISTEN &&
+		    p->tap_activekey == tao->tao_keyidx) {
+			error = EINVAL;
+			break;
+		}
+		if (tcp_ao_key_del(p, tao->tao_keyidx) != 0) {
+			error = ENOENT;
+		}
+		break;
+
+	case TAO_CMD_DELPEER:
+		if (tp->t_state > TCPS_LISTEN)
+			break;
+
+		if ((p = tcp_ao_peer_find(c, tao)) == NULL) {
+			error = EINVAL;
+			break;
+		}
+		tcp_ao_peer_del(c, p);
+		break;
+
+	case TAO_CMD_FLUSH:
+		if (tp->t_state > TCPS_LISTEN)
+			break;
+
+		tcp_ao_peer_flush(c);
+		break;
+
+	default:
+		error = EINVAL;
+		goto out;
+	}
+
+out:
+	return (error);
+}
+
+struct tcp_ao_peer *
+tcp_ao_peer_find(struct tcp_ao_cb *tac, struct sockaddr *sa)
+{
+	struct tcp_ao_peer *p;
+
+	LIST_FOREACH(p, tac->tac_peers, tap_entry) {
+		if (p->tap_peer.sa_family == sa->sa_family &&
+		    !bcmp(p->tap_peer.sa_data, sa->sa_data,
+			min(p->tap_peer.sa.len, sa->sa_len)))
+			return (p);
+	}
+	return (NULL);
+}
+
+struct tcp_ao_peer *
+tcp_ao_peer_add(struct tcp_ao_cb *tac, struct tcp_ao_sopt *tao)
+{
+	struct tcp_ao_peer *p;
+
+	if ((p = tcp_ao_peer_find(tac, tao->tao_peer)) == NULL) {
+		if ((p = malloc(sizeof(*p), M_TCPAO, M_NOWAIT)) == NULL)
+			return (p);
+		p->tap_flags = 0;
+		bcopy(tao->tao_peer, p->tac_peer, tao->tao_peer.sa_len);
+		SLIST_INIT(&p->tak_keys);
+	}
+
+	LIST_INSERT_HEAD(&tap->tap_peers, p);
+	return (p);
+}
+
+int
+tcp_ao_peer_del(struct tcp_ao_cb *tac, struct tcp_ao_peer *tap)
+{
+
+	tcp_ao_key_flush(tap);
+	LIST_REMOVE(tap, tap_list);
+	free(tap, M_TCPAO);
+	return (0);
+}
+
+void
+tcp_ao_peer_flush(struct tcp_ao_cb *tac)
+{
+	struct tcp_ao_peer *p, *p2;
+
+	SLIST_FOREACH_SAFE(p, tac->tac_peers, entries, p2) {
+		tcp_ao_key_flush(p);
+		free(p, M_TCPAO);
+	}
+	LIST_INIT(&tac->tac_peers);
+}
+
+struct tcp_ao_key *
+tcp_ao_key_find(struct tcp_ao_peer *tap, uint8_t idx)
+{
+	struct tcp_ao_key *k;
+
+	SLIST_FOREACH(k, &tap->tap_keys, entry) {
+		if (k->keyidx == idx)
+			return (k);
+	}
+	return (NULL);
+}
+
+struct tcp_ao_key *
+tcp_ao_key_add(struct tcp_ao_peer *tap, struct tcp_so_sopt *tao, uint8_t keylen)
+{
+	struct tcp_ao_key *k;
+
+	if ((k = tcp_ao_key_find(tap, tao->tao_keyidx)) != NULL) {
+		SLIST_REMOVE(&tap->tap_keys, k, entry, entry);
+		free(k, M_TCPAO);
+	}
+	if ((k = malloc(sizeof(*k) + keylen, M_TCPAO, M_NOWAIT)) == NULL)
+		return (k);
+
+	k->keyidx = tao->tao_keyidx;
+	k->keyflags = 0;
+	k->keyalgo = tao->tao_keyalgo;
+	k->keylen = keylen;
+	bcopy(tao->tao_key, k->key, k->keylen);
+
+	SLIST_INSERT_HEAD(&tap->tap_keys, k);
+	return (k);
+}
+
+int
+struct tcp_ao_key_del(struct tcp_ao_peer *tap, uint8_t keyidx)
+{
+	struct tcp_ao_key *k, *k2;
+
+	SLIST_FOREACH_SAFE(k, &tap->tap_keys, entries, k2) {
+		if (k->keyidx == keyidx) {
+			SLIST_REMOVE(&tap->tap_keys, entries, entries);
+			free(k, M_TCPAO);
+			return (0);
+		}
+	}
+	return (ENOENT);
+}
+
+void
+tcp_ao_key_flush(struct tcp_ao_peer *tap)
+{
+	struct tcp_ao_key *k, *k2;
+
+	SLIST_FOREACH_SAFE(k, &tap->tap_keys, entries, k2)
+		free(k, M_TCPAO);
+	SLIST_INIT(&tap->tap_keys);
+}
+
+int
+tcp_ao_peer_clone(struct tcpcb *tp1, struct tcpcb *tp2, struct sockaddr *sa)
+{
+	struct tcp_ao_peer *p1, *p2;
+	struct tcp_ao_key *k1, *k2;
+
+	if ((p1 = tcp_ao_peer_find(tp1->t_ao, sa)) == NULL)
+		return (0);
+
+	if (tcp_ao_cb_alloc(tp2) != 0)
+		return (ENOMEM);
+
+	bcopy(p1, p2, malloc(sizeof(*p2));
+	SLIST_INIT(&p2->tak_keys);
+	SLIST_FOREACH(k1, &p1->tap_keys, entry) {
+		if ((k2 = malloc(sizeof(*k2) + k1->keylen, M_TCPAO, M_NOWAIT)) == NULL)
+			return (ENOMEM);
+		bcopy(k1, k2, k1->keylen);
+		SLIST_INSERT_HEAD(&p2->tap_keys, k2);
+	}
+	return (0);
+}
+
+struct tcp_ao_cb *
+tcp_ao_cb_alloc(void)
+{
+	struct tcp_ao_cb *c;
+
+	if ((c = malloc(sizeof(*c), M_TCPAO, M_ZERO|M_NOWAIT)) == NULL)
+		return (NULL);
+	LIST_INIT(&c->tac_peers);
+	return (c);
+}
+
+void
+tcp_ao_cb_free(struct tcpcb *tp)
+{
+	struct tcp_ao_cb *c;
+
+	c = tp->t_ao;
+	tp->t_ao = NULL;
+	tcp_ao_peer_flush(c);
+	free(c, M_TCPAO);
+}
+
 /*
  * There two types of key derivation in TCP-AO.
  * One is to create the session key from the imported master key.

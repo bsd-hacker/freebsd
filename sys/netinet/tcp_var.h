@@ -208,8 +208,10 @@ struct tcpcb {
 	u_int	t_keepintvl;		/* interval between keepalives */
 	u_int	t_keepcnt;		/* number of keepalives before close */
 
+	struct tcp_ao_inp *t_ao;	/* TCP-AO control functions */
+
 	uint32_t t_ispare[8];		/* 5 UTO, 3 TBD */
-	void	*t_pspare2[4];		/* 4 TBD */
+	void	*t_pspare2[3];		/* 3 TBD */
 	uint64_t _pad[6];		/* 6 TBD (1-2 CC/RTT?) */
 };
 

@@ -64,20 +64,23 @@
  * once stable.
  */
 
+MALLOC_DECLARE(M_TCPAO);
+
 /*
  * TCP-AO key interface struct passed to setsockopt().
  * Per peer structures referenced from tcp_ao_sopt.
  * The commands normally apply to a particular keyidx and peer combination.
  */
-struct tcp_ao_ssopt {
+struct tcp_ao_sopt {
 	uint16_t	tao_cmd;		/* command, add, remove key */
 	uint16_t	tao_flags;		/* flags */
 	uint8_t		tao_keyidx;		/* key index per peer */
 	uint8_t		tao_algo;		/* MAC algorithm */
 	struct sockaddr_storage
 			tao_peer;		/* this key applies to ... */
-	uint8_t		tao_key[];		/* key string */
+	uint8_t		tao_key[];		/* base64 key string */
 };
+#define TAO_KEY_MAXLEN			128	/* base64 encoded */
 
 /*
  * Commands for the tao_cmd field.
@@ -98,4 +101,38 @@ struct tcp_ao_ssopt {
 #define TAO_ALGO_MD5SIG			1	/* legacy compatibility */
 #define TAO_ALGO_HMAC-SHA-1-96		2	/* RFC5926, Section 2.2 */
 #define TAO_ALGO_AES-128-CMAC-96	3	/* RFC5926, Section 2.2 */
+
+/*
+ * In kernel storage of the key information.
+ */
+struct tcp_ao_cb {
+	int tac_algo;
+	union {
+		uint8_t md5[MD5_DIGEST_LENGTH];
+		uint8_t hmac[SHA1_DIGEST_LENGTH];
+		uint8_t cmac[AES_CMAC_LENGTH];
+	} tac_skey, tac_rkey;
+	LIST_HEAD(tac_peer, tcp_ao_peer) tac_peers;
+};
+
+struct tcp_ao_peer {
+	LIST_ENTRY(tcp_ao_peer)	tap_entry;
+	uint16_t tap_flags;
+	union {
+		sockaddr sa;
+		sockaddr_in sin4;
+		sockaddr_in6 sin6;
+	} tap_peer;
+	uint8_t tap_activekey;
+	SLIST_HEAD() tap_keys;
+};
+
+struct tcp_ao_key {
+	SLIST_ENTRY(tcp_ao_key) entry;
+	uint8_t keyidx;
+	uint8_t keyflags;
+	uint8_t keyalgo;
+	uint8_t keylen;
+	uint8_t key[];			/* after base64_decode */
+};
 
