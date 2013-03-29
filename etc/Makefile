@@ -2,9 +2,10 @@
 
 ETCFILES	 =
 ETCFILES	+= default.rc
-ETCFILES	+= head-update.rc head-build.rc
+ETCFILES	+= freebsd7-update.rc freebsd7-build.rc
 ETCFILES	+= freebsd8-update.rc freebsd8-build.rc
 ETCFILES	+= freebsd9-update.rc freebsd9-build.rc
+ETCFILES	+= head-update.rc head-build.rc
 ETCDIR		?= ${HOME}/etc
 ETCOWN		?= ${USER}
 ETCGRP		?= ${USER}
