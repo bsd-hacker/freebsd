@@ -622,7 +622,7 @@ vq_ring_update_avail(struct virtqueue *vq, uint16_t desc_idx)
 	avail_idx = vq->vq_ring.avail->idx & (vq->vq_nentries - 1);
 	vq->vq_ring.avail->ring[avail_idx] = desc_idx;
 
-	wmb();
+	mb();
 	vq->vq_ring.avail->idx++;
 
 	/* Keep pending count until virtqueue_notify(). */
