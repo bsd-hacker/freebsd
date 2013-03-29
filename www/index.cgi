@@ -1,6 +1,6 @@
 #!/usr/bin/perl -Tw
 #-
-# Copyright (c) 2003-2012 Dag-Erling Smørgrav
+# Copyright (c) 2003-2013 Dag-Erling Smørgrav
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -84,8 +84,10 @@ sub do_config($) {
 
     my %branches = %{$CONFIGS{$config}};
 
+    my $prettyconfig = $config;
+    $prettyconfig =~ s/^(.*?)-build$/$1/;
     print "      <tr class='header'>
-        <th>$config</th>
+        <th>$prettyconfig</th>
 ";
     foreach my $arch (sort(keys(%ARCHES))) {
 	foreach my $machine (sort(keys(%{$ARCHES{$arch}}))) {
@@ -101,8 +103,12 @@ sub do_config($) {
     my $now = time();
 
     foreach my $branch (sort(inverse_branch_sort keys(%branches))) {
+	my $prettybranch = $branch;
+	$prettybranch =~ s@^HEAD$@/head@;
+	$prettybranch =~ s@^RELENG_(\d+)_(\d+)$@/releng/$1.$2@;
+	$prettybranch =~ s@^RELENG_(\d+)$@/stable/$1@;
 	print "      <tr>
-	<th>$branch</th>
+	<th>$prettybranch</th>
 ";
 	foreach my $arch (sort(keys(%ARCHES))) {
 	    foreach my $machine (sort(keys(%{$ARCHES{$arch}}))) {
