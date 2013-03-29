@@ -1,4 +1,0 @@
-# $FreeBSD$
-branches	= RELENG_7
-platforms	= amd64, i386, i386/pc98, ia64, powerpc, sparc64
-targets		= update

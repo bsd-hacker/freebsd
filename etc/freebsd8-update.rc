@@ -1,0 +1,12 @@
+#
+# FreeBSD 8 tinderbox setup, shared source - update stage
+#
+# $FreeBSD$
+#
+
+branches	 = RELENG_8, RELENG_8_4
+platforms	 = none
+srcdir		 = %%SANDBOX%%/%%BRANCH%%/src
+targets		 = update, version
+recipient	+= <stable@freebsd.org>
+subject		= [%%COMMENT%%] source tree update failure
