@@ -475,7 +475,7 @@ nfs_bioread(struct vnode *vp, struct uio *uio, int ioflag, struct ucred *cred)
 	    case VREG:
 		nfsstats.biocache_reads++;
 		lbn = uio->uio_offset / biosize;
-		on = uio->uio_offset & (biosize - 1);
+		on = uio->uio_offset - (lbn * biosize);
 
 		/*
 		 * Start the read ahead(s), as required.
@@ -1011,7 +1011,7 @@ flush_and_restart:
 	do {
 		nfsstats.biocache_writes++;
 		lbn = uio->uio_offset / biosize;
-		on = uio->uio_offset & (biosize-1);
+		on = uio->uio_offset - (lbn * biosize);
 		n = MIN((unsigned)(biosize - on), uio->uio_resid);
 again:
 		/*
@@ -1242,7 +1242,7 @@ nfs_getcacheblk(struct vnode *vp, daddr_t bn, int size, struct thread *td)
  		sigset_t oldset;
 
  		nfs_set_sigmask(td, &oldset);
-		bp = getblk(vp, bn, size, NFS_PCATCH, 0, 0);
+		bp = getblk(vp, bn, size, PCATCH, 0, 0);
  		nfs_restore_sigmask(td, &oldset);
 		while (bp == NULL) {
 			if (nfs_sigintr(nmp, td))
@@ -1275,7 +1275,7 @@ nfs_vinvalbuf(struct vnode *vp, int flags, struct thread *td, int intrflg)
 	if ((nmp->nm_flag & NFSMNT_INT) == 0)
 		intrflg = 0;
 	if (intrflg) {
-		slpflag = NFS_PCATCH;
+		slpflag = PCATCH;
 		slptimeo = 2 * hz;
 	} else {
 		slpflag = 0;
@@ -1354,7 +1354,7 @@ nfs_asyncio(struct nfsmount *nmp, struct buf *bp, struct ucred *cred, struct thr
 	}
 again:
 	if (nmp->nm_flag & NFSMNT_INT)
-		slpflag = NFS_PCATCH;
+		slpflag = PCATCH;
 	gotiod = FALSE;
 
 	/*
@@ -1419,7 +1419,7 @@ again:
 					mtx_unlock(&nfs_iod_mtx);
 					return (error2);
 				}
-				if (slpflag == NFS_PCATCH) {
+				if (slpflag == PCATCH) {
 					slpflag = 0;
 					slptimeo = 2 * hz;
 				}
@@ -1781,7 +1781,7 @@ nfs_meta_setsize(struct vnode *vp, struct ucred *cred, struct thread *td, u_quad
 		 */
 		error = vtruncbuf(vp, cred, nsize, biosize);
 		lbn = nsize / biosize;
-		bufsize = nsize & (biosize - 1);
+		bufsize = nsize - (lbn * biosize);
 		bp = nfs_getcacheblk(vp, lbn, bufsize, td);
  		if (!bp)
  			return EINTR;

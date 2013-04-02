@@ -621,6 +621,7 @@ rx_error:
 		    (rs->rs_status & sc->sc_monpass)) {
 			bus_dmamap_sync(sc->sc_dmat, bf->bf_dmamap,
 			    BUS_DMASYNC_POSTREAD);
+			bus_dmamap_unload(sc->sc_dmat, bf->bf_dmamap);
 			/* NB: bpf needs the mbuf length setup */
 			len = rs->rs_datalen;
 			m->m_pkthdr.len = m->m_len = len;
@@ -1030,7 +1031,7 @@ rx_proc_next:
 	 * will reduce latency.
 	 */
 	if (npkts >= ATH_RX_MAX)
-		taskqueue_enqueue(sc->sc_tq, &sc->sc_rxtask);
+		sc->sc_rx.recv_sched(sc, resched);
 
 	ATH_PCU_LOCK(sc);
 	sc->sc_rxproc_cnt--;
@@ -1181,6 +1182,21 @@ ath_legacy_dma_rxteardown(struct ath_softc *sc)
 	return (0);
 }
 
+static void
+ath_legacy_recv_sched(struct ath_softc *sc, int dosched)
+{
+
+	taskqueue_enqueue(sc->sc_tq, &sc->sc_rxtask);
+}
+
+static void
+ath_legacy_recv_sched_queue(struct ath_softc *sc, HAL_RX_QUEUE q,
+    int dosched)
+{
+
+	taskqueue_enqueue(sc->sc_tq, &sc->sc_rxtask);
+}
+
 void
 ath_recv_setup_legacy(struct ath_softc *sc)
 {
@@ -1200,4 +1216,6 @@ ath_recv_setup_legacy(struct ath_softc *sc)
 
 	sc->sc_rx.recv_setup = ath_legacy_dma_rxsetup;
 	sc->sc_rx.recv_teardown = ath_legacy_dma_rxteardown;
+	sc->sc_rx.recv_sched = ath_legacy_recv_sched;
+	sc->sc_rx.recv_sched_queue = ath_legacy_recv_sched_queue;
 }

@@ -755,6 +755,10 @@ options 	NGATM_CCATM
 
 device		mn	# Munich32x/Falc54 Nx64kbit/sec cards.
 
+# Network stack virtualization.
+options		VIMAGE
+options		VNET_DEBUG	# debug for VIMAGE
+
 #
 # Network interfaces:
 #  The `loop' device is MANDATORY when networking is enabled.
@@ -986,7 +990,7 @@ options 	DUMMYNET
 # See zero_copy(9) for more details.
 # XXX: The COW based send mechanism is not safe and may result in
 # kernel crashes.
-# XXX: None of the current NIC drivers support disposeable pages.
+# XXX: None of the current NIC drivers support disposable pages.
 options		SOCKET_SEND_COW
 options		SOCKET_RECV_PFLIP
 
