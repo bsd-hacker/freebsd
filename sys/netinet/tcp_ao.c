@@ -60,7 +60,7 @@ MALLOC_DEFINE(M_TCPAO, "tcp_ao", "TCP-AO peer and key structures");
 int
 tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len)
 {
-	srtuct tcp_ao_cb *c;
+	struct tcp_ao_cb *c;
 	struct tcp_ao_peer *p;
 	struct tcp_ao_key *k;
 	int error;

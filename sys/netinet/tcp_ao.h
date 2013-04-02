@@ -124,7 +124,7 @@ struct tcp_ao_peer {
 		sockaddr_in6 sin6;
 	} tap_peer;
 	uint8_t tap_activekey;
-	SLIST_HEAD() tap_keys;
+	SLIST_HEAD(tap_key, tcp_ao_key) tap_keys;
 };
 
 struct tcp_ao_key {

@@ -1506,6 +1506,7 @@ tcp_addoptions(struct tcpopt *to, u_char *optp)
 				 *optp++ = 0;
 			break;
 			}
+#if 0
 		case TOF_AO:
 			{
 			int siglen = tcp_ao_siglen(tp);
@@ -1526,6 +1527,7 @@ tcp_addoptions(struct tcpopt *to, u_char *optp)
 				*optp++ = 0;
 			break;
 			}
+#endif
 		case TOF_SACK:
 			{
 			int sackblks = 0;

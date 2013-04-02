@@ -1308,7 +1308,7 @@ tcp_ctloutput(struct socket *so, struct sockopt *sopt)
 	u_int	ui;
 	struct	inpcb *inp;
 	struct	tcpcb *tp;
-	void	*x;
+//	void	*x;
 	struct	tcp_info ti;
 	char buf[TCP_CA_NAME_MAX];
 	struct cc_algo *algo;
@@ -1358,6 +1358,7 @@ tcp_ctloutput(struct socket *so, struct sockopt *sopt)
 				tp->t_flags &= ~TF_SIGNATURE;
 			goto unlock_and_done;
 #endif /* TCP_SIGNATURE */
+#if 0
 		case TCP_AO:
 			INP_WUNLOCK(inp);
 			if (sopt->sopt_valsize <= sizeof(struct tcp_ao_sopt) +
@@ -1373,7 +1374,7 @@ tcp_ctloutput(struct socket *so, struct sockopt *sopt)
 			INP_WLOCK_RECHECK(inp);
 			error = tcp_ao_ctl(tp, x, sopt->sopt_valsize);
 			goto unlock_and_done;
-
+#endif
 		case TCP_NODELAY:
 		case TCP_NOOPT:
 			INP_WUNLOCK(inp);
@@ -1568,7 +1569,7 @@ unlock_and_done:
 			error = sooptcopyout(sopt, &optval, sizeof optval);
 			break;
 #endif
-		case TCO_AO:
+		case TCP_AO:
 			optval = (tp->t_flags & TF_AO) ? 1 : 0;
 			INP_WUNLOCK(inp);
 			error = sooptcopyout(sopt, &optval, sizeof optval);
