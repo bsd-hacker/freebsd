@@ -336,7 +336,7 @@ nvme_qpair_complete_tracker(struct nvme_qpair *qpair, struct nvme_tracker *tr,
 		req->retries++;
 		nvme_qpair_submit_tracker(qpair, tr);
 	} else {
-		if (req->payload_size > 0 || req->uio != NULL)
+		if (req->type != NVME_REQUEST_NULL)
 			bus_dmamap_unload(qpair->dma_tag,
 			    tr->payload_dma_map);
 
@@ -740,22 +740,34 @@ _nvme_qpair_submit_request(struct nvme_qpair *qpair, struct nvme_request *req)
 	TAILQ_INSERT_TAIL(&qpair->outstanding_tr, tr, tailq);
 	tr->req = req;
 
-	if (req->uio == NULL) {
-		if (req->payload_size > 0) {
-			err = bus_dmamap_load(tr->qpair->dma_tag,
-					      tr->payload_dma_map, req->payload,
-					      req->payload_size,
-					      nvme_payload_map, tr, 0);
-			if (err != 0)
-				panic("bus_dmamap_load returned non-zero!\n");
-		} else
-			nvme_qpair_submit_tracker(tr->qpair, tr);
-	} else {
-		err = bus_dmamap_load_uio(tr->qpair->dma_tag,
-					  tr->payload_dma_map, req->uio,
-					  nvme_payload_map_uio, tr, 0);
+	switch (req->type) {
+	case NVME_REQUEST_VADDR:
+		err = bus_dmamap_load(tr->qpair->dma_tag, tr->payload_dma_map,
+		    req->u.payload, req->payload_size, nvme_payload_map, tr, 0);
 		if (err != 0)
 			panic("bus_dmamap_load returned non-zero!\n");
+		break;
+	case NVME_REQUEST_NULL:
+		nvme_qpair_submit_tracker(tr->qpair, tr);
+		break;
+	case NVME_REQUEST_UIO:
+		err = bus_dmamap_load_uio(tr->qpair->dma_tag,
+		    tr->payload_dma_map, req->u.uio, nvme_payload_map_uio,
+		    tr, 0);
+		if (err != 0)
+			panic("bus_dmamap_load_uio returned non-zero!\n");
+		break;
+#ifdef NVME_UNMAPPED_BIO_SUPPORT
+	case NVME_REQUEST_BIO:
+		err = bus_dmamap_load_bio(tr->qpair->dma_tag,
+		    tr->payload_dma_map, req->u.bio, nvme_payload_map, tr, 0);
+		if (err != 0)
+			panic("bus_dmamap_load_bio returned non-zero!\n");
+		break;
+#endif
+	default:
+		panic("unknown nvme request type 0x%x\n", req->type);
+		break;
 	}
 }
 
