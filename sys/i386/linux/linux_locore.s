@@ -48,8 +48,6 @@ NON_GPROF_ENTRY(linux_vsyscall)
 	ret
 .endvsyscall:
 
-	.globl linux_sharedpage
-	.set linux_sharedpage, VM_MAXUSER_ADDRESS - PAGE_SIZE
 
 	.section .note.Linux, "a",@note
 	.long 2f - 1f		/* namesz */

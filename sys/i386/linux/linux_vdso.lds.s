@@ -8,7 +8,7 @@
 
 SECTIONS
 {
-	. = linux_sharedpage + SIZEOF_HEADERS;
+	. = . + SIZEOF_HEADERS;
 
 	.hash		: { *(.hash) }			:text
 	.gnu.hash	: { *(.gnu.hash) }

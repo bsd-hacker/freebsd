@@ -49,8 +49,6 @@ NON_GPROF_ENTRY(linux32_vsyscall)
 	ret
 .endvsyscall:
 
-	.globl linux32_sharedpage
-	.set linux32_sharedpage, LINUX32_SHAREDPAGE
 
 	.section .note.Linux, "a",@note
 	.long 2f - 1f		/* namesz */
