@@ -397,6 +397,23 @@ ath_sysctl_txagg(SYSCTL_HANDLER_ARGS)
 	printf("Total mgmt TX buffers: %d; Total mgmt TX buffers busy: %d\n",
 	    t, i);
 
+	ATH_RX_LOCK(sc);
+	for (i = 0; i < 2; i++) {
+		printf("%d: fifolen: %d/%d; head=%d; tail=%d\n",
+		    i,
+		    sc->sc_rxedma[i].m_fifo_depth,
+		    sc->sc_rxedma[i].m_fifolen,
+		    sc->sc_rxedma[i].m_fifo_head,
+		    sc->sc_rxedma[i].m_fifo_tail);
+	}
+	i = 0;
+	TAILQ_FOREACH(bf, &sc->sc_rxbuf, bf_list) {
+		i++;
+	}
+	printf("Total RX buffers in free list: %d buffers\n",
+	    i);
+	ATH_RX_UNLOCK(sc);
+
 	return 0;
 }
 
@@ -736,6 +753,13 @@ ath_sysctlattach(struct ath_softc *sc)
 		"txq_mcastq_maxdepth", CTLFLAG_RW,
 		&sc->sc_txq_mcastq_maxdepth, 0,
 		"Maximum buffer depth for multicast/broadcast frames");
+
+#if 0
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+		"cabq_enable", CTLFLAG_RW,
+		&sc->sc_cabq_enable, 0,
+		"Whether to transmit on the CABQ or not");
+#endif
 
 #ifdef IEEE80211_SUPPORT_TDMA
 	if (ath_hal_macversion(ah) > 0x78) {
