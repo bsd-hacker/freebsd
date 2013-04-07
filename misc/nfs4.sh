@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -45,7 +45,7 @@ export RUNDIR=$mntpoint/nfs/stressX
 export runRUNTIME=3m
 rm -rf /tmp/stressX.control/*
 
-(cd ..; ./run.sh all.cfg) &
+su $testuser -c '(cd ..; ./run.sh all.cfg)' &
 sleep 60
 
 while mount | grep -q $mntpoint; do
