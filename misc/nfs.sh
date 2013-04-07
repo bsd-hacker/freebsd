@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008-2011 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -40,8 +40,9 @@ mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
 
-(cd ..; ./run.sh disk.cfg) 
+su $testuser -c "(cd ..; ./run.sh disk.cfg)"
 
-while mount | grep "$mntpoint" | grep -q nfs; do
-	umount $mntpoint
+umount $mntpoint
+while mount | grep "$mntpoint " | grep -q nfs; do
+	umount -f $mntpoint
 done
