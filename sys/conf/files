@@ -675,7 +675,6 @@ dev/ata/ata_if.m		optional ata | atacore
 dev/ata/ata-all.c		optional ata | atacore
 dev/ata/ata-dma.c		optional ata | atacore
 dev/ata/ata-lowlevel.c		optional ata | atacore
-dev/ata/ata-queue.c		optional ata | atacore
 dev/ata/ata-sata.c		optional ata | atacore
 dev/ata/ata-card.c		optional ata pccard | atapccard
 dev/ata/ata-cbus.c		optional ata pc98 | atapc98
@@ -2684,6 +2683,7 @@ kern/subr_bus.c			standard
 kern/subr_bus_dma.c		standard
 kern/subr_bufring.c		standard
 kern/subr_clock.c		standard
+kern/subr_counter.c		standard
 kern/subr_devstat.c		standard
 kern/subr_disk.c		standard
 kern/subr_eventhandler.c	standard
