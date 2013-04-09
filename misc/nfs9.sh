@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -41,17 +41,19 @@
 
 [ ! -d $mntpoint ] &&  mkdir $mntpoint
 for i in `jot 10`; do
-	mount | grep "$mntpoint" | grep nfs > /dev/null && umount $mntpoint
-	mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
-	rm -rf $mntpoint/stressX/*
-	rm -rf /tmp/stressX.control
+	mount | grep "on $mntpoint " | grep -q nfs && umount $mntpoint
+	mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft \
+		-o rw 127.0.0.1:/tmp $mntpoint
 
-	export RUNDIR=$mntpoint/nfs/stressX
-	[ ! -d $RUNDIR ] && mkdir -p $RUNDIR
+	sleep .5
+	export RUNDIR=$mntpoint/nfs9/stressX
+	rm -rf $RUNDIR
+	mkdir -p $RUNDIR
+	chmod 777 $RUNDIR
 	export runRUNTIME=3m
 	rm -rf /tmp/stressX.control/*
 
-	(cd ..; ./run.sh all.cfg) &
+	su $testuser -c '(cd ..; ./run.sh all.cfg) > /dev/null 2>&1' &
 	sleep 60
 
 	while mount | grep -q $mntpoint; do
@@ -60,3 +62,4 @@ for i in `jot 10`; do
 	kill -9 $!
 done
 ../tools/killall.sh
+rm -rf /tmp/nfs9
