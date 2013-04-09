@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008-2011 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,7 @@ mdconfig -l | grep -q ${mdstart}  &&  mdconfig -d -u $mdstart
 mdconfig -a -t vnode -f $D -u $mdstart
 
 bsdlabel -w md${mdstart} auto
-newfs -U md${mdstart}${part}
+newfs -U md${mdstart}${part} > /dev/null
 mount /dev/md${mdstart}${part} $mntpoint
 
 mkdir ${mntpoint}/stressX
@@ -57,7 +57,7 @@ mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:$mntpoint ${mn
 
 export RUNDIR=${mntpoint}2/stressX
 export runRUNTIME=4m
-(cd ..; ./run.sh disk.cfg) &
+su $testuser -c "(cd ..; ./run.sh disk.cfg > /dev/null 2>&1)" &
 sleep 60
 
 for i in `jot 10`; do
