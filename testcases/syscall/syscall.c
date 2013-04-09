@@ -70,6 +70,8 @@ setup(int nb __unused)
 	int i;
 	struct rlimit rl;
 
+	if (geteuid() == 0)
+		_exit(1);	/* Do not run as root */
 	umask(0);
 	sprintf(path,"%s.%05d", getprogname(), getpid());
 	(void)mkdir(path, 0770);
