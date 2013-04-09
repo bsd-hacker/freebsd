@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008-2011 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -44,11 +44,6 @@ cd $odir
 
 mount | grep "$mntpoint" | grep nfs > /dev/null && umount $mntpoint
 mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
-
-
-#export RUNDIR=$mntpoint/stressX
-#export runRUNTIME=2m
-#(cd /home/pho/stress2; ./run.sh disk.cfg) &
 
 for i in `jot 10`; do
 	/tmp/nfsrename  $mntpoint/nfsrename.$i &
