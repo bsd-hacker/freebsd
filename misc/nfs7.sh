@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2009 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2009-2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -37,17 +37,16 @@
 [ ! -d $mntpoint ] &&  mkdir $mntpoint
 mount | grep "$mntpoint" | grep nfs > /dev/null && umount $mntpoint
 mount -t nfs -o nfsv3,tcp,nolockd -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
-rm -rf $mntpoint/stressX/*
 rm -rf /tmp/stressX.control
 
 export RUNDIR=$mntpoint/nfs/stressX
-[ ! -d $RUNDIR ] && mkdir -p $RUNDIR
+rm -rf $RUNDIR
+mkdir -p $RUNDIR
+chmod 777 $RUNDIR
 export runRUNTIME=10m
 rm -rf /tmp/stressX.control/*
 
-cd ..
-./run.sh marcus.cfg
-cd -
+su $testuser -c "(cd ..; ./run.sh marcus.cfg)"
 
 umount $mntpoint
 while mount | grep -q $mntpoint; do
