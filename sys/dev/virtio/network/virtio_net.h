@@ -51,7 +51,8 @@
 #define VIRTIO_NET_F_CTRL_VLAN	0x80000 /* Control channel VLAN filtering */
 #define VIRTIO_NET_F_CTRL_RX_EXTRA 0x100000 /* Extra RX mode control support */
 #define VIRTIO_NET_F_GUEST_ANNOUNCE 0x200000 /* Announce device on network */
-#define VIRTIO_NET_F_MQ		0x400000
+#define VIRTIO_NET_F_MQ		0x400000 /* Device supports RFS */
+#define VIRTIO_NET_F_CTRL_MAC_ADDR 0x800000 /* Set MAC address */
 
 #define VIRTIO_NET_S_LINK_UP	1	/* Link is up */
 
@@ -142,6 +143,10 @@ typedef uint8_t virtio_net_ctrl_ack;
  * first sg list contains unicast addresses, the second is for multicast.
  * This functionality is present if the VIRTIO_NET_F_CTRL_RX feature
  * is available.
+ *
+ * The ADDR_SET command requests one out scatterlist, it contains a
+ * 6 bytes MAC address. This functionality is present if the
+ * VIRTIO_NET_F_CTRL_MAC_ADDR feature is available.
  */
 struct virtio_net_ctrl_mac {
 	uint32_t	entries;
@@ -150,6 +155,7 @@ struct virtio_net_ctrl_mac {
 
 #define VIRTIO_NET_CTRL_MAC	1
 #define VIRTIO_NET_CTRL_MAC_TABLE_SET	0
+#define VIRTIO_NET_CTRL_MAC_ADDR_SET	1
 
 /*
  * Control VLAN filtering

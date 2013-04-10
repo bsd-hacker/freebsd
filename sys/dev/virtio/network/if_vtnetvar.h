@@ -100,7 +100,9 @@ struct vtnet_txq {
 	struct mtx		 vtntx_mtx;
 	struct vtnet_softc	*vtntx_sc;
 	struct virtqueue	*vtntx_vq;
+#ifndef VTNET_LEGACY_TX
 	struct buf_ring		*vtntx_br;
+#endif
 	int			 vtntx_id;
 	int			 vtntx_watchdog;
 	struct vtnet_txq_stats	 vtntx_stats;
@@ -123,43 +125,45 @@ struct vtnet_txq {
 struct vtnet_softc {
 	device_t		 vtnet_dev;
 	struct ifnet		*vtnet_ifp;
-	struct mtx		 vtnet_mtx;
+	struct vtnet_rxq	*vtnet_rxqs;
+	struct vtnet_txq	*vtnet_txqs;
 
 	uint32_t		 vtnet_flags;
 #define VTNET_FLAG_SUSPENDED	 0x0001
-#define VTNET_FLAG_CTRL_VQ	 0x0002
-#define VTNET_FLAG_CTRL_RX	 0x0004
-#define VTNET_FLAG_VLAN_FILTER	 0x0008
-#define VTNET_FLAG_TSO_ECN	 0x0010
-#define VTNET_FLAG_MRG_RXBUFS	 0x0020
-#define VTNET_FLAG_LRO_NOMRG	 0x0040
-#define VTNET_FLAG_MULTIQ	 0x0080
+#define VTNET_FLAG_MAC		 0x0002
+#define VTNET_FLAG_CTRL_VQ	 0x0004
+#define VTNET_FLAG_CTRL_RX	 0x0008
+#define VTNET_FLAG_CTRL_MAC	 0x0010
+#define VTNET_FLAG_VLAN_FILTER	 0x0020
+#define VTNET_FLAG_TSO_ECN	 0x0040
+#define VTNET_FLAG_MRG_RXBUFS	 0x0080
+#define VTNET_FLAG_LRO_NOMRG	 0x0100
+#define VTNET_FLAG_MULTIQ	 0x0200
 
-	struct vtnet_rxq	*vtnet_rxqs;
-	struct vtnet_txq	*vtnet_txqs;
-	struct virtqueue	*vtnet_ctrl_vq;
-
-	int			 vtnet_hdr_size;
 	int			 vtnet_link_active;
+	int			 vtnet_hdr_size;
+	int			 vtnet_rx_process_limit;
 	int			 vtnet_rx_nmbufs;
 	int			 vtnet_rx_clsize;
 	int			 vtnet_rx_new_clsize;
 	int			 vtnet_if_flags;
 	int			 vtnet_act_vq_pairs;
 	int			 vtnet_max_vq_pairs;
-	uint64_t		 vtnet_features;
 
-	struct vtnet_statistics	 vtnet_stats;
-	struct callout		 vtnet_tick_ch;
-
+	struct virtqueue	*vtnet_ctrl_vq;
 	struct vtnet_mac_filter	*vtnet_mac_filter;
 	uint32_t		*vtnet_vlan_filter;
+
+	uint64_t		 vtnet_features;
+	struct vtnet_statistics	 vtnet_stats;
+	struct callout		 vtnet_tick_ch;
 	struct ifmedia		 vtnet_media;
 	eventhandler_tag	 vtnet_vlan_attach;
 	eventhandler_tag	 vtnet_vlan_detach;
 
-	char			 vtnet_hwaddr[ETHER_ADDR_LEN];
+	struct mtx		 vtnet_mtx;
 	char			 vtnet_mtx_name[16];
+	char			 vtnet_hwaddr[ETHER_ADDR_LEN];
 };
 
 /*
@@ -181,8 +185,8 @@ struct vtnet_softc {
 #define VTNET_MEDIATYPE		 (IFM_ETHER | IFM_10G_T | IFM_FDX)
 
 /*
- * Number of words to allocate for the VLAN shadow table. Each possible
- * VLAN gets one bit.
+ * Number of words to allocate for the VLAN shadow table. There is one
+ * bit for each VLAN.
  */
 #define VTNET_VLAN_FILTER_NWORDS	(4096 / 32)
 
@@ -263,7 +267,6 @@ CTASSERT(sizeof(struct vtnet_mac_filter) <= PAGE_SIZE);
      VIRTIO_NET_F_GUEST_TSO6		| \
      VIRTIO_NET_F_GUEST_ECN		| \
      VIRTIO_NET_F_MRG_RXBUF		| \
-     VIRTIO_NET_F_MQ			| \
      VIRTIO_RING_F_INDIRECT_DESC)
 
 /*

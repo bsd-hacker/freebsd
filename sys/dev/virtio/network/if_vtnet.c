@@ -175,6 +175,7 @@ static void	vtnet_init(void *);
 static void	vtnet_free_ctrl_vq(struct vtnet_softc *);
 static void	vtnet_exec_ctrl_cmd(struct vtnet_softc *, void *,
 		    struct sglist *, int, int);
+static int	vtnet_ctrl_mac_cmd(struct vtnet_softc *, uint8_t *);
 static int	vtnet_ctrl_mq_cmd(struct vtnet_softc *, uint16_t);
 static int	vtnet_ctrl_rx_cmd(struct vtnet_softc *, int, int);
 static int	vtnet_set_promisc(struct vtnet_softc *, int);
@@ -214,6 +215,8 @@ static void	vtnet_disable_rx_interrupts(struct vtnet_softc *);
 static void	vtnet_disable_tx_interrupts(struct vtnet_softc *);
 static void	vtnet_disable_interrupts(struct vtnet_softc *);
 
+static int	vtnet_tunable_int(struct vtnet_softc *, const char *, int);
+
 /* Tunables. */
 static int vtnet_csum_disable = 0;
 TUNABLE_INT("hw.vtnet.csum_disable", &vtnet_csum_disable);
@@ -222,10 +225,10 @@ TUNABLE_INT("hw.vtnet.tso_disable", &vtnet_tso_disable);
 static int vtnet_lro_disable = 0;
 TUNABLE_INT("hw.vtnet.lro_disable", &vtnet_lro_disable);
 static int vtnet_mq_disable = 0;
-TUNABLE_INT("hw.vtnet.mq_dislabe", &vtnet_mq_disable);
-static int vtnet_mq_max_queues = 0;
-TUNABLE_INT("hw.vtnet.mq_max_queues", &vtnet_mq_max_queues);
-static int vtnet_rx_process_limit = 256;
+TUNABLE_INT("hw.vtnet.mq_disable", &vtnet_mq_disable);
+static int vtnet_mq_max_pairs = 0;
+TUNABLE_INT("hw.vtnet.mq_max_pairs", &vtnet_mq_max_pairs);
+static int vtnet_rx_process_limit = 512;
 TUNABLE_INT("hw.vtnet.rx_process_limit", &vtnet_rx_process_limit);
 
 /*
@@ -519,13 +522,15 @@ vtnet_negotiate_features(struct vtnet_softc *sc)
 	 * TSO and LRO are only available when their corresponding checksum
 	 * offload feature is also negotiated.
 	 */
-	if (vtnet_csum_disable)
+	if (vtnet_tunable_int(sc, "csum_disable", vtnet_csum_disable)) {
 		mask |= VIRTIO_NET_F_CSUM | VIRTIO_NET_F_GUEST_CSUM;
-	if (vtnet_csum_disable || vtnet_tso_disable)
+		mask |= VTNET_TSO_FEATURES | VTNET_LRO_FEATURES;
+	}
+	if (vtnet_tunable_int(sc, "tso_disable", vtnet_tso_disable))
 		mask |= VTNET_TSO_FEATURES;
-	if (vtnet_csum_disable || vtnet_lro_disable)
+	if (vtnet_tunable_int(sc, "lro_disable", vtnet_lro_disable))
 		mask |= VTNET_LRO_FEATURES;
-	if (vtnet_mq_disable)
+	if (vtnet_tunable_int(sc, "mq_disable", vtnet_mq_disable))
 		mask |= VIRTIO_NET_F_MQ;
 
 	features = VTNET_FEATURES & ~mask;
@@ -559,11 +564,16 @@ static void
 vtnet_setup_features(struct vtnet_softc *sc)
 {
 	device_t dev;
-	int max_pairs;
+	int max_pairs, max;
 
 	dev = sc->vtnet_dev;
 
 	vtnet_negotiate_features(sc);
+
+	if (virtio_with_feature(dev, VIRTIO_NET_F_MAC)) {
+		/* This feature should always be negotiated. */
+		sc->vtnet_flags |= VTNET_FLAG_MAC;
+	}
 
 	if (virtio_with_feature(dev, VIRTIO_NET_F_MRG_RXBUF)) {
 		sc->vtnet_flags |= VTNET_FLAG_MRG_RXBUFS;
@@ -578,6 +588,8 @@ vtnet_setup_features(struct vtnet_softc *sc)
 			sc->vtnet_flags |= VTNET_FLAG_CTRL_RX;
 		if (virtio_with_feature(dev, VIRTIO_NET_F_CTRL_VLAN))
 			sc->vtnet_flags |= VTNET_FLAG_VLAN_FILTER;
+		if (virtio_with_feature(dev, VIRTIO_NET_F_CTRL_MAC_ADDR))
+			sc->vtnet_flags |= VTNET_FLAG_CTRL_MAC;
 	}
 
 	if (virtio_with_feature(dev, VIRTIO_NET_F_MQ) &&
@@ -592,16 +604,17 @@ vtnet_setup_features(struct vtnet_softc *sc)
 
 	if (max_pairs > 1) {
 		/*
-		 * Limit the maximum number of queue pairs to the number
-		 * of CPUs or the configured maximum. The actual number
-		 * of queues that get used may be less.
+		 * Limit the maximum number of queue pairs to the number of
+		 * CPUs or the configured maximum. The actual number of
+		 * queues that get used may be less.
 		 */
+		max = vtnet_tunable_int(sc, "mq_max_pairs", vtnet_mq_max_pairs);
+		if (max > 0 && max_pairs > max)
+			max_pairs = max;
 		if (max_pairs > mp_ncpus)
 			max_pairs = mp_ncpus;
 		if (max_pairs > VTNET_MAX_QUEUE_PAIRS)
 			max_pairs = VTNET_MAX_QUEUE_PAIRS;
-		if (vtnet_mq_max_queues != 0)
-			max_pairs = vtnet_mq_max_queues;
 		if (max_pairs > 1)
 			sc->vtnet_flags |= VTNET_FLAG_MULTIQ;
 	}
@@ -622,7 +635,6 @@ vtnet_init_rxq(struct vtnet_softc *sc, int id)
 
 	rxq->vtnrx_sc = sc;
 	rxq->vtnrx_id = id;
-	rxq->vtnrx_process_limit = vtnet_rx_process_limit;
 
 	TASK_INIT(&rxq->vtnrx_intrtask, 0, vtnet_rxq_tq_intr, rxq);
 	rxq->vtnrx_tq = taskqueue_create(rxq->vtnrx_name, M_NOWAIT,
@@ -708,10 +720,12 @@ vtnet_destroy_txq(struct vtnet_txq *txq)
 	txq->vtntx_sc = NULL;
 	txq->vtntx_id = -1;
 
+#ifndef VTNET_LEGACY_TX
 	if (txq->vtntx_br != NULL) {
 		buf_ring_free(txq->vtntx_br, M_DEVBUF);
 		txq->vtntx_br = NULL;
 	}
+#endif
 
 	if (mtx_initialized(&txq->vtntx_mtx) != 0)
 		mtx_destroy(&txq->vtntx_mtx);
@@ -1035,35 +1049,15 @@ vtnet_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		VTNET_CORE_LOCK(sc);
 		mask = ifr->ifr_reqcap ^ ifp->if_capenable;
 
-		if (mask & IFCAP_TXCSUM) {
+		if (mask & IFCAP_TXCSUM)
 			ifp->if_capenable ^= IFCAP_TXCSUM;
-			if (ifp->if_capenable & IFCAP_TXCSUM)
-				ifp->if_hwassist |= VTNET_CSUM_OFFLOAD;
-			else
-				ifp->if_hwassist &= ~VTNET_CSUM_OFFLOAD;
-		}
-
-		if (mask & IFCAP_TXCSUM_IPV6) {
+		if (mask & IFCAP_TXCSUM_IPV6)
 			ifp->if_capenable ^= IFCAP_TXCSUM_IPV6;
-			if (ifp->if_capenable & IFCAP_TXCSUM_IPV6)
-				ifp->if_hwassist |= VTNET_CSUM_OFFLOAD_IPV6;
-			else
-				ifp->if_hwassist &= ~VTNET_CSUM_OFFLOAD_IPV6;
-		}
-
 		if (mask & IFCAP_TSO) {
 			if (mask & IFCAP_TSO4)
 				ifp->if_capenable ^= IFCAP_TSO4;
 			if (mask & IFCAP_TSO6)
 				ifp->if_capenable ^= IFCAP_TSO6;
-			/*
-			 * Set if either is enabled. The CSUM_TSO_IPV6 flag is
-			 * currently commented out.
-			 */
-			if (ifp->if_capenable & IFCAP_TSO)
-				ifp->if_hwassist |= CSUM_TSO;
-			else
-				ifp->if_hwassist &= ~CSUM_TSO;
 		}
 
 		if (mask & (IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6 | IFCAP_LRO |
@@ -1423,10 +1417,10 @@ vtnet_rxq_csum_by_offset(struct vtnet_rxq *rxq, struct mbuf *m,
 	}
 
 	/*
-	 * Use the offset to determine the appropriate CSUM_* flags. This
-	 * is a bit dirty, but we can get by with it since the checksum
-	 * offsets happen to be different. We assume the host host does
-	 * not do IPv4 header checksum offloading.
+	 * Use the offset to determine the appropriate CSUM_* flags. This is
+	 * a bit dirty, but we can get by with it since the checksum offsets
+	 * happen to be different. We assume the host host does not do IPv4
+	 * header checksum offloading.
 	 */
 	switch (hdr->csum_offset) {
 	case offsetof(struct udphdr, uh_sum):
@@ -1648,7 +1642,7 @@ vtnet_rxq_input(struct vtnet_rxq *rxq, struct mbuf *m,
 	m->m_flags |= M_FLOWID;
 
 	/*
-	 * BVM: FreeBSD does not have the UNNECESSARY and PARTIAL checksum
+	 * BMV: FreeBSD does not have the UNNECESSARY and PARTIAL checksum
 	 * distinction that Linux does. Need to reevaluate if performing
 	 * offloading for the NEEDS_CSUM case is really appropriate.
 	 */
@@ -1686,7 +1680,7 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 
 	hdr = &lhdr;
 	deq = 0;
-	count = rxq->vtnrx_process_limit;
+	count = sc->vtnet_rx_process_limit;
 
 	VTNET_RXQ_LOCK_ASSERT(rxq);
 
@@ -1962,7 +1956,7 @@ vtnet_txq_offload(struct vtnet_txq *txq, struct mbuf *m,
 	sc = txq->vtntx_sc;
 	flags = m->m_pkthdr.csum_flags;
 
-	error = vtnet_txq_offload_ctx(txq, m, &etype, &csum_start, &proto);
+	error = vtnet_txq_offload_ctx(txq, m, &etype, &proto, &csum_start);
 	if (error)
 		goto drop;
 
@@ -2695,7 +2689,7 @@ vtnet_virtio_reinit(struct vtnet_softc *sc)
 	if (ifp->if_capabilities & _RXCSUM_IPV46) {
 		/*
 		 * We require both IPv4 and IPv6 offloading to be enabled
-		 * inorder to negotiated it: VirtIO does not distinguish
+		 * in order to negotiated it: VirtIO does not distinguish
 		 * between the two.
 		 *
 		 * BMV: What about when INET and/or INET6 is not defined?
@@ -2736,7 +2730,6 @@ vtnet_init_rx_filters(struct vtnet_softc *sc)
 		vtnet_rx_filter_mac(sc);
 	}
 
-	/* Restore filtered VLANs. */
 	if (ifp->if_capenable & IFCAP_VLAN_HWFILTER)
 		vtnet_rx_filter_vlan(sc);
 }
@@ -2746,9 +2739,19 @@ vtnet_init_rx_queues(struct vtnet_softc *sc)
 {
 	device_t dev;
 	struct vtnet_rxq *rxq;
-	int i, clsize, error;
+	int i, limit, clsize, error;
 
 	dev = sc->vtnet_dev;
+
+	/*
+	 * Assume the same limit is appropriate for all the Rx queues.
+	 * We may later want to scale this by each virtqueue's size.
+	 */
+	limit = vtnet_tunable_int(sc, "rx_process_limit",
+	    vtnet_rx_process_limit);
+	if (limit < 0)
+		limit = INT_MAX;
+	sc->vtnet_rx_process_limit = limit;
 
 	/*
 	 * Use the new cluster size if one has been set (via a MTU
@@ -2974,6 +2977,32 @@ vtnet_exec_ctrl_cmd(struct vtnet_softc *sc, void *cookie,
 }
 
 static int
+vtnet_ctrl_mac_cmd(struct vtnet_softc *sc, uint8_t *hwaddr)
+{
+	struct virtio_net_ctrl_hdr hdr;
+	struct sglist_seg segs[3];
+	struct sglist sg;
+	uint8_t ack;
+	int error;
+
+	hdr.class = VIRTIO_NET_CTRL_MAC;
+	hdr.cmd = VIRTIO_NET_CTRL_MAC_ADDR_SET;
+	ack = VIRTIO_NET_ERR;
+
+	sglist_init(&sg, 3, segs);
+	error = 0;
+	error |= sglist_append(&sg, &hdr, sizeof(struct virtio_net_ctrl_hdr));
+	error |= sglist_append(&sg, hwaddr, ETHER_ADDR_LEN);
+	error |= sglist_append(&sg, &ack, sizeof(uint8_t));
+	KASSERT(error == 0 && sg.sg_nseg == 3,
+	    ("%s: error %d adding set MAC msg to sglist", __func__, error));
+
+	vtnet_exec_ctrl_cmd(sc, &ack, &sg, sg.sg_nseg - 1, 1);
+
+	return (ack == VIRTIO_NET_OK ? 0 : EIO);
+}
+
+static int
 vtnet_ctrl_mq_cmd(struct vtnet_softc *sc, uint16_t npairs)
 {
 	struct sglist_seg segs[3];
@@ -2986,9 +3015,6 @@ vtnet_ctrl_mq_cmd(struct vtnet_softc *sc, uint16_t npairs)
 		uint8_t ack;
 	} s;
 	int error;
-
-	if ((sc->vtnet_flags & VTNET_FLAG_CTRL_VQ) == 0)
-		return (ENOTSUP);
 
 	s.hdr.class = VIRTIO_NET_CTRL_MQ;
 	s.hdr.cmd = VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET;
@@ -3204,12 +3230,10 @@ vtnet_rx_filter_mac(struct vtnet_softc *sc)
 		if_printf(ifp, "error setting host MAC filter table\n");
 
 out:
-	if (promisc)
-		if (vtnet_set_promisc(sc, 1) != 0)
-			if_printf(ifp, "cannot enable promiscuous mode\n");
-	if (allmulti)
-		if (vtnet_set_allmulti(sc, 1) != 0)
-			if_printf(ifp, "cannot enable all-multicast mode\n");
+	if (promisc && vtnet_set_promisc(sc, 1) != 0)
+		if_printf(ifp, "cannot enable promiscuous mode\n");
+	if (allmulti && vtnet_set_allmulti(sc, 1) != 0)
+		if_printf(ifp, "cannot enable all-multicast mode\n");
 }
 
 static int
@@ -3286,11 +3310,6 @@ vtnet_update_vlan_filter(struct vtnet_softc *sc, int add, uint16_t tag)
 
 	VTNET_CORE_LOCK(sc);
 
-	/*
-	 * Update the in-memory table. We must keep the table current with
-	 * configured VLANs even if HW filtering is disabled, since it could
-	 * be enabled later.
-	 */
 	if (add)
 		sc->vtnet_vlan_filter[idx] |= (1 << bit);
 	else
@@ -3407,8 +3426,14 @@ vtnet_set_hwaddr(struct vtnet_softc *sc)
 
 	dev = sc->vtnet_dev;
 
-	virtio_write_device_config(dev, offsetof(struct virtio_net_config, mac),
-	    sc->vtnet_hwaddr, ETHER_ADDR_LEN);
+	if (sc->vtnet_flags & VTNET_FLAG_CTRL_MAC) {
+		if (vtnet_ctrl_mac_cmd(sc, sc->vtnet_hwaddr) != 0)
+			device_printf(dev, "unable to set MAC address\n");
+	} else if (sc->vtnet_flags & VTNET_FLAG_MAC) {
+		virtio_write_device_config(dev,
+		    offsetof(struct virtio_net_config, mac),
+		    sc->vtnet_hwaddr, ETHER_ADDR_LEN);
+	}
 }
 
 static void
@@ -3418,7 +3443,7 @@ vtnet_get_hwaddr(struct vtnet_softc *sc)
 
 	dev = sc->vtnet_dev;
 
-	if (virtio_with_feature(dev, VIRTIO_NET_F_MAC) == 0) {
+	if ((sc->vtnet_flags & VTNET_FLAG_MAC) == 0) {
 		/*
 		 * Generate a random locally administered unicast address.
 		 *
@@ -3706,4 +3731,16 @@ vtnet_disable_interrupts(struct vtnet_softc *sc)
 
 	vtnet_disable_rx_interrupts(sc);
 	vtnet_disable_tx_interrupts(sc);
+}
+
+static int
+vtnet_tunable_int(struct vtnet_softc *sc, const char *knob, int def)
+{
+	char path[64];
+
+	snprintf(path, sizeof(path),
+	    "hw.vtnet.%d.%s", device_get_unit(sc->vtnet_dev), knob);
+	TUNABLE_INT_FETCH(path, &def);
+
+	return (def);
 }
