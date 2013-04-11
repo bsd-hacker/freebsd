@@ -64,6 +64,9 @@
  * once stable.
  */
 
+#ifndef _TCP_AO_H_
+#define _TCP_AO_H_
+
 MALLOC_DECLARE(M_TCPAO);
 
 /*
@@ -99,8 +102,8 @@ struct tcp_ao_sopt {
  * MAC and KDF pairs for the tao_algo field.
  */
 #define TAO_ALGO_MD5SIG			1	/* legacy compatibility */
-#define TAO_ALGO_HMAC-SHA-1-96		2	/* RFC5926, Section 2.2 */
-#define TAO_ALGO_AES-128-CMAC-96	3	/* RFC5926, Section 2.2 */
+#define TAO_ALGO_HMAC_SHA_1_96		2	/* RFC5926, Section 2.2 */
+#define TAO_ALGO_AES_128_CMAC_96	3	/* RFC5926, Section 2.2 */
 
 /*
  * In kernel storage of the key information.
@@ -110,8 +113,9 @@ struct tcp_ao_cb {
 	union {
 		uint8_t md5[MD5_DIGEST_LENGTH];
 		uint8_t hmac[SHA1_DIGEST_LENGTH];
-		uint8_t cmac[AES_CMAC_LENGTH];
+		uint8_t cmac[AES_CMAC_DIGEST_LENGTH];
 	} tac_skey, tac_rkey;
+	uint32_t tac_sne;
 	LIST_HEAD(tac_peer, tcp_ao_peer) tac_peers;
 };
 
@@ -119,9 +123,9 @@ struct tcp_ao_peer {
 	LIST_ENTRY(tcp_ao_peer)	tap_entry;
 	uint16_t tap_flags;
 	union {
-		sockaddr sa;
-		sockaddr_in sin4;
-		sockaddr_in6 sin6;
+		struct sockaddr sa;
+		struct sockaddr_in sin4;
+		struct sockaddr_in6 sin6;
 	} tap_peer;
 	uint8_t tap_activekey;
 	SLIST_HEAD(tap_key, tcp_ao_key) tap_keys;
@@ -136,3 +140,9 @@ struct tcp_ao_key {
 	uint8_t key[];			/* after base64_decode */
 };
 
+int	tcp_ao_kdf(struct in_conninfo *, struct tcphdr *, uint8_t *, int,
+	    struct tcp_ao_key *);
+int	tcp_ao_mac(struct tcpcb *, struct tcp_ao_cb *, struct in_conninfo *,
+	    struct tcphdr *, struct tcpopt *, struct mbuf *);
+
+#endif

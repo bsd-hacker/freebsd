@@ -51,11 +51,71 @@
  *  legacy tcp-md5 can be brought and integrated into the tcp-ao framework.
  */
 
+#include "opt_inet.h"
+#include "opt_inet6.h"
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/limits.h>
+#include <sys/malloc.h>
+#include <sys/kernel.h>
+#include <sys/sysctl.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#include <sys/protosw.h>
+#include <sys/proc.h>
+#include <sys/jail.h>
+
+#include <net/if.h>
+#include <net/route.h>
+#include <net/vnet.h>
+
+#include <sys/md5.h>
+#include <crypto/sha1.h>
+#include <crypto/cmac/cmac.h>
+#include <crypto/hmac/hmac.h>
+
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/in_pcb.h>
+#include <netinet/in_systm.h>
+#include <netinet/in_var.h>
+#include <netinet/ip_var.h>
+#ifdef INET6
+#include <netinet/ip6.h>
+#include <netinet6/in6_pcb.h>
+#include <netinet6/ip6_var.h>
+#include <netinet6/scope6_var.h>
+#endif
+#include <netinet/tcp_fsm.h>
+#include <netinet/tcp_seq.h>
+#include <netinet/tcp_timer.h>
+#include <netinet/tcp_var.h>
+#include <netinet/tcpip.h>
+#include <netinet/tcp_ao.h>
+
 /*
  * The code below is skeleton code and not functional yet.
  */
 
 MALLOC_DEFINE(M_TCPAO, "tcp_ao", "TCP-AO peer and key structures");
+
+int		    tcp_ao_ctl(struct tcpcb *, struct tcp_ao_sopt *, int);
+
+struct tcp_ao_peer *tcp_ao_peer_find(struct tcp_ao_cb *, struct sockaddr *);
+struct tcp_ao_peer *tcp_ao_peer_add(struct tcp_ao_cb *, struct sockaddr *);
+int		    tcp_ao_peer_del(struct tcp_ao_cb *, struct tcp_ao_peer *);
+void		    tcp_ao_peer_flush(struct tcp_ao_cb *);
+
+struct tcp_ao_key  *tcp_ao_key_find(struct tcp_ao_peer *, uint8_t);
+struct tcp_ao_key  *tcp_ao_key_add(struct tcp_ao_peer *, struct tcp_ao_sopt *, uint8_t);
+int		    tcp_ao_key_del(struct tcp_ao_peer *, uint8_t);
+void		    tcp_ao_key_flush(struct tcp_ao_peer *);
+
+int		    tcp_ao_peer_clone(struct tcpcb *, struct tcpcb *, struct sockaddr *);
+struct tcp_ao_cb   *tcp_ao_cb_alloc(void);
+void		    tcp_ao_cb_free(struct tcpcb *);
 
 int
 tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len)
@@ -63,15 +123,18 @@ tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len)
 	struct tcp_ao_cb *c;
 	struct tcp_ao_peer *p;
 	struct tcp_ao_key *k;
-	int error;
+	struct sockaddr *sa;
+	int error = EINVAL;
 
-	switch (tao->tao_peer.sa_family) {
+	sa = (struct sockaddr *)&tao->tao_peer;
+
+	switch (tao->tao_peer.ss_family) {
 	case AF_INET:
-		if (tao->tao_peer.sa_len != sizeof(struct sockaddr_in))
+		if (sa->sa_len != sizeof(struct sockaddr_in))
 			error = EINVAL;
 		break;
 	case AF_INET6:
-		if (tao->tao_peer.sa_len != sizeof(struct sockaddr_in6))
+		if (sa->sa_len != sizeof(struct sockaddr_in6))
 			error = EINVAL;
 		break;
 	default:
@@ -86,8 +149,8 @@ tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len)
 	case TAO_CMD_ADD:
 		switch (tao->tao_algo) {
 		case TAO_ALGO_MD5SIG:
-		case TAO_ALGO_HMAC-SHA-1-96:
-		case TAO_ALGO_AES-128-CMAC-96:
+		case TAO_ALGO_HMAC_SHA_1_96:
+		case TAO_ALGO_AES_128_CMAC_96:
 			break;
 		default:
 			error = EINVAL;
@@ -95,7 +158,7 @@ tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len)
 		}
 
 		/* Insert or overwrite */
-		if ((p = tcp_ao_peer_add(c, tao)) == NULL) {
+		if ((p = tcp_ao_peer_add(c, sa)) == NULL) {
 			error = EINVAL;
 			break;
 		}
@@ -104,14 +167,14 @@ tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len)
 			error = EINVAL;
 			break;
 		}
-		if ((k = tcp_ao_key_add(p, tao, taolen - sizeof(*tao)) == NULL) {
+		if ((k = tcp_ao_key_add(p, tao, tao_len - sizeof(*tao))) == NULL) {
 			error = EINVAL;
 		}
 		break;
 
 	case TAO_CMD_DELIDX:
 		/* Can't remove active index */
-		if ((p = tcp_ao_peer_find(c, tao)) == NULL) {
+		if ((p = tcp_ao_peer_find(c, sa)) == NULL) {
 			error = EINVAL;
 			break;
 		}
@@ -129,7 +192,7 @@ tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len)
 		if (tp->t_state > TCPS_LISTEN)
 			break;
 
-		if ((p = tcp_ao_peer_find(c, tao)) == NULL) {
+		if ((p = tcp_ao_peer_find(c, sa)) == NULL) {
 			error = EINVAL;
 			break;
 		}
@@ -157,29 +220,29 @@ tcp_ao_peer_find(struct tcp_ao_cb *tac, struct sockaddr *sa)
 {
 	struct tcp_ao_peer *p;
 
-	LIST_FOREACH(p, tac->tac_peers, tap_entry) {
-		if (p->tap_peer.sa_family == sa->sa_family &&
-		    !bcmp(p->tap_peer.sa_data, sa->sa_data,
-			min(p->tap_peer.sa.len, sa->sa_len)))
+	LIST_FOREACH(p, &tac->tac_peers, tap_entry) {
+		if (p->tap_peer.sa.sa_family == sa->sa_family &&
+		    !bcmp(p->tap_peer.sa.sa_data, sa->sa_data,
+			min(p->tap_peer.sa.sa_len, sa->sa_len)))
 			return (p);
 	}
 	return (NULL);
 }
 
 struct tcp_ao_peer *
-tcp_ao_peer_add(struct tcp_ao_cb *tac, struct tcp_ao_sopt *tao)
+tcp_ao_peer_add(struct tcp_ao_cb *tac, struct sockaddr *sa)
 {
 	struct tcp_ao_peer *p;
 
-	if ((p = tcp_ao_peer_find(tac, tao->tao_peer)) == NULL) {
+	if ((p = tcp_ao_peer_find(tac, sa)) == NULL) {
 		if ((p = malloc(sizeof(*p), M_TCPAO, M_NOWAIT)) == NULL)
 			return (p);
 		p->tap_flags = 0;
-		bcopy(tao->tao_peer, p->tac_peer, tao->tao_peer.sa_len);
-		SLIST_INIT(&p->tak_keys);
+		bcopy(sa, &p->tap_peer, sa->sa_len);
+		SLIST_INIT(&p->tap_keys);
 	}
 
-	LIST_INSERT_HEAD(&tap->tap_peers, p);
+	LIST_INSERT_HEAD(&tac->tac_peers, p, tap_entry);
 	return (p);
 }
 
@@ -188,7 +251,7 @@ tcp_ao_peer_del(struct tcp_ao_cb *tac, struct tcp_ao_peer *tap)
 {
 
 	tcp_ao_key_flush(tap);
-	LIST_REMOVE(tap, tap_list);
+	LIST_REMOVE(tap, tap_entry);
 	free(tap, M_TCPAO);
 	return (0);
 }
@@ -198,7 +261,7 @@ tcp_ao_peer_flush(struct tcp_ao_cb *tac)
 {
 	struct tcp_ao_peer *p, *p2;
 
-	SLIST_FOREACH_SAFE(p, tac->tac_peers, entries, p2) {
+	LIST_FOREACH_SAFE(p, &tac->tac_peers, tap_entry, p2) {
 		tcp_ao_key_flush(p);
 		free(p, M_TCPAO);
 	}
@@ -218,12 +281,12 @@ tcp_ao_key_find(struct tcp_ao_peer *tap, uint8_t idx)
 }
 
 struct tcp_ao_key *
-tcp_ao_key_add(struct tcp_ao_peer *tap, struct tcp_so_sopt *tao, uint8_t keylen)
+tcp_ao_key_add(struct tcp_ao_peer *tap, struct tcp_ao_sopt *tao, uint8_t keylen)
 {
 	struct tcp_ao_key *k;
 
 	if ((k = tcp_ao_key_find(tap, tao->tao_keyidx)) != NULL) {
-		SLIST_REMOVE(&tap->tap_keys, k, entry, entry);
+		SLIST_REMOVE(&tap->tap_keys, k, tcp_ao_key, entry);
 		free(k, M_TCPAO);
 	}
 	if ((k = malloc(sizeof(*k) + keylen, M_TCPAO, M_NOWAIT)) == NULL)
@@ -231,22 +294,22 @@ tcp_ao_key_add(struct tcp_ao_peer *tap, struct tcp_so_sopt *tao, uint8_t keylen)
 
 	k->keyidx = tao->tao_keyidx;
 	k->keyflags = 0;
-	k->keyalgo = tao->tao_keyalgo;
+	k->keyalgo = tao->tao_algo;
 	k->keylen = keylen;
 	bcopy(tao->tao_key, k->key, k->keylen);
 
-	SLIST_INSERT_HEAD(&tap->tap_keys, k);
+	SLIST_INSERT_HEAD(&tap->tap_keys, k, entry);
 	return (k);
 }
 
 int
-struct tcp_ao_key_del(struct tcp_ao_peer *tap, uint8_t keyidx)
+tcp_ao_key_del(struct tcp_ao_peer *tap, uint8_t keyidx)
 {
 	struct tcp_ao_key *k, *k2;
 
-	SLIST_FOREACH_SAFE(k, &tap->tap_keys, entries, k2) {
+	SLIST_FOREACH_SAFE(k, &tap->tap_keys, entry, k2) {
 		if (k->keyidx == keyidx) {
-			SLIST_REMOVE(&tap->tap_keys, entries, entries);
+			SLIST_REMOVE(&tap->tap_keys, k, tcp_ao_key, entry);
 			free(k, M_TCPAO);
 			return (0);
 		}
@@ -259,7 +322,7 @@ tcp_ao_key_flush(struct tcp_ao_peer *tap)
 {
 	struct tcp_ao_key *k, *k2;
 
-	SLIST_FOREACH_SAFE(k, &tap->tap_keys, entries, k2)
+	SLIST_FOREACH_SAFE(k, &tap->tap_keys, entry, k2)
 		free(k, M_TCPAO);
 	SLIST_INIT(&tap->tap_keys);
 }
@@ -273,16 +336,20 @@ tcp_ao_peer_clone(struct tcpcb *tp1, struct tcpcb *tp2, struct sockaddr *sa)
 	if ((p1 = tcp_ao_peer_find(tp1->t_ao, sa)) == NULL)
 		return (0);
 
-	if (tcp_ao_cb_alloc(tp2) != 0)
+	if ((tp2->t_ao = tcp_ao_cb_alloc()) == NULL)
 		return (ENOMEM);
 
-	bcopy(p1, p2, malloc(sizeof(*p2));
-	SLIST_INIT(&p2->tak_keys);
+	if ((p2 = tcp_ao_peer_add(tp2->t_ao, sa)) == NULL)
+		return (ENOMEM);
+
+	bcopy(p1, p2, sizeof(*p2));
+
+	SLIST_INIT(&p2->tap_keys);
 	SLIST_FOREACH(k1, &p1->tap_keys, entry) {
 		if ((k2 = malloc(sizeof(*k2) + k1->keylen, M_TCPAO, M_NOWAIT)) == NULL)
 			return (ENOMEM);
 		bcopy(k1, k2, k1->keylen);
-		SLIST_INSERT_HEAD(&p2->tap_keys, k2);
+		SLIST_INSERT_HEAD(&p2->tap_keys, k2, entry);
 	}
 	return (0);
 }
@@ -323,19 +390,30 @@ tcp_ao_cb_free(struct tcpcb *tp)
 /*
  * Context for key derivation.
  */
-union tcp_ao_kdf_ctx {
-	struct ip4 {
-		struct in_addr src, dst;
-		uint16_t sport, dport;
-		uint32_t irs, iss;
-	} ip4_ctx;
-	struct ip6 {
-		struct in6_addr src, dst;
-		uint16_t sport, dport;
-		uint32_t irs, iss;
-	} ip6_ctx;
+struct tcp_ao_kdf_ctx {
+	union {
+		struct ip4 {
+			struct in_addr src, dst;
+			uint16_t sport, dport;
+			uint32_t irs, iss;
+		} ip4;
+		struct ip6 {
+			struct in6_addr src, dst;
+			uint16_t sport, dport;
+			uint32_t irs, iss;
+		} ip6;
+	} tuple;
 	int len;
 };
+#define ip4_ctx tuple.ip4
+#define ip6_ctx tuple.ip6
+
+static int tcp_ao_kdf_hmac(struct tcp_ao_key *tak, uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tctx);
+static int tcp_ao_kdf_cmac(struct tcp_ao_key *tak, uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tctx);
+static int tcp_ao_kdf_md5(struct tcp_ao_key *tak, uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tctx);
 
 /*
  * Key derivation for sessions and the derived master keys.
@@ -344,70 +422,70 @@ union tcp_ao_kdf_ctx {
  *  EINVAL = invalid input, typically insufficient length
  *  other  = key derivation failed
  */
-static int
+int
 tcp_ao_kdf(struct in_conninfo *inc, struct tcphdr *th, uint8_t *out,
-    int outlen)
+    int outlen, struct tcp_ao_key *tak)
 {
 	int error = 0;
-	struct tcp_ao_kdf_ctx tak;
+	struct tcp_ao_kdf_ctx ctx;
 
 	/* Fill in context for traffic keys. */
 	switch (inc->inc_flags & INC_ISIPV6) {
 	case 0:
-		tak.ip4_ctx.src = inc->ie_faddr;
-		tak.ip4_ctx.dst = inc->ie_laddr;
-		tak.ip4_ctx.irs = htonl(th->th_ack);
-		tak.ip4_ctx.iss = htonl(th->th_seq);
-		tak.len = sizeof(tak.ip4_ctx);
+		ctx.ip4_ctx.src = inc->inc_ie.ie_faddr;
+		ctx.ip4_ctx.dst = inc->inc_ie.ie_laddr;
+		ctx.ip4_ctx.irs = htonl(th->th_ack);
+		ctx.ip4_ctx.iss = htonl(th->th_seq);
+		ctx.len = sizeof(ctx.ip4_ctx);
 		break;
 	case INC_ISIPV6:
-		tak.ip6_ctx.src = inc->ie6_faddr;
-		tak.ip6_ctx.dst = inc->ie6_laddr;
-		tak.ip6_ctx.irs = htonl(th->th_ack);
-		tak.ip6_ctx.iss = htonl(th->th_seq);
-		tak.len = sizeof(tak.ip6_ctx);
+		ctx.ip6_ctx.src = inc->inc_ie.ie6_faddr;
+		ctx.ip6_ctx.dst = inc->inc_ie.ie6_laddr;
+		ctx.ip6_ctx.irs = htonl(th->th_ack);
+		ctx.ip6_ctx.iss = htonl(th->th_seq);
+		ctx.len = sizeof(ctx.ip6_ctx);
 		break;
 	default:
 		error = EINVAL;
 		goto out;
 	}
 
-	switch (kdf) {
-	case TCP_AO_HMAC_SHA_1_96:
-		error = tcp_ao_kdf_hmac(key, keylen, out, outlen, &tak);
+	switch (tak->keyalgo) {
+	case TAO_ALGO_HMAC_SHA_1_96:
+		error = tcp_ao_kdf_hmac(tak, out, outlen, &ctx);
 		break;
-	case TCP_AO_AES_128_CMAC_96:
-		error = tcp_ao_kdf_cmac(key, keylen, out, outlen, &tak);
+	case TAO_ALGO_AES_128_CMAC_96:
+		error = tcp_ao_kdf_cmac(tak, out, outlen, &ctx);
 		break;
-	case TCP_AO_TCPMD5:
-		error = tcp_ao_kdf_cmac(key, keylen, out, outlen, &tak);
+	case TAO_ALGO_MD5SIG:
+		error = tcp_ao_kdf_md5(tak, out, outlen, &ctx);
 		break;
 	default:
 		error = EINVAL;
 	}
 	if (error)
 		goto out;
-
+out:
 	return (error);
 }
 
 static int
-tcp_ao_kdf_hmac(uint8_t *key, int keylen , uint8_t *out, int outlen,
-    struct tcp_ao_kdf_ctx *tak)
+tcp_ao_kdf_hmac(struct tcp_ao_key *tak, uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tctx)
 {
-	HMAC_SHA_CTX ctx;
+	HMAC_SHA1_CTX ctx;
 	uint8_t res[SHA1_DIGEST_LENGTH];
 	char *label = "TCP-AO";
 	int error = 0;
 	uint8_t i;
 
-	for (i = 0; outlen > 0; outlen -= SHA1_DIGEST_LENGTH, i++) {
-		HMAC_SHA1_Init(&ctx, key, keylen);
+	for (i = 1; outlen > 0; outlen -= SHA1_DIGEST_LENGTH, i++) {
+		HMAC_SHA1_Init(&ctx, tak->key, tak->keylen);
 
 		HMAC_SHA1_Update(&ctx, &i, sizeof(i));
 		HMAC_SHA1_Update(&ctx, label, sizeof(*label));
-		if (tak != NULL)
-			HMAC_SHA1_Update(&ctx, tak, tak->len);
+		if (tctx != NULL)
+			HMAC_SHA1_Update(&ctx, (uint8_t *)tctx, tctx->len);
 		HMAC_SHA1_Final(res, &ctx);
 
 		bcopy(res, out, min(outlen, SHA1_DIGEST_LENGTH));
@@ -417,32 +495,34 @@ tcp_ao_kdf_hmac(uint8_t *key, int keylen , uint8_t *out, int outlen,
 }
 
 static int
-tcp_ao_kdf_cmac(uint8_t *key, int keylen, uint8_t *out, int outlen,
-    struct tcp_ao_kdf_ctx *tak)
+tcp_ao_kdf_cmac(struct tcp_ao_key *tak, uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tctx)
 {
 	AES_CMAC_CTX ctx;
 	uint8_t res[AES_CMAC_DIGEST_LENGTH];
 	uint8_t zero[AES_CMAC_KEY_LENGTH];
+	char *label = "TCP-AO";
 	int error = 0;
+	uint8_t i;
 
-	if (tak == NULL) {
+	if (tctx == NULL) {
 		bzero(zero, sizeof(*zero));
 		AES_CMAC_Init(&ctx);
 		AES_CMAC_SetKey(&ctx, zero);
-		AES_CMAC_Update(&ctx, key, keylen);
+		AES_CMAC_Update(&ctx, tak->key, tak->keylen);
 		AES_CMAC_Final(res, &ctx);
 		bcopy(res, out, min(outlen, AES_CMAC_DIGEST_LENGTH));
 	}
 
-	if (keylen != AES_CMAC_KEY_LENGTH)
+	if (tak->keylen != AES_CMAC_KEY_LENGTH)
 		return (EINVAL);
 
-	for (i = 0; outlen > 0; outlen -= AES_CMAC_DIGEST_LENGTH, i++) {
+	for (i = 1; outlen > 0; outlen -= AES_CMAC_DIGEST_LENGTH, i++) {
 		AES_CMAC_Init(&ctx);
-		AES_CMAC_SetKey(&ctx, key);
+		AES_CMAC_SetKey(&ctx, tak->key);
 		AES_CMAC_Update(&ctx, &i, sizeof(i));
 		AES_CMAC_Update(&ctx, label, sizeof(*label));
-		AES_CMAC_Update(&ctx, tak, tak->len);
+		AES_CMAC_Update(&ctx, (uint8_t *)tctx, tctx->len);
 		AES_CMAC_Final(res, &ctx);
 
 		bcopy(res, out, min(outlen, AES_CMAC_DIGEST_LENGTH));
@@ -452,10 +532,10 @@ tcp_ao_kdf_cmac(uint8_t *key, int keylen, uint8_t *out, int outlen,
 }
 
 static int
-tcp_ao_kfd_md5(uint8_t *key, int keylen, uint8_t *out, int outlen,
-    struct tcp_ao_kdf_ctx *tak)
+tcp_ao_kdf_md5(struct tcp_ao_key *tak, uint8_t *out, int outlen,
+    struct tcp_ao_kdf_ctx *tctx)
 {
-	/* XXX: No key derivation happens. */
+	/* XXX: No key derivation is done. */
 	return (0);
 }
 
@@ -478,7 +558,7 @@ struct tcp_ao_pseudo {
 			struct tcp_ao_thopt tap_th;
 		} tap_ip;
 		struct tap_ip6 {
-			struct ip6_phdr tap_ph6;
+			struct ip6pseudo tap_ph6;
 			struct tcp_ao_thopt tap_th;
 		} tap_ip6;
 	} tap;
@@ -488,11 +568,20 @@ struct tcp_ao_pseudo {
 #define tap4	tap.tap_ip
 #define tap6	tap.tap_ip6
 
+#if 0
 /* Convenient functions not yet in existence. */
 ip_hdr2pseudo(struct ip *ip, struct ippseudo *ipp);
 ip6_hdr2pseudo(struct ip6_hdr *ip6, struct ip6pseudo *ipp6);
 ip_inc2pseudo(struct in_conninfo *inc, struct ippseudo *ipp);
 ip6_inc2pseudo(struct in_conninfo *inc, struct ip6pseudo *ipp6);
+#endif
+
+static int	tcp_ao_sha1(struct tcp_ao_cb *tac, struct tcp_ao_pseudo *ph,
+    struct mbuf *m, int moff, int mlen, uint8_t *hash);
+static int	tcp_ao_cmac(struct tcp_ao_cb *tac, struct tcp_ao_pseudo *ph,
+    struct mbuf *m, int moff, int mlen, uint8_t *hash);
+static int	tcp_ao_md5(struct tcp_ao_cb *tac, struct tcp_ao_pseudo *ph,
+    struct mbuf *m, int moff, int mlen, uint8_t *hash);
 
 /*
  * Computation the authentication hash and return the result of the hash
@@ -501,33 +590,44 @@ ip6_inc2pseudo(struct in_conninfo *inc, struct ip6pseudo *ipp6);
  *  EAUTH = authentication failed
  *  other = authentication failed
  */
-static int
-tcp_ao_mac(struct tcpcb *tp, struct tcp_ao_key *tk, struct in_conninfo *inc,
+int
+tcp_ao_mac(struct tcpcb *tp, struct tcp_ao_cb *tac, struct in_conninfo *inc,
     struct tcphdr *th, struct tcpopt *to, struct mbuf *m)
 {
 	int moff, mlen, thlen;
 	struct tcp_ao_pseudo ph;
 	struct tcp_ao_thopt *tho;
-	uint8_t hash[MAXHASHLEN];
+	uint8_t hash[100];
+	int error;
 
 	/*
 	 * Set up the virtual sequence number extension that is part of
 	 * the authentication hash.
 	 */
 	if (tp != NULL)
-		ph.tap_sne = tp->t_ao->tao_sne;
+		ph.tap_sne = tp->t_ao->tac_sne;
 	else
 		ph.tap_sne = 0;
 
 	/* Fill in pseudo headers. */
 	switch(inc->inc_flags & INC_ISIPV6) {
 	case 0:
-		ip_inc2pseudo(inc, &ph.tap4.tap_ph4);
+		/* ip_inc2pseudo(inc, &ph.tap4.tap_ph4); */
+		ph.tap4.tap_ph4.ippseudo_src = inc->inc_faddr;
+		ph.tap4.tap_ph4.ippseudo_dst = inc->inc_laddr;
+		ph.tap4.tap_ph4.ippseudo_pad = 0;
+		ph.tap4.tap_ph4.ippseudo_p = IPPROTO_TCP;
+		ph.tap4.tap_ph4.ippseudo_len = m->m_pkthdr.len;
 		ph.tap_len += sizeof(ph.tap4.tap_ph4);
 		tho = &ph.tap4.tap_th;
 		break;
 	case INC_ISIPV6:
-		ip6_hdr2pseudo(inc, &ph.tap6.tap_ph6);
+		/* ip6_hdr2pseudo(inc, &ph.tap6.tap_ph6); */
+		ph.tap6.tap_ph6.ip6pseudo_src = inc->inc6_faddr;
+		ph.tap6.tap_ph6.ip6pseudo_dst = inc->inc6_laddr;
+		ph.tap6.tap_ph6.ip6pseudo_len = m->m_pkthdr.len;
+		ph.tap6.tap_ph6.ip6pseudo_pad = 0;
+		ph.tap6.tap_ph6.ip6pseudo_p = IPPROTO_TCP;
 		ph.tap_len += sizeof(ph.tap6.tap_ph6);
 		tho = &ph.tap6.tap_th;
 		break;
@@ -544,22 +644,22 @@ tcp_ao_mac(struct tcpcb *tp, struct tcp_ao_key *tk, struct in_conninfo *inc,
 
 	/* Zero out checksum and mac field and swap to network byte order. */
 	tho->th.th_sum = 0;
-	bzero(&tho->tho + (to->to_signature - (th + 1)), to->to_siglen);
-	tcp_fields_to_net(&tho);
+	bzero(tho->tho + (to->to_signature - (u_char *)(th + 1)), to->to_siglen);
+	/* tcp_fields_to_net(&tho); */
 
 	/* Set up the mbuf length fields. */
 	moff = thlen;
 	mlen = m_length(m, NULL) - thlen;
 
-	switch(tk->algo) {
-	case TCP_AO_HMAC_SHA_1_96:
-		error = tcp_ao_sha1(tk->key, ph, m, moff, mlen, hash);
+	switch(tac->tac_algo) {
+	case TAO_ALGO_HMAC_SHA_1_96:
+		error = tcp_ao_sha1(tac, &ph, m, moff, mlen, hash);
 		break;
-	case TCP_AO_AES_128_CMAC_96:
-		error = tcp_ao_cmac(tk->key, ph, m, moff, mlen, hash);
+	case TAO_ALGO_AES_128_CMAC_96:
+		error = tcp_ao_cmac(tac, &ph, m, moff, mlen, hash);
 		break;
-	case TCP_AO_TCPMD5:
-		error = tcp_ao_md5(tk->key, ph, m, moff, mlen, hash);
+	case TAO_ALGO_MD5SIG:
+		error = tcp_ao_md5(tac, &ph, m, moff, mlen, hash);
 		break;
 	default:
 		error = EINVAL;
@@ -569,7 +669,7 @@ tcp_ao_mac(struct tcpcb *tp, struct tcp_ao_key *tk, struct in_conninfo *inc,
 		goto out;
 
 	/* Compare result to segment signature. */
-	if (bcmp(hash, to->to_signature, tk->tk_hashlen));
+	if (bcmp(hash, to->to_signature, to->to_siglen))
 		error = EAUTH;
 
 out:
@@ -585,21 +685,28 @@ out:
 /*
  * Compute RFC5925+RFC5926 compliant HMAC-SHA1 authentication MAC of
  * a tcp segment.
- * XXX: HMAC_SHA1 doesn't exist yet.
  */
 static int
-tcp_ao_sha1(uint32_t key[static SHA1_BLOCK_LENGTH], struct pseudo *ph,
-    struct mbuf *m, int moff, int mlen, uint8_t hash[static SHA1_RESULTLEN])
+HMAC_SHA1_Update_x(void *ctx, void *data, u_int len)
+{
+
+	HMAC_SHA1_Update(ctx, data, len);
+	return (0);
+}
+
+static int
+tcp_ao_sha1(struct tcp_ao_cb *tac, struct tcp_ao_pseudo *ph, struct mbuf *m,
+    int moff, int mlen, uint8_t *hash)
 {
 	HMAC_SHA1_CTX ctx;
 	int error = 0;
 
-	HMAC_SHA1_Init(&ctx, key, SHA1_BLOCK_LENGTH);
+	HMAC_SHA1_Init(&ctx, tac->tac_skey.hmac, SHA1_BLOCK_LENGTH);
 
 	/* Pseudo header. */
-	HMAC_SHA1_Update(&ctx, ph, ph->tap_len);
+	HMAC_SHA1_Update(&ctx, (uint8_t *)ph, ph->tap_len);
 
-	error = m_apply(m, moff, mlen, HMAC_SHA1_Update, &ctx);
+	error = m_apply(m, moff, mlen, HMAC_SHA1_Update_x, &ctx);
 	if (error)
 		goto out;
 
@@ -614,18 +721,26 @@ out:
  * a tcp segment.
  */
 static int
-tcp_ao_cmac(uint32_t key[static AES_CMAC_KEY_LENGTH], struct pseudo *ph,
-    struct mbuf *m, int moff, int mlen, uint8_t hash[static AES_CMAC_DIGEST_LENGTH])
+AES_CMAC_Update_x(void *ctx, void *data, u_int len)
+{
+
+	AES_CMAC_Update_x(ctx, data, len);
+	return (0);
+}
+
+static int
+tcp_ao_cmac(struct tcp_ao_cb *tac, struct tcp_ao_pseudo *ph, struct mbuf *m,
+    int moff, int mlen, uint8_t *hash)
 {
 	AES_CMAC_CTX ctx;
 	int error = 0;
 
 	AES_CMAC_Init(&ctx);
-	AES_CMAC_SetKey(&ctx, key);
+	AES_CMAC_SetKey(&ctx, tac->tac_skey.cmac);
 
-	AES_CMAC_Update(&ctx, ph, ph->tap_len);
+	AES_CMAC_Update(&ctx, (uint8_t *)ph, ph->tap_len);
 
-	error = m_apply(m, moff, mlen, AES_CMAC_Update, &ctx);
+	error = m_apply(m, moff, mlen, AES_CMAC_Update_x, &ctx);
 	if (error)
 		goto out;
 
@@ -641,27 +756,35 @@ out:
  * are not included.
  */
 static int
-tcp_ao_md5(uint32_t key[static MD5_BLOCK_LENGTH], struct pseudo *ph,
-    struct mbuf *m, int moff, int mlen, uint8_t hash[static MD5_DIGEST_LENGTH])
+MD5Update_x(void *ctx, void *data, u_int len)
+{
+
+	MD5Update(ctx, data, len);
+	return (0);
+}
+
+static int
+tcp_ao_md5(struct tcp_ao_cb *tac, struct tcp_ao_pseudo *ph, struct mbuf *m,
+    int moff, int mlen, uint8_t hash[static MD5_DIGEST_LENGTH])
 {
 	MD5_CTX ctx;
 	int error = 0, len;
 
 	MD5Init(&ctx);
 
-	len = ph->tap_len - sizeof(*ph->tap_sne) - sizeof(struct tcp_ao_thopt);
+	len = ph->tap_len - sizeof(ph->tap_sne) - sizeof(struct tcp_ao_thopt);
 	len += sizeof(struct tcphdr);
-	MD5Update(&ctx, &ph->tap, len;
+	MD5Update(&ctx, &ph->tap, len);
 
-	error = m_apply(m, moff, mlen, AES_CMAC_Update, &ctx);
+	error = m_apply(m, moff, mlen, MD5Update_x, &ctx);
 	if (error)
 		goto out;
 
-	MD5Update(&ctx, key, MD5_BLOCK_LENGTH);
+	MD5Update(&ctx, tac->tac_skey.md5, MD5_BLOCK_LENGTH);
 
 	MD5Final(hash, &ctx);
 out:
-	bzero(%ctx, sizeof(ctx));
+	bzero(&ctx, sizeof(ctx));
 	return (error);
 }
 
