@@ -42,6 +42,7 @@ typedef struct {
 } rijndael_ctx;
 
 void	rijndael_set_key(rijndael_ctx *, const u_char *, int);
+void	rijndael_set_key_enc_only(rijndael_ctx *, const u_char *, int);
 void	rijndael_decrypt(const rijndael_ctx *, const u_char *, u_char *);
 void	rijndael_encrypt(const rijndael_ctx *, const u_char *, u_char *);
 

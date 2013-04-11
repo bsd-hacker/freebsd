@@ -45,6 +45,13 @@ rijndael_set_key(rijndael_ctx *ctx, const u_char *key, int bits)
 }
 
 void
+rijndael_set_key_enc_only(rijndael_ctx *ctx, const u_char *key, int bits)
+{
+
+	ctx->Nr = rijndaelKeySetupEnc(ctx->ek, key, bits);
+}
+
+void
 rijndael_decrypt(const rijndael_ctx *ctx, const u_char *src, u_char *dst)
 {
 

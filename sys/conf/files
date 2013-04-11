@@ -541,8 +541,8 @@ crypto/sha1.c			optional carp | crypto | ipsec | \
 					 netgraph_mppc_encryption | sctp
 crypto/sha2/sha2.c		optional crypto | geom_bde | ipsec | random | \
 					 sctp | zfs
-crypto/cmac/cmac.c		optional crypto | netinet | netinet6
-crypto/hmac/hmac.c		optional crypto | netinet | netinet6
+crypto/cmac/cmac.c		optional inet | inet6
+crypto/hmac/hmac.c		optional inet | inet6
 ddb/db_access.c			optional ddb
 ddb/db_break.c			optional ddb
 ddb/db_capture.c		optional ddb
@@ -3116,6 +3116,7 @@ netinet/tcp_timer.c		optional inet | inet6
 netinet/tcp_timewait.c		optional inet | inet6
 netinet/tcp_usrreq.c		optional inet | inet6
 netinet/udp_usrreq.c		optional inet | inet6
+netinet/tcp_ao.c		optional inet | inet6
 netinet/libalias/alias.c	optional libalias inet | netgraph_nat inet
 netinet/libalias/alias_db.c	optional libalias inet | netgraph_nat inet
 netinet/libalias/alias_mod.c	optional libalias | netgraph_nat

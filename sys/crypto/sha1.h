@@ -68,5 +68,7 @@ typedef struct sha1_ctxt SHA1_CTX;
 #endif /* _KERNEL */
 
 #define	SHA1_RESULTLEN	(160/8)
+#define	SHA1_BLOCK_LENGTH	64
+#define	SHA1_DIGEST_LENGTH	SHA1_RESULTLEN
 
 #endif /*_NETINET6_SHA1_H_*/

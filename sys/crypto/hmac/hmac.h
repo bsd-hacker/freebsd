@@ -19,6 +19,10 @@
 #ifndef _HMAC_H_
 #define _HMAC_H_
 
+#include <sys/md5.h>
+#include <crypto/sha1.h>
+#include <crypto/sha2/sha2.h>
+
 typedef struct _HMAC_MD5_CTX {
 	MD5_CTX		ctx;
 	u_int8_t	key[MD5_BLOCK_LENGTH];
@@ -32,7 +36,7 @@ typedef struct _HMAC_SHA1_CTX {
 } HMAC_SHA1_CTX;
 
 typedef struct _HMAC_SHA256_CTX {
-	SHA2_CTX	ctx;
+	SHA256_CTX	ctx;
 	u_int8_t	key[SHA256_BLOCK_LENGTH];
 	u_int		key_len;
 } HMAC_SHA256_CTX;

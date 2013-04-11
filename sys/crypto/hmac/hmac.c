@@ -24,10 +24,12 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 
-#include <crypto/md5.h>
+#include <sys/md5.h>
 #include <crypto/sha1.h>
-#include <crypto/sha2.h>
-#include <crypto/hmac.h>
+#include <crypto/sha2/sha2.h>
+#include <crypto/hmac/hmac.h>
+
+#define explicit_bzero(a, b)	bzero(a, b)
 
 void
 HMAC_MD5_Init(HMAC_MD5_CTX *ctx, const u_int8_t *key, u_int key_len)
@@ -144,9 +146,9 @@ HMAC_SHA256_Init(HMAC_SHA256_CTX *ctx, const u_int8_t *key, u_int key_len)
 	int i;
 
 	if (key_len > SHA256_BLOCK_LENGTH) {
-		SHA256Init(&ctx->ctx);
-		SHA256Update(&ctx->ctx, key, key_len);
-		SHA256Final(ctx->key, &ctx->ctx);
+		SHA256_Init(&ctx->ctx);
+		SHA256_Update(&ctx->ctx, key, key_len);
+		SHA256_Final(ctx->key, &ctx->ctx);
 		ctx->key_len = SHA256_DIGEST_LENGTH;
 	} else {
 		bcopy(key, ctx->key, key_len);
@@ -158,8 +160,8 @@ HMAC_SHA256_Init(HMAC_SHA256_CTX *ctx, const u_int8_t *key, u_int key_len)
 	for (i = 0; i < SHA256_BLOCK_LENGTH; i++)
 		k_ipad[i] ^= 0x36;
 
-	SHA256Init(&ctx->ctx);
-	SHA256Update(&ctx->ctx, k_ipad, SHA256_BLOCK_LENGTH);
+	SHA256_Init(&ctx->ctx);
+	SHA256_Update(&ctx->ctx, k_ipad, SHA256_BLOCK_LENGTH);
 
 	explicit_bzero(k_ipad, sizeof k_ipad);
 }
@@ -167,7 +169,7 @@ HMAC_SHA256_Init(HMAC_SHA256_CTX *ctx, const u_int8_t *key, u_int key_len)
 void
 HMAC_SHA256_Update(HMAC_SHA256_CTX *ctx, const u_int8_t *data, u_int len)
 {
-	SHA256Update(&ctx->ctx, data, len);
+	SHA256_Update(&ctx->ctx, data, len);
 }
 
 void
@@ -176,17 +178,17 @@ HMAC_SHA256_Final(u_int8_t digest[SHA256_DIGEST_LENGTH], HMAC_SHA256_CTX *ctx)
 	u_int8_t k_opad[SHA256_BLOCK_LENGTH];
 	int i;
 
-	SHA256Final(digest, &ctx->ctx);
+	SHA256_Final(digest, &ctx->ctx);
 
 	bzero(k_opad, SHA256_BLOCK_LENGTH);
 	bcopy(ctx->key, k_opad, ctx->key_len);
 	for (i = 0; i < SHA256_BLOCK_LENGTH; i++)
 		k_opad[i] ^= 0x5c;
 
-	SHA256Init(&ctx->ctx);
-	SHA256Update(&ctx->ctx, k_opad, SHA256_BLOCK_LENGTH);
-	SHA256Update(&ctx->ctx, digest, SHA256_DIGEST_LENGTH);
-	SHA256Final(digest, &ctx->ctx);
+	SHA256_Init(&ctx->ctx);
+	SHA256_Update(&ctx->ctx, k_opad, SHA256_BLOCK_LENGTH);
+	SHA256_Update(&ctx->ctx, digest, SHA256_DIGEST_LENGTH);
+	SHA256_Final(digest, &ctx->ctx);
 
 	explicit_bzero(k_opad, sizeof k_opad);
 }

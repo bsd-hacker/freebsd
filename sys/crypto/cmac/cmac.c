@@ -24,8 +24,10 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 
-#include <crypto/rijndael.h>
-#include <crypto/cmac.h>
+#include <crypto/rijndael/rijndael.h>
+#include <crypto/cmac/cmac.h>
+
+#define explicit_bzero(a, b)	bzero(a, b)
 
 #define LSHIFT(v, r) do {					\
 	int i;							\

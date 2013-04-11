@@ -19,6 +19,10 @@
 #ifndef _CMAC_H_
 #define _CMAC_H_
 
+#ifndef _RIJNDAEL_H_
+#include <crypto/rijndael/rijndael.h>
+#endif
+
 #define AES_CMAC_KEY_LENGTH	16
 #define AES_CMAC_DIGEST_LENGTH	16
 
