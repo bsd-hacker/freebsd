@@ -34,7 +34,7 @@
 struct linux_vdso_sym {
 	SLIST_ENTRY(linux_vdso_sym) sym;
 	uint32_t	size;
-	vm_offset_t	value;
+	uintptr_t *	ptr;
 	char		symname[];
 };
 
@@ -44,16 +44,22 @@ void	__elfN(linux_vdso_fixup)(struct sysentvec *);
 void	__elfN(linux_vdso_reloc)(struct sysentvec *, int);
 void	__elfN(linux_vdso_sym_init)(struct linux_vdso_sym *);
 
-#define	LINUX_VDSO_SYM_DEFINE(name)			\
-static struct linux_vdso_sym name = {			\
-	.symname	= #name,			\
-	.size		= sizeof(#name),		\
-	.value		= 0				\
-};							\
-SYSINIT(__elfN(name ## _sym_init), SI_SUB_EXEC,	\
-    SI_ORDER_FIRST, __elfN(linux_vdso_sym_init), &name);\
-struct __hack
+#define	LINUX_VDSO_SYM_INTPTR(name)				\
+uintptr_t name;							\
+LINUX_VDSO_SYM_DEFINE(name)
 
-#define LINUX_VDSO_SYM_VALUE(name)	name.value	\
+#define	LINUX_VDSO_SYM_CHAR(name)				\
+const char * name;						\
+LINUX_VDSO_SYM_DEFINE(name)
+
+#define	LINUX_VDSO_SYM_DEFINE(name)				\
+static struct linux_vdso_sym name ## sym = {			\
+	.symname	= #name,				\
+	.size		= sizeof(#name),			\
+	.ptr		= (uintptr_t *)&name			\
+};								\
+SYSINIT(__elfN(name ## _sym_init), SI_SUB_EXEC,			\
+    SI_ORDER_FIRST, __elfN(linux_vdso_sym_init), &name ## sym);	\
+struct __hack
 
 #endif	/* _LINUX_VDSO_H_ */

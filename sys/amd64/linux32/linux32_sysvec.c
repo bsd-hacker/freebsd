@@ -225,9 +225,9 @@ struct linux32_ps_strings {
 	u_int ps_nenvstr;	/* the number of environment strings */
 };
 
-LINUX_VDSO_SYM_DEFINE(linux32_sigcode);
-LINUX_VDSO_SYM_DEFINE(linux32_rt_sigcode);
-LINUX_VDSO_SYM_DEFINE(linux32_vsyscall);
+LINUX_VDSO_SYM_INTPTR(linux32_sigcode);
+LINUX_VDSO_SYM_INTPTR(linux32_rt_sigcode);
+LINUX_VDSO_SYM_INTPTR(linux32_vsyscall);
 
 /*
  * If FreeBSD & Linux have a difference of opinion about what a trap
@@ -270,9 +270,7 @@ elf_linux_fixup(register_t **stack_base, struct image_params *imgp)
 
 	AUXARGS_ENTRY_32(pos, LINUX_AT_SYSINFO_EHDR,
 	    imgp->proc->p_sysent->sv_shared_page_base);
-	AUXARGS_ENTRY_32(pos, LINUX_AT_SYSINFO,
-	    LINUX_VDSO_SYM_VALUE(linux32_vsyscall));
-
+	AUXARGS_ENTRY_32(pos, LINUX_AT_SYSINFO, linux32_vsyscall);
 	AUXARGS_ENTRY_32(pos, LINUX_AT_HWCAP, cpu_feature);
 
 	/*
@@ -426,7 +424,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 * Build context to run handler in.
 	 */
 	regs->tf_rsp = PTROUT(fp);
-	regs->tf_rip = LINUX_VDSO_SYM_VALUE(linux32_rt_sigcode);
+	regs->tf_rip = linux32_rt_sigcode;
 	regs->tf_rflags &= ~(PSL_T | PSL_D);
 	regs->tf_cs = _ucode32sel;
 	regs->tf_ss = _udatasel;
@@ -550,7 +548,7 @@ linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 * Build context to run handler in.
 	 */
 	regs->tf_rsp = PTROUT(fp);
-	regs->tf_rip = LINUX_VDSO_SYM_VALUE(linux32_sigcode);
+	regs->tf_rip = linux32_sigcode;
 	regs->tf_rflags &= ~(PSL_T | PSL_D);
 	regs->tf_cs = _ucode32sel;
 	regs->tf_ss = _udatasel;

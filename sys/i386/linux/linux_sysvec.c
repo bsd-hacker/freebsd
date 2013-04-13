@@ -203,9 +203,9 @@ static int _bsd_to_linux_trapcode[] = {
      _bsd_to_linux_trapcode[(code)]: \
      LINUX_T_UNKNOWN)
 
-LINUX_VDSO_SYM_DEFINE(linux_sigcode);
-LINUX_VDSO_SYM_DEFINE(linux_rt_sigcode);
-LINUX_VDSO_SYM_DEFINE(linux_vsyscall);
+LINUX_VDSO_SYM_INTPTR(linux_sigcode);
+LINUX_VDSO_SYM_INTPTR(linux_rt_sigcode);
+LINUX_VDSO_SYM_INTPTR(linux_vsyscall);
 
 /*
  * If FreeBSD & Linux have a difference of opinion about what a trap
@@ -265,9 +265,7 @@ elf_linux_fixup(register_t **stack_base, struct image_params *imgp)
 
 	AUXARGS_ENTRY(pos, LINUX_AT_SYSINFO_EHDR,
 	    imgp->proc->p_sysent->sv_shared_page_base);
-	AUXARGS_ENTRY(pos, LINUX_AT_SYSINFO,
-	    LINUX_VDSO_SYM_VALUE(linux_vsyscall));
-
+	AUXARGS_ENTRY(pos, LINUX_AT_SYSINFO, linux_vsyscall);
 	AUXARGS_ENTRY(pos, LINUX_AT_HWCAP, cpu_feature);
 
 	/*
@@ -529,7 +527,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 * Build context to run handler in.
 	 */
 	regs->tf_esp = (int)fp;
-	regs->tf_eip = LINUX_VDSO_SYM_VALUE(linux_rt_sigcode);
+	regs->tf_eip = linux_rt_sigcode;
 	regs->tf_eflags &= ~(PSL_T | PSL_VM | PSL_D);
 	regs->tf_cs = _ucodesel;
 	regs->tf_ds = _udatasel;
@@ -649,7 +647,7 @@ linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 * Build context to run handler in.
 	 */
 	regs->tf_esp = (int)fp;
-	regs->tf_eip = LINUX_VDSO_SYM_VALUE(linux_sigcode);
+	regs->tf_eip = linux_sigcode;
 	regs->tf_eflags &= ~(PSL_T | PSL_VM | PSL_D);
 	regs->tf_cs = _ucodesel;
 	regs->tf_ds = _udatasel;

@@ -206,14 +206,7 @@ __elfN(linux_vdso_reloc)(struct sysentvec *sv, int vdso_adjust)
 				if (sym->st_shndx == SHN_UNDEF ||
 				    sym->st_shndx == SHN_ABS)
 					continue;
-
-				switch (ELF_ST_TYPE(sym->st_info)) {
-				case STT_OBJECT:
-				case STT_FUNC:
-				case STT_SECTION:
-				case STT_FILE:
-					sym->st_value += vdso_adjust;
-				}
+				sym->st_value += vdso_adjust;
 			}
 		}
 	}
@@ -239,11 +232,9 @@ __elfN(linux_vdso_lookup)(Elf_Ehdr *ehdr, struct linux_vdso_sym *vsym)
 	symcnt = shdr[__elfN(symtabindex)].sh_size / sizeof(*sym);
 
 	for (i = 0; i < symcnt; ++i, ++sym) {
-		if (ELF_ST_TYPE(sym->st_info) != STT_FUNC)
-			continue;
 		symname = strtab + sym->st_name;
 		if (strncmp(vsym->symname, (char *)symname, vsym->size) == 0) {
-			vsym->value = (vm_offset_t)sym->st_value;
+			*vsym->ptr = (uintptr_t)sym->st_value;
 			break;
 		}
 	}
