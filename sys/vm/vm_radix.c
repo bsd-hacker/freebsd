@@ -270,11 +270,7 @@ vm_radix_addlev(vm_pindex_t *idx, boolean_t *levels, uint16_t ilev)
 	for (; levels[ilev] == FALSE ||
 	    vm_radix_slot(*idx, ilev) == (VM_RADIX_COUNT - 1); ilev--)
 		if (ilev == 0)
-			break;
-	KASSERT(ilev > 0 || levels[0],
-	    ("%s: levels back-scanning problem", __func__));
-	if (ilev == 0 && vm_radix_slot(*idx, ilev) == (VM_RADIX_COUNT - 1))
-		return (1);
+			return (1);
 	wrapidx = *idx;
 	*idx = vm_radix_trimkey(*idx, ilev);
 	*idx += VM_RADIX_UNITLEVEL(ilev);
@@ -295,11 +291,7 @@ vm_radix_declev(vm_pindex_t *idx, boolean_t *levels, uint16_t ilev)
 	for (; levels[ilev] == FALSE ||
 	    vm_radix_slot(*idx, ilev) == 0; ilev--)
 		if (ilev == 0)
-			break;
-	KASSERT(ilev > 0 || levels[0],
-	    ("%s: levels back-scanning problem", __func__));
-	if (ilev == 0 && vm_radix_slot(*idx, ilev) == 0)
-		return (1);
+			return (1);
 	wrapidx = *idx;
 	*idx = vm_radix_trimkey(*idx, ilev);
 	*idx |= VM_RADIX_UNITLEVEL(ilev) - 1;
@@ -404,7 +396,8 @@ void
 vm_radix_insert(struct vm_radix *rtree, vm_page_t page)
 {
 	vm_pindex_t index, newind;
-	struct vm_radix_node *parent, *rnode, *tmp;
+	void **parentp;
+	struct vm_radix_node *rnode, *tmp;
 	vm_page_t m;
 	int slot;
 	uint16_t clev;
@@ -417,34 +410,34 @@ vm_radix_insert(struct vm_radix *rtree, vm_page_t page)
 	 */
 	rnode = vm_radix_getroot(rtree);
 	if (rnode == NULL) {
-		rnode = vm_radix_node_get(0, 1, 0);
-		vm_radix_setroot(rtree, rnode);
-		vm_radix_addpage(rnode, index, 0, page);
+		rtree->rt_root = (uintptr_t)page | VM_RADIX_ISLEAF;
 		return;
 	}
-	do {
-		slot = vm_radix_slot(index, rnode->rn_clev);
-		if (vm_radix_isleaf(rnode->rn_child[slot])) {
-			m = vm_radix_topage(rnode->rn_child[slot]);
+	parentp = (void **)&rtree->rt_root;
+	for (;;) {
+		if (vm_radix_isleaf(rnode)) {
+			m = vm_radix_topage(rnode);
 			if (m->pindex == index)
 				panic("%s: key %jx is already present",
 				    __func__, (uintmax_t)index);
 			clev = vm_radix_keydiff(m->pindex, index);
 			tmp = vm_radix_node_get(vm_radix_trimkey(index,
 			    clev - 1), 2, clev);
-			rnode->rn_child[slot] = tmp;
+			*parentp = tmp;
 			vm_radix_addpage(tmp, index, clev, page);
 			vm_radix_addpage(tmp, m->pindex, clev, m);
 			return;
-		}
+		} else if (vm_radix_keybarr(rnode, index))
+			break;
+		slot = vm_radix_slot(index, rnode->rn_clev);
 		if (rnode->rn_child[slot] == NULL) {
 			rnode->rn_count++;
 			vm_radix_addpage(rnode, index, rnode->rn_clev, page);
 			return;
 		}
-		parent = rnode;
+		parentp = &rnode->rn_child[slot];
 		rnode = rnode->rn_child[slot];
-	} while (!vm_radix_keybarr(rnode, index));
+	}
 
 	/*
 	 * A new node is needed because the right insertion level is reached.
@@ -455,7 +448,7 @@ vm_radix_insert(struct vm_radix *rtree, vm_page_t page)
 	clev = vm_radix_keydiff(newind, index);
 	tmp = vm_radix_node_get(vm_radix_trimkey(index, clev - 1), 2,
 	    clev);
-	parent->rn_child[slot] = tmp;
+	*parentp = tmp;
 	vm_radix_addpage(tmp, index, clev, page);
 	slot = vm_radix_slot(newind, clev);
 	tmp->rn_child[slot] = rnode;
@@ -474,17 +467,16 @@ vm_radix_lookup(struct vm_radix *rtree, vm_pindex_t index)
 
 	rnode = vm_radix_getroot(rtree);
 	while (rnode != NULL) {
-		if (vm_radix_keybarr(rnode, index))
-			return (NULL);
-		slot = vm_radix_slot(index, rnode->rn_clev);
-		rnode = rnode->rn_child[slot];
 		if (vm_radix_isleaf(rnode)) {
 			m = vm_radix_topage(rnode);
 			if (m->pindex == index)
 				return (m);
 			else
-				return (NULL);
-		}
+				break;
+		} else if (vm_radix_keybarr(rnode, index))
+			break;
+		slot = vm_radix_slot(index, rnode->rn_clev);
+		rnode = rnode->rn_child[slot];
 	}
 	return (NULL);
 }
@@ -505,12 +497,21 @@ vm_radix_lookup_ge(struct vm_radix *rtree, vm_pindex_t index)
 	int loops = 0;
 #endif
 
+	rnode = vm_radix_getroot(rtree);
+	if (rnode == NULL)
+		return (NULL);
+	else if (vm_radix_isleaf(rnode)) {
+		m = vm_radix_topage(rnode);
+		if (m->pindex >= index)
+			return (m);
+		else
+			return (NULL);
+	}
 restart:
 	KASSERT(++loops < 1000, ("%s: too many loops", __func__));
 	for (difflev = 0; difflev < (VM_RADIX_LIMIT + 1); difflev++)
 		maplevels[difflev] = FALSE;
-	rnode = vm_radix_getroot(rtree);
-	while (rnode != NULL) {
+	for (;;) {
 		maplevels[rnode->rn_clev] = TRUE;
 
 		/*
@@ -532,6 +533,7 @@ restart:
 			} else
 				index = vm_radix_trimkey(rnode->rn_owner,
 				    difflev);
+			rnode = vm_radix_getroot(rtree);
 			goto restart;
 		}
 		slot = vm_radix_slot(index, rnode->rn_clev);
@@ -572,6 +574,7 @@ restart:
 		if (rnode->rn_clev == 0 || vm_radix_addlev(&index, maplevels,
 		    rnode->rn_clev - 1) > 0)
 			break;
+		rnode = vm_radix_getroot(rtree);
 		goto restart;
 descend:
 		rnode = child;
@@ -595,12 +598,21 @@ vm_radix_lookup_le(struct vm_radix *rtree, vm_pindex_t index)
 	int loops = 0;
 #endif
 
+	rnode = vm_radix_getroot(rtree);
+	if (rnode == NULL)
+		return (NULL);
+	else if (vm_radix_isleaf(rnode)) {
+		m = vm_radix_topage(rnode);
+		if (m->pindex <= index)
+			return (m);
+		else
+			return (NULL);
+	}
 restart:
 	KASSERT(++loops < 1000, ("%s: too many loops", __func__));
 	for (difflev = 0; difflev < (VM_RADIX_LIMIT + 1); difflev++)
 		maplevels[difflev] = FALSE;
-	rnode = vm_radix_getroot(rtree);
-	while (rnode != NULL) {
+	for (;;) {
 		maplevels[rnode->rn_clev] = TRUE;
 
 		/*
@@ -622,6 +634,7 @@ restart:
 			} else if (vm_radix_declev(&index, maplevels,
 			    difflev) > 0)
 				break;
+			rnode = vm_radix_getroot(rtree);
 			goto restart;
 		}
 		slot = vm_radix_slot(index, rnode->rn_clev);
@@ -663,6 +676,7 @@ restart:
 		if (rnode->rn_clev == 0 || vm_radix_declev(&index, maplevels,
 		    rnode->rn_clev - 1) > 0)
 			break;
+		rnode = vm_radix_getroot(rtree);
 		goto restart;
 descend:
 		rnode = child;
@@ -681,8 +695,15 @@ vm_radix_remove(struct vm_radix *rtree, vm_pindex_t index)
 	vm_page_t m;
 	int i, slot;
 
-	parent = NULL;
 	rnode = vm_radix_getroot(rtree);
+	if (vm_radix_isleaf(rnode)) {
+		m = vm_radix_topage(rnode);
+		if (m->pindex != index)
+			panic("%s: invalid key found", __func__);
+		vm_radix_setroot(rtree, NULL);
+		return;
+	}
+	parent = NULL;
 	for (;;) {
 		if (rnode == NULL)
 			panic("vm_radix_remove: impossible to locate the key");
@@ -695,22 +716,19 @@ vm_radix_remove(struct vm_radix *rtree, vm_pindex_t index)
 			rnode->rn_count--;
 			if (rnode->rn_count > 1)
 				break;
-			if (parent == NULL) {
-				if (rnode->rn_count == 0) {
-					vm_radix_node_put(rnode);
-					vm_radix_setroot(rtree, NULL);
-				}
-				break;
-			}
 			for (i = 0; i < VM_RADIX_COUNT; i++)
 				if (rnode->rn_child[i] != NULL)
 					break;
 			KASSERT(i != VM_RADIX_COUNT,
 			    ("%s: invalid node configuration", __func__));
-			slot = vm_radix_slot(index, parent->rn_clev);
-			KASSERT(parent->rn_child[slot] == rnode,
-			    ("%s: invalid child value", __func__));
-			parent->rn_child[slot] = rnode->rn_child[i];
+			if (parent == NULL)
+				vm_radix_setroot(rtree, rnode->rn_child[i]);
+			else {
+				slot = vm_radix_slot(index, parent->rn_clev);
+				KASSERT(parent->rn_child[slot] == rnode,
+				    ("%s: invalid child value", __func__));
+				parent->rn_child[slot] = rnode->rn_child[i];
+			}
 			rnode->rn_count--;
 			rnode->rn_child[i] = NULL;
 			vm_radix_node_put(rnode);
@@ -735,7 +753,8 @@ vm_radix_reclaim_allnodes(struct vm_radix *rtree)
 	if (root == NULL)
 		return;
 	vm_radix_setroot(rtree, NULL);
-	vm_radix_reclaim_allnodes_int(root);
+	if (!vm_radix_isleaf(root))
+		vm_radix_reclaim_allnodes_int(root);
 }
 
 #ifdef DDB

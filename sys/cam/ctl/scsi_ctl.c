@@ -244,7 +244,6 @@ MODULE_DEPEND(ctlfe, ctl, 1, 1, 1);
 MODULE_DEPEND(ctlfe, cam, 1, 1, 1);
 
 extern struct ctl_softc *control_softc;
-extern int ctl_disable;
 
 void
 ctlfeshutdown(void)
@@ -256,10 +255,6 @@ void
 ctlfeinit(void)
 {
 	cam_status status;
-
-	/* Don't initialize if we're disabled */
-	if (ctl_disable != 0)
-		return;
 
 	STAILQ_INIT(&ctlfe_softc_list);
 
@@ -2065,7 +2060,6 @@ ctlfe_lun_disable(void *arg, struct ctl_id targ_id, int lun_id)
 static void
 ctlfe_dump_sim(struct cam_sim *sim)
 {
-	int i;
 
 	printf("%s%d: max tagged openings: %d, max dev openings: %d\n",
 	       sim->sim_name, sim->unit_number,
@@ -2076,14 +2070,6 @@ ctlfe_dump_sim(struct cam_sim *sim)
 	printf("%s%d: ccb_freeq is %sempty\n",
 	       sim->sim_name, sim->unit_number,
 	       (SLIST_FIRST(&sim->ccb_freeq) == NULL) ? "" : "NOT ");
-	printf("%s%d: alloc_queue.entries %d, alloc_openings %d\n",
-	       sim->sim_name, sim->unit_number,
-	       sim->devq->alloc_queue.entries, sim->devq->alloc_openings);
-	printf("%s%d: qfrozen_cnt:", sim->sim_name, sim->unit_number);
-	for (i = 0; i < CAM_RL_VALUES; i++) {
-		printf("%s%u", (i != 0) ? ":" : "",
-		sim->devq->alloc_queue.qfrozen_cnt[i]);
-	}
 	printf("\n");
 }
 
