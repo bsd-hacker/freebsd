@@ -739,7 +739,7 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	 */
 	if (ath_hal_getcapability(ah, HAL_CAP_HT, 0, NULL) == HAL_OK &&
 	    (wmodes & (HAL_MODE_HT20 | HAL_MODE_HT40))) {
-		int rxs, txs;
+		uint32_t rxs, txs;
 
 		device_printf(sc->sc_dev, "[HT] enabling HT modes\n");
 
@@ -780,6 +780,10 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 
 		ath_hal_getrxchainmask(ah, &sc->sc_rxchainmask);
 		ath_hal_gettxchainmask(ah, &sc->sc_txchainmask);
+
+		device_printf(sc->sc_dev, "Chainmasks: TX=0x%x; RX=0x%x\n",
+		    sc->sc_txchainmask,
+		    sc->sc_rxchainmask);
 
 		ic->ic_txstream = txs;
 		ic->ic_rxstream = rxs;
@@ -842,7 +846,8 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	/*
 	 * Initialise the deferred completed RX buffer list.
 	 */
-	TAILQ_INIT(&sc->sc_rx_rxlist);
+	TAILQ_INIT(&sc->sc_rx_rxlist[HAL_RX_QUEUE_HP]);
+	TAILQ_INIT(&sc->sc_rx_rxlist[HAL_RX_QUEUE_LP]);
 
 	/*
 	 * Indicate we need the 802.11 header padded to a
@@ -1524,6 +1529,12 @@ ath_update_chainmasks(struct ath_softc *sc, struct ieee80211_channel *chan)
 	} else {
 		sc->sc_cur_txchainmask = 1;
 	}
+
+	DPRINTF(sc, ATH_DEBUG_RESET,
+	    "%s: TX chainmask is now 0x%x, RX is now 0x%x\n",
+	    __func__,
+	    sc->sc_cur_txchainmask,
+	    sc->sc_cur_rxchainmask);
 }
 
 void
