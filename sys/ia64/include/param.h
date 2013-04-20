@@ -69,6 +69,10 @@
 #define MAXCPU		1
 #endif
 
+#ifndef MAXDOMAIN
+#define	MAXDOMAIN	1
+#endif
+
 #define	ALIGNBYTES		_ALIGNBYTES
 #define	ALIGN(p)		_ALIGN(p)
 /*
