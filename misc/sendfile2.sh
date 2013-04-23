@@ -28,7 +28,7 @@
 # $FreeBSD$
 #
 
-# Test scenario for sendfile corruption of read only indput file
+# Test scenario for sendfile corruption of read only input file
 
 # Scenario by Ming Fu <Ming Fu watchguard com>
 
