@@ -35,29 +35,15 @@
 
 . ../default.cfg
 
-mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
-
-mdconfig -a -t swap -s 1g -u $mdstart || exit 1
-bsdlabel -w md$mdstart auto
-newfs -U md${mdstart}$part > /dev/null
-mount /dev/md${mdstart}$part $mntpoint
-chmod 777 $mntpoint
-
 rm -rf /tmp/stressX.control
-export RUNDIR=$mntpoint/stressX
 [ ! -d $RUNDIR ] && mkdir -p $RUNDIR
 chmod 777 $RUNDIR
 export runRUNTIME=15m
 export tcpLOAD=100
 n=`su $testuser -c "limits | grep maxprocesses | awk '{print \\$NF}'"`
-n=$((n / 2 - 10))
-export tcpINCARNATIONS=$n
+export tcpINCARNATIONS=$((n / 2 - 10))
 export TESTPROGS=" ./testcases/tcp/tcp"
 
 su $testuser -c '(cd ..; ./testcases/run/run $TESTPROGS)'
 
-while mount | grep "on $mntpoint " | grep -q /dev/md; do
-	umount $mntpoint || sleep 1
-done
-mdconfig -d -u $mdstart
+ps -U$testuser | sed 1d | awk '{print $1}' | xargs kill -9
