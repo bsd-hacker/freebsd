@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2012, Bryan Venteicher <bryanv@daemoninthecloset.org>
+ * Copyright (c) 2012, Bryan Venteicher <bryanv@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1672,7 +1672,7 @@ vtscsi_execute_rescan(struct vtscsi_softc *sc, target_id_t target_id,
 		return;
 	}
 
-	status = xpt_create_path(&ccb->ccb_h.path, xpt_periph,
+	status = xpt_create_path(&ccb->ccb_h.path, NULL,
 	    cam_sim_path(sc->vtscsi_sim), target_id, lun_id);
 	if (status != CAM_REQ_CMP) {
 		xpt_free_ccb(ccb);
