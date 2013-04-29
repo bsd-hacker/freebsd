@@ -142,7 +142,7 @@ comm -13 f.present f.wanted | lam -s 'f/' - |
 echo "`date`: Removing corrupt files"
 comm -13 f.present f.wanted | tr -d '.gz' | while read F; do
 	if [ -f ${PUBDIR}/f/${F}.gz ] &&
-	    ! [ `gunzip < ${PUBDIR}/f/${F}.gz` | sha256` = $F ]; then
+	    ! [ `gunzip < ${PUBDIR}/f/${F}.gz | sha256` = $F ]; then
 		echo "Deleting f/$F.gz"
 		rm ${PUBDIR}/f/${F}.gz
 	fi
