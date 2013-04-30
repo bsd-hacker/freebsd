@@ -148,7 +148,8 @@ compression_changed_cb(void *arg, uint64_t newval)
 	 */
 	ASSERT(newval != ZIO_COMPRESS_INHERIT);
 
-	os->os_compress = zio_compress_select(newval, ZIO_COMPRESS_ON_VALUE);
+	os->os_compress = zio_compress_select(dmu_objset_spa(os),
+	    newval, ZIO_COMPRESS_ON_VALUE);
 }
 
 static void
