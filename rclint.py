@@ -28,7 +28,7 @@ __version__ = '$FreeBSD$'
 
 MAJOR = 0
 MINOR = 0
-MICRO = 5
+MICRO = 6
 
 DATADIR = '.'
 
@@ -227,8 +227,10 @@ class Function:
             error.give('functions_inline_brace', num)
         elif lines[1] and lines[1][0] == '{':
             try:
-                self.name = re.match(r'([\S_]+)\(\)$', lines[0]).group(1)
+                self.name = re.match(r'([\S_]+\s*)\(\)$', lines[0]).group(1)
             except:
+                error.give('functions_problem', num)
+            if ' ' in self.name:
                 error.give('functions_problem', num)
             self.length = 0
             self.line = num
@@ -428,9 +430,11 @@ def do_rclint(filename):
     for function in lineobj['Function']:
         if function.short():
             error.give('functions_short', function.line)
+        counter = 0
         for l in function.value:
+            counter += 1
             if 'chown' in l:
-                error.warn('functions_chown', function.line)
+                error.warn('functions_chown', function.line + counter)
 
     logging.debug('Checking for run_rc_command')
     for s in lineobj['Statement']:
