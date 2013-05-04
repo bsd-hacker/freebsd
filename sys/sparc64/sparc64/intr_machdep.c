@@ -456,7 +456,7 @@ intr_describe(int vec, void *ih, const char *descr)
  * allocate CPUs round-robin.
  */
 
-static cpuset_t intr_cpus = CPUSET_T_INITIALIZER(0x1);
+static cpuset_t intr_cpus = BITSET_T_INITIALIZER(0x1);
 static int current_cpu;
 
 static void

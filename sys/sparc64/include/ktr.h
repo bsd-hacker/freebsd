@@ -81,7 +81,7 @@ l2:	add	r2, 1, r3 ; \
 	brz	r1, l3 ## f ; \
 	 nop ; \
 	lduw	[PCPU(CPUID)], r2 ; \
-	mov	_NCPUBITS, r3 ; \
+	mov	_BITSET_BITS, r3 ; \
 	mov	%g0, %y ; \
 	udiv	r2, r3, r2 ; \
 	srl	r2, 0, r2 ; \
@@ -89,7 +89,7 @@ l2:	add	r2, 1, r3 ; \
 	SET(ktr_cpumask, r3, r1) ; \
 	ldx	[r1 + r2], r1 ; \
 	lduw	[PCPU(CPUID)], r2 ; \
-	mov	_NCPUBITS, r3 ; \
+	mov	_BITSET_BITS, r3 ; \
 	mov	%g0, %y ; \
 	udiv	r2, r3, r2 ; \
 	srl	r2, 0, r2 ; \

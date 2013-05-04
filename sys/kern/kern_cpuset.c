@@ -630,7 +630,7 @@ cpusetobj_ffs(const cpuset_t *set)
 	for (i = 0; i < _NCPUWORDS; i++) {
 		if (set->__bits[i] != 0) {
 			cbit = ffsl(set->__bits[i]);
-			cbit += i * _NCPUBITS;
+			cbit += i * _BITSET_BITS;
 			break;
 		}
 	}
