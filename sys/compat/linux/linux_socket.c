@@ -584,15 +584,6 @@ linux_check_hdrincl(struct thread *td, int s)
 	return (optval == 0);
 }
 
-struct linux_sendto_args {
-	int s;
-	l_uintptr_t msg;
-	int len;
-	int flags;
-	l_uintptr_t to;
-	int tolen;
-};
-
 /*
  * Updated sendto() when IP_HDRINCL is set:
  * tweak endian-dependent fields in the IP packet.
@@ -644,13 +635,7 @@ goout:
 	return (error);
 }
 
-struct linux_socket_args {
-	int domain;
-	int type;
-	int protocol;
-};
-
-static int
+int
 linux_socket(struct thread *td, struct linux_socket_args *args)
 {
 	struct socket_args /* {
@@ -714,13 +699,7 @@ out:
 	return (retval_socket);
 }
 
-struct linux_bind_args {
-	int s;
-	l_uintptr_t name;
-	int namelen;
-};
-
-static int
+int
 linux_bind(struct thread *td, struct linux_bind_args *args)
 {
 	struct sockaddr *sa;
@@ -737,13 +716,6 @@ linux_bind(struct thread *td, struct linux_bind_args *args)
 	   	return (EINVAL);
 	return (error);
 }
-
-struct linux_connect_args {
-	int s;
-	l_uintptr_t name;
-	int namelen;
-};
-int linux_connect(struct thread *, struct linux_connect_args *);
 
 int
 linux_connect(struct thread *td, struct linux_connect_args *args)
@@ -787,12 +759,7 @@ linux_connect(struct thread *td, struct linux_connect_args *args)
 	return (error);
 }
 
-struct linux_listen_args {
-	int s;
-	int backlog;
-};
-
-static int
+int
 linux_listen(struct thread *td, struct linux_listen_args *args)
 {
 	struct listen_args /* {
@@ -853,13 +820,7 @@ out:
 	return (error);
 }
 
-struct linux_accept_args {
-	int s;
-	l_uintptr_t addr;
-	l_uintptr_t namelen;
-};
-
-static int
+int
 linux_accept(struct thread *td, struct linux_accept_args *args)
 {
 
@@ -867,14 +828,7 @@ linux_accept(struct thread *td, struct linux_accept_args *args)
 	    args->namelen, 0));
 }
 
-struct linux_accept4_args {
-	int s;
-	l_uintptr_t addr;
-	l_uintptr_t namelen;
-	int flags;
-};
-
-static int
+int
 linux_accept4(struct thread *td, struct linux_accept4_args *args)
 {
 
@@ -882,13 +836,7 @@ linux_accept4(struct thread *td, struct linux_accept4_args *args)
 	    args->namelen, args->flags));
 }
 
-struct linux_getsockname_args {
-	int s;
-	l_uintptr_t addr;
-	l_uintptr_t namelen;
-};
-
-static int
+int
 linux_getsockname(struct thread *td, struct linux_getsockname_args *args)
 {
 	struct getsockname_args /* {
@@ -912,13 +860,7 @@ linux_getsockname(struct thread *td, struct linux_getsockname_args *args)
 	return (0);
 }
 
-struct linux_getpeername_args {
-	int s;
-	l_uintptr_t addr;
-	l_uintptr_t namelen;
-};
-
-static int
+int
 linux_getpeername(struct thread *td, struct linux_getpeername_args *args)
 {
 	struct getpeername_args /* {
@@ -941,14 +883,7 @@ linux_getpeername(struct thread *td, struct linux_getpeername_args *args)
 	return (0);
 }
 
-struct linux_socketpair_args {
-	int domain;
-	int type;
-	int protocol;
-	l_uintptr_t rsv;
-};
-
-static int
+int
 linux_socketpair(struct thread *td, struct linux_socketpair_args *args)
 {
 	struct socketpair_args /* {
@@ -1004,6 +939,7 @@ out:
 	return (error);
 }
 
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 struct linux_send_args {
 	int s;
 	l_uintptr_t msg;
@@ -1059,8 +995,9 @@ linux_recv(struct thread *td, struct linux_recv_args *args)
 	bsd_args.fromlenaddr = 0;
 	return (sys_recvfrom(td, &bsd_args));
 }
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
-static int
+int
 linux_sendto(struct thread *td, struct linux_sendto_args *args)
 {
 	struct msghdr msg;
@@ -1084,16 +1021,7 @@ linux_sendto(struct thread *td, struct linux_sendto_args *args)
 	return (error);
 }
 
-struct linux_recvfrom_args {
-	int s;
-	l_uintptr_t buf;
-	int len;
-	int flags;
-	l_uintptr_t from;
-	l_uintptr_t fromlen;
-};
-
-static int
+int
 linux_recvfrom(struct thread *td, struct linux_recvfrom_args *args)
 {
 	struct recvfrom_args /* {
@@ -1133,13 +1061,7 @@ linux_recvfrom(struct thread *td, struct linux_recvfrom_args *args)
 	return (0);
 }
 
-struct linux_sendmsg_args {
-	int s;
-	l_uintptr_t msg;
-	int flags;
-};
-
-static int
+int
 linux_sendmsg(struct thread *td, struct linux_sendmsg_args *args)
 {
 	struct cmsghdr *cmsg;
@@ -1276,13 +1198,7 @@ bad:
 	return (error);
 }
 
-struct linux_recvmsg_args {
-	int s;
-	l_uintptr_t msg;
-	int flags;
-};
-
-static int
+int
 linux_recvmsg(struct thread *td, struct linux_recvmsg_args *args)
 {
 	struct cmsghdr *cm;
@@ -1449,12 +1365,7 @@ bad:
 	return (error);
 }
 
-struct linux_shutdown_args {
-	int s;
-	int how;
-};
-
-static int
+int
 linux_shutdown(struct thread *td, struct linux_shutdown_args *args)
 {
 	struct shutdown_args /* {
@@ -1467,15 +1378,7 @@ linux_shutdown(struct thread *td, struct linux_shutdown_args *args)
 	return (sys_shutdown(td, &bsd_args));
 }
 
-struct linux_setsockopt_args {
-	int s;
-	int level;
-	int optname;
-	l_uintptr_t optval;
-	int optlen;
-};
-
-static int
+int
 linux_setsockopt(struct thread *td, struct linux_setsockopt_args *args)
 {
 	struct setsockopt_args /* {
@@ -1540,15 +1443,7 @@ linux_setsockopt(struct thread *td, struct linux_setsockopt_args *args)
 	return (error);
 }
 
-struct linux_getsockopt_args {
-	int s;
-	int level;
-	int optname;
-	l_uintptr_t optval;
-	l_uintptr_t optlen;
-};
-
-static int
+int
 linux_getsockopt(struct thread *td, struct linux_getsockopt_args *args)
 {
 	struct getsockopt_args /* {
@@ -1651,6 +1546,7 @@ static const unsigned char lxs_args[] = {
 
 #define	LINUX_AL_SIZE	sizeof(lxs_args) / sizeof(lxs_args[0]) - 1
 
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 int
 linux_socketcall(struct thread *td, struct linux_socketcall_args *args)
 {
@@ -1707,3 +1603,4 @@ linux_socketcall(struct thread *td, struct linux_socketcall_args *args)
 	uprintf("LINUX: 'socket' typ=%d not implemented\n", args->what);
 	return (ENOSYS);
 }
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
