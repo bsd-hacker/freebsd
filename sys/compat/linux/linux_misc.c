@@ -735,7 +735,6 @@ linux_newuname(struct thread *td, struct linux_newuname_args *args)
 	return (copyout(&utsname, args->buf, sizeof(utsname)));
 }
 
-#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 struct l_utimbuf {
 	l_time_t l_actime;
 	l_time_t l_modtime;
@@ -838,7 +837,6 @@ linux_futimesat(struct thread *td, struct linux_futimesat_args *args)
 	LFREEPATH(fname);
 	return (error);
 }
-#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
 int
 linux_common_wait(struct thread *td, int pid, int *status,
@@ -864,6 +862,7 @@ linux_common_wait(struct thread *td, int pid, int *status,
 	return (error);
 }
 
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 int
 linux_waitpid(struct thread *td, struct linux_waitpid_args *args)
 {
@@ -888,6 +887,7 @@ linux_waitpid(struct thread *td, struct linux_waitpid_args *args)
 
 	return (linux_common_wait(td, args->pid, args->status, options, NULL));
 }
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
 
 int
@@ -1070,6 +1070,7 @@ linux_getitimer(struct thread *td, struct linux_getitimer_args *uap)
 	return (copyout(&ls, uap->itv, sizeof(ls)));
 }
 
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 int
 linux_nice(struct thread *td, struct linux_nice_args *args)
 {
@@ -1080,6 +1081,7 @@ linux_nice(struct thread *td, struct linux_nice_args *args)
 	bsd_args.prio = args->inc;
 	return (sys_setpriority(td, &bsd_args));
 }
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
 int
 linux_setgroups(struct thread *td, struct linux_setgroups_args *args)
@@ -1209,6 +1211,7 @@ linux_setrlimit(struct thread *td, struct linux_setrlimit_args *args)
 	return (kern_setrlimit(td, which, &bsd_rlim));
 }
 
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 int
 linux_old_getrlimit(struct thread *td, struct linux_old_getrlimit_args *args)
 {
@@ -1251,6 +1254,7 @@ linux_old_getrlimit(struct thread *td, struct linux_old_getrlimit_args *args)
 #endif
 	return (copyout(&rlim, args->rlim, sizeof(rlim)));
 }
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
 int
 linux_getrlimit(struct thread *td, struct linux_getrlimit_args *args)
