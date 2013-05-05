@@ -2220,10 +2220,6 @@ OLD_FILES+=usr/share/man/man5/hesiod.conf.5.gz
 # to be filled in
 #.endif
 
-.if ${MK_IDEA} == no
-OLD_FILES+=usr/include/openssl/idea.h
-.endif
-
 .if ${MK_INET6} == no
 OLD_FILES+=sbin/ping6
 OLD_FILES+=sbin/rtsol
@@ -3678,9 +3674,9 @@ OLD_FILES+=usr/share/man/man8/ntptime.8.gz
 # to be filled in
 #.endif
 
-#.if ${MK_OPENSSH} == no
-# to be filled in
-#.endif
+.if ${MK_OPENSSH} == no
+OLD_FILES+=usr.bin/ssh-copy-id
+.endif
 
 #.if ${MK_OPENSSL} == no
 # to be filled in
