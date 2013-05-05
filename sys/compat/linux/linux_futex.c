@@ -753,6 +753,9 @@ linux_sys_futex(struct thread *td, struct linux_sys_futex_args *args)
 			if (clockrt) {
 				microtime(&ctv);
 				timevalsub(&utv, &ctv);
+			} else if (args->op == LINUX_FUTEX_WAIT_BITSET) {
+				microuptime(&ctv);
+				timevalsub(&utv, &ctv);
 			}
 			if (utv.tv_sec < 0)
 				timevalclear(&utv);
