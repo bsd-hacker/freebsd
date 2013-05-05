@@ -3928,19 +3928,20 @@ ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq, int dosched)
 			break;
 		}
 		ATH_TXQ_REMOVE(txq, bf, bf_list);
-		if (txq->axq_depth > 0) {
-			/*
-			 * More frames follow.  Mark the buffer busy
-			 * so it's not re-used while the hardware may
-			 * still re-read the link field in the descriptor.
-			 *
-			 * Use the last buffer in an aggregate as that
-			 * is where the hardware may be - intermediate
-			 * descriptors won't be "busy".
-			 */
-			bf->bf_last->bf_flags |= ATH_BUF_BUSY;
-		} else
-			txq->axq_link = NULL;
+
+		/*
+		 * Always mark the last buffer in this list as busy.
+		 *
+		 * The hardware may re-read the holding descriptor
+		 * even if we hit the end of the list and try writing
+		 * a new TxDP.
+		 *
+		 * If there's no holding descriptor then this is the
+		 * last buffer in the list of buffers after a fresh
+		 * reset; it'll soon become the holding buffer.
+		 */
+		bf->bf_last->bf_flags |= ATH_BUF_BUSY;
+
 		if (bf->bf_state.bfs_aggr)
 			txq->axq_aggr_depth--;
 
@@ -4466,10 +4467,12 @@ ath_tx_stopdma(struct ath_softc *sc, struct ath_txq *txq)
 	struct ath_hal *ah = sc->sc_ah;
 
 	DPRINTF(sc, ATH_DEBUG_RESET,
-	    "%s: tx queue [%u] %p, flags 0x%08x, link %p\n",
+	    "%s: tx queue [%u] %p, active=%d, hwpending=%d, flags 0x%08x, link %p\n",
 	    __func__,
 	    txq->axq_qnum,
 	    (caddr_t)(uintptr_t) ath_hal_gettxbuf(ah, txq->axq_qnum),
+	    (int) (!! ath_hal_txqenabled(ah, txq->axq_qnum)),
+	    (int) ath_hal_numtxpending(ah, txq->axq_qnum),
 	    txq->axq_flags,
 	    txq->axq_link);
 	(void) ath_hal_stoptxdma(ah, txq->axq_qnum);
@@ -4510,8 +4513,6 @@ ath_tx_dump(struct ath_softc *sc, struct ath_txq *txq)
 
 	if (! (sc->sc_debug & ATH_DEBUG_RESET))
 		return;
-
-	ATH_TX_LOCK_ASSERT(sc);
 
 	device_printf(sc->sc_dev, "%s: Q%d: begin\n",
 	    __func__, txq->axq_qnum);
