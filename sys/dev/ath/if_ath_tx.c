@@ -2590,7 +2590,8 @@ ath_tx_update_baw(struct ath_softc *sc, struct ath_node *an,
 		    __func__,
 		    bf, SEQNO(bf->bf_state.bfs_seqno),
 		    tid->tx_buf[cindex],
-		    SEQNO(tid->tx_buf[cindex]->bf_state.bfs_seqno));
+		    (tid->tx_buf[cindex] != NULL) ?
+		      SEQNO(tid->tx_buf[cindex]->bf_state.bfs_seqno) : -1);
 	}
 
 	tid->tx_buf[cindex] = NULL;
@@ -2976,7 +2977,19 @@ ath_tx_tid_resume(struct ath_softc *sc, struct ath_tid *tid)
 {
 	ATH_TX_LOCK_ASSERT(sc);
 
-	tid->paused--;
+	/*
+	 * There's some odd places where ath_tx_tid_resume() is called
+	 * when it shouldn't be; this works around that particular issue
+	 * until it's actually resolved.
+	 */
+	if (tid->paused == 0) {
+		device_printf(sc->sc_dev, "%s: %6D: paused=0?\n",
+		    __func__,
+		    tid->an->an_node.ni_macaddr,
+		    ":");
+	} else {
+		tid->paused--;
+	}
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL, "%s: unpaused = %d\n",
 	    __func__, tid->paused);
