@@ -39,7 +39,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > tmpfs6.c
-cc -o tmpfs6 -Wall tmpfs6.c
+cc -o tmpfs6 -Wall -Wextra -O2  tmpfs6.c || exit 1
 rm -f tmpfs6.c
 
 mount | grep $mntpoint | grep -q tmpfs && umount $mntpoint
@@ -79,7 +79,7 @@ test(void)
 	if ((fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, S_IRWXU)) == -1)
 		err(1, "open(%s)", filename);
 
-	if ((len = write(fd, wbuffer, FILESIZE)) != len)
+	if ((len = write(fd, wbuffer, FILESIZE)) != FILESIZE)
 		err(1, "write()");
 
 	fsync(fd);
@@ -90,7 +90,7 @@ test(void)
 	if (lseek(fd, 0, SEEK_SET) != 0)
 		err(1, "lseek()");
 
-	if ((len = write(fd, addr, FILESIZE)) != len)
+	if ((len = write(fd, addr, FILESIZE)) != FILESIZE)
 		err(1, "write() 2");
 
 	if (munmap(addr, FILESIZE) == -1)
