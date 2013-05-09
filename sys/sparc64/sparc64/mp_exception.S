@@ -41,7 +41,7 @@ __FBSDID("$FreeBSD$");
 #define	IPI_DONE(r1, r2, r3, r4, r5, r6)				\
 	rd	%y, r6 ;						\
 	lduw	[PCPU(CPUID)], r2 ;					\
-	mov	_BITSET_BITS, r3 ;					\
+	mov	_NCPUBITS, r3 ;						\
 	mov	%g0, %y ;						\
 	udiv	r2, r3, r4 ;						\
 	srl	r4, 0, r5 ;						\

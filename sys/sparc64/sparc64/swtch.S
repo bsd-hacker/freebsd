@@ -172,7 +172,7 @@ ENTRY(cpu_switch)
 	 * Mark the pmap of the last non-kernel vmspace to run as no longer
 	 * active on this CPU.
 	 */
-	mov	_BITSET_BITS, %l5
+	mov	_NCPUBITS, %l5
 	mov	%g0, %y
 	udiv	%l3, %l5, %l6
 	srl	%l6, 0, %l4
@@ -241,7 +241,7 @@ ENTRY(cpu_switch)
 	/*
 	 * Mark the pmap as active on this CPU.
 	 */
-	mov	_BITSET_BITS, %l5
+	mov	_NCPUBITS, %l5
 	mov	%g0, %y
 	udiv	%l3, %l5, %l6
 	srl	%l6, 0, %l4

@@ -104,7 +104,7 @@ int	ktr_entries = KTR_BOOT_ENTRIES;
 int	ktr_version = KTR_VERSION;
 struct	ktr_entry ktr_buf_init[KTR_BOOT_ENTRIES];
 struct	ktr_entry *ktr_buf = ktr_buf_init;
-cpuset_t ktr_cpumask = BITSET_T_INITIALIZER(KTR_CPUMASK);
+cpuset_t ktr_cpumask = CPUSET_T_INITIALIZER(KTR_CPUMASK);
 static char ktr_cpumask_str[CPUSETBUFSIZ];
 
 TUNABLE_INT("debug.ktr.mask", &ktr_mask);
