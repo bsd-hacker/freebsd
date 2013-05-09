@@ -694,6 +694,13 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	 */
 	sc->sc_txq_mcastq_maxdepth = ath_txbuf;
 
+	/*
+	 * Default the maximum queue depth for a given node
+	 * to 1/4'th the TX buffers, or 64, whichever
+	 * is larger.
+	 */
+	sc->sc_txq_node_maxdepth = MAX(64, ath_txbuf / 4);
+
 	/* Enable CABQ by default */
 	sc->sc_cabq_enable = 1;
 
@@ -2661,33 +2668,98 @@ ath_start(struct ifnet *ifp)
 	ATH_KTR(sc, ATH_KTR_TX, 0, "ath_start: called");
 
 	for (;;) {
-		ATH_TXBUF_LOCK(sc);
-		if (sc->sc_txbuf_cnt <= sc->sc_txq_data_minfree) {
-			/* XXX increment counter? */
-			ATH_TXBUF_UNLOCK(sc);
+		/*
+		 * Grab the frame that we're going to try and transmit.
+		 */
+		IFQ_DEQUEUE(&ifp->if_snd, m);
+		if (m == NULL)
+			break;
+		ni = (struct ieee80211_node *) m->m_pkthdr.rcvif;
+
+		/*
+		 * Enforce how deep a node queue can get.
+		 *
+		 * XXX it would be nicer if we kept an mbuf queue per
+		 * node and only whacked them into ath_bufs when we
+		 * are ready to schedule some traffic from them.
+		 * .. that may come later.
+		 *
+		 * XXX we should also track the per-node hardware queue
+		 * depth so it is easy to limit the _SUM_ of the swq and
+		 * hwq frames.  Since we only schedule two HWQ frames
+		 * at a time, this should be OK for now.
+		 */
+		if ((!(m->m_flags & M_EAPOL)) &&
+		    (ATH_NODE(ni)->an_swq_depth > sc->sc_txq_node_maxdepth)) {
+			sc->sc_stats.ast_tx_nodeq_overflow++;
+			if (ni != NULL)
+				ieee80211_free_node(ni);
+			m_freem(m);
+			m = NULL;
+			continue;
+		}
+
+		/*
+		 * Check how many TX buffers are available.
+		 *
+		 * If this is for non-EAPOL traffic, just leave some
+		 * space free in order for buffer cloning and raw
+		 * frame transmission to occur.
+		 *
+		 * If it's for EAPOL traffic, ignore this for now.
+		 * Management traffic will be sent via the raw transmit
+		 * method which bypasses this check.
+		 *
+		 * This is needed to ensure that EAPOL frames during
+		 * (re) keying have a chance to go out.
+		 *
+		 * See kern/138379 for more information.
+		 */
+		if ((!(m->m_flags & M_EAPOL)) &&
+		    (sc->sc_txbuf_cnt <= sc->sc_txq_data_minfree)) {
+			sc->sc_stats.ast_tx_nobuf++;
 			IF_LOCK(&ifp->if_snd);
+			_IF_PREPEND(&ifp->if_snd, m);
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 			IF_UNLOCK(&ifp->if_snd);
+			m = NULL;
 			break;
 		}
-		ATH_TXBUF_UNLOCK(sc);
-		
+
 		/*
 		 * Grab a TX buffer and associated resources.
+		 *
+		 * If it's an EAPOL frame, allocate a MGMT ath_buf.
+		 * That way even with temporary buffer exhaustion due to
+		 * the data path doesn't leave us without the ability
+		 * to transmit management frames.
+		 *
+		 * Otherwise allocate a normal buffer.
 		 */
-		bf = ath_getbuf(sc, ATH_BUFTYPE_NORMAL);
-		if (bf == NULL)
-			break;
+		if (m->m_flags & M_EAPOL)
+			bf = ath_getbuf(sc, ATH_BUFTYPE_MGMT);
+		else
+			bf = ath_getbuf(sc, ATH_BUFTYPE_NORMAL);
 
-		IFQ_DEQUEUE(&ifp->if_snd, m);
-		if (m == NULL) {
-			ATH_TXBUF_LOCK(sc);
-			ath_returnbuf_head(sc, bf);
-			ATH_TXBUF_UNLOCK(sc);
+		if (bf == NULL) {
+			/*
+			 * If we failed to allocate a buffer, prepend it
+			 * and continue.
+			 *
+			 * We shouldn't fail normally, due to the check
+			 * above.
+			 */
+			sc->sc_stats.ast_tx_nobuf++;
+			IF_LOCK(&ifp->if_snd);
+			_IF_PREPEND(&ifp->if_snd, m);
+			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+			IF_UNLOCK(&ifp->if_snd);
+			m = NULL;
 			break;
 		}
-		ni = (struct ieee80211_node *) m->m_pkthdr.rcvif;
+
 		npkts ++;
+
 		/*
 		 * Check for fragmentation.  If this frame
 		 * has been broken up verify we have enough
@@ -3824,6 +3896,7 @@ ath_tx_process_buf_completion(struct ath_softc *sc, struct ath_txq *txq,
 	struct ath_node *an = NULL;
 
 	ATH_TX_UNLOCK_ASSERT(sc);
+	ATH_TXQ_UNLOCK_ASSERT(txq);
 
 	/* If unicast frame, update general statistics */
 	if (ni != NULL) {
@@ -3930,18 +4003,42 @@ ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq, int dosched)
 		ATH_TXQ_REMOVE(txq, bf, bf_list);
 
 		/*
-		 * Always mark the last buffer in this list as busy.
-		 *
-		 * The hardware may re-read the holding descriptor
-		 * even if we hit the end of the list and try writing
-		 * a new TxDP.
-		 *
-		 * If there's no holding descriptor then this is the
-		 * last buffer in the list of buffers after a fresh
-		 * reset; it'll soon become the holding buffer.
+		 * Sanity check.
 		 */
-		bf->bf_last->bf_flags |= ATH_BUF_BUSY;
+		if (txq->axq_qnum != bf->bf_state.bfs_tx_queue) {
+			device_printf(sc->sc_dev,
+			    "%s: TXQ=%d: bf=%p, bfs_tx_queue=%d\n",
+			    __func__,
+			    txq->axq_qnum,
+			    bf,
+			    bf->bf_state.bfs_tx_queue);
+		}
+		if (txq->axq_qnum != bf->bf_last->bf_state.bfs_tx_queue) {
+			device_printf(sc->sc_dev,
+			    "%s: TXQ=%d: bf_last=%p, bfs_tx_queue=%d\n",
+			    __func__,
+			    txq->axq_qnum,
+			    bf->bf_last,
+			    bf->bf_last->bf_state.bfs_tx_queue);
+		}
 
+#if 0
+		if (txq->axq_depth > 0) {
+			/*
+			 * More frames follow.  Mark the buffer busy
+			 * so it's not re-used while the hardware may
+			 * still re-read the link field in the descriptor.
+			 *
+			 * Use the last buffer in an aggregate as that
+			 * is where the hardware may be - intermediate
+			 * descriptors won't be "busy".
+			 */
+			bf->bf_last->bf_flags |= ATH_BUF_BUSY;
+		} else
+			txq->axq_link = NULL;
+#else
+		bf->bf_last->bf_flags |= ATH_BUF_BUSY;
+#endif
 		if (bf->bf_state.bfs_aggr)
 			txq->axq_aggr_depth--;
 
@@ -4217,13 +4314,18 @@ ath_returnbuf_head(struct ath_softc *sc, struct ath_buf *bf)
 void
 ath_txq_freeholdingbuf(struct ath_softc *sc, struct ath_txq *txq)
 {
-	ATH_TXBUF_LOCK_ASSERT(sc);
+	ATH_TXBUF_UNLOCK_ASSERT(sc);
+	ATH_TXQ_LOCK_ASSERT(txq);
 
 	if (txq->axq_holdingbf == NULL)
 		return;
 
 	txq->axq_holdingbf->bf_flags &= ~ATH_BUF_BUSY;
+
+	ATH_TXBUF_LOCK(sc);
 	ath_returnbuf_tail(sc, txq->axq_holdingbf);
+	ATH_TXBUF_UNLOCK(sc);
+
 	txq->axq_holdingbf = NULL;
 }
 
@@ -4236,7 +4338,10 @@ ath_txq_addholdingbuf(struct ath_softc *sc, struct ath_buf *bf)
 {
 	struct ath_txq *txq;
 
-	ATH_TXBUF_LOCK_ASSERT(sc);
+	txq = &sc->sc_txq[bf->bf_state.bfs_tx_queue];
+
+	ATH_TXBUF_UNLOCK_ASSERT(sc);
+	ATH_TXQ_LOCK_ASSERT(txq);
 
 	/* XXX assert ATH_BUF_BUSY is set */
 
@@ -4250,7 +4355,6 @@ ath_txq_addholdingbuf(struct ath_softc *sc, struct ath_buf *bf)
 		ath_returnbuf_tail(sc, bf);
 		return;
 	}
-	txq = &sc->sc_txq[bf->bf_state.bfs_tx_queue];
 	ath_txq_freeholdingbuf(sc, txq);
 	txq->axq_holdingbf = bf;
 }
@@ -4265,20 +4369,30 @@ ath_txq_addholdingbuf(struct ath_softc *sc, struct ath_buf *bf)
  * for restart (eg for TDMA.)
  *
  * The caller must free the mbuf and recycle the node reference.
+ *
+ * XXX This method of handling busy / holding buffers is insanely stupid.
+ * It requires bf_state.bfs_tx_queue to be correctly assigned.  It would
+ * be much nicer if buffers in the processq() methods would instead be
+ * always completed there (pushed onto a txq or ath_bufhead) so we knew
+ * exactly what hardware queue they came from in the first place.
  */
 void
 ath_freebuf(struct ath_softc *sc, struct ath_buf *bf)
 {
+	struct ath_txq *txq;
+
+	txq = &sc->sc_txq[bf->bf_state.bfs_tx_queue];
+
 	KASSERT((bf->bf_node == NULL), ("%s: bf->bf_node != NULL\n", __func__));
 	KASSERT((bf->bf_m == NULL), ("%s: bf->bf_m != NULL\n", __func__));
 
 	/*
-	 * If this buffer is busy, push it onto the holding queue
+	 * If this buffer is busy, push it onto the holding queue.
 	 */
 	if (bf->bf_flags & ATH_BUF_BUSY) {
-		ATH_TXBUF_LOCK(sc);
+		ATH_TXQ_LOCK(txq);
 		ath_txq_addholdingbuf(sc, bf);
-		ATH_TXBUF_UNLOCK(sc);
+		ATH_TXQ_UNLOCK(txq);
 		return;
 	}
 
@@ -4450,9 +4564,9 @@ ath_tx_draintxq(struct ath_softc *sc, struct ath_txq *txq)
 	/*
 	 * Free the holding buffer if it exists
 	 */
-	ATH_TXBUF_LOCK(sc);
+	ATH_TXQ_LOCK(txq);
 	ath_txq_freeholdingbuf(sc, txq);
-	ATH_TXBUF_UNLOCK(sc);
+	ATH_TXQ_UNLOCK(txq);
 
 	/*
 	 * Drain software queued frames which are on
