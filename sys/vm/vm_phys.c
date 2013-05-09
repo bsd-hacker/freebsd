@@ -48,7 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/mutex.h>
-#if MAXDOMAIN > 1
+#if MAXMEMDOM > 1
 #include <sys/proc.h>
 #endif
 #include <sys/queue.h>
@@ -96,7 +96,7 @@ static struct mtx vm_phys_fictitious_reg_mtx;
 MALLOC_DEFINE(M_FICT_PAGES, "", "");
 
 static struct vm_freelist
-    vm_phys_free_queues[MAXDOMAIN][VM_NFREELIST][VM_NFREEPOOL][VM_NFREEORDER];
+    vm_phys_free_queues[MAXMEMDOM][VM_NFREELIST][VM_NFREEPOOL][VM_NFREEORDER];
 
 static int vm_nfreelists = VM_FREELIST_DEFAULT + 1;
 
@@ -115,6 +115,8 @@ SYSCTL_OID(_vm, OID_AUTO, phys_segs, CTLTYPE_STRING | CTLFLAG_RD,
 SYSCTL_INT(_vm, OID_AUTO, ndomains, CTLFLAG_RD,
     &vm_ndomains, 0, "Number of physical memory domains available.");
 
+static vm_page_t vm_phys_alloc_domain_pages(int domain, int flind, int pool,
+    int order);
 static void _vm_phys_create_seg(vm_paddr_t start, vm_paddr_t end, int flind,
     int domain);
 static void vm_phys_create_seg(vm_paddr_t start, vm_paddr_t end, int flind);
@@ -125,7 +127,7 @@ static void vm_phys_split_pages(vm_page_t m, int oind, struct vm_freelist *fl,
 static __inline int
 vm_rr_selectdomain(void)
 {
-#if MAXDOMAIN > 1
+#if MAXMEMDOM > 1
 	struct thread *td;
 
 	td = curthread;
@@ -388,16 +390,43 @@ vm_phys_add_page(vm_paddr_t pa)
 }
 
 /*
+ * Allocate a contiguous, power of two-sized set of physical pages
+ * from the free lists.
+ *
+ * The free page queues must be locked.
+ */
+vm_page_t
+vm_phys_alloc_pages(int pool, int order)
+{
+	vm_page_t m;
+	int domain, flind;
+
+	KASSERT(pool < VM_NFREEPOOL,
+	    ("vm_phys_alloc_pages: pool %d is out of range", pool));
+	KASSERT(order < VM_NFREEORDER,
+	    ("vm_phys_alloc_pages: order %d is out of range", order));
+
+	domain = vm_rr_selectdomain();
+	for (flind = 0; flind < vm_nfreelists; flind++) {
+		m = vm_phys_alloc_domain_pages(domain, flind, pool, order);
+		if (m != NULL)
+			return (m);
+	}
+	return (NULL);
+}
+
+/*
  * Find and dequeue a free page on the given free list, with the 
  * specified pool and order
  */
-static vm_page_t
-vm_phys_alloc_freelist_pages_domain(int domain, int flind, int pool, int order)
-{	
-	struct vm_freelist *fl;
-	struct vm_freelist *alt;
-	int oind, pind;
+vm_page_t
+vm_phys_alloc_freelist_pages(int flind, int pool, int order)
+{
+#if MAXMEMDOM > 1
 	vm_page_t m;
+	int i;
+#endif
+	int domain;
 
 	KASSERT(flind < VM_NFREELIST,
 	    ("vm_phys_alloc_freelist_pages: freelist %d is out of range", flind));
@@ -405,6 +434,39 @@ vm_phys_alloc_freelist_pages_domain(int domain, int flind, int pool, int order)
 	    ("vm_phys_alloc_freelist_pages: pool %d is out of range", pool));
 	KASSERT(order < VM_NFREEORDER,
 	    ("vm_phys_alloc_freelist_pages: order %d is out of range", order));
+
+#if MAXMEMDOM > 1
+	/*
+	 * This routine expects to be called with a VM_FREELIST_* constant.
+	 * On a system with multiple domains we need to adjust the flind
+	 * appropriately.  If it is for VM_FREELIST_DEFAULT we need to
+	 * iterate over the per-domain lists.
+	 */
+	domain = vm_rr_selectdomain();
+	if (flind == VM_FREELIST_DEFAULT) {
+		m = NULL;
+		for (i = 0; i < vm_ndomains; i++, flind++) {
+			m = vm_phys_alloc_domain_pages(domain, flind, pool,
+			    order);
+			if (m != NULL)
+				break;
+		}
+		return (m);
+	} else if (flind > VM_FREELIST_DEFAULT)
+		flind += vm_ndomains - 1;
+#else
+	domain = 0;
+#endif
+	return (vm_phys_alloc_domain_pages(domain, flind, pool, order));
+}
+
+static vm_page_t
+vm_phys_alloc_domain_pages(int domain, int flind, int pool, int order)
+{	
+	struct vm_freelist *fl;
+	struct vm_freelist *alt;
+	int oind, pind;
+	vm_page_t m;
 
 	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
 	fl = &vm_phys_free_queues[domain][flind][pool][0];
@@ -434,40 +496,6 @@ vm_phys_alloc_freelist_pages_domain(int domain, int flind, int pool, int order)
 				return (m);
 			}
 		}
-	}
-	return (NULL);
-}
-
-/*
- * See the comments for vm_phys_alloc_freelist_pages_domain().
- * When MAXDOMAIN is bumped picks up a domain in round-robin fashion.
- */
-vm_page_t
-vm_phys_alloc_freelist_pages(int flind, int pool, int order)
-{
-
-	return (vm_phys_alloc_freelist_pages_domain(vm_rr_selectdomain(),
-	    flind, pool, order));
-}
-
-/*
- * Allocate a contiguous, power of two-sized set of physical pages
- * from the free lists.
- *
- * The free page queues must be locked.
- */
-vm_page_t
-vm_phys_alloc_pages(int pool, int order)
-{
-	vm_page_t m;
-	int domain, flind;
-
-	domain = vm_rr_selectdomain();
-	for (flind = 0; flind < vm_nfreelists; flind++) {
-		m = vm_phys_alloc_freelist_pages_domain(domain, flind, pool,
-		    order);
-		if (m != NULL)
-			return (m);
 	}
 	return (NULL);
 }
