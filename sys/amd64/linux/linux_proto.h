@@ -928,7 +928,6 @@ struct linux_faccessat_args {
 	char dfd_l_[PADL_(l_int)]; l_int dfd; char dfd_r_[PADR_(l_int)];
 	char filename_l_[PADL_(const char *)]; const char * filename; char filename_r_[PADR_(const char *)];
 	char amode_l_[PADL_(l_int)]; l_int amode; char amode_r_[PADR_(l_int)];
-	char flag_l_[PADL_(l_int)]; l_int flag; char flag_r_[PADR_(l_int)];
 };
 struct linux_pselect6_args {
 	char nfds_l_[PADL_(l_int)]; l_int nfds; char nfds_r_[PADR_(l_int)];
