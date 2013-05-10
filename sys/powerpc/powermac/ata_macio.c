@@ -114,11 +114,15 @@ static  int  ata_macio_probe(device_t dev);
 static  int  ata_macio_setmode(device_t dev, int target, int mode);
 static  int  ata_macio_attach(device_t dev);
 static  int  ata_macio_begin_transaction(struct ata_request *request);
+static  int  ata_macio_suspend(device_t dev);
+static  int  ata_macio_resume(device_t dev);
 
 static device_method_t ata_macio_methods[] = {
         /* Device interface */
 	DEVMETHOD(device_probe,		ata_macio_probe),
 	DEVMETHOD(device_attach,        ata_macio_attach),
+	DEVMETHOD(device_suspend,	ata_macio_suspend),
+	DEVMETHOD(device_resume,	ata_macio_resume),
 
 	/* ATA interface */
 	DEVMETHOD(ata_setmode,		ata_macio_setmode),
@@ -331,5 +335,33 @@ ata_macio_begin_transaction(struct ata_request *request)
 	    | sc->pioconf[request->unit]); 
 
 	return ata_begin_transaction(request);
+}
+
+static int
+ata_macio_suspend(device_t dev)
+{
+	struct ata_channel *ch = device_get_softc(dev);
+	int error;
+
+	if (!ch->attached)
+		return (0);
+
+	error = ata_suspend(dev);
+
+	return (error);
+}
+
+static int
+ata_macio_resume(device_t dev)
+{
+	struct ata_channel *ch = device_get_softc(dev);
+	int error;
+
+	if (!ch->attached)
+		return (0);
+
+	error = ata_resume(dev);
+
+	return (error);
 }
 
