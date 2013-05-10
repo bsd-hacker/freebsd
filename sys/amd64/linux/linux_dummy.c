@@ -41,6 +41,9 @@ __FBSDID("$FreeBSD$");
 #include <compat/linux/linux_dtrace.h>
 #include <compat/linux/linux_util.h>
 
+/* DTrace init */
+LIN_SDT_PROVIDER_DECLARE(LINUX_DTRACE);
+
 DUMMY(mincore);
 DUMMY(sendfile);
 DUMMY(ptrace);
