@@ -582,8 +582,6 @@ linux_faccessat(struct thread *td, struct linux_faccessat_args *args)
 	char *path;
 	int error, dfd, flag;
 
-	if (args->flag & ~LINUX_AT_EACCESS)
-		return (EINVAL);
 	/* linux convention */
 	if (args->amode & ~(F_OK | X_OK | W_OK | R_OK))
 		return (EINVAL);
@@ -596,7 +594,7 @@ linux_faccessat(struct thread *td, struct linux_faccessat_args *args)
 		printf(ARGS(access, "%s, %d"), path, args->amode);
 #endif
 
-	flag = (args->flag & LINUX_AT_EACCESS) == 0 ? 0 : AT_EACCESS;
+	flag = AT_EACCESS;
 	error = kern_accessat(td, dfd, path, UIO_SYSSPACE, flag, args->amode);
 	LFREEPATH(path);
 
