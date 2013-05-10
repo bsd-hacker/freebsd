@@ -58,4 +58,12 @@ int	linux_kernver(struct thread *td);
 
 #define	linux_use26(t)		(linux_kernver(t) >= LINUX_KERNVER_2006000)
 
+#if defined(__amd64__) && !defined(COMPAT_LINUX32)
+#define	LINUX_OID		linux64
+#else
+#define	LINUX_OID		linux
+#endif
+#define	__linuxN(x)		__CONCAT(__CONCAT(LINUX_OID,_),x)
+#define	LINUX_COMPAT_OID	__CONCAT(_compat_,LINUX_OID)
+
 #endif /* _LINUX_MIB_H_ */

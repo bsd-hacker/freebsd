@@ -137,7 +137,7 @@ static struct linux_prison lprison0 = {
 
 static unsigned linux_osd_jail_slot;
 
-static SYSCTL_NODE(_compat, OID_AUTO, linux, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_compat, OID_AUTO, LINUX_OID, CTLFLAG_RW, 0,
 	    "Linux mode");
 
 static int	linux_set_osname(struct thread *td, char *osname);
@@ -145,7 +145,7 @@ static int	linux_set_osrelease(struct thread *td, char *osrelease);
 static int	linux_set_oss_version(struct thread *td, int oss_version);
 
 static int
-linux_sysctl_osname(SYSCTL_HANDLER_ARGS)
+__linuxN(sysctl_osname)(SYSCTL_HANDLER_ARGS)
 {
 	char osname[LINUX_MAX_UTSNAME];
 	int error;
@@ -166,13 +166,13 @@ linux_sysctl_osname(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_compat_linux, OID_AUTO, osname,
+SYSCTL_PROC(LINUX_COMPAT_OID, OID_AUTO, osname,
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_PRISON | CTLFLAG_MPSAFE,
-	    0, 0, linux_sysctl_osname, "A",
+	    0, 0, __linuxN(sysctl_osname), "A",
 	    "Linux kernel OS name");
 
 static int
-linux_sysctl_osrelease(SYSCTL_HANDLER_ARGS)
+__linuxN(sysctl_osrelease)(SYSCTL_HANDLER_ARGS)
 {
 	char osrelease[LINUX_MAX_UTSNAME];
 	int error;
@@ -193,13 +193,13 @@ linux_sysctl_osrelease(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_compat_linux, OID_AUTO, osrelease,
+SYSCTL_PROC(LINUX_COMPAT_OID, OID_AUTO, osrelease,
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_PRISON | CTLFLAG_MPSAFE,
-	    0, 0, linux_sysctl_osrelease, "A",
+	    0, 0, __linuxN(sysctl_osrelease), "A",
 	    "Linux kernel OS release");
 
 static int
-linux_sysctl_oss_version(SYSCTL_HANDLER_ARGS)
+__linuxN(sysctl_oss_version)(SYSCTL_HANDLER_ARGS)
 {
 	int oss_version;
 	int error;
@@ -220,9 +220,9 @@ linux_sysctl_oss_version(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_compat_linux, OID_AUTO, oss_version,
+SYSCTL_PROC(LINUX_COMPAT_OID, OID_AUTO, oss_version,
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_PRISON | CTLFLAG_MPSAFE,
-	    0, 0, linux_sysctl_oss_version, "I",
+	    0, 0, __linuxN(sysctl_oss_version), "I",
 	    "Linux OSS version");
 
 /*
@@ -543,6 +543,15 @@ linux_prison_set(void *obj, void *data)
 	return (0);
 }
 
+#if defined(__amd64__) && !defined(COMPAT_LINUX32)
+SYSCTL_JAIL_PARAM_SYS_NODE(linux64, CTLFLAG_RW, "Jail Linux parameters");
+SYSCTL_JAIL_PARAM_STRING(_linux64, osname, CTLFLAG_RW, LINUX_MAX_UTSNAME,
+    "Jail Linux kernel OS name");
+SYSCTL_JAIL_PARAM_STRING(_linux64, osrelease, CTLFLAG_RW, LINUX_MAX_UTSNAME,
+    "Jail Linux kernel OS release");
+SYSCTL_JAIL_PARAM(_linux64, oss_version, CTLTYPE_INT | CTLFLAG_RW,
+    "I", "Jail Linux OSS version");
+#else
 SYSCTL_JAIL_PARAM_SYS_NODE(linux, CTLFLAG_RW, "Jail Linux parameters");
 SYSCTL_JAIL_PARAM_STRING(_linux, osname, CTLFLAG_RW, LINUX_MAX_UTSNAME,
     "Jail Linux kernel OS name");
@@ -550,6 +559,7 @@ SYSCTL_JAIL_PARAM_STRING(_linux, osrelease, CTLFLAG_RW, LINUX_MAX_UTSNAME,
     "Jail Linux kernel OS release");
 SYSCTL_JAIL_PARAM(_linux, oss_version, CTLTYPE_INT | CTLFLAG_RW,
     "I", "Jail Linux OSS version");
+#endif
 
 static int
 linux_prison_get(void *obj, void *data)
@@ -828,7 +838,7 @@ linux_debug(int syscall, int toggle, int global)
  */
 #define LINUX_MAX_DEBUGSTR	16
 static int
-linux_sysctl_debug(SYSCTL_HANDLER_ARGS)
+__linuxN(sysctl_debug)(SYSCTL_HANDLER_ARGS)
 {
 	char value[LINUX_MAX_DEBUGSTR], *p;
 	int error, sysc, toggle;
@@ -850,9 +860,9 @@ linux_sysctl_debug(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_compat_linux, OID_AUTO, debug,
+SYSCTL_PROC(LINUX_COMPAT_OID, OID_AUTO, debug,
             CTLTYPE_STRING | CTLFLAG_RW,
-            0, 0, linux_sysctl_debug, "A",
+            0, 0, __linuxN(sysctl_debug), "A",
             "Linux debugging control");
 
 #endif /* DEBUG || KTR */
