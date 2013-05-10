@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/smp.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
+#include <sys/sysent.h>
 #include <sys/systm.h>
 #include <sys/time.h>
 #include <sys/tty.h>
@@ -77,7 +78,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 
 #include <net/if.h>
-#include <net/vnet.h>
+#include <net/if_types.h>
 
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
@@ -97,11 +98,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/md_var.h>
 #endif /* __i386__ || __amd64__ */
 
-#ifdef COMPAT_FREEBSD32
-#include <compat/freebsd32/freebsd32_util.h>
-#endif
-
-#include <compat/linux/linux_ioctl.h>
 #include <compat/linux/linux_mib.h>
 #include <compat/linux/linux_misc.h>
 #include <compat/linux/linux_util.h>
@@ -598,10 +594,30 @@ linprocfs_doversion(PFS_FILL_ARGS)
 {
 	char osname[LINUX_MAX_UTSNAME];
 	char osrelease[LINUX_MAX_UTSNAME];
+	size_t size;
+	int error = 0;
 
-	linux_get_osname(td, osname);
-	linux_get_osrelease(td, osrelease);
-	sbuf_printf(sb, "%s version %s (", osname, osrelease);
+	size = sizeof(osname);
+	if (SV_CURPROC_FLAG(SV_LP64))
+		error = kernel_sysctlbyname(td, "compat.linux64.osname", &osname, &size, 0, 0, 0, 0);
+	if (SV_CURPROC_FLAG(SV_ILP32) || error)
+		error = kernel_sysctlbyname(td, "compat.linux.osname", &osname, &size, 0, 0, 0, 0);
+	if (error)
+		sbuf_printf(sb, "unknown ");
+	else
+		sbuf_printf(sb, "%s ", osname);
+
+	error = 0;
+	size = sizeof(osrelease);
+	if (SV_CURPROC_FLAG(SV_LP64))
+		error = kernel_sysctlbyname(td, "compat.linux64.osrelease", &osrelease, &size, 0, 0, 0, 0);
+	if (SV_CURPROC_FLAG(SV_ILP32) || error)
+		error = kernel_sysctlbyname(td, "compat.linux.osrelease", &osrelease, &size, 0, 0, 0, 0);
+	if (error)
+		sbuf_printf(sb, "version unknown (");
+	else
+		sbuf_printf(sb, "version %s (", osrelease);
+
 	linprocfs_osbuilder(td, sb);
 	sbuf_cat(sb, ") (gcc version " __VERSION__ ") ");
 	linprocfs_osbuild(td, sb);
@@ -1116,6 +1132,35 @@ linprocfs_doprocmaps(PFS_FILL_ARGS)
 }
 
 /*
+ * Criteria for interface name translation
+ */
+#define IFP_IS_ETH(ifp) (ifp->if_type == IFT_ETHER)
+
+static int
+linux_ifname(struct ifnet *ifp, char *buffer, size_t buflen)
+{
+	struct ifnet *ifscan;
+	int ethno;
+
+	IFNET_RLOCK_ASSERT();
+
+	/* Short-circuit non ethernet interfaces */
+	if (!IFP_IS_ETH(ifp))
+		return (strlcpy(buffer, ifp->if_xname, buflen));
+
+	/* Determine the (relative) unit number for ethernet interfaces */
+	ethno = 0;
+	TAILQ_FOREACH(ifscan, &V_ifnet, if_link) {
+		if (ifscan == ifp)
+			return (snprintf(buffer, buflen, "eth%d", ethno));
+		if (IFP_IS_ETH(ifscan))
+			ethno++;
+	}
+
+	return (0);
+}
+
+/*
  * Filler function for proc/net/dev
  */
 static int
@@ -1175,10 +1220,18 @@ static int
 linprocfs_doosrelease(PFS_FILL_ARGS)
 {
 	char osrelease[LINUX_MAX_UTSNAME];
+	size_t size;
+	int error = 0;
 
-	linux_get_osrelease(td, osrelease);
-	sbuf_printf(sb, "%s\n", osrelease);
-
+	size = sizeof(osrelease);
+	if (SV_CURPROC_FLAG(SV_LP64))
+		error = kernel_sysctlbyname(td, "compat.linux64.osrelease", &osrelease, &size, 0, 0, 0, 0);
+	if (SV_CURPROC_FLAG(SV_ILP32) || error)
+		error = kernel_sysctlbyname(td, "compat.linux.osrelease", &osrelease, &size, 0, 0, 0, 0);
+	if (error)
+		sbuf_printf(sb, "unknown\n");
+	else
+		sbuf_printf(sb, "%s\n", osrelease);
 	return (0);
 }
 
@@ -1189,10 +1242,18 @@ static int
 linprocfs_doostype(PFS_FILL_ARGS)
 {
 	char osname[LINUX_MAX_UTSNAME];
+	size_t size;
+	int error = 0;
 
-	linux_get_osname(td, osname);
-	sbuf_printf(sb, "%s\n", osname);
-
+	size = sizeof(osname);
+	if (SV_CURPROC_FLAG(SV_LP64))
+		error = kernel_sysctlbyname(td, "compat.linux64.osname", &osname, &size, 0, 0, 0, 0);
+	if (SV_CURPROC_FLAG(SV_ILP32) || error)
+		error = kernel_sysctlbyname(td, "compat.linux.osname", &osname, &size, 0, 0, 0, 0);
+	if (error)
+		sbuf_printf(sb, "unknown\n");
+	else
+		sbuf_printf(sb, "%s\n", osname);
 	return (0);
 }
 
@@ -1261,8 +1322,6 @@ linprocfs_doscsiscsi(PFS_FILL_ARGS)
 
 	return (0);
 }
-
-extern struct cdevsw *cdevsw[];
 
 /*
  * Filler function for proc/devices
