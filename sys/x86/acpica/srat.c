@@ -244,33 +244,34 @@ static int
 renumber_domains(void)
 {
 	int domains[VM_PHYSSEG_MAX];
-	int ndomain, i, j, slot;
+	int i, j, slot;
 
 	/* Enumerate all the domains. */
-	ndomain = 0;
+	vm_ndomain = 0;
 	for (i = 0; i < num_mem; i++) {
 		/* See if this domain is already known. */
-		for (j = 0; j < ndomain; j++) {
+		for (j = 0; j < vm_ndomain; j++) {
 			if (domains[j] >= mem_info[i].domain)
 				break;
 		}
-		if (j < ndomain && domains[j] == mem_info[i].domain)
+		if (j < vm_ndomain && domains[j] == mem_info[i].domain)
 			continue;
 
 		/* Insert the new domain at slot 'j'. */
 		slot = j;
-		for (j = ndomain; j > slot; j--)
+		for (j = vm_ndomain; j > slot; j--)
 			domains[j] = domains[j - 1];
 		domains[slot] = mem_info[i].domain;
-		ndomain++;
-		if (ndomain > MAXMEMDOM) {
+		vm_ndomain++;
+		if (vm_ndomain > MAXMEMDOM) {
+			vm_ndomain = 1;
 			printf("SRAT: Too many memory domains\n");
 			return (EFBIG);
 		}
 	}
 
 	/* Renumber each domain to its index in the sorted 'domains' list. */
-	for (i = 0; i < ndomain; i++) {
+	for (i = 0; i < vm_ndomain; i++) {
 		/*
 		 * If the domain is already the right value, no need
 		 * to renumber.
