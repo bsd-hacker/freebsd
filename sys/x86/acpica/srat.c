@@ -247,31 +247,31 @@ renumber_domains(void)
 	int i, j, slot;
 
 	/* Enumerate all the domains. */
-	vm_ndomain = 0;
+	vm_ndomains = 0;
 	for (i = 0; i < num_mem; i++) {
 		/* See if this domain is already known. */
-		for (j = 0; j < vm_ndomain; j++) {
+		for (j = 0; j < vm_ndomains; j++) {
 			if (domains[j] >= mem_info[i].domain)
 				break;
 		}
-		if (j < vm_ndomain && domains[j] == mem_info[i].domain)
+		if (j < vm_ndomains && domains[j] == mem_info[i].domain)
 			continue;
 
 		/* Insert the new domain at slot 'j'. */
 		slot = j;
-		for (j = vm_ndomain; j > slot; j--)
+		for (j = vm_ndomains; j > slot; j--)
 			domains[j] = domains[j - 1];
 		domains[slot] = mem_info[i].domain;
-		vm_ndomain++;
-		if (vm_ndomain > MAXMEMDOM) {
-			vm_ndomain = 1;
+		vm_ndomains++;
+		if (vm_ndomains > MAXMEMDOM) {
+			vm_ndomains = 1;
 			printf("SRAT: Too many memory domains\n");
 			return (EFBIG);
 		}
 	}
 
 	/* Renumber each domain to its index in the sorted 'domains' list. */
-	for (i = 0; i < vm_ndomain; i++) {
+	for (i = 0; i < vm_ndomains; i++) {
 		/*
 		 * If the domain is already the right value, no need
 		 * to renumber.
