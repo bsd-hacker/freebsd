@@ -399,18 +399,21 @@ vm_page_t
 vm_phys_alloc_pages(int pool, int order)
 {
 	vm_page_t m;
-	int domain, flind;
+	int dom, domain, flind;
 
 	KASSERT(pool < VM_NFREEPOOL,
 	    ("vm_phys_alloc_pages: pool %d is out of range", pool));
 	KASSERT(order < VM_NFREEORDER,
 	    ("vm_phys_alloc_pages: order %d is out of range", order));
 
-	domain = vm_rr_selectdomain();
-	for (flind = 0; flind < vm_nfreelists; flind++) {
-		m = vm_phys_alloc_domain_pages(domain, flind, pool, order);
-		if (m != NULL)
-			return (m);
+	for (dom = 0; dom < vm_ndomains; dom++) {
+		domain = vm_rr_selectdomain();
+		for (flind = 0; flind < vm_nfreelists; flind++) {
+			m = vm_phys_alloc_domain_pages(domain, flind, pool,
+			    order);
+			if (m != NULL)
+				return (m);
+		}
 	}
 	return (NULL);
 }
@@ -422,11 +425,8 @@ vm_phys_alloc_pages(int pool, int order)
 vm_page_t
 vm_phys_alloc_freelist_pages(int flind, int pool, int order)
 {
-#if MAXMEMDOM > 1
 	vm_page_t m;
-	int i;
-#endif
-	int domain;
+	int dom, domain;
 
 	KASSERT(flind < VM_NFREELIST,
 	    ("vm_phys_alloc_freelist_pages: freelist %d is out of range", flind));
@@ -435,29 +435,13 @@ vm_phys_alloc_freelist_pages(int flind, int pool, int order)
 	KASSERT(order < VM_NFREEORDER,
 	    ("vm_phys_alloc_freelist_pages: order %d is out of range", order));
 
-#if MAXMEMDOM > 1
-	/*
-	 * This routine expects to be called with a VM_FREELIST_* constant.
-	 * On a system with multiple domains we need to adjust the flind
-	 * appropriately.  If it is for VM_FREELIST_DEFAULT we need to
-	 * iterate over the per-domain lists.
-	 */
-	domain = vm_rr_selectdomain();
-	if (flind == VM_FREELIST_DEFAULT) {
-		m = NULL;
-		for (i = 0; i < vm_ndomains; i++, flind++) {
-			m = vm_phys_alloc_domain_pages(domain, flind, pool,
-			    order);
-			if (m != NULL)
-				break;
-		}
-		return (m);
-	} else if (flind > VM_FREELIST_DEFAULT)
-		flind += vm_ndomains - 1;
-#else
-	domain = 0;
-#endif
-	return (vm_phys_alloc_domain_pages(domain, flind, pool, order));
+	for (dom = 0; dom < vm_ndomains; dom++) {
+		domain = vm_rr_selectdomain();
+		m = vm_phys_alloc_domain_pages(domain, flind, pool, order);
+		if (m != NULL)
+			return (m);
+	}
+	return (NULL);
 }
 
 static vm_page_t
@@ -870,11 +854,10 @@ vm_phys_alloc_contig(u_long npages, vm_paddr_t low, vm_paddr_t high,
 	vm_paddr_t pa, pa_last, size;
 	vm_page_t m, m_ret;
 	u_long npages_end;
-	int domain, flind, oind, order, pind;
+	int dom, domain, flind, oind, order, pind;
 
 	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
 	size = npages << PAGE_SHIFT;
-	domain = vm_rr_selectdomain();
 	KASSERT(size != 0,
 	    ("vm_phys_alloc_contig: size must not be 0"));
 	KASSERT((alignment & (alignment - 1)) == 0,
@@ -883,6 +866,9 @@ vm_phys_alloc_contig(u_long npages, vm_paddr_t low, vm_paddr_t high,
 	    ("vm_phys_alloc_contig: boundary must be a power of 2"));
 	/* Compute the queue that is the best fit for npages. */
 	for (order = 0; (1 << order) < npages; order++);
+	dom = 0;
+restartdom:
+	domain = vm_rr_selectdomain();
 	for (flind = 0; flind < vm_nfreelists; flind++) {
 		for (oind = min(order, VM_NFREEORDER - 1); oind < VM_NFREEORDER; oind++) {
 			for (pind = 0; pind < VM_NFREEPOOL; pind++) {
@@ -940,6 +926,8 @@ vm_phys_alloc_contig(u_long npages, vm_paddr_t low, vm_paddr_t high,
 			}
 		}
 	}
+	if (++dom < vm_ndomains)
+		goto restartdom;
 	return (NULL);
 done:
 	for (m = m_ret; m < &m_ret[npages]; m = &m[1 << oind]) {
