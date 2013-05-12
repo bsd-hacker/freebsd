@@ -250,6 +250,8 @@ _vm_phys_create_seg(vm_paddr_t start, vm_paddr_t end, int flind, int domain)
 #endif
 	KASSERT(vm_phys_nsegs < VM_PHYSSEG_MAX,
 	    ("vm_phys_create_seg: increase VM_PHYSSEG_MAX"));
+	KASSERT(domain < vm_ndomains,
+	    ("vm_phys_create_seg: invalid domain provided"));
 	seg = &vm_phys_segs[vm_phys_nsegs++];
 	seg->start = start;
 	seg->end = end;
