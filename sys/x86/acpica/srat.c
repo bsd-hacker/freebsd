@@ -287,6 +287,9 @@ renumber_domains(void)
 			if (cpus[j].enabled && cpus[j].domain == domains[i])
 				cpus[j].domain = i;
 	}
+	KASSERT(vm_ndomains > 0,
+	    ("renumber_domains: invalid final vm_ndomains setup"));
+
 	return (0);
 }
 
