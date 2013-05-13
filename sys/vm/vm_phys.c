@@ -148,33 +148,38 @@ static int
 sysctl_vm_phys_free(SYSCTL_HANDLER_ARGS)
 {
 	struct sbuf sbuf;
-	int dom, error, flind, lcnt, oind, pind;
+	struct vm_freelist *fl;
+	int dom, error, flind, oind, pind;
 
 	error = sysctl_wire_old_buffer(req, 0);
 	if (error != 0)
 		return (error);
-	sbuf_new_for_sysctl(&sbuf, NULL, 128, req);
-	for (flind = 0; flind < vm_nfreelists; flind++) {
-		sbuf_printf(&sbuf, "\nFREE LIST %d:\n"
-		    "\n  ORDER (SIZE)  |  NUMBER"
-		    "\n              ", flind);
-		for (pind = 0; pind < VM_NFREEPOOL; pind++)
-			sbuf_printf(&sbuf, "  |  POOL %d", pind);
-		sbuf_printf(&sbuf, "\n--            ");
-		for (pind = 0; pind < VM_NFREEPOOL; pind++)
-			sbuf_printf(&sbuf, "-- --      ");
-		sbuf_printf(&sbuf, "--\n");
-		for (oind = VM_NFREEORDER - 1; oind >= 0; oind--) {
-			sbuf_printf(&sbuf, "  %2d (%6dK)", oind,
-			    1 << (PAGE_SHIFT - 10 + oind));
-			for (pind = 0; pind < VM_NFREEPOOL; pind++) {
-				lcnt = 0;
-				for (dom = 0; dom < vm_ndomains; dom++)
-		lcnt += vm_phys_free_queues[dom][flind][pind][oind].lcnt;
-				sbuf_printf(&sbuf, "  |  %6d", lcnt);
+	sbuf_new_for_sysctl(&sbuf, NULL, 128 * vm_ndomains, req);
+	for (dom = 0; dom < vm_ndomains; dom++) {
+		sbuf_printf(&sbuf,"DOMAIN: %d\n", dom);
+		for (flind = 0; flind < vm_nfreelists; flind++) {
+			sbuf_printf(&sbuf, "FREE LIST %d:\n"
+			    "\n  ORDER (SIZE)  |  NUMBER"
+			    "\n              ", flind);
+			for (pind = 0; pind < VM_NFREEPOOL; pind++)
+				sbuf_printf(&sbuf, "  |  POOL %d", pind);
+			sbuf_printf(&sbuf, "\n--            ");
+			for (pind = 0; pind < VM_NFREEPOOL; pind++)
+				sbuf_printf(&sbuf, "-- --      ");
+			sbuf_printf(&sbuf, "--\n");
+			for (oind = VM_NFREEORDER - 1; oind >= 0; oind--) {
+				sbuf_printf(&sbuf, "  %2d (%6dK)", oind,
+				    1 << (PAGE_SHIFT - 10 + oind));
+				for (pind = 0; pind < VM_NFREEPOOL; pind++) {
+				fl = vm_phys_free_queues[dom][flind][pind];
+					sbuf_printf(&sbuf, "  |  %6.6d",
+					    fl[oind].lcnt);
+				}
+				sbuf_printf(&sbuf, "\n");
 			}
 			sbuf_printf(&sbuf, "\n");
 		}
+		sbuf_printf(&sbuf, "\n");
 	}
 	error = sbuf_finish(&sbuf);
 	sbuf_delete(&sbuf);
@@ -957,10 +962,11 @@ DB_SHOW_COMMAND(freepages, db_show_freepages)
 	int flind, oind, pind, dom;
 
 	for (dom = 0; dom < vm_ndomains; dom++) {
+		db_printf("DOMAIN: %d\n", dom);
 		for (flind = 0; flind < vm_nfreelists; flind++) {
-			db_printf("DOMAIN %d FREE LIST %d:\n"
+			db_printf("FREE LIST %d:\n"
 			    "\n  ORDER (SIZE)  |  NUMBER"
-			    "\n              ", dom, flind);
+			    "\n              ", flind);
 			for (pind = 0; pind < VM_NFREEPOOL; pind++)
 				db_printf("  |  POOL %d", pind);
 			db_printf("\n--            ");
@@ -971,13 +977,14 @@ DB_SHOW_COMMAND(freepages, db_show_freepages)
 				db_printf("  %2.2d (%6.6dK)", oind,
 				    1 << (PAGE_SHIFT - 10 + oind));
 				for (pind = 0; pind < VM_NFREEPOOL; pind++) {
-					fl = vm_phys_free_queues[dom][flind][pind];
+				fl = vm_phys_free_queues[dom][flind][pind];
 					db_printf("  |  %6.6d", fl[oind].lcnt);
 				}
 				db_printf("\n");
 			}
 			db_printf("\n");
 		}
+		db_printf("\n");
 	}
 }
 #endif
