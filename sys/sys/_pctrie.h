@@ -1,5 +1,7 @@
-/*-
- * Copyright (c) 2005 Antoine Brodin
+/*
+ * Copyright (c) 2013 EMC Corp.
+ * Copyright (c) 2011 Jeffrey Roberson <jeff@freebsd.org>
+ * Copyright (c) 2008 Mayur Shardul <mayur.shardul@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,56 +24,28 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+#ifndef __SYS_PCTRIE_H_
+#define __SYS_PCTRIE_H_
 
-#include <sys/systm.h>
-#include <sys/param.h>
-#include <sys/proc.h>
-#include <sys/stack.h>
+/*
+ * Radix tree root.
+ */
+struct pctrie {
+	uintptr_t	pt_root;
+};
 
-#include <machine/vmparam.h>
-#include <machine/pcb.h>
-#include <machine/stack.h>
+#ifdef _KERNEL
 
-static void
-stack_capture(struct stack *st, u_int32_t *frame)
+static __inline boolean_t
+pctrie_is_empty(struct pctrie *ptree)
 {
-#if !defined(__ARM_EABI__) && !defined(__clang__)
-	vm_offset_t callpc;
 
-	while (INKERNEL(frame)) {
-		callpc = frame[FR_SCP];
-		if (stack_put(st, callpc) == -1)
-			break;
-		frame = (u_int32_t *)(frame[FR_RFP]);
-	}
-#endif
+	return (ptree->pt_root == 0);
 }
 
-void
-stack_save_td(struct stack *st, struct thread *td)
-{
-	u_int32_t *frame;
-
-	if (TD_IS_SWAPPED(td))
-		panic("stack_save_td: swapped");
-	if (TD_IS_RUNNING(td))
-		panic("stack_save_td: running");
-
-	frame = (u_int32_t *)td->td_pcb->un_32.pcb32_r11;
-	stack_zero(st);
-	stack_capture(st, frame);
-}
-
-void
-stack_save(struct stack *st)
-{
-	u_int32_t *frame;
-
-	frame = (u_int32_t *)__builtin_frame_address(0);
-	stack_zero(st);
-	stack_capture(st, frame);
-}
+#endif /* _KERNEL */
+#endif /* !__SYS_PCTRIE_H_ */
