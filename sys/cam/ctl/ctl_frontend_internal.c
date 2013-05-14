@@ -188,7 +188,6 @@ struct cfi_softc {
 MALLOC_DEFINE(M_CTL_CFI, "ctlcfi", "CTL CFI");
 
 static struct cfi_softc fetd_internal_softc;
-extern int ctl_disable;
 
 int cfi_init(void);
 void cfi_shutdown(void) __unused;
@@ -243,17 +242,13 @@ cfi_init(void)
 
 	retval = 0;
 
-	/* If we're disabled, don't initialize */
-	if (ctl_disable != 0)
-		return (0);
-
 	if (sizeof(struct cfi_lun_io) > CTL_PORT_PRIV_SIZE) {
 		printf("%s: size of struct cfi_lun_io %zd > "
 		       "CTL_PORT_PRIV_SIZE %d\n", __func__,
 		       sizeof(struct cfi_lun_io),
 		       CTL_PORT_PRIV_SIZE);
 	}
-	memset(softc, 0, sizeof(softc));
+	memset(softc, 0, sizeof(*softc));
 
 	mtx_init(&softc->lock, "CTL frontend mutex", NULL, MTX_DEF);
 	softc->flags |= CTL_FLAG_MASTER_SHELF;

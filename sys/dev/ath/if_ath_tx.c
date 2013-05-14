@@ -1722,7 +1722,7 @@ ath_tx_normal_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 		if (isfrag)
 			sc->sc_tx_th.wt_flags |= IEEE80211_RADIOTAP_F_FRAG;
 		sc->sc_tx_th.wt_rate = sc->sc_hwmap[rix].ieeerate;
-		sc->sc_tx_th.wt_txpower = ni->ni_txpower;
+		sc->sc_tx_th.wt_txpower = ieee80211_get_node_txpower(ni);
 		sc->sc_tx_th.wt_antenna = sc->sc_txantenna;
 
 		ieee80211_radiotap_tx(vap, m0);
@@ -1743,7 +1743,7 @@ ath_tx_normal_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 	bf->bf_state.bfs_pktlen = pktlen;
 	bf->bf_state.bfs_hdrlen = hdrlen;
 	bf->bf_state.bfs_atype = atype;
-	bf->bf_state.bfs_txpower = ni->ni_txpower;
+	bf->bf_state.bfs_txpower = ieee80211_get_node_txpower(ni);
 	bf->bf_state.bfs_txrate0 = txrate;
 	bf->bf_state.bfs_try0 = try0;
 	bf->bf_state.bfs_keyix = keyix;
@@ -1821,11 +1821,8 @@ ath_tx_start(struct ath_softc *sc, struct ieee80211_node *ni,
 		if (sc->sc_cabq->axq_depth + sc->sc_cabq->fifo.axq_depth
 		    > sc->sc_txq_mcastq_maxdepth) {
 			sc->sc_stats.ast_tx_mcastq_overflow++;
-			r = ENOBUFS;
-		}
-		if (r != 0) {
 			m_freem(m0);
-			return r;
+			return (ENOBUFS);
 		}
 	}
 
@@ -2088,7 +2085,8 @@ ath_tx_raw_start(struct ath_softc *sc, struct ieee80211_node *ni,
 		if (m0->m_flags & M_FRAG)
 			sc->sc_tx_th.wt_flags |= IEEE80211_RADIOTAP_F_FRAG;
 		sc->sc_tx_th.wt_rate = sc->sc_hwmap[rix].ieeerate;
-		sc->sc_tx_th.wt_txpower = ni->ni_txpower;
+		sc->sc_tx_th.wt_txpower = MIN(params->ibp_power,
+		    ieee80211_get_node_txpower(ni));
 		sc->sc_tx_th.wt_antenna = sc->sc_txantenna;
 
 		ieee80211_radiotap_tx(vap, m0);
@@ -2104,7 +2102,8 @@ ath_tx_raw_start(struct ath_softc *sc, struct ieee80211_node *ni,
 	bf->bf_state.bfs_pktlen = pktlen;
 	bf->bf_state.bfs_hdrlen = hdrlen;
 	bf->bf_state.bfs_atype = atype;
-	bf->bf_state.bfs_txpower = params->ibp_power;
+	bf->bf_state.bfs_txpower = MIN(params->ibp_power,
+	    ieee80211_get_node_txpower(ni));
 	bf->bf_state.bfs_txrate0 = txrate;
 	bf->bf_state.bfs_try0 = try0;
 	bf->bf_state.bfs_keyix = keyix;
@@ -2588,7 +2587,8 @@ ath_tx_update_baw(struct ath_softc *sc, struct ath_node *an,
 		    __func__,
 		    bf, SEQNO(bf->bf_state.bfs_seqno),
 		    tid->tx_buf[cindex],
-		    SEQNO(tid->tx_buf[cindex]->bf_state.bfs_seqno));
+		    (tid->tx_buf[cindex] != NULL) ?
+		      SEQNO(tid->tx_buf[cindex]->bf_state.bfs_seqno) : -1);
 	}
 
 	tid->tx_buf[cindex] = NULL;
@@ -2974,7 +2974,19 @@ ath_tx_tid_resume(struct ath_softc *sc, struct ath_tid *tid)
 {
 	ATH_TX_LOCK_ASSERT(sc);
 
-	tid->paused--;
+	/*
+	 * There's some odd places where ath_tx_tid_resume() is called
+	 * when it shouldn't be; this works around that particular issue
+	 * until it's actually resolved.
+	 */
+	if (tid->paused == 0) {
+		device_printf(sc->sc_dev, "%s: %6D: paused=0?\n",
+		    __func__,
+		    tid->an->an_node.ni_macaddr,
+		    ":");
+	} else {
+		tid->paused--;
+	}
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL, "%s: unpaused = %d\n",
 	    __func__, tid->paused);
@@ -3239,13 +3251,19 @@ ath_tx_tid_bar_unsuspend(struct ath_softc *sc, struct ath_tid *tid)
 	ATH_TX_LOCK_ASSERT(sc);
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_BAR,
-	    "%s: tid=%p, called\n",
+	    "%s: %6D: tid=%p, called\n",
 	    __func__,
+	    tid->an->an_node.ni_macaddr,
+	    ":",
 	    tid);
 
 	if (tid->bar_tx == 0 || tid->bar_wait == 0) {
-		device_printf(sc->sc_dev, "%s: bar_tx=%d, bar_wait=%d: ?\n",
-		    __func__, tid->bar_tx, tid->bar_wait);
+		device_printf(sc->sc_dev,
+		    "%s: %6D: bar_tx=%d, bar_wait=%d: ?\n",
+		    __func__,
+		    tid->an->an_node.ni_macaddr,
+		    ":",
+		    tid->bar_tx, tid->bar_wait);
 	}
 
 	tid->bar_tx = tid->bar_wait = 0;
@@ -3266,8 +3284,12 @@ ath_tx_tid_bar_tx_ready(struct ath_softc *sc, struct ath_tid *tid)
 	if (tid->bar_wait == 0 || tid->hwq_depth > 0)
 		return (0);
 
-	DPRINTF(sc, ATH_DEBUG_SW_TX_BAR, "%s: tid=%p (%d), bar ready\n",
-	    __func__, tid, tid->tid);
+	DPRINTF(sc, ATH_DEBUG_SW_TX_BAR,
+	    "%s: %6D: tid=%p (%d), bar ready\n",
+	    __func__,
+	    tid->an->an_node.ni_macaddr,
+	    ":",
+	    tid, tid->tid);
 
 	return (1);
 }
@@ -3292,8 +3314,10 @@ ath_tx_tid_bar_tx(struct ath_softc *sc, struct ath_tid *tid)
 	ATH_TX_LOCK_ASSERT(sc);
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_BAR,
-	    "%s: tid=%p, called\n",
+	    "%s: %6D: tid=%p, called\n",
 	    __func__,
+	    tid->an->an_node.ni_macaddr,
+	    ":",
 	    tid);
 
 	tap = ath_tx_get_tx_tid(tid->an, tid->tid);
@@ -3303,8 +3327,10 @@ ath_tx_tid_bar_tx(struct ath_softc *sc, struct ath_tid *tid)
 	 */
 	if (tid->bar_wait == 0 || tid->bar_tx == 1) {
 		device_printf(sc->sc_dev,
-		    "%s: tid=%p, bar_tx=%d, bar_wait=%d: ?\n",
+		    "%s: %6D: tid=%p, bar_tx=%d, bar_wait=%d: ?\n",
 		    __func__,
+		    tid->an->an_node.ni_macaddr,
+		    ":",
 		    tid,
 		    tid->bar_tx,
 		    tid->bar_wait);
@@ -3314,8 +3340,10 @@ ath_tx_tid_bar_tx(struct ath_softc *sc, struct ath_tid *tid)
 	/* Don't do anything if we still have pending frames */
 	if (tid->hwq_depth > 0) {
 		DPRINTF(sc, ATH_DEBUG_SW_TX_BAR,
-		    "%s: tid=%p, hwq_depth=%d, waiting\n",
+		    "%s: %6D: tid=%p, hwq_depth=%d, waiting\n",
 		    __func__,
+		    tid->an->an_node.ni_macaddr,
+		    ":",
 		    tid,
 		    tid->hwq_depth);
 		return;
@@ -3337,8 +3365,10 @@ ath_tx_tid_bar_tx(struct ath_softc *sc, struct ath_tid *tid)
 	 * XXX verify this is _actually_ the valid value to begin at!
 	 */
 	DPRINTF(sc, ATH_DEBUG_SW_TX_BAR,
-	    "%s: tid=%p, new BAW left edge=%d\n",
+	    "%s: %6D: tid=%p, new BAW left edge=%d\n",
 	    __func__,
+	    tid->an->an_node.ni_macaddr,
+	    ":",
 	    tid,
 	    tap->txa_start);
 
@@ -3354,8 +3384,12 @@ ath_tx_tid_bar_tx(struct ath_softc *sc, struct ath_tid *tid)
 
 	/* Failure? For now, warn loudly and continue */
 	ATH_TX_LOCK(sc);
-	device_printf(sc->sc_dev, "%s: tid=%p, failed to TX BAR, continue!\n",
-	    __func__, tid);
+	device_printf(sc->sc_dev,
+	    "%s: %6D: tid=%p, failed to TX BAR, continue!\n",
+	    __func__,
+	    tid->an->an_node.ni_macaddr,
+	    ":",
+	    tid);
 	ath_tx_tid_bar_unsuspend(sc, tid);
 }
 
@@ -3533,14 +3567,85 @@ ath_tx_tid_drain(struct ath_softc *sc, struct ath_node *an,
 
 	/* But don't do it for non-QoS TIDs */
 	if (tap) {
-#if 0
+#if 1
 		DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL,
-		    "%s: node %p: TID %d: sliding BAW left edge to %d\n",
-		    __func__, an, tid->tid, tap->txa_start);
+		    "%s: %6D: node %p: TID %d: sliding BAW left edge to %d\n",
+		    __func__,
+		    ni->ni_macaddr,
+		    ":",
+		    an,
+		    tid->tid,
+		    tap->txa_start);
 #endif
 		ni->ni_txseqs[tid->tid] = tap->txa_start;
 		tid->baw_tail = tid->baw_head;
 	}
+}
+
+/*
+ * Reset the TID state.  This must be only called once the node has
+ * had its frames flushed from this TID, to ensure that no other
+ * pause / unpause logic can kick in.
+ */
+static void
+ath_tx_tid_reset(struct ath_softc *sc, struct ath_tid *tid)
+{
+
+#if 0
+	tid->bar_wait = tid->bar_tx = tid->isfiltered = 0;
+	tid->paused = tid->sched = tid->addba_tx_pending = 0;
+	tid->incomp = tid->cleanup_inprogress = 0;
+#endif
+
+	/*
+	 * If we have a bar_wait set, we need to unpause the TID
+	 * here.  Otherwise once cleanup has finished, the TID won't
+	 * have the right paused counter.
+	 *
+	 * XXX I'm not going through resume here - I don't want the
+	 * node to be rescheuled just yet.  This however should be
+	 * methodized!
+	 */
+	if (tid->bar_wait) {
+		if (tid->paused > 0) {
+			tid->paused --;
+		}
+	}
+
+	/*
+	 * XXX same with a currently filtered TID.
+	 *
+	 * Since this is being called during a flush, we assume that
+	 * the filtered frame list is actually empty.
+	 *
+	 * XXX TODO: add in a check to ensure that the filtered queue
+	 * depth is actually 0!
+	 */
+	if (tid->isfiltered) {
+		if (tid->paused > 0) {
+			tid->paused --;
+		}
+	}
+
+	/*
+	 * Clear BAR, filtered frames, scheduled and ADDBA pending.
+	 * The TID may be going through cleanup from the last association
+	 * where things in the BAW are still in the hardware queue.
+	 */
+	tid->bar_wait = 0;
+	tid->bar_tx = 0;
+	tid->isfiltered = 0;
+	tid->sched = 0;
+	tid->addba_tx_pending = 0;
+
+	/*
+	 * XXX TODO: it may just be enough to walk the HWQs and mark
+	 * frames for that node as non-aggregate; or mark the ath_node
+	 * with something that indicates that aggregation is no longer
+	 * occuring.  Then we can just toss the BAW complaints and
+	 * do a complete hard reset of state here - no pause, no
+	 * complete counter, etc.
+	 */
 }
 
 /*
@@ -3563,6 +3668,18 @@ ath_tx_node_flush(struct ath_softc *sc, struct ath_node *an)
 	    &an->an_node);
 
 	ATH_TX_LOCK(sc);
+	DPRINTF(sc, ATH_DEBUG_NODE,
+	    "%s: %6D: flush; is_powersave=%d, stack_psq=%d, tim=%d, "
+	    "swq_depth=%d, clrdmask=%d\n",
+	    __func__,
+	    an->an_node.ni_macaddr,
+	    ":",
+	    an->an_is_powersave,
+	    an->an_stack_psq,
+	    an->an_tim_set,
+	    an->an_swq_depth,
+	    an->clrdmask);
+
 	for (tid = 0; tid < IEEE80211_TID_SIZE; tid++) {
 		struct ath_tid *atid = &an->an_tid[tid];
 
@@ -3570,6 +3687,8 @@ ath_tx_node_flush(struct ath_softc *sc, struct ath_node *an)
 		ath_tx_tid_drain(sc, an, atid, &bf_cq);
 		/* Remove this tid from the list of active tids */
 		ath_tx_tid_unsched(sc, atid);
+		/* Reset the per-TID pause, BAR, etc state */
+		ath_tx_tid_reset(sc, atid);
 	}
 	ATH_TX_UNLOCK(sc);
 
@@ -3736,18 +3855,17 @@ ath_tx_comp_cleanup_unaggr(struct ath_softc *sc, struct ath_buf *bf)
  * The caller is responsible for pausing the TID.
  */
 static void
-ath_tx_tid_cleanup(struct ath_softc *sc, struct ath_node *an, int tid)
+ath_tx_tid_cleanup(struct ath_softc *sc, struct ath_node *an, int tid,
+    ath_bufhead *bf_cq)
 {
 	struct ath_tid *atid = &an->an_tid[tid];
 	struct ieee80211_tx_ampdu *tap;
 	struct ath_buf *bf, *bf_next;
-	ath_bufhead bf_cq;
+
+	ATH_TX_LOCK_ASSERT(sc);
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_BAW,
 	    "%s: TID %d: called\n", __func__, tid);
-
-	TAILQ_INIT(&bf_cq);
-	ATH_TX_LOCK(sc);
 
 	/*
 	 * Move the filtered frames to the TX queue, before
@@ -3783,7 +3901,7 @@ ath_tx_tid_cleanup(struct ath_softc *sc, struct ath_node *an, int tid)
 			 * Call the default completion handler with "fail" just
 			 * so upper levels are suitably notified about this.
 			 */
-			TAILQ_INSERT_TAIL(&bf_cq, bf, bf_list);
+			TAILQ_INSERT_TAIL(bf_cq, bf, bf_list);
 			bf = bf_next;
 			continue;
 		}
@@ -3828,13 +3946,8 @@ ath_tx_tid_cleanup(struct ath_softc *sc, struct ath_node *an, int tid)
 		DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL,
 		    "%s: TID %d: cleanup needed: %d packets\n",
 		    __func__, tid, atid->incomp);
-	ATH_TX_UNLOCK(sc);
 
-	/* Handle completing frames and fail them */
-	while ((bf = TAILQ_FIRST(&bf_cq)) != NULL) {
-		TAILQ_REMOVE(&bf_cq, bf, bf_list);
-		ath_tx_default_comp(sc, bf, 1);
-	}
+	/* Owner now must free completed frames */
 }
 
 static struct ath_buf *
@@ -5189,8 +5302,11 @@ ath_addba_request(struct ieee80211_node *ni, struct ieee80211_tx_ampdu *tap,
 	ATH_TX_UNLOCK(sc);
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL,
-	    "%s: called; dialogtoken=%d, baparamset=%d, batimeout=%d\n",
-	    __func__, dialogtoken, baparamset, batimeout);
+	    "%s: %6D: called; dialogtoken=%d, baparamset=%d, batimeout=%d\n",
+	    __func__,
+	    ni->ni_macaddr,
+	    ":",
+	    dialogtoken, baparamset, batimeout);
 	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL,
 	    "%s: txa_start=%d, ni_txseqs=%d\n",
 	    __func__, tap->txa_start, ni->ni_txseqs[tid]);
@@ -5230,7 +5346,9 @@ ath_addba_response(struct ieee80211_node *ni, struct ieee80211_tx_ampdu *tap,
 	int r;
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL,
-	    "%s: called; status=%d, code=%d, batimeout=%d\n", __func__,
+	    "%s: %6D: called; status=%d, code=%d, batimeout=%d\n", __func__,
+	    ni->ni_macaddr,
+	    ":",
 	    status, code, batimeout);
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL,
@@ -5272,8 +5390,13 @@ ath_addba_stop(struct ieee80211_node *ni, struct ieee80211_tx_ampdu *tap)
 	int tid = tap->txa_tid;
 	struct ath_node *an = ATH_NODE(ni);
 	struct ath_tid *atid = &an->an_tid[tid];
+	ath_bufhead bf_cq;
+	struct ath_buf *bf;
 
-	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL, "%s: called\n", __func__);
+	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL, "%s: %6D: called\n",
+	    __func__,
+	    ni->ni_macaddr,
+	    ":");
 
 	/*
 	 * Pause TID traffic early, so there aren't any races
@@ -5300,7 +5423,57 @@ ath_addba_stop(struct ieee80211_node *ni, struct ieee80211_tx_ampdu *tap)
 	 * it'll set the cleanup flag, and it'll be unpaused once
 	 * things have been cleaned up.
 	 */
-	ath_tx_tid_cleanup(sc, an, tid);
+	TAILQ_INIT(&bf_cq);
+	ATH_TX_LOCK(sc);
+	ath_tx_tid_cleanup(sc, an, tid, &bf_cq);
+	ATH_TX_UNLOCK(sc);
+
+	/* Handle completing frames and fail them */
+	while ((bf = TAILQ_FIRST(&bf_cq)) != NULL) {
+		TAILQ_REMOVE(&bf_cq, bf, bf_list);
+		ath_tx_default_comp(sc, bf, 1);
+	}
+}
+
+/*
+ * Handle a node reassociation.
+ *
+ * We may have a bunch of frames queued to the hardware; those need
+ * to be marked as cleanup.
+ */
+void
+ath_tx_node_reassoc(struct ath_softc *sc, struct ath_node *an)
+{
+	struct ath_tid *tid;
+	int i;
+	ath_bufhead bf_cq;
+	struct ath_buf *bf;
+
+	TAILQ_INIT(&bf_cq);
+
+	ATH_TX_UNLOCK_ASSERT(sc);
+
+	ATH_TX_LOCK(sc);
+	for (i = 0; i < IEEE80211_TID_SIZE; i++) {
+		tid = &an->an_tid[i];
+		if (tid->hwq_depth == 0)
+			continue;
+		ath_tx_tid_pause(sc, tid);
+		DPRINTF(sc, ATH_DEBUG_NODE,
+		    "%s: %6D: TID %d: cleaning up TID\n",
+		    __func__,
+		    an->an_node.ni_macaddr,
+		    ":",
+		    i);
+		ath_tx_tid_cleanup(sc, an, i, &bf_cq);
+	}
+	ATH_TX_UNLOCK(sc);
+
+	/* Handle completing frames and fail them */
+	while ((bf = TAILQ_FIRST(&bf_cq)) != NULL) {
+		TAILQ_REMOVE(&bf_cq, bf, bf_list);
+		ath_tx_default_comp(sc, bf, 1);
+	}
 }
 
 /*
@@ -5324,8 +5497,10 @@ ath_bar_response(struct ieee80211_node *ni, struct ieee80211_tx_ampdu *tap,
 	int attempts = tap->txa_attempts;
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_BAR,
-	    "%s: called; tap=%p, atid=%p, txa_tid=%d, atid->tid=%d, status=%d, attempts=%d\n",
+	    "%s: %6D: called; tap=%p, atid=%p, txa_tid=%d, atid->tid=%d, status=%d, attempts=%d\n",
 	    __func__,
+	    ni->ni_macaddr,
+	    ":",
 	    tap,
 	    atid,
 	    tap->txa_tid,
@@ -5372,7 +5547,10 @@ ath_addba_response_timeout(struct ieee80211_node *ni,
 	struct ath_tid *atid = &an->an_tid[tid];
 
 	DPRINTF(sc, ATH_DEBUG_SW_TX_CTRL,
-	    "%s: called; resuming\n", __func__);
+	    "%s: %6D: called; resuming\n",
+	    __func__,
+	    ni->ni_macaddr,
+	    ":");
 
 	ATH_TX_LOCK(sc);
 	atid->addba_tx_pending = 0;
@@ -5394,7 +5572,7 @@ int
 ath_tx_node_is_asleep(struct ath_softc *sc, struct ath_node *an)
 {
 
-	ATH_NODE_LOCK_ASSERT(an);
+	ATH_TX_LOCK_ASSERT(sc);
 
 	return (an->an_is_powersave);
 }
@@ -5424,7 +5602,7 @@ ath_tx_node_sleep(struct ath_softc *sc, struct ath_node *an)
 	struct ath_txq *txq;
 	int tid;
 
-	ATH_NODE_UNLOCK_ASSERT(an);
+	ATH_TX_UNLOCK_ASSERT(sc);
 
 	/*
 	 * It's possible that a parallel call to ath_tx_node_wakeup()
@@ -5459,17 +5637,12 @@ ath_tx_node_sleep(struct ath_softc *sc, struct ath_node *an)
 
 		ath_tx_tid_pause(sc, atid);
 	}
-	ATH_TX_UNLOCK(sc);
-
-	ATH_NODE_LOCK(an);
 
 	/* In case of concurrency races from net80211.. */
 	if (an->an_is_powersave == 1) {
-		ATH_NODE_UNLOCK(an);
 		device_printf(sc->sc_dev,
 		    "%s: an=%p: node was already asleep\n",
 		    __func__, an);
-		ATH_TX_LOCK(sc);
 		for (tid = 0; tid < IEEE80211_TID_SIZE; tid++) {
 			atid = &an->an_tid[tid];
 			txq = sc->sc_ac2q[atid->ac];
@@ -5483,7 +5656,7 @@ ath_tx_node_sleep(struct ath_softc *sc, struct ath_node *an)
 	/* Mark node as in powersaving */
 	an->an_is_powersave = 1;
 
-	ATH_NODE_UNLOCK(an);
+	ATH_TX_UNLOCK(sc);
 }
 
 /*
@@ -5497,12 +5670,13 @@ ath_tx_node_wakeup(struct ath_softc *sc, struct ath_node *an)
 	struct ath_txq *txq;
 	int tid;
 
-	ATH_NODE_UNLOCK_ASSERT(an);
-	ATH_NODE_LOCK(an);
+	ATH_TX_UNLOCK_ASSERT(sc);
+
+	ATH_TX_LOCK(sc);
 
 	/* In case of concurrency races from net80211.. */
 	if (an->an_is_powersave == 0) {
-		ATH_NODE_UNLOCK(an);
+		ATH_TX_UNLOCK(sc);
 		device_printf(sc->sc_dev,
 		    "%s: an=%p: node was already awake\n",
 		    __func__, an);
@@ -5512,9 +5686,6 @@ ath_tx_node_wakeup(struct ath_softc *sc, struct ath_node *an)
 	/* Mark node as awake */
 	an->an_is_powersave = 0;
 
-	ATH_NODE_UNLOCK(an);
-
-	ATH_TX_LOCK(sc);
 	for (tid = 0; tid < IEEE80211_TID_SIZE; tid++) {
 		atid = &an->an_tid[tid];
 		txq = sc->sc_ac2q[atid->ac];

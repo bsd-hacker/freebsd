@@ -319,7 +319,7 @@ enum {
 };
 
 /* Listed in order of preference.  Update t4_sysctls too if you change these */
-enum {DOORBELL_UDB, DOORBELL_WRWC, DOORBELL_UDBWC, DOORBELL_KDB};
+enum {DOORBELL_UDB, DOORBELL_WCWR, DOORBELL_UDBWC, DOORBELL_KDB};
 
 /*
  * Egress Queue: driver is producer, T4 is consumer.
@@ -755,6 +755,13 @@ is_10G_port(const struct port_info *pi)
 {
 
 	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_10G) != 0);
+}
+
+static inline bool
+is_40G_port(const struct port_info *pi)
+{
+
+	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_40G) != 0);
 }
 
 static inline int

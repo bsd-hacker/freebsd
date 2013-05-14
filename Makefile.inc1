@@ -41,13 +41,6 @@
 # /usr/share/mk.  These include:
 #		obj depend all install clean cleandepend cleanobj
 
-# You are supposed to define both of these when calling Makefile.inc1
-# directly.  However, some old scripts don't.  Cope for the moment, but
-# issue a new warning for a transition period.
-.if defined(TARGET) && !defined(TARGET_ARCH)
-.warning "You must pass both TARGET and TARGET_ARCH to Makefile.inc1.  Setting TARGET_ARCH=${TARGET}."
-TARGET_ARCH=${TARGET}
-.endif
 .if !defined(TARGET) || !defined(TARGET_ARCH)
 .error "Both TARGET and TARGET_ARCH must be defined."
 .endif
@@ -65,6 +58,9 @@ TARGET_ARCH=${TARGET}
 # use that new version.  And the new (dynamically-linked) /bin/sh
 # will expect to find appropriate libraries in /lib and /libexec.
 #
+.if defined(SUBDIR_OVERRIDE)
+SUBDIR=	${SUBDIR_OVERRIDE}
+.else
 SUBDIR=	share/info lib libexec
 SUBDIR+=bin
 .if ${MK_GAMES} != "no"
@@ -103,9 +99,6 @@ SUBDIR+=etc
 SUBDIR+= ${_DIR}
 .endif
 .endfor
-
-.if defined(SUBDIR_OVERRIDE)
-SUBDIR=		${SUBDIR_OVERRIDE}
 .endif
 
 .if defined(NOCLEAN)
@@ -380,7 +373,7 @@ IMAKE_MTREE=	MTREE_CMD="nmtree ${MTREEFLAGS}"
 
 # kernel stage
 KMAKEENV=	${WMAKEENV}
-KMAKE=		${KMAKEENV} ${MAKE} ${KERNEL_FLAGS} KERNEL=${INSTKERNNAME}
+KMAKE=		${KMAKEENV} ${MAKE} ${.MAKEFLAGS} ${KERNEL_FLAGS} KERNEL=${INSTKERNNAME}
 
 #
 # buildworld
@@ -616,6 +609,7 @@ kernel-toolchain: ${TOOLCHAIN_TGTS:N_includes:N_libraries}
 # Checks to be sure system is ready for installworld/installkernel.
 #
 installcheck:
+installcheck_UGID:
 
 #
 # Require DESTDIR to be set if installing for a different architecture or
@@ -647,7 +641,6 @@ CHECK_GIDS+=	smmsp
 CHECK_UIDS+=	proxy
 CHECK_GIDS+=	proxy authpf
 .endif
-installcheck: installcheck_UGID
 installcheck_UGID:
 .for uid in ${CHECK_UIDS}
 	@if ! `id -u ${uid} >/dev/null 2>&1`; then \
@@ -703,7 +696,7 @@ EXTRA_DISTRIBUTIONS+=	lib32
 
 MTREE_MAGIC?=	mtree 2.0
 
-distributeworld installworld: installcheck
+distributeworld installworld: installcheck installcheck_UGID
 	mkdir -p ${INSTALLTMP}
 	progs=$$(for prog in ${ITOOLS}; do \
 		if progpath=`which $$prog`; then \
@@ -1183,7 +1176,8 @@ _kerberos5_bootstrap_tools= \
 	kerberos5/lib/libroken \
 	kerberos5/lib/libvers \
 	kerberos5/tools/asn1_compile \
-	kerberos5/tools/slc
+	kerberos5/tools/slc \
+	usr.bin/compile_et
 .endif
 
 #	Please document (add comment) why something is in 'bootstrap-tools'.
@@ -1382,7 +1376,7 @@ _prebuild_libs=	${_kerberos5_lib_libasn1} \
 		${_kerberos5_lib_libwind} \
 		${_lib_atf_libatf_c} \
 		lib/libbz2 ${_libcom_err} lib/libcrypt \
-		lib/libexpat \
+		lib/libelf lib/libexpat \
 		${_lib_libgssapi} ${_lib_libipx} \
 		lib/libkiconv lib/libkvm lib/liblzma lib/libmd \
 		lib/ncurses/ncurses lib/ncurses/ncursesw \

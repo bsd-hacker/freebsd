@@ -307,6 +307,7 @@ CAM_DEBUG_BUS		opt_cam.h
 CAM_DEBUG_TARGET	opt_cam.h
 CAM_DEBUG_LUN		opt_cam.h
 CAM_DEBUG_FLAGS		opt_cam.h
+CAM_BOOT_DELAY		opt_cam.h
 SCSI_DELAY		opt_scsi.h
 SCSI_NO_SENSE_STRINGS	opt_scsi.h
 SCSI_NO_OP_STRINGS	opt_scsi.h
@@ -331,9 +332,6 @@ SCSI_PT_DEFAULT_TIMEOUT	opt_pt.h
 
 # Options used only in cam/scsi/scsi_ses.c
 SES_ENABLE_PASSTHROUGH	opt_ses.h
-
-# Options used only in cam/ctl
-CTL_DISABLE		opt_ctl.h
 
 # Options used in dev/sym/ (Symbios SCSI driver).
 SYM_SETUP_LP_PROBE_MAP	opt_sym.h	#-Low Priority Probe Map (bits)
@@ -534,9 +532,6 @@ NATM
 
 # DPT driver debug flags
 DPT_MEASURE_PERFORMANCE	opt_dpt.h
-DPT_HANDLE_TIMEOUTS	opt_dpt.h
-DPT_TIMEOUT_FACTOR	opt_dpt.h
-DPT_LOST_IRQ		opt_dpt.h
 DPT_RESET_HBA		opt_dpt.h
 
 # Misc debug flags.  Most of these should probably be replaced with
@@ -573,6 +568,7 @@ DIAGNOSTIC		opt_global.h
 INVARIANT_SUPPORT	opt_global.h
 INVARIANTS		opt_global.h
 MAXCPU			opt_global.h
+MAXMEMDOM		opt_global.h
 MAXPHYS			opt_global.h
 MCLSHIFT		opt_global.h
 MUTEX_DEBUG		opt_global.h
@@ -589,7 +585,6 @@ VFS_BIO_DEBUG		opt_global.h
 VM_KMEM_SIZE		opt_vm.h
 VM_KMEM_SIZE_SCALE	opt_vm.h
 VM_KMEM_SIZE_MAX	opt_vm.h
-VM_NDOMAIN		opt_vm.h
 VM_NRESERVLEVEL		opt_vm.h
 VM_LEVEL_0_ORDER	opt_vm.h
 NO_SWAPPING		opt_vm.h
@@ -649,6 +644,7 @@ BUS_DEBUG		opt_bus.h
 USB_DEBUG		opt_usb.h
 USB_HOST_ALIGN		opt_usb.h
 USB_REQ_DEBUG		opt_usb.h
+USB_TEMPLATE		opt_usb.h
 USB_VERBOSE		opt_usb.h
 USB_EHCI_BIG_ENDIAN_DESC	opt_usb.h
 U3G_DEBUG		opt_u3g.h
@@ -676,6 +672,7 @@ KTR_ENTRIES		opt_global.h
 KTR_VERBOSE		opt_ktr.h
 WITNESS			opt_global.h
 WITNESS_KDB		opt_witness.h
+WITNESS_NO_VNODE	opt_witness.h
 WITNESS_SKIPSPIN	opt_witness.h
 
 # options for ACPI support

@@ -178,7 +178,7 @@ struct ath_node {
 	struct ath_buf	*an_ff_buf[WME_NUM_AC]; /* ff staging area */
 	struct ath_tid	an_tid[IEEE80211_TID_SIZE];	/* per-TID state */
 	char		an_name[32];	/* eg "wlan0_a1" */
-	struct mtx	an_mtx;		/* protecting the ath_node state */
+	struct mtx	an_mtx;		/* protecting the rate control state */
 	uint32_t	an_swq_depth;	/* how many SWQ packets for this
 					   node */
 	int			clrdmask;	/* has clrdmask been set */
@@ -381,6 +381,8 @@ struct ath_txq {
 #define	ATH_TXQ_LOCK(_tq)		mtx_lock(&(_tq)->axq_lock)
 #define	ATH_TXQ_UNLOCK(_tq)		mtx_unlock(&(_tq)->axq_lock)
 #define	ATH_TXQ_LOCK_ASSERT(_tq)	mtx_assert(&(_tq)->axq_lock, MA_OWNED)
+#define	ATH_TXQ_UNLOCK_ASSERT(_tq)	mtx_assert(&(_tq)->axq_lock,	\
+					    MA_NOTOWNED)
 
 
 #define	ATH_NODE_LOCK(_an)		mtx_lock(&(_an)->an_mtx)
@@ -413,17 +415,17 @@ struct ath_txq {
 #define ATH_TID_INSERT_HEAD(_tq, _elm, _field) do { \
 	TAILQ_INSERT_HEAD(&(_tq)->tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_INSERT_TAIL(_tq, _elm, _field) do { \
 	TAILQ_INSERT_TAIL(&(_tq)->tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_REMOVE(_tq, _elm, _field) do { \
 	TAILQ_REMOVE(&(_tq)->tid_q, _elm, _field); \
 	(_tq)->axq_depth--; \
-	atomic_subtract_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth--; \
 } while (0)
 #define	ATH_TID_FIRST(_tq)		TAILQ_FIRST(&(_tq)->tid_q)
 #define	ATH_TID_LAST(_tq, _field)	TAILQ_LAST(&(_tq)->tid_q, _field)
@@ -434,17 +436,17 @@ struct ath_txq {
 #define ATH_TID_FILT_INSERT_HEAD(_tq, _elm, _field) do { \
 	TAILQ_INSERT_HEAD(&(_tq)->filtq.tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_FILT_INSERT_TAIL(_tq, _elm, _field) do { \
 	TAILQ_INSERT_TAIL(&(_tq)->filtq.tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_FILT_REMOVE(_tq, _elm, _field) do { \
 	TAILQ_REMOVE(&(_tq)->filtq.tid_q, _elm, _field); \
 	(_tq)->axq_depth--; \
-	atomic_subtract_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth--; \
 } while (0)
 #define	ATH_TID_FILT_FIRST(_tq)		TAILQ_FIRST(&(_tq)->filtq.tid_q)
 #define	ATH_TID_FILT_LAST(_tq, _field)	TAILQ_LAST(&(_tq)->filtq.tid_q,_field)
@@ -542,6 +544,7 @@ struct ath_softc {
 
 	struct ath_rx_methods	sc_rx;
 	struct ath_rx_edma	sc_rxedma[HAL_NUM_RX_QUEUES];	/* HP/LP queues */
+	ath_bufhead		sc_rx_rxlist[HAL_NUM_RX_QUEUES];	/* deferred RX completion */
 	struct ath_tx_methods	sc_tx;
 	struct ath_tx_edma_fifo	sc_txedma[HAL_NUM_TX_QUEUES];
 
@@ -700,7 +703,6 @@ struct ath_softc {
 
 	struct ath_descdma	sc_rxdma;	/* RX descriptors */
 	ath_bufhead		sc_rxbuf;	/* receive buffer */
-	ath_bufhead		sc_rx_rxlist;	/* deferred RX completion */
 	u_int32_t		*sc_rxlink;	/* link ptr in last RX desc */
 	struct task		sc_rxtask;	/* rx int processing */
 	u_int8_t		sc_defant;	/* current default antenna */
@@ -772,11 +774,11 @@ struct ath_softc {
 	u_int32_t		sc_avgtsfdeltap;/* TDMA slot adjust (+) */
 	u_int32_t		sc_avgtsfdeltam;/* TDMA slot adjust (-) */
 	uint16_t		*sc_eepromdata;	/* Local eeprom data, if AR9100 */
-	int			sc_txchainmask;	/* hardware TX chainmask */
-	int			sc_rxchainmask;	/* hardware RX chainmask */
-	int			sc_cur_txchainmask;	/* currently configured TX chainmask */
-	int			sc_cur_rxchainmask;	/* currently configured RX chainmask */
-	int			sc_rts_aggr_limit;	/* TX limit on RTS aggregates */
+	uint32_t		sc_txchainmask;	/* hardware TX chainmask */
+	uint32_t		sc_rxchainmask;	/* hardware RX chainmask */
+	uint32_t		sc_cur_txchainmask;	/* currently configured TX chainmask */
+	uint32_t		sc_cur_rxchainmask;	/* currently configured RX chainmask */
+	uint32_t		sc_rts_aggr_limit;	/* TX limit on RTS aggregates */
 	int			sc_aggr_limit;	/* TX limit on all aggregates */
 	int			sc_delim_min_pad;	/* Minimum delimiter count */
 
@@ -799,6 +801,7 @@ struct ath_softc {
 	 *
 	 * + mcastq_maxdepth is the maximum depth allowed of the cabq.
 	 */
+	int			sc_txq_node_maxdepth;
 	int			sc_txq_data_minfree;
 	int			sc_txq_mcastq_maxdepth;
 
@@ -963,6 +966,8 @@ struct ath_softc {
 #define	ATH_TXBUF_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_txbuflock)
 #define	ATH_TXBUF_LOCK_ASSERT(_sc) \
 	mtx_assert(&(_sc)->sc_txbuflock, MA_OWNED)
+#define	ATH_TXBUF_UNLOCK_ASSERT(_sc) \
+	mtx_assert(&(_sc)->sc_txbuflock, MA_NOTOWNED)
 
 #define	ATH_TXSTATUS_LOCK_INIT(_sc) do { \
 	snprintf((_sc)->sc_txcompname, sizeof((_sc)->sc_txcompname), \

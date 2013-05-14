@@ -322,7 +322,7 @@ ath_beacon_setup(struct ath_softc *sc, struct ath_buf *bf)
 		, m->m_len + IEEE80211_CRC_LEN	/* frame length */
 		, sizeof(struct ieee80211_frame)/* header length */
 		, HAL_PKT_TYPE_BEACON		/* Atheros packet type */
-		, ni->ni_txpower		/* txpower XXX */
+		, ieee80211_get_node_txpower(ni)	/* txpower XXX */
 		, rate, 1			/* series 0 rate/tries */
 		, HAL_TXKEYIX_INVALID		/* no encryption */
 		, antenna			/* antenna mode */
@@ -399,6 +399,11 @@ ath_beacon_miss(struct ath_softc *sc)
 		    hangs);
 	}
 
+#ifdef	ATH_DEBUG_ALQ
+	if (if_ath_alq_checkdebug(&sc->sc_alq, ATH_ALQ_MISSED_BEACON))
+		if_ath_alq_post(&sc->sc_alq, ATH_ALQ_MISSED_BEACON, 0, NULL);
+#endif
+
 	DPRINTF(sc, ATH_DEBUG_BEACON,
 	    "%s: valid=%d, txbusy=%u, rxbusy=%u, chanbusy=%u, "
 	    "extchanbusy=%u, cyclecount=%u\n",
@@ -451,6 +456,10 @@ ath_beacon_proc(void *arg, int pending)
 			"%s: resume beacon xmit after %u misses\n",
 			__func__, sc->sc_bmisscount);
 		sc->sc_bmisscount = 0;
+#ifdef	ATH_DEBUG_ALQ
+		if (if_ath_alq_checkdebug(&sc->sc_alq, ATH_ALQ_RESUME_BEACON))
+			if_ath_alq_post(&sc->sc_alq, ATH_ALQ_RESUME_BEACON, 0, NULL);
+#endif
 	}
 
 	if (sc->sc_stagbeacons) {			/* staggered beacons */
