@@ -178,7 +178,7 @@ struct ath_node {
 	struct ath_buf	*an_ff_buf[WME_NUM_AC]; /* ff staging area */
 	struct ath_tid	an_tid[IEEE80211_TID_SIZE];	/* per-TID state */
 	char		an_name[32];	/* eg "wlan0_a1" */
-	struct mtx	an_mtx;		/* protecting the ath_node state */
+	struct mtx	an_mtx;		/* protecting the rate control state */
 	uint32_t	an_swq_depth;	/* how many SWQ packets for this
 					   node */
 	int			clrdmask;	/* has clrdmask been set */
@@ -415,17 +415,17 @@ struct ath_txq {
 #define ATH_TID_INSERT_HEAD(_tq, _elm, _field) do { \
 	TAILQ_INSERT_HEAD(&(_tq)->tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_INSERT_TAIL(_tq, _elm, _field) do { \
 	TAILQ_INSERT_TAIL(&(_tq)->tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_REMOVE(_tq, _elm, _field) do { \
 	TAILQ_REMOVE(&(_tq)->tid_q, _elm, _field); \
 	(_tq)->axq_depth--; \
-	atomic_subtract_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth--; \
 } while (0)
 #define	ATH_TID_FIRST(_tq)		TAILQ_FIRST(&(_tq)->tid_q)
 #define	ATH_TID_LAST(_tq, _field)	TAILQ_LAST(&(_tq)->tid_q, _field)
@@ -436,17 +436,17 @@ struct ath_txq {
 #define ATH_TID_FILT_INSERT_HEAD(_tq, _elm, _field) do { \
 	TAILQ_INSERT_HEAD(&(_tq)->filtq.tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_FILT_INSERT_TAIL(_tq, _elm, _field) do { \
 	TAILQ_INSERT_TAIL(&(_tq)->filtq.tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_FILT_REMOVE(_tq, _elm, _field) do { \
 	TAILQ_REMOVE(&(_tq)->filtq.tid_q, _elm, _field); \
 	(_tq)->axq_depth--; \
-	atomic_subtract_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth--; \
 } while (0)
 #define	ATH_TID_FILT_FIRST(_tq)		TAILQ_FIRST(&(_tq)->filtq.tid_q)
 #define	ATH_TID_FILT_LAST(_tq, _field)	TAILQ_LAST(&(_tq)->filtq.tid_q,_field)
