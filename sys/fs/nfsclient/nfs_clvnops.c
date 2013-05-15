@@ -2232,6 +2232,8 @@ nfs_readdir(struct vop_readdir_args *ap)
 	int error = 0;
 	struct vattr vattr;
 	
+	if (ap->a_eofflag != NULL)
+		*ap->a_eofflag = 0;
 	if (vp->v_type != VDIR) 
 		return(EPERM);
 
@@ -2246,6 +2248,8 @@ nfs_readdir(struct vop_readdir_args *ap)
 			    !NFS_TIMESPEC_COMPARE(&np->n_mtime, &vattr.va_mtime)) {
 				mtx_unlock(&np->n_mtx);
 				NFSINCRGLOBAL(newnfsstats.direofcache_hits);
+				if (ap->a_eofflag != NULL)
+					*ap->a_eofflag = 1;
 				return (0);
 			} else
 				mtx_unlock(&np->n_mtx);
@@ -2258,8 +2262,11 @@ nfs_readdir(struct vop_readdir_args *ap)
 	tresid = uio->uio_resid;
 	error = ncl_bioread(vp, uio, 0, ap->a_cred);
 
-	if (!error && uio->uio_resid == tresid)
+	if (!error && uio->uio_resid == tresid) {
 		NFSINCRGLOBAL(newnfsstats.direofcache_misses);
+		if (ap->a_eofflag != NULL)
+			*ap->a_eofflag = 1;
+	}
 	return (error);
 }
 
@@ -2660,7 +2667,7 @@ ncl_flush(struct vnode *vp, int waitfor, struct ucred *cred, struct thread *td,
 	if (called_from_renewthread != 0)
 		slptimeo = hz;
 	if (nmp->nm_flag & NFSMNT_INT)
-		slpflag = NFS_PCATCH;
+		slpflag = PCATCH;
 	if (!commit)
 		passone = 0;
 	bo = &vp->v_bufobj;
@@ -2866,7 +2873,7 @@ loop:
 				error = EINTR;
 				goto done;
 			}
-			if (slpflag & PCATCH) {
+			if (slpflag == PCATCH) {
 				slpflag = 0;
 				slptimeo = 2 * hz;
 			}
@@ -2912,7 +2919,7 @@ loop:
 			    error = newnfs_sigintr(nmp, td);
 			    if (error)
 				goto done;
-			    if (slpflag & PCATCH) {
+			    if (slpflag == PCATCH) {
 				slpflag = 0;
 				slptimeo = 2 * hz;
 			    }

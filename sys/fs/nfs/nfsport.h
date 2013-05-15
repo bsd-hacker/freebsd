@@ -806,7 +806,7 @@ MALLOC_DECLARE(M_NEWNFSLAYRECALL);
  */
 int nfscl_loadattrcache(struct vnode **, struct nfsvattr *, void *, void *,
     int, int);
-void newnfs_realign(struct mbuf **);
+int newnfs_realign(struct mbuf **, int);
 
 /*
  * If the port runs on an SMP box that can enforce Atomic ops with low
@@ -980,13 +980,6 @@ struct nfsreq {
 #else
 #define	NFSVNO_DELEGOK(v)	(1)
 #endif
-
-/*
- * Define this as the flags argument for msleep() when catching signals
- * while holding a resource that other threads would block for, such as
- * a vnode lock.
- */
-#define	NFS_PCATCH	(PCATCH | PBDRY)
 
 #endif	/* _KERNEL */
 

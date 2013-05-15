@@ -288,7 +288,7 @@ static void	unp_freerights(struct filedescent **, int);
 static void	unp_init(void);
 static int	unp_internalize(struct mbuf **, struct thread *);
 static void	unp_internalize_fp(struct file *);
-static int	unp_externalize(struct mbuf *, struct mbuf **);
+static int	unp_externalize(struct mbuf *, struct mbuf **, int);
 static int	unp_externalize_fp(struct file *);
 static struct mbuf	*unp_addsockcred(struct thread *, struct mbuf *);
 static void	unp_process_defers(void * __unused, int);
@@ -1370,7 +1370,7 @@ unp_connectat(int fd, struct socket *so, struct sockaddr *nam,
 		}
 
 		/*
-		 * The connecter's (client's) credentials are copied from its
+		 * The connector's (client's) credentials are copied from its
 		 * process structure at the time of connect() (which is now).
 		 */
 		cru2x(td->td_ucred, &unp3->unp_peercred);
@@ -1695,7 +1695,7 @@ unp_freerights(struct filedescent **fdep, int fdcount)
 }
 
 static int
-unp_externalize(struct mbuf *control, struct mbuf **controlp)
+unp_externalize(struct mbuf *control, struct mbuf **controlp, int flags)
 {
 	struct thread *td = curthread;		/* XXX */
 	struct cmsghdr *cm = mtod(control, struct cmsghdr *);
@@ -1706,7 +1706,6 @@ unp_externalize(struct mbuf *control, struct mbuf **controlp)
 	void *data;
 	socklen_t clen = control->m_len, datalen;
 	int error, newfds;
-	int f;
 	u_int newlen;
 
 	UNP_LINK_UNLOCK_ASSERT();
@@ -1732,13 +1731,6 @@ unp_externalize(struct mbuf *control, struct mbuf **controlp)
 				goto next;
 			}
 			FILEDESC_XLOCK(fdesc);
-			/* if the new FD's will not fit free them.  */
-			if (!fdavail(td, newfds)) {
-				FILEDESC_XUNLOCK(fdesc);
-				error = EMSGSIZE;
-				unp_freerights(fdep, newfds);
-				goto next;
-			}
 
 			/*
 			 * Now change each pointer to an fd in the global
@@ -1758,15 +1750,22 @@ unp_externalize(struct mbuf *control, struct mbuf **controlp)
 
 			fdp = (int *)
 			    CMSG_DATA(mtod(*controlp, struct cmsghdr *));
+			if (fdallocn(td, 0, fdp, newfds) != 0) {
+				FILEDESC_XUNLOCK(td->td_proc->p_fd);
+				error = EMSGSIZE;
+				unp_freerights(fdep, newfds);
+				m_freem(*controlp);
+				*controlp = NULL;
+				goto next;
+			}
 			for (i = 0; i < newfds; i++, fdp++) {
-				if (fdalloc(td, 0, &f))
-					panic("unp_externalize fdalloc failed");
-				fde = &fdesc->fd_ofiles[f];
+				fde = &fdesc->fd_ofiles[*fdp];
 				fde->fde_file = fdep[0]->fde_file;
 				filecaps_move(&fdep[0]->fde_caps,
 				    &fde->fde_caps);
+				if ((flags & MSG_CMSG_CLOEXEC) != 0)
+					fde->fde_flags |= UF_EXCLOSE;
 				unp_externalize_fp(fde->fde_file);
-				*fdp = f;
 			}
 			FILEDESC_XUNLOCK(fdesc);
 			free(fdep[0], M_FILECAPS);

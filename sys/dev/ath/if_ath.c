@@ -695,6 +695,16 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	sc->sc_txq_mcastq_maxdepth = ath_txbuf;
 
 	/*
+	 * Default the maximum queue depth for a given node
+	 * to 1/4'th the TX buffers, or 64, whichever
+	 * is larger.
+	 */
+	sc->sc_txq_node_maxdepth = MAX(64, ath_txbuf / 4);
+
+	/* Enable CABQ by default */
+	sc->sc_cabq_enable = 1;
+
+	/*
 	 * Allow the TX and RX chainmasks to be overridden by
 	 * environment variables and/or device.hints.
 	 *
@@ -718,6 +728,14 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	}
 
 	/*
+	 * Query the TX/RX chainmask configuration.
+	 *
+	 * This is only relevant for 11n devices.
+	 */
+	ath_hal_getrxchainmask(ah, &sc->sc_rxchainmask);
+	ath_hal_gettxchainmask(ah, &sc->sc_txchainmask);
+
+	/*
 	 * Disable MRR with protected frames by default.
 	 * Only 802.11n series NICs can handle this.
 	 */
@@ -736,7 +754,7 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	 */
 	if (ath_hal_getcapability(ah, HAL_CAP_HT, 0, NULL) == HAL_OK &&
 	    (wmodes & (HAL_MODE_HT20 | HAL_MODE_HT40))) {
-		int rxs, txs;
+		uint32_t rxs, txs;
 
 		device_printf(sc->sc_dev, "[HT] enabling HT modes\n");
 
@@ -774,10 +792,6 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 		 */
 		(void) ath_hal_getcapability(ah, HAL_CAP_STREAMS, 0, &txs);
 		(void) ath_hal_getcapability(ah, HAL_CAP_STREAMS, 1, &rxs);
-
-		ath_hal_getrxchainmask(ah, &sc->sc_rxchainmask);
-		ath_hal_gettxchainmask(ah, &sc->sc_txchainmask);
-
 		ic->ic_txstream = txs;
 		ic->ic_rxstream = rxs;
 
@@ -835,6 +849,12 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 		device_printf(sc->sc_dev,
 		    "Enabling register serialisation\n");
 	}
+
+	/*
+	 * Initialise the deferred completed RX buffer list.
+	 */
+	TAILQ_INIT(&sc->sc_rx_rxlist[HAL_RX_QUEUE_HP]);
+	TAILQ_INIT(&sc->sc_rx_rxlist[HAL_RX_QUEUE_LP]);
 
 	/*
 	 * Indicate we need the 802.11 header padded to a
@@ -1516,6 +1536,12 @@ ath_update_chainmasks(struct ath_softc *sc, struct ieee80211_channel *chan)
 	} else {
 		sc->sc_cur_txchainmask = 1;
 	}
+
+	DPRINTF(sc, ATH_DEBUG_RESET,
+	    "%s: TX chainmask is now 0x%x, RX is now 0x%x\n",
+	    __func__,
+	    sc->sc_cur_txchainmask,
+	    sc->sc_cur_rxchainmask);
 }
 
 void
@@ -1711,7 +1737,7 @@ ath_intr(void *arg)
 				 * traffic so any frames held on the staging
 				 * queue are aged and potentially flushed.
 				 */
-				taskqueue_enqueue(sc->sc_tq, &sc->sc_rxtask);
+				sc->sc_rx.recv_sched(sc, 1);
 #endif
 			}
 		}
@@ -1751,13 +1777,13 @@ ath_intr(void *arg)
 			if (! sc->sc_kickpcu)
 				sc->sc_rxlink = NULL;
 			sc->sc_kickpcu = 1;
+			ATH_PCU_UNLOCK(sc);
 			/*
 			 * Enqueue an RX proc, to handled whatever
 			 * is in the RX queue.
 			 * This will then kick the PCU.
 			 */
-			taskqueue_enqueue(sc->sc_tq, &sc->sc_rxtask);
-			ATH_PCU_UNLOCK(sc);
+			sc->sc_rx.recv_sched(sc, 1);
 		}
 		if (status & HAL_INT_TXURN) {
 			sc->sc_stats.ast_txurn++;
@@ -1770,7 +1796,7 @@ ath_intr(void *arg)
 		 */
 		if (status & (HAL_INT_RX | HAL_INT_RXHP | HAL_INT_RXLP)) {
 			sc->sc_stats.ast_rx_intr++;
-			taskqueue_enqueue(sc->sc_tq, &sc->sc_rxtask);
+			sc->sc_rx.recv_sched(sc, 1);
 		}
 		if (status & HAL_INT_TX) {
 			sc->sc_stats.ast_tx_intr++;
@@ -1894,7 +1920,7 @@ ath_bmiss_vap(struct ieee80211vap *vap)
 	ATH_VAP(vap)->av_bmiss(vap);
 }
 
-static int
+int
 ath_hal_gethangstate(struct ath_hal *ah, uint32_t mask, uint32_t *hangs)
 {
 	uint32_t rsize;
@@ -2359,14 +2385,17 @@ ath_reset(struct ifnet *ifp, ATH_RESET_TYPE reset_type)
 
 	/* Restart TX completion and pending TX */
 	if (reset_type == ATH_RESET_NOLOSS) {
-		ATH_TX_LOCK(sc);
 		for (i = 0; i < HAL_NUM_TX_QUEUES; i++) {
 			if (ATH_TXQ_SETUP(sc, i)) {
+				ATH_TXQ_LOCK(&sc->sc_txq[i]);
 				ath_txq_restart_dma(sc, &sc->sc_txq[i]);
+				ATH_TXQ_UNLOCK(&sc->sc_txq[i]);
+
+				ATH_TX_LOCK(sc);
 				ath_txq_sched(sc, &sc->sc_txq[i]);
+				ATH_TX_UNLOCK(sc);
 			}
 		}
-		ATH_TX_UNLOCK(sc);
 	}
 
 	/*
@@ -2463,6 +2492,7 @@ _ath_getbuf_locked(struct ath_softc *sc, ath_buf_type_t btype)
 
 	/* XXX TODO: should do this at buffer list initialisation */
 	/* XXX (then, ensure the buffer has the right flag set) */
+	bf->bf_flags = 0;
 	if (btype == ATH_BUFTYPE_MGMT)
 		bf->bf_flags |= ATH_BUF_MGMT;
 	else
@@ -2498,15 +2528,9 @@ _ath_getbuf_locked(struct ath_softc *sc, ath_buf_type_t btype)
  * so the link is correct.
  *
  * The caller must free the buffer using ath_freebuf().
- *
- * XXX TODO: this call shouldn't fail as it'll cause packet loss
- * XXX in the TX pathway when retries are needed.
- * XXX Figure out how to keep some buffers free, or factor the
- * XXX number of busy buffers into the xmit path (ath_start())
- * XXX so we don't over-commit.
  */
 struct ath_buf *
-ath_buf_clone(struct ath_softc *sc, const struct ath_buf *bf)
+ath_buf_clone(struct ath_softc *sc, struct ath_buf *bf)
 {
 	struct ath_buf *tbf;
 
@@ -2519,17 +2543,9 @@ ath_buf_clone(struct ath_softc *sc, const struct ath_buf *bf)
 	/* Copy basics */
 	tbf->bf_next = NULL;
 	tbf->bf_nseg = bf->bf_nseg;
-	tbf->bf_flags = bf->bf_flags & ~ATH_BUF_BUSY;
+	tbf->bf_flags = bf->bf_flags & ATH_BUF_FLAGS_CLONE;
 	tbf->bf_status = bf->bf_status;
 	tbf->bf_m = bf->bf_m;
-	/*
-	 * XXX Copy the node reference, the caller is responsible
-	 * for deleting the node reference before it frees its
-	 * buffer.
-	 *
-	 * XXX It's done like this so we don't call the net80211
-	 * code whilst having active TX queue locks held.
-	 */
 	tbf->bf_node = bf->bf_node;
 	/* will be setup by the chain/setup function */
 	tbf->bf_lastds = NULL;
@@ -2540,6 +2556,23 @@ ath_buf_clone(struct ath_softc *sc, const struct ath_buf *bf)
 	/* NOTE: DMA segments will be setup by the setup/chain functions */
 
 	/* The caller has to re-init the descriptor + links */
+
+	/*
+	 * Free the DMA mapping here, before we NULL the mbuf.
+	 * We must only call bus_dmamap_unload() once per mbuf chain
+	 * or behaviour is undefined.
+	 */
+	if (bf->bf_m != NULL) {
+		/*
+		 * XXX is this POSTWRITE call required?
+		 */
+		bus_dmamap_sync(sc->sc_dmat, bf->bf_dmamap,
+		    BUS_DMASYNC_POSTWRITE);
+		bus_dmamap_unload(sc->sc_dmat, bf->bf_dmamap);
+	}
+
+	bf->bf_m = NULL;
+	bf->bf_node = NULL;
 
 	/* Copy state */
 	memcpy(&tbf->bf_state, &bf->bf_state, sizeof(bf->bf_state));
@@ -2635,33 +2668,98 @@ ath_start(struct ifnet *ifp)
 	ATH_KTR(sc, ATH_KTR_TX, 0, "ath_start: called");
 
 	for (;;) {
-		ATH_TXBUF_LOCK(sc);
-		if (sc->sc_txbuf_cnt <= sc->sc_txq_data_minfree) {
-			/* XXX increment counter? */
-			ATH_TXBUF_UNLOCK(sc);
+		/*
+		 * Grab the frame that we're going to try and transmit.
+		 */
+		IFQ_DEQUEUE(&ifp->if_snd, m);
+		if (m == NULL)
+			break;
+		ni = (struct ieee80211_node *) m->m_pkthdr.rcvif;
+
+		/*
+		 * Enforce how deep a node queue can get.
+		 *
+		 * XXX it would be nicer if we kept an mbuf queue per
+		 * node and only whacked them into ath_bufs when we
+		 * are ready to schedule some traffic from them.
+		 * .. that may come later.
+		 *
+		 * XXX we should also track the per-node hardware queue
+		 * depth so it is easy to limit the _SUM_ of the swq and
+		 * hwq frames.  Since we only schedule two HWQ frames
+		 * at a time, this should be OK for now.
+		 */
+		if ((!(m->m_flags & M_EAPOL)) &&
+		    (ATH_NODE(ni)->an_swq_depth > sc->sc_txq_node_maxdepth)) {
+			sc->sc_stats.ast_tx_nodeq_overflow++;
+			if (ni != NULL)
+				ieee80211_free_node(ni);
+			m_freem(m);
+			m = NULL;
+			continue;
+		}
+
+		/*
+		 * Check how many TX buffers are available.
+		 *
+		 * If this is for non-EAPOL traffic, just leave some
+		 * space free in order for buffer cloning and raw
+		 * frame transmission to occur.
+		 *
+		 * If it's for EAPOL traffic, ignore this for now.
+		 * Management traffic will be sent via the raw transmit
+		 * method which bypasses this check.
+		 *
+		 * This is needed to ensure that EAPOL frames during
+		 * (re) keying have a chance to go out.
+		 *
+		 * See kern/138379 for more information.
+		 */
+		if ((!(m->m_flags & M_EAPOL)) &&
+		    (sc->sc_txbuf_cnt <= sc->sc_txq_data_minfree)) {
+			sc->sc_stats.ast_tx_nobuf++;
 			IF_LOCK(&ifp->if_snd);
+			_IF_PREPEND(&ifp->if_snd, m);
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 			IF_UNLOCK(&ifp->if_snd);
+			m = NULL;
 			break;
 		}
-		ATH_TXBUF_UNLOCK(sc);
-		
+
 		/*
 		 * Grab a TX buffer and associated resources.
+		 *
+		 * If it's an EAPOL frame, allocate a MGMT ath_buf.
+		 * That way even with temporary buffer exhaustion due to
+		 * the data path doesn't leave us without the ability
+		 * to transmit management frames.
+		 *
+		 * Otherwise allocate a normal buffer.
 		 */
-		bf = ath_getbuf(sc, ATH_BUFTYPE_NORMAL);
-		if (bf == NULL)
-			break;
+		if (m->m_flags & M_EAPOL)
+			bf = ath_getbuf(sc, ATH_BUFTYPE_MGMT);
+		else
+			bf = ath_getbuf(sc, ATH_BUFTYPE_NORMAL);
 
-		IFQ_DEQUEUE(&ifp->if_snd, m);
-		if (m == NULL) {
-			ATH_TXBUF_LOCK(sc);
-			ath_returnbuf_head(sc, bf);
-			ATH_TXBUF_UNLOCK(sc);
+		if (bf == NULL) {
+			/*
+			 * If we failed to allocate a buffer, prepend it
+			 * and continue.
+			 *
+			 * We shouldn't fail normally, due to the check
+			 * above.
+			 */
+			sc->sc_stats.ast_tx_nobuf++;
+			IF_LOCK(&ifp->if_snd);
+			_IF_PREPEND(&ifp->if_snd, m);
+			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+			IF_UNLOCK(&ifp->if_snd);
+			m = NULL;
 			break;
 		}
-		ni = (struct ieee80211_node *) m->m_pkthdr.rcvif;
+
 		npkts ++;
+
 		/*
 		 * Check for fragmentation.  If this frame
 		 * has been broken up verify we have enough
@@ -2727,6 +2825,7 @@ ath_start(struct ifnet *ifp)
 				    "%s: flush fragmented packet, state %s\n",
 				    __func__,
 				    ieee80211_state_name[ni->ni_vap->iv_state]);
+				/* XXX dmamap */
 				ath_freetx(next);
 				goto reclaim;
 			}
@@ -2917,6 +3016,9 @@ void
 ath_txqmove(struct ath_txq *dst, struct ath_txq *src)
 {
 
+	ATH_TXQ_LOCK_ASSERT(src);
+	ATH_TXQ_LOCK_ASSERT(dst);
+
 	TAILQ_CONCAT(&dst->axq_q, &src->axq_q, bf_list);
 	dst->axq_link = src->axq_link;
 	src->axq_link = NULL;
@@ -2955,6 +3057,11 @@ ath_bstuck_proc(void *arg, int pending)
 
 	if (ath_hal_gethangstate(sc->sc_ah, 0xff, &hangs) && hangs != 0)
 		if_printf(ifp, "bb hang detected (0x%x)\n", hangs);
+
+#ifdef	ATH_DEBUG_ALQ
+	if (if_ath_alq_checkdebug(&sc->sc_alq, ATH_ALQ_STUCK_BEACON))
+		if_ath_alq_post(&sc->sc_alq, ATH_ALQ_STUCK_BEACON, 0, NULL);
+#endif
 
 	if_printf(ifp, "stuck beacon; resetting (bmiss count %u)\n",
 		sc->sc_bmisscount);
@@ -3013,6 +3120,9 @@ ath_descdma_alloc_desc(struct ath_softc *sc,
 
 	/*
 	 * Setup DMA descriptor area.
+	 *
+	 * BUS_DMA_ALLOCNOW is not used; we never use bounce
+	 * buffers for the descriptors themselves.
 	 */
 	error = bus_dma_tag_create(bus_get_dma_tag(sc->sc_dev),	/* parent */
 		       PAGE_SIZE, 0,		/* alignment, bounds */
@@ -3022,7 +3132,7 @@ ath_descdma_alloc_desc(struct ath_softc *sc,
 		       dd->dd_desc_len,		/* maxsize */
 		       1,			/* nsegments */
 		       dd->dd_desc_len,		/* maxsegsize */
-		       BUS_DMA_ALLOCNOW,	/* flags */
+		       0,			/* flags */
 		       NULL,			/* lockfunc */
 		       NULL,			/* lockarg */
 		       &dd->dd_dmat);
@@ -3219,6 +3329,7 @@ ath_descdma_cleanup(struct ath_softc *sc,
 {
 	struct ath_buf *bf;
 	struct ieee80211_node *ni;
+	int do_warning = 0;
 
 	if (dd->dd_dmamap != 0) {
 		bus_dmamap_unload(dd->dd_dmat, dd->dd_dmamap);
@@ -3229,6 +3340,23 @@ ath_descdma_cleanup(struct ath_softc *sc,
 	if (head != NULL) {
 		TAILQ_FOREACH(bf, head, bf_list) {
 			if (bf->bf_m) {
+				/*
+				 * XXX warn if there's buffers here.
+				 * XXX it should have been freed by the
+				 * owner!
+				 */
+				
+				if (do_warning == 0) {
+					do_warning = 1;
+					device_printf(sc->sc_dev,
+					    "%s: %s: mbuf should've been"
+					    " unmapped/freed!\n",
+					    __func__,
+					    dd->dd_name);
+				}
+				bus_dmamap_sync(sc->sc_dmat, bf->bf_dmamap,
+				    BUS_DMASYNC_POSTREAD);
+				bus_dmamap_unload(sc->sc_dmat, bf->bf_dmamap);
 				m_freem(bf->bf_m);
 				bf->bf_m = NULL;
 			}
@@ -3261,7 +3389,7 @@ ath_desc_alloc(struct ath_softc *sc)
 	int error;
 
 	error = ath_descdma_setup(sc, &sc->sc_txdma, &sc->sc_txbuf,
-		    "tx", sc->sc_tx_desclen, ath_txbuf, ATH_TXDESC);
+		    "tx", sc->sc_tx_desclen, ath_txbuf, ATH_MAX_SCATTER);
 	if (error != 0) {
 		return error;
 	}
@@ -3327,7 +3455,7 @@ ath_node_alloc(struct ieee80211vap *vap, const uint8_t mac[IEEE80211_ADDR_LEN])
 	/* XXX setup ath_tid */
 	ath_tx_tid_init(sc, an);
 
-	DPRINTF(sc, ATH_DEBUG_NODE, "%s: an %p\n", __func__, an);
+	DPRINTF(sc, ATH_DEBUG_NODE, "%s: %6D: an %p\n", __func__, mac, ":", an);
 	return &an->an_node;
 }
 
@@ -3336,6 +3464,9 @@ ath_node_cleanup(struct ieee80211_node *ni)
 {
 	struct ieee80211com *ic = ni->ni_ic;
 	struct ath_softc *sc = ic->ic_ifp->if_softc;
+
+	DPRINTF(sc, ATH_DEBUG_NODE, "%s: %6D: an %p\n", __func__,
+	    ni->ni_macaddr, ":", ATH_NODE(ni));
 
 	/* Cleanup ath_tid, free unused bufs, unlink bufs in TXQ */
 	ath_tx_node_flush(sc, ATH_NODE(ni));
@@ -3349,7 +3480,8 @@ ath_node_free(struct ieee80211_node *ni)
 	struct ieee80211com *ic = ni->ni_ic;
 	struct ath_softc *sc = ic->ic_ifp->if_softc;
 
-	DPRINTF(sc, ATH_DEBUG_NODE, "%s: ni %p\n", __func__, ni);
+	DPRINTF(sc, ATH_DEBUG_NODE, "%s: %6D: an %p\n", __func__,
+	    ni->ni_macaddr, ":", ATH_NODE(ni));
 	mtx_destroy(&ATH_NODE(ni)->an_mtx);
 	sc->sc_node_free(ni);
 }
@@ -3396,6 +3528,8 @@ ath_txq_init(struct ath_softc *sc, struct ath_txq *txq, int qnum)
 	txq->axq_softc = sc;
 	TAILQ_INIT(&txq->axq_q);
 	TAILQ_INIT(&txq->axq_tidq);
+	TAILQ_INIT(&txq->fifo.axq_q);
+	ATH_TXQ_LOCK_INIT(sc, txq);
 }
 
 /*
@@ -3426,7 +3560,13 @@ ath_txq_setup(struct ath_softc *sc, int qtype, int subtype)
 	 * up in which case the top half of the kernel may backup
 	 * due to a lack of tx descriptors.
 	 */
-	qi.tqi_qflags = HAL_TXQ_TXEOLINT_ENABLE | HAL_TXQ_TXDESCINT_ENABLE;
+	if (sc->sc_isedma)
+		qi.tqi_qflags = HAL_TXQ_TXEOLINT_ENABLE |
+		    HAL_TXQ_TXOKINT_ENABLE;
+	else
+		qi.tqi_qflags = HAL_TXQ_TXEOLINT_ENABLE |
+		    HAL_TXQ_TXDESCINT_ENABLE;
+
 	qnum = ath_hal_setuptxqueue(ah, qtype, &qi);
 	if (qnum == -1) {
 		/*
@@ -3580,6 +3720,7 @@ ath_tx_cleanupq(struct ath_softc *sc, struct ath_txq *txq)
 
 	ath_hal_releasetxqueue(sc->sc_ah, txq->axq_qnum);
 	sc->sc_txqsetup &= ~(1<<txq->axq_qnum);
+	ATH_TXQ_LOCK_DESTROY(txq);
 }
 
 /*
@@ -3713,8 +3854,11 @@ ath_tx_default_comp(struct ath_softc *sc, struct ath_buf *bf, int fail)
 	 * XXX TODO: during drain, ensure that the callback is
 	 * being called so we get a chance to update the TIM.
 	 */
-	if (bf->bf_node)
+	if (bf->bf_node) {
+		ATH_TX_LOCK(sc);
 		ath_tx_update_tim(sc, bf->bf_node, 0);
+		ATH_TX_UNLOCK(sc);
+	}
 
 	/*
 	 * Do any tx complete callback.  Note this must
@@ -3750,39 +3894,6 @@ ath_tx_update_ratectrl(struct ath_softc *sc, struct ieee80211_node *ni,
 }
 
 /*
- * Update the busy status of the last frame on the free list.
- * When doing TDMA, the busy flag tracks whether the hardware
- * currently points to this buffer or not, and thus gated DMA
- * may restart by re-reading the last descriptor in this
- * buffer.
- *
- * This should be called in the completion function once one
- * of the buffers has been used.
- */
-static void
-ath_tx_update_busy(struct ath_softc *sc)
-{
-	struct ath_buf *last;
-
-	/*
-	 * Since the last frame may still be marked
-	 * as ATH_BUF_BUSY, unmark it here before
-	 * finishing the frame processing.
-	 * Since we've completed a frame (aggregate
-	 * or otherwise), the hardware has moved on
-	 * and is no longer referencing the previous
-	 * descriptor.
-	 */
-	ATH_TXBUF_LOCK_ASSERT(sc);
-	last = TAILQ_LAST(&sc->sc_txbuf_mgmt, ath_bufhead_s);
-	if (last != NULL)
-		last->bf_flags &= ~ATH_BUF_BUSY;
-	last = TAILQ_LAST(&sc->sc_txbuf, ath_bufhead_s);
-	if (last != NULL)
-		last->bf_flags &= ~ATH_BUF_BUSY;
-}
-
-/*
  * Process the completion of the given buffer.
  *
  * This calls the rate control update and then the buffer completion.
@@ -3797,6 +3908,7 @@ ath_tx_process_buf_completion(struct ath_softc *sc, struct ath_txq *txq,
 	struct ath_node *an = NULL;
 
 	ATH_TX_UNLOCK_ASSERT(sc);
+	ATH_TXQ_UNLOCK_ASSERT(txq);
 
 	/* If unicast frame, update general statistics */
 	if (ni != NULL) {
@@ -3865,11 +3977,11 @@ ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq, int dosched)
 
 	nacked = 0;
 	for (;;) {
-		ATH_TX_LOCK(sc);
+		ATH_TXQ_LOCK(txq);
 		txq->axq_intrcnt = 0;	/* reset periodic desc intr count */
 		bf = TAILQ_FIRST(&txq->axq_q);
 		if (bf == NULL) {
-			ATH_TX_UNLOCK(sc);
+			ATH_TXQ_UNLOCK(txq);
 			break;
 		}
 		ds = bf->bf_lastds;	/* XXX must be setup correctly! */
@@ -3897,11 +4009,32 @@ ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq, int dosched)
 			ATH_KTR(sc, ATH_KTR_TXCOMP, 3,
 			    "ath_tx_processq: txq=%u, bf=%p ds=%p, HAL_EINPROGRESS",
 			    txq->axq_qnum, bf, ds);
-			ATH_TX_UNLOCK(sc);
+			ATH_TXQ_UNLOCK(txq);
 			break;
 		}
 		ATH_TXQ_REMOVE(txq, bf, bf_list);
-#ifdef IEEE80211_SUPPORT_TDMA
+
+		/*
+		 * Sanity check.
+		 */
+		if (txq->axq_qnum != bf->bf_state.bfs_tx_queue) {
+			device_printf(sc->sc_dev,
+			    "%s: TXQ=%d: bf=%p, bfs_tx_queue=%d\n",
+			    __func__,
+			    txq->axq_qnum,
+			    bf,
+			    bf->bf_state.bfs_tx_queue);
+		}
+		if (txq->axq_qnum != bf->bf_last->bf_state.bfs_tx_queue) {
+			device_printf(sc->sc_dev,
+			    "%s: TXQ=%d: bf_last=%p, bfs_tx_queue=%d\n",
+			    __func__,
+			    txq->axq_qnum,
+			    bf->bf_last,
+			    bf->bf_last->bf_state.bfs_tx_queue);
+		}
+
+#if 0
 		if (txq->axq_depth > 0) {
 			/*
 			 * More frames follow.  Mark the buffer busy
@@ -3914,10 +4047,10 @@ ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq, int dosched)
 			 */
 			bf->bf_last->bf_flags |= ATH_BUF_BUSY;
 		} else
-#else
-		if (txq->axq_depth == 0)
-#endif
 			txq->axq_link = NULL;
+#else
+		bf->bf_last->bf_flags |= ATH_BUF_BUSY;
+#endif
 		if (bf->bf_state.bfs_aggr)
 			txq->axq_aggr_depth--;
 
@@ -3938,7 +4071,7 @@ ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq, int dosched)
 			ATH_RSSI_LPF(sc->sc_halstats.ns_avgtxrssi,
 				ts->ts_rssi);
 		}
-		ATH_TX_UNLOCK(sc);
+		ATH_TXQ_UNLOCK(txq);
 
 		/*
 		 * Update statistics and call completion
@@ -4188,6 +4321,57 @@ ath_returnbuf_head(struct ath_softc *sc, struct ath_buf *bf)
 }
 
 /*
+ * Free the holding buffer if it exists
+ */
+void
+ath_txq_freeholdingbuf(struct ath_softc *sc, struct ath_txq *txq)
+{
+	ATH_TXBUF_UNLOCK_ASSERT(sc);
+	ATH_TXQ_LOCK_ASSERT(txq);
+
+	if (txq->axq_holdingbf == NULL)
+		return;
+
+	txq->axq_holdingbf->bf_flags &= ~ATH_BUF_BUSY;
+
+	ATH_TXBUF_LOCK(sc);
+	ath_returnbuf_tail(sc, txq->axq_holdingbf);
+	ATH_TXBUF_UNLOCK(sc);
+
+	txq->axq_holdingbf = NULL;
+}
+
+/*
+ * Add this buffer to the holding queue, freeing the previous
+ * one if it exists.
+ */
+static void
+ath_txq_addholdingbuf(struct ath_softc *sc, struct ath_buf *bf)
+{
+	struct ath_txq *txq;
+
+	txq = &sc->sc_txq[bf->bf_state.bfs_tx_queue];
+
+	ATH_TXBUF_UNLOCK_ASSERT(sc);
+	ATH_TXQ_LOCK_ASSERT(txq);
+
+	/* XXX assert ATH_BUF_BUSY is set */
+
+	/* XXX assert the tx queue is under the max number */
+	if (bf->bf_state.bfs_tx_queue > HAL_NUM_TX_QUEUES) {
+		device_printf(sc->sc_dev, "%s: bf=%p: invalid tx queue (%d)\n",
+		    __func__,
+		    bf,
+		    bf->bf_state.bfs_tx_queue);
+		bf->bf_flags &= ~ATH_BUF_BUSY;
+		ath_returnbuf_tail(sc, bf);
+		return;
+	}
+	ath_txq_freeholdingbuf(sc, txq);
+	txq->axq_holdingbf = bf;
+}
+
+/*
  * Return a buffer to the pool and update the 'busy' flag on the
  * previous 'tail' entry.
  *
@@ -4197,18 +4381,37 @@ ath_returnbuf_head(struct ath_softc *sc, struct ath_buf *bf)
  * for restart (eg for TDMA.)
  *
  * The caller must free the mbuf and recycle the node reference.
+ *
+ * XXX This method of handling busy / holding buffers is insanely stupid.
+ * It requires bf_state.bfs_tx_queue to be correctly assigned.  It would
+ * be much nicer if buffers in the processq() methods would instead be
+ * always completed there (pushed onto a txq or ath_bufhead) so we knew
+ * exactly what hardware queue they came from in the first place.
  */
 void
 ath_freebuf(struct ath_softc *sc, struct ath_buf *bf)
 {
-	bus_dmamap_unload(sc->sc_dmat, bf->bf_dmamap);
-	bus_dmamap_sync(sc->sc_dmat, bf->bf_dmamap, BUS_DMASYNC_POSTWRITE);
+	struct ath_txq *txq;
+
+	txq = &sc->sc_txq[bf->bf_state.bfs_tx_queue];
 
 	KASSERT((bf->bf_node == NULL), ("%s: bf->bf_node != NULL\n", __func__));
 	KASSERT((bf->bf_m == NULL), ("%s: bf->bf_m != NULL\n", __func__));
 
+	/*
+	 * If this buffer is busy, push it onto the holding queue.
+	 */
+	if (bf->bf_flags & ATH_BUF_BUSY) {
+		ATH_TXQ_LOCK(txq);
+		ath_txq_addholdingbuf(sc, bf);
+		ATH_TXQ_UNLOCK(txq);
+		return;
+	}
+
+	/*
+	 * Not a busy buffer, so free normally
+	 */
 	ATH_TXBUF_LOCK(sc);
-	ath_tx_update_busy(sc);
 	ath_returnbuf_tail(sc, bf);
 	ATH_TXBUF_UNLOCK(sc);
 }
@@ -4225,6 +4428,17 @@ ath_tx_freebuf(struct ath_softc *sc, struct ath_buf *bf, int status)
 	struct ieee80211_node *ni = bf->bf_node;
 	struct mbuf *m0 = bf->bf_m;
 
+	/*
+	 * Make sure that we only sync/unload if there's an mbuf.
+	 * If not (eg we cloned a buffer), the unload will have already
+	 * occured.
+	 */
+	if (bf->bf_m != NULL) {
+		bus_dmamap_sync(sc->sc_dmat, bf->bf_dmamap,
+		    BUS_DMASYNC_POSTWRITE);
+		bus_dmamap_unload(sc->sc_dmat, bf->bf_dmamap);
+	}
+
 	bf->bf_node = NULL;
 	bf->bf_m = NULL;
 
@@ -4239,13 +4453,64 @@ ath_tx_freebuf(struct ath_softc *sc, struct ath_buf *bf, int status)
 			ieee80211_process_callback(ni, m0, status);
 		ieee80211_free_node(ni);
 	}
+
+	/* Finally, we don't need this mbuf any longer */
 	m_freem(m0);
+}
+
+static struct ath_buf *
+ath_tx_draintxq_get_one(struct ath_softc *sc, struct ath_txq *txq)
+{
+	struct ath_buf *bf;
+
+	ATH_TXQ_LOCK_ASSERT(txq);
 
 	/*
-	 * XXX the buffer used to be freed -after-, but the DMA map was
-	 * freed where ath_freebuf() now is. I've no idea what this
-	 * will do.
+	 * Drain the FIFO queue first, then if it's
+	 * empty, move to the normal frame queue.
 	 */
+	bf = TAILQ_FIRST(&txq->fifo.axq_q);
+	if (bf != NULL) {
+		/*
+		 * Is it the last buffer in this set?
+		 * Decrement the FIFO counter.
+		 */
+		if (bf->bf_flags & ATH_BUF_FIFOEND) {
+			if (txq->axq_fifo_depth == 0) {
+				device_printf(sc->sc_dev,
+				    "%s: Q%d: fifo_depth=0, fifo.axq_depth=%d?\n",
+				    __func__,
+				    txq->axq_qnum,
+				    txq->fifo.axq_depth);
+			} else
+				txq->axq_fifo_depth--;
+		}
+		ATH_TXQ_REMOVE(&txq->fifo, bf, bf_list);
+		return (bf);
+	}
+
+	/*
+	 * Debugging!
+	 */
+	if (txq->axq_fifo_depth != 0 || txq->fifo.axq_depth != 0) {
+		device_printf(sc->sc_dev,
+		    "%s: Q%d: fifo_depth=%d, fifo.axq_depth=%d\n",
+		    __func__,
+		    txq->axq_qnum,
+		    txq->axq_fifo_depth,
+		    txq->fifo.axq_depth);
+	}
+
+	/*
+	 * Now drain the pending queue.
+	 */
+	bf = TAILQ_FIRST(&txq->axq_q);
+	if (bf == NULL) {
+		txq->axq_link = NULL;
+		return (NULL);
+	}
+	ATH_TXQ_REMOVE(txq, bf, bf_list);
+	return (bf);
 }
 
 void
@@ -4261,35 +4526,13 @@ ath_tx_draintxq(struct ath_softc *sc, struct ath_txq *txq)
 	 * NB: this assumes output has been stopped and
 	 *     we do not need to block ath_tx_proc
 	 */
-	ATH_TXBUF_LOCK(sc);
-	bf = TAILQ_LAST(&sc->sc_txbuf, ath_bufhead_s);
-	if (bf != NULL)
-		bf->bf_flags &= ~ATH_BUF_BUSY;
-	bf = TAILQ_LAST(&sc->sc_txbuf_mgmt, ath_bufhead_s);
-	if (bf != NULL)
-		bf->bf_flags &= ~ATH_BUF_BUSY;
-	ATH_TXBUF_UNLOCK(sc);
-
 	for (ix = 0;; ix++) {
-		ATH_TX_LOCK(sc);
-		bf = TAILQ_FIRST(&txq->axq_q);
+		ATH_TXQ_LOCK(txq);
+		bf = ath_tx_draintxq_get_one(sc, txq);
 		if (bf == NULL) {
-			txq->axq_link = NULL;
-			/*
-			 * There's currently no flag that indicates
-			 * a buffer is on the FIFO.  So until that
-			 * occurs, just clear the FIFO counter here.
-			 *
-			 * Yes, this means that if something in parallel
-			 * is pushing things onto this TXQ and pushing
-			 * _that_ into the hardware, things will get
-			 * very fruity very quickly.
-			 */
-			txq->axq_fifo_depth = 0;
-			ATH_TX_UNLOCK(sc);
+			ATH_TXQ_UNLOCK(txq);
 			break;
 		}
-		ATH_TXQ_REMOVE(txq, bf, bf_list);
 		if (bf->bf_state.bfs_aggr)
 			txq->axq_aggr_depth--;
 #ifdef ATH_DEBUG
@@ -4322,13 +4565,20 @@ ath_tx_draintxq(struct ath_softc *sc, struct ath_txq *txq)
 		 * Clear ATH_BUF_BUSY; the completion handler
 		 * will free the buffer.
 		 */
-		ATH_TX_UNLOCK(sc);
+		ATH_TXQ_UNLOCK(txq);
 		bf->bf_flags &= ~ATH_BUF_BUSY;
 		if (bf->bf_comp)
 			bf->bf_comp(sc, bf, 1);
 		else
 			ath_tx_default_comp(sc, bf, 1);
 	}
+
+	/*
+	 * Free the holding buffer if it exists
+	 */
+	ATH_TXQ_LOCK(txq);
+	ath_txq_freeholdingbuf(sc, txq);
+	ATH_TXQ_UNLOCK(txq);
 
 	/*
 	 * Drain software queued frames which are on
@@ -4343,10 +4593,12 @@ ath_tx_stopdma(struct ath_softc *sc, struct ath_txq *txq)
 	struct ath_hal *ah = sc->sc_ah;
 
 	DPRINTF(sc, ATH_DEBUG_RESET,
-	    "%s: tx queue [%u] %p, flags 0x%08x, link %p\n",
+	    "%s: tx queue [%u] %p, active=%d, hwpending=%d, flags 0x%08x, link %p\n",
 	    __func__,
 	    txq->axq_qnum,
 	    (caddr_t)(uintptr_t) ath_hal_gettxbuf(ah, txq->axq_qnum),
+	    (int) (!! ath_hal_txqenabled(ah, txq->axq_qnum)),
+	    (int) ath_hal_numtxpending(ah, txq->axq_qnum),
 	    txq->axq_flags,
 	    txq->axq_link);
 	(void) ath_hal_stoptxdma(ah, txq->axq_qnum);
@@ -4377,6 +4629,30 @@ ath_stoptxdma(struct ath_softc *sc)
 	return 1;
 }
 
+#ifdef	ATH_DEBUG
+static void
+ath_tx_dump(struct ath_softc *sc, struct ath_txq *txq)
+{
+	struct ath_hal *ah = sc->sc_ah;
+	struct ath_buf *bf;
+	int i = 0;
+
+	if (! (sc->sc_debug & ATH_DEBUG_RESET))
+		return;
+
+	device_printf(sc->sc_dev, "%s: Q%d: begin\n",
+	    __func__, txq->axq_qnum);
+	TAILQ_FOREACH(bf, &txq->axq_q, bf_list) {
+		ath_printtxbuf(sc, bf, txq->axq_qnum, i,
+			ath_hal_txprocdesc(ah, bf->bf_lastds,
+			    &bf->bf_status.ds_txstat) == HAL_OK);
+		i++;
+	}
+	device_printf(sc->sc_dev, "%s: Q%d: end\n",
+	    __func__, txq->axq_qnum);
+}
+#endif /* ATH_DEBUG */
+
 /*
  * Drain the transmit queues and reclaim resources.
  */
@@ -4391,15 +4667,34 @@ ath_legacy_tx_drain(struct ath_softc *sc, ATH_RESET_TYPE reset_type)
 
 	(void) ath_stoptxdma(sc);
 
+	/*
+	 * Dump the queue contents
+	 */
 	for (i = 0; i < HAL_NUM_TX_QUEUES; i++) {
 		/*
 		 * XXX TODO: should we just handle the completed TX frames
 		 * here, whether or not the reset is a full one or not?
 		 */
 		if (ATH_TXQ_SETUP(sc, i)) {
-			if (reset_type == ATH_RESET_NOLOSS)
+#ifdef	ATH_DEBUG
+			if (sc->sc_debug & ATH_DEBUG_RESET)
+				ath_tx_dump(sc, &sc->sc_txq[i]);
+#endif	/* ATH_DEBUG */
+			if (reset_type == ATH_RESET_NOLOSS) {
 				ath_tx_processq(sc, &sc->sc_txq[i], 0);
-			else
+				ATH_TXQ_LOCK(&sc->sc_txq[i]);
+				/*
+				 * Free the holding buffer; DMA is now
+				 * stopped.
+				 */
+				ath_txq_freeholdingbuf(sc, &sc->sc_txq[i]);
+				/*
+				 * Reset the link pointer to NULL; there's
+				 * no frames to chain DMA to.
+				 */
+				sc->sc_txq[i].axq_link = NULL;
+				ATH_TXQ_UNLOCK(&sc->sc_txq[i]);
+			} else
 				ath_tx_draintxq(sc, &sc->sc_txq[i]);
 		}
 	}
@@ -5097,6 +5392,31 @@ ath_newassoc(struct ieee80211_node *ni, int isnew)
 	    (vap->iv_flags & IEEE80211_F_PRIVACY) == 0 && sc->sc_hasclrkey &&
 	    ni->ni_ucastkey.wk_keyix == IEEE80211_KEYIX_NONE)
 		ath_setup_stationkey(ni);
+
+	/*
+	 * If we're reassociating, make sure that any paused queues
+	 * get unpaused.
+	 *
+	 * Now, we may hvae frames in the hardware queue for this node.
+	 * So if we are reassociating and there are frames in the queue,
+	 * we need to go through the cleanup path to ensure that they're
+	 * marked as non-aggregate.
+	 */
+	if (! isnew) {
+		device_printf(sc->sc_dev,
+		    "%s: %6D: reassoc; is_powersave=%d\n",
+		    __func__,
+		    ni->ni_macaddr,
+		    ":",
+		    an->an_is_powersave);
+
+		/* XXX for now, we can't hold the lock across assoc */
+		ath_tx_node_reassoc(sc, an);
+
+		/* XXX for now, we can't hold the lock across wakeup */
+		if (an->an_is_powersave)
+			ath_tx_node_wakeup(sc, an);
+	}
 }
 
 static int
@@ -5609,11 +5929,13 @@ ath_node_powersave(struct ieee80211_node *ni, int enable)
 	struct ath_softc *sc = ic->ic_ifp->if_softc;
 	struct ath_vap *avp = ATH_VAP(ni->ni_vap);
 
-	ATH_NODE_UNLOCK_ASSERT(an);
 	/* XXX and no TXQ locks should be held here */
 
-	DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE, "%s: ni=%p, enable=%d\n",
-	    __func__, ni, enable);
+	DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE, "%s: %6D: enable=%d\n",
+	    __func__,
+	    ni->ni_macaddr,
+	    ":",
+	    !! enable);
 
 	/* Suspend or resume software queue handling */
 	if (enable)
@@ -5676,12 +5998,7 @@ ath_node_set_tim(struct ieee80211_node *ni, int enable)
 	struct ath_vap *avp = ATH_VAP(ni->ni_vap);
 	int changed = 0;
 
-	ATH_NODE_UNLOCK_ASSERT(an);
-
-	/*
-	 * For now, just track and then update the TIM.
-	 */
-	ATH_NODE_LOCK(an);
+	ATH_TX_LOCK(sc);
 	an->an_stack_psq = enable;
 
 	/*
@@ -5692,7 +6009,7 @@ ath_node_set_tim(struct ieee80211_node *ni, int enable)
 	 * and AP/IBSS node power save.
 	 */
 	if (avp->av_set_tim == NULL) {
-		ATH_NODE_UNLOCK(an);
+		ATH_TX_UNLOCK(sc);
 		return (0);
 	}
 
@@ -5712,33 +6029,45 @@ ath_node_set_tim(struct ieee80211_node *ni, int enable)
 	 */
 	if (enable && an->an_tim_set == 1) {
 		DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
-		    "%s: an=%p, enable=%d, tim_set=1, ignoring\n",
-		    __func__, an, enable);
-		ATH_NODE_UNLOCK(an);
+		    "%s: %6D: enable=%d, tim_set=1, ignoring\n",
+		    __func__,
+		    ni->ni_macaddr,
+		    ":",
+		    enable);
+		ATH_TX_UNLOCK(sc);
 	} else if (enable) {
 		DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
-		    "%s: an=%p, enable=%d, enabling TIM\n",
-		    __func__, an, enable);
+		    "%s: %6D: enable=%d, enabling TIM\n",
+		    __func__,
+		    ni->ni_macaddr,
+		    ":",
+		    enable);
 		an->an_tim_set = 1;
-		ATH_NODE_UNLOCK(an);
+		ATH_TX_UNLOCK(sc);
 		changed = avp->av_set_tim(ni, enable);
-	} else if (atomic_load_acq_int(&an->an_swq_depth) == 0) {
+	} else if (an->an_swq_depth == 0) {
 		/* disable */
 		DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
-		    "%s: an=%p, enable=%d, an_swq_depth == 0, disabling\n",
-		    __func__, an, enable);
+		    "%s: %6D: enable=%d, an_swq_depth == 0, disabling\n",
+		    __func__,
+		    ni->ni_macaddr,
+		    ":",
+		    enable);
 		an->an_tim_set = 0;
-		ATH_NODE_UNLOCK(an);
+		ATH_TX_UNLOCK(sc);
 		changed = avp->av_set_tim(ni, enable);
 	} else if (! an->an_is_powersave) {
 		/*
 		 * disable regardless; the node isn't in powersave now
 		 */
 		DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
-		    "%s: an=%p, enable=%d, an_pwrsave=0, disabling\n",
-		    __func__, an, enable);
+		    "%s: %6D: enable=%d, an_pwrsave=0, disabling\n",
+		    __func__,
+		    ni->ni_macaddr,
+		    ":",
+		    enable);
 		an->an_tim_set = 0;
-		ATH_NODE_UNLOCK(an);
+		ATH_TX_UNLOCK(sc);
 		changed = avp->av_set_tim(ni, enable);
 	} else {
 		/*
@@ -5746,10 +6075,13 @@ ath_node_set_tim(struct ieee80211_node *ni, int enable)
 		 * software queue isn't empty, so don't clear the TIM bit
 		 * for now.
 		 */
-		ATH_NODE_UNLOCK(an);
+		ATH_TX_UNLOCK(sc);
 		DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
-		    "%s: enable=%d, an_swq_depth > 0, ignoring\n",
-		    __func__, enable);
+		    "%s: %6D: enable=%d, an_swq_depth > 0, ignoring\n",
+		    __func__,
+		    ni->ni_macaddr,
+		    ":",
+		    enable);
 		changed = 0;
 	}
 
@@ -5811,50 +6143,37 @@ ath_tx_update_tim(struct ath_softc *sc, struct ieee80211_node *ni,
 	if (avp->av_set_tim == NULL)
 		return;
 
-	ATH_NODE_UNLOCK_ASSERT(an);
+	ATH_TX_LOCK_ASSERT(sc);
 
 	if (enable) {
-		/*
-		 * Don't bother grabbing the lock unless the queue is not
-		 * empty.
-		 */
-		if (atomic_load_acq_int(&an->an_swq_depth) == 0)
-			return;
-
-		ATH_NODE_LOCK(an);
 		if (an->an_is_powersave &&
 		    an->an_tim_set == 0 &&
-		    atomic_load_acq_int(&an->an_swq_depth) != 0) {
+		    an->an_swq_depth != 0) {
 			DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
-			    "%s: an=%p, swq_depth>0, tim_set=0, set!\n",
-			    __func__, an);
+			    "%s: %6D: swq_depth>0, tim_set=0, set!\n",
+			    __func__,
+			    ni->ni_macaddr,
+			    ":");
 			an->an_tim_set = 1;
-			ATH_NODE_UNLOCK(an);
 			(void) avp->av_set_tim(ni, 1);
-		} else {
-			ATH_NODE_UNLOCK(an);
 		}
 	} else {
 		/*
 		 * Don't bother grabbing the lock unless the queue is empty.
 		 */
-		if (atomic_load_acq_int(&an->an_swq_depth) != 0)
+		if (&an->an_swq_depth != 0)
 			return;
 
-		ATH_NODE_LOCK(an);
 		if (an->an_is_powersave &&
 		    an->an_stack_psq == 0 &&
 		    an->an_tim_set == 1 &&
-		    atomic_load_acq_int(&an->an_swq_depth) == 0) {
+		    an->an_swq_depth == 0) {
 			DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
 			    "%s: an=%p, swq_depth=0, tim_set=1, psq_set=0,"
 			    " clear!\n",
 			    __func__, an);
 			an->an_tim_set = 0;
-			ATH_NODE_UNLOCK(an);
 			(void) avp->av_set_tim(ni, 0);
-		} else {
-			ATH_NODE_UNLOCK(an);
 		}
 	}
 #else

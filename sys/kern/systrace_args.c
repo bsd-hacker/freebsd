@@ -252,8 +252,8 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	/* chflags */
 	case 34: {
 		struct chflags_args *p = params;
-		uarg[0] = (intptr_t) p->path; /* char * */
-		iarg[1] = p->flags; /* int */
+		uarg[0] = (intptr_t) p->path; /* const char * */
+		uarg[1] = p->flags; /* u_long */
 		*n_args = 2;
 		break;
 	}
@@ -261,7 +261,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 35: {
 		struct fchflags_args *p = params;
 		iarg[0] = p->fd; /* int */
-		iarg[1] = p->flags; /* int */
+		uarg[1] = p->flags; /* u_long */
 		*n_args = 2;
 		break;
 	}
@@ -2134,7 +2134,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 391: {
 		struct lchflags_args *p = params;
 		uarg[0] = (intptr_t) p->path; /* const char * */
-		iarg[1] = p->flags; /* int */
+		uarg[1] = p->flags; /* u_long */
 		*n_args = 2;
 		break;
 	}
@@ -3348,6 +3348,34 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 4;
 		break;
 	}
+	/* chflagsat */
+	case 540: {
+		struct chflagsat_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->path; /* const char * */
+		uarg[2] = p->flags; /* u_long */
+		iarg[3] = p->atflag; /* int */
+		*n_args = 4;
+		break;
+	}
+	/* accept4 */
+	case 541: {
+		struct accept4_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->name; /* struct sockaddr *__restrict */
+		uarg[2] = (intptr_t) p->anamelen; /* __socklen_t *__restrict */
+		iarg[3] = p->flags; /* int */
+		*n_args = 4;
+		break;
+	}
+	/* pipe2 */
+	case 542: {
+		struct pipe2_args *p = params;
+		uarg[0] = (intptr_t) p->fildes; /* int * */
+		iarg[1] = p->flags; /* int */
+		*n_args = 2;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -3741,10 +3769,10 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 34:
 		switch(ndx) {
 		case 0:
-			p = "char *";
+			p = "const char *";
 			break;
 		case 1:
-			p = "int";
+			p = "u_long";
 			break;
 		default:
 			break;
@@ -3757,7 +3785,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "int";
 			break;
 		case 1:
-			p = "int";
+			p = "u_long";
 			break;
 		default:
 			break;
@@ -6799,7 +6827,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "const char *";
 			break;
 		case 1:
-			p = "int";
+			p = "u_long";
 			break;
 		default:
 			break;
@@ -8916,6 +8944,57 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* chflagsat */
+	case 540:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "const char *";
+			break;
+		case 2:
+			p = "u_long";
+			break;
+		case 3:
+			p = "int";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* accept4 */
+	case 541:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct sockaddr *__restrict";
+			break;
+		case 2:
+			p = "__socklen_t *__restrict";
+			break;
+		case 3:
+			p = "int";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* pipe2 */
+	case 542:
+		switch(ndx) {
+		case 0:
+			p = "int *";
+			break;
+		case 1:
+			p = "int";
+			break;
+		default:
+			break;
+		};
+		break;
 	default:
 		break;
 	};
@@ -10048,7 +10127,7 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	/* extattr_set_file */
 	case 356:
 		if (ndx == 0 || ndx == 1)
-			p = "int";
+			p = "ssize_t";
 		break;
 	/* extattr_get_file */
 	case 357:
@@ -10085,7 +10164,7 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	/* extattr_set_fd */
 	case 371:
 		if (ndx == 0 || ndx == 1)
-			p = "int";
+			p = "ssize_t";
 		break;
 	/* extattr_get_fd */
 	case 372:
@@ -10255,7 +10334,7 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	/* extattr_set_link */
 	case 412:
 		if (ndx == 0 || ndx == 1)
-			p = "int";
+			p = "ssize_t";
 		break;
 	/* extattr_get_link */
 	case 413:
@@ -10841,6 +10920,21 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* connectat */
 	case 539:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* chflagsat */
+	case 540:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* accept4 */
+	case 541:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* pipe2 */
+	case 542:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;

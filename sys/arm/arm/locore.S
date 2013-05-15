@@ -77,6 +77,8 @@ __FBSDID("$FreeBSD$");
  */
 ENTRY_NP(btext)
 ASENTRY_NP(_start)
+	STOP_UNWINDING		/* Can't unwind into the bootloader! */
+
 	mov	r9, r0		/* 0 or boot mode from boot2 */
 	mov	r8, r1		/* Save Machine type */
 	mov	ip, r2		/* Save meta data */
@@ -176,10 +178,16 @@ Lunmapped:
 	/* Set the Domain Access register.  Very important! */
 	mov     r0, #((DOMAIN_CLIENT << (PMAP_DOMAIN_KERNEL*2)) | DOMAIN_CLIENT)
 	mcr	p15, 0, r0, c3, c0, 0
-	/* Enable MMU */
+	/* 
+	 * Enable MMU.
+	 * On armv6 enable extended page tables, and set alignment checking
+	 * to modulo-4 (CPU_CONTROL_UNAL_ENABLE) for the ldrd/strd
+	 * instructions emitted by clang.
+	 */
 	mrc	p15, 0, r0, c1, c0, 0
-#if defined(CPU_ARM1136) || defined(CPU_ARM1176) || defined(CPU_CORTEXA) || defined(CPU_MV_PJ4B)
-	orr	r0, r0, #CPU_CONTROL_V6_EXTPAGE
+#ifdef _ARM_ARCH_6
+	orr	r0, r0, #(CPU_CONTROL_V6_EXTPAGE | CPU_CONTROL_UNAL_ENABLE)
+	orr	r2, r2, #(CPU_CONTROL_AFLT_ENABLE)
 #endif
 	orr	r0, r0, #(CPU_CONTROL_MMU_ENABLE)
 	mcr	p15, 0, r0, c1, c0, 0
@@ -242,6 +250,9 @@ Lstartup_pagetable:
 Lstartup_pagetable_secondary:
 	.word	temp_pagetable
 #endif
+END(btext)
+END(_start)
+
 mmu_init_table:
 	/* fill all table VA==PA */
 	/* map SDRAM VA==PA, WT cacheable */
@@ -254,7 +265,11 @@ mmu_init_table:
 	/* map VA 0xc0000000..0xc3ffffff to PA */
 	MMU_INIT(KERNBASE, PHYSADDR, 64, L1_TYPE_S|L1_SHARED|L1_S_C|L1_S_AP(AP_KRW))
 	MMU_INIT(0x48000000, 0x48000000, 1, L1_TYPE_S|L1_SHARED|L1_S_C|L1_S_AP(AP_KRW))
-#endif
+#if defined(CPU_MV_PJ4B)
+	/* map VA 0xf1000000..0xf1100000 to PA 0xd0000000 */
+	MMU_INIT(0xf1000000, 0xd0000000, 1, L1_TYPE_S|L1_SHARED|L1_S_B|L1_S_AP(AP_KRW))
+#endif /* CPU_MV_PJ4B */
+#endif /* SMP */
 	.word 0	/* end of table */
 #endif
 .Lstart:
@@ -324,6 +339,7 @@ ASENTRY_NP(mptramp)
 
 Lpmureg:
         .word   0xd0022124
+END(mptramp)
 
 ASENTRY_NP(mpentry)
 
@@ -408,6 +424,7 @@ mpvirt_done:
 .Lmpreturned:
 	.asciz	"main() returned"
 	.align	0
+END(mpentry)
 #endif
 
 ENTRY_NP(cpu_halt)
@@ -461,6 +478,7 @@ ENTRY_NP(cpu_halt)
 	 */
 .Lcpu_reset_needs_v4_MMU_disable:
 	.word	_C_LABEL(cpu_reset_needs_v4_MMU_disable)
+END(cpu_halt)
 
 
 /*
@@ -470,11 +488,13 @@ ENTRY(setjmp)
 	stmia	r0, {r4-r14}
 	mov	r0, #0x00000000
 	RET
+END(setjmp)
 
 ENTRY(longjmp)
 	ldmia	r0, {r4-r14}
 	mov	r0, #0x00000001
 	RET
+END(longjmp)
 
 	.data
 	.global _C_LABEL(esym)
@@ -482,6 +502,7 @@ _C_LABEL(esym):	.word	_C_LABEL(end)
 
 ENTRY_NP(abort)
 	b	_C_LABEL(abort)
+END(abort)
 
 ENTRY_NP(sigcode)
 	mov	r0, sp
@@ -517,4 +538,5 @@ ENTRY_NP(sigcode)
 	.global szsigcode
 szsigcode:
 	.long esigcode-sigcode
+END(sigcode)
 /* End of locore.S */

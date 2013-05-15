@@ -515,7 +515,7 @@ sonewconn(struct socket *head, int connstatus)
 #endif
 		log(LOG_DEBUG, "%s: pcb %p: Listen queue overflow: "
 		    "%i already in queue awaiting acceptance\n",
-		    __func__, head->so_pcb, over);
+		    __func__, head->so_pcb, head->so_qlen);
 		return (NULL);
 	}
 	VNET_ASSERT(head->so_vnet != NULL, ("%s:%d so_vnet is NULL, head=%p",
@@ -1727,7 +1727,7 @@ dontblock:
 				SOCKBUF_UNLOCK(&so->so_rcv);
 				VNET_SO_ASSERT(so);
 				error = (*pr->pr_domain->dom_externalize)
-				    (cm, controlp);
+				    (cm, controlp, flags);
 				SOCKBUF_LOCK(&so->so_rcv);
 			} else if (controlp != NULL)
 				*controlp = cm;
@@ -1860,6 +1860,7 @@ dontblock:
 				nextrecord = m->m_nextpkt;
 				sbfree(&so->so_rcv, m);
 				if (mp != NULL) {
+					m->m_nextpkt = NULL;
 					*mp = m;
 					mp = &m->m_next;
 					so->so_rcv.sb_mb = m = m->m_next;
@@ -2361,7 +2362,7 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
 			cm->m_next = NULL;
 			if (pr->pr_domain->dom_externalize != NULL) {
 				error = (*pr->pr_domain->dom_externalize)
-				    (cm, controlp);
+				    (cm, controlp, flags);
 			} else if (controlp != NULL)
 				*controlp = cm;
 			else
@@ -2428,9 +2429,11 @@ soshutdown(struct socket *so, int how)
 		sorflush(so);
 	if (how != SHUT_RD) {
 		error = (*pr->pr_usrreqs->pru_shutdown)(so);
+		wakeup(&so->so_timeo);
 		CURVNET_RESTORE();
 		return (error);
 	}
+	wakeup(&so->so_timeo);
 	CURVNET_RESTORE();
 	return (0);
 }

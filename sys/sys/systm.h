@@ -112,6 +112,12 @@ void	kassert_panic(const char *fmt, ...);
 	    ((uintptr_t)&(var) & (sizeof(void *) - 1)) == 0, msg)
 
 /*
+ * Assert that a thread is in critical(9) section.
+ */
+#define	CRITICAL_ASSERT(td)						\
+	KASSERT((td)->td_critnest >= 1, ("Not in critical section"));
+ 
+/*
  * If we have already panic'd and this is the thread that called
  * panic(), then don't block on any mutexes but silently succeed.
  * Otherwise, the kernel will deadlock since the scheduler isn't
@@ -138,6 +144,7 @@ extern char **kenvp;
 
 extern const void *zero_region;	/* address space maps to a zeroed page	*/
 
+extern int unmapped_buf_allowed;
 extern int iosize_max_clamp;
 #define	IOSIZE_MAX	(iosize_max_clamp ? INT_MAX : SSIZE_MAX)
 

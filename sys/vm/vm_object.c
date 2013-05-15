@@ -94,6 +94,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/swap_pager.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_extern.h>
+#include <vm/vm_radix.h>
 #include <vm/vm_reserv.h>
 #include <vm/uma.h>
 
@@ -167,8 +168,8 @@ vm_object_zdtor(void *mem, int size, void *arg)
 	object = (vm_object_t)mem;
 	KASSERT(TAILQ_EMPTY(&object->memq),
 	    ("object %p has resident pages in its memq", object));
-	KASSERT(object->root == NULL,
-	    ("object %p has resident pages in its tree", object));
+	KASSERT(vm_radix_is_empty(&object->rtree),
+	    ("object %p has resident pages in its trie", object));
 #if VM_NRESERVLEVEL > 0
 	KASSERT(LIST_EMPTY(&object->rvq),
 	    ("object %p has reservations",
@@ -199,11 +200,11 @@ vm_object_zinit(void *mem, int size, int flags)
 	rw_init_flags(&object->lock, "vm object", RW_DUPOK);
 
 	/* These are true for any object that has been freed */
-	object->root = NULL;
+	object->rtree.rt_root = 0;
 	object->paging_in_progress = 0;
 	object->resident_page_count = 0;
 	object->shadow_count = 0;
-	object->cache = NULL;
+	object->cache.rt_root = 0;
 	return (0);
 }
 
@@ -295,6 +296,8 @@ vm_object_init(void)
 	    NULL,
 #endif
 	    vm_object_zinit, NULL, UMA_ALIGN_PTR, UMA_ZONE_VM|UMA_ZONE_NOFREE);
+
+	vm_radix_init();
 }
 
 void
@@ -502,6 +505,7 @@ void
 vm_object_deallocate(vm_object_t object)
 {
 	vm_object_t temp;
+	struct vnode *vp;
 
 	while (object != NULL) {
 		VM_OBJECT_WLOCK(object);
@@ -524,15 +528,36 @@ vm_object_deallocate(vm_object_t object)
 			VM_OBJECT_WUNLOCK(object);
 			return;
 		} else if (object->ref_count == 1) {
+			if (object->type == OBJT_SWAP &&
+			    (object->flags & OBJ_TMPFS) != 0) {
+				vp = object->un_pager.swp.swp_tmpfs;
+				vhold(vp);
+				VM_OBJECT_WUNLOCK(object);
+				vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+				vdrop(vp);
+				VM_OBJECT_WLOCK(object);
+				if (object->type == OBJT_DEAD) {
+					VM_OBJECT_WUNLOCK(object);
+					VOP_UNLOCK(vp, 0);
+					return;
+				} else if ((object->flags & OBJ_TMPFS) != 0) {
+					if (object->ref_count == 1)
+						VOP_UNSET_TEXT(vp);
+					VOP_UNLOCK(vp, 0);
+				}
+			}
 			if (object->shadow_count == 0 &&
 			    object->handle == NULL &&
 			    (object->type == OBJT_DEFAULT ||
-			     object->type == OBJT_SWAP)) {
+			    (object->type == OBJT_SWAP &&
+			    (object->flags & OBJ_TMPFS) == 0))) {
 				vm_object_set_flag(object, OBJ_ONEMAPPING);
 			} else if ((object->shadow_count == 1) &&
 			    (object->handle == NULL) &&
 			    (object->type == OBJT_DEFAULT ||
 			     object->type == OBJT_SWAP)) {
+				KASSERT((object->flags & OBJ_TMPFS) == 0,
+				    ("Shadowed tmpfs v_object"));
 				vm_object_t robject;
 
 				robject = LIST_FIRST(&object->shadow_head);
@@ -742,7 +767,7 @@ vm_object_terminate(vm_object_t object)
 	 * modified by the preceding loop.
 	 */
 	if (object->resident_page_count != 0) {
-		object->root = NULL;
+		vm_radix_reclaim_allnodes(&object->rtree);
 		TAILQ_INIT(&object->memq);
 		object->resident_page_count = 0;
 		if (object->type == OBJT_VNODE)
@@ -817,7 +842,12 @@ vm_object_page_clean(vm_object_t object, vm_ooffset_t start, vm_ooffset_t end,
 	boolean_t clearobjflags, eio, res;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
-	KASSERT(object->type == OBJT_VNODE, ("Not a vnode object"));
+
+	/*
+	 * The OBJ_MIGHTBEDIRTY flag is only set for OBJT_VNODE
+	 * objects.  The check below prevents the function from
+	 * operating on non-vnode objects.
+	 */
 	if ((object->flags & OBJ_MIGHTBEDIRTY) == 0 ||
 	    object->resident_page_count == 0)
 		return (TRUE);
