@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/rman.h>
 
+#include <machine/openpicreg.h>
 #include <machine/openpicvar.h>
 
 #include "pic_if.h"
@@ -59,11 +60,15 @@ __FBSDID("$FreeBSD$");
  */
 static int	openpic_macio_probe(device_t);
 static int	openpic_macio_attach(device_t);
+static int	openpic_macio_suspend(device_t);
+static int	openpic_macio_resume(device_t);
 
 static device_method_t  openpic_macio_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		openpic_macio_probe),
 	DEVMETHOD(device_attach,	openpic_macio_attach),
+	DEVMETHOD(device_suspend,	openpic_macio_suspend),
+	DEVMETHOD(device_resume,	openpic_macio_resume),
 
 	/* PIC interface */
 	DEVMETHOD(pic_bind,		openpic_bind),
@@ -107,4 +112,65 @@ openpic_macio_attach(device_t dev)
 {
  
 	return (openpic_common_attach(dev, ofw_bus_get_node(dev)));
+}
+
+static int
+openpic_macio_suspend(device_t dev)
+{
+	struct openpic_softc *sc;
+	int i;
+
+	sc = device_get_softc(dev);
+
+	sc->sc_saved_config = bus_read_4(sc->sc_memr, OPENPIC_CONFIG);
+	for (i = 0; i < 4; i++) {
+		sc->sc_saved_ipis[i] = bus_read_4(sc->sc_memr, OPENPIC_IPI_VECTOR(i));
+	}
+
+	for (i = 0; i < 4; i++) {
+		sc->sc_saved_prios[i] = bus_read_4(sc->sc_memr, OPENPIC_PCPU_TPR(i));
+	}
+
+	for (i = 0; i < OPENPIC_TIMERS; i++) {
+		sc->sc_saved_timers[i].tcnt = bus_read_4(sc->sc_memr, OPENPIC_TCNT(i));
+		sc->sc_saved_timers[i].tbase = bus_read_4(sc->sc_memr, OPENPIC_TBASE(i));
+		sc->sc_saved_timers[i].tvec = bus_read_4(sc->sc_memr, OPENPIC_TVEC(i));
+		sc->sc_saved_timers[i].tdst = bus_read_4(sc->sc_memr, OPENPIC_TDST(i));
+	}
+
+	for (i = 0; i < OPENPIC_SRC_VECTOR_COUNT; i++)
+		sc->sc_saved_vectors[i] =
+		    bus_read_4(sc->sc_memr, OPENPIC_SRC_VECTOR(i)) & ~OPENPIC_ACTIVITY;
+
+	return (0);
+}
+
+static int
+openpic_macio_resume(device_t dev)
+{
+    	struct openpic_softc *sc;
+    	int i;
+
+    	sc = device_get_softc(dev);
+
+	sc->sc_saved_config = bus_read_4(sc->sc_memr, OPENPIC_CONFIG);
+	for (i = 0; i < 4; i++) {
+		bus_write_4(sc->sc_memr, OPENPIC_IPI_VECTOR(i), sc->sc_saved_ipis[i]);
+	}
+
+	for (i = 0; i < 4; i++) {
+		bus_write_4(sc->sc_memr, OPENPIC_PCPU_TPR(i), sc->sc_saved_prios[i]);
+	}
+
+	for (i = 0; i < OPENPIC_TIMERS; i++) {
+		bus_write_4(sc->sc_memr, OPENPIC_TCNT(i), sc->sc_saved_timers[i].tcnt);
+		bus_write_4(sc->sc_memr, OPENPIC_TBASE(i), sc->sc_saved_timers[i].tbase);
+		bus_write_4(sc->sc_memr, OPENPIC_TVEC(i), sc->sc_saved_timers[i].tvec);
+		bus_write_4(sc->sc_memr, OPENPIC_TDST(i), sc->sc_saved_timers[i].tdst);
+	}
+
+	for (i = 0; i < OPENPIC_SRC_VECTOR_COUNT; i++)
+		bus_write_4(sc->sc_memr, OPENPIC_SRC_VECTOR(i), sc->sc_saved_vectors[i]);
+
+	return (0);
 }

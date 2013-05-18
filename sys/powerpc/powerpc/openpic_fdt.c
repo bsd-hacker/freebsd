@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 
+#include <machine/openpicreg.h>
 #include <machine/openpicvar.h>
 
 #include "pic_if.h"
