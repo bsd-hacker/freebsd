@@ -128,6 +128,21 @@ __FBSDID("$FreeBSD$");
 #endif
 
 /*
+ * Per-object swp_bcount must be protected by a write lock on the object
+ * itself or a read lock in combination with swhash_mtx held at the same time.
+ */
+#ifdef INVARIANTS
+#define VM_OBJECT_BCOUNT_ASSERT_LOCKED(object) do {			\
+	if (mtx_owned(&swhash_mtx))					\
+		VM_OBJECT_ASSERT_LOCKED(object);			\
+	else								\
+		VM_OBJECT_ASSERT_WLOCKED(object);			\
+} while (0)
+#else
+#define VM_OBJECT_BCOUNT_ASSERT_LOCKED(object)
+#endif
+
+/*
  * The swblock structure maps an object and a small, fixed-size range
  * of page indices to disk addresses within a swap area.
  * The collection of these mappings is implemented as a hash table.
@@ -827,7 +842,7 @@ void
 swap_pager_freespace(vm_object_t object, vm_pindex_t start, vm_size_t size)
 {
 
-	VM_OBJECT_ASSERT_LOCKED(object);
+	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object);
 	swp_pager_meta_free(object, start, size);
 }
 
@@ -999,7 +1014,7 @@ swap_pager_haspage(vm_object_t object, vm_pindex_t pindex, int *before, int *aft
 {
 	daddr_t blk0;
 
-	VM_OBJECT_ASSERT_LOCKED(object);
+	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object)
 	/*
 	 * do we have good backing store at the requested index ?
 	 */
@@ -1070,7 +1085,7 @@ static void
 swap_pager_unswapped(vm_page_t m)
 {
 
-	VM_OBJECT_ASSERT_LOCKED(m->object);
+	VM_OBJECT_BCOUNT_ASSERT_LOCKED(m->object);
 	swp_pager_meta_ctl(m->object, m->pindex, SWM_FREE);
 }
 
@@ -1924,7 +1939,7 @@ static void
 swp_pager_meta_free(vm_object_t object, vm_pindex_t index, daddr_t count)
 {
 
-	VM_OBJECT_ASSERT_LOCKED(object);
+	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object);
 	if (object->type != OBJT_SWAP)
 		return;
 
@@ -1970,15 +1985,15 @@ swp_pager_meta_free_all(vm_object_t object)
 {
 	daddr_t index = 0;
 
-	VM_OBJECT_ASSERT_LOCKED(object);
+	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object);
 	if (object->type != OBJT_SWAP)
 		return;
 
-	mtx_lock(&swhash_mtx);
 	while (object->un_pager.swp.swp_bcount) {
 		struct swblock **pswap;
 		struct swblock *swap;
 
+		mtx_lock(&swhash_mtx);
 		pswap = swp_pager_hash(object, index);
 		if ((swap = *pswap) != NULL) {
 			int i;
@@ -1996,9 +2011,9 @@ swp_pager_meta_free_all(vm_object_t object)
 			uma_zfree(swap_zone, swap);
 			--object->un_pager.swp.swp_bcount;
 		}
+		mtx_unlock(&swhash_mtx);
 		index += SWAP_META_PAGES;
 	}
-	mtx_unlock(&swhash_mtx);
 }
 
 /*
@@ -2029,7 +2044,7 @@ swp_pager_meta_ctl(vm_object_t object, vm_pindex_t pindex, int flags)
 	daddr_t r1;
 	int idx;
 
-	VM_OBJECT_ASSERT_LOCKED(object);
+	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object);
 	/*
 	 * The meta data only exists of the object is OBJT_SWAP
 	 * and even then might not be allocated yet.
@@ -2484,16 +2499,14 @@ vmspace_swap_count(struct vmspace *vmspace)
 	for (cur = map->header.next; cur != &map->header; cur = cur->next) {
 		if ((cur->eflags & MAP_ENTRY_IS_SUB_MAP) == 0 &&
 		    (object = cur->object.vm_object) != NULL) {
-			VM_OBJECT_RLOCK(object);
-			mtx_lock(&swhash_mtx);
+			VM_OBJECT_WLOCK(object);
 			if (object->type == OBJT_SWAP &&
 			    object->un_pager.swp.swp_bcount != 0) {
 				n = (cur->end - cur->start) / PAGE_SIZE;
 				count += object->un_pager.swp.swp_bcount *
 				    SWAP_META_PAGES * n / object->size + 1;
 			}
-			mtx_unlock(&swhash_mtx);
-			VM_OBJECT_RUNLOCK(object);
+			VM_OBJECT_WUNLOCK(object);
 		}
 	}
 	return (count);
