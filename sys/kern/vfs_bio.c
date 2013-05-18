@@ -2788,7 +2788,7 @@ inmem(struct vnode * vp, daddr_t blkno)
 	return 1;
 
 notinmem:
-	VM_OBJECT_WUNLOCK(obj);
+	VM_OBJECT_RUNLOCK(obj);
 	return (0);
 }
 
