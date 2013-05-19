@@ -3671,6 +3671,7 @@ static int
 vtnet_txq_enable_intr(struct vtnet_txq *txq)
 {
 
+	return (virtqueue_postpone_intr(txq->vtntx_vq, VQ_POSTPONE_LONG));
 	return (virtqueue_enable_intr(txq->vtntx_vq));
 }
 
