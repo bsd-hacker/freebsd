@@ -1050,6 +1050,9 @@ moea_copy_page(mmu_t mmu, vm_page_t msrc, vm_page_t mdst)
 	vm_offset_t	dst;
 	vm_offset_t	src;
 
+	VM_OBJECT_ASSERT_LOCKED(msrc->object);
+	VM_OBJECT_ASSERT_LOCKED(mdst->object);
+
 	dst = VM_PAGE_TO_PHYS(mdst);
 	src = VM_PAGE_TO_PHYS(msrc);
 

@@ -2551,8 +2551,13 @@ void
 pmap_copy_page(vm_page_t src, vm_page_t dst)
 {
 	vm_offset_t va_src, va_dst;
-	vm_paddr_t phys_src = VM_PAGE_TO_PHYS(src);
-	vm_paddr_t phys_dst = VM_PAGE_TO_PHYS(dst);
+	vm_paddr_t phys_dst, phys_src;
+
+	VM_OBJECT_ASSERT_LOCKED(src->object);
+	VM_OBJECT_ASSERT_LOCKED(dst->object);
+
+	phys_src = VM_PAGE_TO_PHYS(src);
+	phys_dst = VM_PAGE_TO_PHYS(dst);
 
 	if (MIPS_DIRECT_MAPPABLE(phys_src) && MIPS_DIRECT_MAPPABLE(phys_dst)) {
 		/* easy case, all can be accessed via KSEG0 */

@@ -4229,8 +4229,13 @@ pmap_zero_page_idle(vm_page_t m)
 void
 pmap_copy_page(vm_page_t msrc, vm_page_t mdst)
 {
-	vm_offset_t src = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(msrc));
-	vm_offset_t dst = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(mdst));
+	vm_offset_t dst, src;
+
+	VM_OBJECT_ASSERT_LOCKED(msrc->object);
+	VM_OBJECT_ASSERT_LOCKED(mdst->object);
+
+	src = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(msrc));
+	dst = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(mdst));
 
 	pagecopy((void *)src, (void *)dst);
 }

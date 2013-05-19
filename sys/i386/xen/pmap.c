@@ -3432,6 +3432,9 @@ pmap_copy_page(vm_page_t src, vm_page_t dst)
 {
 	struct sysmaps *sysmaps;
 
+	VM_OBJECT_ASSERT_LOCKED(src->object);
+	VM_OBJECT_ASSERT_LOCKED(dst->object);
+
 	sysmaps = &sysmaps_pcpu[PCPU_GET(cpuid)];
 	mtx_lock(&sysmaps->lock);
 	if (*sysmaps->CMAP1)

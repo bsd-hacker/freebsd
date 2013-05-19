@@ -4411,6 +4411,9 @@ pmap_copy_page(vm_page_t src, vm_page_t dst)
 	vm_offset_t srcpg, dstpg;
 #endif
 
+	VM_OBJECT_ASSERT_LOCKED(src->object);
+	VM_OBJECT_ASSERT_LOCKED(dst->object);
+
 	cpu_dcache_wbinv_all();
 	cpu_l2cache_wbinv_all();
 	if (_arm_memcpy && PAGE_SIZE >= _min_memcpy_size &&

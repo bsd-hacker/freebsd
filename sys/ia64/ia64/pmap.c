@@ -2009,6 +2009,9 @@ pmap_copy_page(vm_page_t msrc, vm_page_t mdst)
 {
 	void *dst, *src;
 
+	VM_OBJECT_ASSERT_LOCKED(msrc->object);
+	VM_OBJECT_ASSERT_LOCKED(mdst->object);
+
 	src = (void *)pmap_page_to_va(msrc);
 	dst = (void *)pmap_page_to_va(mdst);
 	bcopy(src, dst, PAGE_SIZE);
