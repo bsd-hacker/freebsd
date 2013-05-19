@@ -61,7 +61,6 @@ struct vtnet_rxq_stats {
 	uint64_t	vrxs_ibytes;	/* if_ibytes */
 	uint64_t	vrxs_iqdrops;	/* if_iqdrops */
 	uint64_t	vrxs_ierrors;	/* if_ierrors */
-	uint64_t	vrxs_discarded;
 	uint64_t	vrxs_csum;
 	uint64_t	vrxs_csum_failed;
 	uint64_t	vrxs_rescheduled;
@@ -267,6 +266,8 @@ CTASSERT(sizeof(struct vtnet_mac_filter) <= PAGE_SIZE);
      VIRTIO_NET_F_GUEST_TSO6		| \
      VIRTIO_NET_F_GUEST_ECN		| \
      VIRTIO_NET_F_MRG_RXBUF		| \
+     VIRTIO_NET_F_MQ			| \
+     VIRTIO_RING_F_EVENT_IDX		| \
      VIRTIO_RING_F_INDIRECT_DESC)
 
 /*

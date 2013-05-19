@@ -109,8 +109,6 @@ struct virtio_net_ctrl_hdr {
 	uint8_t cmd;
 } __packed;
 
-typedef uint8_t virtio_net_ctrl_ack;
-
 #define VIRTIO_NET_OK	0
 #define VIRTIO_NET_ERR	1
 

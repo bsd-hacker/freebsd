@@ -153,6 +153,11 @@ static void	vtnet_qflush(struct ifnet *);
 #endif
 
 static int	vtnet_watchdog(struct vtnet_txq *);
+static void	vtnet_rxq_accum_stats(struct vtnet_rxq *,
+		    struct vtnet_rxq_stats *);
+static void	vtnet_txq_accum_stats(struct vtnet_txq *,
+		    struct vtnet_txq_stats *);
+static void	vtnet_accumulate_stats(struct vtnet_softc *);
 static void	vtnet_tick(void *);
 
 static void	vtnet_start_taskqueues(struct vtnet_softc *);
@@ -1067,9 +1072,9 @@ vtnet_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			reinit = 1;
 
 			/*
-			 * Rx checksum is tricky: VirtIO does not distinguish
-			 * between IPv4 and IPv6 checksum offloading. Both must
-			 * be enabled for us to negotiate it with the host.
+			 * VirtIO does not distinguish between IPv4 and IPv6
+			 * checksum offloading. Both must be enabled for us
+			 * to negotiate it with the host.
 			 */
 			if (mask & IFCAP_RXCSUM)
 				ifp->if_capenable ^= IFCAP_RXCSUM;
@@ -1342,6 +1347,9 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 	VTNET_RXQ_LOCK_ASSERT(rxq);
 	KASSERT(sc->vtnet_flags & VTNET_FLAG_LRO_NOMRG || m->m_next == NULL,
 	    ("%s: chained mbuf without LRO_NOMRG", __func__));
+	KASSERT(m->m_len == sc->vtnet_rx_clsize,
+	    ("%s: unexpected cluster size %d/%d", __func__, m->m_len,
+	     sc->vtnet_rx_clsize));
 
 	sglist_init(&sg, VTNET_MAX_RX_SEGS, segs);
 	if ((sc->vtnet_flags & VTNET_FLAG_MRG_RXBUFS) == 0) {
@@ -1588,7 +1596,7 @@ vtnet_rxq_merged_eof(struct vtnet_rxq *rxq, struct mbuf *m_head, int nbufs)
 		}
 
 		if (vtnet_rxq_new_buf(rxq) != 0) {
-			rxq->vtnrx_stats.vrxs_discarded++;
+			rxq->vtnrx_stats.vrxs_iqdrops++;
 			vtnet_rxq_discard_buf(rxq, m);
 			if (nbufs > 1)
 				vtnet_rxq_discard_merged_bufs(rxq, nbufs);
@@ -1692,7 +1700,7 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		deq++;
 
 		if (len < sc->vtnet_hdr_size + ETHER_HDR_LEN) {
-			rxq->vtnrx_stats.vrxs_discarded++;
+			rxq->vtnrx_stats.vrxs_ierrors++;
 			vtnet_rxq_discard_buf(rxq, m);
 			continue;
 		}
@@ -1712,7 +1720,7 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		}
 
 		if (vtnet_rxq_replace_buf(rxq, m, len) != 0) {
-			rxq->vtnrx_stats.vrxs_discarded++;
+			rxq->vtnrx_stats.vrxs_iqdrops++;
 			vtnet_rxq_discard_buf(rxq, m);
 			if (nbufs > 1)
 				vtnet_rxq_discard_merged_bufs(rxq, nbufs);
@@ -1929,7 +1937,7 @@ vtnet_txq_offload_tso(struct vtnet_txq *txq, struct mbuf *m, int eth_type,
 
 	if (tcp->th_flags & TH_CWR) {
 		/*
-		 * Drop if VIRTIO_NET_F_HOST_ECN was not negotiated. In FreeBSD
+		 * Drop if VIRTIO_NET_F_HOST_ECN was not negotiated. In FreeBSD,
 		 * ECN support is not on a per-interface basis, but globally via
 		 * the net.inet.tcp.ecn.enable sysctl knob. The default is off.
 		 */
@@ -2065,9 +2073,10 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head)
 	}
 
 	/*
-	 * Always use the non-mergeable header (regardless if the feature
-	 * was negotiated). For Tx, the num_buffers field is always zero.
-	 * The vtnet_hdr_size is used to enqueue the correct header size.
+	 * Always use the non-mergeable header, regardless if the feature
+	 * was negotiated. For transmit, the num_buffers field is always
+	 * zero. The vtnet_hdr_size is used to enqueue the correct header
+	 * size.
 	 */
 	hdr = &txhdr->vth_uhdr.hdr;
 	error = ENOBUFS;
@@ -2426,7 +2435,6 @@ vtnet_rxq_accum_stats(struct vtnet_rxq *rxq, struct vtnet_rxq_stats *accum)
 	accum->vrxs_ipackets += st->vrxs_ipackets;
 	accum->vrxs_ibytes += st->vrxs_ibytes;
 	accum->vrxs_iqdrops += st->vrxs_iqdrops;
-	accum->vrxs_discarded += st->vrxs_discarded;
 	accum->vrxs_csum += st->vrxs_csum;
 	accum->vrxs_csum_failed += st->vrxs_csum_failed;
 	accum->vrxs_rescheduled += st->vrxs_rescheduled;
@@ -2466,9 +2474,6 @@ vtnet_accumulate_stats(struct vtnet_softc *sc)
 		vtnet_txq_accum_stats(&sc->vtnet_txqs[i], &txaccum);
 	}
 
-	/*
-	 * Push some accumulated stats into the global stats.
-	 */
 	st->rx_csum_offloaded = rxaccum.vrxs_csum;
 	st->rx_csum_failed = rxaccum.vrxs_csum_failed;
 	st->rx_task_rescheduled = rxaccum.vrxs_rescheduled;
@@ -2476,11 +2481,16 @@ vtnet_accumulate_stats(struct vtnet_softc *sc)
 	st->tx_tso_offloaded = txaccum.vtxs_tso;
 	st->tx_task_rescheduled = txaccum.vtxs_rescheduled;
 
+	/*
+	 * With the exception of if_ierrors, these ifnet statistics are
+	 * only updated in the driver, so just set them to our accumulated
+	 * values. if_ierrors is updated in ether_input() for malformed
+	 * frames that we should have already discarded.
+	 */
 	ifp->if_ipackets = rxaccum.vrxs_ipackets;
-	ifp->if_opackets = txaccum.vtxs_opackets;
 	ifp->if_iqdrops = rxaccum.vrxs_iqdrops;
 	ifp->if_ierrors = rxaccum.vrxs_ierrors;
-	ifp->if_iqdrops = rxaccum.vrxs_discarded;
+	ifp->if_opackets = txaccum.vtxs_opackets;
 #ifndef VTNET_LEGACY_TX
 	ifp->if_obytes = txaccum.vtxs_obytes;
 	ifp->if_omcasts = txaccum.vtxs_omcasts;
@@ -2529,11 +2539,6 @@ vtnet_start_taskqueues(struct vtnet_softc *sc)
 	 *
 	 * Most drivers just ignore the return value - it only fails
 	 * with ENOMEM so an error is not likely.
-	 *
-	 * BMV: It may be better to just have one taskqueue with enough
-	 * threads for the queues? Or on failure, we could just use a
-	 * global taskqueue - or attempt to start the taskqueue later.
-	 * No need to make this complicated yet.
 	 */
 	for (i = 0; i < sc->vtnet_max_vq_pairs; i++) {
 		rxq = &sc->vtnet_rxqs[i];
@@ -2674,11 +2679,19 @@ vtnet_virtio_reinit(struct vtnet_softc *sc)
 	device_t dev;
 	struct ifnet *ifp;
 	uint64_t features;
-	int error;
+	int mask, error;
 
 	dev = sc->vtnet_dev;
 	ifp = sc->vtnet_ifp;
 	features = sc->vtnet_features;
+
+	mask = 0;
+#if defined(INET)
+	mask |= IFCAP_RXCSUM;
+#endif
+#if defined (INET6)
+	mask |= IFCAP_RXCSUM_IPV6;
+#endif
 
 	/*
 	 * Re-negotiate with the host, removing any disabled receive
@@ -2686,19 +2699,15 @@ vtnet_virtio_reinit(struct vtnet_softc *sc)
 	 * via if_capenable and if_hwassist.
 	 */
 
-#define _RXCSUM_IPV46	(IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6)
-	if (ifp->if_capabilities & _RXCSUM_IPV46) {
+	if (ifp->if_capabilities & mask) {
 		/*
 		 * We require both IPv4 and IPv6 offloading to be enabled
 		 * in order to negotiated it: VirtIO does not distinguish
 		 * between the two.
-		 *
-		 * BMV: What about when INET and/or INET6 is not defined?
 		 */
-		if ((ifp->if_capenable & _RXCSUM_IPV46) != _RXCSUM_IPV46)
+		if ((ifp->if_capenable & mask) != mask)
 			features &= ~VIRTIO_NET_F_GUEST_CSUM;
 	}
-#undef _RXCSUM_IPV46
 
 	if (ifp->if_capabilities & IFCAP_LRO) {
 		if ((ifp->if_capenable & IFCAP_LRO) == 0)
@@ -2800,7 +2809,6 @@ vtnet_init_tx_queues(struct vtnet_softc *sc)
 
 	for (i = 0; i < sc->vtnet_act_vq_pairs; i++) {
 		txq = &sc->vtnet_txqs[i];
-
 		txq->vtntx_watchdog = 0;
 	}
 
@@ -2827,7 +2835,7 @@ static void
 vtnet_set_active_vq_pairs(struct vtnet_softc *sc)
 {
 	device_t dev;
-	int npairs, error;
+	int npairs;
 
 	dev = sc->vtnet_dev;
 
@@ -2840,8 +2848,7 @@ vtnet_set_active_vq_pairs(struct vtnet_softc *sc)
 	/* BMV: Just use the maximum configured for now. */
 	npairs = sc->vtnet_max_vq_pairs;
 
-	error = vtnet_ctrl_mq_cmd(sc, npairs);
-	if (error) {
+	if (vtnet_ctrl_mq_cmd(sc, npairs) != 0) {
 		device_printf(dev,
 		    "cannot set active queue pairs to %d\n", npairs);
 		npairs = 1;
@@ -2894,7 +2901,6 @@ vtnet_init_locked(struct vtnet_softc *sc)
 {
 	device_t dev;
 	struct ifnet *ifp;
-	int error;
 
 	dev = sc->vtnet_dev;
 	ifp = sc->vtnet_ifp;
@@ -2907,12 +2913,10 @@ vtnet_init_locked(struct vtnet_softc *sc)
 	vtnet_stop(sc);
 
 	/* Reinitialize with the host. */
-	error = vtnet_virtio_reinit(sc);
-	if (error)
+	if (vtnet_virtio_reinit(sc) != 0)
 		goto fail;
 
-	error = vtnet_reinit(sc);
-	if (error)
+	if (vtnet_reinit(sc) != 0)
 		goto fail;
 
 	virtio_reinit_complete(dev);
@@ -2948,8 +2952,8 @@ vtnet_free_ctrl_vq(struct vtnet_softc *sc)
 	 * The control virtqueue is only polled and therefore it should
 	 * already be empty.
 	 */
-	if (!virtqueue_empty(vq))
-		panic("%s: ctrl vq %p not empty", __func__, vq);
+	KASSERT(virtqueue_empty(vq),
+	    ("%s: ctrl vq %p not empty", __func__, vq));
 }
 
 static void
@@ -3049,8 +3053,8 @@ vtnet_ctrl_rx_cmd(struct vtnet_softc *sc, int cmd, int on)
 	} s;
 	int error;
 
-	if ((sc->vtnet_flags & VTNET_FLAG_CTRL_RX) == 0)
-		return (ENOTSUP);
+	KASSERT(sc->vtnet_flags & VTNET_FLAG_CTRL_RX,
+	    ("%s: CTRL_RX feature not negotiated", __func__));
 
 	s.hdr.class = VIRTIO_NET_CTRL_RX;
 	s.hdr.cmd = cmd;
@@ -3123,8 +3127,6 @@ vtnet_rx_filter(struct vtnet_softc *sc)
 	ifp = sc->vtnet_ifp;
 
 	VTNET_CORE_LOCK_ASSERT(sc);
-	KASSERT(sc->vtnet_flags & VTNET_FLAG_CTRL_RX,
-	    ("%s: CTRL_RX feature not negotiated", __func__));
 
 	if (vtnet_set_promisc(sc, ifp->if_flags & IFF_PROMISC) != 0)
 		device_printf(dev, "cannot %s promiscuous mode\n",
@@ -3501,8 +3503,6 @@ vtnet_setup_rxq_sysctl(struct sysctl_ctx_list *ctx,
 	    &stats->vrxs_iqdrops, "Receive drops");
 	SYSCTL_ADD_UQUAD(ctx, list, OID_AUTO, "ierrors", CTLFLAG_RD,
 	    &stats->vrxs_ierrors, "Receive errors");
-	SYSCTL_ADD_UQUAD(ctx, list, OID_AUTO, "discarded", CTLFLAG_RD,
-	    &stats->vrxs_discarded, "Receive mbuf discarded");
 	SYSCTL_ADD_UQUAD(ctx, list, OID_AUTO, "csum", CTLFLAG_RD,
 	    &stats->vrxs_csum, "Receive checksum offloaded");
 	SYSCTL_ADD_UQUAD(ctx, list, OID_AUTO, "csum_failed", CTLFLAG_RD,
@@ -3539,7 +3539,7 @@ vtnet_setup_txq_sysctl(struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UQUAD(ctx, list, OID_AUTO, "tso", CTLFLAG_RD,
 	    &stats->vtxs_tso, "Transmit segmentation offloaded");
 	SYSCTL_ADD_UQUAD(ctx, list, OID_AUTO, "collapsed", CTLFLAG_RD,
-	    &stats->vtxs_collapsed, "Trasmit mbufs required collapse");
+	    &stats->vtxs_collapsed, "Transmit mbufs collapsed");
 	SYSCTL_ADD_UQUAD(ctx, list, OID_AUTO, "rescheduled", CTLFLAG_RD,
 	    &stats->vtxs_rescheduled,
 	    "Transmit interrupt handler rescheduled");
