@@ -128,21 +128,6 @@ __FBSDID("$FreeBSD$");
 #endif
 
 /*
- * Per-object swp_bcount must be protected by a write lock on the object
- * itself or a read lock in combination with swhash_mtx held at the same time.
- */
-#ifdef INVARIANTS
-#define VM_OBJECT_BCOUNT_ASSERT_LOCKED(object) do {			\
-	if (mtx_owned(&swhash_mtx))					\
-		VM_OBJECT_ASSERT_LOCKED(object);			\
-	else								\
-		VM_OBJECT_ASSERT_WLOCKED(object);			\
-} while (0)
-#else
-#define VM_OBJECT_BCOUNT_ASSERT_LOCKED(object)
-#endif
-
-/*
  * The swblock structure maps an object and a small, fixed-size range
  * of page indices to disk addresses within a swap area.
  * The collection of these mappings is implemented as a hash table.
@@ -842,7 +827,6 @@ void
 swap_pager_freespace(vm_object_t object, vm_pindex_t start, vm_size_t size)
 {
 
-	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object);
 	swp_pager_meta_free(object, start, size);
 }
 
@@ -1014,7 +998,7 @@ swap_pager_haspage(vm_object_t object, vm_pindex_t pindex, int *before, int *aft
 {
 	daddr_t blk0;
 
-	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object)
+	VM_OBJECT_ASSERT_LOCKED(object);
 	/*
 	 * do we have good backing store at the requested index ?
 	 */
@@ -1085,7 +1069,6 @@ static void
 swap_pager_unswapped(vm_page_t m)
 {
 
-	VM_OBJECT_BCOUNT_ASSERT_LOCKED(m->object);
 	swp_pager_meta_ctl(m->object, m->pindex, SWM_FREE);
 }
 
@@ -1939,7 +1922,7 @@ static void
 swp_pager_meta_free(vm_object_t object, vm_pindex_t index, daddr_t count)
 {
 
-	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object);
+	VM_OBJECT_ASSERT_LOCKED(object);
 	if (object->type != OBJT_SWAP)
 		return;
 
@@ -1985,7 +1968,7 @@ swp_pager_meta_free_all(vm_object_t object)
 {
 	daddr_t index = 0;
 
-	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object);
+	VM_OBJECT_ASSERT_WLOCKED(object);
 	if (object->type != OBJT_SWAP)
 		return;
 
@@ -2044,7 +2027,7 @@ swp_pager_meta_ctl(vm_object_t object, vm_pindex_t pindex, int flags)
 	daddr_t r1;
 	int idx;
 
-	VM_OBJECT_BCOUNT_ASSERT_LOCKED(object);
+	VM_OBJECT_ASSERT_LOCKED(object);
 	/*
 	 * The meta data only exists of the object is OBJT_SWAP
 	 * and even then might not be allocated yet.
