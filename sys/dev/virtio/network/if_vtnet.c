@@ -266,6 +266,7 @@ static struct virtio_feature_desc vtnet_feature_desc[] = {
 	{ VIRTIO_NET_F_CTRL_RX_EXTRA,	"RxModeExtra"	},
 	{ VIRTIO_NET_F_GUEST_ANNOUNCE,	"GuestAnnounce"	},
 	{ VIRTIO_NET_F_MQ,		"Multiqueue"	},
+	{ VIRTIO_NET_F_CTRL_MAC_ADDR,	"SetMacAddress"	},
 
 	{ 0, NULL }
 };
