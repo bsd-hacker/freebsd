@@ -4231,8 +4231,8 @@ pmap_copy_page(vm_page_t msrc, vm_page_t mdst)
 {
 	vm_offset_t dst, src;
 
-	VM_OBJECT_ASSERT_LOCKED(msrc->object);
-	VM_OBJECT_ASSERT_LOCKED(mdst->object);
+	if ((msrc->oflags & VPO_BUSY) == 0)
+		VM_OBJECT_ASSERT_LOCKED(msrc->object);
 
 	src = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(msrc));
 	dst = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(mdst));

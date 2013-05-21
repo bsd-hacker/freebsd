@@ -3729,8 +3729,8 @@ void
 pmap_copy_page(vm_page_t src, vm_page_t dst)
 {
 
-	VM_OBJECT_ASSERT_LOCKED(src->object);
-	VM_OBJECT_ASSERT_LOCKED(dst->object);
+	if ((src->oflags & VPO_BUSY) == 0)
+		VM_OBJECT_ASSERT_LOCKED(src->object);
 
 	if (_arm_memcpy && PAGE_SIZE >= _min_memcpy_size &&
 	    _arm_memcpy((void *)VM_PAGE_TO_PHYS(dst),

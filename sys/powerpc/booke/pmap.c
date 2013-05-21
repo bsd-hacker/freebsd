@@ -2127,8 +2127,8 @@ mmu_booke_copy_page(mmu_t mmu, vm_page_t sm, vm_page_t dm)
 {
 	vm_offset_t sva, dva;
 
-	VM_OBJECT_ASSERT_LOCKED(sm->object);
-	VM_OBJECT_ASSERT_LOCKED(dm->object);
+	if ((ms->oflags & VPO_BUSY) == 0)
+		VM_OBJECT_ASSERT_LOCKED(ms->object);
 
 	sva = copy_page_src_va;
 	dva = copy_page_dst_va;

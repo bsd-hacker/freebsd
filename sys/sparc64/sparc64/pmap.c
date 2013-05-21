@@ -1843,8 +1843,8 @@ pmap_copy_page(vm_page_t msrc, vm_page_t mdst)
 	vm_paddr_t psrc;
 	struct tte *tp;
 
-	VM_OBJECT_ASSERT_LOCKED(msrc->object);
-	VM_OBJECT_ASSERT_LOCKED(mdst->object);
+	if ((msrc->oflags & VPO_BUSY) == 0)
+		VM_OBJECT_ASSERT_LOCKED(msrc->object);
 	KASSERT((mdst->flags & PG_FICTITIOUS) == 0,
 	    ("pmap_copy_page: fake dst page"));
 	KASSERT((msrc->flags & PG_FICTITIOUS) == 0,

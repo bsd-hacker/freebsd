@@ -2009,8 +2009,8 @@ pmap_copy_page(vm_page_t msrc, vm_page_t mdst)
 {
 	void *dst, *src;
 
-	VM_OBJECT_ASSERT_LOCKED(msrc->object);
-	VM_OBJECT_ASSERT_LOCKED(mdst->object);
+	if ((msrc->oflags & VPO_BUSY) == 0)
+		VM_OBJECT_ASSERT_LOCKED(msrc->object);
 
 	src = (void *)pmap_page_to_va(msrc);
 	dst = (void *)pmap_page_to_va(mdst);
