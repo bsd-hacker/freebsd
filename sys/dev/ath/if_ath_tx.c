@@ -744,6 +744,7 @@ ath_tx_handoff_hw(struct ath_softc *sc, struct ath_txq *txq,
     struct ath_buf *bf)
 {
 	struct ath_hal *ah = sc->sc_ah;
+	struct ath_buf *bf_first;
 
 	/*
 	 * Insert the frame on the outbound list and pass it on
@@ -758,6 +759,13 @@ ath_tx_handoff_hw(struct ath_softc *sc, struct ath_txq *txq,
 	     ("%s: busy status 0x%x", __func__, bf->bf_flags));
 	KASSERT(txq->axq_qnum != ATH_TXQ_SWQ,
 	     ("ath_tx_handoff_hw called for mcast queue"));
+
+	/*
+	 * XXX racy, should hold the PCU lock when checking this,
+	 * and also should ensure that the TX counter is >0!
+	 */
+	KASSERT((sc->sc_inreset_cnt == 0),
+	    ("%s: TX during reset?\n", __func__));
 
 #if 0
 	/*
@@ -776,161 +784,141 @@ ath_tx_handoff_hw(struct ath_softc *sc, struct ath_txq *txq,
 		    __func__, txq->axq_qnum,
 		    (caddr_t)bf->bf_daddr, bf->bf_desc,
 		    txq->axq_depth);
+		/* XXX axq_link needs to be set and updated! */
 		ATH_TXQ_INSERT_TAIL(txq, bf, bf_list);
 		if (bf->bf_state.bfs_aggr)
 			txq->axq_aggr_depth++;
-		/*
-		 * There's no need to update axq_link; the hardware
-		 * is in reset and once the reset is complete, any
-		 * non-empty queues will simply have DMA restarted.
-		 */
 		return;
 		}
 	ATH_PCU_UNLOCK(sc);
 #endif
 
-	/* For now, so not to generate whitespace diffs */
-	if (1) {
-		ATH_TXQ_LOCK(txq);
-#ifdef IEEE80211_SUPPORT_TDMA
-		int qbusy;
+	ATH_TXQ_LOCK(txq);
 
-		ATH_TXQ_INSERT_TAIL(txq, bf, bf_list);
-		qbusy = ath_hal_txqenabled(ah, txq->axq_qnum);
+	/*
+	 * XXX TODO: if there's a holdingbf, then
+	 * ATH_TXQ_PUTRUNNING should be clear.
+	 *
+	 * If there is a holdingbf and the list is empty,
+	 * then axq_link should be pointing to the holdingbf.
+	 *
+	 * Otherwise it should point to the last descriptor
+	 * in the last ath_buf.
+	 *
+	 * In any case, we should really ensure that we
+	 * update the previous descriptor link pointer to
+	 * this descriptor, regardless of all of the above state.
+	 *
+	 * For now this is captured by having axq_link point
+	 * to either the holdingbf (if the TXQ list is empty)
+	 * or the end of the list (if the TXQ list isn't empty.)
+	 * I'd rather just kill axq_link here and do it as above.
+	 */
 
-		ATH_KTR(sc, ATH_KTR_TX, 4,
-		    "ath_tx_handoff: txq=%u, add bf=%p, qbusy=%d, depth=%d",
-		    txq->axq_qnum, bf, qbusy, txq->axq_depth);
-		if (txq->axq_link == NULL) {
-			/*
-			 * Be careful writing the address to TXDP.  If
-			 * the tx q is enabled then this write will be
-			 * ignored.  Normally this is not an issue but
-			 * when tdma is in use and the q is beacon gated
-			 * this race can occur.  If the q is busy then
-			 * defer the work to later--either when another
-			 * packet comes along or when we prepare a beacon
-			 * frame at SWBA.
-			 */
-			if (!qbusy) {
-				ath_hal_puttxbuf(ah, txq->axq_qnum,
-				    bf->bf_daddr);
-				txq->axq_flags &= ~ATH_TXQ_PUTPENDING;
-				DPRINTF(sc, ATH_DEBUG_XMIT,
-				    "%s: TXDP[%u] = %p (%p) lastds=%p depth %d\n",
-				    __func__, txq->axq_qnum,
-				    (caddr_t)bf->bf_daddr, bf->bf_desc,
-				    bf->bf_lastds,
-				    txq->axq_depth);
-				ATH_KTR(sc, ATH_KTR_TX, 5,
-				    "ath_tx_handoff: TXDP[%u] = %p (%p) "
-				    "lastds=%p depth %d",
-				    txq->axq_qnum,
-				    (caddr_t)bf->bf_daddr, bf->bf_desc,
-				    bf->bf_lastds,
-				    txq->axq_depth);
-			} else {
-				txq->axq_flags |= ATH_TXQ_PUTPENDING;
-				DPRINTF(sc, ATH_DEBUG_TDMA | ATH_DEBUG_XMIT,
-				    "%s: Q%u busy, defer enable\n", __func__,
-				    txq->axq_qnum);
-				ATH_KTR(sc, ATH_KTR_TX, 0, "defer enable");
-			}
-		} else {
-			*txq->axq_link = bf->bf_daddr;
-			DPRINTF(sc, ATH_DEBUG_XMIT,
-			    "%s: link[%u](%p)=%p (%p) depth %d\n", __func__,
-			    txq->axq_qnum, txq->axq_link,
-			    (caddr_t)bf->bf_daddr, bf->bf_desc,
-			    txq->axq_depth);
-			ATH_KTR(sc, ATH_KTR_TX, 5,
-			    "ath_tx_handoff: link[%u](%p)=%p (%p) lastds=%p",
-			    txq->axq_qnum, txq->axq_link,
-			    (caddr_t)bf->bf_daddr, bf->bf_desc,
-			    bf->bf_lastds);
+	/*
+	 * Append the frame to the TX queue.
+	 */
+	ATH_TXQ_INSERT_TAIL(txq, bf, bf_list);
+	ATH_KTR(sc, ATH_KTR_TX, 3,
+	    "ath_tx_handoff: non-tdma: txq=%u, add bf=%p "
+	    "depth=%d",
+	    txq->axq_qnum,
+	    bf,
+	    txq->axq_depth);
 
-			if ((txq->axq_flags & ATH_TXQ_PUTPENDING) && !qbusy) {
-				/*
-				 * The q was busy when we previously tried
-				 * to write the address of the first buffer
-				 * in the chain.  Since it's not busy now
-				 * handle this chore.  We are certain the
-				 * buffer at the front is the right one since
-				 * axq_link is NULL only when the buffer list
-				 * is/was empty.
-				 */
-				ath_hal_puttxbuf(ah, txq->axq_qnum,
-					TAILQ_FIRST(&txq->axq_q)->bf_daddr);
-				txq->axq_flags &= ~ATH_TXQ_PUTPENDING;
-				DPRINTF(sc, ATH_DEBUG_TDMA | ATH_DEBUG_XMIT,
-				    "%s: Q%u restarted\n", __func__,
-				    txq->axq_qnum);
-				ATH_KTR(sc, ATH_KTR_TX, 4,
-				  "ath_tx_handoff: txq[%d] restarted, bf=%p "
-				  "daddr=%p ds=%p",
-				    txq->axq_qnum,
-				    bf,
-				    (caddr_t)bf->bf_daddr,
-				    bf->bf_desc);
-			}
-		}
-#else
-		ATH_TXQ_INSERT_TAIL(txq, bf, bf_list);
-		ATH_KTR(sc, ATH_KTR_TX, 3,
-		    "ath_tx_handoff: non-tdma: txq=%u, add bf=%p "
-		    "depth=%d",
-		    txq->axq_qnum,
-		    bf,
+	/*
+	 * If there's a link pointer, update it.
+	 *
+	 * XXX we should replace this with the above logic, just
+	 * to kill axq_link with fire.
+	 */
+	if (txq->axq_link != NULL) {
+		*txq->axq_link = bf->bf_daddr;
+		DPRINTF(sc, ATH_DEBUG_XMIT,
+		    "%s: link[%u](%p)=%p (%p) depth %d\n", __func__,
+		    txq->axq_qnum, txq->axq_link,
+		    (caddr_t)bf->bf_daddr, bf->bf_desc,
 		    txq->axq_depth);
-		if (txq->axq_link == NULL) {
-			ath_hal_puttxbuf(ah, txq->axq_qnum, bf->bf_daddr);
-			DPRINTF(sc, ATH_DEBUG_XMIT,
-			    "%s: TXDP[%u] = %p (%p) depth %d\n",
-			    __func__, txq->axq_qnum,
-			    (caddr_t)bf->bf_daddr, bf->bf_desc,
-			    txq->axq_depth);
-			ATH_KTR(sc, ATH_KTR_TX, 5,
-			    "ath_tx_handoff: non-tdma: TXDP[%u] = %p (%p) "
-			    "lastds=%p depth %d",
-			    txq->axq_qnum,
-			    (caddr_t)bf->bf_daddr, bf->bf_desc,
-			    bf->bf_lastds,
-			    txq->axq_depth);
-
-		} else {
-			*txq->axq_link = bf->bf_daddr;
-			DPRINTF(sc, ATH_DEBUG_XMIT,
-			    "%s: link[%u](%p)=%p (%p) depth %d\n", __func__,
-			    txq->axq_qnum, txq->axq_link,
-			    (caddr_t)bf->bf_daddr, bf->bf_desc,
-			    txq->axq_depth);
-			ATH_KTR(sc, ATH_KTR_TX, 5,
-			    "ath_tx_handoff: non-tdma: link[%u](%p)=%p (%p) "
-			    "lastds=%d",
-			    txq->axq_qnum, txq->axq_link,
-			    (caddr_t)bf->bf_daddr, bf->bf_desc,
-			    bf->bf_lastds);
-
-		}
-#endif /* IEEE80211_SUPPORT_TDMA */
-
-		if (bf->bf_state.bfs_tx_queue != txq->axq_qnum) {
-			device_printf(sc->sc_dev,
-			    "%s: bf=%p, bfs_tx_queue=%d, axq_qnum=%d\n",
-			    __func__,
-			    bf,
-			    bf->bf_state.bfs_tx_queue,
-			    txq->axq_qnum);
-		}
-
-		if (bf->bf_state.bfs_aggr)
-			txq->axq_aggr_depth++;
-		ath_hal_gettxdesclinkptr(ah, bf->bf_lastds, &txq->axq_link);
-		ath_hal_txstart(ah, txq->axq_qnum);
-		ATH_TXQ_UNLOCK(txq);
-		ATH_KTR(sc, ATH_KTR_TX, 1,
-		    "ath_tx_handoff: txq=%u, txstart", txq->axq_qnum);
+		ATH_KTR(sc, ATH_KTR_TX, 5,
+		    "ath_tx_handoff: non-tdma: link[%u](%p)=%p (%p) "
+		    "lastds=%d",
+		    txq->axq_qnum, txq->axq_link,
+		    (caddr_t)bf->bf_daddr, bf->bf_desc,
+		    bf->bf_lastds);
 	}
+
+	/*
+	 * If we've not pushed anything into the hardware yet,
+	 * push the head of the queue into the TxDP.
+	 *
+	 * Once we've started DMA, there's no guarantee that
+	 * updating the TxDP with a new value will actually work.
+	 * So we just don't do that - if we hit the end of the list,
+	 * we keep that buffer around (the "holding buffer") and
+	 * re-start DMA by updating the link pointer of _that_
+	 * descriptor and then restart DMA.
+	 */
+	if (! (txq->axq_flags & ATH_TXQ_PUTRUNNING)) {
+		bf_first = TAILQ_FIRST(&txq->axq_q);
+		txq->axq_flags |= ATH_TXQ_PUTRUNNING;
+		ath_hal_puttxbuf(ah, txq->axq_qnum, bf_first->bf_daddr);
+		DPRINTF(sc, ATH_DEBUG_XMIT,
+		    "%s: TXDP[%u] = %p (%p) depth %d\n",
+		    __func__, txq->axq_qnum,
+		    (caddr_t)bf_first->bf_daddr, bf_first->bf_desc,
+		    txq->axq_depth);
+		ATH_KTR(sc, ATH_KTR_TX, 5,
+		    "ath_tx_handoff: TXDP[%u] = %p (%p) "
+		    "lastds=%p depth %d",
+		    txq->axq_qnum,
+		    (caddr_t)bf_first->bf_daddr, bf_first->bf_desc,
+		    bf_first->bf_lastds,
+		    txq->axq_depth);
+	}
+
+	/*
+	 * Ensure that the bf TXQ matches this TXQ, so later
+	 * checking and holding buffer manipulation is sane.
+	 */
+	if (bf->bf_state.bfs_tx_queue != txq->axq_qnum) {
+		device_printf(sc->sc_dev,
+		    "%s: bf=%p, bfs_tx_queue=%d, axq_qnum=%d\n",
+		    __func__,
+		    bf,
+		    bf->bf_state.bfs_tx_queue,
+		    txq->axq_qnum);
+	}
+
+	/*
+	 * Track aggregate queue depth.
+	 */
+	if (bf->bf_state.bfs_aggr)
+		txq->axq_aggr_depth++;
+
+	/*
+	 * Update the link pointer.
+	 */
+	ath_hal_gettxdesclinkptr(ah, bf->bf_lastds, &txq->axq_link);
+
+	/*
+	 * Start DMA.
+	 *
+	 * If we wrote a TxDP above, DMA will start from here.
+	 *
+	 * If DMA is running, it'll do nothing.
+	 *
+	 * If the DMA engine hit the end of the QCU list (ie LINK=NULL,
+	 * or VEOL) then it stops at the last transmitted write.
+	 * We then append a new frame by updating the link pointer
+	 * in that descriptor and then kick TxE here; it will re-read
+	 * that last descriptor and find the new descriptor to transmit.
+	 *
+	 * This is why we keep the holding descriptor around.
+	 */
+	ath_hal_txstart(ah, txq->axq_qnum);
+	ATH_TXQ_UNLOCK(txq);
+	ATH_KTR(sc, ATH_KTR_TX, 1,
+	    "ath_tx_handoff: txq=%u, txstart", txq->axq_qnum);
 }
 
 /*
@@ -941,12 +929,9 @@ ath_tx_handoff_hw(struct ath_softc *sc, struct ath_txq *txq,
 static void
 ath_legacy_tx_dma_restart(struct ath_softc *sc, struct ath_txq *txq)
 {
-	struct ath_hal *ah = sc->sc_ah;
 	struct ath_buf *bf, *bf_last;
 
 	ATH_TXQ_LOCK_ASSERT(txq);
-	/* This is always going to be cleared, empty or not */
-	txq->axq_flags &= ~ATH_TXQ_PUTPENDING;
 
 	/* XXX make this ATH_TXQ_FIRST */
 	bf = TAILQ_FIRST(&txq->axq_q);
@@ -955,9 +940,34 @@ ath_legacy_tx_dma_restart(struct ath_softc *sc, struct ath_txq *txq)
 	if (bf == NULL)
 		return;
 
-	ath_hal_puttxbuf(ah, txq->axq_qnum, bf->bf_daddr);
-	ath_hal_gettxdesclinkptr(ah, bf_last->bf_lastds, &txq->axq_link);
-	ath_hal_txstart(ah, txq->axq_qnum);
+	DPRINTF(sc, ATH_DEBUG_RESET,
+	    "%s: Q%d: bf=%p, bf_last=%p, daddr=0x%08x\n",
+	    __func__,
+	    txq->axq_qnum,
+	    bf,
+	    bf_last,
+	    (uint32_t) bf->bf_daddr);
+
+#ifdef	ATH_DEBUG
+	if (sc->sc_debug & ATH_DEBUG_RESET)
+		ath_tx_dump(sc, txq);
+#endif
+
+	/*
+	 * This is called from a restart, so DMA is known to be
+	 * completely stopped.
+	 */
+	KASSERT((!(txq->axq_flags & ATH_TXQ_PUTRUNNING)),
+	    ("%s: Q%d: called with PUTRUNNING=1\n",
+	    __func__,
+	    txq->axq_qnum));
+
+	ath_hal_puttxbuf(sc->sc_ah, txq->axq_qnum, bf->bf_daddr);
+	txq->axq_flags |= ATH_TXQ_PUTRUNNING;
+
+	ath_hal_gettxdesclinkptr(sc->sc_ah, bf_last->bf_lastds,
+	    &txq->axq_link);
+	ath_hal_txstart(sc->sc_ah, txq->axq_qnum);
 }
 
 /*
@@ -3098,9 +3108,15 @@ ath_tx_swq(struct ath_softc *sc, struct ieee80211_node *ni,
 		 * the head frame in the list.  Don't schedule the
 		 * TID - let it build some more frames first?
 		 *
+		 * When running A-MPDU, always just check the hardware
+		 * queue depth against the aggregate frame limit.
+		 * We don't want to burst a large number of single frames
+		 * out to the hardware; we want to aggressively hold back.
+		 *
 		 * Otherwise, schedule the TID.
 		 */
-		if (txq->axq_depth + txq->fifo.axq_depth < sc->sc_hwq_limit) {
+		/* XXX TXQ locking */
+		if (txq->axq_depth + txq->fifo.axq_depth < sc->sc_hwq_limit_aggr) {
 			bf = ATH_TID_FIRST(atid);
 			ATH_TID_REMOVE(atid, bf, bf_list);
 
@@ -3124,7 +3140,22 @@ ath_tx_swq(struct ath_softc *sc, struct ieee80211_node *ni,
 
 			ath_tx_tid_sched(sc, atid);
 		}
-	} else if (txq->axq_depth + txq->fifo.axq_depth < sc->sc_hwq_limit) {
+	/*
+	 * If we're not doing A-MPDU, be prepared to direct dispatch
+	 * up to both limits if possible.  This particular corner
+	 * case may end up with packet starvation between aggregate
+	 * traffic and non-aggregate traffic: we wnat to ensure
+	 * that non-aggregate stations get a few frames queued to the
+	 * hardware before the aggregate station(s) get their chance.
+	 *
+	 * So if you only ever see a couple of frames direct dispatched
+	 * to the hardware from a non-AMPDU client, check both here
+	 * and in the software queue dispatcher to ensure that those
+	 * non-AMPDU stations get a fair chance to transmit.
+	 */
+	/* XXX TXQ locking */
+	} else if ((txq->axq_depth + txq->fifo.axq_depth < sc->sc_hwq_limit_nonaggr) &&
+		    (txq->axq_aggr_depth < sc->sc_hwq_limit_aggr)) {
 		/* AMPDU not running, attempt direct dispatch */
 		DPRINTF(sc, ATH_DEBUG_SW_TX, "%s: xmit_normal\n", __func__);
 		/* See if clrdmask needs to be set */
@@ -5329,7 +5360,8 @@ ath_tx_tid_hw_queue_aggr(struct ath_softc *sc, struct ath_node *an,
 		 *
 		 * XXX locking on txq here?
 		 */
-		if (txq->axq_aggr_depth >= sc->sc_hwq_limit ||
+		/* XXX TXQ locking */
+		if (txq->axq_aggr_depth >= sc->sc_hwq_limit_aggr ||
 		    (status == ATH_AGGR_BAW_CLOSED ||
 		     status == ATH_AGGR_LEAK_CLOSED))
 			break;
@@ -5338,6 +5370,15 @@ ath_tx_tid_hw_queue_aggr(struct ath_softc *sc, struct ath_node *an,
 
 /*
  * Schedule some packets from the given node/TID to the hardware.
+ *
+ * XXX TODO: this routine doesn't enforce the maximum TXQ depth.
+ * It just dumps frames into the TXQ.  We should limit how deep
+ * the transmit queue can grow for frames dispatched to the given
+ * TXQ.
+ *
+ * To avoid locking issues, either we need to own the TXQ lock
+ * at this point, or we need to pass in the maximum frame count
+ * from the caller.
  */
 void
 ath_tx_tid_hw_queue_norm(struct ath_softc *sc, struct ath_node *an,
@@ -5442,8 +5483,16 @@ ath_txq_sched(struct ath_softc *sc, struct ath_txq *txq)
 	 * Don't schedule if the hardware queue is busy.
 	 * This (hopefully) gives some more time to aggregate
 	 * some packets in the aggregation queue.
+	 *
+	 * XXX It doesn't stop a parallel sender from sneaking
+	 * in transmitting a frame!
 	 */
-	if (txq->axq_aggr_depth >= sc->sc_hwq_limit) {
+	/* XXX TXQ locking */
+	if (txq->axq_aggr_depth + txq->fifo.axq_depth >= sc->sc_hwq_limit_aggr) {
+		sc->sc_aggr_stats.aggr_sched_nopkt++;
+		return;
+	}
+	if (txq->axq_depth >= sc->sc_hwq_limit_nonaggr) {
 		sc->sc_aggr_stats.aggr_sched_nopkt++;
 		return;
 	}
@@ -5479,7 +5528,11 @@ ath_txq_sched(struct ath_softc *sc, struct ath_txq *txq)
 		 * packets.  If we aren't running aggregation then
 		 * we should still limit the hardware queue depth.
 		 */
-		if (txq->axq_depth >= sc->sc_hwq_limit) {
+		/* XXX TXQ locking */
+		if (txq->axq_aggr_depth + txq->fifo.axq_depth >= sc->sc_hwq_limit_aggr) {
+			break;
+		}
+		if (txq->axq_depth >= sc->sc_hwq_limit_nonaggr) {
 			break;
 		}
 
