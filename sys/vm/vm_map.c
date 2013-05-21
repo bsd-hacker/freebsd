@@ -1806,7 +1806,6 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 
 	if ((prot & (VM_PROT_READ | VM_PROT_EXECUTE)) == 0 || object == NULL)
 		return;
-relock:
 	VM_OBJECT_RLOCK(object);
 	if (object->type == OBJT_DEVICE || object->type == OBJT_SG) {
 		VM_OBJECT_RUNLOCK(object);
@@ -1817,8 +1816,7 @@ relock:
 			VM_OBJECT_WUNLOCK(object);
 			return;
 		}
-		VM_OBJECT_WUNLOCK(object);
-		goto relock;
+		VM_OBJECT_LOCK_DOWNGRADE(object);
 	}
 
 	psize = atop(size);
