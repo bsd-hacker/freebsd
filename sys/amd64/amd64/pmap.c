@@ -4230,13 +4230,8 @@ pmap_zero_page_idle(vm_page_t m)
 void
 pmap_copy_page(vm_page_t msrc, vm_page_t mdst)
 {
-	vm_offset_t dst, src;
-
-	if ((msrc->oflags & VPO_BUSY) == 0)
-		VM_OBJECT_ASSERT_LOCKED(msrc->object);
-
-	src = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(msrc));
-	dst = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(mdst));
+	vm_offset_t src = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(msrc));
+	vm_offset_t dst = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(mdst));
 
 	pagecopy((void *)src, (void *)dst);
 }
@@ -5540,5 +5535,17 @@ DB_SHOW_COMMAND(pte, pmap_print_pte)
 	}
 	pte = pmap_pde_to_pte(pde, va);
 	db_printf(" pte %#016lx\n", *pte);
+}
+
+DB_SHOW_COMMAND(phys2dmap, pmap_phys2dmap)
+{
+	vm_paddr_t a;
+
+	if (have_addr) {
+		a = (vm_paddr_t)addr;
+		db_printf("0x%jx\n", (uintmax_t)PHYS_TO_DMAP(a));
+	} else {
+		db_printf("show phys2dmap addr\n");
+	}
 }
 #endif

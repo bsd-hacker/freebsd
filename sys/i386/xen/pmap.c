@@ -3433,9 +3433,6 @@ pmap_copy_page(vm_page_t src, vm_page_t dst)
 {
 	struct sysmaps *sysmaps;
 
-	if ((src->oflags & VPO_BUSY) == 0)
-		VM_OBJECT_ASSERT_LOCKED(src->object);
-
 	sysmaps = &sysmaps_pcpu[PCPU_GET(cpuid)];
 	mtx_lock(&sysmaps->lock);
 	if (*sysmaps->CMAP1)
