@@ -2320,7 +2320,7 @@ retry:
 				continue;
 			vm_page_lock(m);
 			VM_OBJECT_WUNLOCK(devobj);
-			if (vm_page_sleep_if_busy(m, true, "915unm"))
+			if (vm_page_sleep_if_busy(m, "915unm"))
 				goto retry;
 			vm_page_unlock(m);
 			cdev_pager_free_page(devobj, m);

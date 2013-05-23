@@ -872,7 +872,7 @@ rescan:
 		if (p->valid == 0)
 			continue;
 		vm_page_lock(p);
-		if (vm_page_sleep_if_busy(p, TRUE, "vpcwai")) {
+		if (vm_page_sleep_if_busy(p, "vpcwai")) {
 			if (object->generation != curgeneration) {
 				if ((flags & OBJPC_SYNC) != 0)
 					goto rescan;
@@ -1927,7 +1927,7 @@ again:
 			vm_page_unlock(p);
 			continue;
 		}
-		if (vm_page_sleep_if_busy(p, TRUE, "vmopar"))
+		if (vm_page_sleep_if_busy(p, "vmopar"))
 			goto again;
 		KASSERT((p->flags & PG_FICTITIOUS) == 0,
 		    ("vm_object_page_remove: page %p is fictitious", p));

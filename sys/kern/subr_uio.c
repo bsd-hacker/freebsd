@@ -108,7 +108,7 @@ vm_pgmoveco(vm_map_t mapa, vm_offset_t kaddr, vm_offset_t uaddr)
 retry:
 	if ((user_pg = vm_page_lookup(uobject, upindex)) != NULL) {
 		vm_page_lock(user_pg);
-		if (vm_page_sleep_if_busy(user_pg, TRUE, "vm_pgmoveco"))
+		if (vm_page_sleep_if_busy(user_pg, "vm_pgmoveco"))
 			goto retry;
 		pmap_remove_all(user_pg);
 		vm_page_free(user_pg);

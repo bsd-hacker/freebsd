@@ -380,7 +380,7 @@ RetryFault:;
 				if (fs.m == vm_page_lookup(fs.object,
 				    fs.pindex)) {
 					vm_page_lock(fs.m);
-					if (!vm_page_sleep_if_busy(fs.m, TRUE,
+					if (!vm_page_sleep_if_busy(fs.m,
 					    "vmpfw"))
 						vm_page_unlock(fs.m);
 				}

@@ -790,12 +790,12 @@ _vm_page_sleep_onpage(vm_page_t m, int pri, const char *wmesg, int  timo)
  *	The given page and object containing it must be locked.
  */
 int
-vm_page_sleep_if_busy(vm_page_t m, int also_m_busy, const char *msg)
+vm_page_sleep_if_busy(vm_page_t m, const char *msg)
 {
 	vm_object_t obj;
 
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
-	if ((m->oflags & VPO_BUSY) || (also_m_busy && m->busy)) {
+	if ((m->oflags & VPO_BUSY) != 0 || m->busy != 0) {
 		/*
 		 * The page-specific object must be cached because page
 		 * identity can change during the sleep, causing the
