@@ -764,6 +764,22 @@ vm_page_readahead_finish(vm_page_t m)
 }
 
 /*
+ *	_vm_page_sleep_onpage:
+ *
+ *	Sleep and release the page lock, using the page pointer as wchan.
+ *
+ *	The given page must be locked.
+ */
+static inline int
+_vm_page_sleep_onpage(vm_page_t m, int pri, const char *wmesg, int  timo)
+{
+
+	vm_page_lock_assert(m, MA_OWNED);
+	m->flags |= PG_WANTED;
+	return (msleep(m, vm_page_lockptr(m), pri | PDROP, wmesg, timo));
+}
+
+/*
  *	vm_page_sleep_if_busy:
  *
  *	Sleep and release the page queues lock if VPO_BUSY is set or,
@@ -789,7 +805,7 @@ vm_page_sleep_if_busy(vm_page_t m, int also_m_busy, const char *msg)
 		 */
 		obj = m->object;
 		VM_OBJECT_WUNLOCK(obj);
-		vm_page_sleep(m, msg);
+		_vm_page_sleep_onpage(m, PVM, msg, 0);
 		VM_OBJECT_WLOCK(obj);
 		return (TRUE);
 	}
@@ -799,17 +815,15 @@ vm_page_sleep_if_busy(vm_page_t m, int also_m_busy, const char *msg)
 /*
  *	vm_page_sleep_onpage:
  *
- *	Sleep and release the page lock, using the page pointer as wchan.
+ *	External version of _vm_page_sleep_onpage().
  *
- *	The given page must be locked.
+ *	Check the inline version for comments.
  */
 int
 vm_page_sleep_onpage(vm_page_t m, int pri, const char *wmesg, int  timo)
 {
 
-	vm_page_lock_assert(m, MA_OWNED);
-	m->flags |= PG_WANTED;
-	return (msleep(m, vm_page_lockptr(m), pri | PDROP, wmesg, timo));
+	return (_vm_page_sleep_onpage(m, pri, wmesg, timo));
 }
 
 /*
