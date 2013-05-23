@@ -486,7 +486,7 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	}
 	vm_page_lock(m);
 	vm_page_hold(m);
-	vm_page_wakeup(m);
+	vm_page_wakeup_locked(m);
 	vm_page_unlock(m);
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&m, offset, tlen, uio);
@@ -499,7 +499,6 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 		/* Requeue to maintain LRU ordering. */
 		vm_page_requeue(m);
 	}
-	vm_page_wakeup_locked(m);
 	vm_page_unlock(m);
 	VM_OBJECT_WUNLOCK(tobj);
 
@@ -603,7 +602,7 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 	}
 	vm_page_lock(tpg);
 	vm_page_hold(tpg);
-	vm_page_wakeup(tpg);
+	vm_page_wakeup_locked(tpg);
 	vm_page_unlock(tpg);
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&tpg, offset, tlen, uio);
@@ -618,7 +617,6 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 		/* Requeue to maintain LRU ordering. */
 		vm_page_requeue(tpg);
 	}
-	vm_page_wakeup_locked(tpg);
 	vm_page_unlock(tpg);
 	VM_OBJECT_WUNLOCK(tobj);
 
