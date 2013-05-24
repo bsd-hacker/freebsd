@@ -72,6 +72,7 @@ struct macio_softc {
 	int          sc_rev;
 	int          sc_devid;
 	uint32_t     saved_fcrs[6];
+	uint32_t     saved_mbcr;
 };
 
 static MALLOC_DEFINE(M_MACIO, "macio", "macio device information");
@@ -138,7 +139,7 @@ static driver_t macio_pci_driver = {
 
 devclass_t macio_devclass;
 
-DRIVER_MODULE(macio, pci, macio_pci_driver, macio_devclass, 0, 0);
+EARLY_DRIVER_MODULE(macio, pci, macio_pci_driver, macio_devclass, 0, 0, BUS_PASS_BUS);
 
 /*
  * PCI ID search table
@@ -629,27 +630,40 @@ static int macio_suspend(device_t dev)
 	if (error)
 		return (error);
 
+	if (bus_current_pass != BUS_PASS_BUS) {
+		return (EAGAIN);
+	}
+	powerpc_sync();
+
 	sc->saved_fcrs[0] = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
 	sc->saved_fcrs[1] = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
 	sc->saved_fcrs[2] = bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
 	sc->saved_fcrs[3] = bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
+	sc->saved_fcrs[4] = bus_read_4(sc->sc_memr, KEYLARGO_FCR4);
+	sc->saved_fcrs[5] = bus_read_4(sc->sc_memr, KEYLARGO_FCR5);
 
-	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
+	temp = sc->saved_fcrs[0];
 	temp |= FCR0_USB_REF_SUSPEND;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, temp);
+	eieio(); powerpc_sync();
+	DELAY(1000);
+
 	temp &= ~(FCR0_SCCA_ENABLE | FCR0_SCCB_ENABLE |
 			FCR0_SCC_CELL_ENABLE | FCR0_IRDA_ENABLE |
 			FCR0_IRDA_CLK32_ENABLE |
 			FCR0_IRDA_CLK19_ENABLE);
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, temp);
-	DELAY(1000);
+	eieio(); powerpc_sync();
 
 	if (sc->sc_devid == 0x22) {
 		temp = bus_read_4(sc->sc_memr, KEYLARGO_MEDIABAY);
+		sc->saved_mbcr = temp;
 		temp |= KEYLARGO_MB0_DEV_ENABLE;
 		bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, temp);
+		eieio(); powerpc_sync();
 	}
 
-	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
+	temp = sc->saved_fcrs[1];
 	temp &= ~(FCR1_AUDIO_SEL_22MCLK | FCR1_AUDIO_CLK_ENABLE |
 			FCR1_AUDIO_CLKOUT_ENABLE | FCR1_AUDIO_CELL_ENABLE |
 			FCR1_I2S0_CELL_ENABLE | FCR1_I2S0_CLK_ENABLE |
@@ -661,25 +675,25 @@ static int macio_suspend(device_t dev)
 			FCR1_UIDE_ENABLE
 		 );
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, temp);
+	eieio(); powerpc_sync();
 
-	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
+	temp = sc->saved_fcrs[2];
 	temp &= ~FCR2_IOBUS_ENABLE;
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, temp);
+	eieio(); powerpc_sync();
 
-	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
+	temp = sc->saved_fcrs[3];
 	temp |= (FCR3_SHUTDOWN_PLL_KW6 | FCR3_SHUTDOWN_PLL_KW4 |
 			FCR3_SHUTDOWN_PLL_KW35 | FCR3_SHUTDOWN_PLL_KW12);
 	temp &= ~(FCR3_CLK_66_ENABLE | FCR3_CLK_49_ENABLE |
 			FCR3_CLK_45_ENABLE | FCR3_CLK_31_ENABLE |
 			FCR3_TMR_CLK18_ENABLE | FCR3_I2S1_CLK18_ENABLE |
-			FCR3_I2S0_CLK18_ENABLE | FCR3_VA_CLK16_ENABLE);
+			FCR3_I2S0_CLK18_ENABLE | FCR3_VIA_CLK16_ENABLE);
 	if (sc->sc_rev >= 2)
 		temp |= (FCR3_SHUTDOWN_PLL_2X | FCR3_SHUTDOWN_PLL_TOTAL);
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, temp);
-	/* Delay for a millisecond to let things settle. */
-	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
-	DELAY(1000);
-
+	eieio(); powerpc_sync();
+	powerpc_sync();
 	return (0);
 }
 
@@ -687,26 +701,20 @@ static int macio_resume(device_t dev)
 {
 	struct macio_softc *sc = device_get_softc(dev);
 
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, sc->saved_fcrs[0]);
-	bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
-	DELAY(10);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, sc->saved_fcrs[1]);
-	bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
-	DELAY(10);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, sc->saved_fcrs[2]);
-	bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
-	DELAY(10);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, sc->saved_fcrs[3]);
-	bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
-	DELAY(10);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR4, sc->saved_fcrs[4]);
-	bus_read_4(sc->sc_memr, KEYLARGO_FCR4);
-	DELAY(10);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->saved_fcrs[5]);
-	bus_read_4(sc->sc_memr, KEYLARGO_FCR5);
-	DELAY(10);
+	if (bus_current_pass == BUS_PASS_BUS) {
+		if (sc->sc_devid == 0x22)
+			bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, sc->saved_mbcr);
 
-	bus_generic_resume(dev);
+		bus_write_4(sc->sc_memr, KEYLARGO_FCR0, sc->saved_fcrs[0]);
+		bus_write_4(sc->sc_memr, KEYLARGO_FCR1, sc->saved_fcrs[1]);
+		bus_write_4(sc->sc_memr, KEYLARGO_FCR2, sc->saved_fcrs[2]);
+		bus_write_4(sc->sc_memr, KEYLARGO_FCR3, sc->saved_fcrs[3]);
+		bus_write_4(sc->sc_memr, KEYLARGO_FCR4, sc->saved_fcrs[4]);
+		bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->saved_fcrs[5]);
+	}
 
-	return (0);
+	/* Let things settle. */
+	DELAY(1000);
+
+	return (bus_generic_resume(dev));
 }
