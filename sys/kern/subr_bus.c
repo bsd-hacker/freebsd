@@ -86,6 +86,7 @@ struct devclass {
 	device_t	*devices;	/* array of devices indexed by unit */
 	int		maxunit;	/* size of devices array */
 	int		flags;
+	int		pass;
 #define DC_HAS_CHILDREN		1
 
 	struct sysctl_ctx_list sysctl_ctx;
@@ -130,6 +131,7 @@ struct device {
 #define	DF_DONENOMATCH	0x20		/* don't execute DEVICE_NOMATCH again */
 #define	DF_EXTERNALSOFTC 0x40		/* softc not allocated by us */
 #define	DF_REBID	0x80		/* Can rebid after attach */
+#define DF_SUSPENDED	0x100		/* Device is suspended. */
 	u_int	order;			/**< order from device_add_child_ordered() */
 	void	*ivars;			/**< instance variables  */
 	void	*softc;			/**< current driver's variables  */
@@ -1079,6 +1081,7 @@ devclass_add_driver(devclass_t dc, driver_t *driver, int pass, devclass_t *dcp)
 	TAILQ_INSERT_TAIL(&dc->drivers, dl, link);
 	driver->refs++;		/* XXX: kobj_mtx */
 	dl->pass = pass;
+	(*dcp)->pass = pass;	/* Used in suspend/resume. */
 	driver_register_pass(dl);
 
 	devclass_driver_added(dc, driver);
@@ -3532,19 +3535,29 @@ int
 bus_generic_suspend(device_t dev)
 {
 	int		error;
+	int		again = 0;
 	device_t	child, child2;
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		error = DEVICE_SUSPEND(child);
-		if (error) {
-			for (child2 = TAILQ_FIRST(&dev->children);
-			     child2 && child2 != child;
-			     child2 = TAILQ_NEXT(child2, link))
-				DEVICE_RESUME(child2);
-			return (error);
+		if (!(child->flags & DF_SUSPENDED)) {
+			error = DEVICE_SUSPEND(child);
+			if (error && error != EAGAIN) {
+				for (child2 = TAILQ_FIRST(&dev->children);
+				     child2 && child2 != child;
+				     child2 = TAILQ_NEXT(child2, link)) {
+					DEVICE_RESUME(child2);
+					child2->flags &= ~DF_SUSPENDED;
+				}
+				return (error);
+			}
+			if (error == EAGAIN) {
+				again = EAGAIN;
+				continue;
+			}
+			child->flags |= DF_SUSPENDED;
 		}
 	}
-	return (0);
+	return (again);
 }
 
 /**
@@ -3557,12 +3570,31 @@ int
 bus_generic_resume(device_t dev)
 {
 	device_t	child;
+	int		error = 0;
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		DEVICE_RESUME(child);
-		/* if resume fails, there's nothing we can usefully do... */
+		if (child->flags & DF_SUSPENDED) {
+			if (child->devclass->pass > bus_current_pass) {
+				if (bootverbose)
+					printf("Skipping: %s: %d, %d\n",
+					    child->nameunit,
+					    child->devclass->pass,
+					    bus_current_pass);
+				error = EAGAIN;
+				continue;
+			}
+			if (DEVICE_RESUME(child) == EAGAIN) {
+				error = EAGAIN;
+				continue;
+			}
+			/* if resume fails, there's nothing we can usefully do... */
+			child->flags &= ~DF_SUSPENDED;
+		}
+		else
+			if (bootverbose)
+				printf("Skipping %s: already resumed\n", child->nameunit);
 	}
-	return (0);
+	return (error);
 }
 
 /**
@@ -4367,11 +4399,35 @@ bus_get_dma_tag(device_t dev)
 static int
 root_resume(device_t dev)
 {
-	int error;
+	struct driverlink *dl;
+	int error = 0;
 
-	error = bus_generic_resume(dev);
+	TAILQ_FOREACH(dl, &passes, passlink) {
+		bus_current_pass = dl->pass;
+		error = bus_generic_resume(dev);
+
+		if (error != EAGAIN)
+			break;
+	}
+
 	if (error == 0)
 		devctl_notify("kern", "power", "resume", NULL);
+	return (error);
+}
+
+static int
+root_suspend(device_t dev)
+{
+	struct driverlink *dl;
+	int error = 0;
+
+	TAILQ_FOREACH_REVERSE(dl, &passes, driver_list, passlink) {
+		bus_current_pass = dl->pass;
+		error = bus_generic_suspend(dev);
+		if (error != EAGAIN)
+			break;
+	}
+
 	return (error);
 }
 
@@ -4412,7 +4468,7 @@ root_child_present(device_t dev, device_t child)
 static kobj_method_t root_methods[] = {
 	/* Device interface */
 	KOBJMETHOD(device_shutdown,	bus_generic_shutdown),
-	KOBJMETHOD(device_suspend,	bus_generic_suspend),
+	KOBJMETHOD(device_suspend,	root_suspend),
 	KOBJMETHOD(device_resume,	root_resume),
 
 	/* Bus interface */
