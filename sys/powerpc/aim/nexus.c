@@ -195,7 +195,7 @@ static driver_t nexus_driver = {
 
 static devclass_t nexus_devclass;
 
-DRIVER_MODULE(nexus, root, nexus_driver, nexus_devclass, 0, 0);
+EARLY_DRIVER_MODULE(nexus, root, nexus_driver, nexus_devclass, 0, 0, BUS_PASS_BUS);
 
 static int
 nexus_probe(device_t dev)
@@ -523,4 +523,3 @@ nexus_ofw_get_compat(device_t bus, device_t dev)
 	
 	return (dinfo->ndi_compatible);
 }
-

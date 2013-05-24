@@ -247,6 +247,7 @@ ofw_bus_lookup_imap(phandle_t node, struct ofw_bus_iinfo *ii, void *reg,
 	    ("ofw_bus_lookup_imap: register size too small: %d < %d",
 		regsz, ii->opi_addrc));
 	rv = OF_getprop(node, "reg", reg, regsz);
+	printf("rv: %d, %x\n", rv, node);
 	if (rv < regsz)
 		panic("ofw_bus_lookup_imap: could not get reg property");
 	return (ofw_bus_search_intrmap(pintr, pintrsz, reg, ii->opi_addrc,

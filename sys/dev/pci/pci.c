@@ -184,7 +184,7 @@ static device_method_t pci_methods[] = {
 DEFINE_CLASS_0(pci, pci_driver, pci_methods, sizeof(struct pci_softc));
 
 static devclass_t pci_devclass;
-DRIVER_MODULE(pci, pcib, pci_driver, pci_devclass, pci_modevent, 0);
+EARLY_DRIVER_MODULE(pci, pcib, pci_driver, pci_devclass, pci_modevent, 0, BUS_PASS_BUS);
 MODULE_VERSION(pci, 1);
 
 static char	*pci_vendordata;
@@ -3397,7 +3397,7 @@ pci_resume(device_t dev)
 		case PCIC_MEMORY:
 		case PCIC_BRIDGE:
 		case PCIC_BASEPERIPH:
-			DEVICE_RESUME(child);
+			error = DEVICE_RESUME(child);
 			break;
 		}
 	}
@@ -3410,11 +3410,11 @@ pci_resume(device_t dev)
 		case PCIC_BASEPERIPH:
 			break;
 		default:
-			DEVICE_RESUME(child);
+			error = DEVICE_RESUME(child);
 		}
 	}
 	free(devlist, M_TEMP);
-	return (0);
+	return (error);
 }
 
 static void

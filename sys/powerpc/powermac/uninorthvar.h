@@ -28,6 +28,8 @@
 #ifndef	_POWERPC_POWERMAC_UNINORTHVAR_H_
 #define	_POWERPC_POWERMAC_UNINORTHVAR_H_
 
+#include <dev/ofw/ofw_bus_subr.h>
+#include <dev/ofw/ofw_pci.h>
 #include <powerpc/ofw/ofw_pci.h>
 
 struct uninorth_softc {
@@ -101,5 +103,5 @@ struct unin_chip_devinfo {
 #define UNIN_MPIC_OUTPUT_ENABLE	0x4
 
 extern int unin_chip_sleep(device_t dev, int idle);
-extern int unin_chip_resume(device_t dev);
+extern int unin_chip_wake(device_t dev);
 #endif  /* _POWERPC_POWERMAC_UNINORTHVAR_H_ */

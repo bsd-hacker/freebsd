@@ -264,4 +264,4 @@ static driver_t pci_hostb_driver = {
 
 static devclass_t pci_hostb_devclass;
 
-DRIVER_MODULE(hostb, pci, pci_hostb_driver, pci_hostb_devclass, 0, 0);
+EARLY_DRIVER_MODULE(hostb, pci, pci_hostb_driver, pci_hostb_devclass, 0, 0, BUS_PASS_BUS);

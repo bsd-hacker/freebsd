@@ -66,6 +66,7 @@ static MALLOC_DEFINE(M_UNIN, "unin", "unin device information");
 static int  unin_chip_probe(device_t);
 static int  unin_chip_attach(device_t);
 static int  unin_chip_suspend(device_t);
+static int  unin_chip_resume(device_t);
 
 /*
  * Bus interface.
@@ -103,8 +104,8 @@ static device_method_t unin_chip_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,         unin_chip_probe),
 	DEVMETHOD(device_attach,        unin_chip_attach),
-	DEVMETHOD(device_suspend,	unin_chip_suspend),
-	DEVMETHOD(device_resume,	unin_chip_resume),
+	DEVMETHOD(device_suspend,       unin_chip_suspend),
+	DEVMETHOD(device_resume,        unin_chip_resume),
 
 	/* Bus interface */
 	DEVMETHOD(bus_print_child,      unin_chip_print_child),
@@ -146,7 +147,7 @@ static devclass_t	unin_chip_devclass;
  */
 static device_t		unin_chip;
 
-DRIVER_MODULE(unin, nexus, unin_chip_driver, unin_chip_devclass, 0, 0);
+EARLY_DRIVER_MODULE(unin, nexus, unin_chip_driver, unin_chip_devclass, 0, 0, BUS_PASS_BUS);
 
 /*
  * Add an interrupt to the dev's resource list if present
@@ -633,16 +634,38 @@ unin_chip_get_devinfo(device_t dev, device_t child)
 	return (&dinfo->udi_obdinfo);
 }
 
-static int  unin_chip_suspend(device_t dev)
+static int
+unin_chip_suspend(device_t dev)
 {
 	int error;
 
 	error = bus_generic_suspend(dev);
-	return 0;
+
+	if (error)
+		return (error);
+
+	if (bus_current_pass == BUS_PASS_BUS)
+		error = unin_chip_sleep(dev, 0);
+	else
+		error = EAGAIN;
+
+	return (error);
 }
 
-int  unin_chip_resume(device_t dev)
+static int
+unin_chip_resume(device_t dev)
 {
+
+	if (bus_current_pass == BUS_PASS_BUS)
+		unin_chip_wake(dev);
+
+	return (bus_generic_resume(dev));
+}
+
+int
+unin_chip_wake(device_t dev)
+{
+
 	if (dev == NULL)
 		dev = unin_chip;
 	unin_update_reg(dev, UNIN_PWR_MGMT, UNIN_PWR_NORMAL, UNIN_PWR_MASK);
@@ -650,11 +673,11 @@ int  unin_chip_resume(device_t dev)
 	unin_update_reg(dev, UNIN_HWINIT_STATE, UNIN_RUNNING, 0);
 	DELAY(100);
 
-	bus_generic_resume(dev);
 	return (0);
 }
 
-int unin_chip_sleep(device_t dev, int idle)
+int
+unin_chip_sleep(device_t dev, int idle)
 {
 	if (dev == NULL)
 		dev = unin_chip;
@@ -666,5 +689,6 @@ int unin_chip_sleep(device_t dev, int idle)
 	else
 		unin_update_reg(dev, UNIN_PWR_MGMT, UNIN_PWR_SLEEP, UNIN_PWR_MASK);
 	DELAY(10);
+
 	return (0);
 }
