@@ -338,9 +338,9 @@ macgpio_suspend(device_t dev)
 	sc->sc_saved_gpio_levels[1] = bus_read_4(sc->sc_gpios, GPIO_LEVELS_1);
 
 	for (i = 0; i < GPIO_COUNT; i++)
-		sc->sc_saved_gpios[i] = bus_read_1(sc->sc_gpios, GPIO_BASE);
+		sc->sc_saved_gpios[i] = bus_read_1(sc->sc_gpios, GPIO_BASE + i);
 	for (i = 0; i < GPIO_EXTINT_COUNT; i++)
-		sc->sc_saved_extint_gpios[i] = bus_read_1(sc->sc_gpios, GPIO_EXTINT_BASE);
+		sc->sc_saved_extint_gpios[i] = bus_read_1(sc->sc_gpios, GPIO_EXTINT_BASE + i);
 
 	return (0);
 }
@@ -356,9 +356,9 @@ macgpio_resume(device_t dev)
 	bus_write_4(sc->sc_gpios, GPIO_LEVELS_1, sc->sc_saved_gpio_levels[1]);
 
 	for (i = 0; i < GPIO_COUNT; i++)
-		bus_write_1(sc->sc_gpios, GPIO_BASE, sc->sc_saved_gpios[i]);
+		bus_write_1(sc->sc_gpios, GPIO_BASE + i, sc->sc_saved_gpios[i]);
 	for (i = 0; i < GPIO_EXTINT_COUNT; i++)
-		bus_write_1(sc->sc_gpios, GPIO_EXTINT_BASE, sc->sc_saved_extint_gpios[i]);
+		bus_write_1(sc->sc_gpios, GPIO_EXTINT_BASE + i, sc->sc_saved_extint_gpios[i]);
 
 	return (0);
 }
