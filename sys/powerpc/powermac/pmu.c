@@ -67,6 +67,7 @@ __FBSDID("$FreeBSD$");
 #include "clock_if.h"
 #include "pmuvar.h"
 #include "viareg.h"
+#include "uninorthvar.h"	/* For unin_chip_sleep()/unin_chip_wake() */
 
 #define PMU_DEFAULTS	PMU_INT_TICK | PMU_INT_ADB | \
 	PMU_INT_PCEJECT | PMU_INT_SNDBRT | \
@@ -106,8 +107,11 @@ static int	pmu_acline_state(SYSCTL_HANDLER_ARGS);
 static int	pmu_query_battery(struct pmu_softc *sc, int batt, 
 		    struct pmu_battstate *info);
 static int	pmu_battquery_sysctl(SYSCTL_HANDLER_ARGS);
-static void pmu_restore_state(struct pmu_softc *sc);
-static void pmu_save_state(struct pmu_softc *sc);
+static void	pmu_restore_state(struct pmu_softc *sc);
+static void	pmu_save_state(struct pmu_softc *sc);
+static int	pmu_suspend(device_t);
+static int	pmu_resume(device_t);
+static void	pmu_sleep_int(void);
 
 /*
  * List of battery-related sysctls we might ask for
@@ -130,8 +134,8 @@ static device_method_t  pmu_methods[] = {
 	DEVMETHOD(device_attach,	pmu_attach),
         DEVMETHOD(device_detach,        pmu_detach),
         DEVMETHOD(device_shutdown,      bus_generic_shutdown),
-        DEVMETHOD(device_suspend,       bus_generic_suspend),
-        DEVMETHOD(device_resume,        bus_generic_resume),
+        DEVMETHOD(device_suspend,       pmu_suspend),
+        DEVMETHOD(device_resume,        pmu_resume),
 
 	/* ADB bus interface */
 	DEVMETHOD(adb_hb_send_raw_packet,   pmu_adb_send),
@@ -554,14 +558,23 @@ static void
 pmu_restore_state(struct pmu_softc *sc)
 {
 	pmu_write_reg(sc, vBufA, sc->saved_regs[0]);
+	eieio();
 	pmu_write_reg(sc, vDirA, sc->saved_regs[1]);
+	eieio();
 	pmu_write_reg(sc, vBufB, sc->saved_regs[2]);
+	eieio();
 	pmu_write_reg(sc, vDirB, sc->saved_regs[3]);
+	eieio();
 	pmu_write_reg(sc, vPCR, sc->saved_regs[4]);
+	eieio();
 	pmu_write_reg(sc, vACR, sc->saved_regs[5]);
+	eieio();
 	pmu_write_reg(sc, vIER, sc->saved_regs[6]);
+	eieio();
 	pmu_write_reg(sc, vT1C, sc->saved_regs[7]);
+	eieio();
 	pmu_write_reg(sc, vT1CH, sc->saved_regs[8]);
+	eieio();
 }
 
 static int
@@ -1067,17 +1080,54 @@ pmu_settime(device_t dev, struct timespec *ts)
 	return (0);
 }
 
+static int
+pmu_suspend(device_t dev)
+{
+	uint8_t resp[16];
+	uint8_t clrcmd[] = {PMU_PWR_CLR_POWERUP_EVENTS, 0xff, 0xff};
+	uint8_t setcmd[] = {PMU_PWR_SET_POWERUP_EVENTS, 0,
+	    PMU_PWR_WAKEUP_LID_OPEN|PMU_PWR_WAKEUP_KEY};
+	uint8_t sleepcmd[] = {'M', 'A', 'T', 'T'};
+	uint8_t reg = 0;
+	struct pmu_softc *sc;
+
+	sc = device_get_softc(dev);
+	mtx_lock(&sc->sc_mutex);
+	pmu_send(sc, PMU_SET_IMASK, 1, &reg, 16, resp);
+	pmu_send(sc, PMU_POWER_EVENTS, 3, clrcmd, 16, resp);
+	pmu_send(sc, PMU_POWER_EVENTS, 3, setcmd, 2, resp);
+
+	pmu_send(sc, PMU_SLEEP, 4, sleepcmd, 16, resp);
+	pmu_save_state(sc);
+	mtx_unlock(&sc->sc_mutex);
+
+	return (0);
+}
+
+static int
+pmu_resume(device_t dev)
+{
+	uint8_t resp[16];
+	uint8_t cmd[2] = {2, 0};
+	struct pmu_softc *sc;
+	uint8_t reg;
+
+	sc = device_get_softc(dev);
+	mtx_lock(&sc->sc_mutex);
+	pmu_restore_state(sc);
+	pmu_send(sc, PMU_SYSTEM_READY, 1, cmd, 16, resp);
+	reg = PMU_DEFAULTS;
+	pmu_send(sc, PMU_SET_IMASK, 1, &reg, 16, resp);
+	mtx_unlock(&sc->sc_mutex);
+
+	return (0);
+}
+
 static jmp_buf resetjb;
 static register_t sprgs[4];
 static register_t srrs[2];
-/* static register_t sprs[1]; */
 extern void *ap_pcpu;
-extern int unin_chip_sleep(device_t dev, int idle);
-extern int unin_chip_resume(device_t dev);
 extern u_quad_t ap_timebase;
-extern void move_sp(uint32_t *newptr);
-extern void pmu_sleep_int(void);
-extern void low_sleep_handler(void);
 
 void pmu_sleep_int(void)
 {
@@ -1133,45 +1183,23 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 {
 	u_int sleep = 0;
 	int error;
-	struct pmu_softc *sc = arg1;
-	uint8_t clrcmd[] = {PMU_PWR_CLR_POWERUP_EVENTS, 0xff, 0xff};
-	uint8_t setcmd[] = {PMU_PWR_SET_POWERUP_EVENTS, 0,
-	    PMU_PWR_WAKEUP_LID_OPEN|PMU_PWR_WAKEUP_KEY};
-	uint8_t sleepcmd[] = {'M', 'A', 'T', 'T'};
-	uint8_t resp[16];
-	uint8_t reg;
-	uint8_t cmd[2] = {2, 0};
 
 	error = sysctl_handle_int(oidp, &sleep, 0, req);
 
 	if (error || !req->newptr)
 		return (error);
 
+	mtx_lock(&Giant);
 	error = DEVICE_SUSPEND(root_bus);
-	mtx_lock(&sc->sc_mutex);
 	if (error == 0) {
-		mtx_lock(&Giant);
 		spinlock_enter();
-		reg = 0;
-		pmu_send(sc, PMU_SET_IMASK, 1, &reg, 16, resp);
-		pmu_send(sc, PMU_POWER_EVENTS, 3, clrcmd, 16, resp);
-		pmu_send(sc, PMU_POWER_EVENTS, 3, setcmd, 2, resp);
-		pmu_save_state(sc);
-
-		pmu_send(sc, PMU_SLEEP, 4, sleepcmd, 16, resp);
-		unin_chip_sleep(NULL, 0);
+		//DELAY(5000000);
 		pmu_sleep_int();
-		unin_chip_resume(NULL);
 
-		pmu_restore_state(sc);
-		pmu_send(sc, PMU_SYSTEM_READY, 1, cmd, 16, resp);
-		reg = PMU_DEFAULTS;
-		pmu_send(sc, PMU_SET_IMASK, 1, &reg, 16, resp);
 		spinlock_exit();
-		mtx_unlock(&Giant);
+		DEVICE_RESUME(root_bus);
 	}
-	mtx_unlock(&sc->sc_mutex);
-	DEVICE_RESUME(root_bus);
+	mtx_unlock(&Giant);
 
 	return (error);
 }
@@ -1199,7 +1227,7 @@ pmu_set_speed(int high_speed)
 	pmu_send(sc, PMU_CPU_SPEED, 5, sleepcmd, 16, resp);
 	unin_chip_sleep(NULL, 1);
 	pmu_sleep_int();
-	unin_chip_resume(NULL);
+	unin_chip_wake(NULL);
 
 	spinlock_exit();
 	pmu_write_reg(sc, vIER, 0x90);
