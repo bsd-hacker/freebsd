@@ -340,13 +340,14 @@ ata_macio_begin_transaction(struct ata_request *request)
 static int
 ata_macio_suspend(device_t dev)
 {
-	struct ata_channel *ch = device_get_softc(dev);
+	struct ata_dbdma_channel *ch = device_get_softc(dev);
 	int error;
 
-	if (!ch->attached)
+	if (!ch->sc_ch.attached)
 		return (0);
 
 	error = ata_suspend(dev);
+	dbdma_save_state(ch->dbdma);
 
 	return (error);
 }
@@ -354,12 +355,13 @@ ata_macio_suspend(device_t dev)
 static int
 ata_macio_resume(device_t dev)
 {
-	struct ata_channel *ch = device_get_softc(dev);
+	struct ata_dbdma_channel *ch = device_get_softc(dev);
 	int error;
 
-	if (!ch->attached)
+	if (!ch->sc_ch.attached)
 		return (0);
 
+	dbdma_restore_state(ch->dbdma);
 	error = ata_resume(dev);
 
 	return (error);
