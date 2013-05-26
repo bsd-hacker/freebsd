@@ -65,7 +65,6 @@ static vfs_statfs_t	nullfs_statfs;
 static vfs_unmount_t	nullfs_unmount;
 static vfs_vget_t	nullfs_vget;
 static vfs_extattrctl_t	nullfs_extattrctl;
-static vfs_reclaim_lowervp_t nullfs_reclaim_lowervp;
 
 /*
  * Mount null layer
@@ -86,9 +85,9 @@ nullfs_mount(struct mount *mp)
 
 	if (!prison_allow(td->td_ucred, PR_ALLOW_MOUNT_NULLFS))
 		return (EPERM);
-
 	if (mp->mnt_flag & MNT_ROOTFS)
 		return (EOPNOTSUPP);
+
 	/*
 	 * Update is a no-op
 	 */
@@ -149,7 +148,7 @@ nullfs_mount(struct mount *mp)
 	}
 
 	xmp = (struct null_mount *) malloc(sizeof(struct null_mount),
-	    M_NULLFSMNT, M_WAITOK);
+	    M_NULLFSMNT, M_WAITOK | M_ZERO);
 
 	/*
 	 * Save reference to underlying FS
@@ -187,16 +186,27 @@ nullfs_mount(struct mount *mp)
 		mp->mnt_flag |= MNT_LOCAL;
 		MNT_IUNLOCK(mp);
 	}
+
+	xmp->nullm_flags |= NULLM_CACHE;
+	if (vfs_getopt(mp->mnt_optnew, "nocache", NULL, NULL) == 0)
+		xmp->nullm_flags &= ~NULLM_CACHE;
+
 	MNT_ILOCK(mp);
-	mp->mnt_kern_flag |= lowerrootvp->v_mount->mnt_kern_flag &
-	    (MNTK_SHARED_WRITES | MNTK_LOOKUP_SHARED | MNTK_EXTENDED_SHARED);
+	if ((xmp->nullm_flags & NULLM_CACHE) != 0) {
+		mp->mnt_kern_flag |= lowerrootvp->v_mount->mnt_kern_flag &
+		    (MNTK_SHARED_WRITES | MNTK_LOOKUP_SHARED |
+		    MNTK_EXTENDED_SHARED);
+	}
 	mp->mnt_kern_flag |= MNTK_LOOKUP_EXCL_DOTDOT;
 	MNT_IUNLOCK(mp);
 	mp->mnt_data = xmp;
 	vfs_getnewfsid(mp);
-	MNT_ILOCK(xmp->nullm_vfs);
-	TAILQ_INSERT_TAIL(&xmp->nullm_vfs->mnt_uppers, mp, mnt_upper_link);
-	MNT_IUNLOCK(xmp->nullm_vfs);
+	if ((xmp->nullm_flags & NULLM_CACHE) != 0) {
+		MNT_ILOCK(xmp->nullm_vfs);
+		TAILQ_INSERT_TAIL(&xmp->nullm_vfs->mnt_uppers, mp,
+		    mnt_upper_link);
+		MNT_IUNLOCK(xmp->nullm_vfs);
+	}
 
 	vfs_mountedfrom(mp, target);
 
@@ -234,13 +244,15 @@ nullfs_unmount(mp, mntflags)
 	 */
 	mntdata = mp->mnt_data;
 	ump = mntdata->nullm_vfs;
-	MNT_ILOCK(ump);
-	while ((ump->mnt_kern_flag & MNTK_VGONE_UPPER) != 0) {
-		ump->mnt_kern_flag |= MNTK_VGONE_WAITER;
-		msleep(&ump->mnt_uppers, &ump->mnt_mtx, 0, "vgnupw", 0);
+	if ((mntdata->nullm_flags & NULLM_CACHE) != 0) {
+		MNT_ILOCK(ump);
+		while ((ump->mnt_kern_flag & MNTK_VGONE_UPPER) != 0) {
+			ump->mnt_kern_flag |= MNTK_VGONE_WAITER;
+			msleep(&ump->mnt_uppers, &ump->mnt_mtx, 0, "vgnupw", 0);
+		}
+		TAILQ_REMOVE(&ump->mnt_uppers, mp, mnt_upper_link);
+		MNT_IUNLOCK(ump);
 	}
-	TAILQ_REMOVE(&ump->mnt_uppers, mp, mnt_upper_link);
-	MNT_IUNLOCK(ump);
 	mp->mnt_data = NULL;
 	free(mntdata, M_NULLFSMNT);
 	return (0);
@@ -300,7 +312,8 @@ nullfs_statfs(mp, sbp)
 
 	/* now copy across the "interesting" information and fake the rest */
 	sbp->f_type = mstat.f_type;
-	sbp->f_flags = mstat.f_flags;
+	sbp->f_flags = (sbp->f_flags & (MNT_RDONLY | MNT_NOEXEC | MNT_NOSUID |
+	    MNT_UNION | MNT_NOSYMFOLLOW)) | (mstat.f_flags & ~MNT_ROOTFS);
 	sbp->f_bsize = mstat.f_bsize;
 	sbp->f_iosize = mstat.f_iosize;
 	sbp->f_blocks = mstat.f_blocks;
@@ -377,8 +390,49 @@ nullfs_reclaim_lowervp(struct mount *mp, struct vnode *lowervp)
 	vp = null_hashget(mp, lowervp);
 	if (vp == NULL)
 		return;
+	VTONULL(vp)->null_flags |= NULLV_NOUNLOCK;
 	vgone(vp);
-	vn_lock(lowervp, LK_EXCLUSIVE | LK_RETRY);
+	vput(vp);
+}
+
+static void
+nullfs_unlink_lowervp(struct mount *mp, struct vnode *lowervp)
+{
+	struct vnode *vp;
+	struct null_node *xp;
+
+	vp = null_hashget(mp, lowervp);
+	if (vp == NULL)
+		return;
+	xp = VTONULL(vp);
+	xp->null_flags |= NULLV_DROP | NULLV_NOUNLOCK;
+	vhold(vp);
+	vunref(vp);
+
+	if (vp->v_usecount == 0) {
+		/*
+		 * If vunref() dropped the last use reference on the
+		 * nullfs vnode, it must be reclaimed, and its lock
+		 * was split from the lower vnode lock.  Need to do
+		 * extra unlock before allowing the final vdrop() to
+		 * free the vnode.
+		 */
+		KASSERT((vp->v_iflag & VI_DOOMED) != 0,
+		    ("not reclaimed nullfs vnode %p", vp));
+		VOP_UNLOCK(vp, 0);
+	} else {
+		/*
+		 * Otherwise, the nullfs vnode still shares the lock
+		 * with the lower vnode, and must not be unlocked.
+		 * Also clear the NULLV_NOUNLOCK, the flag is not
+		 * relevant for future reclamations.
+		 */
+		ASSERT_VOP_ELOCKED(vp, "unlink_lowervp");
+		KASSERT((vp->v_iflag & VI_DOOMED) == 0,
+		    ("reclaimed nullfs vnode %p", vp));
+		xp->null_flags &= ~NULLV_NOUNLOCK;
+	}
+	vdrop(vp);
 }
 
 static struct vfsops null_vfsops = {
@@ -394,6 +448,7 @@ static struct vfsops null_vfsops = {
 	.vfs_unmount =		nullfs_unmount,
 	.vfs_vget =		nullfs_vget,
 	.vfs_reclaim_lowervp =	nullfs_reclaim_lowervp,
+	.vfs_unlink_lowervp =	nullfs_unlink_lowervp,
 };
 
 VFS_SET(null_vfsops, nullfs, VFCF_LOOPBACK | VFCF_JAIL);
