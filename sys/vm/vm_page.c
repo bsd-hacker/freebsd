@@ -784,17 +784,19 @@ _vm_page_sleep_onpage(vm_page_t m, int pri, const char *wmesg, int  timo)
  *
  *	Sleep and release the page queues lock if VPO_BUSY is set or,
  *	if also_m_busy is TRUE, busy is non-zero.  Returns TRUE if the
- *	thread slept and the page queues lock was released.
- *	Otherwise, retains the page queues lock and returns FALSE.
+ *	thread slept.
  *
- *	The given page and object containing it must be locked.
+ *	The given page must be unlocked and object containing it must
+ *	be locked.
  */
 int
 vm_page_sleep_if_busy(vm_page_t m, const char *msg)
 {
 	vm_object_t obj;
 
+	vm_page_lock_assert(m, MA_NOTOWNED);
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
+
 	if ((m->oflags & VPO_BUSY) != 0 || m->busy != 0) {
 		/*
 		 * The page-specific object must be cached because page
@@ -804,6 +806,7 @@ vm_page_sleep_if_busy(vm_page_t m, const char *msg)
 		 * held by the callers.
 		 */
 		obj = m->object;
+		vm_page_lock(m);
 		VM_OBJECT_WUNLOCK(obj);
 		_vm_page_sleep_onpage(m, PVM, msg, 0);
 		VM_OBJECT_WLOCK(obj);

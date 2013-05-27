@@ -871,7 +871,6 @@ rescan:
 		np = TAILQ_NEXT(p, listq);
 		if (p->valid == 0)
 			continue;
-		vm_page_lock(p);
 		if (vm_page_sleep_if_busy(p, "vpcwai")) {
 			if (object->generation != curgeneration) {
 				if ((flags & OBJPC_SYNC) != 0)
@@ -882,7 +881,6 @@ rescan:
 			np = vm_page_find_least(object, pi);
 			continue;
 		}
-		vm_page_unlock(p);
 		if (!vm_object_page_remove_write(p, flags, &clearobjflags))
 			continue;
 
@@ -1927,8 +1925,12 @@ again:
 			vm_page_unlock(p);
 			continue;
 		}
-		if (vm_page_sleep_if_busy(p, "vmopar"))
+		if ((p->oflags & VPO_BUSY) != 0 || p->busy != 0) {
+			VM_OBJECT_WUNLOCK(object);
+			vm_page_sleep(p, "vmopar");
+			VM_OBJECT_WLOCK(object);
 			goto again;
+		}
 		KASSERT((p->flags & PG_FICTITIOUS) == 0,
 		    ("vm_object_page_remove: page %p is fictitious", p));
 		if ((options & OBJPR_CLEANONLY) != 0 && p->valid != 0) {
