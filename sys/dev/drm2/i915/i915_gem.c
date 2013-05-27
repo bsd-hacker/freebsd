@@ -2312,17 +2312,14 @@ i915_gem_release_mmap(struct drm_i915_gem_object *obj)
 	if (devobj != NULL) {
 		page_count = OFF_TO_IDX(obj->base.size);
 
-retry:
 		VM_OBJECT_WLOCK(devobj);
+retry:
 		for (i = 0; i < page_count; i++) {
 			m = vm_page_lookup(devobj, i);
 			if (m == NULL)
 				continue;
-			vm_page_lock(m);
-			VM_OBJECT_WUNLOCK(devobj);
 			if (vm_page_sleep_if_busy(m, "915unm"))
 				goto retry;
-			vm_page_unlock(m);
 			cdev_pager_free_page(devobj, m);
 		}
 		VM_OBJECT_WUNLOCK(devobj);
