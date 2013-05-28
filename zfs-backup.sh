@@ -86,13 +86,13 @@ fi
 if [ "${fqsrc#$fqdst/}" != "$fqsrc" -o "${fqdst#$fqsrc/}" != "$fqdst" ] ; then
 	error "source and destination must be non-overlapping datasets"
 fi
-case src in
+case "$src" in
 */*)
 	sub="/${src#*/}"
 	;;
 esac
 
-if tty >/dev/null ; then
+if [ -t 0 ] ; then
 	verbose="-v"
 fi
 
