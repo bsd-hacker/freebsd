@@ -822,6 +822,8 @@ swp_pager_freeswapspace(daddr_t blk, int npages)
  *	The external callers of this routine typically have already destroyed
  *	or renamed vm_page_t's associated with this range in the object so
  *	we should be ok.
+ *
+ *	The object must be locked.
  */
 void
 swap_pager_freespace(vm_object_t object, vm_pindex_t start, vm_size_t size)
@@ -1064,6 +1066,8 @@ swap_pager_haspage(vm_object_t object, vm_pindex_t pindex, int *before, int *aft
  *	depends on it.
  *
  *	This routine may not sleep.
+ *
+ *	The object containing the page must be locked.
  */
 static void
 swap_pager_unswapped(vm_page_t m)
