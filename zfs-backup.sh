@@ -105,6 +105,7 @@ if [ -z "$last" ] ; then
 	info "It looks like this is the first backup from $fqsrc to $fqdst." \
 	    "Continuing will DESTROY the contents of $fqdst, including any" \
 	    "preexisting snapshots, and replace them with the contents of $fqsrc."
+	[ -t 0 ] || error "stdin is not a terminal - aborting"
 	while :; do
 		echo -n "Are you sure you want to proceed? (yes/no) "
 		read answer
