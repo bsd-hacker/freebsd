@@ -34,6 +34,7 @@ use warnings;
 our $already;
 our $debug;
 our $pretend;
+our $which;
 
 our $src_branch;		# where we merge from
 our $src_path;			# path relative to source branch
@@ -88,7 +89,9 @@ sub svn_do(@) {
 sub svn_merge(@) {
     unshift(@_, '--record-only')
 	if $already;
-    unshift(@_, 'merge');
+    unshift(@_, '--show-revs=eligible')
+	if $which;
+    unshift(@_, $which ? 'mergeinfo' : 'merge');
     goto &svn_do;
 }
 
@@ -255,12 +258,18 @@ MAIN:{
 	} elsif ($ARGV[0] eq 'pretend') {
 	    shift;
 	    $pretend++;
+	} elsif ($ARGV[0] eq 'which') {
+	    shift;
+	    $which++;
 	} else {
 	    last;
 	}
     }
     if (@ARGV < 1) {
 	usage();
+    }
+    if ($which && ($already || $pretend)) {
+	error("'which' is not compatible with 'already' and 'pretend'");
     }
     if ($ARGV[0] eq 'all') {
 	shift;
