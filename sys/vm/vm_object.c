@@ -536,15 +536,15 @@ vm_object_deallocate(vm_object_t object)
 				vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 				vdrop(vp);
 				VM_OBJECT_WLOCK(object);
-				if (object->type == OBJT_DEAD) {
+				if (object->type == OBJT_DEAD ||
+				    object->ref_count != 1) {
 					VM_OBJECT_WUNLOCK(object);
 					VOP_UNLOCK(vp, 0);
 					return;
-				} else if ((object->flags & OBJ_TMPFS) != 0) {
-					if (object->ref_count == 1)
-						VOP_UNSET_TEXT(vp);
-					VOP_UNLOCK(vp, 0);
 				}
+				if ((object->flags & OBJ_TMPFS) != 0)
+					VOP_UNSET_TEXT(vp);
+				VOP_UNLOCK(vp, 0);
 			}
 			if (object->shadow_count == 0 &&
 			    object->handle == NULL &&
@@ -557,7 +557,7 @@ vm_object_deallocate(vm_object_t object)
 			    (object->type == OBJT_DEFAULT ||
 			     object->type == OBJT_SWAP)) {
 				KASSERT((object->flags & OBJ_TMPFS) == 0,
-				    ("Shadowed tmpfs v_object"));
+				    ("shadowed tmpfs v_object %p", object));
 				vm_object_t robject;
 
 				robject = LIST_FIRST(&object->shadow_head);
