@@ -35,6 +35,10 @@ CFLAGS+=	-I${.CURDIR}/ld128
 .PATH:	${.CURDIR}/src
 .PATH:	${.CURDIR}/man
 
+.if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
+.PATH:	${.CURDIR}/x86
+.endif
+
 LIB=	m
 SHLIBDIR?= /lib
 SHLIB_MAJOR= 5
@@ -101,7 +105,8 @@ COMMON_SRCS+=	e_acosl.c e_asinl.c e_atan2l.c e_fmodl.c \
 .endif
 
 # C99 complex functions
-COMMON_SRCS+=	s_ccosh.c s_ccoshf.c s_cexp.c s_cexpf.c \
+COMMON_SRCS+=	catrig.c catrigf.c \
+	s_ccosh.c s_ccoshf.c s_cexp.c s_cexpf.c \
 	s_cimag.c s_cimagf.c s_cimagl.c \
 	s_conj.c s_conjf.c s_conjl.c \
 	s_cproj.c s_cprojf.c s_creal.c s_crealf.c s_creall.c \
@@ -117,18 +122,12 @@ COMMON_SRCS:=  ${COMMON_SRCS:N${i:R}.c}
 .endfor
 .endif
 
-# Some files need certain gcc built-in functions to be disabled, since gcc's
-# model of the functions bogusly assumes -fno-trapping-math.
-XRINT_CFLAGS=	-fno-builtin-rint -fno-builtin-rintf -fno-builtin-rintl
-CFLAGS+=	${XRINT_CFLAGS}
-XRINT_CFLAGS:=	${.IMPSRC:M*/s_nearbyint.c:C/^.+$/${XRINT_CFLAGS}/:C/^$//}
-
 SRCS=	${COMMON_SRCS} ${ARCH_SRCS}
 
 INCS+=	fenv.h math.h
 
 MAN=	acos.3 acosh.3 asin.3 asinh.3 atan.3 atan2.3 atanh.3 \
-	ceil.3 ccos.3 ccosh.3 cexp.3 \
+	ceil.3 cacos.3 ccos.3 ccosh.3 cexp.3 \
 	cimag.3 copysign.3 cos.3 cosh.3 csqrt.3 erf.3 exp.3 fabs.3 fdim.3 \
 	feclearexcept.3 feenableexcept.3 fegetenv.3 \
 	fegetround.3 fenv.3 floor.3 \
@@ -146,6 +145,9 @@ MLINKS+=atan.3 atanf.3 atan.3 atanl.3
 MLINKS+=atanh.3 atanhf.3
 MLINKS+=atan2.3 atan2f.3 atan2.3 atan2l.3 \
 	atan2.3 carg.3 atan2.3 cargf.3 atan2.3 cargl.3
+MLINKS+=cacos.3 cacosf.3 cacos.3 cacosh.3 cacos.3 cacoshf.3 \
+	cacos.3 casin.3 cacos.3 casinf.3 cacos.3 casinh.3 cacos.3 casinhf.3 \
+	cacos.3 catan.3 cacos.3 catanf.3 cacos.3 catanh.3 cacos.3 catanhf.3
 MLINKS+=ccos.3 ccosf.3 ccos.3 csin.3 ccos.3 csinf.3 ccos.3 ctan.3 ccos.3 ctanf.3
 MLINKS+=ccosh.3 ccoshf.3 ccosh.3 csinh.3 ccosh.3 csinhf.3 \
 	ccosh.3 ctanh.3 ccosh.3 ctanhf.3

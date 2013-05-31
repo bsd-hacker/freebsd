@@ -34,7 +34,7 @@ LABEL=`echo $1 | tr '[:lower:]' '[:upper:]'`; shift
 NAME=$1; shift
 
 # Create an ISO image
-publisher="The FreeBSD Project.  http://www.freebsd.org/"
+publisher="The FreeBSD Project.  http://www.FreeBSD.org/"
 echo "/dev/iso9660/$LABEL / cd9660 ro 0 0" > $1/etc/fstab
 makefs -t cd9660 -B be -o rockridge -o label="$LABEL" -o publisher="$publisher" ${NAME}.tmp $*
 rm $1/etc/fstab
