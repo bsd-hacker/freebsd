@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/rman.h>
 
+#include <machine/openpicreg.h>
 #include <machine/openpicvar.h>
 
 #include "pic_if.h"
