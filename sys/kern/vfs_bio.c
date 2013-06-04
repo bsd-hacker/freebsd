@@ -3415,6 +3415,7 @@ allocbuf(struct buf *bp, int size)
 						continue;
 
 					bp->b_pages[i] = NULL;
+					vm_page_lock(m);
 					vm_page_unwire(m, 0);
 					vm_page_unlock(m);
 				}
