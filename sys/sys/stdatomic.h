@@ -46,6 +46,41 @@
 #endif
 
 /*
+ * 7.17.1 Atomic lock-free macros.
+ */
+
+#ifdef __GCC_ATOMIC_BOOL_LOCK_FREE
+#define	ATOMIC_BOOL_LOCK_FREE		__GCC_ATOMIC_BOOL_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_CHAR_LOCK_FREE
+#define	ATOMIC_CHAR_LOCK_FREE		__GCC_ATOMIC_CHAR_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_CHAR16_T_LOCK_FREE
+#define	ATOMIC_CHAR16_T_LOCK_FREE	__GCC_ATOMIC_CHAR16_T_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_CHAR32_T_LOCK_FREE
+#define	ATOMIC_CHAR32_T_LOCK_FREE	__GCC_ATOMIC_CHAR32_T_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_WCHAR_T_LOCK_FREE
+#define	ATOMIC_WCHAR_T_LOCK_FREE	__GCC_ATOMIC_WCHAR_T_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_SHORT_LOCK_FREE
+#define	ATOMIC_SHORT_LOCK_FREE		__GCC_ATOMIC_SHORT_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_INT_LOCK_FREE
+#define	ATOMIC_INT_LOCK_FREE		__GCC_ATOMIC_INT_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_LONG_LOCK_FREE
+#define	ATOMIC_LONG_LOCK_FREE		__GCC_ATOMIC_LONG_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_LLONG_LOCK_FREE
+#define	ATOMIC_LLONG_LOCK_FREE		__GCC_ATOMIC_LLONG_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_POINTER_LOCK_FREE
+#define	ATOMIC_POINTER_LOCK_FREE	__GCC_ATOMIC_POINTER_LOCK_FREE
+#endif
+
+/*
  * 7.17.2 Initialization.
  */
 
@@ -123,7 +158,7 @@ enum memory_order {
 
 #if defined(__CLANG_ATOMICS) || defined(__GNUC_ATOMICS)
 #define	atomic_is_lock_free(obj) \
-	__atomic_is_lock_free(sizeof((obj)->__val), &(obj)->val)
+	__atomic_is_lock_free(sizeof((obj)->__val), &(obj)->__val)
 #else
 #define	atomic_is_lock_free(obj) \
 	((void)(obj), sizeof((obj)->__val) <= sizeof(void *))

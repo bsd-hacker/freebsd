@@ -860,11 +860,6 @@ vm_page_dirty_KBI(vm_page_t m)
  *
  *	Inserts the given mem entry into the object and object list.
  *
- *	The pagetables are not updated but will presumably fault the page
- *	in if necessary, or if a kernel page the caller will at some point
- *	enter the page into the kernel's pmap.  We are not allowed to sleep
- *	here so we *can't* do this anyway.
- *
  *	The object must be locked.
  */
 void
@@ -949,8 +944,6 @@ vm_page_insert_after(vm_page_t m, vm_object_t object, vm_pindex_t pindex,
  *	Removes the given mem entry from the object/offset-page
  *	table and the object page list, but do not invalidate/terminate
  *	the backing store.
- *
- *	The underlying pmap entry (if any) is NOT removed here.
  *
  *	The object must be locked.  The page must be locked if it is managed.
  */
@@ -1905,7 +1898,6 @@ vm_page_activate(vm_page_t m)
 	int queue;
 
 	vm_page_lock_assert(m, MA_OWNED);
-	VM_OBJECT_ASSERT_WLOCKED(m->object);
 	if ((queue = m->queue) != PQ_ACTIVE) {
 		if (m->wire_count == 0 && (m->oflags & VPO_UNMANAGED) == 0) {
 			if (m->act_count < ACT_INIT)
@@ -2796,6 +2788,13 @@ vm_page_trylock_KBI(vm_page_t m, const char *file, int line)
 }
 
 #if defined(INVARIANTS) || defined(INVARIANT_SUPPORT)
+void
+vm_page_assert_locked_KBI(vm_page_t m, const char *file, int line)
+{
+
+	vm_page_lock_assert_KBI(m, MA_OWNED, file, line);
+}
+
 void
 vm_page_lock_assert_KBI(vm_page_t m, int a, const char *file, int line)
 {
