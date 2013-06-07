@@ -9,6 +9,7 @@ SUBDIR=	\
 	${_3dfx} \
 	${_3dfx_linux} \
 	${_aac} \
+	${_aacraid} \
 	accf_data \
 	accf_dns \
 	accf_http \
@@ -272,6 +273,7 @@ SUBDIR=	\
 	pty  \
 	puc \
 	${_qlxgb} \
+	${_qlxgbe} \
 	ral \
 	${_ralfw} \
 	${_random} \
@@ -534,6 +536,7 @@ _zfs=		zfs
 .endif
 .if ${MACHINE} == "i386"
 _aac=		aac
+_aacraid=	aacraid
 _acpi=		acpi
 .if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
 _aesni=		aesni
@@ -616,6 +619,7 @@ _snc=		snc
 
 .if ${MACHINE_CPUARCH} == "amd64"
 _aac=		aac
+_aacraid=	aacraid
 _aout=		aout
 _acpi=		acpi
 .if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
@@ -712,6 +716,7 @@ _padlock=	padlock
 .endif
 _pccard=	pccard
 _qlxgb=		qlxgb
+_qlxgbe=	qlxgbe
 _rdma=		rdma
 _s3=		s3
 _safe=		safe
@@ -747,6 +752,7 @@ _cpsw=		cpsw
 
 .if ${MACHINE_CPUARCH} == "ia64"
 _aac=		aac
+_aacraid=	aacraid
 _aic=		aic
 _an=		an
 _arcnet=	arcnet

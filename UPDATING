@@ -31,6 +31,18 @@ NOTE TO PEOPLE WHO THINK THAT FreeBSD 10.x IS SLOW:
 	disable the most expensive debugging functionality run
 	"ln -s 'abort:false,junk:false' /etc/malloc.conf".)
 
+20130516:
+	Use bmake by default.
+	Whereas before one could choose to build with bmake via
+	-DWITH_BMAKE one must now use -DWITHOUT_BMAKE to use the old
+	make. The goal is to remove these knobs for 10-RELEASE.
+
+	It is worth noting that bmake (like gmake) treats the command
+	line as the unit of failure, rather than statements within the
+	command line.  Thus '(cd some/where && dosomething)' is safer
+	than 'cd some/where; dosomething'. The '()' allows consistent
+	behavior in parallel build.
+
 20130429:
         Fix a bug that allows NFS clients to issue READDIR on files.
 
@@ -108,7 +120,7 @@ NOTE TO PEOPLE WHO THINK THAT FreeBSD 10.x IS SLOW:
 	Due to the use of the new -l option to install(1) during build
 	and install, you must take care not to directly set the INSTALL
 	make variable in your /etc/make.conf, /etc/src.conf, or on the
-	command line.  If you with to use the -C flag for all installs
+	command line.  If you wish to use the -C flag for all installs
 	you may be able to add INSTALL+=-C to /etc/make.conf or
 	/etc/src.conf.
 

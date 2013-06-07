@@ -1087,6 +1087,7 @@ product APPLE IPOD_TOUCH	0x1291	iPod Touch
 product APPLE IPHONE_3G		0x1292	iPhone 3G
 product APPLE IPHONE_3GS	0x1294	iPhone 3GS
 product APPLE IPHONE_4		0x1297	iPhone 4
+product APPLE IPHONE_4S		0x12a0	iPhone 4S
 product APPLE IPHONE_5		0x12a8  iPhone 5
 product APPLE IPAD		0x129a	iPad
 product APPLE ETHERNET		0x1402	Ethernet A1277
@@ -3497,7 +3498,7 @@ product RALINK RT2573_2		0x9021	RT2501USB Wireless Adapter
 product RATOC REXUSB60		0xb000	USB serial adapter REX-USB60
 product RATOC REXUSB60F		0xb020	USB serial adapter REX-USB60F
 
-/* ReakTek products */
+/* Realtek products */
 /* Green House and CompUSA OEM this part */
 product REALTEK DUMMY		0x0000	Dummy product
 product REALTEK USB20CRW	0x0158	USB20CRW Card Reader
@@ -4219,6 +4220,7 @@ product WESTERN EXTHDD		0x0400	External HDD
 product WESTERN HUB		0x0500	USB HUB
 product WESTERN MYBOOK		0x0901	MyBook External HDD
 product WESTERN MYPASSWORD	0x0704	MyPassword External HDD
+product WESTERN MYPASSPORT	0x0748	MyPassport External HDD
 
 /* WeTelecom products */
 product WETELECOM WM_D200	0x6801	WM-D200

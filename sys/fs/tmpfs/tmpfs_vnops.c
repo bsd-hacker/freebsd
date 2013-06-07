@@ -460,8 +460,9 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	 * type object.
 	 */
 	m = vm_page_grab(tobj, idx, VM_ALLOC_NORMAL | VM_ALLOC_RETRY |
-	    VM_ALLOC_IGN_SBUSY);
+	    VM_ALLOC_IGN_SBUSY | VM_ALLOC_NOBUSY);
 	if (m->valid != VM_PAGE_BITS_ALL) {
+		vm_page_busy(m);
 		if (vm_pager_has_page(tobj, idx, NULL, NULL)) {
 			rv = vm_pager_get_pages(tobj, &m, 1, 0);
 			m = vm_page_lookup(tobj, idx);
@@ -483,22 +484,22 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 			}
 		} else
 			vm_page_zero_invalid(m, TRUE);
+		vm_page_wakeup(m);
 	}
 	vm_page_lock(m);
 	vm_page_hold(m);
-	vm_page_wakeup(m);
 	vm_page_unlock(m);
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&m, offset, tlen, uio);
-	VM_OBJECT_WLOCK(tobj);
 	vm_page_lock(m);
 	vm_page_unhold(m);
-	vm_page_deactivate(m);
-	/* Requeue to maintain LRU ordering. */
-	if (m->queue != PQ_NONE)
+	if (m->queue == PQ_NONE) {
+		vm_page_deactivate(m);
+	} else {
+		/* Requeue to maintain LRU ordering. */
 		vm_page_requeue(m);
+	}
 	vm_page_unlock(m);
-	VM_OBJECT_WUNLOCK(tobj);
 
 	return (error);
 }
@@ -574,8 +575,10 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 	tlen = MIN(PAGE_SIZE - offset, len);
 
 	VM_OBJECT_WLOCK(tobj);
-	tpg = vm_page_grab(tobj, idx, VM_ALLOC_NORMAL | VM_ALLOC_RETRY);
+	tpg = vm_page_grab(tobj, idx, VM_ALLOC_NORMAL | VM_ALLOC_NOBUSY |
+	    VM_ALLOC_RETRY);
 	if (tpg->valid != VM_PAGE_BITS_ALL) {
+		vm_page_busy(tpg);
 		if (vm_pager_has_page(tobj, idx, NULL, NULL)) {
 			rv = vm_pager_get_pages(tobj, &tpg, 1, 0);
 			tpg = vm_page_lookup(tobj, idx);
@@ -597,10 +600,10 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 			}
 		} else
 			vm_page_zero_invalid(tpg, TRUE);
+		vm_page_wakeup(tpg);
 	}
 	vm_page_lock(tpg);
 	vm_page_hold(tpg);
-	vm_page_wakeup(tpg);
 	vm_page_unlock(tpg);
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&tpg, offset, tlen, uio);
@@ -609,10 +612,12 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 		vm_page_dirty(tpg);
 	vm_page_lock(tpg);
 	vm_page_unhold(tpg);
-	vm_page_deactivate(tpg);
-	/* Requeue to maintain LRU ordering. */
-	if (tpg->queue != PQ_NONE)
+	if (tpg->queue == PQ_NONE) {
+		vm_page_deactivate(tpg);
+	} else {
+		/* Requeue to maintain LRU ordering. */
 		vm_page_requeue(tpg);
+	}
 	vm_page_unlock(tpg);
 	VM_OBJECT_WUNLOCK(tobj);
 
