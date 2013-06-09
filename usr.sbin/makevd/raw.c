@@ -74,7 +74,7 @@ raw_makeim(struct iminfo *imi)
 		err(EX_OSERR, NULL);
 	bl->bl_type = BL_RAWCOPY;
 	bl->bl_name = "rawcopy";
-	bl->bl_tf.blf_fd = ifd;
+	bl->bl_tf.fd = ifd;
 
 	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
 

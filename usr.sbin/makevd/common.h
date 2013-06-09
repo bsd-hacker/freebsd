@@ -32,12 +32,16 @@
 #include <sys/queue.h>
 
 struct blist_raw {
-	size_t		blr_len;
-	void		*blr_data;
+	size_t		len;
+	void		*data;
+	size_t		chunksize;
+	int		padding;
 };
 
 struct blist_fd {
-	int		blf_fd;
+	int		fd;
+	size_t		chunksize;
+	int		padding;
 };
 
 struct blist {
@@ -60,5 +64,7 @@ struct blist {
 TAILQ_HEAD(blhead_t, blist);
 
 int dispatch_bl(int, struct blhead_t *);
+char *uuid_str2bin(void *, const void *);
+char *uuid_bin2str(void *, const void *);
 
 #endif	/* _COMMON_H */

@@ -66,7 +66,6 @@ vmdk_makeim(struct iminfo *imi)
 	imh = &SEH;
 	imagesize = imi->imi_size;
 
-	memset(imh, 0, sizeof(*imh));
 	memset(desc, 0, sizeof(desc));
 
 	if (imi->imi_uuid == NULL)
@@ -124,8 +123,8 @@ vmdk_makeim(struct iminfo *imi)
 		err(EX_OSERR, NULL);
 	bl->bl_type = BL_RAWDATA;
 	bl->bl_name = "Sparse Extent Header";
-	bl->bl_tr.blr_data = imh;
-	bl->bl_tr.blr_len = sizeof(*imh);
+	bl->bl_tr.data = imh;
+	bl->bl_tr.len = sizeof(*imh);
 	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
 
 	bl = calloc(1, sizeof(*bl));
@@ -133,8 +132,8 @@ vmdk_makeim(struct iminfo *imi)
 		err(EX_OSERR, NULL);
 	bl->bl_type = BL_RAWDATA;
 	bl->bl_name = "Embedded descriptor";
-	bl->bl_tr.blr_data = &desc;
-	bl->bl_tr.blr_len = sizeof(desc);
+	bl->bl_tr.data = &desc;
+	bl->bl_tr.len = sizeof(desc);
 	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
 
 	bl = calloc(1, sizeof(*bl));
@@ -142,7 +141,7 @@ vmdk_makeim(struct iminfo *imi)
 		err(EX_OSERR, NULL);
 	bl->bl_type = BL_RAWCOPY;
 	bl->bl_name = "Rawcopy";
-	bl->bl_tf.blf_fd = imi->imi_fd;
+	bl->bl_tf.fd = imi->imi_fd;
 	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
 
 	return (dispatch_bl(ofd, &blhead));

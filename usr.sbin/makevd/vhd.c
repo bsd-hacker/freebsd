@@ -63,9 +63,6 @@ vhd_makeim(struct iminfo *imi)
 	uint64_t sectors, heads, cylinders, imagesize;
 	uint8_t uuid[16];
 	char vhdfile[PATH_MAX + 10];
-	char buf[BUFSIZ];
-	char *p, *q;
-	ssize_t len = 0;
 	int ifd, ofd;
 
 	TAILQ_INIT(&blhead);
@@ -73,51 +70,12 @@ vhd_makeim(struct iminfo *imi)
 	ifd = imi->imi_fd;
 	imagesize = imi->imi_size;
 
-	memset(imh, 0, sizeof(*imh));
 	if (imi->imi_uuid == NULL)
 		errx(EX_USAGE, "-o uuid option must be specified.");
+	uuid_str2bin(&uuid, imi->imi_uuid);
+	if (uuid == NULL)
+		return (1);
 
-	p = imi->imi_uuid;
-#if _BYTE_ORDER == _BIG_ENDIAN
-	q = (uint8_t *)&uuid + 16;
-#else
-	q = (uint8_t *)&uuid;
-#endif
-	while (len < 16 && strlen(p) > 1) {
-		long digit;
-		char *endptr;
-
-		if (*p == '-') {
-			p++;
-			continue;
-		}
-		buf[0] = p[0];
-		buf[1] = p[1];
-		buf[2] = '\0';
-		errno = 0;
-		digit = strtol(buf, &endptr, 16);
-		if (errno == 0 && *endptr != '\0')
-		    errno = EINVAL;
-		if (errno)
-			errx(EX_DATAERR, "invalid UUID");
-#if _BYTE_ORDER == _BIG_ENDIAN
-		*q-- = digit;
-#else
-		*q++ = digit;
-#endif
-		len++;
-		p += 2;
-	}
-#if 0
-	{
-		int i;
-
-		printf("uuid = ");
-		for (i = 0; i < 16; i++)
-			printf("%02x", uuid[i]);
-		printf("\n");
-	}
-#endif
 	snprintf(vhdfile, sizeof(vhdfile), "%s.vhd", imi->imi_imagename);
 	ofd = open(vhdfile, O_WRONLY|O_CREAT|O_TRUNC,
 	    S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
@@ -149,7 +107,7 @@ vhd_makeim(struct iminfo *imi)
 		err(EX_OSERR, NULL);
 	bl->bl_type = BL_RAWCOPY;
 	bl->bl_name = "Rawcopy";
-	bl->bl_tf.blf_fd = ifd;
+	bl->bl_tf.fd = ifd;
 	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
 
 	bl = calloc(1, sizeof(*bl));
@@ -157,8 +115,8 @@ vhd_makeim(struct iminfo *imi)
 		err(EX_OSERR, NULL);
 	bl->bl_type = BL_RAWDATA;
 	bl->bl_name = "Hard Disk Footer";
-	bl->bl_tr.blr_data = imh;
-	bl->bl_tr.blr_len = sizeof(*imh);
+	bl->bl_tr.data = imh;
+	bl->bl_tr.len = sizeof(*imh);
 	TAILQ_INSERT_TAIL(&blhead, bl, bl_next);
 
 	return (dispatch_bl(ofd, &blhead));
