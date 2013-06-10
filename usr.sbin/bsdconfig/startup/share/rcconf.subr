@@ -136,7 +136,7 @@ f_startup_rcconf_map()
 	if [ -f "$STARTUP_RCCONF_MAP_CACHEFILE" ]; then
 		#
 		# Attempt to populate the in-memory cache with the (soon to be)
-		# be validated on-disk cache. If validation fails, fall-back to
+		# validated on-disk cache. If validation fails, fall-back to
 		# the current value and provide error exit status.
 		#
 		STARTUP_RCCONF_MAP=$(
@@ -207,7 +207,11 @@ f_startup_rcconf_map()
 	)
 	export STARTUP_RCCONF_MAP
 	export _STARTUP_RCCONF_MAP=1
-	echo "$STARTUP_RCCONF_MAP"
+	if [ "$__var_to_set" ]; then
+		setvar "$__var_to_set" "$STARTUP_RCCONF_MAP"
+	else
+		echo "$STARTUP_RCCONF_MAP"
+	fi
 
 	#
 	# Attempt to create the persistant global cache
@@ -361,12 +365,12 @@ f_dialog_input_view_details()
 	esac
 }
 
-# f_dialog_input_rclist
+# f_dialog_input_rclist [$default]
 #
 # Presents a menu of rc.conf(5) defaults (with, or without descriptions). This
 # function should be treated like a call to dialog(1) (the exit status should
 # be captured and f_dialog_menutag_fetch() should be used to get the user's
-# response).
+# response). Optionally if present and non-null, highlight $default rcvar.
 #
 f_dialog_input_rclist()
 {
@@ -374,6 +378,7 @@ f_dialog_input_rclist()
 	local menu_list="
 		'X $msg_exit' '' ${SHOW_DESC:+'$msg_exit_this_menu'}
 	" # END-QUOTE
+	local defaultitem="$1"
 	local hline="$hline_arrows_tab_enter"
 
 	if [ ! "$_RCCONF_MAP" ]; then
@@ -430,10 +435,12 @@ f_dialog_input_rclist()
 		--title \"\$DIALOG_TITLE\"         \
 		--backtitle \"\$DIALOG_BACKTITLE\" \
 		--hline \"\$hline\"                \
+		--default-item \"\$defaultitem\"   \
 		--ok-label \"\$msg_ok\"            \
 		--cancel-label \"\$msg_cancel\"    \
 		${SHOW_DESC:+--item-help}          \
-		--menu \"\$prompt\" $size          \
+		--menu \"\$prompt\"                \
+		$height $width $rows               \
 		$menu_list                         \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	)
