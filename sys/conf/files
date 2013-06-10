@@ -725,6 +725,8 @@ dev/ath/if_ath.c		optional ath \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
 dev/ath/if_ath_beacon.c		optional ath \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
+dev/ath/if_ath_btcoex.c		optional ath \
+	compile-with "${NORMAL_C} -I$S/dev/ath"
 dev/ath/if_ath_debug.c		optional ath \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
 dev/ath/if_ath_keycache.c	optional ath \
@@ -2290,6 +2292,7 @@ dev/usb/wlan/if_uath.c		optional uath
 dev/usb/wlan/if_upgt.c		optional upgt
 dev/usb/wlan/if_ural.c		optional ural
 dev/usb/wlan/if_urtw.c		optional urtw
+dev/usb/wlan/if_urtwn.c		optional urtwn
 dev/usb/wlan/if_zyd.c		optional zyd
 #
 # USB serial and parallel port drivers
