@@ -40,8 +40,7 @@
 #include "ar9002/ar9285_phy.h"
 
 void
-ar9285_antdiv_comb_conf_get(struct ath_hal *ah,
-    struct ar9285_antcomb_conf *antconf)
+ar9285_antdiv_comb_conf_get(struct ath_hal *ah, HAL_ANT_COMB_CONFIG *antconf)
 {
 	uint32_t regval;
 
@@ -52,11 +51,11 @@ ar9285_antdiv_comb_conf_get(struct ath_hal *ah,
 				 AR_PHY_9285_ANT_DIV_ALT_LNACONF_S;
 	antconf->fast_div_bias = (regval & AR_PHY_9285_FAST_DIV_BIAS) >>
 				  AR_PHY_9285_FAST_DIV_BIAS_S;
+	antconf->antdiv_configgroup = DEFAULT_ANTDIV_CONFIG_GROUP;
 }
 
 void
-ar9285_antdiv_comb_conf_set(struct ath_hal *ah,
-    struct ar9285_antcomb_conf *antconf)
+ar9285_antdiv_comb_conf_set(struct ath_hal *ah, HAL_ANT_COMB_CONFIG *antconf)
 {
 	uint32_t regval;
 
