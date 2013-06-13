@@ -271,7 +271,6 @@ proc_rwmem(struct proc *p, struct uio *uio)
 	 */
 	do {
 		vm_offset_t uva;
-		vm_object_t obj;
 		u_int len;
 		vm_page_t m;
 
