@@ -37,6 +37,8 @@ my $VERSION	= "2.10";
 my $COPYRIGHT	= "Copyright (c) 2003-2012 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
+my $BACKLOG	= 8;
+
 my $abbreviate;			# Abbreviate path names in log file
 my @configs;			# Names of requested configations
 my $dump;			# Dump configuration and exit
@@ -380,10 +382,10 @@ sub tinderbox($$$) {
 	    @lines = ();
 	    next;
 	}
-	if (/^Stop in /) {
+	if (/^\*\*\*( \[.*?\])? (Error code|Stopped|Signal)/) {
 	    $error = 1;
 	}
-	if (@lines > 10 && !$error) {
+	if (@lines > $BACKLOG && !$error) {
 	    shift(@lines);
 	    $lines[0] = "[...]\n";
 	}
