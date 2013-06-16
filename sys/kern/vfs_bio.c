@@ -1848,26 +1848,20 @@ vfs_vmio_release(struct buf *bp)
 		 */
 		vm_page_lock(m);
 		vm_page_unwire(m, 0);
+
 		/*
-		 * We don't mess with busy pages, it is
-		 * the responsibility of the process that
-		 * busied the pages to deal with them.
+		 * Might as well free the page if we can and it has
+		 * no valid data.  We also free the page if the
+		 * buffer was used for direct I/O
 		 */
-		if ((m->oflags & VPO_BUSY) == 0 && m->busy == 0 &&
-		    m->wire_count == 0) {
-			/*
-			 * Might as well free the page if we can and it has
-			 * no valid data.  We also free the page if the
-			 * buffer was used for direct I/O
-			 */
-			if ((bp->b_flags & B_ASYNC) == 0 && !m->valid) {
+		if ((bp->b_flags & B_ASYNC) == 0 && !m->valid) {
+			if ((m->oflags & VPO_BUSY) == 0 && m->busy == 0 &&
+			    m->wire_count == 0)
 				vm_page_free(m);
-			} else if (bp->b_flags & B_DIRECT) {
-				vm_page_try_to_free(m);
-			} else if (buf_vm_page_count_severe()) {
-				vm_page_try_to_cache(m);
-			}
-		}
+		} else if (bp->b_flags & B_DIRECT)
+			vm_page_try_to_free(m);
+		else if (buf_vm_page_count_severe())
+			vm_page_try_to_cache(m);
 		vm_page_unlock(m);
 	}
 	VM_OBJECT_WUNLOCK(bp->b_bufobj->bo_object);
