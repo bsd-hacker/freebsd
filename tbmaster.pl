@@ -382,7 +382,8 @@ sub tinderbox($$$) {
 	    @lines = ();
 	    next;
 	}
-	if (/^\*\*\*( \[.*?\])? (Error code|Stopped|Signal)/) {
+	if (/^\*\*\*( \[.*?\])? (Error code|Stopped|Signal)/ &&
+	    !/\(ignored\)/) {
 	    $error = 1;
 	}
 	if (@lines > $BACKLOG && !$error) {
