@@ -3488,14 +3488,14 @@ allocbuf(struct buf *bp, int size)
 				 * matter which process we are.
 				 *
 				 * We can only test VPO_BUSY here.  Blocking on
-				 * m->busy might lead to a deadlock:
-				 *  vm_fault->getpages->cluster_read->allocbuf
-				 * Thus, we specify VM_ALLOC_IGN_SBUSY.
+				 * m->busy might lead to deadlocks once
+				 * allocbuf() is called after pages are
+				 * vfs_busy_pages().
 				 */
 				m = vm_page_grab(obj, OFF_TO_IDX(bp->b_offset) +
 				    bp->b_npages, VM_ALLOC_NOBUSY |
 				    VM_ALLOC_SYSTEM | VM_ALLOC_WIRED |
-				    VM_ALLOC_RETRY | VM_ALLOC_IGN_SBUSY |
+				    VM_ALLOC_RETRY | VM_ALLOC_IGN_RBUSY |
 				    VM_ALLOC_COUNT(desiredpages - bp->b_npages));
 				if (m->valid == 0)
 					bp->b_flags &= ~B_CACHE;

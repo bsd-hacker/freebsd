@@ -2425,7 +2425,7 @@ vm_page_grab(vm_object_t object, vm_pindex_t pindex, int allocflags)
 retrylookup:
 	if ((m = vm_page_lookup(object, pindex)) != NULL) {
 		if ((m->oflags & VPO_BUSY) != 0 ||
-		    ((allocflags & VM_ALLOC_IGN_SBUSY) == 0 && m->busy != 0)) {
+		    ((allocflags & VM_ALLOC_IGN_RBUSY) == 0 && m->busy != 0)) {
 			/*
 			 * Reference the page before unlocking and
 			 * sleeping so that the page daemon is less
@@ -2449,7 +2449,7 @@ retrylookup:
 		}
 	}
 	m = vm_page_alloc(object, pindex, allocflags & ~(VM_ALLOC_RETRY |
-	    VM_ALLOC_IGN_SBUSY));
+	    VM_ALLOC_IGN_RBUSY));
 	if (m == NULL) {
 		VM_OBJECT_WUNLOCK(object);
 		VM_WAIT;
