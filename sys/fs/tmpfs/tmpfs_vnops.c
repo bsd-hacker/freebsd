@@ -448,11 +448,6 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	VM_OBJECT_WLOCK(tobj);
 
 	/*
-	 * The kern_sendfile() code calls vn_rdwr() with the page
-	 * soft-busied.  Ignore the soft-busy state here. Parallel
-	 * reads of the page content from disk are prevented by
-	 * VPO_BUSY.
-	 *
 	 * Although the tmpfs vnode lock is held here, it is
 	 * nonetheless safe to sleep waiting for a free page.  The
 	 * pageout daemon does not need to acquire the tmpfs vnode
@@ -460,7 +455,7 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	 * type object.
 	 */
 	m = vm_page_grab(tobj, idx, VM_ALLOC_NORMAL | VM_ALLOC_RETRY |
-	    VM_ALLOC_IGN_SBUSY | VM_ALLOC_NOBUSY);
+	    VM_ALLOC_NOBUSY);
 	if (m->valid != VM_PAGE_BITS_ALL) {
 		vm_page_busy(m);
 		if (vm_pager_has_page(tobj, idx, NULL, NULL)) {
