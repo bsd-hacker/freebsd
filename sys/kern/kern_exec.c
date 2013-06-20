@@ -937,10 +937,8 @@ exec_map_first_page(imgp)
 		object->pg_color = 0;
 	}
 #endif
-	ma[0] = vm_page_grab(object, 0, VM_ALLOC_NORMAL | VM_ALLOC_NOBUSY |
-	    VM_ALLOC_RETRY);
+	ma[0] = vm_page_grab(object, 0, VM_ALLOC_NORMAL | VM_ALLOC_RETRY);
 	if (ma[0]->valid != VM_PAGE_BITS_ALL) {
-		vm_page_busy(ma[0]);
 		initial_pagein = VM_INITIAL_PAGEIN;
 		if (initial_pagein > object->size)
 			initial_pagein = object->size;
@@ -970,9 +968,9 @@ exec_map_first_page(imgp)
 			VM_OBJECT_WUNLOCK(object);
 			return (EIO);
 		}
-		vm_page_wakeup(ma[0]);
 	}
 	vm_page_lock(ma[0]);
+	vm_page_wakeup_locked(ma[0]);
 	vm_page_hold(ma[0]);
 	vm_page_unlock(ma[0]);
 	VM_OBJECT_WUNLOCK(object);

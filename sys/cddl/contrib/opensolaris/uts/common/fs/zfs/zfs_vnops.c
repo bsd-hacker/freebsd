@@ -349,17 +349,17 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 				zfs_vmobject_wlock(obj);
 				continue;
 			}
+			vm_page_io_start(pp);
 		} else
 			pp = NULL;
 
 		if (pp == NULL && alloc)
 			pp = vm_page_alloc(obj, OFF_TO_IDX(start),
 			    VM_ALLOC_SYSTEM | VM_ALLOC_IFCACHED |
-			    VM_ALLOC_NOBUSY);
+			    VM_ALLOC_RBUSY);
 
 		if (pp != NULL) {
 			ASSERT3U(pp->valid, ==, VM_PAGE_BITS_ALL);
-			vm_page_io_start(pp);
 			if (alloc) {
 				vm_object_pip_add(obj, 1);
 				pmap_remove_write(pp);
@@ -494,10 +494,9 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 	for (start = uio->uio_loffset; len > 0; start += PAGESIZE) {
 		int bytes = MIN(PAGESIZE, len);
 
-		pp = vm_page_grab(obj, OFF_TO_IDX(start), VM_ALLOC_NOBUSY |
+		pp = vm_page_grab(obj, OFF_TO_IDX(start), VM_ALLOC_RBUSY |
 		    VM_ALLOC_NORMAL | VM_ALLOC_RETRY | VM_ALLOC_IGN_RBUSY);
 		if (pp->valid == 0) {
-			vm_page_io_start(pp);
 			zfs_vmobject_wunlock(obj);
 			va = zfs_map_page(pp, &sf);
 			error = dmu_read(os, zp->z_id, start, bytes, va,
@@ -515,7 +514,8 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 				vm_page_activate(pp);
 			}
 			vm_page_unlock(pp);
-		}
+		} else
+			vm_page_io_finish(pp);
 		if (error)
 			break;
 		uio->uio_resid -= bytes;

@@ -1258,6 +1258,7 @@ vm_page_is_cached(vm_object_t object, vm_pindex_t pindex)
  *	VM_ALLOC_NODUMP		do not include the page in a kernel core dump
  *	VM_ALLOC_NOOBJ		page is not associated with an object and
  *				should not have the flag VPO_BUSY set
+ *	VM_ALLOC_RBUSY		read busy the allocated page
  *	VM_ALLOC_WIRED		wire the allocated page
  *	VM_ALLOC_ZERO		prefer a zeroed page
  *
@@ -1272,8 +1273,12 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	int flags, req_class;
 
 	mpred = 0;	/* XXX: pacify gcc */
-	KASSERT((object != NULL) == ((req & VM_ALLOC_NOOBJ) == 0),
-	    ("vm_page_alloc: inconsistent object/req"));
+	KASSERT((object != NULL) == ((req & VM_ALLOC_NOOBJ) == 0) &&
+	    (object != NULL || (req & VM_ALLOC_RBUSY) == 0) &&
+	    ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)) !=
+	    (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)),
+	    ("vm_page_alloc: inconsistent object(%p)/req(%x)", (void *)object,
+	    req));
 	if (object != NULL)
 		VM_OBJECT_ASSERT_WLOCKED(object);
 
@@ -1398,8 +1403,10 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	m->aflags = 0;
 	m->oflags = object == NULL || (object->flags & OBJ_UNMANAGED) != 0 ?
 	    VPO_UNMANAGED : 0;
-	if ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_NOOBJ)) == 0)
+	if ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_NOOBJ | VM_ALLOC_RBUSY)) == 0)
 		m->oflags |= VPO_BUSY;
+	if ((req & VM_ALLOC_RBUSY) != 0)
+		m->busy++;
 	if (req & VM_ALLOC_WIRED) {
 		/*
 		 * The page lock is not required for wiring a page until that
@@ -1470,6 +1477,7 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
  *	VM_ALLOC_NOBUSY		do not set the flag VPO_BUSY on the page
  *	VM_ALLOC_NOOBJ		page is not associated with an object and
  *				should not have the flag VPO_BUSY set
+ *	VM_ALLOC_RBUSY		read busy the allocated page
  *	VM_ALLOC_WIRED		wire the allocated page
  *	VM_ALLOC_ZERO		prefer a zeroed page
  *
@@ -1485,8 +1493,12 @@ vm_page_alloc_contig(vm_object_t object, vm_pindex_t pindex, int req,
 	u_int flags, oflags;
 	int req_class;
 
-	KASSERT((object != NULL) == ((req & VM_ALLOC_NOOBJ) == 0),
-	    ("vm_page_alloc_contig: inconsistent object/req"));
+	KASSERT((object != NULL) == ((req & VM_ALLOC_NOOBJ) == 0) &&
+	    (object != NULL || (req & VM_ALLOC_RBUSY) == 0) &&
+	    ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)) !=
+	    (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)),
+	    ("vm_page_alloc: inconsistent object(%p)/req(%x)", (void *)object,
+	    req));
 	if (object != NULL) {
 		VM_OBJECT_ASSERT_WLOCKED(object);
 		KASSERT(object->type == OBJT_PHYS,
@@ -1562,7 +1574,7 @@ retry:
 		atomic_add_int(&cnt.v_wire_count, npages);
 	oflags = VPO_UNMANAGED;
 	if (object != NULL) {
-		if ((req & VM_ALLOC_NOBUSY) == 0)
+		if ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)) == 0)
 			oflags |= VPO_BUSY;
 		if (object->memattr != VM_MEMATTR_DEFAULT &&
 		    memattr == VM_MEMATTR_DEFAULT)
@@ -1571,6 +1583,8 @@ retry:
 	for (m = m_ret; m < &m_ret[npages]; m++) {
 		m->aflags = 0;
 		m->flags = (m->flags | PG_NODUMP) & flags;
+		if ((req & VM_ALLOC_RBUSY) != 0)
+			m->busy++;
 		if ((req & VM_ALLOC_WIRED) != 0)
 			m->wire_count = 1;
 		/* Unmanaged pages don't use "act_count". */
@@ -2422,6 +2436,9 @@ vm_page_grab(vm_object_t object, vm_pindex_t pindex, int allocflags)
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	KASSERT((allocflags & VM_ALLOC_RETRY) != 0,
 	    ("vm_page_grab: VM_ALLOC_RETRY is required"));
+	KASSERT((allocflags & VM_ALLOC_RBUSY) == 0 ||
+	    (allocflags & VM_ALLOC_IGN_RBUSY) != 0,
+	    ("vm_page_grab: VM_ALLOC_RBUSY/VM_ALLOC_IGN_RBUSY mismatch"));
 retrylookup:
 	if ((m = vm_page_lookup(object, pindex)) != NULL) {
 		if ((m->oflags & VPO_BUSY) != 0 ||
@@ -2443,8 +2460,11 @@ retrylookup:
 				vm_page_wire(m);
 				vm_page_unlock(m);
 			}
-			if ((allocflags & VM_ALLOC_NOBUSY) == 0)
+			if ((allocflags &
+			    (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)) == 0)
 				vm_page_busy(m);
+			if ((allocflags & VM_ALLOC_RBUSY) != 0)
+				vm_page_io_start(m);
 			return (m);
 		}
 	}
