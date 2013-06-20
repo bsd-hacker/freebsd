@@ -555,7 +555,7 @@ vm_thread_swapin(struct thread *td)
 			for (k = i; k < j; k++)
 				ma[k] = vm_page_lookup(ksobj, k);
 			vm_page_wakeup(ma[i]);
-		} else if (ma[i]->oflags & VPO_BUSY)
+		} else
 			vm_page_wakeup(ma[i]);
 	}
 	VM_OBJECT_WUNLOCK(ksobj);
