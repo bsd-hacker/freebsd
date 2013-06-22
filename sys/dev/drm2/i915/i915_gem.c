@@ -1356,9 +1356,8 @@ i915_gem_pager_fault(vm_object_t vm_obj, vm_ooffset_t offset, int prot,
 		*mres = NULL;
 	} else
 		oldm = NULL;
-retry:
 	VM_OBJECT_WUNLOCK(vm_obj);
-unlocked_vmobj:
+retry:
 	cause = ret = 0;
 	m = NULL;
 
@@ -1381,6 +1380,8 @@ unlocked_vmobj:
 	if (m != NULL) {
 		if ((m->flags & VPO_BUSY) != 0) {
 			DRM_UNLOCK(dev);
+			vm_page_lock(m);
+			VM_OBJECT_WUNLOCK(vm_obj);
 			vm_page_sleep(m, "915pee");
 			goto retry;
 		}
@@ -1440,7 +1441,6 @@ unlocked_vmobj:
 		vm_page_lock(m);
 		VM_OBJECT_WUNLOCK(vm_obj);
 		vm_page_sleep(m, "915pbs");
-		VM_OBJECT_WLOCK(vm_obj);
 		goto retry;
 	}
 	m->valid = VM_PAGE_BITS_ALL;
@@ -1468,7 +1468,7 @@ out:
 	    -ret, cause);
 	if (ret == -EAGAIN || ret == -EIO || ret == -EINTR) {
 		kern_yield(PRI_USER);
-		goto unlocked_vmobj;
+		goto retry;
 	}
 	VM_OBJECT_WLOCK(vm_obj);
 	vm_object_pip_wakeup(vm_obj);
