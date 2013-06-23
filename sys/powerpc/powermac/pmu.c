@@ -1193,7 +1193,6 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 	error = DEVICE_SUSPEND(root_bus);
 	if (error == 0) {
 		spinlock_enter();
-		//DELAY(5000000);
 		pmu_sleep_int();
 
 		spinlock_exit();
