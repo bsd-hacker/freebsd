@@ -600,7 +600,7 @@ agp_generic_bind_memory(device_t dev, struct agp_memory *mem,
 				goto bad;
 			}
 		}
-		vm_page_wakeup(m);
+		vm_page_busy_wunlock(m);
 	}
 	VM_OBJECT_WUNLOCK(mem->am_obj);
 
@@ -626,9 +626,9 @@ bad:
 	VM_OBJECT_ASSERT_WLOCKED(mem->am_obj);
 	for (k = 0; k < mem->am_size; k += PAGE_SIZE) {
 		m = vm_page_lookup(mem->am_obj, OFF_TO_IDX(k));
-		vm_page_lock(m);
 		if (k >= i)
-			vm_page_wakeup_locked(m);
+			vm_page_busy_wunlock(m);
+		vm_page_lock(m);
 		vm_page_unwire(m, 0);
 		vm_page_unlock(m);
 	}

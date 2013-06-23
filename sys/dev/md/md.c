@@ -834,7 +834,7 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			else
 				rv = vm_pager_get_pages(sc->object, &m, 1, 0);
 			if (rv == VM_PAGER_ERROR) {
-				vm_page_wakeup(m);
+				vm_page_busy_wunlock(m);
 				break;
 			} else if (rv == VM_PAGER_FAIL) {
 				/*
@@ -859,7 +859,7 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			else
 				rv = VM_PAGER_OK;
 			if (rv == VM_PAGER_ERROR) {
-				vm_page_wakeup(m);
+				vm_page_busy_wunlock(m);
 				break;
 			}
 			if ((bp->bio_flags & BIO_UNMAPPED) != 0) {
@@ -875,7 +875,7 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			else
 				rv = VM_PAGER_OK;
 			if (rv == VM_PAGER_ERROR) {
-				vm_page_wakeup(m);
+				vm_page_busy_wunlock(m);
 				break;
 			}
 			if (len != PAGE_SIZE) {
@@ -885,8 +885,8 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			} else
 				vm_pager_page_unswapped(m);
 		}
+		vm_page_busy_wunlock(m);
 		vm_page_lock(m);
-		vm_page_wakeup_locked(m);
 		if (bp->bio_cmd == BIO_DELETE && len == PAGE_SIZE)
 			vm_page_free(m);
 		else

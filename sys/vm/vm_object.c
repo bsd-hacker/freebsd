@@ -744,8 +744,7 @@ vm_object_terminate(vm_object_t object)
 	 * the object, the page and object are reset to any empty state. 
 	 */
 	TAILQ_FOREACH_SAFE(p, &object->memq, listq, p_next) {
-		KASSERT(!p->busy && (p->oflags & VPO_BUSY) == 0,
-		    ("vm_object_terminate: freeing busy page %p", p));
+		vm_page_busy_assert_unlocked(p);
 		vm_page_lock(p);
 		/*
 		 * Optimize the page's removal from the object by resetting
@@ -939,7 +938,7 @@ vm_object_page_collect_flush(vm_object_t object, vm_page_t p, int pagerflags,
 
 	for (tp = p; count < vm_pageout_page_count; count++) {
 		tp = vm_page_next(tp);
-		if (tp == NULL || tp->busy != 0 || (tp->oflags & VPO_BUSY) != 0)
+		if (tp == NULL || vm_page_busy_locked(tp))
 			break;
 		if (!vm_object_page_remove_write(tp, flags, clearobjflags))
 			break;
@@ -947,7 +946,7 @@ vm_object_page_collect_flush(vm_object_t object, vm_page_t p, int pagerflags,
 
 	for (p_first = p; count < vm_pageout_page_count; count++) {
 		tp = vm_page_prev(p_first);
-		if (tp == NULL || tp->busy != 0 || (tp->oflags & VPO_BUSY) != 0)
+		if (tp == NULL || vm_page_busy_locked(tp))
 			break;
 		if (!vm_object_page_remove_write(tp, flags, clearobjflags))
 			break;
@@ -1156,7 +1155,7 @@ shadowlookup:
 		    ("vm_object_madvise: page %p is fictitious", m));
 		KASSERT((m->oflags & VPO_UNMANAGED) == 0,
 		    ("vm_object_madvise: page %p is not managed", m));
-		if ((m->oflags & VPO_BUSY) || m->busy) {
+		if (vm_page_busy_locked(m)) {
 			if (advise == MADV_WILLNEED) {
 				/*
 				 * Reference the page before unlocking and
@@ -1343,7 +1342,7 @@ retry:
 		 * We do not have to VM_PROT_NONE the page as mappings should
 		 * not be changed by this operation.
 		 */
-		if ((m->oflags & VPO_BUSY) || m->busy) {
+		if (vm_page_busy_locked(m)) {
 			VM_OBJECT_WUNLOCK(new_object);
 			vm_page_lock(m);
 			VM_OBJECT_WUNLOCK(orig_object);
@@ -1372,7 +1371,7 @@ retry:
 		vm_page_unlock(m);
 		/* page automatically made dirty by rename and cache handled */
 		if (orig_object->type == OBJT_SWAP)
-			vm_page_busy(m);
+			vm_page_busy_wlock(m);
 	}
 	if (orig_object->type == OBJT_SWAP) {
 		/*
@@ -1381,7 +1380,7 @@ retry:
 		 */
 		swap_pager_copy(orig_object, new_object, offidxstart, 0);
 		TAILQ_FOREACH(m, &new_object->memq, listq)
-			vm_page_wakeup(m);
+			vm_page_busy_wunlock(m);
 
 		/*
 		 * Transfer any cached pages from orig_object to new_object.
@@ -1497,14 +1496,12 @@ vm_object_backing_scan(vm_object_t object, int op)
 			vm_page_t pp;
 
 			if (op & OBSC_COLLAPSE_NOWAIT) {
-				if ((p->oflags & VPO_BUSY) ||
-				    !p->valid || 
-				    p->busy) {
+				if (!p->valid || vm_page_busy_locked(p)) {
 					p = next;
 					continue;
 				}
 			} else if (op & OBSC_COLLAPSE_WAIT) {
-				if ((p->oflags & VPO_BUSY) || p->busy) {
+				if (vm_page_busy_locked(p)) {
 					VM_OBJECT_WUNLOCK(object);
 					vm_page_lock(p);
 					VM_OBJECT_WUNLOCK(backing_object);
@@ -1906,7 +1903,7 @@ again:
 			vm_page_unlock(p);
 			continue;
 		}
-		if ((p->oflags & VPO_BUSY) != 0 || p->busy != 0) {
+		if (vm_page_busy_locked(p)) {
 			VM_OBJECT_WUNLOCK(object);
 			vm_page_sleep(p, "vmopar");
 			VM_OBJECT_WLOCK(object);
@@ -2037,7 +2034,7 @@ vm_object_populate(vm_object_t object, vm_pindex_t start, vm_pindex_t end)
 	if (pindex > start) {
 		m = vm_page_lookup(object, start);
 		while (m != NULL && m->pindex < pindex) {
-			vm_page_wakeup(m);
+			vm_page_busy_wunlock(m);
 			m = TAILQ_NEXT(m, listq);
 		}
 	}

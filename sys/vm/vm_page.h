@@ -259,8 +259,8 @@ extern struct mtx_padalign pa_lock[];
  * directly set this flag.  They should call vm_page_reference() instead.
  *
  * PGA_WRITEABLE is set exclusively on managed pages by pmap_enter().  When it
- * does so, the page must be VPO_BUSY.  The MI VM layer must never access this
- * flag directly.  Instead, it should call pmap_page_is_write_mapped().
+ * does so, the page must be write busied.  The MI VM layer must never access
+ * this flag directly.  Instead, it should call pmap_page_is_write_mapped().
  *
  * PGA_EXECUTABLE may be set by pmap routines, and indicates that a page has
  * at least one executable mapping.  It is not consumed by the MI VM layer.
@@ -372,16 +372,19 @@ malloc2vm_flags(int malloc_flags)
 }
 #endif
 
-void vm_page_busy(vm_page_t m);
+void vm_page_busy_assert_unlocked(vm_page_t m);
+void vm_page_busy_assert_wlocked(vm_page_t m);
+int vm_page_busy_locked(vm_page_t m);
+void vm_page_busy_runlock(vm_page_t m);
+int vm_page_busy_tryrlock(vm_page_t m);
+int vm_page_busy_trywlock(vm_page_t m);
+int vm_page_busy_wlocked(vm_page_t m);
+void vm_page_busy_wunlock(vm_page_t m);
 void vm_page_flash(vm_page_t m);
-void vm_page_io_start(vm_page_t m);
-void vm_page_io_finish(vm_page_t m);
 void vm_page_hold(vm_page_t mem);
 void vm_page_unhold(vm_page_t mem);
 void vm_page_free(vm_page_t m);
 void vm_page_free_zero(vm_page_t m);
-void vm_page_wakeup(vm_page_t m);
-void vm_page_wakeup_locked(vm_page_t m);
 
 void vm_page_activate (vm_page_t);
 void vm_page_advise(vm_page_t m, int advice);
@@ -445,6 +448,16 @@ void vm_page_assert_locked_KBI(vm_page_t m, const char *file, int line);
 void vm_page_lock_assert_KBI(vm_page_t m, int a, const char *file, int line);
 #endif
 
+#define	vm_page_busy_rlock(m) do {					\
+	if (!vm_page_busy_tryrlock(m))					\
+		panic("%s: page %p failed read busing", __func__, m);	\
+} while (0)
+
+#define	vm_page_busy_wlock(m) do {					\
+	if (!vm_page_busy_trywlock(m))					\
+		panic("%s: page %p failed write busing", __func__, m);	\
+} while (0)
+
 #ifdef INVARIANTS
 void vm_page_object_lock_assert(vm_page_t m);
 #define	VM_PAGE_OBJECT_LOCK_ASSERT(m)	vm_page_object_lock_assert(m)
@@ -499,11 +512,11 @@ vm_page_aflag_set(vm_page_t m, uint8_t bits)
 
 	/*
 	 * The PGA_WRITEABLE flag can only be set if the page is managed and
-	 * VPO_BUSY.  Currently, this flag is only set by pmap_enter().
+	 * write busied.  Currently, this flag is only set by pmap_enter().
 	 */
 	KASSERT((bits & PGA_WRITEABLE) == 0 ||
-	    (m->oflags & (VPO_UNMANAGED | VPO_BUSY)) == VPO_BUSY,
-	    ("vm_page_aflag_set: PGA_WRITEABLE and !VPO_BUSY"));
+	    (m->oflags & VPO_UNMANAGED) == 0 || vm_page_busy_wlocked(m),
+	    ("vm_page_aflag_set: PGA_WRITEABLE and now write busy"));
 
 	/*
 	 * Access the whole 32-bit word containing the aflags field with an

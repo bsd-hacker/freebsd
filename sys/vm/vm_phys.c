@@ -560,7 +560,8 @@ vm_phys_fictitious_reg_range(vm_paddr_t start, vm_paddr_t end,
 	for (i = 0; i < page_count; i++) {
 		vm_page_initfake(&fp[i], start + PAGE_SIZE * i, memattr);
 		pmap_page_init(&fp[i]);
-		fp[i].oflags &= ~(VPO_BUSY | VPO_UNMANAGED);
+		fp[i].oflags &= ~VPO_UNMANAGED;
+		fp[i].oflags &= ~VPO_BUSY;
 	}
 	mtx_lock(&vm_phys_fictitious_reg_mtx);
 	for (segind = 0; segind < VM_PHYS_FICTITIOUS_NSEGS; segind++) {

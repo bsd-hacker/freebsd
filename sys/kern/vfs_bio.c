@@ -1855,8 +1855,7 @@ vfs_vmio_release(struct buf *bp)
 		 * buffer was used for direct I/O
 		 */
 		if ((bp->b_flags & B_ASYNC) == 0 && !m->valid) {
-			if ((m->oflags & VPO_BUSY) == 0 && m->busy == 0 &&
-			    m->wire_count == 0)
+			if (m->wire_count == 0 && !vm_page_busy_locked(m))
 				vm_page_free(m);
 		} else if (bp->b_flags & B_DIRECT)
 			vm_page_try_to_free(m);
@@ -3487,10 +3486,10 @@ allocbuf(struct buf *bp, int size)
 				 * here could interfere with paging I/O, no
 				 * matter which process we are.
 				 *
-				 * We can only test VPO_BUSY here.  Blocking on
-				 * m->busy might lead to deadlocks once
-				 * allocbuf() is called after pages are
-				 * vfs_busy_pages().
+				 * We can only test write busy here.
+				 * Blocking on read busy might lead to
+				 * deadlocks once allocbuf() is called after
+				 * pages are vfs_busy_pages().
 				 */
 				m = vm_page_grab(obj, OFF_TO_IDX(bp->b_offset) +
 				    bp->b_npages, VM_ALLOC_NOBUSY |
@@ -3850,7 +3849,7 @@ bufdone_finish(struct buf *bp)
 				vfs_page_set_valid(bp, foff, m);
 			}
 
-			vm_page_io_finish(m);
+			vm_page_busy_runlock(m);
 			vm_object_pip_subtract(obj, 1);
 			foff = (foff + PAGE_SIZE) & ~(off_t)PAGE_MASK;
 			iosize -= resid;
@@ -3912,7 +3911,7 @@ vfs_unbusy_pages(struct buf *bp)
 				BUF_CHECK_UNMAPPED(bp);
 		}
 		vm_object_pip_subtract(obj, 1);
-		vm_page_io_finish(m);
+		vm_page_busy_runlock(m);
 	}
 	vm_object_pip_wakeupn(obj, 0);
 	VM_OBJECT_WUNLOCK(obj);
@@ -3985,8 +3984,8 @@ vfs_page_set_validclean(struct buf *bp, vm_ooffset_t off, vm_page_t m)
 }
 
 /*
- * Ensure that all buffer pages are not busied by VPO_BUSY flag. If
- * any page is busy, drain the flag.
+ * Ensure that all buffer pages are not write busied.  If any page is write
+ * busy, drain it.
  */
 static void
 vfs_drain_busy_pages(struct buf *bp)
@@ -3998,10 +3997,10 @@ vfs_drain_busy_pages(struct buf *bp)
 	last_busied = 0;
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
-		if ((m->oflags & VPO_BUSY) != 0) {
+		if (vm_page_busy_wlocked(m)) {
 			for (; last_busied < i; last_busied++)
-				vm_page_busy(bp->b_pages[last_busied]);
-			while ((m->oflags & VPO_BUSY) != 0) {
+				vm_page_busy_wlock(bp->b_pages[last_busied]);
+			while (vm_page_busy_wlocked(m)) {
 				vm_page_lock(m);
 				VM_OBJECT_WUNLOCK(bp->b_bufobj->bo_object);
 				vm_page_sleep(m, "vbpage");
@@ -4010,14 +4009,14 @@ vfs_drain_busy_pages(struct buf *bp)
 		}
 	}
 	for (i = 0; i < last_busied; i++)
-		vm_page_wakeup(bp->b_pages[i]);
+		vm_page_busy_wunlock(bp->b_pages[i]);
 }
 
 /*
  * This routine is called before a device strategy routine.
  * It is used to tell the VM system that paging I/O is in
  * progress, and treat the pages associated with the buffer
- * almost as being VPO_BUSY.  Also the object paging_in_progress
+ * almost as being write busy.  Also the object paging_in_progress
  * flag is handled to make sure that the object doesn't become
  * inconsistant.
  *
@@ -4050,7 +4049,7 @@ vfs_busy_pages(struct buf *bp, int clear_modify)
 
 		if ((bp->b_flags & B_CLUSTER) == 0) {
 			vm_object_pip_add(obj, 1);
-			vm_page_io_start(m);
+			vm_page_busy_rlock(m);
 		}
 		/*
 		 * When readying a buffer for a read ( i.e

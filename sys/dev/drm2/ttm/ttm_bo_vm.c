@@ -212,7 +212,7 @@ reserve:
 	}
 
 	VM_OBJECT_WLOCK(vm_obj);
-	if ((m->flags & VPO_BUSY) != 0) {
+	if (vm_page_busy_locked(m)) {
 		vm_page_lock(m);
 		VM_OBJECT_WUNLOCK(vm_obj);
 		vm_page_sleep(m, "ttmpbs");
@@ -226,7 +226,7 @@ reserve:
 	vm_page_lock(m);
 	vm_page_insert(m, vm_obj, OFF_TO_IDX(offset));
 	vm_page_unlock(m);
-	vm_page_busy(m);
+	vm_page_busy_wlock(m);
 
 	if (oldm != NULL) {
 		vm_page_lock(oldm);

@@ -1557,7 +1557,7 @@ swp_pager_async_iodone(struct buf *bp)
 				vm_page_lock(m);
 				vm_page_activate(m);
 				vm_page_unlock(m);
-				vm_page_io_finish(m);
+				vm_page_busy_runlock(m);
 			}
 		} else if (bp->b_iocmd == BIO_READ) {
 			/*
@@ -1574,7 +1574,7 @@ swp_pager_async_iodone(struct buf *bp)
 			 * Note that the requested page, reqpage, is left
 			 * busied, but we still have to wake it up.  The
 			 * other pages are released (unbusied) by
-			 * vm_page_wakeup().
+			 * vm_page_busy_wunlock().
 			 */
 			KASSERT(!pmap_page_is_mapped(m),
 			    ("swp_pager_async_iodone: page %p is mapped", m));
@@ -1593,8 +1593,8 @@ swp_pager_async_iodone(struct buf *bp)
 			if (i != bp->b_pager.pg_reqpage) {
 				vm_page_lock(m);
 				vm_page_deactivate(m);
-				vm_page_wakeup_locked(m);
 				vm_page_unlock(m);
+				vm_page_busy_wunlock(m);
 			} else {
 				vm_page_lock(m);
 				vm_page_flash(m);
@@ -1610,7 +1610,7 @@ swp_pager_async_iodone(struct buf *bp)
 			    ("swp_pager_async_iodone: page %p is not write"
 			    " protected", m));
 			vm_page_undirty(m);
-			vm_page_io_finish(m);
+			vm_page_busy_runlock(m);
 			if (vm_page_count_severe()) {
 				vm_page_lock(m);
 				vm_page_try_to_cache(m);
@@ -1714,8 +1714,8 @@ swp_pager_force_pagein(vm_object_t object, vm_pindex_t pindex)
 		vm_page_dirty(m);
 		vm_page_lock(m);
 		vm_page_activate(m);
-		vm_page_wakeup_locked(m);
 		vm_page_unlock(m);
+		vm_page_busy_wunlock(m);
 		vm_pager_page_unswapped(m);
 		return;
 	}
@@ -1726,8 +1726,8 @@ swp_pager_force_pagein(vm_object_t object, vm_pindex_t pindex)
 	vm_page_dirty(m);
 	vm_page_lock(m);
 	vm_page_deactivate(m);
-	vm_page_wakeup_locked(m);
 	vm_page_unlock(m);
+	vm_page_busy_wunlock(m);
 	vm_pager_page_unswapped(m);
 }
 

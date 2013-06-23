@@ -336,7 +336,7 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 	for (;;) {
 		if ((pp = vm_page_lookup(obj, OFF_TO_IDX(start))) != NULL &&
 		    pp->valid) {
-			if ((pp->oflags & VPO_BUSY) != 0) {
+			if (vm_page_busy_wlocked(pp)) {
 				/*
 				 * Reference the page before unlocking and
 				 * sleeping so that the page daemon is less
@@ -349,7 +349,7 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 				zfs_vmobject_wlock(obj);
 				continue;
 			}
-			vm_page_io_start(pp);
+			vm_page_busy_rlock(pp);
 		} else
 			pp = NULL;
 
@@ -375,7 +375,7 @@ static void
 page_unbusy(vm_page_t pp, boolean_t unalloc)
 {
 
-	vm_page_io_finish(pp);
+	vm_page_busy_runlock(pp);
 	if (unalloc)
 		vm_object_pip_subtract(pp->object, 1);
 }
@@ -466,7 +466,7 @@ update_pages(vnode_t *vp, int64_t start, int len, objset_t *os, uint64_t oid,
  * ZFS to populate a range of page cache pages with data.
  *
  * NOTE: this function could be optimized to pre-allocate
- * all pages in advance, drain VPO_BUSY on all of them,
+ * all pages in advance, drain write busy on all of them,
  * map them into contiguous KVA region and populate them
  * in one single dmu_read() call.
  */
@@ -505,7 +505,7 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 				bzero(va + bytes, PAGESIZE - bytes);
 			zfs_unmap_page(sf);
 			zfs_vmobject_wlock(obj);
-			vm_page_io_finish(pp);
+			vm_page_busy_runlock(pp);
 			vm_page_lock(pp);
 			if (error) {
 				vm_page_free(pp);
@@ -515,7 +515,7 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 			}
 			vm_page_unlock(pp);
 		} else
-			vm_page_io_finish(pp);
+			vm_page_busy_runlock(pp);
 		if (error)
 			break;
 		uio->uio_resid -= bytes;

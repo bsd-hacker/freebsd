@@ -256,8 +256,8 @@ vm_imgact_page_iostart(vm_object_t object, vm_ooffset_t offset)
 			goto out;
 		}
 	}
-	vm_page_wakeup(m);
-	vm_page_io_start(m);
+	vm_page_busy_wunlock(m);
+	vm_page_busy_rlock(m);
 out:
 	VM_OBJECT_WUNLOCK(object);
 	return (m);
@@ -291,7 +291,7 @@ vm_imgact_unmap_page(vm_object_t object, struct sf_buf *sf)
 	sf_buf_free(sf);
 	sched_unpin();
 	VM_OBJECT_WLOCK(object);
-	vm_page_io_finish(m);
+	vm_page_busy_runlock(m);
 	VM_OBJECT_WUNLOCK(object);
 }
 
@@ -535,13 +535,11 @@ vm_thread_swapin(struct thread *td)
 		    VM_ALLOC_WIRED);
 	for (i = 0; i < pages; i++) {
 		if (ma[i]->valid != VM_PAGE_BITS_ALL) {
-			KASSERT(ma[i]->oflags & VPO_BUSY,
-			    ("lost busy 1"));
+			vm_page_busy_assert_wlocked(ma[i]);
 			vm_object_pip_add(ksobj, 1);
 			for (j = i + 1; j < pages; j++) {
-				KASSERT(ma[j]->valid == VM_PAGE_BITS_ALL ||
-				    (ma[j]->oflags & VPO_BUSY),
-				    ("lost busy 2"));
+				if (ma[j]->valid != VM_PAGE_BITS_ALL)
+					vm_page_busy_assert_wlocked(ma[j]);
 				if (ma[j]->valid == VM_PAGE_BITS_ALL)
 					break;
 			}
@@ -552,9 +550,9 @@ vm_thread_swapin(struct thread *td)
 			vm_object_pip_wakeup(ksobj);
 			for (k = i; k < j; k++)
 				ma[k] = vm_page_lookup(ksobj, k);
-			vm_page_wakeup(ma[i]);
+			vm_page_busy_wunlock(ma[i]);
 		} else
-			vm_page_wakeup(ma[i]);
+			vm_page_busy_wunlock(ma[i]);
 	}
 	VM_OBJECT_WUNLOCK(ksobj);
 	pmap_qenter(td->td_kstack, ma, pages);

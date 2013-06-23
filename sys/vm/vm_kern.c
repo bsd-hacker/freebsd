@@ -565,7 +565,7 @@ retry:
 		 */
 		pmap_enter(kernel_pmap, addr + i, VM_PROT_ALL, m, VM_PROT_ALL,
 		    TRUE);
-		vm_page_wakeup(m);
+		vm_page_busy_wunlock(m);
 	}
 	VM_OBJECT_WUNLOCK(kmem_object);
 

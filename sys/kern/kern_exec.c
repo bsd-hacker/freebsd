@@ -946,9 +946,8 @@ exec_map_first_page(imgp)
 			if ((ma[i] = vm_page_next(ma[i - 1])) != NULL) {
 				if (ma[i]->valid)
 					break;
-				if ((ma[i]->oflags & VPO_BUSY) || ma[i]->busy)
+				if (vm_page_busy_trywlock(ma[i]))
 					break;
-				vm_page_busy(ma[i]);
 			} else {
 				ma[i] = vm_page_alloc(object, i,
 				    VM_ALLOC_NORMAL | VM_ALLOC_IFNOTCACHED);
@@ -969,8 +968,8 @@ exec_map_first_page(imgp)
 			return (EIO);
 		}
 	}
+	vm_page_busy_wunlock(ma[0]);
 	vm_page_lock(ma[0]);
-	vm_page_wakeup_locked(ma[0]);
 	vm_page_hold(ma[0]);
 	vm_page_unlock(ma[0]);
 	VM_OBJECT_WUNLOCK(object);
