@@ -235,6 +235,23 @@ ar9300_attach_freebsd_ops(struct ath_hal *ah)
 	ah->ah_setChainMasks = ar9300SetChainMasks;
 	/* ah_get11nRxClear */
 	/* ah_set11nRxClear */
+
+	/* bluetooth coexistence functions */
+	ah->ah_btCoexSetInfo		= ar9300_set_bt_coex_info;
+	ah->ah_btCoexSetConfig		= ar9300_bt_coex_config;
+	ah->ah_btCoexSetQcuThresh	= ar9300_bt_coex_set_qcu_thresh;
+	ah->ah_btCoexSetWeights		= ar9300_bt_coex_set_weights;
+	ah->ah_btCoexSetBmissThresh	= ar9300_bt_coex_setup_bmiss_thresh;
+	ah->ah_btCoexSetParameter	= ar9300_bt_coex_set_parameter;
+	ah->ah_btCoexDisable		= ar9300_bt_coex_disable;
+	ah->ah_btCoexEnable		= ar9300_bt_coex_enable;
+
+	/* LNA diversity functions */
+	ah->ah_divLnaConfGet = ar9300_ant_div_comb_get_config;
+	ah->ah_divLnaConfSet = ar9300_ant_div_comb_set_config;
+
+	/* Setup HAL configuration defaults */
+	ah->ah_config.ath_hal_ant_ctrl_comm2g_switch_enable = 0x000bbb88;
 }
 
 HAL_BOOL

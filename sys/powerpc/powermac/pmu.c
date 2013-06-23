@@ -1123,7 +1123,6 @@ pmu_resume(device_t dev)
 	return (0);
 }
 
-static jmp_buf resetjb;
 static register_t sprgs[4];
 static register_t srrs[2];
 extern void *ap_pcpu;
@@ -1134,6 +1133,8 @@ void pmu_sleep_int(void)
 	register_t hid0;
 	register_t msr;
 	register_t saved_msr;
+	jmp_buf resetjb;
+
 	ap_pcpu = pcpup;
 
 	PCPU_SET(restore, &resetjb);
@@ -1164,8 +1165,8 @@ void pmu_sleep_int(void)
 		while (1)
 			mtmsr(msr);
 	}
-	pcpup->pc_curthread = curthread;
-	pcpup->pc_curpcb = curthread->td_pcb;
+	PCPU_SET(curthread, curthread);
+	PCPU_SET(curpcb, curthread->td_pcb);
 	pmap_activate(curthread);
 	powerpc_sync();
 	mtspr(SPR_SPRG0, sprgs[0]);
