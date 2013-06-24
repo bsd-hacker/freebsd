@@ -391,7 +391,7 @@ vm_object_pip_wait(vm_object_t object, char *waitid)
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	while (object->paging_in_progress) {
 		object->flags |= OBJ_PIPWNT;
-		VM_OBJECT_SLEEP(object, object, PVM, waitid);
+		VM_OBJECT_SLEEP(object, object, PVM, waitid, 0);
 	}
 }
 
@@ -606,7 +606,7 @@ retry:
 						VM_OBJECT_WUNLOCK(robject);
 						object->flags |= OBJ_PIPWNT;
 						VM_OBJECT_SLEEP(object, object,
-						    PDROP | PVM, "objde2");
+						    PDROP | PVM, "objde2", 0);
 						VM_OBJECT_WLOCK(robject);
 						temp = robject->backing_object;
 						if (object == temp) {

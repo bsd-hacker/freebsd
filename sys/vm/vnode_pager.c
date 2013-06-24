@@ -117,7 +117,7 @@ vnode_create_vobject(struct vnode *vp, off_t isize, struct thread *td)
 		}
 		VOP_UNLOCK(vp, 0);
 		vm_object_set_flag(object, OBJ_DISCONNECTWNT);
-		VM_OBJECT_SLEEP(object, object, PDROP | PVM, "vodead");
+		VM_OBJECT_SLEEP(object, object, PDROP | PVM, "vodead", 0);
 		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	}
 
@@ -211,7 +211,7 @@ retry:
 		if ((object->flags & OBJ_DEAD) == 0)
 			break;
 		vm_object_set_flag(object, OBJ_DISCONNECTWNT);
-		VM_OBJECT_SLEEP(object, object, PDROP | PVM, "vadead");
+		VM_OBJECT_SLEEP(object, object, PDROP | PVM, "vadead", 0);
 	}
 
 	KASSERT(vp->v_usecount != 0, ("vnode_pager_alloc: no vnode reference"));

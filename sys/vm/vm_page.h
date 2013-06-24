@@ -177,7 +177,7 @@ struct vm_page {
  *
  */
 #define	VPO_BUSY	0x01		/* page is in transit */
-#define	VPO_UNUSED02	0x02		/* --available-- */
+#define	VPO_SWAPSLEEP	0x02		/* waiting for swap to finish */
 #define	VPO_UNMANAGED	0x04		/* no PV management for page */
 #define	VPO_SWAPINPROG	0x08		/* swap I/O in progress on page */
 #define	VPO_NOSYNC	0x10		/* do not collect for syncer */

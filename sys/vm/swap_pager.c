@@ -1219,15 +1219,14 @@ swap_pager_getpages(vm_object_t object, vm_page_t *m, int count, int reqpage)
 	 */
 	VM_OBJECT_WLOCK(object);
 	while ((mreq->oflags & VPO_SWAPINPROG) != 0) {
+		mreq->oflags |= VPO_SWAPSLEEP;
 		PCPU_INC(cnt.v_intrans);
-		vm_page_lock(mreq);
-		VM_OBJECT_WUNLOCK(object);
-		if (vm_page_sleep_onpage(mreq, PSWP, "swread", hz * 20)) {
+		if (VM_OBJECT_SLEEP(object, &object->paging_in_progress, PSWP,
+		    "swread", hz * 20)) {
 			printf(
 "swap_pager: indefinite wait buffer: bufobj: %p, blkno: %jd, size: %ld\n",
 			    bp->b_bufobj, (intmax_t)bp->b_blkno, bp->b_bcount);
 		}
-		VM_OBJECT_WLOCK(object);
 	}
 
 	/*
@@ -1510,6 +1509,10 @@ swp_pager_async_iodone(struct buf *bp)
 		vm_page_t m = bp->b_pages[i];
 
 		m->oflags &= ~VPO_SWAPINPROG;
+		if (m->oflags & VPO_SWAPSLEEP) {
+			m->oflags &= ~VPO_SWAPSLEEP;
+			wakeup(&object->paging_in_progress);
+		}
 
 		if (bp->b_ioflags & BIO_ERROR) {
 			/*
