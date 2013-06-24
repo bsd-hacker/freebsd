@@ -24,7 +24,11 @@ mkdir ${WORKDIR} ${SNAPDIR} ${TMPDIR} ${SIGDIR}
 SNAPDATE=`date "+%s"`
 
 # Get the latest revision # on the tree
-NEWREV=`sh -e s/svn-getrev.sh head`
+if ! NEWREV=`sh -e s/svn-getrev.sh head`; then
+	echo "Waiting 5 minutes for svn server to return"
+	sleep 300
+	NEWREV=`sh -e s/svn-getrev.sh head`
+fi
 
 # Create a memory disk for holding the snapshot files.
 SNAPMD=`mdconfig -a -t swap -s ${SNAPMDSIZE} -n`
