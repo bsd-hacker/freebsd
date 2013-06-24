@@ -29,7 +29,7 @@ NEWREV=`sh -e s/svn-getrev.sh head`
 # Create a memory disk for holding the snapshot files.
 SNAPMD=`mdconfig -a -t swap -s ${SNAPMDSIZE} -n`
 newfs -O 1 -n /dev/md${SNAPMD} >/dev/null
-mount /dev/md${SNAPMD} ${SNAPDIR}
+mount -onoatime,async /dev/md${SNAPMD} ${SNAPDIR}
 
 # Build a snapshot
 sh -e s/treesnap-build.sh head@${NEWREV} "${DESCRIBES_BUILD}"	\

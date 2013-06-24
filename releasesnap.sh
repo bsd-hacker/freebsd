@@ -29,7 +29,7 @@ newfs -O 1 -n /dev/md${SNAPMD} >/dev/null
 # Mount the memory disk
 WORKDIR=${STATEDIR}/work
 mkdir ${WORKDIR}
-mount /dev/md${SNAPMD} ${WORKDIR}
+mount -onoatime,async /dev/md${SNAPMD} ${WORKDIR}
 
 # Build a snapshot
 SNAPDIR=${STATEDIR}/work/files
