@@ -1140,8 +1140,7 @@ vnode_pager_generic_putpages(struct vnode *vp, vm_page_t *ma, int bytecount,
 				 * pmap operation.
 				 */
 				m = ma[ncount - 1];
-				KASSERT(m->busy > 0,
-		("vnode_pager_generic_putpages: page %p is not busy", m));
+				vm_page_busy_assert_rlocked(m);
 				KASSERT(!pmap_page_is_write_mapped(m),
 		("vnode_pager_generic_putpages: page %p is not read-only", m));
 				vm_page_clear_dirty(m, pgoff, PAGE_SIZE -

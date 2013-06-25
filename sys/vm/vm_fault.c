@@ -926,12 +926,13 @@ vnode_locked:
 	if (m_hold != NULL) {
 		*m_hold = fs.m;
 		if (fault_flags & VM_FAULT_IOBUSY)
-			vm_page_busy_rlock(fs.m);
+			vm_page_busy_downgrade(fs.m);
 		else
 			vm_page_hold(fs.m);
 	}
 	vm_page_unlock(fs.m);
-	vm_page_busy_wunlock(fs.m);
+	if (m_hold == NULL || (fault_flags & VM_FAULT_IOBUSY) == 0)
+		vm_page_busy_wunlock(fs.m);
 
 	/*
 	 * Unlock everything, and return

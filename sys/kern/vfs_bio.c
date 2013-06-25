@@ -4003,7 +4003,7 @@ vfs_drain_busy_pages(struct buf *bp)
 			while (vm_page_busy_wlocked(m)) {
 				vm_page_lock(m);
 				VM_OBJECT_WUNLOCK(bp->b_bufobj->bo_object);
-				vm_page_sleep(m, "vbpage");
+				vm_page_busy_sleep(m, "vbpage");
 				VM_OBJECT_WLOCK(bp->b_bufobj->bo_object);
 			}
 		}
@@ -4269,7 +4269,7 @@ vm_hold_free_pages(struct buf *bp, int newbsize)
 	for (index = newnpages; index < bp->b_npages; index++) {
 		p = bp->b_pages[index];
 		bp->b_pages[index] = NULL;
-		if (p->busy != 0)
+		if (vm_page_busy_rlocked(p))
 			printf("vm_hold_free_pages: blkno: %jd, lblkno: %jd\n",
 			    (intmax_t)bp->b_blkno, (intmax_t)bp->b_lblkno);
 		p->wire_count--;

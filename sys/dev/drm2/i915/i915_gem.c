@@ -1382,7 +1382,7 @@ retry:
 			DRM_UNLOCK(dev);
 			vm_page_lock(m);
 			VM_OBJECT_WUNLOCK(vm_obj);
-			vm_page_sleep(m, "915pee");
+			vm_page_busy_sleep(m, "915pee");
 			goto retry;
 		}
 		goto have_page;
@@ -1440,7 +1440,7 @@ retry:
 		DRM_UNLOCK(dev);
 		vm_page_lock(m);
 		VM_OBJECT_WUNLOCK(vm_obj);
-		vm_page_sleep(m, "915pbs");
+		vm_page_busy_sleep(m, "915pbs");
 		goto retry;
 	}
 	m->valid = VM_PAGE_BITS_ALL;

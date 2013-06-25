@@ -470,85 +470,122 @@ vm_page_reference(vm_page_t m)
 }
 
 void
-vm_page_busy_assert_unlocked(vm_page_t m)
+vm_page_busy_downgrade(vm_page_t m)
 {
+	u_int retry, x;
 
-	KASSERT((m->oflags & VPO_BUSY) == 0 && m->busy == 0,
-	   ("vm_page_busy_assert_unlocked: page %p busy", (void *)m));
-}
+	vm_page_busy_assert_wlocked(m);
 
-void
-vm_page_busy_assert_wlocked(vm_page_t m)
-{
-
-	KASSERT((m->oflags & VPO_BUSY) != 0,
-	   ("vm_page_busy_assert_wlocked: page %p not write busy", (void *)m));
+	retry = 0;
+	for (;;) {
+		if (retry++ > 0)
+			panic("vm_page_busy_downgrade: failed loop %p", m);
+		x = m->busy_lock;
+		x &= VPB_LOCK_WAITERS;
+		if (atomic_cmpset_rel_int(&m->busy_lock,
+		    VPB_SINGLE_WRITER | x, VPB_READERS_LOCK(1) | x))
+			break;
+	}
 }
 
 int
-vm_page_busy_locked(vm_page_t m)
+vm_page_busy_rlocked(vm_page_t m)
 {
+	u_int x;
 
-	return ((m->oflags & VPO_BUSY) != 0 || m->busy != 0);
+	x = m->busy_lock;
+	return ((x & VPB_LOCK_READ) != 0 && x != VPB_UNLOCKED);
 }
 
 void
 vm_page_busy_runlock(vm_page_t m)
 {
+	u_int retry, x;
 
-	VM_OBJECT_ASSERT_WLOCKED(m->object);
-	KASSERT(m->busy > 0,
-	    ("vm_page_busy_runlock: page %p is not read busy", m));
-	m->busy--;
-	if (m->busy == 0) {
+	vm_page_busy_assert_rlocked(m);
+
+	retry = 0;
+	for (;;) {
+		if (retry++ > 10000)
+			panic("vm_page_busy_runlock: failed loop %p", m);
+		x = m->busy_lock;
+		if (VPB_READERS(x) > 1) {
+			if (atomic_cmpset_int(&m->busy_lock, x,
+			    x - VPB_ONE_READER))
+				break;
+			continue;
+		}
+		if ((x & VPB_LOCK_WAITERS) == 0) {
+			KASSERT(x == VPB_READERS_LOCK(1),
+			    ("vm_page_busy_runlock: invalid lock state"));
+			if (atomic_cmpset_int(&m->busy_lock,
+			    VPB_READERS_LOCK(1), VPB_UNLOCKED))
+				break;
+			continue;
+		}
+		KASSERT(x == (VPB_READERS_LOCK(1) | VPB_LOCK_WAITERS),
+		    ("vm_page_busy_runlock: invalid lock state for waiters"));
+
 		vm_page_lock(m);
-		vm_page_flash(m);
+		if (atomic_cmpset_int(&m->busy_lock, x, VPB_UNLOCKED)) {
+			vm_page_unlock(m);
+			continue;
+		}
+		wakeup(m);
 		vm_page_unlock(m);
+		break;
 	}
+}
+
+/*
+ *	vm_page_busy_sleep:
+ *
+ *	Sleep and release the page lock, using the page pointer as wchan.
+ *	This is used to implement the hard-path of busying mechanism.
+ *
+ *	The given page must be locked.
+ */
+void
+vm_page_busy_sleep(vm_page_t m, const char *wmesg)
+{
+	u_int x;
+
+	vm_page_lock_assert(m, MA_OWNED);
+
+	x = m->busy_lock;
+	if (x == VPB_UNLOCKED) {
+		vm_page_unlock(m);
+		return;
+	}
+	if ((x & VPB_LOCK_WAITERS) == 0 &&
+	    !atomic_cmpset_int(&m->busy_lock, x, x | VPB_LOCK_WAITERS)) {
+		vm_page_unlock(m);
+		return;
+	}
+	msleep(m, vm_page_lockptr(m), PVM | PDROP, wmesg, 0);
 }
 
 int
 vm_page_busy_tryrlock(vm_page_t m)
 {
+	u_int x;
 
-	VM_OBJECT_ASSERT_WLOCKED(m->object);
-	if ((m->oflags & VPO_BUSY) != 0)
-		return (0);
-	m->busy++;
-	return (1);
-}
-
-int
-vm_page_busy_trywlock(vm_page_t m)
-{
-
-	VM_OBJECT_ASSERT_WLOCKED(m->object);
-	if ((m->oflags & VPO_BUSY) != 0 || m->busy != 0)
-		return (0);
-	m->oflags |= VPO_BUSY;
-	return (1);
-}
-
-int
-vm_page_busy_wlocked(vm_page_t m)
-{
-
-	return ((m->oflags & VPO_BUSY) != 0);
+	x = m->busy_lock;
+	return ((x & VPB_LOCK_READ) != 0 &&
+	    atomic_cmpset_acq_int(&m->busy_lock, x, x + VPB_ONE_READER));
 }
 
 void
-vm_page_busy_wunlock(vm_page_t m)
+vm_page_busy_wunlock_hard(vm_page_t m)
 {
 
-	VM_OBJECT_ASSERT_WLOCKED(m->object);
-	KASSERT(m->oflags & VPO_BUSY,
-	    ("vm_page_busy_wunlock: page not busy"));
-	m->oflags &= ~VPO_BUSY;
+	vm_page_busy_assert_wlocked(m);
+
 	vm_page_lock(m);
-	vm_page_flash(m);
+	atomic_store_rel_int(&m->busy_lock, VPB_UNLOCKED);
+	wakeup(m);
 	vm_page_unlock(m);
 }
-
 
 /*
  *      vm_page_flash:
@@ -558,12 +595,22 @@ vm_page_busy_wunlock(vm_page_t m)
 void
 vm_page_flash(vm_page_t m)
 {
+	u_int retry, x;
 
 	vm_page_lock_assert(m, MA_OWNED);
-	if (m->flags & PG_WANTED) {
-		m->flags &= ~PG_WANTED;
-		wakeup(m);
+
+	retry = 0;
+	for (;;) {
+		if (retry++ > 1000)
+			panic("vm_page_flash: failed loop %p", m);
+		x = m->busy_lock;
+		if ((x & VPB_LOCK_WAITERS) == 0)
+			return;
+		if (atomic_cmpset_int(&m->busy_lock, x,
+		    x & (~VPB_LOCK_WAITERS)))
+			break;
 	}
+	wakeup(m);
 }
 
 /*
@@ -678,7 +725,8 @@ vm_page_initfake(vm_page_t m, vm_paddr_t paddr, vm_memattr_t memattr)
 	/* Fictitious pages don't use "segind". */
 	m->flags = PG_FICTITIOUS;
 	/* Fictitious pages don't use "order" or "pool". */
-	m->oflags = VPO_UNMANAGED | VPO_BUSY;
+	m->oflags = VPO_UNMANAGED;
+	m->busy_lock = VPB_SINGLE_WRITER;
 	m->wire_count = 1;
 memattr:
 	pmap_page_set_memattr(m, memattr);
@@ -758,7 +806,7 @@ vm_page_readahead_finish(vm_page_t m)
 		 * unless the page is wanted by another thread.
 		 */
 		vm_page_lock(m);
-		if (m->flags & PG_WANTED)
+		if ((m->busy_lock & VPB_LOCK_WAITERS) != 0)
 			vm_page_activate(m);
 		else
 			vm_page_deactivate(m);
@@ -775,22 +823,6 @@ vm_page_readahead_finish(vm_page_t m)
 		vm_page_free(m);
 		vm_page_unlock(m);
 	}
-}
-
-/*
- *	_vm_page_sleep_onpage:
- *
- *	Sleep and release the page lock, using the page pointer as wchan.
- *
- *	The given page must be locked.
- */
-static inline int
-_vm_page_sleep_onpage(vm_page_t m, int pri, const char *wmesg, int  timo)
-{
-
-	vm_page_lock_assert(m, MA_OWNED);
-	m->flags |= PG_WANTED;
-	return (msleep(m, vm_page_lockptr(m), pri | PDROP, wmesg, timo));
 }
 
 /*
@@ -821,25 +853,11 @@ vm_page_sleep_if_busy(vm_page_t m, const char *msg)
 		obj = m->object;
 		vm_page_lock(m);
 		VM_OBJECT_WUNLOCK(obj);
-		_vm_page_sleep_onpage(m, PVM, msg, 0);
+		vm_page_busy_sleep(m, msg);
 		VM_OBJECT_WLOCK(obj);
 		return (TRUE);
 	}
 	return (FALSE);
-}
-
-/*
- *	vm_page_sleep_onpage:
- *
- *	External version of _vm_page_sleep_onpage().
- *
- *	Check the inline version for comments.
- */
-int
-vm_page_sleep_onpage(vm_page_t m, int pri, const char *wmesg, int  timo)
-{
-
-	return (_vm_page_sleep_onpage(m, pri, wmesg, timo));
 }
 
 /*
@@ -972,7 +990,6 @@ vm_page_remove(vm_page_t m)
 		return;
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	if (vm_page_busy_wlocked(m)) {
-		m->oflags &= ~VPO_BUSY;
 		lockacq = FALSE;
 		if ((m->oflags & VPO_UNMANAGED) != 0 &&
 		    !mtx_owned(vm_page_lockptr(m))) {
@@ -980,6 +997,7 @@ vm_page_remove(vm_page_t m)
 			vm_page_lock(m);
 		}
 		vm_page_flash(m);
+		atomic_store_rel_int(&m->busy_lock, VPB_UNLOCKED);
 		if (lockacq)
 			vm_page_unlock(m);
 	}
@@ -1370,7 +1388,8 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	    ("vm_page_alloc: page %p has unexpected queue %d", m, m->queue));
 	KASSERT(m->wire_count == 0, ("vm_page_alloc: page %p is wired", m));
 	KASSERT(m->hold_count == 0, ("vm_page_alloc: page %p is held", m));
-	KASSERT(m->busy == 0, ("vm_page_alloc: page %p is busy", m));
+	KASSERT(!vm_page_busy_rlocked(m), 
+	    ("vm_page_alloc: page %p is busy", m));
 	KASSERT(m->dirty == 0, ("vm_page_alloc: page %p is dirty", m));
 	KASSERT(pmap_page_get_memattr(m) == VM_MEMATTR_DEFAULT,
 	    ("vm_page_alloc: page %p has unexpected memattr %d", m,
@@ -1414,10 +1433,11 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	m->aflags = 0;
 	m->oflags = object == NULL || (object->flags & OBJ_UNMANAGED) != 0 ?
 	    VPO_UNMANAGED : 0;
+	m->busy_lock = VPB_UNLOCKED;
 	if ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_NOOBJ | VM_ALLOC_RBUSY)) == 0)
-		m->oflags |= VPO_BUSY;
+		m->busy_lock = VPB_SINGLE_WRITER;
 	if ((req & VM_ALLOC_RBUSY) != 0)
-		m->busy++;
+		m->busy_lock = VPB_READERS_LOCK(1);
 	if (req & VM_ALLOC_WIRED) {
 		/*
 		 * The page lock is not required for wiring a page until that
@@ -1585,8 +1605,6 @@ retry:
 		atomic_add_int(&cnt.v_wire_count, npages);
 	oflags = VPO_UNMANAGED;
 	if (object != NULL) {
-		if ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)) == 0)
-			oflags |= VPO_BUSY;
 		if (object->memattr != VM_MEMATTR_DEFAULT &&
 		    memattr == VM_MEMATTR_DEFAULT)
 			memattr = object->memattr;
@@ -1594,8 +1612,13 @@ retry:
 	for (m = m_ret; m < &m_ret[npages]; m++) {
 		m->aflags = 0;
 		m->flags = (m->flags | PG_NODUMP) & flags;
-		if ((req & VM_ALLOC_RBUSY) != 0)
-			m->busy++;
+		m->busy_lock = VPB_UNLOCKED;
+		if (object != NULL) {
+			if ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)) == 0)
+				m->busy_lock = VPB_SINGLE_WRITER;
+			if ((req & VM_ALLOC_RBUSY) != 0)
+				m->busy_lock = VPB_READERS_LOCK(1);
+		}
 		if ((req & VM_ALLOC_WIRED) != 0)
 			m->wire_count = 1;
 		/* Unmanaged pages don't use "act_count". */
@@ -1638,7 +1661,7 @@ vm_page_alloc_init(vm_page_t m)
 	    ("vm_page_alloc_init: page %p is wired", m));
 	KASSERT(m->hold_count == 0,
 	    ("vm_page_alloc_init: page %p is held", m));
-	KASSERT(m->busy == 0,
+	KASSERT(!vm_page_busy_rlocked(m),
 	    ("vm_page_alloc_init: page %p is busy", m));
 	KASSERT(m->dirty == 0,
 	    ("vm_page_alloc_init: page %p is dirty", m));
@@ -1997,7 +2020,7 @@ vm_page_free_toq(vm_page_t m)
 
 	if (VM_PAGE_IS_FREE(m))
 		panic("vm_page_free: freeing free page %p", m);
-	else if (m->busy != 0)
+	else if (vm_page_busy_rlocked(m))
 		panic("vm_page_free: freeing busy page %p", m);
 
 	/*
@@ -2443,6 +2466,7 @@ vm_page_t
 vm_page_grab(vm_object_t object, vm_pindex_t pindex, int allocflags)
 {
 	vm_page_t m;
+	int sleep;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	KASSERT((allocflags & VM_ALLOC_RETRY) != 0,
@@ -2452,8 +2476,9 @@ vm_page_grab(vm_object_t object, vm_pindex_t pindex, int allocflags)
 	    ("vm_page_grab: VM_ALLOC_RBUSY/VM_ALLOC_IGN_RBUSY mismatch"));
 retrylookup:
 	if ((m = vm_page_lookup(object, pindex)) != NULL) {
-		if ((m->oflags & VPO_BUSY) != 0 ||
-		    ((allocflags & VM_ALLOC_IGN_RBUSY) == 0 && m->busy != 0)) {
+		sleep = (allocflags & VM_ALLOC_IGN_RBUSY) != 0 ?
+		    vm_page_busy_wlocked(m) : vm_page_busy_locked(m);
+		if (sleep) {
 			/*
 			 * Reference the page before unlocking and
 			 * sleeping so that the page daemon is less
@@ -2462,7 +2487,7 @@ retrylookup:
 			vm_page_aflag_set(m, PGA_REFERENCED);
 			vm_page_lock(m);
 			VM_OBJECT_WUNLOCK(object);
-			vm_page_sleep(m, "pgrbwt");
+			vm_page_busy_sleep(m, "pgrbwt");
 			VM_OBJECT_WLOCK(object);
 			goto retrylookup;
 		} else {
@@ -3020,9 +3045,9 @@ DB_SHOW_COMMAND(pginfo, vm_page_print_pginfo)
 		m = (vm_page_t)addr;
 	db_printf(
     "page %p obj %p pidx 0x%jx phys 0x%jx q %d hold %d wire %d\n"
-    "  af 0x%x of 0x%x f 0x%x act %d busy %d valid 0x%x dirty 0x%x\n",
+    "  af 0x%x of 0x%x f 0x%x act %d busy %x valid 0x%x dirty 0x%x\n",
 	    m, m->object, (uintmax_t)m->pindex, (uintmax_t)m->phys_addr,
 	    m->queue, m->hold_count, m->wire_count, m->aflags, m->oflags,
-	    m->flags, m->act_count, m->busy, m->valid, m->dirty);
+	    m->flags, m->act_count, m->busy_lock, m->valid, m->dirty);
 }
 #endif /* DDB */

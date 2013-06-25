@@ -345,7 +345,7 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 				vm_page_reference(pp);
 				vm_page_lock(pp);
 				zfs_vmobject_wunlock(obj);
-				vm_page_sleep(pp, "zfsmwb");
+				vm_page_busy_sleep(pp, "zfsmwb");
 				zfs_vmobject_wlock(obj);
 				continue;
 			}
@@ -429,7 +429,7 @@ update_pages(vnode_t *vp, int64_t start, int len, objset_t *os, uint64_t oid,
 			    ("zfs update_pages: unaligned data in putpages case"));
 			KASSERT(pp->valid == VM_PAGE_BITS_ALL,
 			    ("zfs update_pages: invalid page in putpages case"));
-			KASSERT(pp->busy > 0,
+			KASSERT(vm_page_busy_rlocked(pp),
 			    ("zfs update_pages: unbusy page in putpages case"));
 			KASSERT(!pmap_page_is_write_mapped(pp),
 			    ("zfs update_pages: writable page in putpages case"));

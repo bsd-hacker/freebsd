@@ -241,7 +241,7 @@ vm_pageout_init_marker(vm_page_t marker, u_short queue)
 
 	bzero(marker, sizeof(*marker));
 	marker->flags = PG_MARKER;
-	marker->oflags = VPO_BUSY;
+	marker->busy_lock = VPB_SINGLE_WRITER;
 	marker->queue = queue;
 	marker->hold_count = 1;
 }

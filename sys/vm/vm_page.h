@@ -155,11 +155,12 @@ struct vm_page {
 	uint8_t oflags;			/* page VPO_* flags (O) */
 	uint16_t flags;			/* page PG_* flags (P) */
 	u_char	act_count;		/* page usage count (P) */
-	u_char	busy;			/* page busy count (O) */
+	u_char	basy;			/* page busy count (O) */
 	/* NOTE that these must support one bit per DEV_BSIZE in a page!!! */
 	/* so, on normal X86 kernels, they must be at least 8 bits wide */
 	vm_page_bits_t valid;		/* map of valid DEV_BSIZE chunks (O) */
 	vm_page_bits_t dirty;		/* map of dirty DEV_BSIZE chunks (M) */
+	u_int busy_lock;		/* busy owners lock */
 };
 
 /*
@@ -176,11 +177,30 @@ struct vm_page {
  * 	 mappings, and such pages are also not on any PQ queue.
  *
  */
-#define	VPO_BUSY	0x01		/* page is in transit */
+#define	VPO_UNUSED01	0x01		/* --available-- */
 #define	VPO_SWAPSLEEP	0x02		/* waiting for swap to finish */
 #define	VPO_UNMANAGED	0x04		/* no PV management for page */
 #define	VPO_SWAPINPROG	0x08		/* swap I/O in progress on page */
 #define	VPO_NOSYNC	0x10		/* do not collect for syncer */
+
+/*
+ * ARXXX: Insert comments for busy here.
+ */
+#define	VPB_LOCK_READ		0x01
+#define	VPB_LOCK_WRITE		0x02
+#define	VPB_LOCK_WAITERS	0x04
+#define	VPB_LOCK_FLAGMASK						\
+	(VPB_LOCK_READ | VPB_LOCK_WRITE | VPB_LOCK_WAITERS)
+
+#define	VPB_READERS_SHIFT	3
+#define	VPB_READERS(x)							\
+	(((x) & ~VPB_LOCK_FLAGMASK) >> VPB_READERS_SHIFT)
+#define	VPB_READERS_LOCK(x)	((x) << VPB_READERS_SHIFT | VPB_LOCK_READ)
+#define	VPB_ONE_READER		(1 << VPB_READERS_SHIFT)
+
+#define	VPB_SINGLE_WRITER	VPB_LOCK_WRITE
+
+#define	VPB_UNLOCKED		VPB_READERS_LOCK(0)
 
 #define	PQ_NONE		255
 #define	PQ_INACTIVE	0
@@ -282,7 +302,6 @@ extern struct mtx_padalign pa_lock[];
 #define	PG_WINATCFLS	0x0040		/* flush dirty page on inactive q */
 #define	PG_NODUMP	0x0080		/* don't include this page in a dump */
 #define	PG_UNHOLDFREE	0x0100		/* delayed free of a held page */
-#define	PG_WANTED	0x0200		/* someone is waiting for page */
 
 /*
  * Misc constants.
@@ -372,14 +391,12 @@ malloc2vm_flags(int malloc_flags)
 }
 #endif
 
-void vm_page_busy_assert_unlocked(vm_page_t m);
-void vm_page_busy_assert_wlocked(vm_page_t m);
-int vm_page_busy_locked(vm_page_t m);
+void vm_page_busy_downgrade(vm_page_t m);
+int vm_page_busy_rlocked(vm_page_t m);
 void vm_page_busy_runlock(vm_page_t m);
+void vm_page_busy_sleep(vm_page_t m, const char *msg);
 int vm_page_busy_tryrlock(vm_page_t m);
-int vm_page_busy_trywlock(vm_page_t m);
-int vm_page_busy_wlocked(vm_page_t m);
-void vm_page_busy_wunlock(vm_page_t m);
+void vm_page_busy_wunlock_hard(vm_page_t m);
 void vm_page_flash(vm_page_t m);
 void vm_page_hold(vm_page_t mem);
 void vm_page_unhold(vm_page_t mem);
@@ -420,7 +437,6 @@ void vm_page_requeue(vm_page_t m);
 void vm_page_requeue_locked(vm_page_t m);
 void vm_page_set_valid_range(vm_page_t m, int base, int size);
 int vm_page_sleep_if_busy(vm_page_t m, const char *msg);
-int vm_page_sleep_onpage(vm_page_t m, int pri, const char *msg, int timo);
 vm_offset_t vm_page_startup(vm_offset_t vaddr);
 void vm_page_unhold_pages(vm_page_t *ma, int count);
 void vm_page_unwire (vm_page_t, int);
@@ -448,14 +464,44 @@ void vm_page_assert_locked_KBI(vm_page_t m, const char *file, int line);
 void vm_page_lock_assert_KBI(vm_page_t m, int a, const char *file, int line);
 #endif
 
+#define	vm_page_busy_assert_rlocked(m)					\
+	KASSERT(vm_page_busy_rlocked(m),				\
+	    ("vm_page_busy_assert_rlocked: page %p not read busy @ %s:%d", \
+	    (void *)m, __FILE__, __LINE__));
+
+#define	vm_page_busy_assert_unlocked(m)					\
+	KASSERT(!vm_page_busy_locked(m),				\
+	    ("vm_page_busy_assert_wlocked: page %p busy @ %s:%d",	\
+	    (void *)m, __FILE__, __LINE__));
+
+#define	vm_page_busy_assert_wlocked(m)					\
+	KASSERT(vm_page_busy_wlocked(m),				\
+	    ("vm_page_busy_assert_wlocked: page %p not write busy @ %s:%d", \
+	    (void *)m, __FILE__, __LINE__));
+
+#define	vm_page_busy_locked(m)						\
+	((m)->busy_lock != VPB_UNLOCKED)
+
 #define	vm_page_busy_rlock(m) do {					\
 	if (!vm_page_busy_tryrlock(m))					\
 		panic("%s: page %p failed read busing", __func__, m);	\
 } while (0)
 
+#define	vm_page_busy_trywlock(m)					\
+	(atomic_cmpset_acq_int(&m->busy_lock, VPB_UNLOCKED, VPB_SINGLE_WRITER))
+
 #define	vm_page_busy_wlock(m) do {					\
 	if (!vm_page_busy_trywlock(m))					\
 		panic("%s: page %p failed write busing", __func__, m);	\
+} while (0)
+
+#define	vm_page_busy_wlocked(m)						\
+	((m->busy_lock & VPB_SINGLE_WRITER) != 0)
+
+#define	vm_page_busy_wunlock(m)	do {					\
+	if (!atomic_cmpset_rel_int(&(m)->busy_lock, VPB_SINGLE_WRITER,	\
+	    VPB_UNLOCKED))						\
+		vm_page_busy_wunlock_hard(m);				\
 } while (0)
 
 #ifdef INVARIANTS
@@ -553,21 +599,6 @@ vm_page_dirty(vm_page_t m)
 #else
 	m->dirty = VM_PAGE_BITS_ALL;
 #endif
-}
-
-/*
- *	vm_page_sleep:
- *
- *	Convenience wrapper around vm_page_sleep_onpage(), passing
- *	PVM priority and 0 timeout values.  Unlocks the page upon return.
- *
- *	The page must be locked.
- */
-static __inline void
-vm_page_sleep(vm_page_t m, const char *msg)
-{
-
-	vm_page_sleep_onpage(m, PVM, msg, 0);
 }
 
 /*

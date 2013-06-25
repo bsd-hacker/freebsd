@@ -1167,7 +1167,7 @@ shadowlookup:
 			if (object != tobject)
 				VM_OBJECT_WUNLOCK(object);
 			VM_OBJECT_WUNLOCK(tobject);
-			vm_page_sleep(m, "madvpo");
+			vm_page_busy_sleep(m, "madvpo");
 			VM_OBJECT_WLOCK(object);
   			goto relookup;
 		}
@@ -1346,7 +1346,7 @@ retry:
 			VM_OBJECT_WUNLOCK(new_object);
 			vm_page_lock(m);
 			VM_OBJECT_WUNLOCK(orig_object);
-			vm_page_sleep(m, "spltwt");
+			vm_page_busy_sleep(m, "spltwt");
 			VM_OBJECT_WLOCK(orig_object);
 			VM_OBJECT_WLOCK(new_object);
 			goto retry;
@@ -1505,7 +1505,7 @@ vm_object_backing_scan(vm_object_t object, int op)
 					VM_OBJECT_WUNLOCK(object);
 					vm_page_lock(p);
 					VM_OBJECT_WUNLOCK(backing_object);
-					vm_page_sleep(p, "vmocol");
+					vm_page_busy_sleep(p, "vmocol");
 					VM_OBJECT_WLOCK(object);
 					VM_OBJECT_WLOCK(backing_object);
 					/*
@@ -1905,7 +1905,7 @@ again:
 		}
 		if (vm_page_busy_locked(p)) {
 			VM_OBJECT_WUNLOCK(object);
-			vm_page_sleep(p, "vmopar");
+			vm_page_busy_sleep(p, "vmopar");
 			VM_OBJECT_WLOCK(object);
 			goto again;
 		}

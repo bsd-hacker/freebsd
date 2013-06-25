@@ -479,8 +479,7 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 		} else
 			vm_page_zero_invalid(m, TRUE);
 	}
-	vm_page_busy_wunlock(m);
-	vm_page_busy_rlock(m);
+	vm_page_busy_downgrade(m);
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&m, offset, tlen, uio);
 	VM_OBJECT_WLOCK(tobj);
@@ -594,8 +593,7 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 		} else
 			vm_page_zero_invalid(tpg, TRUE);
 	}
-	vm_page_busy_wunlock(tpg);
-	vm_page_busy_rlock(tpg);
+	vm_page_busy_downgrade(tpg);
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&tpg, offset, tlen, uio);
 	VM_OBJECT_WLOCK(tobj);
