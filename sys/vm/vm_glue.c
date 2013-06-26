@@ -551,7 +551,7 @@ vm_thread_swapin(struct thread *td)
 			for (k = i; k < j; k++)
 				ma[k] = vm_page_lookup(ksobj, k);
 			vm_page_busy_wunlock(ma[i]);
-		} else
+		} else if (vm_page_busy_wlocked(ma[i])
 			vm_page_busy_wunlock(ma[i]);
 	}
 	VM_OBJECT_WUNLOCK(ksobj);
