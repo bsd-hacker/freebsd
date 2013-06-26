@@ -3,7 +3,7 @@ use Moose;
 use MooseX::Types::Common::Numeric qw(PositiveInt);
 use namespace::autoclean;
 
-use Catalyst::Runtime 5.80;
+use Catalyst::Runtime 5.90040;
 
 use Catalyst qw/
     ConfigLoader
@@ -13,7 +13,6 @@ use Catalyst qw/
     Session::State::Cookie
     Session::Store::FastMmap
     Static::Simple
-    Unicode::Encoding
 /;
 
 extends 'Catalyst';
@@ -26,6 +25,7 @@ $VERSION = eval $VERSION;
 __PACKAGE__->config(
     name => 'FBCE',
     view => 'HTML',
+    encoding => 'UTF-8',
     'Plugin::ConfigLoader' => {
 	substitutions => {
 	    UID => sub { $< },
