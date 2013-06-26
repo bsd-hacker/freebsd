@@ -702,6 +702,7 @@ main(int argc, char **argv)
 #endif
 	int status;
 	FILE *VFile;
+	uint32_t rxq = (uint32_t)-1, txq = (uint32_t)-1, other = (uint32_t)-1;
 #ifdef WIN32
 	if(wsockinit() != 0) return 1;
 #endif /* WIN32 */
@@ -737,7 +738,7 @@ main(int argc, char **argv)
 #endif
 
 	while (
-	    (op = getopt(argc, argv, "aAb" B_FLAG "c:C:d" D_FLAG "eE:fF:G:hHi:" I_FLAG j_FLAG J_FLAG "KlLm:M:nNOpqr:Rs:StT:u" U_FLAG "V:vw:W:xXy:Yz:Z:")) != -1)
+	    (op = getopt(argc, argv, "aAb" B_FLAG "c:C:d" D_FLAG "eE:fF:G:hHi:" I_FLAG j_FLAG J_FLAG "KlLm:M:nNOpqr:Rs:StT:u" U_FLAG "V:vw:W:xXy:Yz:Z:Q:g:k")) != -1)
 		switch (op) {
 
 		case 'a':
@@ -813,6 +814,10 @@ main(int argc, char **argv)
 
 		case 'F':
 			infile = optarg;
+			break;
+
+		case 'g':
+			txq = atoi(optarg);
 			break;
 
 		case 'G':
@@ -919,6 +924,12 @@ main(int argc, char **argv)
 #endif /* WIN32 */
 			break;
 
+		case 'k':
+			other = atoi(optarg);
+			if (other != 0 || other != 1)
+				usage();
+			break;
+
 		case 'K':
 			++Kflag;
 			break;
@@ -963,6 +974,10 @@ main(int argc, char **argv)
 		case 'q':
 			++qflag;
 			++suppress_default_print;
+			break;
+
+		case 'Q':
+			rxq = atoi(optarg);
 			break;
 
 		case 'r':
@@ -1099,20 +1114,6 @@ main(int argc, char **argv)
 				usage();
 				/* NOTREACHED */
 			}
-			break;
-
-		case 'Q':
-			rxq = atoi(optarg);
-			break;
-
-		case 'g':
-			txq = atoi(optarg);
-			break;
-
-		case 'V':
-			other = atoi(optarg);
-			if (other != 0 || other != 1)
-				usage();
 			break;
 
 		default:
@@ -2099,7 +2100,7 @@ usage(void)
 #endif /* WIN32 */
 #endif /* HAVE_PCAP_LIB_VERSION */
 	(void)fprintf(stderr,
-"Usage: %s [-aAbd" D_FLAG "efhH" I_FLAG J_FLAG "KlLnNOpqRStu" U_FLAG "vxX]" B_FLAG_USAGE " [ -c count ]\n", program_name);
+"Usage: %s [-aAbd" D_FLAG "efghH" I_FLAG J_FLAG "kKlLnNOpqQRStu" U_FLAG "vxX]" B_FLAG_USAGE " [ -c count ]\n", program_name);
 	(void)fprintf(stderr,
 "\t\t[ -C file_size ] [ -E algo:secret ] [ -F file ] [ -G seconds ]\n");
 	(void)fprintf(stderr,
