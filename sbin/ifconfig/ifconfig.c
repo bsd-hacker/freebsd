@@ -917,7 +917,7 @@ unsetifdescr(const char *val, int value, int s, const struct afswtch *afp)
 "\020\1RXCSUM\2TXCSUM\3NETCONS\4VLAN_MTU\5VLAN_HWTAGGING\6JUMBO_MTU\7POLLING" \
 "\10VLAN_HWCSUM\11TSO4\12TSO6\13LRO\14WOL_UCAST\15WOL_MCAST\16WOL_MAGIC" \
 "\17TOE4\20TOE6\21VLAN_HWFILTER\23VLAN_HWTSO\24LINKSTATE\25NETMAP" \
-"\26RXCSUM_IPV6\27TXCSUM_IPV6"
+"\26RXCSUM_IPV6\27TXCSUM_IPV6\30MULTIQUEUE"
 
 /*
  * Print the status of the interface.  If an address family was
@@ -982,6 +982,38 @@ status(const struct afswtch *afp, const struct sockaddr_dl *sdl,
 			printb("\tcapabilities", ifr.ifr_reqcap, IFCAPBITS);
 			putchar('\n');
 		}
+	}
+
+	if ((ifr.ifr_reqcap & IFCAP_MULTIQUEUE)) {
+		int i, rxqlen = 0, txqlen = 0;
+
+		if (ioctl(s, SIOCGIFQLEN, &ifr) == 0) {
+			rxqlen = ifr.ifr_rxqueue_len;
+			txqlen = ifr.ifr_txqueue_len;
+		}else
+			perror("ioctl");
+
+		printf("\trxqueue len=%d affinity=[", rxqlen);
+		for (i = 0; i < rxqlen; i++) {
+			ifr.ifr_queue_affinity_index = i;
+			if (ioctl(s, SIOCGIFRXQAFFINITY, &ifr) == 0)
+				printf(" %d:%d", ifr.ifr_queue_affinity_index,
+					ifr.ifr_queue_affinity_cpu);
+			else
+				perror("ioctl");
+		}
+		printf(" ]\n");
+
+		printf("\ttxqueue len=%d affinity=[", txqlen);
+		for (i = 0; i < txqlen; i++) {
+			ifr.ifr_queue_affinity_index = i;
+			if (ioctl(s, SIOCGIFTXQAFFINITY, &ifr) == 0)
+				printf(" %d:%d", ifr.ifr_queue_affinity_index,
+					ifr.ifr_queue_affinity_cpu);
+			else
+				perror("ioctl");
+		}
+		printf(" ]\n");
 	}
 
 	tunnel_status(s);

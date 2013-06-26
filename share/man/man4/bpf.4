@@ -631,6 +631,46 @@ therefore ownership is not assigned, the user process must check
 .Vt bzh_kernel_gen
 against
 .Vt bzh_user_gen .
+.It Dv BIOCENAQMASK
+Enables multiqueue filter on the descriptor.
+
+.It Dv BIOCDISQMASK
+Disables multiqueue filter on the descriptor.
+
+.It Dv BIOCSTRXQMASK
+.Pq Li uint32_t
+Set mask bit on specified RX queue.
+
+.It Dv BIOCCRRXQMASK
+.Pq Li uint32_t
+Clear mask bit on specified RX queue.
+
+.It Dv BIOCGTRXQMASK
+.Pq Li uint32_t
+Get mask bit on specified RX queue.
+
+.It Dv BIOCSTTXQMASK
+.Pq Li uint32_t
+Set mask bit on specified TX queue.
+
+.It Dv BIOCCRTXQMASK
+.Pq Li uint32_t
+Clear mask bit on specified TX queue.
+
+.It Dv BIOCGTTXQMASK
+.Pq Li uint32_t
+Get mask bit on specified TX queue.
+
+.It Dv BIOCSTOTHERMASK
+Set mask bit for the packets which not tied with any queues.
+
+.It Dv BIOCCROTHERMASK
+Clear mask bit for the packets which not tied with any queues.
+
+.It Dv BIOCGTOTHERMASK
+.Pq Li uint32_t
+Get mask bit for the packets which not tied with any queues.
+
 .El
 .Sh BPF HEADER
 One of the following structures is prepended to each packet returned by
@@ -1037,6 +1077,24 @@ struct bpf_insn insns[] = {
 	BPF_STMT(BPF_RET+BPF_K, 0),
 };
 .Ed
+.Sh MULTIQUEUE SUPPORT
+Multiqueue network interface support function provides interfaces for 
+multithreaded packet processing using bpf.
+
+Normal bpf can receive packets from specified interface, multiqueue support 
+function can receive packets from specified hardware queue.
+
+This distributes bpf workload on multiple threads, also reduces lock 
+contention on bpf.
+
+To make your program multithreaded, you'll need to open bpf descriptor on each 
+thread, enable multiqueue support by BIOCENAQMASK ioctl, and set queue mask by 
+BIOCSTRXQMASK / BIOCSTTXQMASK / BIOCSTOTHERMASK ioctls.
+
+Queue length and queue affinity information may useful to optimize setting 
+queue mask on bpf descriptor, see
+.Xr netintro 4 .
+
 .Sh SEE ALSO
 .Xr tcpdump 1 ,
 .Xr ioctl 2 ,

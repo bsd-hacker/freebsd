@@ -337,6 +337,9 @@ struct pcap {
 	u_int *tstamp_type_list;
 
 	struct pcap_pkthdr pcap_header;	/* This is needed for the pcap_next_ex() to work */
+
+	uint32_t rxq_num, txq_num;
+	uint32_t other_mask;
 };
 
 /*

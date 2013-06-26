@@ -176,6 +176,15 @@ struct ifnet {
 		(struct ifnet *, struct mbuf *);
 	void	(*if_reassign)		/* reassign to vnet routine */
 		(struct ifnet *, struct vnet *, char *);
+	int	(*if_get_rxqueue_len)
+		(struct ifnet *);
+	int	(*if_get_txqueue_len)
+		(struct ifnet *);
+	int	(*if_get_rxqueue_affinity)
+		(struct ifnet *, int);
+	int	(*if_get_txqueue_affinity)
+		(struct ifnet *, int);
+
 	struct	vnet *if_home_vnet;	/* where this ifnet originates from */
 	struct	ifaddr	*if_addr;	/* pointer to link-level address */
 	void	*if_llsoftc;		/* link layer softc */

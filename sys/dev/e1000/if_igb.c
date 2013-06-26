@@ -278,6 +278,11 @@ static int	igb_set_flowcntl(SYSCTL_HANDLER_ARGS);
 static int	igb_sysctl_dmac(SYSCTL_HANDLER_ARGS);
 static int	igb_sysctl_eee(SYSCTL_HANDLER_ARGS);
 
+static int	igb_get_rxqueue_len(struct ifnet *);
+static int	igb_get_txqueue_len(struct ifnet *);
+static int	igb_get_rxqueue_affinity(struct ifnet *, int);
+static int	igb_get_txqueue_affinity(struct ifnet *, int);
+
 #ifdef DEVICE_POLLING
 static poll_handler_t igb_poll;
 #endif /* POLLING */
@@ -919,6 +924,9 @@ igb_start_locked(struct tx_ring *txr, struct ifnet *ifp)
 			break;
 		}
 
+		m_head->m_pkthdr.rxqueue = (uint32_t)-1;
+		m_head->m_pkthdr.txqueue = txr->me;
+
 		/* Send a copy of the frame to the BPF listener */
 		ETHER_BPF_MTAP(ifp, m_head);
 
@@ -1012,6 +1020,8 @@ igb_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr)
 		ifp->if_obytes += next->m_pkthdr.len;
 		if (next->m_flags & M_MCAST)
 			ifp->if_omcasts++;
+		next->m_pkthdr.rxqueue = (uint32_t)-1;
+		next->m_pkthdr.txqueue = txr->me;
 		ETHER_BPF_MTAP(ifp, next);
 		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
 			break;
@@ -3112,6 +3122,10 @@ igb_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_softc = adapter;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = igb_ioctl;
+ 	ifp->if_get_rxqueue_len = igb_get_rxqueue_len;
+ 	ifp->if_get_txqueue_len = igb_get_txqueue_len;
+ 	ifp->if_get_rxqueue_affinity = igb_get_rxqueue_affinity;
+ 	ifp->if_get_txqueue_affinity = igb_get_txqueue_affinity;
 #ifndef IGB_LEGACY_TX
 	ifp->if_transmit = igb_mq_start;
 	ifp->if_qflush = igb_qflush;
@@ -3159,6 +3173,7 @@ igb_setup_interface(device_t dev, struct adapter *adapter)
 	** enable this and get full hardware tag filtering.
 	*/
 	ifp->if_capabilities |= IFCAP_VLAN_HWFILTER;
+	ifp->if_capabilities |= IFCAP_MULTIQUEUE;
 
 	/*
 	 * Specify the media types supported by this adapter and register
@@ -4883,6 +4898,9 @@ igb_rxeof(struct igb_queue *que, int count, int *done)
 			rxr->fmp->m_pkthdr.flowid = que->msix;
 			rxr->fmp->m_flags |= M_FLOWID;
 #endif
+			rxr->fmp->m_pkthdr.rxqueue = que->msix;
+			rxr->fmp->m_pkthdr.txqueue = (uint32_t)-1;
+
 			sendmp = rxr->fmp;
 			/* Make sure to set M_PKTHDR. */
 			sendmp->m_flags |= M_PKTHDR;
@@ -6046,4 +6064,30 @@ igb_sysctl_eee(SYSCTL_HANDLER_ARGS)
 	igb_init_locked(adapter);
 	IGB_CORE_UNLOCK(adapter);
 	return (0);
+}
+
+static int
+igb_get_rxqueue_len(struct ifnet *ifp)
+{
+	struct adapter	*adapter = ifp->if_softc;
+	return (adapter->num_queues);
+}
+
+static int
+igb_get_txqueue_len(struct ifnet *ifp)
+{
+	struct adapter	*adapter = ifp->if_softc;
+	return (adapter->num_queues);
+}
+
+static int
+igb_get_rxqueue_affinity(struct ifnet *ifp, int queid)
+{
+	return (queid);
+}
+
+static int
+igb_get_txqueue_affinity(struct ifnet *ifp, int queid)
+{
+	return (queid);
 }

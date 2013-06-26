@@ -505,6 +505,9 @@ pcap_create_common(const char *source, char *ebuf)
 	p->opt.promisc = 0;
 	p->opt.buffer_size = 0;
 	p->opt.tstamp_type = -1;	/* default to not setting time stamp type */
+ 	p->rxq_num = (uint32_t)-1;
+ 	p->txq_num = (uint32_t)-1;
+ 	p->other_mask = (uint32_t)-1;
 	return (p);
 }
 
@@ -635,6 +638,33 @@ pcap_activate(pcap_t *p)
 		initialize_ops(p);
 	}
 	return (status);
+}
+
+int
+pcap_set_rxq_mask(pcap_t *p, uint32_t num)
+{
+	if (pcap_check_activated(p))
+		return PCAP_ERROR_ACTIVATED;
+	p->rxq_num = num;
+	return 0;
+}
+
+int
+pcap_set_txq_mask(pcap_t *p, uint32_t num)
+{
+	if (pcap_check_activated(p))
+		return PCAP_ERROR_ACTIVATED;
+	p->txq_num = num;
+	return 0;
+}
+
+int
+pcap_set_other_mask(pcap_t *p, uint32_t mask)
+{
+	if (pcap_check_activated(p))
+		return PCAP_ERROR_ACTIVATED;
+	p->other_mask = mask;
+	return 0;
 }
 
 pcap_t *

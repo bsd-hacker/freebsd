@@ -1101,6 +1101,20 @@ main(int argc, char **argv)
 			}
 			break;
 
+		case 'Q':
+			rxq = atoi(optarg);
+			break;
+
+		case 'g':
+			txq = atoi(optarg);
+			break;
+
+		case 'V':
+			other = atoi(optarg);
+			if (other != 0 || other != 1)
+				usage();
+			break;
+
 		default:
 			usage();
 			/* NOTREACHED */
@@ -1274,6 +1288,13 @@ main(int argc, char **argv)
 			    	    device, pcap_statustostr(status));
 		}
 #endif
+ 		if (rxq != (uint32_t)-1)
+ 			pcap_set_rxq_mask(pd, rxq);
+ 		if (txq != (uint32_t)-1)
+ 			pcap_set_txq_mask(pd, txq);
+ 		if (other != (uint32_t)-1)
+ 			pcap_set_other_mask(pd, other);
+
 		status = pcap_activate(pd);
 		if (status < 0) {
 			/*

@@ -331,6 +331,10 @@ const char *pcap_tstamp_type_val_to_description(int);
 #define PCAP_TSTAMP_ADAPTER		3	/* device-provided, synced with the system clock */
 #define PCAP_TSTAMP_ADAPTER_UNSYNCED	4	/* device-provided, not synced with the system clock */
 
+int	pcap_set_rxq_mask(pcap_t *, uint32_t);
+int	pcap_set_txq_mask(pcap_t *, uint32_t);
+int	pcap_set_other_mask(pcap_t *, uint32_t);
+
 pcap_t	*pcap_open_live(const char *, int, int, int, char *);
 pcap_t	*pcap_open_dead(int, int);
 pcap_t	*pcap_open_offline(const char *, char *);

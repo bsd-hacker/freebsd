@@ -34,6 +34,7 @@ static const char rcsid[] _U_ =
 #include <sys/mman.h>
 #endif
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <time.h>
 /*
  * <net/bpf.h> defines ioctls, but doesn't include <sys/ioccom.h>.
@@ -2186,6 +2187,40 @@ pcap_activate_bpf(pcap_t *p)
 #ifdef HAVE_ZEROCOPY_BPF
 	}
 #endif
+
+	if (p->rxq_num != (uint32_t)-1 || p->txq_num != (uint32_t)-1 ||
+		p->other_mask != (uint32_t)-1) {
+		if (ioctl(fd, BIOCENAQMASK, NULL) < 0) {
+			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCENAQMASK: %s",
+			    pcap_strerror(errno));
+			status = PCAP_ERROR;
+			goto bad;
+		}
+		if (p->rxq_num != (uint32_t)-1) {
+			if (ioctl(fd, BIOCSTRXQMASK, &p->rxq_num) < 0) {
+				snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSTRXQMASK: %s",
+				    pcap_strerror(errno));
+				status = PCAP_ERROR;
+				goto bad;
+			}
+		}
+		if (p->txq_num != (uint32_t)-1) {
+			if (ioctl(fd, BIOCSTTXQMASK, &p->txq_num) < 0) {
+				snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSTTXQMASK: %s",
+				    pcap_strerror(errno));
+				status = PCAP_ERROR;
+				goto bad;
+			}
+		}
+		if (p->other_mask != (uint32_t)-1) {
+			if (ioctl(fd, BIOCSTOTHERMASK, &p->other_mask) < 0) {
+				snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSTOTHERQMASK: %s",
+				    pcap_strerror(errno));
+				status = PCAP_ERROR;
+				goto bad;
+			}
+		}
+	}
 
 	/*
 	 * If there's no filter program installed, there's

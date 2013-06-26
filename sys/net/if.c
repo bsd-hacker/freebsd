@@ -2428,6 +2428,31 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 		break;
 	}
 
+	case SIOCGIFQLEN:
+		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
+			return (EOPNOTSUPP);
+		KASSERT(ifp->if_get_rxqueue_len, ("if_get_rxqueue_len not set"));
+		KASSERT(ifp->if_get_txqueue_len, ("if_get_txqueue_len not set"));
+		ifr->ifr_rxqueue_len = ifp->if_get_rxqueue_len(ifp);
+		ifr->ifr_txqueue_len = ifp->if_get_txqueue_len(ifp);
+		break;
+
+	case SIOCGIFRXQAFFINITY:
+		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
+			return (EOPNOTSUPP);
+		KASSERT(ifp->if_get_rxqueue_affinity, ("if_get_rxqueue_affinity not set"));
+		ifr->ifr_queue_affinity_cpu =
+			ifp->if_get_rxqueue_affinity(ifp, ifr->ifr_queue_affinity_index);
+		break;
+
+	case SIOCGIFTXQAFFINITY:
+		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
+			return (EOPNOTSUPP);
+		KASSERT(ifp->if_get_rxqueue_affinity, ("if_get_rxqueue_affinity not set"));
+		ifr->ifr_queue_affinity_cpu = 
+			ifp->if_get_rxqueue_affinity(ifp, ifr->ifr_queue_affinity_index);
+		break;
+
 	default:
 		error = ENOIOCTL;
 		break;

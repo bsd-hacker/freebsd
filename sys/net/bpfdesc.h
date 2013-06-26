@@ -45,6 +45,20 @@
 #include <sys/conf.h>
 #include <net/if.h>
 
+struct bpf_qmask {
+	boolean_t	qm_enabled;
+	boolean_t *	qm_rxq_mask;
+	boolean_t *	qm_txq_mask;
+	boolean_t	qm_other_mask;
+	struct rwlock	qm_lock;
+};
+
+#define BPFQ_LOCK_DESTROY(qm)		rw_destroy(&(qm)->qm_lock)
+#define BPFQ_RLOCK(qm)			rw_rlock(&(qm)->qm_lock)
+#define BPFQ_RUNLOCK(qm)		rw_runlock(&(qm)->qm_lock)
+#define BPFQ_WLOCK(qm)			rw_wlock(&(qm)->qm_lock)
+#define BPFQ_WUNLOCK(qm)		rw_wunlock(&(qm)->qm_lock)
+
 /*
  * Descriptor associated with each open bpf file.
  */
@@ -101,6 +115,7 @@ struct bpf_d {
 	u_int64_t	bd_wdcount;	/* number of packets dropped during a write */
 	u_int64_t	bd_zcopy;	/* number of zero copy operations */
 	u_char		bd_compat32;	/* 32-bit stream on LP64 system */
+	struct bpf_qmask bd_qmask;
 };
 
 /* Values for bd_state */

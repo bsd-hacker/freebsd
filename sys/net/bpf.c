@@ -819,6 +819,12 @@ bpfopen(struct cdev *dev, int flags, int fmt, struct thread *td)
 	size = d->bd_bufsize;
 	bpf_buffer_ioctl_sblen(d, &size);
 
+ 	d->bd_qmask.qm_enabled = FALSE;
+ 	d->bd_qmask.qm_rxq_mask = NULL;
+ 	d->bd_qmask.qm_txq_mask = NULL;
+ 	d->bd_qmask.qm_other_mask = FALSE;
+ 	rw_init(&d->bd_qmask.qm_lock, "qmask lock");
+
 	return (0);
 }
 
@@ -1697,6 +1703,266 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 	case BIOCROTZBUF:
 		error = bpf_ioctl_rotzbuf(td, d, (struct bpf_zbuf *)addr);
 		break;
+
+	case BIOCENAQMASK:
+		{
+			struct ifnet *ifp;
+
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			ifp = d->bd_bif->bif_ifp;
+			if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE)) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			KASSERT(ifp->if_get_rxqueue_len, ("ifp->if_get_rxqueue_len not set\n"));
+			KASSERT(ifp->if_get_txqueue_len, ("ifp->if_get_rxqueue_len not set\n"));
+			d->bd_qmask.qm_enabled = TRUE;
+			d->bd_qmask.qm_rxq_mask =
+				malloc(ifp->if_get_rxqueue_len(ifp) * sizeof(boolean_t), M_BPF, 
+					M_WAITOK | M_ZERO);
+			d->bd_qmask.qm_txq_mask =
+				malloc(ifp->if_get_txqueue_len(ifp) * sizeof(boolean_t), M_BPF, 
+					M_WAITOK | M_ZERO);
+			d->bd_qmask.qm_other_mask = FALSE;
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCDISQMASK:
+		{
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			d->bd_qmask.qm_enabled = FALSE;
+			
+			free(d->bd_qmask.qm_rxq_mask, M_BPF);
+			free(d->bd_qmask.qm_txq_mask, M_BPF);
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCSTRXQMASK:
+		{
+			struct ifnet *ifp;
+			int index;
+
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;	
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			ifp = d->bd_bif->bif_ifp;
+			index = *(uint32_t *)addr;
+			if (index > ifp->if_get_rxqueue_len(ifp)) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			d->bd_qmask.qm_rxq_mask[index] = TRUE;
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCCRRXQMASK:
+		{
+			int index;
+			struct ifnet *ifp;
+
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			ifp = d->bd_bif->bif_ifp;
+			index = *(uint32_t *)addr;
+			if (index > ifp->if_get_rxqueue_len(ifp)) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			d->bd_qmask.qm_rxq_mask[index] = FALSE;
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCGTRXQMASK:
+		{
+			int index;
+			struct ifnet *ifp;
+
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			ifp = d->bd_bif->bif_ifp;
+			index = *(uint32_t *)addr;
+			if (index > ifp->if_get_rxqueue_len(ifp)) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			*(uint32_t *)addr = d->bd_qmask.qm_rxq_mask[index];
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCSTTXQMASK:
+		{
+			struct ifnet *ifp;
+			int index;
+
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+
+			ifp = d->bd_bif->bif_ifp;
+			index = *(uint32_t *)addr;
+			if (index > ifp->if_get_txqueue_len(ifp)) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			d->bd_qmask.qm_txq_mask[index] = TRUE;
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCCRTXQMASK:
+		{
+			struct ifnet *ifp;
+			int index;
+
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+
+			ifp = d->bd_bif->bif_ifp;
+			index = *(uint32_t *)addr;
+			if (index > ifp->if_get_txqueue_len(ifp)) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			d->bd_qmask.qm_txq_mask[index] = FALSE;
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCGTTXQMASK:
+		{
+			int index;
+			struct ifnet *ifp;
+
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			ifp = d->bd_bif->bif_ifp;
+			index = *(uint32_t *)addr;
+			if (index > ifp->if_get_txqueue_len(ifp)) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			*(uint32_t *)addr = d->bd_qmask.qm_txq_mask[index];
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCSTOTHERMASK:
+		BPFQ_WLOCK(&d->bd_qmask);
+		d->bd_qmask.qm_other_mask = TRUE;
+		BPFQ_WUNLOCK(&d->bd_qmask);
+		break;
+
+	case BIOCCROTHERMASK:
+		BPFQ_WLOCK(&d->bd_qmask);
+		d->bd_qmask.qm_other_mask = FALSE;
+		BPFQ_WUNLOCK(&d->bd_qmask);
+		break;
+
+	case BIOCGTOTHERMASK:
+		BPFQ_WLOCK(&d->bd_qmask);
+		*(uint32_t *)addr = (uint32_t)d->bd_qmask.qm_other_mask;
+		BPFQ_WUNLOCK(&d->bd_qmask);
+		break;
 	}
 	CURVNET_RESTORE();
 	return (error);
@@ -2050,6 +2316,14 @@ bpf_tap(struct bpf_if *bp, u_char *pkt, u_int pktlen)
 		 * 2) destroying/detaching d is protected by interface
 		 * write lock, too
 		 */
+ 		BPFQ_RLOCK(&d->bd_qmask);
+ 		if (d->bd_qmask.qm_enabled) {
+ 			if (!d->bd_qmask.qm_other_mask) {
+				BPFQ_RUNLOCK(&d->bd_qmask);
+ 				continue;
+ 			}
+ 		}
+		BPFQ_RUNLOCK(&d->bd_qmask);
 
 		/* XXX: Do not protect counter for the sake of performance. */
 		++d->bd_rcount;
@@ -2117,6 +2391,42 @@ bpf_mtap(struct bpf_if *bp, struct mbuf *m)
 	BPFIF_RLOCK(bp);
 
 	LIST_FOREACH(d, &bp->bif_dlist, bd_next) {
+ 		BPFQ_RLOCK(&d->bd_qmask);
+ 		if (d->bd_qmask.qm_enabled) {
+ 			M_ASSERTPKTHDR(m);
+ 			if (!(m->m_flags & M_FLOWID)) {
+ 				if (!d->bd_qmask.qm_other_mask) {
+ 					BPFQ_RUNLOCK(&d->bd_qmask);
+ 					continue;
+ 				}
+ 			} else {
+ 				struct ifnet *ifp = bp->bif_ifp;
+ 				if (m->m_pkthdr.rxqueue != (uint32_t)-1) {
+ 					if (m->m_pkthdr.rxqueue >= ifp->if_get_rxqueue_len(ifp)) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						BPFIF_RUNLOCK(bp);
+ 						return;
+					}
+ 					if (!d->bd_qmask.qm_rxq_mask[m->m_pkthdr.rxqueue]) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						continue;
+ 					}
+ 				}
+ 				if (m->m_pkthdr.txqueue != (uint32_t)-1) {
+ 					if (m->m_pkthdr.txqueue >= ifp->if_get_txqueue_len(ifp)) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						BPFIF_RUNLOCK(bp);
+ 						return;
+ 					}
+ 					if (!d->bd_qmask.qm_txq_mask[m->m_pkthdr.txqueue]) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						continue;
+ 					}
+ 				}
+ 			}
+ 		}
+ 		BPFQ_RUNLOCK(&d->bd_qmask);
+ 
 		if (BPF_CHECK_DIRECTION(d, m->m_pkthdr.rcvif, bp->bif_ifp))
 			continue;
 		++d->bd_rcount;
@@ -2180,6 +2490,42 @@ bpf_mtap2(struct bpf_if *bp, void *data, u_int dlen, struct mbuf *m)
 	BPFIF_RLOCK(bp);
 
 	LIST_FOREACH(d, &bp->bif_dlist, bd_next) {
+ 		BPFQ_RLOCK(&d->bd_qmask);
+ 		if (d->bd_qmask.qm_enabled) {
+ 			M_ASSERTPKTHDR(m);
+ 			if (!(m->m_flags & M_FLOWID)) {
+ 				if (!d->bd_qmask.qm_other_mask) {
+ 					BPFQ_RUNLOCK(&d->bd_qmask);
+ 					continue;
+ 				}
+ 			} else {
+ 				struct ifnet *ifp = bp->bif_ifp;
+ 				if (m->m_pkthdr.rxqueue != (uint32_t)-1) {
+ 					if (m->m_pkthdr.rxqueue >= ifp->if_get_rxqueue_len(ifp)) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						BPFIF_RUNLOCK(bp);
+ 						return;
+ 					}
+ 					if (!d->bd_qmask.qm_rxq_mask[m->m_pkthdr.rxqueue]) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						continue;
+ 					}
+ 				}
+ 				if (m->m_pkthdr.txqueue != (uint32_t)-1) {
+ 					if (m->m_pkthdr.txqueue >= ifp->if_get_txqueue_len(ifp)) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						BPFIF_RUNLOCK(bp);
+ 						return;
+ 					}
+ 					if (!d->bd_qmask.qm_txq_mask[m->m_pkthdr.txqueue]) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						continue;
+ 					}
+ 				}
+ 			}
+ 		}
+ 		BPFQ_RUNLOCK(&d->bd_qmask);
+ 
 		if (BPF_CHECK_DIRECTION(d, m->m_pkthdr.rcvif, bp->bif_ifp))
 			continue;
 		++d->bd_rcount;
@@ -2443,6 +2789,12 @@ bpf_freed(struct bpf_d *d)
 	}
 	if (d->bd_wfilter != NULL)
 		free((caddr_t)d->bd_wfilter, M_BPF);
+ 
+ 	if (d->bd_qmask.qm_enabled) {
+ 		free(d->bd_qmask.qm_rxq_mask, M_BPF);
+ 		free(d->bd_qmask.qm_txq_mask, M_BPF);
+ 	}
+ 
 	mtx_destroy(&d->bd_lock);
 }
 

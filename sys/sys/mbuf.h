@@ -121,6 +121,8 @@ struct pkthdr {
 	uint32_t	 flowid;	/* packet's 4-tuple system
 					 * flow identifier
 					 */
+	uint32_t	rxqueue;
+	uint32_t	txqueue;
 	/* variables for hardware checksum */
 	int		 csum_flags;	/* flags regarding checksum */
 	int		 csum_data;	/* data field used by csum routines */

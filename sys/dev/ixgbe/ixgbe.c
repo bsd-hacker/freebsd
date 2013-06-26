@@ -210,6 +210,12 @@ static void	ixgbe_reinit_fdir(void *, int);
 /* Missing shared code prototype */
 extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
+static int	ixgbe_get_rxqueue_len(struct ifnet *);
+static int	ixgbe_get_txqueue_len(struct ifnet *);
+static int	ixgbe_get_rxqueue_affinity(struct ifnet *, int);
+static int	ixgbe_get_txqueue_affinity(struct ifnet *, int);
+
+
 /*********************************************************************
  *  FreeBSD Device Interface Entry Points
  *********************************************************************/
@@ -753,6 +759,10 @@ ixgbe_start_locked(struct tx_ring *txr, struct ifnet * ifp)
 				IFQ_DRV_PREPEND(&ifp->if_snd, m_head);
 			break;
 		}
+
+		m_head->m_pkthdr.rxqueue = (uint32_t)-1;
+		m_head->m_pkthdr.txqueue = txr->me;
+
 		/* Send a copy of the frame to the BPF listener */
 		ETHER_BPF_MTAP(ifp, m_head);
 
@@ -851,6 +861,10 @@ ixgbe_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr)
 		drbr_advance(ifp, txr->br);
 #endif
 		enqueued++;
+ 
+ 		next->m_pkthdr.rxqueue = (uint32_t)-1;
+ 		next->m_pkthdr.txqueue = txr->me;
+
 		/* Send a copy of the frame to the BPF listener */
 		ETHER_BPF_MTAP(ifp, next);
 		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
@@ -2618,6 +2632,10 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_softc = adapter;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = ixgbe_ioctl;
+ 	ifp->if_get_rxqueue_len = ixgbe_get_rxqueue_len;
+ 	ifp->if_get_txqueue_len = ixgbe_get_txqueue_len;
+ 	ifp->if_get_rxqueue_affinity = ixgbe_get_rxqueue_affinity;
+ 	ifp->if_get_txqueue_affinity = ixgbe_get_txqueue_affinity;
 #ifndef IXGBE_LEGACY_TX
 	ifp->if_transmit = ixgbe_mq_start;
 	ifp->if_qflush = ixgbe_qflush;
@@ -2644,6 +2662,7 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_capabilities |= IFCAP_VLAN_HWTAGGING
 			     |  IFCAP_VLAN_HWTSO
 			     |  IFCAP_VLAN_MTU;
+	ifp->if_capabilities |= IFCAP_MULTIQUEUE;
 	ifp->if_capenable = ifp->if_capabilities;
 
 	/*
@@ -4547,6 +4566,8 @@ ixgbe_rxeof(struct ix_queue *que)
 			sendmp->m_pkthdr.flowid = que->msix;
 			sendmp->m_flags |= M_FLOWID;
 #endif
+			sendmp->m_pkthdr.rxqueue = que->msix;
+			sendmp->m_pkthdr.txqueue = (uint32_t)-1;
 		}
 next_desc:
 		bus_dmamap_sync(rxr->rxdma.dma_tag, rxr->rxdma.dma_map,
@@ -5741,6 +5762,32 @@ ixgbe_set_advertise(SYSCTL_HANDLER_ARGS)
 	hw->mac.ops.setup_link(hw, speed, TRUE);
 
 	return (error);
+}
+
+static int
+ixgbe_get_rxqueue_len(struct ifnet *ifp)
+{
+	struct adapter	*adapter = ifp->if_softc;
+	return (adapter->num_queues);
+}
+
+static int
+ixgbe_get_txqueue_len(struct ifnet *ifp)
+{
+	struct adapter	*adapter = ifp->if_softc;
+	return (adapter->num_queues);
+}
+
+static int
+ixgbe_get_rxqueue_affinity(struct ifnet *ifp, int queid)
+{
+	return (queid);
+}
+
+static int
+ixgbe_get_txqueue_affinity(struct ifnet *ifp, int queid)
+{
+	return (queid);
 }
 
 /*
