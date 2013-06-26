@@ -527,7 +527,7 @@ vm_page_busy_runlock(vm_page_t m)
 		    ("vm_page_busy_runlock: invalid lock state for waiters"));
 
 		vm_page_lock(m);
-		if (atomic_cmpset_int(&m->busy_lock, x, VPB_UNLOCKED)) {
+		if (!atomic_cmpset_int(&m->busy_lock, x, VPB_UNLOCKED)) {
 			vm_page_unlock(m);
 			continue;
 		}
