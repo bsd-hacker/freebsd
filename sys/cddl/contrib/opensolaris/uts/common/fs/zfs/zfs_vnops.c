@@ -350,13 +350,19 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 				continue;
 			}
 			vm_page_busy_rlock(pp);
-		} else
+		} else if (!alloc) {
 			pp = NULL;
-
-		if (pp == NULL && alloc)
+			break;
+		}
+		if (pp == NULL) {
+			ASSERT(alloc);
 			pp = vm_page_alloc(obj, OFF_TO_IDX(start),
 			    VM_ALLOC_SYSTEM | VM_ALLOC_IFCACHED |
 			    VM_ALLOC_RBUSY);
+		} else {
+			ASSERT(pp != NULL && !pp->valid);
+			pp = NULL;
+		}
 
 		if (pp != NULL) {
 			ASSERT3U(pp->valid, ==, VM_PAGE_BITS_ALL);
