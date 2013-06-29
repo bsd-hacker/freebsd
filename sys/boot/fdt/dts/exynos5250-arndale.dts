@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2009 Stanislav Sedov <stas@FreeBSD.org>
+ * Copyright (c) 2013 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -11,10 +11,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -26,26 +26,20 @@
  * $FreeBSD$
  */
 
-#ifndef	_COMMON_KVM_H_
-#define	_COMMON_KVM_H_
+/dts-v1/;
 
-dev_t	dev2udev(kvm_t *kd, struct cdev *dev);
-int	kdevtoname(kvm_t *kd, struct cdev *dev, char *);
-int	kvm_read_all(kvm_t *kd, unsigned long addr, void *buf,
-    size_t nbytes);
+/include/ "exynos5250.dtsi"
 
-/*
- * Filesystems specific access routines.
- */
-int	devfs_filestat(kvm_t *kd, struct vnode *vp, struct vnstat *vn);
-int	isofs_filestat(kvm_t *kd, struct vnode *vp, struct vnstat *vn);
-int	msdosfs_filestat(kvm_t *kd, struct vnode *vp, struct vnstat *vn);
-int	nfs_filestat(kvm_t *kd, struct vnode *vp, struct vnstat *vn);
-int	smbfs_filestat(kvm_t *kd, struct vnode *vp, struct vnstat *vn);
-int	udf_filestat(kvm_t *kd, struct vnode *vp, struct vnstat *vn);
-int	ufs_filestat(kvm_t *kd, struct vnode *vp, struct vnstat *vn);
-int	zfs_filestat(kvm_t *kd, struct vnode *vp, struct vnstat *vn);
-void	*getvnodedata(struct vnode *vp);
-struct mount	*getvnodemount(struct vnode *vp);
+/ {
+	model = "Arndale Board";
 
-#endif	/* _COMMON_KVM_H_ */
+	memory {
+		device_type = "memory";
+		reg = < 0x40000000 0x80000000 >;  /* 2G */
+	};
+
+	chosen {
+		stdin = &serial2;
+		stdout = &serial2;
+	};
+};
