@@ -350,12 +350,9 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 				continue;
 			}
 			vm_page_busy_rlock(pp);
-		} else if (!alloc) {
-			pp = NULL;
-			break;
-		}
-		if (pp == NULL) {
-			ASSERT(alloc);
+		} else if (pp == NULL) {
+			if (!alloc)
+				break;
 			pp = vm_page_alloc(obj, OFF_TO_IDX(start),
 			    VM_ALLOC_SYSTEM | VM_ALLOC_IFCACHED |
 			    VM_ALLOC_RBUSY);
@@ -366,11 +363,11 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 
 		if (pp != NULL) {
 			ASSERT3U(pp->valid, ==, VM_PAGE_BITS_ALL);
-			if (alloc) {
-				vm_object_pip_add(obj, 1);
-				pmap_remove_write(pp);
-				vm_page_clear_dirty(pp, off, nbytes);
-			}
+			if (!alloc)
+				break;
+			vm_object_pip_add(obj, 1);
+			pmap_remove_write(pp);
+			vm_page_clear_dirty(pp, off, nbytes);
 		}
 		break;
 	}
