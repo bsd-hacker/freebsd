@@ -90,6 +90,7 @@ static int	vtnet_detach(device_t);
 static int	vtnet_suspend(device_t);
 static int	vtnet_resume(device_t);
 static int	vtnet_shutdown(device_t);
+static int	vtnet_attach_completed(device_t);
 static int	vtnet_config_change(device_t);
 
 static void	vtnet_negotiate_features(struct vtnet_softc *);
@@ -147,6 +148,7 @@ static void	vtnet_txq_tq_deferred(void *, int);
 static void	vtnet_txq_tq_intr(void *, int);
 static void	vtnet_txq_eof(struct vtnet_txq *);
 static void	vtnet_tx_vq_intr(void *);
+static void	vtnet_tx_start_all(struct vtnet_softc *);
 
 #ifndef VTNET_LEGACY_TX
 static void	vtnet_qflush(struct ifnet *);
@@ -278,15 +280,16 @@ static struct virtio_feature_desc vtnet_feature_desc[] = {
 
 static device_method_t vtnet_methods[] = {
 	/* Device methods. */
-	DEVMETHOD(device_probe,		vtnet_probe),
-	DEVMETHOD(device_attach,	vtnet_attach),
-	DEVMETHOD(device_detach,	vtnet_detach),
-	DEVMETHOD(device_suspend,	vtnet_suspend),
-	DEVMETHOD(device_resume,	vtnet_resume),
-	DEVMETHOD(device_shutdown,	vtnet_shutdown),
+	DEVMETHOD(device_probe,			vtnet_probe),
+	DEVMETHOD(device_attach,		vtnet_attach),
+	DEVMETHOD(device_detach,		vtnet_detach),
+	DEVMETHOD(device_suspend,		vtnet_suspend),
+	DEVMETHOD(device_resume,		vtnet_resume),
+	DEVMETHOD(device_shutdown,		vtnet_shutdown),
 
 	/* VirtIO methods. */
-	DEVMETHOD(virtio_config_change, vtnet_config_change),
+	DEVMETHOD(virtio_attach_completed,	vtnet_attach_completed),
+	DEVMETHOD(virtio_config_change,		vtnet_config_change),
 
 	DEVMETHOD_END
 };
@@ -397,8 +400,6 @@ vtnet_attach(device_t dev)
 		goto fail;
 	}
 
-	vtnet_attach_disable_promisc(sc);
-
 	vtnet_start_taskqueues(sc);
 
 fail:
@@ -502,6 +503,15 @@ vtnet_shutdown(device_t dev)
 }
 
 static int
+vtnet_attach_completed(device_t dev)
+{
+
+	vtnet_attach_disable_promisc(device_get_softc(dev));
+
+	return (0);
+}
+
+static int
 vtnet_config_change(device_t dev)
 {
 	struct vtnet_softc *sc;
@@ -510,6 +520,8 @@ vtnet_config_change(device_t dev)
 
 	VTNET_CORE_LOCK(sc);
 	vtnet_update_link_status(sc);
+	if (sc->vtnet_link_active != 0)
+		vtnet_tx_start_all(sc);
 	VTNET_CORE_UNLOCK(sc);
 
 	return (0);
@@ -538,6 +550,9 @@ vtnet_negotiate_features(struct vtnet_softc *sc)
 		mask |= VTNET_LRO_FEATURES;
 	if (vtnet_tunable_int(sc, "mq_disable", vtnet_mq_disable))
 		mask |= VIRTIO_NET_F_MQ;
+#ifdef VTNET_LEGACY_TX
+	mask |= VIRTIO_NET_F_MQ;
+#endif
 
 	features = VTNET_FEATURES & ~mask;
 	sc->vtnet_features = virtio_negotiate_features(dev, features);
@@ -884,6 +899,7 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 	struct virtqueue *vq = sc->vtnet_txqs[0].vtntx_vq;
 	ifp->if_start = vtnet_start;
 	IFQ_SET_MAXLEN(&ifp->if_snd, virtqueue_size(vq) - 1);
+	ifp->if_snd.ifq_drv_maxlen = virtqueue_size(vq) - 1;
 	IFQ_SET_READY(&ifp->if_snd);
 #endif
 
@@ -907,15 +923,20 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 	if (virtio_with_feature(dev, VIRTIO_NET_F_CSUM)) {
 		ifp->if_capabilities |= IFCAP_TXCSUM | IFCAP_TXCSUM_IPV6;
 
-		if (virtio_with_feature(dev, VIRTIO_NET_F_HOST_TSO4))
-			ifp->if_capabilities |= IFCAP_TSO4;
-		if (virtio_with_feature(dev, VIRTIO_NET_F_HOST_TSO6))
-			ifp->if_capabilities |= IFCAP_TSO6;
+		if (virtio_with_feature(dev, VIRTIO_NET_F_GSO)) {
+			ifp->if_capabilities |= IFCAP_TSO4 | IFCAP_TSO6;
+			sc->vtnet_flags |= VTNET_FLAG_TSO_ECN;
+		} else {
+			if (virtio_with_feature(dev, VIRTIO_NET_F_HOST_TSO4))
+				ifp->if_capabilities |= IFCAP_TSO4;
+			if (virtio_with_feature(dev, VIRTIO_NET_F_HOST_TSO6))
+				ifp->if_capabilities |= IFCAP_TSO6;
+			if (virtio_with_feature(dev, VIRTIO_NET_F_HOST_ECN))
+				sc->vtnet_flags |= VTNET_FLAG_TSO_ECN;
+		}
+
 		if (ifp->if_capabilities & IFCAP_TSO)
 			ifp->if_capabilities |= IFCAP_VLAN_HWTSO;
-
-		if (virtio_with_feature(dev, VIRTIO_NET_F_HOST_ECN))
-			sc->vtnet_flags |= VTNET_FLAG_TSO_ECN;
 	}
 
 	if (virtio_with_feature(dev, VIRTIO_NET_F_GUEST_CSUM))
@@ -1059,23 +1080,16 @@ vtnet_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			ifp->if_capenable ^= IFCAP_TXCSUM;
 		if (mask & IFCAP_TXCSUM_IPV6)
 			ifp->if_capenable ^= IFCAP_TXCSUM_IPV6;
-		if (mask & IFCAP_TSO) {
-			if (mask & IFCAP_TSO4)
-				ifp->if_capenable ^= IFCAP_TSO4;
-			if (mask & IFCAP_TSO6)
-				ifp->if_capenable ^= IFCAP_TSO6;
-		}
+		if (mask & IFCAP_TSO4)
+			ifp->if_capenable ^= IFCAP_TSO4;
+		if (mask & IFCAP_TSO6)
+			ifp->if_capenable ^= IFCAP_TSO6;
 
 		if (mask & (IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6 | IFCAP_LRO |
 		    IFCAP_VLAN_HWFILTER)) {
 			/* These Rx features require us to renegotiate. */
 			reinit = 1;
 
-			/*
-			 * VirtIO does not distinguish between IPv4 and IPv6
-			 * checksum offloading. Both must be enabled for us
-			 * to negotiate it with the host.
-			 */
 			if (mask & IFCAP_RXCSUM)
 				ifp->if_capenable ^= IFCAP_RXCSUM;
 			if (mask & IFCAP_RXCSUM_IPV6)
@@ -1503,8 +1517,17 @@ vtnet_rxq_csum_by_parse(struct vtnet_rxq *rxq, struct mbuf *m,
 		m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
 		break;
 	default:
-		sc->vtnet_stats.rx_csum_bad_proto++;
-		return (1);
+		/*
+		 * For the remaining protocols, FreeBSD does not support
+		 * checksum offloading, so the checksum will be recomputed.
+		 */
+#if 0
+		if_printf(sc->vtnet_ifp, "cksum offload of unsupported "
+		    "protocol eth_type=%#x proto=%d csum_start=%d
+		    "csum_offset=%d\n", __func__, eth_type, proto,
+		    hdr->csum_start, hdr->csum_offset);
+#endif
+		break;
 	}
 
 	return (0);
@@ -1674,19 +1697,17 @@ vtnet_rxq_input(struct vtnet_rxq *rxq, struct mbuf *m,
 static int
 vtnet_rxq_eof(struct vtnet_rxq *rxq)
 {
-	struct virtio_net_hdr lhdr;
+	struct virtio_net_hdr lhdr, *hdr;
 	struct vtnet_softc *sc;
 	struct ifnet *ifp;
 	struct virtqueue *vq;
 	struct mbuf *m;
-	struct virtio_net_hdr *hdr;
 	struct virtio_net_hdr_mrg_rxbuf *mhdr;
 	int len, deq, nbufs, adjsz, count;
 
 	sc = rxq->vtnrx_sc;
 	vq = rxq->vtnrx_vq;
 	ifp = sc->vtnet_ifp;
-
 	hdr = &lhdr;
 	deq = 0;
 	count = sc->vtnet_rx_process_limit;
@@ -1899,7 +1920,7 @@ vtnet_txq_offload_ctx(struct vtnet_txq *txq, struct mbuf *m,
 	case ETHERTYPE_IPV6:
 		*proto = -1;
 		*start = ip6_lasthdr(m, offset, IPPROTO_IPV6, proto);
-		/* Assert the network stack sends us a valid packet. */
+		/* Assert the network stack sent us a valid packet. */
 		KASSERT(*start > offset,
 		    ("%s: mbuf %p start %d offset %d proto %d", __func__, m,
 		    *start, offset, *proto));
@@ -2380,6 +2401,31 @@ again:
 		taskqueue_enqueue(txq->vtntx_tq, &txq->vtntx_intrtask);
 	} else
 		VTNET_TXQ_UNLOCK(txq);
+}
+
+static void
+vtnet_tx_start_all(struct vtnet_softc *sc)
+{
+	struct ifnet *ifp;
+	struct vtnet_txq *txq;
+	int i;
+
+	ifp = sc->vtnet_ifp;
+	VTNET_CORE_LOCK_ASSERT(sc);
+
+	for (i = 0; i < sc->vtnet_act_vq_pairs; i++) {
+		txq = &sc->vtnet_txqs[i];
+
+		VTNET_TXQ_LOCK(txq);
+#ifdef VTNET_LEGACY_TX
+		if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
+			vtnet_start_locked(txq, ifp);
+#else
+		if (!drbr_empty(ifp, txq->vtntx_br))
+			vtnet_txq_mq_start_locked(txq, NULL);
+#endif
+		VTNET_TXQ_UNLOCK(txq);
+	}
 }
 
 #ifndef VTNET_LEGACY_TX
@@ -3034,7 +3080,7 @@ vtnet_ctrl_mq_cmd(struct vtnet_softc *sc, uint16_t npairs)
 	KASSERT(error == 0 && sg.sg_nseg == 3,
 	    ("%s: error %d adding MQ message to sglist", __func__, error));
 
-	vtnet_exec_ctrl_cmd(sc, &s.ack, &sg, 1, 1);
+	vtnet_exec_ctrl_cmd(sc, &s.ack, &sg, sg.sg_nseg - 1, 1);
 
 	return (s.ack == VIRTIO_NET_OK ? 0 : EIO);
 }
@@ -3105,7 +3151,6 @@ vtnet_attach_disable_promisc(struct vtnet_softc *sc)
 		return;
 	}
 
-	/* Hold the lock to satisfy asserts. */
 	VTNET_CORE_LOCK(sc);
 	error = vtnet_set_promisc(sc, 0);
 	VTNET_CORE_UNLOCK(sc);
@@ -3165,6 +3210,9 @@ vtnet_rx_filter_mac(struct vtnet_softc *sc)
 	if_addr_rlock(ifp);
 	TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 		if (ifa->ifa_addr->sa_family != AF_LINK)
+			continue;
+		else if (memcmp(LLADDR((struct sockaddr_dl *)ifa->ifa_addr),
+		    sc->vtnet_hwaddr, ETHER_ADDR_LEN) == 0)
 			continue;
 		else if (ucnt == VTNET_MAX_MAC_ENTRIES)
 			break;
@@ -3672,7 +3720,6 @@ vtnet_txq_enable_intr(struct vtnet_txq *txq)
 {
 
 	return (virtqueue_postpone_intr(txq->vtntx_vq, VQ_POSTPONE_LONG));
-	return (virtqueue_enable_intr(txq->vtntx_vq));
 }
 
 static void

@@ -256,8 +256,10 @@ CTASSERT(sizeof(struct vtnet_mac_filter) <= PAGE_SIZE);
      VIRTIO_NET_F_STATUS		| \
      VIRTIO_NET_F_CTRL_VQ		| \
      VIRTIO_NET_F_CTRL_RX		| \
+     VIRTIO_NET_F_CTRL_MAC_ADDR		| \
      VIRTIO_NET_F_CTRL_VLAN		| \
      VIRTIO_NET_F_CSUM			| \
+     VIRTIO_NET_F_GSO			| \
      VIRTIO_NET_F_HOST_TSO4		| \
      VIRTIO_NET_F_HOST_TSO6		| \
      VIRTIO_NET_F_HOST_ECN		| \
@@ -274,7 +276,7 @@ CTASSERT(sizeof(struct vtnet_mac_filter) <= PAGE_SIZE);
  * The VIRTIO_NET_F_HOST_TSO[46] features permit us to send the host
  * frames larger than 1514 bytes.
  */
-#define VTNET_TSO_FEATURES (VIRTIO_NET_F_HOST_TSO4 | \
+#define VTNET_TSO_FEATURES (VIRTIO_NET_F_GSO | VIRTIO_NET_F_HOST_TSO4 | \
     VIRTIO_NET_F_HOST_TSO6 | VIRTIO_NET_F_HOST_ECN)
 
 /*
