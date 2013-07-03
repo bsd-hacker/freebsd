@@ -469,6 +469,11 @@ vm_page_reference(vm_page_t m)
 	vm_page_aflag_set(m, PGA_REFERENCED);
 }
 
+/*
+ *	vm_page_busy_downgrade:
+ *
+ *	Downgrade a busy write lock into a single busy read lock.
+ */
 void
 vm_page_busy_downgrade(vm_page_t m)
 {
@@ -488,6 +493,12 @@ vm_page_busy_downgrade(vm_page_t m)
 	}
 }
 
+/*
+ *	vm_page_busy_rlocked:
+ *
+ *	Return a positive value if the busy lock is held in read mode,
+ *	0 otherwise.
+ */
 int
 vm_page_busy_rlocked(vm_page_t m)
 {
@@ -497,6 +508,11 @@ vm_page_busy_rlocked(vm_page_t m)
 	return ((x & VPB_LOCK_READ) != 0 && x != VPB_UNLOCKED);
 }
 
+/*
+ *	vm_page_busy_runlock:
+ *
+ *	Release a busy read lock.
+ */
 void
 vm_page_busy_runlock(vm_page_t m)
 {
@@ -565,6 +581,14 @@ vm_page_busy_sleep(vm_page_t m, const char *wmesg)
 	msleep(m, vm_page_lockptr(m), PVM | PDROP, wmesg, 0);
 }
 
+/*
+ *	vm_page_busy_tryrlock:
+ *
+ *	Try to acquire a busy read lock.
+ *	If the acquisition is not possible the function returns immediately
+ *	without sleeping.
+ *	If the operation succeeds 1 is returned otherwise 0.
+ */
 int
 vm_page_busy_tryrlock(vm_page_t m)
 {
@@ -575,6 +599,12 @@ vm_page_busy_tryrlock(vm_page_t m)
 	    atomic_cmpset_acq_int(&m->busy_lock, x, x + VPB_ONE_READER));
 }
 
+/*
+ *	vm_page_busy_wunlock_hard:
+ *
+ *	Called after the first try to release a busy write lock failed.
+ *	It is assumed that the waiters bit is on.
+ */
 void
 vm_page_busy_wunlock_hard(vm_page_t m)
 {
@@ -588,9 +618,12 @@ vm_page_busy_wunlock_hard(vm_page_t m)
 }
 
 /*
- *      vm_page_flash:
+ *	vm_page_flash:
  *
- *      wakeup anyone waiting for the page.
+ *	Wakeup anyone waiting for the page.
+ *	The ownership bits do not change.
+ *
+ *	The given page must be locked.
  */
 void
 vm_page_flash(vm_page_t m)
