@@ -112,14 +112,13 @@
  *
  *	Page content access is regulated (mostly) by the busy mechanism.
  *	When the page content is changing (for example, during a page READ
- *	operation) the page owner must acquire an hard busy token. Similarly,
+ *	operation) the page owner must acquire an write busy token. Similarly,
  *	when the page content is just being accessed for reading purposes
  *	(for example, during a page WRITE operation) the page owner must
- *	acquire a soft busy token.
- *	The hard busy mechanism is controlled using vm_page_busy() and
- *	vm_page_unbusy() interfaces.  Likewise the soft busy mechanism is
- *	controlled through the usage of vm_page_io_start() and
- *	vm_page_io_finish().
+ *	acquire a read busy token.
+ *	The busy mechanism is regulated by the vm_page_busy_*() family of
+ *	primitives and it follows a reader/writer lock pattern as the names
+ *	suggest.
  */
 
 #if PAGE_SIZE == 4096
@@ -184,7 +183,11 @@ struct vm_page {
 #define	VPO_NOSYNC	0x10		/* do not collect for syncer */
 
 /*
- * ARXXX: Insert comments for busy here.
+ * Busy lock implementation details.
+ * The algorithm is taken mostly by rwlock(9) and sx(9) locks implementation,
+ * even if the support for owner identity is removed because of size
+ * constraints.  Checks on lock recursion are then not possible, while the
+ * lock assertions effectiveness is someway reduced.
  */
 #define	VPB_LOCK_READ		0x01
 #define	VPB_LOCK_WRITE		0x02
