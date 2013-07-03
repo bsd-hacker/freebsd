@@ -144,7 +144,6 @@ struct vm_page {
 	vm_pindex_t pindex;		/* offset into object (O,P) */
 	vm_paddr_t phys_addr;		/* physical address of page */
 	struct md_page md;		/* machine dependant stuff */
-	vm_memattr_t mdmemattr;		/* arch specific memory attribute */
 	uint8_t	queue;			/* page queue index (P,Q) */
 	int8_t segind;
 	short hold_count;		/* page hold count (P) */
@@ -156,7 +155,7 @@ struct vm_page {
 	uint8_t oflags;			/* page VPO_* flags (O) */
 	uint16_t flags;			/* page PG_* flags (P) */
 	u_char	act_count;		/* page usage count (P) */
-	u_char	basy;			/* page busy count (O) */
+	vm_memattr_t mdmemattr;		/* arch specific memory attribute */
 	/* NOTE that these must support one bit per DEV_BSIZE in a page!!! */
 	/* so, on normal X86 kernels, they must be at least 8 bits wide */
 	vm_page_bits_t valid;		/* map of valid DEV_BSIZE chunks (O) */
