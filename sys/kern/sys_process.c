@@ -263,7 +263,7 @@ proc_rwmem(struct proc *p, struct uio *uio)
 	writing = uio->uio_rw == UIO_WRITE;
 	reqprot = writing ? VM_PROT_COPY | VM_PROT_READ : VM_PROT_READ;
 	fault_flags = writing ? VM_FAULT_DIRTY : VM_FAULT_NORMAL;
-	fault_flags |= VM_FAULT_IOBUSY;
+	fault_flags |= VM_FAULT_RBUSY;
 
 	/*
 	 * Only map in one page at a time.  We don't have to, but it

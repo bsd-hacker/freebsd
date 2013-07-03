@@ -925,13 +925,13 @@ vnode_locked:
 		vm_page_activate(fs.m);
 	if (m_hold != NULL) {
 		*m_hold = fs.m;
-		if (fault_flags & VM_FAULT_IOBUSY)
+		if (fault_flags & VM_FAULT_RBUSY)
 			vm_page_busy_downgrade(fs.m);
 		else
 			vm_page_hold(fs.m);
 	}
 	vm_page_unlock(fs.m);
-	if (m_hold == NULL || (fault_flags & VM_FAULT_IOBUSY) == 0)
+	if (m_hold == NULL || (fault_flags & VM_FAULT_RBUSY) == 0)
 		vm_page_busy_wunlock(fs.m);
 
 	/*
