@@ -233,7 +233,6 @@ struct	pv_chunk;
 
 struct md_page {
 	TAILQ_HEAD(,pv_entry)	pv_list;
-	int			pat_mode;
 };
 
 /*
@@ -300,7 +299,7 @@ extern vm_paddr_t dump_avail[];
 extern vm_offset_t virtual_avail;
 extern vm_offset_t virtual_end;
 
-#define	pmap_page_get_memattr(m)	((vm_memattr_t)(m)->md.pat_mode)
+#define	pmap_page_get_memattr(m)	((m)->mdmemattr)
 #define	pmap_page_is_write_mapped(m)	(((m)->aflags & PGA_WRITEABLE) != 0)
 #define	pmap_unmapbios(va, sz)	pmap_unmapdev((va), (sz))
 
