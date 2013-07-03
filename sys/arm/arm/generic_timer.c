@@ -66,7 +66,22 @@ __FBSDID("$FreeBSD$");
 #define	GENERIC_TIMER_REG_CTRL		0
 #define	GENERIC_TIMER_REG_TVAL		1
 
-#define	CNTPSIRQ	29
+#define	GENERIC_TIMER_CNTKCTL_PL0PTEN	(1 << 9) /* Physical timer registers
+						    access from PL0 */
+#define	GENERIC_TIMER_CNTKCTL_PL0VTEN	(1 << 8) /* Virtual timer registers
+						    access from PL0 */
+#define	GENERIC_TIMER_CNTKCTL_EVNTI	(1 << 4) /* Virtual counter
+						    event bits */
+#define	GENERIC_TIMER_CNTKCTL_EVNTDIR	(1 << 3) /* Virtual counter
+						    event transition */
+#define	GENERIC_TIMER_CNTKCTL_EVNTEN	(1 << 2) /* Enables events from
+						    the virtual counter */
+#define	GENERIC_TIMER_CNTKCTL_PL0VCTEN	(1 << 1) /* CNTVCT and CNTFRQ
+						    access from PL0 */
+#define	GENERIC_TIMER_CNTKCTL_PL0PCTEN	(1 << 0) /* CNTPCT and CNTFRQ
+						    access from PL0 */
+
+#define	GENERIC_TIMER_CNTPSIRQ	29
 
 struct arm_tmr_softc {
 	struct resource		*irq_res;
@@ -167,7 +182,11 @@ disable_user_access(void)
 	uint32_t cntkctl;
 
 	__asm volatile("mrc p15, 0, %0, c14, c1, 0" : "=r" (cntkctl));
-	cntkctl &= ~((3 << 8) | (7 << 0));
+	cntkctl &= ~(GENERIC_TIMER_CNTKCTL_PL0PTEN |
+		GENERIC_TIMER_CNTKCTL_PL0VTEN |
+		GENERIC_TIMER_CNTKCTL_EVNTEN |
+		GENERIC_TIMER_CNTKCTL_PL0VCTEN |
+		GENERIC_TIMER_CNTKCTL_PL0PCTEN);
 	__asm volatile("mcr p15, 0, %0, c14, c1, 0" : : "r" (cntkctl));
 	isb();
 }
@@ -222,7 +241,7 @@ arm_tmr_intr(void *arg)
 	sc = (struct arm_tmr_softc *)arg;
 	ctrl = get_ctrl();
 	if (ctrl & GENERIC_TIMER_CTRL_INT_STAT) {
-	        ctrl |= GENERIC_TIMER_CTRL_INT_MASK;
+		ctrl |= GENERIC_TIMER_CTRL_INT_MASK;
 		set_ctrl(ctrl);
 	}
 
@@ -270,7 +289,8 @@ arm_tmr_attach(device_t dev)
 
 	rid = 0;
 	sc->irq_res = bus_alloc_resource(dev, SYS_RES_IRQ, &rid,
-	    CNTPSIRQ, CNTPSIRQ, 1, RF_SHAREABLE | RF_ACTIVE);
+	    GENERIC_TIMER_CNTPSIRQ, GENERIC_TIMER_CNTPSIRQ,
+	    1, RF_SHAREABLE | RF_ACTIVE);
 
 	arm_tmr_sc = sc;
 
@@ -285,7 +305,7 @@ arm_tmr_attach(device_t dev)
 	set_freq(sc->clkfreq);
 	disable_user_access();
 
-        arm_tmr_timecount.tc_frequency = sc->clkfreq;
+	arm_tmr_timecount.tc_frequency = sc->clkfreq;
 	tc_init(&arm_tmr_timecount);
 
 	sc->et.et_name = "ARM MPCore Eventtimer";
@@ -338,7 +358,7 @@ DELAY(int usec)
 	/*
 	 * Check the timers are setup, if not just
 	 * use a for loop for the meantime
-         */
+	 */
 	if (arm_tmr_sc == NULL) {
 		for (; usec > 0; usec--)
 			for (counts = 200; counts > 0; counts--)
@@ -351,7 +371,7 @@ DELAY(int usec)
 	}
 
 	/* Get the number of times to count */
-        counts_per_usec = ((arm_tmr_timecount.tc_frequency / 1000000) + 1);
+	counts_per_usec = ((arm_tmr_timecount.tc_frequency / 1000000) + 1);
 
 	/*
 	 * Clamp the timeout at a maximum value (about 32 seconds with
