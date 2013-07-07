@@ -57,7 +57,7 @@ while true; do
    #        DEVFS1   157    40K       -      157  256
    #         DEVFS    12     1K       -       13  16,128
 	vmstat -m | \
-	sed '1,1d;s/K .*//;s/ [0-9][0-9]* //;s/  */ /g;s/^ *//;s/ /_/g;s/_\([0-9][0-9]*$\)/ \1/' | \
+	sed '1,1d;s/K .*//;s/ [0-9][0-9]* / /;s/  */ /g;s/^ *//;s/ /_/g;s/_\([0-9][0-9]*$\)/ \1/' | \
 	awk '{printf "vmstat -m %s, %d\n", $1, $2}'
 
    # Check for leaks in mbufs
@@ -107,7 +107,7 @@ done | awk -F, '
 			cmd="date '+%T'";
 			cmd | getline t;
 			close(cmd);
-			printf "%s \"%s\" may be leaking, size %d\n", t, name, size;
+			printf "%s \"%s\" may be leaking, used %d\n", t, name, size;
 			n[name] = 0;
 		}
 		s[name] = size;
