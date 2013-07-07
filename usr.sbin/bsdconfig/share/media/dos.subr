@@ -31,11 +31,11 @@ if [ ! "$_MEDIA_DOS_SUBR" ]; then _MEDIA_DOS_SUBR=1
 BSDCFG_SHARE="/usr/share/bsdconfig"
 . $BSDCFG_SHARE/common.subr || exit 1
 f_dprintf "%s: loading includes..." media/dos.subr
-f_include $BSDCFG_SHARE/struct.subr
 f_include $BSDCFG_SHARE/device.subr
 f_include $BSDCFG_SHARE/dialog.subr
-f_include $BSDCFG_SHARE/variable.subr
 f_include $BSDCFG_SHARE/media/common.subr
+f_include $BSDCFG_SHARE/struct.subr
+f_include $BSDCFG_SHARE/variable.subr
 
 BSDCFG_LIBE="/usr/libexec/bsdconfig"
 f_include_lang $BSDCFG_LIBE/include/messages.subr
@@ -59,7 +59,7 @@ f_media_set_dos()
 	ndevs=$( set -- $devs; echo $# )
 
 	if [ ${ndevs:=0} -eq 0 ]; then
-		f_dialog_msgbox "$msg_no_dos_primary_partitions_found"
+		f_show_msg "$msg_no_dos_primary_partitions_found"
 		return $FAILURE
 	elif [ $ndevs -gt 1 ]; then
 		local title="$msg_choose_a_dos_partition"
@@ -125,7 +125,7 @@ f_media_init_dos()
 # f_media_get_dos $device $file [$probe_only]
 #
 # Returns data from $file on a mounted DOS partition device. Similar to cat(1).
-# $probe_only is currently unused by this media type.
+# If $probe_only is present and non-NULL, returns success if $file exists.
 #
 f_media_get_dos()
 {
@@ -134,7 +134,7 @@ f_media_get_dos()
 	f_dprintf "f_media_get_dos: dev=[%s] file=[%s] probe_only=%s" \
 	          "$dev" "$file" "$probe_only"
 
-	f_media_generic_get "$MOUNTPOINT" "$file"
+	f_media_generic_get "$MOUNTPOINT" "$file" "$probe_only"
 }
 
 # f_media_shutdown_dos $device

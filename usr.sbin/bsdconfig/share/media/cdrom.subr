@@ -31,11 +31,11 @@ if [ ! "$_MEDIA_CDROM_SUBR" ]; then _MEDIA_CDROM_SUBR=1
 BSDCFG_SHARE="/usr/share/bsdconfig"
 . $BSDCFG_SHARE/common.subr || exit 1
 f_dprintf "%s: loading includes..." media/cdrom.subr
-f_include $BSDCFG_SHARE/struct.subr
 f_include $BSDCFG_SHARE/device.subr
 f_include $BSDCFG_SHARE/dialog.subr
-f_include $BSDCFG_SHARE/variable.subr
 f_include $BSDCFG_SHARE/media/common.subr
+f_include $BSDCFG_SHARE/struct.subr
+f_include $BSDCFG_SHARE/variable.subr
 
 BSDCFG_LIBE="/usr/libexec/bsdconfig"
 f_include_lang $BSDCFG_LIBE/include/messages.subr
@@ -61,7 +61,7 @@ f_media_set_cdrom()
 	ndevs=$( set -- $devs; echo $# )
 
 	if [ ${ndevs:=0} -eq 0 ]; then
-		f_interactive && f_dialog_msgbox "$msg_no_cd_dvd_devices_found"
+		f_interactive && f_show_msg "$msg_no_cd_dvd_devices_found"
 		return $FAILURE
 	elif [ $ndevs -gt 1 ]; then
 		local title="$msg_choose_a_cd_dvd_type"
@@ -146,8 +146,8 @@ f_media_init_cdrom()
 
 # f_media_get_cdrom $device $file [$probe_only]
 #
-# Returns data from $file on a mounted CDROM device. Similar to cat(1).
-# $probe_only is currently unused by this media type.
+# Returns data from $file on a mounted CDROM device. Similar to cat(1). If
+# $probe_only is present and non-NULL, returns success if $file exists.
 #
 f_media_get_cdrom()
 {
@@ -156,7 +156,7 @@ f_media_get_cdrom()
 	f_dprintf "f_media_get_cdrom: dev=[%s] file=[%s] probe_only=%s" \
 	          "$dev" "$file" "$probe_only"
 
-	f_media_generic_get "$MOUNTPOINT" "$file"
+	f_media_generic_get "$MOUNTPOINT" "$file" "$probe_only"
 }
 
 # f_media_shutdown_cdrom $device

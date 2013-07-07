@@ -31,13 +31,13 @@ if [ ! "$_MEDIA_NFS_SUBR" ]; then _MEDIA_NFS_SUBR=1
 BSDCFG_SHARE="/usr/share/bsdconfig"
 . $BSDCFG_SHARE/common.subr || exit 1
 f_dprintf "%s: loading includes..." media/nfs.subr
-f_include $BSDCFG_SHARE/struct.subr
 f_include $BSDCFG_SHARE/device.subr
 f_include $BSDCFG_SHARE/dialog.subr
-f_include $BSDCFG_SHARE/variable.subr
 f_include $BSDCFG_SHARE/media/common.subr
-f_include $BSDCFG_SHARE/media/tcpip.subr
 f_include $BSDCFG_SHARE/media/network.subr
+f_include $BSDCFG_SHARE/media/tcpip.subr
+f_include $BSDCFG_SHARE/struct.subr
+f_include $BSDCFG_SHARE/variable.subr
 
 BSDCFG_LIBE="/usr/libexec/bsdconfig"
 f_include_lang $BSDCFG_LIBE/include/messages.subr
@@ -82,7 +82,7 @@ f_media_set_nfs()
 	case "$nfs" in
 	*:*) : valid NFS path ;;
 	*)
-		f_dialog_msgbox "$msg_invalid_nfs_path_specification"
+		f_show_msg "$msg_invalid_nfs_path_specification"
 		return $FAILURE
 	esac
 
@@ -210,8 +210,8 @@ f_media_init_nfs()
 
 # f_media_get_nfs $device $file [$probe_only]
 #
-# Returns data from $file on a mounted NFS device. Similar to cat(1).
-# $probe_only is currently unused by this media type.
+# Returns data from $file on a mounted NFS device. Similar to cat(1). If
+# $probe_only is present and non-NULL, returns success if $file exists.
 #
 f_media_get_nfs()
 {
@@ -220,7 +220,7 @@ f_media_get_nfs()
 	f_dprintf "f_media_get_nfs: dev=[%s] file=[%s] probe_only=%s" \
 	          "$dev" "$file" "$probe_only"
 
-	f_media_generic_get "$MOUNTPOINT" "$file"
+	f_media_generic_get "$MOUNTPOINT" "$file" "$probe_only"
 }
 
 # f_media_shutdown_nfs $device

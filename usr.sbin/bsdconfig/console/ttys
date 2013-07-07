@@ -86,7 +86,7 @@ dialog_menu_main()
 		--cancel-label \"\$msg_cancel\"    \
 		--menu \"\$prompt\"                \
 		$height $width $rows               \
-		$menu_ist                          \
+		$menu_list                         \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	)
 	local retval=$?
@@ -108,7 +108,7 @@ dialog_menu_main()
 #
 ttys_set_type()
 {
-	local consterm="$1"
+	local consterm="$1" err
 
 	#
 	# Create new temporary file to write our ttys(5) update with new types.
@@ -130,7 +130,7 @@ ttys_set_type()
 	# Operate on ttys(5), replacing only the types of `ttyv*' and
 	# `cons[0-9]' terminals with the new type.
 	#
-	awk -v consterm="$consterm" '
+	if ! err=$( awk -v consterm="$consterm" '
 	BEGIN {
 	}
 	{
@@ -152,8 +152,14 @@ ttys_set_type()
 		right = substr($0, RSTART)
 		printf "%s%s%s\n", left, consterm, right
 	}
-	' "$ETC_TTYS" > "$tmpfile" || return $FAILURE
-	f_quietly mv "$tmpfile" "$ETC_TTYS" || return $FAILURE
+	' "$ETC_TTYS" > "$tmpfile" 2>&1 ); then
+		f_dialog_msgbox "$err"
+		return $FAILURE
+	fi
+	if ! err=$( mv -f "$tmpfile" "$ETC_TTYS" 2>&1 ); then
+		f_dialog_msgbox "$err"
+		return $FAILURE
+	fi
 
 	return $SUCCESS
 }
@@ -168,7 +174,7 @@ ttys_set_type()
 #
 while getopts h$GETOPTS_STDARGS flag; do
 	case "$flag" in
-	h|\?) f_usage $BSDCFG_LIBE/$APP_DIR/USAGE "PROGRAM_NAME" "$pgm";;
+	h|\?) f_usage $BSDCFG_LIBE/$APP_DIR/USAGE "PROGRAM_NAME" "$pgm" ;;
 	esac
 done
 shift $(( $OPTIND - 1 ))
@@ -183,18 +189,13 @@ f_mustberoot_init
 #
 # Launch application main menu
 #
-while :; do
-	dialog_menu_main || f_die
-	f_dialog_menutag_fetch mtag
+dialog_menu_main || f_die
+f_dialog_menutag_fetch mtag
 
-	[ "$mtag" = "1 $msg_none" ] && break
+[ "$mtag" = "1 $msg_none" ] && exit $SUCCESS
 
-	f_dialog_menuitem_fetch consterm
-	err=$( ttys_set_type "$consterm" 2>&1 )
-	[ "$err" ] || break # to success
-
-	f_dialog_msgbox "$err"
-done
+f_dialog_menuitem_fetch consterm
+ttys_set_type "$consterm" || f_die
 
 exit $SUCCESS
 
