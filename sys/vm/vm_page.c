@@ -761,6 +761,7 @@ vm_page_initfake(vm_page_t m, vm_paddr_t paddr, vm_memattr_t memattr)
 	m->oflags = VPO_UNMANAGED;
 	m->busy_lock = VPB_SINGLE_WRITER;
 	m->wire_count = 1;
+	pmap_page_init(m);
 memattr:
 	pmap_page_set_memattr(m, memattr);
 }
