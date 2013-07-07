@@ -59,7 +59,7 @@ usage(char *where)
 		" k                   : terminate with SIGHUP + SIGKILL\n"
 		" n                   : no startup delay\n"
 		" v                   : verbose\n";
-	printf(help);
+	printf("%s", help);
 	exit(EX_USAGE);
 }
 
