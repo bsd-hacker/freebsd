@@ -64,18 +64,15 @@ setup(int nb)
 			pct = random_int(1, 90);
 		size = size / 100 * pct + 1;
 
-		if (size > 20000 && op->hog == 0)
-			size = 20000;	/* arbitrary limit number of files pr. dir */
+		if (size > 32000 && op->hog == 0)
+			size = 32000;	/* arbitrary limit number of files pr. dir */
 		if (size > LINK_MAX)
 			size = LINK_MAX;
 
-
 		/* Resource requirements: */
-		reserve_in =  2 * op->incarnations + 1;
+		reserve_in =  2 * op->incarnations + 7;
 		reserve_bl = 26 * size * op->incarnations;
-		if (reserve_bl > bl)
-			size = bl / 26 * op->incarnations;
-		if (reserve_in > in)
+		if (reserve_in > in || reserve_bl > bl)
 			size = reserve_in = reserve_bl = 0;
 
 		if (op->verbose > 1)
@@ -102,6 +99,8 @@ setup(int nb)
 void
 cleanup(void)
 {
+	if (size == 0)
+		return;
 	(void)chdir("..");
 	if (path[0] != 0 && rmdir(path) == -1)
 		warn("rmdir(%s), %s:%d", path, __FILE__, __LINE__);
@@ -116,7 +115,7 @@ test(void)
 	char lfile[128];
 
 	pid = getpid();
-	for (j = 0; j < size && done_testing == 0; j++) {
+	for (j = 0; j < (int)size && done_testing == 0; j++) {
 		sprintf(file,"p%05d.%05d", pid, j);
 		if (j == 0) {
 			if ((fd = creat(file, 0660)) == -1) {
