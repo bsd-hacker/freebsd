@@ -63,7 +63,7 @@ test(void)
 	int		ftsoptions;
 	char 		*args[2];
 
-	ftsoptions = 0;
+	ftsoptions = FTS_LOGICAL;
 	args[0] = ".";
 	args[1] = 0;
 
@@ -71,7 +71,7 @@ test(void)
 		err(1, "fts_open");
 
 	while ((p = fts_read(fts)) != NULL && done_testing == 0) {
-		if (op->verbose > 1)
+		if (op->verbose > 2)
 			(void) printf("%s\n", p->fts_path);
 		switch (p->fts_info) {
 			case FTS_F:			/* Ignore. */
@@ -83,6 +83,8 @@ test(void)
 			case FTS_DC:			/* Ignore. */
 				break;
 			case FTS_SL:			/* Ignore. */
+				break;
+			case FTS_SLNONE:		/* Ignore. */
 				break;
 			case FTS_DNR:			/* Warn, continue. */
 			case FTS_ERR:
@@ -97,8 +99,6 @@ test(void)
 		}
 	}
 
-	if (errno != 0 && errno != ENOENT)
-		err(1, "fts_read");
 	if (fts_close(fts) == -1)
 		err(1, "fts_close()");
 
