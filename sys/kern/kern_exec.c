@@ -991,7 +991,7 @@ exec_unmap_first_page(imgp)
 		sf_buf_free(imgp->firstpage);
 		imgp->firstpage = NULL;
 		vm_page_lock(m);
-		vm_page_unwire(m);
+		vm_page_unwire(m, 0);
 		vm_page_unlock(m);
 	}
 }
