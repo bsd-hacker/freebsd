@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 
 char file[128];
 int fd;
+int freespace;
 pid_t	pid;
 
 int
@@ -78,9 +79,36 @@ incr(void) {
 	if (lockf(fd, F_ULOCK, 0) == -1)
 		err(1, "lockf(%s, F_ULOCK)", file);
 }
+
 int
 setup(int nb)
 {
+	int64_t bl;
+	int64_t in;
+	int64_t reserve_bl;
+	int64_t reserve_in;
+
+	if (nb == 0) {
+		getdf(&bl, &in);
+
+		/* Resource requirements: */
+		reserve_in =    1 * op->incarnations;
+		reserve_bl = 4096 * op->incarnations;
+		freespace = (reserve_bl <= bl && reserve_in <= in);
+		if (!freespace)
+			reserve_bl = reserve_in = 0;
+
+		if (op->verbose > 1)
+			printf("lockf(incarnations=%d). Free(%jdk, %jd), reserve(%jdk, %jd)\n",
+			    op->incarnations, bl/1024, in, reserve_bl/1024, reserve_in);
+		reservedf(reserve_bl, reserve_in);
+		putval(freespace);
+	} else {
+		freespace = getval();
+	}
+	if (!freespace)
+		exit(0);
+
         return (0);
 }
 
@@ -113,7 +141,7 @@ test(void)
 		for (i = 0; i < 100; i++) {
 			while ((get() & 1) == 0)
 				;
-			if (op->verbose > 2)
+			if (op->verbose > 3)
 				printf("Child  %d, sem = %d\n", i, get()),
 					fflush(stdout);
 			incr();
@@ -123,7 +151,7 @@ test(void)
 		for (i = 0; i < 100; i++) {
 			while ((get() & 1) == 1)
 				;
-			if (op->verbose > 2)
+			if (op->verbose > 3)
 				printf("Parent %d, sem = %d\n", i, get()),
 					fflush(stdout);
 			incr();
