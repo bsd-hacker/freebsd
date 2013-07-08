@@ -60,17 +60,15 @@ setup(int nb)
 			pct = random_int(1, 90);
 		size = size / 100 * pct + 1;
 
-		size = size % 10000;	/* arbitrary limit depth */
-		size = size % 200;	/* arbitrary limit depth */ /* XXX Soft Update */
+		size = size % 200;	/* arbitrary limit depth */
 
 		/* Resource requirements: */
 		while (size > 0) {
-			reserve_in =    1 * size * op->incarnations + 1;
-			reserve_bl = 2048 * size * op->incarnations;
-//			printf("---size = %lu, reserve(%jd, %jd)\n", size, reserve_bl/1024, reserve_in);
+			reserve_in =    1 * size * op->incarnations;
+			reserve_bl = 4096 * size * op->incarnations;
 			if (reserve_bl <= bl && reserve_in <= in)
 				break;
-			size--;
+			size = size / 2;
 		}
 		if (size == 0)
 			reserve_bl = reserve_in = 0;
@@ -82,6 +80,9 @@ setup(int nb)
 		putval(size);
 	} else
 		size = getval();
+
+	if (size == 0)
+		exit(0);
 
 	return (0);
 }
@@ -104,7 +105,7 @@ mkDir(char *path, int level) {
 	if (done_testing == 1)
 		size = level;
 
-	if (level < size) {
+	if (level < (int)size) {
 		sprintf(newPath,"d%d", level+1);
 		mkDir(newPath, level+1);
 	}
@@ -114,7 +115,7 @@ void
 rmDir(char *path, int level) {
 	char newPath[MAXPATHLEN + 1];
 
-	if (level < size) {
+	if (level < (int)size) {
 		sprintf(newPath,"d%d", level+1);
 		rmDir(newPath, level+1);
 	}
