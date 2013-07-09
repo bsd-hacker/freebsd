@@ -48,6 +48,32 @@ static char path[128];
 int
 setup(int nb)
 {
+	int64_t bl;
+	int64_t in;
+	int64_t reserve_bl;
+	int64_t reserve_in;
+	int freespace;
+
+	if (nb == 0) {
+		getdf(&bl, &in);
+
+		/* Resource requirements: */
+		reserve_in =    2 * op->incarnations;
+		reserve_bl = 20480 * op->incarnations;
+		freespace = (reserve_bl <= bl && reserve_in <= in);
+		if (!freespace)
+			reserve_bl = reserve_in = 0;
+
+		if (op->verbose > 1)
+			printf("mmap(incarnations=%d). Free(%jdk, %jd), reserve(%jdk, %jd)\n",
+			    op->incarnations, bl/1024, in, reserve_bl/1024, reserve_in);
+		reservedf(reserve_bl, reserve_in);
+		putval(freespace);
+	} else {
+		freespace = getval();
+	}
+	if (!freespace)
+		exit(0);
 	umask(0);
 
 	sprintf(path,"%s.%05d", getprogname(), getpid());
