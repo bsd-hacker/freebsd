@@ -46,12 +46,22 @@ static char path[MAXPATHLEN+1];
 #define NB (1 * 1024 * 1024)
 
 int bufsize;
+int freespace;
+
+void
+handler(int i __unused)
+{
+	_exit(0);
+}
 
 static void
 reader(void) {
 	int fd;
 	int i, n, *buf;
 
+	setproctitle("reader");
+	signal(SIGALRM, handler);
+	alarm(2);
 	if ((fd = open(path, O_RDWR, 0600)) < 0) {
 		unlink(path);
 		err(1, "open(%s)", path);
@@ -73,13 +83,17 @@ writer(void) {
 	int i, *buf;
 	int fd;
 
+	signal(SIGALRM, handler);
+	alarm(2);
+
+	setproctitle("writer");
 	if ((fd = open(path, O_RDWR, 0600)) < 0) {
 		unlink(path);
 		err(1, "open(%s)", path);
 	}
 	if ((buf = malloc(bufsize)) == NULL)
 			err(1, "malloc(%d), %s:%d", bufsize, __FILE__, __LINE__);
-	for (i = 0; i < bufsize / sizeof(int); i++)
+	for (i = 0; i < bufsize / (int)sizeof(int); i++)
 		buf[i] = i;
 
 	for (i = 0; i < NB; i+= bufsize) {
@@ -96,6 +110,32 @@ writer(void) {
 int
 setup(int nb)
 {
+	int64_t bl;
+	int64_t in;
+	int64_t reserve_bl;
+	int64_t reserve_in;
+
+	if (nb == 0) {
+		getdf(&bl, &in);
+
+		/* Resource requirements: */
+		reserve_in =  200 * op->incarnations;
+		reserve_bl = 2048 * op->incarnations;
+		freespace = (reserve_bl <= bl && reserve_in <= in);
+		if (!freespace)
+			reserve_bl = reserve_in = 0;
+
+		if (op->verbose > 1)
+			printf("mkfifo(incarnations=%d). Free(%jdk, %jd), reserve(%jdk, %jd)\n",
+			    op->incarnations, bl/1024, in, reserve_bl/1024, reserve_in);
+		reservedf(reserve_bl, reserve_in);
+		putval(freespace);
+		fflush(stdout);
+	} else {
+		freespace = getval();
+	}
+	if (!freespace)
+		_exit(0);
 	bufsize = 2 << random_int(2, 12);
 	return (0);
 }
@@ -132,7 +172,7 @@ test(void)
 
 	if ((pid = fork()) == 0) {
 		writer();
-		exit(EXIT_SUCCESS);
+		_exit(EXIT_SUCCESS);
 
 	} else if (pid > 0) {
 		reader();
