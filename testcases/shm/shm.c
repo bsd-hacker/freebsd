@@ -64,7 +64,6 @@ setup(int nb __unused)
 	pgsize = sysconf(_SC_PAGESIZE);
 
 	seed = getpid();
-//	printf("seed(%d) = %d\n", getpid(), seed);
 	shmkey = ftok("/tmp", seed);
 	if ((shmid = shmget(shmkey, 10 * pgsize, IPC_CREAT | IPC_EXCL | 0640)) == -1) {
 		if (errno == ENOSPC) {
@@ -78,7 +77,6 @@ setup(int nb __unused)
 	if ((shm_buf = shmat(shmid, NULL, 0)) == (void *) -1)
 		err(1, "sender: shmat (%s:%d)", __FILE__, __LINE__);
 
-//	printf("seed(%d) = %d\n", getpid(), seed);
 	semkey = ftok("/var", seed);
 	if ((semid = semget(semkey, 2, IPC_CREAT | IPC_EXCL | 0640)) == -1) {
 		if (errno == ENOSPC) {
