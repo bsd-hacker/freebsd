@@ -64,10 +64,8 @@ setup(int nb)
 			pct = random_int(1, 90);
 		size = size / 100 * pct + 1;
 
-		if (size > 20000)
-			size = 20000;	/* arbitrary limit number of files pr. dir */
 		if (size > 1000)
-			size = 1000;	/* XXX Soft Update */
+			size = 1000;	/* Due to Soft Update lag */
 
 		/* Resource requirements: */
 		while (size > 0) {
@@ -91,7 +89,7 @@ setup(int nb)
 	}
 
 	if (size == 0)
-		exit(1);
+		exit(0);
 	sprintf(path,"%s.%05d", getprogname(), getpid());
 	if (mkdir(path, 0770) < 0)
 		err(1, "mkdir(%s), %s:%d", path, __FILE__, __LINE__);
@@ -119,7 +117,7 @@ test(void)
 	char file[128];
 
 	pid = getpid();
-	for (j = 0; j < size && done_testing == 0; j++) {
+	for (j = 0; j < (int)size && done_testing == 0; j++) {
 		sprintf(file,"p%05d.%05d", pid, j);
 		if ((fd = creat(file, 0660)) == -1) {
 			if (errno != EINTR) {
@@ -135,7 +133,7 @@ test(void)
 	for (i = --j; i >= 0; i--) {
 		sprintf(file,"p%05d.%05d", pid, i);
 		if (unlink(file) == -1)
-			err(3, "unlink(%s)", file);
+			warn("unlink(%s)", file);
 		
 	}
 
