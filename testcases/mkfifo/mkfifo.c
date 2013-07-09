@@ -49,7 +49,7 @@ int bufsize;
 int freespace;
 
 void
-handler(int i __unused)
+handler2(int i __unused)
 {
 	_exit(0);
 }
@@ -60,7 +60,7 @@ reader(void) {
 	int i, n, *buf;
 
 	setproctitle("reader");
-	signal(SIGALRM, handler);
+	signal(SIGALRM, handler2);
 	alarm(2);
 	if ((fd = open(path, O_RDWR, 0600)) < 0) {
 		unlink(path);
@@ -83,7 +83,7 @@ writer(void) {
 	int i, *buf;
 	int fd;
 
-	signal(SIGALRM, handler);
+	signal(SIGALRM, handler2);
 	alarm(2);
 
 	setproctitle("writer");
