@@ -46,11 +46,38 @@ static char rpath[128];
 static char apath[128];
 
 static int fd;
+int freespace;
 
 int
 setup(int nb)
 {
+	int64_t bl;
+	int64_t in;
+	int64_t reserve_bl;
+	int64_t reserve_in;
+
 	umask(0);
+
+	if (nb == 0) {
+		getdf(&bl, &in);
+
+		/* Resource requirements: */
+		reserve_in =    4 * op->incarnations;
+		reserve_bl = 8192 * op->incarnations;
+		freespace = (reserve_bl <= bl && reserve_in <= in);
+		if (!freespace)
+			reserve_bl = reserve_in = 0;
+
+		if (op->verbose > 1)
+			printf("openat(incarnations=%d). Free(%jdk, %jd), reserve(%jdk, %jd)\n",
+			    op->incarnations, bl/1024, in, reserve_bl/1024, reserve_in);
+		reservedf(reserve_bl, reserve_in);
+		putval(freespace);
+	} else {
+		freespace = getval();
+	}
+	if (!freespace)
+		exit(0);
 
 	sprintf(path1,"%s.%05d", getprogname(), getpid());
 	if (mkdir(path1, 0770) < 0)
@@ -78,13 +105,11 @@ setup(int nb)
 void
 cleanup(void)
 {
-#if 1
 	if (rmdir(path2) == -1)
 		warn("rmdir(%s), %s:%d", path2, __FILE__, __LINE__);
 	(void)chdir("..");
 	if (rmdir(path1) == -1)
 		warn("rmdir(%s), %s:%d", path1, __FILE__, __LINE__);
-#endif
 }
 
 static void
@@ -97,7 +122,7 @@ test_openat(void)
 	int tfd;
 
 	pid = getpid();
-	for (i = 0; i < 100; i++) {
+	for (i = 0; i < 100 && done_testing == 0; i++) {
 		sprintf(file,"p%05d.%05d", pid, i);
 		if ((tfd = openat(fd, file, O_RDONLY|O_CREAT, 0660)) == -1)
 			err(1, "openat(%s), %s:%d", file, __FILE__, __LINE__);
@@ -119,7 +144,7 @@ test_renameat(void)
 	int tfd;
 
 	pid = getpid();
-	for (i = 0; i < 100; i++) {
+	for (i = 0; i < 100 && done_testing == 0; i++) {
 		sprintf(file,"p%05d.%05d", pid, i);
 		if ((tfd = openat(fd, file, O_RDONLY|O_CREAT, 0660)) == -1)
 			err(1, "openat(%s), %s:%d", file, __FILE__, __LINE__);
@@ -144,7 +169,7 @@ test_unlinkat(void)
 	int tfd;
 
 	pid = getpid();
-	for (i = 0; i < 100; i++) {
+	for (i = 0; i < 100 && done_testing == 0; i++) {
 		sprintf(file,"p%05d.%05d", pid, i);
 		if ((tfd = openat(fd, file, O_RDONLY|O_CREAT, 0660)) == -1)
 			err(1, "openat(%s), %s:%d", file, __FILE__, __LINE__);
