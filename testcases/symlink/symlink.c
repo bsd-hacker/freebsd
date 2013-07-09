@@ -62,17 +62,16 @@ setup(int nb)
 			pct = random_int(1, 90);
 		size = size / 100 * pct + 1;
 
-		if (size > 20000)
-			size = 20000;	/* arbitrary limit number of files pr. dir */
+		if (size > 32000)
+			size = 32000;	/* arbitrary limit number of files pr. dir */
 
 		/* Resource requirements: */
 		while (size > 0) {
-			reserve_in =  1 * size * op->incarnations;
-			reserve_bl = 36 * size * op->incarnations;
-//			printf("size = %lu, reserve(%jd, %jd)\n", size, reserve_bl/1024, reserve_in);
+			reserve_in =  1 * size * op->incarnations + op->incarnations;
+			reserve_bl = 26 * size * op->incarnations;
 			if (reserve_bl <= bl && reserve_in <= in)
 				break;
-			size--;
+			size = size / 2;
 		}
 		if (size == 0)
 			reserve_bl = reserve_in = 0;
@@ -85,6 +84,8 @@ setup(int nb)
 	} else {
 		size = getval();
 	}
+	if (size == 0)
+		exit(0);
 
 	sprintf(path,"%s.%05d", getprogname(), getpid());
 	if (mkdir(path, 0770) < 0)
@@ -113,7 +114,7 @@ test(void)
 	char file[128];
 
 	pid = getpid();
-	for (j = 0; j < size && done_testing == 0; j++) {
+	for (j = 0; j < (int)size && done_testing == 0; j++) {
 		sprintf(file,"p%05d.%05d", pid, j);
 		if (symlink("/tmp/not/there", file) == -1) {
 			if (errno != EINTR) {
@@ -124,7 +125,6 @@ test(void)
 				break;
 			}
 		}
-		if (j % 4000) sleep(1);
 	}
 
 	for (i = --j; i >= 0; i--) {
