@@ -66,8 +66,8 @@ setup(int nb)
 		getdf(&bl, &in);
 
 		/* Resource requirements: */
-		reserve_in =       1 * op->incarnations + 2;
-		reserve_bl = 1064960 * op->incarnations + 2048;
+		reserve_in =       1 * op->incarnations;
+		reserve_bl = 1081344 * op->incarnations;
 		freespace = (reserve_bl <= bl && reserve_in <= in);
 		if (!freespace)
 			reserve_bl = reserve_in = 0;
@@ -81,7 +81,7 @@ setup(int nb)
 		freespace = getval();
 	}
 	if (!freespace)
-		_exit (0);
+		exit (0);
 
 	sprintf(file, "lockf.%d", getpid());
 	if ((fd = open(file,O_CREAT | O_TRUNC | O_RDWR, 0600)) == -1) 
