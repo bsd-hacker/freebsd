@@ -56,17 +56,17 @@ setup(int nb)
 		getdf(&bl, &in);
 		size = in / op->incarnations;
 
-		if (size > 100)
-			size = 100;	/* arbitrary limit number of files pr. dir */
+		if (size > 1000)
+			size = 1000;	/* arbitrary limit number of files pr. dir */
 
 		/* Resource requirements: */
 		while (size > 0) {
-			reserve_in =  1 * size * op->incarnations + 2 * op->incarnations;
-			reserve_bl = 100 * size * op->incarnations;
+			reserve_in =  2 * size * op->incarnations + 2 * op->incarnations;
+			reserve_bl = 30 * size * op->incarnations;
 //			printf("size = %lu, reserve(%jd, %jd)\n", size, reserve_bl/1024, reserve_in);
 			if (reserve_bl <= bl && reserve_in <= in)
 				break;
-			size--;
+			size = size / 2;
 		}
 		if (size == 0)
 			reserve_bl = reserve_in = 0;
@@ -79,6 +79,8 @@ setup(int nb)
 	} else {
 		size = getval();
 	}
+	if (size == 0)
+		exit(0);
 
 	sprintf(path,"%s.%05d", getprogname(), getpid());
 	if (mkdir(path, 0770) < 0)
@@ -108,21 +110,21 @@ test_rename(void)
 	int tfd;
 
 	pid = getpid();
-	for (i = 0; i < size; i++) {
+	for (i = 0; i < (int)size; i++) {
 		sprintf(file1,"p%05d.%05d", pid, i);
 		if ((tfd = open(file1, O_RDONLY|O_CREAT, 0660)) == -1)
 			err(1, "openat(%s), %s:%d", file1, __FILE__, __LINE__);
 		close(tfd);
 	}
-	for (j = 0; j < 100; j++) {
-		for (i = 0; i < size; i++) {
+	for (j = 0; j < 100 && done_testing == 0; j++) {
+		for (i = 0; i < (int)size; i++) {
 			sprintf(file1,"p%05d.%05d", pid, i);
 			sprintf(file2,"p%05d.%05d.togo", pid, i);
 			if (rename(file1, file2) == -1)
 				err(1, "rename(%s, %s). %s:%d", file1, file2,
 						__FILE__, __LINE__);
 		}
-		for (i = 0; i < size; i++) {
+		for (i = 0; i < (int)size; i++) {
 			sprintf(file1,"p%05d.%05d", pid, i);
 			sprintf(file2,"p%05d.%05d.togo", pid, i);
 			if (rename(file2, file1) == -1)
@@ -131,7 +133,7 @@ test_rename(void)
 		}
 	}
 
-	for (i = 0; i < size; i++) {
+	for (i = 0; i < (int)size; i++) {
 		sprintf(file1,"p%05d.%05d", pid, i);
 		if (unlink(file1) == -1)
 			err(1, "unlink(%s), %s:%d", file1, __FILE__, __LINE__);
