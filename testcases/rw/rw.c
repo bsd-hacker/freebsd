@@ -73,10 +73,9 @@ setup(int nb)
 			reserve_bl = size * 1024 * op->incarnations +
 				(512 * 1024 * op->incarnations) +
 				  64 * 1024;
-//			printf("-- size = %lu, reserve(%jd, %jd)\n", size, reserve_bl/1024, reserve_in);
 			if (reserve_bl <= bl && reserve_in <= in)
 				break;
-			size = size - 1024;
+			size = size / 10 * 8;
 		}
 		if (size == 0)
 			reserve_bl = reserve_in = 0;
@@ -91,6 +90,8 @@ setup(int nb)
 		size = getval();
 		size = size * 1024;
 	}
+	if (size == 0)
+		exit(0);
 
 	umask(0);
 	sprintf(path,"%s.%05d", getprogname(), getpid());
@@ -100,14 +101,13 @@ setup(int nb)
 	if ((starting_dir = open(".", 0)) < 0)
 		err(1, ".");
 
-
 	return (0);
 }
 
 void
 cleanup(void)
 {
-	if (size == 0)
+	if (starting_dir == 0)
 		return;
 	if (fchdir(starting_dir) == -1)
 		err(1, "fchdir()");
@@ -133,15 +133,14 @@ test(void)
 	int fd;
 	char file[128];
 
-
 	sprintf(file,"p%05d", getpid());
 	if ((fd = creat(file, 0660)) == -1) 
 		err(1, "creat(%s)", file);
 
 	to = sizeof(buf);
 	index = 0;
-	while (index < size) {
-		if (index + to > size)
+	while (index < (int)size) {
+		if (index + to > (int)size)
 			to = size - index;
 #ifdef TEST
 		for (i = 0; i < to; i++)
@@ -158,8 +157,8 @@ test(void)
 		err(1, "open(%s), %s:%d", file, __FILE__, __LINE__);
 
 	index = 0;
-	while (index < size && done_testing == 0) {
-		if (index + to > size)
+	while (index < (int)size && done_testing == 0) {
+		if (index + to > (int)size)
 			to = size - index;
 		if (read(fd, buf, to) != to)
 			err(1, "rw read. %s.%d", __FILE__, __LINE__);
