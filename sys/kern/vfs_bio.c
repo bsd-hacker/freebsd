@@ -1692,7 +1692,8 @@ brelse(struct buf *bp)
 
 				KASSERT(presid >= 0, ("brelse: extra page"));
 				VM_OBJECT_WLOCK(obj);
-				vm_page_set_invalid(m, poffset, presid);
+				if (pmap_page_wired_mappings(m) == 0)
+					vm_page_set_invalid(m, poffset, presid);
 				VM_OBJECT_WUNLOCK(obj);
 				if (had_bogus)
 					printf("avoided corruption bug in bogus_page/brelse code\n");
@@ -4482,8 +4483,8 @@ bdata2bio(struct buf *bp, struct bio *bip)
 		bip->bio_flags |= BIO_UNMAPPED;
 		KASSERT(round_page(bip->bio_ma_offset + bip->bio_length) /
 		    PAGE_SIZE == bp->b_npages,
-		    ("Buffer %p too short: %d %d %d", bp, bip->bio_ma_offset,
-		    bip->bio_length, bip->bio_ma_n));
+		    ("Buffer %p too short: %d %lld %d", bp, bip->bio_ma_offset,
+		    (long long)bip->bio_length, bip->bio_ma_n));
 	} else {
 		bip->bio_data = bp->b_data;
 		bip->bio_ma = NULL;
