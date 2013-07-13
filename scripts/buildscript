@@ -1,5 +1,5 @@
 #!/bin/sh
-# $FreeBSD: ports/Tools/portbuild/scripts/buildscript,v 1.39 2010/06/30 14:51:47 linimon Exp $
+# $FreeBSD$
 
 # client-side script to actually build a package.  intended to be run in a jail.
 
@@ -109,7 +109,7 @@ del_pkg() {
           dependents=$(cat /var/db/pkg/${base}/+REQUIRED_BY 2>/dev/null)
           pkg_cmd_check="cd /var/db/pkg && test -d"
         else
-          dependents=$(pkg info -qOr $base)
+          dependents=$(pkg query "%ro" $base)
           pkg_cmd_check="pkg info -qe"
         fi
         if [ -n "$dependents" ]; then
