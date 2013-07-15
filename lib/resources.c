@@ -90,7 +90,7 @@ df(void)
 
 	if (statfs(path, &buf) < 0)
 		err(1, "statfs(%s)", path);
-	if (buf.f_bavail > buf.f_blocks || buf.f_bavail < 0) {
+	if (buf.f_bavail > (int64_t)buf.f_blocks || buf.f_bavail < 0) {
 		warnx("Corrupt statfs(%s). f_bavail = %jd!", path, buf.f_bavail);
 		buf.f_bavail = 100;
 	}
@@ -187,7 +187,7 @@ getdf(int64_t *block, int64_t *inode)
 		*inode = inodes();
 		snprintf(buf, sizeof(buf), "%jd %jd", *block, *inode);
 
-		if (write(dffd, buf, strlen(buf) + 1) != strlen(buf) +1)
+		if (write(dffd, buf, strlen(buf) + 1) != (ssize_t)strlen(buf) +1)
 			err(1, "write df. %s:%d", __FILE__, __LINE__);
 	} else {
 		if (read(dffd, buf, sizeof(buf)) < 1) {
@@ -228,70 +228,11 @@ reservedf(int64_t blks, int64_t inos)
 		printf("******************************** %s: %s\n", getprogname(), buf);
 	if (lseek(dffd, 0, 0) == -1)
 		err(1, "lseek. %s:%d", __FILE__, __LINE__);
-	if (write(dffd, buf, strlen(buf) + 1) != strlen(buf) +1)
+	if (write(dffd, buf, strlen(buf) + 1) != (ssize_t)strlen(buf) +1)
 		warn("write df. %s:%d", __FILE__, __LINE__);
 err:
 	close(dffd);
 	close(lockfd);
 	if (unlink(lockpath) == -1)
 		err(1, "unlink(%s)", lockpath);
-}
-
-/* The UFS2 soft update lag problem causes a lot of confusion, so for now add the err() function here */
-
-static void
-vpr(int code, const char *fmt, va_list ap)
-{
-	char path[MAXPATHLEN+1];
-	char siz[5], ino[5];
-	int64_t s, i;
-
-	s = df();
-	i = inodes();
-
-	if (errno == ENOSPC && (flags & MNT_SOFTDEP) && (flags & MNT_QUOTA) == 0 && 
-			s > 100 && i > 100) {
-		if (getcwd(path, sizeof(path)) == NULL)
-			err(1, "getcwd()");
-
-		humanize_number(siz, sizeof(siz), s, "",
-			HN_AUTOSCALE, HN_B | HN_NOSPACE | HN_DECIMAL);
-		humanize_number(ino, sizeof(ino), i, "",
-			HN_AUTOSCALE, HN_B | HN_NOSPACE | HN_DECIMAL);
-
-		printf("A syscall has failed with ENOSPC even though free disk "
-			"space for %s is reported as %s and %s inodes.\n",
-			path, siz, ino);
-	}
-
-
-	fprintf(stderr, "%s: ", getprogname());
-	if (fmt != NULL) {
-		vfprintf(stderr, fmt, ap);
-		fprintf(stderr, ": ");
-	}
-	fprintf(stderr, "%s\n", strerror(code));
-}
-
-void
-err(int eval, const char *fmt, ...)
-{
-	va_list ap;
-	int code = errno;
-
-	va_start(ap, fmt);
-	vpr(code, fmt, ap);
-	va_end(ap);
-	exit(eval);
-}
-
-void
-warn(const char *fmt, ...)
-{
-	va_list ap;
-	int code = errno;
-
-	va_start(ap, fmt);
-	vpr(code, fmt, ap);
-	va_end(ap);
 }
