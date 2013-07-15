@@ -53,7 +53,7 @@ setup(int nb)
 	if (nb == 0) {
 		mem = usermem();
 		swapinfo = swap();
-		if (swapinfo > mem)
+		if (swapinfo > (int64_t)mem)
 			swapinfo = mem;
 
 		if (op->hog == 0)
@@ -79,7 +79,7 @@ setup(int nb)
 			err(1,"getrlimit");
 		rlp.rlim_cur -= 1024 * 1024;
 
-		if (size > rlp.rlim_cur)
+		if (size > (unsigned long)rlp.rlim_cur) 
 			size = rlp.rlim_cur;
 		putval(size);
 
@@ -118,7 +118,7 @@ test(void)
 	while (done_testing == 0 &&
 			(time(NULL) - start) < op->run_time) {
 		i = 0;
-		while (i < (int)size && done_testing == 0) {
+		while (i < size && done_testing == 0) {
 			c[i] = 0;
 			i += page;
 		}
