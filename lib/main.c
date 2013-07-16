@@ -165,8 +165,11 @@ run_test(void)
 	if (p < 0)
 		err(1, "fork() in %s:%d", __FILE__, __LINE__);
 	while (done_testing != 1 &&
-			(time(NULL) - start) < op->run_time)
+			(time(NULL) - start) < op->run_time) {
 		sleep(1);
+		if (waitpid(p, &status, WNOHANG) == p)
+			return (status);
+	}
 	if (kill(p, SIGHUP) == -1)
 		warn("kill(%d, SIGHUP), %s:%d", p, __FILE__, __LINE__);
 
