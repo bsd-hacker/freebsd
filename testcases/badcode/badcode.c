@@ -26,52 +26,59 @@ This code is based on crashme.c
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <signal.h>
-#include <sys/wait.h>
-#include <string.h>
 #include <err.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/param.h>
+#include <sys/resource.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "stress.h"
 
-#define BUFS 64
-
-char buf [BUFS];
 pid_t pid;
+int failsafe;
 
-void (*sub)();
+static int
+tobemangled(void) {
+	volatile int i, j;
 
-void
-proto(void) {
-	int i = 2;
-	printf("Hello, world (%d)\n", i);
-	return;
+	j = 2;
+	for (i = 0; i < 100; i++)
+		j = j + 3;
+	j = j / 2;
+
+	return (j);
 }
 
-void
-alter(void) {	/* Change one byte in the code */
+static void
+mangle(void) {	/* Change one byte in the code */
 	int i;
-	i = random() % BUFS;
-	buf[i] = random() & 0xff;
+	char *p = (void *)tobemangled;
+
+	i = arc4random() % 50;
+	p[i] = arc4random() & 0xff;
 }
 
-void
-hand(int i) {	/* alarm handler */
+static void
+hand(int i __unused) {	/* handler */
+	_exit(1);
+}
+
+static void
+ahand(int i __unused) {	/* alarm handler */
 	if (pid != 0) {
-		kill(pid, SIGHUP);
 		kill(pid, SIGKILL);
 	}
-	exit(1);
+	_exit(EXIT_SUCCESS);
 }
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
 	return (0);
 }
@@ -84,17 +91,25 @@ cleanup(void)
 int
 test(void)
 {
-	pid_t pid;
-	int i, status;
+	void *st;
+	struct rlimit rl;
 
-	for (i = 0; i < 512; i++) {
-		if (i % 10 == 0)
-			bcopy(proto, buf, BUFS);
-		alter();
+	if (failsafe)
+		return (0);
 
+	while (done_testing == 0) {
+		signal(SIGALRM, ahand);
+		alarm(3);
 		if ((pid = fork()) == 0) {
+			rl.rlim_max = rl.rlim_cur = 0;
+			if (setrlimit(RLIMIT_CORE, &rl) == -1)
+				warn("setrlimit");
+			arc4random_stir();
+			st = (void *)trunc_page((unsigned long)tobemangled);
+			if (mprotect(st, PAGE_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC) == -1)
+				err(1, "mprotect()");
+
 			signal(SIGALRM, hand);
-#if 0
 			signal(SIGILL,  hand);
 			signal(SIGFPE,  hand);
 			signal(SIGSEGV, hand);
@@ -102,20 +117,17 @@ test(void)
 			signal(SIGURG,  hand);
 			signal(SIGSYS,  hand);
 			signal(SIGTRAP, hand);
-#endif
-			alarm(2);
 
-			(*sub)();
+			mangle();
+			failsafe = 1;
+			(void)tobemangled();
 
-			exit(EXIT_SUCCESS);
+			_exit(EXIT_SUCCESS);
 
 		} else if (pid > 0) {
-			signal(SIGALRM, hand);
-			alarm(3);
-			if (waitpid(pid, &status, 0) == -1)
+			if (waitpid(pid, NULL, 0) == -1)
 				warn("waitpid(%d)", pid);
 			alarm(0);
-			kill(pid, SIGINT);
 		} else 
 			err(1, "fork(), %s:%d",  __FILE__, __LINE__);
 	}
