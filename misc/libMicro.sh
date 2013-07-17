@@ -28,44 +28,26 @@
 # $FreeBSD$
 #
 
-# Test using OpenSolaris libmicro-0.4.0.tar.gz benchmark
+# Test using the OpenSolaris libmicro benchmark
 # Has shown page fault with the cascade_lockf test
 
-. ../default.cfg
+if [ $# -eq 0 ]; then
+	. ../default.cfg
 
-odir=`pwd`
+	[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-cd $RUNDIR
-ftp http://www.opensolaris.org/os/project/libmicro/files/libmicro-0.4.0.tar.gz
-[ ! -r libmicro-0.4.0.tar.gz ] && exit 1
-tar zxfv libmicro-0.4.0.tar.gz
-cat > $RUNDIR/libMicro-0.4.0/Makefile.FreeBSD <<2EOF
-CC=		gcc
+	[ -x /usr/local/bin/libmicro-bench ] ||
+	    { echo "ports/benchmarks/libmicro is not installed"; exit 1; }
 
-CFLAGS=		-pthread
-CPPFLAGS=	-DUSE_SEMOP -D_REENTRANT
-MATHLIB=	-lm
+	[ `id -un` = $testuser ] &&
+	    { echo "\$testuser is identical to current id"; exit 1; }
 
-ELIDED_BENCHMARKS= \
-	cachetocache \
-	atomic
-
-
-include ../Makefile.com
-2EOF
-
-cd libMicro-0.4.0
-gmake
-ed bench <<3EOF
-/ARCH
-s/arch -k/uname -m/
-w
-q
-3EOF
-./bench > output &
-for i in `jot $((30 * 60))`; do
-	ps | grep -q bench || break
-	sleep 1
-done
-ps | grep bin/connection | grep -v grep | awk '{print $1}' | xargs kill	# hack
-cd ..;rm -rf libMicro-0.4.0
+	rm -f /tmp/libmicro.log
+	su $testuser -c "$0 x"
+	echo ""
+else
+	/usr/local/bin/libmicro-bench > /tmp/libmicro.log &
+	# Temp. work-around for hanging "c_lockf_10" test.
+	sleep 60
+	kill 0
+fi
