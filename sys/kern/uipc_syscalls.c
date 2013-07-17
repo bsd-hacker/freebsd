@@ -115,6 +115,7 @@ static int getsockname1(struct thread *td, struct getsockname_args *uap,
 static int getpeername1(struct thread *td, struct getpeername_args *uap,
 			int compat);
 
+counter_u64_t sfstat[sizeof(struct sfstat) / sizeof(uint64_t)];
 /*
  * NSFBUFS-related variables and associated sysctls
  */
@@ -129,6 +130,27 @@ SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufspeak, CTLFLAG_RD, &nsfbufspeak, 0,
 SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufsused, CTLFLAG_RD, &nsfbufsused, 0,
     "Number of sendfile(2) sf_bufs in use");
 
+static void
+sfstat_init(const void *unused)
+{
+
+	COUNTER_ARRAY_ALLOC(sfstat, sizeof(struct sfstat) / sizeof(uint64_t),
+	    M_WAITOK);
+}
+SYSINIT(sfstat, SI_SUB_MBUF, SI_ORDER_FIRST, sfstat_init, NULL);
+
+static int
+sfstat_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct sfstat s;
+
+	COUNTER_ARRAY_COPY(sfstat, &s, sizeof(s) / sizeof(uint64_t));
+	if (req->newptr)
+		COUNTER_ARRAY_ZERO(sfstat, sizeof(s) / sizeof(uint64_t));
+	return (SYSCTL_OUT(req, &s, sizeof(s)));
+}
+SYSCTL_PROC(_kern_ipc, OID_AUTO, sfstat, CTLTYPE_OPAQUE | CTLFLAG_RW,
+    NULL, 0, sfstat_sysctl, "I", "sendfile statistics");
 /*
  * Convert a user file descriptor to a kernel file entry and check if required
  * capability rights are present.
@@ -2232,7 +2254,7 @@ retry_space:
 				    trunc_page(off), UIO_NOCOPY, IO_NODELOCKED |
 				    IO_VMIO | ((MAXBSIZE / bsize) << IO_SEQSHIFT),
 				    td->td_ucred, NOCRED, &resid, td);
-				mbstat.sf_iocnt++;
+				SFSTAT_INC(sf_iocnt);
 				if (error)
 					VM_OBJECT_WLOCK(obj);
 			}
@@ -2266,7 +2288,7 @@ retry_space:
 			sf = sf_buf_alloc(pg, (mnw || m != NULL) ? SFB_NOWAIT :
 			    SFB_CATCH);
 			if (sf == NULL) {
-				mbstat.sf_allocfail++;
+				SFSTAT_INC(sf_allocfail);
 				vm_page_lock(pg);
 				vm_page_unwire(pg, 0);
 				KASSERT(pg->object != NULL,
