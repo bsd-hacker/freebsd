@@ -48,6 +48,10 @@ export TESTPROGS="
 ./testcases/swap/swap
 "
 
-su $testuser -c '(cd ..; ./testcases/run/run $TESTPROGS)'
+su $testuser -c '(cd ..; ./testcases/run/run $TESTPROGS)' &
 
-ps -U$testuser | sed 1d | awk '{print $1}' | xargs kill -9
+sleep $((15 * 60))
+while pkill -9 -U $testuser "tcp|swap"; do
+	sleep .5
+done
+wait
