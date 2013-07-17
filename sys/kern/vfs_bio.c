@@ -474,10 +474,12 @@ runningbufwakeup(struct buf *bp)
 {
 	long space, bspace;
 
-	if (bp->b_runningbufspace == 0)
-		return;
-	space = atomic_fetchadd_long(&runningbufspace, -bp->b_runningbufspace);
 	bspace = bp->b_runningbufspace;
+	if (bspace == 0)
+		return;
+	space = atomic_fetchadd_long(&runningbufspace, -bspace);
+	KASSERT(space >= bspace, ("runningbufspace underflow %ld %ld",
+	    space, bspace));
 	bp->b_runningbufspace = 0;
 	/*
 	 * Only acquire the lock and wakeup on the transition from exceeding
@@ -561,7 +563,7 @@ waitrunningbufspace(void)
 
 	mtx_lock(&rbreqlock);
 	while (runningbufspace > hirunningspace) {
-		++runningbufreq;
+		runningbufreq = 1;
 		msleep(&runningbufreq, &rbreqlock, PVM, "wdrain", 0);
 	}
 	mtx_unlock(&rbreqlock);
