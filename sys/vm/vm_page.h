@@ -368,7 +368,7 @@ vm_page_t PHYS_TO_VM_PAGE(vm_paddr_t pa);
 #define	VM_ALLOC_NOBUSY		0x0200	/* Do not busy the page */
 #define	VM_ALLOC_IFCACHED	0x0400	/* Fail if the page is not cached */
 #define	VM_ALLOC_IFNOTCACHED	0x0800	/* Fail if the page is cached */
-#define	VM_ALLOC_IGN_RBUSY	0x1000	/* vm_page_grab() only */
+#define	VM_ALLOC_UNUSED13	0x1000	/* -- available -- */
 #define	VM_ALLOC_NODUMP		0x2000	/* don't include in dump */
 #define	VM_ALLOC_RBUSY		0x4000	/* Read busy the page */
 

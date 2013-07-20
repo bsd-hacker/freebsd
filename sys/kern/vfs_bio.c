@@ -3488,9 +3488,9 @@ allocbuf(struct buf *bp, int size)
 				 * pages are vfs_busy_pages().
 				 */
 				m = vm_page_grab(obj, OFF_TO_IDX(bp->b_offset) +
-				    bp->b_npages, VM_ALLOC_NOBUSY |
+				    bp->b_npages, VM_ALLOC_RBUSY |
 				    VM_ALLOC_SYSTEM | VM_ALLOC_WIRED |
-				    VM_ALLOC_RETRY | VM_ALLOC_IGN_RBUSY |
+				    VM_ALLOC_RETRY |
 				    VM_ALLOC_COUNT(desiredpages - bp->b_npages));
 				if (m->valid == 0)
 					bp->b_flags &= ~B_CACHE;
@@ -3534,6 +3534,11 @@ allocbuf(struct buf *bp, int size)
 				);
 				toff += tinc;
 				tinc = PAGE_SIZE;
+			}
+			while ((bp->b_npages - onpages) != 0) {
+				m = bp->b_pages[onpages];
+				vm_page_busy_runlock(m);
+				++onpages;
 			}
 			VM_OBJECT_WUNLOCK(obj);
 

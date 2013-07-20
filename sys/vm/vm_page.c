@@ -891,8 +891,7 @@ vm_page_sleep_if_busy(vm_page_t m, const char *msg, int busyflags,
 	    ("vm_page_sleep_if_busy: VM_ALLOC_NOBUSY with read object lock"));
 
 	if ((busyflags & VM_ALLOC_NOBUSY) != 0) {
-		cond = (busyflags & VM_ALLOC_IGN_RBUSY) != 0 ?
-		    vm_page_busy_wlocked(m) : vm_page_busy_locked(m);
+		cond = vm_page_busy_locked(m);
 	} else if ((busyflags & VM_ALLOC_RBUSY) != 0)
 		cond = !vm_page_busy_tryrlock(m);
 	else
@@ -2533,16 +2532,12 @@ vm_page_grab(vm_object_t object, vm_pindex_t pindex, int allocflags)
 	origwlock = VM_OBJECT_WOWNED(object);
 	KASSERT((allocflags & VM_ALLOC_RETRY) != 0,
 	    ("vm_page_grab: VM_ALLOC_RETRY is required"));
-	KASSERT((allocflags & VM_ALLOC_RBUSY) == 0 ||
-	    (allocflags & VM_ALLOC_IGN_RBUSY) != 0,
-	    ("vm_page_grab: VM_ALLOC_RBUSY/VM_ALLOC_IGN_RBUSY mismatch"));
 	KASSERT((allocflags & VM_ALLOC_NOBUSY) == 0 || origwlock != 0,
 	    ("vm_page_grab: VM_ALLOC_NOBUSY with object read lock"));
 retrylookup:
 	if ((m = vm_page_lookup(object, pindex)) != NULL) {
 		if (vm_page_sleep_if_busy(m, "pgrbwt", allocflags &
-		    (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY | VM_ALLOC_IGN_RBUSY),
-		    TRUE))
+		    (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY), TRUE))
 			goto retrylookup;
 		else {
 			if ((allocflags & VM_ALLOC_WIRED) != 0) {
@@ -2565,8 +2560,7 @@ retrylookup:
 		VM_OBJECT_WLOCK(object);
 		goto retrylookup;
 	}
-	m = vm_page_alloc(object, pindex, allocflags & ~(VM_ALLOC_RETRY |
-	    VM_ALLOC_IGN_RBUSY));
+	m = vm_page_alloc(object, pindex, allocflags & ~VM_ALLOC_RETRY);
 	if (m == NULL) {
 		VM_OBJECT_WUNLOCK(object);
 		VM_WAIT;
