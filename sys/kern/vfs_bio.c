@@ -3444,7 +3444,7 @@ allocbuf(struct buf *bp, int size)
 					KASSERT(m != bogus_page,
 					    ("allocbuf: bogus page found"));
 					while (vm_page_sleep_if_busy(m,
-					    "biodep"))
+					    "biodep", VM_ALLOC_NOBUSY, FALSE))
 						continue;
 
 					bp->b_pages[i] = NULL;

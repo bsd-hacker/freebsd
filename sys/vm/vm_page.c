@@ -869,26 +869,53 @@ vm_page_readahead_finish(vm_page_t m)
  *	be locked.
  */
 int
-vm_page_sleep_if_busy(vm_page_t m, const char *msg)
+vm_page_sleep_if_busy(vm_page_t m, const char *msg, int busyflags,
+    boolean_t pref)
 {
 	vm_object_t obj;
+	int cond, iswowned;
 
 	vm_page_lock_assert(m, MA_NOTOWNED);
-	VM_OBJECT_ASSERT_WLOCKED(m->object);
 
-	if (vm_page_busy_locked(m)) {
+	/*
+	 * The page-specific object must be cached because page
+	 * identity can change during the sleep, causing the
+	 * re-lock of a different object.
+	 * It is assumed that a reference to the object is already
+	 * held by the callers.
+	 */
+	obj = m->object;
+	VM_OBJECT_ASSERT_LOCKED(obj);
+	iswowned = VM_OBJECT_WOWNED(obj);
+	KASSERT((busyflags & VM_ALLOC_NOBUSY) == 0 || iswowned,
+	    ("vm_page_sleep_if_busy: VM_ALLOC_NOBUSY with read object lock"));
+
+	if ((busyflags & VM_ALLOC_NOBUSY) != 0) {
+		cond = (busyflags & VM_ALLOC_IGN_RBUSY) != 0 ?
+		    vm_page_busy_wlocked(m) : vm_page_busy_locked(m);
+	} else if ((busyflags & VM_ALLOC_RBUSY) != 0)
+		cond = !vm_page_busy_tryrlock(m);
+	else
+		cond = !vm_page_busy_trywlock(m);
+	if (cond) {
+
 		/*
-		 * The page-specific object must be cached because page
-		 * identity can change during the sleep, causing the
-		 * re-lock of a different object.
-		 * It is assumed that a reference to the object is already
-		 * held by the callers.
+		 * Some consumers may want to reference the page before
+		 * unlocking and sleeping so that the page daemon is less
+		 * likely to reclaim it.
 		 */
-		obj = m->object;
+		if (pref)
+			vm_page_aflag_set(m, PGA_REFERENCED);
 		vm_page_lock(m);
-		VM_OBJECT_WUNLOCK(obj);
+		if (iswowned)
+			VM_OBJECT_WUNLOCK(obj);
+		else
+			VM_OBJECT_RUNLOCK(obj);
 		vm_page_busy_sleep(m, msg);
-		VM_OBJECT_WLOCK(obj);
+		if (iswowned)
+			VM_OBJECT_WLOCK(obj);
+		else
+			VM_OBJECT_RLOCK(obj);
 		return (TRUE);
 	}
 	return (FALSE);
@@ -2500,43 +2527,43 @@ vm_page_t
 vm_page_grab(vm_object_t object, vm_pindex_t pindex, int allocflags)
 {
 	vm_page_t m;
-	int sleep;
+	int origwlock;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
+	origwlock = VM_OBJECT_WOWNED(object);
 	KASSERT((allocflags & VM_ALLOC_RETRY) != 0,
 	    ("vm_page_grab: VM_ALLOC_RETRY is required"));
 	KASSERT((allocflags & VM_ALLOC_RBUSY) == 0 ||
 	    (allocflags & VM_ALLOC_IGN_RBUSY) != 0,
 	    ("vm_page_grab: VM_ALLOC_RBUSY/VM_ALLOC_IGN_RBUSY mismatch"));
+	KASSERT((allocflags & VM_ALLOC_NOBUSY) == 0 || origwlock != 0,
+	    ("vm_page_grab: VM_ALLOC_NOBUSY with object read lock"));
 retrylookup:
 	if ((m = vm_page_lookup(object, pindex)) != NULL) {
-		sleep = (allocflags & VM_ALLOC_IGN_RBUSY) != 0 ?
-		    vm_page_busy_wlocked(m) : vm_page_busy_locked(m);
-		if (sleep) {
-			/*
-			 * Reference the page before unlocking and
-			 * sleeping so that the page daemon is less
-			 * likely to reclaim it.
-			 */
-			vm_page_aflag_set(m, PGA_REFERENCED);
-			vm_page_lock(m);
-			VM_OBJECT_WUNLOCK(object);
-			vm_page_busy_sleep(m, "pgrbwt");
-			VM_OBJECT_WLOCK(object);
+		if (vm_page_sleep_if_busy(m, "pgrbwt", allocflags &
+		    (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY | VM_ALLOC_IGN_RBUSY),
+		    TRUE))
 			goto retrylookup;
-		} else {
+		else {
 			if ((allocflags & VM_ALLOC_WIRED) != 0) {
 				vm_page_lock(m);
 				vm_page_wire(m);
 				vm_page_unlock(m);
 			}
-			if ((allocflags &
-			    (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY)) == 0)
-				vm_page_busy_wlock(m);
-			if ((allocflags & VM_ALLOC_RBUSY) != 0)
-				vm_page_busy_rlock(m);
+
+			/*
+			 * If the lock state changed in the meanwhile,
+			 * unwind back.
+			 */
+			if (VM_OBJECT_WOWNED(object) != origwlock)
+				VM_OBJECT_LOCK_DOWNGRADE(object);
 			return (m);
 		}
+	}
+	if (!VM_OBJECT_WOWNED(object) && !VM_OBJECT_LOCK_TRYUPGRADE(object)) {
+		VM_OBJECT_RUNLOCK(object);
+		VM_OBJECT_WLOCK(object);
+		goto retrylookup;
 	}
 	m = vm_page_alloc(object, pindex, allocflags & ~(VM_ALLOC_RETRY |
 	    VM_ALLOC_IGN_RBUSY));
@@ -2545,7 +2572,12 @@ retrylookup:
 		VM_WAIT;
 		VM_OBJECT_WLOCK(object);
 		goto retrylookup;
-	} else if (m->valid != 0)
+	}
+
+	/* If the lock state changed in the meanwhile, unwind back. */
+	if (VM_OBJECT_WOWNED(object) != origwlock)
+		VM_OBJECT_LOCK_DOWNGRADE(object);
+	if (m->valid != 0)
 		return (m);
 	if (allocflags & VM_ALLOC_ZERO && (m->flags & PG_ZERO) == 0)
 		pmap_zero_page(m);

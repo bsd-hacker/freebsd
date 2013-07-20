@@ -1331,7 +1331,8 @@ tmpfs_reg_resize(struct vnode *vp, off_t newsize, boolean_t ignerr)
 retry:
 			m = vm_page_lookup(uobj, idx);
 			if (m != NULL) {
-				if (vm_page_sleep_if_busy(m, "tmfssz"))
+				if (vm_page_sleep_if_busy(m, "tmfssz",
+				    VM_ALLOC_NOBUSY, FALSE))
 					goto retry;
 				MPASS(m->valid == VM_PAGE_BITS_ALL);
 			} else if (vm_pager_has_page(uobj, idx, NULL, NULL)) {

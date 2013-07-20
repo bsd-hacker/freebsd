@@ -2333,7 +2333,8 @@ retry:
 			m = vm_page_lookup(devobj, i);
 			if (m == NULL)
 				continue;
-			if (vm_page_sleep_if_busy(m, "915unm"))
+			if (vm_page_sleep_if_busy(m, "915unm", VM_ALLOC_NOBUSY,
+			    FALSE))
 				goto retry;
 			cdev_pager_free_page(devobj, m);
 		}

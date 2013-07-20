@@ -336,19 +336,9 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 	for (;;) {
 		if ((pp = vm_page_lookup(obj, OFF_TO_IDX(start))) != NULL &&
 		    pp->valid) {
-			if (vm_page_busy_wlocked(pp)) {
-				/*
-				 * Reference the page before unlocking and
-				 * sleeping so that the page daemon is less
-				 * likely to reclaim it.
-				 */
-				vm_page_reference(pp);
-				vm_page_lock(pp);
-				zfs_vmobject_wunlock(obj);
-				vm_page_busy_sleep(pp, "zfsmwb");
-				zfs_vmobject_wlock(obj);
+			if (vm_page_sleep_if_busy(pp, "zfsmwb",
+			    VM_ALLOC_NOBUSY, TRUE))
 				continue;
-			}
 			vm_page_busy_rlock(pp);
 		} else if (pp == NULL) {
 			if (!alloc)

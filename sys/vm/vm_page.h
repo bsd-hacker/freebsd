@@ -439,7 +439,8 @@ void vm_page_rename (vm_page_t, vm_object_t, vm_pindex_t);
 void vm_page_requeue(vm_page_t m);
 void vm_page_requeue_locked(vm_page_t m);
 void vm_page_set_valid_range(vm_page_t m, int base, int size);
-int vm_page_sleep_if_busy(vm_page_t m, const char *msg);
+int vm_page_sleep_if_busy(vm_page_t m, const char *msg, int busyflags,
+    boolean_t pref);
 vm_offset_t vm_page_startup(vm_offset_t vaddr);
 void vm_page_unhold_pages(vm_page_t *ma, int count);
 void vm_page_unwire (vm_page_t, int);

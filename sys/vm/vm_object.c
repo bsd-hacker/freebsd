@@ -870,7 +870,8 @@ rescan:
 		np = TAILQ_NEXT(p, listq);
 		if (p->valid == 0)
 			continue;
-		if (vm_page_sleep_if_busy(p, "vpcwai")) {
+		if (vm_page_sleep_if_busy(p, "vpcwai", VM_ALLOC_NOBUSY,
+		    FALSE)) {
 			if (object->generation != curgeneration) {
 				if ((flags & OBJPC_SYNC) != 0)
 					goto rescan;

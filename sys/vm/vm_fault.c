@@ -392,7 +392,8 @@ RetryFault:;
 				unlock_map(&fs);
 				if (fs.m == vm_page_lookup(fs.object,
 				    fs.pindex)) {
-					vm_page_sleep_if_busy(fs.m, "vmpfw");
+					vm_page_sleep_if_busy(fs.m, "vmpfw",
+					    VM_ALLOC_NOBUSY, FALSE);
 				}
 				vm_object_pip_wakeup(fs.object);
 				VM_OBJECT_WUNLOCK(fs.object);
