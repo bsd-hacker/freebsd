@@ -3305,7 +3305,7 @@ int
 allocbuf(struct buf *bp, int size)
 {
 	int newbsize, mbsize;
-	int i;
+	int i, onpages;
 
 	BUF_ASSERT_HELD(bp);
 
@@ -3474,6 +3474,7 @@ allocbuf(struct buf *bp, int size)
 			obj = bp->b_bufobj->bo_object;
 
 			VM_OBJECT_WLOCK(obj);
+			onpages = bp->b_npages;
 			while (bp->b_npages < desiredpages) {
 				vm_page_t m;
 
