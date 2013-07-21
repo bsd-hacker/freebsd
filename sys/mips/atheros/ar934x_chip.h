@@ -1,7 +1,5 @@
-/*	$NetBSD: sigsetjmp.S,v 1.6 2013/04/19 16:50:22 matt Exp $	*/
-
-/*
- * Copyright (c) 1997 Mark Brinicombe
+/*-
+ * Copyright (c) 2013 Adrian Chadd <adrian@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -12,12 +10,6 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *	This product includes software developed by Mark Brinicombe
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -32,35 +24,11 @@
  * SUCH DAMAGE.
  */
 
-#include <machine/asm.h>
-__FBSDID("$FreeBSD$");
+/* $FreeBSD$ */
 
-#include <machine/setjmp.h>
+#ifndef	__AR934X_CHIP_H__
+#define	__AR934X_CHIP_H__
 
-/*
- * C library -- sigsetjmp, siglongjmp
- *
- *	longjmp(a,v)
- * will generate a "return(v)" from the last call to
- *	setjmp(a, m)
- * by restoring registers from the stack.
- * The previous signal state is restored.
- */
+extern struct ar71xx_cpu_def ar934x_chip_def;
 
-ENTRY(sigsetjmp)
-	teq	r1, #0
-	beq	PIC_SYM(_C_LABEL(_setjmp), PLT)
-	b	PIC_SYM(_C_LABEL(setjmp), PLT)
-
-.L_setjmp_magic:
-	.word	_JB_MAGIC__SETJMP
-WEAK_ALIAS(__siglongjmp, siglongjmp)
-
-ENTRY(siglongjmp)
-	ldr	r2, .L_setjmp_magic		/* load magic */
-	ldr	r3, [r0]			/* get magic from jmp_buf */
-	bic	r3, r3, #(_JB_MAGIC__SETJMP ^ _JB_MAGIC__SETJMP_VFP)
-						/* ignore VFP-ness of magic */
-	teq	r2, r3				/* magic correct? */
-	beq	PIC_SYM(_C_LABEL(_longjmp), PLT)
-	b	PIC_SYM(_C_LABEL(longjmp), PLT)
+#endif
