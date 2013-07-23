@@ -39,6 +39,14 @@ SUBDIR += ucom u3g uark ubsa ubser uchcom ucycom ufoma uftdi ugensa uipaq ulpt \
 SUBDIR += uether aue axe cdce cue ${_kue} mos rue smsc udav uhso ipheth
 SUBDIR += usfs umass urio
 SUBDIR += quirk template
+SUBDIR += ${_g_audio} ${_g_keyboard} ${_g_modem} ${_g_mouse}
+
+.if ${MK_USB_GADGET_EXAMPLES} == "yes"
+_g_audio=	g_audio
+_g_keyboard=	g_keyboard
+_g_modem=	g_modem
+_g_mouse=	g_mouse
+.endif
 
 .if ${MK_SOURCELESS_UCODE} != "no"
 _rum=		rum
