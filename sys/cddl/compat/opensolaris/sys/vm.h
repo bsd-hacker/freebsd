@@ -36,9 +36,9 @@ extern const int zfs_vm_pagerret_error;
 extern const int zfs_vm_pagerret_ok;
 
 void	zfs_vmobject_assert_locked(vm_object_t object);
+void	zfs_vmobject_assert_wlocked(vm_object_t object);
 void	zfs_vmobject_rlock(vm_object_t object);
 void	zfs_vmobject_runlock(vm_object_t object);
-void	zfs_vmobject_assert_wlocked(vm_object_t object);
 void	zfs_vmobject_wlock(vm_object_t object);
 void	zfs_vmobject_wunlock(vm_object_t object);
 
