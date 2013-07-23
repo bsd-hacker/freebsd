@@ -239,10 +239,19 @@ vm_imgact_page_iostart(vm_object_t object, vm_ooffset_t offset)
 	vm_pindex_t pindex;
 	int rv;
 
-	VM_OBJECT_WLOCK(object);
+	VM_OBJECT_RLOCK(object);
 	pindex = OFF_TO_IDX(offset);
+retry:
 	m = vm_page_grab(object, pindex, VM_ALLOC_NORMAL | VM_ALLOC_RETRY);
 	if (m->valid != VM_PAGE_BITS_ALL) {
+		if (!VM_OBJECT_LOCK_TRYUPGRADE(object)) {
+			VM_OBJECT_RUNLOCK(object);
+			VM_OBJECT_WLOCK(object);
+			vm_page_lock(m);
+			vm_page_free(m);
+			vm_page_unlock(m);
+			goto retry;
+		}
 		ma[0] = m;
 		rv = vm_pager_get_pages(object, ma, 1, 0);
 		m = vm_page_lookup(object, pindex);
@@ -256,10 +265,12 @@ vm_imgact_page_iostart(vm_object_t object, vm_ooffset_t offset)
 			goto out;
 		}
 	}
-	vm_page_busy_wunlock(m);
-	vm_page_busy_rlock(m);
+	vm_page_busy_downgrade(m);
 out:
-	VM_OBJECT_WUNLOCK(object);
+	if (VM_OBJECT_WOWNED(object))
+		VM_OBJECT_WUNLOCK(object);
+	else
+		VM_OBJECT_RUNLOCK(object);
 	return (m);
 }
 
@@ -290,9 +301,9 @@ vm_imgact_unmap_page(vm_object_t object, struct sf_buf *sf)
 	m = sf_buf_page(sf);
 	sf_buf_free(sf);
 	sched_unpin();
-	VM_OBJECT_WLOCK(object);
+	VM_OBJECT_RLOCK(object);
 	vm_page_busy_runlock(m);
-	VM_OBJECT_WUNLOCK(object);
+	VM_OBJECT_RUNLOCK(object);
 }
 
 void
@@ -504,7 +515,7 @@ vm_thread_swapout(struct thread *td)
 	pages = td->td_kstack_pages;
 	ksobj = td->td_kstack_obj;
 	pmap_qremove(td->td_kstack, pages);
-	VM_OBJECT_WLOCK(ksobj);
+	VM_OBJECT_RLOCK(ksobj);
 	for (i = 0; i < pages; i++) {
 		m = vm_page_lookup(ksobj, i);
 		if (m == NULL)
@@ -514,7 +525,7 @@ vm_thread_swapout(struct thread *td)
 		vm_page_unwire(m, 0);
 		vm_page_unlock(m);
 	}
-	VM_OBJECT_WUNLOCK(ksobj);
+	VM_OBJECT_RUNLOCK(ksobj);
 }
 
 /*

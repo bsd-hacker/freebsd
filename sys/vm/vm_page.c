@@ -2528,7 +2528,7 @@ vm_page_grab(vm_object_t object, vm_pindex_t pindex, int allocflags)
 	vm_page_t m;
 	int origwlock;
 
-	VM_OBJECT_ASSERT_WLOCKED(object);
+	VM_OBJECT_ASSERT_LOCKED(object);
 	origwlock = VM_OBJECT_WOWNED(object);
 	KASSERT((allocflags & VM_ALLOC_RETRY) != 0,
 	    ("vm_page_grab: VM_ALLOC_RETRY is required"));

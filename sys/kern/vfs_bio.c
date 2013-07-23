@@ -3433,7 +3433,7 @@ allocbuf(struct buf *bp, int size)
 					    (bp->b_npages - desiredpages));
 				} else
 					BUF_CHECK_UNMAPPED(bp);
-				VM_OBJECT_WLOCK(bp->b_bufobj->bo_object);
+				VM_OBJECT_RLOCK(bp->b_bufobj->bo_object);
 				for (i = desiredpages; i < bp->b_npages; i++) {
 					/*
 					 * the page is not freed here -- it
@@ -3443,16 +3443,17 @@ allocbuf(struct buf *bp, int size)
 					m = bp->b_pages[i];
 					KASSERT(m != bogus_page,
 					    ("allocbuf: bogus page found"));
-					while (vm_page_sleep_if_busy(m,
-					    "biodep", VM_ALLOC_NOBUSY, FALSE))
+					while (vm_page_sleep_if_busy(m, "biodep", 0,
+					    FALSE))
 						continue;
 
 					bp->b_pages[i] = NULL;
 					vm_page_lock(m);
 					vm_page_unwire(m, 0);
 					vm_page_unlock(m);
+					vm_page_busy_wunlock(m);
 				}
-				VM_OBJECT_WUNLOCK(bp->b_bufobj->bo_object);
+				VM_OBJECT_RUNLOCK(bp->b_bufobj->bo_object);
 				bp->b_npages = desiredpages;
 			}
 		} else if (size > bp->b_bcount) {
@@ -3473,7 +3474,7 @@ allocbuf(struct buf *bp, int size)
 
 			obj = bp->b_bufobj->bo_object;
 
-			VM_OBJECT_WLOCK(obj);
+			VM_OBJECT_RLOCK(obj);
 			onpages = bp->b_npages;
 			while (bp->b_npages < desiredpages) {
 				vm_page_t m;
@@ -3537,11 +3538,13 @@ allocbuf(struct buf *bp, int size)
 				tinc = PAGE_SIZE;
 			}
 			while ((bp->b_npages - onpages) != 0) {
+				vm_page_t m;
+
 				m = bp->b_pages[onpages];
 				vm_page_busy_runlock(m);
 				++onpages;
 			}
-			VM_OBJECT_WUNLOCK(obj);
+			VM_OBJECT_RUNLOCK(obj);
 
 			/*
 			 * Step 3, fixup the KVM pmap.

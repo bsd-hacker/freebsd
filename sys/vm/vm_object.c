@@ -1212,15 +1212,15 @@ vm_object_shadow(
 	 * Don't create the new object if the old object isn't shared.
 	 */
 	if (source != NULL) {
-		VM_OBJECT_WLOCK(source);
+		VM_OBJECT_RLOCK(source);
 		if (source->ref_count == 1 &&
 		    source->handle == NULL &&
 		    (source->type == OBJT_DEFAULT ||
 		     source->type == OBJT_SWAP)) {
-			VM_OBJECT_WUNLOCK(source);
+			VM_OBJECT_RUNLOCK(source);
 			return;
 		}
-		VM_OBJECT_WUNLOCK(source);
+		VM_OBJECT_RUNLOCK(source);
 	}
 
 	/*

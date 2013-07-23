@@ -316,9 +316,9 @@ proc_rwmem(struct proc *p, struct uio *uio)
 		/*
 		 * Release the page.
 		 */
-		VM_OBJECT_WLOCK(m->object);
+		VM_OBJECT_RLOCK(m->object);
 		vm_page_busy_runlock(m);
-		VM_OBJECT_WUNLOCK(m->object);
+		VM_OBJECT_RUNLOCK(m->object);
 
 	} while (error == 0 && uio->uio_resid > 0);
 

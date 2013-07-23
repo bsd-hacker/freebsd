@@ -555,7 +555,7 @@ retry:
 	/*
 	 * Loop thru pages, entering them in the pmap.
 	 */
-	VM_OBJECT_WLOCK(kmem_object);
+	VM_OBJECT_RLOCK(kmem_object);
 	for (i = 0; i < size; i += PAGE_SIZE) {
 		m = vm_page_lookup(kmem_object, OFF_TO_IDX(offset + i));
 		/*
@@ -565,7 +565,7 @@ retry:
 		    TRUE);
 		vm_page_busy_wunlock(m);
 	}
-	VM_OBJECT_WUNLOCK(kmem_object);
+	VM_OBJECT_RUNLOCK(kmem_object);
 
 	return (KERN_SUCCESS);
 }
