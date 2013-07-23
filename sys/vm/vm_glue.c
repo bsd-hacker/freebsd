@@ -256,8 +256,7 @@ vm_imgact_page_iostart(vm_object_t object, vm_ooffset_t offset)
 			goto out;
 		}
 	}
-	vm_page_busy_wunlock(m);
-	vm_page_busy_rlock(m);
+	vm_page_busy_downgrade(m);
 out:
 	VM_OBJECT_WUNLOCK(object);
 	return (m);
