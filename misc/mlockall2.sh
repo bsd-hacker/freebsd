@@ -131,8 +131,8 @@ main(int argc __unused, char **argv)
 	if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0)
 		err(1, "mlockall failed");
 
+	alarm(600);
 	for (j = 0; j < 10; j++) {
-
 		for (i = 0; i < PARALLEL; i++) {
 			if (fork() == 0)
 				test();
