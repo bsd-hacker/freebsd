@@ -51,7 +51,7 @@ export TESTPROGS="
 su $testuser -c '(cd ..; ./testcases/run/run $TESTPROGS)' &
 
 sleep $((15 * 60))
-while pkill -9 -U $testuser "tcp|swap"; do
+while pkill -9 -U $testuser "run|tcp|swap"; do
 	sleep .5
 done
 wait
