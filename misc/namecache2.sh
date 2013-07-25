@@ -38,6 +38,9 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+#  This threaded test is designed for MP.
+[ `sysctl hw.ncpu | sed 's/.* //'` -eq 1 ] && exit 0
+
 . ../default.cfg
 
 odir=`pwd`
