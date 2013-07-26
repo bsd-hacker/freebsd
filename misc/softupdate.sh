@@ -34,8 +34,8 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
-runRUNTIME=10m
-runRUNTIME=1m
+RUNTIME=2m
+runRUNTIME=2m
 RUNDIR=${mntpoint}/stressX
 
 D=$diskimage
@@ -51,7 +51,7 @@ for mode in "" "-U"; do
 	newfs -O2 $mode /dev/md${mdstart} > /dev/null 2>&1
 	mount /dev/md${mdstart} ${mntpoint}
 
-	for i in `jot 10`; do
+	for i in `jot 5`; do
 		(cd ..;./run.sh disk.cfg)
 	done
 
