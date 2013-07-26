@@ -73,7 +73,7 @@ churn(char *path)
 	int fd, ftsoptions, i;
 	char *args[2];
 
-	ftsoptions = 0;
+	ftsoptions = FTS_PHYSICAL;
 	args[0] = path;
 	args[1] = 0;
 
