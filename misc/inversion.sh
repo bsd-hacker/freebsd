@@ -42,11 +42,10 @@ cc -o inversion -Wall inversion.c
 rm -f inversion.c
 
 for i in `jot $N`; do
-	./inversion 3700&
+	./inversion 1800 &
 done
 
 while pgrep inversion > /dev/null; do
-	date '+%T'
 	(
 		for i in `jot $M`; do
 			nice -n 20 lockf -s -t 0 .lock pwd > /dev/null &
