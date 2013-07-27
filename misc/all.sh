@@ -97,6 +97,19 @@
 # vunref.sh	No problems ever seen
 # vunref2.sh	No problems ever seen
 
+# Snapshots has been disabled on SU+J
+# suj15.sh
+# suj16.sh
+# suj19.sh
+# suj20.sh
+# suj21.sh
+# suj22.sh
+# suj24.sh
+# suj25.sh
+# suj26.sh
+# suj27.sh
+# suj28.sh
+
 # End of list
 
 # Suspects:
