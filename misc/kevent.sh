@@ -38,6 +38,7 @@ cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kevent.c
 cc -o kevent -Wall kevent.c -pthread
 rm -f kevent.c
+[ -d "$RUNDIR" ] || mkdir -p $RUNDIR
 cd $RUNDIR
 
 for i in `jot 10`; do
@@ -48,6 +49,7 @@ for i in `jot 10`; do
 		wait
 	done
 done
+rm -f /tmp/kevent
 exit
 EOF
 #include <pthread.h>
@@ -104,7 +106,7 @@ thr1(void *arg)
 		    EV_DELETE, 0, 0, 0);
 	n++;
 	if (kevent(kq, ev, n, NULL, 0, NULL) < 0)
-		err(1, "kevent(). %s:%d", __FILE__, __LINE__);
+		warn("kevent(). %s:%d", __FILE__, __LINE__);
 	close(kq);
 
 //	printf("%s:%d\n", __FILE__, __LINE__); fflush(stdout);
@@ -139,7 +141,7 @@ main(int argc, char **argv)
 	int r;
 	int i;
 
-	for (i = 0; i < 1000; i++) {
+	for (i = 0; i < 10000; i++) {
 		waiting = 1;
 //		printf("%s:%d\n", __FILE__, __LINE__); fflush(stdout);
 		if (pipe(fd1) == -1)
