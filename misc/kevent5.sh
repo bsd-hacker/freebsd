@@ -36,14 +36,15 @@
 odir=`pwd`
 
 cd /tmp
-sed '1,/^EOF/d' < $odir/$0 > kevent.c
-cc -o kevent -Wall kevent.c
-rm -f kevent.c
+sed '1,/^EOF/d' < $odir/$0 > kevent5.c
+cc -o kevent5 -Wall -Wextra kevent5.c || exit 1
+rm -f kevent5.c
 
-cd $RUNDIR/..
-/tmp/kevent xxx yyy
+[ -d $RUNDIR ] || mkdir -p $RUNDIR
+cd $RUNDIR
+/tmp/kevent5 kevent5.xxx kevent5.yyy
 
-rm -f /tmp/kevent
+rm -f /tmp/kevent5 kevent.xxx kevent.yyy
 
 exit
 EOF
@@ -67,7 +68,7 @@ static char *file1, *file2;
 
 
 void
-test(test) {
+test(void) {
 	int kq = -1;
 	int n;
 	struct kevent ev[2];
@@ -129,6 +130,7 @@ main(int argc, char **argv) {
 	file1 = argv[1];
 	file2 = argv[2];
 
+	alarm(600);
 	for (j = 0; j < 100; j++) {
 		if ((fd = open(file1, O_CREAT | O_TRUNC | O_RDWR, 0660)) == -1)
 			err(1, "open(%s)", file1);
