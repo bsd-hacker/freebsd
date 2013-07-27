@@ -28,8 +28,9 @@
 # $FreeBSD$
 #
 
-# Alternate buffer flush path test (Not verified)
-# Apply this patch to amplyfy the problem:
+# Alternate buffer flush path test (Not verified).
+# Regression test for r169006.
+# Apply this patch to amplify the problem:
 #
 # diff -r1.520 vfs_bio.c
 # 894c894
@@ -37,25 +38,28 @@
 # ---
 # >       if (bo->bo_dirty.bv_cnt > dirtybufthresh /*+ 10*/) {
 
-odir=`pwd`
-dir=/var/tmp/alternativeFlushPath
+. ../default.cfg
 
-find $dir -type f | xargs rm
-[ ! -d $dir ] && mkdir -p $dir
+odir=`pwd`
+dir=${RUNDIR}/alternativeFlushPath
+
+[ -d $dir ] && find $dir -type f | xargs rm
+rm -rf $dir
+mkdir -p $dir
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/alternativeFlushPath.c
-cc -o alternativeFlushPath -Wall alternativeFlushPath.c -lthr
+cc -o alternativeFlushPath -Wall -Wextra alternativeFlushPath.c
 rm -f alternativeFlushPath.c
 
 for j in `jot 10`; do
-   ./alternativeFlushPath&
+   ./alternativeFlushPath &
 done
-for j in `jot 20`; do
+for j in `jot 10`; do
    wait
 done
-sysctl -a | grep dirtybuf
+sysctl vfs.altbufferflushes
 
-rm alternativeFlushPath
+rm -rf alternativeFlushPath $dir
 
 exit 
 
@@ -64,20 +68,27 @@ EOF
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <sys/signal.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <err.h>
 
-int
-main()
+int more;
+
+static void
+handler(int i __unused) {
+	more = 0;
+}
+
+void
+test(void)
 {
+	int i, j;
         char name[80];
-        int i, j, k;
         pid_t mypid;
         int *fd;
         struct rlimit rlp;
-
 
         if (getrlimit(RLIMIT_NOFILE, &rlp) == -1)
                 err(1, "getrlimit(RLIMIT_NOFILE)");
@@ -85,24 +96,34 @@ main()
         mypid = getpid();
         fd = malloc(rlp.rlim_cur * sizeof(int));
 
-	for (k = 0; k < 100; k++) {
-        for (i = 0, j = 0; i < (rlp.rlim_cur - 10); i++, j++) {
-                sprintf(name, "f%05d.%05d", mypid, i);
-                if ((fd[i] = open(name, O_CREAT|O_WRONLY, 0666)) == -1) {
-                        warn("open(%s)", name);
-                        break;
-                }
-        }
-        for (i = 0; i < j; i++) {
-                sprintf(name, "f%05d.%05d", mypid, i);
-                if (unlink(name) == -1)
-                        warn("unlink(%s)", name);
-        }
-        for (i = 0; i < j; i++) {
-                if (close(fd[i]) == -1)
-                        warn("close(%d)", i);
-        }
+	for (i = 0, j = 0; i < rlp.rlim_cur && more == 1; i++, j++) {
+		sprintf(name, "f%05d.%05d", mypid, i);
+		if ((fd[i] = open(name, O_CREAT|O_WRONLY, 0666)) == -1) {
+			warn("open(%s)", name);
+			more = 0;
+			break;
+		}
 	}
+	for (i = 0; i < j; i++) {
+		sprintf(name, "f%05d.%05d", mypid, i);
+		if (unlink(name) == -1)
+			warn("unlink(%s)", name);
+	}
+	for (i = 0; i < j; i++) {
+		if (close(fd[i]) == -1)
+			warn("close(%d)", i);
+	}
+	free(fd);
+}
 
-        exit(0);
+int
+main()
+{
+	more = 1;
+	signal(SIGALRM, handler);
+	alarm(20 * 60);
+	while (more == 1)
+		test();
+
+        return(0);
 }
