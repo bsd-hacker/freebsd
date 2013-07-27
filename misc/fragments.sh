@@ -31,11 +31,15 @@
 # Scenario that causes "panic: brelse: free buffer onto another queue???"
 # Idea for scenario by kib@. Fixed in r203818
 
+# When UFS partition is full, then some high load causes
+# panic: brelse: free buffer onto another queue???
+
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
-here=`pwd`
 
+here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > fragments.c
 rm -f /tmp/fragments
@@ -48,16 +52,16 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs -U -m 0 md${mdstart}${part} > /dev/null 2>&1
-mount /dev/md${mdstart}${part} /mnt
-chmod 777 /mnt
+newfs -U -m 0 md${mdstart}$part > /dev/null 2>&1
+mount /dev/md${mdstart}$part $mntpoint
+chmod 777 $mntpoint
 
-cd /mnt
-su ${testuser} -c "/tmp/fragments" 
+cd $mntpoint
+su $testuser -c "/tmp/fragments" 
 cd $here
 
-umount /mnt
-mount | grep "$mntpoint" | grep -q md$mdstart && umount -f ${mntpoint}
+umount $mntpoint
+mount | grep "$mntpoint" | grep -q md$mdstart && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 rm -f /tmp/fragments
@@ -66,6 +70,7 @@ EOF
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,11 +80,19 @@ EOF
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define LOOPS 50000
+//#define LOOPS 50000
+#define LOOPS 600
 #define PARALLEL 8
 
 static	pid_t pid;
 static	char *buf;
+
+static int stop;
+
+void
+handler(int i __unused) {
+	stop = 1;
+}
 
 void
 cleanup(int n)
@@ -201,7 +214,6 @@ setup(void)
 	for (i = 0;i < 8; i++) {
 		sprintf(file,"d%d/b%05d.%05d", i/1000, pid, i);
 		unlink(file);
-		unlink(file);
 	}
 	for (i = 0;i < 1; i++) {
 		sprintf(file,"d%d/f%05d.%05d", i/1000, pid, i);
@@ -253,7 +265,9 @@ main()
 		err(1, "malloc()");
 
 	setup();
-	for (j = 0; j < 50; j++) {
+	signal(SIGALRM, handler);
+	alarm(30 * 60);
+	for (j = 0; j < 50 && stop == 0; j++) {
 		for (i = 0; i < PARALLEL; i++) {
 			if (fork() == 0) 
 				test();
