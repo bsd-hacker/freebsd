@@ -64,7 +64,7 @@ test(void)
 	for (j = 0; j < 10; j++) {
 		sprintf(name, "%05d.%05d", getpid(), j);
 		if ((fd[j] = open(name, O_WRONLY | O_CREAT | O_APPEND, 0666)) == -1)
-			err(1, name);
+			err(1, "%s", name);
 		unlink(name);
 	}
 
