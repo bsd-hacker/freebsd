@@ -92,7 +92,7 @@ test(void)
 		sprintf(name, "%05d.%05d", getpid(), j);
 		fd[j] = open(name, O_WRONLY | O_CREAT | O_APPEND, 0666);
 		if (fd[j] == -1)
-			err(1, name);
+			err(1, "open(%s)", name);
 		unlink(name);
 	}
 
