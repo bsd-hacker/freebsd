@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -32,17 +32,21 @@
 
 . ../default.cfg
 
-[ ! -z "$mntpoint" ] && rm -rf ${mntpoint}*/*
+mount | grep -wq $mntpoint && umount -f $mntpoint
+rm -rf ${mntpoint}/stressX*
 rm -f /tmp/.snap/pho* /var/.snap/pho*
-rm -rf /tmp/stressX.control
+rm -rf /tmp/stressX.control $RUNDIR /tmp/misc.name
+mkdir -p $RUNDIR
+chmod 0777 $RUNDIR
 
-mount | grep -wq $mntpoint && umount $mntpoint
+for i in `jot 16 0 | sort -nr` ""; do
+	while mount | grep -q "${mntpoint}$i "; do
+		fstat ${mntpoint}$i | sed 1d | awk '{print $3}' | xargs kill
+		umount -f ${mntpoint}$i > /dev/null 2>&1
+	done
+done
 m=$mdstart
 for i in `jot 15`; do
-   while mount | grep -q ${mntpoint}$m; do
-      rm -rf ${mntpoint}$m
-      umount -f ${mntpoint}$m > /dev/null 2>&1
-   done
-   mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
-   m=$((m + 1))
+	mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
+	m=$((m + 1))
 done
