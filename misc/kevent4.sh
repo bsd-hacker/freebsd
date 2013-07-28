@@ -38,16 +38,16 @@ sed '1,/^EOF/d' < $odir/$0 > kevent.c
 cc -o kevent -Wall kevent.c -pthread
 rm -f kevent.c
 
-cd $odir/..
+cd $odir
 export runRUNTIME=3m
-./run.sh &
+(cd ..; ./run.sh > /dev/null) &
 rpid=$!
 
-cd $RUNDIR
-/tmp/kevent $rpid &
+(cd $RUNDIR; /tmp/kevent $rpid > /dev/null) &
 
 sleep 120
 kill $rpid
+../tools/killall.sh > /dev/null 2>&1
 kill $!
 rm -f /tmp/kevent
 
