@@ -34,22 +34,22 @@
 odir=`pwd`
 
 cd /tmp
-sed '1,/^EOF/d' < $odir/$0 > kevent.c
-cc -o kevent -Wall kevent.c -pthread
-rm -f kevent.c
+sed '1,/^EOF/d' < $odir/$0 > kevent4.c
+cc -o kevent4 -Wall kevent4.c -pthread
+rm -f kevent4.c
 
 cd $odir
 export runRUNTIME=3m
-(cd ..; ./run.sh > /dev/null) &
+(cd ..; ./run.sh > /dev/null 2>&1) &
 rpid=$!
 
-(cd $RUNDIR; /tmp/kevent $rpid > /dev/null) &
+(cd $RUNDIR; /tmp/kevent4 $rpid > /dev/null) &
 
 sleep 120
 kill $rpid
 ../tools/killall.sh > /dev/null 2>&1
 kill $!
-rm -f /tmp/kevent
+rm -f /tmp/kevent4
 
 exit
 EOF
@@ -164,7 +164,7 @@ void polling()
 			pid = kev[i].ident;
 			if (kev[i].fflags & NOTE_CHILD) {
 				add_watch(pid);
-				printf("%u - new process, parent %u\n", pid, kev[i].data);
+				printf("%u - new process, parent %u\n", pid, (unsigned int)kev[i].data);
 			}
 			if (kev[i].fflags & NOTE_FORK) {
 				printf("%u forked\n", pid);
