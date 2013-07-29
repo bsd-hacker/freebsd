@@ -48,6 +48,7 @@
 # fuse2.sh	Deadlock seen						20121129
 # gjournal.sh	kmem_malloc(131072): kmem_map too small			20120626
 # gjournal2.sh	
+# gjournal3.sh	panic: Journal overflow					20130729
 # mkfifo.sh	umount stuck in suspfs					20111224
 # mkfifo2c.sh	panic: ufsdirhash_newblk: bad offset			20111225
 # mlockall3.sh	Waiting fix						20130616
