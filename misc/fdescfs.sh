@@ -61,8 +61,7 @@ else
 
 		# The test: Parallel mount and unmounts
 		for i in `jot 128`; do
-#			mount -t fdescfs null  ${mntpoint}$1	# This causes mound to complain
-			mount_fdescfs null ${mntpoint}$1
+			mount -t fdescfs null ${mntpoint}$1
 			while mount | grep -wq ${mntpoint}$1; do
 				umount -f ${mntpoint}$1 > /dev/null 2>&1
 			done
