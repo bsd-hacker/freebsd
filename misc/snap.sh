@@ -32,6 +32,7 @@
 
 . ../default.cfg
 
+mount | grep -q "on /tmp " || exit 0
 mount | grep -q "/dev/md$mdstart on $mntpoint" && umount $mntpoint
 rm -f /tmp/.snap/pho
 trap "rm -f /tmp/.snap/pho" 0
