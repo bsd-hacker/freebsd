@@ -41,7 +41,6 @@
 mount | grep -q /dev/md${mdstart}$part && umount -f /dev/md${mdstart}$part
 mdconfig -l | grep -q md${mdstart} && mdconfig -d -u $mdstart
 
-
 parallel=20
 size=25  # Gb
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print $4'}` -lt $((size * 1024 * 1024)) ] && \
