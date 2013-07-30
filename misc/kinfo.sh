@@ -40,7 +40,7 @@ sed '1,/^EOF/d' < $odir/$0 > kinfo.c
 cc -o kinfo -Wall kinfo.c -lutil
 rm -f kinfo.c
 
-mount | grep -q procfs || mount -t procfs procfs /procfs
+mount | grep -q procfs || mount -t procfs procfs /proc
 for i in `jot 30`; do
 	for j in `jot 5`; do
 		/tmp/kinfo &

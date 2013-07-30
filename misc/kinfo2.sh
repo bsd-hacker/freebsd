@@ -36,14 +36,14 @@
 
 odir=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $odir/$0 > kinfo.c
-cc -o kinfo -Wall kinfo.c -lutil
-rm -f kinfo.c
+sed '1,/^EOF/d' < $odir/$0 > kinfo2.c
+cc -o kinfo2 -Wall kinfo2.c -lutil
+rm -f kinfo2.c
 
 mount | grep -q procfs || mount -t procfs procfs /procfs
 for i in `jot 30`; do
 	for j in `jot 5`; do
-		/tmp/kinfo &
+		/tmp/kinfo2 &
 	done
 
 	for j in `jot 5`; do
@@ -51,7 +51,7 @@ for i in `jot 30`; do
 	done
 done
 
-rm -f /tmp/kinfo
+rm -f /tmp/kinfo2
 exit
 EOF
 

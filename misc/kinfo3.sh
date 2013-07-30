@@ -36,14 +36,14 @@
 
 odir=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $odir/$0 > kinfo.c
-cc -o kinfo -Wall kinfo.c -lutil -pthread
-rm -f kinfo.c
+sed '1,/^EOF/d' < $odir/$0 > kinfo3.c
+cc -o kinfo3 -Wall kinfo3.c -lutil -pthread
+rm -f kinfo3.c
 
 mount | grep -q procfs || mount -t procfs procfs /procfs
 for i in `jot 30`; do
 	for j in `jot 5`; do
-		/tmp/kinfo &
+		/tmp/kinfo3 &
 	done
 
 	for j in `jot 5`; do
@@ -51,7 +51,7 @@ for i in `jot 30`; do
 	done
 done
 
-rm -f /tmp/kinfo
+rm -f /tmp/kinfo3
 exit
 EOF
 
@@ -72,10 +72,11 @@ EOF
 #include <pthread.h>
 
 char buf[8096];
+int more;
 
 void
 handler(int i) {
-	exit(0);
+	more = 0;
 }
 
 void *
@@ -98,7 +99,7 @@ churning(void) {
 	pthread_t threads[5];
 
 
-	for (;;) {
+	while(more) {
 		r = fork();
 		if (r == 0) {
 			for (i = 0; i < 5; i++) {
@@ -119,6 +120,7 @@ churning(void) {
 		}
 		wait(&status);
 	}
+	exit(0);
 }
 
 /* Get files for each proc */
@@ -174,9 +176,10 @@ main(int argc, char **argv)
 	signal(SIGALRM, handler);
 	alarm(30);
 
+	more = 1;
 	if ((r = fork()) == 0) {
 		alarm(30);
-		for (;;)
+		while(more)
 			churning();
 	} 
 	if (r < 0) {
@@ -184,7 +187,7 @@ main(int argc, char **argv)
 		exit(2);
 	}
 
-	for (;;) 
+	while(more) 
 		list();
 
 	return (0);
