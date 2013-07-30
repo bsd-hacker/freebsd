@@ -32,7 +32,7 @@
 
 . ../default.cfg
 
-mount | grep -q /tmp || exit 1 # /tmp must be a mount point for this test
+mount | grep -q "on /tmp " || exit 0
 mnt2=${mntpoint}2
 [ ! -d $mnt2 ] && mkdir $mnt2
 mount | grep -q "/dev/md$mdstart on $mnt2" && umount $mnt2

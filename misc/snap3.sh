@@ -35,7 +35,7 @@
 # Test with two snapshots
 # 20070506 Page fault in g_io_request+0x7f
 
-mount | grep -q /tmp || exit 1 # /tmp must be a mount point for this test
+mount | grep -q "on /tmp " || exit 0
 rm -f /tmp/.snap/pho.1
 rm -f /tmp/.snap/pho.2
 trap "rm -f /tmp/.snap/pho.?" 0

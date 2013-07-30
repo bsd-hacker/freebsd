@@ -42,6 +42,7 @@
 
 . ../default.cfg
 
+mount | grep -q "on /tmp " || exit 0
 rm -f /tmp/.snap/pho
 trap "rm -f /tmp/.snap/pho" 0
 mount | grep "${mntpoint}" | grep -q md${mdstart} && umount -f ${mntpoint}

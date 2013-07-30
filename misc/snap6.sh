@@ -25,6 +25,7 @@
 
 root=/var
 
+mount | grep -q "on /var " || exit 0
 rm -f $root/.snap/pho $root/big $root/big2
 trap "rm -f $root/.snap/pho $root/big $root/big2" 0
 free=`df $root | tail -1 | awk '{print $4}'`

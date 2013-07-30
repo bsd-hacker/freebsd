@@ -34,6 +34,7 @@
 
 . ../default.cfg
 
+mount | grep -q "on /tmp " || exit 0
 mount | grep -q "/dev/md$mdstart on $mntpoint" && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 rm -f /tmp/.snap/pho

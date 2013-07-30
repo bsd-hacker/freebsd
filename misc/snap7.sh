@@ -35,6 +35,7 @@
 # Test with unmount and paralless access to mountpoint
 # 20070508 page fault in g_io_request+0xa6
 
+mount | grep -q "on /tmp " || exit 0
 mount | grep -q "/dev/md$mdstart on $mntpoint" && umount $mntpoint
 rm -f /tmp/.snap/pho.1
 trap "rm -f /tmp/.snap/pho.1" 0

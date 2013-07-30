@@ -32,6 +32,7 @@
 
 . ../default.cfg
 
+mount | grep -q "on /tmp " || exit 0
 mnt2=${mntpoint}2
 [ ! -d $mnt2 ] && mkdir $mnt2
 
