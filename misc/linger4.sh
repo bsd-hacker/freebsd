@@ -36,8 +36,8 @@
 
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > linger3.c
-cc -o linger4 -Wall -Wextra -O2 linger3.c
+sed '1,/^EOF/d' < $here/$0 > linger4.c
+cc -o linger4 -Wall -Wextra -O2 linger4.c
 rm -f linger4.c
 
 mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
@@ -129,6 +129,7 @@ main()
 {
 	int e, i, j, status;
 
+	e = 0;
 	for (j = 0; j < 300; j++) {
 		for (i = 0; i < PARALLEL; i++) {
 			if (fork() == 0)
