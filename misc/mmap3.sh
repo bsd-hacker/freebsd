@@ -33,13 +33,15 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > mmap3.c
-cc -o mmap3 -Wall mmap3.c -lpthread
+cc -o mmap3 -Wall mmap3.c -lpthread || exit 1
 rm -f mmap3.c
 
-for i in `jot 20`; do
+start=`date '+%s'`
+while [ `date '+%s'` -lt $((start + 5 * 60)) ]; do
 	./mmap3
 done
-for i in `jot 100`; do
+start=`date '+%s'`
+while [ `date '+%s'` -lt $((start + 5 * 60)) ]; do
 	./mmap3 random
 done
 rm -f mmap3 mmap3.core /tmp/mmap.0*
@@ -67,18 +69,22 @@ EOF
 #define STARTADDR 0x50000000U
 #define ADRSPACE  0x06400000U /* 100 Mb */
 
-static int
-ra;
+static int ra;
 
 void
 trash(void *p)
 {
-	mprotect(p, 0x570e3d38, 0x2c8fd54f);
+	unsigned long v;
 
+	mprotect(p, 0x570e3d38, 0x2c8fd54f);
 	if (ra) {
-		madvise((void *)arc4random(), arc4random(), arc4random());
-		mprotect((void *)arc4random(), arc4random(), arc4random());
-		msync((void *)arc4random(), arc4random(), arc4random());
+		v = arc4random();
+#if defined(__LP64__)
+		v = v << 32 | arc4random();
+#endif
+		madvise((void *)v, arc4random(), arc4random());
+		mprotect((void *)v, arc4random(), arc4random());
+		msync((void *)v, arc4random(), arc4random());
 	}
 
 }
@@ -112,7 +118,7 @@ work(int nr)
 
 	m = arc4random() % 10;
 	if (madvise(p, len, m) == -1)
-		warn("madvise(%p, %d, %d)", p, len, m);
+		warn("madvise(%p, %zd, %d)", p, len, m);
 	if (mprotect(p, trunc_page(arc4random() % len), PROT_READ) == -1 )
 		err(1, "mprotect failed with error:");
 	if (msync(p, 0, MS_SYNC) == -1)
