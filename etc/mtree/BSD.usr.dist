@@ -38,6 +38,8 @@
         ..
         lint
         ..
+        pkgconfig
+        ..
     ..
     libexec
         bsdinstall
@@ -307,6 +309,10 @@
                 setobjstat
                 ..
                 srcs
+                ..
+            ..
+            smbfs
+                print
                 ..
             ..
             sunrpc

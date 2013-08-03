@@ -40,12 +40,15 @@
 #define	_FS_EXT2FS_EXT2_EXTERN_H_
 
 struct ext2fs_dinode;
+struct ext2fs_direct_2;
+struct ext2fs_searchslot;
 struct indir;
 struct inode;
 struct mount;
 struct vfsconf;
 struct vnode;
 
+int	ext2_add_entry(struct vnode *, struct ext2fs_direct_2 *);
 int	ext2_alloc(struct inode *,
 	    int32_t, int32_t, int, struct ucred *, int32_t *);
 int	ext2_balloc(struct inode *,
@@ -60,8 +63,8 @@ void	ext2_dirbad(struct inode *ip, doff_t offset, char *how);
 void	ext2_ei2i(struct ext2fs_dinode *, struct inode *);
 int	ext2_getlbns(struct vnode *, int32_t, struct indir *, int *);
 void	ext2_i2ei(struct inode *, struct ext2fs_dinode *);
-int     ext2_reallocblks(struct vop_reallocblks_args *);
 void	ext2_itimes(struct vnode *vp);
+int	ext2_reallocblks(struct vop_reallocblks_args *);
 int	ext2_reclaim(struct vop_reclaim_args *);
 void	ext2_setblock(struct m_ext2fs *, u_char *, int32_t);
 int	ext2_truncate(struct vnode *, off_t, int, struct ucred *, struct thread *);
@@ -81,6 +84,18 @@ int	ext2_dirempty(struct inode *, ino_t, struct ucred *);
 int	ext2_checkpath(struct inode *, struct inode *, struct ucred *);
 int	cg_has_sb(int i);
 int	ext2_inactive(struct vop_inactive_args *);
+int	ext2_htree_add_entry(struct vnode *, struct ext2fs_direct_2 *,
+	    struct componentname *);
+int	ext2_htree_create_index(struct vnode *, struct componentname *,
+	    struct ext2fs_direct_2 *);
+int	ext2_htree_has_idx(struct inode *);
+int	ext2_htree_hash(const char *, int, uint32_t *, int, uint32_t *,
+	    uint32_t *);
+int	ext2_htree_lookup(struct inode *, const char *, int, struct buf **,
+	    int *, doff_t *, doff_t *, doff_t *, struct ext2fs_searchslot *);
+int	ext2_search_dirblock(struct inode *, void *, int *, const char *, int,
+	    int *, doff_t *, doff_t *, doff_t *, struct ext2fs_searchslot *);
+
 
 /* Flags to low-level allocation routines.
  * The low 16-bits are reserved for IO_ flags from vnode.h.
