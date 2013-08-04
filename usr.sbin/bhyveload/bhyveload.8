@@ -38,6 +38,7 @@ guest inside a bhyve virtual machine
 .Op Fl m Ar mem-size
 .Op Fl d Ar disk-path
 .Op Fl h Ar host-path
+.Op Fl S Ar stand-binary:stand-addr
 .Ar vmname
 .Sh DESCRIPTION
 .Nm
@@ -75,6 +76,13 @@ is the pathname of the guest's boot disk image.
 The
 .Ar host-path
 is the directory at the top of the guest's boot filesystem.
+.It Fl S Ar stand-binary:stand-addr
+The
+.Ar stand-binary
+is the pathname of the standalone guest program.
+The
+.Ar stand-addr
+is the entrypoint address of the standalone guest program.
 .El
 .Sh EXAMPLES
 To create a virtual machine named

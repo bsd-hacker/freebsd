@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PROG=	bhyveload
-SRCS=	bhyveload.c
+SRCS=	bhyveload.c standalone.c
 MAN=	bhyveload.8
 
 DPADD+=	${LIBVMMAPI}
