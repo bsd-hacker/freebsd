@@ -448,6 +448,9 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	VM_OBJECT_WLOCK(tobj);
 
 	/*
+	 * Parallel reads of the page content from disk are prevented
+	 * by write busy.
+	 *
 	 * Although the tmpfs vnode lock is held here, it is
 	 * nonetheless safe to sleep waiting for a free page.  The
 	 * pageout daemon does not need to acquire the tmpfs vnode
