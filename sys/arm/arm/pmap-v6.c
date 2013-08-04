@@ -1183,7 +1183,7 @@ pmap_page_init(vm_page_t m)
 {
 
 	TAILQ_INIT(&m->md.pv_list);
-	m->mdmemattr = VM_MEMATTR_DEFAULT;
+	m->md.pv_memattr = VM_MEMATTR_DEFAULT;
 }
 
 static vm_offset_t
@@ -2823,7 +2823,7 @@ validate:
 		if (!(prot & VM_PROT_EXECUTE))
 			npte |= L2_XN;
 
-		if (m->mdmemattr != VM_MEMATTR_UNCACHEABLE)
+		if (m->md.pv_memattr != VM_MEMATTR_UNCACHEABLE)
 			npte |= pte_l2_s_cache_mode;
 	}
 
@@ -4379,7 +4379,7 @@ pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma)
 	 * Remember the memattr in a field that gets used to set the appropriate
 	 * bits in the PTEs as mappings are established.
 	 */
-	m->mdmemattr = ma;
+	m->md.pv_memattr = ma;
 
 	/*
 	 * It appears that this function can only be called before any mappings

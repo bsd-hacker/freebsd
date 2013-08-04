@@ -144,7 +144,7 @@ struct vm_page {
 	uint8_t oflags;			/* page VPO_* flags (O) */
 	uint16_t flags;			/* page PG_* flags (P) */
 	u_char	act_count;		/* page usage count (P) */
-	vm_memattr_t mdmemattr;		/* arch specific memory attr (M) */
+	u_char __pad0;			/* unused padding */
 	/* NOTE that these must support one bit per DEV_BSIZE in a page!!! */
 	/* so, on normal X86 kernels, they must be at least 8 bits wide */
 	vm_page_bits_t valid;		/* map of valid DEV_BSIZE chunks (O) */

@@ -1474,7 +1474,7 @@ moea_page_set_memattr(mmu_t mmu, vm_page_t m, vm_memattr_t ma)
 	u_int	lo;
 
 	if ((m->oflags & VPO_UNMANAGED) != 0) {
-		m->mdmemattr = ma;
+		m->md.mdpg_cache_attrs = ma;
 		return;
 	}
 
@@ -1497,7 +1497,7 @@ moea_page_set_memattr(mmu_t mmu, vm_page_t m, vm_memattr_t ma)
 		mtx_unlock(&moea_table_mutex);
 		PMAP_UNLOCK(pmap);
 	}
-	m->mdmemattr = ma;
+	m->md.mdpg_cache_attrs = ma;
 	rw_wunlock(&pvh_global_lock);
 }
 

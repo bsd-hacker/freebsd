@@ -594,7 +594,7 @@ pmap_page_init(vm_page_t m)
 {
 
 	TAILQ_INIT(&m->md.pv_list);
-	m->mdmemattr = 0;
+	m->md.pv_flags = 0;
 }
 
 /*
@@ -1435,9 +1435,9 @@ pmap_pv_reclaim(pmap_t locked_pmap)
 				m = PHYS_TO_VM_PAGE(TLBLO_PTE_TO_PA(oldpte));
 				if (pte_test(&oldpte, PTE_D))
 					vm_page_dirty(m);
-				if (m->mdmemattr & PV_TABLE_REF)
+				if (m->md.pv_flags & PV_TABLE_REF)
 					vm_page_aflag_set(m, PGA_REFERENCED);
-				m->mdmemattr &= ~PV_TABLE_REF;
+				m->md.pv_flags &= ~PV_TABLE_REF;
 				TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
 				if (TAILQ_EMPTY(&m->md.pv_list))
 					vm_page_aflag_clear(m, PGA_WRITEABLE);
@@ -1705,9 +1705,9 @@ pmap_remove_pte(struct pmap *pmap, pt_entry_t *ptq, vm_offset_t va,
 			    __func__, (void *)va, (uintmax_t)oldpte));
 			vm_page_dirty(m);
 		}
-		if (m->mdmemattr & PV_TABLE_REF)
+		if (m->md.pv_flags & PV_TABLE_REF)
 			vm_page_aflag_set(m, PGA_REFERENCED);
-		m->mdmemattr &= ~PV_TABLE_REF;
+		m->md.pv_flags &= ~PV_TABLE_REF;
 
 		pmap_remove_entry(pmap, m, va);
 	}
@@ -1846,7 +1846,7 @@ pmap_remove_all(vm_page_t m)
 	    ("pmap_remove_all: page %p is not managed", m));
 	rw_wlock(&pvh_global_lock);
 
-	if (m->mdmemattr & PV_TABLE_REF)
+	if (m->md.pv_flags & PV_TABLE_REF)
 		vm_page_aflag_set(m, PGA_REFERENCED);
 
 	while ((pv = TAILQ_FIRST(&m->md.pv_list)) != NULL) {
@@ -1893,7 +1893,7 @@ pmap_remove_all(vm_page_t m)
 	}
 
 	vm_page_aflag_clear(m, PGA_WRITEABLE);
-	m->mdmemattr &= ~PV_TABLE_REF;
+	m->md.pv_flags &= ~PV_TABLE_REF;
 	rw_wunlock(&pvh_global_lock);
 }
 
@@ -2078,7 +2078,7 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 			mpte->wire_count--;
 
 		if (pte_test(&origpte, PTE_MANAGED)) {
-			m->mdmemattr |= PV_TABLE_REF;
+			m->md.pv_flags |= PV_TABLE_REF;
 			om = m;
 			newpte |= PTE_MANAGED;
 			if (!pte_test(&newpte, PTE_RO))
@@ -2114,7 +2114,7 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	 * Enter on the PV list if part of our managed memory.
 	 */
 	if ((m->oflags & VPO_UNMANAGED) == 0) {
-		m->mdmemattr |= PV_TABLE_REF;
+		m->md.pv_flags |= PV_TABLE_REF;
 		if (pv == NULL)
 			pv = get_pv_entry(pmap, FALSE);
 		pv->pv_va = va;
@@ -2145,9 +2145,9 @@ validate:
 		*pte = newpte;
 		if (pte_test(&origpte, PTE_V)) {
 			if (pte_test(&origpte, PTE_MANAGED) && opa != pa) {
-				if (om->mdmemattr & PV_TABLE_REF)
+				if (om->md.pv_flags & PV_TABLE_REF)
 					vm_page_aflag_set(om, PGA_REFERENCED);
-				om->mdmemattr &= ~PV_TABLE_REF;
+				om->md.pv_flags &= ~PV_TABLE_REF;
 			}
 			if (pte_test(&origpte, PTE_D)) {
 				KASSERT(!pte_test(&origpte, PTE_RO),
@@ -2853,9 +2853,9 @@ pmap_ts_referenced(vm_page_t m)
 
 	KASSERT((m->oflags & VPO_UNMANAGED) == 0,
 	    ("pmap_ts_referenced: page %p is not managed", m));
-	if (m->mdmemattr & PV_TABLE_REF) {
+	if (m->md.pv_flags & PV_TABLE_REF) {
 		rw_wlock(&pvh_global_lock);
-		m->mdmemattr &= ~PV_TABLE_REF;
+		m->md.pv_flags &= ~PV_TABLE_REF;
 		rw_wunlock(&pvh_global_lock);
 		return (1);
 	}
@@ -2965,7 +2965,7 @@ pmap_is_referenced(vm_page_t m)
 
 	KASSERT((m->oflags & VPO_UNMANAGED) == 0,
 	    ("pmap_is_referenced: page %p is not managed", m));
-	return ((m->mdmemattr & PV_TABLE_REF) != 0);
+	return ((m->md.pv_flags & PV_TABLE_REF) != 0);
 }
 
 /*
@@ -2980,8 +2980,8 @@ pmap_clear_reference(vm_page_t m)
 	KASSERT((m->oflags & VPO_UNMANAGED) == 0,
 	    ("pmap_clear_reference: page %p is not managed", m));
 	rw_wlock(&pvh_global_lock);
-	if (m->mdmemattr & PV_TABLE_REF) {
-		m->mdmemattr &= ~PV_TABLE_REF;
+	if (m->md.pv_flags & PV_TABLE_REF) {
+		m->md.pv_flags &= ~PV_TABLE_REF;
 	}
 	rw_wunlock(&pvh_global_lock);
 }

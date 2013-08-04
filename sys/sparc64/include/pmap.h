@@ -56,6 +56,7 @@ struct md_page {
 	struct	pmap *pmap;
 	uint32_t colors[DCACHE_COLORS];
 	int32_t	color;
+	uint32_t flags;
 };
 
 struct pmap {

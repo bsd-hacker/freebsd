@@ -473,7 +473,7 @@ pmap_page_to_va(vm_page_t m)
 	vm_offset_t va;
 
 	pa = VM_PAGE_TO_PHYS(m);
-	va = (m->mdmemattr == VM_MEMATTR_UNCACHEABLE) ? IA64_PHYS_TO_RR6(pa) :
+	va = (m->md.memattr == VM_MEMATTR_UNCACHEABLE) ? IA64_PHYS_TO_RR6(pa) :
 	    IA64_PHYS_TO_RR7(pa);
 	return (va);
 }
@@ -486,7 +486,7 @@ pmap_page_init(vm_page_t m)
 {
 
 	TAILQ_INIT(&m->md.pv_list);
-	m->mdmemattr = VM_MEMATTR_DEFAULT;
+	m->md.memattr = VM_MEMATTR_DEFAULT;
 }
 
 /*
@@ -1439,7 +1439,7 @@ pmap_qenter(vm_offset_t va, vm_page_t *m, int count)
 		else
 			pmap_enter_vhpt(pte, va);
 		pmap_pte_prot(kernel_pmap, pte, VM_PROT_ALL);
-		pmap_pte_attr(pte, m[i]->mdmemattr);
+		pmap_pte_attr(pte, m[i]->md.memattr);
 		pmap_set_pte(pte, va, VM_PAGE_TO_PHYS(m[i]), FALSE, FALSE);
 		va += PAGE_SIZE;
 	}
@@ -1768,7 +1768,7 @@ validate:
 	 * adds the pte to the VHPT if necessary.
 	 */
 	pmap_pte_prot(pmap, pte, prot);
-	pmap_pte_attr(pte, m->mdmemattr);
+	pmap_pte_attr(pte, m->md.memattr);
 	pmap_set_pte(pte, va, pa, wired, managed);
 
 	/* Invalidate the I-cache when needed. */
@@ -1875,7 +1875,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 		pmap_enter_vhpt(pte, va);
 		pmap_pte_prot(pmap, pte,
 		    prot & (VM_PROT_READ | VM_PROT_EXECUTE));
-		pmap_pte_attr(pte, m->mdmemattr);
+		pmap_pte_attr(pte, m->md.memattr);
 		pmap_set_pte(pte, va, VM_PAGE_TO_PHYS(m), FALSE, managed);
 
 		if (prot & VM_PROT_EXECUTE)
@@ -2417,7 +2417,7 @@ pmap_remove_write(vm_page_t m)
 			}
 			prot &= ~VM_PROT_WRITE;
 			pmap_pte_prot(pmap, pte, prot);
-			pmap_pte_attr(pte, m->mdmemattr);
+			pmap_pte_attr(pte, m->md.memattr);
 			pmap_invalidate_page(pv->pv_va);
 		}
 		pmap_switch(oldpmap);
@@ -2499,7 +2499,7 @@ pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma)
 	void *va;
 
 	rw_wlock(&pvh_global_lock);
-	m->mdmemattr = ma;
+	m->md.memattr = ma;
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
 		pmap = PV_PMAP(pv);
 		PMAP_LOCK(pmap);
