@@ -109,16 +109,6 @@
  *	contains the dirty field.  In the machine-independent layer,
  *	the implementation of read-modify-write operations on the
  *	field is encapsulated in vm_page_clear_dirty_mask().
- *
- *	Page content access is regulated (mostly) by the busy mechanism.
- *	When the page content is changing (for example, during a page READ
- *	operation) the page owner must acquire an write busy token. Similarly,
- *	when the page content is just being accessed for reading purposes
- *	(for example, during a page WRITE operation) the page owner must
- *	acquire a read busy token.
- *	The busy mechanism is regulated by the vm_page_busy_*() family of
- *	primitives and it follows a reader/writer lock pattern as the names
- *	suggest.
  */
 
 #if PAGE_SIZE == 4096

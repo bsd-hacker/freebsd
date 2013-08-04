@@ -477,14 +477,11 @@ vm_page_reference(vm_page_t m)
 void
 vm_page_busy_downgrade(vm_page_t m)
 {
-	u_int retry, x;
+	u_int x;
 
 	vm_page_busy_assert_wlocked(m);
 
-	retry = 0;
 	for (;;) {
-		if (retry++ > 0)
-			panic("vm_page_busy_downgrade: failed loop %p", m);
 		x = m->busy_lock;
 		x &= VPB_LOCK_WAITERS;
 		if (atomic_cmpset_rel_int(&m->busy_lock,
@@ -516,14 +513,11 @@ vm_page_busy_rlocked(vm_page_t m)
 void
 vm_page_busy_runlock(vm_page_t m)
 {
-	u_int retry, x;
+	u_int x;
 
 	vm_page_busy_assert_rlocked(m);
 
-	retry = 0;
 	for (;;) {
-		if (retry++ > 10000)
-			panic("vm_page_busy_runlock: failed loop %p", m);
 		x = m->busy_lock;
 		if (VPB_READERS(x) > 1) {
 			if (atomic_cmpset_int(&m->busy_lock, x,
@@ -628,14 +622,11 @@ vm_page_busy_wunlock_hard(vm_page_t m)
 void
 vm_page_flash(vm_page_t m)
 {
-	u_int retry, x;
+	u_int x;
 
 	vm_page_lock_assert(m, MA_OWNED);
 
-	retry = 0;
 	for (;;) {
-		if (retry++ > 1000)
-			panic("vm_page_flash: failed loop %p", m);
 		x = m->busy_lock;
 		if ((x & VPB_LOCK_WAITERS) == 0)
 			return;
