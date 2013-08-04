@@ -536,7 +536,7 @@ pmap_page_init(vm_page_t m)
 {
 
 	TAILQ_INIT(&m->md.pv_list);
-	m->mdmemattr = PAT_WRITE_BACK;
+	m->md.pat_mode = PAT_WRITE_BACK;
 }
 
 /*
@@ -3110,7 +3110,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 	pd_entry_t *pde;
 	vm_paddr_t pa, ptepa;
 	vm_page_t p;
-	vm_memattr_t pat_mode;
+	int pat_mode;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	KASSERT(object->type == OBJT_DEVICE || object->type == OBJT_SG,
@@ -3122,7 +3122,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 		p = vm_page_lookup(object, pindex);
 		KASSERT(p->valid == VM_PAGE_BITS_ALL,
 		    ("pmap_object_init_pt: invalid page %p", p));
-		pat_mode = p->mdmemattr;
+		pat_mode = p->md.pat_mode;
 
 		/*
 		 * Abort the mapping if the first page is not physically
@@ -3143,7 +3143,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 			KASSERT(p->valid == VM_PAGE_BITS_ALL,
 			    ("pmap_object_init_pt: invalid page %p", p));
 			if (pa != VM_PAGE_TO_PHYS(p) ||
-			    pat_mode != p->mdmemattr)
+			    pat_mode != p->md.pat_mode)
 				return;
 			p = TAILQ_NEXT(p, listq);
 		}
@@ -4065,7 +4065,7 @@ void
 pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma)
 {
 
-	m->mdmemattr = ma;
+	m->md.pat_mode = ma;
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return;
 
@@ -4104,7 +4104,7 @@ pmap_flush_page(vm_page_t m)
 		sched_pin();
 		PT_SET_MA(sysmaps->CADDR2, PG_V | PG_RW |
 		    VM_PAGE_TO_MACH(m) | PG_A | PG_M |
-		    pmap_cache_bits(m->mdmemattr, 0));
+		    pmap_cache_bits(m->md.pat_mode, 0));
 		invlcaddr(sysmaps->CADDR2);
 		sva = (vm_offset_t)sysmaps->CADDR2;
 		eva = sva + PAGE_SIZE;

@@ -791,7 +791,7 @@ pmap_page_init(vm_page_t m)
 {
 
 	TAILQ_INIT(&m->md.pv_list);
-	m->mdmemattr = PAT_WRITE_BACK;
+	m->md.pat_mode = PAT_WRITE_BACK;
 }
 
 /*
@@ -1454,7 +1454,7 @@ pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
 	endpte = pte + count;
 	while (pte < endpte) {
 		m = *ma++;
-		pa = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->mdmemattr, 0);
+		pa = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->md.pat_mode, 0);
 		if ((*pte & (PG_FRAME | PG_PTE_CACHE)) != pa) {
 			oldpte |= *pte;
 			pte_store(pte, pa | PG_G | PG_RW | PG_V);
@@ -3470,7 +3470,7 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 		newpte |= PG_U;
 	if (pmap == kernel_pmap)
 		newpte |= PG_G;
-	newpte |= pmap_cache_bits(m->mdmemattr, 0);
+	newpte |= pmap_cache_bits(m->md.pat_mode, 0);
 
 	mpte = NULL;
 
@@ -3658,7 +3658,7 @@ pmap_enter_pde(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot,
 		    " in pmap %p", va, pmap);
 		return (FALSE);
 	}
-	newpde = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->mdmemattr, 1) |
+	newpde = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->md.pat_mode, 1) |
 	    PG_PS | PG_V;
 	if ((m->oflags & VPO_UNMANAGED) == 0) {
 		newpde |= PG_MANAGED;
@@ -3860,7 +3860,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 	 */
 	pmap_resident_count_inc(pmap, 1);
 
-	pa = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->mdmemattr, 0);
+	pa = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->md.pat_mode, 0);
 	if ((prot & VM_PROT_EXECUTE) == 0)
 		pa |= pg_nx;
 
@@ -3901,7 +3901,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 	pd_entry_t *pde;
 	vm_paddr_t pa, ptepa;
 	vm_page_t p, pdpg;
-	vm_memattr_t pat_mode;
+	int pat_mode;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	KASSERT(object->type == OBJT_DEVICE || object->type == OBJT_SG,
@@ -3912,7 +3912,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 		p = vm_page_lookup(object, pindex);
 		KASSERT(p->valid == VM_PAGE_BITS_ALL,
 		    ("pmap_object_init_pt: invalid page %p", p));
-		pat_mode = p->mdmemattr;
+		pat_mode = p->md.pat_mode;
 
 		/*
 		 * Abort the mapping if the first page is not physically
@@ -3933,7 +3933,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 			KASSERT(p->valid == VM_PAGE_BITS_ALL,
 			    ("pmap_object_init_pt: invalid page %p", p));
 			if (pa != VM_PAGE_TO_PHYS(p) ||
-			    pat_mode != p->mdmemattr)
+			    pat_mode != p->md.pat_mode)
 				return;
 			p = TAILQ_NEXT(p, listq);
 		}
@@ -5121,7 +5121,7 @@ void
 pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma)
 {
 
-	m->mdmemattr = ma;
+	m->md.pat_mode = ma;
 
 	/*
 	 * If "m" is a normal page, update its direct mapping.  This update
@@ -5130,7 +5130,7 @@ pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma)
 	 */
 	if ((m->flags & PG_FICTITIOUS) == 0 &&
 	    pmap_change_attr(PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)), PAGE_SIZE,
-	    m->mdmemattr))
+	    m->md.pat_mode))
 		panic("memory attribute change on the direct map failed");
 }
 

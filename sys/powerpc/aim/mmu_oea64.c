@@ -1657,7 +1657,7 @@ moea64_page_set_memattr(mmu_t mmu, vm_page_t m, vm_memattr_t ma)
 	uint64_t lo;
 
 	if ((m->oflags & VPO_UNMANAGED) != 0) {
-		m->mdmemattr = ma;
+		m->md.mdpg_cache_attrs = ma;
 		return;
 	}
 
@@ -1679,7 +1679,7 @@ moea64_page_set_memattr(mmu_t mmu, vm_page_t m, vm_memattr_t ma)
 		PMAP_UNLOCK(pmap);
 	}
 	UNLOCK_TABLE_RD();
-	m->mdmemattr = ma;
+	m->md.mdpg_cache_attrs = ma;
 }
 
 /*

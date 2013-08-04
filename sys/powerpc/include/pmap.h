@@ -144,10 +144,11 @@ struct	pmap {
 
 struct	md_page {
 	u_int64_t	 mdpg_attrs;
+	vm_memattr_t	 mdpg_cache_attrs;
 	struct	pvo_head mdpg_pvoh;
 };
 
-#define	pmap_page_get_memattr(m)	((m)->mdmemattr)
+#define	pmap_page_get_memattr(m)	((m)->md.mdpg_cache_attrs)
 #define	pmap_page_is_mapped(m)	(!LIST_EMPTY(&(m)->md.mdpg_pvoh))
 
 /*

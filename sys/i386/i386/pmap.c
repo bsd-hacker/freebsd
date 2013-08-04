@@ -645,7 +645,7 @@ pmap_page_init(vm_page_t m)
 {
 
 	TAILQ_INIT(&m->md.pv_list);
-	m->mdmemattr = PAT_WRITE_BACK;
+	m->md.pat_mode = PAT_WRITE_BACK;
 }
 
 #ifdef PAE
@@ -1534,7 +1534,7 @@ pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
 	endpte = pte + count;
 	while (pte < endpte) {
 		m = *ma++;
-		pa = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->mdmemattr, 0);
+		pa = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->md.pat_mode, 0);
 		if ((*pte & (PG_FRAME | PG_PTE_CACHE)) != pa) {
 			oldpte |= *pte;
 			pte_store(pte, pa | pgeflag | PG_RW | PG_V);
@@ -3532,7 +3532,7 @@ validate:
 	/*
 	 * Now validate mapping with desired protection/wiring.
 	 */
-	newpte = (pt_entry_t)(pa | pmap_cache_bits(m->mdmemattr, 0) | PG_V);
+	newpte = (pt_entry_t)(pa | pmap_cache_bits(m->md.pat_mode, 0) | PG_V);
 	if ((prot & VM_PROT_WRITE) != 0) {
 		newpte |= PG_RW;
 		if ((newpte & PG_MANAGED) != 0)
@@ -3621,7 +3621,7 @@ pmap_enter_pde(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 		    " in pmap %p", va, pmap);
 		return (FALSE);
 	}
-	newpde = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->mdmemattr, 1) |
+	newpde = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->md.pat_mode, 1) |
 	    PG_PS | PG_V;
 	if ((m->oflags & VPO_UNMANAGED) == 0) {
 		newpde |= PG_MANAGED;
@@ -3812,7 +3812,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 	 */
 	pmap->pm_stats.resident_count++;
 
-	pa = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->mdmemattr, 0);
+	pa = VM_PAGE_TO_PHYS(m) | pmap_cache_bits(m->md.pat_mode, 0);
 #ifdef PAE
 	if ((prot & VM_PROT_EXECUTE) == 0)
 		pa |= pg_nx;
@@ -3855,7 +3855,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 	pd_entry_t *pde;
 	vm_paddr_t pa, ptepa;
 	vm_page_t p;
-	vm_memattr_t pat_mode;
+	int pat_mode;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	KASSERT(object->type == OBJT_DEVICE || object->type == OBJT_SG,
@@ -3867,7 +3867,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 		p = vm_page_lookup(object, pindex);
 		KASSERT(p->valid == VM_PAGE_BITS_ALL,
 		    ("pmap_object_init_pt: invalid page %p", p));
-		pat_mode = p->mdmemattr;
+		pat_mode = p->md.pat_mode;
 
 		/*
 		 * Abort the mapping if the first page is not physically
@@ -3888,7 +3888,7 @@ pmap_object_init_pt(pmap_t pmap, vm_offset_t addr, vm_object_t object,
 			KASSERT(p->valid == VM_PAGE_BITS_ALL,
 			    ("pmap_object_init_pt: invalid page %p", p));
 			if (pa != VM_PAGE_TO_PHYS(p) ||
-			    pat_mode != p->mdmemattr)
+			    pat_mode != p->md.pat_mode)
 				return;
 			p = TAILQ_NEXT(p, listq);
 		}
@@ -4119,7 +4119,7 @@ pmap_zero_page(vm_page_t m)
 		panic("pmap_zero_page: CMAP2 busy");
 	sched_pin();
 	*sysmaps->CMAP2 = PG_V | PG_RW | VM_PAGE_TO_PHYS(m) | PG_A | PG_M |
-	    pmap_cache_bits(m->mdmemattr, 0);
+	    pmap_cache_bits(m->md.pat_mode, 0);
 	invlcaddr(sysmaps->CADDR2);
 	pagezero(sysmaps->CADDR2);
 	*sysmaps->CMAP2 = 0;
@@ -4144,7 +4144,7 @@ pmap_zero_page_area(vm_page_t m, int off, int size)
 		panic("pmap_zero_page_area: CMAP2 busy");
 	sched_pin();
 	*sysmaps->CMAP2 = PG_V | PG_RW | VM_PAGE_TO_PHYS(m) | PG_A | PG_M |
-	    pmap_cache_bits(m->mdmemattr, 0);
+	    pmap_cache_bits(m->md.pat_mode, 0);
 	invlcaddr(sysmaps->CADDR2);
 	if (off == 0 && size == PAGE_SIZE) 
 		pagezero(sysmaps->CADDR2);
@@ -4169,7 +4169,7 @@ pmap_zero_page_idle(vm_page_t m)
 		panic("pmap_zero_page_idle: CMAP3 busy");
 	sched_pin();
 	*CMAP3 = PG_V | PG_RW | VM_PAGE_TO_PHYS(m) | PG_A | PG_M |
-	    pmap_cache_bits(m->mdmemattr, 0);
+	    pmap_cache_bits(m->md.pat_mode, 0);
 	invlcaddr(CADDR3);
 	pagezero(CADDR3);
 	*CMAP3 = 0;
@@ -4197,9 +4197,9 @@ pmap_copy_page(vm_page_t src, vm_page_t dst)
 	invlpg((u_int)sysmaps->CADDR1);
 	invlpg((u_int)sysmaps->CADDR2);
 	*sysmaps->CMAP1 = PG_V | VM_PAGE_TO_PHYS(src) | PG_A |
-	    pmap_cache_bits(src->mdmemattr, 0);
+	    pmap_cache_bits(src->md.pat_mode, 0);
 	*sysmaps->CMAP2 = PG_V | PG_RW | VM_PAGE_TO_PHYS(dst) | PG_A | PG_M |
-	    pmap_cache_bits(dst->mdmemattr, 0);
+	    pmap_cache_bits(dst->md.pat_mode, 0);
 	bcopy(sysmaps->CADDR1, sysmaps->CADDR2, PAGE_SIZE);
 	*sysmaps->CMAP1 = 0;
 	*sysmaps->CMAP2 = 0;
@@ -4236,9 +4236,9 @@ pmap_copy_pages(vm_page_t ma[], vm_offset_t a_offset, vm_page_t mb[],
 		b_pg_offset = b_offset & PAGE_MASK;
 		cnt = min(cnt, PAGE_SIZE - b_pg_offset);
 		*sysmaps->CMAP1 = PG_V | VM_PAGE_TO_PHYS(a_pg) | PG_A |
-		    pmap_cache_bits(b_pg->mdmemattr, 0);
+		    pmap_cache_bits(b_pg->md.pat_mode, 0);
 		*sysmaps->CMAP2 = PG_V | PG_RW | VM_PAGE_TO_PHYS(b_pg) | PG_A |
-		    PG_M | pmap_cache_bits(b_pg->mdmemattr, 0);
+		    PG_M | pmap_cache_bits(b_pg->md.pat_mode, 0);
 		a_cp = sysmaps->CADDR1 + a_pg_offset;
 		b_cp = sysmaps->CADDR2 + b_pg_offset;
 		bcopy(a_cp, b_cp, cnt);
@@ -5050,7 +5050,7 @@ void
 pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma)
 {
 
-	m->mdmemattr = ma;
+	m->md.pat_mode = ma;
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return;
 
@@ -5088,7 +5088,7 @@ pmap_flush_page(vm_page_t m)
 			panic("pmap_flush_page: CMAP2 busy");
 		sched_pin();
 		*sysmaps->CMAP2 = PG_V | PG_RW | VM_PAGE_TO_PHYS(m) |
-		    PG_A | PG_M | pmap_cache_bits(m->mdmemattr, 0);
+		    PG_A | PG_M | pmap_cache_bits(m->md.pat_mode, 0);
 		invlcaddr(sysmaps->CADDR2);
 		sva = (vm_offset_t)sysmaps->CADDR2;
 		eva = sva + PAGE_SIZE;

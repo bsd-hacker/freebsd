@@ -96,7 +96,7 @@ enum mem_type {
 
 #endif
 
-#define	pmap_page_get_memattr(m)	((m)->mdmemattr)
+#define	pmap_page_get_memattr(m)	((m)->md.pv_memattr)
 #define	pmap_page_is_mapped(m)	(!TAILQ_EMPTY(&(m)->md.pv_list))
 #define	pmap_page_is_write_mapped(m)	(((m)->aflags & PGA_WRITEABLE) != 0)
 void pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma);
@@ -120,6 +120,7 @@ struct	pv_chunk;
 
 struct	md_page {
 	int pvh_attrs;
+	vm_memattr_t	 pv_memattr;
 	vm_offset_t pv_kva;		/* first kernel VA mapping */
 	TAILQ_HEAD(,pv_entry)	pv_list;
 };

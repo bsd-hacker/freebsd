@@ -864,10 +864,10 @@ sf_buf_alloc(struct vm_page *m, int flags)
 	opte = *ptep;
 #ifdef XEN
        PT_SET_MA(sf->kva, xpmap_ptom(VM_PAGE_TO_PHYS(m)) | pgeflag
-	   | PG_RW | PG_V | pmap_cache_bits(m->mdmemattr, 0));
+	   | PG_RW | PG_V | pmap_cache_bits(m->md.pat_mode, 0));
 #else
 	*ptep = VM_PAGE_TO_PHYS(m) | pgeflag | PG_RW | PG_V |
-	    pmap_cache_bits(m->mdmemattr, 0);
+	    pmap_cache_bits(m->md.pat_mode, 0);
 #endif
 
 	/*
