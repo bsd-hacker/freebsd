@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/disk.h>
+#include <sys/param.h>
 
 #include <machine/specialreg.h>
 #include <machine/vmm.h>
@@ -75,6 +76,8 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include <vmmapi.h>
 
@@ -556,13 +559,152 @@ usage(void)
 	exit(1);
 }
 
-int
-main(int argc, char** argv)
+#define MSR_EFER        0xc0000080
+#define CR4_PAE         0x00000020
+#define CR4_PSE         0x00000010
+#define CR0_PG          0x80000000
+#define	CR0_PE		0x00000001	/* Protected mode Enable */
+#define	CR0_NE		0x00000020	/* Numeric Error enable (EX16 vs IRQ13) */
+
+#define PG_V	0x001
+#define PG_RW	0x002
+#define PG_U	0x004
+#define PG_PS	0x080
+
+typedef u_int64_t p4_entry_t;
+typedef u_int64_t p3_entry_t;
+typedef u_int64_t p2_entry_t;
+
+#define	GUEST_NULL_SEL		0
+#define	GUEST_CODE_SEL		1
+#define	GUEST_DATA_SEL		2
+#define	GUEST_GDTR_LIMIT	(3 * 8 - 1)
+
+static void
+setup_stand_gdt(uint64_t *gdtr)
+{
+	gdtr[GUEST_NULL_SEL] = 0;
+	gdtr[GUEST_CODE_SEL] = 0x0020980000000000;
+	gdtr[GUEST_DATA_SEL] = 0x0000900000000000;
+}
+
+static int
+stand_load(char *image, uint64_t addr)
+{
+	int i;
+	int fd;
+	struct stat sb;
+	char *buf;
+	uint32_t		stack[1024];
+	p4_entry_t		PT4[512];
+	p3_entry_t		PT3[512];
+	p2_entry_t		PT2[512];
+	uint64_t		gdtr[3];
+
+	if ((fd = open(image, O_RDONLY)) < 0) {
+		perror("open");
+		return (1);
+	}
+	if (fstat(fd, &sb)) {
+		perror("fstat");
+		return (1);
+	}
+	buf = alloca(sb.st_size);
+	if (read(fd, buf, sb.st_size) != sb.st_size) {
+		perror("read");
+		return (1);
+	}
+	if (close(fd) < 0) {
+		perror("close");
+		return (1);
+	}
+	if (cb_copyin(NULL, buf, addr, sb.st_size)) {
+		perror("copyin");
+		return (1);
+	}
+
+	bzero(PT4, PAGE_SIZE);
+	bzero(PT3, PAGE_SIZE);
+	bzero(PT2, PAGE_SIZE);
+
+	/*
+	 * Build a scratch stack at physical 0x1000, page tables:
+	 *	PT4 at 0x2000,
+	 *	PT3 at 0x3000,
+	 *	PT2 at 0x4000,
+	 *      gdtr at 0x5000,
+	 */
+
+	/*
+	 * This is kinda brutal, but every single 1GB VM memory segment
+	 * points to the same first 1GB of physical memory.  But it is
+	 * more than adequate.
+	 */
+	for (i = 0; i < 512; i++) {
+		/* Each slot of the level 4 pages points to the same level 3 page */
+		PT4[i] = (p4_entry_t) 0x3000;
+		PT4[i] |= PG_V | PG_RW | PG_U;
+
+		/* Each slot of the level 3 pages points to the same level 2 page */
+		PT3[i] = (p3_entry_t) 0x4000;
+		PT3[i] |= PG_V | PG_RW | PG_U;
+
+		/* The level 2 page slots are mapped with 2MB pages for 1GB. */
+		PT2[i] = i * (2 * 1024 * 1024);
+		PT2[i] |= PG_V | PG_RW | PG_PS | PG_U;
+	}
+
+#ifdef DEBUG
+	printf("Start @ %#llx ...\n", addr);
+#endif
+
+	cb_copyin(NULL, stack, 0x1000, sizeof(stack));
+	cb_copyin(NULL, PT4, 0x2000, sizeof(PT4));
+	cb_copyin(NULL, PT3, 0x3000, sizeof(PT3));
+	cb_copyin(NULL, PT2, 0x4000, sizeof(PT2));
+	cb_setreg(NULL, 4, 0x1000);
+
+	cb_setmsr(NULL, MSR_EFER, EFER_LMA | EFER_LME);
+	cb_setcr(NULL, 4, CR4_PAE | CR4_VMXE);
+	cb_setcr(NULL, 3, 0x2000);
+	cb_setcr(NULL, 0, CR0_PG | CR0_PE | CR0_NE);
+
+	setup_stand_gdt(gdtr);
+	cb_copyin(NULL, gdtr, 0x5000, sizeof(gdtr));
+        cb_setgdt(NULL, 0x5000, sizeof(gdtr));
+
+	cb_exec(NULL, addr);
+	return (0);
+}
+
+static int
+freebsd_load(void)
 {
 	void *h;
 	void (*func)(struct loader_callbacks *, void *, int, int);
+
+	h = dlopen("/boot/userboot.so", RTLD_LOCAL);
+	if (!h) {
+		printf("%s\n", dlerror());
+		return (1);
+	}
+	func = dlsym(h, "loader_main");
+	if (!func) {
+		printf("%s\n", dlerror());
+		return (1);
+	}
+
+	func(&cb, NULL, USERBOOT_VERSION_3, disk_fd >= 0);
+	return (0);
+}
+
+int
+main(int argc, char** argv)
+{
 	uint64_t mem_size;
 	int opt, error;
+	uint64_t stand_addr;
+	char *stand_image;
 	char *disk_image;
 
 	progname = argv[0];
@@ -570,7 +712,7 @@ main(int argc, char** argv)
 	mem_size = 256 * MB;
 	disk_image = NULL;
 
-	while ((opt = getopt(argc, argv, "d:h:m:")) != -1) {
+	while ((opt = getopt(argc, argv, "d:h:m:S:I:")) != -1) {
 		switch (opt) {
 		case 'd':
 			disk_image = optarg;
@@ -583,6 +725,25 @@ main(int argc, char** argv)
 		case 'm':
 			mem_size = strtoul(optarg, NULL, 0) * MB;
 			break;
+
+		case 'S': {
+			char *addr_str;
+
+			stand_image = strtok(optarg, ":");
+			if (stand_image == NULL) {
+				usage();
+				break;
+			}
+
+			addr_str = strtok(NULL, ":");
+			if (addr_str == NULL) {
+				usage();
+				break;
+			}
+			stand_addr = strtoll(addr_str, NULL, 0);
+			
+			break;
+		}
 		
 		case '?':
 			usage();
@@ -621,19 +782,16 @@ main(int argc, char** argv)
 	term.c_lflag &= ~(ICANON|ECHO);
 	term.c_iflag &= ~ICRNL;
 	tcsetattr(0, TCSAFLUSH, &term);
-	h = dlopen("/boot/userboot.so", RTLD_LOCAL);
-	if (!h) {
-		printf("%s\n", dlerror());
-		return (1);
-	}
-	func = dlsym(h, "loader_main");
-	if (!func) {
-		printf("%s\n", dlerror());
-		return (1);
-	}
 
 	if (disk_image) {
 		disk_fd = open(disk_image, O_RDONLY);
 	}
-	func(&cb, NULL, USERBOOT_VERSION_3, disk_fd >= 0);
+
+	if (stand_image) {
+		if (stand_load(stand_image, stand_addr))
+			exit(1);
+	}else{
+		if (freebsd_load())
+			exit(1);
+	}
 }
