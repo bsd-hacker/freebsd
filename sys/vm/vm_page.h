@@ -557,7 +557,7 @@ vm_page_aflag_set(vm_page_t m, uint8_t bits)
 	 * exclusive busied.  Currently, this flag is only set by pmap_enter().
 	 */
 	KASSERT((bits & PGA_WRITEABLE) == 0 ||
-	    (m->oflags & VPO_UNMANAGED) == 0 || vm_page_xbusied(m),
+	    ((m->oflags & VPO_UNMANAGED) == 0 && vm_page_xbusied(m)),
 	    ("vm_page_aflag_set: PGA_WRITEABLE and not exclusive busy"));
 
 	/*
