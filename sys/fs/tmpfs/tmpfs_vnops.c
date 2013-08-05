@@ -482,13 +482,14 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 		} else
 			vm_page_zero_invalid(m, TRUE);
 	}
-	vm_page_busy_downgrade(m);
+	vm_page_xunbusy(m);
+	vm_page_lock(m);
+	vm_page_hold(m);
+	vm_page_unlock(m);
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&m, offset, tlen, uio);
-	VM_OBJECT_WLOCK(tobj);
-	vm_page_sunbusy(m);
-	VM_OBJECT_WUNLOCK(tobj);
 	vm_page_lock(m);
+	vm_page_unhold(m);
 	if (m->queue == PQ_NONE) {
 		vm_page_deactivate(m);
 	} else {
@@ -596,14 +597,17 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 		} else
 			vm_page_zero_invalid(tpg, TRUE);
 	}
-	vm_page_busy_downgrade(tpg);
+	vm_page_xunbusy(tpg);
+	vm_page_lock(tpg);
+	vm_page_hold(tpg);
+	vm_page_unlock(tpg);
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&tpg, offset, tlen, uio);
 	VM_OBJECT_WLOCK(tobj);
-	vm_page_sunbusy(tpg);
 	if (error == 0)
 		vm_page_dirty(tpg);
 	vm_page_lock(tpg);
+	vm_page_unhold(tpg);
 	if (tpg->queue == PQ_NONE) {
 		vm_page_deactivate(tpg);
 	} else {

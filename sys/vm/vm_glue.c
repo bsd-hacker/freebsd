@@ -223,7 +223,7 @@ vsunlock(void *addr, size_t len)
  * Return the pinned page if successful; otherwise, return NULL.
  */
 static vm_page_t
-vm_imgact_page_iostart(vm_object_t object, vm_ooffset_t offset)
+vm_imgact_hold_page(vm_object_t object, vm_ooffset_t offset)
 {
 	vm_page_t m, ma[1];
 	vm_pindex_t pindex;
@@ -246,7 +246,10 @@ vm_imgact_page_iostart(vm_object_t object, vm_ooffset_t offset)
 			goto out;
 		}
 	}
-	vm_page_busy_downgrade(m);
+	vm_page_xunbusy(m);
+	vm_page_lock(m);
+	vm_page_hold(m);
+	vm_page_unlock(m);
 out:
 	VM_OBJECT_WUNLOCK(object);
 	return (m);
@@ -261,7 +264,7 @@ vm_imgact_map_page(vm_object_t object, vm_ooffset_t offset)
 {
 	vm_page_t m;
 
-	m = vm_imgact_page_iostart(object, offset);
+	m = vm_imgact_hold_page(object, offset);
 	if (m == NULL)
 		return (NULL);
 	sched_pin();
@@ -272,16 +275,16 @@ vm_imgact_map_page(vm_object_t object, vm_ooffset_t offset)
  * Destroy the given CPU private mapping and unpin the page that it mapped.
  */
 void
-vm_imgact_unmap_page(vm_object_t object, struct sf_buf *sf)
+vm_imgact_unmap_page(struct sf_buf *sf)
 {
 	vm_page_t m;
 
 	m = sf_buf_page(sf);
 	sf_buf_free(sf);
 	sched_unpin();
-	VM_OBJECT_WLOCK(object);
-	vm_page_sunbusy(m);
-	VM_OBJECT_WUNLOCK(object);
+	vm_page_lock(m);
+	vm_page_unhold(m);
+	vm_page_unlock(m);
 }
 
 void
