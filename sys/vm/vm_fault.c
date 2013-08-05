@@ -941,8 +941,7 @@ vnode_locked:
 		vm_page_hold(fs.m);
 	}
 	vm_page_unlock(fs.m);
-	if (m_hold == NULL || (fault_flags & VM_FAULT_SBUSY) == 0)
-		vm_page_xunbusy(fs.m);
+	vm_page_xunbusy(fs.m);
 
 	/*
 	 * Unlock everything, and return
