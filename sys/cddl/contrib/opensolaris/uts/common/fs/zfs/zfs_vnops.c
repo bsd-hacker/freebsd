@@ -360,6 +360,7 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes)
 
 		if (pp != NULL) {
 			ASSERT3U(pp->valid, ==, VM_PAGE_BITS_ALL);
+			vm_object_pip_add(obj, 1);
 			pmap_remove_write(pp);
 			vm_page_clear_dirty(pp, off, nbytes);
 		}
