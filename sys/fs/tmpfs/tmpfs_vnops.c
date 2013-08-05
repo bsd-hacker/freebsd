@@ -449,7 +449,7 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 
 	/*
 	 * Parallel reads of the page content from disk are prevented
-	 * by write busy.
+	 * by exclusive busy.
 	 *
 	 * Although the tmpfs vnode lock is held here, it is
 	 * nonetheless safe to sleep waiting for a free page.  The
@@ -486,7 +486,7 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&m, offset, tlen, uio);
 	VM_OBJECT_WLOCK(tobj);
-	vm_page_busy_runlock(m);
+	vm_page_sunbusy(m);
 	VM_OBJECT_WUNLOCK(tobj);
 	vm_page_lock(m);
 	if (m->queue == PQ_NONE) {
@@ -600,7 +600,7 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 	VM_OBJECT_WUNLOCK(tobj);
 	error = uiomove_fromphys(&tpg, offset, tlen, uio);
 	VM_OBJECT_WLOCK(tobj);
-	vm_page_busy_runlock(tpg);
+	vm_page_sunbusy(tpg);
 	if (error == 0)
 		vm_page_dirty(tpg);
 	vm_page_lock(tpg);

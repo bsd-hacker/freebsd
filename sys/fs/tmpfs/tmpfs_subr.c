@@ -1352,7 +1352,7 @@ retry:
 				if (rv == VM_PAGER_OK) {
 					vm_page_deactivate(m);
 					vm_page_unlock(m);
-					vm_page_busy_wunlock(m);
+					vm_page_xunbusy(m);
 				} else {
 					vm_page_free(m);
 					vm_page_unlock(m);

@@ -158,7 +158,7 @@ phys_pager_getpages(vm_object_t object, vm_page_t *m, int count, int reqpage)
 			vm_page_flash(m[i]);
 			vm_page_unlock(m[i]);
 		} else
-			vm_page_busy_wunlock(m[i]);
+			vm_page_xunbusy(m[i]);
 	}
 	return (VM_PAGER_OK);
 }

@@ -946,7 +946,7 @@ exec_map_first_page(imgp)
 			if ((ma[i] = vm_page_next(ma[i - 1])) != NULL) {
 				if (ma[i]->valid)
 					break;
-				if (vm_page_busy_trywlock(ma[i]))
+				if (vm_page_tryxbusy(ma[i]))
 					break;
 			} else {
 				ma[i] = vm_page_alloc(object, i,
@@ -968,7 +968,7 @@ exec_map_first_page(imgp)
 			return (EIO);
 		}
 	}
-	vm_page_busy_wunlock(ma[0]);
+	vm_page_xunbusy(ma[0]);
 	vm_page_lock(ma[0]);
 	vm_page_wire(ma[0]);
 	vm_page_unlock(ma[0]);

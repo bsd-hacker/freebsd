@@ -1378,7 +1378,7 @@ retry:
 	VM_OBJECT_WLOCK(vm_obj);
 	m = vm_page_lookup(vm_obj, OFF_TO_IDX(offset));
 	if (m != NULL) {
-		if (vm_page_busy_locked(m)) {
+		if (vm_page_busied(m)) {
 			DRM_UNLOCK(dev);
 			vm_page_lock(m);
 			VM_OBJECT_WUNLOCK(vm_obj);
@@ -1436,7 +1436,7 @@ retry:
 	    ("not fictitious %p", m));
 	KASSERT(m->wire_count == 1, ("wire_count not 1 %p", m));
 
-	if (vm_page_busy_locked(m)) {
+	if (vm_page_busied(m)) {
 		DRM_UNLOCK(dev);
 		vm_page_lock(m);
 		VM_OBJECT_WUNLOCK(vm_obj);
@@ -1447,7 +1447,7 @@ retry:
 	vm_page_insert(m, vm_obj, OFF_TO_IDX(offset));
 have_page:
 	*mres = m;
-	vm_page_busy_wlock(m);
+	vm_page_xbusy(m);
 
 	CTR4(KTR_DRM, "fault %p %jx %x phys %x", gem_obj, offset, prot,
 	    m->phys_addr);
@@ -2529,7 +2529,7 @@ i915_gem_wire_page(vm_object_t object, vm_pindex_t pindex)
 	vm_page_lock(m);
 	vm_page_wire(m);
 	vm_page_unlock(m);
-	vm_page_busy_wunlock(m);
+	vm_page_xunbusy(m);
 	atomic_add_long(&i915_gem_wired_pages_cnt, 1);
 	return (m);
 }

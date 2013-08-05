@@ -141,7 +141,7 @@ static inline void
 release_page(struct faultstate *fs)
 {
 
-	vm_page_busy_wunlock(fs->m);
+	vm_page_xunbusy(fs->m);
 	vm_page_lock(fs->m);
 	vm_page_deactivate(fs->m);
 	vm_page_unlock(fs->m);
@@ -353,21 +353,21 @@ RetryFault:;
 
 			/*
 			 * Wait/Retry if the page is busy.  We have to do this
-			 * if the page is either write or read busy  because
-			 * the vm_pager may be using read busy for pageouts
-			 * (and even pageins if it is the vnode pager), and we
-			 * could end up trying to pagein and pageout the same
-			 * page simultaneously.
+			 * if the page is either exclusive or shared busy
+			 * because the vm_pager may be using read busy for
+			 * pageouts (and even pageins if it is the vnode
+			 * pager), and we could end up trying to pagein and
+			 * pageout the same page simultaneously.
 			 *
 			 * We can theoretically allow the busy case on a read
 			 * fault if the page is marked valid, but since such
 			 * pages are typically already pmap'd, putting that
 			 * special case in might be more effort then it is 
 			 * worth.  We cannot under any circumstances mess
-			 * around with a read busied page except, perhaps,
+			 * around with a shared busied page except, perhaps,
 			 * to pmap it.
 			 */
-			if (vm_page_busy_locked(fs.m)) {
+			if (vm_page_busied(fs.m)) {
 				/*
 				 * Reference the page before unlocking and
 				 * sleeping so that the page daemon is less
@@ -409,7 +409,7 @@ RetryFault:;
 			 * (readable), jump to readrest, else break-out ( we
 			 * found the page ).
 			 */
-			vm_page_busy_wlock(fs.m);
+			vm_page_xbusy(fs.m);
 			if (fs.m->valid != VM_PAGE_BITS_ALL)
 				goto readrest;
 			break;
@@ -515,7 +515,7 @@ readrest:
 			/*
 			 * Call the pager to retrieve the data, if any, after
 			 * releasing the lock on the map.  We hold a ref on
-			 * fs.object and the pages are write busied.
+			 * fs.object and the pages are exclusive busied.
 			 */
 			unlock_map(&fs);
 
@@ -564,7 +564,7 @@ vnode_locked:
 			 * return value is the index into the marray for the
 			 * vm_page_t passed to the routine.
 			 *
-			 * fs.m plus the additional pages are write busied.
+			 * fs.m plus the additional pages are exclusive busied.
 			 */
 			faultcount = vm_fault_additional_pages(
 			    fs.m, behind, ahead, marray, &reqpage);
@@ -690,7 +690,7 @@ vnode_locked:
 		}
 	}
 
-	vm_page_busy_assert_wlocked(fs.m);
+	vm_page_assert_xbusied(fs.m);
 
 	/*
 	 * PAGE HAS BEEN FOUND. [Loop invariant still holds -- the object lock
@@ -755,7 +755,7 @@ vnode_locked:
 				vm_page_lock(fs.m);
 				vm_page_rename(fs.m, fs.first_object, fs.first_pindex);
 				vm_page_unlock(fs.m);
-				vm_page_busy_wlock(fs.m);
+				vm_page_xbusy(fs.m);
 				fs.first_m = fs.m;
 				fs.m = NULL;
 				PCPU_INC(cnt.v_cow_optim);
@@ -903,7 +903,7 @@ vnode_locked:
 		}
 	}
 
-	vm_page_busy_assert_wlocked(fs.m);
+	vm_page_assert_xbusied(fs.m);
 
 	/*
 	 * Page must be completely valid or it is not fit to
@@ -938,14 +938,14 @@ vnode_locked:
 		vm_page_activate(fs.m);
 	if (m_hold != NULL) {
 		*m_hold = fs.m;
-		if (fault_flags & VM_FAULT_RBUSY)
+		if (fault_flags & VM_FAULT_SBUSY)
 			vm_page_busy_downgrade(fs.m);
 		else
 			vm_page_hold(fs.m);
 	}
 	vm_page_unlock(fs.m);
-	if (m_hold == NULL || (fault_flags & VM_FAULT_RBUSY) == 0)
-		vm_page_busy_wunlock(fs.m);
+	if (m_hold == NULL || (fault_flags & VM_FAULT_SBUSY) == 0)
+		vm_page_xunbusy(fs.m);
 
 	/*
 	 * Unlock everything, and return
@@ -990,12 +990,12 @@ vm_fault_cache_behind(const struct faultstate *fs, int distance)
 		if (pindex < OFF_TO_IDX(fs->entry->offset))
 			pindex = OFF_TO_IDX(fs->entry->offset);
 		m = first_object != object ? fs->first_m : fs->m;
-		vm_page_busy_assert_wlocked(m);
+		vm_page_assert_xbusied(m);
 		m_prev = vm_page_prev(m);
 		while ((m = m_prev) != NULL && m->pindex >= pindex &&
 		    m->valid == VM_PAGE_BITS_ALL) {
 			m_prev = vm_page_prev(m);
-			if (vm_page_busy_locked(m))
+			if (vm_page_busied(m))
 				continue;
 			vm_page_lock(m);
 			if (m->hold_count == 0 && m->wire_count == 0) {
@@ -1371,12 +1371,12 @@ vm_fault_copy_entry(vm_map_t dst_map, vm_map_t src_map,
 			vm_page_lock(dst_m);
 			vm_page_wire(dst_m);
 			vm_page_unlock(dst_m);
-			vm_page_busy_wunlock(dst_m);
+			vm_page_xunbusy(dst_m);
 		} else {
 			vm_page_lock(dst_m);
 			vm_page_activate(dst_m);
 			vm_page_unlock(dst_m);
-			vm_page_busy_wunlock(dst_m);
+			vm_page_xunbusy(dst_m);
 		}
 	}
 	VM_OBJECT_WUNLOCK(dst_object);

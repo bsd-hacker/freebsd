@@ -302,7 +302,7 @@ int ttm_tt_swapin(struct ttm_tt *ttm)
 			} else
 				vm_page_zero_invalid(from_page, TRUE);
 		}
-		vm_page_busy_wunlock(from_page);
+		vm_page_xunbusy(from_page);
 		to_page = ttm->pages[i];
 		if (unlikely(to_page == NULL)) {
 			ret = -ENOMEM;
@@ -355,7 +355,7 @@ int ttm_tt_swapout(struct ttm_tt *ttm, vm_object_t persistent_swap_storage)
 		pmap_copy_page(from_page, to_page);
 		vm_page_dirty(to_page);
 		to_page->valid = VM_PAGE_BITS_ALL;
-		vm_page_busy_wunlock(to_page);
+		vm_page_xunbusy(to_page);
 	}
 	vm_object_pip_wakeup(obj);
 	VM_OBJECT_WUNLOCK(obj);

@@ -280,7 +280,7 @@ vm_imgact_unmap_page(vm_object_t object, struct sf_buf *sf)
 	sf_buf_free(sf);
 	sched_unpin();
 	VM_OBJECT_WLOCK(object);
-	vm_page_busy_runlock(m);
+	vm_page_sunbusy(m);
 	VM_OBJECT_WUNLOCK(object);
 }
 
@@ -524,11 +524,11 @@ vm_thread_swapin(struct thread *td)
 		    VM_ALLOC_WIRED);
 	for (i = 0; i < pages; i++) {
 		if (ma[i]->valid != VM_PAGE_BITS_ALL) {
-			vm_page_busy_assert_wlocked(ma[i]);
+			vm_page_assert_xbusied(ma[i]);
 			vm_object_pip_add(ksobj, 1);
 			for (j = i + 1; j < pages; j++) {
 				if (ma[j]->valid != VM_PAGE_BITS_ALL)
-					vm_page_busy_assert_wlocked(ma[j]);
+					vm_page_assert_xbusied(ma[j]);
 				if (ma[j]->valid == VM_PAGE_BITS_ALL)
 					break;
 			}
@@ -539,9 +539,9 @@ vm_thread_swapin(struct thread *td)
 			vm_object_pip_wakeup(ksobj);
 			for (k = i; k < j; k++)
 				ma[k] = vm_page_lookup(ksobj, k);
-			vm_page_busy_wunlock(ma[i]);
-		} else if (vm_page_busy_wlocked(ma[i]))
-			vm_page_busy_wunlock(ma[i]);
+			vm_page_xunbusy(ma[i]);
+		} else if (vm_page_xbusied(ma[i]))
+			vm_page_xunbusy(ma[i]);
 	}
 	VM_OBJECT_WUNLOCK(ksobj);
 	pmap_qenter(td->td_kstack, ma, pages);

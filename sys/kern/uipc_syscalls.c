@@ -2272,7 +2272,7 @@ retry_space:
 				 * then free it.
 				 */
 				if (pg->wire_count == 0 && pg->valid == 0 &&
-				    !vm_page_busy_locked(pg))
+				    !vm_page_busied(pg))
 					vm_page_free(pg);
 				vm_page_unlock(pg);
 				VM_OBJECT_WUNLOCK(obj);

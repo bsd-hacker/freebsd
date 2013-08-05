@@ -263,7 +263,7 @@ proc_rwmem(struct proc *p, struct uio *uio)
 	writing = uio->uio_rw == UIO_WRITE;
 	reqprot = writing ? VM_PROT_COPY | VM_PROT_READ : VM_PROT_READ;
 	fault_flags = writing ? VM_FAULT_DIRTY : VM_FAULT_NORMAL;
-	fault_flags |= VM_FAULT_RBUSY;
+	fault_flags |= VM_FAULT_SBUSY;
 
 	/*
 	 * Only map in one page at a time.  We don't have to, but it
@@ -317,7 +317,7 @@ proc_rwmem(struct proc *p, struct uio *uio)
 		 * Release the page.
 		 */
 		VM_OBJECT_WLOCK(m->object);
-		vm_page_busy_runlock(m);
+		vm_page_sunbusy(m);
 		VM_OBJECT_WUNLOCK(m->object);
 
 	} while (error == 0 && uio->uio_resid > 0);

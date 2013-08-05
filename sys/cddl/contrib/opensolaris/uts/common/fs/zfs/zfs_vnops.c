@@ -336,7 +336,7 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 	for (;;) {
 		if ((pp = vm_page_lookup(obj, OFF_TO_IDX(start))) != NULL &&
 		    pp->valid) {
-			if (vm_page_busy_wlocked(pp)) {
+			if (vm_page_xbusied(pp)) {
 				/*
 				 * Reference the page before unlocking and
 				 * sleeping so that the page daemon is less
@@ -349,13 +349,13 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes,
 				zfs_vmobject_wlock(obj);
 				continue;
 			}
-			vm_page_busy_rlock(pp);
+			vm_page_sbusy(pp);
 		} else if (pp == NULL) {
 			if (!alloc)
 				break;
 			pp = vm_page_alloc(obj, OFF_TO_IDX(start),
 			    VM_ALLOC_SYSTEM | VM_ALLOC_IFCACHED |
-			    VM_ALLOC_RBUSY);
+			    VM_ALLOC_SBUSY);
 		} else {
 			ASSERT(pp != NULL && !pp->valid);
 			pp = NULL;
@@ -378,7 +378,7 @@ static void
 page_unbusy(vm_page_t pp, boolean_t unalloc)
 {
 
-	vm_page_busy_runlock(pp);
+	vm_page_sunbusy(pp);
 	if (unalloc)
 		vm_object_pip_subtract(pp->object, 1);
 }
@@ -432,7 +432,7 @@ update_pages(vnode_t *vp, int64_t start, int len, objset_t *os, uint64_t oid,
 			    ("zfs update_pages: unaligned data in putpages case"));
 			KASSERT(pp->valid == VM_PAGE_BITS_ALL,
 			    ("zfs update_pages: invalid page in putpages case"));
-			KASSERT(vm_page_busy_rlocked(pp),
+			KASSERT(vm_page_sbusied(pp),
 			    ("zfs update_pages: unbusy page in putpages case"));
 			KASSERT(!pmap_page_is_write_mapped(pp),
 			    ("zfs update_pages: writable page in putpages case"));
@@ -469,7 +469,7 @@ update_pages(vnode_t *vp, int64_t start, int len, objset_t *os, uint64_t oid,
  * ZFS to populate a range of page cache pages with data.
  *
  * NOTE: this function could be optimized to pre-allocate
- * all pages in advance, drain write busy on all of them,
+ * all pages in advance, drain exclusive busy on all of them,
  * map them into contiguous KVA region and populate them
  * in one single dmu_read() call.
  */
@@ -497,8 +497,8 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 	for (start = uio->uio_loffset; len > 0; start += PAGESIZE) {
 		int bytes = MIN(PAGESIZE, len);
 
-		pp = vm_page_grab(obj, OFF_TO_IDX(start), VM_ALLOC_RBUSY |
-		    VM_ALLOC_NORMAL | VM_ALLOC_RETRY | VM_ALLOC_IGN_RBUSY);
+		pp = vm_page_grab(obj, OFF_TO_IDX(start), VM_ALLOC_SBUSY |
+		    VM_ALLOC_NORMAL | VM_ALLOC_RETRY | VM_ALLOC_IGN_SBUSY);
 		if (pp->valid == 0) {
 			zfs_vmobject_wunlock(obj);
 			va = zfs_map_page(pp, &sf);
@@ -508,11 +508,11 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 				bzero(va + bytes, PAGESIZE - bytes);
 			zfs_unmap_page(sf);
 			zfs_vmobject_wlock(obj);
-			vm_page_busy_runlock(pp);
+			vm_page_sunbusy(pp);
 			vm_page_lock(pp);
 			if (error) {
 				if (pp->wire_count == 0 && pp->valid == 0 &&
-				    !vm_page_busy_locked(pp))
+				    !vm_page_busied(pp))
 					vm_page_free(pp);
 			} else {
 				pp->valid = VM_PAGE_BITS_ALL;
@@ -520,7 +520,7 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 			}
 			vm_page_unlock(pp);
 		} else
-			vm_page_busy_runlock(pp);
+			vm_page_sunbusy(pp);
 		if (error)
 			break;
 		uio->uio_resid -= bytes;
