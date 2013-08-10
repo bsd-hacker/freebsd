@@ -897,11 +897,11 @@ vm_page_sleep_if_busy(vm_page_t m, const char *msg, int busyflags,
 	    ("vm_page_sleep_if_busy: VM_ALLOC_NOBUSY with read object lock"));
 
 	if ((busyflags & VM_ALLOC_NOBUSY) != 0) {
-		cond = vm_page_busy_locked(m);
-	} else if ((busyflags & VM_ALLOC_RBUSY) != 0)
-		cond = !vm_page_busy_tryrlock(m);
+		cond = vm_page_busied(m);
+	} else if ((busyflags & VM_ALLOC_SBUSY) != 0)
+		cond = !vm_page_trysbusy(m);
 	else
-		cond = !vm_page_busy_trywlock(m);
+		cond = !vm_page_tryxbusy(m);
 	if (cond) {
 
 		/*
@@ -2728,7 +2728,7 @@ vm_page_grab(vm_object_t object, vm_pindex_t pindex, int allocflags)
 retrylookup:
 	if ((m = vm_page_lookup(object, pindex)) != NULL) {
 		if (vm_page_sleep_if_busy(m, "pgrbwt", allocflags &
-		    (VM_ALLOC_NOBUSY | VM_ALLOC_RBUSY), TRUE))
+		    (VM_ALLOC_NOBUSY | VM_ALLOC_SBUSY), TRUE))
 			goto retrylookup;
 		else {
 			if ((allocflags & VM_ALLOC_WIRED) != 0) {

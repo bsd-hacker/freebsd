@@ -3451,7 +3451,7 @@ allocbuf(struct buf *bp, int size)
 					vm_page_lock(m);
 					vm_page_unwire(m, 0);
 					vm_page_unlock(m);
-					vm_page_busy_wunlock(m);
+					vm_page_xunbusy(m);
 				}
 				VM_OBJECT_RUNLOCK(bp->b_bufobj->bo_object);
 				bp->b_npages = desiredpages;
@@ -3490,7 +3490,7 @@ allocbuf(struct buf *bp, int size)
 				 * pages are vfs_busy_pages().
 				 */
 				m = vm_page_grab(obj, OFF_TO_IDX(bp->b_offset) +
-				    bp->b_npages, VM_ALLOC_RBUSY |
+				    bp->b_npages, VM_ALLOC_SBUSY |
 				    VM_ALLOC_SYSTEM | VM_ALLOC_WIRED |
 				    VM_ALLOC_RETRY |
 				    VM_ALLOC_COUNT(desiredpages - bp->b_npages));
@@ -3541,7 +3541,7 @@ allocbuf(struct buf *bp, int size)
 				vm_page_t m;
 
 				m = bp->b_pages[onpages];
-				vm_page_busy_runlock(m);
+				vm_page_sunbusy(m);
 				++onpages;
 			}
 			VM_OBJECT_RUNLOCK(obj);

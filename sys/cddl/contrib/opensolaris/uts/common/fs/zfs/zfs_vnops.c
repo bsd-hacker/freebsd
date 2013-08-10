@@ -336,7 +336,7 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes)
 		if ((pp = vm_page_lookup(obj, OFF_TO_IDX(start))) != NULL &&
 		    pp->valid) {
 			if (vm_page_sleep_if_busy(pp, "zfsmwb",
-			    VM_ALLOC_RBUSY, TRUE))
+			    VM_ALLOC_SBUSY, TRUE))
 				continue;
 		} else if (pp == NULL) {
 			pp = vm_page_alloc(obj, OFF_TO_IDX(start),
@@ -526,7 +526,7 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 	for (start = uio->uio_loffset; len > 0; start += PAGESIZE) {
 		int bytes = MIN(PAGESIZE, len);
 
-		pp = vm_page_grab(obj, OFF_TO_IDX(start), VM_ALLOC_RBUSY |
+		pp = vm_page_grab(obj, OFF_TO_IDX(start), VM_ALLOC_SBUSY |
 		    VM_ALLOC_NORMAL | VM_ALLOC_RETRY);
 		if (pp->valid == 0) {
 			zfs_vmobject_runlock(obj);
