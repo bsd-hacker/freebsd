@@ -872,7 +872,8 @@ rescan:
 		np = TAILQ_NEXT(p, listq);
 		if (p->valid == 0)
 			continue;
-		if (vm_page_sleep_if_busy(p, "vpcwai")) {
+		if (vm_page_sleep_if_busy(p, "vpcwai", VM_ALLOC_NOBUSY,
+		    FALSE)) {
 			if (object->generation != curgeneration) {
 				if ((flags & OBJPC_SYNC) != 0)
 					goto rescan;
@@ -1213,15 +1214,15 @@ vm_object_shadow(
 	 * Don't create the new object if the old object isn't shared.
 	 */
 	if (source != NULL) {
-		VM_OBJECT_WLOCK(source);
+		VM_OBJECT_RLOCK(source);
 		if (source->ref_count == 1 &&
 		    source->handle == NULL &&
 		    (source->type == OBJT_DEFAULT ||
 		     source->type == OBJT_SWAP)) {
-			VM_OBJECT_WUNLOCK(source);
+			VM_OBJECT_RUNLOCK(source);
 			return;
 		}
-		VM_OBJECT_WUNLOCK(source);
+		VM_OBJECT_RUNLOCK(source);
 	}
 
 	/*

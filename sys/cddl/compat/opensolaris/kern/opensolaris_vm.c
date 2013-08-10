@@ -41,16 +41,36 @@ const int zfs_vm_pagerret_bad = VM_PAGER_BAD;
 const int zfs_vm_pagerret_error = VM_PAGER_ERROR;
 const int zfs_vm_pagerret_ok = VM_PAGER_OK;
 
+/*
+ * For assertions skipping FILE/LINE will not be too helpful, but
+ * they must be hard functions for compatibility reasons.
+ */
+void
+zfs_vmobject_assert_locked(vm_object_t object)
+{
+
+	VM_OBJECT_ASSERT_LOCKED(object);
+}
+
 void
 zfs_vmobject_assert_wlocked(vm_object_t object)
 {
 
-	/*
-	 * This is not ideal because FILE/LINE used by assertions will not
-	 * be too helpful, but it must be an hard function for
-	 * compatibility reasons.
-	 */
 	VM_OBJECT_ASSERT_WLOCKED(object);
+}
+
+void
+zfs_vmobject_rlock(vm_object_t object)
+{
+
+	VM_OBJECT_RLOCK(object);
+}
+
+void
+zfs_vmobject_runlock(vm_object_t object)
+{
+
+	VM_OBJECT_RUNLOCK(object);
 }
 
 void

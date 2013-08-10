@@ -385,7 +385,7 @@ vm_page_t PHYS_TO_VM_PAGE(vm_paddr_t pa);
 #define	VM_ALLOC_NOBUSY		0x0200	/* Do not busy the page */
 #define	VM_ALLOC_IFCACHED	0x0400	/* Fail if the page is not cached */
 #define	VM_ALLOC_IFNOTCACHED	0x0800	/* Fail if the page is cached */
-#define	VM_ALLOC_IGN_SBUSY	0x1000	/* vm_page_grab() only */
+#define	VM_ALLOC_UNUSED13	0x1000	/* -- available -- */
 #define	VM_ALLOC_NODUMP		0x2000	/* don't include in dump */
 #define	VM_ALLOC_SBUSY		0x4000	/* Shared busy the page */
 
@@ -456,7 +456,8 @@ void vm_page_requeue(vm_page_t m);
 void vm_page_requeue_locked(vm_page_t m);
 int vm_page_sbusied(vm_page_t m);
 void vm_page_set_valid_range(vm_page_t m, int base, int size);
-int vm_page_sleep_if_busy(vm_page_t m, const char *msg);
+int vm_page_sleep_if_busy(vm_page_t m, const char *msg, int busyflags,
+    boolean_t pref);
 vm_offset_t vm_page_startup(vm_offset_t vaddr);
 void vm_page_sunbusy(vm_page_t m);
 int vm_page_trysbusy(vm_page_t m);

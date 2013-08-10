@@ -414,20 +414,20 @@ cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
 			 */
 			off = tbp->b_offset;
 			tsize = size;
-			VM_OBJECT_WLOCK(tbp->b_bufobj->bo_object);
+			VM_OBJECT_RLOCK(tbp->b_bufobj->bo_object);
 			for (j = 0; tsize > 0; j++) {
 				toff = off & PAGE_MASK;
 				tinc = tsize;
 				if (toff + tinc > PAGE_SIZE)
 					tinc = PAGE_SIZE - toff;
-				VM_OBJECT_ASSERT_WLOCKED(tbp->b_pages[j]->object);
+				VM_OBJECT_ASSERT_RLOCKED(tbp->b_pages[j]->object);
 				if ((tbp->b_pages[j]->valid &
 				    vm_page_bits(toff, tinc)) != 0)
 					break;
 				off += tinc;
 				tsize -= tinc;
 			}
-			VM_OBJECT_WUNLOCK(tbp->b_bufobj->bo_object);
+			VM_OBJECT_RUNLOCK(tbp->b_bufobj->bo_object);
 			if (tsize > 0) {
 				bqrelse(tbp);
 				break;
@@ -494,13 +494,13 @@ cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
 	 * Fully valid pages in the cluster are already good and do not need
 	 * to be re-read from disk.  Replace the page with bogus_page
 	 */
-	VM_OBJECT_WLOCK(bp->b_bufobj->bo_object);
+	VM_OBJECT_RLOCK(bp->b_bufobj->bo_object);
 	for (j = 0; j < bp->b_npages; j++) {
-		VM_OBJECT_ASSERT_WLOCKED(bp->b_pages[j]->object);
+		VM_OBJECT_ASSERT_RLOCKED(bp->b_pages[j]->object);
 		if (bp->b_pages[j]->valid == VM_PAGE_BITS_ALL)
 			bp->b_pages[j] = bogus_page;
 	}
-	VM_OBJECT_WUNLOCK(bp->b_bufobj->bo_object);
+	VM_OBJECT_RUNLOCK(bp->b_bufobj->bo_object);
 	if (bp->b_bufsize > bp->b_kvasize)
 		panic("cluster_rbuild: b_bufsize(%ld) > b_kvasize(%d)\n",
 		    bp->b_bufsize, bp->b_kvasize);

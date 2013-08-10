@@ -281,7 +281,8 @@ shm_dotruncate(struct shmfd *shmfd, off_t length)
 retry:
 			m = vm_page_lookup(object, idx);
 			if (m != NULL) {
-				if (vm_page_sleep_if_busy(m, "shmtrc"))
+				if (vm_page_sleep_if_busy(m, "shmtrc",
+				    VM_ALLOC_NOBUSY, FALSE))
 					goto retry;
 			} else if (vm_pager_has_page(object, idx, NULL, NULL)) {
 				m = vm_page_alloc(object, idx, VM_ALLOC_NORMAL);

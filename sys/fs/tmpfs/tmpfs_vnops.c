@@ -445,7 +445,7 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	vm_page_t	m;
 	int		error, rv;
 
-	VM_OBJECT_WLOCK(tobj);
+	VM_OBJECT_RLOCK(tobj);
 
 	/*
 	 * Parallel reads of the page content from disk are prevented
@@ -457,8 +457,17 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	 * lock to page out tobj's pages because tobj is a OBJT_SWAP
 	 * type object.
 	 */
+retry:
 	m = vm_page_grab(tobj, idx, VM_ALLOC_NORMAL | VM_ALLOC_RETRY);
 	if (m->valid != VM_PAGE_BITS_ALL) {
+		if (!VM_OBJECT_LOCK_TRYUPGRADE(tobj)) {
+			VM_OBJECT_RUNLOCK(tobj);
+			VM_OBJECT_WLOCK(tobj);
+			vm_page_lock(m);
+			vm_page_free(m);
+			vm_page_unlock(m);
+			goto retry;
+		}
 		if (vm_pager_has_page(tobj, idx, NULL, NULL)) {
 			rv = vm_pager_get_pages(tobj, &m, 1, 0);
 			m = vm_page_lookup(tobj, idx);
@@ -486,7 +495,10 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	vm_page_lock(m);
 	vm_page_hold(m);
 	vm_page_unlock(m);
-	VM_OBJECT_WUNLOCK(tobj);
+	if (VM_OBJECT_WOWNED(tobj))
+		VM_OBJECT_WUNLOCK(tobj);
+	else
+		VM_OBJECT_RUNLOCK(tobj);
 	error = uiomove_fromphys(&m, offset, tlen, uio);
 	vm_page_lock(m);
 	vm_page_unhold(m);
@@ -571,9 +583,18 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 	offset = addr & PAGE_MASK;
 	tlen = MIN(PAGE_SIZE - offset, len);
 
-	VM_OBJECT_WLOCK(tobj);
+	VM_OBJECT_RLOCK(tobj);
+retry:
 	tpg = vm_page_grab(tobj, idx, VM_ALLOC_NORMAL | VM_ALLOC_RETRY);
 	if (tpg->valid != VM_PAGE_BITS_ALL) {
+		if (!VM_OBJECT_LOCK_TRYUPGRADE(tobj)) {
+			VM_OBJECT_RUNLOCK(tobj);
+			VM_OBJECT_WLOCK(tobj);
+			vm_page_lock(tpg);
+			vm_page_free(tpg);
+			vm_page_unlock(tpg);
+			goto retry;
+		}
 		if (vm_pager_has_page(tobj, idx, NULL, NULL)) {
 			rv = vm_pager_get_pages(tobj, &tpg, 1, 0);
 			tpg = vm_page_lookup(tobj, idx);
@@ -601,7 +622,10 @@ tmpfs_mappedwrite(vm_object_t tobj, size_t len, struct uio *uio)
 	vm_page_lock(tpg);
 	vm_page_hold(tpg);
 	vm_page_unlock(tpg);
-	VM_OBJECT_WUNLOCK(tobj);
+	if (VM_OBJECT_WOWNED(tobj))
+		VM_OBJECT_WUNLOCK(tobj);
+	else
+		VM_OBJECT_RUNLOCK(tobj);
 	error = uiomove_fromphys(&tpg, offset, tlen, uio);
 	VM_OBJECT_WLOCK(tobj);
 	if (error == 0)

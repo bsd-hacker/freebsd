@@ -330,25 +330,14 @@ page_busy(vnode_t *vp, int64_t start, int64_t off, int64_t nbytes)
 	vm_page_t pp;
 
 	obj = vp->v_object;
-	zfs_vmobject_assert_wlocked(obj);
+	zfs_vmobject_assert_locked(obj);
 
 	for (;;) {
 		if ((pp = vm_page_lookup(obj, OFF_TO_IDX(start))) != NULL &&
 		    pp->valid) {
-			if (vm_page_xbusied(pp)) {
-				/*
-				 * Reference the page before unlocking and
-				 * sleeping so that the page daemon is less
-				 * likely to reclaim it.
-				 */
-				vm_page_reference(pp);
-				vm_page_lock(pp);
-				zfs_vmobject_wunlock(obj);
-				vm_page_busy_sleep(pp, "zfsmwb");
-				zfs_vmobject_wlock(obj);
+			if (vm_page_sleep_if_busy(pp, "zfsmwb",
+			    VM_ALLOC_RBUSY, TRUE))
 				continue;
-			}
-			vm_page_sbusy(pp);
 		} else if (pp == NULL) {
 			pp = vm_page_alloc(obj, OFF_TO_IDX(start),
 			    VM_ALLOC_SYSTEM | VM_ALLOC_IFCACHED |
@@ -533,21 +522,21 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 	ASSERT(obj != NULL);
 	ASSERT((uio->uio_loffset & PAGEOFFSET) == 0);
 
-	zfs_vmobject_wlock(obj);
+	zfs_vmobject_rlock(obj);
 	for (start = uio->uio_loffset; len > 0; start += PAGESIZE) {
 		int bytes = MIN(PAGESIZE, len);
 
-		pp = vm_page_grab(obj, OFF_TO_IDX(start), VM_ALLOC_SBUSY |
-		    VM_ALLOC_NORMAL | VM_ALLOC_RETRY | VM_ALLOC_IGN_SBUSY);
+		pp = vm_page_grab(obj, OFF_TO_IDX(start), VM_ALLOC_RBUSY |
+		    VM_ALLOC_NORMAL | VM_ALLOC_RETRY);
 		if (pp->valid == 0) {
-			zfs_vmobject_wunlock(obj);
+			zfs_vmobject_runlock(obj);
 			va = zfs_map_page(pp, &sf);
 			error = dmu_read(os, zp->z_id, start, bytes, va,
 			    DMU_READ_PREFETCH);
 			if (bytes != PAGESIZE && error == 0)
 				bzero(va + bytes, PAGESIZE - bytes);
 			zfs_unmap_page(sf);
-			zfs_vmobject_wlock(obj);
+			zfs_vmobject_rlock(obj);
 			vm_page_sunbusy(pp);
 			vm_page_lock(pp);
 			if (error) {
@@ -567,7 +556,7 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 		uio->uio_offset += bytes;
 		len -= bytes;
 	}
-	zfs_vmobject_wunlock(obj);
+	zfs_vmobject_runlock(obj);
 	return (error);
 }
 
@@ -599,7 +588,7 @@ mappedread(vnode_t *vp, int nbytes, uio_t *uio)
 
 	start = uio->uio_loffset;
 	off = start & PAGEOFFSET;
-	zfs_vmobject_wlock(obj);
+	zfs_vmobject_rlock(obj);
 	for (start &= PAGEMASK; len > 0; start += PAGESIZE) {
 		vm_page_t pp;
 		uint64_t bytes = MIN(PAGESIZE - off, len);
@@ -608,23 +597,23 @@ mappedread(vnode_t *vp, int nbytes, uio_t *uio)
 			struct sf_buf *sf;
 			caddr_t va;
 
-			zfs_vmobject_wunlock(obj);
+			zfs_vmobject_runlock(obj);
 			va = zfs_map_page(pp, &sf);
 			error = uiomove(va + off, bytes, UIO_READ, uio);
 			zfs_unmap_page(sf);
-			zfs_vmobject_wlock(obj);
+			zfs_vmobject_rlock(obj);
 			page_unhold(pp);
 		} else {
-			zfs_vmobject_wunlock(obj);
+			zfs_vmobject_runlock(obj);
 			error = dmu_read_uio(os, zp->z_id, uio, bytes);
-			zfs_vmobject_wlock(obj);
+			zfs_vmobject_rlock(obj);
 		}
 		len -= bytes;
 		off = 0;
 		if (error)
 			break;
 	}
-	zfs_vmobject_wunlock(obj);
+	zfs_vmobject_runlock(obj);
 	return (error);
 }
 

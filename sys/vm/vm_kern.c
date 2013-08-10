@@ -397,14 +397,14 @@ kmem_unback(vm_object_t object, vm_offset_t addr, vm_size_t size)
 	    ("kmem_unback: only supports kernel objects."));
 
 	offset = addr - VM_MIN_KERNEL_ADDRESS;
-	VM_OBJECT_WLOCK(object);
+	VM_OBJECT_RLOCK(object);
 	pmap_remove(kernel_pmap, addr, addr + size);
 	for (i = 0; i < size; i += PAGE_SIZE) {
 		m = vm_page_lookup(object, OFF_TO_IDX(offset + i));
 		vm_page_unwire(m, 0);
 		vm_page_free(m);
 	}
-	VM_OBJECT_WUNLOCK(object);
+	VM_OBJECT_RUNLOCK(object);
 }
 
 /*
