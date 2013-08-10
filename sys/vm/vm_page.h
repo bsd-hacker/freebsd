@@ -173,27 +173,27 @@ struct vm_page {
 #define	VPO_NOSYNC	0x10		/* do not collect for syncer */
 
 /*
- * Busy lock implementation details.
+ * Busy page implementation details.
  * The algorithm is taken mostly by rwlock(9) and sx(9) locks implementation,
  * even if the support for owner identity is removed because of size
  * constraints.  Checks on lock recursion are then not possible, while the
  * lock assertions effectiveness is someway reduced.
  */
-#define	VPB_LOCK_READ		0x01
-#define	VPB_LOCK_WRITE		0x02
-#define	VPB_LOCK_WAITERS	0x04
-#define	VPB_LOCK_FLAGMASK						\
-	(VPB_LOCK_READ | VPB_LOCK_WRITE | VPB_LOCK_WAITERS)
+#define	VPB_BIT_SHARED		0x01
+#define	VPB_BIT_EXCLUSIVE	0x02
+#define	VPB_BIT_WAITERS		0x04
+#define	VPB_BIT_FLAGMASK						\
+	(VPB_BIT_SHARED | VPB_BIT_EXCLUSIVE | VPB_BIT_WAITERS)
 
-#define	VPB_READERS_SHIFT	3
-#define	VPB_READERS(x)							\
-	(((x) & ~VPB_LOCK_FLAGMASK) >> VPB_READERS_SHIFT)
-#define	VPB_READERS_LOCK(x)	((x) << VPB_READERS_SHIFT | VPB_LOCK_READ)
-#define	VPB_ONE_READER		(1 << VPB_READERS_SHIFT)
+#define	VPB_SHARERS_SHIFT	3
+#define	VPB_SHARERS(x)							\
+	(((x) & ~VPB_BIT_FLAGMASK) >> VPB_SHARERS_SHIFT)
+#define	VPB_SHARERS_WORD(x)	((x) << VPB_SHARERS_SHIFT | VPB_BIT_SHARED)
+#define	VPB_ONE_SHARER		(1 << VPB_SHARERS_SHIFT)
 
-#define	VPB_SINGLE_WRITER	VPB_LOCK_WRITE
+#define	VPB_SINGLE_EXCLUSIVER	VPB_BIT_EXCLUSIVE
 
-#define	VPB_UNLOCKED		VPB_READERS_LOCK(0)
+#define	VPB_UNBUSIED		VPB_SHARERS_WORD(0)
 
 #define	PQ_NONE		255
 #define	PQ_INACTIVE	0
@@ -205,17 +205,43 @@ TAILQ_HEAD(pglist, vm_page);
 struct vm_pagequeue {
 	struct mtx	pq_mutex;
 	struct pglist	pq_pl;
-	int *const	pq_cnt;
-	const char *const pq_name;
+	int		pq_cnt;
+	int		* const pq_vcnt;
+	const char	* const pq_name;
 } __aligned(CACHE_LINE_SIZE);
 
-extern struct vm_pagequeue vm_pagequeues[PQ_COUNT];
+
+struct vm_domain {
+	struct vm_pagequeue vmd_pagequeues[PQ_COUNT];
+	int vmd_fullintervalcount;
+	u_int vmd_page_count;
+	u_int vmd_free_count;
+	long vmd_segs;	/* bitmask of the segments */
+	boolean_t vmd_oom;
+	int vmd_pass;	/* local pagedaemon pass */
+	struct vm_page vmd_marker; /* marker for pagedaemon private use */
+};
+
+extern struct vm_domain vm_dom[MAXMEMDOM];
 
 #define	vm_pagequeue_assert_locked(pq)	mtx_assert(&(pq)->pq_mutex, MA_OWNED)
-#define	vm_pagequeue_init_lock(pq)	mtx_init(&(pq)->pq_mutex,	\
-	    (pq)->pq_name, "vm pagequeue", MTX_DEF | MTX_DUPOK);
 #define	vm_pagequeue_lock(pq)		mtx_lock(&(pq)->pq_mutex)
 #define	vm_pagequeue_unlock(pq)		mtx_unlock(&(pq)->pq_mutex)
+
+#ifdef _KERNEL
+static __inline void
+vm_pagequeue_cnt_add(struct vm_pagequeue *pq, int addend)
+{
+
+#ifdef notyet
+	vm_pagequeue_assert_locked(pq);
+#endif
+	pq->pq_cnt += addend;
+	atomic_add_int(pq->pq_vcnt, addend);
+}
+#define	vm_pagequeue_cnt_inc(pq)	vm_pagequeue_cnt_add((pq), 1)
+#define	vm_pagequeue_cnt_dec(pq)	vm_pagequeue_cnt_add((pq), -1)
+#endif	/* _KERNEL */
 
 extern struct mtx_padalign vm_page_queue_free_mtx;
 extern struct mtx_padalign pa_lock[];
@@ -272,8 +298,9 @@ extern struct mtx_padalign pa_lock[];
  * directly set this flag.  They should call vm_page_reference() instead.
  *
  * PGA_WRITEABLE is set exclusively on managed pages by pmap_enter().  When it
- * does so, the page must be write busied.  The MI VM layer must never access
- * this flag directly.  Instead, it should call pmap_page_is_write_mapped().
+ * does so, the page must be exclusive busied.  The MI VM layer must never
+ * access this flag directly.  Instead, it should call
+ * pmap_page_is_write_mapped().
  *
  * PGA_EXECUTABLE may be set by pmap routines, and indicates that a page has
  * at least one executable mapping.  It is not consumed by the MI VM layer.
@@ -360,7 +387,7 @@ vm_page_t PHYS_TO_VM_PAGE(vm_paddr_t pa);
 #define	VM_ALLOC_IFNOTCACHED	0x0800	/* Fail if the page is cached */
 #define	VM_ALLOC_UNUSED13	0x1000	/* -- available -- */
 #define	VM_ALLOC_NODUMP		0x2000	/* don't include in dump */
-#define	VM_ALLOC_RBUSY		0x4000	/* Read busy the page */
+#define	VM_ALLOC_SBUSY		0x4000	/* Shared busy the page */
 
 #define	VM_ALLOC_COUNT_SHIFT	16
 #define	VM_ALLOC_COUNT(count)	((count) << VM_ALLOC_COUNT_SHIFT)
@@ -385,11 +412,7 @@ malloc2vm_flags(int malloc_flags)
 #endif
 
 void vm_page_busy_downgrade(vm_page_t m);
-int vm_page_busy_rlocked(vm_page_t m);
-void vm_page_busy_runlock(vm_page_t m);
 void vm_page_busy_sleep(vm_page_t m, const char *msg);
-int vm_page_busy_tryrlock(vm_page_t m);
-void vm_page_busy_wunlock_hard(vm_page_t m);
 void vm_page_flash(vm_page_t m);
 void vm_page_hold(vm_page_t mem);
 void vm_page_unhold(vm_page_t mem);
@@ -415,27 +438,34 @@ void vm_page_dequeue_locked(vm_page_t m);
 vm_page_t vm_page_find_least(vm_object_t, vm_pindex_t);
 vm_page_t vm_page_getfake(vm_paddr_t paddr, vm_memattr_t memattr);
 void vm_page_initfake(vm_page_t m, vm_paddr_t paddr, vm_memattr_t memattr);
-void vm_page_insert (vm_page_t, vm_object_t, vm_pindex_t);
+int vm_page_insert (vm_page_t, vm_object_t, vm_pindex_t);
 boolean_t vm_page_is_cached(vm_object_t object, vm_pindex_t pindex);
 vm_page_t vm_page_lookup (vm_object_t, vm_pindex_t);
 vm_page_t vm_page_next(vm_page_t m);
 int vm_page_pa_tryrelock(pmap_t, vm_paddr_t, vm_paddr_t *);
+struct vm_pagequeue *vm_page_pagequeue(vm_page_t m);
 vm_page_t vm_page_prev(vm_page_t m);
 void vm_page_putfake(vm_page_t m);
 void vm_page_readahead_finish(vm_page_t m);
 void vm_page_reference(vm_page_t m);
 void vm_page_remove (vm_page_t);
-void vm_page_rename (vm_page_t, vm_object_t, vm_pindex_t);
+int vm_page_rename (vm_page_t, vm_object_t, vm_pindex_t);
+vm_page_t vm_page_replace(vm_page_t mnew, vm_object_t object,
+    vm_pindex_t pindex);
 void vm_page_requeue(vm_page_t m);
 void vm_page_requeue_locked(vm_page_t m);
+int vm_page_sbusied(vm_page_t m);
 void vm_page_set_valid_range(vm_page_t m, int base, int size);
 int vm_page_sleep_if_busy(vm_page_t m, const char *msg, int busyflags,
     boolean_t pref);
 vm_offset_t vm_page_startup(vm_offset_t vaddr);
+void vm_page_sunbusy(vm_page_t m);
+int vm_page_trysbusy(vm_page_t m);
 void vm_page_unhold_pages(vm_page_t *ma, int count);
 void vm_page_unwire (vm_page_t, int);
 void vm_page_updatefake(vm_page_t m, vm_paddr_t paddr, vm_memattr_t memattr);
 void vm_page_wire (vm_page_t);
+void vm_page_xunbusy_hard(vm_page_t m);
 void vm_page_set_validclean (vm_page_t, int, int);
 void vm_page_clear_dirty (vm_page_t, int, int);
 void vm_page_set_invalid (vm_page_t, int, int);
@@ -458,44 +488,46 @@ void vm_page_assert_locked_KBI(vm_page_t m, const char *file, int line);
 void vm_page_lock_assert_KBI(vm_page_t m, int a, const char *file, int line);
 #endif
 
-#define	vm_page_busy_assert_rlocked(m)					\
-	KASSERT(vm_page_busy_rlocked(m),				\
-	    ("vm_page_busy_assert_rlocked: page %p not read busy @ %s:%d", \
+#define	vm_page_assert_sbusied(m)					\
+	KASSERT(vm_page_sbusied(m),					\
+	    ("vm_page_assert_sbusied: page %p not shared busy @ %s:%d", \
 	    (void *)m, __FILE__, __LINE__));
 
-#define	vm_page_busy_assert_unlocked(m)					\
-	KASSERT(!vm_page_busy_locked(m),				\
-	    ("vm_page_busy_assert_wlocked: page %p busy @ %s:%d",	\
+#define	vm_page_assert_unbusied(m)					\
+	KASSERT(!vm_page_busied(m),					\
+	    ("vm_page_assert_unbusied: page %p busy @ %s:%d",		\
 	    (void *)m, __FILE__, __LINE__));
 
-#define	vm_page_busy_assert_wlocked(m)					\
-	KASSERT(vm_page_busy_wlocked(m),				\
-	    ("vm_page_busy_assert_wlocked: page %p not write busy @ %s:%d", \
+#define	vm_page_assert_xbusied(m)					\
+	KASSERT(vm_page_xbusied(m),					\
+	    ("vm_page_assert_xbusied: page %p not exclusive busy @ %s:%d", \
 	    (void *)m, __FILE__, __LINE__));
 
-#define	vm_page_busy_locked(m)						\
-	((m)->busy_lock != VPB_UNLOCKED)
+#define	vm_page_busied(m)						\
+	((m)->busy_lock != VPB_UNBUSIED)
 
-#define	vm_page_busy_rlock(m) do {					\
-	if (!vm_page_busy_tryrlock(m))					\
-		panic("%s: page %p failed read busing", __func__, m);	\
+#define	vm_page_sbusy(m) do {						\
+	if (!vm_page_trysbusy(m))					\
+		panic("%s: page %p failed shared busing", __func__, m);	\
 } while (0)
 
-#define	vm_page_busy_trywlock(m)					\
-	(atomic_cmpset_acq_int(&m->busy_lock, VPB_UNLOCKED, VPB_SINGLE_WRITER))
+#define	vm_page_tryxbusy(m)						\
+	(atomic_cmpset_acq_int(&m->busy_lock, VPB_UNBUSIED,		\
+	    VPB_SINGLE_EXCLUSIVER))
 
-#define	vm_page_busy_wlock(m) do {					\
-	if (!vm_page_busy_trywlock(m))					\
-		panic("%s: page %p failed write busing", __func__, m);	\
+#define	vm_page_xbusied(m)						\
+	((m->busy_lock & VPB_SINGLE_EXCLUSIVER) != 0)
+
+#define	vm_page_xbusy(m) do {						\
+	if (!vm_page_tryxbusy(m))					\
+		panic("%s: page %p failed exclusive busing", __func__,	\
+		    m);							\
 } while (0)
 
-#define	vm_page_busy_wlocked(m)						\
-	((m->busy_lock & VPB_SINGLE_WRITER) != 0)
-
-#define	vm_page_busy_wunlock(m)	do {					\
-	if (!atomic_cmpset_rel_int(&(m)->busy_lock, VPB_SINGLE_WRITER,	\
-	    VPB_UNLOCKED))						\
-		vm_page_busy_wunlock_hard(m);				\
+#define	vm_page_xunbusy(m) do {						\
+	if (!atomic_cmpset_rel_int(&(m)->busy_lock,			\
+	    VPB_SINGLE_EXCLUSIVER, VPB_UNBUSIED))			\
+		vm_page_xunbusy_hard(m);				\
 } while (0)
 
 #ifdef INVARIANTS
@@ -552,11 +584,11 @@ vm_page_aflag_set(vm_page_t m, uint8_t bits)
 
 	/*
 	 * The PGA_WRITEABLE flag can only be set if the page is managed and
-	 * write busied.  Currently, this flag is only set by pmap_enter().
+	 * exclusive busied.  Currently, this flag is only set by pmap_enter().
 	 */
 	KASSERT((bits & PGA_WRITEABLE) == 0 ||
-	    (m->oflags & VPO_UNMANAGED) == 0 || vm_page_busy_wlocked(m),
-	    ("vm_page_aflag_set: PGA_WRITEABLE and now write busy"));
+	    ((m->oflags & VPO_UNMANAGED) == 0 && vm_page_xbusied(m)),
+	    ("vm_page_aflag_set: PGA_WRITEABLE and not exclusive busy"));
 
 	/*
 	 * Access the whole 32-bit word containing the aflags field with an

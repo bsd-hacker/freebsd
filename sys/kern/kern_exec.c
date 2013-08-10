@@ -946,7 +946,7 @@ exec_map_first_page(imgp)
 			if ((ma[i] = vm_page_next(ma[i - 1])) != NULL) {
 				if (ma[i]->valid)
 					break;
-				if (vm_page_busy_trywlock(ma[i]))
+				if (vm_page_tryxbusy(ma[i]))
 					break;
 			} else {
 				ma[i] = vm_page_alloc(object, i,
@@ -968,9 +968,9 @@ exec_map_first_page(imgp)
 			return (EIO);
 		}
 	}
-	vm_page_busy_wunlock(ma[0]);
+	vm_page_xunbusy(ma[0]);
 	vm_page_lock(ma[0]);
-	vm_page_wire(ma[0]);
+	vm_page_hold(ma[0]);
 	vm_page_unlock(ma[0]);
 	VM_OBJECT_WUNLOCK(object);
 
@@ -991,7 +991,7 @@ exec_unmap_first_page(imgp)
 		sf_buf_free(imgp->firstpage);
 		imgp->firstpage = NULL;
 		vm_page_lock(m);
-		vm_page_unwire(m, 0);
+		vm_page_unhold(m);
 		vm_page_unlock(m);
 	}
 }
@@ -1189,7 +1189,7 @@ int
 exec_alloc_args(struct image_args *args)
 {
 
-	args->buf = (char *)kmem_alloc_wait(exec_map, PATH_MAX + ARG_MAX);
+	args->buf = (char *)kmap_alloc_wait(exec_map, PATH_MAX + ARG_MAX);
 	return (args->buf != NULL ? 0 : ENOMEM);
 }
 
@@ -1198,7 +1198,7 @@ exec_free_args(struct image_args *args)
 {
 
 	if (args->buf != NULL) {
-		kmem_free_wakeup(exec_map, (vm_offset_t)args->buf,
+		kmap_free_wakeup(exec_map, (vm_offset_t)args->buf,
 		    PATH_MAX + ARG_MAX);
 		args->buf = NULL;
 	}

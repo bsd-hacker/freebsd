@@ -67,6 +67,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/racct.h>
@@ -76,6 +77,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sf_buf.h>
 #include <sys/shm.h>
 #include <sys/vmmeter.h>
+#include <sys/vmem.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
 #include <sys/_kstack_cache.h>
@@ -223,7 +225,7 @@ vsunlock(void *addr, size_t len)
  * Return the pinned page if successful; otherwise, return NULL.
  */
 static vm_page_t
-vm_imgact_page_iostart(vm_object_t object, vm_ooffset_t offset)
+vm_imgact_hold_page(vm_object_t object, vm_ooffset_t offset)
 {
 	vm_page_t m, ma[1];
 	vm_pindex_t pindex;
@@ -255,7 +257,10 @@ retry:
 			goto out;
 		}
 	}
-	vm_page_busy_downgrade(m);
+	vm_page_xunbusy(m);
+	vm_page_lock(m);
+	vm_page_hold(m);
+	vm_page_unlock(m);
 out:
 	if (VM_OBJECT_WOWNED(object))
 		VM_OBJECT_WUNLOCK(object);
@@ -273,7 +278,7 @@ vm_imgact_map_page(vm_object_t object, vm_ooffset_t offset)
 {
 	vm_page_t m;
 
-	m = vm_imgact_page_iostart(object, offset);
+	m = vm_imgact_hold_page(object, offset);
 	if (m == NULL)
 		return (NULL);
 	sched_pin();
@@ -284,16 +289,16 @@ vm_imgact_map_page(vm_object_t object, vm_ooffset_t offset)
  * Destroy the given CPU private mapping and unpin the page that it mapped.
  */
 void
-vm_imgact_unmap_page(vm_object_t object, struct sf_buf *sf)
+vm_imgact_unmap_page(struct sf_buf *sf)
 {
 	vm_page_t m;
 
 	m = sf_buf_page(sf);
 	sf_buf_free(sf);
 	sched_unpin();
-	VM_OBJECT_RLOCK(object);
-	vm_page_busy_runlock(m);
-	VM_OBJECT_RUNLOCK(object);
+	vm_page_lock(m);
+	vm_page_unhold(m);
+	vm_page_unlock(m);
 }
 
 void
@@ -366,11 +371,13 @@ vm_thread_new(struct thread *td, int pages)
 	 * We need to align the kstack's mapped address to fit within
 	 * a single TLB entry.
 	 */
-	ks = kmem_alloc_nofault_space(kernel_map,
-	    (pages + KSTACK_GUARD_PAGES) * PAGE_SIZE, VMFS_TLB_ALIGNED_SPACE);
+	if (vmem_xalloc(kernel_arena, (pages + KSTACK_GUARD_PAGES) * PAGE_SIZE,
+	    PAGE_SIZE * 2, 0, 0, VMEM_ADDR_MIN, VMEM_ADDR_MAX,
+	    M_BESTFIT | M_NOWAIT, &ks)) {
+		ks = 0;
+	}
 #else
-	ks = kmem_alloc_nofault(kernel_map,
-	   (pages + KSTACK_GUARD_PAGES) * PAGE_SIZE);
+	ks = kva_alloc((pages + KSTACK_GUARD_PAGES) * PAGE_SIZE);
 #endif
 	if (ks == 0) {
 		printf("vm_thread_new: kstack allocation failed\n");
@@ -429,7 +436,7 @@ vm_thread_stack_dispose(vm_object_t ksobj, vm_offset_t ks, int pages)
 	}
 	VM_OBJECT_WUNLOCK(ksobj);
 	vm_object_deallocate(ksobj);
-	kmem_free(kernel_map, ks - (KSTACK_GUARD_PAGES * PAGE_SIZE),
+	kva_free(ks - (KSTACK_GUARD_PAGES * PAGE_SIZE),
 	    (pages + KSTACK_GUARD_PAGES) * PAGE_SIZE);
 }
 
@@ -536,11 +543,11 @@ vm_thread_swapin(struct thread *td)
 		    VM_ALLOC_WIRED);
 	for (i = 0; i < pages; i++) {
 		if (ma[i]->valid != VM_PAGE_BITS_ALL) {
-			vm_page_busy_assert_wlocked(ma[i]);
+			vm_page_assert_xbusied(ma[i]);
 			vm_object_pip_add(ksobj, 1);
 			for (j = i + 1; j < pages; j++) {
 				if (ma[j]->valid != VM_PAGE_BITS_ALL)
-					vm_page_busy_assert_wlocked(ma[j]);
+					vm_page_assert_xbusied(ma[j]);
 				if (ma[j]->valid == VM_PAGE_BITS_ALL)
 					break;
 			}
@@ -551,9 +558,9 @@ vm_thread_swapin(struct thread *td)
 			vm_object_pip_wakeup(ksobj);
 			for (k = i; k < j; k++)
 				ma[k] = vm_page_lookup(ksobj, k);
-			vm_page_busy_wunlock(ma[i]);
-		} else if (vm_page_busy_wlocked(ma[i]))
-			vm_page_busy_wunlock(ma[i]);
+			vm_page_xunbusy(ma[i]);
+		} else if (vm_page_xbusied(ma[i]))
+			vm_page_xunbusy(ma[i]);
 	}
 	VM_OBJECT_WUNLOCK(ksobj);
 	pmap_qenter(td->td_kstack, ma, pages);
