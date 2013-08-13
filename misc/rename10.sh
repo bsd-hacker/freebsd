@@ -32,7 +32,7 @@
 
 # Regression test for rename(2) problem with missing reference release of
 # a busy "to" vnode, resulting in a leak.
-# Fixed in r253998l
+# Fixed in r253998.
 
 . ../default.cfg
 
@@ -42,9 +42,6 @@ sed '1,/^EOF/d' < $here/$0 > rename10.c
 cc -o rename10 -Wall -Wextra -g -O2 rename10.c || exit 1
 rm -f rename10.c
 cd $here
-
-mount | grep $mntpoint | grep -q tmpfs && umount -f $mntpoint
-mount -t tmpfs tmpfs $mntpoint
 
 mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
