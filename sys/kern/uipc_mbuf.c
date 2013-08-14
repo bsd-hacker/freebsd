@@ -273,7 +273,7 @@ m_extadd(struct mbuf *mb, caddr_t buf, u_int size,
 
 /*
  * Non-directly-exported function to clean up after mbufs with M_EXT
- * storage attached to them if the reference count hits 1.
+ * storage attached to them if the reference count hits 0.
  */
 void
 mb_free_ext(struct mbuf *m)
@@ -290,8 +290,7 @@ mb_free_ext(struct mbuf *m)
 	skipmbuf = (m->m_flags & M_NOFREE);
 	
 	/* Free attached storage if this mbuf is the only reference to it. */
-	if (*(m->m_ext.ref_cnt) == 1 ||
-	    atomic_fetchadd_int(m->m_ext.ref_cnt, -1) == 1) {
+	if (atomic_fetchadd_int(m->m_ext.ref_cnt, -1) == 1) {
 		switch (m->m_ext.ext_type) {
 		case EXT_PACKET:	/* The packet zone is special. */
 			if (*(m->m_ext.ref_cnt) == 0)
@@ -358,10 +357,7 @@ mb_dupcl(struct mbuf *n, struct mbuf *m)
 	KASSERT(m->m_ext.ref_cnt != NULL, ("%s: ref_cnt not set", __func__));
 	KASSERT((n->m_flags & M_EXT) == 0, ("%s: M_EXT set", __func__));
 
-	if (*(m->m_ext.ref_cnt) == 1)
-		*(m->m_ext.ref_cnt) += 1;
-	else
-		atomic_add_int(m->m_ext.ref_cnt, 1);
+	atomic_add_int(m->m_ext.ref_cnt, 1);
 	n->m_ext.ext_buf = m->m_ext.ext_buf;
 	n->m_ext.ext_free = m->m_ext.ext_free;
 	n->m_ext.ext_arg1 = m->m_ext.ext_arg1;
