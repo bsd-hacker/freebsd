@@ -527,8 +527,6 @@ mb_dtor_pack(void *mem, int size, void *arg)
 static int
 mb_ctor_clust(void *mem, int size, void *arg, int how)
 {
-	struct mbuf *m;
-	u_int *refcnt;
 	int type;
 	uma_zone_t zone;
 
@@ -559,10 +557,11 @@ mb_ctor_clust(void *mem, int size, void *arg, int how)
 		break;
 	}
 
-	m = (struct mbuf *)arg;
-	refcnt = uma_find_refcnt(zone, mem);
-	*refcnt = 1;
-	if (m != NULL) {
+	if (arg != NULL) {
+		struct mbuf *m = arg;
+		u_int *refcnt = uma_find_refcnt(zone, mem);
+
+		*refcnt = 1;
 		m->m_ext.ext_buf = (caddr_t)mem;
 		m->m_data = m->m_ext.ext_buf;
 		m->m_flags |= M_EXT;
@@ -572,6 +571,10 @@ mb_ctor_clust(void *mem, int size, void *arg, int how)
 		m->m_ext.ext_size = size;
 		m->m_ext.ext_type = type;
 		m->m_ext.ref_cnt = refcnt;
+	} else {
+#ifdef INVARIANTS
+		*uma_find_refcnt(zone, mem) = 0;
+#endif
 	}
 
 	return (0);
