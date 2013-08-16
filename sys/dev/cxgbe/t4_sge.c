@@ -819,7 +819,7 @@ t4_setup_port_queues(struct port_info *pi)
 	struct ifnet *ifp = pi->ifp;
 	struct sysctl_oid *oid = device_get_sysctl_tree(pi->dev);
 	struct sysctl_oid_list *children = SYSCTL_CHILDREN(oid);
-	int bufsize;
+	int bufsize, pack;
 
 	oid = SYSCTL_ADD_NODE(&pi->ctx, children, OID_AUTO, "rxq", CTLFLAG_RD,
 	    NULL, "rx queues");
@@ -841,6 +841,12 @@ t4_setup_port_queues(struct port_info *pi)
 	 * b) allocate queue iff it will take direct interrupts.
 	 */
 	bufsize = mtu_to_bufsize(ifp->if_mtu);
+	if (sc->flags & BUF_PACKING_OK &&
+	    ((is_t5(sc) && buffer_packing) ||	/* 1 or -1 both ok for T5 */
+	    (is_t4(sc) && buffer_packing == 1)))
+		pack = 1;
+	else
+		pack = 0;
 	for_each_rxq(pi, i, rxq) {
 
 		init_iq(&rxq->iq, sc, pi->tmr_idx, pi->pktc_idx, pi->qsize_rxq,
@@ -848,7 +854,7 @@ t4_setup_port_queues(struct port_info *pi)
 
 		snprintf(name, sizeof(name), "%s rxq%d-fl",
 		    device_get_nameunit(pi->dev), i);
-		init_fl(sc, &rxq->fl, pi->qsize_rxq / 8, bufsize, 0, name);
+		init_fl(sc, &rxq->fl, pi->qsize_rxq / 8, bufsize, pack, name);
 
 		if (sc->flags & INTR_DIRECT
 #ifdef TCP_OFFLOAD
@@ -865,6 +871,7 @@ t4_setup_port_queues(struct port_info *pi)
 
 #ifdef TCP_OFFLOAD
 	bufsize = mtu_to_bufsize_toe(sc, ifp->if_mtu);
+	pack = 0;	/* XXX: think about this some more */
 	for_each_ofld_rxq(pi, i, ofld_rxq) {
 
 		init_iq(&ofld_rxq->iq, sc, pi->tmr_idx, pi->pktc_idx,
@@ -872,7 +879,8 @@ t4_setup_port_queues(struct port_info *pi)
 
 		snprintf(name, sizeof(name), "%s ofld_rxq%d-fl",
 		    device_get_nameunit(pi->dev), i);
-		init_fl(sc, &ofld_rxq->fl, pi->qsize_rxq / 8, bufsize, 0, name);
+		init_fl(sc, &ofld_rxq->fl, pi->qsize_rxq / 8, bufsize, pack,
+		    name);
 
 		if (sc->flags & INTR_DIRECT ||
 		    (sc->intr_count > 1 && pi->nofldrxq > pi->nrxq)) {
