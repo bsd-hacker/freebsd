@@ -30,7 +30,7 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-# Cache inconsistancy seen on "to" file for rename(2).
+# Cache inconsistency seen on "to" file for rename(2).
 
 # Scenario by jhb@
 
@@ -65,7 +65,8 @@ if mount | grep -q md${mdstart}$part; then
         exit 1
 fi
 
-mdconfig -d -u $mdstart
+mdconfig -l | grep -q md$mdstart &&
+	mdconfig -d -u $mdstart
 rm -f /tmp/rename8
 exit
 EOF
