@@ -25,7 +25,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $Id: crossmp.sh,v 1.2 2008/02/25 16:31:43 pho Exp $
+# $FreeBSD$
 #
 
 # panic: vfs_mount_destroy: nonzero writeopcount, seen.
@@ -35,20 +35,11 @@
 . ../default.cfg
 
 mounts=15		# Number of parallel scripts
-mdstart=$MDSTART	# Use md unit numbers from this point
-D=$DISKIMAGE
 
 if [ $# -eq 0 ]; then
-	for i in `jot $mounts`; do
-		m=$(( i + mdstart - 1 ))
-		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
-		mount | grep "$mntpoint" | grep -q md$m && umount ${mntpoint}$m
-	done
-
 	# start the parallel tests
 	for i in `jot $mounts`; do
-		m=$(( i + mdstart - 1 ))
-		./$0 $m &
+		./$0 $i &
 		./$0 find &
 	done
 
@@ -70,7 +61,6 @@ else
 			mount -t tmpfs tmpfs ${mntpoint}$m
 			cp -r /usr/include/machine/a* ${mntpoint}$m
 			while mount | grep -qw $mntpoint$m; do
-				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f")
 				umount $opt ${mntpoint}$m > /dev/null 2>&1
 			done
 		done
