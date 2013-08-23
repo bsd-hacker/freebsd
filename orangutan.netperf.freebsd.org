@@ -8,10 +8,10 @@ INODES=`df -ik $RUNDIR | tail -1 | awk '{print  $7}`
 
 BLASTHOST=127.0.0.1
 
-DISKIMAGE=/m2/diskimage # Location of 1G disk image
-MNTPOINT=/m2            # Disk image mount point
-TESTUSER=test           # Name of non root test user
-MDSTART=5               # Start of free md units
+diskimage=/m2/diskimage # Location of 1G disk image
+mntpoint=/m2            # Disk image mount point
+testuser=test           # Name of non root test user
+mdstart=5               # Start of free md units
 
 TZ=Europe/Copenhagen; export TZ
 SHELL=/bin/sh

@@ -4,10 +4,10 @@
 
 export BLASTHOST=192.168.5.105	# orangutan
 
-export DISKIMAGE=/var/tmp/diskimage	# Location of 1G disk image
-export MNTPOINT=/mnt		# Disk image mount point
-export TESTUSER=test		# Name of non root test user
-export MDSTART=5		# Start of free md units
+export diskimage=/var/tmp/diskimage	# Location of 1G disk image
+export mntpoint=/mnt		# Disk image mount point
+export testuser=test		# Name of non root test user
+export mdstart=5		# Start of free md units
 export INCARNATIONS=20
 export swapINCARNATIONS=64
 export testuser=test		# Name of non root test user
