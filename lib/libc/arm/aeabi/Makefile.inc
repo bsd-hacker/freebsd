@@ -3,9 +3,13 @@
 .PATH: ${.CURDIR}/arm/aeabi
 
 SRCS+=	aeabi_atexit.c		\
-	aeabi_double.c		\
-	aeabi_float.c		\
-	aeabi_unwind_cpp.c
+	aeabi_unwind_cpp.c	\
+	aeabi_vfp_double.S	\
+	aeabi_vfp_float.S
+.if ${MACHINE_ARCH} != "armv6hf"
+SRCS+=	aeabi_double.c		\
+	aeabi_float.c
+.endif
 
 # Add the aeabi_mem* functions. While they live in compiler-rt they call into
 # libc. This causes issues when other parts of libc call these functions.

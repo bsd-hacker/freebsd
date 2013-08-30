@@ -30,15 +30,17 @@ __FBSDID("$FreeBSD$");
 #include <fenv.h>
 #include <float.h>
 
+#ifndef __ARM_PCS_VFP
 #include "softfloat-for-gcc.h"
 #include "milieu.h"
 #include "softfloat.h"
+#endif
 
 int
 __flt_rounds(void)
 {
 
-#ifndef ARM_HARD_FLOAT
+#ifndef __ARM_PCS_VFP
 	/*
 	 * Translate our rounding modes to the unnamed
 	 * manifest constants required by C99 et. al.
