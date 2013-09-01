@@ -1727,14 +1727,14 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				error = EINVAL;
 				break;
 			}
-			KASSERT(ifp->if_get_rxqueue_len, ("ifp->if_get_rxqueue_len not set\n"));
-			KASSERT(ifp->if_get_txqueue_len, ("ifp->if_get_rxqueue_len not set\n"));
+			KASSERT(ifp->if_get_num_rxqueue, ("ifp->if_get_num_rxqueue not set\n"));
+			KASSERT(ifp->if_get_num_txqueue, ("ifp->if_get_num_rxqueue not set\n"));
 			d->bd_qmask.qm_enabled = TRUE;
 			d->bd_qmask.qm_rxq_mask =
-				malloc(ifp->if_get_rxqueue_len(ifp) * sizeof(boolean_t), M_BPF, 
+				malloc(ifp->if_get_num_rxqueue(ifp) * sizeof(boolean_t), M_BPF, 
 					M_WAITOK | M_ZERO);
 			d->bd_qmask.qm_txq_mask =
-				malloc(ifp->if_get_txqueue_len(ifp) * sizeof(boolean_t), M_BPF, 
+				malloc(ifp->if_get_num_txqueue(ifp) * sizeof(boolean_t), M_BPF, 
 					M_WAITOK | M_ZERO);
 			d->bd_qmask.qm_other_mask = FALSE;
 			BPFQ_WUNLOCK(&d->bd_qmask);
@@ -1784,7 +1784,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			}
 			ifp = d->bd_bif->bif_ifp;
 			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_rxqueue_len(ifp)) {
+			if (index > ifp->if_get_num_rxqueue(ifp)) {
 				BPFQ_WUNLOCK(&d->bd_qmask);
 				error = EINVAL;
 				break;
@@ -1814,7 +1814,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			}
 			ifp = d->bd_bif->bif_ifp;
 			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_rxqueue_len(ifp)) {
+			if (index > ifp->if_get_num_rxqueue(ifp)) {
 				BPFQ_WUNLOCK(&d->bd_qmask);
 				error = EINVAL;
 				break;
@@ -1844,7 +1844,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			}
 			ifp = d->bd_bif->bif_ifp;
 			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_rxqueue_len(ifp)) {
+			if (index > ifp->if_get_num_rxqueue(ifp)) {
 				BPFQ_WUNLOCK(&d->bd_qmask);
 				error = EINVAL;
 				break;
@@ -1875,7 +1875,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 			ifp = d->bd_bif->bif_ifp;
 			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_txqueue_len(ifp)) {
+			if (index > ifp->if_get_num_txqueue(ifp)) {
 				BPFQ_WUNLOCK(&d->bd_qmask);
 				error = EINVAL;
 				break;
@@ -1906,7 +1906,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 			ifp = d->bd_bif->bif_ifp;
 			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_txqueue_len(ifp)) {
+			if (index > ifp->if_get_num_txqueue(ifp)) {
 				BPFQ_WUNLOCK(&d->bd_qmask);
 				error = EINVAL;
 				break;
@@ -1936,7 +1936,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			}
 			ifp = d->bd_bif->bif_ifp;
 			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_txqueue_len(ifp)) {
+			if (index > ifp->if_get_num_txqueue(ifp)) {
 				BPFQ_WUNLOCK(&d->bd_qmask);
 				error = EINVAL;
 				break;
@@ -2402,7 +2402,7 @@ bpf_mtap(struct bpf_if *bp, struct mbuf *m)
  			} else {
  				struct ifnet *ifp = bp->bif_ifp;
  				if (m->m_pkthdr.rxqueue != (uint32_t)-1) {
- 					if (m->m_pkthdr.rxqueue >= ifp->if_get_rxqueue_len(ifp)) {
+ 					if (m->m_pkthdr.rxqueue >= ifp->if_get_num_rxqueue(ifp)) {
  						BPFQ_RUNLOCK(&d->bd_qmask);
  						BPFIF_RUNLOCK(bp);
  						return;
@@ -2413,7 +2413,7 @@ bpf_mtap(struct bpf_if *bp, struct mbuf *m)
  					}
  				}
  				if (m->m_pkthdr.txqueue != (uint32_t)-1) {
- 					if (m->m_pkthdr.txqueue >= ifp->if_get_txqueue_len(ifp)) {
+ 					if (m->m_pkthdr.txqueue >= ifp->if_get_num_txqueue(ifp)) {
  						BPFQ_RUNLOCK(&d->bd_qmask);
  						BPFIF_RUNLOCK(bp);
  						return;
@@ -2501,7 +2501,7 @@ bpf_mtap2(struct bpf_if *bp, void *data, u_int dlen, struct mbuf *m)
  			} else {
  				struct ifnet *ifp = bp->bif_ifp;
  				if (m->m_pkthdr.rxqueue != (uint32_t)-1) {
- 					if (m->m_pkthdr.rxqueue >= ifp->if_get_rxqueue_len(ifp)) {
+ 					if (m->m_pkthdr.rxqueue >= ifp->if_get_num_rxqueue(ifp)) {
  						BPFQ_RUNLOCK(&d->bd_qmask);
  						BPFIF_RUNLOCK(bp);
  						return;
@@ -2512,7 +2512,7 @@ bpf_mtap2(struct bpf_if *bp, void *data, u_int dlen, struct mbuf *m)
  					}
  				}
  				if (m->m_pkthdr.txqueue != (uint32_t)-1) {
- 					if (m->m_pkthdr.txqueue >= ifp->if_get_txqueue_len(ifp)) {
+ 					if (m->m_pkthdr.txqueue >= ifp->if_get_num_txqueue(ifp)) {
  						BPFQ_RUNLOCK(&d->bd_qmask);
  						BPFIF_RUNLOCK(bp);
  						return;

@@ -278,8 +278,8 @@ static int	igb_set_flowcntl(SYSCTL_HANDLER_ARGS);
 static int	igb_sysctl_dmac(SYSCTL_HANDLER_ARGS);
 static int	igb_sysctl_eee(SYSCTL_HANDLER_ARGS);
 
-static int	igb_get_rxqueue_len(struct ifnet *);
-static int	igb_get_txqueue_len(struct ifnet *);
+static int	igb_get_num_rxqueue(struct ifnet *);
+static int	igb_get_num_txqueue(struct ifnet *);
 static int	igb_get_rxqueue_affinity(struct ifnet *, int);
 static int	igb_get_txqueue_affinity(struct ifnet *, int);
 
@@ -3122,8 +3122,8 @@ igb_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_softc = adapter;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = igb_ioctl;
- 	ifp->if_get_rxqueue_len = igb_get_rxqueue_len;
- 	ifp->if_get_txqueue_len = igb_get_txqueue_len;
+ 	ifp->if_get_num_rxqueue = igb_get_num_rxqueue;
+ 	ifp->if_get_num_txqueue = igb_get_num_txqueue;
  	ifp->if_get_rxqueue_affinity = igb_get_rxqueue_affinity;
  	ifp->if_get_txqueue_affinity = igb_get_txqueue_affinity;
 #ifndef IGB_LEGACY_TX
@@ -6067,14 +6067,14 @@ igb_sysctl_eee(SYSCTL_HANDLER_ARGS)
 }
 
 static int
-igb_get_rxqueue_len(struct ifnet *ifp)
+igb_get_num_rxqueue(struct ifnet *ifp)
 {
 	struct adapter	*adapter = ifp->if_softc;
 	return (adapter->num_queues);
 }
 
 static int
-igb_get_txqueue_len(struct ifnet *ifp)
+igb_get_num_txqueue(struct ifnet *ifp)
 {
 	struct adapter	*adapter = ifp->if_softc;
 	return (adapter->num_queues);

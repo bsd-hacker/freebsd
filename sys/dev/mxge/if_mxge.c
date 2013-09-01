@@ -120,8 +120,8 @@ static int mxge_detach(device_t dev);
 static int mxge_shutdown(device_t dev);
 static void mxge_intr(void *arg);
 
-static int mxge_get_rxqueue_len(struct ifnet *);
-static int mxge_get_txqueue_len(struct ifnet *);
+static int mxge_get_num_rxqueue(struct ifnet *);
+static int mxge_get_num_txqueue(struct ifnet *);
 static int mxge_get_rxqueue_affinity(struct ifnet *, int);
 static int mxge_get_txqueue_affinity(struct ifnet *, int);
 
@@ -4943,8 +4943,8 @@ mxge_attach(device_t dev)
         ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
         ifp->if_ioctl = mxge_ioctl;
         ifp->if_start = mxge_start;
-	ifp->if_get_rxqueue_len = mxge_get_rxqueue_len;
-	ifp->if_get_txqueue_len = mxge_get_txqueue_len;
+	ifp->if_get_num_rxqueue = mxge_get_num_rxqueue;
+	ifp->if_get_num_txqueue = mxge_get_num_txqueue;
 	ifp->if_get_rxqueue_affinity = mxge_get_rxqueue_affinity;
 	ifp->if_get_txqueue_affinity = mxge_get_txqueue_affinity;
 
@@ -5046,14 +5046,14 @@ mxge_shutdown(device_t dev)
 
 
 static int
-mxge_get_rxqueue_len(struct ifnet *ifp)
+mxge_get_num_rxqueue(struct ifnet *ifp)
 {
 	mxge_softc_t *sc = ifp->if_softc;
 	return (sc->num_slices);
 }
 
 static int
-mxge_get_txqueue_len(struct ifnet *ifp)
+mxge_get_num_txqueue(struct ifnet *ifp)
 {
 	mxge_softc_t *sc = ifp->if_softc;
 	return (sc->num_slices);

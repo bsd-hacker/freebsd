@@ -176,9 +176,9 @@ struct ifnet {
 		(struct ifnet *, struct mbuf *);
 	void	(*if_reassign)		/* reassign to vnet routine */
 		(struct ifnet *, struct vnet *, char *);
-	int	(*if_get_rxqueue_len)
+	int	(*if_get_num_rxqueue)
 		(struct ifnet *);
-	int	(*if_get_txqueue_len)
+	int	(*if_get_num_txqueue)
 		(struct ifnet *);
 	int	(*if_get_rxqueue_affinity)
 		(struct ifnet *, int);

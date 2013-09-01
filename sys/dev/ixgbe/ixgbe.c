@@ -210,8 +210,8 @@ static void	ixgbe_reinit_fdir(void *, int);
 /* Missing shared code prototype */
 extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
-static int	ixgbe_get_rxqueue_len(struct ifnet *);
-static int	ixgbe_get_txqueue_len(struct ifnet *);
+static int	ixgbe_get_num_rxqueue(struct ifnet *);
+static int	ixgbe_get_num_txqueue(struct ifnet *);
 static int	ixgbe_get_rxqueue_affinity(struct ifnet *, int);
 static int	ixgbe_get_txqueue_affinity(struct ifnet *, int);
 
@@ -2632,8 +2632,8 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_softc = adapter;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = ixgbe_ioctl;
- 	ifp->if_get_rxqueue_len = ixgbe_get_rxqueue_len;
- 	ifp->if_get_txqueue_len = ixgbe_get_txqueue_len;
+ 	ifp->if_get_num_rxqueue = ixgbe_get_num_rxqueue;
+ 	ifp->if_get_num_txqueue = ixgbe_get_num_txqueue;
  	ifp->if_get_rxqueue_affinity = ixgbe_get_rxqueue_affinity;
  	ifp->if_get_txqueue_affinity = ixgbe_get_txqueue_affinity;
 #ifndef IXGBE_LEGACY_TX
@@ -5765,14 +5765,14 @@ ixgbe_set_advertise(SYSCTL_HANDLER_ARGS)
 }
 
 static int
-ixgbe_get_rxqueue_len(struct ifnet *ifp)
+ixgbe_get_num_rxqueue(struct ifnet *ifp)
 {
 	struct adapter	*adapter = ifp->if_softc;
 	return (adapter->num_queues);
 }
 
 static int
-ixgbe_get_txqueue_len(struct ifnet *ifp)
+ixgbe_get_num_txqueue(struct ifnet *ifp)
 {
 	struct adapter	*adapter = ifp->if_softc;
 	return (adapter->num_queues);

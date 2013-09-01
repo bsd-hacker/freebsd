@@ -985,16 +985,16 @@ status(const struct afswtch *afp, const struct sockaddr_dl *sdl,
 	}
 
 	if ((ifr.ifr_reqcap & IFCAP_MULTIQUEUE)) {
-		int i, rxqlen = 0, txqlen = 0;
+		int i, numrxq = 0, numtxq = 0;
 
 		if (ioctl(s, SIOCGIFQLEN, &ifr) == 0) {
-			rxqlen = ifr.ifr_rxqueue_len;
-			txqlen = ifr.ifr_txqueue_len;
+			numrxq = ifr.ifr_num_rxqueue;
+			numtxq = ifr.ifr_num_txqueue;
 		}else
 			perror("ioctl");
 
-		printf("\trxqueue len=%d affinity=[", rxqlen);
-		for (i = 0; i < rxqlen; i++) {
+		printf("\tnumber of rxqueues=%d affinity=[", numrxq);
+		for (i = 0; i < numrxq; i++) {
 			ifr.ifr_queue_affinity_index = i;
 			if (ioctl(s, SIOCGIFRXQAFFINITY, &ifr) == 0)
 				printf(" %d:%d", ifr.ifr_queue_affinity_index,
@@ -1004,8 +1004,8 @@ status(const struct afswtch *afp, const struct sockaddr_dl *sdl,
 		}
 		printf(" ]\n");
 
-		printf("\ttxqueue len=%d affinity=[", txqlen);
-		for (i = 0; i < txqlen; i++) {
+		printf("\tnumber of txqueues=%d affinity=[", numtxq);
+		for (i = 0; i < numtxq; i++) {
 			ifr.ifr_queue_affinity_index = i;
 			if (ioctl(s, SIOCGIFTXQAFFINITY, &ifr) == 0)
 				printf(" %d:%d", ifr.ifr_queue_affinity_index,

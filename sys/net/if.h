@@ -386,7 +386,7 @@ struct	ifreq {
 		caddr_t	ifru_data;
 		int	ifru_cap[2];
 		u_int	ifru_fib;
-		int	ifru_queue_len[2];
+		int	ifru_num_queue[2];
 		int	ifru_queue_affinity[2];
 	} ifr_ifru;
 #define	ifr_addr	ifr_ifru.ifru_addr	/* address */
@@ -405,8 +405,8 @@ struct	ifreq {
 #define	ifr_curcap	ifr_ifru.ifru_cap[1]	/* current capabilities */
 #define	ifr_index	ifr_ifru.ifru_index	/* interface index */
 #define	ifr_fib		ifr_ifru.ifru_fib	/* interface fib */
-#define ifr_rxqueue_len	ifr_ifru.ifru_queue_len[0] /* rxqueue len */
-#define ifr_txqueue_len	ifr_ifru.ifru_queue_len[1] /* txqueue len */
+#define ifr_num_rxqueue	ifr_ifru.ifru_num_queue[0] /* rxqueue len */
+#define ifr_num_txqueue	ifr_ifru.ifru_num_queue[1] /* txqueue len */
 #define ifr_queue_affinity_index ifr_ifru.ifru_queue_affinity[0] /* queue id */
 #define ifr_queue_affinity_cpu ifr_ifru.ifru_queue_affinity[1] /* cpu id */
 

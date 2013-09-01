@@ -2431,10 +2431,10 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 	case SIOCGIFQLEN:
 		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
 			return (EOPNOTSUPP);
-		KASSERT(ifp->if_get_rxqueue_len, ("if_get_rxqueue_len not set"));
-		KASSERT(ifp->if_get_txqueue_len, ("if_get_txqueue_len not set"));
-		ifr->ifr_rxqueue_len = ifp->if_get_rxqueue_len(ifp);
-		ifr->ifr_txqueue_len = ifp->if_get_txqueue_len(ifp);
+		KASSERT(ifp->if_get_num_rxqueue, ("if_get_num_rxqueue not set"));
+		KASSERT(ifp->if_get_num_txqueue, ("if_get_num_txqueue not set"));
+		ifr->ifr_num_rxqueue = ifp->if_get_num_rxqueue(ifp);
+		ifr->ifr_num_txqueue = ifp->if_get_num_txqueue(ifp);
 		break;
 
 	case SIOCGIFRXQAFFINITY:

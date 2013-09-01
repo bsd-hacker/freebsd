@@ -120,9 +120,9 @@
 .Fa "struct ifnet *ifp" "struct sockaddr **retsa" "struct sockaddr *addr"
 .Fc
 .Ft int
-.Fn \*(lp*if_get_rxqueue_len\*(rp "struct ifnet *ifp"
+.Fn \*(lp*if_get_num_rxqueue\*(rp "struct ifnet *ifp"
 .Ft int
-.Fn \*(lp*if_get_txqueue_len\*(rp "struct ifnet *ifp"
+.Fn \*(lp*if_get_num_txqueue\*(rp "struct ifnet *ifp"
 .Ft int
 .Fn \*(lp*if_get_rxqueue_affinity\*(rp "struct ifnet *ifp" "int queid"
 .Ft int
@@ -545,9 +545,9 @@ for validity, and if necessary compute a link-layer group which
 corresponds to that address which is returned in
 .Fa *retsa .
 Returns zero on success, or an error code on failure.
-.It Fn if_get_rxqueue_len
+.It Fn if_get_num_rxqueue
 Get RX queue length, only required for multiqueue supported interfaces.
-.It Fn if_get_txqueue_len
+.It Fn if_get_num_txqueue
 Get TX queue length, only required for multiqueue supported interfaces.
 .It Fn if_get_rxqueue_affinity
 Get RX queue affinity, only required for multiqueue supported interfaces.
