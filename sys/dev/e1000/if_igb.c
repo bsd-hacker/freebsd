@@ -924,8 +924,9 @@ igb_start_locked(struct tx_ring *txr, struct ifnet *ifp)
 			break;
 		}
 
-		m_head->m_pkthdr.rxqueue = (uint32_t)-1;
-		m_head->m_pkthdr.txqueue = txr->me;
+		m_head->m_flags |= M_QUEUEID;
+		m_head->m_pkthdr.queueid = txr->me;
+		m_head->m_pkthdr.queuetype = QUEUETYPE_TX;
 
 		/* Send a copy of the frame to the BPF listener */
 		ETHER_BPF_MTAP(ifp, m_head);
@@ -1020,8 +1021,9 @@ igb_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr)
 		ifp->if_obytes += next->m_pkthdr.len;
 		if (next->m_flags & M_MCAST)
 			ifp->if_omcasts++;
-		next->m_pkthdr.rxqueue = (uint32_t)-1;
-		next->m_pkthdr.txqueue = txr->me;
+		next->m_flags |= M_QUEUEID;
+		next->m_pkthdr.queueid = txr->me;
+		next->m_pkthdr.queuetype = QUEUETYPE_TX;
 		ETHER_BPF_MTAP(ifp, next);
 		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
 			break;
@@ -4896,10 +4898,10 @@ igb_rxeof(struct igb_queue *que, int count, int *done)
 			}
 #ifndef IGB_LEGACY_TX
 			rxr->fmp->m_pkthdr.flowid = que->msix;
-			rxr->fmp->m_flags |= M_FLOWID;
+			rxr->fmp->m_flags |= (M_FLOWID | M_QUEUEID);
 #endif
-			rxr->fmp->m_pkthdr.rxqueue = que->msix;
-			rxr->fmp->m_pkthdr.txqueue = (uint32_t)-1;
+			rxr->fmp->m_pkthdr.queueid = que->msix;
+			rxr->fmp->m_pkthdr.queuetype = QUEUETYPE_TX;
 
 			sendmp = rxr->fmp;
 			/* Make sure to set M_PKTHDR. */

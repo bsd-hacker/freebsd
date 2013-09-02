@@ -43,21 +43,28 @@
 #include <sys/selinfo.h>
 #include <sys/queue.h>
 #include <sys/conf.h>
+#include <sys/cpuset.h>
 #include <net/if.h>
+
+typedef cpuset_t bpf_qmask_bits_t;
 
 struct bpf_qmask {
 	boolean_t	qm_enabled;
-	boolean_t *	qm_rxq_mask;
-	boolean_t *	qm_txq_mask;
-	boolean_t	qm_other_mask;
+	bpf_qmask_bits_t qm_rxqmask;
+	bpf_qmask_bits_t qm_txqmask;
+	boolean_t	qm_noqmask;
 	struct rwlock	qm_lock;
 };
 
-#define BPFQ_LOCK_DESTROY(qm)		rw_destroy(&(qm)->qm_lock)
-#define BPFQ_RLOCK(qm)			rw_rlock(&(qm)->qm_lock)
-#define BPFQ_RUNLOCK(qm)		rw_runlock(&(qm)->qm_lock)
-#define BPFQ_WLOCK(qm)			rw_wlock(&(qm)->qm_lock)
-#define BPFQ_WUNLOCK(qm)		rw_wunlock(&(qm)->qm_lock)
+#define BPFQ_LOCK_INIT(qm)	rw_init(&(qm)->qm_lock, "qmask lock")
+#define BPFQ_LOCK_DESTROY(qm)	rw_destroy(&(qm)->qm_lock)
+#define BPFQ_RLOCK(qm)		rw_rlock(&(qm)->qm_lock)
+#define BPFQ_RUNLOCK(qm)	rw_runlock(&(qm)->qm_lock)
+#define BPFQ_WLOCK(qm)		rw_wlock(&(qm)->qm_lock)
+#define BPFQ_WUNLOCK(qm)	rw_wunlock(&(qm)->qm_lock)
+#define BPFQ_ZERO		CPU_ZERO
+#define BPFQ_COPY		CPU_COPY
+#define BPFQ_ISSET		CPU_ISSET
 
 /*
  * Descriptor associated with each open bpf file.

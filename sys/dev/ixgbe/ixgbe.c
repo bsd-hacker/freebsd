@@ -760,8 +760,9 @@ ixgbe_start_locked(struct tx_ring *txr, struct ifnet * ifp)
 			break;
 		}
 
-		m_head->m_pkthdr.rxqueue = (uint32_t)-1;
-		m_head->m_pkthdr.txqueue = txr->me;
+		m_head->m_flags |= M_QUEUEID;
+		m_head->m_pkthdr.queueid = txr->me;
+		m_head->m_pkthdr.queuetype = QUEUETYPE_TX;
 
 		/* Send a copy of the frame to the BPF listener */
 		ETHER_BPF_MTAP(ifp, m_head);
@@ -862,8 +863,9 @@ ixgbe_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr)
 #endif
 		enqueued++;
  
- 		next->m_pkthdr.rxqueue = (uint32_t)-1;
- 		next->m_pkthdr.txqueue = txr->me;
+		next->m_flags |= M_QUEUEID;
+ 		next->m_pkthdr.queueid = txr->me;
+		next->m_pkthdr.queuetype = QUEUETYPE_TX;
 
 		/* Send a copy of the frame to the BPF listener */
 		ETHER_BPF_MTAP(ifp, next);
@@ -4564,10 +4566,10 @@ ixgbe_rxeof(struct ix_queue *que)
 				ixgbe_rx_checksum(staterr, sendmp, ptype);
 #if __FreeBSD_version >= 800000
 			sendmp->m_pkthdr.flowid = que->msix;
-			sendmp->m_flags |= M_FLOWID;
+			sendmp->m_flags |= (M_FLOWID | M_QUEUEID);
 #endif
-			sendmp->m_pkthdr.rxqueue = que->msix;
-			sendmp->m_pkthdr.txqueue = (uint32_t)-1;
+			sendmp->m_pkthdr.queueid = que->msix;
+			sendmp->m_pkthdr.queuetype = QUEUETYPE_RX;
 		}
 next_desc:
 		bus_dmamap_sync(rxr->rxdma.dma_tag, rxr->rxdma.dma_map,

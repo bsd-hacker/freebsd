@@ -110,6 +110,11 @@ struct m_tag {
 	void			(*m_tag_free)(struct m_tag *);
 };
 
+enum queuetype {
+	QUEUETYPE_RX,
+	QUEUETYPE_TX
+};
+
 /*
  * Record/packet header in first mbuf of chain; valid only if M_PKTHDR is set.
  */
@@ -121,8 +126,8 @@ struct pkthdr {
 	uint32_t	 flowid;	/* packet's 4-tuple system
 					 * flow identifier
 					 */
-	uint32_t	rxqueue;
-	uint32_t	txqueue;
+	u_int		 queueid;	/* hw queue id */
+	int		 queuetype;	/* hw queue type */
 	/* variables for hardware checksum */
 	int		 csum_flags;	/* flags regarding checksum */
 	int		 csum_data;	/* data field used by csum routines */
@@ -207,6 +212,7 @@ struct mbuf {
 #define	M_PROTO7	0x00100000 /* protocol-specific */
 #define	M_PROTO8	0x00200000 /* protocol-specific */
 #define	M_FLOWID	0x00400000 /* deprecated: flowid is valid */
+#define	M_QUEUEID	0x00800000 /* packet has hw queue id */
 #define	M_HASHTYPEBITS	0x0F000000 /* mask of bits holding flowid hash type */
 
 #define	M_NOTIFICATION	M_PROTO5    /* SCTP notification */

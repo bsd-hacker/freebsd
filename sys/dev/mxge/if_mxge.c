@@ -2277,8 +2277,9 @@ mxge_start_locked(struct mxge_slice_state *ss)
 		if (m == NULL) {
 			return;
 		}
-		m->m_pkthdr.rxqueue = (uint32_t)-1;
-		m->m_pkthdr.txqueue = (ss - sc->ss);
+		m->m_flags |= M_QUEUEID;
+		m->m_pkthdr.queueid = (ss - sc->ss);
+		m->m_pkthdr.queuetype = QUEUETYPE_TX;
 
 		/* let BPF see it */
 		BPF_MTAP(ifp, m);
@@ -2314,8 +2315,9 @@ mxge_transmit_locked(struct mxge_slice_state *ss, struct mbuf *m)
 
 	if (!drbr_needs_enqueue(ifp, tx->br) &&
 	    ((tx->mask - (tx->req - tx->done)) > tx->max_desc)) {
-		m->m_pkthdr.rxqueue = (uint32_t)-1;
-		m->m_pkthdr.txqueue = (ss - sc->ss);
+		m->m_flags |= M_QUEUEID;
+		m->m_pkthdr.queueid = (ss - sc->ss);
+		m->m_pkthdr.queuetype = QUEUETYPE_TX;
 
 		/* let BPF see it */
 		BPF_MTAP(ifp, m);
@@ -2729,9 +2731,9 @@ mxge_rx_done_big(struct mxge_slice_state *ss, uint32_t len,
 	/* flowid only valid if RSS hashing is enabled */
 	if (sc->num_slices > 1) {
 		m->m_pkthdr.flowid = (ss - sc->ss);
-		m->m_flags |= M_FLOWID;
-		m->m_pkthdr.rxqueue = (ss - sc->ss);
-		m->m_pkthdr.txqueue = (uint32_t)-1;
+		m->m_flags |= (M_FLOWID | M_QUEUEID);
+		m->m_pkthdr.queueid = (ss - sc->ss);
+		m->m_pkthdr.queuetype = QUEUETYPE_RX;
 	}
 	/* pass the frame up the stack */
 	(*ifp->if_input)(ifp, m);

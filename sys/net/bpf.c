@@ -820,10 +820,7 @@ bpfopen(struct cdev *dev, int flags, int fmt, struct thread *td)
 	bpf_buffer_ioctl_sblen(d, &size);
 
  	d->bd_qmask.qm_enabled = FALSE;
- 	d->bd_qmask.qm_rxq_mask = NULL;
- 	d->bd_qmask.qm_txq_mask = NULL;
- 	d->bd_qmask.qm_other_mask = FALSE;
- 	rw_init(&d->bd_qmask.qm_lock, "qmask lock");
+	BPFQ_LOCK_INIT(&d->bd_qmask);
 
 	return (0);
 }
@@ -1704,7 +1701,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		error = bpf_ioctl_rotzbuf(td, d, (struct bpf_zbuf *)addr);
 		break;
 
-	case BIOCENAQMASK:
+	case BIOCQMASKENABLE:
 		{
 			struct ifnet *ifp;
 
@@ -1727,21 +1724,15 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				error = EINVAL;
 				break;
 			}
-			KASSERT(ifp->if_get_num_rxqueue, ("ifp->if_get_num_rxqueue not set\n"));
-			KASSERT(ifp->if_get_num_txqueue, ("ifp->if_get_num_rxqueue not set\n"));
+			BPFQ_ZERO(&d->bd_qmask.qm_rxqmask);
+			BPFQ_ZERO(&d->bd_qmask.qm_txqmask);
+			d->bd_qmask.qm_noqmask = FALSE;
 			d->bd_qmask.qm_enabled = TRUE;
-			d->bd_qmask.qm_rxq_mask =
-				malloc(ifp->if_get_num_rxqueue(ifp) * sizeof(boolean_t), M_BPF, 
-					M_WAITOK | M_ZERO);
-			d->bd_qmask.qm_txq_mask =
-				malloc(ifp->if_get_num_txqueue(ifp) * sizeof(boolean_t), M_BPF, 
-					M_WAITOK | M_ZERO);
-			d->bd_qmask.qm_other_mask = FALSE;
 			BPFQ_WUNLOCK(&d->bd_qmask);
 			break;
 		}
 
-	case BIOCDISQMASK:
+	case BIOCQMASKDISABLE:
 		{
 			if (d->bd_bif == NULL) {
 				/*
@@ -1757,17 +1748,36 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				break;
 			}
 			d->bd_qmask.qm_enabled = FALSE;
-			
-			free(d->bd_qmask.qm_rxq_mask, M_BPF);
-			free(d->bd_qmask.qm_txq_mask, M_BPF);
 			BPFQ_WUNLOCK(&d->bd_qmask);
 			break;
 		}
 
-	case BIOCSTRXQMASK:
+	case BIOCGRXQMASK:
 		{
-			struct ifnet *ifp;
-			int index;
+			bpf_qmask_bits_t *qmask = (bpf_qmask_bits_t *)addr;
+
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			BPFQ_COPY(&d->bd_qmask.qm_rxqmask, qmask);
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+
+		}
+
+	case BIOCSRXQMASK:
+		{
+			bpf_qmask_bits_t *qmask = (bpf_qmask_bits_t *)addr;
 
 			if (d->bd_bif == NULL) {
 				/*
@@ -1782,22 +1792,14 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				error = EINVAL;
 				break;
 			}
-			ifp = d->bd_bif->bif_ifp;
-			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_num_rxqueue(ifp)) {
-				BPFQ_WUNLOCK(&d->bd_qmask);
-				error = EINVAL;
-				break;
-			}
-			d->bd_qmask.qm_rxq_mask[index] = TRUE;
+			BPFQ_COPY(qmask, &d->bd_qmask.qm_rxqmask);
 			BPFQ_WUNLOCK(&d->bd_qmask);
 			break;
 		}
 
-	case BIOCCRRXQMASK:
+	case BIOCGTXQMASK:
 		{
-			int index;
-			struct ifnet *ifp;
+			bpf_qmask_bits_t *qmask = (bpf_qmask_bits_t *)addr;
 
 			if (d->bd_bif == NULL) {
 				/*
@@ -1812,23 +1814,36 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				error = EINVAL;
 				break;
 			}
-			ifp = d->bd_bif->bif_ifp;
-			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_num_rxqueue(ifp)) {
-				BPFQ_WUNLOCK(&d->bd_qmask);
-				error = EINVAL;
-				break;
-			}
-			d->bd_qmask.qm_rxq_mask[index] = FALSE;
+			BPFQ_COPY(&d->bd_qmask.qm_txqmask, qmask);
 			BPFQ_WUNLOCK(&d->bd_qmask);
 			break;
 		}
 
-	case BIOCGTRXQMASK:
+	case BIOCSTXQMASK:
 		{
-			int index;
-			struct ifnet *ifp;
+			bpf_qmask_bits_t *qmask = (bpf_qmask_bits_t *)addr;
 
+			if (d->bd_bif == NULL) {
+				/*
+				 * No interface attached yet.
+				 */
+				error = EINVAL;	
+				break;
+			}
+			BPFQ_WLOCK(&d->bd_qmask);
+			if (!d->bd_qmask.qm_enabled) {
+				BPFQ_WUNLOCK(&d->bd_qmask);
+				error = EINVAL;
+				break;
+			}
+			BPFQ_COPY(qmask, &d->bd_qmask.qm_txqmask);
+			BPFQ_WUNLOCK(&d->bd_qmask);
+			break;
+		}
+
+	case BIOCGNOQMASK:
+		{
+			boolean_t *noqmask = (boolean_t *)addr;
 			if (d->bd_bif == NULL) {
 				/*
 				 * No interface attached yet.
@@ -1842,28 +1857,20 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				error = EINVAL;
 				break;
 			}
-			ifp = d->bd_bif->bif_ifp;
-			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_num_rxqueue(ifp)) {
-				BPFQ_WUNLOCK(&d->bd_qmask);
-				error = EINVAL;
-				break;
-			}
-			*(uint32_t *)addr = d->bd_qmask.qm_rxq_mask[index];
+			*noqmask = d->bd_qmask.qm_noqmask;
 			BPFQ_WUNLOCK(&d->bd_qmask);
 			break;
 		}
 
-	case BIOCSTTXQMASK:
+	case BIOCSNOQMASK:
 		{
-			struct ifnet *ifp;
-			int index;
+			boolean_t *noqmask = (boolean_t *)addr;
 
 			if (d->bd_bif == NULL) {
 				/*
 				 * No interface attached yet.
 				 */
-				error = EINVAL;
+				error = EINVAL;	
 				break;
 			}
 			BPFQ_WLOCK(&d->bd_qmask);
@@ -1872,98 +1879,12 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				error = EINVAL;
 				break;
 			}
-
-			ifp = d->bd_bif->bif_ifp;
-			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_num_txqueue(ifp)) {
-				BPFQ_WUNLOCK(&d->bd_qmask);
-				error = EINVAL;
-				break;
-			}
-			d->bd_qmask.qm_txq_mask[index] = TRUE;
+			d->bd_qmask.qm_noqmask = *noqmask;
 			BPFQ_WUNLOCK(&d->bd_qmask);
 			break;
 		}
-
-	case BIOCCRTXQMASK:
-		{
-			struct ifnet *ifp;
-			int index;
-
-			if (d->bd_bif == NULL) {
-				/*
-				 * No interface attached yet.
-				 */
-				error = EINVAL;
-				break;
-			}
-			BPFQ_WLOCK(&d->bd_qmask);
-			if (!d->bd_qmask.qm_enabled) {
-				BPFQ_WUNLOCK(&d->bd_qmask);
-				error = EINVAL;
-				break;
-			}
-
-			ifp = d->bd_bif->bif_ifp;
-			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_num_txqueue(ifp)) {
-				BPFQ_WUNLOCK(&d->bd_qmask);
-				error = EINVAL;
-				break;
-			}
-			d->bd_qmask.qm_txq_mask[index] = FALSE;
-			BPFQ_WUNLOCK(&d->bd_qmask);
-			break;
-		}
-
-	case BIOCGTTXQMASK:
-		{
-			int index;
-			struct ifnet *ifp;
-
-			if (d->bd_bif == NULL) {
-				/*
-				 * No interface attached yet.
-				 */
-				error = EINVAL;
-				break;
-			}
-			BPFQ_WLOCK(&d->bd_qmask);
-			if (!d->bd_qmask.qm_enabled) {
-				BPFQ_WUNLOCK(&d->bd_qmask);
-				error = EINVAL;
-				break;
-			}
-			ifp = d->bd_bif->bif_ifp;
-			index = *(uint32_t *)addr;
-			if (index > ifp->if_get_num_txqueue(ifp)) {
-				BPFQ_WUNLOCK(&d->bd_qmask);
-				error = EINVAL;
-				break;
-			}
-			*(uint32_t *)addr = d->bd_qmask.qm_txq_mask[index];
-			BPFQ_WUNLOCK(&d->bd_qmask);
-			break;
-		}
-
-	case BIOCSTOTHERMASK:
-		BPFQ_WLOCK(&d->bd_qmask);
-		d->bd_qmask.qm_other_mask = TRUE;
-		BPFQ_WUNLOCK(&d->bd_qmask);
-		break;
-
-	case BIOCCROTHERMASK:
-		BPFQ_WLOCK(&d->bd_qmask);
-		d->bd_qmask.qm_other_mask = FALSE;
-		BPFQ_WUNLOCK(&d->bd_qmask);
-		break;
-
-	case BIOCGTOTHERMASK:
-		BPFQ_WLOCK(&d->bd_qmask);
-		*(uint32_t *)addr = (uint32_t)d->bd_qmask.qm_other_mask;
-		BPFQ_WUNLOCK(&d->bd_qmask);
-		break;
 	}
+
 	CURVNET_RESTORE();
 	return (error);
 }
@@ -2309,6 +2230,15 @@ bpf_tap(struct bpf_if *bp, u_char *pkt, u_int pktlen)
 	BPFIF_RLOCK(bp);
 
 	LIST_FOREACH(d, &bp->bif_dlist, bd_next) {
+ 		BPFQ_RLOCK(&d->bd_qmask);
+ 		if (d->bd_qmask.qm_enabled) {
+ 			if (!d->bd_qmask.qm_noqmask) {
+				BPFQ_RUNLOCK(&d->bd_qmask);
+ 				continue;
+ 			}
+ 		}
+		BPFQ_RUNLOCK(&d->bd_qmask);
+
 		/*
 		 * We are not using any locks for d here because:
 		 * 1) any filter change is protected by interface
@@ -2316,14 +2246,6 @@ bpf_tap(struct bpf_if *bp, u_char *pkt, u_int pktlen)
 		 * 2) destroying/detaching d is protected by interface
 		 * write lock, too
 		 */
- 		BPFQ_RLOCK(&d->bd_qmask);
- 		if (d->bd_qmask.qm_enabled) {
- 			if (!d->bd_qmask.qm_other_mask) {
-				BPFQ_RUNLOCK(&d->bd_qmask);
- 				continue;
- 			}
- 		}
-		BPFQ_RUNLOCK(&d->bd_qmask);
 
 		/* XXX: Do not protect counter for the sake of performance. */
 		++d->bd_rcount;
@@ -2394,36 +2316,34 @@ bpf_mtap(struct bpf_if *bp, struct mbuf *m)
  		BPFQ_RLOCK(&d->bd_qmask);
  		if (d->bd_qmask.qm_enabled) {
  			M_ASSERTPKTHDR(m);
- 			if (!(m->m_flags & M_FLOWID)) {
- 				if (!d->bd_qmask.qm_other_mask) {
- 					BPFQ_RUNLOCK(&d->bd_qmask);
- 					continue;
- 				}
- 			} else {
- 				struct ifnet *ifp = bp->bif_ifp;
- 				if (m->m_pkthdr.rxqueue != (uint32_t)-1) {
- 					if (m->m_pkthdr.rxqueue >= ifp->if_get_num_rxqueue(ifp)) {
+ 			if (m->m_flags & M_QUEUEID) {
+				switch (m->m_pkthdr.queuetype) {
+				case QUEUETYPE_RX:
+					if (!BPFQ_ISSET(m->m_pkthdr.queueid,
+						 &d->bd_qmask.qm_rxqmask)) {
  						BPFQ_RUNLOCK(&d->bd_qmask);
- 						BPFIF_RUNLOCK(bp);
- 						return;
+ 						continue;
+ 					}
+					break;
+				case QUEUETYPE_TX:
+					if (!BPFQ_ISSET(m->m_pkthdr.queueid, 
+						&d->bd_qmask.qm_rxqmask)) {
+ 						BPFQ_RUNLOCK(&d->bd_qmask);
+ 						continue;
+ 					}
+					break;
+				default:
+					if (!d->bd_qmask.qm_noqmask) {
+						BPFQ_RUNLOCK(&d->bd_qmask);
+						continue;
 					}
- 					if (!d->bd_qmask.qm_rxq_mask[m->m_pkthdr.rxqueue]) {
- 						BPFQ_RUNLOCK(&d->bd_qmask);
- 						continue;
- 					}
  				}
- 				if (m->m_pkthdr.txqueue != (uint32_t)-1) {
- 					if (m->m_pkthdr.txqueue >= ifp->if_get_num_txqueue(ifp)) {
- 						BPFQ_RUNLOCK(&d->bd_qmask);
- 						BPFIF_RUNLOCK(bp);
- 						return;
- 					}
- 					if (!d->bd_qmask.qm_txq_mask[m->m_pkthdr.txqueue]) {
- 						BPFQ_RUNLOCK(&d->bd_qmask);
- 						continue;
- 					}
- 				}
- 			}
+ 			}else{
+				if (!d->bd_qmask.qm_noqmask) {
+					BPFQ_RUNLOCK(&d->bd_qmask);
+					continue;
+				}
+			}
  		}
  		BPFQ_RUNLOCK(&d->bd_qmask);
  
@@ -2490,42 +2410,40 @@ bpf_mtap2(struct bpf_if *bp, void *data, u_int dlen, struct mbuf *m)
 	BPFIF_RLOCK(bp);
 
 	LIST_FOREACH(d, &bp->bif_dlist, bd_next) {
- 		BPFQ_RLOCK(&d->bd_qmask);
+  		BPFQ_RLOCK(&d->bd_qmask);
  		if (d->bd_qmask.qm_enabled) {
  			M_ASSERTPKTHDR(m);
- 			if (!(m->m_flags & M_FLOWID)) {
- 				if (!d->bd_qmask.qm_other_mask) {
- 					BPFQ_RUNLOCK(&d->bd_qmask);
- 					continue;
- 				}
- 			} else {
- 				struct ifnet *ifp = bp->bif_ifp;
- 				if (m->m_pkthdr.rxqueue != (uint32_t)-1) {
- 					if (m->m_pkthdr.rxqueue >= ifp->if_get_num_rxqueue(ifp)) {
- 						BPFQ_RUNLOCK(&d->bd_qmask);
- 						BPFIF_RUNLOCK(bp);
- 						return;
- 					}
- 					if (!d->bd_qmask.qm_rxq_mask[m->m_pkthdr.rxqueue]) {
+ 			if (m->m_flags & M_QUEUEID) {
+				switch (m->m_pkthdr.queuetype) {
+				case QUEUETYPE_RX:
+					if (!BPFQ_ISSET(m->m_pkthdr.queueid,
+						 &d->bd_qmask.qm_rxqmask)) {
  						BPFQ_RUNLOCK(&d->bd_qmask);
  						continue;
  					}
- 				}
- 				if (m->m_pkthdr.txqueue != (uint32_t)-1) {
- 					if (m->m_pkthdr.txqueue >= ifp->if_get_num_txqueue(ifp)) {
- 						BPFQ_RUNLOCK(&d->bd_qmask);
- 						BPFIF_RUNLOCK(bp);
- 						return;
- 					}
- 					if (!d->bd_qmask.qm_txq_mask[m->m_pkthdr.txqueue]) {
+					break;
+				case QUEUETYPE_TX:
+					if (!BPFQ_ISSET(m->m_pkthdr.queueid, 
+						&d->bd_qmask.qm_rxqmask)) {
  						BPFQ_RUNLOCK(&d->bd_qmask);
  						continue;
  					}
+					break;
+				default:
+					if (!d->bd_qmask.qm_noqmask) {
+						BPFQ_RUNLOCK(&d->bd_qmask);
+						continue;
+					}
  				}
- 			}
+ 			}else{
+				if (!d->bd_qmask.qm_noqmask) {
+					BPFQ_RUNLOCK(&d->bd_qmask);
+					continue;
+				}
+			}
  		}
  		BPFQ_RUNLOCK(&d->bd_qmask);
- 
+
 		if (BPF_CHECK_DIRECTION(d, m->m_pkthdr.rcvif, bp->bif_ifp))
 			continue;
 		++d->bd_rcount;
@@ -2789,11 +2707,6 @@ bpf_freed(struct bpf_d *d)
 	}
 	if (d->bd_wfilter != NULL)
 		free((caddr_t)d->bd_wfilter, M_BPF);
- 
- 	if (d->bd_qmask.qm_enabled) {
- 		free(d->bd_qmask.qm_rxq_mask, M_BPF);
- 		free(d->bd_qmask.qm_txq_mask, M_BPF);
- 	}
  
 	mtx_destroy(&d->bd_lock);
 }
