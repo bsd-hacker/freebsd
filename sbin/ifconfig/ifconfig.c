@@ -919,6 +919,25 @@ unsetifdescr(const char *val, int value, int s, const struct afswtch *afp)
 "\17TOE4\20TOE6\21VLAN_HWFILTER\23VLAN_HWTSO\24LINKSTATE\25NETMAP" \
 "\26RXCSUM_IPV6\27TXCSUM_IPV6\30MULTIQUEUE"
 
+static char *
+cpusetobj_strprint(char *buf, const cpuset_t *set)
+{
+	char *tbuf;
+	size_t i, bytesp, bufsiz;
+
+	tbuf = buf;
+	bytesp = 0;
+	bufsiz = CPUSETBUFSIZ;
+
+	for (i = 0; i < (_NCPUWORDS - 1); i++) {
+		bytesp = snprintf(tbuf, bufsiz, "%lx,", set->__bits[i]);
+		bufsiz -= bytesp;
+		tbuf += bytesp;
+	}
+	snprintf(tbuf, bufsiz, "%lx", set->__bits[_NCPUWORDS - 1]);
+	return (buf);
+}
+
 /*
  * Print the status of the interface.  If an address family was
  * specified, show only it; otherwise, show them all.
@@ -986,6 +1005,7 @@ status(const struct afswtch *afp, const struct sockaddr_dl *sdl,
 
 	if ((ifr.ifr_reqcap & IFCAP_MULTIQUEUE)) {
 		int i, numrxq = 0, numtxq = 0;
+		char cpus[CPUSETBUFSIZ];
 
 		if (ioctl(s, SIOCGIFQLEN, &ifr) == 0) {
 			numrxq = ifr.ifr_num_rxqueue;
@@ -995,22 +1015,24 @@ status(const struct afswtch *afp, const struct sockaddr_dl *sdl,
 
 		printf("\tnumber of rxqueues=%d affinity=[", numrxq);
 		for (i = 0; i < numrxq; i++) {
-			ifr.ifr_queue_affinity_index = i;
-			if (ioctl(s, SIOCGIFRXQAFFINITY, &ifr) == 0)
-				printf(" %d:%d", ifr.ifr_queue_affinity_index,
-					ifr.ifr_queue_affinity_cpu);
-			else
+			ifr.ifr_queue_affinity_idx = i;
+			if (ioctl(s, SIOCGIFRXQAFFINITY, &ifr) == 0) {
+				cpusetobj_strprint(cpus, 
+					&ifr.ifr_queue_affinity_cpus);
+				printf(" %d:%s", i, cpus);
+			}else
 				perror("ioctl");
 		}
 		printf(" ]\n");
 
 		printf("\tnumber of txqueues=%d affinity=[", numtxq);
 		for (i = 0; i < numtxq; i++) {
-			ifr.ifr_queue_affinity_index = i;
-			if (ioctl(s, SIOCGIFTXQAFFINITY, &ifr) == 0)
-				printf(" %d:%d", ifr.ifr_queue_affinity_index,
-					ifr.ifr_queue_affinity_cpu);
-			else
+			ifr.ifr_queue_affinity_idx = i;
+			if (ioctl(s, SIOCGIFTXQAFFINITY, &ifr) == 0) {
+				cpusetobj_strprint(cpus, 
+					&ifr.ifr_queue_affinity_cpus);
+				printf(" %d:%s", i, cpus);
+			}else
 				perror("ioctl");
 		}
 		printf(" ]\n");

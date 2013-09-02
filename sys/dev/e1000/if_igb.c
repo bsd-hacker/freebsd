@@ -280,8 +280,8 @@ static int	igb_sysctl_eee(SYSCTL_HANDLER_ARGS);
 
 static int	igb_get_num_rxqueue(struct ifnet *);
 static int	igb_get_num_txqueue(struct ifnet *);
-static int	igb_get_rxqueue_affinity(struct ifnet *, int);
-static int	igb_get_txqueue_affinity(struct ifnet *, int);
+static int	igb_get_rxqueue_affinity(struct ifnet *, int, cpuset_t *);
+static int	igb_get_txqueue_affinity(struct ifnet *, int, cpuset_t *);
 
 #ifdef DEVICE_POLLING
 static poll_handler_t igb_poll;
@@ -6081,13 +6081,15 @@ igb_get_num_txqueue(struct ifnet *ifp)
 }
 
 static int
-igb_get_rxqueue_affinity(struct ifnet *ifp, int queid)
+igb_get_rxqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
 {
-	return (queid);
+	CPU_SETOF(idx, cpus);
+	return (0);
 }
 
 static int
-igb_get_txqueue_affinity(struct ifnet *ifp, int queid)
+igb_get_txqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
 {
-	return (queid);
+	CPU_SETOF(idx, cpus);
+	return (0);
 }

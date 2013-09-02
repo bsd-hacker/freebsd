@@ -122,8 +122,8 @@ static void mxge_intr(void *arg);
 
 static int mxge_get_num_rxqueue(struct ifnet *);
 static int mxge_get_num_txqueue(struct ifnet *);
-static int mxge_get_rxqueue_affinity(struct ifnet *, int);
-static int mxge_get_txqueue_affinity(struct ifnet *, int);
+static int mxge_get_rxqueue_affinity(struct ifnet *, int, cpuset_t *);
+static int mxge_get_txqueue_affinity(struct ifnet *, int, cpuset_t *);
 
 static device_method_t mxge_methods[] =
 {
@@ -5060,22 +5060,15 @@ mxge_get_num_txqueue(struct ifnet *ifp)
 }
 
 static int
-mxge_get_rxqueue_affinity(struct ifnet *ifp, int queid)
+mxge_get_rxqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
 {
-	return (queid);
+	CPU_SETOF(idx, cpus);
+	return (0);
 }
 
 static int
-mxge_get_txqueue_affinity(struct ifnet *ifp, int queid)
+mxge_get_txqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
 {
-	return (queid);
+	CPU_SETOF(idx, cpus);
+	return (0);
 }
-
-/*
-  This file uses Myri10GE driver indentation.
-
-  Local Variables:
-  c-file-style:"linux"
-  tab-width:8
-  End:
-*/

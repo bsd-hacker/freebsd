@@ -212,8 +212,8 @@ extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
 static int	ixgbe_get_num_rxqueue(struct ifnet *);
 static int	ixgbe_get_num_txqueue(struct ifnet *);
-static int	ixgbe_get_rxqueue_affinity(struct ifnet *, int);
-static int	ixgbe_get_txqueue_affinity(struct ifnet *, int);
+static int	ixgbe_get_rxqueue_affinity(struct ifnet *, int, cpuset_t *);
+static int	ixgbe_get_txqueue_affinity(struct ifnet *, int, cpuset_t *);
 
 
 /*********************************************************************
@@ -5779,15 +5779,17 @@ ixgbe_get_num_txqueue(struct ifnet *ifp)
 }
 
 static int
-ixgbe_get_rxqueue_affinity(struct ifnet *ifp, int queid)
+ixgbe_get_rxqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
 {
-	return (queid);
+	CPU_SETOF(idx, cpus);
+	return (0);
 }
 
 static int
-ixgbe_get_txqueue_affinity(struct ifnet *ifp, int queid)
+ixgbe_get_txqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
 {
-	return (queid);
+	CPU_SETOF(idx, cpus);
+	return (0);
 }
 
 /*

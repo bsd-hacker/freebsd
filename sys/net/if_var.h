@@ -181,9 +181,9 @@ struct ifnet {
 	int	(*if_get_num_txqueue)
 		(struct ifnet *);
 	int	(*if_get_rxqueue_affinity)
-		(struct ifnet *, int);
+		(struct ifnet *, int, cpuset_t *);
 	int	(*if_get_txqueue_affinity)
-		(struct ifnet *, int);
+		(struct ifnet *, int, cpuset_t *);
 
 	struct	vnet *if_home_vnet;	/* where this ifnet originates from */
 	struct	ifaddr	*if_addr;	/* pointer to link-level address */

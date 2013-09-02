@@ -124,9 +124,9 @@
 .Ft int
 .Fn \*(lp*if_get_num_txqueue\*(rp "struct ifnet *ifp"
 .Ft int
-.Fn \*(lp*if_get_rxqueue_affinity\*(rp "struct ifnet *ifp" "int queid"
+.Fn \*(lp*if_get_rxqueue_affinity\*(rp "struct ifnet *ifp" "int idx" "cpuset_t *cpus"
 .Ft int
-.Fn \*(lp*if_get_txqueue_affinity\*(rp "struct ifnet *ifp" "int queid"
+.Fn \*(lp*if_get_txqueue_affinity\*(rp "struct ifnet *ifp" "int idx" "cpuset_t *cpus"
 .Ss "struct ifaddr member function"
 .Ft void
 .Fo \*(lp*ifa_rtrequest\*(rp

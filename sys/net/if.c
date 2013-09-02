@@ -2441,16 +2441,16 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
 			return (EOPNOTSUPP);
 		KASSERT(ifp->if_get_rxqueue_affinity, ("if_get_rxqueue_affinity not set"));
-		ifr->ifr_queue_affinity_cpu =
-			ifp->if_get_rxqueue_affinity(ifp, ifr->ifr_queue_affinity_index);
+		ifp->if_get_rxqueue_affinity(ifp, ifr->ifr_queue_affinity_idx, 
+			&ifr->ifr_queue_affinity_cpus);
 		break;
 
 	case SIOCGIFTXQAFFINITY:
 		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
 			return (EOPNOTSUPP);
 		KASSERT(ifp->if_get_rxqueue_affinity, ("if_get_rxqueue_affinity not set"));
-		ifr->ifr_queue_affinity_cpu = 
-			ifp->if_get_rxqueue_affinity(ifp, ifr->ifr_queue_affinity_index);
+		ifp->if_get_txqueue_affinity(ifp, ifr->ifr_queue_affinity_idx, 
+			&ifr->ifr_queue_affinity_cpus);
 		break;
 
 	default:
