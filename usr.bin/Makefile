@@ -112,6 +112,7 @@ SUBDIR=	alias \
 	mkuzip \
 	mt \
 	ncal \
+	netstat \
 	newgrp \
 	nfsstat \
 	nice \
