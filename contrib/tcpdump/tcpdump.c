@@ -702,7 +702,10 @@ main(int argc, char **argv)
 #endif
 	int status;
 	FILE *VFile;
-	uint32_t rxq = (uint32_t)-1, txq = (uint32_t)-1, other = (uint32_t)-1;
+	int qmask = 0;
+	u_int rxq = (u_int)-1, txq = (u_int)-1;
+	int noq = -1;
+	
 #ifdef WIN32
 	if(wsockinit() != 0) return 1;
 #endif /* WIN32 */
@@ -817,6 +820,7 @@ main(int argc, char **argv)
 			break;
 
 		case 'g':
+			qmask = 1;
 			txq = atoi(optarg);
 			break;
 
@@ -925,8 +929,9 @@ main(int argc, char **argv)
 			break;
 
 		case 'k':
-			other = atoi(optarg);
-			if (other != 0 || other != 1)
+			qmask = 1;
+			noq = atoi(optarg);
+			if (noq != 0 || noq != 1)
 				usage();
 			break;
 
@@ -977,6 +982,7 @@ main(int argc, char **argv)
 			break;
 
 		case 'Q':
+			qmask = 1;
 			rxq = atoi(optarg);
 			break;
 
@@ -1289,12 +1295,14 @@ main(int argc, char **argv)
 			    	    device, pcap_statustostr(status));
 		}
 #endif
- 		if (rxq != (uint32_t)-1)
- 			pcap_set_rxq_mask(pd, rxq);
- 		if (txq != (uint32_t)-1)
- 			pcap_set_txq_mask(pd, txq);
- 		if (other != (uint32_t)-1)
- 			pcap_set_other_mask(pd, other);
+		if (qmask)
+			pcap_enable_qmask(pd);
+ 		if (rxq != (u_int)-1)
+ 			pcap_set_rxqmask(pd, rxq);
+ 		if (txq != (u_int)-1)
+ 			pcap_set_txqmask(pd, txq);
+ 		if (noq != -1)
+			noq ? pcap_set_noqmask(pd) : pcap_clear_noqmask(pd);
 
 		status = pcap_activate(pd);
 		if (status < 0) {

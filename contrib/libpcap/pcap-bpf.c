@@ -2188,37 +2188,30 @@ pcap_activate_bpf(pcap_t *p)
 	}
 #endif
 
-	if (p->rxq_num != (uint32_t)-1 || p->txq_num != (uint32_t)-1 ||
-		p->other_mask != (uint32_t)-1) {
-		if (ioctl(fd, BIOCENAQMASK, NULL) < 0) {
-			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCENAQMASK: %s",
+	if (p->qmask_enabled) {
+		if (ioctl(fd, BIOCQMASKENABLE, NULL) < 0) {
+			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCQMASKENABLE: %s",
 			    pcap_strerror(errno));
 			status = PCAP_ERROR;
 			goto bad;
 		}
-		if (p->rxq_num != (uint32_t)-1) {
-			if (ioctl(fd, BIOCSTRXQMASK, &p->rxq_num) < 0) {
-				snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSTRXQMASK: %s",
-				    pcap_strerror(errno));
-				status = PCAP_ERROR;
-				goto bad;
-			}
+		if (ioctl(fd, BIOCSRXQMASK, &p->rxqmask) < 0) {
+			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSRXQMASK: %s",
+			    pcap_strerror(errno));
+			status = PCAP_ERROR;
+			goto bad;
 		}
-		if (p->txq_num != (uint32_t)-1) {
-			if (ioctl(fd, BIOCSTTXQMASK, &p->txq_num) < 0) {
-				snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSTTXQMASK: %s",
-				    pcap_strerror(errno));
-				status = PCAP_ERROR;
-				goto bad;
-			}
+		if (ioctl(fd, BIOCSTXQMASK, &p->txqmask) < 0) {
+			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSTXQMASK: %s",
+			    pcap_strerror(errno));
+			status = PCAP_ERROR;
+			goto bad;
 		}
-		if (p->other_mask != (uint32_t)-1) {
-			if (ioctl(fd, BIOCSTOTHERMASK, &p->other_mask) < 0) {
-				snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSTOTHERQMASK: %s",
-				    pcap_strerror(errno));
-				status = PCAP_ERROR;
-				goto bad;
-			}
+		if (ioctl(fd, BIOCSNOQMASK, &p->noqmask) < 0) {
+			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSNOQMASK: %s",
+			    pcap_strerror(errno));
+			status = PCAP_ERROR;
+			goto bad;
 		}
 	}
 

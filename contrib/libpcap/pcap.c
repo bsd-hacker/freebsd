@@ -505,9 +505,7 @@ pcap_create_common(const char *source, char *ebuf)
 	p->opt.promisc = 0;
 	p->opt.buffer_size = 0;
 	p->opt.tstamp_type = -1;	/* default to not setting time stamp type */
- 	p->rxq_num = (uint32_t)-1;
- 	p->txq_num = (uint32_t)-1;
- 	p->other_mask = (uint32_t)-1;
+	p->qmask_enabled = 0;
 	return (p);
 }
 
@@ -641,29 +639,71 @@ pcap_activate(pcap_t *p)
 }
 
 int
-pcap_set_rxq_mask(pcap_t *p, uint32_t num)
+pcap_enable_qmask(pcap_t *p)
+{
+	p->qmask_enabled = 1;
+	BPFQ_ZERO(&p->rxqmask);
+	BPFQ_ZERO(&p->txqmask);
+	p->noqmask = 0;
+}
+
+int
+pcap_disable_qmask(pcap_t *p)
+{
+	p->qmask_enabled = 0;
+}
+
+int
+pcap_set_rxqmask(pcap_t *p, u_int queueid)
 {
 	if (pcap_check_activated(p))
 		return PCAP_ERROR_ACTIVATED;
-	p->rxq_num = num;
+	BPFQ_SET(queueid, &p->rxqmask);
 	return 0;
 }
 
 int
-pcap_set_txq_mask(pcap_t *p, uint32_t num)
+pcap_clear_rxqmask(pcap_t *p, u_int queueid)
 {
 	if (pcap_check_activated(p))
 		return PCAP_ERROR_ACTIVATED;
-	p->txq_num = num;
+	BPFQ_CLR(queueid, &p->rxqmask);
 	return 0;
 }
 
 int
-pcap_set_other_mask(pcap_t *p, uint32_t mask)
+pcap_set_txqmask(pcap_t *p, u_int queueid)
 {
 	if (pcap_check_activated(p))
 		return PCAP_ERROR_ACTIVATED;
-	p->other_mask = mask;
+	BPFQ_SET(queueid, &p->txqmask);
+	return 0;
+}
+
+int
+pcap_clear_txqmask(pcap_t *p, u_int queueid)
+{
+	if (pcap_check_activated(p))
+		return PCAP_ERROR_ACTIVATED;
+	BPFQ_CLR(queueid, &p->txqmask);
+	return 0;
+}
+
+int
+pcap_set_noqmask(pcap_t *p)
+{
+	if (pcap_check_activated(p))
+		return PCAP_ERROR_ACTIVATED;
+	p->noqmask = 1;
+	return 0;
+}
+
+int
+pcap_clear_noqmask(pcap_t *p)
+{
+	if (pcap_check_activated(p))
+		return PCAP_ERROR_ACTIVATED;
+	p->noqmask = 0;
 	return 0;
 }
 

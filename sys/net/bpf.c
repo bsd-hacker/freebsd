@@ -1754,7 +1754,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 	case BIOCGRXQMASK:
 		{
-			bpf_qmask_bits_t *qmask = (bpf_qmask_bits_t *)addr;
+			struct bpf_qmask_bits *qmask = (struct bpf_qmask_bits *)addr;
 
 			if (d->bd_bif == NULL) {
 				/*
@@ -1777,7 +1777,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 	case BIOCSRXQMASK:
 		{
-			bpf_qmask_bits_t *qmask = (bpf_qmask_bits_t *)addr;
+			struct bpf_qmask_bits *qmask = (struct bpf_qmask_bits *)addr;
 
 			if (d->bd_bif == NULL) {
 				/*
@@ -1799,7 +1799,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 	case BIOCGTXQMASK:
 		{
-			bpf_qmask_bits_t *qmask = (bpf_qmask_bits_t *)addr;
+			struct bpf_qmask_bits *qmask = (struct bpf_qmask_bits *)addr;
 
 			if (d->bd_bif == NULL) {
 				/*
@@ -1821,7 +1821,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 	case BIOCSTXQMASK:
 		{
-			bpf_qmask_bits_t *qmask = (bpf_qmask_bits_t *)addr;
+			struct bpf_qmask_bits *qmask = (struct bpf_qmask_bits *)addr;
 
 			if (d->bd_bif == NULL) {
 				/*
