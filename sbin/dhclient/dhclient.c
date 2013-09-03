@@ -59,6 +59,8 @@ __FBSDID("$FreeBSD$");
 #include "dhcpd.h"
 #include "privsep.h"
 
+#include <sys/capability.h>
+
 #include <net80211/ieee80211_freebsd.h>
 
 #ifndef _PATH_VAREMPTY
@@ -91,9 +93,10 @@ int log_perror = 1;
 int privfd;
 int nullfd = -1;
 
+char hostname[_POSIX_HOST_NAME_MAX + 1];
+
 struct iaddr iaddr_broadcast = { 4, { 255, 255, 255, 255 } };
-struct in_addr inaddr_any;
-struct sockaddr_in sockaddr_broadcast;
+struct in_addr inaddr_any, inaddr_broadcast;
 
 char *path_dhclient_pidfile;
 struct pidfh *pidfile;
@@ -410,11 +413,7 @@ main(int argc, char *argv[])
 	tzset();
 	time(&cur_time);
 
-	memset(&sockaddr_broadcast, 0, sizeof(sockaddr_broadcast));
-	sockaddr_broadcast.sin_family = AF_INET;
-	sockaddr_broadcast.sin_port = htons(REMOTE_PORT);
-	sockaddr_broadcast.sin_addr.s_addr = INADDR_BROADCAST;
-	sockaddr_broadcast.sin_len = sizeof(sockaddr_broadcast);
+	inaddr_broadcast.s_addr = INADDR_BROADCAST;
 	inaddr_any.s_addr = INADDR_ANY;
 
 	read_client_conf();
@@ -451,13 +450,37 @@ main(int argc, char *argv[])
 			error("no such user: nobody");
 	}
 
+	/*
+	 * Obtain hostname before entering capability mode - it won't be
+	 * possible then, as reading kern.hostname is not permitted.
+	 */
+	if (gethostname(hostname, sizeof(hostname)) < 0)
+		hostname[0] = '\0';
+
+	priv_script_init("PREINIT", NULL);
+	if (ifi->client->alias)
+		priv_script_write_params("alias_", ifi->client->alias);
+	priv_script_go();
+
+	/* set up the interface */
+	discover_interfaces(ifi);
+
 	if (pipe(pipe_fd) == -1)
 		error("pipe");
 
 	fork_privchld(pipe_fd[0], pipe_fd[1]);
 
+	close(ifi->ufdesc);
+	ifi->ufdesc = -1;
+	close(ifi->wfdesc);
+	ifi->wfdesc = -1;
+
 	close(pipe_fd[0]);
 	privfd = pipe_fd[1];
+	if (cap_rights_limit(privfd, CAP_READ | CAP_WRITE) < 0 &&
+	    errno != ENOSYS) {
+		error("can't limit private descriptor: %m");
+	}
 
 	if ((fd = open(path_dhclient_db, O_RDONLY|O_EXLOCK|O_CREAT, 0)) == -1)
 		error("can't open and lock %s: %m", path_dhclient_db);
@@ -465,16 +488,14 @@ main(int argc, char *argv[])
 	rewrite_client_leases();
 	close(fd);
 
-	priv_script_init("PREINIT", NULL);
-	if (ifi->client->alias)
-		priv_script_write_params("alias_", ifi->client->alias);
-	priv_script_go();
-
 	if ((routefd = socket(PF_ROUTE, SOCK_RAW, 0)) != -1)
 		add_protocol("AF_ROUTE", routefd, routehandler, ifi);
-
-	/* set up the interface */
-	discover_interfaces(ifi);
+	if (shutdown(routefd, SHUT_WR) < 0)
+		error("can't shutdown route socket: %m");
+	if (cap_rights_limit(routefd, CAP_POLL_EVENT | CAP_READ) < 0 &&
+	    errno != ENOSYS) {
+		error("can't limit route socket: %m");
+	}
 
 	if (chroot(_PATH_VAREMPTY) == -1)
 		error("chroot");
@@ -489,6 +510,9 @@ main(int argc, char *argv[])
 	endpwent();
 
 	setproctitle("%s", ifi->name);
+
+	if (cap_enter() < 0 && errno != ENOSYS)
+		error("can't enter capability mode: %m");
 
 	if (immediate_daemon)
 		go_daemon();
@@ -1226,13 +1250,12 @@ again:
 	ip->client->secs = ip->client->packet.secs;
 
 	note("DHCPDISCOVER on %s to %s port %d interval %d",
-	    ip->name, inet_ntoa(sockaddr_broadcast.sin_addr),
-	    ntohs(sockaddr_broadcast.sin_port),
+	    ip->name, inet_ntoa(inaddr_broadcast), REMOTE_PORT,
 	    (int)ip->client->interval);
 
 	/* Send out a packet. */
-	(void)send_packet(ip, &ip->client->packet, ip->client->packet_length,
-	    inaddr_any, &sockaddr_broadcast, NULL);
+	send_packet_unpriv(privfd, &ip->client->packet,
+	    ip->client->packet_length, inaddr_any, inaddr_broadcast);
 
 	add_timeout(cur_time + ip->client->interval, send_discover, ip);
 }
@@ -1340,8 +1363,7 @@ void
 send_request(void *ipp)
 {
 	struct interface_info *ip = ipp;
-	struct sockaddr_in destination;
-	struct in_addr from;
+	struct in_addr from, to;
 	int interval;
 
 	/* Figure out how long it's been since we started transmitting. */
@@ -1429,18 +1451,13 @@ cancel:
 
 	/* If the lease T2 time has elapsed, or if we're not yet bound,
 	   broadcast the DHCPREQUEST rather than unicasting. */
-	memset(&destination, 0, sizeof(destination));
 	if (ip->client->state == S_REQUESTING ||
 	    ip->client->state == S_REBOOTING ||
 	    cur_time > ip->client->active->rebind)
-		destination.sin_addr.s_addr = INADDR_BROADCAST;
+		to.s_addr = INADDR_BROADCAST;
 	else
-		memcpy(&destination.sin_addr.s_addr,
-		    ip->client->destination.iabuf,
-		    sizeof(destination.sin_addr.s_addr));
-	destination.sin_port = htons(REMOTE_PORT);
-	destination.sin_family = AF_INET;
-	destination.sin_len = sizeof(destination);
+		memcpy(&to.s_addr, ip->client->destination.iabuf,
+		    sizeof(to.s_addr));
 
 	if (ip->client->state != S_REQUESTING)
 		memcpy(&from, ip->client->active->address.iabuf,
@@ -1458,12 +1475,12 @@ cancel:
 			ip->client->packet.secs = htons(65535);
 	}
 
-	note("DHCPREQUEST on %s to %s port %d", ip->name,
-	    inet_ntoa(destination.sin_addr), ntohs(destination.sin_port));
+	note("DHCPREQUEST on %s to %s port %d", ip->name, inet_ntoa(to),
+	    REMOTE_PORT);
 
 	/* Send out a packet. */
-	(void) send_packet(ip, &ip->client->packet, ip->client->packet_length,
-	    from, &destination, NULL);
+	send_packet_unpriv(privfd, &ip->client->packet,
+	    ip->client->packet_length, from, to);
 
 	add_timeout(cur_time + ip->client->interval, send_request, ip);
 }
@@ -1474,12 +1491,11 @@ send_decline(void *ipp)
 	struct interface_info *ip = ipp;
 
 	note("DHCPDECLINE on %s to %s port %d", ip->name,
-	    inet_ntoa(sockaddr_broadcast.sin_addr),
-	    ntohs(sockaddr_broadcast.sin_port));
+	    inet_ntoa(inaddr_broadcast), REMOTE_PORT);
 
 	/* Send out a packet. */
-	(void) send_packet(ip, &ip->client->packet, ip->client->packet_length,
-	    inaddr_any, &sockaddr_broadcast, NULL);
+	send_packet_unpriv(privfd, &ip->client->packet,
+	    ip->client->packet_length, inaddr_any, inaddr_broadcast);
 }
 
 void
@@ -1536,11 +1552,10 @@ make_discover(struct interface_info *ip, struct client_lease *lease)
 			    ip->client->config->send_options[i].len;
 			options[i]->timeout = 0xFFFFFFFF;
 		}
-		
+
 	/* send host name if not set via config file. */
-	char hostname[_POSIX_HOST_NAME_MAX+1];
 	if (!options[DHO_HOST_NAME]) {
-		if (gethostname(hostname, sizeof(hostname)) == 0) {
+		if (hostname[0] != '\0') {
 			size_t len;
 			char* posDot = strchr(hostname, '.');
 			if (posDot != NULL)
@@ -1561,7 +1576,7 @@ make_discover(struct interface_info *ip, struct client_lease *lease)
 		int hwlen = (ip->hw_address.hlen < sizeof(client_ident)-1) ?
 				ip->hw_address.hlen : sizeof(client_ident)-1;
 		client_ident[0] = ip->hw_address.htype;
-		memcpy(&client_ident[1], ip->hw_address.haddr, hwlen); 
+		memcpy(&client_ident[1], ip->hw_address.haddr, hwlen);
 		options[DHO_DHCP_CLIENT_IDENTIFIER] = &option_elements[DHO_DHCP_CLIENT_IDENTIFIER];
 		options[DHO_DHCP_CLIENT_IDENTIFIER]->value = client_ident;
 		options[DHO_DHCP_CLIENT_IDENTIFIER]->len = hwlen+1;
@@ -1660,11 +1675,10 @@ make_request(struct interface_info *ip, struct client_lease * lease)
 			    ip->client->config->send_options[i].len;
 			options[i]->timeout = 0xFFFFFFFF;
 		}
-		
+
 	/* send host name if not set via config file. */
-	char hostname[_POSIX_HOST_NAME_MAX+1];
 	if (!options[DHO_HOST_NAME]) {
-		if (gethostname(hostname, sizeof(hostname)) == 0) {
+		if (hostname[0] != '\0') {
 			size_t len;
 			char* posDot = strchr(hostname, '.');
 			if (posDot != NULL)
@@ -1685,7 +1699,7 @@ make_request(struct interface_info *ip, struct client_lease * lease)
 		int hwlen = (ip->hw_address.hlen < sizeof(client_ident)-1) ?
 				ip->hw_address.hlen : sizeof(client_ident)-1;
 		client_ident[0] = ip->hw_address.htype;
-		memcpy(&client_ident[1], ip->hw_address.haddr, hwlen); 
+		memcpy(&client_ident[1], ip->hw_address.haddr, hwlen);
 		options[DHO_DHCP_CLIENT_IDENTIFIER] = &option_elements[DHO_DHCP_CLIENT_IDENTIFIER];
 		options[DHO_DHCP_CLIENT_IDENTIFIER]->value = client_ident;
 		options[DHO_DHCP_CLIENT_IDENTIFIER]->len = hwlen+1;
@@ -1831,6 +1845,11 @@ rewrite_client_leases(void)
 		leaseFile = fopen(path_dhclient_db, "w");
 		if (!leaseFile)
 			error("can't create %s: %m", path_dhclient_db);
+		if (cap_rights_limit(fileno(leaseFile), CAP_FSTAT | CAP_FSYNC |
+		    CAP_FTRUNCATE | CAP_SEEK | CAP_WRITE) < 0 &&
+		    errno != ENOSYS) {
+			error("can't limit lease descriptor: %m");
+		}
 	} else {
 		fflush(leaseFile);
 		rewind(leaseFile);
@@ -2347,8 +2366,13 @@ go_daemon(void)
 	if (daemon(1, 0) == -1)
 		error("daemon");
 
-	if (pidfile != NULL)
+	if (pidfile != NULL) {
 		pidfile_write(pidfile);
+		if (cap_rights_limit(pidfile_fileno(pidfile), CAP_NONE) < 0 &&
+		    errno != ENOSYS) {
+			error("can't limit pidfile descriptor: %m");
+		}
+	}
 
 	/* we are chrooted, daemon(3) fails to open /dev/null */
 	if (nullfd != -1) {
@@ -2358,6 +2382,13 @@ go_daemon(void)
 		close(nullfd);
 		nullfd = -1;
 	}
+
+	if (cap_rights_limit(STDIN_FILENO, CAP_NONE) < 0 && errno != ENOSYS)
+		error("can't limit stdin: %m");
+	if (cap_rights_limit(STDOUT_FILENO, CAP_WRITE) < 0 && errno != ENOSYS)
+		error("can't limit stdout: %m");
+	if (cap_rights_limit(STDERR_FILENO, CAP_WRITE) < 0 && errno != ENOSYS)
+		error("can't limit stderr: %m");
 }
 
 int
@@ -2502,19 +2533,19 @@ check_classless_option(unsigned char *data, int len)
 			i += 4;
 			continue;
 		} else if (width < 9) {
-			addr =  (in_addr_t)(data[i] 	<< 24);
+			addr =  (in_addr_t)(data[i]	<< 24);
 			i += 1;
 		} else if (width < 17) {
-			addr =  (in_addr_t)(data[i] 	<< 24) +
+			addr =  (in_addr_t)(data[i]	<< 24) +
 				(in_addr_t)(data[i + 1]	<< 16);
 			i += 2;
 		} else if (width < 25) {
-			addr =  (in_addr_t)(data[i] 	<< 24) +
+			addr =  (in_addr_t)(data[i]	<< 24) +
 				(in_addr_t)(data[i + 1]	<< 16) +
 				(in_addr_t)(data[i + 2]	<< 8);
 			i += 3;
 		} else if (width < 33) {
-			addr =  (in_addr_t)(data[i] 	<< 24) +
+			addr =  (in_addr_t)(data[i]	<< 24) +
 				(in_addr_t)(data[i + 1]	<< 16) +
 				(in_addr_t)(data[i + 2]	<< 8)  +
 				data[i + 3];
@@ -2538,7 +2569,7 @@ check_classless_option(unsigned char *data, int len)
 			addr &= mask;
 			data[i - 1] = (unsigned char)(
 				(addr >> (((32 - width)/8)*8)) & 0xFF);
-		} 
+		}
 		i += 4;
 	}
 	if (i > len) {
@@ -2702,6 +2733,8 @@ fork_privchld(int fd, int fd2)
 	dup2(nullfd, STDERR_FILENO);
 	close(nullfd);
 	close(fd2);
+	close(ifi->rfdesc);
+	ifi->rfdesc = -1;
 
 	for (;;) {
 		pfd[0].fd = fd;
@@ -2713,6 +2746,6 @@ fork_privchld(int fd, int fd2)
 		if (nfds == 0 || !(pfd[0].revents & POLLIN))
 			continue;
 
-		dispatch_imsg(fd);
+		dispatch_imsg(ifi, fd);
 	}
 }

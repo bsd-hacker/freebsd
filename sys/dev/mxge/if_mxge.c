@@ -3842,7 +3842,7 @@ mxge_setup_cfg_space(mxge_softc_t *sc)
 {
 	device_t dev = sc->dev;
 	int reg;
-	uint16_t cmd, lnk, pectl;
+	uint16_t lnk, pectl;
 
 	/* find the PCIe link width and set max read request to 4KB*/
 	if (pci_find_cap(dev, PCIY_EXPRESS, &reg) == 0) {
@@ -3862,9 +3862,6 @@ mxge_setup_cfg_space(mxge_softc_t *sc)
 
 	/* Enable DMA and Memory space access */
 	pci_enable_busmaster(dev);
-	cmd = pci_read_config(dev, PCIR_COMMAND, 2);
-	cmd |= PCIM_CMD_MEMEN;
-	pci_write_config(dev, PCIR_COMMAND, cmd, 2);
 }
 
 static uint32_t
@@ -4911,7 +4908,7 @@ mxge_attach(device_t dev)
 #if defined(INET) || defined(INET6)
 	ifp->if_capabilities |= IFCAP_LRO;
 #endif
-	ifp->if_capabilities |= IFCAP_MULTIQUEUE;
+	ifp->if_capabilities |= IFCAP_QUEUEID;
 
 #ifdef MXGE_NEW_VLAN_API
 	ifp->if_capabilities |= IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_HWCSUM;

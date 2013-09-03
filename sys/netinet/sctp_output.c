@@ -3561,7 +3561,7 @@ sctp_process_cmsgs_for_init(struct sctp_tcb *stcb, struct mbuf *control, int *er
 
 static struct sctp_tcb *
 sctp_findassociation_cmsgs(struct sctp_inpcb **inp_p,
-    in_port_t port,
+    uint16_t port,
     struct mbuf *control,
     struct sctp_nets **net_p,
     int *error)
@@ -4543,11 +4543,7 @@ sctp_send_initiate(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int so_locked
 	struct mbuf *m;
 	struct sctp_nets *net;
 	struct sctp_init_chunk *init;
-
-#if defined(INET) || defined(INET6)
 	struct sctp_supported_addr_param *sup_addr;
-
-#endif
 	struct sctp_adaptation_layer_indication *ali;
 	struct sctp_supported_chunk_types_param *pr_supported;
 	struct sctp_paramhdr *ph;
@@ -5409,6 +5405,14 @@ do_a_abort:
 		return;
 	}
 	SCTP_BUF_LEN(m) = sizeof(struct sctp_init_chunk);
+
+	/*
+	 * We might not overwrite the identification[] completely and on
+	 * some platforms time_entered will contain some padding. Therefore
+	 * zero out the cookie to avoid putting uninitialized memory on the
+	 * wire.
+	 */
+	memset(&stc, 0, sizeof(struct sctp_state_cookie));
 
 	/* the time I built cookie */
 	(void)SCTP_GETTIME_TIMEVAL(&stc.time_entered);
@@ -7617,7 +7621,7 @@ sctp_med_chunk_output(struct sctp_inpcb *inp,
 #endif
 )
 {
-	/*
+	/**
 	 * Ok this is the generic chunk service queue. we must do the
 	 * following: - Service the stream queue that is next, moving any
 	 * message (note I must get a complete message i.e. FIRST/MIDDLE and

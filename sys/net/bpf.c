@@ -1719,7 +1719,7 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				break;
 			}
 			ifp = d->bd_bif->bif_ifp;
-			if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE)) {
+			if (!(ifp->if_capabilities & IFCAP_QUEUEID)) {
 				BPFQ_WUNLOCK(&d->bd_qmask);
 				error = EINVAL;
 				break;

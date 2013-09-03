@@ -196,8 +196,8 @@ in6_delayed_cksum(struct mbuf *m, uint32_t plen, u_short offset)
 
 	if (offset + sizeof(u_short) > m->m_len) {
 		printf("%s: delayed m_pullup, m->len: %d plen %u off %u "
-		    "csum_flags=0x%04x\n", __func__, m->m_len, plen, offset,
-		    m->m_pkthdr.csum_flags);
+		    "csum_flags=%b\n", __func__, m->m_len, plen, offset,
+		    (int)m->m_pkthdr.csum_flags, CSUM_BITS);
 		/*
 		 * XXX this should not happen, but if it does, the correct
 		 * behavior may be to insert the checksum in the appropriate
@@ -1477,13 +1477,10 @@ ip6_ctloutput(struct socket *so, struct sockopt *sopt)
 			switch (sopt->sopt_name) {
 			case SO_REUSEADDR:
 				INP_WLOCK(in6p);
-				if (IN_MULTICAST(ntohl(in6p->inp_laddr.s_addr))) {
-					if ((so->so_options &
-					    (SO_REUSEADDR | SO_REUSEPORT)) != 0)
-						in6p->inp_flags2 |= INP_REUSEPORT;
-					else
-						in6p->inp_flags2 &= ~INP_REUSEPORT;
-				}
+				if ((so->so_options & SO_REUSEADDR) != 0)
+					in6p->inp_flags2 |= INP_REUSEADDR;
+				else
+					in6p->inp_flags2 &= ~INP_REUSEADDR;
 				INP_WUNLOCK(in6p);
 				error = 0;
 				break;

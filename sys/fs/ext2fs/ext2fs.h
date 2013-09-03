@@ -147,6 +147,7 @@ struct m_ext2fs {
 	int32_t  e2fs_contigsumsize;    /* size of cluster summary array */
 	int32_t *e2fs_maxcluster;       /* max cluster in each cyl group */
 	struct   csum *e2fs_clustersum; /* cluster summary in each cyl group */
+	int32_t  e2fs_uhash;	  /* 3 if hash should be signed, 0 if not */
 };
 
 /* cluster summary information */
@@ -200,12 +201,18 @@ struct csum {
  * - EXT2F_ROCOMPAT_SPARSESUPER
  * - EXT2F_ROCOMPAT_LARGEFILE
  * - EXT2F_INCOMPAT_FTYPE
+ *
+ * We partially (read-only) support the following EXT4 features:
+ * - EXT2F_ROCOMPAT_HUGE_FILE
+ * - EXT2F_ROCOMPAT_EXTRA_ISIZE
+ * - EXT2F_INCOMPAT_EXTENTS
  */
 #define EXT2F_COMPAT_SUPP		0x0000
 #define EXT2F_ROCOMPAT_SUPP		(EXT2F_ROCOMPAT_SPARSESUPER | \
 					 EXT2F_ROCOMPAT_LARGEFILE | \
 					 EXT2F_ROCOMPAT_EXTRA_ISIZE)
-#define EXT2F_INCOMPAT_SUPP		EXT2F_INCOMPAT_FTYPE
+#define EXT2F_INCOMPAT_SUPP		(EXT2F_INCOMPAT_FTYPE |	\
+					 EXT2F_INCOMPAT_EXTENTS)
 
 /* Assume that user mode programs are passing in an ext2fs superblock, not
  * a kernel struct super_block.  This will allow us to call the feature-test
@@ -227,6 +234,12 @@ struct csum {
  */
 #define	E2FS_ISCLEAN			0x0001	/* Unmounted cleanly */
 #define	E2FS_ERRORS			0x0002	/* Errors detected */
+
+/*
+ * Filesystem miscellaneous flags
+ */
+#define E2FS_SIGNED_HASH	0x0001
+#define E2FS_UNSIGNED_HASH	0x0002
 
 /* ext2 file system block group descriptor */
 

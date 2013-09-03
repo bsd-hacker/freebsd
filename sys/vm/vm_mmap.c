@@ -201,7 +201,7 @@ sys_mmap(td, uap)
 	vm_prot_t cap_maxprot, prot, maxprot;
 	void *handle;
 	objtype_t handle_type;
-	int flags, error;
+	int align, error, flags;
 	off_t pos;
 	struct vmspace *vms = td->td_proc->p_vmspace;
 	cap_rights_t rights;
@@ -250,6 +250,13 @@ sys_mmap(td, uap)
 	/* Adjust size for rounding (on both ends). */
 	size += pageoff;			/* low end... */
 	size = (vm_size_t) round_page(size);	/* hi end */
+
+	/* Ensure alignment is at least a page and fits in a pointer. */
+	align = flags & MAP_ALIGNMENT_MASK;
+	if (align != 0 && align != MAP_ALIGNED_SUPER &&
+	    (align >> MAP_ALIGNMENT_SHIFT >= sizeof(void *) * NBBY ||
+	    align >> MAP_ALIGNMENT_SHIFT < PAGE_SHIFT))
+		return (EINVAL);
 
 	/*
 	 * Check for illegal addresses.  Watch out for address wrap... Note
@@ -1224,6 +1231,9 @@ sys_munlock(td, uap)
 {
 	vm_offset_t addr, end, last, start;
 	vm_size_t size;
+#ifdef RACCT
+	vm_map_t map;
+#endif
 	int error;
 
 	error = priv_check(td, PRIV_VM_MUNLOCK);
@@ -1241,7 +1251,9 @@ sys_munlock(td, uap)
 #ifdef RACCT
 	if (error == KERN_SUCCESS) {
 		PROC_LOCK(td->td_proc);
-		racct_sub(td->td_proc, RACCT_MEMLOCK, ptoa(end - start));
+		map = &td->td_proc->p_vmspace->vm_map;
+		racct_set(td->td_proc, RACCT_MEMLOCK,
+		    ptoa(pmap_wired_count(map->pmap)));
 		PROC_UNLOCK(td->td_proc);
 	}
 #endif
@@ -1485,7 +1497,7 @@ vm_mmap(vm_map_t map, vm_offset_t *addr, vm_size_t size, vm_prot_t prot,
 	boolean_t fitit;
 	vm_object_t object = NULL;
 	struct thread *td = curthread;
-	int docow, error, rv;
+	int docow, error, findspace, rv;
 	boolean_t writecounted;
 
 	if (size == 0)
@@ -1600,11 +1612,17 @@ vm_mmap(vm_map_t map, vm_offset_t *addr, vm_size_t size, vm_prot_t prot,
 	if (flags & MAP_STACK)
 		rv = vm_map_stack(map, *addr, size, prot, maxprot,
 		    docow | MAP_STACK_GROWS_DOWN);
-	else if (fitit)
-		rv = vm_map_find(map, object, foff, addr, size,
-		    object != NULL && object->type == OBJT_DEVICE ?
-		    VMFS_ALIGNED_SPACE : VMFS_ANY_SPACE, prot, maxprot, docow);
-	else
+	else if (fitit) {
+		if ((flags & MAP_ALIGNMENT_MASK) == MAP_ALIGNED_SUPER)
+			findspace = VMFS_SUPER_SPACE;
+		else if ((flags & MAP_ALIGNMENT_MASK) != 0)
+			findspace = VMFS_ALIGNED_SPACE(flags >>
+			    MAP_ALIGNMENT_SHIFT);
+		else
+			findspace = VMFS_OPTIMAL_SPACE;
+		rv = vm_map_find(map, object, foff, addr, size, findspace,
+		    prot, maxprot, docow);
+	} else
 		rv = vm_map_fixed(map, object, foff, *addr, size,
 				 prot, maxprot, docow);
 

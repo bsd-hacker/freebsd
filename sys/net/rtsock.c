@@ -86,7 +86,7 @@ struct if_data32 {
 	uint8_t	ifi_hdrlen;
 	uint8_t	ifi_link_state;
 	uint8_t	ifi_vhid;
-	uint8_t	ifi_spare_char2;
+	uint8_t	ifi_baudrate_pf;
 	uint8_t	ifi_datalen;
 	uint32_t ifi_mtu;
 	uint32_t ifi_metric;
@@ -968,8 +968,8 @@ flush:
 #ifdef INET6
 		if (rti_need_deembed) {
 			/* sin6_scope_id is recovered before sending rtm. */
+			sin6 = (struct sockaddr_in6 *)&ss;
 			for (i = 0; i < RTAX_MAX; i++) {
-				sin6 = (struct sockaddr_in6 *)&ss;
 				if (info.rti_info[i] == NULL)
 					continue;
 				if (info.rti_info[i]->sa_family != AF_INET6)
@@ -1629,6 +1629,7 @@ copy_ifdata32(struct if_data *src, struct if_data32 *dst)
 	CP(*src, *dst, ifi_hdrlen);
 	CP(*src, *dst, ifi_link_state);
 	CP(*src, *dst, ifi_vhid);
+	CP(*src, *dst, ifi_baudrate_pf);
 	dst->ifi_datalen = sizeof(struct if_data32);
 	CP(*src, *dst, ifi_mtu);
 	CP(*src, *dst, ifi_metric);
@@ -1905,6 +1906,7 @@ sysctl_rtsock(SYSCTL_HANDLER_ARGS)
 	u_int	namelen = arg2;
 	struct radix_node_head *rnh = NULL; /* silence compiler. */
 	int	i, lim, error = EINVAL;
+	int	fib = 0;
 	u_char	af;
 	struct	walkarg w;
 
@@ -1912,7 +1914,17 @@ sysctl_rtsock(SYSCTL_HANDLER_ARGS)
 	namelen--;
 	if (req->newptr)
 		return (EPERM);
-	if (namelen != 3)
+	if (name[1] == NET_RT_DUMP) {
+		if (namelen == 3)
+			fib = req->td->td_proc->p_fibnum;
+		else if (namelen == 4)
+			fib = (name[3] == -1) ?
+			    req->td->td_proc->p_fibnum : name[3];
+		else
+			return ((namelen < 3) ? EISDIR : ENOTDIR);
+		if (fib < 0 || fib >= rt_numfibs)
+			return (EINVAL);
+	} else if (namelen != 3)
 		return ((namelen < 3) ? EISDIR : ENOTDIR);
 	af = name[0];
 	if (af > AF_MAX)
@@ -1951,7 +1963,7 @@ sysctl_rtsock(SYSCTL_HANDLER_ARGS)
 		 * take care of routing entries
 		 */
 		for (error = 0; error == 0 && i <= lim; i++) {
-			rnh = rt_tables_get_rnh(req->td->td_proc->p_fibnum, i);
+			rnh = rt_tables_get_rnh(fib, i);
 			if (rnh != NULL) {
 				RADIX_NODE_HEAD_RLOCK(rnh); 
 			    	error = rnh->rnh_walktree(rnh,

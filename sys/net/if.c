@@ -505,6 +505,7 @@ if_free(struct ifnet *ifp)
 
 	ifp->if_flags |= IFF_DYING;			/* XXX: Locking */
 
+	CURVNET_SET_QUIET(ifp->if_vnet);
 	IFNET_WLOCK();
 	KASSERT(ifp == ifnet_byindex_locked(ifp->if_index),
 	    ("%s: freeing unallocated ifnet", ifp->if_xname));
@@ -512,9 +513,9 @@ if_free(struct ifnet *ifp)
 	ifindex_free_locked(ifp->if_index);
 	IFNET_WUNLOCK();
 
-	if (!refcount_release(&ifp->if_refcount))
-		return;
-	if_free_internal(ifp);
+	if (refcount_release(&ifp->if_refcount))
+		if_free_internal(ifp);
+	CURVNET_RESTORE();
 }
 
 /*
@@ -803,7 +804,9 @@ void
 if_detach(struct ifnet *ifp)
 {
 
+	CURVNET_SET_QUIET(ifp->if_vnet);
 	if_detach_internal(ifp, 0);
+	CURVNET_RESTORE();
 }
 
 static void
@@ -2429,7 +2432,7 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 	}
 
 	case SIOCGIFQLEN:
-		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
+		if (!(ifp->if_capabilities & IFCAP_QUEUEID))
 			return (EOPNOTSUPP);
 		KASSERT(ifp->if_get_num_rxqueue, ("if_get_num_rxqueue not set"));
 		KASSERT(ifp->if_get_num_txqueue, ("if_get_num_txqueue not set"));
@@ -2438,7 +2441,7 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 		break;
 
 	case SIOCGIFRXQAFFINITY:
-		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
+		if (!(ifp->if_capabilities & IFCAP_QUEUEID))
 			return (EOPNOTSUPP);
 		KASSERT(ifp->if_get_rxqueue_affinity, ("if_get_rxqueue_affinity not set"));
 		ifp->if_get_rxqueue_affinity(ifp, ifr->ifr_queue_affinity_idx, 
@@ -2446,7 +2449,7 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 		break;
 
 	case SIOCGIFTXQAFFINITY:
-		if (!(ifp->if_capabilities & IFCAP_MULTIQUEUE))
+		if (!(ifp->if_capabilities & IFCAP_QUEUEID))
 			return (EOPNOTSUPP);
 		KASSERT(ifp->if_get_rxqueue_affinity, ("if_get_rxqueue_affinity not set"));
 		ifp->if_get_txqueue_affinity(ifp, ifr->ifr_queue_affinity_idx, 

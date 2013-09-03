@@ -245,8 +245,12 @@ pci_emul_msix_tread(struct pci_devinst *pi, uint64_t offset, int size)
 	int tab_index;
 	uint64_t retval = ~0;
 
-	/* support only 4 or 8 byte reads */
-	if (size != 4 && size != 8)
+	/*
+	 * The PCI standard only allows 4 and 8 byte accesses to the MSI-X
+	 * table but we also allow 1 byte access to accomodate reads from
+	 * ddb.
+	 */
+	if (size != 1 && size != 4 && size != 8)
 		return (retval);
 
 	msix_entry_offset = offset % MSIX_TABLE_ENTRY_SIZE;
@@ -263,7 +267,9 @@ pci_emul_msix_tread(struct pci_devinst *pi, uint64_t offset, int size)
 		dest = (char *)(pi->pi_msix.table + tab_index);
 		dest += msix_entry_offset;
 
-		if (size == 4)
+		if (size == 1)
+			retval = *((uint8_t *)dest);
+		else if (size == 4)
 			retval = *((uint32_t *)dest);
 		else
 			retval = *((uint64_t *)dest);
@@ -662,11 +668,13 @@ pci_emul_finddev(char *name)
 	return (NULL);
 }
 
-static void
+static int
 pci_emul_init(struct vmctx *ctx, struct pci_devemu *pde, int slot, int func,
 	      char *params)
 {
 	struct pci_devinst *pdi;
+	int err;
+
 	pdi = malloc(sizeof(struct pci_devinst));
 	bzero(pdi, sizeof(*pdi));
 
@@ -684,12 +692,15 @@ pci_emul_init(struct vmctx *ctx, struct pci_devemu *pde, int slot, int func,
 	pci_set_cfgdata8(pdi, PCIR_COMMAND,
 		    PCIM_CMD_PORTEN | PCIM_CMD_MEMEN | PCIM_CMD_BUSMASTEREN);
 
-	if ((*pde->pe_init)(ctx, pdi, params) != 0) {
+	err = (*pde->pe_init)(ctx, pdi, params);
+	if (err != 0) {
 		free(pdi);
 	} else {
 		pci_emul_devices++;
 		pci_slotinfo[slot][func].si_devi = pdi;
-	}	
+	}
+
+	return (err);
 }
 
 void
@@ -989,7 +1000,7 @@ pci_emul_fallback_handler(struct vmctx *ctx, int vcpu, int dir, uint64_t addr,
 	return (0);
 }
 
-void
+int
 init_pci(struct vmctx *ctx)
 {
 	struct mem_range memp;
@@ -1003,18 +1014,6 @@ init_pci(struct vmctx *ctx)
 	pci_emul_membase32 = vm_get_lowmem_limit(ctx);
 	pci_emul_membase64 = PCI_EMUL_MEMBASE64;
 
-	for (slot = 0; slot < MAXSLOTS; slot++) {
-		for (func = 0; func < MAXFUNCS; func++) {
-			si = &pci_slotinfo[slot][func];
-			if (si->si_name != NULL) {
-				pde = pci_emul_finddev(si->si_name);
-				assert(pde != NULL);
-				pci_emul_init(ctx, pde, slot, func,
-					      si->si_param);
-			}
-		}
-	}
-
 	/*
 	 * Allow ISA IRQs 5,10,11,12, and 15 to be available for
 	 * generic use
@@ -1024,6 +1023,20 @@ init_pci(struct vmctx *ctx)
 	lirq[11].li_generic = 1;
 	lirq[12].li_generic = 1;
 	lirq[15].li_generic = 1;
+
+	for (slot = 0; slot < MAXSLOTS; slot++) {
+		for (func = 0; func < MAXFUNCS; func++) {
+			si = &pci_slotinfo[slot][func];
+			if (si->si_name != NULL) {
+				pde = pci_emul_finddev(si->si_name);
+				assert(pde != NULL);
+				error = pci_emul_init(ctx, pde, slot, func,
+					    si->si_param);
+				if (error)
+					return (error);
+			}
+		}
+	}
 
 	/*
 	 * The guest physical memory map looks like the following:
@@ -1047,6 +1060,8 @@ init_pci(struct vmctx *ctx)
 
 	error = register_mem_fallback(&memp);
 	assert(error == 0);
+
+	return (0);
 }
 
 int

@@ -123,6 +123,7 @@ SUBDIR=	\
 	${_hpt27xx} \
 	${_hptiop} \
 	${_hptmv} \
+	${_hptnr} \
 	${_hptrr} \
 	hwpmc \
 	${_i2c} \
@@ -158,7 +159,7 @@ SUBDIR=	\
 	${_ipw} \
 	${_ipwfw} \
 	${_isci} \
-	iscsi \
+	iscsi_initiator \
 	isp \
 	${_ispfw} \
 	${_iwi} \
@@ -282,7 +283,6 @@ SUBDIR=	\
 	re \
 	reiserfs \
 	rl \
-	${_runfw} \
 	${_s3} \
 	${_safe} \
 	${_sbni} \
@@ -342,6 +342,7 @@ SUBDIR=	\
 	${_viawd} \
 	vkbd \
 	${_vmm} \
+	${_vmware} \
 	${_vpo} \
 	vr \
 	vte \
@@ -368,6 +369,7 @@ SUBDIR=	\
 
 .if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
 _filemon=	filemon
+_vmware=	vmware
 .endif
 
 .if ${MACHINE_CPUARCH} != "powerpc" && ${MACHINE_CPUARCH} != "arm" && \
@@ -444,7 +446,6 @@ _fxp=		fxp
 _ispfw=		ispfw
 _mwlfw=		mwlfw
 _ralfw=		ralfw
-_runfw=		runfw
 _sf=		sf
 _sn=		sn
 _ti=		ti
@@ -569,6 +570,7 @@ _hpt27xx=	hpt27xx
 _hptiop=	hptiop
 .if ${MK_SOURCELESS_HOST} != "no"
 _hptmv=		hptmv
+_hptnr=		hptnr
 _hptrr=		hptrr
 .endif
 _ichwd=		ichwd
@@ -666,6 +668,7 @@ _hpt27xx=	hpt27xx
 _hptiop=	hptiop
 .if ${MK_SOURCELESS_HOST} != "no"
 _hptmv=		hptmv
+_hptnr=		hptnr
 _hptrr=		hptrr
 .endif
 _i2c=		i2c
@@ -805,23 +808,25 @@ _cardbus=	cardbus
 _cbb=		cbb
 _cfi=		cfi
 _cpufreq=	cpufreq
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
+_cyclic=	cyclic
+.endif
 _drm=		drm
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
+_dtrace=	dtrace
+.endif
 _exca=		exca
 _nvram=		powermac_nvram
 _pccard=	pccard
 _smbfs=		smbfs
 _sound=		sound
-_cyclic=	cyclic
-_dtrace=	dtrace
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
 _opensolaris=	opensolaris
+.endif
+_wi=		wi
 .endif
 
 .if ${MACHINE_ARCH} == "powerpc64"
-.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
-_cyclic=	cyclic
-_dtrace=	dtrace
-_opensolaris=	opensolaris
-.endif
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
 _zfs=		zfs
 .endif

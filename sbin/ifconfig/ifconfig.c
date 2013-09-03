@@ -917,7 +917,7 @@ unsetifdescr(const char *val, int value, int s, const struct afswtch *afp)
 "\020\1RXCSUM\2TXCSUM\3NETCONS\4VLAN_MTU\5VLAN_HWTAGGING\6JUMBO_MTU\7POLLING" \
 "\10VLAN_HWCSUM\11TSO4\12TSO6\13LRO\14WOL_UCAST\15WOL_MCAST\16WOL_MAGIC" \
 "\17TOE4\20TOE6\21VLAN_HWFILTER\23VLAN_HWTSO\24LINKSTATE\25NETMAP" \
-"\26RXCSUM_IPV6\27TXCSUM_IPV6\30MULTIQUEUE"
+"\26RXCSUM_IPV6\27TXCSUM_IPV6\30QUEUEID"
 
 static char *
 cpusetobj_strprint(char *buf, const cpuset_t *set)
@@ -1003,7 +1003,7 @@ status(const struct afswtch *afp, const struct sockaddr_dl *sdl,
 		}
 	}
 
-	if ((ifr.ifr_reqcap & IFCAP_MULTIQUEUE)) {
+	if ((ifr.ifr_reqcap & IFCAP_QUEUEID)) {
 		int i, numrxq = 0, numtxq = 0;
 		char cpus[CPUSETBUFSIZ];
 
