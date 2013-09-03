@@ -82,10 +82,6 @@
 #define	SIOCGIFDESCR	_IOWR('i', 42, struct ifreq)	/* get ifnet descr */ 
 #define	SIOCAIFADDR	 _IOW('i', 43, struct ifaliasreq)/* add/chg IF alias */
 
-#define	SIOCGIFQLEN 	_IOWR('i', 45, struct ifreq)	/* get IF queue len */
-#define	SIOCGIFRXQAFFINITY _IOWR('i', 46, struct ifreq)	/* get IF rx queue affinity */
-#define	SIOCGIFTXQAFFINITY _IOWR('i', 47, struct ifreq)	/* get IF tx queue affinity */
-
 #define	SIOCADDMULTI	 _IOW('i', 49, struct ifreq)	/* add m'cast addr */
 #define	SIOCDELMULTI	 _IOW('i', 50, struct ifreq)	/* del m'cast addr */
 #define	SIOCGIFMTU	_IOWR('i', 51, struct ifreq)	/* get IF mtu */
