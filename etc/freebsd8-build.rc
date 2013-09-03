@@ -4,7 +4,7 @@
 # $FreeBSD$
 #
 
-branches	 = RELENG_8, RELENG_8_4
+branches	 = RELENG_8
 platforms	 = amd64, arm, i386, i386/pc98, ia64, mips, powerpc, sparc64
 targets		 = precleanobj, version, world, lint, kernels, postcleanobj
 srcdir		 = %%SANDBOX%%/%%BRANCH%%/src

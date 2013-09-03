@@ -4,7 +4,7 @@
 # $FreeBSD$
 #
 
-branches	 = RELENG_9
+branches	 = RELENG_9, RELENG_9_2
 platforms	 = none
 srcdir		 = %%SANDBOX%%/%%BRANCH%%/src
 targets		 = update, version
