@@ -34,7 +34,6 @@ static const char rcsid[] _U_ =
 #include <sys/mman.h>
 #endif
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <time.h>
 /*
  * <net/bpf.h> defines ioctls, but doesn't include <sys/ioccom.h>.
@@ -2187,33 +2186,6 @@ pcap_activate_bpf(pcap_t *p)
 #ifdef HAVE_ZEROCOPY_BPF
 	}
 #endif
-
-	if (p->qmask_enabled) {
-		if (ioctl(fd, BIOCQMASKENABLE, NULL) < 0) {
-			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCQMASKENABLE: %s",
-			    pcap_strerror(errno));
-			status = PCAP_ERROR;
-			goto bad;
-		}
-		if (ioctl(fd, BIOCSRXQMASK, &p->rxqmask) < 0) {
-			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSRXQMASK: %s",
-			    pcap_strerror(errno));
-			status = PCAP_ERROR;
-			goto bad;
-		}
-		if (ioctl(fd, BIOCSTXQMASK, &p->txqmask) < 0) {
-			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSTXQMASK: %s",
-			    pcap_strerror(errno));
-			status = PCAP_ERROR;
-			goto bad;
-		}
-		if (ioctl(fd, BIOCSNOQMASK, &p->noqmask) < 0) {
-			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "BIOCSNOQMASK: %s",
-			    pcap_strerror(errno));
-			status = PCAP_ERROR;
-			goto bad;
-		}
-	}
 
 	/*
 	 * If there's no filter program installed, there's

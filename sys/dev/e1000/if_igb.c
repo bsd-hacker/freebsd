@@ -279,11 +279,6 @@ static int	igb_set_flowcntl(SYSCTL_HANDLER_ARGS);
 static int	igb_sysctl_dmac(SYSCTL_HANDLER_ARGS);
 static int	igb_sysctl_eee(SYSCTL_HANDLER_ARGS);
 
-static int	igb_get_num_rxqueue(struct ifnet *);
-static int	igb_get_num_txqueue(struct ifnet *);
-static int	igb_get_rxqueue_affinity(struct ifnet *, int, cpuset_t *);
-static int	igb_get_txqueue_affinity(struct ifnet *, int, cpuset_t *);
-
 #ifdef DEVICE_POLLING
 static poll_handler_t igb_poll;
 #endif /* POLLING */
@@ -3134,10 +3129,6 @@ igb_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_softc = adapter;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = igb_ioctl;
- 	ifp->if_get_num_rxqueue = igb_get_num_rxqueue;
- 	ifp->if_get_num_txqueue = igb_get_num_txqueue;
- 	ifp->if_get_rxqueue_affinity = igb_get_rxqueue_affinity;
- 	ifp->if_get_txqueue_affinity = igb_get_txqueue_affinity;
 #ifndef IGB_LEGACY_TX
 	ifp->if_transmit = igb_mq_start;
 	ifp->if_qflush = igb_qflush;
@@ -6075,33 +6066,5 @@ igb_sysctl_eee(SYSCTL_HANDLER_ARGS)
 	adapter->hw.dev_spec._82575.eee_disable = (value != 0);
 	igb_init_locked(adapter);
 	IGB_CORE_UNLOCK(adapter);
-	return (0);
-}
-
-static int
-igb_get_num_rxqueue(struct ifnet *ifp)
-{
-	struct adapter	*adapter = ifp->if_softc;
-	return (adapter->num_queues);
-}
-
-static int
-igb_get_num_txqueue(struct ifnet *ifp)
-{
-	struct adapter	*adapter = ifp->if_softc;
-	return (adapter->num_queues);
-}
-
-static int
-igb_get_rxqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
-{
-	CPU_SETOF(idx, cpus);
-	return (0);
-}
-
-static int
-igb_get_txqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
-{
-	CPU_SETOF(idx, cpus);
 	return (0);
 }

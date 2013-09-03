@@ -120,11 +120,6 @@ static int mxge_detach(device_t dev);
 static int mxge_shutdown(device_t dev);
 static void mxge_intr(void *arg);
 
-static int mxge_get_num_rxqueue(struct ifnet *);
-static int mxge_get_num_txqueue(struct ifnet *);
-static int mxge_get_rxqueue_affinity(struct ifnet *, int, cpuset_t *);
-static int mxge_get_txqueue_affinity(struct ifnet *, int, cpuset_t *);
-
 static device_method_t mxge_methods[] =
 {
   /* Device interface */
@@ -4942,11 +4937,6 @@ mxge_attach(device_t dev)
         ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
         ifp->if_ioctl = mxge_ioctl;
         ifp->if_start = mxge_start;
-	ifp->if_get_num_rxqueue = mxge_get_num_rxqueue;
-	ifp->if_get_num_txqueue = mxge_get_num_txqueue;
-	ifp->if_get_rxqueue_affinity = mxge_get_rxqueue_affinity;
-	ifp->if_get_txqueue_affinity = mxge_get_txqueue_affinity;
-
 	/* Initialise the ifmedia structure */
 	ifmedia_init(&sc->media, 0, mxge_media_change, 
 		     mxge_media_status);
@@ -5043,31 +5033,11 @@ mxge_shutdown(device_t dev)
 	return 0;
 }
 
+/*
+  This file uses Myri10GE driver indentation.
 
-static int
-mxge_get_num_rxqueue(struct ifnet *ifp)
-{
-	mxge_softc_t *sc = ifp->if_softc;
-	return (sc->num_slices);
-}
-
-static int
-mxge_get_num_txqueue(struct ifnet *ifp)
-{
-	mxge_softc_t *sc = ifp->if_softc;
-	return (sc->num_slices);
-}
-
-static int
-mxge_get_rxqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
-{
-	CPU_SETOF(idx, cpus);
-	return (0);
-}
-
-static int
-mxge_get_txqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
-{
-	CPU_SETOF(idx, cpus);
-	return (0);
-}
+  Local Variables:
+  c-file-style:"linux"
+  tab-width:8
+  End:
+*/

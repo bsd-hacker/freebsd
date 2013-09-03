@@ -631,44 +631,34 @@ therefore ownership is not assigned, the user process must check
 .Vt bzh_kernel_gen
 against
 .Vt bzh_user_gen .
-.It Dv BIOCENAQMASK
+.It Dv BIOCQMASKENABLE
 Enables multiqueue filter on the descriptor.
 
-.It Dv BIOCDISQMASK
+.It Dv BIOCQMASKDISABLE
 Disables multiqueue filter on the descriptor.
 
-.It Dv BIOCSTRXQMASK
-.Pq Li uint32_t
-Set mask bit on specified RX queue.
+.It Dv BIOCGRXQMASK
+.Pq Li struct bpf_qmask_bits
+Set RX queue mask bits.
 
-.It Dv BIOCCRRXQMASK
-.Pq Li uint32_t
-Clear mask bit on specified RX queue.
+.It Dv BIOCSRXQMASK
+.Pq Li struct bpf_qmask_bits
+Get RX queue mask bits.
 
-.It Dv BIOCGTRXQMASK
-.Pq Li uint32_t
-Get mask bit on specified RX queue.
+.It Dv BIOCGTXQMASK
+.Pq Li struct bpf_qmask_bits
+Set TX queue mask bits.
 
-.It Dv BIOCSTTXQMASK
-.Pq Li uint32_t
-Set mask bit on specified TX queue.
+.It Dv BIOCSTXQMASK
+.Pq Li struct bpf_qmask_bits
+Get TX queue mask bits.
 
-.It Dv BIOCCRTXQMASK
-.Pq Li uint32_t
-Clear mask bit on specified TX queue.
-
-.It Dv BIOCGTTXQMASK
-.Pq Li uint32_t
-Get mask bit on specified TX queue.
-
-.It Dv BIOCSTOTHERMASK
+.It Dv BIOCGNOQMASK
+.Pq Li int
 Set mask bit for the packets which not tied with any queues.
 
-.It Dv BIOCCROTHERMASK
-Clear mask bit for the packets which not tied with any queues.
-
-.It Dv BIOCGTOTHERMASK
-.Pq Li uint32_t
+.It Dv BIOCSNOQMASK
+.Pq Li int
 Get mask bit for the packets which not tied with any queues.
 
 .El
@@ -1088,8 +1078,7 @@ This distributes bpf workload on multiple threads, also reduces lock
 contention on bpf.
 
 To make your program multithreaded, you'll need to open bpf descriptor on each 
-thread, enable multiqueue support by BIOCENAQMASK ioctl, and set queue mask by 
-BIOCSTRXQMASK / BIOCSTTXQMASK / BIOCSTOTHERMASK ioctls.
+thread, enable multiqueue support by BIOCQMASKENABLE ioctl, and set queue mask by BIOCSRXQMASK / BIOCSTXQMASK / BIOCSNOQMASK ioctls.
 
 Queue length and queue affinity information may useful to optimize setting 
 queue mask on bpf descriptor, see

@@ -49,8 +49,6 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #endif
-#include <sys/param.h>
-#include <sys/cpuset.h>
 
 struct ifnet;
 #endif
@@ -233,7 +231,7 @@ struct if_data {
 #define	IFCAP_NETMAP		0x100000 /* netmap mode supported/enabled */
 #define	IFCAP_RXCSUM_IPV6	0x200000  /* can offload checksum on IPv6 RX */
 #define	IFCAP_TXCSUM_IPV6	0x400000  /* can offload checksum on IPv6 TX */
-#define	IFCAP_QUEUEID		0x800000  /* can write queueid on mbuf */
+#define	IFCAP_QUEUEID		0x800000  /* driver supports queueid notify */
 
 #define IFCAP_HWCSUM_IPV6	(IFCAP_RXCSUM_IPV6 | IFCAP_TXCSUM_IPV6)
 
@@ -388,11 +386,6 @@ struct	ifreq {
 		caddr_t	ifru_data;
 		int	ifru_cap[2];
 		u_int	ifru_fib;
-		int	ifru_num_queue[2];
-		struct {
-			int idx;
-			cpuset_t cpus;
-		} ifru_queue_affinity;
 	} ifr_ifru;
 #define	ifr_addr	ifr_ifru.ifru_addr	/* address */
 #define	ifr_dstaddr	ifr_ifru.ifru_dstaddr	/* other end of p-to-p link */
@@ -410,10 +403,6 @@ struct	ifreq {
 #define	ifr_curcap	ifr_ifru.ifru_cap[1]	/* current capabilities */
 #define	ifr_index	ifr_ifru.ifru_index	/* interface index */
 #define	ifr_fib		ifr_ifru.ifru_fib	/* interface fib */
-#define ifr_num_rxqueue	ifr_ifru.ifru_num_queue[0] /* number of rxqueues */
-#define ifr_num_txqueue	ifr_ifru.ifru_num_queue[1] /* number of txqueues */
-#define ifr_queue_affinity_idx ifr_ifru.ifru_queue_affinity.idx /* queue index */
-#define ifr_queue_affinity_cpus ifr_ifru.ifru_queue_affinity.cpus /* queue affinity mask */
 };
 
 #define	_SIZEOF_ADDR_IFREQ(ifr) \

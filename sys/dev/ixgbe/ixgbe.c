@@ -207,12 +207,6 @@ static void	ixgbe_reinit_fdir(void *, int);
 /* Missing shared code prototype */
 extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
-static int	ixgbe_get_num_rxqueue(struct ifnet *);
-static int	ixgbe_get_num_txqueue(struct ifnet *);
-static int	ixgbe_get_rxqueue_affinity(struct ifnet *, int, cpuset_t *);
-static int	ixgbe_get_txqueue_affinity(struct ifnet *, int, cpuset_t *);
-
-
 /*********************************************************************
  *  FreeBSD Device Interface Entry Points
  *********************************************************************/
@@ -2627,10 +2621,6 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_softc = adapter;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = ixgbe_ioctl;
- 	ifp->if_get_num_rxqueue = ixgbe_get_num_rxqueue;
- 	ifp->if_get_num_txqueue = ixgbe_get_num_txqueue;
- 	ifp->if_get_rxqueue_affinity = ixgbe_get_rxqueue_affinity;
- 	ifp->if_get_txqueue_affinity = ixgbe_get_txqueue_affinity;
 #ifndef IXGBE_LEGACY_TX
 	ifp->if_transmit = ixgbe_mq_start;
 	ifp->if_qflush = ixgbe_qflush;
@@ -5765,34 +5755,6 @@ ixgbe_set_advertise(SYSCTL_HANDLER_ARGS)
 	hw->mac.ops.setup_link(hw, speed, TRUE);
 
 	return (error);
-}
-
-static int
-ixgbe_get_num_rxqueue(struct ifnet *ifp)
-{
-	struct adapter	*adapter = ifp->if_softc;
-	return (adapter->num_queues);
-}
-
-static int
-ixgbe_get_num_txqueue(struct ifnet *ifp)
-{
-	struct adapter	*adapter = ifp->if_softc;
-	return (adapter->num_queues);
-}
-
-static int
-ixgbe_get_rxqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
-{
-	CPU_SETOF(idx, cpus);
-	return (0);
-}
-
-static int
-ixgbe_get_txqueue_affinity(struct ifnet *ifp, int idx, cpuset_t *cpus)
-{
-	CPU_SETOF(idx, cpus);
-	return (0);
 }
 
 /*

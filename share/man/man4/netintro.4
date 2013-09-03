@@ -213,12 +213,6 @@ struct	ifreq {
         int       ifru_media;
         caddr_t   ifru_data;
         int       ifru_cap[2];
-	u_int     ifru_fib;
-	int       ifru_num_queue[2];
-	struct {
-	          int idx;
-	          cpuset_t cpus;
-	} ifru_queue_affinity;
     } ifr_ifru;
 #define ifr_addr      ifr_ifru.ifru_addr      /* address */
 #define ifr_dstaddr   ifr_ifru.ifru_dstaddr   /* other end of p-to-p link */
@@ -234,11 +228,6 @@ struct	ifreq {
 #define ifr_reqcap    ifr_ifru.ifru_cap[0]    /* requested capabilities */
 #define ifr_curcap    ifr_ifru.ifru_cap[1]    /* current capabilities */
 #define ifr_index     ifr_ifru.ifru_index     /* interface index */
-#define	ifr_fib		ifr_ifru.ifru_fib	/* interface fib */
-#define ifr_num_rxqueue	ifr_ifru.ifru_num_queue[0] /* number of rxqueues */
-#define ifr_num_txqueue	ifr_ifru.ifru_num_queue[1] /* number of txqueues */
-#define ifr_queue_affinity_idx ifr_ifru.ifru_queue_affinity.idx /* queue index */
-#define ifr_queue_affinity_cpus ifr_ifru.ifru_queue_affinity.cpus /* queue affinity mask */
 };
 .Ed
 .Pp
@@ -330,12 +319,6 @@ On successful return the
 field will contain the new interface name.
 .It Dv SIOCIFDESTROY
 Attempt to destroy the specified interface.
-.It Dv SIOCGIFQLEN
-Get interface RX/TX queue length.
-.It Dv SIOCGIFRXQAFFINITY
-Get interface RX queue affinity.
-.It Dv SIOCGIFTXQAFFINITY
-Get interface TX queue affinity.
 .El
 .Pp
 There are two requests that make use of a new structure:

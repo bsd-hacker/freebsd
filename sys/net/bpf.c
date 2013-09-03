@@ -2707,7 +2707,6 @@ bpf_freed(struct bpf_d *d)
 	}
 	if (d->bd_wfilter != NULL)
 		free((caddr_t)d->bd_wfilter, M_BPF);
- 
 	mtx_destroy(&d->bd_lock);
 }
 

@@ -2431,31 +2431,6 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 		break;
 	}
 
-	case SIOCGIFQLEN:
-		if (!(ifp->if_capabilities & IFCAP_QUEUEID))
-			return (EOPNOTSUPP);
-		KASSERT(ifp->if_get_num_rxqueue, ("if_get_num_rxqueue not set"));
-		KASSERT(ifp->if_get_num_txqueue, ("if_get_num_txqueue not set"));
-		ifr->ifr_num_rxqueue = ifp->if_get_num_rxqueue(ifp);
-		ifr->ifr_num_txqueue = ifp->if_get_num_txqueue(ifp);
-		break;
-
-	case SIOCGIFRXQAFFINITY:
-		if (!(ifp->if_capabilities & IFCAP_QUEUEID))
-			return (EOPNOTSUPP);
-		KASSERT(ifp->if_get_rxqueue_affinity, ("if_get_rxqueue_affinity not set"));
-		ifp->if_get_rxqueue_affinity(ifp, ifr->ifr_queue_affinity_idx, 
-			&ifr->ifr_queue_affinity_cpus);
-		break;
-
-	case SIOCGIFTXQAFFINITY:
-		if (!(ifp->if_capabilities & IFCAP_QUEUEID))
-			return (EOPNOTSUPP);
-		KASSERT(ifp->if_get_rxqueue_affinity, ("if_get_rxqueue_affinity not set"));
-		ifp->if_get_txqueue_affinity(ifp, ifr->ifr_queue_affinity_idx, 
-			&ifr->ifr_queue_affinity_cpus);
-		break;
-
 	default:
 		error = ENOIOCTL;
 		break;

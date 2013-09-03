@@ -337,11 +337,6 @@ struct pcap {
 	u_int *tstamp_type_list;
 
 	struct pcap_pkthdr pcap_header;	/* This is needed for the pcap_next_ex() to work */
-
-	int qmask_enabled;
-	struct bpf_qmask_bits rxqmask;
-	struct bpf_qmask_bits txqmask;
-	int noqmask;
 };
 
 /*
