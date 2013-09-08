@@ -23,6 +23,7 @@ if find "${PRIVDIR}" \! -perm -444 | grep -q .; then
 	find "${PRIVDIR}" \! -perm -444
 	echo
 	echo "You should fix this before publishing them."
+	exit 1
 fi
 
 # Create a tarball
