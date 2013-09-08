@@ -15,6 +15,13 @@ fi
 # Set an ID if we don't have one already
 if [ -z "${ID}" ]; then
 	ID=`date "+%s"`
+else
+	while read EID X Y; do
+		if [ "${EID}" = "${ID}" ]; then
+			echo "Error: ${ID} already exists, this may be not what you want."
+			exit 1
+		fi
+	done < "${PRIVDIR}/flist"
 fi
 
 # Check that the files we're publishing have publishable permissions
