@@ -664,7 +664,7 @@ static StringRef getARMFloatABI(const Driver &D,
       case llvm::Triple::GNUEABIHF:
         FloatABI = "hard";
          break;
-      default: {
+      case llvm::Triple::GNUEABI: {
         std::string ArchName =
           getLLVMArchSuffixForARM(getARMTargetCPU(Args, Triple));
         if (StringRef(ArchName).startswith("v6") ||
@@ -674,6 +674,8 @@ static StringRef getARMFloatABI(const Driver &D,
           FloatABI = "soft";
         break;
       }
+      default:
+        FloatABI = "soft";
       }
       break;
 
