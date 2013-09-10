@@ -25,9 +25,9 @@ else
 fi
 
 # Check that the files we're publishing have publishable permissions
-if find "${PRIVDIR}" \! -perm -444 | grep -q .; then
+if find "${STAGEDIR}" \! -type f -perm -444 | grep -q .; then
 	echo "Files to be published have bad permissions:"
-	find "${PRIVDIR}" \! -perm -444
+	find "${STAGEDIR}" \! -type f -perm -444
 	echo
 	echo "You should fix this before publishing them."
 	exit 1
