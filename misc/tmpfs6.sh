@@ -101,7 +101,7 @@ test(void)
 }
 
 int 
-main(int argc, char **argv)
+main(void)
 {
 	int i;
 
