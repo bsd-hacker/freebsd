@@ -14,7 +14,7 @@ sh ./run.sh
 The "run.sh" script accepts an optional configuration file in order to test specific areas.
 For example:
 
-./run.sh vfs.sh
+./run.sh vfs.cfg
 
 
 To run all of the different test scenarios type:
