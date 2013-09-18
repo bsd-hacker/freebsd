@@ -1,7 +1,4 @@
 #!/bin/sh
-#
-# $Yahoo: //depot/yahoo/ybsd_9/src/etc/rc.d/mptd#1 $
-#
 
 # PROVIDE: mptd
 # REQUIRE: dumpon root ldconfig devfs syslogd mail
