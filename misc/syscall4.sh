@@ -108,6 +108,7 @@ static int ignore[] = {
 	SYS_mac_syscall,
 	SYS_sigtimedwait,
 	SYS_sigwaitinfo,
+	SYS_pdfork,
 };
 
 int fd[900], fds[2], socketpr[2];
@@ -129,7 +130,8 @@ hand(int i __unused) {	/* handler */
 unsigned long
 makearg(void)
 {
-	unsigned int i, val;
+	unsigned int i;
+	unsigned long val;
 
 	val = arc4random();
 	i   = arc4random() % 100;
@@ -138,7 +140,14 @@ makearg(void)
 	if (i >= 20 && i < 40)
 		val = val & 0xffff;
 	if (i >= 40 && i < 60)
-		val = (unsigned long)(r) + (val & 0xffff);
+		val = (unsigned long)(r) | (val & 0xffff);
+#if defined(__LP64__)
+	if (i >= 60) {
+		val = (val << 32) | arc4random();
+		if (i > 80)
+			val = val & 0x00007fffffffffffUL;
+	}
+#endif
 
 	return(val);
 }
@@ -208,7 +217,7 @@ calls(void *arg __unused)
 		num = syscallno;
 		while (num == 0) {
 			num = random_int(0, SYS_MAXSYSCALL);
-			for (j = 0; j < (int)sizeof(ignore) / (int)sizeof(ignore[0]); j++)
+			for (j = 0; j < (int)nitems(ignore); j++)
 				if (num == ignore[j]) {
 					num = 0;
 					break;
@@ -260,8 +269,12 @@ main(int argc, char **argv)
 	signal(SIGSYS,  hand);
 	signal(SIGTRAP, hand);
 
-	if (argc == 2)
+	if (argc == 2) {
 		syscallno = atoi(argv[1]);
+		for (j = 0; j < (int)nitems(ignore); j++)
+			if (syscallno == ignore[j]) 
+				errx(0, "syscall #%d is on the ignore list.", syscallno);
+	}
 
 	for (i = 0; i < 100000; i++) {
 		if (fork() == 0) {
