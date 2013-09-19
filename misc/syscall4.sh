@@ -57,9 +57,11 @@ newfs -U md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
+sleeptime=${sleeptime:-12}
 for i in `jot 10`; do
+echo "Loop #$i"
 	(cd $mntpoint; /tmp/syscall4 $* < /dev/null) &
-	sleep 180
+	[ $# -eq 1 ] && sleep $sleeptime || sleep 180
 	killall -9 syscall4
 	ipcs | awk '/^(q|m|s)/ {print " -" $1, $2}' | xargs -L 1 ipcrm
 done
@@ -287,7 +289,7 @@ main(int argc, char **argv)
 
 			for (j = 0; j < 50; j++) 
 				pthread_join(cp[j], NULL);
-			exit(0);
+			_exit(0);
 		}
 		wait(NULL);
 	}
