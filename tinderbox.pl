@@ -600,7 +600,7 @@ MAIN:{
 	    my $svncmd = [grep({ -x } @svncmds)]->[0]
 		or error("unable to locate svn binary");
 	    cd("$sandbox");
-	    if (-d $srcdir) {
+	    if (-d "$srcdir/.svn") {
 		spawn($svncmd, "cleanup", $srcdir);
 		push(@svnargs, "update", $srcdir);
 	    } else {
