@@ -163,7 +163,6 @@ test(void *arg __unused)
 	int i;
 
 	ftsoptions = FTS_PHYSICAL;
-	ftsoptions = 0;
 	args[0] = "/dev";
 	args[1] = "/proc";
 	args[2] = "/usr/compat/linux/proc";
@@ -188,8 +187,6 @@ test(void *arg __unused)
 			i = i % 900;
 		}
 
-		if (errno != 0 && errno != ENOENT)
-			warn("fts_read");
 		if (fts_close(fts) == -1)
 			err(1, "fts_close()");
 		if (pipe(fds) == -1)
@@ -249,7 +246,8 @@ main(int argc, char **argv)
 {
 	struct passwd *pw;
 	pthread_t rp, cp[50];
-	int i, j;
+	time_t start;
+	int j;
 
 	if ((pw = getpwnam("nobody")) == NULL)
 		err(1, "no such user: nobody");
@@ -276,7 +274,8 @@ main(int argc, char **argv)
 				errx(0, "syscall #%d is on the ignore list.", syscallno);
 	}
 
-	for (i = 0; i < 100000; i++) {
+	start = time(NULL);
+	while ((time(NULL) - start) < 120) {
 		if (fork() == 0) {
 			arc4random_stir();
 			if (pthread_create(&rp, NULL, test, NULL) != 0)
