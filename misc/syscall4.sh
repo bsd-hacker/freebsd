@@ -78,6 +78,7 @@ EOF
 #include <fts.h>
 #include <libutil.h>
 #include <pthread.h>
+#include <pwd.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <stdint.h>
@@ -113,9 +114,6 @@ int fd[900], fds[2], socketpr[2];
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
 u_int32_t r[N];
 int syscallno;
-
-#define		UID_NOBODY	65534
-#define		GID_NOBODY	65534
 
 static int
 random_int(int mi, int ma)
@@ -240,13 +238,18 @@ calls(void *arg __unused)
 int
 main(int argc, char **argv)
 {
+	struct passwd *pw;
 	pthread_t rp, cp[50];
 	int i, j;
 
-	if (setgid(GID_NOBODY) == -1)
-		err(1, "setgid(%d)", GID_NOBODY);
-	if (setuid(UID_NOBODY) == -1)
-		err(1, "setuid(%d)", UID_NOBODY);
+	if ((pw = getpwnam("nobody")) == NULL)
+		err(1, "no such user: nobody");
+
+	if (setgroups(1, &pw->pw_gid) ||
+	    setegid(pw->pw_gid) || setgid(pw->pw_gid) ||
+	    seteuid(pw->pw_uid) || setuid(pw->pw_uid))
+		err(1, "Can't drop privileges to \"nobody\"");
+	endpwent();
 
 	signal(SIGALRM, hand);
 	signal(SIGILL,  hand);
