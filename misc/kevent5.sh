@@ -37,12 +37,12 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kevent5.c
-cc -o kevent5 -Wall -Wextra kevent5.c || exit 1
+cc -o kevent5 -Wall -Wextra -O2 -g kevent5.c || exit 1
 rm -f kevent5.c
 
 [ -d $RUNDIR ] || mkdir -p $RUNDIR
 cd $RUNDIR
-/tmp/kevent5 kevent5.xxx kevent5.yyy
+/tmp/kevent5 kevent5.xxx kevent5.yyy > /dev/null 2>&1
 
 rm -f /tmp/kevent5 kevent.xxx kevent.yyy
 
@@ -72,6 +72,7 @@ test(void) {
 	int kq = -1;
 	int n;
 	struct kevent ev[2];
+	struct timespec ts;
 	int fd;
 
 	if ((fd = open(file1, O_RDONLY, 0)) == -1)
@@ -85,7 +86,10 @@ test(void) {
 		NOTE_DELETE, 0, 0);
 	n++;
 
-	if (kevent(kq, ev, n, NULL, 0, NULL) < 0)
+	ts.tv_sec  = 5;
+	ts.tv_nsec = 0;
+
+	if (kevent(kq, ev, n, NULL, 0, &ts) < 0)
 		err(1, "kevent()");
 
 	memset(&ev, 0, sizeof(ev));
@@ -111,7 +115,7 @@ test(void) {
 		err(1, "kevent()");
 
 	memset(&ev, 0, sizeof(ev));
-	n = kevent(kq, NULL, 0, ev, 1, NULL);
+	n = kevent(kq, NULL, 0, ev, 1, &ts);
 //	printf("Event 2\n");
 	close(fd);
 	close(kq);
@@ -130,7 +134,6 @@ main(int argc, char **argv) {
 	file1 = argv[1];
 	file2 = argv[2];
 
-	alarm(600);
 	for (j = 0; j < 100; j++) {
 		if ((fd = open(file1, O_CREAT | O_TRUNC | O_RDWR, 0660)) == -1)
 			err(1, "open(%s)", file1);
