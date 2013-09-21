@@ -84,10 +84,10 @@ sub do_config($) {
 
     my %branches = %{$CONFIGS{$config}};
 
-    my $prettyconfig = $config;
-    $prettyconfig =~ s/^(.*?)-build$/$1/;
+    $config =~ m/^(\w+)((?:-\w+)*?)(-build)?$/;
+    my $variant = join(' ', split('-', $2));
     print "      <tr class='header'>
-        <th>$prettyconfig</th>
+        <th>&nbsp;</th>
 ";
     foreach my $arch (sort(keys(%ARCHES))) {
 	foreach my $machine (sort(keys(%{$ARCHES{$arch}}))) {
@@ -108,7 +108,7 @@ sub do_config($) {
 	$prettybranch =~ s@^RELENG_(\d+)_(\d+)$@/releng/$1.$2@;
 	$prettybranch =~ s@^RELENG_(\d+)$@/stable/$1@;
 	print "      <tr>
-	<th>$prettybranch</th>
+	<th>$prettybranch$variant</th>
 ";
 	foreach my $arch (sort(keys(%ARCHES))) {
 	    foreach my $machine (sort(keys(%{$ARCHES{$arch}}))) {
