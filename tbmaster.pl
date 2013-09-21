@@ -32,6 +32,7 @@ use strict;
 use Fcntl qw(:DEFAULT :flock);
 use POSIX;
 use Getopt::Long;
+use Storable qw(dclone);
 
 my $VERSION	= "2.10";
 my $COPYRIGHT	= "Copyright (c) 2003-2012 Dag-Erling Smørgrav. " .
@@ -147,7 +148,7 @@ sub expand($) {
 #
 sub clearconf() {
 
-    %CONFIG = %INITIAL_CONFIG;
+    %CONFIG = %{dclone(\%INITIAL_CONFIG)};
 }
 
 #
