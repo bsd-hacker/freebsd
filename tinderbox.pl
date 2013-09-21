@@ -1,6 +1,6 @@
 #!/usr/bin/perl -Tw
 #-
-# Copyright (c) 2003-2012 Dag-Erling Smørgrav
+# Copyright (c) 2003-2013 Dag-Erling Smørgrav
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -33,7 +33,7 @@ use Fcntl qw(:DEFAULT :flock);
 use POSIX;
 use Getopt::Long;
 
-my $VERSION	= "2.10";
+my $VERSION	= "2.11";
 my $COPYRIGHT	= "Copyright (c) 2003-2012 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 

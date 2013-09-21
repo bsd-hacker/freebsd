@@ -1,6 +1,6 @@
 #!/usr/bin/perl -Tw
 #-
-# Copyright (c) 2003-2012 Dag-Erling Smørgrav
+# Copyright (c) 2003-2013 Dag-Erling Smørgrav
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -34,8 +34,8 @@ use POSIX;
 use Getopt::Long;
 use Storable qw(dclone);
 
-my $VERSION	= "2.10";
-my $COPYRIGHT	= "Copyright (c) 2003-2012 Dag-Erling Smørgrav. " .
+my $VERSION	= "2.11";
+my $COPYRIGHT	= "Copyright (c) 2003-2013 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
 my $BACKLOG	= 8;
@@ -518,9 +518,9 @@ sub tbmaster($) {
 
     clearconf();
     readconf('default.rc');
-    readconf('site.rc');
     readconf("$config.rc")
 	or die("$config.rc: $!\n");
+    readconf('site.rc');
     $CONFIG{'CONFIG'} = $config;
     $CONFIG{'ETCDIR'} = $etcdir;
 

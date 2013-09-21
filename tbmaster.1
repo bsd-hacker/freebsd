@@ -1,5 +1,5 @@
 .\"-
-.\" Copyright (c) 2003-2012 Dag-Erling Smørgrav
+.\" Copyright (c) 2003-2013 Dag-Erling Smørgrav
 .\" All rights reserved.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd December 18, 2012
+.Dd September 22, 2013
 .Dt TBMASTER 1
 .Os
 .Sh NAME
@@ -94,8 +94,9 @@ attempts to read
 .Pa default.rc
 and
 .Pa site.rc
-before reading the actual configuration file; thus, these files may be
-used to specify default values shared by multiple configurations.
+before and after the actual configuration file, respectively; thus,
+they can be used to specify default values shared by multiple
+configurations.
 .Pp
 The configuration consists of a list of single- or multiple-value
 variable assignments:
