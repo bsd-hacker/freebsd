@@ -157,7 +157,8 @@ _sleep(void *ident, struct lock_object *lock, int priority,
 	struct thread *td;
 	struct proc *p;
 	struct lock_class *class;
-	int catch, lock_state, pri, rval, sleepq_flags;
+	uintptr_t lock_state;
+	int catch, pri, rval, sleepq_flags;
 	WITNESS_SAVE_DECL(lock_witness);
 
 	td = curthread;
@@ -356,10 +357,7 @@ msleep_spin_sbt(void *ident, struct mtx *mtx, const char *wmesg,
 int
 pause_sbt(const char *wmesg, sbintime_t sbt, sbintime_t pr, int flags)
 {
-	int sbt_sec;
-
-	sbt_sec = sbintime_getsec(sbt);
-	KASSERT(sbt_sec >= 0, ("pause: timo must be >= 0"));
+	KASSERT(sbt >= 0, ("pause: timeout must be >= 0"));
 
 	/* silently convert invalid timeouts */
 	if (sbt == 0)
@@ -370,11 +368,14 @@ pause_sbt(const char *wmesg, sbintime_t sbt, sbintime_t pr, int flags)
 		 * We delay one second at a time to avoid overflowing the
 		 * system specific DELAY() function(s):
 		 */
-		while (sbt_sec > 0) {
+		while (sbt >= SBT_1S) {
 			DELAY(1000000);
-			sbt_sec--;
+			sbt -= SBT_1S;
 		}
-		DELAY((sbt & 0xffffffff) / SBT_1US);
+		/* Do the delay remainder, if any */
+		sbt = (sbt + SBT_1US - 1) / SBT_1US;
+		if (sbt > 0)
+			DELAY(sbt);
 		return (0);
 	}
 	return (_sleep(&pause_wchan[curcpu], NULL, 0, wmesg, sbt, pr, flags));

@@ -6250,9 +6250,15 @@ zfs_freebsd_rename(ap)
 	ASSERT(ap->a_fcnp->cn_flags & (SAVENAME|SAVESTART));
 	ASSERT(ap->a_tcnp->cn_flags & (SAVENAME|SAVESTART));
 
-	error = zfs_rename(fdvp, ap->a_fcnp->cn_nameptr, tdvp,
-	    ap->a_tcnp->cn_nameptr, ap->a_fcnp->cn_cred, NULL, 0);
-
+	/*
+	 * Check for cross-device rename.
+	 */
+	if ((fdvp->v_mount != tdvp->v_mount) ||
+	    (tvp && (fdvp->v_mount != tvp->v_mount)))
+		error = EXDEV;
+	else
+		error = zfs_rename(fdvp, ap->a_fcnp->cn_nameptr, tdvp,
+		    ap->a_tcnp->cn_nameptr, ap->a_fcnp->cn_cred, NULL, 0);
 	if (tdvp == tvp)
 		VN_RELE(tdvp);
 	else
@@ -6308,10 +6314,15 @@ zfs_freebsd_link(ap)
 	} */ *ap;
 {
 	struct componentname *cnp = ap->a_cnp;
+	vnode_t *vp = ap->a_vp;
+	vnode_t *tdvp = ap->a_tdvp;
+
+	if (tdvp->v_mount != vp->v_mount)
+		return (EXDEV);
 
 	ASSERT(cnp->cn_flags & SAVENAME);
 
-	return (zfs_link(ap->a_tdvp, ap->a_vp, cnp->cn_nameptr, cnp->cn_cred, NULL, 0));
+	return (zfs_link(tdvp, vp, cnp->cn_nameptr, cnp->cn_cred, NULL, 0));
 }
 
 static int

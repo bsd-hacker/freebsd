@@ -280,15 +280,22 @@ vm_map_zdtor(void *mem, int size, void *arg)
 /*
  * Allocate a vmspace structure, including a vm_map and pmap,
  * and initialize those structures.  The refcnt is set to 1.
+ *
+ * If 'pinit' is NULL then the embedded pmap is initialized via pmap_pinit().
  */
 struct vmspace *
-vmspace_alloc(min, max)
-	vm_offset_t min, max;
+vmspace_alloc(vm_offset_t min, vm_offset_t max, pmap_pinit_t pinit)
 {
 	struct vmspace *vm;
 
 	vm = uma_zalloc(vmspace_zone, M_WAITOK);
-	if (vm->vm_map.pmap == NULL && !pmap_pinit(vmspace_pmap(vm))) {
+
+	KASSERT(vm->vm_map.pmap == NULL, ("vm_map.pmap must be NULL"));
+
+	if (pinit == NULL)
+		pinit = &pmap_pinit;
+
+	if (!pinit(vmspace_pmap(vm))) {
 		uma_zfree(vmspace_zone, vm);
 		return (NULL);
 	}
@@ -1432,8 +1439,8 @@ vm_map_fixed(vm_map_t map, vm_object_t object, vm_ooffset_t offset,
 int
 vm_map_find(vm_map_t map, vm_object_t object, vm_ooffset_t offset,
 	    vm_offset_t *addr,	/* IN/OUT */
-	    vm_size_t length, int find_space, vm_prot_t prot,
-	    vm_prot_t max, int cow)
+	    vm_size_t length, vm_offset_t max_addr, int find_space,
+	    vm_prot_t prot, vm_prot_t max, int cow)
 {
 	vm_offset_t alignment, initial_addr, start;
 	int result;
@@ -1452,7 +1459,8 @@ again:
 	vm_map_lock(map);
 	do {
 		if (find_space != VMFS_NO_SPACE) {
-			if (vm_map_findspace(map, start, length, addr)) {
+			if (vm_map_findspace(map, start, length, addr) ||
+			    (max_addr != 0 && *addr + length > max_addr)) {
 				vm_map_unlock(map);
 				if (find_space == VMFS_OPTIMAL_SPACE) {
 					find_space = VMFS_ANY_SPACE;
@@ -2125,7 +2133,7 @@ vm_map_madvise(
 		     (current != &map->header) && (current->start < end);
 		     current = current->next
 		) {
-			vm_offset_t useStart;
+			vm_offset_t useEnd, useStart;
 
 			if (current->eflags & MAP_ENTRY_IS_SUB_MAP)
 				continue;
@@ -2133,16 +2141,33 @@ vm_map_madvise(
 			pstart = OFF_TO_IDX(current->offset);
 			pend = pstart + atop(current->end - current->start);
 			useStart = current->start;
+			useEnd = current->end;
 
 			if (current->start < start) {
 				pstart += atop(start - current->start);
 				useStart = start;
 			}
-			if (current->end > end)
+			if (current->end > end) {
 				pend -= atop(current->end - end);
+				useEnd = end;
+			}
 
 			if (pstart >= pend)
 				continue;
+
+			/*
+			 * Perform the pmap_advise() before clearing
+			 * PGA_REFERENCED in vm_page_advise().  Otherwise, a
+			 * concurrent pmap operation, such as pmap_remove(),
+			 * could clear a reference in the pmap and set
+			 * PGA_REFERENCED on the page before the pmap_advise()
+			 * had completed.  Consequently, the page would appear
+			 * referenced based upon an old reference that
+			 * occurred before this pmap_advise() ran.
+			 */
+			if (behav == MADV_DONTNEED || behav == MADV_FREE)
+				pmap_advise(map->pmap, useStart, useEnd,
+				    behav);
 
 			vm_object_madvise(current->object.vm_object, pstart,
 			    pend, behav);
@@ -3139,7 +3164,7 @@ vmspace_fork(struct vmspace *vm1, vm_ooffset_t *fork_charge)
 
 	old_map = &vm1->vm_map;
 	/* Copy immutable fields of vm1 to vm2. */
-	vm2 = vmspace_alloc(old_map->min_offset, old_map->max_offset);
+	vm2 = vmspace_alloc(old_map->min_offset, old_map->max_offset, NULL);
 	if (vm2 == NULL)
 		return (NULL);
 	vm2->vm_taddr = vm1->vm_taddr;
@@ -3721,7 +3746,7 @@ vmspace_exec(struct proc *p, vm_offset_t minuser, vm_offset_t maxuser)
 	struct vmspace *oldvmspace = p->p_vmspace;
 	struct vmspace *newvmspace;
 
-	newvmspace = vmspace_alloc(minuser, maxuser);
+	newvmspace = vmspace_alloc(minuser, maxuser, NULL);
 	if (newvmspace == NULL)
 		return (ENOMEM);
 	newvmspace->vm_swrss = oldvmspace->vm_swrss;

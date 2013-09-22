@@ -101,6 +101,7 @@ NOASM=
 CFLAGS+= -DYP
 .include "${.CURDIR}/yp/Makefile.inc"
 .endif
+.include "${.CURDIR}/capability/Makefile.inc"
 .if ${MK_HESIOD} != "no"
 CFLAGS+= -DHESIOD
 .endif
