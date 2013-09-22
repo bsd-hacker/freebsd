@@ -33,8 +33,8 @@ use Fcntl qw(:DEFAULT :flock);
 use POSIX;
 use Getopt::Long;
 
-my $VERSION	= "2.11";
-my $COPYRIGHT	= "Copyright (c) 2003-2012 Dag-Erling Smørgrav. " .
+my $VERSION	= "2.12";
+my $COPYRIGHT	= "Copyright (c) 2003-2013 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
 my $arch;			# Target architecture
@@ -501,7 +501,7 @@ MAIN:{
 
     # Find out what we're expected to do
     foreach my $cmd (@ARGV) {
-	if ($cmd =~ m/^([0-9A-Z_]+)=(.*)\s*$/) {
+	if ($cmd =~ m/^(\w+)=(.*)\s*$/) {
 	    $userenv{$1} = $2;
 	    next;
 	}
