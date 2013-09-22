@@ -1,0 +1,8 @@
+#
+# HEAD tinderbox setup, shared source - build without clang
+#
+# $FreeBSD$
+#
+
+include head-build
+env += WITHOUT_CLANG=YES, WITH_GCC=YES
