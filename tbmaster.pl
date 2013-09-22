@@ -274,7 +274,7 @@ sub tinderbox($$$) {
     my $config = expand('CONFIG');
     my $start = time();
 
-    $0 = "tbmaster: building $branch for $arch/$machine";
+    $0 = "tbmaster [$config]: building $branch for $arch/$machine";
 
     $CONFIG{'BRANCH'} = $branch;
     $CONFIG{'ARCH'} = $arch;
@@ -553,7 +553,7 @@ sub tbmaster($) {
 	}
     }
 
-    $0 = "tbmaster: supervisor";
+    $0 = "tbmaster [$config]: supervisor";
     my %children;
     my $done = 0;
     while (@jobs || keys(%children)) {
@@ -576,7 +576,7 @@ sub tbmaster($) {
 	    }
 	    warn("forked child $child for $branch $arch/$machine\n");
 	}
-	$0 = "tbmaster: supervisor (" .
+	$0 = "tbmaster [$config]: supervisor (" .
 	    keys(%children) . " running, " .
 	    @jobs . " pending, " .
 	    $done . " completed)";
