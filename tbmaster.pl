@@ -154,6 +154,7 @@ sub clearconf() {
 #
 # Read in a configuration file
 #
+sub readconf($);
 sub readconf($) {
     my $fn = shift;
 
@@ -167,34 +168,39 @@ sub readconf($) {
 	s/\s*(\#.*)?$//;
 	$line .= $_;
 	if (length($line) && $line !~ s/\\$/ /) {
-	    die("$fn: syntax error on line $n\n")
-		unless ($line =~ m/^(\w+)\s*([+]?=)\s*(.*)$/);
-	    my ($key, $op, $val) = (uc($1), $2, $3);
-	    $val = ''
-		unless defined($val);
-	    die("$fn: unknown keyword on line $n\n")
-		unless (exists($CONFIG{$key}));
-	    if (ref($CONFIG{$key})) {
-		my @a = split(/\s*,\s*/, $val);
-		foreach (@a) {
-		    s/^\'([^\']*)\'$/$1/;
-		}
-		if ($op eq '=') {
-		    $CONFIG{$key} = \@a;
-		} elsif ($op eq '+=') {
-		    push(@{$CONFIG{$key}}, @a);
+	    if ($line =~ m/^include\s+([\w-]+)$/) {
+		readconf("$1.rc")
+		    or die("$fn: include $1: $!\n");
+	    } elsif ($line =~ m/^(\w+)\s*([+]?=)\s*(.*)$/) {
+		my ($key, $op, $val) = (uc($1), $2, $3);
+		$val = ''
+		    unless defined($val);
+		die("$fn: $key is not a known keyword on line $n\n")
+		    unless (exists($CONFIG{$key}));
+		if (ref($CONFIG{$key})) {
+		    my @a = split(/\s*,\s*/, $val);
+		    foreach (@a) {
+			s/^\'([^\']*)\'$/$1/;
+		    }
+		    if ($op eq '=') {
+			$CONFIG{$key} = \@a;
+		    } elsif ($op eq '+=') {
+			push(@{$CONFIG{$key}}, @a);
+		    } else {
+			die("can't happen\n");
+		    }
 		} else {
-		    die("can't happen\n");
+		    $val =~ s/^\'([^\']*)\'$/$1/;
+		    if ($op eq '=') {
+			$CONFIG{$key} = $val;
+		    } elsif ($op eq '+=') {
+			die("$fn: $key is not an array on line $n\n");
+		    } else {
+			die("can't happen\n");
+		    }
 		}
 	    } else {
-		$val =~ s/^\'([^\']*)\'$/$1/;
-		if ($op eq '=') {
-		    $CONFIG{$key} = $val;
-		} elsif ($op eq '+=') {
-		    die("$fn: invalid operator on line $n\n");
-		} else {
-		    die("can't happen\n");
-		}
+		die("$fn: syntax error on line $n\n")
 	    }
 	    $line = "";
 	}

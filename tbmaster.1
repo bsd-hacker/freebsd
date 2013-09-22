@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd September 22, 2013
+.Dd September 23, 2013
 .Dt TBMASTER 1
 .Os
 .Sh NAME
@@ -110,7 +110,14 @@ Whitespace around the equal sign and around the commas separating
 multiple values is optional.
 .Pp
 Blank lines are ignored, as is anything following a hash sign
-.Pq Dq # .
+.Pq Sq # .
+.Pp
+Additionally, the
+.Cm include
+statement can be used to include one configuration in another:
+.Bl -tag
+.It Cm include Ar otherconfig
+.El
 .Pp
 The following configuration variables are defined:
 .Bl -tag -width 12n
@@ -166,7 +173,7 @@ A list of environment variables to pass to the
 script.
 Each value is the name and value of an environment variable, separated
 by an equal sign
-.Pq Dq = .
+.Pq Sq = .
 No default value.
 .It HOME
 .Pq Vt single
@@ -224,7 +231,7 @@ No default value.
 Which architectures and machines to build for.
 Each value is the name of an architecture, optionally followed by a
 forward slash
-.Pq Dq /
+.Pq Sq /
 and a machine name.
 If the machine name is not specified, it is assumed to be identical to
 the architecture name.
