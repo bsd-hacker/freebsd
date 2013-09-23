@@ -173,6 +173,6 @@ struct pmu_battstate {
 	int voltage;
 };
 
-int pmu_set_speed(int high_speed);
+int pmu_set_speed(int low_speed);
 
 #endif /* PMUVAR_H */

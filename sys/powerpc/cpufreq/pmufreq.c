@@ -33,6 +33,7 @@ __FBSDID("$FreeBSD: head/sys/powerpc/cpufreq/pmufreq.c 217065 2011-01-06 20:19:0
 #include <sys/bus.h>
 #include <sys/cpu.h>
 #include <sys/kernel.h>
+#include <sys/limits.h>
 #include <sys/module.h>
 
 #include <dev/ofw/ofw_bus.h>
@@ -83,16 +84,12 @@ DRIVER_MODULE(pmufreq, cpu, pmufreq_driver, pmufreq_devclass, 0, 0);
 static void
 pmufreq_identify(driver_t *driver, device_t parent)
 {
-	uint16_t vers;
-	vers = mfpvr() >> 16;
+	phandle_t node;
+	uint32_t min_freq;
 
-	/* Check for an MPC7455 CPU */
-	switch (vers) {
-		case MPC7455:
-			break;
-		default:
-			return;
-	}
+	node = ofw_bus_get_node(device_get_parent(parent));
+	if (OF_getprop(node, "min-clock-frequency", &min_freq, sizeof(min_freq)) == -1)
+		return;
 
 	/* Make sure we're not being doubly invoked. */
 	if (device_find_child(parent, "pmufreq", -1) != NULL)
@@ -166,8 +163,8 @@ pmufreq_settings(device_t dev, struct cf_setting *sets, int *count)
 	sets[0].freq = sc->maxfreq; sets[0].dev = dev;
 	sets[1].freq = sc->minfreq; sets[1].dev = dev;
 	/* Set high latency for CPU frequency changes, it's a tedious process. */
-	sets[0].lat = 1000000;
-	sets[1].lat = 1000000;
+	sets[0].lat = INT_MAX;
+	sets[1].lat = INT_MAX;
 	*count = 2;
 
 	return (0);
@@ -186,9 +183,9 @@ pmufreq_set(device_t dev, const struct cf_setting *set)
 	sc = device_get_softc(dev);
 
 	if (set->freq == sc->maxfreq)
-		speed_sel = 1;
-	else
 		speed_sel = 0;
+	else
+		speed_sel = 1;
 
 	error = pmu_set_speed(speed_sel);
 	if (error == 0)

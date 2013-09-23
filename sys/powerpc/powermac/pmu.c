@@ -1126,10 +1126,10 @@ pmu_resume(device_t dev)
 static register_t sprgs[4];
 static register_t srrs[2];
 extern void *ap_pcpu;
-extern u_quad_t ap_timebase;
 
 void pmu_sleep_int(void)
 {
+	u_quad_t timebase;
 	register_t hid0;
 	register_t msr;
 	register_t saved_msr;
@@ -1141,7 +1141,7 @@ void pmu_sleep_int(void)
 
 	*(unsigned long *)0x80 = 0x100;
 	saved_msr = mfmsr();
-	ap_timebase = mftb();
+	timebase = mftb();
 	flush_disable_caches();
 	if (PCPU_GET(fputhread) != NULL)
 		save_fpu(PCPU_GET(fputhread));
@@ -1165,6 +1165,7 @@ void pmu_sleep_int(void)
 		while (1)
 			mtmsr(msr);
 	}
+	mttb(timebase);
 	PCPU_SET(curthread, curthread);
 	PCPU_SET(curpcb, curthread->td_pcb);
 	pmap_activate(curthread);
@@ -1176,6 +1177,10 @@ void pmu_sleep_int(void)
 	mtspr(SPR_SRR0, srrs[0]);
 	mtspr(SPR_SRR1, srrs[1]);
 	mtmsr(saved_msr);
+	if (PCPU_GET(fputhread) == curthread)
+		enable_fpu(curthread);
+	if (PCPU_GET(vecthread) == curthread)
+		enable_vec(curthread);
 	powerpc_sync();
 }
 
@@ -1205,7 +1210,7 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 }
 
 int
-pmu_set_speed(int high_speed)
+pmu_set_speed(int low_speed)
 {
 	struct pmu_softc *sc;
 	uint8_t sleepcmd[] = {'W', 'O', 'O', 'F', 0};
@@ -1218,17 +1223,13 @@ pmu_set_speed(int high_speed)
 	mb();
 	mtdec(0x7fffffff);
 
-	/* The PMU speed change command actually uses '1' to denote low-speed. */
-	if (high_speed)
-		sleepcmd[4] = 0;
-	else
-		sleepcmd[4] = 1;
-
+	sleepcmd[4] = low_speed;
 	pmu_send(sc, PMU_CPU_SPEED, 5, sleepcmd, 16, resp);
 	unin_chip_sleep(NULL, 1);
 	pmu_sleep_int();
 	unin_chip_wake(NULL);
 
+	mtdec(1);	/* Force a decrementer exception */
 	spinlock_exit();
 	pmu_write_reg(sc, vIER, 0x90);
 
