@@ -60,10 +60,9 @@ __FBSDID("$FreeBSD$");
 
 extern struct pcpu __pcpu[MAXCPU];
 
-extern void *ap_pcpu;
 volatile static int ap_awake;
 volatile static u_int ap_letgo;
-volatile u_quad_t ap_timebase;
+volatile static u_quad_t ap_timebase;
 static u_int ipi_msg_cnt[32];
 static struct mtx ap_boot_mtx;
 struct pcb stoppcbs[MAXCPU];
@@ -73,6 +72,33 @@ void
 machdep_ap_bootstrap(void)
 {
 	jmp_buf *restore;
+
+	/* The following is needed for restoring from sleep. */
+#ifdef __powerpc64__
+	/* Writing to the time base register is hypervisor-privileged */
+	if (mfmsr() & PSL_HV)
+		mttb(0);
+#else
+	mttb(0);
+#endif
+	/* Set up important bits on the CPU (HID registers, etc.) */
+	cpudep_ap_setup();
+
+	/* Set PIR */
+	PCPU_SET(pir, mfspr(SPR_PIR));
+	PCPU_SET(awake, 1);
+	__asm __volatile("msync; isync");
+
+	if (mp_ncpus > 1 && !pcpup->pc_bsp) {
+		while (ap_letgo == 0)
+			;
+	}
+
+	restore = PCPU_GET(restore);
+	if (restore != NULL) {
+		longjmp(*restore, 1);
+	}
+
 #ifdef __powerpc64__
 	/* Writing to the time base register is hypervisor-privileged */
 	if (mfmsr() & PSL_HV)
@@ -80,21 +106,6 @@ machdep_ap_bootstrap(void)
 #else
 	mttb(ap_timebase);
 #endif
-	/* Set up important bits on the CPU (HID registers, etc.) */
-	cpudep_ap_setup();
-
-	restore = PCPU_GET(restore);
-	if (restore != NULL) {
-		longjmp(*restore, 1);
-	}
-
-	/* Set PIR */
-	PCPU_SET(pir, mfspr(SPR_PIR));
-	PCPU_SET(awake, 1);
-	__asm __volatile("msync; isync");
-
-	while (ap_letgo == 0)
-		;
 
 	/* Initialize DEC, sync with the BSP values */
 	decr_ap_init();
@@ -210,12 +221,10 @@ cpu_mp_unleash(void *dummy)
 	struct pcpu *pc;
 	int cpus, timeout;
 
-	mtx_init(&ap_boot_mtx, "ap boot", NULL, MTX_SPIN);
-
-	if (mp_ncpus <= 1) {
-		ap_letgo = 1;
+	if (mp_ncpus <= 1)
 		return;
-	}
+
+	mtx_init(&ap_boot_mtx, "ap boot", NULL, MTX_SPIN);
 
 	cpus = 0;
 	smp_cpus = 0;
