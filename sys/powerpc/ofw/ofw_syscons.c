@@ -264,6 +264,10 @@ ofwfb_configure(int flags)
 	} else
 		return (0);
 
+	if (OF_getproplen(node, "height") != sizeof(sc->sc_height) ||
+	    OF_getproplen(node, "width") != sizeof(sc->sc_width))
+		return (0);
+
 	sc->sc_depth = depth;
 	sc->sc_node = node;
 	sc->sc_console = 1;
@@ -278,6 +282,8 @@ ofwfb_configure(int flags)
 	 *
 	 * XXX We assume #address-cells is 1 at this point.
 	 */
+	if (OF_getproplen(node, "address") != sizeof(fb_phys))
+		return (0);
 	OF_getprop(node, "address", &fb_phys, sizeof(fb_phys));
 
 	bus_space_map(&bs_be_tag, fb_phys, sc->sc_height * sc->sc_stride,
@@ -586,14 +592,22 @@ ofwfb_blank_display8(video_adapter_t *adp, int mode)
 {
 	struct ofwfb_softc *sc;
 	int i;
-	uint8_t *addr;
+	uint32_t *addr;
+	uint32_t color;
+	uint32_t end;
 
 	sc = (struct ofwfb_softc *)adp;
-	addr = (uint8_t *) sc->sc_addr;
+	addr = (uint32_t *) sc->sc_addr;
+	end = (sc->sc_stride/4) * sc->sc_height;
 
-	/* Could be done a lot faster e.g. 32-bits, or Altivec'd */
-	for (i = 0; i < sc->sc_stride*sc->sc_height; i++)
-		*(addr + i) = ofwfb_background(SC_NORM_ATTR);
+	/* Splat 4 pixels at once. */
+	color = (ofwfb_background(SC_NORM_ATTR) << 24) |
+	    (ofwfb_background(SC_NORM_ATTR) << 16) |
+	    (ofwfb_background(SC_NORM_ATTR) << 8) |
+	    (ofwfb_background(SC_NORM_ATTR));
+
+	for (i = 0; i < end; i++)
+		*(addr + i) = color;
 
 	return (0);
 }

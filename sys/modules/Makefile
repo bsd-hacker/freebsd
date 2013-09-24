@@ -81,7 +81,7 @@ SUBDIR=	\
 	${_ctau} \
 	ctl \
 	${_cxgb} \
-	cxgbe \
+	${_cxgbe} \
 	${_cyclic} \
 	dc \
 	dcons \
@@ -123,8 +123,10 @@ SUBDIR=	\
 	${_hpt27xx} \
 	${_hptiop} \
 	${_hptmv} \
+	${_hptnr} \
 	${_hptrr} \
 	hwpmc \
+	${_hyperv} \
 	${_i2c} \
 	${_ibcs2} \
 	${_ichwd} \
@@ -159,6 +161,7 @@ SUBDIR=	\
 	${_ipwfw} \
 	${_isci} \
 	iscsi \
+	iscsi_initiator \
 	isp \
 	${_ispfw} \
 	${_iwi} \
@@ -271,6 +274,7 @@ SUBDIR=	\
 	${_pst} \
 	pty  \
 	puc \
+	${_qlxge} \
 	${_qlxgb} \
 	${_qlxgbe} \
 	ral \
@@ -281,7 +285,6 @@ SUBDIR=	\
 	re \
 	reiserfs \
 	rl \
-	${_runfw} \
 	${_s3} \
 	${_safe} \
 	${_sbni} \
@@ -300,6 +303,7 @@ SUBDIR=	\
 	siis \
 	sis \
 	sk \
+	${_smbfs} \
 	${_sn} \
 	${_snc} \
 	snp \
@@ -340,6 +344,7 @@ SUBDIR=	\
 	${_viawd} \
 	vkbd \
 	${_vmm} \
+	${_vmware} \
 	${_vpo} \
 	vr \
 	vte \
@@ -366,6 +371,7 @@ SUBDIR=	\
 
 .if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
 _filemon=	filemon
+_vmware=	vmware
 .endif
 
 .if ${MACHINE_CPUARCH} != "powerpc" && ${MACHINE_CPUARCH} != "arm" && \
@@ -382,6 +388,10 @@ _sym=		sym
 .if ${MK_SOURCELESS_UCODE} != "no"
 _cxgb=		cxgb
 .endif
+.endif
+
+.if ${MK_SOURCELESS_UCODE} != "no"
+_cxgbe=		cxgbe
 .endif
 
 .if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
@@ -438,7 +448,6 @@ _fxp=		fxp
 _ispfw=		ispfw
 _mwlfw=		mwlfw
 _ralfw=		ralfw
-_runfw=		runfw
 _sf=		sf
 _sn=		sn
 _ti=		ti
@@ -519,6 +528,7 @@ _rdma=		rdma
 _safe=		safe
 _sbni=		sbni
 _scsi_low=	scsi_low
+_smbfs=		smbfs
 _sound=		sound
 _speaker=	speaker
 _splash=	splash
@@ -562,6 +572,7 @@ _hpt27xx=	hpt27xx
 _hptiop=	hptiop
 .if ${MK_SOURCELESS_HOST} != "no"
 _hptmv=		hptmv
+_hptnr=		hptnr
 _hptrr=		hptrr
 .endif
 _ichwd=		ichwd
@@ -659,8 +670,10 @@ _hpt27xx=	hpt27xx
 _hptiop=	hptiop
 .if ${MK_SOURCELESS_HOST} != "no"
 _hptmv=		hptmv
+_hptnr=		hptnr
 _hptrr=		hptrr
 .endif
+_hyperv=	hyperv
 _i2c=		i2c
 _ichwd=		ichwd
 _ida=		ida
@@ -713,6 +726,7 @@ _opensolaris=	opensolaris
 _padlock=	padlock
 .endif
 _pccard=	pccard
+_qlxge=		qlxge
 _qlxgb=		qlxgb
 _qlxgbe=	qlxgbe
 _rdma=		rdma
@@ -720,6 +734,7 @@ _s3=		s3
 _safe=		safe
 _scsi_low=	scsi_low
 _sfxge=		sfxge
+_smbfs=		smbfs
 _sound=		sound
 _speaker=	speaker
 _splash=	splash
@@ -777,6 +792,7 @@ _ips=		ips
 _mly=		mly
 _pccard=	pccard
 _scsi_low=	scsi_low
+_smbfs=		smbfs
 _sound=		sound
 _splash=	splash
 _sppp=		sppp
@@ -795,22 +811,25 @@ _cardbus=	cardbus
 _cbb=		cbb
 _cfi=		cfi
 _cpufreq=	cpufreq
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
+_cyclic=	cyclic
+.endif
 _drm=		drm
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
+_dtrace=	dtrace
+.endif
 _exca=		exca
 _nvram=		powermac_nvram
 _pccard=	pccard
+_smbfs=		smbfs
 _sound=		sound
-_cyclic=	cyclic
-_dtrace=	dtrace
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
 _opensolaris=	opensolaris
+.endif
+_wi=		wi
 .endif
 
 .if ${MACHINE_ARCH} == "powerpc64"
-.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
-_cyclic=	cyclic
-_dtrace=	dtrace
-_opensolaris=	opensolaris
-.endif
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
 _zfs=		zfs
 .endif
@@ -825,6 +844,7 @@ _igb=		igb
 .if ${MK_CDDL} != "no" || defined(ALL_MODULES)
 _opensolaris=	opensolaris
 .endif
+_smbfs=		smbfs
 _sound=		sound
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
 _zfs=		zfs

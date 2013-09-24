@@ -51,6 +51,10 @@
 #define FCR_ENET_ENABLE	0x60000000
 #define FCR_ENET_RESET	0x80000000
 
+/* Used only by macio_enable_wireless() for now. */
+#define KEYLARGO_GPIO_BASE	0x6a
+#define KEYLARGO_EXTINT_GPIO_REG_BASE	0x58
+
 #define KEYLARGO_MEDIABAY	0x34
 #define KEYLARGO_MB0_DEV_ENABLE	0x00001000
 #define KEYLARGO_MB0_DEV_POWER	0x00000400
@@ -126,5 +130,7 @@ struct macio_devinfo {
 	struct ofw_bus_devinfo mdi_obdinfo;
 	struct resource_list mdi_resources;
 };
+
+extern int macio_enable_wireless(device_t dev, bool enable);
 
 #endif /* _MACIO_MACIOVAR_H_ */

@@ -22,6 +22,7 @@ BIN1=	crontab \
 	hosts.equiv \
 	inetd.conf \
 	libalias.conf \
+	libmap.conf \
 	login.access \
 	login.conf \
 	mac.conf \
@@ -48,6 +49,10 @@ BIN1=	crontab \
 	sysctl.conf \
 	syslog.conf \
 	termcap.small
+
+.if ${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "powerpc64"
+BIN1+=	libmap32.conf
+.endif
 
 .if exists(${.CURDIR}/etc.${MACHINE}/ttys)
 BIN1+=	etc.${MACHINE}/ttys

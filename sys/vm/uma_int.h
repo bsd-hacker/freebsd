@@ -49,14 +49,6 @@
  * 10% memory waste we potentially allocate a separate uma_slab_t if this will
  * improve the number of items per slab that will fit.  
  *
- * Other potential space optimizations are storing the 8bit of linkage in space
- * wasted between items due to alignment problems.  This may yield a much better
- * memory footprint for certain sizes of objects.  Another alternative is to
- * increase the UMA_SLAB_SIZE, or allow for dynamic slab sizes.  I prefer
- * dynamic slab sizes because we could stick with 8 bit indices and only use
- * large slab sizes for zones with a lot of waste per slab.  This may create
- * inefficiencies in the vm subsystem due to fragmentation in the address space.
- *
  * The only really gross cases, with regards to memory waste, are for those
  * items that are just over half the page size.   You can get nearly 50% waste,
  * so you fall back to the memory footprint of the power of two allocator. I
@@ -200,6 +192,7 @@ struct uma_keg {
 	uint32_t	uk_align;	/* Alignment mask */
 	uint32_t	uk_pages;	/* Total page count */
 	uint32_t	uk_free;	/* Count of items free in slabs */
+	uint32_t	uk_reserve;	/* Number of reserved items. */
 	uint32_t	uk_size;	/* Requested size of each item */
 	uint32_t	uk_rsize;	/* Real size of each item */
 	uint32_t	uk_maxpages;	/* Maximum number of pages to alloc */
@@ -325,12 +318,13 @@ struct uma_zone {
  */
 #define	UMA_ZFLAG_MULTI		0x04000000	/* Multiple kegs in the zone. */
 #define	UMA_ZFLAG_DRAINING	0x08000000	/* Running zone_drain. */
-#define UMA_ZFLAG_PRIVALLOC	0x10000000	/* Use uz_allocf. */
+#define	UMA_ZFLAG_BUCKET	0x10000000	/* Bucket zone. */
 #define UMA_ZFLAG_INTERNAL	0x20000000	/* No offpage no PCPU. */
 #define UMA_ZFLAG_FULL		0x40000000	/* Reached uz_maxpages */
 #define UMA_ZFLAG_CACHEONLY	0x80000000	/* Don't ask VM for buckets. */
 
-#define	UMA_ZFLAG_INHERIT	(UMA_ZFLAG_INTERNAL | UMA_ZFLAG_CACHEONLY)
+#define	UMA_ZFLAG_INHERIT						\
+    (UMA_ZFLAG_INTERNAL | UMA_ZFLAG_CACHEONLY | UMA_ZFLAG_BUCKET)
 
 static inline uma_keg_t
 zone_first_keg(uma_zone_t zone)
@@ -410,15 +404,9 @@ static __inline uma_slab_t
 vtoslab(vm_offset_t va)
 {
 	vm_page_t p;
-	uma_slab_t slab;
 
 	p = PHYS_TO_VM_PAGE(pmap_kextract(va));
-	slab = (uma_slab_t )p->object;
-
-	if (p->flags & PG_SLAB)
-		return (slab);
-	else
-		return (NULL);
+	return ((uma_slab_t)p->plinks.s.pv);
 }
 
 static __inline void
@@ -427,18 +415,7 @@ vsetslab(vm_offset_t va, uma_slab_t slab)
 	vm_page_t p;
 
 	p = PHYS_TO_VM_PAGE(pmap_kextract(va));
-	p->object = (vm_object_t)slab;
-	p->flags |= PG_SLAB;
-}
-
-static __inline void
-vsetobj(vm_offset_t va, vm_object_t obj)
-{
-	vm_page_t p;
-
-	p = PHYS_TO_VM_PAGE(pmap_kextract(va));
-	p->object = obj;
-	p->flags &= ~PG_SLAB;
+	p->plinks.s.pv = slab;
 }
 
 /*
