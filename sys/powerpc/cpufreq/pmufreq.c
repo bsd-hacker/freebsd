@@ -87,7 +87,7 @@ pmufreq_identify(driver_t *driver, device_t parent)
 	phandle_t node;
 	uint32_t min_freq;
 
-	node = ofw_bus_get_node(device_get_parent(parent));
+	node = ofw_bus_get_node(parent);
 	if (OF_getprop(node, "min-clock-frequency", &min_freq, sizeof(min_freq)) == -1)
 		return;
 
