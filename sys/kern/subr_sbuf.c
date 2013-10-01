@@ -52,11 +52,11 @@ __FBSDID("$FreeBSD$");
 
 #ifdef _KERNEL
 static MALLOC_DEFINE(M_SBUF, "sbuf", "string buffers");
-#define	SBMALLOC(size)		malloc(size, M_SBUF, M_WAITOK)
+#define	SBMALLOC(size)		malloc(size, M_SBUF, M_WAITOK|M_ZERO)
 #define	SBFREE(buf)		free(buf, M_SBUF)
 #else /* _KERNEL */
 #define	KASSERT(e, m)
-#define	SBMALLOC(size)		malloc(size)
+#define	SBMALLOC(size)		calloc(1, size)
 #define	SBFREE(buf)		free(buf)
 #endif /* _KERNEL */
 
@@ -706,9 +706,10 @@ sbuf_finish(struct sbuf *s)
 #ifdef _KERNEL
 	return (s->s_error);
 #else
-	errno = s->s_error;
-	if (s->s_error)
+	if (s->s_error != 0) {
+		errno = s->s_error;
 		return (-1);
+	}
 	return (0);
 #endif
 }

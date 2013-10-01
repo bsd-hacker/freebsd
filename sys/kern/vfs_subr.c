@@ -1073,7 +1073,7 @@ alloc:
 	 */
 	bo = &vp->v_bufobj;
 	bo->__bo_vnode = vp;
-	mtx_init(BO_MTX(bo), "bufobj interlock", NULL, MTX_DEF);
+	rw_init(BO_LOCKPTR(bo), "bufobj interlock");
 	bo->bo_ops = &buf_ops_bio;
 	bo->bo_private = vp;
 	TAILQ_INIT(&bo->bo_clean.bv_hd);
@@ -1331,7 +1331,7 @@ flushbuflist(struct bufv *bufv, int flags, struct bufobj *bo, int slpflag,
 	daddr_t lblkno;
 	b_xflags_t xflags;
 
-	ASSERT_BO_LOCKED(bo);
+	ASSERT_BO_WLOCKED(bo);
 
 	retval = 0;
 	TAILQ_FOREACH_SAFE(bp, &bufv->bv_hd, b_bobufs, nbp) {
@@ -1347,7 +1347,7 @@ flushbuflist(struct bufv *bufv, int flags, struct bufobj *bo, int slpflag,
 		}
 		retval = EAGAIN;
 		error = BUF_TIMELOCK(bp,
-		    LK_EXCLUSIVE | LK_SLEEPFAIL | LK_INTERLOCK, BO_MTX(bo),
+		    LK_EXCLUSIVE | LK_SLEEPFAIL | LK_INTERLOCK, BO_LOCKPTR(bo),
 		    "flushbuf", slpflag, slptimeo);
 		if (error) {
 			BO_LOCK(bo);
@@ -1369,17 +1369,13 @@ flushbuflist(struct bufv *bufv, int flags, struct bufobj *bo, int slpflag,
 		 */
 		if (((bp->b_flags & (B_DELWRI | B_INVAL)) == B_DELWRI) &&
 		    (flags & V_SAVE)) {
-			BO_LOCK(bo);
 			bremfree(bp);
-			BO_UNLOCK(bo);
 			bp->b_flags |= B_ASYNC;
 			bwrite(bp);
 			BO_LOCK(bo);
 			return (EAGAIN);	/* XXX: why not loop ? */
 		}
-		BO_LOCK(bo);
 		bremfree(bp);
-		BO_UNLOCK(bo);
 		bp->b_flags |= (B_INVAL | B_RELBUF);
 		bp->b_flags &= ~B_ASYNC;
 		brelse(bp);
@@ -1426,12 +1422,10 @@ restart:
 				continue;
 			if (BUF_LOCK(bp,
 			    LK_EXCLUSIVE | LK_SLEEPFAIL | LK_INTERLOCK,
-			    BO_MTX(bo)) == ENOLCK)
+			    BO_LOCKPTR(bo)) == ENOLCK)
 				goto restart;
 
-			BO_LOCK(bo);
 			bremfree(bp);
-			BO_UNLOCK(bo);
 			bp->b_flags |= (B_INVAL | B_RELBUF);
 			bp->b_flags &= ~B_ASYNC;
 			brelse(bp);
@@ -1452,11 +1446,9 @@ restart:
 				continue;
 			if (BUF_LOCK(bp,
 			    LK_EXCLUSIVE | LK_SLEEPFAIL | LK_INTERLOCK,
-			    BO_MTX(bo)) == ENOLCK)
+			    BO_LOCKPTR(bo)) == ENOLCK)
 				goto restart;
-			BO_LOCK(bo);
 			bremfree(bp);
-			BO_UNLOCK(bo);
 			bp->b_flags |= (B_INVAL | B_RELBUF);
 			bp->b_flags &= ~B_ASYNC;
 			brelse(bp);
@@ -1484,15 +1476,13 @@ restartsync:
 			 */
 			if (BUF_LOCK(bp,
 			    LK_EXCLUSIVE | LK_SLEEPFAIL | LK_INTERLOCK,
-			    BO_MTX(bo)) == ENOLCK) {
+			    BO_LOCKPTR(bo)) == ENOLCK) {
 				goto restart;
 			}
 			VNASSERT((bp->b_flags & B_DELWRI), vp,
 			    ("buf(%p) on dirty queue without DELWRI", bp));
 
-			BO_LOCK(bo);
 			bremfree(bp);
-			BO_UNLOCK(bo);
 			bawrite(bp);
 			BO_LOCK(bo);
 			goto restartsync;
@@ -1512,7 +1502,7 @@ buf_vlist_remove(struct buf *bp)
 	struct bufv *bv;
 
 	KASSERT(bp->b_bufobj != NULL, ("No b_bufobj %p", bp));
-	ASSERT_BO_LOCKED(bp->b_bufobj);
+	ASSERT_BO_WLOCKED(bp->b_bufobj);
 	KASSERT((bp->b_xflags & (BX_VNDIRTY|BX_VNCLEAN)) !=
 	    (BX_VNDIRTY|BX_VNCLEAN),
 	    ("buf_vlist_remove: Buf %p is on two lists", bp));
@@ -1538,7 +1528,7 @@ buf_vlist_add(struct buf *bp, struct bufobj *bo, b_xflags_t xflags)
 	struct buf *n;
 	int error;
 
-	ASSERT_BO_LOCKED(bo);
+	ASSERT_BO_WLOCKED(bo);
 	KASSERT((bp->b_xflags & (BX_VNDIRTY|BX_VNCLEAN)) == 0,
 	    ("buf_vlist_add: Buf %p has existing xflags %d", bp, bp->b_xflags));
 	bp->b_xflags |= xflags;
@@ -1598,7 +1588,7 @@ bgetvp(struct vnode *vp, struct buf *bp)
 	struct bufobj *bo;
 
 	bo = &vp->v_bufobj;
-	ASSERT_BO_LOCKED(bo);
+	ASSERT_BO_WLOCKED(bo);
 	VNASSERT(bp->b_vp == NULL, bp->b_vp, ("bgetvp: not free"));
 
 	CTR3(KTR_BUF, "bgetvp(%p) vp %p flags %X", bp, vp, bp->b_flags);
@@ -1657,7 +1647,7 @@ vn_syncer_add_to_worklist(struct bufobj *bo, int delay)
 {
 	int slot;
 
-	ASSERT_BO_LOCKED(bo);
+	ASSERT_BO_WLOCKED(bo);
 
 	mtx_lock(&sync_mtx);
 	if (bo->bo_flag & BO_ONWORKLST)
@@ -2228,8 +2218,10 @@ vputx(struct vnode *vp, int func)
 		}
 		break;
 	case VPUTX_VUNREF:
-		if (VOP_ISLOCKED(vp) != LK_EXCLUSIVE)
-			error = EBUSY;
+		if (VOP_ISLOCKED(vp) != LK_EXCLUSIVE) {
+			error = VOP_LOCK(vp, LK_TRYUPGRADE | LK_INTERLOCK);
+			VI_LOCK(vp);
+		}
 		break;
 	}
 	if (vp->v_usecount > 0)
@@ -2422,7 +2414,7 @@ vdropl(struct vnode *vp)
 	rangelock_destroy(&vp->v_rl);
 	lockdestroy(vp->v_vnlock);
 	mtx_destroy(&vp->v_interlock);
-	mtx_destroy(BO_MTX(bo));
+	rw_destroy(BO_LOCKPTR(bo));
 	uma_zfree(vnode_zone, vp);
 }
 
@@ -2916,7 +2908,7 @@ vn_printf(struct vnode *vp, const char *fmt, ...)
  */
 DB_SHOW_COMMAND(lockedvnods, lockedvnodes)
 {
-	struct mount *mp, *nmp;
+	struct mount *mp;
 	struct vnode *vp;
 
 	/*
@@ -2926,14 +2918,11 @@ DB_SHOW_COMMAND(lockedvnods, lockedvnodes)
 	 * about that.
 	 */
 	db_printf("Locked vnodes\n");
-	for (mp = TAILQ_FIRST(&mountlist); mp != NULL; mp = nmp) {
-		nmp = TAILQ_NEXT(mp, mnt_list);
+	TAILQ_FOREACH(mp, &mountlist, mnt_list) {
 		TAILQ_FOREACH(vp, &mp->mnt_nvnodelist, v_nmntvnodes) {
-			if (vp->v_type != VMARKER &&
-			    VOP_ISLOCKED(vp))
+			if (vp->v_type != VMARKER && VOP_ISLOCKED(vp))
 				vprint("", vp);
 		}
-		nmp = TAILQ_NEXT(mp, mnt_list);
 	}
 }
 
@@ -3463,12 +3452,21 @@ vfs_msync(struct mount *mp, int flags)
 }
 
 static void
-destroy_vpollinfo(struct vpollinfo *vi)
+destroy_vpollinfo_free(struct vpollinfo *vi)
 {
-	seldrain(&vi->vpi_selinfo);
+
 	knlist_destroy(&vi->vpi_selinfo.si_note);
 	mtx_destroy(&vi->vpi_lock);
 	uma_zfree(vnodepoll_zone, vi);
+}
+
+static void
+destroy_vpollinfo(struct vpollinfo *vi)
+{
+
+	knlist_clear(&vi->vpi_selinfo.si_note, 1);
+	seldrain(&vi->vpi_selinfo);
+	destroy_vpollinfo_free(vi);
 }
 
 /*
@@ -3488,7 +3486,7 @@ v_addpollinfo(struct vnode *vp)
 	VI_LOCK(vp);
 	if (vp->v_pollinfo != NULL) {
 		VI_UNLOCK(vp);
-		destroy_vpollinfo(vi);
+		destroy_vpollinfo_free(vi);
 		return;
 	}
 	vp->v_pollinfo = vi;
@@ -4402,6 +4400,7 @@ vfs_kqfilter(struct vop_kqfilter_args *ap)
 	if (vp->v_pollinfo == NULL)
 		return (ENOMEM);
 	knl = &vp->v_pollinfo->vpi_selinfo.si_note;
+	vhold(vp);
 	knlist_add(knl, kn, 0);
 
 	return (0);
@@ -4417,6 +4416,7 @@ filt_vfsdetach(struct knote *kn)
 
 	KASSERT(vp->v_pollinfo != NULL, ("Missing v_pollinfo"));
 	knlist_remove(&vp->v_pollinfo->vpi_selinfo.si_note, kn, 0);
+	vdrop(vp);
 }
 
 /*ARGSUSED*/
@@ -4703,7 +4703,7 @@ restart:
 			if (mp_ncpus == 1 || should_yield()) {
 				TAILQ_INSERT_BEFORE(vp, *mvp, v_actfreelist);
 				mtx_unlock(&vnode_free_list_mtx);
-				kern_yield(PRI_USER);
+				pause("vnacti", 1);
 				mtx_lock(&vnode_free_list_mtx);
 				goto restart;
 			}

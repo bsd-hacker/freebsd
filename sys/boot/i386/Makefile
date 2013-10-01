@@ -2,7 +2,7 @@
 
 .include <bsd.own.mk>
 
-SUBDIR=		mbr pmbr boot0 boot0sio btx boot2 cdboot gptboot kgzldr \
+SUBDIR=		mbr pmbr boot0 boot0sio btx cdboot gptboot kgzldr \
 		libi386 libfirewire loader
 
 # special boot programs, 'self-extracting boot2+loader'

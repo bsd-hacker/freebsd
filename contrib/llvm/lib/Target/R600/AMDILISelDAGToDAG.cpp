@@ -158,6 +158,7 @@ bool AMDGPUDAGToDAGISel::SelectADDR64(SDValue Addr, SDValue& R1, SDValue& R2) {
 SDNode *AMDGPUDAGToDAGISel::Select(SDNode *N) {
   unsigned int Opc = N->getOpcode();
   if (N->isMachineOpcode()) {
+    N->setNodeId(-1);
     return NULL;   // Already selected.
   }
   switch (Opc) {
@@ -191,6 +192,29 @@ SDNode *AMDGPUDAGToDAGISel::Select(SDNode *N) {
     return CurDAG->SelectNodeTo(N, AMDGPU::REG_SEQUENCE, N->getVTList(),
         RegSeqArgs, 2 * N->getNumOperands() + 1);
   }
+  case ISD::BUILD_PAIR: {
+    SDValue RC, SubReg0, SubReg1;
+    const AMDGPUSubtarget &ST = TM.getSubtarget<AMDGPUSubtarget>();
+    if (ST.device()->getGeneration() <= AMDGPUDeviceInfo::HD6XXX) {
+      break;
+    }
+    if (N->getValueType(0) == MVT::i128) {
+      RC = CurDAG->getTargetConstant(AMDGPU::SReg_128RegClassID, MVT::i32);
+      SubReg0 = CurDAG->getTargetConstant(AMDGPU::sub0_sub1, MVT::i32);
+      SubReg1 = CurDAG->getTargetConstant(AMDGPU::sub2_sub3, MVT::i32);
+    } else if (N->getValueType(0) == MVT::i64) {
+      RC = CurDAG->getTargetConstant(AMDGPU::SReg_64RegClassID, MVT::i32);
+      SubReg0 = CurDAG->getTargetConstant(AMDGPU::sub0, MVT::i32);
+      SubReg1 = CurDAG->getTargetConstant(AMDGPU::sub1, MVT::i32);
+    } else {
+      llvm_unreachable("Unhandled value type for BUILD_PAIR");
+    }
+    const SDValue Ops[] = { RC, N->getOperand(0), SubReg0,
+                            N->getOperand(1), SubReg1 };
+    return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE,
+                                  N->getDebugLoc(), N->getValueType(0), Ops);
+  }
+
   case ISD::ConstantFP:
   case ISD::Constant: {
     const AMDGPUSubtarget &ST = TM.getSubtarget<AMDGPUSubtarget>();

@@ -182,6 +182,7 @@ struct ath_node {
 	uint32_t	an_swq_depth;	/* how many SWQ packets for this
 					   node */
 	int			clrdmask;	/* has clrdmask been set */
+	uint32_t	an_leak_count;	/* How many frames to leak during pause */
 	/* variable-length rate control state follows */
 };
 #define	ATH_NODE(ni)	((struct ath_node *)(ni))
@@ -224,6 +225,7 @@ struct ath_buf {
 	bus_size_t		bf_mapsize;
 #define	ATH_MAX_SCATTER		ATH_TXDESC	/* max(tx,rx,beacon) desc's */
 	bus_dma_segment_t	bf_segs[ATH_MAX_SCATTER];
+	uint32_t		bf_nextfraglen;	/* length of next fragment */
 
 	/* Completion function to call on TX complete (fail or not) */
 	/*
@@ -326,7 +328,8 @@ struct ath_txq {
 #define	ATH_TXQ_SWQ	(HAL_NUM_TX_QUEUES+1)	/* qnum for s/w only queue */
 	u_int			axq_ac;		/* WME AC */
 	u_int			axq_flags;
-#define	ATH_TXQ_PUTPENDING	0x0001		/* ath_hal_puttxbuf pending */
+//#define	ATH_TXQ_PUTPENDING	0x0001		/* ath_hal_puttxbuf pending */
+#define	ATH_TXQ_PUTRUNNING	0x0002		/* ath_hal_puttxbuf has been called */
 	u_int			axq_depth;	/* queue depth (stat only) */
 	u_int			axq_aggr_depth;	/* how many aggregates are queued */
 	u_int			axq_intrcnt;	/* interrupt count */
@@ -465,6 +468,8 @@ struct ath_vap {
 	void		(*av_bmiss)(struct ieee80211vap *);
 	void		(*av_node_ps)(struct ieee80211_node *, int);
 	int		(*av_set_tim)(struct ieee80211_node *, int);
+	void		(*av_recv_pspoll)(struct ieee80211_node *,
+				struct mbuf *);
 };
 #define	ATH_VAP(vap)	((struct ath_vap *)(vap))
 
@@ -623,8 +628,10 @@ struct ath_softc {
 	 */
 	u_int32_t		sc_use_ent  : 1,
 				sc_rx_stbc  : 1,
-				sc_tx_stbc  : 1;
-
+				sc_tx_stbc  : 1,
+				sc_hasenforcetxop : 1, /* support enforce TxOP */
+				sc_hasdivcomb : 1,     /* RX diversity combining */
+				sc_rx_lnamixer : 1;    /* RX using LNA mixing */
 
 	int			sc_cabq_enable;	/* Enable cabq transmission */
 
@@ -728,7 +735,6 @@ struct ath_softc {
 	struct ath_txq		*sc_ac2q[5];	/* WME AC -> h/w q map */ 
 	struct task		sc_txtask;	/* tx int processing */
 	struct task		sc_txqtask;	/* tx proc processing */
-	struct task		sc_txpkttask;	/* tx frame processing */
 
 	struct ath_descdma	sc_txcompdma;	/* TX EDMA completion */
 	struct mtx		sc_txcomplock;	/* TX EDMA completion lock */
@@ -794,6 +800,8 @@ struct ath_softc {
 	 *   management/multicast frames;
 	 * + multicast frames overwhelming everything (when the
 	 *   air is sufficiently busy that cabq can't drain.)
+	 * + A node in powersave shouldn't be allowed to exhaust
+	 *   all available mbufs;
 	 *
 	 * These implement:
 	 * + data_minfree is the maximum number of free buffers
@@ -804,18 +812,24 @@ struct ath_softc {
 	int			sc_txq_node_maxdepth;
 	int			sc_txq_data_minfree;
 	int			sc_txq_mcastq_maxdepth;
+	int			sc_txq_node_psq_maxdepth;
 
 	/*
-	 * Aggregation twiddles
+	 * Software queue twiddles
 	 *
-	 * hwq_limit:	how busy to keep the hardware queue - don't schedule
-	 *		further packets to the hardware, regardless of the TID
+	 * hwq_limit_nonaggr:
+	 *		when to begin limiting non-aggregate frames to the
+	 *		hardware queue, regardless of the TID.
+	 * hwq_limit_aggr:
+	 *		when to begin limiting A-MPDU frames to the
+	 *		hardware queue, regardless of the TID.
 	 * tid_hwq_lo:	how low the per-TID hwq count has to be before the
 	 *		TID will be scheduled again
 	 * tid_hwq_hi:	how many frames to queue to the HWQ before the TID
 	 *		stops being scheduled.
 	 */
-	int			sc_hwq_limit;
+	int			sc_hwq_limit_nonaggr;
+	int			sc_hwq_limit_aggr;
 	int			sc_tid_hwq_lo;
 	int			sc_tid_hwq_hi;
 
@@ -827,6 +841,10 @@ struct ath_softc {
 	/* Spectral related state */
 	void			*sc_spectral;
 	int			sc_dospectral;
+
+	/* LNA diversity related state */
+	void			*sc_lna_div;
+	int			sc_dolnadiv;
 
 	/* ALQ */
 #ifdef	ATH_DEBUG_ALQ
@@ -1249,6 +1267,19 @@ void	ath_intr(void *);
 	ath_hal_setcapability(_ah, HAL_CAP_INTMIT, \
 	HAL_CAP_INTMIT_ENABLE, _v, NULL)
 
+#define	ath_hal_hasenforcetxop(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_ENFORCE_TXOP, 0, NULL) == HAL_OK)
+#define	ath_hal_getenforcetxop(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_ENFORCE_TXOP, 1, NULL) == HAL_OK)
+#define	ath_hal_setenforcetxop(_ah, _v) \
+	ath_hal_setcapability(_ah, HAL_CAP_ENFORCE_TXOP, 1, _v, NULL)
+
+#define	ath_hal_hasrxlnamixer(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_RX_LNA_MIXING, 0, NULL) == HAL_OK)
+
+#define	ath_hal_hasdivantcomb(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_ANT_DIV_COMB, 0, NULL) == HAL_OK)
+
 /* EDMA definitions */
 #define	ath_hal_hasedma(_ah) \
 	(ath_hal_getcapability(_ah, HAL_CAP_ENHANCED_DMA_SUPPORT,	\
@@ -1413,5 +1444,31 @@ void	ath_intr(void *);
 	((*(_ah)->ah_spectralStart)((_ah)))
 #define	ath_hal_spectral_stop(_ah) \
 	((*(_ah)->ah_spectralStop)((_ah)))
+
+#define	ath_hal_btcoex_supported(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_BT_COEX, 0, NULL) == HAL_OK)
+#define	ath_hal_btcoex_set_info(_ah, _info) \
+	((*(_ah)->ah_btCoexSetInfo)((_ah), (_info)))
+#define	ath_hal_btcoex_set_config(_ah, _cfg) \
+	((*(_ah)->ah_btCoexSetConfig)((_ah), (_cfg)))
+#define	ath_hal_btcoex_set_qcu_thresh(_ah, _qcuid) \
+	((*(_ah)->ah_btCoexSetQcuThresh)((_ah), (_qcuid)))
+#define	ath_hal_btcoex_set_weights(_ah, _weight) \
+	((*(_ah)->ah_btCoexSetWeights)((_ah), (_weight)))
+#define	ath_hal_btcoex_set_weights(_ah, _weight) \
+	((*(_ah)->ah_btCoexSetWeights)((_ah), (_weight)))
+#define	ath_hal_btcoex_set_bmiss_thresh(_ah, _thr) \
+	((*(_ah)->ah_btCoexSetBmissThresh)((_ah), (_thr)))
+#define	ath_hal_btcoex_set_parameter(_ah, _attrib, _val) \
+	((*(_ah)->ah_btCoexSetParameter)((_ah), (_attrib), (_val)))
+#define	ath_hal_btcoex_enable(_ah) \
+	((*(_ah)->ah_btCoexEnable)((_ah)))
+#define	ath_hal_btcoex_disable(_ah) \
+	((*(_ah)->ah_btCoexDisable)((_ah)))
+
+#define	ath_hal_div_comb_conf_get(_ah, _conf) \
+	((*(_ah)->ah_divLnaConfGet)((_ah), (_conf)))
+#define	ath_hal_div_comb_conf_set(_ah, _conf) \
+	((*(_ah)->ah_divLnaConfSet)((_ah), (_conf)))
 
 #endif /* _DEV_ATH_ATHVAR_H */

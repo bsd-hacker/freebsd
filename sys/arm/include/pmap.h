@@ -97,8 +97,12 @@ enum mem_type {
 #endif
 
 #define	pmap_page_get_memattr(m)	((m)->md.pv_memattr)
-#define	pmap_page_is_mapped(m)	(!TAILQ_EMPTY(&(m)->md.pv_list))
 #define	pmap_page_is_write_mapped(m)	(((m)->aflags & PGA_WRITEABLE) != 0)
+#if (ARM_MMU_V6 + ARM_MMU_V7) > 0
+boolean_t pmap_page_is_mapped(vm_page_t);
+#else
+#define	pmap_page_is_mapped(m)	(!TAILQ_EMPTY(&(m)->md.pv_list))
+#endif
 void pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma);
 
 /*
@@ -121,7 +125,9 @@ struct	pv_chunk;
 struct	md_page {
 	int pvh_attrs;
 	vm_memattr_t	 pv_memattr;
+#if (ARM_MMU_V6 + ARM_MMU_V7) == 0
 	vm_offset_t pv_kva;		/* first kernel VA mapping */
+#endif
 	TAILQ_HEAD(,pv_entry)	pv_list;
 };
 
@@ -150,7 +156,6 @@ struct	pmap {
 	u_int8_t		pm_domain;
 	struct l1_ttable	*pm_l1;
 	struct l2_dtable	*pm_l2[L2_SIZE];
-	pd_entry_t		*pm_pdir;	/* KVA of page directory */
 	cpuset_t		pm_active;	/* active on cpus */
 	struct pmap_statistics	pm_stats;	/* pmap statictics */
 #if (ARM_MMU_V6 + ARM_MMU_V7) != 0
@@ -257,7 +262,9 @@ void	*pmap_mapdev(vm_offset_t, vm_size_t);
 void	pmap_unmapdev(vm_offset_t, vm_size_t);
 vm_page_t	pmap_use_pt(pmap_t, vm_offset_t);
 void	pmap_debug(int);
+#if (ARM_MMU_V6 + ARM_MMU_V7) == 0
 void	pmap_map_section(vm_offset_t, vm_offset_t, vm_offset_t, int, int);
+#endif
 void	pmap_link_l2pt(vm_offset_t, vm_offset_t, struct pv_addr *);
 vm_size_t	pmap_map_chunk(vm_offset_t, vm_offset_t, vm_offset_t, vm_size_t, int, int);
 void
@@ -373,12 +380,28 @@ extern int pmap_needs_pte_sync;
 #define	L2_S_PROTO		L2_S_PROTO_xscale
 
 #elif (ARM_MMU_V6 + ARM_MMU_V7) != 0
+/*
+ * AP[2:1] access permissions model:
+ *
+ * AP[2](APX)	- Write Disable
+ * AP[1]	- User Enable
+ * AP[0]	- Reference Flag
+ *
+ * AP[2]     AP[1]     Kernel     User
+ *  0          0        R/W        N
+ *  0          1        R/W       R/W
+ *  1          0         R         N
+ *  1          1         R         R
+ *
+ */
+#define	L2_S_PROT_R		(0)		/* kernel read */
+#define	L2_S_PROT_U		(L2_AP0(2))	/* user read */
+#define L2_S_REF		(L2_AP0(1))	/* reference flag */
 
-#define	L2_S_PROT_U		(L2_AP0(2))		/* user access */
-#define	L2_S_PROT_R		(L2_AP0(1))		/* read access */
-
-#define	L2_S_PROT_MASK		(L2_S_PROT_U|L2_S_PROT_R)
+#define	L2_S_PROT_MASK		(L2_S_PROT_U|L2_S_PROT_R|L2_APX)
+#define	L2_S_EXECUTABLE(pte)	(!(pte & L2_XN))
 #define	L2_S_WRITABLE(pte)	(!(pte & L2_APX))
+#define	L2_S_REFERENCED(pte)	(!!(pte & L2_S_REF))
 
 #ifndef SMP
 #define	L1_S_CACHE_MASK		(L1_S_TEX_MASK|L1_S_B|L1_S_C)
@@ -393,6 +416,24 @@ extern int pmap_needs_pte_sync;
 #define	L1_S_PROTO		(L1_TYPE_S)
 #define	L1_C_PROTO		(L1_TYPE_C)
 #define	L2_S_PROTO		(L2_TYPE_S)
+
+/*
+ * Promotion to a 1MB (SECTION) mapping requires that the corresponding
+ * 4KB (SMALL) page mappings have identical settings for the following fields:
+ */
+#define	L2_S_PROMOTE		(L2_S_REF | L2_SHARED | L2_S_PROT_MASK | \
+				 L2_XN | L2_S_PROTO)
+
+/*
+ * In order to compare 1MB (SECTION) entry settings with the 4KB (SMALL)
+ * page mapping it is necessary to read and shift appropriate bits from
+ * L1 entry to positions of the corresponding bits in the L2 entry.
+ */
+#define L1_S_DEMOTE(l1pd)	((((l1pd) & L1_S_PROTO) >> 0) | \
+				(((l1pd) & L1_SHARED) >> 6) | \
+				(((l1pd) & L1_S_REF) >> 6) | \
+				(((l1pd) & L1_S_PROT_MASK) >> 6) | \
+				(((l1pd) & L1_S_XN) >> 4))
 
 #ifndef SMP
 #define ARM_L1S_STRONG_ORD	(0)
@@ -480,11 +521,15 @@ extern int pmap_needs_pte_sync;
 				 (((pr) & VM_PROT_WRITE) ? L2_S_PROT_W : 0))
 #else
 #define	L1_S_PROT_U		(L1_S_AP(AP_U))
-#define	L1_S_PROT_MASK		(L1_S_APX|L1_S_AP(0x3))
-#define	L1_S_WRITABLE(pd)	(!((pd) & L1_S_APX))
+#define	L1_S_PROT_W		(L1_S_APX)		/* Write disable */
+#define	L1_S_PROT_MASK		(L1_S_PROT_W|L1_S_PROT_U)
+#define	L1_S_REF		(L1_S_AP(AP_REF))	/* Reference flag */
+#define	L1_S_WRITABLE(pd)	(!((pd) & L1_S_PROT_W))
+#define	L1_S_REFERENCED(pd)	((pd) & L1_S_REF)
 
-#define	L1_S_PROT(ku, pr)	(L1_S_PROT_MASK & ~((((ku) == PTE_KERNEL) ? L1_S_PROT_U : 0) | \
-				 (((pr) & VM_PROT_WRITE) ? L1_S_APX : 0)))
+#define	L1_S_PROT(ku, pr)	(((((ku) == PTE_KERNEL) ? 0 : L1_S_PROT_U) | \
+				 (((pr) & VM_PROT_WRITE) ? 0 : L1_S_PROT_W) | \
+				 (((pr) & VM_PROT_EXECUTE) ? 0 : L1_S_XN)))
 
 #define	L2_L_PROT_MASK		(L2_APX|L2_AP0(0x3))
 #define	L2_L_PROT(ku, pr)	(L2_L_PROT_MASK & ~((((ku) == PTE_KERNEL) ? L2_S_PROT_U : 0) | \
