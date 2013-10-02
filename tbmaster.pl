@@ -34,7 +34,7 @@ use POSIX;
 use Getopt::Long;
 use Storable qw(dclone);
 
-my $VERSION	= "2.11";
+my $VERSION	= "2.20";
 my $COPYRIGHT	= "Copyright (c) 2003-2013 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
@@ -46,6 +46,7 @@ my $dump;			# Dump configuration and exit
 my $etcdir;			# Configuration directory
 my $lockfile;			# Lock file name
 my $lock;			# Lock file descriptor
+my $hostname;			# Hostname
 my $ncpu;			# Number of CPUs
 my %platforms;			# Specific platforms to build
 
@@ -54,27 +55,30 @@ my %INITIAL_CONFIG = (
     'CFLAGS'	=> '',
     'COPTFLAGS'	=> '',
     'COMMENT'	=> '',
-    'CVSUP'	=> '',
     'ENV'	=> [ ],
     'HOSTNAME'	=> '',
     'JOBS'	=> '',
-    'LOGDIR'	=> '%%SANDBOX%%/logs',
+    'LOGDIR'	=> '${SANDBOX}/logs',
+    'NCPU'	=> '',
     'OBJDIR'	=> '',
     'OPTIONS'	=> [ ],
     'PATCH'	=> '',
     'PLATFORMS'	=> [ 'i386' ],
-    'RECIPIENT'	=> [ '%%SENDER%%' ],
-    'REPOSITORY'=> '',
+    'RECIPIENT'	=> [ '${SENDER}' ],
     'SANDBOX'	=> '/tmp/tinderbox',
     'SENDER'	=> '',
     'SRCDIR'	=> '',
-    'SUBJECT'	=> 'Tinderbox failure on %%arch%%/%%machine%%',
+    'SUBJECT'	=> 'Tinderbox failure on ${arch}/${machine}',
     'SVNBASE'	=> '',
     'TARGETS'	=> [ 'update', 'world' ],
     'TIMEOUT'   => '',
-    'TINDERBOX'	=> '%%HOME%%/bin/tinderbox',
+    'TINDERBOX'	=> '${HOME}/bin/tinderbox',
     'URLBASE'	=> '',
 );
+my %NUMERIC_OPTIONS = map { $_ => 1 } qw(JOBS NCPU TIMEOUT);
+my %PATHNAME_OPTIONS =
+    map { $_ => 1 } qw(LOGDIR OBJDIR PATCH SANDBOX SRCDIR TINDERBOX);
+my %WORD_OPTIONS = map { $_ => 1 } qw(PLATFORMS TARGETS);
 my %CONFIG;
 
 #
@@ -122,18 +126,45 @@ sub expand($) {
 	if (ref($elem)) {
 	    # prepend to queue for further processing
 	    unshift(@elements, @{$elem});
-	} elsif ($elem =~ m/^\%\%(\w+)\%\%$/) {
+	} elsif ($elem =~ m/^\%\%(\w+)\%\%$/ || $elem =~ m/^\%\{(\w+)\}$/) {
 	    # prepend to queue for further processing
 	    # note - can expand to a list
 	    unshift(@elements, expand($1));
 	} else {
+	    $elem =~ s/\$ENV\{(\w+)\}/$ENV{$1}/g;
 	    $elem =~ s/\%\%(\w+)\%\%/expand($1)/eg;
+	    $elem =~ s/\$\{(\w+)\}/expand($1)/eg;
 	    push(@expanded, $elem);
 	}
     }
+
+    # Upper / lower case
     if ($key !~ m/[A-Z]/) {
 	@expanded = map { lc($_) } @expanded;
     }
+
+    # Validate and untaint expanded value(s)
+    if ($NUMERIC_OPTIONS{uc($key)}) {
+	@expanded = map {
+	    m/^(\d+|)$/
+		or die("invalid value for numeric variable $key: $_\n");
+	    $1
+	} @expanded;
+    } elsif ($PATHNAME_OPTIONS{uc($key)}) {
+	@expanded = map {
+	    m@^((?:/+[\w.-]+)+/*|)$@
+		or die("invalid value for pathname variable $key: $_\n");
+	    $1
+	} @expanded;
+    } elsif ($WORD_OPTIONS{uc($key)}) {
+	@expanded = map {
+	    m/^([\w.-]+|)$/
+		or die("invalid value for word variable $key: $_\n");
+	    $1
+	} @expanded;
+    }
+
+    # Verify single / multiple and return result
     if (ref($value)) {
 	return @expanded;
     } elsif (@expanded != 1) {
@@ -158,7 +189,7 @@ sub readconf($);
 sub readconf($) {
     my $fn = shift;
 
-    open(my $fh, "<", $fn)
+    open(my $fh, '<', $fn)
 	or return undef;
     my $line = "";
     my $n = 0;
@@ -227,7 +258,7 @@ sub history($$$) {
     $history .= $success ? "OK\n" : "FAIL\n";
 
     my $fn = expand('LOGDIR') . "/history";
-    if (open(my $fh, ">>", $fn)) {
+    if (open(my $fh, '>>', $1)) {
 	print($fh $history);
 	close($fh);
     } else {
@@ -254,7 +285,7 @@ sub report($$$$) {
 	return;
     }
 
-    if (open(my $pipe, "|-", "/usr/sbin/sendmail", "-i", "-t", "-f$sender")) {
+    if (open(my $pipe, '|-', qw(/usr/sbin/sendmail -i -t -f), $sender)) {
 	print($pipe "Sender: $sender\n");
 	print($pipe "From: $sender\n");
 	print($pipe "To: $recipient\n");
@@ -288,18 +319,22 @@ sub tinderbox($$$) {
 
     # Open log files: one for the full log and one for the summary
     my $logdir = expand('LOGDIR');
-    my $logfile = "tinderbox-$config-$branch-$arch-$machine";
+    if (!-d $logdir) {
+	die("nonexistent log directory: $logdir\n");
+    }
+    my $logname = "tinderbox-$config-$branch-$arch-$machine";
+    my $logbase = "$logdir/$logname";
     my $full;
-    if (!open($full, ">", "$logdir/$logfile.full.$$")) {
-	warn("$logdir/$logfile.full.$$: $!\n");
+    if (!open($full, '>', "$logbase.full.$$")) {
+	warn("$logbase.full.$$: $!\n");
 	return undef;
     }
     select($full);
     $| = 1;
     select(STDOUT);
     my $brief;
-    if (!open($brief, ">", "$logdir/$logfile.brief.$$")) {
-	warn("$logdir/$logfile.brief.$$: $!\n");
+    if (!open($brief, '>', "$logbase.brief.$$")) {
+	warn("$logbase.brief.$$: $!\n");
 	return undef;
     }
     select($brief);
@@ -310,9 +345,9 @@ sub tinderbox($$$) {
     my ($rpipe, $wpipe);
     if (!pipe($rpipe, $wpipe)) {
 	warn("pipe(): $!\n");
-	unlink("$logdir/$logfile.brief.$$");
+	unlink("$logbase.brief.$$");
 	close($brief);
-	unlink("$logdir/$logfile.full.$$");
+	unlink("$logbase.full.$$");
 	close($full);
 	return undef;
     }
@@ -327,8 +362,6 @@ sub tinderbox($$$) {
 	if ($CONFIG{'OBJDIR'});
     push(@args, "--arch=$arch");
     push(@args, "--machine=$machine");
-    push(@args, "--cvsup=" . expand('CVSUP'))
-	if ($CONFIG{'CVSUP'});
     push(@args, "--repository=" . expand('REPOSITORY'))
 	if ($CONFIG{'REPOSITORY'});
     push(@args, "--branch=$branch");
@@ -349,15 +382,15 @@ sub tinderbox($$$) {
     my $pid = fork();
     if (!defined($pid)) {
 	warn("fork(): $!\n");
-	unlink("$logdir/$logfile.brief.$$");
+	unlink("$logbase.brief.$$");
 	close($brief);
-	unlink("$logdir/$logfile.full.$$");
+	unlink("$logbase.full.$$");
 	close($full);
 	return undef;
     } elsif ($pid == 0) {
 	close($rpipe);
-	open(STDOUT, ">&", $wpipe);
-	open(STDERR, ">&", $wpipe);
+	open(STDOUT, '>&', $wpipe);
+	open(STDERR, '>&', $wpipe);
 	$| = 1;
 	exec(expand('TINDERBOX'), @args);
 	die("exec(): $!\n");
@@ -440,13 +473,13 @@ sub tinderbox($$$) {
 	my $recipient = join(', ', @recipients);
 	my $subject = expand('SUBJECT');
 	if ($CONFIG{'URLBASE'}) {
-	    $summary .= "\n\n" . expand('URLBASE') . "$logfile.full";
+	    $summary .= "\n\n" . expand('URLBASE') . "$logname.full";
 	}
 	report($sender, $recipient, $subject, $summary);
     }
 
-    rename("$logdir/$logfile.full.$$", "$logdir/$logfile.full");
-    rename("$logdir/$logfile.brief.$$", "$logdir/$logfile.brief");
+    rename("$logbase.full.$$", "$logbase.full");
+    rename("$logbase.brief.$$", "$logbase.brief");
 }
 
 #
@@ -547,6 +580,7 @@ sub tbmaster($) {
 	die("Where is the tinderbox script?\n");
     }
 
+    # Check stop file
     my $stopfile = expand('SANDBOX') . "/stop";
     my @jobs;
     foreach my $branch (expand('BRANCHES')) {
@@ -559,12 +593,15 @@ sub tbmaster($) {
 	}
     }
 
+    # Main loop: start as many concurrent jobs as permitted, then keep
+    # starting new jobs as soon as existing jobs terminate, until all
+    # jobs have terminated and there are none left in the queue.
     $0 = "tbmaster [$config]: supervisor";
     my %children;
     my $done = 0;
     while (@jobs || keys(%children)) {
 	# start more children if we can
-	while (@jobs && keys(%children) < $ncpu) {
+	while (@jobs && keys(%children) < expand('NCPU')) {
 	    my ($branch, $arch, $machine) = @{shift(@jobs)};
 	    if (-e $stopfile || -e "$stopfile.$branch" ||
 		-e "$stopfile.$arch" || -e "$stopfile.$arch.$machine") {
@@ -600,29 +637,32 @@ sub tbmaster($) {
 }
 
 #
+# Read the input from a command
+#
+sub slurp(@) {
+    my @cmdline = @_;
+
+    if (open(my $pipe, '-|', @cmdline)) {
+	local $/;
+	my $input = <$pipe>;
+	close($pipe);
+	return $input;
+    }
+    return undef;
+}
+
+#
 # Main
 #
 MAIN:{
     # Set defaults
     $ENV{'TZ'} = "UTC";
     $ENV{'PATH'} = "/usr/bin:/usr/sbin:/bin:/sbin";
-    $INITIAL_CONFIG{'HOSTNAME'} = `/usr/bin/uname -n`;
-    if ($INITIAL_CONFIG{'HOSTNAME'} =~ m/^([0-9a-z-]+(?:\.[0-9a-z-]+)*)$/) {
-	$INITIAL_CONFIG{'HOSTNAME'} = $1;
-    } else {
-	$INITIAL_CONFIG{'HOSTNAME'} = 'unknown';
-    }
     if ($ENV{'HOME'} =~ m/^((?:\/[\w\.-]+)+)\/*$/) {
 	$INITIAL_CONFIG{'HOME'} = realpath($1);
 	$etcdir = "$1/etc";
 	$ENV{'PATH'} = "$1/bin:$ENV{'PATH'}"
 	    if (-d "$1/bin");
-    }
-    $ncpu = `/sbin/sysctl -n hw.ncpu`;
-    if ($ncpu =~ m/^\s*(\d+)\s*$/) {
-	$ncpu = int($1);
-    } else {
-	$ncpu = 1;
     }
 
     # Get options
@@ -632,10 +672,12 @@ MAIN:{
 	"c|config=s"		=> \@configs,
 	"d|dump"		=> \$dump,
 	"e|etcdir=s"		=> \$etcdir,
+	"h|hostname=s"		=> \$hostname,
 	"l|lockfile=s"		=> \$lockfile,
 	"n|ncpu=i"		=> \$ncpu,
 	) or usage();
 
+    # Subsequent arguments are platforms to build
     foreach (@ARGV) {
 	if (m/^(\w+(?:\/\w+)?)$/) {
 	    $platforms{$1} = 1;
@@ -644,11 +686,34 @@ MAIN:{
 	}
     }
 
+    # Get / check hostname
+    if (!$hostname) {
+	$hostname = slurp(qw(/usr/bin/uname -n));
+    }
+    if ($hostname &&
+	$hostname =~ m/^\s*([a-z][0-9a-z-]+(?:\.[a-z][0-9a-z-]+)*)\s*$/s) {
+	$hostname = $1;
+    } else {
+	$hostname = 'unknown';
+    }
+    $INITIAL_CONFIG{'HOSTNAME'} = $hostname;
+
+    # Get / check number of CPUs
+    if (!$ncpu) {
+	$ncpu = slurp(qw(/sbin/sysctl -n hw.ncpu));
+    }
+    if ($ncpu && $ncpu =~ m/^\s*(\d+)\s*$/s) {
+	$ncpu = int($1);
+    } else {
+	$ncpu = 1;
+    }
+    $INITIAL_CONFIG{'NCPU'} = $ncpu;
+
     # Check options
     if (@configs) {
 	@configs = split(/,/, join(',', @configs));
     } else {
-	$configs[0] = `/usr/bin/uname -n`;
+	$configs[0] = $hostname;
 	chomp($configs[0]);
 	$configs[0] =~ s/^(\w+)(\..*)?/$1/;
     }
@@ -672,7 +737,7 @@ MAIN:{
 	    die("invalid lockfile\n");
 	}
 	$lockfile = $1;
-	$lock = open_locked($lockfile, ">", 0600)
+	$lock = open_locked($lockfile, '>', 0600)
 	    or die("unable to acquire lock on $lockfile\n");
 	# Lock will be released upon termination.
     }
