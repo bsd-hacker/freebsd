@@ -6,7 +6,7 @@
 
 branches	 = RELENG_7
 platforms	 = none
-srcdir		 = %%SANDBOX%%/%%BRANCH%%/src
+srcdir		 = ${SANDBOX}/${BRANCH}/src
 targets		 = update, version
 recipient	+= <stable@freebsd.org>
-subject		= [%%COMMENT%%] source tree update failure
+subject		= [${COMMENT}] source tree update failure

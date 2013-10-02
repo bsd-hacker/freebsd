@@ -7,5 +7,5 @@
 branches	 = RELENG_7
 platforms	 = amd64, i386, i386/pc98, ia64, powerpc, sparc64
 targets		 = precleanobj, version, world, lint, kernels, postcleanobj
-srcdir		 = %%SANDBOX%%/%%BRANCH%%/src
-recipient	+= <stable@freebsd.org>, <%%arch%%@freebsd.org>
+srcdir		 = ${SANDBOX}/${BRANCH}/src
+recipient	+= <stable@freebsd.org>, <${arch}@freebsd.org>

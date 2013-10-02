@@ -4,10 +4,10 @@
 # $FreeBSD$
 #
 
-comment		= %%branch%% tinderbox
+comment		= ${branch} tinderbox
 
 # Paths
-sandbox		= %%HOME%%
+sandbox		= ${HOME}
 
 # Tinderbox options
 options		= --verbose
@@ -16,6 +16,6 @@ targets		= precleanobj, update, world, lint, kernels, postcleanobj
 
 # Reporting
 sender		= FreeBSD Tinderbox <tinderbox@freebsd.org>
-recipient	= %%SENDER%%
-subject		= [%%COMMENT%%] failure on %%arch%%/%%machine%%
+recipient	= ${SENDER}
+subject		= [${COMMENT}] failure on ${arch}/${machine}
 urlbase		= http://tinderbox.des.no/
