@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd March 29, 2013
+.Dd October 2, 2013
 .Dt TINDERBOX 1
 .Os
 .Sh NAME
@@ -54,14 +54,10 @@ The default value is whatever the host system's
 reports.
 .It Fl -branch Ns = Ns Ar BRANCH
 The branch to check out from
-.Xr svn 1 ,
-.Xr cvs 1
-or
-.Xr cvsup 1
+.Xr svn 1
 when updating the source tree.
 The default is to check out HEAD.
-When using
-.Xr svn 1 ,
+For historical compatibility,
 .Xr cvs 1 Ns -style
 branch names are translated to
 .Xr svn 1
@@ -73,15 +69,6 @@ and
 .Dv RELENG_9_1
 becomes
 .Pa releng/9.1 .
-.It Fl -cvsup Ns = Ns Ar NAME
-The name of the
-.Xr cvsup 1
-server from which to update the source tree
-.Cm update
-command is specified.
-The default is to use
-.Xr cvs 1
-instead.
 .It Fl -destdir Ns = Ns Ar DIR
 The directory (aka
 .Dv DESTDIR )
@@ -134,14 +121,6 @@ for more information), regardless of whether the
 .Cm patch
 command was specified.
 The default is to not apply any patches.
-.It Fl -repository Ns = Ns Ar DIR
-The location of the
-.Xr cvs 1
-repository from which to update the source tree if the
-.Cm update
-command is specified.
-The default is
-.Pa /home/ncvs .
 .It Fl -sandbox Ns = Ns Ar DIR
 The location of the sandbox in which the builds are to take place.
 This directory should reside on a reasonably fast disk with at least
@@ -166,6 +145,9 @@ or
 commands.
 .It Fl -svnbase Ns = Ns Ar URL
 The URL to the base of the Subversion repository.
+The default is
+.\" There does not seem to be an mdoc macro for URLs; use Pa instead.
+.Pa svn://svn.freebsd.org/base .
 .It Fl -timeout Ns = Ns Ar NUM
 The maximum wall-time duration of the run, in seconds.
 The default is to continue until all targets are completed.
@@ -214,7 +196,7 @@ Delete the installation tree at the start of each job.
 Delete the release chroot tree at the start of each job.
 .It Cm update
 Update the sources using
-.Xr cvs 1 .
+.Xr svn 1 .
 This is highly recommended, for obvious reasons, if the
 .Cm clean
 command is specified.
@@ -332,10 +314,6 @@ The following additional variables are set for release builds:
 .Bl -tag -width 18n
 .It CHROOTDIR
 .Va $SANDBOX/root
-.It CVSROOT
-As specified with the
-.Fl -repository
-option.
 .It RELEASETAG
 .Va -rBRANCH
 if
@@ -369,9 +347,9 @@ if a patch was specified.
 .Pp
 None of these variables may be overridden by command-line arguments.
 .Sh SEE ALSO
-.Xr cvs 1 ,
 .Xr make 1 ,
 .Xr patch 1 ,
+.Xr svn 1 ,
 .Xr tbmaster 1 ,
 .Xr build 7 ,
 .Xr release 7

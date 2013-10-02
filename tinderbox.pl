@@ -33,13 +33,12 @@ use Fcntl qw(:DEFAULT :flock);
 use POSIX;
 use Getopt::Long;
 
-my $VERSION	= "2.12";
+my $VERSION	= "2.20";
 my $COPYRIGHT	= "Copyright (c) 2003-2013 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
 my $arch;			# Target architecture
 my $branch;			# CVS branch to check out
-my $cvsup;			# Name of CVSup server
 my $destdir;			# Destination directory
 my $jobs;			# Number of paralell jobs
 my $hostname;			# Name of the host running the tinderbox
@@ -47,7 +46,6 @@ my $logfile;			# Path to log file
 my $machine;			# Target machine
 my $objdir;			# Location of object tree
 my $patch;			# Patch to apply before building
-my $repository;			# Location of CVS repository
 my $sandbox;			# Location of sandbox
 my $srcdir;			# Location of source tree
 my $svnbase;			# Subversion base URL
@@ -79,17 +77,6 @@ my %lint;
 my $starttime;
 
 my $unamecmd = '/usr/bin/uname';
-
-my @cvscmds = (
-    '/usr/bin/cvs',
-    '/usr/local/bin/cvs',
-);
-
-my @cvsupcmds = (
-    '/usr/bin/csup',
-    '/usr/local/bin/csup',
-    '/usr/local/bin/cvsup'
-);
 
 my @svncmds = (
     '/usr/bin/svn',
@@ -386,15 +373,13 @@ Options:
 
 Parameters:
   --arch=ARCH                   Target architecture (e.g. i386)
-  --branch=BRANCH               CVS branch to check out
-  --cvsup                       CVSup server
+  --branch=BRANCH               Source branch to check out
   --destdir=DIR                 Destination directory when installing
   --jobs=NUM                    Maximum number of paralell jobs
   --hostname=NAME               Name of the host running the tinderbox
   --logfile=FILE                Path to log file
   --machine=MACHINE             Target machine (e.g. pc98)
   --patch=PATCH                 Patch to apply before building
-  --repository=DIR              Location of CVS repository
   --sandbox=DIR                 Location of sandbox
   --svnbase=URL                 Subversion base URL
   --timeout=SECONDS             Maximum allowed build time
@@ -432,15 +417,14 @@ MAIN:{
     chomp($hostname);
     $branch = "HEAD";
     $jobs = 0;
-    $repository = "/home/ncvs";
     $sandbox = "/tmp/tinderbox";
+    $svnbase = "svn://svn.freebsd.org/base";
     $timeout = 0;
 
     # Get options
     GetOptions(
 	"arch=s"		=> \$arch,
 	"branch=s"		=> \$branch,
-	"cvsup=s"		=> \$cvsup,
 	"destdir=s"		=> \$destdir,
 	"jobs=i"		=> \$jobs,
 	"hostname=s"		=> \$hostname,
@@ -448,7 +432,6 @@ MAIN:{
 	"machine=s"		=> \$machine,
 	"objdir=s"		=> \$objdir,
 	"patch=s"		=> \$patch,
-	"repository=s"		=> \$repository,
 	"sandbox=s"		=> \$sandbox,
 	"srcdir=s"		=> \$srcdir,
 	"svnbase=s"		=> \$svnbase,
@@ -614,55 +597,8 @@ MAIN:{
 		warning("sleeping $delay s and retrying...");
 		sleep($delay);
 	    }
-	} elsif (defined($cvsup)) {
-	    logstage("cvsupping the source tree");
-	    open(my $fh, ">", "$sandbox/supfile")
-		or error("$sandbox/supfile: $!");
-	    print($fh "*default base=$sandbox\n");
-	    print($fh "*default prefix=$sandbox\n");
-	    print($fh "*default delete use-rel-suffix\n");
-	    print($fh "src-all release=cvs");
-	    if ($branch eq 'HEAD') {
-		print($fh " tag=.");
-	    } else {
-		print($fh " tag=$branch");
-	    }
-	    print($fh "\n");
-	    close($fh);
-	    my @cvsupargs = (
-		"-z",
-		"-r 3",
-		"-g",
-		"-L", ($verbose ? 1 : 0),
-		"-h",
-		split(' ', $cvsup),
-		"$sandbox/supfile"
-	    );
-	    my $cvsupcmd = [grep({ -x } @cvsupcmds)]->[0]
-		or error("unable to locate cvsup / csup binary");
-	    spawn($cvsupcmd, @cvsupargs)
-		or error("unable to cvsup the source tree");
 	} else {
-	    logstage("checking out the source tree from $repository");
-	    cd("$sandbox");
-	    my @cvsargs = (
-		"-f",
-		"-R",
-		$verbose ? "-q" : "-Q",
-		"-d$repository",
-	    );
-	    if (-d $srcdir) {
-		push(@cvsargs, "update", "-Pd");
-	    } else {
-		push(@cvsargs, "checkout", "-P");
-	    };
-	    push(@cvsargs, ($branch eq 'HEAD') ? "-A" : "-r$branch")
-		if defined($branch);
-	    push(@cvsargs, "src");
-	    my $cvscmd = [grep({ -x } @cvscmds)]->[0]
-		or error("unable to locate cvs binary");
-	    spawn($cvscmd, @cvsargs)
-		or error("unable to check out the source tree");
+	    error("no svn base URL defined");
 	}
     }
 
@@ -849,7 +785,6 @@ MAIN:{
     # Build a release if requested
     if ($cmds{'release'}) {
 	$ENV{'CHROOTDIR'} = "$sandbox/root";
-	$ENV{'CVSROOT'} = $repository;
 	$ENV{'RELEASETAG'} = $branch
 	    if $branch ne 'HEAD';
 	$ENV{'WORLD_FLAGS'} = $ENV{'KERNEL_FLAGS'} =
