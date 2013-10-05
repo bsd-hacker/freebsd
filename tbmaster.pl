@@ -158,7 +158,9 @@ sub expand($) {
 	} @expanded;
     } elsif ($WORD_OPTIONS{uc($key)}) {
 	@expanded = map {
-	    m/^([\w.-]+|)$/
+	    # hack - support not only "word" but also "word/word" so
+	    # platform designations will pass the test.
+	    m@^([\w.-]+(?:/[\w.-]+)?|)$@
 		or die("invalid value for word variable $key: $_\n");
 	    $1
 	} @expanded;
