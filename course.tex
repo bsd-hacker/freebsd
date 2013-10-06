@@ -1,0 +1,42 @@
+\definecolor{yellowgreen}{HTML}{D0F000}
+\definecolor{man}{HTML}{FF5E7C}
+\definecolor{Agrey}{HTML}{AAAAAA}
+\definecolor{Bgrey}{HTML}{BBBBBB}
+\definecolor{Cgrey}{HTML}{CCCCCC}
+\definecolor{Dgrey}{HTML}{DDDDDD}
+\definecolor{Egrey}{HTML}{EEEEEE}
+
+% trace
+\setbeamercolor{trace}{fg=black,bg=Cgrey}
+
+% terminal
+\setbeamercolor{terminal}{fg=white,bg=black}
+
+% editor
+\setbeamercolor{editor}{fg=black,bg=Cgrey}
+
+% manual pages
+\newcommand{\Man}[2]{
+  \colorbox{white}{\color{man}#1(#2)}
+}
+\setbeamercolor{manlabel}{fg=black,bg=man}
+\newcommand{\manlabel}[1]{
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,colsep=0pt]{manlabel}
+  \small{#1}
+  \end{beamercolorbox}
+}
+
+% Source reference box
+\setbeamercolor{srcref}{fg=black,bg=yellowgreen}
+\newcommand{\srcref}[1]{
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,colsep=0pt]{srcref}
+  \tiny{Source code reference:}\footnotesize{ #1}
+  \end{beamercolorbox}
+}
+
+% Shell command
+\newcommand{\shellcmd}[1]{
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,colsep=0pt]{terminal}
+  \small{#1}
+  \end{beamercolorbox}
+}

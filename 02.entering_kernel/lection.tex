@@ -1,0 +1,513 @@
+\documentclass{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{tikz}
+\usepackage{adjustbox}
+\usepackage{url}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{verbatim}
+
+\usetikzlibrary{positioning}
+\usetikzlibrary{shapes.arrows}
+\usetikzlibrary{decorations.pathmorphing}
+
+\input{../course.tex}
+
+\title{Entering and exiting the kernel:
+interrupts, traps, system calls}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+
+\begin{frame}
+\frametitle<1>{CPU is a Turing maching}
+\frametitle<2>{Interrupt}
+\frametitle<3>{Saving entire context}
+\begin{tikzpicture}[node distance=2mm, very thick]
+  \draw [anchor=north] (2, 0) node[name=cpu, draw, rounded corners=3mm,
+	minimum height=5cm, minimum width=4cm]{};
+  \node [name=cputext, below=of cpu.north]{CPU};
+  \node [name=ip, below=of cputext, draw, text width=3cm, align=center]
+	{ instruction pointer (program counter) };
+  \node [name=sp, below=of ip, draw, text width=3cm, align=center]
+	{ stack pointer };
+  \node [name=reg0, below=of sp.south west, anchor=north west, draw,
+	align=center, minimum width = 1.5 cm]
+	{ reg0 };
+  \node [name=reg1, below=of sp.south east, anchor=north east, draw,
+	align=center, minimum width = 1.5 cm]
+	{ reg1 };
+  \node [name=reg2, below=of reg0.south west, anchor=north west, draw,
+	align=center, minimum width = 1.5 cm]
+	{ reg2 };
+  \node [name=reg3, below=of reg1.south east, anchor=north east, draw,
+	align=center, minimum width = 1.5 cm]
+	{ reg3 };
+
+  \draw [anchor=north] (8, 0) node[name=mem, draw, rounded corners=3mm,
+	minimum height=7cm, minimum width=7cm]{};
+  \node [name=memtext, below=of mem.north]{Memory};
+
+  % Stack
+  \node [name=stack0, above right=1cm and 0.5cm of mem.west, draw,
+	outer sep=0pt, minimum height=1cm, minimum width=2cm] { };
+  \node [name=stack1, node distance = 0mm, below=of stack0, draw, outer sep=0pt,
+	minimum height=1cm, minimum width=2cm] { 0 };
+  \node [name=stack2, node distance = 0mm, below=of stack1, draw, outer sep=0pt,
+	minimum height=1cm, minimum width=2cm] { 2 };
+  \node [name=stack3, node distance = 0mm, below=of stack2, draw, outer sep=0pt,
+	minimum height=1cm, minimum width=2cm] { 1 };
+  \node [name=stacktext, node distance = 0mm, above=of stack0] { stack };
+  \draw [loosely dashed] (stack0.north east) -- +(0,1);
+  \draw [loosely dashed] (stack0.north west) -- +(0,1);
+  \draw [loosely dashed] (stack3.south east) -- +(0,-1);
+  \draw [loosely dashed] (stack3.south west) -- +(0,-1);
+
+  % Code
+  \node [name=code0, above left=1cm and 0.5cm of mem.east, draw, outer sep=0pt,
+	minimum height=1cm, minimum width=3cm] { and reg1,reg2 };
+  \node [name=code1, node distance = 0mm, below=of code0, draw, outer sep=0pt,
+	minimum height=1cm, minimum width=3cm] { test reg1, 0xf };
+  \node [name=code2, node distance = 0mm, below=of code1, draw, outer sep=0pt,
+	minimum height=1cm, minimum width=3cm] { jnz +0x10 };
+  \draw [loosely dashed] (code0.north east) -- +(0,1);
+  \draw [loosely dashed] (code0.north west) -- +(0,1);
+  \draw [loosely dashed] (code2.south east) -- +(0,-1);
+  \draw [loosely dashed] (code2.south west) -- +(0,-1);
+
+  \onslide<1> {
+    \note {
+	- CPU is like a Turing machine.
+	- Explain what IP or program counter means.
+	- Why pure TM doesn't represent what we want from a computer?
+	  We don't want computer to endlessly run a calculation, we want
+	  it to be interactive. User input should interrupt it. And not
+	  only user input.
+    }
+    \draw [->] (sp.east) to [out=15, in=165] (stack1.west);
+    \draw [->] (ip.east) to [out=-15, in=165] (code0.west);
+  }
+
+  \onslide<2> {
+    \note {
+	- So, interruption of computing is important.
+	- Interrupt should be transparent for current execution. How
+	  can this be achieved?
+    }
+    \draw [->, dashed] (sp.east) to [out=15, in=165] (stack1.west);
+    \draw [->, dashed] (ip.east) to [out=-15, in=165] (code0.west);
+    \draw [->, color=red] (sp.east) to [out=15, in=165] (stack0.west);
+    \node [name=addr0, draw, circle, color=red, minimum width=5mm]
+  	at (code0.west) {};
+    \draw [->, color=red] (addr0.south west) to [out=200, in=300]
+	(stack0.center);
+  
+    % Intr
+    \node [name=intr0, node distance = 0mm, below=1cm of code2, draw,
+  	outer sep=0pt, minimum height=1cm, minimum width=3cm] { push reg1 };
+    \node [node distance=0, above=of intr0] { \footnotesize interrupt handler };
+    \draw [->, color=red] (ip.east) to [out=30,in=165] (intr0.west);
+  }
+
+  \onslide<3> {
+    \note {
+	- Saving entire context is important in some cases.
+	- And what if on return interrupt handler provides another context?
+	- Handling multiple contexts == multitasking.
+    }
+    \node [name=ctx, draw, circle, color=red, minimum width=4cm]
+	at (cpu.center) {};
+    \draw [->, color=red] (ctx.north east) to [out=30, in=140]
+	(stacktext.north);
+  }
+\end{tikzpicture}
+\onslide<3> {
+  \srcref{sys/i386/i386/swtch.s, sys/amd64/amd64/cpu\_switch.S
+}
+}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Interrupts}
+\note {
+	- Let's see what kind of interrupts we got.
+}
+\begin{itemize}
+  \onslide<1->{
+    \note {
+	- Okay, now we can do multitasking and interactivity.
+    }
+    \item{Hardware interrupt (asynchoronous, involuntary)
+      \begin{itemize}
+	\item I/O ready
+	\item I/O done
+	\item timer tick
+      \end{itemize}
+    }
+  }
+  \onslide<2->{
+    \note {
+	- We can handle (and "fix") traps, and even implement paging.
+    }
+    \item{Trap (synchoronous, involuntary)
+      \begin{itemize}
+	\item page fault
+	\item general protection fault
+      \end{itemize}
+    }
+  }
+  \onslide<3->{
+    \note {
+	- Via interrupts we can provide a library of functions, what
+	  actually MS DOS did via INT 0x21. Actually many software of
+	  the DOS era were setting a library on a particular interrupt.
+    }
+    \item{Software interrupt (synchoronous, voluntary)\\
+	On x86 the ``int'' instruction
+    }
+  }
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Protection}
+\note {
+	- What isn't enough for a true OS is protection of tasks against
+	  each other.
+	- We need individual address space for each, and only a supervisor
+	  (the kernel) that can set 'em up.
+	- We need to forbid certain priveleged instructions to anyone
+	  except supervisor.
+	- This is what 80386 processor gave us.
+	- Now the library of functions lives in ring0, and is called
+	  kernel.
+}
+\begin{tikzpicture}[very thick]
+  \node[name=ring3, draw, rounded corners=3mm,
+	minimum width=11cm, minimum height=3cm] {};
+  \node[name=ring0, node distance=1.4cm, below=of ring3, draw,
+	rounded corners=3mm, minimum width=11cm, minimum height=3cm] {};
+  \node[name=int, single arrow, node distance=2mm, anchor=north,
+	below right=1mm and 2 cm of ring3.south west, draw,
+	minimum width=4em, minimum height=3em, shape border rotate=270]
+	{ int };
+  \node[name=trap, single arrow, right=of int, draw,
+	minimum width=4em, minimum height=3em, shape border rotate=270]
+	{ \emph{trap} };
+  \node[name=iret, single arrow, node distance=2mm, anchor=north,
+	above left=1mm and 2 cm of ring0.north east, draw,
+	minimum width=4em, minimum height=3em, shape border rotate=90]
+	{ iret };
+
+  \onslide<1>{
+    \node at (ring3.center) { \LARGE{ring 3} };
+    \node at (ring0.center) { \LARGE{ring 0} };
+  }
+
+  \onslide<2>{
+    \node at (ring3.center) { \color{red}\LARGE{userland} };
+    \node at (ring0.center) { \color{red}\LARGE{kernel} };
+  }
+\end{tikzpicture}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{System call}
+\note {
+	- Let's make an agreement that certain software interrupt has an
+	  ABI that would provide a gate into kernel.
+	- Using variety of syscall numbers we can implement all needed
+	  services that kernel offers to userland.
+	- The int 0x80 is already a history. Modern hardware provide
+	  special much more efficient instruction designed for syscall.
+	  There also were "call gates".
+}
+\onslide<1->{
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,ht=2.9cm]{trace}
+    Application
+    \begin{itemize}
+      \item Puts syscall number into a register
+      \item Puts arguments into registers or into memory
+      \item Triggers interrupt (i386: \emph{int 0x80}, amd64: \emph{syscall})
+      \onslide<3->{
+	\item Resumes execution, checks return value, reads data, etc.
+      }
+    \end{itemize}
+    \end{beamercolorbox}
+}
+\onslide<2->{
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,ht=3.4cm]{trace}
+    Kernel
+    \begin{itemize}
+      \item Reads syscall number from a register
+      \item Reads arguments from registers or into memory
+      \item Does the processing
+      \item Puts return value into a register, copies data
+      \item Returns from interrupt (i386: \emph{iret}, amd64: \emph{sysret})
+    \end{itemize}
+    \end{beamercolorbox}
+}
+\srcref{lib/libc/i386/sys/syscall.S, sys/i386/i386/trap.c,
+lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{System call example}
+\note {
+	- Let's trace an application ping(8). It sends data to network,
+	  so we expect it to use send(2). Our outbound interface is Ethernet,
+	  so we expect ether_output() to be in action.
+	- Arm gdb & dtrace appropriately!
+	- Note that data is taken from dtrace and gdb, but order is
+	  reversed!
+	- Note that we expected ICMP but got UDP on first send() due to
+	  resolving, but that still works for us as an example! Also, it
+	  demonstrates that library calls can use syscalls implicitly.
+	- Explain user stack and kernel stack.
+	- Let's trace recvfrom(), too.
+}
+\shellcmd{\# ping www.ru}
+\begin{scriptsize}
+\begin{onlyenv}<1>
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,ht=3.5cm]{trace}
+	\begin{verbatim}
+	#9  main () at ping.c:563
+	#8  gethostbyname2 () from /lib/libc.so.7
+	#7  gethostbyname_r () from /lib/libc.so.7
+	#6  nsdispatch () from /lib/libc.so.7
+	#5  __dns_getanswer () from /lib/libc.so.7
+	#4  __res_nsearch () from /lib/libc.so.7
+	#3  __res_nquerydomain () from /lib/libc.so.7
+	#2  __res_nquery () from /lib/libc.so.7
+	#1  __res_nsend () from /lib/libc.so.7
+	#0  send () from /lib/libc.so.7
+	\end{verbatim}
+  \end{beamercolorbox}
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,ht=3cm]{trace}
+	\begin{verbatim}
+	kernel`amd64_syscall+0x357
+	kernel`sys_sendto+0x4d
+	kernel`sendit+0x116
+	kernel`kern_sendit+0x224
+	kernel`sosend_dgram+0x2f2
+	kernel`udp_send+0x855
+	kernel`ip_output+0xf0a
+	ether_output:entry 
+	\end{verbatim}
+  \end{beamercolorbox}
+\end{onlyenv}
+\begin{onlyenv}<2>
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,ht=3.5cm]{trace}
+	\begin{verbatim}
+	#9  main (argc=<value optimized out>, argv=0x0) at ping.c:563
+	#8  gethostbyname2 () from /lib/libc.so.7
+	#7  gethostbyname_r () from /lib/libc.so.7
+	#6  nsdispatch () from /lib/libc.so.7
+	#5  __dns_getanswer () from /lib/libc.so.7
+	#4  __res_nsearch () from /lib/libc.so.7
+	#3  __res_nquerydomain () from /lib/libc.so.7
+	#2  __res_nquery () from /lib/libc.so.7
+	#1  __res_nsend () from /lib/libc.so.7
+	#0  recvfrom () from /lib/libc.so.7
+	\end{verbatim}
+  \end{beamercolorbox}
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,ht=2cm]{trace}
+	\begin{verbatim}
+	kernel`amd64_syscall+0x357
+	kernel`sys_recvfrom+0x86
+	kernel`kern_recvit+0x22f
+	kernel`soreceive_dgram+0x45d
+	uiomove:entry 
+	\end{verbatim}
+  \end{beamercolorbox}
+\end{onlyenv}
+\end{scriptsize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Hardware interrupts and system calls}
+\note{
+	- We can enter kernel from a hardware interrupt, or from
+	  a software interrupt. The former is usually a driver entry,
+	  and the latter is a syscall.
+	- Drivers can have pure interrupt handlers, but more often
+	  have ISRs.
+	- Kernel is somewhat divided into two parts... Well, it is
+	  really not. :) But some threads are always calling "down",
+	  and some are calling "up". And they are tightly interconnected.
+	- They usually synchronise at a some data structure, a generic
+	  buffer.
+}
+\begin{tikzpicture}[very thick]
+  \node[name=user, draw, rounded corners=3mm,
+	minimum width=11cm, minimum height=2cm] {};
+  \node [name=usertext] at (user.center)
+	{ \LARGE{userland} };
+  \node [name=ping, right=of user.west, draw, rounded corners=1mm]
+	{ ping };
+  \node[name=kernel, node distance=2mm, below=of user, draw,
+	rounded corners=3mm, minimum width=11cm, minimum height=6cm] {};
+  \draw [loosely dashed,decorate,decoration={snake,amplitude=0.25cm,segment length=2cm}] (kernel.west) -- (kernel.east);
+  \node [name=top, node distance=2mm, below right=of kernel.north]
+	{ \LARGE{kernel (top half)} };
+  \node [name=bottom, node distance=2mm, above right=of kernel.south]
+	{ \LARGE{kernel (bottom half)} };
+  \node [name=buf, left=of kernel.center, draw, fill=white, circle]
+	{ buffer };
+  \node [name=ether, above right=2mm and 1cm of kernel.south west,
+	draw, rounded corners=1mm]
+	{ Ethernet driver };
+  \draw [->] (ether.north) to [out=110, in=250]
+	node [midway, sloped, below] {\footnotesize interrupt}
+	(buf.south west);
+  \draw [->] (ping.south) to [out=250, in=110]
+	node [midway, sloped, above] {\footnotesize send()}
+	(buf.north west);
+  \draw [->] (ping.south) to [out=290, in=40]
+	node [midway, sloped, above] {\footnotesize recv()}
+	(buf.north east);
+
+  \onslide<2>{
+    \note{
+	- A thread coming from userland can eventually reach the very
+	  bottom of a driver.
+	- A thread coming from a driver can't pass kernel to userland
+	  boundary.
+    }
+    \draw [->] (ping.south) to [out=230, in=120]
+	node [midway, sloped, below] {\footnotesize send()}
+	(ether.north west);
+  }
+
+  \onslide<3>{
+    \note{
+	- An interrupt isn't necessarily related to some user task.
+    }
+    \node [name=timer, right=5mm of ether, draw, rounded corners=1mm]
+	{ timer };
+    \draw [->] (timer.north) .. controls +(-1cm,2cm) and +(1cm,2cm) ..
+	(timer.north);
+  }
+
+  \onslide<4>{
+    \note{
+	- Let students think theirselves on possibility of such
+	  upcall. Provide hints if needed.
+    }
+    \draw [color=red, ->] (bottom.north) to [out=140, in=270]
+	node[midway, sloped, above] {is that possible?}
+	(usertext.south west);
+  }
+\end{tikzpicture}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Adding a system call in FreeBSD}
+\note {
+	- It is simple. Let's go through the steps.
+	- Explain all fields.
+}
+\shellcmd{%
+\# cd /usr/src/sys/kern\\
+\# vi syscalls.master\\
+}
+\begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,ht=3.2cm]{editor}
+\scriptsize \begin{verbatim}
+541     AUE_ACCEPT      STD     { int accept4(int s, \
+                                    struct sockaddr * __restrict name, \
+                                    __socklen_t * __restrict anamelen, \
+                                    int flags); }
+542     AUE_PIPE        STD     { int pipe2(int *fildes, int flags); }
+543     AUE_NULL        NOSTD   { int aio_mlock(struct aiocb *aiocbp); }   
+544     AUE_NULL        STD     { int procctl(idtype_t idtype, id_t id, \
+                                    int com, void *data); }
+545     AUE_NULL        NOSTD   { int foobar(int foo, void *bar
+\end{verbatim}
+\end{beamercolorbox}
+\shellcmd{%
+\# make sysent\\
+\# cd ../..\\
+\# make buildkernel installkernel
+}
+\onslide<2->{
+  \color{red}{
+    I forgot to implement the sys\_foobar() function.
+  }
+}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{syscall ABI}
+\note {
+	- What actually 'make sysent' does:
+	  - /usr/include/sys/syscall.h
+	  - /usr/include/sys/sysproto.h
+	- ABI is a convention on how arguments are passed between userland
+	  and kernel.
+	- A table of syscalls.
+	- What if provide multiple ABIs? Yep, and that's the case.
+	- Emphasize that Linux ABI isn't an emulator, but a compatibility
+	  layer, very much like freebsd32 layer. The open(2) is special.
+}
+\emph{make sysent} generates:
+\begin{itemize}
+  \item /usr/include/sys/syscall.h (for userland)
+  \item /usr/include/sys/sysproto.h (for kernel)
+\end{itemize}
+
+\onslide<2-> {
+  There are many of them:
+  \begin{itemize}
+  \item sys/kern/syscalls.master
+  \item sys/compat/freebsd32/syscalls.master
+  \item sys/i386/linux/syscalls.master
+  \item sys/amd64/linux32/syscalls.master
+  \color{Agrey}{
+  \item sys/compat/svr4/syscalls.master
+  \item sys/i386/ibcs2/syscalls.master
+  }
+  \end{itemize}
+}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Adding a system call in FreeBSD (dynamic way)}
+\note{
+}
+\begin{itemize}
+  \begin{item}Kernel side
+    \begin{itemize}
+      \item \Man{SYSCALL\_MODULE}{9}
+      \item \Man{module}{9}
+    \end{itemize}
+  \end{item}
+  \begin{item}Application side
+    \begin{itemize}
+      \item \Man{modstat}{2}
+      \item \Man{syscall}{2}
+    \end{itemize}
+  \end{item}
+\end{itemize}
+\shellcmd{%
+\# svn co http://svn.freebsd.org/base/user/glebius/course\\
+\# cd course/02.entering\_kernel/syscall/module\\
+\# vi foo\_syscall.c
+}
+\end{frame}
+
+\end{document}
