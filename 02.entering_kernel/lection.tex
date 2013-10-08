@@ -83,23 +83,23 @@ interrupts, traps, system calls}
   \draw [loosely dashed] (code2.south west) -- +(0,-1);
 
   \onslide<1> {
-    \note {
-	- CPU is like a Turing machine.
-	- Explain what IP or program counter means.
+    \note<1> {
+	- CPU is like a Turing machine.\\
+	- Explain what IP or program counter means.\\
 	- Why pure TM doesn't represent what we want from a computer?
 	  We don't want computer to endlessly run a calculation, we want
 	  it to be interactive. User input should interrupt it. And not
-	  only user input.
+	  only user input.\\
     }
     \draw [->] (sp.east) to [out=15, in=165] (stack1.west);
     \draw [->] (ip.east) to [out=-15, in=165] (code0.west);
   }
 
   \onslide<2> {
-    \note {
-	- So, interruption of computing is important.
+    \note<2> {
+	- So, interruption of computing is important.\\
 	- Interrupt should be transparent for current execution. How
-	  can this be achieved?
+	  can this be achieved?\\
     }
     \draw [->, dashed] (sp.east) to [out=15, in=165] (stack1.west);
     \draw [->, dashed] (ip.east) to [out=-15, in=165] (code0.west);
@@ -117,10 +117,10 @@ interrupts, traps, system calls}
   }
 
   \onslide<3> {
-    \note {
-	- Saving entire context is important in some cases.
-	- And what if on return interrupt handler provides another context?
-	- Handling multiple contexts == multitasking.
+    \note<3> {
+	- Saving entire context is important in some cases.\\
+	- And what if on return interrupt handler provides another context?\\
+	- Handling multiple contexts == multitasking.\\
     }
     \node [name=ctx, draw, circle, color=red, minimum width=4cm]
 	at (cpu.center) {};
@@ -138,12 +138,12 @@ interrupts, traps, system calls}
 \begin{frame}
 \frametitle{Interrupts}
 \note {
-	- Let's see what kind of interrupts we got.
+	- Let's see what kind of interrupts we got.\\
 }
 \begin{itemize}
   \onslide<1->{
-    \note {
-	- Okay, now we can do multitasking and interactivity.
+    \note<1> {
+	- Okay, now we can do multitasking and interactivity.\\
     }
     \item{Hardware interrupt (asynchoronous, involuntary)
       \begin{itemize}
@@ -154,8 +154,8 @@ interrupts, traps, system calls}
     }
   }
   \onslide<2->{
-    \note {
-	- We can handle (and "fix") traps, and even implement paging.
+    \note<2> {
+	- We can handle (and "fix") traps, and even implement paging.\\
     }
     \item{Trap (synchoronous, involuntary)
       \begin{itemize}
@@ -165,10 +165,10 @@ interrupts, traps, system calls}
     }
   }
   \onslide<3->{
-    \note {
+    \note<3> {
 	- Via interrupts we can provide a library of functions, what
 	  actually MS DOS did via INT 0x21. Actually many software of
-	  the DOS era were setting a library on a particular interrupt.
+	  the DOS era were setting a library on a particular interrupt.\\
     }
     \item{Software interrupt (synchoronous, voluntary)\\
 	On x86 the ``int'' instruction
@@ -180,16 +180,16 @@ interrupts, traps, system calls}
 
 \begin{frame}
 \frametitle{Protection}
-\note {
+\note<1> {
 	- What isn't enough for a true OS is protection of tasks against
-	  each other.
+	  each other.\\
 	- We need individual address space for each, and only a supervisor
-	  (the kernel) that can set 'em up.
+	  (the kernel) that can set 'em up.\\
 	- We need to forbid certain priveleged instructions to anyone
-	  except supervisor.
-	- This is what 80386 processor gave us.
+	  except supervisor.\\
+	- This is what 80386 processor gave us.\\
 	- Now the library of functions lives in ring0, and is called
-	  kernel.
+	  kernel.\\
 }
 \begin{tikzpicture}[very thick]
   \node[name=ring3, draw, rounded corners=3mm,
@@ -223,14 +223,14 @@ interrupts, traps, system calls}
 
 \begin{frame}
 \frametitle{System call}
-\note {
+\note<1> {
 	- Let's make an agreement that certain software interrupt has an
-	  ABI that would provide a gate into kernel.
+	  ABI that would provide a gate into kernel.\\
 	- Using variety of syscall numbers we can implement all needed
-	  services that kernel offers to userland.
+	  services that kernel offers to userland.\\
 	- The int 0x80 is already a history. Modern hardware provide
 	  special much more efficient instruction designed for syscall.
-	  There also were "call gates".
+	  There also were "call gates".\\
 }
 \onslide<1->{
   \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,ht=2.9cm]{trace}
@@ -264,18 +264,18 @@ lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
 
 \begin{frame}[fragile]
 \frametitle{System call example}
-\note {
+\note<1> {
 	- Let's trace an application ping(8). It sends data to network,
 	  so we expect it to use send(2). Our outbound interface is Ethernet,
-	  so we expect ether_output() to be in action.
-	- Arm gdb & dtrace appropriately!
+	  so we expect ether\_output() to be in action.\\
+	- Arm gdb \& dtrace appropriately!\\
 	- Note that data is taken from dtrace and gdb, but order is
-	  reversed!
+	  reversed!\\
 	- Note that we expected ICMP but got UDP on first send() due to
 	  resolving, but that still works for us as an example! Also, it
-	  demonstrates that library calls can use syscalls implicitly.
-	- Explain user stack and kernel stack.
-	- Let's trace recvfrom(), too.
+	  demonstrates that library calls can use syscalls implicitly.\\
+	- Explain user stack and kernel stack.\\
+	- Let's trace recvfrom(), too.\\
 }
 \shellcmd{\# ping www.ru}
 \begin{scriptsize}
@@ -338,17 +338,17 @@ lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
 
 \begin{frame}
 \frametitle{Hardware interrupts and system calls}
-\note{
+\note<1> {
 	- We can enter kernel from a hardware interrupt, or from
 	  a software interrupt. The former is usually a driver entry,
-	  and the latter is a syscall.
+	  and the latter is a syscall.\\
 	- Drivers can have pure interrupt handlers, but more often
-	  have ISRs.
+	  have ISRs.\\
 	- Kernel is somewhat divided into two parts... Well, it is
 	  really not. :) But some threads are always calling "down",
-	  and some are calling "up". And they are tightly interconnected.
+	  and some are calling "up". And they are tightly interconnected.\\
 	- They usually synchronise at a some data structure, a generic
-	  buffer.
+	  buffer.\\
 }
 \begin{tikzpicture}[very thick]
   \node[name=user, draw, rounded corners=3mm,
@@ -380,11 +380,11 @@ lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
 	(buf.north east);
 
   \onslide<2>{
-    \note{
+    \note<2> {
 	- A thread coming from userland can eventually reach the very
-	  bottom of a driver.
+	  bottom of a driver.\\
 	- A thread coming from a driver can't pass kernel to userland
-	  boundary.
+	  boundary.\\
     }
     \draw [->] (ping.south) to [out=230, in=120]
 	node [midway, sloped, below] {\footnotesize send()}
@@ -392,8 +392,8 @@ lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
   }
 
   \onslide<3>{
-    \note{
-	- An interrupt isn't necessarily related to some user task.
+    \note<3> {
+	- An interrupt isn't necessarily related to some user task.\\
     }
     \node [name=timer, right=5mm of ether, draw, rounded corners=1mm]
 	{ timer };
@@ -402,9 +402,9 @@ lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
   }
 
   \onslide<4>{
-    \note{
+    \note<4> {
 	- Let students think theirselves on possibility of such
-	  upcall. Provide hints if needed.
+	  upcall. Provide hints if needed.\\
     }
     \draw [color=red, ->] (bottom.north) to [out=140, in=270]
 	node[midway, sloped, above] {is that possible?}
@@ -416,9 +416,9 @@ lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
 
 \begin{frame}[fragile]
 \frametitle{Adding a system call in FreeBSD}
-\note {
-	- It is simple. Let's go through the steps.
-	- Explain all fields.
+\note<1> {
+	- It is simple. Let's go through the steps.\\
+	- Explain all fields.\\
 }
 \shellcmd{%
 \# cd /usr/src/sys/kern\\
@@ -452,16 +452,14 @@ lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
 
 \begin{frame}
 \frametitle{syscall ABI}
-\note {
-	- What actually 'make sysent' does:
-	  - /usr/include/sys/syscall.h
-	  - /usr/include/sys/sysproto.h
+\note<1> {
+	- What actually 'make sysent' does.\\
 	- ABI is a convention on how arguments are passed between userland
-	  and kernel.
-	- A table of syscalls.
-	- What if provide multiple ABIs? Yep, and that's the case.
+	  and kernel.\\
+	- A table of syscalls.\\
+	- What if provide multiple ABIs? Yep, and that's the case.\\
 	- Emphasize that Linux ABI isn't an emulator, but a compatibility
-	  layer, very much like freebsd32 layer. The open(2) is special.
+	  layer, very much like freebsd32 layer. The open(2) is special.\\
 }
 \emph{make sysent} generates:
 \begin{itemize}
@@ -487,7 +485,7 @@ lib/libc/amd64/sys/SYS.h, sys/amd64/amd64/trap.c}
 
 \begin{frame}[fragile]
 \frametitle{Adding a system call in FreeBSD (dynamic way)}
-\note{
+\note {
 }
 \begin{itemize}
   \begin{item}Kernel side
