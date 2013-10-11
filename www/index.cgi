@@ -32,7 +32,7 @@ use strict;
 use POSIX qw(strftime);
 use Sys::Hostname;
 
-my %CONFIGS;
+my %BRANCHES;
 my %ARCHES;
 
 my $DIR = ".";
@@ -79,13 +79,14 @@ sub inverse_branch_sort($$) {
     return branch_rank($b) cmp branch_rank($a);
 }
 
-sub do_config($) {
-    my ($config) = @_;
+sub do_branch($) {
+    my ($branch) = @_;
 
-    my %branches = %{$CONFIGS{$config}};
+    my $prettybranch = $branch;
+    $prettybranch =~ s@^HEAD$@head@;
+    $prettybranch =~ s@^RELENG_(\d+)_(\d+)$@releng/$1.$2@;
+    $prettybranch =~ s@^RELENG_(\d+)$@stable/$1@;
 
-    $config =~ m/^(\w+)((?:-\w+)*?)(-build)?$/;
-    my $variant = join(' ', split('-', $2));
     print "      <tr class='header'>
         <th>&nbsp;</th>
 ";
@@ -102,13 +103,11 @@ sub do_config($) {
 
     my $now = time();
 
-    foreach my $branch (sort(inverse_branch_sort keys(%branches))) {
-	my $prettybranch = $branch;
-	$prettybranch =~ s@^HEAD$@/head@;
-	$prettybranch =~ s@^RELENG_(\d+)_(\d+)$@/releng/$1.$2@;
-	$prettybranch =~ s@^RELENG_(\d+)$@/stable/$1@;
+    foreach my $config (sort(keys(%{$BRANCHES{$branch}}))) {
+	$config =~ m/^(\w+)((?:-\w+)*?)(-build)?$/;
+	my $variant = $2 =~ s/^-//r;
 	print "      <tr>
-	<th>$prettybranch$variant</th>
+	<th>$prettybranch" . ($variant ? "<br/>($variant)" : "") . "</th>
 ";
 	foreach my $arch (sort(keys(%ARCHES))) {
 	    foreach my $machine (sort(keys(%{$ARCHES{$arch}}))) {
@@ -164,7 +163,7 @@ MAIN:{
 	or die("$DIR: $!\n");
     foreach (readdir(DIR)) {
 	next unless m/^tinderbox-([\w-]+)-(\w+)-(\w+)-(\w+)\.(brief|full)$/;
-	$CONFIGS{$1}->{$2} = $ARCHES{$3}->{$4} = 1;
+	$BRANCHES{$2}->{$1} = $ARCHES{$3}->{$4} = 1;
     }
     closedir(DIR);
 
@@ -197,9 +196,8 @@ MAIN:{
     }
 
     # Generate rows
-    foreach my $config (sort(inverse_branch_sort keys(%CONFIGS))) {
-	next if $config =~ m/^update_/;
-	do_config($config);
+    foreach my $branch (sort(inverse_branch_sort keys(%BRANCHES))) {
+	do_branch($branch);
     }
 
     print "
