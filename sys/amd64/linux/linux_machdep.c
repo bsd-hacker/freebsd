@@ -163,6 +163,7 @@ linux_mmap2(struct thread *td, struct linux_mmap2_args *args)
 	} */ bsd_args;
 	int error;
 	struct file *fp;
+	cap_rights_t rights;
 
 	LINUX_CTR6(mmap2, "0x%lx, %ld, %ld, 0x%08lx, %ld, 0x%lx",
 	    args->addr, args->len, args->prot,
@@ -212,7 +213,9 @@ linux_mmap2(struct thread *td, struct linux_mmap2_args *args)
 		 * protection options specified.
 		 */
 
-		if ((error = fget(td, bsd_args.fd, CAP_MMAP, &fp)) != 0)
+		error = fget(td, bsd_args.fd,
+		    cap_rights_init(&rights, CAP_MMAP), &fp);
+		if (error != 0 )
 			return (error);
 		if (fp->f_type != DTYPE_VNODE) {
 			fdrop(fp, td);
