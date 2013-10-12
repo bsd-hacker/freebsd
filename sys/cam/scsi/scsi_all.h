@@ -88,6 +88,9 @@ typedef enum {
 					    * and text.
 					    */
 	SSQ_PRINT_SENSE		= 0x0800,
+	SSQ_UA			= 0x1000,  /* Broadcast UA. */
+	SSQ_RESCAN		= 0x2000,  /* Rescan target for LUNs. */
+	SSQ_LOST		= 0x4000,  /* Destroy the LUNs. */
 	SSQ_MASK		= 0xff00
 } scsi_sense_action_qualifier;
 
@@ -1285,7 +1288,7 @@ struct scsi_vpd_id_descriptor
 #define	SCSI_PROTO_SSA		0x02
 #define	SCSI_PROTO_1394		0x03
 #define	SCSI_PROTO_RDMA		0x04
-#define SCSI_PROTO_iSCSI	0x05
+#define	SCSI_PROTO_ISCSI	0x05
 #define	SCSI_PROTO_SAS		0x06
 #define	SCSI_PROTO_ADT		0x07
 #define	SCSI_PROTO_ATA		0x08

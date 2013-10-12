@@ -80,7 +80,3 @@ CFLAGS+=	-DKTR
 .endif
 
 .include <bsd.kmod.mk>
-
-# XXX: clang integrated-as doesn't grok .codeNN directives yet
-CFLAGS.linux32_locore.s=	${CLANG_NO_IAS}
-CFLAGS+=			${CFLAGS.${.IMPSRC:T}}
