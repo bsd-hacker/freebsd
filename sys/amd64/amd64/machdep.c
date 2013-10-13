@@ -1723,7 +1723,7 @@ getmemsize(vm_paddr_t first, vm_paddr_t *physmap, int physmap_idx)
 			/*
 			 * map page into kernel: valid, read/write,non-cacheable
 			 */
-			*pte = pa | PG_V | PG_RW | PG_N;
+			*pte = pa | PG_V | PG_RW | PG_NC_PWT | PG_NC_PCD;
 			invltlb();
 
 			tmp = *(int *)ptr;
