@@ -1,0 +1,222 @@
+\documentclass{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{tikz}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{verbatim}
+\usepackage{ifthen}
+\usepackage{bytefield}
+
+\usetikzlibrary{positioning}
+\usetikzlibrary{shapes}
+\usetikzlibrary{calc}
+
+\input{../course.tex}
+
+\title{Synchronisation in FreeBSD kernel}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Data consistency problem}
+\begin{beamercolorbox}[rounded=true,shadow=true]{source}
+\lstset{language=C}
+\begin{lstlisting}
+elm1->elm_next = elm2;
+elm2->elm_next = elm3;
+elm3->elm_prev = elm2;
+elm2->elm_prev = elm1;
+\end{lstlisting}
+\end{beamercolorbox}
+\begin{figure}
+\begin{tikzpicture}[every node/.style={draw, node distance=20mm}]
+  \node [name=elm1, struct, rectangle split parts = 3] {
+    \textbf{elm1}
+    \nodepart{two} *elm\_prev
+    \nodepart{three} *elm\_next
+  };
+  \node [name=elm2, below right=of elm1, struct, rectangle split parts = 3] {
+    \textbf{elm2}
+    \nodepart{two} *elm\_prev
+    \nodepart{three} *elm\_next
+  };
+  \node [name=elm3, above right=of elm2, struct, rectangle split parts = 3] {
+    \textbf{elm3}
+    \nodepart{two} *elm\_prev
+    \nodepart{three} *elm\_next
+  };
+  \onslide<1> {
+    \draw [->] (elm1.three east) to [out=0,in=180] (elm3.one west);
+  }
+  \onslide<-3> {
+    \draw [->] (elm3.two west) to [out=180,in=0] (elm1.one east);
+  }
+  \onslide<2-> {
+    \draw [->] (elm1.three east) to [out=0,in=180] (elm2.one west);
+  }
+  \onslide<3-> {
+    \draw [->] (elm2.three east) to [out=0,in=180] (elm3.one west);
+  }
+  \onslide<4-> {
+    \draw [->] (elm3.two west) to [out=180,in=0] (elm2.one east);
+  }
+  \onslide<5-> {
+    \draw [->] (elm2.two west) to [out=180,in=0] (elm1.one east);
+  }
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{critical(9)}{sys/kern/kern\_switch.c}
+\begin{frame}[fragile]
+\frametitle{Critical section}
+{\Large{Solution for uniprocessor: enter \emph{critical section}, marking current thread as non-preemptable.}}
+\begin{beamercolorbox}[rounded=true,shadow=true]{source}
+\lstset{language=C}
+\begin{lstlisting}
+critical_enter();
+elm1->elm_next = elm2;
+elm2->elm_next = elm3;
+elm3->elm_prev = elm2;
+elm2->elm_prev = elm1;
+critical_exit();
+\end{lstlisting}
+\end{beamercolorbox}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Critical section (implementation)}
+\emph{Hard} critical sections disable interrupts.
+\emph{Soft} ones advice mark thread as non-preemptable.
+\Man{critical}{9} is \emph{soft}.
+\begin{beamercolorbox}[rounded=true,shadow=true]{source}
+\lstset{language=C}
+\begin{lstlisting}
+void
+critical_enter(void)  
+{
+        struct thread *td;
+
+        td = curthread;
+        td->td_critnest++;
+}
+\end{lstlisting}
+\end{beamercolorbox}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Maintaining data consistency on SMP}
+\begin{tabular}{cc}
+	{\Large CPU 1, thread A}	& {\Large CPU 2, thread B}\\
+\only<1> { & \\ }
+\only<2> { tdA->td\_critnest++		& tdB->td\_critnest++ \\ }
+\only<1-2> {
+	elm1->elm\_next = elm2;		& elm1->elm\_next = elm2;\\
+	elm2->elm\_next = elm3;		& elm2->elm\_next = elm3;\\
+	elm3->elm\_prev = elm2;		& elm3->elm\_prev = elm2;\\
+	elm2->elm\_prev = elm1;		& elm2->elm\_prev = elm1;\\
+}
+\only<3> {
+	lock(elm\_lock);		& lock(elm\_lock);\\
+	elm1->elm\_next = elm2;		& \emph{blocked}\\
+	elm2->elm\_next = elm3;		& \emph{blocked}\\
+	elm3->elm\_prev = elm2;		& \emph{blocked}\\
+	elm2->elm\_prev = elm1;		& \emph{blocked}\\
+	unlock(elm\_lock);		& elm1->elm\_next = elm2;\\
+	\ldots				& elm2->elm\_next = elm3;\\
+}
+\end{tabular}
+\end{frame}
+
+
+\FootReferences{mutex(9)}{}
+\begin{frame}[fragile]
+\frametitle{Naive idea of mutual exclusion lock (mutex)}
+\begin{beamercolorbox}[rounded=true,shadow=true]{source}
+\lstset{language=C}
+\begin{lstlisting}
+void
+lock(lock_t l)  
+{
+        struct thread *td;
+
+        td = curthread;
+
+spin:
+        if (l == NULL)
+                l = (lock_t )td;
+        else
+                goto spin;
+}
+\end{lstlisting}
+\end{beamercolorbox}
+\end{frame}
+
+
+\FootReferences{atomic(9)}{sys/amd64/include/atomic.h}
+\begin{frame}[fragile]
+\frametitle{Working idea of a minimal mutual exclusion lock (mutex)}
+\begin{beamercolorbox}[rounded=true,shadow=true]{source}
+\lstset{language=C}
+\begin{lstlisting}
+void
+lock(lock_t l)  
+{
+        struct thread *td;
+
+        td = curthread;
+
+spin:
+        if (atomic_cmpset(&l, NULL, td) == 0)
+                goto spin;
+}
+\end{lstlisting}
+\end{beamercolorbox}
+\end{frame}
+
+
+\FootReferences{mutex(9), atomic(9)}{sys/kern/mutex.h}
+\begin{frame}[fragile]
+\frametitle{mutex(9) implementation}
+\begin{verbatim}
+struct mtx {
+    /* Common lock properties. */
+    struct lock_object  lock_object;
+    /* Owner and flags. */
+    volatile uintptr_t  mtx_lock;
+};
+\end{verbatim}
+mtx\_lock:\\
+\begin{bytefield}{32}
+\bitheader[endianness=big]{0,1,2,3,10,11} \\
+\bitbox{21}{thread pointer} & \bitbox{8}{unused} &
+\bitbox{1}{U} & \bitbox{1}{C} & \bitbox{1}{R}
+\end{bytefield}
+\begin{verbatim}
+#define MTX_RECURSED    0x00000001   /* lock recursed */
+#define MTX_CONTESTED   0x00000002   /* lock contested */
+#define MTX_UNOWNED     0x00000004   /* free mutex */
+
+atomic_cmpset_acq_ptr(&(mp)->mtx_lock, MTX_UNOWNED, (tid))
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{mutex(9)}{sys/kern/mutex.h, sys/kern/kern_mutex.c}
+\begin{frame}
+\frametitle{mutex(9) implementation}
+
+\end{frame}
+
+
+\end{document}

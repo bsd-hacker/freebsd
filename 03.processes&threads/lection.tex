@@ -1,0 +1,246 @@
+\documentclass{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{tikz}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{verbatim}
+\usepackage{ifthen}
+
+\usetikzlibrary{positioning}
+\usetikzlibrary{shapes}
+\usetikzlibrary{calc}
+
+\input{../course.tex}
+
+\title{Processes and threads}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\FootReferences{}{sys/sys/proc.h}
+\begin{frame}
+\frametitle{Process structure}
+\note {
+	- A process is a virtual machine that kernel creates for
+	  an application. It provides VM and CPU resources.\\
+	- The slide is a minimal layout of a UNIX process. Actual
+	  size of struct proc is > 1Kb.
+}
+\begin{tikzpicture}[every node/.style={draw, node distance=10mm}]
+  \node [name=proc, struct, inner sep=2mm, rectangle split parts = 8] {
+    \textbf{struct proc}
+    \nodepart{two} struct vmspace *p\_vmspace
+    \nodepart{three} struct sysentvec *p\_sysent
+    \nodepart{four} struct filedesc *p\_fd
+    \nodepart{five} struct ucred *p\_ucred
+    \nodepart{six} struct plimit *p\_limit
+    \nodepart{seven} \ldots
+    \nodepart{eight} TAILQ\_HEAD() p\_threads
+  };
+
+  \node[name=vm, right=of proc.two east, rounded corners]
+     { VM space };
+  \draw [->] (proc.two east) -- (vm);
+  \node[name=sysent, right=of proc.three east, rounded corners]
+     { syscall vector };
+  \draw [->] (proc.three east) -- (sysent);
+  \node[name=fdesc, right=of proc.four east, rounded corners]
+     { file descriptor table };
+  \draw [->] (proc.four east) -- (fdesc);
+  \node[name=rlim, right=of proc.five east, rounded corners]
+     { resource limits };
+  \draw [->] (proc.five east) -- (rlim);
+  \node[name=cred, right=of proc.six east, rounded corners]
+     { credentials };
+  \draw [->] (proc.six east) -- (cred);
+
+  % threads
+  \node [name=thread1, struct, rectangle split parts = 1,
+         node distance=5mm, below right=of proc]
+    { \textbf{struct thread} };
+  \node [name=thread2, struct, rectangle split parts = 1,
+         node distance=5mm, right=of thread1]
+    { \textbf{struct thread} };
+  \draw [->] (proc.eight east) to [out=0, in=180] (thread1.west);
+  \draw [->] (thread1) -- (thread2);
+\end{tikzpicture}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{p\_state - the process state}
+\begin{itemize}
+  \item{PRS\_NEW}
+  \item{PRS\_NORMAL}
+  \item{PRS\_ZOMBIE}
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Thread structure}
+\note {
+	- Thread is a executing entity within a process. It includes all
+	  the data that can't be shared.\\
+	- A minimal struct thread layout. Actual size > 1 Kb.
+}
+\begin{tikzpicture}[every node/.style={draw, node distance=10mm}]
+  \node [name=thread, struct, inner sep=2mm, rectangle split parts = 6] {
+    \textbf{struct thread}
+    \nodepart{two} struct proc *td\_proc
+    \nodepart{three} struct proc *td\_sched
+    \nodepart{four} struct pcb *td\_pcb
+    \nodepart{five} struct vm\_object *td\_kstack\_obj
+    \nodepart{six} \ldots
+  };
+
+  \node [name=proc, right=of thread.two east, struct, rectangle split parts = 1]
+    { \textbf{struct proc} };
+  \draw [->] (thread.two east) -- (proc);
+  \node [name=sched, right=of thread.three east, rounded corners]
+    { scheduling info };
+  \draw [->] (thread.three east) -- (sched);
+  \node [name=pcb, right=of thread.four east, rounded corners]
+    { thread control block (MD) };
+  \draw [->] (thread.four east) -- (pcb);
+  \node [name=kstack, right=of thread.five east, rounded corners]
+    { kernel stack };
+  \draw [->] (thread.five east) -- (kstack);
+\end{tikzpicture}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/proc.h, sys/kern/kern\_thread.c,
+		  sys/kern/sched\_ule.c}
+\begin{frame}
+\frametitle{td\_state - the thread state}
+\begin{itemize}
+  \item{TDS\_INACTIVE}
+  \item{TDS\_CAN\_RUN}
+  \item{TDS\_RUNQ}
+  \item{TDS\_RUNNING}
+  \item{
+    TDS\_INHIBITED\\
+    \onslide<2> {
+	Combination of inhibitors in td\_inhibitors:
+	\begin{itemize}
+		\item{TDI\_SUSPENDED}
+		\item{TDI\_SLEEPING}
+		\item{TDI\_SWAPPED}
+		\item{TDI\_LOCK}
+		\item{TDI\_IWAIT}
+	\end{itemize}
+    }
+  }
+\end{itemize}
+\end{frame}
+
+
+\FootReferences{}{}
+\begin{frame}
+\frametitle{Historic note: M:N vs 1:1}
+\begin{columns}[c]
+  \begin{column}{.46\paperwidth}
+    \begin{figure}\begin{tikzpicture}
+	\node [name=thread, struct, rectangle split parts = 1]
+		{ \textbf{struct thread} };
+	\draw ($(thread) + (-.33\paperwidth, 2cm)$) --
+	    node[very near end, above] { process }
+	    node[very near end, below] { kernel } 
+	    ($(thread) + (.13\paperwidth, 2cm)$);
+	\node [name=uthr1, draw, ellipse, fill=white,
+	    node distance=0, anchor=center,
+	    above left=.3\paperheight and -.08\paperwidth of thread.center,
+	    text width=2cm, align=center]
+		{ user space scheduling entity };
+	\draw [->] (uthr1) -- (thread);
+	\node [name=uthr2, draw, ellipse, fill=white,
+	    node distance=0, anchor=center,
+	    above left=.25\paperheight and .1\paperwidth of thread.center,
+	    text width=2cm, align=center]
+		{ user space scheduling entity };
+	\node [name=thread2, struct, rectangle split parts = 1,
+	       node distance=0, above left=3mm and -10mm of thread]
+		{ \textbf{struct thread} };
+	\draw [->] (uthr2) -- (thread2);
+
+	\node [name=pthread1, node distance=.6\paperheight, above=of thread]
+		{ pthread\_t };
+	\node [name=pthread2, node distance=0, left=.1\paperwidth of pthread1]
+		{ pthread\_t };
+	\node [name=pthread21, node distance=0, below right=of pthread2]
+		{ pthread\_t };
+	\node [name=pthread22, node distance=0, below right=of pthread21]
+		{ pthread\_t };
+	\node [name=pthread23, node distance=0, below left=of pthread21]
+		{ pthread\_t };
+
+	\draw [->] (pthread23) -- (uthr2);
+	\draw [->] (pthread22) -- (uthr1);
+	\draw [->] (pthread21) -- (uthr1);
+	\draw [->] (pthread1) to [out=270,in=100]
+		   (node cs:name=uthr1,angle=100);
+	\draw [->] (pthread2.south) to [out=350,in=80]
+		   (node cs:name=uthr2,angle=80);
+    \end{tikzpicture}\end{figure}
+  \end{column}
+  \begin{column}{.08\paperwidth}
+  \LARGE{VS}
+  \end{column}
+  \begin{column}{.46\paperwidth}
+    \begin{figure}\begin{tikzpicture}
+	\node [name=thread, struct, rectangle split parts = 1]
+		{ \textbf{struct thread} };
+	\draw ($(thread) + (-.23\paperwidth, 2cm)$) --
+	    node[very near end, above] { process }
+	    node[very near end, below] { kernel } 
+	    ($(thread) + (.23\paperwidth, 2cm)$);
+	\node [name=pthread, node distance=.6\paperheight, above=of thread]
+		{ pthread\_t };
+	\draw [->] (pthread) -- (thread);
+    \end{tikzpicture}\end{figure}
+  \end{column}
+\end{columns}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Historic note: M:N vs 1:1}
+\only<1> {
+  \begin{itemize}
+    \item{1993 Solaris 2.2 introduces multithreading via non-standard API}
+    \item{1995 Solaris 2.5 supports POSIX threads API, \textbf{M:N model}}
+    \item{2000 FreeBSD starts SMPng project targeted at \textbf{M:N}}
+    \item{2000 Solaris 8 provides \textbf{1:1} threading as option}
+    \item{2001 Linux starts multithreading project targeted at \textbf{1:1}
+  	with \textbf{M:N} as experimental option}
+    \item{2001 Mac OS X released with \textbf{1:1} threading}
+    \item{2002 Solaris 9 uses \textbf{1:1} threading as default}
+    \item{2003 Linux abandons experimental \textbf{M:N} project}
+    \item{2004 FreeBSD 5.3 released with Kernel Scheduling Entities
+  	(\textbf{M:N}) threading as default, \textbf{1:1} optional}
+    \item{2004 NetBSD 2.0 released with Scheduler Activations (\textbf{M:N})}
+    \item{2004 Linux 2.6 released with \textbf{1:1} threading}
+  \end{itemize}
+}
+\only<2-> {
+  \begin{itemize}
+    \item{2005 FreeBSD moves focus to \textbf{1:1}}
+    \item{2007 NetBSD abandons SA (\textbf{M:N})}
+    \item{2008 FreeBSD abandons KSE (\textbf{M:N})}
+    \item{2008 FreeBSD 7.0 released with \textbf(1:1) as default,
+  	\textbf{M:N} optional}
+    \item{2009 NetBSD 5.0 released with \textbf{1:1} as only option}
+    \item{2009 FreeBSD 8.0 released with \textbf{1:1} as only option}
+    \onslide<3>\item{2009 Windows 7 introduces User-Mode Scheduling}
+  \end{itemize}
+}
+\end{frame}
+
+\end{document}

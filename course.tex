@@ -6,8 +6,13 @@
 \definecolor{Dgrey}{HTML}{DDDDDD}
 \definecolor{Egrey}{HTML}{EEEEEE}
 
+\definecolor{struct}{HTML}{999999}
+
 % trace
 \setbeamercolor{trace}{fg=black,bg=Cgrey}
+
+% source
+\setbeamercolor{source}{fg=black,bg=Cgrey}
 
 % terminal
 \setbeamercolor{terminal}{fg=white,bg=black}
@@ -19,9 +24,9 @@
 \newcommand{\Man}[2]{
   \colorbox{white}{\color{man}#1(#2)}
 }
-\setbeamercolor{manlabel}{fg=black,bg=man}
+\setbeamercolor{manref}{fg=black,bg=man}
 \newcommand{\manlabel}[1]{
-  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,colsep=0pt]{manlabel}
+  \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,colsep=0pt]{manref}
   \small{#1}
   \end{beamercolorbox}
 }
@@ -39,4 +44,41 @@
   \begin{beamercolorbox}[rounded=true,shadow=true,sep=0pt,colsep=0pt]{terminal}
   \small{#1}
   \end{beamercolorbox}
+}
+
+\tikzset { struct/.style = {
+		draw, thick,
+                rectangle split,
+		rectangle split part fill={struct!50, white!50},
+} }
+
+%
+% Footnotes for source/manual references.
+%
+\newcommand\ManRefSw{}
+\newcommand\SrcRefSw{}
+\makeatletter
+\newcommand*\FootReferences[2]{
+	\renewcommand\ManRefSw{#1}
+	\renewcommand\SrcRefSw{#2}
+	\beamer@calculateheadfoot
+}
+\makeatother
+\setbeamertemplate{footline}{%
+\ifthenelse{\NOT \equal{\ManRefSw}{}} {
+	\begin{beamercolorbox}
+	    [wd=\paperwidth,ht=2.25ex,dp=1ex,left]{manref}%
+		\hspace*{1em}Manual page(s): \ManRefSw
+	\end{beamercolorbox}
+  }
+  % else
+  {}
+\ifthenelse{\NOT \equal{\SrcRefSw}{}} {
+	\begin{beamercolorbox}
+	    [wd=\paperwidth,ht=2.25ex,dp=1ex,left]{srcref}%
+		\hspace*{1em}Source code reference: \SrcRefSw
+	\end{beamercolorbox}
+  }
+  % else
+  {}
 }
