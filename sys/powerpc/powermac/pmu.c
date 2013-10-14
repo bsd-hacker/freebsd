@@ -1129,11 +1129,13 @@ extern void *ap_pcpu;
 
 void pmu_sleep_int(void)
 {
+	jmp_buf resetjb;
 	u_quad_t timebase;
+	struct thread *fputd = NULL;
+	struct thread *vectd = NULL;
 	register_t hid0;
 	register_t msr;
 	register_t saved_msr;
-	jmp_buf resetjb;
 
 	ap_pcpu = pcpup;
 
@@ -1143,9 +1145,11 @@ void pmu_sleep_int(void)
 	saved_msr = mfmsr();
 	timebase = mftb();
 	flush_disable_caches();
-	if (PCPU_GET(fputhread) != NULL)
+	fputd = PCPU_GET(fputhread);
+	vectd = PCPU_GET(vecthread);
+	if (fputd != NULL)
 		save_fpu(PCPU_GET(fputhread));
-	if (PCPU_GET(vecthread) != NULL)
+	if (vectd != NULL)
 		save_vec(PCPU_GET(vecthread));
 	if (setjmp(resetjb) == 0) {
 		sprgs[0] = mfspr(SPR_SPRG0);
@@ -1177,9 +1181,9 @@ void pmu_sleep_int(void)
 	mtspr(SPR_SRR0, srrs[0]);
 	mtspr(SPR_SRR1, srrs[1]);
 	mtmsr(saved_msr);
-	if (PCPU_GET(fputhread) == curthread)
+	if (fputd == curthread)
 		enable_fpu(curthread);
-	if (PCPU_GET(vecthread) == curthread)
+	if (vectd == curthread)
 		enable_vec(curthread);
 	powerpc_sync();
 }
