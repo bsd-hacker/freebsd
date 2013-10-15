@@ -12,6 +12,8 @@
 
 \usetikzlibrary{positioning}
 \usetikzlibrary{shapes}
+\usetikzlibrary{arrows}
+\usetikzlibrary{chains}
 \usetikzlibrary{calc}
 
 \input{../course.tex}
@@ -207,16 +209,63 @@ mtx\_lock:\\
 #define MTX_CONTESTED   0x00000002   /* lock contested */
 #define MTX_UNOWNED     0x00000004   /* free mutex */
 
-atomic_cmpset_acq_ptr(&(mp)->mtx_lock, MTX_UNOWNED, (tid))
+atomic_cmpset_acq_ptr(&(mp)->mtx_lock, MTX_UNOWNED, (td))
 \end{verbatim}
 \end{frame}
 
 
-\FootReferences{mutex(9)}{sys/kern/mutex.h, sys/kern/kern_mutex.c}
+\FootReferences{mutex(9)}{sys/kern/mutex.h, sys/kern/kern\_mutex.c}
 \begin{frame}
 \frametitle{mutex(9) implementation}
+\begin{figure}
+\begin{tikzpicture}[>=triangle 60, start chain=going below,
+		    node distance=5mm,
+		    every join/.style={->, draw},
+		    font=\scriptsize]
+\tikzset {
+  base/.style={draw, thick, on chain, align=center, minimum height=4ex},
+  proc/.style={base, rectangle},
+  test/.style={base, diamond, aspect=3},
+  term/.style={proc, rounded corners},
+}
+\node [name=entry, proc] {mtx\_lock()};
+\node [name=atomic, test] {atomic\_cmpset(td)};
+\node [name=exit, term] {return};
+\node [name=ownerruns, test, right=of atomic] {owner running?};
+\node [name=trywait, proc] {turnstile\_trywait};
+\node [name=ownerruns2, test, join] {owner running?};
+\node [name=contested, test] {atomic\_cmpset(C)};
+\node [name=wait, proc, left=of contested] {turnstile\_wait};
+\node [name=cancel, proc, right=of ownerruns2] {turnstile\_cancel};
 
+\draw [->] (entry.south) to node [name=entry2,midway] {} (atomic);
+\draw [->] (atomic.south) to node [xshift=1em, green] {$yes$} (exit); 
+\draw [->] (atomic.east) to node [yshift=1em, red] {$no$} (ownerruns); 
+\draw [->] (ownerruns.south) to node [xshift=1em, green] {$yes$} (trywait); 
+\draw [->] (ownerruns.north) |- node [xshift=1ex, yshift=-1ex, red] {$no$}
+	   (entry2.center); 
+\draw [->] (ownerruns2.south) to node [xshift=1em, green] {$yes$} (contested); 
+\draw [->] (ownerruns2.east) to node [yshift=1em, red] {$no$} (cancel); 
+\draw [->] (cancel.north) |- (entry2.center);
+\draw [->] (contested.east) -| node [pos=0, yshift=1em, red] {$no$}
+	   (cancel.south);
+\draw [->] (contested.west) to node [yshift=1em, green] {$yes$} (wait);
+\draw [->] (wait) -- (atomic.west |- wait) -- +(-2mm, 0) |- (entry2.center);
+\end{tikzpicture}
+\end{figure}
 \end{frame}
 
+\FootReferences{mutex(9)}{sys/kern/subr\_turnstile.c, sys/kern/kern\_mutex.c}
+\begin{frame}
+\frametitle{mutex(9) implementation: turnstile}
+\begin{figure}
+\begin{tikzpicture}[every node/.style={draw, node distance=10mm}]
+  \node [name=turnstile, struct, rectangle split parts = ]
+    \textbf{struct turnstile}
+    \nodepart{two} LIST\_HEAD ts\_blocked
+    \nodepart{two} LIST\_HEAD ts\_pending
+\end{tikzpicture}
+\end{figure}
+\end{frame}
 
 \end{document}
