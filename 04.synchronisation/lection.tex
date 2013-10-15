@@ -198,19 +198,21 @@ struct mtx {
     volatile uintptr_t  mtx_lock;
 };
 \end{verbatim}
-mtx\_lock:\\
 \begin{bytefield}{32}
 \bitheader[endianness=big]{0,1,2,3,10,11} \\
-\bitbox{21}{thread pointer} & \bitbox{8}{unused} &
+\bitbox{21}{owner(td pointer)} & \bitbox{8}{unused} &
 \bitbox{1}{U} & \bitbox{1}{C} & \bitbox{1}{R}
 \end{bytefield}
-\begin{verbatim}
-#define MTX_RECURSED    0x00000001   /* lock recursed */
-#define MTX_CONTESTED   0x00000002   /* lock contested */
-#define MTX_UNOWNED     0x00000004   /* free mutex */
-
-atomic_cmpset_acq_ptr(&(mp)->mtx_lock, MTX_UNOWNED, (td))
-\end{verbatim}
+\onslide<2-> {
+\begin{tabular}{l l l l}
+\#define & MTX\_RECURSED    & 0x00000001   & /* lock recursed */	\\
+\#define & MTX\_CONTESTED   & 0x00000002   & /* lock contested */	\\
+\#define & MTX\_UNOWNED     & 0x00000004   & /* free mutex */		\\
+\end{tabular}
+}
+\onslide<3-> {
+\srcline{atomic\_cmpset\_acq\_ptr(\&(mp)->mtx\_lock, MTX\_UNOWNED, (td))}
+}
 \end{frame}
 
 
@@ -255,17 +257,236 @@ atomic_cmpset_acq_ptr(&(mp)->mtx_lock, MTX_UNOWNED, (td))
 \end{figure}
 \end{frame}
 
-\FootReferences{mutex(9)}{sys/kern/subr\_turnstile.c, sys/kern/kern\_mutex.c}
+
+\FootReferences{mutex(9)}{sys/kern/mutex.h, sys/kern/kern\_mutex.c}
 \begin{frame}
-\frametitle{mutex(9) implementation: turnstile}
+\frametitle{mutex(9) implementation}
 \begin{figure}
-\begin{tikzpicture}[every node/.style={draw, node distance=10mm}]
-  \node [name=turnstile, struct, rectangle split parts = ]
-    \textbf{struct turnstile}
-    \nodepart{two} LIST\_HEAD ts\_blocked
-    \nodepart{two} LIST\_HEAD ts\_pending
+\begin{tikzpicture}[>=triangle 60, start chain=going below,
+		    node distance=1cm,
+		    every join/.style={->, draw},
+		    font=\scriptsize]
+\tikzset {
+  base/.style={draw, thick, on chain, align=center, minimum height=4ex},
+  proc/.style={base, rectangle},
+  test/.style={base, diamond, aspect=3},
+  term/.style={proc, rounded corners},
+}
+\node [name=entry, proc] {mtx\_unlock()};
+\node [name=atomic, test] {atomic\_cmpset(td)};
+\node [name=exit, term] {return};
+\node [name=broadcast, proc, right=3.3cm of atomic] {turnstile\_broadcast};
+
+\draw [->] (entry.south) to (atomic);
+\draw [->] (atomic.south) to node [xshift=1em, green]
+	   {MTX\_CONTESTED is 0} (exit); 
+\draw [->] (atomic.east) to node [yshift=1em, red]
+	   {MTX\_CONTESTED is 1} (broadcast); 
+\draw [->] (broadcast.south) |- (exit);
 \end{tikzpicture}
 \end{figure}
 \end{frame}
 
+
+\FootReferences{rwlock(9)}{sys/sys/rwlock.h, sys/kern/kern\_rwlock.c}
+\begin{frame}[fragile]
+\frametitle{rwlock(9)}
+\begin{verbatim}
+struct rwlock {
+    struct lock_object  lock_object;
+    volatile uintptr_t  rw_lock;
+};
+\end{verbatim}
+\begin{bytefield}[bitwidth=2em]{12}
+\bitheader[endianness=big]{0,1,2,3,4} \\
+\bitbox{8}{owner/reader count} &
+\bitbox{1}{WS} & \bitbox{1}{WW} & \bitbox{1}{RW} & \bitbox{1}{R}
+\end{bytefield}
+\onslide<2-> \scriptsize {
+\begin{tabular}{l l l}
+\#define & RW\_LOCK\_READ		& 0x01 \\
+\#define & RW\_LOCK\_READ\_WAITERS	& 0x02 \\
+\#define & RW\_LOCK\_WRITE\_WAITERS	& 0x04 \\
+\#define & RW\_LOCK\_WRITE\_SPINNER	& 0x08 \\
+\#define & RW\_LOCK\_FLAGMASK		& 0x0f \\
+\end{tabular}
+\begin{tabular}{l l l}
+\#define & RW\_OWNER(x)			& ((x) \& ~RW\_LOCK\_FLAGMASK) \\
+\#define & RW\_READERS(x)		& (RW\_OWNER((x)) >> RW\_READERS\_SHIFT)
+\end{tabular}
+}
+\end{frame}
+
+
+\FootReferences{}{sys/kern/subr\_turnstile.c}
+\begin{frame}
+\frametitle<1,2>{turnstile idea}
+\frametitle<3->{priority propagation}
+\begin{figure}
+\begin{tikzpicture}[node distance=1mm]
+  % the turnstile
+  \node [name=tcent, circle, minimum width=1mm, draw, fill=black] {};
+  \node [name=turnstile, circle, minimum width=27mm, draw, thick] at (tcent){};
+  \draw [thick] (node cs:name=turnstile, angle=45)
+	-- (node cs:name=turnstile, angle=225);
+  \draw [thick] (node cs:name=turnstile, angle=135)
+	-- (node cs:name=turnstile, angle=315);
+  \draw [thick] (node cs:name=turnstile, angle=135)
+	-- node[above, pos=.2] {turnstile} +(-3cm,0);
+  \draw [thick] (node cs:name=turnstile, angle=225) -- +(-3cm,0);
+\onslide<1,3-> {
+  \node [name=tdA, left=of tcent, circle, draw, thick] { tdA };
+  \node [name=tdB, left=of tdA, circle, draw, thick] { tdB };
+  \node [name=tdC, left=of tdB, circle, draw, thick] { tdC };
+  \node [name=dots, left=of tdC, circle] { \ldots };
+}
+\onslide<2> {
+  \node [name=tdA, left=of tcent, circle, draw, thick] { tdB };
+  \node [name=tdB, left=of tdA, circle, draw, thick] { tdC };
+  \node [name=tdC, left=of tdB, circle] { \ldots };
+  \node [name=dots, left=of tdC, circle] { \ldots };
+}
+
+  % lock & owner
+  \node [name=lock, above=1.5cm of turnstile, draw, thick, rounded corners]
+	{\Large{lock}};
+  \draw [<->,thick] (lock) -- (turnstile);
+\onslide<1,3-> {
+  \node [name=owner, right=1.5cm of lock, draw, thick, circle] {tdO};
+}
+\onslide<2> {
+  \node [name=owner, right=1.5cm of lock, draw, thick, circle] {tdA};
+  \node [name=old, below right=1cm and 1cm of owner, draw, thick, circle]
+	{tdO};
+}
+  \draw [->, thick] (lock) -- node [above] {owner} (owner);
+
+\onslide<2> {
+  % nice rotating arrow
+  \path (node cs:name=turnstile, angle=45) -- +(2mm,2mm) node [name=arr1] {};
+  \draw [->,thick,color=red] (arr1)
+	arc[radius=17mm, start angle=45, end angle=0]
+	node [xshift=2ex, rotate=270] {tdO unlocks}
+	arc[radius=17mm, start angle=0, end angle=-45];
+}
+
+\onslide<3-> {
+  \node [name=allprio, ellipse, minimum width=10em, minimum height=4em,
+	draw, thick, color=red] at (tdB.center){};
+  \draw [->,thick,color=red] (allprio.north east) to [out=45, in=270]
+	node [above, sloped, pos=.6] { priority } (owner);
+}
+\onslide<4-> {
+  \node [name=lock2, below=2cm of tdB, draw, thick, rounded corners]
+	{\Large{lock2}};
+  \draw [->,thick] (lock2) -- node [above,sloped,pos=.4] {owner} (tdB);
+  \node [name=turnstile2, left=1cm of lock2, signal, draw, thick,
+	minimum height=2em, minimum width=7em] {};
+  \node [above=of turnstile2] {lock2s' turnstile};
+  \draw [<->,thick] (lock2) -- (turnstile2);
+  \node [name=allprio2, ellipse, minimum width=8em, minimum height=3em,
+	draw, thick, color=red] at (turnstile2.center){};
+  \draw [->,thick,color=red] (allprio2.north east) to [out=15, in=225]
+	node [above, sloped] { priority } (tdB);
+}
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{turnstiles implementation}
+\begin{itemize}
+  \item {Turnstiles are ephemeral, e.g. don't exist without contention}
+  \item {Any lock might require a turnstile}
+  \item {A turnstile can queue many threads}
+  \item {A thread can hold many turnstiles}
+  \item {A thread can stay only in one turnstile}
+\end{itemize}
+\begin{figure}
+\begin{tikzpicture}[every node/.style={draw, node distance=10mm}]
+  \node [name=turnstile, struct, rectangle split parts = 5] {
+    \textbf{struct turnstile}
+    \nodepart{two}	LIST\_HEAD ts\_blocked[2]
+    \nodepart{three}	LIST\_HEAD ts\_pending
+    \nodepart{four}	struct lock\_object *ts\_lockobj
+    \nodepart{five}	struct thread *ts\_owner
+  };
+  \node [name=thread, right=of turnstile, struct, rectangle split parts = 6] {
+    \textbf{struct thread}
+    \nodepart{two}	\ldots
+    \nodepart{three}	struct turnstile *td\_turnstile
+    \nodepart{four}	struct turnstile *td\_blocked
+    \nodepart{five}	LIST\_HEAD td\_contested
+    \nodepart{six}	\ldots
+  };
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\usebackgroundtemplate{
+  \hbox to
+  \paperheight{\hfil\includegraphics[height=\paperheight]{witness.png}}
+} 
+\FootReferences{}{}
+\begin{frame}
+\frametitle<1>{lock order reversal (LOR)}
+\frametitle<2>{lock order reversal (LOR) and other locking problems}
+\begin{center}
+\begin{columns}
+  \begin{column}{.4\paperwidth}
+    {\Large CPU 1, thread A}
+    \srcline {%
+	  mtx\_lock(\&mtx\_A);\\
+	  mtx\_lock(\&mtx\_B);
+    }
+  \end{column}
+  \begin{column}{.4\paperwidth}
+    {\Large CPU 2, thread B}
+    \srcline {%
+	  mtx\_lock(\&mtx\_B);\\
+	  mtx\_lock(\&mtx\_A);
+    }
+  \end{column}
+\end{columns}
+\end{center}
+\onslide<2> {
+  Also:
+  \begin{itemize}
+    \item {Sleeping with lock held}
+    \item {Obtaining blockable lock with spin lock held}
+    \item {Returning from a syscall with lock held}
+    \item {Recursing on non-recursive lock}
+  \end{itemize}
+}
+\end{frame}
+
+
+\usebackgroundtemplate{
+  \hbox to
+  \paperheight{\hfil\includegraphics[height=\paperheight]{witness2.png}}
+} 
+\FootReferences{witness(4)}{sys/kern/subr\_witness.c}
+\begin{frame}
+\frametitle{witness(4)}
+\onslide<1-> {
+  \begin{itemize}
+    \item {Maintains ordered list of locks for each process}
+    \item {Maintains global list of well known locks in correct order
+	   of acquisition}
+    \item {Maintains dynamic tree of lock orders for every lock in system}
+    \item {Compares threads' list against global list and dynamic tree}
+    \item {Reports violations}
+  \end{itemize}
+}
+\onslide<2-> {
+  \shellcmd{%
+    \# kgdb\\
+    (kgdb) p td->td\_sleeplocks\\
+    (kgdb) p td->td\_sleeplocks->ll\_children[0].li\_lock\\
+    (kgdb) p *td->td\_sleeplocks->ll\_children[0].li\_lock->lo\_witness\\
+  }
+}
+\end{frame}
 \end{document}
