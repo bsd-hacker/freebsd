@@ -403,6 +403,7 @@ struct rwlock {
   \item {A thread can hold many turnstiles}
   \item {A thread can stay only in one turnstile}
 \end{itemize}
+\onslide<2-> {
 \begin{figure}
 \begin{tikzpicture}[every node/.style={draw, node distance=10mm}]
   \node [name=turnstile, struct, rectangle split parts = 5] {
@@ -422,6 +423,7 @@ struct rwlock {
   };
 \end{tikzpicture}
 \end{figure}
+}
 \end{frame}
 
 
@@ -470,7 +472,7 @@ struct rwlock {
 \FootReferences{witness(4)}{sys/kern/subr\_witness.c}
 \begin{frame}
 \frametitle{witness(4)}
-\onslide<1-> {
+\only<1,2> {
   \begin{itemize}
     \item {Maintains ordered list of locks for each process}
     \item {Maintains global list of well known locks in correct order
@@ -480,7 +482,7 @@ struct rwlock {
     \item {Reports violations}
   \end{itemize}
 }
-\onslide<2-> {
+\only<2> {
   \shellcmd{%
     \# kgdb\\
     (kgdb) p td->td\_sleeplocks\\
@@ -488,5 +490,60 @@ struct rwlock {
     (kgdb) p *td->td\_sleeplocks->ll\_children[0].li\_lock->lo\_witness\\
   }
 }
+\only<3> {
+  Example warning:
+  \shellcmd{\tiny{%
+  lock order reversal:\\
+   1st 0xfffff800014b3d50 ufs (ufs) \@ /usr/src/sys/kern/vfs\_subr.c:2101\\
+   2nd 0xfffffe001ec98ab8 bufwait (bufwait) \@ /usr/src/sys/ufs/ffs/ffs\_vnops.c:262\\
+   3rd 0xfffff80017c8dd50 ufs (ufs) \@ /usr/src/sys/kern/vfs\_subr.c:2101\\
+  KDB: stack backtrace:\\
+  db\_trace\_self\_wrapper() at db\_trace\_self\_wrapper+0x2b/frame 0xfffffe002cdb1dd0\\
+  kdb\_backtrace() at kdb\_backtrace+0x39/frame 0xfffffe002cdb1e80\\
+  witness\_checkorder() at witness\_checkorder+0xd23/frame 0xfffffe002cdb1f10\\
+  \_\_lockmgr\_args() at \_\_lockmgr\_args+0x86c/frame 0xfffffe002cdb2040\\
+  ffs\_lock() at ffs\_lock+0x84/frame 0xfffffe002cdb2090\\
+  VOP\_LOCK1\_APV() at VOP\_LOCK1\_APV+0xf5/frame 0xfffffe002cdb20c0\\
+  \_vn\_lock() at \_vn\_lock+0xab/frame 0xfffffe002cdb2130\\
+  vget() at vget+0x70/frame 0xfffffe002cdb2180\\
+  vfs\_hash\_get() at vfs\_hash\_get+0xf5/frame 0xfffffe002cdb21d0\\
+  ffs\_vgetf() at ffs\_vgetf+0x41/frame 0xfffffe002cdb2260\\
+  softdep\_sync\_buf() at softdep\_sync\_buf+0x8fa/frame 0xfffffe002cdb2310\\
+  ffs\_syncvnode() at ffs\_syncvnode+0x258/frame 0xfffffe002cdb2390\\
+  ffs\_truncate() at ffs\_truncate+0x5b5/frame 0xfffffe002cdb2570\\
+  ufs\_direnter() at ufs\_direnter+0x812/frame 0xfffffe002cdb2630\\
+  ufs\_makeinode() at ufs\_makeinode+0x4bf/frame 0xfffffe002cdb27f0\\
+  VOP\_CREATE\_APV() at VOP\_CREATE\_APV+0xea/frame 0xfffffe002cdb2820\\
+  vn\_open\_cred() at vn\_open\_cred+0x300/frame 0xfffffe002cdb2970\\
+  kern\_openat() at kern\_openat+0x261/frame 0xfffffe002cdb2ae0\\
+  amd64\_syscall() at amd64\_syscall+0x265/frame 0xfffffe002cdb2bf0\\
+  Xfast\_syscall() at Xfast\_syscall+0xfb/frame 0xfffffe002cdb2bf0\\
+  }}
+}
 \end{frame}
+
+
+\usebackgroundtemplate{}
+\FootReferences{}{}
+\begin{frame}
+\frametitle{Practice}
+  \begin{itemize}
+    \item \Man{queue}{3}
+    \item \Man{malloc}{9}
+    \item \Man{mutex}{9}
+  \end{itemize}
+  Checkout or update todays examples.
+  \shellcmd{%
+  \# svn co http://svn.freebsd.org/base/user/glebius/course\\
+  \# cd course\\
+  \# cd 04.*/code\\
+  }
+  or
+  \shellcmd{%
+  \# cd course\\
+  \# svn update\\
+  \# cd 04.*/code\\
+  }
+\end{frame}
+
 \end{document}
