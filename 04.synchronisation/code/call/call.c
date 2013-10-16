@@ -25,14 +25,14 @@ main(int argc, char **argv)
 	syscall_num = stat.data.intval;
 
 	if (argc < 2)
-		err(1, "argument required");
+		errx(1, "argument required");
 
 	if (strcmp(argv[1], "add") == 0)
 		what = ADD;
 	else if (strcmp(argv[1], "delete") == 0)
 		what = DELETE;
 	else
-		err(1, "add or delete");
+		errx(1, "add or delete");
 
 	return syscall(syscall_num, what, argv);
 }
