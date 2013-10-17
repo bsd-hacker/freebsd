@@ -54,10 +54,10 @@
      { file descriptor table };
   \draw [->] (proc.four east) -- (fdesc);
   \node[name=rlim, right=of proc.five east, rounded corners]
-     { resource limits };
+     { credentials };
   \draw [->] (proc.five east) -- (rlim);
   \node[name=cred, right=of proc.six east, rounded corners]
-     { credentials };
+     { resource limits };
   \draw [->] (proc.six east) -- (cred);
 
   % threads
@@ -94,7 +94,7 @@
   \node [name=thread, struct, inner sep=2mm, rectangle split parts = 6] {
     \textbf{struct thread}
     \nodepart{two} struct proc *td\_proc
-    \nodepart{three} struct proc *td\_sched
+    \nodepart{three} struct td\_sched *td\_sched
     \nodepart{four} struct pcb *td\_pcb
     \nodepart{five} struct vm\_object *td\_kstack\_obj
     \nodepart{six} \ldots
