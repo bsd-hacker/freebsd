@@ -29,14 +29,18 @@
 #define	AEABI_VFP_H
 
 /*
- * ASM helper macros. These allow the functions to be changed when
- * building for a hard-float version of the ABI.
+ * ASM helper macros. These allow the functions to be changed depending on
+ * the endian-ness we are building for.
  */
 
+/* Allow the name of the function to be changed depending on the ABI */
 #ifndef __ARM_PCS_VFP
-/* Define a standard name for the function */
 #define	AEABI_ENTRY(x)	ENTRY(__aeabi_ ## x ## _softfp)
 #define	AEABI_END(x)	END(__aeabi_ ## x ## _softfp)
+#else
+#define	AEABI_ENTRY(x)	ENTRY(__aeabi_ ## x)
+#define	AEABI_END(x)	END(__aeabi_ ## x)
+#endif
 
 /*
  * These should be used when a function either takes, or returns a floating
@@ -54,21 +58,6 @@
 #define	LOAD_SREGS(vreg0, vreg1, reg0, reg1) vmov vreg0, vreg1, reg0, reg1
 #define	LOAD_SREG(vreg, reg)                 vmov vreg, reg
 #define	UNLOAD_SREG(reg, vreg)               vmov reg, vreg
-#else
-#define	AEABI_ENTRY(x)	ENTRY(__aeabi_ ## x)
-#define	AEABI_END(x)	END(__aeabi_ ## x)
-
-/*
- * On ARM Hard-Float we don't need these as the data
- * is already in the VFP registers.
- */
-#define	LOAD_DREG(vreg, reg0, reg1)
-#define	UNLOAD_DREG(reg0, reg1, vreg)
-
-#define	LOAD_SREGS(vreg0, vreg1, reg0, reg1)
-#define	LOAD_SREG(vreg, reg)
-#define	UNLOAD_SREG(reg, vreg)
-#endif
 
 /*
  * C Helper macros
