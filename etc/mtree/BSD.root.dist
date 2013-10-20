@@ -24,8 +24,6 @@
     etc
         X11
         ..
-        atf
-        ..
         bluetooth
         ..
         defaults
@@ -65,8 +63,6 @@
         ssh
         ..
         ssl
-        ..
-        unbound
         ..
         zfs
         ..

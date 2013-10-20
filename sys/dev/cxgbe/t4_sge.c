@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
+#include <machine/md_var.h>
 
 #include "common/common.h"
 #include "common/t4_regs.h"
@@ -214,10 +215,6 @@ static int handle_fw_msg(struct sge_iq *, const struct rss_header *,
     struct mbuf *);
 
 static int sysctl_uint16(SYSCTL_HANDLER_ARGS);
-
-#if defined(__i386__) || defined(__amd64__)
-extern u_int cpu_clflush_line_size;
-#endif
 
 /*
  * Called on MOD_LOAD.  Validates and calculates the SGE tunables.
@@ -572,12 +569,17 @@ t4_read_chip_settings(struct adapter *sc)
 	r = t4_read_reg(sc, A_SGE_CONM_CTRL);
 	s->fl_starve_threshold = G_EGRTHRESHOLD(r) * 2 + 1;
 
-	if (is_t5(sc)) {
-		r = t4_read_reg(sc, A_SGE_EGRESS_QUEUES_PER_PAGE_PF);
-		r >>= S_QUEUESPERPAGEPF0 +
-		    (S_QUEUESPERPAGEPF1 - S_QUEUESPERPAGEPF0) * sc->pf;
-		s->s_qpp = r & M_QUEUESPERPAGEPF0;
-	}
+	/* egress queues: log2 of # of doorbells per BAR2 page */
+	r = t4_read_reg(sc, A_SGE_EGRESS_QUEUES_PER_PAGE_PF);
+	r >>= S_QUEUESPERPAGEPF0 +
+	    (S_QUEUESPERPAGEPF1 - S_QUEUESPERPAGEPF0) * sc->pf;
+	s->eq_s_qpp = r & M_QUEUESPERPAGEPF0;
+
+	/* ingress queues: log2 of # of doorbells per BAR2 page */
+	r = t4_read_reg(sc, A_SGE_INGRESS_QUEUES_PER_PAGE_PF);
+	r >>= S_QUEUESPERPAGEPF0 +
+	    (S_QUEUESPERPAGEPF1 - S_QUEUESPERPAGEPF0) * sc->pf;
+	s->iq_s_qpp = r & M_QUEUESPERPAGEPF0;
 
 	t4_init_tp_params(sc);
 
@@ -2802,7 +2804,7 @@ alloc_eq(struct adapter *sc, struct port_info *pi, struct sge_eq *eq)
 	if (isset(&eq->doorbells, DOORBELL_UDB) ||
 	    isset(&eq->doorbells, DOORBELL_UDBWC) ||
 	    isset(&eq->doorbells, DOORBELL_WCWR)) {
-		uint32_t s_qpp = sc->sge.s_qpp;
+		uint32_t s_qpp = sc->sge.eq_s_qpp;
 		uint32_t mask = (1 << s_qpp) - 1;
 		volatile uint8_t *udb;
 

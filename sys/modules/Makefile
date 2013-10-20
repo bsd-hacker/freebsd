@@ -128,6 +128,7 @@ SUBDIR=	\
 	hwpmc \
 	${_hyperv} \
 	${_i2c} \
+        ${_ibcore} \
 	${_ibcs2} \
 	${_ichwd} \
 	${_ida} \
@@ -149,6 +150,7 @@ SUBDIR=	\
 	${_igb} \
 	${_iir} \
 	${_io} \
+        ${_ipoib} \
 	${_ipdivert} \
 	${_ipfilter} \
 	${_ipfw} \
@@ -499,11 +501,17 @@ _fe=		fe
 _glxiic=	glxiic
 _glxsb=		glxsb
 _i2c=		i2c
+.if ${MK_OFED} != "no" || defined(ALL_MODULES)
+_ibcore=        ibcore
+.endif
 _ibcs2=		ibcs2
 _ie=		ie
 _if_ndis=	if_ndis
 _igb=		igb
 _io=		io
+.if ${MK_OFED} != "no" || defined(ALL_MODULES)
+_ipoib=         ipoib
+.endif
 _lindev=	lindev
 _linprocfs=	linprocfs
 _linsysfs=	linsysfs
@@ -524,7 +532,9 @@ _opensolaris=	opensolaris
 _pccard=	pccard
 _pcfclock=	pcfclock
 _pst=		pst
+.if ${MK_OFED} != "no" || defined(ALL_MODULES)
 _rdma=		rdma
+.endif
 _safe=		safe
 _sbni=		sbni
 _scsi_low=	scsi_low
@@ -675,6 +685,9 @@ _hptrr=		hptrr
 .endif
 _hyperv=	hyperv
 _i2c=		i2c
+.if ${MK_OFED} != "no" || defined(ALL_MODULES)
+_ibcore=        ibcore
+.endif
 _ichwd=		ichwd
 _ida=		ida
 _if_ndis=	if_ndis
@@ -682,6 +695,9 @@ _igb=		igb
 _iir=		iir
 _io=		io
 _ipmi=		ipmi
+.if ${MK_OFED} != "no" || defined(ALL_MODULES)
+_ipoib=         ipoib
+.endif
 _ips=		ips
 _ipw=		ipw
 .if ${MK_SOURCELESS_UCODE} != "no"
@@ -729,7 +745,9 @@ _pccard=	pccard
 _qlxge=		qlxge
 _qlxgb=		qlxgb
 _qlxgbe=	qlxgbe
+.if ${MK_OFED} != "no" || defined(ALL_MODULES)
 _rdma=		rdma
+.endif
 _s3=		s3
 _safe=		safe
 _scsi_low=	scsi_low

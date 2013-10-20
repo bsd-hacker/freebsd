@@ -63,6 +63,11 @@ __FBSDID("$FreeBSD$");
 .globl physaddr
 .set physaddr,PHYSADDR
 
+#define PUTCHAR(ch)		\
+	ldr r0, =0x2000000;	\
+	ldr r1, =ch;		\
+	str r1, [r0]
+
 /*
  * On entry for FreeBSD boot ABI:
  *	r0 - metadata pointer or 0 (boothowto on AT91's boot2)
@@ -78,6 +83,8 @@ __FBSDID("$FreeBSD$");
 ENTRY_NP(btext)
 ASENTRY_NP(_start)
 	STOP_UNWINDING		/* Can't unwind into the bootloader! */
+
+	PUTCHAR('A');
 
 	mov	r9, r0		/* 0 or boot mode from boot2 */
 	mov	r8, r1		/* Save Machine type */
@@ -187,7 +194,7 @@ Lunmapped:
 	mrc	p15, 0, r0, c1, c0, 0
 #ifdef _ARM_ARCH_6
 	orr	r0, r0, #(CPU_CONTROL_V6_EXTPAGE | CPU_CONTROL_UNAL_ENABLE)
-	orr	r2, r2, #(CPU_CONTROL_AFLT_ENABLE)
+	orr	r0, r0, #(CPU_CONTROL_AFLT_ENABLE)
 	orr	r0, r0, #(CPU_CONTROL_AF_ENABLE)
 #endif
 	orr	r0, r0, #(CPU_CONTROL_MMU_ENABLE)

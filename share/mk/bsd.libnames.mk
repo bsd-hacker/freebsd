@@ -19,13 +19,8 @@ LIBATM?=	${DESTDIR}${LIBDIR}/libatm.a
 LIBAUDITD?=	${DESTDIR}${LIBDIR}/libauditd.a
 LIBAVL?=	${DESTDIR}${LIBDIR}/libavl.a
 LIBBEGEMOT?=	${DESTDIR}${LIBDIR}/libbegemot.a
-.if ${MK_BIND_LIBS} != "no"
-LIBBIND?=	${DESTDIR}${LIBDIR}/libbind.a
-LIBBIND9?=	${DESTDIR}${LIBDIR}/libbind9.a
-.endif
 LIBBLUETOOTH?=	${DESTDIR}${LIBDIR}/libbluetooth.a
 LIBBSDXML?=	${DESTDIR}${LIBDIR}/libbsdxml.a
-LIBBSDYML?=	${DESTDIR}${LIBDIR}/libbsdyml.a
 LIBBSM?=	${DESTDIR}${LIBDIR}/libbsm.a
 LIBBSNMP?=	${DESTDIR}${LIBDIR}/libbsnmp.a
 LIBBZ2?=	${DESTDIR}${LIBDIR}/libbz2.a
@@ -74,11 +69,6 @@ LIBIPSEC?=	${DESTDIR}${LIBDIR}/libipsec.a
 .if ${MK_IPX} != "no"
 LIBIPX?=	${DESTDIR}${LIBDIR}/libipx.a
 .endif
-.if ${MK_BIND_LIBS} != "no"
-LIBISC?=	${DESTDIR}${LIBDIR}/libisc.a
-LIBISCCC?=	${DESTDIR}${LIBDIR}/libisccc.a
-LIBISCCFG?=	${DESTDIR}${LIBDIR}/libisccfg.a
-.endif
 LIBJAIL?=	${DESTDIR}${LIBDIR}/libjail.a
 LIBKADM5CLNT?=	${DESTDIR}${LIBDIR}/libkadm5clnt.a
 LIBKADM5SRV?=	${DESTDIR}${LIBDIR}/libkadm5srv.a
@@ -93,9 +83,6 @@ LIBL?=		${DESTDIR}${LIBDIR}/libl.a
 LIBLDNS?=	${DESTDIR}${LIBPRIVATEDIR}/libldns.a
 .endif
 LIBLN?=		"don't use LIBLN, use LIBL"
-.if ${MK_BIND} != "no"
-LIBLWRES?=	${DESTDIR}${LIBDIR}/liblwres.a
-.endif
 LIBLZMA?=	${DESTDIR}${LIBDIR}/liblzma.a
 LIBM?=		${DESTDIR}${LIBDIR}/libm.a
 LIBMAGIC?=	${DESTDIR}${LIBDIR}/libmagic.a
@@ -178,6 +165,7 @@ LIBWIND?=	${DESTDIR}${LIBDIR}/libwind.a
 LIBWRAP?=	${DESTDIR}${LIBDIR}/libwrap.a
 LIBXPG4?=	${DESTDIR}${LIBDIR}/libxpg4.a
 LIBY?=		${DESTDIR}${LIBDIR}/liby.a
+LIBYAML?=	${DESTDIR}${LIBPRIVATEDIR}/libyaml.a
 LIBYPCLNT?=	${DESTDIR}${LIBDIR}/libypclnt.a
 LIBZ?=		${DESTDIR}${LIBDIR}/libz.a
 LIBZFS?=	${DESTDIR}${LIBDIR}/libzfs.a
