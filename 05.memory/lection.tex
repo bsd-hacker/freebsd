@@ -1,0 +1,448 @@
+\documentclass{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{tikz}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{verbatim}
+\usepackage{ifthen}
+\usepackage{bytefield}
+\usepackage{wasysym}
+
+\usetikzlibrary{positioning}
+\usetikzlibrary{shapes}
+\usetikzlibrary{arrows}
+\usetikzlibrary{decorations.text}
+\usetikzlibrary{chains}
+\usetikzlibrary{calc}
+
+\input{../course.tex}
+
+\title{Memory management in FreeBSD}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Process (static) address space}
+\begin{figure}
+\begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.15\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=kernel, nolarge] { kernel };
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, large] { stack };
+    \node [name=unmap, nolarge] { not mapped memory };
+    \node [name=heap, large] { heap };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+
+    \draw [<-] (kernel.north west) --
+	node [below] {\scriptsize{0xff \ldots ff}} +(-1.5cm, 0);
+    \draw [<-] (null.south west) --
+	node [above] {\scriptsize{0x00}} +(-1.5cm, 0);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+\FootReferences{procstat(1)}{}
+\begin{frame}
+\frametitle{Process (static) address space}
+Try this out:
+\shellcmd{%
+\# /rescue/cat \&\\
+\lbrack1\rbrack 48141\\
+\# procstat -v \$!\\
+\begin{tabular}{rrrrrrrrrrr}
+  PID &            START &              END & PRT  & RES & PRES & REF & SHD &   FL & TP & PATH \\
+48141 &         0x400000 &         0x96d000 & r-x  & 677 &    0 &   4 &   2 & CN-- & vn & /rescue/chio \\
+48141 &         0xb6d000 &         0xb94000 & rw-  &  38 &    0 &   1 &   0 & C--- & vn & /rescue/chio \\
+48141 &         0xb94000 &         0xdc8000 & rw-  &  21 &    0 &   1 &   0 & ---- & df & \\
+48141 &      0x800c00000 &      0x801400000 & rw-  &  81 &    0 &   1 &   0 & ---- & df & \\
+48141 &   0x7fffffbfe000 &   0x7fffffbff000 & ---  &   0 &    0 &   0 &   0 & ---- & -- & \\
+48141 &   0x7ffffffdf000 &   0x7ffffffff000 & rw-  &   4 &    0 &   1 &   0 & ---D & df & \\
+48141 &   0x7ffffffff000 &   0x800000000000 & r-x  &   0 &    0 &  67 &   0 & ---- & ph & \\
+\end{tabular}
+}
+\end{frame}
+
+
+\FootReferences{}{}
+\begin{frame}
+\frametitle{Stack grows implicitly}
+\begin{columns}
+\begin{column}{.4\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.15\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, large] { stack };
+    \node [name=unmap, nolarge] { not mapped memory };
+    \node [name=heap, large] { heap };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+
+    \draw (stack.south west) ++(0cm, -2mm) [<-] --
+	node [above] {\scriptsize{deref!}} +(-1.5cm, 0);
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\begin{column}{.2\paperwidth}
+  \begin{tikzpicture}
+    \draw [->, thick] (0,0) -- node [above] {\small{page fault}}
+	+(.2\paperwidth,0);
+  \end{tikzpicture}
+\end{column}
+\begin{column}{.4\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.15\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, large, minimum height=.20\paperheight] { stack };
+    \node [name=unmap, nolarge, minimum height=.10\paperheight]
+	{ not mapped memory };
+    \node [name=heap, large] { heap };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+
+    \draw [thick] (stack.center) ++(-1cm,0) node (mark1) {}
+	[->] -- (mark1 |- stack.south);
+    \draw [thick] (stack.center) ++(1cm,0) node (mark2) {}
+	[->] -- (mark2 |- stack.south);
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+\FootReferences{sbrk(2)}{}
+\begin{frame}
+\frametitle{Heap grows explicitly (used to grow \smiley )}
+\begin{columns}
+\begin{column}{.4\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.15\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, large] { stack };
+    \node [name=unmap, nolarge] { not mapped memory };
+    \node [name=heap, large] { heap };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\begin{column}{.2\paperwidth}
+  \begin{tikzpicture}
+    \draw [->, thick] (0,0) -- node [above] {\small{sbrk(2)}}
+	+(.2\paperwidth,0);
+  \end{tikzpicture}
+\end{column}
+\begin{column}{.4\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.15\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, large] { stack };
+    \node [name=unmap, nolarge, minimum height=.10\paperheight]
+	{ not mapped memory };
+    \node [name=heap, large, minimum height=.20\paperheight] { heap };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+
+    \draw [thick] (heap.center) ++(-1cm,0) node (mark1) {}
+	[->] -- (mark1 |- heap.north);
+    \draw [thick] (heap.center) ++(1cm,0) node (mark2) {}
+	[->] -- (mark2 |- heap.north);
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+\FootReferences{mmap(2)}{}
+\begin{frame}
+\frametitle{Mapping more on heap}
+\begin{columns}
+\begin{column}{.4\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.15\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, large] { stack };
+    \node [name=unmap, nolarge] { not mapped memory };
+    \node [name=heap, large] { heap };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\begin{column}{.2\paperwidth}
+  \begin{tikzpicture}
+    \draw [->, thick] (0,0) -- node [above] {\small{mmap(2)}}
+	+(.2\paperwidth,0);
+  \end{tikzpicture}
+\end{column}
+\begin{column}{.4\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.15\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, large] { stack };
+    \node [name=unmap1, nolarge, minimum height=.05\paperheight]
+	{ not mapped };
+    \node [name=mmap, large, minimum height=.05\paperheight]
+	{ more heap };
+    \node [name=unmap2, nolarge, minimum height=.05\paperheight]
+	{ not mapped };
+    \node [name=heap, large] { heap };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+\FootReferences{mmap(2), malloc(3), rtld(1)}{}
+\begin{frame}
+\frametitle{Modern process memory map}
+\begin{columns}
+\begin{column}{.5\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.1\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, entry] { stack };
+    \node [name=unmap1, nolarge] { not mapped };
+    \node [name=mmap, entry] { malloc arena };
+    \node [name=unmap2, nolarge] { not mapped };
+    \node [name=lib, entry] { library };
+    \node [name=unmap3, nolarge] { not mapped };
+    \node [name=heap, entry] { ld-elf };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\begin{column}{.5\paperwidth}
+\begin{itemize}
+  \item{program itself via mmap(2)}
+  \item{dynamic libraries via mmap(2)}
+  \item{malloc(3) arenas via mmap(2)}
+\end{itemize}
+\onslide<2-> {
+    Try this out:
+    \shellcmd{%
+    \# /bin/cat \&\\
+    \# procstat -v \$!\\
+    }
+    Or this:
+    \shellcmd{%
+    \# procstat -v \$\$\\
+    }
+}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+\FootReferences{}{}
+\begin{frame}
+\frametitle{VM space}
+\begin{figure}
+\begin{tikzpicture}[start chain=going below, node distance=0mm]
+    \tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.1\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+    }
+    \node [name=argv, entry] { argv, envp };
+    \node [name=stack, entry] { stack };
+    \node [name=unmap1, nolarge] { not mapped };
+    \node [name=mmap, entry] { malloc arena };
+    \node [name=unmap2, nolarge] { not mapped };
+    \node [name=lib, entry] { library };
+    \node [name=unmap3, nolarge] { not mapped };
+    \node [name=heap, entry] { ld-elf };
+    \node [name=data, entry] { initialized data };
+    \node [name=text, entry] { program text };
+    \node [name=null, noentry] { };
+
+    \node [name=vmspace, draw, thick, color=red, ellipse,
+	  minimum width=.35\paperwidth,
+	  minimum height=.8\paperheight] at (lib.north) {};
+    \node [ellipse callout, draw, color=red,
+	   callout absolute pointer={(node cs:name=vmspace, angle=40)},
+	   node distance=5mm, right=of stack] { vm\_map };
+
+    \node [name=vmentry, draw, thick, color=red, ellipse,
+	  minimum width=.30\paperwidth,
+	  minimum height=2em] at (lib.center) {};
+    \node [ellipse callout, draw, color=red,
+	   callout absolute pointer={(node cs:name=vmentry, angle=2)},
+	   node distance=7mm, right=of unmap2] { vm\_map\_entry };
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{}{sys/vm/vm\_map.h}
+\begin{frame}
+\frametitle{Kernel representation of VM space}
+\begin{figure}
+\small\begin{tikzpicture}
+  \node [name=vmspace, struct, rectangle split parts=3] {
+	\textbf{struct vmspace}
+	\nodepart{two} struct vm\_map
+	\nodepart{three} struct vm\_pmap
+  };
+  \node [name=vmmap, struct, right=of vmspace, rectangle split parts=4] {
+	\textbf{struct vm\_map}
+	\nodepart{two} struct vm\_map\_entry header
+	\nodepart{three} struct vm\_map\_entry \*tree
+	\nodepart{four} \ldots
+  };
+  \node [name=entry1, struct, below=of vmspace, rectangle split parts=5] {
+	\textbf{struct vm\_map\_entry}
+	\nodepart{two} struct vm\_map\_entry *next
+	\nodepart{three} vm\_offset\_t start
+	\nodepart{four} vm\_offset\_t end
+	\nodepart{five} \ldots
+  };
+  \node [name=entry2, struct, right=of entry1, rectangle split parts=5] {
+	\textbf{struct vm\_map\_entry}
+	\nodepart{two} struct vm\_map\_entry *next
+	\nodepart{three} vm\_offset\_t start
+	\nodepart{four} vm\_offset\_t end
+	\nodepart{five} \ldots
+  };
+
+  \node [name=mark, node distance=5mm, above left=of entry1] {};
+  \draw [->, thick, rounded corners] (vmmap.two east) -- ++(5mm,0)
+	|- (mark.center) |- (entry1.one west);
+
+  \draw [->, thick] (entry1.two east) to [out=0, in=180] (entry2.one west);
+  \draw [->, thick, rounded corners] (entry2.two east) --
+	++(5mm,0) -- ++(0,-1cm);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{}{sys/vm/vm\_map.h, sys/vm/vm\_object.h}
+\begin{frame}
+\frametitle{A VM map entry is backed by an object}
+\begin{figure}
+\begin{tikzpicture}
+  \tikzset {
+	page/.style={draw, thick, node distance=3mm},
+  }
+  \node [name=entry, struct, rectangle split parts=4] {
+	\textbf{struct vm\_map\_entry}
+	\nodepart{two} \ldots
+	\nodepart{three} struct vm\_object *object
+	\nodepart{four} \ldots
+  };
+  \node [name=object, struct, right=of entry, rectangle split parts=3] {
+	\textbf{struct vm\_object}
+	\nodepart{two} struct vm\_radix head
+	\nodepart{three} union *pager
+  };
+
+  \draw [->, thick] (entry.three east) to [out=0, in=180] (object.one west);
+
+  \node [name=page1, page, below=of object] { vm\_page };
+  \draw [->, thick, rounded corners] (object.two east) -- ++(1cm,0)
+	|- (page1.east);
+
+  \node [name=page2, page, below right=of page1] { vm\_page };
+  \node [name=page3, page, below left=of page1] { vm\_page };
+  \draw [->,thick] (page1.south) to [out=290, in=180] (page2.west);
+  \draw [->,thick] (page1.south) to [out=250, in=0] (page3.east);
+
+  \node [name=page4, page, below right=of page3] { vm\_page };
+  \node [name=page5, page, below left=of page3] { vm\_page };
+  \draw [->,thick] (page3.south) to [out=290, in=180] (page4.west);
+  \draw [->,thick] (page3.south) to [out=250, in=0] (page5.east);
+
+  \node [name=page6, page, below right=of page5] { vm\_page };
+  \node [name=page7, page, below left=of page5] { vm\_page };
+  \draw [->,thick] (page5.south) to [out=290, in=180] (page6.west);
+  \draw [->,thick] (page5.south) to [out=250, in=0] (page7.east);
+
+  \node [name=page8, page, below right=of page4] { vm\_page };
+  \draw [->,thick] (page4.south) to [out=290, in=180] (page8.west);
+
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\end{document}
