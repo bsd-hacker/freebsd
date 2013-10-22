@@ -82,7 +82,7 @@ EOF
 int
 main(int argc, char **argv)
 {
-	char *av[3];
+	char *av[4];
 	int fd;
 
 	if (argc == 1)
