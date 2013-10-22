@@ -16,11 +16,25 @@
 \usetikzlibrary{arrows}
 \usetikzlibrary{decorations.text}
 \usetikzlibrary{chains}
+\usetikzlibrary{scopes}
 \usetikzlibrary{calc}
 
 \input{../course.tex}
 
 \title{Memory management in FreeBSD}
+
+\tikzset {
+	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
+		      align=center},
+	large/.style={entry, minimum height=.15\paperheight},
+	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
+	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
+	page/.style={draw, thick, node distance=3mm},
+	vmmap/.style={draw, thick, rounded corners},
+	vmentry/.style={draw, thick, rounded corners},
+	vmobject/.style={draw, thick, rounded corners, text width=7ex },
+	pointer/.style={->, thick, rounded corners},
+}
 
 \begin{document}
 
@@ -33,13 +47,6 @@
 \frametitle{Process (static) address space}
 \begin{figure}
 \begin{tikzpicture}[start chain=going below, node distance=0mm]
-    \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
-	large/.style={entry, minimum height=.15\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
-    }
     \node [name=kernel, nolarge] { kernel };
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, large] { stack };
@@ -86,13 +93,6 @@ Try this out:
 \begin{column}{.4\paperwidth}
   \begin{figure}
   \begin{tikzpicture}[start chain=going below, node distance=0mm]
-    \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
-	large/.style={entry, minimum height=.15\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
-    }
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, large] { stack };
     \node [name=unmap, nolarge] { not mapped memory };
@@ -115,13 +115,6 @@ Try this out:
 \begin{column}{.4\paperwidth}
   \begin{figure}
   \begin{tikzpicture}[start chain=going below, node distance=0mm]
-    \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
-	large/.style={entry, minimum height=.15\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
-    }
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, large, minimum height=.20\paperheight] { stack };
     \node [name=unmap, nolarge, minimum height=.10\paperheight]
@@ -149,13 +142,6 @@ Try this out:
 \begin{column}{.4\paperwidth}
   \begin{figure}
   \begin{tikzpicture}[start chain=going below, node distance=0mm]
-    \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
-	large/.style={entry, minimum height=.15\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
-    }
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, large] { stack };
     \node [name=unmap, nolarge] { not mapped memory };
@@ -175,13 +161,6 @@ Try this out:
 \begin{column}{.4\paperwidth}
   \begin{figure}
   \begin{tikzpicture}[start chain=going below, node distance=0mm]
-    \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
-	large/.style={entry, minimum height=.15\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
-    }
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, large] { stack };
     \node [name=unmap, nolarge, minimum height=.10\paperheight]
@@ -209,13 +188,6 @@ Try this out:
 \begin{column}{.4\paperwidth}
   \begin{figure}
   \begin{tikzpicture}[start chain=going below, node distance=0mm]
-    \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
-	large/.style={entry, minimum height=.15\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
-    }
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, large] { stack };
     \node [name=unmap, nolarge] { not mapped memory };
@@ -235,13 +207,6 @@ Try this out:
 \begin{column}{.4\paperwidth}
   \begin{figure}
   \begin{tikzpicture}[start chain=going below, node distance=0mm]
-    \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
-	large/.style={entry, minimum height=.15\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
-    }
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, large] { stack };
     \node [name=unmap1, nolarge, minimum height=.05\paperheight]
@@ -269,11 +234,7 @@ Try this out:
   \begin{figure}
   \begin{tikzpicture}[start chain=going below, node distance=0mm]
     \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
 	large/.style={entry, minimum height=.1\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
     }
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, entry] { stack };
@@ -317,11 +278,7 @@ Try this out:
 \begin{figure}
 \begin{tikzpicture}[start chain=going below, node distance=0mm]
     \tikzset {
-	entry/.style={draw, thick, on chain, text width=.25\paperwidth,
-		      align=center},
 	large/.style={entry, minimum height=.1\paperheight},
-	noentry/.style={entry, fill=gray, shading=axis, shading angle=45},
-	nolarge/.style={large, fill=gray, shading=axis, shading angle=45},
     }
     \node [name=argv, entry] { argv, envp };
     \node [name=stack, entry] { stack };
@@ -385,11 +342,11 @@ Try this out:
   };
 
   \node [name=mark, node distance=5mm, above left=of entry1] {};
-  \draw [->, thick, rounded corners] (vmmap.two east) -- ++(5mm,0)
+  \draw [pointer] (vmmap.two east) -- ++(5mm,0)
 	|- (mark.center) |- (entry1.one west);
 
   \draw [->, thick] (entry1.two east) to [out=0, in=180] (entry2.one west);
-  \draw [->, thick, rounded corners] (entry2.two east) --
+  \draw [pointer] (entry2.two east) --
 	++(5mm,0) -- ++(0,-1cm);
 \end{tikzpicture}
 \end{figure}
@@ -401,25 +358,24 @@ Try this out:
 \frametitle{A VM map entry is backed by an object}
 \begin{figure}
 \begin{tikzpicture}
-  \tikzset {
-	page/.style={draw, thick, node distance=3mm},
-  }
   \node [name=entry, struct, rectangle split parts=4] {
 	\textbf{struct vm\_map\_entry}
 	\nodepart{two} \ldots
 	\nodepart{three} struct vm\_object *object
 	\nodepart{four} \ldots
   };
-  \node [name=object, struct, right=of entry, rectangle split parts=3] {
+  \node [name=object, struct, right=of entry, rectangle split parts=5] {
 	\textbf{struct vm\_object}
-	\nodepart{two} struct vm\_radix head
-	\nodepart{three} union *pager
+	\nodepart{two} \ldots
+	\nodepart{four} union *pager
+	\nodepart{three} struct vm\_radix rtree
+	\nodepart{five} \ldots
   };
 
   \draw [->, thick] (entry.three east) to [out=0, in=180] (object.one west);
 
   \node [name=page1, page, below=of object] { vm\_page };
-  \draw [->, thick, rounded corners] (object.two east) -- ++(1cm,0)
+  \draw [->, thick, rounded corners] (object.three east) -- ++(1cm,0)
 	|- (page1.east);
 
   \node [name=page2, page, below right=of page1] { vm\_page };
@@ -444,5 +400,256 @@ Try this out:
 \end{figure}
 \end{frame}
 
+
+\FootReferences{}{sys/vm/vm\_page.h, sys/vm/vm\_page.c}
+\begin{frame}
+\frametitle{VM page}
+  \begin{itemize}
+    \item{Small structure describing one resident physical page}
+    \item{All vm\_page structs are allocated at boot time}
+    \item{A page belongs to one object}
+  \end{itemize}
+\end{frame}
+
+
+\FootReferences{}{sys/vm/vm\_pager.h, sys/vm/vm\_pager.c}
+\begin{frame}
+\frametitle{VM objects' pager}
+\begin{columns}
+\begin{column}{.5\paperwidth}
+  \begin{itemize}
+    \item{Object serves as cache of memory page}
+    \item{Pager implements particular cache in/cache out semantics}
+  \end{itemize}
+\end{column}
+\begin{column}{.5\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}
+     \node [struct, rectangle split parts=7] {
+	\textbf{struct pagerops}
+	\nodepart{two} pgo\_init\_t      *pgo\_init
+	\nodepart{three} pgo\_alloc\_t     *pgo\_alloc
+	\nodepart{four} pgo\_dealloc\_t   *pgo\_dealloc
+	\nodepart{five} pgo\_getpages\_t  *pgo\_getpages
+	\nodepart{six} pgo\_putpages\_t  *pgo\_putpages
+	\nodepart{seven} pgo\_haspage\_t   *pgo\_haspage
+     };
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+\FootReferences{}{sys/vm/vm\_object.h, sys/vm/vm\_object.c,
+		  sys/vm/default\_pager.c, sys/vm/swap\_pager.c}
+\begin{frame}
+\frametitle{Anonymous object}
+\begin{columns}
+\begin{column}{.5\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}
+      \node [name=object, struct, rectangle split parts=5] {
+	\textbf{struct vm\_object}
+	\only<1> { \nodepart{two} \textit{uses default pager} }
+	\only<2,3> { \nodepart{two} \textit{{\color{red}uses swap pager}}}
+	\nodepart{three} \ldots
+	\nodepart{four} struct vm\_radix rtree
+	\nodepart{five} \ldots
+      };
+      \node [name=page1, page, below right=of object] {vm\_page};
+      \draw [pointer] (object.five east) -| (page1.north);
+      \only<1,2> {
+        \node [name=page2, page, node distance=0, below=of page1] {vm\_page};
+        \node [name=page3, page, node distance=0, below=of page2] {vm\_page};
+      }
+      \only<2> {
+	\node [name=swap, draw, rounded corners, fill=gray, shading=axis,
+	  left=of page3, xshift=-2em]
+	  {swap partition};
+	\node [name=ell, draw, thick, color=red, ellipse,
+	  minimum width=12ex, minimum height=4em] at (page2.south) {};
+	\draw [->, thick, color=red]
+	  (node cs:name=ell, angle=235) to [out=235, in=315]
+	  node [above] { swap out } (swap.south);
+      }
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\begin{column}{.4\paperwidth}
+  \begin{itemize}
+    \item{Anonymous object usually backs vm\_map\_entry made by sbrk(),
+	  or mmap(MAP\_ANON), or stack}
+    \item{Default pager is a nop}
+    \onslide<2-> {
+      \item{In case of memory pressure default pages is changed to swap pager}
+    }
+    \onslide<3-> {
+      \item{Object remains with swap pager forever}
+    }
+  \end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+\FootReferences{}{sys/vm/vm\_object.h, sys/vm/vm\_object.c,
+		  sys/vm/vnode\_pager.c}
+\begin{frame}
+\frametitle{Vnode backed object}
+\begin{columns}
+\begin{column}{.5\paperwidth}
+  \begin{figure}
+  \begin{tikzpicture}
+      \node [name=object, struct, rectangle split parts=6] {
+	\textbf{struct vm\_object}
+	\nodepart{two} uses vnode pager
+	\nodepart{three} \ldots
+	\nodepart{four} void *handle
+	\nodepart{five} struct vm\_radix rtree
+	\nodepart{six} \ldots
+      };
+      \node [name=vnode, struct, below=of object.south west, anchor=west,
+	     rectangle split parts=1] {
+	\textbf{struct vnode}
+      };
+      \draw [->, thick] (object.four west) to [out=180, in=180]
+	(vnode.one west);
+      \node [name=file, draw, rounded corners, fill=gray, shading=axis,
+	     below=of vnode] {a file};
+      \draw [->, thick] (vnode) -- (file);
+      \node [name=page1, page, below right=of object] {vm\_page};
+      \node [name=page2, page, node distance=0, below=of page1] {vm\_page};
+      \node [name=page3, page, node distance=0, below=of page2] {vm\_page};
+      \draw [pointer] (object.five east) -| (page1.north);
+      \only<2> {
+        \node [name=page4, page, color=red, node distance=0, below=of page3]
+	   {vm\_page};
+	\draw [->, thick, color=red] (file.east) to [out=0, in=270]
+	  node [pos=.3, above, sloped] { page in } (page4.south);
+      }
+      \only<3> {
+	\node [name=ell, draw, thick, color=red, ellipse,
+	  minimum width=12ex, minimum height=2em] at (page2) {};
+	\draw [->, thick, color=red] (ell.west) to [out=180, in=0]
+	  node [below, sloped] { page out } (file.east);
+      }
+  \end{tikzpicture}
+  \end{figure}
+\end{column}
+\begin{column}{.4\paperwidth}
+  \begin{itemize}
+    \item{Vnode object backs vm\_map\_entry made for program text, initialized
+	  data, dynamic library text/data or result of mmap() on a file}
+    \onslide<2-> {
+      \item{Page fault brings a page from the file into memory}
+    }
+    \onslide<3-> {
+      \item{If mapping is {\color{red}writable and shared},
+	    dirty pages are written back to the file}
+    }
+  \end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+\FootReferences{}{sys/vm/vm\_object.h, sys/vm/vm\_object.c}
+\begin{frame}
+\frametitle<1>{Private mappings}
+\frametitle<2>{Private mappings: a process fork(2)s}
+\frametitle<3>{Private mappings: child modifies a page}
+\frametitle<4-5>{Private mappings: shadow chains can grow hairy}
+\frametitle<6-7>{Private mappings: shadow chain split}
+\frametitle<8-9>{Private mappings: shadow chain collapse}
+\begin{figure}
+\begin{tikzpicture}[node distance=2mm]
+  \node [name=procA, vmmap] { process A };
+  \node [name=entA, vmentry, below right=of procA] { vm\_map\_entry };
+  \draw [pointer] (procA.south) |- (entA.west);
+
+  \node [name=obj, vmobject, below right=2mm and .4\paperwidth of entA]
+	{ vnode object };
+  \draw [pointer] (entA.east) -| (obj.north);
+  \node [name=page1, page, below=of obj] {page 1};
+  \draw [pointer] (obj) -- (page1);
+  \node [name=page2, page, node distance=0, below=of page1] {page 2};
+  \node [name=page3, page, node distance=0, below=of page2] {page 3};
+
+  \onslide<2-7> {
+    \node [name=procB, vmmap, below=.2\paperheight of procA] { process B };
+    \node [name=entB, vmentry, below right=of procB] { vm\_map\_entry };
+    \draw [pointer] (procB.south) |- (entB.west);
+  }
+
+  \only<2> {
+    \draw [pointer] (entB.north) |- (node cs:name=obj, angle=200);
+  }
+
+  \onslide<3-> {
+    \node [name=shadow, vmobject, above right=2mm and 10mm of entB]
+	{ shadow object };
+    \draw [pointer] (shadow.east) to [out=0, in=180] (obj.west);
+    \node [name=pageB1, page, below=of shadow] {page 1};
+    \draw [pointer] (shadow) -- (pageB1);
+  }
+  \onslide<3-7> {
+    \draw [pointer] (entB.north) |- (shadow.west);
+  }
+
+  \onslide<4-> {
+    \node [name=procC, vmmap, below=.2\paperheight of procB] { process C };
+    \node [name=entC, vmentry, below right=of procC] { vm\_map\_entry };
+    \draw [pointer] (procC.south) |- (entC.west);
+  }
+
+  \only<4> {
+    \node [name=mark, above right=of entC] {} ;
+    \draw [pointer] (entC.north)
+	.. controls +(0,10mm) and (mark) .. (shadow.south west);
+  }
+
+  \onslide<5-8> {
+    \node [name=shadowC, vmobject, below=.2\paperheight of shadow]
+	{ shadow object };
+    \draw [pointer] (entC.north) |- (shadowC.west);
+  }
+  \onslide<5,8> {
+    \node [name=pageC2, page, below=of shadowC] {page 2};
+    \draw [pointer] (shadowC) -- (pageC2);
+  }
+  \onslide<5,6,8> {
+    \draw [pointer] (shadowC.north west)
+	to [out=135, in=225] (shadow.south west);
+  }
+
+  \onslide<6-7> {
+    \node [name=pageC1, page, below=of shadowC] {{\color{red}page 1}};
+    \draw [pointer] (shadowC) -- (pageC1);
+  }
+
+  \onslide<7> {
+    \draw [pointer, color=red] (shadowC.east)
+	to [out=0, in=225] (obj.south west);
+  }
+
+  \onslide<8> {
+    \node [name=procB, vmmap, below=.2\paperheight of procA, dotted]
+	{ process B };
+    \node [name=entB, vmentry, below right=of procB, dotted]
+	{ vm\_map\_entry };
+    \draw [pointer, dotted] (procB.south) |- (entB.west);
+    \draw [pointer, dotted] (entB.north) |- (shadow.west);
+  }
+
+  \onslide<9> {
+    \draw [pointer, color=red] (entC.north) to [out=90, in=180] (shadow.west);
+    \node [name=pageB2, page, node distance=0, below=of pageB1]
+	{{\color{red}page 2}};
+  }
+
+\end{tikzpicture}
+\end{figure}
+\end{frame}
 
 \end{document}
