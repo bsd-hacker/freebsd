@@ -38,6 +38,17 @@
 #   xargs -n1 | sort | uniq -d;
 # done
 
+# 20131014: libbsdyml becomes private
+OLD_FILES+=usr/lib/libbsdyml.a
+OLD_FILES+=usr/lib/libbsdyml.so
+OLD_LIBS+=usr/lib/libbsdyml.so.0
+OLD_FILES+=usr/lib/libbsdyml_p.a
+OLD_FILES+=usr/lib32/libbsdyml.a
+OLD_FILES+=usr/lib32/libbsdyml.so
+OLD_LIBS+=usr/lib32/libbsdyml.so.0
+OLD_FILES+=usr/lib32/libbsdyml_p.a
+OLD_FILES+=usr/share/man/man3/libbsdyml.3.gz
+OLD_FILES+=usr/include/bsdyml.h
 # 20131013: Removal of the ATF tools
 OLD_FILES+=etc/atf/FreeBSD.conf
 OLD_FILES+=etc/atf/atf-run.hooks
@@ -86,7 +97,7 @@ OLD_FILES+=usr/include/lwres/result.h
 OLD_FILES+=usr/include/lwres/version.h
 OLD_FILES+=usr/lib/liblwres.a
 OLD_FILES+=usr/lib/liblwres.so
-OLD_LIBS+=usr/lib/liblwres.so.50
+OLD_LIBS+=usr/lib/liblwres.so.90
 OLD_FILES+=usr/lib/liblwres_p.a
 OLD_FILES+=usr/sbin/arpaname
 OLD_FILES+=usr/sbin/ddns-confgen
@@ -96,6 +107,7 @@ OLD_FILES+=usr/sbin/dnssec-keygen
 OLD_FILES+=usr/sbin/dnssec-revoke
 OLD_FILES+=usr/sbin/dnssec-settime
 OLD_FILES+=usr/sbin/dnssec-signzone
+OLD_FILES+=usr/sbin/dnssec-verify
 OLD_FILES+=usr/sbin/genrandom
 OLD_FILES+=usr/sbin/isc-hmac-fixup
 OLD_FILES+=usr/sbin/lwresd
@@ -259,6 +271,7 @@ OLD_FILES+=usr/share/man/man8/dnssec-keygen.8.gz
 OLD_FILES+=usr/share/man/man8/dnssec-revoke.8.gz
 OLD_FILES+=usr/share/man/man8/dnssec-settime.8.gz
 OLD_FILES+=usr/share/man/man8/dnssec-signzone.8.gz
+OLD_FILES+=usr/share/man/man8/dnssec-verify.8.gz
 OLD_FILES+=usr/share/man/man8/genrandom.8.gz
 OLD_FILES+=usr/share/man/man8/isc-hmac-fixup.8.gz
 OLD_FILES+=usr/share/man/man8/lwresd.8.gz
@@ -293,6 +306,8 @@ OLD_DIRS+=var/named/var/run
 OLD_DIRS+=var/named/var/run/named
 OLD_DIRS+=var/named/var/stats
 OLD_DIRS+=var/run/named
+# 20130923: example moved
+OLD_FILES+=usr/share/examples/bsdconfig/browse_packages.sh
 # 20130908: libssh becomes private
 OLD_FILES+=usr/lib/libssh.a
 OLD_FILES+=usr/lib/libssh.so
