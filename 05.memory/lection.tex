@@ -15,6 +15,7 @@
 \usetikzlibrary{shapes}
 \usetikzlibrary{arrows}
 \usetikzlibrary{decorations.text}
+\usetikzlibrary{patterns}
 \usetikzlibrary{chains}
 \usetikzlibrary{scopes}
 \usetikzlibrary{calc}
@@ -647,9 +648,164 @@ Try this out:
     \node [name=pageB2, page, node distance=0, below=of pageB1]
 	{{\color{red}page 2}};
   }
-
 \end{tikzpicture}
 \end{figure}
+\end{frame}
+
+
+\FootReferences{malloc(9),memguard(9),redzone(9)}{sys/kern/kern\_malloc.c}
+\begin{frame}
+\frametitle{kernel malloc(9)}
+\begin{figure}
+\begin{tikzpicture}[start chain=main going below,
+                    node distance=3mm,
+                    every join/.style={->, draw},
+                    font=\scriptsize]
+  \tikzset {
+    base/.style={draw, thick, on chain, align=center, minimum height=4ex},
+    proc/.style={base, rectangle},
+    test/.style={base, diamond, aspect=3},
+    term/.style={proc, rounded corners},
+  }
+
+  \node [name=entry, proc] {malloc(size)};
+  \node [name=memguard, test, join] {memguard?};
+  { [start branch=memguard going below]
+    \node [name=guardalloc, proc, join] {v = memguard\_alloc()};
+  }
+  \node [name=pagesize, continue chain=going right, test, join]
+	{size <= page size};
+  { [start branch=large going right]
+    \node [name=largealloc, proc, join] {v = uma\_large\_malloc()};
+  }
+  \node [name=zone, continue chain=going below, proc, join]
+	{zone = min(power2(size))};
+  \node [name=zalloc, proc, join] {v = uma\_zalloc(zone)};
+  \node [name=mtp, proc, join] {malloc type accounting};
+  \node [name=redzone, test, join] {redzone?};
+  { [start branch=redzone going right]
+    \node [name=redsetup, proc, join] {redzone\_setup(v)};
+  }
+  \node [name=return, term, join] {return v};
+
+  \path (memguard.east) to node [yshift=1ex, red] {$no$} (pagesize);
+  \path (memguard.south) to node [xshift=1em, green] {$yes$} (guardalloc);
+  \draw [->,rounded corners] (guardalloc.south) |- (return.west);
+  \path (pagesize.south) to node [xshift=1em, green] {$yes$} (zone);
+  \path (pagesize.east) to node [yshift=1ex, red] {$no$} (largealloc);
+  \draw [->,rounded corners] (largealloc.south) |- (mtp.east);
+  \path (redzone.south) to node [xshift=1em, red] {$no$} (return);
+  \path (redzone.east) to node [yshift=1ex, green] {$yes$} (redsetup);
+  \draw [->,rounded corners] (redsetup.south) |- (return.east);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{uma(9),vmstat(8)}{sys/vm/uma\_int.h,sys/vm/uma\_core.c}
+\begin{frame}
+\frametitle{uma(9): the zone allocator}
+Let's look at malloc(9) zones in UMA:
+\shellcmd{%
+\# vmstat -z \textbar~head -1 \&\& vmstat -z \textbar~egrep '\^~\lbrack0-9\rbrack+:'\\
+\begin{tabular}{rrrrrrrr}
+ITEM  &   SIZE  &  LIMIT  &  USED  &  FREE  &    REQ &FAIL &SLEEP \\
+16:   &     16, &      0, &  8055, &   479, &  30823,&   0,&   0 \\
+32:   &     32, &      0, &   706, &  1044, & 197057,&   0,&   0 \\
+64:   &     64, &      0, &  1905, &  8759, &3215548,&   0,&   0 \\
+128:  &    128, &      0, &  1463, &  5202, & 387198,&   0,&   0 \\
+256:  &    256, &      0, &   616, &  4304, & 757799,&   0,&   0 \\
+512:  &    512, &      0, &   426, &  3846, &  50371,&   0,&   0 \\
+1024: &   1024, &      0, &    80, &   116, &  70702,&   0,&   0 \\
+2048: &   2048, &      0, &    79, &    87, &  71207,&   0,&   0 \\
+4096: &   4096, &      0, &   193, &    49, &  78923,&   0,&   0 \\
+\end{tabular}
+}
+\end{frame}
+
+%
+% This ugly TikZ code is taken from my master thesis and needs to
+% be redesigned. Too much absolute node positioning here.
+%
+\newcommand{\structline}[2]{ #1 & #2 \\ }
+\FootReferences{uma(9)}{sys/vm/uma\_int.h, sys/vm/uma\_core.c}
+\begin{frame}
+\frametitle{uma(9) is a slab allocator}
+\begin{columns}
+\begin{column}{.03\paperwidth}
+\end{column}
+\begin{column}{.97\paperwidth}
+\begin{tikzpicture}[thick]
+\draw [rounded corners] (1.0cm, 0cm) -- (0cm, 0cm) -- (0cm, 3cm)
+        -- (1.0cm, 3cm);
+\foreach \i in { 1, 2, 4, 5}
+  \node (item\i) at (\i cm * 1.0, 0cm) [draw, anchor=south west,
+   outer sep=0pt, minimum height=3cm, minimum width=1.0cm] {};
+\node (item3) at (3.0cm, 0cm) [anchor=south west,
+   outer sep=0pt, minimum height=3cm, minimum width=1.0cm] { \ldots };
+% waste
+\draw [pattern=checkerboard light gray]
+        (node cs:name=item5, anchor=north east) --
+        (7cm, 3cm) -- (7cm, 0cm) --
+        (node cs:name=item5, anchor=south east) -- cycle;
+% slab header
+\shadedraw [shading=axis,shading angle=45] (7cm, 0cm) -- (7cm, 3cm)
+        { [rounded corners] -- (12cm, 3cm) -- (12cm, 0cm) } -- cycle;
+\draw (9.5cm, 1.5cm) node (slab) [rectangle split, rectangle split parts = 2,
+				   rounded corners, draw, fill=white] {
+	\textbf{struct uma\_slab}
+	\nodepart{two}
+	\begin{tabular}{ll}
+	\structline{uint8\_t}   {*us\_data}
+	\structline{slabbits}   {us\_free}
+	\ldots
+	\end{tabular}
+};
+% slab size
+\draw (12cm / 2, 3.25cm) node (sizelabel) {slab size (PAGE\_SIZE)};
+\draw [<-] (0cm, 3.25cm) -- (sizelabel.west);
+\draw [->] (sizelabel.east) -- (12cm, 3.25cm);
+% pointer
+\draw [fill] (node cs:name=slab,angle=5) circle (2pt);
+\draw [rounded corners, ->] (node cs:name=slab,angle=5) -| ++(0.25cm, -2cm) -|
+        (0.55cm,0cm);
+\end{tikzpicture}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{uma(9) structures}
+\begin{columns}
+\begin{column}{.03\paperwidth}
+\end{column}
+\begin{column}{.97\paperwidth}
+m = uma\_zalloc(zone, \ldots);
+\begin{tikzpicture}[node distance=5mm]
+  \node [name=zone, struct, rectangle split parts=4] {
+    \textbf{struct uma\_zone}
+    \nodepart{two} struct uma\_cache uz\_cpu\lbrack$ncpus$\rbrack
+    \nodepart{three} LIST\_HEAD(,uma\_bucket)  uz\_buckets
+    \nodepart{four} struct uma\_keg *uz\_keg
+  };
+  \node [name=cache, below left=5mm and 0mm of zone,
+         struct, rectangle split parts=3] {
+    \textbf{struct uma\_cache}
+    \nodepart{two} uma\_bucket\_t    uc\_freebucket
+    \nodepart{three} uma\_bucket\_t    uc\_allocbucket
+  };
+  \node [name=bucket, below=of zone, struct, rectangle split parts=4] {
+    \textbf{struct uma\_bucket}
+    \nodepart{two} int16\_t ub\_cnt
+    \nodepart{three} int16\_t ub\_entries
+    \nodepart{four} void *ub\_bucket\lbrack\rbrack
+  };
+  \draw [pointer] (zone.two west) -| (cache.north);
+  \draw [pointer] (cache.two east) to [out=0, in=180] (bucket.one west);
+\end{tikzpicture}
+\end{column}
+\end{columns}
 \end{frame}
 
 \end{document}
