@@ -784,8 +784,8 @@ ITEM  &   SIZE  &  LIMIT  &  USED  &  FREE  &    REQ &FAIL &SLEEP \\
 \begin{tikzpicture}[node distance=5mm, font=\scriptsize]
   \node [name=keg, struct, rectangle split parts=4] {
     \textbf{struct uma\_keg}
-    \nodepart{two} LIST\_HEAD(,uma\_slab)    uk\_part\_slab
-    \nodepart{three} LIST\_HEAD(,uma\_slab)    uk\_free\_slab
+    \nodepart{two} LIST\_HEAD(,uma\_slab)    uk\_free\_slab
+    \nodepart{three} LIST\_HEAD(,uma\_slab)    uk\_part\_slab
     \nodepart{four} LIST\_HEAD(,uma\_slab)    uk\_full\_slab
   };
 
