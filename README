@@ -1,0 +1,17 @@
+Ports needed for successful build:
+---------------------------------
+1) print/texlive-full - recommended as we have not yet figured out minimal set of
+ports needed to build successfully.
+2) print/pdfjam	- needed to generate a single combined course.pdf file.
+
+How to build:
+------------
+"make" builds all the individual chapters in side their respective directories
+as lection.pdf
+
+"make course" concatenates all individual chapter lection.pdf files into one
+course.pdf
+
+"make clean" deletes all temporary files.
+
+"make cleanall" deletes resulting pdf files in addition to all temporary files.
