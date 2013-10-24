@@ -313,7 +313,11 @@ while read LINE; do
 	fi
 
 	gzip -9n ${X}-${Y}
-	mv ${X}-${Y}.gz ${PUBDIR}/tp/
+	if [ `wc -c < ${X}-${Y}.gz` -lt 100000 ]; then
+		mv ${X}-${Y}.gz ${PUBDIR}/tp/
+	else
+		rm ${X}-${Y}.gz
+	fi
 done
 
 echo "`date`: Removing unneeded metadata patches"
