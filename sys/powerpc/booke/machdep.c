@@ -192,7 +192,8 @@ extern int elf32_nxstack;
 static void
 cpu_booke_startup(void *dummy)
 {
-	int indx, size;
+	int indx;
+	unsigned long size;
 
 	/* Initialise the decrementer-based clock. */
 	decr_init();
@@ -200,7 +201,7 @@ cpu_booke_startup(void *dummy)
 	/* Good {morning,afternoon,evening,night}. */
 	cpu_setup(PCPU_GET(cpuid));
 
-	printf("real memory  = %ld (%ld MB)\n", ptoa(physmem),
+	printf("real memory  = %lu (%ld MB)\n", ptoa(physmem),
 	    ptoa(physmem) / 1048576);
 	realmem = physmem;
 
@@ -210,7 +211,7 @@ cpu_booke_startup(void *dummy)
 		for (indx = 0; phys_avail[indx + 1] != 0; indx += 2) {
 			size = phys_avail[indx + 1] - phys_avail[indx];
 
-			printf("0x%08x - 0x%08x, %d bytes (%ld pages)\n",
+			printf("0x%08x - 0x%08x, %lu bytes (%lu pages)\n",
 			    phys_avail[indx], phys_avail[indx + 1] - 1,
 			    size, size / PAGE_SIZE);
 		}
@@ -218,7 +219,7 @@ cpu_booke_startup(void *dummy)
 
 	vm_ksubmap_init(&kmi);
 
-	printf("avail memory = %ld (%ld MB)\n", ptoa(cnt.v_free_count),
+	printf("avail memory = %lu (%ld MB)\n", ptoa(cnt.v_free_count),
 	    ptoa(cnt.v_free_count) / 1048576);
 
 	/* Set up buffers, so they can be used to read disk labels. */
@@ -349,13 +350,18 @@ booke_init(uint32_t arg1, uint32_t arg2)
 	if (OF_init((void *)dtbp) != 0)
 		while (1);
 
-	if (fdt_immr_addr(CCSRBAR_VA) != 0)
-		while (1);
-
 	OF_interpret("perform-fixup", 0);
 	
 	/* Set up TLB initially */
-	booke_init_tlb(fdt_immr_pa);
+	tlb1_init();
+
+	/* Set up IMMR */
+	if (fdt_immr_addr(0) == 0) {
+		fdt_immr_va = pmap_early_io_map(fdt_immr_pa, fdt_immr_size);
+	} else {
+		printf("Warning: SOC base registers could not be found!\n");
+		fdt_immr_va = 0;
+	}
 
 	/* Reset Time Base */
 	mttb(0);
