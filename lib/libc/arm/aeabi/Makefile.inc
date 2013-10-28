@@ -3,12 +3,14 @@
 .PATH: ${.CURDIR}/arm/aeabi
 
 SRCS+=	aeabi_atexit.c		\
-	aeabi_unwind_cpp.c	\
-	aeabi_vfp_double.S	\
-	aeabi_vfp_float.S
+	aeabi_unwind_cpp.c
 .if ${MACHINE_ARCH} != "armv6hf"
 SRCS+=	aeabi_double.c		\
 	aeabi_float.c
+.endif
+.if ${MACHINE_ARCH:Marmv6*}
+SRCS+=	aeabi_vfp_double.S	\
+	aeabi_vfp_float.S
 .endif
 
 # Add the aeabi_mem* functions. While they live in compiler-rt they call into
