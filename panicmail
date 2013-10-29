@@ -1,0 +1,152 @@
+#!/bin/sh
+
+# PROVIDE: panicmail
+# REQUIRE: savecore mail
+
+# Add the following lines to /etc/rc.conf to enable panicmail:
+#
+# panicmail_enable (bool):	Set to "NO" by default.
+#				Set it to "YES" to enable panicmail.
+#
+# panicmail_autosubmit (bool):	Set to "NO" by default.
+#				Set it to "YES" to automatically submit panic
+#				emails instead of sending them to root for
+#				review first.
+#
+# panicmail_sendto (str):	Set to "cperciva-panicmail@daemonology.net"
+#				by default.
+#				Change to your desired panic submission target.
+#
+# panicmail_key (str):		Set to "/usr/local/etc/cperciva-panicmail.pem"
+#				by default.
+#				Change to the encryption key for your panic
+#				submission target.
+: ${panicmail_enable:="NO"}
+: ${panicmail_autosubmit:="NO"}
+: ${panicmail_sendto:="cperciva-panicmail@daemonology.net"}
+: ${panicmail_key:="/usr/local/etc/cperciva-panicmail.pem"}
+
+. /etc/rc.subr
+
+name="panicmail"
+rcvar=panicmail_enable
+start_cmd="panicmail_run"
+stop_cmd=":"
+
+# Gather the data we want to include in a panic report
+panicmail_gather()
+{
+	local tmpfile=`mktemp` || exit 1
+
+	# We want the dump header.
+	cat ${dumpdir}/info.$1 >> ${dumpdir}/panicmail.$1
+	echo >> ${dumpdir}/panicmail.$1
+
+	# And we want a backtrace (we should be able to pipe the commands
+	# directly into kgdb, but that doesn't work with our /bin/sh):
+	echo "Backtrace:" >> ${dumpdir}/panicmail.$1
+	echo bt > ${tmpfile}
+	echo quit >> ${tmpfile}
+	kgdb -q `sysctl -n kern.bootfile` ${dumpdir}/vmcore.$1 \
+	    < ${tmpfile} >> ${dumpdir}/panicmail.$1 2> /dev/null
+	echo >> ${dumpdir}/panicmail.$1
+	rm ${tmpfile}
+}
+
+# Encrypt the information in the panic report
+panicmail_encrypt()
+{
+	local tmpfile=`mktemp` || exit 1
+
+	# Encrypt using pkesh.
+	pkesh enc $2 ${dumpdir}/panicmail.$1 ${tmpfile}
+
+	# Add extra armour
+	echo "-----ENCRYPTED FREEBSD PANIC DATA STARTS HERE---------------------" > ${dumpdir}/panicmail.$1.enc
+	lam -s '|' ${tmpfile} -s '|' >> ${dumpdir}/panicmail.$1.enc
+	echo "-----ENCRYPTED FREEBSD PANIC DATA ENDS HERE-----------------------" >> ${dumpdir}/panicmail.$1.enc
+
+	# Remove temporary file
+	rm ${tmpfile}
+}
+
+panicmail_root()
+{
+
+	cat <<-EOF
+		To: root
+		From: FreeBSD Panic Reporting <${panicmail_sendto}>
+		Subject: Kernel panic
+
+		A kernel panic has occurred on this system.  You can assist in
+		debugging this by allowing some information to be reported
+		about this panic.
+
+		The following information is contained in the encrypted panic
+		report at the end of this email:
+
+	EOF
+	lam -s "> " ${dumpdir}/panicmail.$1
+	cat <<-EOF
+
+		If you are happy to have this information submitted (i.e., it
+		does not contain any information you want kept private), please
+		submit the following ASCII armoured block to
+		  ${panicmail_sendto};
+		you should be able to do this by hitting "Reply" in your mail
+		client and removing everything up to this point.
+		
+	EOF
+	cat ${dumpdir}/panicmail.$1.enc
+}
+
+panicmail_auto()
+{
+
+	cat <<-EOF
+		To: FreeBSD Panic Reporting <${panicmail_sendto}>
+		From: root
+		Subject: Kernel panic
+
+	EOF
+	cat ${dumpdir}/panicmail.$1.enc
+}
+
+panicmail_run()
+{
+	local nr
+
+	# Quit if we have no dumps
+	if ! [ -f "${dumpdir}/bounds" ]; then
+		return 0;
+	fi
+
+	# Figure out which dump is the most recent
+	nr=$((`cat ${dumpdir}/bounds` - 1))
+
+	# Make sure it actually exists
+	if ! [ -f "${dumpdir}/info.${nr}" ]; then
+		return 0;
+	fi
+
+	# Have we already sent an email about this one?
+	if [ -f "${dumpdir}/panicmail.${nr}" ]; then
+		return 0;
+	fi
+
+	# Gather information about this panic.
+	panicmail_gather ${nr}
+
+	# Encrypt the panic information.
+	panicmail_encrypt ${nr} ${panicmail_key}
+
+	# Generate and send an email.
+	if checkyesno panicmail_autosubmit; then
+		panicmail_auto ${nr} | sendmail -t
+	else
+		panicmail_root ${nr} | sendmail -t
+	fi
+}
+
+load_rc_config $name
+run_rc_command "$1"
