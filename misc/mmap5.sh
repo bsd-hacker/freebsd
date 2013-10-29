@@ -30,6 +30,7 @@
 
 # Test scenario inspired by alc@
 # "panic: vm_page_dirty: page is invalid!" seen.
+# Fixed in r255396.
 
 dir=/tmp
 odir=`pwd`
