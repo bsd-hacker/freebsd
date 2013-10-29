@@ -59,7 +59,7 @@ panicmail_encrypt()
 	local tmpfile=`mktemp` || exit 1
 
 	# Encrypt using pkesh.
-	pkesh enc $2 ${dumpdir}/panicmail.$1 ${tmpfile}
+	/usr/local/bin/pkesh enc $2 ${dumpdir}/panicmail.$1 ${tmpfile}
 
 	# Add extra armour
 	echo "-----ENCRYPTED FREEBSD PANIC DATA STARTS HERE---------------------" > ${dumpdir}/panicmail.$1.enc
