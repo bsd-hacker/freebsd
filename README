@@ -1,0 +1,33 @@
+pkesh -- Public Key Encryption SHell script
+===========================================
+
+Usage
+-----
+# pkesh gen priv.key pub.key
+	Generates a public/private key pair.
+# pkesh enc pub.key in out
+	Encrypts "in" using the public key, writing to "out".
+# pkesh dec priv.key in out
+	Decrypts "in" using the private key, writing to "out".
+
+Note: Temporary working space is used under $TMP (or /tmp); if this is not
+a memory filesystem then keys or data may be leaked to permanent storage.
+There must be sufficient temporary space to hold the entire message.
+
+Encrypted format
+----------------
+Encrypted Message	= base64([Encrypted Header][Encrypted Data])
+Encrypted Header	= RSA2048-OAEP([Header])
+Header			= [AES256-CBC Key][AES256-CBC IV][Hash]
+AES256-CBC Key		= 256 bits (random)
+AES256-CBC IV		= 128 bits (random)
+Hash			= SHA256(Encrypted Data)
+Encrypted Data		= AES256-CBC(Data)
+Data			= arbitrary length input "in"
+
+Requirements
+------------
+
+openssl
+POSIX utilities: sh, cat, cmp, dd, od, rm, tr, wc
+non-POSIX but standard UNIX: mktemp
