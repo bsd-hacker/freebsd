@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2011 Peter Holm
+# Copyright (c) 2011-2013 Peter Holm
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -59,17 +59,24 @@ chmod 777 $mntpoint
 
 sleeptime=${sleeptime:-12}
 for i in `jot 10`; do
-echo "Loop #$i"
 	(cd $mntpoint; /tmp/syscall4 $* < /dev/null) &
-	[ $# -eq 1 ] && sleep $sleeptime || sleep 180
-	killall -9 syscall4
+	[ $# -eq 1 ] && sleep $sleeptime || sleep 120
+	killall -9 syscall4 > /dev/null 2>&1
+	wait
 	ipcs | awk '/^(q|m|s)/ {print " -" $1, $2}' | xargs -L 1 ipcrm
 done
 
-while mount | grep $mntpoint | grep -q /dev/md; do
-	umount $mntpoint || sleep 1
+
+for i in `jot 10`; do
+	mount | grep -q md${mdstart}$part  && \
+		umount $mntpoint && mdconfig -d -u $mdstart && break
+	sleep 10
 done
-mdconfig -d -u $mdstart
+if mount | grep -q md${mdstart}$part; then
+	fstat $mntpoint
+	echo "umount $mntpoint failed"
+	exit 1
+fi
 rm -f /tmp/syscall4
 exit
 EOF
@@ -275,6 +282,9 @@ main(int argc, char **argv)
 			if (syscallno == ignore[j]) 
 				errx(0, "syscall #%d is on the ignore list.", syscallno);
 	}
+
+	if (daemon(0, 0) == -1)
+		err(1, "daemon()");
 
 	start = time(NULL);
 	while ((time(NULL) - start) < 120) {
