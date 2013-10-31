@@ -1,0 +1,25 @@
+/* This README and all in underlying directories are just glebius' braindumps
+   that some day can be reformatted to a better notes. */
+
+All practical sessions require a shell box shared between lecturer and
+students. I use dedicated FreeBSD-CURRENT instance under bhyve. All
+students are provided shell and superuser there. Students are encouraged
+to run things on their own boxes or VMs, but shared shellbox is always
+available.
+
+Problems(bhyve):
+- It is impossible to share kernel debugger console to students, it requires
+  root on host. So only lecturer can work once VM goes into ddb.
+- Sometimes when VM enters ddb, the bhyve process exits.
+
+During entire practical session the beamer displays my terminal. I use
+Xterm running fullscreen w/o any widgets and using
+x11-fonts/inconsolata-lgc-ttf font. I encourage students to do some steps
+theirselves, in these cases I use watch(8) on students' tty to intercept
+it and make viewable by everyone on beamer.
+
+Problems:
+- If watch(8) a terminal that is bigger than yours, you got a mess on
+  screen (and on beamer, too!).
+- Modules should be build with DEBUG_FLAGS=-g knob, so that any kgdb
+  session display their symbols. This secret knowledge isn't documented :(

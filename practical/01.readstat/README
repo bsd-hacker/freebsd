@@ -1,0 +1,69 @@
+"readstat" does the following:
+
+1) Intercepts an important syscall. We used read(2) and this seems fine,
+   but we can use any widely used syscall.
+2) Accumulates statistics on which processes called the syscall and
+   with which arguments.
+
+The readstat1.c is the state that can be achieved during one academical
+hour (experimentally proved!).
+
+We start coding together with students, starting with 01.intro/module/module.c,
+and step by step enhance the code, discussing every step. For future lecturers
+I'd suggest to do the same and do not use my readstat1.c as reference,
+otherwise you can just type everything in too fast and not clear to students.
+
+Coding readstat1.c requires that students are familiar with the following:
+
+module(9)
+sysent vector (lection 02.entering_kernel)
+struct td, struct proc (lection 03.processes&threads)
+queue(3)
+tree(3)
+mutex(9)
+malloc(9)
+
+(1) Start with 01.intro/module/module.c, and make it simply intercept syscall.
+    At this step chances that students can code theirselves is pretty low, so
+    you have to do it yourself. You have to explain where did you get all the
+    symbol names and constants. Open kern/init_sysent.c, sys/sysproto.h, etc.
+    Run kgdb before and after module is loaded.
+    (kgdb) p sysent[3]
+
+(2) Include <tree.h> and initialize RB tree.
+
+(3) Discuss reentrability of syscall and whether the tree should be protected.
+    Now it is probably time to pass access to file to a student and watch(8)
+    her or him. Add static mutex, initialize/destroy it in module evhand.
+
+(4) Ask students on how can we obtain process name in interceptor. Let them
+    dictate you, or code theirselves. Ask/explain:
+    - Do we need any locking to read process name?
+    - Why do we strcpy() the name and not point to it from struct node?
+    - How do we use a libc function here?
+
+(4) Code RB find/insertion in the interceptor. We started with
+
+	if (RB_FIND) {
+
+	} else {
+		RB_INSERT()
+	}
+
+    But thanks to students who have read tree(3) quickly, we ended with
+    a more optimal code.
+
+(5) Now we do insert entries into tree and come to malloc(). Let's do not
+    initialize LIST(3) in nodes, just gather process names.
+    Ask/explain:
+    - Which wait flag to use with malloc() and why?
+    - Is there any ways to make interceptor more robust and not use M_NOWAIT.
+
+(6) Compile and run it.
+    (kgdb) p readstat
+    ... further kgdb investigation of tree ...
+
+(7) Initialize mutex and LIST in entry. Code interlocking between the tree lock
+    and a node lock. Gather stats.
+
+(8) Compile and run it. Traverse tree in kgdb.
