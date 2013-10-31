@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/psl.h>
 #include <machine/cpufunc.h>
 #include <machine/md_var.h>
-#include <machine/pmap.h>
 #include <machine/segments.h>
 #include <machine/specialreg.h>
 #include <machine/vmparam.h>
@@ -164,6 +163,7 @@ static int cap_halt_exit;
 static int cap_pause_exit;
 static int cap_unrestricted_guest;
 static int cap_monitor_trap;
+static int cap_invpcid;
  
 static struct unrhdr *vpid_unr;
 static u_int vpid_alloc_failed;
@@ -660,6 +660,11 @@ vmx_init(void)
 					PROCBASED2_UNRESTRICTED_GUEST, 0,
 				        &tmp) == 0);
 
+	cap_invpcid = (vmx_set_ctlreg(MSR_VMX_PROCBASED_CTLS2,
+	    MSR_VMX_PROCBASED_CTLS2, PROCBASED2_ENABLE_INVPCID, 0,
+	    &tmp) == 0);
+
+
 	/* Initialize EPT */
 	error = ept_init();
 	if (error) {
@@ -828,6 +833,7 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 
 		vmx->cap[i].set = 0;
 		vmx->cap[i].proc_ctls = procbased_ctls;
+		vmx->cap[i].proc_ctls2 = procbased_ctls2;
 
 		vmx->state[i].lastcpu = -1;
 		vmx->state[i].vpid = vpid[i];
@@ -1932,6 +1938,10 @@ vmx_getcap(void *arg, int vcpu, int type, int *retval)
 		if (cap_unrestricted_guest)
 			ret = 0;
 		break;
+	case VM_CAP_ENABLE_INVPCID:
+		if (cap_invpcid)
+			ret = 0;
+		break;
 	default:
 		break;
 	}
@@ -1988,8 +1998,18 @@ vmx_setcap(void *arg, int vcpu, int type, int val)
 	case VM_CAP_UNRESTRICTED_GUEST:
 		if (cap_unrestricted_guest) {
 			retval = 0;
-			baseval = procbased_ctls2;
+			pptr = &vmx->cap[vcpu].proc_ctls2;
+			baseval = *pptr;
 			flag = PROCBASED2_UNRESTRICTED_GUEST;
+			reg = VMCS_SEC_PROC_BASED_CTLS;
+		}
+		break;
+	case VM_CAP_ENABLE_INVPCID:
+		if (cap_invpcid) {
+			retval = 0;
+			pptr = &vmx->cap[vcpu].proc_ctls2;
+			baseval = *pptr;
+			flag = PROCBASED2_ENABLE_INVPCID;
 			reg = VMCS_SEC_PROC_BASED_CTLS;
 		}
 		break;
