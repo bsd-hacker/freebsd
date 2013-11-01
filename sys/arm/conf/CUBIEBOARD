@@ -47,6 +47,7 @@ options 	_KPOSIX_PRIORITY_SCHEDULING #Posix P1003_1B real-time extensions
 options 	KBD_INSTALL_CDEV	# install a CDEV entry in /dev
 options 	PREEMPTION
 options 	FREEBSD_BOOT_LOADER
+options 	VFP		# vfp/neon
 
 # Debugging
 makeoptions	DEBUG=-g		#Build kernel with gdb(1) debug symbols
@@ -83,7 +84,6 @@ options		ROOTDEVNAME=\"ufs:/dev/da0s2\"
 # ATA controllers
 #device		ahci		# AHCI-compatible SATA controllers
 #device		ata		# Legacy ATA/SATA controllers
-#options	ATA_CAM		# Handle legacy controllers with CAM
 #options	ATA_STATIC_ID	# Static device numbering
 
 # Console and misc

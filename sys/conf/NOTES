@@ -127,7 +127,7 @@ options 	BLKDEV_IOSIZE=8192
 # devices and DFLTPHYS for the rest. Some applications have better
 # performance with larger raw I/O access sizes. Note that certain VM
 # parameters are derived from these values and making them too large
-# can make an an unbootable kernel.
+# can make an unbootable kernel.
 #
 # The defaults are 64K and 128K respectively.
 options 	DFLTPHYS=(64*1024)
@@ -138,6 +138,12 @@ options 	MAXPHYS=(128*1024)
 # the kernel binary itself. See config(8) for more details.
 #
 options 	INCLUDE_CONFIG_FILE     # Include this file in kernel
+
+#
+# Compile-time defaults for various boot parameters
+#
+options 	BOOTVERBOSE=1
+options 	BOOTHOWTO=RB_MULTIPLE
 
 options 	GEOM_AES		# Don't use, use GEOM_BDE
 options 	GEOM_BDE		# Disk encryption.
@@ -217,6 +223,10 @@ options 	SMP			# Symmetric MultiProcessor Kernel
 # MAXCPU defines the maximum number of CPUs that can boot in the system.
 # A default value should be already present, for every architecture.
 options 	MAXCPU=32
+
+# MAXMEMDOM defines the maximum number of memory domains that can boot in the
+# system.  A default value should already be defined by every architecture.
+options 	MAXMEMDOM=1
 
 # ADAPTIVE_MUTEXES changes the behavior of blocking mutexes to spin
 # if the thread that currently owns the mutex is executing on another
@@ -561,7 +571,8 @@ options 	HWPMC_HOOKS		# Other necessary kernel hooks
 options 	INET			#Internet communications protocols
 options 	INET6			#IPv6 communications protocols
 
-options 	ROUTETABLES=2		# max 16. 1 is back compatible.
+options 	ROUTETABLES=2		# allocated fibs up to 65536. default is 1.
+					# but that would be a bad idea as they are large.
 
 options 	TCP_OFFLOAD		# TCP offload support.
 
@@ -590,6 +601,12 @@ options 	IPX			#IPX/SPX communications protocols
 
 options 	NETATALK		#Appletalk communications protocols
 options 	NETATALKDEBUG		#Appletalk debugging
+
+#
+# SMB/CIFS requester
+# NETSMB enables support for SMB protocol, it requires LIBMCHAIN and LIBICONV
+# options.
+options 	NETSMB			#SMB/CIFS requester
 
 # mchain library. It can be either loaded as KLD or compiled into kernel
 options 	LIBMCHAIN
@@ -711,7 +728,6 @@ options 	NETGRAPH_DEVICE
 options 	NETGRAPH_ECHO
 options 	NETGRAPH_EIFACE
 options 	NETGRAPH_ETHER
-options 	NETGRAPH_FEC
 options 	NETGRAPH_FRAME_RELAY
 options 	NETGRAPH_GIF
 options 	NETGRAPH_GIF_DEMUX
@@ -756,8 +772,8 @@ options 	NGATM_CCATM
 device		mn	# Munich32x/Falc54 Nx64kbit/sec cards.
 
 # Network stack virtualization.
-options		VIMAGE
-options		VNET_DEBUG	# debug for VIMAGE
+#options	VIMAGE
+#options	VNET_DEBUG	# debug for VIMAGE
 
 #
 # Network interfaces:
@@ -979,21 +995,6 @@ options 	TCP_SIGNATURE		#include support for RFC 2385
 # a smooth scheduling of the traffic.
 options 	DUMMYNET
 
-# "Zero copy" sockets support is split into the send and receive path
-# which operate very differently.
-# For the send path the VM page with the data is wired into the kernel
-# and marked as COW (copy-on-write).  If the application touches the
-# data while it is still in the send socket buffer the page is copied
-# and divorced from its kernel wiring (no longer zero copy).
-# The receive side requires explicit NIC driver support to create
-# disposable pages which are flipped from kernel to user-space VM.
-# See zero_copy(9) for more details.
-# XXX: The COW based send mechanism is not safe and may result in
-# kernel crashes.
-# XXX: None of the current NIC drivers support disposable pages.
-options		SOCKET_SEND_COW
-options		SOCKET_RECV_PFLIP
-
 #####################################################################
 # FILESYSTEM OPTIONS
 
@@ -1027,6 +1028,7 @@ options 	NULLFS			#NULL filesystem
 options 	PROCFS			#Process filesystem (requires PSEUDOFS)
 options 	PSEUDOFS		#Pseudo-filesystem framework
 options 	PSEUDOFS_TRACE		#Debugging support for PSEUDOFS
+options 	SMBFS			#SMB/CIFS filesystem
 options 	TMPFS			#Efficient memory filesystem
 options 	UDF			#Universal Disk Format
 options 	UNIONFS			#Union filesystem
@@ -1278,8 +1280,7 @@ hint.sa.1.target="6"
 # to incoming commands that do not otherwise have a logical unit assigned
 # to them.
 #
-# The "unknown" device (uk? in pre-2.0.5) is now part of the base SCSI
-# configuration as the "pass" driver.
+# The pass driver provides a passthrough API to access the CAM subsystem.
 
 device		scbus		#base SCSI code
 device		ch		#SCSI media changers
@@ -1617,20 +1618,10 @@ options 	ISP_DEFAULT_ROLES=0
 # Compaq are actually DPT controllers.
 #
 # See src/sys/dev/dpt for debugging and other subtle options.
-#   DPT_MEASURE_PERFORMANCE Enables a set of (semi)invasive metrics. Various
+#  DPT_MEASURE_PERFORMANCE  Enables a set of (semi)invasive metrics. Various
 #                           instruments are enabled.  The tools in
 #                           /usr/sbin/dpt_* assume these to be enabled.
-#   DPT_HANDLE_TIMEOUTS     Normally device timeouts are handled by the DPT.
-#                           If you want the driver to handle timeouts, enable
-#                           this option.  If your system is very busy, this
-#                           option will create more trouble than solve.
-#   DPT_TIMEOUT_FACTOR      Used to compute the excessive amount of time to
-#                           wait when timing out with the above option.
 #  DPT_DEBUG_xxxx           These are controllable from sys/dev/dpt/dpt.h
-#  DPT_LOST_IRQ             When enabled, will try, once per second, to catch
-#                           any interrupt that got lost.  Seems to help in some
-#                           DPT-firmware/Motherboard combinations.  Minimal
-#                           cost, great benefit.
 #  DPT_RESET_HBA            Make "reset" actually reset the controller
 #                           instead of fudging it.  Only enable this if you
 #			    are 100% certain you need it.
@@ -1639,9 +1630,6 @@ device		dpt
 
 # DPT options
 #!CAM# options 	DPT_MEASURE_PERFORMANCE
-#!CAM# options 	DPT_HANDLE_TIMEOUTS
-options 	DPT_TIMEOUT_FACTOR=4
-options 	DPT_LOST_IRQ
 options 	DPT_RESET_HBA
 
 #
@@ -1700,21 +1688,14 @@ device		mvs
 device		siis
 
 #
-# The 'ATA' driver supports all ATA and ATAPI devices, including PC Card
-# devices. You only need one "device ata" for it to find all
+# The 'ATA' driver supports all legacy ATA/ATAPI controllers, including
+# PC Card devices. You only need one "device ata" for it to find all
 # PCI and PC Card ATA/ATAPI devices on modern machines.
 # Alternatively, individual bus and chipset drivers may be chosen by using
 # the 'atacore' driver then selecting the drivers on a per vendor basis.
 # For example to build a system which only supports a VIA chipset,
 # omit 'ata' and include the 'atacore', 'atapci' and 'atavia' drivers.
 device		ata
-#device		atadisk		# ATA disk drives
-#device		ataraid		# ATA RAID drives
-#device		atapicd		# ATAPI CDROM drives
-#device		atapifd		# ATAPI floppy drives
-#device		atapist		# ATAPI tape drives
-#device		atapicam	# emulate ATAPI devices as SCSI ditto via CAM
-				# needs CAM to be present (scbus & pass)
 
 # Modular ATA
 #device		atacore		# Core ATA functionality
@@ -1764,15 +1745,9 @@ hint.ata.1.irq="15"
 #			else the device numbers are dynamically allocated.
 # ATA_REQUEST_TIMEOUT:	the number of seconds to wait for an ATA request
 #			before timing out.
-# ATA_CAM:		Turn ata(4) subsystem controller drivers into cam(4)
-#			interface modules. This deprecates all ata(4)
-#			peripheral device drivers (atadisk, ataraid, atapicd,
-#			atapifd, atapist, atapicam) and all user-level APIs.
-#			cam(4) drivers and APIs will be connected instead.
 
 options 	ATA_STATIC_ID
 #options 	ATA_REQUEST_TIMEOUT=10
-options 	ATA_CAM
 
 #
 # Standard floppy disk controllers and floppy tapes, supports
@@ -1809,6 +1784,8 @@ device		uart
 # Options for uart(4)
 options 	UART_PPS_ON_CTS		# Do time pulse capturing using CTS
 					# instead of DCD.
+options 	UART_POLL_FREQ		# Set polling rate, used when hw has
+					# no interrupt support (50 Hz default).
 
 # The following hint should only be used for pure ISA devices.  It is not
 # needed otherwise.  Use of hints is strongly discouraged.
@@ -1916,7 +1893,7 @@ device		xmphy		# XaQti XMAC II
 #	BCM570x family of controllers, including the 3Com 3c996-T,
 #	the Netgear GA302T, the SysKonnect SK-9D21 and SK-9D41, and
 #	the embedded gigE NICs on Dell PowerEdge 2550 servers.
-# bxe:	Broadcom NetXtreme II (BCM57710/57711/57711E) PCIe 10b Ethernet
+# bxe:	Broadcom NetXtreme II (BCM5771X/BCM578XX) PCIe 10Gb Ethernet
 #       adapters.
 # bwi:	Broadcom BCM430* and BCM431* family of wireless adapters.
 # bwn:	Broadcom BCM43xx family of wireless adapters.
@@ -2101,7 +2078,6 @@ device		wb		# Winbond W89C840F
 device		xl		# 3Com 3c90x (``Boomerang'', ``Cyclone'')
 
 # PCI Ethernet NICs.
-device		bxe		# Broadcom BCM57710/BCM57711/BCM57711E 10Gb Ethernet
 device		cxgbe		# Chelsio T4 10GbE PCIe adapter
 device		de		# DEC/Intel DC21x4x (``Tulip'')
 device		em		# Intel Pro/1000 Gigabit Ethernet
@@ -2744,6 +2720,8 @@ device		mos
 # HSxPA devices from Option N.V
 device		uhso
 
+# Realtek RTL8188SU/RTL8191SU/RTL8192SU wireless driver
+device		rsu
 #
 # Ralink Technology RT2501USB/RT2601USB wireless driver
 device		rum
@@ -2762,8 +2740,14 @@ device		ural
 # Realtek RTL8187B/L wireless driver
 device		urtw
 #
+# Realtek RTL8188CU/RTL8192CU wireless driver
+device		urtwn
+#
 # ZyDas ZD1211/ZD1211B wireless driver
 device		zyd
+#
+# Sierra USB wireless driver
+device		usie
 
 # 
 # debugging options for the USB subsystem
@@ -2976,3 +2960,8 @@ options 	RCTL
 options 	BROOKTREE_ALLOC_PAGES=(217*4+1)
 options 	MAXFILES=999
 
+# Random number generator
+options 	RANDOM_YARROW	# Yarrow RNG
+##options 	RANDOM_FORTUNA	# Fortuna RNG - not yet implemented
+options 	RANDOM_DEBUG	# Debugging messages
+options 	RANDOM_RWFILE	# Read and write entropy cache

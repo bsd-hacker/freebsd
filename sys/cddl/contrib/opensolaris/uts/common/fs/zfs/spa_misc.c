@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2013 Martin Matuska <mm@FreeBSD.org>. All rights reserved.
  */
@@ -534,8 +534,8 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	hdlr.cyh_level = CY_LOW_LEVEL;
 #endif
 
-	spa->spa_deadman_synctime = zfs_deadman_synctime *
-	    zfs_txg_synctime_ms * MICROSEC;
+	spa->spa_deadman_synctime = MSEC2NSEC(zfs_deadman_synctime *
+	    zfs_txg_synctime_ms);
 
 #ifdef illumos
 	/*
@@ -544,7 +544,7 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	 * an expensive operation we don't want to check too frequently.
 	 * Instead wait for 5 synctimes before checking again.
 	 */
-	when.cyt_interval = 5ULL * zfs_txg_synctime_ms * MICROSEC;
+	when.cyt_interval = MSEC2NSEC(5 * zfs_txg_synctime_ms);
 	when.cyt_when = CY_INFINITY;
 	mutex_enter(&cpu_lock);
 	spa->spa_deadman_cycid = cyclic_add(&hdlr, &when);
@@ -1369,7 +1369,7 @@ zfs_panic_recover(const char *fmt, ...)
 
 /*
  * This is a stripped-down version of strtoull, suitable only for converting
- * lowercase hexidecimal numbers that don't overflow.
+ * lowercase hexadecimal numbers that don't overflow.
  */
 uint64_t
 zfs_strtonum(const char *str, char **nptr)
@@ -1697,6 +1697,10 @@ spa_boot_init()
 	spa_config_load();
 }
 
+#ifdef _KERNEL
+EVENTHANDLER_DEFINE(mountroot, spa_boot_init, NULL, 0);
+#endif
+
 void
 spa_init(int mode)
 {
@@ -1861,7 +1865,7 @@ spa_scan_get_stats(spa_t *spa, pool_scan_stat_t *ps)
 	dsl_scan_t *scn = spa->spa_dsl_pool ? spa->spa_dsl_pool->dp_scan : NULL;
 
 	if (scn == NULL || scn->scn_phys.scn_func == POOL_SCAN_NONE)
-		return (ENOENT);
+		return (SET_ERROR(ENOENT));
 	bzero(ps, sizeof (pool_scan_stat_t));
 
 	/* data stored on disk */

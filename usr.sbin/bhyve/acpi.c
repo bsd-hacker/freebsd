@@ -241,8 +241,9 @@ basl_fwrite_madt(FILE *fp)
 	for (i = 0; i < basl_ncpu; i++) {
 		EFPRINTF(fp, "[0001]\t\tSubtable Type : 00\n");
 		EFPRINTF(fp, "[0001]\t\tLength : 08\n");
-		EFPRINTF(fp, "[0001]\t\tProcessor ID : %02d\n", i);
-		EFPRINTF(fp, "[0001]\t\tLocal Apic ID : %02d\n", i);
+		/* iasl expects hex values for the proc and apic id's */
+		EFPRINTF(fp, "[0001]\t\tProcessor ID : %02x\n", i);
+		EFPRINTF(fp, "[0001]\t\tLocal Apic ID : %02x\n", i);
 		EFPRINTF(fp, "[0004]\t\tFlags (decoded below) : 00000001\n");
 		EFPRINTF(fp, "\t\t\tProcessor Enabled : 1\n");
 		EFPRINTF(fp, "\n");
@@ -251,7 +252,8 @@ basl_fwrite_madt(FILE *fp)
 	/* Always a single IOAPIC entry, with ID ncpu+1 */
 	EFPRINTF(fp, "[0001]\t\tSubtable Type : 01\n");
 	EFPRINTF(fp, "[0001]\t\tLength : 0C\n");
-	EFPRINTF(fp, "[0001]\t\tI/O Apic ID : %02d\n", basl_ncpu);
+	/* iasl expects a hex value for the i/o apic id */
+	EFPRINTF(fp, "[0001]\t\tI/O Apic ID : %02x\n", basl_ncpu);
 	EFPRINTF(fp, "[0001]\t\tReserved : 00\n");
 	EFPRINTF(fp, "[0004]\t\tAddress : fec00000\n");
 	EFPRINTF(fp, "[0004]\t\tInterrupt : 00000000\n");
@@ -680,29 +682,26 @@ basl_end(struct basl_fio *in, struct basl_fio *out)
 }
 
 static int
-basl_load(int fd, uint64_t off)
+basl_load(struct vmctx *ctx, int fd, uint64_t off)
 {
-        struct stat sb;
+	struct stat sb;
 	void *gaddr;
-	int err;
 
-	err = 0;
-        if (fstat(fd, &sb) < 0) {
-		err = errno;
-        } else {
-		gaddr = paddr_guest2host(basl_acpi_base + off, sb.st_size);
-		if (gaddr != NULL) {
-			if (read(fd, gaddr, sb.st_size) < 0)
-				err = errno;
-		} else
-			err = EFAULT;
-        }
+	if (fstat(fd, &sb) < 0)
+		return (errno);
+		
+	gaddr = paddr_guest2host(ctx, basl_acpi_base + off, sb.st_size);
+	if (gaddr == NULL)
+		return (EFAULT);
 
-	return (err);
+	if (read(fd, gaddr, sb.st_size) < 0)
+		return (errno);
+
+	return (0);
 }
 
 static int
-basl_compile(int (*fwrite_section)(FILE *fp), uint64_t offset)
+basl_compile(struct vmctx *ctx, int (*fwrite_section)(FILE *), uint64_t offset)
 {
 	struct basl_fio io[2];
 	static char iaslbuf[3*MAXPATHLEN + 10];
@@ -736,7 +735,7 @@ basl_compile(int (*fwrite_section)(FILE *fp), uint64_t offset)
 				 * Copy the aml output file into guest
 				 * memory at the specified location
 				 */
-				err = basl_load(io[1].fd, offset);
+				err = basl_load(ctx, io[1].fd, offset);
 			}
 		}
 		basl_end(&io[0], &io[1]);
@@ -807,18 +806,13 @@ static struct {
 };
 
 int
-acpi_build(struct vmctx *ctx, int ncpu, int ioapic)
+acpi_build(struct vmctx *ctx, int ncpu)
 {
 	int err;
 	int i;
 
 	err = 0;
 	basl_ncpu = ncpu;
-
-	if (!ioapic) {
-		fprintf(stderr, "ACPI tables require an ioapic\n");
-		return (EINVAL);
-	}
 
 	/*
 	 * For debug, allow the user to have iasl compiler output sent
@@ -842,7 +836,7 @@ acpi_build(struct vmctx *ctx, int ncpu, int ioapic)
 	 * copying them into guest memory
 	 */
 	while (!err && basl_ftables[i].wsect != NULL) {
-		err = basl_compile(basl_ftables[i].wsect,
+		err = basl_compile(ctx, basl_ftables[i].wsect,
 				   basl_ftables[i].offset);
 		i++;
 	}

@@ -414,6 +414,13 @@ siis_child_location_str(device_t dev, device_t child, char *buf,
 	return (0);
 }
 
+static bus_dma_tag_t
+siis_get_dma_tag(device_t bus, device_t child)
+{
+
+	return (bus_get_dma_tag(bus));
+}
+
 devclass_t siis_devclass;
 static device_method_t siis_methods[] = {
 	DEVMETHOD(device_probe,     siis_probe),
@@ -427,6 +434,7 @@ static device_method_t siis_methods[] = {
 	DEVMETHOD(bus_setup_intr,   siis_setup_intr),
 	DEVMETHOD(bus_teardown_intr,siis_teardown_intr),
 	DEVMETHOD(bus_child_location_str, siis_child_location_str),
+	DEVMETHOD(bus_get_dma_tag,  siis_get_dma_tag),
 	{ 0, 0 }
 };
 static driver_t siis_driver = {
@@ -830,9 +838,7 @@ siis_ch_intr_locked(void *data)
 	struct siis_channel *ch = device_get_softc(dev);
 
 	mtx_lock(&ch->mtx);
-	xpt_batch_start(ch->sim);
 	siis_ch_intr(data);
-	xpt_batch_done(ch->sim);
 	mtx_unlock(&ch->mtx);
 }
 

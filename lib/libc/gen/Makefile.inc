@@ -31,6 +31,7 @@ SRCS+=	__getosreldate.c \
 	disklabel.c \
 	dlfcn.c \
 	drand48.c \
+	dup3.c \
 	elf_utils.c \
 	erand48.c \
 	err.c \
@@ -184,6 +185,7 @@ MAN+=	alarm.3 \
 	dlinfo.3 \
 	dllockinit.3 \
 	dlopen.3 \
+	dup3.3 \
 	err.3 \
 	exec.3 \
 	feature_present.3 \
@@ -361,6 +363,7 @@ MLINKS+=getcap.3 cgetcap.3 \
 	getcap.3 cgetstr.3 \
 	getcap.3 cgetustr.3
 MLINKS+=getcwd.3 getwd.3
+MLINKS+=getcontext.3 getcontextx.3
 MLINKS+=getcontext.3 setcontext.3
 MLINKS+=getdomainname.3 setdomainname.3
 MLINKS+=getfsent.3 endfsent.3 \
@@ -490,6 +493,20 @@ MLINKS+=ttyname.3 isatty.3 \
 MLINKS+=tzset.3 tzsetwall.3
 MLINKS+=unvis.3 strunvis.3 \
 	unvis.3 strunvisx.3
-MLINKS+=vis.3 strvis.3 \
-	vis.3 strvisx.3
+MLINKS+=vis.3 nvis.3 \
+	vis.3 snvis.3 \
+	vis.3 strenvisx.3 \
+	vis.3 strnunvis.3 \
+	vis.3 strnunvisx.3 \
+	vis.3 strnvis.3 \
+	vis.3 strnvisx.3 \
+	vis.3 strsenvisx.3 \
+	vis.3 strsnvis.3 \
+	vis.3 strsnvisx.3 \
+	vis.3 strsvis.3 \
+	vis.3 strsvisx.3 \
+	vis.3 strvis.3 \
+	vis.3 strvisx.3 \
+	vis.3 svis.3
+
 MLINKS+=wordexp.3 wordfree.3

@@ -914,8 +914,8 @@ hptmv_event_notify(MV_SATA_ADAPTER *pMvSataAdapter, MV_EVENT_TYPE eventType,
 				else
 				{
 
-					MV_ERROR("RR18xx: illigal value for param1(%d) at "
-							 "connect/disconect event, host=%d\n", param1,
+					MV_ERROR("RR18xx: illegal value for param1(%d) at "
+							 "connect/disconnect event, host=%d\n", param1,
 							 pMvSataAdapter->adapterId );
 
 				}
@@ -983,7 +983,7 @@ hptmv_allocate_edma_queues(IAL_ADAPTER_T *pAdapter)
 	if ((pAdapter->responsesArrayBaseDmaAlignedAddr - pAdapter->responsesArrayBaseDmaAddr) != 
 		(pAdapter->responsesArrayBaseAlignedAddr - pAdapter->responsesArrayBaseAddr))
 	{
-		MV_ERROR("RR18xx[%d]: Error in Response Quueues Alignment\n",
+		MV_ERROR("RR18xx[%d]: Error in Response Queues Alignment\n",
 				 pAdapter->mvSataAdapter.adapterId);
 		contigfree(pAdapter->requestsArrayBaseAddr, REQUESTS_ARRAY_SIZE, M_DEVBUF);
 		contigfree(pAdapter->responsesArrayBaseAddr, RESPONSES_ARRAY_SIZE, M_DEVBUF);
@@ -1438,6 +1438,7 @@ unregister:
 			free(pAdapter->pbus_dmamap, M_DEVBUF);
 			goto unregister;
 		}
+		callout_handle_init(&pmap->timeout_ch);
 	}
 	/* setup PRD Tables */
 	KdPrint(("Allocate PRD Tables\n"));
@@ -2605,9 +2606,11 @@ launch_worker_thread(void)
 	 * hpt_worker_thread needs to be suspended after shutdown sync, when fs sync finished.
 	 */
 #if (__FreeBSD_version < 500043)
-	EVENTHANDLER_REGISTER(shutdown_post_sync, shutdown_kproc, hptdaemonproc, SHUTDOWN_PRI_FIRST);
+	EVENTHANDLER_REGISTER(shutdown_post_sync, shutdown_kproc, hptdaemonproc,
+	    SHUTDOWN_PRI_LAST);
 #else 
-	EVENTHANDLER_REGISTER(shutdown_post_sync, kproc_shutdown, hptdaemonproc, SHUTDOWN_PRI_FIRST);
+	EVENTHANDLER_REGISTER(shutdown_post_sync, kproc_shutdown, hptdaemonproc,
+	    SHUTDOWN_PRI_LAST);
 #endif
 }
 /*
@@ -2756,7 +2759,7 @@ hpt_io_dmamap_callback(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 		}
 	}
 
-	ccb->ccb_h.timeout_ch = timeout(hpt_timeout, (caddr_t)ccb, 20*hz);
+	pmap->timeout_ch = timeout(hpt_timeout, (caddr_t)ccb, 20*hz);
 	pVDev->pfnSendCommand(_VBUS_P pCmd);
 	CheckPendingCall(_VBUS_P0);
 }
@@ -2978,7 +2981,7 @@ fOsCommandDone(_VBUS_ARG PCommand pCmd)
 
 	KdPrint(("fOsCommandDone(pcmd=%p, result=%d)\n", pCmd, pCmd->Result));
 	
-	untimeout(hpt_timeout, (caddr_t)ccb, ccb->ccb_h.timeout_ch);
+	untimeout(hpt_timeout, (caddr_t)ccb, pmap->timeout_ch);
 	
 	switch(pCmd->Result) {
 	case RETURN_SUCCESS:

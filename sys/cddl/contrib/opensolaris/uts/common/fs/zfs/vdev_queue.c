@@ -35,17 +35,21 @@
 /*
  * These tunables are for performance analysis.
  */
-/*
- * zfs_vdev_max_pending is the maximum number of i/os concurrently
- * pending to each device.  zfs_vdev_min_pending is the initial number
- * of i/os pending to each device (before it starts ramping up to
- * max_pending).
- */
+
+/* The maximum number of I/Os concurrently pending to each device. */
 int zfs_vdev_max_pending = 10;
+
+/*
+ * The initial number of I/Os pending to each device, before it starts ramping
+ * up to zfs_vdev_max_pending.
+ */
 int zfs_vdev_min_pending = 4;
 
-/* deadline = pri + ddi_get_lbolt64() >> time_shift) */
-int zfs_vdev_time_shift = 6;
+/*
+ * The deadlines are grouped into buckets based on zfs_vdev_time_shift:
+ * deadline = pri + gethrtime() >> time_shift)
+ */
+int zfs_vdev_time_shift = 29; /* each bucket is 0.537 seconds */
 
 /* exponential I/O issue ramp-up rate */
 int zfs_vdev_ramp_rate = 2;
@@ -151,6 +155,8 @@ vdev_queue_init(vdev_t *vd)
 
 	avl_create(&vq->vq_pending_tree, vdev_queue_offset_compare,
 	    sizeof (zio_t), offsetof(struct zio, io_offset_node));
+
+	vq->vq_lastoffset = 0;
 }
 
 void
@@ -391,7 +397,7 @@ vdev_queue_io(zio_t *zio)
 
 	mutex_enter(&vq->vq_lock);
 
-	zio->io_timestamp = ddi_get_lbolt64();
+	zio->io_timestamp = gethrtime();
 	zio->io_deadline = (zio->io_timestamp >> zfs_vdev_time_shift) +
 	    zio->io_priority;
 
@@ -424,8 +430,7 @@ vdev_queue_io_done(zio_t *zio)
 
 	avl_remove(&vq->vq_pending_tree, zio);
 
-	vq->vq_io_complete_ts = ddi_get_lbolt64();
-	vq->vq_io_delta_ts = vq->vq_io_complete_ts - zio->io_timestamp;
+	vq->vq_io_complete_ts = gethrtime();
 
 	for (int i = 0; i < zfs_vdev_ramp_rate; i++) {
 		zio_t *nio = vdev_queue_io_to_issue(vq, zfs_vdev_max_pending);
@@ -442,4 +447,27 @@ vdev_queue_io_done(zio_t *zio)
 	}
 
 	mutex_exit(&vq->vq_lock);
+}
+
+/*
+ * As these three methods are only used for load calculations we're not concerned
+ * if we get an incorrect value on 32bit platforms due to lack of vq_lock mutex
+ * use here, instead we prefer to keep it lock free for performance.
+ */ 
+int
+vdev_queue_length(vdev_t *vd)
+{
+	return (avl_numnodes(&vd->vdev_queue.vq_pending_tree));
+}
+
+uint64_t
+vdev_queue_lastoffset(vdev_t *vd)
+{
+	return (vd->vdev_queue.vq_lastoffset);
+}
+
+void
+vdev_queue_register_lastoffset(vdev_t *vd, zio_t *zio)
+{
+	vd->vdev_queue.vq_lastoffset = zio->io_offset + zio->io_size;
 }

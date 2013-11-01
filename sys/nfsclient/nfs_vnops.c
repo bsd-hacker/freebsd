@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bio.h>
 #include <sys/buf.h>
 #include <sys/jail.h>
+#include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/namei.h>
@@ -59,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/dirent.h>
 #include <sys/fcntl.h>
 #include <sys/lockf.h>
+#include <sys/rwlock.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/signalvar.h>
@@ -77,6 +79,8 @@ __FBSDID("$FreeBSD$");
 #include <nfsclient/nfsm_subs.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
+#include <net/vnet.h>
 #include <netinet/in.h>
 #include <netinet/in_var.h>
 
@@ -1379,8 +1383,8 @@ nfs_writerpc(struct vnode *vp, struct uio *uiop, struct ucred *cred,
 	while (tsiz > 0) {
 		nfsstats.rpccnt[NFSPROC_WRITE]++;
 		len = (tsiz > wsize) ? wsize : tsiz;
-		mreq = m_get2(NFSX_FH(v3) + 5 * NFSX_UNSIGNED + nfsm_rndup(len),
-		    M_WAITOK, MT_DATA, 0);
+		mreq = m_get2(NFSX_FH(v3) + 5 * NFSX_UNSIGNED, M_WAITOK,
+		    MT_DATA, 0);
 		mb = mreq;
 		bpos = mtod(mb, caddr_t);
 		nfsm_fhtom(vp, v3);
@@ -3177,7 +3181,7 @@ loop:
 
 			error = BUF_TIMELOCK(bp,
 			    LK_EXCLUSIVE | LK_SLEEPFAIL | LK_INTERLOCK,
-			    BO_MTX(bo), "nfsfsync", slpflag, slptimeo);
+			    BO_LOCKPTR(bo), "nfsfsync", slpflag, slptimeo);
 			if (error == 0) {
 				BUF_UNLOCK(bp);
 				goto loop;

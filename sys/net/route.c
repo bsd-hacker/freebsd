@@ -54,6 +54,7 @@
 #include <sys/kernel.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <net/vnet.h>
@@ -68,8 +69,7 @@
 
 #include <vm/uma.h>
 
-/* We use 4 bits in the mbuf flags, thus we are limited to 16 FIBS. */
-#define	RT_MAXFIBS	16
+#define	RT_MAXFIBS	UINT16_MAX
 
 /* Kernel config default option. */
 #ifdef ROUTETABLES
@@ -86,17 +86,10 @@
 #define	RT_NUMFIBS	1
 #endif
 
+/* This is read-only.. */
 u_int rt_numfibs = RT_NUMFIBS;
 SYSCTL_UINT(_net, OID_AUTO, fibs, CTLFLAG_RD, &rt_numfibs, 0, "");
-/*
- * Allow the boot code to allow LESS than RT_MAXFIBS to be used.
- * We can't do more because storage is statically allocated for now.
- * (for compatibility reasons.. this will change. When this changes, code should
- * be refactored to protocol independent parts and protocol dependent parts,
- * probably hanging of domain(9) specific storage to not need the full
- * fib * af RNH allocation etc. but allow tuning the number of tables per
- * address family).
- */
+/* and this can be set too big but will be fixed before it is used */
 TUNABLE_INT("net.fibs", &rt_numfibs);
 
 /*
@@ -191,20 +184,12 @@ rt_tables_get_rnh(int table, int fam)
 static void
 route_init(void)
 {
-	struct domain *dom;
-	int max_keylen = 0;
 
 	/* whack the tunable ints into  line. */
 	if (rt_numfibs > RT_MAXFIBS)
 		rt_numfibs = RT_MAXFIBS;
 	if (rt_numfibs == 0)
 		rt_numfibs = 1;
-
-	for (dom = domains; dom; dom = dom->dom_next)
-		if (dom->dom_maxrtkey > max_keylen)
-			max_keylen = dom->dom_maxrtkey;
-
-	rn_init(max_keylen);	/* init all zeroes, all ones, mask table */
 }
 SYSINIT(route_init, SI_SUB_PROTO_DOMAIN, SI_ORDER_THIRD, route_init, 0);
 
@@ -1574,7 +1559,7 @@ rtinit1(struct ifaddr *ifa, int cmd, int flags, int fibnum)
 			info.rti_ifa = NULL;
 			info.rti_flags = RTF_RNH_LOCKED;
 
-			error = rtrequest1_fib(RTM_DELETE, &info, &rt, fibnum);
+			error = rtrequest1_fib(RTM_DELETE, &info, NULL, fibnum);
 			if (error == 0) {
 				info.rti_ifa = ifa;
 				info.rti_flags = flags | RTF_RNH_LOCKED |

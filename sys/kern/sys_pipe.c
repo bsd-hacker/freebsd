@@ -164,6 +164,7 @@ struct fileops pipeops = {
 	.fo_close = pipe_close,
 	.fo_chmod = pipe_chmod,
 	.fo_chown = pipe_chown,
+	.fo_sendfile = invfo_sendfile,
 	.fo_flags = DFLAG_PASSABLE
 };
 
@@ -477,6 +478,24 @@ sys_pipe(struct thread *td, struct pipe_args *uap)
 	return (0);
 }
 
+int
+sys_pipe2(struct thread *td, struct pipe2_args *uap)
+{
+	int error, fildes[2];
+
+	if (uap->flags & ~(O_CLOEXEC | O_NONBLOCK))
+		return (EINVAL);
+	error = kern_pipe2(td, fildes, uap->flags);
+	if (error)
+		return (error);
+	error = copyout(fildes, uap->fildes, 2 * sizeof(int));
+	if (error) {
+		(void)kern_close(td, fildes[0]);
+		(void)kern_close(td, fildes[1]);
+	}
+	return (error);
+}
+
 /*
  * Allocate kva for pipe circular buffer, the space is pageable
  * This routine will 'realloc' the size of a pipe safely, if it fails
@@ -505,7 +524,7 @@ retry:
 	buffer = (caddr_t) vm_map_min(pipe_map);
 
 	error = vm_map_find(pipe_map, NULL, 0,
-		(vm_offset_t *) &buffer, size, 1,
+		(vm_offset_t *) &buffer, size, 0, VMFS_ANY_SPACE,
 		VM_PROT_ALL, VM_PROT_ALL, 0);
 	if (error != KERN_SUCCESS) {
 		if ((cpipe->pipe_buffer.buffer == NULL) &&

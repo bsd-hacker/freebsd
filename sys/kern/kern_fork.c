@@ -89,10 +89,8 @@ dtrace_fork_func_t	dtrace_fasttrap_fork;
 #endif
 
 SDT_PROVIDER_DECLARE(proc);
-SDT_PROBE_DEFINE(proc, kernel, , create, create);
-SDT_PROBE_ARGTYPE(proc, kernel, , create, 0, "struct proc *");
-SDT_PROBE_ARGTYPE(proc, kernel, , create, 1, "struct proc *");
-SDT_PROBE_ARGTYPE(proc, kernel, , create, 2, "int");
+SDT_PROBE_DEFINE3(proc, kernel, , create, create, "struct proc *",
+    "struct proc *", "int");
 
 #ifndef _SYS_SYSPROTO_H_
 struct fork_args {
@@ -491,6 +489,7 @@ do_fork(struct thread *td, int flags, struct proc *p2, struct thread *td2,
 	 * Increase reference counts on shared objects.
 	 */
 	p2->p_flag = P_INMEM;
+	p2->p_flag2 = 0;
 	p2->p_swtick = ticks;
 	if (p1->p_flag & P_PROFIL)
 		startprofclock(p2);
@@ -513,6 +512,11 @@ do_fork(struct thread *td, int flags, struct proc *p2, struct thread *td2,
 	p2->p_textvp = p1->p_textvp;
 	p2->p_fd = fd;
 	p2->p_fdtol = fdtol;
+
+	if (p1->p_flag2 & P2_INHERIT_PROTECTED) {
+		p2->p_flag |= P_PROTECTED;
+		p2->p_flag2 |= P2_INHERIT_PROTECTED;
+	}
 
 	/*
 	 * p_limit is copy-on-write.  Bump its refcount.
@@ -930,8 +934,8 @@ fork1(struct thread *td, int flags, int pages, struct proc **procp,
 fail:
 	sx_sunlock(&proctree_lock);
 	if (ppsratecheck(&lastfail, &curfail, 1))
-		printf("maxproc limit exceeded by uid %i, please see tuning(7) and login.conf(5).\n",
-		    td->td_ucred->cr_ruid);
+		printf("maxproc limit exceeded by uid %u (pid %d); see tuning(7) and login.conf(5)\n",
+		    td->td_ucred->cr_ruid, p1->p_pid);
 	sx_xunlock(&allproc_lock);
 #ifdef MAC
 	mac_proc_destroy(newproc);

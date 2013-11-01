@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/if_dl.h>
 #include <net/if_llc.h>
@@ -9242,7 +9243,7 @@ back:
 	/*
 	 * Setup RX buf descriptor
 	 */
-	dr->setdesc(dr, desc, paddr, meta->mt_m->m_len -
+	dr->setdesc(dr, desc, meta->mt_paddr, meta->mt_m->m_len -
 	    sizeof(*hdr), 0, 0, 0);
 	return (error);
 }

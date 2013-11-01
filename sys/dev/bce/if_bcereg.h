@@ -32,55 +32,6 @@
 #ifndef	_BCEREG_H_DEFINED
 #define _BCEREG_H_DEFINED
 
-#ifdef HAVE_KERNEL_OPTION_HEADERS
-#include "opt_device_polling.h"
-#endif
-
-#include <sys/param.h>
-#include <sys/endian.h>
-#include <sys/systm.h>
-#include <sys/sockio.h>
-#include <sys/mbuf.h>
-#include <sys/malloc.h>
-#include <sys/kernel.h>
-#include <sys/module.h>
-#include <sys/socket.h>
-#include <sys/sysctl.h>
-#include <sys/queue.h>
-
-#include <net/bpf.h>
-#include <net/ethernet.h>
-#include <net/if.h>
-#include <net/if_arp.h>
-#include <net/if_dl.h>
-#include <net/if_media.h>
-
-#include <net/if_types.h>
-#include <net/if_vlan_var.h>
-
-#include <netinet/in_systm.h>
-#include <netinet/in.h>
-#include <netinet/if_ether.h>
-#include <netinet/ip.h>
-#include <netinet/ip6.h>
-#include <netinet/tcp.h>
-#include <netinet/udp.h>
-
-#include <machine/bus.h>
-#include <machine/resource.h>
-#include <sys/bus.h>
-#include <sys/rman.h>
-
-#include <dev/mii/mii.h>
-#include <dev/mii/miivar.h>
-#include "miidevs.h"
-#include <dev/mii/brgphyreg.h>
-
-#include <dev/pci/pcireg.h>
-#include <dev/pci/pcivar.h>
-
-#include "miibus_if.h"
-
 /****************************************************************************/
 /* Conversion to FreeBSD type definitions.                                  */
 /****************************************************************************/
@@ -6336,13 +6287,13 @@ struct fw_info {
 	u32 bss_addr;
 	u32 bss_len;
 	u32 bss_index;
-	u32 *bss;
+	const u32 *bss;
 
 	/* Read-only section. */
 	u32 rodata_addr;
 	u32 rodata_len;
 	u32 rodata_index;
-	u32 *rodata;
+	const u32 *rodata;
 };
 
 #define RV2P_PROC1		0
@@ -6421,6 +6372,8 @@ struct fw_info {
 
 struct bce_softc
 {
+	struct mtx		bce_mtx;
+
 	/* Interface info */
 	struct ifnet		*bce_ifp;
 
@@ -6448,8 +6401,6 @@ struct bce_softc
 	/* IRQ Resource Handle */
 	struct resource		*bce_res_irq;
 
-	struct mtx		bce_mtx;
-
 	/* Interrupt handler. */
 	void			*bce_intrhand;
 
@@ -6469,6 +6420,7 @@ struct bce_softc
 #define BCE_USING_MSIX_FLAG			0x00000100
 #define BCE_PCIE_FLAG				0x00000200
 #define BCE_USING_TX_FLOW_CONTROL		0x00000400
+#define BCE_USING_RX_FLOW_CONTROL		0x00000800
 
 	/* Controller capability flags. */
 	u32			bce_cap_flags;
@@ -6563,14 +6515,6 @@ struct bce_softc
 	u16			bce_rx_ticks;
 	u32			bce_stats_ticks;
 
-	/* ToDo: Can these be removed? */
-	u16			bce_comp_prod_trip_int;
-	u16			bce_comp_prod_trip;
-	u16			bce_com_ticks_int;
-	u16			bce_com_ticks;
-	u16			bce_cmd_ticks_int;
-	u16			bce_cmd_ticks;
-
 	/* The address of the integrated PHY on the MII bus. */
 	int			bce_phy_addr;
 
@@ -6603,11 +6547,9 @@ struct bce_softc
 	int			watchdog_timer;
 
 	/* Frame size and mbuf allocation size for RX frames. */
-	u32			max_frame_size;
 	int			rx_bd_mbuf_alloc_size;
 	int			rx_bd_mbuf_data_len;
 	int			rx_bd_mbuf_align_pad;
-	int			pg_bd_mbuf_alloc_size;
 
 	/* Receive mode settings (i.e promiscuous, multicast, etc.). */
 	u32			rx_mode;

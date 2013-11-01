@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_mpath.h"
 
 #include <sys/param.h>
+#include <sys/eventhandler.h>
 #include <sys/systm.h>
 #include <sys/sockio.h>
 #include <sys/malloc.h>
@@ -84,9 +85,6 @@ SYSCTL_VNET_INT(_net_inet_ip, OID_AUTO, no_same_prefix, CTLFLAG_RW,
 
 VNET_DECLARE(struct inpcbinfo, ripcbinfo);
 #define	V_ripcbinfo			VNET(ripcbinfo)
-
-VNET_DECLARE(struct arpstat, arpstat);  /* ARP statistics, see if_arp.h */
-#define	V_arpstat		VNET(arpstat)
 
 /*
  * Return 1 if an internet address is for a ``local'' host
@@ -407,16 +405,8 @@ in_control(struct socket *so, u_long cmd, caddr_t data, struct ifnet *ifp,
 			goto out;
 		}
 		if (ia == NULL) {
-			ia = (struct in_ifaddr *)
-				malloc(sizeof *ia, M_IFADDR, M_NOWAIT |
-				    M_ZERO);
-			if (ia == NULL) {
-				error = ENOBUFS;
-				goto out;
-			}
-
-			ifa = &ia->ia_ifa;
-			ifa_init(ifa);
+			ifa = ifa_alloc(sizeof(struct in_ifaddr), M_WAITOK);
+			ia = (struct in_ifaddr *)ifa;
 			ifa->ifa_addr = (struct sockaddr *)&ia->ia_addr;
 			ifa->ifa_dstaddr = (struct sockaddr *)&ia->ia_dstaddr;
 			ifa->ifa_netmask = (struct sockaddr *)&ia->ia_sockmask;
@@ -498,7 +488,7 @@ in_control(struct socket *so, u_long cmd, caddr_t data, struct ifnet *ifp,
 			 * is the same as before, then the call is
 			 * un-necessarily executed here.
 			 */
-			in_ifscrub(ifp, ia, LLE_STATIC);
+			in_scrubprefix(ia, LLE_STATIC);
 			ia->ia_sockmask = ifra->ifra_mask;
 			ia->ia_sockmask.sin_family = AF_INET;
 			ia->ia_subnetmask =
@@ -507,7 +497,7 @@ in_control(struct socket *so, u_long cmd, caddr_t data, struct ifnet *ifp,
 		}
 		if ((ifp->if_flags & IFF_POINTOPOINT) &&
 		    (ifra->ifra_dstaddr.sin_family == AF_INET)) {
-			in_ifscrub(ifp, ia, LLE_STATIC);
+			in_scrubprefix(ia, LLE_STATIC);
 			ia->ia_dstaddr = ifra->ifra_dstaddr;
 			maskIsNew  = 1; /* We lie; but the effect's the same */
 		}
@@ -533,9 +523,9 @@ in_control(struct socket *so, u_long cmd, caddr_t data, struct ifnet *ifp,
 
 	case SIOCDIFADDR:
 		/*
-		 * in_ifscrub kills the interface route.
+		 * in_scrubprefix() kills the interface route.
 		 */
-		in_ifscrub(ifp, ia, LLE_STATIC);
+		in_scrubprefix(ia, LLE_STATIC);
 
 		/*
 		 * in_ifadown gets rid of all the rest of
@@ -778,16 +768,6 @@ in_lifaddr_ioctl(struct socket *so, u_long cmd, caddr_t data,
 	}
 
 	return (EOPNOTSUPP);	/*just for safety*/
-}
-
-/*
- * Delete any existing route for an interface.
- */
-void
-in_ifscrub(struct ifnet *ifp, struct in_ifaddr *ia, u_int flags)
-{
-
-	in_scrubprefix(ia, flags);
 }
 
 /*
@@ -1467,10 +1447,14 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 			LLE_WLOCK(lle);
 			lle->la_flags |= LLE_DELETED;
 			EVENTHANDLER_INVOKE(lle_event, lle, LLENTRY_DELETED);
-			LLE_WUNLOCK(lle);
 #ifdef DIAGNOSTIC
-			log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);
+			log(LOG_INFO, "ifaddr cache = %p is deleted\n", lle);
 #endif
+			if ((lle->la_flags &
+			    (LLE_STATIC | LLE_IFADDR)) == LLE_STATIC)
+				llentry_free(lle);
+			else
+				LLE_WUNLOCK(lle);
 		}
 		lle = (void *)-1;
 

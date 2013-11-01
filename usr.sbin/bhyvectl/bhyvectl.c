@@ -186,18 +186,18 @@ usage(void)
 	"       [--set-x2apic-state=<state>]\n"
 	"       [--get-x2apic-state]\n"
 	"       [--unassign-pptdev=<bus/slot/func>]\n"
-	"       [--set-lowmem=<memory below 4GB in units of MB>]\n"
+	"       [--set-mem=<memory in units of MB>]\n"
 	"       [--get-lowmem]\n"
-	"       [--set-highmem=<memory above 4GB in units of MB>]\n"
-	"       [--get-highmem]\n",
+	"       [--get-highmem]\n"
+	"       [--get-gpa-pmap]\n",
 	progname);
 	exit(1);
 }
 
-static int get_stats, getcap, setcap, capval;
+static int get_stats, getcap, setcap, capval, get_gpa_pmap;
 static const char *capname;
 static int create, destroy, get_lowmem, get_highmem;
-static uint64_t lowmem, highmem;
+static uint64_t memsize;
 static int set_cr0, get_cr0, set_cr3, get_cr3, set_cr4, get_cr4;
 static int set_efer, get_efer;
 static int set_dr7, get_dr7;
@@ -351,8 +351,7 @@ vm_set_vmcs_field(struct vmctx *ctx, int vcpu, int field, uint64_t val)
 enum {
 	VMNAME = 1000,	/* avoid collision with return values from getopt */
 	VCPU,
-	SET_LOWMEM,
-	SET_HIGHMEM,
+	SET_MEM,
 	SET_EFER,
 	SET_CR0,
 	SET_CR3,
@@ -379,18 +378,20 @@ enum {
 	SET_CAP,
 	CAPNAME,
 	UNASSIGN_PPTDEV,
+	GET_GPA_PMAP,
 };
 
 int
 main(int argc, char *argv[])
 {
 	char *vmname;
-	int error, ch, vcpu;
-	vm_paddr_t gpa;
+	int error, ch, vcpu, ptenum;
+	vm_paddr_t gpa, gpa_pmap;
 	size_t len;
 	struct vm_exit vmexit;
-	uint64_t ctl, eptp, bm, addr, u64;
+	uint64_t ctl, eptp, bm, addr, u64, pteval[4], *pte;
 	struct vmctx *ctx;
+	int wired;
 
 	uint64_t cr0, cr3, cr4, dr7, rsp, rip, rflags, efer, pat;
 	uint64_t rax, rbx, rcx, rdx, rsi, rdi, rbp;
@@ -400,8 +401,7 @@ main(int argc, char *argv[])
 	struct option opts[] = {
 		{ "vm",		REQ_ARG,	0,	VMNAME },
 		{ "cpu",	REQ_ARG,	0,	VCPU },
-		{ "set-lowmem",	REQ_ARG,	0,	SET_LOWMEM },
-		{ "set-highmem",REQ_ARG,	0,	SET_HIGHMEM },
+		{ "set-mem",	REQ_ARG,	0,	SET_MEM },
 		{ "set-efer",	REQ_ARG,	0,	SET_EFER },
 		{ "set-cr0",	REQ_ARG,	0,	SET_CR0 },
 		{ "set-cr3",	REQ_ARG,	0,	SET_CR3 },
@@ -430,6 +430,7 @@ main(int argc, char *argv[])
 		{ "capname",	REQ_ARG,	0,	CAPNAME },
 		{ "unassign-pptdev", REQ_ARG,	0,	UNASSIGN_PPTDEV },
 		{ "setcap",	REQ_ARG,	0,	SET_CAP },
+		{ "get-gpa-pmap", REQ_ARG,	0,	GET_GPA_PMAP },
 		{ "getcap",	NO_ARG,		&getcap,	1 },
 		{ "get-stats",	NO_ARG,		&get_stats,	1 },
 		{ "get-desc-ds",NO_ARG,		&get_desc_ds,	1 },
@@ -572,13 +573,9 @@ main(int argc, char *argv[])
 		case VCPU:
 			vcpu = atoi(optarg);
 			break;
-		case SET_LOWMEM:
-			lowmem = atoi(optarg) * MB;
-			lowmem = roundup(lowmem, 2 * MB);
-			break;
-		case SET_HIGHMEM:
-			highmem = atoi(optarg) * MB;
-			highmem = roundup(highmem, 2 * MB);
+		case SET_MEM:
+			memsize = atoi(optarg) * MB;
+			memsize = roundup(memsize, 2 * MB);
 			break;
 		case SET_EFER:
 			efer = strtoul(optarg, NULL, 0);
@@ -673,6 +670,10 @@ main(int argc, char *argv[])
 			capval = strtoul(optarg, NULL, 0);
 			setcap = 1;
 			break;
+		case GET_GPA_PMAP:
+			gpa_pmap = strtoul(optarg, NULL, 0);
+			get_gpa_pmap = 1;
+			break;
 		case CAPNAME:
 			capname = optarg;
 			break;
@@ -702,11 +703,8 @@ main(int argc, char *argv[])
 			error = -1;
 	}
 
-	if (!error && lowmem)
-		error = vm_setup_memory(ctx, 0, lowmem, NULL);
-
-	if (!error && highmem)
-		error = vm_setup_memory(ctx, 4 * GB, highmem, NULL);
+	if (!error && memsize)
+		error = vm_setup_memory(ctx, memsize, VM_MMAP_NONE);
 
 	if (!error && set_efer)
 		error = vm_set_register(ctx, vcpu, VM_REG_GUEST_EFER, efer);
@@ -829,16 +827,18 @@ main(int argc, char *argv[])
 
 	if (!error && (get_lowmem || get_all)) {
 		gpa = 0;
-		error = vm_get_memory_seg(ctx, gpa, &len);
+		error = vm_get_memory_seg(ctx, gpa, &len, &wired);
 		if (error == 0)
-			printf("lowmem\t\t0x%016lx/%ld\n", gpa, len);
+			printf("lowmem\t\t0x%016lx/%ld%s\n", gpa, len,
+			    wired ? " wired" : "");
 	}
 
 	if (!error && (get_highmem || get_all)) {
 		gpa = 4 * GB;
-		error = vm_get_memory_seg(ctx, gpa, &len);
+		error = vm_get_memory_seg(ctx, gpa, &len, &wired);
 		if (error == 0)
-			printf("highmem\t\t0x%016lx/%ld\n", gpa, len);
+			printf("highmem\t\t0x%016lx/%ld%s\n", gpa, len,
+			    wired ? " wired" : "");
 	}
 
 	if (!error && (get_efer || get_all)) {
@@ -991,7 +991,7 @@ main(int argc, char *argv[])
 			printf("vcpu%d\n", vcpu);
 			for (i = 0; i < num_stats; i++) {
 				desc = vm_get_stat_desc(ctx, i);
-				printf("%-32s\t%ld\n", desc, stats[i]);
+				printf("%-40s\t%ld\n", desc, stats[i]);
 			}
 		}
 	}
@@ -1467,6 +1467,17 @@ main(int argc, char *argv[])
 			printf("Capability \"%s\" is not available\n", capname);
 	}
 
+	if (!error && get_gpa_pmap) {
+		error = vm_get_gpa_pmap(ctx, gpa_pmap, pteval, &ptenum);
+		if (error == 0) {
+			printf("gpa %#lx:", gpa_pmap);
+			pte = &pteval[0];
+			while (ptenum-- > 0)
+				printf(" %#lx", *pte++);
+			printf("\n");
+		}
+	}
+
 	if (!error && (getcap || get_all)) {
 		int captype, val, getcaptype;
 
@@ -1484,6 +1495,7 @@ main(int argc, char *argv[])
 					vm_capability_type2name(captype),
 					val ? "set" : "not set", vcpu);
 			} else if (errno == ENOENT) {
+				error = 0;
 				printf("Capability \"%s\" is not available\n",
 					vm_capability_type2name(captype));
 			} else {

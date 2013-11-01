@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include "error.h"
 #include "mystring.h"
 #include "syntax.h"
+#include "trap.h"
 
 #undef eflag
 
@@ -102,6 +103,8 @@ readcmd(int argc __unused, char **argv __unused)
 	struct timeval tv;
 	char *tvptr;
 	fd_set ifds;
+	ssize_t nread;
+	int sig;
 
 	rflag = 0;
 	prompt = NULL;
@@ -156,8 +159,10 @@ readcmd(int argc __unused, char **argv __unused)
 		/*
 		 * If there's nothing ready, return an error.
 		 */
-		if (status <= 0)
-			return(1);
+		if (status <= 0) {
+			sig = pendingsig;
+			return (128 + (sig != 0 ? sig : SIGALRM));
+		}
 	}
 
 	status = 0;
@@ -165,7 +170,19 @@ readcmd(int argc __unused, char **argv __unused)
 	backslash = 0;
 	STARTSTACKSTR(p);
 	for (;;) {
-		if (read(STDIN_FILENO, &c, 1) != 1) {
+		nread = read(STDIN_FILENO, &c, 1);
+		if (nread == -1) {
+			if (errno == EINTR) {
+				sig = pendingsig;
+				if (sig == 0)
+					continue;
+				status = 128 + sig;
+				break;
+			}
+			warning("read error: %s", strerror(errno));
+			status = 2;
+			break;
+		} else if (nread != 1) {
 			status = 1;
 			break;
 		}
@@ -388,6 +405,9 @@ static const struct limits limits[] = {
 #ifdef RLIMIT_NPTS
 	{ "pseudo-terminals",	(char *)0,	RLIMIT_NPTS,	   1, 'p' },
 #endif
+#ifdef RLIMIT_KQUEUES
+	{ "kqueues",		(char *)0,	RLIMIT_KQUEUES,	   1, 'k' },
+#endif
 	{ (char *) 0,		(char *)0,	0,		   0, '\0' }
 };
 
@@ -404,7 +424,7 @@ ulimitcmd(int argc __unused, char **argv __unused)
 	struct rlimit	limit;
 
 	what = 'f';
-	while ((optc = nextopt("HSatfdsmcnuvlbpw")) != '\0')
+	while ((optc = nextopt("HSatfdsmcnuvlbpwk")) != '\0')
 		switch (optc) {
 		case 'H':
 			how = HARD;

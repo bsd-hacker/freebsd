@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  */
 
 #include <sys/dsl_scan.h>
@@ -125,6 +125,15 @@ dsl_scan_init(dsl_pool_t *dp, uint64_t txg)
 	scn = dp->dp_scan = kmem_zalloc(sizeof (dsl_scan_t), KM_SLEEP);
 	scn->scn_dp = dp;
 
+	/*
+	 * It's possible that we're resuming a scan after a reboot so
+	 * make sure that the scan_async_destroying flag is initialized
+	 * appropriately.
+	 */
+	ASSERT(!scn->scn_async_destroying);
+	scn->scn_async_destroying = spa_feature_is_active(dp->dp_spa,
+	    &spa_feature_table[SPA_FEATURE_ASYNC_DESTROY]);
+
 	err = zap_lookup(dp->dp_meta_objset, DMU_POOL_DIRECTORY_OBJECT,
 	    "scrub_func", sizeof (uint64_t), 1, &f);
 	if (err == 0) {
@@ -189,7 +198,7 @@ dsl_scan_setup_check(void *arg, dmu_tx_t *tx)
 	dsl_scan_t *scn = dmu_tx_pool(tx)->dp_scan;
 
 	if (scn->scn_phys.scn_state == DSS_SCANNING)
-		return (EBUSY);
+		return (SET_ERROR(EBUSY));
 
 	return (0);
 }
@@ -215,6 +224,7 @@ dsl_scan_setup_sync(void *arg, dmu_tx_t *tx)
 	scn->scn_phys.scn_errors = 0;
 	scn->scn_phys.scn_to_examine = spa->spa_root_vdev->vdev_stat.vs_alloc;
 	scn->scn_restart_txg = 0;
+	scn->scn_done_txg = 0;
 	spa_scan_stat_init(spa);
 
 	if (DSL_SCAN_IS_SCRUB_RESILVER(scn)) {
@@ -349,7 +359,7 @@ dsl_scan_cancel_check(void *arg, dmu_tx_t *tx)
 	dsl_scan_t *scn = dmu_tx_pool(tx)->dp_scan;
 
 	if (scn->scn_phys.scn_state != DSS_SCANNING)
-		return (ENOENT);
+		return (SET_ERROR(ENOENT));
 	return (0);
 }
 
@@ -434,7 +444,7 @@ dsl_scan_check_pause(dsl_scan_t *scn, const zbookmark_t *zb)
 	    zfs_resilver_min_time_ms : zfs_scan_min_time_ms;
 	elapsed_nanosecs = gethrtime() - scn->scn_sync_start_time;
 	if (elapsed_nanosecs / NANOSEC > zfs_txg_timeout ||
-	    (elapsed_nanosecs / MICROSEC > mintime &&
+	    (NSEC2MSEC(elapsed_nanosecs) > mintime &&
 	    txg_sync_waiting(scn->scn_dp)) ||
 	    spa_shutting_down(scn->scn_dp->dp_spa)) {
 		if (zb) {
@@ -791,7 +801,7 @@ dsl_scan_visitbp(blkptr_t *bp, const zbookmark_t *zb,
 	 * Don't scan it now unless we need to because something
 	 * under it was modified.
 	 */
-	if (bp->blk_birth <= scn->scn_phys.scn_cur_max_txg) {
+	if (BP_PHYSICAL_BIRTH(bp) <= scn->scn_phys.scn_cur_max_txg) {
 		scan_funcs[scn->scn_phys.scn_func](dp, bp, zb);
 	}
 	if (buf)
@@ -1236,7 +1246,7 @@ dsl_scan_ddt_entry(dsl_scan_t *scn, enum zio_checksum checksum,
 
 	for (int p = 0; p < DDT_PHYS_TYPES; p++, ddp++) {
 		if (ddp->ddp_phys_birth == 0 ||
-		    ddp->ddp_phys_birth > scn->scn_phys.scn_cur_max_txg)
+		    ddp->ddp_phys_birth > scn->scn_phys.scn_max_txg)
 			continue;
 		ddt_bp_create(checksum, ddk, ddp, &bp);
 
@@ -1339,7 +1349,7 @@ dsl_scan_free_should_pause(dsl_scan_t *scn)
 
 	elapsed_nanosecs = gethrtime() - scn->scn_sync_start_time;
 	return (elapsed_nanosecs / NANOSEC > zfs_txg_timeout ||
-	    (elapsed_nanosecs / MICROSEC > zfs_free_min_time_ms &&
+	    (NSEC2MSEC(elapsed_nanosecs) > zfs_free_min_time_ms &&
 	    txg_sync_waiting(scn->scn_dp)) ||
 	    spa_shutting_down(scn->scn_dp->dp_spa));
 }
@@ -1352,7 +1362,7 @@ dsl_scan_free_block_cb(void *arg, const blkptr_t *bp, dmu_tx_t *tx)
 	if (!scn->scn_is_bptree ||
 	    (BP_GET_LEVEL(bp) == 0 && BP_GET_TYPE(bp) != DMU_OT_OBJSET)) {
 		if (dsl_scan_free_should_pause(scn))
-			return (ERESTART);
+			return (SET_ERROR(ERESTART));
 	}
 
 	zio_nowait(zio_free_sync(scn->scn_zio_root, scn->scn_dp->dp_spa,
@@ -1375,13 +1385,10 @@ dsl_scan_active(dsl_scan_t *scn)
 	if (spa_shutting_down(spa))
 		return (B_FALSE);
 
-	if (scn->scn_phys.scn_state == DSS_SCANNING)
+	if (scn->scn_phys.scn_state == DSS_SCANNING ||
+	    scn->scn_async_destroying)
 		return (B_TRUE);
 
-	if (spa_feature_is_active(spa,
-	    &spa_feature_table[SPA_FEATURE_ASYNC_DESTROY])) {
-		return (B_TRUE);
-	}
 	if (spa_version(scn->scn_dp->dp_spa) >= SPA_VERSION_DEADLISTS) {
 		(void) bpobj_space(&scn->scn_dp->dp_free_bpobj,
 		    &used, &comp, &uncomp);
@@ -1437,6 +1444,7 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 
 		if (err == 0 && spa_feature_is_active(spa,
 		    &spa_feature_table[SPA_FEATURE_ASYNC_DESTROY])) {
+			ASSERT(scn->scn_async_destroying);
 			scn->scn_is_bptree = B_TRUE;
 			scn->scn_zio_root = zio_root(dp->dp_spa, NULL,
 			    NULL, ZIO_FLAG_MUSTSUCCEED);
@@ -1457,6 +1465,7 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 				VERIFY0(bptree_free(dp->dp_meta_objset,
 				    dp->dp_bptree_obj, tx));
 				dp->dp_bptree_obj = 0;
+				scn->scn_async_destroying = B_FALSE;
 			}
 		}
 		if (scn->scn_visited_this_txg) {
@@ -1464,7 +1473,7 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 			    "free_bpobj/bptree txg %llu",
 			    (longlong_t)scn->scn_visited_this_txg,
 			    (longlong_t)
-			    (gethrtime() - scn->scn_sync_start_time) / MICROSEC,
+			    NSEC2MSEC(gethrtime() - scn->scn_sync_start_time),
 			    (longlong_t)tx->tx_txg);
 			scn->scn_visited_this_txg = 0;
 			/*
@@ -1479,6 +1488,16 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 
 	if (scn->scn_phys.scn_state != DSS_SCANNING)
 		return;
+
+	if (scn->scn_done_txg == tx->tx_txg) {
+		ASSERT(!scn->scn_pausing);
+		/* finished with scan. */
+		zfs_dbgmsg("txg %llu scan complete", tx->tx_txg);
+		dsl_scan_done(scn, B_TRUE, tx);
+		ASSERT3U(spa->spa_scrub_inflight, ==, 0);
+		dsl_scan_sync_state(scn, tx);
+		return;
+	}
 
 	if (scn->scn_phys.scn_ddt_bookmark.ddb_class <=
 	    scn->scn_phys.scn_ddt_class_max) {
@@ -1512,12 +1531,12 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 
 	zfs_dbgmsg("visited %llu blocks in %llums",
 	    (longlong_t)scn->scn_visited_this_txg,
-	    (longlong_t)(gethrtime() - scn->scn_sync_start_time) / MICROSEC);
+	    (longlong_t)NSEC2MSEC(gethrtime() - scn->scn_sync_start_time));
 
 	if (!scn->scn_pausing) {
-		/* finished with scan. */
-		zfs_dbgmsg("finished scan txg %llu", (longlong_t)tx->tx_txg);
-		dsl_scan_done(scn, B_TRUE, tx);
+		scn->scn_done_txg = tx->tx_txg + 1;
+		zfs_dbgmsg("txg %llu traversal complete, waiting till txg %llu",
+		    tx->tx_txg, scn->scn_done_txg);
 	}
 
 	if (DSL_SCAN_IS_SCRUB_RESILVER(scn)) {

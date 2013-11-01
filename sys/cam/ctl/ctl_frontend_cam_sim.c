@@ -119,7 +119,6 @@ struct cfcs_softc cfcs_softc;
  * amount of SCSI sense data that we will report to CAM.
  */
 static int cfcs_max_sense = sizeof(struct scsi_sense_data);
-extern int ctl_disable;
 
 SYSCTL_NODE(_kern_cam, OID_AUTO, ctl2cam, CTLFLAG_RD, 0,
 	    "CAM Target Layer SIM frontend");
@@ -149,10 +148,6 @@ cfcs_init(void)
 	char wwnn[8];
 #endif
 	int retval;
-
-	/* Don't continue if CTL is disabled */
-	if (ctl_disable != 0)
-		return (0);
 
 	softc = &cfcs_softc;
 	retval = 0;
@@ -316,7 +311,7 @@ cfcs_onoffline(void *arg, int online)
 		goto bailout;
 	}
 
-	if (xpt_create_path(&ccb->ccb_h.path, xpt_periph,
+	if (xpt_create_path(&ccb->ccb_h.path, NULL,
 			    cam_sim_path(softc->sim), CAM_TARGET_WILDCARD,
 			    CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
 		printf("%s: can't allocate path for rescan\n", __func__);
@@ -509,13 +504,8 @@ static void
 cfcs_done(union ctl_io *io)
 {
 	union ccb *ccb;
-	struct cfcs_softc *softc;
-	struct cam_sim *sim;
 
 	ccb = io->io_hdr.ctl_private[CTL_PRIV_FRONTEND].ptr;
-
-	sim = xpt_path_sim(ccb->ccb_h.path);
-	softc = (struct cfcs_softc *)cam_sim_softc(sim);
 
 	/*
 	 * At this point we should have status.  If we don't, that's a bug.
@@ -555,10 +545,7 @@ cfcs_done(union ctl_io *io)
 		break;
 	}
 
-	mtx_lock(sim->mtx);
 	xpt_done(ccb);
-	mtx_unlock(sim->mtx);
-
 	ctl_free_io(io);
 }
 

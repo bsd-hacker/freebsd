@@ -175,7 +175,8 @@ static int hpt_alloc_mem(PVBUS_EXT vbus_ext)
 
 		HPT_ASSERT((f->size & (f->alignment-1))==0);
 
-		for (order=0, size=PAGE_SIZE; size<f->size; order++, size<<=1) ;
+		for (order=0, size=PAGE_SIZE; size<f->size; order++, size<<=1)
+			;
 
 		KdPrint(("%s: %d*%d=%d bytes, order %d",
 			f->tag, f->count, f->size, f->count*f->size, order));
@@ -439,7 +440,7 @@ static void os_cmddone(PCOMMAND pCmd)
 
 	KdPrint(("os_cmddone(%p, %d)", pCmd, pCmd->Result));
 	
-	untimeout(hpt_timeout, pCmd, ccb->ccb_h.timeout_ch);
+	untimeout(hpt_timeout, pCmd, ext->timeout_ch);
 
 	switch(pCmd->Result) {
 	case RETURN_SUCCESS:
@@ -518,7 +519,7 @@ static void hpt_io_dmamap_callback(void *arg, bus_dma_segment_t *segs, int nsegs
 			    BUS_DMASYNC_PREWRITE);
 		}
 	}
-	ext->ccb->ccb_h.timeout_ch = timeout(hpt_timeout, pCmd, HPT_OSM_TIMEOUT);
+	ext->timeout_ch = timeout(hpt_timeout, pCmd, HPT_OSM_TIMEOUT);
 	ldm_queue_cmd(pCmd);
 }
 
@@ -1057,6 +1058,7 @@ static void hpt_final_init(void *dummy)
 				os_printk("Can't create dma map(%d)", i);
 				return ;
 			}
+			callout_handle_init(&ext->timeout_ch);
 		}
 
 		if ((devq = cam_simq_alloc(os_max_queue_comm)) == NULL) {
@@ -1355,7 +1357,7 @@ static int	hpt_rescan_bus(void)
 	ldm_for_each_vbus(vbus, vbus_ext) {
 		if ((ccb = xpt_alloc_ccb()) == NULL)
 			return(ENOMEM);
-		if (xpt_create_path(&ccb->ccb_h.path, xpt_periph,
+		if (xpt_create_path(&ccb->ccb_h.path, NULL,
 		    cam_sim_path(vbus_ext->sim),
 		    CAM_TARGET_WILDCARD, CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
 			xpt_free_ccb(ccb);

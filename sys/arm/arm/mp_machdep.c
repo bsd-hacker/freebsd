@@ -49,8 +49,12 @@ __FBSDID("$FreeBSD$");
 #include <machine/pte.h>
 #include <machine/intr.h>
 #include <machine/vmparam.h>
-#ifdef ARM_VFP_SUPPORT
+#ifdef VFP
 #include <machine/vfp.h>
+#endif
+#ifdef CPU_MV_PJ4B
+#include <arm/mv/mvwin.h>
+#include <dev/fdt/fdt_common.h>
 #endif
 
 #include "opt_smp.h"
@@ -112,7 +116,8 @@ cpu_mp_start(void)
 
 	/* Reserve memory for application processors */
 	for(i = 0; i < (mp_ncpus - 1); i++)
-		dpcpu[i] = (void *)kmem_alloc(kernel_map, DPCPU_SIZE);
+		dpcpu[i] = (void *)kmem_malloc(kernel_arena, DPCPU_SIZE,
+		    M_WAITOK | M_ZERO);
 	temp_pagetable_va = (vm_offset_t)contigmalloc(L1_TABLE_SIZE,
 	    M_TEMP, 0, 0x0, 0xffffffff, L1_TABLE_SIZE, 0);
 	addr = KERNPHYSADDR;
@@ -127,6 +132,13 @@ cpu_mp_start(void)
 			KERNPHYSADDR + KERNVIRTADDR) >> L1_S_SHIFT] = 
 		    L1_TYPE_S|L1_SHARED|L1_S_C|L1_S_AP(AP_KRW)|L1_S_DOM(PMAP_DOMAIN_KERNEL)|addr;
 	}
+
+#if defined(CPU_MV_PJ4B)
+	/* Add ARMADAXP registers required for snoop filter initialization */
+	((int *)(temp_pagetable_va))[MV_BASE >> L1_S_SHIFT] =
+	    L1_TYPE_S|L1_SHARED|L1_S_B|L1_S_AP(AP_KRW)|fdt_immr_pa;
+#endif
+
 	temp_pagetable = (void*)(vtophys(temp_pagetable_va));
 	cpu_idcache_wbinv_all();
 	cpu_l2cache_wbinv_all();
@@ -166,8 +178,15 @@ init_secondary(int cpu)
 
 	pc = &__pcpu[cpu];
 	set_pcpu(pc);
-	pcpu_init(pc, cpu, sizeof(struct pcpu));
 
+	/*
+	 * pcpu_init() updates queue, so it should not be executed in parallel
+	 * on several cores
+	 */
+	while(mp_naps < (cpu - 1))
+		;
+
+	pcpu_init(pc, cpu, sizeof(struct pcpu));
 	dpcpu_init(dpcpu[cpu - 1], cpu);
 
 	/* Provide stack pointers for other processor modes. */
@@ -184,7 +203,7 @@ init_secondary(int cpu)
 	KASSERT(PCPU_GET(idlethread) != NULL, ("no idle thread"));
 	pc->pc_curthread = pc->pc_idlethread;
 	pc->pc_curpcb = pc->pc_idlethread->td_pcb;
-#ifdef ARM_VFP_SUPPORT
+#ifdef VFP
 	pc->pc_cpu = cpu;
 
 	vfp_init();

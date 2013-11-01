@@ -50,7 +50,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
-#include <machine/pmap.h>
 
 #include "bcm2835_dma.h"
 #include "bcm2835_vcbus.h"
@@ -198,7 +197,7 @@ bcm_dma_reset(device_t dev, int ch)
 
 	/* Reset control block */
 	cb = sc->sc_dma_ch[ch].cb;
-	bzero(cb, sizeof(cb));
+	bzero(cb, sizeof(*cb));
 	cb->info = INFO_WAIT_RESP;
 }
 

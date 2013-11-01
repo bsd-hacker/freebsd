@@ -41,7 +41,6 @@ SRCS=	ELFObjectWriter.cpp \
 	MCStreamer.cpp \
 	MCSubtargetInfo.cpp \
 	MCSymbol.cpp \
-	MCTargetAsmLexer.cpp \
 	MCValue.cpp \
 	MCWin64EH.cpp \
 	MachObjectWriter.cpp \
@@ -49,7 +48,7 @@ SRCS=	ELFObjectWriter.cpp \
 	WinCOFFObjectWriter.cpp \
 	WinCOFFStreamer.cpp
 
-.if ${MK_CLANG_EXTRAS} != "no"
+.if ${MK_CLANG_EXTRAS} != "no" || ${MK_LLDB} != "no"
 SRCS+=	MCDisassembler.cpp
 .endif
 

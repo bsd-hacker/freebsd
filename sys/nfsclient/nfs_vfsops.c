@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/route.h>
 #include <net/vnet.h>
 
@@ -1362,7 +1363,7 @@ static int
 nfs_unmount(struct mount *mp, int mntflags)
 {
 	struct nfsmount *nmp;
-	int error, flags = 0;
+	int error, flags = 0, i;
 
 	if (mntflags & MNT_FORCE)
 		flags |= FORCECLOSE;
@@ -1387,6 +1388,14 @@ nfs_unmount(struct mount *mp, int mntflags)
 	/*
 	 * We are now committed to the unmount.
 	 */
+	/* Make sure no nfsiods are assigned to this mount. */
+	mtx_lock(&nfs_iod_mtx);
+	for (i = 0; i < NFS_MAXASYNCDAEMON; i++)
+		if (nfs_iodmount[i] == nmp) {
+			nfs_iodwant[i] = NFSIOD_AVAILABLE;
+			nfs_iodmount[i] = NULL;
+		}
+	mtx_unlock(&nfs_iod_mtx);
 	nfs_disconnect(nmp);
 	free(nmp->nm_nam, M_SONAME);
 

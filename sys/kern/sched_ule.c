@@ -667,10 +667,14 @@ cpu_search(const struct cpu_group *cg, struct cpu_search *low,
 	}
 
 	/* Iterate through the child CPU groups and then remaining CPUs. */
-	for (i = cg->cg_children, cpu = mp_maxid; i >= 0; ) {
+	for (i = cg->cg_children, cpu = mp_maxid; ; ) {
 		if (i == 0) {
+#ifdef HAVE_INLINE_FFSL
+			cpu = CPU_FFS(&cpumask) - 1;
+#else
 			while (cpu >= 0 && !CPU_ISSET(cpu, &cpumask))
 				cpu--;
+#endif
 			if (cpu < 0)
 				break;
 			child = NULL;
@@ -695,6 +699,7 @@ cpu_search(const struct cpu_group *cg, struct cpu_search *low,
 				break;
 			}
 		} else {			/* Handle child CPU. */
+			CPU_CLR(cpu, &cpumask);
 			tdq = TDQ_CPU(cpu);
 			load = tdq->tdq_load * 256;
 			rndptr = DPCPU_PTR(randomval);
@@ -742,8 +747,11 @@ cpu_search(const struct cpu_group *cg, struct cpu_search *low,
 			i--;
 			if (i == 0 && CPU_EMPTY(&cpumask))
 				break;
-		} else
+		}
+#ifndef HAVE_INLINE_FFSL
+		else
 			cpu--;
+#endif
 	}
 	return (total);
 }
@@ -1930,7 +1938,7 @@ sched_switch(struct thread *td, struct thread *newtd, int flags)
 		if (PMC_PROC_IS_USING_PMCS(td->td_proc))
 			PMC_SWITCH_CONTEXT(td, PMC_FN_CSW_OUT);
 #endif
-		SDT_PROBE2(sched, , , off_cpu, td, td->td_proc);
+		SDT_PROBE2(sched, , , off_cpu, newtd, newtd->td_proc);
 		lock_profile_release_lock(&TDQ_LOCKPTR(tdq)->lock_object);
 		TDQ_LOCKPTR(tdq)->mtx_lock = (uintptr_t)newtd;
 		sched_pctcpu_update(newtd->td_sched, 0);

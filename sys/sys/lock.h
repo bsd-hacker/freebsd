@@ -56,13 +56,14 @@ struct thread;
  */
 
 struct lock_class {
-	const	char *lc_name;
-	u_int	lc_flags;
-	void	(*lc_assert)(const struct lock_object *lock, int what);
-	void	(*lc_ddb_show)(const struct lock_object *lock);
-	void	(*lc_lock)(struct lock_object *lock, int how);
-	int	(*lc_owner)(const struct lock_object *lock, struct thread **owner);
-	int	(*lc_unlock)(struct lock_object *lock);
+	const		char *lc_name;
+	u_int		lc_flags;
+	void		(*lc_assert)(const struct lock_object *lock, int what);
+	void		(*lc_ddb_show)(const struct lock_object *lock);
+	void		(*lc_lock)(struct lock_object *lock, uintptr_t how);
+	int		(*lc_owner)(const struct lock_object *lock,
+			    struct thread **owner);
+	uintptr_t	(*lc_unlock)(struct lock_object *lock);
 };
 
 #define	LC_SLEEPLOCK	0x00000001	/* Sleep lock. */
@@ -79,6 +80,7 @@ struct lock_class {
 #define	LO_SLEEPABLE	0x00100000	/* Lock may be held while sleeping. */
 #define	LO_UPGRADABLE	0x00200000	/* Lock may be upgraded/downgraded. */
 #define	LO_DUPOK	0x00400000	/* Don't check for duplicate acquires */
+#define	LO_IS_VNODE	0x00800000	/* Tell WITNESS about a VNODE lock */
 #define	LO_CLASSMASK	0x0f000000	/* Class index bitmask. */
 #define LO_NOPROFILE    0x10000000      /* Don't profile this lock */
 
@@ -192,6 +194,7 @@ extern struct lock_class lock_class_mtx_spin;
 extern struct lock_class lock_class_sx;
 extern struct lock_class lock_class_rw;
 extern struct lock_class lock_class_rm;
+extern struct lock_class lock_class_rm_sleepable;
 extern struct lock_class lock_class_lockmgr;
 
 extern struct lock_class *lock_classes[];

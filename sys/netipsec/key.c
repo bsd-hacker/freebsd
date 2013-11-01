@@ -58,9 +58,10 @@
 #include <sys/syslog.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/route.h>
-#include <net/raw_cb.h>
 #include <net/vnet.h>
+#include <net/raw_cb.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -7316,7 +7317,7 @@ key_parse(m, so)
 	if ((m->m_flags & M_PKTHDR) == 0 ||
 	    m->m_pkthdr.len != m->m_pkthdr.len) {
 		ipseclog((LOG_DEBUG, "%s: invalid message length.\n",__func__));
-		V_pfkeystat.out_invlen++;
+		PFKEYSTAT_INC(out_invlen);
 		error = EINVAL;
 		goto senderror;
 	}
@@ -7324,7 +7325,7 @@ key_parse(m, so)
 	if (msg->sadb_msg_version != PF_KEY_V2) {
 		ipseclog((LOG_DEBUG, "%s: PF_KEY version %u is mismatched.\n",
 		    __func__, msg->sadb_msg_version));
-		V_pfkeystat.out_invver++;
+		PFKEYSTAT_INC(out_invver);
 		error = EINVAL;
 		goto senderror;
 	}
@@ -7332,7 +7333,7 @@ key_parse(m, so)
 	if (msg->sadb_msg_type > SADB_MAX) {
 		ipseclog((LOG_DEBUG, "%s: invalid type %u is passed.\n",
 		    __func__, msg->sadb_msg_type));
-		V_pfkeystat.out_invmsgtype++;
+		PFKEYSTAT_INC(out_invmsgtype);
 		error = EINVAL;
 		goto senderror;
 	}
@@ -7385,7 +7386,7 @@ key_parse(m, so)
 			ipseclog((LOG_DEBUG, "%s: must specify satype "
 			    "when msg type=%u.\n", __func__,
 			    msg->sadb_msg_type));
-			V_pfkeystat.out_invsatype++;
+			PFKEYSTAT_INC(out_invsatype);
 			error = EINVAL;
 			goto senderror;
 		}
@@ -7405,7 +7406,7 @@ key_parse(m, so)
 		case SADB_X_SPDDELETE2:
 			ipseclog((LOG_DEBUG, "%s: illegal satype=%u\n",
 				__func__, msg->sadb_msg_type));
-			V_pfkeystat.out_invsatype++;
+			PFKEYSTAT_INC(out_invsatype);
 			error = EINVAL;
 			goto senderror;
 		}
@@ -7416,7 +7417,7 @@ key_parse(m, so)
 	case SADB_SATYPE_MIP:
 		ipseclog((LOG_DEBUG, "%s: type %u isn't supported.\n",
 			__func__, msg->sadb_msg_satype));
-		V_pfkeystat.out_invsatype++;
+		PFKEYSTAT_INC(out_invsatype);
 		error = EOPNOTSUPP;
 		goto senderror;
 	case 1:	/* XXX: What does it do? */
@@ -7426,7 +7427,7 @@ key_parse(m, so)
 	default:
 		ipseclog((LOG_DEBUG, "%s: invalid type %u is passed.\n",
 			__func__, msg->sadb_msg_satype));
-		V_pfkeystat.out_invsatype++;
+		PFKEYSTAT_INC(out_invsatype);
 		error = EINVAL;
 		goto senderror;
 	}
@@ -7444,7 +7445,7 @@ key_parse(m, so)
 		if (src0->sadb_address_proto != dst0->sadb_address_proto) {
 			ipseclog((LOG_DEBUG, "%s: upper layer protocol "
 				"mismatched.\n", __func__));
-			V_pfkeystat.out_invaddr++;
+			PFKEYSTAT_INC(out_invaddr);
 			error = EINVAL;
 			goto senderror;
 		}
@@ -7454,7 +7455,7 @@ key_parse(m, so)
 		    PFKEY_ADDR_SADDR(dst0)->sa_family) {
 			ipseclog((LOG_DEBUG, "%s: address family mismatched.\n",
 				__func__));
-			V_pfkeystat.out_invaddr++;
+			PFKEYSTAT_INC(out_invaddr);
 			error = EINVAL;
 			goto senderror;
 		}
@@ -7462,7 +7463,7 @@ key_parse(m, so)
 		    PFKEY_ADDR_SADDR(dst0)->sa_len) {
 			ipseclog((LOG_DEBUG, "%s: address struct size "
 				"mismatched.\n", __func__));
-			V_pfkeystat.out_invaddr++;
+			PFKEYSTAT_INC(out_invaddr);
 			error = EINVAL;
 			goto senderror;
 		}
@@ -7471,7 +7472,7 @@ key_parse(m, so)
 		case AF_INET:
 			if (PFKEY_ADDR_SADDR(src0)->sa_len !=
 			    sizeof(struct sockaddr_in)) {
-				V_pfkeystat.out_invaddr++;
+				PFKEYSTAT_INC(out_invaddr);
 				error = EINVAL;
 				goto senderror;
 			}
@@ -7479,7 +7480,7 @@ key_parse(m, so)
 		case AF_INET6:
 			if (PFKEY_ADDR_SADDR(src0)->sa_len !=
 			    sizeof(struct sockaddr_in6)) {
-				V_pfkeystat.out_invaddr++;
+				PFKEYSTAT_INC(out_invaddr);
 				error = EINVAL;
 				goto senderror;
 			}
@@ -7487,7 +7488,7 @@ key_parse(m, so)
 		default:
 			ipseclog((LOG_DEBUG, "%s: unsupported address family\n",
 				__func__));
-			V_pfkeystat.out_invaddr++;
+			PFKEYSTAT_INC(out_invaddr);
 			error = EAFNOSUPPORT;
 			goto senderror;
 		}
@@ -7509,7 +7510,7 @@ key_parse(m, so)
 		    dst0->sadb_address_prefixlen > plen) {
 			ipseclog((LOG_DEBUG, "%s: illegal prefixlen.\n",
 				__func__));
-			V_pfkeystat.out_invaddr++;
+			PFKEYSTAT_INC(out_invaddr);
 			error = EINVAL;
 			goto senderror;
 		}
@@ -7522,7 +7523,7 @@ key_parse(m, so)
 
 	if (msg->sadb_msg_type >= sizeof(key_typesw)/sizeof(key_typesw[0]) ||
 	    key_typesw[msg->sadb_msg_type] == NULL) {
-		V_pfkeystat.out_invmsgtype++;
+		PFKEYSTAT_INC(out_invmsgtype);
 		error = EINVAL;
 		goto senderror;
 	}
@@ -7624,7 +7625,7 @@ key_align(m, mhp)
 				ipseclog((LOG_DEBUG, "%s: duplicate ext_type "
 					"%u\n", __func__, ext->sadb_ext_type));
 				m_freem(m);
-				V_pfkeystat.out_dupext++;
+				PFKEYSTAT_INC(out_dupext);
 				return EINVAL;
 			}
 			break;
@@ -7632,7 +7633,7 @@ key_align(m, mhp)
 			ipseclog((LOG_DEBUG, "%s: invalid ext_type %u\n",
 				__func__, ext->sadb_ext_type));
 			m_freem(m);
-			V_pfkeystat.out_invexttype++;
+			PFKEYSTAT_INC(out_invexttype);
 			return EINVAL;
 		}
 
@@ -7640,7 +7641,7 @@ key_align(m, mhp)
 
 		if (key_validate_ext(ext, extlen)) {
 			m_freem(m);
-			V_pfkeystat.out_invlen++;
+			PFKEYSTAT_INC(out_invlen);
 			return EINVAL;
 		}
 
@@ -7658,7 +7659,7 @@ key_align(m, mhp)
 
 	if (off != end) {
 		m_freem(m);
-		V_pfkeystat.out_invlen++;
+		PFKEYSTAT_INC(out_invlen);
 		return EINVAL;
 	}
 

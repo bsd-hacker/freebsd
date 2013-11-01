@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
  */
 
@@ -31,6 +31,9 @@
 #include <sys/metaslab_impl.h>
 #include <sys/vdev_impl.h>
 #include <sys/zio.h>
+
+SYSCTL_DECL(_vfs_zfs);
+SYSCTL_NODE(_vfs_zfs, OID_AUTO, metaslab, CTLFLAG_RW, 0, "ZFS metaslab");
 
 /*
  * Allow allocations to switch to gang blocks quickly. We do this to
@@ -46,6 +49,10 @@
 
 uint64_t metaslab_aliquot = 512ULL << 10;
 uint64_t metaslab_gang_bang = SPA_MAXBLOCKSIZE + 1;	/* force gang blocks */
+TUNABLE_QUAD("vfs.zfs.metaslab.gang_bang", &metaslab_gang_bang);
+SYSCTL_QUAD(_vfs_zfs_metaslab, OID_AUTO, gang_bang, CTLFLAG_RWTUN,
+    &metaslab_gang_bang, 0,
+    "Force gang block allocation for blocks larger than or equal to this value");
 
 /*
  * The in-core space map representation is more compact than its on-disk form.
@@ -61,17 +68,19 @@ int zfs_condense_pct = 200;
  * allocations on that device.
  */
 int zfs_mg_alloc_failures = 0;
-
-SYSCTL_DECL(_vfs_zfs);
-SYSCTL_INT(_vfs_zfs, OID_AUTO, mg_alloc_failures, CTLFLAG_RDTUN,
+TUNABLE_INT("vfs.zfs.mg_alloc_failures", &zfs_mg_alloc_failures);
+SYSCTL_INT(_vfs_zfs, OID_AUTO, mg_alloc_failures, CTLFLAG_RWTUN,
     &zfs_mg_alloc_failures, 0,
     "Number of allowed allocation failures per vdev");
-TUNABLE_INT("vfs.zfs.mg_alloc_failures", &zfs_mg_alloc_failures);
 
 /*
  * Metaslab debugging: when set, keeps all space maps in core to verify frees.
  */
 static int metaslab_debug = 0;
+TUNABLE_INT("vfs.zfs.metaslab.debug", &metaslab_debug);
+SYSCTL_INT(_vfs_zfs_metaslab, OID_AUTO, debug, CTLFLAG_RWTUN, &metaslab_debug,
+    0,
+    "Metaslab debugging: when set, keeps all space maps in core to verify frees");
 
 /*
  * Minimum size which forces the dynamic allocator to change
@@ -80,6 +89,11 @@ static int metaslab_debug = 0;
  * aggressive strategy (i.e search by size rather than offset).
  */
 uint64_t metaslab_df_alloc_threshold = SPA_MAXBLOCKSIZE;
+TUNABLE_QUAD("vfs.zfs.metaslab.df_alloc_threshold",
+    &metaslab_df_alloc_threshold);
+SYSCTL_QUAD(_vfs_zfs_metaslab, OID_AUTO, df_alloc_threshold, CTLFLAG_RWTUN,
+    &metaslab_df_alloc_threshold, 0,
+    "Minimum size which forces the dynamic allocator to change it's allocation strategy");
 
 /*
  * The minimum free space, in percent, which must be available
@@ -88,22 +102,37 @@ uint64_t metaslab_df_alloc_threshold = SPA_MAXBLOCKSIZE;
  * switch to using best-fit allocations.
  */
 int metaslab_df_free_pct = 4;
+TUNABLE_INT("vfs.zfs.metaslab.df_free_pct", &metaslab_df_free_pct);
+SYSCTL_INT(_vfs_zfs_metaslab, OID_AUTO, df_free_pct, CTLFLAG_RWTUN,
+    &metaslab_df_free_pct, 0,
+    "The minimum free space, in percent, which must be available in a space map to continue allocations in a first-fit fashion");
 
 /*
  * A metaslab is considered "free" if it contains a contiguous
  * segment which is greater than metaslab_min_alloc_size.
  */
 uint64_t metaslab_min_alloc_size = DMU_MAX_ACCESS;
+TUNABLE_QUAD("vfs.zfs.metaslab.min_alloc_size",
+    &metaslab_min_alloc_size);
+SYSCTL_QUAD(_vfs_zfs_metaslab, OID_AUTO, min_alloc_size, CTLFLAG_RWTUN,
+    &metaslab_min_alloc_size, 0,
+    "A metaslab is considered \"free\" if it contains a contiguous segment which is greater than vfs.zfs.metaslab.min_alloc_size");
 
 /*
  * Max number of space_maps to prefetch.
  */
 int metaslab_prefetch_limit = SPA_DVAS_PER_BP;
+TUNABLE_INT("vfs.zfs.metaslab.prefetch_limit", &metaslab_prefetch_limit);
+SYSCTL_INT(_vfs_zfs_metaslab, OID_AUTO, prefetch_limit, CTLFLAG_RWTUN,
+    &metaslab_prefetch_limit, 0, "Maximum number of space_maps to prefetch");
 
 /*
  * Percentage bonus multiplier for metaslabs that are in the bonus area.
  */
 int metaslab_smo_bonus_pct = 150;
+TUNABLE_INT("vfs.zfs.metaslab.smo_bonus_pct", &metaslab_smo_bonus_pct);
+SYSCTL_INT(_vfs_zfs_metaslab, OID_AUTO, smo_bonus_pct, CTLFLAG_RWTUN,
+    &metaslab_smo_bonus_pct, 0, "Maximum number of space_maps to prefetch");
 
 /*
  * Should we be willing to write data to degraded vdevs?
@@ -180,6 +209,27 @@ metaslab_class_space_update(metaslab_class_t *mc, int64_t alloc_delta,
 	atomic_add_64(&mc->mc_dspace, dspace_delta);
 }
 
+void
+metaslab_class_minblocksize_update(metaslab_class_t *mc)
+{
+	metaslab_group_t *mg;
+	vdev_t *vd;
+	uint64_t minashift = UINT64_MAX;
+
+	if ((mg = mc->mc_rotor) == NULL) {
+		mc->mc_minblocksize = SPA_MINBLOCKSIZE;
+		return;
+	}
+
+	do {
+		vd = mg->mg_vd;
+		if (vd->vdev_ashift < minashift)
+			minashift = vd->vdev_ashift;
+	} while ((mg = mg->mg_next) != mc->mc_rotor);
+
+	mc->mc_minblocksize = 1ULL << minashift;
+}
+
 uint64_t
 metaslab_class_get_alloc(metaslab_class_t *mc)
 {
@@ -202,6 +252,12 @@ uint64_t
 metaslab_class_get_dspace(metaslab_class_t *mc)
 {
 	return (spa_deflate(mc->mc_spa) ? mc->mc_dspace : mc->mc_space);
+}
+
+uint64_t
+metaslab_class_get_minblocksize(metaslab_class_t *mc)
+{
+	return (mc->mc_minblocksize);
 }
 
 /*
@@ -295,6 +351,7 @@ metaslab_group_activate(metaslab_group_t *mg)
 		mgnext->mg_prev = mg;
 	}
 	mc->mc_rotor = mg;
+	metaslab_class_minblocksize_update(mc);
 }
 
 void
@@ -326,6 +383,7 @@ metaslab_group_passivate(metaslab_group_t *mg)
 
 	mg->mg_prev = NULL;
 	mg->mg_next = NULL;
+	metaslab_class_minblocksize_update(mc);
 }
 
 static void
@@ -1517,7 +1575,7 @@ metaslab_alloc_dva(spa_t *spa, metaslab_class_t *mc, uint64_t psize,
 	 * For testing, make some blocks above a certain size be gang blocks.
 	 */
 	if (psize >= metaslab_gang_bang && (ddi_get_lbolt() & 3) == 0)
-		return (ENOSPC);
+		return (SET_ERROR(ENOSPC));
 
 	/*
 	 * Start at the rotor and loop through all mgs until we find something.
@@ -1682,7 +1740,7 @@ next:
 
 	bzero(&dva[d], sizeof (dva_t));
 
-	return (ENOSPC);
+	return (SET_ERROR(ENOSPC));
 }
 
 /*
@@ -1751,7 +1809,7 @@ metaslab_claim_dva(spa_t *spa, const dva_t *dva, uint64_t txg)
 
 	if ((vd = vdev_lookup_top(spa, vdev)) == NULL ||
 	    (offset >> vd->vdev_ms_shift) >= vd->vdev_ms_count)
-		return (ENXIO);
+		return (SET_ERROR(ENXIO));
 
 	msp = vd->vdev_ms[offset >> vd->vdev_ms_shift];
 
@@ -1764,7 +1822,7 @@ metaslab_claim_dva(spa_t *spa, const dva_t *dva, uint64_t txg)
 		error = metaslab_activate(msp, METASLAB_WEIGHT_SECONDARY);
 
 	if (error == 0 && !space_map_contains(msp->ms_map, offset, size))
-		error = ENOENT;
+		error = SET_ERROR(ENOENT);
 
 	if (error || txg == 0) {	/* txg == 0 indicates dry run */
 		mutex_exit(&msp->ms_lock);
@@ -1799,7 +1857,7 @@ metaslab_alloc(spa_t *spa, metaslab_class_t *mc, uint64_t psize, blkptr_t *bp,
 
 	if (mc->mc_rotor == NULL) {	/* no vdevs in this class */
 		spa_config_exit(spa, SCL_ALLOC, FTAG);
-		return (ENOSPC);
+		return (SET_ERROR(ENOSPC));
 	}
 
 	ASSERT(ndvas > 0 && ndvas <= spa_max_replication(spa));

@@ -66,8 +66,8 @@ _bus_dmamap_load_vlist(bus_dma_tag_t dmat, bus_dmamap_t map,
 	error = 0;
 	for (; sglist_cnt > 0; sglist_cnt--, list++) {
 		error = _bus_dmamap_load_buffer(dmat, map,
-		    (void *)list->ds_addr, list->ds_len, pmap, flags, NULL,
-		    nsegs);
+		    (void *)(uintptr_t)list->ds_addr, list->ds_len, pmap,
+		    flags, NULL, nsegs);
 		if (error)
 			break;
 	}
@@ -104,8 +104,6 @@ _bus_dmamap_load_mbuf_sg(bus_dma_tag_t dmat, bus_dmamap_t map,
 	struct mbuf *m;
 	int error;
 
-	M_ASSERTPKTHDR(m0);
-
 	error = 0;
 	for (m = m0; m != NULL && error == 0; m = m->m_next) {
 		if (m->m_len > 0) {
@@ -126,24 +124,33 @@ static int
 _bus_dmamap_load_bio(bus_dma_tag_t dmat, bus_dmamap_t map, struct bio *bio,
     int *nsegs, int flags)
 {
-	vm_paddr_t paddr;
-	bus_size_t len, tlen;
-	int error, i, ma_offs;
+	int error;
 
 	if ((bio->bio_flags & BIO_UNMAPPED) == 0) {
 		error = _bus_dmamap_load_buffer(dmat, map, bio->bio_data,
 		    bio->bio_bcount, kernel_pmap, flags, NULL, nsegs);
-		return (error);
+	} else {
+		error = _bus_dmamap_load_ma(dmat, map, bio->bio_ma,
+		    bio->bio_bcount, bio->bio_ma_offset, flags, NULL, nsegs);
 	}
+	return (error);
+}
+
+int
+bus_dmamap_load_ma_triv(bus_dma_tag_t dmat, bus_dmamap_t map,
+    struct vm_page **ma, bus_size_t tlen, int ma_offs, int flags,
+    bus_dma_segment_t *segs, int *segp)
+{
+	vm_paddr_t paddr;
+	bus_size_t len;
+	int error, i;
 
 	error = 0;
-	tlen = bio->bio_bcount;
-	ma_offs = bio->bio_ma_offset;
 	for (i = 0; tlen > 0; i++, tlen -= len) {
 		len = min(PAGE_SIZE - ma_offs, tlen);
-		paddr = VM_PAGE_TO_PHYS(bio->bio_ma[i]) + ma_offs;
+		paddr = VM_PAGE_TO_PHYS(ma[i]) + ma_offs;
 		error = _bus_dmamap_load_phys(dmat, map, paddr, len,
-		    flags, NULL, nsegs);
+		    flags, segs, segp);
 		if (error != 0)
 			break;
 		ma_offs = 0;
@@ -158,8 +165,6 @@ static int
 _bus_dmamap_load_ccb(bus_dma_tag_t dmat, bus_dmamap_t map, union ccb *ccb,
 		    int *nsegs, int flags)
 {
-	struct ccb_ataio *ataio;
-	struct ccb_scsiio *csio;
 	struct ccb_hdr *ccb_h;
 	void *data_ptr;
 	int error;
@@ -169,18 +174,33 @@ _bus_dmamap_load_ccb(bus_dma_tag_t dmat, bus_dmamap_t map, union ccb *ccb,
 	error = 0;
 	ccb_h = &ccb->ccb_h;
 	switch (ccb_h->func_code) {
-	case XPT_SCSI_IO:
+	case XPT_SCSI_IO: {
+		struct ccb_scsiio *csio;
+
 		csio = &ccb->csio;
 		data_ptr = csio->data_ptr;
 		dxfer_len = csio->dxfer_len;
 		sglist_cnt = csio->sglist_cnt;
 		break;
-	case XPT_ATA_IO:
+	}
+	case XPT_CONT_TARGET_IO: {
+		struct ccb_scsiio *ctio;
+
+		ctio = &ccb->ctio;
+		data_ptr = ctio->data_ptr;
+		dxfer_len = ctio->dxfer_len;
+		sglist_cnt = ctio->sglist_cnt;
+		break;
+	}
+	case XPT_ATA_IO: {
+		struct ccb_ataio *ataio;
+
 		ataio = &ccb->ataio;
 		data_ptr = ataio->data_ptr;
 		dxfer_len = ataio->dxfer_len;
 		sglist_cnt = 0;
 		break;
+	}
 	default:
 		panic("_bus_dmamap_load_ccb: Unsupported func code %d",
 		    ccb_h->func_code);
@@ -309,6 +329,8 @@ bus_dmamap_load_mbuf(bus_dma_tag_t dmat, bus_dmamap_t map, struct mbuf *m0,
 {
 	bus_dma_segment_t *segs;
 	int nsegs, error;
+
+	M_ASSERTPKTHDR(m0);
 
 	flags |= BUS_DMA_NOWAIT;
 	nsegs = -1;

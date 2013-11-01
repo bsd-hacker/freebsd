@@ -83,21 +83,23 @@ static int decode_win_usb_valid(void);
 static int decode_win_eth_valid(void);
 static int decode_win_pcie_valid(void);
 static int decode_win_sata_valid(void);
-static int decode_win_cesa_valid(void);
+
 static int decode_win_idma_valid(void);
 static int decode_win_xor_valid(void);
 
 #ifndef SOC_MV_FREY
 static void decode_win_cpu_setup(void);
 #endif
+#ifdef SOC_MV_ARMADAXP
+static int decode_win_sdram_fixup(void);
+#endif
 static void decode_win_usb_setup(u_long);
 static void decode_win_eth_setup(u_long);
 static void decode_win_sata_setup(u_long);
-static void decode_win_cesa_setup(u_long);
+
 static void decode_win_idma_setup(u_long);
 static void decode_win_xor_setup(u_long);
 
-static void decode_win_cesa_dump(u_long);
 static void decode_win_usb_dump(u_long);
 static void decode_win_eth_dump(u_long base);
 static void decode_win_idma_dump(u_long base);
@@ -127,7 +129,6 @@ struct soc_node_spec {
 };
 
 static struct soc_node_spec soc_nodes[] = {
-	{ "mrvl,cesa", &decode_win_cesa_setup, &decode_win_cesa_dump },
 	{ "mrvl,ge", &decode_win_eth_setup, &decode_win_eth_dump },
 	{ "mrvl,usb-ehci", &decode_win_usb_setup, &decode_win_usb_dump },
 	{ "mrvl,sata", &decode_win_sata_setup, NULL },
@@ -143,7 +144,6 @@ struct fdt_pm_mask_entry fdt_pm_mask_table[] = {
 	{ "mrvl,usb-ehci",	CPU_PM_CTRL_USB(0) },
 	{ "mrvl,usb-ehci",	CPU_PM_CTRL_USB(1) },
 	{ "mrvl,usb-ehci",	CPU_PM_CTRL_USB(2) },
-	{ "mrvl,cesa",		CPU_PM_CTRL_CRYPTO },
 	{ "mrvl,xor",		CPU_PM_CTRL_XOR },
 	{ "mrvl,sata",		CPU_PM_CTRL_SATA },
 
@@ -153,8 +153,11 @@ struct fdt_pm_mask_entry fdt_pm_mask_table[] = {
 static __inline int
 pm_is_disabled(uint32_t mask)
 {
-
+#if defined(SOC_MV_KIRKWOOD)
+	return (soc_power_ctrl_get(mask) == mask);
+#else
 	return (soc_power_ctrl_get(mask) == mask ? 0 : 1);
+#endif
 }
 
 /*
@@ -221,7 +224,16 @@ fdt_pm(phandle_t node)
 			continue;
 
 		compat = fdt_is_compatible(node, fdt_pm_mask_table[i].compat);
-
+#if defined(SOC_MV_KIRKWOOD)
+		if (compat && (cpu_pm_ctrl & fdt_pm_mask_table[i].mask)) {
+			dev_mask |= (1 << i);
+			ena = 0;
+			break;
+		} else if (compat) {
+			dev_mask |= (1 << i);
+			break;
+		}
+#else
 		if (compat && (~cpu_pm_ctrl & fdt_pm_mask_table[i].mask)) {
 			dev_mask |= (1 << i);
 			ena = 0;
@@ -230,6 +242,7 @@ fdt_pm(phandle_t node)
 			dev_mask |= (1 << i);
 			break;
 		}
+#endif
 	}
 
 	return (ena);
@@ -525,11 +538,16 @@ soc_decode_win(void)
 	/* Retrieve our ID: some windows facilities vary between SoC models */
 	soc_id(&dev, &rev);
 
+#ifdef SOC_MV_ARMADAXP
+	if ((err = decode_win_sdram_fixup()) != 0)
+		return(err);
+#endif
+
 #ifndef SOC_MV_FREY
 	if (!decode_win_cpu_valid() || !decode_win_usb_valid() ||
 	    !decode_win_eth_valid() || !decode_win_idma_valid() ||
 	    !decode_win_pcie_valid() || !decode_win_sata_valid() ||
-	    !decode_win_cesa_valid() || !decode_win_xor_valid())
+	    !decode_win_xor_valid())
 		return (EINVAL);
 
 	decode_win_cpu_setup();
@@ -537,7 +555,7 @@ soc_decode_win(void)
 	if (!decode_win_usb_valid() ||
 	    !decode_win_eth_valid() || !decode_win_idma_valid() ||
 	    !decode_win_pcie_valid() || !decode_win_sata_valid() ||
-	    !decode_win_cesa_valid() || !decode_win_xor_valid())
+	    !decode_win_xor_valid())
 		return (EINVAL);
 #endif
 	if (MV_DUMP_WIN)
@@ -569,11 +587,6 @@ WIN_REG_BASE_IDX_RD(win_usb, cr, MV_WIN_USB_CTRL)
 WIN_REG_BASE_IDX_RD(win_usb, br, MV_WIN_USB_BASE)
 WIN_REG_BASE_IDX_WR(win_usb, cr, MV_WIN_USB_CTRL)
 WIN_REG_BASE_IDX_WR(win_usb, br, MV_WIN_USB_BASE)
-
-WIN_REG_BASE_IDX_RD(win_cesa, cr, MV_WIN_CESA_CTRL)
-WIN_REG_BASE_IDX_RD(win_cesa, br, MV_WIN_CESA_BASE)
-WIN_REG_BASE_IDX_WR(win_cesa, cr, MV_WIN_CESA_CTRL)
-WIN_REG_BASE_IDX_WR(win_cesa, br, MV_WIN_CESA_BASE)
 
 WIN_REG_BASE_IDX_RD(win_eth, br, MV_WIN_ETH_BASE)
 WIN_REG_BASE_IDX_RD(win_eth, sz, MV_WIN_ETH_SIZE)
@@ -625,6 +638,8 @@ WIN_REG_BASE_IDX_WR(win_sata, br, MV_WIN_SATA_BASE);
 #ifndef SOC_MV_DOVE
 WIN_REG_IDX_RD(ddr, br, MV_WIN_DDR_BASE, MV_DDR_CADR_BASE)
 WIN_REG_IDX_RD(ddr, sz, MV_WIN_DDR_SIZE, MV_DDR_CADR_BASE)
+WIN_REG_IDX_WR(ddr, br, MV_WIN_DDR_BASE, MV_DDR_CADR_BASE)
+WIN_REG_IDX_WR(ddr, sz, MV_WIN_DDR_SIZE, MV_DDR_CADR_BASE)
 #else
 /*
  * On 88F6781 (Dove) SoC DDR Controller is accessed through
@@ -880,6 +895,50 @@ decode_win_cpu_setup(void)
 
 }
 #endif
+
+#ifdef SOC_MV_ARMADAXP
+static int
+decode_win_sdram_fixup(void)
+{
+	struct mem_region mr[FDT_MEM_REGIONS];
+	uint8_t window_valid[MV_WIN_DDR_MAX];
+	int mr_cnt, memsize, err, i, j;
+	uint32_t valid_win_num = 0;
+
+	/* Grab physical memory regions information from device tree. */
+	err = fdt_get_mem_regions(mr, &mr_cnt, &memsize);
+	if (err != 0)
+		return (err);
+
+	for (i = 0; i < MV_WIN_DDR_MAX; i++)
+		window_valid[i] = 0;
+
+	/* Try to match entries from device tree with settings from u-boot */
+	for (i = 0; i < mr_cnt; i++) {
+		for (j = 0; j < MV_WIN_DDR_MAX; j++) {
+			if (ddr_is_active(j) &&
+			    (ddr_base(j) == mr[i].mr_start) &&
+			    (ddr_size(j) == mr[i].mr_size)) {
+				window_valid[j] = 1;
+				valid_win_num++;
+			}
+		}
+	}
+
+	if (mr_cnt != valid_win_num)
+		return (EINVAL);
+
+	/* Destroy windows without corresponding device tree entry */
+	for (j = 0; j < MV_WIN_DDR_MAX; j++) {
+		if (ddr_is_active(j) && (window_valid[j] != 1)) {
+			printf("Disabling SDRAM decoding window: %d\n", j);
+			ddr_disable(j);
+		}
+	}
+
+	return (0);
+}
+#endif
 /*
  * Check if we're able to cover all active DDR banks.
  */
@@ -913,6 +972,14 @@ ddr_is_active(int i)
 		return (1);
 
 	return (0);
+}
+
+void
+ddr_disable(int i)
+{
+
+	ddr_sz_write(i, 0);
+	ddr_br_write(i, 0);
 }
 
 uint32_t
@@ -1791,98 +1858,6 @@ decode_win_xor_dump(u_long base)
 #endif
 
 /**************************************************************************
- * CESA TDMA windows routines
- **************************************************************************/
-#if defined(SOC_MV_KIRKWOOD) || defined(SOC_MV_DISCOVERY)
-/*
- * Dump CESA TDMA decode windows.
- */
-static void
-decode_win_cesa_dump(u_long base)
-{
-	int i;
-
-	if (pm_is_disabled(CPU_PM_CTRL_CRYPTO))
-		return;
-
-	for (i = 0; i < MV_WIN_CESA_MAX; i++)
-		printf("CESA window#%d: c 0x%08x, b 0x%08x\n", i,
-		    win_cesa_cr_read(base, i), win_cesa_br_read(base, i));
-}
-
-
-/*
- * Set CESA TDMA decode windows.
- */
-static void
-decode_win_cesa_setup(u_long base)
-{
-	uint32_t br, cr;
-	int i, j;
-
-	if (pm_is_disabled(CPU_PM_CTRL_CRYPTO))
-		return;
-
-	/* Disable and clear all CESA windows */
-	for (i = 0; i < MV_WIN_CESA_MAX; i++) {
-		win_cesa_cr_write(base, i, 0);
-		win_cesa_br_write(base, i, 0);
-	}
-
-	/* Only access to active DRAM banks is required. */
-	for (i = 0; i < MV_WIN_DDR_MAX; i++)
-		if (ddr_is_active(i)) {
-			br = ddr_base(i);
-			cr = (((ddr_size(i) - 1) & 0xffff0000) |
-			   (ddr_attr(i) << 8) | (ddr_target(i) << 4) | 1);
-
-			/* Set the first available CESA window */
-			for (j = 0; j < MV_WIN_CESA_MAX; j++) {
-				if (win_cesa_cr_read(base, j) & 0x1)
-					continue;
-
-				win_cesa_br_write(base, j, br);
-				win_cesa_cr_write(base, j, cr);
-				break;
-			}
-		}
-}
-
-/*
- * Check CESA TDMA decode windows.
- */
-static int
-decode_win_cesa_valid(void)
-{
-
-	return (decode_win_can_cover_ddr(MV_WIN_CESA_MAX));
-}
-#else
-
-/*
- * Provide dummy functions to satisfy the build for SoCs not equipped with
- * CESA
- */
-
-static int
-decode_win_cesa_valid(void)
-{
-
-	return (1);
-}
-
-static void
-decode_win_cesa_setup(u_long base)
-{
-}
-
-static void
-decode_win_cesa_dump(u_long base)
-{
-}
-#endif
-
-/**************************************************************************
  * SATA windows routines
  **************************************************************************/
 static void
@@ -1979,33 +1954,34 @@ static int
 win_cpu_from_dt(void)
 {
 	pcell_t ranges[48];
-	u_long sram_base, sram_size;
 	phandle_t node;
 	int i, entry_size, err, t, tuple_size, tuples;
+	u_long sram_base, sram_size;
 
+	t = 0;
 	/* Retrieve 'ranges' property of '/localbus' node. */
 	if ((err = fdt_get_ranges("/localbus", ranges, sizeof(ranges),
-	    &tuples, &tuple_size)) != 0)
-		return (0);
+	    &tuples, &tuple_size)) == 0) {
+		/*
+		 * Fill CPU decode windows table.
+		 */
+		bzero((void *)&cpu_win_tbl, sizeof(cpu_win_tbl));
 
-	/*
-	 * Fill CPU decode windows table.
-	 */
-	bzero((void *)&cpu_win_tbl, sizeof(cpu_win_tbl));
+		entry_size = tuple_size / sizeof(pcell_t);
+		cpu_wins_no = tuples;
 
-	entry_size = tuple_size / sizeof(pcell_t);
-	cpu_wins_no = tuples;
-
-	for (i = 0, t = 0; t < tuples; i += entry_size, t++) {
-		cpu_win_tbl[t].target = 1;
-		cpu_win_tbl[t].attr = fdt32_to_cpu(ranges[i + 1]);
-		cpu_win_tbl[t].base = fdt32_to_cpu(ranges[i + 2]);
-		cpu_win_tbl[t].size = fdt32_to_cpu(ranges[i + 3]);
-		cpu_win_tbl[t].remap = ~0;
-		debugf("target = 0x%0x attr = 0x%0x base = 0x%0x "
-		    "size = 0x%0x remap = 0x%0x\n", cpu_win_tbl[t].target,
-		    cpu_win_tbl[t].attr, cpu_win_tbl[t].base,
-		    cpu_win_tbl[t].size, cpu_win_tbl[t].remap);
+		for (i = 0, t = 0; t < tuples; i += entry_size, t++) {
+			cpu_win_tbl[t].target = 1;
+			cpu_win_tbl[t].attr = fdt32_to_cpu(ranges[i + 1]);
+			cpu_win_tbl[t].base = fdt32_to_cpu(ranges[i + 2]);
+			cpu_win_tbl[t].size = fdt32_to_cpu(ranges[i + 3]);
+			cpu_win_tbl[t].remap = ~0;
+			debugf("target = 0x%0x attr = 0x%0x base = 0x%0x "
+			    "size = 0x%0x remap = 0x%0x\n",
+			    cpu_win_tbl[t].target,
+			    cpu_win_tbl[t].attr, cpu_win_tbl[t].base,
+			    cpu_win_tbl[t].size, cpu_win_tbl[t].remap);
+		}
 	}
 
 	/*
@@ -2015,7 +1991,7 @@ win_cpu_from_dt(void)
 		if (fdt_is_compatible(node, "mrvl,cesa-sram"))
 			goto moveon;
 
-	if ((node = OF_finddevice("/")) == -1)
+	if ((node = OF_finddevice("/")) == 0)
 		return (ENXIO);
 
 	if ((node = fdt_find_compatible(node, "mrvl,cesa-sram", 0)) == 0)
@@ -2026,11 +2002,12 @@ moveon:
 	if (fdt_regsize(node, &sram_base, &sram_size) != 0)
 		return (EINVAL);
 
-	cpu_win_tbl[++t].target = MV_WIN_CESA_TARGET;
-	cpu_win_tbl[t].attr = MV_WIN_CESA_ATTR;
+	cpu_win_tbl[t].target = MV_WIN_CESA_TARGET;
+	cpu_win_tbl[t].attr = MV_WIN_CESA_ATTR(1);
 	cpu_win_tbl[t].base = sram_base;
 	cpu_win_tbl[t].size = sram_size;
 	cpu_win_tbl[t].remap = ~0;
+	cpu_wins_no++;
 	debugf("sram: base = 0x%0lx size = 0x%0lx\n", sram_base, sram_size);
 
 	return (0);
@@ -2114,9 +2091,79 @@ fdt_fixup_busfreq(phandle_t root)
 		OF_setprop(sb, "bus-frequency", (void *)&freq, sizeof(freq));
 }
 
+static void
+fdt_fixup_ranges(phandle_t root)
+{
+	phandle_t node;
+	pcell_t par_addr_cells, addr_cells, size_cells;
+	pcell_t ranges[3], reg[2], *rangesptr;
+	int len, tuple_size, tuples_count;
+	uint32_t base;
+
+	/* Fix-up SoC ranges according to real fdt_immr_pa */
+	if ((node = fdt_find_compatible(root, "simple-bus", 1)) != 0) {
+		if (fdt_addrsize_cells(node, &addr_cells, &size_cells) == 0 &&
+		    (par_addr_cells = fdt_parent_addr_cells(node) <= 2)) {
+			tuple_size = sizeof(pcell_t) * (par_addr_cells +
+			   addr_cells + size_cells);
+			len = OF_getprop(node, "ranges", ranges,
+			    sizeof(ranges));
+			tuples_count = len / tuple_size;
+			/* Unexpected settings are not supported */
+			if (tuples_count != 1)
+				goto fixup_failed;
+
+			rangesptr = &ranges[0];
+			rangesptr += par_addr_cells;
+			base = fdt_data_get((void *)rangesptr, addr_cells);
+			*rangesptr = cpu_to_fdt32(fdt_immr_pa);
+			if (OF_setprop(node, "ranges", (void *)&ranges[0],
+			    sizeof(ranges)) < 0)
+				goto fixup_failed;
+		}
+	}
+
+	/* Fix-up PCIe reg according to real PCIe registers' PA */
+	if ((node = fdt_find_compatible(root, "mrvl,pcie", 1)) != 0) {
+		if (fdt_addrsize_cells(OF_parent(node), &par_addr_cells,
+		    &size_cells) == 0) {
+			tuple_size = sizeof(pcell_t) * (par_addr_cells +
+			    size_cells);
+			len = OF_getprop(node, "reg", reg, sizeof(reg));
+			tuples_count = len / tuple_size;
+			/* Unexpected settings are not supported */
+			if (tuples_count != 1)
+				goto fixup_failed;
+
+			base = fdt_data_get((void *)&reg[0], par_addr_cells);
+			base &= ~0xFF000000;
+			base |= fdt_immr_pa;
+			reg[0] = cpu_to_fdt32(base);
+			if (OF_setprop(node, "reg", (void *)&reg[0],
+			    sizeof(reg)) < 0)
+				goto fixup_failed;
+		}
+	}
+	/* Fix-up succeeded. May return and continue */
+	return;
+
+fixup_failed:
+	while (1) {
+		/*
+		 * In case of any error while fixing ranges just hang.
+		 *	1. No message can be displayed yet since console
+		 *	   is not initialized.
+		 *	2. Going further will cause failure on bus_space_map()
+		 *	   relying on the wrong ranges or data abort when
+		 *	   accessing PCIe registers.
+		 */
+	}
+}
+
 struct fdt_fixup_entry fdt_fixup_table[] = {
 	{ "mrvl,DB-88F6281", &fdt_fixup_busfreq },
 	{ "mrvl,DB-78460", &fdt_fixup_busfreq },
+	{ "mrvl,DB-78460", &fdt_fixup_ranges },
 	{ NULL, NULL }
 };
 

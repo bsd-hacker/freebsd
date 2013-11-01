@@ -61,6 +61,30 @@ static driver_t uart_fdt_driver = {
 	sizeof(struct uart_softc),
 };
 
+/*
+ * Compatible devices.  Keep this sorted in most- to least-specific order first,
+ * alphabetical second.  That is, "zwie,ns16550" should appear before "ns16550"
+ * on the theory that the zwie driver knows how to make better use of the
+ * hardware than the generic driver.  Likewise with chips within a family, the
+ * highest-numbers / most recent models should probably appear earlier.
+ */
+static struct ofw_compat_data compat_data[] = {
+	{"arm,pl011",		(uintptr_t)&uart_pl011_class},
+	{"cadence,uart",	(uintptr_t)&uart_cdnc_class},
+	{"exynos",		(uintptr_t)&uart_s3c2410_class},
+	{"fsl,imx6q-uart",	(uintptr_t)&uart_imx_class},
+	{"fsl,imx53-uart",	(uintptr_t)&uart_imx_class},
+	{"fsl,imx51-uart",	(uintptr_t)&uart_imx_class},
+	{"fsl,imx31-uart",	(uintptr_t)&uart_imx_class},
+	{"fsl,imx27-uart",	(uintptr_t)&uart_imx_class},
+	{"fsl,imx25-uart",	(uintptr_t)&uart_imx_class},
+	{"fsl,imx21-uart",	(uintptr_t)&uart_imx_class},
+	{"lpc,uart",		(uintptr_t)&uart_lpc_class},
+	{"ti,ns16550",		(uintptr_t)&uart_ti8250_class},
+	{"ns16550",		(uintptr_t)&uart_ns8250_class},
+	{NULL,			(uintptr_t)NULL},
+};
+
 static int
 uart_fdt_get_clock(phandle_t node, pcell_t *cell)
 {
@@ -99,18 +123,15 @@ uart_fdt_probe(device_t dev)
 	phandle_t node;
 	pcell_t clock, shift;
 	int err;
+	const struct ofw_compat_data * cd;
 
 	sc = device_get_softc(dev);
-	if (ofw_bus_is_compatible(dev, "ns16550"))
-		sc->sc_class = &uart_ns8250_class;
-	else if (ofw_bus_is_compatible(dev, "lpc,uart"))
-		sc->sc_class = &uart_lpc_class;
-	else if (ofw_bus_is_compatible(dev, "fsl,imx-uart"))
-		sc->sc_class = &uart_imx_class;
-	else if (ofw_bus_is_compatible(dev, "arm,pl011"))
-		sc->sc_class = &uart_pl011_class;
-	else
+
+	cd = ofw_bus_search_compatible(dev, compat_data);
+	if (cd->ocd_data == (uintptr_t)NULL)
 		return (ENXIO);
+
+	sc->sc_class = (struct uart_class *)cd->ocd_data;
 
 	node = ofw_bus_get_node(dev);
 
@@ -122,99 +143,3 @@ uart_fdt_probe(device_t dev)
 }
 
 DRIVER_MODULE(uart, simplebus, uart_fdt_driver, uart_devclass, 0, 0);
-
-/*
- * UART console routines.
- */
-bus_space_tag_t uart_bus_space_io;
-bus_space_tag_t uart_bus_space_mem;
-
-int
-uart_cpu_eqres(struct uart_bas *b1, struct uart_bas *b2)
-{
-
-	return ((b1->bsh == b2->bsh && b1->bst == b2->bst) ? 1 : 0);
-}
-
-int
-uart_cpu_getdev(int devtype, struct uart_devinfo *di)
-{
-	char buf[64];
-	struct uart_class *class;
-	phandle_t node, chosen;
-	pcell_t shift, br, rclk;
-	u_long start, size, pbase, psize;
-	int err;
-
-	uart_bus_space_mem = fdtbus_bs_tag;
-	uart_bus_space_io = NULL;
-
-	/* Allow overriding the FDT uning the environment. */
-	class = &uart_ns8250_class;
-	err = uart_getenv(devtype, di, class);
-	if (!err)
-		return (0);
-
-	if (devtype != UART_DEV_CONSOLE)
-		return (ENXIO);
-
-	/*
-	 * Retrieve /chosen/std{in,out}.
-	 */
-	if ((chosen = OF_finddevice("/chosen")) == -1)
-		return (ENXIO);
-	if (OF_getprop(chosen, "stdin", buf, sizeof(buf)) <= 0)
-		return (ENXIO);
-	if ((node = OF_finddevice(buf)) == -1)
-		return (ENXIO);
-	if (OF_getprop(chosen, "stdout", buf, sizeof(buf)) <= 0)
-		return (ENXIO);
-	if (OF_finddevice(buf) != node)
-		/* Only stdin == stdout is supported. */
-		return (ENXIO);
-	/*
-	 * Retrieve serial attributes.
-	 */
-	uart_fdt_get_shift(node, &shift);
-
-	if (OF_getprop(node, "current-speed", &br, sizeof(br)) <= 0)
-		br = 0;
-	br = fdt32_to_cpu(br);
-
-	if ((err = uart_fdt_get_clock(node, &rclk)) != 0)
-		return (err);
-	/*
-	 * Finalize configuration.
-	 */
-	if (fdt_is_compatible(node, "fsl,imx-uart"))
-		class = &uart_imx_class;
-	if (fdt_is_compatible(node, "quicc"))
-		class = &uart_quicc_class;
-	if (fdt_is_compatible(node, "lpc"))
-		class = &uart_lpc_class;
-	if (fdt_is_compatible(node, "ns16550"))
-		class = &uart_ns8250_class;
-	if (fdt_is_compatible(node, "arm,pl011"))
-		class = &uart_pl011_class;
-
-	di->bas.chan = 0;
-	di->bas.regshft = (u_int)shift;
-	di->baudrate = br;
-	di->bas.rclk = (u_int)rclk;
-	di->ops = uart_getops(class);
-	di->databits = 8;
-	di->stopbits = 1;
-	di->parity = UART_PARITY_NONE;
-	di->bas.bst = uart_bus_space_mem;
-
-	err = fdt_regsize(node, &start, &size);
-	if (err)
-		return (ENXIO);
-	err = fdt_get_range(OF_parent(node), 0, &pbase, &psize);
-	if (err)
-		pbase = 0;
-
-	start += pbase;
-
-	return (bus_space_map(di->bas.bst, start, size, 0, &di->bas.bsh));
-}
