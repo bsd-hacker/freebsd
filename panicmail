@@ -13,7 +13,8 @@
 #				emails instead of sending them to root for
 #				review first.
 #
-# panicmail_sendto (str):	Set to "cperciva-panicmail@daemonology.net"
+# panicmail_sendto (str):	Set to
+#				"FreeBSD Panic Reporting <cperciva@freebsd.org>"
 #				by default.
 #				Change to your desired panic submission target.
 #
@@ -23,7 +24,7 @@
 #				submission target.
 : ${panicmail_enable:="NO"}
 : ${panicmail_autosubmit:="NO"}
-: ${panicmail_sendto:="cperciva-panicmail@daemonology.net"}
+: ${panicmail_sendto:="FreeBSD Panic Reporting <cperciva@freebsd.org>"}
 : ${panicmail_key:="/usr/local/etc/cperciva-panicmail.pem"}
 
 . /etc/rc.subr
@@ -33,49 +34,50 @@ rcvar=panicmail_enable
 start_cmd="panicmail_run"
 stop_cmd=":"
 
-# Gather the data we want to include in a panic report
+# Gather the data we want to include in a panic report.
 panicmail_gather()
 {
 	local tmpfile=`mktemp` || exit 1
 
 	# We want the dump header.
-	cat ${dumpdir}/info.$1 >> ${dumpdir}/panicmail.$1
-	echo >> ${dumpdir}/panicmail.$1
+	cat "${dumpdir}/info.$1" > "${dumpdir}/panicmail.$1"
+	echo >> "${dumpdir}/panicmail.$1"
 
 	# And we want a backtrace (we should be able to pipe the commands
 	# directly into kgdb, but that doesn't work with our /bin/sh):
-	echo "Backtrace:" >> ${dumpdir}/panicmail.$1
+	echo "Backtrace:" >> "${dumpdir}/panicmail.$1"
 	echo bt > ${tmpfile}
 	echo quit >> ${tmpfile}
-	kgdb -q `sysctl -n kern.bootfile` ${dumpdir}/vmcore.$1 \
-	    < ${tmpfile} >> ${dumpdir}/panicmail.$1 2> /dev/null
-	echo >> ${dumpdir}/panicmail.$1
+	kgdb -q `sysctl -n kern.bootfile` "${dumpdir}/vmcore.$1" \
+	    < ${tmpfile} >> "${dumpdir}/panicmail.$1" 2> /dev/null
+	echo >> "${dumpdir}/panicmail.$1"
 	rm ${tmpfile}
 }
 
-# Encrypt the information in the panic report
+# Encrypt the information in the panic report.
 panicmail_encrypt()
 {
 	local tmpfile=`mktemp` || exit 1
 
 	# Encrypt using pkesh.
-	/usr/local/bin/pkesh enc $2 ${dumpdir}/panicmail.$1 ${tmpfile}
+	/usr/local/bin/pkesh enc "$2" "${dumpdir}/panicmail.$1" ${tmpfile} || exit 1
 
-	# Add extra armour
-	echo "-----ENCRYPTED FREEBSD PANIC DATA STARTS HERE---------------------" > ${dumpdir}/panicmail.$1.enc
-	lam -s '|' ${tmpfile} -s '|' >> ${dumpdir}/panicmail.$1.enc
-	echo "-----ENCRYPTED FREEBSD PANIC DATA ENDS HERE-----------------------" >> ${dumpdir}/panicmail.$1.enc
+	# Add extra armour.
+	echo "-----ENCRYPTED FREEBSD PANIC DATA STARTS HERE---------------------" > "${dumpdir}/panicmail.$1.enc"
+	lam -s '|' ${tmpfile} -s '|' >> "${dumpdir}/panicmail.$1.enc"
+	echo "-----ENCRYPTED FREEBSD PANIC DATA ENDS HERE-----------------------" >> "${dumpdir}/panicmail.$1.enc"
 
-	# Remove temporary file
+	# Remove temporary file.
 	rm ${tmpfile}
 }
 
+# Construct an email destined for root to review and forward.
 panicmail_root()
 {
 
 	cat <<-EOF
 		To: root
-		From: FreeBSD Panic Reporting <${panicmail_sendto}>
+		From: ${panicmail_sendto}
 		Subject: Kernel panic
 
 		A kernel panic has occurred on this system.  You can assist in
@@ -86,7 +88,7 @@ panicmail_root()
 		report at the end of this email:
 
 	EOF
-	lam -s "> " ${dumpdir}/panicmail.$1
+	lam -s "> " "${dumpdir}/panicmail.$1"
 	cat <<-EOF
 
 		If you are happy to have this information submitted (i.e., it
@@ -97,40 +99,52 @@ panicmail_root()
 		client and removing everything up to this point.
 		
 	EOF
-	cat ${dumpdir}/panicmail.$1.enc
+	cat "${dumpdir}/panicmail.$1.enc"
 }
 
+# Construct an email headed directly to the panic submission target.
 panicmail_auto()
 {
 
 	cat <<-EOF
-		To: FreeBSD Panic Reporting <${panicmail_sendto}>
+		To: ${panicmail_sendto}
 		From: root
 		Subject: Kernel panic
 
 	EOF
-	cat ${dumpdir}/panicmail.$1.enc
+	cat "${dumpdir}/panicmail.$1.enc"
 }
 
 panicmail_run()
 {
 	local nr
 
-	# Quit if we have no dumps
+	# Set umask; we may create files with sensitive data.
+	umask 077
+
+	# Quit if we have no dumps.
 	if ! [ -f "${dumpdir}/bounds" ]; then
 		return 0;
 	fi
 
-	# Figure out which dump is the most recent
-	nr=$((`cat ${dumpdir}/bounds` - 1))
+	# If we have info.last, use that to figure out the last dump number.
+	if [ -e "${dumpdir}/info.last" ]; then
+		nr=`readlink ${dumpdir}/info.last`
+		nr=${nr##*.}
+	else
+		# Otherwise get the number from bounds.
+		nr=$((`cat ${dumpdir}/bounds` - 1))
+	fi
 
-	# Make sure it actually exists
-	if ! [ -f "${dumpdir}/info.${nr}" ]; then
+	# Make sure the dump actually exists.
+	if ! [ -f "${dumpdir}/info.${nr}" ] ||
+	    ! [ -f "${dumpdir}/vmcore.${nr}" ]; then
 		return 0;
 	fi
 
-	# Have we already sent an email about this one?
-	if [ -f "${dumpdir}/panicmail.${nr}" ]; then
+	# Have we already sent an email about this one?  We compare times in
+	# order to catch the case where dump numbers repeat.
+	if [ "${dumpdir}/panicmail.${nr}" -nt "${dumpdir}/vmcore.${nr}" ]; then
 		return 0;
 	fi
 
@@ -138,7 +152,7 @@ panicmail_run()
 	panicmail_gather ${nr}
 
 	# Encrypt the panic information.
-	panicmail_encrypt ${nr} ${panicmail_key}
+	panicmail_encrypt ${nr} "${panicmail_key}"
 
 	# Generate and send an email.
 	if checkyesno panicmail_autosubmit; then
