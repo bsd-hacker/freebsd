@@ -46,14 +46,14 @@ panicmail_gather()
 	# And we want a backtrace (we should be able to pipe the commands
 	# directly into kgdb, but that doesn't work with our /bin/sh):
 	echo "Backtrace:" >> "${dumpdir}/panicmail.$1"
-	echo bt > ${tmpfile}
-	echo quit >> ${tmpfile}
-	kgdb -q `sysctl -n kern.bootfile` "${dumpdir}/vmcore.$1" \
-	    < ${tmpfile} >> "${dumpdir}/panicmail.$1" 2> /dev/null
+	echo bt > "${tmpfile}"
+	echo quit >> "${tmpfile}"
+	kgdb -q "`sysctl -n kern.bootfile`" "${dumpdir}/vmcore.$1" \
+	    < "${tmpfile}" >> "${dumpdir}/panicmail.$1" 2> /dev/null
 	echo >> "${dumpdir}/panicmail.$1"
 
 	# Remove the temporary file.
-	rm ${tmpfile}
+	rm "${tmpfile}"
 }
 
 # Encrypt the information in the panic report.
@@ -62,15 +62,15 @@ panicmail_encrypt()
 	local tmpfile=`mktemp` || exit 1
 
 	# Encrypt using pkesh.
-	/usr/local/bin/pkesh enc "$2" "${dumpdir}/panicmail.$1" ${tmpfile} || exit 1
+	/usr/local/bin/pkesh enc "$2" "${dumpdir}/panicmail.$1" "${tmpfile}" || exit 1
 
 	# Add extra armour.
 	echo "-----ENCRYPTED FREEBSD PANIC DATA STARTS HERE---------------------" > "${dumpdir}/panicmail.$1.enc"
-	lam -s '|' ${tmpfile} -s '|' >> "${dumpdir}/panicmail.$1.enc"
+	lam -s '|' "${tmpfile}" -s '|' >> "${dumpdir}/panicmail.$1.enc"
 	echo "-----ENCRYPTED FREEBSD PANIC DATA ENDS HERE-----------------------" >> "${dumpdir}/panicmail.$1.enc"
 
 	# Remove the temporary file.
-	rm ${tmpfile}
+	rm "${tmpfile}"
 }
 
 # Construct an email destined for root to review and forward.
@@ -131,11 +131,11 @@ panicmail_run()
 
 	# If we have info.last, use that to figure out the last dump number.
 	if [ -e "${dumpdir}/info.last" ]; then
-		nr=`readlink ${dumpdir}/info.last`
+		nr=`readlink "${dumpdir}/info.last"`
 		nr=${nr##*.}
 	else
 		# Otherwise, get the number from bounds.
-		nr=$((`cat ${dumpdir}/bounds` - 1))
+		nr=$((`cat "${dumpdir}/bounds"` - 1))
 	fi
 
 	# Make sure the dump actually exists.
@@ -151,16 +151,16 @@ panicmail_run()
 	fi
 
 	# Gather information about this panic.
-	panicmail_gather ${nr}
+	panicmail_gather "${nr}"
 
 	# Encrypt the panic information.
-	panicmail_encrypt ${nr} "${panicmail_key}"
+	panicmail_encrypt "${nr}" "${panicmail_key}"
 
 	# Generate and send an email.
 	if checkyesno panicmail_autosubmit; then
-		panicmail_auto ${nr} | sendmail -t
+		panicmail_auto "${nr}" | sendmail -t
 	else
-		panicmail_root ${nr} | sendmail -t
+		panicmail_root "${nr}" | sendmail -t
 	fi
 }
 
