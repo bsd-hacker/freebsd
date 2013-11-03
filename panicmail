@@ -14,7 +14,7 @@
 #				review first.
 #
 # panicmail_sendto (str):	Set to
-#				"FreeBSD Panic Reporting <cperciva@freebsd.org>"
+#				"FreeBSD Panic Reporting <cperciva+panicmail@freebsd.org>"
 #				by default.
 #				Change to your desired panic submission target.
 #
@@ -24,7 +24,7 @@
 #				submission target.
 : ${panicmail_enable:="NO"}
 : ${panicmail_autosubmit:="NO"}
-: ${panicmail_sendto:="FreeBSD Panic Reporting <cperciva@freebsd.org>"}
+: ${panicmail_sendto:="FreeBSD Panic Reporting <cperciva+panicmail@freebsd.org>"}
 : ${panicmail_key:="/usr/local/etc/cperciva-panicmail.pem"}
 
 . /etc/rc.subr
