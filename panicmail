@@ -30,7 +30,7 @@
 . /etc/rc.subr
 
 name="panicmail"
-rcvar=panicmail_enable
+rcvar="panicmail_enable"
 start_cmd="panicmail_run"
 stop_cmd=":"
 
@@ -51,6 +51,8 @@ panicmail_gather()
 	kgdb -q `sysctl -n kern.bootfile` "${dumpdir}/vmcore.$1" \
 	    < ${tmpfile} >> "${dumpdir}/panicmail.$1" 2> /dev/null
 	echo >> "${dumpdir}/panicmail.$1"
+
+	# Remove the temporary file.
 	rm ${tmpfile}
 }
 
@@ -67,7 +69,7 @@ panicmail_encrypt()
 	lam -s '|' ${tmpfile} -s '|' >> "${dumpdir}/panicmail.$1.enc"
 	echo "-----ENCRYPTED FREEBSD PANIC DATA ENDS HERE-----------------------" >> "${dumpdir}/panicmail.$1.enc"
 
-	# Remove temporary file.
+	# Remove the temporary file.
 	rm ${tmpfile}
 }
 
@@ -97,7 +99,7 @@ panicmail_root()
 		  ${panicmail_sendto};
 		you should be able to do this by hitting "Reply" in your mail
 		client and removing everything up to this point.
-		
+
 	EOF
 	cat "${dumpdir}/panicmail.$1.enc"
 }
@@ -124,7 +126,7 @@ panicmail_run()
 
 	# Quit if we have no dumps.
 	if ! [ -f "${dumpdir}/bounds" ]; then
-		return 0;
+		return 0
 	fi
 
 	# If we have info.last, use that to figure out the last dump number.
@@ -132,20 +134,20 @@ panicmail_run()
 		nr=`readlink ${dumpdir}/info.last`
 		nr=${nr##*.}
 	else
-		# Otherwise get the number from bounds.
+		# Otherwise, get the number from bounds.
 		nr=$((`cat ${dumpdir}/bounds` - 1))
 	fi
 
 	# Make sure the dump actually exists.
 	if ! [ -f "${dumpdir}/info.${nr}" ] ||
 	    ! [ -f "${dumpdir}/vmcore.${nr}" ]; then
-		return 0;
+		return 0
 	fi
 
 	# Have we already sent an email about this one?  We compare times in
 	# order to catch the case where dump numbers repeat.
 	if [ "${dumpdir}/panicmail.${nr}" -nt "${dumpdir}/vmcore.${nr}" ]; then
-		return 0;
+		return 0
 	fi
 
 	# Gather information about this panic.
