@@ -34,7 +34,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rename.c
-cc -o rename -Wall rename.c
+cc -o rename -Wall rename.c || exit 1
 rm -f rename.c
 cd $here
 
@@ -57,6 +57,7 @@ EOF
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 static char dir1[128];
@@ -65,8 +66,8 @@ static char dir2[128];
 int 
 main(int argc, char **argv)
 {
-	int i;
 	struct stat sb;
+	time_t start;
 
 	sprintf(dir1, "/tmp/rename.dir.%d", getpid());
 	sprintf(dir2, "/tmp/rename.dir.2.%d", getpid());
@@ -78,7 +79,8 @@ main(int argc, char **argv)
 	if (chdir("..") == -1)
 		err(1, "chdir(%s)", "..");
 
-	for (i = 0; i < 100000; i++) {
+	start = time(NULL);
+	while ((time(NULL) - start) < 120) {
 		if (rename(dir1, dir2) == -1) {
 			warn("rename(%s, %s)", dir1, dir2);
 			if (stat(dir1, &sb) == -1)
