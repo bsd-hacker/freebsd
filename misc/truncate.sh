@@ -35,7 +35,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > truncate.c
-cc -o truncate -Wall -O2 truncate.c
+cc -o truncate -Wall -Wextra -O2 truncate.c || exit 1
 rm -f truncate.c
 [ -d $RUNDIR ] || mkdir -p $RUNDIR
 cd $RUNDIR
@@ -49,6 +49,7 @@ EOF
 #include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -58,6 +59,7 @@ char buf[SIZ];
 void
 test(void)
 {
+	time_t start;
 	int fd[10], i, j;
 	char name[128];
 
@@ -68,7 +70,10 @@ test(void)
 		unlink(name);
 	}
 
+	start = time(NULL);
 	for (i = 0; i < 100000; i++) {
+		if (time(NULL) - start > 1200)
+			break;
 		for (j = 0; j < 10; j++) {
 			if (write(fd[j], buf, 2) != 2)
 				err(1, "write");
@@ -77,10 +82,11 @@ test(void)
 		}
 	}
 
-	exit(0);
+	_exit(0);
 }
+
 int
-main(int argc, char **argv)
+main(void)
 {
 	int i, status;
 
