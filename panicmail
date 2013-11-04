@@ -37,7 +37,8 @@ stop_cmd=":"
 # Gather the data we want to include in a panic report.
 panicmail_gather()
 {
-	local tmpfile=`mktemp` || exit 1
+	local tmpfile
+	tmpfile=`mktemp` || exit 1
 
 	# We want the dump header.
 	cat "${dumpdir}/info.$1" > "${dumpdir}/panicmail.$1"
@@ -59,7 +60,8 @@ panicmail_gather()
 # Encrypt the information in the panic report.
 panicmail_encrypt()
 {
-	local tmpfile=`mktemp` || exit 1
+	local tmpfile
+	tmpfile=`mktemp` || exit 1
 
 	# Encrypt using pkesh.
 	/usr/local/bin/pkesh enc "$2" "${dumpdir}/panicmail.$1" "${tmpfile}" || exit 1
