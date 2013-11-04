@@ -43,7 +43,8 @@ rm -f sendfile2.c
 [ -d "$RUNDIR" ] || mkdir -p $RUNDIR
 cd $RUNDIR
 
-cp /usr/lib/libc_pic.a large
+dd if=/dev/random of=large bs=1m count=3 2>&1 |
+    egrep -v "records|transferred"
 md1=`md5 large`
 
 nc -l 7000 > lf &
