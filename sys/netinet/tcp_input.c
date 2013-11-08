@@ -106,6 +106,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/tcp6_var.h>
 #include <netinet/tcpip.h>
 #include <netinet/tcp_syncache.h>
+#include <netinet/tcp_ao.h>
 #ifdef TCPDEBUG
 #include <netinet/tcp_debug.h>
 #endif /* TCPDEBUG */
@@ -1555,6 +1556,10 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	tcp_dooptions(&to, (u_char *)(th + 1),
 	    (th->th_off << 2) - sizeof(struct tcphdr),
 	    (thflags & TH_SYN) ? TO_SYN : 0);
+
+	if (tp->t_flags & TF_AO)
+		if (tcp_ao_est_verify(tp, th, &to, m, tlen) != 0)
+			goto drop;
 
 	/*
 	 * If echoed timestamp is later than the current time,

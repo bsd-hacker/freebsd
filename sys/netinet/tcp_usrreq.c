@@ -85,6 +85,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/tcpip.h>
+#include <netinet/tcp_ao.h>
 #ifdef TCPDEBUG
 #include <netinet/tcp_debug.h>
 #endif
@@ -1309,7 +1310,7 @@ tcp_ctloutput(struct socket *so, struct sockopt *sopt)
 	u_int	ui;
 	struct	inpcb *inp;
 	struct	tcpcb *tp;
-//	void	*x;
+	void	*x;
 	struct	tcp_info ti;
 	char buf[TCP_CA_NAME_MAX];
 	struct cc_algo *algo;
@@ -1359,23 +1360,28 @@ tcp_ctloutput(struct socket *so, struct sockopt *sopt)
 				tp->t_flags &= ~TF_SIGNATURE;
 			goto unlock_and_done;
 #endif /* TCP_SIGNATURE */
-#if 0
 		case TCP_AO:
 			INP_WUNLOCK(inp);
-			if (sopt->sopt_valsize <= sizeof(struct tcp_ao_sopt) +
+			if (sopt->sopt_valsize <= sizeof(struct tcp_ao_sopt))
+				return (EINVAL);
+			if (sopt->sopt_valsize >= sizeof(struct tcp_ao_sopt) +
 			    TAO_KEY_MAXLEN)
 				return (EINVAL);
 			if ((x = malloc(sopt->sopt_valsize, M_TEMP, M_WAITOK)) == NULL)
 				return (ENOMEM);
 			error = sooptcopyin(sopt, x, sopt->sopt_valsize,
 			    sizeof(struct tcp_ao_sopt));
-			if (error)
+			if (error) {
+				free(x, M_TEMP);
 				return (error);
+			}
 
 			INP_WLOCK_RECHECK(inp);
 			error = tcp_ao_ctl(tp, x, sopt->sopt_valsize);
+			free(x, M_TEMP);
+			if (error)
+				return (error);
 			goto unlock_and_done;
-#endif
 		case TCP_NODELAY:
 		case TCP_NOOPT:
 			INP_WUNLOCK(inp);
@@ -1571,6 +1577,7 @@ unlock_and_done:
 			break;
 #endif
 		case TCP_AO:
+			/* get the active key index. */
 			optval = (tp->t_flags & TF_AO) ? 1 : 0;
 			INP_WUNLOCK(inp);
 			error = sooptcopyout(sopt, &optval, sizeof optval);

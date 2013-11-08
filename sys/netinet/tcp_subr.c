@@ -89,6 +89,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/tcp_syncache.h>
+#include <netinet/tcp_ao.h>
 #ifdef INET6
 #include <netinet6/tcp6_var.h>
 #endif
@@ -999,6 +1000,8 @@ tcp_discardcb(struct tcpcb *tp)
 #endif
 		
 	tcp_free_sackholes(tp);
+
+	tcp_ao_cb_free(tp);
 
 	/* Allow the CC algorithm to clean up after itself. */
 	if (CC_ALGO(tp)->cb_destroy != NULL)

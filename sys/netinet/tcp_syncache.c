@@ -84,6 +84,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/tcp_syncache.h>
+#include <netinet/tcp_ao.h>
 #ifdef INET6
 #include <netinet6/tcp6_var.h>
 #endif
@@ -669,6 +670,7 @@ static struct socket *
 syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 {
 	struct inpcb *inp = NULL;
+	struct inpcb *oinp = NULL;
 	struct socket *so;
 	struct tcpcb *tp;
 	int error;
@@ -703,6 +705,7 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 #endif
 
 	inp = sotoinpcb(so);
+	oinp = sotoinpcb(lso);
 	inp->inp_inc.inc_fibnum = so->so_fibnum;
 	INP_WLOCK(inp);
 	INP_HASH_WLOCK(&V_tcbinfo);
@@ -755,7 +758,6 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 #endif
 #ifdef INET6
 	if (sc->sc_inc.inc_flags & INC_ISIPV6) {
-		struct inpcb *oinp = sotoinpcb(lso);
 		struct in6_addr laddr6;
 		struct sockaddr_in6 sin6;
 		/*
@@ -868,6 +870,10 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		if (sc->sc_flags & SCF_SIGNATURE)
 			tp->t_flags |= TF_SIGNATURE;
 #endif
+		if (sc->sc_flags & SCF_AO) {
+			tp->t_flags |= TF_AO;
+			tcp_ao_sc_copy(sototcpcb(lso), tp, &sc->sc_inc);
+		}
 		if (sc->sc_flags & SCF_SACK)
 			tp->t_flags |= TF_SACK_PERMIT;
 	}
@@ -1115,6 +1121,7 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	struct label *maclabel;
 #endif
 	struct syncache scs;
+	struct tcp_ao_key tkey;
 	struct ucred *cred;
 
 	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
@@ -1139,7 +1146,10 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	ip_tos = inp->inp_ip_tos;
 	win = sbspace(&so->so_rcv);
 	sb_hiwat = so->so_rcv.sb_hiwat;
-	ltflags = (tp->t_flags & (TF_NOOPT | TF_SIGNATURE));
+	ltflags = (tp->t_flags & (TF_NOOPT | TF_SIGNATURE | TF_AO));
+
+	/* Find the TCP-AO master key for this peer, if any. */
+	(void)tcp_ao_sc_findmkey(tp, inc, to, &tkey);
 
 	/* By the time we drop the lock these should no longer be used. */
 	so = NULL;
@@ -1155,6 +1165,11 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 #endif
 	INP_WUNLOCK(inp);
 	INP_INFO_WUNLOCK(&V_tcbinfo);
+
+	/* Validate this segment against TCP-AO key. */
+	if (ltflags & TF_AO)
+		if (tcp_ao_sc_verify(&tkey, inc, th, to, m, 0) != 0)
+			goto done;
 
 	/*
 	 * Remember the IP options, if any.
@@ -1336,6 +1351,8 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	if (to->to_flags & TOF_SIGNATURE || ltflags & TF_SIGNATURE)
 		sc->sc_flags |= SCF_SIGNATURE;
 #endif
+	if (to->to_flags & TOF_AO || ltflags & TF_AO)
+		sc->sc_flags |= SCF_AO;
 	if (to->to_flags & TOF_SACKPERM)
 		sc->sc_flags |= SCF_SACK;
 	if (to->to_flags & TOF_MSS)
@@ -1513,6 +1530,9 @@ syncache_respond(struct syncache *sc)
 		if (sc->sc_flags & SCF_SIGNATURE)
 			to.to_flags |= TOF_SIGNATURE;
 #endif
+		if (sc->sc_flags & SCF_AO)
+			to.to_flags |= TOF_AO;
+
 		optlen = tcp_addoptions(&to, (u_char *)(th + 1));
 
 		/* Adjust headers by option size. */
@@ -1525,6 +1545,8 @@ syncache_respond(struct syncache *sc)
 			tcp_signature_compute(m, 0, 0, optlen,
 			    to.to_signature, IPSEC_DIR_OUTBOUND);
 #endif
+//		if (sc->sc_flags & SCF_AO)
+//			(void)tcp_ao_sc_hash(tkey, &sc->sc_inc, th, &to, m, 0);
 #ifdef INET6
 		if (sc->sc_inc.inc_flags & INC_ISIPV6)
 			ip6->ip6_plen = htons(ntohs(ip6->ip6_plen) + optlen);

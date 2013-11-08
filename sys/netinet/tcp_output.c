@@ -75,6 +75,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/tcpip.h>
+#include <netinet/tcp_ao.h>
 #ifdef TCPDEBUG
 #include <netinet/tcp_debug.h>
 #endif
@@ -740,8 +741,10 @@ send:
 			to.to_flags |= TOF_SIGNATURE;
 #endif /* TCP_SIGNATURE */
 		/* TCP-AO (RFC5925). */
-		if (tp->t_flags & TF_AO)
+		if (tp->t_flags & TF_AO) {
 			to.to_flags |= TOF_AO;
+			tcp_ao_est_opt(tp, &to);
+		}
 
 		/* Processing the options. */
 		hdrlen += optlen = tcp_addoptions(&to, opt);
@@ -1078,6 +1081,8 @@ send:
 		    (u_char *)(th + 1) + sigoff, IPSEC_DIR_OUTBOUND);
 	}
 #endif
+	if (tp->t_flags & TF_AO)
+		(void)tcp_ao_est_hash(tp, th, &to, m, len);
 
 	/*
 	 * Put TCP length in extended header, and then
@@ -1523,32 +1528,31 @@ tcp_addoptions(struct tcpopt *to, u_char *optp)
 			*optp++ = TCPOPT_SIGNATURE;
 			*optp++ = TCPOLEN_SIGNATURE;
 			to->to_signature = optp;
+			to->to_siglen = siglen;
 			while (siglen--)
 				 *optp++ = 0;
 			break;
 			}
-#if 0
 		case TOF_AO:
 			{
-			int siglen = tcp_ao_siglen(tp);
+			int siglen = to->to_siglen;
 
 			while (!optlen || optlen % 4 != 2) {
 				optlen += TCPOLEN_NOP;
 				*optp++ = TCPOPT_NOP;
 			}
-			if (TCP_MAXOLEN - optlen < TCPOLEN_AO_MIN + siglen)
+			if (TCP_MAXOLEN - optlen < TCPOLEN_AO_MIN + to->to_siglen)
 				continue;
 			optlen += TCPOLEN_AO_MIN;
 			*optp++ = TCPOPT_AO;
-			*optp++ = TCPOLEN_AO_MIN + siglen;
-			*optp++ = tcp_ao_keyid(tp);	/* keyid */
-			*optp++ = tcp_ao_nextkeyid(tp);	/* nextkeyid */
+			*optp++ = TCPOLEN_AO_MIN + to->to_siglen;
+			*optp++ = to->to_ao_keyid;
+			*optp++ = to->to_ao_nextkeyid;
 			to->to_signature = optp;
 			while (siglen--)
 				*optp++ = 0;
 			break;
 			}
-#endif
 		case TOF_SACK:
 			{
 			int sackblks = 0;

@@ -69,6 +69,11 @@
 
 MALLOC_DECLARE(M_TCPAO);
 
+#include <sys/md5.h>
+#include <crypto/sha1.h>
+#include <crypto/cmac/cmac.h>
+#include <crypto/hmac/hmac.h>
+
 /*
  * TCP-AO key interface struct passed to setsockopt().
  * Per peer structures referenced from tcp_ao_sopt.
@@ -83,7 +88,7 @@ struct tcp_ao_sopt {
 			tao_peer;		/* this key applies to ... */
 	uint8_t		tao_key[];		/* base64 key string */
 };
-#define TAO_KEY_MAXLEN			128	/* base64 encoded */
+#define TAO_KEY_MAXLEN			128
 
 /*
  * Commands for the tao_cmd field.
@@ -105,44 +110,80 @@ struct tcp_ao_sopt {
 #define TAO_ALGO_HMAC_SHA_1_96		2	/* RFC5926, Section 2.2 */
 #define TAO_ALGO_AES_128_CMAC_96	3	/* RFC5926, Section 2.2 */
 
+#define	TAO_ALGO_MD5SIG_LEN		16
+#define	TAO_ALGO_HMAC_SHA_1_96_LEN	12
+#define	TAO_ALGO_AES_128_CMAC_96_LEN	12
+
+#ifdef _KERNEL
+#define	TCP_AO_MAXHASH			20	/* max raw hash length */
+
 /*
  * In kernel storage of the key information.
+ * The active session key is stored in tac_skey and tac_rkey.
  */
 struct tcp_ao_cb {
+	LIST_HEAD(tac_peer, tcp_ao_peer) tac_peers;
 	int tac_algo;
+	uint32_t tac_sndsne, tac_rcvsne;
+	/* Pre-computed traffic keys for established sessions. */
 	union {
 		uint8_t md5[MD5_DIGEST_LENGTH];
 		uint8_t hmac[SHA1_DIGEST_LENGTH];
 		uint8_t cmac[AES_CMAC_DIGEST_LENGTH];
 	} tac_skey, tac_rkey;
-	uint32_t tac_sne;
-	LIST_HEAD(tac_peer, tcp_ao_peer) tac_peers;
 };
 
+/*
+ * Per peer information (remote IP).
+ * A control block can have N peers in LISTEN mode.
+ * A control block can have 1 peer in SYN_SENT or SYN_RECEIVED mode.
+ */
 struct tcp_ao_peer {
 	LIST_ENTRY(tcp_ao_peer)	tap_entry;
 	uint16_t tap_flags;
+	uint8_t tap_activekey;
+	uint8_t tap_nextkey;
 	union {
 		struct sockaddr sa;
 		struct sockaddr_in sin4;
 		struct sockaddr_in6 sin6;
 	} tap_peer;
-	uint8_t tap_activekey;
 	SLIST_HEAD(tap_key, tcp_ao_key) tap_keys;
 };
 
+/*
+ * Per key information.  A peer can have N keys, of which one is active.
+ */
 struct tcp_ao_key {
 	SLIST_ENTRY(tcp_ao_key) entry;
 	uint8_t keyidx;
 	uint8_t keyflags;
 	uint8_t keyalgo;
 	uint8_t keylen;
-	uint8_t key[];			/* after base64_decode */
+	uint8_t key[];
 };
 
-int	tcp_ao_kdf(struct in_conninfo *, struct tcphdr *, uint8_t *, int,
-	    struct tcp_ao_key *);
-int	tcp_ao_mac(struct tcpcb *, struct tcp_ao_cb *, struct in_conninfo *,
-	    struct tcphdr *, struct tcpopt *, struct mbuf *);
+#define	TCP_AO_IN	0
+#define	TCP_AO_OUT	1
 
+int	tcp_ao_ctl(struct tcpcb *tp, struct tcp_ao_sopt *tao, int tao_len);
+
+int	tcp_ao_sc_findmkey(struct tcpcb *tp, struct in_conninfo *inc,
+	    struct tcpopt *to, struct tcp_ao_key *tkey);
+int	tcp_ao_sc_verify(struct tcp_ao_key *tak, struct in_conninfo *inc,
+	    struct tcphdr *th, struct tcpopt *to, struct mbuf *m, int tlen);
+int	tcp_ao_sc_hash(struct tcp_ao_key *tak, struct in_conninfo *inc,
+	    struct tcphdr *th, struct tcpopt *to, struct mbuf *m, int tlen);
+int	tcp_ao_sc_copy(struct tcpcb *ltp, struct tcpcb *tp,
+	    struct in_conninfo *inc);
+
+int	tcp_ao_est_verify(struct tcpcb *tp, struct tcphdr *th, struct tcpopt *to,
+	    struct mbuf *m, int tlen);
+int	tcp_ao_est_hash(struct tcpcb *tp, struct tcphdr *th, struct tcpopt *to,
+	    struct mbuf *m, int tlen);
+int	tcp_ao_est_opt(struct tcpcb *tp, struct tcpopt *to);
+
+void	tcp_ao_cb_free(struct tcpcb *tp);
+
+#endif /* _KERNEL */
 #endif
