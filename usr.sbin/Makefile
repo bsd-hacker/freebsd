@@ -37,7 +37,6 @@ SUBDIR=	adduser \
 	inetd \
 	iostat \
 	iscsid \
-	isfctl \
 	kldxref \
 	mailwrapper \
 	makefs \
@@ -122,29 +121,6 @@ SUBDIR+=	praudit
 
 .if ${MK_AUTHPF} != "no"
 SUBDIR+=	authpf
-.endif
-
-.if ${MK_BIND_DNSSEC} != "no" && ${MK_OPENSSL} != "no"
-SUBDIR+=	dnssec-dsfromkey
-SUBDIR+=	dnssec-keyfromlabel
-SUBDIR+=	dnssec-keygen
-SUBDIR+=	dnssec-revoke
-SUBDIR+=	dnssec-settime
-SUBDIR+=	dnssec-signzone
-SUBDIR+=	dnssec-verify
-.endif
-.if ${MK_BIND_NAMED} != "no"
-SUBDIR+=	arpaname
-SUBDIR+=	ddns-confgen
-SUBDIR+=	genrandom
-SUBDIR+=	isc-hmac-fixup
-SUBDIR+=	named
-SUBDIR+=	named-checkconf
-SUBDIR+=	named-checkzone
-SUBDIR+=	named-journalprint
-SUBDIR+=	nsec3hash
-SUBDIR+=	rndc
-SUBDIR+=	rndc-confgen
 .endif
 
 .if ${MK_BLUETOOTH} != "no"
@@ -273,10 +249,6 @@ SUBDIR+=	ftp-proxy
 
 .if ${MK_PKGBOOTSTRAP} != "no"
 SUBDIR+=	pkg
-.endif
-
-.if ${MK_PKGTOOLS} != "no"
-SUBDIR+=	pkg_install
 .endif
 
 # XXX MK_TOOLCHAIN?

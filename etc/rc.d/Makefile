@@ -21,11 +21,11 @@ FILES=	DAEMON \
 	auditd \
 	auditdistd \
 	bgfsck \
-	bluetooth \
+	${_bluetooth} \
 	bootparams \
 	bridge \
 	bsnmpd \
-	bthidd \
+	${_bthidd} \
 	ccd \
 	cleanvar \
 	cleartmp \
@@ -48,7 +48,7 @@ FILES=	DAEMON \
 	gptboot \
 	gssd \
 	hastd \
-	hcsecd \
+	${_hcsecd} \
 	hostapd \
 	hostid \
 	hostid_save \
@@ -90,7 +90,6 @@ FILES=	DAEMON \
 	mroute6d \
 	mrouted \
 	msgs \
-	named \
 	natd \
 	netif \
 	netoptions \
@@ -182,6 +181,9 @@ _nscd=		nscd
 .endif
 
 .if ${MK_BLUETOOTH} != "no"
+_bluetooth=	bluetooth
+_bthidd=	bthidd
+_hcsecd=	hcsecd
 _ubthidhci=	ubthidhci
 .endif
 

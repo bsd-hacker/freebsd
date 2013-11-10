@@ -24,8 +24,6 @@
     etc
         X11
         ..
-        atf
-        ..
         bluetooth
         ..
         defaults
@@ -54,6 +52,8 @@
             weekly
             ..
         ..
+        pkg
+        ..
         ppp
         ..
         rc.d
@@ -65,8 +65,6 @@
         ssh
         ..
         ssl
-        ..
-        unbound
         ..
         zfs
         ..

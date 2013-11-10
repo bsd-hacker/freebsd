@@ -81,7 +81,6 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	${_libgpib} \
 	${_libgssapi} \
 	${_librpcsec_gss} \
-	${_libiconv_compat} \
 	libipsec \
 	${_libipx} \
 	libjail \
@@ -127,8 +126,8 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libyaml \
 	libz \
 	${_atf} \
-	${_bind} \
-	${_clang}
+	${_clang} \
+	${_tests}
 
 .if exists(${.CURDIR}/csu/${MACHINE_ARCH}-elf)
 _csu=csu/${MACHINE_ARCH}-elf
@@ -142,16 +141,8 @@ _csu=csu
 
 # NB: keep these sorted by MK_* knobs
 
-.if ${MK_ATF} != "no"
-_atf=		atf
-.endif
-
 .if ${MK_ATM} != "no"
 _libngatm=	libngatm
-.endif
-
-.if ${MK_BIND} != "no"
-_bind=		bind
 .endif
 
 .if ${MK_BLUETOOTH} != "no"
@@ -191,10 +182,6 @@ _libldns=	libldns
 .if ${MK_LIBCPLUSPLUS} != "no"
 _libcxxrt=	libcxxrt
 _libcplusplus=	libc++
-.endif
-
-.if ${MK_LIBICONV_COMPAT} != "no"
-_libiconv_compat=	libiconv_compat
 .endif
 
 .if ${MK_LIBTHR} != "no"
@@ -261,6 +248,11 @@ _libsmutil=	libsmutil
 
 .if ${MK_TELNET} != "no"
 _libtelnet=	libtelnet
+.endif
+
+.if ${MK_TESTS} != "no"
+_atf=		atf
+_tests=		tests
 .endif
 
 .if ${MK_UNBOUND} != "no"

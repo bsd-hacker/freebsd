@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/taskqueue.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <net/if_dl.h>
@@ -3205,8 +3206,8 @@ nfe_stats_clear(struct nfe_softc *sc)
 	else
 		return;
 
-	for (i = 0; i < mib_cnt; i += sizeof(uint32_t))
-		NFE_READ(sc, NFE_TX_OCTET + i);
+	for (i = 0; i < mib_cnt; i++)
+		NFE_READ(sc, NFE_TX_OCTET + i * sizeof(uint32_t));
 
 	if ((sc->nfe_flags & NFE_MIB_V3) != 0) {
 		NFE_READ(sc, NFE_TX_UNICAST);

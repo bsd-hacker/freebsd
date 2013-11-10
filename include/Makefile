@@ -83,15 +83,7 @@ _netipx=	netipx
 
 # Handle the #define aliases for libiconv
 .if ${MK_ICONV} == "yes"
-CLEANFILES+=	_libiconv_compat.h
-INCS+=		_libiconv_compat.h iconv.h
-_libiconv_compat.h:	${.CURDIR}/Makefile
-	echo "/* Indicate whether libiconv symbols are present */" > _libiconv_compat.h
-.if ${MK_LIBICONV_COMPAT} == "yes"
-	echo "#define __LIBICONV_COMPAT" >> _libiconv_compat.h
-.else
-	echo "#undef __LIBICONV_COMPAT" >> _libiconv_compat.h
-.endif
+INCS+=		iconv.h
 .endif
 	
 
@@ -104,8 +96,9 @@ SHARED?=	copies
 
 INCS+=	osreldate.h
 
-NEWVERS_SH=		${.CURDIR}/../sys/conf/newvers.sh
-PARAM_H=		${.CURDIR}/../sys/sys/param.h
+SYSDIR=			${.CURDIR}/../sys
+NEWVERS_SH=		${SYSDIR}/conf/newvers.sh
+PARAM_H=		${SYSDIR}/sys/param.h
 MK_OSRELDATE_SH=	${.CURDIR}/mk-osreldate.sh
 
 osreldate.h vers.c: ${NEWVERS_SH} ${PARAM_H} ${MK_OSRELDATE_SH}
@@ -113,6 +106,7 @@ osreldate.h vers.c: ${NEWVERS_SH} ${PARAM_H} ${MK_OSRELDATE_SH}
 	    MAKE="${MAKE}" \
 	    NEWVERS_SH=${NEWVERS_SH} \
 	    PARAM_H=${PARAM_H} \
+	    SYSDIR=${SYSDIR} \
 	    sh ${MK_OSRELDATE_SH}
 
 .for i in ${LHDRS}
@@ -147,11 +141,6 @@ compat:
 	mtree -deU ${MTREE_FOLLOWS_SYMLINKS} \
 	    -f ${.CURDIR}/../etc/mtree/BSD.include.dist \
 	    -p ${DESTDIR}${INCLUDEDIR}
-.if ${MK_BIND_LIBS} != "no"
-	mtree -deU ${MTREE_FOLLOWS_SYMLINKS} \
-	    -f ${.CURDIR}/../etc/mtree/BIND.include.dist \
-	    -p ${DESTDIR}${INCLUDEDIR}
-.endif
 
 copies:
 .for i in ${LDIRS} ${LSUBDIRS} ${LSUBSUBDIRS} altq crypto machine machine/pc \
@@ -197,6 +186,11 @@ copies:
 	cd ${.CURDIR}/../sys/contrib/ipfilter/netinet; \
 	${INSTALL} -C -o ${BINOWN} -g ${BINGRP} -m 444 *.h \
 	    ${DESTDIR}${INCLUDEDIR}/netinet
+.endif
+.if ${MK_PF} != "no"
+	cd ${.CURDIR}/../sys/netpfil/pf; \
+	${INSTALL} -C -o ${BINOWN} -g ${BINGRP} -m 444 *.h \
+	    ${DESTDIR}${INCLUDEDIR}/netpfil/pf
 .endif
 	cd ${.CURDIR}/../sys/crypto; \
 	${INSTALL} -C -o ${BINOWN} -g ${BINGRP} -m 444 rijndael/rijndael.h \
@@ -289,6 +283,13 @@ symlinks:
 	for h in *.h; do \
 		ln -fs ../../../sys/contrib/ipfilter/netinet/$$h \
 		    ${DESTDIR}${INCLUDEDIR}/netinet; \
+	done
+.endif
+.if ${MK_PF} != "no"
+	cd ${.CURDIR}/../sys/netpfil/pf; \
+	for h in *.h; do \
+		ln -fs ../../../../sys/netpfil/pf/$$h \
+		    ${DESTDIR}${INCLUDEDIR}/netpfil/pf; \
 	done
 .endif
 	cd ${.CURDIR}/../sys/crypto; \

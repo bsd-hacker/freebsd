@@ -473,6 +473,12 @@ device		virtio_blk	# VirtIO Block device
 device		virtio_scsi	# VirtIO SCSI device
 device		virtio_balloon	# VirtIO Memory Balloon device
 
+device 		hyperv		# HyperV drivers
+
+# Xen HVM Guest Optimizations
+options 	XENHVM		# Xen HVM kernel infrastructure 
+device 		xenpci		# Xen HVM Hypervisor services driver
+
 #####################################################################
 
 #
@@ -503,6 +509,7 @@ device		asmc
 device		tpm
 device		padlock_rng	# VIA Padlock RNG
 device		rdrand_rng	# Intel Bull Mountain RNG
+device		aesni		# AES-NI OpenCrypto module
 
 #
 # Laptop/Notebook options:

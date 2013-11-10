@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhyverun.h"
 #include "inout.h"
+#include "legacy_irq.h"
 #include "mem.h"
 #include "pci_emul.h"
 #include "ioapic.h"
@@ -75,17 +76,6 @@ static struct slotinfo {
 	struct pci_devinst *si_devi;
 	int	si_legacy;
 } pci_slotinfo[MAXSLOTS][MAXFUNCS];
-
-/*
- * Used to keep track of legacy interrupt owners/requestors
- */
-#define NLIRQ		16
-
-static struct lirqinfo {
-	int	li_generic;
-	int	li_acount;
-	struct pci_devinst *li_owner;	/* XXX should be a list */
-} lirq[NLIRQ];
 
 SET_DECLARE(pci_devemu_set, struct pci_devemu);
 
@@ -682,6 +672,7 @@ pci_emul_init(struct vmctx *ctx, struct pci_devemu *pde, int slot, int func,
 	pdi->pi_bus = 0;
 	pdi->pi_slot = slot;
 	pdi->pi_func = func;
+	pdi->pi_lintr_pin = -1;
 	pdi->pi_d = pde;
 	snprintf(pdi->pi_name, PI_NAMESZ, "%s-pci-%d", pde->pe_emu, slot);
 
@@ -941,10 +932,19 @@ pci_emul_capwrite(struct pci_devinst *pi, int offset, int bytes, uint32_t val)
 	assert(offset >= capoff);
 
 	/*
-	 * Capability ID and Next Capability Pointer are readonly
+	 * Capability ID and Next Capability Pointer are readonly.
+	 * However, some o/s's do 4-byte writes that include these.
+	 * For this case, trim the write back to 2 bytes and adjust
+	 * the data.
 	 */
-	if (offset == capoff || offset == capoff + 1)
-		return;
+	if (offset == capoff || offset == capoff + 1) {
+		if (offset == capoff && bytes == 4) {
+			bytes = 2;
+			offset += 2;
+			val >>= 16;
+		} else
+			return;
+	}
 
 	switch (capid) {
 	case PCIY_MSI:
@@ -1014,16 +1014,6 @@ init_pci(struct vmctx *ctx)
 	pci_emul_membase32 = vm_get_lowmem_limit(ctx);
 	pci_emul_membase64 = PCI_EMUL_MEMBASE64;
 
-	/*
-	 * Allow ISA IRQs 5,10,11,12, and 15 to be available for
-	 * generic use
-	 */
-	lirq[5].li_generic = 1;
-	lirq[10].li_generic = 1;
-	lirq[11].li_generic = 1;
-	lirq[12].li_generic = 1;
-	lirq[15].li_generic = 1;
-
 	for (slot = 0; slot < MAXSLOTS; slot++) {
 		for (func = 0; func < MAXFUNCS; func++) {
 			si = &pci_slotinfo[slot][func];
@@ -1048,7 +1038,7 @@ init_pci(struct vmctx *ctx)
 	 * Accesses to memory addresses that are not allocated to system
 	 * memory or PCI devices return 0xff's.
 	 */
-	error = vm_get_memory_seg(ctx, 0, &lowmem);
+	error = vm_get_memory_seg(ctx, 0, &lowmem, NULL);
 	assert(error == 0);
 
 	memset(&memp, 0, sizeof(struct mem_range));
@@ -1126,40 +1116,17 @@ pci_is_legacy(struct pci_devinst *pi)
 	return (pci_slotinfo[pi->pi_slot][pi->pi_func].si_legacy);
 }
 
-static int
-pci_lintr_alloc(struct pci_devinst *pi, int vec)
-{
-	int i;
-
-	assert(vec < NLIRQ);
-
-	if (vec == -1) {
-		for (i = 0; i < NLIRQ; i++) {
-			if (lirq[i].li_generic &&
-			    lirq[i].li_owner == NULL) {
-				vec = i;
-				break;
-			}
-		}
-	} else {
-		if (lirq[vec].li_owner != NULL) {
-			vec = -1;
-		}
-	}
-	assert(vec != -1);
-
-	lirq[vec].li_owner = pi;
-	pi->pi_lintr_pin = vec;
-
-	return (vec);
-}
-
 int
-pci_lintr_request(struct pci_devinst *pi, int vec)
+pci_lintr_request(struct pci_devinst *pi, int req)
 {
+	int irq;
 
-	vec = pci_lintr_alloc(pi, vec);
-	pci_set_cfgdata8(pi, PCIR_INTLINE, vec);
+	irq = legacy_irq_alloc(req);
+	if (irq < 0)
+		return (-1);
+
+	pi->pi_lintr_pin = irq;
+	pci_set_cfgdata8(pi, PCIR_INTLINE, irq);
 	pci_set_cfgdata8(pi, PCIR_INTPIN, 1);
 	return (0);
 }
@@ -1168,7 +1135,7 @@ void
 pci_lintr_assert(struct pci_devinst *pi)
 {
 
-	assert(pi->pi_lintr_pin);
+	assert(pi->pi_lintr_pin >= 0);
 	ioapic_assert_pin(pi->pi_vmctx, pi->pi_lintr_pin);
 }
 
@@ -1176,7 +1143,7 @@ void
 pci_lintr_deassert(struct pci_devinst *pi)
 {
 
-	assert(pi->pi_lintr_pin);
+	assert(pi->pi_lintr_pin >= 0);
 	ioapic_deassert_pin(pi->pi_vmctx, pi->pi_lintr_pin);
 }
 
@@ -1285,7 +1252,7 @@ pci_emul_cmdwrite(struct pci_devinst *pi, uint32_t new, int bytes)
 	 * If the MMIO or I/O address space decoding has changed then
 	 * register/unregister all BARs that decode that address space.
 	 */
-	for (i = 0; i < PCI_BARMAX; i++) {
+	for (i = 0; i <= PCI_BARMAX; i++) {
 		switch (pi->pi_bar[i].type) {
 			case PCIBAR_NONE:
 			case PCIBAR_MEMHI64:

@@ -82,4 +82,7 @@ void	openpic_ipi(device_t, u_int);
 void	openpic_mask(device_t, u_int);
 void	openpic_unmask(device_t, u_int);
 
+int	openpic_suspend(device_t dev);
+int	openpic_resume(device_t dev);
+
 #endif /* _POWERPC_OPENPICVAR_H_ */

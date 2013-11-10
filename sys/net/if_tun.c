@@ -45,6 +45,7 @@
 #include <sys/random.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_clone.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
@@ -258,6 +259,7 @@ tun_destroy(struct tun_softc *tp)
 	if_free(TUN2IFP(tp));
 	destroy_dev(dev);
 	seldrain(&tp->tun_rsel);
+	knlist_clear(&tp->tun_rsel.si_note, 0);
 	knlist_destroy(&tp->tun_rsel.si_note);
 	mtx_destroy(&tp->tun_mtx);
 	cv_destroy(&tp->tun_cv);
@@ -917,7 +919,7 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 		return (EAFNOSUPPORT);
 	}
 	if (harvest.point_to_point)
-		random_harvest(&(m->m_data), 12, 3, 0, RANDOM_NET_TUN);
+		random_harvest(&(m->m_data), 12, 2, RANDOM_NET_TUN);
 	ifp->if_ibytes += m->m_pkthdr.len;
 	ifp->if_ipackets++;
 	CURVNET_SET(ifp->if_vnet);

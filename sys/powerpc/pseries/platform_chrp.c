@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/rtas.h>
 #include <machine/smp.h>
 #include <machine/spr.h>
-#include <machine/trap_aim.h>
+#include <machine/trap.h>
 
 #include <dev/ofw/openfirm.h>
 #include <machine/ofw_machdep.h>
@@ -150,6 +150,9 @@ chrp_attach(platform_t plat)
 		chrp_smp_ap_init(plat);
 	}
 #endif
+
+	/* Some systems (e.g. QEMU) need Open Firmware to stand down */
+	ofw_quiesce();
 
 	return (0);
 }
@@ -386,9 +389,7 @@ chrp_reset(platform_t platform)
 static void
 phyp_cpu_idle(sbintime_t sbt)
 {
-	#ifdef NOTYET /* Causes hangs on QEMU */
 	phyp_hcall(H_CEDE);
-	#endif
 }
 
 static void
