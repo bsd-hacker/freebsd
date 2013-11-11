@@ -53,11 +53,14 @@
   \end{beamercolorbox}
 }
 
-\tikzset { struct/.style = {
+\tikzset {
+	struct/.style = {
 		draw, thick,
                 rectangle split,
 		rectangle split part fill={struct!50, white!50},
-} }
+	},
+	pointer/.style = {->, thick, rounded corners},
+}
 
 %
 % Footnotes for source/manual references.
