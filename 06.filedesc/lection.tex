@@ -257,36 +257,97 @@ for (;;) {
 \onslide <2-> {
   \item {Reports events instead of descriptor availability}
 }
+\onslide <3-> {
+  \item {Multiple listeners}
+}
+\onslide <4-> {
+  \item {``Level triggered'' or ``Event triggered''}
+}
 \end{itemize}
-\end{frame}
-
-
-\FootReferences{}{}
-\begin{frame}
-\begin{figure}
-\begin{tikzpicture}[draw, thick, node distance=0]
-  \node [name=kqA, draw ] { kq A };
-  \node [name=el1, draw, below=of kqA] {};
-  \node [name=el2, draw, below=of el1] {};
-  \node [name=el3, draw, below=of el2] {};
-  \node [name=el4, draw, below=of el3] {};
-  \node [name=el5, draw, below=of el4] {};
-  \node [name=el6, draw, below=of el5] {};
-  \node [name=ac1, draw, right=of kqA.north east, anchor=north west] {};
-  \node [name=ac2, draw, below=of ac1] {};
-\end{tikzpicture}
-\end{figure}
 \end{frame}
 
 
 \FootReferences{kevent(2)}{}
 \begin{frame}
 \frametitle{kevent(2) API}
-\srcline {%
-	int kqfd;\\
-
+  \srcline {%
 	kqfd = kqueue();\\
-}
+	kevent(kqfd, changelist, n\_changes, eventlist, n\_events, timeout);\\
+  }
 \end{frame}
+
+
+\FootReferences{kevent(2)}{}
+\begin{frame}[fragile]
+\frametitle{kevent(2) API}
+\lstset{language=C}
+\begin{lstlisting}
+struct kevent {
+   uintptr_t  ident;  // identifier of event
+   short      filter; // filter for event
+   u_short    flags;  // action flags
+   u_int      fflags; // filter specific flags
+   intptr_t   data;   // filter specific data
+   void       *udata; // application specific data
+};
+\end{lstlisting}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/event.h, sys/sys/eventvar.h}
+\begin{frame}
+\frametitle{Kernel view of kevent(2)}
+\begin{figure}
+\begin{tikzpicture}[thick]
+  \tikzset {
+	el/.style={draw, node distance=0, minimum width=3ex},
+  }
+
+  \node [name=kqA, draw ] { kq A };
+  \node [name=ea1, el, below=of kqA] {};
+  \node [name=ea2, el, below=of ea1] {};
+  \node [name=ea3, el, below=of ea2] {};
+  \node [name=ea4, el, below=of ea3] {};
+  \node [name=ea5, el, below=of ea4] {};
+  \node [name=ea6, el, below=of ea5] {};
+  \node [name=aa1, el, right=of kqA.north east, anchor=north west] {};
+  \node [name=aa2, el, below=of aa1] {};
+
+  \node [name=kqB, draw, right=.6\paperwidth of kqA ] { kq B };
+  \node [name=eb1, el, below=of kqB] {};
+  \node [name=eb2, el, below=of eb1] {};
+  \node [name=eb3, el, below=of eb2] {};
+  \node [name=eb4, el, below=of eb3] {};
+  \node [name=eb5, el, below=of eb4] {};
+  \node [name=eb6, el, below=of eb5] {};
+  \node [name=ab1, el, right=of kqB.north east, anchor=north west] {};
+  \node [name=ab2, el, below=of ab1] {};
+
+  \node [name=sockbuf1, draw, below=.4\paperheight of kqA] { socket buffer };
+  \node [name=sockbuf2, draw, below=.5\paperheight of kqA] { socket buffer };
+
+  \node [name=knote1s1, draw, right=of sockbuf1, xshift=1cm] { knote };
+  \node [name=knote1s2, draw, right=of sockbuf2, xshift=1cm] { knote };
+  \node [name=knote2s2, draw, right=of knote1s2] { knote };
+
+  \draw [->] (sockbuf1) -- node [above] {knlist} (knote1s1);
+  \draw [->] (sockbuf2) -- node [above] {knlist} (knote1s2);
+  \draw [->] (knote1s2) -- (knote2s2);
+
+  \node [name=vnode, draw, below right=.2\paperwidth of kqA] { vnode };
+  \node [name=knotev, draw, right=of vnode] { knote };
+  \draw [->] (vnode) -- (knotev);
+
+  \draw [->, dotted] (ea2) -| (node cs:name=knotev, angle=110);
+  \draw [->, dotted] (ea6) -| (knote1s1);
+  \draw [->, dashed] (aa1) -| (node cs:name=knotev, angle=70);
+  \draw [->, dashed] (aa2) -- +(+.5\paperwidth, 0) |- (knote1s1);
+
+  \draw [->, dotted] (eb3) -- +(-.1\paperwidth, 0) |- (knote2s2);
+
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
 
 \end{document}
