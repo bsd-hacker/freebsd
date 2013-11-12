@@ -135,7 +135,158 @@ Receiving:
 
 \FootReferences{capsicum(4), cap\_enter(2)}{}
 \begin{frame}
-\frametitle{Capability mode}
+\frametitle{Capability mode (capsicum)}
+\begin{itemize}
+  \item {Opening new descriptors forbidden}
+  \item {Opened descriptors may have limits enforced}
+\end{itemize}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/file.h, sys/sys/filedesc.h}
+\begin{frame}
+\frametitle{Filedescent structure}
+Filedescent combines descriptor and capability limits on it
+\begin{figure}
+\begin{tikzpicture}
+  \node [name=filedescent, struct, rectangle split parts=4] {
+	\textbf{struct filedescent}
+	\nodepart{two} struct file *fde\_file
+	\nodepart{three} struct filecaps fde\_caps
+	\nodepart{four} uint8\_t fde\_flags
+  };
+  \node [name=filecaps, right=of filedescent.north east, anchor=north west,
+	 struct, rectangle split parts=5] {
+	\textbf{struct filecaps}
+	\nodepart{two} cap\_rights\_t fc\_rights
+	\nodepart{three} u\_long *fc\_ioctls
+	\nodepart{four} int16\_t fc\_nioctls
+	\nodepart{five} uint32\_t fc\_fcntls
+  };
+  \draw (filedescent.two split east) -- (filecaps.north west);
+  \draw (filedescent.three split east) -- (filecaps.south west);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{select(2), poll(2)}{sys/kern/kern\_descrip.c}
+\begin{frame}
+\frametitle{Basic descriptor I/O multiplexing APIs}
+\onslide<1-> {
+  BSD API
+  \srcline {%
+	int select(int nfds, fd\_set *readfds, fd\_set *writefds,
+	fd\_set *exceptfds,
+        struct timeval *timeout);
+  }
+  \srcline {%
+  \#define FD\_SETSIZE      1024U
+  \#define NFDBITS        (sizeof(u\_long) * 8)\\
+  typedef struct \{\\
+	u\_long       fds\_bits[howmany(FD\_SETSIZE, NFDBITS)];\\
+  \} fd\_set;\\
+  }
+}
+\onslide<2-> {
+  System V API
+  \srcline {%
+	int poll(struct pollfd fds[], nfds\_t nfds, int timeout);
+  }
+  \srcline {%
+     struct pollfd \{\\
+         int    fd;\\
+         short  events;\\
+         short  revents;\\
+     \};
+  }
+}
+\end{frame}
+
+
+\FootReferences{select(2), poll(2)}{sys/kern/kern\_descrip.c}
+\begin{frame}[fragile]
+\frametitle{Basic descriptor I/O multiplexing implementation}
+\lstset{language=C}
+\begin{lstlisting}
+/* Iterate until the timeout expires or
+   descriptors become ready. */
+for (;;) {
+        error = selscan(td, ibits, obits, nd);
+        if (error || td->td_retval[0] != 0)
+                break;
+        error = seltdwait(td, asbt, precision);
+        if (error)
+                break;
+        error = selrescan(td, ibits, obits);
+        if (error || td->td_retval[0] != 0)
+                break;
+}
+\end{lstlisting}
+\end{frame}
+
+
+\FootReferences{}{}
+\begin{frame}
+\frametitle{c10k problem: bottlenecks of basic APIs}
+\begin{itemize}
+\onslide <1-> {
+  \item {O(N) complexity}
+}
+\onslide <2-> {
+  \item {Usually only small ratio of descriptors is available}
+  \item {Data for all descriptors must be passed to/from kernel}
+}
+\onslide <3-> {
+  \item {\textbf{select(2)}: FD\_SETSIZE is only 1024 bits}
+}
+\onslide <4-> {
+  \item {\textbf{poll(2)}: sizeof(struct pollfd) == 8}
+}
+\end{itemize}
+\end{frame}
+
+
+\FootReferences{}{}
+\begin{frame}
+\frametitle{requirements to new API}
+\begin{itemize}
+\onslide <1-> {
+  \item {Kernel knows application state}
+}
+\onslide <2-> {
+  \item {Reports events instead of descriptor availability}
+}
+\end{itemize}
+\end{frame}
+
+
+\FootReferences{}{}
+\begin{frame}
+\begin{figure}
+\begin{tikzpicture}[draw, thick, node distance=0]
+  \node [name=kqA, draw ] { kq A };
+  \node [name=el1, draw, below=of kqA] {};
+  \node [name=el2, draw, below=of el1] {};
+  \node [name=el3, draw, below=of el2] {};
+  \node [name=el4, draw, below=of el3] {};
+  \node [name=el5, draw, below=of el4] {};
+  \node [name=el6, draw, below=of el5] {};
+  \node [name=ac1, draw, right=of kqA.north east, anchor=north west] {};
+  \node [name=ac2, draw, below=of ac1] {};
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{kevent(2)}{}
+\begin{frame}
+\frametitle{kevent(2) API}
+\srcline {%
+	int kqfd;\\
+
+	kqfd = kqueue();\\
+}
 \end{frame}
 
 \end{document}
