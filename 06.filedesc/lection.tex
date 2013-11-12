@@ -1,0 +1,141 @@
+\documentclass{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{tikz}
+\usepackage{adjustbox}
+\usepackage{url}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{verbatim}
+\usepackage{ifthen}
+
+\usetikzlibrary{positioning}
+\usetikzlibrary{shapes}
+\usetikzlibrary{decorations.pathmorphing}
+
+\input{../course.tex}
+
+\title{File descriptors, capabilities, descriptor multiplexing}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+
+\FootReferences{open(2), socket(2), dup(2), dup2(2), dup3(2), fork(2)}{}
+\begin{frame}
+\frametitle{File descriptors properties}
+\onslide<1-> {
+  Allocation:
+  \srcline {%
+	int fd;\\
+
+	fd = open(path, flags, ...);\\
+	fd = socket(domain, type, protocol);\\
+	pipe(fds[]);
+  }
+}
+\onslide<2-> {
+  Usage:
+  \srcline {%
+	read(fd, buf, size);\\
+	write(fd, buf, size);
+  }
+}
+\onslide<3-> {
+  Explicit duplication:
+  \srcline {newfd = dup(fd);}
+}
+\onslide<4-> {
+  Implicit duplication:
+  \srcline {fork();}
+}
+\end{frame}
+
+
+\FootReferences{unix(4)}{tools/regression/sockets/unix\_passfd}
+\begin{frame}
+\frametitle{File descriptors properties (non-standard)}
+Passing descriptors via local socket:
+\srcline {%
+        msghdr.msg\_control = message;\\
+        msghdr.msg\_controllen = sizeof(message);\\
+        cmsghdr = (struct cmsghdr *)message;\\
+        cmsghdr->cmsg\_len = CMSG\_LEN(sizeof(int));\\
+        cmsghdr->cmsg\_level = SOL\_SOCKET;\\
+        cmsghdr->cmsg\_type = SCM\_RIGHTS;\\
+        *(int *)CMSG\_DATA(cmsghdr) = fd;\\
+        sendmsg(sockfd, \&msghdr, 0);
+}
+Receiving:
+\srcline {%
+	recvmsg(sockfd, \&msghdr, 0);\\
+	cmsghdr = CMSG\_FIRSTHDR(\&msghdr);\\
+	fd = *(int *)CMSG\_DATA(cmsghdr);\\
+}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/file.h, sys/sys/filedesc.h}
+\begin{frame}
+\frametitle{File descriptors inside kernel}
+\begin{figure}
+\begin{tikzpicture}
+  \node [name=file, struct, rectangle split parts=4] {
+	\textbf{struct file}
+	\nodepart{two} short f\_type
+	\nodepart{three} void *f\_data
+	\nodepart{four} struct fileops *f\_ops
+  };
+\onslide <2-> {
+  \node [name=process, left=.4\paperwidth of file, yshift=.3\paperheight,
+	 draw, circle] {
+	user process
+  };
+  \node [name=fd, anchor=north, node distance=3mm,
+	 below right=of process.center, draw, circle, inner sep=1pt] { fd };
+}
+\only<3> {
+  \draw [->, decorate, decoration={snake, amplitude=1mm, segment length=1cm}]
+	(fd) -- node [above, sloped] {???} (file.one west);
+}
+\only <4> {
+  \node [name=filedesc, struct, rectangle split parts=2,
+	 left=of file.north west, anchor=north east] {
+	\textbf{struct filedesc}
+	\nodepart{two} struct file fd\_ofiles[{\color{red}fd}]
+  };
+}
+\onslide <5-> {
+  \node [name=filedesc, struct, rectangle split parts=2,
+	 left=of file.north west, anchor=north east] {
+	\textbf{struct filedesc}
+	\nodepart{two} struct \emph{filedescent} fd\_ofiles[{\color{red}fd}]
+  };
+}
+\onslide <4-> {
+  \node [name=proc, struct, rectangle split parts=2,
+	 right=of process] {
+	\textbf{struct proc}
+	\nodepart{two} struct filedesc *p\_fd
+  };
+  \draw [->, decorate, decoration=snake] (process) -- (proc.one west);
+  \draw [pointer] (proc.two west)
+	 -- node [name=x,pos=1] {} +(-5mm,0) -- (filedesc.north -| x);
+  \draw [pointer] (filedesc.two east) to [out=0, in=180] (file.one west);
+}
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{capsicum(4), cap\_enter(2)}{}
+\begin{frame}
+\frametitle{Capability mode}
+\end{frame}
+
+\end{document}
