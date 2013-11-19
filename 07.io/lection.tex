@@ -1,0 +1,223 @@
+\documentclass{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{tikz}
+\usepackage{adjustbox}
+\usepackage{url}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{verbatim}
+\usepackage{ifthen}
+
+\usetikzlibrary{positioning}
+\usetikzlibrary{shapes}
+\usetikzlibrary{decorations.pathmorphing}
+
+\input{../course.tex}
+
+\title{Input/Output system: files and VFS}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+
+\begin{frame}
+\frametitle{read(2), readv(2), write(2), writev(2)}
+\begin{itemize}
+\onslide <1-> {
+  \item {Syscall handler fills in \emph{struct uio}.}
+}
+\onslide <2-> {
+  \item {Generic descriptor read/write handler 
+	 resolves file descriptor to \emph{struct file}.}
+  \item {Method from \emph{struct file} is called: fo\_read or fo\_write.}
+}
+\onslide <3-> {
+  \item {Vnode method passes \emph{uio} into VFS(9)}
+}
+\onslide <4-> {
+  \item {Eventually \emph{struct bio} reaches GEOM(4) \ldots}
+  \item {\ldots and a disk driver}
+}
+\end{itemize}
+\end{frame}
+
+
+\FootReferences{uiomove(9)}{sys/sys/uio.h}
+\begin{frame}[fragile]
+\frametitle{The user input/output structure}
+\begin{verbatim}
+struct uio {
+  struct  iovec *uio_iov;    /* scatter/gather list */
+  int     uio_iovcnt;        /* length of scatter/gather list */
+  off_t   uio_offset;        /* offset in target object */
+  ssize_t uio_resid;         /* remaining bytes to copy */
+  enum    uio_seg uio_segflg;/* address space */
+  enum    uio_rw uio_rw;     /* operation */
+  struct  thread *uio_td;    /* owner */
+};
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{}{sys/kern/sys\_generic.c, sys/kern/kern\_descrip.c}
+\begin{frame}
+\only<1> {
+  \frametitle{Resolving descriptor to \emph{struct file}}
+}
+\only<2> {
+  \frametitle{Resolving descriptor to \emph{struct file}\\
+	      \ldots and \emph{fo\_write} calling method on it}
+}
+\onslide<1-> {
+  sys/sys\_generic.c:kern\_writev():
+  \srcline {%
+	fget\_write(td, fd, cap\_rights\_init(\&rights, CAP\_WRITE), \&file);
+  }
+}
+\onslide<2-> {
+  sys/sys\_generic.c:dofilewrite():
+  \srcline {%
+	fo\_write(fp, auio, td->td\_ucred, flags, td);
+  }
+}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/file.h}
+\begin{frame}[fragile]
+\frametitle{File methods}
+\small\begin{verbatim}
+typedef int fo_rdwr_t(struct file *fp, struct uio *uio,
+  struct ucred *active_cred, int flags,
+  struct thread *td);
+...
+struct fileops {
+  fo_rdwr_t       *fo_read;
+  fo_rdwr_t       *fo_write;
+  fo_truncate_t   *fo_truncate;
+  fo_ioctl_t      *fo_ioctl;
+  fo_poll_t       *fo_poll;
+  fo_kqfilter_t   *fo_kqfilter;
+  fo_stat_t       *fo_stat;
+  fo_close_t      *fo_close;
+  fo_chmod_t      *fo_chmod;
+  fo_chown_t      *fo_chown;
+  fo_sendfile_t   *fo_sendfile;
+  fo_seek_t       *fo_seek;
+};
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/file.h}
+\begin{frame}[fragile]
+\frametitle{Calling file operations (methods)}
+\small\begin{verbatim}
+static inline int
+fo_write(struct file *fp, struct uio *uio,
+  struct ucred *cred, int flags, struct thread *td)
+{
+
+    return ((*fp->f_ops->fo_write)(fp, uio, cred,
+      flags, td));
+}
+\end{verbatim}
+\onslide <2-> {
+\begin{itemize}
+  \item{Any \emph{struct file} has a valid f\_ops pointer.}
+  \item{Dead file's f\_ops point at \&badfileops.}
+\end{itemize}
+}
+\end{frame}
+
+
+\FootReferences{vnode(9)}{sys/kern/vfs\_vnops.c}
+\begin{frame}[fragile]
+\frametitle{a vnode(9) backed file}
+\srcline{%
+  fp->f\_type == DTYPE\_VNODE\\
+  fp->f\_ops == \&vnops\\
+  fp->f\_vnode != NULL
+}
+\small\begin{verbatim}
+struct vnode {
+  ...
+  enum    vtype v_type;         /* vnode type */
+  struct  vop_vector *v_op;     /* vnode operations vector */
+  void    *v_data;              /* private data for fs */
+  struct  mount *v_mount;       /* ptr to vfs we are in */
+  int     v_usecount;           /* ref count of users */
+  int     v_holdcnt;            /* prevents recycling. */
+  struct bufobj   v_bufobj;     /* Buffer cache object */
+  ...
+}
+\end{verbatim}}
+\end{frame}
+
+
+\FootReferences{vnode(9), VFS(9)}
+	{sys/kern/vfs\_default.c, ufs/ffs/ffs\_vnops.c, ufs/ufs/ufs\_vnops.c}
+\begin{frame}
+\frametitle{VFS(9) - object oriented approach to vnodes}
+\only <1> {
+  VOP\_READ() resolves to the first vop, that supports read.
+}
+\only <2> {
+  VFS(9) example: ffs/ufs vops.
+}
+\begin{figure}
+\small\begin{tikzpicture}
+\only <1> {
+  \node [name=vop1, struct, rectangle split parts=6] {
+	\textbf{struct vop\_vector}
+	\nodepart{two}struct vop\_vector *vop\_default 
+	\nodepart{three}vop\_read\_t vop\_read
+	\nodepart{four}vop\_write\_t vop\_write
+	\nodepart{five}\ldots
+	\nodepart{six}\textit{up to 70 ops}
+  };
+  \node [name=vop2, struct, right=of vop1.north east, anchor=north west,
+	 rectangle split parts=4] {
+	\textbf{struct vop\_vector}
+	\nodepart{two}struct vop\_vector *vop\_default 
+	\nodepart{three}vop\_strategy\_t vop\_strategy
+	\nodepart{four}\ldots
+  };
+  \node [name=vop3, struct, below=of vop2, rectangle split parts=1] {
+	\textbf{struct vop\_vector}
+  };
+  \draw [pointer] (vop1.two east) to [out=0, in=180] (vop2.one west);
+  \draw [pointer] (vop2.two east) -- +(5mm, 0) |- (vop3);
+}
+\only <2> {
+  \node [name=vop1, struct, rectangle split parts=5] {
+	\textbf{ffs\_vnodeops}
+	\nodepart{two}vop\_default 
+	\nodepart{three}vop\_read = ffs\_read
+	\nodepart{four}vop\_write = ffs\_write
+	\nodepart{five}\ldots
+  };
+  \node [name=vop2, struct, right=of vop1.north east, anchor=north west,
+	 rectangle split parts=4] {
+	\textbf{ufs\_vnodeops}
+	\nodepart{two}vop\_default 
+	\nodepart{three}vop\_strategy = ufs\_strategy
+	\nodepart{four}\ldots
+  };
+  \node [name=vop3, struct, below=of vop2, rectangle split parts=1] {
+	\textbf{default\_vnodeops}
+  };
+  \draw [pointer] (vop1.two east) to [out=0, in=180] (vop2.one west);
+  \draw [pointer] (vop2.two east) -- +(5mm, 0) |- (vop3);
+}
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+\end{document}
