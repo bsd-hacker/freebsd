@@ -1444,15 +1444,14 @@ add_smap_entries(struct bios_smap *smapbase, vm_paddr_t *physmap,
 
 	for (smap = smapbase; smap < smapend; smap++) {
 		if (boothowto & RB_VERBOSE)
-			printf("SMAP type=%02x base=%016lx "
-			    "len=%016lx\n",
+			printf("SMAP type=%02x base=%016lx len=%016lx\n",
 			    smap->type, smap->base, smap->length);
 
 		if (smap->type != SMAP_TYPE_MEMORY)
 			continue;
 
-		if (!add_physmap_entry(smap->base, smap->length,
-		    physmap, physmap_idx))
+		if (!add_physmap_entry(smap->base, smap->length, physmap,
+		    physmap_idx))
 			break;
 	}
 }
