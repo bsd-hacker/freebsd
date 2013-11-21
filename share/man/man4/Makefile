@@ -67,6 +67,7 @@ MAN=	aac.4 \
 	auditpipe.4 \
 	aue.4 \
 	axe.4 \
+	axge.4 \
 	bce.4 \
 	bfe.4 \
 	bge.4 \
@@ -382,6 +383,7 @@ MAN=	aac.4 \
 	rc.4 \
 	re.4 \
 	rgephy.4 \
+	rights.4 \
 	rl.4 \
 	rndtest.4 \
 	route.4 \
@@ -523,6 +525,7 @@ MAN=	aac.4 \
 	urio.4 \
 	${_urtw.4} \
 	urtwn.4 \
+	urtwnfw.4 \
 	usb.4 \
 	usb_quirk.4 \
 	uslcom.4 \
@@ -827,7 +830,7 @@ _nvram2env.4=	nvram2env.4
 SUBDIR=	man4.${MACHINE_CPUARCH}
 .endif
 
-.if ${MK_ATF} != "no"
+.if ${MK_TESTS} != "no"
 ATF=            ${.CURDIR}/../../../contrib/atf
 .PATH:          ${ATF}/doc
 _atf_test_case.4=	atf-test-case.4

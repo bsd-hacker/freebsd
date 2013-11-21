@@ -80,7 +80,6 @@ static void	printtrap(u_int vector, struct trapframe *frame, int isfatal,
 		    int user);
 static int	trap_pfault(struct trapframe *frame, int user);
 static int	fix_unaligned(struct thread *td, struct trapframe *frame);
-static int	ppc_instr_emulate(struct trapframe *frame);
 static int	handle_onfault(struct trapframe *frame);
 static void	syscall(struct trapframe *frame);
 
@@ -121,9 +120,8 @@ dtrace_doubletrap_func_t	dtrace_doubletrap_func;
 systrace_probe_func_t	systrace_probe_func;
 
 /*
- * These hooks are necessary for the pid, usdt and fasttrap providers.
+ * These hooks are necessary for the pid and usdt providers.
  */
-dtrace_fasttrap_probe_ptr_t	dtrace_fasttrap_probe_ptr;
 dtrace_pid_probe_ptr_t		dtrace_pid_probe_ptr;
 dtrace_return_probe_ptr_t	dtrace_return_probe_ptr;
 int (*dtrace_invop_jump_addr)(struct trapframe *);
@@ -206,9 +204,6 @@ trap(struct trapframe *frame)
 	 * call it and if it returns non-zero, assume that it has
 	 * handled the trap and modified the trap frame so that this
 	 * function can return normally.
-	 */
-	/*
-	 * XXXDTRACE: add fasttrap and pid  probes handlers here (if ever)
 	 */
 	if (dtrace_trap_func != NULL && (*dtrace_trap_func)(frame, type))
 		return;
@@ -293,10 +288,9 @@ trap(struct trapframe *frame)
 				}
 #endif
  				sig = SIGTRAP;
-			} else if (ppc_instr_emulate(frame) == 0)
-				frame->srr0 += 4;
-			else
-				sig = SIGILL;
+			} else {
+				sig = ppc_instr_emulate(frame, td->td_pcb);
+			}
 			break;
 
 		default:
@@ -799,22 +793,5 @@ fix_unaligned(struct thread *td, struct trapframe *frame)
 	}
 
 	return -1;
-}
-
-static int
-ppc_instr_emulate(struct trapframe *frame)
-{
-	uint32_t instr;
-	int reg;
-
-	instr = fuword32((void *)frame->srr0);
-
-	if ((instr & 0xfc1fffff) == 0x7c1f42a6) {	/* mfpvr */
-		reg = (instr & ~0xfc1fffff) >> 21;
-		frame->fixreg[reg] = mfpvr();
-		return (0);
-	}
-
-	return (-1);
 }
 
