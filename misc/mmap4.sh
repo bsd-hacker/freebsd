@@ -30,6 +30,7 @@
 
 # Test overcommit of the file system capacity
 # Causes panic: 1 vncache entries remaining
+# Fixed in r202529
 
 # Scanario by kib@
 
