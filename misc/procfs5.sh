@@ -33,7 +33,7 @@
 # http://people.freebsd.org/~pho/stress/log/kostik640.txt
 # Fixed in r258365, r258397.
 
-# Scanario by kib@
+# Scenario by kib@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
