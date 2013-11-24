@@ -35,7 +35,7 @@
 
 . ../default.cfg
 
-ping -c 1 -t 2 $BLASTHOST > /dev/null 2>&1 ||
+ping -c 5 -t 2 $BLASTHOST > /dev/null 2>&1 ||
 	{ echo "Can not ping $BLASTHOST"; exit 0; }
 
 export runRUNTIME=10m
