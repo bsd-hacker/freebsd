@@ -39,24 +39,14 @@
 #		panic: 43 vncache entries remaining			20111220
 # backingstore3.sh
 #		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111230
-# datamove.sh	Deadlock (ufs)						20111216
-# datamove2.sh	Deadlock (ufs)						20111220
-# datamove3.sh	Deadlock (ufs)						20111221
-# datamove4.sh	Deadlock (tmpfs)					20120601
 # dfull.sh	umount stuck in "mount drain"				20111227
 # ext2fs.sh	Deadlock						20120510
 # fuse2.sh	Deadlock seen						20121129
 # gjournal.sh	kmem_malloc(131072): kmem_map too small			20120626
 # gjournal2.sh	
 # gjournal3.sh	panic: Journal overflow					20130729
-# mkfifo.sh	umount stuck in suspfs					20111224
-# mkfifo2c.sh	panic: ufsdirhash_newblk: bad offset			20111225
-# mlockall3.sh	Waiting fix						20130616
-# msync.sh	Waiting fix						20130619
-# nbufkv.sh	Deadlock seen						20130212
 # newfs.sh	Memory modified after free. ... used by inodedep	20111217
 # newfs2.sh	umount stuck in ufs					20111226
-# nfs8X.sh	Deadlock						20120610
 # nfs9.sh	panic: lockmgr still held				20130503
 # nfs10.sh	Deadlock						20130401
 # nfs11.sh	Deadlock						20130429
@@ -66,28 +56,18 @@
 # quota3.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111222
 # quota6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130206
 # quota7.sh	panic: dqflush: stray dquot				20120221
-# readdir.sh	panic: ffs_read: uio->uio_resid < 0			20120228
-# rwlock_ronly.sh	Waiting for fix					20130611
 # shm_open.sh	panic: kmem_malloc(4096): kmem_map too small		20130504
-# sigreturn.sh	Waiting for fix						20130606
 # snap3.sh	mksnap_ffs stuck in snaprdb				20111226
 # snap5.sh	mksnap_ffs stuck in getblk				20111224
 # snap6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130630
 # snap8.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20120630
-# socketpair.sh	Deadlock						20130511
 # suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
 # suj18.sh	panic: Bad tailq NEXT(0xc1e2a6088->tqh_last_s) != NULL	20120213
-# suj23.sh	panic: Bad link elm 0xc9d00e00 next->prev != elm	20111216
-# suj26.sh	Deadlock						20120213
-# suj27.sh	Deadlock						20120213
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
-# tmpfs6.sh	watchdogd fired. Test stuck in pgrbwt			20111219
-# trim3.sh	watchdog timeout					20111225
 # umountf3.sh	KDB: enter: watchdog timeout				20111217
-# unionfs.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111217
+# unionfs.sh	insmntque: non-locked vp: xx is not exclusive locked...	20130909
 # unionfs2.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111219
 # unionfs3.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111216
-# wire_no_page.sh	Waiting fix					20130616
 
 # Test not to run for other reasons:
 
@@ -111,6 +91,8 @@
 # suj27.sh
 # suj28.sh
 
+# kevent8.sh	Deadlock seen.						20131017
+
 # End of list
 
 # Suspects:
@@ -118,7 +100,6 @@
 #		Memory modified after free. ... used by inodedep	20111224
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
-[ -x /usr/games/random ] || { echo "random(6) not installed"; exit 1; }
 
 args=`getopt acno $*`
 [ $? -ne 0 ] && echo "Usage $0 [-a] [-c] [-n] [tests]" && exit 1
@@ -149,7 +130,8 @@ find . -maxdepth 1 -name .all.last -mtime +12h -delete
 touch .all.last
 chmod 555 .all.last .all.log
 while true; do
-	exclude=`sed -n '/^# Start of list/,/^# End of list/p' < $0 | \
+	exclude=`sed -n '/^# Start of list/,/^# End of list/p' < $0 |
+		cat - all.exclude 2>/dev/null | 
 		grep "\.sh" | awk '{print $2}'`
 	list=`ls *.sh | egrep -v "all\.sh|cleanup\.sh"`
 	[ $# -ne 0 ] && list=$*
@@ -162,7 +144,7 @@ while true; do
 		fi
 	fi
 	[ -n "$noshuffle" ] ||
-		list=`echo $list | tr ' ' '\n' | random -w | tr '\n' ' '`
+		list=`echo $list | tr '\n' ' ' | ../tools/shuffle | tr ' ' '\n'`
 
 	lst=""
 	for i in $list; do
