@@ -53,12 +53,21 @@ echo "Testing tmpfs(5)"
 umount $mntpoint
 
 echo "Testing fdescfs(5)"
-/tmp/pread /dev/fd
+mount -t fdescfs null /dev/fd
+for i in `jot 100`; do
+	/tmp/pread /dev/fd
+done
+
+while mount | grep -q "on /dev/fd "; do
+	umount /dev/fd || sleep 1
+done
 
 echo "Testing procfs(5)"
 mount -t procfs procfs $mntpoint
 /tmp/pread $mntpoint
-umount $mntpoint
+while mount | grep -q "on $mntpoint "; do
+	umount $mntpoint || sleep 1
+done
 
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart || exit 1
@@ -68,15 +77,30 @@ mount /dev/md${mdstart}$part $mntpoint
 cp -a /usr/include $mntpoint
 echo "Testing FFS"
 /tmp/pread $mntpoint
-umount $mntpoint
+while mount | grep -q "on $mntpoint "; do
+	umount $mntpoint || sleep 1
+done
 
 mount -t nullfs /bin $mntpoint
 echo "Testing nullfs(5)"
 /tmp/pread $mntpoint
-umount $mntpoint
+while mount | grep -q "on $mntpoint "; do
+	umount $mntpoint || sleep 1
+done
+
+echo "Testing procfs(5)"
 mount -t procfs procfs $mntpoint
 /tmp/pread $mntpoint
-umount $mntpoint
+while mount | grep -q "on $mntpoint "; do
+	umount $mntpoint || sleep 1
+done
+
+echo "Testing devfs(8)"
+mount -t devfs devfs $mntpoint
+/tmp/pread $mntpoint
+while mount | grep -q "on $mntpoint "; do
+	umount $mntpoint || sleep 1
+done
 
 rm -f /tmp/pread
 exit 0
@@ -85,8 +109,10 @@ EOF
 #include <strings.h>
 #include <dirent.h>
 #include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <fts.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -111,7 +137,7 @@ test(char *path)
 
 	signal(SIGSEGV, hand);
 	signal(SIGABRT, hand);
-	ftsoptions = 0;
+	ftsoptions = FTS_PHYSICAL;
 	args[0] = path;
 	args[1] = 0;
 
@@ -119,8 +145,11 @@ test(char *path)
 		err(1, "fts_open");
 
 	while ((p = fts_read(fts)) != NULL) {
-		if ((fd = open(p->fts_path, O_RDONLY)) == -1)
-			warn("open(%s)", p->fts_path);
+		if ((fd = open(p->fts_path, O_RDONLY)) == -1) {
+			if (errno != EACCES && errno != ENXIO)
+				warn("open(%s)", p->fts_path);
+			continue;
+		}
 		alarm(1);
 		pread(fd, (void *)0xdeadc0de, 0x7ffffff, 0xffffffff);
 		pread(fd, buf, 0x7ffffff, 0xffffffff);
@@ -137,6 +166,19 @@ int
 main(int argc __unused, char **argv)
 {
 	int i;
+        struct passwd *pw;
+
+        if ((pw = getpwnam("nobody")) == NULL)
+                err(1, "no such user: nobody");
+
+        if (setgroups(1, &pw->pw_gid) ||
+            setegid(pw->pw_gid) || setgid(pw->pw_gid) ||
+            seteuid(pw->pw_uid) || setuid(pw->pw_uid))
+                err(1, "Can't drop privileges to \"nobody\"");
+        endpwent();
+
+	if (daemon(0, 0) == -1)
+		err(1, "daemon()");
 
 	for (i = 0; i < 10; i++) {
 		if (fork() == 0)
