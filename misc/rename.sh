@@ -40,7 +40,6 @@ cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rename.c
 cc -o rename -Wall rename.c
 rm -f rename.c
-cd $here
 
 rm -rf /tmp/rename.dir.*
 for i in `jot 10`; do
@@ -51,7 +50,7 @@ for i in `jot 10`; do
 		wait
 	done
 done
-rm -rf /tmp/rename.dir.*
+rm -rf /tmp/rename.dir.* /tmp/rename
 exit 0
 EOF
 #include <err.h>
@@ -65,6 +64,8 @@ EOF
 #include <sys/wait.h>
 #include <unistd.h>
 
+#define N 30000
+
 static char dir1[128];
 static char dir2[128];
 
@@ -75,8 +76,8 @@ main(int argc, char **argv)
 	struct stat sb;
 	pid_t p;
 
-	sprintf(dir1, "/tmp/rename.dir.%d", getpid());
-	sprintf(dir2, "/tmp/rename.dir.2.%d", getpid());
+	sprintf(dir1, "rename.dir.%d", getpid());
+	sprintf(dir2, "rename.dir.2.%d", getpid());
 	if (mkdir(dir1, 0700) == -1)
 		err(1, "mkdir(%s)", dir1);
 
@@ -87,7 +88,7 @@ main(int argc, char **argv)
 	if (p == 0) {
 		if (chdir("..") == -1)
 			err(1, "chdir(%s)", "..");
-		for (i = 0; i < 100000; i++) {
+		for (i = 0; i < N; i++) {
 			if (rename(dir1, dir2) == -1) {
 				warn("rename(%s, %s)", dir1, dir2);
 				stat(dir1, &sb);
@@ -105,15 +106,17 @@ main(int argc, char **argv)
 					errx(1, "stat(%s) succeeded!", dir2);
 			}
 		}
-		exit(0);
+		_exit(0);
 	} else {
-		for (i = 0; i < 100000; i++) {
+		for (i = 0; i < N; i++) {
 			if (stat("..", &sb) == -1)
 				err(1, "stat(..)");
 		}
 	}
 	if (waitpid(p, &status, 0) == -1)
 		err(1, "waitpid()");
+	if (chdir("..") == -1)
+		err(1, "chdir(%s)", "..");
 	if (rmdir(dir1) == -1)
 		err(1, "rmdir(%s)", dir1);
 
