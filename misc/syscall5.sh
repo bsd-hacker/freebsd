@@ -36,30 +36,59 @@
 . ../default.cfg
 
 syscall=`grep SYS_MAXSYSCALL /usr/include/sys/syscall.h | awk '{print $NF}'`
+syscall=$((syscall - 1))
 
+args=`getopt ars:t: $*`
+[ $? -ne 0 ] && echo "Usage $0 [-a] [-r] [-s number] [-t seconds]" && exit 1
+set -- $args
+for i; do
+	case "$i" in
+	-a)	all=1		# Test all syscalls
+		shift
+		;;
+	-r)	[ -h .syscall5.last ] &&
+			syscall=`ls -l .syscall5.last | awk '{print $NF}'`
+			syscall=$((syscall - 1))
+		shift
+		;;
+	-s)	syscall=$2
+		shift; shift
+		;;
+	-t)	sleeptime=$2
+		export sleeptime=$((sleeptime / 10))	# used in syscall4.sh
+		shift; shift
+		;;
+	--)
+		shift
+		break
+		;;
+	esac
+done
 
-# syscalls with knows issues:
+# syscalls with known issues:
 broken="
 swapcontext
+pdfork
 rfork
-_umtx_op
+pselect
 "
 
-n=$syscall
-n=$((n - 1))
-
 rm -f ./syscall5.log
+n=$syscall
 start=`date '+%s'`
 while [ $n -gt 0 ]; do
 	ps -lUnobody | grep syscall4 | awk '{print $2}' | xargs kill
+	ln -fs $n .syscall5.last
 	name=`grep -w $n /usr/include/sys/syscall.h | awk '{print $2}' | 
 		sed 's/SYS_//'`
+	[ -z "$name" ] && name="unknown"
 	echo "`date '+%T'` syscall $n ($name)" | 
 		tee /dev/tty >> ./syscall5.log
+	printf "`date '+%T'` syscall $n ($name)\r\n" > /dev/console
 	sync; sleep 1
 	echo "$broken" | grep -qw "$name" || 
 		./syscall4.sh $n || break
 	n=$((n - 1))
-	[ $# -eq 0 -a `date '+%s'` -gt $((start + 1800)) ] && break
+	[ -z "$all" -a `date '+%s'` -gt $((start + 1800)) ] && break
 done
-rm -f ./syscall5.log
+rm -f ./syscall5.log .syscall5-last
