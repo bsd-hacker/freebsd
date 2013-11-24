@@ -40,6 +40,7 @@ start=`date '+%s'`
 while [ `date '+%s'` -lt $((start + 5 * 60)) ]; do
 	./mmap3
 done
+echo "Expect Segmentation faults"
 start=`date '+%s'`
 while [ `date '+%s'` -lt $((start + 5 * 60)) ]; do
 	./mmap3 random
