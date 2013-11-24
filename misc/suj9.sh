@@ -25,7 +25,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: projects/stress2/misc/suj.sh 210724 2010-08-01 10:33:03Z pho $
+# $FreeBSD$
 #
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
@@ -41,14 +41,14 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 128m -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 
-for i in `jot 5`; do
+for i in `jot 4`; do
 	newfs -U md${mdstart}$part > /dev/null
 	tunefs -j enable /dev/md${mdstart}$part
 
 	mount /dev/md${mdstart}$part $mntpoint
 	chmod 777 $mntpoint
 
-	export runRUNTIME=10m
+	export runRUNTIME=5m
 	export RUNDIR=$mntpoint/stressX
 
 	su $testuser -c 'cd ..; ./run.sh marcus.cfg' > /dev/null 2>&1
