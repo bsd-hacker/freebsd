@@ -41,21 +41,18 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 size="1g"
 [ $# -eq 0 ] && trim=-t
 n=0
-for flag in '' '-U' '-U'; do
-	n=$((n + 1))
+for flag in '' '-U' '-j'; do
 	echo "mdconfig -a -t swap -s $size -u $mdstart"
 	mdconfig -a -t swap -s $size -u $mdstart || exit 1
 	bsdlabel -w md$mdstart auto
 
 	echo "newfs $trim $flag md${mdstart}$part"
 	newfs $trim $flag md${mdstart}$part > /dev/null
-	[ $n -eq 3 ] && tunefs -? 2>&1 | grep -q "j enable" && \
-		tunefs -j enable /dev/md${mdstart}$part
 
 	mount /dev/md${mdstart}$part $mntpoint
 	chmod 777 $mntpoint
 
-	export runRUNTIME=10m
+	export runRUNTIME=7m
 	export RUNDIR=$mntpoint/stressX
 
 	su $testuser -c 'cd ..; ./run.sh marcus.cfg' > /dev/null 2>&1
@@ -63,12 +60,6 @@ for flag in '' '-U' '-U'; do
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
-	dumpfs /dev/md${mdstart}$part > /tmp/dumpfs.1
-	sleep 1
-	fsck -t ufs -y /dev/md${mdstart}$part > /tmp/fsck.log 2>&1
-	dumpfs /dev/md${mdstart}$part > /tmp/dumpfs.2
-
-	diff -c /tmp/dumpfs.1 /tmp/dumpfs.2 || cat /tmp/fsck.log
+	checkfs /dev/md${mdstart}$part
 	mdconfig -d -u $mdstart
 done
-rm -f /tmp/fsck.log /tmp/dumpfs.?
