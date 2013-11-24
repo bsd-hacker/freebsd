@@ -35,6 +35,7 @@
 
 . ../default.cfg
 
+killall 2>&1 | grep -q q && q="-q"
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > syscall4.c
@@ -58,14 +59,25 @@ mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
 sleeptime=${sleeptime:-12}
-for i in `jot 10`; do
-	(cd $mntpoint; /tmp/syscall4 $* < /dev/null) &
-	[ $# -eq 1 ] && sleep $sleeptime || sleep 120
-	killall -9 syscall4 > /dev/null 2>&1
+st=`date '+%s'`
+while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
+	(cd $mntpoint; /tmp/syscall4 $* ) &
+	start=`date '+%s'`
+	while [ $((`date '+%s'` - start)) -lt $sleeptime ]; do
+		ps aux | grep -v grep | egrep -q "syscall4$" || break
+		sleep .5
+	done
+	if ps aux | grep -v grep | egrep -q "syscall4$"; then
+		killall $q syscall4
+		ps aux | grep -v grep | egrep -q "syscall4 " &&
+		    killall $q -9 syscall4
+	fi
 	wait
 	ipcs | awk '/^(q|m|s)/ {print " -" $1, $2}' | xargs -L 1 ipcrm
 done
-
+killall $q -9 syscall4
+ps aux | grep -v grep | egrep "syscall4" | egrep -v "\.sh" &&
+    killall $q -9 syscall4
 
 for i in `jot 10`; do
 	mount | grep -q md${mdstart}$part  && \
@@ -117,13 +129,20 @@ static int ignore[] = {
 	SYS_mac_syscall,
 	SYS_sigtimedwait,
 	SYS_sigwaitinfo,
+#if       __FreeBSD_version >= 900041
 	SYS_pdfork,
+#endif
+	SYS_posix_openpt
 };
 
 int fd[900], fds[2], socketpr[2];
+#ifndef nitems
+#define nitems(x) (sizeof((x)) / sizeof((x)[0]))
+#endif
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
+#define MAGIC 1664
 u_int32_t r[N];
-int syscallno;
+int magic1, syscallno, magic2;
 
 static int
 random_int(int mi, int ma)
@@ -245,6 +264,8 @@ calls(void *arg __unused)
 		alarm(1);
 		syscall(num, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 		num = 0;
+		if (magic1 != MAGIC || magic2 != MAGIC)
+			_exit(1);
 	}
 
 	return (0);
@@ -258,6 +279,7 @@ main(int argc, char **argv)
 	time_t start;
 	int j;
 
+	magic1 = magic2 = MAGIC;
 	if ((pw = getpwnam("nobody")) == NULL)
 		err(1, "no such user: nobody");
 
