@@ -32,7 +32,7 @@
 # Causes panic: 1 vncache entries remaining
 # Fixed in r202529
 
-# Scanario by kib@
+# Scenario by kib@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
