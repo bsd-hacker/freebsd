@@ -28,6 +28,11 @@
 
 \begin{frame}
 \frametitle{read(2), readv(2), write(2), writev(2)}
+\note {
+	- Run the strategy.d and display typical I/O backtrace,
+	  then continue with slides. The trace will lead us through
+	  the entire lection.
+}
 \begin{itemize}
 \onslide <1-> {
   \item {Syscall handler fills in \emph{struct uio}.}
@@ -218,6 +223,102 @@ struct vnode {
 }
 \end{tikzpicture}
 \end{figure}
+\end{frame}
+
+
+\FootReferences{vnode(9), VFS(9)}{sys/tools/vnode\_if.awk,
+		sys/kern/vnode\_if.src}
+\begin{frame}[fragile]
+\frametitle{VFS(9) - object oriented approach to vnodes}
+Code is generated from vnode\_if.src file by vnode\_if.awk script.
+\begin{verbatim}
+%% read   vp  L L L
+vop_read {
+  IN struct vnode *vp;
+  INOUT struct uio *uio;
+  IN int ioflag;
+  IN struct ucred *cred;
+};
+\end{verbatim}
+\end{frame}
+
+\FootReferences{vnode(9), VFS(9)}{sys/tools/vnode\_if.awk,
+		sys/kern/vnode\_if.src}
+\begin{frame}
+\frametitle{VFS(9) - object oriented approach to vnodes}
+\onslide <1-> {
+Generated in vnode\_if.h:
+\begin{itemize}
+  \item{struct vop\_read\_args}
+  \item{VOP\_READ\_APV() declaration}
+  \item{VOP\_READ() inlined function}
+\end{itemize}
+}
+\onslide <2-> {
+Generated in vnode\_if.c:
+\begin{itemize}
+  \item{VOP\_READ\_APV() function}
+\end{itemize}
+}
+\onslide <3> {
+VOP\_READ\_APV():
+\begin{itemize}
+  \item{Does locking assertions}
+  \item\textbf{Cycles through vop->vop\_default until vop\_read is defined}
+  \item{Does tracing: ktr(9) and sdt(9)}
+  \item{Runs VFS\_PROLOGUE(vp->v\_mount)}
+  \item\textbf{Runs vop->vop\_read}
+  \item{Runs VFS\_EPILOGUE(vp->v\_mount)}
+  \item{Does locking assertions}
+  \item{Does tracing: ktr(9) and sdt(9)}
+\end{itemize}
+}
+\end{frame}
+
+
+\FootReferences{buf(9)}{sys/sys/buf.h, sys/kern/vfs\_bio.c}
+\begin{frame}[fragile]
+\frametitle{buffer I/O}
+\begin{verbatim}
+struct buf {
+  long    b_bufsize;    /* Allocated buffer size. */
+  caddr_t b_data;       /* Base pointer. */
+  off_t   b_offset;     /* Offset in the file. */
+  long    b_resid;      /* Remaining bytes for i/o. */
+  int     b_dirtyoff;   /* Offset in buffer of dirty region. */
+  int     b_dirtyend;   /* Offset of end of dirty region. */
+  ...
+  daddr_t b_blkno;      /* Underlying physical block number. */
+  daddr_t b_lblkno;     /* Logical block number. */
+  ...
+  struct vm_page *b_pages[btoc(MAXPHYS)];
+  int     b_npages;
+  ...
+  struct bufobj   *b_bufobj;
+}
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{buf(9)}{sys/sys/bufobj.h, sys/kern/vfs\_bio.c}
+\begin{frame}[fragile]
+\frametitle{buffer I/O}
+\begin{verbatim}
+struct bufobj {
+  struct vm_object *bo_object;  /* Place to store VM object */  
+  struct buf_ops  *bo_ops;      /* Buffer operations */
+  struct bufv     bo_clean;     /* Clean buffers */
+  struct bufv     bo_dirty;     /* Dirty buffers */
+  ...
+};
+ 
+TAILQ_HEAD(buflists, buf);
+struct bufv {
+  struct buflists bv_hd;        /* Sorted blocklist */
+  struct pctrie   bv_root;      /* Buf trie */
+  int             bv_cnt;       /* Number of buffers */
+};
+\end{verbatim}
 \end{frame}
 
 \end{document}
