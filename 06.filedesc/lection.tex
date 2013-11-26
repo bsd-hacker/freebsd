@@ -294,7 +294,7 @@ struct kevent {
 \end{frame}
 
 
-\FootReferences{}{sys/sys/event.h, sys/sys/eventvar.h}
+\FootReferences{}{sys/sys/event.h, sys/sys/eventvar.h, sys/kern/kern\_event.c}
 \begin{frame}
 \frametitle{Kernel view of kevent(2)}
 \begin{figure}
@@ -340,6 +340,7 @@ struct kevent {
 
   \draw [->, dotted] (ea2) -| (node cs:name=knotev, angle=110);
   \draw [->, dotted] (ea6) -| (knote1s1);
+  \draw [->, dotted] (knote1s1) -- (knote1s2);
   \draw [->, dashed] (aa1) -| (node cs:name=knotev, angle=70);
   \draw [->, dashed] (aa2) -- +(+.5\paperwidth, 0) |- (knote1s1);
 
