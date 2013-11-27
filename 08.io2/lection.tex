@@ -14,15 +14,355 @@
 \usetikzlibrary{positioning}
 \usetikzlibrary{shapes}
 \usetikzlibrary{decorations.pathmorphing}
+\usetikzlibrary{decorations.text}
 
 \input{../course.tex}
 
-\title{Input/Output system: GEOM}
+\title{Input/Output system: block I/O and GEOM}
 
 \begin{document}
 
 \begin{frame}
 \titlepage
+\end{frame}
+
+\begin{frame}
+\frametitle{I/O below VFS}
+Filesystem code posts I/O request:
+\only <1> {
+request passes down through the I/O to the hardware layer.
+}
+\only <2> {
+driver returns, geom returns, filesystem code sleeps.
+}
+\only <3> {
+I/O comletion interrupt triggers, wakeups thread waiting on bio,
+both threads return.
+}
+\begin{figure}
+\small\begin{tikzpicture}[
+	every node/.style={node distance=2mm}
+  ]
+  \node [name=user, draw, rounded corners] { write(2) };
+  \node [name=sys, below=of user] { sys\_write() };
+  \draw [->] (user) -- (sys);
+  \node [name=vn, below=of sys] { vn\_write() };
+  \draw [->] (sys) -- (vn);
+  \node [name=vop, below=of vn] { VOP\_WRITE\_APV() };
+  \draw [->] (vn) -- (vop);
+  \node [name=fs, below=of vop] { fs specific code: ufs, zfs, ext2fs, ... };
+  \draw [->] (vop) -- (fs);
+\onslide <1> {
+  \node [name=geom, below=of fs] { geom classes };
+  \draw [->] (fs) -- (geom);
+  \node [name=disk, below=of geom] { g\_disk\_start(bio) };
+  \draw [->] (geom) -- (disk);
+  \node [name=driver, below=of disk] { disk strategy(bio) };
+  \draw [->] (disk) -- (driver);
+  \node [name=hw, below=of driver] { I/O posted to hardware };
+  \draw [->] (driver) -- (hw);
+}
+
+  \node [name=uk1, below left=1mm and .2\paperwidth of user] {};
+  \node [name=uk2, below right=1mm and .4\paperwidth of user] {};
+  \draw (uk1) --
+	node [above, pos=.9] { userland }
+	node [below, pos=.9] { kernel } (uk2);
+
+  \node [name=kd1, below left=1mm and .2\paperwidth of disk] {};
+  \node [name=kd2, below right=1mm and .4\paperwidth of disk] {};
+  \draw (kd1) --
+	node [below, pos=.9, name=drivertext] { driver } (kd2);
+
+\onslide <2-3> {
+  \node [name=sleep, below=of fs] { sleep(\&bio) };
+  \draw [->] (fs) -- (sleep);
+}
+
+\onslide <3> {
+  \node [name=intr, below left=of drivertext, draw, rounded corners]
+	{ interrupt };
+  \node [name=dintr, above=of intr] { driver code };
+  \draw [->] (intr) -- (dintr);
+  \node [name=biodone, above=of dintr] { biodone() };
+  \draw [->] (dintr) -- (biodone);
+  \node [name=wakeup, above=of biodone] { wakeup(bio) };
+  \draw [->] (biodone) -- (wakeup);
+  \draw [->, color=red] (wakeup.south west)
+	to [out=225, in=325] (sleep.south east);
+}
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\begin{frame}
+\frametitle<1-2>{Block storage API: basic block storage}
+\frametitle<3>{Block storage API: removable block storage}
+\frametitle<4>{Block storage API: write-caching block storage}
+\frametitle<5>{Block storage API: thin-provisioned block storage}
+\frametitle<6>{Block storage API: additional attributes}
+\begin{columns}
+  \begin{column}{.4\paperwidth}
+  \begin{itemize}
+\onslide<3-> {
+  \item{Media lock/notify}
+}
+  \item{Data operations:
+    \begin{itemize}
+      \item{Read}
+      \item{Write}
+\onslide <4-> {
+      \item{Cache flush}
+}
+\onslide <5-> {
+      \item{Unmap/Trim}
+}
+    \end{itemize}
+  }
+  \item{Properties:
+    \begin{itemize}
+      \item{Block size}
+      \item{Capacity}
+\onslide <6-> {
+      \item {C/H/S, physical sector size, \ldots}
+}
+    \end{itemize}
+  }
+  \end{itemize}
+  \end{column}
+  \begin{column}{.4\paperwidth}
+  \begin{itemize}
+\onslide<3-> {
+  \item{access(), spoiled()}
+}
+\onslide <2-> {
+  \item{strategy(struct bio *)
+    \begin{itemize}
+      \item{BIO\_READ}
+      \item{BIO\_WRITE}
+\onslide <4-> {
+      \item{BIO\_FLUSH}
+}
+\onslide <5-> {
+      \item{BIO\_DELETE}
+}
+    \end{itemize}
+  }
+    \begin{itemize}
+      \item{sector size}
+      \item{media size}
+\onslide <6-> {
+      \item {stripe size, stripe offset, BIO\_GETATTR }
+}
+    \end{itemize}
+}
+  \end{itemize}
+  \end{column}
+\end{columns}
+\end{frame}
+
+
+\FootReferences{disk(9)}{sys/geom/geom\_disk.h}
+\begin{frame}[fragile]
+\frametitle{The disk(9) API}
+\small\begin{verbatim}
+struct disk {
+        disk_open_t             *d_open;
+        disk_close_t            *d_close;
+        disk_strategy_t         *d_strategy;
+        disk_ioctl_t            *d_ioctl;
+        dumper_t                *d_dump;
+        disk_getattr_t          *d_getattr;
+        disk_gone_t             *d_gone;
+
+        u_int                   d_sectorsize;
+        u_int                   d_maxsize;
+        off_t                   d_mediasize;
+
+        u_int                   d_stripeoffset;
+        u_int                   d_stripesize;
+}
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{disk(9)}{sys/geom/geom\_disk.h}
+\begin{frame}
+\frametitle{The disk(9) API}
+Brief history:
+\begin{itemize}
+  \item{FreeBSD 3: d\_strategy(), d\_open(), d\_close() is provided by cdevsw}
+  \item{FreeBSD 4: disk(9) introduced}
+  \item{FreeBSD 5: disk(9) is a GEOM class}
+\end{itemize}
+\end{frame}
+
+
+\FootReferences{geom(9)}{}
+\begin{frame}
+\frametitle{And what is GEOM?}
+Assume DOS partitioning scheme on disk ada0.
+\onslide <2-> {
+  Now assume BSD partitioning scheme on ``disk'' ada0s2.
+}
+  \begin{figure}
+  \begin{tikzpicture}[
+	every node/.style={ draw, rounded corners, text centered,
+			    text width = 20ex, node distance = 3mm }
+    ]
+    \node [name=ada0] { ada0\\ mediasize = 100 Gb };
+    \node [name=ada0s1, above left=of ada0.north]
+	{ ada0s1\\ mediasize = 50 Gb };
+    \node [name=ada0s2, above right=of ada0.north]
+	{ ada0s2\\ mediasize = 50 Gb };
+    \draw [->] (ada0) -- (ada0s1);
+    \draw [->] (ada0) -- (ada0s2);
+\onslide <2-> {
+    \node [name=ada0s2a, text width = 10ex, above left=of ada0s2.north]
+	{ ada0s2a\\ 10 Gb };
+    \node [name=ada0s2b, text width = 10ex, above right=of ada0s2.north]
+	{ ada0s2b\\ 40 Gb };
+    \draw [->] (ada0s2) -- (ada0s2a);
+    \draw [->] (ada0s2) -- (ada0s2b);
+}
+  \end{tikzpicture}
+  \end{figure}
+\end{frame}
+
+
+\FootReferences{geom(9)}{}
+\begin{frame}
+\frametitle{And what is GEOM?}
+\only <1> {
+Another example: a stripe of disks aka RAID0
+}
+\only <2> {
+... or a disk mirror aka RAID1
+}
+\only <3> {
+Who said that mirror can be built only on bare disks?
+}
+  \begin{figure}
+  \begin{tikzpicture}[
+	every node/.style={ draw, rounded corners, text centered,
+			    text width = 20ex, node distance = 3mm }
+    ]
+\only <1> {
+    \node [name=top] { mirror\\ mediasize = 200 Gb };
+}
+\only <2-> {
+    \node [name=top] { stripe\\ mediasize = 100 Gb };
+}
+\onslide <1-2> {
+    \node [name=ada0, below left=of top.south]
+	{ ada0\\ mediasize = 100 Gb };
+    \node [name=ada1, below right=of top.south]
+	{ ada1\\ mediasize = 100 Gb };
+}
+\onslide <3-> {
+    \node [name=ada0, below left=of top.south]
+	{ ada0{\color{red}a}\\ mediasize = 100 Gb };
+    \node [name=ada1, below right=of top.south]
+	{ ada1{\color{red}a}\\ mediasize = 100 Gb };
+    \node [name=ada00, below=of ada0] { ada0 };
+    \node [name=ada10, below=of ada1] { ada1 };
+    \draw [->] (ada00) -- (ada0);
+    \draw [->] (ada10) -- (ada1);
+}
+    \draw [->] (ada0) -- (top);
+    \draw [->] (ada1) -- (top);
+  \end{tikzpicture}
+  \end{figure}
+\end{frame}
+
+
+\FootReferences{geom(9)}{}
+\begin{frame}
+\frametitle{GEOM — modular disk I/O request transformation framework}
+\begin{itemize}
+  \item {
+    \textbf{class} - a particular transformation: partitioning, RAIDs,
+	encryption. About 40 of them.
+  }
+\onslide <2-> {
+  \item {
+    \textbf{geom} - instance of a single class. A node in GEOM graph.
+    Multiple \textbf{geom} instances of same class can exist.
+  }
+}
+\onslide <3-> {
+  \item {
+    \textbf{provider} - a disk-like thing that a \textbf{geom} provides
+    to devfs, or to other \textbf{geom}.
+  }
+}
+\onslide <4-> {
+  \item {
+    \textbf{consumer} - an interface of a \textbf{geom}, that attaches to
+    underlying \textbf{provider}.
+  }
+}
+\end{itemize}
+\end{frame}
+
+
+\FootReferences{geom(9)}{}
+\begin{frame}
+\frametitle{provider and consumer}
+\begin{figure}
+\begin{tikzpicture}[
+	every node/.style={ rounded corners, text centered }
+  ]
+  \node [name=up, draw] { ada0a };
+  \node [name=down, draw, below=3cm of up] { ada0 };
+  \draw [->, thick, postaction = {
+		decorate, decoration = {
+		  text along path, text align = center,
+		  text = { consumer of }
+		}}]
+	(up.south east) to [out=315, in=45] (down.north east);
+  \draw [->, thick, postaction = {
+                decorate, decoration = {
+                  text along path, text align = center,
+                  text = { provider for }
+                }}]
+	(down.north west) to [out=135, in=225] (up.south west);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{geom(9)}{sys/geom/geom\_subr.c}
+\begin{frame}
+\frametitle{GEOM graph is acyclic}
+\begin{figure} 
+\begin{tikzpicture}[
+	every node/.style={ draw, rounded corners, text centered,
+			    text width = 10ex, node distance = 3mm }
+    ]
+  \node [name=top, text width = 40ex]
+	{ mirror\\ rank = max(rank of consumers) = 2 };
+  \node [name=ada0, below left=of top.south]
+	{ ada0\\ rank = 1 };
+  \node [name=ada1, below right=of top.south]
+	{ ada1\\ rank = 1 };
+  \draw [->] (ada0) -- (top);
+  \draw [->] (ada1) -- (top);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\FootReferences{geom(9)}{sys/geom/geom\_subr.c}
+\begin{frame}
+\frametitle{GEOM topology management}
+\begin{itemize}
+  \item {
+    \textbf{configuration} - manual request for a given class to instantiate
+    itself, with certain parameters.
+  }
+\end{itemize}
 \end{frame}
 
 \end{document}
