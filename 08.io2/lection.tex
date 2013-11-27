@@ -137,7 +137,7 @@ both threads return.
   \item{access(), spoiled()}
 }
 \onslide <2-> {
-  \item{strategy(struct bio *)
+  \item{start(struct bio *)
     \begin{itemize}
       \item{BIO\_READ}
       \item{BIO\_WRITE}
@@ -249,10 +249,10 @@ Who said that mirror can be built only on bare disks?
 			    text width = 20ex, node distance = 3mm }
     ]
 \only <1> {
-    \node [name=top] { mirror\\ mediasize = 200 Gb };
+    \node [name=top] { mirror\\ mediasize = 100 Gb };
 }
 \only <2-> {
-    \node [name=top] { stripe\\ mediasize = 100 Gb };
+    \node [name=top] { stripe\\ mediasize = 200 Gb };
 }
 \onslide <1-2> {
     \node [name=ada0, below left=of top.south]
@@ -342,7 +342,7 @@ Who said that mirror can be built only on bare disks?
 			    text width = 10ex, node distance = 3mm }
     ]
   \node [name=top, text width = 40ex]
-	{ mirror\\ rank = max(rank of consumers) = 2 };
+	{ mirror\\ rank = max(rank of consumers) + 1 = 2 };
   \node [name=ada0, below left=of top.south]
 	{ ada0\\ rank = 1 };
   \node [name=ada1, below right=of top.south]
@@ -362,7 +362,178 @@ Who said that mirror can be built only on bare disks?
     \textbf{configuration} - manual request for a given class to instantiate
     itself, with certain parameters.
   }
+\onslide <2-> {
+  \item {
+    \textbf{tasting}
+    \begin{itemize}
+       \item { Whenever a new class is loaded, it \emph{tastes} all
+               geoms, and if finds appropriate ones, instantiates itself. }
+\onslide <3-> {
+       \item { Whenever a new geom is instantiated, all available classes
+               \emph{taste} its provider, and if any finds it appropriate,
+               instantiates itself. }
+}
+    \end{itemize}
+  }
+}
+\onslide <4-> {
+  \item {
+    \textbf{orphanization} - removal of a provider.
+    \begin{itemize}
+\onslide <5-> {
+      \item { Passing I/O requests below this provider is stopped. }
+}
+\onslide <6-> {
+      \item { Orphanization announce recursively goes to all above consumers. }
+}
+\onslide <7-> {
+      \item { Geom makes decision on autoremoval. }
+}
+    \end{itemize}
+  }
+}
+\onslide <8-> {
+  \item {
+    \textbf{spoiling} - orphanization due to metadata change.
+  }
+}
 \end{itemize}
+\end{frame}
+
+
+\FootReferences{geom(9)}{sys/geom/geom\_subr.c}
+\begin{frame}
+\frametitle{GEOM in threads}
+\begin{itemize}
+\onslide <1-> {
+  \item {
+    \textbf{g\_event} thread
+    \begin{itemize}
+      \item { configuration }
+      \item { tasting }
+      \item { orphanisation }
+      \item { spoiling }
+    \end{itemize}
+  }
+}
+\onslide <2-> {
+  \item { \textbf{g\_down} thread - I/O submission }
+  \item { \textbf{g\_up} thread - I/O completion }
+}
+\onslide <3-> {
+  \item { GEOM direct dispatch }
+    \begin{itemize}
+      \item { syscall thread goes into GEOM instead of g\_down }
+      \item { interrupt thread goes up into GEOM instead of g\_up }
+    \end{itemize}
+}
+\end{itemize}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/bio.h, sys/geom/geom\_io.c}
+\begin{frame}[fragile]
+\frametitle{passing I/O through GEOM}
+\small\begin{verbatim}
+struct bio {
+  uint8_t bio_cmd;          /* I/O operation. */
+  uint8_t bio_flags;        /* General flags. */
+
+  off_t   bio_offset;       /* Offset into file. */
+  off_t   bio_length;       /* Like bio_bcount */
+
+  caddr_t bio_data;         /* Memory, superblocks, indirect etc. */
+  struct vm_page **bio_ma;  /* Or unmapped. */
+  int     bio_ma_n;         /* Number of pages in bio_ma. */
+
+  struct bio *bio_parent;   /* Pointer to parent */
+  u_int   bio_children;     /* Number of spawned bios */
+  u_int   bio_inbed;        /* Children safely home by now */
+
+  void    (*bio_done)(struct bio *);
+}
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/bio.h, sys/geom/geom\_subr.c}
+\begin{frame}[fragile]
+\frametitle{passing I/O through GEOM}
+Typical g\_class\_start() operation:
+\small\begin{verbatim}
+void
+g_class_start(struct bio* bio) {
+        struct bio *mybio;
+
+        mybio = g_clone_bio(bio);
+        /* setup mybio */
+        /* choose consumer */
+        g_io_request(mybio, consumer);
+}
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{}{sys/sys/bio.h, sys/geom/geom\_subr.c}
+\begin{frame}[fragile]
+\frametitle{passing I/O through GEOM}
+Standard bio\_done method g\_std\_done:
+\small\begin{verbatim}
+void
+g_std_done(struct bio *bp)
+{
+        struct bio *bp2;
+ 
+        bp2 = bp->bio_parent;
+        if (bp2->bio_error == 0)
+                bp2->bio_error = bp->bio_error;
+        bp2->bio_completed += bp->bio_completed;
+        g_destroy_bio(bp);
+        bp2->bio_inbed++;
+        if (bp2->bio_children == bp2->bio_inbed)
+                g_io_deliver(bp2, bp2->bio_error);
+}
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{}{sys/geom/geom.h, sys/geom/nop/geom\_nop.c}
+\begin{frame}[fragile]
+\frametitle{a minimal GEOM class}
+\small\begin{verbatim}
+struct g_class {
+  const char              *name;
+  u_int                   version;
+  g_taste_t               *taste;
+  g_config_t              *config;
+  g_ctl_destroy_geom_t    *destroy_geom;
+  ...
+}
+\end{verbatim}
+\end{frame}
+
+
+\FootReferences{}{sys/geom/geom.h, sys/geom/nop/geom\_nop.c}
+\begin{frame}[fragile]
+\frametitle{a minimal GEOM class}
+\small\begin{verbatim}
+struct g_geom {
+  char                    *name;
+  struct g_class          *class;
+  LIST_HEAD(,g_consumer)  consumer;
+  LIST_HEAD(,g_provider)  provider;
+  int                     rank;
+  g_start_t               *start;
+  g_spoiled_t             *spoiled;
+  g_attrchanged_t         *attrchanged;
+  g_dumpconf_t            *dumpconf;
+  g_access_t              *access;
+  g_orphan_t              *orphan;
+  g_ioctl_t               *ioctl;
+  g_provgone_t            *providergone;
+  g_resize_t              *resize;
+}
+\end{verbatim}
 \end{frame}
 
 \end{document}
