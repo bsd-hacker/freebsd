@@ -55,7 +55,6 @@ __FBSDID("$FreeBSD$");
 #include "opt_perfmon.h"
 #include "opt_platform.h"
 #include "opt_sched.h"
-#include "opt_kdtrace.h"
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -1370,7 +1369,7 @@ add_physmap_entry(uint64_t base, uint64_t length, vm_paddr_t *physmap,
 	physmap_idx = *physmap_idxp;
 
 	if (length == 0)
-		return (0);
+		return (1);
 
 	/*
 	 * Find insertion point while checking for overlap.  Start off by
