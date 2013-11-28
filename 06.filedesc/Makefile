@@ -12,6 +12,5 @@ TMP=	$(NAME).aux $(NAME).log $(NAME).nav $(NAME).out $(NAME).snm \
 clean:
 	rm -f -- $(TMP) texput.log
 
-cleanall:
-	make clean
+cleanall: clean
 	rm -f $(NAME).pdf

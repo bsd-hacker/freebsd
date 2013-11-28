@@ -1,35 +1,37 @@
-ALL:    build
+LECTURES=	01.intro \
+		02.entering_kernel \
+		03.processes\&threads \
+		04.synchronisation \
+		05.memory \
+		06.filedesc \
+		07.io \
+		08.io2
+
+.MAIN: build
 
 build:
 	@echo "Building individual chapters..."
-	cd 01.intro; make
-	cd 02.entering_kernel; make
-	cd 03.processes\&threads; make
-	cd 04.synchronisation; make
-	cd 05.memory; make
+	@for l in ${LECTURES}; do \
+		cd $${l}; make; cd -; \
+	done
 
 course:
 	@echo "Creating combined pdf..."
-	pdfjoin 01.intro/lection.pdf \
-		02.entering_kernel/lection.pdf \
-		03.processes\&threads/lection.pdf \
-		04.synchronisation/lection.pdf \
-		05.memory/lection.pdf \
-		-o course.pdf
+	@PDFS=""; \
+	for l in ${LECTURES}; do \
+		PDFS="$${PDFS} $${l}/lection.pdf"; \
+	done; \
+	pdfjoin $${PDFS} -o course.pdf
 
 clean:
 	@echo "Cleanup temp files..."
-	cd 01.intro; make clean
-	cd 02.entering_kernel; make clean
-	cd 03.processes\&threads; make clean
-	cd 04.synchronisation; make clean
-	cd 05.memory; make clean
+	@for l in ${LECTURES}; do \
+		cd $${l}; make ${.TARGET}; cd -; \
+	done
 
 cleanall:
 	@echo "Cleanup all files..."
-	cd 01.intro; make cleanall
-	cd 02.entering_kernel; make cleanall
-	cd 03.processes\&threads; make cleanall
-	cd 04.synchronisation; make cleanall
-	cd 05.memory; make cleanall
+	@for l in ${LECTURES}; do \
+		cd $${l}; make ${.TARGET}; cd -; \
+	done
 	rm -f course.pdf
