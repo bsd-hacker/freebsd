@@ -159,11 +159,11 @@ elf64_exec(struct preloaded_file *fp)
         PT2[i] |= PG_V | PG_RW | PG_PS | PG_U;
     }
 
+    printf("Start @ 0x%lx ...\n", ehdr->e_entry);
+
     err = bi_load(fp->f_args, &modulep, &kernend);
     if (err != 0)
 	return(err);
-
-    printf("Start @ 0x%lx ...\n", ehdr->e_entry);
 
     status = BS->ExitBootServices(IH, x86_efi_mapkey);
     if (EFI_ERROR(status)) {
