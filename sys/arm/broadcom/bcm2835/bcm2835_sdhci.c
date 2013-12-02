@@ -53,7 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
 #include <machine/resource.h>
-#include <machine/frame.h>
 #include <machine/intr.h>
 
 #include <dev/fdt/fdt_common.h>
@@ -73,8 +72,6 @@ __FBSDID("$FreeBSD$");
 #define	BCM2835_DEFAULT_SDHCI_FREQ	50
 
 #define	BCM_SDHCI_BUFFER_SIZE		512
-
-#define	DEBUG
 
 #ifdef DEBUG
 #define dprintf(fmt, args...) do { printf("%s(): ", __func__);   \

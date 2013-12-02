@@ -29,7 +29,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bio.h>
-#include <sys/diskmbr.h>
 #include <sys/endian.h>
 #include <sys/kernel.h>
 #include <sys/kobj.h>
@@ -133,6 +132,7 @@ static g_dumpconf_t g_part_dumpconf;
 static g_orphan_t g_part_orphan;
 static g_spoiled_t g_part_spoiled;
 static g_start_t g_part_start;
+static g_resize_t g_part_resize;
 
 static struct g_class g_part_class = {
 	.name = "PART",
@@ -149,6 +149,7 @@ static struct g_class g_part_class = {
 	.orphan = g_part_orphan,
 	.spoiled = g_part_spoiled,
 	.start = g_part_start,
+	.resize = g_part_resize
 };
 
 DECLARE_GEOM_CLASS(g_part_class, g_part);
@@ -417,6 +418,7 @@ g_part_new_provider(struct g_geom *gp, struct g_part_table *table,
 		sbuf_finish(sb);
 		entry->gpe_pp = g_new_providerf(gp, "%s", sbuf_data(sb));
 		sbuf_delete(sb);
+		entry->gpe_pp->flags |= G_PF_DIRECT_SEND | G_PF_DIRECT_RECEIVE;
 		entry->gpe_pp->private = entry;		/* Close the circle. */
 	}
 	entry->gpe_pp->index = entry->gpe_index - 1;	/* index is 1-based. */
@@ -929,6 +931,7 @@ g_part_ctl_create(struct gctl_req *req, struct g_part_parms *gpp)
 	LIST_INIT(&table->gpt_entry);
 	if (null == NULL) {
 		cp = g_new_consumer(gp);
+		cp->flags |= G_CF_DIRECT_SEND | G_CF_DIRECT_RECEIVE;
 		error = g_attach(cp, pp);
 		if (error == 0)
 			error = g_access(cp, 1, 1, 1);
@@ -1352,16 +1355,20 @@ g_part_ctl_setunset(struct gctl_req *req, struct g_part_parms *gpp,
 
 	table = gp->softc;
 
-	LIST_FOREACH(entry, &table->gpt_entry, gpe_entry) {
-		if (entry->gpe_deleted || entry->gpe_internal)
-			continue;
-		if (entry->gpe_index == gpp->gpp_index)
-			break;
-	}
-	if (entry == NULL) {
-		gctl_error(req, "%d index '%d'", ENOENT, gpp->gpp_index);
-		return (ENOENT);
-	}
+	if (gpp->gpp_parms & G_PART_PARM_INDEX) {
+		LIST_FOREACH(entry, &table->gpt_entry, gpe_entry) {
+			if (entry->gpe_deleted || entry->gpe_internal)
+				continue;
+			if (entry->gpe_index == gpp->gpp_index)
+				break;
+		}
+		if (entry == NULL) {
+			gctl_error(req, "%d index '%d'", ENOENT,
+			    gpp->gpp_index);
+			return (ENOENT);
+		}
+	} else
+		entry = NULL;
 
 	error = G_PART_SETUNSET(table, entry, gpp->gpp_attrib, set);
 	if (error) {
@@ -1374,8 +1381,11 @@ g_part_ctl_setunset(struct gctl_req *req, struct g_part_parms *gpp,
 		sb = sbuf_new_auto();
 		sbuf_printf(sb, "%s %sset on ", gpp->gpp_attrib,
 		    (set) ? "" : "un");
-		G_PART_FULLNAME(table, entry, sb, gp->name);
-		sbuf_printf(sb, "\n");
+		if (entry)
+			G_PART_FULLNAME(table, entry, sb, gp->name);
+		else
+			sbuf_cat(sb, gp->name);
+		sbuf_cat(sb, "\n");
 		sbuf_finish(sb);
 		gctl_set_param(req, "output", sbuf_data(sb), sbuf_len(sb) + 1);
 		sbuf_delete(sb);
@@ -1581,8 +1591,8 @@ g_part_ctlreq(struct gctl_req *req, struct g_class *mp, const char *verb)
 	case 's':
 		if (!strcmp(verb, "set")) {
 			ctlreq = G_PART_CTL_SET;
-			mparms |= G_PART_PARM_ATTRIB | G_PART_PARM_GEOM |
-			    G_PART_PARM_INDEX;
+			mparms |= G_PART_PARM_ATTRIB | G_PART_PARM_GEOM;
+			oparms |= G_PART_PARM_INDEX;
 		}
 		break;
 	case 'u':
@@ -1592,8 +1602,8 @@ g_part_ctlreq(struct gctl_req *req, struct g_class *mp, const char *verb)
 			modifies = 0;
 		} else if (!strcmp(verb, "unset")) {
 			ctlreq = G_PART_CTL_UNSET;
-			mparms |= G_PART_PARM_ATTRIB | G_PART_PARM_GEOM |
-			    G_PART_PARM_INDEX;
+			mparms |= G_PART_PARM_ATTRIB | G_PART_PARM_GEOM;
+			oparms |= G_PART_PARM_INDEX;
 		}
 		break;
 	}
@@ -1878,6 +1888,7 @@ g_part_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 	 */
 	gp = g_new_geomf(mp, "%s", pp->name);
 	cp = g_new_consumer(gp);
+	cp->flags |= G_CF_DIRECT_SEND | G_CF_DIRECT_RECEIVE;
 	error = g_attach(cp, pp);
 	if (error == 0)
 		error = g_access(cp, 1, 0, 0);
@@ -2033,6 +2044,30 @@ g_part_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 		sbuf_printf(sb, "%s<modified>%s</modified>\n", indent,
 		    table->gpt_opened ? "true": "false");
 		G_PART_DUMPCONF(table, NULL, sb, indent);
+	}
+}
+
+static void
+g_part_resize(struct g_consumer *cp)
+{
+	struct g_part_table *table;
+
+	G_PART_TRACE((G_T_TOPOLOGY, "%s(%s)", __func__, cp->provider->name));
+	g_topology_assert();
+
+	table = cp->geom->softc;
+	if (table->gpt_opened == 0) {
+		if (g_access(cp, 1, 1, 1) != 0)
+			return;
+		table->gpt_opened = 1;
+	}
+	if (G_PART_RESIZE(table, NULL, NULL) == 0)
+		printf("GEOM_PART: %s was automatically resized\n",
+		    cp->geom->name);
+	if (g_part_check_integrity(table, cp) != 0) {
+		g_access(cp, -1, -1, -1);
+		table->gpt_opened = 0;
+		g_part_wither(table->gpt_gp, ENXIO);
 	}
 }
 

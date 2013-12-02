@@ -284,7 +284,7 @@ static bool mayBeSharedVariable(const Decl *D) {
   if (isa<FieldDecl>(D))
     return true;
   if (const VarDecl *vd = dyn_cast<VarDecl>(D))
-    return (vd->hasGlobalStorage() && !(vd->isThreadSpecified()));
+    return vd->hasGlobalStorage() && !vd->getTLSKind();
 
   return false;
 }
@@ -709,7 +709,7 @@ static bool checkAcquireOrderAttrCommon(Sema &S, Decl *D,
 
   // Check that all arguments are lockable objects.
   checkAttrArgsAreLockableObjs(S, D, Attr, Args);
-  if (Args.size() == 0)
+  if (Args.empty())
     return false;
 
   return true;
@@ -858,7 +858,7 @@ static bool checkLocksRequiredCommon(Sema &S, Decl *D,
 
   // check that all arguments are lockable objects
   checkAttrArgsAreLockableObjs(S, D, Attr, Args);
-  if (Args.size() == 0)
+  if (Args.empty())
     return false;
 
   return true;
@@ -1656,7 +1656,7 @@ static void handleTLSModelAttr(Sema &S, Decl *D,
     return;
   }
 
-  if (!isa<VarDecl>(D) || !cast<VarDecl>(D)->isThreadSpecified()) {
+  if (!isa<VarDecl>(D) || !cast<VarDecl>(D)->getTLSKind()) {
     S.Diag(Attr.getLoc(), diag::err_attribute_wrong_decl_type)
       << Attr.getName() << ExpectedTLSVar;
     return;
@@ -2246,8 +2246,11 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(NamedDecl *D, SourceRange Range,
       MergedObsoleted == Obsoleted)
     return NULL;
 
+  // Only create a new attribute if !Override, but we want to do
+  // the checking.
   if (!checkAvailabilityAttr(*this, Range, Platform, MergedIntroduced,
-                             MergedDeprecated, MergedObsoleted)) {
+                             MergedDeprecated, MergedObsoleted) &&
+      !Override) {
     return ::new (Context) AvailabilityAttr(Range, Context, Platform,
                                             Introduced, Deprecated,
                                             Obsoleted, IsUnavailable, Message,
@@ -3958,6 +3961,16 @@ static void handleCallConvAttr(Sema &S, Decl *D, const AttributeList &Attr) {
                PascalAttr(Attr.getRange(), S.Context,
                           Attr.getAttributeSpellingListIndex()));
     return;
+  case AttributeList::AT_MSABI:
+    D->addAttr(::new (S.Context)
+               MSABIAttr(Attr.getRange(), S.Context,
+                         Attr.getAttributeSpellingListIndex()));
+    return;
+  case AttributeList::AT_SysVABI:
+    D->addAttr(::new (S.Context)
+               SysVABIAttr(Attr.getRange(), S.Context,
+                           Attr.getAttributeSpellingListIndex()));
+    return;
   case AttributeList::AT_Pcs: {
     PcsAttr::PCSType PCS;
     switch (CC) {
@@ -4033,6 +4046,14 @@ bool Sema::CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC,
   case AttributeList::AT_StdCall: CC = CC_X86StdCall; break;
   case AttributeList::AT_ThisCall: CC = CC_X86ThisCall; break;
   case AttributeList::AT_Pascal: CC = CC_X86Pascal; break;
+  case AttributeList::AT_MSABI:
+    CC = Context.getTargetInfo().getTriple().isOSWindows() ? CC_C :
+                                                             CC_X86_64Win64;
+    break;
+  case AttributeList::AT_SysVABI:
+    CC = Context.getTargetInfo().getTriple().isOSWindows() ? CC_X86_64SysV :
+                                                             CC_C;
+    break;
   case AttributeList::AT_Pcs: {
     Expr *Arg = attr.getArg(0);
     StringLiteral *Str = dyn_cast<StringLiteral>(Arg);
@@ -4873,6 +4894,8 @@ static void ProcessInheritableDeclAttr(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_FastCall:
   case AttributeList::AT_ThisCall:
   case AttributeList::AT_Pascal:
+  case AttributeList::AT_MSABI:
+  case AttributeList::AT_SysVABI:
   case AttributeList::AT_Pcs:
   case AttributeList::AT_PnaclCall:
   case AttributeList::AT_IntelOclBicc:
@@ -4886,6 +4909,7 @@ static void ProcessInheritableDeclAttr(Sema &S, Scope *scope, Decl *D,
     break;
 
   // Microsoft attributes:
+  case AttributeList::AT_MsProperty: break;
   case AttributeList::AT_MsStruct:
     handleMsStructAttr(S, D, Attr);
     break;

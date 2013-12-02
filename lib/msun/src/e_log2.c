@@ -24,6 +24,8 @@ __FBSDID("$FreeBSD$");
  * in not-quite-routine extra precision.
  */
 
+#include <float.h>
+
 #include "math.h"
 #include "math_private.h"
 #include "k_log.h"
@@ -109,3 +111,7 @@ __ieee754_log2(double x)
 
 	return val_lo + val_hi;
 }
+
+#if (LDBL_MANT_DIG == 53)
+__weak_reference(log2, log2l);
+#endif

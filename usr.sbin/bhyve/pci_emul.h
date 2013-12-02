@@ -103,7 +103,8 @@ struct pci_devinst {
 	struct pci_devemu *pi_d;
 	struct vmctx *pi_vmctx;
 	uint8_t	  pi_bus, pi_slot, pi_func;
-	uint8_t   pi_lintr_pin;
+	int8_t    pi_lintr_pin;
+	int8_t	  pi_lintr_state;
 	char	  pi_name[PI_NAMESZ];
 	int	  pi_bar_getsize;
 
@@ -183,7 +184,7 @@ struct pciecap {
 	uint16_t	slot_status2;
 } __packed;
 
-void	init_pci(struct vmctx *ctx);
+int	init_pci(struct vmctx *ctx);
 void	msicap_cfgwrite(struct pci_devinst *pi, int capoff, int offset,
 	    int bytes, uint32_t val);
 void	msixcap_cfgwrite(struct pci_devinst *pi, int capoff, int offset,

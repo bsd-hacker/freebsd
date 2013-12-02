@@ -31,6 +31,7 @@ SRCS+=	__getosreldate.c \
 	disklabel.c \
 	dlfcn.c \
 	drand48.c \
+	dup3.c \
 	elf_utils.c \
 	erand48.c \
 	err.c \
@@ -169,6 +170,7 @@ SYM_MAPS+=${.CURDIR}/gen/Symbol.map
 MAN+=	alarm.3 \
 	arc4random.3 \
 	basename.3 \
+	cap_rights_get.3 \
 	cap_sandboxed.3 \
 	check_utility_compat.3 \
 	clock.3 \
@@ -184,6 +186,7 @@ MAN+=	alarm.3 \
 	dlinfo.3 \
 	dllockinit.3 \
 	dlopen.3 \
+	dup3.3 \
 	err.3 \
 	exec.3 \
 	feature_present.3 \

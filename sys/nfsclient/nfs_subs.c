@@ -41,8 +41,6 @@ __FBSDID("$FreeBSD$");
  * copy data between mbuf chains and uio lists.
  */
 
-#include "opt_kdtrace.h"
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -581,6 +579,7 @@ nfs_loadattrcache(struct vnode **vpp, struct mbuf **mdp, caddr_t *dposp,
 				vap->va_size = np->n_size;
 				np->n_attrstamp = 0;
 				KDTRACE_NFS_ATTRCACHE_FLUSH_DONE(vp);
+				vnode_pager_setsize(vp, np->n_size);
 			} else if (np->n_flag & NMODIFIED) {
 				/*
 				 * We've modified the file: Use the larger
@@ -592,12 +591,22 @@ nfs_loadattrcache(struct vnode **vpp, struct mbuf **mdp, caddr_t *dposp,
 					np->n_size = vap->va_size;
 					np->n_flag |= NSIZECHANGED;
 				}
+				vnode_pager_setsize(vp, np->n_size);
+			} else if (vap->va_size < np->n_size) {
+				/*
+				 * When shrinking the size, the call to
+				 * vnode_pager_setsize() cannot be done
+				 * with the mutex held, so delay it until
+				 * after the mtx_unlock call.
+				 */
+				nsize = np->n_size = vap->va_size;
+				np->n_flag |= NSIZECHANGED;
+				setnsize = 1;
 			} else {
 				np->n_size = vap->va_size;
 				np->n_flag |= NSIZECHANGED;
+				vnode_pager_setsize(vp, np->n_size);
 			}
-			setnsize = 1;
-			nsize = vap->va_size;
 		} else {
 			np->n_size = vap->va_size;
 		}

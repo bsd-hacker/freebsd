@@ -556,6 +556,8 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(spir_kernel);
   KEYWORD(spir_func);
   KEYWORD(intel_ocl_bicc);
+  KEYWORD(x86_64_sysvcc);
+  KEYWORD(x86_64_win64cc);
 
   KEYWORD(cc);
   KEYWORD(c);
@@ -582,6 +584,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(optsize);
   KEYWORD(readnone);
   KEYWORD(readonly);
+  KEYWORD(returned);
   KEYWORD(returns_twice);
   KEYWORD(signext);
   KEYWORD(sret);

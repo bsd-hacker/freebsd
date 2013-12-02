@@ -827,18 +827,30 @@ out_now:
 static int
 sctp_does_stcb_own_this_addr(struct sctp_tcb *stcb, struct sockaddr *to)
 {
-	int loopback_scope, ipv4_local_scope, local_scope, site_scope;
-	int ipv4_addr_legal, ipv6_addr_legal;
+	int loopback_scope;
+
+#if defined(INET)
+	int ipv4_local_scope, ipv4_addr_legal;
+
+#endif
+#if defined(INET6)
+	int local_scope, site_scope, ipv6_addr_legal;
+
+#endif
 	struct sctp_vrf *vrf;
 	struct sctp_ifn *sctp_ifn;
 	struct sctp_ifa *sctp_ifa;
 
 	loopback_scope = stcb->asoc.scope.loopback_scope;
+#if defined(INET)
 	ipv4_local_scope = stcb->asoc.scope.ipv4_local_scope;
+	ipv4_addr_legal = stcb->asoc.scope.ipv4_addr_legal;
+#endif
+#if defined(INET6)
 	local_scope = stcb->asoc.scope.local_scope;
 	site_scope = stcb->asoc.scope.site_scope;
-	ipv4_addr_legal = stcb->asoc.scope.ipv4_addr_legal;
 	ipv6_addr_legal = stcb->asoc.scope.ipv6_addr_legal;
+#endif
 
 	SCTP_IPI_ADDR_RLOCK();
 	vrf = sctp_find_vrf(stcb->asoc.vrf_id);
@@ -861,6 +873,9 @@ sctp_does_stcb_own_this_addr(struct sctp_tcb *stcb, struct sockaddr *to)
 					 * we have sent an asconf-add to be
 					 * considered valid.
 					 */
+					continue;
+				}
+				if (sctp_ifa->address.sa.sa_family != to->sa_family) {
 					continue;
 				}
 				switch (sctp_ifa->address.sa.sa_family) {
@@ -1971,8 +1986,13 @@ sctp_findassociation_special_addr(struct mbuf *m, int offset,
     struct sockaddr *dst)
 {
 	struct sctp_paramhdr *phdr, parm_buf;
+
+#if defined(INET) || defined(INET6)
 	struct sctp_tcb *stcb;
-	uint32_t ptype, plen;
+	uint16_t ptype;
+
+#endif
+	uint16_t plen;
 
 #ifdef INET
 	struct sockaddr_in sin4;
@@ -1996,13 +2016,14 @@ sctp_findassociation_special_addr(struct mbuf *m, int offset,
 	sin6.sin6_port = sh->src_port;
 #endif
 
-	stcb = NULL;
 	offset += sizeof(struct sctp_init_chunk);
 
 	phdr = sctp_get_next_param(m, offset, &parm_buf, sizeof(parm_buf));
 	while (phdr != NULL) {
 		/* now we must see if we want the parameter */
+#if defined(INET) || defined(INET6)
 		ptype = ntohs(phdr->param_type);
+#endif
 		plen = ntohs(phdr->param_length);
 		if (plen == 0) {
 			break;
@@ -2503,9 +2524,6 @@ sctp_inpcb_alloc(struct socket *so, uint32_t vrf_id)
 	m->initial_rto = SCTP_BASE_SYSCTL(sctp_rto_initial_default);
 	m->initial_init_rto_max = SCTP_BASE_SYSCTL(sctp_init_rto_max_default);
 	m->sctp_sack_freq = SCTP_BASE_SYSCTL(sctp_sack_freq_default);
-
-	m->max_open_streams_intome = MAX_SCTP_STREAMS;
-
 	m->max_init_times = SCTP_BASE_SYSCTL(sctp_init_rtx_max_default);
 	m->max_send_times = SCTP_BASE_SYSCTL(sctp_assoc_rtx_max_default);
 	m->def_net_failure = SCTP_BASE_SYSCTL(sctp_path_rtx_max_default);
@@ -2517,6 +2535,7 @@ sctp_inpcb_alloc(struct socket *so, uint32_t vrf_id)
 
 	m->sctp_default_cc_module = SCTP_BASE_SYSCTL(sctp_default_cc_module);
 	m->sctp_default_ss_module = SCTP_BASE_SYSCTL(sctp_default_ss_module);
+	m->max_open_streams_intome = SCTP_BASE_SYSCTL(sctp_nr_incoming_streams_default);
 	/* number of streams to pre-open on a association */
 	m->pre_open_stream_count = SCTP_BASE_SYSCTL(sctp_nr_outgoing_streams_default);
 
@@ -3742,7 +3761,7 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 			sin->sin_len = sizeof(struct sockaddr_in);
 			if (set_scope) {
 #ifdef SCTP_DONT_DO_PRIVADDR_SCOPE
-				stcb->ipv4_local_scope = 1;
+				stcb->asoc.scope.ipv4_local_scope = 1;
 #else
 				if (IN4_ISPRIVATE_ADDRESS(&sin->sin_addr)) {
 					stcb->asoc.scope.ipv4_local_scope = 1;
@@ -4316,6 +4335,7 @@ sctp_aloc_assoc(struct sctp_inpcb *inp, struct sockaddr *firstaddr,
 			asoc->nr_mapping_array = NULL;
 		}
 		SCTP_DECR_ASOC_COUNT();
+		SCTP_TCB_UNLOCK(stcb);
 		SCTP_TCB_LOCK_DESTROY(stcb);
 		SCTP_TCB_SEND_LOCK_DESTROY(stcb);
 		LIST_REMOVE(stcb, sctp_tcbasocidhash);
@@ -4451,23 +4471,21 @@ sctp_delete_from_timewait(uint32_t tag, uint16_t lport, uint16_t rport)
 	int i;
 
 	chain = &SCTP_BASE_INFO(vtag_timewait)[(tag % SCTP_STACK_VTAG_HASH_SIZE)];
-	if (!LIST_EMPTY(chain)) {
-		LIST_FOREACH(twait_block, chain, sctp_nxt_tagblock) {
-			for (i = 0; i < SCTP_NUMBER_IN_VTAG_BLOCK; i++) {
-				if ((twait_block->vtag_block[i].v_tag == tag) &&
-				    (twait_block->vtag_block[i].lport == lport) &&
-				    (twait_block->vtag_block[i].rport == rport)) {
-					twait_block->vtag_block[i].tv_sec_at_expire = 0;
-					twait_block->vtag_block[i].v_tag = 0;
-					twait_block->vtag_block[i].lport = 0;
-					twait_block->vtag_block[i].rport = 0;
-					found = 1;
-					break;
-				}
-			}
-			if (found)
+	LIST_FOREACH(twait_block, chain, sctp_nxt_tagblock) {
+		for (i = 0; i < SCTP_NUMBER_IN_VTAG_BLOCK; i++) {
+			if ((twait_block->vtag_block[i].v_tag == tag) &&
+			    (twait_block->vtag_block[i].lport == lport) &&
+			    (twait_block->vtag_block[i].rport == rport)) {
+				twait_block->vtag_block[i].tv_sec_at_expire = 0;
+				twait_block->vtag_block[i].v_tag = 0;
+				twait_block->vtag_block[i].lport = 0;
+				twait_block->vtag_block[i].rport = 0;
+				found = 1;
 				break;
+			}
 		}
+		if (found)
+			break;
 	}
 }
 
@@ -4481,19 +4499,17 @@ sctp_is_in_timewait(uint32_t tag, uint16_t lport, uint16_t rport)
 
 	SCTP_INP_INFO_WLOCK();
 	chain = &SCTP_BASE_INFO(vtag_timewait)[(tag % SCTP_STACK_VTAG_HASH_SIZE)];
-	if (!LIST_EMPTY(chain)) {
-		LIST_FOREACH(twait_block, chain, sctp_nxt_tagblock) {
-			for (i = 0; i < SCTP_NUMBER_IN_VTAG_BLOCK; i++) {
-				if ((twait_block->vtag_block[i].v_tag == tag) &&
-				    (twait_block->vtag_block[i].lport == lport) &&
-				    (twait_block->vtag_block[i].rport == rport)) {
-					found = 1;
-					break;
-				}
-			}
-			if (found)
+	LIST_FOREACH(twait_block, chain, sctp_nxt_tagblock) {
+		for (i = 0; i < SCTP_NUMBER_IN_VTAG_BLOCK; i++) {
+			if ((twait_block->vtag_block[i].v_tag == tag) &&
+			    (twait_block->vtag_block[i].lport == lport) &&
+			    (twait_block->vtag_block[i].rport == rport)) {
+				found = 1;
 				break;
+			}
 		}
+		if (found)
+			break;
 	}
 	SCTP_INP_INFO_WUNLOCK();
 	return (found);
@@ -4515,42 +4531,40 @@ sctp_add_vtag_to_timewait(uint32_t tag, uint32_t time, uint16_t lport, uint16_t 
 	(void)SCTP_GETTIME_TIMEVAL(&now);
 	chain = &SCTP_BASE_INFO(vtag_timewait)[(tag % SCTP_STACK_VTAG_HASH_SIZE)];
 	set = 0;
-	if (!LIST_EMPTY(chain)) {
+	LIST_FOREACH(twait_block, chain, sctp_nxt_tagblock) {
 		/* Block(s) present, lets find space, and expire on the fly */
-		LIST_FOREACH(twait_block, chain, sctp_nxt_tagblock) {
-			for (i = 0; i < SCTP_NUMBER_IN_VTAG_BLOCK; i++) {
-				if ((twait_block->vtag_block[i].v_tag == 0) &&
-				    !set) {
-					twait_block->vtag_block[i].tv_sec_at_expire =
-					    now.tv_sec + time;
+		for (i = 0; i < SCTP_NUMBER_IN_VTAG_BLOCK; i++) {
+			if ((twait_block->vtag_block[i].v_tag == 0) &&
+			    !set) {
+				twait_block->vtag_block[i].tv_sec_at_expire =
+				    now.tv_sec + time;
+				twait_block->vtag_block[i].v_tag = tag;
+				twait_block->vtag_block[i].lport = lport;
+				twait_block->vtag_block[i].rport = rport;
+				set = 1;
+			} else if ((twait_block->vtag_block[i].v_tag) &&
+			    ((long)twait_block->vtag_block[i].tv_sec_at_expire < now.tv_sec)) {
+				/* Audit expires this guy */
+				twait_block->vtag_block[i].tv_sec_at_expire = 0;
+				twait_block->vtag_block[i].v_tag = 0;
+				twait_block->vtag_block[i].lport = 0;
+				twait_block->vtag_block[i].rport = 0;
+				if (set == 0) {
+					/* Reuse it for my new tag */
+					twait_block->vtag_block[i].tv_sec_at_expire = now.tv_sec + time;
 					twait_block->vtag_block[i].v_tag = tag;
 					twait_block->vtag_block[i].lport = lport;
 					twait_block->vtag_block[i].rport = rport;
 					set = 1;
-				} else if ((twait_block->vtag_block[i].v_tag) &&
-				    ((long)twait_block->vtag_block[i].tv_sec_at_expire < now.tv_sec)) {
-					/* Audit expires this guy */
-					twait_block->vtag_block[i].tv_sec_at_expire = 0;
-					twait_block->vtag_block[i].v_tag = 0;
-					twait_block->vtag_block[i].lport = 0;
-					twait_block->vtag_block[i].rport = 0;
-					if (set == 0) {
-						/* Reuse it for my new tag */
-						twait_block->vtag_block[i].tv_sec_at_expire = now.tv_sec + time;
-						twait_block->vtag_block[i].v_tag = tag;
-						twait_block->vtag_block[i].lport = lport;
-						twait_block->vtag_block[i].rport = rport;
-						set = 1;
-					}
 				}
 			}
-			if (set) {
-				/*
-				 * We only do up to the block where we can
-				 * place our tag for audits
-				 */
-				break;
-			}
+		}
+		if (set) {
+			/*
+			 * We only do up to the block where we can place our
+			 * tag for audits
+			 */
+			break;
 		}
 	}
 	/* Need to add a new block to chain */
@@ -5124,6 +5138,7 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 	/* Insert new items here :> */
 
 	/* Get rid of LOCK */
+	SCTP_TCB_UNLOCK(stcb);
 	SCTP_TCB_LOCK_DESTROY(stcb);
 	SCTP_TCB_SEND_LOCK_DESTROY(stcb);
 	if (from_inpcbfree == SCTP_NORMAL_PROC) {
@@ -5849,7 +5864,6 @@ sctp_pcb_init()
 	for (i = 0; i < SCTP_STACK_VTAG_HASH_SIZE; i++) {
 		LIST_INIT(&SCTP_BASE_INFO(vtag_timewait)[i]);
 	}
-
 	sctp_startup_iterator();
 
 #if defined(__FreeBSD__) && defined(SCTP_MCORE_INPUT) && defined(SMP)
@@ -5878,35 +5892,31 @@ sctp_pcb_finish(void)
 	struct sctp_tagblock *twait_block, *prev_twait_block;
 	struct sctp_laddr *wi, *nwi;
 	int i;
+	struct sctp_iterator *it, *nit;
 
 	/*
-	 * Free BSD the it thread never exits but we do clean up. The only
-	 * way freebsd reaches here if we have VRF's but we still add the
-	 * ifdef to make it compile on old versions.
+	 * In FreeBSD the iterator thread never exits but we do clean up.
+	 * The only way FreeBSD reaches here is if we have VRF's but we
+	 * still add the ifdef to make it compile on old versions.
 	 */
-	{
-		struct sctp_iterator *it, *nit;
-
-		SCTP_IPI_ITERATOR_WQ_LOCK();
-		TAILQ_FOREACH_SAFE(it, &sctp_it_ctl.iteratorhead, sctp_nxt_itr, nit) {
-			if (it->vn != curvnet) {
-				continue;
-			}
-			TAILQ_REMOVE(&sctp_it_ctl.iteratorhead, it, sctp_nxt_itr);
-			if (it->function_atend != NULL) {
-				(*it->function_atend) (it->pointer, it->val);
-			}
-			SCTP_FREE(it, SCTP_M_ITER);
+	SCTP_IPI_ITERATOR_WQ_LOCK();
+	TAILQ_FOREACH_SAFE(it, &sctp_it_ctl.iteratorhead, sctp_nxt_itr, nit) {
+		if (it->vn != curvnet) {
+			continue;
 		}
-		SCTP_IPI_ITERATOR_WQ_UNLOCK();
-		SCTP_ITERATOR_LOCK();
-		if ((sctp_it_ctl.cur_it) &&
-		    (sctp_it_ctl.cur_it->vn == curvnet)) {
-			sctp_it_ctl.iterator_flags |= SCTP_ITERATOR_STOP_CUR_IT;
+		TAILQ_REMOVE(&sctp_it_ctl.iteratorhead, it, sctp_nxt_itr);
+		if (it->function_atend != NULL) {
+			(*it->function_atend) (it->pointer, it->val);
 		}
-		SCTP_ITERATOR_UNLOCK();
+		SCTP_FREE(it, SCTP_M_ITER);
 	}
-
+	SCTP_IPI_ITERATOR_WQ_UNLOCK();
+	SCTP_ITERATOR_LOCK();
+	if ((sctp_it_ctl.cur_it) &&
+	    (sctp_it_ctl.cur_it->vn == curvnet)) {
+		sctp_it_ctl.iterator_flags |= SCTP_ITERATOR_STOP_CUR_IT;
+	}
+	SCTP_ITERATOR_UNLOCK();
 	SCTP_OS_TIMER_STOP(&SCTP_BASE_INFO(addr_wq_timer.timer));
 	SCTP_WQ_ADDR_LOCK();
 	LIST_FOREACH_SAFE(wi, &SCTP_BASE_INFO(addr_wq), sctp_nxt_addr, nwi) {
@@ -6700,30 +6710,28 @@ skip_vtag_check:
 
 	chain = &SCTP_BASE_INFO(vtag_timewait)[(tag % SCTP_STACK_VTAG_HASH_SIZE)];
 	/* Now what about timed wait ? */
-	if (!LIST_EMPTY(chain)) {
+	LIST_FOREACH(twait_block, chain, sctp_nxt_tagblock) {
 		/*
 		 * Block(s) are present, lets see if we have this tag in the
 		 * list
 		 */
-		LIST_FOREACH(twait_block, chain, sctp_nxt_tagblock) {
-			for (i = 0; i < SCTP_NUMBER_IN_VTAG_BLOCK; i++) {
-				if (twait_block->vtag_block[i].v_tag == 0) {
-					/* not used */
-					continue;
-				} else if ((long)twait_block->vtag_block[i].tv_sec_at_expire <
-				    now->tv_sec) {
-					/* Audit expires this guy */
-					twait_block->vtag_block[i].tv_sec_at_expire = 0;
-					twait_block->vtag_block[i].v_tag = 0;
-					twait_block->vtag_block[i].lport = 0;
-					twait_block->vtag_block[i].rport = 0;
-				} else if ((twait_block->vtag_block[i].v_tag == tag) &&
-					    (twait_block->vtag_block[i].lport == lport) &&
-				    (twait_block->vtag_block[i].rport == rport)) {
-					/* Bad tag, sorry :< */
-					SCTP_INP_INFO_RUNLOCK();
-					return (0);
-				}
+		for (i = 0; i < SCTP_NUMBER_IN_VTAG_BLOCK; i++) {
+			if (twait_block->vtag_block[i].v_tag == 0) {
+				/* not used */
+				continue;
+			} else if ((long)twait_block->vtag_block[i].tv_sec_at_expire <
+			    now->tv_sec) {
+				/* Audit expires this guy */
+				twait_block->vtag_block[i].tv_sec_at_expire = 0;
+				twait_block->vtag_block[i].v_tag = 0;
+				twait_block->vtag_block[i].lport = 0;
+				twait_block->vtag_block[i].rport = 0;
+			} else if ((twait_block->vtag_block[i].v_tag == tag) &&
+				    (twait_block->vtag_block[i].lport == lport) &&
+			    (twait_block->vtag_block[i].rport == rport)) {
+				/* Bad tag, sorry :< */
+				SCTP_INP_INFO_RUNLOCK();
+				return (0);
 			}
 		}
 	}

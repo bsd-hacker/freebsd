@@ -3881,6 +3881,10 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
   const MachineFrameInfo *MFI = MF.getFrameInfo();
   unsigned Size = MFI->getObjectSize(FrameIndex);
   unsigned Alignment = MFI->getObjectAlignment(FrameIndex);
+  // If the function stack isn't realigned we don't want to fold instructions
+  // that need increased alignment.
+  if (!RI.needsStackRealignment(MF))
+    Alignment = std::min(Alignment, TM.getFrameLowering()->getStackAlignment());
   if (Ops.size() == 2 && Ops[0] == 0 && Ops[1] == 1) {
     unsigned NewOpc = 0;
     unsigned RCSize = 0;
@@ -4281,7 +4285,7 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
     bool isAligned = (*MMOs.first) &&
                      (*MMOs.first)->getAlignment() >= Alignment;
     Load = DAG.getMachineNode(getLoadRegOpcode(0, RC, isAligned, TM), dl,
-                              VT, MVT::Other, &AddrOps[0], AddrOps.size());
+                              VT, MVT::Other, AddrOps);
     NewNodes.push_back(Load);
 
     // Preserve memory reference information.
@@ -4303,8 +4307,7 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
   if (Load)
     BeforeOps.push_back(SDValue(Load, 0));
   std::copy(AfterOps.begin(), AfterOps.end(), std::back_inserter(BeforeOps));
-  SDNode *NewNode= DAG.getMachineNode(Opc, dl, VTs, &BeforeOps[0],
-                                      BeforeOps.size());
+  SDNode *NewNode= DAG.getMachineNode(Opc, dl, VTs, BeforeOps);
   NewNodes.push_back(NewNode);
 
   // Emit the store instruction.
@@ -4326,8 +4329,7 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
                      (*MMOs.first)->getAlignment() >= Alignment;
     SDNode *Store = DAG.getMachineNode(getStoreRegOpcode(0, DstRC,
                                                          isAligned, TM),
-                                       dl, MVT::Other,
-                                       &AddrOps[0], AddrOps.size());
+                                       dl, MVT::Other, AddrOps);
     NewNodes.push_back(Store);
 
     // Preserve memory reference information.

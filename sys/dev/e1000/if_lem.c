@@ -32,10 +32,11 @@
 ******************************************************************************/
 /*$FreeBSD$*/
 
-#ifdef HAVE_KERNEL_OPTION_HEADERS
-#include "opt_device_polling.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
+
+#ifdef HAVE_KERNEL_OPTION_HEADERS
+#include "opt_device_polling.h"
 #endif
 
 #include <sys/param.h>
@@ -59,6 +60,7 @@
 #include <net/bpf.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
@@ -2118,16 +2120,8 @@ lem_identify_hardware(struct adapter *adapter)
 	device_t dev = adapter->dev;
 
 	/* Make sure our PCI config space has the necessary stuff set */
+	pci_enable_busmaster(dev);
 	adapter->hw.bus.pci_cmd_word = pci_read_config(dev, PCIR_COMMAND, 2);
-	if (!((adapter->hw.bus.pci_cmd_word & PCIM_CMD_BUSMASTEREN) &&
-	    (adapter->hw.bus.pci_cmd_word & PCIM_CMD_MEMEN))) {
-		device_printf(dev, "Memory Access and/or Bus Master bits "
-		    "were not set!\n");
-		adapter->hw.bus.pci_cmd_word |=
-		(PCIM_CMD_BUSMASTEREN | PCIM_CMD_MEMEN);
-		pci_write_config(dev, PCIR_COMMAND,
-		    adapter->hw.bus.pci_cmd_word, 2);
-	}
 
 	/* Save off the information about this board */
 	adapter->hw.vendor_id = pci_get_vendor(dev);
@@ -2992,7 +2986,7 @@ lem_txeof(struct adapter *adapter)
 	EM_TX_LOCK_ASSERT(adapter);
 
 #ifdef DEV_NETMAP
-	if (netmap_tx_irq(ifp, 0 | (NETMAP_LOCKED_ENTER|NETMAP_LOCKED_EXIT)))
+	if (netmap_tx_irq(ifp, 0))
 		return;
 #endif /* DEV_NETMAP */
         if (adapter->num_tx_desc_avail == adapter->num_tx_desc)
@@ -3189,8 +3183,7 @@ lem_allocate_receive_structures(struct adapter *adapter)
 	}
 
 	/* Create the spare map (used by getbuf) */
-	error = bus_dmamap_create(adapter->rxtag, BUS_DMA_NOWAIT,
-	     &adapter->rx_sparemap);
+	error = bus_dmamap_create(adapter->rxtag, 0, &adapter->rx_sparemap);
 	if (error) {
 		device_printf(dev, "%s: bus_dmamap_create failed: %d\n",
 		    __func__, error);
@@ -3199,8 +3192,7 @@ lem_allocate_receive_structures(struct adapter *adapter)
 
 	rx_buffer = adapter->rx_buffer_area;
 	for (i = 0; i < adapter->num_rx_desc; i++, rx_buffer++) {
-		error = bus_dmamap_create(adapter->rxtag, BUS_DMA_NOWAIT,
-		    &rx_buffer->map);
+		error = bus_dmamap_create(adapter->rxtag, 0, &rx_buffer->map);
 		if (error) {
 			device_printf(dev, "%s: bus_dmamap_create failed: %d\n",
 			    __func__, error);
@@ -3461,8 +3453,10 @@ lem_rxeof(struct adapter *adapter, int count, int *done)
 	    BUS_DMASYNC_POSTREAD);
 
 #ifdef DEV_NETMAP
-	if (netmap_rx_irq(ifp, 0 | NETMAP_LOCKED_ENTER, &rx_sent))
+	if (netmap_rx_irq(ifp, 0, &rx_sent)) {
+		EM_RX_UNLOCK(adapter);
 		return (FALSE);
+	}
 #endif /* DEV_NETMAP */
 
 	if (!((current_desc->status) & E1000_RXD_STAT_DD)) {

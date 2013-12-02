@@ -9,10 +9,6 @@
     ..
     arpa
     ..
-    atf-c
-    ..
-    atf-c++
-    ..
     bsm
     ..
     bsnmp
@@ -82,6 +78,8 @@
         ..
         v1
             ext
+            ..
+            tr1
             ..
         ..
     ..
@@ -176,6 +174,8 @@
         ..
         procfs
         ..
+        smbfs
+        ..
         udf
         ..
         unionfs
@@ -245,8 +245,6 @@
     ..
     libmilter
     ..
-    lwres
-    ..
     lzma
     ..
     machine
@@ -285,6 +283,10 @@
         saal
         ..
         sig
+        ..
+    ..
+    netpfil
+        pf
         ..
     ..
     netsmb

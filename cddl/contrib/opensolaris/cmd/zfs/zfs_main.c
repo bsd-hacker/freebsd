@@ -28,6 +28,7 @@
  * Copyright (c) 2011-2012 Pawel Jakub Dawidek <pawel@dawidek.net>.
  * All rights reserved.
  * Copyright (c) 2012 Martin Matuska <mm@FreeBSD.org>. All rights reserved.
+ * Copyright (c) 2013 Steven Hartland.  All rights reserved.
  */
 
 #include <assert.h>
@@ -56,6 +57,8 @@
 #include <sys/fs/zfs.h>
 #include <sys/types.h>
 #include <time.h>
+#include <err.h>
+#include <jail.h>
 
 #include <libzfs.h>
 #include <libzfs_core.h>
@@ -256,9 +259,9 @@ get_usage(zfs_help_t idx)
 	case HELP_PROMOTE:
 		return (gettext("\tpromote <clone-filesystem>\n"));
 	case HELP_RECEIVE:
-		return (gettext("\treceive [-vnFu] <filesystem|volume|"
+		return (gettext("\treceive|recv [-vnFu] <filesystem|volume|"
 		"snapshot>\n"
-		"\treceive [-vnFu] [-d | -e] <filesystem>\n"));
+		"\treceive|recv [-vnFu] [-d | -e] <filesystem>\n"));
 	case HELP_RENAME:
 		return (gettext("\trename [-f] <filesystem|volume|snapshot> "
 		    "<filesystem|volume|snapshot>\n"
@@ -277,10 +280,10 @@ get_usage(zfs_help_t idx)
 	case HELP_SHARE:
 		return (gettext("\tshare <-a | filesystem>\n"));
 	case HELP_SNAPSHOT:
-		return (gettext("\tsnapshot [-r] [-o property=value] ... "
+		return (gettext("\tsnapshot|snap [-r] [-o property=value] ... "
 		    "<filesystem@snapname|volume@snapname> ...\n"));
 	case HELP_UNMOUNT:
-		return (gettext("\tunmount [-f] "
+		return (gettext("\tunmount|umount [-f] "
 		    "<-a | filesystem|mountpoint>\n"));
 	case HELP_UNSHARE:
 		return (gettext("\tunshare "
@@ -2008,7 +2011,7 @@ zfs_do_upgrade(int argc, char **argv)
 	boolean_t showversions = B_FALSE;
 	int ret = 0;
 	upgrade_cbdata_t cb = { 0 };
-	char c;
+	int c;
 	int flags = ZFS_ITER_ARGS_CAN_BE_PATHS;
 
 	/* check options */
@@ -3024,7 +3027,7 @@ zfs_do_list(int argc, char **argv)
 			flags &= ~ZFS_ITER_PROP_LISTSNAPS;
 			while (*optarg != '\0') {
 				static char *type_subopts[] = { "filesystem",
-				    "volume", "snapshot", "all", NULL };
+				    "volume", "snapshot", "snap", "all", NULL };
 
 				switch (getsubopt(&optarg, type_subopts,
 				    &value)) {
@@ -3035,9 +3038,10 @@ zfs_do_list(int argc, char **argv)
 					types |= ZFS_TYPE_VOLUME;
 					break;
 				case 2:
+				case 3:
 					types |= ZFS_TYPE_SNAPSHOT;
 					break;
-				case 3:
+				case 4:
 					types = ZFS_TYPE_DATASET;
 					break;
 
@@ -3529,6 +3533,12 @@ zfs_snapshot_cb(zfs_handle_t *zhp, void *arg)
 	int rv = 0;
 	int error;
 
+	if (sd->sd_recursive &&
+	    zfs_prop_get_int(zhp, ZFS_PROP_INCONSISTENT) != 0) {
+		zfs_close(zhp);
+		return (0);
+	}
+
 	error = asprintf(&name, "%s@%s", zfs_get_name(zhp), sd->sd_snapname);
 	if (error == -1)
 		nomem();
@@ -3551,7 +3561,7 @@ static int
 zfs_do_snapshot(int argc, char **argv)
 {
 	int ret = 0;
-	char c;
+	int c;
 	nvlist_t *props;
 	snap_cbdata_t sd = { 0 };
 	boolean_t multiple_snaps = B_FALSE;
@@ -5233,8 +5243,7 @@ zfs_do_hold_rele_impl(int argc, char **argv, boolean_t holding)
 			continue;
 		}
 		if (holding) {
-			if (zfs_hold(zhp, delim+1, tag, recursive,
-			    B_FALSE, -1) != 0)
+			if (zfs_hold(zhp, delim+1, tag, recursive, -1) != 0)
 				++errors;
 		} else {
 			if (zfs_release(zhp, delim+1, tag, recursive) != 0)
@@ -5601,8 +5610,8 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 
 		(void) fprintf(stderr, gettext("cannot share '%s': "
 		    "legacy share\n"), zfs_get_name(zhp));
-		(void) fprintf(stderr, gettext("use share(1M) to "
-		    "share this filesystem, or set "
+		(void) fprintf(stderr, gettext("to "
+		    "share this filesystem set "
 		    "sharenfs property on\n"));
 		return (1);
 	}
@@ -5618,7 +5627,7 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 
 		(void) fprintf(stderr, gettext("cannot %s '%s': "
 		    "legacy mountpoint\n"), cmdname, zfs_get_name(zhp));
-		(void) fprintf(stderr, gettext("use %s(1M) to "
+		(void) fprintf(stderr, gettext("use %s(8) to "
 		    "%s this filesystem\n"), cmdname, cmdname);
 		return (1);
 	}
@@ -6056,8 +6065,10 @@ unshare_unmount_path(int op, char *path, int flags, boolean_t is_manual)
 		    strcmp(smbshare_prop, "off") == 0) {
 			(void) fprintf(stderr, gettext("cannot unshare "
 			    "'%s': legacy share\n"), path);
+#ifdef illumos
 			(void) fprintf(stderr, gettext("use "
 			    "unshare(1M) to unshare this filesystem\n"));
+#endif
 		} else if (!zfs_is_shared(zhp)) {
 			(void) fprintf(stderr, gettext("cannot unshare '%s': "
 			    "not currently shared\n"), path);
@@ -6076,7 +6087,7 @@ unshare_unmount_path(int op, char *path, int flags, boolean_t is_manual)
 			(void) fprintf(stderr, gettext("cannot unmount "
 			    "'%s': legacy mountpoint\n"),
 			    zfs_get_name(zhp));
-			(void) fprintf(stderr, gettext("use umount(1M) "
+			(void) fprintf(stderr, gettext("use umount(8) "
 			    "to unmount this filesystem\n"));
 		} else {
 			ret = zfs_unmountall(zhp, flags);
@@ -6298,9 +6309,11 @@ unshare_unmount(int op, int argc, char **argv)
 				(void) fprintf(stderr, gettext("cannot "
 				    "unshare '%s': legacy share\n"),
 				    zfs_get_name(zhp));
+#ifdef illumos
 				(void) fprintf(stderr, gettext("use "
 				    "unshare(1M) to unshare this "
 				    "filesystem\n"));
+#endif
 				ret = 1;
 			} else if (!zfs_is_shared(zhp)) {
 				(void) fprintf(stderr, gettext("cannot "
@@ -6318,7 +6331,7 @@ unshare_unmount(int op, int argc, char **argv)
 				    "unmount '%s': legacy "
 				    "mountpoint\n"), zfs_get_name(zhp));
 				(void) fprintf(stderr, gettext("use "
-				    "umount(1M) to unmount this "
+				    "umount(8) to unmount this "
 				    "filesystem\n"));
 				ret = 1;
 			} else if (!zfs_is_mounted(zhp, NULL)) {
@@ -6504,12 +6517,12 @@ manual_mount(int argc, char **argv)
 		}
 	} else {
 		(void) fprintf(stderr, gettext("filesystem '%s' cannot be "
-		    "mounted using 'mount -F zfs'\n"), dataset);
+		    "mounted using 'mount -t zfs'\n"), dataset);
 		(void) fprintf(stderr, gettext("Use 'zfs set mountpoint=%s' "
 		    "instead.\n"), path);
-		(void) fprintf(stderr, gettext("If you must use 'mount -F zfs' "
-		    "or /etc/vfstab, use 'zfs set mountpoint=legacy'.\n"));
-		(void) fprintf(stderr, gettext("See zfs(1M) for more "
+		(void) fprintf(stderr, gettext("If you must use 'mount -t zfs' "
+		    "or /etc/fstab, use 'zfs set mountpoint=legacy'.\n"));
+		(void) fprintf(stderr, gettext("See zfs(8) for more "
 		    "information.\n"));
 		ret = 1;
 	}
@@ -6712,6 +6725,12 @@ main(int argc, char **argv)
 		 */
 		if (strcmp(cmdname, "recv") == 0)
 			cmdname = "receive";
+
+		/*
+		 * The 'snap' command is an alias for 'snapshot'
+		 */
+		if (strcmp(cmdname, "snap") == 0)
+			cmdname = "snapshot";
 
 		/*
 		 * Special case '-?'

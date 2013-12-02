@@ -1142,16 +1142,20 @@ bool QualType::isTriviallyCopyableType(ASTContext &Context) const {
 
 
 
-bool Type::isLiteralType() const {
+bool Type::isLiteralType(ASTContext &Ctx) const {
   if (isDependentType())
     return false;
 
-  // C++0x [basic.types]p10:
+  // C++1y [basic.types]p10:
+  //   A type is a literal type if it is:
+  //   -- cv void; or
+  if (Ctx.getLangOpts().CPlusPlus1y && isVoidType())
+    return true;
+
+  // C++11 [basic.types]p10:
   //   A type is a literal type if it is:
   //   [...]
-  //   -- an array of literal type.
-  // Extension: variable arrays cannot be literal types, since they're
-  // runtime-sized.
+  //   -- an array of literal type other than an array of runtime bound; or
   if (isVariableArrayType())
     return false;
   const Type *BaseTy = getBaseElementTypeUnsafe();
@@ -1162,7 +1166,7 @@ bool Type::isLiteralType() const {
   if (BaseTy->isIncompleteType())
     return false;
 
-  // C++0x [basic.types]p10:
+  // C++11 [basic.types]p10:
   //   A type is a literal type if it is:
   //    -- a scalar type; or
   // As an extension, Clang treats vector types and complex types as
@@ -1570,6 +1574,8 @@ StringRef FunctionType::getNameForCallConv(CallingConv CC) {
   case CC_X86FastCall: return "fastcall";
   case CC_X86ThisCall: return "thiscall";
   case CC_X86Pascal: return "pascal";
+  case CC_X86_64Win64: return "ms_abi";
+  case CC_X86_64SysV: return "sysv_abi";
   case CC_AAPCS: return "aapcs";
   case CC_AAPCS_VFP: return "aapcs-vfp";
   case CC_PnaclCall: return "pnaclcall";
@@ -2101,6 +2107,11 @@ static CachedProperties computeCachedProperties(const Type *T) {
     assert(T->isInstantiationDependentType());
     return CachedProperties(ExternalLinkage, false);
 
+  case Type::Auto:
+    // Give non-deduced 'auto' types external linkage. We should only see them
+    // here in error recovery.
+    return CachedProperties(ExternalLinkage, false);
+
   case Type::Builtin:
     // C++ [basic.link]p8:
     //   A type is said to have linkage if and only if:
@@ -2200,6 +2211,9 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
     return LinkageInfo::external();
 
   case Type::Builtin:
+    return LinkageInfo::external();
+
+  case Type::Auto:
     return LinkageInfo::external();
 
   case Type::Record:

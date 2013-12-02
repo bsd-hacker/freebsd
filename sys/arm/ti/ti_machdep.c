@@ -49,14 +49,13 @@ __FBSDID("$FreeBSD$");
 #include <vm/pmap.h>
 
 #include <machine/bus.h>
-#include <machine/frame.h> /* For trapframe_t, used in <machine/machdep.h> */
+#include <machine/devmap.h>
 #include <machine/machdep.h>
-#include <machine/pmap.h>
 
 #include <arm/ti/omap4/omap4_reg.h>
 
 /* Start of address space used for bootstrap map */
-#define DEVMAP_BOOTSTRAP_MAP_START	0xE0000000
+#define DEVMAP_BOOTSTRAP_MAP_START	0xF0000000
 
 void (*ti_cpu_reset)(void);
 
@@ -64,8 +63,14 @@ vm_offset_t
 initarm_lastaddr(void)
 {
 
+	return (DEVMAP_BOOTSTRAP_MAP_START);
+}
+
+void
+initarm_early_init(void)
+{
+
 	ti_cpu_reset = NULL;
-	return (DEVMAP_BOOTSTRAP_MAP_START - ARM_NOCACHE_KVA_SIZE);
 }
 
 void
@@ -79,7 +84,7 @@ initarm_late_init(void)
 }
 
 #define FDT_DEVMAP_MAX	(2)		// FIXME
-static struct pmap_devmap fdt_devmap[FDT_DEVMAP_MAX] = {
+static struct arm_devmap_entry fdt_devmap[FDT_DEVMAP_MAX] = {
 	{ 0, 0, 0, 0, 0, }
 };
 
@@ -88,18 +93,18 @@ static struct pmap_devmap fdt_devmap[FDT_DEVMAP_MAX] = {
  * Construct pmap_devmap[] with DT-derived config data.
  */
 int
-platform_devmap_init(void)
+initarm_devmap_init(void)
 {
 	int i = 0;
 #if defined(SOC_OMAP4)
-	fdt_devmap[i].pd_va = 0xE8000000;
+	fdt_devmap[i].pd_va = 0xF8000000;
 	fdt_devmap[i].pd_pa = 0x48000000;
 	fdt_devmap[i].pd_size = 0x1000000;
 	fdt_devmap[i].pd_prot = VM_PROT_READ | VM_PROT_WRITE;
 	fdt_devmap[i].pd_cache = PTE_DEVICE;
 	i++;
 #elif defined(SOC_TI_AM335X)
-	fdt_devmap[i].pd_va = 0xE4C00000;
+	fdt_devmap[i].pd_va = 0xF4C00000;
 	fdt_devmap[i].pd_pa = 0x44C00000;       /* L4_WKUP */
 	fdt_devmap[i].pd_size = 0x400000;       /* 4 MB */
 	fdt_devmap[i].pd_prot = VM_PROT_READ | VM_PROT_WRITE;
@@ -109,7 +114,7 @@ platform_devmap_init(void)
 #error "Unknown SoC"
 #endif
 
-	pmap_devmap_bootstrap_table = &fdt_devmap[0];
+	arm_devmap_register_table(&fdt_devmap[0]);
 	return (0);
 }
 

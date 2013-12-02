@@ -14,10 +14,10 @@ CFLAGS+= -I${.CURDIR}
 CLEANDIRS+= FreeBSD
 CLEANFILES+= bootstrap
 
-#	$Id: Makefile,v 1.12 2013/05/20 16:05:10 sjg Exp $
+#	$Id: Makefile,v 1.20 2013/09/04 15:42:03 sjg Exp $
 
 # Base version on src date
-MAKE_VERSION= 20130520
+MAKE_VERSION= 20130904
 
 PROG?=	${.CURDIR:T}
 
@@ -167,6 +167,7 @@ accept test:
 # override some simple things
 BINDIR= /usr/bin
 MANDIR= /usr/share/man/man
+DEFAULT_SYS_PATH= /usr/share/mk
 
 # make sure we get this
 CFLAGS+= ${COPTS.${.IMPSRC:T}}

@@ -493,12 +493,13 @@ struct mlx4_en_priv {
 	spinlock_t vlan_lock;
 	struct mlx4_en_port_state port_state;
 	spinlock_t stats_lock;
+	spinlock_t ioctl_lock;
 
-	unsigned long last_moder_packets;
+	unsigned long last_moder_packets[MAX_RX_RINGS];
 	unsigned long last_moder_tx_packets;
-	unsigned long last_moder_bytes;
+	unsigned long last_moder_bytes[MAX_RX_RINGS];
 	unsigned long last_moder_jiffies;
-	int last_moder_time;
+	int last_moder_time[MAX_RX_RINGS];
 	u16 rx_usecs;
 	u16 rx_frames;
 	u16 tx_usecs;
@@ -635,12 +636,12 @@ void mlx4_en_release_rss_steer(struct mlx4_en_priv *priv);
 int mlx4_en_free_tx_buf(struct net_device *dev, struct mlx4_en_tx_ring *ring);
 void mlx4_en_rx_irq(struct mlx4_cq *mcq);
 
-int mlx4_SET_MCAST_FLTR(struct mlx4_dev *dev, u8 port, u64 mac, u64 clear, u8 mode);
+//int mlx4_SET_MCAST_FLTR(struct mlx4_dev *dev, u8 port, u64 mac, u64 clear, u8 mode);
 int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, u8 port, u32 *vlans);
-int mlx4_SET_PORT_general(struct mlx4_dev *dev, u8 port, int mtu,
-			  u8 pptx, u8 pfctx, u8 pprx, u8 pfcrx);
-int mlx4_SET_PORT_qpn_calc(struct mlx4_dev *dev, u8 port, u32 base_qpn,
-			   u8 promisc);
+//int mlx4_SET_PORT_general(struct mlx4_dev *dev, u8 port, int mtu,
+//			  u8 pptx, u8 pfctx, u8 pprx, u8 pfcrx);
+//int mlx4_SET_PORT_qpn_calc(struct mlx4_dev *dev, u8 port, u32 base_qpn,
+//			   u8 promisc);
 
 int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset);
 int mlx4_en_QUERY_PORT(struct mlx4_en_dev *mdev, u8 port);

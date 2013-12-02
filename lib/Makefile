@@ -12,6 +12,7 @@
 # libcom_err must be built before libpam.
 # libcrypt must be built before libpam.
 # libkvm must be built before libdevstat.
+# libldns must be built before libunbound.
 # msun must be built before libg++ and libstdc++.
 # libmd must be built before libatm, libopie, libradius, and libtacplus.
 # ncurses must be built before libdialog, libedit and libreadline.
@@ -31,13 +32,19 @@
 
 SUBDIR_ORDERED=	${_csu} \
 	libc \
+	libc_nonshared \
 	libbsm \
 	libauditd \
+	libutil \
+	libpjdlog \
+	libnv \
+	${_libcapsicum} \
 	libcompiler_rt \
 	libcrypt \
 	libelf \
 	${_libiconv_modules} \
 	libkvm \
+	${_libldns} \
 	msun \
 	libmd \
 	ncurses \
@@ -46,7 +53,6 @@ SUBDIR_ORDERED=	${_csu} \
 	librpcsvc \
 	libsbuf \
 	libtacplus \
-	libutil \
 	${_libypclnt} \
 	${_libcxxrt} \
 	${_libcplusplus}
@@ -66,12 +72,14 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libbz2 \
 	libcalendar \
 	libcam \
+	${_libcasper} \
 	libcompat \
 	libdevinfo \
 	libdevstat \
 	libdwarf \
 	libedit \
 	${_libefi} \
+	libexecinfo \
 	libexpat \
 	libfetch \
 	libgeom \
@@ -82,7 +90,6 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	${_libipx} \
 	libjail \
 	libkiconv \
-	${_libldns} \
 	liblzma \
 	libmagic \
 	libmandoc \
@@ -92,6 +99,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	${_libnandfs} \
 	libnetbsd \
 	${_libngatm} \
+	libnv \
 	libopie \
 	libpam \
 	libpcap \
@@ -102,6 +110,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	${_librtld_db} \
 	${_libsdp} \
 	${_libsm} \
+	${_libsmb} \
 	${_libsmdb} \
 	${_libsmutil} \
 	libstand \
@@ -113,6 +122,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libufs \
 	libugidfw \
 	libulog \
+	${_libunbound} \
 	${_libusbhid} \
 	${_libusb} \
 	${_libvgl} \
@@ -122,8 +132,8 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libyaml \
 	libz \
 	${_atf} \
-	${_bind} \
-	${_clang}
+	${_clang} \
+	${_tests}
 
 .if exists(${.CURDIR}/csu/${MACHINE_ARCH}-elf)
 _csu=csu/${MACHINE_ARCH}-elf
@@ -137,16 +147,8 @@ _csu=csu
 
 # NB: keep these sorted by MK_* knobs
 
-.if ${MK_ATF} != "no"
-_atf=		atf
-.endif
-
 .if ${MK_ATM} != "no"
 _libngatm=	libngatm
-.endif
-
-.if ${MK_BIND} != "no"
-_bind=		bind
 .endif
 
 .if ${MK_BLUETOOTH} != "no"
@@ -156,6 +158,11 @@ _libsdp=	libsdp
 
 .if ${MK_BSNMP} != "no"
 _libbsnmp=	libbsnmp
+.endif
+
+.if ${MK_CASPER} != "no"
+_libcapsicum=	libcapsicum
+_libcasper=	libcasper
 .endif
 
 .if ${MK_CLANG} != "no" && !defined(COMPAT_32BIT)
@@ -205,6 +212,7 @@ _libypclnt=	libypclnt
 .endif
 
 .if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
+_libsmb=	libsmb
 _libvgl=	libvgl
 _libproc=	libproc
 _librtld_db=	librtld_db
@@ -216,6 +224,7 @@ _libvmmapi=	libvmmapi
 
 .if ${MACHINE_CPUARCH} == "ia64"
 _libefi=	libefi
+_libsmb=	libsmb
 .endif
 
 .if ${MACHINE_CPUARCH} == "mips"
@@ -226,6 +235,11 @@ _librtld_db=	librtld_db
 .if ${MACHINE_CPUARCH} == "powerpc"
 _libproc=	libproc
 _librtld_db=	librtld_db
+_libsmb=	libsmb
+.endif
+
+.if ${MACHINE_CPUARCH} == "sparc64"
+_libsmb=	libsmb
 .endif
 
 .if ${MK_OPENSSL} != "no"
@@ -245,6 +259,15 @@ _libsmutil=	libsmutil
 
 .if ${MK_TELNET} != "no"
 _libtelnet=	libtelnet
+.endif
+
+.if ${MK_TESTS} != "no"
+_atf=		atf
+_tests=		tests
+.endif
+
+.if ${MK_UNBOUND} != "no"
+_libunbound=	libunbound
 .endif
 
 .if ${MK_USB} != "no"

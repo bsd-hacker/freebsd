@@ -90,6 +90,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/route.h>
 
@@ -156,7 +157,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 			 * and a multicast address is bound on both
 			 * new and duplicated sockets.
 			 */
-			if (so->so_options & SO_REUSEADDR)
+			if ((so->so_options & (SO_REUSEADDR|SO_REUSEPORT)) != 0)
 				reuseport = SO_REUSEADDR|SO_REUSEPORT;
 		} else if (!IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr)) {
 			struct ifaddr *ifa;
@@ -243,8 +244,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 				if (tw == NULL ||
 				    (reuseport & tw->tw_so_options) == 0)
 					return (EADDRINUSE);
-			} else if (t && (reuseport == 0 ||
-			    (t->inp_flags2 & INP_REUSEPORT) == 0)) {
+			} else if (t && (reuseport & inp_so_options(t)) == 0) {
 				return (EADDRINUSE);
 			}
 #ifdef INET
@@ -265,8 +265,8 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 					     INP_IPV6PROTO) ==
 					     (t->inp_vflag & INP_IPV6PROTO))))
 						return (EADDRINUSE);
-				} else if (t && (reuseport == 0 ||
-				    (t->inp_flags2 & INP_REUSEPORT) == 0) &&
+				} else if (t &&
+				    (reuseport & inp_so_options(t)) == 0 &&
 				    (ntohl(t->inp_laddr.s_addr) != INADDR_ANY ||
 				    (t->inp_vflag & INP_IPV6PROTO) != 0))
 					return (EADDRINUSE);

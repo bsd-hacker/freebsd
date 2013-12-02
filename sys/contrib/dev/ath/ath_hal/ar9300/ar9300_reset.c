@@ -778,6 +778,11 @@ ar9300_set_delta_slope(struct ath_hal *ah, struct ieee80211_channel *chan)
 HAL_CHANNEL_INTERNAL *
 ar9300_check_chan(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
+
+    if (chan == NULL) {
+        return AH_NULL;
+    }
+
     if ((IS(chan, CHAN_2GHZ) ^ IS(chan, CHAN_5GHZ)) == 0) {
         HALDEBUG(ah, HAL_DEBUG_CHANNEL,
             "%s: invalid channel %u/0x%x; not marked as 2GHz or 5GHz\n",
@@ -1327,7 +1332,7 @@ ar9300_set_operating_mode(struct ath_hal *ah, int opmode)
 }
 
 /* XXX need the logic for Osprey */
-inline void
+void
 ar9300_init_pll(struct ath_hal *ah, struct ieee80211_channel *chan)
 {
     u_int32_t pll;

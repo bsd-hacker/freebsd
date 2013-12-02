@@ -66,9 +66,9 @@
  */
 
 /*
- * This global ZIL switch affects all pools
+ * Disable intent logging replay.  This global ZIL switch affects all pools.
  */
-int zil_replay_disable = 0;    /* disable intent logging replay */
+int zil_replay_disable = 0;
 SYSCTL_DECL(_vfs_zfs);
 TUNABLE_INT("vfs.zfs.zil_replay_disable", &zil_replay_disable);
 SYSCTL_INT(_vfs_zfs, OID_AUTO, zil_replay_disable, CTLFLAG_RW,
@@ -884,13 +884,14 @@ zil_lwb_write_init(zilog_t *zilog, lwb_t *lwb)
 	if (lwb->lwb_zio == NULL) {
 		lwb->lwb_zio = zio_rewrite(zilog->zl_root_zio, zilog->zl_spa,
 		    0, &lwb->lwb_blk, lwb->lwb_buf, BP_GET_LSIZE(&lwb->lwb_blk),
-		    zil_lwb_write_done, lwb, ZIO_PRIORITY_LOG_WRITE,
+		    zil_lwb_write_done, lwb, ZIO_PRIORITY_SYNC_WRITE,
 		    ZIO_FLAG_CANFAIL | ZIO_FLAG_DONT_PROPAGATE, &zb);
 	}
 }
 
 /*
  * Define a limited set of intent log block sizes.
+ *
  * These must be a multiple of 4KB. Note only the amount used (again
  * aligned to 4KB) actually gets written. However, we can't always just
  * allocate SPA_MAXBLOCKSIZE as the slog space could be exhausted.

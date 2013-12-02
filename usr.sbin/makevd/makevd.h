@@ -50,8 +50,11 @@ struct optlist {
 };
 
 int	vhd_makeim(struct iminfo *);
+int	vhd_dumpim(struct iminfo *);
 int	vmdk_makeim(struct iminfo *);
+int	vmdk_dumpim(struct iminfo *);
 int	raw_makeim(struct iminfo *);
+int	raw_dumpim(struct iminfo *);
 
 #ifndef	DEFAULT_IMTYPE
 #define	DEFAULT_IMTYPE	"raw"

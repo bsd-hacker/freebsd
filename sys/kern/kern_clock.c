@@ -40,7 +40,6 @@ __FBSDID("$FreeBSD$");
 #include "opt_kdb.h"
 #include "opt_device_polling.h"
 #include "opt_hwpmc_hooks.h"
-#include "opt_kdtrace.h"
 #include "opt_ntp.h"
 #include "opt_watchdog.h"
 
@@ -93,7 +92,7 @@ SYSINIT(clocks, SI_SUB_CLOCKS, SI_ORDER_FIRST, initclocks, NULL);
 static struct mtx time_lock;
 
 SDT_PROVIDER_DECLARE(sched);
-SDT_PROBE_DEFINE2(sched, , , tick, tick, "struct thread *", "struct proc *");
+SDT_PROBE_DEFINE2(sched, , , tick, "struct thread *", "struct proc *");
 
 static int
 sysctl_kern_cp_time(SYSCTL_HANDLER_ARGS)
@@ -216,13 +215,8 @@ deadlkres(void)
 			}
 			FOREACH_THREAD_IN_PROC(p, td) {
 
-				/*
-				 * Once a thread is found in "interesting"
-				 * state a possible ticks wrap-up needs to be
-				 * checked.
-				 */
 				thread_lock(td);
-				if (TD_ON_LOCK(td) && ticks < td->td_blktick) {
+				if (TD_ON_LOCK(td)) {
 
 					/*
 					 * The thread should be blocked on a
@@ -247,8 +241,7 @@ deadlkres(void)
 						    __func__, td, tticks);
 					}
 				} else if (TD_IS_SLEEPING(td) &&
-				    TD_ON_SLEEPQ(td) &&
-				    ticks < td->td_blktick) {
+				    TD_ON_SLEEPQ(td)) {
 
 					/*
 					 * Check if the thread is sleeping on a

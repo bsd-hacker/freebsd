@@ -59,6 +59,7 @@ extern int errno;
 #include <sys/sysent.h>
 #include <sys/un.h>
 #include <sys/queue.h>
+#include <sys/wait.h>
 #ifdef IPX
 #include <sys/types.h>
 #include <netipx/ipx.h>
@@ -74,6 +75,7 @@ extern int errno;
 #include <grp.h>
 #include <inttypes.h>
 #include <locale.h>
+#include <netdb.h>
 #include <nl_types.h>
 #include <pwd.h>
 #include <stdio.h>
@@ -102,6 +104,7 @@ void ktrcsw_old(struct ktr_csw_old *);
 void ktruser_malloc(unsigned char *);
 void ktruser_rtld(int, unsigned char *);
 void ktruser(int, unsigned char *);
+void ktrcaprights(cap_rights_t *);
 void ktrsockaddr(struct sockaddr *);
 void ktrstat(struct stat *);
 void ktrstruct(char *, size_t);
@@ -163,6 +166,31 @@ struct proc_info
 };
 
 TAILQ_HEAD(trace_procs, proc_info) trace_procs;
+
+static void
+strerror_init(void)
+{
+
+	/*
+	 * Cache NLS data before entering capability mode.
+	 * XXXPJD: There should be strerror_init() and strsignal_init() in libc.
+	 */
+	(void)catopen("libc", NL_CAT_LOCALE);
+}
+
+static void
+localtime_init(void)
+{
+	time_t ltime;
+
+	/*
+	 * Allow localtime(3) to cache /etc/localtime content before entering
+	 * capability mode.
+	 * XXXPJD: There should be localtime_init() in libc.
+	 */
+	(void)time(&ltime);
+	(void)localtime(&ltime);
+}
 
 int
 main(int argc, char *argv[])
@@ -235,11 +263,9 @@ main(int argc, char *argv[])
 	if (!freopen(tracefile, "r", stdin))
 		err(1, "%s", tracefile);
 
-	/*
-	 * Cache NLS data before entering capability mode.
-	 * XXXPJD: There should be strerror_init() and strsignal_init() in libc.
-	 */
-	(void)catopen("libc", NL_CAT_LOCALE);
+	strerror_init();
+	localtime_init();
+
 	if (resolv == 0) {
 		if (cap_enter() < 0 && errno != ENOSYS)
 			err(1, "unable to enter capability mode");
@@ -355,21 +381,21 @@ limitfd(int fd)
 	cap_rights_t rights;
 	unsigned long cmd;
 
-	rights = CAP_FSTAT;
+	cap_rights_init(&rights, CAP_FSTAT);
 	cmd = -1;
 
 	switch (fd) {
 	case STDIN_FILENO:
-		rights |= CAP_READ;
+		cap_rights_set(&rights, CAP_READ);
 		break;
 	case STDOUT_FILENO:
-		rights |= CAP_IOCTL | CAP_WRITE;
+		cap_rights_set(&rights, CAP_IOCTL, CAP_WRITE);
 		cmd = TIOCGETA;	/* required by isatty(3) in printf(3) */
 		break;
 	case STDERR_FILENO:
-		rights |= CAP_WRITE;
+		cap_rights_set(&rights, CAP_WRITE);
 		if (!suppressdata) {
-			rights |= CAP_IOCTL;
+			cap_rights_set(&rights, CAP_IOCTL);
 			cmd = TIOCGWINSZ;
 		}
 		break;
@@ -377,7 +403,7 @@ limitfd(int fd)
 		abort();
 	}
 
-	if (cap_rights_limit(fd, rights) < 0 && errno != ENOSYS)
+	if (cap_rights_limit(fd, &rights) < 0 && errno != ENOSYS)
 		err(1, "unable to limit rights for descriptor %d", fd);
 	if (cmd != -1 && cap_ioctls_limit(fd, &cmd, 1) < 0 && errno != ENOSYS)
 		err(1, "unable to limit ioctls for descriptor %d", fd);
@@ -582,6 +608,29 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 		if (fancy &&
 		    (flags == 0 || (flags & SV_ABI_MASK) == SV_ABI_FREEBSD)) {
 			switch (ktr->ktr_code) {
+			case SYS_bindat:
+			case SYS_connectat:
+			case SYS_faccessat:
+			case SYS_fchmodat:
+			case SYS_fchownat:
+			case SYS_fstatat:
+			case SYS_futimesat:
+			case SYS_linkat:
+			case SYS_mkdirat:
+			case SYS_mkfifoat:
+			case SYS_mknodat:
+			case SYS_openat:
+			case SYS_readlinkat:
+			case SYS_renameat:
+			case SYS_unlinkat:
+				putchar('(');
+				atfdname(*ip, decimal);
+				c = ',';
+				ip++;
+				narg--;
+				break;
+			}
+			switch (ktr->ktr_code) {
 			case SYS_ioctl: {
 				print_number(ip, narg, c);
 				putchar(c);
@@ -600,6 +649,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				break;
 			case SYS_access:
 			case SYS_eaccess:
+			case SYS_faccessat:
 				print_number(ip, narg, c);
 				putchar(',');
 				accessmodename(*ip);
@@ -607,6 +657,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				narg--;
 				break;
 			case SYS_open:
+			case SYS_openat:
 				print_number(ip, narg, c);
 				putchar(',');
 				flagsandmodename(ip[0], ip[1], decimal);
@@ -616,8 +667,30 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 			case SYS_wait4:
 				print_number(ip, narg, c);
 				print_number(ip, narg, c);
+				/*
+				 * A flags value of zero is valid for
+				 * wait4() but not for wait6(), so
+				 * handle zero special here.
+				 */
+				if (*ip == 0) {
+					print_number(ip, narg, c);
+				} else {
+					putchar(',');
+					wait6optname(*ip);
+					ip++;
+					narg--;
+				}
+				break;
+			case SYS_wait6:
+				putchar('(');
+				idtypename(*ip, decimal);
+				c = ',';
+				ip++;
+				narg--;
+				print_number(ip, narg, c);
+				print_number(ip, narg, c);
 				putchar(',');
-				wait4optname(*ip);
+				wait6optname(*ip);
 				ip++;
 				narg--;
 				break;
@@ -631,6 +704,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				narg--;
 				break;
 			case SYS_mknod:
+			case SYS_mknodat:
 				print_number(ip, narg, c);
 				putchar(',');
 				modename(*ip);
@@ -780,7 +854,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				ip++;
 				narg--;
 				putchar(',');
-				socktypename(*ip);
+				socktypenamewithflags(*ip);
 				ip++;
 				narg--;
 				if (sockdomain == PF_INET ||
@@ -836,7 +910,9 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				narg--;
 				break;
 			case SYS_mkfifo:
+			case SYS_mkfifoat:
 			case SYS_mkdir:
+			case SYS_mkdirat:
 				print_number(ip, narg, c);
 				putchar(',');
 				modename(*ip);
@@ -856,7 +932,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				ip++;
 				narg--;
 				putchar(',');
-				socktypename(*ip);
+				socktypenamewithflags(*ip);
 				ip++;
 				narg--;
 				c = ',';
@@ -1059,34 +1135,14 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				ip++;
 				narg--;
 				break;
-			case SYS_cap_new:
-			case SYS_cap_rights_limit:
+			case SYS_linkat:
+			case SYS_renameat:
+			case SYS_symlinkat:
 				print_number(ip, narg, c);
 				putchar(',');
-				arg = *ip;
+				atfdname(*ip, decimal);
 				ip++;
 				narg--;
-				/*
-				 * Hack: the second argument is a
-				 * cap_rights_t, which 64 bits wide, so on
-				 * 32-bit systems, it is split between two
-				 * registers.
-				 *
-				 * Since sizeof() is not evaluated by the
-				 * preprocessor, we can't use an #ifdef,
-				 * but the compiler will probably optimize
-				 * the code out anyway.
-				 */
-				if (sizeof(cap_rights_t) > sizeof(register_t)) {
-#if _BYTE_ORDER == _LITTLE_ENDIAN
-					arg = ((intmax_t)*ip << 32) + arg;
-#else
-					arg = (arg << 32) + *ip;
-#endif
-					ip++;
-					narg--;
-				}
-				capname(arg);
 				break;
 			case SYS_cap_fcntls_limit:
 				print_number(ip, narg, c);
@@ -1102,6 +1158,18 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 				print_number(ip, narg, c);
 				(void)putchar(',');
 				fadvisebehavname((int)*ip);
+				ip++;
+				narg--;
+				break;
+			case SYS_procctl:
+				putchar('(');
+				idtypename(*ip, decimal);
+				c = ',';
+				ip++;
+				narg--;
+				print_number(ip, narg, c);
+				putchar(',');
+				procctlcmdname(*ip);
 				ip++;
 				narg--;
 				break;
@@ -1475,12 +1543,23 @@ ktruser(int len, unsigned char *p)
 }
 
 void
+ktrcaprights(cap_rights_t *rightsp)
+{
+
+	printf("cap_rights_t ");
+	capname(rightsp);
+	printf("\n");
+}
+
+void
 ktrsockaddr(struct sockaddr *sa)
 {
 /*
  TODO: Support additional address families
 	#include <netnatm/natm.h>
 	struct sockaddr_natm	*natm;
+	#include <netsmb/netbios.h>
+	struct sockaddr_nb	*nb;
 */
 	char addr[64];
 
@@ -1531,7 +1610,8 @@ ktrsockaddr(struct sockaddr *sa)
 		memset(&sa_in6, 0, sizeof(sa_in6));
 		memcpy(&sa_in6, sa, sa->sa_len);
 		check_sockaddr_len(in6);
-		inet_ntop(AF_INET6, &sa_in6.sin6_addr, addr, sizeof addr);
+		getnameinfo((struct sockaddr *)&sa_in6, sizeof(sa_in6),
+		    addr, sizeof(addr), NULL, 0, NI_NUMERICHOST);
 		printf("[%s]:%u", addr, htons(sa_in6.sin6_port));
 		break;
 	}
@@ -1575,10 +1655,15 @@ ktrstat(struct stat *statp)
 	 * buffer exactly sizeof(struct stat) bytes long.
 	 */
 	printf("struct stat {");
-	strmode(statp->st_mode, mode);
-	printf("dev=%ju, ino=%ju, mode=%s, nlink=%ju, ",
-		(uintmax_t)statp->st_dev, (uintmax_t)statp->st_ino, mode,
-		(uintmax_t)statp->st_nlink);
+	printf("dev=%ju, ino=%ju, ",
+		(uintmax_t)statp->st_dev, (uintmax_t)statp->st_ino);
+	if (resolv == 0)
+		printf("mode=0%jo, ", (uintmax_t)statp->st_mode);
+	else {
+		strmode(statp->st_mode, mode);
+		printf("mode=%s, ", mode);
+	}
+	printf("nlink=%ju, ", (uintmax_t)statp->st_nlink);
 	if (resolv == 0 || (pwd = getpwuid(statp->st_uid)) == NULL)
 		printf("uid=%ju, ", (uintmax_t)statp->st_uid);
 	else
@@ -1648,6 +1733,7 @@ ktrstruct(char *buf, size_t buflen)
 	char *name, *data;
 	size_t namelen, datalen;
 	int i;
+	cap_rights_t rights;
 	struct stat sb;
 	struct sockaddr_storage ss;
 
@@ -1667,7 +1753,12 @@ ktrstruct(char *buf, size_t buflen)
 	for (i = 0; i < (int)namelen; ++i)
 		if (!isalpha(name[i]))
 			goto invalid;
-	if (strcmp(name, "stat") == 0) {
+	if (strcmp(name, "caprights") == 0) {
+		if (datalen != sizeof(cap_rights_t))
+			goto invalid;
+		memcpy(&rights, data, datalen);
+		ktrcaprights(&rights);
+	} else if (strcmp(name, "stat") == 0) {
 		if (datalen != sizeof(struct stat))
 			goto invalid;
 		memcpy(&sb, data, datalen);
@@ -1694,16 +1785,16 @@ ktrcapfail(struct ktr_cap_fail *ktr)
 	case CAPFAIL_NOTCAPABLE:
 		/* operation on fd with insufficient capabilities */
 		printf("operation requires ");
-		capname((intmax_t)ktr->cap_needed);
+		capname(&ktr->cap_needed);
 		printf(", process holds ");
-		capname((intmax_t)ktr->cap_held);
+		capname(&ktr->cap_held);
 		break;
 	case CAPFAIL_INCREASE:
 		/* requested more capabilities than fd already has */
 		printf("attempt to increase capabilities from ");
-		capname((intmax_t)ktr->cap_held);
+		capname(&ktr->cap_held);
 		printf(" to ");
-		capname((intmax_t)ktr->cap_needed);
+		capname(&ktr->cap_needed);
 		break;
 	case CAPFAIL_SYSCALL:
 		/* called restricted syscall */
@@ -1715,9 +1806,9 @@ ktrcapfail(struct ktr_cap_fail *ktr)
 		break;
 	default:
 		printf("unknown capability failure: ");
-		capname((intmax_t)ktr->cap_needed);
+		capname(&ktr->cap_needed);
 		printf(" ");
-		capname((intmax_t)ktr->cap_held);
+		capname(&ktr->cap_held);
 		break;
 	}
 	printf("\n");

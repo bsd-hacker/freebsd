@@ -46,13 +46,14 @@ __FBSDID("$FreeBSD$");
 
 #include "bhyverun.h"
 #include "inout.h"
+#include "legacy_irq.h"
 #include "mem.h"
-#include "mptbl.h"
 #include "pci_emul.h"
-#include "ioapic.h"
 
 #define CONF1_ADDR_PORT    0x0cf8
 #define CONF1_DATA_PORT    0x0cfc
+
+#define CONF1_ENABLE	   0x80000000ul
 
 #define	CFGWRITE(pi,off,val,b)						\
 do {									\
@@ -74,17 +75,6 @@ static struct slotinfo {
 	struct pci_devinst *si_devi;
 	int	si_legacy;
 } pci_slotinfo[MAXSLOTS][MAXFUNCS];
-
-/*
- * Used to keep track of legacy interrupt owners/requestors
- */
-#define NLIRQ		16
-
-static struct lirqinfo {
-	int	li_generic;
-	int	li_acount;
-	struct pci_devinst *li_owner;	/* XXX should be a list */
-} lirq[NLIRQ];
 
 SET_DECLARE(pci_devemu_set, struct pci_devemu);
 
@@ -139,20 +129,15 @@ pci_parse_slot(char *opt, int legacy)
 	error = -1;
 	str = cpy = strdup(opt);
 
-	config = NULL;
-
-	if (strchr(str, ':') != NULL) {
-		slot = strsep(&str, ":");
-		func = strsep(&str, ",");
-	} else {
-		slot = strsep(&str, ",");
-		func = NULL;
-	}
-
+        slot = strsep(&str, ",");
+        func = NULL;
+        if (strchr(slot, ':') != NULL) {
+		func = cpy;
+		(void) strsep(&func, ":");
+        }
+	
 	emul = strsep(&str, ",");
-	if (str != NULL) {
-		config = strsep(&str, ",");
-	}
+	config = str;
 
 	if (emul == NULL) {
 		pci_parse_slot_usage(opt);
@@ -249,8 +234,12 @@ pci_emul_msix_tread(struct pci_devinst *pi, uint64_t offset, int size)
 	int tab_index;
 	uint64_t retval = ~0;
 
-	/* support only 4 or 8 byte reads */
-	if (size != 4 && size != 8)
+	/*
+	 * The PCI standard only allows 4 and 8 byte accesses to the MSI-X
+	 * table but we also allow 1 byte access to accomodate reads from
+	 * ddb.
+	 */
+	if (size != 1 && size != 4 && size != 8)
 		return (retval);
 
 	msix_entry_offset = offset % MSIX_TABLE_ENTRY_SIZE;
@@ -267,7 +256,9 @@ pci_emul_msix_tread(struct pci_devinst *pi, uint64_t offset, int size)
 		dest = (char *)(pi->pi_msix.table + tab_index);
 		dest += msix_entry_offset;
 
-		if (size == 4)
+		if (size == 1)
+			retval = *((uint8_t *)dest);
+		else if (size == 4)
 			retval = *((uint32_t *)dest);
 		else
 			retval = *((uint64_t *)dest);
@@ -666,11 +657,13 @@ pci_emul_finddev(char *name)
 	return (NULL);
 }
 
-static void
+static int
 pci_emul_init(struct vmctx *ctx, struct pci_devemu *pde, int slot, int func,
 	      char *params)
 {
 	struct pci_devinst *pdi;
+	int err;
+
 	pdi = malloc(sizeof(struct pci_devinst));
 	bzero(pdi, sizeof(*pdi));
 
@@ -678,6 +671,7 @@ pci_emul_init(struct vmctx *ctx, struct pci_devemu *pde, int slot, int func,
 	pdi->pi_bus = 0;
 	pdi->pi_slot = slot;
 	pdi->pi_func = func;
+	pdi->pi_lintr_pin = -1;
 	pdi->pi_d = pde;
 	snprintf(pdi->pi_name, PI_NAMESZ, "%s-pci-%d", pde->pe_emu, slot);
 
@@ -688,12 +682,15 @@ pci_emul_init(struct vmctx *ctx, struct pci_devemu *pde, int slot, int func,
 	pci_set_cfgdata8(pdi, PCIR_COMMAND,
 		    PCIM_CMD_PORTEN | PCIM_CMD_MEMEN | PCIM_CMD_BUSMASTEREN);
 
-	if ((*pde->pe_init)(ctx, pdi, params) != 0) {
+	err = (*pde->pe_init)(ctx, pdi, params);
+	if (err != 0) {
 		free(pdi);
 	} else {
 		pci_emul_devices++;
 		pci_slotinfo[slot][func].si_devi = pdi;
-	}	
+	}
+
+	return (err);
 }
 
 void
@@ -934,10 +931,19 @@ pci_emul_capwrite(struct pci_devinst *pi, int offset, int bytes, uint32_t val)
 	assert(offset >= capoff);
 
 	/*
-	 * Capability ID and Next Capability Pointer are readonly
+	 * Capability ID and Next Capability Pointer are readonly.
+	 * However, some o/s's do 4-byte writes that include these.
+	 * For this case, trim the write back to 2 bytes and adjust
+	 * the data.
 	 */
-	if (offset == capoff || offset == capoff + 1)
-		return;
+	if (offset == capoff || offset == capoff + 1) {
+		if (offset == capoff && bytes == 4) {
+			bytes = 2;
+			offset += 2;
+			val >>= 16;
+		} else
+			return;
+	}
 
 	switch (capid) {
 	case PCIY_MSI:
@@ -993,7 +999,7 @@ pci_emul_fallback_handler(struct vmctx *ctx, int vcpu, int dir, uint64_t addr,
 	return (0);
 }
 
-void
+int
 init_pci(struct vmctx *ctx)
 {
 	struct mem_range memp;
@@ -1013,21 +1019,13 @@ init_pci(struct vmctx *ctx)
 			if (si->si_name != NULL) {
 				pde = pci_emul_finddev(si->si_name);
 				assert(pde != NULL);
-				pci_emul_init(ctx, pde, slot, func,
-					      si->si_param);
+				error = pci_emul_init(ctx, pde, slot, func,
+					    si->si_param);
+				if (error)
+					return (error);
 			}
 		}
 	}
-
-	/*
-	 * Allow ISA IRQs 5,10,11,12, and 15 to be available for
-	 * generic use
-	 */
-	lirq[5].li_generic = 1;
-	lirq[10].li_generic = 1;
-	lirq[11].li_generic = 1;
-	lirq[12].li_generic = 1;
-	lirq[15].li_generic = 1;
 
 	/*
 	 * The guest physical memory map looks like the following:
@@ -1039,7 +1037,7 @@ init_pci(struct vmctx *ctx)
 	 * Accesses to memory addresses that are not allocated to system
 	 * memory or PCI devices return 0xff's.
 	 */
-	error = vm_get_memory_seg(ctx, 0, &lowmem);
+	error = vm_get_memory_seg(ctx, 0, &lowmem, NULL);
 	assert(error == 0);
 
 	memset(&memp, 0, sizeof(struct mem_range));
@@ -1051,6 +1049,8 @@ init_pci(struct vmctx *ctx)
 
 	error = register_mem_fallback(&memp);
 	assert(error == 0);
+
+	return (0);
 }
 
 int
@@ -1115,40 +1115,17 @@ pci_is_legacy(struct pci_devinst *pi)
 	return (pci_slotinfo[pi->pi_slot][pi->pi_func].si_legacy);
 }
 
-static int
-pci_lintr_alloc(struct pci_devinst *pi, int vec)
-{
-	int i;
-
-	assert(vec < NLIRQ);
-
-	if (vec == -1) {
-		for (i = 0; i < NLIRQ; i++) {
-			if (lirq[i].li_generic &&
-			    lirq[i].li_owner == NULL) {
-				vec = i;
-				break;
-			}
-		}
-	} else {
-		if (lirq[vec].li_owner != NULL) {
-			vec = -1;
-		}
-	}
-	assert(vec != -1);
-
-	lirq[vec].li_owner = pi;
-	pi->pi_lintr_pin = vec;
-
-	return (vec);
-}
-
 int
-pci_lintr_request(struct pci_devinst *pi, int vec)
+pci_lintr_request(struct pci_devinst *pi, int req)
 {
+	int irq;
 
-	vec = pci_lintr_alloc(pi, vec);
-	pci_set_cfgdata8(pi, PCIR_INTLINE, vec);
+	irq = legacy_irq_alloc(req);
+	if (irq < 0)
+		return (-1);
+
+	pi->pi_lintr_pin = irq;
+	pci_set_cfgdata8(pi, PCIR_INTLINE, irq);
 	pci_set_cfgdata8(pi, PCIR_INTPIN, 1);
 	return (0);
 }
@@ -1157,16 +1134,24 @@ void
 pci_lintr_assert(struct pci_devinst *pi)
 {
 
-	assert(pi->pi_lintr_pin);
-	ioapic_assert_pin(pi->pi_vmctx, pi->pi_lintr_pin);
+	assert(pi->pi_lintr_pin >= 0);
+
+	if (pi->pi_lintr_state == 0) {
+		pi->pi_lintr_state = 1;
+		vm_ioapic_assert_irq(pi->pi_vmctx, pi->pi_lintr_pin);
+	}
 }
 
 void
 pci_lintr_deassert(struct pci_devinst *pi)
 {
 
-	assert(pi->pi_lintr_pin);
-	ioapic_deassert_pin(pi->pi_vmctx, pi->pi_lintr_pin);
+	assert(pi->pi_lintr_pin >= 0);
+
+	if (pi->pi_lintr_state == 1) {
+		pi->pi_lintr_state = 0;
+		vm_ioapic_deassert_irq(pi->pi_vmctx, pi->pi_lintr_pin);
+	}
 }
 
 /*
@@ -1224,20 +1209,29 @@ pci_emul_cfgaddr(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
 {
 	uint32_t x;
 
-	assert(!in);
+	if (bytes != 4) {
+		if (in)
+			*eax = (bytes == 2) ? 0xffff : 0xff;
+		return (0);
+	}
 
-	if (bytes != 4)
-		return (-1);
-
-	x = *eax;
-	cfgoff = x & PCI_REGMAX;
-	cfgfunc = (x >> 8) & PCI_FUNCMAX;
-	cfgslot = (x >> 11) & PCI_SLOTMAX;
-	cfgbus = (x >> 16) & PCI_BUSMAX;
+	if (in) {
+		x = (cfgbus << 16) |
+		    (cfgslot << 11) |
+		    (cfgfunc << 8) |
+		    cfgoff;
+		*eax = x | CONF1_ENABLE;
+	} else {
+		x = *eax;
+		cfgoff = x & PCI_REGMAX;
+		cfgfunc = (x >> 8) & PCI_FUNCMAX;
+		cfgslot = (x >> 11) & PCI_SLOTMAX;
+		cfgbus = (x >> 16) & PCI_BUSMAX;
+	}
 
 	return (0);
 }
-INOUT_PORT(pci_cfgaddr, CONF1_ADDR_PORT, IOPORT_F_OUT, pci_emul_cfgaddr);
+INOUT_PORT(pci_cfgaddr, CONF1_ADDR_PORT, IOPORT_F_INOUT, pci_emul_cfgaddr);
 
 static uint32_t
 bits_changed(uint32_t old, uint32_t new, uint32_t mask)
@@ -1265,7 +1259,7 @@ pci_emul_cmdwrite(struct pci_devinst *pi, uint32_t new, int bytes)
 	 * If the MMIO or I/O address space decoding has changed then
 	 * register/unregister all BARs that decode that address space.
 	 */
-	for (i = 0; i < PCI_BARMAX; i++) {
+	for (i = 0; i <= PCI_BARMAX; i++) {
 		switch (pi->pi_bar[i].type) {
 			case PCIBAR_NONE:
 			case PCIBAR_MEMHI64:

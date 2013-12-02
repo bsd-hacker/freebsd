@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011
+ * Copyright (c) 2011,2012,2013
  *	Hiroki Sato <hrs@FreeBSD.org>  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,17 @@ __FBSDID("$FreeBSD$");
 
 #include "makevd.h"
 #include "common.h"
+
+int
+raw_dumpim(struct iminfo *imi)
+{
+
+	printf("raw format:\n");
+	printf("\timagename (size): %s (%d bytes)\n", imi->imi_imagename,
+	    0);
+
+	return (0);
+}
 
 int
 raw_makeim(struct iminfo *imi)

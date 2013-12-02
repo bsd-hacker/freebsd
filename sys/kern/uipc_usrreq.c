@@ -325,6 +325,7 @@ static struct protosw localsw[] = {
 	 */
 	.pr_flags =		PR_ADDR|PR_ATOMIC|PR_CONNREQUIRED|PR_WANTRCVD|
 				    PR_RIGHTS,
+	.pr_ctloutput =		&uipc_ctloutput,
 	.pr_usrreqs =		&uipc_usrreqs_seqpacket,
 },
 };
@@ -464,6 +465,7 @@ uipc_bindat(int fd, struct socket *so, struct sockaddr *nam, struct thread *td)
 	struct unpcb *unp;
 	struct vnode *vp;
 	struct mount *mp;
+	cap_rights_t rights;
 	char *buf;
 
 	unp = sotounpcb(so);
@@ -502,7 +504,7 @@ uipc_bindat(int fd, struct socket *so, struct sockaddr *nam, struct thread *td)
 
 restart:
 	NDINIT_ATRIGHTS(&nd, CREATE, NOFOLLOW | LOCKPARENT | SAVENAME,
-	    UIO_SYSSPACE, buf, fd, CAP_BINDAT, td);
+	    UIO_SYSSPACE, buf, fd, cap_rights_init(&rights, CAP_BINDAT), td);
 /* SHOULD BE ABLE TO ADOPT EXISTING AND wakeup() ALA FIFO's */
 	error = namei(&nd);
 	if (error)
@@ -1276,10 +1278,11 @@ unp_connectat(int fd, struct socket *so, struct sockaddr *nam,
 	struct vnode *vp;
 	struct socket *so2, *so3;
 	struct unpcb *unp, *unp2, *unp3;
-	int error, len;
 	struct nameidata nd;
 	char buf[SOCK_MAXADDRLEN];
 	struct sockaddr *sa;
+	cap_rights_t rights;
+	int error, len;
 
 	UNP_LINK_WLOCK_ASSERT();
 
@@ -1305,7 +1308,7 @@ unp_connectat(int fd, struct socket *so, struct sockaddr *nam,
 
 	sa = malloc(sizeof(struct sockaddr_un), M_SONAME, M_WAITOK);
 	NDINIT_ATRIGHTS(&nd, LOOKUP, FOLLOW | LOCKSHARED | LOCKLEAF,
-	    UIO_SYSSPACE, buf, fd, CAP_CONNECTAT, td);
+	    UIO_SYSSPACE, buf, fd, cap_rights_init(&rights, CAP_CONNECTAT), td);
 	error = namei(&nd);
 	if (error)
 		vp = NULL;
@@ -1686,8 +1689,8 @@ unp_freerights(struct filedescent **fdep, int fdcount)
 	struct file *fp;
 	int i;
 
-	if (fdcount == 0)
-		return;
+	KASSERT(fdcount > 0, ("%s: fdcount %d", __func__, fdcount));
+
 	for (i = 0; i < fdcount; i++) {
 		fp = fdep[i]->fde_file;
 		filecaps_free(&fdep[i]->fde_caps);
@@ -1725,6 +1728,8 @@ unp_externalize(struct mbuf *control, struct mbuf **controlp, int flags)
 		if (cm->cmsg_level == SOL_SOCKET
 		    && cm->cmsg_type == SCM_RIGHTS) {
 			newfds = datalen / sizeof(*fdep);
+			if (newfds == 0)
+				goto next;
 			fdep = data;
 
 			/* If we're not outputting the descriptors free them. */
@@ -1762,16 +1767,15 @@ unp_externalize(struct mbuf *control, struct mbuf **controlp, int flags)
 			}
 			for (i = 0; i < newfds; i++, fdp++) {
 				fde = &fdesc->fd_ofiles[*fdp];
-				fde->fde_file = fdep[0]->fde_file;
-				filecaps_move(&fdep[0]->fde_caps,
+				fde->fde_file = fdep[i]->fde_file;
+				filecaps_move(&fdep[i]->fde_caps,
 				    &fde->fde_caps);
 				if ((flags & MSG_CMSG_CLOEXEC) != 0)
 					fde->fde_flags |= UF_EXCLOSE;
 				unp_externalize_fp(fde->fde_file);
 			}
 			FILEDESC_XUNLOCK(fdesc);
-			if (newfds != 0)
-				free(fdep[0], M_FILECAPS);
+			free(fdep[0], M_FILECAPS);
 		} else {
 			/* We can just copy anything else across. */
 			if (error || controlp == NULL)
@@ -1894,6 +1898,8 @@ unp_internalize(struct mbuf **controlp, struct thread *td)
 
 		case SCM_RIGHTS:
 			oldfds = datalen / sizeof (int);
+			if (oldfds == 0)
+				break;
 			/*
 			 * Check that all the FDs passed in refer to legal
 			 * files.  If not, reject the entire operation.
@@ -1927,10 +1933,6 @@ unp_internalize(struct mbuf **controlp, struct thread *td)
 				FILEDESC_SUNLOCK(fdesc);
 				error = E2BIG;
 				goto out;
-			}
-			if (oldfds == 0) {
-				FILEDESC_SUNLOCK(fdesc);
-				break;
 			}
 			fdp = data;
 			fdep = (struct filedescent **)

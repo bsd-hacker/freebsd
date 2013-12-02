@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <net/ethernet.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <net/sff8472.h>
 
 #include "t4_ioctl.h"
 
@@ -54,6 +55,7 @@ __FBSDID("$FreeBSD$");
 #define	max(x, y) ((x) > (y) ? (x) : (y))
 
 static const char *progname, *nexus;
+static int chip_id;	/* 4 for T4, 5 for T5 */
 
 struct reg_info {
 	const char *name;
@@ -93,11 +95,15 @@ usage(FILE *fp)
 	    "\ti2c <port> <devaddr> <addr> [<len>] read from i2c device\n"
 	    "\tloadfw <fw-image.bin>               install firmware\n"
 	    "\tmemdump <addr> <len>                dump a memory range\n"
+	    "\tmodinfo <port>                      optics/cable information\n"
 	    "\treg <address>[=<val>]               read/write register\n"
 	    "\treg64 <address>[=<val>]             read/write 64 bit register\n"
 	    "\tregdump [<module>] ...              dump registers\n"
 	    "\tstdio                               interactive mode\n"
 	    "\ttcb <tid>                           read TCB\n"
+	    "\ttracer <idx> tx<n>|rx<n>            set and enable a tracer)\n"
+	    "\ttracer <idx> disable|enable         disable or enable a tracer\n"
+	    "\ttracer list                         list all tracers\n"
 	    );
 }
 
@@ -122,6 +128,7 @@ real_doit(unsigned long cmd, void *data, const char *cmdstr)
 			rc = errno;
 			return (rc);
 		}
+		chip_id = nexus[1] - '0';
 	}
 
 	rc = ioctl(fd, cmd, data);
@@ -965,6 +972,7 @@ set_filter(uint32_t idx, int argc, const char *argv[])
 	};
 	bzero(&t, sizeof (t));
 	t.idx = idx;
+	t.fs.hitcnts = 1;
 
 	for (start_arg = 0; start_arg + 2 <= argc; start_arg += 2) {
 		const char **args = &argv[start_arg];
@@ -1361,6 +1369,15 @@ show_sge_context(const struct t4_sge_context *p)
 		FIELD("CngChMap:", 0, 3),
 		{ NULL }
 	};
+	static struct field_desc t5_conm[] = {
+		FIELD1("CngMPSEnable:", 21),
+		FIELD("CngTPMode:", 19, 20),
+		FIELD1("CngDBPHdr:", 18),
+		FIELD1("CngDBPData:", 17),
+		FIELD1("CngIMSG:", 16),
+		FIELD("CngChMap:", 0, 15),
+		{ NULL }
+	};
 
 	if (p->mem_id == SGE_CONTEXT_EGRESS)
 		show_struct(p->data, 6, (p->data[0] & 2) ? fl : egress);
@@ -1369,7 +1386,7 @@ show_sge_context(const struct t4_sge_context *p)
 	else if (p->mem_id == SGE_CONTEXT_INGRESS)
 		show_struct(p->data, 5, ingress);
 	else if (p->mem_id == SGE_CONTEXT_CNM)
-		show_struct(p->data, 1, conm);
+		show_struct(p->data, 1, chip_id == 5 ? t5_conm : conm);
 }
 
 #undef FIELD
@@ -1657,6 +1674,332 @@ clearstats(int argc, const char *argv[])
 }
 
 static int
+show_tracers(void)
+{
+	struct t4_tracer t;
+	char *s;
+	int rc, port_idx, i;
+	long long val;
+
+	/* Magic values: MPS_TRC_CFG = 0x9800. MPS_TRC_CFG[1:1] = TrcEn */
+	rc = read_reg(0x9800, 4, &val);
+	if (rc != 0)
+		return (rc);
+	printf("tracing is %s\n", val & 2 ? "ENABLED" : "DISABLED");
+
+	t.idx = 0;
+	for (t.idx = 0; ; t.idx++) {
+		rc = doit(CHELSIO_T4_GET_TRACER, &t);
+		if (rc != 0 || t.idx == 0xff)
+			break;
+
+		if (t.tp.port < 4) {
+			s = "Rx";
+			port_idx = t.tp.port;
+		} else if (t.tp.port < 8) {
+			s = "Tx";
+			port_idx = t.tp.port - 4;
+		} else if (t.tp.port < 12) {
+			s = "loopback";
+			port_idx = t.tp.port - 8;
+		} else if (t.tp.port < 16) {
+			s = "MPS Rx";
+			port_idx = t.tp.port - 12;
+		} else if (t.tp.port < 20) {
+			s = "MPS Tx";
+			port_idx = t.tp.port - 16;
+		} else {
+			s = "unknown";
+			port_idx = t.tp.port;
+		}
+
+		printf("\ntracer %u (currently %s) captures ", t.idx,
+		    t.enabled ? "ENABLED" : "DISABLED");
+		if (t.tp.port < 8)
+			printf("port %u %s, ", port_idx, s);
+		else
+			printf("%s %u, ", s, port_idx);
+		printf("snap length: %u, min length: %u\n", t.tp.snap_len,
+		    t.tp.min_len);
+		printf("packets captured %smatch filter\n",
+		    t.tp.invert ? "do not " : "");
+		if (t.tp.skip_ofst) {
+			printf("filter pattern: ");
+			for (i = 0; i < t.tp.skip_ofst * 2; i += 2)
+				printf("%08x%08x", t.tp.data[i],
+				    t.tp.data[i + 1]);
+			printf("/");
+			for (i = 0; i < t.tp.skip_ofst * 2; i += 2)
+				printf("%08x%08x", t.tp.mask[i],
+				    t.tp.mask[i + 1]);
+			printf("@0\n");
+		}
+		printf("filter pattern: ");
+		for (i = t.tp.skip_ofst * 2; i < T4_TRACE_LEN / 4; i += 2)
+			printf("%08x%08x", t.tp.data[i], t.tp.data[i + 1]);
+		printf("/");
+		for (i = t.tp.skip_ofst * 2; i < T4_TRACE_LEN / 4; i += 2)
+			printf("%08x%08x", t.tp.mask[i], t.tp.mask[i + 1]);
+		printf("@%u\n", (t.tp.skip_ofst + t.tp.skip_len) * 8);
+	}
+
+	return (rc);
+}
+
+static int
+tracer_onoff(uint8_t idx, int enabled)
+{
+	struct t4_tracer t;
+
+	t.idx = idx;
+	t.enabled = enabled;
+	t.valid = 0;
+
+	return doit(CHELSIO_T4_SET_TRACER, &t);
+}
+
+static void
+create_tracing_ifnet()
+{
+	char *cmd[] = {
+		"/sbin/ifconfig", __DECONST(char *, nexus), "create", NULL
+	};
+	char *env[] = {NULL};
+
+	if (vfork() == 0) {
+		close(STDERR_FILENO);
+		execve(cmd[0], cmd, env);
+		_exit(0);
+	}
+}
+
+/*
+ * XXX: Allow user to specify snaplen, minlen, and pattern (including inverted
+ * matching).  Right now this is a quick-n-dirty implementation that traces the
+ * first 128B of all tx or rx on a port
+ */
+static int
+set_tracer(uint8_t idx, int argc, const char *argv[])
+{
+	struct t4_tracer t;
+	int len, port;
+
+	bzero(&t, sizeof (t));
+	t.idx = idx;
+	t.enabled = 1;
+	t.valid = 1;
+
+	if (argc != 1) {
+		warnx("must specify tx<n> or rx<n>.");
+		return (EINVAL);
+	}
+
+	len = strlen(argv[0]);
+	if (len != 3) {
+		warnx("argument must be 3 characters (tx<n> or rx<n>)");
+		return (EINVAL);
+	}
+
+	if (strncmp(argv[0], "tx", 2) == 0) {
+		port = argv[0][2] - '0';
+		if (port < 0 || port > 3) {
+			warnx("'%c' in %s is invalid", argv[0][2], argv[0]);
+			return (EINVAL);
+		}
+		port += 4;
+	} else if (strncmp(argv[0], "rx", 2) == 0) {
+		port = argv[0][2] - '0';
+		if (port < 0 || port > 3) {
+			warnx("'%c' in %s is invalid", argv[0][2], argv[0]);
+			return (EINVAL);
+		}
+	} else {
+		warnx("argument '%s' isn't tx<n> or rx<n>", argv[0]);
+		return (EINVAL);
+	}
+
+	t.tp.snap_len = 128;
+	t.tp.min_len = 0;
+	t.tp.skip_ofst = 0;
+	t.tp.skip_len = 0;
+	t.tp.invert = 0;
+	t.tp.port = port;
+
+	create_tracing_ifnet();
+	return doit(CHELSIO_T4_SET_TRACER, &t);
+}
+
+static int
+modinfo(int argc, const char *argv[])
+{
+	long port;
+	char string[16], *p;
+	struct t4_i2c_data i2cd;
+	int rc, i;
+	uint16_t temp, vcc, tx_bias, tx_power, rx_power;
+
+	if (argc != 1) {
+		warnx("must supply a port");
+		return (EINVAL);
+	}
+
+	p = str_to_number(argv[0], &port, NULL);
+	if (*p || port > UCHAR_MAX) {
+		warnx("invalid port id \"%s\"", argv[0]);
+		return (EINVAL);
+	}
+
+	bzero(&i2cd, sizeof(i2cd));
+	i2cd.len = 1;
+	i2cd.port_id = port;
+	i2cd.dev_addr = SFF_8472_BASE;
+
+	i2cd.offset = SFF_8472_ID;
+	if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+		goto fail;
+
+	if (i2cd.data[0] > SFF_8472_ID_LAST)
+		printf("Unknown ID\n");
+	else
+		printf("ID: %s\n", sff_8472_id[i2cd.data[0]]);
+
+	bzero(&string, sizeof(string));
+	for (i = SFF_8472_VENDOR_START; i < SFF_8472_VENDOR_END; i++) {
+		i2cd.offset = i;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		string[i - SFF_8472_VENDOR_START] = i2cd.data[0];
+	}
+	printf("Vendor %s\n", string);
+
+	bzero(&string, sizeof(string));
+	for (i = SFF_8472_SN_START; i < SFF_8472_SN_END; i++) {
+		i2cd.offset = i;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		string[i - SFF_8472_SN_START] = i2cd.data[0];
+	}
+	printf("SN %s\n", string);
+
+	bzero(&string, sizeof(string));
+	for (i = SFF_8472_PN_START; i < SFF_8472_PN_END; i++) {
+		i2cd.offset = i;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		string[i - SFF_8472_PN_START] = i2cd.data[0];
+	}
+	printf("PN %s\n", string);
+
+	bzero(&string, sizeof(string));
+	for (i = SFF_8472_REV_START; i < SFF_8472_REV_END; i++) {
+		i2cd.offset = i;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		string[i - SFF_8472_REV_START] = i2cd.data[0];
+	}
+	printf("Rev %s\n", string);
+
+	i2cd.offset = SFF_8472_DIAG_TYPE;
+	if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+		goto fail;
+
+	if ((char )i2cd.data[0] & (SFF_8472_DIAG_IMPL |
+				   SFF_8472_DIAG_INTERNAL)) {
+
+		/* Switch to reading from the Diagnostic address. */
+		i2cd.dev_addr = SFF_8472_DIAG;
+		i2cd.len = 1;
+
+		i2cd.offset = SFF_8472_TEMP;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		temp = i2cd.data[0] << 8;
+		printf("Temp: ");
+		if ((temp & SFF_8472_TEMP_SIGN) == SFF_8472_TEMP_SIGN)
+			printf("-");
+		else
+			printf("+");
+		printf("%dC\n", (temp & SFF_8472_TEMP_MSK) >>
+		    SFF_8472_TEMP_SHIFT);
+
+		i2cd.offset = SFF_8472_VCC;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		vcc = i2cd.data[0] << 8;
+		printf("Vcc %fV\n", vcc / SFF_8472_VCC_FACTOR);
+
+		i2cd.offset = SFF_8472_TX_BIAS;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		tx_bias = i2cd.data[0] << 8;
+		printf("TX Bias %fuA\n", tx_bias / SFF_8472_BIAS_FACTOR);
+
+		i2cd.offset = SFF_8472_TX_POWER;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		tx_power = i2cd.data[0] << 8;
+		printf("TX Power %fmW\n", tx_power / SFF_8472_POWER_FACTOR);
+
+		i2cd.offset = SFF_8472_RX_POWER;
+		if ((rc = doit(CHELSIO_T4_GET_I2C, &i2cd)) != 0)
+			goto fail;
+		rx_power = i2cd.data[0] << 8;
+		printf("RX Power %fmW\n", rx_power / SFF_8472_POWER_FACTOR);
+
+	} else
+		printf("Diagnostics not supported.\n");
+
+	return(0);
+
+fail:
+	if (rc == EPERM)
+		warnx("No module/cable in port %ld", port);
+	return (rc);
+
+}
+
+static int
+tracer_cmd(int argc, const char *argv[])
+{
+	long long val;
+	uint8_t idx;
+	char *s;
+
+	if (argc == 0) {
+		warnx("tracer: no arguments.");
+		return (EINVAL);
+	};
+
+	/* list */
+	if (strcmp(argv[0], "list") == 0) {
+		if (argc != 1)
+			warnx("trailing arguments after \"list\" ignored.");
+
+		return show_tracers();
+	}
+
+	/* <idx> ... */
+	s = str_to_number(argv[0], NULL, &val);
+	if (*s || val > 0xff) {
+		warnx("\"%s\" is neither an index nor a tracer subcommand.",
+		    argv[0]);
+		return (EINVAL);
+	}
+	idx = (int8_t)val;
+
+	/* <idx> disable */
+	if (argc == 2 && strcmp(argv[1], "disable") == 0)
+		return tracer_onoff(idx, 0);
+
+	/* <idx> enable */
+	if (argc == 2 && strcmp(argv[1], "enable") == 0)
+		return tracer_onoff(idx, 1);
+
+	/* <idx> ... */
+	return set_tracer(idx, argc - 1, argv + 1);
+}
+
+static int
 run_cmd(int argc, const char *argv[])
 {
 	int rc = -1;
@@ -1686,6 +2029,10 @@ run_cmd(int argc, const char *argv[])
 		rc = read_i2c(argc, argv);
 	else if (!strcmp(cmd, "clearstats"))
 		rc = clearstats(argc, argv);
+	else if (!strcmp(cmd, "tracer"))
+		rc = tracer_cmd(argc, argv);
+	else if (!strcmp(cmd, "modinfo"))
+		rc = modinfo(argc, argv);
 	else {
 		rc = EINVAL;
 		warnx("invalid command \"%s\"", cmd);

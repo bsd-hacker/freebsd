@@ -162,6 +162,7 @@ thr_sighandler(int sig, siginfo_t *info, void *_ucp)
 	act = _thr_sigact[sig-1].sigact;
 	_thr_rwl_unlock(&_thr_sigact[sig-1].lock);
 	errno = err;
+	curthread->deferred_run = 0;
 
 	/*
 	 * if a thread is in critical region, for example it holds low level locks,
@@ -318,31 +319,27 @@ check_deferred_signal(struct pthread *curthread)
 	ucontext_t *uc;
 	struct sigaction act;
 	siginfo_t info;
+	int uc_len;
 
-	if (__predict_true(curthread->deferred_siginfo.si_signo == 0))
+	if (__predict_true(curthread->deferred_siginfo.si_signo == 0 ||
+	    curthread->deferred_run))
 		return;
 
-#if defined(__amd64__) || defined(__i386__)
-	int uc_len;
+	curthread->deferred_run = 1;
 	uc_len = __getcontextx_size();
 	uc = alloca(uc_len);
 	getcontext(uc);
-	if (curthread->deferred_siginfo.si_signo == 0)
+	if (curthread->deferred_siginfo.si_signo == 0) {
+		curthread->deferred_run = 0;
 		return;
-	__fillcontextx2((char *)uc);
-#else
-	ucontext_t ucv;
-	uc = &ucv;
-	getcontext(uc);
-#endif
-	if (curthread->deferred_siginfo.si_signo != 0) {
-		act = curthread->deferred_sigact;
-		uc->uc_sigmask = curthread->deferred_sigmask;
-		memcpy(&info, &curthread->deferred_siginfo, sizeof(siginfo_t));
-		/* remove signal */
-		curthread->deferred_siginfo.si_signo = 0;
-		handle_signal(&act, info.si_signo, &info, uc);
 	}
+	__fillcontextx2((char *)uc);
+	act = curthread->deferred_sigact;
+	uc->uc_sigmask = curthread->deferred_sigmask;
+	memcpy(&info, &curthread->deferred_siginfo, sizeof(siginfo_t));
+	/* remove signal */
+	curthread->deferred_siginfo.si_signo = 0;
+	handle_signal(&act, info.si_signo, &info, uc);
 }
 
 static void

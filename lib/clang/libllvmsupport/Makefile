@@ -84,10 +84,14 @@ SRCS=	APFloat.cpp \
 	regstrlcpy.c \
 	system_error.cpp
 
-.if ${MK_CLANG_EXTRAS} != "no"
+.if ${MK_CLANG_EXTRAS} != "no" || ${MK_LLDB} != "no"
 SRCS+=	DataExtractor.cpp \
+	Disassembler.cpp
+.endif
+
+.if ${MK_CLANG_EXTRAS} != "no"
+SRCS+=	Compression.cpp \
 	DataStream.cpp \
-	Disassembler.cpp \
 	FileUtilities.cpp \
 	SystemUtils.cpp
 .endif

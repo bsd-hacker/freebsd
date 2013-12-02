@@ -66,14 +66,14 @@ __FBSDID("$FreeBSD$");
 #define CLOSED -1		/* fd was not open before redir */
 
 
-MKINIT
 struct redirtab {
 	struct redirtab *next;
 	int renamed[10];
+	int fd0_redirected;
 };
 
 
-MKINIT struct redirtab *redirlist;
+static struct redirtab *redirlist;
 
 /*
  * We keep track of whether or not fd0 has been redirected.  This is for
@@ -110,11 +110,14 @@ redirect(union node *redir, int flags)
 		sv = ckmalloc(sizeof (struct redirtab));
 		for (i = 0 ; i < 10 ; i++)
 			sv->renamed[i] = EMPTY;
+		sv->fd0_redirected = fd0_redirected;
 		sv->next = redirlist;
 		redirlist = sv;
 	}
 	for (n = redir ; n ; n = n->nfile.next) {
 		fd = n->nfile.fd;
+		if (fd == 0)
+			fd0_redirected = 1;
 		if ((n->nfile.type == NTOFD || n->nfile.type == NFROMFD) &&
 		    n->ndup.dupfd == fd)
 			continue; /* redirect from/to same file descriptor */
@@ -135,8 +138,6 @@ redirect(union node *redir, int flags)
 			sv->renamed[fd] = i;
 			INTON;
 		}
-		if (fd == 0)
-			fd0_redirected++;
 		openredirect(n, memory);
 	}
 	if (memory[1])
@@ -304,8 +305,6 @@ popredir(void)
 
 	for (i = 0 ; i < 10 ; i++) {
 		if (rp->renamed[i] != EMPTY) {
-                        if (i == 0)
-                                fd0_redirected--;
 			if (rp->renamed[i] >= 0) {
 				dup2(rp->renamed[i], i);
 				close(rp->renamed[i]);
@@ -315,25 +314,11 @@ popredir(void)
 		}
 	}
 	INTOFF;
+	fd0_redirected = rp->fd0_redirected;
 	redirlist = rp->next;
 	ckfree(rp);
 	INTON;
 }
-
-/*
- * Undo all redirections.  Called on error or interrupt.
- */
-
-#ifdef mkinit
-
-INCLUDE "redir.h"
-
-RESET {
-	while (redirlist)
-		popredir();
-}
-
-#endif
 
 /* Return true if fd 0 has already been redirected at least once.  */
 int

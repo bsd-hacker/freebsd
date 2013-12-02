@@ -73,6 +73,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
@@ -111,7 +112,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/ath/if_ath_rx_edma.h>
 #include <dev/ath/if_ath_tx_edma.h>
 #include <dev/ath/if_ath_beacon.h>
+#include <dev/ath/if_ath_btcoex.h>
 #include <dev/ath/if_ath_spectral.h>
+#include <dev/ath/if_ath_lna_div.h>
 #include <dev/ath/if_athdfs.h>
 
 #ifdef ATH_TX99_DIAG
@@ -521,6 +524,22 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 		goto bad2;
 	}
 
+	/* Attach bluetooth coexistence module */
+	if (ath_btcoex_attach(sc) < 0) {
+		device_printf(sc->sc_dev,
+		    "%s: unable to attach bluetooth coexistence\n", __func__);
+		error = EIO;
+		goto bad2;
+	}
+
+	/* Attach LNA diversity module */
+	if (ath_lna_div_attach(sc) < 0) {
+		device_printf(sc->sc_dev,
+		    "%s: unable to attach LNA diversity\n", __func__);
+		error = EIO;
+		goto bad2;
+	}
+
 	/* Start DFS processing tasklet */
 	TASK_INIT(&sc->sc_dfstask, 0, ath_dfs_tasklet, sc);
 
@@ -670,6 +689,9 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	sc->sc_rxslink = ath_hal_self_linked_final_rxdesc(ah);
 	sc->sc_rxtsf32 = ath_hal_has_long_rxdesc_tsf(ah);
 	sc->sc_hasenforcetxop = ath_hal_hasenforcetxop(ah);
+	sc->sc_rx_lnamixer = ath_hal_hasrxlnamixer(ah);
+	sc->sc_hasdivcomb = ath_hal_hasdivantcomb(ah);
+
 	if (ath_hal_hasfastframes(ah))
 		ic->ic_caps |= IEEE80211_C_FF;
 	wmodes = ath_hal_getwirelessmodes(ah);
@@ -1028,6 +1050,8 @@ ath_detach(struct ath_softc *sc)
 #ifdef	ATH_DEBUG_ALQ
 	if_ath_alq_tidyup(&sc->sc_alq);
 #endif
+	ath_lna_div_detach(sc);
+	ath_btcoex_detach(sc);
 	ath_spectral_detach(sc);
 	ath_dfs_detach(sc);
 	ath_desc_free(sc);
@@ -1588,6 +1612,11 @@ ath_resume(struct ath_softc *sc)
 	ath_spectral_enable(sc, ic->ic_curchan);
 
 	/*
+	 * Let bluetooth coexistence at in case it's needed for this channel
+	 */
+	ath_btcoex_enable(sc, ic->ic_curchan);
+
+	/*
 	 * If we're doing TDMA, enforce the TXOP limitation for chips that
 	 * support it.
 	 */
@@ -2044,6 +2073,11 @@ ath_init(void *arg)
 	ath_spectral_enable(sc, ic->ic_curchan);
 
 	/*
+	 * Let bluetooth coexistence at in case it's needed for this channel
+	 */
+	ath_btcoex_enable(sc, ic->ic_curchan);
+
+	/*
 	 * If we're doing TDMA, enforce the TXOP limitation for chips that
 	 * support it.
 	 */
@@ -2328,12 +2362,27 @@ ath_reset(struct ifnet *ifp, ATH_RESET_TYPE reset_type)
 	taskqueue_block(sc->sc_tq);
 
 	ATH_PCU_LOCK(sc);
-	ath_hal_intrset(ah, 0);		/* disable interrupts */
-	ath_txrx_stop_locked(sc);	/* Ensure TX/RX is stopped */
+
+	/*
+	 * Grab the reset lock before TX/RX is stopped.
+	 *
+	 * This is needed to ensure that when the TX/RX actually does finish,
+	 * no further TX/RX/reset runs in parallel with this.
+	 */
 	if (ath_reset_grablock(sc, 1) == 0) {
 		device_printf(sc->sc_dev, "%s: concurrent reset! Danger!\n",
 		    __func__);
 	}
+
+	/* disable interrupts */
+	ath_hal_intrset(ah, 0);
+
+	/*
+	 * Now, ensure that any in progress TX/RX completes before we
+	 * continue.
+	 */
+	ath_txrx_stop_locked(sc);
+
 	ATH_PCU_UNLOCK(sc);
 
 	/*
@@ -2366,6 +2415,11 @@ ath_reset(struct ifnet *ifp, ATH_RESET_TYPE reset_type)
 
 	/* Let spectral at in case spectral is enabled */
 	ath_spectral_enable(sc, ic->ic_curchan);
+
+	/*
+	 * Let bluetooth coexistence at in case it's needed for this channel
+	 */
+	ath_btcoex_enable(sc, ic->ic_curchan);
 
 	/*
 	 * If we're doing TDMA, enforce the TXOP limitation for chips that
@@ -2672,7 +2726,7 @@ ath_transmit(struct ifnet *ifp, struct mbuf *m)
 	 */
 	ATH_PCU_LOCK(sc);
 	if (sc->sc_inreset_cnt > 0) {
-		device_printf(sc->sc_dev,
+		DPRINTF(sc, ATH_DEBUG_XMIT,
 		    "%s: sc_inreset_cnt > 0; bailing\n", __func__);
 		ATH_PCU_UNLOCK(sc);
 		IF_LOCK(&ifp->if_snd);
@@ -4528,17 +4582,8 @@ ath_tx_freebuf(struct ath_softc *sc, struct ath_buf *bf, int status)
 	/* Free the buffer, it's not needed any longer */
 	ath_freebuf(sc, bf);
 
-	if (ni != NULL) {
-		/*
-		 * Do any callback and reclaim the node reference.
-		 */
-		if (m0->m_flags & M_TXCB)
-			ieee80211_process_callback(ni, m0, status);
-		ieee80211_free_node(ni);
-	}
-
-	/* Finally, we don't need this mbuf any longer */
-	m_freem(m0);
+	/* Pass the buffer back to net80211 - completing it */
+	ieee80211_tx_complete(ni, m0, status);
 }
 
 static struct ath_buf *
@@ -4871,12 +4916,18 @@ ath_chan_set(struct ath_softc *sc, struct ieee80211_channel *chan)
 	taskqueue_block(sc->sc_tq);
 
 	ATH_PCU_LOCK(sc);
-	ath_hal_intrset(ah, 0);		/* Stop new RX/TX completion */
-	ath_txrx_stop_locked(sc);	/* Stop pending RX/TX completion */
+
+	/* Stop new RX/TX/interrupt completion */
 	if (ath_reset_grablock(sc, 1) == 0) {
 		device_printf(sc->sc_dev, "%s: concurrent reset! Danger!\n",
 		    __func__);
 	}
+
+	ath_hal_intrset(ah, 0);
+
+	/* Stop pending RX/TX completion */
+	ath_txrx_stop_locked(sc);
+
 	ATH_PCU_UNLOCK(sc);
 
 	DPRINTF(sc, ATH_DEBUG_RESET, "%s: %u (%u MHz, flags 0x%x)\n",
@@ -4922,6 +4973,12 @@ ath_chan_set(struct ath_softc *sc, struct ieee80211_channel *chan)
 
 		/* Let spectral at in case spectral is enabled */
 		ath_spectral_enable(sc, chan);
+
+		/*
+		 * Let bluetooth coexistence at in case it's needed for this
+		 * channel
+		 */
+		ath_btcoex_enable(sc, ic->ic_curchan);
 
 		/*
 		 * If we're doing TDMA, enforce the TXOP limitation for chips
@@ -6374,7 +6431,7 @@ ath_node_recv_pspoll(struct ieee80211_node *ni, struct mbuf *m)
 	 * Immediately punt.
 	 */
 	if (! an->an_is_powersave) {
-		device_printf(sc->sc_dev,
+		DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
 		    "%s: %6D: not in powersave?\n",
 		    __func__,
 		    ni->ni_macaddr,
@@ -6442,7 +6499,8 @@ ath_node_recv_pspoll(struct ieee80211_node *ni, struct mbuf *m)
 	/*
 	 * XXX nothing in the TIDs at this point? Eek.
 	 */
-	device_printf(sc->sc_dev, "%s: %6D: TIDs empty, but ath_node showed traffic?!\n",
+	DPRINTF(sc, ATH_DEBUG_NODE_PWRSAVE,
+	    "%s: %6D: TIDs empty, but ath_node showed traffic?!\n",
 	    __func__,
 	    ni->ni_macaddr,
 	    ":");

@@ -53,6 +53,54 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_bce.h"
 
+#include <sys/param.h>
+#include <sys/endian.h>
+#include <sys/systm.h>
+#include <sys/sockio.h>
+#include <sys/lock.h>
+#include <sys/mbuf.h>
+#include <sys/malloc.h>
+#include <sys/mutex.h>
+#include <sys/kernel.h>
+#include <sys/module.h>
+#include <sys/socket.h>
+#include <sys/sysctl.h>
+#include <sys/queue.h>
+
+#include <net/bpf.h>
+#include <net/ethernet.h>
+#include <net/if.h>
+#include <net/if_var.h>
+#include <net/if_arp.h>
+#include <net/if_dl.h>
+#include <net/if_media.h>
+
+#include <net/if_types.h>
+#include <net/if_vlan_var.h>
+
+#include <netinet/in_systm.h>
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+
+#include <machine/bus.h>
+#include <machine/resource.h>
+#include <sys/bus.h>
+#include <sys/rman.h>
+
+#include <dev/mii/mii.h>
+#include <dev/mii/miivar.h>
+#include "miidevs.h"
+#include <dev/mii/brgphyreg.h>
+
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcivar.h>
+
+#include "miibus_if.h"
+
 #include <dev/bce/if_bcereg.h>
 #include <dev/bce/if_bcefw.h>
 
@@ -2077,10 +2125,12 @@ bce_miibus_statchg(device_t dev)
 		DBPRINT(sc, BCE_INFO_PHY,
 		    "%s(): Enabling RX flow control.\n", __FUNCTION__);
 		BCE_SETBIT(sc, BCE_EMAC_RX_MODE, BCE_EMAC_RX_MODE_FLOW_EN);
+		sc->bce_flags |= BCE_USING_RX_FLOW_CONTROL;
 	} else {
 		DBPRINT(sc, BCE_INFO_PHY,
 		    "%s(): Disabling RX flow control.\n", __FUNCTION__);
 		BCE_CLRBIT(sc, BCE_EMAC_RX_MODE, BCE_EMAC_RX_MODE_FLOW_EN);
+		sc->bce_flags &= ~BCE_USING_RX_FLOW_CONTROL;
 	}
 
 	if ((IFM_OPTIONS(media_active) & IFM_ETH_TXPAUSE) != 0) {
@@ -5062,9 +5112,11 @@ bce_reset(struct bce_softc *sc, u32 reset_code)
 
 bce_reset_exit:
 	/* Restore EMAC Mode bits needed to keep ASF/IPMI running. */
-	val = REG_RD(sc, BCE_EMAC_MODE);
-	val = (val & ~emac_mode_mask) | emac_mode_save;
-	REG_WR(sc, BCE_EMAC_MODE, val);
+	if (reset_code == BCE_DRV_MSG_CODE_RESET) {
+		val = REG_RD(sc, BCE_EMAC_MODE);
+		val = (val & ~emac_mode_mask) | emac_mode_save;
+		REG_WR(sc, BCE_EMAC_MODE, val);
+	}
 
 	DBEXIT(BCE_VERBOSE_RESET);
 	return (rc);
@@ -7828,18 +7880,42 @@ bce_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 static void
 bce_watchdog(struct bce_softc *sc)
 {
+	uint32_t status;
+
 	DBENTER(BCE_EXTREME_SEND);
 
 	BCE_LOCK_ASSERT(sc);
 
+	status = 0;
 	/* If the watchdog timer hasn't expired then just exit. */
 	if (sc->watchdog_timer == 0 || --sc->watchdog_timer)
 		goto bce_watchdog_exit;
 
+	status = REG_RD(sc, BCE_EMAC_RX_STATUS);
 	/* If pause frames are active then don't reset the hardware. */
-	/* ToDo: Should we reset the timer here? */
-	if (REG_RD(sc, BCE_EMAC_TX_STATUS) & BCE_EMAC_TX_STATUS_XOFFED)
-		goto bce_watchdog_exit;
+	if ((sc->bce_flags & BCE_USING_RX_FLOW_CONTROL) != 0) {
+		if ((status & BCE_EMAC_RX_STATUS_FFED) != 0) {
+			/*
+			 * If link partner has us in XOFF state then wait for
+			 * the condition to clear.
+			 */
+			sc->watchdog_timer = BCE_TX_TIMEOUT;
+			goto bce_watchdog_exit;
+		} else if ((status & BCE_EMAC_RX_STATUS_FF_RECEIVED) != 0 &&
+			(status & BCE_EMAC_RX_STATUS_N_RECEIVED) != 0) {
+			/*
+			 * If we're not currently XOFF'ed but have recently
+			 * been XOFF'd/XON'd then assume that's delaying TX
+			 * this time around.
+			 */
+			sc->watchdog_timer = BCE_TX_TIMEOUT;
+			goto bce_watchdog_exit;
+		}
+		/*
+		 * Any other condition is unexpected and the controller
+		 * should be reset.
+		 */
+	}
 
 	BCE_PRINTF("%s(%d): Watchdog timeout occurred, resetting!\n",
 	    __FILE__, __LINE__);
@@ -7863,6 +7939,7 @@ bce_watchdog(struct bce_softc *sc)
 	sc->bce_ifp->if_oerrors++;
 
 bce_watchdog_exit:
+	REG_WR(sc, BCE_EMAC_RX_STATUS, status);
 	DBEXIT(BCE_EXTREME_SEND);
 }
 
@@ -9794,9 +9871,7 @@ bce_dump_mbuf(struct bce_softc *sc, struct mbuf *m)
 		if (mp->m_flags & M_PKTHDR) {
 			BCE_PRINTF("- m_pkthdr: len = %d, flags = 0x%b, "
 			    "csum_flags = %b\n", mp->m_pkthdr.len,
-			    mp->m_flags, "\20\12M_BCAST\13M_MCAST\14M_FRAG"
-			    "\15M_FIRSTFRAG\16M_LASTFRAG\21M_VLANTAG"
-			    "\22M_PROMISC\23M_NOFREE",
+			    mp->m_flags, M_FLAG_PRINTF,
 			    mp->m_pkthdr.csum_flags,
 			    "\20\1CSUM_IP\2CSUM_TCP\3CSUM_UDP"
 			    "\5CSUM_FRAGMENT\6CSUM_TSO\11CSUM_IP_CHECKED"

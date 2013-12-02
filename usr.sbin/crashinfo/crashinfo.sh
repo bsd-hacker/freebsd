@@ -268,12 +268,6 @@ netstat -M $VMCORE -N $KERNEL -m
 echo
 
 echo "------------------------------------------------------------------------"
-echo "netstat -id"
-echo
-netstat -M $VMCORE -N $KERNEL -id
-echo
-
-echo "------------------------------------------------------------------------"
 echo "netstat -anr"
 echo
 netstat -M $VMCORE -N $KERNEL -anr

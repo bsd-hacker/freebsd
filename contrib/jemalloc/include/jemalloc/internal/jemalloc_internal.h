@@ -232,9 +232,18 @@ static const bool config_ivsalloc =
 #  define	__DECONST(type, var)	((type)(uintptr_t)(const void *)(var))
 #endif
 
+/*
+ * JEMALLOC_ALWAYS_INLINE is used within header files for functions that are
+ * static inline functions if inlining is enabled, and single-definition
+ * library-private functions if inlining is disabled.
+ *
+ * JEMALLOC_ALWAYS_INLINE_C is for use in .c files, in which case the denoted
+ * functions are always static, regardless of whether inlining is enabled.
+ */
 #ifdef JEMALLOC_DEBUG
    /* Disable inlining to make debugging easier. */
 #  define JEMALLOC_ALWAYS_INLINE
+#  define JEMALLOC_ALWAYS_INLINE_C static
 #  define JEMALLOC_INLINE
 #  define inline
 #else
@@ -242,8 +251,11 @@ static const bool config_ivsalloc =
 #  ifdef JEMALLOC_HAVE_ATTR
 #    define JEMALLOC_ALWAYS_INLINE \
 	 static inline JEMALLOC_ATTR(unused) JEMALLOC_ATTR(always_inline)
+#    define JEMALLOC_ALWAYS_INLINE_C \
+	 static inline JEMALLOC_ATTR(always_inline)
 #  else
 #    define JEMALLOC_ALWAYS_INLINE static inline
+#    define JEMALLOC_ALWAYS_INLINE_C static inline
 #  endif
 #  define JEMALLOC_INLINE static inline
 #  ifdef _MSC_VER
@@ -278,6 +290,9 @@ static const bool config_ivsalloc =
 #  ifdef __arm__
 #    define LG_QUANTUM		3
 #  endif
+#  ifdef __aarch64__
+#    define LG_QUANTUM		4
+#  endif
 #  ifdef __hppa__
 #    define LG_QUANTUM		4
 #  endif
@@ -287,7 +302,7 @@ static const bool config_ivsalloc =
 #  ifdef __powerpc__
 #    define LG_QUANTUM		4
 #  endif
-#  ifdef __s390x__
+#  ifdef __s390__
 #    define LG_QUANTUM		4
 #  endif
 #  ifdef __SH4__
@@ -440,15 +455,18 @@ static const bool config_ivsalloc =
 } while (0)
 #else
 #define	RUNNING_ON_VALGRIND	((unsigned)0)
-#define	VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed)
-#define	VALGRIND_RESIZEINPLACE_BLOCK(addr, oldSizeB, newSizeB, rzB)
-#define	VALGRIND_FREELIKE_BLOCK(addr, rzB)
-#define	VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len)
-#define	VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len)
-#define	JEMALLOC_VALGRIND_MALLOC(cond, ptr, usize, zero)
+#define	VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed) \
+    do {} while (0)
+#define	VALGRIND_RESIZEINPLACE_BLOCK(addr, oldSizeB, newSizeB, rzB) \
+    do {} while (0)
+#define	VALGRIND_FREELIKE_BLOCK(addr, rzB) do {} while (0)
+#define	VALGRIND_MAKE_MEM_NOACCESS(_qzz_addr, _qzz_len) do {} while (0)
+#define	VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len) do {} while (0)
+#define	VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len) do {} while (0)
+#define	JEMALLOC_VALGRIND_MALLOC(cond, ptr, usize, zero) do {} while (0)
 #define	JEMALLOC_VALGRIND_REALLOC(ptr, usize, old_ptr, old_usize,	\
-    old_rzsize, zero)
-#define	JEMALLOC_VALGRIND_FREE(ptr, rzsize)
+    old_rzsize, zero) do {} while (0)
+#define	JEMALLOC_VALGRIND_FREE(ptr, rzsize) do {} while (0)
 #endif
 
 #include "jemalloc/internal/util.h"

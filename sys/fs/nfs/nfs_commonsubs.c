@@ -761,21 +761,21 @@ nfsrv_getattrbits(struct nfsrv_descript *nd, nfsattrbit_t *attrbitp, int *cntp,
 		error = NFSERR_BADXDR;
 		goto nfsmout;
 	}
-	if (cnt > NFSATTRBIT_MAXWORDS) {
+	if (cnt > NFSATTRBIT_MAXWORDS)
 		outcnt = NFSATTRBIT_MAXWORDS;
-		if (retnotsupp)
-			*retnotsupp = NFSERR_ATTRNOTSUPP;
-	} else {
+	else
 		outcnt = cnt;
-	}
 	NFSZERO_ATTRBIT(attrbitp);
 	if (outcnt > 0) {
 		NFSM_DISSECT(tl, u_int32_t *, outcnt * NFSX_UNSIGNED);
 		for (i = 0; i < outcnt; i++)
 			attrbitp->bits[i] = fxdr_unsigned(u_int32_t, *tl++);
 	}
-	if (cnt > outcnt)
-		error = nfsm_advance(nd, (cnt - outcnt) * NFSX_UNSIGNED, -1);
+	for (i = 0; i < (cnt - outcnt); i++) {
+		NFSM_DISSECT(tl, u_int32_t *, NFSX_UNSIGNED);
+		if (retnotsupp != NULL && *tl != 0)
+			*retnotsupp = NFSERR_ATTRNOTSUPP;
+	}
 	if (cntp)
 		*cntp = NFSX_UNSIGNED + (cnt * NFSX_UNSIGNED);
 nfsmout:
@@ -3693,8 +3693,8 @@ nfsv4_seqsess_cacherep(uint32_t slotid, struct nfsslot *slots, struct mbuf *rep)
  * Generate the xdr for an NFSv4.1 Sequence Operation.
  */
 APPLESTATIC void
-nfsv4_setsequence(struct nfsrv_descript *nd, struct nfsclsession *sep,
-    int dont_replycache)
+nfsv4_setsequence(struct nfsmount *nmp, struct nfsrv_descript *nd,
+    struct nfsclsession *sep, int dont_replycache)
 {
 	uint32_t *tl, slotseq = 0;
 	int i, maxslot, slotpos;
@@ -3717,9 +3717,21 @@ nfsv4_setsequence(struct nfsrv_descript *nd, struct nfsclsession *sep,
 			}
 			bitval <<= 1;
 		}
-		if (slotpos == -1)
+		if (slotpos == -1) {
+			/*
+			 * If a forced dismount is in progress, just return.
+			 * This RPC attempt will fail when it calls
+			 * newnfs_request().
+			 */
+			if ((nmp->nm_mountp->mnt_kern_flag & MNTK_UNMOUNTF)
+			    != 0) {
+				mtx_unlock(&sep->nfsess_mtx);
+				return;
+			}
+			/* Wake up once/sec, to check for a forced dismount. */
 			(void)mtx_sleep(&sep->nfsess_slots, &sep->nfsess_mtx,
-			    PZERO, "nfsclseq", 0);
+			    PZERO, "nfsclseq", hz);
+		}
 	} while (slotpos == -1);
 	/* Now, find the highest slot in use. (nfsc_slots is 64bits) */
 	bitval = 1;

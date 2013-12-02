@@ -23,6 +23,9 @@
  * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  */
+/*
+ * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ */
 
 #ifndef _SYS_ZFS_CONTEXT_H
 #define	_SYS_ZFS_CONTEXT_H
@@ -62,6 +65,7 @@ extern "C" {
 #include <inttypes.h>
 #include <fsshare.h>
 #include <pthread.h>
+#include <sched.h>
 #include <sys/debug.h>
 #include <sys/note.h>
 #include <sys/types.h>
@@ -201,6 +205,8 @@ extern int aok;
  */
 #define	curthread	((void *)(uintptr_t)thr_self())
 
+#define	kpreempt(x)	sched_yield()
+
 typedef struct kthread kthread_t;
 
 #define	thread_create(stk, stksize, func, arg, len, pp, state, pri)	\
@@ -313,6 +319,8 @@ extern void cv_init(kcondvar_t *cv, char *name, int type, void *arg);
 extern void cv_destroy(kcondvar_t *cv);
 extern void cv_wait(kcondvar_t *cv, kmutex_t *mp);
 extern clock_t cv_timedwait(kcondvar_t *cv, kmutex_t *mp, clock_t abstime);
+extern clock_t cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
+    hrtime_t res, int flag);
 extern void cv_signal(kcondvar_t *cv);
 extern void cv_broadcast(kcondvar_t *cv);
 
@@ -365,6 +373,16 @@ typedef struct taskq taskq_t;
 typedef uintptr_t taskqid_t;
 typedef void (task_func_t)(void *);
 
+typedef struct taskq_ent {
+	struct taskq_ent	*tqent_next;
+	struct taskq_ent	*tqent_prev;
+	task_func_t		*tqent_func;
+	void			*tqent_arg;
+	uintptr_t		tqent_flags;
+} taskq_ent_t;
+
+#define	TQENT_FLAG_PREALLOC	0x1	/* taskq_dispatch_ent used */
+
 #define	TASKQ_PREPOPULATE	0x0001
 #define	TASKQ_CPR_SAFE		0x0002	/* Use CPR safe protocol */
 #define	TASKQ_DYNAMIC		0x0004	/* Use dynamic thread scheduling */
@@ -376,6 +394,7 @@ typedef void (task_func_t)(void *);
 #define	TQ_NOQUEUE	0x02		/* Do not enqueue if can't dispatch */
 #define	TQ_FRONT	0x08		/* Queue in front */
 
+
 extern taskq_t *system_taskq;
 
 extern taskq_t	*taskq_create(const char *, int, pri_t, int, int, uint_t);
@@ -384,6 +403,8 @@ extern taskq_t	*taskq_create(const char *, int, pri_t, int, int, uint_t);
 #define	taskq_create_sysdc(a, b, d, e, p, dc, f) \
 	    (taskq_create(a, b, maxclsyspri, d, e, f))
 extern taskqid_t taskq_dispatch(taskq_t *, task_func_t, void *, uint_t);
+extern void	taskq_dispatch_ent(taskq_t *, task_func_t, void *, uint_t,
+    taskq_ent_t *);
 extern void	taskq_destroy(taskq_t *);
 extern void	taskq_wait(taskq_t *);
 extern int	taskq_member(taskq_t *, void *);
@@ -659,11 +680,55 @@ typedef	uint32_t	idmap_rid_t;
 
 #define	SX_SYSINIT(name, lock, desc)
 
+#define SYSCTL_HANDLER_ARGS struct sysctl_oid *oidp, void *arg1,	\
+	intptr_t arg2, struct sysctl_req *req
+
+/*
+ * This describes the access space for a sysctl request.  This is needed
+ * so that we can use the interface from the kernel or from user-space.
+ */
+struct sysctl_req {
+	struct thread	*td;		/* used for access checking */
+	int		lock;		/* wiring state */
+	void		*oldptr;
+	size_t		oldlen;
+	size_t		oldidx;
+	int		(*oldfunc)(struct sysctl_req *, const void *, size_t);
+	void		*newptr;
+	size_t		newlen;
+	size_t		newidx;
+	int		(*newfunc)(struct sysctl_req *, void *, size_t);
+	size_t		validlen;
+	int		flags;
+};
+
+SLIST_HEAD(sysctl_oid_list, sysctl_oid);
+
+/*
+ * This describes one "oid" in the MIB tree.  Potentially more nodes can
+ * be hidden behind it, expanded by the handler.
+ */
+struct sysctl_oid {
+	struct sysctl_oid_list *oid_parent;
+	SLIST_ENTRY(sysctl_oid) oid_link;
+	int		oid_number;
+	u_int		oid_kind;
+	void		*oid_arg1;
+	intptr_t	oid_arg2;
+	const char	*oid_name;
+	int 		(*oid_handler)(SYSCTL_HANDLER_ARGS);
+	const char	*oid_fmt;
+	int		oid_refcnt;
+	u_int		oid_running;
+	const char	*oid_descr;
+};
+
 #define	SYSCTL_DECL(...)
 #define	SYSCTL_NODE(...)
 #define	SYSCTL_INT(...)
 #define	SYSCTL_UINT(...)
 #define	SYSCTL_ULONG(...)
+#define	SYSCTL_PROC(...)
 #define	SYSCTL_QUAD(...)
 #define	SYSCTL_UQUAD(...)
 #ifdef TUNABLE_INT
@@ -674,6 +739,8 @@ typedef	uint32_t	idmap_rid_t;
 #define	TUNABLE_INT(...)
 #define	TUNABLE_ULONG(...)
 #define	TUNABLE_QUAD(...)
+
+int sysctl_handle_64(SYSCTL_HANDLER_ARGS);
 
 /* Errors */
 
