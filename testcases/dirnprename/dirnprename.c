@@ -89,7 +89,11 @@ setup(int nb)
 	if (mkdir(path, 0770) == -1)
 		err(1, "mkdir(%s), %s:%d", path, __FILE__, __LINE__);
 
-	/* don't hard code 97 */
+	/*
+	 * The value 97 was determined by figuring out how many 255 length
+	 * names would cause us to overflow into indirect blocks w/ the
+	 * default UFS parameters.
+	 */
 	for (i = 0; i < 97; i++) {
 		sprintf(file1, "%s/%0255d", path, i);
 		if (mkdir(file1, 0770) == -1)
@@ -104,7 +108,7 @@ cleanup(void)
 	char file1[512];
 	int i;
 
-	/* don't hard code 97 */
+	/* see comment above */
 	for (i = 0; i < 97; i++) {
 		sprintf(file1, "%s/%0255d", path, i);
 		if (rmdir(file1) == -1)
