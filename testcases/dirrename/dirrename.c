@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <sys/param.h>
 #include <err.h>
+#include <errno.h>
 
 #include "stress.h"
 
@@ -93,17 +94,26 @@ static void
 test_rename(void)
 {
 	int i, j;
+	int errnotmp;
 	pid_t pid;
 	char file1[128];
 	char file2[128];
-	int tfd;
 
 	pid = getpid();
 	for (i = 0; i < (int)size; i++) {
 		sprintf(file1,"p%05d.%05d", pid, i);
-		if ((tfd = open(file1, O_RDONLY|O_CREAT, 0660)) == -1)
-			err(1, "openat(%s), %s:%d", file1, __FILE__, __LINE__);
-		close(tfd);
+		if (mkdir(file1, 0660) == -1) {
+			j = i;
+			errnotmp = errno;
+			while (j > 0) {
+				j--;
+				sprintf(file1,"p%05d.%05d", pid, j);
+				rmdir(file1);
+			}
+			errno = errnotmp;
+			sprintf(file1,"p%05d.%05d", pid, i);
+			err(1, "mkdir(%s), %s:%d", file1, __FILE__, __LINE__);
+		}
 	}
 	for (j = 0; j < 100 && done_testing == 0; j++) {
 		for (i = 0; i < (int)size; i++) {
@@ -124,7 +134,7 @@ test_rename(void)
 
 	for (i = 0; i < (int)size; i++) {
 		sprintf(file1,"p%05d.%05d", pid, i);
-		if (unlink(file1) == -1)
+		if (rmdir(file1) == -1)
 			err(1, "unlink(%s), %s:%d", file1, __FILE__, __LINE__);
 	}
 }

@@ -3,6 +3,8 @@
 SUBDIR= \
 badcode \
 creat \
+dirrename \
+dirnprename \
 fts \
 link \
 lockf \

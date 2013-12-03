@@ -36,18 +36,22 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <sys/param.h>
 #include <err.h>
+#include <errno.h>
 
 #include "stress.h"
 
+static char path[128];
 static unsigned long size;
 
 int
 setup(int nb)
 {
+	char file1[512];
 	int64_t in;
 	int64_t bl;
 	int64_t reserve_in;
 	int64_t reserve_bl;
+	int i;
 
 	umask(0);
 
@@ -81,41 +85,71 @@ setup(int nb)
 	if (size == 0)
 		exit(0);
 
+	sprintf(path, "%s.%05d", getprogname(), getpid());
+	if (mkdir(path, 0770) == -1)
+		err(1, "mkdir(%s), %s:%d", path, __FILE__, __LINE__);
+
+	/* don't hard code 97 */
+	for (i = 0; i < 97; i++) {
+		sprintf(file1, "%s/%0255d", path, i);
+		if (mkdir(file1, 0770) == -1)
+			err(1, "mkdir(%s), %s:%d", file1, __FILE__, __LINE__);
+	}
 	return (0);
 }
 
 void
 cleanup(void)
 {
+	char file1[512];
+	int i;
+
+	/* don't hard code 97 */
+	for (i = 0; i < 97; i++) {
+		sprintf(file1, "%s/%0255d", path, i);
+		if (rmdir(file1) == -1)
+			warn("rmdir(%s), %s:%d", file1, __FILE__, __LINE__);
+	}
+	if (rmdir(path) == -1)
+		warn("rmdir(%s), %s:%d", path, __FILE__, __LINE__);
 }
 
 static void
 test_rename(void)
 {
 	int i, j;
+	int errnotmp;
 	pid_t pid;
 	char file1[128];
 	char file2[128];
-	int tfd;
 
 	pid = getpid();
 	for (i = 0; i < (int)size; i++) {
 		sprintf(file1,"p%05d.%05d", pid, i);
-		if ((tfd = open(file1, O_RDONLY|O_CREAT, 0660)) == -1)
-			err(1, "openat(%s), %s:%d", file1, __FILE__, __LINE__);
-		close(tfd);
+		if (mkdir(file1, 0660) == -1) {
+			j = i;
+			errnotmp = errno;
+			while (j > 0) {
+				j--;
+				sprintf(file1,"p%05d.%05d", pid, j);
+				rmdir(file1);
+			}
+			errno = errnotmp;
+			sprintf(file1,"p%05d.%05d", pid, i);
+			err(1, "mkdir(%s), %s:%d", file1, __FILE__, __LINE__);
+		}
 	}
 	for (j = 0; j < 100 && done_testing == 0; j++) {
 		for (i = 0; i < (int)size; i++) {
 			sprintf(file1,"p%05d.%05d", pid, i);
-			sprintf(file2,"p%05d.%05d.togo", pid, i);
+			sprintf(file2,"%s/p%05d.%05d.togo", path, pid, i);
 			if (rename(file1, file2) == -1)
 				err(1, "rename(%s, %s). %s:%d", file1, file2,
 						__FILE__, __LINE__);
 		}
 		for (i = 0; i < (int)size; i++) {
 			sprintf(file1,"p%05d.%05d", pid, i);
-			sprintf(file2,"p%05d.%05d.togo", pid, i);
+			sprintf(file2,"%s/p%05d.%05d.togo", path, pid, i);
 			if (rename(file2, file1) == -1)
 				err(1, "rename(%s, %s). %s:%d", file2, file1,
 						__FILE__, __LINE__);
@@ -124,8 +158,8 @@ test_rename(void)
 
 	for (i = 0; i < (int)size; i++) {
 		sprintf(file1,"p%05d.%05d", pid, i);
-		if (unlink(file1) == -1)
-			err(1, "unlink(%s), %s:%d", file1, __FILE__, __LINE__);
+		if (rmdir(file1) == -1)
+			err(1, "rmdir(%s), %s:%d", file1, __FILE__, __LINE__);
 	}
 }
 
