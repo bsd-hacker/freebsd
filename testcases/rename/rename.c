@@ -39,7 +39,6 @@ __FBSDID("$FreeBSD$");
 
 #include "stress.h"
 
-static char path[128];
 static unsigned long size;
 
 int
@@ -82,22 +81,12 @@ setup(int nb)
 	if (size == 0)
 		exit(0);
 
-	sprintf(path,"%s.%05d", getprogname(), getpid());
-	if (mkdir(path, 0770) < 0)
-		err(1, "mkdir(%s), %s:%d", path, __FILE__, __LINE__);
-	if (chdir(path) == -1)
-		err(1, "chdir(%s), %s:%d", path, __FILE__, __LINE__);
-
 	return (0);
 }
 
 void
 cleanup(void)
 {
-	(void)system("rm -f p*");
-	(void)chdir("..");
-	if (rmdir(path) == -1)
-		warn("rmdir(%s), %s:%d", path, __FILE__, __LINE__);
 }
 
 static void
