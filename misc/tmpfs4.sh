@@ -25,7 +25,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $Id: nfs.sh,v 1.2 2008/02/25 16:31:43 pho Exp $
+# $FreeBSD$
 #
 
 # Regression test from kern/122038 by gprspb mail ru

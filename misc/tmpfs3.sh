@@ -25,7 +25,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $Id: nfs.sh,v 1.2 2008/02/25 16:31:43 pho Exp $
+# $FreeBSD$
 #
 
 # panic: tmpfs_alloc_vp: type 0xc866ce58 0, seen.
