@@ -47,7 +47,6 @@ rm -f readdir.c
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-
 mount -t tmpfs tmpfs $mntpoint
 echo "Testing tmpfs(5)"
 cp -a /usr/include $mntpoint
@@ -64,15 +63,30 @@ mount -t procfs procfs $mntpoint
 /tmp/readdir $mntpoint
 umount $mntpoint
 
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
+echo "Testing nfs"
+mount -t nfs -o nfsv3,tcp,nolockd 127.0.0.1:/tmp $mntpoint
+/tmp/readdir $mntpoint
+umount $mntpoint
+
 mdconfig -a -t swap -s 1g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
-newfs -U md${mdstart}$part > /dev/null
+newfs md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
+cp -a /usr/include $mntpoint
+echo "Testing UFS"
+/tmp/readdir $mntpoint
+umount $mntpoint
+mdconfig -d -u $mdstart
+
+mdconfig -a -t swap -s 1g -u $mdstart || exit 1
+bsdlabel -w md$mdstart auto
+newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 cp -a /usr/include $mntpoint
 echo "Testing FFS"
 /tmp/readdir $mntpoint
 umount $mntpoint
+mdconfig -d -u $mdstart
 
 mount -t nullfs /bin $mntpoint
 echo "Testing nullfs(5)"
@@ -83,16 +97,40 @@ rm -f /tmp/readdir
 exit 0
 EOF
 #include <sys/types.h>
-#include <strings.h>
 #include <dirent.h>
 #include <err.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
 #include <sys/uio.h>
 #include <unistd.h>
 #include <sys/wait.h>
+
+/* copy from /usr/src/lib/libc/gen/gen-private.h */
+struct _telldir;		/* see telldir.h */
+struct pthread_mutex;
+
+/*
+ * Structure describing an open directory.
+ *
+ * NOTE. Change structure layout with care, at least dd_fd field has to
+ * remain unchanged to guarantee backward compatibility.
+ */
+struct _dirdesc {
+	int	dd_fd;		/* file descriptor associated with directory */
+	long	dd_loc;		/* offset in current buffer */
+	long	dd_size;	/* amount of data returned by getdirentries */
+	char	*dd_buf;	/* data buffer */
+	int	dd_len;		/* size of data buffer */
+	long	dd_seek;	/* magic cookie returned by getdirentries */
+	long	dd_rewind;	/* magic cookie for rewinding */
+	int	dd_flags;	/* flags for readdir */
+	struct pthread_mutex	*dd_lock;	/* lock */
+	struct _telldir *dd_td;	/* telldir position recording */
+};
+/* End copy */
 
 static void
 hand(int i __unused) {	/* handler */
