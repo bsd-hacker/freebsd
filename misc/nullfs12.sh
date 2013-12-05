@@ -36,15 +36,15 @@
 
 . ../default.cfg
 
-mnt2=/mnt2
+mnt2=${mntpoint}2
 mount | grep -q $mnt2 && umount $mnt2
 
 [ -d $mnt2 ] || mkdir $mnt2
-mount | grep $mnt2 | grep -q /dev/md && umount -f $mnt2
+mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs -U md${mdstart}$part > /dev/null
+newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 mount -t nullfs $mntpoint $mnt2
