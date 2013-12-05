@@ -30,24 +30,25 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-# Causes this: panic: mutex Giant not owned at ../../../kern/vfs_subr.c:1968
-# with a kernel compiled with "options QUOTA"
+# "insmntque: non-locked vp: 0xd2462e10 is not exclusive locked ..." seen.
 
-D=/usr/tmp/diskimage
-truncate -s 256M $D
+. ../default.cfg
 
-mount | grep "/mnt" | grep md0c > /dev/null && umount /mnt
-mdconfig -l | grep md0 > /dev/null &&  mdconfig -d -u 0
+truncate -s 256M $diskimage
 
-mdconfig -a -t vnode -f $D -u 0
-bsdlabel -w md0 auto
-newfs -U  md0c > /dev/null
-mount /dev/md0c /mnt
+mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
+
+mdconfig -a -t vnode -f $diskimage -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs $newfs_flags md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
 mount -t unionfs -o noatime /mnt /tmp
 export RUNDIR=/tmp/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
 (cd ..; ./run.sh disk.cfg) 
-mount | grep "/mnt" | grep md0c > /dev/null && umount    /mnt
-mount | grep "/mnt" | grep md0c > /dev/null && umount -f /mnt
-mdconfig -d -u 0
-rm -f $D
+while mount | grep $mntpoint | grep -q /dev/md; do
+	umount $mntpoint || sleep 1
+done
+mdconfig -d -u $mdstart
+rm -f $diskimage
