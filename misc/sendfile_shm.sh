@@ -35,8 +35,6 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-. ../default.cfg
-
 [ -r /boot/kernel/kernel ] || exit 0
 here=`pwd`
 cd /tmp
