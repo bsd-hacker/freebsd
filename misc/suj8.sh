@@ -55,13 +55,7 @@ for i in 1 2 ; do
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
-	dumpfs /dev/md${mdstart}$part > /tmp/dumpfs.1
-	sleep 1
-	fsck -t ufs -y /dev/md${mdstart}$part > /tmp/fsck.log 2>&1
-	dumpfs /dev/md${mdstart}$part > /tmp/dumpfs.2
-
-	diff -c /tmp/dumpfs.1 /tmp/dumpfs.2 || cat /tmp/fsck.log
+	checkfs /dev/md${mdstart}$part
 done
 
 mdconfig -d -u $mdstart
-rm -f /tmp/fsck.log /tmp/dumpfs.?
