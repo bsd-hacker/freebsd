@@ -33,19 +33,22 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-D=/var/tmp/diskimage
+. ../default.cfg
+
+D=$diskimage
 trap "rm -f $D" 0
-dd if=/dev/zero of=$D bs=1m count=1k
+dd if=/dev/zero of=$D bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 
-mount | grep "/mnt" | grep -q md0 && umount -f /mnt
-mdconfig -l | grep -q md0 &&  mdconfig -d -u 0
+mount | grep $mntpoint | grep -q md$mdstart && umount -f $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u 0
-bsdlabel -w md0 auto
-newfs -U  md0c > /dev/null
-echo "/dev/md0c /mnt ufs rw,userquota 2 2" >> /etc/fstab
-mount /mnt
-set `df -ik /mnt | tail -1 | awk '{print $4,$7}'`
+mdconfig -a -t vnode -f $D -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs $newfs_flags  md${mdstart}$part > /dev/null
+export PATH_FSTAB=/tmp/fstab
+echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" > $PATH_FSTAB
+mount $mntpoint
+set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 export KBLOCKS=$(($1 / 21))
 export INODES=$(($2 / 21))
 export HOG=1
@@ -53,25 +56,25 @@ export INCARNATIONS=40
 
 export QK=$((KBLOCKS / 2))
 export QI=$((INODES / 2))
-edquota -u -f /mnt -e /mnt:$((QK - 50)):$QK:$((QI - 50 )):$QI pho
-quotaon /mnt
-sed -i -e '/md0c/d' /etc/fstab
-export RUNDIR=/mnt/stressX
-mkdir /mnt/stressX
-chmod 777 /mnt/stressX
-su pho -c "(cd ..;runRUNTIME=1h ./run.sh disk.cfg)"&	# panic: vfs_allocate_syncvnode: insmntque failed
+edquota -u -f $mntpoint -e $mntpoint:$((QK - 50)):$QK:$((QI - 50 )):$QI $testuser
+quotaon $mntpoint
+export RUNDIR=$mntpoint/stressX
+mkdir $mntpoint/stressX
+chmod 777 $mntpoint/stressX
+rm -rf /tmp/stressX.control/*
+su $testuser -c "(cd ..;runRUNTIME=30m ./run.sh disk.cfg)"&	# panic: vfs_allocate_syncvnode: insmntque failed
 for i in `jot 20`; do
-	echo "`date '+%T'` mksnap_ffs /mnt /mnt/.snap/snap$i"
-	mksnap_ffs /mnt /mnt/.snap/snap$i
+	echo "`date '+%T'` mksnap_ffs $mntpoint $mntpoint/.snap/snap$i"
+	mksnap_ffs $mntpoint $mntpoint/.snap/snap$i
 	sleep 1
 done
 i=$(($(date '+%S') % 20 + 1))
-echo "rm -f /mnt/.snap/snap$i"
-rm -f /mnt/.snap/snap$i
+echo "rm -f $mntpoint/.snap/snap$i"
+rm -f $mntpoint/.snap/snap$i
 wait
 
-while mount | grep -q /mnt; do
-	umount $([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f" || echo "") /mnt > /dev/null 2>&1
+while mount | grep -q ${mntpoint}; do
+	umount ${mntpoint} || sleep 1
 done
-mdconfig -d -u 0
-rm -f $D
+mdconfig -d -u $mdstart
+rm -f $D $PATH_FSTAB

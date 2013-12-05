@@ -30,37 +30,37 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 # Deadlock in umount(1) while out of disk space
 
-D=/usr/tmp/diskimage
-#truncate -s 1G $D
+D=$diskimage
 truncate -s 250M $D
 
-mount | grep "/mnt" | grep md0c > /dev/null && umount /mnt
-mdconfig -l | grep md0 > /dev/null &&  mdconfig -d -u 0
+mount | grep $mntpoint | grep -q md${mdstart}$part && umount $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u 0
-bsdlabel -w md0 auto
-newfs -U  md0c > /dev/null
-echo "/dev/md0c /mnt ufs rw,userquota 2 2" >> /etc/fstab
-mount /mnt
-edquota -u -f /mnt -e /mnt:850000:900000:130000:140000 root > /dev/null 2>&1
-quotaon /mnt
-sed -i -e '/md0c/d' /etc/fstab	# clean up before any panics
-export RUNDIR=/mnt/stressX
-../testcases/rw/rw -t 10m -i 200 -h -n -v -v&
+mdconfig -a -t vnode -f $D -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs $newfs_flags  md${mdstart}$part > /dev/null
+export PATH_FSTAB=/tmp/fstab
+echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" > $PATH_FSTAB
+mount $mntpoint
+edquota -u -f $mntpoint -e $mntpoint:850000:900000:130000:140000 root > /dev/null 2>&1
+quotaon $mntpoint
+export RUNDIR=$mntpoint/stressX
+../testcases/rw/rw -t 10m -i 200 -h -n &
 pid=$!
 for i in `jot 5`; do
-	echo "`date '+%T'` mksnap_ffs /mnt /mnt/.snap/snap$i"
-	mksnap_ffs /mnt /mnt/.snap/snap$i
+	echo "`date '+%T'` mksnap_ffs $mntpoint $mntpoint/.snap/snap$i"
+	mksnap_ffs $mntpoint $mntpoint/.snap/snap$i
 done
 for i in `jot 5`; do
-	rm -f /mnt/.snap/snap1
+	rm -f $mntpoint/.snap/snap1
 done
 kill $pid
-false
-while mount | grep -q /mnt; do
-	umount $([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f" || echo "") /mnt > /dev/null 2>&1
+while mount | grep -q ${mntpoint}; do
+	umount ${mntpoint} || sleep 1
 done
-mdconfig -d -u 0
-rm -f $D
+mdconfig -d -u $mdstart
+rm -f $D $PATH_FSTAB
