@@ -29,7 +29,7 @@
 #
 
 # Stress test UFS2 file systems by introducing single bit errors in the FS
-# fsck fould fix the FS no matter how damaged, but f.x. this panic has been seen:
+# fsck should fix the FS no matter how damaged, but e.g. this panic has been seen:
 #
 # panic(c0912b65,dfe96000,0,c09e4060,ef48c778,...) at panic+0x14b
 # vm_fault(c1868000,dfe96000,1,0) at vm_fault+0x1e0
@@ -58,24 +58,24 @@ tst() {
    truncate -s 2M $D
    mdconfig -a -t vnode -f $D -u $mdstart
    bsdlabel -w md$mdstart auto
-   newfs -b 8192 -f 1024 -U /dev/md${mdstart}${part} > /dev/null 2>&1
-   mount /dev/md${mdstart}${part} $mntpoint
+   newfs -b 8192 -f 1024 $newfs_flags /dev/md${mdstart}$part > /dev/null 2>&1
+   mount /dev/md${mdstart}$part $mntpoint
    cp /etc/passwd /etc/group /etc/hosts $mntpoint
    cp -r /usr/include/ufs $mntpoint
    umount $mntpoint
 
    for i in `jot 50`; do
       ./fuzz -n 50 $D
-      if fsck -f -y /dev/md${mdstart}${part} 2>&1 | egrep "^[A-Z]" > /dev/null; then
-         if fsck -f -y /dev/md${mdstart}${part} 2>&1 | egrep "^[A-Z]" > /dev/null; then
-            if fsck -f -y /dev/md${mdstart}${part} 2>&1 | egrep "^[A-Z]" > /dev/null; then
+      if fsck -f -y /dev/md${mdstart}$part 2>&1 | egrep "^[A-Z]" > /dev/null; then
+         if fsck -f -y /dev/md${mdstart}$part 2>&1 | egrep "^[A-Z]" > /dev/null; then
+            if fsck -f -y /dev/md${mdstart}$part 2>&1 | egrep "^[A-Z]" > /dev/null; then
                echo "fsck is giving up in loop $i!"
                break
             fi
          fi
       fi
       sync;sync;sync
-      if mount /dev/md${mdstart}${part} $mntpoint; then
+      if mount /dev/md${mdstart}$part $mntpoint; then
          ls -l $mntpoint > /dev/null
          find $mntpoint  -exec dd if={} of=/dev/null bs=1m count=3 \; > /dev/null 2>&1
          umount $mntpoint
