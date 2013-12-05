@@ -66,8 +66,7 @@ mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs -U md${mdstart}$part > /dev/null
-tunefs -j enable /dev/md${mdstart}$part
+newfs -j md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
@@ -114,7 +113,7 @@ test(void)
 	pid_t pid;
 	char file[128];
 
-	for (i = 0; i < 10; i++) {
+	for (;;) {
 		if (access("rendezvous", R_OK) == 0)
 			break;
 		sched_yield();
@@ -128,7 +127,7 @@ test(void)
 		sprintf(file,"p%05d.%05d", pid, j);
 		if ((fd = mkdir(file, 0740)) == -1) {
 			if (errno != EINTR) {
-				warn("creat(%s). %s:%d", file, __FILE__, __LINE__);
+				warn("mkdir(%s). %s:%d", file, __FILE__, __LINE__);
 				unlink("continue");
 				break;
 			}
