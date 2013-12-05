@@ -34,19 +34,14 @@
 
 . ../default.cfg
 
-[ -d mp1 ] || mkdir mp1
+mount | grep -q "on $mntpoint " && umount -f $mntpoint
 
-mp=`pwd`/mp1
-mount | grep -q $mp && umount -f $mp
+mount -t nullfs $RUNDIR $mntpoint
 
-mount -t nullfs `dirname $RUNDIR` $mp
-
-export RUNDIR=`pwd`/mp1/stressX
+export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m
 (cd ..; ./run.sh marcus.cfg) 
 
-umount $mp 2>&1 | grep -v busy
-
-mount | grep -q $mp && umount -f $mp
-
-rm -rf mp1
+while mount | grep -q "on $mntpoint "; do
+	umount $mntpoint || sleep 1
+done
