@@ -47,7 +47,7 @@ mount /dev/md${mdstart}${part} $mntpoint
 
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=2m
-cd ..; ./run.sh vfs.cfg &
+cd ..; ./run.sh vfs.cfg > /dev/null 2>&1 &
 pid=$!
 
 sleep 30
