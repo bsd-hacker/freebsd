@@ -56,6 +56,7 @@ mount | grep -q md${mdstart}.eli && \
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
+checkfs /dev/md${mdstart}.eli
 geli kill /dev/md$mdstart.eli
 mdconfig -d -u $mdstart
 rm -f /tmp/suj3.key
