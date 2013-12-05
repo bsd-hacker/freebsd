@@ -40,8 +40,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart || exit 1
 gnop load
 gnop create -S 4k /dev/md$mdstart
-newfs -U /dev/md${mdstart}.nop
-tunefs -j enable /dev/md${mdstart}.nop
+newfs -j /dev/md${mdstart}.nop
 mount /dev/md${mdstart}.nop $mntpoint
 chmod 777 $mntpoint
 

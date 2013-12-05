@@ -42,8 +42,7 @@ mdconfig -a -t swap -s 128m -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 
 for i in `jot 4`; do
-	newfs -U md${mdstart}$part > /dev/null
-	tunefs -j enable /dev/md${mdstart}$part
+	newfs -j md${mdstart}$part > /dev/null
 
 	mount /dev/md${mdstart}$part $mntpoint
 	chmod 777 $mntpoint
