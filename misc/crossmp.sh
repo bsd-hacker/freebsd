@@ -48,7 +48,7 @@ if [ $# -eq 0 ]; then
 		dede $D$m 1m 1
 		mdconfig -a -t vnode -f $D$m -u $m
 		bsdlabel -w md$m auto
-		newfs -U md${m}$part > /dev/null 2>&1
+		newfs $newfs_flags md${m}$part > /dev/null 2>&1
 	done
 
 	# start the parallel tests

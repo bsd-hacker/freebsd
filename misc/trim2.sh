@@ -40,7 +40,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t malloc -o reserve -s 128m -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 [ $# -eq 0 ] && trim=-t
-newfs $trim -U md${mdstart}$part > /dev/null
+newfs $trim $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 echo "This is a Trim (TRIM) test." >> $mntpoint/file

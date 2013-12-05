@@ -43,7 +43,7 @@ mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
 
 mdconfig -a -t vnode -f $D -u ${mdstart}
 bsdlabel -w md${mdstart} auto
-newfs -U  md${mdstart}${part} > /dev/null
+newfs $newfs_flags  md${mdstart}${part} > /dev/null
 echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" >> /etc/fstab
 mount ${mntpoint}
 edquota -u -f ${mntpoint} -e ${mntpoint}:850000:900000:130000:140000 root > /dev/null 2>&1

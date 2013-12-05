@@ -41,7 +41,7 @@ if [ $# -eq 0 ]; then
 	mdconfig -l | grep -q md$mdstart && mdconfig -d -u $mdstart
 	mdconfig -a -t swap -s 10m -u $mdstart || exit 1
 	bsdlabel -w md$mdstart auto
-	newfs -U md${mdstart}$part > /dev/null
+	newfs $newfs_flags md${mdstart}$part > /dev/null
 
 	# start the parallel tests
 	for i in `jot $parallel`; do

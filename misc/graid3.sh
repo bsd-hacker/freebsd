@@ -46,7 +46,7 @@ done
 
 graid3 load || exit
 graid3 label -v -r data md$md1 md$md2 md$md3 > /dev/null || exit
-newfs -U /dev/raid3/data  > /dev/null
+newfs $newfs_flags /dev/raid3/data  > /dev/null
 mount /dev/raid3/data $mntpoint
 chmod 777 $mntpoint
 

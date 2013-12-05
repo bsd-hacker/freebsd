@@ -42,7 +42,7 @@ mdconfig -l | grep -q ${mdstart}  &&  mdconfig -d -u $mdstart
 mdconfig -a -t vnode -f $D -u $mdstart
 
 bsdlabel -w md${mdstart} auto
-newfs -U md${mdstart}${part} > /dev/null 2>&1
+newfs $newfs_flags md${mdstart}${part} > /dev/null 2>&1
 mount /dev/md${mdstart}${part} $mntpoint
 
 mkdir ${mntpoint}/stressX
@@ -50,7 +50,7 @@ chmod 777 ${mntpoint}/stressX
 
 export RUNDIR=${mntpoint}/stressX
 export runRUNTIME=4m
-(cd ..; ./run.sh disk.cfg) &
+(cd ..; ./run.sh disk.cfg > /dev/null 2>&1) &
 sleep 30
 
 for i in `jot 10`; do

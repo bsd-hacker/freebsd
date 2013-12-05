@@ -41,7 +41,7 @@ mdconfig -a -t swap -s 1g -u $mdstart
 gbde init /dev/md$mdstart -P pass-phrase || exit
 gbde attach md$mdstart -p pass-phrase || exit
 
-newfs -U /dev/md$mdstart.bde > /dev/null
+newfs $newfs_flags /dev/md$mdstart.bde > /dev/null
 mount /dev/md$mdstart.bde $mntpoint
 chmod 777 $mntpoint
 

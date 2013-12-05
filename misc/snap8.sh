@@ -49,7 +49,7 @@ truncate -s ${size}G $diskimage
 
 mdconfig -a -t vnode -f $diskimage -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs -O2 -U md${mdstart}${part} > /dev/null
+newfs -O2 $newfs_flags md${mdstart}${part} > /dev/null
 mount /dev/md${mdstart}${part} $mntpoint
 
 

@@ -46,7 +46,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 [ $# -eq 1 ] && opt="$1"
-[ $# -eq 0 ] && opt=-U	# No argument == -U
+[ $# -eq 0 ] && opt=$newfs_flags	# No argument == default flag
 echo "newfs $opt md${mdstart}$part"
 newfs $opt md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint

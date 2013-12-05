@@ -46,7 +46,7 @@ mdconfig -l | grep -q $mdstart && mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 2g -u ${mdstart}
 bsdlabel -w md$mdstart auto
-newfs -U md${mdstart}$part > /dev/null
+newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 

@@ -25,7 +25,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $Id: nfs.sh,v 1.2 2008/02/25 16:31:43 pho Exp $
+# $FreeBSD$
 #
 
 # Test scenario for deadlock fixed in r200447
@@ -40,8 +40,8 @@ mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1400m -u $mdstart
 bsdlabel -w md${mdstart} auto
 
-newfs -U md5${part} > /dev/null
-mount /dev/md5${part} /mnt
+newfs $newfs_flags md5${part} > /dev/null
+mount /dev/md5${part} $mntpoint
 
 # Stop FS "out of inodes" problem by only using 70%
 set `df -ik /mnt | tail -1 | awk '{print $4,$7}'`
