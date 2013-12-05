@@ -36,8 +36,9 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > mmap2.c
-cc -o mmap2 -Wall mmap2.c -lpthread
-rm -f mmap2.c
+#cc -o mmap2 -Wall -O2 -g mmap2.c -lpthread
+cc -o mmap2 -Wall -g mmap2.c -lpthread
+#rm -f mmap2.c
 
 for i in `jot 10`; do
 	./mmap2
@@ -121,7 +122,7 @@ work(int nr)
 	if (arc4random() % 2 == 0) {
 		m = arc4random() % 10;
 		if (madvise(p, len, m) == -1)
-			warn("madvise(%p, %d, %d)", p, len, m);
+			warn("madvise(%p, %zd, %d)", p, len, m);
 	}
 	if (arc4random() %2 == 0)
 		if (mprotect(p, trunc_page(arc4random() % len), PROT_READ) == -1 )
