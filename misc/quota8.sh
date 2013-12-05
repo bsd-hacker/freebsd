@@ -44,7 +44,7 @@ mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
 
 mdconfig -a -t vnode -f $D -u ${mdstart}
 bsdlabel -w md${mdstart} auto
-newfs -U  md${mdstart}${part} > /dev/null
+newfs $newfs_flags  md${mdstart}${part} > /dev/null
 echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" >> /etc/fstab
 mount ${mntpoint}
 set `df -ik ${mntpoint} | tail -1 | awk '{print $4,$7}'`
@@ -61,7 +61,7 @@ sed -i -e "/md${mdstart}${part}/d" /etc/fstab
 export RUNDIR=${mntpoint}/stressX
 mkdir ${mntpoint}/stressX
 chmod 777 ${mntpoint}/stressX
-su ${testuser} -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg)"&'   # Deadlock
+su ${testuser} -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > /dev/null 2>&1)"&'   # Deadlock
 for i in `jot 20`; do
 	echo "`date '+%T'` mksnap_ffs ${mntpoint} ${mntpoint}/.snap/snap$i"
 	mksnap_ffs ${mntpoint} ${mntpoint}/.snap/snap$i
@@ -72,6 +72,7 @@ echo "rm -f ${mntpoint}/.snap/snap$i"
 rm -f ${mntpoint}/.snap/snap$i
 wait
 
+su ${testuser} -c 'sh -c "../tools/killall.sh"'
 while mount | grep -q ${mntpoint}; do
 	umount $([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f" || echo "") ${mntpoint} > /dev/null 2>&1
 done
