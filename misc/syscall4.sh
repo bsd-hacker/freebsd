@@ -54,7 +54,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 2g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
-newfs -U md${mdstart}$part > /dev/null
+newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
@@ -107,6 +107,7 @@ EOF
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
@@ -132,7 +133,6 @@ static int ignore[] = {
 #if       __FreeBSD_version >= 900041
 	SYS_pdfork,
 #endif
-	SYS_posix_openpt
 };
 
 int fd[900], fds[2], socketpr[2];
@@ -275,9 +275,11 @@ int
 main(int argc, char **argv)
 {
 	struct passwd *pw;
+	struct rlimit limit;
 	pthread_t rp, cp[50];
 	time_t start;
 	int j;
+
 
 	magic1 = magic2 = MAGIC;
 	if ((pw = getpwnam("nobody")) == NULL)
@@ -288,6 +290,10 @@ main(int argc, char **argv)
 	    seteuid(pw->pw_uid) || setuid(pw->pw_uid))
 		err(1, "Can't drop privileges to \"nobody\"");
 	endpwent();
+
+	limit.rlim_cur = limit.rlim_max = 1000;
+	if (setrlimit(RLIMIT_NPTS, &limit) < 0)
+		err(1, "setrlimit");
 
 	signal(SIGALRM, hand);
 	signal(SIGILL,  hand);
