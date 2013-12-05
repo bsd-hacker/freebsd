@@ -332,7 +332,7 @@ flush_disable_caches(void)
 	register_t msr;
 	register_t msscr0;
 	register_t cache_reg;
-	volatile uint32_t *romp;
+	volatile uint32_t *memp;
 	uint32_t temp;
 	int i;
 	int x;
@@ -359,17 +359,30 @@ flush_disable_caches(void)
 
 	mtspr(SPR_LDSTCR, 0);
 
-	romp = (uint32_t *)0xfff00000;
+	/*
+	 * Perform this in two stages: Flush the cache starting in RAM, then do it
+	 * from ROM.
+	 */
+	memp = (volatile uint32_t *)0x00000000;
+	for (i = 0; i < 128 * 1024; i++) {
+		temp = *memp;
+		__asm__ __volatile__("dcbf 0,%0" :: "r"(memp));
+		memp += 32/sizeof(*memp);
+	}
+
+	memp = (volatile uint32_t *)0xfff00000;
 	x = 0xfe;
 
 	for (; x != 0xff;) {
 		mtspr(SPR_LDSTCR, x);
 		for (i = 0; i < 128; i++) {
-			temp = *romp;
-			romp += 32/sizeof(*romp);
+			temp = *memp;
+			__asm__ __volatile__("dcbf 0,%0" :: "r"(memp));
+			memp += 32/sizeof(*memp);
 		}
 		x = ((x << 1) | 1) & 0xff;
 	}
+	mtspr(SPR_LDSTCR, 0);
 
 	cache_reg = mfspr(SPR_L2CR);
 	if (cache_reg & L2CR_L2E) {
