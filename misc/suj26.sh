@@ -74,7 +74,9 @@ while kill -0 $rpid 2> /dev/null; do
 
 	ls -l $mntpoint2 > /dev/null
 
-	umount $mntpoint2
+	while mount | grep $mntpoint2 | grep -q /dev/md; do
+		umount $mntpoint2 || sleep 1
+	done
 	mdconfig -d -u $mdstart2
 done
 wait
