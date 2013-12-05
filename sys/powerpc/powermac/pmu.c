@@ -1129,10 +1129,10 @@ extern void *ap_pcpu;
 
 void pmu_sleep_int(void)
 {
+	static u_quad_t timebase = 0;
 	jmp_buf resetjb;
-	u_quad_t timebase;
-	struct thread *fputd = NULL;
-	struct thread *vectd = NULL;
+	struct thread *fputd;
+	struct thread *vectd;
 	register_t hid0;
 	register_t msr;
 	register_t saved_msr;
@@ -1143,14 +1143,12 @@ void pmu_sleep_int(void)
 
 	*(unsigned long *)0x80 = 0x100;
 	saved_msr = mfmsr();
-	timebase = mftb();
-	flush_disable_caches();
 	fputd = PCPU_GET(fputhread);
 	vectd = PCPU_GET(vecthread);
 	if (fputd != NULL)
-		save_fpu(PCPU_GET(fputhread));
+		save_fpu(fputd);
 	if (vectd != NULL)
-		save_vec(PCPU_GET(vecthread));
+		save_vec(vectd);
 	if (setjmp(resetjb) == 0) {
 		sprgs[0] = mfspr(SPR_SPRG0);
 		sprgs[1] = mfspr(SPR_SPRG1);
@@ -1158,14 +1156,17 @@ void pmu_sleep_int(void)
 		sprgs[3] = mfspr(SPR_SPRG3);
 		srrs[0] = mfspr(SPR_SRR0);
 		srrs[1] = mfspr(SPR_SRR1);
+		timebase = mftb();
+		powerpc_sync();
+		flush_disable_caches();
 		hid0 = mfspr(SPR_HID0);
 		hid0 = (hid0 & ~(HID0_DOZE | HID0_NAP)) | HID0_SLEEP;
 		powerpc_sync();
 		isync();
+		msr = mfmsr() | PSL_POW;
 		mtspr(SPR_HID0, hid0);
 		powerpc_sync();
 
-		msr = mfmsr() | PSL_POW;
 		while (1)
 			mtmsr(msr);
 	}
