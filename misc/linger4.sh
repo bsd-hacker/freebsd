@@ -46,7 +46,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 2g -u $mdstart
 bsdlabel -w md$mdstart auto
 [ $# -eq 1 ] && opt="$1"
-[ $# -eq 0 ] && opt=-U	# The default is "-U"
+[ $# -eq 0 ] && opt=$newfs_flags	# No argument == default flag
 echo "newfs $opt md${mdstart}$part"
 newfs $opt md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
@@ -54,7 +54,8 @@ mount /dev/md${mdstart}$part $mntpoint
 cd $mntpoint
 chmod 777 $mntpoint
 
-su $testuser -c "/tmp/linger4"
+su $testuser -c "/tmp/linger4" ||
+    { ls -la $mntpoint; df -i $mntpoint; }
 
 cd $here
 
@@ -138,13 +139,12 @@ main()
 
 		for (i = 0; i < PARALLEL; i++) {
 			wait(&status);
-			e += status;
+			e += WEXITSTATUS(status);
 		}
 		if (e != 0)
 			break;
 //		sleep(60); /* No problems if this is included */
 	}
-	system("ls -la /mnt; df -i /mnt");
 
-	return (0);
+	return (e);
 }
