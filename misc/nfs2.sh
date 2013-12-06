@@ -34,6 +34,7 @@
 . ../default.cfg
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ -x /sbin/mount_msdosfs ] || exit
 
 D=$diskimage
 dede $D 1m 128 || exit 
