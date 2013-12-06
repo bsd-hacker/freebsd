@@ -74,6 +74,7 @@ dir=/tmp
 [ -d $dir ] || mkdir -p $dir
 cd $dir
 
+start=`date '+%s'`
 for i in `jot 30`; do
 	for j in `jot 10`; do
 		/tmp/namecache &
@@ -82,6 +83,7 @@ for i in `jot 30`; do
 	for j in `jot 10`; do
 		wait
 	done
+	[ $((`date '+%s'` - start)) -gt 1800 ] && break
 done
 
 if ls -l ${dir}/file.0* 2>&1 | egrep "file.0[0-9]" | grep -q "No such file"; then

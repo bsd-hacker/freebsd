@@ -137,6 +137,7 @@ main(void)
 	int result, fd;
 	unsigned int number;
 	struct timespec	period;
+	time_t start;
 
 	sprintf(filename1, "tfa0");
 	fd = open(filename1, O_CREAT, S_IRWXU);
@@ -152,6 +153,7 @@ main(void)
 	if (result < 0)
 		err(1, "pthread_create(): %s\n", strerror(result));
 
+	start = time(NULL);
 	for (number = 0; number < 0x001FFFFF; number += 2) {
 		sprintf(filename1, "tfa%u", number);
 		sprintf(filename2, "tfa%u", number + 1);
@@ -180,6 +182,10 @@ main(void)
 			period.tv_nsec = 500;
 			nanosleep(&period, 0);
 			return 0;
+		}
+		if (time(NULL) - start > 600) {
+			fprintf(stderr, "Test timed out.\n");
+			break;
 		}
 	}
 	unlink(filename3);
