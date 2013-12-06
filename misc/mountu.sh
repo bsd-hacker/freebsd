@@ -75,27 +75,27 @@ sleep 1
 
 if ! mount -u -o ro $mntpoint 2>&1 | grep -q "Device busy"; then
 	echo "NFS FAILED"
-	pstat
 fi
 wait
 umount $mntpoint
 
-mdconfig -a -t swap -s 100m -u $mdstart
-bsdlabel -w md${mdstart} auto
-newfs_msdos -F 16 -b 8192 /dev/md${mdstart}a > /dev/null 2>&1
-mount_msdosfs -m 777 /dev/md${mdstart}a $mntpoint
-/tmp/mountu $mntpoint/file &
+if [ -x /sbin/mount_msdosfs ]; then
+	mdconfig -a -t swap -s 100m -u $mdstart
+	bsdlabel -w md${mdstart} auto
+	newfs_msdos -F 16 -b 8192 /dev/md${mdstart}a > /dev/null 2>&1
+	mount_msdosfs -m 777 /dev/md${mdstart}a $mntpoint
+	/tmp/mountu $mntpoint/file &
 
-sleep 1
-if ! mount -u -o ro $mntpoint 2>&1 | grep -q "Device busy"; then
-	echo "MSDOS FAILED"
-	pstat
+	sleep 1
+	if ! mount -u -o ro $mntpoint 2>&1 | grep -q "Device busy"; then
+		echo "MSDOS FAILED"
+	fi
+	wait
+
+	while mount | grep -q "$mntpoint "; do
+		umount $mntpoint || sleep 1
+	done
 fi
-wait
-
-while mount | grep -q "$mntpoint "; do
-	umount $mntpoint || sleep 1
-done
 rm -f /tmp/mountu /tmp/file
 exit 0
 EOF
