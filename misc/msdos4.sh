@@ -34,6 +34,7 @@
 
 . ../default.cfg
 
+[ -x /sbin/mount_msdosfs ] || exit
 mount | grep "$mntpoint" | grep -q md$mdstart && umount -f ${mntpoint}
 mdconfig -l | grep -q ${mdstart} &&  mdconfig -d -u $mdstart
 

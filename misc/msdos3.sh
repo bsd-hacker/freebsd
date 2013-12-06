@@ -36,6 +36,7 @@
 
 . ../default.cfg
 
+[ -x /sbin/mount_msdosfs ] || exit
 mount | grep "$mntpoint" | grep -q md$mdstart && umount -f $mntpoint
 mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 
@@ -44,7 +45,7 @@ bsdlabel -w md${mdstart} auto
 newfs_msdos /dev/md${mdstart}a > /dev/null
 
 mount -t msdosfs /dev/md${mdstart}a $mntpoint
-mount -t msdosfs /dev/md${mdstart}a $mntpoint
+mount -t msdosfs /dev/md${mdstart}a $mntpoint || echo OK
 
 ls $mntpoint > /dev/null
 
