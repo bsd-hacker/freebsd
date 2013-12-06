@@ -316,7 +316,7 @@ struct iwn_softc {
 	struct callout		watchdog_to;
 	struct callout		ct_kill_exit_to;
 	struct iwn_fw_info	fw;
-	struct iwn_calib_info	calibcmd[5];
+	struct iwn_calib_info	calibcmd[IWN5000_PHY_CALIB_MAX_RESULT];
 	uint32_t		errptr;
 
 	struct iwn_rx_stat	last_rx_stat;
@@ -361,6 +361,9 @@ struct iwn_softc {
 	int			sc_tx_timer;
 	int			sc_scan_timer;
 
+	/* Are we doing a scan? */
+	int			sc_is_scanning;
+
 	struct ieee80211_tx_ampdu *qid2tap[IWN5000_NTXQUEUES];
 
 	int			(*sc_ampdu_rx_start)(struct ieee80211_node *,
@@ -388,8 +391,8 @@ struct iwn_softc {
 	 */
 	int			current_pwrsave_level;
 
-	/* For specifique params */
-	struct iwn_base_params *base_params;
+	/* For specific params */
+	const struct iwn_base_params *base_params;
 };
 
 #define IWN_LOCK_INIT(_sc) \

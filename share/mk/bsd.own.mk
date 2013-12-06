@@ -264,6 +264,7 @@ __DEFAULT_YES_OPTIONS = \
     BZIP2 \
     CALENDAR \
     CAPSICUM \
+    CASPER \
     CDDL \
     CPP \
     CROSS_COMPILER \
@@ -373,7 +374,6 @@ __DEFAULT_NO_OPTIONS = \
     NAND \
     OFED \
     OPENSSH_NONE_CIPHER \
-    PKGTOOLS \
     SHARED_TOOLCHAIN \
     SVN \
     TESTS \
