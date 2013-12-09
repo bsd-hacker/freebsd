@@ -231,7 +231,6 @@ pkg-stage:
 cdrom: disc1.iso bootonly.iso
 dvdrom: dvd1.iso
 ftp: packagesystem
-	rm -rf ftp
 	mkdir -p ftp
 	cp *.txz MANIFEST ftp
 
