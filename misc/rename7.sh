@@ -41,7 +41,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rename7.c
-cc -o rename7 -Wall -Wextra -O2 rename7.c
+cc -o rename7 -Wall -Wextra -O2 rename7.c || exit
 rm -f rename7.c
 cd $here
 
@@ -53,7 +53,7 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-su ${testuser} -c "cd $mntpoint; /tmp/rename7"
+su ${testuser} -c "cd $mntpoint; /tmp/rename7 || echo FAIL"
 
 for i in `jot 10`; do
 	mount | grep -q md${mdstart}$part  && \
@@ -82,21 +82,7 @@ EOF
 #include <unistd.h>
 
 const char *logfile = "test.log";
-int need_reopen = 1;
 pid_t wpid, spid;
-
-void
-handler(int s __unused)
-{
-        need_reopen = 1;
-}
-
-void
-cleanup()
-{
-	kill(wpid, SIGINT);
-	kill(spid, SIGINT);
-}
 
 void
 r1(void)
@@ -108,10 +94,12 @@ r1(void)
 		rename(logfile, "r1");
 		if (stat("r1", &sb1) == 0 && stat("r2", &sb2) == 0 &&
 		    bcmp(&sb1, &sb2, sizeof(sb1)) == 0) {
-			fprintf(stderr, "Bummer\n");
+			fprintf(stderr, "r1 and r2 are identical after rename(%s, \"r1\")\n", logfile);
 			system("ls -ail");
+			_exit(1);
 		}
 	}
+	_exit(0);
 }
 
 void
@@ -125,16 +113,19 @@ r2(void)
 		rename(logfile, "r2");
 		if (stat("r1", &sb1) == 0 && stat("r2", &sb2) == 0 &&
 		    bcmp(&sb1, &sb2, sizeof(sb1)) == 0) {
-			fprintf(stderr, "Bummer\n");
+			usleep(10000);
+			fprintf(stderr, "r1 and r2 are identical after rename(%s, \"r2\")\n", logfile);
 			system("ls -ail");
+			_exit(1);
 		}
 	}
+	_exit(0);
 }
 int
 main(void)
 {
 	pid_t wpid, spid;
-	int fd, i;
+	int e, fd, i, status;
 
 	if ((wpid = fork()) == 0)
 		r1();
@@ -142,7 +133,7 @@ main(void)
 		r2();
 
 	setproctitle("main");
-	atexit(cleanup);
+	e = 0;
 
 	for (i = 0; i < 800000; i++) {
 		if ((fd = open(logfile, O_RDWR | O_CREAT | O_TRUNC, 0644)) == -1)
@@ -150,11 +141,12 @@ main(void)
 		close(fd);
 	}
 
-
 	kill(wpid, SIGINT);
 	kill(spid, SIGINT);
-	wait(NULL);
-	wait(NULL);
+	wait(&status);
+	e += WEXITSTATUS(status);
+	wait(&status);
+	e += WEXITSTATUS(status);
 
-	return (0);
+	return (e);
 }
