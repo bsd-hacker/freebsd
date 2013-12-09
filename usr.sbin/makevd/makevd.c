@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011,2012,2013
+ * Copyright (c) 2011
  *	Hiroki Sato <hrs@FreeBSD.org>  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,7 +34,6 @@ __FBSDID("$FreeBSD$");
 
 #include <err.h>
 #include <fcntl.h>
-#include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,20 +50,11 @@ static LIST_HEAD(optlisthead_t, optlist) oplhead;
 static struct imtype {
 	const char	*imt_type;
 	int		(*imt_makeim)(struct iminfo *);
-	int		(*imt_dumpim)(struct iminfo *);
 } imtypes[] = {
-	{ .imt_type = "vhd",
-		.imt_makeim = vhd_makeim,
-		.imt_dumpim = vhd_dumpim, },
-	{ .imt_type = "vmdk",
-		.imt_makeim = vmdk_makeim,
-		.imt_dumpim = vmdk_dumpim, },
-	{ .imt_type = "none",
-		.imt_makeim = raw_makeim,
-		.imt_dumpim = raw_dumpim, },
-	{ .imt_type = "raw",
-		.imt_makeim = raw_makeim,
-		.imt_dumpim = raw_dumpim, },
+	{ "vhd", vhd_makeim },
+	{ "vmdk", vmdk_makeim },
+	{ "none", raw_makeim },
+	{ "raw", raw_makeim },
 	{ .imt_type = NULL },
 };
 
@@ -79,13 +69,11 @@ main(int argc, char *argv[])
 	struct optlist *opl;
 	struct stat sb;
 	int ch;
-	int dump;
 	int ifd;
 	int opl_new;
 	char *val;
 
 	setprogname(argv[0]);
-	dump = (strcmp(basename(argv[0]), "dumpvd") == 0);
 
 	if ((imt = get_imtype(DEFAULT_IMTYPE)) == NULL)
 		errx(1, "Unknown default image type `%s'.", DEFAULT_IMTYPE);
@@ -187,10 +175,7 @@ main(int argc, char *argv[])
 	if (imi.imi_imagename == NULL)
 		imi.imi_imagename = strdup(argv[0]);
 
-	if (dump)
-		imt->imt_makeim(&imi);
-	else
-		imt->imt_dumpim(&imi);
+	imt->imt_makeim(&imi);
 
 	return (0);
 }
