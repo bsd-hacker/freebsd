@@ -20,7 +20,7 @@
 #  NOPORTS:  if set, do not distribute ports tree
 #  NOSRC:    if set, do not distribute source tree
 #  NODOC:    if set, do not generate release documentation
-#  NODVD:    if set, do not generate dvd1.iso
+#  WITH_DVD: if set, generate dvd1.iso
 #  TARGET/TARGET_ARCH: architecture of built release 
 #
 WORLDDIR?=	${.CURDIR}/..
@@ -78,7 +78,7 @@ IMAGES=
 .if exists(${.CURDIR}/${TARGET}/mkisoimages.sh)
 RELEASE_TARGETS+= cdrom
 IMAGES+=	disc1.iso bootonly.iso
-. if !defined(NODVD)
+. if defined(WITH_DVD) && !empty(WITH_DVD)
 RELEASE_TARGETS+= dvdrom
 IMAGES+=	dvd1.iso
 . endif
