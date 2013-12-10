@@ -23,8 +23,6 @@
 #  NODVD:    if set, do not generate dvd1.iso
 #  TARGET/TARGET_ARCH: architecture of built release 
 #
-.include "${.CURDIR}/Makefile.inc"
-
 WORLDDIR?=	${.CURDIR}/..
 PORTSDIR?=	/usr/ports
 DOCDIR?=	/usr/doc
