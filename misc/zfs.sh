@@ -52,7 +52,7 @@ zpool create tank raidz md$u1 md$u2 md$u3
 zfs create tank/test
 
 export RUNDIR=/tank/test/stressX
-export runRUNTIME=10m
+export runRUNTIME=20m
 (cd ..; ./run.sh marcus.cfg) 
 
 zfs destroy -r tank
