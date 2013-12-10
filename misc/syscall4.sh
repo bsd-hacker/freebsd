@@ -125,11 +125,15 @@ static int ignore[] = {
 	111,			/* 111 is old sigsuspend */
 	SYS_shutdown,
 	SYS___syscall,
+	216,			/* custom syscall */
 	SYS_rfork,
 	SYS_sigsuspend,
 	SYS_mac_syscall,
 	SYS_sigtimedwait,
 	SYS_sigwaitinfo,
+#if       __FreeBSD_version <  804500
+	SYS_thr_new,
+#endif
 #if       __FreeBSD_version >= 900041
 	SYS_pdfork,
 #endif
