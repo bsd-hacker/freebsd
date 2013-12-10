@@ -35,10 +35,12 @@
 . ../default.cfg
 
 snap () {
-	while [ ! -s $2 ]; do
+	for i in `jot 5`; do
 		mksnap_ffs $1 $2 2>&1 | grep -v "Resource temporarily unavailable"
-		[ ! -s $2 ] && rm -f $2	# Get rid of zero size snapshots
+		[ ! -s $2 ] && rm -f $2	|| return 0
+		sleep 1
 	done
+	return 1
 }
 
 mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}
@@ -61,7 +63,7 @@ su ${testuser} -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > /dev/null 2>
 
 for i in `jot 20`; do
 	echo "`date '+%T'` mksnap_ffs ${mntpoint} ${mntpoint}/.snap/snap$i"
-	snap ${mntpoint} ${mntpoint}/.snap/snap$i
+	snap ${mntpoint} ${mntpoint}/.snap/snap$i || break
 	sleep 1
 done
 i=$(($(date '+%S') % 20 + 1))

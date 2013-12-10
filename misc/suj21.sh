@@ -52,10 +52,12 @@
 # }
 
 snap () {
-	while [ ! -s $2 ]; do
+	for i in `jot 5`; do
 		mksnap_ffs $1 $2 2>&1 | grep -v "Resource temporarily unavailable"
-		[ ! -s $2 ] && rm -f $2	# Get rid of zero size snapshots
+		[ ! -s $2 ] && rm -f $2	|| return 0
+		sleep 1
 	done
+	return 1
 }
 
 here=`pwd`
@@ -106,7 +108,7 @@ EOF
 
 static char buf[4096];
 #define ND 100
-#define NF 500
+#define NF 100
 
 void
 setup(void)
