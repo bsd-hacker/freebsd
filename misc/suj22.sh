@@ -55,10 +55,12 @@
 # }
 
 snap () {
-	while [ ! -s $2 ]; do
+	for i in `jot 5`; do
 		mksnap_ffs $1 $2 2>&1 | grep -v "Resource temporarily unavailable"
-		[ ! -s $2 ] && rm -f $2	# Get rid of zero size snapshots
+		[ ! -s $2 ] && rm -f $2	|| return 0
+		sleep 1
 	done
+	return 1
 }
 
 D=$diskimage
@@ -97,7 +99,7 @@ snap $mntpoint ${mntpoint}/.snap/snap2
 for i in `jot 10`; do
 	/tmp/suj22 prune
 	/tmp/suj22
-	snap $mntpoint ${mntpoint}/.snap/snap$((i + 2))
+	snap $mntpoint ${mntpoint}/.snap/snap$((i + 2)) || break
 	sn=`ls -tU ${mntpoint}/.snap | tail -1`
 	rm -f ${mntpoint}/.snap/$sn
 done
@@ -106,8 +108,10 @@ cd $here
 while mount | grep -q ${mntpoint}; do
 	umount ${mntpoint} || sleep 1
 done
+fsck -t ufs -y md${mdstart}${part}
+fsck -t ufs -y md${mdstart}${part}
 mdconfig -d -u ${mdstart}
-rm -f /tmp/suj22
+rm -f /tmp/suj22 $D
 exit 0
 EOF
 #include <sys/types.h>
