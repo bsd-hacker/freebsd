@@ -36,11 +36,11 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sendfile4.c
-cc -o sendfile4 -Wall -Wextra -O2 sendfile4.c
+cc -o sendfile4 -Wall -Wextra -O2 sendfile4.c || exit
 rm -f sendfile4.c
 cd $here
 
-/tmp/sendfile4 /usr/libexec/cc1
+/tmp/sendfile4 /usr/libexec/cc1 || echo FAIL
 
 rm -f /tmp/sendfile4
 exit
@@ -53,8 +53,14 @@ EOF
 #include <sys/wait.h>
 #include <err.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+static void
+handler(int i __unused) {
+	_exit(1);
+}
 
 int
 main(int argc, char *argv[])
@@ -82,6 +88,8 @@ main(int argc, char *argv[])
 	if (error == -1)
 		err(1, "socketpair");
 
+	signal(SIGALRM, handler);
+	alarm(120);
 	child = fork();
 	if (child == -1)
 		err(1, "fork");
