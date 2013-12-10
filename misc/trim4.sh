@@ -35,14 +35,12 @@
 
 . ../default.cfg
 
-tunefs -? 2>&1 | grep "j enable" || exit 1
-
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 size="1g"
 [ $# -eq 0 ] && trim=-t
-flag="-U"
+flag="-j"
 for i in `jot 6`; do
 	echo "Test #$i `date '+%T'`"
 	echo "mdconfig -a -t swap -s $size -u $mdstart"
@@ -51,7 +49,6 @@ for i in `jot 6`; do
 
 	echo "newfs $trim $flag md${mdstart}$part"
 	newfs $trim $flag md${mdstart}$part > /dev/null
-	tunefs -j enable /dev/md${mdstart}$part
 
 	mount /dev/md${mdstart}$part $mntpoint
 	chmod 777 $mntpoint
@@ -64,16 +61,6 @@ for i in `jot 6`; do
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
-	dumpfs /dev/md${mdstart}$part > /tmp/dumpfs.1
-	sleep 1
-	fsck -t ufs -y /dev/md${mdstart}$part > /tmp/fsck.log 2>&1
-	dumpfs /dev/md${mdstart}$part > /tmp/dumpfs.2
-
-	if grep -q "FALLBACK TO FULL FSCK" /tmp/fsck.log; then
-		diff -c /tmp/dumpfs.1 /tmp/dumpfs.2
-		cat /tmp/fsck.log
-		exit 1
-	fi
+	checkfs /dev/md${mdstart}$part
 	mdconfig -d -u $mdstart
 done
-rm -f /tmp/fsck.log /tmp/dumpfs.?
