@@ -32,6 +32,7 @@ use strict;
 use Fcntl qw(:DEFAULT :flock);
 use POSIX;
 use Getopt::Long;
+use Scalar::Util qw(tainted);
 
 my $VERSION	= "2.20";
 my $COPYRIGHT	= "Copyright (c) 2003-2013 Dag-Erling Smørgrav. " .
@@ -280,6 +281,14 @@ sub spawn($@) {
     my @args = @_;		# Arguments
 
     message($cmd, @args);
+    # Check command and arguments for taint.  The build will die
+    # anyway, but at least we'll have a starting point for debugging.
+    warning("command name is tainted\n")
+	if tainted($cmd);
+    for (my $i = 0; $i < @args; ++$i) {
+	warning("argv\[$i\] is tainted\n")
+	    if tainted($args[$i]);
+    }
     my $pid = fork();
     if (!defined($pid)) {
 	return warning("fork(): $!");
@@ -471,6 +480,11 @@ MAIN:{
     if (!defined($destdir)) {
 	$destdir = "$sandbox/inst";
     }
+    if ($svnbase &&
+	$svnbase !~ m@^((?:svn(?:\+ssh)?://(?:[a-z][0-9a-z-]*)(?:\.[a-z][0-9a-z-]*)*(?::\d+)?|file://)/[\w./-]*)@) {
+	error("invalid SVN base URL");
+    }
+    $svnbase = $1;
 
     if (!@ARGV) {
 	usage();
@@ -632,7 +646,7 @@ MAIN:{
 	    my $svnversioncmd = [grep({ -x } @svnversioncmds)]->[0]
 		or error("unable to locate svnversion binary");
 	    if ($verbose) {
-		spawn($svncmd, "stat", $srcdir)
+		spawn($svncmd, "stat", "--no-ignore", $srcdir)
 		    or error("unable to stat source tree");
 	    }
 	    my $svnversion = `$svnversioncmd $srcdir`; # XXX
