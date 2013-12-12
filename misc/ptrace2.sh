@@ -78,6 +78,7 @@ main(void)
 			fflush(stdout);
 		}
 	}
+	kill(pid, SIGINT);
 
 	return (0);
 }
