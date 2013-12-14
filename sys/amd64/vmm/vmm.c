@@ -55,6 +55,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/vm.h>
 #include <machine/pcb.h>
 #include <machine/smp.h>
+#include <x86/psl.h>
 #include <x86/apicreg.h>
 #include <machine/vmparam.h>
 
@@ -859,27 +860,15 @@ vcpu_require_state_locked(struct vcpu *vcpu, enum vcpu_state newstate)
  * Emulate a guest 'hlt' by sleeping until the vcpu is ready to run.
  */
 static int
-vm_handle_hlt(struct vm *vm, int vcpuid, boolean_t *retu)
+vm_handle_hlt(struct vm *vm, int vcpuid, bool intr_disabled, bool *retu)
 {
+	struct vm_exit *vmexit;
 	struct vcpu *vcpu;
-	int sleepticks, t;
+	int t, timo;
 
 	vcpu = &vm->vcpu[vcpuid];
 
 	vcpu_lock(vcpu);
-
-	/*
-	 * Figure out the number of host ticks until the next apic
-	 * timer interrupt in the guest.
-	 */
-	sleepticks = lapic_timer_tick(vm, vcpuid);
-
-	/*
-	 * If the guest local apic timer is disabled then sleep for
-	 * a long time but not forever.
-	 */
-	if (sleepticks < 0)
-		sleepticks = hz;
 
 	/*
 	 * Do a final check for pending NMI or interrupts before
@@ -888,12 +877,27 @@ vm_handle_hlt(struct vm *vm, int vcpuid, boolean_t *retu)
 	 * These interrupts could have happened any time after we
 	 * returned from VMRUN() and before we grabbed the vcpu lock.
 	 */
-	if (!vm_nmi_pending(vm, vcpuid) && lapic_pending_intr(vm, vcpuid) < 0) {
-		if (sleepticks <= 0)
-			panic("invalid sleepticks %d", sleepticks);
+	if (!vm_nmi_pending(vm, vcpuid) &&
+	    (intr_disabled || vlapic_pending_intr(vcpu->vlapic) < 0)) {
 		t = ticks;
 		vcpu_require_state_locked(vcpu, VCPU_SLEEPING);
-		msleep_spin(vcpu, &vcpu->mtx, "vmidle", sleepticks);
+		if (vlapic_enabled(vcpu->vlapic)) {
+			/*
+			 * XXX msleep_spin() is not interruptible so use the
+			 * 'timo' to put an upper bound on the sleep time.
+			 */
+			timo = hz;
+			msleep_spin(vcpu, &vcpu->mtx, "vmidle", timo);
+		} else {
+			/*
+			 * Spindown the vcpu if the apic is disabled and it
+			 * had entered the halted state.
+			 */
+			*retu = true;
+			vmexit = vm_exitinfo(vm, vcpuid);
+			vmexit->exitcode = VM_EXITCODE_SPINDOWN_CPU;
+			VCPU_CTR0(vm, vcpuid, "spinning down cpu");
+		}
 		vcpu_require_state_locked(vcpu, VCPU_FROZEN);
 		vmm_stat_incr(vm, vcpuid, VCPU_IDLE_TICKS, ticks - t);
 	}
@@ -903,7 +907,7 @@ vm_handle_hlt(struct vm *vm, int vcpuid, boolean_t *retu)
 }
 
 static int
-vm_handle_paging(struct vm *vm, int vcpuid, boolean_t *retu)
+vm_handle_paging(struct vm *vm, int vcpuid, bool *retu)
 {
 	int rv, ftype;
 	struct vm_map *map;
@@ -941,7 +945,7 @@ done:
 }
 
 static int
-vm_handle_inst_emul(struct vm *vm, int vcpuid, boolean_t *retu)
+vm_handle_inst_emul(struct vm *vm, int vcpuid, bool *retu)
 {
 	struct vie *vie;
 	struct vcpu *vcpu;
@@ -982,15 +986,12 @@ vm_handle_inst_emul(struct vm *vm, int vcpuid, boolean_t *retu)
 		mread = vhpet_mmio_read;
 		mwrite = vhpet_mmio_write;
 	} else {
-		*retu = TRUE;
+		*retu = true;
 		return (0);
 	}
 
-	error = vmm_emulate_instruction(vm, vcpuid, gpa, vie, mread, mwrite, 0);
-
-	/* return to userland to spin up the AP */
-	if (error == 0 && vme->exitcode == VM_EXITCODE_SPINUP_AP)
-		*retu = TRUE;
+	error = vmm_emulate_instruction(vm, vcpuid, gpa, vie, mread, mwrite,
+	    retu);
 
 	return (error);
 }
@@ -1003,7 +1004,7 @@ vm_run(struct vm *vm, struct vm_run *vmrun)
 	struct pcb *pcb;
 	uint64_t tscval, rip;
 	struct vm_exit *vme;
-	boolean_t retu;
+	bool retu, intr_disabled;
 	pmap_t pmap;
 
 	vcpuid = vmrun->cpuid;
@@ -1043,10 +1044,11 @@ restart:
 	critical_exit();
 
 	if (error == 0) {
-		retu = FALSE;
+		retu = false;
 		switch (vme->exitcode) {
 		case VM_EXITCODE_HLT:
-			error = vm_handle_hlt(vm, vcpuid, &retu);
+			intr_disabled = ((vme->u.hlt.rflags & PSL_I) == 0);
+			error = vm_handle_hlt(vm, vcpuid, intr_disabled, &retu);
 			break;
 		case VM_EXITCODE_PAGING:
 			error = vm_handle_paging(vm, vcpuid, &retu);
@@ -1055,12 +1057,12 @@ restart:
 			error = vm_handle_inst_emul(vm, vcpuid, &retu);
 			break;
 		default:
-			retu = TRUE;	/* handled in userland */
+			retu = true;	/* handled in userland */
 			break;
 		}
 	}
 
-	if (error == 0 && retu == FALSE) {
+	if (error == 0 && retu == false) {
 		rip = vme->rip + vme->inst_length;
 		goto restart;
 	}

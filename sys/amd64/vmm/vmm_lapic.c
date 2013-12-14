@@ -80,16 +80,6 @@ lapic_set_intr(struct vm *vm, int cpu, int vector, bool level)
 	return (0);
 }
 
-int
-lapic_timer_tick(struct vm *vm, int cpu)
-{
-	struct vlapic *vlapic;
-
-	vlapic = vm_lapic(vm, cpu);
-
-	return (vlapic_timer_tick(vlapic));
-}
-
 static boolean_t
 x2apic_msr(u_int msr)
 {
@@ -117,7 +107,7 @@ lapic_msr(u_int msr)
 }
 
 int
-lapic_rdmsr(struct vm *vm, int cpu, u_int msr, uint64_t *rval)
+lapic_rdmsr(struct vm *vm, int cpu, u_int msr, uint64_t *rval, bool *retu)
 {
 	int error;
 	u_int offset;
@@ -130,14 +120,14 @@ lapic_rdmsr(struct vm *vm, int cpu, u_int msr, uint64_t *rval)
 		error = 0;
 	} else {
 		offset = x2apic_msr_to_regoff(msr);
-		error = vlapic_read(vlapic, offset, rval);
+		error = vlapic_read(vlapic, offset, rval, retu);
 	}
 
 	return (error);
 }
 
 int
-lapic_wrmsr(struct vm *vm, int cpu, u_int msr, uint64_t val)
+lapic_wrmsr(struct vm *vm, int cpu, u_int msr, uint64_t val, bool *retu)
 {
 	int error;
 	u_int offset;
@@ -150,7 +140,7 @@ lapic_wrmsr(struct vm *vm, int cpu, u_int msr, uint64_t val)
 		error = 0;
 	} else {
 		offset = x2apic_msr_to_regoff(msr);
-		error = vlapic_write(vlapic, offset, val);
+		error = vlapic_write(vlapic, offset, val, retu);
 	}
 
 	return (error);
@@ -174,7 +164,7 @@ lapic_mmio_write(void *vm, int cpu, uint64_t gpa, uint64_t wval, int size,
 		return (EINVAL);
 
 	vlapic = vm_lapic(vm, cpu);
-	error = vlapic_write(vlapic, off, wval);
+	error = vlapic_write(vlapic, off, wval, arg);
 	return (error);
 }
 
@@ -196,6 +186,6 @@ lapic_mmio_read(void *vm, int cpu, uint64_t gpa, uint64_t *rval, int size,
 		return (EINVAL);
 
 	vlapic = vm_lapic(vm, cpu);
-	error = vlapic_read(vlapic, off, rval);
+	error = vlapic_read(vlapic, off, rval, arg);
 	return (error);
 }

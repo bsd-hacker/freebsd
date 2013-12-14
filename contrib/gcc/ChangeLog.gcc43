@@ -45,6 +45,12 @@
 	* flags.h (force_align_functions_log): Delete.
 	* toplev.c (force_align_functions_log): Delete.
 
+2007-06-28  Geoffrey Keating  <geoffk@apple.com> (r126088)
+
+	* doc/invoke.texi (C++ Dialect Options): Document
+	fvisibility-ms-compat.
+	* c.opt (fvisibility-ms-compat): New.
+
 2007-06-05  Joerg Wunsch  <j.gnu@uriah.heep.sax.de> (r125346)
 
 	PR preprocessor/23479
@@ -56,6 +62,14 @@
 	* expr.c (convert_move): Assert that we don't have a BLKmode
 	operand.
 	(store_expr): Handle BLKmode moves by calling emit_block_move.
+
+2007-05-31  Daniel Berlin  <dberlin@dberlin.org> (r125239)
+
+	* c-typeck.c (build_indirect_ref): Include type in error message.
+	(build_binary_op): Pass types to binary_op_error.
+	* c-common.c (binary_op_error): Take two type arguments, print out
+	types with error.
+	* c-common.h (binary_op_error): Update prototype.
 
 2007-05-27  Eric Christopher  <echristo@apple.com> (r125116)
 

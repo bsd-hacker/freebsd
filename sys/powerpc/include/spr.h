@@ -519,7 +519,7 @@
 #define	  MSSCR0_EMODE		  0x00200000 /* 10: MPX bus mode (read-only) */
 #define	  MSSCR0_ABD		  0x00100000 /* 11: address bus driven (read-only) */
 #define	  MSSCR0_MBZ		  0x000fffff /* 12-31: must be zero */
-#define   MSSCR0_L2PFE		  0x00000003 /* 30-31: L2 prefetch enable */
+#define	  MSSCR0_L2PFE		  0x00000003 /* 30-31: L2 prefetch enable */
 #define	SPR_LDSTCR		0x3f8	/* .6. Load/Store Control Register */
 #define	SPR_L2PM		0x3f8	/* .6. L2 Private Memory Control Register */
 #define	SPR_L2CR		0x3f9	/* .6. L2 Control Register */

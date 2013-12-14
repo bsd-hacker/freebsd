@@ -90,10 +90,13 @@ machdep_ap_bootstrap(void)
 	PCPU_SET(awake, 1);
 	__asm __volatile("msync; isync");
 
-	if (mp_ncpus > 1 && !pcpup->pc_bsp) {
-		while (ap_letgo == 0)
-			;
+	restore = PCPU_GET(restore);
+	if (restore != NULL) {
+		longjmp(*restore, 1);
 	}
+
+	while (ap_letgo == 0)
+		;
 
 	restore = PCPU_GET(restore);
 	if (restore != NULL) {
