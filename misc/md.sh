@@ -47,8 +47,8 @@ export RUNDIR=${mntpoint}/stressX
 export KBLOCKS=30000		# Exaggerate disk capacity
 export INODES=8000
 
-for i in `jot 500`; do
-   (cd ../testcases/rw;./rw -t 2m -i 20)
+for i in `jot 20`; do
+   (cd ../testcases/rw;./rw -t 2m -i 20 > /dev/null 2>&1)
 done
 
 while mount | grep -q ${mntpoint}; do
