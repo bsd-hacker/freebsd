@@ -45,12 +45,15 @@ mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 2g -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs -U md${mdstart}$part > /dev/null
+newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 rm -rf $mntpoint/.snap
 chmod 777 $mntpoint
 
+(while true; do ls -lRi $mntpoint > /dev/null 2>&1; done) &
 su ${testuser} -c "cd $mntpoint; /tmp/rename9"
+kill $! > /dev/null 2>&1
+wait
 ls -ilR $mntpoint | egrep -v "^total "
 
 while mount | grep -q md${mdstart}$part; do
@@ -76,8 +79,8 @@ EOF
 #include <unistd.h>
 
 pid_t spid;
-char *logfile = "test.log";
-char new[128];
+char *fromFile = "fromFile.log";
+char toFile[128];
 
 void
 cleanup()
@@ -85,106 +88,73 @@ cleanup()
 	kill(spid, SIGINT);
 }
 
-static int
-xstat(char *file, struct stat *s)
-{
-	int fd, r;
-
-	if ((fd = open(file, O_RDONLY)) == -1)
-		return (-1);
-	r = fstat(fd, s);
-
-	close(fd);
-	return (r);
-}
-
 static void
-Stat()
+statFrom()
 {
 	struct stat sb;
-	int i;
 
 	setproctitle("Stat");
 	for (;;) {
-		for (i = 0; i < 1000; i++) {
-			/* No problem if using open/fstat */
-			if (0)
-				xstat(logfile, &sb);
-			else
-				stat(logfile, &sb);
-			stat(new, &sb);
-		}
-		usleep(100);
+		stat(fromFile, &sb);
 	}
 }
 
 int
 main(void)
 {
-	struct stat sb1, sb2, sb3;
-	int fd, i, r1, r2, r3;
+	struct stat fb, tb, fa, ta;
+	int fd, i;
 
 	if ((spid = fork()) == 0)
-		Stat();
+		statFrom();
 
 	setproctitle("main");
 	atexit(cleanup);
-	for (i = 0; i < 200000; i++) {
-		bzero(&sb1, sizeof(sb1));
-		bzero(&sb2, sizeof(sb2));
-		if ((fd = open(logfile, O_RDWR | O_CREAT | O_TRUNC, 0644)) == -1)
-			err(1, "creat(%s)", logfile);
+	for (i = 0;i < 100000; i++) {
+		bzero(&fb, sizeof(fb));
+		bzero(&tb, sizeof(tb));
+		bzero(&fa, sizeof(fa));
+		bzero(&ta, sizeof(ta));
+
+		if ((fd = open(fromFile, O_RDWR | O_CREAT | O_TRUNC, 0644)) == -1)
+			err(1, "creat(%s)", fromFile);
 		close(fd);
 
-		sprintf(new, "test.log.%05d", i);
-		if ((fd = open(new, O_RDWR | O_CREAT | O_TRUNC, 0644)) == -1)
-			err(1, "creat(%s)", new);
+		sprintf(toFile, "toFile.log.%05d", i);
+		if ((fd = open(toFile, O_RDWR | O_CREAT | O_TRUNC, 0644)) == -1)
+			err(1, "creat(%s)", toFile);
 		write(fd, "xxx", 3);
 		close(fd);
-		if ((r3 = stat(new, &sb3)) == -1)
-			err(1, "stat(%s)", new);
-#if 1
-		if (rename(logfile, new) == -1)
-			warn("rename(%s, %s)", logfile, new);
-#else
-		/* No cache problem is seen */
-		if (link(logfile, new) == -1)
-			err(1, "link(%s, %s)", logfile, new);
-		if (unlink(logfile) == -1)
-			err(1, "unlink(%s)", logfile);
-#endif
-		/*
-		 * stat() for logfile and new will be identical sometimes,
-		 * but only when Stat() is running.
-		 */
-		r1 = stat(logfile, &sb1);
-		r2 = stat(new, &sb2);
-		if (r1 == 0 && r2 == 0 &&
-		    bcmp(&sb1, &sb2, sizeof(sb1)) == 0) {
-			fprintf(stderr, "FAIL 1\n");
-			fprintf(stderr, "%-15s: ino = %4d, nlink = %d, size = %jd\n",
-			    logfile, sb1.st_ino, sb1.st_nlink, sb1.st_blocks);
-			fprintf(stderr, "%-15s: ino = %4d, nlink = %d, size = %jd\n",
-			    new    , sb2.st_ino, sb2.st_nlink, sb2.st_blocks);
-		}
-		if (sb2.st_ino == sb3.st_ino) {
-			fprintf(stderr, "FAIL 2\n");
-			if (r1 == 0)
+
+		stat(fromFile, &fb);
+		stat(toFile, &tb);
+		if (rename(fromFile, toFile) == -1)
+			warn("rename(%s, %s)", fromFile, toFile);
+		stat(fromFile, &fa);
+		if (stat(toFile, &ta) == -1)
+			err(1, "stat(%s)", toFile);
+
+		if (tb.st_ino == ta.st_ino) {
+			fprintf(stderr, "FAIL: old and new \"To\" inode number is identical\n");
+			fprintf(stderr, "stat() before the rename():\n");
+			fprintf(stderr,
+			    "%-16s: ino = %4d, nlink = %d, size = %jd\n",
+			    fromFile, fb.st_ino, fb.st_nlink, fb.st_blocks);
+			fprintf(stderr,
+			    "%-16s: ino = %4d, nlink = %d, size = %jd\n",
+			    toFile, tb.st_ino, tb.st_nlink, tb.st_blocks);
+			fprintf(stderr, "\nstat() after the rename():\n");
+			if (fa.st_ino != 0)
 				fprintf(stderr,
-				    "sb1: %-15s: ino = %4d, nlink = %d, size = %jd\n",
-				    logfile, sb1.st_ino, sb1.st_nlink, sb1.st_blocks);
-			if (r2 == 0)
-				fprintf(stderr,
-				    "sb2: %-15s: ino = %4d, nlink = %d, size = %jd\n",
-				    new, sb2.st_ino, sb2.st_nlink, sb2.st_blocks);
-			if (r3 == 0)
-				fprintf(stderr,
-				    "sb3: %-15s: ino = %4d, nlink = %d, size = %jd\n",
-				    new    , sb3.st_ino, sb3.st_nlink, sb3.st_blocks);
+				    "%-16s: ino = %4d, nlink = %d, size = %jd\n",
+				    fromFile, fa.st_ino, fa.st_nlink, fa.st_blocks);
+			fprintf(stderr,
+			    "%-16s: ino = %4d, nlink = %d, size = %jd\n",
+			    toFile, ta.st_ino, ta.st_nlink, ta.st_blocks);
 			kill(spid, SIGINT);
 			exit(1);
 		}
-		unlink(new);
+		unlink(toFile);
 	}
 
 	kill(spid, SIGINT);
