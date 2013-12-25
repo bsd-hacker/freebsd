@@ -135,6 +135,7 @@ main(int argc, char **argv)
 
 	if (argc != 2)
 		errx(1, "Usage: %s <path>", argv[0]);
+	alarm(600);
 	for (i = 0; i < 100; i++)
 		test(argv[1]);
 
