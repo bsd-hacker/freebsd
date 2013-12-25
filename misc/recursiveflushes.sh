@@ -32,6 +32,8 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 snap() {
    for i in `jot 5`; do
       mksnap_ffs $1 $2
@@ -39,15 +41,21 @@ snap() {
    done
 }
 
+mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
+mdconfig -a -t swap -s 4g -u $mdstart || exit 1
+bsdlabel -w md$mdstart auto
+newfs $newfs_flags md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
+
 old=`sysctl vfs.recursiveflushes | awk '{print $NF}'`
-cd /var/tmp
-rm -f /var/.snap/pho.*
-trap "rm -f /var/.snap/pho.*" 0
-snap /var /var/.snap/pho.1
-snap /var /var/.snap/pho.2
-snap /var /var/.snap/pho.3
-snap /var /var/.snap/pho.4
-snap /var /var/.snap/pho.5
+cd $mntpoint
+rm -f $mntpoint/.snap/pho.*
+snap $mntpoint $mntpoint/.snap/pho.1
+snap $mntpoint $mntpoint/.snap/pho.2
+snap $mntpoint $mntpoint/.snap/pho.3
+snap $mntpoint $mntpoint/.snap/pho.4
+snap $mntpoint $mntpoint/.snap/pho.5
 
 for i in `jot 32`; do
    # Create 32 Mb files
@@ -60,6 +68,12 @@ for i in `jot 32`; do
    rm -f big.$i
 done
 
-rm -f /var/.snap/pho.*
+rm -f $mntpoint/.snap/pho.*
 new=`sysctl vfs.recursiveflushes | awk '{print $NF}'`
 [ $old != $new ] && echo "vfs.recursiveflushes changed from $old to $new"
+
+cd /
+while mount | grep $mntpoint | grep -q /dev/md; do
+	umount $mntpoint || sleep 1
+done
+mdconfig -d -u $mdstart
