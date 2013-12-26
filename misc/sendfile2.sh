@@ -89,6 +89,7 @@ main () {
         off_t sent = 0;
         int chunk;
 
+	alarm(120);
         s = socket(AF_INET, SOCK_STREAM, 0);
         bzero(&addr, sizeof(addr));
         addr.sin_family = AF_INET;
