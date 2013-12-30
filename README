@@ -1,0 +1,45 @@
+$FreeBSD$
+
+This directory contains a collection of scripts and their corresponding
+configurations to set up continuous testing hosts on the Kyua cluster.
+
+Be aware that most of the code in here exists only as temporary glue.  The
+goal is for Kyua itself to offer most or all of the functionality
+implemented in these scripts.  However, doing so in a generic manner will
+require a significant amount of effort; in the meantime, it is easier to
+just do all the work in relatively-straightforward scripts that are
+specific to FreeBSD.
+
+As weird as it may be, the code in here is designed to be executed, on
+purpose, from its source directory.  There is no way to install it under,
+say, /usr/local.  Doing so would require some minor changes to ensure the
+paths are valid but I did not see the point of supporting this.  In
+general, the machines will just "svn update" the code in this directory,
+run "make" again and go on their merry way while allowing the backgrounded
+jobs to pick up the new versions (if any).
+
+
+node directory
+--------------
+
+Scripts and configuration files to set up a single Kyua cluster node.
+
+To configure a machine as a node, just run "./node/setup".  This command
+will install any necessary prerequisites, build the scripts, enable the
+background processing loop in rc.d and start it.  Arguments to the "setup"
+script are passed directly to make, so they can be used to override
+settings for the particular host being configured (e.g. the path to shtk).
+
+Of special interest are:
+
+* node/iterate: Builds a release, creates a fresh disk image that runs the
+  tests on execution, executes the image in a VM and collects the test
+  results.
+
+* node/loop: Executes node/iterate in an infinite loop with one or more
+  release configurations.
+
+* node/configs/: Configuration files for node/iterate.  node/loop picks all
+  of them up and runs them in sequence.
+
+* node/rc.d/autotest-node: rc.d script to run node/loop as a daemon.

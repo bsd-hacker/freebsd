@@ -1,0 +1,33 @@
+#! /bin/sh
+#
+# $FreeBSD$
+#
+# rc.d script to run the autotest infinite node loop in the background.
+# Once started, the machine will continuously fetch, build and test one or more
+# release configurations -- so be wary of the load this will incur.
+#
+
+# PROVIDE: autotest_node
+# REQUIRE: DAEMON
+
+#
+# Add the following lines to /etc/rc.conf to enable autotest_node:
+#
+#local_startup="${local_startup} __AUTOTEST_BINDIR__/rc.d"
+#autotest_node_enable="YES"
+
+. /etc/rc.subr
+
+# We require access to installed packages.
+PATH="/usr/local/bin:/usr/local/sbin:${PATH}"
+
+name="autotest_node"
+rcvar="autotest_node_enable"
+logfile="__AUTOTEST_VARBASE__/log/autotest-node.log"
+pidfile="__AUTOTEST_VARBASE__/run/autotest-node.pid"
+command="__AUTOTEST_BINDIR__/loop"
+command_interpreter="__AUTOTEST_SHELL__"
+command_args="-b -d 60 -l '${logfile}' -p '${pidfile}'"
+
+load_rc_config $name
+run_rc_command "$1"
