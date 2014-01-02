@@ -2555,13 +2555,11 @@ vm_page_cache(vm_page_t m)
 	cnt.v_cache_count++;
 	PCPU_INC(cnt.v_tcached);
 #if VM_NRESERVLEVEL > 0
-	if (!vm_reserv_free_page(m)) {
+	if (!vm_reserv_free_page(m))
 #else
-	if (TRUE) {
+	if (TRUE)
 #endif
-		vm_phys_set_pool(VM_FREEPOOL_CACHE, m, 0);
 		vm_phys_free_pages(m, 0);
-	}
 	vm_page_free_wakeup();
 	mtx_unlock(&vm_page_queue_free_mtx);
 
