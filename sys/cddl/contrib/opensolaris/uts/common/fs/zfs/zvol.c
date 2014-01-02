@@ -282,7 +282,8 @@ zvol_map_block(spa_t *spa, zilog_t *zilog, const blkptr_t *bp,
 	zvol_extent_t *ze;
 	int bs = ma->ma_zv->zv_volblocksize;
 
-	if (bp == NULL || zb->zb_object != ZVOL_OBJ || zb->zb_level != 0)
+	if (BP_IS_HOLE(bp) ||
+	    zb->zb_object != ZVOL_OBJ || zb->zb_level != 0)
 		return (0);
 
 	VERIFY3U(ma->ma_blks, ==, zb->zb_blkid);
@@ -1861,8 +1862,7 @@ zfs_mvdev_dump_feature_check(void *arg, dmu_tx_t *tx)
 {
 	spa_t *spa = dmu_tx_pool(tx)->dp_spa;
 
-	if (spa_feature_is_active(spa,
-	    &spa_feature_table[SPA_FEATURE_MULTI_VDEV_CRASH_DUMP]))
+	if (spa_feature_is_active(spa, SPA_FEATURE_MULTI_VDEV_CRASH_DUMP))
 		return (1);
 	return (0);
 }
@@ -1873,8 +1873,7 @@ zfs_mvdev_dump_activate_feature_sync(void *arg, dmu_tx_t *tx)
 {
 	spa_t *spa = dmu_tx_pool(tx)->dp_spa;
 
-	spa_feature_incr(spa,
-	    &spa_feature_table[SPA_FEATURE_MULTI_VDEV_CRASH_DUMP], tx);
+	spa_feature_incr(spa, SPA_FEATURE_MULTI_VDEV_CRASH_DUMP, tx);
 }
 
 static int
@@ -1909,7 +1908,7 @@ zvol_dump_init(zvol_state_t *zv, boolean_t resize)
 	 */
 	if (vd->vdev_children > 1 || vd->vdev_ops == &vdev_raidz_ops) {
 		if (!spa_feature_is_enabled(spa,
-		    &spa_feature_table[SPA_FEATURE_MULTI_VDEV_CRASH_DUMP]))
+		    SPA_FEATURE_MULTI_VDEV_CRASH_DUMP))
 			return (SET_ERROR(ENOTSUP));
 		(void) dsl_sync_task(spa_name(spa),
 		    zfs_mvdev_dump_feature_check,
@@ -1930,8 +1929,8 @@ zvol_dump_init(zvol_state_t *zv, boolean_t resize)
 	 * function.  Otherwise, use the old default -- OFF.
 	 */
 	checksum = spa_feature_is_active(spa,
-	    &spa_feature_table[SPA_FEATURE_MULTI_VDEV_CRASH_DUMP]) ?
-	    ZIO_CHECKSUM_NOPARITY : ZIO_CHECKSUM_OFF;
+	    SPA_FEATURE_MULTI_VDEV_CRASH_DUMP) ? ZIO_CHECKSUM_NOPARITY :
+	    ZIO_CHECKSUM_OFF;
 
 	/*
 	 * If we are resizing the dump device then we only need to
@@ -2153,6 +2152,7 @@ zvol_geom_create(const char *name)
 	gp->start = zvol_geom_start;
 	gp->access = zvol_geom_access;
 	pp = g_new_providerf(gp, "%s/%s", ZVOL_DRIVER, name);
+	pp->flags |= G_PF_DIRECT_RECEIVE | G_PF_DIRECT_SEND;
 	pp->sectorsize = DEV_BSIZE;
 
 	zv = kmem_zalloc(sizeof(*zv), KM_SLEEP);
@@ -2256,18 +2256,20 @@ zvol_geom_start(struct bio *bp)
 	zvol_state_t *zv;
 	boolean_t first;
 
+	zv = bp->bio_to->private;
+	ASSERT(zv != NULL);
 	switch (bp->bio_cmd) {
+	case BIO_FLUSH:
+		if (!THREAD_CAN_SLEEP())
+			goto enqueue;
+		zil_commit(zv->zv_zilog, ZVOL_OBJ);
+		g_io_deliver(bp, 0);
+		break;
 	case BIO_READ:
 	case BIO_WRITE:
-	case BIO_FLUSH:
-		zv = bp->bio_to->private;
-		ASSERT(zv != NULL);
-		mtx_lock(&zv->zv_queue_mtx);
-		first = (bioq_first(&zv->zv_queue) == NULL);
-		bioq_insert_tail(&zv->zv_queue, bp);
-		mtx_unlock(&zv->zv_queue_mtx);
-		if (first)
-			wakeup_one(&zv->zv_queue);
+		if (!THREAD_CAN_SLEEP())
+			goto enqueue;
+		zvol_strategy(bp);
 		break;
 	case BIO_GETATTR:
 	case BIO_DELETE:
@@ -2275,6 +2277,15 @@ zvol_geom_start(struct bio *bp)
 		g_io_deliver(bp, EOPNOTSUPP);
 		break;
 	}
+	return;
+
+enqueue:
+	mtx_lock(&zv->zv_queue_mtx);
+	first = (bioq_first(&zv->zv_queue) == NULL);
+	bioq_insert_tail(&zv->zv_queue, bp);
+	mtx_unlock(&zv->zv_queue_mtx);
+	if (first)
+		wakeup_one(&zv->zv_queue);
 }
 
 static void
@@ -2449,6 +2460,7 @@ zvol_rename_minor(struct g_geom *gp, const char *newname)
 	g_wither_provider(pp, ENXIO);
 
 	pp = g_new_providerf(gp, "%s/%s", ZVOL_DRIVER, newname);
+	pp->flags |= G_PF_DIRECT_RECEIVE | G_PF_DIRECT_SEND;
 	pp->sectorsize = DEV_BSIZE;
 	pp->mediasize = zv->zv_volsize;
 	pp->private = zv;

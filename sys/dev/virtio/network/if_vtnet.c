@@ -30,6 +30,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/eventhandler.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/sockio.h>
@@ -50,6 +51,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/if_dl.h>
 #include <net/if_types.h>
@@ -1700,9 +1702,9 @@ vtnet_rxq_input(struct vtnet_rxq *rxq, struct mbuf *m,
 	rxq->vtnrx_stats.vrxs_ipackets++;
 	rxq->vtnrx_stats.vrxs_ibytes += m->m_pkthdr.len;
 
-	/* VTNET_RXQ_UNLOCK(rxq); */
+	VTNET_RXQ_UNLOCK(rxq);
 	(*ifp->if_input)(ifp, m);
-	/* VTNET_RXQ_LOCK(rxq); */
+	VTNET_RXQ_LOCK(rxq);
 }
 
 static int
@@ -1782,6 +1784,10 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		m_adj(m, adjsz);
 
 		vtnet_rxq_input(rxq, m, hdr);
+
+		/* Must recheck after dropping the Rx lock. */
+		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+			break;
 	}
 
 	if (deq > 0)
