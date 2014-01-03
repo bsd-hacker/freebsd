@@ -1095,28 +1095,20 @@ vm_pageout_scan(struct vm_domain *vmd, int pass)
 		/*
 		 * If the page appears to be clean at the machine-independent
 		 * layer, then remove all of its mappings from the pmap in
-		 * anticipation of placing it onto the cache queue.  If,
-		 * however, any of the page's mappings allow write access,
-		 * then the page may still be modified until the last of those
-		 * mappings are removed.
+		 * anticipation of freeing it.  If, however, any of the page's
+		 * mappings allow write access, then the page may still be
+		 * modified until the last of those mappings are removed.
 		 */
 		vm_page_test_dirty(m);
 		if (m->dirty == 0 && object->ref_count != 0)
 			pmap_remove_all(m);
 
-		if (m->valid == 0) {
+		if (m->dirty == 0) {
 			/*
-			 * Invalid pages can be easily freed
+			 * Invalid pages must be clean.
 			 */
 			vm_page_free(m);
 			PCPU_INC(cnt.v_dfree);
-			--page_shortage;
-		} else if (m->dirty == 0) {
-			/*
-			 * Clean pages can be placed onto the cache queue.
-			 * This effectively frees them.
-			 */
-			vm_page_cache(m);
 			--page_shortage;
 		} else if ((m->flags & PG_WINATCFLS) == 0 && pass < 2) {
 			/*
