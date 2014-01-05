@@ -42,4 +42,4 @@ Of special interest are:
 * node/configs/: Configuration files for node/iterate.  node/loop picks all
   of them up and runs them in sequence.
 
-* node/rc.d/autotest-node: rc.d script to run node/loop as a daemon.
+* node/rc.d/autotest_node: rc.d script to run node/loop as a daemon.
