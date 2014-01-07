@@ -100,9 +100,11 @@ setup(int nb)
 void
 cleanup(void)
 {
-	(void)chdir("..");
-	if (rmdir(path) == -1) {
-		warn("rmdir(%s), %s:%d", path, __FILE__, __LINE__);
+	if (path[0] != 0) {
+		(void)chdir("..");
+		if (rmdir(path) == -1) {
+			warn("rmdir(%s), %s:%d", path, __FILE__, __LINE__);
+		}
 	}
 }
 
