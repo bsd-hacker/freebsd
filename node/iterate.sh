@@ -302,25 +302,27 @@ autotest_all() {
     [ ${#} -eq 0 ] || shtk_cli_usage_error "all does not take any arguments"
 
     local timestamp=$(date +%Y%m%d-%H%M%S)
-    local datadir="$(shtk_config_get DATADIR)/${timestamp}"
+    local datadir="$(shtk_config_get DATADIR)"
+    local run_datadir="${datadir}/${timestamp}"
 
-    mkdir -p "${datadir}"
-    touch "${datadir}/output.log"
+    mkdir -p "${run_datadir}"
+    touch "${run_datadir}/output.log"
     if ! shtk_bool_check "${quiet}"; then
-        tail -f "${datadir}/output.log" &
+        tail -f "${run_datadir}/output.log" &
         local tail_pid="${!}"
         eval "kill_tail() { kill '${tail_pid}'; }"
         shtk_cleanup_register kill_tail
     fi
-    exec >>"${datadir}/output.log" 2>&1
+    exec >>"${run_datadir}/output.log" 2>&1
 
     (
         autotest_release
         autotest_mkimage
         autotest_execute
-        autotest_publish "${datadir}"
+        autotest_publish "${run_datadir}"
     )
-    ln -sf "${timestamp}" "$(shtk_config_get DATADIR)/0-LATEST"
+    rm -f "${datadir}/0-LATEST"
+    ln -s "${timestamp}" "${datadir}/0-LATEST"
 
     exec >&- 2>&-
     if ! shtk_bool_check "${quiet}"; then
