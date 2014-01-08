@@ -6,7 +6,8 @@ SHTK?= shtk
 BINDIR= ${.CURDIR}
 LOCALSTATEDIR= /var
 SHELL= /bin/sh
-SYSCONFDIR= ${.CURDIR}/configs
+CONFIGS_SUBDIR!= hostname -s
+SYSCONFDIR= ${.CURDIR}/configs/${CONFIGS_SUBDIR}
 
 SCRIPTS= iterate loop
 
