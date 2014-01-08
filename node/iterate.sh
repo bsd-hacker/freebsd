@@ -41,7 +41,8 @@ shtk_import process
 # List of valid configuration variables.
 #
 # Please remember to update sysbuild.conf(5) if you change this list.
-AUTOTEST_CONFIG_VARS="CHROOTDIR DATADIR IMAGE MKVARS SRCBRANCH SVNROOT"
+AUTOTEST_CONFIG_VARS="CHROOTDIR DATADIR IMAGE MKVARS SRCBRANCH SVNROOT \
+                      TARGET TARGET_ARCH"
 
 
 # Paths to installed files.
@@ -63,6 +64,8 @@ autotest_set_defaults() {
     shtk_config_set IMAGE "${AUTOTEST_ROOT}/image.disk"
     shtk_config_set SRCBRANCH "base/head"
     shtk_config_set SVNROOT "svn://svn.freebsd.org"
+    shtk_config_set TARGET "amd64"
+    shtk_config_set TARGET_ARCH "amd64"
 }
 
 
@@ -114,6 +117,8 @@ NOPORTS=yes
 SRCBRANCH="$(shtk_config_get SRCBRANCH)"
 SRC_CONF="${src_conf}"
 SVNROOT="$(shtk_config_get SVNROOT)"
+TARGET="$(shtk_config_get TARGET)"
+TARGET_ARCH="$(shtk_config_get TARGET_ARCH)"
 EOF
 
     local svnroot="$(shtk_config_get SVNROOT)/$(shtk_config_get SRCBRANCH)"
@@ -182,7 +187,10 @@ autotest_mkimage() {
 
     shtk_cli_info "Installing system into image"
     _generate_src_conf >"${chrootdir}/etc/src.conf"
-    chroot "${chrootdir}" make -s -C /usr/src DESTDIR=/vmimage/mnt \
+    chroot "${chrootdir}" make -s -C /usr/src \
+        DESTDIR=/vmimage/mnt \
+        TARGET="$(shtk_config_get TARGET)" \
+        TARGET_ARCH="$(shtk_config_get TARGET_ARCH)" \
         installworld installkernel distribution 2>&1 >/dev/null
 
     shtk_cli_info "Setting up image configuration"
@@ -225,7 +233,23 @@ autotest_execute() {
     # support qemu so that we can test non-amd64 platforms from our test cluster
     # machines.  In other words: the selection of the VMM has to be exposed in
     # the configuration file.
-    shtk_process_run qemu-system-x86_64 -nographic -drive file="${image}"
+    local target_arch="$(shtk_config_get TARGET_ARCH)"
+    case "${target_arch}" in
+        amd64)
+            shtk_process_run qemu-system-x86_64 -nographic \
+                -drive file="${image}"
+            ;;
+
+        i386)
+            shtk_process_run qemu-system-i386 -nographic \
+                -drive file="${image}"
+            ;;
+
+        *)
+            shtk_cli_error "Sorry, don't know how to run tests for" \
+                "${target_arch}"
+            ;;
+    esac
 }
 
 
