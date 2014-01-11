@@ -112,6 +112,7 @@
 
 #define	VM_MIN_KERNEL_ADDRESS	KERNBASE
 #define	VM_MAX_KERNEL_ADDRESS	0xf8000000
+#define	VM_MAX_SAFE_KERNEL_ADDRESS	VM_MAX_KERNEL_ADDRESS
 
 #endif /* AIM/E500 */
 
@@ -171,18 +172,27 @@ struct pmap_physseg {
 #define	SGROWSIZ	(128UL*1024)		/* amount to grow stack */
 #endif
 
-#ifndef VM_KMEM_SIZE
-#define	VM_KMEM_SIZE		(12 * 1024 * 1024)
-#endif
-
-#ifdef __powerpc64__
+/*
+ * How many physical pages per kmem arena virtual page.
+ */
 #ifndef VM_KMEM_SIZE_SCALE
-#define VM_KMEM_SIZE_SCALE      (3)
+#define	VM_KMEM_SIZE_SCALE	(3)
 #endif
 
-#ifndef VM_KMEM_SIZE_MAX
-#define VM_KMEM_SIZE_MAX        0x1c0000000  /* 7 GB */
+/*
+ * Optional floor (in bytes) on the size of the kmem arena.
+ */
+#ifndef VM_KMEM_SIZE_MIN
+#define	VM_KMEM_SIZE_MIN	(12 * 1024 * 1024)
 #endif
+
+/*
+ * Optional ceiling (in bytes) on the size of the kmem arena: 40% of the
+ * usable KVA space.
+ */
+#ifndef VM_KMEM_SIZE_MAX
+#define VM_KMEM_SIZE_MAX	((VM_MAX_SAFE_KERNEL_ADDRESS - \
+    VM_MIN_KERNEL_ADDRESS + 1) * 2 / 5)
 #endif
 
 #define	ZERO_REGION_SIZE	(64 * 1024)	/* 64KB */

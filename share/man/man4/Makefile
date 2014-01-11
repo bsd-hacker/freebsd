@@ -67,6 +67,7 @@ MAN=	aac.4 \
 	auditpipe.4 \
 	aue.4 \
 	axe.4 \
+	axge.4 \
 	bce.4 \
 	bfe.4 \
 	bge.4 \
@@ -152,10 +153,13 @@ MAN=	aac.4 \
 	geom_fox.4 \
 	geom_linux_lvm.4 \
 	geom_map.4 \
+	geom_uncompress.4 \
 	geom_uzip.4 \
 	gif.4 \
 	gpib.4 \
 	gpio.4 \
+	gpioiic.4 \
+	gpioled.4 \
 	gre.4 \
 	h_ertt.4 \
 	hatm.4 \
@@ -295,7 +299,6 @@ MAN=	aac.4 \
 	ng_etf.4 \
 	ng_ether.4 \
 	ng_ether_echo.4 \
-	ng_fec.4 \
 	ng_frame_relay.4 \
 	ng_gif.4 \
 	ng_gif_demux.4 \
@@ -383,6 +386,7 @@ MAN=	aac.4 \
 	rc.4 \
 	re.4 \
 	rgephy.4 \
+	rights.4 \
 	rl.4 \
 	rndtest.4 \
 	route.4 \
@@ -524,6 +528,7 @@ MAN=	aac.4 \
 	urio.4 \
 	${_urtw.4} \
 	urtwn.4 \
+	urtwnfw.4 \
 	usb.4 \
 	usb_quirk.4 \
 	uslcom.4 \
@@ -828,7 +833,7 @@ _nvram2env.4=	nvram2env.4
 SUBDIR=	man4.${MACHINE_CPUARCH}
 .endif
 
-.if ${MK_ATF} != "no"
+.if ${MK_TESTS} != "no"
 ATF=            ${.CURDIR}/../../../contrib/atf
 .PATH:          ${ATF}/doc
 _atf_test_case.4=	atf-test-case.4

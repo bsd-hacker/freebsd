@@ -120,8 +120,6 @@
     sbin
     ..
     share
-        atf
-        ..
         bsdconfig
             media
             ..
@@ -164,8 +162,6 @@
         ..
         doc
             IPv6
-            ..
-            atf
             ..
             atm
             ..
@@ -477,6 +473,14 @@
             ..
         ..
         info
+        ..
+        keys
+            pkg
+                revoked
+                ..
+                trusted
+                ..
+            ..
         ..
         locale
             UTF-8
@@ -1434,7 +1438,5 @@
         ..
     ..
     src             nochange
-    ..
-    tests
     ..
 ..

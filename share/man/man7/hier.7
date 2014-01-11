@@ -32,7 +32,7 @@
 .\"	@(#)hier.7	8.1 (Berkeley) 6/5/93
 .\" $FreeBSD$
 .\"
-.Dd October 23, 2013
+.Dd December 25, 2013
 .Dt HIER 7
 .Os
 .Sh NAME
@@ -94,15 +94,6 @@ bluetooth configuration files
 gnats configuration files;
 see
 .Xr send-pr 1
-.It Pa keys/
-known trusted and revoked keys.
-.Pp
-.Bl -tag -width ".Pa keys/pkg/" -compact
-.It Pa keys/pkg/
-fingerprints for
-.Xr pkg 8
-.El
-.Pp
 .It Pa localtime
 local timezone information;
 see
@@ -113,10 +104,6 @@ Sendmail control files
 mtree configuration files;
 see
 .Xr mtree 8
-.It Pa namedb/
-named configuration files;
-see
-.Xr named 8
 .It Pa pam.d/
 configuration files for the Pluggable Authentication Modules (PAM)
 library
@@ -556,6 +543,16 @@ ASCII text files used by various games
 device description file for device name
 .It Pa info/
 GNU Info hypertext system
+.It Pa keys/
+known trusted and revoked keys.
+.Bl -tag -width ".Pa keys/pkg/" -compact
+.It Pa keys/pkg/
+fingerprints for
+.Xr pkg 7
+and
+.Xr pkg 8
+.El
+.Pp
 .It Pa locale/
 localization files;
 see
@@ -803,11 +800,6 @@ system information files describing various info about
 system since it was booted
 .Pp
 .Bl -tag -width Fl -compact
-.It Pa named/
-writable by the
-.Dq bind
-user; see
-.Xr named 8
 .It Pa ppp/
 writable by the
 .Dq network

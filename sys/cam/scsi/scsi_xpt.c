@@ -100,6 +100,10 @@ SYSCTL_PROC(_kern_cam, OID_AUTO, cam_srch_hi, CTLTYPE_INT|CTLFLAG_RW, 0, 0,
 		(lval) <<= 8;						\
 		(lval) |=  (lp)->luns[(i)].lundata[1];			\
 	}
+#define	CAM_GET_LUN(lp, i, lval)					\
+	(lval) = scsi_8btou64((lp)->luns[(i)].lundata);			\
+	(lval) = CAM_EXTLUN_BYTE_SWIZZLE(lval);
+
 /*
  * If we're not quirked to search <= the first 8 luns
  * and we are either quirked to search above lun 8,
@@ -175,7 +179,8 @@ do {									\
 typedef enum {
 	PROBE_INQUIRY_CKSUM	= 0x01,
 	PROBE_SERIAL_CKSUM	= 0x02,
-	PROBE_NO_ANNOUNCE	= 0x04
+	PROBE_NO_ANNOUNCE	= 0x04,
+	PROBE_EXTLUN		= 0x08
 } probe_flags;
 
 typedef struct {
@@ -561,10 +566,9 @@ static void	 proberequestdefaultnegotiation(struct cam_periph *periph);
 static int       proberequestbackoff(struct cam_periph *periph,
 				     struct cam_ed *device);
 static void	 probedone(struct cam_periph *periph, union ccb *done_ccb);
-static int	 probe_strange_rpl_data(struct scsi_report_luns_data *rp,
-					uint32_t maxlun);
 static void	 probe_purge_old(struct cam_path *path,
-				 struct scsi_report_luns_data *new);
+				 struct scsi_report_luns_data *new,
+				 probe_flags flags);
 static void	 probecleanup(struct cam_periph *periph);
 static void	 scsi_find_quirk(struct cam_ed *device);
 static void	 scsi_scan_bus(struct cam_periph *periph, union ccb *ccb);
@@ -699,6 +703,11 @@ probeschedule(struct cam_periph *periph)
 		softc->flags |= PROBE_NO_ANNOUNCE;
 	else
 		softc->flags &= ~PROBE_NO_ANNOUNCE;
+
+	if (cpi.hba_misc & PIM_EXTLUNS)
+		softc->flags |= PROBE_EXTLUN;
+	else
+		softc->flags &= ~PROBE_EXTLUN;
 
 	xpt_schedule(periph, CAM_PRIORITY_XPT);
 }
@@ -879,12 +888,14 @@ again:
 				     /*timeout*/60 * 1000);
 			break;
 		}
+done:
 		/*
 		 * We'll have to do without, let our probedone
 		 * routine finish up for us.
 		 */
 		start_ccb->csio.data_ptr = NULL;
 		cam_freeze_devq(periph->path);
+		cam_periph_doacquire(periph);
 		probedone(periph, start_ccb);
 		return;
 	}
@@ -910,14 +921,7 @@ again:
 				     /*timeout*/60 * 1000);
 			break;
 		}
-		/*
-		 * We'll have to do without, let our probedone
-		 * routine finish up for us.
-		 */
-		start_ccb->csio.data_ptr = NULL;
-		cam_freeze_devq(periph->path);
-		probedone(periph, start_ccb);
-		return;
+		goto done;
 	}
 	case PROBE_SERIAL_NUM:
 	{
@@ -950,19 +954,13 @@ again:
 				     /*timeout*/60 * 1000);
 			break;
 		}
-		/*
-		 * We'll have to do without, let our probedone
-		 * routine finish up for us.
-		 */
-		start_ccb->csio.data_ptr = NULL;
-		cam_freeze_devq(periph->path);
-		probedone(periph, start_ccb);
-		return;
+		goto done;
 	}
 	default:
 		panic("probestart: invalid action state 0x%x\n", softc->action);
 	}
 	start_ccb->ccb_h.flags |= CAM_DEV_QFREEZE;
+	cam_periph_doacquire(periph);
 	xpt_action(start_ccb);
 }
 
@@ -1113,6 +1111,7 @@ probedone(struct cam_periph *periph, union ccb *done_ccb)
 out:
 				/* Drop freeze taken due to CAM_DEV_QFREEZE */
 				cam_release_devq(path, 0, 0, 0, FALSE);
+				cam_periph_release_locked(periph);
 				return;
 			}
 			else if ((done_ccb->ccb_h.status & CAM_DEV_QFRZN) != 0)
@@ -1278,13 +1277,6 @@ out:
 			 */
 			free(lp, M_CAMXPT);
 			lp = NULL;
-		} else if (probe_strange_rpl_data(lp, maxlun)) {
-			/*
-			 * If we can't understand the lun format
-			 * of any entry, bail.
-			 */
-			free(lp, M_CAMXPT);
-			lp = NULL;
 		} else {
 			lun_id_t lun;
 			int idx;
@@ -1292,14 +1284,14 @@ out:
 			CAM_DEBUG(path, CAM_DEBUG_PROBE,
 			   ("Probe: %u lun(s) reported\n", nlun));
 
-			CAM_GET_SIMPLE_LUN(lp, 0, lun);
+			CAM_GET_LUN(lp, 0, lun);
 			/*
 			 * If the first lun is not lun 0, then either there
 			 * is no lun 0 in the list, or the list is unsorted.
 			 */
 			if (lun != 0) {
 				for (idx = 0; idx < nlun; idx++) {
-					CAM_GET_SIMPLE_LUN(lp, idx, lun);
+					CAM_GET_LUN(lp, idx, lun);
 					if (lun == 0) {
 						break;
 					}
@@ -1331,7 +1323,7 @@ out:
 			 * This function will also install the new list
 			 * in the target structure.
 			 */
-			probe_purge_old(path, lp);
+			probe_purge_old(path, lp, softc->flags);
 			lp = NULL;
 		}
 		if (path->device->flags & CAM_DEV_INQUIRY_DATA_VALID) {
@@ -1695,6 +1687,7 @@ probe_device_check:
 		CAM_DEBUG(periph->path, CAM_DEBUG_PROBE, ("Probe completed\n"));
 		/* Drop freeze taken due to CAM_DEV_QFREEZE flag set. */
 		cam_release_devq(path, 0, 0, 0, FALSE);
+		cam_periph_release_locked(periph);
 		cam_periph_invalidate(periph);
 		cam_periph_release_locked(periph);
 	} else {
@@ -1703,26 +1696,14 @@ probe_device_check:
 	}
 }
 
-static int
-probe_strange_rpl_data(struct scsi_report_luns_data *rp, uint32_t maxlun)
-{
-	uint32_t idx;
-	uint32_t nlun = MIN(maxlun, (scsi_4btoul(rp->length) / 8));
-
-	for (idx = 0; idx < nlun; idx++) {
-		if (!CAM_CAN_GET_SIMPLE_LUN(rp, idx)) {
-			return (-1);
-		}
-	}
-	return (0);
-}
-
 static void
-probe_purge_old(struct cam_path *path, struct scsi_report_luns_data *new)
+probe_purge_old(struct cam_path *path, struct scsi_report_luns_data *new,
+    probe_flags flags)
 {
 	struct cam_path *tp;
 	struct scsi_report_luns_data *old;
-	u_int idx1, idx2, nlun_old, nlun_new, this_lun;
+	u_int idx1, idx2, nlun_old, nlun_new;
+	lun_id_t this_lun;
 	u_int8_t *ol, *nl;
 
 	if (path->target == NULL) {
@@ -1757,17 +1738,24 @@ probe_purge_old(struct cam_path *path, struct scsi_report_luns_data *new)
 		 * that would be what the probe state
 		 * machine is currently working on,
 		 * so we won't do that.
-		 *
-		 * We also cannot nuke it if it is
-		 * not in a lun format we understand.
 		 */
-		if (!CAM_CAN_GET_SIMPLE_LUN(old, idx1)) {
-			continue;
-		}
-		CAM_GET_SIMPLE_LUN(old, idx1, this_lun);
+		CAM_GET_LUN(old, idx1, this_lun);
 		if (this_lun == 0) {
 			continue;
 		}
+
+		/*
+		 * We also cannot nuke it if it is
+		 * not in a lun format we understand
+		 * and replace the LUN with a "simple" LUN
+		 * if that is all the HBA supports.
+		 */
+		if (!(flags & PROBE_EXTLUN)) {
+			if (!CAM_CAN_GET_SIMPLE_LUN(old, idx1))
+				continue;
+			CAM_GET_SIMPLE_LUN(old, idx1, this_lun);
+		}
+
 		if (xpt_create_path(&tp, NULL, xpt_path_path_id(path),
 		    xpt_path_target_id(path), this_lun) == CAM_REQ_CMP) {
 			xpt_async(AC_LOST_DEVICE, tp, NULL);
@@ -2013,7 +2001,7 @@ scsi_scan_bus(struct cam_periph *periph, union ccb *request_ccb)
 		mtx_lock(mtx);
 		mtx_lock(&target->luns_mtx);
 		if (target->luns) {
-			uint32_t first;
+			lun_id_t first;
 			u_int nluns = scsi_4btoul(target->luns->length) / 8;
 
 			/*
@@ -2021,20 +2009,41 @@ scsi_scan_bus(struct cam_periph *periph, union ccb *request_ccb)
 			 * of the list as we've actually just finished probing
 			 * it.
 			 */
-			CAM_GET_SIMPLE_LUN(target->luns, 0, first);
+			CAM_GET_LUN(target->luns, 0, first);
 			if (first == 0 && scan_info->lunindex[target_id] == 0) {
 				scan_info->lunindex[target_id]++;
 			} 
 
+			/*
+			 * Skip any LUNs that the HBA can't deal with.
+			 */
+			while (scan_info->lunindex[target_id] < nluns) {
+				if (scan_info->cpi->hba_misc & PIM_EXTLUNS) {
+					CAM_GET_LUN(target->luns,
+					    scan_info->lunindex[target_id],
+					    lun_id);
+					break;
+				}
+
+				if (CAM_CAN_GET_SIMPLE_LUN(target->luns,
+				    scan_info->lunindex[target_id])) {
+					CAM_GET_SIMPLE_LUN(target->luns,
+					    scan_info->lunindex[target_id],
+					    lun_id);
+					break;
+				}
+					
+				scan_info->lunindex[target_id]++;
+			}
+
 			if (scan_info->lunindex[target_id] < nluns) {
-				CAM_GET_SIMPLE_LUN(target->luns,
-				    scan_info->lunindex[target_id], lun_id);
 				mtx_unlock(&target->luns_mtx);
 				next_target = 0;
 				CAM_DEBUG(request_ccb->ccb_h.path,
 				    CAM_DEBUG_PROBE,
-				   ("next lun to try at index %u is %u\n",
-				   scan_info->lunindex[target_id], lun_id));
+				   ("next lun to try at index %u is %jx\n",
+				   scan_info->lunindex[target_id],
+				   (uintmax_t)lun_id));
 				scan_info->lunindex[target_id]++;
 			} else {
 				mtx_unlock(&target->luns_mtx);

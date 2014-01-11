@@ -254,6 +254,8 @@ const struct cpuidtab cpuids[] = {
 	  generic_steppings },
 	{ CPU_ID_CORTEXA15,     CPU_CLASS_CORTEXA,      "Cortex A15",
 	  generic_steppings },
+	{ CPU_ID_KRAIT,		CPU_CLASS_KRAIT,	"Krait",
+	  generic_steppings },
 
 	{ CPU_ID_SA110,		CPU_CLASS_SA1,		"SA-110",
 	  sa110_steppings },
@@ -323,17 +325,9 @@ const struct cpuidtab cpuids[] = {
 
 	{ CPU_ID_MV88FR571_VD,	CPU_CLASS_MARVELL,	"Feroceon 88FR571-VD",
 	  generic_steppings },
-	{ CPU_ID_MV88SV581X_V6,	CPU_CLASS_MARVELL,	"Sheeva 88SV581x",
-	  generic_steppings },
-	{ CPU_ID_ARM_88SV581X_V6, CPU_CLASS_MARVELL,	"Sheeva 88SV581x",
-	  generic_steppings },
 	{ CPU_ID_MV88SV581X_V7,	CPU_CLASS_MARVELL,	"Sheeva 88SV581x",
 	  generic_steppings },
 	{ CPU_ID_ARM_88SV581X_V7, CPU_CLASS_MARVELL,	"Sheeva 88SV581x",
-	  generic_steppings },
-	{ CPU_ID_MV88SV584X_V6,	CPU_CLASS_MARVELL,	"Sheeva 88SV584x",
-	  generic_steppings },
-	{ CPU_ID_ARM_88SV584X_V6, CPU_CLASS_MARVELL,	"Sheeva 88SV584x",
 	  generic_steppings },
 	{ CPU_ID_MV88SV584X_V7,	CPU_CLASS_MARVELL,	"Sheeva 88SV584x",
 	  generic_steppings },
@@ -361,6 +355,7 @@ const struct cpu_classtab cpu_classes[] = {
 	{ "ARM10E",	"CPU_ARM10" },		/* CPU_CLASS_ARM10E */
 	{ "ARM10EJ",	"CPU_ARM10" },		/* CPU_CLASS_ARM10EJ */
 	{ "Cortex-A",	"CPU_CORTEXA" },	/* CPU_CLASS_CORTEXA */
+	{ "Krait",	"CPU_KRAIT" },		/* CPU_CLASS_KRAIT */
 	{ "SA-1",	"CPU_SA110" },		/* CPU_CLASS_SA1 */
 	{ "XScale",	"CPU_XSCALE_..." },	/* CPU_CLASS_XSCALE */
 	{ "ARM11J",	"CPU_ARM11" },		/* CPU_CLASS_ARM11J */

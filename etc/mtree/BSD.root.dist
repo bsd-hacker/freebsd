@@ -26,6 +26,8 @@
         ..
         bluetooth
         ..
+        casper
+        ..
         defaults
         ..
         devd
@@ -33,14 +35,6 @@
         gnats
         ..
         gss
-        ..
-        keys
-            pkg
-                revoked
-                ..
-                trusted
-                ..
-            ..
         ..
         mail
         ..
@@ -82,6 +76,8 @@
         ..
     ..
     libexec
+        casper
+        ..
         resolvconf
         ..
     ..
