@@ -207,7 +207,7 @@ autotest_mkimage() {
 EOF
 
     cp /etc/resolv.conf "${chrootdir}/vmimage/mnt/etc"
-    pkg -c "${chrootdir}/vmimage/mnt" install -y kyua pkgconf
+    pkg -c "${chrootdir}/vmimage/mnt" install -y kyua perl5 pkgconf
     rm "${chrootdir}/vmimage/mnt/etc/resolv.conf"
 
     cat >>"${chrootdir}/vmimage/mnt/root/.cshrc" <<EOF
