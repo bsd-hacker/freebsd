@@ -327,42 +327,6 @@ macgpio_deactivate_resource(device_t bus, device_t child, int type, int rid,
 	return (bus_deactivate_resource(bus, type, rid, res));
 }
 
-static int
-macgpio_suspend(device_t dev)
-{
-	struct macgpio_softc *sc;
-	int i;
-
-	sc = device_get_softc(dev);
-	sc->sc_saved_gpio_levels[0] = bus_read_4(sc->sc_gpios, GPIO_LEVELS_0);
-	sc->sc_saved_gpio_levels[1] = bus_read_4(sc->sc_gpios, GPIO_LEVELS_1);
-
-	for (i = 0; i < GPIO_COUNT; i++)
-		sc->sc_saved_gpios[i] = bus_read_1(sc->sc_gpios, GPIO_BASE + i);
-	for (i = 0; i < GPIO_EXTINT_COUNT; i++)
-		sc->sc_saved_extint_gpios[i] = bus_read_1(sc->sc_gpios, GPIO_EXTINT_BASE + i);
-
-	return (0);
-}
-
-static int
-macgpio_resume(device_t dev)
-{
-	struct macgpio_softc *sc;
-	int i;
-
-	sc = device_get_softc(dev);
-	bus_write_4(sc->sc_gpios, GPIO_LEVELS_0, sc->sc_saved_gpio_levels[0]);
-	bus_write_4(sc->sc_gpios, GPIO_LEVELS_1, sc->sc_saved_gpio_levels[1]);
-
-	for (i = 0; i < GPIO_COUNT; i++)
-		bus_write_1(sc->sc_gpios, GPIO_BASE + i, sc->sc_saved_gpios[i]);
-	for (i = 0; i < GPIO_EXTINT_COUNT; i++)
-		bus_write_1(sc->sc_gpios, GPIO_EXTINT_BASE + i, sc->sc_saved_extint_gpios[i]);
-
-	return (0);
-}
-
 uint8_t
 macgpio_read(device_t dev)
 {
@@ -402,3 +366,38 @@ macgpio_get_devinfo(device_t dev, device_t child)
 	return (&dinfo->mdi_obdinfo);
 }
 
+static int
+macgpio_suspend(device_t dev)
+{
+	struct macgpio_softc *sc;
+	int i;
+
+	sc = device_get_softc(dev);
+	sc->sc_saved_gpio_levels[0] = bus_read_4(sc->sc_gpios, GPIO_LEVELS_0);
+	sc->sc_saved_gpio_levels[1] = bus_read_4(sc->sc_gpios, GPIO_LEVELS_1);
+
+	for (i = 0; i < GPIO_COUNT; i++)
+		sc->sc_saved_gpios[i] = bus_read_1(sc->sc_gpios, GPIO_BASE + i);
+	for (i = 0; i < GPIO_EXTINT_COUNT; i++)
+		sc->sc_saved_extint_gpios[i] = bus_read_1(sc->sc_gpios, GPIO_EXTINT_BASE + i);
+
+	return (0);
+}
+
+static int
+macgpio_resume(device_t dev)
+{
+	struct macgpio_softc *sc;
+	int i;
+
+	sc = device_get_softc(dev);
+	bus_write_4(sc->sc_gpios, GPIO_LEVELS_0, sc->sc_saved_gpio_levels[0]);
+	bus_write_4(sc->sc_gpios, GPIO_LEVELS_1, sc->sc_saved_gpio_levels[1]);
+
+	for (i = 0; i < GPIO_COUNT; i++)
+		bus_write_1(sc->sc_gpios, GPIO_BASE + i, sc->sc_saved_gpios[i]);
+	for (i = 0; i < GPIO_EXTINT_COUNT; i++)
+		bus_write_1(sc->sc_gpios, GPIO_EXTINT_BASE + i, sc->sc_saved_extint_gpios[i]);
+
+	return (0);
+}

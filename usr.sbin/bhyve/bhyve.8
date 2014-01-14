@@ -32,7 +32,7 @@
 .Nd "run a guest operating system inside a virtual machine"
 .Sh SYNOPSIS
 .Nm
-.Op Fl aehAHPW
+.Op Fl aehwAHPW
 .Op Fl c Ar numcpus
 .Op Fl g Ar gdbport
 .Op Fl p Ar pinnedcpu
@@ -120,7 +120,7 @@ emulation is identical but uses a PCI vendor ID of
 PCI pass-through device.
 .It Li virtio-net
 Virtio network interface.
-.It Li virtio-block
+.It Li virtio-blk
 Virtio block storage interface.
 .It Li ahci-cd
 AHCI controller attached to an ATAPI CD/DVD.
@@ -229,6 +229,8 @@ Force
 .Nm
 to exit when a guest issues an access to an I/O port that is not emulated.
 This is intended for debug purposes.
+.It Fl w
+Ignore accesses to unimplemented Model Specific Registers (MSRs). This is intended for debug purposes.
 .It Fl h
 Print help message and exit.
 .It Ar vmname
@@ -288,8 +290,8 @@ bhyve -c 4 \e\
 .Xr nmdm 4 ,
 .Xr vmm 4 ,
 .Xr ethers 5 ,
-.Xr bhyveload 8 ,
-.Xr bhyvectl 8
+.Xr bhyvectl 8 ,
+.Xr bhyveload 8
 .Sh HISTORY
 .Nm
 first appeared in

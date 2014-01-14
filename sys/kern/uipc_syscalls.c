@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rwlock.h>
 #include <sys/sf_buf.h>
 #include <sys/sf_sync.h>
+#include <sys/sf_base.h>
 #include <sys/sysent.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -92,6 +93,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_pager.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_extern.h>
+#include <vm/uma.h>
 
 #if defined(INET) || defined(INET6)
 #ifdef SCTP
@@ -130,6 +132,7 @@ static int sfreadahead = 1;
 SYSCTL_INT(_kern_ipc_sendfile, OID_AUTO, readahead, CTLFLAG_RW,
     &sfreadahead, 0, "Number of sendfile(2) read-ahead MAXBSIZE blocks");
 
+static uma_zone_t	zone_sfsync;
 
 static void
 sfstat_init(const void *unused)
@@ -139,6 +142,18 @@ sfstat_init(const void *unused)
 	    M_WAITOK);
 }
 SYSINIT(sfstat, SI_SUB_MBUF, SI_ORDER_FIRST, sfstat_init, NULL);
+
+static void
+sf_sync_init(const void *unused)
+{
+
+	zone_sfsync = uma_zcreate("sendfile_sync", sizeof(struct sendfile_sync),
+	    NULL, NULL,
+	    NULL, NULL,
+	    UMA_ALIGN_CACHE,
+	    0);
+}
+SYSINIT(sf_sync, SI_SUB_MBUF, SI_ORDER_FIRST, sf_sync_init, NULL);
 
 static int
 sfstat_sysctl(SYSCTL_HANDLER_ARGS)
@@ -1898,7 +1913,7 @@ sf_sync_alloc(uint32_t flags)
 {
 	struct sendfile_sync *sfs;
 
-	sfs = malloc(sizeof *sfs, M_TEMP, M_WAITOK | M_ZERO);
+	sfs = uma_zalloc(zone_sfsync, M_WAITOK | M_ZERO);
 	mtx_init(&sfs->mtx, "sendfile", NULL, MTX_DEF);
 	cv_init(&sfs->cv, "sendfile");
 	sfs->flags = flags;
@@ -1953,7 +1968,7 @@ sf_sync_free(struct sendfile_sync *sfs)
 	KASSERT(sfs->count == 0, ("sendfile sync still busy"));
 	cv_destroy(&sfs->cv);
 	mtx_destroy(&sfs->mtx);
-	free(sfs, M_TEMP);
+	uma_zfree(zone_sfsync, sfs);
 }
 
 /*
@@ -1974,51 +1989,23 @@ sys_sendfile(struct thread *td, struct sendfile_args *uap)
 	return (do_sendfile(td, uap, 0));
 }
 
-static int
-do_sendfile(struct thread *td, struct sendfile_args *uap, int compat)
+int
+_do_sendfile(struct thread *td, int src_fd, int sock_fd, int flags,
+    int compat, off_t offset, size_t nbytes, off_t *sbytes,
+    struct uio *hdr_uio, struct uio *trl_uio)
 {
-	struct sf_hdtr hdtr;
-	struct uio *hdr_uio, *trl_uio;
-	struct file *fp;
 	cap_rights_t rights;
+	struct sendfile_sync *sfs = NULL;
+	struct file *fp;
 	int error;
-	off_t sbytes;
-	struct sendfile_sync *sfs;
 
-	/*
-	 * File offset must be positive.  If it goes beyond EOF
-	 * we send only the header/trailer and no payload data.
-	 */
-	if (uap->offset < 0)
-		return (EINVAL);
-
-	hdr_uio = trl_uio = NULL;
-	sfs = NULL;
-
-	if (uap->hdtr != NULL) {
-		error = copyin(uap->hdtr, &hdtr, sizeof(hdtr));
-		if (error != 0)
-			goto out;
-		if (hdtr.headers != NULL) {
-			error = copyinuio(hdtr.headers, hdtr.hdr_cnt, &hdr_uio);
-			if (error != 0)
-				goto out;
-		}
-		if (hdtr.trailers != NULL) {
-			error = copyinuio(hdtr.trailers, hdtr.trl_cnt, &trl_uio);
-			if (error != 0)
-				goto out;
-
-		}
-	}
-
-	AUDIT_ARG_FD(uap->fd);
+	AUDIT_ARG_FD(src_fd);
 
 	/*
 	 * sendfile(2) can start at any offset within a file so we require
 	 * CAP_READ+CAP_SEEK = CAP_PREAD.
 	 */
-	if ((error = fget_read(td, uap->fd,
+	if ((error = fget_read(td, src_fd,
 	    cap_rights_init(&rights, CAP_PREAD), &fp)) != 0) {
 		goto out;
 	}
@@ -2027,11 +2014,11 @@ do_sendfile(struct thread *td, struct sendfile_args *uap, int compat)
 	 * If we need to wait for completion, initialise the sfsync
 	 * state here.
 	 */
-	if (uap->flags & SF_SYNC)
-		sfs = sf_sync_alloc(uap->flags & SF_SYNC);
+	if (flags & SF_SYNC)
+		sfs = sf_sync_alloc(flags & SF_SYNC);
 
-	error = fo_sendfile(fp, uap->s, hdr_uio, trl_uio, uap->offset,
-	    uap->nbytes, &sbytes, uap->flags, compat ? SFK_COMPAT : 0, sfs, td);
+	error = fo_sendfile(fp, sock_fd, hdr_uio, trl_uio, offset,
+	    nbytes, sbytes, flags, compat ? SFK_COMPAT : 0, sfs, td);
 
 	/*
 	 * If appropriate, do the wait and free here.
@@ -2047,6 +2034,46 @@ do_sendfile(struct thread *td, struct sendfile_args *uap, int compat)
 	 * We've wired down the page references after all.
 	 */
 	fdrop(fp, td);
+
+out:
+	return (error);
+}
+
+static int
+do_sendfile(struct thread *td, struct sendfile_args *uap, int compat)
+{
+	struct sf_hdtr hdtr;
+	struct uio *hdr_uio, *trl_uio;
+	int error;
+	off_t sbytes;
+
+	/*
+	 * File offset must be positive.  If it goes beyond EOF
+	 * we send only the header/trailer and no payload data.
+	 */
+	if (uap->offset < 0)
+		return (EINVAL);
+
+	hdr_uio = trl_uio = NULL;
+
+	if (uap->hdtr != NULL) {
+		error = copyin(uap->hdtr, &hdtr, sizeof(hdtr));
+		if (error != 0)
+			goto out;
+		if (hdtr.headers != NULL) {
+			error = copyinuio(hdtr.headers, hdtr.hdr_cnt, &hdr_uio);
+			if (error != 0)
+				goto out;
+		}
+		if (hdtr.trailers != NULL) {
+			error = copyinuio(hdtr.trailers, hdtr.trl_cnt, &trl_uio);
+			if (error != 0)
+				goto out;
+		}
+	}
+
+	error = _do_sendfile(td, uap->fd, uap->s, uap->flags, compat,
+	    uap->offset, uap->nbytes, &sbytes, hdr_uio, trl_uio);
 
 	if (uap->sbytes != NULL) {
 		copyout(&sbytes, uap->sbytes, sizeof(off_t));

@@ -164,10 +164,10 @@ atibl_setlevel(struct atibl_softc *sc, int newlevel)
 	if (newlevel < 0)
 		newlevel = 0;
 
-	newlevel = (newlevel * 5) / 2 + 5;
 	lvds_gen_cntl = bus_read_4(sc->sc_memr, RADEON_LVDS_GEN_CNTL);
 
 	if (newlevel > 0) {
+		newlevel = (newlevel * 5) / 2 + 5;
 		lvds_pll_cntl = bus_read_4(sc->sc_memr, RADEON_LVDS_PLL_CNTL);
 		lvds_pll_cntl |= RADEON_LVDS_PLL_EN;
 		bus_write_4(sc->sc_memr, RADEON_LVDS_PLL_CNTL, lvds_pll_cntl);
@@ -210,7 +210,8 @@ atibl_getlevel(struct atibl_softc *sc)
 
 	level = ((lvds_gen_cntl & RADEON_LVDS_BL_MOD_LEVEL_MASK) >>
 	    RADEON_LVDS_BL_MOD_LEVEL_SHIFT);
-	level = ((level - 5) * 2) / 5;
+	if (level != 0)
+		level = ((level - 5) * 2) / 5;
 
 	return (level);
 }

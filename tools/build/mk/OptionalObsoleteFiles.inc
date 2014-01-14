@@ -358,6 +358,13 @@ OLD_DIRS+=usr/share/calendar
 OLD_FILES+=usr/share/man/man1/calendar.1.gz
 .endif
 
+.if ${MK_CASPER} == no
+OLD_FILES+=etc/rc.d/casperd
+OLD_LIBS+=lib/libcasper.so.0
+OLD_FILES+=sbin/casper
+OLD_FILES+=usr/lib/libcasper.a
+.endif
+
 .if ${MK_CDDL} == no
 OLD_LIBS+=lib/libavl.so.2
 OLD_LIBS+=lib/libctf.so.2
@@ -4059,6 +4066,26 @@ OLD_FILES+=usr/share/man/man8/telnetd.8.gz
 .if ${MK_TESTS} == yes
 OLD_FILES+=usr/tests/lib/atf/libatf-c/test_helpers_test
 OLD_FILES+=usr/tests/lib/atf/test-programs/fork_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/application_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/env_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/exceptions_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/expand_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/fs_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/parser_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/process_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/sanity_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/text_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c++/ui_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/dynstr_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/env_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/fs_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/list_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/map_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/process_helpers
+OLD_FILES+=usr/tests/lib/atf/libatf-c/process_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/sanity_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/text_test
+OLD_FILES+=usr/tests/lib/atf/libatf-c/user_test
 .else
 # ATF libraries.
 OLD_FILES+=usr/bin/atf-sh
