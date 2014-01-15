@@ -91,7 +91,6 @@ struct devclass {
 	device_t	*devices;	/* array of devices indexed by unit */
 	int		maxunit;	/* size of devices array */
 	int		flags;
-	int		pass;
 #define DC_HAS_CHILDREN		1
 
 	struct sysctl_ctx_list sysctl_ctx;
@@ -125,6 +124,7 @@ struct device {
 	char*		nameunit;	/**< name+unit e.g. foodev0 */
 	char*		desc;		/**< driver specific description */
 	int		busy;		/**< count of calls to device_busy() */
+	int		pass;		/**< pass number this device was attached at */
 	device_state_t	state;		/**< current device state  */
 	uint32_t	devflags;	/**< api level flags for device_get_flags() */
 	u_int		flags;		/**< internal device flags  */
@@ -136,7 +136,6 @@ struct device {
 #define	DF_DONENOMATCH	0x20		/* don't execute DEVICE_NOMATCH again */
 #define	DF_EXTERNALSOFTC 0x40		/* softc not allocated by us */
 #define	DF_REBID	0x80		/* Can rebid after attach */
-#define DF_SUSPENDED	0x100		/* Device is suspended. */
 	u_int	order;			/**< order from device_add_child_ordered() */
 	void	*ivars;			/**< instance variables  */
 	void	*softc;			/**< current driver's variables  */
@@ -1086,7 +1085,6 @@ devclass_add_driver(devclass_t dc, driver_t *driver, int pass, devclass_t *dcp)
 	TAILQ_INSERT_TAIL(&dc->drivers, dl, link);
 	driver->refs++;		/* XXX: kobj_mtx */
 	dl->pass = pass;
-	(*dcp)->pass = pass;	/* Used in suspend/resume. */
 	driver_register_pass(dl);
 
 	devclass_driver_added(dc, driver);
@@ -2815,6 +2813,7 @@ device_attach(device_t dev)
 	else
 		dev->state = DS_ATTACHED;
 	dev->flags &= ~DF_DONENOMATCH;
+	dev->pass = bus_current_pass;
 	devadded(dev);
 	return (0);
 }
@@ -3587,6 +3586,38 @@ bus_generic_shutdown(device_t dev)
 }
 
 /**
+ * @brief Helper function for implementing DEVICE_SUSPEND_CHILD()
+ *
+ * This function can be used to help implement the DEVICE_SUSPEND_CHILD()
+ * for a bus. It calls DEVICE_SUSPEND() for the given child.
+ */
+int
+bus_generic_suspend_child(device_t dev, device_t child)
+{
+	int error;
+	
+	error = DEVICE_SUSPEND(child);
+
+	return (error);
+}
+
+/**
+ * @brief Helper function for implementing DEVICE_RESUME_CHILD()
+ *
+ * This function can be used to help implement the DEVICE_RESUME_CHILD()
+ * for a bus. It calls DEVICE_RESUME() for the given child.
+ */
+int
+bus_generic_resume_child(device_t dev, device_t child)
+{
+	int error;
+	
+	error = DEVICE_RESUME(child);
+
+	return (error);
+}
+
+/**
  * @brief Helper function for implementing DEVICE_SUSPEND()
  *
  * This function can be used to help implement the DEVICE_SUSPEND()
@@ -3598,30 +3629,41 @@ bus_generic_shutdown(device_t dev)
 int
 bus_generic_suspend(device_t dev)
 {
-	int		error;
-	int		again = 0;
+	int		error = 0;
 	device_t	child, child2;
 
+	if (dev->state == DS_SUSPENDED)
+		return (0);
+
 	TAILQ_FOREACH(child, &dev->children, link) {
-		if (!(child->flags & DF_SUSPENDED)) {
-			error = DEVICE_SUSPEND(child);
-			if (error && error != EAGAIN) {
-				for (child2 = TAILQ_FIRST(&dev->children);
-				     child2 && child2 != child;
-				     child2 = TAILQ_NEXT(child2, link)) {
-					DEVICE_RESUME(child2);
-					child2->flags &= ~DF_SUSPENDED;
-				}
-				return (error);
+		if (child->state != DS_SUSPENDED)
+			error = bus_generic_suspend(child);
+		if (error == 0) {
+			/* We won't busy ourselves with busy devices. */
+			if (child->state == DS_BUSY)
+				error = (EBUSY);
+			else if (child->pass >= bus_current_pass && child->state == DS_ATTACHED) {
+				printf("Suspending %s, child of %s\n", child->nameunit, dev->nameunit);
+				error = BUS_SUSPEND_CHILD(dev, child);
+				if (error != 0)
+					printf("Error suspending child %s: %d\n", child->nameunit, error);
+				if (error == 0)
+					child->state = DS_SUSPENDED;
 			}
-			if (error == EAGAIN) {
-				again = EAGAIN;
-				continue;
+		}
+
+		if (error) {
+			for (child2 = TAILQ_FIRST(&dev->children);
+				 child2 && child2 != child;
+				 child2 = TAILQ_NEXT(child2, link)) {
+				BUS_RESUME_CHILD(dev, child2);
+				bus_generic_resume(child2);
 			}
-			child->flags |= DF_SUSPENDED;
+			return (error);
 		}
 	}
-	return (again);
+
+	return (error);
 }
 
 /**
@@ -3634,31 +3676,23 @@ int
 bus_generic_resume(device_t dev)
 {
 	device_t	child;
-	int		error = 0;
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		if (child->flags & DF_SUSPENDED) {
-			if (child->devclass->pass > bus_current_pass) {
-				if (bootverbose)
-					printf("Skipping: %s: %d, %d\n",
-					    child->nameunit,
-					    child->devclass->pass,
-					    bus_current_pass);
-				error = EAGAIN;
-				continue;
-			}
-			if (DEVICE_RESUME(child) == EAGAIN) {
-				error = EAGAIN;
-				continue;
-			}
+		if (child->pass == bus_current_pass && child->state == DS_SUSPENDED) {
+			printf("Resuming %s, child of %s\n", child->nameunit, dev->nameunit);
+			BUS_RESUME_CHILD(dev, child);
+
 			/* if resume fails, there's nothing we can usefully do... */
-			child->flags &= ~DF_SUSPENDED;
+			/* Re-mark the child as attached. */
+			child->state = DS_ATTACHED;
 		}
-		else
-			if (bootverbose)
-				printf("Skipping %s: already resumed\n", child->nameunit);
+
+		/* Recurse through the child, resuming all its children. */
+		if (child->pass <= bus_current_pass) {
+			bus_generic_resume(child);
+		}
 	}
-	return (error);
+	return (0);
 }
 
 /**
@@ -4465,18 +4499,22 @@ root_resume(device_t dev)
 {
 	struct driverlink *dl;
 	int error = 0;
+	int rv = 0;
 
 	TAILQ_FOREACH(dl, &passes, passlink) {
+		/*
+		 * Raise the pass level to the next level and rescan
+		 * the tree.
+		 */
 		bus_current_pass = dl->pass;
 		error = bus_generic_resume(dev);
-
-		if (error != EAGAIN)
-			break;
+		if (error != 0)
+			rv = error;
 	}
 
-	if (error == 0)
+	if (rv == 0)
 		devctl_notify("kern", "power", "resume", NULL);
-	return (error);
+	return (rv);
 }
 
 static int
@@ -4487,9 +4525,23 @@ root_suspend(device_t dev)
 
 	TAILQ_FOREACH_REVERSE(dl, &passes, driver_list, passlink) {
 		bus_current_pass = dl->pass;
+		printf("New pass: %d\n", bus_current_pass);
 		error = bus_generic_suspend(dev);
-		if (error != EAGAIN)
+		if (error != 0)
 			break;
+	}
+
+	if (error != 0) {
+		printf("Error %d\n", error);
+		TAILQ_FOREACH_FROM(dl, &passes, passlink) {
+			if (dl->pass <= bus_current_pass)
+				continue;
+
+			bus_current_pass = dl->pass;
+			error = bus_generic_resume(dev);
+			if (error != 0)
+				break;
+		}
 	}
 
 	return (error);

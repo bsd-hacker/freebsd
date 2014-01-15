@@ -95,7 +95,7 @@ static driver_t openpic_ofw_driver = {
 
 DRIVER_MODULE(openpic, nexus, openpic_ofw_driver, openpic_devclass, 0, 0);
 DRIVER_MODULE(openpic, simplebus, openpic_ofw_driver, openpic_devclass, 0, 0);
-DRIVER_MODULE(openpic, macio, openpic_ofw_driver, openpic_devclass, 0, 0);
+EARLY_DRIVER_MODULE(openpic, macio, openpic_ofw_driver, openpic_devclass, 0, 0, BUS_PASS_INTERRUPT);
 
 static int
 openpic_ofw_probe(device_t dev)

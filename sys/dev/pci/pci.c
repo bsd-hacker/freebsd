@@ -127,8 +127,6 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(device_attach,	pci_attach),
 	DEVMETHOD(device_detach,	bus_generic_detach),
 	DEVMETHOD(device_shutdown,	bus_generic_shutdown),
-	DEVMETHOD(device_suspend,	pci_suspend),
-	DEVMETHOD(device_resume,	pci_resume),
 
 	/* Bus interface */
 	DEVMETHOD(bus_print_child,	pci_print_child),
@@ -138,6 +136,8 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(bus_driver_added,	pci_driver_added),
 	DEVMETHOD(bus_setup_intr,	pci_setup_intr),
 	DEVMETHOD(bus_teardown_intr,	pci_teardown_intr),
+	DEVMETHOD(bus_suspend_child,	pci_suspend_child),
+	DEVMETHOD(bus_resume_child,	pci_resume_child),
 
 	DEVMETHOD(bus_get_dma_tag,	pci_get_dma_tag),
 	DEVMETHOD(bus_get_resource_list,pci_get_resource_list),
@@ -3364,12 +3364,11 @@ pci_attach(device_t dev)
 }
 
 static void
-pci_set_power_children(device_t dev, device_t *devlist, int numdevs,
-    int state)
+pci_set_power_child(device_t dev, device_t child, int state)
 {
-	device_t child, pcib;
+	device_t pcib;
 	struct pci_devinfo *dinfo;
-	int dstate, i;
+	int dstate;
 
 	/*
 	 * Set the device to the given state.  If the firmware suggests
@@ -3379,101 +3378,46 @@ pci_set_power_children(device_t dev, device_t *devlist, int numdevs,
 	 * are handled separately.
 	 */
 	pcib = device_get_parent(dev);
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		dinfo = device_get_ivars(child);
-		dstate = state;
-		if (device_is_attached(child) &&
-		    PCIB_POWER_FOR_SLEEP(pcib, dev, &dstate) == 0)
-			pci_set_powerstate(child, dstate);
-	}
+	dinfo = device_get_ivars(child);
+	dstate = state;
+	if (device_is_attached(child) &&
+	    PCIB_POWER_FOR_SLEEP(pcib, dev, &dstate) == 0)
+	    pci_set_powerstate(child, dstate);
 }
 
 int
-pci_suspend(device_t dev)
+pci_suspend_child(device_t dev, device_t child)
 {
-	device_t child, *devlist;
 	struct pci_devinfo *dinfo;
-	int error, i, numdevs;
+	int error;
 
-	/*
-	 * Save the PCI configuration space for each child and set the
-	 * device in the appropriate power state for this sleep state.
-	 */
-	if ((error = device_get_children(dev, &devlist, &numdevs)) != 0)
-		return (error);
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		dinfo = device_get_ivars(child);
-		pci_cfg_save(child, dinfo, 0);
-	}
+	dinfo = device_get_ivars(child);
+	pci_cfg_save(child, dinfo, 0);
 
-	/* Suspend devices before potentially powering them down. */
-	error = bus_generic_suspend(dev);
-	if (error) {
-		free(devlist, M_TEMP);
+	error = DEVICE_SUSPEND(child);
+
+	if (error)
 		return (error);
-	}
+
 	if (pci_do_power_suspend)
-		pci_set_power_children(dev, devlist, numdevs,
-		    PCI_POWERSTATE_D3);
-	free(devlist, M_TEMP);
+		pci_set_power_child(dev, child, PCI_POWERSTATE_D3);
+
 	return (0);
 }
 
 int
-pci_resume(device_t dev)
+pci_resume_child(device_t dev, device_t child)
 {
-	device_t child, *devlist;
 	struct pci_devinfo *dinfo;
-	int error, i, numdevs;
+	int error;
 
-	/*
-	 * Set each child to D0 and restore its PCI configuration space.
-	 */
-	if ((error = device_get_children(dev, &devlist, &numdevs)) != 0)
-		return (error);
 	if (pci_do_power_resume)
-		pci_set_power_children(dev, devlist, numdevs,
-		    PCI_POWERSTATE_D0);
+		pci_set_power_child(dev, child, PCI_POWERSTATE_D0);
+	error = DEVICE_RESUME(child);
 
-	/* Now the device is powered up, restore its config space. */
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		dinfo = device_get_ivars(child);
+	dinfo = device_get_ivars(child);
+	pci_cfg_restore(child, dinfo);
 
-		pci_cfg_restore(child, dinfo);
-		if (!device_is_attached(child))
-			pci_cfg_save(child, dinfo, 1);
-	}
-
-	/*
-	 * Resume critical devices first, then everything else later.
-	 */
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		switch (pci_get_class(child)) {
-		case PCIC_DISPLAY:
-		case PCIC_MEMORY:
-		case PCIC_BRIDGE:
-		case PCIC_BASEPERIPH:
-			error = DEVICE_RESUME(child);
-			break;
-		}
-	}
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		switch (pci_get_class(child)) {
-		case PCIC_DISPLAY:
-		case PCIC_MEMORY:
-		case PCIC_BRIDGE:
-		case PCIC_BASEPERIPH:
-			break;
-		default:
-			error = DEVICE_RESUME(child);
-		}
-	}
-	free(devlist, M_TEMP);
 	return (error);
 }
 

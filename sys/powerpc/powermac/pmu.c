@@ -132,10 +132,10 @@ static device_method_t  pmu_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		pmu_probe),
 	DEVMETHOD(device_attach,	pmu_attach),
-        DEVMETHOD(device_detach,        pmu_detach),
-        DEVMETHOD(device_shutdown,      bus_generic_shutdown),
-        DEVMETHOD(device_suspend,       pmu_suspend),
-        DEVMETHOD(device_resume,        pmu_resume),
+	DEVMETHOD(device_detach,        pmu_detach),
+	DEVMETHOD(device_shutdown,      bus_generic_shutdown),
+	DEVMETHOD(device_suspend,       pmu_suspend),
+	DEVMETHOD(device_resume,        pmu_resume),
 
 	/* ADB bus interface */
 	DEVMETHOD(adb_hb_send_raw_packet,   pmu_adb_send),
@@ -157,7 +157,7 @@ static driver_t pmu_driver = {
 
 static devclass_t pmu_devclass;
 
-DRIVER_MODULE(pmu, macio, pmu_driver, pmu_devclass, 0, 0);
+EARLY_DRIVER_MODULE(pmu, macio, pmu_driver, pmu_devclass, 0, 0, BUS_PASS_RESOURCE);
 DRIVER_MODULE(adb, pmu, adb_driver, adb_devclass, 0, 0);
 
 static int	pmuextint_probe(device_t);
@@ -431,6 +431,10 @@ pmu_attach(device_t dev)
 	    "sleep", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
 	    pmu_sleep, "I", "Put the machine to sleep");
 
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+	    "sleep", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
+	    pmu_sleep, "I", "Put the machine to sleep");
+
 	if (sc->sc_batteries > 0) {
 		struct sysctl_oid *oid, *battroot;
 		char battnum[2];
@@ -538,43 +542,6 @@ static void
 pmu_write_reg(struct pmu_softc *sc, u_int offset, uint8_t value) 
 {
 	bus_write_1(sc->sc_memr, offset, value);
-}
-
-static void
-pmu_save_state(struct pmu_softc *sc)
-{
-	sc->saved_regs[0] = pmu_read_reg(sc, vBufA);
-	sc->saved_regs[1] = pmu_read_reg(sc, vDirA);
-	sc->saved_regs[2] = pmu_read_reg(sc, vBufB);
-	sc->saved_regs[3] = pmu_read_reg(sc, vDirB);
-	sc->saved_regs[4] = pmu_read_reg(sc, vPCR);
-	sc->saved_regs[5] = pmu_read_reg(sc, vACR);
-	sc->saved_regs[6] = pmu_read_reg(sc, vIER);
-	sc->saved_regs[7] = pmu_read_reg(sc, vT1C);
-	sc->saved_regs[8] = pmu_read_reg(sc, vT1CH);
-}
-
-static void
-pmu_restore_state(struct pmu_softc *sc)
-{
-	pmu_write_reg(sc, vBufA, sc->saved_regs[0]);
-	eieio();
-	pmu_write_reg(sc, vDirA, sc->saved_regs[1]);
-	eieio();
-	pmu_write_reg(sc, vBufB, sc->saved_regs[2]);
-	eieio();
-	pmu_write_reg(sc, vDirB, sc->saved_regs[3]);
-	eieio();
-	pmu_write_reg(sc, vPCR, sc->saved_regs[4]);
-	eieio();
-	pmu_write_reg(sc, vACR, sc->saved_regs[5]);
-	eieio();
-	pmu_write_reg(sc, vIER, sc->saved_regs[6]);
-	eieio();
-	pmu_write_reg(sc, vT1C, sc->saved_regs[7]);
-	eieio();
-	pmu_write_reg(sc, vT1CH, sc->saved_regs[8]);
-	eieio();
 }
 
 static int
@@ -1079,6 +1046,34 @@ pmu_settime(device_t dev, struct timespec *ts)
 
 	return (0);
 }
+ 
+static void
+pmu_save_state(struct pmu_softc *sc)
+{
+	sc->saved_regs[0] = pmu_read_reg(sc, vBufA);
+	sc->saved_regs[1] = pmu_read_reg(sc, vDirA);
+	sc->saved_regs[2] = pmu_read_reg(sc, vBufB);
+	sc->saved_regs[3] = pmu_read_reg(sc, vDirB);
+	sc->saved_regs[4] = pmu_read_reg(sc, vPCR);
+	sc->saved_regs[5] = pmu_read_reg(sc, vACR);
+	sc->saved_regs[6] = pmu_read_reg(sc, vIER);
+	sc->saved_regs[7] = pmu_read_reg(sc, vT1C);
+	sc->saved_regs[8] = pmu_read_reg(sc, vT1CH);
+}
+
+static void
+pmu_restore_state(struct pmu_softc *sc)
+{
+	pmu_write_reg(sc, vBufA, sc->saved_regs[0]);
+	pmu_write_reg(sc, vDirA, sc->saved_regs[1]);
+	pmu_write_reg(sc, vBufB, sc->saved_regs[2]);
+	pmu_write_reg(sc, vDirB, sc->saved_regs[3]);
+	pmu_write_reg(sc, vPCR, sc->saved_regs[4]);
+	pmu_write_reg(sc, vACR, sc->saved_regs[5]);
+	pmu_write_reg(sc, vIER, sc->saved_regs[6]);
+	pmu_write_reg(sc, vT1C, sc->saved_regs[7]);
+	pmu_write_reg(sc, vT1CH, sc->saved_regs[8]);
+}
 
 static int
 pmu_suspend(device_t dev)
@@ -1189,31 +1184,6 @@ void pmu_sleep_int(void)
 	powerpc_sync();
 }
 
-static int
-pmu_sleep(SYSCTL_HANDLER_ARGS)
-{
-	u_int sleep = 0;
-	int error;
-
-	error = sysctl_handle_int(oidp, &sleep, 0, req);
-
-	if (error || !req->newptr)
-		return (error);
-
-	mtx_lock(&Giant);
-	error = DEVICE_SUSPEND(root_bus);
-	if (error == 0) {
-		spinlock_enter();
-		pmu_sleep_int();
-
-		spinlock_exit();
-		DEVICE_RESUME(root_bus);
-	}
-	mtx_unlock(&Giant);
-
-	return (error);
-}
-
 int
 pmu_set_speed(int low_speed)
 {
@@ -1239,4 +1209,30 @@ pmu_set_speed(int low_speed)
 	pmu_write_reg(sc, vIER, 0x90);
 
 	return (0);
+}
+
+static int
+pmu_sleep(SYSCTL_HANDLER_ARGS)
+{
+	u_int sleep = 0;
+	int error;
+
+	error = sysctl_handle_int(oidp, &sleep, 0, req);
+
+	if (error || !req->newptr)
+		return (error);
+
+	mtx_lock(&Giant);
+	error = DEVICE_SUSPEND(root_bus);
+	if (error == 0) {
+		spinlock_enter();
+		pmu_sleep_int();
+
+		spinlock_exit();
+		DEVICE_RESUME(root_bus);
+	}
+	mtx_unlock(&Giant);
+	printf("Fully resumed.\n");
+
+	return (error);
 }

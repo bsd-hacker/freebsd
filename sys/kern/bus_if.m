@@ -670,3 +670,25 @@ METHOD int remap_intr {
 	device_t	_child;
 	u_int		_irq;
 } DEFAULT null_remap_intr;
+
+/**
+ * @brief Resume a child of the bus
+ *
+ * @param _dev		the bus device
+ * @param _child	the child device
+ */
+METHOD int resume_child {
+	device_t	_dev;
+	device_t	_child;
+} DEFAULT bus_generic_resume_child;
+
+/**
+ * @brief Suspend a child of the bus
+ *
+ * @param _dev		the bus device
+ * @param _child	the child device
+ */
+METHOD int suspend_child {
+	device_t	_dev;
+	device_t	_child;
+} DEFAULT bus_generic_suspend_child;

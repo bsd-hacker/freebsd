@@ -30,6 +30,7 @@
 
 /* VIA interface registers */
 #define vBufB		0x0000	/* register B */
+#define vBufAH		0x0200	/* register A (handshake) */
 #define vDirB		0x0400	/* data direction register */
 #define vDirA		0x0600	/* data direction register */
 #define vT1C		0x0800	/* Timer 1 counter Lo */
