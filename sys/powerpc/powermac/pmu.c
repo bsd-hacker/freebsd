@@ -431,10 +431,6 @@ pmu_attach(device_t dev)
 	    "sleep", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
 	    pmu_sleep, "I", "Put the machine to sleep");
 
-	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "sleep", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
-	    pmu_sleep, "I", "Put the machine to sleep");
-
 	if (sc->sc_batteries > 0) {
 		struct sysctl_oid *oid, *battroot;
 		char battnum[2];
@@ -492,7 +488,6 @@ pmu_attach(device_t dev)
 		}
 	}
 
-	sc->lid_closed = 0;
 	/*
 	 * Set up LED interface
 	 */
