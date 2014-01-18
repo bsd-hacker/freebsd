@@ -727,16 +727,16 @@ pmu_intr(void *arg)
 	}
 	if (resp[1] & PMU_INT_ENVIRONMENT) {
 		/* if the lid was just closed, notify devd. */
-		if ((resp[2] & PMU_ENV_LID_CLOSED) && (!sc->lid_closed)) {
-			sc->lid_closed = 1;
+		if ((resp[2] & PMU_ENV_LID_CLOSED) && (!sc->sc_lid_closed)) {
+			sc->sc_lid_closed = 1;
 			if (devctl_process_running())
 				devctl_notify("PMU", "lid", "close", NULL);
 		}
-		else if (!(resp[2] & PMU_ENV_LID_CLOSED) && (sc->lid_closed)) {
+		else if (!(resp[2] & PMU_ENV_LID_CLOSED) && (sc->sc_lid_closed)) {
 			/* if the lid was just opened, notify devd. */
 			if (devctl_process_running())
 				devctl_notify("PMU", "lid", "open", NULL);
-			sc->lid_closed = 0;
+			sc->sc_lid_closed = 0;
 		}
 	}
 }
@@ -1045,29 +1045,29 @@ pmu_settime(device_t dev, struct timespec *ts)
 static void
 pmu_save_state(struct pmu_softc *sc)
 {
-	sc->saved_regs[0] = pmu_read_reg(sc, vBufA);
-	sc->saved_regs[1] = pmu_read_reg(sc, vDirA);
-	sc->saved_regs[2] = pmu_read_reg(sc, vBufB);
-	sc->saved_regs[3] = pmu_read_reg(sc, vDirB);
-	sc->saved_regs[4] = pmu_read_reg(sc, vPCR);
-	sc->saved_regs[5] = pmu_read_reg(sc, vACR);
-	sc->saved_regs[6] = pmu_read_reg(sc, vIER);
-	sc->saved_regs[7] = pmu_read_reg(sc, vT1C);
-	sc->saved_regs[8] = pmu_read_reg(sc, vT1CH);
+	sc->sc_saved_regs[0] = pmu_read_reg(sc, vBufA);
+	sc->sc_saved_regs[1] = pmu_read_reg(sc, vDirA);
+	sc->sc_saved_regs[2] = pmu_read_reg(sc, vBufB);
+	sc->sc_saved_regs[3] = pmu_read_reg(sc, vDirB);
+	sc->sc_saved_regs[4] = pmu_read_reg(sc, vPCR);
+	sc->sc_saved_regs[5] = pmu_read_reg(sc, vACR);
+	sc->sc_saved_regs[6] = pmu_read_reg(sc, vIER);
+	sc->sc_saved_regs[7] = pmu_read_reg(sc, vT1C);
+	sc->sc_saved_regs[8] = pmu_read_reg(sc, vT1CH);
 }
 
 static void
 pmu_restore_state(struct pmu_softc *sc)
 {
-	pmu_write_reg(sc, vBufA, sc->saved_regs[0]);
-	pmu_write_reg(sc, vDirA, sc->saved_regs[1]);
-	pmu_write_reg(sc, vBufB, sc->saved_regs[2]);
-	pmu_write_reg(sc, vDirB, sc->saved_regs[3]);
-	pmu_write_reg(sc, vPCR, sc->saved_regs[4]);
-	pmu_write_reg(sc, vACR, sc->saved_regs[5]);
-	pmu_write_reg(sc, vIER, sc->saved_regs[6]);
-	pmu_write_reg(sc, vT1C, sc->saved_regs[7]);
-	pmu_write_reg(sc, vT1CH, sc->saved_regs[8]);
+	pmu_write_reg(sc, vBufA, sc->sc_saved_regs[0]);
+	pmu_write_reg(sc, vDirA, sc->sc_saved_regs[1]);
+	pmu_write_reg(sc, vBufB, sc->sc_saved_regs[2]);
+	pmu_write_reg(sc, vDirB, sc->sc_saved_regs[3]);
+	pmu_write_reg(sc, vPCR, sc->sc_saved_regs[4]);
+	pmu_write_reg(sc, vACR, sc->sc_saved_regs[5]);
+	pmu_write_reg(sc, vIER, sc->sc_saved_regs[6]);
+	pmu_write_reg(sc, vT1C, sc->sc_saved_regs[7]);
+	pmu_write_reg(sc, vT1CH, sc->sc_saved_regs[8]);
 }
 
 static int
