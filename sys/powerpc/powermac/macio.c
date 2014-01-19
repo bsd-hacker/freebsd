@@ -665,18 +665,9 @@ macio_enable_wireless(device_t dev, bool enable)
 
 static int macio_suspend(device_t dev)
 {
-	int error;
 	uint32_t temp;
 	struct macio_softc *sc = device_get_softc(dev);
 
-	error = bus_generic_suspend(dev);
-
-	if (error)
-		return (error);
-
-	if (bus_current_pass != BUS_PASS_BUS) {
-		return (EAGAIN);
-	}
 	powerpc_sync();
 
 	sc->saved_fcrs[0] = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
@@ -745,20 +736,18 @@ static int macio_resume(device_t dev)
 {
 	struct macio_softc *sc = device_get_softc(dev);
 
-	if (bus_current_pass == BUS_PASS_BUS) {
-		if (sc->sc_devid == 0x22)
-			bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, sc->saved_mbcr);
+	if (sc->sc_devid == 0x22)
+		bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, sc->saved_mbcr);
 
-		bus_write_4(sc->sc_memr, KEYLARGO_FCR0, sc->saved_fcrs[0]);
-		bus_write_4(sc->sc_memr, KEYLARGO_FCR1, sc->saved_fcrs[1]);
-		bus_write_4(sc->sc_memr, KEYLARGO_FCR2, sc->saved_fcrs[2]);
-		bus_write_4(sc->sc_memr, KEYLARGO_FCR3, sc->saved_fcrs[3]);
-		bus_write_4(sc->sc_memr, KEYLARGO_FCR4, sc->saved_fcrs[4]);
-		bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->saved_fcrs[5]);
-	}
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, sc->saved_fcrs[0]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, sc->saved_fcrs[1]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, sc->saved_fcrs[2]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, sc->saved_fcrs[3]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR4, sc->saved_fcrs[4]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->saved_fcrs[5]);
 
 	/* Let things settle. */
 	DELAY(1000);
 
-	return (bus_generic_resume(dev));
+	return (0);
 }

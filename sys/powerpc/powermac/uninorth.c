@@ -649,15 +649,7 @@ unin_chip_suspend(device_t dev)
 {
 	int error;
 
-	error = bus_generic_suspend(dev);
-
-	if (error)
-		return (error);
-
-	if (bus_current_pass == BUS_PASS_BUS)
-		error = unin_chip_sleep(dev, 0);
-	else
-		error = EAGAIN;
+	error = unin_chip_sleep(dev, 0);
 
 	return (error);
 }
@@ -666,10 +658,9 @@ static int
 unin_chip_resume(device_t dev)
 {
 
-	if (bus_current_pass == BUS_PASS_BUS)
-		unin_chip_wake(dev);
+	unin_chip_wake(dev);
 
-	return (bus_generic_resume(dev));
+	return (0);
 }
 
 int
