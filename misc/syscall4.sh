@@ -73,7 +73,8 @@ while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
 		    killall $q -9 syscall4
 	fi
 	wait
-	ipcs | awk '/^(q|m|s)/ {print " -" $1, $2}' | xargs -L 1 ipcrm
+	ipcs | grep nobody | awk '/^(q|m|s)/ {print " -" $1, $2}' |
+	    xargs -L 1 ipcrm
 done
 killall $q -9 syscall4
 ps aux | grep -v grep | egrep "syscall4" | egrep -v "\.sh" &&
@@ -132,6 +133,7 @@ static int ignore[] = {
 	SYS_sigtimedwait,
 	SYS_sigwaitinfo,
 #if       __FreeBSD_version <  804500
+	SYS_thr_create,
 	SYS_thr_new,
 #endif
 #if       __FreeBSD_version >= 900041
