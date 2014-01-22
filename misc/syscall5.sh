@@ -82,6 +82,11 @@ while [ $n -gt 0 ]; do
 	name=`grep -w $n /usr/include/sys/syscall.h | awk '{print $2}' | 
 		sed 's/SYS_//'`
 	[ -z "$name" ] && name="unknown"
+	if [ -x ../tools/exclude_syscall.sh ]; then
+		name=`../tools/exclude_syscall.sh $n`
+		[ $name = "Excluded" ] &&
+		    { n=$((n - 1)); continue; }
+	fi
 	echo "`date '+%T'` syscall $n ($name)" | 
 		tee /dev/tty >> ./syscall5.log
 	printf "`date '+%T'` syscall $n ($name)\r\n" > /dev/console
