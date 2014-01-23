@@ -47,6 +47,10 @@
 #define vPB4		0x10
 #define vPB5		0x20
 #define vSR_INT		0x04
+#define vCB2_INT	0x08
+#define vCB1_INT	0x10
 #define vSR_OUT		0x10
+#define vIER_SET	0x80
+#define vIER_CLR	0x00
 
 #endif /* _POWERPC_VIAREG_H_ */
