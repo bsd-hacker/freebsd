@@ -285,15 +285,13 @@ vlapic_set_intr_ready(struct vlapic *vlapic, int vector, bool level)
 	atomic_set_int(&irrptr[idx], mask);
 
 	/*
-	 * Upon acceptance of an interrupt into the IRR the corresponding
-	 * TMR bit is cleared for edge-triggered interrupts and set for
-	 * level-triggered interrupts.
+	 * Verify that the trigger-mode of the interrupt matches with
+	 * the vlapic TMR registers.
 	 */
 	tmrptr = &lapic->tmr0;
-	if (level)
-		atomic_set_int(&tmrptr[idx], mask);
-	else
-		atomic_clear_int(&tmrptr[idx], mask);
+	KASSERT((tmrptr[idx] & mask) == (level ? mask : 0),
+	    ("vlapic TMR[%d] is 0x%08x but interrupt is %s-triggered",
+	    idx / 4, tmrptr[idx], level ? "level" : "edge"));
 
 	VLAPIC_CTR_IRR(vlapic, "vlapic_set_intr_ready");
 	return (1);
@@ -1302,6 +1300,7 @@ vlapic_reset(struct vlapic *vlapic)
 	lapic->dfr = 0xffffffff;
 	lapic->svr = APIC_SVR_VECTOR;
 	vlapic_mask_lvts(vlapic);
+	vlapic_reset_tmr(vlapic);
 
 	lapic->dcr_timer = 0;
 	vlapic_dcr_write_handler(vlapic);
@@ -1457,4 +1456,63 @@ vlapic_enabled(struct vlapic *vlapic)
 		return (true);
 	else
 		return (false);
+}
+
+static void
+vlapic_set_tmr(struct vlapic *vlapic, int vector, bool level)
+{
+	struct LAPIC *lapic;
+	uint32_t *tmrptr, mask;
+	int idx;
+
+	lapic = vlapic->apic_page;
+	tmrptr = &lapic->tmr0;
+	idx = (vector / 32) * 4;
+	mask = 1 << (vector % 32);
+	if (level)
+		tmrptr[idx] |= mask;
+	else
+		tmrptr[idx] &= ~mask;
+
+	if (vlapic->ops.set_tmr != NULL)
+		(*vlapic->ops.set_tmr)(vlapic, vector, level);
+}
+
+void
+vlapic_reset_tmr(struct vlapic *vlapic)
+{
+	int vector;
+
+	VLAPIC_CTR0(vlapic, "vlapic resetting all vectors to edge-triggered");
+
+	for (vector = 0; vector <= 255; vector++)
+		vlapic_set_tmr(vlapic, vector, false);
+}
+
+void
+vlapic_set_tmr_level(struct vlapic *vlapic, uint32_t dest, bool phys,
+    int delmode, int vector)
+{
+	cpuset_t dmask;
+	bool lowprio;
+
+	KASSERT(vector >= 0 && vector <= 255, ("invalid vector %d", vector));
+
+	/*
+	 * A level trigger is valid only for fixed and lowprio delivery modes.
+	 */
+	if (delmode != APIC_DELMODE_FIXED && delmode != APIC_DELMODE_LOWPRIO) {
+		VLAPIC_CTR1(vlapic, "Ignoring level trigger-mode for "
+		    "delivery-mode %d", delmode);
+		return;
+	}
+
+	lowprio = (delmode == APIC_DELMODE_LOWPRIO);
+	vlapic_calcdest(vlapic->vm, &dmask, dest, phys, lowprio, false);
+
+	if (!CPU_ISSET(vlapic->vcpuid, &dmask))
+		return;
+
+	VLAPIC_CTR1(vlapic, "vector %d set to level-triggered", vector);
+	vlapic_set_tmr(vlapic, vector, true);
 }
