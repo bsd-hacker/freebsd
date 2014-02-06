@@ -37,14 +37,15 @@ CFLAGS=	-Os \
 	-Wall -Waggregate-return -Wbad-function-cast -Wcast-align \
 	-Wmissing-declarations -Wmissing-prototypes -Wnested-externs \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
-	-Winline --param max-inline-insns-single=100 \
+	-Winline \
 	${CLANG_OPT_SMALL}
 
 CFLAGS.gcc+=	-fno-guess-branch-probability \
 		-fno-unit-at-a-time \
 		-Wl,-mno-align-long-strings \
+		--param max-inline-insns-single=100
 
-LDFLAGS=-static -N --gc-sections
+LD_FLAGS=-static -N --gc-sections
 
 # Pick up ../Makefile.inc early.
 .include <bsd.init.mk>
@@ -60,7 +61,7 @@ boot1: boot1.out
 	objcopy -S -O binary boot1.out ${.TARGET}
 
 boot1.out: boot1.o
-	${LD} ${LDFLAGS} -m elf_i386_fbsd -e start -Ttext ${ORG1} \
+	${LD} ${LD_FLAGS} -m elf_i386_fbsd -e start -Ttext ${ORG1} \
 	    -o ${.TARGET} boot1.o
 
 CLEANFILES+=	boot2 boot2.ld boot2.ldr boot2.bin boot2.out boot2.o \
@@ -82,7 +83,7 @@ boot2.bin: boot2.out
 	objcopy -S -O binary boot2.out ${.TARGET}
 
 boot2.out: ${BTXCRT} boot2.o sio.o
-	${LD} ${LDFLAGS} -m elf_i386_fbsd -Ttext ${ORG2} -o ${.TARGET} \
+	${LD} ${LD_FLAGS} -m elf_i386_fbsd -Ttext ${ORG2} -o ${.TARGET} \
 	    ${.ALLSRC}
 
 boot2.o: boot2.s

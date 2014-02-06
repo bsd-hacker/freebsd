@@ -47,12 +47,12 @@ struct pmap;
 
 enum x2apic_state;
 
-typedef int	(*vmm_init_func_t)(void);
+typedef int	(*vmm_init_func_t)(int ipinum);
 typedef int	(*vmm_cleanup_func_t)(void);
 typedef void	(*vmm_resume_func_t)(void);
 typedef void *	(*vmi_init_func_t)(struct vm *vm, struct pmap *pmap);
 typedef int	(*vmi_run_func_t)(void *vmi, int vcpu, register_t rip,
-				  struct pmap *pmap);
+				  struct pmap *pmap, void *rendezvous_cookie);
 typedef void	(*vmi_cleanup_func_t)(void *vmi);
 typedef int	(*vmi_get_register_t)(void *vmi, int vcpu, int num,
 				      uint64_t *retval);
@@ -134,6 +134,31 @@ int vm_apicid2vcpuid(struct vm *vm, int apicid);
 void vm_activate_cpu(struct vm *vm, int vcpu);
 cpuset_t vm_active_cpus(struct vm *vm);
 struct vm_exit *vm_exitinfo(struct vm *vm, int vcpuid);
+
+/*
+ * Rendezvous all vcpus specified in 'dest' and execute 'func(arg)'.
+ * The rendezvous 'func(arg)' is not allowed to do anything that will
+ * cause the thread to be put to sleep.
+ *
+ * If the rendezvous is being initiated from a vcpu context then the
+ * 'vcpuid' must refer to that vcpu, otherwise it should be set to -1.
+ *
+ * The caller cannot hold any locks when initiating the rendezvous.
+ *
+ * The implementation of this API may cause vcpus other than those specified
+ * by 'dest' to be stalled. The caller should not rely on any vcpus making
+ * forward progress when the rendezvous is in progress.
+ */
+typedef void (*vm_rendezvous_func_t)(struct vm *vm, int vcpuid, void *arg);
+void vm_smp_rendezvous(struct vm *vm, int vcpuid, cpuset_t dest,
+    vm_rendezvous_func_t func, void *arg);
+
+static __inline int
+vcpu_rendezvous_pending(void *rendezvous_cookie)
+{
+
+	return (*(uintptr_t *)rendezvous_cookie != 0);
+}
 
 /*
  * Return 1 if device indicated by bus/slot/func is supposed to be a
@@ -272,6 +297,8 @@ enum vm_exitcode {
 	VM_EXITCODE_INST_EMUL,
 	VM_EXITCODE_SPINUP_AP,
 	VM_EXITCODE_SPINDOWN_CPU,
+	VM_EXITCODE_RENDEZVOUS,
+	VM_EXITCODE_IOAPIC_EOI,
 	VM_EXITCODE_MAX
 };
 
@@ -296,6 +323,8 @@ struct vm_exit {
 			uint64_t	gpa;
 			uint64_t	gla;
 			uint64_t	cr3;
+			enum vie_cpu_mode cpu_mode;
+			enum vie_paging_mode paging_mode;
 			struct vie	vie;
 		} inst_emul;
 		/*
@@ -303,9 +332,19 @@ struct vm_exit {
 		 * exitcode to represent the VM-exit.
 		 */
 		struct {
-			int		error;		/* vmx inst error */
+			int		status;		/* vmx inst status */
+			/*
+			 * 'exit_reason' and 'exit_qualification' are valid
+			 * only if 'status' is zero.
+			 */
 			uint32_t	exit_reason;
 			uint64_t	exit_qualification;
+			/*
+			 * 'inst_error' and 'inst_type' are valid
+			 * only if 'status' is non-zero.
+			 */
+			int		inst_type;
+			int		inst_error;
 		} vmx;
 		struct {
 			uint32_t	code;		/* ecx value */
@@ -318,6 +357,9 @@ struct vm_exit {
 		struct {
 			uint64_t	rflags;
 		} hlt;
+		struct {
+			int		vector;
+		} ioapic_eoi;
 	} u;
 };
 

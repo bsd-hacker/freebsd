@@ -372,7 +372,7 @@ am335x_dmtimer_pps_init(device_t dev, struct am335x_dmtimer_softc *sc)
 	 * yet from ti_scm.h.
 	 */
 	timer_num = 0;
-	for (i = 0; nitems(padinfo) && timer_num == 0; ++i) {
+	for (i = 0; i < nitems(padinfo) && timer_num == 0; ++i) {
 		if (ti_scm_padconf_get(padinfo[i].ballname, &padmux, 
 		    &padstate) == 0) {
 			if (strcasecmp(padinfo[i].muxname, padmux) == 0 &&
@@ -527,6 +527,9 @@ am335x_dmtimer_intr(void *arg)
 static int
 am335x_dmtimer_probe(device_t dev)
 {
+
+	if (!ofw_bus_status_okay(dev))
+		return (ENXIO);
 
 	if (ofw_bus_is_compatible(dev, "ti,am335x-dmtimer")) {
 		device_set_desc(dev, "AM335x DMTimer");

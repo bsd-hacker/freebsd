@@ -13,6 +13,7 @@ MAN=	aac.4 \
 	${_acpi_hp.4} \
 	${_acpi_ibm.4} \
 	${_acpi_panasonic.4} \
+	${_acpi_rapidstart.4} \
 	${_acpi_sony.4} \
 	acpi_thermal.4 \
 	${_acpi_toshiba.4} \
@@ -153,6 +154,7 @@ MAN=	aac.4 \
 	geom_fox.4 \
 	geom_linux_lvm.4 \
 	geom_map.4 \
+	geom_uncompress.4 \
 	geom_uzip.4 \
 	gif.4 \
 	gpib.4 \
@@ -525,6 +527,7 @@ MAN=	aac.4 \
 	uplcom.4 \
 	ural.4 \
 	urio.4 \
+	urndis.4 \
 	${_urtw.4} \
 	urtwn.4 \
 	urtwnfw.4 \
@@ -542,6 +545,7 @@ MAN=	aac.4 \
 	${_virtio.4} \
 	${_virtio_balloon.4} \
 	${_virtio_blk.4} \
+	${_virtio_random.4} \
 	${_virtio_scsi.4} \
 	vkbd.4 \
 	vlan.4 \
@@ -640,6 +644,8 @@ MLINKS+=ipw.4 if_ipw.4
 MLINKS+=iwi.4 if_iwi.4
 MLINKS+=iwn.4 if_iwn.4
 MLINKS+=ixgb.4 if_ixgb.4
+MLINKS+=ixgbe.4 ix.4
+MLINKS+=ixgbe.4 if_ix.4
 MLINKS+=ixgbe.4 if_ixgbe.4
 MLINKS+=jme.4 if_jme.4
 MLINKS+=kue.4 if_kue.4
@@ -711,6 +717,7 @@ MLINKS+=uath.4 if_uath.4
 MLINKS+=udav.4 if_udav.4
 MLINKS+=upgt.4 if_upgt.4
 MLINKS+=ural.4 if_ural.4
+MLINKS+=urndis.4 if_urndis.4
 MLINKS+=${_urtw.4} ${_if_urtw.4}
 MLINKS+=vge.4 if_vge.4
 MLINKS+=vlan.4 if_vlan.4
@@ -736,6 +743,7 @@ _acpi_fujitsu.4=acpi_fujitsu.4
 _acpi_hp.4=	acpi_hp.4
 _acpi_ibm.4=	acpi_ibm.4
 _acpi_panasonic.4=acpi_panasonic.4
+_acpi_rapidstart.4=acpi_rapidstart.4
 _acpi_sony.4=	acpi_sony.4
 _acpi_toshiba.4=acpi_toshiba.4
 _acpi_wmi.4=	acpi_wmi.4
@@ -786,6 +794,7 @@ _nxge.4=	nxge.4
 _virtio.4=	virtio.4
 _virtio_balloon.4=virtio_balloon.4
 _virtio_blk.4=	virtio_blk.4
+_virtio_random.4= virtio_random.4
 _virtio_scsi.4= virtio_scsi.4
 _vmx.4=		vmx.4
 _vtnet.4=	vtnet.4

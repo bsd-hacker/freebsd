@@ -35,11 +35,14 @@ CFLAGS=	-DBOOTPROG=\"gptboot\" \
 	-Wall -Waggregate-return -Wbad-function-cast -Wcast-align \
 	-Wmissing-declarations -Wmissing-prototypes -Wnested-externs \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
-	-Winline --param max-inline-insns-single=100
+	-Winline
 
-LDFLAGS=-static -N --gc-sections
+CFLAGS.gcc+=	--param max-inline-insns-single=100
+
+LD_FLAGS=-static -N --gc-sections
+
 .if ${MACHINE_CPUARCH} == "amd64"
-LDFLAGS+=	-m elf_i386_fbsd
+LD_FLAGS+=	-m elf_i386_fbsd
 LIBSTAND=	/usr/lib32/libstand.a
 .endif
 
@@ -58,7 +61,7 @@ gptldr.bin: gptldr.out
 	objcopy -S -O binary gptldr.out ${.TARGET}
 
 gptldr.out: gptldr.o
-	${LD} ${LDFLAGS} -e start -Ttext ${ORG1} -o ${.TARGET} gptldr.o
+	${LD} ${LD_FLAGS} -e start -Ttext ${ORG1} -o ${.TARGET} gptldr.o
 
 CLEANFILES+=	gptboot.bin gptboot.out gptboot.o sio.o gpt.o crc32.o drv.o \
 		cons.o util.o
@@ -67,7 +70,7 @@ gptboot.bin: gptboot.out
 	objcopy -S -O binary gptboot.out ${.TARGET}
 
 gptboot.out: ${BTXCRT} gptboot.o sio.o gpt.o crc32.o drv.o cons.o util.o
-	${LD} ${LDFLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC} ${LIBSTAND}
+	${LD} ${LD_FLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC} ${LIBSTAND}
 
 gptboot.o: ${.CURDIR}/../../common/ufsread.c
 

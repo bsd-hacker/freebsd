@@ -2193,6 +2193,9 @@ output_call_frame_info (int for_eh)
      specialization doesn't.  */
   if (TARGET_USES_WEAK_UNWIND_INFO
       && ! flag_asynchronous_unwind_tables
+/* APPLE LOCAL begin for-fsf-4_4 5480287 */ \
+      && flag_exceptions
+/* APPLE LOCAL end for-fsf-4_4 5480287 */ \
       && for_eh)
     for (i = 0; i < fde_table_in_use; i++)
       if ((fde_table[i].nothrow || fde_table[i].all_throwers_are_sibcalls)
@@ -4727,6 +4730,11 @@ dwarf_attr_name (unsigned int attr)
 
     case DW_AT_VMS_rtnbeg_pd_address:
       return "DW_AT_VMS_rtnbeg_pd_address";
+
+    /* APPLE LOCAL begin radar 5811943 - Fix type of pointers to Blocks  */
+    case DW_AT_APPLE_block:
+      return "DW_AT_APPLE_block";
+    /* APPLE LOCAL end radar 5811943 - Fix type of pointers to Blocks  */
 
     default:
       return "DW_AT_<unknown>";
@@ -8295,6 +8303,8 @@ root_type (tree type)
     case ERROR_MARK:
       return error_mark_node;
 
+    /* APPLE LOCAL radar 5732232 - blocks */
+    case BLOCK_POINTER_TYPE:
     case POINTER_TYPE:
     case REFERENCE_TYPE:
       return type_main_variant (root_type (TREE_TYPE (type)));
@@ -8327,6 +8337,8 @@ is_base_type (tree type)
     case ENUMERAL_TYPE:
     case FUNCTION_TYPE:
     case METHOD_TYPE:
+	/* APPLE LOCAL radar 5732232 - blocks */
+    case BLOCK_POINTER_TYPE:
     case POINTER_TYPE:
     case REFERENCE_TYPE:
     case OFFSET_TYPE:
@@ -8514,7 +8526,8 @@ modified_type_die (tree type, int is_const_type, int is_volatile_type,
       mod_type_die = new_die (DW_TAG_volatile_type, comp_unit_die, type);
       sub_die = modified_type_die (type, 0, 0, context_die);
     }
-  else if (code == POINTER_TYPE)
+  /* APPLE LOCAL radar 5732232 - blocks */
+  else if (code == POINTER_TYPE || code == BLOCK_POINTER_TYPE)
     {
       mod_type_die = new_die (DW_TAG_pointer_type, comp_unit_die, type);
       add_AT_unsigned (mod_type_die, DW_AT_byte_size,
@@ -11167,6 +11180,19 @@ add_type_attribute (dw_die_ref object_die, tree type, int decl_const,
   enum tree_code code  = TREE_CODE (type);
   dw_die_ref type_die  = NULL;
 
+/* APPLE LOCAL begin radar 5847213 */
+  /* APPLE LOCAL begin radar 5811943 - Fix type of pointers to blocks  */
+  /* APPLE LOCAL - radar 6113240 */
+  /* APPLE LOCAL begin radar 6300081  */
+  if (code == BLOCK_POINTER_TYPE && generic_block_literal_struct_type)
+    {
+      type = build_pointer_type (generic_block_literal_struct_type);
+      code = TREE_CODE (type);
+    }
+  /* APPLE LOCAL end radar 6300081  */
+  /* APPLE LOCAL end radar 5811943 - Fix type of pointers to Blocks  */
+/* APPLE LOCAL end radar 5847213 */
+
   /* ??? If this type is an unnamed subrange type of an integral or
      floating-point type, use the inner type.  This is because we have no
      support for unnamed types in base_type_die.  This can happen if this is
@@ -12552,7 +12578,11 @@ gen_struct_or_union_type_die (tree type, dw_die_ref context_die,
 	add_AT_specification (type_die, old_die);
       else
 	add_name_attribute (type_die, type_tag (type));
-    }
+      /* APPLE LOCAL begin radar 5811943 - Fix type of pointers to Blocks  */
+      if (TYPE_BLOCK_IMPL_STRUCT (type))
+	add_AT_flag (type_die, DW_AT_APPLE_block, 1);
+      /* APPLE LOCAL end radar 5811943 - Fix type of pointers to Blocks  */
+     }
   else
     remove_AT (type_die, DW_AT_declaration);
 
@@ -12701,7 +12731,8 @@ gen_type_die_with_usage (tree type, dw_die_ref context_die,
     {
     case ERROR_MARK:
       break;
-
+	/* APPLE LOCAL radar 5732232 - blocks */
+    case BLOCK_POINTER_TYPE:
     case POINTER_TYPE:
     case REFERENCE_TYPE:
       /* We must set TREE_ASM_WRITTEN in case this is a recursive type.  This

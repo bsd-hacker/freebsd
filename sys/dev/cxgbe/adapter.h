@@ -210,6 +210,7 @@ struct port_info {
 	uint8_t  mod_type;
 	uint8_t  port_id;
 	uint8_t  tx_chan;
+	uint8_t  rx_chan_map;	/* rx MPS channel bitmap */
 
 	/* These need to be int as they are used in sysctl */
 	int ntxq;	/* # of tx queues */
@@ -517,6 +518,7 @@ struct sge {
 	int timer_val[SGE_NTIMERS];
 	int counter_val[SGE_NCOUNTERS];
 	int fl_starve_threshold;
+	int fl_starve_threshold2;
 	int eq_s_qpp;
 	int iq_s_qpp;
 
@@ -646,6 +648,8 @@ struct adapter {
 	const char *last_op;
 	const void *last_op_thr;
 #endif
+
+	int sc_do_rxcopy;
 };
 
 #define ADAPTER_LOCK(sc)		mtx_lock(&(sc)->sc_lock)
