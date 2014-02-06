@@ -2,6 +2,7 @@
 
 SUBDIR+=		efi
 SUBDIR+=		ficl64
+SUBDIR+=		libstand32
 SUBDIR+=		zfs
 SUBDIR+=		zfs64
 SUBDIR+=		userboot

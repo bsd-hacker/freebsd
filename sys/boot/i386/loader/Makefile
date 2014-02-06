@@ -67,12 +67,13 @@ LDFLAGS=	-static -Ttext 0x0
 
 .if ${MACHINE_CPUARCH} == "amd64"
 LDFLAGS+=	-Wl,-m,elf_i386_fbsd
-LIBSTAND=	/usr/lib32/libstand.a
 .endif
 
 # i386 standalone support library
 LIBI386=	${.OBJDIR}/../libi386/libi386.a
 CFLAGS+=	-I${.CURDIR}/..
+
+LIBSTAND=	${.OBJDIR}/../../libstand32/libstand.a
 
 # BTX components
 CFLAGS+=	-I${.CURDIR}/../btx/lib

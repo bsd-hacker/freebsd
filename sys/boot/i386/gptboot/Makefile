@@ -43,8 +43,9 @@ LD_FLAGS=-static -N --gc-sections
 
 .if ${MACHINE_CPUARCH} == "amd64"
 LD_FLAGS+=	-m elf_i386_fbsd
-LIBSTAND=	/usr/lib32/libstand.a
 .endif
+
+LIBSTAND=	${.OBJDIR}/../../libstand32/libstand.a
 
 # Pick up ../Makefile.inc early.
 .include <bsd.init.mk>
