@@ -5,13 +5,15 @@
 BINDIR?=	/boot
 
 LOADER_ADDRESS?=0x200000
-CFLAGS+=	-ffreestanding -mno-mmx -mno-3dnow -mno-sse -mno-sse2 \
-		    -mno-sse3 -msoft-float
 .if ${MACHINE_CPUARCH} == "i386"
-CFLAGS+=	-march=i386 -mpreferred-stack-boundary=2
+CFLAGS+=	-march=i386
+CFLAGS.gcc+=	-mpreferred-stack-boundary=2
 .elif ${MACHINE_CPUARCH} == "amd64" && !defined(BUILDING_EFI)
-CFLAGS+=	-march=i386 -mpreferred-stack-boundary=2
+CFLAGS+=	-march=i386
+CFLAGS.gcc+=	-mpreferred-stack-boundary=2
 .endif
+CFLAGS+=	-ffreestanding
+CFLAGS+=	-mno-mmx -mno-3dnow -mno-sse -mno-sse2 -mno-sse3 -msoft-float
 LDFLAGS+=	-nostdlib
 
 .if ${MACHINE_CPUARCH} == "amd64" && !defined(BUILDING_EFI)

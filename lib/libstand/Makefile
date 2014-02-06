@@ -24,7 +24,8 @@ CFLAGS+= -I${.CURDIR}
 CFLAGS+=	-mno-mmx -mno-3dnow -mno-sse -mno-sse2 -mno-sse3 -msoft-float
 .endif
 .if ${MACHINE_CPUARCH} == "i386"
-CFLAGS+=	-march=i386 -mpreferred-stack-boundary=2
+CFLAGS+=	-march=i386
+CFLAGS.gcc+=	-mpreferred-stack-boundary=2
 .endif
 .if ${MACHINE_CPUARCH} == "amd64"
 CFLAGS+=	-fPIC
