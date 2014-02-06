@@ -33,6 +33,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_compat.h"
+
 #include <sys/param.h>
 #include <sys/consio.h>
 #include <sys/eventhandler.h>
@@ -70,6 +72,7 @@ static tc_cngetc_t	vtterm_cngetc;
 
 static tc_opened_t	vtterm_opened;
 static tc_ioctl_t	vtterm_ioctl;
+static tc_mmap_t	vtterm_mmap;
 
 const struct terminal_class vt_termclass = {
 	.tc_bell	= vtterm_bell,
@@ -85,6 +88,7 @@ const struct terminal_class vt_termclass = {
 
 	.tc_opened	= vtterm_opened,
 	.tc_ioctl	= vtterm_ioctl,
+	.tc_mmap	= vtterm_mmap,
 };
 
 /*
@@ -110,8 +114,9 @@ const struct terminal_class vt_termclass = {
 /* XXX while syscons is here. */
 int sc_txtmouse_no_retrace_wait;
 
-static SYSCTL_NODE(_kern, OID_AUTO, vt, CTLFLAG_RD, 0, "Newcons parameters");
-VT_SYSCTL_INT(debug, 0, "Newcons debug level");
+static SYSCTL_NODE(_kern, OID_AUTO, vt, CTLFLAG_RD, 0, "vt(9) parameters");
+VT_SYSCTL_INT(enable_altgr, 1, "Enable AltGr key (Do not assume R.Alt as Alt)");
+VT_SYSCTL_INT(debug, 0, "vt(9) debug level");
 VT_SYSCTL_INT(deadtimer, 15, "Time to wait busy process in VT_PROCESS mode");
 VT_SYSCTL_INT(suspendswitch, 1, "Switch to VT0 before suspend");
 
@@ -127,7 +132,9 @@ extern unsigned char vt_logo_image[];
 
 /* Font. */
 extern struct vt_font vt_font_default;
+#ifndef SC_NO_CUTPASTE
 extern struct mouse_cursor vt_default_mouse_pointer;
+#endif
 
 static int signal_vt_rel(struct vt_window *);
 static int signal_vt_acq(struct vt_window *);
@@ -400,6 +407,8 @@ vt_processkey(keyboard_t *kbd, struct vt_device *vd, int c)
 	if (c & RELKEY) {
 		switch (c & ~RELKEY) {
 		case (SPCLKEY | RALT):
+			if (vt_enable_altgr != 0)
+				break;
 		case (SPCLKEY | LALT):
 			vd->vd_kbstate &= ~ALKED;
 		}
@@ -580,6 +589,11 @@ vt_allocate_keyboard(struct vt_device *vd)
 static void
 vtterm_bell(struct terminal *tm)
 {
+	struct vt_window *vw = tm->tm_softc;
+	struct vt_device *vd = vw->vw_device;
+
+	if (vd->vd_flags & VDF_QUIET_BELL)
+		return;
 
 	sysbeep(1193182 / VT_BELLPITCH, VT_BELLDURATION);
 }
@@ -625,6 +639,9 @@ vtterm_param(struct terminal *tm, int cmd, unsigned int arg)
 	switch (cmd) {
 	case TP_SHOWCURSOR:
 		vtbuf_cursor_visibility(&vw->vw_buf, arg);
+		break;
+	case TP_MOUSE:
+		vw->vw_mouse_level = arg;
 		break;
 	}
 }
@@ -689,12 +706,14 @@ vt_flush(struct vt_device *vd)
 	struct vt_window *vw = vd->vd_curwindow;
 	struct vt_font *vf = vw->vw_font;
 	struct vt_bufmask tmask;
-	struct mouse_cursor *m;
 	unsigned int row, col;
 	term_rect_t tarea;
 	term_pos_t size;
 	term_char_t *r;
+#ifndef SC_NO_CUTPASTE
+	struct mouse_cursor *m;
 	int bpl, h, w;
+#endif
 
 	if (vd->vd_flags & VDF_SPLASH || vw->vw_flags & VWF_BUSY)
 		return;
@@ -711,11 +730,13 @@ vt_flush(struct vt_device *vd)
 		vd->vd_flags &= ~VDF_INVALID;
 	}
 
+#ifndef SC_NO_CUTPASTE
 	if ((vw->vw_flags & VWF_MOUSE_HIDE) == 0) {
 		/* Mark last mouse position as dirty to erase. */
 		vtbuf_mouse_cursor_position(&vw->vw_buf, vd->vd_mdirtyx,
 		    vd->vd_mdirtyy);
 	}
+#endif
 
 	for (row = tarea.tr_begin.tp_row; row < tarea.tr_end.tp_row; row++) {
 		if (!VTBUF_DIRTYROW(&tmask, row))
@@ -731,6 +752,7 @@ vt_flush(struct vt_device *vd)
 		}
 	}
 
+#ifndef SC_NO_CUTPASTE
 	/* Mouse disabled. */
 	if (vw->vw_flags & VWF_MOUSE_HIDE)
 		return;
@@ -759,6 +781,7 @@ vt_flush(struct vt_device *vd)
 		vd->vd_mdirtyx = vd->vd_mx / vf->vf_width;
 		vd->vd_mdirtyy = vd->vd_my / vf->vf_height;
 	}
+#endif
 }
 
 static void
@@ -794,6 +817,7 @@ vtterm_done(struct terminal *tm)
 	}
 }
 
+#ifdef DEV_SPLASH
 static void
 vtterm_splash(struct vt_device *vd)
 {
@@ -813,6 +837,7 @@ vtterm_splash(struct vt_device *vd)
 		vd->vd_flags |= VDF_SPLASH;
 	}
 }
+#endif
 
 static void
 vtterm_cnprobe(struct terminal *tm, struct consdev *cp)
@@ -845,7 +870,9 @@ vtterm_cnprobe(struct terminal *tm, struct consdev *cp)
 	vt_winsize(vd, vw->vw_font, &wsz);
 	terminal_set_winsize(tm, &wsz);
 
+#ifdef DEV_SPLASH
 	vtterm_splash(vd);
+#endif
 
 	vd->vd_flags |= VDF_INITIALIZED;
 	main_vd = vd;
@@ -1102,8 +1129,69 @@ finish_vt_acq(struct vt_window *vw)
 	return (EINVAL);
 }
 
+#ifndef SC_NO_CUTPASTE
+static void
+vt_mouse_terminput_button(struct vt_device *vd, int button)
+{
+	struct vt_window *vw;
+	struct vt_font *vf;
+	char mouseb[6] = "\x1B[M";
+	int i, x, y;
+
+	vw = vd->vd_curwindow;
+	vf = vw->vw_font;
+
+	/* Translate to char position. */
+	x = vd->vd_mx / vf->vf_width;
+	y = vd->vd_my / vf->vf_height;
+	/* Avoid overflow. */
+	x = MIN(x, 255 - '!');
+	y = MIN(y, 255 - '!');
+
+	mouseb[3] = ' ' + button;
+	mouseb[4] = '!' + x;
+	mouseb[5] = '!' + y;
+
+	for (i = 0; i < sizeof(mouseb); i++ )
+		terminal_input_char(vw->vw_terminal, mouseb[i]);
+}
+
+static void
+vt_mouse_terminput(struct vt_device *vd, int type, int x, int y, int event,
+    int cnt)
+{
+
+	switch (type) {
+	case MOUSE_BUTTON_EVENT:
+		if (cnt > 0) {
+			/* Mouse button pressed. */
+			if (event & MOUSE_BUTTON1DOWN)
+				vt_mouse_terminput_button(vd, 0);
+			if (event & MOUSE_BUTTON2DOWN)
+				vt_mouse_terminput_button(vd, 1);
+			if (event & MOUSE_BUTTON3DOWN)
+				vt_mouse_terminput_button(vd, 2);
+		} else {
+			/* Mouse button released. */
+			vt_mouse_terminput_button(vd, 3);
+		}
+		break;
+#ifdef notyet
+	case MOUSE_MOTION_EVENT:
+		if (mouse->u.data.z < 0) {
+			/* Scroll up. */
+			sc_mouse_input_button(vd, 64);
+		} else if (mouse->u.data.z > 0) {
+			/* Scroll down. */
+			sc_mouse_input_button(vd, 65);
+		}
+		break;
+#endif
+	}
+}
+
 void
-vt_mouse_event(int type, int x, int y, int event, int cnt)
+vt_mouse_event(int type, int x, int y, int event, int cnt, int mlevel)
 {
 	struct vt_device *vd;
 	struct vt_window *vw;
@@ -1127,6 +1215,9 @@ vt_mouse_event(int type, int x, int y, int event, int cnt)
 	 * TODO: add flag about pointer position changed, to not redraw chars
 	 * under mouse pointer when nothing changed.
 	 */
+
+	if (vw->vw_mouse_level > 0)
+		vt_mouse_terminput(vd, type, x, y, event, cnt);
 
 	switch (type) {
 	case MOUSE_ACTION:
@@ -1261,6 +1352,21 @@ vt_mouse_state(int show)
 		break;
 	}
 }
+#endif
+
+static int
+vtterm_mmap(struct terminal *tm, vm_ooffset_t offset, vm_paddr_t * paddr,
+    int nprot, vm_memattr_t *memattr)
+{
+	struct vt_window *vw = tm->tm_softc;
+	struct vt_device *vd = vw->vw_device;
+
+	if (vd->vd_driver->vd_fb_mmap)
+		return (vd->vd_driver->vd_fb_mmap(vd, offset, paddr, nprot,
+		    memattr));
+
+	return (ENXIO);
+}
 
 static int
 vtterm_ioctl(struct terminal *tm, u_long cmd, caddr_t data,
@@ -1305,9 +1411,12 @@ vtterm_ioctl(struct terminal *tm, u_long cmd, caddr_t data,
 	case _IO('c', 110):
 		cmd = CONS_SETKBD;
 		break;
+	default:
+		goto skip_thunk;
 	}
 	ival = IOCPARM_IVAL(data);
 	data = (caddr_t)&ival;
+skip_thunk:
 #endif
 
 	switch (cmd) {
@@ -1386,12 +1495,26 @@ vtterm_ioctl(struct terminal *tm, u_long cmd, caddr_t data,
 			return (EINVAL);
 		}
 	}
+	case FBIOGTYPE:
+	case FBIO_GETWINORG:	/* get frame buffer window origin */
+	case FBIO_GETDISPSTART:	/* get display start address */
+	case FBIO_GETLINEWIDTH:	/* get scan line width in bytes */
+	case FBIO_BLANK:	/* blank display */
+		if (vd->vd_driver->vd_fb_ioctl)
+			return (vd->vd_driver->vd_fb_ioctl(vd, cmd, data, td));
+		break;
 	case CONS_BLANKTIME:
 		/* XXX */
 		return (0);
 	case CONS_GET:
 		/* XXX */
 		*(int *)data = M_CG640x480;
+		return (0);
+	case CONS_BELLTYPE: 	/* set bell type sound */
+		if ((*(int *)data) & CONS_QUIET_BELL)
+			vd->vd_flags |= VDF_QUIET_BELL;
+		else
+			vd->vd_flags &= ~VDF_QUIET_BELL;
 		return (0);
 	case CONS_GETINFO: {
 		vid_info_t *vi = (vid_info_t *)data;
@@ -1459,12 +1582,16 @@ vtterm_ioctl(struct terminal *tm, u_long cmd, caddr_t data,
 		error = securelevel_gt(td->td_ucred, 0);
 		if (error != 0)
 			return (error);
-#if defined(__i386__) || defined(__amd64__)
+#if defined(__i386__)
+		td->td_frame->tf_eflags |= PSL_IOPL;
+#elif defined(__amd64__)
 		td->td_frame->tf_rflags |= PSL_IOPL;
 #endif
 		return (0);
 	case KDDISABIO:     	/* disallow io operations (default) */
-#if defined(__i386__) || defined(__amd64__)
+#if defined(__i386__)
+		td->td_frame->tf_eflags &= ~PSL_IOPL;
+#elif defined(__amd64__)
 		td->td_frame->tf_rflags &= ~PSL_IOPL;
 #endif
 		return (0);
@@ -1784,8 +1911,10 @@ vt_allocate(struct vt_driver *drv, void *softc)
 	/* Refill settings with new sizes. */
 	vt_resize(vd);
 
+#ifdef DEV_SPLASH
 	if (vd->vd_flags & VDF_SPLASH)
 		vtterm_splash(vd);
+#endif
 
 	if (vd->vd_curwindow != NULL)
 		callout_schedule(&vd->vd_timer, hz / VT_TIMERFREQ);

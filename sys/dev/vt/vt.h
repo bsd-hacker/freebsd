@@ -40,6 +40,7 @@
 #include <sys/_mutex.h>
 #include <sys/callout.h>
 #include <sys/condvar.h>
+#include <sys/conf.h>
 #include <sys/consio.h>
 #include <sys/kbio.h>
 #include <sys/mouse.h>
@@ -47,6 +48,12 @@
 #include <sys/sysctl.h>
 
 #include "opt_syscons.h"
+#include "opt_splash.h"
+
+#ifdef DEV_SC
+#error "Build with both syscons and vt is not supported. Please enable only \
+one 'device sc' or 'device vt'"
+#endif
 
 #ifndef	VT_MAXWINDOWS
 #ifdef	MAXCONS
@@ -128,6 +135,7 @@ struct vt_device {
 #define	VDF_DEAD	0x10	/* Early probing found nothing. */
 #define	VDF_INITIALIZED	0x20	/* vtterm_cnprobe already done. */
 #define	VDF_MOUSECURSOR	0x40	/* Mouse cursor visible. */
+#define	VDF_QUIET_BELL	0x80	/* Disable bell. */
 	int			 vd_keyboard;	/* (G) Keyboard index. */
 	unsigned int		 vd_kbstate;	/* (?) Device unit. */
 	unsigned int		 vd_unit;	/* (c) Device unit. */
@@ -179,15 +187,17 @@ void vtbuf_init(struct vt_buf *, const term_pos_t *);
 void vtbuf_grow(struct vt_buf *, const term_pos_t *, int);
 void vtbuf_putchar(struct vt_buf *, const term_pos_t *, term_char_t);
 void vtbuf_cursor_position(struct vt_buf *, const term_pos_t *);
-void vtbuf_mouse_cursor_position(struct vt_buf *vb, int col, int row);
-void vtbuf_cursor_visibility(struct vt_buf *, int);
 void vtbuf_scroll_mode(struct vt_buf *vb, int yes);
 void vtbuf_undirty(struct vt_buf *, term_rect_t *, struct vt_bufmask *);
 void vtbuf_sethistory_size(struct vt_buf *, int);
-int vtbuf_set_mark(struct vt_buf *vb, int type, int col, int row);
 int vtbuf_iscursor(struct vt_buf *vb, int row, int col);
+void vtbuf_cursor_visibility(struct vt_buf *, int);
+#ifndef SC_NO_CUTPASTE
+void vtbuf_mouse_cursor_position(struct vt_buf *vb, int col, int row);
+int vtbuf_set_mark(struct vt_buf *vb, int type, int col, int row);
 int vtbuf_get_marked_len(struct vt_buf *vb);
 void vtbuf_extract_marked(struct vt_buf *vb, term_char_t *buf, int sz);
+#endif
 
 #define	VTB_MARK_NONE		0
 #define	VTB_MARK_END		1
@@ -236,6 +246,7 @@ struct vt_window {
 	int			 vw_kbdmode;	/* (?) Keyboard mode. */
 	char			*vw_kbdsq;	/* Escape sequence queue*/
 	unsigned int		 vw_flags;	/* (d) Per-window flags. */
+	int			 vw_mouse_level;/* Mouse op mode. */
 #define	VWF_BUSY	0x1	/* Busy reconfiguring device. */
 #define	VWF_OPENED	0x2	/* TTY in use. */
 #define	VWF_SCROLL	0x4	/* Keys influence scrollback. */
@@ -273,6 +284,9 @@ typedef void vd_bitbltchr_t(struct vt_device *vd, const uint8_t *src,
     unsigned int width, unsigned int height, term_color_t fg, term_color_t bg);
 typedef void vd_putchar_t(struct vt_device *vd, term_char_t,
     vt_axis_t top, vt_axis_t left, term_color_t fg, term_color_t bg);
+typedef int vd_fb_ioctl_t(struct vt_device *, u_long, caddr_t, struct thread *);
+typedef int vd_fb_mmap_t(struct vt_device *, vm_ooffset_t, vm_paddr_t *, int,
+    vm_memattr_t *);
 
 struct vt_driver {
 	/* Console attachment. */
@@ -281,6 +295,12 @@ struct vt_driver {
 	/* Drawing. */
 	vd_blank_t	*vd_blank;
 	vd_bitbltchr_t	*vd_bitbltchr;
+
+	/* Framebuffer ioctls, if present. */
+	vd_fb_ioctl_t	*vd_fb_ioctl;
+
+	/* Framebuffer mmap, if present. */
+	vd_fb_mmap_t	*vd_fb_mmap;
 
 	/* Text mode operation. */
 	vd_putchar_t	*vd_putchar;
@@ -379,20 +399,21 @@ struct vt_font_map {
 };
 
 struct vt_font {
-	struct vt_font_map	*vf_bold;
-	struct vt_font_map	*vf_normal;
+	struct vt_font_map	*vf_map[VFNT_MAPS];
 	uint8_t			*vf_bytes;
-	unsigned int		 vf_height, vf_width,
-				 vf_normal_length, vf_bold_length;
+	unsigned int		 vf_height, vf_width;
+	unsigned int		 vf_map_count[VFNT_MAPS];
 	unsigned int		 vf_refcount;
 };
 
+#ifndef SC_NO_CUTPASTE
 struct mouse_cursor {
 	uint8_t map[64 * 64 / 8];
 	uint8_t mask[64 * 64 / 8];
 	uint8_t w;
 	uint8_t h;
 };
+#endif
 
 const uint8_t	*vtfont_lookup(const struct vt_font *vf, term_char_t c);
 struct vt_font	*vtfont_ref(struct vt_font *vf);
@@ -401,8 +422,10 @@ int		 vtfont_load(vfnt_t *f, struct vt_font **ret);
 
 /* Sysmouse. */
 void sysmouse_process_event(mouse_info_t *mi);
-void vt_mouse_event(int type, int x, int y, int event, int cnt);
+#ifndef SC_NO_CUTPASTE
+void vt_mouse_event(int type, int x, int y, int event, int cnt, int mlevel);
 void vt_mouse_state(int show);
+#endif
 #define	VT_MOUSE_SHOW 1
 #define	VT_MOUSE_HIDE 0
 
