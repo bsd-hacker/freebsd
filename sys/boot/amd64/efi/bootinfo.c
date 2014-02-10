@@ -289,7 +289,7 @@ bi_load_efi_data(struct preloaded_file *kfp)
 	efihdr->descriptor_size = mmsz;
 	efihdr->descriptor_version = mmver;
 
-	efi_find_framebuffer(efihdr);
+	efi_find_framebuffer(&efihdr->fb);
 
 	file_addmetadata(kfp, MODINFOMD_EFI, efisz + sz, efihdr);
 
