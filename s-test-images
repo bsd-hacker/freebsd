@@ -1,0 +1,14 @@
+# Delete old console logs and test logs
+mkdir -p console.log
+rm -f console.log/*
+: > ami-test.log
+
+# Test the AMIs one by one
+while read EC2_REGION EC2_SZ AMI_FREEBSD; do
+	( . s-ami-test-hvm ) &
+	sleep 1
+done < ami.log
+wait
+
+# Report
+echo "`wc -l < ami-test.log` images succeeded"

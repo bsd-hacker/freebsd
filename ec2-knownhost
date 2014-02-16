@@ -1,0 +1,17 @@
+#!/bin/sh -e
+
+# I hereby place this script in the public domain -- Colin Percival
+
+# Usage
+if [ $# -lt 1 ]; then
+	echo "usage: ec2-get-console-output INSTANCE | $0 hostname" >/dev/stderr
+	exit 1;
+fi
+
+# Extract fingerprints and pass them to ssh-knownhost
+tr -d '\r' |
+    grep ^ec2: |
+    awk '/BEGIN SSH HOST KEY FINGERPRINTS/, /END SSH HOST KEY FINGERPRINTS/' |
+    grep -v 'HOST KEY FINGERPRINTS' |
+    cut -f 3 -d ' ' |
+    xargs ssh-knownhost $1

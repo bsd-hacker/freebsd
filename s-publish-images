@@ -1,0 +1,19 @@
+echo "Marking EC2 images as public..."
+
+# Mark images as public
+cat ami.log |
+    while read R S AMI; do
+	aws ec2 modify-image-attribute --region ${R} --image-id ${AMI} \
+	    --attribute launchPermission --operation-type add \
+	    --user-groups all >/dev/null;
+    done
+
+# Add to FreeBSD/EC2 website
+for SZ in m1.large m1.small m3.xlarge; do
+	echo $SZ
+	for R in us-east-1 us-west-1 eu-west-1 ap-southeast-1 ap-northeast-1 us-west-2 sa-east-1 ap-southeast-2; do
+		echo -n "<td>"
+		cat ami.log | grep $R | grep $SZ | cut -f 3 -d ' ' | tr -d '\n'
+		echo "</td>"
+	done
+done

@@ -1,0 +1,162 @@
+describe_images_wait () {
+	while aws ec2 describe-images --region ${EC2_REGION} \
+	    --image-ids $1 | grep -q $2; do
+		sleep 15;
+	done
+}
+
+describe_instances_wait () {
+	while aws ec2 describe-instances --region ${EC2_REGION} \
+	    --instance-ids $1 | grep -q $2; do
+		sleep 15;
+	done
+}
+
+describe_volumes_wait () {
+	while aws ec2 describe-volumes --region ${EC2_REGION} \
+	    --volume-ids $1 | grep -q $2; do
+		sleep 15;
+	done
+}
+
+describe_snapshots_wait () {
+	while aws ec2 describe-snapshots --region ${EC2_REGION} \
+	    --snapshot-ids $1 | grep -q $2; do
+		sleep 15;
+	done
+}
+
+register_unixhvm () {
+	VOL_HVM="$1"
+	EC2_SZ="$2"
+	ITYPES="$3"
+	AMILOG="$4"
+
+	echo "Creating volume snapshot..."
+
+	# Create a snapshot
+	SNAP_HVM=`aws ec2 create-snapshot --region ${EC2_REGION}	\
+	    --volume-id ${VOL_HVM} --query 'SnapshotId' --output text`
+	describe_snapshots_wait ${SNAP_HVM} pending
+
+	echo "Registering ${ITYPES} AMI..."
+
+	# Construct name and description strings
+	NAME="FreeBSD/EC2 ${REL} ${ITYPES}"
+	DESC="FreeBSD ${REL} AMI for ${ITYPES} instances"
+
+	# Register an AMI
+	sed -e "s/@@SNAPID@@/${SNAP_HVM}/" < block-mappings-ami.conf \
+	    > ${TMP}/block-mappings.conf
+	AMI_FREEBSD=`aws ec2 register-image --region ${EC2_REGION} --architecture x86_64 \
+	    --virtualization-type hvm --name "${NAME}" --description "${DESC}" \
+	    --block-device-mappings file://\`pwd\`/${TMP}/block-mappings.conf \
+	    --root-device-name "/dev/sda1" --output text`
+
+	# Wait for the AMI to be available
+	describe_images_wait ${AMI_FREEBSD} pending
+
+	# Log the newly built image
+	echo "${EC2_REGION} ${EC2_SZ} ${AMI_FREEBSD}" >> ${AMILOG}
+}
+
+register_defenestrated () {
+	VOL_HVM="$1"
+	EC2_SZ="$2"
+	ITYPES="$3"
+	AMI_WIN="$4"
+	AMILOG="$5"
+
+	# Launch a Windows instance and stop it
+	echo "Creating victim instance for ${ITYPES} image..."
+
+	# Launch a Windows instance
+	I_WINDOWS=`aws ec2 run-instances --region ${EC2_REGION} --image-id ${AMI_WIN}	\
+	    --placement AvailabilityZone=${EC2_ZONE} --instance-type ${EC2_SZ}	\
+	    --block-device-mappings file://\`pwd\`/block-mappings-windows.conf	\
+	    --output text --query 'Instances[*].InstanceId'`
+	describe_instances_wait ${I_WINDOWS} pending
+
+	# Stop the instance
+	aws ec2 stop-instances --region ${EC2_REGION} \
+	    --instance-ids ${I_WINDOWS} >/dev/null
+	describe_instances_wait ${I_WINDOWS} stopping
+
+	# Defenestrate the Windows instance
+	echo "Defenestrating victim instance..."
+
+	# Figure out which volume we want to remove
+	VOL_WINDOWS=`aws ec2 describe-volumes --region ${EC2_REGION}	\
+	    --filters Name=attachment.instance-id,Values=${I_WINDOWS}	\
+	    --filters Name=attachment.device,Values=/dev/sda1		\
+	    --query 'Volumes[*].VolumeId' --output text`
+
+	# Detach and delete the Windows root volume
+	aws ec2 detach-volume --region ${EC2_REGION} --volume-id ${VOL_WINDOWS} > /dev/null
+	describe_volumes_wait ${VOL_WINDOWS} detaching
+	aws ec2 delete-volume --region ${EC2_REGION} --volume-id ${VOL_WINDOWS} >/dev/null
+
+	# Attach the FreeBSD/HVM volume in its place
+	aws ec2 attach-volume --region ${EC2_REGION} --volume-id ${VOL_HVM} \
+	    --instance-id ${I_WINDOWS} --device "/dev/sda1" >/dev/null
+	describe_volumes_wait ${VOL_HVM} attaching
+
+	# Create an AMI from the Windows instance
+	echo "Creating ${ITYPES} AMI from defenestrated victim instance..."
+
+	# Construct name and description strings
+	NAME="FreeBSD/EC2 ${REL} ${ITYPES}"
+	DESC="FreeBSD ${REL} AMI for ${ITYPES} instances"
+
+	# Create an AMI
+	AMI_FREEBSD=`aws ec2 create-image --region ${EC2_REGION} \
+	    --instance-id ${I_WINDOWS} \
+	    --name "${NAME}" --description "${DESC}" \
+	    --output text`
+
+	# Wait for the AMI to be available
+	describe_images_wait ${AMI_FREEBSD} pending
+
+	# Kill the Windows instance
+	echo "Shutting down victim instance..."
+
+	# Shut down the Windows instance
+	aws ec2 terminate-instances --region ${EC2_REGION} --instance-ids ${I_WINDOWS} >/dev/null
+
+	# Kill the FreeBSD root disk we attached to it
+	aws ec2 delete-volume --region ${EC2_REGION} --volume-id ${VOL_HVM} >/dev/null
+
+	echo "${EC2_REGION} ${EC2_SZ} ${AMI_FREEBSD}" >> ${AMILOG}
+}
+
+# No AMIs yet
+: > ami-built.log
+
+# Create directory for temporary files
+export TMP=`mktemp -d tmp.XXXXXX`
+
+# Create a native HVM AMI directly from the 64-bit image
+register_unixhvm ${VOL_HVM_64} m3.xlarge "m3 / c3 / i2 / HPC" ami-built.log
+
+# Create a 32-bit AMI by defenestrating a Windows instance
+register_defenestrated ${VOL_HVM_32} m1.small "32-bit m1 / c1 / t1" ${AMI_WINDOWS32} ami-built.log
+
+# Create a 64-bit AMI by defenestrating a Windows instance
+register_defenestrated ${VOL_HVM_64} m1.large "64-bit m1 / m2 / c1 / t1" ${AMI_WINDOWS64} ami-built.log
+
+# Create a "Marketplace" HVM AMI from the Marketplace image
+register_unixhvm ${VOL_HVM_MRKT} m3.xlarge "AWS Marketplace" ami-marketplace.log
+
+# Make AMI and disk snapshot visible to AWS Marketplace
+aws ec2 modify-snapshot-attribute --region ${EC2_REGION}		\
+    --snapshot-id ${SNAP_HVM} --attribute createVolumePermission	\
+    --operation-type add --user-ids 679593333241 >/dev/null
+aws ec2 modify-image-attribute --region ${EC2_REGION} 		\
+    --image-id ${AMI_FREEBSD} --attribute launchPermission	\
+    --operation-type add --user-ids 679593333241 >/dev/null
+
+# Delete the Marketplace disk
+aws ec2 delete-volume --region ${EC2_REGION} --volume-id ${VOL_HVM_MRKT} >/dev/null
+
+# Clean up temporary directory
+rm -r ${TMP}

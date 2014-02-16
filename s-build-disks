@@ -1,0 +1,96 @@
+# Load region configuration
+. s-config-${BUILD_REGION}
+
+echo "Setting up an SSH key..."
+
+# Create an SSH key pair
+export EC2_KEY=freebsd-build
+export EC2_KEYFILE=keys/freebsd-build-${EC2_REGION}.key
+ssh-keygen -b 2048 -N '' -f ${EC2_KEYFILE} >/dev/null
+
+# Import the key into EC2
+aws ec2 import-key-pair --region ${EC2_REGION} --key-name ${EC2_KEY}	\
+    --public-key-material file://`pwd`/${EC2_KEYFILE}.pub >/dev/null
+
+# Launch a FreeBSD instance
+echo "Launching FreeBSD build host..."
+I_BUILD=`aws ec2 run-instances --region ${EC2_REGION} --image-id ${AMI_BUILD}	\
+    --placement AvailabilityZone=${EC2_ZONE} --instance-type cc2.8xlarge \
+    --block-device-mappings file://\`pwd\`/block-mappings.conf	\
+    --key-name ${EC2_KEY} --output text --query 'Instances[*].InstanceId'`
+while aws ec2 describe-instances --region ${EC2_REGION}	\
+    --instance-ids ${I_BUILD} | grep -q pending; do
+	sleep 15;
+done
+IP_BUILD=`aws ec2 describe-instances --region ${EC2_REGION}	\
+    --instance-ids ${I_BUILD} --output text			\
+    --query 'Reservations[*].Instances[*].PublicIpAddress'`
+
+# Read SSH host keys from console
+sleep 240
+aws ec2 get-console-output --region ${EC2_REGION} \
+    --instance-id ${I_BUILD} --output text |
+    tr -d '\r' |
+    env PATH=$PATH:. ec2-knownhost ${IP_BUILD}
+
+# Upload new FreeBSD EC2-HVM bits and the build script
+tar -cf- ec2-bits doinit.sh dobuild.sh domarketize.sh |
+    ssh -i ${EC2_KEYFILE} ec2-user@${IP_BUILD} tar -xpof-
+
+# Prepare for builds
+echo "Preparing to build disk images..."
+ssh -i ${EC2_KEYFILE} ec2-user@$IP_BUILD -t su root -c \
+    "\"sh -e doinit.sh\"" > build-init.log 2>/dev/null
+
+# Build i386
+echo "Building i386 disk image..."
+ssh -i ${EC2_KEYFILE} ec2-user@$IP_BUILD -t su root -c \
+    "\"sh -e dobuild.sh $REL $REPO i386 xbd5 $HASH_I386\"" > build-i386.log 2>/dev/null
+
+# Build amd64
+echo "Building amd64 disk image..."
+ssh -i ${EC2_KEYFILE} ec2-user@$IP_BUILD -t su root -c \
+    "\"sh -e dobuild.sh $REL $REPO amd64 xbd6 $HASH_AMD64\"" > build-amd64.log 2>/dev/null
+
+# Build Marketplace disk
+echo "Building AWS Marketplace disk image..."
+ssh -i ${EC2_KEYFILE} ec2-user@$IP_BUILD -t su root -c \
+    "\"sh -e domarketize.sh xbd6 xbd7\"" > build-marketplace.log 2>/dev/null
+
+echo "Shutting down FreeBSD build host..."
+
+# Find the volumes we wrote root disks to.
+export VOL_HVM_32=`aws ec2 describe-volumes --region ${EC2_REGION}	\
+    --filters Name=attachment.instance-id,Values=${I_BUILD}		\
+    --filters Name=attachment.device,Values=/dev/sdf			\
+    --query 'Volumes[*].VolumeId' --output text`
+export VOL_HVM_64=`aws ec2 describe-volumes --region ${EC2_REGION}	\
+    --filters Name=attachment.instance-id,Values=${I_BUILD}		\
+    --filters Name=attachment.device,Values=/dev/sdg			\
+    --query 'Volumes[*].VolumeId' --output text`
+export VOL_HVM_MRKT=`aws ec2 describe-volumes --region ${EC2_REGION}	\
+    --filters Name=attachment.instance-id,Values=${I_BUILD}		\
+    --filters Name=attachment.device,Values=/dev/sdh			\
+    --query 'Volumes[*].VolumeId' --output text`
+
+# Shut down the FreeBSD instance
+aws ec2 terminate-instances --region ${EC2_REGION} --instance-ids ${I_BUILD} >/dev/null
+
+# Wait until the volumes has finished detaching
+while aws ec2 describe-volumes --region ${EC2_REGION} \
+    --volume-ids ${VOL_HVM_32} | grep -q detaching; do
+	sleep 15;
+done
+while aws ec2 describe-volumes --region ${EC2_REGION} \
+    --volume-ids ${VOL_HVM_64} | grep -q detaching; do
+	sleep 15;
+done
+while aws ec2 describe-volumes --region ${EC2_REGION} \
+    --volume-ids ${VOL_HVM_MRKT} | grep -q detaching; do
+	sleep 15;
+done
+echo "Cleaning up..."
+
+# Clean up the SSH key we generated
+aws ec2 delete-key-pair --region ${EC2_REGION} --key-name ${EC2_KEY} >/dev/null
+rm ${EC2_KEYFILE} ${EC2_KEYFILE}.pub

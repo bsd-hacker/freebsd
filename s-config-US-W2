@@ -1,0 +1,8 @@
+echo "Setting configuration parameters for US West (Oregon) region..."
+
+# Parameters for the US-West-2 region
+export EC2_REGION=us-west-2
+export EC2_ZONE=us-west-2a
+export AMI_BUILD=ami-aa09819a	# FreeBSD 9.1-RELEASE
+export AMI_WINDOWS64=ami-aa09819a
+export AMI_WINDOWS32=ami-b2098182

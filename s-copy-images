@@ -1,0 +1,9 @@
+# We don't need to copy the region where we originally built these...
+cp ami-built.log ami.log
+
+# Copy into each region
+for REGION_TO in $TARGET_REGIONS; do
+	sh cpami.sh $REGION_TO &
+	sleep 1
+done
+wait

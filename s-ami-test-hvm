@@ -1,0 +1,42 @@
+echo "Testing AMI ${AMI_FREEBSD} in ${EC2_REGION}..."
+
+# Create an SSH key pair
+export EC2_KEY=freebsd-buildtest-${AMI_FREEBSD}
+export EC2_KEYFILE=keys/${EC2_KEY}.key
+ssh-keygen -b 2048 -N '' -f ${EC2_KEYFILE} >/dev/null
+
+# Import the key
+aws ec2 import-key-pair --region ${EC2_REGION} --key-name ${EC2_KEY}	\
+    --public-key-material file://`pwd`/${EC2_KEYFILE}.pub >/dev/null
+
+# Launch a FreeBSD instance
+I_FREEBSD=`aws ec2 run-instances --region ${EC2_REGION}			\
+    --image-id ${AMI_FREEBSD} --instance-type ${EC2_SZ}			\
+    --block-device-mappings file://\`pwd\`/block-mappings-test.conf	\
+    --key-name ${EC2_KEY} --output text --query 'Instances[*].InstanceId'`
+sleep 5
+while aws ec2 describe-instances --region ${EC2_REGION} \
+    --instance-ids ${I_FREEBSD} | grep -q pending; do
+        sleep 15;
+done
+IP_FREEBSD=`aws ec2 describe-instances --region ${EC2_REGION}		\
+    --instance-ids ${I_FREEBSD} --output text				\
+    --query 'Reservations[*].Instances[*].PublicIpAddress'`
+
+# Read console output
+sleep 360
+aws ec2 get-console-output --region ${EC2_REGION} \
+    --instance-id ${I_FREEBSD} --output text |
+    tr -d '\r' > console.log/console.log.${EC2_REGION}.${AMI_FREEBSD}
+
+# SSH into FreeBSD instance
+ssh -o StrictHostKeyChecking=no -i ${EC2_KEYFILE} ec2-user@${IP_FREEBSD} \
+    echo "AMI ${AMI_FREEBSD}: FreeBSD \`uname -r\` \`uname -p\` running on ${EC2_SZ} in EC2 region ${EC2_REGION}" \
+    < /dev/null >> ami-test.log
+
+# Kill FreeBSD instance
+aws ec2 terminate-instances --region ${EC2_REGION} --instance-ids ${I_FREEBSD} >/dev/null
+
+# Clean up the SSH key we generated for uploading
+aws ec2 delete-key-pair --region ${EC2_REGION} --key-name ${EC2_KEY} >/dev/null
+rm ${EC2_KEYFILE} ${EC2_KEYFILE}.pub

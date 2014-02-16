@@ -1,0 +1,56 @@
+#!/bin/sh -e
+
+# I hereby place this script in the public domain -- Colin Percival
+
+# Usage
+if [ $# -lt 1 ]; then
+	echo "usage: $0 host [fingerprint ...]" >/dev/stderr
+	exit 1;
+fi
+
+# Extract host name from command line.
+HOST=$1
+shift;
+
+# Print a warning if no fingerprints were provided.
+if [ $# -lt 1 ]; then
+	echo "$0: No fingerprints provided for host $HOST" >/dev/stderr
+	exit 0;
+fi
+
+# Create a directory for our temporary files.
+D=`mktemp -d "${TMP:-/tmp}/ssh-knownhost.XXXXXX"` || exit 1
+
+# No good keys yet.
+: > $D/goodkeys
+
+# Handle SSH keys of various sorts.
+for KTYPE in rsa1 rsa dsa ecdsa; do
+	ssh-keyscan -t $KTYPE $HOST > $D/hostkey.$KTYPE 2>/dev/null
+	if [ -s $D/hostkey.$KTYPE ]; then
+		KPRINT=`ssh-keygen -lf $D/hostkey.$KTYPE | cut -f 2 -d ' '`
+		GOODKEY=0
+		for KEY in "$@"; do
+			if [ "$KEY" = "$KPRINT" ]; then
+				GOODKEY=1
+			fi
+		done
+		if [ $GOODKEY = 1 ]; then
+			cat $D/hostkey.$KTYPE >> $D/goodkeys
+		else
+			echo "$0: $KTYPE key for $HOST not in provided list" \
+			    >/dev/stderr
+		fi
+	fi
+	rm $D/hostkey.$KTYPE
+done
+
+# Add new keys to our known_hosts file.
+sort < $D/goodkeys > $D/goodkeys.tmp
+mv $D/goodkeys.tmp $D/goodkeys
+sort < ~/.ssh/known_hosts | comm -13 - $D/goodkeys > $D/newkeys
+cat $D/newkeys >> ~/.ssh/known_hosts
+
+# Clean up
+rm $D/goodkeys $D/newkeys
+rmdir $D
