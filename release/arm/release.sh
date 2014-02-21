@@ -11,35 +11,40 @@
 set -e
 
 before_build() {
+	WANT_UBOOT=
+	KNOWNHASH=
+	UBOOT_VERSION=
 	case ${KERNEL} in
 		BEAGLEBONE)
+			WANT_UBOOT=1
 			KNOWNHASH="4150e5a4480707c55a8d5b4570262e43af68d8ed3bdc0a433d8e7df47989a69e"
-			chroot ${CHROOTDIR} fetch -o /tmp/crochet/u-boot-2013.04.tar.bz2 \
-				http://people.freebsd.org/~gjb/u-boot-2013.04.tar.bz2
-			UBOOT_HASH="$(sha256 -q ${CHROOTDIR}/tmp/crochet/u-boot-2013.04.tar.bz2)"
-			if [ "${UBOOT_HASH}" != "${KNOWNHASH}" ]; then
-				echo "Checksum mismatch!  Exiting now."
-				exit 1
-			fi
-			chroot ${CHROOTDIR} tar xf /tmp/crochet/u-boot-2013.04.tar.bz2 \
-				-C /tmp/crochet/ 
+			UBOOT_VERSION="u-boot-2013.04"
 			;;
 		PANDABOARD)
+			WANT_UBOOT=1
 			KNOWNHASH="e08e20a6979bfca6eebb9a2b0e42aa4416af3d796332fd63a3470495a089d496"
-			chroot ${CHROOTDIR} fetch -o /tmp/crochet/u-boot-2012.07.tar.bz2 \
-				http://people.freebsd.org/~gjb/u-boot-2012.07.tar.bz2
-			UBOOT_HASH="$(sha256 -q ${CHROOTDIR}/tmp/crochet/u-boot-2012.07.tar.bz2)"
-			if [ "${UBOOT_HASH}" != "${KNOWNHASH}" ]; then
-				echo "Checksum mismatch!  Exiting now."
-				exit 1
-			fi
-			chroot ${CHROOTDIR} tar xf /tmp/crochet/u-boot-2012.07.tar.bz2 \
-				-C /tmp/crochet/ 
+			UBOOT_VERSION="u-boot-2012.07"
+			;;
+		WANDBOARD-QUAD)
+			WANT_UBOOT=1
+			KNOWNHASH="0d71e62beb952b41ebafb20a7ee4df2f960db64c31b054721ceb79ff14014c55"
+			UBOOT_VERSION="u-boot-2013.10"
 			;;
 		*)
 			# Fallthrough.
 			;;
 	esac
+	if [ ! -z ${WANT_UBOOT} ]; then
+		chroot ${CHROOTDIR} fetch -o /tmp/crochet/${UBOOT_VERSION}.tar.bz2 \
+			http://people.freebsd.org/~gjb/${UBOOT_VERSION}.tar.bz2
+		UBOOT_HASH="$(sha256 -q ${CHROOTDIR}/tmp/crochet/${UBOOT_VERSION}.tar.bz2)"
+		if [ "${UBOOT_HASH}" != "${KNOWNHASH}" ]; then
+			echo "Checksum mismatch!  Exiting now."
+			exit 1
+		fi
+		chroot ${CHROOTDIR} tar xf /tmp/crochet/${UBOOT_VERSION}.tar.bz2 \
+			-C /tmp/crochet/ 
+	fi
 }
 
 install_crochet() {
