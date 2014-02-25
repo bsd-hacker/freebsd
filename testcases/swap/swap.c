@@ -37,8 +37,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/resource.h>
 #include <err.h>
 
-
 #include "stress.h"
+
+#if defined(__LP64__)
+#define MINLEFT (1792LL * 1024 * 1024)
+#else
+#define MINLEFT (1024LL * 1024 * 1024)
+#endif
 
 static unsigned long size;
 
@@ -53,25 +58,33 @@ setup(int nb)
 	if (nb == 0) {
 		mem = usermem();
 		swapinfo = swap();
-		if (swapinfo > (int64_t)mem)
-			swapinfo = mem;
 
 		if (op->hog == 0)
-			pct = random_int(1, 10);
+			pct = random_int(80, 100);
 		
 		if (op->hog == 1)
-			pct = random_int(10, 20);
+			pct = random_int(100, 110);
 		
 		if (op->hog == 2)
-			pct = random_int(80, 90);
+			pct = random_int(110, 120);
 		
 		if (op->hog >= 3)
-			pct = random_int(100, 110);
+			pct = random_int(120, 130);
 
-		if (swapinfo == 0)
+		if (swapinfo == 0) {
+			if (mem <= MINLEFT)
+				_exit(1);
+			mem -= MINLEFT;
+			if (pct > 100)
+				pct = 100;
 			size = mem / 100 * pct;
-		else
-			size = swapinfo / 100 * pct + mem;
+		} else {
+			size = mem / 100 * pct;
+			if (size > mem + swapinfo / 4) {
+				size = mem + swapinfo / 4;
+				pct = size * 100 / mem;
+			}
+		}
 
 		size = size / op->incarnations;
 
