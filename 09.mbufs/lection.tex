@@ -1,0 +1,285 @@
+\documentclass{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{tikz}
+\usepackage{adjustbox}
+\usepackage{url}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{verbatim}
+\usepackage{ifthen}
+
+\usetikzlibrary{chains}
+\usetikzlibrary{scopes}
+\usetikzlibrary{positioning}
+\usetikzlibrary{shapes}
+\usetikzlibrary{patterns}
+
+\input{../course.tex}
+
+\title{Network Input/Output: mbufs. Mbuf manipulations. Netgraph.}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\begin{frame}
+\frametitle{Basic view of network I/O}
+\begin{figure}
+\begin{tikzpicture}[thick]
+  \node [name=sockbuf, draw, rounded corners, minimum width=.4\paperwidth,
+	 minimum height=2em]
+	{ socket send/receive buffers };
+  \node [name=driver, draw, rounded corners, minimum width=.4\paperwidth,
+	 minimum height=2em, below=.3\paperheight of sockbuf]
+	{ NIC driver RX/TX rings };
+  \node [name=write, above left=of sockbuf.center] { write(2) };
+  \node [name=read, above right=of sockbuf.center] { read(2) };
+
+  \node [name=uk1, above left=2mm and .2\paperwidth of sockbuf] {};
+  \node [name=uk2, above right=2mm and .2\paperwidth of sockbuf] {};
+  \draw (uk1) --
+	node [above, pos=.9] { userland }
+	node [below, pos=.9] { kernel } (uk2);
+
+  \draw [->] (write) -- (write |- sockbuf.north);
+  \draw [<-] (read) -- (read |- sockbuf.north);
+
+  \node (mark1) at (node cs:name=sockbuf, angle=195) {};
+  \node (mark2) at (node cs:name=sockbuf, angle=345) {};
+  \draw [->] (mark1.center) -- (mark1 |- driver.north);
+  \draw [<-] (mark2.center) -- (mark2 |- driver.north);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{I/O metadata: protocol headers}
+  \begin{itemize}
+    \item{Unlike disk I/O, metadata is embedded into data}
+    \item{Metadata variates at different levels of I/O:
+	\begin{itemize}
+	  \item{Socket buffers are free of metadata}
+	  \item{NIC driver rings has protocol headers of all network levels}
+	\end{itemize}
+    }
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{I/O sizing}
+  \begin{itemize}
+    \item {Size of protocol headers is unpredictable,
+	 variates around 10 - 100 bytes}
+    \item {Payload size:
+	\begin{itemize}
+	  \item{TCP acknowledgement only packet has 0 sized payload}
+	  \item{Typical Internet MTU 1500 bytes (minus protocol headers)}
+	  \item{There is also Jumbo MTU of 9000 bytes}
+	\end{itemize}
+    }
+    \item {Typical memory page size is 4096 bytes}
+    \item {Driver alignment restrictions}
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Demands for network I/O buffer}
+\begin{itemize}
+  \item{Variable memory size}
+  \item{Prependable and extendable}
+  \item{Queueable}
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{The mbuf}
+\begin{figure}
+\begin{tikzpicture}[
+  start chain=going right, node distance=0mm,
+  mpart/.style= {
+	on chain,
+	minimum height=3em,
+	draw, thick,
+	align=center
+  }
+]
+\onslide <1-> {
+  \node [mpart, name=mhdr] { m\_hdr };
+  \node [mpart, name=empty1, text width=.05\paperwidth] { };
+  \node [mpart, name=proto1, pattern=checkerboard light gray, text width=8ex]
+	{ protocol headers };
+  \node [mpart, name=payload, fill=gray, shading=axis, shading angle=45,
+	 text width=.10\paperwidth]
+	{ payload };
+  \node [mpart, name=proto2, pattern=checkerboard light gray, text width=8ex]
+	{ protocol footers };
+  \node [mpart, name=empty2, text width=.15\paperwidth] { };
+}
+\onslide <2-> {
+  \node [name=struct, below right=2em and 2em of mhdr.south east,
+	 anchor=north east, 
+	 struct, rectangle split parts=6] {
+	\textbf{struct m\_hdr}
+	\nodepart{two}char *m\_data
+	\nodepart{three}int32\_t m\_len
+	\nodepart{four}uint32\_t m\_flags
+	\nodepart{five}struct mbuf *m\_next
+	\nodepart{six}struct mbuf *m\_nextpkt
+  };
+  \draw (mhdr.south east) -- (struct.north east);
+  \draw (mhdr.south west) -- (struct.north west);
+  \draw [->, thick] (struct.two east) to [out=0, in=270] (proto1.south west);
+
+  \node [name=mark1, below=2mm of proto1.south west] {};
+  \node [name=mark2, below=2mm of proto2.south east] {};
+  \draw [<->] (mark1.center) -- node (mark3) {} (mark2.center);
+  \draw [->, thick, rounded corners] (struct.three east) -| (mark3.center);
+
+  \node [name=mark4, above=2mm of mhdr.north west] {};
+  \node [name=mark5, above=2mm of empty2.north east] {};
+  \draw [<->] (mark4.center) --
+	node [above] { MSIZE (256 bytes) } (mark5.center);
+}
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Mbuf chain}
+\begin{figure}
+\begin{tikzpicture}[
+  every node/.style= {
+	node distance=0mm,
+	minimum height=3em,
+	thick, align=center
+  }
+]
+{ [start chain=1 going right]
+  \node [draw, on chain=1, name=mhdr] { m\_hdr };
+  \node [draw, on chain=1, name=payload,
+	 fill=gray, shading=axis, shading angle=45,
+	 minimum width=.2\paperwidth]
+	{ payload };
+  \node [draw, on chain=1, name=empty2, minimum width=.4\paperwidth] { };
+}
+{ [start chain=2 going right]
+  \node [name=mhdr2, below=2 of mhdr, draw, on chain=2] { m\_hdr };
+  \node [draw, on chain=2, name=payload,
+	 fill=gray, shading=axis, shading angle=45,
+	 minimum width=.6\paperwidth]
+	{ payload continues};
+}
+  \draw [->, thick] (mhdr.south) --
+	node [above, rotate=90, minimum height=1em] {m\_next} (mhdr2.north);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{The packet header mbuf}
+\begin{figure}
+\begin{tikzpicture}[
+  start chain=going right, node distance=0mm,
+  mpart/.style= {
+	on chain,
+	minimum height=3em,
+	draw, thick,
+	align=center
+  }
+]
+  \node [mpart, name=mhdr] { m\_hdr };
+  \node [mpart, name=pkthdr] { pkthdr };
+  \node [mpart, name=empty, text width=.3\paperwidth] { };
+
+  \node [name=mhdrstr, below left=1em and 1em of mhdr.south east,
+	 anchor=north east, 
+	 struct, rectangle split parts=3] {
+	\textbf{struct m\_hdr}
+	\nodepart{two}char *m\_data
+	\nodepart{three}uint32\_t m\_flags
+  };
+  \node [right=of mhdrstr.three east, anchor=west, color=red] { \& M\_PKTHDR };
+  \draw (mhdr.south west) -- (mhdrstr.north west);
+  \draw (mhdr.south east) -- (mhdrstr.north east);
+
+  \node [name=pkthdrstr, below=.2\paperwidth of empty.south east,
+	 anchor=north east, struct, rectangle split parts=4] {
+	\textbf{struct pkthdr}
+	\nodepart{two}struct ifnet *rcvif
+	\nodepart{three}int32\_t len
+	\nodepart{four}SLIST\_HEAD(, m\_tag) tags
+  };
+  \draw (pkthdr.south west) -- (pkthdrstr.north west);
+  \draw (pkthdr.south east) -- (pkthdrstr.north east);
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{The M\_EXT mbuf and mbuf cluster}
+\begin{figure}
+\begin{tikzpicture}[
+  start chain=going right, node distance=0mm,
+  mpart/.style= {
+	on chain,
+	minimum height=3em,
+	draw, thick,
+	align=center
+  }
+]
+\onslide <1-> {
+  \node [mpart, name=mhdr] { m\_hdr };
+  \node [mpart, name=pkthdr] { \textit{pkthdr} };
+  \node [mpart, name=mext] { m\_ext };
+  \node [mpart, name=empty, text width=.3\paperwidth] { };
+
+  \node [name=mhdrstr, below left=1em and 1em of mhdr.south east,
+	 anchor=north east, 
+	 struct, rectangle split parts=3] {
+	\textbf{struct m\_hdr}
+	\nodepart{two}char *m\_data
+	\nodepart{three}uint32\_t m\_flags
+  };
+  \node [right=of mhdrstr.three east, anchor=west, color=red] { \& M\_EXT };
+  \draw (mhdr.south west) -- (mhdrstr.north west);
+  \draw (mhdr.south east) -- (mhdrstr.north east);
+}
+\onslide <2-> {
+  \node [name=mextstr, below=1em of empty.south east, anchor=north east,
+	 struct, rectangle split parts=5] {
+	\textbf{struct m\_ext}
+	\nodepart{two}char *ext\_buf
+	\nodepart{three}uint32\_t ext\_size
+	\nodepart{four}uint32\_t ext\_flags
+	\nodepart{five}int (*ext\_free)(...)
+  };
+  \draw (mext.south west) -- (mextstr.north west);
+  \draw (mext.south east) -- (mextstr.north east);
+
+  \node [name=cluster, draw, below=1em of mextstr.south east, anchor=north east,
+	 minimum height=3em, text width=.8\paperwidth, align=center]
+	{ \textit{cluster} (2048 bytes) };
+
+  \draw [->,thick] (mextstr.two west)
+	.. controls +(-3,-3) and +(0,2) .. (cluster.north west);
+  \draw [->,thick] (mhdrstr.two east)
+	.. controls +(2,-2) and +(0,2) .. (node cs:name=cluster, angle=170);
+}
+\end{tikzpicture}
+\end{figure}
+\end{frame}
+
+
+\end{document}
