@@ -19,7 +19,7 @@
 
 \input{../course.tex}
 
-\title{Network Input/Output: mbufs. Mbuf manipulations. Netgraph.}
+\title{Network Input/Output: mbufs}
 
 \begin{document}
 
@@ -258,12 +258,13 @@
 }
 \onslide <2-> {
   \node [name=mextstr, below=1em of empty.south east, anchor=north east,
-	 struct, rectangle split parts=5] {
+	 struct, rectangle split parts=6] {
 	\textbf{struct m\_ext}
-	\nodepart{two}char *ext\_buf
-	\nodepart{three}uint32\_t ext\_size
-	\nodepart{four}uint32\_t ext\_flags
-	\nodepart{five}int (*ext\_free)(...)
+	\nodepart{two}u\_int *ref\_cnt
+	\nodepart{three}char *ext\_buf
+	\nodepart{four}uint32\_t ext\_size
+	\nodepart{five}uint32\_t ext\_flags
+	\nodepart{six}int (*ext\_free)(...)
   };
   \draw (mext.south west) -- (mextstr.north west);
   \draw (mext.south east) -- (mextstr.north east);
@@ -272,13 +273,177 @@
 	 minimum height=3em, text width=.8\paperwidth, align=center]
 	{ \textit{cluster} (2048 bytes) };
 
-  \draw [->,thick] (mextstr.two west)
+  \draw [->,thick] (mextstr.three west)
 	.. controls +(-3,-3) and +(0,2) .. (cluster.north west);
   \draw [->,thick] (mhdrstr.two east)
 	.. controls +(2,-2) and +(0,2) .. (node cs:name=cluster, angle=170);
 }
 \end{tikzpicture}
 \end{figure}
+\end{frame}
+
+
+\FootReferences{}{sys/kern/kern\_mbuf.c}
+\begin{frame}
+\frametitle{Allocation of mbufs}
+  \begin{itemize}
+    \item{UMA zones:
+	\begin{itemize}
+	  \item{mbuf (256 bytes) zone}
+	  \item{cluster (2048 bytes) zone}
+\onslide <2-> {
+	  \item{``packet'' zone}
+}
+\onslide <3-> {
+	  \item{PAGE\_SIZEd zone}
+	  \item{Jumbo-sized zone}
+}
+\onslide <4-> {
+	  \item{refcount zone (sizeof(u\_int))}
+}
+	\end{itemize}
+    }
+\onslide <5-> {
+    \item {Statistics can be analyzed with vmstat(8), netstat(1)}
+}
+\onslide <6-> {
+    \item {Usually allocation happens:
+	\begin{itemize}
+	  \item{Driver fills its RX ring}
+	  \item{User data is copied into socket buffer on write(2)}
+	\end{itemize}
+    }
+}
+\onslide <7-> {
+    \item {Layers pass ownership of mbufs to each other}
+}
+  \end{itemize}
+\end{frame}
+
+
+\FootReferences{mbuf(9)}{sys/sys/mbuf.h, sys/kern/kern\_mbuf.c}
+\begin{frame}
+\frametitle{Allocation APIs}
+  \begin{itemize}
+    \item{Explicit allocation:
+	\begin{itemize}
+    	  \item{m\_get(how, type) - allocate 256 byte mbuf}
+    	  \item{m\_gethdr(how, type) - allocate M\_PKTHDR mbuf}
+    	  \item{m\_getcl(how, type, flags) - allocate ``packet'': mbuf+cluster}
+\onslide <2-> {
+    	  \item{m\_get2(size, how, type, flags) - allocate minimum sized buffer}
+    	  \item{m\_getm(size, how, type, flags) - allocate chain of buffers}
+}
+	\end{itemize}
+    }
+\onslide <3-> {
+    \item{Implicit allocation:
+	\begin{itemize}
+	  \item{m\_uiotombuf(uio, ...) - copy uio(9) to allocated chain}
+	  \item{m\_devget(char *, ...) - copy buffer to allocated chain}
+	  \item{m\_copym(mbuf, ...) - copy mbuf(9) chain to new one}
+	\end{itemize}
+    }
+}
+\onslide <4-> {
+    \item{Freeing:
+	\begin{itemize}
+	  \item{m\_free(m) - free this mbuf and return its m\_next}
+	  \item{m\_freem(m) - free entire chain}
+	\end{itemize}
+    }
+}
+  \end{itemize}
+\end{frame}
+
+
+\FootReferences{mbuf(9)}{sys/sys/mbuf.h, sys/kern/uipc\_mbuf.c}
+\begin{frame}
+\frametitle{Dereferencing, prepending and aligning mbufs}
+  \begin{itemize}
+    \item{Dereferencing:
+	\begin{itemize}
+	  \item{protoheader = mtod(m, cast) -- cast m\_data to a header}
+	  \item{Must check m\_len!}
+	  \item{m = m\_prepend(m, len) --
+		guarantee m\_data contiguity of len bytes}
+	\end{itemize}
+    }
+\onslide <2-> {
+    \item{Prepending:
+	\begin{itemize}
+	  \item{M\_PREPEND(m, len, how) -- macro to prepend len before m\_data}
+	  \item{m\_prepend(m, len, how) -- hard part of M\_PREPEND}
+	\end{itemize}
+    }
+}
+\onslide <3-> {
+    \item{Aligning:
+	\begin{itemize}
+	  \item{M\_ALIGN(m, len), MH\_ALIGN(m, len) -- set m\_data to len bytes
+		at end of data area}
+	  \item{m\_align(m, len) -- same for any type of mbuf}
+	\end{itemize}
+    }
+}
+  \end{itemize}
+\end{frame}
+
+
+\FootReferences{}{sys/netinet/ip\_input.c}
+\begin{frame}[fragile]
+\frametitle{Example: dereferencing mbufs}
+\begin{beamercolorbox}[rounded=true,shadow=true]{source}
+\lstset{language=C}
+\scriptsize\begin{lstlisting}
+void
+ip_input(struct mbuf *m)
+{
+        struct ip *ip;
+
+        if (m->m_pkthdr.len < sizeof(struct ip))
+                goto tooshort;
+
+        if (m->m_len < sizeof (struct ip) &&
+            (m = m_pullup(m, sizeof (struct ip))) == NULL) {
+                IPSTAT_INC(ips_toosmall);
+                return;
+        }
+        ip = mtod(m, struct ip *);
+
+        if (ip->ip_v != IPVERSION) {
+                IPSTAT_INC(ips_badvers);
+                goto bad;
+        }
+\end{lstlisting}
+\end{beamercolorbox}
+\end{frame}
+
+
+\FootReferences{}{sys/net/if\_ethersubr.c}
+\begin{frame}[fragile]
+\frametitle{Example: prepending header}
+\begin{beamercolorbox}[rounded=true,shadow=true]{source}
+\lstset{language=C}
+\scriptsize\begin{lstlisting}
+int
+ether_output(struct ifnet *ifp, struct mbuf *m,
+        const struct sockaddr *dst, struct route *ro)
+{
+        struct ether_header *eh;
+
+        M_PREPEND(m, ETHER_HDR_LEN, M_NOWAIT);
+        if (m == NULL)
+                senderr(ENOBUFS);
+        eh = mtod(m, struct ether_header *);
+        memcpy(&eh->ether_type, &type,
+            sizeof(eh->ether_type));
+        memcpy(eh->ether_dhost, edst,
+            sizeof(eh->ether_dhost));
+        memcpy(eh->ether_shost, IF_LLADDR(ifp),
+            sizeof(eh->ether_shost));
+\end{lstlisting}
+\end{beamercolorbox}
 \end{frame}
 
 
