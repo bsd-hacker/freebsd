@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2000,2007 Free Software Foundation, Inc.              *
+ * Copyright (c) 2010,2012 Free Software Foundation, Inc.                   *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -26,44 +26,83 @@
  * authorization.                                                           *
  ****************************************************************************/
 
-#include <curses.priv.h>
-
-MODULE_ID("$Id: memmove.c,v 1.5 2007/08/11 17:12:43 tom Exp $")
-
 /****************************************************************************
- *  Author: Thomas E. Dickey <dickey@clark.net> 1998                        *
+ *  Author: Thomas E. Dickey                        2010                    *
  ****************************************************************************/
 
-#if USE_MY_MEMMOVE
-#define DST ((char *)s1)
-#define SRC ((const char *)s2)
-NCURSES_EXPORT(void *)
-_nc_memmove(void *s1, const void *s2, size_t n)
-{
-    if (n != 0) {
-	if ((DST + n > SRC) && (SRC + n > DST)) {
-	    static char *bfr;
-	    static size_t length;
-	    register size_t j;
-	    if (length < n) {
-		length = (n * 3) / 2;
-		bfr = typeRealloc(char, length, bfr);
-	    }
-	    for (j = 0; j < n; j++)
-		bfr[j] = SRC[j];
-	    s2 = bfr;
-	}
-	while (n-- != 0)
-	    DST[n] = SRC[n];
-    }
-    return s1;
-}
+/*
+ * $Id: build.priv.h,v 1.9 2012/02/22 22:17:02 tom Exp $
+ *
+ *	build.priv.h
+ *
+ *	This is a reduced version of curses.priv.h, for build-time utilties.
+ *	Because it has fewer dependencies, this simplifies cross-compiling.
+ *
+ */
+
+#ifndef CURSES_PRIV_H
+#define CURSES_PRIV_H 1
+
+#include <ncurses_dll.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <ncurses_cfg.h>
+
+#if USE_RCS_IDS
+#define MODULE_ID(id) static const char Ident[] = id;
 #else
-extern
-NCURSES_EXPORT(void)
-_nc_memmove(void);		/* quiet's gcc warning */
-NCURSES_EXPORT(void)
-_nc_memmove(void)
-{
-}				/* nonempty for strict ANSI compilers */
-#endif /* USE_MY_MEMMOVE */
+#define MODULE_ID(id) /*nothing*/
+#endif
+
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+
+#include <assert.h>
+#include <stdio.h>
+
+#include <errno.h>
+
+#include <curses.h>	/* we'll use -Ipath directive to get the right one! */
+
+/* usually in <unistd.h> */
+#ifndef EXIT_SUCCESS
+#define EXIT_SUCCESS 0
+#endif
+
+#ifndef EXIT_FAILURE
+#define EXIT_FAILURE 1
+#endif
+
+#define FreeAndNull(p)   free(p); p = 0
+#define UChar(c)         ((unsigned char)(c))
+#define SIZEOF(v)        (sizeof(v) / sizeof(v[0]))
+
+#include <nc_alloc.h>
+#include <nc_string.h>
+
+/* declare these, to avoid needing term.h */
+#if BROKEN_LINKER || USE_REENTRANT
+#define NCURSES_ARRAY(name) \
+	NCURSES_WRAPPED_VAR(NCURSES_CONST char * const *, name)
+
+NCURSES_ARRAY(boolnames);
+NCURSES_ARRAY(boolfnames);
+NCURSES_ARRAY(numnames);
+NCURSES_ARRAY(numfnames);
+NCURSES_ARRAY(strnames);
+NCURSES_ARRAY(strfnames);
+#endif
+
+#if NO_LEAKS
+NCURSES_EXPORT(void) _nc_names_leaks(void);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CURSES_PRIV_H */
