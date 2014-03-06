@@ -63,7 +63,7 @@ autotest_set_defaults() {
     shtk_config_set DATADIR "${AUTOTEST_ROOT}/data"
     shtk_config_set IMAGE "${AUTOTEST_ROOT}/image.disk"
     shtk_config_set SRCBRANCH "base/head"
-    shtk_config_set SVNROOT "svn://svn.freebsd.org"
+    shtk_config_set SVNROOT "svn://svn.FreeBSD.org/"
     shtk_config_set TARGET "amd64"
     shtk_config_set TARGET_ARCH "amd64"
 }
