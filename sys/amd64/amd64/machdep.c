@@ -1567,7 +1567,7 @@ parsememmap(caddr_t kmdp, u_int64_t first, vm_paddr_t *physmap)
 	physmap_idx = 0;
 
 	efihdr = (struct efi_header *)preload_search_info(kmdp,
-	    MODINFO_METADATA | MODINFOMD_EFI);
+	    MODINFO_METADATA | MODINFOMD_EFI_MAP);
 	smapbase = (struct bios_smap *)preload_search_info(kmdp,
 	    MODINFO_METADATA | MODINFOMD_SMAP);
 	if (efihdr == NULL && smapbase == NULL)

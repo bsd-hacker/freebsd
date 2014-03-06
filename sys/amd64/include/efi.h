@@ -18,7 +18,6 @@ struct efi_header {
         size_t          memory_size;
         size_t          descriptor_size;
         uint64_t        descriptor_version;
-	struct efi_fb	fb;
 };
 
 struct efi_descriptor {

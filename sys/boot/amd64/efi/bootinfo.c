@@ -245,6 +245,10 @@ bi_load_efi_data(struct preloaded_file *kfp)
 	UINTN mmsz, pages, sz;
 	UINT32 mmver;
 	struct efi_header *efihdr;
+	struct efi_fb efifb;
+
+	efi_find_framebuffer(&efifb);
+	file_addmetadata(kfp, MODINFOMD_EFI_FB, sizeof(efifb), &efifb);
 
         efisz = (sizeof(struct efi_header) + 0xf) & ~0xf;
 
@@ -289,9 +293,7 @@ bi_load_efi_data(struct preloaded_file *kfp)
 	efihdr->descriptor_size = mmsz;
 	efihdr->descriptor_version = mmver;
 
-	efi_find_framebuffer(&efihdr->fb);
-
-	file_addmetadata(kfp, MODINFOMD_EFI, efisz + sz, efihdr);
+	file_addmetadata(kfp, MODINFOMD_EFI_MAP, efisz + sz, efihdr);
 
 	return (0);
 }

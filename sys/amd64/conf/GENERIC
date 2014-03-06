@@ -174,7 +174,6 @@ device		psm		# PS/2 mouse
 
 device		kbdmux		# keyboard multiplexer
 
-device		efifb		# EFI framebuffer
 device		vga		# VGA video card driver
 options 	VESA		# Add support for VESA BIOS Extensions (VBE)
 
@@ -183,8 +182,6 @@ device		splash		# Splash screen and screen saver support
 # syscons is the default console driver, resembling an SCO console
 device		sc
 options 	SC_PIXEL_MODE	# add support for the raster text mode
-options		SC_DFLT_FONT
-makeoptions	SC_DFLT_FONT=cp437
 
 device		agp		# support several AGP chipsets
 
