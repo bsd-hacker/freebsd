@@ -24,7 +24,6 @@ CFLAGS+= -I${.CURDIR}
 CFLAGS+=	-mno-mmx -mno-3dnow -mno-sse -mno-sse2 -mno-sse3 -msoft-float
 .endif
 .if ${MACHINE_CPUARCH} == "i386"
-CFLAGS+=	-march=i386
 CFLAGS.gcc+=	-mpreferred-stack-boundary=2
 .endif
 .if ${MACHINE_CPUARCH} == "amd64"
@@ -109,7 +108,7 @@ SRCS+= uuid_equal.c uuid_is_nil.c
 .if ${MACHINE_ARCH} == "powerpc64"
 .PATH: ${.CURDIR}/powerpc
 .else
-.PATH: ${.CURDIR}/${MACHINE_ARCH}
+.PATH: ${.CURDIR}/${MACHINE_CPUARCH}
 .endif
 SRCS+=	_setjmp.S
 
