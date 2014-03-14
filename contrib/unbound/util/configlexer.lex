@@ -8,6 +8,8 @@
  *
  */
 
+#include "config.h"
+
 #include <ctype.h>
 #include <string.h>
 #include <strings.h>
@@ -17,6 +19,9 @@
 
 #include "util/config_file.h"
 #include "util/configparser.h"
+#if 0
+#include "util/configyyrename.h"
+#endif
 void ub_c_error(const char *message);
 
 #if 0
@@ -291,6 +296,8 @@ python{COLON}			{ YDVAR(0, VAR_PYTHON) }
 domain-insecure{COLON}		{ YDVAR(1, VAR_DOMAIN_INSECURE) }
 minimal-responses{COLON}	{ YDVAR(1, VAR_MINIMAL_RESPONSES) }
 rrset-roundrobin{COLON}		{ YDVAR(1, VAR_RRSET_ROUNDROBIN) }
+dns64-prefix{COLON}		{ YDVAR(1, VAR_DNS64_PREFIX) }
+dns64-synthall{COLON}		{ YDVAR(1, VAR_DNS64_SYNTHALL) }
 <INITIAL,val>{NEWLINE}		{ LEXOUT(("NL\n")); cfg_parser->line++; }
 
 	/* Quoted strings. Strip leading and ending quotes */

@@ -77,7 +77,7 @@ parse_create_qinfo(ldns_buffer* pkt, struct msg_parse* msg,
 }
 
 /** constructor for replyinfo */
-static struct reply_info*
+struct reply_info*
 construct_reply_info_base(struct regional* region, uint16_t flags, size_t qd,
 	uint32_t ttl, uint32_t prettl, size_t an, size_t ns, size_t ar, 
 	size_t total, enum sec_status sec)

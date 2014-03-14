@@ -41,7 +41,7 @@ server:
 
 	# enable this feature to copy the source address of queries to reply.
 	# Socket options are not supported on all platforms. experimental. 
-	# interface-automatic: no
+	interface-automatic: yes
 
 	# port to answer queries from
 	# port: 53
@@ -166,6 +166,8 @@ server:
 	# access-control: ::0/0 refuse
 	# access-control: ::1 allow
 	# access-control: ::ffff:127.0.0.1 allow
+	access-control: ::0/0 allow
+        access-control: 0.0.0.0/0 allow
 
 	# if given, a chroot(2) is done to the given directory.
 	# i.e. you can chroot to the working directory, for example,
@@ -319,8 +321,8 @@ server:
 	# minimal-responses: no
 
 	# module configuration of the server. A string with identifiers
-	# separated by spaces. "iterator" or "validator iterator"
-	# module-config: "validator iterator"
+	# separated by spaces. Syntax: [dns64] [validator] iterator
+	module-config: "dns64 iterator"
 
 	# File with trusted keys, kept uptodate using RFC5011 probes,
 	# initial file like trust-anchor-file, then it stores metadata.
@@ -472,6 +474,9 @@ server:
 	# request upstream over SSL (with plain DNS inside the SSL stream).
 	# Default is no.  Can be turned on and off with unbound-control.
 	# ssl-upstream: no
+
+	# DNS64 prefix. Must be specified when DNS64 is in use.
+	dns64-prefix: 64:ff9b::0/96
 
 # Python config section. To enable:
 # o use --with-pythonmodule to configure before compiling.

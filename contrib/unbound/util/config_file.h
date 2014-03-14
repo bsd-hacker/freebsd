@@ -296,6 +296,12 @@ struct config_file {
 
 	/* RRSet roundrobin */
 	int rrset_roundrobin;
+
+	/* DNS64 prefix */
+	char* dns64_prefix;
+
+	/* Synthetize all AAAA record despite the presence of an authoritative one */
+	int dns64_synthall;
 };
 
 /**
