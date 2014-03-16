@@ -308,9 +308,9 @@ autotest_all() {
 
     [ ${#} -eq 0 ] || shtk_cli_usage_error "all does not take any arguments"
 
-    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local subdir="$(date +%Y/%m/%d/%Y%m%d-%H%M%S)"
     local datadir="$(shtk_config_get DATADIR)"
-    local run_datadir="${datadir}/${timestamp}"
+    local run_datadir="${datadir}/${subdir}"
 
     mkdir -p "${run_datadir}"
     touch "${run_datadir}/output.log"
@@ -329,7 +329,7 @@ autotest_all() {
         autotest_publish "${run_datadir}"
     )
     rm -f "${datadir}/0-LATEST"
-    ln -s "${timestamp}" "${datadir}/0-LATEST"
+    ln -s "${subdir}" "${datadir}/0-LATEST"
 
     exec >&- 2>&-
     if ! shtk_bool_check "${quiet}"; then
