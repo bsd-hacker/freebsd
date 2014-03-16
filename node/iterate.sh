@@ -42,7 +42,7 @@ shtk_import process
 #
 # Please remember to update sysbuild.conf(5) if you change this list.
 AUTOTEST_CONFIG_VARS="CHROOTDIR DATADIR IMAGE MKVARS SRCBRANCH SVNROOT \
-                      TARGET TARGET_ARCH"
+                      TARGET TARGET_ARCH TESTS_TIMEOUT"
 
 
 # Paths to installed files.
@@ -231,6 +231,11 @@ autotest_execute() {
     local chrootdir="$(shtk_config_get CHROOTDIR)"
     local image="$(shtk_config_get IMAGE)"
 
+    local timeout_flag=
+    if shtk_config_has TESTS_TIMEOUT; then
+        timeout_flag="-t$(shtk_config_get TESTS_TIMEOUT)"
+    fi
+
     # TODO(jmmv): Add support for bhyve.  Keep in mind that we must continue to
     # support qemu so that we can test non-amd64 platforms from our test cluster
     # machines.  In other words: the selection of the VMM has to be exposed in
@@ -238,13 +243,13 @@ autotest_execute() {
     local target_arch="$(shtk_config_get TARGET_ARCH)"
     case "${target_arch}" in
         amd64)
-            shtk_process_run qemu-system-x86_64 -nographic \
-                -drive file="${image}"
+            shtk_process_run ${timeout_flag} \
+                qemu-system-x86_64 -nographic -drive file="${image}"
             ;;
 
         i386)
-            shtk_process_run qemu-system-i386 -nographic \
-                -drive file="${image}"
+            shtk_process_run ${timeout_flag} \
+                qemu-system-i386 -nographic -drive file="${image}"
             ;;
 
         *)
