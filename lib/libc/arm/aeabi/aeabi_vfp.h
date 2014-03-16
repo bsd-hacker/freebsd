@@ -23,6 +23,8 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
+ * $FreeBSD$
+ *
  */
 
 #ifndef AEABI_VFP_H
@@ -35,8 +37,8 @@
 
 /* Allow the name of the function to be changed depending on the ABI */
 #ifndef __ARM_PCS_VFP
-#define	AEABI_ENTRY(x)	ENTRY(__aeabi_ ## x ## _softfp)
-#define	AEABI_END(x)	END(__aeabi_ ## x ## _softfp)
+#define	AEABI_ENTRY(x)	ENTRY(__aeabi_ ## x ## _vfp)
+#define	AEABI_END(x)	END(__aeabi_ ## x ## _vfp)
 #else
 #define	AEABI_ENTRY(x)	ENTRY(__aeabi_ ## x)
 #define	AEABI_END(x)	END(__aeabi_ ## x)
@@ -63,6 +65,7 @@
  * C Helper macros
  */
 
+#if 1 && defined(__FreeBSD_ARCH_armv6__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 6)
 /*
  * Generate a function that will either call into the VFP implementation,
  * or the soft float version for a given __aeabi_* helper. The function
@@ -72,7 +75,7 @@
 __aeabi_ ## name(in_type a)					\
 {								\
 	if (_libc_arm_fpu_present)				\
-		return __aeabi_ ## name ## _softfp(a);		\
+		return __aeabi_ ## name ## _vfp(a);		\
 	else							\
 		return soft_func (a);				\
 }
@@ -82,7 +85,7 @@ __aeabi_ ## name(in_type a)					\
 __aeabi_ ## name(in_type a, in_type b)				\
 {								\
 	if (_libc_arm_fpu_present)				\
-		return __aeabi_ ## name ## _softfp(a, b);	\
+		return __aeabi_ ## name ## _vfp(a, b);	\
 	else							\
 		return soft_func (a, b);			\
 }
@@ -92,10 +95,35 @@ __aeabi_ ## name(in_type a, in_type b)				\
 __aeabi_ ## name(in_type a, in_type b)				\
 {								\
 	if (_libc_arm_fpu_present)				\
-		return __aeabi_ ## name ## _softfp(a, b);	\
+		return __aeabi_ ## name ## _vfp(a, b);	\
 	else							\
 		return soft_func (b, a);			\
 }
+#else
+/*
+ * Helper macros for when we are only able to use the softfloat
+ * version of these functions, i.e. on arm before armv6.
+ */
+#define	AEABI_FUNC(name, in_type, soft_func)			\
+__aeabi_ ## name(in_type a)					\
+{								\
+	return soft_func (a);					\
+}
+
+/* As above, but takes two arguments of the same type */
+#define	AEABI_FUNC2(name, in_type, soft_func)			\
+__aeabi_ ## name(in_type a, in_type b)				\
+{								\
+	return soft_func (a, b);				\
+}
+
+/* As above, but with the soft float arguments reversed */
+#define	AEABI_FUNC2_REV(name, in_type, soft_func)		\
+__aeabi_ ## name(in_type a, in_type b)				\
+{								\
+	return soft_func (b, a);				\
+}
+#endif
 
 #endif
 

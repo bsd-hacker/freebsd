@@ -47,4 +47,7 @@
 #define	feholdexcept	FENV_MANGLE(feholdexcept)
 #define	fesetenv	FENV_MANGLE(fesetenv)
 #define	feupdateenv	FENV_MANGLE(feupdateenv)
+#define	feenableexcept	FENV_MANGLE(feenableexcept)
+#define	fedisableexcept	FENV_MANGLE(fedisableexcept)
+#define	fegetexcept	FENV_MANGLE(fegetexcept)
 

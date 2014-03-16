@@ -26,6 +26,8 @@
  */
 
 #include <machine/asm.h>
+__FBSDID("$FreeBSD$");
+
 #include "aeabi_vfp.h"
 
 .fpu	vfp

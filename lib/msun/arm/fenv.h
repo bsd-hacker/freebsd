@@ -97,6 +97,11 @@ int fegetenv(fenv_t *__envp);
 int feholdexcept(fenv_t *__envp);
 int fesetenv(const fenv_t *__envp);
 int feupdateenv(const fenv_t *__envp);
+#if __BSD_VISIBLE
+int feenableexcept(int __mask);
+int fedisableexcept(int __mask);
+int fegetexcept(void);
+#endif
 
 #else	/* __ARM_PCS_VFP */
 

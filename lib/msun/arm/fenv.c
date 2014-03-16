@@ -30,6 +30,10 @@
 #define	__fenv_static
 #include "fenv.h"
 
+#if defined(__FreeBSD_ARCH_armv6__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 6)
+#define FENV_ARMv6
+#endif
+
 /* When SOFTFP_ABI is defined we are using the softfp ABI. */
 #if defined(__VFP_FP__) && !defined(__ARM_PCS_VFP)
 #define SOFTFP_ABI
@@ -46,7 +50,7 @@ const fenv_t __fe_dfl_env = 0;
 
 
 /* If this is a non-mangled softfp version special processing is required */
-#if defined(FENV_MANGLE) || !defined(SOFTFP_ABI)
+#if defined(FENV_MANGLE) || !defined(SOFTFP_ABI) || !defined(FENV_ARMv6)
 
 /*
  * The following macros map between the softfloat emulator's flags and
@@ -79,6 +83,9 @@ extern inline int fegetenv(fenv_t *__envp);
 extern inline int feholdexcept(fenv_t *__envp);
 extern inline int fesetenv(const fenv_t *__envp);
 extern inline int feupdateenv(const fenv_t *__envp);
+extern inline int feenableexcept(int __mask);
+extern inline int fedisableexcept(int __mask);
+extern inline int fegetexcept(void);
 
 #else /* !FENV_MANGLE && SOFTFP_ABI */
 /* Set by libc when the VFP unit is enabled */
@@ -95,6 +102,9 @@ int __softfp_fegetenv(fenv_t *__envp);
 int __softfp_feholdexcept(fenv_t *__envp);
 int __softfp_fesetenv(const fenv_t *__envp);
 int __softfp_feupdateenv(const fenv_t *__envp);
+int __softfp_feenableexcept(int __mask);
+int __softfp_fedisableexcept(int __mask);
+int __softfp_fegetexcept(void);
 
 int __vfp_feclearexcept(int __excepts);
 int __vfp_fegetexceptflag(fexcept_t *__flagp, int __excepts);
@@ -107,6 +117,9 @@ int __vfp_fegetenv(fenv_t *__envp);
 int __vfp_feholdexcept(fenv_t *__envp);
 int __vfp_fesetenv(const fenv_t *__envp);
 int __vfp_feupdateenv(const fenv_t *__envp);
+int __vfp_feenableexcept(int __mask);
+int __vfp_fedisableexcept(int __mask);
+int __vfp_fegetexcept(void);
 
 static int
 __softfp_round_to_vfp(int round)
@@ -193,9 +206,7 @@ int fetestexcept(int __excepts)
 	__got_excepts = 0;
 	if (_libc_arm_fpu_present)
 		__got_excepts = __vfp_fetestexcept(__excepts);
-
-	if (__got_excepts == 0)
-		__got_excepts = __softfp_fetestexcept(__excepts);
+	__got_excepts |= __softfp_fetestexcept(__excepts);
 
 	return (__got_excepts);
 }
@@ -263,5 +274,42 @@ int feupdateenv(const fenv_t *__envp)
 
 	return (0);
 }
+
+int feenableexcept(int __mask)
+{
+	int __unmasked;
+
+	__unmasked = 0;
+	if (_libc_arm_fpu_present)
+		__unmasked = __vfp_feenableexcept(__mask);
+	__unmasked |= __softfp_feenableexcept(__mask);
+
+	return (__unmasked);
+}
+
+int fedisableexcept(int __mask)
+{
+	int __unmasked;
+
+	__unmasked = 0;
+	if (_libc_arm_fpu_present)
+		__unmasked = __vfp_fedisableexcept(__mask);
+	__unmasked |= __softfp_fedisableexcept(__mask);
+
+	return (__unmasked);
+}
+
+int fegetexcept(void)
+{
+	int __unmasked;
+
+	__unmasked = 0;
+	if (_libc_arm_fpu_present)
+		__unmasked = __vfp_fegetexcept();
+	__unmasked |= __softfp_fegetexcept();
+
+	return (__unmasked);
+}
+
 #endif
 
