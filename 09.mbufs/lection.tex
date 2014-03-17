@@ -365,7 +365,7 @@
 	\begin{itemize}
 	  \item{protoheader = mtod(m, cast) -- cast m\_data to a header}
 	  \item{Must check m\_len!}
-	  \item{m = m\_prepend(m, len) --
+	  \item{m = m\_pullup(m, len) --
 		guarantee m\_data contiguity of len bytes}
 	\end{itemize}
     }
