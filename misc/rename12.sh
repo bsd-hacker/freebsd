@@ -140,6 +140,7 @@ rm(void)
 
 	setproctitle("rm");
 	pid = crpid;
+	i = 0;
 	while (i != n - 1 &&
 		    read(rmpipe[0], &i, sizeof(i)) == sizeof(i)) {
 		snprintf(to, sizeof(to  ), "dir2/d.%06d.%06d", pid, i);
