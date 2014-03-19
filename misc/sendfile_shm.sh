@@ -86,7 +86,6 @@ EOF
 #include <unistd.h>
 
 #define	PAGE_SIZE 4096
-static const char zerob[PAGE_SIZE];
 
 static void
 load(int infd, int shmfd, off_t size)
