@@ -30,6 +30,7 @@
 
 # Process stuck in objtrm wait state
 # http://people.freebsd.org/~pho/stress/log/stealer.txt
+# Fixed in r263328.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -55,10 +56,12 @@ pages=$((pages / hw))
 echo "`date '+%T'` Test with $pages pages."
 su $testuser -c "sh -c \"/tmp/stealer $pages\"" &
 sleep 30
-while ! swapoff /dev/md$mdstart 2>&1 |
-    grep -v "Cannot allocate memory"; do
+while swapinfo | grep -q /dev; do
+	swapoff /dev/md$mdstart 2>&1 |
+	    grep -v "Cannot allocate memory"
 	sleep 2
 done
+ps auxwwl | grep -v grep | grep objtrm && echo FAIL
 wait
 
 swapon -a > /dev/null
