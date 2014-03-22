@@ -39,13 +39,23 @@ __FBSDID("$FreeBSD$");
 int
 __flt_rounds(void)
 {
+	int mode;
 
 #ifndef __ARM_PCS_VFP
 	/*
 	 * Translate our rounding modes to the unnamed
 	 * manifest constants required by C99 et. al.
 	 */
-	switch (__softfloat_float_rounding_mode) {
+	mode = __softfloat_float_rounding_mode;
+#else /* __ARM_PCS_VFP */
+	/*
+	 * Read the floating-point status and control register
+	 */
+	__asm __volatile("vmrs %0, fpscr" : "=&r"(mode));
+	mode &= _ROUND_MASK;
+#endif /* __ARM_PCS_VFP */
+
+	switch (mode) {
 	case FE_TOWARDZERO:
 		return (0);
 	case FE_TONEAREST:
@@ -56,12 +66,4 @@ __flt_rounds(void)
 		return (3);
 	}
 	return (-1);
-#else /* ARM_HARD_FLOAT */
-	/*
-	 * Apparently, the rounding mode is specified as part of the
-	 * instruction format on ARM, so the dynamic rounding mode is
-	 * indeterminate.  Some FPUs may differ.
-	 */
-	return (-1);
-#endif /* ARM_HARD_FLOAT */
 }
