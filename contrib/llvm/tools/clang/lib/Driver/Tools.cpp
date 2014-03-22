@@ -740,19 +740,11 @@ static StringRef getARMFloatABI(const Driver &D,
       switch(Triple.getEnvironment()) {
       case llvm::Triple::GNUEABIHF:
         FloatABI = "hard";
-         break;
-      case llvm::Triple::GNUEABI: {
-        std::string ArchName =
-          getLLVMArchSuffixForARM(getARMTargetCPU(Args, Triple));
-        if (StringRef(ArchName).startswith("v6") ||
-            StringRef(ArchName).startswith("v7"))
-          FloatABI = "softfp";
-        else
-          FloatABI = "soft";
         break;
-      }
       default:
+        // FreeBSD defaults to soft float
         FloatABI = "soft";
+        break;
       }
       break;
 
