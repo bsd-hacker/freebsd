@@ -34,8 +34,8 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-fsxc=`find / -name fsx.c | tail -1`
-[ -z "fsxc" ] && exit
+fsxc=`find -x / /usr/src -name fsx.c | tail -1`
+[ -z "$fsxc" ] && exit
 
 cc -o /tmp/fsx $fsxc
 
@@ -44,24 +44,21 @@ cc -o /tmp/fsx $fsxc
 D=$diskimage
 dede $D 1m 1k || exit 1
 
-mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
+mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs md${mdstart}${part} > /dev/null 2>&1
-mount /dev/md${mdstart}${part} $mntpoint
-df -ih $mntpoint
+mdconfig -a -t vnode -f $D -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs md${mdstart}$part > /dev/null 2>&1
+mount /dev/md${mdstart}$part $mntpoint
 sleep 5
 for i in `jot 100`; do
-	/tmp/fsx -S $i -q ${mntpoint}/xxx$i &
+	/tmp/fsx -S $i -q ${mntpoint}/xxx$i > /dev/null &
 done
 sleep 30 
-umount -f $mntpoint&
+umount -f $mntpoint &
 sleep 300
 killall fsx
 sleep 5
-ls -l ${mntpoint}
 mdconfig -d -u $mdstart
 rm -f $D
-ls -l $mntpoint
