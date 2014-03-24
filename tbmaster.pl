@@ -1,6 +1,6 @@
 #!/usr/bin/perl -Tw
 #-
-# Copyright (c) 2003-2013 Dag-Erling Smørgrav
+# Copyright (c) 2003-2014 Dag-Erling Smørgrav
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -34,8 +34,8 @@ use POSIX;
 use Getopt::Long;
 use Storable qw(dclone);
 
-my $VERSION	= "2.20";
-my $COPYRIGHT	= "Copyright (c) 2003-2013 Dag-Erling Smørgrav. " .
+my $VERSION	= "2.21";
+my $COPYRIGHT	= "Copyright (c) 2003-2014 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
 my $BACKLOG	= 8;
@@ -204,7 +204,7 @@ sub readconf($) {
 	    if ($line =~ m/^include\s+([\w-]+)$/) {
 		readconf("$1.rc")
 		    or die("$fn: include $1: $!\n");
-	    } elsif ($line =~ m/^(\w+)\s*([+]?=)\s*(.*)$/) {
+	    } elsif ($line =~ m/^(\w+)\s*([+-]?=)\s*(.*)$/) {
 		my ($key, $op, $val) = (uc($1), $2, $3);
 		$val = ''
 		    unless defined($val);
@@ -219,6 +219,10 @@ sub readconf($) {
 			$CONFIG{$key} = \@a;
 		    } elsif ($op eq '+=') {
 			push(@{$CONFIG{$key}}, @a);
+		    } elsif ($op eq '-=') {
+			my %a = map { $_ => $_ } @a;
+			@{$CONFIG{$key}} =
+			    grep { !exists($a{$_}) } @{$CONFIG{$key}};
 		    } else {
 			die("can't happen\n");
 		    }
@@ -226,7 +230,7 @@ sub readconf($) {
 		    $val =~ s/^\'([^\']*)\'$/$1/;
 		    if ($op eq '=') {
 			$CONFIG{$key} = $val;
-		    } elsif ($op eq '+=') {
+		    } elsif ($op eq '+=' || $op eq '-=') {
 			die("$fn: $key is not an array on line $n\n");
 		    } else {
 			die("can't happen\n");
@@ -404,12 +408,12 @@ sub tinderbox($$$) {
     my $error = 0;
     my $summary = "";
     my $root = realpath(expand('SANDBOX') . "/$branch/$arch/$machine");
-    my $srcdir = realpath(expand('SRCDIR')) || "$root/src";
-    my $objdir = realpath(expand('OBJDIR')) || "$root/obj";
+    my $srcdir = realpath(expand('SRCDIR') || "$root/src");
+    my $objdir = realpath(expand('OBJDIR') || "$root/obj");
     while (<$rpipe>) {
 	if ($abbreviate) {
-	    s/\Q$srcdir\E/\/src/g;
-	    s/\Q$objdir\E/\/obj/g;
+	    s/\Q$srcdir\E/\/src/go;
+	    s/\Q$objdir\E/\/obj/go;
 	}
 	print($full $_);
 	if (/^TB ---/ || /^>>> /) {

@@ -1,5 +1,5 @@
 .\"-
-.\" Copyright (c) 2003-2013 Dag-Erling Smørgrav
+.\" Copyright (c) 2003-2014 Dag-Erling Smørgrav
 .\" All rights reserved.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd October 2, 2013
+.Dd March 24, 2014
 .Dt TBMASTER 1
 .Os
 .Sh NAME
@@ -115,13 +115,33 @@ configuration files.
 Each configuration file consists of a list of single- or
 multiple-value variable assignments:
 .Bl -tag
-.It Va single_variable = Ar value
-.It Va multi_variable = Ar value1 Op , Ar value2 ...
-.It Va multi_variable += Ar value3 Op , Ar value4 ...
+.It Va variable No = Ar value
+Assigns
+.Ar value
+to the single-value variable
+.Va variable .
+.It Va variable No = Ar value1 Op No , Ar value2 ...
+Assigns
+.Ar value1 ,
+.Ar value2
+etc. to the multi-value variable
+.Va variable .
+.It Va variable No += Ar value3 Op No , Ar value4 ...
+Appends
+.Ar value3 ,
+.Ar value4
+etc. to the multi-value variable
+.Va variable .
+.It Va variable No -= Ar value5 Op No , Ar value6 ...
+Removes
+.Ar value5 ,
+.Ar value6
+etc. from the multi-value variable
+.Va variable .
 .El
 .Pp
-Whitespace around the equal sign and around the commas separating
-multiple values is optional.
+Whitespace around the assigment operator and around the commas
+separating multiple values is optional.
 .Pp
 Blank lines are ignored, as is anything following a hash sign
 .Pq Sq # .

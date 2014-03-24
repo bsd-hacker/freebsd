@@ -1,6 +1,6 @@
 #!/usr/bin/perl -Tw
 #-
-# Copyright (c) 2003-2013 Dag-Erling Smørgrav
+# Copyright (c) 2003-2014 Dag-Erling Smørgrav
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -34,8 +34,8 @@ use POSIX;
 use Getopt::Long;
 use Scalar::Util qw(tainted);
 
-my $VERSION	= "2.20";
-my $COPYRIGHT	= "Copyright (c) 2003-2013 Dag-Erling Smørgrav. " .
+my $VERSION	= "2.21";
+my $COPYRIGHT	= "Copyright (c) 2003-2014 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
 my $arch;			# Target architecture
@@ -46,6 +46,8 @@ my $hostname;			# Name of the host running the tinderbox
 my $logfile;			# Path to log file
 my $machine;			# Target machine
 my $objdir;			# Location of object tree
+my $objpath;			# Full path to object tree
+my $obj32path;			# Full path to 32-bit object tree
 my $patch;			# Patch to apply before building
 my $sandbox;			# Location of sandbox
 my $srcdir;			# Location of source tree
@@ -168,6 +170,34 @@ sub logenv() {
     foreach my $key (sort(keys(%ENV))) {
 	message("$key=$ENV{$key}");
     }
+}
+
+#
+# Expand a path
+#
+sub realpath($;$);
+sub realpath($;$) {
+    my $path = shift;
+    my $base = shift || "";
+
+    my $realpath = ($path =~ m|^/|) ? "" : $base;
+    foreach my $part (split('/', $path)) {
+	if ($part eq '' || $part eq '.') {
+	    # nothing
+	} elsif ($part eq '..') {
+	    $realpath =~ s|/[^/]+$||
+		or die("'$path' is not a valid path relative to '$base'\n");
+	} elsif (-l "$realpath/$part") {
+	    my $target = readlink("$realpath/$part")
+		or die("unable to resolve symlink '$realpath/$part': $!\n");
+	    $realpath = realpath($target, $realpath);
+	} else {
+	    $part =~ m/^([\w.-]+)$/
+		or die("unsafe path '$realpath/$part'\n");
+	    $realpath .= "/$1";
+	}
+    }
+    return $realpath;
 }
 
 #
@@ -448,12 +478,14 @@ MAIN:{
 	"verbose+"		=> \$verbose,
 	) or usage();
 
-    if ($jobs < 0) {
+    if ($jobs !~ m/^(\d+)$/) {
 	error("invalid number of jobs");
     }
-    if ($timeout < 0) {
+    $jobs = $1;
+    if ($timeout !~ m/^(\d+)$/) {
 	error("invalid timeout");
     }
+    $timeout = $1;
     if ($branch !~ m|^(\w+)$|) {
 	error("invalid source branch");
     }
@@ -553,6 +585,7 @@ MAIN:{
     truncate($lockfile, 0);
     print($lockfile "$$\n");
 
+    # Validate source directory
     if (defined($srcdir)) {
 	if ($srcdir !~ m|^(/[\w./-]+)$|) {
 	    error("invalid source directory");
@@ -561,7 +594,9 @@ MAIN:{
     } else {
 	$srcdir = "$sandbox/src";
     }
+    $srcdir = realpath($srcdir);
 
+    # Validate object directory
     if (defined($objdir)) {
 	if ($objdir !~ m|^(/[\w./-]+)$|) {
 	    error("invalid object directory");
@@ -570,6 +605,11 @@ MAIN:{
     } else {
 	$objdir = "$sandbox/obj";
     }
+    $objdir = realpath($objdir);
+
+    # Construct full path to object directory
+    $objpath = "$objdir/$machine.$arch$srcdir";
+    $obj32path = "$objdir/$machine.$arch/lib32$srcdir";
 
     # Clean up remains from old runs
     do_clean(); # no prefix for backward compatibility
@@ -754,7 +794,10 @@ MAIN:{
 	# Check that the config is appropriate for this target.
 	cd("$srcdir/sys/$machine/conf");
 	local *PIPE;
-	my @cmdline = ("/usr/sbin/config", "-m", "$kernel");
+	# ugh, we really shouldn't need to know that.
+	my $cmd = "$objpath/tmp/legacy/usr/sbin/config";
+	$cmd = "/usr/sbin/config" unless -x $cmd;
+	my @cmdline = ($cmd, "-m", $kernel);
 	message(@cmdline);
 	if (open(PIPE, "-|", @cmdline)) {
 	    local $/;
