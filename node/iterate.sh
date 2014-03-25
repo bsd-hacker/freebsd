@@ -66,6 +66,8 @@ autotest_set_defaults() {
     shtk_config_set SVNROOT "svn://svn.FreeBSD.org/"
     shtk_config_set TARGET "amd64"
     shtk_config_set TARGET_ARCH "amd64"
+
+    post_mkimage_hook() { true; }
 }
 
 
@@ -217,6 +219,9 @@ cd /usr/tests
 kyua test
 shutdown -p now
 EOF
+
+    shtk_cli_info "Running custom setup hooks"
+    shtk_config_run_hook post_mkimage_hook "${chrootdir}/vmimage/mnt"
 
     shtk_cli_info "Unmounting image file systems"
     cleanup_mkimage
