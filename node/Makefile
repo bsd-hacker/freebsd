@@ -9,10 +9,14 @@ SHELL= /bin/sh
 CONFIGS_SUBDIR!= hostname -s
 SYSCONFDIR= ${.CURDIR}/configs/${CONFIGS_SUBDIR}
 
-SCRIPTS= iterate loop
+SCRIPTS= iterate loop setup
 
 .PHONY: all
-all: ${SCRIPTS} rc.d/autotest_node
+all: check-shtk .WAIT ${SCRIPTS} rc.d/autotest_node
+
+check-shtk: .PHONY
+	@"${SHTK}" version >/dev/null 2>&1 \
+	    || echo "shtk not available; run 'pkg install shtk'"
 
 .for script in ${SCRIPTS}
 ${script}: ${script}.sh

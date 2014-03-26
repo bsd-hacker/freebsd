@@ -1,4 +1,3 @@
-#! /bin/sh
 # $FreeBSD$
 #
 # Copyright 2013 Google Inc.
@@ -29,18 +28,16 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# \file setup
+# \file setup.sh
 # Configures the current machine as an autotest node.
 
-set -e -x
-
-PROGDIR="$(cd $(dirname ${0}) && pwd)"
+shtk_import cli
 
 
 # Installs any required packages and ensures they are up-to-date.
 install_deps() {
     pkg update
-    pkg install -y qemu-devel kyua shtk
+    pkg install -y qemu-devel kyua
     pkg upgrade -y
 }
 
@@ -50,20 +47,20 @@ install_deps() {
 # \param ... Arguments to make.  Use to pass variable overrides for the host,
 #     such as the location of shtk(1).
 build() {
-    make -C "${PROGDIR}" clean
-    make -C "${PROGDIR}" all "${@}"
+    make -C "$(shtk_cli_dirname)" clean
+    make -C "$(shtk_cli_dirname)" all "${@}"
 }
 
 
 # Sets up rc.conf to start autotest_node on boot.
 enable_daemon() {
-    grep "local_startup.*${PROGDIR}/rc.d" /etc/rc.conf \
-        || echo "local_startup=\"\${local_startup} ${PROGDIR}/rc.d\"" \
+    grep "local_startup.*$(shtk_cli_dirname)/rc.d" /etc/rc.conf \
+        || echo "local_startup=\"\${local_startup} $(shtk_cli_dirname)/rc.d\"" \
         >>/etc/rc.conf
     grep "autotest_node_enable=yes" /etc/rc.conf \
         || echo "autotest_node_enable=yes" >>/etc/rc.conf
 
-    "${PROGDIR}/rc.d/autotest_node" start
+    "$(shtk_cli_dirname)/rc.d/autotest_node" start
 }
 
 
@@ -73,6 +70,3 @@ main() {
     build "${@}"
     enable_daemon
 }
-
-
-main "${@}"
