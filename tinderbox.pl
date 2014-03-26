@@ -638,6 +638,7 @@ MAIN:{
 		or error("unable to locate svn binary");
 	    cd("$sandbox");
 	    if (-d "$srcdir/.svn") {
+		spawn($svncmd, "upgrade", $srcdir);
 		spawn($svncmd, "cleanup", $srcdir);
 		push(@svnargs, "update", $srcdir);
 	    } else {
