@@ -41,8 +41,8 @@ shtk_import process
 # List of valid configuration variables.
 #
 # Please remember to update sysbuild.conf(5) if you change this list.
-AUTOTEST_CONFIG_VARS="CHROOTDIR DATADIR IMAGE MKVARS SRCBRANCH SVNROOT \
-                      TARGET TARGET_ARCH TESTS_TIMEOUT"
+AUTOTEST_CONFIG_VARS="CHROOTDIR DATADIR IMAGE MKVARS PACKAGES SRCBRANCH \
+                      SVNROOT TARGET TARGET_ARCH TESTS_TIMEOUT"
 
 
 # Paths to installed files.
@@ -210,6 +210,10 @@ EOF
 
     cp /etc/resolv.conf "${chrootdir}/vmimage/mnt/etc"
     pkg -c "${chrootdir}/vmimage/mnt" install -y kyua perl5 pkgconf
+    if shtk_config_has PACKAGES; then
+        pkg -c "${chrootdir}/vmimage/mnt" install -y \
+            $(shtk_config_get PACKAGES)
+    fi
     rm "${chrootdir}/vmimage/mnt/etc/resolv.conf"
 
     cat >>"${chrootdir}/vmimage/mnt/root/.cshrc" <<EOF
