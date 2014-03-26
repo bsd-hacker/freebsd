@@ -27,8 +27,8 @@
 __version__ = '$FreeBSD$'
 
 MAJOR = 0
-MINOR = 0
-MICRO = 6
+MINOR = 1
+MICRO = 0
 
 DATADIR = '.'
 
@@ -361,8 +361,14 @@ def do_rclint(filename):
         if s.type == 'run_rc_command':
             linenumbers.append(s.line)
 
-    if sorted(linenumbers) != linenumbers:
-        error.give('file_order')
+    # Check lines are in the correct order
+
+    sortedlinenumbers = sorted(linenumbers)
+
+    for i in range(0, len(linenumbers)):
+        if sortedlinenumbers[i] != linenumbers[i]:
+            error.give('file_order', linenumbers[i])
+            break
 
     logging.debug('Checking all lines are accounted for')
     for obj in list(lineobj.keys()):
