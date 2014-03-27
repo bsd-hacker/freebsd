@@ -1,12 +1,14 @@
+use utf8;
 package FBCE;
 use Moose;
 use MooseX::Types::Common::Numeric qw(PositiveInt);
 use namespace::autoclean;
 
-use Catalyst::Runtime 5.90040;
+use Catalyst::Runtime 5.90053;
 
 use Catalyst qw/
     ConfigLoader
+    DateTime
     Authentication
     Authentication::Credential::Password
     Session
