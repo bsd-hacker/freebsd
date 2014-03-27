@@ -91,6 +91,22 @@ configfile() {
 }
 
 
+# Guesses the path to the svn binary for the host.
+svnpath() {
+    local candidates=
+    candidates="${candidates} /usr/bin/svn"
+    candidates="${candidates} /usr/bin/svnlite"
+
+    for candidate in ${candidates}; do
+        if [ -x "${candidate}" ]; then
+            echo "${candidate}"
+            return
+        fi
+    done
+    shtk_cli_error "No svn found"
+}
+
+
 # Prints the source directory of a specific component.
 #
 # \param component Name of the source component.
@@ -170,7 +186,7 @@ setup_enable_cron() {
 
     local timespec="30 */1 * * *"
     local entry="( cd '${dir}'"
-    entry="${entry}; svnlite update"
+    entry="${entry}; '$(svnpath)' update"
     entry="${entry}; make"
     entry="${entry}; ./setup all"
     entry="${entry} ) >/dev/null 2>/dev/null # AUTOTEST"
@@ -240,9 +256,9 @@ setup_sync_autotest() {
     local svnroot="$(shtk_config_get AUTOTEST_SVNROOT)"
     local revision="$(shtk_config_get AUTOTEST_REVISION)"
     if [ -d "${dir}" ]; then
-        ( cd "${dir}" && svnlite update -r "${revision}" )
+        ( cd "${dir}" && "$(svnpath)" update -r "${revision}" )
     else
-        svnlite co "${svnroot}@${revision}" "$(dirname "${dir}")"
+        "$(svnpath)" co "${svnroot}@${revision}" "$(dirname "${dir}")"
     fi
 
     make -C "${dir}/node" clean
