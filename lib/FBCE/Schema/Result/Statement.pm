@@ -117,12 +117,12 @@ __PACKAGE__->belongs_to(
   "person",
   "FBCE::Schema::Result::Person",
   { id => "person" },
-  { is_deferrable => 1, on_delete => "CASCADE", on_update => "CASCADE" },
+  { is_deferrable => 0, on_delete => "CASCADE", on_update => "CASCADE" },
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07022 @ 2012-05-02 18:58:53
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:4iFokZJlInUlT0SBwcqyng
+# Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-03-10 19:05:50
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:8wDb6dHYSG6Eoe9bdNnm8Q
 
 use Text::WikiFormat;
 

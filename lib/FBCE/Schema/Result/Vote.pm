@@ -112,7 +112,7 @@ __PACKAGE__->belongs_to(
   "candidate",
   "FBCE::Schema::Result::Person",
   { id => "candidate" },
-  { is_deferrable => 1, on_delete => "CASCADE", on_update => "CASCADE" },
+  { is_deferrable => 0, on_delete => "CASCADE", on_update => "CASCADE" },
 );
 
 =head2 voter
@@ -127,12 +127,12 @@ __PACKAGE__->belongs_to(
   "voter",
   "FBCE::Schema::Result::Person",
   { id => "voter" },
-  { is_deferrable => 1, on_delete => "CASCADE", on_update => "CASCADE" },
+  { is_deferrable => 0, on_delete => "CASCADE", on_update => "CASCADE" },
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07022 @ 2012-05-02 18:58:53
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:gBIEgDR5kVbXd4B6h3LRQg
+# Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-03-10 19:05:50
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:PPKd4x4Ik0n9U6JnJ5e4hA
 
 1;
 

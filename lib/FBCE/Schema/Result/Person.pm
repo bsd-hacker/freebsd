@@ -67,6 +67,12 @@ __PACKAGE__->table("persons");
   default_value: false
   is_nullable: 0
 
+=head2 active
+
+  data_type: 'boolean'
+  default_value: false
+  is_nullable: 0
+
 =head2 incumbent
 
   data_type: 'boolean'
@@ -83,12 +89,6 @@ __PACKAGE__->table("persons");
 
   data_type: 'integer'
   default_value: 0
-  is_nullable: 0
-
-=head2 active
-
-  data_type: 'boolean'
-  default_value: false
   is_nullable: 0
 
 =cut
@@ -122,14 +122,14 @@ __PACKAGE__->add_columns(
   },
   "admin",
   { data_type => "boolean", default_value => \"false", is_nullable => 0 },
+  "active",
+  { data_type => "boolean", default_value => \"false", is_nullable => 0 },
   "incumbent",
   { data_type => "boolean", default_value => \"false", is_nullable => 0 },
   "voted",
   { data_type => "boolean", default_value => \"false", is_nullable => 0 },
   "votes",
   { data_type => "integer", default_value => 0, is_nullable => 0 },
-  "active",
-  { data_type => "boolean", default_value => \"false", is_nullable => 0 },
 );
 
 =head1 PRIMARY KEY
@@ -206,8 +206,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07024 @ 2012-05-21 23:49:53
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:QtgEo2NXwa8v6FRHUuQ/Lg
+# Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-03-10 19:05:50
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:40qaS/evx1U+HUHTXygyFQ
 
 use Crypt::SaltedHash;
 use Digest::MD5 qw(md5_hex);

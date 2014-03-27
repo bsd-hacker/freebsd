@@ -26,6 +26,7 @@ use base 'DBIx::Class::Core';
 =cut
 
 __PACKAGE__->load_components("InflateColumn::DateTime");
+__PACKAGE__->table_class("DBIx::Class::ResultSource::View");
 
 =head1 TABLE: C<results>
 
@@ -86,8 +87,8 @@ __PACKAGE__->add_columns(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07022 @ 2012-05-02 18:58:53
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:DoGyNz+8Hk6gsoM9TPLzHw
+# Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-03-10 19:05:50
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:3syEv0rHN8n0xM1HxIPtWg
 
 1;
 
