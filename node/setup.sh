@@ -293,7 +293,7 @@ setup_all() {
     setup_sync_atf
     setup_sync_shtk
     setup_sync_autotest
-    setup_nginx
+    setup_setup_nginx
     setup_enable_daemon
     setup_enable_cron
 }
