@@ -52,7 +52,7 @@ SETUP_CONFIG_VARS="ATF_REMOTE ATF_REVISION \
 
 
 # Packages needed to bootstrap autotest.
-PACKAGES="automake autoconf kyua libtool nginx qemu-devel"
+PACKAGES="automake autoconf git kyua libtool nginx qemu-devel"
 
 
 # Sets defaults for configuration variables and hooks that need to exist.
@@ -186,6 +186,7 @@ setup_enable_cron() {
 
     local timespec="30 */1 * * *"
     local entry="( cd '${dir}'"
+    entry="${entry}; export PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
     entry="${entry}; '$(svnpath)' update"
     entry="${entry}; make"
     entry="${entry}; ./setup all"
