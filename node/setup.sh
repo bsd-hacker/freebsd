@@ -52,7 +52,7 @@ SETUP_CONFIG_VARS="ATF_REMOTE ATF_REVISION \
 
 
 # Packages needed to bootstrap autotest.
-PACKAGES="automake autoconf kyua libtool qemu-devel"
+PACKAGES="automake autoconf kyua libtool nginx qemu-devel"
 
 
 # Sets defaults for configuration variables and hooks that need to exist.
@@ -69,6 +69,25 @@ setup_set_defaults() {
     shtk_config_set ROOT "${SETUP_ROOT}"
     shtk_config_set SHTK_REMOTE "https://github.com/jmmv/shtk/"
     shtk_config_set SHTK_REVISION "HEAD"
+}
+
+
+# Locates a source configuration file for this host and prints its path.
+#
+# \param name Name of the configuration file to locate.
+configfile() {
+    local name="${1}"; shift
+
+    local candidates=
+    candidates="${candidates} ${SETUP_ETCDIR}/${name}"
+    candidates="${candidates} ${SETUP_ETCDIR}/../${name}"
+
+    for candidate in ${candidates}; do
+        if [ -f "${candidate}" ]; then
+            echo "${candidate}"
+            return
+        fi
+    done
 }
 
 
@@ -178,7 +197,28 @@ setup_enable_daemon() {
     grep "autotest_node_enable=yes" /etc/rc.conf \
         || echo "autotest_node_enable=yes" >>/etc/rc.conf
 
-    #"${dir}/rc.d/autotest_node" start
+    "${dir}/rc.d/autotest_node" start
+}
+
+
+# Configures, enables and starts nginx for the host, if desired.
+setup_setup_nginx() {
+    local conf="$(configfile nginx.conf)"
+    if [ -z "${conf}" ]; then
+        shtk_cli_log "No nginx.conf for host; web server not enabled"
+    else
+        cp "${conf}" /usr/local/etc/nginx/nginx.conf
+
+        local index="$(configfile index.html)"
+        if [ -n "${index}" ]; then
+            mkdir -p /kyua/www
+            cp "${index}" /kyua/www
+        fi
+
+        grep -E "nginx_enable=\"?[Yy][Ee][Ss]\"?" /etc/rc.conf \
+            || echo "nginx_enable=yes" >>/etc/rc.conf
+        /usr/local/etc/rc.d/nginx start
+    fi
 }
 
 
@@ -237,6 +277,7 @@ setup_all() {
     setup_sync_atf
     setup_sync_shtk
     setup_sync_autotest
+    setup_nginx
     setup_enable_daemon
     setup_enable_cron
 }
@@ -284,7 +325,7 @@ main() {
             "${function}" "${@}" || exit_code="${?}"
             ;;
 
-        enable-cron|enable-daemon|sync-atf|sync-autotest|sync-packages|sync-shtk)
+        enable-cron|enable-daemon|setup-nginx|sync-atf|sync-autotest|sync-packages|sync-shtk)
             shtk_bool_check "${expert_mode}" \
                 || shtk_cli_usage_error "Using ${command} requires expert" \
                 "mode; try passing -X"
