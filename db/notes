@@ -1,8 +1,15 @@
+#!/bin/sh
+#
+# These are instructions for creating and populating the FBCE
+# database.  Note that although this is a syntactically correct shell
+# script, it will not (or at least should not) run unmodified.
+#
 # $FreeBSD$
+#
 
 # Initialize PostgreSQL
-sudo /usr/local/etc/rc.d/postgresql initdb
-sudo /usr/local/etc/rc.d/postgresql start
+sudo service postgresql initdb
+sudo service postgresql start
 
 # Create a superuser for myself
 sudo -u pgsql createuser -s des
@@ -12,10 +19,17 @@ createuser -S -D -R fbce
 createdb -E utf8 -O fbce fbce
 
 # Create the schema
-psql -f db/fbce.sql fbce fbce 
+psql -f db/fbce.sql fbce fbce
 
 # Regenerate the DBIC schema
-./db/update.sh
+#
+# Note that this will not overwrite lib/FBCE/Model/FBCE.pm, but
+# instead create lib/FBCE/Model/FBCE.pm.new.  You may replace the old
+# file with the new, but you should remove the connect_info and place
+# it in fbce_local.conf instead (copy the <Model::FBCE> section from
+# fbce.conf and insert the correct host, user and password).
+#
+./db/update.sh fbce
 
 # One-liner to set a user's password
 perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("altinn")'
