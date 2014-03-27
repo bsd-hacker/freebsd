@@ -35,4 +35,10 @@
 #define	MODINFOMD_EFI_MAP	0x1004
 #define	MODINFOMD_EFI_FB	0x1005
 
+struct efi_map_header {                                                        
+	size_t		memory_size;
+	size_t		descriptor_size;
+	uint32_t	descriptor_version;
+};
+
 #endif /* !_MACHINE_METADATA_H_ */

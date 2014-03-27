@@ -41,13 +41,11 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_atalk.h"
 #include "opt_atpic.h"
 #include "opt_compat.h"
 #include "opt_cpu.h"
 #include "opt_ddb.h"
 #include "opt_inet.h"
-#include "opt_ipx.h"
 #include "opt_isa.h"
 #include "opt_kstack_pages.h"
 #include "opt_maxmem.h"
@@ -65,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/callout.h>
 #include <sys/cons.h>
 #include <sys/cpu.h>
+#include <sys/efi.h>
 #include <sys/eventhandler.h>
 #include <sys/exec.h>
 #include <sys/imgact.h>
@@ -146,6 +145,7 @@ __FBSDID("$FreeBSD$");
 
 #include <isa/isareg.h>
 #include <isa/rtc.h>
+#include <x86/init.h>
 
 enum EFI_MEMORY_TYPE {
     EfiReservedMemoryType,
@@ -198,6 +198,24 @@ static void get_fpcontext(struct thread *td, mcontext_t *mcp,
 static int  set_fpcontext(struct thread *td, const mcontext_t *mcp,
     char *xfpustate, size_t xfpustate_len);
 SYSINIT(cpu, SI_SUB_CPU, SI_ORDER_FIRST, cpu_startup, NULL);
+
+/* Preload data parse function */
+static caddr_t native_parse_preload_data(u_int64_t);
+
+/* Native function to fetch and parse the e820 map */
+static void native_parse_memmap(caddr_t, vm_paddr_t *, int *);
+
+/* Default init_ops implementation. */
+struct init_ops init_ops = {
+	.parse_preload_data =	native_parse_preload_data,
+	.early_clock_source_init =	i8254_init,
+	.early_delay =			i8254_delay,
+	.parse_memmap =			native_parse_memmap,
+#ifdef SMP
+	.mp_bootaddress =		mp_bootaddress,
+	.start_all_aps =		native_start_all_aps,
+#endif
+};
 
 /*
  * The file "conf/ldscript.amd64" defines the symbol "kernphys".  Its value is
@@ -301,7 +319,7 @@ cpu_startup(dummy)
 		memsize = (uintmax_t)strtoul(sysenv, (char **)NULL, 10) << 10;
 		freeenv(sysenv);
 	}
-	if (memsize < ptoa((uintmax_t)cnt.v_free_count))
+	if (memsize < ptoa((uintmax_t)vm_cnt.v_free_count))
 		memsize = ptoa((uintmax_t)Maxmem);
 	printf("real memory  = %ju (%ju MB)\n", memsize, memsize >> 20);
 	realmem = atop(memsize);
@@ -328,8 +346,8 @@ cpu_startup(dummy)
 	vm_ksubmap_init(&kmi);
 
 	printf("avail memory = %ju (%ju MB)\n",
-	    ptoa((uintmax_t)cnt.v_free_count),
-	    ptoa((uintmax_t)cnt.v_free_count) / 1048576);
+	    ptoa((uintmax_t)vm_cnt.v_free_count),
+	    ptoa((uintmax_t)vm_cnt.v_free_count) / 1048576);
 
 	/*
 	 * Set up buffers, so they can be used to read disk labels.
@@ -1426,21 +1444,12 @@ add_physmap_entry(uint64_t base, uint64_t length, vm_paddr_t *physmap,
 	return (1);
 }
 
-static void
-add_smap_entries(struct bios_smap *smapbase, vm_paddr_t *physmap,
-    int *physmap_idx)
+void
+bios_add_smap_entries(struct bios_smap *smapbase, u_int32_t smapsize,
+                      vm_paddr_t *physmap, int *physmap_idx)
 {
 	struct bios_smap *smap, *smapend;
-	u_int32_t smapsize;
 
-	/*
-	 * Memory map from INT 15:E820.
-	 *
-	 * subr_module.c says:
-	 * "Consumer may safely assume that size value precedes data."
-	 * ie: an int32_t immediately precedes smap.
-	 */
-	smapsize = *((u_int32_t *)smapbase - 1);
 	smapend = (struct bios_smap *)((uintptr_t)smapbase + smapsize);
 
 	for (smap = smapbase; smap < smapend; smap++) {
@@ -1457,15 +1466,19 @@ add_smap_entries(struct bios_smap *smapbase, vm_paddr_t *physmap,
 	}
 }
 
+#define efi_next_descriptor(ptr, size) \
+	((struct efi_md *)(((uint8_t *) ptr) + size))
+
 static void
-add_efi_map_entries(struct efi_header *efihdr, vm_paddr_t *physmap,
+add_efi_map_entries(struct efi_map_header *efihdr, vm_paddr_t *physmap,
     int *physmap_idx)
 {
-	struct efi_descriptor *map, *p;
+	struct efi_md *map, *p;
+	const char *type;
 	size_t efisz;
 	int ndesc, i;
 
-	static char *types[] = {
+	static const char *types[] = {
 		"Reserved",
 		"LoaderCode",
 		"LoaderData",
@@ -1486,9 +1499,11 @@ add_efi_map_entries(struct efi_header *efihdr, vm_paddr_t *physmap,
 	 * Memory map data provided by UEFI via the GetMemoryMap
 	 * Boot Services API.
 	 */
-	efisz = (sizeof(struct efi_header) + 0xf) & ~0xf;
-	map = (struct efi_descriptor *)((uint8_t *)efihdr + efisz); 
+	efisz = (sizeof(struct efi_map_header) + 0xf) & ~0xf;
+	map = (struct efi_md *)((uint8_t *)efihdr + efisz); 
 
+	if (efihdr->descriptor_size == 0)
+		return;
 	ndesc = efihdr->memory_size / efihdr->descriptor_size;
 
 	if (boothowto & RB_VERBOSE)
@@ -1498,38 +1513,39 @@ add_efi_map_entries(struct efi_header *efihdr, vm_paddr_t *physmap,
 	for (i = 0, p = map; i < ndesc; i++,
 	    p = efi_next_descriptor(p, efihdr->descriptor_size)) {
 		if (boothowto & RB_VERBOSE) {
-			printf("%23s %012lx %012lx %08lx ",
-			   types[p->type],
-			   p->physical_start,
-			   p->virtual_start,
-			   p->pages);
-			if (p->attribute & EFI_MEMORY_UC)
-			    printf("UC ");
-			if (p->attribute & EFI_MEMORY_WC)
-			    printf("WC ");
-			if (p->attribute & EFI_MEMORY_WT)
-			    printf("WT ");
-			if (p->attribute & EFI_MEMORY_WB)
-			    printf("WB ");
-			if (p->attribute & EFI_MEMORY_UCE)
-			    printf("UCE ");
-			if (p->attribute & EFI_MEMORY_WP)
-			    printf("WP ");
-			if (p->attribute & EFI_MEMORY_RP)
-			    printf("RP ");
-			if (p->attribute & EFI_MEMORY_XP)
-			    printf("XP ");
-			if (p->attribute & EFI_MEMORY_RUNTIME)
-			    printf("RUNTIME");
+			if (p->md_type <= EFI_MD_TYPE_PALCODE)
+				type = types[p->md_type];
+			else
+				type = "<INVALID>";
+			printf("%23s %012lx %12p %08lx ", type, p->md_phys,
+			    p->md_virt, p->md_pages);
+			if (p->md_attr & EFI_MD_ATTR_UC)
+				printf("UC ");
+			if (p->md_attr & EFI_MD_ATTR_WC)
+				printf("WC ");
+			if (p->md_attr & EFI_MD_ATTR_WT)
+				printf("WT ");
+			if (p->md_attr & EFI_MD_ATTR_WB)
+				printf("WB ");
+			if (p->md_attr & EFI_MD_ATTR_UCE)
+				printf("UCE ");
+			if (p->md_attr & EFI_MD_ATTR_WP)
+				printf("WP ");
+			if (p->md_attr & EFI_MD_ATTR_RP)
+				printf("RP ");
+			if (p->md_attr & EFI_MD_ATTR_XP)
+				printf("XP ");
+			if (p->md_attr & EFI_MD_ATTR_RT)
+				printf("RUNTIME");
 			printf("\n");
 		}
 
-		switch (p->type) {
-		case EfiLoaderCode:
-		case EfiLoaderData:
-		case EfiBootServicesCode:
-		case EfiBootServicesData:
-		case EfiConventionalMemory:
+		switch (p->md_type) {
+		case EFI_MD_TYPE_CODE:
+		case EFI_MD_TYPE_DATA:
+		case EFI_MD_TYPE_BS_CODE:
+		case EFI_MD_TYPE_BS_DATA:
+		case EFI_MD_TYPE_FREE:
 			/*
 			 * We're allowed to use any entry with these types.
 			 */
@@ -1538,9 +1554,39 @@ add_efi_map_entries(struct efi_header *efihdr, vm_paddr_t *physmap,
 			continue;
 		}
 
-		if (!add_physmap_entry(p->physical_start,
-		    (p->pages * PAGE_SIZE), physmap, physmap_idx))
+		if (!add_physmap_entry(p->md_phys, (p->md_pages * PAGE_SIZE),
+		    physmap, physmap_idx))
 			break;
+	}
+}
+
+static void
+native_parse_memmap(caddr_t kmdp, vm_paddr_t *physmap, int *physmap_idx)
+{
+	struct bios_smap *smap;
+	struct efi_map_header *efihdr;
+	u_int32_t size;
+
+	/*
+	 * Memory map from INT 15:E820.
+	 *
+	 * subr_module.c says:
+	 * "Consumer may safely assume that size value precedes data."
+	 * ie: an int32_t immediately precedes smap.
+	 */
+
+	efihdr = (struct efi_map_header *)preload_search_info(kmdp,
+	    MODINFO_METADATA | MODINFOMD_EFI_MAP);
+	smap = (struct bios_smap *)preload_search_info(kmdp,
+	    MODINFO_METADATA | MODINFOMD_SMAP);
+	if (efihdr == NULL && smap == NULL)
+		panic("No BIOS smap or EFI map info from loader!");
+
+	if (efihdr != NULL) {
+		add_efi_map_entries(efihdr, physmap, physmap_idx);
+	} else {
+		size = *((u_int32_t *)smap - 1);
+		bios_add_smap_entries(smap, size, physmap, physmap_idx);
 	}
 }
 
@@ -1559,25 +1605,13 @@ parsememmap(caddr_t kmdp, u_int64_t first, vm_paddr_t *physmap)
 {
 	int i, physmap_idx;
 	u_long physmem_tunable;
-	struct bios_smap *smapbase;
 	struct efi_header *efihdr;
 
 	bzero(physmap, sizeof(physmap));
 	basemem = 0;
 	physmap_idx = 0;
 
-	efihdr = (struct efi_header *)preload_search_info(kmdp,
-	    MODINFO_METADATA | MODINFOMD_EFI_MAP);
-	smapbase = (struct bios_smap *)preload_search_info(kmdp,
-	    MODINFO_METADATA | MODINFOMD_SMAP);
-	if (efihdr == NULL && smapbase == NULL)
-		panic("No BIOS smap or EFI map info from loader!");
-
-	if (efihdr != NULL) {
-		add_efi_map_entries(efihdr, physmap, &physmap_idx);
-	} else {
-		add_smap_entries(smapbase, physmap, &physmap_idx);
-	}
+	init_ops.parse_memmap(kmdp, physmap, &physmap_idx);
 
 	/*
 	 * Find the 'base memory' segment for SMP
@@ -1592,10 +1626,14 @@ parsememmap(caddr_t kmdp, u_int64_t first, vm_paddr_t *physmap)
 	if (basemem == 0)
 		panic("BIOS smap did not include a basemem segment!");
 
-#ifdef SMP
-	/* make hole for AP bootstrap code */
-	physmap[1] = mp_bootaddress(physmap[1] / 1024);
-#endif
+	/*
+	 * Make hole for "AP -> long mode" bootstrap code.  The
+	 * mp_bootaddress vector is only available when the kernel
+	 * is configured to support APs and APs for the system start
+	 * in 32bit mode (e.g. SMP bare metal).
+	 */
+	if (init_ops.mp_bootaddress)
+		physmap[1] = init_ops.mp_bootaddress(physmap[1] / 1024);
 
 	/*
 	 * Maxmem isn't the "maximum memory", it's one larger than the
@@ -1822,6 +1860,26 @@ do_next:
 	msgbufp = (struct msgbuf *)PHYS_TO_DMAP(phys_avail[pa_indx]);
 }
 
+static caddr_t
+native_parse_preload_data(u_int64_t modulep)
+{
+	caddr_t kmdp;
+
+	preload_metadata = (caddr_t)(uintptr_t)(modulep + KERNBASE);
+	preload_bootstrap_relocate(KERNBASE);
+	kmdp = preload_search_by_type("elf kernel");
+	if (kmdp == NULL)
+		kmdp = preload_search_by_type("elf64 kernel");
+	boothowto = MD_FETCH(kmdp, MODINFOMD_HOWTO, int);
+	kern_envp = MD_FETCH(kmdp, MODINFOMD_ENVP, char *) + KERNBASE;
+#ifdef DDB
+	ksym_start = MD_FETCH(kmdp, MODINFOMD_SSYM, uintptr_t);
+	ksym_end = MD_FETCH(kmdp, MODINFOMD_ESYM, uintptr_t);
+#endif
+
+	return (kmdp);
+}
+
 u_int64_t
 hammer_time(u_int64_t modulep, u_int64_t physfree)
 {
@@ -1848,17 +1906,7 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 	 */
 	proc_linkup0(&proc0, &thread0);
 
-	preload_metadata = (caddr_t)(uintptr_t)(modulep + KERNBASE);
-	preload_bootstrap_relocate(KERNBASE);
-	kmdp = preload_search_by_type("elf kernel");
-	if (kmdp == NULL)
-		kmdp = preload_search_by_type("elf64 kernel");
-	boothowto = MD_FETCH(kmdp, MODINFOMD_HOWTO, int);
-	kern_envp = MD_FETCH(kmdp, MODINFOMD_ENVP, char *) + KERNBASE;
-#ifdef DDB
-	ksym_start = MD_FETCH(kmdp, MODINFOMD_SSYM, uintptr_t);
-	ksym_end = MD_FETCH(kmdp, MODINFOMD_ESYM, uintptr_t);
-#endif
+	kmdp = init_ops.parse_preload_data(modulep);
 
 	/* Init basic tunables, hz etc */
 	init_param1();
@@ -1942,10 +1990,10 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 	lidt(&r_idt);
 
 	/*
-	 * Initialize the i8254 before the console so that console
+	 * Initialize the clock before the console so that console
 	 * initialization can use DELAY().
 	 */
-	i8254_init();
+	clock_init();
 
 	physmap_idx = parsememmap(kmdp, physfree, physmap);
 	create_pagetables(&physfree);
