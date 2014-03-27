@@ -114,7 +114,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/clock.h>
 #include <machine/cpu.h>
 #include <machine/cputypes.h>
-#include <machine/efi.h>
 #include <machine/intr_machdep.h>
 #include <x86/mca.h>
 #include <machine/md_var.h>
@@ -146,39 +145,6 @@ __FBSDID("$FreeBSD$");
 #include <isa/isareg.h>
 #include <isa/rtc.h>
 #include <x86/init.h>
-
-enum EFI_MEMORY_TYPE {
-    EfiReservedMemoryType,
-    EfiLoaderCode,
-    EfiLoaderData,
-    EfiBootServicesCode,
-    EfiBootServicesData,
-    EfiRuntimeServicesCode,
-    EfiRuntimeServicesData,
-    EfiConventionalMemory,
-    EfiUnusableMemory,
-    EfiACPIReclaimMemory,
-    EfiACPIMemoryNVS,
-    EfiMemoryMappedIO,
-    EfiMemoryMappedIOPortSpace,
-    EfiPalCode,
-    EfiMaxMemoryType
-};
-
-// possible caching types for the memory range
-#define EFI_MEMORY_UC           0x0000000000000001
-#define EFI_MEMORY_WC           0x0000000000000002
-#define EFI_MEMORY_WT           0x0000000000000004
-#define EFI_MEMORY_WB           0x0000000000000008
-#define EFI_MEMORY_UCE          0x0000000000000010  
-
-// physical memory protection on range 
-#define EFI_MEMORY_WP           0x0000000000001000
-#define EFI_MEMORY_RP           0x0000000000002000
-#define EFI_MEMORY_XP           0x0000000000004000
-
-// range requires a runtime mapping
-#define EFI_MEMORY_RUNTIME      0x8000000000000000
 
 /* Sanity check for __curthread() */
 CTASSERT(offsetof(struct pcpu, pc_curthread) == 0);
@@ -1605,7 +1571,6 @@ parsememmap(caddr_t kmdp, u_int64_t first, vm_paddr_t *physmap)
 {
 	int i, physmap_idx;
 	u_long physmem_tunable;
-	struct efi_header *efihdr;
 
 	bzero(physmap, sizeof(physmap));
 	basemem = 0;

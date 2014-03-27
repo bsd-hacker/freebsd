@@ -225,8 +225,8 @@ bi_load_efi_data(struct preloaded_file *kfp)
 	struct efi_header *efihdr;
 	struct efi_fb efifb;
 
-	efi_find_framebuffer(&efifb);
-	file_addmetadata(kfp, MODINFOMD_EFI_FB, sizeof(efifb), &efifb);
+	if (efi_find_framebuffer(&efifb) == 0)
+		file_addmetadata(kfp, MODINFOMD_EFI_FB, sizeof(efifb), &efifb);
 
         efisz = (sizeof(struct efi_header) + 0xf) & ~0xf;
 

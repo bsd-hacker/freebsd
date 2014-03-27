@@ -38,7 +38,7 @@ __FBSDID("$FreeBSD$");
 
 static EFI_GUID gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 
-void
+int
 efi_find_framebuffer(struct efi_fb *efifb)
 {
 	EFI_GRAPHICS_OUTPUT			*gop;
@@ -47,15 +47,12 @@ efi_find_framebuffer(struct efi_fb *efifb)
 	EFI_GRAPHICS_OUTPUT_MODE_INFORMATION	*info;
 
 	status = BS->LocateProtocol(&gop_guid, NULL, (VOID **)&gop);
-	if (EFI_ERROR(status)) {
-		efifb->fb_present = 0;
-		return;
-	}
+	if (EFI_ERROR(status))
+		return (1);
 
 	mode = gop->Mode;
 	info = gop->Mode->Info;
 
-	efifb->fb_present = 1;
 	efifb->fb_addr = mode->FrameBufferBase;
 	efifb->fb_size = mode->FrameBufferSize;
 	efifb->fb_height = info->VerticalResolution;
@@ -83,6 +80,7 @@ efi_find_framebuffer(struct efi_fb *efifb)
 		    info->PixelInformation.ReservedMask;
 		break;
 	default:
-		efifb->fb_present = 0;
+		return (1);
 	}
+	return (0);
 }
