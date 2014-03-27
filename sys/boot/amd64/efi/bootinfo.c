@@ -35,7 +35,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/linker.h>
 #include <sys/boot.h>
 #include <machine/cpufunc.h>
-#include <machine/efi.h>
 #include <machine/metadata.h>
 #include <machine/psl.h>
 #include <machine/specialreg.h>
@@ -222,13 +221,13 @@ bi_load_efi_data(struct preloaded_file *kfp)
 	size_t efisz;
 	UINTN mmsz, pages, sz;
 	UINT32 mmver;
-	struct efi_header *efihdr;
+	struct efi_map_header *efihdr;
 	struct efi_fb efifb;
 
 	if (efi_find_framebuffer(&efifb) == 0)
 		file_addmetadata(kfp, MODINFOMD_EFI_FB, sizeof(efifb), &efifb);
 
-        efisz = (sizeof(struct efi_header) + 0xf) & ~0xf;
+        efisz = (sizeof(struct efi_map_header) + 0xf) & ~0xf;
 
 	/*
 	 * Allocate enough pages to hold the bootinfo block and the memory
@@ -257,7 +256,7 @@ bi_load_efi_data(struct preloaded_file *kfp)
 	 * memory map on a 16-byte boundary (the bootinfo block is page
 	 * aligned).
 	 */
-	efihdr = (struct efi_header *)addr;
+	efihdr = (struct efi_map_header *)addr;
 	mm = (void *)((uint8_t *)efihdr + efisz);
 	sz = (EFI_PAGE_SIZE * pages) - efisz;
 	status = BS->GetMemoryMap(&sz, mm, &x86_efi_mapkey, &mmsz, &mmver);

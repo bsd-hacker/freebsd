@@ -33,8 +33,7 @@ __FBSDID("$FreeBSD$");
 
 #include <efi.h>
 #include <efilib.h>
-
-#include <machine/efi.h>
+#include <machine/metadata.h>
 
 static EFI_GUID gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 
