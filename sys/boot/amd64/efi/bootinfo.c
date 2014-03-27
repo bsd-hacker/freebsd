@@ -33,6 +33,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/reboot.h>
 #include <sys/linker.h>
+#include <sys/boot.h>
 #include <machine/cpufunc.h>
 #include <machine/efi.h>
 #include <machine/metadata.h>
@@ -47,29 +48,6 @@ __FBSDID("$FreeBSD$");
 #include "x86_efi.h"
 
 UINTN x86_efi_mapkey;
-
-/*
- * Return a 'boothowto' value corresponding to the kernel arguments in
- * (kargs) and any relevant environment variables.
- */
-static struct 
-{
-	const char	*ev;
-	int		mask;
-} howto_names[] = {
-	{ "boot_askname",	RB_ASKNAME},
-	{ "boot_cdrom",		RB_CDROM},
-	{ "boot_ddb",		RB_KDB},
-	{ "boot_dfltroot",	RB_DFLTROOT},
-	{ "boot_gdb",		RB_GDB},
-	{ "boot_multicons",	RB_MULTIPLE},
-	{ "boot_mute",		RB_MUTE},
-	{ "boot_pause",		RB_PAUSE},
-	{ "boot_serial",	RB_SERIAL},
-	{ "boot_single",	RB_SINGLE},
-	{ "boot_verbose",	RB_VERBOSE},
-	{ NULL,	0}
-};
 
 static const char howto_switches[] = "aCdrgDmphsv";
 static int howto_masks[] = {
