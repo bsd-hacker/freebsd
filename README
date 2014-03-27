@@ -24,11 +24,17 @@ node directory
 
 Scripts and configuration files to set up a single Kyua cluster node.
 
-To configure a machine as a node, just run "./node/setup".  This command
-will install any necessary prerequisites, build the scripts, enable the
-background processing loop in rc.d and start it.  Arguments to the "setup"
-script are passed directly to make, so they can be used to override
-settings for the particular host being configured (e.g. the path to shtk).
+To configure a machine as a node:
+
+    # pkg install shtk
+    # cd node
+    # make
+    # ./setup all
+
+These commands will 1) install any necessary prerequisites; 2) sync the
+autotest scripts and configuration files to prespecified revisions for the
+host; 3) build the scripts; 4) enable the background processing loop in
+rc.d and start it; and 5) enable a cron job to keep autotest up to date.
 
 Of special interest are:
 
@@ -43,3 +49,18 @@ Of special interest are:
   of them up and runs them in sequence.
 
 * node/rc.d/autotest_node: rc.d script to run node/loop as a daemon.
+
+
+Pushing updates to autotest code or its configuration
+-----------------------------------------------------
+
+Once a node has been set up, no manual actions should take place on it to
+update the code of autotest.
+
+Instead, updates should be pushed by tweaking the revision values in the
+host.conf configuration file for the machine.
+
+This allows for a controlled rollout of changes.  When performing a tricky
+change to autotest, the first step should be to deploy such change to one
+of the available machines only and, once the change has proven valid, push
+it to the remaining nodes.
