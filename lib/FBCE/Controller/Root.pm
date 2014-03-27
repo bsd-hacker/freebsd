@@ -75,6 +75,7 @@ sub login :Local :Args(0) {
 	});
     }
     if ($c->user_exists) {
+	$c->change_session_id();
 	if ($action) {
 	    $c->response->redirect($action);
 	} else {
