@@ -15,8 +15,10 @@ SCRIPTS= iterate loop setup
 all: check-shtk .WAIT ${SCRIPTS} rc.d/autotest_node
 
 check-shtk: .PHONY
-	@"${SHTK}" version >/dev/null 2>&1 \
-	    || echo "shtk not available; run 'pkg install shtk'"
+	@if ! "${SHTK}" version >/dev/null 2>&1; then \
+	    echo "shtk not available; run 'pkg install shtk'"; \
+	    false; \
+	fi
 
 .for script in ${SCRIPTS}
 ${script}: ${script}.sh
