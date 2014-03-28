@@ -78,7 +78,8 @@ the_loop() {
         shtk_cli_info "Iteration started on $(date)"
 
         if shtk_bool_check "${autoconfigs}"; then
-            set -- $(echo "${AUTOTEST_ETCDIR}/*.conf")
+            set -- $(echo "${AUTOTEST_ETCDIR}/*.conf" | fmt -n 1 \
+	             | grep -v host.conf)
             shtk_cli_info "Discovered config files: ${*}"
         fi
 
