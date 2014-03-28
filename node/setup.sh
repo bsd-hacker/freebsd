@@ -197,6 +197,10 @@ setup_enable_cron() {
     next
 }
 
+{
+    print
+}
+
 END {
     print \"${timespec} ${entry}\"
 }
