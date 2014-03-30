@@ -251,7 +251,6 @@ __DEFAULT_YES_OPTIONS = \
     ARM_EABI \
     ASSERT_DEBUG \
     AT \
-    ATF \
     ATM \
     AUDIT \
     AUTHPF \
@@ -264,6 +263,7 @@ __DEFAULT_YES_OPTIONS = \
     BZIP2 \
     CALENDAR \
     CAPSICUM \
+    CASPER \
     CDDL \
     CPP \
     CROSS_COMPILER \
@@ -271,10 +271,12 @@ __DEFAULT_YES_OPTIONS = \
     CTM \
     CXX \
     DICT \
+    DMAGENT \
     DYNAMICROOT \
     ED_CRYPTO \
     EXAMPLES \
     FLOPPY \
+    FMTREE \
     FORMAT_EXTENSIONS \
     FORTH \
     FP_LIBC \
@@ -285,6 +287,7 @@ __DEFAULT_YES_OPTIONS = \
     GNU \
     GPIB \
     GPIO \
+    GPL_DTC \
     GROFF \
     HTML \
     ICONV \
@@ -294,7 +297,6 @@ __DEFAULT_YES_OPTIONS = \
     INSTALLLIB \
     IPFILTER \
     IPFW \
-    IPX \
     JAIL \
     KDUMP \
     KERBEROS \
@@ -314,6 +316,7 @@ __DEFAULT_YES_OPTIONS = \
     MAILWRAPPER \
     MAKE \
     MAN \
+    NCURSESW \
     NDIS \
     NETCAT \
     NETGRAPH \
@@ -365,18 +368,15 @@ __DEFAULT_NO_OPTIONS = \
     CLANG_EXTRAS \
     CTF \
     DEBUG_FILES \
-    GPL_DTC \
     HESIOD \
-    LIBICONV_COMPAT \
     INSTALL_AS_USER \
     LLDB \
-    NMTREE \
     NAND \
     OFED \
     OPENSSH_NONE_CIPHER \
-    PKGTOOLS \
     SHARED_TOOLCHAIN \
     SVN \
+    TESTS \
     USB_GADGET_EXAMPLES
 
 #
@@ -400,7 +400,7 @@ __TT=${MACHINE}
 # Clang is only for x86, powerpc and little-endian arm right now, by default.
 .if ${__T} == "amd64" || ${__T} == "i386" || ${__T:Mpowerpc*}
 __DEFAULT_YES_OPTIONS+=CLANG CLANG_FULL
-.elif ${__T} == "arm" || ${__T} == "armv6"
+.elif ${__T} == "arm" || ${__T} == "armv6" || ${__T} == "armv6hf"
 __DEFAULT_YES_OPTIONS+=CLANG
 # GCC is unable to build the full clang on arm, disable it by default.
 __DEFAULT_NO_OPTIONS+=CLANG_FULL
@@ -409,7 +409,7 @@ __DEFAULT_NO_OPTIONS+=CLANG CLANG_FULL
 .endif
 # Clang the default system compiler only on little-endian arm and x86.
 .if ${__T} == "amd64" || ${__T} == "arm" || ${__T} == "armv6" || \
-    ${__T} == "i386"
+    ${__T} == "armv6hf" || ${__T} == "i386"
 __DEFAULT_YES_OPTIONS+=CLANG_IS_CC
 # The pc98 bootloader requires gcc to build and so we must leave gcc enabled
 # for pc98 for now.
@@ -418,15 +418,6 @@ __DEFAULT_NO_OPTIONS+=GNUCXX
 __DEFAULT_YES_OPTIONS+=GCC
 .else
 __DEFAULT_NO_OPTIONS+=GCC GNUCXX
-.endif
-# The libc++ headers use c++11 extensions.  These are normally silenced because
-# they are treated as system headers, but we explicitly disable that warning
-# suppression when building the base system to catch bugs in our headers.
-# Eventually we'll want to start building the base system C++ code as C++11,
-# but not yet.
-_COMPVERSION!= ${CC} --version
-.if ${_COMPVERSION:Mclang}
-CXXFLAGS+=	-Wno-c++11-extensions
 .endif
 .else
 # If clang is not cc, then build gcc by default
@@ -491,10 +482,6 @@ MK_${var}:=	no
 MK_LIBTHR:=	no
 .endif
 
-.if ${MK_ICONV} == "no"
-MK_LIBICONV_COMPAT:=	no
-.endif
-
 .if ${MK_LDNS} == "no"
 MK_LDNS_UTILS:=	no
 MK_UNBOUND:= no
@@ -524,6 +511,7 @@ MK_GROFF:=	no
 .if ${MK_MAIL} == "no"
 MK_MAILWRAPPER:= no
 MK_SENDMAIL:=	no
+MK_DMAGENT:=	no
 .endif
 
 .if ${MK_NETGRAPH} == "no"
@@ -554,11 +542,20 @@ MK_GDB:=	no
 .if ${MK_CLANG} == "no"
 MK_CLANG_EXTRAS:= no
 MK_CLANG_FULL:= no
-MK_CLANG_IS_CC:= no
 .endif
 
-.if ${MK_CLANG_IS_CC} == "no"
-MK_LLDB:= no
+.if defined(NO_TESTS)
+# This should be handled above along the handling of all other NO_*  options.
+# However, the above is broken when WITH_*=yes are passed to make(1) as
+# command line arguments.  See PR bin/183762.
+#
+# Because the TESTS option is new and it will default to yes, it's likely
+# that people will pass WITHOUT_TESTS=yes to make(1) directly and get a broken
+# build.  So, just in case, it's better to explicitly handle this case here.
+#
+# TODO(jmmv): Either fix make to allow us putting this override where it
+# belongs above or fix this file to cope with the make bug.
+MK_TESTS:= no
 .endif
 
 #
@@ -574,7 +571,6 @@ MK_LLDB:= no
     GNU \
     INET \
     INET6 \
-    IPX \
     KERBEROS \
     KVM \
     NETGRAPH \
@@ -641,6 +637,10 @@ MK_${var}:=	no
 .endif
 .endfor
 
+.if !${COMPILER_FEATURES:Mc++11}
+MK_LLDB:=	no
+.endif
+
 .if ${MK_CTF} != "no"
 CTFCONVERT_CMD=	${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
 .elif defined(.PARSEDIR) || (defined(MAKE_VERSION) && ${MAKE_VERSION} >= 5201111300)
@@ -664,5 +664,9 @@ $xGRP=	${_gid}
 .endif
 
 .endif # !_WITHOUT_SRCCONF
+
+# Pointer to the top directory into which tests are installed.  Should not be
+# overriden by Makefiles, but the user may choose to set this in src.conf(5).
+TESTSBASE?= /usr/tests
 
 .endif	# !target(__<bsd.own.mk>__)

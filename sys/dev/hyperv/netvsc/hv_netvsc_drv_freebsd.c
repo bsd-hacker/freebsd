@@ -75,9 +75,9 @@ __FBSDID("$FreeBSD$");
 
 #include <net/bpf.h>
 
+#include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/if_vlan_var.h>
-#include <net/if.h>
 
 #include <netinet/in_systm.h>
 #include <netinet/in.h>
@@ -182,7 +182,8 @@ netvsc_drv_init(void)
 static void
 netvsc_init(void)
 {
-	printf("Netvsc initializing... ");
+	if (bootverbose)
+		printf("Netvsc initializing... ");
 
 	/*
 	 * XXXKYS: cleanup initialization
@@ -190,9 +191,10 @@ netvsc_init(void)
 	if (!cold && !g_netvsc_drv.drv_inited) {
 		g_netvsc_drv.drv_inited = 1;
 		netvsc_drv_init();
-	} else {
+		if (bootverbose)
+			printf("done!\n");
+	} else if (bootverbose)
 		printf("Already initialized!\n");
-	}
 }
 
 /* {F8615163-DF3E-46c5-913F-F2D2F965ED0E} */
@@ -213,7 +215,8 @@ netvsc_probe(device_t dev)
 	p = vmbus_get_type(dev);
 	if (!memcmp(p, &g_net_vsc_device_type.data, sizeof(hv_guid))) {
 		device_set_desc(dev, "Synthetic Network Interface");
-		printf("Netvsc probe... DONE \n");
+		if (bootverbose)
+			printf("Netvsc probe... DONE \n");
 
 		return (0);
 	}
@@ -299,7 +302,8 @@ netvsc_detach(device_t dev)
 {
 	struct hv_device *hv_device = vmbus_get_devctx(dev); 
 
-	printf("netvsc_detach\n");
+	if (bootverbose)
+		printf("netvsc_detach\n");
 
 	/*
 	 * XXXKYS:  Need to clean up all our
@@ -484,7 +488,7 @@ hn_start_locked(struct ifnet *ifp)
 		 * bpf_mtap code has a chance to run.
 		 */
 		if (ifp->if_bpf) {
-			mc_head = m_copypacket(m_head, M_DONTWAIT);
+			mc_head = m_copypacket(m_head, M_NOWAIT);
 		}
 retry_send:
 		/* Set the completion routine */
@@ -593,7 +597,7 @@ hv_m_append(struct mbuf *m0, int len, c_caddr_t cp)
 		 * Allocate a new mbuf; could check space
 		 * and allocate a cluster instead.
 		 */
-		n = m_getjcl(M_DONTWAIT, m->m_type, 0, MJUMPAGESIZE);
+		n = m_getjcl(M_NOWAIT, m->m_type, 0, MJUMPAGESIZE);
 		if (n == NULL)
 			break;
 		n->m_len = min(MJUMPAGESIZE, remainder);
@@ -621,13 +625,15 @@ netvsc_recv(struct hv_device *device_ctx, netvsc_packet *packet)
 {
 	hn_softc_t *sc = (hn_softc_t *)device_get_softc(device_ctx->device);
 	struct mbuf *m_new;
-	struct ifnet *ifp = sc->hn_ifp;
+	struct ifnet *ifp;
 	int size;
 	int i;
 
 	if (sc == NULL) {
 		return (0); /* TODO: KYS how can this be! */
 	}
+
+	ifp = sc->hn_ifp;
 	
 	ifp = sc->arpcom.ac_ifp;
 
@@ -655,7 +661,7 @@ netvsc_recv(struct hv_device *device_ctx, netvsc_packet *packet)
 		size = MJUMPAGESIZE;
 	}
 
-	m_new = m_getjcl(M_DONTWAIT, MT_DATA, M_PKTHDR, size);
+	m_new = m_getjcl(M_NOWAIT, MT_DATA, M_PKTHDR, size);
 
 	if (m_new == NULL)
 		return (0);
@@ -892,7 +898,8 @@ hn_stop(hn_softc_t *sc)
 
 	ifp = sc->hn_ifp;
 
-	printf(" Closing Device ...\n");
+	if (bootverbose)
+		printf(" Closing Device ...\n");
 
 	ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
 	sc->hn_initdone = 0;

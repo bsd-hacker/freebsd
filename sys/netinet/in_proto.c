@@ -32,7 +32,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_ipx.h"
 #include "opt_mrouting.h"
 #include "opt_ipsec.h"
 #include "opt_inet.h"
@@ -58,6 +57,7 @@ __FBSDID("$FreeBSD$");
  */
 #ifdef INET
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/route.h>
 #ifdef RADIX_MPATH
 #include <net/radix_mpath.h>

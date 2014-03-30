@@ -237,12 +237,16 @@ __END_DECLS
 #define	IPPROTO_IPCOMP		108		/* payload compression (IPComp) */
 #define	IPPROTO_SCTP		132		/* SCTP */
 #define	IPPROTO_MH		135		/* IPv6 Mobility Header */
+#define	IPPROTO_HIP		139		/* IP6 Host Identity Protocol */
+#define	IPPROTO_SHIM6		140		/* IP6 Shim6 Protocol */
 /* 101-254: Partly Unassigned */
 #define	IPPROTO_PIM		103		/* Protocol Independent Mcast */
 #define	IPPROTO_CARP		112		/* CARP */
 #define	IPPROTO_PGM		113		/* PGM */
 #define	IPPROTO_MPLS		137		/* MPLS-in-IP */
 #define	IPPROTO_PFSYNC		240		/* PFSYNC */
+#define	IPPROTO_RESERVED_253	253		/* Reserved */
+#define	IPPROTO_RESERVED_254	254		/* Reserved */
 /* 255: Reserved */
 /* BSD Private, local use, namespace incursion, no longer used */
 #define	IPPROTO_OLD_DIVERT	254		/* OLD divert pseudo-proto */
@@ -598,86 +602,7 @@ int	getsourcefilter(int, uint32_t, struct sockaddr *, socklen_t,
 #define	IP_PORTRANGE_LOW	2	/* "low" - vouchsafe security */
 
 /*
- * Definitions for inet sysctl operations.
- *
- * Third level is protocol number.
- * Fourth level is desired variable within that protocol.
- */
-#define	IPPROTO_MAXID	(IPPROTO_AH + 1)	/* don't list to IPPROTO_MAX */
-
-#define	CTL_IPPROTO_NAMES { \
-	{ "ip", CTLTYPE_NODE }, \
-	{ "icmp", CTLTYPE_NODE }, \
-	{ "igmp", CTLTYPE_NODE }, \
-	{ "ggp", CTLTYPE_NODE }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ "tcp", CTLTYPE_NODE }, \
-	{ 0, 0 }, \
-	{ "egp", CTLTYPE_NODE }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ "pup", CTLTYPE_NODE }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ "udp", CTLTYPE_NODE }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ "idp", CTLTYPE_NODE }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ "ipsec", CTLTYPE_NODE }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ 0, 0 }, \
-	{ "pim", CTLTYPE_NODE }, \
-}
-
-/*
- * Names for IP sysctl objects
+ * Identifiers for IP sysctl nodes
  */
 #define	IPCTL_FORWARDING	1	/* act as router */
 #define	IPCTL_SENDREDIRECTS	2	/* may send redirects when forwarding */
@@ -697,7 +622,6 @@ int	getsourcefilter(int, uint32_t, struct sockaddr *, socklen_t,
 #define	IPCTL_FASTFORWARDING	14	/* use fast IP forwarding code */
 #define	IPCTL_KEEPFAITH		15	/* FAITH IPv4->IPv6 translater ctl */
 #define	IPCTL_GIF_TTL		16	/* default TTL for gif encap packet */
-#define	IPCTL_MAXID		17
 
 #endif /* __BSD_VISIBLE */
 

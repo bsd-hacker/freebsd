@@ -58,6 +58,7 @@
 # use that new version.  And the new (dynamically-linked) /bin/sh
 # will expect to find appropriate libraries in /lib and /libexec.
 #
+SRCDIR?=	${.CURDIR}
 .if defined(SUBDIR_OVERRIDE)
 SUBDIR=	${SUBDIR_OVERRIDE}
 .else
@@ -84,6 +85,9 @@ SUBDIR+=secure
 SUBDIR+=share
 .endif
 SUBDIR+=sys usr.bin usr.sbin
+.if ${MK_TESTS} != "no"
+SUBDIR+=	tests
+.endif
 .if ${MK_OFED} != "no"
 SUBDIR+=contrib/ofed
 .endif
@@ -128,11 +132,14 @@ OSRELDATE=	0
 .endif
 
 .if !defined(VERSION)
-VERSION!=	uname -srp
-VERSION+=	${OSRELDATE}
+REVISION!=	${MAKE} -C ${SRCDIR}/release -V REVISION
+BRANCH!=	${MAKE} -C ${SRCDIR}/release -V BRANCH
+SRCRELDATE!=	awk '/^\#define[[:space:]]*__FreeBSD_version/ { print $$3 }' \
+		${SRCDIR}/sys/sys/param.h
+VERSION=	FreeBSD ${REVISION}-${BRANCH:C/-p[0-9]+$//} ${TARGET_ARCH} ${SRCRELDATE}
 .endif
 
-KNOWN_ARCHES?=	amd64 arm armeb/arm armv6/arm i386 i386/pc98 ia64 mips mipsel/mips mips64el/mips mips64/mips mipsn32el/mips mipsn32/mips powerpc powerpc64/powerpc sparc64
+KNOWN_ARCHES?=	amd64 arm armeb/arm armv6/arm armv6hf/arm i386 i386/pc98 ia64 mips mipsel/mips mips64el/mips mips64/mips mipsn32el/mips mipsn32/mips powerpc powerpc64/powerpc sparc64
 .if ${TARGET} == ${TARGET_ARCH}
 _t=		${TARGET}
 .else
@@ -224,6 +231,9 @@ CROSSENV+=	GROFF_BIN_PATH=${WORLDTMP}/legacy/usr/bin \
 		GROFF_FONT_PATH=${WORLDTMP}/legacy/usr/share/groff_font \
 		GROFF_TMAC_PATH=${WORLDTMP}/legacy/usr/share/tmac
 .endif
+.if defined(TARGET_CFLAGS)
+CROSSENV+=	${TARGET_CFLAGS}
+.endif
 
 # bootstrap-tools stage
 BMAKEENV=	INSTALL="sh ${.CURDIR}/tools/install.sh" \
@@ -239,7 +249,7 @@ BMAKE=		MAKEOBJDIRPREFIX=${WORLDTMP} \
 		SSP_CFLAGS= \
 		-DWITHOUT_HTML -DWITHOUT_INFO -DNO_LINT -DWITHOUT_MAN \
 		-DNO_PIC -DNO_PROFILE -DNO_SHARED \
-		-DNO_CPU_CFLAGS -DNO_WARNS -DNO_CTF -DEARLY_BUILD
+		-DNO_CPU_CFLAGS -DNO_WARNS -DNO_CTF -DEARLY_BUILD -DNO_TESTS
 
 # build-tools stage
 TMAKE=		MAKEOBJDIRPREFIX=${OBJTREE} \
@@ -249,12 +259,27 @@ TMAKE=		MAKEOBJDIRPREFIX=${OBJTREE} \
 		BOOTSTRAPPING=${OSRELDATE} \
 		SSP_CFLAGS= \
 		-DNO_LINT \
-		-DNO_CPU_CFLAGS -DNO_WARNS -DNO_CTF -DEARLY_BUILD
+		-DNO_CPU_CFLAGS -DNO_WARNS -DNO_CTF -DEARLY_BUILD -DNO_TESTS
 
 # cross-tools stage
 XMAKE=		TOOLS_PREFIX=${WORLDTMP} ${BMAKE} \
 		TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} \
-		-DWITHOUT_GDB
+		-DWITHOUT_GDB -DNO_TESTS
+
+# kernel-tools stage
+KTMAKEENV=	INSTALL="sh ${.CURDIR}/tools/install.sh" \
+		PATH=${BPATH}:${PATH} \
+		WORLDTMP=${WORLDTMP} \
+		VERSION="${VERSION}" \
+		COMPILER_TYPE=${COMPILER_TYPE}
+KTMAKE=		TOOLS_PREFIX=${WORLDTMP} MAKEOBJDIRPREFIX=${WORLDTMP} \
+		${KTMAKEENV} ${MAKE} ${WORLD_FLAGS} -f Makefile.inc1 \
+		DESTDIR= \
+		BOOTSTRAPPING=${OSRELDATE} \
+		SSP_CFLAGS= \
+		-DWITHOUT_HTML -DWITHOUT_INFO -DNO_LINT -DWITHOUT_MAN \
+		-DNO_PIC -DNO_PROFILE -DNO_SHARED \
+		-DNO_CPU_CFLAGS -DNO_WARNS -DNO_CTF -DEARLY_BUILD
 
 # world stage
 WMAKEENV=	${CROSSENV} \
@@ -326,6 +351,8 @@ XFLAGS+=	-B${WORLDTMP}/usr/bin
 .if (${TARGET_ARCH} == "arm" || ${TARGET_ARCH} == "armv6") && \
 ${MK_ARM_EABI} != "no"
 TARGET_ABI=	gnueabi
+.elif ${TARGET_ARCH} == "armv6hf"
+TARGET_ABI=	gnueabihf
 .else
 TARGET_ABI=	unknown
 .endif
@@ -392,7 +419,8 @@ LIB32WMAKEFLAGS+=	\
 		-DLIBRARIES_ONLY \
 		-DNO_CPU_CFLAGS \
 		-DNO_CTF \
-		-DNO_LINT
+		-DNO_LINT \
+		-DNO_TESTS
 
 LIB32WMAKE=	${LIB32WMAKEENV} ${MAKE} ${LIB32WMAKEFLAGS} \
 		-DWITHOUT_MAN -DWITHOUT_INFO -DWITHOUT_HTML
@@ -425,7 +453,7 @@ MTREEFLAGS+=	-W
 .endif
 .if defined(DB_FROM_SRC) || defined(NO_ROOT)
 IMAKE_INSTALL=	INSTALL="install ${INSTALLFLAGS}"
-IMAKE_MTREE=	MTREE_CMD="nmtree ${MTREEFLAGS}"
+IMAKE_MTREE=	MTREE_CMD="mtree ${MTREEFLAGS}"
 .endif
 
 # kernel stage
@@ -485,6 +513,10 @@ _worldtmp:
 	mtree -deU -f ${.CURDIR}/etc/mtree/BSD.debug.dist \
 	    -p ${WORLDTMP}/usr/lib >/dev/null
 .endif
+.if ${MK_TESTS} != "no"
+	mtree -deU -f ${.CURDIR}/etc/mtree/BSD.tests.dist \
+	    -p ${WORLDTMP}/usr >/dev/null
+.endif
 .for _mtree in ${LOCAL_MTREE}
 	mtree -deU -f ${.CURDIR}/${_mtree} -p ${WORLDTMP} > /dev/null
 .endfor
@@ -529,6 +561,7 @@ _cross-tools:
 	@echo ">>> stage 3: cross tools"
 	@echo "--------------------------------------------------------------"
 	${_+_}cd ${.CURDIR}; ${XMAKE} cross-tools
+	${_+_}cd ${.CURDIR}; ${XMAKE} kernel-tools
 _includes:
 	@echo
 	@echo "--------------------------------------------------------------"
@@ -542,7 +575,7 @@ _libraries:
 	@echo "--------------------------------------------------------------"
 	${_+_}cd ${.CURDIR}; \
 	    ${WMAKE} -DNO_FSCHG -DWITHOUT_HTML -DWITHOUT_INFO -DNO_LINT \
-	    -DWITHOUT_MAN -DNO_PROFILE libraries
+	    -DWITHOUT_MAN -DNO_PROFILE -DNO_TESTS libraries
 _depend:
 	@echo
 	@echo "--------------------------------------------------------------"
@@ -737,14 +770,10 @@ _install-info=	install-info
 _zoneinfo=	zic tzsetup
 .endif
 
-.if exists(/usr/sbin/nmtree)
-_nmtree_itools=	nmtree
-.endif
-
 ITOOLS=	[ awk cap_mkdb cat chflags chmod chown \
 	date echo egrep find grep id install ${_install-info} \
-	ln lockf make mkdir mtree ${_nmtree_itools} mv pwd_mkdb \
-	rm sed sh sysctl test true uname wc ${_zoneinfo}
+	ln lockf make mkdir mtree mv pwd_mkdb \
+	rm sed services_mkdb sh sysctl test true uname wc ${_zoneinfo}
 
 #
 # distributeworld
@@ -806,11 +835,11 @@ distributeworld installworld: _installcheck_world
 	    -p ${DESTDIR}/${DISTDIR}/${dist}/usr/lib >/dev/null
 .endif
 .if defined(NO_ROOT)
-	${IMAKEENV} nmtree -C -f ${.CURDIR}/etc/mtree/BSD.root.dist | \
+	${IMAKEENV} mtree -C -f ${.CURDIR}/etc/mtree/BSD.root.dist | \
 	    sed -e 's#^\./#./${dist}/#' >> ${METALOG}
-	${IMAKEENV} nmtree -C -f ${.CURDIR}/etc/mtree/BSD.usr.dist | \
+	${IMAKEENV} mtree -C -f ${.CURDIR}/etc/mtree/BSD.usr.dist | \
 	    sed -e 's#^\./#./${dist}/usr/#' >> ${METALOG}
-	${IMAKEENV} nmtree -C -f ${.CURDIR}/etc/mtree/BSD.include.dist | \
+	${IMAKEENV} mtree -C -f ${.CURDIR}/etc/mtree/BSD.include.dist | \
 	    sed -e 's#^\./#./${dist}/usr/include/#' >> ${METALOG}
 .endif
 .endfor
@@ -988,7 +1017,7 @@ buildkernel:
 	cd ${KRNLCONFDIR}; \
 		PATH=${TMPPATH} \
 		    config ${CONFIGARGS} -d ${KRNLOBJDIR}/${_kernel} \
-			${KERNCONFDIR}/${_kernel}
+			-I ${KERNCONFDIR} ${KERNCONFDIR}/${_kernel}
 .endif
 .if !defined(NO_CLEAN) && !defined(NO_KERNELCLEAN)
 	@echo
@@ -1008,20 +1037,7 @@ buildkernel:
 	@echo "--------------------------------------------------------------"
 	@echo ">>> stage 2.3: build tools"
 	@echo "--------------------------------------------------------------"
-	cd ${KRNLOBJDIR}/${_kernel}; \
-	    PATH=${BPATH}:${PATH} \
-	    MAKESRCPATH=${KERNSRCDIR}/dev/aic7xxx/aicasm \
-	    ${MAKE} SSP_CFLAGS= -DNO_CPU_CFLAGS -DNO_CTF -DEARLY_BUILD \
-	    -f ${KERNSRCDIR}/dev/aic7xxx/aicasm/Makefile
-# XXX - Gratuitously builds aicasm in the ``makeoptions NO_MODULES'' case.
-.if !defined(MODULES_WITH_WORLD) && !defined(NO_MODULES) && exists(${KERNSRCDIR}/modules)
-.for target in obj depend all
-	cd ${KERNSRCDIR}/modules/aic7xxx/aicasm; \
-	    PATH=${BPATH}:${PATH} \
-	    MAKEOBJDIRPREFIX=${KRNLOBJDIR}/${_kernel}/modules \
-	    ${MAKE} SSP_CFLAGS= -DNO_CPU_CFLAGS -DNO_CTF -DEARLY_BUILD ${target}
-.endfor
-.endif
+	${_+_}cd ${.CURDIR}; ${KTMAKE} kernel-tools
 .if !defined(NO_KERNELDEPEND)
 	@echo
 	@echo "--------------------------------------------------------------"
@@ -1251,7 +1267,7 @@ _dtrace_tools= cddl/usr.bin/sgsmsg cddl/lib/libctf lib/libelf \
     lib/libdwarf cddl/usr.bin/ctfconvert cddl/usr.bin/ctfmerge
 .endif
 
-# Default to building the BSDL DTC, but build the GPL one if users explicitly
+# Default to building the GPL DTC, but build the BSDL one if users explicitly
 # request it.
 _dtc= usr.bin/dtc
 .if ${MK_GPL_DTC} != "no"
@@ -1308,10 +1324,6 @@ bootstrap-tools: .MAKE
 #
 # build-tools: Build special purpose build tools
 #
-.if defined(MODULES_WITH_WORLD) && exists(${KERNSRCDIR}/modules)
-_aicasm= sys/modules/aic7xxx/aicasm
-.endif
-
 .if !defined(NO_SHARE)
 _share=	share/syscons/scrnmaps
 .endif
@@ -1333,7 +1345,6 @@ build-tools: .MAKE
     lib/ncurses/ncurses \
     lib/ncurses/ncursesw \
     ${_share} \
-    ${_aicasm} \
     usr.bin/awk \
     lib/libmagic \
     usr.bin/mkesdb_static \
@@ -1352,6 +1363,14 @@ build-tools: .MAKE
 		${MAKE} DIRPRFX=${_tool}/ depend && \
 		${MAKE} DIRPRFX=${_tool}/ all
 .endfor
+
+#
+# kernel-tools: Build kernel-building tools
+#
+kernel-tools: .MAKE
+	mkdir -p ${MAKEOBJDIRPREFIX}/usr
+	mtree -deU -f ${.CURDIR}/etc/mtree/BSD.usr.dist \
+	    -p ${MAKEOBJDIRPREFIX}/usr >/dev/null
 
 #
 # cross-tools: Build cross-building tools
@@ -1377,12 +1396,15 @@ _binutils=	gnu/usr.bin/binutils
 # If an full path to an external cross compiler is given, don't build
 # a cross compiler.
 .if ${XCC:M/*} == "" && ${MK_CROSS_COMPILER} != "no"
-.if ${MK_CLANG} != "no" && (${MK_CLANG_IS_CC} != "no" || ${CC:T:Mclang} == "clang")
+.if ${MK_CLANG_IS_CC} != "no" || ${CC:T:Mclang} == "clang"
 _clang=		usr.bin/clang
 _clang_libs=	lib/clang
+.else
+_cc=		gnu/usr.bin/cc
 .endif
 
-.if ${MK_GCC} != "no" && (${MK_CLANG_IS_CC} == "no" || ${TARGET} == "pc98")
+# The boot2 for pc98 requires gcc.
+.if ${TARGET} == "pc98"
 _cc=		gnu/usr.bin/cc
 .endif
 .endif
@@ -1446,11 +1468,13 @@ _startup_libs+=	lib/csu/${MACHINE_CPUARCH}
 _startup_libs+=	gnu/lib/libgcc
 _startup_libs+=	lib/libcompiler_rt
 _startup_libs+=	lib/libc
+_startup_libs+=	lib/libc_nonshared
 .if ${MK_LIBCPLUSPLUS} != "no"
 _startup_libs+=	lib/libcxxrt
 .endif
 
 gnu/lib/libgcc__L: lib/libc__L
+gnu/lib/libgcc__L: lib/libc_nonshared__L
 .if ${MK_LIBCPLUSPLUS} != "no"
 lib/libcxxrt__L: gnu/lib/libgcc__L
 .endif
@@ -1464,22 +1488,28 @@ _prebuild_libs=	${_kerberos5_lib_libasn1} \
 		${_kerberos5_lib_libhx509} ${_kerberos5_lib_libkrb5} \
 		${_kerberos5_lib_libroken} \
 		${_kerberos5_lib_libwind} \
-		${_lib_atf_libatf_c} \
+		${_lib_atf} \
 		lib/libbz2 ${_libcom_err} lib/libcrypt \
 		lib/libelf lib/libexpat \
-		${_lib_libgssapi} ${_lib_libipx} \
-		lib/libkiconv lib/libkvm lib/liblzma lib/libmd \
+		${_lib_libgssapi} \
+		lib/libkiconv lib/libkvm lib/liblzma lib/libmd lib/libnv \
+		${_lib_libcapsicum} \
 		lib/ncurses/ncurses lib/ncurses/ncursesw \
 		lib/libopie lib/libpam ${_lib_libthr} \
 		lib/libradius lib/libsbuf lib/libtacplus \
 		${_cddl_lib_libumem} ${_cddl_lib_libnvpair} \
 		${_cddl_lib_libzfs_core} \
-		lib/libutil ${_lib_libypclnt} lib/libz lib/msun \
+		lib/libutil lib/libpjdlog ${_lib_libypclnt} lib/libz lib/msun \
 		${_secure_lib_libcrypto} ${_lib_libldns} \
 		${_secure_lib_libssh} ${_secure_lib_libssl}
 
-.if ${MK_ATF} != "no"
-_lib_atf_libatf_c=	lib/atf/libatf-c
+.if defined(WITH_ATF) || ${MK_TESTS} != "no"
+.if !defined(WITH_ATF)
+# Ensure that the ATF libraries will be built during make libraries, even
+# though they will have -DNO_TESTS
+MAKE+=		-DWITH_ATF
+.endif
+_lib_atf=	lib/atf
 .endif
 
 .if ${MK_LIBTHR} != "no"
@@ -1489,6 +1519,13 @@ _lib_libthr=	lib/libthr
 .if ${MK_OFED} != "no"
 _ofed_lib=	contrib/ofed/usr.lib/
 .endif
+
+.if ${MK_CASPER} != "no"
+_lib_libcapsicum=lib/libcapsicum
+.endif
+
+lib/libcapsicum__L: lib/libnv__L
+lib/libpjdlog__L: lib/libutil__L
 
 _generic_libs=	${_cddl_lib} gnu/lib ${_kerberos5_lib} lib ${_secure_lib} usr.bin/lex/lib ${_ofed_lib}
 .for _DIR in ${LOCAL_LIB_DIRS}
@@ -1556,10 +1593,6 @@ kerberos5/lib/libheimsqlite__L: lib/libthr__L
 _lib_libgssapi=	lib/libgssapi
 .endif
 
-.if ${MK_IPX} != "no"
-_lib_libipx=	lib/libipx
-.endif
-
 .if ${MK_KERBEROS} != "no"
 _kerberos5_lib=	kerberos5/lib
 _kerberos5_lib_libasn1= kerberos5/lib/libasn1
@@ -1588,10 +1621,12 @@ ${_lib}__PL: .PHONY .MAKE
 .if exists(${.CURDIR}/${_lib})
 	${_+_}@${ECHODIR} "===> ${_lib} (obj,depend,all,install)"; \
 		cd ${.CURDIR}/${_lib} && \
-		${MAKE} DIRPRFX=${_lib}/ obj && \
-		${MAKE} DIRPRFX=${_lib}/ depend && \
-		${MAKE} -DNO_PROFILE -DNO_PIC DIRPRFX=${_lib}/ all && \
-		${MAKE} -DNO_PROFILE -DNO_PIC DIRPRFX=${_lib}/ install
+		${MAKE} -DNO_TESTS DIRPRFX=${_lib}/ obj && \
+		${MAKE} -DNO_TESTS DIRPRFX=${_lib}/ depend && \
+		${MAKE} -DNO_TESTS -DNO_PROFILE -DNO_PIC \
+		    DIRPRFX=${_lib}/ all && \
+		${MAKE} -DNO_TESTS -DNO_PROFILE -DNO_PIC \
+		    DIRPRFX=${_lib}/ install
 .endif
 .endfor
 
@@ -1600,10 +1635,10 @@ ${_lib}__L: .PHONY .MAKE
 .if exists(${.CURDIR}/${_lib})
 	${_+_}@${ECHODIR} "===> ${_lib} (obj,depend,all,install)"; \
 		cd ${.CURDIR}/${_lib} && \
-		${MAKE} DIRPRFX=${_lib}/ obj && \
-		${MAKE} DIRPRFX=${_lib}/ depend && \
-		${MAKE} DIRPRFX=${_lib}/ all && \
-		${MAKE} DIRPRFX=${_lib}/ install
+		${MAKE} -DNO_TESTS DIRPRFX=${_lib}/ obj && \
+		${MAKE} -DNO_TESTS DIRPRFX=${_lib}/ depend && \
+		${MAKE} -DNO_TESTS DIRPRFX=${_lib}/ all && \
+		${MAKE} -DNO_TESTS DIRPRFX=${_lib}/ install
 .endif
 .endfor
 
@@ -1613,10 +1648,12 @@ ${_lib}__L: .PHONY .MAKE
 lib/libpam__L: .PHONY .MAKE
 	${_+_}@${ECHODIR} "===> lib/libpam (obj,depend,all,install)"; \
 		cd ${.CURDIR}/lib/libpam && \
-		${MAKE} DIRPRFX=lib/libpam/ obj && \
-		${MAKE} DIRPRFX=lib/libpam/ depend && \
-		${MAKE} DIRPRFX=lib/libpam/ -D_NO_LIBPAM_SO_YET all && \
-		${MAKE} DIRPRFX=lib/libpam/ -D_NO_LIBPAM_SO_YET install
+		${MAKE} -DNO_TESTS DIRPRFX=lib/libpam/ obj && \
+		${MAKE} -DNO_TESTS DIRPRFX=lib/libpam/ depend && \
+		${MAKE} -DNO_TESTS DIRPRFX=lib/libpam/ \
+		    -D_NO_LIBPAM_SO_YET all && \
+		${MAKE} -DNO_TESTS DIRPRFX=lib/libpam/ \
+		    -D_NO_LIBPAM_SO_YET install
 
 _prereq_libs: ${_prereq_libs:S/$/__PL/}
 _startup_libs: ${_startup_libs:S/$/__L/}
@@ -1672,6 +1709,7 @@ delete-old-files:
 # argument list will get too long. Using .for/.endfor make "loops" will make
 # the Makefile parser segfault.
 	@exec 3<&0; \
+	cd ${.CURDIR}; \
 	${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
 	    -V OLD_FILES -V "OLD_FILES:Musr/share/*.gz:R" | xargs -n1 | \
 	while read file; do \
@@ -1694,7 +1732,8 @@ delete-old-files:
 
 check-old-files:
 	@echo ">>> Checking for old files"
-	@${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
+	@cd ${.CURDIR}; \
+	${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
 	    -V OLD_FILES -V "OLD_FILES:Musr/share/*.gz:R" | xargs -n1 | \
 	while read file; do \
 		if [ -f "${DESTDIR}/$${file}" -o -L "${DESTDIR}/$${file}" ]; then \
@@ -1715,6 +1754,7 @@ delete-old-libs:
 	@echo ">>> Removing old libraries"
 	@echo "${OLD_LIBS_MESSAGE}" | fmt
 	@exec 3<&0; \
+	cd ${.CURDIR}; \
 	${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
 	    -V OLD_LIBS | xargs -n1 | \
 	while read file; do \
@@ -1734,7 +1774,8 @@ delete-old-libs:
 
 check-old-libs:
 	@echo ">>> Checking for old libraries"
-	@${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
+	@cd ${.CURDIR}; \
+	${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
 	    -V OLD_LIBS | xargs -n1 | \
 	while read file; do \
 		if [ -f "${DESTDIR}/$${file}" -o -L "${DESTDIR}/$${file}" ]; then \
@@ -1749,7 +1790,8 @@ check-old-libs:
 
 delete-old-dirs:
 	@echo ">>> Removing old directories"
-	@${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
+	@cd ${.CURDIR}; \
+	${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
 	    -V OLD_DIRS | xargs -n1 | sort -r | \
 	while read dir; do \
 		if [ -d "${DESTDIR}/$${dir}" ]; then \
@@ -1762,7 +1804,8 @@ delete-old-dirs:
 
 check-old-dirs:
 	@echo ">>> Checking for old directories"
-	@${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
+	@cd ${.CURDIR}; \
+	${MAKE} -f ${.CURDIR}/Makefile.inc1 ${.MAKEFLAGS} ${.TARGET} \
 	    -V OLD_DIRS | xargs -n1 | \
 	while read dir; do \
 		if [ -d "${DESTDIR}/$${dir}" ]; then \
@@ -1811,7 +1854,7 @@ builddtb:
 		echo "ERROR: FDT_DTS_FILE must be specified!"; \
 		exit 1; \
 	fi;	\
-	if [ ! -f ${.CURDIR}/sys/boot/fdt/dts/${FDT_DTS_FILE} ]; then \
+	if [ ! -f ${.CURDIR}/sys/boot/fdt/dts/${MACHINE}/${FDT_DTS_FILE} ]; then \
 		echo "ERROR: Specified DTS file (${FDT_DTS_FILE}) does not \
 			exist!"; \
 		exit 1;	\
@@ -1821,9 +1864,9 @@ builddtb:
 			directory"; \
 	fi
 	@PATH=${TMPPATH} \
-	dtc -O dtb -o \
-	    ${DTBOUTPUTPATH}/`echo ${FDT_DTS_FILE} | cut -d. -f1`.dtb -b 0 \
-	    -p 1024 ${.CURDIR}/sys/boot/fdt/dts/${FDT_DTS_FILE}
+	${.CURDIR}/sys/tools/fdt/make_dtb.sh ${.CURDIR}/sys \
+	    ${FDT_DTS_FILE} \
+	    ${DTBOUTPUTPATH}/`basename ${FDT_DTS_FILE} .dts`
 
 ###############
 
@@ -1837,7 +1880,7 @@ XDEV_CPUTYPE?=${TARGET_CPUTYPE}
 
 NOFUN=-DNO_FSCHG -DWITHOUT_HTML -DWITHOUT_INFO -DNO_LINT \
 	-DWITHOUT_MAN -DWITHOUT_NLS -DNO_PROFILE \
-	-DWITHOUT_KERBEROS -DWITHOUT_RESCUE -DNO_WARNS \
+	-DWITHOUT_KERBEROS -DWITHOUT_RESCUE -DNO_TESTS -DNO_WARNS \
 	TARGET=${XDEV} TARGET_ARCH=${XDEV_ARCH} \
 	CPUTYPE=${XDEV_CPUTYPE}
 
@@ -1856,7 +1899,7 @@ CD2ENV=${CDENV} CC="${CC} ${CD2CFLAGS}" \
 CDTMP=	${MAKEOBJDIRPREFIX}/${XDDIR}/${.CURDIR}/tmp
 CDMAKE=${CDENV} PATH=${CDTMP}/usr/bin:${PATH} ${MAKE} ${NOFUN}
 CD2MAKE=${CD2ENV} PATH=${CDTMP}/usr/bin:${XDDESTDIR}/usr/bin:${PATH} ${MAKE} ${NOFUN}
-XDDESTDIR=${DESTDIR}/${XDTP}
+XDDESTDIR?=${DESTDIR}/${XDTP}
 .if !defined(OSREL)
 OSREL!= uname -r | sed -e 's/[-(].*//'
 .endif

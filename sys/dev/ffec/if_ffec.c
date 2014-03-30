@@ -86,6 +86,39 @@ __FBSDID("$FreeBSD$");
 #include "miibus_if.h"
 
 /*
+ * There are small differences in the hardware on various SoCs.  Not every SoC
+ * we support has its own FECTYPE; most work as GENERIC and only the ones that
+ * need different handling get their own entry.  In addition to the types in
+ * this list, there are some flags below that can be ORed into the upper bits.
+ */
+enum {
+	FECTYPE_NONE,
+	FECTYPE_GENERIC,
+	FECTYPE_IMX53,
+	FECTYPE_IMX6,
+	FECTYPE_MVF,
+};
+
+/*
+ * Flags that describe general differences between the FEC hardware in various
+ * SoCs.  These are ORed into the FECTYPE enum values.
+ */
+#define	FECTYPE_MASK		0x0000ffff
+#define	FECFLAG_GBE		(0x0001 << 16)
+
+/*
+ * Table of supported FDT compat strings and their associated FECTYPE values.
+ */
+static struct ofw_compat_data compat_data[] = {
+	{"fsl,imx51-fec",	FECTYPE_GENERIC},
+	{"fsl,imx53-fec",	FECTYPE_IMX53},
+	{"fsl,imx6q-fec",	FECTYPE_IMX6 | FECFLAG_GBE},
+	{"fsl,mvf600-fec",	FECTYPE_MVF},
+	{"fsl,mvf-fec",		FECTYPE_MVF},
+	{NULL,		 	FECTYPE_NONE},
+};
+
+/*
  * Driver data and defines.
  */
 #define	RX_DESC_COUNT	64
@@ -106,13 +139,6 @@ enum {
 	PHY_CONN_MII,
 	PHY_CONN_RMII,
 	PHY_CONN_RGMII
-};
-
-enum {
-	FECTYPE_GENERIC,
-	FECTYPE_IMX51,
-	FECTYPE_IMX53,
-	FECTYPE_IMX6,
 };
 
 struct ffec_softc {
@@ -226,7 +252,7 @@ ffec_miigasket_setup(struct ffec_softc *sc)
 	 * We only need the gasket for MII and RMII connections on certain SoCs.
 	 */
 
-	switch (sc->fectype)
+	switch (sc->fectype & FECTYPE_MASK)
 	{
 	case FECTYPE_IMX53:
 		break;
@@ -883,7 +909,7 @@ ffec_get_hwaddr(struct ffec_softc *sc, uint8_t *hwaddr)
 	 * assigned bit set, and the broadcast/multicast bit clear.
 	 */
 	palr = RD4(sc, FEC_PALR_REG);
-	paur = RD4(sc, FEC_PAUR_REG);
+	paur = RD4(sc, FEC_PAUR_REG) & FEC_PAUR_PADDR2_MASK;
 	if ((palr | paur) != 0) {
 		hwaddr[0] = palr >> 24;
 		hwaddr[1] = palr >> 16;
@@ -891,7 +917,6 @@ ffec_get_hwaddr(struct ffec_softc *sc, uint8_t *hwaddr)
 		hwaddr[3] = palr >>  0;
 		hwaddr[4] = paur >> 24;
 		hwaddr[5] = paur >> 16;
-		return;
 	} else {
 		rnd = arc4random() & 0x00ffffff;
 		hwaddr[0] = 'b';
@@ -934,9 +959,10 @@ ffec_setup_rxfilter(struct ffec_softc *sc)
 		TAILQ_FOREACH(ifma, &sc->ifp->if_multiaddrs, ifma_link) {
 			if (ifma->ifma_addr->sa_family != AF_LINK)
 				continue;
-			crc = ether_crc32_be(LLADDR((struct sockaddr_dl *)
+			/* 6 bits from MSB in LE CRC32 are used for hash. */
+			crc = ether_crc32_le(LLADDR((struct sockaddr_dl *)
 			    ifma->ifma_addr), ETHER_ADDR_LEN);
-			ghash |= 1 << (crc & 0x3f);
+			ghash |= 1LLU << (((uint8_t *)&crc)[3] >> 2);
 		}
 		if_maddr_runlock(ifp);
 	}
@@ -1405,14 +1431,7 @@ ffec_attach(device_t dev)
 	 * There are differences in the implementation and features of the FEC
 	 * hardware on different SoCs, so figure out what type we are.
 	 */
-	if (ofw_bus_is_compatible(dev, "fsl,imx51-fec"))
-		sc->fectype = FECTYPE_IMX51;
-	else if (ofw_bus_is_compatible(dev, "fsl,imx53-fec"))
-		sc->fectype = FECTYPE_IMX53;
-	else if (ofw_bus_is_compatible(dev, "fsl,imx6q-fec"))
-		sc->fectype = FECTYPE_IMX6;
-	else
-		sc->fectype = FECTYPE_GENERIC;
+	sc->fectype = ofw_bus_search_compatible(dev, compat_data)->ocd_data;
 
 	/*
 	 * We have to be told what kind of electrical connection exists between
@@ -1669,7 +1688,8 @@ ffec_attach(device_t dev)
 
 	/* Attach the mii driver. */
 	error = mii_attach(dev, &sc->miibus, ifp, ffec_media_change,
-	    ffec_media_status, BMSR_DEFCAPMASK, MII_PHY_ANY, MII_OFFSET_ANY, 0);
+	    ffec_media_status, BMSR_DEFCAPMASK, MII_PHY_ANY, MII_OFFSET_ANY,
+	    (sc->fectype & FECTYPE_MVF) ? MIIF_FORCEANEG : 0);
 	if (error != 0) {
 		device_printf(dev, "PHY attach failed\n");
 		goto out;
@@ -1692,15 +1712,19 @@ out:
 static int
 ffec_probe(device_t dev)
 {
+	uintptr_t fectype;
 
-	if (ofw_bus_is_compatible(dev, "fsl,imx51-fec") ||
-	    ofw_bus_is_compatible(dev, "fsl,imx53-fec")) {
-		device_set_desc(dev, "Freescale Fast Ethernet Controller");
-	} else if (ofw_bus_is_compatible(dev, "fsl,imx6q-fec")) {
-		device_set_desc(dev, "Freescale Gigabit Ethernet Controller");
-	} else {
+	if (!ofw_bus_status_okay(dev))
 		return (ENXIO);
-	}
+
+	fectype = ofw_bus_search_compatible(dev, compat_data)->ocd_data;
+	if (fectype == FECTYPE_NONE)
+		return (ENXIO);
+
+	device_set_desc(dev, (fectype & FECFLAG_GBE) ?
+	    "Freescale Gigabit Ethernet Controller" :
+	    "Freescale Fast Ethernet Controller");
+
 	return (BUS_PROBE_DEFAULT);
 }
 

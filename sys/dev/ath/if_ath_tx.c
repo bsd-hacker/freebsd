@@ -59,10 +59,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/kthread.h>
 #include <sys/taskqueue.h>
 #include <sys/priv.h>
+#include <sys/ktr.h>
 
 #include <machine/bus.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
@@ -1584,7 +1586,7 @@ ath_tx_normal_setup(struct ath_softc *sc, struct ieee80211_node *ni,
 	ATH_TX_LOCK_ASSERT(sc);
 
 	wh = mtod(m0, struct ieee80211_frame *);
-	iswep = wh->i_fc[1] & IEEE80211_FC1_WEP;
+	iswep = wh->i_fc[1] & IEEE80211_FC1_PROTECTED;
 	ismcast = IEEE80211_IS_MULTICAST(wh->i_addr1);
 	isfrag = m0->m_flags & M_FRAG;
 	hdrlen = ieee80211_anyhdrsize(wh);
@@ -2214,7 +2216,7 @@ ath_tx_raw_start(struct ath_softc *sc, struct ieee80211_node *ni,
 
 		sc->sc_tx_th.wt_tsf = htole64(tsf);
 		sc->sc_tx_th.wt_flags = sc->sc_hwmap[rix].txflags;
-		if (wh->i_fc[1] & IEEE80211_FC1_WEP)
+		if (wh->i_fc[1] & IEEE80211_FC1_PROTECTED)
 			sc->sc_tx_th.wt_flags |= IEEE80211_RADIOTAP_F_WEP;
 		if (m0->m_flags & M_FRAG)
 			sc->sc_tx_th.wt_flags |= IEEE80211_RADIOTAP_F_FRAG;
@@ -3717,7 +3719,7 @@ ath_tx_tid_drain_print(struct ath_softc *sc, struct ath_node *an,
 	txq = sc->sc_ac2q[tid->ac];
 	tap = ath_tx_get_tx_tid(an, tid->tid);
 
-	DPRINTF(sc, ATH_DEBUG_SW_TX,
+	DPRINTF(sc, ATH_DEBUG_SW_TX | ATH_DEBUG_RESET,
 	    "%s: %s: %6D: bf=%p: addbaw=%d, dobaw=%d, "
 	    "seqno=%d, retry=%d\n",
 	    __func__,
@@ -3729,7 +3731,7 @@ ath_tx_tid_drain_print(struct ath_softc *sc, struct ath_node *an,
 	    bf->bf_state.bfs_dobaw,
 	    SEQNO(bf->bf_state.bfs_seqno),
 	    bf->bf_state.bfs_retries);
-	DPRINTF(sc, ATH_DEBUG_SW_TX,
+	DPRINTF(sc, ATH_DEBUG_SW_TX | ATH_DEBUG_RESET,
 	    "%s: %s: %6D: bf=%p: txq[%d] axq_depth=%d, axq_aggr_depth=%d\n",
 	    __func__,
 	    pfx,
@@ -3739,7 +3741,7 @@ ath_tx_tid_drain_print(struct ath_softc *sc, struct ath_node *an,
 	    txq->axq_qnum,
 	    txq->axq_depth,
 	    txq->axq_aggr_depth);
-	DPRINTF(sc, ATH_DEBUG_SW_TX,
+	DPRINTF(sc, ATH_DEBUG_SW_TX | ATH_DEBUG_RESET,
 	    "%s: %s: %6D: bf=%p: tid txq_depth=%d hwq_depth=%d, bar_wait=%d, "
 	      "isfiltered=%d\n",
 	    __func__,
@@ -3751,7 +3753,7 @@ ath_tx_tid_drain_print(struct ath_softc *sc, struct ath_node *an,
 	    tid->hwq_depth,
 	    tid->bar_wait,
 	    tid->isfiltered);
-	DPRINTF(sc, ATH_DEBUG_SW_TX,
+	DPRINTF(sc, ATH_DEBUG_SW_TX | ATH_DEBUG_RESET,
 	    "%s: %s: %6D: tid %d: "
 	    "sched=%d, paused=%d, "
 	    "incomp=%d, baw_head=%d, "
@@ -3767,9 +3769,10 @@ ath_tx_tid_drain_print(struct ath_softc *sc, struct ath_node *an,
 	     ni->ni_txseqs[tid->tid]);
 
 	/* XXX Dump the frame, see what it is? */
-	ieee80211_dump_pkt(ni->ni_ic,
-	    mtod(bf->bf_m, const uint8_t *),
-	    bf->bf_m->m_len, 0, -1);
+	if (IFF_DUMPPKTS(sc, ATH_DEBUG_XMIT))
+		ieee80211_dump_pkt(ni->ni_ic,
+		    mtod(bf->bf_m, const uint8_t *),
+		    bf->bf_m->m_len, 0, -1);
 }
 
 /*
@@ -3810,7 +3813,7 @@ ath_tx_tid_drain(struct ath_softc *sc, struct ath_node *an,
 
 		if (t == 0) {
 			ath_tx_tid_drain_print(sc, an, "norm", tid, bf);
-			t = 1;
+//			t = 1;
 		}
 
 		ATH_TID_REMOVE(tid, bf, bf_list);
@@ -3826,7 +3829,7 @@ ath_tx_tid_drain(struct ath_softc *sc, struct ath_node *an,
 
 		if (t == 0) {
 			ath_tx_tid_drain_print(sc, an, "filt", tid, bf);
-			t = 1;
+//			t = 1;
 		}
 
 		ATH_TID_FILT_REMOVE(tid, bf, bf_list);

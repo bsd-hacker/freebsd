@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_media.h>
+#include <net/if_var.h>
 
 #include <dev/mii/mii.h>
 #include <dev/mii/miivar.h>
@@ -63,6 +64,9 @@ __FBSDID("$FreeBSD$");
 static int
 atse_probe_fdt(device_t dev)
 {
+
+	if (!ofw_bus_status_okay(dev))
+		return (ENXIO);
 
 	if (ofw_bus_is_compatible(dev, "altera,atse")) {
 		device_set_desc(dev, "Altera Triple-Speed Ethernet MegaCore");

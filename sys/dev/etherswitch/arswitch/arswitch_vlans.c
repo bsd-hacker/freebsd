@@ -31,12 +31,13 @@
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/errno.h>
+#include <sys/lock.h>
 #include <sys/kernel.h>
+#include <sys/mutex.h>
 #include <sys/systm.h>
 #include <sys/socket.h>
 
 #include <net/if.h>
-
 #include <dev/mii/mii.h>
 
 #include <dev/etherswitch/etherswitch.h>
@@ -170,7 +171,7 @@ arswitch_set_port_vlan(struct arswitch_softc *sc, uint32_t ports, int vid)
  * Reset vlans to default state.
  */
 void
-arswitch_reset_vlans(struct arswitch_softc *sc)
+ar8xxx_reset_vlans(struct arswitch_softc *sc)
 {
 	uint32_t ports;
 	int i, j;
@@ -219,7 +220,7 @@ arswitch_reset_vlans(struct arswitch_softc *sc)
 		sc->vid[0] = 1;
 		/* Set PVID for everyone. */
 		for (i = 0; i <= sc->numphys; i++)
-			arswitch_set_pvid(sc, i, sc->vid[0]);
+			sc->hal.arswitch_vlan_set_pvid(sc, i, sc->vid[0]);
 		ports = 0;
 		for (i = 0; i <= sc->numphys; i++)
 			ports |= (1 << i);
@@ -258,12 +259,10 @@ arswitch_reset_vlans(struct arswitch_softc *sc)
 }
 
 int
-arswitch_getvgroup(device_t dev, etherswitch_vlangroup_t *vg)
+ar8xxx_getvgroup(struct arswitch_softc *sc, etherswitch_vlangroup_t *vg)
 {
-	struct arswitch_softc *sc;
 	int err;
 
-	sc = device_get_softc(dev);
 	ARSWITCH_LOCK_ASSERT(sc, MA_NOTOWNED);
 
 	if (vg->es_vlangroup > sc->info.es_nvlangroups)
@@ -304,12 +303,10 @@ arswitch_getvgroup(device_t dev, etherswitch_vlangroup_t *vg)
 }
 
 int
-arswitch_setvgroup(device_t dev, etherswitch_vlangroup_t *vg)
+ar8xxx_setvgroup(struct arswitch_softc *sc, etherswitch_vlangroup_t *vg)
 {
-	struct arswitch_softc *sc;
 	int err, vid;
 
-	sc = device_get_softc(dev);
 	ARSWITCH_LOCK_ASSERT(sc, MA_NOTOWNED);
 
 	/* Check VLAN mode. */
@@ -361,7 +358,7 @@ arswitch_setvgroup(device_t dev, etherswitch_vlangroup_t *vg)
 }
 
 int
-arswitch_get_pvid(struct arswitch_softc *sc, int port, int *pvid)
+ar8xxx_get_pvid(struct arswitch_softc *sc, int port, int *pvid)
 {
 	uint32_t reg;
 
@@ -372,7 +369,7 @@ arswitch_get_pvid(struct arswitch_softc *sc, int port, int *pvid)
 }
 
 int
-arswitch_set_pvid(struct arswitch_softc *sc, int port, int pvid)
+ar8xxx_set_pvid(struct arswitch_softc *sc, int port, int pvid)
 {
 
 	ARSWITCH_LOCK_ASSERT(sc, MA_OWNED);

@@ -66,11 +66,16 @@ __FBSDID("$FreeBSD$");
 
 #define	VTBLK_BLK_ID_BYTES	20
 
+/* Capability bits */
+#define	VTBLK_F_SEG_MAX		(1 << 2)	/* Maximum request segments */
+#define	VTBLK_F_BLK_SIZE       	(1 << 6)	/* cfg block size valid */
+
 /*
  * Host capabilities
  */
 #define VTBLK_S_HOSTCAPS      \
-  ( 0x00000004 |	/* host maximum request segments */ \
+  ( VTBLK_F_SEG_MAX  |						    \
+    VTBLK_F_BLK_SIZE |						    \
     VIRTIO_RING_F_INDIRECT_DESC )	/* indirect descriptors */
 
 /*
@@ -112,6 +117,7 @@ static int pci_vtblk_debug;
  */
 struct pci_vtblk_softc {
 	struct virtio_softc vbsc_vs;
+	pthread_mutex_t vsc_mtx;
 	struct vqueue_info vbsc_vq;
 	int		vbsc_fd;
 	struct vtblk_config vbsc_cfg;	
@@ -299,8 +305,12 @@ pci_vtblk_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	/* record fd of storage device/file */
 	sc->vbsc_fd = fd;
 
+	pthread_mutex_init(&sc->vsc_mtx, NULL);
+
 	/* init virtio softc and virtqueues */
 	vi_softc_linkup(&sc->vbsc_vs, &vtblk_vi_consts, sc, pi, &sc->vbsc_vq);
+	sc->vbsc_vs.vs_mtx = &sc->vsc_mtx;
+
 	sc->vbsc_vq.vq_qsize = VTBLK_RINGSZ;
 	/* sc->vbsc_vq.vq_notify = we have no per-queue notify */
 
@@ -315,7 +325,7 @@ pci_vtblk_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	    digest[0], digest[1], digest[2], digest[3], digest[4], digest[5]);
 
 	/* setup virtio block config space */
-	sc->vbsc_cfg.vbc_capacity = size / sectsz;
+	sc->vbsc_cfg.vbc_capacity = size / DEV_BSIZE; /* 512-byte units */
 	sc->vbsc_cfg.vbc_seg_max = VTBLK_MAXSEGS;
 	sc->vbsc_cfg.vbc_blk_size = sectsz;
 	sc->vbsc_cfg.vbc_size_max = 0;	/* not negotiated */
@@ -333,6 +343,8 @@ pci_vtblk_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	pci_set_cfgdata16(pi, PCIR_VENDOR, VIRTIO_VENDOR);
 	pci_set_cfgdata8(pi, PCIR_CLASS, PCIC_STORAGE);
 	pci_set_cfgdata16(pi, PCIR_SUBDEV_0, VIRTIO_TYPE_BLOCK);
+
+	pci_lintr_request(pi);
 
 	if (vi_intr_init(&sc->vbsc_vs, 1, fbsdrun_virtio_msix()))
 		return (1);

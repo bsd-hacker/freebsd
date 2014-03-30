@@ -35,7 +35,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/capability.h>
+#include <sys/capsicum.h>
 #include <sys/clock.h>
 #include <sys/exec.h>
 #include <sys/fcntl.h>
@@ -83,6 +83,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/msg.h>
 #include <sys/sem.h>
 #include <sys/shm.h>
+#include <sys/condvar.h>
+#include <sys/sf_buf.h>
+#include <sys/sf_sync.h>
+#include <sys/sf_base.h>
 
 #ifdef INET
 #include <netinet/in.h>
@@ -1500,7 +1504,7 @@ freebsd32_lseek(struct thread *td, struct freebsd32_lseek_args *uap)
 	ap.whence = uap->whence;
 	error = sys_lseek(td, &ap);
 	/* Expand the quad return into two parts for eax and edx */
-	pos = *(off_t *)(td->td_retval);
+	pos = td->td_uretoff.tdu_off;
 	td->td_retval[RETVAL_LO] = pos & 0xffffffff;	/* %eax */
 	td->td_retval[RETVAL_HI] = pos >> 32;		/* %edx */
 	return error;
@@ -1640,24 +1644,35 @@ struct sf_hdtr32 {
 	int trl_cnt;
 };
 
+struct sf_hdtr_kq32 {
+	int kq_fd;
+	uint32_t kq_flags;
+	uint32_t kq_udata;	/* 32-bit void ptr */
+	uint32_t kq_ident;	/* 32-bit uintptr_t */
+};
+
 static int
 freebsd32_do_sendfile(struct thread *td,
     struct freebsd32_sendfile_args *uap, int compat)
 {
 	struct sf_hdtr32 hdtr32;
 	struct sf_hdtr hdtr;
+	struct sf_hdtr_kq32 hdtr_kq32;
+	struct sf_hdtr_kq hdtr_kq;
 	struct uio *hdr_uio, *trl_uio;
 	struct iovec32 *iov32;
-	struct file *fp;
-	cap_rights_t rights;
 	off_t offset;
 	int error;
+	off_t sbytes;
+	struct sendfile_sync *sfs;
+	int do_kqueue = 0;
 
 	offset = PAIR32TO64(off_t, uap->offset);
 	if (offset < 0)
 		return (EINVAL);
 
 	hdr_uio = trl_uio = NULL;
+	sfs = NULL;
 
 	if (uap->hdtr != NULL) {
 		error = copyin(uap->hdtr, &hdtr32, sizeof(hdtr32));
@@ -1682,18 +1697,35 @@ freebsd32_do_sendfile(struct thread *td,
 			if (error)
 				goto out;
 		}
+
+		/*
+		 * If SF_KQUEUE is set, then we need to also copy in
+		 * the kqueue data after the normal hdtr set and set do_kqueue=1.
+		 */
+		if (uap->flags & SF_KQUEUE) {
+			error = copyin(((char *) uap->hdtr) + sizeof(hdtr32),
+			    &hdtr_kq32,
+			    sizeof(hdtr_kq32));
+			if (error != 0)
+				goto out;
+
+			/* 32->64 bit fields */
+			CP(hdtr_kq32, hdtr_kq, kq_fd);
+			CP(hdtr_kq32, hdtr_kq, kq_flags);
+			PTRIN_CP(hdtr_kq32, hdtr_kq, kq_udata);
+			CP(hdtr_kq32, hdtr_kq, kq_ident);
+			do_kqueue = 1;
+		}
 	}
 
-	AUDIT_ARG_FD(uap->fd);
 
-	if ((error = fget_read(td, uap->fd,
-	    cap_rights_init(&rights, CAP_PREAD), &fp)) != 0) {
-		goto out;
-	}
+	/* Call sendfile */
+	/* XXX stack depth! */
+	error = _do_sendfile(td, uap->fd, uap->s, uap->flags, compat,
+	    offset, uap->nbytes, &sbytes, hdr_uio, trl_uio, &hdtr_kq);
 
-	error = fo_sendfile(fp, uap->s, hdr_uio, trl_uio, offset,
-	    uap->nbytes, uap->sbytes, uap->flags, compat ? SFK_COMPAT : 0, td);
-	fdrop(fp, td);
+	if (uap->sbytes != NULL)
+		copyout(&sbytes, uap->sbytes, sizeof(off_t));
 
 out:
 	if (hdr_uio)
@@ -1925,7 +1957,7 @@ freebsd32_jail(struct thread *td, struct freebsd32_jail_args *uap)
 		CP(j32_v0, j, version);
 		PTRIN_CP(j32_v0, j, path);
 		PTRIN_CP(j32_v0, j, hostname);
-		j.ip4s = j32_v0.ip_number;
+		j.ip4s = htonl(j32_v0.ip_number);	/* jail_v0 is host order */
 		break;
 	}
 
@@ -2790,7 +2822,8 @@ freebsd32_copyout_strings(struct image_params *imgp)
 {
 	int argc, envc, i;
 	u_int32_t *vectp;
-	char *stringp, *destp;
+	char *stringp;
+	uintptr_t destp;
 	u_int32_t *stack_base;
 	struct freebsd32_ps_strings *arginfo;
 	char canary[sizeof(long) * 8];
@@ -2812,35 +2845,34 @@ freebsd32_copyout_strings(struct image_params *imgp)
 		szsigcode = *(imgp->proc->p_sysent->sv_szsigcode);
 	else
 		szsigcode = 0;
-	destp =	(caddr_t)arginfo - szsigcode - SPARE_USRSPACE -
-	    roundup(execpath_len, sizeof(char *)) -
-	    roundup(sizeof(canary), sizeof(char *)) -
-	    roundup(sizeof(pagesizes32), sizeof(char *)) -
-	    roundup((ARG_MAX - imgp->args->stringspace), sizeof(char *));
+	destp =	(uintptr_t)arginfo;
 
 	/*
 	 * install sigcode
 	 */
-	if (szsigcode != 0)
-		copyout(imgp->proc->p_sysent->sv_sigcode,
-			((caddr_t)arginfo - szsigcode), szsigcode);
+	if (szsigcode != 0) {
+		destp -= szsigcode;
+		destp = rounddown2(destp, sizeof(uint32_t));
+		copyout(imgp->proc->p_sysent->sv_sigcode, (void *)destp,
+		    szsigcode);
+	}
 
 	/*
 	 * Copy the image path for the rtld.
 	 */
 	if (execpath_len != 0) {
-		imgp->execpathp = (uintptr_t)arginfo - szsigcode - execpath_len;
-		copyout(imgp->execpath, (void *)imgp->execpathp,
-		    execpath_len);
+		destp -= execpath_len;
+		imgp->execpathp = destp;
+		copyout(imgp->execpath, (void *)destp, execpath_len);
 	}
 
 	/*
 	 * Prepare the canary for SSP.
 	 */
 	arc4rand(canary, sizeof(canary), 0);
-	imgp->canary = (uintptr_t)arginfo - szsigcode - execpath_len -
-	    sizeof(canary);
-	copyout(canary, (void *)imgp->canary, sizeof(canary));
+	destp -= sizeof(canary);
+	imgp->canary = destp;
+	copyout(canary, (void *)destp, sizeof(canary));
 	imgp->canarylen = sizeof(canary);
 
 	/*
@@ -2848,10 +2880,14 @@ freebsd32_copyout_strings(struct image_params *imgp)
 	 */
 	for (i = 0; i < MAXPAGESIZES; i++)
 		pagesizes32[i] = (uint32_t)pagesizes[i];
-	imgp->pagesizes = (uintptr_t)arginfo - szsigcode - execpath_len -
-	    roundup(sizeof(canary), sizeof(char *)) - sizeof(pagesizes32);
-	copyout(pagesizes32, (void *)imgp->pagesizes, sizeof(pagesizes32));
+	destp -= sizeof(pagesizes32);
+	destp = rounddown2(destp, sizeof(uint32_t));
+	imgp->pagesizes = destp;
+	copyout(pagesizes32, (void *)destp, sizeof(pagesizes32));
 	imgp->pagesizeslen = sizeof(pagesizes32);
+
+	destp -= ARG_MAX - imgp->args->stringspace;
+	destp = rounddown2(destp, sizeof(uint32_t));
 
 	/*
 	 * If we have a valid auxargs ptr, prepare some room
@@ -2872,13 +2908,14 @@ freebsd32_copyout_strings(struct image_params *imgp)
 		vectp = (u_int32_t *) (destp - (imgp->args->argc +
 		    imgp->args->envc + 2 + imgp->auxarg_size + execpath_len) *
 		    sizeof(u_int32_t));
-	} else
+	} else {
 		/*
 		 * The '+ 2' is for the null pointers at the end of each of
 		 * the arg and env vector sets
 		 */
-		vectp = (u_int32_t *)
-			(destp - (imgp->args->argc + imgp->args->envc + 2) * sizeof(u_int32_t));
+		vectp = (u_int32_t *)(destp - (imgp->args->argc +
+		    imgp->args->envc + 2) * sizeof(u_int32_t));
+	}
 
 	/*
 	 * vectp also becomes our initial stack base
@@ -2891,7 +2928,7 @@ freebsd32_copyout_strings(struct image_params *imgp)
 	/*
 	 * Copy out strings - arguments and environment.
 	 */
-	copyout(stringp, destp, ARG_MAX - imgp->args->stringspace);
+	copyout(stringp, (void *)destp, ARG_MAX - imgp->args->stringspace);
 
 	/*
 	 * Fill in "ps_strings" struct for ps, w, etc.
@@ -2963,8 +3000,9 @@ freebsd32_posix_fallocate(struct thread *td,
     struct freebsd32_posix_fallocate_args *uap)
 {
 
-	return (kern_posix_fallocate(td, uap->fd,
-	    PAIR32TO64(off_t, uap->offset), PAIR32TO64(off_t, uap->len)));
+	td->td_retval[0] = kern_posix_fallocate(td, uap->fd,
+	    PAIR32TO64(off_t, uap->offset), PAIR32TO64(off_t, uap->len));
+	return (0);
 }
 
 int
@@ -2972,8 +3010,10 @@ freebsd32_posix_fadvise(struct thread *td,
     struct freebsd32_posix_fadvise_args *uap)
 {
 
-	return (kern_posix_fadvise(td, uap->fd, PAIR32TO64(off_t, uap->offset),
-	    PAIR32TO64(off_t, uap->len), uap->advice));
+	td->td_retval[0] = kern_posix_fadvise(td, uap->fd,
+	    PAIR32TO64(off_t, uap->offset), PAIR32TO64(off_t, uap->len),
+	    uap->advice);
+	return (0);
 }
 
 int

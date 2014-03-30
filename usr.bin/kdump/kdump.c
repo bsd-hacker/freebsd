@@ -46,7 +46,7 @@ extern int errno;
 #include <sys/errno.h>
 #undef _KERNEL
 #include <sys/param.h>
-#include <sys/capability.h>
+#include <sys/capsicum.h>
 #include <sys/errno.h>
 #define _KERNEL
 #include <sys/time.h>
@@ -60,13 +60,6 @@ extern int errno;
 #include <sys/un.h>
 #include <sys/queue.h>
 #include <sys/wait.h>
-#ifdef IPX
-#include <sys/types.h>
-#include <netipx/ipx.h>
-#endif
-#ifdef NETATALK
-#include <netatalk/at.h>
-#endif
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <ctype.h>
@@ -74,9 +67,18 @@ extern int errno;
 #include <err.h>
 #include <grp.h>
 #include <inttypes.h>
+#ifdef HAVE_LIBCAPSICUM
+#include <libcapsicum.h>
+#include <libcapsicum_grp.h>
+#include <libcapsicum_pwd.h>
+#include <libcapsicum_service.h>
+#endif
 #include <locale.h>
 #include <netdb.h>
 #include <nl_types.h>
+#ifdef HAVE_LIBCAPSICUM
+#include <nv.h>
+#endif
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -115,8 +117,13 @@ void limitfd(int fd);
 void usage(void);
 void ioctlname(unsigned long, int);
 
+#define	TIMESTAMP_NONE		0x0
+#define	TIMESTAMP_ABSOLUTE	0x1
+#define	TIMESTAMP_ELAPSED	0x2
+#define	TIMESTAMP_RELATIVE	0x4
+
 int timestamp, decimal, fancy = 1, suppressdata, tail, threads, maxdata,
-    resolv = 0, abiflag = 0;
+    resolv = 0, abiflag = 0, syscallno = 0;
 const char *tracefile = DEF_TRACEFILE;
 struct ktr_header ktr_header;
 
@@ -172,6 +179,10 @@ struct proc_info
 
 TAILQ_HEAD(trace_procs, proc_info) trace_procs;
 
+#ifdef HAVE_LIBCAPSICUM
+static cap_channel_t *cappwd, *capgrp;
+#endif
+
 static void
 strerror_init(void)
 {
@@ -197,6 +208,50 @@ localtime_init(void)
 	(void)localtime(&ltime);
 }
 
+#ifdef HAVE_LIBCAPSICUM
+static int
+cappwdgrp_setup(cap_channel_t **cappwdp, cap_channel_t **capgrpp)
+{
+	cap_channel_t *capcas, *cappwdloc, *capgrploc;
+	const char *cmds[1], *fields[1];
+
+	capcas = cap_init();
+	if (capcas == NULL) {
+		warn("unable to contact casperd");
+		return (-1);
+	}
+	cappwdloc = cap_service_open(capcas, "system.pwd");
+	capgrploc = cap_service_open(capcas, "system.grp");
+	/* Casper capability no longer needed. */
+	cap_close(capcas);
+	if (cappwdloc == NULL || capgrploc == NULL) {
+		if (cappwdloc == NULL)
+			warn("unable to open system.pwd service");
+		if (capgrploc == NULL)
+			warn("unable to open system.grp service");
+		exit(1);
+	}
+	/* Limit system.pwd to only getpwuid() function and pw_name field. */
+	cmds[0] = "getpwuid";
+	if (cap_pwd_limit_cmds(cappwdloc, cmds, 1) < 0)
+		err(1, "unable to limit system.pwd service");
+	fields[0] = "pw_name";
+	if (cap_pwd_limit_fields(cappwdloc, fields, 1) < 0)
+		err(1, "unable to limit system.pwd service");
+	/* Limit system.grp to only getgrgid() function and gr_name field. */
+	cmds[0] = "getgrgid";
+	if (cap_grp_limit_cmds(capgrploc, cmds, 1) < 0)
+		err(1, "unable to limit system.grp service");
+	fields[0] = "gr_name";
+	if (cap_grp_limit_fields(capgrploc, fields, 1) < 0)
+		err(1, "unable to limit system.grp service");
+
+	*cappwdp = cappwdloc;
+	*capgrpp = capgrploc;
+	return (0);
+}
+#endif	/* HAVE_LIBCAPSICUM */
+
 int
 main(int argc, char *argv[])
 {
@@ -209,7 +264,9 @@ main(int argc, char *argv[])
 
 	setlocale(LC_CTYPE, "");
 
-	while ((ch = getopt(argc,argv,"f:dElm:np:AHRrsTt:")) != -1)
+	timestamp = TIMESTAMP_NONE;
+
+	while ((ch = getopt(argc,argv,"f:dElm:np:AHRrSsTt:")) != -1)
 		switch (ch) {
 		case 'A':
 			abiflag = 1;
@@ -235,20 +292,23 @@ main(int argc, char *argv[])
 		case 'r':
 			resolv = 1;
 			break;
+		case 'S':
+			syscallno = 1;
+			break;
 		case 's':
 			suppressdata = 1;
 			break;
 		case 'E':
-			timestamp = 3;	/* elapsed timestamp */
+			timestamp |= TIMESTAMP_ELAPSED;
 			break;
 		case 'H':
 			threads = 1;
 			break;
 		case 'R':
-			timestamp = 2;	/* relative timestamp */
+			timestamp |= TIMESTAMP_RELATIVE;
 			break;
 		case 'T':
-			timestamp = 1;
+			timestamp |= TIMESTAMP_ABSOLUTE;
 			break;
 		case 't':
 			trpoints = getpoints(optarg);
@@ -270,14 +330,28 @@ main(int argc, char *argv[])
 
 	strerror_init();
 	localtime_init();
-
+#ifdef HAVE_LIBCAPSICUM
+	if (resolv != 0) {
+		if (cappwdgrp_setup(&cappwd, &capgrp) < 0) {
+			cappwd = NULL;
+			capgrp = NULL;
+		}
+	}
+	if (resolv == 0 || (cappwd != NULL && capgrp != NULL)) {
+		if (cap_enter() < 0 && errno != ENOSYS)
+			err(1, "unable to enter capability mode");
+	}
+#else
 	if (resolv == 0) {
 		if (cap_enter() < 0 && errno != ENOSYS)
 			err(1, "unable to enter capability mode");
 	}
+#endif
 	limitfd(STDIN_FILENO);
 	limitfd(STDOUT_FILENO);
 	limitfd(STDERR_FILENO);
+	if (cap_sandboxed())
+		fprintf(stderr, "capability mode sandbox enabled\n");
 
 	TAILQ_INIT(&trace_procs);
 	drop_logged = 0;
@@ -510,7 +584,7 @@ void
 dumpheader(struct ktr_header *kth)
 {
 	static char unknown[64];
-	static struct timeval prevtime, temp;
+	static struct timeval prevtime, prevtime_e, temp;
 	const char *type;
 
 	switch (kth->ktr_type) {
@@ -574,19 +648,26 @@ dumpheader(struct ktr_header *kth)
 	else
 		printf("%6jd %-8.*s ", (intmax_t)kth->ktr_pid, MAXCOMLEN,
 		    kth->ktr_comm);
-	if (timestamp) {
-		if (timestamp == 3) {
-			if (prevtime.tv_sec == 0)
-				prevtime = kth->ktr_time;
-			timevalsub(&kth->ktr_time, &prevtime);
+        if (timestamp) {
+		if (timestamp & TIMESTAMP_ABSOLUTE) {
+			printf("%jd.%06ld ", (intmax_t)kth->ktr_time.tv_sec,
+			    kth->ktr_time.tv_usec);
 		}
-		if (timestamp == 2) {
+		if (timestamp & TIMESTAMP_ELAPSED) {
+			if (prevtime_e.tv_sec == 0)
+				prevtime_e = kth->ktr_time;
+			timevalsub(&kth->ktr_time, &prevtime_e);
+			printf("%jd.%06ld ", (intmax_t)kth->ktr_time.tv_sec,
+			    kth->ktr_time.tv_usec);
+			timevaladd(&kth->ktr_time, &prevtime_e);
+		}
+		if (timestamp & TIMESTAMP_RELATIVE) {
 			temp = kth->ktr_time;
 			timevalsub(&kth->ktr_time, &prevtime);
 			prevtime = temp;
+			printf("%jd.%06ld ", (intmax_t)kth->ktr_time.tv_sec,
+			    kth->ktr_time.tv_usec);
 		}
-		printf("%jd.%06ld ", (intmax_t)kth->ktr_time.tv_sec,
-		    kth->ktr_time.tv_usec);
 	}
 	printf("%s  ", type);
 }
@@ -607,8 +688,11 @@ ktrsyscall(struct ktr_syscall *ktr, u_int flags)
 	if ((flags != 0 && ((flags & SV_ABI_MASK) != SV_ABI_FREEBSD)) ||
 	    (ktr->ktr_code >= nsyscalls || ktr->ktr_code < 0))
 		printf("[%d]", ktr->ktr_code);
-	else
+	else {
 		printf("%s", syscallnames[ktr->ktr_code]);
+		if (syscallno)
+			printf("[%d]", ktr->ktr_code);
+	}
 	ip = &ktr->ktr_args[0];
 	if (narg) {
 		char c = '(';
@@ -1200,8 +1284,12 @@ ktrsysret(struct ktr_sysret *ktr, u_int flags)
 	if ((flags != 0 && ((flags & SV_ABI_MASK) != SV_ABI_FREEBSD)) ||
 	    (code >= nsyscalls || code < 0))
 		printf("[%d] ", code);
-	else
-		printf("%s ", syscallnames[code]);
+	else {
+		printf("%s", syscallnames[code]);
+		if (syscallno)
+			printf("[%d]", code);
+		printf(" ");
+	}
 
 	if (error == 0) {
 		if (fancy) {
@@ -1596,21 +1684,6 @@ ktrsockaddr(struct sockaddr *sa)
 		printf("%s:%u", addr, ntohs(sa_in.sin_port));
 		break;
 	}
-#ifdef NETATALK
-	case AF_APPLETALK: {
-		struct sockaddr_at	sa_at;
-		struct netrange		*nr;
-
-		memset(&sa_at, 0, sizeof(sa_at));
-		memcpy(&sa_at, sa, sa->sa_len);
-		check_sockaddr_len(at);
-		nr = &sa_at.sat_range.r_netrange;
-		printf("%d.%d, %d-%d, %d", ntohs(sa_at.sat_addr.s_net),
-			sa_at.sat_addr.s_node, ntohs(nr->nr_firstnet),
-			ntohs(nr->nr_lastnet), nr->nr_phase);
-		break;
-	}
-#endif
 	case AF_INET6: {
 		struct sockaddr_in6 sa_in6;
 
@@ -1622,19 +1695,6 @@ ktrsockaddr(struct sockaddr *sa)
 		printf("[%s]:%u", addr, htons(sa_in6.sin6_port));
 		break;
 	}
-#ifdef IPX
-	case AF_IPX: {
-		struct sockaddr_ipx sa_ipx;
-
-		memset(&sa_ipx, 0, sizeof(sa_ipx));
-		memcpy(&sa_ipx, sa, sa->sa_len);
-		check_sockaddr_len(ipx);
-		/* XXX wish we had ipx_ntop */
-		printf("%s", ipx_ntoa(sa_ipx.sipx_addr));
-		free(sa_ipx);
-		break;
-	}
-#endif
 	case AF_UNIX: {
 		struct sockaddr_un sa_un;
 
@@ -1671,11 +1731,31 @@ ktrstat(struct stat *statp)
 		printf("mode=%s, ", mode);
 	}
 	printf("nlink=%ju, ", (uintmax_t)statp->st_nlink);
-	if (resolv == 0 || (pwd = getpwuid(statp->st_uid)) == NULL)
+	if (resolv == 0) {
+		pwd = NULL;
+	} else {
+#ifdef HAVE_LIBCAPSICUM
+		if (cappwd != NULL)
+			pwd = cap_getpwuid(cappwd, statp->st_uid);
+		else
+#endif
+			pwd = getpwuid(statp->st_uid);
+	}
+	if (pwd == NULL)
 		printf("uid=%ju, ", (uintmax_t)statp->st_uid);
 	else
 		printf("uid=\"%s\", ", pwd->pw_name);
-	if (resolv == 0 || (grp = getgrgid(statp->st_gid)) == NULL)
+	if (resolv == 0) {
+		grp = NULL;
+	} else {
+#ifdef HAVE_LIBCAPSICUM
+		if (capgrp != NULL)
+			grp = cap_getgrgid(capgrp, statp->st_gid);
+		else
+#endif
+			grp = getgrgid(statp->st_gid);
+	}
+	if (grp == NULL)
 		printf("gid=%ju, ", (uintmax_t)statp->st_gid);
 	else
 		printf("gid=\"%s\", ", grp->gr_name);
@@ -1793,7 +1873,7 @@ ktrcapfail(struct ktr_cap_fail *ktr)
 		/* operation on fd with insufficient capabilities */
 		printf("operation requires ");
 		capname(&ktr->cap_needed);
-		printf(", process holds ");
+		printf(", descriptor holds ");
 		capname(&ktr->cap_held);
 		break;
 	case CAPFAIL_INCREASE:
@@ -1858,8 +1938,11 @@ linux_ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 
 	if (ktr->ktr_code >= NLINUX_SYSCALLS(sv_flags) || ktr->ktr_code < 0)
 		printf("[%d]", ktr->ktr_code);
-	else
+	else {
 		printf("%s", LINUX_SYSCALLNAMES(sv_flags, ktr->ktr_code));
+		if (syscallno)
+			printf("[%d]", ktr->ktr_code);
+	}
 	ip = &ktr->ktr_args[0];
 	if (narg) {
 		char c = '(';
@@ -1879,8 +1962,12 @@ linux_ktrsysret(struct ktr_sysret *ktr, u_int sv_flags)
 
 	if (code >= NLINUX_SYSCALLS(sv_flags) || code < 0)
 		printf("[%d] ", code);
-	else
+	else {
 		printf("%s ", LINUX_SYSCALLNAMES(sv_flags, code));
+		if (syscallno)
+			printf("[%d]", code);
+		printf(" ");
+	}
 
 	if (error == 0) {
 		if (fancy) {
@@ -1913,7 +2000,7 @@ linux_ktrsysret(struct ktr_sysret *ktr, u_int sv_flags)
 void
 usage(void)
 {
-	fprintf(stderr, "usage: kdump [-dEnlHRrsTA] [-f trfile] "
+	fprintf(stderr, "usage: kdump [-dEnlHRrSsTA] [-f trfile] "
 	    "[-m maxdata] [-p pid] [-t trstr]\n");
 	exit(1);
 }

@@ -48,7 +48,7 @@ SUBDIR=	adduser \
 	mountd \
 	mptutil \
 	mtest \
-	mtree \
+	${_mtree} \
 	newsyslog \
 	nfscbd \
 	nfsd \
@@ -142,6 +142,10 @@ SUBDIR+=	fdread
 SUBDIR+=	fdwrite
 .endif
 
+.if ${MK_FMTREE} != "no"
+SUBDIR+=	mtree
+.endif
+
 .if ${MK_FREEBSD_UPDATE} != "no"
 SUBDIR+=	freebsd-update
 .endif
@@ -170,10 +174,6 @@ SUBDIR+=	traceroute6
 
 .if ${MK_IPFW} != "no"
 SUBDIR+=	ipfwpcap
-.endif
-
-.if ${MK_IPX} != "no"
-SUBDIR+=	IPXrouted
 .endif
 
 .if ${MK_JAIL} != "no"
@@ -251,10 +251,6 @@ SUBDIR+=	ftp-proxy
 SUBDIR+=	pkg
 .endif
 
-.if ${MK_PKGTOOLS} != "no"
-SUBDIR+=	pkg_install
-.endif
-
 # XXX MK_TOOLCHAIN?
 .if ${MK_PMC} != "no"
 SUBDIR+=	pmcannotate
@@ -288,6 +284,10 @@ SUBDIR+=	praliases
 SUBDIR+=	sendmail
 .endif
 
+.if ${MK_TESTS} != "no"
+SUBDIR+=	tests
+.endif
+
 .if ${MK_TOOLCHAIN} != "no"
 SUBDIR+=	config
 SUBDIR+=	crunch
@@ -319,5 +319,7 @@ SUBDIR+=	wpa
 .include <bsd.arch.inc.mk>
 
 SUBDIR:=	${SUBDIR:O}
+
+SUBDIR_PARALLEL=
 
 .include <bsd.subdir.mk>

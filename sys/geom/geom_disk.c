@@ -91,22 +91,6 @@ static SYSCTL_NODE(_kern_geom, OID_AUTO, disk, CTLFLAG_RW, 0,
 
 DECLARE_GEOM_CLASS(g_disk_class, g_disk);
 
-static void __inline
-g_disk_lock_giant(struct disk *dp)
-{
-
-	if (dp->d_flags & DISKFLAG_NEEDSGIANT)
-		mtx_lock(&Giant);
-}
-
-static void __inline
-g_disk_unlock_giant(struct disk *dp)
-{
-
-	if (dp->d_flags & DISKFLAG_NEEDSGIANT)
-		mtx_unlock(&Giant);
-}
-
 static int
 g_disk_access(struct g_provider *pp, int r, int w, int e)
 {
@@ -133,12 +117,10 @@ g_disk_access(struct g_provider *pp, int r, int w, int e)
 	error = 0;
 	if ((pp->acr + pp->acw + pp->ace) == 0 && (r + w + e) > 0) {
 		if (dp->d_open != NULL) {
-			g_disk_lock_giant(dp);
 			error = dp->d_open(dp);
 			if (bootverbose && error != 0)
 				printf("Opened disk %s -> %d\n",
 				    pp->name, error);
-			g_disk_unlock_giant(dp);
 			if (error != 0)
 				return (error);
 		}
@@ -161,12 +143,10 @@ g_disk_access(struct g_provider *pp, int r, int w, int e)
 		dp->d_flags |= DISKFLAG_OPEN;
 	} else if ((pp->acr + pp->acw + pp->ace) > 0 && (r + w + e) == 0) {
 		if (dp->d_close != NULL) {
-			g_disk_lock_giant(dp);
 			error = dp->d_close(dp);
 			if (error != 0)
 				printf("Closed disk %s -> %d\n",
 				    pp->name, error);
-			g_disk_unlock_giant(dp);
 		}
 		sc->state = G_STATE_ACTIVE;
 		if (sc->led[0] != 0)
@@ -287,9 +267,7 @@ g_disk_ioctl(struct g_provider *pp, u_long cmd, void * data, int fflag, struct t
 
 	if (dp->d_ioctl == NULL)
 		return (ENOIOCTL);
-	g_disk_lock_giant(dp);
 	error = dp->d_ioctl(dp, cmd, data, fflag, td);
-	g_disk_unlock_giant(dp);
 	return (error);
 }
 
@@ -328,9 +306,7 @@ g_disk_start(struct bio *bp)
 			mtx_lock(&sc->start_mtx);
 			devstat_start_transaction_bio(dp->d_devstat, bp);
 			mtx_unlock(&sc->start_mtx);
-			g_disk_lock_giant(dp);
 			dp->d_strategy(bp);
-			g_disk_unlock_giant(dp);
 			break;
 		}
 		off = 0;
@@ -384,9 +360,7 @@ g_disk_start(struct bio *bp)
 			mtx_lock(&sc->start_mtx); 
 			devstat_start_transaction_bio(dp->d_devstat, bp2);
 			mtx_unlock(&sc->start_mtx); 
-			g_disk_lock_giant(dp);
 			dp->d_strategy(bp2);
-			g_disk_unlock_giant(dp);
 			bp2 = bp3;
 			bp3 = NULL;
 		} while (bp2 != NULL);
@@ -413,22 +387,25 @@ g_disk_start(struct bio *bp)
 			break;
 		else if (g_handleattr_str(bp, "GEOM::ident", dp->d_ident))
 			break;
-		else if (g_handleattr(bp, "GEOM::hba_vendor",
-		    &dp->d_hba_vendor, 2))
+		else if (g_handleattr_uint16_t(bp, "GEOM::hba_vendor",
+		    dp->d_hba_vendor))
 			break;
-		else if (g_handleattr(bp, "GEOM::hba_device",
-		    &dp->d_hba_device, 2))
+		else if (g_handleattr_uint16_t(bp, "GEOM::hba_device",
+		    dp->d_hba_device))
 			break;
-		else if (g_handleattr(bp, "GEOM::hba_subvendor",
-		    &dp->d_hba_subvendor, 2))
+		else if (g_handleattr_uint16_t(bp, "GEOM::hba_subvendor",
+		    dp->d_hba_subvendor))
 			break;
-		else if (g_handleattr(bp, "GEOM::hba_subdevice",
-		    &dp->d_hba_subdevice, 2))
+		else if (g_handleattr_uint16_t(bp, "GEOM::hba_subdevice",
+		    dp->d_hba_subdevice))
 			break;
 		else if (!strcmp(bp->bio_attribute, "GEOM::kerneldump"))
 			g_disk_kerneldump(bp, dp);
 		else if (!strcmp(bp->bio_attribute, "GEOM::setstate"))
 			g_disk_setstate(bp, sc);
+		else if (g_handleattr_uint16_t(bp, "GEOM::rotation_rate",
+		    dp->d_rotation_rate))
+			break;
 		else 
 			error = ENOIOCTL;
 		break;
@@ -442,9 +419,7 @@ g_disk_start(struct bio *bp)
 		bp->bio_disk = dp;
 		bp->bio_to = (void *)bp->bio_done;
 		bp->bio_done = g_disk_done_single;
-		g_disk_lock_giant(dp);
 		dp->d_strategy(bp);
-		g_disk_unlock_giant(dp);
 		break;
 	default:
 		error = EOPNOTSUPP;
@@ -485,26 +460,36 @@ g_disk_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp, struct g
 			bp->bio_length = DISK_IDENT_SIZE;
 			bp->bio_data = buf;
 			res = dp->d_getattr(bp);
-			sbuf_printf(sb, "%s<ident>%s</ident>\n", indent,
+			sbuf_printf(sb, "%s<ident>", indent);
+			g_conf_printf_escaped(sb, "%s",
 			    res == 0 ? buf: dp->d_ident);
+			sbuf_printf(sb, "</ident>\n");
 			bp->bio_attribute = "GEOM::lunid";
 			bp->bio_length = DISK_IDENT_SIZE;
 			bp->bio_data = buf;
-			if (dp->d_getattr(bp) == 0)
-				sbuf_printf(sb, "%s<lunid>%s</lunid>\n",
-				    indent, buf);
+			if (dp->d_getattr(bp) == 0) {
+				sbuf_printf(sb, "%s<lunid>", indent);
+				g_conf_printf_escaped(sb, "%s", buf);
+				sbuf_printf(sb, "</lunid>\n");
+			}
 			bp->bio_attribute = "GEOM::lunname";
 			bp->bio_length = DISK_IDENT_SIZE;
 			bp->bio_data = buf;
-			if (dp->d_getattr(bp) == 0)
-				sbuf_printf(sb, "%s<lunname>%s</lunname>\n",
-				    indent, buf);
+			if (dp->d_getattr(bp) == 0) {
+				sbuf_printf(sb, "%s<lunname>", indent);
+				g_conf_printf_escaped(sb, "%s", buf);
+				sbuf_printf(sb, "</lunname>\n");
+			}
 			g_destroy_bio(bp);
 			g_free(buf);
-		} else
-			sbuf_printf(sb, "%s<ident>%s</ident>\n", indent,
-			    dp->d_ident);
-		sbuf_printf(sb, "%s<descr>%s</descr>\n", indent, dp->d_descr);
+		} else {
+			sbuf_printf(sb, "%s<ident>", indent);
+			g_conf_printf_escaped(sb, "%s", dp->d_ident);
+			sbuf_printf(sb, "</ident>\n");
+		}
+		sbuf_printf(sb, "%s<descr>", indent);
+		g_conf_printf_escaped(sb, "%s", dp->d_descr);
+		sbuf_printf(sb, "</descr>\n");
 	}
 }
 
@@ -678,6 +663,13 @@ disk_create(struct disk *dp, int version)
 		printf("WARNING: Attempt to add disk %s%d %s",
 		    dp->d_name, dp->d_unit,
 		    " using incompatible ABI version of disk(9)\n");
+		printf("WARNING: Ignoring disk %s%d\n",
+		    dp->d_name, dp->d_unit);
+		return;
+	}
+	if (dp->d_flags & DISKFLAG_RESERVED) {
+		printf("WARNING: Attempt to add non-MPSAFE disk %s%d\n",
+		    dp->d_name, dp->d_unit);
 		printf("WARNING: Ignoring disk %s%d\n",
 		    dp->d_name, dp->d_unit);
 		return;

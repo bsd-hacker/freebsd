@@ -35,7 +35,7 @@
  */
 
 #include <sys/param.h>
-#include <sys/capability.h>
+#include <sys/capsicum.h>
 #include <sys/condvar.h>
 #include <sys/conf.h>
 #include <sys/file.h>
@@ -74,15 +74,18 @@ static uma_zone_t icl_pdu_zone;
 
 static volatile u_int	icl_ncons;
 
-#define	ICL_DEBUG(X, ...)					\
-	if (debug > 1) {					\
-		printf("%s: " X "\n", __func__, ## __VA_ARGS__);\
+#define	ICL_DEBUG(X, ...)						\
+	do {								\
+		if (debug > 1)						\
+			printf("%s: " X "\n", __func__, ## __VA_ARGS__);\
 	} while (0)
 
-#define	ICL_WARN(X, ...)					\
-	if (debug > 0) {					\
-		printf("WARNING: %s: " X "\n",			\
-		    __func__, ## __VA_ARGS__);			\
+#define	ICL_WARN(X, ...)						\
+	do {								\
+		if (debug > 0) {					\
+			printf("WARNING: %s: " X "\n",			\
+			    __func__, ## __VA_ARGS__);			\
+		}							\
 	} while (0)
 
 #define ICL_CONN_LOCK(X)		mtx_lock(&X->ic_lock)
@@ -135,11 +138,15 @@ icl_pdu_new(struct icl_conn *ic, int flags)
 {
 	struct icl_pdu *ip;
 
+#ifdef DIAGNOSTIC
 	refcount_acquire(&ic->ic_outstanding_pdus);
+#endif
 	ip = uma_zalloc(icl_pdu_zone, flags | M_ZERO);
 	if (ip == NULL) {
 		ICL_WARN("failed to allocate %zd bytes", sizeof(*ip));
+#ifdef DIAGNOSTIC
 		refcount_release(&ic->ic_outstanding_pdus);
+#endif
 		return (NULL);
 	}
 
@@ -159,7 +166,9 @@ icl_pdu_free(struct icl_pdu *ip)
 	m_freem(ip->ip_ahs_mbuf);
 	m_freem(ip->ip_data_mbuf);
 	uma_zfree(icl_pdu_zone, ip);
+#ifdef DIAGNOSTIC
 	refcount_release(&ic->ic_outstanding_pdus);
+#endif
 }
 
 /*
@@ -239,7 +248,7 @@ icl_pdu_size(const struct icl_pdu *response)
 	    icl_pdu_padding(response);
 	if (response->ip_conn->ic_header_crc32c)
 		len += ISCSI_HEADER_DIGEST_SIZE;
-	if (response->ip_conn->ic_data_crc32c)
+	if (response->ip_data_len != 0 && response->ip_conn->ic_data_crc32c)
 		len += ISCSI_DATA_DIGEST_SIZE;
 
 	return (len);
@@ -324,7 +333,7 @@ icl_pdu_check_header_digest(struct icl_pdu *request, size_t *availablep)
 	}
 
 	CTASSERT(sizeof(received_digest) == ISCSI_HEADER_DIGEST_SIZE);
-	memcpy(&received_digest, mtod(m, void *), ISCSI_HEADER_DIGEST_SIZE);
+	m_copydata(m, 0, ISCSI_HEADER_DIGEST_SIZE, (void *)&received_digest);
 	m_freem(m);
 
 	*availablep -= ISCSI_HEADER_DIGEST_SIZE;
@@ -482,7 +491,7 @@ icl_pdu_check_data_digest(struct icl_pdu *request, size_t *availablep)
 	}
 
 	CTASSERT(sizeof(received_digest) == ISCSI_DATA_DIGEST_SIZE);
-	memcpy(&received_digest, mtod(m, void *), ISCSI_DATA_DIGEST_SIZE);
+	m_copydata(m, 0, ISCSI_DATA_DIGEST_SIZE, (void *)&received_digest);
 	m_freem(m);
 
 	*availablep -= ISCSI_DATA_DIGEST_SIZE;
@@ -615,7 +624,7 @@ icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
 			break;
 
 		ic->ic_receive_state = ICL_CONN_STATE_DATA_DIGEST;
-		if (ic->ic_data_crc32c == false)
+		if (request->ip_data_len == 0 || ic->ic_data_crc32c == false)
 			ic->ic_receive_len = 0;
 		else
 			ic->ic_receive_len = ISCSI_DATA_DIGEST_SIZE;
@@ -723,11 +732,7 @@ icl_receive_thread(void *arg)
 	for (;;) {
 		if (ic->ic_disconnecting) {
 			//ICL_DEBUG("terminating");
-			ICL_CONN_LOCK(ic);
-			ic->ic_receive_running = false;
-			ICL_CONN_UNLOCK(ic);
-			kthread_exit();
-			return;
+			break;
 		}
 
 		SOCKBUF_LOCK(&so->so_rcv);
@@ -740,6 +745,11 @@ icl_receive_thread(void *arg)
 
 		icl_conn_receive_pdus(ic, available);
 	}
+
+	ICL_CONN_LOCK(ic);
+	ic->ic_receive_running = false;
+	ICL_CONN_UNLOCK(ic);
+	kthread_exit();
 }
 
 static int
@@ -879,22 +889,19 @@ icl_send_thread(void *arg)
 
 	ICL_CONN_LOCK(ic);
 	ic->ic_send_running = true;
-	ICL_CONN_UNLOCK(ic);
 
 	for (;;) {
-		ICL_CONN_LOCK(ic);
 		if (ic->ic_disconnecting) {
 			//ICL_DEBUG("terminating");
-			ic->ic_send_running = false;
-			ICL_CONN_UNLOCK(ic);
-			kthread_exit();
-			return;
+			break;
 		}
-		if (TAILQ_EMPTY(&ic->ic_to_send))
-			cv_wait(&ic->ic_send_cv, &ic->ic_lock);
 		icl_conn_send_pdus(ic);
-		ICL_CONN_UNLOCK(ic);
+		cv_wait(&ic->ic_send_cv, &ic->ic_lock);
 	}
+
+	ic->ic_send_running = false;
+	ICL_CONN_UNLOCK(ic);
+	kthread_exit();
 }
 
 static int
@@ -979,7 +986,9 @@ icl_conn_new(void)
 	mtx_init(&ic->ic_lock, "icl_lock", NULL, MTX_DEF);
 	cv_init(&ic->ic_send_cv, "icl_tx");
 	cv_init(&ic->ic_receive_cv, "icl_rx");
+#ifdef DIAGNOSTIC
 	refcount_init(&ic->ic_outstanding_pdus, 0);
+#endif
 	ic->ic_max_data_segment_length = ICL_MAX_DATA_SEGMENT_LENGTH;
 
 	return (ic);

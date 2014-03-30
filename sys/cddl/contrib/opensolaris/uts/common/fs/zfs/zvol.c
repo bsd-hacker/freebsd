@@ -282,7 +282,8 @@ zvol_map_block(spa_t *spa, zilog_t *zilog, const blkptr_t *bp,
 	zvol_extent_t *ze;
 	int bs = ma->ma_zv->zv_volblocksize;
 
-	if (bp == NULL || zb->zb_object != ZVOL_OBJ || zb->zb_level != 0)
+	if (BP_IS_HOLE(bp) ||
+	    zb->zb_object != ZVOL_OBJ || zb->zb_level != 0)
 		return (0);
 
 	VERIFY3U(ma->ma_blks, ==, zb->zb_blkid);
@@ -924,12 +925,16 @@ zvol_open(struct g_provider *pp, int flag, int count)
 		return (SET_ERROR(ENXIO));
 	}
 
-	if (zv->zv_total_opens == 0)
+	if (zv->zv_total_opens == 0) {
 		err = zvol_first_open(zv);
-	if (err) {
-		if (locked)
-			mutex_exit(&spa_namespace_lock);
-		return (err);
+		if (err) {
+			if (locked)
+				mutex_exit(&spa_namespace_lock);
+			return (err);
+		}
+		pp->mediasize = zv->zv_volsize;
+		pp->stripeoffset = 0;
+		pp->stripesize = zv->zv_volblocksize;
 	}
 	if ((flag & FWRITE) && (zv->zv_flags & ZVOL_RDONLY)) {
 		err = SET_ERROR(EROFS);
@@ -1861,8 +1866,7 @@ zfs_mvdev_dump_feature_check(void *arg, dmu_tx_t *tx)
 {
 	spa_t *spa = dmu_tx_pool(tx)->dp_spa;
 
-	if (spa_feature_is_active(spa,
-	    &spa_feature_table[SPA_FEATURE_MULTI_VDEV_CRASH_DUMP]))
+	if (spa_feature_is_active(spa, SPA_FEATURE_MULTI_VDEV_CRASH_DUMP))
 		return (1);
 	return (0);
 }
@@ -1873,8 +1877,7 @@ zfs_mvdev_dump_activate_feature_sync(void *arg, dmu_tx_t *tx)
 {
 	spa_t *spa = dmu_tx_pool(tx)->dp_spa;
 
-	spa_feature_incr(spa,
-	    &spa_feature_table[SPA_FEATURE_MULTI_VDEV_CRASH_DUMP], tx);
+	spa_feature_incr(spa, SPA_FEATURE_MULTI_VDEV_CRASH_DUMP, tx);
 }
 
 static int
@@ -1909,7 +1912,7 @@ zvol_dump_init(zvol_state_t *zv, boolean_t resize)
 	 */
 	if (vd->vdev_children > 1 || vd->vdev_ops == &vdev_raidz_ops) {
 		if (!spa_feature_is_enabled(spa,
-		    &spa_feature_table[SPA_FEATURE_MULTI_VDEV_CRASH_DUMP]))
+		    SPA_FEATURE_MULTI_VDEV_CRASH_DUMP))
 			return (SET_ERROR(ENOTSUP));
 		(void) dsl_sync_task(spa_name(spa),
 		    zfs_mvdev_dump_feature_check,
@@ -1930,8 +1933,8 @@ zvol_dump_init(zvol_state_t *zv, boolean_t resize)
 	 * function.  Otherwise, use the old default -- OFF.
 	 */
 	checksum = spa_feature_is_active(spa,
-	    &spa_feature_table[SPA_FEATURE_MULTI_VDEV_CRASH_DUMP]) ?
-	    ZIO_CHECKSUM_NOPARITY : ZIO_CHECKSUM_OFF;
+	    SPA_FEATURE_MULTI_VDEV_CRASH_DUMP) ? ZIO_CHECKSUM_NOPARITY :
+	    ZIO_CHECKSUM_OFF;
 
 	/*
 	 * If we are resizing the dump device then we only need to
