@@ -1529,6 +1529,8 @@ linux_getsockopt(struct thread *td, struct linux_getsockopt_args *args)
 	return (error);
 }
 
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
+
 /* Argument list sizes for linux_socketcall */
 
 #define LINUX_AL(x) ((x) * sizeof(l_ulong))
@@ -1548,7 +1550,6 @@ static const unsigned char lxs_args[] = {
 
 #define	LINUX_AL_SIZE	sizeof(lxs_args) / sizeof(lxs_args[0]) - 1
 
-#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 int
 linux_socketcall(struct thread *td, struct linux_socketcall_args *args)
 {
