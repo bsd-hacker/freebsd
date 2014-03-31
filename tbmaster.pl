@@ -38,7 +38,7 @@ my $VERSION	= "2.21";
 my $COPYRIGHT	= "Copyright (c) 2003-2014 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
-my $BACKLOG	= 8;
+my $BACKLOG	= 20;
 
 my $abbreviate;			# Abbreviate path names in log file
 my @configs;			# Names of requested configations
