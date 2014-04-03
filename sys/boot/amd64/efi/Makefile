@@ -9,9 +9,18 @@ PROG=		loader.sym
 INTERNALPROG=
 
 # architecture-specific loader code
-SRCS=	autoload.c bootinfo.c conf.c copy.c devicename.c elf64_freebsd.c \
-	framebuffer.c main.c reloc.c vers.c
-SRCS+=	amd64_tramp.S start.S
+SRCS=	autoload.c \
+	bootinfo.c \
+	conf.c \
+	copy.c \
+	devicename.c \
+	elf64_freebsd.c \
+	framebuffer.c \
+	main.c \
+	reloc.c \
+	vers.c
+SRCS+=	amd64_tramp.S \
+	start.S
 
 CFLAGS+=	-fPIC
 CFLAGS+=	-I.
