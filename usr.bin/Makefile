@@ -37,7 +37,6 @@ SUBDIR=	alias \
 	ctlstat \
 	cut \
 	dirname \
-	dtc \
 	du \
 	ee \
 	elf2aout \
@@ -107,6 +106,7 @@ SUBDIR=	alias \
 	mkdep \
 	${_mkesdb} \
 	mkfifo \
+	mkimg \
 	mklocale \
 	mktemp \
 	mkulzma \
@@ -229,6 +229,10 @@ SUBDIR+=	calendar
 
 .if ${MK_CLANG} != "no"
 _clang=		clang
+.endif
+
+.if ${MK_GPL_DTC} != "yes"
+SUBDIR+=	dtc
 .endif
 
 .if ${MK_GROFF} != "no"
@@ -375,5 +379,7 @@ SUBDIR+=	svn
 .include <bsd.arch.inc.mk>
 
 SUBDIR:=	${SUBDIR:O}
+
+SUBDIR_PARALLEL=
 
 .include <bsd.subdir.mk>

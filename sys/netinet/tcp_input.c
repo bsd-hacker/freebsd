@@ -503,13 +503,14 @@ do { \
 
 /*
  * Indicate whether this ack should be delayed.  We can delay the ack if
- *	- there is no delayed ack timer in progress and
- *	- our last ack wasn't a 0-sized window.  We never want to delay
- *	  the ack that opens up a 0-sized window and
- *		- delayed acks are enabled or
- *		- this is a half-synchronized T/TCP connection.
- *	- the segment size is not larger than the MSS and LRO wasn't used
- *	  for this segment.
+ * following conditions are met:
+ *	- There is no delayed ack timer in progress.
+ *	- Our last ack wasn't a 0-sized window. We never want to delay
+ *	  the ack that opens up a 0-sized window.
+ *	- LRO wasn't used for this segment. We make sure by checking that the
+ *	  segment size is not larger than the MSS.
+ *	- Delayed acks are enabled or this is a half-synchronized T/TCP
+ *	  connection.
  */
 #define DELAY_ACK(tp, tlen)						\
 	((!tcp_timer_active(tp, TT_DELACK) &&				\
@@ -1990,13 +1991,11 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		} else {
 			/*
 			 * Received initial SYN in SYN-SENT[*] state =>
-			 * simultaneous open.  If segment contains CC option
-			 * and there is a cached CC, apply TAO test.
+			 * simultaneous open.
 			 * If it succeeds, connection is * half-synchronized.
 			 * Otherwise, do 3-way handshake:
 			 *        SYN-SENT -> SYN-RECEIVED
 			 *        SYN-SENT* -> SYN-RECEIVED*
-			 * If there was no CC option, clear cached CC value.
 			 */
 			tp->t_flags |= (TF_ACKNOW | TF_NEEDSYN);
 			tcp_timer_activate(tp, TT_REXMT, 0);
@@ -2429,8 +2428,19 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		hhook_run_tcp_est_in(tp, th, &to);
 
 		if (SEQ_LEQ(th->th_ack, tp->snd_una)) {
-			if (tlen == 0 && tiwin == tp->snd_wnd &&
-			    !(thflags & TH_FIN)) {
+			if (tlen == 0 && tiwin == tp->snd_wnd) {
+				/*
+				 * If this is the first time we've seen a
+				 * FIN from the remote, this is not a
+				 * duplicate and it needs to be processed
+				 * normally.  This happens during a
+				 * simultaneous close.
+				 */
+				if ((thflags & TH_FIN) &&
+				    (TCPS_HAVERCVDFIN(tp->t_state) == 0)) {
+					tp->t_dupacks = 0;
+					break;
+				}
 				TCPSTAT_INC(tcps_rcvdupack);
 				/*
 				 * If we have outstanding data (other than
@@ -2485,16 +2495,6 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 						}
 					} else
 						tp->snd_cwnd += tp->t_maxseg;
-					if ((thflags & TH_FIN) &&
-					    (TCPS_HAVERCVDFIN(tp->t_state) == 0)) {
-						/* 
-						 * If its a fin we need to process
-						 * it to avoid a race where both
-						 * sides enter FIN-WAIT and send FIN|ACK
-						 * at the same time.
-						 */
-						break;
-					}
 					(void) tcp_output(tp);
 					goto drop;
 				} else if (tp->t_dupacks == tcprexmtthresh) {
@@ -2534,16 +2534,6 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 					}
 					tp->snd_nxt = th->th_ack;
 					tp->snd_cwnd = tp->t_maxseg;
-					if ((thflags & TH_FIN) &&
-					    (TCPS_HAVERCVDFIN(tp->t_state) == 0)) {
-						/* 
-						 * If its a fin we need to process
-						 * it to avoid a race where both
-						 * sides enter FIN-WAIT and send FIN|ACK
-						 * at the same time.
-						 */
-						break;
-					}
 					(void) tcp_output(tp);
 					KASSERT(tp->snd_limited <= 2,
 					    ("%s: tp->snd_limited too big",
@@ -2571,16 +2561,6 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 					    (tp->snd_nxt - tp->snd_una) +
 					    (tp->t_dupacks - tp->snd_limited) *
 					    tp->t_maxseg;
-					if ((thflags & TH_FIN) &&
-					    (TCPS_HAVERCVDFIN(tp->t_state) == 0)) {
-						/* 
-						 * If its a fin we need to process
-						 * it to avoid a race where both
-						 * sides enter FIN-WAIT and send FIN|ACK
-						 * at the same time.
-						 */
-						break;
-					}
 					/*
 					 * Only call tcp_output when there
 					 * is new data available to be sent.

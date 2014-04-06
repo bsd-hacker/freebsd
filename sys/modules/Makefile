@@ -136,7 +136,6 @@ SUBDIR=	\
 	if_bridge \
 	if_disc \
 	if_edsc \
-	if_ef \
 	if_epair \
 	if_faith \
 	if_gif \
@@ -251,7 +250,6 @@ SUBDIR=	\
 	nullfs \
 	${_ntb} \
 	${_nvd} \
-	${_nve} \
 	${_nvme} \
 	${_nvram} \
 	${_nxge} \
@@ -609,9 +607,6 @@ _ixgbe=		ixgbe
 _mly=		mly
 _nfe=		nfe
 _nvd=		nvd
-.if ${MK_SOURCELESS_HOST} != "no"
-_nve=		nve
-.endif
 _nvme=		nvme
 _nvram=		nvram
 _nxge=		nxge
@@ -730,9 +725,6 @@ _ndis=		ndis
 _nfe=		nfe
 _ntb=		ntb
 _nvd=		nvd
-.if ${MK_SOURCELESS_HOST} != "no"
-_nve=		nve
-.endif
 _nvme=		nvme
 _nvram=		nvram
 _nxge=		nxge

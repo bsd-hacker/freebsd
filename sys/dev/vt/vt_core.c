@@ -775,7 +775,7 @@ vt_flush(struct vt_device *vd)
 		if ((vd->vd_my + m->h) > (size.tp_row * vf->vf_height))
 			h = (size.tp_row * vf->vf_height) - vd->vd_my - 1;
 
-		vd->vd_driver->vd_bitbltchr(vd, m->map, m->mask, bpl,
+		vd->vd_driver->vd_maskbitbltchr(vd, m->map, m->mask, bpl,
 		    vd->vd_offset.tp_row + vd->vd_my,
 		    vd->vd_offset.tp_col + vd->vd_mx,
 		    w, h, TC_WHITE, TC_BLACK);
@@ -1041,6 +1041,30 @@ vt_change_font(struct vt_window *vw, struct vt_font *vf)
 		vd->vd_flags |= VDF_INVALID;
 	vw->vw_flags &= ~VWF_BUSY;
 	VT_UNLOCK(vd);
+	return (0);
+}
+
+static int
+vt_set_border(struct vt_window *vw, struct vt_font *vf, term_color_t c)
+{
+	struct vt_device *vd = vw->vw_device;
+	int l, r, t, b, w, h;
+
+	if (vd->vd_driver->vd_drawrect == NULL)
+		return (ENOTSUP);
+
+	w = vd->vd_width - 1;
+	h = vd->vd_height - 1;
+	l = vd->vd_offset.tp_col - 1;
+	r = w - l;
+	t = vd->vd_offset.tp_row - 1;
+	b = h - t;
+
+	vd->vd_driver->vd_drawrect(vd, 0, 0, w, t, 1, c); /* Top bar. */
+	vd->vd_driver->vd_drawrect(vd, 0, t, l, b, 1, c); /* Left bar. */
+	vd->vd_driver->vd_drawrect(vd, r, t, w, b, 1, c); /* Right bar. */
+	vd->vd_driver->vd_drawrect(vd, 0, b, w, h, 1, c); /* Bottom bar. */
+
 	return (0);
 }
 
@@ -1562,6 +1586,10 @@ skip_thunk:
 			return (error);
 
 		error = vt_change_font(vw, vf);
+		if (error == 0) {
+			/* XXX: replace 0 with current bg color. */
+			vt_set_border(vw, vf, 0);
+		}
 		vtfont_unref(vf);
 		return (error);
 	}
@@ -1844,6 +1872,9 @@ vt_upgrade(struct vt_device *vd)
 		if (vw == NULL) {
 			/* New window. */
 			vw = vt_allocate_window(vd, i);
+		} else if (vw->vw_flags & VWF_CONSOLE) {
+			/* For existing console window. */
+			callout_init(&vw->vw_proc_dead_timer, 0);
 		}
 		if (i == VT_CONSWINDOW) {
 			/* Console window. */
@@ -1899,6 +1930,8 @@ vt_allocate(struct vt_driver *drv, void *softc)
 		printf("%s: Replace existing VT driver.\n", __func__);
 	}
 	vd = main_vd;
+	if (drv->vd_maskbitbltchr == NULL)
+		drv->vd_maskbitbltchr = drv->vd_bitbltchr;
 
 	/* Stop vt_flush periodic task. */
 	if (vd->vd_curwindow != NULL)
