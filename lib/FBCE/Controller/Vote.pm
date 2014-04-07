@@ -75,8 +75,7 @@ sub index :Path :Args(0) {
 
 # sub commit :Local :Args(0) {
 #     my ($self, $c) = @_;
-
-#     $c->authenticate();
+#
 #     my $user = $c->user->get_object();
 #     if ($c->stash->{'voting'} != 0 || !$user->active) {
 # 	$c->res->redirect($c->uri_for('/vote'));

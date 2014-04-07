@@ -23,7 +23,6 @@ Catalyst Controller.
 sub index :Path :Args(0) {
     my ($self, $c) = @_;
 
-#    $c->authenticate();
     my $user = $c->user->get_object();
     $c->stash(user => $user);
 }
@@ -31,7 +30,6 @@ sub index :Path :Args(0) {
 sub register :Local :Args(0) {
     my ($self, $c) = @_;
 
-#    $c->authenticate();
     my $user = $c->user->get_object();
     if ($c->stash->{'nominating'} != 0 || !$user->active) {
 	$c->res->redirect($c->uri_for('/run'));
@@ -62,7 +60,6 @@ sub register :Local :Args(0) {
 sub edit :Local :Args(0) {
     my ($self, $c) = @_;
 
-#    $c->authenticate();
     my $user = $c->user->get_object();
     if ($c->stash->{'nominating'} != 0 || !$user->active) {
 	$c->res->redirect($c->uri_for('/run'));
@@ -92,7 +89,6 @@ sub edit :Local :Args(0) {
 sub withdraw :Local :Args(0) {
     my ($self, $c) = @_;
 
-#    $c->authenticate();
     my $user = $c->user->get_object();
     if ($c->stash->{'nominating'} != 0 || !$user->active) {
 	$c->res->redirect($c->uri_for('/run'));
