@@ -44,7 +44,6 @@ sub poll :Chained('/') :Path :CaptureArgs(1) {
 	}
     }
     $$psession{qid} //= $poll->questions->first->id;
-    $c->log->debug("Retrieved poll #$pid");
     $c->stash(title => $poll->title);
 }
 
@@ -90,7 +89,6 @@ sub vote :Chained('poll') :Path :Args(0) {
     }
     $c->detach('/default')
 	unless $question;
-    $c->log->debug("Retrieved question #$qid");
 
     # Did the user submit any answers?
     if ($c->req->params->{qid} ~~ $qid && $c->req->params->{answer}) {
@@ -127,23 +125,13 @@ sub vote :Chained('poll') :Path :Args(0) {
 	# to that question and display an error message.  If not, the
 	# voter has answered all the questions.
 	if (!$$psession{vote_error}) {
-	    # XXX do something!
 	    $c->response->redirect($c->uri_for('/poll', $pid, 'review'));
 	    $c->detach();
 	}
     } elsif ($c->req->params->{prev} && $question->prev) {
 	$question = $question->prev;
-	$c->log->debug("On to question #" . $question->id);
     } elsif ($c->req->params->{next} && $question->next) {
 	$question = $question->next;
-    }
-
-    # Debugging
-    if ($question->id != $qid) {
-	$c->log->debug("On to question #" . $question->id);
-    }
-    if ($$psession{vote_error}) {
-	$c->log->debug($$psession{vote_error});
     }
 
     # Store the current question

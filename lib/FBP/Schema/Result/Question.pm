@@ -217,7 +217,6 @@ Registers a voter's answer to this question.
 sub commit_answer($$@) {
     my ($self, $voter, @answer) = @_;
 
-    print STDERR "Question ", $self->id, " commit_answer\n";
     $voter->votes->search({ question => $self->id })->delete();
     foreach my $oid (@answer) {
 	$voter->votes->create({ question => $self->id, option => $oid });

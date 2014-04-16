@@ -35,10 +35,8 @@ sub auto :Private {
 
     # Stash active polls
     if ($c->user_exists) {
-	$c->log->debug("number of polls: " . int($c->model('FBP::Poll')->count()));
 	my $polls = $c->model('FBP::Poll')->
 	    search({ starts => { '<=', $c->now }, ends => { '>=', $c->now } });
-	$c->log->debug("active polls: " . int($polls->count()));
 	$c->stash(polls => $polls);
     }
 
@@ -66,17 +64,14 @@ Display the login page and process login information
 sub login :Local :Args(0) {
     my ($self, $c) = @_;
 
-    $c->log->debug("FBP::Controller::Root::login()");
     if ($c->user_exists) {
 	my $login = $c->user->login;
-	$c->log->debug("user $login already authenticated");
 	$c->response->redirect($c->uri_for('/polls'));
 	$c->detach();
     }
     my ($login, $password) = @{$c->request->params}{'login', 'password'};
     if ($login && $password &&
 	$c->authenticate({ login => $login, password => $password })) {
-	$c->log->debug("user $login successfully authenticated");
 	$c->change_session_id();
 	$c->response->redirect($c->uri_for('/polls'));
     }
@@ -95,7 +90,6 @@ sub logout :Local :Args(0) {
 	my $login = $c->user->login;
 	$c->delete_session();
 	$c->logout();
-	$c->log->debug("user $login successfully authenticated");
     }
     $c->response->redirect($c->uri_for('/'));
 }
