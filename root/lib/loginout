@@ -1,4 +1,4 @@
-[%# $FreeBSD$ %]
+[%-# $FreeBSD$ -%]
 <div class="loginout">
   <div class="datetime">[% PROCESS lib/datetime dt=c.now %]</div>
   [% IF c.user %]

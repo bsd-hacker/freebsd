@@ -1,4 +1,4 @@
-[%# $FreeBSD$ %]
+[%-# $FreeBSD$ -%]
 [% USE WikiFormat %]
 [% PROCESS lib/html_top %]
 [% PROCESS lib/header %]

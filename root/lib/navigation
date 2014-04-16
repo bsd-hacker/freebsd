@@ -1,4 +1,4 @@
-[%# $FreeBSD$ %]
+[%-# $FreeBSD$ -%]
 <div class="navigation">
   <ul>
     <li><a href="[% c.uri_for('/') | html %]">Home</a></li>

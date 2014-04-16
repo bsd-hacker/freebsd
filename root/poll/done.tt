@@ -1,4 +1,4 @@
-[%# $FreeBSD$ %]
+[%-# $FreeBSD$ -%]
 [% PROCESS lib/html_top %]
 [% PROCESS lib/header title='Thank you for voting' %]
 [% WRAPPER lib/main %]
