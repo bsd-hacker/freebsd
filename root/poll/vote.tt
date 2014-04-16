@@ -1,0 +1,41 @@
+[% USE WikiFormat %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+[% IF error %]
+<div class="error">
+<p>[% error | html %]</p>
+</div>
+[% END %]
+<div class="question">
+<form method="POST" action="">
+<input type="hidden" name="qid" value="[% question.id %]"/>
+<div class="short">
+[% question.short | wiki %]
+</div>
+<div class="long">
+[% question.long | wiki %]
+</div>
+<div class="options">
+[% IF question.max_options == 1 %]
+[% itype = 'radio' %]
+[% ELSE %]
+[% itype = 'checkbox' %]
+[% END %]
+[% FOREACH option = question.options %]
+[% oid = option.id %]
+<div class="option">
+<input type="[% itype %]" name="answer" value="[% oid %]"[% IF answer.$oid %] checked="checked"[% END %]>[% option.label | html %]</input>
+</div>
+[% END %]
+<input type="submit" name="prev" value="Previous question"[% IF !question.prev %]disabled="disabled"[% END %]/>
+<input type="submit" name="done" value="I'm done"/>
+<input type="submit" name="next" value="Next question"[% IF !question.next %]disabled="disabled"[% END %]/>
+</div>
+</form>
+</div>
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

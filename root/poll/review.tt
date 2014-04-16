@@ -1,0 +1,39 @@
+[%# $FreeBSD$ %]
+[% USE WikiFormat %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+[% IF error %]
+<div class="error">
+<p>[% error | html %]</p>
+</div>
+[% ELSE %]
+<div class="review">
+<p>You have submitted valid answers to all questions in the poll.</p>
+ [% FOREACH question IN poll.questions %]
+  [% qid = question.id %]
+<div class="short">
+  [% question.short | wiki %]
+</div>
+  [% IF question.max_options == 1 %]
+<p>You answered: <span class="answer">[% answers.$qid.0.label | html %]</span></p>
+  [% ELSE %]
+<p>You answered:</p>
+<ul>
+   [% FOREACH option IN answers.$qid %]
+<li class="answer">[% option.label %]</li>
+   [% END %]
+</ul>
+  [% END %]
+ [% END %]
+<form action="">
+<input type="submit" name="return" value="Return to the questions"/>
+<input type="submit" name="confirm" value="Submit my vote"/>
+</form>
+</div>
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

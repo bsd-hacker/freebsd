@@ -1,0 +1,19 @@
+[%# $FreeBSD$ %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<p>This site hosts polls for the <a href="http://www.freebsd.org/">FreeBSD Project</a>.</p>
+[% IF c.user %]
+[% IF polls.size() > 0 %]
+<p>Please proceed to <a href="[% c.uri_for('/polls') | html %]">the polls</a>.</p>
+[% ELSE %]
+<p>There are no active polls at the moment.</p>
+[% END %]
+[% ELSE %]
+<p>You must <a href="[% c.uri_for('/login') | html %]">log in</a> to see or answer polls.</p>
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

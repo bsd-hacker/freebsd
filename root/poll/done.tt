@@ -1,0 +1,12 @@
+[%# $FreeBSD$ %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header title='Thank you for voting' %]
+[% WRAPPER lib/main %]
+
+<p>Thank you for voting in this poll.</p>
+
+<p><a href="[% c.uri_for('/') | html %]">Return to the front page</a></p>
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

@@ -1,0 +1,27 @@
+[%# $FreeBSD$ %]
+[% USE WikiFormat %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<div class="poll">
+<div class="synopsis">
+[% poll.synopsis | wiki %]
+</div>
+<div class="long">
+[% poll.long | wiki %]
+</div>
+<div class="question-link">
+[% IF !c.user.active %]
+<p>You are not qualified to vote in this poll.</p>
+[% ELSIF questions.size() == 0 %]
+<p>Strangely, this poll has no questions.</p>
+[% ELSE %]
+<p><a href="[% c.uri_for('/poll', questions.first.id, 'vote') | html %]">Vote in this poll.</a></p>
+[% END %]
+</div>
+</div>
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

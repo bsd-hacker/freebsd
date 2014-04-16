@@ -1,0 +1,40 @@
+<h3>What is this?</h3>
+
+<p>This is a website for FreeBSD polls and elections.</p>
+
+<h3>Who has access?</h3>
+
+<p>Anyone with a valid commit bit in at least one of FreeBSD's repositories (src, doc, ports) can log in with their FreeBSD user name.  However, only active committers, i.e. those who have made at least one commit in the twelve months preceding the opening of the poll are qualified to vote.  Inactive committers can only observe.</p>
+
+[% IF c.user %]
+  [% IF c.user.active %]
+<p>You are registered as an active committer, and are qualified to vote.</p>
+  [% ELSE %]
+<p>You are not registered as an active committer, and are therefore not qualified to vote.  If you believe this is incorrect, please contact the election administrator.</p>
+  [% END %]
+[% ELSE %]
+<p>When you are logged in, your status (active or inactive) will be visible next to your name in the top right corner.</p>
+[% END %]
+
+<h3>How do I log in?</h3>
+
+[% IF c.user %]
+<p>You're already logged in, you big dummy.</p>
+[% ELSE %]
+<p>Click the <a href="[% c.uri_for('/login') | html %]">Log in</a> link below the navigation bar (or the one right here).  Log in with your FreeBSD user name and the password that was left in your home directory on the FreeBSD cluster.</p>
+[% IF polls.count > 0 %]
+<p>If you have a valid FreeBSD commit bit but you haven't received a password, please contact the election administrator.</p>
+[% END %]
+[% END %]
+
+<h3>How do I vote?</h3>
+
+[% IF !c.user %]
+<p>You must be logged in to vote.</p>
+[% ELSIF !c.user.active %]
+<p>You are not registered as an active committer, and are therefore not qualified to vote.  If you believe this is incorrect, please contact the election administrator.</p>
+[% ELSIF polls.count == 0 %]
+<p>There are currently no active polls.</p>
+[% ELSE %]
+<p>Click the <a href="[% c.uri_for('/polls') | html %]">Active Polls</a> link in the navigation bar (or the one right here) to view the list of active polls.  Select the poll in which you wish to vote and hit the “Let me vote” button.  Answer all the questions, then hit the “I'm done” button.  You can come back and change your vote at any time until the poll closes.</p>
+[% END %]

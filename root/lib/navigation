@@ -1,0 +1,12 @@
+[%# $FreeBSD$ %]
+<div class="navigation">
+  <ul>
+    <li><a href="[% c.uri_for('/') | html %]">Home</a></li>
+    [% IF c.user %]
+      [% IF polls.count() >= 0 %]<li><a href="[% c.uri_for('/polls') | html %]">Active polls</a></li>[% END %]
+      [% IF announced %]<li><a href="[% c.uri_for('/result') | html %]">Result</a></li>[% END %]
+      [% IF c.user.admin %]<li><a href="[% c.uri_for('/admin') | html %]">Admin</a></li>[% END %]
+    [% END %]
+    <li><a href="[% c.uri_for('/help') | html %]">Help</a></li>
+  </ul>
+</div>

@@ -1,0 +1,14 @@
+[%# $FreeBSD$ %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<div class="errorbox">
+  <p>This is not the page you are looking for.</p>
+  <p>You may go about your business.</p>
+  <p>Move along, move along.</p>
+</div>
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

@@ -1,0 +1,12 @@
+[%# $FreeBSD$ %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<div class="errorbox">
+  <p>This page intentionally left blank.</p>
+</div>
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

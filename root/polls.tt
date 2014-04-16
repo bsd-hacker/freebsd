@@ -1,0 +1,20 @@
+[%# $FreeBSD$ %]
+[% USE WikiFormat %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+[% IF polls.count == 0 %]
+<p>There are no active polls at present.</p>
+[% ELSE %]
+<dl>
+[% WHILE (poll = polls.next) %]
+<dt><a href="[% c.uri_for('/poll', poll.id) | html %]">[% poll.title | html%]</a></dt>
+<dd>[% poll.synopsis | wiki %]</dd>
+[% END %]
+</dl>
+[% END %]
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]

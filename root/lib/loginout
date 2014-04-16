@@ -1,0 +1,9 @@
+[%# $FreeBSD$ %]
+<div class="loginout">
+  <div class="datetime">[% PROCESS lib/datetime dt=c.now %]</div>
+  [% IF c.user %]
+  Logged in as [% c.user.realname | html %] ([% IF c.user.active %]active[% ELSE %]inactive[% END %]) &ndash; <a href="[% c.uri_for_action('/logout') | html %]">Log out</a>
+  [% ELSE %]
+  <a href="[% c.uri_for_action('/login') | html %]">Log in</a>
+  [% END %]
+</div>
