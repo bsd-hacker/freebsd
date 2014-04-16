@@ -57,8 +57,9 @@ sub see :Chained('poll') :PathPart('') :Args(0) {
     my ($self, $c) = @_;
 
     my $poll = $c->stash->{poll};
-    $c->stash(questions => $poll->questions->
-	      search_rs(undef, { order_by => { -asc => 'rank' } }));
+    my $questions = $poll->questions->
+	search(undef, { order_by => { -asc => 'rank' } });
+    $c->stash(questions => $questions);
 }
 
 =head2 vote
@@ -73,7 +74,8 @@ sub vote :Chained('poll') :Path :Args(0) {
     # Retrieve the poll and its list of questions
     my $poll = $c->stash->{poll};
     my $pid = $poll->id;
-    my $questions = $poll->questions;
+    my $questions = $poll->questions->
+	search(undef, { order_by => { -asc => 'rank' } });
     $c->detach('/default')
 	unless $poll && $questions;
     my $psession = $c->session->{$pid};
@@ -110,24 +112,23 @@ sub vote :Chained('poll') :Path :Args(0) {
 	# Ignore the buttons - stay on the same question
     } elsif ($c->req->params->{done}) {
 	# Validate all the answers
-	for ($question = $questions->first;
-	     $question && !$$psession{vote_error};
-	     $question = $questions->next) {
+	foreach $question ($questions->all) {
 	    try {
 		my $answer = $answers->{$question->id};
 		$question->validate_answer(@{$answer // []});
 	    } catch {
+		# This question was not answered correctly.  Jump to
+		# it and display the corresponding error message.
 		$$psession{vote_error} = $_;
+		$$psession{qid} = $question->id;
+		$c->response->redirect($c->request->uri);
+		$c->detach();
 	    };
 	}
-	# If an error was found, $question now refers to the first
-	# question which was not answered correctly, and we will jump
-	# to that question and display an error message.  If not, the
-	# voter has answered all the questions.
-	if (!$$psession{vote_error}) {
-	    $c->response->redirect($c->uri_for('/poll', $pid, 'review'));
-	    $c->detach();
-	}
+	# All questions were answered correctly.  Continue to the
+	# review page.
+	$c->response->redirect($c->uri_for('/poll', $pid, 'review'));
+	$c->detach();
     } elsif ($c->req->params->{prev} && $question->prev) {
 	$question = $question->prev;
     } elsif ($c->req->params->{next} && $question->next) {
