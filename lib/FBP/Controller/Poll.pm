@@ -236,7 +236,7 @@ sub done :Chained('poll') :Path :Args(0) {
 
     my $poll = $c->stash->{poll};
     my $pid = $poll->id;
-    #delete($c->session->{$pid});
+    delete($c->session->{$pid});
 }
 
 =head2 default
