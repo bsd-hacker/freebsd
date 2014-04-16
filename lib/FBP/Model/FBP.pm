@@ -29,7 +29,7 @@ Dag-Erling Smørgrav <des@freebsd.org>
 
 =head1 LICENSE
 
-This library is free software, you can redistribute it and/or modify
+This library is free software. You can redistribute it and/or modify
 it under the same terms as Perl itself.
 
 =cut

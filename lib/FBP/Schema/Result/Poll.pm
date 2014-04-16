@@ -164,6 +164,57 @@ __PACKAGE__->has_many(
 # Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-04-16 20:57:55
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:wB2dAarq+nsbZ5Ljfsil7Q
 
+use DateTime;
+
+=index2 active
+
+True if the poll was, is or will be active at the specified date and
+time.
+
+=cut
+
+sub active($;$) {
+    my ($self, $when) = @_;
+
+    $when //= DateTime->now();
+    return DateTime->compare($when, $self->starts) >= 0 &&
+	DateTime->compare($when, $self->ends) <= 0;
+}
+
+=head2 validate_answer
+
+Validates an answer to this poll and dies if it is not valid.
+
+=cut
+
+sub validate_answer($%) {
+    my ($self, %answers) = @_;
+
+    my %questions = map({ $_->id => $_ } $self->questions);
+    # Verify that all questions have received valid answers
+    foreach my $qid (keys %questions) {
+	if (!defined($answers{$qid})) {
+	    die("Question $qid has not been answered.\n");
+	} elsif (ref($answers{$qid}) ne 'ARRAY') {
+	    die("Internal error\n");
+	} else {
+	    $questions{$qid}->validate_answer(@{$answers{$qid}});
+	}
+    }
+    # Verify that there are no answers without a matching question
+    if (!(keys(%answers) ~~ keys(%questions))) {
+	die("Too many answers\n");
+    }
+}
+
+sub commit_answer($$%) {
+    my ($self, $voter, %answers) = @_;
+
+    foreach my $question ($self->questions) {
+	$question->commit_answer($voter, @{$answers{$question->id}});
+    }
+}
+
 =head1 AUTHOR
 
 Dag-Erling Smørgrav <des@freebsd.org>

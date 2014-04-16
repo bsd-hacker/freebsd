@@ -173,6 +173,42 @@ __PACKAGE__->has_many(
 # Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-04-16 20:57:55
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:19kISwX2Afx2WCQPAB8akw
 
+use Crypt::SaltedHash;
+
+=head2 set_password
+
+Set this person's password to the specified string.
+
+=cut
+
+sub set_password($$) {
+    my ($self, $password) = @_;
+
+    if ($password !~ m/^[[:print:]]{8,}$/a || $password !~ m/[0-9]/a ||
+	$password !~ m/[A-Z]/a || $password !~ m/[a-z]/a) {
+	die("Your password must be at least 8 characters long and contain" .
+	    " at least one upper-case letter, one lower-case letter and" .
+	    " one digit.\n");
+    }
+    my $csh = new Crypt::SaltedHash(algorithm => 'SHA-256');
+    $csh->add($password);
+    $self->set_column(password => $csh->generate());
+    $self->update()
+	if $self->in_storage();
+}
+
+=head2 check_password
+
+Verify that the specified string matches the user's password.
+
+=cut
+
+sub check_password($$) {
+    my ($self, $password) = @_;
+
+    return Crypt::SaltedHash->validate($self->password, $password);
+}
+
 =head1 AUTHOR
 
 Dag-Erling Smørgrav <des@freebsd.org>

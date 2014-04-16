@@ -182,6 +182,80 @@ __PACKAGE__->has_many(
 # Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-04-16 20:57:55
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:I/1G7NpDuffuLD3XnoJLpw
 
+=head2 validate_answer
+
+Validates an answer to this question and dies if it is not valid.
+
+=cut
+
+sub validate_answer($@) {
+    my ($self, @answer) = @_;
+
+    if (!@answer && $self->min_options > 0) {
+	die("You did not answer this question.\n");
+    } elsif (@answer < $self->min_options) {
+	die("You must select at least " . $self->min_options . " options\n");
+    } elsif (@answer > $self->max_options) {
+	if ($self->max_options == 1) {
+	    die("You may only select one option.\n");
+	} else {
+	    die("You may select at most " . $self->max_options . " options.");
+	}
+    }
+    foreach my $oid (@answer) {
+	$self->options->find($oid)
+	    or die("Option $oid is not a valid answer to this question\n");
+    }
+}
+
+=head2 commit_answer
+
+Registers a voter's answer to this question.
+
+=cut
+
+sub commit_answer($$@) {
+    my ($self, $voter, @answer) = @_;
+
+    print STDERR "Question ", $self->id, " commit_answer\n";
+    $voter->votes->search({ question => $self->id })->delete();
+    foreach my $oid (@answer) {
+	$voter->votes->create({ question => $self->id, option => $oid });
+    }
+}
+
+=head2 prev
+
+Returns the previous question by rank.
+
+=cut
+
+sub prev($) {
+    my ($self) = @_;
+
+    my $questions = $self->poll->questions->
+	search({ rank => { '<', $self->rank } },
+	       { order_by => { -desc => 'id' } })
+	or return undef;
+    return $questions->slice(0, 1)->first;
+}
+
+=head2 prev
+
+Returns the next question by rank.
+
+=cut
+
+sub next($) {
+    my ($self) = @_;
+
+    my $questions = $self->poll->questions->
+	search({ rank => { '>', $self->rank } },
+	       { order_by => { -asc => 'id' } })
+	or return undef;
+    return $questions->slice(0, 1)->first;
+}
+
 =head1 AUTHOR
 
 Dag-Erling Smørgrav <des@freebsd.org>
