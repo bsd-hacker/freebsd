@@ -38,7 +38,7 @@ sub poll :Chained('/') :Path :CaptureArgs(1) {
 	# Retrieve user's existing vote, if any
 	my $answers = ($$psession{answers} = {});
 	foreach my $question ($poll->questions) {
-	    my $votes = $c->user->votes->search(question => $question->id);
+	    my $votes = $c->user->votes->search({ question => $question->id });
 	    $answers->{$question->id} = [ $votes->get_column('option')->all() ]
 		if $votes;
 	}

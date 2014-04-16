@@ -56,7 +56,6 @@ The filter function.
 sub filter($$) {
     my ($self, $raw) = @_;
 
-    print(STDERR "Template::Plugin::WikiFormat::filter()\n");
     return Text::WikiFormat::format($raw, $TAGS, $OPTIONS);
 }
 

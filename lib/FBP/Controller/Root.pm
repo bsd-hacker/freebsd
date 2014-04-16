@@ -30,7 +30,6 @@ Common code for every action
 sub auto :Private {
     my ($self, $c) = @_;
 
-    $c->log->debug("FBP::Controller::Root::auto()");
     # Stash various constants
     $c->stash(title => $c->config->{'title'});
 
