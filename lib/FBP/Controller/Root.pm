@@ -1,8 +1,9 @@
 package FBP::Controller::Root;
+use utf8;
 use Moose;
 use namespace::autoclean;
 
-BEGIN { extends 'Catalyst::Controller' }
+BEGIN { extends 'FBP::Controller' }
 
 #
 # Sets the actions in this controller to be registered with no prefix
@@ -20,28 +21,120 @@ FBP::Controller::Root - Root Controller for FBP
 
 =head1 METHODS
 
+=head2 auto
+
+Common code for every action
+
+=cut
+
+sub auto :Private {
+    my ($self, $c) = @_;
+
+    $c->log->debug("FBP::Controller::Root::auto()");
+    # Stash various constants
+    $c->stash(title => $c->config->{'title'});
+
+    # Stash active polls
+    if ($c->user_exists) {
+	$c->log->debug("number of polls: " . int($c->model('FBP::Poll')->count()));
+	my $polls = $c->model('FBP::Poll')->
+	    search({ starts => { '<=', $c->now }, ends => { '>=', $c->now } });
+	$c->log->debug("active polls: " . int($polls->count()));
+	$c->stash(polls => $polls);
+    }
+
+    1;
+}
+
 =head2 index
 
-The root page (/)
+The front page
 
 =cut
 
 sub index :Path :Args(0) {
-    my ( $self, $c ) = @_;
+    my ($self, $c) = @_;
 
-    # Hello World
-    $c->response->body( $c->welcome_message );
+    # nothing
+}
+
+=head2 login
+
+Display the login page and process login information
+
+=cut
+
+sub login :Local :Args(0) {
+    my ($self, $c) = @_;
+
+    $c->log->debug("FBP::Controller::Root::login()");
+    if ($c->user_exists) {
+	my $login = $c->user->login;
+	$c->log->debug("user $login already authenticated");
+	$c->response->redirect($c->uri_for('/polls'));
+	$c->detach();
+    }
+    my ($login, $password) = @{$c->request->params}{'login', 'password'};
+    if ($login && $password &&
+	$c->authenticate({ login => $login, password => $password })) {
+	$c->log->debug("user $login successfully authenticated");
+	$c->change_session_id();
+	$c->response->redirect($c->uri_for('/polls'));
+    }
+}
+
+=head2 logout
+
+Log the user out and return to the front page
+
+=cut
+
+sub logout :Local :Args(0) {
+    my ($self, $c) = @_;
+
+    if ($c->user_exists) {
+	my $login = $c->user->login;
+	$c->delete_session();
+	$c->logout();
+	$c->log->debug("user $login successfully authenticated");
+    }
+    $c->response->redirect($c->uri_for('/'));
+}
+
+=head2 polls
+
+List of active polls.
+
+=cut
+
+sub polls :Local :Args(0) {
+    my ($self, $c) = @_;
+
+    $c->stash(title => 'Active polls');
+}
+
+=head2 help
+
+Display help text.
+
+=cut
+
+sub help :Local :Args(0) {
+    my ($self, $c) = @_;
+
+    $c->stash(title => 'Help');
 }
 
 =head2 default
 
-Standard 404 error page
+Default page.
 
 =cut
 
 sub default :Path {
-    my ( $self, $c ) = @_;
-    $c->response->body( 'Page not found' );
+    my ($self, $c) = @_;
+
+    $c->stash(template => 'fof.tt');
     $c->response->status(404);
 }
 
@@ -55,7 +148,7 @@ sub end : ActionClass('RenderView') {}
 
 =head1 AUTHOR
 
-Dag-Erling Smørgrav
+Dag-Erling Smørgrav <des@freebsd.org>
 
 =head1 LICENSE
 
@@ -67,3 +160,5 @@ it under the same terms as Perl itself.
 __PACKAGE__->meta->make_immutable;
 
 1;
+
+# $FreeBSD$
