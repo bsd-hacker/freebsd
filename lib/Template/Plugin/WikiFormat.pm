@@ -16,6 +16,20 @@ use Text::WikiFormat;
 
 L<Template::Toolkit> filter plugin for L<Text::WikiFormat>
 
+=cut
+
+our $TAGS = {
+    blocks => {
+	code => qr/^: /,
+    },
+};
+
+our $OPTIONS = {
+    absolute_links => 1,
+    implicit_links => 0,
+    extended => 1,
+};
+
 =head1 METHODS
 
 =head2 init
@@ -43,8 +57,7 @@ sub filter($$) {
     my ($self, $raw) = @_;
 
     print(STDERR "Template::Plugin::WikiFormat::filter()\n");
-    return Text::WikiFormat::format($raw, {}, {
-	implicit_links => 0, extended => 1, absolute_links => 1 });
+    return Text::WikiFormat::format($raw, $TAGS, $OPTIONS);
 }
 
 =head1 AUTHOR
