@@ -182,6 +182,31 @@ __PACKAGE__->has_many(
 # Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-04-16 20:57:55
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:I/1G7NpDuffuLD3XnoJLpw
 
+=head2 voters
+
+Return persons who have responded to this question.  In list context,
+returns a list of voters.  In scalar context, returns a resultset.
+
+=cut
+
+sub voters($) {
+    my ($self) = @_;
+
+    return wantarray() ? $self->voters_rs->all : $self->voters_rs;
+}
+
+=head2 voters_rs
+
+Return persons who have responded to this question as a resultset.
+
+=cut
+
+sub voters_rs($) {
+    my ($self) = @_;
+
+    return $self->votes->search_related_rs('voter', undef, { distinct => 1 });
+}
+
 =head2 validate_answer
 
 Validates an answer to this question and dies if it is not valid.

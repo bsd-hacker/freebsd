@@ -233,6 +233,32 @@ sub votes_rs($) {
     return $self->questions->search_related_rs('votes');
 }
 
+=head2 voters
+
+Return persons who have voted in this poll.  In list context, returns
+a list of voters.  In scalar context, returns a resultset.
+
+=cut
+
+sub voters($) {
+    my ($self) = @_;
+
+    return wantarray() ? $self->voters_rs->all : $self->voters_rs;
+}
+
+=head2 voters_rs
+
+Return persons who have voted in this poll as a resultset.
+
+=cut
+
+sub voters_rs($) {
+    my ($self) = @_;
+
+    return $self->questions->search_related_rs('votes')->
+	search_related_rs('voter', undef, { distinct => 1 });
+}
+
 =head2 validate_answer
 
 Validates an answer to this poll and dies if it is not valid.
