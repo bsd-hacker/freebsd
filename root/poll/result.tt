@@ -19,6 +19,7 @@
 <p>No votes have been cast yet.</p>
 [% ELSE %]
 <p>Here are the[% IF now < poll.ends %] preliminary[% END %] results of the poll:</p>
+<p>[% IF poll.votes_rs.count == 1 %]One vote has[% ELSE %][% poll.votes_rs.count %] votes have[% END %] been cast by [% IF poll.voters_rs.count == 1 %]one voter[% ELSE %][% poll.voters_rs.count %] voters[% END %].</p>
 [% FOREACH question IN poll.questions %]
 [% qid = question.id %]
 <div class="short">
