@@ -210,6 +210,8 @@ sub validate_answer($%) {
 sub commit_answer($$%) {
     my ($self, $voter, %answers) = @_;
 
+    die("You cannot vote in an inactive poll\n")
+	unless $self->active;
     foreach my $question ($self->questions) {
 	$question->commit_answer($voter, @{$answers{$question->id}});
     }
