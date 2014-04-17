@@ -191,7 +191,7 @@ sub ended($;$) {
     my ($self, $when) = @_;
 
     $when //= DateTime->now();
-    return DateTime->compare($when, $self->ends) <= 0;
+    return DateTime->compare($when, $self->ends) >= 0;
 }
 
 =index2 active
