@@ -244,15 +244,6 @@ sub result :Chained('poll') :Path :Args(0) {
     my $poll = $c->stash->{poll};
     $c->detach('/default')
 	unless ($c->user->admin || $poll->ended);
-    my $questions = $poll->questions;
-    foreach my $question ($questions->all) {
-	$c->log->debug("Question " . $question->id);
-	my $options = $question->options;
-	foreach my $option ($options->all) {
-	    $c->log->debug("Option " . $option->id . ": " . $option->label);
-	    $c->log->debug("Votes: " . $option->votes->count);
-	}
-    }
 }
 
 =head2 default
