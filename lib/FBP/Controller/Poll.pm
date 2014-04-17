@@ -31,7 +31,7 @@ sub poll :Chained('/') :Path :CaptureArgs(1) {
     $pid = $1;
     my $poll = $c->model('FBP::Poll')->find($pid);
     $c->detach('/default')
-	unless $poll && $poll->active;
+	unless $poll && ($poll->active || $c->user->admin);
     $c->stash(poll => $poll);
     my $psession = ($c->session->{$pid} //= {});
     if (!$$psession{answers}) {
@@ -93,6 +93,8 @@ sub vote :Chained('poll') :Path :Args(0) {
 	unless $question;
 
     # Did the user submit any answers?
+    delete($c->req->params->{answer})
+	unless $poll->active;
     if ($c->req->params->{qid} ~~ $qid && $c->req->params->{answer}) {
 	my $answer = $c->req->params->{answer};
 	$answer = [ $answer ]
@@ -113,6 +115,7 @@ sub vote :Chained('poll') :Path :Args(0) {
     } elsif ($c->req->params->{done}) {
 	# Validate all the answers
 	foreach $question ($questions->all) {
+	    next unless $poll->active; # hack
 	    try {
 		my $answer = $answers->{$question->id};
 		$question->validate_answer(@{$answer // []});
@@ -173,7 +176,8 @@ sub review :Chained('poll') :Path :Args(0) {
 
     # Validate the answers
     try {
-	$poll->validate_answer(%$answers);
+	$poll->validate_answer(%$answers)
+	    unless $poll->active; # hack
     } catch {
 	$c->stash(error => $_);
 	$c->detach();
