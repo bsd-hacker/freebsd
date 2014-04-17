@@ -160,6 +160,18 @@ __PACKAGE__->belongs_to(
 # Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-04-16 20:57:55
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:TIV5w+lodXu0vgk/zqosbA
 
+=head2 poll
+
+Returns the poll in which this vote was cast.
+
+=cut
+
+sub poll($) {
+    my ($self) = @_;
+
+    return $self->question->poll;
+}
+
 =head1 AUTHOR
 
 Dag-Erling Smørgrav <des@freebsd.org>

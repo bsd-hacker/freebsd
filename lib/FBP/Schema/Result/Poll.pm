@@ -181,6 +181,31 @@ sub active($;$) {
 	DateTime->compare($when, $self->ends) <= 0;
 }
 
+=head2 votes
+
+Return votes cast in this poll.  In list context, returns a list of
+votes.  In scalar context, returns a resultset.
+
+=cut
+
+sub votes($) {
+    my ($self) = @_;
+
+    return wantarray() ? $self->votes_rs->all : $self->votes_rs;
+}
+
+=head2 votes_rs
+
+Return votes cast in this poll as a resultset.
+
+=cut
+
+sub votes_rs($) {
+    my ($self) = @_;
+
+    return $self->questions->search_related_rs('votes');
+}
+
 =head2 validate_answer
 
 Validates an answer to this poll and dies if it is not valid.
@@ -206,6 +231,12 @@ sub validate_answer($%) {
 	die("Too many answers\n");
     }
 }
+
+=head2 commit_answer
+
+Commits an answer to this poll.
+
+=cut
 
 sub commit_answer($$%) {
     my ($self, $voter, %answers) = @_;
