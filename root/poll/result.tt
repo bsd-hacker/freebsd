@@ -1,0 +1,45 @@
+[%-# $FreeBSD$ -%]
+[% USE WikiFormat %]
+[% PROCESS lib/html_top %]
+[% PROCESS lib/header %]
+[% WRAPPER lib/main %]
+
+<div class="result">
+<div class="wiki synopsis">
+[% poll.synopsis | wiki %]
+</div>
+[% IF error %]
+<div class="error">
+<p>[% error | html %]</p>
+</div>
+[% ELSIF now < poll.starts %]
+<p>This poll has not started yet.</p>
+[% ELSIF poll.votes_rs.count == 0 %]
+<p>No votes have been cast yet.</p>
+[% ELSE %]
+<p>Here are the[% IF now < poll.ends %] preliminary[% END %] results of the poll:</p>
+[% FOREACH question IN poll.questions %]
+[% qid = question.id %]
+<div class="short">
+[% question.short | wiki %]
+</div>
+<table>
+<tr>
+<th>Option</th>
+<th>Votes</th>
+<th>Percentage</th>
+</tr>
+[% FOREACH option IN question.options %]
+<td>[% option.label | html %]</td>
+<td>[% IF option.votes_rs.count > 0 %][% option.votes_rs.count %][% ELSE %]-[% END %]</td>
+<td>[% IF option.votes_rs.count > 0 && question.votes_rs.count > 0 %][% option.votes_rs.count * 100 / question.votes_rs.count %]%[% ELSE %]-[% END %]</td>
+</tr>
+[% END %]
+</table>
+[% END %]
+[% END %]
+</div>
+
+[% END %]
+[% PROCESS lib/footer %]
+[% PROCESS lib/html_bottom %]
