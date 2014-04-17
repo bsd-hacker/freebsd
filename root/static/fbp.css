@@ -175,13 +175,50 @@ th {
 }
 
 .poll .long {
-    margin-left: 2ex;
 }
 
 /*
- * Voting
+ * Question
  */
-.vote .votebox {
-    width: 2ex;
-    text-align: center;
+.question .synopsis {
+}
+
+.question .short {
+    font-size: large;
+}
+
+.question .long {
+}
+
+/*
+ * Review
+ */
+.review .answer {
+    font-weight: bold;
+}
+
+/*
+ * Wiki text
+ */
+.wiki {
+}
+
+.wiki h1 {
+    font-size: 120%;
+    font-weight: bold;
+}
+
+.wiki h2 {
+    font-size: 110%;
+    font-weight: bold;
+}
+
+.wiki h3 {
+    font-size: 100%;
+    font-style: italic;
+}
+
+.wiki code {
+    font-family: monospace;
+    font-size: 90%;
 }

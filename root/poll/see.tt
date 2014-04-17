@@ -5,10 +5,10 @@
 [% WRAPPER lib/main %]
 
 <div class="poll">
-<div class="synopsis">
+<div class="wiki synopsis">
 [% poll.synopsis | wiki %]
 </div>
-<div class="long">
+<div class="wiki long">
 [% poll.long | wiki %]
 </div>
 <div class="question-link">

@@ -4,35 +4,38 @@
 [% PROCESS lib/header %]
 [% WRAPPER lib/main %]
 
+<div class="review">
+<div class="wiki synopsis">
+[% poll.synopsis | wiki %]
+</div>
 [% IF error %]
 <div class="error">
 <p>[% error | html %]</p>
 </div>
 [% ELSE %]
-<div class="review">
 <p>You have selected valid answers to all questions in the poll.</p>
- [% FOREACH question IN poll.questions %]
-  [% qid = question.id %]
+[% END %]
+[% FOREACH question IN poll.questions %]
+[% qid = question.id %]
 <div class="short">
-  [% question.short | wiki %]
+[% question.short | wiki %]
 </div>
-  [% IF question.max_options == 1 %]
+[% IF question.max_options == 1 %]
 <p>You answered: <span class="answer">[% answers.$qid.0.label | html %]</span></p>
-  [% ELSE %]
+[% ELSE %]
 <p>You answered:</p>
 <ul>
-   [% FOREACH option IN answers.$qid %]
+[% FOREACH option IN answers.$qid %]
 <li class="answer">[% option.label %]</li>
-   [% END %]
+[% END %]
 </ul>
-  [% END %]
- [% END %]
+[% END %]
+[% END %]
 <form action="">
 <input type="submit" name="return" value="Return to the questions"/>
-<input type="submit" name="confirm" value="Submit my vote"/>
+<input type="submit" name="confirm" value="Submit my vote"[% IF !poll.active %] disabled="disabled"[% END %]/>
 </form>
 </div>
-[% END %]
 
 [% END %]
 [% PROCESS lib/footer %]
