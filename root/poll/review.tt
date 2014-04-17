@@ -26,7 +26,7 @@
 <p>You answered:</p>
 <ul>
 [% FOREACH option IN answers.$qid %]
-<li class="answer">[% option.label %]</li>
+<li class="answer">[% option.label | html %]</li>
 [% END %]
 </ul>
 [% END %]
