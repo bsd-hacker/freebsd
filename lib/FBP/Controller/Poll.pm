@@ -177,7 +177,7 @@ sub review :Chained('poll') :Path :Args(0) {
     # Validate the answers
     try {
 	$poll->validate_answer(%$answers)
-	    unless $poll->active; # hack
+	    if $poll->active; # hack
     } catch {
 	$c->stash(error => $_);
 	$c->detach();
