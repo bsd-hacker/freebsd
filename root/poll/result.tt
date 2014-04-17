@@ -1,4 +1,5 @@
 [%-# $FreeBSD$ -%]
+[% USE Math %]
 [% USE WikiFormat %]
 [% PROCESS lib/html_top %]
 [% PROCESS lib/header %]
@@ -32,7 +33,7 @@
 [% FOREACH option IN question.options %]
 <td>[% option.label | html %]</td>
 <td>[% IF option.votes_rs.count > 0 %][% option.votes_rs.count %][% ELSE %]-[% END %]</td>
-<td>[% IF option.votes_rs.count > 0 && question.votes_rs.count > 0 %][% option.votes_rs.count * 100 / question.votes_rs.count %]%[% ELSE %]-[% END %]</td>
+<td>[% IF option.votes_rs.count > 0 && question.votes_rs.count > 0 %][% Math.int(option.votes_rs.count * 100 / question.votes_rs.count) %]%[% ELSE %]-[% END %]</td>
 </tr>
 [% END %]
 </table>
