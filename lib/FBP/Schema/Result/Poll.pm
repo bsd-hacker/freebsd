@@ -166,6 +166,34 @@ __PACKAGE__->has_many(
 
 use DateTime;
 
+=index2 started
+
+True if the poll had, has or will have started at the specified date
+and time.
+
+=cut
+
+sub started($;$) {
+    my ($self, $when) = @_;
+
+    $when //= DateTime->now();
+    return DateTime->compare($when, $self->starts) >= 0;
+}
+
+=index2 ended
+
+True if the poll had, has or will have ended at the specified date and
+time.
+
+=cut
+
+sub ended($;$) {
+    my ($self, $when) = @_;
+
+    $when //= DateTime->now();
+    return DateTime->compare($when, $self->ends) <= 0;
+}
+
 =index2 active
 
 True if the poll was, is or will be active at the specified date and
@@ -177,8 +205,7 @@ sub active($;$) {
     my ($self, $when) = @_;
 
     $when //= DateTime->now();
-    return DateTime->compare($when, $self->starts) >= 0 &&
-	DateTime->compare($when, $self->ends) <= 0;
+    return $self->started($when) && !$self->ended($when);
 }
 
 =head2 votes
