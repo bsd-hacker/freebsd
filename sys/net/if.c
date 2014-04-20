@@ -74,6 +74,7 @@
 #include <net/vnet.h>
 
 #if defined(INET) || defined(INET6)
+#include <net/ethernet.h>
 #include <netinet/in.h>
 #include <netinet/in_var.h>
 #include <netinet/ip.h>
@@ -655,7 +656,8 @@ if_attach_internal(struct ifnet *ifp, int vmove)
 #if defined(INET) || defined(INET6)
 		/* Initialize to max value. */
 		if (ifp->if_hw_tsomax == 0)
-			ifp->if_hw_tsomax = IP_MAXPACKET;
+			ifp->if_hw_tsomax = min(IP_MAXPACKET, 32 * MCLBYTES -
+			    (ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN));
 		KASSERT(ifp->if_hw_tsomax <= IP_MAXPACKET &&
 		    ifp->if_hw_tsomax >= IP_MAXPACKET / 8,
 		    ("%s: tsomax outside of range", __func__));
@@ -2937,8 +2939,6 @@ if_freemulti(struct ifmultiaddr *ifma)
 
 	KASSERT(ifma->ifma_refcount == 0, ("if_freemulti: refcount %d",
 	    ifma->ifma_refcount));
-	KASSERT(ifma->ifma_protospec == NULL,
-	    ("if_freemulti: protospec not NULL"));
 
 	if (ifma->ifma_lladdr != NULL)
 		free(ifma->ifma_lladdr, M_IFMADDR);

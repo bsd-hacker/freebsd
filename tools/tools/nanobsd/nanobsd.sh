@@ -184,9 +184,9 @@ nano_cleanup ( ) (
 clean_build ( ) (
 	pprint 2 "Clean and create object directory (${MAKEOBJDIRPREFIX})"
 
-	if ! rm -rf ${MAKEOBJDIRPREFIX} > /dev/null 2>&1 ; then
-		chflags -R noschg ${MAKEOBJDIRPREFIX}
-		rm -r ${MAKEOBJDIRPREFIX}
+	if ! rm -xrf ${MAKEOBJDIRPREFIX}/ > /dev/null 2>&1 ; then
+		chflags -R noschg ${MAKEOBJDIRPREFIX}/
+		rm -xr ${MAKEOBJDIRPREFIX}/
 	fi
 	mkdir -p ${MAKEOBJDIRPREFIX}
 	printenv > ${MAKEOBJDIRPREFIX}/_.env
@@ -240,17 +240,17 @@ build_kernel ( ) (
 clean_world ( ) (
 	if [ "${NANO_OBJ}" != "${MAKEOBJDIRPREFIX}" ]; then
 		pprint 2 "Clean and create object directory (${NANO_OBJ})"
-		if ! rm -rf ${NANO_OBJ} > /dev/null 2>&1 ; then
+		if ! rm -rxf ${NANO_OBJ}/ > /dev/null 2>&1 ; then
 			chflags -R noschg ${NANO_OBJ}
-			rm -r ${NANO_OBJ}
+			rm -xr ${NANO_OBJ}/
 		fi
 		mkdir -p ${NANO_OBJ} ${NANO_WORLDDIR}
 		printenv > ${NANO_OBJ}/_.env
 	else
 		pprint 2 "Clean and create world directory (${NANO_WORLDDIR})"
-		if ! rm -rf ${NANO_WORLDDIR}/ > /dev/null 2>&1 ; then
+		if ! rm -rxf ${NANO_WORLDDIR}/ > /dev/null 2>&1 ; then
 			chflags -R noschg ${NANO_WORLDDIR}
-			rm -rf ${NANO_WORLDDIR}
+			rm -rxf ${NANO_WORLDDIR}/
 		fi
 		mkdir -p ${NANO_WORLDDIR}
 	fi
@@ -436,7 +436,7 @@ populate_slice ( ) (
 	if [ -n "${dir}" -a -d "${dir}" ]; then
 		echo "Populating ${lbl} from ${dir}"
 		cd ${dir}
-		find . -print | grep -Ev '/(CVS|\.svn)' | cpio -dumpv ${mnt}
+		find . -print | grep -Ev '/(CVS|\.svn|\.hg|\.git)' | cpio -dumpv ${mnt}
 	fi
 	df -i ${mnt}
 	umount ${mnt}
@@ -705,7 +705,7 @@ cust_allow_ssh_root () (
 
 cust_install_files () (
 	cd ${NANO_TOOLS}/Files
-	find . -print | grep -Ev '/(CVS|\.svn)' | cpio -Ldumpv ${NANO_WORLDDIR}
+	find . -print | grep -Ev '/(CVS|\.svn|\.hg|\.git)' | cpio -Ldumpv ${NANO_WORLDDIR}
 )
 
 #######################################################################
@@ -758,7 +758,7 @@ cust_pkg () (
 			exit 2
 		fi
 	done
-	rm -rf ${NANO_WORLDDIR}/Pkg
+	rm -rxf ${NANO_WORLDDIR}/Pkg
 )
 
 cust_pkgng () (
@@ -827,7 +827,7 @@ cust_pkgng () (
 			exit 2
 		fi
 	done
-	rm -rf ${NANO_WORLDDIR}/Pkg
+	rm -rxf ${NANO_WORLDDIR}/Pkg
 )
 
 #######################################################################

@@ -1002,7 +1002,7 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 					 * Huh, need the correct STR here,
 					 * they must be the same.
 					 */
-					SCTP_PRINTF("Prev check - Gak, Evil plot, sid:%d not the same as at:%d\n",
+					SCTPDBG(SCTP_DEBUG_INDATA1, "Prev check - Gak, Evil plot, sid:%d not the same as at:%d\n",
 					    chk->rec.data.stream_number,
 					    prev->rec.data.stream_number);
 					snprintf(msg, sizeof(msg),
@@ -2323,7 +2323,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 			continue;
 		}
 		if (ch->ch.chunk_type == SCTP_DATA) {
-			if ((size_t)chk_length < sizeof(struct sctp_data_chunk) + 1) {
+			if ((size_t)chk_length < sizeof(struct sctp_data_chunk)) {
 				/*
 				 * Need to send an abort since we had a
 				 * invalid data chunk.
@@ -2334,6 +2334,21 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 				snprintf(msg, sizeof(msg), "DATA chunk of length %d",
 				    chk_length);
 				op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_19;
+				sctp_abort_association(inp, stcb, m, iphlen,
+				    src, dst, sh, op_err,
+				    use_mflowid, mflowid,
+				    vrf_id, port);
+				return (2);
+			}
+			if ((size_t)chk_length == sizeof(struct sctp_data_chunk)) {
+				/*
+				 * Need to send an abort since we had an
+				 * empty data chunk.
+				 */
+				struct mbuf *op_err;
+
+				op_err = sctp_generate_no_user_data_cause(ch->dp.tsn);
 				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_19;
 				sctp_abort_association(inp, stcb, m, iphlen,
 				    src, dst, sh, op_err,
