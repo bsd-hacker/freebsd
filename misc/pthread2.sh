@@ -35,9 +35,9 @@ here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pthread2.c
 cc -o pthread2 -Wall -Wextra -O2 -g pthread2.c -lpthread || exit 1
-rm -f pthread2.c
+rm -f pthread2.c /tmp/pthread2.core
 
-log=/tmp/bench.`date '+%Y%m%d-%H%M'`
+log=/tmp/pthread2.`date '+%Y%m%d-%H%M'`
 for i in `jot 5`; do
 	[ $i -eq 1 ] && echo "# `uname -v`"
 	time sh -c '
@@ -52,12 +52,15 @@ done > $log 2>&1
 rm -f /tmp/pthread2
 
 if [ -n "$bench" ]; then
-	pair=`ls /tmp/bench* | egrep "bench\.[0-9]{8}-" | sort |
+	pair=`ls /tmp/pthread2* | egrep "pthread2\.[0-9]{8}-" | sort |
 	    tail -2 | tr '\n' ' '`
 	ministat -w 72 $pair
 else
 	rm -f $log
 fi
+
+#  __thr_umutex_lock() may call abort(3) under VM pressure.
+[ -r /tmp/pthread2.core ] && echo FAIL
 exit 0
 EOF
 /*
@@ -92,7 +95,7 @@ EOF
 #define	WAIT(x)		pwait(&x.wait, &x.mtx)
 
 long ncreate, nrename, nunlink;
-int max;
+int bench, max;
 char *dirname1;
 char *dirname2;
 
@@ -121,7 +124,7 @@ static void
 ahand(int i __unused) {	/* handler */
 	fprintf(stderr, "FAIL\n");
 	hand(0);
-	abort();
+	_exit(0);
 }
 
 void
@@ -178,7 +181,7 @@ loop_create(void *arg __unused)
 		ncreate++;
 		UNLOCK(newfiles);
 		SIGNAL(newfiles);
-		if ((i > 0) && (i % 100000 == 0))
+		if ((bench == 0) && (i > 0) && (i % 100000 == 0))
 			for (j = 0; j < 10 && ncreate != nrename; j++)
 				usleep(400);
 	}
@@ -247,6 +250,7 @@ main(void)
 	int rc;
 	pthread_t tid[3];
 
+	bench = getenv("bench") != NULL;
 	asprintf(&dirname1, "%s.1", "f1");
 	asprintf(&dirname2, "%s.2", "f2");
 	max = 15000000;
