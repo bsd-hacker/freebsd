@@ -61,4 +61,4 @@ sleep 300
 killall fsx
 sleep 5
 mdconfig -d -u $mdstart
-rm -f $D
+rm -f $D /tmp/fsx
