@@ -43,8 +43,7 @@ rm -f pth.c
 cd $odir
 
 for i in `jot 2000`; do
-	date
-	/tmp/pth 
+	/tmp/pth 2>/dev/null
 done
 
 rm -f /tmp/pth
