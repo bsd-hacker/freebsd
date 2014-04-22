@@ -72,7 +72,7 @@ EOF
 #include <pthread.h>
 
 char buf[8096];
-int more;
+static volatile sig_atomic_t more;
 
 void
 handler(int i) {
