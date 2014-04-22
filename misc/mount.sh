@@ -61,16 +61,24 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-mount | grep /tmp && umount -f /tmp
+. ../default.cfg
+
+mount | grep -q "$mntpoint" && umount $mntpoint
+mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
+
+mdconfig -a -t swap -s 1g -u $mdstart
+bsdlabel -w md$mdstart auto
+
+newfs $newfs_flags md${mdstart}$part > /dev/null
 
 # The test:
 
-mount -r /tmp
-mount -r /tmp
-umount /tmp
+mount -r /dev/md${mdstart}$part $mntpoint
+mount -r /dev/md${mdstart}$part $mntpoint
+umount $mntpoint
 
-ls -lR /tmp > /dev/null	# panic
+ls -lR $mntpoint > /dev/null	# panic
 
 # End of test
-
-mount /tmp
+mount | grep -q "$mntpoint" && umount $mntpoint
+mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
