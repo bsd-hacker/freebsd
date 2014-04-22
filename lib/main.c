@@ -43,7 +43,8 @@ __FBSDID("$FreeBSD$");
 
 #include "stress.h"
 
-static char const rcsid[] = "$Name:  $ $FreeBSD$";
+static char const rcsid[] __unused =
+    "$Name:  $ $FreeBSD$";
 
 volatile int done_testing;
 static int cleanupcalled = 0;
