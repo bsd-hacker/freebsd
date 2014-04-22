@@ -59,7 +59,7 @@ main(void)
 		fd2 = arc4random() % 1000000;
 		if (dup2(1, fd2) == -1) {
 			if (errno != EBADF) {
-				warn("dup2(2, %d)", fd2);
+				warn("dup2(1, %d)", fd2);
 				error = 1;
 				break;
 			}
