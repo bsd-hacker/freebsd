@@ -79,7 +79,7 @@ start=`date '+%s'`
 while [ $n -gt 0 ]; do
 	ps -lUnobody | grep syscall4 | awk '{print $2}' | xargs kill
 	ln -fs $n .syscall5.last
-	name=`grep -w $n /usr/include/sys/syscall.h | awk '{print $2}' | 
+	name=`grep -w "$n$" /usr/include/sys/syscall.h | awk '{print $2}' |
 		sed 's/SYS_//'`
 	[ -z "$name" ] && name="unknown"
 	if [ -x ../tools/exclude_syscall.sh ]; then
