@@ -42,11 +42,13 @@
 # dfull.sh	umount stuck in "mount drain"				20111227
 # ext2fs.sh	Deadlock						20120510
 # fuse2.sh	Deadlock seen						20121129
+# gbde.sh	panic: handle_written_inodeblock: Invalid link count...	20131128
 # gjournal.sh	kmem_malloc(131072): kmem_map too small			20120626
 # gjournal2.sh	
 # gjournal3.sh	panic: Journal overflow					20130729
 # newfs.sh	Memory modified after free. ... used by inodedep	20111217
 # newfs2.sh	umount stuck in ufs					20111226
+# nfs2.sh	panic: wrong diroffset					20140219
 # nfs9.sh	panic: lockmgr still held				20130503
 # nfs10.sh	Deadlock						20130401
 # nfs11.sh	Deadlock						20130429
@@ -64,7 +66,9 @@
 # suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
 # suj18.sh	panic: Bad tailq NEXT(0xc1e2a6088->tqh_last_s) != NULL	20120213
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
+# suj34.sh	Various hangs and panics				20131210
 # umountf3.sh	KDB: enter: watchdog timeout				20111217
+# umountf7.sh	panic: handle_written_inodeblock: live inodedep ...	20131129
 # unionfs.sh	insmntque: non-locked vp: xx is not exclusive locked...	20130909
 # unionfs2.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111219
 # unionfs3.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111216
@@ -73,6 +77,7 @@
 
 # fuzz.sh	A know issue
 # newfs3.sh	OK, but runs for a very long time
+# statfs.sh	Not very interesting
 # syscall.sh	OK, but runs for a very long time
 # syscall2.sh	OK, but runs for a very long time
 # vunref.sh	No problems ever seen
