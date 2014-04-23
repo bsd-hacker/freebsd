@@ -117,6 +117,11 @@ check_use_zfs() {
 	return 0
 }
 
+truncate_logs() {
+	echo > ${logdir}/${rev}-${arch}-${kernel}-${type}.log
+	return 0
+}
+
 source_config() {
 	local configfile
 	configfile="${scriptdir}/${rev}-${arch}-${kernel}-${type}.conf"
@@ -216,8 +221,8 @@ prebuild_setup() {
 	mkdir -p "${logdir}" "${srcdir}"
 	info "Checking out src/release to ${srcdir}"
 	svn co -q --force svn://svn.freebsd.org/base/head/release ${srcdir}
-	info "Reverting any changes to ${srcdir}/release.sh"
-	svn revert ${srcdir}/release.sh
+	info "Reverting any changes to ${srcdir}"
+	svn revert -R ${srcdir}
 }
 
 # Email log output when a stage has completed
@@ -271,17 +276,6 @@ build_release() {
 	unset _build _conf
 }
 
-check_x86() {
-	case ${arch} in
-		amd64|i386)
-			return 0
-			;;
-		*)
-			return 1
-			;;
-	esac
-}
-
 # Install amd64/i386 "seed" chroots for all branches being built.
 install_chroots() {
 	source_config || return 0
@@ -321,8 +315,6 @@ build_chroots() {
 		info "This script does not support rev ${rev}"
 		return 0
 	fi
-	# Only build for amd64 and i386.
-	check_x86 || return 0
 	# Building stable/9 on head/ is particularly race-prone when
 	# building make(1) for the first time.  I have no idea why.
 	# Apply duct tape for now.
@@ -372,6 +364,7 @@ build_chroots() {
 }
 
 main() {
+	mkdir -p ../chroots/ ../logs/ ../release/
 	while getopts c: opt; do
 		case ${opt} in
 			c)
@@ -387,6 +380,7 @@ main() {
 	[ -z ${CONF} ] && usage
 	zfs_bootstrap_done=
 	prebuild_setup
+	runall truncate_logs
 	zfs_bootstrap
 	runall build_chroots
 	runall install_chroots
