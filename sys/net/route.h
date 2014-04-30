@@ -275,6 +275,10 @@ struct rt_addrinfo {
 	sizeof(long)		:				\
 	1 + ( (((struct sockaddr *)(sa))->sa_len - 1) | (sizeof(long) - 1) ) )
 
+#define	sa_equal(a, b) (	\
+    (((struct sockaddr *)(a))->sa_len == ((struct sockaddr *)(b))->sa_len) && \
+    (bcmp((a), (b), ((struct sockaddr *)(b))->sa_len) == 0))
+
 #ifdef _KERNEL
 
 #define RT_LINK_IS_UP(ifp)	(!((ifp)->if_capabilities & IFCAP_LINKSTATE) \
@@ -398,10 +402,7 @@ int	 rtrequest_fib(int, struct sockaddr *,
 int	 rtrequest1_fib(int, struct rt_addrinfo *, struct rtentry **, u_int);
 
 #include <sys/eventhandler.h>
-typedef void (*rtevent_arp_update_fn)(void *, struct rtentry *, uint8_t *, struct sockaddr *);
 typedef void (*rtevent_redirect_fn)(void *, struct rtentry *, struct rtentry *, struct sockaddr *);
-/* route_arp_update_event is no longer generated; see arp_update_event */
-EVENTHANDLER_DECLARE(route_arp_update_event, rtevent_arp_update_fn);
 EVENTHANDLER_DECLARE(route_redirect_event, rtevent_redirect_fn);
 #endif
 

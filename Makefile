@@ -32,6 +32,10 @@
 # targets             - Print a list of supported TARGET/TARGET_ARCH pairs
 #                       for world and kernel targets.
 # toolchains          - Build a toolchain for all world and kernel targets.
+# xdev                - xdev-build + xdev-install for the architecture
+#                       specified with XDEV and XDEV_ARCH.
+# xdev-build          - Build cross-development tools.
+# xdev-install        - Install cross-development tools.
 # 
 # "quick" way to test all kernel builds:
 # 	_jflag=`sysctl -n hw.ncpu`
@@ -325,9 +329,9 @@ MMAKEENV=	MAKEOBJDIRPREFIX=${MYMAKE:H} \
 		DESTDIR= \
 		INSTALL="sh ${.CURDIR}/tools/install.sh"
 MMAKE=		${MMAKEENV} ${MAKE} \
-		-D_UPGRADING \
-		-DNOMAN -DNO_MAN -DNOSHARED -DNO_SHARED \
-		-DNO_CPU_CFLAGS -DNO_WERROR DESTDIR= PROGNAME=${MYMAKE:T}
+		-D_UPGRADING -DNO_MAN -DNO_SHARED \
+		-DNO_CPU_CFLAGS -DNO_WERROR \
+		DESTDIR= MK_TESTS=no PROGNAME=${MYMAKE:T}
 
 make bmake: .PHONY
 	@echo

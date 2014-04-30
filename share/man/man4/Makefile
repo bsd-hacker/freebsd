@@ -280,6 +280,7 @@ MAN=	aac.4 \
 	ncv.4 \
 	${_ndis.4} \
 	net80211.4 \
+	netfpga10g_nf10bmac.4 \
 	netgraph.4 \
 	netintro.4 \
 	netmap.4 \
@@ -377,6 +378,7 @@ MAN=	aac.4 \
 	ppc.4 \
 	ppi.4 \
 	procdesc.4 \
+	proto.4 \
 	psm.4 \
 	pst.4 \
 	pt.4 \
@@ -510,6 +512,7 @@ MAN=	aac.4 \
 	udav.4 \
 	udbp.4 \
 	udp.4 \
+	udplite.4 \
 	uep.4 \
 	ufm.4 \
 	ufoma.4 \
@@ -674,6 +677,7 @@ MLINKS+=mwl.4 if_mwl.4
 MLINKS+=mxge.4 if_mxge.4
 MLINKS+=my.4 if_my.4
 MLINKS+=${_ndis.4} ${_if_ndis.4}
+MLINKS+=netfpga10g_nf10bmac.4 if_nf10bmac.4
 MLINKS+=netintro.4 net.4 \
 	netintro.4 networking.4
 MLINKS+=${_nfe.4} ${_if_nfe.4}
