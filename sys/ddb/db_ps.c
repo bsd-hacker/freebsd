@@ -392,17 +392,18 @@ DB_SHOW_COMMAND(proc, db_show_proc)
 	db_printf(" state: ");
 	switch (p->p_state) {
 	case PRS_NEW:
-		db_printf("NEW\n");
+		db_printf("NEW");
 		break;
 	case PRS_NORMAL:
-		db_printf("NORMAL\n");
+		db_printf("NORMAL");
 		break;
 	case PRS_ZOMBIE:
-		db_printf("ZOMBIE\n");
+		db_printf("ZOMBIE");
 		break;
 	default:
-		db_printf("??? (%#x)\n", p->p_state);
+		db_printf("??? (%#x)", p->p_state);
 	}
+	db_printf(" (p_flag 0x%x)\n", p->p_flag);
 	if (p->p_ucred != NULL) {
 		db_printf(" uid: %d  gids: ", p->p_ucred->cr_uid);
 		for (i = 0; i < p->p_ucred->cr_ngroups; i++) {
