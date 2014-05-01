@@ -1106,9 +1106,7 @@ linux_waitid(struct thread *td, struct linux_waitid_args *args)
 	}
 
 	if (args->info != NULL) {
-		sig = siginfo.si_signo;
-		if (siginfo.si_signo <= td->td_proc->p_sysent->sv_sigsize)
-			sig = td->td_proc->p_sysent->sv_sigtbl[_SIG_IDX(sig)];
+		sig = BSD_TO_LINUX_SIGNAL(siginfo.si_signo);
 		siginfo_to_lsiginfo(&siginfo, &lsi, sig);
 		error = copyout(&lsi, args->info, sizeof(lsi));
 	}
