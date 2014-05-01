@@ -428,7 +428,6 @@ linux_to_bsd_sockaddr(struct sockaddr *arg, int len)
 	return (error);
 }
 
-
 static int
 linux_sa_put(struct osockaddr *osa)
 {
@@ -1026,41 +1025,45 @@ linux_sendto(struct thread *td, struct linux_sendto_args *args)
 int
 linux_recvfrom(struct thread *td, struct linux_recvfrom_args *args)
 {
-	struct recvfrom_args /* {
-		int	s;
-		caddr_t	buf;
-		size_t	len;
-		int	flags;
-		struct sockaddr * __restrict from;
-		socklen_t * __restrict fromlenaddr;
-	} */ bsd_args;
-	size_t len;
+	struct msghdr msg;
+	struct iovec aiov;
 	int error;
 
-	if ((error = copyin(PTRIN(args->fromlen), &len, sizeof(size_t))))
-		return (error);
+	if (args->fromlen) {
+		error = copyin(PTRIN(args->fromlen), &msg.msg_namelen,
+		    sizeof (msg.msg_namelen));
+		if (error)
+			return (error);
 
-	bsd_args.s = args->s;
-	bsd_args.buf = PTRIN(args->buf);
-	bsd_args.len = args->len;
-	bsd_args.flags = linux_to_bsd_msg_flags(args->flags);
-	/* XXX: */
-	bsd_args.from = (struct sockaddr * __restrict)PTRIN(args->from);
-	bsd_args.fromlenaddr = PTRIN(args->fromlen);/* XXX */
-	
-	linux_to_bsd_sockaddr((struct sockaddr *)bsd_args.from, len);
-	error = sys_recvfrom(td, &bsd_args);
-	bsd_to_linux_sockaddr((struct sockaddr *)bsd_args.from);
-	
+		error = linux_to_bsd_sockaddr((struct sockaddr *)PTRIN(args->from),
+		    msg.msg_namelen);
+		if (error)
+			return (error);
+	} else
+		msg.msg_namelen = 0;
+
+	msg.msg_name = (struct sockaddr * __restrict)PTRIN(args->from);
+	msg.msg_iov = &aiov;
+	msg.msg_iovlen = 1;
+	aiov.iov_base = PTRIN(args->buf);
+	aiov.iov_len = args->len;
+	msg.msg_control = 0;
+	msg.msg_flags = linux_to_bsd_msg_flags(args->flags);
+
+	error = kern_recvit(td, args->s, &msg, UIO_USERSPACE, NULL);
 	if (error)
 		return (error);
+
 	if (args->from) {
-		error = linux_sa_put((struct osockaddr *)
+		error = bsd_to_linux_sockaddr((struct sockaddr *)
 		    PTRIN(args->from));
 		if (error)
 			return (error);
+
+		error = linux_sa_put((struct osockaddr *)
+		    PTRIN(args->from));
 	}
-	return (0);
+	return (error);
 }
 
 int
