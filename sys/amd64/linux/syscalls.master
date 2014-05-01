@@ -125,7 +125,7 @@
 				    l_int len, l_int flags, l_uintptr_t to, \
 				    l_int tolen); }
 45	AUE_RECVFROM	STD	{ int linux_recvfrom(l_int s, l_uintptr_t buf, \
-				    l_int len, l_int flags, l_uintptr_t from, \
+				    l_size_t len, l_int flags, l_uintptr_t from, \
 				    l_uintptr_t fromlen); }
 46	AUE_SENDMSG	STD	{ int linux_sendmsg(l_int s, l_uintptr_t msg, \
 				    l_int flags); }
