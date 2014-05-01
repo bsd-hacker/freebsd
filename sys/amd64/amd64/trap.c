@@ -610,11 +610,31 @@ trap(struct trapframe *frame)
 	ksi.ksi_trapno = type;
 	ksi.ksi_addr = (void *)addr;
 	if (uprintf_signal) {
-		uprintf("pid %d comm %s: signal %d err %lx code %d type %d "
-		    "addr 0x%lx rsp 0x%lx rip 0x%lx "
+		uprintf("pid %05d thread %p comm %s: signal %d err %lx code %d type %d\n"
+		    "addr 0x%lx rip 0x%lx rax 0x%lx\n"
+		    "rdi 0x%lx rsi 0x%lx rdx 0x%lx rcx 0x%lx\n"
+		    "r8 0x%lx r9 0x%lx rbx 0x%lx rbp 0x%lx\n"
+		    "r10 0x%lx r11 0x%lx r12 0x%lx r13 0x%lx\n"
+		    "r14 0x%lx r15 0x%lx\n"
+		    "<%02x %02x %02x %02x %02x %02x %02x %02x>\n"
 		    "<%02x %02x %02x %02x %02x %02x %02x %02x>\n",
-		    p->p_pid, p->p_comm, i, frame->tf_err, ucode, type, addr,
-		    frame->tf_rsp, frame->tf_rip,
+		    p->p_pid, td, p->p_comm, i, frame->tf_err, ucode, type,
+		    addr, frame->tf_rip, frame->tf_rax,
+		    frame->tf_rdi, frame->tf_rsi,
+		    frame->tf_rdx, frame->tf_rcx,
+		    frame->tf_r8, frame->tf_r9,
+		    frame->tf_rbx, frame->tf_rbp,
+		    frame->tf_r10, frame->tf_r11,
+		    frame->tf_r12, frame->tf_r13,
+		    frame->tf_r14, frame->tf_r15,
+		    fubyte((void *)(frame->tf_rip - 8)),
+		    fubyte((void *)(frame->tf_rip - 7)),
+		    fubyte((void *)(frame->tf_rip - 6)),
+		    fubyte((void *)(frame->tf_rip - 5)),
+		    fubyte((void *)(frame->tf_rip - 4)),
+		    fubyte((void *)(frame->tf_rip - 3)),
+		    fubyte((void *)(frame->tf_rip - 2)),
+		    fubyte((void *)(frame->tf_rip - 1)),
 		    fubyte((void *)(frame->tf_rip + 0)),
 		    fubyte((void *)(frame->tf_rip + 1)),
 		    fubyte((void *)(frame->tf_rip + 2)),
