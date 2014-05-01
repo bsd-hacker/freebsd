@@ -466,8 +466,8 @@ linux_rt_sigtimedwait(struct thread *td,
 #ifdef DEBUG
 		if (ldebug(rt_sigtimedwait))
 			printf(LMSG("linux_rt_sigtimedwait: "
-			    "incoming timeout (%ld/%ld)\n"),
-			    ltv.tv_sec, ltv.tv_usec);
+			    "incoming timeout (%jd/%jd)\n"),
+			    (intmax_t)ltv.tv_sec, (intmax_t)ltv.tv_usec);
 #endif
 		tv.tv_sec = (long)ltv.tv_sec;
 		tv.tv_usec = (suseconds_t)ltv.tv_usec;
