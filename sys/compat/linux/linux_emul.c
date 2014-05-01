@@ -158,11 +158,40 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 	LIN_SDT_PROBE0(emul, proc_init, return);
 }
 
+int 
+linux_common_execve(struct thread *td, struct image_args *eargs)
+{
+	struct linux_emuldata *em;
+	struct proc *p;
+	int error;
+
+	error = kern_execve(td, eargs, NULL);
+	if (error)
+		return (error);
+
+	p = td->td_proc;
+	/*
+	 * In a case of transition from Linux binary execing to
+	 * FreeBSD binary we destroy linux emuldata thread entry.
+	 */
+	if (SV_CURPROC_ABI() != SV_ABI_LINUX) {
+		PROC_LOCK(p);
+		em = em_find(td);
+		KASSERT(em != NULL, ("proc_exec: emuldata not found.\n"));
+		td->td_emuldata = NULL;
+		PROC_UNLOCK(p);
+
+		free(em, M_TEMP);
+	}
+	return (0);
+}
+
+
+
 void 
 linux_proc_exec(void *arg __unused, struct proc *p, struct image_params *imgp)
 {
 	struct thread *td = curthread;
-	struct linux_emuldata *em;
 
 	/*
 	 * In a case of execing to linux binary we create linux
@@ -175,34 +204,9 @@ linux_proc_exec(void *arg __unused, struct proc *p, struct image_params *imgp)
 			linux_proc_init(td, NULL, 0);
 		else
 			linux_proc_init(td, td, 0);
-	}
 
-	/*
-	 * In a case of transition from Linux binary execing to
-	 * FreeBSD binary we destroy linux emuldata thread entry.
-	 */
-	if (__predict_false((imgp->sysent->sv_flags & SV_ABI_MASK) != SV_ABI_LINUX &&
-	    SV_PROC_ABI(p) == SV_ABI_LINUX)) {
-
-		/* 
-		 * XXX:There's a race because here we assign p->p_emuldata NULL
-		 * but the process is still counted as linux one for a short
-		 * time so some other process might reference it and try to
-		 * access its p->p_emuldata and panicing on a NULL reference.
-		 */
-
-		PROC_LOCK(p);
-		em = em_find(td);
-		KASSERT(em != NULL, ("proc_exec: emuldata not found.\n"));
-		td->td_emuldata = NULL;
-		PROC_UNLOCK(p);
-
-		free(em, M_TEMP);
-	}
-
-	if (__predict_false((imgp->sysent->sv_flags & SV_ABI_MASK) ==
-	    SV_ABI_LINUX))
 		LIN_SDT_PROBE0(emul, proc_exec, return);
+	}
 }
 
 void

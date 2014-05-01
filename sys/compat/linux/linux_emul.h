@@ -54,6 +54,7 @@ struct linux_emuldata	*em_find(struct thread *);
 #define	LINUX_XDEPR_REQUEUEOP	0x00000001	/* uses deprecated
 						   futex REQUEUE op*/
 
+int	linux_common_execve(struct thread *, struct image_args *);
 void	linux_proc_init(struct thread *, struct thread *, int);
 void	linux_schedtail(struct thread *);
 void	linux_proc_exec(void *, struct proc *, struct image_params *);
