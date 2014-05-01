@@ -876,17 +876,8 @@ linux_waitpid(struct thread *td, struct linux_waitpid_args *args)
 		printf(ARGS(waitpid, "%d, %p, %d"),
 		    args->pid, (void *)args->status, args->options);
 #endif
-	/*
-	 * this is necessary because the test in kern_wait doesn't work
-	 * because we mess with the options here
-	 */
-	if (args->options & ~(WUNTRACED | WNOHANG | WCONTINUED | __WCLONE))
-		return (EINVAL);
-   
-	options = (args->options & (WNOHANG | WUNTRACED));
-	/* WLINUXCLONE should be equal to __WCLONE, but we make sure */
-	if (args->options & __WCLONE)
-		options |= WLINUXCLONE;
+	options = 0;
+	linux_to_bsd_waitopts(args->options, &options);
 
 	return (linux_common_wait(td, args->pid, args->status, options, NULL));
 }

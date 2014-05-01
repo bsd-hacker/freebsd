@@ -1037,10 +1037,8 @@ linux_wait4(struct thread *td, struct linux_wait4_args *args)
 		    (void *)args->rusage);
 #endif
 
-	options = (args->options & (WNOHANG | WUNTRACED));
-	/* WLINUXCLONE should be equal to __WCLONE, but we make sure */
-	if (args->options & __WCLONE)
-		options |= WLINUXCLONE;
+	options = 0;
+	linux_to_bsd_waitopts(args->options, &options);
 
 	if (args->rusage != NULL)
 		rup = &ru;
