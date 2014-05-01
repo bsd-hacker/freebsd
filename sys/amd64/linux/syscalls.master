@@ -306,8 +306,9 @@
 155	AUE_PIVOT_ROOT	STD	{ int linux_pivot_root(void); }
 156	AUE_SYSCTL	STD	{ int linux_sysctl( \
 				    struct l___sysctl_args *args); }
-157	AUE_PRCTL	STD	{ int linux_prctl(l_int option, l_int arg2, l_int arg3, \
-				    l_int arg4, l_int arg5); }
+157	AUE_PRCTL	STD	{ int linux_prctl(l_int option, l_uintptr_t arg2, \
+				    l_uintptr_t arg3, l_uintptr_t arg4, \
+				    l_uintptr_t arg5); }
 158	AUE_PRCTL	STD	{ int linux_arch_prctl(l_int code, l_ulong addr); }
 159	AUE_ADJTIME	STD	{ int linux_adjtimex(void); }
 160	AUE_SETRLIMIT	STD	{ int linux_setrlimit(l_uint resource, \
