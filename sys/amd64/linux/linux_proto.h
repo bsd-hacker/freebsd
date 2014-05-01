@@ -205,7 +205,7 @@ struct linux_sendto_args {
 struct linux_recvfrom_args {
 	char s_l_[PADL_(l_int)]; l_int s; char s_r_[PADR_(l_int)];
 	char buf_l_[PADL_(l_uintptr_t)]; l_uintptr_t buf; char buf_r_[PADR_(l_uintptr_t)];
-	char len_l_[PADL_(l_int)]; l_int len; char len_r_[PADR_(l_int)];
+	char len_l_[PADL_(l_size_t)]; l_size_t len; char len_r_[PADR_(l_size_t)];
 	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 	char from_l_[PADL_(l_uintptr_t)]; l_uintptr_t from; char from_r_[PADR_(l_uintptr_t)];
 	char fromlen_l_[PADL_(l_uintptr_t)]; l_uintptr_t fromlen; char fromlen_r_[PADR_(l_uintptr_t)];

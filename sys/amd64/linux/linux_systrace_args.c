@@ -405,7 +405,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		struct linux_recvfrom_args *p = params;
 		iarg[0] = p->s; /* l_int */
 		iarg[1] = p->buf; /* l_uintptr_t */
-		iarg[2] = p->len; /* l_int */
+		iarg[2] = p->len; /* l_size_t */
 		iarg[3] = p->flags; /* l_int */
 		iarg[4] = p->from; /* l_uintptr_t */
 		iarg[5] = p->fromlen; /* l_uintptr_t */
@@ -2885,7 +2885,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "l_uintptr_t";
 			break;
 		case 2:
-			p = "l_int";
+			p = "l_size_t";
 			break;
 		case 3:
 			p = "l_int";
