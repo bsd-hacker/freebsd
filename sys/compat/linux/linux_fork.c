@@ -230,6 +230,10 @@ linux_clone_proc(struct thread *td, struct linux_clone_args *args)
 		    exit_signal);
 #endif
 
+	LINUX_CTR4(clone, "thread(%d): successful rfork to %d, "
+	    "stack %p sig = %d", td->td_tid, (int)p2->p_pid,
+	    args->stack, exit_signal);
+
 	if (args->flags & LINUX_CLONE_VFORK) {
 	   	PROC_LOCK(p2);
 	   	p2->p_flag |= P_PPWAIT;

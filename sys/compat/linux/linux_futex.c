@@ -809,6 +809,10 @@ linux_sys_futex(struct thread *td, struct linux_sys_futex_args *args)
 			LIN_SDT_PROBE0(futex, linux_sys_futex,
 			    invalid_cmp_requeue_use);
 			LIN_SDT_PROBE1(futex, linux_sys_futex, return, EINVAL);
+
+			LINUX_CTR2(sys_futex, "CMP_REQUEUE second %p eq first %p",
+			    args->uaddr2, args->uaddr);
+
 			return (EINVAL);
 		}
 
@@ -828,6 +832,8 @@ linux_sys_futex(struct thread *td, struct linux_sys_futex_args *args)
 		error = futex_get(args->uaddr2, NULL, &f2,
 		    flags | FUTEX_DONTEXISTS);
 		if (error) {
+			LINUX_CTR2(sys_futex, "CMP_REQUEUE second %p exists %d",
+			    args->uaddr2, error);
 			futex_put(f, NULL);
 
 			LIN_SDT_PROBE1(futex, linux_sys_futex, return, error);

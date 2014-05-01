@@ -133,10 +133,14 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 		em->robust_futexes = NULL;
 		if (flags & LINUX_CLONE_THREAD) {
 			LIN_SDT_PROBE0(emul, proc_init, create_thread);
+			LINUX_CTR1(proc_init, "thread newtd(%d)",
+			    newtd->td_tid);
 
 			em->em_tid = newtd->td_tid;
 		} else {
 			LIN_SDT_PROBE0(emul, proc_init, fork);
+			LINUX_CTR1(proc_init, "fork newtd(%d)",
+			    newtd->td_proc->p_pid);
 
 			em->em_tid = newtd->td_proc->p_pid;
 		}
@@ -144,6 +148,8 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 	} else {
 		/* exec */
 		LIN_SDT_PROBE0(emul, proc_init, exec);
+		LINUX_CTR1(proc_init, "exec newtd(%d)",
+		    td->td_proc->p_pid);
 
 		/* lookup the old one */
 		em = em_find(td);

@@ -115,9 +115,8 @@ void	linux_free_get_char_devices(char *string);
 #define	LINUX_CTRFMT(nm, fmt)	#nm"("fmt")"
 
 #define	LINUX_CTR6(f, m, p1, p2, p3, p4, p5, p6) do {			\
-	if (ldebug(f))							\
-		CTR6(KTR_LINUX, LINUX_CTRFMT(f, m),			\
-		    p1, p2, p3, p4, p5, p6);				\
+	CTR6(KTR_LINUX, LINUX_CTRFMT(f, m),				\
+	    p1, p2, p3, p4, p5, p6);					\
 } while (0)
 
 #define	LINUX_CTR(f)			LINUX_CTR6(f, "", 0, 0, 0, 0, 0, 0)
