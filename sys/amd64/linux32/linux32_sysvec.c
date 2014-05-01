@@ -1042,7 +1042,8 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_shared_page_base = LINUX32_SHAREDPAGE,
 	.sv_shared_page_len = PAGE_SIZE,
 	.sv_schedtail	= linux_schedtail,
-	.sv_thread_detach = linux_thread_detach
+	.sv_thread_detach = linux_thread_detach,
+	.sv_trap	= NULL,
 };
 
 static void

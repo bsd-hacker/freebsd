@@ -124,6 +124,7 @@ static void	linux_set_syscall_retval(struct thread *td, int error);
 static int	linux_fetch_syscall_args(struct thread *td, struct syscall_args *sa);
 static void	linux_exec_setregs(struct thread *td, struct image_params *imgp,
 		    u_long stack);
+static int	linux_vsyscall(struct thread *td, struct trapframe *tf);
 
 static eventhandler_tag linux_exec_tag;
 static eventhandler_tag linux_thread_dtor_tag;
@@ -744,6 +745,58 @@ exec_linux_imgact_try(struct image_params *imgp)
 	return(error);
 }
 
+/*
+ * vsyscall area, temporary hack. XXX
+ *
+ * getcpu missied....
+ */
+#define	LINUX_VSYSCALL_START		(-10UL << 20)
+#define	LINUX_VSYSCALL_SIZE		1024
+#define	LINUX_VSYSCALL_NR		3
+
+const unsigned long linux_vsyscall_vector[] = {
+	LINUX_SYS_gettimeofday,
+	LINUX_SYS_linux_time,
+	-1,
+	-1
+};
+
+static int
+linux_vsyscall(struct thread *td, struct trapframe *tf)
+{
+	int code, error, traced;
+	uint64_t retqaddr, trapaddr;
+
+	error = -1;
+	trapaddr = tf->tf_rip;
+
+	/* check up %rip for LINUX_VSYSCALL AREA */
+	if (__predict_true(trapaddr < LINUX_VSYSCALL_START))
+		return (error);
+	if ((tf->tf_rip & (LINUX_VSYSCALL_SIZE - 1)) != 0)
+		return (error);
+	code = (tf->tf_rip - LINUX_VSYSCALL_START) / LINUX_VSYSCALL_SIZE;
+	if (code > LINUX_VSYSCALL_NR)
+		return (error);
+	/*
+	 * vsyscall called as callq *(%rax), so we must
+	 * use return address from %rsp and also fixup %rsp
+	 */
+	error = copyin((void *)tf->tf_rsp, &retqaddr, sizeof(retqaddr));
+	if (error)
+		return (error);
+
+	tf->tf_rip = retqaddr;
+	tf->tf_rax = linux_vsyscall_vector[code];
+	tf->tf_rsp += 8;
+
+	traced = (tf->tf_flags & PSL_T);
+
+	amd64_syscall(td, traced);
+
+	return (0);
+}
+
 struct sysentvec elf_linux_sysvec = {
 	.sv_size	= LINUX_SYS_MAXSYSCALL,
 	.sv_table	= linux_sysent,
@@ -779,7 +832,8 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_shared_page_base = SHAREDPAGE,
 	.sv_shared_page_len = PAGE_SIZE,
 	.sv_schedtail	= linux_schedtail,
-	.sv_thread_detach = linux_thread_detach
+	.sv_thread_detach = linux_thread_detach,
+	.sv_trap	= linux_vsyscall
 };
 
 static void

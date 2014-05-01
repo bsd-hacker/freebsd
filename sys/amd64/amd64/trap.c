@@ -295,6 +295,10 @@ trap(struct trapframe *frame)
 		if (td->td_ucred != p->p_ucred) 
 			cred_update_thread(td);
 
+		if (*p->p_sysent->sv_trap)
+			if ((*p->p_sysent->sv_trap)(td, frame) == 0)
+				goto userout;
+
 		switch (type) {
 		case T_PRIVINFLT:	/* privileged instruction fault */
 			i = SIGILL;
