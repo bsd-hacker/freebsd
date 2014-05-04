@@ -140,9 +140,11 @@ struct sysentvec {
 #define	SV_AOUT		0x008000
 #define	SV_SHP		0x010000
 
+#define	SV_IS_MASK	0x007f00
 #define	SV_ABI_MASK	0xff
 #define	SV_PROC_FLAG(p, x)	((p)->p_sysent->sv_flags & (x))
 #define	SV_PROC_ABI(p)		((p)->p_sysent->sv_flags & SV_ABI_MASK)
+#define	SV_PROC_IS(p)		((p)->p_sysent->sv_flags & SV_IS_MASK)
 #define	SV_CURPROC_FLAG(x)	SV_PROC_FLAG(curproc, x)
 #define	SV_CURPROC_ABI()	SV_PROC_ABI(curproc)
 /* same as ELFOSABI_XXX, to prevent header pollution */
