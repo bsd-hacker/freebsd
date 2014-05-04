@@ -177,6 +177,11 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 		KASSERT(em != NULL, ("proc_init: emuldata not found in exec case.\n"));
 
 		em->em_tid = td->td_proc->p_pid;
+
+		 /* epoll should be destroyed in a case of exec. */
+		pem = pem_find(td->td_proc);
+		KASSERT(pem != NULL, ("proc_exit: proc emuldata not found.\n"));
+		epoll_destroy_emuldata(pem);
 	}
 
 	em->child_clear_tid = NULL;
