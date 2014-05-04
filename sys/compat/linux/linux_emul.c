@@ -58,6 +58,7 @@ __FBSDID("$FreeBSD$");
 
 #include <compat/linux/linux_dtrace.h>
 #include <compat/linux/linux_emul.h>
+#include <compat/linux/linux_event.h>
 #include <compat/linux/linux_futex.h>
 #include <compat/linux/linux_misc.h>
 #include <compat/linux/linux_util.h>
@@ -211,6 +212,8 @@ linux_common_execve(struct thread *td, struct image_args *eargs)
 		pem = pem_find(p);
 		KASSERT(pem != NULL, ("proc_exit: proc emuldata not found.\n"));
 		p->p_emuldata = NULL;
+
+		epoll_destroy_emuldata(pem);
 
 		sx_destroy(&pem->pem_sx);
 		free(pem, M_TEMP);
@@ -394,6 +397,8 @@ linux_proc_exit(void *arg, struct proc *p)
 	pem = pem_find(p);
 	KASSERT(pem != NULL, ("proc_exit: proc emuldata not found.\n"));
 	p->p_emuldata = NULL;
+
+	epoll_destroy_emuldata(pem);
 
 	sx_destroy(&pem->pem_sx);
 	free(pem, M_TEMP);

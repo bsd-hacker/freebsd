@@ -9,7 +9,7 @@ SRCS=	linux_fork.c linux_dummy.c linux_emul.c linux_file.c \
 	linux_socket.c linux_stats.c linux_sysctl.c linux_sysent.c \
 	linux_sysvec.c linux_util.c linux_time.c linux_vdso.c\
 	opt_inet6.h opt_compat.h opt_kdtrace.h opt_posix.h opt_usb.h \
-	vnode_if.h device_if.h bus_if.h assym.s
+	vnode_if.h device_if.h bus_if.h assym.s linux_event.c
 		
 # XXX: for assym.s
 SRCS+=  opt_kstack_pages.h opt_nfs.h opt_apic.h opt_hwpmc_hooks.h

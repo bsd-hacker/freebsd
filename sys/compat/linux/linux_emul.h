@@ -60,9 +60,12 @@ void	linux_thread_detach(struct thread *);
 /* process emuldata flags */
 #define	LINUX_XDEPR_REQUEUEOP	0x00000001	/* uses deprecated
 						   futex REQUEUE op*/
+#define	LINUX_XUNSUP_EPOLL	0x00000002	/* unsupported epoll events */
+
 struct linux_pemuldata {
 	uint32_t	flags;		/* different emuldata flags */
 	struct sx	pem_sx;		/* lock for this struct */
+	void		*epoll;		/* epoll data */
 };
 
 #define	LINUX_PEM_XLOCK(p)	sx_xlock(&(p)->pem_sx)
