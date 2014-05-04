@@ -100,7 +100,7 @@ LIN_SDT_PROBE_DEFINE1(emul, linux_set_tid_address, entry, "int *");
 LIN_SDT_PROBE_DEFINE0(emul, linux_set_tid_address, return);
 
 /*
- * This returns reference to the emuldata entry (if found)
+ * This returns reference to the thread emuldata entry (if found)
  *
  * Hold PROC_LOCK when referencing emuldata from other threads.
  */
@@ -118,10 +118,27 @@ em_find(struct thread *td)
 	return (em);
 }
 
+/*
+ * This returns reference to the proc pemuldata entry (if found)
+ *
+ * Hold PROC_LOCK when referencing proc pemuldata from other threads.
+ * Hold LINUX_PEM_LOCK wher referencing pemuldata members.
+ */
+struct linux_pemuldata *
+pem_find(struct proc *p)
+{
+	struct linux_pemuldata *pem;
+
+	pem = p->p_emuldata;
+
+	return (pem);
+}
+
 void
 linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 {
 	struct linux_emuldata *em;
+	struct linux_pemuldata *pem;
 
 	LIN_SDT_PROBE3(emul, proc_init, entry, td, newtd, flags);
 
@@ -129,7 +146,6 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 		/* non-exec call */
 		em = malloc(sizeof(*em), M_TEMP, M_WAITOK | M_ZERO);
 		em->pdeath_signal = 0;
-		em->flags = 0;
 		em->robust_futexes = NULL;
 		if (flags & LINUX_CLONE_THREAD) {
 			LIN_SDT_PROBE0(emul, proc_init, create_thread);
@@ -143,6 +159,10 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 			    newtd->td_proc->p_pid);
 
 			em->em_tid = newtd->td_proc->p_pid;
+
+			pem = malloc(sizeof(*pem), M_TEMP, M_WAITOK | M_ZERO);
+			sx_init(&pem->pem_sx, "lpemlk");
+			newtd->td_proc->p_emuldata = pem;
 		}
 		newtd->td_emuldata = em;
 	} else {
@@ -167,6 +187,7 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 int 
 linux_common_execve(struct thread *td, struct image_args *eargs)
 {
+	struct linux_pemuldata *pem;
 	struct linux_emuldata *em;
 	struct proc *p;
 	int error;
@@ -178,21 +199,25 @@ linux_common_execve(struct thread *td, struct image_args *eargs)
 	p = td->td_proc;
 	/*
 	 * In a case of transition from Linux binary execing to
-	 * FreeBSD binary we destroy linux emuldata thread entry.
+	 * FreeBSD binary we destroy linux emuldata thread & proc entries.
 	 */
 	if (SV_CURPROC_ABI() != SV_ABI_LINUX) {
 		PROC_LOCK(p);
 		em = em_find(td);
-		KASSERT(em != NULL, ("proc_exec: emuldata not found.\n"));
+		KASSERT(em != NULL, ("proc_exec: thread emuldata not found.\n"));
 		td->td_emuldata = NULL;
 		PROC_UNLOCK(p);
 
+		pem = pem_find(p);
+		KASSERT(pem != NULL, ("proc_exit: proc emuldata not found.\n"));
+		p->p_emuldata = NULL;
+
+		sx_destroy(&pem->pem_sx);
+		free(pem, M_TEMP);
 		free(em, M_TEMP);
 	}
 	return (0);
 }
-
-
 
 void 
 linux_proc_exec(void *arg __unused, struct proc *p, struct image_params *imgp)
@@ -227,7 +252,7 @@ linux_thread_detach(struct thread *td)
 	LIN_SDT_PROBE1(emul, linux_thread_detach, entry, td);
 
 	em = em_find(td);
-	KASSERT(em != NULL, ("thread_detach: emuldata not found.\n"));
+	KASSERT(em != NULL, ("thread_detach: thread emuldata not found.\n"));
 
 	LINUX_CTR1(exit, "thread detach(%d)", em->em_tid);
 
@@ -297,7 +322,7 @@ linux_schedtail(struct thread *td)
 	p = td->td_proc;
 
 	em = em_find(td);
-	KASSERT(em != NULL, ("linux_schedtail: emuldata not found.\n"));
+	KASSERT(em != NULL, ("linux_schedtail: thread emuldata not found.\n"));
 	child_set_tid = em->child_set_tid;
 
 	if (child_set_tid != NULL) {
@@ -336,3 +361,20 @@ linux_set_tid_address(struct thread *td, struct linux_set_tid_address_args *args
 	LIN_SDT_PROBE0(emul, linux_set_tid_address, return);
 	return (0);
 }
+
+void
+linux_proc_exit(void *arg __unused, struct proc *p)
+{
+	struct linux_pemuldata *pem;
+
+	if (__predict_true(SV_PROC_ABI(p) != SV_ABI_LINUX))
+		return;
+
+	pem = pem_find(p);
+	KASSERT(pem != NULL, ("proc_exit: proc emuldata not found.\n"));
+	p->p_emuldata = NULL;
+
+	sx_destroy(&pem->pem_sx);
+	free(pem, M_TEMP);
+}
+

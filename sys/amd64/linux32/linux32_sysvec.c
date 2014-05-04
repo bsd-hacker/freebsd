@@ -135,6 +135,7 @@ static void	linux_vdso_deinstall(void *param);
 
 static eventhandler_tag linux_exec_tag;
 static eventhandler_tag linux_thread_dtor_tag;
+static eventhandler_tag	linux_exit_tag;
 
 /*
  * Linux syscalls return negative errno's, we do positive and map them
@@ -1169,6 +1170,8 @@ linux_elf_modevent(module_t mod, int type, void *data)
 				linux_device_register_handler(*ldhp);
 			LIST_INIT(&futex_list);
 			mtx_init(&futex_mtx, "ftllk", NULL, MTX_DEF);
+			linux_exit_tag = EVENTHANDLER_REGISTER(process_exit,
+			    linux_proc_exit, NULL, 1000);
 			linux_exec_tag = EVENTHANDLER_REGISTER(process_exec,
 			    linux_proc_exec, NULL, 1000);
 			linux_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
@@ -1197,6 +1200,7 @@ linux_elf_modevent(module_t mod, int type, void *data)
 			SET_FOREACH(ldhp, linux_device_handler_set)
 				linux_device_unregister_handler(*ldhp);
 			mtx_destroy(&futex_mtx);
+			EVENTHANDLER_DEREGISTER(process_exit, linux_exit_tag);
 			EVENTHANDLER_DEREGISTER(process_exec, linux_exec_tag);
 			EVENTHANDLER_DEREGISTER(thread_dtor, linux_thread_dtor_tag);
 			linux_osd_jail_deregister();
