@@ -1171,9 +1171,9 @@ linux_elf_modevent(module_t mod, int type, void *data)
 			LIST_INIT(&futex_list);
 			mtx_init(&futex_mtx, "ftllk", NULL, MTX_DEF);
 			linux_exit_tag = EVENTHANDLER_REGISTER(process_exit,
-			    linux_proc_exit, NULL, 1000);
+			    linux_proc_exit, (void *) (long) elf_linux_sysvec.sv_flags, 1000);
 			linux_exec_tag = EVENTHANDLER_REGISTER(process_exec,
-			    linux_proc_exec, NULL, 1000);
+			    linux_proc_exec, (void *) (long)elf_linux_sysvec.sv_flags, 1000);
 			linux_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
 			    linux_thread_dtor, NULL, EVENTHANDLER_PRI_ANY);
 			linux_osd_jail_register();

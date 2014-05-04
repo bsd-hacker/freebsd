@@ -220,9 +220,10 @@ linux_common_execve(struct thread *td, struct image_args *eargs)
 }
 
 void 
-linux_proc_exec(void *arg __unused, struct proc *p, struct image_params *imgp)
+linux_proc_exec(void *arg, struct proc *p, struct image_params *imgp)
 {
 	struct thread *td = curthread;
+	int sv_flags;
 
 	/*
 	 * In a case of execing to linux binary we create linux
@@ -230,6 +231,16 @@ linux_proc_exec(void *arg __unused, struct proc *p, struct image_params *imgp)
 	 */
 	if (__predict_false((imgp->sysent->sv_flags & SV_ABI_MASK) ==
 	    SV_ABI_LINUX)) {
+
+		/*
+		 * We can have both 64 & 32 bit Linuxulator running,
+		 * so eventhandler is called twice for us. To prevent this
+		 * we will check that proc is handled by corresponding module.
+		 */
+		sv_flags = (int) arg;
+		if ((sv_flags & SV_IS_MASK) != SV_PROC_IS(p))
+			return;
+
 		LIN_SDT_PROBE2(emul, proc_exec, entry, p, imgp);
 		if (SV_PROC_ABI(p) == SV_ABI_LINUX)
 			linux_proc_init(td, NULL, 0);
@@ -363,11 +374,21 @@ linux_set_tid_address(struct thread *td, struct linux_set_tid_address_args *args
 }
 
 void
-linux_proc_exit(void *arg __unused, struct proc *p)
+linux_proc_exit(void *arg, struct proc *p)
 {
 	struct linux_pemuldata *pem;
+	int sv_flags;
 
 	if (__predict_true(SV_PROC_ABI(p) != SV_ABI_LINUX))
+		return;
+
+	/*
+	 * We can have both 64 & 32 bit Linuxulator running,
+	 * so eventhandler is called twice for us. To prevent this
+	 * we will check that proc is handled by corresponding module.
+	 */
+	sv_flags = (int) arg;
+	if ((sv_flags & SV_IS_MASK) != SV_PROC_IS(p))
 		return;
 
 	pem = pem_find(p);
