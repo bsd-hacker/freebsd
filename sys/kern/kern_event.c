@@ -701,6 +701,13 @@ filt_usertouch(struct knote *kn, struct kevent *kev, u_long type)
 int
 sys_kqueue(struct thread *td, struct kqueue_args *uap)
 {
+
+	return (kern_kqueue(td, 0));
+}
+
+int
+kern_kqueue(struct thread *td, int flags)
+{
 	struct filedesc *fdp;
 	struct kqueue *kq;
 	struct file *fp;
@@ -721,7 +728,7 @@ sys_kqueue(struct thread *td, struct kqueue_args *uap)
 	PROC_UNLOCK(p);
 
 	fdp = p->p_fd;
-	error = falloc(td, &fp, &fd, 0);
+	error = falloc(td, &fp, &fd, flags);
 	if (error)
 		goto done2;
 
