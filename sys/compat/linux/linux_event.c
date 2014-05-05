@@ -339,9 +339,6 @@ linux_epoll_ctl(struct thread *td, struct linux_epoll_ctl_args *args)
 	int nchanges = 0;
 	int error;
 
-	if (args->epfd == args->fd)
-		return (EINVAL);
-
 	if (args->op != LINUX_EPOLL_CTL_DEL) {
 		error = copyin(args->event, &le, sizeof(le));
 		if (error != 0)
@@ -358,6 +355,12 @@ linux_epoll_ctl(struct thread *td, struct linux_epoll_ctl_args *args)
 	error = fget(td, args->fd, &rights, &fp);
 	if (error != 0)
 		goto leave1;
+
+	/* Linux disallows spying on himself */
+	if (epfp == fp) {
+		error = EINVAL;
+		goto leave0;
+	}
 
 	ciargs.changelist = kev;
 
