@@ -757,19 +757,19 @@ struct linux_timer_delete_args {
 	register_t dummy;
 };
 struct linux_clock_settime_args {
-	char which_l_[PADL_(clockid_t)]; clockid_t which; char which_r_[PADR_(clockid_t)];
+	char which_l_[PADL_(l_clockid_t)]; l_clockid_t which; char which_r_[PADR_(l_clockid_t)];
 	char tp_l_[PADL_(struct l_timespec *)]; struct l_timespec * tp; char tp_r_[PADR_(struct l_timespec *)];
 };
 struct linux_clock_gettime_args {
-	char which_l_[PADL_(clockid_t)]; clockid_t which; char which_r_[PADR_(clockid_t)];
+	char which_l_[PADL_(l_clockid_t)]; l_clockid_t which; char which_r_[PADR_(l_clockid_t)];
 	char tp_l_[PADL_(struct l_timespec *)]; struct l_timespec * tp; char tp_r_[PADR_(struct l_timespec *)];
 };
 struct linux_clock_getres_args {
-	char which_l_[PADL_(clockid_t)]; clockid_t which; char which_r_[PADR_(clockid_t)];
+	char which_l_[PADL_(l_clockid_t)]; l_clockid_t which; char which_r_[PADR_(l_clockid_t)];
 	char tp_l_[PADL_(struct l_timespec *)]; struct l_timespec * tp; char tp_r_[PADR_(struct l_timespec *)];
 };
 struct linux_clock_nanosleep_args {
-	char which_l_[PADL_(clockid_t)]; clockid_t which; char which_r_[PADR_(clockid_t)];
+	char which_l_[PADL_(l_clockid_t)]; l_clockid_t which; char which_r_[PADR_(l_clockid_t)];
 	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
 	char rqtp_l_[PADL_(struct l_timespec *)]; struct l_timespec * rqtp; char rqtp_r_[PADR_(struct l_timespec *)];
 	char rmtp_l_[PADL_(struct l_timespec *)]; struct l_timespec * rmtp; char rmtp_r_[PADR_(struct l_timespec *)];
