@@ -442,10 +442,10 @@
 261	AUE_NULL	STD	{ int linux_timer_gettime(void); }
 262	AUE_NULL	STD	{ int linux_timer_getoverrun(void); }
 263	AUE_NULL	STD	{ int linux_timer_delete(void); }
-264	AUE_CLOCK_SETTIME	STD	{ int linux_clock_settime(clockid_t which, struct l_timespec *tp); }
-265	AUE_NULL	STD	{ int linux_clock_gettime(clockid_t which, struct l_timespec *tp); }
-266	AUE_NULL	STD	{ int linux_clock_getres(clockid_t which, struct l_timespec *tp); }
-267	AUE_NULL	STD	{ int linux_clock_nanosleep(clockid_t which, int flags, \
+264	AUE_CLOCK_SETTIME	STD	{ int linux_clock_settime(l_clockid_t which, struct l_timespec *tp); }
+265	AUE_NULL	STD	{ int linux_clock_gettime(l_clockid_t which, struct l_timespec *tp); }
+266	AUE_NULL	STD	{ int linux_clock_getres(l_clockid_t which, struct l_timespec *tp); }
+267	AUE_NULL	STD	{ int linux_clock_nanosleep(l_clockid_t which, int flags, \
 					struct l_timespec *rqtp, struct l_timespec *rmtp); }
 268	AUE_STATFS	STD	{ int linux_statfs64(char *path, size_t bufsize, struct l_statfs64_buf *buf); }
 269	AUE_FSTATFS	STD	{ int linux_fstatfs64(void); }
