@@ -345,14 +345,13 @@ linux_epoll_ctl(struct thread *td, struct linux_epoll_ctl_args *args)
 			return (error);
 	}
 
-	cap_rights_init(&rights, CAP_POLL_EVENT);
-
-	error = fget(td, args->epfd, &rights, &epfp);
+	error = fget(td, args->epfd,
+	    cap_rights_init(&rights, CAP_KQUEUE_CHANGE), &epfp);
 	if (error != 0)
 		return (error);
 
 	 /* Protect user data vector from incorrectly supplied fd. */
-	error = fget(td, args->fd, &rights, &fp);
+	error = fget(td, args->fd, cap_rights_init(&rights, CAP_POLL_EVENT), &fp);
 	if (error != 0)
 		goto leave1;
 
@@ -390,13 +389,14 @@ linux_epoll_ctl(struct thread *td, struct linux_epoll_ctl_args *args)
 		goto leave0;
 	}
 
-	error = epoll_to_kevent(td, epfp, args->fd, &le, &kev_flags, kev, &nchanges);
+	error = epoll_to_kevent(td, epfp, args->fd, &le, &kev_flags,
+	    kev, &nchanges);
 	if (error)
 		goto leave0;
 
 	epoll_fd_install(td, args->fd, le.data);
 
-	error = kern_kevent(td, args->epfd, nchanges, 0, &k_ops, NULL);
+	error = kern_kevent_fp(td, epfp, nchanges, 0, &k_ops, NULL);
 
 leave0:
 	fdrop(fp, td);
@@ -424,7 +424,8 @@ linux_epoll_wait(struct thread *td, struct linux_epoll_wait_args *args)
 	if (args->maxevents <= 0 || args->maxevents > LINUX_MAX_EVENTS)
 		return (EINVAL);
 
-	error = fget(td, args->epfd, cap_rights_init(&rights, CAP_POLL_EVENT), &epfp);
+	error = fget(td, args->epfd,
+	    cap_rights_init(&rights, CAP_KQUEUE_EVENT), &epfp);
 	if (error != 0)
 		return (error);
 
@@ -446,7 +447,7 @@ linux_epoll_wait(struct thread *td, struct linux_epoll_wait_args *args)
 		tsp = NULL;
 	}
 
-	error = kern_kevent(td, args->epfd, 0, args->maxevents, &k_ops, tsp);
+	error = kern_kevent_fp(td, epfp, 0, args->maxevents, &k_ops, tsp);
 	if (error == 0 && coargs.error != 0)
 		error = coargs.error;
 
