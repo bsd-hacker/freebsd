@@ -474,8 +474,8 @@ epoll_delete_event(struct thread *td, struct file *epfp, int fd, int filter)
 
 	ciargs.changelist = &kev;
 	EV_SET(&kev, fd, filter, EV_DELETE | EV_DISABLE, 0, 0, 0);
-	
-	error = kern_kevent(td, fd, 1, 0, &k_ops, NULL);
+
+	error = kern_kevent_fp(td, epfp, 1, 0, &k_ops, NULL);
 
 	/*
 	 * here we ignore ENONT, because we don't keep track of events here
