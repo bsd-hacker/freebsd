@@ -286,7 +286,7 @@ epoll_kev_copyout(void *arg, struct kevent *kevp, int count)
 		fd = kevp[i].ident;
 		KASSERT(fd < emd->fdc, ("epoll user data vector"
 						    " is too small.\n"));
-		eep->data = emd->udata[fd];
+		eep[i].data = emd->udata[fd];
 	}
 	LINUX_PEM_SUNLOCK(pem);
 
