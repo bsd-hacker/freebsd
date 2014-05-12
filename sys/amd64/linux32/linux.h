@@ -95,6 +95,7 @@ typedef l_ushort	l_uid16_t;
 typedef l_int		l_timer_t;
 typedef l_int		l_mqd_t;
 typedef l_int		l_clockid_t;
+typedef	l_ulong		l_fd_mask;
 
 typedef struct {
 	l_int		val[2];
