@@ -621,6 +621,10 @@ MAIN:{
     if ($cmds{'revert'} || $cmds{'version'} || $cmds{'update'}) {
 	$svncmd = [grep({ -x } @svncmds)]->[0]
 	    or error("unable to locate svn binary");
+	if (-d "$srcdir/.svn") {
+	    spawn($svncmd, "upgrade", $srcdir);
+	    spawn($svncmd, "cleanup", $srcdir);
+	}
     }
 
     # Revert sources
@@ -629,8 +633,6 @@ MAIN:{
 	push(@svnargs, "--quiet")
 	    unless ($verbose);
 	logstage("reverting $srcdir");
-	spawn($svncmd, @svnargs, "upgrade", $srcdir);
-	spawn($svncmd, @svnargs, "cleanup", $srcdir);
 	spawn($svncmd, @svnargs, "revert", "-R", $srcdir)
 	    or error("unable to revert the source tree");
 	# remove leftovers...  ugly!
@@ -674,8 +676,6 @@ MAIN:{
 	cd("$sandbox");
 	for (0..$svnattempts) {
 	    if (-d "$srcdir/.svn") {
-		spawn($svncmd, "upgrade", $srcdir);
-		spawn($svncmd, "cleanup", $srcdir);
 		last if spawn($svncmd, @svnargs, "update", $srcdir);
 	    } else {
 		last if spawn($svncmd, @svnargs, "checkout", $svnbase, $srcdir);
@@ -685,6 +685,7 @@ MAIN:{
 	    my $delay = 30 * ($_ + 1);
 	    warning("sleeping $delay s and retrying...");
 	    sleep($delay);
+	    spawn($svncmd, "cleanup", $srcdir);
 	}
     }
 
