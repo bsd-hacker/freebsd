@@ -34,7 +34,7 @@ use POSIX;
 use Getopt::Long;
 use Scalar::Util qw(tainted);
 
-my $VERSION	= "2.21";
+my $VERSION	= "2.22";
 my $COPYRIGHT	= "Copyright (c) 2003-2014 Dag-Erling Smørgrav. " .
 		  "All rights reserved.";
 
@@ -65,6 +65,7 @@ my %cmds = (
     'cleanobj'	=> 0, 'precleanobj'	=> 0, 'postcleanobj'	=> 0,
     'cleaninst'	=> 0, 'precleaninst'	=> 0, 'postcleaninst'	=> 0,
     'cleanobj'	=> 0, 'precleanobj'	=> 0, 'postcleanobj'	=> 0,
+    'revert'	=> 0,
     'update'	=> 0,
     'patch'	=> 0,
     'world'	=> 0,
@@ -615,45 +616,75 @@ MAIN:{
     do_clean(); # no prefix for backward compatibility
     do_clean('pre');
 
+    # Locate svn
+    my $svncmd = '/usr/bin/false';
+    if ($cmds{'revert'} || $cmds{'version'} || $cmds{'update'}) {
+	$svncmd = [grep({ -x } @svncmds)]->[0]
+	    or error("unable to locate svn binary");
+    }
+
+    # Revert sources
+    if ($cmds{'revert'} && -d "$srcdir/.svn") {
+	my @svnargs;
+	push(@svnargs, "--quiet")
+	    unless ($verbose);
+	logstage("reverting $srcdir");
+	spawn($svncmd, @svnargs, "upgrade", $srcdir);
+	spawn($svncmd, @svnargs, "cleanup", $srcdir);
+	spawn($svncmd, @svnargs, "revert", "-R", $srcdir)
+	    or error("unable to revert the source tree");
+	# remove leftovers...  ugly!
+	open(my $pipe, '-|', $svncmd, "stat", "--no-ignore", $srcdir)
+	    or error("unable to stat source tree");
+	while (<$pipe>) {
+	    m/^[I?]\s+(\S.*)$/ or next;
+	    if (-d $1) {
+		remove_dir($1)
+		    or error("unable to remove $1");
+	    } elsif (-f $1 || -l $1) {
+		unlink($1)
+		    or error("unable to remove $1");
+	    } else {
+		warning("ignoring $1");
+	    }
+	}
+	close($pipe);
+    }
+
     # Check out new source tree
     if ($cmds{'update'}) {
-	if (defined($svnbase)) {
-	    my @svnargs;
-	    push(@svnargs, "--quiet")
-		unless ($verbose);
-	    # ugly-bugly magic required because CVS to SVN conversion
-	    # smashed branch names
-	    $svnbase =~ s/\/$//;
-	    if ($branch eq 'HEAD') {
-		$svnbase .= '/head';
-	    } elsif ($branch =~ m/^RELENG_(\d+)_(\d+)$/) {
-		$svnbase .= "/releng/$1.$2";
-	    } elsif ($branch =~ m/^RELENG_(\d+)$/) {
-		$svnbase .= "/stable/$1";
-	    } else {
-		error("unrecognized branch: $branch");
-	    }
-	    logstage("checking out $srcdir from $svnbase");
-	    my $svncmd = [grep({ -x } @svncmds)]->[0]
-		or error("unable to locate svn binary");
-	    cd("$sandbox");
+	error("no svn base URL defined")
+	    unless defined($svnbase);
+	my @svnargs;
+	push(@svnargs, "--quiet")
+	    unless ($verbose);
+	# ugly-bugly magic required because CVS to SVN conversion
+	# smashed branch names
+	$svnbase =~ s/\/$//;
+	if ($branch eq 'HEAD') {
+	    $svnbase .= '/head';
+	} elsif ($branch =~ m/^RELENG_(\d+)_(\d+)$/) {
+	    $svnbase .= "/releng/$1.$2";
+	} elsif ($branch =~ m/^RELENG_(\d+)$/) {
+	    $svnbase .= "/stable/$1";
+	} else {
+	    error("unrecognized branch: $branch");
+	}
+	logstage("checking out $srcdir from $svnbase");
+	cd("$sandbox");
+	for (0..$svnattempts) {
 	    if (-d "$srcdir/.svn") {
 		spawn($svncmd, "upgrade", $srcdir);
 		spawn($svncmd, "cleanup", $srcdir);
-		push(@svnargs, "update", $srcdir);
+		last if spawn($svncmd, @svnargs, "update", $srcdir);
 	    } else {
-		push(@svnargs, "checkout", $svnbase, $srcdir);
+		last if spawn($svncmd, @svnargs, "checkout", $svnbase, $srcdir);
 	    }
-	    for (0..$svnattempts) {
-		last if spawn($svncmd, @svnargs);
-		error("unable to check out the source tree")
-		    if ($_ == $svnattempts);
-		my $delay = 30 * ($_ + 1);
-		warning("sleeping $delay s and retrying...");
-		sleep($delay);
-	    }
-	} else {
-	    error("no svn base URL defined");
+	    error("unable to check out the source tree")
+		if ($_ == $svnattempts);
+	    my $delay = 30 * ($_ + 1);
+	    warning("sleeping $delay s and retrying...");
+	    sleep($delay);
 	}
     }
 
@@ -682,8 +713,6 @@ MAIN:{
     # Print source tree version information
     if ($cmds{'version'}) {
 	if (defined($svnbase)) {
-	    my $svncmd = [grep({ -x } @svncmds)]->[0]
-		or error("unable to locate svn binary");
 	    my $svnversioncmd = [grep({ -x } @svnversioncmds)]->[0]
 		or error("unable to locate svnversion binary");
 	    if ($verbose) {

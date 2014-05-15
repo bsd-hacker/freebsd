@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd March 24, 2014
+.Dd May 15, 2014
 .Dt TINDERBOX 1
 .Os
 .Sh NAME
@@ -194,12 +194,11 @@ Delete the object tree at the start of each job.
 Delete the installation tree at the start of each job.
 .It Cm precleanroot
 Delete the release chroot tree at the start of each job.
+.It Cm revert
+Revert the source tree to a clean state.
 .It Cm update
-Update the sources using
+Update the source tree using
 .Xr svn 1 .
-This is highly recommended, for obvious reasons, if the
-.Cm clean
-command is specified.
 .It Cm patch
 Apply the patch specified with the
 .Fl -patch
@@ -207,6 +206,9 @@ option to the source tree.
 If the specified patch file does not exist, the
 .Cm patch
 command will fail gracefully.
+.It Cm version
+After updating and patching the source tree but before doing anything
+else, log information about the current state of the source tree.
 .It Cm world
 Build the world.
 .It Cm lint
@@ -270,9 +272,6 @@ but at the end of each job.
 As
 .Cm precleanroot ,
 but at the end of each job.
-.It Cm version
-After updating and patching the source tree but before doing anything
-else, log information about the current state of the source tree.
 .El
 .Pp
 The commands are executed in the order in which they are listed above,
