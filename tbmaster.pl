@@ -264,7 +264,7 @@ sub history($$$) {
     $history .= $success ? "OK\n" : "FAIL\n";
 
     my $fn = expand('LOGDIR') . "/history";
-    if (open(my $fh, '>>', $1)) {
+    if (open(my $fh, '>>', $fn)) {
 	print($fh $history);
 	close($fh);
     } else {
