@@ -621,10 +621,12 @@ MAIN:{
     if ($cmds{'revert'} || $cmds{'version'} || $cmds{'update'}) {
 	$svncmd = [grep({ -x } @svncmds)]->[0]
 	    or error("unable to locate svn binary");
-	if (-d "$srcdir/.svn") {
-	    spawn($svncmd, "upgrade", $srcdir);
-	    spawn($svncmd, "cleanup", $srcdir);
-	}
+    }
+
+    # Upgrade and unlock the working copy
+    if (($cmds{'revert'} || $cmds{'update'}) && -d "$srcdir/.svn") {
+	spawn($svncmd, "upgrade", $srcdir);
+	spawn($svncmd, "cleanup", $srcdir);
     }
 
     # Revert sources
