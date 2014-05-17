@@ -991,7 +991,7 @@ struct linux_timerfd_args {
 	register_t dummy;
 };
 struct linux_eventfd_args {
-	register_t dummy;
+	char initval_l_[PADL_(l_uint)]; l_uint initval; char initval_r_[PADR_(l_uint)];
 };
 struct linux_fallocate_args {
 	register_t dummy;
@@ -1012,7 +1012,8 @@ struct linux_signalfd4_args {
 	register_t dummy;
 };
 struct linux_eventfd2_args {
-	register_t dummy;
+	char initval_l_[PADL_(l_uint)]; l_uint initval; char initval_r_[PADR_(l_uint)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_epoll_create1_args {
 	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
