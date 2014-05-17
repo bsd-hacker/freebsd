@@ -193,7 +193,9 @@ cc -o tkill -Wall -Wextra tkill.c || exit
 rm -f waitthread.c tkill.c
 
 rm -f gdbfifo gdbout pstat /tmp/waitthread
+ps | grep -v grep | grep waitthread | awk '{print $1}' | xargs kill
 mkfifo gdbfifo
+trap "rm -f gdbfifo" 0
 sleep 300 > gdbfifo &	# Keep the fifo open
 fifopid=$!
 
@@ -203,6 +205,7 @@ echo "run"        > gdbfifo
 sleep .2
 
 pid=`ps | grep -v grep | grep "waitthread 8" | sed 's/^ *//;s/ .*//'`
+[ -z "$pid" ] && echo "Could not find pid" && exit 1
 procstat -t $pid > pstat
 
 t1=`grep fifo  pstat | awk '{print $2}'`
@@ -216,8 +219,6 @@ echo "quit" > gdbfifo
 
 kill $fifopid
 
-if grep -q "signal SIGINT" gdbout; then
-	rm -f gdbfifo gdbout pstat waitthread tkill /tmp/waitthread
-else
-	echo FAIL
-fi
+grep -q "signal SIGINT" gdbout || echo FAIL
+rm -f gdbfifo gdbout pstat waitthread tkill /tmp/waitthread
+ps | grep -v grep | grep waitthread | awk '{print $1}' | xargs kill
