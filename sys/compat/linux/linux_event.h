@@ -55,6 +55,8 @@
 #define	LINUX_EPOLL_CTL_DEL	2
 #define	LINUX_EPOLL_CTL_MOD	3
 
+#define	LINUX_EFD_SEMAPHORE	(1 << 0)
+
 void	epoll_destroy_emuldata(struct linux_pemuldata *pem);
 
 #endif	/* !_LINUX_EVENT_H_ */
