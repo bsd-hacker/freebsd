@@ -123,6 +123,7 @@ int
 main(void)
 {
 	struct passwd *pw;
+	pid_t pid;
 	pthread_t cp[50];
 	int i, j;
 
@@ -146,7 +147,7 @@ main(void)
 
 	alarm(180);
 	for (i = 0; i < 8000; i++) {
-		if (fork() == 0) {
+		if ((pid = fork()) == 0) {
 			arc4random_stir();
 			for (j = 0; j < N; j++)
 				r[j] = arc4random();
@@ -158,6 +159,8 @@ main(void)
 				pthread_join(cp[j], NULL);
 			_exit(0);
 		}
+		if (pid == -1)
+			err(1, "fork()");
 		wait(NULL);
 	}
 
