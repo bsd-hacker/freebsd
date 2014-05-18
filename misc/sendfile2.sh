@@ -50,6 +50,7 @@ md1=`md5 large`
 nc -l 7000 > lf &
 sleep 0.1
 /tmp/sendfile2
+kill $! 2>/dev/null
 
 md2=`md5 large`
 [ "$md1" != "$md2" ] && printf "%s\n%s\n" "$md1" "$md2"
