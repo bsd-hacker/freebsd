@@ -1,3 +1,4 @@
+[%-# $FreeBSD$ -%]
 [% PROCESS lib/html_top %]
 
 <form class="loginform" method="POST" action="[% c.uri_for('/login') | html %]">

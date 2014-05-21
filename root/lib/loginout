@@ -1,3 +1,4 @@
+[%-# $FreeBSD$ -%]
 <div class="loginout">
   <div class="datetime">[% PROCESS lib/datetime dt=now %]</div>
   [% IF user %]

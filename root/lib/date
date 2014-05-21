@@ -1,1 +1,2 @@
-[% dt.day_name %], [% dt.day %] [% dt.month_name %] [% dt.year %]
+[%-# $FreeBSD$ -%]
+[%- dt.day_name %], [% dt.day %] [% dt.month_name %] [% dt.year -%]

@@ -1,1 +1,2 @@
-[% dt.hms %] UTC
+[%-# $FreeBSD$ -%]
+[%- dt.hms %] UTC[% -%]

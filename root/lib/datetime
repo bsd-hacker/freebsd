@@ -1,1 +1,2 @@
-[% PROCESS lib/date%] at [% PROCESS lib/time %]
+[%-# $FreeBSD$ -%]
+[%- PROCESS lib/date%] at [% PROCESS lib/time -%]
