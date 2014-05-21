@@ -210,6 +210,7 @@ __PACKAGE__->has_many(
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:40qaS/evx1U+HUHTXygyFQ
 
 use Crypt::SaltedHash;
+use Digest::MD5 qw(md5_hex);
 
 #
 # Change the password.
