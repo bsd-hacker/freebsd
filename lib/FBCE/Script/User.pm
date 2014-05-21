@@ -1,14 +1,11 @@
+use utf8;
 package FBCE::Script::User;
 
 use Moose;
-use MooseX::Types::Common::Numeric qw/PositiveInt/;
-use MooseX::Types::Moose qw/Str Bool Int/;
+use MooseX::Types::Moose qw/Bool Str/;
 use FBCE;
 use Archive::Tar;
-use LWP::UserAgent;
 use namespace::autoclean;
-
-use Data::Dumper;
 
 with 'Catalyst::ScriptRole';
 
@@ -28,81 +25,113 @@ has dryrun => (
     documentation => q{Dry run},
 );
 
-# XXX should be traits
-our %lwp_options = (
-    timeout => 10,
-    env_proxy => 1,
-    keep_alive => 1,
+has tarball => (
+    traits	  => [qw(Getopt)],
+    cmd_aliases	  => 't',
+    isa		  => Str,
+    is            => 'ro',
+    documentation => q{Name of password tarball},
+    default       => 'fbce-passwords.tgz',
 );
 
-# Survey URLs for various repos
-sub survey_url($) { "http://people.freebsd.org/~peter/$_[0].total.txt" }
-
-# Name of password tarball
-our $pwtar = 'fbce-passwords.tgz';
+has file => (
+    traits	  => [qw(Getopt)],
+    cmd_aliases	  => 'f',
+    isa		  => Str,
+    is            => 'ro',
+    documentation => q{Name of password file},
+    default       => 'fbce-password',
+);
 
 #
-# Download and parse Peter Wemm's survey for a specific repo
+# Read a list of users.
 #
-sub retrieve_commit_data($$) {
-    my ($self, $repo) = @_;
+sub _read_users($@) {
+    my ($self, @argv) = @_;
 
-    # create new user agent unless one already exists
-    $self->{user_agent} //= LWP::UserAgent->new(%lwp_options);
-    my $url = survey_url($repo);
-    my $req = HTTP::Request->new(GET => $url);
-    warn("Retrieving $url...\n")
-	if $self->debug;
-    my $res = $self->{user_agent}->request($req);
-    if (!$res->is_success()) {
-	die("$url: " . $res->status_line() . "\n");
-    }
-    my $survey = $res->decoded_content();
-    foreach (split('\n', $survey)) {
-	#
-	# Each line looks like this:
-	#
-	# 20120430 ok         84    95 des
-	#
-	# The first column is the date of the last commit.  The second
-	# column is "ok" if this committer has a commit bit in this
-	# repo, "doc" or "visitor" if they have a commit bit in a
-	# different repo or "-" if they are retired.  The third and
-	# fourth columns are not relevant to us.  The fifth is the
-	# freefall login.
-	#
-	next unless m/^(\d\d\d\d)(\d\d)(\d\d)\s+
-                       (?:\w+)\s+
-                       (?:\d+)\s+
-                       (?:\d+)\s+
-                       (\w+)\s*$/x &&
-		       $1 > 0 && $2 > 0 && $3 > 0;
-	my $date = DateTime->new(year => $1, month => $2, day => $3,
-				 time_zone => 'UTC');
-	my $login = $4;
-	if (defined($self->{committers}->{$login}) &&
-	    DateTime->compare($date, $self->{committers}->{$login}) < 0) {
-#	    warn(sprintf("skipping %s: %s < %s\n", $login, $date->ymd(),
-#			 $self->{committers}->{$login}->ymd()))
-#		if $self->debug;
+    my %users;
+    @ARGV = @argv;
+    while (<>) {
+	chomp();
+	if (m/^\s*(\w+)\s*$/) {
+	    # login
+	    $users{$1} = $1;
+	} elsif (m/^\s*(\w+)\s+(\S.*\S)\s*$/) {
+	    # login gecos
+	    $users{$1} = $2;
+	} elsif (m/^(\w+)(?::[^:]*){3}:([^:,]*)(?:,[^:]*)?(?::[^:]*){2}$/) {
+	    # v7 passwd file
+	    $users{$1} = $2 || $1;
+	} elsif (m/^(\w+)(?::[^:]*){6}:([^:,]*)(?:,[^:]*)?(?::[^:]*){2}$/) {
+	    # BSD passwd file
+	    $users{$1} = $2 || $1;
 	} else {
-#	    warn(sprintf("adding %s: %s (%s)\n", $login, $date->ymd(), $repo))
-#		if $self->debug;
-	    $self->{committers}->{$login} = $date;
+	    # ignore
 	}
     }
+    return \%users;
+}
+
+#
+# Activate or deactivate named users
+#
+sub _set_active($$@) {
+    my ($self, $active, @users) = @_;
+
+    my $persons = FBCE->model('FBCE::Person');
+    my $schema = $persons->result_source()->schema();
+    $schema->txn_do(sub {
+	foreach my $login (@users) {
+	    my $person = $persons->find({ login => $login });
+	    if ($person) {
+		warn("marking $login " .
+		     ($active ? "active" : "inactive") . "\n")
+		    if $self->debug;
+		$person->update({ active => $active });
+	    } else {
+		warn("No such user: $login\n");
+	    }		
+	}
+	$schema->txn_rollback()
+	    if $self->dryrun;
+    });
+}
+
+#
+# Mark named users as incumbent or not
+#
+sub _set_incumbent($$@) {
+    my ($self, $incumbent, @users) = @_;
+
+    my $persons = FBCE->model('FBCE::Person');
+    my $schema = $persons->result_source()->schema();
+    $schema->txn_do(sub {
+	foreach my $login (@users) {
+	    my $person = $persons->find({ login => $login });
+	    if ($person) {
+		warn("marking $login " .
+		     ($incumbent ? "incumbent" : "inincumbent") . "\n")
+		    if $self->debug;
+		$person->update({ incumbent => $incumbent });
+	    } else {
+		warn("No such user: $login\n");
+	    }		
+	}
+	$schema->txn_rollback()
+	    if $self->dryrun;
+    });
 }
 
 #
 # List existing users
 #
-sub cmd_list(@) {
+sub cmd_list($@) {
     my ($self, @argv) = @_;
 
     die("too many arguments")
 	if @argv;
     my $persons = FBCE->model('FBCE::Person')->
-	search({}, { order_by => 'login' });
+	search(undef, { order_by => 'login' });
     printf("%-16s%-8s%-8s%s\n",
 	   'login',
 	   'active',
@@ -120,65 +149,16 @@ sub cmd_list(@) {
 #
 # Mark all users inactive
 #
-sub cmd_smash(@) {
+sub cmd_smash($@) {
     my ($self, @argv) = @_;
 
     die("too many arguments")
 	if @argv;
-    my $persons = FBCE->model('FBCE::Person')->search();
-    my $schema = $persons->result_source()->schema();
-    $schema->txn_do(sub {
-	$persons->reset();
-	while (my $person = $persons->next) {
-	    $person->update({ active => 0 });
-	}
-	$schema->txn_rollback()
-	    if $self->dryrun;
-    });
-}
-
-#
-# Pull the list of active committers; create users for committers that
-# don't already have one, and set the active bit.
-#
-sub cmd_pull(@) {
-    my ($self, @argv) = @_;
-
-    die("too many arguments")
-	if @argv;
-
-    # retrieve cutoff date
-    my $cutoff_date = FBCE->model('Rules')->cutoff_date;
-    warn(sprintf("Setting cutoff date to %sT%sZ\n",
-		 $cutoff_date->ymd(), $cutoff_date->hms()))
-	if $self->debug;
-
-    # pull "last commit" data for src, ports and doc / www repos
-    foreach my $repo (qw(src ports docwww)) {
-	$self->retrieve_commit_data($repo);
-    }
-
-    # insert it into the database
     my $persons = FBCE->model('FBCE::Person');
     my $schema = $persons->result_source()->schema();
     $schema->txn_do(sub {
-	while (my ($login, $last_commit) = each(%{$self->{committers}})) {
-	    my $person = $persons->find_or_new({ login => $login });
-	    my $active =
-		DateTime->compare($last_commit, $cutoff_date) >= 0 ? 1 : 0;
-	    if ($person->in_storage()) {
-		if ($active != $person->active) {
-		    warn(sprintf("updating %s: %s -> %s\n",
-				 $person->login,
-				 $person->active ? 'active' : 'inactive',
-				 $active ? 'active' : 'inactive'))
-			if $self->debug;
-		    $person->update({ active => $active });
-		}
-	    } else {
-		$person->set_column(active => $active);
-		$person->insert();
-	    }
+	foreach my $person ($persons->all) {
+	    $person->update({ active => 0, incumbent => 0 });
 	}
 	$schema->txn_rollback()
 	    if $self->dryrun;
@@ -186,58 +166,83 @@ sub cmd_pull(@) {
 }
 
 #
-# Set each user's realname column based on their gecos
+# Activate named users
 #
-sub cmd_gecos(@) {
-    my ($self, $pwfn, @argv) = @_;
+sub cmd_activate(@) {
+    my ($self, @argv) = @_;
 
-    my %gecos;
+    my $users = $self->_read_users(@argv);
+    $self->_set_active(1, keys %$users);
+}
 
-    die("too many arguments")
-	if @argv;
+#
+# Deactivate named users
+#
+sub cmd_deactivate(@) {
+    my ($self, @argv) = @_;
 
-    # read passwd file
-    $pwfn //= "/etc/passwd";
-    open(my $pwfh, '<', $pwfn)
-	or die("$pwfn: $!\n");
-    warn("reading names from $pwfn\n")
-	if $self->debug;
-    while (<$pwfh>) {
-	chomp($_);
-	my @pwent = split(':', $_);
-	next unless @pwent == 7;
-	next unless $pwent[4] =~ m/^([^,]+)/;
-	$gecos{$pwent[0]} = $1;
-    }
-    close($pwfh);
+    my $users = $self->_read_users(@argv);
+    $self->_set_active(0, keys %$users);
+}
 
-    # update the database
-    my $persons = FBCE->model('FBCE::Person')->
-	search({}, { order_by => 'login' });
+#
+# Mark the specified user(s) as incumbent
+#
+sub cmd_incumbent(@) {
+    my ($self, @argv) = @_;
+
+    my $users = $self->_read_users(@argv);
+    $self->_set_incumbent(1, keys %$users);
+}
+
+#
+# Read a list of users from a file and create corresponding database
+# records.  This will not touch existing users.
+#
+sub cmd_import(@) {
+    my ($self, @argv) = @_;
+
+    my $users = $self->_read_users(@argv);
+    my $persons = FBCE->model('FBCE::Person');
     my $schema = $persons->result_source()->schema();
-    my $n;
     $schema->txn_do(sub {
-	warn("setting names in the database\n")
-	    if $self->debug;
-	$n = 0;
-	$persons->reset();
-	while (my $person = $persons->next) {
-	    my $login = $person->login;
-	    my $gecos = $gecos{$login};
-	    next unless $gecos;
-	    next if $person->realname;
-	    $person->update({ realname => $gecos });
-	    ++$n;
+	while (my ($login, $gecos) = each(%$users)) {
+	    my $person = $persons->find_or_new({ login => $login });
+	    next if $person->in_storage;
+	    warn("importing user $login\n")
+		if $self->debug;
+	    $person->set_columns({ realname => $gecos });
+	    $person->update_or_insert();
 	}
-	warn("$n record(s) updated\n")
-	    if $self->debug;
 	$schema->txn_rollback()
 	    if $self->dryrun;
     });
 }
 
 #
-# Use sysutils/pwgen2 to generate random passwords
+# Read a list of users from a file and set their names accordingly.
+# Users that are listed in the file but not in the database will be
+# ignored.
+#
+sub cmd_gecos($@) {
+    my ($self, @argv) = @_;
+
+    my $users = $self->_read_users(@argv);
+    my $persons = FBCE->model('FBCE::Person');
+    my $schema = $persons->result_source()->schema();
+    $schema->txn_do(sub {
+	while (my ($login, $gecos) = each(%$users)) {
+	    my $person = $persons->find({ login => $login })
+		or next;
+	    $person->update({ realname => $gecos });
+	}
+	$schema->txn_rollback()
+	    if $self->dryrun;
+    });
+}
+
+#
+# Use sysutils/pwgen to generate random passwords
 #
 sub pwgen($$;$) {
     my ($self, $n, $len) = @_;
@@ -254,8 +259,8 @@ sub pwgen($$;$) {
     } elsif ($pid == 0) {
 	# child process - run pwgen
 	# ugh hardcoded...
-        exec('/usr/local/bin/pwgen', '-can', $len, $n);
-        die("child: exec(): $!\n");
+	exec('/usr/local/bin/pwgen', '-can', $len, $n);
+	die("child: exec(): $!\n");
     }
 
     # read output from child
@@ -268,18 +273,18 @@ sub pwgen($$;$) {
 
     # check exit status
     if (waitpid($pid, 0) != $pid) {
-        if ($? & 0xff) {
-            die(sprintf("pwgen caught signal %d\n", $? & 0x7f));
-        } elsif ($? >> 8) {
-            die(sprintf("pwgen exited with code %d\n", $? >> 8));
-        } else {
-            die("waitpid(): $!\n");
-        }
+	if ($? & 0xff) {
+	    die(sprintf("pwgen caught signal %d\n", $? & 0x7f));
+	} elsif ($? >> 8) {
+	    die(sprintf("pwgen exited with code %d\n", $? >> 8));
+	} else {
+	    die("waitpid(): $!\n");
+	}
     }
     close($pipe);
 
     # sanity check and we're done
-    die(sprintf("expected %d passwords, got %d\n", $n, @passwords))
+    die(sprintf("expected %d passwords, got %d\n", $n, int(@passwords)))
 	unless @passwords == $n;
     warn("got $n passwords as expected\n")
 	if $self->debug;
@@ -287,19 +292,22 @@ sub pwgen($$;$) {
 }
 
 #
-# Generate passwords for all users.  Use with caution!
+# Generate passwords users that don't already have one.  Use with
+# caution!
 #
-sub cmd_pwgen(@) {
+sub cmd_pwgen($@) {
     my ($self, @argv) = @_;
 
     die("too many arguments")
 	if @argv;
 
-    # please don't overwrite an existing password tarball...
-    die("$pwtar exists, delete or move and try again\n")
-	if -e $pwtar;
+    # Please don't overwrite an existing password tarball!
+    my $tarball = $self->tarball;
+    die("$tarball exists, delete or move and try again\n")
+	if -e $tarball;
+    my $pwfile = $self->file;
 
-    # generate enough passwords for everybody
+    # Generate enough passwords for everybody
     my $persons = FBCE->model('FBCE::Person')->
 	search({ password => '*' }, { order_by => 'login' });
     my $n = $persons->count();
@@ -313,19 +321,17 @@ sub cmd_pwgen(@) {
     $schema->txn_do(sub {
 	warn("setting the passwords in the database\n")
 	    if $self->debug;
-	$persons->reset();
-	while (my $person = $persons->next) {
+	foreach my $person ($persons->all) {
 	    my ($login, $password) = ($person->login, shift(@passwords));
-	    # printf("%s\t%s\n", $person->login, $password);
 	    warn("setting password for $login\n")
 		if $self->debug;
 	    $person->set_password($password);
-	    $tar->add_data("$login/election-password", "$password\n",
+	    $tar->add_data("$login/$pwfile", "$password\n",
 			   { uname => $login, gname => $login, mode => 0400 });
 	}
 	warn("writing the tar file\n")
 	    if $self->debug;
-	$tar->write($pwtar, COMPRESS_GZIP)
+	$tar->write($tarball, COMPRESS_GZIP)
 	    or die($tar->error());
 	$schema->txn_rollback()
 	    if $self->dryrun;
@@ -336,16 +342,22 @@ sub run($) {
     my ($self) = @_;
 
     local $ENV{CATALYST_DEBUG} = 1
-        if $self->debug;
+	if $self->debug;
 
     my $command = shift(@{$self->extra_argv})
 	or die("command required\n");
     if ($command eq 'list') {
 	$self->cmd_list(@{$self->extra_argv});
+    } elsif ($command eq 'import') {
+	$self->cmd_import(@{$self->extra_argv});
     } elsif ($command eq 'smash') {
 	$self->cmd_smash(@{$self->extra_argv});
-    } elsif ($command eq 'pull') {
-	$self->cmd_pull(@{$self->extra_argv});
+    } elsif ($command eq 'activate') {
+	$self->cmd_activate(@{$self->extra_argv});
+    } elsif ($command eq 'deactivate') {
+	$self->cmd_deactivate(@{$self->extra_argv});
+    } elsif ($command eq 'incumbent') {
+	$self->cmd_incumbent(@{$self->extra_argv});
     } elsif ($command eq 'gecos') {
 	$self->cmd_gecos(@{$self->extra_argv});
     } elsif ($command eq 'pwgen') {

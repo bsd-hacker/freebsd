@@ -210,7 +210,6 @@ __PACKAGE__->has_many(
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:40qaS/evx1U+HUHTXygyFQ
 
 use Crypt::SaltedHash;
-use Digest::MD5 qw(md5_hex);
 
 #
 # Change the password.
@@ -218,7 +217,13 @@ use Digest::MD5 qw(md5_hex);
 sub set_password($$) {
     my ($self, $password) = @_;
 
-    my $csh = new Crypt::SaltedHash(algorithm => 'SHA-1');
+    if ($password !~ m/^[[:print:]]{8,}$/a || $password !~ m/[0-9]/a ||
+	$password !~ m/[A-Z]/a || $password !~ m/[a-z]/a) {
+	die("Your password must be at least 8 characters long and contain" .
+	    " at least one upper-case letter, one lower-case letter and" .
+	    " one digit.\n");
+    }
+    my $csh = new Crypt::SaltedHash(algorithm => 'SHA-256');
     $csh->add($password);
     $self->set_column(password => $csh->generate());
     $self->update()
