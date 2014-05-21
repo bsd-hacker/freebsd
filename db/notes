@@ -34,12 +34,37 @@ psql -f db/fbce.sql fbce fbce
 # One-liner to set a user's password
 perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("altinn")'
 
-# Pull users from peter@'s cutoff list
-./script/fbce_user.pl pull
+#
+# The list of users is generated on freefall using scripts written for
+# that purpose by gjb:
+#
+# des@freefall ~% ~gjb/bin/genuserlist.sh                          
+# Output written to: /home/des/tmp.NAQqdhqXM0
+# des@freefall ~% ~gjb/bin/genuserlist.pl /home/des/tmp.NAQqdhqXM0 >users-20140521.txt
+# des@freefall ~% echo dbn >>users-20140521.txt
+# des@freefall ~% getent passwd $(cat users-20140521.txt) >gecos-20140521.txt
+#
+./script/fbce_user.pl import users-20140521.txt
+./script/fbce_user.pl gecos gecos-20140521.txt
+./script/fbce_user.pl smash
 
-# Get a copy of freefall's passwd map and load people's names from it
-ssh freefall ypcat passwd | iconv -f iso8859-1 -t utf-8 >freefall-nis-passwd-utf8
-./script/fbce_user.pl gecos freefall-nis-passwd-utf8
+#
+# The list of active committers is extracted from fst3k:
+#
+# fst3k=# \t on
+# Showing only tuples.
+# fst3k=# \o active-20140521.txt
+# fst3k=# select p.login from persons p join revisions r on p.id = r.author where r.datetime >= '2013-05-21' group by p.login;
+#
+./script/fbce_user.pl activate active-20140521.txt
 
-# Generate new passwords for everybody that doesn't already have one
+#
+# The list of incumbents was manually generated from
+# http://www.freebsd.no/administration.html#t-core
+#
+./script/fbce_user.pl incumbent core-20140521.txt
+
+#
+# Finally, generate passwords
+#
 ./script/fbce_user.pl pwgen
