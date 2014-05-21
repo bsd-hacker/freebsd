@@ -1,3 +1,4 @@
+[% USE WikiFormat %]
 [% PROCESS lib/html_top %]
 [% PROCESS lib/header %]
 [% WRAPPER lib/main %]
@@ -8,9 +9,9 @@
 [% IF candidate.incumbent %]<p class="candidate-incumbent">(incumbent)</p>[% END %]
 </div>
 <div class="statement">
-  <h3 class="statement-title">[% candidate.statement.short | html %]</h3>
+  <h3 class="statement-title">[% candidate.statement.short | wiki %]</h3>
   <div class="statement-body">
-    [% candidate.statement.long_html %]
+    [% candidate.statement.long | wiki %]
   </div>
 </div>
 

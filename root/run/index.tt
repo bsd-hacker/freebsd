@@ -1,3 +1,4 @@
+[% USE WikiFormat %]
 [% PROCESS lib/html_top %]
 [% PROCESS lib/header %]
 [% WRAPPER lib/main %]
@@ -10,9 +11,9 @@
 <p>You have registered as a candidate in the [% title %].  You have provided the following statement:</p>
 
 <div class="statement"> 
-  <h3 class="statement-title">[% user.statement.short | html %]</h3>
+  <h3 class="statement-title">[% user.statement.short | wiki %]</h3>
   <div class="statement-body">
-    [% user.statement.long_html %]
+    [% user.statement.long | wiki %]
   </div>
 </div>
   [% IF nominating == 0 %]

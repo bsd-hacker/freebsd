@@ -1,9 +1,9 @@
+use utf8;
 package FBCE::View::HTML;
+use Moose;
+use namespace::autoclean;
 
-use strict;
-use warnings;
-
-use base 'Catalyst::View::TT';
+extends 'Catalyst::View::TT';
 
 __PACKAGE__->config(
     TEMPLATE_EXTENSION => '.tt',
@@ -25,7 +25,7 @@ L<FBCE>
 
 =head1 AUTHOR
 
-Dag-Erling Smørgrav
+Dag-Erling Smørgrav <des@freebsd.org>
 
 =head1 LICENSE
 

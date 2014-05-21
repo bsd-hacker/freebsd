@@ -124,15 +124,6 @@ __PACKAGE__->belongs_to(
 # Created by DBIx::Class::Schema::Loader v0.07039 @ 2014-03-10 19:05:50
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:8wDb6dHYSG6Eoe9bdNnm8Q
 
-use Text::WikiFormat;
-
-sub long_html($) {
-    my ($self) = @_;
-
-    return Text::WikiFormat::format($self->long, {}, {
-	implicit_links => 0, extended => 1, absolute_links => 1 });
-}
-
 1;
 
 # $FreeBSD$

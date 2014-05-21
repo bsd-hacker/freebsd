@@ -16,7 +16,7 @@
 <form method="post" action="">
   <p>Slogan</p>
   <input name="short" size="80" maxlength="64" value="[% short | html %]"/>
-  <p>Statement (<a href="http://search.cpan.org/~chromatic/Text-WikiFormat-0.79/lib/Text/WikiFormat.pm#Wiki_Format">WikiFormat</a>)</p>
+  <p>Statement (<a href="http://search.cpan.org/~cycles/Text-WikiFormat-0.81/lib/Text/WikiFormat.pm#Wiki_Format">WikiFormat</a>)</p>
   <textarea name="long" cols="80" rows="24">[% long | html %]</textarea>
   <div>
     <input type="submit" name="submit" value="I choose to run!"/>
