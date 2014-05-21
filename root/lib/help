@@ -21,7 +21,7 @@
 [% IF user %]
 <p>You're already logged in, you big dummy.</p>
 [% ELSE %]
-<p>Click the <a href="[% c.uri_for('/login') | html %]">Log in</a> link below the navigation bar.  Or the one right here.</p>
+<p>Click the <a href="[% c.uri_for('/login') | html %]">Log in</a> link below the navigation bar.  Or the one right here.  You will find your password in <tt>~/fbce-password</tt> on freefall.</p>
 [% IF nominating >= 0 || voting >= 0 %]
 <p>If you have a valid FreeBSD commit bit but you haven't received a password, please contact the election administrator.</p>
 [% END %]
