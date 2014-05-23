@@ -272,8 +272,8 @@ dmar_pgalloc(vm_object_t obj, vm_pindex_t idx, int flags)
 			break;
 		}
 		m = vm_page_alloc_contig(obj, idx, VM_ALLOC_NOBUSY |
-		    VM_ALLOC_SYSTEM | VM_ALLOC_NODUMP | VM_ALLOC_WIRED |
-		    zeroed, 1, 0, dmar_high, PAGE_SIZE, 0, VM_MEMATTR_DEFAULT);
+		    VM_ALLOC_SYSTEM | VM_ALLOC_NODUMP | zeroed, 1, 0,
+		    dmar_high, PAGE_SIZE, 0, VM_MEMATTR_DEFAULT);
 		if ((flags & DMAR_PGF_OBJL) == 0)
 			VM_OBJECT_WUNLOCK(obj);
 		if (m != NULL) {

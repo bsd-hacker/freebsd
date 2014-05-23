@@ -1676,6 +1676,8 @@ vm_page_alloc_contig_vdrop(struct spglist *lst)
  *
  *	The caller must always specify an allocation class.
  *
+ *	The returned pages will all be wired.
+ *
  *	allocation classes:
  *	VM_ALLOC_NORMAL		normal process request
  *	VM_ALLOC_SYSTEM		system *really* needs a page
@@ -1686,7 +1688,6 @@ vm_page_alloc_contig_vdrop(struct spglist *lst)
  *	VM_ALLOC_NOOBJ		page is not associated with an object and
  *				should not be exclusive busy 
  *	VM_ALLOC_SBUSY		shared busy the allocated page
- *	VM_ALLOC_WIRED		wire the allocated page
  *	VM_ALLOC_ZERO		prefer a zeroed page
  *
  *	This routine may not sleep.
@@ -1708,6 +1709,8 @@ vm_page_alloc_contig(vm_object_t object, vm_pindex_t pindex, int req,
 	    (VM_ALLOC_NOBUSY | VM_ALLOC_SBUSY)),
 	    ("vm_page_alloc: inconsistent object(%p)/req(%x)", (void *)object,
 	    req));
+	KASSERT((req & VM_ALLOC_WIRED) == 0,
+	    ("vm_page_alloc_contig: VM_ALLOC_WIRED passed in req (%x)", req));
 	if (object != NULL) {
 		VM_OBJECT_ASSERT_WLOCKED(object);
 		KASSERT(object->type == OBJT_PHYS,
@@ -1775,8 +1778,7 @@ retry:
 		flags = PG_ZERO;
 	if ((req & VM_ALLOC_NODUMP) != 0)
 		flags |= PG_NODUMP;
-	if ((req & VM_ALLOC_WIRED) != 0)
-		atomic_add_int(&vm_cnt.v_wire_count, npages);
+	atomic_add_int(&vm_cnt.v_wire_count, npages);
 	if (object != NULL) {
 		if (object->memattr != VM_MEMATTR_DEFAULT &&
 		    memattr == VM_MEMATTR_DEFAULT)
@@ -1792,8 +1794,8 @@ retry:
 			if ((req & VM_ALLOC_SBUSY) != 0)
 				m->busy_lock = VPB_SHARERS_WORD(1);
 		}
-		if ((req & VM_ALLOC_WIRED) != 0)
-			m->wire_count = 1;
+		m->wire_count = 1;
+
 		/* Unmanaged pages don't use "act_count". */
 		m->oflags = VPO_UNMANAGED;
 		if (object != NULL) {
@@ -1802,13 +1804,11 @@ retry:
 				    &deferred_vdrop_list);
 				if (vm_paging_needed())
 					pagedaemon_wakeup();
-				if ((req & VM_ALLOC_WIRED) != 0)
-					atomic_subtract_int(&vm_cnt.v_wire_count,
-					    npages);
+				atomic_subtract_int(&vm_cnt.v_wire_count,
+				    npages);
 				for (m_tmp = m, m = m_ret;
 				    m < &m_ret[npages]; m++) {
-					if ((req & VM_ALLOC_WIRED) != 0)
-						m->wire_count = 0;
+					m->wire_count = 0;
 					if (m >= m_tmp)
 						m->object = NULL;
 					vm_page_free(m);
