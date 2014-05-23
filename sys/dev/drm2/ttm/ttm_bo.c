@@ -1472,6 +1472,7 @@ static void ttm_bo_global_kobj_release(struct ttm_bo_global *glob)
 {
 
 	ttm_mem_unregister_shrink(glob->mem_glob, &glob->shrink);
+	vm_page_unwire(glob->dummy_read_page, 0);
 	vm_page_free(glob->dummy_read_page);
 }
 
@@ -1494,7 +1495,7 @@ int ttm_bo_global_init(struct drm_global_reference *ref)
 	mtx_init(&glob->lru_lock, "ttmlru", NULL, MTX_DEF);
 	glob->mem_glob = bo_ref->mem_glob;
 	glob->dummy_read_page = vm_page_alloc_contig(NULL, 0,
-	    VM_ALLOC_NORMAL | VM_ALLOC_NOOBJ,
+	    VM_ALLOC_NORMAL | VM_ALLOC_NOOBJ | VM_ALLOC_WIRED,
 	    1, 0, VM_MAX_ADDRESS, PAGE_SIZE, 0, VM_MEMATTR_UNCACHEABLE);
 
 	if (unlikely(glob->dummy_read_page == NULL)) {
@@ -1518,6 +1519,7 @@ int ttm_bo_global_init(struct drm_global_reference *ref)
 	return (0);
 
 out_no_shrink:
+	vm_page_unwire(glob->dummy_read_page, 0);
 	vm_page_free(glob->dummy_read_page);
 out_no_drp:
 	free(glob, M_DRM_GLOBAL);
