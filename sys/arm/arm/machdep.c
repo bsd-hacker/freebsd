@@ -387,7 +387,8 @@ cpu_startup(void *dummy)
 	pmap_kenter_user(ARM_TP_ADDRESS, ARM_TP_ADDRESS);
 	arm_lock_cache_line(ARM_TP_ADDRESS);
 #else
-	m = vm_page_alloc(NULL, 0, VM_ALLOC_NOOBJ | VM_ALLOC_ZERO);
+	m = vm_page_alloc(NULL, 0, VM_ALLOC_NOOBJ | VM_ALLOC_ZERO |
+	    VM_ALLOC_WIRED);
 	pmap_kenter_user(ARM_TP_ADDRESS, VM_PAGE_TO_PHYS(m));
 #endif
 	*(uint32_t *)ARM_RAS_START = 0;
