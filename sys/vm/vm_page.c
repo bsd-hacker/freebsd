@@ -1883,6 +1883,8 @@ vm_page_alloc_init(vm_page_t m)
  *
  *	The caller must always specify an allocation class.
  *
+ *	The returned page will be wired.
+ *
  *	allocation classes:
  *	VM_ALLOC_NORMAL		normal process request
  *	VM_ALLOC_SYSTEM		system *really* needs a page
@@ -1891,7 +1893,6 @@ vm_page_alloc_init(vm_page_t m)
  *	optional allocation flags:
  *	VM_ALLOC_COUNT(number)	the number of additional pages that the caller
  *				intends to allocate
- *	VM_ALLOC_WIRED		wire the allocated page
  *	VM_ALLOC_ZERO		prefer a zeroed page
  *
  *	This routine may not sleep.
@@ -1903,6 +1904,10 @@ vm_page_alloc_freelist(int flind, int req)
 	vm_page_t m;
 	u_int flags;
 	int req_class;
+
+	KASSERT((req & VM_ALLOC_WIRED) == 0,
+	    ("vm_page_alloc_freelist: VM_ALLOC_WIRED passed in req (%x)",
+	    req));
 
 	req_class = req & VM_ALLOC_CLASS_MASK;
 
@@ -1944,14 +1949,14 @@ vm_page_alloc_freelist(int flind, int req)
 	if ((req & VM_ALLOC_ZERO) != 0)
 		flags = PG_ZERO;
 	m->flags &= flags;
-	if ((req & VM_ALLOC_WIRED) != 0) {
-		/*
-		 * The page lock is not required for wiring a page that does
-		 * not belong to an object.
-		 */
-		atomic_add_int(&vm_cnt.v_wire_count, 1);
-		m->wire_count = 1;
-	}
+
+	/*
+	 * The page lock is not required for wiring a page that does
+	 * not belong to an object.
+	 */
+	atomic_add_int(&vm_cnt.v_wire_count, 1);
+	m->wire_count = 1;
+
 	/* Unmanaged pages don't use "act_count". */
 	m->oflags = VPO_UNMANAGED;
 	if (drop != NULL)
