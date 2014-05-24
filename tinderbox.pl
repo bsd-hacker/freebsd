@@ -736,6 +736,7 @@ MAIN:{
 
 	'__MAKE_CONF'		=> "/dev/null",
 	'SRCCONF'		=> "/dev/null",
+	'MAKESYSPATH'		=> "$srcdir/share/mk",
 	'MAKEOBJDIRPREFIX'	=> $objdir,
 
 	'TARGET'		=> $machine,
