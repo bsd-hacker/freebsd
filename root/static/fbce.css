@@ -210,13 +210,13 @@ th {
 }
 
 .statement:before {
-    content: url('/static/images/lquotes.png');
+    content: url('images/lquotes.png');
     float: left;
     margin-left: -40px;
 }
 
 .statement:after {
-    content: url('/static/images/rquotes.png');
+    content: url('images/rquotes.png');
     float: right;
     margin-right: -40px;
     margin-top: -32px;
