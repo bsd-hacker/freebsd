@@ -1450,7 +1450,7 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	struct vnode *vp = NULL;
 	vm_object_t m_object;
 	vm_page_t m, mpred;
-	int flags, req_class;
+	int flags, req_class, unmanaged;
 
 	mpred = 0;	/* XXX: pacify gcc */
 	KASSERT((object != NULL) == ((req & VM_ALLOC_NOOBJ) == 0) &&
@@ -1461,6 +1461,10 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	    req));
 	if (object != NULL)
 		VM_OBJECT_ASSERT_WLOCKED(object);
+
+	unmanaged = (object == NULL || (object->flags & OBJ_UNMANAGED) != 0);
+	KASSERT(unmanaged == 0 || (req & VM_ALLOC_WIRED) != 0,
+	    ("vm_page_alloc: unamanaged but unwired request req(%x)", req));
 
 	req_class = req & VM_ALLOC_CLASS_MASK;
 
@@ -1585,8 +1589,7 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 		flags |= PG_NODUMP;
 	m->flags = flags;
 	m->aflags = 0;
-	m->oflags = object == NULL || (object->flags & OBJ_UNMANAGED) != 0 ?
-	    VPO_UNMANAGED : 0;
+	m->oflags = (unmanaged != 0) ? VPO_UNMANAGED : 0;
 	m->busy_lock = VPB_UNBUSIED;
 	if ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_NOOBJ | VM_ALLOC_SBUSY)) == 0)
 		m->busy_lock = VPB_SINGLE_EXCLUSIVER;
