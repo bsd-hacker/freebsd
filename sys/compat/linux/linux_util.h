@@ -89,6 +89,11 @@ linux_ ## s(struct thread *td, struct linux_ ## s ## _args *args)	\
 }									\
 struct __hack
 
+#define	ARGS(nm, fmt)	"linux(%zd (%zd)): "#nm"("fmt")\n",		\
+	td->td_proc->p_pid, td->td_tid
+#define	LMSG(fmt)	"linux(%zd (%zd)): "fmt"\n",			\
+	td->td_proc->p_pid, td->td_tid
+
 void linux_msg(const struct thread *td, const char *fmt, ...)
 	__printflike(2, 3);
 
