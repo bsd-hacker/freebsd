@@ -649,14 +649,15 @@ eventfd_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
 
 	error = 0;
 	mtx_lock(&efd->efd_lock);
+retry:
 	if (efd->efd_count == 0) {
 		if ((efd->efd_flags & LINUX_O_NONBLOCK) != 0) {
 			mtx_unlock(&efd->efd_lock);
 			return (EAGAIN);
 		}
 		error = mtx_sleep(&efd->efd_count, &efd->efd_lock, PCATCH, "lefdrd", 0);
-		if (error == ERESTART)
-			error = EINTR;
+		if (error == 0)
+			goto retry;
 	}
 	if (error == 0) {
 		if ((efd->efd_flags & LINUX_EFD_SEMAPHORE) != 0) {
@@ -666,14 +667,13 @@ eventfd_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
 			count = efd->efd_count;
 			efd->efd_count = 0;
 		}
-		error = uiomove_nofault(&count, sizeof(eventfd_t), uio);
-		if (error == 0) {
-			KNOTE_LOCKED(&efd->efd_sel.si_note, 0);
-			selwakeup(&efd->efd_sel);
-			wakeup(&efd->efd_count);
-		}
-	}
-	mtx_unlock(&efd->efd_lock);
+		KNOTE_LOCKED(&efd->efd_sel.si_note, 0);
+		selwakeup(&efd->efd_sel);
+		wakeup(&efd->efd_count);
+		mtx_unlock(&efd->efd_lock);
+		error = uiomove(&count, sizeof(eventfd_t), uio);
+	} else
+		mtx_unlock(&efd->efd_lock);
 
 	return (error);
 }
@@ -708,8 +708,6 @@ retry:
 		}
 		error = mtx_sleep(&efd->efd_count, &efd->efd_lock,
 		    PCATCH, "lefdwr", 0);
-		if (error == ERESTART)
-			error = EINTR;
 		if (error == 0)
 			goto retry;
 	}
@@ -736,8 +734,6 @@ eventfd_poll(struct file *fp, int events, struct ucred *active_cred,
 		return (POLLERR);
 
 	mtx_lock(&efd->efd_lock);
-	if (efd->efd_count == UINT64_MAX)
-		revents |= events & POLLERR;
 	if ((events & (POLLIN|POLLRDNORM)) && efd->efd_count > 0)
 		revents |= events & (POLLIN|POLLRDNORM);
 	if ((events & (POLLOUT|POLLWRNORM)) && UINT64_MAX - 1 > efd->efd_count)
