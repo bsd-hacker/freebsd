@@ -77,6 +77,9 @@ opt_inet6.h:
 .if defined(KTR)
 CFLAGS+=	-DKTR
 .endif
+.if defined(DEBUG)
+CFLAGS+=	-DDEBUG
+.endif
 .endif
 
 .include <bsd.kmod.mk>
