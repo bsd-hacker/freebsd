@@ -131,10 +131,6 @@ static void	linux_exec_setregs(struct thread *td, struct image_params *imgp,
 		    u_long stack);
 static int	linux_vsyscall(struct thread *td, struct trapframe *tf);
 
-static eventhandler_tag linux_exec_tag;
-static eventhandler_tag linux_thread_dtor_tag;
-static eventhandler_tag	linux_exit_tag;
-
 /*
  * Linux syscalls return negative errno's, we do positive and map them
  * Reference:
@@ -965,12 +961,6 @@ linux64_elf_modevent(module_t mod, int type, void *data)
 				linux_device_register_handler(*ldhp);
 			LIST_INIT(&futex_list);
 			mtx_init(&futex_mtx, "ftllk64", NULL, MTX_DEF);
-			linux_exit_tag = EVENTHANDLER_REGISTER(process_exit,
-			    linux_proc_exit, (void *) (long) elf_linux_sysvec.sv_flags, 1000);
-			linux_exec_tag = EVENTHANDLER_REGISTER(process_exec,
-			    linux_proc_exec, (void *) (long)elf_linux_sysvec.sv_flags, 1000);
-			linux_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
-			    linux_thread_dtor, NULL, EVENTHANDLER_PRI_ANY);
 			stclohz = (stathz ? stathz : hz);
 			if (bootverbose)
 				printf("Linux x86-64 ELF exec handler installed\n");
@@ -994,9 +984,6 @@ linux64_elf_modevent(module_t mod, int type, void *data)
 			SET_FOREACH(ldhp, linux_device_handler_set)
 				linux_device_unregister_handler(*ldhp);
 			mtx_destroy(&futex_mtx);
-			EVENTHANDLER_DEREGISTER(process_exit, linux_exit_tag);
-			EVENTHANDLER_DEREGISTER(process_exec, linux_exec_tag);
-			EVENTHANDLER_DEREGISTER(thread_dtor, linux_thread_dtor_tag);
 			if (bootverbose)
 				printf("Linux ELF exec handler removed\n");
 		} else

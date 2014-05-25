@@ -550,17 +550,6 @@ epoll_delete_all_events(struct thread *td, struct file *epfp, int fd)
 	return (error1 == 0 ? error2 : error1);
 }
 
-void
-epoll_destroy_emuldata(struct linux_pemuldata *pem)
-{
-	struct epoll_emuldata *emd;
-
-	if (pem->epoll == NULL)
-		return;
-	emd = pem->epoll;
-	free(emd, M_EPOLL);
-}
-
 static int
 eventfd_create(struct thread *td, uint32_t initval, int flags)
 {

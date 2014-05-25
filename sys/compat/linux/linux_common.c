@@ -28,16 +28,23 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/module.h>
-#include <sys/malloc.h>
-#include <sys/module.h>
-#include <sys/types.h>
+#include <sys/systm.h>
+#include <sys/exec.h>
+#include <sys/imgact.h>
+#include <sys/imgact_elf.h>
 #include <sys/kernel.h>
-#include <sys/proc.h>
+#include <sys/malloc.h>
+#include <sys/eventhandler.h>
 
+#include <compat/linux/linux_emul.h>
 #include <compat/linux/linux_mib.h>
 
 MODULE_VERSION(linux_common, 1);
+
+
+static eventhandler_tag linux_exec_tag;
+static eventhandler_tag linux_thread_dtor_tag;
+static eventhandler_tag	linux_exit_tag;
 
 
 static int
@@ -47,9 +54,18 @@ linux_common_modevent(module_t mod, int type, void *data)
 	switch(type) {
 	case MOD_LOAD:
 		linux_osd_jail_register();
+		linux_exit_tag = EVENTHANDLER_REGISTER(process_exit,
+		    linux_proc_exit, NULL, 1000);
+		linux_exec_tag = EVENTHANDLER_REGISTER(process_exec,
+		    linux_proc_exec, NULL, 1000);
+		linux_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
+		    linux_thread_dtor, NULL, EVENTHANDLER_PRI_ANY);
 		break;
 	case MOD_UNLOAD:
 		linux_osd_jail_deregister();
+		EVENTHANDLER_DEREGISTER(process_exit, linux_exit_tag);
+		EVENTHANDLER_DEREGISTER(process_exec, linux_exec_tag);
+		EVENTHANDLER_DEREGISTER(thread_dtor, linux_thread_dtor_tag);
 		break;
 	default:
 		return (EOPNOTSUPP);

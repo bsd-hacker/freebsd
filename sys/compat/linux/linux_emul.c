@@ -30,8 +30,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_compat.h"
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/imgact.h>
@@ -40,65 +38,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mutex.h>
-#include <sys/sdt.h>
 #include <sys/sx.h>
 #include <sys/proc.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysent.h>
-#include <sys/sysproto.h>
-#include <sys/unistd.h>
 
-#ifdef COMPAT_LINUX32
-#include <machine/../linux32/linux.h>
-#include <machine/../linux32/linux32_proto.h>
-#else
-#include <machine/../linux/linux.h>
-#include <machine/../linux/linux_proto.h>
-#endif
-
-#include <compat/linux/linux_dtrace.h>
 #include <compat/linux/linux_emul.h>
-#include <compat/linux/linux_event.h>
-#include <compat/linux/linux_futex.h>
 #include <compat/linux/linux_misc.h>
 #include <compat/linux/linux_util.h>
-
-/**
- * Special DTrace provider for the linuxulator.
- *
- * In this file we define the provider for the entire linuxulator. All
- * modules (= files of the linuxulator) use it.
- *
- * We define a different name depending on the emulated bitsize, see
- * ../../<ARCH>/linux{,32}/linux.h, e.g.:
- *      native bitsize          = linuxulator
- *      amd64, 32bit emulation  = linuxulator32
- */
-LIN_SDT_PROVIDER_DEFINE(LINUX_DTRACE);
-
-/**
- * DTrace probes in this module.
- */
-LIN_SDT_PROBE_DEFINE1(emul, em_find, entry, "struct thread *");
-LIN_SDT_PROBE_DEFINE0(emul, em_find, return);
-LIN_SDT_PROBE_DEFINE3(emul, proc_init, entry, "struct thread *",
-    "struct thread *", "int");
-LIN_SDT_PROBE_DEFINE0(emul, proc_init, create_thread);
-LIN_SDT_PROBE_DEFINE0(emul, proc_init, fork);
-LIN_SDT_PROBE_DEFINE0(emul, proc_init, exec);
-LIN_SDT_PROBE_DEFINE0(emul, proc_init, return);
-LIN_SDT_PROBE_DEFINE1(emul, linux_thread_detach, entry, "struct thread *");
-LIN_SDT_PROBE_DEFINE0(emul, linux_thread_detach, futex_failed);
-LIN_SDT_PROBE_DEFINE1(emul, linux_thread_detach, child_clear_tid_error, "int");
-LIN_SDT_PROBE_DEFINE0(emul, linux_thread_detach, return);
-LIN_SDT_PROBE_DEFINE2(emul, proc_exec, entry, "struct proc *",
-    "struct image_params *");
-LIN_SDT_PROBE_DEFINE0(emul, proc_exec, return);
-LIN_SDT_PROBE_DEFINE0(emul, linux_schedtail, entry);
-LIN_SDT_PROBE_DEFINE1(emul, linux_schedtail, copyout_error, "int");
-LIN_SDT_PROBE_DEFINE0(emul, linux_schedtail, return);
-LIN_SDT_PROBE_DEFINE1(emul, linux_set_tid_address, entry, "int *");
-LIN_SDT_PROBE_DEFINE0(emul, linux_set_tid_address, return);
 
 /*
  * This returns reference to the thread emuldata entry (if found)
@@ -110,11 +57,7 @@ em_find(struct thread *td)
 {
 	struct linux_emuldata *em;
 
-	LIN_SDT_PROBE1(emul, em_find, entry, td);
-
 	em = td->td_emuldata;
-
-	LIN_SDT_PROBE1(emul, em_find, return, em);
 
 	return (em);
 }
@@ -140,8 +83,7 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 {
 	struct linux_emuldata *em;
 	struct linux_pemuldata *pem;
-
-	LIN_SDT_PROBE3(emul, proc_init, entry, td, newtd, flags);
+	struct epoll_emuldata *emd;
 
 	if (newtd != NULL) {
 		/* non-exec call */
@@ -149,13 +91,11 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 		em->pdeath_signal = 0;
 		em->robust_futexes = NULL;
 		if (flags & LINUX_CLONE_THREAD) {
-			LIN_SDT_PROBE0(emul, proc_init, create_thread);
 			LINUX_CTR1(proc_init, "thread newtd(%d)",
 			    newtd->td_tid);
 
 			em->em_tid = newtd->td_tid;
 		} else {
-			LIN_SDT_PROBE0(emul, proc_init, fork);
 			LINUX_CTR1(proc_init, "fork newtd(%d)",
 			    newtd->td_proc->p_pid);
 
@@ -168,7 +108,6 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 		newtd->td_emuldata = em;
 	} else {
 		/* exec */
-		LIN_SDT_PROBE0(emul, proc_init, exec);
 		LINUX_CTR1(proc_init, "exec newtd(%d)",
 		    td->td_proc->p_pid);
 
@@ -181,19 +120,23 @@ linux_proc_init(struct thread *td, struct thread *newtd, int flags)
 		 /* epoll should be destroyed in a case of exec. */
 		pem = pem_find(td->td_proc);
 		KASSERT(pem != NULL, ("proc_exit: proc emuldata not found.\n"));
-		epoll_destroy_emuldata(pem);
+
+		if (pem->epoll != NULL) {
+			emd = pem->epoll;
+			pem->epoll = NULL;
+			free(emd, M_EPOLL);
+		}
 	}
 
 	em->child_clear_tid = NULL;
 	em->child_set_tid = NULL;
-
-	LIN_SDT_PROBE0(emul, proc_init, return);
 }
 
 int 
 linux_common_execve(struct thread *td, struct image_args *eargs)
 {
 	struct linux_pemuldata *pem;
+	struct epoll_emuldata *emd;
 	struct linux_emuldata *em;
 	struct proc *p;
 	int error;
@@ -218,7 +161,11 @@ linux_common_execve(struct thread *td, struct image_args *eargs)
 		KASSERT(pem != NULL, ("proc_exit: proc emuldata not found.\n"));
 		p->p_emuldata = NULL;
 
-		epoll_destroy_emuldata(pem);
+		if (pem->epoll != NULL) {
+			emd = pem->epoll;
+			pem->epoll = NULL;
+			free(emd, M_EPOLL);
+		}
 
 		sx_destroy(&pem->pem_sx);
 		free(pem, M_LINUX);
@@ -231,7 +178,6 @@ void
 linux_proc_exec(void *arg, struct proc *p, struct image_params *imgp)
 {
 	struct thread *td = curthread;
-	int sv_flags;
 
 	/*
 	 * In a case of execing to linux binary we create linux
@@ -240,77 +186,11 @@ linux_proc_exec(void *arg, struct proc *p, struct image_params *imgp)
 	if (__predict_false((imgp->sysent->sv_flags & SV_ABI_MASK) ==
 	    SV_ABI_LINUX)) {
 
-		/*
-		 * We can have both 64 & 32 bit Linuxulator running,
-		 * so eventhandler is called twice for us. To prevent this
-		 * we will check that proc is handled by corresponding module.
-		 */
-		sv_flags = (int) arg;
-		if ((sv_flags & SV_IS_MASK) != SV_PROC_IS(p))
-			return;
-
-		LIN_SDT_PROBE2(emul, proc_exec, entry, p, imgp);
 		if (SV_PROC_ABI(p) == SV_ABI_LINUX)
 			linux_proc_init(td, NULL, 0);
 		else
 			linux_proc_init(td, td, 0);
-
-		LIN_SDT_PROBE0(emul, proc_exec, return);
 	}
-}
-
-void
-linux_thread_detach(struct thread *td)
-{
-	struct linux_sys_futex_args cup;
-	struct linux_emuldata *em;
-	int *child_clear_tid;
-	int null = 0;
-	int error;
-
-	LIN_SDT_PROBE1(emul, linux_thread_detach, entry, td);
-
-	em = em_find(td);
-	KASSERT(em != NULL, ("thread_detach: thread emuldata not found.\n"));
-
-	LINUX_CTR1(exit, "thread detach(%d)", em->em_tid);
-
-	release_futexes(td, em);
-
-	child_clear_tid = em->child_clear_tid;
-
-	if (child_clear_tid != NULL) {
-
-		LINUX_CTR2(exit, "thread detach(%d) %p",
-		    em->em_tid, child_clear_tid);
-	
-		error = copyout(&null, child_clear_tid, sizeof(null));
-		if (error) {
-			LIN_SDT_PROBE1(emul, linux_thread_detach,
-			    child_clear_tid_error, error);
-
-			LIN_SDT_PROBE0(emul, linux_thread_detach, return);
-			return;
-		}
-
-		cup.uaddr = child_clear_tid;
-		cup.op = LINUX_FUTEX_WAKE;
-		cup.val = 1;		/* wake one */
-		cup.timeout = NULL;
-		cup.uaddr2 = NULL;
-		cup.val3 = 0;
-		error = linux_sys_futex(td, &cup);
-		/*
-		 * this cannot happen at the moment and if this happens it
-		 * probably means there is a user space bug
-		 */
-		if (error) {
-			LIN_SDT_PROBE0(emul, linux_thread_detach, futex_failed);
-			printf(LMSG("futex stuff in thread_detach failed.\n"));
-		}
-	}
-
-	LIN_SDT_PROBE0(emul, linux_thread_detach, return);
 }
 
 void
@@ -336,8 +216,6 @@ linux_schedtail(struct thread *td)
 	int error = 0;
 	int *child_set_tid;
 
-	LIN_SDT_PROBE1(emul, linux_schedtail, entry, td);
-
 	p = td->td_proc;
 
 	em = em_find(td);
@@ -349,63 +227,29 @@ linux_schedtail(struct thread *td)
 		    sizeof(em->em_tid));
 		LINUX_CTR4(clone, "schedtail(%d) %p stored %d error %d",
 		    td->td_tid, child_set_tid, em->em_tid, error);
-
-		if (error != 0) {
-			LIN_SDT_PROBE1(emul, linux_schedtail, copyout_error,
-			    error);
-		}
 	} else
 		LINUX_CTR1(clone, "schedtail(%d)", em->em_tid);
-
-	LIN_SDT_PROBE0(emul, linux_schedtail, return);
-}
-
-int
-linux_set_tid_address(struct thread *td, struct linux_set_tid_address_args *args)
-{
-	struct linux_emuldata *em;
-
-	LIN_SDT_PROBE1(emul, linux_set_tid_address, entry, args->tidptr);
-
-	em = em_find(td);
-	KASSERT(em != NULL, ("set_tid_address: emuldata not found.\n"));
-
-	em->child_clear_tid = args->tidptr;
-
-	td->td_retval[0] = em->em_tid;
-
-	LINUX_CTR3(set_tid_address, "tidptr(%d) %p, returns %d",
-	    em->em_tid, args->tidptr, td->td_retval[0]);
-
-	LIN_SDT_PROBE0(emul, linux_set_tid_address, return);
-	return (0);
 }
 
 void
 linux_proc_exit(void *arg, struct proc *p)
 {
 	struct linux_pemuldata *pem;
-	int sv_flags;
+	struct epoll_emuldata *emd;
 
 	if (__predict_true(SV_PROC_ABI(p) != SV_ABI_LINUX))
-		return;
-
-	/*
-	 * We can have both 64 & 32 bit Linuxulator running,
-	 * so eventhandler is called twice for us. To prevent this
-	 * we will check that proc is handled by corresponding module.
-	 */
-	sv_flags = (int) arg;
-	if ((sv_flags & SV_IS_MASK) != SV_PROC_IS(p))
 		return;
 
 	pem = pem_find(p);
 	KASSERT(pem != NULL, ("proc_exit: proc emuldata not found.\n"));
 	p->p_emuldata = NULL;
 
-	epoll_destroy_emuldata(pem);
+	if (pem->epoll != NULL) {
+		emd = pem->epoll;
+		pem->epoll = NULL;
+		free(emd, M_EPOLL);
+	}
 
 	sx_destroy(&pem->pem_sx);
 	free(pem, M_LINUX);
 }
-

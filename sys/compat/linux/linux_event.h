@@ -57,6 +57,4 @@
 
 #define	LINUX_EFD_SEMAPHORE	(1 << 0)
 
-void	epoll_destroy_emuldata(struct linux_pemuldata *pem);
-
 #endif	/* !_LINUX_EVENT_H_ */
