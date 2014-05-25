@@ -42,10 +42,6 @@ extern u_char linux_debug_map[];
 #define	ldebug(name)	isclr(linux_debug_map, LINUX_SYS_linux_ ## name)
 #define	LINUX_DTRACE	linuxulator
 
-#ifdef MALLOC_DECLARE
-MALLOC_DECLARE(M_LINUX);
-#endif
-
 #define	LINUX_SHAREDPAGE	(VM_MAXUSER_ADDRESS - PAGE_SIZE)
 #define	LINUX_USRSTACK		LINUX_SHAREDPAGE
 

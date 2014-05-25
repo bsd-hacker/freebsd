@@ -31,6 +31,10 @@
 #ifndef _LINUX_MIB_H_
 #define _LINUX_MIB_H_
 
+#ifdef SYSCTL_DECL
+SYSCTL_DECL(_compat_linux);
+#endif
+
 void	linux_osd_jail_register(void);
 void	linux_osd_jail_deregister(void);
 
@@ -57,13 +61,5 @@ int	linux_kernver(struct thread *td);
 #define	LINUX_KERNVER_2006000	LINUX_KERNVER(2,6,0)
 
 #define	linux_use26(t)		(linux_kernver(t) >= LINUX_KERNVER_2006000)
-
-#if defined(__amd64__) && !defined(COMPAT_LINUX32)
-#define	LINUX_OID		linux64
-#else
-#define	LINUX_OID		linux
-#endif
-#define	__linuxN(x)		__CONCAT(__CONCAT(LINUX_OID,_),x)
-#define	LINUX_COMPAT_OID	__CONCAT(_compat_,LINUX_OID)
 
 #endif /* _LINUX_MIB_H_ */

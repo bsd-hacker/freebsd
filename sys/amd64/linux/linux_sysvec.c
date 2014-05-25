@@ -86,12 +86,17 @@ __FBSDID("$FreeBSD$");
 
 MODULE_VERSION(linux64, 1);
 
-MALLOC_DEFINE(M_LINUX, "linux64", "Linux mode structures");
-
 #if BYTE_ORDER == LITTLE_ENDIAN
 #define SHELLMAGIC      0x2123 /* #! */
 #else
 #define SHELLMAGIC      0x2321
+#endif
+
+#if defined(DEBUG)
+SYSCTL_PROC(_compat_linux, OID_AUTO, debug,
+            CTLTYPE_STRING | CTLFLAG_RW,
+            0, 0, linux_sysctl_debug, "A",
+            "Linux debugging control");
 #endif
 
 /*
@@ -966,7 +971,6 @@ linux64_elf_modevent(module_t mod, int type, void *data)
 			    linux_proc_exec, (void *) (long)elf_linux_sysvec.sv_flags, 1000);
 			linux_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
 			    linux_thread_dtor, NULL, EVENTHANDLER_PRI_ANY);
-			linux_osd_jail_register();
 			stclohz = (stathz ? stathz : hz);
 			if (bootverbose)
 				printf("Linux x86-64 ELF exec handler installed\n");
@@ -993,7 +997,6 @@ linux64_elf_modevent(module_t mod, int type, void *data)
 			EVENTHANDLER_DEREGISTER(process_exit, linux_exit_tag);
 			EVENTHANDLER_DEREGISTER(process_exec, linux_exec_tag);
 			EVENTHANDLER_DEREGISTER(thread_dtor, linux_thread_dtor_tag);
-			linux_osd_jail_deregister();
 			if (bootverbose)
 				printf("Linux ELF exec handler removed\n");
 		} else
@@ -1011,4 +1014,5 @@ static moduledata_t linux64_elf_mod = {
 	0
 };
 
-DECLARE_MODULE(linux64elf, linux64_elf_mod, SI_SUB_EXEC, SI_ORDER_ANY);
+DECLARE_MODULE_TIED(linux64elf, linux64_elf_mod, SI_SUB_EXEC, SI_ORDER_ANY);
+MODULE_DEPEND(linux64elf, linux_common, 1, 1, 1);

@@ -190,6 +190,7 @@ SUBDIR=	\
 	${_linsysfs} \
 	${_linux} \
 	${_linux64} \
+	${_linuxcommon} \
 	lmc \
 	lpt \
 	mac_biba \
@@ -720,6 +721,7 @@ _linprocfs=	linprocfs
 _linsysfs=	linsysfs
 _linux=		linux
 _linux64=	linux64
+_linuxcommon=	linux_common
 _mly=		mly
 .if ${MK_OFED} != "no" || defined(ALL_MODULES)
 _mlx4=		mlx4

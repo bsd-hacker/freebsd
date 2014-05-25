@@ -41,10 +41,6 @@ extern u_char linux_debug_map[];
 #define	ldebug(name)	isclr(linux_debug_map, LINUX_SYS_linux_ ## name)
 #define	LINUX_DTRACE	linuxulator
 
-#ifdef MALLOC_DECLARE
-MALLOC_DECLARE(M_LINUX);
-#endif
-
 #define	PTRIN(v)	(void *)(v)
 #define	PTROUT(v)	(uintptr_t)(v)
 

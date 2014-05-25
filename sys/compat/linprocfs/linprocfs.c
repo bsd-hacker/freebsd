@@ -39,8 +39,6 @@
  *	@(#)procfs_status.c	8.4 (Berkeley) 6/15/94
  */
 
-#include "opt_compat.h"
-
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -597,30 +595,10 @@ linprocfs_doversion(PFS_FILL_ARGS)
 {
 	char osname[LINUX_MAX_UTSNAME];
 	char osrelease[LINUX_MAX_UTSNAME];
-	size_t size;
-	int error = 0;
 
-	size = sizeof(osname);
-	if (SV_CURPROC_FLAG(SV_LP64))
-		error = kernel_sysctlbyname(td, "compat.linux64.osname", &osname, &size, 0, 0, 0, 0);
-	if (SV_CURPROC_FLAG(SV_ILP32) || error)
-		error = kernel_sysctlbyname(td, "compat.linux.osname", &osname, &size, 0, 0, 0, 0);
-	if (error)
-		sbuf_printf(sb, "unknown ");
-	else
-		sbuf_printf(sb, "%s ", osname);
-
-	error = 0;
-	size = sizeof(osrelease);
-	if (SV_CURPROC_FLAG(SV_LP64))
-		error = kernel_sysctlbyname(td, "compat.linux64.osrelease", &osrelease, &size, 0, 0, 0, 0);
-	if (SV_CURPROC_FLAG(SV_ILP32) || error)
-		error = kernel_sysctlbyname(td, "compat.linux.osrelease", &osrelease, &size, 0, 0, 0, 0);
-	if (error)
-		sbuf_printf(sb, "version unknown (");
-	else
-		sbuf_printf(sb, "version %s (", osrelease);
-
+	linux_get_osname(td, osname);
+	linux_get_osrelease(td, osrelease);
+	sbuf_printf(sb, "%s version %s (", osname, osrelease);
 	linprocfs_osbuilder(td, sb);
 	sbuf_cat(sb, ") (gcc version " __VERSION__ ") ");
 	linprocfs_osbuild(td, sb);
@@ -1224,18 +1202,10 @@ static int
 linprocfs_doosrelease(PFS_FILL_ARGS)
 {
 	char osrelease[LINUX_MAX_UTSNAME];
-	size_t size;
-	int error = 0;
 
-	size = sizeof(osrelease);
-	if (SV_CURPROC_FLAG(SV_LP64))
-		error = kernel_sysctlbyname(td, "compat.linux64.osrelease", &osrelease, &size, 0, 0, 0, 0);
-	if (SV_CURPROC_FLAG(SV_ILP32) || error)
-		error = kernel_sysctlbyname(td, "compat.linux.osrelease", &osrelease, &size, 0, 0, 0, 0);
-	if (error)
-		sbuf_printf(sb, "unknown\n");
-	else
-		sbuf_printf(sb, "%s\n", osrelease);
+	linux_get_osrelease(td, osrelease);
+	sbuf_printf(sb, "%s\n", osrelease);
+
 	return (0);
 }
 
@@ -1246,18 +1216,10 @@ static int
 linprocfs_doostype(PFS_FILL_ARGS)
 {
 	char osname[LINUX_MAX_UTSNAME];
-	size_t size;
-	int error = 0;
 
-	size = sizeof(osname);
-	if (SV_CURPROC_FLAG(SV_LP64))
-		error = kernel_sysctlbyname(td, "compat.linux64.osname", &osname, &size, 0, 0, 0, 0);
-	if (SV_CURPROC_FLAG(SV_ILP32) || error)
-		error = kernel_sysctlbyname(td, "compat.linux.osname", &osname, &size, 0, 0, 0, 0);
-	if (error)
-		sbuf_printf(sb, "unknown\n");
-	else
-		sbuf_printf(sb, "%s\n", osname);
+	linux_get_osname(td, osname);
+	sbuf_printf(sb, "%s\n", osname);
+
 	return (0);
 }
 
@@ -1541,7 +1503,11 @@ linprocfs_uninit(PFS_INIT_ARGS)
 }
 
 PSEUDOFS(linprocfs, 1, 0);
+#if defined(__amd64__)
+MODULE_DEPEND(linprocfs, linux_common, 1, 1, 1);
+#else
 MODULE_DEPEND(linprocfs, linux, 1, 1, 1);
+#endif
 MODULE_DEPEND(linprocfs, procfs, 1, 1, 1);
 MODULE_DEPEND(linprocfs, sysvmsg, 1, 1, 1);
 MODULE_DEPEND(linprocfs, sysvsem, 1, 1, 1);

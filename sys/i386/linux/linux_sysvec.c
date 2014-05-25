@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/signalvar.h>
 #include <sys/syscallsubr.h>
+#include <sys/sysctl.h>
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
 #include <sys/vnode.h>
@@ -74,12 +75,18 @@ __FBSDID("$FreeBSD$");
 #include <compat/linux/linux_vdso.h>
 
 MODULE_VERSION(linux, 1);
-MALLOC_DEFINE(M_LINUX, "linux", "Linux mode structures");
 
 #if BYTE_ORDER == LITTLE_ENDIAN
 #define SHELLMAGIC      0x2123 /* #! */
 #else
 #define SHELLMAGIC      0x2321
+#endif
+
+#if defined(DEBUG)
+SYSCTL_PROC(_compat_linux, OID_AUTO, debug,
+            CTLTYPE_STRING | CTLFLAG_RW,
+            0, 0, linux_sysctl_debug, "A",
+            "Linux debugging control");
 #endif
 
 /*
