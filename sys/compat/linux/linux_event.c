@@ -182,13 +182,13 @@ epoll_fd_install(struct thread *td, int fd, epoll_udata_t udata)
 
 	LINUX_PEM_XLOCK(pem);
 	if (pem->epoll == NULL) {
-		emd = malloc(EPOLL_SIZE(fd), M_TEMP, M_WAITOK);
+		emd = malloc(EPOLL_SIZE(fd), M_EPOLL, M_WAITOK);
 		emd->fdc = fd;
 		pem->epoll = emd;
 	} else {
 		emd = pem->epoll;
 		if (fd > emd->fdc) {
-			emd = realloc(emd, EPOLL_SIZE(fd), M_TEMP, M_WAITOK);
+			emd = realloc(emd, EPOLL_SIZE(fd), M_EPOLL, M_WAITOK);
 			emd->fdc = fd;
 			pem->epoll = emd;
 		}
@@ -325,7 +325,7 @@ epoll_kev_copyout(void *arg, struct kevent *kevp, int count)
 	int error, fd, i;
 
 	args = (struct epoll_copyout_args*) arg;
-	eep = malloc(sizeof(*eep) * count, M_TEMP, M_WAITOK | M_ZERO);
+	eep = malloc(sizeof(*eep) * count, M_EPOLL, M_WAITOK | M_ZERO);
 
 	pem = pem_find(args->p);
 	KASSERT(pem != NULL, ("epoll proc emuldata not found.\n"));
@@ -350,7 +350,7 @@ epoll_kev_copyout(void *arg, struct kevent *kevp, int count)
 	} else if (args->error == 0)
 		args->error = error;
 
-	free(eep, M_TEMP);
+	free(eep, M_EPOLL);
 	return (error);
 }
 
@@ -558,7 +558,7 @@ epoll_destroy_emuldata(struct linux_pemuldata *pem)
 	if (pem->epoll == NULL)
 		return;
 	emd = pem->epoll;
-	free(emd, M_TEMP);
+	free(emd, M_EPOLL);
 }
 
 static int
@@ -578,7 +578,7 @@ eventfd_create(struct thread *td, uint32_t initval, int flags)
 	if (error)
 		return (error);
 
-	efd = malloc(sizeof(*efd), M_TEMP, M_WAITOK | M_ZERO);
+	efd = malloc(sizeof(*efd), M_EPOLL, M_WAITOK | M_ZERO);
 	efd->efd_flags = flags;
 	efd->efd_count = initval;
 	mtx_init(&efd->efd_lock, "eventfd", NULL, MTX_DEF);
@@ -627,7 +627,7 @@ eventfd_close(struct file *fp, struct thread *td)
 
 	fp->f_ops = &badfileops;
 	mtx_destroy(&efd->efd_lock);
-	free(efd, M_TEMP);
+	free(efd, M_EPOLL);
 
 	return (0);
 }

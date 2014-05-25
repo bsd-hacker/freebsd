@@ -54,6 +54,9 @@ __FBSDID("$FreeBSD$");
 #include <compat/linux/linux_util.h>
 
 MALLOC_DEFINE(M_LINUX, "linux", "Linux mode structures");
+MALLOC_DEFINE(M_EPOLL, "lepoll", "Linux event structures");
+MALLOC_DEFINE(M_FUTEX, "futex", "Linux futexes");
+MALLOC_DEFINE(M_FUTEX_WP, "futex wp", "Linux futexes wp");
 
 const char      linux_emul_path[] = "/compat/linux";
 
