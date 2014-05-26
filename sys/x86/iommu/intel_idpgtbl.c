@@ -373,17 +373,18 @@ retry:
 			 */
 			m = dmar_pgalloc(ctx->pgtbl_obj, idx, flags |
 			    DMAR_PGF_ZERO);
-			if (m == NULL)
-				return (NULL);
 
 			/*
-			 * Prevent potential free while pgtbl_obj is
+			 * If a page is successfully returned, it is assumed
+			 * that the page is properly wired already.  This
+			 * prevent potential free while pgtbl_obj is
 			 * unlocked in the recursive call to
 			 * ctx_pgtbl_map_pte(), if other thread did
 			 * pte write and clean while the lock if
 			 * dropped.
 			 */
-			m->wire_count++;
+			if (m == NULL)
+				return (NULL);
 
 			sfp = NULL;
 			ptep = ctx_pgtbl_map_pte(ctx, base, lvl - 1, flags,
@@ -391,14 +392,12 @@ retry:
 			if (ptep == NULL) {
 				KASSERT(m->pindex != 0,
 				    ("loosing root page %p", ctx));
-				m->wire_count--;
 				dmar_pgfree(ctx->pgtbl_obj, m->pindex, flags);
 				return (NULL);
 			}
 			dmar_pte_store(&ptep->pte, DMAR_PTE_R | DMAR_PTE_W |
 			    VM_PAGE_TO_PHYS(m));
 			sf_buf_page(sfp)->wire_count += 1;
-			m->wire_count--;
 			dmar_unmap_pgtbl(sfp, DMAR_IS_COHERENT(ctx->dmar));
 			/* Only executed once. */
 			goto retry;
@@ -573,7 +572,7 @@ ctx_unmap_clear_pte(struct dmar_ctx *ctx, dmar_gaddr_t base, int lvl,
 		*sf = NULL;
 	}
 	m->wire_count--;
-	if (m->wire_count != 0)
+	if (m->wire_count != 1)
 		return;
 	KASSERT(lvl != 0,
 	    ("lost reference (lvl) on root pg ctx %p base %jx lvl %d",
@@ -685,8 +684,6 @@ ctx_alloc_pgtbl(struct dmar_ctx *ctx)
 	DMAR_CTX_PGLOCK(ctx);
 	m = dmar_pgalloc(ctx->pgtbl_obj, 0, DMAR_PGF_WAITOK |
 	    DMAR_PGF_ZERO | DMAR_PGF_OBJL);
-	/* No implicit free of the top level page table page. */
-	m->wire_count = 1;
 	DMAR_CTX_PGUNLOCK(ctx);
 	return (0);
 }
@@ -716,7 +713,7 @@ ctx_free_pgtbl(struct dmar_ctx *ctx)
 	/* Obliterate wire_counts */
 	VM_OBJECT_ASSERT_WLOCKED(obj);
 	for (m = vm_page_lookup(obj, 0); m != NULL; m = vm_page_next(m))
-		m->wire_count = 0;
+		m->wire_count = 1;
 	VM_OBJECT_WUNLOCK(obj);
 	vm_object_deallocate(obj);
 }

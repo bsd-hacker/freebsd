@@ -1611,7 +1611,7 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 			if (vp != NULL)
 				vdrop(vp);
 			pagedaemon_wakeup();
-			if (req & VM_ALLOC_WIRED) {
+			if ((req & VM_ALLOC_WIRED) != 0 && unmanaged == 0) {
 				atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 				m->wire_count = 0;
 			}
@@ -1807,11 +1807,10 @@ retry:
 				    &deferred_vdrop_list);
 				if (vm_paging_needed())
 					pagedaemon_wakeup();
-				atomic_subtract_int(&vm_cnt.v_wire_count,
-				    npages);
 				for (m_tmp = m, m = m_ret;
 				    m < &m_ret[npages]; m++) {
-					m->wire_count = 0;
+					m->wire_count = 1;
+					m->oflags = VPO_UNMANAGED;
 					if (m >= m_tmp)
 						m->object = NULL;
 					vm_page_free(m);
@@ -2232,9 +2231,15 @@ vm_page_free_toq(vm_page_t m)
 		vm_page_lock_assert(m, MA_OWNED);
 		KASSERT(!pmap_page_is_mapped(m),
 		    ("vm_page_free_toq: freeing mapped page %p", m));
-	} else
+	} else {
 		KASSERT(m->queue == PQ_NONE,
 		    ("vm_page_free_toq: unmanaged page %p is queued", m));
+		KASSERT(m->wire_count == 1,
+	    ("vm_page_free_toq: invalid wired count %u for unmanaged page %p",
+		    m->wire_count, m));
+		m->wire_count--;
+		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
+	}
 	PCPU_INC(cnt.v_tfree);
 
 	if (vm_page_sbusied(m))
@@ -2363,10 +2368,10 @@ vm_page_unwire(vm_page_t m, int activate)
 	if (m->wire_count > 0) {
 		m->wire_count--;
 		if (m->wire_count == 0) {
+			if ((m->oflags & VPO_UNAMANGED) != 0)
+		panic("vm_page_unwire: completely unwired an unmanaged page %p",
+				    m);
 			atomic_subtract_int(&vm_cnt.v_wire_count, 1);
-			if ((m->oflags & VPO_UNMANAGED) != 0 ||
-			    m->object == NULL)
-				return;
 			if (!activate)
 				m->flags &= ~PG_WINATCFLS;
 			vm_page_enqueue(activate ? PQ_ACTIVE : PQ_INACTIVE, m);

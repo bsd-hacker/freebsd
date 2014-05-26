@@ -1578,7 +1578,17 @@ pmap_free_zero_pages(struct spglist *free)
 
 	while ((m = SLIST_FIRST(free)) != NULL) {
 		SLIST_REMOVE_HEAD(free, plinks.s.ss);
-		/* Preserve the page's PG_ZERO setting. */
+
+		/*
+		 * Preserve the page's PG_ZERO setting.
+		 * However, as the pages are unmanaged, fix-up the wired count
+		 * to perform a correct free.
+		 */
+		if (m->wire_count != 0)
+		panic("pmap_free_zero_pages: wrong wire count %u for page %p",
+			    m->wire_count, m);
+		m->wire_count = 1;
+		atomic_add_int(&vm_cnt.v_wire_count, 1);
 		vm_page_free_toq(m);
 	}
 }
@@ -2049,8 +2059,6 @@ pmap_release(pmap_t pmap)
 		KASSERT(VM_PAGE_TO_PHYS(m) == (pmap->pm_pdpt[i] & PG_FRAME),
 		    ("pmap_release: got wrong ptd page"));
 #endif
-		m->wire_count--;
-		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 		vm_page_free_zero(m);
 	}
 }
@@ -2312,6 +2320,9 @@ out:
 		m_pc = SLIST_FIRST(&free);
 		SLIST_REMOVE_HEAD(&free, plinks.s.ss);
 		/* Recycle a freed page table page. */
+		KASSERT((m_pc->oflags & VPO_UNMANAGED) != 0,
+	    ("pmap_pv_reclaim: recycled page table page %p not unmanaged",
+		    m_pc));
 		m_pc->wire_count = 1;
 		atomic_add_int(&vm_cnt.v_wire_count, 1);
 	}
@@ -2368,7 +2379,6 @@ free_pv_chunk(struct pv_chunk *pc)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(pmap_kextract((vm_offset_t)pc));
 	pmap_qremove((vm_offset_t)pc, 1);
-	vm_page_unwire(m, 0);
 	vm_page_free(m);
 	pmap_ptelist_free(&pv_vafree, (vm_offset_t)pc);
 }

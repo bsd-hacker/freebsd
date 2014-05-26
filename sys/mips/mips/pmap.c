@@ -993,9 +993,14 @@ _pmap_unwire_ptp(pmap_t pmap, vm_offset_t va, vm_page_t m)
 
 	/*
 	 * If the page is finally unwired, simply free it.
+	 * Fix-up the wire_count value to make the function to perform
+	 * the free correctly.
 	 */
+	if (m->wire_count != 0)
+		panic("_pmap_unwire_ptp: invalid wire count %u for the page %p",
+		    m->wire_count, m);
+	++m->wire_count;
 	vm_page_free_zero(m);
-	atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 }
 
 /*
@@ -1142,8 +1147,6 @@ _pmap_allocpte(pmap_t pmap, unsigned ptepindex, int flags)
 			if (_pmap_allocpte(pmap, NUPDE + segindex, 
 			    flags) == NULL) {
 				/* alloc failed, release current */
-				--m->wire_count;
-				atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 				vm_page_free_zero(m);
 				return (NULL);
 			}
@@ -1225,8 +1228,6 @@ pmap_release(pmap_t pmap)
 	ptdva = (vm_offset_t)pmap->pm_segtab;
 	ptdpg = PHYS_TO_VM_PAGE(MIPS_DIRECT_TO_PHYS(ptdva));
 
-	ptdpg->wire_count--;
-	atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 	vm_page_free_zero(ptdpg);
 }
 
@@ -1534,7 +1535,6 @@ free_pv_chunk(struct pv_chunk *pc)
 	PV_STAT(pc_chunk_frees++);
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(MIPS_DIRECT_TO_PHYS((vm_offset_t)pc));
-	vm_page_unwire(m, 0);
 	vm_page_free(m);
 }
 

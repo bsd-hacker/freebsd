@@ -1472,7 +1472,6 @@ static void ttm_bo_global_kobj_release(struct ttm_bo_global *glob)
 {
 
 	ttm_mem_unregister_shrink(glob->mem_glob, &glob->shrink);
-	vm_page_unwire(glob->dummy_read_page, 0);
 	vm_page_free(glob->dummy_read_page);
 }
 
@@ -1519,7 +1518,6 @@ int ttm_bo_global_init(struct drm_global_reference *ref)
 	return (0);
 
 out_no_shrink:
-	vm_page_unwire(glob->dummy_read_page, 0);
 	vm_page_free(glob->dummy_read_page);
 out_no_drp:
 	free(glob, M_DRM_GLOBAL);

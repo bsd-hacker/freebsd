@@ -1951,7 +1951,10 @@ again:
 			if ((options & OBJPR_NOTWIRED) != 0 && wirings != 0)
 				goto next;
 			pmap_remove_all(p);
-			/* Account for removal of wired mappings. */
+			/*
+			 * Account for removal of wired mappings.
+			 * The object will not contain unmanaged pages.
+			 */
 			if (wirings != 0) {
 				KASSERT(p->wire_count == wirings,
 				    ("inconsistent wire count %d %d %p",
