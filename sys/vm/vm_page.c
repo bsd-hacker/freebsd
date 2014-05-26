@@ -1464,7 +1464,7 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 
 	unmanaged = (object == NULL || (object->flags & OBJ_UNMANAGED) != 0);
 	KASSERT(unmanaged == 0 || (req & VM_ALLOC_WIRED) != 0,
-	    ("vm_page_alloc: unamanaged but unwired request req(%x)", req));
+	    ("vm_page_alloc: unmanaged but unwired request req(%x)", req));
 
 	req_class = req & VM_ALLOC_CLASS_MASK;
 
