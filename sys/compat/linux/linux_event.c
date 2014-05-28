@@ -74,7 +74,7 @@ __FBSDID("$FreeBSD$");
 typedef uint64_t	epoll_udata_t;
 
 struct epoll_emuldata {
-	uint32_t	fdc;		/* epoll udata count */
+	uint32_t	fdc;		/* epoll udata max index */
 	epoll_udata_t	udata[1];	/* epoll user data vector */
 };
 
@@ -337,7 +337,7 @@ epoll_kev_copyout(void *arg, struct kevent *kevp, int count)
 		kevent_to_epoll(&kevp[i], &eep[i]);
 
 		fd = kevp[i].ident;
-		KASSERT(fd < emd->fdc, ("epoll user data vector"
+		KASSERT(fd <= emd->fdc, ("epoll user data vector"
 						    " is too small.\n"));
 		eep[i].data = emd->udata[fd];
 	}
