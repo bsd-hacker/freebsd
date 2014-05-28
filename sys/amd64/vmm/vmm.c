@@ -62,7 +62,9 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/vmm.h>
 #include <machine/vmm_dev.h>
+#include <machine/vmm_instruction_emul.h>
 
+#include "vmm_ioport.h"
 #include "vmm_ktr.h"
 #include "vmm_host.h"
 #include "vmm_mem.h"
@@ -188,6 +190,16 @@ CTASSERT(VMM_MSR_NUM <= 64);	/* msr_mask can keep track of up to 64 msrs */
 static VMM_STAT(VCPU_TOTAL_RUNTIME, "vcpu total runtime");
 
 SYSCTL_NODE(_hw, OID_AUTO, vmm, CTLFLAG_RW, NULL, NULL);
+
+/*
+ * Halt the guest if all vcpus are executing a HLT instruction with
+ * interrupts disabled.
+ */
+static int halt_detection_enabled = 1;
+TUNABLE_INT("hw.vmm.halt_detection", &halt_detection_enabled);
+SYSCTL_INT(_hw_vmm, OID_AUTO, halt_detection, CTLFLAG_RDTUN,
+    &halt_detection_enabled, 0,
+    "Halt VM if all vcpus execute HLT with interrupts disabled");
 
 static int vmm_ipinum;
 SYSCTL_INT(_hw_vmm, OID_AUTO, ipinum, CTLFLAG_RD, &vmm_ipinum, 0,
@@ -1047,7 +1059,7 @@ vm_handle_hlt(struct vm *vm, int vcpuid, bool intr_disabled, bool *retu)
 		if (intr_disabled) {
 			wmesg = "vmhalt";
 			VCPU_CTR0(vm, vcpuid, "Halted");
-			if (!vcpu_halted) {
+			if (!vcpu_halted && halt_detection_enabled) {
 				vcpu_halted = 1;
 				CPU_SET_ATOMIC(vcpuid, &vm->halted_cpus);
 			}
@@ -1121,34 +1133,33 @@ vm_handle_inst_emul(struct vm *vm, int vcpuid, bool *retu)
 	struct vie *vie;
 	struct vcpu *vcpu;
 	struct vm_exit *vme;
-	int error, inst_length;
-	uint64_t rip, gla, gpa, cr3;
-	enum vie_cpu_mode cpu_mode;
-	enum vie_paging_mode paging_mode;
+	uint64_t gla, gpa;
+	struct vm_guest_paging *paging;
 	mem_region_read_t mread;
 	mem_region_write_t mwrite;
+	int error;
 
 	vcpu = &vm->vcpu[vcpuid];
 	vme = &vcpu->exitinfo;
 
-	rip = vme->rip;
-	inst_length = vme->inst_length;
-
 	gla = vme->u.inst_emul.gla;
 	gpa = vme->u.inst_emul.gpa;
-	cr3 = vme->u.inst_emul.cr3;
-	cpu_mode = vme->u.inst_emul.cpu_mode;
-	paging_mode = vme->u.inst_emul.paging_mode;
 	vie = &vme->u.inst_emul.vie;
+	paging = &vme->u.inst_emul.paging;
 
 	vie_init(vie);
 
 	/* Fetch, decode and emulate the faulting instruction */
-	if (vmm_fetch_instruction(vm, vcpuid, rip, inst_length, cr3,
-	    paging_mode, vie) != 0)
+	error = vmm_fetch_instruction(vm, vcpuid, paging, vme->rip,
+	    vme->inst_length, vie);
+	if (error == 1)
+		return (0);		/* Resume guest to handle page fault */
+	else if (error == -1)
 		return (EFAULT);
+	else if (error != 0)
+		panic("%s: vmm_fetch_instruction error %d", __func__, error);
 
-	if (vmm_decode_instruction(vm, vcpuid, gla, cpu_mode, vie) != 0)
+	if (vmm_decode_instruction(vm, vcpuid, gla, paging->cpu_mode, vie) != 0)
 		return (EFAULT);
 
 	/* return to userland unless this is an in-kernel emulated device */
@@ -1338,6 +1349,10 @@ restart:
 		case VM_EXITCODE_INST_EMUL:
 			error = vm_handle_inst_emul(vm, vcpuid, &retu);
 			break;
+		case VM_EXITCODE_INOUT:
+		case VM_EXITCODE_INOUT_STR:
+			error = vm_handle_inout(vm, vcpuid, vme, &retu);
+			break;
 		default:
 			retu = true;	/* handled in userland */
 			break;
@@ -1417,6 +1432,25 @@ vm_inject_fault(struct vm *vm, int vcpuid, struct vm_exception *exception)
 	 */
 	vmexit = vm_exitinfo(vm, vcpuid);
 	vmexit->inst_length = 0;
+}
+
+void
+vm_inject_pf(struct vm *vm, int vcpuid, int error_code, uint64_t cr2)
+{
+	struct vm_exception pf = {
+		.vector = IDT_PF,
+		.error_code_valid = 1,
+		.error_code = error_code
+	};
+	int error;
+
+	VCPU_CTR2(vm, vcpuid, "Injecting page fault: error_code %#x, cr2 %#lx",
+	    error_code, cr2);
+
+	error = vm_set_register(vm, vcpuid, VM_REG_GUEST_CR2, cr2);
+	KASSERT(error == 0, ("vm_set_register(cr2) error %d", error));
+
+	vm_inject_fault(vm, vcpuid, &pf);
 }
 
 void
@@ -1845,4 +1879,21 @@ struct vatpit *
 vm_atpit(struct vm *vm)
 {
 	return (vm->vatpit);
+}
+
+enum vm_reg_name
+vm_segment_name(int seg)
+{
+	static enum vm_reg_name seg_names[] = {
+		VM_REG_GUEST_ES,
+		VM_REG_GUEST_CS,
+		VM_REG_GUEST_SS,
+		VM_REG_GUEST_DS,
+		VM_REG_GUEST_FS,
+		VM_REG_GUEST_GS
+	};
+
+	KASSERT(seg >= 0 && seg < nitems(seg_names),
+	    ("%s: invalid segment encoding %d", __func__, seg));
+	return (seg_names[seg]);
 }

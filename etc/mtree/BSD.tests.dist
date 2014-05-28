@@ -12,8 +12,6 @@
         ..
     ..
     share
-        aclocal
-        ..
         atf
         ..
         doc
@@ -97,8 +95,6 @@
             ..
             growfs
             ..
-            ifconfig
-            ..
             mdconfig
             ..
         ..
@@ -135,21 +131,7 @@
                 atf-sh
                 ..
             ..
-            calendar
-            ..
-            comm
-            ..
-            file2c
-            ..
-            join
-            ..
-            jot
-            ..
-            lastcomm
-            ..
-            m4
-            ..
-            make
+            bmake
                 archives
                     fmt_44bsd
                     ..
@@ -246,6 +228,20 @@
                     t0
                     ..
                 ..
+            ..
+            calendar
+            ..
+            comm
+            ..
+            file2c
+            ..
+            join
+            ..
+            jot
+            ..
+            lastcomm
+            ..
+            m4
             ..
             ncal
             ..

@@ -1,6 +1,8 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
+
+SUBDIR_PARALLEL=
 
 # Modules that include binary-only blobs of microcode should be selectable by
 # MK_SOURCELESS_UCODE option (see below).
@@ -148,7 +150,7 @@ SUBDIR=	\
 	if_vlan \
 	${_igb} \
 	${_iir} \
-	${_imgact_binmisc} \
+	imgact_binmisc \
 	${_io} \
         ${_ipoib} \
 	${_ipdivert} \
@@ -221,6 +223,7 @@ SUBDIR=	\
 	mps \
 	mpt \
 	mqueue \
+	mrsas \
 	msdosfs \
 	msdosfs_iconv \
 	${_mse} \
@@ -376,7 +379,6 @@ SUBDIR=	\
 
 .if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
 _filemon=	filemon
-_imgact_binmisc=	imgact_binmisc
 _vmware=	vmware
 .endif
 
