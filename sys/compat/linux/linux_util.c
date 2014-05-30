@@ -59,6 +59,7 @@ MALLOC_DEFINE(M_FUTEX, "futex", "Linux futexes");
 MALLOC_DEFINE(M_FUTEX_WP, "futex wp", "Linux futexes wp");
 
 const char      linux_emul_path[] = "/compat/linux";
+const char	linux64_emul_path[] = "/compat/linux64";
 
 /*
  * Search an alternate path before passing pathname arguments on to
@@ -71,9 +72,14 @@ int
 linux_emul_convpath(struct thread *td, const char *path, enum uio_seg pathseg,
     char **pbuf, int cflag, int dfd)
 {
+	const char *lemul_path;
 	int retval;
 
-	retval = kern_alternate_path(td, linux_emul_path, path, pathseg, pbuf,
+	if (td->td_proc->p_sysent->sv_flags & SV_LP64)
+		lemul_path = linux64_emul_path;
+	else
+		lemul_path = linux_emul_path;
+	retval = kern_alternate_path(td, lemul_path, path, pathseg, pbuf,
 	    cflag, dfd);
 
 	return (retval);
