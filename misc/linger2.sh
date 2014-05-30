@@ -47,20 +47,20 @@ mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 [ $# -eq 1 ] && opt="$1"
 [ $# -eq 0 ] && opt=$newfs_flags	# No argument == default flag
-echo "newfs $opt md${mdstart}$part"
-newfs $opt md${mdstart}$part > /dev/null
+newfs $opt -n md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
+set `df -i $mntpoint | tail -1 | awk '{print $3, $6}'`
 
 min=24
 [ -r $mntpoint/.sujournal ] && { size=88; min=8232; }
-if ! su ${testuser} -c "cd $mntpoint; /tmp/linger2 $size"; then
-	ls -lR $mntpoint
+if ! su ${testuser} -c "cd $mntpoint; /tmp/linger2 $size 2>/dev/null"; then
 	r=`df -i $mntpoint | head -1`
 	echo "         $r"
-	for i in `jot 10`; do
+	for i in `jot 12`; do
 		r=`df -ik $mntpoint | tail -1`
-		echo "`date '+%T'` $r"
+		[ "$r" != "$old" ] && echo "`date '+%T'` $r"
+		old=$r
 		[ `echo $r | awk '{print $3}'` -le $min ] && break
 		sleep 10
 	done
@@ -131,7 +131,7 @@ test(void)
 		sprintf(file,"p%05d.%05d", pid, i);
 		if (unlink(file) == -1)
 			warn("unlink(%s)", file);
-		
+
 	}
 	return (error);
 }
@@ -157,7 +157,7 @@ main(int argc, char **argv)
 		if ((fd = open("rendezvous", O_CREAT, 0644)) == -1)
 			err(1, "open()");
 		close(fd);
-		
+
 		for (j = 0; j < PARALLEL; j++) {
 			wait(&status);
 			error += status;
@@ -165,10 +165,8 @@ main(int argc, char **argv)
 
 		unlink("rendezvous");
 		if (access("continue", R_OK) == -1) {
-			fprintf(stderr, "Loop #%d\n", i + 1);
 			break;
 		}
-//		sleep(60);	/* Debug */
 	}
 	unlink("continue");
 
