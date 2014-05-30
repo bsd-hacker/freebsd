@@ -115,7 +115,7 @@ test(void)
 	} else if (pid > 0) {
 		reader();
 		kill(pid, SIGINT);
-	} else 
+	} else
 		err(1, "fork(), %s:%d",  __FILE__, __LINE__);
 
 	return (0);

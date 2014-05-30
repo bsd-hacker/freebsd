@@ -128,7 +128,7 @@ test(void)
 			if (waitpid(pid, NULL, 0) == -1)
 				warn("waitpid(%d)", pid);
 			alarm(0);
-		} else 
+		} else
 			err(1, "fork(), %s:%d",  __FILE__, __LINE__);
 	}
 

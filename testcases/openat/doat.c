@@ -61,7 +61,7 @@ struct test {
 	int	num_of_cases;
 	char	*name;
 	struct testcase	tests[10];	// no more than 10 tests
-	
+
 };
 
 struct test *tests;
@@ -104,7 +104,7 @@ setup()
 	tests = calloc(NUM_OF_TESTS, sizeof(struct test));
 	if (tests == NULL) {
 		perror("");
-		exit(0);		
+		exit(0);
 	}
 
 	absolute_path = getcwd(NULL, 0);
@@ -191,7 +191,7 @@ setup()
 		perror("symlink");
 		exit(0);
 	}
-	
+
 	// faccessat
 	tests[0].syscall = SYS_faccessat;
 	tests[0].num_of_cases = 6;
@@ -327,17 +327,17 @@ setup()
 	tests[3].tests[2].params[1].cp = relative_file;
 	tests[3].tests[2].params[2].vp = &buf;
 	tests[3].tests[2].params[3].i = 0;
-	tests[3].tests[2].result = 0; 
+	tests[3].tests[2].result = 0;
 	tests[3].tests[2].params[0].i = rel_fd;
 	tests[3].tests[2].params[1].cp = file;
 	tests[3].tests[2].params[2].vp = &buf;
 	tests[3].tests[2].params[3].i = 0;
-	tests[3].tests[3].result = 0; 
+	tests[3].tests[3].result = 0;
 	tests[3].tests[3].params[0].i = AT_FDCWD;
 	tests[3].tests[3].params[1].cp = symlinkf;
 	tests[3].tests[3].params[2].vp = &buf;
 	tests[3].tests[3].params[3].i = AT_SYMLINK_NOFOLLOW;
-	tests[3].tests[4].result = 0; 
+	tests[3].tests[4].result = 0;
 	tests[3].tests[4].params[0].i = notd_fd;
 	tests[3].tests[4].params[1].cp = absolute_file;
 	tests[3].tests[4].params[2].vp = &buf;
@@ -503,17 +503,17 @@ setup()
 	tests[10].tests[0].params[0].i = 106;	// invalid fd
 	tests[10].tests[0].params[1].cp = relative_file;
 	tests[10].tests[0].params[2].vp = cbuf;
-	tests[10].tests[0].params[3].i = PATH_MAX; 
+	tests[10].tests[0].params[3].i = PATH_MAX;
 	tests[10].tests[1].result = ENOTDIR;
 	tests[10].tests[1].params[0].i = notd_fd;
 	tests[10].tests[1].params[1].cp = relative_file;
 	tests[10].tests[1].params[2].vp = cbuf;
-	tests[10].tests[1].params[3].i = PATH_MAX; 
+	tests[10].tests[1].params[3].i = PATH_MAX;
 	tests[10].tests[2].result = strlen(absolute_file);
 	tests[10].tests[2].params[0].i = AT_FDCWD;
 	tests[10].tests[2].params[1].cp = symlinkf;
 	tests[10].tests[2].params[2].vp = cbuf;
-	tests[10].tests[2].params[3].i = PATH_MAX; 
+	tests[10].tests[2].params[3].i = PATH_MAX;
 
 	// renameat
 	tests[11].syscall = SYS_renameat;
@@ -544,7 +544,6 @@ setup()
 	tests[11].tests[4].params[1].cp = newfile;
 	tests[11].tests[4].params[2].i = AT_FDCWD;
 	tests[11].tests[4].params[3].cp = newfile;
-	
 	// symlinkat
 	tests[12].syscall = SYS_symlinkat;
 	tests[12].num_of_cases = 3;
@@ -629,7 +628,7 @@ cleanup()
 		}
 	}
 	if (!dir_exist) {
-   		error = rmdir(absolute_path);
+		error = rmdir(absolute_path);
 		if (error) {
 			perror("rmdir");
 			exit(0);
@@ -658,7 +657,7 @@ main(int argc, char *argv[])
 	setup();
 
 	for (i = 0; i < NUM_OF_TESTS; i++) {
-	   	printf("\nTest: %s\n", tests[i].name);
+		printf("\nTest: %s\n", tests[i].name);
 		for (j = 0; j < tests[i].num_of_cases; j++) {
 			error = syscall(tests[i].syscall,
 				tests[i].tests[j].params[0],
@@ -668,19 +667,19 @@ main(int argc, char *argv[])
 				tests[i].tests[j].params[4]);
 			if (error == 0) {
 				if (tests[i].tests[j].result == 0)
-   					printf("#%i ... OK\n", j);
+					printf("#%i ... OK\n", j);
 				else {
 					printf("#%i ... BAD: ", j);
 					printf("expected %i, but got %i\n", tests[i].tests[j].result, error);
 				}
-			} else 	{
+			} else	{
 				if (tests[i].tests[j].result == errno)
 					printf("#%i ... OK\n", j);
 				else {
-				   	if (error != tests[i].tests[j].result) {
+					if (error != tests[i].tests[j].result) {
 						printf("#%i ... BAD: ", j);
 						printf("expected %i, but got %i\n", tests[i].tests[j].result, error);
-					} else 
+					} else
 						printf("#%i ... OK\n", j);
 				}
 			}

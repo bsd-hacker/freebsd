@@ -84,7 +84,7 @@ setup(int nb)
 		exit (0);
 
 	sprintf(file, "lockf.%d", getpid());
-	if ((fd = open(file,O_CREAT | O_TRUNC | O_RDWR, 0600)) == -1) 
+	if ((fd = open(file,O_CREAT | O_TRUNC | O_RDWR, 0600)) == -1)
 		err(1, "creat(%s)", file);
 	bzero(buf, sizeof(buf));
 	for (i = 0; i < 1024; i++)
@@ -109,7 +109,7 @@ test(void)
 
 	if ((fd = open(file, O_RDWR, 0600)) == -1)
 		err(1, "open(%s)", file);
-	
+
 	for (i = 0; i < 1024 && done_testing == 0; i++) {
 		pos = random_int(0, 1024 * 1024 - 1);
 		if (lseek(fd, pos, SEEK_SET) == -1)

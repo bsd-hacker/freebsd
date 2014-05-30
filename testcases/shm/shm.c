@@ -51,7 +51,7 @@ char	*shm_buf;
 
 int	semid = -1;
 key_t	semkey;
-struct	sembuf sop[2]; 
+struct	sembuf sop[2];
 
 size_t	pgsize;
 pid_t	pid;
@@ -110,9 +110,9 @@ cleanup(void)
 
 static void
 Wait(int i) {
-   		sop[0].sem_num = i;
-   		sop[0].sem_op = -1;
-   		if (semop(semid, sop, 1) == -1) {
+		sop[0].sem_num = i;
+		sop[0].sem_op = -1;
+		if (semop(semid, sop, 1) == -1) {
 			if (errno != EINTR && errno != EIDRM && errno != EINVAL)
 				warn("Wait: semop (%s:%d)", __FILE__, __LINE__);
 			done_testing = 1;
@@ -121,9 +121,9 @@ Wait(int i) {
 
 static void
 Sig(int i) {
-   		sop[0].sem_num = i;
-   		sop[0].sem_op = 1;
-   		if (semop(semid, sop, 1) == -1) {
+		sop[0].sem_num = i;
+		sop[0].sem_op = 1;
+		if (semop(semid, sop, 1) == -1) {
 			if (errno != EINTR && errno != EIDRM && errno != EINVAL)
 			warn("Sig: semop (%s:%d)", __FILE__, __LINE__);
 			done_testing = 1;
@@ -149,7 +149,7 @@ test(void)
 				break;
 			if (shm_buf[i] != (i % 128)) {
 				fprintf(stderr,
-					"child %d: expected %d, got %d\n", 
+					"child %d: expected %d, got %d\n",
 					getpid(), i % 128, shm_buf[i]);
 				break;
 			}
@@ -172,7 +172,7 @@ test(void)
 				break;
 			if (shm_buf[i] != (i % 128)) {
 				fprintf(stderr,
-					"parent(%d): expected %d, got %d\n", 
+					"parent(%d): expected %d, got %d\n",
 					getpid(), i % 128, shm_buf[i]);
 				break;
 			}

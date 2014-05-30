@@ -51,7 +51,7 @@ setup(int nb)
 	int64_t bl;
 	int64_t reserve_in;
 	int64_t reserve_bl;
-	
+
 
 	umask(0);
 	path[0] = 0;
@@ -134,7 +134,7 @@ test(void)
 		sprintf(file,"p%05d.%05d", pid, i);
 		if (unlink(file) == -1)
 			warn("unlink(%s)", file);
-		
+
 	}
 
 	return (0);

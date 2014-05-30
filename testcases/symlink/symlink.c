@@ -62,8 +62,8 @@ setup(int nb)
 			pct = random_int(1, 90);
 		size = size / 100 * pct + 1;
 
-		if (size > 32000)
-			size = 32000;	/* arbitrary limit number of files pr. dir */
+		if (size > 16000)
+			size = 16000;	/* arbitrary limit number of files pr. dir */
 
 		/* Resource requirements: */
 		while (size > 0) {

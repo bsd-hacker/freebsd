@@ -124,7 +124,7 @@ test(void)
 	int sem = 0;
 
 	sprintf(file, "lockf.0.%d", getpid());
-	if ((fd = open(file,O_CREAT | O_TRUNC | O_RDWR, 0600)) == -1) 
+	if ((fd = open(file,O_CREAT | O_TRUNC | O_RDWR, 0600)) == -1)
 		err(1, "creat(%s)", file);
 	if (write(fd, &sem, sizeof(sem)) != sizeof(sem))
 		err(1, "write");

@@ -61,13 +61,13 @@ setup(int nb)
 
 		if (op->hog == 0)
 			pct = random_int(80, 100);
-		
+
 		if (op->hog == 1)
 			pct = random_int(100, 110);
-		
+
 		if (op->hog == 2)
 			pct = random_int(110, 120);
-		
+
 		if (op->hog >= 3)
 			pct = random_int(120, 130);
 
@@ -92,7 +92,7 @@ setup(int nb)
 			err(1,"getrlimit");
 		rlp.rlim_cur -= 1024 * 1024;
 
-		if (size > (unsigned long)rlp.rlim_cur) 
+		if (size > (unsigned long)rlp.rlim_cur)
 			size = rlp.rlim_cur;
 		putval(size);
 

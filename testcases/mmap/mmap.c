@@ -93,7 +93,7 @@ cleanup(void)
 	if (rmdir(path) == -1) {
 		warn("rmdir(%s), %s:%d", path, __FILE__, __LINE__);
 	}
-	
+
 }
 
 int

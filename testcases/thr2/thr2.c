@@ -74,7 +74,7 @@ test(void)
 	pthread_t threads[NTHREADS];
 	int i;
 	int r;
-	
+
 	for (i = 0; i < NTHREADS; i++)
 		if ((r = pthread_create(&threads[i], NULL, thr1, 0)) != 0)
 			err(1, "pthread_create(): %s\n", strerror(r));

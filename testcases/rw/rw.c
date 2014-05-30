@@ -134,7 +134,7 @@ test(void)
 	char file[128];
 
 	sprintf(file,"p%05d", getpid());
-	if ((fd = creat(file, 0660)) == -1) 
+	if ((fd = creat(file, 0660)) == -1)
 		err(1, "creat(%s)", file);
 
 	to = sizeof(buf);

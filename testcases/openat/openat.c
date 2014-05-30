@@ -40,7 +40,7 @@ __FBSDID("$FreeBSD$");
 #include "stress.h"
 
 static char path1[128];
-static char path2[] = "tmp";		
+static char path2[] = "tmp";
 
 static char rpath[128];
 static char apath[128];

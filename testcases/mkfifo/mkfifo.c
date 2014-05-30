@@ -179,7 +179,7 @@ test(void)
 		kill(pid, SIGINT);
 		if (waitpid(pid, &status, 0) == -1)
 			warn("waitpid(%d)", pid);
-	} else 
+	} else
 		err(1, "fork(), %s:%d",  __FILE__, __LINE__);
 
 	unlink(path);

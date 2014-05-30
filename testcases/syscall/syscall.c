@@ -62,6 +62,7 @@ static int ignore[] = {
 	SYS_mac_syscall,
 	SYS_sigtimedwait,
 	SYS_sigwaitinfo,
+	SYS_pdfork,
 };
 
 int

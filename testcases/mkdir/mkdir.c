@@ -97,7 +97,7 @@ mkDir(char *path, int level) {
 	char newPath[MAXPATHLEN + 1];
 
 	if (mkdir(path, 0770) == -1) {
-		warn("mkdir(%s), %s:%d", path, __FILE__, __LINE__);
+		warn("mkdir(%s), level %d. %s:%d", path, level, __FILE__, __LINE__);
 		size = level;
 	} else
 		chdir(path);
