@@ -512,6 +512,15 @@ static void
 vmx_enable(void *arg __unused)
 {
 	int error;
+	uint64_t feature_control;
+
+	feature_control = rdmsr(MSR_IA32_FEATURE_CONTROL);
+	if ((feature_control & IA32_FEATURE_CONTROL_LOCK) == 0 ||
+	    (feature_control & IA32_FEATURE_CONTROL_VMX_EN) == 0) {
+		wrmsr(MSR_IA32_FEATURE_CONTROL,
+		    feature_control | IA32_FEATURE_CONTROL_VMX_EN |
+		    IA32_FEATURE_CONTROL_LOCK);
+	}
 
 	load_cr4(rcr4() | CR4_VMXE);
 
@@ -547,7 +556,7 @@ vmx_init(int ipinum)
 	 * are set (bits 0 and 2 respectively).
 	 */
 	feature_control = rdmsr(MSR_IA32_FEATURE_CONTROL);
-	if ((feature_control & IA32_FEATURE_CONTROL_LOCK) == 0 ||
+	if ((feature_control & IA32_FEATURE_CONTROL_LOCK) == 1 &&
 	    (feature_control & IA32_FEATURE_CONTROL_VMX_EN) == 0) {
 		printf("vmx_init: VMX operation disabled by BIOS\n");
 		return (ENXIO);
@@ -1380,8 +1389,30 @@ vmx_emulate_xsetbv(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 		return (HANDLED);
 	}
 
-	if ((xcrval & (XFEATURE_ENABLED_AVX | XFEATURE_ENABLED_SSE)) ==
-	    XFEATURE_ENABLED_AVX) {
+	/* AVX (YMM_Hi128) requires SSE. */
+	if (xcrval & XFEATURE_ENABLED_AVX &&
+	    (xcrval & XFEATURE_AVX) != XFEATURE_AVX) {
+		vm_inject_gp(vmx->vm, vcpu);
+		return (HANDLED);
+	}
+
+	/*
+	 * AVX512 requires base AVX (YMM_Hi128) as well as OpMask,
+	 * ZMM_Hi256, and Hi16_ZMM.
+	 */
+	if (xcrval & XFEATURE_AVX512 &&
+	    (xcrval & (XFEATURE_AVX512 | XFEATURE_AVX)) !=
+	    (XFEATURE_AVX512 | XFEATURE_AVX)) {
+		vm_inject_gp(vmx->vm, vcpu);
+		return (HANDLED);
+	}
+
+	/*
+	 * Intel MPX requires both bound register state flags to be
+	 * set.
+	 */
+	if (((xcrval & XFEATURE_ENABLED_BNDREGS) != 0) !=
+	    ((xcrval & XFEATURE_ENABLED_BNDCSR) != 0)) {
 		vm_inject_gp(vmx->vm, vcpu);
 		return (HANDLED);
 	}
