@@ -2368,7 +2368,8 @@ vm_page_unwire(vm_page_t m, int activate)
 	if (m->wire_count > 0) {
 		m->wire_count--;
 		if (m->wire_count == 0) {
-			if ((m->oflags & VPO_UNMANAGED) != 0)
+			if ((m->oflags & VPO_UNMANAGED) != 0 ||
+			    m->object == NULL)
 		panic("vm_page_unwire: unmanaged page %p's wire count is one",
 				    m);
 			atomic_subtract_int(&vm_cnt.v_wire_count, 1);
