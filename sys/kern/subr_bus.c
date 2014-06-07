@@ -3643,6 +3643,8 @@ bus_generic_suspend_child(device_t dev, device_t child)
 	int error;
 	
 	error = DEVICE_SUSPEND(child);
+	if (!error)
+	    child->state = DS_SUSPENDED;
 
 	return (error);
 }
@@ -3659,6 +3661,11 @@ bus_generic_resume_child(device_t dev, device_t child)
 	int error;
 	
 	error = DEVICE_RESUME(child);
+	/*
+	 * Regardless of resume state, there's nothing we can do, so mark it
+	 * attached again.
+	 */
+	child->state = DS_ATTACHED;
 
 	return (error);
 }
@@ -3693,15 +3700,13 @@ bus_generic_suspend(device_t dev)
 				error = BUS_SUSPEND_CHILD(dev, child);
 				if (error != 0)
 					printf("Error suspending child %s: %d\n", child->nameunit, error);
-				if (error == 0)
-					child->state = DS_SUSPENDED;
 			}
 		}
 
 		if (error) {
 			for (child2 = TAILQ_FIRST(&dev->children);
-				 child2 && child2 != child;
-				 child2 = TAILQ_NEXT(child2, link)) {
+			    child2 && child2 != child;
+			    child2 = TAILQ_NEXT(child2, link)) {
 				BUS_RESUME_CHILD(dev, child2);
 				bus_generic_resume(child2);
 			}
@@ -3729,8 +3734,6 @@ bus_generic_resume(device_t dev)
 			BUS_RESUME_CHILD(dev, child);
 
 			/* if resume fails, there's nothing we can usefully do... */
-			/* Re-mark the child as attached. */
-			child->state = DS_ATTACHED;
 		}
 
 		/* Recurse through the child, resuming all its children. */
