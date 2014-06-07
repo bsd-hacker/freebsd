@@ -3655,7 +3655,7 @@ pci_suspend_child(device_t dev, device_t child)
 	dinfo = device_get_ivars(child);
 	pci_cfg_save(child, dinfo, 0);
 
-	error = DEVICE_SUSPEND(child);
+	error = bus_generic_suspend_child(dev, child);
 
 	if (error)
 		return (error);
@@ -3674,7 +3674,7 @@ pci_resume_child(device_t dev, device_t child)
 
 	if (pci_do_power_resume)
 		pci_set_power_child(dev, child, PCI_POWERSTATE_D0);
-	error = DEVICE_RESUME(child);
+	error = bus_generic_resume_child(dev, child);
 
 	dinfo = device_get_ivars(child);
 	pci_cfg_restore(child, dinfo);
