@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus.h>
 
 #include "ata_dbdma.h"
+#include "maciovar.h"
 
 /*
  * Offset to control registers from base
@@ -116,6 +117,7 @@ static  int  ata_macio_attach(device_t dev);
 static  int  ata_macio_begin_transaction(struct ata_request *request);
 static  int  ata_macio_suspend(device_t dev);
 static  int  ata_macio_resume(device_t dev);
+static  void ata_macio_chreset(device_t dev);
 
 static device_method_t ata_macio_methods[] = {
         /* Device interface */
@@ -126,6 +128,7 @@ static device_method_t ata_macio_methods[] = {
 
 	/* ATA interface */
 	DEVMETHOD(ata_setmode,		ata_macio_setmode),
+	DEVMETHOD(ata_reset,		ata_macio_chreset),
 	DEVMETHOD_END
 };
 
@@ -354,6 +357,17 @@ ata_macio_suspend(device_t dev)
 	dbdma_save_state(ch->dbdma);
 
 	return (error);
+}
+
+static void
+ata_macio_chreset(device_t dev)
+{
+	struct ata_channel *ch = device_get_softc(dev);
+
+	if (ch->dma.reset)
+	    ch->dma.reset(dev);
+	macio_reset_ata(dev);
+	ata_generic_reset(dev);
 }
 
 static int
