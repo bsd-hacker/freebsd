@@ -175,7 +175,7 @@ static driver_t pmuextint_driver = {
 
 static devclass_t pmuextint_devclass;
 
-DRIVER_MODULE(pmuextint, macgpio, pmuextint_driver, pmuextint_devclass, 0, 0);
+EARLY_DRIVER_MODULE(pmuextint, macgpio, pmuextint_driver, pmuextint_devclass, 0, 0, BUS_PASS_RESOURCE);
 
 /* Make sure uhid is loaded, as it turns off some of the ADB emulation */
 MODULE_DEPEND(pmu, usb, 1, 1, 1);
@@ -1145,6 +1145,7 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 	if (error || !req->newptr)
 		return (error);
 
+	EVENTHANDLER_INVOKE(power_suspend);
 	mtx_lock(&Giant);
 	error = DEVICE_SUSPEND(root_bus);
 	if (error == 0) {
@@ -1155,6 +1156,7 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 		DEVICE_RESUME(root_bus);
 	}
 	mtx_unlock(&Giant);
+	EVENTHANDLER_INVOKE(power_resume);
 	printf("Fully resumed.\n");
 
 	return (error);
