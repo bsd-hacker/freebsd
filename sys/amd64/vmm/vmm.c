@@ -62,7 +62,9 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/vmm.h>
 #include <machine/vmm_dev.h>
+#include <machine/vmm_instruction_emul.h>
 
+#include "vmm_ioport.h"
 #include "vmm_ktr.h"
 #include "vmm_host.h"
 #include "vmm_mem.h"
@@ -142,6 +144,8 @@ struct vm {
 
 	int		suspend;
 	volatile cpuset_t suspended_cpus;
+
+	volatile cpuset_t halted_cpus;
 };
 
 static int vmm_initialized;
@@ -187,11 +191,19 @@ static VMM_STAT(VCPU_TOTAL_RUNTIME, "vcpu total runtime");
 
 SYSCTL_NODE(_hw, OID_AUTO, vmm, CTLFLAG_RW, NULL, NULL);
 
+/*
+ * Halt the guest if all vcpus are executing a HLT instruction with
+ * interrupts disabled.
+ */
+static int halt_detection_enabled = 1;
+TUNABLE_INT("hw.vmm.halt_detection", &halt_detection_enabled);
+SYSCTL_INT(_hw_vmm, OID_AUTO, halt_detection, CTLFLAG_RDTUN,
+    &halt_detection_enabled, 0,
+    "Halt VM if all vcpus execute HLT with interrupts disabled");
+
 static int vmm_ipinum;
 SYSCTL_INT(_hw_vmm, OID_AUTO, ipinum, CTLFLAG_RD, &vmm_ipinum, 0,
     "IPI vector used for vcpu notifications");
-
-static void vm_deactivate_cpu(struct vm *vm, int vcpuid);
 
 static void
 vcpu_cleanup(struct vm *vm, int i)
@@ -330,8 +342,6 @@ vm_create(const char *name, struct vm **retvm)
 	struct vm *vm;
 	struct vmspace *vmspace;
 
-	const int BSP = 0;
-
 	/*
 	 * If vmm.ko could not be successfully initialized then don't attempt
 	 * to create the virtual machine.
@@ -360,8 +370,6 @@ vm_create(const char *name, struct vm **retvm)
 		vcpu_init(vm, i);
 		guest_msrs_init(vm, i);
 	}
-
-	vm_activate_cpu(vm, BSP);
 
 	*retvm = vm;
 	return (0);
@@ -1006,59 +1014,73 @@ vm_handle_rendezvous(struct vm *vm, int vcpuid)
 static int
 vm_handle_hlt(struct vm *vm, int vcpuid, bool intr_disabled, bool *retu)
 {
-	struct vm_exit *vmexit;
 	struct vcpu *vcpu;
-	int t, timo, spindown;
+	const char *wmesg;
+	int t, vcpu_halted, vm_halted;
+
+	KASSERT(!CPU_ISSET(vcpuid, &vm->halted_cpus), ("vcpu already halted"));
 
 	vcpu = &vm->vcpu[vcpuid];
-	spindown = 0;
+	vcpu_halted = 0;
+	vm_halted = 0;
 
 	vcpu_lock(vcpu);
+	while (1) {
+		/*
+		 * Do a final check for pending NMI or interrupts before
+		 * really putting this thread to sleep. Also check for
+		 * software events that would cause this vcpu to wakeup.
+		 *
+		 * These interrupts/events could have happened after the
+		 * vcpu returned from VMRUN() and before it acquired the
+		 * vcpu lock above.
+		 */
+		if (vm->rendezvous_func != NULL || vm->suspend)
+			break;
+		if (vm_nmi_pending(vm, vcpuid))
+			break;
+		if (!intr_disabled) {
+			if (vm_extint_pending(vm, vcpuid) ||
+			    vlapic_pending_intr(vcpu->vlapic, NULL)) {
+				break;
+			}
+		}
 
-	/*
-	 * Do a final check for pending NMI or interrupts before
-	 * really putting this thread to sleep.
-	 *
-	 * These interrupts could have happened any time after we
-	 * returned from VMRUN() and before we grabbed the vcpu lock.
-	 */
-	if (vm->rendezvous_func == NULL &&
-	    !vm_nmi_pending(vm, vcpuid) &&
-	    (intr_disabled || !vlapic_pending_intr(vcpu->vlapic, NULL))) {
+		/*
+		 * Some Linux guests implement "halt" by having all vcpus
+		 * execute HLT with interrupts disabled. 'halted_cpus' keeps
+		 * track of the vcpus that have entered this state. When all
+		 * vcpus enter the halted state the virtual machine is halted.
+		 */
+		if (intr_disabled) {
+			wmesg = "vmhalt";
+			VCPU_CTR0(vm, vcpuid, "Halted");
+			if (!vcpu_halted && halt_detection_enabled) {
+				vcpu_halted = 1;
+				CPU_SET_ATOMIC(vcpuid, &vm->halted_cpus);
+			}
+			if (CPU_CMP(&vm->halted_cpus, &vm->active_cpus) == 0) {
+				vm_halted = 1;
+				break;
+			}
+		} else {
+			wmesg = "vmidle";
+		}
+
 		t = ticks;
 		vcpu_require_state_locked(vcpu, VCPU_SLEEPING);
-		if (vlapic_enabled(vcpu->vlapic)) {
-			/*
-			 * XXX msleep_spin() is not interruptible so use the
-			 * 'timo' to put an upper bound on the sleep time.
-			 */
-			timo = hz;
-			msleep_spin(vcpu, &vcpu->mtx, "vmidle", timo);
-		} else {
-			/*
-			 * Spindown the vcpu if the APIC is disabled and it
-			 * had entered the halted state, but never spin
-			 * down the BSP.
-			 */
-			if (vcpuid != 0)
-				spindown = 1;
-		}
+		msleep_spin(vcpu, &vcpu->mtx, wmesg, 0);
 		vcpu_require_state_locked(vcpu, VCPU_FROZEN);
 		vmm_stat_incr(vm, vcpuid, VCPU_IDLE_TICKS, ticks - t);
 	}
+
+	if (vcpu_halted)
+		CPU_CLR_ATOMIC(vcpuid, &vm->halted_cpus);
+
 	vcpu_unlock(vcpu);
 
-	/*
-	 * Since 'vm_deactivate_cpu()' grabs a sleep mutex we must call it
-	 * outside the confines of the vcpu spinlock.
-	 */
-	if (spindown) {
-		*retu = true;
-		vmexit = vm_exitinfo(vm, vcpuid);
-		vmexit->exitcode = VM_EXITCODE_SPINDOWN_CPU;
-		vm_deactivate_cpu(vm, vcpuid);
-		VCPU_CTR0(vm, vcpuid, "spinning down cpu");
-	}
+	if (vm_halted)
+		vm_suspend(vm, VM_SUSPEND_HALT);
 
 	return (0);
 }
@@ -1107,34 +1129,33 @@ vm_handle_inst_emul(struct vm *vm, int vcpuid, bool *retu)
 	struct vie *vie;
 	struct vcpu *vcpu;
 	struct vm_exit *vme;
-	int error, inst_length;
-	uint64_t rip, gla, gpa, cr3;
-	enum vie_cpu_mode cpu_mode;
-	enum vie_paging_mode paging_mode;
+	uint64_t gla, gpa;
+	struct vm_guest_paging *paging;
 	mem_region_read_t mread;
 	mem_region_write_t mwrite;
+	int error;
 
 	vcpu = &vm->vcpu[vcpuid];
 	vme = &vcpu->exitinfo;
 
-	rip = vme->rip;
-	inst_length = vme->inst_length;
-
 	gla = vme->u.inst_emul.gla;
 	gpa = vme->u.inst_emul.gpa;
-	cr3 = vme->u.inst_emul.cr3;
-	cpu_mode = vme->u.inst_emul.cpu_mode;
-	paging_mode = vme->u.inst_emul.paging_mode;
 	vie = &vme->u.inst_emul.vie;
+	paging = &vme->u.inst_emul.paging;
 
 	vie_init(vie);
 
 	/* Fetch, decode and emulate the faulting instruction */
-	if (vmm_fetch_instruction(vm, vcpuid, rip, inst_length, cr3,
-	    paging_mode, vie) != 0)
+	error = vmm_fetch_instruction(vm, vcpuid, paging, vme->rip,
+	    vme->inst_length, vie);
+	if (error == 1)
+		return (0);		/* Resume guest to handle page fault */
+	else if (error == -1)
 		return (EFAULT);
+	else if (error != 0)
+		panic("%s: vmm_fetch_instruction error %d", __func__, error);
 
-	if (vmm_decode_instruction(vm, vcpuid, gla, cpu_mode, vie) != 0)
+	if (vmm_decode_instruction(vm, vcpuid, gla, paging->cpu_mode, vie) != 0)
 		return (EFAULT);
 
 	/* return to userland unless this is an in-kernel emulated device */
@@ -1269,6 +1290,12 @@ vm_run(struct vm *vm, struct vm_run *vmrun)
 	if (vcpuid < 0 || vcpuid >= VM_MAXCPU)
 		return (EINVAL);
 
+	if (!CPU_ISSET(vcpuid, &vm->active_cpus))
+		return (EINVAL);
+
+	if (CPU_ISSET(vcpuid, &vm->suspended_cpus))
+		return (EINVAL);
+
 	rptr = &vm->rendezvous_func;
 	sptr = &vm->suspend;
 	pmap = vmspace_pmap(vm->vmspace);
@@ -1323,6 +1350,10 @@ restart:
 			break;
 		case VM_EXITCODE_INST_EMUL:
 			error = vm_handle_inst_emul(vm, vcpuid, &retu);
+			break;
+		case VM_EXITCODE_INOUT:
+		case VM_EXITCODE_INOUT_STR:
+			error = vm_handle_inout(vm, vcpuid, vme, &retu);
 			break;
 		default:
 			retu = true;	/* handled in userland */
@@ -1403,6 +1434,25 @@ vm_inject_fault(struct vm *vm, int vcpuid, struct vm_exception *exception)
 	 */
 	vmexit = vm_exitinfo(vm, vcpuid);
 	vmexit->inst_length = 0;
+}
+
+void
+vm_inject_pf(struct vm *vm, int vcpuid, int error_code, uint64_t cr2)
+{
+	struct vm_exception pf = {
+		.vector = IDT_PF,
+		.error_code_valid = 1,
+		.error_code = error_code
+	};
+	int error;
+
+	VCPU_CTR2(vm, vcpuid, "Injecting page fault: error_code %#x, cr2 %#lx",
+	    error_code, cr2);
+
+	error = vm_set_register(vm, vcpuid, VM_REG_GUEST_CR2, cr2);
+	KASSERT(error == 0, ("vm_set_register(cr2) error %d", error));
+
+	vm_inject_fault(vm, vcpuid, &pf);
 }
 
 void
@@ -1660,41 +1710,19 @@ vcpu_get_state(struct vm *vm, int vcpuid, int *hostcpu)
 	return (state);
 }
 
-void
+int
 vm_activate_cpu(struct vm *vm, int vcpuid)
 {
 
-	KASSERT(vcpuid >= 0 && vcpuid < VM_MAXCPU,
-	    ("vm_activate_cpu: invalid vcpuid %d", vcpuid));
-	KASSERT(!CPU_ISSET(vcpuid, &vm->active_cpus),
-	    ("vm_activate_cpu: vcpuid %d is already active", vcpuid));
+	if (vcpuid < 0 || vcpuid >= VM_MAXCPU)
+		return (EINVAL);
+
+	if (CPU_ISSET(vcpuid, &vm->active_cpus))
+		return (EBUSY);
 
 	VCPU_CTR0(vm, vcpuid, "activated");
 	CPU_SET_ATOMIC(vcpuid, &vm->active_cpus);
-}
-
-static void
-vm_deactivate_cpu(struct vm *vm, int vcpuid)
-{
-
-	KASSERT(vcpuid >= 0 && vcpuid < VM_MAXCPU,
-	    ("vm_deactivate_cpu: invalid vcpuid %d", vcpuid));
-	KASSERT(CPU_ISSET(vcpuid, &vm->active_cpus),
-	    ("vm_deactivate_cpu: vcpuid %d is not active", vcpuid));
-
-	VCPU_CTR0(vm, vcpuid, "deactivated");
-	CPU_CLR_ATOMIC(vcpuid, &vm->active_cpus);
-
-	/*
-	 * If a vcpu rendezvous is in progress then it could be blocked
-	 * on 'vcpuid' - unblock it before disappearing forever.
-	 */
-	mtx_lock(&vm->rendezvous_mtx);
-	if (vm->rendezvous_func != NULL) {
-		VCPU_CTR0(vm, vcpuid, "unblock rendezvous after deactivation");
-		wakeup(&vm->rendezvous_func);
-	}
-	mtx_unlock(&vm->rendezvous_mtx);
+	return (0);
 }
 
 cpuset_t
@@ -1702,6 +1730,13 @@ vm_active_cpus(struct vm *vm)
 {
 
 	return (vm->active_cpus);
+}
+
+cpuset_t
+vm_suspended_cpus(struct vm *vm)
+{
+
+	return (vm->suspended_cpus);
 }
 
 void *
@@ -1855,4 +1890,21 @@ struct vatpit *
 vm_atpit(struct vm *vm)
 {
 	return (vm->vatpit);
+}
+
+enum vm_reg_name
+vm_segment_name(int seg)
+{
+	static enum vm_reg_name seg_names[] = {
+		VM_REG_GUEST_ES,
+		VM_REG_GUEST_CS,
+		VM_REG_GUEST_SS,
+		VM_REG_GUEST_DS,
+		VM_REG_GUEST_FS,
+		VM_REG_GUEST_GS
+	};
+
+	KASSERT(seg >= 0 && seg < nitems(seg_names),
+	    ("%s: invalid segment encoding %d", __func__, seg));
+	return (seg_names[seg]);
 }
