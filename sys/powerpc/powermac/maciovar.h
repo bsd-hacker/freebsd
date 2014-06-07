@@ -381,10 +381,12 @@ struct macio_devinfo {
 	int        mdi_interrupts[6];
 	int	   mdi_ninterrupts;
 	int        mdi_base;
+	int	   mdi_aapl_busid;
 	struct ofw_bus_devinfo mdi_obdinfo;
 	struct resource_list mdi_resources;
 };
 
 extern int macio_enable_wireless(device_t dev, bool enable);
+extern int macio_reset_ata(device_t atadev);
 
 #endif /* _MACIO_MACIOVAR_H_ */

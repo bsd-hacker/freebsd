@@ -403,6 +403,9 @@ macio_attach(device_t dev)
 			free(dinfo, M_MACIO);
 			continue;
 		}
+		if (OF_getprop(child, "AAPL,bus-id",
+		    &dinfo->mdi_aapl_busid, sizeof(dinfo->mdi_aapl_busid)) == -1)
+			dinfo->mdi_aapl_busid = -1;
 		device_set_ivars(cdev, dinfo);
 
 		/* Set FCRs to enable some devices */
@@ -710,6 +713,50 @@ macio_enable_wireless(device_t dev, bool enable)
 		bus_write_4(sc->sc_memr, KEYLARGO_FCR2, x);
 		/* out8(gpio + 0x10, 0); */
 	}
+
+	return (0);
+}
+
+int macio_reset_ata(device_t atadev)
+{
+	device_t dev;
+	struct macio_softc *sc;
+	struct macio_devinfo *dinfo;
+	uint32_t resetm,enablem,temp;
+
+	dev = device_get_parent(atadev);
+	sc = device_get_softc(dev);
+
+	dinfo = device_get_ivars(atadev);
+
+	KASSERT(dinfo->mdi_aapl_busid != -1,
+	    ("macio_reset_ata called on non-mac-io ATA device"));
+
+	switch (dinfo->mdi_aapl_busid) {
+	case 0:
+		resetm = FCR1_EIDE0_RESET;
+		enablem = FCR1_EIDE0_ENABLE;
+		break;
+	case 1:
+		resetm = FCR1_EIDE1_RESET;
+		enablem = FCR1_EIDE1_ENABLE;
+		break;
+	case 2:
+		resetm = FCR1_UIDE_RESET;
+		enablem = FCR1_UIDE_ENABLE;
+		break;
+	default:
+		return (1);
+	}
+	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1,
+	    temp & ~resetm);
+	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1,
+	    temp | enablem);
+	temp = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1,
+	    temp | resetm);
 
 	return (0);
 }
