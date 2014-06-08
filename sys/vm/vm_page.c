@@ -2080,7 +2080,7 @@ vm_page_enqueue(uint8_t queue, vm_page_t m)
 
 	vm_page_lock_assert(m, MA_OWNED);
 	KASSERT(queue < PQ_COUNT,
-	    ("vm_page_enqueue: invalid queue %u request for page %m",
+	    ("vm_page_enqueue: invalid queue %u request for page %p",
 	    queue, m));
 
 	pq = &vm_phys_domain(m)->vmd_pagequeues[queue];
@@ -2358,7 +2358,7 @@ vm_page_unwire(vm_page_t m, uint8_t queue)
 {
 
 	KASSERT(queue < PQ_COUNT,
-	    ("vm_page_unwire: invalid queue %u request for page %m",
+	    ("vm_page_unwire: invalid queue %u request for page %p",
 	    queue, m));
 	if ((m->oflags & VPO_UNMANAGED) == 0)
 		vm_page_lock_assert(m, MA_OWNED);
