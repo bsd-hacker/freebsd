@@ -77,7 +77,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_extern.h>
 #include <vm/vm_map.h>
 #include "opt_compat.h"
-#include "opt_directio.h"
 #include "opt_swap.h"
 
 static MALLOC_DEFINE(M_BIOBUF, "biobuf", "BIO buffer");
@@ -381,10 +380,6 @@ sysctl_bufspace(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_int(oidp, &ivalue, 0, req));
 }
 #endif
-
-#ifdef DIRECTIO
-extern void ffs_rawread_setup(void);
-#endif /* DIRECTIO */
 
 /*
  *	bqlock:
@@ -769,9 +764,6 @@ kern_vfs_bio_buffer_alloc(caddr_t v, long physmem_est)
 #ifdef NSWBUF_MIN
 	if (nswbuf < NSWBUF_MIN)
 		nswbuf = NSWBUF_MIN;
-#endif
-#ifdef DIRECTIO
-	ffs_rawread_setup();
 #endif
 
 	/*
@@ -4290,7 +4282,7 @@ vm_hold_free_pages(struct buf *bp, int newbsize)
 			    (intmax_t)bp->b_blkno, (intmax_t)bp->b_lblkno);
 		p->wire_count--;
 		vm_page_free(p);
-		atomic_subtract_int(&cnt.v_wire_count, 1);
+		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 	}
 	bp->b_npages = newnpages;
 }

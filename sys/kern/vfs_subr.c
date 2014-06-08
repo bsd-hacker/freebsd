@@ -330,8 +330,8 @@ vntblinit(void *dummy __unused)
 	 * size.  The memory required by desiredvnodes vnodes and vm objects
 	 * may not exceed one seventh of the kernel's heap size.
 	 */
-	physvnodes = maxproc + cnt.v_page_count / 16 + 3 * min(98304 * 4,
-	    cnt.v_page_count) / 16;
+	physvnodes = maxproc + vm_cnt.v_page_count / 16 + 3 * min(98304 * 4,
+	    vm_cnt.v_page_count) / 16;
 	virtvnodes = vm_kmem_size / (7 * (sizeof(struct vm_object) +
 	    sizeof(struct vnode)));
 	desiredvnodes = min(physvnodes, virtvnodes);
@@ -708,7 +708,7 @@ vlrureclaim(struct mount *mp)
 	usevnodes = desiredvnodes;
 	if (usevnodes <= 0)
 		usevnodes = 1;
-	trigger = cnt.v_page_count * 2 / usevnodes;
+	trigger = vm_cnt.v_page_count * 2 / usevnodes;
 	done = 0;
 	vn_start_write(NULL, &mp, V_WAIT);
 	MNT_ILOCK(mp);
@@ -997,12 +997,19 @@ getnewvnode_reserve(u_int count)
 	struct thread *td;
 
 	td = curthread;
+	/* First try to be quick and racy. */
+	if (atomic_fetchadd_long(&numvnodes, count) + count <= desiredvnodes) {
+		td->td_vp_reserv += count;
+		return;
+	} else
+		atomic_subtract_long(&numvnodes, count);
+
 	mtx_lock(&vnode_free_list_mtx);
 	while (count > 0) {
 		if (getnewvnode_wait(0) == 0) {
 			count--;
 			td->td_vp_reserv++;
-			numvnodes++;
+			atomic_add_long(&numvnodes, 1);
 		}
 	}
 	mtx_unlock(&vnode_free_list_mtx);
@@ -1014,10 +1021,7 @@ getnewvnode_drop_reserve(void)
 	struct thread *td;
 
 	td = curthread;
-	mtx_lock(&vnode_free_list_mtx);
-	KASSERT(numvnodes >= td->td_vp_reserv, ("reserve too large"));
-	numvnodes -= td->td_vp_reserv;
-	mtx_unlock(&vnode_free_list_mtx);
+	atomic_subtract_long(&numvnodes, td->td_vp_reserv);
 	td->td_vp_reserv = 0;
 }
 
@@ -1054,7 +1058,7 @@ getnewvnode(const char *tag, struct mount *mp, struct vop_vector *vops,
 		return (error);
 	}
 #endif
-	numvnodes++;
+	atomic_add_long(&numvnodes, 1);
 	mtx_unlock(&vnode_free_list_mtx);
 alloc:
 	vp = (struct vnode *) uma_zalloc(vnode_zone, M_WAITOK|M_ZERO);
@@ -2343,6 +2347,8 @@ vdropl(struct vnode *vp)
 	if (vp->v_holdcnt <= 0)
 		panic("vdrop: holdcnt %d", vp->v_holdcnt);
 	vp->v_holdcnt--;
+	VNASSERT(vp->v_holdcnt >= vp->v_usecount, vp,
+	    ("hold count less than use count"));
 	if (vp->v_holdcnt > 0) {
 		VI_UNLOCK(vp);
 		return;
@@ -2383,9 +2389,7 @@ vdropl(struct vnode *vp)
 	 * The vnode has been marked for destruction, so free it.
 	 */
 	CTR2(KTR_VFS, "%s: destroying the vnode %p", __func__, vp);
-	mtx_lock(&vnode_free_list_mtx);
-	numvnodes--;
-	mtx_unlock(&vnode_free_list_mtx);
+	atomic_subtract_long(&numvnodes, 1);
 	bo = &vp->v_bufobj;
 	VNASSERT((vp->v_iflag & VI_FREE) == 0, vp,
 	    ("cleaned vnode still on the free list."));

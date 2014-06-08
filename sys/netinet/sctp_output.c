@@ -4108,7 +4108,7 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 				SCTP_STAT_INCR(sctps_sendnocrc);
 #else
 				m->m_pkthdr.csum_flags = CSUM_SCTP;
-				m->m_pkthdr.csum_data = 0;
+				m->m_pkthdr.csum_data = offsetof(struct sctphdr, checksum);
 				SCTP_STAT_INCR(sctps_sendhwcrc);
 #endif
 			}
@@ -4457,7 +4457,7 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 				SCTP_STAT_INCR(sctps_sendnocrc);
 #else
 				m->m_pkthdr.csum_flags = CSUM_SCTP_IPV6;
-				m->m_pkthdr.csum_data = 0;
+				m->m_pkthdr.csum_data = offsetof(struct sctphdr, checksum);
 				SCTP_STAT_INCR(sctps_sendhwcrc);
 #endif
 			}
@@ -5392,7 +5392,9 @@ sctp_send_initiate_ack(struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 		 * though we even set the T bit and copy in the 0 tag.. this
 		 * looks no different than if no listener was present.
 		 */
-		sctp_send_abort(init_pkt, iphlen, src, dst, sh, 0, NULL,
+		op_err = sctp_generate_cause(SCTP_BASE_SYSCTL(sctp_diag_info_code),
+		    "Address added");
+		sctp_send_abort(init_pkt, iphlen, src, dst, sh, 0, op_err,
 		    use_mflowid, mflowid,
 		    vrf_id, port);
 		return;
@@ -5403,6 +5405,13 @@ sctp_send_initiate_ack(struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 	    &abort_flag, (struct sctp_chunkhdr *)init_chk, &nat_friendly);
 	if (abort_flag) {
 do_a_abort:
+		if (op_err == NULL) {
+			char msg[SCTP_DIAG_INFO_LEN];
+
+			snprintf(msg, sizeof(msg), "%s:%d at %s\n", __FILE__, __LINE__, __FUNCTION__);
+			op_err = sctp_generate_cause(SCTP_BASE_SYSCTL(sctp_diag_info_code),
+			    msg);
+		}
 		sctp_send_abort(init_pkt, iphlen, src, dst, sh,
 		    init_chk->init.initiate_tag, op_err,
 		    use_mflowid, mflowid,
@@ -7358,7 +7367,8 @@ dont_do_it:
 	chk->pad_inplace = 0;
 	chk->no_fr_allowed = 0;
 	chk->rec.data.stream_seq = strq->next_sequence_send;
-	if (rcv_flags & SCTP_DATA_LAST_FRAG) {
+	if ((rcv_flags & SCTP_DATA_LAST_FRAG) &&
+	    !(rcv_flags & SCTP_DATA_UNORDERED)) {
 		strq->next_sequence_send++;
 	}
 	chk->rec.data.stream_number = sp->stream;
@@ -11007,7 +11017,7 @@ sctp_send_resp_msg(struct sockaddr *src, struct sockaddr *dst,
 			SCTP_STAT_INCR(sctps_sendnocrc);
 #else
 			mout->m_pkthdr.csum_flags = CSUM_SCTP;
-			mout->m_pkthdr.csum_data = 0;
+			mout->m_pkthdr.csum_data = offsetof(struct sctphdr, checksum);
 			SCTP_STAT_INCR(sctps_sendhwcrc);
 #endif
 		}
@@ -11037,7 +11047,7 @@ sctp_send_resp_msg(struct sockaddr *src, struct sockaddr *dst,
 			SCTP_STAT_INCR(sctps_sendnocrc);
 #else
 			mout->m_pkthdr.csum_flags = CSUM_SCTP_IPV6;
-			mout->m_pkthdr.csum_data = 0;
+			mout->m_pkthdr.csum_data = offsetof(struct sctphdr, checksum);
 			SCTP_STAT_INCR(sctps_sendhwcrc);
 #endif
 		}
@@ -11901,8 +11911,8 @@ sctp_copy_resume(struct uio *uio,
 	m = m_uiotombuf(uio, M_WAITOK, max_send_len, 0,
 	    (M_PKTHDR | (user_marks_eor ? M_EOR : 0)));
 	if (m == NULL) {
-		SCTP_LTRACE_ERR_RET(NULL, NULL, NULL, SCTP_FROM_SCTP_OUTPUT, ENOMEM);
-		*error = ENOMEM;
+		SCTP_LTRACE_ERR_RET(NULL, NULL, NULL, SCTP_FROM_SCTP_OUTPUT, ENOBUFS);
+		*error = ENOBUFS;
 	} else {
 		*sndout = m_length(m, NULL);
 		*new_tail = m_last(m);
@@ -11921,8 +11931,8 @@ sctp_copy_one(struct sctp_stream_queue_pending *sp,
 	sp->data = m_uiotombuf(uio, M_WAITOK, sp->length,
 	    resv_upfront, 0);
 	if (sp->data == NULL) {
-		SCTP_LTRACE_ERR_RET(NULL, NULL, NULL, SCTP_FROM_SCTP_OUTPUT, ENOMEM);
-		return (ENOMEM);
+		SCTP_LTRACE_ERR_RET(NULL, NULL, NULL, SCTP_FROM_SCTP_OUTPUT, ENOBUFS);
+		return (ENOBUFS);
 	}
 	sp->tail_mbuf = m_last(sp->data);
 	return (0);

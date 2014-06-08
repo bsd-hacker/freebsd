@@ -101,6 +101,10 @@
             ..
             include
             ..
+            includes
+                include
+                ..
+            ..
         ..
         bsdinstall
         ..
@@ -300,6 +304,8 @@
             cvsup
             ..
             diskless
+            ..
+            dma
             ..
             drivers
             ..
@@ -1400,6 +1406,12 @@
         ..
         vi
             catalog
+            ..
+        ..
+        vt
+            fonts
+            ..
+            keymaps
             ..
         ..
         zoneinfo

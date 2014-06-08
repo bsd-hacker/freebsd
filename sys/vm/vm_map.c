@@ -1275,6 +1275,7 @@ charged:
 	new_entry->protection = prot;
 	new_entry->max_protection = max;
 	new_entry->wired_count = 0;
+	new_entry->wiring_thread = NULL;
 	new_entry->read_ahead = VM_FAULT_READ_AHEAD_INIT;
 	new_entry->next_read = OFF_TO_IDX(offset);
 
@@ -1772,20 +1773,22 @@ vm_map_submap(
 }
 
 /*
- * The maximum number of pages to map
+ * The maximum number of pages to map if MAP_PREFAULT_PARTIAL is specified
  */
 #define	MAX_INIT_PT	96
 
 /*
  *	vm_map_pmap_enter:
  *
- *	Preload read-only mappings for the specified object's resident pages
- *	into the target map.  If "flags" is MAP_PREFAULT_PARTIAL, then only
- *	the resident pages within the address range [addr, addr + ulmin(size,
- *	ptoa(MAX_INIT_PT))) are mapped.  Otherwise, all resident pages within
- *	the specified address range are mapped.  This eliminates many soft
- *	faults on process startup and immediately after an mmap(2).  Because
- *	these are speculative mappings, cached pages are not reactivated and
+ *	Preload the specified map's pmap with mappings to the specified
+ *	object's memory-resident pages.  No further physical pages are
+ *	allocated, and no further virtual pages are retrieved from secondary
+ *	storage.  If the specified flags include MAP_PREFAULT_PARTIAL, then a
+ *	limited number of page mappings are created at the low-end of the
+ *	specified address range.  (For this purpose, a superpage mapping
+ *	counts as one page mapping.)  Otherwise, all resident pages within
+ *	the specified address range are mapped.  Because these mappings are
+ *	being created speculatively, cached pages are not reactivated and
  *	mapped.
  */
 void
@@ -1794,7 +1797,7 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 {
 	vm_offset_t start;
 	vm_page_t p, p_start;
-	vm_pindex_t psize, tmpidx;
+	vm_pindex_t mask, psize, threshold, tmpidx;
 
 	if ((prot & (VM_PROT_READ | VM_PROT_EXECUTE)) == 0 || object == NULL)
 		return;
@@ -1812,8 +1815,6 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 	}
 
 	psize = atop(size);
-	if (psize > MAX_INIT_PT && (flags & MAP_PREFAULT_PARTIAL) != 0)
-		psize = MAX_INIT_PT;
 	if (psize + pindex > object->size) {
 		if (object->size < pindex) {
 			VM_OBJECT_RUNLOCK(object);
@@ -1824,6 +1825,7 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 
 	start = 0;
 	p_start = NULL;
+	threshold = MAX_INIT_PT;
 
 	p = vm_page_find_least(object, pindex);
 	/*
@@ -1838,8 +1840,10 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 		 * don't allow an madvise to blow away our really
 		 * free pages allocating pv entries.
 		 */
-		if ((flags & MAP_PREFAULT_MADVISE) &&
-		    cnt.v_free_count < cnt.v_free_reserved) {
+		if (((flags & MAP_PREFAULT_MADVISE) != 0 &&
+		    vm_cnt.v_free_count < vm_cnt.v_free_reserved) ||
+		    ((flags & MAP_PREFAULT_PARTIAL) != 0 &&
+		    tmpidx >= threshold)) {
 			psize = tmpidx;
 			break;
 		}
@@ -1847,6 +1851,16 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 			if (p_start == NULL) {
 				start = addr + ptoa(tmpidx);
 				p_start = p;
+			}
+			/* Jump ahead if a superpage mapping is possible. */
+			if (p->psind > 0 && ((addr + ptoa(tmpidx)) &
+			    (pagesizes[p->psind] - 1)) == 0) {
+				mask = atop(pagesizes[p->psind]) - 1;
+				if (tmpidx + mask < psize &&
+				    vm_page_ps_is_valid(p)) {
+					p += mask;
+					threshold += mask;
+				}
 			}
 		} else if (p_start != NULL) {
 			pmap_enter_object(map->pmap, start, addr +
@@ -1948,7 +1962,8 @@ vm_map_protect(vm_map_t map, vm_offset_t start, vm_offset_t end,
 		 * charged clipped mapping of the same object later.
 		 */
 		KASSERT(obj->charge == 0,
-		    ("vm_map_protect: object %p overcharged\n", obj));
+		    ("vm_map_protect: object %p overcharged (entry %p)",
+		    obj, current));
 		if (!swap_reserve(ptoa(obj->size))) {
 			VM_OBJECT_WUNLOCK(obj);
 			vm_map_unlock(map);
@@ -1976,12 +1991,16 @@ vm_map_protect(vm_map_t map, vm_offset_t start, vm_offset_t end,
 		else
 			current->protection = new_prot;
 
-		if ((current->eflags & (MAP_ENTRY_COW | MAP_ENTRY_USER_WIRED))
-		     == (MAP_ENTRY_COW | MAP_ENTRY_USER_WIRED) &&
+		/*
+		 * For user wired map entries, the normal lazy evaluation of
+		 * write access upgrades through soft page faults is
+		 * undesirable.  Instead, immediately copy any pages that are
+		 * copy-on-write and enable write access in the physical map.
+		 */
+		if ((current->eflags & MAP_ENTRY_USER_WIRED) != 0 &&
 		    (current->protection & VM_PROT_WRITE) != 0 &&
-		    (old_prot & VM_PROT_WRITE) == 0) {
+		    (old_prot & VM_PROT_WRITE) == 0)
 			vm_fault_copy_entry(map, map, current, current, NULL);
-		}
 
 		/*
 		 * When restricting access, update the physical map.  Worry
@@ -3015,13 +3034,14 @@ vm_map_copy_entry(
 	if ((dst_entry->eflags|src_entry->eflags) & MAP_ENTRY_IS_SUB_MAP)
 		return;
 
-	if (src_entry->wired_count == 0) {
-
+	if (src_entry->wired_count == 0 ||
+	    (src_entry->protection & VM_PROT_WRITE) == 0) {
 		/*
 		 * If the source entry is marked needs_copy, it is already
 		 * write-protected.
 		 */
-		if ((src_entry->eflags & MAP_ENTRY_NEEDS_COPY) == 0) {
+		if ((src_entry->eflags & MAP_ENTRY_NEEDS_COPY) == 0 &&
+		    (src_entry->protection & VM_PROT_WRITE) != 0) {
 			pmap_protect(src_map->pmap,
 			    src_entry->start,
 			    src_entry->end,
@@ -3106,9 +3126,9 @@ vm_map_copy_entry(
 		    dst_entry->end - dst_entry->start, src_entry->start);
 	} else {
 		/*
-		 * Of course, wired down pages can't be set copy-on-write.
-		 * Cause wired pages to be copied into the new map by
-		 * simulating faults (the new pages are pageable)
+		 * We don't want to make writeable wired pages copy-on-write.
+		 * Immediately copy these pages into the new map by simulating
+		 * page faults.  The new pages are pageable.
 		 */
 		vm_fault_copy_entry(dst_map, src_map, dst_entry, src_entry,
 		    fork_charge);
@@ -3748,6 +3768,8 @@ vmspace_exec(struct proc *p, vm_offset_t minuser, vm_offset_t maxuser)
 	struct vmspace *oldvmspace = p->p_vmspace;
 	struct vmspace *newvmspace;
 
+	KASSERT((curthread->td_pflags & TDP_EXECVMSPC) == 0,
+	    ("vmspace_exec recursed"));
 	newvmspace = vmspace_alloc(minuser, maxuser, NULL);
 	if (newvmspace == NULL)
 		return (ENOMEM);
@@ -3764,7 +3786,7 @@ vmspace_exec(struct proc *p, vm_offset_t minuser, vm_offset_t maxuser)
 	PROC_VMSPACE_UNLOCK(p);
 	if (p == curthread->td_proc)
 		pmap_activate(curthread);
-	vmspace_free(oldvmspace);
+	curthread->td_pflags |= TDP_EXECVMSPC;
 	return (0);
 }
 
@@ -4152,7 +4174,7 @@ vm_map_print(vm_map_t map)
 				db_indent += 2;
 				vm_object_print((db_expr_t)(intptr_t)
 						entry->object.vm_object,
-						1, 0, (char *)0);
+						0, 0, (char *)0);
 				db_indent -= 2;
 			}
 		}
