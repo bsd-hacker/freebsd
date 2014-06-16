@@ -205,7 +205,8 @@ i915_gem_cleanup_aliasing_ppgtt(struct drm_device *dev)
 
 	for (i = 0; i < ppgtt->num_pd_entries; i++) {
 		m = ppgtt->pt_pages[i];
-		if (m != NULL)
+		if (m != NULL) {
+			vm_page_unwire(m, PQ_INACTIVE);
 			vm_page_free(m);
 	}
 	free(ppgtt->pt_pages, DRM_I915_GEM);

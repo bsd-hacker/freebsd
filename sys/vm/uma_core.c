@@ -1153,8 +1153,10 @@ noobj_alloc(uma_zone_t zone, int bytes, uint8_t *flags, int wait)
 		 * Page allocation failed, free intermediate pages and
 		 * exit.
 		 */
-		TAILQ_FOREACH_SAFE(p, &alloctail, listq, p_next)
-			vm_page_free(p); 
+		TAILQ_FOREACH_SAFE(p, &alloctail, listq, p_next) {
+			vm_page_unwire(p, PQ_INACTIVE);
+			vm_page_free(p);
+		}
 		return (NULL);
 	}
 	*flags = UMA_SLAB_PRIV;

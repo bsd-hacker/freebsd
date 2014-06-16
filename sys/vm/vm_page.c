@@ -2082,7 +2082,6 @@ vm_page_enqueue(uint8_t queue, vm_page_t m)
 	KASSERT(queue < PQ_COUNT,
 	    ("vm_page_enqueue: invalid queue %u request for page %p",
 	    queue, m));
-
 	pq = &vm_phys_domain(m)->vmd_pagequeues[queue];
 	vm_pagequeue_lock(pq);
 	m->queue = queue;
@@ -2347,7 +2346,7 @@ vm_page_wire(vm_page_t m)
  *
  * Release one wiring of the specified page, potentially enabling it to be
  * paged again.  If paging is enabled, then the value of the parameter
- * "queue" determines to which queue the page is added.
+ * "queue" determines the queue to which the page is added.
  *
  * If a page is fictitious or managed, then its wire count must always be one.
  *
@@ -2372,9 +2371,7 @@ vm_page_unwire(vm_page_t m, uint8_t queue)
 		if (m->wire_count == 0) {
 			if ((m->oflags & VPO_UNMANAGED) != 0 ||
 			    m->object == NULL)
-		panic("vm_page_unwire: unmanaged page %p's wire count is one",
-				    m);
-			atomic_subtract_int(&vm_cnt.v_wire_count, 1);
+				return;
 			if (queue == PQ_INACTIVE)
 				m->flags &= ~PG_WINATCFLS;
 			vm_page_enqueue(queue, m);
