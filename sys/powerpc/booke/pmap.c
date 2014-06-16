@@ -648,13 +648,8 @@ ptbl_free(mmu_t mmu, pmap_t pmap, unsigned int pdir_idx)
 		va = ((vm_offset_t)ptbl + (i * PAGE_SIZE));
 		pa = pte_vatopa(mmu, kernel_pmap, va);
 		m = PHYS_TO_VM_PAGE(pa);
-
-		/* Fix-up the wire_count to make free perform correctly. */
-		if (m->wire_count != 0)
-			panic("ptbl_free: invalid wire count %u for page %p",
-			    m->wire_count, m);
-		++m->wire_count;
 		vm_page_free_zero(m);
+		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 		mmu_booke_kremove(mmu, va);
 	}
 

@@ -2012,17 +2012,7 @@ pmap_free_zero_pages(struct spglist *free)
 
 	while ((m = SLIST_FIRST(free)) != NULL) {
 		SLIST_REMOVE_HEAD(free, plinks.s.ss);
-
-		/*
-		 * Preserve the page's PG_ZERO setting.
-		 * However, as the pages are unmanaged, fix-up the wired count
-		 * to perform a correct free.
-		 */
-		if (m->wire_count != 0)
-		panic("pmap_free_zero_pages: wrong wire count %u for page %p",
-			    m->wire_count, m);
-		m->wire_count = 1;
-		atomic_add_int(&vm_cnt.v_wire_count, 1);
+		/* Preserve the page's PG_ZERO setting. */
 		vm_page_free_toq(m);
 	}
 }
@@ -2339,6 +2329,8 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, struct rwlock **lockp)
 			/* Have to allocate a new pdp, recurse */
 			if (_pmap_allocpte(pmap, NUPDE + NUPDPE + pml4index,
 			    lockp) == NULL) {
+				--m->wire_count;
+				atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 				vm_page_free_zero(m);
 				return (NULL);
 			}
@@ -2370,6 +2362,8 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, struct rwlock **lockp)
 			/* Have to allocate a new pd, recurse */
 			if (_pmap_allocpte(pmap, NUPDE + pdpindex,
 			    lockp) == NULL) {
+				--m->wire_count;
+				atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 				vm_page_free_zero(m);
 				return (NULL);
 			}
@@ -2382,6 +2376,9 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, struct rwlock **lockp)
 				/* Have to allocate a new pd, recurse */
 				if (_pmap_allocpte(pmap, NUPDE + pdpindex,
 				    lockp) == NULL) {
+					--m->wire_count;
+					atomic_subtract_int(&vm_cnt.v_wire_count,
+					    1);
 					vm_page_free_zero(m);
 					return (NULL);
 				}
@@ -2519,6 +2516,8 @@ pmap_release(pmap_t pmap)
 		pmap->pm_pml4[DMPML4I + i] = 0;
 	pmap->pm_pml4[PML4PML4I] = 0;	/* Recursive Mapping */
 
+	m->wire_count--;
+	atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 	vm_page_free_zero(m);
 	if (pmap->pm_pcid != -1)
 		free_unr(&pcid_unr, pmap->pm_pcid);
@@ -2816,9 +2815,6 @@ reclaim_pv_chunk(pmap_t locked_pmap, struct rwlock **lockp)
 		m_pc = SLIST_FIRST(&free);
 		SLIST_REMOVE_HEAD(&free, plinks.s.ss);
 		/* Recycle a freed page table page. */
-		KASSERT((m_pc->oflags & VPO_UNMANAGED) != 0,
-	    ("reclaim_pv_chunk: recycled page table page %p not unmanaged",
-		    m_pc));
 		m_pc->wire_count = 1;
 		atomic_add_int(&vm_cnt.v_wire_count, 1);
 	}

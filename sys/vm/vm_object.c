@@ -1951,10 +1951,7 @@ again:
 			if ((options & OBJPR_NOTWIRED) != 0 && wirings != 0)
 				goto next;
 			pmap_remove_all(p);
-			/*
-			 * Account for removal of wired mappings.
-			 * The object will not contain unmanaged pages.
-			 */
+			/* Account for removal of wired mappings. */
 			if (wirings != 0) {
 				KASSERT(p->wire_count == wirings,
 				    ("inconsistent wire count %d %d %p",
@@ -2044,12 +2041,8 @@ vm_object_populate(vm_object_t object, vm_pindex_t start, vm_pindex_t end)
 	int rv;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
-	KASSERT((object->flags & OBJ_UNMANAGED) != 0,
-            ("vm_object_populate: object %p cannot contain unmanaged pages",
-	    object));
 	for (pindex = start; pindex < end; pindex++) {
-		m = vm_page_grab(object, pindex, VM_ALLOC_NORMAL |
-		    VM_ALLOC_WIRED);
+		m = vm_page_grab(object, pindex, VM_ALLOC_NORMAL);
 		if (m->valid != VM_PAGE_BITS_ALL) {
 			ma[0] = m;
 			rv = vm_pager_get_pages(object, ma, 1, 0);

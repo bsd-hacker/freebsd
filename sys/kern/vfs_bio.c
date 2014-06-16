@@ -4295,7 +4295,9 @@ vm_hold_free_pages(struct buf *bp, int newbsize)
 		if (vm_page_sbusied(p))
 			printf("vm_hold_free_pages: blkno: %jd, lblkno: %jd\n",
 			    (intmax_t)bp->b_blkno, (intmax_t)bp->b_lblkno);
+		p->wire_count--;
 		vm_page_free(p);
+		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 	}
 	bp->b_npages = newnpages;
 }

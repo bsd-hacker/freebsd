@@ -1450,7 +1450,7 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	struct vnode *vp = NULL;
 	vm_object_t m_object;
 	vm_page_t m, mpred;
-	int flags, req_class, unmanaged;
+	int flags, req_class;
 
 	mpred = 0;	/* XXX: pacify gcc */
 	KASSERT((object != NULL) == ((req & VM_ALLOC_NOOBJ) == 0) &&
@@ -1461,10 +1461,6 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	    req));
 	if (object != NULL)
 		VM_OBJECT_ASSERT_WLOCKED(object);
-
-	unmanaged = (object == NULL || (object->flags & OBJ_UNMANAGED) != 0);
-	KASSERT(unmanaged == 0 || (req & VM_ALLOC_WIRED) != 0,
-	    ("vm_page_alloc: unmanaged but unwired request req(%x)", req));
 
 	req_class = req & VM_ALLOC_CLASS_MASK;
 
@@ -1589,7 +1585,8 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 		flags |= PG_NODUMP;
 	m->flags = flags;
 	m->aflags = 0;
-	m->oflags = (unmanaged != 0) ? VPO_UNMANAGED : 0;
+	m->oflags = object == NULL || (object->flags & OBJ_UNMANAGED) != 0 ?
+	    VPO_UNMANAGED : 0;
 	m->busy_lock = VPB_UNBUSIED;
 	if ((req & (VM_ALLOC_NOBUSY | VM_ALLOC_NOOBJ | VM_ALLOC_SBUSY)) == 0)
 		m->busy_lock = VPB_SINGLE_EXCLUSIVER;
@@ -1611,7 +1608,7 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 			if (vp != NULL)
 				vdrop(vp);
 			pagedaemon_wakeup();
-			if ((req & VM_ALLOC_WIRED) != 0 && unmanaged == 0) {
+			if (req & VM_ALLOC_WIRED) {
 				atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 				m->wire_count = 0;
 			}
@@ -1679,8 +1676,6 @@ vm_page_alloc_contig_vdrop(struct spglist *lst)
  *
  *	The caller must always specify an allocation class.
  *
- *	The returned pages will all be wired.
- *
  *	allocation classes:
  *	VM_ALLOC_NORMAL		normal process request
  *	VM_ALLOC_SYSTEM		system *really* needs a page
@@ -1691,6 +1686,7 @@ vm_page_alloc_contig_vdrop(struct spglist *lst)
  *	VM_ALLOC_NOOBJ		page is not associated with an object and
  *				should not be exclusive busy 
  *	VM_ALLOC_SBUSY		shared busy the allocated page
+ *	VM_ALLOC_WIRED		wire the allocated page
  *	VM_ALLOC_ZERO		prefer a zeroed page
  *
  *	This routine may not sleep.
@@ -1712,8 +1708,6 @@ vm_page_alloc_contig(vm_object_t object, vm_pindex_t pindex, int req,
 	    (VM_ALLOC_NOBUSY | VM_ALLOC_SBUSY)),
 	    ("vm_page_alloc: inconsistent object(%p)/req(%x)", (void *)object,
 	    req));
-	KASSERT((req & VM_ALLOC_WIRED) == 0,
-	    ("vm_page_alloc_contig: VM_ALLOC_WIRED passed in req (%x)", req));
 	if (object != NULL) {
 		VM_OBJECT_ASSERT_WLOCKED(object);
 		KASSERT(object->type == OBJT_PHYS,
@@ -1781,7 +1775,8 @@ retry:
 		flags = PG_ZERO;
 	if ((req & VM_ALLOC_NODUMP) != 0)
 		flags |= PG_NODUMP;
-	atomic_add_int(&vm_cnt.v_wire_count, npages);
+	if ((req & VM_ALLOC_WIRED) != 0)
+		atomic_add_int(&vm_cnt.v_wire_count, npages);
 	if (object != NULL) {
 		if (object->memattr != VM_MEMATTR_DEFAULT &&
 		    memattr == VM_MEMATTR_DEFAULT)
@@ -1797,8 +1792,8 @@ retry:
 			if ((req & VM_ALLOC_SBUSY) != 0)
 				m->busy_lock = VPB_SHARERS_WORD(1);
 		}
-		m->wire_count = 1;
-
+		if ((req & VM_ALLOC_WIRED) != 0)
+			m->wire_count = 1;
 		/* Unmanaged pages don't use "act_count". */
 		m->oflags = VPO_UNMANAGED;
 		if (object != NULL) {
@@ -1807,10 +1802,13 @@ retry:
 				    &deferred_vdrop_list);
 				if (vm_paging_needed())
 					pagedaemon_wakeup();
+				if ((req & VM_ALLOC_WIRED) != 0)
+					atomic_subtract_int(&vm_cnt.v_wire_count,
+					    npages);
 				for (m_tmp = m, m = m_ret;
 				    m < &m_ret[npages]; m++) {
-					m->wire_count = 1;
-					m->oflags = VPO_UNMANAGED;
+					if ((req & VM_ALLOC_WIRED) != 0)
+						m->wire_count = 0;
 					if (m >= m_tmp)
 						m->object = NULL;
 					vm_page_free(m);
@@ -1885,8 +1883,6 @@ vm_page_alloc_init(vm_page_t m)
  *
  *	The caller must always specify an allocation class.
  *
- *	The returned page will be wired.
- *
  *	allocation classes:
  *	VM_ALLOC_NORMAL		normal process request
  *	VM_ALLOC_SYSTEM		system *really* needs a page
@@ -1895,6 +1891,7 @@ vm_page_alloc_init(vm_page_t m)
  *	optional allocation flags:
  *	VM_ALLOC_COUNT(number)	the number of additional pages that the caller
  *				intends to allocate
+ *	VM_ALLOC_WIRED		wire the allocated page
  *	VM_ALLOC_ZERO		prefer a zeroed page
  *
  *	This routine may not sleep.
@@ -1906,10 +1903,6 @@ vm_page_alloc_freelist(int flind, int req)
 	vm_page_t m;
 	u_int flags;
 	int req_class;
-
-	KASSERT((req & VM_ALLOC_WIRED) == 0,
-	    ("vm_page_alloc_freelist: VM_ALLOC_WIRED passed in req (%x)",
-	    req));
 
 	req_class = req & VM_ALLOC_CLASS_MASK;
 
@@ -1951,14 +1944,14 @@ vm_page_alloc_freelist(int flind, int req)
 	if ((req & VM_ALLOC_ZERO) != 0)
 		flags = PG_ZERO;
 	m->flags &= flags;
-
-	/*
-	 * The page lock is not required for wiring a page that does
-	 * not belong to an object.
-	 */
-	atomic_add_int(&vm_cnt.v_wire_count, 1);
-	m->wire_count = 1;
-
+	if ((req & VM_ALLOC_WIRED) != 0) {
+		/*
+		 * The page lock is not required for wiring a page that does
+		 * not belong to an object.
+		 */
+		atomic_add_int(&vm_cnt.v_wire_count, 1);
+		m->wire_count = 1;
+	}
 	/* Unmanaged pages don't use "act_count". */
 	m->oflags = VPO_UNMANAGED;
 	if (drop != NULL)
@@ -2234,15 +2227,9 @@ vm_page_free_toq(vm_page_t m)
 		vm_page_lock_assert(m, MA_OWNED);
 		KASSERT(!pmap_page_is_mapped(m),
 		    ("vm_page_free_toq: freeing mapped page %p", m));
-	} else {
+	} else
 		KASSERT(m->queue == PQ_NONE,
 		    ("vm_page_free_toq: unmanaged page %p is queued", m));
-		KASSERT(m->wire_count == 1,
-	    ("vm_page_free_toq: invalid wired count %u for unmanaged page %p",
-		    m->wire_count, m));
-		m->wire_count--;
-		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
-	}
 	PCPU_INC(cnt.v_tfree);
 
 	if (vm_page_sbusied(m))
@@ -2348,7 +2335,10 @@ vm_page_wire(vm_page_t m)
  * paged again.  If paging is enabled, then the value of the parameter
  * "queue" determines the queue to which the page is added.
  *
- * If a page is fictitious or managed, then its wire count must always be one.
+ * However, unless the page belongs to an object, it is not enqueued because
+ * it cannot be paged out.
+ *
+ * If a page is fictitious, then its wire count must always be one.
  *
  * A managed page must be locked.
  */
@@ -2369,6 +2359,7 @@ vm_page_unwire(vm_page_t m, uint8_t queue)
 	if (m->wire_count > 0) {
 		m->wire_count--;
 		if (m->wire_count == 0) {
+			atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 			if ((m->oflags & VPO_UNMANAGED) != 0 ||
 			    m->object == NULL)
 				return;

@@ -169,7 +169,7 @@ kmem_alloc_attr(vmem_t *vmem, vm_size_t size, int flags, vm_paddr_t low,
 	if (vmem_alloc(vmem, size, M_BESTFIT | flags, &addr))
 		return (0);
 	offset = addr - VM_MIN_KERNEL_ADDRESS;
-	pflags = malloc2vm_flags(flags) | VM_ALLOC_NOBUSY;
+	pflags = malloc2vm_flags(flags) | VM_ALLOC_NOBUSY | VM_ALLOC_WIRED;
 	VM_OBJECT_WLOCK(object);
 	for (i = 0; i < size; i += PAGE_SIZE) {
 		tries = 0;
@@ -232,7 +232,7 @@ kmem_alloc_contig(struct vmem *vmem, vm_size_t size, int flags, vm_paddr_t low,
 	if (vmem_alloc(vmem, size, flags | M_BESTFIT, &addr))
 		return (0);
 	offset = addr - VM_MIN_KERNEL_ADDRESS;
-	pflags = malloc2vm_flags(flags) | VM_ALLOC_NOBUSY;
+	pflags = malloc2vm_flags(flags) | VM_ALLOC_NOBUSY | VM_ALLOC_WIRED;
 	VM_OBJECT_WLOCK(object);
 	tries = 0;
 retry:

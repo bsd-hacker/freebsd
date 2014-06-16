@@ -492,7 +492,7 @@ static int ttm_alloc_new_pages(struct pglist *pages, int ttm_alloc_flags,
 	unsigned max_cpages = min(count,
 			(unsigned)(PAGE_SIZE/sizeof(vm_page_t)));
 
-	aflags = VM_ALLOC_NORMAL | VM_ALLOC_NOOBJ |
+	aflags = VM_ALLOC_NORMAL | VM_ALLOC_WIRED | VM_ALLOC_NOOBJ |
 	    ((ttm_alloc_flags & TTM_PAGE_FLAG_ZERO_ALLOC) != 0 ?
 	    VM_ALLOC_ZERO : 0);
 	
@@ -708,7 +708,7 @@ static int ttm_get_pages(vm_page_t *pages, unsigned npages, int flags,
 	unsigned count;
 	int r;
 
-	aflags = VM_ALLOC_NORMAL | VM_ALLOC_NOOBJ |
+	aflags = VM_ALLOC_NORMAL | VM_ALLOC_NOOBJ | VM_ALLOC_WIRED |
 	    ((flags & TTM_PAGE_FLAG_ZERO_ALLOC) != 0 ? VM_ALLOC_ZERO : 0);
 
 	/* No pool for cached pages */

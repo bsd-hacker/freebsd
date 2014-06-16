@@ -172,7 +172,6 @@ struct vm_page {
  * 	 under PV management cannot be paged out via the
  * 	 object/vm_page_t because there is no knowledge of their pte
  * 	 mappings, and such pages are also not on any PQ queue.
- *	 VPO_UNMANAGED pages are also mandatory wired.
  *
  */
 #define	VPO_UNUSED01	0x01		/* --available-- */

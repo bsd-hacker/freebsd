@@ -293,8 +293,9 @@ pmap_alloc_vhpt(void)
 	vm_size_t size;
 
 	size = 1UL << pmap_vhpt_log2size;
-	m = vm_page_alloc_contig(NULL, 0, VM_ALLOC_SYSTEM | VM_ALLOC_NOOBJ,
-	    atop(size), 0UL, ~0UL, size, 0UL, VM_MEMATTR_DEFAULT);
+	m = vm_page_alloc_contig(NULL, 0, VM_ALLOC_SYSTEM | VM_ALLOC_NOOBJ |
+	    VM_ALLOC_WIRED, atop(size), 0UL, ~0UL, size, 0UL,
+	    VM_MEMATTR_DEFAULT);
 	if (m != NULL) {
 		vhpt = IA64_PHYS_TO_RR7(VM_PAGE_TO_PHYS(m));
 		pmap_initialize_vhpt(vhpt);

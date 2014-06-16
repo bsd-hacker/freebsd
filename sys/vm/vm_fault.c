@@ -426,8 +426,6 @@ RetryFault:;
 				if (fs.object->type != OBJT_VNODE &&
 				    fs.object->backing_object == NULL)
 					alloc_req |= VM_ALLOC_ZERO;
-				if ((fs.object->flags & OBJ_UNMANAGED) != 0)
-					alloc_req |= VM_ALLOC_WIRED;
 				fs.m = vm_page_alloc(fs.object, fs.pindex,
 				    alloc_req);
 			}
@@ -1442,7 +1440,7 @@ vm_fault_additional_pages(m, rbehind, rahead, marray, reqpage)
 	vm_object_t object;
 	vm_pindex_t pindex, startpindex, endpindex, tpindex;
 	vm_page_t rtm;
-	int alloc_req, cbehind, cahead;
+	int cbehind, cahead;
 
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
 
@@ -1471,10 +1469,6 @@ vm_fault_additional_pages(m, rbehind, rahead, marray, reqpage)
 		rbehind = cbehind;
 	}
 
-	alloc_req = VM_ALLOC_NORMAL | VM_ALLOC_IFNOTCACHED;
-	if ((object->flags & OBJ_UNMANAGED) != 0)
-		alloc_req |= VM_ALLOC_WIRED;
-
 	/*
 	 * scan backward for the read behind pages -- in memory 
 	 */
@@ -1494,7 +1488,8 @@ vm_fault_additional_pages(m, rbehind, rahead, marray, reqpage)
 		for (i = 0, tpindex = pindex - 1; tpindex >= startpindex &&
 		    tpindex < pindex; i++, tpindex--) {
 
-			rtm = vm_page_alloc(object, tpindex, alloc_req);
+			rtm = vm_page_alloc(object, tpindex, VM_ALLOC_NORMAL |
+			    VM_ALLOC_IFNOTCACHED);
 			if (rtm == NULL) {
 				/*
 				 * Shift the allocated pages to the
@@ -1532,7 +1527,8 @@ vm_fault_additional_pages(m, rbehind, rahead, marray, reqpage)
 
 	for (; tpindex < endpindex; i++, tpindex++) {
 
-		rtm = vm_page_alloc(object, tpindex, alloc_req);
+		rtm = vm_page_alloc(object, tpindex, VM_ALLOC_NORMAL |
+		    VM_ALLOC_IFNOTCACHED);
 		if (rtm == NULL) {
 			break;
 		}

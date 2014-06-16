@@ -484,7 +484,7 @@ slb_uma_real_alloc(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
 		realmax = platform_real_maxaddr();
 
 	*flags = UMA_SLAB_PRIV;
-	pflags = malloc2vm_flags(wait) | VM_ALLOC_NOOBJ;
+	pflags = malloc2vm_flags(wait) | VM_ALLOC_NOOBJ | VM_ALLOC_WIRED;
 
 	for (;;) {
 		m = vm_page_alloc_contig(NULL, 0, pflags, 1, 0, realmax,

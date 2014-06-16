@@ -49,7 +49,7 @@ uma_small_alloc(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
 	void *va;
 
 	*flags = UMA_SLAB_PRIV;
-	pflags = malloc2vm_flags(wait);
+	pflags = malloc2vm_flags(wait) | VM_ALLOC_WIRED;
 
 	for (;;) {
 		m = vm_page_alloc_freelist(VM_FREELIST_DIRECT, pflags);
@@ -77,5 +77,7 @@ uma_small_free(void *mem, int size, u_int8_t flags)
 
 	pa = MIPS_DIRECT_TO_PHYS((vm_offset_t)mem);
 	m = PHYS_TO_VM_PAGE(pa);
+	m->wire_count--;
 	vm_page_free(m);
+	atomic_subtract_int(&vm_cnt.v_wire_count, 1);
 }
