@@ -136,6 +136,7 @@ struct device {
 #define	DF_DONENOMATCH	0x20		/* don't execute DEVICE_NOMATCH again */
 #define	DF_EXTERNALSOFTC 0x40		/* softc not allocated by us */
 #define	DF_REBID	0x80		/* Can rebid after attach */
+#define DF_SUSPENDED	0x100		/* Device is currently suspended. */
 	u_int	order;			/**< order from device_add_child_ordered() */
 	void	*ivars;			/**< instance variables  */
 	void	*softc;			/**< current driver's variables  */
@@ -1775,6 +1776,7 @@ make_device(device_t parent, const char *name, int unit)
 	dev->devflags = 0;
 	dev->flags = DF_ENABLED;
 	dev->order = 0;
+	dev->pass = parent ? parent->pass : BUS_PASS_ROOT;
 	if (unit == -1)
 		dev->flags |= DF_WILDCARD;
 	if (name) {
@@ -3644,7 +3646,7 @@ bus_generic_suspend_child(device_t dev, device_t child)
 	
 	error = DEVICE_SUSPEND(child);
 	if (!error)
-	    child->state = DS_SUSPENDED;
+	    child->flags |= DF_SUSPENDED;
 
 	return (error);
 }
@@ -3665,7 +3667,7 @@ bus_generic_resume_child(device_t dev, device_t child)
 	 * Regardless of resume state, there's nothing we can do, so mark it
 	 * attached again.
 	 */
-	child->state = DS_ATTACHED;
+	child->flags &= ~DF_SUSPENDED;
 
 	return (error);
 }
@@ -3685,18 +3687,16 @@ bus_generic_suspend(device_t dev)
 	int		error = 0;
 	device_t	child, child2;
 
-	if (dev->state == DS_SUSPENDED)
+	if (dev->flags & DF_SUSPENDED)
 		return (0);
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		if (child->state != DS_SUSPENDED)
+		if (!(child->state & DF_SUSPENDED))
 			error = bus_generic_suspend(child);
 		if (error == 0) {
-			/* We won't busy ourselves with busy devices. */
-			if (child->state == DS_BUSY)
-				error = (EBUSY);
-			else if (child->pass >= bus_current_pass && child->state == DS_ATTACHED) {
-				printf("Suspending %s, child of %s\n", child->nameunit, dev->nameunit);
+			if (child->pass >= bus_current_pass && child->state == DS_ATTACHED) {
+				if (bootverbose)
+					printf("Suspending %s, child of %s\n", child->nameunit, dev->nameunit);
 				error = BUS_SUSPEND_CHILD(dev, child);
 				if (error != 0)
 					printf("Error suspending child %s: %d\n", child->nameunit, error);
@@ -3729,8 +3729,9 @@ bus_generic_resume(device_t dev)
 	device_t	child;
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		if (child->pass == bus_current_pass && child->state == DS_SUSPENDED) {
-			printf("Resuming %s, child of %s\n", child->nameunit, dev->nameunit);
+		if (child->pass == bus_current_pass && (child->flags & DF_SUSPENDED)) {
+			if (bootverbose)
+				printf("Resuming %s, child of %s\n", child->nameunit, dev->nameunit);
 			BUS_RESUME_CHILD(dev, child);
 
 			/* if resume fails, there's nothing we can usefully do... */
@@ -4811,7 +4812,7 @@ print_device_short(device_t dev, int indent)
 	if (!dev)
 		return;
 
-	indentprintf(("device %d: <%s> %sparent,%schildren,%s%s%s%s%s,%sivars,%ssoftc,busy=%d\n",
+	indentprintf(("device %d: <%s> %sparent,%schildren,%s%s%s%s%s%s,%sivars,%ssoftc,busy=%d\n",
 	    dev->unit, dev->desc,
 	    (dev->parent? "":"no "),
 	    (TAILQ_EMPTY(&dev->children)? "no ":""),
@@ -4820,6 +4821,7 @@ print_device_short(device_t dev, int indent)
 	    (dev->flags&DF_WILDCARD? "wildcard,":""),
 	    (dev->flags&DF_DESCMALLOCED? "descmalloced,":""),
 	    (dev->flags&DF_REBID? "rebiddable,":""),
+	    (dev->flags&DF_SUSPENDED? "suspended,":""),
 	    (dev->ivars? "":"no "),
 	    (dev->softc? "":"no "),
 	    dev->busy));
