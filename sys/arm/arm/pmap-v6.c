@@ -3228,8 +3228,7 @@ pmap_enter_object(pmap_t pmap, vm_offset_t start, vm_offset_t end,
 	while (m != NULL && (diff = m->pindex - m_start->pindex) < psize) {
 		va = start + ptoa(diff);
 		if ((va & L1_S_OFFSET) == 0 && L2_NEXT_BUCKET(va) <= end &&
-		    (VM_PAGE_TO_PHYS(m) & L1_S_OFFSET) == 0 &&
-		    sp_enabled && vm_reserv_level_iffullpop(m) == 0 &&
+		    m->psind == 1 && sp_enabled &&
 		    pmap_enter_section(pmap, va, m, prot))
 			m = &m[L1_S_SIZE / PAGE_SIZE - 1];
 		else
@@ -4223,7 +4222,7 @@ pmap_free_pv_chunk(struct pv_chunk *pc)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(pmap_kextract((vm_offset_t)pc));
 	pmap_qremove((vm_offset_t)pc, 1);
-	vm_page_unwire(m, 0);
+	vm_page_unwire(m, PQ_INACTIVE);
 	vm_page_free(m);
 	pmap_ptelist_free(&pv_vafree, (vm_offset_t)pc);
 
