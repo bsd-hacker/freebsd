@@ -206,7 +206,8 @@ struct vm_page {
 #define	PQ_NONE		255
 #define	PQ_INACTIVE	0
 #define	PQ_ACTIVE	1
-#define	PQ_COUNT	2
+#define	PQ_DISPOSED	2
+#define	PQ_COUNT	3
 
 TAILQ_HEAD(pglist, vm_page);
 SLIST_HEAD(spglist, vm_page);

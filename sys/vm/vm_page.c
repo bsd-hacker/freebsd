@@ -259,6 +259,10 @@ vm_page_domain_init(struct vm_domain *vmd)
 	    "vm active pagequeue";
 	*__DECONST(int **, &vmd->vmd_pagequeues[PQ_ACTIVE].pq_vcnt) =
 	    &vm_cnt.v_active_count;
+	*__DECONST(char **, &vmd->vmd_pagequeues[PQ_DISPOSED].pq_name) =
+	    "vm disposed pagequeue";
+	*__DECONST(int **, &vmd->vmd_pagequeues[PQ_DISPOSED].pq_vcnt) =
+	    &vm_cnt.v_disposed_count;
 	vmd->vmd_page_count = 0;
 	vmd->vmd_free_count = 0;
 	vmd->vmd_segs = 0;
@@ -3165,10 +3169,11 @@ DB_SHOW_COMMAND(pageq, vm_page_print_pageq_info)
 	    vm_cnt.v_free_count, vm_cnt.v_cache_count);
 	for (dom = 0; dom < vm_ndomains; dom++) {
 		db_printf(
-	"dom %d page_cnt %d free %d pq_act %d pq_inact %d pass %d\n",
+"dom %d page_cnt %d free %d pq_disposed %d pq_act %d pq_inact %d pass %d\n",
 		    dom,
 		    vm_dom[dom].vmd_page_count,
 		    vm_dom[dom].vmd_free_count,
+		    vm_dom[dom].vmd_pagequeues[PQ_DISPOSED].pq_cnt,
 		    vm_dom[dom].vmd_pagequeues[PQ_ACTIVE].pq_cnt,
 		    vm_dom[dom].vmd_pagequeues[PQ_INACTIVE].pq_cnt,
 		    vm_dom[dom].vmd_pass);
