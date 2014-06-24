@@ -32,7 +32,7 @@ psql -f db/fbce.sql fbce fbce
 ./db/update.sh fbce
 
 # One-liner to set a user's password
-perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("altinn")'
+perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("4ltInn!?")'
 
 #
 # The list of users is generated on freefall using scripts written for
@@ -68,3 +68,6 @@ perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" }
 # Finally, generate passwords
 #
 ./script/fbce_user.pl pwgen
+
+# Print the logins of active users who haven't voted
+perl -Ilib -MFBCE -e 'map { print $_->login, "\n" } grep { $_->active && $_->votes_voters->count == 0 } FBCE->model("FBCE::Person")->all'
