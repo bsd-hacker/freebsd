@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_media.h>
 #include <net/ethernet.h>
 
@@ -413,6 +414,7 @@ static void
 pwrsave_flushq(struct ieee80211_node *ni)
 {
 	struct ieee80211_psq *psq = &ni->ni_psq;
+	struct ieee80211com *ic = ni->ni_ic;
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ieee80211_psq_head *qhead;
 	struct ifnet *parent, *ifp;
@@ -455,6 +457,7 @@ pwrsave_flushq(struct ieee80211_node *ni)
 		while (parent_q != NULL) {
 			m = parent_q;
 			parent_q = m->m_nextpkt;
+			m->m_nextpkt = NULL;
 			/* must be encapsulated */
 			KASSERT((m->m_flags & M_ENCAP),
 			    ("%s: parentq with non-M_ENCAP frame!\n",
@@ -463,7 +466,7 @@ pwrsave_flushq(struct ieee80211_node *ni)
 			 * For encaped frames, we need to free the node
 			 * reference upon failure.
 			 */
-			if (parent->if_transmit(parent, m) != 0)
+			if (ieee80211_parent_xmitpkt(ic, m) != 0)
 				ieee80211_free_node(ni);
 		}
 	}
@@ -473,9 +476,10 @@ pwrsave_flushq(struct ieee80211_node *ni)
 		while (ifp_q != NULL) {
 			m = ifp_q;
 			ifp_q = m->m_nextpkt;
+			m->m_nextpkt = NULL;
 			KASSERT((!(m->m_flags & M_ENCAP)),
 			    ("%s: vapq with M_ENCAP frame!\n", __func__));
-			(void) ifp->if_transmit(ifp, m);
+			(void) ieee80211_vap_xmitpkt(vap, m);
 		}
 	}
 }
@@ -550,4 +554,90 @@ ieee80211_sta_pwrsave(struct ieee80211vap *vap, int enable)
 		ni->ni_flags |= IEEE80211_NODE_PWR_MGT;
 		ieee80211_send_nulldata(ieee80211_ref_node(ni));
 	}
+}
+
+/*
+ * Handle being notified that we have data available for us in a TIM/ATIM.
+ *
+ * This may schedule a transition from _SLEEP -> _RUN if it's appropriate.
+ */
+void
+ieee80211_sta_tim_notify(struct ieee80211vap *vap, int set)
+{
+	/*
+	 * Schedule the driver state change.  It'll happen at some point soon.
+	 * Since the hardware shouldn't know that we're running just yet
+	 * (and thus tell the peer that we're awake before we actually wake
+	 * up said hardware), we leave the actual node state transition
+	 * up to the transition to RUN.
+	 *
+	 * XXX TODO: verify that the transition to RUN will wake up the
+	 * BSS node!
+	 */
+	IEEE80211_DPRINTF(vap, IEEE80211_MSG_POWER, "%s: TIM=%d\n", __func__, set);
+	IEEE80211_LOCK(vap->iv_ic);
+	if (set == 1 && vap->iv_state == IEEE80211_S_SLEEP) {
+		ieee80211_new_state_locked(vap, IEEE80211_S_RUN, 0);
+	}
+	IEEE80211_UNLOCK(vap->iv_ic);
+}
+
+/*
+ * Timer check on whether the VAP has had any transmit activity.
+ *
+ * This may schedule a transition from _RUN -> _SLEEP if it's appropriate.
+ */
+void
+ieee80211_sta_ps_timer_check(struct ieee80211vap *vap)
+{
+	struct ieee80211com *ic = vap->iv_ic;
+
+	/* XXX lock assert */
+
+	/* For no, only do this in STA mode */
+	if (! (vap->iv_caps & IEEE80211_C_SWSLEEP))
+		goto out;
+
+	if (vap->iv_opmode != IEEE80211_M_STA)
+		goto out;
+
+	/* If we're not at run state, bail */
+	if (vap->iv_state != IEEE80211_S_RUN)
+		goto out;
+
+	IEEE80211_DPRINTF(vap, IEEE80211_MSG_POWER,
+	    "%s: lastdata=%llu, ticks=%llu\n",
+	    __func__, (unsigned long long) ic->ic_lastdata,
+	    (unsigned long long) ticks);
+
+	/* If powersave is disabled on the VAP, don't bother */
+	if (! (vap->iv_flags & IEEE80211_F_PMGTON))
+		goto out;
+
+	/* If we've done any data within our idle interval, bail */
+	/* XXX hard-coded to one second for now, ew! */
+	if (time_after(ic->ic_lastdata + 500, ticks))
+		goto out;
+
+	/*
+	 * Signify we're going into power save and transition the
+	 * node to powersave.
+	 */
+	if ((vap->iv_bss->ni_flags & IEEE80211_NODE_PWR_MGT) == 0)
+		vap->iv_sta_ps(vap, 1);
+
+	/*
+	 * XXX The driver has to handle the fact that we're going
+	 * to sleep but frames may still be transmitted;
+	 * hopefully it and/or us will do the right thing and mark any
+	 * transmitted frames with PWRMGT set to 1.
+	 */
+	ieee80211_new_state_locked(vap, IEEE80211_S_SLEEP, 0);
+
+	IEEE80211_DPRINTF(vap, IEEE80211_MSG_POWER,
+	    "%s: time delta=%d msec\n", __func__,
+	    (int) ticks_to_msecs(ticks - ic->ic_lastdata));
+
+out:
+	return;
 }

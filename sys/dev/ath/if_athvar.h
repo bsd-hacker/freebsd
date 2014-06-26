@@ -178,10 +178,11 @@ struct ath_node {
 	struct ath_buf	*an_ff_buf[WME_NUM_AC]; /* ff staging area */
 	struct ath_tid	an_tid[IEEE80211_TID_SIZE];	/* per-TID state */
 	char		an_name[32];	/* eg "wlan0_a1" */
-	struct mtx	an_mtx;		/* protecting the ath_node state */
+	struct mtx	an_mtx;		/* protecting the rate control state */
 	uint32_t	an_swq_depth;	/* how many SWQ packets for this
 					   node */
 	int			clrdmask;	/* has clrdmask been set */
+	uint32_t	an_leak_count;	/* How many frames to leak during pause */
 	/* variable-length rate control state follows */
 };
 #define	ATH_NODE(ni)	((struct ath_node *)(ni))
@@ -224,6 +225,7 @@ struct ath_buf {
 	bus_size_t		bf_mapsize;
 #define	ATH_MAX_SCATTER		ATH_TXDESC	/* max(tx,rx,beacon) desc's */
 	bus_dma_segment_t	bf_segs[ATH_MAX_SCATTER];
+	uint32_t		bf_nextfraglen;	/* length of next fragment */
 
 	/* Completion function to call on TX complete (fail or not) */
 	/*
@@ -279,8 +281,6 @@ struct ath_buf {
 		int32_t bfs_keyix;		/* crypto key index */
 		int32_t bfs_txantenna;	/* TX antenna config */
 
-		uint16_t bfs_nextpktlen;	/* length of next frag pkt */
-
 		/* Make this an 8 bit value? */
 		enum ieee80211_protmode bfs_protmode;
 
@@ -293,6 +293,10 @@ typedef TAILQ_HEAD(ath_bufhead_s, ath_buf) ath_bufhead;
 
 #define	ATH_BUF_MGMT	0x00000001	/* (tx) desc is a mgmt desc */
 #define	ATH_BUF_BUSY	0x00000002	/* (tx) desc owned by h/w */
+#define	ATH_BUF_FIFOEND	0x00000004
+#define	ATH_BUF_FIFOPTR	0x00000008
+
+#define	ATH_BUF_FLAGS_CLONE	(ATH_BUF_MGMT)
 
 /*
  * DMA state for tx/rx descriptors.
@@ -324,18 +328,65 @@ struct ath_txq {
 #define	ATH_TXQ_SWQ	(HAL_NUM_TX_QUEUES+1)	/* qnum for s/w only queue */
 	u_int			axq_ac;		/* WME AC */
 	u_int			axq_flags;
-#define	ATH_TXQ_PUTPENDING	0x0001		/* ath_hal_puttxbuf pending */
+//#define	ATH_TXQ_PUTPENDING	0x0001		/* ath_hal_puttxbuf pending */
+#define	ATH_TXQ_PUTRUNNING	0x0002		/* ath_hal_puttxbuf has been called */
 	u_int			axq_depth;	/* queue depth (stat only) */
 	u_int			axq_aggr_depth;	/* how many aggregates are queued */
-	u_int			axq_fifo_depth;	/* depth of FIFO frames */
 	u_int			axq_intrcnt;	/* interrupt count */
 	u_int32_t		*axq_link;	/* link ptr in last TX desc */
 	TAILQ_HEAD(axq_q_s, ath_buf)	axq_q;		/* transmit queue */
+	struct mtx		axq_lock;	/* lock on q and link */
+
+	/*
+	 * This is the FIFO staging buffer when doing EDMA.
+	 *
+	 * For legacy chips, we just push the head pointer to
+	 * the hardware and we ignore this list.
+	 *
+	 * For EDMA, the staging buffer is treated as normal;
+	 * when it's time to push a list of frames to the hardware
+	 * we move that list here and we stamp buffers with
+	 * flags to identify the beginning/end of that particular
+	 * FIFO entry.
+	 */
+	struct {
+		TAILQ_HEAD(axq_q_f_s, ath_buf)	axq_q;
+		u_int				axq_depth;
+	} fifo;
+	u_int			axq_fifo_depth;	/* depth of FIFO frames */
+
+	/*
+	 * XXX the holdingbf field is protected by the TXBUF lock
+	 * for now, NOT the TXQ lock.
+	 *
+	 * Architecturally, it would likely be better to move
+	 * the holdingbf field to a separate array in ath_softc
+	 * just to highlight that it's not protected by the normal
+	 * TX path lock.
+	 */
+	struct ath_buf		*axq_holdingbf;	/* holding TX buffer */
 	char			axq_name[12];	/* e.g. "ath0_txq4" */
 
 	/* Per-TID traffic queue for software -> hardware TX */
+	/*
+	 * This is protected by the general TX path lock, not (for now)
+	 * by the TXQ lock.
+	 */
 	TAILQ_HEAD(axq_t_s,ath_tid)	axq_tidq;
 };
+
+#define	ATH_TXQ_LOCK_INIT(_sc, _tq) do { \
+	    snprintf((_tq)->axq_name, sizeof((_tq)->axq_name), "%s_txq%u", \
+	      device_get_nameunit((_sc)->sc_dev), (_tq)->axq_qnum); \
+	    mtx_init(&(_tq)->axq_lock, (_tq)->axq_name, NULL, MTX_DEF); \
+	} while (0)
+#define	ATH_TXQ_LOCK_DESTROY(_tq)	mtx_destroy(&(_tq)->axq_lock)
+#define	ATH_TXQ_LOCK(_tq)		mtx_lock(&(_tq)->axq_lock)
+#define	ATH_TXQ_UNLOCK(_tq)		mtx_unlock(&(_tq)->axq_lock)
+#define	ATH_TXQ_LOCK_ASSERT(_tq)	mtx_assert(&(_tq)->axq_lock, MA_OWNED)
+#define	ATH_TXQ_UNLOCK_ASSERT(_tq)	mtx_assert(&(_tq)->axq_lock,	\
+					    MA_NOTOWNED)
+
 
 #define	ATH_NODE_LOCK(_an)		mtx_lock(&(_an)->an_mtx)
 #define	ATH_NODE_UNLOCK(_an)		mtx_unlock(&(_an)->an_mtx)
@@ -367,17 +418,17 @@ struct ath_txq {
 #define ATH_TID_INSERT_HEAD(_tq, _elm, _field) do { \
 	TAILQ_INSERT_HEAD(&(_tq)->tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_INSERT_TAIL(_tq, _elm, _field) do { \
 	TAILQ_INSERT_TAIL(&(_tq)->tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_REMOVE(_tq, _elm, _field) do { \
 	TAILQ_REMOVE(&(_tq)->tid_q, _elm, _field); \
 	(_tq)->axq_depth--; \
-	atomic_subtract_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth--; \
 } while (0)
 #define	ATH_TID_FIRST(_tq)		TAILQ_FIRST(&(_tq)->tid_q)
 #define	ATH_TID_LAST(_tq, _field)	TAILQ_LAST(&(_tq)->tid_q, _field)
@@ -388,17 +439,17 @@ struct ath_txq {
 #define ATH_TID_FILT_INSERT_HEAD(_tq, _elm, _field) do { \
 	TAILQ_INSERT_HEAD(&(_tq)->filtq.tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_FILT_INSERT_TAIL(_tq, _elm, _field) do { \
 	TAILQ_INSERT_TAIL(&(_tq)->filtq.tid_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	atomic_add_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth++; \
 } while (0)
 #define ATH_TID_FILT_REMOVE(_tq, _elm, _field) do { \
 	TAILQ_REMOVE(&(_tq)->filtq.tid_q, _elm, _field); \
 	(_tq)->axq_depth--; \
-	atomic_subtract_rel_32( &((_tq)->an)->an_swq_depth, 1); \
+	(_tq)->an->an_swq_depth--; \
 } while (0)
 #define	ATH_TID_FILT_FIRST(_tq)		TAILQ_FIRST(&(_tq)->filtq.tid_q)
 #define	ATH_TID_FILT_LAST(_tq, _field)	TAILQ_LAST(&(_tq)->filtq.tid_q,_field)
@@ -417,6 +468,8 @@ struct ath_vap {
 	void		(*av_bmiss)(struct ieee80211vap *);
 	void		(*av_node_ps)(struct ieee80211_node *, int);
 	int		(*av_set_tim)(struct ieee80211_node *, int);
+	void		(*av_recv_pspoll)(struct ieee80211_node *,
+				struct mbuf *);
 };
 #define	ATH_VAP(vap)	((struct ath_vap *)(vap))
 
@@ -434,6 +487,9 @@ typedef enum {
 } ATH_RESET_TYPE;
 
 struct ath_rx_methods {
+	void		(*recv_sched_queue)(struct ath_softc *sc,
+			    HAL_RX_QUEUE q, int dosched);
+	void		(*recv_sched)(struct ath_softc *sc, int dosched);
 	void		(*recv_stop)(struct ath_softc *sc, int dodelay);
 	int		(*recv_start)(struct ath_softc *sc);
 	void		(*recv_flush)(struct ath_softc *sc);
@@ -454,6 +510,7 @@ struct ath_rx_edma {
 	int		m_fifo_tail;
 	int		m_fifo_depth;
 	struct mbuf	*m_rxpending;
+	struct ath_buf	*m_holdbf;
 };
 
 struct ath_tx_edma_fifo {
@@ -493,6 +550,7 @@ struct ath_softc {
 
 	struct ath_rx_methods	sc_rx;
 	struct ath_rx_edma	sc_rxedma[HAL_NUM_RX_QUEUES];	/* HP/LP queues */
+	ath_bufhead		sc_rx_rxlist[HAL_NUM_RX_QUEUES];	/* deferred RX completion */
 	struct ath_tx_methods	sc_tx;
 	struct ath_tx_edma_fifo	sc_txedma[HAL_NUM_TX_QUEUES];
 
@@ -525,7 +583,6 @@ struct ath_softc {
 	struct mtx		sc_tx_ic_mtx;	/* TX queue mutex */
 	char			sc_tx_ic_mtx_name[32];
 	struct taskqueue	*sc_tq;		/* private task queue */
-	struct taskqueue	*sc_tx_tq;	/* private TX task queue */
 	struct ath_hal		*sc_ah;		/* Atheros HAL */
 	struct ath_ratectrl	*sc_rc;		/* tx rate control support */
 	struct ath_tx99		*sc_tx99;	/* tx99 adjunct state */
@@ -565,12 +622,20 @@ struct ath_softc {
 				sc_resetcal : 1,/* reset cal state next trip */
 				sc_rxslink  : 1,/* do self-linked final descriptor */
 				sc_rxtsf32  : 1,/* RX dec TSF is 32 bits */
-				sc_isedma   : 1;/* supports EDMA */
+				sc_isedma   : 1,/* supports EDMA */
+				sc_do_mybeacon : 1; /* supports mybeacon */
 
 	/*
 	 * Second set of flags.
 	 */
-	u_int32_t		sc_use_ent  : 1;
+	u_int32_t		sc_use_ent  : 1,
+				sc_rx_stbc  : 1,
+				sc_tx_stbc  : 1,
+				sc_hasenforcetxop : 1, /* support enforce TxOP */
+				sc_hasdivcomb : 1,     /* RX diversity combining */
+				sc_rx_lnamixer : 1;    /* RX using LNA mixing */
+
+	int			sc_cabq_enable;	/* Enable cabq transmission */
 
 	/*
 	 * Enterprise mode configuration for AR9380 and later chipsets.
@@ -672,7 +737,6 @@ struct ath_softc {
 	struct ath_txq		*sc_ac2q[5];	/* WME AC -> h/w q map */ 
 	struct task		sc_txtask;	/* tx int processing */
 	struct task		sc_txqtask;	/* tx proc processing */
-	struct task		sc_txpkttask;	/* tx frame processing */
 
 	struct ath_descdma	sc_txcompdma;	/* TX EDMA completion */
 	struct mtx		sc_txcomplock;	/* TX EDMA completion lock */
@@ -718,9 +782,13 @@ struct ath_softc {
 	u_int32_t		sc_avgtsfdeltap;/* TDMA slot adjust (+) */
 	u_int32_t		sc_avgtsfdeltam;/* TDMA slot adjust (-) */
 	uint16_t		*sc_eepromdata;	/* Local eeprom data, if AR9100 */
-	int			sc_txchainmask;	/* currently configured TX chainmask */
-	int			sc_rxchainmask;	/* currently configured RX chainmask */
-	int			sc_rts_aggr_limit;	/* TX limit on RTS aggregates */
+	uint32_t		sc_txchainmask;	/* hardware TX chainmask */
+	uint32_t		sc_rxchainmask;	/* hardware RX chainmask */
+	uint32_t		sc_cur_txchainmask;	/* currently configured TX chainmask */
+	uint32_t		sc_cur_rxchainmask;	/* currently configured RX chainmask */
+	uint32_t		sc_rts_aggr_limit;	/* TX limit on RTS aggregates */
+	int			sc_aggr_limit;	/* TX limit on all aggregates */
+	int			sc_delim_min_pad;	/* Minimum delimiter count */
 
 	/* Queue limits */
 
@@ -734,6 +802,8 @@ struct ath_softc {
 	 *   management/multicast frames;
 	 * + multicast frames overwhelming everything (when the
 	 *   air is sufficiently busy that cabq can't drain.)
+	 * + A node in powersave shouldn't be allowed to exhaust
+	 *   all available mbufs;
 	 *
 	 * These implement:
 	 * + data_minfree is the maximum number of free buffers
@@ -741,20 +811,27 @@ struct ath_softc {
 	 *
 	 * + mcastq_maxdepth is the maximum depth allowed of the cabq.
 	 */
+	int			sc_txq_node_maxdepth;
 	int			sc_txq_data_minfree;
 	int			sc_txq_mcastq_maxdepth;
+	int			sc_txq_node_psq_maxdepth;
 
 	/*
-	 * Aggregation twiddles
+	 * Software queue twiddles
 	 *
-	 * hwq_limit:	how busy to keep the hardware queue - don't schedule
-	 *		further packets to the hardware, regardless of the TID
+	 * hwq_limit_nonaggr:
+	 *		when to begin limiting non-aggregate frames to the
+	 *		hardware queue, regardless of the TID.
+	 * hwq_limit_aggr:
+	 *		when to begin limiting A-MPDU frames to the
+	 *		hardware queue, regardless of the TID.
 	 * tid_hwq_lo:	how low the per-TID hwq count has to be before the
 	 *		TID will be scheduled again
 	 * tid_hwq_hi:	how many frames to queue to the HWQ before the TID
 	 *		stops being scheduled.
 	 */
-	int			sc_hwq_limit;
+	int			sc_hwq_limit_nonaggr;
+	int			sc_hwq_limit_aggr;
 	int			sc_tid_hwq_lo;
 	int			sc_tid_hwq_hi;
 
@@ -766,6 +843,10 @@ struct ath_softc {
 	/* Spectral related state */
 	void			*sc_spectral;
 	int			sc_dospectral;
+
+	/* LNA diversity related state */
+	void			*sc_lna_div;
+	int			sc_dolnadiv;
 
 	/* ALQ */
 #ifdef	ATH_DEBUG_ALQ
@@ -785,6 +866,22 @@ struct ath_softc {
 	void			(*sc_bar_response)(struct ieee80211_node *ni,
 				    struct ieee80211_tx_ampdu *tap,
 				    int status);
+
+	/*
+	 * Powersave state tracking.
+	 *
+	 * target/cur powerstate is the chip power state.
+	 * target selfgen state is the self-generated frames
+	 *   state.  The chip can be awake but transmitted frames
+	 *   can have the PWRMGT bit set to 1 so the destination
+	 *   thinks the node is asleep.
+	 */
+	HAL_POWER_MODE		sc_target_powerstate;
+	HAL_POWER_MODE		sc_target_selfgen_state;
+
+	HAL_POWER_MODE		sc_cur_powerstate;
+
+	int			sc_powersave_refcnt;
 };
 
 #define	ATH_LOCK_INIT(_sc) \
@@ -815,6 +912,8 @@ struct ath_softc {
 		MA_OWNED)
 #define	ATH_TX_UNLOCK_ASSERT(_sc)	mtx_assert(&(_sc)->sc_tx_mtx,	\
 		MA_NOTOWNED)
+#define	ATH_TX_TRYLOCK(_sc)	(mtx_owned(&(_sc)->sc_tx_mtx) != 0 &&	\
+					mtx_trylock(&(_sc)->sc_tx_mtx))
 
 /*
  * The IC TX lock is non-reentrant and serialises packet queuing from
@@ -903,6 +1002,8 @@ struct ath_softc {
 #define	ATH_TXBUF_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_txbuflock)
 #define	ATH_TXBUF_LOCK_ASSERT(_sc) \
 	mtx_assert(&(_sc)->sc_txbuflock, MA_OWNED)
+#define	ATH_TXBUF_UNLOCK_ASSERT(_sc) \
+	mtx_assert(&(_sc)->sc_txbuflock, MA_NOTOWNED)
 
 #define	ATH_TXSTATUS_LOCK_INIT(_sc) do { \
 	snprintf((_sc)->sc_txcompname, sizeof((_sc)->sc_txcompname), \
@@ -955,6 +1056,8 @@ void	ath_intr(void *);
 	((*(_ah)->ah_updateTxTrigLevel)((_ah), (_inc)))
 #define	ath_hal_setpower(_ah, _mode) \
 	((*(_ah)->ah_setPowerMode)((_ah), (_mode), AH_TRUE))
+#define	ath_hal_setselfgenpower(_ah, _mode) \
+	((*(_ah)->ah_setPowerMode)((_ah), (_mode), AH_FALSE))
 #define	ath_hal_keycachesize(_ah) \
 	((*(_ah)->ah_getKeyCacheSize)((_ah)))
 #define	ath_hal_keyreset(_ah, _ix) \
@@ -1183,6 +1286,21 @@ void	ath_intr(void *);
 #define	ath_hal_setintmit(_ah, _v) \
 	ath_hal_setcapability(_ah, HAL_CAP_INTMIT, \
 	HAL_CAP_INTMIT_ENABLE, _v, NULL)
+#define	ath_hal_hasmybeacon(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_DO_MYBEACON, 1, NULL) == HAL_OK)
+
+#define	ath_hal_hasenforcetxop(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_ENFORCE_TXOP, 0, NULL) == HAL_OK)
+#define	ath_hal_getenforcetxop(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_ENFORCE_TXOP, 1, NULL) == HAL_OK)
+#define	ath_hal_setenforcetxop(_ah, _v) \
+	ath_hal_setcapability(_ah, HAL_CAP_ENFORCE_TXOP, 1, _v, NULL)
+
+#define	ath_hal_hasrxlnamixer(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_RX_LNA_MIXING, 0, NULL) == HAL_OK)
+
+#define	ath_hal_hasdivantcomb(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_ANT_DIV_COMB, 0, NULL) == HAL_OK)
 
 /* EDMA definitions */
 #define	ath_hal_hasedma(_ah) \
@@ -1292,6 +1410,8 @@ void	ath_intr(void *);
 	((*(_ah)->ah_set11nBurstDuration)((_ah), (_ds), (_dur)))
 #define	ath_hal_clr11n_aggr(_ah, _ds) \
 	((*(_ah)->ah_clr11nAggr)((_ah), (_ds)))
+#define	ath_hal_set11n_virtmorefrag(_ah, _ds, _v) \
+	((*(_ah)->ah_set11nVirtMoreFrag)((_ah), (_ds), (_v)))
 
 #define	ath_hal_gpioCfgOutput(_ah, _gpio, _type) \
 	((*(_ah)->ah_gpioCfgOutput)((_ah), (_gpio), (_type)))
@@ -1333,6 +1453,8 @@ void	ath_intr(void *);
 	((*(_ah)->ah_getMibCycleCounts)((_ah), (_sample)))
 #define	ath_hal_get_chan_ext_busy(_ah) \
 	((*(_ah)->ah_get11nExtBusy)((_ah)))
+#define	ath_hal_setchainmasks(_ah, _txchainmask, _rxchainmask) \
+	((*(_ah)->ah_setChainMasks)((_ah), (_txchainmask), (_rxchainmask)))
 
 #define	ath_hal_spectral_supported(_ah) \
 	(ath_hal_getcapability(_ah, HAL_CAP_SPECTRAL_SCAN, 0, NULL) == HAL_OK)
@@ -1344,5 +1466,31 @@ void	ath_intr(void *);
 	((*(_ah)->ah_spectralStart)((_ah)))
 #define	ath_hal_spectral_stop(_ah) \
 	((*(_ah)->ah_spectralStop)((_ah)))
+
+#define	ath_hal_btcoex_supported(_ah) \
+	(ath_hal_getcapability(_ah, HAL_CAP_BT_COEX, 0, NULL) == HAL_OK)
+#define	ath_hal_btcoex_set_info(_ah, _info) \
+	((*(_ah)->ah_btCoexSetInfo)((_ah), (_info)))
+#define	ath_hal_btcoex_set_config(_ah, _cfg) \
+	((*(_ah)->ah_btCoexSetConfig)((_ah), (_cfg)))
+#define	ath_hal_btcoex_set_qcu_thresh(_ah, _qcuid) \
+	((*(_ah)->ah_btCoexSetQcuThresh)((_ah), (_qcuid)))
+#define	ath_hal_btcoex_set_weights(_ah, _weight) \
+	((*(_ah)->ah_btCoexSetWeights)((_ah), (_weight)))
+#define	ath_hal_btcoex_set_weights(_ah, _weight) \
+	((*(_ah)->ah_btCoexSetWeights)((_ah), (_weight)))
+#define	ath_hal_btcoex_set_bmiss_thresh(_ah, _thr) \
+	((*(_ah)->ah_btCoexSetBmissThresh)((_ah), (_thr)))
+#define	ath_hal_btcoex_set_parameter(_ah, _attrib, _val) \
+	((*(_ah)->ah_btCoexSetParameter)((_ah), (_attrib), (_val)))
+#define	ath_hal_btcoex_enable(_ah) \
+	((*(_ah)->ah_btCoexEnable)((_ah)))
+#define	ath_hal_btcoex_disable(_ah) \
+	((*(_ah)->ah_btCoexDisable)((_ah)))
+
+#define	ath_hal_div_comb_conf_get(_ah, _conf) \
+	((*(_ah)->ah_divLnaConfGet)((_ah), (_conf)))
+#define	ath_hal_div_comb_conf_set(_ah, _conf) \
+	((*(_ah)->ah_divLnaConfSet)((_ah), (_conf)))
 
 #endif /* _DEV_ATH_ATHVAR_H */

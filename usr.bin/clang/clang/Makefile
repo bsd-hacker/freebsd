@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 PROG_CXX=clang
 
@@ -36,7 +36,7 @@ TGHDRS=	CC1AsOptions \
 	DiagnosticSemaKinds \
 	Options
 
-.if !defined(EARLY_BUILD) && defined(MK_CLANG_FULL) && ${MK_CLANG_FULL} != "no"
+.if ${MK_CLANG_FULL} != "no"
 _clangstaticanalyzer= \
 	clangstaticanalyzerfrontend \
 	clangstaticanalyzercheckers \
@@ -46,7 +46,7 @@ _clangarcmigrate= \
 _clangrewriter= \
 	clangrewritefrontend \
 	clangrewritecore
-.endif # !EARLY_BUILD && MK_CLANG_FULL
+.endif # MK_CLANG_FULL
 
 LIBDEPS=clangfrontendtool \
 	clangfrontend \
@@ -56,15 +56,16 @@ LIBDEPS=clangfrontendtool \
 	clangparse \
 	clangsema \
 	${_clangstaticanalyzer} \
-	clanganalysis \
 	${_clangarcmigrate} \
 	${_clangrewriter} \
+	clanganalysis \
 	clangedit \
 	clangast \
-	clanglex \
 	clangbasic \
+	clanglex \
+	llvmoption \
 	llvmlinker \
-	llvmarchive \
+	llvmirreader \
 	llvmipo \
 	llvmvectorize \
 	llvminstrumentation \
@@ -72,33 +73,41 @@ LIBDEPS=clangfrontendtool \
 	llvmbitreader \
 	llvmasmparser \
 	llvmarmdisassembler \
-	llvmarmasmparser \
 	llvmarmcodegen \
+	llvmarmasmparser \
 	llvmarmdesc \
 	llvmarminfo \
 	llvmarminstprinter \
-	llvmmipsasmparser \
-	llvmmipscodegen \
-	llvmmipsdesc \
-	llvmmipsinstprinter \
 	llvmmipsdisassembler \
+	llvmmipscodegen \
+	llvmmipsasmparser \
+	llvmmipsdesc \
 	llvmmipsinfo \
+	llvmmipsinstprinter \
 	llvmpowerpccodegen \
+	llvmpowerpcasmparser \
 	llvmpowerpcdesc \
 	llvmpowerpcinfo \
 	llvmpowerpcinstprinter \
+	llvmsparcdisassembler \
+	llvmsparccodegen \
+	llvmsparcasmparser \
+	llvmsparcdesc \
+	llvmsparcinfo \
+	llvmsparcinstprinter \
+	llvmx86disassembler \
 	llvmx86asmparser \
 	llvmx86codegen \
 	llvmselectiondag \
 	llvmasmprinter \
 	llvmmcparser \
 	llvmcodegen \
+	llvmobjcarcopts \
 	llvmscalaropts \
 	llvminstcombine \
 	llvmtransformutils \
 	llvmipa \
 	llvmanalysis \
-	llvmx86disassembler \
 	llvmx86desc \
 	llvmx86info \
 	llvmtarget \

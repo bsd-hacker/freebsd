@@ -72,6 +72,7 @@ int issort;         		/* do hierarchies in lexicographical order */
 int isxargs;			/* don't permit xargs delimiting chars */
 int mindepth = -1, maxdepth = -1; /* minimum and maximum depth */
 int regexp_flags = REG_BASIC;	/* use the "basic" regexp by default*/
+int exitstatus;
 
 static void usage(void);
 
@@ -152,7 +153,7 @@ main(int argc, char *argv[])
 	*p = NULL;
 
 	if ((dotfd = open(".", O_RDONLY | O_CLOEXEC, 0)) < 0)
-		err(1, ".");
+		ftsoptions |= FTS_NOCHDIR;
 
 	exit(find_execute(find_formplan(argv), start));
 }

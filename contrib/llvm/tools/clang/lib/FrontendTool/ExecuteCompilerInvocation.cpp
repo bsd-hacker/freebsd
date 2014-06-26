@@ -13,21 +13,22 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/FrontendTool/Utils.h"
-#include "clang/StaticAnalyzer/Frontend/FrontendActions.h"
 #include "clang/ARCMigrate/ARCMTActions.h"
 #include "clang/CodeGen/CodeGenAction.h"
-#include "clang/Driver/Option.h"
 #include "clang/Driver/Options.h"
-#include "clang/Driver/OptTable.h"
-#include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
-#include "llvm/Support/ErrorHandling.h"
+#include "clang/StaticAnalyzer/Frontend/FrontendActions.h"
+#include "llvm/Option/OptTable.h"
+#include "llvm/Option/Option.h"
 #include "llvm/Support/DynamicLibrary.h"
+#include "llvm/Support/ErrorHandling.h"
 using namespace clang;
+using namespace llvm::opt;
 
 static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
   using namespace clang::frontend;
@@ -36,7 +37,6 @@ static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
   switch (CI.getFrontendOpts().ProgramAction) {
   case ASTDeclList:            return new ASTDeclListAction();
   case ASTDump:                return new ASTDumpAction();
-  case ASTDumpXML:             return new ASTDumpXMLAction();
   case ASTPrint:               return new ASTPrintAction();
   case ASTView:                return new ASTViewAction();
   case DumpRawTokens:          return new DumpRawTokensAction();
@@ -62,6 +62,7 @@ static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
   case GeneratePTH:            return new GeneratePTHAction();
   case InitOnly:               return new InitOnlyAction();
   case ParseSyntaxOnly:        return new SyntaxOnlyAction();
+  case ModuleFileInfo:         return new DumpModuleInfoAction();
 
   case PluginAction: {
     for (FrontendPluginRegistry::iterator it =
@@ -140,28 +141,29 @@ static FrontendAction *CreateFrontendAction(CompilerInstance &CI) {
 #endif
   
 #ifdef CLANG_ENABLE_ARCMT
-  // Potentially wrap the base FE action in an ARC Migrate Tool action.
-  switch (FEOpts.ARCMTAction) {
-  case FrontendOptions::ARCMT_None:
-    break;
-  case FrontendOptions::ARCMT_Check:
-    Act = new arcmt::CheckAction(Act);
-    break;
-  case FrontendOptions::ARCMT_Modify:
-    Act = new arcmt::ModifyAction(Act);
-    break;
-  case FrontendOptions::ARCMT_Migrate:
-    Act = new arcmt::MigrateAction(Act,
-                                   FEOpts.MTMigrateDir,
-                                   FEOpts.ARCMTMigrateReportOut,
-                                   FEOpts.ARCMTMigrateEmitARCErrors);
-    break;
-  }
+  if (CI.getFrontendOpts().ProgramAction != frontend::MigrateSource) {
+    // Potentially wrap the base FE action in an ARC Migrate Tool action.
+    switch (FEOpts.ARCMTAction) {
+    case FrontendOptions::ARCMT_None:
+      break;
+    case FrontendOptions::ARCMT_Check:
+      Act = new arcmt::CheckAction(Act);
+      break;
+    case FrontendOptions::ARCMT_Modify:
+      Act = new arcmt::ModifyAction(Act);
+      break;
+    case FrontendOptions::ARCMT_Migrate:
+      Act = new arcmt::MigrateAction(Act,
+                                     FEOpts.MTMigrateDir,
+                                     FEOpts.ARCMTMigrateReportOut,
+                                     FEOpts.ARCMTMigrateEmitARCErrors);
+      break;
+    }
 
-  if (FEOpts.ObjCMTAction != FrontendOptions::ObjCMT_None) {
-    Act = new arcmt::ObjCMigrateAction(Act, FEOpts.MTMigrateDir,
-                   FEOpts.ObjCMTAction & ~FrontendOptions::ObjCMT_Literals,
-                   FEOpts.ObjCMTAction & ~FrontendOptions::ObjCMT_Subscripting);
+    if (FEOpts.ObjCMTAction != FrontendOptions::ObjCMT_None) {
+      Act = new arcmt::ObjCMigrateAction(Act, FEOpts.MTMigrateDir,
+                                         FEOpts.ObjCMTAction);
+    }
   }
 #endif
 
@@ -176,12 +178,11 @@ static FrontendAction *CreateFrontendAction(CompilerInstance &CI) {
 bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
   // Honor -help.
   if (Clang->getFrontendOpts().ShowHelp) {
-    OwningPtr<driver::OptTable> Opts(driver::createDriverOptTable());
+    OwningPtr<OptTable> Opts(driver::createDriverOptTable());
     Opts->PrintHelp(llvm::outs(), "clang -cc1",
                     "LLVM 'Clang' Compiler: http://clang.llvm.org",
-                    /*Include=*/driver::options::CC1Option,
-                    /*Exclude=*/0);
-    return 0;
+                    /*Include=*/ driver::options::CC1Option, /*Exclude=*/ 0);
+    return true;
   }
 
   // Honor -version.
@@ -189,7 +190,7 @@ bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
   // FIXME: Use a better -version message?
   if (Clang->getFrontendOpts().ShowVersion) {
     llvm::cl::PrintVersionMessage();
-    return 0;
+    return true;
   }
 
   // Load any requested plugins.
@@ -221,21 +222,19 @@ bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
   // This should happen AFTER plugins have been loaded!
   if (Clang->getAnalyzerOpts()->ShowCheckerHelp) {
     ento::printCheckerHelp(llvm::outs(), Clang->getFrontendOpts().Plugins);
-    return 0;
+    return true;
   }
 #endif
 
   // If there were errors in processing arguments, don't do anything else.
-  bool Success = false;
-  if (!Clang->getDiagnostics().hasErrorOccurred()) {
-    // Create and execute the frontend action.
-    OwningPtr<FrontendAction> Act(CreateFrontendAction(*Clang));
-    if (Act) {
-      Success = Clang->ExecuteAction(*Act);
-      if (Clang->getFrontendOpts().DisableFree)
-        Act.take();
-    }
-  }
-
+  if (Clang->getDiagnostics().hasErrorOccurred())
+    return false;
+  // Create and execute the frontend action.
+  OwningPtr<FrontendAction> Act(CreateFrontendAction(*Clang));
+  if (!Act)
+    return false;
+  bool Success = Clang->ExecuteAction(*Act);
+  if (Clang->getFrontendOpts().DisableFree)
+    Act.take();
   return Success;
 }

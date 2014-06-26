@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2013 Ganbold Tsagaankhuu <ganbold@gmail.com>
+ * Copyright (c) 2013 Ganbold Tsagaankhuu <ganbold@freebsd.org>
  * Copyright (c) 2012 Oleksandr Tymoshenko <gonzo@freebsd.org>
  * Copyright (c) 2012 Luiz Otavio O Souza.
  * All rights reserved.
@@ -45,7 +45,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpufunc.h>
 #include <machine/resource.h>
 #include <machine/fdt.h>
-#include <machine/frame.h>
 #include <machine/intr.h>
 
 #include <dev/fdt/fdt_common.h>
@@ -53,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 
 #include "gpio_if.h"
+#include "a10_gpio.h"
 
 /*
  * A10 have 9 banks of gpio.
@@ -66,6 +66,13 @@ __FBSDID("$FreeBSD$");
 #define	A10_GPIO_DEFAULT_CAPS	(GPIO_PIN_INPUT | GPIO_PIN_OUTPUT |	\
     GPIO_PIN_PULLUP | GPIO_PIN_PULLDOWN)
 
+#define A10_GPIO_NONE		0
+#define A10_GPIO_PULLUP		1
+#define A10_GPIO_PULLDOWN	2
+
+#define A10_GPIO_INPUT		0
+#define A10_GPIO_OUTPUT		1
+
 struct a10_gpio_softc {
 	device_t		sc_dev;
 	struct mtx		sc_mtx;
@@ -76,17 +83,6 @@ struct a10_gpio_softc {
 	void *			sc_intrhand;
 	int			sc_gpio_npins;
 	struct gpio_pin		sc_gpio_pins[A10_GPIO_PINS];
-};
-
-enum a10_gpio_fsel {
-	A10_GPIO_INPUT,
-	A10_GPIO_OUTPUT,
-};
-
-enum a10_gpio_pud {
-	A10_GPIO_NONE,
-	A10_GPIO_PULLDOWN,
-	A10_GPIO_PULLUP,
 };
 
 #define	A10_GPIO_LOCK(_sc)		mtx_lock(&_sc->sc_mtx)
@@ -106,6 +102,8 @@ enum a10_gpio_pud {
 #define	A10_GPIO_GP_INT_CTL		0x210
 #define	A10_GPIO_GP_INT_STA		0x214
 #define	A10_GPIO_GP_INT_DEB		0x218
+
+static struct a10_gpio_softc *a10_gpio_sc;
 
 #define	A10_GPIO_WRITE(_sc, _off, _val)		\
     bus_space_write_4(_sc->sc_bst, _sc->sc_bsh, _off, _val)
@@ -304,8 +302,8 @@ a10_gpio_pin_setflags(device_t dev, uint32_t pin, uint32_t flags)
 	if (i >= sc->sc_gpio_npins)
 		return (EINVAL);
 
-	/* Filter out unwanted flags. */
-	if ((flags &= sc->sc_gpio_pins[i].gp_caps) != flags)
+	/* Check for unwanted flags. */
+	if ((flags & sc->sc_gpio_pins[i].gp_caps) != flags)
 		return (EINVAL);
 
 	/* Can't mix input/output together. */
@@ -415,6 +413,10 @@ a10_gpio_pin_toggle(device_t dev, uint32_t pin)
 static int
 a10_gpio_probe(device_t dev)
 {
+
+	if (!ofw_bus_status_okay(dev))
+		return (ENXIO);
+
 	if (!ofw_bus_is_compatible(dev, "allwinner,sun4i-gpio"))
 		return (ENXIO);
 
@@ -474,6 +476,9 @@ a10_gpio_attach(device_t dev)
 
 	device_add_child(dev, "gpioc", device_get_unit(dev));
 	device_add_child(dev, "gpiobus", device_get_unit(dev));
+
+	a10_gpio_sc = sc;
+
 	return (bus_generic_attach(dev));
 
 fail:
@@ -519,3 +524,19 @@ static driver_t a10_gpio_driver = {
 };
 
 DRIVER_MODULE(a10_gpio, simplebus, a10_gpio_driver, a10_gpio_devclass, 0, 0);
+
+int
+a10_emac_gpio_config(uint32_t pin)
+{
+	struct a10_gpio_softc *sc = a10_gpio_sc;
+
+	if (sc == NULL)
+		return (ENXIO);
+
+	/* Configure pin mux settings for MII. */
+	A10_GPIO_LOCK(sc);
+	a10_gpio_set_function(sc, pin, A10_GPIO_PULLDOWN);
+	A10_GPIO_UNLOCK(sc);
+
+	return (0);
+}

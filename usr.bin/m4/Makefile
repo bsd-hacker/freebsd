@@ -4,12 +4,14 @@
 # -DEXTENDED 
 # 	if you want the paste & spaste macros.
 
+.include <src.opts.mk>
+
 PROG=	m4
 CFLAGS+=-DEXTENDED -I${.CURDIR} -I${.CURDIR}/lib
 DPADD=	${LIBY} ${LIBL} ${LIBM}
 LDADD=	-ly -ll -lm
-# clang needs 1 while with gcc we can use 2
-#WARNS=	1
+
+NO_WMISSING_VARIABLE_DECLARATIONS=
 
 SRCS=	eval.c expr.c look.c main.c misc.c gnum4.c trace.c parser.y tokenizer.l
 .PATH: ${.CURDIR}/lib
@@ -21,5 +23,9 @@ SRCS+=	ohash_create_entry.c ohash_delete.c ohash_do.c ohash_entries.c \
 tokenizer.o: parser.h
 
 CLEANFILES+=	parser.c parser.h tokenizer.o
+
+.if ${MK_TESTS} != "no"
+SUBDIR+= tests
+.endif
 
 .include <bsd.prog.mk>

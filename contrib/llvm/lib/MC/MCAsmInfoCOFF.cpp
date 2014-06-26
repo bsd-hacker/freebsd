@@ -27,7 +27,7 @@ MCAsmInfoCOFF::MCAsmInfoCOFF() {
   HasSingleParameterDotFile = false;
   PrivateGlobalPrefix = "L";  // Prefix for private global symbols
   WeakRefDirective = "\t.weak\t";
-  LinkOnceDirective = "\t.linkonce discard\n";
+  HasLinkOnceDirective = true;
 
   // Doesn't support visibility:
   HiddenVisibilityAttr = HiddenDeclarationVisibilityAttr = MCSA_Invalid;
@@ -36,14 +36,13 @@ MCAsmInfoCOFF::MCAsmInfoCOFF() {
   // Set up DWARF directives
   HasLEB128 = true;  // Target asm supports leb128 directives (little-endian)
   SupportsDebugInformation = true;
-  DwarfSectionOffsetDirective = "\t.secrel32\t";
   HasMicrosoftFastStdCallMangling = true;
+  NeedsDwarfSectionOffsetDirective = true;
 }
 
 void MCAsmInfoMicrosoft::anchor() { }
 
 MCAsmInfoMicrosoft::MCAsmInfoMicrosoft() {
-  AllowQuotesInName = true;
 }
 
 void MCAsmInfoGNUCOFF::anchor() { }

@@ -128,10 +128,10 @@ AcpiNsGetType (
     if (!Node)
     {
         ACPI_WARNING ((AE_INFO, "Null Node parameter"));
-        return_VALUE (ACPI_TYPE_ANY);
+        return_UINT8 (ACPI_TYPE_ANY);
     }
 
-    return_VALUE (Node->Type);
+    return_UINT8 (Node->Type);
 }
 
 
@@ -160,10 +160,10 @@ AcpiNsLocal (
         /* Type code out of range  */
 
         ACPI_WARNING ((AE_INFO, "Invalid Object Type 0x%X", Type));
-        return_VALUE (ACPI_NS_NORMAL);
+        return_UINT32 (ACPI_NS_NORMAL);
     }
 
-    return_VALUE (AcpiGbl_NsProperties[Type] & ACPI_NS_LOCAL);
+    return_UINT32 (AcpiGbl_NsProperties[Type] & ACPI_NS_LOCAL);
 }
 
 
@@ -497,10 +497,12 @@ AcpiNsExternalizeName (
     switch (InternalName[0])
     {
     case AML_ROOT_PREFIX:
+
         PrefixLength = 1;
         break;
 
     case AML_PARENT_PREFIX:
+
         for (i = 0; i < InternalNameLength; i++)
         {
             if (ACPI_IS_PARENT_PREFIX (InternalName[i]))
@@ -521,6 +523,7 @@ AcpiNsExternalizeName (
         break;
 
     default:
+
         break;
     }
 

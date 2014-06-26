@@ -180,7 +180,8 @@ struct inpcb {
 	uint32_t inp_flowid;		/* (x) flow id / queue id */
 	u_int	inp_refcount;		/* (i) refcount */
 	void	*inp_pspare[5];		/* (x) route caching / general use */
-	u_int	inp_ispare[6];		/* (x) route caching / user cookie /
+	uint32_t inp_flowtype;		/* (x) M_HASHTYPE value */
+	u_int	inp_ispare[5];		/* (x) route caching / user cookie /
 					 *     general use */
 
 	/* Local and foreign ports, local and foreign addr. */
@@ -442,6 +443,7 @@ struct tcpcb *
 	inp_inpcbtotcpcb(struct inpcb *inp);
 void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 		uint32_t *faddr, uint16_t *fp);
+short	inp_so_options(const struct inpcb *inp);
 
 #endif /* _KERNEL */
 
@@ -543,6 +545,7 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 #define	INP_PCBGROUPWILD	0x00000004 /* in pcbgroup wildcard list */
 #define	INP_REUSEPORT		0x00000008 /* SO_REUSEPORT option is set */
 #define	INP_FREED		0x00000010 /* inp itself is not valid */
+#define	INP_REUSEADDR		0x00000020 /* SO_REUSEADDR option is set */
 
 /*
  * Flags passed to in_pcblookup*() functions.
@@ -634,6 +637,8 @@ void	in_pcbdrop(struct inpcb *);
 void	in_pcbfree(struct inpcb *);
 int	in_pcbinshash(struct inpcb *);
 int	in_pcbinshash_nopcbgroup(struct inpcb *);
+int	in_pcbladdr(struct inpcb *, struct in_addr *, struct in_addr *,
+	    struct ucred *);
 struct inpcb *
 	in_pcblookup_local(struct inpcbinfo *,
 	    struct in_addr, u_short, int, struct ucred *);

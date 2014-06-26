@@ -1,7 +1,7 @@
 /******************************************************************************
  * hypercall.h
  * 
- * Linux-specific hypervisor handling.
+ * FreeBSD-specific hypervisor handling.
  * 
  * Copyright (c) 2002-2004, K A Fraser
  * 
@@ -32,6 +32,8 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
+ *
+ * $FreeBSD$
  */
 
 #ifndef __MACHINE_XEN_HYPERCALL_H__
@@ -49,15 +51,8 @@
 #define CONFIG_XEN_COMPAT	0x030002
 #define __must_check
 
-#ifdef XEN
 #define HYPERCALL_STR(name)					\
 	"call hypercall_page + ("STR(__HYPERVISOR_##name)" * 32)"
-#else
-#define HYPERCALL_STR(name)					\
-	"mov $("STR(__HYPERVISOR_##name)" * 32),%%eax; "\
-	"add hypercall_stubs(%%rip),%%rax; "			\
-	"call *%%rax"
-#endif
 
 #define _hypercall0(type, name)			\
 ({						\
@@ -270,7 +265,7 @@ HYPERVISOR_event_channel_op(
 	int rc = _hypercall2(int, event_channel_op, cmd, arg);
 
 #if CONFIG_XEN_COMPAT <= 0x030002
-	if (unlikely(rc == -ENOXENSYS)) {
+	if (__predict_false(rc == -ENOXENSYS)) {
 		struct evtchn_op op;
 		op.cmd = cmd;
 		memcpy(&op.u, arg, sizeof(op.u));
@@ -303,7 +298,7 @@ HYPERVISOR_physdev_op(
 	int rc = _hypercall2(int, physdev_op, cmd, arg);
 
 #if CONFIG_XEN_COMPAT <= 0x030002
-	if (unlikely(rc == -ENOXENSYS)) {
+	if (__predict_false(rc == -ENOXENSYS)) {
 		struct physdev_op op;
 		op.cmd = cmd;
 		memcpy(&op.u, arg, sizeof(op.u));

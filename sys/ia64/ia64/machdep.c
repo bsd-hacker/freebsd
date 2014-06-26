@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_ddb.h"
 #include "opt_kstack_pages.h"
 #include "opt_sched.h"
+#include "opt_xtrace.h"
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -41,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/cons.h>
 #include <sys/cpu.h>
+#include <sys/efi.h>
 #include <sys/eventhandler.h>
 #include <sys/exec.h>
 #include <sys/imgact.h>
@@ -55,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ptrace.h>
 #include <sys/random.h>
 #include <sys/reboot.h>
+#include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/signalvar.h>
 #include <sys/syscall.h>
@@ -81,10 +84,10 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bootinfo.h>
 #include <machine/cpu.h>
-#include <machine/efi.h>
 #include <machine/elf.h>
 #include <machine/fpu.h>
 #include <machine/intr.h>
+#include <machine/kdb.h>
 #include <machine/mca.h>
 #include <machine/md_var.h>
 #include <machine/pal.h>
@@ -97,6 +100,22 @@ __FBSDID("$FreeBSD$");
 #endif
 #include <machine/unwind.h>
 #include <machine/vmparam.h>
+
+/*
+ * For atomicity reasons, we demand that pc_curthread is the first
+ * field in the struct pcpu. It allows us to read the pointer with
+ * a single atomic instruction:
+ *	ld8 %curthread = [r13]
+ * Otherwise we would first have to calculate the load address and
+ * store the result in a temporary register and that for the load:
+ *	add %temp = %offsetof(struct pcpu), r13
+ *	ld8 %curthread = [%temp]
+ * A context switch inbetween the add and the ld8 could have the
+ * thread migrate to a different core. In that case,  %curthread
+ * would be the thread running on the original core and not actually
+ * the current thread.
+ */
+CTASSERT(offsetof(struct pcpu, pc_curthread) == 0);
 
 static SYSCTL_NODE(_hw, OID_AUTO, freq, CTLFLAG_RD, 0, "");
 static SYSCTL_NODE(_machdep, OID_AUTO, cpu, CTLFLAG_RD, 0, "");
@@ -114,6 +133,7 @@ SYSCTL_UINT(_hw_freq, OID_AUTO, itc, CTLFLAG_RD, &itc_freq, 0,
     "ITC frequency");
 
 int cold = 1;
+int unmapped_buf_allowed = 0;
 
 struct bootinfo *bootinfo;
 
@@ -155,12 +175,9 @@ extern vm_offset_t ksym_start, ksym_end;
 struct msgbuf *msgbufp = NULL;
 
 /* Other subsystems (e.g., ACPI) can hook this later. */
-void (*cpu_idle_hook)(void) = NULL;
+void (*cpu_idle_hook)(sbintime_t) = NULL;
 
 struct kva_md_info kmi;
-
-#define	Mhz	1000000L
-#define	Ghz	(1000L*Mhz)
 
 static void
 identifycpu(void)
@@ -264,8 +281,8 @@ cpu_startup(void *dummy)
 
 	vm_ksubmap_init(&kmi);
 
-	printf("avail memory = %ld (%ld MB)\n", ptoa(cnt.v_free_count),
-	    ptoa(cnt.v_free_count) / 1048576);
+	printf("avail memory = %ld (%ld MB)\n", ptoa(vm_cnt.v_free_count),
+	    ptoa(vm_cnt.v_free_count) / 1048576);
  
 	if (fpswa_iface == NULL)
 		printf("Warning: no FPSWA package supplied\n");
@@ -392,10 +409,11 @@ void
 cpu_idle(int busy)
 {
 	register_t ie;
+	sbintime_t sbt = -1;
 
 	if (!busy) {
 		critical_enter();
-		cpu_idleclock();
+		sbt = cpu_idleclock();
 	}
 
 	ie = intr_disable();
@@ -404,7 +422,7 @@ cpu_idle(int busy)
 	if (sched_runnable())
 		ia64_enable_intr();
 	else if (cpu_idle_hook != NULL) {
-		(*cpu_idle_hook)();
+		(*cpu_idle_hook)(sbt);
 		/* The hook must enable interrupts! */
 	} else {
 		ia64_call_pal_static(PAL_HALT_LIGHT, 0, 0, 0);
@@ -541,6 +559,21 @@ spinlock_exit(void)
 	td->td_md.md_spinlock_count--;
 	if (td->td_md.md_spinlock_count == 0)
 		intr_restore(intr);
+}
+
+void
+kdb_cpu_trap(int vector, int code __unused)
+{
+
+#ifdef XTRACE
+	ia64_xtrace_stop();
+#endif
+	__asm __volatile("flushrs;;");
+
+	/* Restart after the break instruction. */
+	if (vector == IA64_VEC_BREAK &&
+	    kdb_frame->tf_special.ifa == IA64_FIXED_BREAK)
+		kdb_frame->tf_special.psr += IA64_PSR_RI_1;
 }
 
 void
@@ -698,8 +731,8 @@ ia64_init(void)
 	 * handlers. Here we just make sure that they have the largest
 	 * possible page size to minimise TLB usage.
 	 */
-	ia64_set_rr(IA64_RR_BASE(6), (6 << 8) | (PAGE_SHIFT << 2));
-	ia64_set_rr(IA64_RR_BASE(7), (7 << 8) | (PAGE_SHIFT << 2));
+	ia64_set_rr(IA64_RR_BASE(6), (6 << 8) | (LOG2_ID_PAGE_SIZE << 2));
+	ia64_set_rr(IA64_RR_BASE(7), (7 << 8) | (LOG2_ID_PAGE_SIZE << 2));
 	ia64_srlz_d();
 
 	/* Initialize/setup physical memory datastructures */
@@ -714,8 +747,8 @@ ia64_init(void)
 		mdlen = md->md_pages * EFI_PAGE_SIZE;
 		switch (md->md_type) {
 		case EFI_MD_TYPE_IOPORT:
-			ia64_port_base = (uintptr_t)pmap_mapdev(md->md_phys,
-			    mdlen);
+			ia64_port_base = pmap_mapdev_priv(md->md_phys,
+			    mdlen, VM_MEMATTR_UNCACHEABLE);
 			break;
 		case EFI_MD_TYPE_PALCODE:
 			ia64_pal_base = md->md_phys;
@@ -860,6 +893,10 @@ ia64_init(void)
 	 * Initialize the virtual memory system.
 	 */
 	pmap_bootstrap();
+
+#ifdef XTRACE
+	ia64_xtrace_init_bsp();
+#endif
 
 	/*
 	 * Initialize debuggers, and break into them if appropriate.

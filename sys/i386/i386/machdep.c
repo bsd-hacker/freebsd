@@ -41,21 +41,19 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_apic.h"
-#include "opt_atalk.h"
 #include "opt_atpic.h"
 #include "opt_compat.h"
 #include "opt_cpu.h"
 #include "opt_ddb.h"
 #include "opt_inet.h"
-#include "opt_ipx.h"
 #include "opt_isa.h"
 #include "opt_kstack_pages.h"
 #include "opt_maxmem.h"
 #include "opt_mp_watchdog.h"
 #include "opt_npx.h"
 #include "opt_perfmon.h"
+#include "opt_platform.h"
 #include "opt_xbox.h"
-#include "opt_kdtrace.h"
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -81,6 +79,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/pcpu.h>
 #include <sys/ptrace.h>
 #include <sys/reboot.h>
+#include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/signalvar.h>
 #ifdef SMP
@@ -131,15 +130,19 @@ __FBSDID("$FreeBSD$");
 #include <machine/sigframe.h>
 #include <machine/specialreg.h>
 #include <machine/vm86.h>
+#include <x86/init.h>
 #ifdef PERFMON
 #include <machine/perfmon.h>
 #endif
 #ifdef SMP
 #include <machine/smp.h>
 #endif
+#ifdef FDT
+#include <x86/fdt.h>
+#endif
 
 #ifdef DEV_APIC
-#include <machine/apicvar.h>
+#include <x86/apicvar.h>
 #endif
 
 #ifdef DEV_ISA
@@ -155,9 +158,8 @@ uint32_t arch_i386_xbox_memsize = 0;
 
 #ifdef XEN
 /* XEN includes */
-#include <machine/xen/xen-os.h>
+#include <xen/xen-os.h>
 #include <xen/hypervisor.h>
-#include <machine/xen/xen-os.h>
 #include <machine/xen/xenvar.h>
 #include <machine/xen/xenfunc.h>
 #include <xen/xen_intr.h>
@@ -250,6 +252,12 @@ struct mtx icu_lock;
 
 struct mem_range_softc mem_range_softc;
 
+ /* Default init_ops implementation. */
+ struct init_ops init_ops = {
+	.early_clock_source_init =	i8254_init,
+	.early_delay =			i8254_delay,
+ };
+
 static void
 cpu_startup(dummy)
 	void *dummy;
@@ -290,7 +298,6 @@ cpu_startup(dummy)
 #ifdef PERFMON
 	perfmon_init();
 #endif
-	realmem = Maxmem;
 
 	/*
 	 * Display physical memory if SMBIOS reports reasonable amount.
@@ -301,9 +308,10 @@ cpu_startup(dummy)
 		memsize = (uintmax_t)strtoul(sysenv, (char **)NULL, 10) << 10;
 		freeenv(sysenv);
 	}
-	if (memsize < ptoa((uintmax_t)cnt.v_free_count))
+	if (memsize < ptoa((uintmax_t)vm_cnt.v_free_count))
 		memsize = ptoa((uintmax_t)Maxmem);
 	printf("real memory  = %ju (%ju MB)\n", memsize, memsize >> 20);
+	realmem = atop(memsize);
 
 	/*
 	 * Display any holes after the first chunk of extended memory.
@@ -327,8 +335,8 @@ cpu_startup(dummy)
 	vm_ksubmap_init(&kmi);
 
 	printf("avail memory = %ju (%ju MB)\n",
-	    ptoa((uintmax_t)cnt.v_free_count),
-	    ptoa((uintmax_t)cnt.v_free_count) / 1048576);
+	    ptoa((uintmax_t)vm_cnt.v_free_count),
+	    ptoa((uintmax_t)vm_cnt.v_free_count) / 1048576);
 
 	/*
 	 * Set up buffers, so they can be used to read disk labels.
@@ -753,6 +761,8 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 
 	regs->tf_esp = (int)sfp;
 	regs->tf_eip = p->p_sysent->sv_sigcode_base;
+	if (regs->tf_eip == 0)
+		regs->tf_eip = p->p_sysent->sv_psstrings - szsigcode;
 	regs->tf_eflags &= ~(PSL_T | PSL_D);
 	regs->tf_cs = _ucodesel;
 	regs->tf_ds = _udatasel;
@@ -836,17 +846,7 @@ osigreturn(td, uap)
 		/*
 		 * Don't allow users to change privileged or reserved flags.
 		 */
-		/*
-		 * XXX do allow users to change the privileged flag PSL_RF.
-		 * The cpu sets PSL_RF in tf_eflags for faults.  Debuggers
-		 * should sometimes set it there too.  tf_eflags is kept in
-		 * the signal context during signal handling and there is no
-		 * other place to remember it, so the PSL_RF bit may be
-		 * corrupted by the signal handler without us knowing.
-		 * Corruption of the PSL_RF bit at worst causes one more or
-		 * one less debugger trap, so allowing it is fairly harmless.
-		 */
-		if (!EFL_SECURE(eflags & ~PSL_RF, regs->tf_eflags & ~PSL_RF)) {
+		if (!EFL_SECURE(eflags, regs->tf_eflags)) {
 	    		return (EINVAL);
 		}
 
@@ -962,17 +962,7 @@ freebsd4_sigreturn(td, uap)
 		/*
 		 * Don't allow users to change privileged or reserved flags.
 		 */
-		/*
-		 * XXX do allow users to change the privileged flag PSL_RF.
-		 * The cpu sets PSL_RF in tf_eflags for faults.  Debuggers
-		 * should sometimes set it there too.  tf_eflags is kept in
-		 * the signal context during signal handling and there is no
-		 * other place to remember it, so the PSL_RF bit may be
-		 * corrupted by the signal handler without us knowing.
-		 * Corruption of the PSL_RF bit at worst causes one more or
-		 * one less debugger trap, so allowing it is fairly harmless.
-		 */
-		if (!EFL_SECURE(eflags & ~PSL_RF, regs->tf_eflags & ~PSL_RF)) {
+		if (!EFL_SECURE(eflags, regs->tf_eflags)) {
 			uprintf("pid %d (%s): freebsd4_sigreturn eflags = 0x%x\n",
 			    td->td_proc->p_pid, td->td_name, eflags);
 	    		return (EINVAL);
@@ -1076,17 +1066,7 @@ sys_sigreturn(td, uap)
 		/*
 		 * Don't allow users to change privileged or reserved flags.
 		 */
-		/*
-		 * XXX do allow users to change the privileged flag PSL_RF.
-		 * The cpu sets PSL_RF in tf_eflags for faults.  Debuggers
-		 * should sometimes set it there too.  tf_eflags is kept in
-		 * the signal context during signal handling and there is no
-		 * other place to remember it, so the PSL_RF bit may be
-		 * corrupted by the signal handler without us knowing.
-		 * Corruption of the PSL_RF bit at worst causes one more or
-		 * one less debugger trap, so allowing it is fairly harmless.
-		 */
-		if (!EFL_SECURE(eflags & ~PSL_RF, regs->tf_eflags & ~PSL_RF)) {
+		if (!EFL_SECURE(eflags, regs->tf_eflags)) {
 			uprintf("pid %d (%s): sigreturn eflags = 0x%x\n",
 			    td->td_proc->p_pid, td->td_name, eflags);
 	    		return (EINVAL);
@@ -1211,6 +1191,13 @@ cpu_est_clockrate(int cpu_id, uint64_t *rate)
 
 #ifdef XEN
 
+static void
+idle_block(void)
+{
+
+	HYPERVISOR_sched_op(SCHEDOP_block, 0);
+}
+
 void
 cpu_halt(void)
 {
@@ -1220,7 +1207,7 @@ cpu_halt(void)
 int scheduler_running;
 
 static void
-cpu_idle_hlt(int busy)
+cpu_idle_hlt(sbintime_t sbt)
 {
 
 	scheduler_running = 1;
@@ -1241,7 +1228,7 @@ cpu_halt(void)
 
 #endif
 
-void (*cpu_idle_hook)(void) = NULL;	/* ACPI idle hook. */
+void (*cpu_idle_hook)(sbintime_t) = NULL;	/* ACPI idle hook. */
 static int	cpu_ident_amdc1e = 0;	/* AMD C1E supported. */
 static int	idle_mwait = 1;		/* Use MONITOR/MWAIT for short idle. */
 TUNABLE_INT("machdep.idle_mwait", &idle_mwait);
@@ -1253,7 +1240,7 @@ SYSCTL_INT(_machdep, OID_AUTO, idle_mwait, CTLFLAG_RW, &idle_mwait,
 #define	STATE_SLEEPING	0x2
 
 static void
-cpu_idle_acpi(int busy)
+cpu_idle_acpi(sbintime_t sbt)
 {
 	int *state;
 
@@ -1265,7 +1252,7 @@ cpu_idle_acpi(int busy)
 	if (sched_runnable())
 		enable_intr();
 	else if (cpu_idle_hook)
-		cpu_idle_hook();
+		cpu_idle_hook(sbt);
 	else
 		__asm __volatile("sti; hlt");
 	*state = STATE_RUNNING;
@@ -1273,7 +1260,7 @@ cpu_idle_acpi(int busy)
 
 #ifndef XEN
 static void
-cpu_idle_hlt(int busy)
+cpu_idle_hlt(sbintime_t sbt)
 {
 	int *state;
 
@@ -1315,7 +1302,7 @@ cpu_idle_hlt(int busy)
 #define	MWAIT_C4	0x30
 
 static void
-cpu_idle_mwait(int busy)
+cpu_idle_mwait(sbintime_t sbt)
 {
 	int *state;
 
@@ -1338,7 +1325,7 @@ cpu_idle_mwait(int busy)
 }
 
 static void
-cpu_idle_spin(int busy)
+cpu_idle_spin(sbintime_t sbt)
 {
 	int *state;
 	int i;
@@ -1388,9 +1375,9 @@ cpu_probe_amdc1e(void)
 }
 
 #ifdef XEN
-void (*cpu_idle_fn)(int) = cpu_idle_hlt;
+void (*cpu_idle_fn)(sbintime_t) = cpu_idle_hlt;
 #else
-void (*cpu_idle_fn)(int) = cpu_idle_acpi;
+void (*cpu_idle_fn)(sbintime_t) = cpu_idle_acpi;
 #endif
 
 void
@@ -1399,6 +1386,7 @@ cpu_idle(int busy)
 #ifndef XEN
 	uint64_t msr;
 #endif
+	sbintime_t sbt = -1;
 
 	CTR2(KTR_SPARE2, "cpu_idle(%d) at %d",
 	    busy, curcpu);
@@ -1418,7 +1406,7 @@ cpu_idle(int busy)
 	/* If we have time - switch timers into idle mode. */
 	if (!busy) {
 		critical_enter();
-		cpu_idleclock();
+		sbt = cpu_idleclock();
 	}
 
 #ifndef XEN
@@ -1431,9 +1419,9 @@ cpu_idle(int busy)
 #endif
 
 	/* Call main idle method. */
-	cpu_idle_fn(busy);
+	cpu_idle_fn(sbt);
 
-	/* Switch timers mack into active mode. */
+	/* Switch timers back into active mode. */
 	if (!busy) {
 		cpu_activeclock();
 		critical_exit();
@@ -1541,22 +1529,6 @@ idle_sysctl(SYSCTL_HANDLER_ARGS)
 
 SYSCTL_PROC(_machdep, OID_AUTO, idle, CTLTYPE_STRING | CTLFLAG_RW, 0, 0,
     idle_sysctl, "A", "currently selected idle function");
-
-uint64_t (*atomic_load_acq_64)(volatile uint64_t *) =
-    atomic_load_acq_64_i386;
-void (*atomic_store_rel_64)(volatile uint64_t *, uint64_t) =
-    atomic_store_rel_64_i386;
-
-static void
-cpu_probe_cmpxchg8b(void)
-{
-
-	if ((cpu_feature & CPUID_CX8) != 0 ||
-	    cpu_vendor_id == CPU_VENDOR_RISE) {
-		atomic_load_acq_64 = atomic_load_acq_64_i586;
-		atomic_store_rel_64 = atomic_store_rel_64_i586;
-	}
-}
 
 /*
  * Reset registers to default values on exec.
@@ -1970,6 +1942,9 @@ extern inthand_t
 #ifdef KDTRACE_HOOKS
 	IDTVEC(dtrace_ret),
 #endif
+#ifdef XENHVM
+	IDTVEC(xen_intr_upcall),
+#endif
 	IDTVEC(lcall_syscall), IDTVEC(int0x80_syscall);
 
 #ifdef DDB
@@ -2031,26 +2006,20 @@ sdtossd(sd, ssd)
 
 #ifndef XEN
 static int
-add_smap_entry(struct bios_smap *smap, vm_paddr_t *physmap, int *physmap_idxp)
+add_physmap_entry(uint64_t base, uint64_t length, vm_paddr_t *physmap,
+    int *physmap_idxp)
 {
 	int i, insert_idx, physmap_idx;
 
 	physmap_idx = *physmap_idxp;
 	
-	if (boothowto & RB_VERBOSE)
-		printf("SMAP type=%02x base=%016llx len=%016llx\n",
-		    smap->type, smap->base, smap->length);
-
-	if (smap->type != SMAP_TYPE_MEMORY)
-		return (1);
-
-	if (smap->length == 0)
+	if (length == 0)
 		return (1);
 
 #ifndef PAE
-	if (smap->base > 0xffffffff) {
+	if (base > 0xffffffff) {
 		printf("%uK of memory above 4GB ignored\n",
-		    (u_int)(smap->length / 1024));
+		    (u_int)(length / 1024));
 		return (1);
 	}
 #endif
@@ -2061,8 +2030,8 @@ add_smap_entry(struct bios_smap *smap, vm_paddr_t *physmap, int *physmap_idxp)
 	 */
 	insert_idx = physmap_idx + 2;
 	for (i = 0; i <= physmap_idx; i += 2) {
-		if (smap->base < physmap[i + 1]) {
-			if (smap->base + smap->length <= physmap[i]) {
+		if (base < physmap[i + 1]) {
+			if (base + length <= physmap[i]) {
 				insert_idx = i;
 				break;
 			}
@@ -2074,15 +2043,14 @@ add_smap_entry(struct bios_smap *smap, vm_paddr_t *physmap, int *physmap_idxp)
 	}
 
 	/* See if we can prepend to the next entry. */
-	if (insert_idx <= physmap_idx &&
-	    smap->base + smap->length == physmap[insert_idx]) {
-		physmap[insert_idx] = smap->base;
+	if (insert_idx <= physmap_idx && base + length == physmap[insert_idx]) {
+		physmap[insert_idx] = base;
 		return (1);
 	}
 
 	/* See if we can append to the previous entry. */
-	if (insert_idx > 0 && smap->base == physmap[insert_idx - 1]) {
-		physmap[insert_idx - 1] += smap->length;
+	if (insert_idx > 0 && base == physmap[insert_idx - 1]) {
+		physmap[insert_idx - 1] += length;
 		return (1);
 	}
 
@@ -2104,9 +2072,44 @@ add_smap_entry(struct bios_smap *smap, vm_paddr_t *physmap, int *physmap_idxp)
 	}
 
 	/* Insert the new entry. */
-	physmap[insert_idx] = smap->base;
-	physmap[insert_idx + 1] = smap->base + smap->length;
+	physmap[insert_idx] = base;
+	physmap[insert_idx + 1] = base + length;
 	return (1);
+}
+
+static int
+add_smap_entry(struct bios_smap *smap, vm_paddr_t *physmap, int *physmap_idxp)
+{
+	if (boothowto & RB_VERBOSE)
+		printf("SMAP type=%02x base=%016llx len=%016llx\n",
+		    smap->type, smap->base, smap->length);
+
+	if (smap->type != SMAP_TYPE_MEMORY)
+		return (1);
+
+	return (add_physmap_entry(smap->base, smap->length, physmap,
+	    physmap_idxp));
+}
+
+static void
+add_smap_entries(struct bios_smap *smapbase, vm_paddr_t *physmap,
+    int *physmap_idxp)
+{
+	struct bios_smap *smap, *smapend;
+	u_int32_t smapsize;
+	/*
+	 * Memory map from INT 15:E820.
+	 *
+	 * subr_module.c says:
+	 * "Consumer may safely assume that size value precedes data."
+	 * ie: an int32_t immediately precedes SMAP.
+	 */
+	smapsize = *((u_int32_t *)smapbase - 1);
+	smapend = (struct bios_smap *)((uintptr_t)smapbase + smapsize);
+
+	for (smap = smapbase; smap < smapend; smap++)
+		if (!add_smap_entry(smap, physmap, physmap_idxp))
+			break;
 }
 
 static void
@@ -2185,8 +2188,7 @@ getmemsize(int first)
 	struct vm86frame vmf;
 	struct vm86context vmc;
 	vm_paddr_t pa;
-	struct bios_smap *smap, *smapbase, *smapend;
-	u_int32_t smapsize;
+	struct bios_smap *smap, *smapbase;
 	caddr_t kmdp;
 #endif
 
@@ -2228,18 +2230,8 @@ getmemsize(int first)
 		smapbase = (struct bios_smap *)preload_search_info(kmdp,
 		    MODINFO_METADATA | MODINFOMD_SMAP);
 	if (smapbase != NULL) {
-		/*
-		 * subr_module.c says:
-		 * "Consumer may safely assume that size value precedes data."
-		 * ie: an int32_t immediately precedes SMAP.
-		 */
-		smapsize = *((u_int32_t *)smapbase - 1);
-		smapend = (struct bios_smap *)((uintptr_t)smapbase + smapsize);
+		add_smap_entries(smapbase, physmap, &physmap_idx);
 		has_smap = 1;
-
-		for (smap = smapbase; smap < smapend; smap++)
-			if (!add_smap_entry(smap, physmap, &physmap_idx))
-				break;
 		goto have_smap;
 	}
 
@@ -2416,7 +2408,7 @@ physmap_done:
 	phys_avail[pa_indx++] = physmap[0];
 	phys_avail[pa_indx] = physmap[0];
 	dump_avail[da_indx] = physmap[0];
-	pte = CMAP1;
+	pte = CMAP3;
 
 	/*
 	 * Get dcons buffer address
@@ -2438,7 +2430,7 @@ physmap_done:
 			end = trunc_page(physmap[i + 1]);
 		for (pa = round_page(physmap[i]); pa < end; pa += PAGE_SIZE) {
 			int tmp, page_bad, full;
-			int *ptr = (int *)CADDR1;
+			int *ptr = (int *)CADDR3;
 
 			full = FALSE;
 			/*
@@ -2819,7 +2811,6 @@ init386(first)
 	thread0.td_pcb->pcb_gsd = PCPU_GET(fsgs_gdt)[1];
 
 	cpu_probe_amdc1e();
-	cpu_probe_cmpxchg8b();
 }
 
 #else
@@ -2959,6 +2950,10 @@ init386(first)
 	setidt(IDT_DTRACE_RET, &IDTVEC(dtrace_ret), SDT_SYS386TGT, SEL_UPL,
 	    GSEL(GCODE_SEL, SEL_KPL));
 #endif
+#ifdef XENHVM
+	setidt(IDT_EVTCHN, &IDTVEC(xen_intr_upcall), SDT_SYS386IGT, SEL_UPL,
+	    GSEL(GCODE_SEL, SEL_KPL));
+#endif
 
 	r_idt.rd_limit = sizeof(idt0) - 1;
 	r_idt.rd_base = (int) idt;
@@ -2987,10 +2982,10 @@ init386(first)
 #endif /* XBOX */
 
 	/*
-	 * Initialize the i8254 before the console so that console
+	 * Initialize the clock before the console so that console
 	 * initialization can use DELAY().
 	 */
-	i8254_init();
+	clock_init();
 
 	/*
 	 * Initialize the console before we print anything out.
@@ -3110,7 +3105,10 @@ init386(first)
 	thread0.td_frame = &proc0_tf;
 
 	cpu_probe_amdc1e();
-	cpu_probe_cmpxchg8b();
+
+#ifdef FDT
+	x86_init_fdt();
+#endif
 }
 #endif
 
@@ -3168,9 +3166,9 @@ f00f_hack(void *unused)
 
 	printf("Intel Pentium detected, installing workaround for F00F bug\n");
 
-	tmp = kmem_alloc(kernel_map, PAGE_SIZE * 2);
+	tmp = kmem_malloc(kernel_arena, PAGE_SIZE * 2, M_WAITOK | M_ZERO);
 	if (tmp == 0)
-		panic("kmem_alloc returned 0");
+		panic("kmem_malloc returned 0");
 
 	/* Put the problematic entry (#6) at the end of the lower page. */
 	new_idt = (struct gate_descriptor*)
@@ -3179,9 +3177,7 @@ f00f_hack(void *unused)
 	r_idt.rd_base = (u_int)new_idt;
 	lidt(&r_idt);
 	idt = new_idt;
-	if (vm_map_protect(kernel_map, tmp, tmp + PAGE_SIZE,
-			   VM_PROT_READ, FALSE) != KERN_SUCCESS)
-		panic("vm_map_protect failed");
+	pmap_protect(kernel_pmap, tmp, tmp + PAGE_SIZE, VM_PROT_READ);
 }
 #endif /* defined(I586_CPU) && !NO_F00F_HACK */
 
@@ -3478,7 +3474,7 @@ get_fpcontext(struct thread *td, mcontext_t *mcp)
 	bzero(mcp->mc_fpstate, sizeof(mcp->mc_fpstate));
 #else
 	mcp->mc_ownedfp = npxgetregs(td);
-	bcopy(&td->td_pcb->pcb_user_save, &mcp->mc_fpstate,
+	bcopy(&td->td_pcb->pcb_user_save, &mcp->mc_fpstate[0],
 	    sizeof(mcp->mc_fpstate));
 	mcp->mc_fpformat = npxformat();
 #endif

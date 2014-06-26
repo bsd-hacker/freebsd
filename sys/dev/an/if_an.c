@@ -111,6 +111,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/if_dl.h>
 #include <net/ethernet.h>
@@ -357,6 +358,7 @@ an_probe(device_t dev)
 	CSR_WRITE_2(sc, AN_INT_EN(sc->mpi350), 0);
 	CSR_WRITE_2(sc, AN_EVENT_ACK(sc->mpi350), 0xFFFF);
 
+	sc->an_dev = dev;
 	mtx_init(&sc->an_mtx, device_get_nameunit(dev), MTX_NETWORK_LOCK,
 	    MTX_DEF);
 	AN_LOCK(sc);
@@ -481,10 +483,6 @@ an_dma_malloc(struct an_softc *sc, bus_size_t size, struct an_dma_alloc *dma,
 {
 	int r;
 
-	r = bus_dmamap_create(sc->an_dtag, BUS_DMA_NOWAIT, &dma->an_dma_map);
-	if (r != 0)
-		goto fail_0;
-
 	r = bus_dmamem_alloc(sc->an_dtag, (void**) &dma->an_dma_vaddr,
 			     BUS_DMA_NOWAIT, &dma->an_dma_map);
 	if (r != 0)
@@ -505,9 +503,6 @@ fail_2:
 	bus_dmamap_unload(sc->an_dtag, dma->an_dma_map);
 fail_1:
 	bus_dmamem_free(sc->an_dtag, dma->an_dma_vaddr, dma->an_dma_map);
-fail_0:
-	bus_dmamap_destroy(sc->an_dtag, dma->an_dma_map);
-	dma->an_dma_map = NULL;
 	return (r);
 }
 
@@ -517,7 +512,6 @@ an_dma_free(struct an_softc *sc, struct an_dma_alloc *dma)
 	bus_dmamap_unload(sc->an_dtag, dma->an_dma_map);
 	bus_dmamem_free(sc->an_dtag, dma->an_dma_vaddr, dma->an_dma_map);
 	dma->an_dma_vaddr = 0;
-	bus_dmamap_destroy(sc->an_dtag, dma->an_dma_map);
 }
 
 /*
@@ -685,6 +679,9 @@ an_attach(struct an_softc *sc, int flags)
 		device_printf(sc->an_dev, "can not if_alloc()\n");
 		goto fail;
 	}
+	ifp->if_softc = sc;
+	if_initname(ifp, device_get_name(sc->an_dev),
+	    device_get_unit(sc->an_dev));
 
 	sc->an_gone = 0;
 	sc->an_associated = 0;
@@ -758,9 +755,6 @@ an_attach(struct an_softc *sc, int flags)
 #endif
 	AN_UNLOCK(sc);
 
-	ifp->if_softc = sc;
-	if_initname(ifp, device_get_name(sc->an_dev),
-	    device_get_unit(sc->an_dev));
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = an_ioctl;
 	ifp->if_start = an_start;
@@ -1387,7 +1381,7 @@ an_reset(struct an_softc *sc)
 	an_cmd(sc, AN_CMD_NOOP2, 0);
 
 	if (an_cmd(sc, AN_CMD_FORCE_SYNCLOSS, 0) == ETIMEDOUT)
-		if_printf(sc->an_ifp, "reset failed\n");
+		device_printf(sc->an_dev, "reset failed\n");
 
 	an_cmd(sc, AN_CMD_DISABLE, 0);
 

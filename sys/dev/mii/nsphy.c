@@ -71,6 +71,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_media.h>
 
 #include <dev/mii/mii.h>
@@ -152,12 +153,6 @@ nsphy_service(struct mii_softc *sc, struct mii_data *mii, int cmd)
 		break;
 
 	case MII_MEDIACHG:
-		/*
-		 * If the interface is not up, don't do anything.
-		 */
-		if ((mii->mii_ifp->if_flags & IFF_UP) == 0)
-			break;
-
 		reg = PHY_READ(sc, MII_NSPHY_PCR);
 
 		/*
@@ -191,7 +186,7 @@ nsphy_service(struct mii_softc *sc, struct mii_data *mii, int cmd)
 		 */
 		reg |= 0x0100 | 0x0400;
 
-		if (strcmp(mii->mii_ifp->if_dname, "fxp") == 0)
+		if (strcmp(if_getdname(mii->mii_ifp), "fxp") == 0)
 			PHY_WRITE(sc, MII_NSPHY_PCR, reg);
 
 		mii_phy_setmedia(sc);

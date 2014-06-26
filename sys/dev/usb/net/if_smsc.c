@@ -74,6 +74,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/condvar.h>
+#include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <sys/sx.h>
 #include <sys/unistd.h>
@@ -81,6 +82,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/priv.h>
 #include <sys/random.h>
+
+#include <net/if.h>
+#include <net/if_var.h>
+
+#include <netinet/in.h>
+#include <netinet/ip.h>
 
 #include "opt_platform.h"
 
@@ -99,9 +106,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb_debug.h>
 #include <dev/usb/usb_process.h>
 
-#include <dev/usb/usb_device.h>
 #include <dev/usb/net/usb_ethernet.h>
-#include "if_smscreg.h"
+
+#include <dev/usb/net/if_smscreg.h>
 
 #ifdef USB_DEBUG
 static int smsc_debug = 0;
@@ -606,16 +613,13 @@ smsc_ifmedia_upd(struct ifnet *ifp)
 {
 	struct smsc_softc *sc = ifp->if_softc;
 	struct mii_data *mii = uether_getmii(&sc->sc_ue);
+	struct mii_softc *miisc;
 	int err;
 
 	SMSC_LOCK_ASSERT(sc, MA_OWNED);
 
-	if (mii->mii_instance) {
-		struct mii_softc *miisc;
-
-		LIST_FOREACH(miisc, &mii->mii_phys, mii_list)
-			mii_phy_reset(miisc);
-	}
+	LIST_FOREACH(miisc, &mii->mii_phys, mii_list)
+		PHY_RESET(miisc);
 	err = mii_mediachg(mii);
 	return (err);
 }
@@ -638,13 +642,10 @@ smsc_ifmedia_sts(struct ifnet *ifp, struct ifmediareq *ifmr)
 	struct mii_data *mii = uether_getmii(&sc->sc_ue);
 
 	SMSC_LOCK(sc);
-	
 	mii_pollstat(mii);
-	
-	SMSC_UNLOCK(sc);
-	
 	ifmr->ifm_active = mii->mii_media_active;
 	ifmr->ifm_status = mii->mii_media_status;
+	SMSC_UNLOCK(sc);
 }
 
 /**
@@ -1027,25 +1028,32 @@ smsc_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 					 *
 					 * Ignore H/W csum for non-IPv4 packets.
 					 */
-					if (be16toh(eh->ether_type) == ETHERTYPE_IP && pktlen > ETHER_MIN_LEN) {
-					
-						/* Indicate the UDP/TCP csum has been calculated */
-						m->m_pkthdr.csum_flags |= CSUM_DATA_VALID;
-										 
-						/* Copy the TCP/UDP checksum from the last 2 bytes
-						 * of the transfer and put in the csum_data field.
-						 */
-						usbd_copy_out(pc, (off + pktlen),
-									  &m->m_pkthdr.csum_data, 2);
-					
-						/* The data is copied in network order, but the
-						 * csum algorithm in the kernel expects it to be
-						 * in host network order.
-						 */
-						m->m_pkthdr.csum_data = ntohs(m->m_pkthdr.csum_data);
-					
-						smsc_dbg_printf(sc, "RX checksum offloaded (0x%04x)\n",
-										m->m_pkthdr.csum_data);
+					if ((be16toh(eh->ether_type) == ETHERTYPE_IP) &&
+					    (pktlen > ETHER_MIN_LEN)) {
+						struct ip *ip;
+
+						ip = (struct ip *)(eh + 1);
+						if ((ip->ip_v == IPVERSION) &&
+						    ((ip->ip_p == IPPROTO_TCP) ||
+						     (ip->ip_p == IPPROTO_UDP))) {
+							/* Indicate the UDP/TCP csum has been calculated */
+							m->m_pkthdr.csum_flags |= CSUM_DATA_VALID;
+
+							/* Copy the TCP/UDP checksum from the last 2 bytes
+							 * of the transfer and put in the csum_data field.
+							 */
+							usbd_copy_out(pc, (off + pktlen),
+							              &m->m_pkthdr.csum_data, 2);
+
+							/* The data is copied in network order, but the
+							 * csum algorithm in the kernel expects it to be
+							 * in host network order.
+							 */
+							m->m_pkthdr.csum_data = ntohs(m->m_pkthdr.csum_data);
+
+							smsc_dbg_printf(sc, "RX checksum offloaded (0x%04x)\n",
+							                m->m_pkthdr.csum_data);
+						}
 					}
 					
 					/* Need to adjust the offset as well or we'll be off

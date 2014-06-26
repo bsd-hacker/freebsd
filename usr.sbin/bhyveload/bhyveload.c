@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/disk.h>
+#include <sys/queue.h>
 
 #include <machine/specialreg.h>
 #include <machine/vmm.h>
@@ -67,12 +68,15 @@ __FBSDID("$FreeBSD$");
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <err.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <libgen.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sysexits.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -84,12 +88,15 @@ __FBSDID("$FreeBSD$");
 #define	GB	(1024 * 1024 * 1024UL)
 #define	BSP	0
 
-static char *host_base = "/";
-static struct termios term, oldterm;
-static int disk_fd = -1;
+#define	NDISKS	32
 
-static char *vmname, *progname, *membase;
-static uint64_t lowmem, highmem;
+static char *host_base;
+static struct termios term, oldterm;
+static int disk_fd[NDISKS];
+static int ndisks;
+static int consin_fd, consout_fd;
+
+static char *vmname, *progname;
 static struct vmctx *ctx;
 
 static uint64_t gdtbase, cr3, rsp;
@@ -105,7 +112,7 @@ cb_putc(void *arg, int ch)
 {
 	char c = ch;
 
-	write(1, &c, 1);
+	(void) write(consout_fd, &c, 1);
 }
 
 static int
@@ -113,7 +120,7 @@ cb_getc(void *arg)
 {
 	char c;
 
-	if (read(0, &c, 1) == 1)
+	if (read(consin_fd, &c, 1) == 1)
 		return (c);
 	return (-1);
 }
@@ -123,7 +130,7 @@ cb_poll(void *arg)
 {
 	int n;
 
-	if (ioctl(0, FIONREAD, &n) >= 0)
+	if (ioctl(consin_fd, FIONREAD, &n) >= 0)
 		return (n > 0);
 	return (0);
 }
@@ -283,9 +290,9 @@ cb_diskread(void *arg, int unit, uint64_t from, void *to, size_t size,
 {
 	ssize_t n;
 
-	if (unit != 0 || disk_fd == -1)
+	if (unit < 0 || unit >= ndisks )
 		return (EIO);
-	n = pread(disk_fd, to, size, from);
+	n = pread(disk_fd[unit], to, size, from);
 	if (n < 0)
 		return (errno);
 	*resid = size - n;
@@ -297,7 +304,7 @@ cb_diskioctl(void *arg, int unit, u_long cmd, void *data)
 {
 	struct stat sb;
 
-	if (unit != 0 || disk_fd == -1)
+	if (unit < 0 || unit >= ndisks)
 		return (EBADF);
 
 	switch (cmd) {
@@ -305,7 +312,7 @@ cb_diskioctl(void *arg, int unit, u_long cmd, void *data)
 		*(u_int *)data = 512;
 		break;
 	case DIOCGMEDIASIZE:
-		if (fstat(disk_fd, &sb) == 0)
+		if (fstat(disk_fd[unit], &sb) == 0)
 			*(off_t *)data = sb.st_size;
 		else
 			return (ENOTTY);
@@ -323,30 +330,30 @@ cb_diskioctl(void *arg, int unit, u_long cmd, void *data)
 static int
 cb_copyin(void *arg, const void *from, uint64_t to, size_t size)
 {
+	char *ptr;
 
 	to &= 0x7fffffff;
-	if (to > lowmem)
+
+	ptr = vm_map_gpa(ctx, to, size);
+	if (ptr == NULL)
 		return (EFAULT);
-	if (to + size > lowmem)
-		size = lowmem - to;
 
-	memcpy(&membase[to], from, size);
-
+	memcpy(ptr, from, size);
 	return (0);
 }
 
 static int
 cb_copyout(void *arg, uint64_t from, void *to, size_t size)
 {
+	char *ptr;
 
 	from &= 0x7fffffff;
-	if (from > lowmem)
+
+	ptr = vm_map_gpa(ctx, from, size);
+	if (ptr == NULL)
 		return (EFAULT);
-	if (from + size > lowmem)
-		size = lowmem - from;
 
-	memcpy(to, &membase[from], size);
-
+	memcpy(to, ptr, size);
 	return (0);
 }
 
@@ -461,7 +468,12 @@ cb_exec(void *arg, uint64_t rip)
 {
 	int error;
 
-	error = vm_setup_freebsd_registers(ctx, BSP, rip, cr3, gdtbase, rsp);
+	if (cr3 == 0)
+		error = vm_setup_freebsd_registers_i386(ctx, BSP, rip, gdtbase,
+		    rsp);
+	else
+		error = vm_setup_freebsd_registers(ctx, BSP, rip, cr3, gdtbase,
+		    rsp);
 	if (error) {
 		perror("vm_setup_freebsd_registers");
 		cb_exit(NULL, USERBOOT_EXIT_QUIT);
@@ -485,7 +497,7 @@ static void
 cb_exit(void *arg, int v)
 {
 
-	tcsetattr(0, TCSAFLUSH, &oldterm);
+	tcsetattr(consout_fd, TCSAFLUSH, &oldterm);
 	exit(v);
 }
 
@@ -493,27 +505,41 @@ static void
 cb_getmem(void *arg, uint64_t *ret_lowmem, uint64_t *ret_highmem)
 {
 
-	*ret_lowmem = lowmem;
-	*ret_highmem = highmem;
+	*ret_lowmem = vm_get_lowmem_size(ctx);
+	*ret_highmem = vm_get_highmem_size(ctx);
+}
+
+struct env {
+	const char *str;	/* name=value */
+	SLIST_ENTRY(env) next;
+};
+
+static SLIST_HEAD(envhead, env) envhead;
+
+static void
+addenv(const char *str)
+{
+	struct env *env;
+
+	env = malloc(sizeof(struct env));
+	env->str = str;
+	SLIST_INSERT_HEAD(&envhead, env, next);
 }
 
 static const char *
 cb_getenv(void *arg, int num)
 {
-	int max;
+	int i;
+	struct env *env;
 
-	static const char * var[] = {
-		"smbios.bios.vendor=BHYVE",
-		"boot_serial=1",
-		NULL
-	};
+	i = 0;
+	SLIST_FOREACH(env, &envhead, next) {
+		if (i == num)
+			return (env->str);
+		i++;
+	}
 
-	max = sizeof(var) / sizeof(var[0]);
-
-	if (num < max)
-		return (var[num]);
-	else
-		return (NULL);
+	return (NULL);
 }
 
 static struct loader_callbacks cb = {
@@ -547,13 +573,66 @@ static struct loader_callbacks cb = {
 	.getenv = cb_getenv,
 };
 
+static int
+altcons_open(char *path)
+{
+	struct stat sb;
+	int err;
+	int fd;
+
+	/*
+	 * Allow stdio to be passed in so that the same string
+	 * can be used for the bhyveload console and bhyve com-port
+	 * parameters
+	 */
+	if (!strcmp(path, "stdio"))
+		return (0);
+
+	err = stat(path, &sb);
+	if (err == 0) {
+		if (!S_ISCHR(sb.st_mode))
+			err = ENOTSUP;
+		else {
+			fd = open(path, O_RDWR | O_NONBLOCK);
+			if (fd < 0)
+				err = errno;
+			else
+				consin_fd = consout_fd = fd;
+		}
+	}
+
+	return (err);
+}
+
+static int
+disk_open(char *path)
+{
+	int err, fd;
+
+	if (ndisks > NDISKS)
+		return (ERANGE);
+
+	err = 0;
+	fd = open(path, O_RDONLY);
+
+	if (fd > 0) {
+		disk_fd[ndisks] = fd;
+		ndisks++;
+	} else 
+		err = errno;
+
+	return (err);
+}
+
 static void
 usage(void)
 {
 
-	printf("usage: %s [-d <disk image path>] [-h <host filesystem path>] "
-	       "[-m <lowmem>][-M <highmem>] "
-	       "<vmname>\n", progname);
+	fprintf(stderr,
+	    "usage: %s [-m mem-size] [-d <disk-path>] [-h <host-path>]\n"
+	    "       %*s [-e <name=value>] [-c <console-device>] <vmname>\n",
+	    progname,
+	    (int)strlen(progname), "");
 	exit(1);
 }
 
@@ -562,19 +641,32 @@ main(int argc, char** argv)
 {
 	void *h;
 	void (*func)(struct loader_callbacks *, void *, int, int);
-	int opt, error;
-	char *disk_image;
+	uint64_t mem_size;
+	int opt, error, need_reinit;
 
-	progname = argv[0];
+	progname = basename(argv[0]);
 
-	lowmem = 128 * MB;
-	highmem = 0;
-	disk_image = NULL;
+	mem_size = 256 * MB;
 
-	while ((opt = getopt(argc, argv, "d:h:m:M:")) != -1) {
+	consin_fd = STDIN_FILENO;
+	consout_fd = STDOUT_FILENO;
+
+	while ((opt = getopt(argc, argv, "c:d:e:h:m:")) != -1) {
 		switch (opt) {
+		case 'c':
+			error = altcons_open(optarg);
+			if (error != 0)
+				errx(EX_USAGE, "Could not open '%s'", optarg);
+			break;
+
 		case 'd':
-			disk_image = optarg;
+			error = disk_open(optarg);
+			if (error != 0)
+				errx(EX_USAGE, "Could not open '%s'", optarg);
+			break;
+
+		case 'e':
+			addenv(optarg);
 			break;
 
 		case 'h':
@@ -582,13 +674,10 @@ main(int argc, char** argv)
 			break;
 
 		case 'm':
-			lowmem = strtoul(optarg, NULL, 0) * MB;
+			error = vm_parse_memsize(optarg, &mem_size);
+			if (error != 0)
+				errx(EX_USAGE, "Invalid memsize '%s'", optarg);
 			break;
-		
-		case 'M':
-			highmem = strtoul(optarg, NULL, 0) * MB;
-			break;
-
 		case '?':
 			usage();
 		}
@@ -602,11 +691,14 @@ main(int argc, char** argv)
 
 	vmname = argv[0];
 
+	need_reinit = 0;
 	error = vm_create(vmname);
-	if (error != 0 && errno != EEXIST) {
-		perror("vm_create");
-		exit(1);
-
+	if (error) {
+		if (errno != EEXIST) {
+			perror("vm_create");
+			exit(1);
+		}
+		need_reinit = 1;
 	}
 
 	ctx = vm_open(vmname);
@@ -615,25 +707,27 @@ main(int argc, char** argv)
 		exit(1);
 	}
 
-	error = vm_setup_memory(ctx, 0, lowmem, &membase);
-	if (error) {
-		perror("vm_setup_memory(lowmem)");
-		exit(1);
-	}
-
-	if (highmem != 0) {
-		error = vm_setup_memory(ctx, 4 * GB, highmem, NULL);
+	if (need_reinit) {
+		error = vm_reinit(ctx);
 		if (error) {
-			perror("vm_setup_memory(highmem)");
+			perror("vm_reinit");
 			exit(1);
 		}
 	}
 
-	tcgetattr(0, &term);
+	error = vm_setup_memory(ctx, mem_size, VM_MMAP_ALL);
+	if (error) {
+		perror("vm_setup_memory");
+		exit(1);
+	}
+
+	tcgetattr(consout_fd, &term);
 	oldterm = term;
-	term.c_lflag &= ~(ICANON|ECHO);
-	term.c_iflag &= ~ICRNL;
-	tcsetattr(0, TCSAFLUSH, &term);
+	cfmakeraw(&term);
+	term.c_cflag |= CLOCAL;
+	
+	tcsetattr(consout_fd, TCSAFLUSH, &term);
+
 	h = dlopen("/boot/userboot.so", RTLD_LOCAL);
 	if (!h) {
 		printf("%s\n", dlerror());
@@ -645,8 +739,8 @@ main(int argc, char** argv)
 		return (1);
 	}
 
-	if (disk_image) {
-		disk_fd = open(disk_image, O_RDONLY);
-	}
-	func(&cb, NULL, USERBOOT_VERSION_3, disk_fd >= 0);
+	addenv("smbios.bios.vendor=BHYVE");
+	addenv("boot_serial=1");
+
+	func(&cb, NULL, USERBOOT_VERSION_3, ndisks);
 }

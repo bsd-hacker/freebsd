@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/bpf.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <net/if_dl.h>
@@ -1228,76 +1229,71 @@ age_dma_free(struct age_softc *sc)
 	}
 	/* Tx ring. */
 	if (sc->age_cdata.age_tx_ring_tag != NULL) {
-		if (sc->age_cdata.age_tx_ring_map != NULL)
+		if (sc->age_rdata.age_tx_ring_paddr != 0)
 			bus_dmamap_unload(sc->age_cdata.age_tx_ring_tag,
 			    sc->age_cdata.age_tx_ring_map);
-		if (sc->age_cdata.age_tx_ring_map != NULL &&
-		    sc->age_rdata.age_tx_ring != NULL)
+		if (sc->age_rdata.age_tx_ring != NULL)
 			bus_dmamem_free(sc->age_cdata.age_tx_ring_tag,
 			    sc->age_rdata.age_tx_ring,
 			    sc->age_cdata.age_tx_ring_map);
+		sc->age_rdata.age_tx_ring_paddr = 0;
 		sc->age_rdata.age_tx_ring = NULL;
-		sc->age_cdata.age_tx_ring_map = NULL;
 		bus_dma_tag_destroy(sc->age_cdata.age_tx_ring_tag);
 		sc->age_cdata.age_tx_ring_tag = NULL;
 	}
 	/* Rx ring. */
 	if (sc->age_cdata.age_rx_ring_tag != NULL) {
-		if (sc->age_cdata.age_rx_ring_map != NULL)
+		if (sc->age_rdata.age_rx_ring_paddr != 0)
 			bus_dmamap_unload(sc->age_cdata.age_rx_ring_tag,
 			    sc->age_cdata.age_rx_ring_map);
-		if (sc->age_cdata.age_rx_ring_map != NULL &&
-		    sc->age_rdata.age_rx_ring != NULL)
+		if (sc->age_rdata.age_rx_ring != NULL)
 			bus_dmamem_free(sc->age_cdata.age_rx_ring_tag,
 			    sc->age_rdata.age_rx_ring,
 			    sc->age_cdata.age_rx_ring_map);
+		sc->age_rdata.age_rx_ring_paddr = 0;
 		sc->age_rdata.age_rx_ring = NULL;
-		sc->age_cdata.age_rx_ring_map = NULL;
 		bus_dma_tag_destroy(sc->age_cdata.age_rx_ring_tag);
 		sc->age_cdata.age_rx_ring_tag = NULL;
 	}
 	/* Rx return ring. */
 	if (sc->age_cdata.age_rr_ring_tag != NULL) {
-		if (sc->age_cdata.age_rr_ring_map != NULL)
+		if (sc->age_rdata.age_rr_ring_paddr != 0)
 			bus_dmamap_unload(sc->age_cdata.age_rr_ring_tag,
 			    sc->age_cdata.age_rr_ring_map);
-		if (sc->age_cdata.age_rr_ring_map != NULL &&
-		    sc->age_rdata.age_rr_ring != NULL)
+		if (sc->age_rdata.age_rr_ring != NULL)
 			bus_dmamem_free(sc->age_cdata.age_rr_ring_tag,
 			    sc->age_rdata.age_rr_ring,
 			    sc->age_cdata.age_rr_ring_map);
+		sc->age_rdata.age_rr_ring_paddr = 0;
 		sc->age_rdata.age_rr_ring = NULL;
-		sc->age_cdata.age_rr_ring_map = NULL;
 		bus_dma_tag_destroy(sc->age_cdata.age_rr_ring_tag);
 		sc->age_cdata.age_rr_ring_tag = NULL;
 	}
 	/* CMB block */
 	if (sc->age_cdata.age_cmb_block_tag != NULL) {
-		if (sc->age_cdata.age_cmb_block_map != NULL)
+		if (sc->age_rdata.age_cmb_block_paddr != 0)
 			bus_dmamap_unload(sc->age_cdata.age_cmb_block_tag,
 			    sc->age_cdata.age_cmb_block_map);
-		if (sc->age_cdata.age_cmb_block_map != NULL &&
-		    sc->age_rdata.age_cmb_block != NULL)
+		if (sc->age_rdata.age_cmb_block != NULL)
 			bus_dmamem_free(sc->age_cdata.age_cmb_block_tag,
 			    sc->age_rdata.age_cmb_block,
 			    sc->age_cdata.age_cmb_block_map);
+		sc->age_rdata.age_cmb_block_paddr = 0;
 		sc->age_rdata.age_cmb_block = NULL;
-		sc->age_cdata.age_cmb_block_map = NULL;
 		bus_dma_tag_destroy(sc->age_cdata.age_cmb_block_tag);
 		sc->age_cdata.age_cmb_block_tag = NULL;
 	}
 	/* SMB block */
 	if (sc->age_cdata.age_smb_block_tag != NULL) {
-		if (sc->age_cdata.age_smb_block_map != NULL)
+		if (sc->age_rdata.age_smb_block_paddr != 0)
 			bus_dmamap_unload(sc->age_cdata.age_smb_block_tag,
 			    sc->age_cdata.age_smb_block_map);
-		if (sc->age_cdata.age_smb_block_map != NULL &&
-		    sc->age_rdata.age_smb_block != NULL)
+		if (sc->age_rdata.age_smb_block != NULL)
 			bus_dmamem_free(sc->age_cdata.age_smb_block_tag,
 			    sc->age_rdata.age_smb_block,
 			    sc->age_cdata.age_smb_block_map);
+		sc->age_rdata.age_smb_block_paddr = 0;
 		sc->age_rdata.age_smb_block = NULL;
-		sc->age_cdata.age_smb_block_map = NULL;
 		bus_dma_tag_destroy(sc->age_cdata.age_smb_block_tag);
 		sc->age_cdata.age_smb_block_tag = NULL;
 	}
@@ -2478,7 +2474,7 @@ age_rxintr(struct age_softc *sc, int rr_prod, int count)
 	    sc->age_cdata.age_rx_ring_map, BUS_DMASYNC_POSTWRITE);
 
 	for (prog = 0; rr_cons != rr_prod; prog++) {
-		if (count <= 0)
+		if (count-- <= 0)
 			break;
 		rxrd = &sc->age_rdata.age_rr_ring[rr_cons];
 		nsegs = AGE_RX_NSEGS(le32toh(rxrd->index));

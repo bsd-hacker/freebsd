@@ -48,6 +48,29 @@
 #define	PCIE_REGMAX	4095	/* highest supported config register addr. */
 #define	PCI_MAXHDRTYPE	2
 
+#define	PCIE_ARI_SLOTMAX 0
+#define	PCIE_ARI_FUNCMAX 255
+
+#define	PCI_RID_BUS_SHIFT	8
+#define	PCI_RID_SLOT_SHIFT	3
+#define	PCI_RID_FUNC_SHIFT	0
+
+#define PCI_RID(bus, slot, func) \
+    ((((bus) & PCI_BUSMAX) << PCI_RID_BUS_SHIFT) | \
+    (((slot) & PCI_SLOTMAX) << PCI_RID_SLOT_SHIFT) | \
+    (((func) & PCI_FUNCMAX) << PCI_RID_FUNC_SHIFT))
+
+#define PCI_ARI_RID(bus, func) \
+    ((((bus) & PCI_BUSMAX) << PCI_RID_BUS_SHIFT) | \
+    (((func) & PCIE_ARI_FUNCMAX) << PCI_RID_FUNC_SHIFT))
+
+#define PCI_RID2BUS(rid) (((rid) >> PCI_RID_BUS_SHIFT) & PCI_BUSMAX)
+#define PCI_RID2SLOT(rid) (((rid) >> PCI_RID_SLOT_SHIFT) & PCI_SLOTMAX)
+#define PCI_RID2FUNC(rid) (((rid) >> PCI_RID_FUNC_SHIFT) & PCI_FUNCMAX)
+
+#define PCIE_ARI_SLOT(func) (((func) >> PCI_RID_SLOT_SHIFT) & PCI_SLOTMAX)
+#define PCIE_ARI_FUNC(func) (((func) >> PCI_RID_FUNC_SHIFT) & PCI_FUNCMAX)
+
 /* PCI config header registers for all devices */
 
 #define	PCIR_DEVVENDOR	0x00
@@ -361,6 +384,7 @@
 #define	PCIS_BASEPERIPH_RTC	0x03
 #define	PCIS_BASEPERIPH_PCIHOT	0x04
 #define	PCIS_BASEPERIPH_SDHC	0x05
+#define	PCIS_BASEPERIPH_IOMMU	0x06
 #define	PCIS_BASEPERIPH_OTHER	0x80
 
 #define	PCIC_INPUTDEV	0x09
@@ -622,6 +646,10 @@
 #define	PCIM_HTCAP_VCSET		0xb800	/* 10111 */
 #define	PCIM_HTCAP_RETRY_MODE		0xc000	/* 11000 */
 #define	PCIM_HTCAP_X86_ENCODING		0xc800	/* 11001 */
+#define	PCIM_HTCAP_GEN3			0xd000	/* 11010 */
+#define	PCIM_HTCAP_FLE			0xd800	/* 11011 */
+#define	PCIM_HTCAP_PM			0xe000	/* 11100 */
+#define	PCIM_HTCAP_HIGH_NODE_COUNT	0xe800	/* 11101 */
 
 /* HT MSI Mapping Capability definitions. */
 #define	PCIM_HTCMD_MSI_ENABLE		0x0001
@@ -758,9 +786,19 @@
 #define	PCIEM_SLOT_STA_EIS		0x0080
 #define	PCIEM_SLOT_STA_DLLSC		0x0100
 #define	PCIER_ROOT_CTL		0x1c
+#define	PCIEM_ROOT_CTL_SERR_CORR	0x0001
+#define	PCIEM_ROOT_CTL_SERR_NONFATAL	0x0002
+#define	PCIEM_ROOT_CTL_SERR_FATAL	0x0004
+#define	PCIEM_ROOT_CTL_PME		0x0008
+#define	PCIEM_ROOT_CTL_CRS_VIS		0x0010
 #define	PCIER_ROOT_CAP		0x1e
+#define	PCIEM_ROOT_CAP_CRS_VIS		0x0001
 #define	PCIER_ROOT_STA		0x20
+#define	PCIEM_ROOT_STA_PME_REQID_MASK	0x0000ffff
+#define	PCIEM_ROOT_STA_PME_STATUS	0x00010000
+#define	PCIEM_ROOT_STA_PME_PEND		0x00020000
 #define	PCIER_DEVICE_CAP2	0x24
+#define	PCIEM_CAP2_ARI		0x20
 #define	PCIER_DEVICE_CTL2	0x28
 #define	PCIEM_CTL2_COMP_TIMEOUT_VAL	0x000f
 #define	PCIEM_CTL2_COMP_TIMEOUT_DIS	0x0010
@@ -881,3 +919,4 @@
 /* Serial Number definitions */
 #define	PCIR_SERIAL_LOW		0x04
 #define	PCIR_SERIAL_HIGH	0x08
+

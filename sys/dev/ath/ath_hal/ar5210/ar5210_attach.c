@@ -137,6 +137,7 @@ static const struct ath_hal_private ar5210hal = {{
 	.ah_setCoverageClass		= ar5210SetCoverageClass,
 	.ah_get11nExtBusy		= ar5210Get11nExtBusy,
 	.ah_getMibCycleCounts		= ar5210GetMibCycleCounts,
+	.ah_setChainMasks		= ar5210SetChainMasks,
 	.ah_enableDfs			= ar5210EnableDfs,
 	.ah_getDfsThresh		= ar5210GetDfsThresh,
 	/* XXX procRadarEvent */
@@ -218,7 +219,7 @@ ar5210Attach(uint16_t devid, HAL_SOFTC sc, HAL_BUS_TAG st, HAL_BUS_HANDLE sh,
 	AH_PRIVATE(ah)->ah_powerLimit = AR5210_MAX_RATE_POWER;
 	AH_PRIVATE(ah)->ah_tpScale = HAL_TP_SCALE_MAX;	/* no scaling */
 
-	ahp->ah_powerMode = HAL_PM_UNDEFINED;
+	ah->ah_powerMode = HAL_PM_UNDEFINED;
 	ahp->ah_staId1Defaults = 0;
 	ahp->ah_rssiThr = INIT_RSSI_THR;
 	ahp->ah_sifstime = (u_int) -1;

@@ -315,6 +315,7 @@ ar5210WriteAssocid(struct ath_hal *ah, const uint8_t *bssid, uint16_t assocId)
 
 	/* XXX save bssid for possible re-use on reset */
 	OS_MEMCPY(ahp->ah_bssid, bssid, IEEE80211_ADDR_LEN);
+	ahp->ah_associd = assocId;
 	OS_REG_WRITE(ah, AR_BSS_ID0, LE_READ_4(ahp->ah_bssid));
 	OS_REG_WRITE(ah, AR_BSS_ID1, LE_READ_2(ahp->ah_bssid+4) |
 				     ((assocId & 0x3fff)<<AR_BSS_ID1_AID_S));
@@ -668,6 +669,12 @@ ar5210GetMibCycleCounts(struct ath_hal *ah, HAL_SURVEY_SAMPLE *hsample)
 {
 
 	return (AH_FALSE);
+}
+
+void
+ar5210SetChainMasks(struct ath_hal *ah, uint32_t txchainmask,
+    uint32_t rxchainmask)
+{
 }
 
 void

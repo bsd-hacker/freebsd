@@ -56,7 +56,7 @@ static LINENUM	p_max;		/* max allowed value of p_end */
 static LINENUM	p_context = 3;	/* # of context lines */
 static LINENUM	p_input_line = 0;	/* current line # from patch file */
 static char	**p_line = NULL;/* the text of the hunk */
-static short	*p_len = NULL;	/* length of each line */
+static unsigned short	*p_len = NULL; /* length of each line */
 static char	*p_char = NULL;	/* +, -, and ! */
 static int	hunkmax = INITHUNKMAX;	/* size of above arrays to begin with */
 static int	p_indent;	/* indent to patch */
@@ -101,13 +101,17 @@ void
 open_patch_file(const char *filename)
 {
 	struct stat filestat;
+	int nr, nw;
 
 	if (filename == NULL || *filename == '\0' || strEQ(filename, "-")) {
 		pfp = fopen(TMPPATNAME, "w");
 		if (pfp == NULL)
 			pfatal("can't create %s", TMPPATNAME);
-		while (fgets(buf, buf_size, stdin) != NULL)
-			fputs(buf, pfp);
+		while ((nr = fread(buf, 1, buf_size, stdin)) > 0) {
+			nw = fwrite(buf, 1, nr, pfp);
+			if (nr != nw)
+				pfatal("write error to %s", TMPPATNAME);
+		}
 		if (ferror(pfp) || fclose(pfp))
 			pfatal("can't write %s", TMPPATNAME);
 		filename = TMPPATNAME;
@@ -128,11 +132,11 @@ void
 set_hunkmax(void)
 {
 	if (p_line == NULL)
-		p_line = calloc((size_t) hunkmax, sizeof(char *));
+		p_line = malloc(hunkmax * sizeof(char *));
 	if (p_len == NULL)
-		p_len = calloc((size_t) hunkmax, sizeof(short));
+		p_len = malloc(hunkmax * sizeof(unsigned short));
 	if (p_char == NULL)
-		p_char = calloc((size_t) hunkmax, sizeof(char));
+		p_char = malloc(hunkmax * sizeof(char));
 }
 
 /*
@@ -141,31 +145,14 @@ set_hunkmax(void)
 static void
 grow_hunkmax(void)
 {
-	int		new_hunkmax;
-	char		**new_p_line;
-	short		*new_p_len;
-	char		*new_p_char;
-
-	new_hunkmax = hunkmax * 2;
+	int new_hunkmax = hunkmax * 2;
 
 	if (p_line == NULL || p_len == NULL || p_char == NULL)
 		fatal("Internal memory allocation error\n");
 
-	new_p_line = realloc(p_line, new_hunkmax * sizeof(char *));
-	if (new_p_line == NULL)
-		free(p_line);
-
-	new_p_len = realloc(p_len, new_hunkmax * sizeof(short));
-	if (new_p_len == NULL)
-		free(p_len);
-
-	new_p_char = realloc(p_char, new_hunkmax * sizeof(char));
-	if (new_p_char == NULL)
-		free(p_char);
-
-	p_char = new_p_char;
-	p_len = new_p_len;
-	p_line = new_p_line;
+	p_line = reallocf(p_line, new_hunkmax * sizeof(char *));
+	p_len = reallocf(p_len, new_hunkmax * sizeof(unsigned short));
+	p_char = reallocf(p_char, new_hunkmax * sizeof(char));
 
 	if (p_line != NULL && p_len != NULL && p_char != NULL) {
 		hunkmax = new_hunkmax;
@@ -1200,7 +1187,7 @@ pgets(bool do_indent)
 					indent++;
 			}
 		}
-		strncpy(buf, line, len - skipped);
+		memcpy(buf, line, len - skipped);
 		buf[len - skipped] = '\0';
 	}
 	return len;
@@ -1214,7 +1201,7 @@ bool
 pch_swap(void)
 {
 	char	**tp_line;	/* the text of the hunk */
-	short	*tp_len;	/* length of each line */
+	unsigned short	*tp_len;/* length of each line */
 	char	*tp_char;	/* +, -, and ! */
 	LINENUM	i;
 	LINENUM	n;
@@ -1371,7 +1358,7 @@ pch_context(void)
 /*
  * Return the length of a particular patch line.
  */
-short
+unsigned short
 pch_line_len(LINENUM line)
 {
 	return p_len[line];
@@ -1512,15 +1499,12 @@ posix_name(const struct file_name *names, bool assume_exists)
 	return path ? savestr(path) : NULL;
 }
 
-/*
- * Choose the name of the file to be patched based the "best" one
- * available.
- */
 static char *
-best_name(const struct file_name *names, bool assume_exists)
+compare_names(const struct file_name *names, bool assume_exists, int phase)
 {
 	size_t min_components, min_baselen, min_len, tmp;
 	char *best = NULL;
+	char *path;
 	int i;
 
 	/*
@@ -1532,41 +1516,43 @@ best_name(const struct file_name *names, bool assume_exists)
 	 */
 	min_components = min_baselen = min_len = SIZE_MAX;
 	for (i = INDEX_FILE; i >= OLD_FILE; i--) {
-		if (names[i].path == NULL ||
-		    (!names[i].exists && !assume_exists))
+		path = names[i].path;
+		if (path == NULL ||
+		    (phase == 1 && !names[i].exists && !assume_exists) ||
+		    (phase == 2 && checked_in(path) == NULL))
 			continue;
-		if ((tmp = num_components(names[i].path)) > min_components)
+		if ((tmp = num_components(path)) > min_components)
 			continue;
-		min_components = tmp;
-		if ((tmp = strlen(basename(names[i].path))) > min_baselen)
+		if (tmp < min_components) {
+			min_components = tmp;
+			best = path;
+		}
+		if ((tmp = strlen(basename(path))) > min_baselen)
 			continue;
-		min_baselen = tmp;
-		if ((tmp = strlen(names[i].path)) > min_len)
+		if (tmp < min_baselen) {
+			min_baselen = tmp;
+			best = path;
+		}
+		if ((tmp = strlen(path)) > min_len)
 			continue;
 		min_len = tmp;
-		best = names[i].path;
+		best = path;
 	}
+	return best;
+}
+
+/*
+ * Choose the name of the file to be patched based the "best" one
+ * available.
+ */
+static char *
+best_name(const struct file_name *names, bool assume_exists)
+{
+	char *best;
+
+	best = compare_names(names, assume_exists, 1);
 	if (best == NULL) {
-		/*
-		 * No files found, look for something we can checkout from
-		 * RCS/SCCS dirs.  Logic is identical to that above...
-		 */
-		min_components = min_baselen = min_len = SIZE_MAX;
-		for (i = INDEX_FILE; i >= OLD_FILE; i--) {
-			if (names[i].path == NULL ||
-			    checked_in(names[i].path) == NULL)
-				continue;
-			if ((tmp = num_components(names[i].path)) > min_components)
-				continue;
-			min_components = tmp;
-			if ((tmp = strlen(basename(names[i].path))) > min_baselen)
-				continue;
-			min_baselen = tmp;
-			if ((tmp = strlen(names[i].path)) > min_len)
-				continue;
-			min_len = tmp;
-			best = names[i].path;
-		}
+		best = compare_names(names, assume_exists, 2);
 		/*
 		 * Still no match?  Check to see if the diff could be creating
 		 * a new file.

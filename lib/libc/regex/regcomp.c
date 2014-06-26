@@ -746,7 +746,6 @@ p_b_term(struct parse *p, cset *cs)
 	case '-':
 		SETERROR(REG_ERANGE);
 		return;			/* NOTE RETURN */
-		break;
 	default:
 		c = '\0';
 		break;
@@ -1212,7 +1211,7 @@ CHaddrange(struct parse *p, cset *cs, wint_t min, wint_t max)
 	}
 	cs->ranges = newranges;
 	cs->ranges[cs->nranges].min = min;
-	cs->ranges[cs->nranges].min = max;
+	cs->ranges[cs->nranges].max = max;
 	cs->nranges++;
 }
 

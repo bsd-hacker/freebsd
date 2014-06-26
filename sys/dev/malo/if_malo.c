@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
@@ -495,13 +496,6 @@ malo_desc_setup(struct malo_softc *sc, const char *name,
 	}
 	
 	/* allocate descriptors */
-	error = bus_dmamap_create(dd->dd_dmat, BUS_DMA_NOWAIT, &dd->dd_dmamap);
-	if (error != 0) {
-		if_printf(ifp, "unable to create dmamap for %s descriptors, "
-		    "error %u\n", dd->dd_name, error);
-		goto fail0;
-	}
-	
 	error = bus_dmamem_alloc(dd->dd_dmat, (void**) &dd->dd_desc,
 	    BUS_DMA_NOWAIT | BUS_DMA_COHERENT, &dd->dd_dmamap);
 	if (error != 0) {
@@ -529,8 +523,6 @@ malo_desc_setup(struct malo_softc *sc, const char *name,
 fail2:
 	bus_dmamem_free(dd->dd_dmat, dd->dd_desc, dd->dd_dmamap);
 fail1:
-	bus_dmamap_destroy(dd->dd_dmat, dd->dd_dmamap);
-fail0:
 	bus_dma_tag_destroy(dd->dd_dmat);
 	memset(dd, 0, sizeof(*dd));
 	return error;
@@ -631,7 +623,6 @@ malo_desc_cleanup(struct malo_softc *sc, struct malo_descdma *dd)
 {
 	bus_dmamap_unload(dd->dd_dmat, dd->dd_dmamap);
 	bus_dmamem_free(dd->dd_dmat, dd->dd_desc, dd->dd_dmamap);
-	bus_dmamap_destroy(dd->dd_dmat, dd->dd_dmamap);
 	bus_dma_tag_destroy(dd->dd_dmat);
 
 	memset(dd, 0, sizeof(*dd));
@@ -1101,7 +1092,7 @@ malo_tx_start(struct malo_softc *sc, struct ieee80211_node *ni,
 	uint16_t qos;
 
 	wh = mtod(m0, struct ieee80211_frame *);
-	iswep = wh->i_fc[1] & IEEE80211_FC1_WEP;
+	iswep = wh->i_fc[1] & IEEE80211_FC1_PROTECTED;
 	ismcast = IEEE80211_IS_MULTICAST(wh->i_addr1);
 	copyhdrlen = hdrlen = ieee80211_anyhdrsize(wh);
 	pktlen = m0->m_pkthdr.len;

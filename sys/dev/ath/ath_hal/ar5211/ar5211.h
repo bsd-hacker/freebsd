@@ -119,7 +119,6 @@ struct ath_hal_5211 {
 	uint32_t	ah_txEolInterruptMask;
 	uint32_t	ah_txUrnInterruptMask;
 	HAL_TX_QUEUE_INFO ah_txq[HAL_NUM_TX_QUEUES];
-	HAL_POWER_MODE	ah_powerMode;
 	HAL_ANT_SETTING ah_diversityControl;	/* antenna setting */
 	uint32_t	ah_calibrationTime;
 	HAL_BOOL	ah_bIQCalibration;
@@ -286,6 +285,8 @@ extern	HAL_BOOL ar5211GetDiagState(struct ath_hal *ah, int request,
 extern	uint32_t ar5211Get11nExtBusy(struct ath_hal *);
 extern	HAL_BOOL ar5211GetMibCycleCounts(struct ath_hal *,
 		HAL_SURVEY_SAMPLE *);
+extern	void ar5211SetChainMasks(struct ath_hal *ah, uint32_t, uint32_t);
+
 extern	void ar5211EnableDfs(struct ath_hal *, HAL_PHYERR_PARAM *);
 extern	void ar5211GetDfsThresh(struct ath_hal *, HAL_PHYERR_PARAM *);
 

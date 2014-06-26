@@ -56,6 +56,7 @@ SECTIONS
   .init          : { *(.init)	} =0x9090
   .plt      : { *(.plt)	}
 
+  . = ALIGN(4);
   _extab_start = .;
   PROVIDE(extab_start = .);
   .ARM.extab : { *(.ARM.extab) }
@@ -106,6 +107,12 @@ SECTIONS
    *(.dynbss)
    *(.bss)
    *(COMMON)
+   . = ALIGN(32 / 8);
+   _ebss = .;
+   /* A section for the initial page table, it doesn't need to be in the
+      kernel file, however unlike normal .bss entries should not be zeroed
+      out as we use it before the .bss section is cleared. */
+   *(.init_pagetable)
   }
   . = ALIGN(32 / 8);
   _end = . ;

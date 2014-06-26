@@ -11,11 +11,6 @@ CFLAGS+=-D_FFR_LISTDB -D_FFR_DEBUG
 
 WARNS?=	2
 
-# Unfortunately, clang gives warnings about sendmail code that cannot
-# be turned off yet.  Since this is contrib code, and we don't really
-# care about the warnings, just make them non-fatal for now.
-NO_WERROR.clang=
-
 LIBSMDIR=	${.OBJDIR}/../../lib/libsm
 LIBSM=		${LIBSMDIR}/libsm.a
 
@@ -36,6 +31,8 @@ CFLAGS+=${SENDMAIL_CFLAGS}
 DPADD+=${SENDMAIL_DPADD}
 LDADD+=${SENDMAIL_LDADD}
 LDFLAGS+=${SENDMAIL_LDFLAGS}
+
+NO_PIE=	yes
 
 sm_os.h:
 	ln -sf ${SENDMAIL_DIR}/include/sm/os/sm_os_freebsd.h sm_os.h

@@ -56,6 +56,7 @@
 #include <sys/syslog.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/pfil.h>
 #include <net/route.h>
 #include <net/netisr.h>
@@ -99,8 +100,14 @@
 #endif
 
 
-#define IPSEC_ISTAT(p,x,y,z) ((p) == IPPROTO_ESP ? (x)++ : \
-			    (p) == IPPROTO_AH ? (y)++ : (z)++)
+#define	IPSEC_ISTAT(proto, name)	do {	\
+	if ((proto) == IPPROTO_ESP)		\
+		ESPSTAT_INC(esps_##name);	\
+	else if ((proto) == IPPROTO_AH)		\
+		AHSTAT_INC(ahs_##name);		\
+	else					\
+		IPCOMPSTAT_INC(ipcomps_##name);	\
+} while (0)
 
 #ifdef INET
 static void ipsec4_common_ctlinput(int, struct sockaddr *, void *, int);
@@ -125,8 +132,7 @@ ipsec_common_input(struct mbuf *m, int skip, int protoff, int af, int sproto)
 #endif
 #endif
 
-	IPSEC_ISTAT(sproto, V_espstat.esps_input, V_ahstat.ahs_input,
-		V_ipcompstat.ipcomps_input);
+	IPSEC_ISTAT(sproto, input);
 
 	IPSEC_ASSERT(m != NULL, ("null packet"));
 
@@ -138,15 +144,13 @@ ipsec_common_input(struct mbuf *m, int skip, int protoff, int af, int sproto)
 	    (sproto == IPPROTO_AH && !V_ah_enable) ||
 	    (sproto == IPPROTO_IPCOMP && !V_ipcomp_enable)) {
 		m_freem(m);
-		IPSEC_ISTAT(sproto, V_espstat.esps_pdrops, V_ahstat.ahs_pdrops,
-		    V_ipcompstat.ipcomps_pdrops);
+		IPSEC_ISTAT(sproto, pdrops);
 		return EOPNOTSUPP;
 	}
 
 	if (m->m_pkthdr.len - skip < 2 * sizeof (u_int32_t)) {
 		m_freem(m);
-		IPSEC_ISTAT(sproto, V_espstat.esps_hdrops, V_ahstat.ahs_hdrops,
-		    V_ipcompstat.ipcomps_hdrops);
+		IPSEC_ISTAT(sproto, hdrops);
 		DPRINTF(("%s: packet too small\n", __func__));
 		return EINVAL;
 	}
@@ -197,8 +201,7 @@ ipsec_common_input(struct mbuf *m, int skip, int protoff, int af, int sproto)
 	default:
 		DPRINTF(("%s: unsupported protocol family %u\n", __func__, af));
 		m_freem(m);
-		IPSEC_ISTAT(sproto, V_espstat.esps_nopf, V_ahstat.ahs_nopf,
-		    V_ipcompstat.ipcomps_nopf);
+		IPSEC_ISTAT(sproto, nopf);
 		return EPFNOSUPPORT;
 	}
 
@@ -208,8 +211,7 @@ ipsec_common_input(struct mbuf *m, int skip, int protoff, int af, int sproto)
 		DPRINTF(("%s: no key association found for SA %s/%08lx/%u\n",
 			  __func__, ipsec_address(&dst_address),
 			  (u_long) ntohl(spi), sproto));
-		IPSEC_ISTAT(sproto, V_espstat.esps_notdb, V_ahstat.ahs_notdb,
-		    V_ipcompstat.ipcomps_notdb);
+		IPSEC_ISTAT(sproto, notdb);
 		m_freem(m);
 		return ENOENT;
 	}
@@ -218,8 +220,7 @@ ipsec_common_input(struct mbuf *m, int skip, int protoff, int af, int sproto)
 		DPRINTF(("%s: attempted to use uninitialized SA %s/%08lx/%u\n",
 			 __func__, ipsec_address(&dst_address),
 			 (u_long) ntohl(spi), sproto));
-		IPSEC_ISTAT(sproto, V_espstat.esps_noxform, V_ahstat.ahs_noxform,
-		    V_ipcompstat.ipcomps_noxform);
+		IPSEC_ISTAT(sproto, noxform);
 		KEY_FREESAV(&sav);
 		m_freem(m);
 		return ENXIO;
@@ -295,7 +296,7 @@ int
 ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 			int skip, int protoff, struct m_tag *mt)
 {
-	int prot, af, sproto;
+	int prot, af, sproto, isr_prot;
 	struct ip *ip;
 	struct m_tag *mtag;
 	struct tdb_ident *tdbi;
@@ -321,8 +322,7 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 	/* Sanity check */
 	if (m == NULL) {
 		DPRINTF(("%s: null mbuf", __func__));
-		IPSEC_ISTAT(sproto, V_espstat.esps_badkcr, V_ahstat.ahs_badkcr,
-		    V_ipcompstat.ipcomps_badkcr);
+		IPSEC_ISTAT(sproto, badkcr);
 		KEY_FREESAV(&sav);
 		return EINVAL;
 	}
@@ -336,8 +336,7 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 			DPRINTF(("%s: processing failed for SA %s/%08lx\n",
 			    __func__, ipsec_address(&sav->sah->saidx.dst),
 			    (u_long) ntohl(sav->spi)));
-			IPSEC_ISTAT(sproto, V_espstat.esps_hdrops, V_ahstat.ahs_hdrops,
-			    V_ipcompstat.ipcomps_hdrops);
+			IPSEC_ISTAT(sproto, hdrops);
 			error = ENOBUFS;
 			goto bad;
 		}
@@ -351,22 +350,33 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 	}
 	prot = ip->ip_p;
 
-#ifdef notyet
+#ifdef DEV_ENC
+	encif->if_ipackets++;
+	encif->if_ibytes += m->m_pkthdr.len;
+
+	/*
+	 * Pass the mbuf to enc0 for bpf and pfil. We will filter the IPIP
+	 * packet later after it has been decapsulated.
+	 */
+	ipsec_bpf(m, sav, AF_INET, ENC_IN|ENC_BEFORE);
+
+	if (prot != IPPROTO_IPIP)
+		if ((error = ipsec_filter(&m, PFIL_IN, ENC_IN|ENC_BEFORE)) != 0)
+			return (error);
+#endif /* DEV_ENC */
+
 	/* IP-in-IP encapsulation */
 	if (prot == IPPROTO_IPIP) {
-		struct ip ipn;
 
 		if (m->m_pkthdr.len - skip < sizeof(struct ip)) {
-			IPSEC_ISTAT(sproto, V_espstat.esps_hdrops,
-			    V_ahstat.ahs_hdrops,
-			    V_ipcompstat.ipcomps_hdrops);
+			IPSEC_ISTAT(sproto, hdrops);
 			error = EINVAL;
 			goto bad;
 		}
-		/* ipn will now contain the inner IPv4 header */
-		m_copydata(m, ip->ip_hl << 2, sizeof(struct ip),
-		    (caddr_t) &ipn);
+		/* enc0: strip outer IPv4 header */
+		m_striphdr(m, 0, ip->ip_hl << 2);
 
+#ifdef notyet
 		/* XXX PROXY address isn't recorded in SAH */
 		/*
 		 * Check that the inner source address is the same as
@@ -388,29 +398,24 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 			    ipsp_address(saidx->dst),
 			    (u_long) ntohl(sav->spi)));
 
-			IPSEC_ISTAT(sproto, V_espstat.esps_pdrops,
-			    V_ahstat.ahs_pdrops,
-			    V_ipcompstat.ipcomps_pdrops);
+			IPSEC_ISTAT(sproto, pdrops);
 			error = EACCES;
 			goto bad;
 		}
+#endif /* notyet */
 	}
 #ifdef INET6
 	/* IPv6-in-IP encapsulation. */
 	if (prot == IPPROTO_IPV6) {
-		struct ip6_hdr ip6n;
 
 		if (m->m_pkthdr.len - skip < sizeof(struct ip6_hdr)) {
-			IPSEC_ISTAT(sproto, V_espstat.esps_hdrops,
-			    V_ahstat.ahs_hdrops,
-			    V_ipcompstat.ipcomps_hdrops);
+			IPSEC_ISTAT(sproto, hdrops);
 			error = EINVAL;
 			goto bad;
 		}
-		/* ip6n will now contain the inner IPv6 header. */
-		m_copydata(m, ip->ip_hl << 2, sizeof(struct ip6_hdr),
-		    (caddr_t) &ip6n);
-
+		/* enc0: strip IPv4 header, keep IPv6 header only */
+		m_striphdr(m, 0, ip->ip_hl << 2);
+#ifdef notyet 
 		/*
 		 * Check that the inner source address is the same as
 		 * the proxy address, if available.
@@ -430,15 +435,13 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 			    ipsec_address(&saidx->dst),
 			    (u_long) ntohl(sav->spi)));
 
-			IPSEC_ISTAT(sproto, V_espstat.esps_pdrops,
-			    V_ahstat.ahs_pdrops,
-			    V_ipcompstat.ipcomps_pdrops);
+			IPSEC_ISTAT(sproto, pdrops);
 			error = EACCES;
 			goto bad;
 		}
+#endif /* notyet */
 	}
 #endif /* INET6 */
-#endif /*XXX*/
 
 	/*
 	 * Record what we've done to the packet (under what SA it was
@@ -453,8 +456,7 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 		    sizeof(struct tdb_ident), M_NOWAIT);
 		if (mtag == NULL) {
 			DPRINTF(("%s: failed to get tag\n", __func__));
-			IPSEC_ISTAT(sproto, V_espstat.esps_hdrops,
-			    V_ahstat.ahs_hdrops, V_ipcompstat.ipcomps_hdrops);
+			IPSEC_ISTAT(sproto, hdrops);
 			error = ENOMEM;
 			goto bad;
 		}
@@ -476,27 +478,44 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 	key_sa_recordxfer(sav, m);		/* record data transfer */
 
 #ifdef DEV_ENC
-	encif->if_ipackets++;
-	encif->if_ibytes += m->m_pkthdr.len;
-
 	/*
-	 * Pass the mbuf to enc0 for bpf and pfil. We will filter the IPIP
-	 * packet later after it has been decapsulated.
+	 * Pass the mbuf to enc0 for bpf and pfil.
 	 */
-	ipsec_bpf(m, sav, AF_INET, ENC_IN|ENC_BEFORE);
-
-	if (prot != IPPROTO_IPIP)
-		if ((error = ipsec_filter(&m, PFIL_IN, ENC_IN|ENC_BEFORE)) != 0)
-			return (error);
+	if (prot == IPPROTO_IPIP)
+		ipsec_bpf(m, sav, AF_INET, ENC_IN|ENC_AFTER);
+#ifdef INET6
+	if (prot == IPPROTO_IPV6)
+		ipsec_bpf(m, sav, AF_INET6, ENC_IN|ENC_AFTER);
 #endif
+
+	if ((error = ipsec_filter(&m, PFIL_IN, ENC_IN|ENC_AFTER)) != 0)
+		return (error);
+#endif /* DEV_ENC */
 
 	/*
 	 * Re-dispatch via software interrupt.
 	 */
-	if ((error = netisr_queue_src(NETISR_IP, (uintptr_t)sav->spi, m))) {
-		IPSEC_ISTAT(sproto, V_espstat.esps_qfull, V_ahstat.ahs_qfull,
-			    V_ipcompstat.ipcomps_qfull);
 
+	switch (prot) {
+	case IPPROTO_IPIP:
+		isr_prot = NETISR_IP;
+		break;
+#ifdef INET6
+	case IPPROTO_IPV6:
+		isr_prot = NETISR_IPV6;
+		break;
+#endif
+	default:
+		DPRINTF(("%s: cannot handle inner ip proto %d\n",
+			    __func__, prot));
+		IPSEC_ISTAT(sproto, nopf);
+		error = EPFNOSUPPORT;
+		goto bad;
+	}
+
+	error = netisr_queue_src(isr_prot, (uintptr_t)sav->spi, m);
+	if (error) {
+		IPSEC_ISTAT(sproto, qfull);
 		DPRINTF(("%s: queue full; proto %u packet dropped\n",
 			__func__, sproto));
 		return error;
@@ -548,9 +567,7 @@ ipsec6_common_input(struct mbuf **mp, int *offp, int proto)
 		if (protoff + l != *offp) {
 			DPRINTF(("%s: bad packet header chain, protoff %u, "
 				"l %u, off %u\n", __func__, protoff, l, *offp));
-			IPSEC_ISTAT(proto, V_espstat.esps_hdrops,
-				    V_ahstat.ahs_hdrops,
-				    V_ipcompstat.ipcomps_hdrops);
+			IPSEC_ISTAT(proto, hdrops);
 			m_freem(*mp);
 			*mp = NULL;
 			return IPPROTO_DONE;
@@ -595,8 +612,7 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 	/* Sanity check */
 	if (m == NULL) {
 		DPRINTF(("%s: null mbuf", __func__));
-		IPSEC_ISTAT(sproto, V_espstat.esps_badkcr, V_ahstat.ahs_badkcr,
-		    V_ipcompstat.ipcomps_badkcr);
+		IPSEC_ISTAT(sproto, badkcr);
 		error = EINVAL;
 		goto bad;
 	}
@@ -609,8 +625,7 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 		    __func__, ipsec_address(&sav->sah->saidx.dst),
 		    (u_long) ntohl(sav->spi)));
 
-		IPSEC_ISTAT(sproto, V_espstat.esps_hdrops, V_ahstat.ahs_hdrops,
-		    V_ipcompstat.ipcomps_hdrops);
+		IPSEC_ISTAT(sproto, hdrops);
 		error = EACCES;
 		goto bad;
 	}
@@ -619,24 +634,37 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 	ip6->ip6_plen = htons(m->m_pkthdr.len - sizeof(struct ip6_hdr));
 
 	/* Save protocol */
+	prot = 0;
 	m_copydata(m, protoff, 1, (unsigned char *) &prot);
 
-#ifdef notyet
+#ifdef DEV_ENC
+	encif->if_ipackets++;
+	encif->if_ibytes += m->m_pkthdr.len;
+
+	/*
+	 * Pass the mbuf to enc0 for bpf and pfil. We will filter the IPIP
+	 * packet later after it has been decapsulated.
+	 */
+	ipsec_bpf(m, sav, AF_INET6, ENC_IN|ENC_BEFORE);
+
+	/* XXX-BZ does not make sense. */
+	if (prot != IPPROTO_IPIP)
+		if ((error = ipsec_filter(&m, PFIL_IN, ENC_IN|ENC_BEFORE)) != 0)
+			return (error);
+#endif /* DEV_ENC */
+
 #ifdef INET
 	/* IP-in-IP encapsulation */
 	if (prot == IPPROTO_IPIP) {
-		struct ip ipn;
-
 		if (m->m_pkthdr.len - skip < sizeof(struct ip)) {
-			IPSEC_ISTAT(sproto, V_espstat.esps_hdrops,
-			    V_ahstat.ahs_hdrops,
-			    V_ipcompstat.ipcomps_hdrops);
+			IPSEC_ISTAT(sproto, hdrops);
 			error = EINVAL;
 			goto bad;
 		}
 		/* ipn will now contain the inner IPv4 header */
-		m_copydata(m, skip, sizeof(struct ip), (caddr_t) &ipn);
-
+	 	m_striphdr(m, 0, skip);
+		skip = 0;
+#ifdef notyet
 		/*
 		 * Check that the inner source address is the same as
 		 * the proxy address, if available.
@@ -655,29 +683,24 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 			    ipsec_address(&saidx->dst),
 			    (u_long) ntohl(sav->spi)));
 
-			IPSEC_ISTATsproto, (V_espstat.esps_pdrops,
-			    V_ahstat.ahs_pdrops, V_ipcompstat.ipcomps_pdrops);
+			IPSEC_ISTAT(sproto, pdrops);
 			error = EACCES;
 			goto bad;
 		}
+#endif /* notyet */
 	}
 #endif /* INET */
-
 	/* IPv6-in-IP encapsulation */
 	if (prot == IPPROTO_IPV6) {
-		struct ip6_hdr ip6n;
-
 		if (m->m_pkthdr.len - skip < sizeof(struct ip6_hdr)) {
-			IPSEC_ISTAT(sproto, V_espstat.esps_hdrops,
-			    V_ahstat.ahs_hdrops,
-			    V_ipcompstat.ipcomps_hdrops);
+			IPSEC_ISTAT(sproto, hdrops);
 			error = EINVAL;
 			goto bad;
 		}
 		/* ip6n will now contain the inner IPv6 header. */
-		m_copydata(m, skip, sizeof(struct ip6_hdr),
-		    (caddr_t) &ip6n);
-
+		m_striphdr(m, 0, skip);
+		skip = 0;
+#ifdef notyet
 		/*
 		 * Check that the inner source address is the same as
 		 * the proxy address, if available.
@@ -697,13 +720,12 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 			    ipsec_address(&saidx->dst),
 			    (u_long) ntohl(sav->spi)));
 
-			IPSEC_ISTAT(sproto, V_espstat.esps_pdrops,
-			    V_ahstat.ahs_pdrops, V_ipcompstat.ipcomps_pdrops);
+			IPSEC_ISTAT(sproto, pdrops);
 			error = EACCES;
 			goto bad;
 		}
+#endif /* notyet */
 	}
-#endif /*XXX*/
 
 	/*
 	 * Record what we've done to the packet (under what SA it was
@@ -718,8 +740,7 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 		    sizeof(struct tdb_ident), M_NOWAIT);
 		if (mtag == NULL) {
 			DPRINTF(("%s: failed to get tag\n", __func__));
-			IPSEC_ISTAT(sproto, V_espstat.esps_hdrops,
-			    V_ahstat.ahs_hdrops, V_ipcompstat.ipcomps_hdrops);
+			IPSEC_ISTAT(sproto, hdrops);
 			error = ENOMEM;
 			goto bad;
 		}
@@ -742,23 +763,22 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 	key_sa_recordxfer(sav, m);
 
 #ifdef DEV_ENC
-	encif->if_ipackets++;
-	encif->if_ibytes += m->m_pkthdr.len;
-
 	/*
-	 * Pass the mbuf to enc0 for bpf and pfil. We will filter the IPIP
-	 * packet later after it has been decapsulated.
+	 * Pass the mbuf to enc0 for bpf and pfil.
 	 */
-	ipsec_bpf(m, sav, AF_INET6, ENC_IN|ENC_BEFORE);
-
-	/* XXX-BZ does not make sense. */
-	if (prot != IPPROTO_IPIP)
-		if ((error = ipsec_filter(&m, PFIL_IN, ENC_IN|ENC_BEFORE)) != 0)
-			return (error);
+#ifdef INET
+	if (prot == IPPROTO_IPIP)
+		ipsec_bpf(m, sav, AF_INET, ENC_IN|ENC_AFTER);
 #endif
+	if (prot == IPPROTO_IPV6)
+		ipsec_bpf(m, sav, AF_INET6, ENC_IN|ENC_AFTER);
 
+	if ((error = ipsec_filter(&m, PFIL_IN, ENC_IN|ENC_AFTER)) != 0)
+		return (error);
+#endif /* DEV_ENC */
 	/* Retrieve new protocol */
-	m_copydata(m, protoff, sizeof(u_int8_t), (caddr_t) &nxt8);
+	/* We have stripped the IP6 header from the mbuf, we have to use the backuped proto value instead */
+	nxt8 = prot;
 
 	/*
 	 * See the end of ip6_input for this logic.
@@ -768,7 +788,7 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 	nxt = nxt8;
 	while (nxt != IPPROTO_DONE) {
 		if (V_ip6_hdrnestlimit && (++nest > V_ip6_hdrnestlimit)) {
-			V_ip6stat.ip6s_toomanyhdr++;
+			IP6STAT_INC(ip6s_toomanyhdr);
 			error = EINVAL;
 			goto bad;
 		}
@@ -778,7 +798,7 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 		 * more sanity checks in header chain processing.
 		 */
 		if (m->m_pkthdr.len < skip) {
-			V_ip6stat.ip6s_tooshort++;
+			IP6STAT_INC(ip6s_tooshort);
 			in6_ifstat_inc(m->m_pkthdr.rcvif, ifs6_in_truncated);
 			error = EINVAL;
 			goto bad;

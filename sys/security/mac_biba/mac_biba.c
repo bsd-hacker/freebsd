@@ -1358,17 +1358,6 @@ biba_mount_create(struct ucred *cred, struct mount *mp,
 }
 
 static void
-biba_netatalk_aarp_send(struct ifnet *ifp, struct label *ifplabel,
-    struct mbuf *m, struct label *mlabel)
-{
-	struct mac_biba *dest;
-
-	dest = SLOT(mlabel);
-
-	biba_set_effective(dest, MAC_BIBA_TYPE_EQUAL, 0, NULL);
-}
-
-static void
 biba_netinet_arp_send(struct ifnet *ifp, struct label *ifplabel,
     struct mbuf *m, struct label *mlabel)
 {
@@ -1759,6 +1748,24 @@ biba_posixshm_check_open(struct ucred *cred, struct shmfd *shmfd,
 }
 
 static int
+biba_posixshm_check_read(struct ucred *active_cred, struct ucred *file_cred,
+    struct shmfd *vp, struct label *shmlabel)
+{
+	struct mac_biba *subj, *obj;
+
+	if (!biba_enabled || !revocation_enabled)
+		return (0);
+
+	subj = SLOT(active_cred->cr_label);
+	obj = SLOT(shmlabel);
+
+	if (!biba_dominate_effective(obj, subj))
+		return (EACCES);
+
+	return (0);
+}
+
+static int
 biba_posixshm_check_setmode(struct ucred *cred, struct shmfd *shmfd,
     struct label *shmlabel, mode_t mode)
 {
@@ -1845,6 +1852,24 @@ biba_posixshm_check_unlink(struct ucred *cred, struct shmfd *shmfd,
 	if (!biba_dominate_effective(subj, obj))
 		return (EACCES);
     
+	return (0);
+}
+
+static int
+biba_posixshm_check_write(struct ucred *active_cred, struct ucred *file_cred,
+    struct shmfd *vp, struct label *shmlabel)
+{
+	struct mac_biba *subj, *obj;
+
+	if (!biba_enabled || !revocation_enabled)
+		return (0);
+
+	subj = SLOT(active_cred->cr_label);
+	obj = SLOT(shmlabel);
+
+	if (!biba_dominate_effective(obj, subj))
+		return (EACCES);
+
 	return (0);
 }
 
@@ -2029,12 +2054,9 @@ biba_priv_check(struct ucred *cred, int priv)
 	 * Allow some but not all network privileges.  In general, dont allow
 	 * reconfiguring the network stack, just normal use.
 	 */
-	case PRIV_NETATALK_RESERVEDPORT:
 	case PRIV_NETINET_RESERVEDPORT:
 	case PRIV_NETINET_RAW:
 	case PRIV_NETINET_REUSEPORT:
-	case PRIV_NETIPX_RESERVEDPORT:
-	case PRIV_NETIPX_RAW:
 		break;
 
 	/*
@@ -3618,8 +3640,6 @@ static struct mac_policy_ops mac_biba_ops =
 	.mpo_mount_destroy_label = biba_destroy_label,
 	.mpo_mount_init_label = biba_init_label,
 
-	.mpo_netatalk_aarp_send = biba_netatalk_aarp_send,
-
 	.mpo_netinet_arp_send = biba_netinet_arp_send,
 	.mpo_netinet_firewall_reply = biba_netinet_firewall_reply,
 	.mpo_netinet_firewall_send = biba_netinet_firewall_send,
@@ -3657,11 +3677,13 @@ static struct mac_policy_ops mac_biba_ops =
 
 	.mpo_posixshm_check_mmap = biba_posixshm_check_mmap,
 	.mpo_posixshm_check_open = biba_posixshm_check_open,
+	.mpo_posixshm_check_read = biba_posixshm_check_read,
 	.mpo_posixshm_check_setmode = biba_posixshm_check_setmode,
 	.mpo_posixshm_check_setowner = biba_posixshm_check_setowner,
 	.mpo_posixshm_check_stat = biba_posixshm_check_stat,
 	.mpo_posixshm_check_truncate = biba_posixshm_check_truncate,
 	.mpo_posixshm_check_unlink = biba_posixshm_check_unlink,
+	.mpo_posixshm_check_write = biba_posixshm_check_write,
 	.mpo_posixshm_create = biba_posixshm_create,
 	.mpo_posixshm_destroy_label = biba_destroy_label,
 	.mpo_posixshm_init_label = biba_init_label,

@@ -158,7 +158,8 @@
 #define	PRIV_PROC_SETRLIMIT	162	/* Can raise resources limits. */
 #define	PRIV_PROC_SETLOGINCLASS	163	/* Can call setloginclass(2). */
 
-/* System V IPC privileges.
+/*
+ * System V IPC privileges.
  */
 #define	PRIV_IPC_READ		170	/* Can override IPC read perm. */
 #define	PRIV_IPC_WRITE		171	/* Can override IPC write perm. */
@@ -346,9 +347,9 @@
 #define	PRIV_NET80211_MANAGE	441	/* Administer 802.11. */
 
 /*
- * AppleTalk privileges.
+ * Placeholder for AppleTalk privileges, not supported anymore.
  */
-#define	PRIV_NETATALK_RESERVEDPORT	450	/* Bind low port number. */
+#define	_PRIV_NETATALK_RESERVEDPORT	450	/* Bind low port number. */
 
 /*
  * ATM privileges.
@@ -389,12 +390,13 @@
 #define	PRIV_NETINET_REUSEPORT	504	/* Allow [rapid] port/address reuse. */
 #define	PRIV_NETINET_SETHDROPTS	505	/* Set certain IPv4/6 header options. */
 #define	PRIV_NETINET_BINDANY	506	/* Allow bind to any address. */
+#define	PRIV_NETINET_HASHKEY	507	/* Get and set hash keys for IPv4/6. */
 
 /*
- * IPX/SPX privileges.
+ * Placeholders for IPX/SPX privileges, not supported any more.
  */
-#define	PRIV_NETIPX_RESERVEDPORT	520	/* Bind low port number. */
-#define	PRIV_NETIPX_RAW		521	/* Open netipx raw socket. */
+#define	_PRIV_NETIPX_RESERVEDPORT	520	/* Bind low port number. */
+#define	_PRIV_NETIPX_RAW		521	/* Open netipx raw socket. */
 
 /*
  * NCP privileges.
@@ -494,9 +496,15 @@
 #define	PRIV_RCTL_REMOVE_RULE	674
 
 /*
+ * mem(4) privileges.
+ */
+#define	PRIV_KMEM_READ		680	/* Open mem/kmem for reading. */
+#define	PRIV_KMEM_WRITE		681	/* Open mem/kmem for writing. */
+
+/*
  * Track end of privilege list.
  */
-#define	_PRIV_HIGHEST		675
+#define	_PRIV_HIGHEST		682
 
 /*
  * Validate that a named privilege is known by the privilege system.  Invalid

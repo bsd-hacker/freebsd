@@ -1,10 +1,9 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 SUBDIR= ${_binutils} \
 	${_cc} \
-	${_cvs} \
 	dialog \
 	diff \
 	diff3 \
@@ -13,10 +12,9 @@ SUBDIR= ${_binutils} \
 	${_gperf} \
 	grep \
 	${_groff} \
-	patch \
 	${_rcs} \
 	sdiff \
-	send-pr \
+	${_tests} \
 	${_texinfo}
 
 .if ${MK_CXX} != "no"
@@ -24,10 +22,6 @@ _gperf=		gperf
 .if ${MK_GROFF} != "no"
 _groff=		groff
 .endif
-.endif
-
-.if ${MK_CVS} != "no"
-_cvs=		cvs
 .endif
 
 .if ${MK_GPL_DTC} != "no"
@@ -42,6 +36,10 @@ _texinfo=	texinfo
 _rcs=		rcs
 .endif
 
+.if ${MK_TESTS} != "no"
+_tests=		tests
+.endif
+
 .if ${MK_BINUTILS} != "no"
 _binutils=	binutils
 .endif
@@ -51,5 +49,7 @@ _cc=		cc
 .if ${MK_GDB} != "no"
 _gdb=		gdb
 .endif
+
+SUBDIR_PARALLEL=
 
 .include <bsd.subdir.mk>

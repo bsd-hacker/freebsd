@@ -38,9 +38,11 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/fnv_hash.h>
+#include <sys/lock.h>
 #include <sys/namei.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
+#include <sys/rwlock.h>
 #include <sys/stat.h>
 #include <sys/systm.h>
 #include <sys/sysctl.h>
@@ -102,7 +104,7 @@ tmpfs_mem_avail(void)
 {
 	vm_ooffset_t avail;
 
-	avail = swap_pager_avail + cnt.v_free_count + cnt.v_cache_count -
+	avail = swap_pager_avail + vm_cnt.v_free_count + vm_cnt.v_cache_count -
 	    tmpfs_pages_reserved;
 	if (__predict_false(avail < 0))
 		avail = 0;
@@ -164,6 +166,7 @@ tmpfs_alloc_node(struct tmpfs_mount *tmp, enum vtype type,
     char *target, dev_t rdev, struct tmpfs_node **node)
 {
 	struct tmpfs_node *nnode;
+	vm_object_t obj;
 
 	/* If the root directory of the 'tmp' file system is not yet
 	 * allocated, this must be the request to do it. */
@@ -225,9 +228,14 @@ tmpfs_alloc_node(struct tmpfs_mount *tmp, enum vtype type,
 		break;
 
 	case VREG:
-		nnode->tn_reg.tn_aobj =
+		obj = nnode->tn_reg.tn_aobj =
 		    vm_pager_allocate(OBJT_SWAP, NULL, 0, VM_PROT_DEFAULT, 0,
 			NULL /* XXXKIB - tmpfs needs swap reservation */);
+		VM_OBJECT_WLOCK(obj);
+		/* OBJ_TMPFS is set together with the setting of vp->v_object */
+		vm_object_set_flag(obj, OBJ_NOSPLIT);
+		vm_object_clear_flag(obj, OBJ_ONEMAPPING);
+		VM_OBJECT_WUNLOCK(obj);
 		break;
 
 	default:
@@ -306,6 +314,8 @@ tmpfs_free_node(struct tmpfs_mount *tmp, struct tmpfs_node *node)
 			TMPFS_LOCK(tmp);
 			tmp->tm_pages_used -= uobj->size;
 			TMPFS_UNLOCK(tmp);
+			KASSERT((uobj->flags & OBJ_TMPFS) == 0,
+			    ("leaked OBJ_TMPFS node %p vm_obj %p", node, uobj));
 			vm_object_deallocate(uobj);
 		}
 		break;
@@ -338,6 +348,9 @@ tmpfs_dirent_hash(const char *name, u_int len)
 static __inline off_t
 tmpfs_dirent_cookie(struct tmpfs_dirent *de)
 {
+	if (de == NULL)
+		return (TMPFS_DIRCOOKIE_EOF);
+
 	MPASS(de->td_cookie >= TMPFS_DIRCOOKIE_MIN);
 
 	return (de->td_cookie);
@@ -421,6 +434,36 @@ tmpfs_free_dirent(struct tmpfs_mount *tmp, struct tmpfs_dirent *de)
 
 /* --------------------------------------------------------------------- */
 
+void
+tmpfs_destroy_vobject(struct vnode *vp, vm_object_t obj)
+{
+
+	if (vp->v_type != VREG || obj == NULL)
+		return;
+
+	VM_OBJECT_WLOCK(obj);
+	VI_LOCK(vp);
+	vm_object_clear_flag(obj, OBJ_TMPFS);
+	obj->un_pager.swp.swp_tmpfs = NULL;
+	VI_UNLOCK(vp);
+	VM_OBJECT_WUNLOCK(obj);
+}
+
+/*
+ * Need to clear v_object for insmntque failure.
+ */
+static void
+tmpfs_insmntque_dtr(struct vnode *vp, void *dtr_arg)
+{
+
+	tmpfs_destroy_vobject(vp, vp->v_object);
+	vp->v_object = NULL;
+	vp->v_data = NULL;
+	vp->v_op = &dead_vnodeops;
+	vgone(vp);
+	vput(vp);
+}
+
 /*
  * Allocates a new vnode for the node node or returns a new reference to
  * an existing one if the node had already a vnode referencing it.  The
@@ -432,16 +475,39 @@ int
 tmpfs_alloc_vp(struct mount *mp, struct tmpfs_node *node, int lkflag,
     struct vnode **vpp)
 {
-	int error = 0;
 	struct vnode *vp;
+	vm_object_t object;
+	int error;
 
+	error = 0;
 loop:
 	TMPFS_NODE_LOCK(node);
+loop1:
 	if ((vp = node->tn_vnode) != NULL) {
 		MPASS((node->tn_vpstate & TMPFS_VNODE_DOOMED) == 0);
 		VI_LOCK(vp);
+		if ((node->tn_type == VDIR && node->tn_dir.tn_parent == NULL) ||
+		    ((vp->v_iflag & VI_DOOMED) != 0 &&
+		    (lkflag & LK_NOWAIT) != 0)) {
+			VI_UNLOCK(vp);
+			TMPFS_NODE_UNLOCK(node);
+			error = ENOENT;
+			vp = NULL;
+			goto out;
+		}
+		if ((vp->v_iflag & VI_DOOMED) != 0) {
+			VI_UNLOCK(vp);
+			node->tn_vpstate |= TMPFS_VNODE_WRECLAIM;
+			while ((node->tn_vpstate & TMPFS_VNODE_WRECLAIM) != 0) {
+				msleep(&node->tn_vnode, TMPFS_NODE_MTX(node),
+				    0, "tmpfsE", 0);
+			}
+			goto loop1;
+		}
 		TMPFS_NODE_UNLOCK(node);
 		error = vget(vp, lkflag | LK_INTERLOCK, curthread);
+		if (error == ENOENT)
+			goto loop;
 		if (error != 0) {
 			vp = NULL;
 			goto out;
@@ -504,12 +570,21 @@ loop:
 		/* FALLTHROUGH */
 	case VLNK:
 		/* FALLTHROUGH */
-	case VREG:
-		/* FALLTHROUGH */
 	case VSOCK:
 		break;
 	case VFIFO:
 		vp->v_op = &tmpfs_fifoop_entries;
+		break;
+	case VREG:
+		object = node->tn_reg.tn_aobj;
+		VM_OBJECT_WLOCK(object);
+		VI_LOCK(vp);
+		KASSERT(vp->v_object == NULL, ("Not NULL v_object in tmpfs"));
+		vp->v_object = object;
+		object->un_pager.swp.swp_tmpfs = vp;
+		vm_object_set_flag(object, OBJ_TMPFS);
+		VI_UNLOCK(vp);
+		VM_OBJECT_WUNLOCK(object);
 		break;
 	case VDIR:
 		MPASS(node->tn_dir.tn_parent != NULL);
@@ -520,9 +595,10 @@ loop:
 	default:
 		panic("tmpfs_alloc_vp: type %p %d", node, (int)node->tn_type);
 	}
+	if (vp->v_type != VFIFO)
+		VN_LOCK_ASHARE(vp);
 
-	vnode_pager_setsize(vp, node->tn_size);
-	error = insmntque(vp, mp);
+	error = insmntque1(vp, mp, tmpfs_insmntque_dtr, NULL);
 	if (error)
 		vp = NULL;
 
@@ -570,6 +646,9 @@ tmpfs_free_vp(struct vnode *vp)
 
 	mtx_assert(TMPFS_NODE_MTX(node), MA_OWNED);
 	node->tn_vnode = NULL;
+	if ((node->tn_vpstate & TMPFS_VNODE_WRECLAIM) != 0)
+		wakeup(&node->tn_vnode);
+	node->tn_vpstate &= ~TMPFS_VNODE_WRECLAIM;
 	vp->v_data = NULL;
 }
 
@@ -1070,7 +1149,7 @@ tmpfs_dir_getdotdotdent(struct tmpfs_node *node, struct uio *uio)
  * error code if another error happens.
  */
 int
-tmpfs_dir_getdents(struct tmpfs_node *node, struct uio *uio, int cnt,
+tmpfs_dir_getdents(struct tmpfs_node *node, struct uio *uio, int maxcookies,
     u_long *cookies, int *ncookies)
 {
 	struct tmpfs_dir_cursor dc;
@@ -1081,25 +1160,33 @@ tmpfs_dir_getdents(struct tmpfs_node *node, struct uio *uio, int cnt,
 	TMPFS_VALIDATE_DIR(node);
 
 	off = 0;
+
+	/*
+	 * Lookup the node from the current offset.  The starting offset of
+	 * 0 will lookup both '.' and '..', and then the first real entry,
+	 * or EOF if there are none.  Then find all entries for the dir that
+	 * fit into the buffer.  Once no more entries are found (de == NULL),
+	 * the offset is set to TMPFS_DIRCOOKIE_EOF, which will cause the next
+	 * call to return 0.
+	 */
 	switch (uio->uio_offset) {
 	case TMPFS_DIRCOOKIE_DOT:
 		error = tmpfs_dir_getdotdent(node, uio);
 		if (error != 0)
 			return (error);
 		uio->uio_offset = TMPFS_DIRCOOKIE_DOTDOT;
-		if (cnt != 0)
+		if (cookies != NULL)
 			cookies[(*ncookies)++] = off = uio->uio_offset;
+		/* FALLTHROUGH */
 	case TMPFS_DIRCOOKIE_DOTDOT:
 		error = tmpfs_dir_getdotdotdent(node, uio);
 		if (error != 0)
 			return (error);
 		de = tmpfs_dir_first(node, &dc);
-		if (de == NULL)
-			uio->uio_offset = TMPFS_DIRCOOKIE_EOF;
-		else
-			uio->uio_offset = tmpfs_dirent_cookie(de);
-		if (cnt != 0)
+		uio->uio_offset = tmpfs_dirent_cookie(de);
+		if (cookies != NULL)
 			cookies[(*ncookies)++] = off = uio->uio_offset;
+		/* EOF. */
 		if (de == NULL)
 			return (0);
 		break;
@@ -1109,7 +1196,7 @@ tmpfs_dir_getdents(struct tmpfs_node *node, struct uio *uio, int cnt,
 		de = tmpfs_dir_lookup_cookie(node, uio->uio_offset, &dc);
 		if (de == NULL)
 			return (EINVAL);
-		if (cnt != 0)
+		if (cookies != NULL)
 			off = tmpfs_dirent_cookie(de);
 	}
 
@@ -1177,25 +1264,19 @@ tmpfs_dir_getdents(struct tmpfs_node *node, struct uio *uio, int cnt,
 		error = uiomove(&d, d.d_reclen, uio);
 		if (error == 0) {
 			de = tmpfs_dir_next(node, &dc);
-			if (cnt != 0) {
-				if (de == NULL)
-					off = TMPFS_DIRCOOKIE_EOF;
-				else
-					off = tmpfs_dirent_cookie(de);
-				MPASS(*ncookies < cnt);
+			if (cookies != NULL) {
+				off = tmpfs_dirent_cookie(de);
+				MPASS(*ncookies < maxcookies);
 				cookies[(*ncookies)++] = off;
 			}
 		}
 	} while (error == 0 && uio->uio_resid > 0 && de != NULL);
 
-	/* Update the offset and cache. */
-	if (cnt == 0) {
-		if (de == NULL)
-			off = TMPFS_DIRCOOKIE_EOF;
-		else
-			off = tmpfs_dirent_cookie(de);
-	}
+	/* Skip setting off when using cookies as it is already done above. */
+	if (cookies == NULL)
+		off = tmpfs_dirent_cookie(de);
 
+	/* Update the offset and cache. */
 	uio->uio_offset = off;
 	node->tn_dir.tn_readdir_lastn = off;
 	node->tn_dir.tn_readdir_lastp = de;
@@ -1270,7 +1351,7 @@ tmpfs_reg_resize(struct vnode *vp, off_t newsize, boolean_t ignerr)
 	    tmpfs_pages_check_avail(tmp, newpages - oldpages) == 0)
 		return (ENOSPC);
 
-	VM_OBJECT_LOCK(uobj);
+	VM_OBJECT_WLOCK(uobj);
 	if (newsize < oldsize) {
 		/*
 		 * Zero the truncated part of the last page.
@@ -1281,18 +1362,15 @@ tmpfs_reg_resize(struct vnode *vp, off_t newsize, boolean_t ignerr)
 retry:
 			m = vm_page_lookup(uobj, idx);
 			if (m != NULL) {
-				if ((m->oflags & VPO_BUSY) != 0 ||
-				    m->busy != 0) {
-					vm_page_sleep(m, "tmfssz");
+				if (vm_page_sleep_if_busy(m, "tmfssz"))
 					goto retry;
-				}
 				MPASS(m->valid == VM_PAGE_BITS_ALL);
 			} else if (vm_pager_has_page(uobj, idx, NULL, NULL)) {
 				m = vm_page_alloc(uobj, idx, VM_ALLOC_NORMAL);
 				if (m == NULL) {
-					VM_OBJECT_UNLOCK(uobj);
+					VM_OBJECT_WUNLOCK(uobj);
 					VM_WAIT;
-					VM_OBJECT_LOCK(uobj);
+					VM_OBJECT_WLOCK(uobj);
 					goto retry;
 				} else if (m->valid != VM_PAGE_BITS_ALL) {
 					ma[0] = m;
@@ -1305,14 +1383,14 @@ retry:
 				if (rv == VM_PAGER_OK) {
 					vm_page_deactivate(m);
 					vm_page_unlock(m);
-					vm_page_wakeup(m);
+					vm_page_xunbusy(m);
 				} else {
 					vm_page_free(m);
 					vm_page_unlock(m);
 					if (ignerr)
 						m = NULL;
 					else {
-						VM_OBJECT_UNLOCK(uobj);
+						VM_OBJECT_WUNLOCK(uobj);
 						return (EIO);
 					}
 				}
@@ -1334,14 +1412,13 @@ retry:
 		}
 	}
 	uobj->size = newpages;
-	VM_OBJECT_UNLOCK(uobj);
+	VM_OBJECT_WUNLOCK(uobj);
 
 	TMPFS_LOCK(tmp);
 	tmp->tm_pages_used += (newpages - oldpages);
 	TMPFS_UNLOCK(tmp);
 
 	node->tn_size = newsize;
-	vnode_pager_setsize(vp, newsize);
 	return (0);
 }
 
@@ -1353,7 +1430,8 @@ retry:
  * The vnode must be locked on entry and remain locked on exit.
  */
 int
-tmpfs_chflags(struct vnode *vp, int flags, struct ucred *cred, struct thread *p)
+tmpfs_chflags(struct vnode *vp, u_long flags, struct ucred *cred,
+    struct thread *p)
 {
 	int error;
 	struct tmpfs_node *node;
@@ -1362,9 +1440,10 @@ tmpfs_chflags(struct vnode *vp, int flags, struct ucred *cred, struct thread *p)
 
 	node = VP_TO_TMPFS_NODE(vp);
 
-	if ((flags & ~(UF_NODUMP | UF_IMMUTABLE | UF_APPEND | UF_OPAQUE |
-	    UF_NOUNLINK | SF_ARCHIVED | SF_IMMUTABLE | SF_APPEND |
-	    SF_NOUNLINK)) != 0)
+	if ((flags & ~(SF_APPEND | SF_ARCHIVED | SF_IMMUTABLE | SF_NOUNLINK |
+	    UF_APPEND | UF_ARCHIVE | UF_HIDDEN | UF_IMMUTABLE | UF_NODUMP |
+	    UF_NOUNLINK | UF_OFFLINE | UF_OPAQUE | UF_READONLY | UF_REPARSE |
+	    UF_SPARSE | UF_SYSTEM)) != 0)
 		return (EOPNOTSUPP);
 
 	/* Disallow this operation if the file system is mounted read-only. */
@@ -1598,8 +1677,8 @@ tmpfs_chsize(struct vnode *vp, u_quad_t size, struct ucred *cred,
  * The vnode must be locked on entry and remain locked on exit.
  */
 int
-tmpfs_chtimes(struct vnode *vp, struct timespec *atime, struct timespec *mtime,
-	struct timespec *birthtime, int vaflags, struct ucred *cred, struct thread *l)
+tmpfs_chtimes(struct vnode *vp, struct vattr *vap,
+    struct ucred *cred, struct thread *l)
 {
 	int error;
 	struct tmpfs_node *node;
@@ -1616,29 +1695,25 @@ tmpfs_chtimes(struct vnode *vp, struct timespec *atime, struct timespec *mtime,
 	if (node->tn_flags & (IMMUTABLE | APPEND))
 		return EPERM;
 
-	/* Determine if the user have proper privilege to update time. */
-	if (vaflags & VA_UTIMES_NULL) {
-		error = VOP_ACCESS(vp, VADMIN, cred, l);
-		if (error)
-			error = VOP_ACCESS(vp, VWRITE, cred, l);
-	} else
-		error = VOP_ACCESS(vp, VADMIN, cred, l);
-	if (error)
+	error = vn_utimes_perm(vp, vap, cred, l);
+	if (error != 0)
 		return (error);
 
-	if (atime->tv_sec != VNOVAL && atime->tv_nsec != VNOVAL)
+	if (vap->va_atime.tv_sec != VNOVAL && vap->va_atime.tv_nsec != VNOVAL)
 		node->tn_status |= TMPFS_NODE_ACCESSED;
 
-	if (mtime->tv_sec != VNOVAL && mtime->tv_nsec != VNOVAL)
+	if (vap->va_mtime.tv_sec != VNOVAL && vap->va_mtime.tv_nsec != VNOVAL)
 		node->tn_status |= TMPFS_NODE_MODIFIED;
 
-	if (birthtime->tv_nsec != VNOVAL && birthtime->tv_nsec != VNOVAL)
+	if (vap->va_birthtime.tv_nsec != VNOVAL &&
+	    vap->va_birthtime.tv_nsec != VNOVAL)
 		node->tn_status |= TMPFS_NODE_MODIFIED;
 
-	tmpfs_itimes(vp, atime, mtime);
+	tmpfs_itimes(vp, &vap->va_atime, &vap->va_mtime);
 
-	if (birthtime->tv_nsec != VNOVAL && birthtime->tv_nsec != VNOVAL)
-		node->tn_birthtime = *birthtime;
+	if (vap->va_birthtime.tv_nsec != VNOVAL &&
+	    vap->va_birthtime.tv_nsec != VNOVAL)
+		node->tn_birthtime = vap->va_birthtime;
 	MPASS(VOP_ISLOCKED(vp));
 
 	return 0;

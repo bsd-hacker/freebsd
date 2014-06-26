@@ -40,7 +40,6 @@ __FBSDID("$FreeBSD$");
  */
 
 #include "opt_inet6.h"
-#include "opt_kdtrace.h"
 #include "opt_kgssapi.h"
 
 #include <sys/param.h>
@@ -748,7 +747,6 @@ nfs_set_sigmask(struct thread *td, sigset_t *oldset)
 			SIGDELSET(newset, nfs_sig_set[i]);
 	}
 	mtx_unlock(&p->p_sigacts->ps_mtx);
-	sigdeferstop(td);
 	kern_sigprocmask(td, SIG_SETMASK, &newset, oldset,
 	    SIGPROCMASK_PROC_LOCKED);
 	PROC_UNLOCK(p);
@@ -760,7 +758,6 @@ nfs_restore_sigmask(struct thread *td, sigset_t *set)
 	if (td == NULL)
 		td = curthread; /* XXX */
 	kern_sigprocmask(td, SIG_SETMASK, set, NULL, 0);
-	sigallowstop(td);
 }
 
 /*

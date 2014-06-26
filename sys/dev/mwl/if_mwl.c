@@ -59,6 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
  
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
@@ -281,11 +282,13 @@ struct mwltxrec {
  * that all BAR 1 operations are done in the "hal" and
  * there should be no reference to them here.
  */
+#ifdef MWL_DEBUG
 static __inline uint32_t
 RD4(struct mwl_softc *sc, bus_size_t off)
 {
 	return bus_space_read_4(sc->sc_io0t, sc->sc_io0h, off);
 }
+#endif
 
 static __inline void
 WR4(struct mwl_softc *sc, bus_size_t off, uint32_t val)
@@ -2038,13 +2041,6 @@ mwl_desc_setup(struct mwl_softc *sc, const char *name,
 	}
 
 	/* allocate descriptors */
-	error = bus_dmamap_create(dd->dd_dmat, BUS_DMA_NOWAIT, &dd->dd_dmamap);
-	if (error != 0) {
-		if_printf(ifp, "unable to create dmamap for %s descriptors, "
-			"error %u\n", dd->dd_name, error);
-		goto fail0;
-	}
-
 	error = bus_dmamem_alloc(dd->dd_dmat, (void**) &dd->dd_desc,
 				 BUS_DMA_NOWAIT | BUS_DMA_COHERENT, 
 				 &dd->dd_dmamap);
@@ -2074,8 +2070,6 @@ mwl_desc_setup(struct mwl_softc *sc, const char *name,
 fail2:
 	bus_dmamem_free(dd->dd_dmat, dd->dd_desc, dd->dd_dmamap);
 fail1:
-	bus_dmamap_destroy(dd->dd_dmat, dd->dd_dmamap);
-fail0:
 	bus_dma_tag_destroy(dd->dd_dmat);
 	memset(dd, 0, sizeof(*dd));
 	return error;
@@ -2087,7 +2081,6 @@ mwl_desc_cleanup(struct mwl_softc *sc, struct mwl_descdma *dd)
 {
 	bus_dmamap_unload(dd->dd_dmat, dd->dd_dmamap);
 	bus_dmamem_free(dd->dd_dmat, dd->dd_desc, dd->dd_dmamap);
-	bus_dmamap_destroy(dd->dd_dmat, dd->dd_dmamap);
 	bus_dma_tag_destroy(dd->dd_dmat);
 
 	memset(dd, 0, sizeof(*dd));
@@ -2226,9 +2219,8 @@ mwl_rxdma_setup(struct mwl_softc *sc)
 		       NULL,			/* lockfunc */
 		       NULL,			/* lockarg */
 		       &sc->sc_rxdmat);
-	error = bus_dmamap_create(sc->sc_rxdmat, BUS_DMA_NOWAIT, &sc->sc_rxmap);
 	if (error != 0) {
-		if_printf(ifp, "could not create rx DMA map\n");
+		if_printf(ifp, "could not create rx DMA tag\n");
 		return error;
 	}
 
@@ -2289,15 +2281,13 @@ mwl_rxdma_setup(struct mwl_softc *sc)
 static void
 mwl_rxdma_cleanup(struct mwl_softc *sc)
 {
-	if (sc->sc_rxmap != NULL)
+	if (sc->sc_rxmem_paddr != 0) {
 		bus_dmamap_unload(sc->sc_rxdmat, sc->sc_rxmap);
+		sc->sc_rxmem_paddr = 0;
+	}
 	if (sc->sc_rxmem != NULL) {
 		bus_dmamem_free(sc->sc_rxdmat, sc->sc_rxmem, sc->sc_rxmap);
 		sc->sc_rxmem = NULL;
-	}
-	if (sc->sc_rxmap != NULL) {
-		bus_dmamap_destroy(sc->sc_rxdmat, sc->sc_rxmap);
-		sc->sc_rxmap = NULL;
 	}
 	if (sc->sc_rxdma.dd_bufptr != NULL) {
 		free(sc->sc_rxdma.dd_bufptr, M_MWLDEV);
@@ -2621,8 +2611,8 @@ mwl_rxbuf_init(struct mwl_softc *sc, struct mwl_rxbuf *bf)
 	return 0;
 }
 
-static void
-mwl_ext_free(void *data, void *arg)
+static int
+mwl_ext_free(struct mbuf *m, void *data, void *arg)
 {
 	struct mwl_softc *sc = arg;
 
@@ -2637,6 +2627,7 @@ mwl_ext_free(void *data, void *arg)
 		sc->sc_rxblocked = 0;
 		mwl_hal_intrset(sc->sc_mh, sc->sc_imask);
 	}
+	return (EXT_FREE_OK);
 }
 
 struct mwl_frame_bar {
@@ -2882,12 +2873,13 @@ mwl_rx_proc(void *arg, int npending)
 		 * upper layer to put a station in power save
 		 * (except when configured with MWL_HOST_PS_SUPPORT).
 		 */
-		if (wh->i_fc[1] & IEEE80211_FC1_WEP)
+		if (wh->i_fc[1] & IEEE80211_FC1_PROTECTED)
 			m->m_flags |= M_WEP;
 #ifdef MWL_HOST_PS_SUPPORT
-		wh->i_fc[1] &= ~IEEE80211_FC1_WEP;
+		wh->i_fc[1] &= ~IEEE80211_FC1_PROTECTED;
 #else
-		wh->i_fc[1] &= ~(IEEE80211_FC1_WEP | IEEE80211_FC1_PWR_MGT);
+		wh->i_fc[1] &= ~(IEEE80211_FC1_PROTECTED |
+		    IEEE80211_FC1_PWR_MGT);
 #endif
 
 		if (ieee80211_radiotap_active(ic)) {
@@ -3201,7 +3193,7 @@ mwl_tx_start(struct mwl_softc *sc, struct ieee80211_node *ni, struct mwl_txbuf *
 #endif
 
 	wh = mtod(m0, struct ieee80211_frame *);
-	iswep = wh->i_fc[1] & IEEE80211_FC1_WEP;
+	iswep = wh->i_fc[1] & IEEE80211_FC1_PROTECTED;
 	ismcast = IEEE80211_IS_MULTICAST(wh->i_addr1);
 	hdrlen = ieee80211_anyhdrsize(wh);
 	copyhdrlen = hdrlen;

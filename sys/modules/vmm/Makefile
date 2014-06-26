@@ -2,11 +2,11 @@
 
 KMOD=	vmm
 
-SRCS=	opt_ddb.h device_if.h bus_if.h pci_if.h
+SRCS=	opt_acpi.h opt_ddb.h device_if.h bus_if.h pci_if.h
 
 CFLAGS+= -DVMM_KEEP_STATS -DSMP
-CFLAGS+= -I${.CURDIR}/../../amd64/vmm	
-CFLAGS+= -I${.CURDIR}/../../amd64/vmm/io	
+CFLAGS+= -I${.CURDIR}/../../amd64/vmm
+CFLAGS+= -I${.CURDIR}/../../amd64/vmm/io
 CFLAGS+= -I${.CURDIR}/../../amd64/vmm/intel
 
 # generic vmm support
@@ -15,6 +15,7 @@ SRCS+=	vmm.c		\
 	vmm_dev.c	\
 	vmm_host.c	\
 	vmm_instruction_emul.c	\
+	vmm_ioport.c	\
 	vmm_ipi.c	\
 	vmm_lapic.c	\
 	vmm_mem.c	\
@@ -27,7 +28,10 @@ SRCS+=	vmm.c		\
 .PATH: ${.CURDIR}/../../amd64/vmm/io
 SRCS+=	iommu.c		\
 	ppt.c           \
-	vdev.c		\
+	vatpic.c	\
+	vatpit.c	\
+	vhpet.c		\
+	vioapic.c	\
 	vlapic.c
 
 # intel-specific files

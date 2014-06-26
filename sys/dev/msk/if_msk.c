@@ -117,6 +117,7 @@ __FBSDID("$FreeBSD$");
 #include <net/bpf.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
@@ -162,7 +163,7 @@ TUNABLE_INT("hw.msk.jumbo_disable", &jumbo_disable);
 /*
  * Devices supported by this driver.
  */
-static struct msk_product {
+static const struct msk_product {
 	uint16_t	msk_vendorid;
 	uint16_t	msk_deviceid;
 	const char	*msk_name;
@@ -257,6 +258,7 @@ static int mskc_shutdown(device_t);
 static int mskc_setup_rambuffer(struct msk_softc *);
 static int mskc_suspend(device_t);
 static int mskc_resume(device_t);
+static bus_dma_tag_t mskc_get_dma_tag(device_t, device_t);
 static void mskc_reset(struct msk_softc *);
 
 static int msk_probe(device_t);
@@ -334,6 +336,8 @@ static device_method_t mskc_methods[] = {
 	DEVMETHOD(device_resume,	mskc_resume),
 	DEVMETHOD(device_shutdown,	mskc_shutdown),
 
+	DEVMETHOD(bus_get_dma_tag,	mskc_get_dma_tag),
+
 	DEVMETHOD_END
 };
 
@@ -368,9 +372,9 @@ static driver_t msk_driver = {
 
 static devclass_t msk_devclass;
 
-DRIVER_MODULE(mskc, pci, mskc_driver, mskc_devclass, 0, 0);
-DRIVER_MODULE(msk, mskc, msk_driver, msk_devclass, 0, 0);
-DRIVER_MODULE(miibus, msk, miibus_driver, miibus_devclass, 0, 0);
+DRIVER_MODULE(mskc, pci, mskc_driver, mskc_devclass, NULL, NULL);
+DRIVER_MODULE(msk, mskc, msk_driver, msk_devclass, NULL, NULL);
+DRIVER_MODULE(miibus, msk, miibus_driver, miibus_devclass, NULL, NULL);
 
 static struct resource_spec msk_res_spec_io[] = {
 	{ SYS_RES_IOPORT,	PCIR_BAR(1),	RF_ACTIVE },
@@ -1180,15 +1184,14 @@ msk_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 static int
 mskc_probe(device_t dev)
 {
-	struct msk_product *mp;
+	const struct msk_product *mp;
 	uint16_t vendor, devid;
 	int i;
 
 	vendor = pci_get_vendor(dev);
 	devid = pci_get_device(dev);
 	mp = msk_products;
-	for (i = 0; i < sizeof(msk_products)/sizeof(msk_products[0]);
-	    i++, mp++) {
+	for (i = 0; i < nitems(msk_products); i++, mp++) {
 		if (vendor == mp->msk_vendorid && devid == mp->msk_deviceid) {
 			device_set_desc(dev, mp->msk_name);
 			return (BUS_PROBE_DEFAULT);
@@ -1695,6 +1698,12 @@ msk_attach(device_t dev)
 			ifp->if_capabilities |= IFCAP_VLAN_HWCSUM;
 	}
 	ifp->if_capenable = ifp->if_capabilities;
+	/*
+	 * Disable RX checksum offloading on controllers that don't use
+	 * new descriptor format but give chance to enable it.
+	 */
+	if ((sc_if->msk_flags & MSK_FLAG_DESCV2) == 0)
+		ifp->if_capenable &= ~IFCAP_RXCSUM;
 
 	/*
 	 * Tell the upper layer(s) we support long frames.
@@ -2112,6 +2121,13 @@ mskc_detach(device_t dev)
 	return (0);
 }
 
+static bus_dma_tag_t
+mskc_get_dma_tag(device_t bus, device_t child __unused)
+{
+
+	return (bus_get_dma_tag(bus));
+}
+
 struct msk_dmamap_arg {
 	bus_addr_t	msk_busaddr;
 };
@@ -2193,14 +2209,14 @@ msk_status_dma_free(struct msk_softc *sc)
 
 	/* Destroy status block. */
 	if (sc->msk_stat_tag) {
-		if (sc->msk_stat_map) {
+		if (sc->msk_stat_ring_paddr) {
 			bus_dmamap_unload(sc->msk_stat_tag, sc->msk_stat_map);
-			if (sc->msk_stat_ring) {
-				bus_dmamem_free(sc->msk_stat_tag,
-				    sc->msk_stat_ring, sc->msk_stat_map);
-				sc->msk_stat_ring = NULL;
-			}
-			sc->msk_stat_map = NULL;
+			sc->msk_stat_ring_paddr = 0;
+		}
+		if (sc->msk_stat_ring) {
+			bus_dmamem_free(sc->msk_stat_tag,
+			    sc->msk_stat_ring, sc->msk_stat_map);
+			sc->msk_stat_ring = NULL;
 		}
 		bus_dma_tag_destroy(sc->msk_stat_tag);
 		sc->msk_stat_tag = NULL;
@@ -2511,31 +2527,29 @@ msk_txrx_dma_free(struct msk_if_softc *sc_if)
 
 	/* Tx ring. */
 	if (sc_if->msk_cdata.msk_tx_ring_tag) {
-		if (sc_if->msk_cdata.msk_tx_ring_map)
+		if (sc_if->msk_rdata.msk_tx_ring_paddr)
 			bus_dmamap_unload(sc_if->msk_cdata.msk_tx_ring_tag,
 			    sc_if->msk_cdata.msk_tx_ring_map);
-		if (sc_if->msk_cdata.msk_tx_ring_map &&
-		    sc_if->msk_rdata.msk_tx_ring)
+		if (sc_if->msk_rdata.msk_tx_ring)
 			bus_dmamem_free(sc_if->msk_cdata.msk_tx_ring_tag,
 			    sc_if->msk_rdata.msk_tx_ring,
 			    sc_if->msk_cdata.msk_tx_ring_map);
 		sc_if->msk_rdata.msk_tx_ring = NULL;
-		sc_if->msk_cdata.msk_tx_ring_map = NULL;
+		sc_if->msk_rdata.msk_tx_ring_paddr = 0;
 		bus_dma_tag_destroy(sc_if->msk_cdata.msk_tx_ring_tag);
 		sc_if->msk_cdata.msk_tx_ring_tag = NULL;
 	}
 	/* Rx ring. */
 	if (sc_if->msk_cdata.msk_rx_ring_tag) {
-		if (sc_if->msk_cdata.msk_rx_ring_map)
+		if (sc_if->msk_rdata.msk_rx_ring_paddr)
 			bus_dmamap_unload(sc_if->msk_cdata.msk_rx_ring_tag,
 			    sc_if->msk_cdata.msk_rx_ring_map);
-		if (sc_if->msk_cdata.msk_rx_ring_map &&
-		    sc_if->msk_rdata.msk_rx_ring)
+		if (sc_if->msk_rdata.msk_rx_ring)
 			bus_dmamem_free(sc_if->msk_cdata.msk_rx_ring_tag,
 			    sc_if->msk_rdata.msk_rx_ring,
 			    sc_if->msk_cdata.msk_rx_ring_map);
 		sc_if->msk_rdata.msk_rx_ring = NULL;
-		sc_if->msk_cdata.msk_rx_ring_map = NULL;
+		sc_if->msk_rdata.msk_rx_ring_paddr = 0;
 		bus_dma_tag_destroy(sc_if->msk_cdata.msk_rx_ring_tag);
 		sc_if->msk_cdata.msk_rx_ring_tag = NULL;
 	}
@@ -2584,16 +2598,15 @@ msk_rx_dma_jfree(struct msk_if_softc *sc_if)
 
 	/* Jumbo Rx ring. */
 	if (sc_if->msk_cdata.msk_jumbo_rx_ring_tag) {
-		if (sc_if->msk_cdata.msk_jumbo_rx_ring_map)
+		if (sc_if->msk_rdata.msk_jumbo_rx_ring_paddr)
 			bus_dmamap_unload(sc_if->msk_cdata.msk_jumbo_rx_ring_tag,
 			    sc_if->msk_cdata.msk_jumbo_rx_ring_map);
-		if (sc_if->msk_cdata.msk_jumbo_rx_ring_map &&
-		    sc_if->msk_rdata.msk_jumbo_rx_ring)
+		if (sc_if->msk_rdata.msk_jumbo_rx_ring)
 			bus_dmamem_free(sc_if->msk_cdata.msk_jumbo_rx_ring_tag,
 			    sc_if->msk_rdata.msk_jumbo_rx_ring,
 			    sc_if->msk_cdata.msk_jumbo_rx_ring_map);
 		sc_if->msk_rdata.msk_jumbo_rx_ring = NULL;
-		sc_if->msk_cdata.msk_jumbo_rx_ring_map = NULL;
+		sc_if->msk_rdata.msk_jumbo_rx_ring_paddr = 0;
 		bus_dma_tag_destroy(sc_if->msk_cdata.msk_jumbo_rx_ring_tag);
 		sc_if->msk_cdata.msk_jumbo_rx_ring_tag = NULL;
 	}
@@ -3520,7 +3533,7 @@ msk_intr_hwerr(struct msk_softc *sc)
 		 * On PCI Express bus bridges are called root complexes (RC).
 		 * PCI Express errors are recognized by the root complex too,
 		 * which requests the system to handle the problem. After
-		 * error occurence it may be that no access to the adapter
+		 * error occurrence it may be that no access to the adapter
 		 * may be performed any longer.
 		 */
 
@@ -3734,9 +3747,6 @@ msk_intr(void *xsc)
 	if ((status & Y2_IS_STAT_BMU) != 0 && domore == 0)
 		CSR_WRITE_4(sc, STAT_CTRL, SC_STAT_CLR_IRQ);
 
-	/* Clear TWSI IRQ. */
-	if ((status & Y2_IS_TWSI_RDY) != 0)
-		CSR_WRITE_4(sc, B2_I2C_IRQ, 1);
 	/* Reenable interrupts. */
 	CSR_WRITE_4(sc, B0_Y2_SP_ICR, 2);
 
@@ -4055,11 +4065,11 @@ msk_init_locked(struct msk_if_softc *sc_if)
 	CSR_WRITE_4(sc, B0_IMSK, sc->msk_intrmask);
 	CSR_READ_4(sc, B0_IMSK);
 
-	sc_if->msk_flags &= ~MSK_FLAG_LINK;
-	mii_mediachg(mii);
-
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+
+	sc_if->msk_flags &= ~MSK_FLAG_LINK;
+	mii_mediachg(mii);
 
 	callout_reset(&sc_if->msk_tick_ch, hz, msk_tick, sc_if);
 }

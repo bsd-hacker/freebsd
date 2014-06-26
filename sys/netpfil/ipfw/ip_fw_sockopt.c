@@ -159,7 +159,7 @@ ipfw_add_rule(struct ip_fw_chain *chain, struct ip_fw *input_rule)
 	int i, l, insert_before;
 	struct ip_fw **map;	/* the new array of pointers */
 
-	if (chain->rules == NULL || input_rule->rulenum > IPFW_DEFAULT_RULE-1)
+	if (chain->map == NULL || input_rule->rulenum > IPFW_DEFAULT_RULE - 1)
 		return (EINVAL);
 
 	l = RULESIZE(input_rule);
@@ -373,14 +373,15 @@ del_entry(struct ip_fw_chain *chain, uint32_t arg)
 		/* 4. swap the maps (under BH_LOCK) */
 		map = swap_map(chain, map, chain->n_rules - n);
 		/* 5. now remove the rules deleted from the old map */
+		if (cmd == 1)
+			ipfw_expire_dyn_rules(chain, NULL, new_set);
 		for (i = start; i < end; i++) {
-			int l;
 			rule = map[i];
 			if (keep_rule(rule, cmd, new_set, num))
 				continue;
-			l = RULESIZE(rule);
-			chain->static_len -= l;
-			ipfw_expire_dyn_rules(chain, rule, RESVD_SET);
+			chain->static_len -= RULESIZE(rule);
+			if (cmd != 1)
+				ipfw_expire_dyn_rules(chain, rule, RESVD_SET);
 			rule->x_next = chain->reap;
 			chain->reap = rule;
 		}
@@ -652,7 +653,7 @@ check_ipfw_struct(struct ip_fw *rule, int size)
 
 		case O_IP_SRC_LOOKUP:
 		case O_IP_DST_LOOKUP:
-			if (cmd->arg1 >= IPFW_TABLES_MAX) {
+			if (cmd->arg1 >= V_fw_tables_max) {
 				printf("ipfw: invalid table number %d\n",
 				    cmd->arg1);
 				return (EINVAL);
@@ -675,6 +676,11 @@ check_ipfw_struct(struct ip_fw *rule, int size)
 		case O_TCPWIN:
 		case O_TAGGED:
 			if (cmdlen < 1 || cmdlen > 31)
+				goto bad_size;
+			break;
+
+		case O_DSCP:
+			if (cmdlen != F_INSN_SIZE(ipfw_insn_u32) + 1)
 				goto bad_size;
 			break;
 
@@ -738,6 +744,7 @@ check_ipfw_struct(struct ip_fw *rule, int size)
 		case O_ACCEPT:
 		case O_DENY:
 		case O_REJECT:
+		case O_SETDSCP:
 #ifdef INET6
 		case O_UNREACH6:
 #endif
@@ -1032,8 +1039,10 @@ ipfw_ctl(struct sockopt *sopt)
 		if (sopt->sopt_valsize == RULESIZE7(rule)) {
 		    is7 = 1;
 		    error = convert_rule_to_8(rule);
-		    if (error)
+		    if (error) {
+			free(rule, M_TEMP);
 			return error;
+		    }
 		    if (error == 0)
 			error = check_ipfw_struct(rule, RULESIZE(rule));
 		} else {
@@ -1049,11 +1058,13 @@ ipfw_ctl(struct sockopt *sopt)
 				if (is7) {
 					error = convert_rule_to_7(rule);
 					size = RULESIZE7(rule);
-					if (error)
+					if (error) {
+						free(rule, M_TEMP);
 						return error;
+					}
 				}
 				error = sooptcopyout(sopt, rule, size);
-		}
+			}
 		}
 		free(rule, M_TEMP);
 		break;

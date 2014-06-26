@@ -1,11 +1,13 @@
 #	@(#)Makefile	8.8 (Berkeley) 3/28/97
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 SENDMAIL_DIR=${.CURDIR}/../../contrib/sendmail
 SMDIR=	${SENDMAIL_DIR}/src
 .PATH: ${SMDIR}
+
+NO_PIE=	yes
 
 BINDIR=	/usr/libexec/sendmail
 
@@ -45,11 +47,6 @@ CFLAGS+= -DNETINET6
 
 WARNS?=	1
 
-# Unfortunately, clang gives warnings about sendmail code that cannot
-# be turned off yet.  Since this is contrib code, and we don't really
-# care about the warnings, just make them non-fatal for now.
-NO_WERROR.clang=
-
 DPADD=	${LIBUTIL} ${LIBWRAP}
 LDADD=	-lutil -lwrap
 
@@ -65,7 +62,7 @@ LDADD+=	${LIBSMUTIL} ${LIBSM}
 SRCS+=	sm_os.h
 CLEANFILES+=sm_os.h
 
-.if ${MK_OPENSSL} != "no" && !defined(RELEASE_CRUNCH)
+.if ${MK_OPENSSL} != "no"
 # STARTTLS support
 CFLAGS+=	-DSTARTTLS -D_FFR_TLS_1
 DPADD+=		${LIBSSL} ${LIBCRYPTO}

@@ -341,6 +341,10 @@ AdAmlDisassemble (
         {
             AcpiDmClearExternalList ();
         }
+
+        /* Load any externals defined in the optional external ref file */
+
+        AcpiDmGetExternalsFromFile ();
     }
     else
     {
@@ -372,7 +376,7 @@ AdAmlDisassemble (
     }
 
     /*
-     * Output:  ASL code. Redirect to a file if requested
+     * Output: ASL code. Redirect to a file if requested
      */
     if (OutToFile)
     {
@@ -540,11 +544,6 @@ Cleanup:
         ACPI_FREE (Table);
     }
 
-    if (DisasmFilename)
-    {
-        ACPI_FREE (DisasmFilename);
-    }
-
     if (OutToFile && File)
     {
         if (AslCompilerdebug) /* Display final namespace, with transforms */
@@ -633,10 +632,12 @@ AdCreateTableHeader (
     switch (Table->Revision)
     {
     case 0:
+
         AcpiOsPrintf (" **** Invalid Revision");
         break;
 
     case 1:
+
         /* Revision of DSDT controls the ACPI integer width */
 
         if (ACPI_COMPARE_NAME (Table->Signature, ACPI_SIG_DSDT))
@@ -646,6 +647,7 @@ AdCreateTableHeader (
         break;
 
     default:
+
         break;
     }
     AcpiOsPrintf ("\n");
@@ -667,7 +669,7 @@ AdCreateTableHeader (
     AcpiOsPrintf (" *     OEM Revision     0x%8.8X (%u)\n", Table->OemRevision, Table->OemRevision);
     AcpiOsPrintf (" *     Compiler ID      \"%.4s\"\n",     Table->AslCompilerId);
     AcpiOsPrintf (" *     Compiler Version 0x%8.8X (%u)\n", Table->AslCompilerRevision, Table->AslCompilerRevision);
-    AcpiOsPrintf (" */\n\n");
+    AcpiOsPrintf (" */\n");
 
     /* Create AML output filename based on input filename */
 

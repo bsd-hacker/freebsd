@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+NO_PIE=	yes
+
 LLVM_SRCS= ${.CURDIR}/../../../contrib/llvm
 
 .include "../../lib/clang/clang.build.mk"
@@ -8,6 +10,9 @@ LLVM_SRCS= ${.CURDIR}/../../../contrib/llvm
 DPADD+=	${.OBJDIR}/../../../lib/clang/lib${lib}/lib${lib}.a
 LDADD+=	${.OBJDIR}/../../../lib/clang/lib${lib}/lib${lib}.a
 .endfor
+
+DPADD+=	${LIBNCURSES}
+LDADD+=	-lncurses
 
 BINDIR?= /usr/bin
 

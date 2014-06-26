@@ -101,10 +101,17 @@ struct	thread thread0 __aligned(16);
 struct	vmspace vmspace0;
 struct	proc *initproc;
 
-int	boothowto = 0;		/* initialized so that it can be patched */
+#ifndef BOOTHOWTO
+#define	BOOTHOWTO	0
+#endif
+int	boothowto = BOOTHOWTO;	/* initialized so that it can be patched */
 SYSCTL_INT(_debug, OID_AUTO, boothowto, CTLFLAG_RD, &boothowto, 0,
 	"Boot control flags, passed from loader");
-int	bootverbose;
+
+#ifndef BOOTVERBOSE
+#define	BOOTVERBOSE	0
+#endif
+int	bootverbose = BOOTVERBOSE;
 SYSCTL_INT(_debug, OID_AUTO, bootverbose, CTLFLAG_RW, &bootverbose, 0,
 	"Control the output of verbose kernel messages");
 
@@ -236,9 +243,6 @@ restart:
 	/*
 	 * Traverse the (now) ordered list of system initialization tasks.
 	 * Perform each task, and continue on to the next task.
-	 *
-	 * The last item on the list is expected to be the scheduler,
-	 * which will not return.
 	 */
 	for (sipp = sysinit; sipp < sysinit_end; sipp++) {
 
@@ -296,7 +300,13 @@ restart:
 		}
 	}
 
-	panic("Shouldn't get here!");
+	mtx_assert(&Giant, MA_OWNED | MA_NOTRECURSED);
+	mtx_unlock(&Giant);
+
+	/*
+	 * Now hand over this thread to swapper.
+	 */
+	swapper();
 	/* NOTREACHED*/
 }
 
@@ -339,7 +349,7 @@ static char wit_warn[] =
      "WARNING: WITNESS option enabled, expect reduced performance.\n";
 SYSINIT(witwarn, SI_SUB_COPYRIGHT, SI_ORDER_THIRD + 1,
    print_caddr_t, wit_warn);
-SYSINIT(witwarn2, SI_SUB_RUN_SCHEDULER, SI_ORDER_THIRD + 1,
+SYSINIT(witwarn2, SI_SUB_LAST, SI_ORDER_THIRD + 1,
    print_caddr_t, wit_warn);
 #endif
 
@@ -348,7 +358,7 @@ static char diag_warn[] =
      "WARNING: DIAGNOSTIC option enabled, expect reduced performance.\n";
 SYSINIT(diagwarn, SI_SUB_COPYRIGHT, SI_ORDER_THIRD + 2,
     print_caddr_t, diag_warn);
-SYSINIT(diagwarn2, SI_SUB_RUN_SCHEDULER, SI_ORDER_THIRD + 2,
+SYSINIT(diagwarn2, SI_SUB_LAST, SI_ORDER_THIRD + 2,
     print_caddr_t, diag_warn);
 #endif
 
@@ -445,15 +455,6 @@ proc0_init(void *dummy __unused)
 	 * Add scheduler specific parts to proc, thread as needed.
 	 */
 	schedinit();	/* scheduler gets its house in order */
-	/*
-	 * Initialize sleep queue hash table
-	 */
-	sleepinit();
-
-	/*
-	 * additional VM structures
-	 */
-	vm_init2();
 
 	/*
 	 * Create process 0 (the swapper).
@@ -473,6 +474,7 @@ proc0_init(void *dummy __unused)
 
 	p->p_sysent = &null_sysvec;
 	p->p_flag = P_SYSTEM | P_INMEM;
+	p->p_flag2 = 0;
 	p->p_state = PRS_NORMAL;
 	knlist_init_mtx(&p->p_klist, &p->p_mtx);
 	STAILQ_INIT(&p->p_ktr);
@@ -542,7 +544,7 @@ proc0_init(void *dummy __unused)
 	p->p_limit->pl_rlimit[RLIMIT_STACK].rlim_cur = dflssiz;
 	p->p_limit->pl_rlimit[RLIMIT_STACK].rlim_max = maxssiz;
 	/* Cast to avoid overflow on i386/PAE. */
-	pageablemem = ptoa((vm_paddr_t)cnt.v_free_count);
+	pageablemem = ptoa((vm_paddr_t)vm_cnt.v_free_count);
 	p->p_limit->pl_rlimit[RLIMIT_RSS].rlim_cur =
 	    p->p_limit->pl_rlimit[RLIMIT_RSS].rlim_max = pageablemem;
 	p->p_limit->pl_rlimit[RLIMIT_MEMLOCK].rlim_cur = pageablemem / 3;
@@ -708,8 +710,8 @@ start_init(void *dummy)
 	 * Need just enough stack to hold the faked-up "execve()" arguments.
 	 */
 	addr = p->p_sysent->sv_usrstack - PAGE_SIZE;
-	if (vm_map_find(&p->p_vmspace->vm_map, NULL, 0, &addr, PAGE_SIZE,
-			FALSE, VM_PROT_ALL, VM_PROT_ALL, 0) != 0)
+	if (vm_map_find(&p->p_vmspace->vm_map, NULL, 0, &addr, PAGE_SIZE, 0,
+	    VMFS_NO_SPACE, VM_PROT_ALL, VM_PROT_ALL, 0) != 0)
 		panic("init: couldn't allocate argument space");
 	p->p_vmspace->vm_maxsaddr = (caddr_t)addr;
 	p->p_vmspace->vm_ssize = 1;

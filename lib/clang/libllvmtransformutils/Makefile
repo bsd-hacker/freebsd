@@ -1,12 +1,11 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 LIB=	llvmtransformutils
 
 SRCDIR=	lib/Transforms/Utils
-SRCS=	AddrModeMatcher.cpp \
-	BasicBlockUtils.cpp \
+SRCS=	BasicBlockUtils.cpp \
 	BreakCriticalEdges.cpp \
 	BuildLibCalls.cpp \
 	BypassSlowDivision.cpp \
@@ -15,6 +14,8 @@ SRCS=	AddrModeMatcher.cpp \
 	CmpInstAnalysis.cpp \
 	CodeExtractor.cpp \
 	DemoteRegToStack.cpp \
+	FlattenCFG.cpp \
+	GlobalStatus.cpp \
 	InlineFunction.cpp \
 	InstructionNamer.cpp \
 	IntegerDivision.cpp \
@@ -35,6 +36,7 @@ SRCS=	AddrModeMatcher.cpp \
 	SimplifyIndVar.cpp \
 	SimplifyInstructions.cpp \
 	SimplifyLibCalls.cpp \
+	SpecialCaseList.cpp \
 	UnifyFunctionExitNodes.cpp \
 	ValueMapper.cpp
 

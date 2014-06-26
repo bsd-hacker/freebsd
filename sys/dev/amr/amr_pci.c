@@ -184,7 +184,6 @@ amr_pci_attach(device_t dev)
     struct amr_softc	*sc;
     struct amr_ident	*id;
     int			rid, rtype, error;
-    u_int32_t		command;
 
     debug_called(1);
 
@@ -204,24 +203,8 @@ amr_pci_attach(device_t dev)
     if ((id = amr_find_ident(dev)) == NULL)
 	return (ENXIO);
 
-    command = pci_read_config(dev, PCIR_COMMAND, 1);
     if (id->flags & AMR_ID_QUARTZ) {
-	/*
-	 * Make sure we are going to be able to talk to this board.
-	 */
-	if ((command & PCIM_CMD_MEMEN) == 0) {
-	    device_printf(dev, "memory window not available\n");
-	    return (ENXIO);
-	}
 	sc->amr_type |= AMR_TYPE_QUARTZ;
-    } else {
-	/*
-	 * Make sure we are going to be able to talk to this board.
-	 */
-	if ((command & PCIM_CMD_PORTEN) == 0) {
-	    device_printf(dev, "I/O window not available\n");
-	    return (ENXIO);
-	}
     }
 
     if ((amr_force_sg32 == 0) && (id->flags & AMR_ID_DO_SG64) &&
@@ -231,11 +214,7 @@ amr_pci_attach(device_t dev)
     }
 
     /* force the busmaster enable bit on */
-    if (!(command & PCIM_CMD_BUSMASTEREN)) {
-	device_printf(dev, "busmaster bit not set, enabling\n");
-	command |= PCIM_CMD_BUSMASTEREN;
-	pci_write_config(dev, PCIR_COMMAND, command, 2);
-    }
+    pci_enable_busmaster(dev);
 
     /*
      * Allocate the PCI register window.
@@ -498,20 +477,25 @@ amr_pci_free(struct amr_softc *sc)
 	bus_dma_tag_destroy(sc->amr_buffer64_dmat);
 
     /* free and destroy DMA memory and tag for passthrough pool */
-    if (sc->amr_ccb)
+    if (sc->amr_ccb) {
+	bus_dmamap_unload(sc->amr_ccb_dmat, sc->amr_ccb_dmamap);
 	bus_dmamem_free(sc->amr_ccb_dmat, sc->amr_ccb, sc->amr_ccb_dmamap);
+    }
     if (sc->amr_ccb_dmat)
 	bus_dma_tag_destroy(sc->amr_ccb_dmat);
 
     /* free and destroy DMA memory and tag for s/g lists */
-    if (sc->amr_sgtable)
+    if (sc->amr_sgtable) {
+	bus_dmamap_unload(sc->amr_sg_dmat, sc->amr_sg_dmamap);
 	bus_dmamem_free(sc->amr_sg_dmat, sc->amr_sgtable, sc->amr_sg_dmamap);
+    }
     if (sc->amr_sg_dmat)
 	bus_dma_tag_destroy(sc->amr_sg_dmat);
 
     /* free and destroy DMA memory and tag for mailbox */
     p = (void *)(uintptr_t)(volatile void *)sc->amr_mailbox64;
     if (sc->amr_mailbox) {
+	bus_dmamap_unload(sc->amr_mailbox_dmat, sc->amr_mailbox_dmamap);
 	bus_dmamem_free(sc->amr_mailbox_dmat, p, sc->amr_mailbox_dmamap);
     }
     if (sc->amr_mailbox_dmat)

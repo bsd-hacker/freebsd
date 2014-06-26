@@ -1,14 +1,15 @@
 # $FreeBSD$
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 LIBARCHIVEDIR=	${.CURDIR}/../../contrib/libarchive
 
 PROG=	bsdtar
-BSDTAR_VERSION_STRING=	3.0.4
+BSDTAR_VERSION_STRING=	3.1.2
 
 .PATH: ${LIBARCHIVEDIR}/tar
 SRCS=	bsdtar.c	\
 	cmdline.c	\
+	creation_set.c	\
 	read.c		\
 	subst.c		\
 	util.c		\

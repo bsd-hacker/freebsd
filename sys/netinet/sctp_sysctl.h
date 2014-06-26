@@ -72,6 +72,7 @@ struct sctp_sysctl {
 	uint32_t sctp_path_rtx_max_default;
 	uint32_t sctp_path_pf_threshold;
 	uint32_t sctp_add_more_threshold;
+	uint32_t sctp_nr_incoming_streams_default;
 	uint32_t sctp_nr_outgoing_streams_default;
 	uint32_t sctp_cmt_on_off;
 	uint32_t sctp_cmt_use_dac;
@@ -103,6 +104,7 @@ struct sctp_sysctl {
 	uint32_t sctp_rttvar_eqret;
 	uint32_t sctp_steady_step;
 	uint32_t sctp_use_dccc_ecn;
+	uint32_t sctp_diag_info_code;
 #if defined(SCTP_LOCAL_TRACE_BUF)
 	struct sctp_log sctp_log;
 #endif
@@ -322,6 +324,12 @@ struct sctp_sysctl {
 #define SCTPCTL_ADD_MORE_ON_OUTPUT_MAX	0xFFFFFFFF
 #define SCTPCTL_ADD_MORE_ON_OUTPUT_DEFAULT SCTP_DEFAULT_ADD_MORE
 
+/* incoming_streams: Default number of incoming streams */
+#define SCTPCTL_INCOMING_STREAMS_DESC	"Default number of incoming streams"
+#define SCTPCTL_INCOMING_STREAMS_MIN	1
+#define SCTPCTL_INCOMING_STREAMS_MAX	65535
+#define SCTPCTL_INCOMING_STREAMS_DEFAULT SCTP_ISTREAM_INITIAL
+
 /* outgoing_streams: Default number of outgoing streams */
 #define SCTPCTL_OUTGOING_STREAMS_DESC	"Default number of outgoing streams"
 #define SCTPCTL_OUTGOING_STREAMS_MIN	1
@@ -458,7 +466,7 @@ struct sctp_sysctl {
 #define SCTPCTL_UDP_TUNNELING_PORT_DESC		"Set the SCTP/UDP tunneling port"
 #define SCTPCTL_UDP_TUNNELING_PORT_MIN		0
 #define SCTPCTL_UDP_TUNNELING_PORT_MAX		65535
-#define SCTPCTL_UDP_TUNNELING_PORT_DEFAULT	SCTP_OVER_UDP_TUNNELING_PORT
+#define SCTPCTL_UDP_TUNNELING_PORT_DEFAULT	0
 
 /* Enable sending of the SACK-IMMEDIATELY bit */
 #define SCTPCTL_SACK_IMMEDIATELY_ENABLE_DESC	"Enable sending of the SACK-IMMEDIATELY-bit."
@@ -521,6 +529,11 @@ struct sctp_sysctl {
 #define SCTPCTL_BLACKHOLE_MIN		0
 #define SCTPCTL_BLACKHOLE_MAX		2
 #define SCTPCTL_BLACKHOLE_DEFAULT	SCTPCTL_BLACKHOLE_MIN
+
+#define SCTPCTL_DIAG_INFO_CODE_DESC	"Diagnostic information error cause code"
+#define SCTPCTL_DIAG_INFO_CODE_MIN	0
+#define SCTPCTL_DIAG_INFO_CODE_MAX	65535
+#define SCTPCTL_DIAG_INFO_CODE_DEFAULT	0
 
 #if defined(SCTP_DEBUG)
 /* debug: Configure debug output */

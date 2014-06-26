@@ -76,7 +76,7 @@ __FBSDID("$FreeBSD$");
 
 int evalskip;			/* set if we are skipping commands */
 int skipcount;			/* number of levels to skip */
-MKINIT int loopnest;		/* current loop nesting level */
+static int loopnest;		/* current loop nesting level */
 int funcnest;			/* depth of function calls */
 static int builtin_flags;	/* evalcommand flags for builtins */
 
@@ -104,16 +104,12 @@ static void prehash(union node *);
  * Called to reset things after an exception.
  */
 
-#ifdef mkinit
-INCLUDE "eval.h"
-
-RESET {
+void
+reseteval(void)
+{
 	evalskip = 0;
 	loopnest = 0;
-	funcnest = 0;
 }
-#endif
-
 
 
 /*
@@ -174,6 +170,7 @@ evalstring(char *s, int flags)
 			any = 1;
 		}
 		popstackmark(&smark);
+		setstackmark(&smark);
 	}
 	popfile();
 	popstackmark(&smark);
@@ -278,6 +275,8 @@ evaltree(union node *n, int flags)
 			break;
 		case NNOT:
 			evaltree(n->nnot.com, EV_TESTED);
+			if (evalskip)
+				goto out;
 			exitstatus = !exitstatus;
 			break;
 
@@ -296,10 +295,11 @@ evaltree(union node *n, int flags)
 		}
 		n = next;
 		popstackmark(&smark);
+		setstackmark(&smark);
 	} while (n != NULL);
 out:
 	popstackmark(&smark);
-	if (pendingsigs)
+	if (pendingsig)
 		dotrap();
 	if (eflag && exitstatus != 0 && do_etest)
 		exitshell(exitstatus);
@@ -324,7 +324,7 @@ skipping:	  if (evalskip == SKIPCONT && --skipcount <= 0) {
 			}
 			if (evalskip == SKIPBREAK && --skipcount <= 0)
 				evalskip = 0;
-			if (evalskip == SKIPFUNC || evalskip == SKIPFILE)
+			if (evalskip == SKIPRETURN)
 				status = exitstatus;
 			break;
 		}
@@ -585,7 +585,8 @@ evalpipe(union node *n)
 		pip[1] = -1;
 		if (lp->next) {
 			if (pipe(pip) < 0) {
-				close(prevfd);
+				if (prevfd >= 0)
+					close(prevfd);
 				error("Pipe call failed: %s", strerror(errno));
 			}
 		}
@@ -749,6 +750,45 @@ isdeclarationcmd(struct narg *arg)
 		(have_command || !isfunc("local"))));
 }
 
+static void
+xtracecommand(struct arglist *varlist, struct arglist *arglist)
+{
+	struct strlist *sp;
+	char sep = 0;
+	const char *p, *ps4;
+
+	ps4 = expandstr(ps4val());
+	out2str(ps4 != NULL ? ps4 : ps4val());
+	for (sp = varlist->list ; sp ; sp = sp->next) {
+		if (sep != 0)
+			out2c(' ');
+		p = strchr(sp->text, '=');
+		if (p != NULL) {
+			p++;
+			outbin(sp->text, p - sp->text, out2);
+			out2qstr(p);
+		} else
+			out2qstr(sp->text);
+		sep = ' ';
+	}
+	for (sp = arglist->list ; sp ; sp = sp->next) {
+		if (sep != 0)
+			out2c(' ');
+		/* Disambiguate command looking like assignment. */
+		if (sp == arglist->list &&
+				strchr(sp->text, '=') != NULL &&
+				strchr(sp->text, '\'') == NULL) {
+			out2c('\'');
+			out2str(sp->text);
+			out2c('\'');
+		} else
+			out2qstr(sp->text);
+		sep = ' ';
+	}
+	out2c('\n');
+	flushout(&errout);
+}
+
 /*
  * Check if a builtin can safely be executed in the same process,
  * even though it should be in a subshell (command substitution).
@@ -846,40 +886,8 @@ evalcommand(union node *cmd, int flags, struct backcmd *backcmd)
 	argv -= argc;
 
 	/* Print the command if xflag is set. */
-	if (xflag) {
-		char sep = 0;
-		const char *p, *ps4;
-		ps4 = expandstr(ps4val());
-		out2str(ps4 != NULL ? ps4 : ps4val());
-		for (sp = varlist.list ; sp ; sp = sp->next) {
-			if (sep != 0)
-				out2c(' ');
-			p = strchr(sp->text, '=');
-			if (p != NULL) {
-				p++;
-				outbin(sp->text, p - sp->text, out2);
-				out2qstr(p);
-			} else
-				out2qstr(sp->text);
-			sep = ' ';
-		}
-		for (sp = arglist.list ; sp ; sp = sp->next) {
-			if (sep != 0)
-				out2c(' ');
-			/* Disambiguate command looking like assignment. */
-			if (sp == arglist.list &&
-					strchr(sp->text, '=') != NULL &&
-					strchr(sp->text, '\'') == NULL) {
-				out2c('\'');
-				out2str(sp->text);
-				out2c('\'');
-			} else
-				out2qstr(sp->text);
-			sep = ' ';
-		}
-		out2c('\n');
-		flushout(&errout);
-	}
+	if (xflag)
+		xtracecommand(&varlist, &arglist);
 
 	/* Now locate the command. */
 	if (argc == 0) {
@@ -1067,7 +1075,7 @@ evalcommand(union node *cmd, int flags, struct backcmd *backcmd)
 		funcnest--;
 		popredir();
 		INTON;
-		if (evalskip == SKIPFUNC) {
+		if (evalskip == SKIPRETURN) {
 			evalskip = 0;
 			skipcount = 0;
 		}
@@ -1304,14 +1312,8 @@ returncmd(int argc, char **argv)
 {
 	int ret = argc > 1 ? number(argv[1]) : oexitstatus;
 
-	if (funcnest) {
-		evalskip = SKIPFUNC;
-		skipcount = 1;
-	} else {
-		/* skip the rest of the file */
-		evalskip = SKIPFILE;
-		skipcount = 1;
-	}
+	evalskip = SKIPRETURN;
+	skipcount = 1;
 	return ret;
 }
 

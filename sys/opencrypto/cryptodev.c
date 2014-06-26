@@ -304,6 +304,7 @@ static struct fileops cryptofops = {
     .fo_close = cryptof_close,
     .fo_chmod = invfo_chmod,
     .fo_chown = invfo_chown,
+    .fo_sendfile = invfo_sendfile,
 };
 
 static struct csession *csefind(struct fcrypt *, u_int);
@@ -350,11 +351,14 @@ cryptof_truncate(
 static int
 checkforsoftware(int crid)
 {
-	if (crid & CRYPTOCAP_F_SOFTWARE)
-		return EINVAL;		/* XXX */
-	if ((crid & CRYPTOCAP_F_HARDWARE) == 0 &&
-	    (crypto_getcaps(crid) & CRYPTOCAP_F_HARDWARE) == 0)
-		return EINVAL;		/* XXX */
+
+	if (!crypto_devallowsoft) {
+		if (crid & CRYPTOCAP_F_SOFTWARE)
+			return EINVAL;		/* XXX */
+		if ((crid & CRYPTOCAP_F_HARDWARE) == 0 &&
+		    (crypto_getcaps(crid) & CRYPTOCAP_F_HARDWARE) == 0)
+			return EINVAL;		/* XXX */
+	}
 	return 0;
 }
 
@@ -1043,12 +1047,7 @@ csecreate(struct fcrypt *fcr, u_int64_t sid, caddr_t key, u_int64_t keylen,
 {
 	struct csession *cse;
 
-#ifdef INVARIANTS
-	/* NB: required when mtx_init is built with INVARIANTS */
 	cse = malloc(sizeof(struct csession), M_XDATA, M_NOWAIT | M_ZERO);
-#else
-	cse = malloc(sizeof(struct csession), M_XDATA, M_NOWAIT);
-#endif
 	if (cse == NULL)
 		return NULL;
 	mtx_init(&cse->lock, "cryptodev", "crypto session lock", MTX_DEF);

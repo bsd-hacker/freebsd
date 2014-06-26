@@ -9,10 +9,6 @@
     ..
     arpa
     ..
-    atf-c
-    ..
-    atf-c++
-    ..
     bsm
     ..
     bsnmp
@@ -81,7 +77,11 @@
             ..
         ..
         v1
+            experimental
+            ..
             ext
+            ..
+            tr1
             ..
         ..
     ..
@@ -92,7 +92,7 @@
         ..
     ..
     clang
-        3.2
+        3.4.1
         ..
     ..
     crypto
@@ -162,6 +162,8 @@
         ..
     ..
     fs
+        cuse
+        ..
         devfs
         ..
         fdescfs
@@ -174,9 +176,9 @@
         ..
         nullfs
         ..
-        portalfs
-        ..
         procfs
+        ..
+        smbfs
         ..
         udf
         ..
@@ -247,8 +249,6 @@
     ..
     libmilter
     ..
-    lwres
-    ..
     lzma
     ..
     machine
@@ -258,8 +258,6 @@
     net
     ..
     net80211
-    ..
-    netatalk
     ..
     netgraph
         atm
@@ -277,8 +275,6 @@
     ..
     netipsec
     ..
-    netipx
-    ..
     netnatm
         api
         ..
@@ -287,6 +283,10 @@
         saal
         ..
         sig
+        ..
+    ..
+    netpfil
+        pf
         ..
     ..
     netsmb
@@ -328,6 +328,8 @@
     ssp
     ..
     sys
+    ..
+    teken
     ..
     ufs
         ffs

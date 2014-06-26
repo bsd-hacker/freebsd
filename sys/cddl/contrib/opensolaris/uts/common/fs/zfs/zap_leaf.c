@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2014 by Delphix. All rights reserved.
  */
 
 /*
@@ -104,16 +105,16 @@ zap_leaf_byteswap(zap_leaf_phys_t *buf, int size)
 {
 	int i;
 	zap_leaf_t l;
-	l.l_bs = highbit(size)-1;
+	l.l_bs = highbit64(size) - 1;
 	l.l_phys = buf;
 
-	buf->l_hdr.lh_block_type = 	BSWAP_64(buf->l_hdr.lh_block_type);
-	buf->l_hdr.lh_prefix = 		BSWAP_64(buf->l_hdr.lh_prefix);
-	buf->l_hdr.lh_magic = 		BSWAP_32(buf->l_hdr.lh_magic);
-	buf->l_hdr.lh_nfree = 		BSWAP_16(buf->l_hdr.lh_nfree);
-	buf->l_hdr.lh_nentries = 	BSWAP_16(buf->l_hdr.lh_nentries);
-	buf->l_hdr.lh_prefix_len = 	BSWAP_16(buf->l_hdr.lh_prefix_len);
-	buf->l_hdr.lh_freelist = 	BSWAP_16(buf->l_hdr.lh_freelist);
+	buf->l_hdr.lh_block_type =	BSWAP_64(buf->l_hdr.lh_block_type);
+	buf->l_hdr.lh_prefix =		BSWAP_64(buf->l_hdr.lh_prefix);
+	buf->l_hdr.lh_magic =		BSWAP_32(buf->l_hdr.lh_magic);
+	buf->l_hdr.lh_nfree =		BSWAP_16(buf->l_hdr.lh_nfree);
+	buf->l_hdr.lh_nentries =	BSWAP_16(buf->l_hdr.lh_nentries);
+	buf->l_hdr.lh_prefix_len =	BSWAP_16(buf->l_hdr.lh_prefix_len);
+	buf->l_hdr.lh_freelist =	BSWAP_16(buf->l_hdr.lh_freelist);
 
 	for (i = 0; i < ZAP_LEAF_HASH_NUMENTRIES(&l); i++)
 		buf->l_hash[i] = BSWAP_16(buf->l_hash[i]);
@@ -156,7 +157,7 @@ zap_leaf_init(zap_leaf_t *l, boolean_t sort)
 {
 	int i;
 
-	l->l_bs = highbit(l->l_dbuf->db_size)-1;
+	l->l_bs = highbit64(l->l_dbuf->db_size) - 1;
 	zap_memset(&l->l_phys->l_hdr, 0, sizeof (struct zap_leaf_header));
 	zap_memset(l->l_phys->l_hash, CHAIN_END, 2*ZAP_LEAF_HASH_NUMENTRIES(l));
 	for (i = 0; i < ZAP_LEAF_NUMCHUNKS(l); i++) {
@@ -220,7 +221,7 @@ zap_leaf_array_create(zap_leaf_t *l, const char *buf,
 	uint16_t chunk_head;
 	uint16_t *chunkp = &chunk_head;
 	int byten = 0;
-	uint64_t value;
+	uint64_t value = 0;
 	int shift = (integer_size-1)*8;
 	int len = num_integers;
 
@@ -434,7 +435,7 @@ again:
 		goto again;
 	}
 
-	return (ENOENT);
+	return (SET_ERROR(ENOENT));
 }
 
 /* Return (h1,cd1 >= h2,cd2) */
@@ -492,14 +493,14 @@ zap_entry_read(const zap_entry_handle_t *zeh,
 	ASSERT3U(le->le_type, ==, ZAP_CHUNK_ENTRY);
 
 	if (le->le_value_intlen > integer_size)
-		return (EINVAL);
+		return (SET_ERROR(EINVAL));
 
 	zap_leaf_array_read(zeh->zeh_leaf, le->le_value_chunk,
 	    le->le_value_intlen, le->le_value_numints,
 	    integer_size, num_integers, buf);
 
 	if (zeh->zeh_num_integers > num_integers)
-		return (EOVERFLOW);
+		return (SET_ERROR(EOVERFLOW));
 	return (0);
 
 }
@@ -520,7 +521,7 @@ zap_entry_read_name(zap_t *zap, const zap_entry_handle_t *zeh, uint16_t buflen,
 		    le->le_name_numints, 1, buflen, buf);
 	}
 	if (le->le_name_numints > buflen)
-		return (EOVERFLOW);
+		return (SET_ERROR(EOVERFLOW));
 	return (0);
 }
 
@@ -536,7 +537,7 @@ zap_entry_update(zap_entry_handle_t *zeh,
 	    ZAP_LEAF_ARRAY_NCHUNKS(le->le_value_numints * le->le_value_intlen);
 
 	if ((int)l->l_phys->l_hdr.lh_nfree < delta_chunks)
-		return (EAGAIN);
+		return (SET_ERROR(EAGAIN));
 
 	zap_leaf_array_free(l, &le->le_value_chunk);
 	le->le_value_chunk =
@@ -626,7 +627,7 @@ zap_entry_create(zap_leaf_t *l, zap_name_t *zn, uint32_t cd,
 	}
 
 	if (l->l_phys->l_hdr.lh_nfree < numchunks)
-		return (EAGAIN);
+		return (SET_ERROR(EAGAIN));
 
 	/* make the entry */
 	chunk = zap_leaf_chunk_alloc(l);

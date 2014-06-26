@@ -9,6 +9,8 @@ SRCS=	smrsh.c
 MAN=	smrsh.8
 CFLAGS+=-I${SENDMAIL_DIR}/src -I${SENDMAIL_DIR}/include -I.
 
+NO_PIE=	yes
+
 LIBSMDIR=	${.OBJDIR}/../../lib/libsm
 LIBSM=		${LIBSMDIR}/libsm.a
 
@@ -16,11 +18,6 @@ DPADD=	${LIBSM}
 LDADD=	${LIBSM}
 
 WARNS?=	2
-
-# Unfortunately, clang gives warnings about sendmail code that cannot
-# be turned off yet.  Since this is contrib code, and we don't really
-# care about the warnings, just make them non-fatal for now.
-NO_WERROR.clang=
 
 SRCS+=	sm_os.h
 CLEANFILES+=sm_os.h

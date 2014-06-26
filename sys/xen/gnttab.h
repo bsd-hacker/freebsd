@@ -36,12 +36,11 @@
 
 #ifndef __ASM_GNTTAB_H__
 
-#include <xen/interface/grant_table.h>
-
+#include <xen/xen-os.h>
 #include <xen/hypervisor.h>
-#include <xen/interface/grant_table.h>
-#include <machine/xen/xen-os.h>
 #include <xen/features.h>
+
+#include <xen/interface/grant_table.h>
 
 #define GNTTAB_LIST_END GRANT_REF_INVALID
 
@@ -52,7 +51,7 @@ struct gnttab_free_callback {
 	uint16_t count;
 };
 
-int gnttab_init(void);
+int gnttab_init(device_t);
 
 /*
  * Allocate a grant table reference and return it in *result. Returns
@@ -117,7 +116,7 @@ void gnttab_grant_foreign_transfer_ref(grant_ref_t, domid_t domid,
 				       unsigned long pfn);
 
 int gnttab_suspend(void);
-int gnttab_resume(void);
+int gnttab_resume(device_t);
 
 #if 0
 

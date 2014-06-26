@@ -56,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <net/bpf.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
@@ -453,11 +454,11 @@ stge_attach(device_t dev)
 	pci_enable_busmaster(dev);
 	cmd = pci_read_config(dev, PCIR_COMMAND, 2);
 	val = pci_read_config(dev, PCIR_BAR(1), 4);
-	if ((val & 0x01) != 0)
+	if (PCI_BAR_IO(val))
 		sc->sc_spec = stge_res_spec_mem;
 	else {
 		val = pci_read_config(dev, PCIR_BAR(0), 4);
-		if ((val & 0x01) == 0) {
+		if (!PCI_BAR_IO(val)) {
 			device_printf(sc->sc_dev, "couldn't locate IO BAR\n");
 			error = ENXIO;
 			goto fail;
@@ -901,31 +902,29 @@ stge_dma_free(struct stge_softc *sc)
 
 	/* Tx ring */
 	if (sc->sc_cdata.stge_tx_ring_tag) {
-		if (sc->sc_cdata.stge_tx_ring_map)
+		if (sc->sc_rdata.stge_tx_ring_paddr)
 			bus_dmamap_unload(sc->sc_cdata.stge_tx_ring_tag,
 			    sc->sc_cdata.stge_tx_ring_map);
-		if (sc->sc_cdata.stge_tx_ring_map &&
-		    sc->sc_rdata.stge_tx_ring)
+		if (sc->sc_rdata.stge_tx_ring)
 			bus_dmamem_free(sc->sc_cdata.stge_tx_ring_tag,
 			    sc->sc_rdata.stge_tx_ring,
 			    sc->sc_cdata.stge_tx_ring_map);
 		sc->sc_rdata.stge_tx_ring = NULL;
-		sc->sc_cdata.stge_tx_ring_map = 0;
+		sc->sc_rdata.stge_tx_ring_paddr = 0;
 		bus_dma_tag_destroy(sc->sc_cdata.stge_tx_ring_tag);
 		sc->sc_cdata.stge_tx_ring_tag = NULL;
 	}
 	/* Rx ring */
 	if (sc->sc_cdata.stge_rx_ring_tag) {
-		if (sc->sc_cdata.stge_rx_ring_map)
+		if (sc->sc_rdata.stge_rx_ring_paddr)
 			bus_dmamap_unload(sc->sc_cdata.stge_rx_ring_tag,
 			    sc->sc_cdata.stge_rx_ring_map);
-		if (sc->sc_cdata.stge_rx_ring_map &&
-		    sc->sc_rdata.stge_rx_ring)
+		if (sc->sc_rdata.stge_rx_ring)
 			bus_dmamem_free(sc->sc_cdata.stge_rx_ring_tag,
 			    sc->sc_rdata.stge_rx_ring,
 			    sc->sc_cdata.stge_rx_ring_map);
 		sc->sc_rdata.stge_rx_ring = NULL;
-		sc->sc_cdata.stge_rx_ring_map = 0;
+		sc->sc_rdata.stge_rx_ring_paddr = 0;
 		bus_dma_tag_destroy(sc->sc_cdata.stge_rx_ring_tag);
 		sc->sc_cdata.stge_rx_ring_tag = NULL;
 	}

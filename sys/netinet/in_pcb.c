@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_pcbgroup.h"
+#include "opt_rss.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -67,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/route.h>
 #include <net/vnet.h>
@@ -74,6 +76,7 @@ __FBSDID("$FreeBSD$");
 #if defined(INET) || defined(INET6)
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
+#include <netinet/in_rss.h>
 #include <netinet/ip_var.h>
 #include <netinet/tcp_var.h>
 #include <netinet/udp.h>
@@ -144,11 +147,7 @@ sysctl_net_ipport_check(SYSCTL_HANDLER_ARGS)
 {
 	int error;
 
-#ifdef VIMAGE
-	error = vnet_sysctl_handle_int(oidp, arg1, arg2, req);
-#else
 	error = sysctl_handle_int(oidp, arg1, arg2, req);
-#endif
 	if (error == 0) {
 		RANGECHK(V_ipport_lowfirstauto, 1, IPPORT_RESERVED - 1);
 		RANGECHK(V_ipport_lowlastauto, 1, IPPORT_RESERVED - 1);
@@ -390,13 +389,14 @@ in_pcb_lport(struct inpcb *inp, struct in_addr *laddrp, u_short *lportp,
 		lastport = &pcbinfo->ipi_lastport;
 	}
 	/*
-	 * For UDP, use random port allocation as long as the user
+	 * For UDP(-Lite), use random port allocation as long as the user
 	 * allows it.  For TCP (and as of yet unknown) connections,
 	 * use random port allocation only if the user allows it AND
 	 * ipport_tick() allows it.
 	 */
 	if (V_ipport_randomized &&
-		(!V_ipport_stoprandom || pcbinfo == &V_udbinfo))
+		(!V_ipport_stoprandom || pcbinfo == &V_udbinfo ||
+		pcbinfo == &V_ulitecbinfo))
 		dorandom = 1;
 	else
 		dorandom = 0;
@@ -406,8 +406,8 @@ in_pcb_lport(struct inpcb *inp, struct in_addr *laddrp, u_short *lportp,
 	 */
 	if (first == last)
 		dorandom = 0;
-	/* Make sure to not include UDP packets in the count. */
-	if (pcbinfo != &V_udbinfo)
+	/* Make sure to not include UDP(-Lite) packets in the count. */
+	if (pcbinfo != &V_udbinfo || pcbinfo != &V_ulitecbinfo)
 		V_ipport_tcpallocs++;
 	/*
 	 * Instead of having two loops further down counting up or down
@@ -466,6 +466,23 @@ in_pcb_lport(struct inpcb *inp, struct in_addr *laddrp, u_short *lportp,
 	*lportp = lport;
 
 	return (0);
+}
+
+/*
+ * Return cached socket options.
+ */
+short
+inp_so_options(const struct inpcb *inp)
+{
+   short so_options;
+
+   so_options = 0;
+
+   if ((inp->inp_flags2 & INP_REUSEPORT) != 0)
+	   so_options |= SO_REUSEPORT;
+   if ((inp->inp_flags2 & INP_REUSEADDR) != 0)
+	   so_options |= SO_REUSEADDR;
+   return (so_options);
 }
 #endif /* INET || INET6 */
 
@@ -537,7 +554,7 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 			 * and a multicast address is bound on both
 			 * new and duplicated sockets.
 			 */
-			if (so->so_options & SO_REUSEADDR)
+			if ((so->so_options & (SO_REUSEADDR|SO_REUSEPORT)) != 0)
 				reuseport = SO_REUSEADDR|SO_REUSEPORT;
 		} else if (sin->sin_addr.s_addr != INADDR_ANY) {
 			sin->sin_port = 0;		/* yech... */
@@ -595,8 +612,7 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 				if (tw == NULL ||
 				    (reuseport & tw->tw_so_options) == 0)
 					return (EADDRINUSE);
-			} else if (t && (reuseport == 0 ||
-			    (t->inp_flags2 & INP_REUSEPORT) == 0)) {
+			} else if (t && (reuseport & inp_so_options(t)) == 0) {
 #ifdef INET6
 				if (ntohl(sin->sin_addr.s_addr) !=
 				    INADDR_ANY ||
@@ -681,7 +697,7 @@ in_pcbconnect(struct inpcb *inp, struct sockaddr *nam, struct ucred *cred)
  * Do proper source address selection on an unbound socket in case
  * of connect. Take jails into account as well.
  */
-static int
+int
 in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
     struct ucred *cred)
 {
@@ -1807,7 +1823,7 @@ struct inpcb *
 in_pcblookup(struct inpcbinfo *pcbinfo, struct in_addr faddr, u_int fport,
     struct in_addr laddr, u_int lport, int lookupflags, struct ifnet *ifp)
 {
-#if defined(PCBGROUP)
+#if defined(PCBGROUP) && !defined(RSS)
 	struct inpcbgroup *pcbgroup;
 #endif
 
@@ -1816,7 +1832,17 @@ in_pcblookup(struct inpcbinfo *pcbinfo, struct in_addr faddr, u_int fport,
 	KASSERT((lookupflags & (INPLOOKUP_RLOCKPCB | INPLOOKUP_WLOCKPCB)) != 0,
 	    ("%s: LOCKPCB not set", __func__));
 
-#if defined(PCBGROUP)
+	/*
+	 * When not using RSS, use connection groups in preference to the
+	 * reservation table when looking up 4-tuples.  When using RSS, just
+	 * use the reservation table, due to the cost of the Toeplitz hash
+	 * in software.
+	 *
+	 * XXXRW: This policy belongs in the pcbgroup code, as in principle
+	 * we could be doing RSS with a non-Toeplitz hash that is affordable
+	 * in software.
+	 */
+#if defined(PCBGROUP) && !defined(RSS)
 	if (in_pcbgroup_enabled(pcbinfo)) {
 		pcbgroup = in_pcbgroup_bytuple(pcbinfo, laddr, lport, faddr,
 		    fport);
@@ -1843,16 +1869,27 @@ in_pcblookup_mbuf(struct inpcbinfo *pcbinfo, struct in_addr faddr,
 	    ("%s: LOCKPCB not set", __func__));
 
 #ifdef PCBGROUP
-	if (in_pcbgroup_enabled(pcbinfo)) {
+	/*
+	 * If we can use a hardware-generated hash to look up the connection
+	 * group, use that connection group to find the inpcb.  Otherwise
+	 * fall back on a software hash -- or the reservation table if we're
+	 * using RSS.
+	 *
+	 * XXXRW: As above, that policy belongs in the pcbgroup code.
+	 */
+	if (in_pcbgroup_enabled(pcbinfo) &&
+	    !(M_HASHTYPE_TEST(m, M_HASHTYPE_NONE))) {
 		pcbgroup = in_pcbgroup_byhash(pcbinfo, M_HASHTYPE_GET(m),
 		    m->m_pkthdr.flowid);
 		if (pcbgroup != NULL)
 			return (in_pcblookup_group(pcbinfo, pcbgroup, faddr,
 			    fport, laddr, lport, lookupflags, ifp));
+#ifndef RSS
 		pcbgroup = in_pcbgroup_bytuple(pcbinfo, laddr, lport, faddr,
 		    fport);
 		return (in_pcblookup_group(pcbinfo, pcbgroup, faddr, fport,
 		    laddr, lport, lookupflags, ifp));
+#endif
 	}
 #endif
 	return (in_pcblookup_hash(pcbinfo, faddr, fport, laddr, lport,

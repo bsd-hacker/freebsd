@@ -383,7 +383,9 @@ FBSD_1.2 {
 FBSD_1.3 {
 	clock_getcpuclockid;
 	dirfd;
-	 fdlopen;
+	dup3;
+	fdclosedir;
+	fdlopen;
 	__FreeBSD_libc_enter_restricted_mode;
 	getcontextx;
 	gid_from_group;
@@ -391,10 +393,12 @@ FBSD_1.3 {
 	pwcache_userdb;
 	pwcache_groupdb;
 	snvis;
+	strenvisx;
 	strnunvis;
 	strnunvisx;
 	strnvis;
 	strnvisx;
+	strsenvisx;
 	strsnvis;
 	strsnvisx;
 	strsvis;
@@ -403,6 +407,10 @@ FBSD_1.3 {
 	uid_from_user;
 	unvis;
 	waitid;
+};
+
+FBSD_1.4 {
+	scandir_b;
 };
 
 FBSDprivate_1.0 {
@@ -527,5 +535,6 @@ FBSDprivate_1.0 {
 	__elf_aux_vector;
 	__pthread_map_stacks_exec;
 	__fillcontextx;
+	__fillcontextx2;
 	__getcontextx_size;
 };

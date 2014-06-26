@@ -122,7 +122,7 @@ int mlx4_en_create_tx_ring(struct mlx4_en_priv *priv,
 	       "buf_size:%d dma:%llx\n", ring, ring->buf, ring->size,
 	       ring->buf_size, (unsigned long long) ring->wqres.buf.direct.map);
 
-	err = mlx4_qp_reserve_range(mdev->dev, 1, 256, &ring->qpn);
+	err = mlx4_qp_reserve_range(mdev->dev, 1, 256, &ring->qpn, MLX4_RESERVE_BF_QP);
 	if (err) {
 		en_err(priv, "Failed reserving qp for tx ring.\n");
 		goto err_map;
@@ -135,7 +135,7 @@ int mlx4_en_create_tx_ring(struct mlx4_en_priv *priv,
 	}
 	ring->qp.event = mlx4_en_sqp_event;
 
-	err = mlx4_bf_alloc(mdev->dev, &ring->bf);
+	err = mlx4_bf_alloc(mdev->dev, &ring->bf, 0);
 	if (err) {
 		ring->bf.uar = &mdev->priv_uar;
 		ring->bf.uar->map = mdev->uar_map;
@@ -780,8 +780,12 @@ retry:
 	tx_desc->ctrl.srcrb_flags = cpu_to_be32(MLX4_WQE_CTRL_CQ_UPDATE |
 						MLX4_WQE_CTRL_SOLICITED);
 	if (mb->m_pkthdr.csum_flags & (CSUM_IP|CSUM_TCP|CSUM_UDP)) {
-		tx_desc->ctrl.srcrb_flags |= cpu_to_be32(MLX4_WQE_CTRL_IP_CSUM |
-							 MLX4_WQE_CTRL_TCP_UDP_CSUM);
+		if (mb->m_pkthdr.csum_flags & CSUM_IP)
+			tx_desc->ctrl.srcrb_flags |=
+			    cpu_to_be32(MLX4_WQE_CTRL_IP_CSUM);
+		if (mb->m_pkthdr.csum_flags & (CSUM_TCP|CSUM_UDP))
+			tx_desc->ctrl.srcrb_flags |=
+			    cpu_to_be32(MLX4_WQE_CTRL_TCP_UDP_CSUM);
 		priv->port_stats.tx_chksum_offload++;
 	}
 
@@ -936,16 +940,16 @@ mlx4_en_transmit_locked(struct ifnet *dev, int tx_ind, struct mbuf *m)
 			return (err);
 	}
 	/* Process the queue */
-	while ((next = drbr_peek(ifp, ring->br)) != NULL) {
+	while ((next = drbr_peek(dev, ring->br)) != NULL) {
 		if ((err = mlx4_en_xmit(dev, tx_ind, &next)) != 0) {
 			if (next == NULL) {
-				drbr_advance(ifp, ring->br);
+				drbr_advance(dev, ring->br);
 			} else {
-				drbr_putback(ifp, ring->br, next);
+				drbr_putback(dev, ring->br, next);
 			}
 			break;
 		}
-		drbr_advance(ifp, ring->br);
+		drbr_advance(dev, ring->br);
 		enqueued++;
 		dev->if_obytes += next->m_pkthdr.len;
 		if (next->m_flags & M_MCAST)

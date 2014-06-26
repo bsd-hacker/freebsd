@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr_machdep.h>
 #include <machine/ppireg.h>
 #include <machine/timerreg.h>
+#include <x86/init.h>
 
 #ifdef PC98
 #include <pc98/pc98/pc98_machdep.h>
@@ -125,6 +126,8 @@ struct attimer_softc {
 static struct attimer_softc *attimer_sc = NULL;
 
 static int timer0_period = -2;
+static int timer0_mode = 0xffff;
+static int timer0_last = 0xffff;
 
 /* Values for timerX_state: */
 #define	RELEASED	0
@@ -136,6 +139,15 @@ static	u_char	timer2_state;
 
 static	unsigned i8254_get_timecount(struct timecounter *tc);
 static	void	set_i8254_freq(int mode, uint32_t period);
+
+void
+clock_init(void)
+{
+	/* Init the clock lock */
+	mtx_init(&clock_lock, "clk", NULL, MTX_SPIN | MTX_NOPROFILE);
+	/* Init the clock in order to use DELAY */
+	init_ops.early_clock_source_init();
+}
 
 static int
 clkintr(void *arg)
@@ -245,61 +257,13 @@ getit(void)
 	return ((high << 8) | low);
 }
 
-#ifndef DELAYDEBUG
-static u_int
-get_tsc(__unused struct timecounter *tc)
-{
-
-	return (rdtsc32());
-}
-
-static __inline int
-delay_tc(int n)
-{
-	struct timecounter *tc;
-	timecounter_get_t *func;
-	uint64_t end, freq, now;
-	u_int last, mask, u;
-
-	tc = timecounter;
-	freq = atomic_load_acq_64(&tsc_freq);
-	if (tsc_is_invariant && freq != 0) {
-		func = get_tsc;
-		mask = ~0u;
-	} else {
-		if (tc->tc_quality <= 0)
-			return (0);
-		func = tc->tc_get_timecount;
-		mask = tc->tc_counter_mask;
-		freq = tc->tc_frequency;
-	}
-	now = 0;
-	end = freq * n / 1000000;
-	if (func == get_tsc)
-		sched_pin();
-	last = func(tc) & mask;
-	do {
-		cpu_spinwait();
-		u = func(tc) & mask;
-		if (u < last)
-			now += mask - last + u + 1;
-		else
-			now += u - last;
-		last = u;
-	} while (now < end);
-	if (func == get_tsc)
-		sched_unpin();
-	return (1);
-}
-#endif
-
 /*
  * Wait "n" microseconds.
  * Relies on timer 1 counting down from (i8254_freq / hz)
  * Note: timer had better have been programmed before this is first used!
  */
 void
-DELAY(int n)
+i8254_delay(int n)
 {
 	int delta, prev_tick, tick, ticks_left;
 #ifdef DELAYDEBUG
@@ -315,9 +279,6 @@ DELAY(int n)
 	}
 	if (state == 1)
 		printf("DELAY(%d)...", n);
-#else
-	if (delay_tc(n))
-		return;
 #endif
 	/*
 	 * Read the counter first, so that the rest of the setup overhead is
@@ -404,7 +365,7 @@ DELAY(int n)
 static void
 set_i8254_freq(int mode, uint32_t period)
 {
-	int new_count;
+	int new_count, new_mode;
 
 	mtx_lock_spin(&clock_lock);
 	if (mode == MODE_STOP) {
@@ -423,21 +384,36 @@ set_i8254_freq(int mode, uint32_t period)
 	timer0_period = (mode == MODE_PERIODIC) ? new_count : -1;
 	switch (mode) {
 	case MODE_STOP:
-		outb(TIMER_MODE, TIMER_SEL0 | TIMER_INTTC | TIMER_16BIT);
+		new_mode = TIMER_SEL0 | TIMER_INTTC | TIMER_16BIT;
+		outb(TIMER_MODE, new_mode);
 		outb(TIMER_CNTR0, 0);
 		outb(TIMER_CNTR0, 0);
 		break;
 	case MODE_PERIODIC:
-		outb(TIMER_MODE, TIMER_SEL0 | TIMER_RATEGEN | TIMER_16BIT);
+		new_mode = TIMER_SEL0 | TIMER_RATEGEN | TIMER_16BIT;
+		outb(TIMER_MODE, new_mode);
 		outb(TIMER_CNTR0, new_count & 0xff);
 		outb(TIMER_CNTR0, new_count >> 8);
 		break;
 	case MODE_ONESHOT:
-		outb(TIMER_MODE, TIMER_SEL0 | TIMER_INTTC | TIMER_16BIT);
+		if (new_count < 256 && timer0_last < 256) {
+			new_mode = TIMER_SEL0 | TIMER_INTTC | TIMER_LSB;
+			if (new_mode != timer0_mode)
+				outb(TIMER_MODE, new_mode);
+			outb(TIMER_CNTR0, new_count & 0xff);
+			break;
+		}
+		new_mode = TIMER_SEL0 | TIMER_INTTC | TIMER_16BIT;
+		if (new_mode != timer0_mode)
+			outb(TIMER_MODE, new_mode);
 		outb(TIMER_CNTR0, new_count & 0xff);
 		outb(TIMER_CNTR0, new_count >> 8);
 		break;
+	default:
+		panic("set_i8254_freq: unknown operational mode");
 	}
+	timer0_mode = new_mode;
+	timer0_last = new_count;
 out:
 	mtx_unlock_spin(&clock_lock);
 }
@@ -447,10 +423,12 @@ i8254_restore(void)
 {
 
 	timer0_period = -2;
+	timer0_mode = 0xffff;
+	timer0_last = 0xffff;
 	if (attimer_sc != NULL)
 		set_i8254_freq(attimer_sc->mode, attimer_sc->period);
 	else
-		set_i8254_freq(0, 0);
+		set_i8254_freq(MODE_STOP, 0);
 }
 
 #ifndef __amd64__
@@ -459,9 +437,10 @@ i8254_restore(void)
  *
  * This function is called from pmtimer_resume() to restore all the timers.
  * This should not be necessary, but there are broken laptops that do not
- * restore all the timers on resume.
- * As long as pmtimer is not part of amd64 suport, skip this for the amd64
- * case.
+ * restore all the timers on resume. The APM spec was at best vague on the
+ * subject.
+ * pmtimer is used only with the old APM power management, and not with
+ * acpi, which is required for amd64, so skip it in that case.
  */
 void
 timer_restore(void)
@@ -479,12 +458,11 @@ void
 i8254_init(void)
 {
 
-	mtx_init(&clock_lock, "clk", NULL, MTX_SPIN | MTX_NOPROFILE);
 #ifdef PC98
 	if (pc98_machine_type & M_8M)
 		i8254_freq = 1996800L; /* 1.9968 MHz */
 #endif
-	set_i8254_freq(0, 0);
+	set_i8254_freq(MODE_STOP, 0);
 }
 
 void
@@ -519,7 +497,7 @@ sysctl_machdep_i8254_freq(SYSCTL_HANDLER_ARGS)
 			set_i8254_freq(attimer_sc->mode, attimer_sc->period);
 			attimer_sc->tc.tc_frequency = freq;
 		} else {
-			set_i8254_freq(0, 0);
+			set_i8254_freq(MODE_STOP, 0);
 		}
 	}
 	return (error);
@@ -569,18 +547,17 @@ i8254_get_timecount(struct timecounter *tc)
 }
 
 static int
-attimer_start(struct eventtimer *et,
-    struct bintime *first, struct bintime *period)
+attimer_start(struct eventtimer *et, sbintime_t first, sbintime_t period)
 {
 	device_t dev = (device_t)et->et_priv;
 	struct attimer_softc *sc = device_get_softc(dev);
 
-	if (period != NULL) {
+	if (period != 0) {
 		sc->mode = MODE_PERIODIC;
-		sc->period = period->frac >> 32;
+		sc->period = period;
 	} else {
 		sc->mode = MODE_ONESHOT;
-		sc->period = first->frac >> 32;
+		sc->period = first;
 	}
 	if (!sc->intr_en) {
 		i8254_intsrc->is_pic->pic_enable_source(i8254_intsrc);
@@ -696,7 +673,7 @@ attimer_attach(device_t dev)
 		i8254_pending = i8254_intsrc->is_pic->pic_source_pending;
 	resource_int_value(device_get_name(dev), device_get_unit(dev),
 	    "timecounter", &i8254_timecounter);
-	set_i8254_freq(0, 0);
+	set_i8254_freq(MODE_STOP, 0);
 	if (i8254_timecounter) {
 		sc->tc.tc_get_timecount = i8254_get_timecount;
 		sc->tc.tc_counter_mask = 0xffff;
@@ -735,12 +712,8 @@ attimer_attach(device_t dev)
 			sc->et.et_flags |= ET_FLAGS_ONESHOT;
 		sc->et.et_quality = 100;
 		sc->et.et_frequency = i8254_freq;
-		sc->et.et_min_period.sec = 0;
-		sc->et.et_min_period.frac =
-		    ((0x0002LLU << 48) / i8254_freq) << 16;
-		sc->et.et_max_period.sec = 0xffff / i8254_freq;
-		sc->et.et_max_period.frac =
-		    ((0xfffeLLU << 48) / i8254_freq) << 16;
+		sc->et.et_min_period = (0x0002LLU << 32) / i8254_freq;
+		sc->et.et_max_period = (0xfffeLLU << 32) / i8254_freq;
 		sc->et.et_start = attimer_start;
 		sc->et.et_stop = attimer_stop;
 		sc->et.et_priv = dev;

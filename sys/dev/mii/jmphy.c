@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_media.h>
 
 #include <dev/mii/mii.h>
@@ -104,7 +105,7 @@ jmphy_attach(device_t dev)
 
 	ma = device_get_ivars(dev);
 	flags = 0;
-	if (strcmp(ma->mii_data->mii_ifp->if_dname, "jme") == 0 &&
+	if (strcmp(if_getdname(ma->mii_data->mii_ifp), "jme") == 0 &&
 	    (miibus_get_flags(dev) & MIIF_MACPRIV0) != 0)
 		flags |= MIIF_PHYPRIV0;
 	mii_phy_dev_attach(dev, flags, &jmphy_funcs, 1);
@@ -121,23 +122,11 @@ jmphy_service(struct mii_softc *sc, struct mii_data *mii, int cmd)
 		break;
 
 	case MII_MEDIACHG:
-		/*
-		 * If the interface is not up, don't do anything.
-		 */
-		if ((mii->mii_ifp->if_flags & IFF_UP) == 0)
-			break;
-
 		if (jmphy_setmedia(sc, ife) != EJUSTRETURN)
 			return (EINVAL);
 		break;
 
 	case MII_TICK:
-		/*
-		 * Is the interface even up?
-		 */
-		if ((mii->mii_ifp->if_flags & IFF_UP) == 0)
-			return (0);
-
 		/*
 		 * Only used for autonegotiation.
 		 */

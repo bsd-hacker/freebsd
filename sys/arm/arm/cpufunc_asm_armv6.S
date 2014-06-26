@@ -49,16 +49,13 @@
  * addresses that are about to change.
  */
 ENTRY(armv6_setttb)
-#ifdef PMAP_CACHE_VIVT
-	mcr	p15, 0, r0, c7, c5, 0	/* Flush I cache */
-	mcr	p15, 0, r0, c7, c14, 0	/* clean and invalidate D cache */
-#endif
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 
 	mcr	p15, 0, r0, c2, c0, 0	/* load new TTB */
 
 	mcr	p15, 0, r0, c8, c7, 0	/* invalidate I+D TLBs */
 	RET
+END(armv6_setttb)
 
 /*
  * Cache operations.
@@ -72,6 +69,7 @@ ENTRY_NP(armv6_icache_sync_range)
 	mcrr	p15, 0, r1, r0, c12	/* clean D cache range */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv6_icache_sync_range)
 
 /* LINTSTUB: void armv6_icache_sync_all(void); */
 ENTRY_NP(armv6_icache_sync_all)
@@ -84,6 +82,7 @@ ENTRY_NP(armv6_icache_sync_all)
 	mcr	p15, 0, r0, c7, c10, 0	/* Clean D cache */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv6_icache_sync_all)
 
 /* LINTSTUB: void armv6_dcache_wb_range(vaddr_t, vsize_t); */
 ENTRY(armv6_dcache_wb_range)
@@ -92,6 +91,7 @@ ENTRY(armv6_dcache_wb_range)
 	mcrr	p15, 0, r1, r0, c12	/* clean D cache range */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv6_dcache_wb_range)
 	
 /* LINTSTUB: void armv6_dcache_wbinv_range(vaddr_t, vsize_t); */
 ENTRY(armv6_dcache_wbinv_range)
@@ -100,6 +100,7 @@ ENTRY(armv6_dcache_wbinv_range)
 	mcrr	p15, 0, r1, r0, c14	/* clean and invaliate D cache range */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv6_dcache_wbinv_range)
 	
 /*
  * Note, we must not invalidate everything.  If the range is too big we
@@ -113,6 +114,7 @@ ENTRY(armv6_dcache_inv_range)
 	mcrr	p15, 0, r1, r0, c6	/* invaliate D cache range */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv6_dcache_inv_range)
 
 /* LINTSTUB: void armv6_idcache_wbinv_range(vaddr_t, vsize_t); */
 ENTRY(armv6_idcache_wbinv_range)
@@ -122,6 +124,7 @@ ENTRY(armv6_idcache_wbinv_range)
 	mcrr	p15, 0, r1, r0, c14	/* clean & invaliate D cache range */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv6_idcache_wbinv_range)
 
 /* LINTSTUB: void armv6_idcache_wbinv_all(void); */
 ENTRY_NP(armv6_idcache_wbinv_all)
@@ -138,3 +141,12 @@ ENTRY(armv6_dcache_wbinv_all)
 	mcr	p15, 0, r0, c7, c14, 0	/* clean & invalidate D cache */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv6_idcache_wbinv_all)
+END(armv6_dcache_wbinv_all)
+
+ENTRY(armv6_idcache_inv_all)
+	mov	r0, #0
+	mcr	p15, 0, r0, c7, c7, 0	/* invalidate all I+D cache */
+	RET
+END(armv6_idcache_inv_all)
+

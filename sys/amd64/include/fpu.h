@@ -63,6 +63,7 @@ int	fpusetregs(struct thread *td, struct savefpu *addr,
 	    char *xfpustate, size_t xfpustate_size);
 int	fpusetxstate(struct thread *td, char *xfpustate,
 	    size_t xfpustate_size);
+void	fpususpend(void *addr);
 int	fputrap_sse(void);
 int	fputrap_x87(void);
 void	fpuuserinited(struct thread *td);
@@ -83,6 +84,7 @@ void	fpu_save_area_reset(struct savefpu *fsa);
  */
 #define	FPU_KERN_NORMAL	0x0000
 #define	FPU_KERN_NOWAIT	0x0001
+#define	FPU_KERN_KTHR	0x0002
 
 #endif
 

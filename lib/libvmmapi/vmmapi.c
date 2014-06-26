@@ -29,12 +29,15 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/sysctl.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/_iovec.h>
+#include <sys/cpuset.h>
 
 #include <machine/specialreg.h>
+#include <machine/param.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,13 +46,25 @@ __FBSDID("$FreeBSD$");
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <libutil.h>
+
 #include <machine/vmm.h>
 #include <machine/vmm_dev.h>
 
 #include "vmmapi.h"
 
+#define	MB	(1024 * 1024UL)
+#define	GB	(1024 * 1024 * 1024UL)
+
 struct vmctx {
 	int	fd;
+	uint32_t lowmem_limit;
+	enum vm_mmap_style vms;
+	int	memflags;
+	size_t	lowmem;
+	char	*lowmem_addr;
+	size_t	highmem;
+	char	*highmem_addr;
 	char	*name;
 };
 
@@ -90,6 +105,8 @@ vm_open(const char *name)
 	assert(vm != NULL);
 
 	vm->fd = -1;
+	vm->memflags = 0;
+	vm->lowmem_limit = 3 * GB;
 	vm->name = (char *)(vm + 1);
 	strcpy(vm->name, name);
 
@@ -114,32 +131,33 @@ vm_destroy(struct vmctx *vm)
 	free(vm);
 }
 
-size_t
-vmm_get_mem_total(void)
+int
+vm_parse_memsize(const char *optarg, size_t *ret_memsize)
 {
-	size_t mem_total = 0;
-	size_t oldlen = sizeof(mem_total);
+	char *endptr;
+	size_t optval;
 	int error;
-	error = sysctlbyname("hw.vmm.mem_total", &mem_total, &oldlen, NULL, 0);
-	if (error)
-		return -1;
-	return mem_total;
-}
 
-size_t
-vmm_get_mem_free(void)
-{
-	size_t mem_free = 0;
-	size_t oldlen = sizeof(mem_free);
-	int error;
-	error = sysctlbyname("hw.vmm.mem_free", &mem_free, &oldlen, NULL, 0);
-	if (error)
-		return -1;
-	return mem_free;
+	optval = strtoul(optarg, &endptr, 0);
+	if (*optarg != '\0' && *endptr == '\0') {
+		/*
+		 * For the sake of backward compatibility if the memory size
+		 * specified on the command line is less than a megabyte then
+		 * it is interpreted as being in units of MB.
+		 */
+		if (optval < MB)
+			optval *= MB;
+		*ret_memsize = optval;
+		error = 0;
+	} else
+		error = expand_number(optarg, ret_memsize);
+
+	return (error);
 }
 
 int
-vm_get_memory_seg(struct vmctx *ctx, vm_paddr_t gpa, size_t *ret_len)
+vm_get_memory_seg(struct vmctx *ctx, vm_paddr_t gpa, size_t *ret_len,
+		  int *wired)
 {
 	int error;
 	struct vm_memory_segment seg;
@@ -148,13 +166,36 @@ vm_get_memory_seg(struct vmctx *ctx, vm_paddr_t gpa, size_t *ret_len)
 	seg.gpa = gpa;
 	error = ioctl(ctx->fd, VM_GET_MEMORY_SEG, &seg);
 	*ret_len = seg.len;
+	if (wired != NULL)
+		*wired = seg.wired;
 	return (error);
 }
 
-int
-vm_setup_memory(struct vmctx *ctx, vm_paddr_t gpa, size_t len, char **mapaddr)
+uint32_t
+vm_get_lowmem_limit(struct vmctx *ctx)
 {
-	int error;
+
+	return (ctx->lowmem_limit);
+}
+
+void
+vm_set_lowmem_limit(struct vmctx *ctx, uint32_t limit)
+{
+
+	ctx->lowmem_limit = limit;
+}
+
+void
+vm_set_memflags(struct vmctx *ctx, int flags)
+{
+
+	ctx->memflags = flags;
+}
+
+static int
+setup_memory_segment(struct vmctx *ctx, vm_paddr_t gpa, size_t len, char **addr)
+{
+	int error, mmap_flags;
 	struct vm_memory_segment seg;
 
 	/*
@@ -165,20 +206,86 @@ vm_setup_memory(struct vmctx *ctx, vm_paddr_t gpa, size_t len, char **mapaddr)
 	seg.gpa = gpa;
 	seg.len = len;
 	error = ioctl(ctx->fd, VM_MAP_MEMORY, &seg);
-	if (error == 0 && mapaddr != NULL) {
-		*mapaddr = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED,
-				ctx->fd, gpa);
+	if (error == 0 && addr != NULL) {
+		mmap_flags = MAP_SHARED;
+		if ((ctx->memflags & VM_MEM_F_INCORE) == 0)
+			mmap_flags |= MAP_NOCORE;
+		*addr = mmap(NULL, len, PROT_READ | PROT_WRITE, mmap_flags,
+		    ctx->fd, gpa);
 	}
 	return (error);
 }
 
-char *
-vm_map_memory(struct vmctx *ctx, vm_paddr_t gpa, size_t len)
+int
+vm_setup_memory(struct vmctx *ctx, size_t memsize, enum vm_mmap_style vms)
+{
+	char **addr;
+	int error;
+
+	/* XXX VM_MMAP_SPARSE not implemented yet */
+	assert(vms == VM_MMAP_NONE || vms == VM_MMAP_ALL);
+	ctx->vms = vms;
+
+	/*
+	 * If 'memsize' cannot fit entirely in the 'lowmem' segment then
+	 * create another 'highmem' segment above 4GB for the remainder.
+	 */
+	if (memsize > ctx->lowmem_limit) {
+		ctx->lowmem = ctx->lowmem_limit;
+		ctx->highmem = memsize - ctx->lowmem;
+	} else {
+		ctx->lowmem = memsize;
+		ctx->highmem = 0;
+	}
+
+	if (ctx->lowmem > 0) {
+		addr = (vms == VM_MMAP_ALL) ? &ctx->lowmem_addr : NULL;
+		error = setup_memory_segment(ctx, 0, ctx->lowmem, addr);
+		if (error)
+			return (error);
+	}
+
+	if (ctx->highmem > 0) {
+		addr = (vms == VM_MMAP_ALL) ? &ctx->highmem_addr : NULL;
+		error = setup_memory_segment(ctx, 4*GB, ctx->highmem, addr);
+		if (error)
+			return (error);
+	}
+
+	return (0);
+}
+
+void *
+vm_map_gpa(struct vmctx *ctx, vm_paddr_t gaddr, size_t len)
 {
 
-	/* Map 'len' bytes of memory at guest physical address 'gpa' */
-	return ((char *)mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED,
-		     ctx->fd, gpa));
+	/* XXX VM_MMAP_SPARSE not implemented yet */
+	assert(ctx->vms == VM_MMAP_ALL);
+
+	if (gaddr < ctx->lowmem && gaddr + len <= ctx->lowmem)
+		return ((void *)(ctx->lowmem_addr + gaddr));
+
+	if (gaddr >= 4*GB) {
+		gaddr -= 4*GB;
+		if (gaddr < ctx->highmem && gaddr + len <= ctx->highmem)
+			return ((void *)(ctx->highmem_addr + gaddr));
+	}
+
+	return (NULL);
+}
+
+size_t
+vm_get_lowmem_size(struct vmctx *ctx)
+{
+
+	return (ctx->lowmem);
+}
+
+size_t
+vm_get_highmem_size(struct vmctx *ctx)
+{
+
+	return (ctx->highmem);
 }
 
 int
@@ -250,34 +357,6 @@ vm_get_register(struct vmctx *ctx, int vcpu, int reg, uint64_t *ret_val)
 }
 
 int
-vm_get_pinning(struct vmctx *ctx, int vcpu, int *host_cpuid)
-{
-	int error;
-	struct vm_pin vmpin;
-
-	bzero(&vmpin, sizeof(vmpin));
-	vmpin.vm_cpuid = vcpu;
-
-	error = ioctl(ctx->fd, VM_GET_PINNING, &vmpin);
-	*host_cpuid = vmpin.host_cpuid;
-	return (error);
-}
-
-int
-vm_set_pinning(struct vmctx *ctx, int vcpu, int host_cpuid)
-{
-	int error;
-	struct vm_pin vmpin;
-
-	bzero(&vmpin, sizeof(vmpin));
-	vmpin.vm_cpuid = vcpu;
-	vmpin.host_cpuid = host_cpuid;
-
-	error = ioctl(ctx->fd, VM_SET_PINNING, &vmpin);
-	return (error);
-}
-
-int
 vm_run(struct vmctx *ctx, int vcpu, uint64_t rip, struct vm_exit *vmexit)
 {
 	int error;
@@ -292,36 +371,50 @@ vm_run(struct vmctx *ctx, int vcpu, uint64_t rip, struct vm_exit *vmexit)
 	return (error);
 }
 
+int
+vm_suspend(struct vmctx *ctx, enum vm_suspend_how how)
+{
+	struct vm_suspend vmsuspend;
+
+	bzero(&vmsuspend, sizeof(vmsuspend));
+	vmsuspend.how = how;
+	return (ioctl(ctx->fd, VM_SUSPEND, &vmsuspend));
+}
+
+int
+vm_reinit(struct vmctx *ctx)
+{
+
+	return (ioctl(ctx->fd, VM_REINIT, 0));
+}
+
 static int
-vm_inject_event_real(struct vmctx *ctx, int vcpu, enum vm_event_type type,
-		     int vector, int error_code, int error_code_valid)
+vm_inject_exception_real(struct vmctx *ctx, int vcpu, int vector,
+    int error_code, int error_code_valid)
 {
-	struct vm_event ev;
+	struct vm_exception exc;
 
-	bzero(&ev, sizeof(ev));
-	ev.cpuid = vcpu;
-	ev.type = type;
-	ev.vector = vector;
-	ev.error_code = error_code;
-	ev.error_code_valid = error_code_valid;
+	bzero(&exc, sizeof(exc));
+	exc.cpuid = vcpu;
+	exc.vector = vector;
+	exc.error_code = error_code;
+	exc.error_code_valid = error_code_valid;
 
-	return (ioctl(ctx->fd, VM_INJECT_EVENT, &ev));
+	return (ioctl(ctx->fd, VM_INJECT_EXCEPTION, &exc));
 }
 
 int
-vm_inject_event(struct vmctx *ctx, int vcpu, enum vm_event_type type,
-		int vector)
+vm_inject_exception(struct vmctx *ctx, int vcpu, int vector)
 {
 
-	return (vm_inject_event_real(ctx, vcpu, type, vector, 0, 0));
+	return (vm_inject_exception_real(ctx, vcpu, vector, 0, 0));
 }
 
 int
-vm_inject_event2(struct vmctx *ctx, int vcpu, enum vm_event_type type,
-		 int vector, int error_code)
+vm_inject_exception2(struct vmctx *ctx, int vcpu, int vector, int errcode)
 {
 
-	return (vm_inject_event_real(ctx, vcpu, type, vector, error_code, 1));
+	return (vm_inject_exception_real(ctx, vcpu, vector, errcode, 1));
 }
 
 int
@@ -347,6 +440,119 @@ vm_lapic_irq(struct vmctx *ctx, int vcpu, int vector)
 }
 
 int
+vm_lapic_local_irq(struct vmctx *ctx, int vcpu, int vector)
+{
+	struct vm_lapic_irq vmirq;
+
+	bzero(&vmirq, sizeof(vmirq));
+	vmirq.cpuid = vcpu;
+	vmirq.vector = vector;
+
+	return (ioctl(ctx->fd, VM_LAPIC_LOCAL_IRQ, &vmirq));
+}
+
+int
+vm_lapic_msi(struct vmctx *ctx, uint64_t addr, uint64_t msg)
+{
+	struct vm_lapic_msi vmmsi;
+
+	bzero(&vmmsi, sizeof(vmmsi));
+	vmmsi.addr = addr;
+	vmmsi.msg = msg;
+
+	return (ioctl(ctx->fd, VM_LAPIC_MSI, &vmmsi));
+}
+
+int
+vm_ioapic_assert_irq(struct vmctx *ctx, int irq)
+{
+	struct vm_ioapic_irq ioapic_irq;
+
+	bzero(&ioapic_irq, sizeof(struct vm_ioapic_irq));
+	ioapic_irq.irq = irq;
+
+	return (ioctl(ctx->fd, VM_IOAPIC_ASSERT_IRQ, &ioapic_irq));
+}
+
+int
+vm_ioapic_deassert_irq(struct vmctx *ctx, int irq)
+{
+	struct vm_ioapic_irq ioapic_irq;
+
+	bzero(&ioapic_irq, sizeof(struct vm_ioapic_irq));
+	ioapic_irq.irq = irq;
+
+	return (ioctl(ctx->fd, VM_IOAPIC_DEASSERT_IRQ, &ioapic_irq));
+}
+
+int
+vm_ioapic_pulse_irq(struct vmctx *ctx, int irq)
+{
+	struct vm_ioapic_irq ioapic_irq;
+
+	bzero(&ioapic_irq, sizeof(struct vm_ioapic_irq));
+	ioapic_irq.irq = irq;
+
+	return (ioctl(ctx->fd, VM_IOAPIC_PULSE_IRQ, &ioapic_irq));
+}
+
+int
+vm_ioapic_pincount(struct vmctx *ctx, int *pincount)
+{
+
+	return (ioctl(ctx->fd, VM_IOAPIC_PINCOUNT, pincount));
+}
+
+int
+vm_isa_assert_irq(struct vmctx *ctx, int atpic_irq, int ioapic_irq)
+{
+	struct vm_isa_irq isa_irq;
+
+	bzero(&isa_irq, sizeof(struct vm_isa_irq));
+	isa_irq.atpic_irq = atpic_irq;
+	isa_irq.ioapic_irq = ioapic_irq;
+
+	return (ioctl(ctx->fd, VM_ISA_ASSERT_IRQ, &isa_irq));
+}
+
+int
+vm_isa_deassert_irq(struct vmctx *ctx, int atpic_irq, int ioapic_irq)
+{
+	struct vm_isa_irq isa_irq;
+
+	bzero(&isa_irq, sizeof(struct vm_isa_irq));
+	isa_irq.atpic_irq = atpic_irq;
+	isa_irq.ioapic_irq = ioapic_irq;
+
+	return (ioctl(ctx->fd, VM_ISA_DEASSERT_IRQ, &isa_irq));
+}
+
+int
+vm_isa_pulse_irq(struct vmctx *ctx, int atpic_irq, int ioapic_irq)
+{
+	struct vm_isa_irq isa_irq;
+
+	bzero(&isa_irq, sizeof(struct vm_isa_irq));
+	isa_irq.atpic_irq = atpic_irq;
+	isa_irq.ioapic_irq = ioapic_irq;
+
+	return (ioctl(ctx->fd, VM_ISA_PULSE_IRQ, &isa_irq));
+}
+
+int
+vm_isa_set_irq_trigger(struct vmctx *ctx, int atpic_irq,
+    enum vm_intr_trigger trigger)
+{
+	struct vm_isa_irq_trigger isa_irq_trigger;
+
+	bzero(&isa_irq_trigger, sizeof(struct vm_isa_irq_trigger));
+	isa_irq_trigger.atpic_irq = atpic_irq;
+	isa_irq_trigger.trigger = trigger;
+
+	return (ioctl(ctx->fd, VM_ISA_SET_IRQ_TRIGGER, &isa_irq_trigger));
+}
+
+int
 vm_inject_nmi(struct vmctx *ctx, int vcpu)
 {
 	struct vm_nmi vmnmi;
@@ -365,6 +571,7 @@ static struct {
 	{ "mtrap_exit",		VM_CAP_MTRAP_EXIT },
 	{ "pause_exit",		VM_CAP_PAUSE_EXIT },
 	{ "unrestricted_guest",	VM_CAP_UNRESTRICTED_GUEST },
+	{ "enable_invpcid",	VM_CAP_ENABLE_INVPCID },
 	{ 0 }
 };
 
@@ -467,8 +674,8 @@ vm_map_pptdev_mmio(struct vmctx *ctx, int bus, int slot, int func,
 }
 
 int
-vm_setup_msi(struct vmctx *ctx, int vcpu, int bus, int slot, int func,
-	     int destcpu, int vector, int numvec)
+vm_setup_pptdev_msi(struct vmctx *ctx, int vcpu, int bus, int slot, int func,
+    uint64_t addr, uint64_t msg, int numvec)
 {
 	struct vm_pptdev_msi pptmsi;
 
@@ -477,16 +684,16 @@ vm_setup_msi(struct vmctx *ctx, int vcpu, int bus, int slot, int func,
 	pptmsi.bus = bus;
 	pptmsi.slot = slot;
 	pptmsi.func = func;
-	pptmsi.destcpu = destcpu;
-	pptmsi.vector = vector;
+	pptmsi.msg = msg;
+	pptmsi.addr = addr;
 	pptmsi.numvec = numvec;
 
 	return (ioctl(ctx->fd, VM_PPTDEV_MSI, &pptmsi));
 }
 
 int	
-vm_setup_msix(struct vmctx *ctx, int vcpu, int bus, int slot, int func,
-	      int idx, uint32_t msg, uint32_t vector_control, uint64_t addr)
+vm_setup_pptdev_msix(struct vmctx *ctx, int vcpu, int bus, int slot, int func,
+    int idx, uint64_t addr, uint64_t msg, uint32_t vector_control)
 {
 	struct vm_pptdev_msix pptmsix;
 
@@ -719,5 +926,183 @@ vcpu_reset(struct vmctx *vmctx, int vcpu)
 
 	error = 0;
 done:
+	return (error);
+}
+
+int
+vm_get_gpa_pmap(struct vmctx *ctx, uint64_t gpa, uint64_t *pte, int *num)
+{
+	int error, i;
+	struct vm_gpa_pte gpapte;
+
+	bzero(&gpapte, sizeof(gpapte));
+	gpapte.gpa = gpa;
+
+	error = ioctl(ctx->fd, VM_GET_GPA_PMAP, &gpapte);
+
+	if (error == 0) {
+		*num = gpapte.ptenum;
+		for (i = 0; i < gpapte.ptenum; i++)
+			pte[i] = gpapte.pte[i];
+	}
+
+	return (error);
+}
+
+int
+vm_get_hpet_capabilities(struct vmctx *ctx, uint32_t *capabilities)
+{
+	int error;
+	struct vm_hpet_cap cap;
+
+	bzero(&cap, sizeof(struct vm_hpet_cap));
+	error = ioctl(ctx->fd, VM_GET_HPET_CAPABILITIES, &cap);
+	if (capabilities != NULL)
+		*capabilities = cap.capabilities;
+	return (error);
+}
+
+static int
+gla2gpa(struct vmctx *ctx, int vcpu, struct vm_guest_paging *paging,
+    uint64_t gla, int prot, int *fault, uint64_t *gpa)
+{
+	struct vm_gla2gpa gg;
+	int error;
+
+	bzero(&gg, sizeof(struct vm_gla2gpa));
+	gg.vcpuid = vcpu;
+	gg.prot = prot;
+	gg.gla = gla;
+	gg.paging = *paging;
+
+	error = ioctl(ctx->fd, VM_GLA2GPA, &gg);
+	if (error == 0) {
+		*fault = gg.fault;
+		*gpa = gg.gpa;
+	}
+	return (error);
+}
+
+#ifndef min
+#define	min(a,b)	(((a) < (b)) ? (a) : (b))
+#endif
+
+int
+vm_gla2gpa(struct vmctx *ctx, int vcpu, struct vm_guest_paging *paging,
+    uint64_t gla, size_t len, int prot, struct iovec *iov, int iovcnt)
+{
+	uint64_t gpa;
+	int error, fault, i, n, off;
+
+	for (i = 0; i < iovcnt; i++) {
+		iov[i].iov_base = 0;
+		iov[i].iov_len = 0;
+	}
+
+	while (len) {
+		assert(iovcnt > 0);
+		error = gla2gpa(ctx, vcpu, paging, gla, prot, &fault, &gpa);
+		if (error)
+			return (-1);
+		if (fault)
+			return (1);
+
+		off = gpa & PAGE_MASK;
+		n = min(len, PAGE_SIZE - off);
+
+		iov->iov_base = (void *)gpa;
+		iov->iov_len = n;
+		iov++;
+		iovcnt--;
+
+		gla += n;
+		len -= n;
+	}
+	return (0);
+}
+
+void
+vm_copyin(struct vmctx *ctx, int vcpu, struct iovec *iov, void *vp, size_t len)
+{
+	const char *src;
+	char *dst;
+	uint64_t gpa;
+	size_t n;
+
+	dst = vp;
+	while (len) {
+		assert(iov->iov_len);
+		gpa = (uint64_t)iov->iov_base;
+		n = min(len, iov->iov_len);
+		src = vm_map_gpa(ctx, gpa, n);
+		bcopy(src, dst, n);
+
+		iov++;
+		dst += n;
+		len -= n;
+	}
+}
+
+void
+vm_copyout(struct vmctx *ctx, int vcpu, const void *vp, struct iovec *iov,
+    size_t len)
+{
+	const char *src;
+	char *dst;
+	uint64_t gpa;
+	size_t n;
+
+	src = vp;
+	while (len) {
+		assert(iov->iov_len);
+		gpa = (uint64_t)iov->iov_base;
+		n = min(len, iov->iov_len);
+		dst = vm_map_gpa(ctx, gpa, n);
+		bcopy(src, dst, n);
+
+		iov++;
+		src += n;
+		len -= n;
+	}
+}
+
+static int
+vm_get_cpus(struct vmctx *ctx, int which, cpuset_t *cpus)
+{
+	struct vm_cpuset vm_cpuset;
+	int error;
+
+	bzero(&vm_cpuset, sizeof(struct vm_cpuset));
+	vm_cpuset.which = which;
+	vm_cpuset.cpusetsize = sizeof(cpuset_t);
+	vm_cpuset.cpus = cpus;
+
+	error = ioctl(ctx->fd, VM_GET_CPUS, &vm_cpuset);
+	return (error);
+}
+
+int
+vm_active_cpus(struct vmctx *ctx, cpuset_t *cpus)
+{
+
+	return (vm_get_cpus(ctx, VM_ACTIVE_CPUS, cpus));
+}
+
+int
+vm_suspended_cpus(struct vmctx *ctx, cpuset_t *cpus)
+{
+
+	return (vm_get_cpus(ctx, VM_SUSPENDED_CPUS, cpus));
+}
+
+int
+vm_activate_cpu(struct vmctx *ctx, int vcpu)
+{
+	struct vm_activate_cpu ac;
+	int error;
+
+	bzero(&ac, sizeof(struct vm_activate_cpu));
+	ac.vcpuid = vcpu;
+	error = ioctl(ctx->fd, VM_ACTIVATE_CPU, &ac);
 	return (error);
 }

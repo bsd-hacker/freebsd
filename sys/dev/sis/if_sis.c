@@ -76,6 +76,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <net/if_dl.h>
@@ -625,7 +626,7 @@ sis_miibus_statchg(device_t dev)
 		SIS_CLRBIT(sc, SIS_RX_CFG, SIS_RXCFG_RX_TXPKTS);
 	}
 
-	if (sc->sis_type == SIS_TYPE_83816) {
+	if (sc->sis_type == SIS_TYPE_83815 && sc->sis_srr >= NS_SRR_16A) {
 		/*
 		 * MPII03.D: Half Duplex Excessive Collisions.
 		 * Also page 49 in 83816 manual
@@ -1328,9 +1329,9 @@ sis_dma_free(struct sis_softc *sc)
 		bus_dma_tag_destroy(sc->sis_tx_tag);
 
 	/* Destroy RX ring. */
-	if (sc->sis_rx_list_map)
+	if (sc->sis_rx_paddr)
 		bus_dmamap_unload(sc->sis_rx_list_tag, sc->sis_rx_list_map);
-	if (sc->sis_rx_list_map && sc->sis_rx_list)
+	if (sc->sis_rx_list)
 		bus_dmamem_free(sc->sis_rx_list_tag, sc->sis_rx_list,
 		    sc->sis_rx_list_map);
 
@@ -1338,10 +1339,10 @@ sis_dma_free(struct sis_softc *sc)
 		bus_dma_tag_destroy(sc->sis_rx_list_tag);
 
 	/* Destroy TX ring. */
-	if (sc->sis_tx_list_map)
+	if (sc->sis_tx_paddr)
 		bus_dmamap_unload(sc->sis_tx_list_tag, sc->sis_tx_list_map);
 
-	if (sc->sis_tx_list_map && sc->sis_tx_list)
+	if (sc->sis_tx_list)
 		bus_dmamem_free(sc->sis_tx_list_tag, sc->sis_tx_list,
 		    sc->sis_tx_list_map);
 
@@ -1616,11 +1617,9 @@ sis_tick(void *xsc)
 {
 	struct sis_softc	*sc;
 	struct mii_data		*mii;
-	struct ifnet		*ifp;
 
 	sc = xsc;
 	SIS_LOCK_ASSERT(sc);
-	ifp = sc->sis_ifp;
 
 	mii = device_get_softc(sc->sis_miibus);
 	mii_tick(mii);
@@ -1989,7 +1988,7 @@ sis_initl(struct sis_softc *sc)
 		return;
 	}
 
-	if (sc->sis_type == SIS_TYPE_83815 || sc->sis_type == SIS_TYPE_83816) {
+	if (sc->sis_type == SIS_TYPE_83815) {
 		if (sc->sis_manual_pad != 0)
 			sc->sis_flags |= SIS_FLAG_MANUAL_PAD;
 		else

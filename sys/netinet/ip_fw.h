@@ -218,6 +218,9 @@ enum ipfw_opcodes {		/* arguments (4 byte each)	*/
 
 	O_FORWARD_IP6,		/* fwd sockaddr_in6             */
 
+	O_DSCP,			/* 2 u32 = DSCP mask */
+	O_SETDSCP,		/* arg1=DSCP value */
+
 	O_LAST_OPCODE		/* not an opcode!		*/
 };
 
@@ -611,6 +614,7 @@ typedef struct	_ipfw_table_xentry {
 	uint8_t		type;		/* entry type			*/
 	uint8_t		masklen;	/* mask length			*/
 	uint16_t	tbl;		/* table number			*/
+	uint16_t	flags;		/* record flags			*/
 	uint32_t	value;		/* value			*/
 	union {
 		/* Longest field needs to be aligned by 4-byte boundary	*/
@@ -618,6 +622,7 @@ typedef struct	_ipfw_table_xentry {
 		char	iface[IF_NAMESIZE];	/* interface name	*/
 	} k;
 } ipfw_table_xentry;
+#define	IPFW_TCF_INET	0x01		/* CIDR flags: IPv4 record	*/
 
 typedef struct	_ipfw_table {
 	u_int32_t	size;		/* size of entries in bytes	*/

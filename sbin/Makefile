@@ -1,12 +1,11 @@
 #	@(#)Makefile	8.5 (Berkeley) 3/31/94
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 # XXX MISSING:		icheck ncheck
 
 SUBDIR=adjkerntz \
-	atacontrol \
 	badsect \
 	camcontrol \
 	ccdconfig \
@@ -73,10 +72,14 @@ SUBDIR=adjkerntz \
 	swapon \
 	sysctl \
 	tunefs \
-	umount \
+	umount
 
 .if ${MK_ATM} != "no"
 SUBDIR+=	atm
+.endif
+
+.if ${MK_CASPER} != "no"
+SUBDIR+=	casperd
 .endif
 
 .if ${MK_CXX} != "no"
@@ -115,8 +118,14 @@ SUBDIR+=	quotacheck
 SUBDIR+=	routed
 .endif
 
+.if ${MK_TESTS} != "no"
+SUBDIR+=	tests
+.endif
+
 .include <bsd.arch.inc.mk>
 
 SUBDIR:=	${SUBDIR:O}
+
+SUBDIR_PARALLEL=
 
 .include <bsd.subdir.mk>

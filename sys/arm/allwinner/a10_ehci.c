@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2012 Ganbold Tsagaankhuu <ganbold@gmail.com>
+ * Copyright (c) 2012 Ganbold Tsagaankhuu <ganbold@freebsd.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -75,6 +75,7 @@ __FBSDID("$FreeBSD$");
 #define SW_AHB_INCRX_ALIGN		(1 << 8)
 #define SW_AHB_INCR4			(1 << 9)
 #define SW_AHB_INCR8			(1 << 10)
+#define GPIO_USB1_PWR			230
 #define GPIO_USB2_PWR			227
 
 #define A10_READ_4(sc, reg)		\
@@ -92,6 +93,10 @@ bs_w_1_proto(reversed);
 static int
 a10_ehci_probe(device_t self)
 {
+
+	if (!ofw_bus_status_okay(self))
+		return (ENXIO);
+
 	if (!ofw_bus_is_compatible(self, "allwinner,usb-ehci")) 
 		return (ENXIO);
 
@@ -181,6 +186,10 @@ a10_ehci_attach(device_t self)
 	/* Give power to USB */
 	GPIO_PIN_SETFLAGS(sc_gpio_dev, GPIO_USB2_PWR, GPIO_PIN_OUTPUT);
 	GPIO_PIN_SET(sc_gpio_dev, GPIO_USB2_PWR, GPIO_PIN_HIGH);
+
+	/* Give power to USB */
+	GPIO_PIN_SETFLAGS(sc_gpio_dev, GPIO_USB1_PWR, GPIO_PIN_OUTPUT);
+	GPIO_PIN_SET(sc_gpio_dev, GPIO_USB1_PWR, GPIO_PIN_HIGH);
 
 	/* Enable passby */
 	reg_value = A10_READ_4(sc, SW_USB_PMU_IRQ_ENABLE);

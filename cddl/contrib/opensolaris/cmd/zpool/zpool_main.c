@@ -22,9 +22,10 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright (c) 2012 by Frederik Wessels. All rights reserved.
  * Copyright (c) 2012 Martin Matuska <mm@FreeBSD.org>. All rights reserved.
+ * Copyright (c) 2013 by Prasad Joshi (sTec). All rights reserved.
  */
 
 #include <solaris.h>
@@ -192,9 +193,9 @@ static zpool_command_t command_table[] = {
 
 #define	NCOMMAND	(sizeof (command_table) / sizeof (command_table[0]))
 
-zpool_command_t *current_command;
+static zpool_command_t *current_command;
 static char history_str[HIS_MAX_RECORD_LEN];
-
+static boolean_t log_history = B_TRUE;
 static uint_t timestamp_fmt = NODATE;
 
 static const char *
@@ -235,7 +236,7 @@ get_usage(zpool_help_t idx) {
 	case HELP_LABELCLEAR:
 		return (gettext("\tlabelclear [-f] <vdev>\n"));
 	case HELP_LIST:
-		return (gettext("\tlist [-Hv] [-o property[,...]] "
+		return (gettext("\tlist [-Hpv] [-o property[,...]] "
 		    "[-T d|u] [pool] ... [interval [count]]\n"));
 	case HELP_OFFLINE:
 		return (gettext("\toffline [-t] <pool> <device> ...\n"));
@@ -247,7 +248,7 @@ get_usage(zpool_help_t idx) {
 	case HELP_REMOVE:
 		return (gettext("\tremove <pool> <device> ...\n"));
 	case HELP_REOPEN:
-		return (""); /* Undocumented command */
+		return (gettext("\treopen <pool>\n"));
 	case HELP_SCRUB:
 		return (gettext("\tscrub [-s] <pool> ...\n"));
 	case HELP_STATUS:
@@ -257,8 +258,8 @@ get_usage(zpool_help_t idx) {
 		return (gettext("\tupgrade [-v]\n"
 		    "\tupgrade [-V version] <-a | pool ...>\n"));
 	case HELP_GET:
-		return (gettext("\tget <\"all\" | property[,...]> "
-		    "<pool> ...\n"));
+		return (gettext("\tget [-Hp] [-o \"all\" | field[,...]] "
+		    "<\"all\" | property[,...]> <pool> ...\n"));
 	case HELP_SET:
 		return (gettext("\tset <property=value> <pool> \n"));
 	case HELP_SPLIT:
@@ -804,6 +805,7 @@ zpool_do_create(int argc, char **argv)
 				goto errout;
 			break;
 		case 'm':
+			/* Equivalent to -O mountpoint=optarg */
 			mountpoint = optarg;
 			break;
 		case 'o':
@@ -842,8 +844,18 @@ zpool_do_create(int argc, char **argv)
 			*propval = '\0';
 			propval++;
 
-			if (add_prop_list(optarg, propval, &fsprops, B_FALSE))
+			/*
+			 * Mountpoints are checked and then added later.
+			 * Uniquely among properties, they can be specified
+			 * more than once, to avoid conflict with -m.
+			 */
+			if (0 == strcmp(optarg,
+			    zfs_prop_to_name(ZFS_PROP_MOUNTPOINT))) {
+				mountpoint = propval;
+			} else if (add_prop_list(optarg, propval, &fsprops,
+			    B_FALSE)) {
 				goto errout;
+			}
 			break;
 		case ':':
 			(void) fprintf(stderr, gettext("missing argument for "
@@ -961,6 +973,18 @@ zpool_do_create(int argc, char **argv)
 		}
 	}
 
+	/*
+	 * Now that the mountpoint's validity has been checked, ensure that
+	 * the property is set appropriately prior to creating the pool.
+	 */
+	if (mountpoint != NULL) {
+		ret = add_prop_list(zfs_prop_to_name(ZFS_PROP_MOUNTPOINT),
+		    mountpoint, &fsprops, B_FALSE);
+		if (ret != 0)
+			goto errout;
+	}
+
+	ret = 1;
 	if (dryrun) {
 		/*
 		 * For a dry run invocation, print out a basic message and run
@@ -980,7 +1004,7 @@ zpool_do_create(int argc, char **argv)
 		 * Hand off to libzfs.
 		 */
 		if (enable_all_pool_feat) {
-			int i;
+			spa_feature_t i;
 			for (i = 0; i < SPA_FEATURES; i++) {
 				char propname[MAXPATHLEN];
 				zfeature_info_t *feat = &spa_feature_table[i];
@@ -995,21 +1019,19 @@ zpool_do_create(int argc, char **argv)
 				if (nvlist_exists(props, propname))
 					continue;
 
-				if (add_prop_list(propname, ZFS_FEATURE_ENABLED,
-				    &props, B_TRUE) != 0)
+				ret = add_prop_list(propname,
+				    ZFS_FEATURE_ENABLED, &props, B_TRUE);
+				if (ret != 0)
 					goto errout;
 			}
 		}
+
+		ret = 1;
 		if (zpool_create(g_zfs, poolname,
 		    nvroot, props, fsprops) == 0) {
 			zfs_handle_t *pool = zfs_open(g_zfs, poolname,
 			    ZFS_TYPE_FILESYSTEM);
 			if (pool != NULL) {
-				if (mountpoint != NULL)
-					verify(zfs_prop_set(pool,
-					    zfs_prop_to_name(
-					    ZFS_PROP_MOUNTPOINT),
-					    mountpoint) == 0);
 				if (zfs_mount(pool, NULL, 0) == 0)
 					ret = zfs_shareall(pool);
 				zfs_close(pool);
@@ -1093,7 +1115,10 @@ zpool_do_destroy(int argc, char **argv)
 		return (1);
 	}
 
-	ret = (zpool_destroy(zhp) != 0);
+	/* The history must be logged as part of the export */
+	log_history = B_FALSE;
+
+	ret = (zpool_destroy(zhp, history_str) != 0);
 
 	zpool_close(zhp);
 
@@ -1157,10 +1182,13 @@ zpool_do_export(int argc, char **argv)
 			continue;
 		}
 
+		/* The history must be logged as part of the export */
+		log_history = B_FALSE;
+
 		if (hardforce) {
-			if (zpool_export_force(zhp) != 0)
+			if (zpool_export_force(zhp, history_str) != 0)
 				ret = 1;
-		} else if (zpool_export(zhp, force) != 0) {
+		} else if (zpool_export(zhp, force, history_str) != 0) {
 			ret = 1;
 		}
 
@@ -1268,12 +1296,13 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
     int namewidth, int depth, boolean_t isspare)
 {
 	nvlist_t **child;
-	uint_t c, children;
+	uint_t c, vsc, children;
 	pool_scan_stat_t *ps = NULL;
 	vdev_stat_t *vs;
 	char rbuf[6], wbuf[6], cbuf[6];
 	char *vname;
 	uint64_t notpresent;
+	uint64_t ashift;
 	spare_cbdata_t cb;
 	const char *state;
 
@@ -1282,7 +1311,7 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 		children = 0;
 
 	verify(nvlist_lookup_uint64_array(nv, ZPOOL_CONFIG_VDEV_STATS,
-	    (uint64_t **)&vs, &c) == 0);
+	    (uint64_t **)&vs, &vsc) == 0);
 
 	state = zpool_state_to_name(vs->vs_state, vs->vs_aux);
 	if (isspare) {
@@ -1336,6 +1365,10 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 			(void) printf(gettext("unsupported feature(s)"));
 			break;
 
+		case VDEV_AUX_ASHIFT_TOO_BIG:
+			(void) printf(gettext("unsupported minimum blocksize"));
+			break;
+
 		case VDEV_AUX_SPARED:
 			verify(nvlist_lookup_uint64(nv, ZPOOL_CONFIG_GUID,
 			    &cb.cb_guid) == 0);
@@ -1378,6 +1411,12 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 			(void) printf(gettext("corrupted data"));
 			break;
 		}
+	} else if (children == 0 && !isspare &&
+	    VDEV_STAT_VALID(vs_physical_ashift, vsc) &&
+	    vs->vs_configured_ashift < vs->vs_physical_ashift) {
+		(void) printf(
+		    gettext("  block size: %dB configured, %dB native"),
+		    1 << vs->vs_configured_ashift, 1 << vs->vs_physical_ashift);
 	}
 
 	(void) nvlist_lookup_uint64_array(nv, ZPOOL_CONFIG_SCAN_STATS,
@@ -1663,6 +1702,12 @@ show_import(nvlist_t *config)
 		    "resilvered.\n"));
 		break;
 
+	case ZPOOL_STATUS_NON_NATIVE_ASHIFT:
+		(void) printf(gettext("status: One or more devices were "
+		    "configured to use a non-native block size.\n"
+		    "\tExpect reduced performance.\n"));
+		break;
+
 	default:
 		/*
 		 * No other status can be seen when importing pools.
@@ -1924,7 +1969,7 @@ zpool_do_import(int argc, char **argv)
 	char *endptr;
 
 	/* check options */
-	while ((c = getopt(argc, argv, ":aCc:d:DEfFmnNo:rR:T:VX")) != -1) {
+	while ((c = getopt(argc, argv, ":aCc:d:DEfFmnNo:R:T:VX")) != -1) {
 		switch (c) {
 		case 'a':
 			do_all = B_TRUE;
@@ -2090,8 +2135,10 @@ zpool_do_import(int argc, char **argv)
 
 		errno = 0;
 		searchguid = strtoull(argv[0], &endptr, 10);
-		if (errno != 0 || *endptr != '\0')
+		if (errno != 0 || *endptr != '\0') {
 			searchname = argv[0];
+			searchguid = 0;
+		}
 		found_config = NULL;
 
 		/*
@@ -2718,6 +2765,7 @@ typedef struct list_cbdata {
 	int		cb_namewidth;
 	boolean_t	cb_scripted;
 	zprop_list_t	*cb_proplist;
+	boolean_t	cb_literal;
 } list_cbdata_t;
 
 /*
@@ -2813,7 +2861,7 @@ print_pool(zpool_handle_t *zhp, list_cbdata_t *cb)
 			    zpool_get_prop_int(zhp, pl->pl_prop, NULL) == 0)
 				propstr = "-";
 			else if (zpool_get_prop(zhp, pl->pl_prop, property,
-			    sizeof (property), NULL) != 0)
+			    sizeof (property), NULL, cb->cb_literal) != 0)
 				propstr = "-";
 			else
 				propstr = property;
@@ -2964,12 +3012,13 @@ list_callback(zpool_handle_t *zhp, void *data)
 }
 
 /*
- * zpool list [-H] [-o prop[,prop]*] [-T d|u] [pool] ... [interval [count]]
+ * zpool list [-Hp] [-o prop[,prop]*] [-T d|u] [pool] ... [interval [count]]
  *
  *	-H	Scripted mode.  Don't display headers, and separate properties
  *		by a single tab.
  *	-o	List of properties to display.  Defaults to
  *		"name,size,allocated,free,capacity,health,altroot"
+ * 	-p	Diplay values in parsable (exact) format.
  *	-T	Display a timestamp in date(1) or Unix format
  *
  * List all pools in the system, whether or not they're healthy.  Output space
@@ -2990,13 +3039,16 @@ zpool_do_list(int argc, char **argv)
 	boolean_t first = B_TRUE;
 
 	/* check options */
-	while ((c = getopt(argc, argv, ":Ho:T:v")) != -1) {
+	while ((c = getopt(argc, argv, ":Ho:pT:v")) != -1) {
 		switch (c) {
 		case 'H':
 			cb.cb_scripted = B_TRUE;
 			break;
 		case 'o':
 			props = optarg;
+			break;
+		case 'p':
+			cb.cb_literal = B_TRUE;
 			break;
 		case 'T':
 			get_timestamp_arg(*optarg);
@@ -3673,22 +3725,37 @@ zpool_do_reguid(int argc, char **argv)
  * zpool reopen <pool>
  *
  * Reopen the pool so that the kernel can update the sizes of all vdevs.
- *
- * NOTE: This command is currently undocumented.  If the command is ever
- * exposed then the appropriate usage() messages will need to be made.
  */
 int
 zpool_do_reopen(int argc, char **argv)
 {
+	int c;
 	int ret = 0;
 	zpool_handle_t *zhp;
 	char *pool;
 
+	/* check options */
+	while ((c = getopt(argc, argv, "")) != -1) {
+		switch (c) {
+		case '?':
+			(void) fprintf(stderr, gettext("invalid option '%c'\n"),
+			    optopt);
+			usage(B_FALSE);
+		}
+	}
+
 	argc--;
 	argv++;
 
-	if (argc != 1)
-		return (2);
+	if (argc < 1) {
+		(void) fprintf(stderr, gettext("missing pool name\n"));
+		usage(B_FALSE);
+	}
+
+	if (argc > 1) {
+		(void) fprintf(stderr, gettext("too many arguments\n"));
+		usage(B_FALSE);
+	}
 
 	pool = argv[0];
 	if ((zhp = zpool_open_canfail(g_zfs, pool)) == NULL)
@@ -3970,7 +4037,7 @@ print_dedup_stats(nvlist_t *config)
 
 	/*
 	 * If the pool was faulted then we may not have been able to
-	 * obtain the config. Otherwise, if have anything in the dedup
+	 * obtain the config. Otherwise, if we have anything in the dedup
 	 * table continue processing the stats.
 	 */
 	if (nvlist_lookup_uint64_array(config, ZPOOL_CONFIG_DDT_OBJ_STATS,
@@ -4031,7 +4098,10 @@ status_callback(zpool_handle_t *zhp, void *data)
 	 * If we were given 'zpool status -x', only report those pools with
 	 * problems.
 	 */
-	if (reason == ZPOOL_STATUS_OK && cbp->cb_explain) {
+	if (cbp->cb_explain &&
+	    (reason == ZPOOL_STATUS_OK ||
+	    reason == ZPOOL_STATUS_VERSION_OLDER ||
+	    reason == ZPOOL_STATUS_FEAT_DISABLED)) {
 		if (!cbp->cb_allpools) {
 			(void) printf(gettext("pool '%s' is healthy\n"),
 			    zpool_get_name(zhp));
@@ -4236,6 +4306,15 @@ status_callback(zpool_handle_t *zhp, void *data)
 		    "device(s) and run 'zpool online',\n"
 		    "\tor ignore the intent log records by running "
 		    "'zpool clear'.\n"));
+		break;
+
+	case ZPOOL_STATUS_NON_NATIVE_ASHIFT:
+		(void) printf(gettext("status: One or more devices are "
+		    "configured to use a non-native block size.\n"
+		    "\tExpect reduced performance.\n"));
+		(void) printf(gettext("action: Replace affected devices with "
+		    "devices that support the\n\tconfigured block size, or "
+		    "migrate data to a properly configured\n\tpool.\n"));
 		break;
 
 	default:
@@ -4560,6 +4639,14 @@ upgrade_cb(zpool_handle_t *zhp, void *arg)
 		if (count > 0) {
 			cbp->cb_first = B_FALSE;
 			printnl = B_TRUE;
+			/*
+			 * If they did "zpool upgrade -a", then we could
+			 * be doing ioctls to different pools.  We need
+			 * to log this history once to each pool, and bypass
+			 * the normal history logging that happens in main().
+			 */
+			(void) zpool_log_history(g_zfs, history_str);
+			log_history = B_FALSE;
 		}
 	}
 
@@ -4921,8 +5008,8 @@ zpool_do_upgrade(int argc, char **argv)
 
 typedef struct hist_cbdata {
 	boolean_t first;
-	int longfmt;
-	int internal;
+	boolean_t longfmt;
+	boolean_t internal;
 } hist_cbdata_t;
 
 /*
@@ -4934,21 +5021,8 @@ get_history_one(zpool_handle_t *zhp, void *data)
 	nvlist_t *nvhis;
 	nvlist_t **records;
 	uint_t numrecords;
-	char *cmdstr;
-	char *pathstr;
-	uint64_t dst_time;
-	time_t tsec;
-	struct tm t;
-	char tbuf[30];
 	int ret, i;
-	uint64_t who;
-	struct passwd *pwd;
-	char *hostname;
-	char *zonename;
-	char internalstr[MAXPATHLEN];
 	hist_cbdata_t *cb = (hist_cbdata_t *)data;
-	uint64_t txg;
-	uint64_t ievent;
 
 	cb->first = B_FALSE;
 
@@ -4960,64 +5034,94 @@ get_history_one(zpool_handle_t *zhp, void *data)
 	verify(nvlist_lookup_nvlist_array(nvhis, ZPOOL_HIST_RECORD,
 	    &records, &numrecords) == 0);
 	for (i = 0; i < numrecords; i++) {
-		if (nvlist_lookup_uint64(records[i], ZPOOL_HIST_TIME,
-		    &dst_time) != 0)
-			continue;
+		nvlist_t *rec = records[i];
+		char tbuf[30] = "";
 
-		/* is it an internal event or a standard event? */
-		if (nvlist_lookup_string(records[i], ZPOOL_HIST_CMD,
-		    &cmdstr) != 0) {
-			if (cb->internal == 0)
-				continue;
+		if (nvlist_exists(rec, ZPOOL_HIST_TIME)) {
+			time_t tsec;
+			struct tm t;
 
-			if (nvlist_lookup_uint64(records[i],
-			    ZPOOL_HIST_INT_EVENT, &ievent) != 0)
-				continue;
-			verify(nvlist_lookup_uint64(records[i],
-			    ZPOOL_HIST_TXG, &txg) == 0);
-			verify(nvlist_lookup_string(records[i],
-			    ZPOOL_HIST_INT_STR, &pathstr) == 0);
-			if (ievent >= LOG_END)
-				continue;
-			(void) snprintf(internalstr,
-			    sizeof (internalstr),
-			    "[internal %s txg:%lld] %s",
-			    zfs_history_event_names[ievent], txg,
-			    pathstr);
-			cmdstr = internalstr;
+			tsec = fnvlist_lookup_uint64(records[i],
+			    ZPOOL_HIST_TIME);
+			(void) localtime_r(&tsec, &t);
+			(void) strftime(tbuf, sizeof (tbuf), "%F.%T", &t);
 		}
-		tsec = dst_time;
-		(void) localtime_r(&tsec, &t);
-		(void) strftime(tbuf, sizeof (tbuf), "%F.%T", &t);
-		(void) printf("%s %s", tbuf, cmdstr);
+
+		if (nvlist_exists(rec, ZPOOL_HIST_CMD)) {
+			(void) printf("%s %s", tbuf,
+			    fnvlist_lookup_string(rec, ZPOOL_HIST_CMD));
+		} else if (nvlist_exists(rec, ZPOOL_HIST_INT_EVENT)) {
+			int ievent =
+			    fnvlist_lookup_uint64(rec, ZPOOL_HIST_INT_EVENT);
+			if (!cb->internal)
+				continue;
+			if (ievent >= ZFS_NUM_LEGACY_HISTORY_EVENTS) {
+				(void) printf("%s unrecognized record:\n",
+				    tbuf);
+				dump_nvlist(rec, 4);
+				continue;
+			}
+			(void) printf("%s [internal %s txg:%lld] %s", tbuf,
+			    zfs_history_event_names[ievent],
+			    fnvlist_lookup_uint64(rec, ZPOOL_HIST_TXG),
+			    fnvlist_lookup_string(rec, ZPOOL_HIST_INT_STR));
+		} else if (nvlist_exists(rec, ZPOOL_HIST_INT_NAME)) {
+			if (!cb->internal)
+				continue;
+			(void) printf("%s [txg:%lld] %s", tbuf,
+			    fnvlist_lookup_uint64(rec, ZPOOL_HIST_TXG),
+			    fnvlist_lookup_string(rec, ZPOOL_HIST_INT_NAME));
+			if (nvlist_exists(rec, ZPOOL_HIST_DSNAME)) {
+				(void) printf(" %s (%llu)",
+				    fnvlist_lookup_string(rec,
+				    ZPOOL_HIST_DSNAME),
+				    fnvlist_lookup_uint64(rec,
+				    ZPOOL_HIST_DSID));
+			}
+			(void) printf(" %s", fnvlist_lookup_string(rec,
+			    ZPOOL_HIST_INT_STR));
+		} else if (nvlist_exists(rec, ZPOOL_HIST_IOCTL)) {
+			if (!cb->internal)
+				continue;
+			(void) printf("%s ioctl %s\n", tbuf,
+			    fnvlist_lookup_string(rec, ZPOOL_HIST_IOCTL));
+			if (nvlist_exists(rec, ZPOOL_HIST_INPUT_NVL)) {
+				(void) printf("    input:\n");
+				dump_nvlist(fnvlist_lookup_nvlist(rec,
+				    ZPOOL_HIST_INPUT_NVL), 8);
+			}
+			if (nvlist_exists(rec, ZPOOL_HIST_OUTPUT_NVL)) {
+				(void) printf("    output:\n");
+				dump_nvlist(fnvlist_lookup_nvlist(rec,
+				    ZPOOL_HIST_OUTPUT_NVL), 8);
+			}
+		} else {
+			if (!cb->internal)
+				continue;
+			(void) printf("%s unrecognized record:\n", tbuf);
+			dump_nvlist(rec, 4);
+		}
 
 		if (!cb->longfmt) {
 			(void) printf("\n");
 			continue;
 		}
 		(void) printf(" [");
-		if (nvlist_lookup_uint64(records[i],
-		    ZPOOL_HIST_WHO, &who) == 0) {
-			pwd = getpwuid((uid_t)who);
-			if (pwd)
-				(void) printf("user %s on",
-				    pwd->pw_name);
-			else
-				(void) printf("user %d on",
-				    (int)who);
-		} else {
-			(void) printf(gettext("no info]\n"));
-			continue;
+		if (nvlist_exists(rec, ZPOOL_HIST_WHO)) {
+			uid_t who = fnvlist_lookup_uint64(rec, ZPOOL_HIST_WHO);
+			struct passwd *pwd = getpwuid(who);
+			(void) printf("user %d ", (int)who);
+			if (pwd != NULL)
+				(void) printf("(%s) ", pwd->pw_name);
 		}
-		if (nvlist_lookup_string(records[i],
-		    ZPOOL_HIST_HOST, &hostname) == 0) {
-			(void) printf(" %s", hostname);
+		if (nvlist_exists(rec, ZPOOL_HIST_HOST)) {
+			(void) printf("on %s",
+			    fnvlist_lookup_string(rec, ZPOOL_HIST_HOST));
 		}
-		if (nvlist_lookup_string(records[i],
-		    ZPOOL_HIST_ZONE, &zonename) == 0) {
-			(void) printf(":%s", zonename);
+		if (nvlist_exists(rec, ZPOOL_HIST_ZONE)) {
+			(void) printf(":%s",
+			    fnvlist_lookup_string(rec, ZPOOL_HIST_ZONE));
 		}
-
 		(void) printf("]");
 		(void) printf("\n");
 	}
@@ -5032,8 +5136,6 @@ get_history_one(zpool_handle_t *zhp, void *data)
  *
  * Displays the history of commands that modified pools.
  */
-
-
 int
 zpool_do_history(int argc, char **argv)
 {
@@ -5046,10 +5148,10 @@ zpool_do_history(int argc, char **argv)
 	while ((c = getopt(argc, argv, "li")) != -1) {
 		switch (c) {
 		case 'l':
-			cbdata.longfmt = 1;
+			cbdata.longfmt = B_TRUE;
 			break;
 		case 'i':
-			cbdata.internal = 1;
+			cbdata.internal = B_TRUE;
 			break;
 		case '?':
 			(void) fprintf(stderr, gettext("invalid option '%c'\n"),
@@ -5102,7 +5204,7 @@ get_callback(zpool_handle_t *zhp, void *data)
 			}
 		} else {
 			if (zpool_get_prop(zhp, pl->pl_prop, value,
-			    sizeof (value), &srctype) != 0)
+			    sizeof (value), &srctype, cbp->cb_literal) != 0)
 				continue;
 
 			zprop_print_one_property(zpool_get_name(zhp), cbp,
@@ -5113,20 +5215,32 @@ get_callback(zpool_handle_t *zhp, void *data)
 	return (0);
 }
 
+/*
+ * zpool get [-Hp] [-o "all" | field[,...]] <"all" | property[,...]> <pool> ...
+ *
+ *	-H	Scripted mode.  Don't display headers, and separate properties
+ *		by a single tab.
+ *	-o	List of columns to display.  Defaults to
+ *		"name,property,value,source".
+ * 	-p	Diplay values in parsable (exact) format.
+ *
+ * Get properties of pools in the system. Output space statistics
+ * for each one as well as other attributes.
+ */
 int
 zpool_do_get(int argc, char **argv)
 {
 	zprop_get_cbdata_t cb = { 0 };
 	zprop_list_t fake_name = { 0 };
 	int ret;
-
-	if (argc < 2) {
-		(void) fprintf(stderr, gettext("missing property "
-		    "argument\n"));
-		usage(B_FALSE);
-	}
+	int c, i;
+	char *value;
 
 	cb.cb_first = B_TRUE;
+
+	/*
+	 * Set up default columns and sources.
+	 */
 	cb.cb_sources = ZPROP_SRC_ALL;
 	cb.cb_columns[0] = GET_COL_NAME;
 	cb.cb_columns[1] = GET_COL_PROPERTY;
@@ -5134,9 +5248,88 @@ zpool_do_get(int argc, char **argv)
 	cb.cb_columns[3] = GET_COL_SOURCE;
 	cb.cb_type = ZFS_TYPE_POOL;
 
-	if (zprop_get_list(g_zfs, argv[1], &cb.cb_proplist,
+	/* check options */
+	while ((c = getopt(argc, argv, ":Hpo:")) != -1) {
+		switch (c) {
+		case 'p':
+			cb.cb_literal = B_TRUE;
+			break;
+		case 'H':
+			cb.cb_scripted = B_TRUE;
+			break;
+		case 'o':
+			bzero(&cb.cb_columns, sizeof (cb.cb_columns));
+			i = 0;
+			while (*optarg != '\0') {
+				static char *col_subopts[] =
+				{ "name", "property", "value", "source",
+				"all", NULL };
+
+				if (i == ZFS_GET_NCOLS) {
+					(void) fprintf(stderr, gettext("too "
+					"many fields given to -o "
+					"option\n"));
+					usage(B_FALSE);
+				}
+
+				switch (getsubopt(&optarg, col_subopts,
+				    &value)) {
+				case 0:
+					cb.cb_columns[i++] = GET_COL_NAME;
+					break;
+				case 1:
+					cb.cb_columns[i++] = GET_COL_PROPERTY;
+					break;
+				case 2:
+					cb.cb_columns[i++] = GET_COL_VALUE;
+					break;
+				case 3:
+					cb.cb_columns[i++] = GET_COL_SOURCE;
+					break;
+				case 4:
+					if (i > 0) {
+						(void) fprintf(stderr,
+						    gettext("\"all\" conflicts "
+						    "with specific fields "
+						    "given to -o option\n"));
+						usage(B_FALSE);
+					}
+					cb.cb_columns[0] = GET_COL_NAME;
+					cb.cb_columns[1] = GET_COL_PROPERTY;
+					cb.cb_columns[2] = GET_COL_VALUE;
+					cb.cb_columns[3] = GET_COL_SOURCE;
+					i = ZFS_GET_NCOLS;
+					break;
+				default:
+					(void) fprintf(stderr,
+					    gettext("invalid column name "
+					    "'%s'\n"), value);
+					usage(B_FALSE);
+				}
+			}
+			break;
+		case '?':
+			(void) fprintf(stderr, gettext("invalid option '%c'\n"),
+			    optopt);
+			usage(B_FALSE);
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	if (argc < 1) {
+		(void) fprintf(stderr, gettext("missing property "
+		    "argument\n"));
+		usage(B_FALSE);
+	}
+
+	if (zprop_get_list(g_zfs, argv[0], &cb.cb_proplist,
 	    ZFS_TYPE_POOL) != 0)
 		usage(B_FALSE);
+
+	argc--;
+	argv++;
 
 	if (cb.cb_proplist != NULL) {
 		fake_name.pl_prop = ZPOOL_PROP_NAME;
@@ -5145,7 +5338,7 @@ zpool_do_get(int argc, char **argv)
 		cb.cb_proplist = &fake_name;
 	}
 
-	ret = for_each_pool(argc - 2, argv + 2, B_TRUE, &cb.cb_proplist,
+	ret = for_each_pool(argc, argv, B_TRUE, &cb.cb_proplist,
 	    get_callback, &cb);
 
 	if (cb.cb_proplist == &fake_name)
@@ -5274,8 +5467,7 @@ main(int argc, char **argv)
 	if (strcmp(cmdname, "-?") == 0)
 		usage(B_TRUE);
 
-	zpool_set_history_str("zpool", argc, argv, history_str);
-	verify(zpool_stage_history(g_zfs, history_str) == 0);
+	zfs_save_arguments(argc, argv, history_str, sizeof (history_str));
 
 	/*
 	 * Run the appropriate command.
@@ -5292,15 +5484,17 @@ main(int argc, char **argv)
 		 * 'freeze' is a vile debugging abomination, so we treat
 		 * it as such.
 		 */
-		char buf[16384];
-		int fd = open(ZFS_DEV, O_RDWR);
-		(void) strcpy((void *)buf, argv[2]);
-		return (!!ioctl(fd, ZFS_IOC_POOL_FREEZE, buf));
+		zfs_cmd_t zc = { 0 };
+		(void) strlcpy(zc.zc_name, argv[2], sizeof (zc.zc_name));
+		return (!!zfs_ioctl(g_zfs, ZFS_IOC_POOL_FREEZE, &zc));
 	} else {
 		(void) fprintf(stderr, gettext("unrecognized "
 		    "command '%s'\n"), cmdname);
 		usage(B_FALSE);
 	}
+
+	if (ret == 0 && log_history)
+		(void) zpool_log_history(g_zfs, history_str);
 
 	libzfs_fini(g_zfs);
 

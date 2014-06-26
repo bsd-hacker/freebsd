@@ -40,7 +40,6 @@
  */
 #include "opt_inet.h"
 #include "opt_inet6.h"
-#include "opt_ipx.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -57,6 +56,7 @@
 #include <machine/cpu.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/netisr.h>
 #include <net/route.h>
 #include <net/if_dl.h>
@@ -76,11 +76,6 @@
 #include <netinet6/nd6.h>
 #endif
 
-#ifdef IPX
-#include <netipx/ipx.h>
-#include <netipx/ipx_if.h>
-#endif
-
 #define ARCNET_ALLOW_BROKEN_ARP
 
 static struct mbuf *arc_defrag(struct ifnet *, struct mbuf *);
@@ -92,8 +87,7 @@ u_int8_t  arcbroadcastaddr = 0;
 #define ARC_LLADDR(ifp)	(*(u_int8_t *)IF_LLADDR(ifp))
 
 #define senderr(e) { error = (e); goto bad;}
-#define SIN(s)	((struct sockaddr_in *)s)
-#define SIPX(s)	((struct sockaddr_ipx *)s)
+#define SIN(s)	((const struct sockaddr_in *)(s))
 
 /*
  * ARCnet output routine.
@@ -101,7 +95,7 @@ u_int8_t  arcbroadcastaddr = 0;
  * Assumes that ifp is actually pointer to arccom structure.
  */
 int
-arc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+arc_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
     struct route *ro)
 {
 	struct arc_header	*ah;
@@ -176,18 +170,12 @@ arc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 		atype = ARCTYPE_INET6;
 		break;
 #endif
-#ifdef IPX
-	case AF_IPX:
-		adst = SIPX(dst)->sipx_addr.x_host.c_host[5];
-		atype = ARCTYPE_IPX;
-		if (adst == 0xff)
-			adst = arcbroadcastaddr;
-		break;
-#endif
-
 	case AF_UNSPEC:
+	    {
+		const struct arc_header *ah;
+
 		loop_copy = -1;
-		ah = (struct arc_header *)dst->sa_data;
+		ah = (const struct arc_header *)dst->sa_data;
 		adst = ah->arc_dhost;
 		atype = ah->arc_type;
 
@@ -207,7 +195,7 @@ arc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 #endif
 		}
 		break;
-
+	    }
 	default:
 		if_printf(ifp, "can't handle af%d\n", dst->sa_family);
 		senderr(EAFNOSUPPORT);
@@ -598,12 +586,6 @@ arc_input(struct ifnet *ifp, struct mbuf *m)
 		isr = NETISR_IPV6;
 		break;
 #endif
-#ifdef IPX
-	case ARCTYPE_IPX:
-		m_adj(m, ARC_HDRNEWLEN);
-		isr = NETISR_IPX;
-		break;
-#endif
 	default:
 		m_freem(m);
 		return;
@@ -638,11 +620,7 @@ arc_ifattach(struct ifnet *ifp, u_int8_t lla)
 	ifp->if_resolvemulti = arc_resolvemulti;
 	if (ifp->if_baudrate == 0)
 		ifp->if_baudrate = 2500000;
-#if __FreeBSD_version < 500000
-	ifa = ifnet_addrs[ifp->if_index - 1];
-#else
 	ifa = ifp->if_addr;
-#endif
 	KASSERT(ifa != NULL, ("%s: no lladdr!\n", __func__));
 	sdl = (struct sockaddr_dl *)ifa->ifa_addr;
 	sdl->sdl_type = IFT_ARCNET;
@@ -688,26 +666,6 @@ arc_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 			ifp->if_init(ifp->if_softc);	/* before arpwhohas */
 			arp_ifinit(ifp, ifa);
 			break;
-#endif
-#ifdef IPX
-		/*
-		 * XXX This code is probably wrong
-		 */
-		case AF_IPX:
-		{
-			struct ipx_addr *ina = &(IA_SIPX(ifa)->sipx_addr);
-
-			if (ipx_nullhost(*ina))
-				ina->x_host.c_host[5] = ARC_LLADDR(ifp);
-			else
-				arc_storelladdr(ifp, ina->x_host.c_host[5]);
-
-			/*
-			 * Set new address
-			 */
-			ifp->if_init(ifp->if_softc);
-			break;
-		}
 #endif
 		default:
 			ifp->if_init(ifp->if_softc);
@@ -786,14 +744,7 @@ arc_resolvemulti(struct ifnet *ifp, struct sockaddr **llsa,
 		sin = (struct sockaddr_in *)sa;
 		if (!IN_MULTICAST(ntohl(sin->sin_addr.s_addr)))
 			return EADDRNOTAVAIL;
-		sdl = malloc(sizeof *sdl, M_IFMADDR,
-		       M_NOWAIT | M_ZERO);
-		if (sdl == NULL)
-			return ENOMEM;
-		sdl->sdl_len = sizeof *sdl;
-		sdl->sdl_family = AF_LINK;
-		sdl->sdl_index = ifp->if_index;
-		sdl->sdl_type = IFT_ARCNET;
+		sdl = link_init_sdl(ifp, *llsa, IFT_ETHER);
 		sdl->sdl_alen = ARC_ADDR_LEN;
 		*LLADDR(sdl) = 0;
 		*llsa = (struct sockaddr *)sdl;
@@ -814,14 +765,7 @@ arc_resolvemulti(struct ifnet *ifp, struct sockaddr **llsa,
 		}
 		if (!IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr))
 			return EADDRNOTAVAIL;
-		sdl = malloc(sizeof *sdl, M_IFMADDR,
-		       M_NOWAIT | M_ZERO);
-		if (sdl == NULL)
-			return ENOMEM;
-		sdl->sdl_len = sizeof *sdl;
-		sdl->sdl_family = AF_LINK;
-		sdl->sdl_index = ifp->if_index;
-		sdl->sdl_type = IFT_ARCNET;
+		sdl = link_init_sdl(ifp, *llsa, IFT_ETHER);
 		sdl->sdl_alen = ARC_ADDR_LEN;
 		*LLADDR(sdl) = 0;
 		*llsa = (struct sockaddr *)sdl;

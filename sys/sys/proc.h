@@ -273,6 +273,8 @@ struct thread {
 	struct vm_map_entry *td_map_def_user; /* (k) Deferred entries. */
 	pid_t		td_dbg_forked;	/* (c) Child pid for debugger. */
 	u_int		td_vp_reserv;	/* (k) Count of reserved vnodes. */
+	int		td_no_sleeping;	/* (k) Sleeping disabled count. */
+	int		td_dom_rr_idx;	/* (k) RR Numa domain selection. */
 #define	td_endzero td_sigmask
 
 /* Copied during fork1() or create_thread(). */
@@ -298,7 +300,11 @@ struct thread {
 		TDS_RUNQ,
 		TDS_RUNNING
 	} td_state;			/* (t) thread state */
-	register_t	td_retval[2];	/* (k) Syscall aux returns. */
+	union {
+		register_t	tdu_retval[2];
+		off_t		tdu_off;	
+	} td_uretoff;			/* (k) Syscall aux returns. */
+#define td_retval	td_uretoff.tdu_retval
 	struct callout	td_slpcallout;	/* (h) Callout for sleep. */
 	struct trapframe *td_frame;	/* (k) */
 	struct vm_object *td_kstack_obj;/* (a) Kstack object. */
@@ -339,9 +345,6 @@ do {									\
 #else
 #define	THREAD_LOCKPTR_ASSERT(td, lock)
 #endif
-
-#define	CRITICAL_ASSERT(td)						\
-    KASSERT((td)->td_critnest >= 1, ("Not in critical section"));
 
 /*
  * Flags kept in td_flags:
@@ -404,7 +407,7 @@ do {									\
 #define	TDP_ALTSTACK	0x00000020 /* Have alternate signal stack. */
 #define	TDP_DEADLKTREAT	0x00000040 /* Lock aquisition - deadlock treatment. */
 #define	TDP_NOFAULTING	0x00000080 /* Do not handle page faults. */
-#define	TDP_NOSLEEPING	0x00000100 /* Thread is not allowed to sleep on a sq. */
+#define	TDP_UNUSED9	0x00000100 /* --available-- */
 #define	TDP_OWEUPC	0x00000200 /* Call addupc() at next AST. */
 #define	TDP_ITHREAD	0x00000400 /* Thread is an interrupt thread. */
 #define	TDP_SYNCIO	0x00000800 /* Local override, disable async i/o. */
@@ -425,6 +428,8 @@ do {									\
 #define	TDP_RESETSPUR	0x04000000 /* Reset spurious page fault history. */
 #define	TDP_NERRNO	0x08000000 /* Last errno is already in td_errno */
 #define	TDP_UIOHELD	0x10000000 /* Current uio has pages held in td_ma */
+#define	TDP_DEVMEMIO	0x20000000 /* Accessing memory for /dev/mem */
+#define	TDP_EXECVMSPC	0x40000000 /* Execve destroyed old vmspace */
 
 /*
  * Reasons that the current thread can not be run yet.
@@ -493,11 +498,8 @@ struct proc {
 	struct callout	p_limco;	/* (c) Limit callout handle */
 	struct sigacts	*p_sigacts;	/* (x) Signal actions, state (CPU). */
 
-	/*
-	 * The following don't make too much sense.
-	 * See the td_ or ke_ versions of the same flags.
-	 */
 	int		p_flag;		/* (c) P_* flags. */
+	int		p_flag2;	/* (c) P2_* flags. */
 	enum {
 		PRS_NEW = 0,		/* In creation */
 		PRS_NORMAL,		/* threads can be run. */
@@ -641,6 +643,9 @@ struct proc {
 #define	P_STOPPED	(P_STOPPED_SIG|P_STOPPED_SINGLE|P_STOPPED_TRACE)
 #define	P_SHOULDSTOP(p)	((p)->p_flag & P_STOPPED)
 #define	P_KILLED(p)	((p)->p_flag & P_WKILLED)
+
+/* These flags are kept in p_flag2. */
+#define	P2_INHERIT_PROTECTED 0x00000001 /* New children get P_PROTECTED. */
 
 /*
  * These were process status values (p_stat), now they are only used in
@@ -790,17 +795,11 @@ extern pid_t pid_max;
 #define	thread_safetoswapout(td)	((td)->td_flags & TDF_CANSWAP)
 
 /* Control whether or not it is safe for curthread to sleep. */
-#define	THREAD_NO_SLEEPING() do {					\
-	KASSERT(!(curthread->td_pflags & TDP_NOSLEEPING),		\
-	    ("nested no sleeping"));					\
-	curthread->td_pflags |= TDP_NOSLEEPING;				\
-} while (0)
+#define	THREAD_NO_SLEEPING()		((curthread)->td_no_sleeping++)
 
-#define	THREAD_SLEEPING_OK() do {					\
-	KASSERT((curthread->td_pflags & TDP_NOSLEEPING),		\
-	    ("nested sleeping ok"));					\
-	curthread->td_pflags &= ~TDP_NOSLEEPING;			\
-} while (0)
+#define	THREAD_SLEEPING_OK()		((curthread)->td_no_sleeping--)
+
+#define	THREAD_CAN_SLEEP()		((curthread)->td_no_sleeping == 0)
 
 #define	PIDHASH(pid)	(&pidhashtbl[(pid) & pidhash])
 extern LIST_HEAD(pidhashhead, proc) *pidhashtbl;
@@ -883,6 +882,7 @@ struct	pargs *pargs_alloc(int len);
 void	pargs_drop(struct pargs *pa);
 void	pargs_hold(struct pargs *pa);
 int	proc_getargv(struct thread *td, struct proc *p, struct sbuf *sb);
+int	proc_getauxv(struct thread *td, struct proc *p, struct sbuf *sb);
 int	proc_getenvv(struct thread *td, struct proc *p, struct sbuf *sb);
 void	procinit(void);
 void	proc_linkup0(struct proc *p, struct thread *td);
@@ -900,7 +900,6 @@ int	setrunnable(struct thread *);
 void	setsugid(struct proc *p);
 int	should_yield(void);
 int	sigonstack(size_t sp);
-void	sleepinit(void);
 void	stopevent(struct proc *, u_int, u_int);
 struct	thread *tdfind(lwpid_t, pid_t);
 void	threadinit(void);
@@ -908,7 +907,7 @@ void	tidhash_add(struct thread *);
 void	tidhash_remove(struct thread *);
 void	cpu_idle(int);
 int	cpu_idle_wakeup(int);
-extern	void (*cpu_idle_hook)(void);	/* Hook to machdep CPU idler. */
+extern	void (*cpu_idle_hook)(sbintime_t);	/* Hook to machdep CPU idler. */
 void	cpu_switch(struct thread *, struct thread *, struct mtx *);
 void	cpu_throw(struct thread *, struct thread *) __dead2;
 void	unsleep(struct thread *);

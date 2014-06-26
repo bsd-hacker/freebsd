@@ -87,6 +87,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/bio.h>
 #include <sys/buf.h>
+#include <sys/rwlock.h>
 
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
@@ -910,6 +911,7 @@ nfsrv_read(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 		uiop->uio_resid = len;
 		uiop->uio_rw = UIO_READ;
 		uiop->uio_segflg = UIO_SYSSPACE;
+		uiop->uio_td = NULL;
 		nh = nfsrv_sequential_heuristic(uiop, vp);
 		ioflag |= nh->nh_seqcount << IO_SEQSHIFT;
 		error = VOP_READ(vp, uiop, IO_NODELOCKED | ioflag, cred);
@@ -3332,9 +3334,9 @@ nfsrv_commit(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 		 */
 		if (vp->v_object &&
 		   (vp->v_object->flags & OBJ_MIGHTBEDIRTY)) {
-			VM_OBJECT_LOCK(vp->v_object);
+			VM_OBJECT_WLOCK(vp->v_object);
 			vm_object_page_clean(vp->v_object, 0, 0, OBJPC_SYNC);
-			VM_OBJECT_UNLOCK(vp->v_object);
+			VM_OBJECT_WUNLOCK(vp->v_object);
 		}
 		error = VOP_FSYNC(vp, MNT_WAIT, curthread);
 	} else {
@@ -3363,10 +3365,10 @@ nfsrv_commit(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 
 		if (vp->v_object &&
 		   (vp->v_object->flags & OBJ_MIGHTBEDIRTY)) {
-			VM_OBJECT_LOCK(vp->v_object);
+			VM_OBJECT_WLOCK(vp->v_object);
 			vm_object_page_clean(vp->v_object, off, off + cnt,
 			    OBJPC_SYNC);
-			VM_OBJECT_UNLOCK(vp->v_object);
+			VM_OBJECT_WUNLOCK(vp->v_object);
 		}
 
 		bo = &vp->v_bufobj;
@@ -3386,7 +3388,7 @@ nfsrv_commit(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 			 */
 			if ((bp = gbincore(&vp->v_bufobj, lblkno)) != NULL) {
 				if (BUF_LOCK(bp, LK_EXCLUSIVE | LK_SLEEPFAIL |
-				    LK_INTERLOCK, BO_MTX(bo)) == ENOLCK) {
+				    LK_INTERLOCK, BO_LOCKPTR(bo)) == ENOLCK) {
 					BO_LOCK(bo);
 					continue; /* retry */
 				}

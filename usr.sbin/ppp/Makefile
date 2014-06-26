@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 PROG=	ppp
 MAN=	ppp.8
@@ -44,13 +44,6 @@ M4FLAGS=
 LDADD= -lcrypt -lmd -lutil -lz
 DPADD=	${LIBCRYPT} ${LIBMD} ${LIBUTIL} ${LIBZ}
 
-.SUFFIXES: .8 .8.m4
-
-.8.m4.8:
-	m4 ${M4FLAGS} ${.IMPSRC} >${.TARGET}
-
-CLEANFILES= ppp.8
-
 .if defined(PPP_CONFDIR) && !empty(PPP_CONFDIR)
 CFLAGS+=-DPPP_CONFDIR=\"${PPP_CONFDIR}\"
 .endif
@@ -83,8 +76,7 @@ CFLAGS+=-DNOSUID
 SRCS+=	id.c
 .endif
 
-.if defined(RELEASE_CRUNCH) || ${MK_OPENSSL} == "no" || \
-    defined(PPP_NO_DES)
+.if ${MK_OPENSSL} == "no" || defined(PPP_NO_DES)
 CFLAGS+=-DNODES
 .else
 SRCS+=	chap_ms.c mppe.c

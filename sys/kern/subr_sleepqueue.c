@@ -10,9 +10,6 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. Neither the name of the author nor the names of any co-contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -64,7 +61,6 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_sleepqueue_profiling.h"
 #include "opt_ddb.h"
-#include "opt_kdtrace.h"
 #include "opt_sched.h"
 
 #include <sys/param.h>
@@ -88,16 +84,14 @@ __FBSDID("$FreeBSD$");
 #endif
 
 /*
- * Constants for the hash table of sleep queue chains.  These constants are
- * the same ones that 4BSD (and possibly earlier versions of BSD) used.
- * Basically, we ignore the lower 8 bits of the address since most wait
- * channel pointers are aligned and only look at the next 7 bits for the
- * hash.  SC_TABLESIZE must be a power of two for SC_MASK to work properly.
+ * Constants for the hash table of sleep queue chains.
+ * SC_TABLESIZE must be a power of two for SC_MASK to work properly.
  */
-#define	SC_TABLESIZE	128			/* Must be power of 2. */
+#define	SC_TABLESIZE	256			/* Must be power of 2. */
 #define	SC_MASK		(SC_TABLESIZE - 1)
 #define	SC_SHIFT	8
-#define	SC_HASH(wc)	(((uintptr_t)(wc) >> SC_SHIFT) & SC_MASK)
+#define	SC_HASH(wc)	((((uintptr_t)(wc) >> SC_SHIFT) ^ (uintptr_t)(wc)) & \
+			    SC_MASK)
 #define	SC_LOOKUP(wc)	&sleepq_chains[SC_HASH(wc)]
 #define NR_SLEEPQS      2
 /*
@@ -172,24 +166,20 @@ SDT_PROBE_DECLARE(sched, , , sleep);
 SDT_PROBE_DECLARE(sched, , , wakeup);
 
 /*
- * Early initialization of sleep queues that is called from the sleepinit()
- * SYSINIT.
+ * Initialize SLEEPQUEUE_PROFILING specific sysctl nodes.
+ * Note that it must happen after sleepinit() has been fully executed, so
+ * it must happen after SI_SUB_KMEM SYSINIT() subsystem setup.
  */
-void
-init_sleepqueues(void)
-{
 #ifdef SLEEPQUEUE_PROFILING
-	struct sysctl_oid *chain_oid;
+static void
+init_sleepqueue_profiling(void)
+{
 	char chain_name[10];
-#endif
-	int i;
+	struct sysctl_oid *chain_oid;
+	u_int i;
 
 	for (i = 0; i < SC_TABLESIZE; i++) {
-		LIST_INIT(&sleepq_chains[i].sc_queues);
-		mtx_init(&sleepq_chains[i].sc_lock, "sleepq chain", NULL,
-		    MTX_SPIN | MTX_RECURSE);
-#ifdef SLEEPQUEUE_PROFILING
-		snprintf(chain_name, sizeof(chain_name), "%d", i);
+		snprintf(chain_name, sizeof(chain_name), "%u", i);
 		chain_oid = SYSCTL_ADD_NODE(NULL, 
 		    SYSCTL_STATIC_CHILDREN(_debug_sleepq_chains), OID_AUTO,
 		    chain_name, CTLFLAG_RD, NULL, "sleepq chain stats");
@@ -198,7 +188,26 @@ init_sleepqueues(void)
 		SYSCTL_ADD_UINT(NULL, SYSCTL_CHILDREN(chain_oid), OID_AUTO,
 		    "max_depth", CTLFLAG_RD, &sleepq_chains[i].sc_max_depth, 0,
 		    NULL);
+	}
+}
+
+SYSINIT(sleepqueue_profiling, SI_SUB_LOCK, SI_ORDER_ANY,
+    init_sleepqueue_profiling, NULL);
 #endif
+
+/*
+ * Early initialization of sleep queues that is called from the sleepinit()
+ * SYSINIT.
+ */
+void
+init_sleepqueues(void)
+{
+	int i;
+
+	for (i = 0; i < SC_TABLESIZE; i++) {
+		LIST_INIT(&sleepq_chains[i].sc_queues);
+		mtx_init(&sleepq_chains[i].sc_lock, "sleepq chain", NULL,
+		    MTX_SPIN | MTX_RECURSE);
 	}
 	sleepq_zone = uma_zcreate("SLEEPQUEUE", sizeof(struct sleepqueue),
 #ifdef INVARIANTS
@@ -296,8 +305,8 @@ sleepq_add(void *wchan, struct lock_object *lock, const char *wmesg, int flags,
 	MPASS((queue >= 0) && (queue < NR_SLEEPQS));
 
 	/* If this thread is not allowed to sleep, die a horrible death. */
-	KASSERT(!(td->td_pflags & TDP_NOSLEEPING),
-	    ("%s: td %p to sleep on wchan %p with TDP_NOSLEEPING on",
+	KASSERT(td->td_no_sleeping == 0,
+	    ("%s: td %p to sleep on wchan %p with sleeping prohibited",
 	    __func__, td, wchan));
 
 	/* Look up the sleep queue associated with the wait channel 'wchan'. */
@@ -361,7 +370,8 @@ sleepq_add(void *wchan, struct lock_object *lock, const char *wmesg, int flags,
  * sleep queue after timo ticks if the thread has not already been awakened.
  */
 void
-sleepq_set_timeout(void *wchan, int timo)
+sleepq_set_timeout_sbt(void *wchan, sbintime_t sbt, sbintime_t pr,
+    int flags)
 {
 	struct sleepqueue_chain *sc;
 	struct thread *td;
@@ -372,7 +382,8 @@ sleepq_set_timeout(void *wchan, int timo)
 	MPASS(TD_ON_SLEEPQ(td));
 	MPASS(td->td_sleepqueue == NULL);
 	MPASS(wchan != NULL);
-	callout_reset_curcpu(&td->td_slpcallout, timo, sleepq_timeout, td);
+	callout_reset_sbt_on(&td->td_slpcallout, sbt, pr,
+	    sleepq_timeout, td, PCPU_GET(cpuid), flags | C_DIRECT_EXEC);
 }
 
 /*
@@ -405,7 +416,7 @@ sleepq_catch_signals(void *wchan, int pri)
 	struct thread *td;
 	struct proc *p;
 	struct sigacts *ps;
-	int sig, ret, stop_allowed;
+	int sig, ret;
 
 	td = curthread;
 	p = curproc;
@@ -429,8 +440,6 @@ sleepq_catch_signals(void *wchan, int pri)
 		sleepq_switch(wchan, pri);
 		return (0);
 	}
-	stop_allowed = (td->td_flags & TDF_SBDRY) ? SIG_STOP_NOT_ALLOWED :
-	    SIG_STOP_ALLOWED;
 	thread_unlock(td);
 	mtx_unlock_spin(&sc->sc_lock);
 	CTR3(KTR_PROC, "sleepq catching signals: thread %p (pid %ld, %s)",
@@ -438,7 +447,7 @@ sleepq_catch_signals(void *wchan, int pri)
 	PROC_LOCK(p);
 	ps = p->p_sigacts;
 	mtx_lock(&ps->ps_mtx);
-	sig = cursig(td, stop_allowed);
+	sig = cursig(td);
 	if (sig == 0) {
 		mtx_unlock(&ps->ps_mtx);
 		ret = thread_suspend_check(1);

@@ -108,7 +108,6 @@ struct ath_hal_5210 {
 	uint32_t	ah_txDescInterruptMask;
 	uint32_t	ah_txEolInterruptMask;
 	uint32_t	ah_txUrnInterruptMask;
-	HAL_POWER_MODE	ah_powerMode;
 	uint8_t		ah_bssid[IEEE80211_ADDR_LEN];
 	HAL_TX_QUEUE_INFO ah_txq[HAL_NUM_TX_QUEUES]; /* beacon+cab+data */
 	/*
@@ -121,6 +120,8 @@ struct ath_hal_5210 {
 	u_int		ah_slottime;		/* user-specified slot time */
 	u_int		ah_acktimeout;		/* user-specified ack timeout */
 	u_int		ah_ctstimeout;		/* user-specified cts timeout */
+
+	uint16_t	ah_associd;		/* association id */
 };
 #define	AH5210(ah)	((struct ath_hal_5210 *)(ah))
 
@@ -259,6 +260,7 @@ extern	HAL_BOOL ar5210GetDiagState(struct ath_hal *ah, int request,
 extern	uint32_t ar5210Get11nExtBusy(struct ath_hal *);
 extern	HAL_BOOL ar5210GetMibCycleCounts(struct ath_hal *,
 		HAL_SURVEY_SAMPLE *);
+extern	void ar5210SetChainMasks(struct ath_hal *, uint32_t, uint32_t);
 extern	void ar5210EnableDfs(struct ath_hal *, HAL_PHYERR_PARAM *);
 extern	void ar5210GetDfsThresh(struct ath_hal *, HAL_PHYERR_PARAM *);
 extern	void ar5210UpdateDiagReg(struct ath_hal *ah, uint32_t val);

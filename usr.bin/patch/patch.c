@@ -145,7 +145,7 @@ int
 main(int argc, char *argv[])
 {
 	int	error = 0, hunk, failed, i, fd;
-	bool	patch_seen;
+	bool	patch_seen, reverse_seen;
 	LINENUM	where = 0, newwhere, fuzz, mymaxfuzz;
 	const	char *tmpdir;
 	char	*v;
@@ -239,12 +239,15 @@ main(int argc, char *argv[])
 		if (!skip_rest_of_patch)
 			scan_input(filearg[0]);
 
-		/* from here on, open no standard i/o files, because malloc */
-		/* might misfire and we can't catch it easily */
+		/*
+		 * from here on, open no standard i/o files, because
+		 * malloc might misfire and we can't catch it easily
+		 */
 
 		/* apply each hunk of patch */
 		hunk = 0;
 		failed = 0;
+		reverse_seen = false;
 		out_of_mem = false;
 		while (another_hunk()) {
 			hunk++;
@@ -255,7 +258,7 @@ main(int argc, char *argv[])
 			if (!skip_rest_of_patch) {
 				do {
 					where = locate_hunk(fuzz);
-					if (hunk == 1 && where == 0 && !force) {
+					if (hunk == 1 && where == 0 && !force && !reverse_seen) {
 						/* dwim for reversed patch? */
 						if (!pch_swap()) {
 							if (fuzz == 0)
@@ -291,6 +294,8 @@ main(int argc, char *argv[])
 								ask("Apply anyway? [n] ");
 								if (*buf != 'y')
 									skip_rest_of_patch = true;
+								else
+									reverse_seen = true;
 								where = 0;
 								reverse = !reverse;
 								if (!pch_swap())
@@ -404,8 +409,8 @@ main(int argc, char *argv[])
 				say("%d out of %d hunks %s--saving rejects to %s\n",
 				    failed, hunk, skip_rest_of_patch ? "ignored" : "failed", rejname);
 			else
-				say("%d out of %d hunks %s\n",
-				    failed, hunk, skip_rest_of_patch ? "ignored" : "failed");
+				say("%d out of %d hunks %s while patching %s\n",
+				    failed, hunk, skip_rest_of_patch ? "ignored" : "failed", filearg[0]);
 			if (!check_only && move_file(TMPREJNAME, rejname) < 0)
 				trejkeep = true;
 		}
@@ -464,6 +469,7 @@ get_some_switches(void)
 		{"context",		no_argument,		0,	'c'},
 		{"debug",		required_argument,	0,	'x'},
 		{"directory",		required_argument,	0,	'd'},
+		{"dry-run",		no_argument,		0,	'C'},
 		{"ed",			no_argument,		0,	'e'},
 		{"force",		no_argument,		0,	'f'},
 		{"forward",		no_argument,		0,	'N'},
@@ -737,14 +743,18 @@ abort_context_hunk(void)
 static void
 rej_line(int ch, LINENUM i)
 {
-	size_t len;
+	unsigned short len;
 	const char *line = pfetch(i);
 
-	len = strlen(line);
+	len = strnlen(line, USHRT_MAX);
 
 	fprintf(rejfp, "%c%s", ch, line);
-	if (len == 0 || line[len-1] != '\n')
-		fprintf(rejfp, "\n\\ No newline at end of file\n");
+	if (len == 0 || line[len-1] != '\n') {
+		if (len >= USHRT_MAX)
+			fprintf(rejfp, "\n\\ Line too long\n");
+		else
+			fprintf(rejfp, "\n\\ No newline at end of line\n");
+	}
 }
 
 static void
@@ -1011,7 +1021,7 @@ patch_match(LINENUM base, LINENUM offset, LINENUM fuzz)
 	LINENUM		pat_lines = pch_ptrn_lines() - fuzz;
 	const char	*ilineptr;
 	const char	*plineptr;
-	short		plinelen;
+	unsigned short	plinelen;
 
 	for (iline = base + offset + fuzz; pline <= pat_lines; pline++, iline++) {
 		ilineptr = ifetch(iline, offset >= 0);

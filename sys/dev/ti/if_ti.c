@@ -94,6 +94,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sf_buf.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <net/if_dl.h>
@@ -226,7 +227,7 @@ static void ti_dma_free(struct ti_softc *);
 static int ti_dma_ring_alloc(struct ti_softc *, bus_size_t, bus_size_t,
     bus_dma_tag_t *, uint8_t **, bus_dmamap_t *, bus_addr_t *, const char *);
 static void ti_dma_ring_free(struct ti_softc *, bus_dma_tag_t *, uint8_t **,
-    bus_dmamap_t *);
+    bus_dmamap_t, bus_addr_t *);
 static int ti_newbuf_std(struct ti_softc *, int);
 static int ti_newbuf_mini(struct ti_softc *, int);
 static int ti_newbuf_jumbo(struct ti_softc *, int, struct mbuf *);
@@ -1034,15 +1035,16 @@ ti_dma_ring_alloc(struct ti_softc *sc, bus_size_t alignment, bus_size_t maxsize,
 
 static void
 ti_dma_ring_free(struct ti_softc *sc, bus_dma_tag_t *tag, uint8_t **ring,
-    bus_dmamap_t *map)
+    bus_dmamap_t map, bus_addr_t *paddr)
 {
 
-	if (*map != NULL)
-		bus_dmamap_unload(*tag, *map);
-	if (*map != NULL && *ring != NULL) {
-		bus_dmamem_free(*tag, *ring, *map);
+	if (*paddr != 0) {
+		bus_dmamap_unload(*tag, map);
+		*paddr = 0;
+	}
+	if (*ring != NULL) {
+		bus_dmamem_free(*tag, *ring, map);
 		*ring = NULL;
-		*map = NULL;
 	}
 	if (*tag) {
 		bus_dma_tag_destroy(*tag);
@@ -1335,32 +1337,39 @@ ti_dma_free(struct ti_softc *sc)
 	/* Destroy standard RX ring. */
 	ti_dma_ring_free(sc, &sc->ti_cdata.ti_rx_std_ring_tag,
 	    (void *)&sc->ti_rdata.ti_rx_std_ring,
-	    &sc->ti_cdata.ti_rx_std_ring_map);
+	    sc->ti_cdata.ti_rx_std_ring_map,
+	    &sc->ti_rdata.ti_rx_std_ring_paddr);
 	/* Destroy jumbo RX ring. */
 	ti_dma_ring_free(sc, &sc->ti_cdata.ti_rx_jumbo_ring_tag,
 	    (void *)&sc->ti_rdata.ti_rx_jumbo_ring,
-	    &sc->ti_cdata.ti_rx_jumbo_ring_map);
+	    sc->ti_cdata.ti_rx_jumbo_ring_map,
+	    &sc->ti_rdata.ti_rx_jumbo_ring_paddr);
 	/* Destroy mini RX ring. */
 	ti_dma_ring_free(sc, &sc->ti_cdata.ti_rx_mini_ring_tag,
 	    (void *)&sc->ti_rdata.ti_rx_mini_ring,
-	    &sc->ti_cdata.ti_rx_mini_ring_map);
+	    sc->ti_cdata.ti_rx_mini_ring_map,
+	    &sc->ti_rdata.ti_rx_mini_ring_paddr);
 	/* Destroy RX return ring. */
 	ti_dma_ring_free(sc, &sc->ti_cdata.ti_rx_return_ring_tag,
 	    (void *)&sc->ti_rdata.ti_rx_return_ring,
-	    &sc->ti_cdata.ti_rx_return_ring_map);
+	    sc->ti_cdata.ti_rx_return_ring_map,
+	    &sc->ti_rdata.ti_rx_return_ring_paddr);
 	/* Destroy TX ring. */
 	ti_dma_ring_free(sc, &sc->ti_cdata.ti_tx_ring_tag,
-	    (void *)&sc->ti_rdata.ti_tx_ring, &sc->ti_cdata.ti_tx_ring_map);
+	    (void *)&sc->ti_rdata.ti_tx_ring, sc->ti_cdata.ti_tx_ring_map,
+	    &sc->ti_rdata.ti_tx_ring_paddr);
 	/* Destroy status block. */
 	ti_dma_ring_free(sc, &sc->ti_cdata.ti_status_tag,
-	    (void *)&sc->ti_rdata.ti_status, &sc->ti_cdata.ti_status_map);
+	    (void *)&sc->ti_rdata.ti_status, sc->ti_cdata.ti_status_map,
+	    &sc->ti_rdata.ti_status_paddr);
 	/* Destroy event ring. */
 	ti_dma_ring_free(sc, &sc->ti_cdata.ti_event_ring_tag,
 	    (void *)&sc->ti_rdata.ti_event_ring,
-	    &sc->ti_cdata.ti_event_ring_map);
+	    sc->ti_cdata.ti_event_ring_map, &sc->ti_rdata.ti_event_ring_paddr);
 	/* Destroy GIB */
 	ti_dma_ring_free(sc, &sc->ti_cdata.ti_gib_tag,
-	    (void *)&sc->ti_rdata.ti_info, &sc->ti_cdata.ti_gib_map);
+	    (void *)&sc->ti_rdata.ti_info, sc->ti_cdata.ti_gib_map,
+	    &sc->ti_rdata.ti_info_paddr);
 
 	/* Destroy the parent tag. */
 	if (sc->ti_cdata.ti_parent_tag) {
@@ -1615,7 +1624,7 @@ ti_newbuf_jumbo(struct ti_softc *sc, int idx, struct mbuf *m_old)
 			}
 			sf[i] = sf_buf_alloc(frame, SFB_NOWAIT);
 			if (sf[i] == NULL) {
-				vm_page_unwire(frame, 0);
+				vm_page_unwire(frame, PQ_INACTIVE);
 				vm_page_free(frame);
 				device_printf(sc->ti_dev, "buffer allocation "
 				    "failed -- packet dropped!\n");
@@ -3157,24 +3166,6 @@ ti_start_locked(struct ifnet *ifp)
 		IFQ_DRV_DEQUEUE(&ifp->if_snd, m_head);
 		if (m_head == NULL)
 			break;
-
-		/*
-		 * XXX
-		 * safety overkill.  If this is a fragmented packet chain
-		 * with delayed TCP/UDP checksums, then only encapsulate
-		 * it if we have enough descriptors to handle the entire
-		 * chain at once.
-		 * (paranoia -- may not actually be needed)
-		 */
-		if (m_head->m_flags & M_FIRSTFRAG &&
-		    m_head->m_pkthdr.csum_flags & (CSUM_DELAY_DATA)) {
-			if ((TI_TX_RING_CNT - sc->ti_txcnt) <
-			    m_head->m_pkthdr.csum_data + 16) {
-				IFQ_DRV_PREPEND(&ifp->if_snd, m_head);
-				ifp->if_drv_flags |= IFF_DRV_OACTIVE;
-				break;
-			}
-		}
 
 		/*
 		 * Pack the data into the transmit ring. If we

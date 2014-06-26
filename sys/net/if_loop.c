@@ -34,10 +34,8 @@
  * Loopback interface driver for protocol testing and timing.
  */
 
-#include "opt_atalk.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
-#include "opt_ipx.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -51,6 +49,7 @@
 #include <sys/sysctl.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_clone.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
@@ -63,22 +62,12 @@
 #include <netinet/in_var.h>
 #endif
 
-#ifdef IPX
-#include <netipx/ipx.h>
-#include <netipx/ipx_if.h>
-#endif
-
 #ifdef INET6
 #ifndef INET
 #include <netinet/in.h>
 #endif
 #include <netinet6/in6_var.h>
 #include <netinet/ip6.h>
-#endif
-
-#ifdef NETATALK
-#include <netatalk/at.h>
-#include <netatalk/at_var.h>
 #endif
 
 #include <security/mac/mac_framework.h>
@@ -101,7 +90,7 @@
 int		loioctl(struct ifnet *, u_long, caddr_t);
 static void	lortrequest(int, struct rtentry *, struct rt_addrinfo *);
 int		looutput(struct ifnet *ifp, struct mbuf *m,
-		    struct sockaddr *dst, struct route *ro);
+		    const struct sockaddr *dst, struct route *ro);
 static int	lo_clone_create(struct if_clone *, int, caddr_t);
 static void	lo_clone_destroy(struct ifnet *);
 
@@ -210,7 +199,7 @@ static moduledata_t loop_mod = {
 DECLARE_MODULE(if_lo, loop_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY);
 
 int
-looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
     struct route *ro)
 {
 	u_int32_t af;
@@ -241,13 +230,13 @@ looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	ifp->if_obytes += m->m_pkthdr.len;
 
 	/* BPF writes need to be handled specially. */
-	if (dst->sa_family == AF_UNSPEC) {
+	if (dst->sa_family == AF_UNSPEC)
 		bcopy(dst->sa_data, &af, sizeof(af));
-		dst->sa_family = af;
-	}
+	else
+		af = dst->sa_family;
 
 #if 1	/* XXX */
-	switch (dst->sa_family) {
+	switch (af) {
 	case AF_INET:
 		if (ifp->if_capenable & IFCAP_RXCSUM) {
 			m->m_pkthdr.csum_data = 0xffff;
@@ -272,16 +261,13 @@ looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 #endif
 		m->m_pkthdr.csum_flags &= ~LO_CSUM_FEATURES6;
 		break;
-	case AF_IPX:
-	case AF_APPLETALK:
-		break;
 	default:
-		printf("looutput: af=%d unexpected\n", dst->sa_family);
+		printf("looutput: af=%d unexpected\n", af);
 		m_freem(m);
 		return (EAFNOSUPPORT);
 	}
 #endif
-	return (if_simloop(ifp, m, dst->sa_family, 0));
+	return (if_simloop(ifp, m, af, 0));
 }
 
 /*
@@ -367,16 +353,6 @@ if_simloop(struct ifnet *ifp, struct mbuf *m, int af, int hlen)
 		isr = NETISR_IPV6;
 		break;
 #endif
-#ifdef IPX
-	case AF_IPX:
-		isr = NETISR_IPX;
-		break;
-#endif
-#ifdef NETATALK
-	case AF_APPLETALK:
-		isr = NETISR_ATALK2;
-		break;
-#endif
 	default:
 		printf("if_simloop: can't handle af=%d\n", af);
 		m_freem(m);
@@ -394,7 +370,7 @@ lortrequest(int cmd, struct rtentry *rt, struct rt_addrinfo *info)
 {
 
 	RT_LOCK_ASSERT(rt);
-	rt->rt_rmx.rmx_mtu = rt->rt_ifp->if_mtu;
+	rt->rt_mtu = rt->rt_ifp->if_mtu;
 }
 
 /*

@@ -1,8 +1,8 @@
 Summary: byacc - public domain Berkeley LALR Yacc parser generator
 %define AppProgram byacc
-%define AppVersion 20120526
+%define AppVersion 20140422
 %define UseProgram yacc
-# $XTermId: byacc.spec,v 1.14 2012/05/26 16:13:45 tom Exp $
+# $XTermId: byacc.spec,v 1.20 2014/04/22 08:13:20 tom Exp $
 Name: %{AppProgram}
 Version: %{AppVersion}
 Release: 1

@@ -45,6 +45,7 @@
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/if_clone.h>
 #include <net/bpf.h>
@@ -63,8 +64,8 @@
 #include <dev/usb/usb_transfer.h>
 #endif			/* USB_GLOBAL_INCLUDE_FILE */
 
-static void usbpf_init(void);
-static void usbpf_uninit(void);
+static void usbpf_init(void *);
+static void usbpf_uninit(void *);
 static int usbpf_ioctl(struct ifnet *, u_long, caddr_t);
 static int usbpf_clone_match(struct if_clone *, const char *);
 static int usbpf_clone_create(struct if_clone *, char *, size_t, caddr_t);
@@ -82,7 +83,7 @@ SYSINIT(usbpf_init, SI_SUB_PSEUDO, SI_ORDER_MIDDLE, usbpf_init, NULL);
 SYSUNINIT(usbpf_uninit, SI_SUB_PSEUDO, SI_ORDER_MIDDLE, usbpf_uninit, NULL);
 
 static void
-usbpf_init(void)
+usbpf_init(void *arg)
 {
 
 	usbpf_cloner = if_clone_advanced(usbusname, 0, usbpf_clone_match,
@@ -90,7 +91,7 @@ usbpf_init(void)
 }
 
 static void
-usbpf_uninit(void)
+usbpf_uninit(void *arg)
 {
 	int devlcnt;
 	device_t *devlp;
@@ -182,7 +183,6 @@ usbpf_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 
 	error = ifc_alloc_unit(ifc, &unit);
 	if (error) {
-		ifc_free_unit(ifc, unit);
 		device_printf(ubus->parent, "usbpf: Could not allocate "
 		    "instance\n");
 		return (error);
@@ -395,7 +395,7 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	bus = xfer->xroot->bus;
 
 	/* sanity checks */
-	if (bus->ifp == NULL)
+	if (bus->ifp == NULL || bus->ifp->if_bpf == NULL)
 		return;
 	if (!bpf_peers_present(bus->ifp->if_bpf))
 		return;

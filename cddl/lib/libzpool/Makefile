@@ -60,11 +60,13 @@ DPADD=		${LIBMD} ${LIBPTHREAD} ${LIBZ}
 LDADD=		-lmd -lpthread -lz
 
 # atomic.S doesn't like profiling.
-NO_PROFILE=
+MK_PROFILE=	no
 
 CSTD=	c99
 
-CFLAGS+=	-DDEBUG=1
-#DEBUG_FLAGS+=	-g
+# Since there are many asserts in this library, it makes no sense to compile
+# it without debugging.
+
+CFLAGS+=	-g -DDEBUG=1
 
 .include <bsd.lib.mk>

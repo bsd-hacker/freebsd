@@ -11,7 +11,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -37,7 +37,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/capability.h>
+#include <sys/capsicum.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -209,7 +209,7 @@ sysarch(td, uap)
 		default:
 #ifdef KTRACE
 			if (KTRPOINT(td, KTR_CAPFAIL))
-				ktrcapfail(CAPFAIL_SYSCALL, 0, 0);
+				ktrcapfail(CAPFAIL_SYSCALL, NULL, NULL);
 #endif
 			return (ECAPMODE);
 		}
@@ -338,7 +338,6 @@ amd64_set_ioperm(td, uap)
 	char *iomap;
 	struct amd64tss *tssp;
 	struct system_segment_descriptor *tss_sd;
-	u_long *addr;
 	struct pcb *pcb;
 
 	if ((error = priv_check(td, PRIV_IO)) != 0)
@@ -356,14 +355,10 @@ amd64_set_ioperm(td, uap)
 	 */
 	pcb = td->td_pcb;
 	if (pcb->pcb_tssp == NULL) {
-		tssp = (struct amd64tss *)kmem_alloc(kernel_map,
-		    ctob(IOPAGES+1));
-		if (tssp == NULL)
-			return (ENOMEM);
+		tssp = (struct amd64tss *)kmem_malloc(kernel_arena,
+		    ctob(IOPAGES+1), M_WAITOK);
 		iomap = (char *)&tssp[1];
-		addr = (u_long *)iomap;
-		for (i = 0; i < (ctob(IOPAGES) + 1) / sizeof(u_long); i++)
-			*addr++ = ~0;
+		memset(iomap, 0xff, IOPERM_BITMAP_SIZE);
 		critical_enter();
 		/* Takes care of tss_rsp0. */
 		memcpy(tssp, &common_tss[PCPU_GET(cpuid)],
@@ -463,13 +458,9 @@ user_ldt_alloc(struct proc *p, int force)
 		return (mdp->md_ldt);
 	mtx_unlock(&dt_lock);
 	new_ldt = malloc(sizeof(struct proc_ldt), M_SUBPROC, M_WAITOK);
-	new_ldt->ldt_base = (caddr_t)kmem_alloc(kernel_map,
-	     max_ldt_segment * sizeof(struct user_segment_descriptor));
-	if (new_ldt->ldt_base == NULL) {
-		FREE(new_ldt, M_SUBPROC);
-		mtx_lock(&dt_lock);
-		return (NULL);
-	}
+	new_ldt->ldt_base = (caddr_t)kmem_malloc(kernel_arena,
+	     max_ldt_segment * sizeof(struct user_segment_descriptor),
+	     M_WAITOK | M_ZERO);
 	new_ldt->ldt_refcnt = 1;
 	sldt.ssd_base = (uint64_t)new_ldt->ldt_base;
 	sldt.ssd_limit = max_ldt_segment *
@@ -483,7 +474,7 @@ user_ldt_alloc(struct proc *p, int force)
 	mtx_lock(&dt_lock);
 	pldt = mdp->md_ldt;
 	if (pldt != NULL && !force) {
-		kmem_free(kernel_map, (vm_offset_t)new_ldt->ldt_base,
+		kmem_free(kernel_arena, (vm_offset_t)new_ldt->ldt_base,
 		    max_ldt_segment * sizeof(struct user_segment_descriptor));
 		free(new_ldt, M_SUBPROC);
 		return (pldt);
@@ -528,7 +519,7 @@ user_ldt_derefl(struct proc_ldt *pldt)
 {
 
 	if (--pldt->ldt_refcnt == 0) {
-		kmem_free(kernel_map, (vm_offset_t)pldt->ldt_base,
+		kmem_free(kernel_arena, (vm_offset_t)pldt->ldt_base,
 		    max_ldt_segment * sizeof(struct user_segment_descriptor));
 		free(pldt, M_SUBPROC);
 	}

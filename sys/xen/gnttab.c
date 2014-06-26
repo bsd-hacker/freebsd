@@ -25,8 +25,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mman.h>
+#include <sys/limits.h>
+#include <sys/rman.h>
+#include <machine/resource.h>
 
-#include <machine/xen/xen-os.h>
+#include <xen/xen-os.h>
 #include <xen/hypervisor.h>
 #include <machine/xen/synch_bitops.h>
 
@@ -50,6 +53,17 @@ static unsigned int boot_max_nr_grant_frames;
 static int gnttab_free_count;
 static grant_ref_t gnttab_free_head;
 static struct mtx gnttab_list_lock;
+
+#ifdef XENHVM
+/*
+ * Resource representing allocated physical address space
+ * for the grant table metainfo
+ */
+static struct resource *gnttab_pseudo_phys_res;
+
+/* Resource id for allocated physical address space. */
+static int gnttab_pseudo_phys_res_id;
+#endif
 
 static grant_entry_t *shared;
 
@@ -108,7 +122,7 @@ do_free_callbacks(void)
 static inline void
 check_free_callbacks(void)
 {
-	if (unlikely(gnttab_free_callback_list != NULL))
+	if (__predict_false(gnttab_free_callback_list != NULL))
 		do_free_callbacks();
 }
 
@@ -136,7 +150,7 @@ gnttab_grant_foreign_access(domid_t domid, unsigned long frame, int readonly,
 
 	error = get_free_entries(1, &ref);
 
-	if (unlikely(error))
+	if (__predict_false(error))
 		return (error);
 
 	shared[ref].frame = frame;
@@ -248,7 +262,7 @@ gnttab_grant_foreign_transfer(domid_t domid, unsigned long pfn,
 	int error, ref;
 
 	error = get_free_entries(1, &ref);
-	if (unlikely(error))
+	if (__predict_false(error))
 		return (error);
 
 	gnttab_grant_foreign_transfer_ref(ref, domid, pfn);
@@ -341,7 +355,7 @@ gnttab_alloc_grant_references(uint16_t count, grant_ref_t *head)
 	int ref, error;
 
 	error = get_free_entries(count, &ref);
-	if (unlikely(error))
+	if (__predict_false(error))
 		return (error);
 
 	*head = ref;
@@ -360,7 +374,7 @@ gnttab_claim_grant_reference(grant_ref_t *private_head)
 {
 	grant_ref_t g = *private_head;
 
-	if (unlikely(g == GNTTAB_LIST_END))
+	if (__predict_false(g == GNTTAB_LIST_END))
 		return (g);
 	*private_head = gnttab_entry(g);
 	return (g);
@@ -527,8 +541,7 @@ gnttab_map(unsigned int start_idx, unsigned int end_idx)
 	if (shared == NULL) {
 		vm_offset_t area;
 
-		area = kmem_alloc_nofault(kernel_map,
-		    PAGE_SIZE * max_nr_grant_frames());
+		area = kva_alloc(PAGE_SIZE * max_nr_grant_frames());
 		KASSERT(area, ("can't allocate VM space for grant table"));
 		shared = (grant_entry_t *)area;
 	}
@@ -543,7 +556,7 @@ gnttab_map(unsigned int start_idx, unsigned int end_idx)
 }
 
 int
-gnttab_resume(void)
+gnttab_resume(device_t dev)
 {
 
 	if (max_nr_grant_frames() < nr_grant_frames)
@@ -563,8 +576,6 @@ gnttab_suspend(void)
 }
 
 #else /* XENHVM */
-
-#include <dev/xen/xenpci/xenpcivar.h>
 
 static vm_paddr_t resume_frames;
 
@@ -590,8 +601,7 @@ gnttab_map(unsigned int start_idx, unsigned int end_idx)
 	if (shared == NULL) {
 		vm_offset_t area;
 
-		area = kmem_alloc_nofault(kernel_map,
-		    PAGE_SIZE * max_nr_grant_frames());
+		area = kva_alloc(PAGE_SIZE * max_nr_grant_frames());
 		KASSERT(area, ("can't allocate VM space for grant table"));
 		shared = (grant_entry_t *)area;
 	}
@@ -605,9 +615,8 @@ gnttab_map(unsigned int start_idx, unsigned int end_idx)
 }
 
 int
-gnttab_resume(void)
+gnttab_resume(device_t dev)
 {
-	int error;
 	unsigned int max_nr_gframes, nr_gframes;
 
 	nr_gframes = nr_grant_frames;
@@ -616,12 +625,15 @@ gnttab_resume(void)
 		return (ENOSYS);
 
 	if (!resume_frames) {
-		error = xenpci_alloc_space(PAGE_SIZE * max_nr_gframes,
-		    &resume_frames);
-		if (error) {
-			printf("error mapping gnttab share frames\n");
-			return (error);
-		}
+		KASSERT(dev != NULL,
+		    ("No resume frames and no device provided"));
+
+		gnttab_pseudo_phys_res = bus_alloc_resource(dev,
+		    SYS_RES_MEMORY, &gnttab_pseudo_phys_res_id, 0, ~0,
+		    PAGE_SIZE * max_nr_gframes, RF_ACTIVE);
+		if (gnttab_pseudo_phys_res == NULL)
+			panic("Unable to reserve physical memory for gnttab");
+		resume_frames = rman_get_start(gnttab_pseudo_phys_res);
 	}
 
 	return (gnttab_map(0, nr_gframes - 1));
@@ -649,7 +661,7 @@ gnttab_expand(unsigned int req_entries)
 }
 
 int 
-gnttab_init()
+gnttab_init(device_t dev)
 {
 	int i;
 	unsigned int max_nr_glist_frames;
@@ -681,7 +693,7 @@ gnttab_init()
 			goto ini_nomem;
 	}
 
-	if (gnttab_resume())
+	if (gnttab_resume(dev))
 		return (ENODEV);
 
 	nr_init_grefs = nr_grant_frames * GREFS_PER_GRANT_FRAME;

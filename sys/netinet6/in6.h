@@ -361,11 +361,11 @@ extern const struct in6_addr in6addr_linklocal_allv2routers;
 
 #define IFA6_IS_DEPRECATED(a) \
 	((a)->ia6_lifetime.ia6t_pltime != ND6_INFINITE_LIFETIME && \
-	 (u_int32_t)((time_second - (a)->ia6_updatetime)) > \
+	 (u_int32_t)((time_uptime - (a)->ia6_updatetime)) > \
 	 (a)->ia6_lifetime.ia6t_pltime)
 #define IFA6_IS_INVALID(a) \
 	((a)->ia6_lifetime.ia6t_vltime != ND6_INFINITE_LIFETIME && \
-	 (u_int32_t)((time_second - (a)->ia6_updatetime)) > \
+	 (u_int32_t)((time_uptime - (a)->ia6_updatetime)) > \
 	 (a)->ia6_lifetime.ia6t_vltime)
 #endif /* _KERNEL */
 
@@ -622,13 +622,18 @@ struct ip6_mtuinfo {
 #endif /* __BSD_VISIBLE */
 
 /*
- * Redefinition of mbuf flags
+ * Since both netinet/ and netinet6/ call into netipsec/ and netpfil/,
+ * the protocol specific mbuf flags are shared between them.
  */
-#define	M_AUTHIPHDR	M_PROTO2
-#define	M_DECRYPTED	M_PROTO3
-#define	M_LOOP		M_PROTO4
-#define	M_AUTHIPDGM	M_PROTO5
-#define	M_RTALERT_MLD	M_PROTO6
+#define	M_FASTFWD_OURS		M_PROTO1	/* changed dst to local */
+#define	M_IP6_NEXTHOP		M_PROTO2	/* explicit ip nexthop */
+#define	M_IP_NEXTHOP		M_PROTO2	/* explicit ip nexthop */
+#define	M_SKIP_FIREWALL		M_PROTO3	/* skip firewall processing */
+#define	M_AUTHIPHDR		M_PROTO4
+#define	M_DECRYPTED		M_PROTO5
+#define	M_LOOP			M_PROTO6
+#define	M_AUTHIPDGM		M_PROTO7
+#define	M_RTALERT_MLD		M_PROTO8
 
 #ifdef _KERNEL
 struct cmsghdr;

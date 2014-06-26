@@ -13,16 +13,20 @@ SRCS=	ParseAST.cpp \
 	ParseExprCXX.cpp \
 	ParseInit.cpp \
 	ParseObjc.cpp \
+	ParseOpenMP.cpp \
 	ParsePragma.cpp \
 	ParseStmt.cpp \
 	ParseTemplate.cpp \
 	ParseTentative.cpp \
 	Parser.cpp
 
-TGHDRS=	AttrLateParsed \
+TGHDRS=	AttrIdentifierArg \
+	AttrLateParsed \
 	AttrList \
 	AttrParsedAttrList \
+	AttrTypeArg \
 	Attrs \
+	CommentCommandList \
 	CommentNodes \
 	DeclNodes \
 	DiagnosticCommonKinds \

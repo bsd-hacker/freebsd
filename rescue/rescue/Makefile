@@ -1,9 +1,9 @@
 #$FreeBSD$
 #	@(#)Makefile	8.1 (Berkeley) 6/2/93
 
-NO_MAN=
+.include <src.opts.mk>
 
-.include <bsd.own.mk>
+MAN=
 MK_SSP=	no
 
 PROG=	rescue
@@ -52,7 +52,7 @@ CRUNCH_SRCDIRS+= bin
 CRUNCH_PROGS_bin= cat chflags chio chmod cp date dd df echo 	\
 	 ed expr getfacl hostname kenv kill ln ls mkdir mv	\
 	 pkill ps pwd realpath rm rmdir setfacl sh stty sync test
-CRUNCH_LIBS+= -lcrypt -ledit -lkvm -ll -ltermcap -lutil
+CRUNCH_LIBS+= -lcrypt -ledit -ljail -lkvm -ll -ltermcap -lutil
 CRUNCH_BUILDTOOLS+= bin/sh
 
 # Additional options for specific programs
@@ -87,7 +87,7 @@ CRUNCH_SUPPRESS_LINK_-tcsh= 1
 # headers in addition to the standard 'paths.h' header.
 #
 CRUNCH_SRCDIRS+= sbin
-CRUNCH_PROGS_sbin= atacontrol badsect				\
+CRUNCH_PROGS_sbin= badsect					\
 	camcontrol ccdconfig clri devfs dmesg dump		\
 	dumpfs dumpon fsck fsck_ffs fsck_msdosfs fsdb		\
 	fsirand gbde geom ifconfig init 			\
@@ -119,17 +119,16 @@ CRUNCH_PROGS_sbin+= zpool
 # CRUNCH_PROGS+= devd
 
 CRUNCH_LIBS+= -lalias -lcam -lcurses -ldevstat -lipsec
-.if ${MK_IPX} != "no"
-CRUNCH_LIBS+= -lipx
-.endif
 .if ${MK_ZFS} != "no"
-CRUNCH_LIBS+= -lavl -ljail -lzfs -lnvpair -lpthread -luutil -lumem
+CRUNCH_LIBS+= -lavl -lzfs_core -lzfs -lnvpair -lpthread -luutil -lumem
 .endif
 CRUNCH_LIBS+= -lgeom -lbsdxml -lkiconv -lmd -lsbuf -lufs -lz
 
 .if ${MACHINE_CPUARCH} == "i386"
 CRUNCH_PROGS_sbin+= bsdlabel sconfig fdisk
 CRUNCH_ALIAS_bsdlabel= disklabel
+#CRUNCH_PROGS+= mount_smbfs
+#CRUNCH_LIBS+= -lsmb
 .endif
 
 .if ${MACHINE} == "pc98"
@@ -183,6 +182,9 @@ CRUNCH_ALIAS_gzip= gunzip gzcat zcat
 CRUNCH_PROGS_usr.bin+= bzip2
 CRUNCH_ALIAS_bzip2= bunzip2 bzcat
 CRUNCH_LIBS+= -lbz2
+
+CRUNCH_PROGS_usr.bin+= less
+CRUNCH_ALIAS_less= more
 
 CRUNCH_PROGS_usr.bin+= xz
 CRUNCH_ALIAS_xz= unxz lzma unlzma xzcat lzcat

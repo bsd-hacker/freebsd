@@ -129,9 +129,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 #include <vm/uma.h>
 
-/* XXX */
-int	do_pipe(struct thread *td, int fildes[2], int flags);
-
 /*
  * Use this define if you want to disable *fancy* VM things.  Expect an
  * approx 30% decrease in transfer rate.  This could be useful for
@@ -167,6 +164,7 @@ struct fileops pipeops = {
 	.fo_close = pipe_close,
 	.fo_chmod = pipe_chmod,
 	.fo_chown = pipe_chown,
+	.fo_sendfile = invfo_sendfile,
 	.fo_flags = DFLAG_PASSABLE
 };
 
@@ -223,8 +221,8 @@ SYSCTL_INT(_kern_ipc, OID_AUTO, piperesizeallowed, CTLFLAG_RW,
 static void pipeinit(void *dummy __unused);
 static void pipeclose(struct pipe *cpipe);
 static void pipe_free_kmem(struct pipe *cpipe);
-static int pipe_create(struct pipe *pipe, int backing);
-static int pipe_paircreate(struct thread *td, struct pipepair **p_pp);
+static void pipe_create(struct pipe *pipe, int backing);
+static void pipe_paircreate(struct thread *td, struct pipepair **p_pp);
 static __inline int pipelock(struct pipe *cpipe, int catch);
 static __inline void pipeunlock(struct pipe *cpipe);
 #ifndef PIPE_NODIRECT
@@ -333,12 +331,11 @@ pipe_zone_fini(void *mem, int size)
 	mtx_destroy(&pp->pp_mtx);
 }
 
-static int
+static void
 pipe_paircreate(struct thread *td, struct pipepair **p_pp)
 {
 	struct pipepair *pp;
 	struct pipe *rpipe, *wpipe;
-	int error;
 
 	*p_pp = pp = uma_zalloc(pipe_zone, M_WAITOK);
 #ifdef MAC
@@ -357,30 +354,21 @@ pipe_paircreate(struct thread *td, struct pipepair **p_pp)
 	knlist_init_mtx(&wpipe->pipe_sel.si_note, PIPE_MTX(wpipe));
 
 	/* Only the forward direction pipe is backed by default */
-	if ((error = pipe_create(rpipe, 1)) != 0 ||
-	    (error = pipe_create(wpipe, 0)) != 0) {
-		pipeclose(rpipe);
-		pipeclose(wpipe);
-		return (error);
-	}
+	pipe_create(rpipe, 1);
+	pipe_create(wpipe, 0);
 
 	rpipe->pipe_state |= PIPE_DIRECTOK;
 	wpipe->pipe_state |= PIPE_DIRECTOK;
-	return (0);
 }
 
-int
+void
 pipe_named_ctor(struct pipe **ppipe, struct thread *td)
 {
 	struct pipepair *pp;
-	int error;
 
-	error = pipe_paircreate(td, &pp);
-	if (error != 0)
-		return (error);
+	pipe_paircreate(td, &pp);
 	pp->pp_rpipe.pipe_state |= PIPE_NAMED;
 	*ppipe = &pp->pp_rpipe;
-	return (0);
 }
 
 void
@@ -408,11 +396,11 @@ int
 kern_pipe(struct thread *td, int fildes[2])
 {
 
-	return (do_pipe(td, fildes, 0));
+	return (kern_pipe2(td, fildes, 0));
 }
 
 int
-do_pipe(struct thread *td, int fildes[2], int flags)
+kern_pipe2(struct thread *td, int fildes[2], int flags)
 {
 	struct filedesc *fdp; 
 	struct file *rf, *wf;
@@ -421,9 +409,7 @@ do_pipe(struct thread *td, int fildes[2], int flags)
 	int fd, fflags, error;
 
 	fdp = td->td_proc->p_fd;
-	error = pipe_paircreate(td, &pp);
-	if (error != 0)
-		return (error);
+	pipe_paircreate(td, &pp);
 	rpipe = &pp->pp_rpipe;
 	wpipe = &pp->pp_wpipe;
 	error = falloc(td, &rf, &fd, flags);
@@ -473,11 +459,29 @@ sys_pipe(struct thread *td, struct pipe_args *uap)
 	error = kern_pipe(td, fildes);
 	if (error)
 		return (error);
-	
+
 	td->td_retval[0] = fildes[0];
 	td->td_retval[1] = fildes[1];
 
 	return (0);
+}
+
+int
+sys_pipe2(struct thread *td, struct pipe2_args *uap)
+{
+	int error, fildes[2];
+
+	if (uap->flags & ~(O_CLOEXEC | O_NONBLOCK))
+		return (EINVAL);
+	error = kern_pipe2(td, fildes, uap->flags);
+	if (error)
+		return (error);
+	error = copyout(fildes, uap->fildes, 2 * sizeof(int));
+	if (error) {
+		(void)kern_close(td, fildes[0]);
+		(void)kern_close(td, fildes[1]);
+	}
+	return (error);
 }
 
 /*
@@ -508,7 +512,7 @@ retry:
 	buffer = (caddr_t) vm_map_min(pipe_map);
 
 	error = vm_map_find(pipe_map, NULL, 0,
-		(vm_offset_t *) &buffer, size, 1,
+		(vm_offset_t *) &buffer, size, 0, VMFS_ANY_SPACE,
 		VM_PROT_ALL, VM_PROT_ALL, 0);
 	if (error != KERN_SUCCESS) {
 		if ((cpipe->pipe_buffer.buffer == NULL) &&
@@ -626,24 +630,27 @@ pipeselwakeup(cpipe)
  * Initialize and allocate VM and memory for pipe.  The structure
  * will start out zero'd from the ctor, so we just manage the kmem.
  */
-static int
+static void
 pipe_create(pipe, backing)
 	struct pipe *pipe;
 	int backing;
 {
-	int error;
 
 	if (backing) {
+		/*
+		 * Note that these functions can fail if pipe map is exhausted
+		 * (as a result of too many pipes created), but we ignore the
+		 * error as it is not fatal and could be provoked by
+		 * unprivileged users. The only consequence is worse performance
+		 * with given pipe.
+		 */
 		if (amountpipekva > maxpipekva / 2)
-			error = pipespace_new(pipe, SMALL_PIPE_SIZE);
+			(void)pipespace_new(pipe, SMALL_PIPE_SIZE);
 		else
-			error = pipespace_new(pipe, PIPE_SIZE);
-	} else {
-		/* If we're not backing this pipe, no need to do anything. */
-		error = 0;
+			(void)pipespace_new(pipe, PIPE_SIZE);
 	}
+
 	pipe->pipe_ino = -1;
-	return (error);
 }
 
 /* ARGSUSED */

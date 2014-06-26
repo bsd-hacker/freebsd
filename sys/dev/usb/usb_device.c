@@ -98,7 +98,7 @@ static void	usb_init_attach_arg(struct usb_device *,
 		    struct usb_attach_arg *);
 static void	usb_suspend_resume_sub(struct usb_device *, device_t,
 		    uint8_t);
-static void	usbd_clear_stall_proc(struct usb_proc_msg *_pm);
+static usb_proc_callback_t usbd_clear_stall_proc;
 static usb_error_t usb_config_parse(struct usb_device *, uint8_t, uint8_t);
 static void	usbd_set_device_strings(struct usb_device *);
 #if USB_HAVE_DEVCTL
@@ -112,7 +112,11 @@ static void	usb_cdev_free(struct usb_device *);
 
 /* This variable is global to allow easy access to it: */
 
-int	usb_template = 0;
+#ifdef	USB_TEMPLATE
+int	usb_template = USB_TEMPLATE;
+#else
+int	usb_template;
+#endif
 
 TUNABLE_INT("hw.usb.usb_template", &usb_template);
 SYSCTL_INT(_hw_usb, OID_AUTO, template, CTLFLAG_RW | CTLFLAG_TUN,
@@ -372,7 +376,7 @@ usb_init_endpoint(struct usb_device *udev, uint8_t iface_index,
     struct usb_endpoint_ss_comp_descriptor *ecomp,
     struct usb_endpoint *ep)
 {
-	struct usb_bus_methods *methods;
+	const struct usb_bus_methods *methods;
 	usb_stream_t x;
 
 	methods = udev->bus->methods;
@@ -448,6 +452,65 @@ usb_endpoint_foreach(struct usb_device *udev, struct usb_endpoint *ep)
 }
 
 /*------------------------------------------------------------------------*
+ *	usb_wait_pending_ref_locked
+ *
+ * This function will wait for any USB references to go away before
+ * returning and disable further USB device refcounting on the
+ * specified USB device. This function is used when detaching a USB
+ * device.
+ *------------------------------------------------------------------------*/
+static void
+usb_wait_pending_ref_locked(struct usb_device *udev)
+{
+#if USB_HAVE_UGEN
+	const uint16_t refcount =
+	    usb_proc_is_called_from(
+	    USB_BUS_EXPLORE_PROC(udev->bus)) ? 1 : 2;
+
+	DPRINTF("Refcount = %d\n", (int)refcount); 
+
+	while (1) {
+		/* wait for any pending references to go away */
+		mtx_lock(&usb_ref_lock);
+		if (udev->refcount == refcount) {
+			/* prevent further refs being taken */
+			udev->refcount = USB_DEV_REF_MAX;
+			mtx_unlock(&usb_ref_lock);
+			break;
+		}
+		usbd_enum_unlock(udev);
+		cv_wait(&udev->ref_cv, &usb_ref_lock);
+		mtx_unlock(&usb_ref_lock);
+		(void) usbd_enum_lock(udev);
+	}
+#endif
+}
+
+/*------------------------------------------------------------------------*
+ *	usb_ref_restore_locked
+ *
+ * This function will restore the reference count value after a call
+ * to "usb_wait_pending_ref_locked()".
+ *------------------------------------------------------------------------*/
+static void
+usb_ref_restore_locked(struct usb_device *udev)
+{
+#if USB_HAVE_UGEN
+	const uint16_t refcount =
+	    usb_proc_is_called_from(
+	    USB_BUS_EXPLORE_PROC(udev->bus)) ? 1 : 2;
+
+	DPRINTF("Refcount = %d\n", (int)refcount); 
+
+	/* restore reference count and wakeup waiters, if any */
+	mtx_lock(&usb_ref_lock);
+	udev->refcount = refcount;
+	cv_broadcast(&udev->ref_cv);
+	mtx_unlock(&usb_ref_lock);
+#endif
+}
+
+/*------------------------------------------------------------------------*
  *	usb_unconfigure
  *
  * This function will free all USB interfaces and USB endpoints belonging
@@ -460,13 +523,8 @@ usb_unconfigure(struct usb_device *udev, uint8_t flag)
 {
 	uint8_t do_unlock;
 
-	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
-		do_unlock = 0;
-	} else {
-		do_unlock = 1;
-		usbd_enum_lock(udev);
-	}
+	/* Prevent re-enumeration */
+	do_unlock = usbd_enum_lock(udev);
 
 	/* detach all interface drivers */
 	usb_detach_device(udev, USB_IFACE_INDEX_ANY, flag);
@@ -494,7 +552,7 @@ usb_unconfigure(struct usb_device *udev, uint8_t flag)
 	/* free "cdesc" after "ifaces" and "endpoints", if any */
 	if (udev->cdesc != NULL) {
 		if (udev->flags.usb_mode != USB_MODE_DEVICE)
-			free(udev->cdesc, M_USB);
+			usbd_free_config_desc(udev, udev->cdesc);
 		udev->cdesc = NULL;
 	}
 	/* set unconfigured state */
@@ -529,13 +587,8 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 
 	DPRINTFN(6, "udev=%p index=%d\n", udev, index);
 
-	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
-		do_unlock = 0;
-	} else {
-		do_unlock = 1;
-		usbd_enum_lock(udev);
-	}
+	/* Prevent re-enumeration */
+	do_unlock = usbd_enum_lock(udev);
 
 	usb_unconfigure(udev, 0);
 
@@ -558,7 +611,7 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 	} else {
 		/* normal request */
 		err = usbd_req_get_config_desc_full(udev,
-		    NULL, &cdp, M_USB, index);
+		    NULL, &cdp, index);
 	}
 	if (err) {
 		goto done;
@@ -735,10 +788,6 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 
 	while ((id = usb_idesc_foreach(udev->cdesc, &ips))) {
 
-		/* check for interface overflow */
-		if (ips.iface_index == USB_IFACE_MAX)
-			break;			/* crazy */
-
 		iface = udev->ifaces + ips.iface_index;
 
 		/* check for specific interface match */
@@ -785,8 +834,11 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 		/* iterate all the endpoint descriptors */
 		while ((ed = usb_edesc_foreach(udev->cdesc, ed))) {
 
-			if (temp == USB_EP_MAX)
-				break;			/* crazy */
+			/* check if endpoint limit has been reached */
+			if (temp >= USB_MAX_EP_UNITS) {
+				DPRINTF("Endpoint limit reached\n");
+				break;
+			}
 
 			ep = udev->endpoints + temp;
 
@@ -806,9 +858,6 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 			/* find maximum number of endpoints */
 			if (ep_max < temp)
 				ep_max = temp;
-
-			/* optimalisation */
-			id = (struct usb_interface_descriptor *)ed;
 		}
 	}
 
@@ -816,6 +865,7 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 
 	if (cmd == USB_CFG_ALLOC) {
 		udev->ifaces_max = ips.iface_index;
+#if (USB_HAVE_FIXED_IFACE == 0)
 		udev->ifaces = NULL;
 		if (udev->ifaces_max != 0) {
 			udev->ifaces = malloc(sizeof(*iface) * udev->ifaces_max,
@@ -825,6 +875,8 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 				goto done;
 			}
 		}
+#endif
+#if (USB_HAVE_FIXED_ENDPOINT == 0)
 		if (ep_max != 0) {
 			udev->endpoints = malloc(sizeof(*ep) * ep_max,
 			        M_USB, M_WAITOK | M_ZERO);
@@ -835,14 +887,16 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 		} else {
 			udev->endpoints = NULL;
 		}
+#endif
 		USB_BUS_LOCK(udev->bus);
 		udev->endpoints_max = ep_max;
 		/* reset any ongoing clear-stall */
 		udev->ep_curr = NULL;
 		USB_BUS_UNLOCK(udev->bus);
 	}
-
+#if (USB_HAVE_FIXED_IFACE == 0) || (USB_HAVE_FIXED_ENDPOINT == 0) 
 done:
+#endif
 	if (err) {
 		if (cmd == USB_CFG_ALLOC) {
 cleanup:
@@ -852,14 +906,14 @@ cleanup:
 			udev->ep_curr = NULL;
 			USB_BUS_UNLOCK(udev->bus);
 
-			/* cleanup */
-			if (udev->ifaces != NULL)
-				free(udev->ifaces, M_USB);
-			if (udev->endpoints != NULL)
-				free(udev->endpoints, M_USB);
-
+#if (USB_HAVE_FIXED_IFACE == 0)
+			free(udev->ifaces, M_USB);
 			udev->ifaces = NULL;
+#endif
+#if (USB_HAVE_FIXED_ENDPOINT == 0)
+			free(udev->endpoints, M_USB);
 			udev->endpoints = NULL;
+#endif
 			udev->ifaces_max = 0;
 		}
 	}
@@ -888,13 +942,9 @@ usbd_set_alt_interface_index(struct usb_device *udev,
 	usb_error_t err;
 	uint8_t do_unlock;
 
-	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
-		do_unlock = 0;
-	} else {
-		do_unlock = 1;
-		usbd_enum_lock(udev);
-	}
+	/* Prevent re-enumeration */
+	do_unlock = usbd_enum_lock(udev);
+
 	if (iface == NULL) {
 		err = USB_ERR_INVAL;
 		goto done;
@@ -931,7 +981,6 @@ usbd_set_alt_interface_index(struct usb_device *udev,
 done:
 	if (do_unlock)
 		usbd_enum_unlock(udev);
-
 	return (err);
 }
 
@@ -1075,10 +1124,12 @@ usb_detach_device_sub(struct usb_device *udev, device_t *ppdev,
 		 */
 		*ppdev = NULL;
 
-		device_printf(dev, "at %s, port %d, addr %d "
-		    "(disconnected)\n",
-		    device_get_nameunit(udev->parent_dev),
-		    udev->port_no, udev->address);
+		if (!rebooting) {
+			device_printf(dev, "at %s, port %d, addr %d "
+			    "(disconnected)\n",
+			    device_get_nameunit(udev->parent_dev),
+			    udev->port_no, udev->address);
+		}
 
 		if (device_is_attached(dev)) {
 			if (udev->flags.peer_suspended) {
@@ -1131,6 +1182,9 @@ usb_detach_device(struct usb_device *udev, uint8_t iface_index,
 
 	sx_assert(&udev->enum_sx, SA_LOCKED);
 
+	/* wait for pending refs to go away */
+	usb_wait_pending_ref_locked(udev);
+
 	/*
 	 * First detach the child to give the child's detach routine a
 	 * chance to detach the sub-devices in the correct order.
@@ -1157,6 +1211,8 @@ usb_detach_device(struct usb_device *udev, uint8_t iface_index,
 		usb_detach_device_sub(udev, &iface->subdev,
 		    &iface->pnpinfo, flag);
 	}
+
+	usb_ref_restore_locked(udev);
 }
 
 /*------------------------------------------------------------------------*
@@ -1310,13 +1366,8 @@ usb_probe_and_attach(struct usb_device *udev, uint8_t iface_index)
 		DPRINTF("udev == NULL\n");
 		return (USB_ERR_INVAL);
 	}
-	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
-		do_unlock = 0;
-	} else {
-		do_unlock = 1;
-		usbd_enum_lock(udev);
-	}
+	/* Prevent re-enumeration */
+	do_unlock = usbd_enum_lock(udev);
 
 	if (udev->curr_config_index == USB_UNCONFIG_INDEX) {
 		/* do nothing - no configuration has been set */
@@ -1403,7 +1454,6 @@ usb_probe_and_attach(struct usb_device *udev, uint8_t iface_index)
 done:
 	if (do_unlock)
 		usbd_enum_unlock(udev);
-
 	return (0);
 }
 
@@ -1490,7 +1540,7 @@ usb_suspend_resume(struct usb_device *udev, uint8_t do_suspend)
 static void
 usbd_clear_stall_proc(struct usb_proc_msg *_pm)
 {
-	struct usb_clear_stall_msg *pm = (void *)_pm;
+	struct usb_udev_msg *pm = (void *)_pm;
 	struct usb_device *udev = pm->udev;
 
 	/* Change lock */
@@ -1532,6 +1582,7 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	uint8_t config_index;
 	uint8_t config_quirk;
 	uint8_t set_config_failed;
+	uint8_t do_unlock;
 
 	DPRINTF("parent_dev=%p, bus=%p, parent_hub=%p, depth=%u, "
 	    "port_index=%u, port_no=%u, speed=%u, usb_mode=%u\n",
@@ -1565,9 +1616,6 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	if (udev == NULL) {
 		return (NULL);
 	}
-	/* initialise our SX-lock */
-	sx_init_flags(&udev->ctrl_sx, "USB device SX lock", SX_DUPOK);
-
 	/* initialise our SX-lock */
 	sx_init_flags(&udev->enum_sx, "USB config SX lock", SX_DUPOK);
 	sx_init_flags(&udev->sr_sx, "USB suspend and resume SX lock", SX_NOWITNESS);
@@ -1721,10 +1769,14 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	err = usbd_setup_device_desc(udev, NULL);
 
 	if (err != 0) {
-		/* XXX try to re-enumerate the device */
+		/* try to enumerate two more times */
 		err = usbd_req_re_enumerate(udev, NULL);
-		if (err)
-			goto done;
+		if (err != 0) {
+			err = usbd_req_re_enumerate(udev, NULL);
+			if (err != 0) {
+				goto done;
+			}
+		}
 	}
 
 	/*
@@ -1750,7 +1802,11 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	 * device descriptor. If no strings are present there we
 	 * simply disable all USB strings.
 	 */
-	scratch_ptr = udev->bus->scratch[0].data;
+
+	/* Protect scratch area */
+	do_unlock = usbd_enum_lock(udev);
+
+	scratch_ptr = udev->scratch.data;
 
 	if (udev->ddesc.iManufacturer ||
 	    udev->ddesc.iProduct ||
@@ -1775,7 +1831,7 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 		mask = usb_lang_mask;
 
 		/* align length correctly */
-		scratch_ptr[0] &= ~1;
+		scratch_ptr[0] &= ~1U;
 
 		/* fix compiler warning */
 		langid = 0;
@@ -1795,6 +1851,9 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 		DPRINTFN(1, "Language selected: 0x%04x\n", langid);
 		udev->langid = langid;
 	}
+
+	if (do_unlock)
+		usbd_enum_unlock(udev);
 
 	/* assume 100mA bus powered for now. Changed when configured. */
 	udev->power = USB_MIN_POWER;
@@ -1866,6 +1925,7 @@ repeat_set_config:
 			config_index++;
 			goto repeat_set_config;
 		}
+#if USB_HAVE_MSCTEST
 		if (config_index == 0) {
 			/*
 			 * Try to figure out if we have an
@@ -1878,7 +1938,9 @@ repeat_set_config:
 				goto repeat_set_config;
 			}
 		}
+#endif
 	}
+#if USB_HAVE_MSCTEST
 	if (set_config_failed == 0 && config_index == 0 &&
 	    usb_test_quirk(&uaa, UQ_MSC_NO_SYNC_CACHE) == 0 &&
 	    usb_test_quirk(&uaa, UQ_MSC_NO_GETMAXLUN) == 0) {
@@ -1894,6 +1956,7 @@ repeat_set_config:
 			goto repeat_set_config;
 		}
 	}
+#endif
 
 config_done:
 	DPRINTF("new dev (addr %d), udev=%p, parent_hub=%p\n",
@@ -2073,6 +2136,8 @@ usb_free_device(struct usb_device *udev, uint8_t flag)
 	DPRINTFN(4, "udev=%p port=%d\n", udev, udev->port_no);
 
 	bus = udev->bus;
+
+	/* set DETACHED state to prevent any further references */
 	usb_set_device_state(udev, USB_STATE_DETACHED);
 
 #if USB_HAVE_DEVCTL
@@ -2080,31 +2145,16 @@ usb_free_device(struct usb_device *udev, uint8_t flag)
 #endif
 
 #if USB_HAVE_UGEN
-	printf("%s: <%s> at %s (disconnected)\n", udev->ugen_name,
-	    usb_get_manufacturer(udev), device_get_nameunit(bus->bdev));
+	if (!rebooting) {
+		printf("%s: <%s> at %s (disconnected)\n", udev->ugen_name,
+		    usb_get_manufacturer(udev), device_get_nameunit(bus->bdev));
+	}
 
 	/* Destroy UGEN symlink, if any */
 	if (udev->ugen_symlink) {
 		usb_free_symlink(udev->ugen_symlink);
 		udev->ugen_symlink = NULL;
 	}
-#endif
-	/*
-	 * Unregister our device first which will prevent any further
-	 * references:
-	 */
-	usb_bus_port_set_device(bus, udev->parent_hub ?
-	    udev->parent_hub->hub->ports + udev->port_index : NULL,
-	    NULL, USB_ROOT_HUB_ADDR);
-
-#if USB_HAVE_UGEN
-	/* wait for all pending references to go away: */
-	mtx_lock(&usb_ref_lock);
-	udev->refcount--;
-	while (udev->refcount != 0) {
-		cv_wait(&udev->ref_cv, &usb_ref_lock);
-	}
-	mtx_unlock(&usb_ref_lock);
 
 	usb_destroy_dev(udev->ctrl_dev);
 #endif
@@ -2116,6 +2166,11 @@ usb_free_device(struct usb_device *udev, uint8_t flag)
 
 	/* the following will get the device unconfigured in software */
 	usb_unconfigure(udev, USB_UNCFG_FLAG_FREE_EP0);
+
+	/* final device unregister after all character devices are closed */
+	usb_bus_port_set_device(bus, udev->parent_hub ?
+	    udev->parent_hub->hub->ports + udev->port_index : NULL,
+	    NULL, USB_ROOT_HUB_ADDR);
 
 	/* unsetup any leftover default USB transfers */
 	usbd_transfer_unsetup(udev->ctrl_xfer, USB_CTRL_XFER_MAX);
@@ -2132,7 +2187,6 @@ usb_free_device(struct usb_device *udev, uint8_t flag)
 	    &udev->cs_msg[0], &udev->cs_msg[1]);
 	USB_BUS_UNLOCK(udev->bus);
 
-	sx_destroy(&udev->ctrl_sx);
 	sx_destroy(&udev->enum_sx);
 	sx_destroy(&udev->sr_sx);
 
@@ -2295,9 +2349,13 @@ usbd_set_device_strings(struct usb_device *udev)
 	size_t temp_size;
 	uint16_t vendor_id;
 	uint16_t product_id;
+	uint8_t do_unlock;
 
-	temp_ptr = (char *)udev->bus->scratch[0].data;
-	temp_size = sizeof(udev->bus->scratch[0].data);
+	/* Protect scratch area */
+	do_unlock = usbd_enum_lock(udev);
+
+	temp_ptr = (char *)udev->scratch.data;
+	temp_size = sizeof(udev->scratch.data);
 
 	vendor_id = UGETW(udd->idVendor);
 	product_id = UGETW(udd->idProduct);
@@ -2352,6 +2410,9 @@ usbd_set_device_strings(struct usb_device *udev)
 		snprintf(temp_ptr, temp_size, "product 0x%04x", product_id);
 		udev->product = strdup(temp_ptr, M_USB);
 	}
+
+	if (do_unlock)
+		usbd_enum_unlock(udev);
 }
 
 /*
@@ -2611,8 +2672,14 @@ usb_fifo_free_wrap(struct usb_device *udev,
 			/* no need to free this FIFO */
 			continue;
 		}
+		/* wait for pending refs to go away */
+		usb_wait_pending_ref_locked(udev);
+
 		/* free this FIFO */
 		usb_fifo_free(f);
+
+		/* restore refcount */
+		usb_ref_restore_locked(udev);
 	}
 }
 #endif
@@ -2644,8 +2711,14 @@ usb_set_device_state(struct usb_device *udev, enum usb_dev_state state)
 
 	DPRINTF("udev %p state %s -> %s\n", udev,
 	    usb_statestr(udev->state), usb_statestr(state));
-	udev->state = state;
 
+#if USB_HAVE_UGEN
+	mtx_lock(&usb_ref_lock);
+#endif
+	udev->state = state;
+#if USB_HAVE_UGEN
+	mtx_unlock(&usb_ref_lock);
+#endif
 	if (udev->bus->methods->device_state_change != NULL)
 		(udev->bus->methods->device_state_change) (udev);
 }
@@ -2664,11 +2737,17 @@ usbd_device_attached(struct usb_device *udev)
 	return (udev->state > USB_STATE_DETACHED);
 }
 
-/* The following function locks enumerating the given USB device. */
-
-void
+/*
+ * The following function locks enumerating the given USB device. If
+ * the lock is already grabbed this function returns zero. Else a
+ * non-zero value is returned.
+ */
+uint8_t
 usbd_enum_lock(struct usb_device *udev)
 {
+	if (sx_xlocked(&udev->enum_sx))
+		return (0);
+
 	sx_xlock(&udev->enum_sx);
 	sx_xlock(&udev->sr_sx);
 	/* 
@@ -2677,6 +2756,7 @@ usbd_enum_lock(struct usb_device *udev)
 	 * locked multiple times.
 	 */
 	mtx_lock(&Giant);
+	return (1);
 }
 
 /* The following function unlocks enumerating the given USB device. */
@@ -2783,13 +2863,8 @@ usbd_set_endpoint_mode(struct usb_device *udev, struct usb_endpoint *ep,
 	usb_error_t error;
 	uint8_t do_unlock;
 
-	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
-		do_unlock = 0;
-	} else {
-		do_unlock = 1;
-		usbd_enum_lock(udev);
-	}
+	/* Prevent re-enumeration */
+	do_unlock = usbd_enum_lock(udev);
 
 	if (udev->bus->methods->set_endpoint_mode != NULL) {
 		error = (udev->bus->methods->set_endpoint_mode) (
@@ -2805,7 +2880,6 @@ usbd_set_endpoint_mode(struct usb_device *udev, struct usb_endpoint *ep,
 
 	if (do_unlock)
 		usbd_enum_unlock(udev);
-
 	return (error);
 }
 

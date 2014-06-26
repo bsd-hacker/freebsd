@@ -49,15 +49,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/uio.h>
 #include <sys/unistd.h>
 
-#include <machine/xen/xen-os.h>
 #include <machine/stdarg.h>
 
-#include <xen/evtchn.h>
-#include <xen/gnttab.h>
+#include <xen/xen-os.h>
 #include <xen/hypervisor.h>
 #include <xen/xen_intr.h>
 
 #include <xen/interface/hvm/params.h>
+#include <xen/hvm.h>
 
 #include <xen/xenstore/xenstorevar.h>
 #include <xen/xenstore/xenstore_internal.h>
@@ -229,13 +228,11 @@ struct xs_softc {
 	 */
 	struct sx xenwatch_mutex;
 
-#ifdef XENHVM
 	/**
 	 * The HVM guest pseudo-physical frame number.  This is Xen's mapping
 	 * of the true machine frame number into our "physical address space".
 	 */
 	unsigned long gpfn;
-#endif
 
 	/**
 	 * The event channel for communicating with the
@@ -243,8 +240,8 @@ struct xs_softc {
 	 */
 	int evtchn;
 
-	/** Interrupt number for our event channel. */
-	u_int irq;
+	/** Handle for XenStore interrupts. */
+	xen_intr_handle_t xen_intr_handle;
 
 	/**
 	 * Interrupt driven config hook allowing us to defer
@@ -307,7 +304,8 @@ split(char *strings, u_int len, u_int *num)
 	const char **ret;
 
 	/* Protect against unterminated buffers. */
-	strings[len - 1] = '\0';
+	if (len > 0)
+		strings[len - 1] = '\0';
 
 	/* Count the strings. */
 	*num = extract_strings(strings, /*dest*/NULL, len);
@@ -503,11 +501,10 @@ xs_write_store(const void *tdata, unsigned len)
 		xen_store->req_prod += avail;
 
 		/*
-		 * notify_remote_via_evtchn implies mb(). The other side
-		 * will see the change to req_prod at the time of the
-		 * interrupt.
+		 * xen_intr_signal() implies mb(). The other side will see
+		 * the change to req_prod at the time of the interrupt.
 		 */
-		notify_remote_via_evtchn(xs.evtchn);
+		xen_intr_signal(xs.xen_intr_handle);
 	}
 
 	return (0);
@@ -595,11 +592,10 @@ xs_read_store(void *tdata, unsigned len)
 		xen_store->rsp_cons += avail;
 
 		/*
-		 * notify_remote_via_evtchn implies mb(). The producer
-		 * will see the updated consumer index when the event
-		 * is delivered.
+		 * xen_intr_signal() implies mb(). The producer will see
+		 * the updated consumer index when the event is delivered.
 		 */
-		notify_remote_via_evtchn(xs.evtchn);
+		xen_intr_signal(xs.xen_intr_handle);
 	}
 
 	return (0);
@@ -1066,11 +1062,11 @@ xs_init_comms(void)
 		xen_store->rsp_cons = xen_store->rsp_prod;
 	}
 
-	if (xs.irq)
-		unbind_from_irqhandler(xs.irq);
+	xen_intr_unbind(&xs.xen_intr_handle);
 
-	error = bind_caller_port_to_irqhandler(xs.evtchn, "xenstore",
-	    xs_intr, NULL, INTR_TYPE_NET, &xs.irq);
+	error = xen_intr_bind_local_port(xs.xs_dev, xs.evtchn,
+	    /*filter*/NULL, xs_intr, /*arg*/NULL, INTR_TYPE_NET|INTR_MPSAFE,
+	    &xs.xen_intr_handle);
 	if (error) {
 		log(LOG_WARNING, "XENSTORE request irq failed %i\n", error);
 		return (error);
@@ -1131,30 +1127,18 @@ xs_attach(device_t dev)
 	xs.xs_dev = dev;
 	device_set_softc(dev, &xs);
 
-	/*
-	 * This seems to be a layering violation.  The XenStore is just
-	 * one of many clients of the Grant Table facility.  It happens
-	 * to be the first and a gating consumer to all other devices,
-	 * so this does work.  A better place would be in the PV support
-	 * code for fully PV kernels and the xenpci driver for HVM kernels.
-	 */
-	error = gnttab_init();
-	if (error != 0) {
-		log(LOG_WARNING,
-		    "XENSTORE: Error initializing grant tables: %d\n", error);
-		return (ENXIO);
-	}
-
 	/* Initialize the interface to xenstore. */
 	struct proc *p;
 
-#ifdef XENHVM
-	xs.evtchn = hvm_get_parameter(HVM_PARAM_STORE_EVTCHN);
-	xs.gpfn = hvm_get_parameter(HVM_PARAM_STORE_PFN);
-	xen_store = pmap_mapdev(xs.gpfn * PAGE_SIZE, PAGE_SIZE);
-#else
-	xs.evtchn = xen_start_info->store_evtchn;
-#endif
+	if (xen_hvm_domain()) {
+		xs.evtchn = hvm_get_parameter(HVM_PARAM_STORE_EVTCHN);
+		xs.gpfn = hvm_get_parameter(HVM_PARAM_STORE_PFN);
+		xen_store = pmap_mapdev(xs.gpfn * PAGE_SIZE, PAGE_SIZE);
+	} else if (xen_pv_domain()) {
+		xs.evtchn = HYPERVISOR_start_info->store_evtchn;
+	} else {
+		panic("Unknown domain type, cannot initialize xenstore.");
+	}
 
 	TAILQ_INIT(&xs.reply_list);
 	TAILQ_INIT(&xs.watch_events);
@@ -1166,7 +1150,6 @@ xs_attach(device_t dev)
 	sx_init(&xs.suspend_mutex, "xenstore suspend");
 	mtx_init(&xs.registered_watches_lock, "watches", NULL, MTX_DEF);
 	mtx_init(&xs.watch_events_lock, "watch events", NULL, MTX_DEF);
-	xs.irq = 0;
 
 	/* Initialize the shared memory rings to talk to xenstored */
 	error = xs_init_comms();
@@ -1263,11 +1246,7 @@ static device_method_t xenstore_methods[] = {
 DEFINE_CLASS_0(xenstore, xenstore_driver, xenstore_methods, 0);
 static devclass_t xenstore_devclass; 
  
-#ifdef XENHVM
-DRIVER_MODULE(xenstore, xenpci, xenstore_driver, xenstore_devclass, 0, 0);
-#else
-DRIVER_MODULE(xenstore, nexus, xenstore_driver, xenstore_devclass, 0, 0);
-#endif
+DRIVER_MODULE(xenstore, xenpv, xenstore_driver, xenstore_devclass, 0, 0);
 
 /*------------------------------- Sysctl Data --------------------------------*/
 /* XXX Shouldn't the node be somewhere else? */

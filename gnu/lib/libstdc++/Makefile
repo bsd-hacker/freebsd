@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 GCCVER=	4.2
 GCCDIR=	${.CURDIR}/../../../contrib/gcc
@@ -631,6 +631,8 @@ ${VERSION_MAP}: ${SRCDIR}/config/abi/pre/gnu.ver
 	ln -sf ${.ALLSRC} ${.TARGET}
 
 CLEANFILES+=	${VERSION_MAP}
+
+CXXFLAGS.clang+= -stdlib=libstdc++
 
 .include <bsd.lib.mk>
 

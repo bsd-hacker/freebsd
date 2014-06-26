@@ -1,7 +1,7 @@
 #	From: @(#)Makefile	8.3 (Berkeley) 1/7/94
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 # XXX MISSING:		deroff diction graph learn plot
 #			spell spline struct xsend
@@ -12,7 +12,6 @@
 SUBDIR=	alias \
 	apply \
 	asa \
-	${_atf} \
 	awk \
 	banner \
 	basename \
@@ -67,6 +66,7 @@ SUBDIR=	alias \
 	id \
 	ipcrm \
 	ipcs \
+	iscsictl \
 	join \
 	jot \
 	${_kdump} \
@@ -105,6 +105,7 @@ SUBDIR=	alias \
 	mkdep \
 	${_mkesdb} \
 	mkfifo \
+	mkimg \
 	mklocale \
 	mktemp \
 	mkulzma \
@@ -130,6 +131,7 @@ SUBDIR=	alias \
 	printenv \
 	printf \
 	procstat \
+	protect \
 	rctl \
 	renice \
 	rev \
@@ -141,13 +143,13 @@ SUBDIR=	alias \
 	rwall \
 	script \
 	sed \
+	send-pr \
 	seq \
 	shar \
 	showmount \
 	sockstat \
 	sort \
 	split \
-	ssh-copy-id \
 	stat \
 	stdbuf \
 	su \
@@ -158,6 +160,7 @@ SUBDIR=	alias \
 	tar \
 	tcopy \
 	tee \
+	${_tests} \
 	tftp \
 	time \
 	tip \
@@ -179,7 +182,6 @@ SUBDIR=	alias \
 	unvis \
 	uudecode \
 	uuencode \
-	vi \
 	vis \
 	vmstat \
 	w \
@@ -208,19 +210,8 @@ SUBDIR=	alias \
 SUBDIR+=	at
 .endif
 
-.if ${MK_ATF} != "no"
-_atf=		atf
-.endif
-
 .if ${MK_ATM} != "no"
 SUBDIR+=	atm
-.endif
-
-.if ${MK_BIND_UTILS} != "no"
-SUBDIR+=	dig
-SUBDIR+=	host
-SUBDIR+=	nslookup
-SUBDIR+=	nsupdate
 .endif
 
 .if ${MK_BLUETOOTH} != "no"
@@ -237,6 +228,14 @@ SUBDIR+=	calendar
 
 .if ${MK_CLANG} != "no"
 _clang=		clang
+.endif
+
+.if ${MK_FMAKE} != "no"
+SUBDIR+=	make
+.endif
+
+.if ${MK_GPL_DTC} != "yes"
+SUBDIR+=	dtc
 .endif
 
 .if ${MK_GROFF} != "no"
@@ -262,8 +261,9 @@ SUBDIR+=        truss
 SUBDIR+=	compile_et
 .endif
 
-.if ${MK_LIBTHR} != "no"
-SUBDIR+=	csup
+.if ${MK_LDNS_UTILS} != "no"
+SUBDIR+=	drill
+SUBDIR+=	host
 .endif
 
 .if ${MK_LOCATE} != "no"
@@ -279,11 +279,7 @@ SUBDIR+=	msgs
 .endif
 
 .if ${MK_MAKE} != "no"
-.if ${MK_BMAKE} != "no"
 SUBDIR+=	bmake
-.else
-SUBDIR+=	make
-.endif
 .endif
 
 .if ${MK_MAN_UTILS} != "no"
@@ -300,6 +296,10 @@ SUBDIR+=	nc
 SUBDIR+=	ypcat
 SUBDIR+=	ypmatch
 SUBDIR+=	ypwhich
+.endif
+
+.if ${MK_OPENSSH} != "no"
+SUBDIR+=	ssh-copy-id
 .endif
 
 .if ${MK_OPENSSL} != "no"
@@ -328,6 +328,10 @@ SUBDIR+=	vacation
 SUBDIR+=	telnet
 .endif
 
+.if ${MK_TESTS} != "no"
+_tests=		tests
+.endif
+
 .if ${MK_TEXTPROC} != "no"
 SUBDIR+=	checknr
 SUBDIR+=	colcrt
@@ -351,6 +355,14 @@ SUBDIR+=	xstr
 SUBDIR+=	yacc
 .endif
 
+.if ${MK_VI} != "no"
+SUBDIR+=	vi
+.endif
+
+.if ${MK_VT_SUPPORT} != "no"
+SUBDIR+=	vtfontcvt
+.endif
+
 .if ${MK_USB} != "no"
 SUBDIR+=	usbhidaction
 SUBDIR+=	usbhidctl
@@ -362,8 +374,14 @@ SUBDIR+=	users
 SUBDIR+=	who
 .endif
 
+.if ${MK_SVN} == "yes" || ${MK_SVNLITE} == "yes"
+SUBDIR+=	svn
+.endif
+
 .include <bsd.arch.inc.mk>
 
 SUBDIR:=	${SUBDIR:O}
+
+SUBDIR_PARALLEL=
 
 .include <bsd.subdir.mk>

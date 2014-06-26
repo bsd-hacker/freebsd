@@ -168,10 +168,11 @@ static int	acpi_cpu_cx_cst(struct acpi_cpu_softc *sc);
 static void	acpi_cpu_startup(void *arg);
 static void	acpi_cpu_startup_cx(struct acpi_cpu_softc *sc);
 static void	acpi_cpu_cx_list(struct acpi_cpu_softc *sc);
-static void	acpi_cpu_idle(void);
+static void	acpi_cpu_idle(sbintime_t sbt);
 static void	acpi_cpu_notify(ACPI_HANDLE h, UINT32 notify, void *context);
 static int	acpi_cpu_quirks(void);
 static int	acpi_cpu_usage_sysctl(SYSCTL_HANDLER_ARGS);
+static int	acpi_cpu_usage_counters_sysctl(SYSCTL_HANDLER_ARGS);
 static int	acpi_cpu_set_cx_lowest(struct acpi_cpu_softc *sc);
 static int	acpi_cpu_cx_lowest_sysctl(SYSCTL_HANDLER_ARGS);
 static int	acpi_cpu_global_cx_lowest_sysctl(SYSCTL_HANDLER_ARGS);
@@ -938,6 +939,11 @@ acpi_cpu_startup_cx(struct acpi_cpu_softc *sc)
 		    OID_AUTO, "cx_usage", CTLTYPE_STRING | CTLFLAG_RD,
 		    (void *)sc, 0, acpi_cpu_usage_sysctl, "A",
 		    "percent usage for each Cx state");
+    SYSCTL_ADD_PROC(&sc->cpu_sysctl_ctx,
+		    SYSCTL_CHILDREN(device_get_sysctl_tree(sc->cpu_dev)),
+		    OID_AUTO, "cx_usage_counters", CTLTYPE_STRING | CTLFLAG_RD,
+		    (void *)sc, 0, acpi_cpu_usage_counters_sysctl, "A",
+		    "Cx sleep state counters");
 
     /* Signal platform that we can handle _CST notification. */
     if (!cpu_cx_generic && cpu_cst_cnt != 0) {
@@ -954,13 +960,13 @@ acpi_cpu_startup_cx(struct acpi_cpu_softc *sc)
  * interrupts are re-enabled.
  */
 static void
-acpi_cpu_idle()
+acpi_cpu_idle(sbintime_t sbt)
 {
     struct	acpi_cpu_softc *sc;
     struct	acpi_cx *cx_next;
     uint64_t	cputicks;
     uint32_t	start_time, end_time;
-    int		bm_active, cx_next_idx, i;
+    int		bm_active, cx_next_idx, i, us;
 
     /*
      * Look up our CPU id to get our softc.  If it's NULL, we'll use C1
@@ -980,13 +986,16 @@ acpi_cpu_idle()
     }
 
     /* Find the lowest state that has small enough latency. */
+    us = sc->cpu_prev_sleep;
+    if (sbt >= 0 && us > (sbt >> 12))
+	us = (sbt >> 12);
     cx_next_idx = 0;
     if (cpu_disable_deep_sleep)
 	i = min(sc->cpu_cx_lowest, sc->cpu_non_c3);
     else
 	i = sc->cpu_cx_lowest;
     for (; i >= 0; i--) {
-	if (sc->cpu_cx_states[i].trans_lat * 3 <= sc->cpu_prev_sleep) {
+	if (sc->cpu_cx_states[i].trans_lat * 3 <= us) {
 	    cx_next_idx = i;
 	    break;
 	}
@@ -1226,6 +1235,35 @@ acpi_cpu_usage_sysctl(SYSCTL_HANDLER_ARGS)
 	    sbuf_printf(&sb, "0.00%% ");
     }
     sbuf_printf(&sb, "last %dus", sc->cpu_prev_sleep);
+    sbuf_trim(&sb);
+    sbuf_finish(&sb);
+    sysctl_handle_string(oidp, sbuf_data(&sb), sbuf_len(&sb), req);
+    sbuf_delete(&sb);
+
+    return (0);
+}
+
+/*
+ * XXX TODO: actually add support to count each entry/exit
+ * from the Cx states.
+ */
+static int
+acpi_cpu_usage_counters_sysctl(SYSCTL_HANDLER_ARGS)
+{
+    struct acpi_cpu_softc *sc;
+    struct sbuf	 sb;
+    char	 buf[128];
+    int		 i;
+
+    sc = (struct acpi_cpu_softc *) arg1;
+
+    /* Print out the raw counters */
+    sbuf_new(&sb, buf, sizeof(buf), SBUF_FIXEDLEN);
+
+    for (i = 0; i < sc->cpu_cx_count; i++) {
+        sbuf_printf(&sb, "%u ", sc->cpu_cx_stats[i]);
+    }
+
     sbuf_trim(&sb);
     sbuf_finish(&sb);
     sysctl_handle_string(oidp, sbuf_data(&sb), sbuf_len(&sb), req);

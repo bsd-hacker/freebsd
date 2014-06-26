@@ -116,6 +116,31 @@ struct scsi_read_defect_data_10
 	u_int8_t control;
 };
 
+struct scsi_sanitize
+{
+	u_int8_t opcode;
+	u_int8_t byte2;
+#define SSZ_SERVICE_ACTION_OVERWRITE         0x01
+#define SSZ_SERVICE_ACTION_BLOCK_ERASE       0x02
+#define SSZ_SERVICE_ACTION_CRYPTO_ERASE      0x03
+#define SSZ_SERVICE_ACTION_EXIT_MODE_FAILURE 0x1F
+#define SSZ_UNRESTRICTED_EXIT                0x20
+#define SSZ_IMMED                            0x80
+	u_int8_t reserved[5];
+	u_int8_t length[2];
+	u_int8_t control;
+};
+
+struct scsi_sanitize_parameter_list
+{
+	u_int8_t byte1;
+#define SSZPL_INVERT 0x80
+	u_int8_t reserved;
+	u_int8_t length[2];
+	/* Variable length initialization pattern. */
+#define SSZPL_MAX_PATTERN_LENGTH 65535
+};
+
 struct scsi_read_defect_data_12
 {
 	u_int8_t opcode;
@@ -156,6 +181,7 @@ struct scsi_read_defect_data_12
 #define	WRITE_AND_VERIFY	0x2e
 #define	VERIFY			0x2f
 #define READ_DEFECT_DATA_10	0x37
+#define SANITIZE		0x48
 #define READ_DEFECT_DATA_12	0xb7
 
 struct format_defect_list_header
@@ -196,18 +222,49 @@ struct scsi_read_format_capacities
 	uint8_t	reserved1[3];
 };
 
-struct scsi_verify
+struct scsi_verify_10
 {
-	uint8_t	opcode;		/* VERIFY */
+	uint8_t	opcode;		/* VERIFY(10) */
 	uint8_t	byte2;
 #define	SVFY_LUN_MASK	0xE0
 #define	SVFY_RELADR	0x01
-#define	SVFY_BYTECHK	0x02
+#define	SVFY_BYTCHK	0x02
 #define	SVFY_DPO	0x10
 	uint8_t	addr[4];	/* LBA to begin verification at */
-	uint8_t	reserved0[1];
-	uint8_t	len[2];		/* number of blocks to verify */
-	uint8_t	reserved1[3];
+	uint8_t	group;
+	uint8_t	length[2];		/* number of blocks to verify */
+	uint8_t	control;
+};
+
+struct scsi_verify_12
+{
+	uint8_t	opcode;		/* VERIFY(12) */
+	uint8_t	byte2;
+	uint8_t	addr[4];	/* LBA to begin verification at */
+	uint8_t	length[4];		/* number of blocks to verify */
+	uint8_t	group;
+	uint8_t	control;
+};
+
+struct scsi_verify_16
+{
+	uint8_t	opcode;		/* VERIFY(16) */
+	uint8_t	byte2;
+	uint8_t	addr[8];	/* LBA to begin verification at */
+	uint8_t	length[4];		/* number of blocks to verify */
+	uint8_t	group;
+	uint8_t	control;
+};
+
+struct scsi_compare_and_write
+{
+	uint8_t	opcode;		/* COMPARE AND WRITE */
+	uint8_t	byte2;
+	uint8_t	addr[8];	/* LBA to begin verification at */
+	uint8_t	reserved[3];
+	uint8_t	length;		/* number of blocks */
+	uint8_t	group;
+	uint8_t	control;
 };
 
 struct scsi_write_and_verify
@@ -507,6 +564,12 @@ void scsi_format_unit(struct ccb_scsiio *csio, u_int32_t retries,
 		      u_int8_t tag_action, u_int8_t byte2, u_int16_t ileave,
 		      u_int8_t *data_ptr, u_int32_t dxfer_len,
 		      u_int8_t sense_len, u_int32_t timeout);
+
+void scsi_sanitize(struct ccb_scsiio *csio, u_int32_t retries,
+		   void (*cbfcnp)(struct cam_periph *, union ccb *),
+		   u_int8_t tag_action, u_int8_t byte2, u_int16_t control,
+		   u_int8_t *data_ptr, u_int32_t dxfer_len, u_int8_t sense_len,
+		   u_int32_t timeout);
 
 #endif /* !_KERNEL */
 __END_DECLS

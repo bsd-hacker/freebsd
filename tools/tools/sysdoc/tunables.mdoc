@@ -233,16 +233,6 @@ See
 for more information.
 
 ---
-hw.bus.devctl_disable
-bool
-
-This can be used to turn off
-.Xr devctl 4
-when no
-.Xr devd 8 
-is running.
-
----
 hw.bus.devices
 
 ---
@@ -1091,6 +1081,13 @@ line programs.
 ---
 
 kern.quantum
+
+---
+kern.random.adaptors
+str
+
+Displays registered PRNG adaptors.
+This is a read-only variable.
 
 ---
 kern.random.sys.burst
@@ -2257,9 +2254,6 @@ int
 
 Displays the number of swap devices available
 to the system.  This is a read-only variable.
-
----
-vm.pageout_algorithm
 
 ---
 vm.pageout_full_stats_interval

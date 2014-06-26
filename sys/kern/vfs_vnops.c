@@ -7,6 +7,12 @@
  * Co. or Unix System Laboratories, Inc. and are reproduced herein with
  * the permission of UNIX System Laboratories, Inc.
  *
+ * Copyright (c) 2012 Konstantin Belousov <kib@FreeBSD.org>
+ * Copyright (c) 2013, 2014 The FreeBSD Foundation
+ *
+ * Portions of this software were developed by Konstantin Belousov
+ * under sponsorship from the FreeBSD Foundation.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -39,6 +45,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/disk.h>
 #include <sys/fcntl.h>
 #include <sys/file.h>
 #include <sys/kdb.h>
@@ -55,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/buf.h>
 #include <sys/filio.h>
 #include <sys/resourcevar.h>
+#include <sys/rwlock.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
 #include <sys/ttycom.h>
@@ -93,8 +101,57 @@ struct 	fileops vnops = {
 	.fo_close = vn_closefile,
 	.fo_chmod = vn_chmod,
 	.fo_chown = vn_chown,
+	.fo_sendfile = vn_sendfile,
+	.fo_seek = vn_seek,
 	.fo_flags = DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
+
+static const int io_hold_cnt = 16;
+static int vn_io_fault_enable = 1;
+SYSCTL_INT(_debug, OID_AUTO, vn_io_fault_enable, CTLFLAG_RW,
+    &vn_io_fault_enable, 0, "Enable vn_io_fault lock avoidance");
+static u_long vn_io_faults_cnt;
+SYSCTL_ULONG(_debug, OID_AUTO, vn_io_faults, CTLFLAG_RD,
+    &vn_io_faults_cnt, 0, "Count of vn_io_fault lock avoidance triggers");
+
+/*
+ * Returns true if vn_io_fault mode of handling the i/o request should
+ * be used.
+ */
+static bool
+do_vn_io_fault(struct vnode *vp, struct uio *uio)
+{
+	struct mount *mp;
+
+	return (uio->uio_segflg == UIO_USERSPACE && vp->v_type == VREG &&
+	    (mp = vp->v_mount) != NULL &&
+	    (mp->mnt_kern_flag & MNTK_NO_IOPF) != 0 && vn_io_fault_enable);
+}
+
+/*
+ * Structure used to pass arguments to vn_io_fault1(), to do either
+ * file- or vnode-based I/O calls.
+ */
+struct vn_io_fault_args {
+	enum {
+		VN_IO_FAULT_FOP,
+		VN_IO_FAULT_VOP
+	} kind;
+	struct ucred *cred;
+	int flags;
+	union {
+		struct fop_args_tag {
+			struct file *fp;
+			fo_rdwr_t *doio;
+		} fop_args;
+		struct vop_args_tag {
+			struct vnode *vp;
+		} vop_args;
+	} args;
+};
+
+static int vn_io_fault1(struct vnode *vp, struct uio *uio,
+    struct vn_io_fault_args *args, struct thread *td);
 
 int
 vn_open(ndp, flagp, cmode, fp)
@@ -257,6 +314,8 @@ vn_open_vnode(struct vnode *vp, int fmode, struct ucred *cred,
 				return (error);
 		}
 	}
+	if (vp->v_type == VFIFO && VOP_ISLOCKED(vp) != LK_EXCLUSIVE)
+		vn_lock(vp, LK_UPGRADE | LK_RETRY);
 	if ((error = VOP_OPEN(vp, fmode, cred, td, fp)) != 0)
 		return (error);
 
@@ -301,6 +360,9 @@ vn_open_vnode(struct vnode *vp, int fmode, struct ucred *cred,
 			vn_lock(vp, lock_flags | LK_RETRY);
 			(void)VOP_CLOSE(vp, fmode, cred, td);
 			vn_finished_write(mp);
+			/* Prevent second close from fdrop()->vn_close(). */
+			if (fp != NULL)
+				fp->f_ops= &badfileops;
 			return (error);
 		}
 		fp->f_flag |= FHASLOCK;
@@ -348,8 +410,8 @@ vn_close(vp, flags, file_cred, td)
 	struct mount *mp;
 	int error, lock_flags;
 
-	if (!(flags & FWRITE) && vp->v_mount != NULL &&
-	    vp->v_mount->mnt_kern_flag & MNTK_EXTENDED_SHARED)
+	if (vp->v_type != VFIFO && (flags & FWRITE) == 0 &&
+	    MNT_EXTENDED_SHARED(vp->v_mount))
 		lock_flags = LK_SHARED;
 	else
 		lock_flags = LK_EXCLUSIVE;
@@ -424,6 +486,7 @@ vn_rdwr(enum uio_rw rw, struct vnode *vp, void *base, int len, off_t offset,
 	struct mount *mp;
 	struct ucred *cred;
 	void *rl_cookie;
+	struct vn_io_fault_args args;
 	int error, lock_flags;
 
 	auio.uio_iov = &aiov;
@@ -478,10 +541,17 @@ vn_rdwr(enum uio_rw rw, struct vnode *vp, void *base, int len, off_t offset,
 			cred = file_cred;
 		else
 			cred = active_cred;
-		if (rw == UIO_READ)
+		if (do_vn_io_fault(vp, &auio)) {
+			args.kind = VN_IO_FAULT_VOP;
+			args.cred = cred;
+			args.flags = ioflg;
+			args.args.vop_args.vp = vp;
+			error = vn_io_fault1(vp, &auio, &args, td);
+		} else if (rw == UIO_READ) {
 			error = VOP_READ(vp, &auio, ioflg, cred);
-		else
+		} else /* if (rw == UIO_WRITE) */ {
 			error = VOP_WRITE(vp, &auio, ioflg, cred);
+		}
 	}
 	if (aresid)
 		*aresid = auio.uio_resid;
@@ -868,14 +938,6 @@ unlock:
 	return (error);
 }
 
-static const int io_hold_cnt = 16;
-static int vn_io_fault_enable = 1;
-SYSCTL_INT(_debug, OID_AUTO, vn_io_fault_enable, CTLFLAG_RW,
-    &vn_io_fault_enable, 0, "Enable vn_io_fault lock avoidance");
-static unsigned long vn_io_faults_cnt;
-SYSCTL_LONG(_debug, OID_AUTO, vn_io_faults, CTLFLAG_RD,
-    &vn_io_faults_cnt, 0, "Count of vn_io_fault lock avoidance triggers");
-
 /*
  * The vn_io_fault() is a wrapper around vn_read() and vn_write() to
  * prevent the following deadlock:
@@ -909,38 +971,55 @@ SYSCTL_LONG(_debug, OID_AUTO, vn_io_faults, CTLFLAG_RD,
  * make the current i/o request atomic with respect to other i/os and
  * truncations.
  */
+
+/*
+ * Decode vn_io_fault_args and perform the corresponding i/o.
+ */
 static int
-vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td)
+vn_io_fault_doio(struct vn_io_fault_args *args, struct uio *uio,
+    struct thread *td)
+{
+
+	switch (args->kind) {
+	case VN_IO_FAULT_FOP:
+		return ((args->args.fop_args.doio)(args->args.fop_args.fp,
+		    uio, args->cred, args->flags, td));
+	case VN_IO_FAULT_VOP:
+		if (uio->uio_rw == UIO_READ) {
+			return (VOP_READ(args->args.vop_args.vp, uio,
+			    args->flags, args->cred));
+		} else if (uio->uio_rw == UIO_WRITE) {
+			return (VOP_WRITE(args->args.vop_args.vp, uio,
+			    args->flags, args->cred));
+		}
+		break;
+	}
+	panic("vn_io_fault_doio: unknown kind of io %d %d", args->kind,
+	    uio->uio_rw);
+}
+
+/*
+ * Common code for vn_io_fault(), agnostic to the kind of i/o request.
+ * Uses vn_io_fault_doio() to make the call to an actual i/o function.
+ * Used from vn_rdwr() and vn_io_fault(), which encode the i/o request
+ * into args and call vn_io_fault1() to handle faults during the user
+ * mode buffer accesses.
+ */
+static int
+vn_io_fault1(struct vnode *vp, struct uio *uio, struct vn_io_fault_args *args,
+    struct thread *td)
 {
 	vm_page_t ma[io_hold_cnt + 2];
 	struct uio *uio_clone, short_uio;
 	struct iovec short_iovec[1];
-	fo_rdwr_t *doio;
-	struct vnode *vp;
-	void *rl_cookie;
-	struct mount *mp;
 	vm_page_t *prev_td_ma;
-	int cnt, error, save, saveheld, prev_td_ma_cnt;
-	vm_offset_t addr, end;
 	vm_prot_t prot;
+	vm_offset_t addr, end;
 	size_t len, resid;
 	ssize_t adv;
+	int error, cnt, save, saveheld, prev_td_ma_cnt;
 
-	if (uio->uio_rw == UIO_READ)
-		doio = vn_read;
-	else
-		doio = vn_write;
-	vp = fp->f_vnode;
-	foffset_lock_uio(fp, uio, flags);
-
-	if (uio->uio_segflg != UIO_USERSPACE || vp->v_type != VREG ||
-	    ((mp = vp->v_mount) != NULL &&
-	    (mp->mnt_kern_flag & MNTK_NO_IOPF) == 0) ||
-	    !vn_io_fault_enable) {
-		error = doio(fp, uio, active_cred, flags | FOF_OFFSET, td);
-		goto out_last;
-	}
+	prot = uio->uio_rw == UIO_READ ? VM_PROT_WRITE : VM_PROT_READ;
 
 	/*
 	 * The UFS follows IO_UNIT directive and replays back both
@@ -958,22 +1037,8 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	short_uio.uio_rw = uio->uio_rw;
 	short_uio.uio_td = uio->uio_td;
 
-	if (uio->uio_rw == UIO_READ) {
-		prot = VM_PROT_WRITE;
-		rl_cookie = vn_rangelock_rlock(vp, uio->uio_offset,
-		    uio->uio_offset + uio->uio_resid);
-	} else {
-		prot = VM_PROT_READ;
-		if ((fp->f_flag & O_APPEND) != 0 || (flags & FOF_OFFSET) == 0)
-			/* For appenders, punt and lock the whole range. */
-			rl_cookie = vn_rangelock_wlock(vp, 0, OFF_MAX);
-		else
-			rl_cookie = vn_rangelock_wlock(vp, uio->uio_offset,
-			    uio->uio_offset + uio->uio_resid);
-	}
-
 	save = vm_fault_disable_pagefaults();
-	error = doio(fp, uio, active_cred, flags | FOF_OFFSET, td);
+	error = vn_io_fault_doio(args, uio, td);
 	if (error != EFAULT)
 		goto out;
 
@@ -995,21 +1060,20 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 			uio_clone->uio_iovcnt--;
 			continue;
 		}
-
-		addr = (vm_offset_t)uio_clone->uio_iov->iov_base;
+		if (len > io_hold_cnt * PAGE_SIZE)
+			len = io_hold_cnt * PAGE_SIZE;
+		addr = (uintptr_t)uio_clone->uio_iov->iov_base;
 		end = round_page(addr + len);
-		cnt = howmany(end - trunc_page(addr), PAGE_SIZE);
+		if (end < addr) {
+			error = EFAULT;
+			break;
+		}
+		cnt = atop(end - trunc_page(addr));
 		/*
 		 * A perfectly misaligned address and length could cause
 		 * both the start and the end of the chunk to use partial
 		 * page.  +2 accounts for such a situation.
 		 */
-		if (cnt > io_hold_cnt + 2) {
-			len = io_hold_cnt * PAGE_SIZE;
-			KASSERT(howmany(round_page(addr + len) -
-			    trunc_page(addr), PAGE_SIZE) <= io_hold_cnt + 2,
-			    ("cnt overflow"));
-		}
 		cnt = vm_fault_quick_hold_pages(&td->td_proc->p_vmspace->vm_map,
 		    addr, len, prot, ma, io_hold_cnt + 2);
 		if (cnt == -1) {
@@ -1024,8 +1088,7 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 		td->td_ma = ma;
 		td->td_ma_cnt = cnt;
 
-		error = doio(fp, &short_uio, active_cred, flags | FOF_OFFSET,
-		    td);
+		error = vn_io_fault_doio(args, &short_uio, td);
 		vm_page_unhold_pages(ma, cnt);
 		adv = len - short_uio.uio_resid;
 
@@ -1046,9 +1109,45 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	curthread_pflags_restore(saveheld);
 out:
 	vm_fault_enable_pagefaults(save);
-	vn_rangelock_unlock(vp, rl_cookie);
 	free(uio_clone, M_IOV);
-out_last:
+	return (error);
+}
+
+static int
+vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td)
+{
+	fo_rdwr_t *doio;
+	struct vnode *vp;
+	void *rl_cookie;
+	struct vn_io_fault_args args;
+	int error;
+
+	doio = uio->uio_rw == UIO_READ ? vn_read : vn_write;
+	vp = fp->f_vnode;
+	foffset_lock_uio(fp, uio, flags);
+	if (do_vn_io_fault(vp, uio)) {
+		args.kind = VN_IO_FAULT_FOP;
+		args.args.fop_args.fp = fp;
+		args.args.fop_args.doio = doio;
+		args.cred = active_cred;
+		args.flags = flags | FOF_OFFSET;
+		if (uio->uio_rw == UIO_READ) {
+			rl_cookie = vn_rangelock_rlock(vp, uio->uio_offset,
+			    uio->uio_offset + uio->uio_resid);
+		} else if ((fp->f_flag & O_APPEND) != 0 ||
+		    (flags & FOF_OFFSET) == 0) {
+			/* For appenders, punt and lock the whole range. */
+			rl_cookie = vn_rangelock_wlock(vp, 0, OFF_MAX);
+		} else {
+			rl_cookie = vn_rangelock_wlock(vp, uio->uio_offset,
+			    uio->uio_offset + uio->uio_resid);
+		}
+		error = vn_io_fault1(vp, uio, &args, td);
+		vn_rangelock_unlock(vp, rl_cookie);
+	} else {
+		error = doio(fp, uio, active_cred, flags | FOF_OFFSET, td);
+	}
 	foffset_unlock_uio(fp, uio, flags);
 	return (error);
 }
@@ -1120,6 +1219,45 @@ vn_io_fault_uiomove(char *data, int xfersize, struct uio *uio)
 	uio->uio_offset += adv;
 	return (error);
 }
+
+int
+vn_io_fault_pgmove(vm_page_t ma[], vm_offset_t offset, int xfersize,
+    struct uio *uio)
+{
+	struct thread *td;
+	vm_offset_t iov_base;
+	int cnt, pgadv;
+
+	td = curthread;
+	if ((td->td_pflags & TDP_UIOHELD) == 0 ||
+	    uio->uio_segflg != UIO_USERSPACE)
+		return (uiomove_fromphys(ma, offset, xfersize, uio));
+
+	KASSERT(uio->uio_iovcnt == 1, ("uio_iovcnt %d", uio->uio_iovcnt));
+	cnt = xfersize > uio->uio_resid ? uio->uio_resid : xfersize;
+	iov_base = (vm_offset_t)uio->uio_iov->iov_base;
+	switch (uio->uio_rw) {
+	case UIO_WRITE:
+		pmap_copy_pages(td->td_ma, iov_base & PAGE_MASK, ma,
+		    offset, cnt);
+		break;
+	case UIO_READ:
+		pmap_copy_pages(ma, offset, td->td_ma, iov_base & PAGE_MASK,
+		    cnt);
+		break;
+	}
+	pgadv = ((iov_base + cnt) >> PAGE_SHIFT) - (iov_base >> PAGE_SHIFT);
+	td->td_ma += pgadv;
+	KASSERT(td->td_ma_cnt >= pgadv, ("consumed pages %d %d", td->td_ma_cnt,
+	    pgadv));
+	td->td_ma_cnt -= pgadv;
+	uio->uio_iov->iov_base = (char *)(iov_base + cnt);
+	uio->uio_iov->iov_len -= cnt;
+	uio->uio_resid -= cnt;
+	uio->uio_offset += cnt;
+	return (0);
+}
+
 
 /*
  * File table truncate routine.
@@ -1309,32 +1447,32 @@ vn_ioctl(fp, com, data, active_cred, td)
 	struct ucred *active_cred;
 	struct thread *td;
 {
-	struct vnode *vp = fp->f_vnode;
 	struct vattr vattr;
+	struct vnode *vp;
 	int error;
 
-	error = ENOTTY;
+	vp = fp->f_vnode;
 	switch (vp->v_type) {
-	case VREG:
 	case VDIR:
-		if (com == FIONREAD) {
-			vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	case VREG:
+		switch (com) {
+		case FIONREAD:
+			vn_lock(vp, LK_SHARED | LK_RETRY);
 			error = VOP_GETATTR(vp, &vattr, active_cred);
 			VOP_UNLOCK(vp, 0);
-			if (!error)
+			if (error == 0)
 				*(int *)data = vattr.va_size - fp->f_offset;
+			return (error);
+		case FIONBIO:
+		case FIOASYNC:
+			return (0);
+		default:
+			return (VOP_IOCTL(vp, com, data, fp->f_flag,
+			    active_cred, td));
 		}
-		if (com == FIONBIO || com == FIOASYNC)	/* XXX */
-			error = 0;
-		else
-			error = VOP_IOCTL(vp, com, data, fp->f_flag,
-			    active_cred, td);
-		break;
-
 	default:
-		break;
+		return (ENOTTY);
 	}
-	return (error);
 }
 
 /*
@@ -1622,8 +1760,7 @@ vn_finished_secondary_write(mp)
  * Request a filesystem to suspend write operations.
  */
 int
-vfs_write_suspend(mp)
-	struct mount *mp;
+vfs_write_suspend(struct mount *mp, int flags)
 {
 	int error;
 
@@ -1634,6 +1771,21 @@ vfs_write_suspend(mp)
 	}
 	while (mp->mnt_kern_flag & MNTK_SUSPEND)
 		msleep(&mp->mnt_flag, MNT_MTX(mp), PUSER - 1, "wsuspfs", 0);
+
+	/*
+	 * Unmount holds a write reference on the mount point.  If we
+	 * own busy reference and drain for writers, we deadlock with
+	 * the reference draining in the unmount path.  Callers of
+	 * vfs_write_suspend() must specify VS_SKIP_UNMOUNT if
+	 * vfs_busy() reference is owned and caller is not in the
+	 * unmount context.
+	 */
+	if ((flags & VS_SKIP_UNMOUNT) != 0 &&
+	    (mp->mnt_kern_flag & MNTK_UNMOUNT) != 0) {
+		MNT_IUNLOCK(mp);
+		return (EBUSY);
+	}
+
 	mp->mnt_kern_flag |= MNTK_SUSPEND;
 	mp->mnt_susp_owner = curthread;
 	if (mp->mnt_writeopcount > 0)
@@ -1712,7 +1864,7 @@ vn_extattr_get(struct vnode *vp, int ioflg, int attrnamespace,
 	auio.uio_resid = *buflen;
 
 	if ((ioflg & IO_NODELOCKED) == 0)
-		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+		vn_lock(vp, LK_SHARED | LK_RETRY);
 
 	ASSERT_VOP_LOCKED(vp, "IO_NODELOCKED with no vp lock held");
 
@@ -1860,7 +2012,6 @@ vn_chmod(struct file *fp, mode_t mode, struct ucred *active_cred,
     struct thread *td)
 {
 	struct vnode *vp;
-	int error;
 
 	vp = fp->f_vnode;
 #ifdef AUDIT
@@ -1868,8 +2019,7 @@ vn_chmod(struct file *fp, mode_t mode, struct ucred *active_cred,
 	AUDIT_ARG_VNODE1(vp);
 	VOP_UNLOCK(vp, 0);
 #endif
-	error = setfmode(td, active_cred, vp, mode);
-	return (error);
+	return (setfmode(td, active_cred, vp, mode));
 }
 
 int
@@ -1877,7 +2027,6 @@ vn_chown(struct file *fp, uid_t uid, gid_t gid, struct ucred *active_cred,
     struct thread *td)
 {
 	struct vnode *vp;
-	int error;
 
 	vp = fp->f_vnode;
 #ifdef AUDIT
@@ -1885,8 +2034,7 @@ vn_chown(struct file *fp, uid_t uid, gid_t gid, struct ucred *active_cred,
 	AUDIT_ARG_VNODE1(vp);
 	VOP_UNLOCK(vp, 0);
 #endif
-	error = setfown(td, active_cred, vp, uid, gid);
-	return (error);
+	return (setfown(td, active_cred, vp, uid, gid));
 }
 
 void
@@ -1896,9 +2044,9 @@ vn_pages_remove(struct vnode *vp, vm_pindex_t start, vm_pindex_t end)
 
 	if ((object = vp->v_object) == NULL)
 		return;
-	VM_OBJECT_LOCK(object);
+	VM_OBJECT_WLOCK(object);
 	vm_object_page_remove(object, start, end, 0);
-	VM_OBJECT_UNLOCK(object);
+	VM_OBJECT_WUNLOCK(object);
 }
 
 int
@@ -1951,5 +2099,98 @@ unlock:
 	VOP_UNLOCK(vp, 0);
 	if (error == 0)
 		*off = noff;
+	return (error);
+}
+
+int
+vn_seek(struct file *fp, off_t offset, int whence, struct thread *td)
+{
+	struct ucred *cred;
+	struct vnode *vp;
+	struct vattr vattr;
+	off_t foffset, size;
+	int error, noneg;
+
+	cred = td->td_ucred;
+	vp = fp->f_vnode;
+	foffset = foffset_lock(fp, 0);
+	noneg = (vp->v_type != VCHR);
+	error = 0;
+	switch (whence) {
+	case L_INCR:
+		if (noneg &&
+		    (foffset < 0 ||
+		    (offset > 0 && foffset > OFF_MAX - offset))) {
+			error = EOVERFLOW;
+			break;
+		}
+		offset += foffset;
+		break;
+	case L_XTND:
+		vn_lock(vp, LK_SHARED | LK_RETRY);
+		error = VOP_GETATTR(vp, &vattr, cred);
+		VOP_UNLOCK(vp, 0);
+		if (error)
+			break;
+
+		/*
+		 * If the file references a disk device, then fetch
+		 * the media size and use that to determine the ending
+		 * offset.
+		 */
+		if (vattr.va_size == 0 && vp->v_type == VCHR &&
+		    fo_ioctl(fp, DIOCGMEDIASIZE, &size, cred, td) == 0)
+			vattr.va_size = size;
+		if (noneg &&
+		    (vattr.va_size > OFF_MAX ||
+		    (offset > 0 && vattr.va_size > OFF_MAX - offset))) {
+			error = EOVERFLOW;
+			break;
+		}
+		offset += vattr.va_size;
+		break;
+	case L_SET:
+		break;
+	case SEEK_DATA:
+		error = fo_ioctl(fp, FIOSEEKDATA, &offset, cred, td);
+		break;
+	case SEEK_HOLE:
+		error = fo_ioctl(fp, FIOSEEKHOLE, &offset, cred, td);
+		break;
+	default:
+		error = EINVAL;
+	}
+	if (error == 0 && noneg && offset < 0)
+		error = EINVAL;
+	if (error != 0)
+		goto drop;
+	VFS_KNOTE_UNLOCKED(vp, 0);
+	td->td_uretoff.tdu_off = offset;
+drop:
+	foffset_unlock(fp, offset, error != 0 ? FOF_NOUPDATE : 0);
+	return (error);
+}
+
+int
+vn_utimes_perm(struct vnode *vp, struct vattr *vap, struct ucred *cred,
+    struct thread *td)
+{
+	int error;
+
+	error = VOP_ACCESSX(vp, VWRITE_ATTRIBUTES, cred, td);
+
+	/*
+	 * From utimes(2):
+	 * Grant permission if the caller is the owner of the file or
+	 * the super-user.  If the time pointer is null, then write
+	 * permission on the file is also sufficient.
+	 *
+	 * From NFSv4.1, draft 21, 6.2.1.3.1, Discussion of Mask Attributes:
+	 * A user having ACL_WRITE_DATA or ACL_WRITE_ATTRIBUTES
+	 * will be allowed to set the times [..] to the current
+	 * server time.
+	 */
+	if (error != 0 && (vap->va_vaflags & VA_UTIMES_NULL) != 0)
+		error = VOP_ACCESS(vp, VWRITE, cred, td);
 	return (error);
 }

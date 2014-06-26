@@ -6,17 +6,20 @@
 .PATH: ${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libzfs/common
 
 LIB=	zfs
-DPADD=	${LIBMD} ${LIBPTHREAD} ${LIBUMEM} ${LIBUTIL} ${LIBM} ${LIBNVPAIR}
-LDADD=	-lmd -lpthread -lumem -lutil -lm -lnvpair
+DPADD=	${LIBMD} ${LIBPTHREAD} ${LIBUMEM} ${LIBUTIL} ${LIBM} ${LIBNVPAIR} \
+	${LIBAVL} ${LIBZFS_CORE}
+LDADD=	-lmd -lpthread -lumem -lutil -lm -lnvpair -lavl -lzfs_core
 
 SRCS=	deviceid.c \
 	fsshare.c \
 	mkdirp.c \
 	mnttab.c \
+	thread_pool.c \
 	zmount.c \
 	zone.c
 
 SRCS+=	libzfs_changelist.c \
+	libzfs_compat.c \
 	libzfs_config.c \
 	libzfs_dataset.c \
 	libzfs_diff.c \
@@ -54,5 +57,6 @@ CFLAGS+= -I${.CURDIR}/../../../sys/cddl/contrib/opensolaris/uts/common
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libnvpair
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libuutil/common
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libzfs/common
+CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libzfs_core/common
 
 .include <bsd.lib.mk>

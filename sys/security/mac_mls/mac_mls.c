@@ -1250,17 +1250,6 @@ mls_mount_create(struct ucred *cred, struct mount *mp, struct label *mplabel)
 }
 
 static void
-mls_netatalk_aarp_send(struct ifnet *ifp, struct label *ifplabel,
-    struct mbuf *m, struct label *mlabel)
-{
-	struct mac_mls *dest;
-
-	dest = SLOT(mlabel);
-
-	mls_set_effective(dest, MAC_MLS_TYPE_EQUAL, 0, NULL);
-}
-
-static void
 mls_netinet_arp_send(struct ifnet *ifp, struct label *ifplabel,
     struct mbuf *m, struct label *mlabel)
 {
@@ -1651,6 +1640,24 @@ mls_posixshm_check_open(struct ucred *cred, struct shmfd *shmfd,
 }
 
 static int
+mls_posixshm_check_read(struct ucred *active_cred, struct ucred *file_cred,
+    struct shmfd *shm, struct label *shmlabel)
+{
+	struct mac_mls *subj, *obj;
+
+	if (!mls_enabled || !revocation_enabled)
+		return (0);
+
+	subj = SLOT(active_cred->cr_label);
+	obj = SLOT(shmlabel);
+
+	if (!mls_dominate_effective(subj, obj))
+		return (EACCES);
+
+	return (0);
+}
+
+static int
 mls_posixshm_check_setmode(struct ucred *cred, struct shmfd *shmfd,
     struct label *shmlabel, mode_t mode)
 {
@@ -1737,6 +1744,24 @@ mls_posixshm_check_unlink(struct ucred *cred, struct shmfd *shmfd,
 	if (!mls_dominate_effective(obj, subj))
 		return (EACCES);
     
+	return (0);
+}
+
+static int
+mls_posixshm_check_write(struct ucred *active_cred, struct ucred *file_cred,
+    struct shmfd *shm, struct label *shmlabel)
+{
+	struct mac_mls *subj, *obj;
+
+	if (!mls_enabled || !revocation_enabled)
+		return (0);
+
+	subj = SLOT(active_cred->cr_label);
+	obj = SLOT(shmlabel);
+
+	if (!mls_dominate_effective(subj, obj))
+		return (EACCES);
+
 	return (0);
 }
 
@@ -3241,8 +3266,6 @@ static struct mac_policy_ops mls_ops =
 	.mpo_mount_destroy_label = mls_destroy_label,
 	.mpo_mount_init_label = mls_init_label,
 
-	.mpo_netatalk_aarp_send = mls_netatalk_aarp_send,
-
 	.mpo_netinet_arp_send = mls_netinet_arp_send,
 	.mpo_netinet_firewall_reply = mls_netinet_firewall_reply,
 	.mpo_netinet_firewall_send = mls_netinet_firewall_send,
@@ -3280,11 +3303,13 @@ static struct mac_policy_ops mls_ops =
 
 	.mpo_posixshm_check_mmap = mls_posixshm_check_mmap,
 	.mpo_posixshm_check_open = mls_posixshm_check_open,
+	.mpo_posixshm_check_read = mls_posixshm_check_read,
 	.mpo_posixshm_check_setmode = mls_posixshm_check_setmode,
 	.mpo_posixshm_check_setowner = mls_posixshm_check_setowner,
 	.mpo_posixshm_check_stat = mls_posixshm_check_stat,
 	.mpo_posixshm_check_truncate = mls_posixshm_check_truncate,
 	.mpo_posixshm_check_unlink = mls_posixshm_check_unlink,
+	.mpo_posixshm_check_write = mls_posixshm_check_write,
 	.mpo_posixshm_create = mls_posixshm_create,
 	.mpo_posixshm_destroy_label = mls_destroy_label,
 	.mpo_posixshm_init_label = mls_init_label,

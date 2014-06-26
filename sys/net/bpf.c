@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #define	BPF_INTERNAL
 #include <net/bpf.h>
 #include <net/bpf_buffer.h>
@@ -525,7 +526,7 @@ bpf_movein(struct uio *uio, int linktype, struct ifnet *ifp, struct mbuf **mp,
 	if (len < hlen || len - hlen > ifp->if_mtu)
 		return (EMSGSIZE);
 
-	m = m_get2(M_WAITOK, MT_DATA, M_PKTHDR, len);
+	m = m_get2(len, M_WAITOK, MT_DATA, M_PKTHDR);
 	if (m == NULL)
 		return (EIO);
 	m->m_pkthdr.len = m->m_len = len;
@@ -576,7 +577,7 @@ bpf_movein(struct uio *uio, int linktype, struct ifnet *ifp, struct mbuf **mp,
 				goto bad;
 			}
 		}
-		bcopy(m->m_data, sockp->sa_data, hlen);
+		bcopy(mtod(m, const void *), sockp->sa_data, hlen);
 	}
 	*hdrlen = hlen;
 
@@ -639,6 +640,67 @@ bpf_attachd(struct bpf_d *d, struct bpf_if *bp)
 
 	if (op_w == 0)
 		EVENTHANDLER_INVOKE(bpf_track, bp->bif_ifp, bp->bif_dlt, 1);
+}
+
+/*
+ * Check if we need to upgrade our descriptor @d from write-only mode.
+ */
+static int
+bpf_check_upgrade(u_long cmd, struct bpf_d *d, struct bpf_insn *fcode, int flen)
+{
+	int is_snap, need_upgrade;
+
+	/*
+	 * Check if we've already upgraded or new filter is empty.
+	 */
+	if (d->bd_writer == 0 || fcode == NULL)
+		return (0);
+
+	need_upgrade = 0;
+
+	/*
+	 * Check if cmd looks like snaplen setting from
+	 * pcap_bpf.c:pcap_open_live().
+	 * Note we're not checking .k value here:
+	 * while pcap_open_live() definitely sets to to non-zero value,
+	 * we'd prefer to treat k=0 (deny ALL) case the same way: e.g.
+	 * do not consider upgrading immediately
+	 */
+	if (cmd == BIOCSETF && flen == 1 && fcode[0].code == (BPF_RET | BPF_K))
+		is_snap = 1;
+	else
+		is_snap = 0;
+
+	if (is_snap == 0) {
+		/*
+		 * We're setting first filter and it doesn't look like
+		 * setting snaplen.  We're probably using bpf directly.
+		 * Upgrade immediately.
+		 */
+		need_upgrade = 1;
+	} else {
+		/*
+		 * Do not require upgrade by first BIOCSETF
+		 * (used to set snaplen) by pcap_open_live().
+		 */
+
+		if (--d->bd_writer == 0) {
+			/*
+			 * First snaplen filter has already
+			 * been set. This is probably catch-all
+			 * filter
+			 */
+			need_upgrade = 1;
+		}
+	}
+
+	CTR5(KTR_NET,
+	    "%s: filter function set by pid %d, "
+	    "bd_writer counter %d, snap %d upgrade %d",
+	    __func__, d->bd_pid, d->bd_writer,
+	    is_snap, need_upgrade);
+
+	return (need_upgrade);
 }
 
 /*
@@ -856,9 +918,14 @@ bpfread(struct cdev *dev, struct uio *uio, int ioflag)
 		callout_stop(&d->bd_callout);
 	timed_out = (d->bd_state == BPF_TIMED_OUT);
 	d->bd_state = BPF_IDLE;
-	while (d->bd_hbuf_in_use)
-		mtx_sleep(&d->bd_hbuf_in_use, &d->bd_lock,
+	while (d->bd_hbuf_in_use) {
+		error = mtx_sleep(&d->bd_hbuf_in_use, &d->bd_lock,
 		    PRINET|PCATCH, "bd_hbuf", 0);
+		if (error != 0) {
+			BPFD_UNLOCK(d);
+			return (error);
+		}
+	}
 	/*
 	 * If the hold buffer is empty, then do a timed sleep, which
 	 * ends when the timeout expires or when enough packets
@@ -1796,17 +1863,7 @@ bpf_setf(struct bpf_d *d, struct bpf_program *fp, u_long cmd)
 		if (cmd == BIOCSETF)
 			reset_d(d);
 
-		if (fcode != NULL) {
-			/*
-			 * Do not require upgrade by first BIOCSETF
-			 * (used to set snaplen) by pcap_open_live().
-			 */
-			if (d->bd_writer != 0 && --d->bd_writer == 0)
-				need_upgrade = 1;
-			CTR4(KTR_NET, "%s: filter function set by pid %d, "
-			    "bd_writer counter %d, need_upgrade %d",
-			    __func__, d->bd_pid, d->bd_writer, need_upgrade);
-		}
+		need_upgrade = bpf_check_upgrade(cmd, d, fcode, flen);
 	}
 	BPFD_UNLOCK(d);
 	if (d->bd_bif != NULL)
@@ -1819,7 +1876,7 @@ bpf_setf(struct bpf_d *d, struct bpf_program *fp, u_long cmd)
 #endif
 
 	/* Move d to active readers list. */
-	if (need_upgrade)
+	if (need_upgrade != 0)
 		bpf_upgraded(d);
 
 	BPF_UNLOCK();

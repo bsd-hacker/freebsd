@@ -32,7 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/capability.h>
+#include <sys/capsicum.h>
 #include <sys/fcntl.h>
 #include <sys/file.h>
 #include <sys/filedesc.h>
@@ -201,10 +201,12 @@ ibcs2_open(td, uap)
 	free(path, M_TEMP);
 	PROC_LOCK(p);
 	if (!ret && !noctty && SESS_LEADER(p) && !(p->p_flag & P_CONTROLT)) {
+		cap_rights_t rights;
 		struct file *fp;
 		int error;
 
-		error = fget(td, td->td_retval[0], CAP_IOCTL, &fp);
+		error = fget(td, td->td_retval[0],
+		    cap_rights_init(&rights, CAP_IOCTL), &fp);
 		PROC_UNLOCK(p);
 		if (error)
 			return (EBADF);

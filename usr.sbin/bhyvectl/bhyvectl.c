@@ -183,22 +183,30 @@ usage(void)
 	"       [--get-vmcs-exit-interruption-info]\n"
 	"       [--get-vmcs-exit-interruption-error]\n"
 	"       [--get-vmcs-interruptibility]\n"
-	"       [--set-pinning=<host_cpuid>]\n"
-	"       [--get-pinning]\n"
 	"       [--set-x2apic-state=<state>]\n"
 	"       [--get-x2apic-state]\n"
-	"       [--set-lowmem=<memory below 4GB in units of MB>]\n"
+	"       [--unassign-pptdev=<bus/slot/func>]\n"
+	"       [--set-mem=<memory in units of MB>]\n"
 	"       [--get-lowmem]\n"
-	"       [--set-highmem=<memory above 4GB in units of MB>]\n"
-	"       [--get-highmem]\n",
+	"       [--get-highmem]\n"
+	"       [--get-gpa-pmap]\n"
+	"       [--assert-lapic-lvt=<pin>]\n"
+	"       [--inject-nmi]\n"
+	"       [--force-reset]\n"
+	"       [--force-poweroff]\n"
+	"       [--get-active-cpus]\n"
+	"       [--get-suspended-cpus]\n",
 	progname);
 	exit(1);
 }
 
-static int get_stats, getcap, setcap, capval;
+static int get_stats, getcap, setcap, capval, get_gpa_pmap;
+static int inject_nmi, assert_lapic_lvt;
+static int force_reset, force_poweroff;
 static const char *capname;
 static int create, destroy, get_lowmem, get_highmem;
-static uint64_t lowmem, highmem;
+static int get_active_cpus, get_suspended_cpus;
+static uint64_t memsize;
 static int set_cr0, get_cr0, set_cr3, get_cr3, set_cr4, get_cr4;
 static int set_efer, get_efer;
 static int set_dr7, get_dr7;
@@ -218,9 +226,9 @@ static int set_desc_tr, get_desc_tr;
 static int set_desc_ldtr, get_desc_ldtr;
 static int set_cs, set_ds, set_es, set_fs, set_gs, set_ss, set_tr, set_ldtr;
 static int get_cs, get_ds, get_es, get_fs, get_gs, get_ss, get_tr, get_ldtr;
-static int set_pinning, get_pinning, pincpu;
 static int set_x2apic_state, get_x2apic_state;
 enum x2apic_state x2apic_state;
+static int unassign_pptdev, bus, slot, func;
 static int run;
 
 /*
@@ -271,11 +279,13 @@ dump_vm_run_exitcode(struct vm_exit *vmexit, int vcpu)
 		break;
 	case VM_EXITCODE_VMX:
 		printf("\treason\t\tVMX\n");
-		printf("\terror\t\t%d\n", vmexit->u.vmx.error);
+		printf("\tstatus\t\t%d\n", vmexit->u.vmx.status);
 		printf("\texit_reason\t0x%08x (%u)\n",
 		    vmexit->u.vmx.exit_reason, vmexit->u.vmx.exit_reason);
 		printf("\tqualification\t0x%016lx\n",
 			vmexit->u.vmx.exit_qualification);
+		printf("\tinst_type\t\t%d\n", vmexit->u.vmx.inst_type);
+		printf("\tinst_error\t\t%d\n", vmexit->u.vmx.inst_error);
 		break;
 	default:
 		printf("*** unknown vm run exitcode %d\n", vmexit->exitcode);
@@ -352,8 +362,7 @@ vm_set_vmcs_field(struct vmctx *ctx, int vcpu, int field, uint64_t val)
 enum {
 	VMNAME = 1000,	/* avoid collision with return values from getopt */
 	VCPU,
-	SET_LOWMEM,
-	SET_HIGHMEM,
+	SET_MEM,
 	SET_EFER,
 	SET_CR0,
 	SET_CR3,
@@ -374,24 +383,47 @@ enum {
 	SET_SS,
 	SET_TR,
 	SET_LDTR,
-	SET_PINNING,
 	SET_X2APIC_STATE,
 	SET_VMCS_EXCEPTION_BITMAP,
 	SET_VMCS_ENTRY_INTERRUPTION_INFO,
 	SET_CAP,
 	CAPNAME,
+	UNASSIGN_PPTDEV,
+	GET_GPA_PMAP,
+	ASSERT_LAPIC_LVT,
 };
+
+static void
+print_cpus(const char *banner, const cpuset_t *cpus)
+{
+	int i, first;
+
+	first = 1;
+	printf("%s:\t", banner);
+	if (!CPU_EMPTY(cpus)) {
+		for (i = 0; i < CPU_SETSIZE; i++) {
+			if (CPU_ISSET(i, cpus)) {
+				printf("%s%d", first ? " " : ", ", i);
+				first = 0;
+			}
+		}
+	} else
+		printf(" (none)");
+	printf("\n");
+}
 
 int
 main(int argc, char *argv[])
 {
 	char *vmname;
-	int error, ch, vcpu;
-	vm_paddr_t gpa;
+	int error, ch, vcpu, ptenum;
+	vm_paddr_t gpa, gpa_pmap;
 	size_t len;
 	struct vm_exit vmexit;
-	uint64_t ctl, eptp, bm, addr, u64;
+	uint64_t ctl, eptp, bm, addr, u64, pteval[4], *pte;
 	struct vmctx *ctx;
+	int wired;
+	cpuset_t cpus;
 
 	uint64_t cr0, cr3, cr4, dr7, rsp, rip, rflags, efer, pat;
 	uint64_t rax, rbx, rcx, rdx, rsi, rdi, rbp;
@@ -401,8 +433,7 @@ main(int argc, char *argv[])
 	struct option opts[] = {
 		{ "vm",		REQ_ARG,	0,	VMNAME },
 		{ "cpu",	REQ_ARG,	0,	VCPU },
-		{ "set-lowmem",	REQ_ARG,	0,	SET_LOWMEM },
-		{ "set-highmem",REQ_ARG,	0,	SET_HIGHMEM },
+		{ "set-mem",	REQ_ARG,	0,	SET_MEM },
 		{ "set-efer",	REQ_ARG,	0,	SET_EFER },
 		{ "set-cr0",	REQ_ARG,	0,	SET_CR0 },
 		{ "set-cr3",	REQ_ARG,	0,	SET_CR3 },
@@ -423,14 +454,16 @@ main(int argc, char *argv[])
 		{ "set-ss",	REQ_ARG,	0,	SET_SS },
 		{ "set-tr",	REQ_ARG,	0,	SET_TR },
 		{ "set-ldtr",	REQ_ARG,	0,	SET_LDTR },
-		{ "set-pinning",REQ_ARG,	0,	SET_PINNING },
 		{ "set-x2apic-state",REQ_ARG,	0,	SET_X2APIC_STATE },
 		{ "set-vmcs-exception-bitmap",
 				REQ_ARG,	0, SET_VMCS_EXCEPTION_BITMAP },
 		{ "set-vmcs-entry-interruption-info",
 				REQ_ARG, 0, SET_VMCS_ENTRY_INTERRUPTION_INFO },
 		{ "capname",	REQ_ARG,	0,	CAPNAME },
+		{ "unassign-pptdev", REQ_ARG,	0,	UNASSIGN_PPTDEV },
 		{ "setcap",	REQ_ARG,	0,	SET_CAP },
+		{ "get-gpa-pmap", REQ_ARG,	0,	GET_GPA_PMAP },
+		{ "assert-lapic-lvt", REQ_ARG,	0,	ASSERT_LAPIC_LVT },
 		{ "getcap",	NO_ARG,		&getcap,	1 },
 		{ "get-stats",	NO_ARG,		&get_stats,	1 },
 		{ "get-desc-ds",NO_ARG,		&get_desc_ds,	1 },
@@ -552,16 +585,22 @@ main(int argc, char *argv[])
 				NO_ARG,	&get_vmcs_exit_interruption_error, 1},
 		{ "get-vmcs-interruptibility",
 				NO_ARG, &get_vmcs_interruptibility, 1 },
-		{ "get-pinning",NO_ARG,		&get_pinning,	1 },
 		{ "get-x2apic-state",NO_ARG,	&get_x2apic_state, 1 },
 		{ "get-all",	NO_ARG,		&get_all,	1 },
 		{ "run",	NO_ARG,		&run,		1 },
 		{ "create",	NO_ARG,		&create,	1 },
 		{ "destroy",	NO_ARG,		&destroy,	1 },
+		{ "inject-nmi",	NO_ARG,		&inject_nmi,	1 },
+		{ "force-reset",	NO_ARG,	&force_reset,	1 },
+		{ "force-poweroff", NO_ARG,	&force_poweroff, 1 },
+		{ "get-active-cpus", NO_ARG,	&get_active_cpus, 1 },
+		{ "get-suspended-cpus", NO_ARG,	&get_suspended_cpus, 1 },
 		{ NULL,		0,		NULL,		0 }
 	};
 
 	vcpu = 0;
+	vmname = NULL;
+	assert_lapic_lvt = -1;
 	progname = basename(argv[0]);
 
 	while ((ch = getopt_long(argc, argv, "", opts, NULL)) != -1) {
@@ -574,13 +613,9 @@ main(int argc, char *argv[])
 		case VCPU:
 			vcpu = atoi(optarg);
 			break;
-		case SET_LOWMEM:
-			lowmem = atoi(optarg) * MB;
-			lowmem = roundup(lowmem, 2 * MB);
-			break;
-		case SET_HIGHMEM:
-			highmem = atoi(optarg) * MB;
-			highmem = roundup(highmem, 2 * MB);
+		case SET_MEM:
+			memsize = atoi(optarg) * MB;
+			memsize = roundup(memsize, 2 * MB);
 			break;
 		case SET_EFER:
 			efer = strtoul(optarg, NULL, 0);
@@ -659,10 +694,6 @@ main(int argc, char *argv[])
 			ldtr = strtoul(optarg, NULL, 0);
 			set_ldtr = 1;
 			break;
-		case SET_PINNING:
-			pincpu = strtol(optarg, NULL, 0);
-			set_pinning = 1;
-			break;
 		case SET_X2APIC_STATE:
 			x2apic_state = strtol(optarg, NULL, 0);
 			set_x2apic_state = 1;
@@ -679,8 +710,20 @@ main(int argc, char *argv[])
 			capval = strtoul(optarg, NULL, 0);
 			setcap = 1;
 			break;
+		case GET_GPA_PMAP:
+			gpa_pmap = strtoul(optarg, NULL, 0);
+			get_gpa_pmap = 1;
+			break;
 		case CAPNAME:
 			capname = optarg;
+			break;
+		case UNASSIGN_PPTDEV:
+			unassign_pptdev = 1;
+			if (sscanf(optarg, "%d/%d/%d", &bus, &slot, &func) != 3)
+				usage();
+			break;
+		case ASSERT_LAPIC_LVT:
+			assert_lapic_lvt = atoi(optarg);
 			break;
 		default:
 			usage();
@@ -703,11 +746,8 @@ main(int argc, char *argv[])
 			error = -1;
 	}
 
-	if (!error && lowmem)
-		error = vm_setup_memory(ctx, 0, lowmem, NULL);
-
-	if (!error && highmem)
-		error = vm_setup_memory(ctx, 4 * GB, highmem, NULL);
+	if (!error && memsize)
+		error = vm_setup_memory(ctx, memsize, VM_MMAP_NONE);
 
 	if (!error && set_efer)
 		error = vm_set_register(ctx, vcpu, VM_REG_GUEST_EFER, efer);
@@ -812,11 +852,11 @@ main(int argc, char *argv[])
 	if (!error && set_ldtr)
 		error = vm_set_register(ctx, vcpu, VM_REG_GUEST_LDTR, ldtr);
 
-	if (!error && set_pinning)
-		error = vm_set_pinning(ctx, vcpu, pincpu);
-
 	if (!error && set_x2apic_state)
 		error = vm_set_x2apic_state(ctx, vcpu, x2apic_state);
+
+	if (!error && unassign_pptdev)
+		error = vm_unassign_pptdev(ctx, bus, slot, func);
 
 	if (!error && set_exception_bitmap) {
 		error = vm_set_vmcs_field(ctx, vcpu, VMCS_EXCEPTION_BITMAP,
@@ -828,18 +868,28 @@ main(int argc, char *argv[])
 					  vmcs_entry_interruption_info);
 	}
 
+	if (!error && inject_nmi) {
+		error = vm_inject_nmi(ctx, vcpu);
+	}
+
+	if (!error && assert_lapic_lvt != -1) {
+		error = vm_lapic_local_irq(ctx, vcpu, assert_lapic_lvt);
+	}
+
 	if (!error && (get_lowmem || get_all)) {
 		gpa = 0;
-		error = vm_get_memory_seg(ctx, gpa, &len);
+		error = vm_get_memory_seg(ctx, gpa, &len, &wired);
 		if (error == 0)
-			printf("lowmem\t\t0x%016lx/%ld\n", gpa, len);
+			printf("lowmem\t\t0x%016lx/%ld%s\n", gpa, len,
+			    wired ? " wired" : "");
 	}
 
 	if (!error && (get_highmem || get_all)) {
 		gpa = 4 * GB;
-		error = vm_get_memory_seg(ctx, gpa, &len);
+		error = vm_get_memory_seg(ctx, gpa, &len, &wired);
 		if (error == 0)
-			printf("highmem\t\t0x%016lx/%ld\n", gpa, len);
+			printf("highmem\t\t0x%016lx/%ld%s\n", gpa, len,
+			    wired ? " wired" : "");
 	}
 
 	if (!error && (get_efer || get_all)) {
@@ -992,7 +1042,7 @@ main(int argc, char *argv[])
 			printf("vcpu%d\n", vcpu);
 			for (i = 0; i < num_stats; i++) {
 				desc = vm_get_stat_desc(ctx, i);
-				printf("%-32s\t%ld\n", desc, stats[i]);
+				printf("%-40s\t%ld\n", desc, stats[i]);
 			}
 		}
 	}
@@ -1133,16 +1183,6 @@ main(int argc, char *argv[])
 		error = vm_get_register(ctx, vcpu, VM_REG_GUEST_LDTR, &ldtr);
 		if (error == 0)
 			printf("ldtr[%d]\t\t0x%04lx\n", vcpu, ldtr);
-	}
-
-	if (!error && (get_pinning || get_all)) {
-		error = vm_get_pinning(ctx, vcpu, &pincpu);
-		if (error == 0) {
-			if (pincpu < 0)
-				printf("pincpu[%d]\tunpinned\n", vcpu);
-			else
-				printf("pincpu[%d]\t%d\n", vcpu, pincpu);
-		}
 	}
 
 	if (!error && (get_x2apic_state || get_all)) {
@@ -1444,8 +1484,7 @@ main(int argc, char *argv[])
 	}
 
 	if (!error && (get_vmcs_exit_interruption_info || get_all)) {
-		error = vm_get_vmcs_field(ctx, vcpu,
-					  VMCS_EXIT_INTERRUPTION_INFO, &u64);
+		error = vm_get_vmcs_field(ctx, vcpu, VMCS_EXIT_INTR_INFO, &u64);
 		if (error == 0) {
 			printf("vmcs_exit_interruption_info[%d]\t0x%08lx\n",
 				vcpu, u64);
@@ -1453,8 +1492,8 @@ main(int argc, char *argv[])
 	}
 
 	if (!error && (get_vmcs_exit_interruption_error || get_all)) {
-		error = vm_get_vmcs_field(ctx, vcpu,
-					  VMCS_EXIT_INTERRUPTION_ERROR, &u64);
+		error = vm_get_vmcs_field(ctx, vcpu, VMCS_EXIT_INTR_ERRCODE,
+		    &u64);
 		if (error == 0) {
 			printf("vmcs_exit_interruption_error[%d]\t0x%08lx\n",
 				vcpu, u64);
@@ -1478,6 +1517,17 @@ main(int argc, char *argv[])
 			printf("Capability \"%s\" is not available\n", capname);
 	}
 
+	if (!error && get_gpa_pmap) {
+		error = vm_get_gpa_pmap(ctx, gpa_pmap, pteval, &ptenum);
+		if (error == 0) {
+			printf("gpa %#lx:", gpa_pmap);
+			pte = &pteval[0];
+			while (ptenum-- > 0)
+				printf(" %#lx", *pte++);
+			printf("\n");
+		}
+	}
+
 	if (!error && (getcap || get_all)) {
 		int captype, val, getcaptype;
 
@@ -1495,12 +1545,25 @@ main(int argc, char *argv[])
 					vm_capability_type2name(captype),
 					val ? "set" : "not set", vcpu);
 			} else if (errno == ENOENT) {
+				error = 0;
 				printf("Capability \"%s\" is not available\n",
 					vm_capability_type2name(captype));
 			} else {
 				break;
 			}
 		}
+	}
+
+	if (!error && (get_active_cpus || get_all)) {
+		error = vm_active_cpus(ctx, &cpus);
+		if (!error)
+			print_cpus("active cpus", &cpus);
+	}
+
+	if (!error && (get_suspended_cpus || get_all)) {
+		error = vm_suspended_cpus(ctx, &cpus);
+		if (!error)
+			print_cpus("suspended cpus", &cpus);
 	}
 
 	if (!error && run) {
@@ -1513,6 +1576,12 @@ main(int argc, char *argv[])
 		else
 			printf("vm_run error %d\n", error);
 	}
+
+	if (!error && force_reset)
+		error = vm_suspend(ctx, VM_SUSPEND_RESET);
+
+	if (!error && force_poweroff)
+		error = vm_suspend(ctx, VM_SUSPEND_POWEROFF);
 
 	if (error)
 		printf("errno = %d\n", errno);

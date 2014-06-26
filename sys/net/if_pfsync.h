@@ -67,8 +67,6 @@
 #define	PFSYNC_ACT_EOF		12	/* end of frame */
 #define	PFSYNC_ACT_MAX		13
 
-#define	PFSYNC_HMAC_LEN	20
-
 /*
  * A pfsync frame is built from a header followed by several sections which
  * are all prefixed with their own subheaders. Frames must be terminated with
@@ -205,28 +203,7 @@ struct pfsync_tdb {
 	u_int8_t			_pad[2];
 } __packed;
 
-/*
- * EOF
- */
-
-struct pfsync_eof {
-	u_int8_t			hmac[PFSYNC_HMAC_LEN];
-} __packed;
-
 #define	PFSYNC_HDRLEN		sizeof(struct pfsync_header)
-
-
-
-/*
- * Names for PFSYNC sysctl objects
- */
-#define	PFSYNCCTL_STATS		1	/* PFSYNC stats */
-#define	PFSYNCCTL_MAXID		2
-
-#define	PFSYNCCTL_NAMES { \
-	{ 0, 0 }, \
-	{ "stats", CTLTYPE_STRUCT }, \
-}
 
 struct pfsyncstats {
 	u_int64_t	pfsyncs_ipackets;	/* total input packets, IPv4 */

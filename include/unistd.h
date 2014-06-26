@@ -426,7 +426,7 @@ int	 truncate(const char *, off_t);
 #endif
 #endif /* __POSIX_VISIBLE >= 200809 || __XSI_VISIBLE */
 
-#if __POSIX_VISIBLE >= 200809 || __BSD_VISIBLE
+#if __POSIX_VISIBLE >= 200809
 int	faccessat(int, const char *, int, int);
 int	fchownat(int, const char *, uid_t, gid_t, int);
 int	fexecve(int, char *const [], char *const []);
@@ -434,14 +434,14 @@ int	linkat(int, const char *, int, const char *, int);
 ssize_t	readlinkat(int, const char * __restrict, char * __restrict, size_t);
 int	symlinkat(const char *, int, const char *);
 int	unlinkat(int, const char *, int);
-#endif /* __POSIX_VISIBLE >= 200809 || __BSD_VISIBLE */
+#endif /* __POSIX_VISIBLE >= 200809 */
 
 /*
  * symlink() was originally in POSIX.1a, which was withdrawn after
  * being overtaken by events (1003.1-2001).  It was in XPG4.2, and of
  * course has been in BSD since 4.2.
  */
-#if __POSIX_VISIBLE >= 200112 || __XSI_VISIBLE >= 402 || __BSD_VISIBLE
+#if __POSIX_VISIBLE >= 200112 || __XSI_VISIBLE >= 402
 int	 symlink(const char * __restrict, const char * __restrict);
 #endif
 
@@ -493,6 +493,7 @@ const char *
 int	 crypt_set_format(const char *);
 int	 des_cipher(const char *, char *, long, int);
 int	 des_setkey(const char *key);
+int	 dup3(int, int, int);
 int	 eaccess(const char *, int);
 void	 endusershell(void);
 int	 exect(const char *, char * const *, char * const *);
@@ -533,6 +534,7 @@ char	*mktemp(char *);
 #endif
 int	 nfssvc(int, void *);
 int	 nlm_syscall(int, int, int, char **);
+int	 pipe2(int *, int);
 int	 profil(char *, size_t, vm_offset_t, int);
 int	 rcmd(char **, int, const char *, const char *, const char *, int *);
 int	 rcmd_af(char **, int, const char *,

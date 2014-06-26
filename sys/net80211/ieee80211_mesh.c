@@ -54,12 +54,16 @@ __FBSDID("$FreeBSD$");
 
 #include <net/bpf.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_media.h>
 #include <net/if_llc.h>
 #include <net/ethernet.h>
 
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_action.h>
+#ifdef IEEE80211_SUPPORT_SUPERG
+#include <net80211/ieee80211_superg.h>
+#endif
 #include <net80211/ieee80211_input.h>
 #include <net80211/ieee80211_mesh.h>
 
@@ -110,6 +114,7 @@ SYSCTL_PROC(_net_wlan_mesh, OID_AUTO, retrytimeout, CTLTYPE_INT | CTLFLAG_RW,
     &ieee80211_mesh_retrytimeout, 0, ieee80211_sysctl_msecs_ticks, "I",
     "Retry timeout (msec)");
 static int ieee80211_mesh_holdingtimeout = -1;
+
 SYSCTL_PROC(_net_wlan_mesh, OID_AUTO, holdingtimeout, CTLTYPE_INT | CTLFLAG_RW,
     &ieee80211_mesh_holdingtimeout, 0, ieee80211_sysctl_msecs_ticks, "I",
     "Holding state timeout (msec)");
@@ -1036,13 +1041,10 @@ mesh_transmit_to_gate(struct ieee80211vap *vap, struct mbuf *m,
     struct ieee80211_mesh_route *rt_gate)
 {
 	struct ifnet *ifp = vap->iv_ifp;
-	struct ieee80211com *ic = vap->iv_ic;
-	struct ifnet *parent = ic->ic_ifp;
 	struct ieee80211_node *ni;
-	struct ether_header *eh;
-	int error;
 
-	eh = mtod(m, struct ether_header *);
+	IEEE80211_TX_UNLOCK_ASSERT(vap->iv_ic);
+
 	ni = ieee80211_mesh_find_txnode(vap, rt_gate->rt_dest);
 	if (ni == NULL) {
 		ifp->if_oerrors++;
@@ -1050,103 +1052,13 @@ mesh_transmit_to_gate(struct ieee80211vap *vap, struct mbuf *m,
 		return;
 	}
 
-	if ((ni->ni_flags & IEEE80211_NODE_PWR_MGT) &&
-	    (m->m_flags & M_PWR_SAV) == 0) {
-		/*
-		 * Station in power save mode; pass the frame
-		 * to the 802.11 layer and continue.  We'll get
-		 * the frame back when the time is right.
-		 * XXX lose WDS vap linkage?
-		 */
-		(void) ieee80211_pwrsave(ni, m);
-		ieee80211_free_node(ni);
-		return;
-	}
-
-	/* calculate priority so drivers can find the tx queue */
-	if (ieee80211_classify(ni, m)) {
-		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_OUTPUT,
-			eh->ether_dhost, NULL,
-			"%s", "classification failure");
-		vap->iv_stats.is_tx_classify++;
-		ifp->if_oerrors++;
-		m_freem(m);
-		ieee80211_free_node(ni);
-		return;
-	}
 	/*
-	 * Stash the node pointer.  Note that we do this after
-	 * any call to ieee80211_dwds_mcast because that code
-	 * uses any existing value for rcvif to identify the
-	 * interface it (might have been) received on.
+	 * Send through the VAP packet transmit path.
+	 * This consumes the node ref grabbed above and
+	 * the mbuf, regardless of whether there's a problem
+	 * or not.
 	 */
-	m->m_pkthdr.rcvif = (void *)ni;
-
-	BPF_MTAP(ifp, m);		/* 802.3 tx */
-
-	/*
-	 * Check if A-MPDU tx aggregation is setup or if we
-	 * should try to enable it.  The sta must be associated
-	 * with HT and A-MPDU enabled for use.  When the policy
-	 * routine decides we should enable A-MPDU we issue an
-	 * ADDBA request and wait for a reply.  The frame being
-	 * encapsulated will go out w/o using A-MPDU, or possibly
-	 * it might be collected by the driver and held/retransmit.
-	 * The default ic_ampdu_enable routine handles staggering
-	 * ADDBA requests in case the receiver NAK's us or we are
-	 * otherwise unable to establish a BA stream.
-	 */
-	if ((ni->ni_flags & IEEE80211_NODE_AMPDU_TX) &&
-	    (vap->iv_flags_ht & IEEE80211_FHT_AMPDU_TX) &&
-	    (m->m_flags & M_EAPOL) == 0) {
-		int tid = WME_AC_TO_TID(M_WME_GETAC(m));
-		struct ieee80211_tx_ampdu *tap = &ni->ni_tx_ampdu[tid];
-
-		ieee80211_txampdu_count_packet(tap);
-		if (IEEE80211_AMPDU_RUNNING(tap)) {
-			/*
-			 * Operational, mark frame for aggregation.
-			 *
-			 * XXX do tx aggregation here
-			 */
-			m->m_flags |= M_AMPDU_MPDU;
-		} else if (!IEEE80211_AMPDU_REQUESTED(tap) &&
-			ic->ic_ampdu_enable(ni, tap)) {
-			/*
-			 * Not negotiated yet, request service.
-			 */
-			ieee80211_ampdu_request(ni, tap);
-			/* XXX hold frame for reply? */
-		}
-	}
-#ifdef IEEE80211_SUPPORT_SUPERG
-	else if (IEEE80211_ATH_CAP(vap, ni, IEEE80211_NODE_FF)) {
-		m = ieee80211_ff_check(ni, m);
-		if (m == NULL) {
-			/* NB: any ni ref held on stageq */
-			return;
-		}
-	}
-#endif /* IEEE80211_SUPPORT_SUPERG */
-	if (__predict_true((vap->iv_caps & IEEE80211_C_8023ENCAP) == 0)) {
-		/*
-		 * Encapsulate the packet in prep for transmission.
-		 */
-		m = ieee80211_encap(vap, ni, m);
-		if (m == NULL) {
-			/* NB: stat+msg handled in ieee80211_encap */
-			ieee80211_free_node(ni);
-			return;
-		}
-	}
-	error = parent->if_transmit(parent, m);
-	if (error != 0) {
-		m_freem(m);
-		ieee80211_free_node(ni);
-	} else {
-		ifp->if_opackets++;
-	}
-	ic->ic_lastdata = ticks;
+	(void) ieee80211_vap_pkt_send_dest(vap, m, ni);
 }
 
 /*
@@ -1166,6 +1078,8 @@ ieee80211_mesh_forward_to_gates(struct ieee80211vap *vap,
 	struct ieee80211_mesh_route *rt_gate;
 	struct ieee80211_mesh_gate_route *gr = NULL, *gr_next;
 	struct mbuf *m, *mcopy, *next;
+
+	IEEE80211_TX_UNLOCK_ASSERT(ic);
 
 	KASSERT( rt_dest->rt_flags == IEEE80211_MESHRT_FLAGS_DISCOVER,
 	    ("Route is not marked with IEEE80211_MESHRT_FLAGS_DISCOVER"));
@@ -1236,7 +1150,6 @@ mesh_forward(struct ieee80211vap *vap, struct mbuf *m,
 	struct ieee80211com *ic = vap->iv_ic;
 	struct ieee80211_mesh_state *ms = vap->iv_mesh;
 	struct ifnet *ifp = vap->iv_ifp;
-	struct ifnet *parent = ic->ic_ifp;
 	const struct ieee80211_frame *wh =
 	    mtod(m, const struct ieee80211_frame *);
 	struct mbuf *mcopy;
@@ -1244,6 +1157,9 @@ mesh_forward(struct ieee80211vap *vap, struct mbuf *m,
 	struct ieee80211_frame *whcopy;
 	struct ieee80211_node *ni;
 	int err;
+
+	/* This is called from the RX path - don't hold this lock */
+	IEEE80211_TX_UNLOCK_ASSERT(ic);
 
 	/*
 	 * mesh ttl of 1 means we are the last one receving it,
@@ -1316,7 +1232,20 @@ mesh_forward(struct ieee80211vap *vap, struct mbuf *m,
 
 	/* XXX do we know m_nextpkt is NULL? */
 	mcopy->m_pkthdr.rcvif = (void *) ni;
-	err = parent->if_transmit(parent, mcopy);
+
+	/*
+	 * XXX this bypasses all of the VAP TX handling; it passes frames
+	 * directly to the parent interface.
+	 *
+	 * Because of this, there's no TX lock being held as there's no
+	 * encaps state being used.
+	 *
+	 * Doing a direct parent transmit may not be the correct thing
+	 * to do here; we'll have to re-think this soon.
+	 */
+	IEEE80211_TX_LOCK(ic);
+	err = ieee80211_parent_xmitpkt(ic, mcopy);
+	IEEE80211_TX_UNLOCK(ic);
 	if (err != 0) {
 		/* NB: IFQ_HANDOFF reclaims mbuf */
 		ieee80211_free_node(ni);
@@ -1397,13 +1326,13 @@ mesh_decap(struct ieee80211vap *vap, struct mbuf *m, int hdrlen, int meshdrlen)
 			return NULL;
 		}
 	}
-#ifdef ALIGNED_POINTER
+#ifndef __NO_STRICT_ALIGNMENT
 	if (!ALIGNED_POINTER(mtod(m, caddr_t) + sizeof(*eh), uint32_t)) {
 		m = ieee80211_realign(vap, m, sizeof(*eh));
 		if (m == NULL)
 			return NULL;
 	}
-#endif /* ALIGNED_POINTER */
+#endif /* !__NO_STRICT_ALIGNMENT */
 	if (llc != NULL) {
 		eh = mtod(m, struct ether_header *);
 		eh->ether_type = htons(m->m_pkthdr.len - sizeof(*eh));
@@ -1453,6 +1382,9 @@ mesh_recv_indiv_data_to_fwrd(struct ieee80211vap *vap, struct mbuf *m,
 	struct ieee80211_qosframe_addr4 *qwh;
 	struct ieee80211_mesh_state *ms = vap->iv_mesh;
 	struct ieee80211_mesh_route *rt_meshda, *rt_meshsa;
+
+	/* This is called from the RX path - don't hold this lock */
+	IEEE80211_TX_UNLOCK_ASSERT(vap->iv_ic);
 
 	qwh = (struct ieee80211_qosframe_addr4 *)wh;
 
@@ -1509,6 +1441,9 @@ mesh_recv_indiv_data_to_me(struct ieee80211vap *vap, struct mbuf *m,
 	struct ieee80211_mesh_state *ms = vap->iv_mesh;
 	struct ieee80211_mesh_route *rt;
 	int ae;
+
+	/* This is called from the RX path - don't hold this lock */
+	IEEE80211_TX_UNLOCK_ASSERT(vap->iv_ic);
 
 	qwh = (struct ieee80211_qosframe_addr4 *)wh;
 	mc10 = (const struct ieee80211_meshcntl_ae10 *)mc;
@@ -1572,6 +1507,9 @@ mesh_recv_group_data(struct ieee80211vap *vap, struct mbuf *m,
 #define	MC01(mc)	((const struct ieee80211_meshcntl_ae01 *)mc)
 	struct ieee80211_mesh_state *ms = vap->iv_mesh;
 
+	/* This is called from the RX path - don't hold this lock */
+	IEEE80211_TX_UNLOCK_ASSERT(vap->iv_ic);
+
 	mesh_forward(vap, m, mc);
 
 	if(mc->mc_ttl > 0) {
@@ -1616,6 +1554,9 @@ mesh_input(struct ieee80211_node *ni, struct mbuf *m, int rssi, int nf)
 
 	need_tap = 1;			/* mbuf need to be tapped. */
 	type = -1;			/* undefined */
+
+	/* This is called from the RX path - don't hold this lock */
+	IEEE80211_TX_UNLOCK_ASSERT(ic);
 
 	if (m->m_pkthdr.len < sizeof(struct ieee80211_frame_min)) {
 		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
@@ -1884,7 +1825,7 @@ mesh_input(struct ieee80211_node *ni, struct mbuf *m, int rssi, int nf)
 			    ether_sprintf(wh->i_addr2), rssi);
 		}
 #endif
-		if (wh->i_fc[1] & IEEE80211_FC1_WEP) {
+		if (wh->i_fc[1] & IEEE80211_FC1_PROTECTED) {
 			IEEE80211_DISCARD(vap, IEEE80211_MSG_INPUT,
 			    wh, NULL, "%s", "WEP set but not permitted");
 			vap->iv_stats.is_rx_mgtdiscard++; /* XXX */
@@ -2621,7 +2562,7 @@ mesh_parse_meshgate_action(struct ieee80211_node *ni,
 		switch (*frm) {
 		case IEEE80211_ELEMID_MESHGANN:
 			gannie = (const struct ieee80211_meshgann_ie *) frm;
-			memset(ie, 0, sizeof(ie));
+			memset(ie, 0, sizeof(*ie));
 			ie->gann_ie = gannie->gann_ie;
 			ie->gann_len = gannie->gann_len;
 			ie->gann_flags = gannie->gann_flags;
@@ -2739,6 +2680,7 @@ mesh_send_action(struct ieee80211_node *ni,
 	struct ieee80211com *ic = ni->ni_ic;
 	struct ieee80211_bpf_params params;
 	struct ieee80211_frame *wh;
+	int ret;
 
 	KASSERT(ni != NULL, ("null node"));
 
@@ -2751,12 +2693,13 @@ mesh_send_action(struct ieee80211_node *ni,
 		return EIO;		/* XXX */
 	}
 
-	M_PREPEND(m, sizeof(struct ieee80211_frame), M_DONTWAIT);
+	M_PREPEND(m, sizeof(struct ieee80211_frame), M_NOWAIT);
 	if (m == NULL) {
 		ieee80211_free_node(ni);
 		return ENOMEM;
 	}
 
+	IEEE80211_TX_LOCK(ic);
 	wh = mtod(m, struct ieee80211_frame *);
 	ieee80211_send_setup(ni, m,
 	     IEEE80211_FC0_TYPE_MGT | IEEE80211_FC0_SUBTYPE_ACTION,
@@ -2774,7 +2717,9 @@ mesh_send_action(struct ieee80211_node *ni,
 
 	IEEE80211_NODE_STAT(ni, tx_mgmt);
 
-	return ic->ic_raw_xmit(ni, m, &params);
+	ret = ieee80211_raw_output(vap, ni, m, &params);
+	IEEE80211_TX_UNLOCK(ic);
+	return (ret);
 }
 
 #define	ADDSHORT(frm, v) do {			\

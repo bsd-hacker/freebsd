@@ -409,6 +409,11 @@
 #define return_VALUE(Value) \
     ACPI_TRACE_EXIT (AcpiUtValueExit, UINT64, Value)
 
+#define return_UINT32(Value) \
+    ACPI_TRACE_EXIT (AcpiUtValueExit, UINT32, Value)
+
+#define return_UINT8(Value) \
+    ACPI_TRACE_EXIT (AcpiUtValueExit, UINT8, Value)
 
 /* Conditional execution */
 
@@ -430,35 +435,31 @@
  * This is the non-debug case -- make everything go away,
  * leaving no executable debug code!
  */
-#define ACPI_FUNCTION_NAME(a)
 #define ACPI_DEBUG_PRINT(pl)
 #define ACPI_DEBUG_PRINT_RAW(pl)
 #define ACPI_DEBUG_EXEC(a)
 #define ACPI_DEBUG_ONLY_MEMBERS(a)
+#define ACPI_FUNCTION_NAME(a)
 #define ACPI_FUNCTION_TRACE(a)
 #define ACPI_FUNCTION_TRACE_PTR(a, b)
 #define ACPI_FUNCTION_TRACE_U32(a, b)
 #define ACPI_FUNCTION_TRACE_STR(a, b)
-#define ACPI_FUNCTION_EXIT
-#define ACPI_FUNCTION_STATUS_EXIT(s)
-#define ACPI_FUNCTION_VALUE_EXIT(s)
 #define ACPI_FUNCTION_ENTRY()
 #define ACPI_DUMP_STACK_ENTRY(a)
 #define ACPI_DUMP_OPERANDS(a, b, c)
 #define ACPI_DUMP_ENTRY(a, b)
-#define ACPI_DUMP_TABLES(a, b)
 #define ACPI_DUMP_PATHNAME(a, b, c, d)
 #define ACPI_DUMP_BUFFER(a, b)
-#define ACPI_DEBUG_PRINT(pl)
-#define ACPI_DEBUG_PRINT_RAW(pl)
 #define ACPI_IS_DEBUG_ENABLED(Level, Component) 0
 
 /* Return macros must have a return statement at the minimum */
 
 #define return_VOID                     return
 #define return_ACPI_STATUS(s)           return(s)
-#define return_VALUE(s)                 return(s)
 #define return_PTR(s)                   return(s)
+#define return_VALUE(s)                 return(s)
+#define return_UINT8(s)                 return(s)
+#define return_UINT32(s)                return(s)
 
 #endif /* ACPI_DEBUG_OUTPUT */
 

@@ -1168,9 +1168,9 @@ devfs_print(struct vop_print_args *ap)
 	return (0);
 }
 
-/* ARGSUSED */
 static int
-devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred, int flags, struct thread *td)
+devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred,
+    int flags, struct thread *td)
 {
 	struct cdev *dev;
 	int ioflag, error, ref;
@@ -1178,6 +1178,8 @@ devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred, int flags, st
 	struct cdevsw *dsw;
 	struct file *fpop;
 
+	if (uio->uio_resid > DEVFS_IOSIZE_MAX)
+		return (EINVAL);
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error)
@@ -1531,10 +1533,8 @@ devfs_setattr(struct vop_setattr_args *ap)
 	}
 
 	if (vap->va_atime.tv_sec != VNOVAL || vap->va_mtime.tv_sec != VNOVAL) {
-		/* See the comment in ufs_vnops::ufs_setattr(). */
-		if ((error = VOP_ACCESS(vp, VADMIN, ap->a_cred, td)) &&
-		    ((vap->va_vaflags & VA_UTIMES_NULL) == 0 ||
-		    (error = VOP_ACCESS(vp, VWRITE, ap->a_cred, td))))
+		error = vn_utimes_perm(vp, vap, ap->a_cred, td);
+		if (error != 0)
 			return (error);
 		if (vap->va_atime.tv_sec != VNOVAL) {
 			if (vp->v_type == VCHR)
@@ -1643,9 +1643,9 @@ devfs_truncate_f(struct file *fp, off_t length, struct ucred *cred, struct threa
 	return (vnops.fo_truncate(fp, length, cred, td));
 }
 
-/* ARGSUSED */
 static int
-devfs_write_f(struct file *fp, struct uio *uio, struct ucred *cred, int flags, struct thread *td)
+devfs_write_f(struct file *fp, struct uio *uio, struct ucred *cred,
+    int flags, struct thread *td)
 {
 	struct cdev *dev;
 	int error, ioflag, ref;
@@ -1653,6 +1653,8 @@ devfs_write_f(struct file *fp, struct uio *uio, struct ucred *cred, int flags, s
 	struct cdevsw *dsw;
 	struct file *fpop;
 
+	if (uio->uio_resid > DEVFS_IOSIZE_MAX)
+		return (EINVAL);
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error)
@@ -1696,6 +1698,8 @@ static struct fileops devfs_ops_f = {
 	.fo_close =	devfs_close_f,
 	.fo_chmod =	vn_chmod,
 	.fo_chown =	vn_chown,
+	.fo_sendfile =	vn_sendfile,
+	.fo_seek =	vn_seek,
 	.fo_flags =	DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
 

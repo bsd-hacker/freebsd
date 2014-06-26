@@ -100,6 +100,7 @@ static const char           *AcpiDmEinjActions[] =
     "Execute Operation",
     "Check Busy Status",
     "Get Command Status",
+    "Set Error Type With Address",
     "Unknown Action"
 };
 
@@ -110,6 +111,7 @@ static const char           *AcpiDmEinjInstructions[] =
     "Write Register",
     "Write Register Value",
     "Noop",
+    "Flush Cacheline",
     "Unknown Instruction"
 };
 
@@ -180,6 +182,8 @@ static const char           *AcpiDmHestNotifySubnames[] =
     "Local Interrupt",
     "SCI",
     "NMI",
+    "CMCI",                         /* ACPI 5.0 */
+    "MCE",                          /* ACPI 5.0 */
     "Unknown Notify Type"           /* Reserved */
 };
 
@@ -299,6 +303,7 @@ ACPI_DMTABLE_DATA    AcpiDmTableData[] =
     {ACPI_SIG_MCHI, AcpiDmTableInfoMchi,    NULL,           NULL,           TemplateMchi,   "Management Controller Host Interface table"},
     {ACPI_SIG_MPST, AcpiDmTableInfoMpst,    AcpiDmDumpMpst, DtCompileMpst,  TemplateMpst,   "Memory Power State Table"},
     {ACPI_SIG_MSCT, NULL,                   AcpiDmDumpMsct, DtCompileMsct,  TemplateMsct,   "Maximum System Characteristics Table"},
+    {ACPI_SIG_MTMR, NULL,                   AcpiDmDumpMtmr, DtCompileMtmr,  TemplateMtmr,   "MID Timer Table"},
     {ACPI_SIG_PCCT, NULL,                   AcpiDmDumpPcct, NULL,           NULL,           "Platform Communications Channel Table"},
     {ACPI_SIG_PMTT, NULL,                   AcpiDmDumpPmtt, DtCompilePmtt,  TemplatePmtt,   "Platform Memory Topology Table"},
     {ACPI_SIG_RSDT, NULL,                   AcpiDmDumpRsdt, DtCompileRsdt,  TemplateRsdt,   "Root System Description Table"},
@@ -312,6 +317,7 @@ ACPI_DMTABLE_DATA    AcpiDmTableData[] =
     {ACPI_SIG_TCPA, AcpiDmTableInfoTcpa,    NULL,           NULL,           TemplateTcpa,   "Trusted Computing Platform Alliance table"},
     {ACPI_SIG_TPM2, AcpiDmTableInfoTpm2,    NULL,           NULL,           TemplateTpm2,   "Trusted Platform Module hardware interface table"},
     {ACPI_SIG_UEFI, AcpiDmTableInfoUefi,    NULL,           DtCompileUefi,  TemplateUefi,   "UEFI Boot Optimization Table"},
+    {ACPI_SIG_VRTC, AcpiDmTableInfoVrtc,    AcpiDmDumpVrtc, DtCompileVrtc,  TemplateVrtc,   "Virtual Real-Time Clock Table"},
     {ACPI_SIG_WAET, AcpiDmTableInfoWaet,    NULL,           NULL,           TemplateWaet,   "Windows ACPI Emulated Devices Table"},
     {ACPI_SIG_WDAT, NULL,                   AcpiDmDumpWdat, DtCompileWdat,  TemplateWdat,   "Watchdog Action Table"},
     {ACPI_SIG_WDDT, AcpiDmTableInfoWddt,    NULL,           NULL,           TemplateWddt,   "Watchdog Description Table"},
@@ -440,7 +446,7 @@ AcpiDmDumpDataTable (
         Length = Table->Length;
         AcpiDmDumpTable (Length, 0, Table, 0, AcpiDmTableInfoFacs);
     }
-    else if (ACPI_COMPARE_NAME (Table->Signature, ACPI_SIG_RSDP))
+    else if (ACPI_VALIDATE_RSDP_SIG (Table->Signature))
     {
         Length = AcpiDmDumpRsdp (Table);
     }
@@ -474,6 +480,8 @@ AcpiDmDumpDataTable (
             else
             {
                 AcpiOsPrintf ("\n**** Unknown ACPI table type [%4.4s]\n\n",
+                    Table->Signature);
+                fprintf (stderr, "Unknown ACPI table signature [%4.4s], decoding header only\n",
                     Table->Signature);
             }
         }
@@ -693,48 +701,76 @@ AcpiDmDumpTable (
         case ACPI_DMT_EINJINST:
         case ACPI_DMT_ERSTACT:
         case ACPI_DMT_ERSTINST:
+
             ByteLength = 1;
             break;
+
         case ACPI_DMT_UINT16:
         case ACPI_DMT_DMAR:
         case ACPI_DMT_HEST:
+
             ByteLength = 2;
             break;
+
         case ACPI_DMT_UINT24:
+
             ByteLength = 3;
             break;
+
         case ACPI_DMT_UINT32:
         case ACPI_DMT_NAME4:
         case ACPI_DMT_SIG:
         case ACPI_DMT_SLIC:
+
             ByteLength = 4;
             break;
+
         case ACPI_DMT_UINT40:
+
             ByteLength = 5;
             break;
+
         case ACPI_DMT_UINT48:
         case ACPI_DMT_NAME6:
+
             ByteLength = 6;
             break;
+
         case ACPI_DMT_UINT56:
         case ACPI_DMT_BUF7:
+
             ByteLength = 7;
             break;
+
         case ACPI_DMT_UINT64:
         case ACPI_DMT_NAME8:
+
             ByteLength = 8;
             break;
+
+        case ACPI_DMT_BUF10:
+
+            ByteLength = 10;
+            break;
+
         case ACPI_DMT_BUF16:
         case ACPI_DMT_UUID:
+
             ByteLength = 16;
             break;
+
         case ACPI_DMT_BUF128:
+
             ByteLength = 128;
             break;
+
         case ACPI_DMT_STRING:
+
             ByteLength = ACPI_STRLEN (ACPI_CAST_PTR (char, Target)) + 1;
             break;
+
         case ACPI_DMT_GAS:
+
             if (!LastOutputBlankLine)
             {
                 AcpiOsPrintf ("\n");
@@ -742,7 +778,9 @@ AcpiDmDumpTable (
             }
             ByteLength = sizeof (ACPI_GENERIC_ADDRESS);
             break;
+
         case ACPI_DMT_HESTNTFY:
+
             if (!LastOutputBlankLine)
             {
                 AcpiOsPrintf ("\n");
@@ -750,7 +788,9 @@ AcpiDmDumpTable (
             }
             ByteLength = sizeof (ACPI_HEST_NOTIFY);
             break;
+
         default:
+
             ByteLength = 0;
             break;
         }
@@ -831,9 +871,9 @@ AcpiDmDumpTable (
             break;
 
         case ACPI_DMT_BUF7:
+        case ACPI_DMT_BUF10:
         case ACPI_DMT_BUF16:
         case ACPI_DMT_BUF128:
-
             /*
              * Buffer: Size depends on the opcode and was set above.
              * Each hex byte is separated with a space.
@@ -1142,16 +1182,19 @@ AcpiDmDumpTable (
             switch (Temp8)
             {
             case ACPI_IVRS_TYPE_HARDWARE:
+
                 Name = AcpiDmIvrsSubnames[0];
                 break;
 
             case ACPI_IVRS_TYPE_MEMORY1:
             case ACPI_IVRS_TYPE_MEMORY2:
             case ACPI_IVRS_TYPE_MEMORY3:
+
                 Name = AcpiDmIvrsSubnames[1];
                 break;
 
             default:
+
                 Name = AcpiDmIvrsSubnames[2];
                 break;
             }
@@ -1160,9 +1203,11 @@ AcpiDmDumpTable (
             break;
 
         case ACPI_DMT_EXIT:
+
             return (AE_OK);
 
         default:
+
             ACPI_ERROR ((AE_INFO,
                 "**** Invalid table opcode [0x%X] ****\n", Info->Opcode));
             return (AE_SUPPORT);

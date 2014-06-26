@@ -41,7 +41,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
-#include "opt_atalk.h"
 #include "opt_inet6.h"
 
 #include <sys/param.h>
@@ -57,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <net/bpf.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/netisr.h>
 #include <net/route.h>
 #include <net/raw_cb.h>
@@ -71,12 +71,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/in_cksum.h>
 #else
 #error "ip_gre requires INET"
-#endif
-
-#ifdef NETATALK
-#include <netatalk/at.h>
-#include <netatalk/at_var.h>
-#include <netatalk/at_extern.h>
 #endif
 
 /* Needs IP headers. */
@@ -178,12 +172,6 @@ gre_input2(struct mbuf *m ,int hlen, u_char proto)
 			af = AF_INET6;
 			break;
 #endif
-#ifdef NETATALK
-		case ETHERTYPE_ATALK:
-			isr = NETISR_ATALK1;
-			af = AF_APPLETALK;
-			break;
-#endif
 		default:
 			/* Others not yet supported. */
 			return (m);
@@ -203,6 +191,11 @@ gre_input2(struct mbuf *m ,int hlen, u_char proto)
 
 	if (bpf_peers_present(GRE2IFP(sc)->if_bpf)) {
 		bpf_mtap2(GRE2IFP(sc)->if_bpf, &af, sizeof(af), m);
+	}
+
+	if ((GRE2IFP(sc)->if_flags & IFF_MONITOR) != 0) {
+		m_freem(m);
+		return(NULL);
 	}
 
 	m->m_pkthdr.rcvif = GRE2IFP(sc);
@@ -285,6 +278,11 @@ gre_mobile_input(struct mbuf *m, int hlen)
 	if (bpf_peers_present(GRE2IFP(sc)->if_bpf)) {
 		u_int32_t af = AF_INET;
 		bpf_mtap2(GRE2IFP(sc)->if_bpf, &af, sizeof(af), m);
+	}
+
+	if ((GRE2IFP(sc)->if_flags & IFF_MONITOR) != 0) {
+		m_freem(m);
+		return;
 	}
 
 	m->m_pkthdr.rcvif = GRE2IFP(sc);

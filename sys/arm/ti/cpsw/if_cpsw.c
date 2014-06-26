@@ -64,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
+#include <net/if_var.h>
 #include <net/if_vlan_var.h>
 
 #include <netinet/in_systm.h>
@@ -327,7 +328,7 @@ cpsw_debugf(const char *fmt, ...)
 #define	cpsw_cpdma_bd_offset(i)	(CPSW_CPPI_RAM_OFFSET + ((i)*16))
 
 #define	cpsw_cpdma_bd_paddr(sc, slot)				\
-	(slot->bd_offset + vtophys(rman_get_start(sc->res[0])))
+	BUS_SPACE_PHYSADDR(sc->res[0], slot->bd_offset)
 #define	cpsw_cpdma_read_bd(sc, slot, val)				\
 	bus_read_region_4(sc->res[0], slot->bd_offset, (uint32_t *) val, 4)
 #define	cpsw_cpdma_write_bd(sc, slot, val)				\
@@ -443,6 +444,9 @@ cpsw_dump_queue(struct cpsw_softc *sc, struct cpsw_slots *q)
 static int
 cpsw_probe(device_t dev)
 {
+
+	if (!ofw_bus_status_okay(dev))
+		return (ENXIO);
 
 	if (!ofw_bus_is_compatible(dev, "ti,cpsw"))
 		return (ENXIO);

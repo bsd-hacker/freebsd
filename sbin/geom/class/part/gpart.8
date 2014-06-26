@@ -24,40 +24,13 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 25, 2013
+.Dd June 11, 2014
 .Dt GPART 8
 .Os
 .Sh NAME
 .Nm gpart
 .Nd "control utility for the disk partitioning GEOM class"
 .Sh SYNOPSIS
-To add support for the disk partitioning GEOM class,
-place one or more of the following
-lines in the kernel configuration file:
-.Bd -ragged -offset indent
-.Cd "options GEOM_PART_APM"
-.Cd "options GEOM_PART_BSD"
-.Cd "options GEOM_PART_GPT"
-.Cd "options GEOM_PART_LDM"
-.Cd "options GEOM_PART_MBR"
-.Cd "options GEOM_PART_EBR"
-.Cd "options GEOM_PART_EBR_COMPAT"
-.Cd "options GEOM_PART_PC98"
-.Cd "options GEOM_PART_VTOC8"
-.Ed
-.Pp
-These options provide support for the various types of partitioning
-schemes supported by the
-.Ns Nm
-utility.
-See
-.Sx "PARTITIONING SCHEMES"
-below for more details.
-.Pp
-Usage of the
-.Ns Nm
-utility:
-.Pp
 .\" ==== ADD ====
 .Nm
 .Cm add
@@ -518,6 +491,12 @@ called
 Requires the
 .Cm GEOM_PART_BSD
 kernel option.
+.It Cm BSD64
+64-bit implementation of BSD disklabel used in DragonFlyBSD to subdivide MBR
+or GPT partitions.
+Requires the
+.Cm GEOM_PART_BSD64
+kernel option.
 .It Cm LDM
 The Logical Disk Manager is an implementation of volume manager for
 Microsoft Windows NT.
@@ -583,7 +562,17 @@ The system partition for computers that use the Extensible Firmware
 Interface (EFI).
 In such cases, the GPT partitioning scheme is used and the
 actual partition type for the system partition can also be specified as
-.Qq Li "!c12a7328-f81f-11d2-ba4b-00a0c93ec93ab" .
+.Qq Li "!c12a7328-f81f-11d2-ba4b-00a0c93ec93b" .
+.It Cm fat16
+A partition that contains a FAT16 filesystem.
+The scheme-specific type is
+.Qq Li "!6"
+for MBR.
+.It Cm fat32
+A partition that contains a FAT32 filesystem.
+The scheme-specific type is
+.Qq Li "!11"
+for MBR.
 .It Cm freebsd
 A
 .Fx
@@ -647,6 +636,16 @@ A partition that is sub-partitioned by a Master Boot Record (MBR).
 This type is known as
 .Qq Li "!024dee41-33e7-11d3-9d69-0008c781f39f"
 by GPT.
+.It Cm ms-basic-data
+A basic data partition (BDP) for Microsoft operating systems.
+In the GPT this type is the equivalent to partition types
+.Cm fat16 , fat32
+and
+.Cm ntfs
+in MBR.
+The scheme-specific type is
+.Qq Li "!ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+for GPT.
 .It Cm ms-ldm-data
 A partition that contains Logical Disk Manager (LDM) volumes.
 The scheme-specific types are
@@ -658,6 +657,35 @@ for GPT.
 A partition that contains Logical Disk Manager (LDM) database.
 The scheme-specific type is
 .Qq Li "!5808c8aa-7e8f-42e0-85d2-e1e90434cfb3"
+for GPT.
+.It Cm ntfs
+A partition that contains a NTFS or exFAT filesystem.
+The scheme-specific type is
+.Qq Li "!7"
+for MBR.
+.It Cm vmware-vmfs
+A partition that contains a VMware File System (VMFS).
+The scheme-specific types are
+.Qq Li "!251"
+for MBR and
+.Qq Li "!aa31e02a-400f-11db-9590-000c2911d1b8"
+for GPT.
+.It Cm vmware-vmkdiag
+A partition that contains a VMware diagostic filesystem.
+The scheme-specific types are
+.Qq Li "!252"
+for MBR and
+.Qq Li "!9d275380-40ad-11db-bf97-000c2911d1b8"
+for GPT.
+.It Cm vmware-reserved
+A VMware reserved partition.
+The scheme-specific type is
+.Qq Li "!9198effc-31c0-11db-8f-78-000c2911d1b8"
+for GPT.
+.It Cm vmware-vsanhdr
+A partition claimed by VMware VSAN.
+The scheme-specific type is
+.Qq Li "!381cfccc-7288-11e0-92ee-000c2911d0b2"
 for GPT.
 .El
 .Sh ATTRIBUTES
@@ -672,14 +700,12 @@ The scheme-specific attributes for GPT:
 When set, the
 .Nm gptboot
 stage 1 boot loader will try to boot the system from this partition.
-Multiple partitions might be marked with the
+Multiple partitions can be marked with the
 .Cm bootme
 attribute.
-In such scenario the
-.Nm gptboot
-will try all
-.Cm bootme
-partitions one by one, until the next boot stage is successfully entered.
+See
+.Xr gptboot 8
+for more details.
 .It Cm bootonce
 Setting this attribute automatically sets the
 .Cm bootme
@@ -687,49 +713,14 @@ attribute.
 When set, the
 .Nm gptboot
 stage 1 boot loader will try to boot the system from this partition only once.
-Partitions with both
-.Cm bootonce
-and
-.Cm bootme
-attributes are tried before partitions with only the
-.Cm bootme
-attribute.
-Before
-.Cm bootonce
-partition is tried, the
-.Nm gptboot
-removes the
-.Cm bootme
-attribute and tries to execute the next boot stage.
-If it fails, the
-.Cm bootonce
-attribute that is now alone is replaced with the
-.Cm bootfailed
-attribute.
-If the execution of the next boot stage succeeds, but the system is not fully
-booted, the
-.Nm gptboot
-will look for
-.Cm bootonce
-attributes alone (without the
-.Cm bootme
-attribute) on the next system boot and will replace those with the
-.Cm bootfailed
-attribute.
-If the system is fully booted, the
-.Pa /etc/rc.d/gptboot
-start-up script will look for partition with the
-.Cm bootonce
-attribute alone, will remove the attribute and log that the system was
-successfully booted from this partition.
-There should be at most one
-.Cm bootonce
-partition when system is successfully booted.
-Multiple partitions might be marked with the
+Multiple partitions can be marked with the
 .Cm bootonce
 and
 .Cm bootme
 attribute pairs.
+See
+.Xr gptboot 8
+for more details.
 .It Cm bootfailed
 This attribute should not be manually managed.
 It is managed by the
@@ -737,14 +728,9 @@ It is managed by the
 stage 1 boot loader and the
 .Pa /etc/rc.d/gptboot
 start-up script.
-This attribute is used to mark partitions that had the
-.Cm bootonce
-attribute set, but we failed to boot from them.
-Once we successfully boot, the
-.Pa /etc/rc.d/gptboot
-script will log all the partitions we failed to boot from and will remove the
-.Cm bootfailed
-attributes.
+See
+.Xr gptboot 8
+for more details.
 .El
 .Pp
 The scheme-specific attributes for MBR:
@@ -822,20 +808,17 @@ There are two variants of bootstrap code to write to this partition:
 .Pa /boot/gptboot
 and
 .Pa /boot/gptzfsboot .
+.Pp
 .Pa /boot/gptboot
-is used to boot from UFS.
-It searches through
+is used to boot from UFS partitions.
+.Cm gptboot
+searches through
 .Cm freebsd-ufs
-partitions in the GPT and boots from the first one with the
+partitions in the GPT and selects one to boot based on the
 .Cm bootonce
-attribute set.
-If that attribute is not found,
-.Pa /boot/gptboot
-boots from the first
-.Cm freebsd-ufs
-partition with the
+and
 .Cm bootme
-attribute set.
+attributes.
 If neither attribute is found,
 .Pa /boot/gptboot
 boots from the first
@@ -844,6 +827,10 @@ partition.
 .Pa /boot/loader
 .Pq the third bootstrap stage
 is loaded from the first partition that matches these conditions.
+See
+.Xr gptboot 8
+for more information.
+.Pp
 .Pa /boot/gptzfsboot
 is used to boot from ZFS.
 It searches through the GPT for
@@ -1132,11 +1119,12 @@ and
 .Xr dd 1 ,
 .Xr geom 4 ,
 .Xr boot0cfg 8 ,
-.Xr geom 8
+.Xr geom 8 ,
+.Xr gptboot 8
 .Sh HISTORY
 The
 .Nm
 utility appeared in
 .Fx 7.0 .
 .Sh AUTHORS
-.An Marcel Moolenaar Aq marcel@FreeBSD.org
+.An Marcel Moolenaar Aq Mt marcel@FreeBSD.org

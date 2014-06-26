@@ -151,39 +151,47 @@ uprintf(const char *fmt, ...)
 	PROC_LOCK(p);
 	if ((p->p_flag & P_CONTROLT) == 0) {
 		PROC_UNLOCK(p);
-		retval = 0;
-		goto out;
+		sx_sunlock(&proctree_lock);
+		return (0);
 	}
 	SESS_LOCK(p->p_session);
 	pca.tty = p->p_session->s_ttyp;
 	SESS_UNLOCK(p->p_session);
 	PROC_UNLOCK(p);
 	if (pca.tty == NULL) {
-		retval = 0;
-		goto out;
+		sx_sunlock(&proctree_lock);
+		return (0);
 	}
 	pca.flags = TOTTY;
 	pca.p_bufr = NULL;
 	va_start(ap, fmt);
 	tty_lock(pca.tty);
+	sx_sunlock(&proctree_lock);
 	retval = kvprintf(fmt, putchar, &pca, 10, ap);
 	tty_unlock(pca.tty);
 	va_end(ap);
-out:
-	sx_sunlock(&proctree_lock);
 	return (retval);
 }
 
 /*
- * tprintf prints on the controlling terminal associated with the given
- * session, possibly to the log as well.
+ * tprintf and vtprintf print on the controlling terminal associated with the
+ * given session, possibly to the log as well.
  */
 void
 tprintf(struct proc *p, int pri, const char *fmt, ...)
 {
+	va_list ap;
+
+	va_start(ap, fmt);
+	vtprintf(p, pri, fmt, ap);
+	va_end(ap);
+}
+
+void
+vtprintf(struct proc *p, int pri, const char *fmt, va_list ap)
+{
 	struct tty *tp = NULL;
 	int flags = 0;
-	va_list ap;
 	struct putchar_arg pca;
 	struct session *sess = NULL;
 
@@ -208,17 +216,15 @@ tprintf(struct proc *p, int pri, const char *fmt, ...)
 	pca.tty = tp;
 	pca.flags = flags;
 	pca.p_bufr = NULL;
-	va_start(ap, fmt);
 	if (pca.tty != NULL)
 		tty_lock(pca.tty);
+	sx_sunlock(&proctree_lock);
 	kvprintf(fmt, putchar, &pca, 10, ap);
 	if (pca.tty != NULL)
 		tty_unlock(pca.tty);
-	va_end(ap);
 	if (sess != NULL)
 		sess_release(sess);
 	msgbuftrigger = 1;
-	sx_sunlock(&proctree_lock);
 }
 
 /*
@@ -242,23 +248,18 @@ ttyprintf(struct tty *tp, const char *fmt, ...)
 	return (retval);
 }
 
-/*
- * Log writes to the log buffer, and guarantees not to sleep (so can be
- * called by interrupt routines).  If there is no process reading the
- * log yet, it writes to the console also.
- */
-void
-log(int level, const char *fmt, ...)
+static int
+_vprintf(int level, int flags, const char *fmt, va_list ap)
 {
-	va_list ap;
 	struct putchar_arg pca;
+	int retval;
 #ifdef PRINTF_BUFR_SIZE
 	char bufr[PRINTF_BUFR_SIZE];
 #endif
 
 	pca.tty = NULL;
 	pca.pri = level;
-	pca.flags = log_open ? TOLOG : TOCONS;
+	pca.flags = flags;
 #ifdef PRINTF_BUFR_SIZE
 	pca.p_bufr = bufr;
 	pca.p_next = pca.p_bufr;
@@ -266,12 +267,11 @@ log(int level, const char *fmt, ...)
 	pca.remain = sizeof(bufr);
 	*pca.p_next = '\0';
 #else
+	/* Don't buffer console output. */
 	pca.p_bufr = NULL;
 #endif
 
-	va_start(ap, fmt);
-	kvprintf(fmt, putchar, &pca, 10, ap);
-	va_end(ap);
+	retval = kvprintf(fmt, putchar, &pca, 10, ap);
 
 #ifdef PRINTF_BUFR_SIZE
 	/* Write any buffered console/log output: */
@@ -283,6 +283,24 @@ log(int level, const char *fmt, ...)
 			cnputs(pca.p_bufr);
 	}
 #endif
+
+	return (retval);
+}
+
+/*
+ * Log writes to the log buffer, and guarantees not to sleep (so can be
+ * called by interrupt routines).  If there is no process reading the
+ * log yet, it writes to the console also.
+ */
+void
+log(int level, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	(void)_vprintf(level, log_open ? TOLOG : TOCONS, fmt, ap);
+	va_end(ap);
+
 	msgbuftrigger = 1;
 }
 
@@ -368,35 +386,9 @@ printf(const char *fmt, ...)
 int
 vprintf(const char *fmt, va_list ap)
 {
-	struct putchar_arg pca;
 	int retval;
-#ifdef PRINTF_BUFR_SIZE
-	char bufr[PRINTF_BUFR_SIZE];
-#endif
 
-	pca.tty = NULL;
-	pca.flags = TOCONS | TOLOG;
-	pca.pri = -1;
-#ifdef PRINTF_BUFR_SIZE
-	pca.p_bufr = bufr;
-	pca.p_next = pca.p_bufr;
-	pca.n_bufr = sizeof(bufr);
-	pca.remain = sizeof(bufr);
-	*pca.p_next = '\0';
-#else
-	/* Don't buffer console output. */
-	pca.p_bufr = NULL;
-#endif
-
-	retval = kvprintf(fmt, putchar, &pca, 10, ap);
-
-#ifdef PRINTF_BUFR_SIZE
-	/* Write any buffered console/log output: */
-	if (*pca.p_bufr != '\0') {
-		cnputs(pca.p_bufr);
-		msglogstr(pca.p_bufr, pca.pri, /*filter_cr*/ 1);
-	}
-#endif
+	retval = _vprintf(-1, TOCONS | TOLOG, fmt, ap);
 
 	if (!panicstr)
 		msgbuftrigger = 1;
@@ -922,7 +914,7 @@ number:
 			while (percent < fmt)
 				PCHAR(*percent++);
 			/*
-			 * Since we ignore an formatting argument it is no 
+			 * Since we ignore a formatting argument it is no 
 			 * longer safe to obey the remaining formatting
 			 * arguments as the arguments will no longer match
 			 * the format specs.
@@ -1130,4 +1122,3 @@ hexdump(const void *ptr, int length, const char *hdr, int flags)
 		printf("\n");
 	}
 }
-

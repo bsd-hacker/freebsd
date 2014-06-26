@@ -559,6 +559,7 @@ trm_action(struct cam_sim *psim, union ccb *pccb)
 			PDCB			pDCB = NULL;
 			PSRB			pSRB;
 			struct ccb_scsiio	*pcsio;
+			int			error;
      
 			pcsio = &pccb->csio;
 			TRM_DPRINTF(" XPT_SCSI_IO \n");
@@ -614,71 +615,18 @@ trm_action(struct cam_sim *psim, union ccb *pccb)
 			} else
 				bcopy(pcsio->cdb_io.cdb_bytes,
 				    pSRB->CmdBlock, pcsio->cdb_len);
-			if ((pccb->ccb_h.flags & CAM_DIR_MASK)
-			    != CAM_DIR_NONE) {
-				if ((pccb->ccb_h.flags &
-				      CAM_SCATTER_VALID) == 0) {
-					if ((pccb->ccb_h.flags 
-					      & CAM_DATA_PHYS) == 0) {
-						int vmflags;
-						int error;
-
-						vmflags = splsoftvm();
-						error = bus_dmamap_load(
-						    pACB->buffer_dmat,
+			error = bus_dmamap_load_ccb(pACB->buffer_dmat,
 						    pSRB->dmamap,
-						    pcsio->data_ptr,
-						    pcsio->dxfer_len,
+						    pccb,
 						    trm_ExecuteSRB,
 						    pSRB,
 						    0);
-						if (error == EINPROGRESS) {
-							xpt_freeze_simq(
-							    pACB->psim,
-							    1);
-							pccb->ccb_h.status |=
-							  CAM_RELEASE_SIMQ;
-						}
-						splx(vmflags);
-					} else {   
-						struct bus_dma_segment seg;
-
-						/* Pointer to physical buffer */
-						seg.ds_addr = 
-						  (bus_addr_t)pcsio->data_ptr;
-						seg.ds_len = pcsio->dxfer_len;
-						trm_ExecuteSRB(pSRB, &seg, 1,
-						    0);
-					}
-				} else { 
-					/*  CAM_SCATTER_VALID */
-					struct bus_dma_segment *segs;
-
-					if ((pccb->ccb_h.flags &
-					     CAM_SG_LIST_PHYS) == 0 ||
-					     (pccb->ccb_h.flags 
-					     & CAM_DATA_PHYS) != 0) {
-						pSRB->pNextSRB = pACB->pFreeSRB;
-						pACB->pFreeSRB = pSRB;
-						pccb->ccb_h.status = 
-						  CAM_PROVIDE_FAIL;
-						xpt_done(pccb);
-						splx(actionflags);
-						return;
-					}
-
-					/* cam SG list is physical,
-					 *  cam data is virtual 
-					 */
-					segs = (struct bus_dma_segment *)
-					    pcsio->data_ptr;
-					trm_ExecuteSRB(pSRB, segs,
-					    pcsio->sglist_cnt, 1);
-				}   /*  CAM_SCATTER_VALID */
-			} else
-				trm_ExecuteSRB(pSRB, NULL, 0, 0);
-				  }
+			if (error == EINPROGRESS) {
+				xpt_freeze_simq(pACB->psim, 1);
+				pccb->ccb_h.status |= CAM_RELEASE_SIMQ;
+			}
 			break;
+		}
 		case XPT_GDEV_TYPE:		    
 			TRM_DPRINTF(" XPT_GDEV_TYPE \n");
 	    		pccb->ccb_h.status = CAM_REQ_INVALID;
@@ -2996,12 +2944,11 @@ trm_destroySRB(PACB pACB)
 
 	pSRB = pACB->pFreeSRB;
 	while (pSRB) {
-		if (pSRB->sg_dmamap) {
+		if (pSRB->SRBSGPhyAddr)
 			bus_dmamap_unload(pACB->sg_dmat, pSRB->sg_dmamap);
+		if (pSRB->pSRBSGL)
 			bus_dmamem_free(pACB->sg_dmat, pSRB->pSRBSGL,
 			    pSRB->sg_dmamap);
-			bus_dmamap_destroy(pACB->sg_dmat, pSRB->sg_dmamap);
-		}
 		if (pSRB->dmamap)
 			bus_dmamap_destroy(pACB->buffer_dmat, pSRB->dmamap);
 		pSRB = pSRB->pNextSRB;
@@ -3546,7 +3493,6 @@ bad:
 		bus_dmamap_unload(pACB->sense_dmat, pACB->sense_dmamap);
 		bus_dmamem_free(pACB->sense_dmat, pACB->sense_buffers,
 		    pACB->sense_dmamap);
-		bus_dmamap_destroy(pACB->sense_dmat, pACB->sense_dmamap);
 	}
 	if (pACB->sense_dmat)
 		bus_dma_tag_destroy(pACB->sense_dmat);
@@ -3554,11 +3500,10 @@ bad:
 		trm_destroySRB(pACB);
 		bus_dma_tag_destroy(pACB->sg_dmat);
 	}
-	if (pACB->srb_dmamap) {
+	if (pACB->pFreeSRB) {
 		bus_dmamap_unload(pACB->srb_dmat, pACB->srb_dmamap);
 		bus_dmamem_free(pACB->srb_dmat, pACB->pFreeSRB, 
 		    pACB->srb_dmamap);
-		bus_dmamap_destroy(pACB->srb_dmat, pACB->srb_dmamap);
 	}
 	if (pACB->srb_dmat)
 		bus_dma_tag_destroy(pACB->srb_dmat);
@@ -3670,19 +3615,17 @@ bad:
 		bus_dma_tag_destroy(pACB->sg_dmat);
 	}
 	
-	if (pACB->srb_dmamap) {
+	if (pACB->pFreeSRB) {
 		bus_dmamap_unload(pACB->srb_dmat, pACB->srb_dmamap);
 		bus_dmamem_free(pACB->srb_dmat, pACB->pFreeSRB, 
 		    pACB->srb_dmamap);
-		bus_dmamap_destroy(pACB->srb_dmat, pACB->srb_dmamap);
 	}
 	if (pACB->srb_dmat)
 		bus_dma_tag_destroy(pACB->srb_dmat);
-	if (pACB->sense_dmamap) {
+	if (pACB->sense_buffers) {
 	  	  bus_dmamap_unload(pACB->sense_dmat, pACB->sense_dmamap);
 		  bus_dmamem_free(pACB->sense_dmat, pACB->sense_buffers,
 		      pACB->sense_dmamap);
-		  bus_dmamap_destroy(pACB->sense_dmat, pACB->sense_dmamap);
 	}
 	if (pACB->sense_dmat)
 		bus_dma_tag_destroy(pACB->sense_dmat);		
@@ -3732,12 +3675,10 @@ trm_detach(device_t dev)
 	bus_dmamap_unload(pACB->srb_dmat, pACB->srb_dmamap);
 	bus_dmamem_free(pACB->srb_dmat, pACB->pFreeSRB,
 	    pACB->srb_dmamap);
-	bus_dmamap_destroy(pACB->srb_dmat, pACB->srb_dmamap);
 	bus_dma_tag_destroy(pACB->srb_dmat);	
 	bus_dmamap_unload(pACB->sense_dmat, pACB->sense_dmamap);
 	bus_dmamem_free(pACB->sense_dmat, pACB->sense_buffers,
 	    pACB->sense_dmamap);
-	bus_dmamap_destroy(pACB->sense_dmat, pACB->sense_dmamap);
 	bus_dma_tag_destroy(pACB->sense_dmat);				      
 	bus_dma_tag_destroy(pACB->buffer_dmat);
 	bus_teardown_intr(dev, pACB->irq, pACB->ih);

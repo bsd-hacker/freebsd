@@ -42,7 +42,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/syslog.h>
 
-#include <net/if.h>			/* for IFF_* flags		*/
+#include <net/if.h>
+#include <net/if_var.h>
 #include <net/netisr.h>			/* for NETISR_POLL		*/
 #include <net/vnet.h>
 
@@ -87,12 +88,11 @@ static struct mtx	poll_mtx;
  * The following constraints hold
  *
  *	1 <= poll_each_burst <= poll_burst <= poll_burst_max
- *	0 <= poll_each_burst
  *	MIN_POLL_BURST_MAX <= poll_burst_max <= MAX_POLL_BURST_MAX
  */
 
 #define MIN_POLL_BURST_MAX	10
-#define MAX_POLL_BURST_MAX	1000
+#define MAX_POLL_BURST_MAX	20000
 
 static uint32_t poll_burst = 5;
 static uint32_t poll_burst_max = 150;	/* good for 100Mbit net and HZ=1000 */
@@ -170,7 +170,7 @@ static int user_frac_sysctl(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_int(oidp, &val, 0, req);
 	if (error || !req->newptr )
 		return (error);
-	if (val < 0 || val > 99)
+	if (val > 99)
 		return (EINVAL);
 
 	mtx_lock(&poll_mtx);
@@ -268,7 +268,7 @@ init_device_poll(void)
 	EVENTHANDLER_REGISTER(shutdown_post_sync, poll_shutdown, NULL,
 	    SHUTDOWN_PRI_LAST);
 }
-SYSINIT(device_poll, SI_SUB_CLOCKS, SI_ORDER_MIDDLE, init_device_poll, NULL);
+SYSINIT(device_poll, SI_SUB_SOFTINTR, SI_ORDER_MIDDLE, init_device_poll, NULL);
 
 
 /*
@@ -449,6 +449,19 @@ netisr_poll(void)
 
 	phase = 4;
 	mtx_unlock(&poll_mtx);
+}
+
+/* The following should be temporary, till all drivers use the driver API */
+int
+ether_poll_register_drv(poll_handler_drv_t *h, if_t ifh)
+{
+	return (ether_poll_register((poll_handler_t *)h, (struct ifnet *)ifh));
+}
+
+int
+ether_poll_deregister_drv(if_t ifh)
+{
+	return (ether_poll_deregister((struct ifnet *)ifh));
 }
 
 /*

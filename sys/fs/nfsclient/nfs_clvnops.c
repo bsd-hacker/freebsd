@@ -39,7 +39,6 @@ __FBSDID("$FreeBSD$");
  * vnode op calls for Sun NFS version 2, 3 and 4
  */
 
-#include "opt_kdtrace.h"
 #include "opt_inet.h"
 
 #include <sys/param.h>
@@ -697,9 +696,9 @@ nfs_close(struct vop_close_args *ap)
 	     * mmap'ed writes or via write().
 	     */
 	    if (nfs_clean_pages_on_close && vp->v_object) {
-		VM_OBJECT_LOCK(vp->v_object);
+		VM_OBJECT_WLOCK(vp->v_object);
 		vm_object_page_clean(vp->v_object, 0, 0, 0);
-		VM_OBJECT_UNLOCK(vp->v_object);
+		VM_OBJECT_WUNLOCK(vp->v_object);
 	    }
 	    mtx_lock(&np->n_mtx);
 	    if (np->n_flag & NMODIFIED) {
@@ -768,7 +767,9 @@ nfs_close(struct vop_close_args *ap)
 		/*
 		 * Get attributes so "change" is up to date.
 		 */
-		if (error == 0 && nfscl_mustflush(vp) != 0) {
+		if (error == 0 && nfscl_mustflush(vp) != 0 &&
+		    vp->v_type == VREG &&
+		    (VFSTONFS(vp->v_mount)->nm_flag & NFSMNT_NOCTO) == 0) {
 			ret = nfsrpc_getattr(vp, cred, ap->a_td, &nfsva,
 			    NULL);
 			if (!ret) {
@@ -2232,6 +2233,8 @@ nfs_readdir(struct vop_readdir_args *ap)
 	int error = 0;
 	struct vattr vattr;
 	
+	if (ap->a_eofflag != NULL)
+		*ap->a_eofflag = 0;
 	if (vp->v_type != VDIR) 
 		return(EPERM);
 
@@ -2246,6 +2249,8 @@ nfs_readdir(struct vop_readdir_args *ap)
 			    !NFS_TIMESPEC_COMPARE(&np->n_mtime, &vattr.va_mtime)) {
 				mtx_unlock(&np->n_mtx);
 				NFSINCRGLOBAL(newnfsstats.direofcache_hits);
+				if (ap->a_eofflag != NULL)
+					*ap->a_eofflag = 1;
 				return (0);
 			} else
 				mtx_unlock(&np->n_mtx);
@@ -2258,8 +2263,11 @@ nfs_readdir(struct vop_readdir_args *ap)
 	tresid = uio->uio_resid;
 	error = ncl_bioread(vp, uio, 0, ap->a_cred);
 
-	if (!error && uio->uio_resid == tresid)
+	if (!error && uio->uio_resid == tresid) {
 		NFSINCRGLOBAL(newnfsstats.direofcache_misses);
+		if (ap->a_eofflag != NULL)
+			*ap->a_eofflag = 1;
+	}
 	return (error);
 }
 
@@ -2660,7 +2668,7 @@ ncl_flush(struct vnode *vp, int waitfor, struct ucred *cred, struct thread *td,
 	if (called_from_renewthread != 0)
 		slptimeo = hz;
 	if (nmp->nm_flag & NFSMNT_INT)
-		slpflag = NFS_PCATCH;
+		slpflag = PCATCH;
 	if (!commit)
 		passone = 0;
 	bo = &vp->v_bufobj;
@@ -2845,7 +2853,7 @@ loop:
 
 			error = BUF_TIMELOCK(bp,
 			    LK_EXCLUSIVE | LK_SLEEPFAIL | LK_INTERLOCK,
-			    BO_MTX(bo), "nfsfsync", slpflag, slptimeo);
+			    BO_LOCKPTR(bo), "nfsfsync", slpflag, slptimeo);
 			if (error == 0) {
 				BUF_UNLOCK(bp);
 				goto loop;
@@ -2866,7 +2874,7 @@ loop:
 				error = EINTR;
 				goto done;
 			}
-			if (slpflag & PCATCH) {
+			if (slpflag == PCATCH) {
 				slpflag = 0;
 				slptimeo = 2 * hz;
 			}
@@ -2912,7 +2920,7 @@ loop:
 			    error = newnfs_sigintr(nmp, td);
 			    if (error)
 				goto done;
-			    if (slpflag & PCATCH) {
+			    if (slpflag == PCATCH) {
 				slpflag = 0;
 				slptimeo = 2 * hz;
 			    }
@@ -2944,9 +2952,16 @@ loop:
 		mtx_unlock(&np->n_mtx);
 	} else
 		BO_UNLOCK(bo);
-	if (NFSHASPNFS(nmp))
+	if (NFSHASPNFS(nmp)) {
 		nfscl_layoutcommit(vp, td);
-	mtx_lock(&np->n_mtx);
+		/*
+		 * Invalidate the attribute cache, since writes to a DS
+		 * won't update the size attribute.
+		 */
+		mtx_lock(&np->n_mtx);
+		np->n_attrstamp = 0;
+	} else
+		mtx_lock(&np->n_mtx);
 	if (np->n_flag & NWRITEERR) {
 		error = np->n_error;
 		np->n_flag &= ~NWRITEERR;
@@ -3065,6 +3080,10 @@ nfs_advlock(struct vop_advlock_args *ap)
 					np->n_change = va.va_filerev;
 				}
 			}
+			/* Mark that a file lock has been acquired. */
+			mtx_lock(&np->n_mtx);
+			np->n_flag |= NHASBEENLOCKED;
+			mtx_unlock(&np->n_mtx);
 		}
 		NFSVOPUNLOCK(vp, 0);
 		return (0);
@@ -3083,6 +3102,12 @@ nfs_advlock(struct vop_advlock_args *ap)
 				NFSVOPUNLOCK(vp, 0);
 				error = ENOLCK;
 			}
+		}
+		if (error == 0 && ap->a_op == F_SETLK) {
+			/* Mark that a file lock has been acquired. */
+			mtx_lock(&np->n_mtx);
+			np->n_flag |= NHASBEENLOCKED;
+			mtx_unlock(&np->n_mtx);
 		}
 	}
 	return (error);
@@ -3404,12 +3429,15 @@ nfs_pathconf(struct vop_pathconf_args *ap)
 	struct thread *td = curthread;
 	int attrflag, error;
 
-	if (NFS_ISV4(vp) || (NFS_ISV3(vp) && (ap->a_name == _PC_LINK_MAX ||
+	if ((NFS_ISV34(vp) && (ap->a_name == _PC_LINK_MAX ||
 	    ap->a_name == _PC_NAME_MAX || ap->a_name == _PC_CHOWN_RESTRICTED ||
-	    ap->a_name == _PC_NO_TRUNC))) {
+	    ap->a_name == _PC_NO_TRUNC)) ||
+	    (NFS_ISV4(vp) && ap->a_name == _PC_ACL_NFS4)) {
 		/*
 		 * Since only the above 4 a_names are returned by the NFSv3
 		 * Pathconf RPC, there is no point in doing it for others.
+		 * For NFSv4, the Pathconf RPC (actually a Getattr Op.) can
+		 * be used for _PC_NFS4_ACL as well.
 		 */
 		error = nfsrpc_pathconf(vp, &pc, td->td_ucred, td, &nfsva,
 		    &attrflag, NULL);

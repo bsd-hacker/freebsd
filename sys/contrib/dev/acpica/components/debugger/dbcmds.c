@@ -105,13 +105,15 @@ AcpiDbConvertToNode (
     char                    *InString)
 {
     ACPI_NAMESPACE_NODE     *Node;
+    ACPI_SIZE               Address;
 
 
     if ((*InString >= 0x30) && (*InString <= 0x39))
     {
         /* Numeric argument, convert */
 
-        Node = ACPI_TO_POINTER (ACPI_STRTOUL (InString, NULL, 16));
+        Address = ACPI_STRTOUL (InString, NULL, 16);
+        Node = ACPI_TO_POINTER (Address);
         if (!AcpiOsReadable (Node, sizeof (ACPI_NAMESPACE_NODE)))
         {
             AcpiOsPrintf ("Address %p is invalid in this address space\n",
@@ -361,22 +363,27 @@ AcpiDbDisplayTableInfo (
         switch (TableDesc->Flags & ACPI_TABLE_ORIGIN_MASK)
         {
         case ACPI_TABLE_ORIGIN_UNKNOWN:
+
             AcpiOsPrintf ("Unknown   ");
             break;
 
         case ACPI_TABLE_ORIGIN_MAPPED:
+
             AcpiOsPrintf ("Mapped    ");
             break;
 
         case ACPI_TABLE_ORIGIN_ALLOCATED:
+
             AcpiOsPrintf ("Allocated ");
             break;
 
         case ACPI_TABLE_ORIGIN_OVERRIDE:
+
             AcpiOsPrintf ("Override  ");
             break;
 
         default:
+
             AcpiOsPrintf ("INVALID   ");
             break;
         }
@@ -1024,6 +1031,8 @@ GetCrs:
 
         /* Execute _SRS with the resource list */
 
+        AcpiOsPrintf ("Evaluating _SRS\n");
+
         Status = AcpiSetCurrentResources (Node, &ReturnBuffer);
         if (ACPI_FAILURE (Status))
         {
@@ -1114,8 +1123,8 @@ Cleanup:
  * FUNCTION:    AcpiDbDisplayResources
  *
  * PARAMETERS:  ObjectArg           - String object name or object pointer.
- *                                    "*" means "display resources for all
- *                                    devices"
+ *                                    NULL or "*" means "display resources for
+ *                                    all devices"
  *
  * RETURN:      None
  *
@@ -1135,7 +1144,7 @@ AcpiDbDisplayResources (
 
     /* Asterisk means "display resources for all devices" */
 
-    if (!ACPI_STRCMP (ObjectArg, "*"))
+    if (!ObjectArg || (!ACPI_STRCMP (ObjectArg, "*")))
     {
         (void) AcpiWalkNamespace (ACPI_TYPE_DEVICE, ACPI_ROOT_OBJECT,
                     ACPI_UINT32_MAX, AcpiDbDeviceResources, NULL, NULL, NULL);
@@ -1202,6 +1211,14 @@ AcpiDbGenerateGpe (
 
     (void) AcpiEvGpeDispatch (NULL, GpeEventInfo, GpeNumber);
 }
+
+void
+AcpiDbGenerateSci (
+    void)
+{
+    AcpiEvSciDispatch ();
+}
+
 #endif /* !ACPI_REDUCED_HARDWARE */
 
 #endif /* ACPI_DEBUGGER */
