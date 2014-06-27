@@ -3674,10 +3674,10 @@ pci_resume_child(device_t dev, device_t child)
 
 	if (pci_do_power_resume)
 		pci_set_power_child(dev, child, PCI_POWERSTATE_D0);
-	error = bus_generic_resume_child(dev, child);
 
 	dinfo = device_get_ivars(child);
 	pci_cfg_restore(child, dinfo);
+	error = bus_generic_resume_child(dev, child);
 
 	return (error);
 }
