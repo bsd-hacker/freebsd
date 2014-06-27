@@ -54,8 +54,7 @@ typedef enum device_state {
 	DS_ALIVE = 20,			/**< @brief probe succeeded */
 	DS_ATTACHING = 25,		/**< @brief currently attaching */
 	DS_ATTACHED = 30,		/**< @brief attach method called */
-	DS_BUSY = 40,			/**< @brief device is open */
-	DS_SUSPENDED = 50,		/**< @brief device is suspended */
+	DS_BUSY = 40			/**< @brief device is open */
 } device_state_t;
 
 /**
