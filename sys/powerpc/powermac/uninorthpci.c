@@ -86,8 +86,6 @@ static device_method_t	uninorth_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		uninorth_probe),
 	DEVMETHOD(device_attach,	uninorth_attach),
-	DEVMETHOD(device_suspend,	bus_generic_suspend),
-	DEVMETHOD(device_resume,	bus_generic_resume),
 
 	/* pcib interface */
 	DEVMETHOD(pcib_read_config,	uninorth_read_config),
