@@ -244,10 +244,10 @@ vm_pageout_init_marker(vm_page_t marker, u_short queue)
  * vm_pageout_fallback_object_lock:
  * 
  * Lock vm object currently associated with `m'. VM_OBJECT_TRYWLOCK is
- * known to have failed and page queue must be either PQ_ACTIVE or
- * PQ_INACTIVE.  To avoid lock order violation, unlock the page queues
- * while locking the vm object.  Use marker page to detect page queue
- * changes and maintain notion of next page on page queue.  Return
+ * known to have failed and page queue must be either PQ_ACTIVE,
+ * PQ_INACTIVE or PQ_DISPOSED.  To avoid lock order violation, unlock the
+ * page queues while locking the vm object.  Use marker page to detect page
+ * queue changes and maintain notion of next page on page queue.  Return
  * TRUE if no changes were detected, FALSE otherwise.  vm object is
  * locked on return.
  * 
@@ -901,7 +901,7 @@ vm_pageout_map_deactivate_pages(map, desired)
  *	vm_pageout_scan does the dirty work for the pageout daemon.
  *
  *	pass 0 - Update active LRU/deactivate pages
- *	pass 1 - Move inactive to cache or free
+ *	pass 1 - Free disposed pages and move inactive to cache or free
  *	pass 2 - Launder dirty pages
  */
 static void
@@ -951,6 +951,75 @@ vm_pageout_scan(struct vm_domain *vmd, int pass)
 		page_shortage = vm_paging_target() + deficit;
 	} else
 		page_shortage = deficit = 0;
+
+	pq = &vmd->vmd_pagequeues[PQ_DISPOSED];
+	maxscan = pq->pq_cnt;
+	vm_pagequeue_lock(pq);
+	for (m = TAILQ_FIRST(&pq->pq_pl);
+	     m != NULL && maxscan-- > 0 && page_shortage > 0;
+	     m = next) {
+		vm_pagequeue_assert_locked(pq);
+		KASSERT(m->queue == PQ_DISPOSED, ("Disposed queue %p", m));
+
+		PCPU_INC(cnt.v_pdpages);
+		next = TAILQ_NEXT(m, plinks.q);
+
+		/*
+		 * skip marker pages
+		 */
+		if (m->flags & PG_MARKER)
+			continue;
+
+		KASSERT((m->flags & PG_FICTITIOUS) == 0,
+		    ("Fictitious page %p cannot be in disposed queue", m));
+		KASSERT((m->oflags & VPO_UNMANAGED) == 0,
+		    ("Unmanaged page %p cannot be in disposed queue", m));
+
+		/*
+		 * The page or object lock acquisitions fail if the
+		 * page was removed from the queue or moved to a
+		 * different position within the queue.  In either
+		 * case, addl_page_shortage should not be incremented.
+		 */
+		if (!vm_pageout_page_lock(m, &next)) {
+			vm_page_unlock(m);
+			continue;
+		}
+		object = m->object;
+		if (!VM_OBJECT_TRYWLOCK(object) &&
+		    !vm_pageout_fallback_object_lock(m, &next)) {
+			vm_page_unlock(m);
+			VM_OBJECT_WUNLOCK(object);
+			continue;
+		}
+		vm_page_test_dirty(m);
+
+		if (m->dirty != 0)
+			panic("Disposed page %p is dirty", m);
+		if (pmap_page_is_mapped(m))
+			panic("Disposed page %p has active mappings", m);
+		if ((m->aflags & PGA_REFERENCED) != 0)
+			panic("Disposed page %p is referenced", m);
+
+		/*
+		 * These checks are already present when inserting pages
+		 * into the disposed queue, so make them just asserts here.
+		 */
+		KASSERT(!vm_page_busied(m) && m->hold_count == 0 &&
+		    m->wire_count == 0, ("Disposed page %p busied", m));
+
+		/*
+		 * Dequeue the page first in order to avoid pagequeue
+		 * lock recursion.
+		 */
+		vm_page_dequeue_locked(m);
+		vm_page_free(m);
+		vm_page_unlock(m);
+		VM_OBJECT_WUNLOCK(object);
+		PCPU_INC(cnt.v_dfree);
+		--page_shortage;
+	}
+	vm_pagequeue_unlock(pq);
 
 	/*
 	 * maxlaunder limits the number of dirty pages we flush per scan.

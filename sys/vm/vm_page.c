@@ -2437,6 +2437,47 @@ vm_page_deactivate(vm_page_t m)
 }
 
 /*
+ * Move the specified page to the disposed queue.
+ *
+ * XXXWIP
+ *
+ * The page must be locked.
+ * The page also must be unqueued already and not wired or busy.
+ * Finally, the page must also belong to an object, so it must not be
+ * unmanaged.
+ */
+static inline void
+vm_page_dispose(vm_page_t m)
+{
+	struct vm_pagequeue *pq;
+	int queue;
+
+	vm_page_lock_assert(m, MA_OWNED);
+	KASSERT(m->queue == PQ_NONE,
+	    ("vm_page_dispose: page %p already queued on %u queue", m,
+	    m->queue));
+
+	if (m->hold_count != 0)
+		panic("vm_page_dispose: page %p hold count %d",
+		    m, m->hold_count);
+	if (m->wire_count != 0)
+		panic("vm_page_dispose: page %p wire count %d",
+		    m, m->wire_count);
+	if (vm_page_busied(m))
+		panic("vm_page_dispose: page %p is busied", m);
+	if ((m->oflags & VPO_UNMANAGED) != 0)
+		panic("vm_page_dispose: page %p is unmanaged", m);
+
+	m->flags &= ~PG_WINATCFLS;
+	pq = &vm_phys_domain(m)->vmd_pagequeues[PQ_DISPOSED];
+	vm_pagequeue_lock(pq);
+	m->queue = PQ_DISPOSED;
+	TAILQ_INSERT_TAIL(&pq->pq_pl, m, plinks.q);
+	vm_pagequeue_cnt_inc(pq);
+	vm_pagequeue_unlock(pq);
+}
+
+/*
  * vm_page_try_to_cache:
  *
  * Returns 0 on failure, 1 on success
