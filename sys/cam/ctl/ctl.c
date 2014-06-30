@@ -308,11 +308,9 @@ static int     index_to_aps_page;
 
 SYSCTL_NODE(_kern_cam, OID_AUTO, ctl, CTLFLAG_RD, 0, "CAM Target Layer");
 static int worker_threads = -1;
-TUNABLE_INT("kern.cam.ctl.worker_threads", &worker_threads);
 SYSCTL_INT(_kern_cam_ctl, OID_AUTO, worker_threads, CTLFLAG_RDTUN,
     &worker_threads, 1, "Number of worker threads");
 static int verbose = 0;
-TUNABLE_INT("kern.cam.ctl.verbose", &verbose);
 SYSCTL_INT(_kern_cam_ctl, OID_AUTO, verbose, CTLFLAG_RWTUN,
     &verbose, 0, "Show SCSI errors returned to initiator");
 
@@ -2147,14 +2145,14 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		 * to this FETD.
 		 */
 		if ((softc->ioctl_info.flags & CTL_IOCTL_FLAG_ENABLED) == 0) {
-			retval = -EPERM;
+			retval = EPERM;
 			break;
 		}
 
 		io = ctl_alloc_io(softc->ioctl_info.fe.ctl_pool_ref);
 		if (io == NULL) {
 			printf("ctl_ioctl: can't allocate ctl_io!\n");
-			retval = -ENOSPC;
+			retval = ENOSPC;
 			break;
 		}
 
@@ -2689,7 +2687,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			softc->flags |= CTL_FLAG_REAL_SYNC;
 			break;
 		default:
-			retval = -EINVAL;
+			retval = EINVAL;
 			break;
 		}
 		mtx_unlock(&softc->ctl_lock);
@@ -3168,7 +3166,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		if (found == 0) {
 			printf("ctl: unknown ioctl command %#lx or backend "
 			       "%d\n", cmd, type);
-			retval = -EINVAL;
+			retval = EINVAL;
 			break;
 		}
 		retval = backend->ioctl(dev, cmd, addr, flag, td);
@@ -3333,7 +3331,7 @@ ctl_pool_create(struct ctl_softc *ctl_softc, ctl_pool_type pool_type,
 	pool = (struct ctl_io_pool *)malloc(sizeof(*pool), M_CTL,
 					    M_NOWAIT | M_ZERO);
 	if (pool == NULL) {
-		retval = -ENOMEM;
+		retval = ENOMEM;
 		goto bailout;
 	}
 
@@ -3416,7 +3414,7 @@ ctl_pool_acquire(struct ctl_io_pool *pool)
 	mtx_assert(&pool->ctl_softc->pool_lock, MA_OWNED);
 
 	if (pool->flags & CTL_POOL_FLAG_INVALID)
-		return (-EINVAL);
+		return (EINVAL);
 
 	pool->refcount++;
 
@@ -9389,7 +9387,7 @@ ctl_tur(struct ctl_scsiio *ctsio)
 	CTL_DEBUG_PRINT(("ctl_tur\n"));
 
 	if (lun == NULL)
-		return (-EINVAL);
+		return (EINVAL);
 
 	ctsio->scsi_status = SCSI_STATUS_OK;
 	ctsio->io_hdr.status = CTL_SUCCESS;
@@ -12900,132 +12898,34 @@ ctl_process_done(union ctl_io *io)
 	 *
 	 * XXX KDM should we also track I/O latency?
 	 */
-	if ((io->io_hdr.status & CTL_STATUS_MASK) == CTL_SUCCESS) {
-		uint32_t blocksize;
+	if ((io->io_hdr.status & CTL_STATUS_MASK) == CTL_SUCCESS &&
+	    io->io_hdr.io_type == CTL_IO_SCSI) {
 #ifdef CTL_TIME_IO
 		struct bintime cur_bt;
 #endif
+		int type;
 
-		if ((lun->be_lun != NULL)
-		 && (lun->be_lun->blocksize != 0))
-			blocksize = lun->be_lun->blocksize;
+		if ((io->io_hdr.flags & CTL_FLAG_DATA_MASK) ==
+		    CTL_FLAG_DATA_IN)
+			type = CTL_STATS_READ;
+		else if ((io->io_hdr.flags & CTL_FLAG_DATA_MASK) ==
+		    CTL_FLAG_DATA_OUT)
+			type = CTL_STATS_WRITE;
 		else
-			blocksize = 512;
+			type = CTL_STATS_NO_IO;
 
-		switch (io->io_hdr.io_type) {
-		case CTL_IO_SCSI: {
-			int isread;
-			struct ctl_lba_len_flags *lbalen;
-
-			isread = 0;
-			switch (io->scsiio.cdb[0]) {
-			case READ_6:
-			case READ_10:
-			case READ_12:
-			case READ_16:
-				isread = 1;
-				/* FALLTHROUGH */
-			case WRITE_6:
-			case WRITE_10:
-			case WRITE_12:
-			case WRITE_16:
-			case WRITE_VERIFY_10:
-			case WRITE_VERIFY_12:
-			case WRITE_VERIFY_16:
-				lbalen = (struct ctl_lba_len_flags *)
-				    &io->io_hdr.ctl_private[CTL_PRIV_LBA_LEN];
-
-				if (isread) {
-					lun->stats.ports[targ_port].bytes[CTL_STATS_READ] +=
-					    lbalen->len * blocksize;
-					lun->stats.ports[targ_port].operations[CTL_STATS_READ]++;
-
+		lun->stats.ports[targ_port].bytes[type] +=
+		    io->scsiio.kern_total_len;
+		lun->stats.ports[targ_port].operations[type]++;
 #ifdef CTL_TIME_IO
-					bintime_add(
-					   &lun->stats.ports[targ_port].dma_time[CTL_STATS_READ],
-					   &io->io_hdr.dma_bt);
-					lun->stats.ports[targ_port].num_dmas[CTL_STATS_READ] +=
-						io->io_hdr.num_dmas;
-					getbintime(&cur_bt);
-					bintime_sub(&cur_bt,
-						    &io->io_hdr.start_bt);
-
-					bintime_add(
-					    &lun->stats.ports[targ_port].time[CTL_STATS_READ],
-					    &cur_bt);
-
-#if 0
-					cs_prof_gettime(&cur_ticks);
-					lun->stats.time[CTL_STATS_READ] +=
-						cur_ticks -
-						io->io_hdr.start_ticks;
+		bintime_add(&lun->stats.ports[targ_port].dma_time[type],
+		   &io->io_hdr.dma_bt);
+		lun->stats.ports[targ_port].num_dmas[type] +=
+		    io->io_hdr.num_dmas;
+		getbintime(&cur_bt);
+		bintime_sub(&cur_bt, &io->io_hdr.start_bt);
+		bintime_add(&lun->stats.ports[targ_port].time[type], &cur_bt);
 #endif
-#if 0
-					lun->stats.time[CTL_STATS_READ] +=
-						jiffies - io->io_hdr.start_time;
-#endif
-#endif /* CTL_TIME_IO */
-				} else {
-					lun->stats.ports[targ_port].bytes[CTL_STATS_WRITE] +=
-					    lbalen->len * blocksize;
-					lun->stats.ports[targ_port].operations[
-						CTL_STATS_WRITE]++;
-
-#ifdef CTL_TIME_IO
-					bintime_add(
-					  &lun->stats.ports[targ_port].dma_time[CTL_STATS_WRITE],
-					  &io->io_hdr.dma_bt);
-					lun->stats.ports[targ_port].num_dmas[CTL_STATS_WRITE] +=
-						io->io_hdr.num_dmas;
-					getbintime(&cur_bt);
-					bintime_sub(&cur_bt,
-						    &io->io_hdr.start_bt);
-
-					bintime_add(
-					    &lun->stats.ports[targ_port].time[CTL_STATS_WRITE],
-					    &cur_bt);
-#if 0
-					cs_prof_gettime(&cur_ticks);
-					lun->stats.ports[targ_port].time[CTL_STATS_WRITE] +=
-						cur_ticks -
-						io->io_hdr.start_ticks;
-					lun->stats.ports[targ_port].time[CTL_STATS_WRITE] +=
-						jiffies - io->io_hdr.start_time;
-#endif
-#endif /* CTL_TIME_IO */
-				}
-				break;
-			default:
-				lun->stats.ports[targ_port].operations[CTL_STATS_NO_IO]++;
-
-#ifdef CTL_TIME_IO
-				bintime_add(
-				  &lun->stats.ports[targ_port].dma_time[CTL_STATS_NO_IO],
-				  &io->io_hdr.dma_bt);
-				lun->stats.ports[targ_port].num_dmas[CTL_STATS_NO_IO] +=
-					io->io_hdr.num_dmas;
-				getbintime(&cur_bt);
-				bintime_sub(&cur_bt, &io->io_hdr.start_bt);
-
-				bintime_add(&lun->stats.ports[targ_port].time[CTL_STATS_NO_IO],
-					    &cur_bt);
-
-#if 0
-				cs_prof_gettime(&cur_ticks);
-				lun->stats.ports[targ_port].time[CTL_STATS_NO_IO] +=
-					cur_ticks -
-					io->io_hdr.start_ticks;
-				lun->stats.ports[targ_port].time[CTL_STATS_NO_IO] +=
-					jiffies - io->io_hdr.start_time;
-#endif
-#endif /* CTL_TIME_IO */
-				break;
-			}
-			break;
-		}
-		default:
-			break;
-		}
 	}
 
 	/*
@@ -13281,7 +13181,7 @@ ctl_queue(union ctl_io *io)
 		break;
 	default:
 		printf("ctl_queue: unknown I/O type %d\n", io->io_hdr.io_type);
-		return (-EINVAL);
+		return (EINVAL);
 	}
 
 	return (CTL_RETVAL_COMPLETE);

@@ -85,19 +85,15 @@ static uma_zone_t cfiscsi_data_wait_zone;
 SYSCTL_NODE(_kern_cam_ctl, OID_AUTO, iscsi, CTLFLAG_RD, 0,
     "CAM Target Layer iSCSI Frontend");
 static int debug = 3;
-TUNABLE_INT("kern.cam.ctl.iscsi.debug", &debug);
 SYSCTL_INT(_kern_cam_ctl_iscsi, OID_AUTO, debug, CTLFLAG_RWTUN,
     &debug, 1, "Enable debug messages");
 static int ping_timeout = 5;
-TUNABLE_INT("kern.cam.ctl.iscsi.ping_timeout", &ping_timeout);
 SYSCTL_INT(_kern_cam_ctl_iscsi, OID_AUTO, ping_timeout, CTLFLAG_RWTUN,
     &ping_timeout, 5, "Interval between ping (NOP-Out) requests, in seconds");
 static int login_timeout = 60;
-TUNABLE_INT("kern.cam.ctl.iscsi.login_timeout", &login_timeout);
 SYSCTL_INT(_kern_cam_ctl_iscsi, OID_AUTO, login_timeout, CTLFLAG_RWTUN,
     &login_timeout, 60, "Time to wait for ctld(8) to finish Login Phase, in seconds");
 static int maxcmdsn_delta = 256;
-TUNABLE_INT("kern.cam.ctl.iscsi.maxcmdsn_delta", &maxcmdsn_delta);
 SYSCTL_INT(_kern_cam_ctl_iscsi, OID_AUTO, maxcmdsn_delta, CTLFLAG_RWTUN,
     &maxcmdsn_delta, 256, "Number of commands the initiator can send "
     "without confirmation");
@@ -2410,7 +2406,7 @@ cfiscsi_lun_enable(void *arg, struct ctl_id target_id, int lun_id)
 	target = ctl_get_opt(control_softc->ctl_luns[lun_id]->be_lun,
 	    "cfiscsi_target");
 	target_alias = ctl_get_opt(control_softc->ctl_luns[lun_id]->be_lun,
-	    "cfiscsi_target)alias");
+	    "cfiscsi_target_alias");
 	lun = ctl_get_opt(control_softc->ctl_luns[lun_id]->be_lun,
 	    "cfiscsi_lun");
 
