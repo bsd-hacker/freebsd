@@ -2445,11 +2445,10 @@ vm_page_deactivate(vm_page_t m)
  * Finally, the page must also belong to an object, so it must not be
  * unmanaged.
  */
-static inline void
+void
 vm_page_dispose(vm_page_t m)
 {
 	struct vm_pagequeue *pq;
-	int queue;
 
 	vm_page_lock_assert(m, MA_OWNED);
 	KASSERT(m->queue == PQ_NONE,
