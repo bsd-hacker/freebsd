@@ -3691,7 +3691,7 @@ bus_generic_suspend(device_t dev)
 		return (0);
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		if (!(child->state & DF_SUSPENDED))
+		if (!(child->flags & DF_SUSPENDED))
 			error = bus_generic_suspend(child);
 		if (error == 0) {
 			if (child->pass >= bus_current_pass && child->state == DS_ATTACHED) {
