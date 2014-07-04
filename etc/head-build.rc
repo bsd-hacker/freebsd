@@ -5,7 +5,7 @@
 #
 
 branches	 = HEAD
-platforms	 = amd64, arm, armv6/arm, i386, i386/pc98, ia64, mips, mips64/mips, powerpc, powerpc64/powerpc, sparc64
+platforms	 = amd64, arm, armv6/arm, i386, i386/pc98, mips, mips64/mips, powerpc, powerpc64/powerpc, sparc64
 targets		 = precleanobj, version, world, lint, kernels, postcleanobj
 srcdir		 = ${SANDBOX}/${BRANCH}/src
 recipient	+= <current@freebsd.org>, <${arch}@freebsd.org>
