@@ -1,8 +1,0 @@
-#
-# HEAD tinderbox setup, shared source - build without bmake
-#
-# $FreeBSD$
-#
-
-include head-build
-env += WITHOUT_BMAKE=YES
