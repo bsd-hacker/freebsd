@@ -282,8 +282,10 @@ static struct scsi_control_page control_page_default = {
 	/*rlec*/0,
 	/*queue_flags*/0,
 	/*eca_and_aen*/0,
-	/*reserved*/0,
-	/*aen_holdoff_period*/{0, 0}
+	/*flags4*/SCP_TAS,
+	/*aen_holdoff_period*/{0, 0},
+	/*busy_timeout_period*/{0, 0},
+	/*extended_selftest_completion_time*/{0, 0}
 };
 
 static struct scsi_control_page control_page_changeable = {
@@ -292,8 +294,10 @@ static struct scsi_control_page control_page_changeable = {
 	/*rlec*/SCP_DSENSE,
 	/*queue_flags*/0,
 	/*eca_and_aen*/0,
-	/*reserved*/0,
-	/*aen_holdoff_period*/{0, 0}
+	/*flags4*/0,
+	/*aen_holdoff_period*/{0, 0},
+	/*busy_timeout_period*/{0, 0},
+	/*extended_selftest_completion_time*/{0, 0}
 };
 
 
@@ -7576,7 +7580,7 @@ ctl_report_supported_tmf(struct ctl_scsiio *ctsio)
 	ctsio->kern_rel_offset = 0;
 
 	data = (struct scsi_report_supported_tmf_data *)ctsio->kern_data_ptr;
-	data->byte1 |= RST_ATS | RST_ATSS | RST_LURS | RST_TRS;
+	data->byte1 |= RST_ATS | RST_ATSS | RST_CTSS | RST_LURS | RST_TRS;
 	data->byte2 |= RST_ITNRS;
 
 	ctsio->io_hdr.flags |= CTL_FLAG_ALLOCATED;
@@ -11793,7 +11797,7 @@ ctl_lun_reset(struct ctl_lun *lun, union ctl_io *io, ctl_ua_type ua_type)
 #endif
 	for (xio = (union ctl_io *)TAILQ_FIRST(&lun->ooa_queue); xio != NULL;
 	     xio = (union ctl_io *)TAILQ_NEXT(&xio->io_hdr, ooa_links)) {
-		xio->io_hdr.flags |= CTL_FLAG_ABORT;
+		xio->io_hdr.flags |= CTL_FLAG_ABORT | CTL_FLAG_ABORT_STATUS;
 	}
 
 	/*
@@ -11822,7 +11826,7 @@ ctl_lun_reset(struct ctl_lun *lun, union ctl_io *io, ctl_ua_type ua_type)
 		ctl_clear_mask(lun->have_ca, i);
 		lun->pending_sense[i].ua_pending |= ua_type;
 	}
-	mtx_lock(&lun->lun_lock);
+	mtx_unlock(&lun->lun_lock);
 
 	return (0);
 }
@@ -11846,8 +11850,13 @@ ctl_abort_tasks_lun(struct ctl_lun *lun, uint32_t targ_port, uint32_t init_id,
 	for (xio = (union ctl_io *)TAILQ_FIRST(&lun->ooa_queue); xio != NULL;
 	     xio = (union ctl_io *)TAILQ_NEXT(&xio->io_hdr, ooa_links)) {
 
-		if ((targ_port == xio->io_hdr.nexus.targ_port) &&
-		    (init_id == xio->io_hdr.nexus.initid.id)) {
+		if ((targ_port == UINT32_MAX ||
+		     targ_port == xio->io_hdr.nexus.targ_port) &&
+		    (init_id == UINT32_MAX ||
+		     init_id == xio->io_hdr.nexus.initid.id)) {
+			if (targ_port != xio->io_hdr.nexus.targ_port ||
+			    init_id != xio->io_hdr.nexus.initid.id)
+				xio->io_hdr.flags |= CTL_FLAG_ABORT_STATUS;
 			xio->io_hdr.flags |= CTL_FLAG_ABORT;
 			found = 1;
 			if (!other_sc && !(lun->flags & CTL_LUN_PRIMARY_SC)) {
@@ -11889,9 +11898,14 @@ ctl_abort_task_set(union ctl_io *io)
 
 	mtx_lock(&lun->lun_lock);
 	mtx_unlock(&softc->ctl_lock);
-	ctl_abort_tasks_lun(lun, io->io_hdr.nexus.targ_port,
-	    io->io_hdr.nexus.initid.id,
-	    (io->io_hdr.flags & CTL_FLAG_FROM_OTHER_SC) != 0);
+	if (io->taskio.task_action == CTL_TASK_ABORT_TASK_SET) {
+		ctl_abort_tasks_lun(lun, io->io_hdr.nexus.targ_port,
+		    io->io_hdr.nexus.initid.id,
+		    (io->io_hdr.flags & CTL_FLAG_FROM_OTHER_SC) != 0);
+	} else { /* CTL_TASK_CLEAR_TASK_SET */
+		ctl_abort_tasks_lun(lun, UINT32_MAX, UINT32_MAX,
+		    (io->io_hdr.flags & CTL_FLAG_FROM_OTHER_SC) != 0);
+	}
 	mtx_unlock(&lun->lun_lock);
 	return (0);
 }
@@ -12111,11 +12125,10 @@ ctl_run_task(union ctl_io *io)
 		retval = ctl_abort_task(io);
 		break;
 	case CTL_TASK_ABORT_TASK_SET:
+	case CTL_TASK_CLEAR_TASK_SET:
 		retval = ctl_abort_task_set(io);
 		break;
 	case CTL_TASK_CLEAR_ACA:
-		break;
-	case CTL_TASK_CLEAR_TASK_SET:
 		break;
 	case CTL_TASK_I_T_NEXUS_RESET:
 		retval = ctl_i_t_nexus_reset(io);
@@ -12493,7 +12506,6 @@ ctl_datamove(union ctl_io *io)
 		       io->io_hdr.nexus.targ_port,
 		       (uintmax_t)io->io_hdr.nexus.targ_target.id,
 		       io->io_hdr.nexus.targ_lun);
-		io->io_hdr.status = CTL_CMD_ABORTED;
 		io->io_hdr.port_status = 31337;
 		/*
 		 * Note that the backend, in this case, will get the
@@ -13249,24 +13261,18 @@ ctl_datamove_remote(union ctl_io *io)
 
 	/*
 	 * Note that we look for an aborted I/O here, but don't do some of
-	 * the other checks that ctl_datamove() normally does.  We don't
-	 * need to run the task queue, because this I/O is on the ISC
-	 * queue, which is executed by the work thread after the task queue.
+	 * the other checks that ctl_datamove() normally does.
 	 * We don't need to run the datamove delay code, since that should
 	 * have been done if need be on the other controller.
 	 */
 	if (io->io_hdr.flags & CTL_FLAG_ABORT) {
-
 		printf("%s: tag 0x%04x on (%d:%d:%d:%d) aborted\n", __func__,
 		       io->scsiio.tag_num, io->io_hdr.nexus.initid.id,
 		       io->io_hdr.nexus.targ_port,
 		       io->io_hdr.nexus.targ_target.id,
 		       io->io_hdr.nexus.targ_lun);
-		io->io_hdr.status = CTL_CMD_ABORTED;
 		io->io_hdr.port_status = 31338;
-
 		ctl_send_datamove_done(io, /*have_lock*/ 0);
-
 		return;
 	}
 
@@ -13474,7 +13480,7 @@ ctl_process_done(union ctl_io *io)
 	 * whatever it needs to do to clean up its state.
 	 */
 	if (io->io_hdr.flags & CTL_FLAG_ABORT)
-		io->io_hdr.status = CTL_CMD_ABORTED;
+		ctl_set_task_aborted(&io->scsiio);
 
 	/*
 	 * We print out status for every task management command.  For SCSI
