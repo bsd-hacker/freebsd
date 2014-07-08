@@ -2648,7 +2648,6 @@ vm_page_cache(vm_page_t m)
 void
 vm_page_advise(vm_page_t m, int advice)
 {
-	int dnw, head;
 
 	vm_page_assert_locked(m);
 	VM_OBJECT_ASSERT_WLOCKED(m->object);
