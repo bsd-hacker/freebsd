@@ -2449,12 +2449,15 @@ void
 vm_page_dispose(vm_page_t m)
 {
 	struct vm_pagequeue *pq;
+	int queue;
 
 	vm_page_lock_assert(m, MA_OWNED);
-	KASSERT(m->queue == PQ_NONE,
-	    ("vm_page_dispose: page %p already queued on %u queue", m,
-	    m->queue));
 
+	queue = m->queue;
+	if (queue == PQ_DISPOSED)
+		return;
+	if (queue != PQ_NONE)
+		vm_page_dequeue(m);
 	if (m->hold_count != 0)
 		panic("vm_page_dispose: page %p hold count %d",
 		    m, m->hold_count);
@@ -2628,23 +2631,17 @@ vm_page_cache(vm_page_t m)
 /*
  * vm_page_advise
  *
- *	Cache, deactivate, or do nothing as appropriate.  This routine
+ *	Dispose, deactivate, or do nothing as appropriate.  This routine
  *	is used by madvise().
  *
- *	Generally speaking we want to move the page into the cache so
- *	it gets reused quickly.  However, this can result in a silly syndrome
- *	due to the page recycling too quickly.  Small objects will not be
- *	fully cached.  On the other hand, if we move the page to the inactive
- *	queue we wind up with a problem whereby very large objects 
- *	unnecessarily blow away our inactive and cache queues.
- *
- *	The solution is to move the pages based on a fixed weighting.  We
- *	either leave them alone, deactivate them, or move them to the cache,
- *	where moving them to the cache has the highest weighting.
- *	By forcing some pages into other queues we eventually force the
- *	system to balance the queues, potentially recovering other unrelated
- *	space from active.  The idea is to not force this to happen too
- *	often.
+ *	For MADV_FREE the pages are moved directly to the higher priority
+ *	disposed pagequeue, for a quick reuse.
+ *	For MADV_DONTNEED the pages are moved directly at the head of the
+ *	inactive queue to boost their priority within the inactive queue.
+ *	The only exception to this last statement is in case of pages are
+ *	also dirty which are then moved to the tail of the inactive queue
+ *	as there are high chances they will be moved there anyway by
+ *	pagedaemon normal scanning.
  *
  *	The object and page must be locked.
  */
@@ -2673,17 +2670,10 @@ vm_page_advise(vm_page_t m, int advice)
 		m->act_count = 0;
 	} else if (advice != MADV_DONTNEED)
 		return;
-	dnw = PCPU_GET(dnweight);
-	PCPU_INC(dnweight);
 
-	/*
-	 * Occasionally leave the page alone.
-	 */
-	if ((dnw & 0x01F0) == 0 || m->queue == PQ_INACTIVE) {
-		if (m->act_count >= ACT_INIT)
-			--m->act_count;
-		return;
-	}
+	/* Set the dirty page bit if appropriate. */
+	if (advice != MADV_FREE && m->dirty == 0 && pmap_is_modified(m))
+		vm_page_dirty(m);
 
 	/*
 	 * Clear any references to the page.  Otherwise, the page daemon will
@@ -2691,23 +2681,15 @@ vm_page_advise(vm_page_t m, int advice)
 	 */
 	vm_page_aflag_clear(m, PGA_REFERENCED);
 
-	if (advice != MADV_FREE && m->dirty == 0 && pmap_is_modified(m))
-		vm_page_dirty(m);
-
-	if (m->dirty || (dnw & 0x0070) == 0) {
-		/*
-		 * Deactivate the page 3 times out of 32.
-		 */
-		head = 0;
-	} else {
-		/*
-		 * Cache the page 28 times out of every 32.  Note that
-		 * the page is deactivated instead of cached, but placed
-		 * at the head of the queue instead of the tail.
-		 */
-		head = 1;
-	}
-	_vm_page_deactivate(m, head);
+	/*
+	 * For MADV_FREE put the pages into the disposed queue.
+	 * For MADV_DONTNEED, put the pages at the head of the inactive
+	 * queue if clean, otherwise normally at the tail.
+	 */
+	if (advice == MADV_FREE)
+		vm_page_dispose(m);
+	else
+		_vm_page_deactivate(m, !m->dirty);
 }
 
 /*
