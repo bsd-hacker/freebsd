@@ -245,7 +245,7 @@ atibl_setlevel(struct atibl_softc *sc, int newlevel)
 		lvds_gen_cntl &= ~(RADEON_LVDS_BL_MOD_EN | RADEON_LVDS_BL_MOD_LEVEL_MASK);
 		bus_write_4(sc->sc_memr, RADEON_LVDS_GEN_CNTL, lvds_gen_cntl);
 		lvds_gen_cntl &= ~(RADEON_LVDS_ON | RADEON_LVDS_EN);
-		DELAY(200000);
+		DELAY(100);
 		bus_write_4(sc->sc_memr, RADEON_LVDS_GEN_CNTL, lvds_gen_cntl);
 
 		atibl_pll_wreg(sc, RADEON_PIXCLKS_CNTL, pixclks_cntl);
