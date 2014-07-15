@@ -241,7 +241,7 @@ dd if=/dev/random of=$mntpoint/data bs=123456 count=1 > /dev/null 2>&1
 ./server $mntpoint/data mysocket &
 sleep 0.2
 ./client mysocket > data.$$
-cmp $mntpoint/data data.$$ || 
+cmp $mntpoint/data data.$$ ||
 	{ echo "FAIL Data mismatch"; ls -l $mntpoint/data data.$$; }
 rm -f data.$$ server client mysocket
 

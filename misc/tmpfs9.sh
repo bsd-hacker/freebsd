@@ -78,7 +78,7 @@ void test(void)
 	int i;
 
 	for (i = 0; i < N; i++) {
-		if ((p = fork()) == 0) 
+		if ((p = fork()) == 0)
 			if (execl(path, path, (char *)0) == -1)
 				err(1, "exec(%s)", path);
 		if (p > 0)

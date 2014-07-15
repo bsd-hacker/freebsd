@@ -67,7 +67,7 @@ int pagesize;
 #define FILESIZE (32 * 1024)
 char wbuffer[FILESIZE];
 
-void 
+void
 test(void)
 {
 	int fd;
@@ -100,7 +100,7 @@ test(void)
 
 }
 
-int 
+int
 main(void)
 {
 	int i;

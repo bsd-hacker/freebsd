@@ -30,13 +30,13 @@
 
 # tmpfs(5) name lookup problem seen:
 
-# $ ./tmpfs10.sh 
+# $ ./tmpfs10.sh
 # tmpfs10: unlink(p01193.14729) at loop #2: No such file or directory
 # unlink(p01193.14729) succeeded at call #2.
 # tmpfs10: unlink(p01186.14409) at loop #2: No such file or directory
 # unlink(p01186.14409) succeeded at call #2.
 # FAIL
-# $ 
+# $
 
 # Fixed in r253967.
 

@@ -39,6 +39,7 @@ mounts=15		# Number of parallel scripts
 if [ $# -eq 0 ]; then
 	# start the parallel tests
 	for i in `jot $mounts`; do
+		[ -d ${mntpoint}$i ] || mkdir -p ${mntpoint}$i
 		./$0 $i &
 		./$0 find &
 	done

@@ -40,7 +40,7 @@ mount -t tmpfs tmpfs  $mntpoint
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
 
-(cd ..; ./run.sh vfs.cfg) 
+(cd ..; ./run.sh vfs.cfg)
 
 umount $mntpoint
 mount | grep "$mntpoint" | grep -q tmpfs && umount -f $mntpoint
