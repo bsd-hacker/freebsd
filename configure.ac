@@ -1,0 +1,19 @@
+AC_PREREQ([2.63])
+AC_REVISION([$FreeBSD$])
+AC_INIT([phybs], [20140717], [des@freebsd.org])
+AC_CONFIG_SRCDIR([phybs.c])
+AM_INIT_AUTOMAKE([foreign])
+AM_CONFIG_HEADER([config.h])
+
+AC_LANG(C)
+AC_PROG_CC
+AC_PROG_CC_STDC
+AC_PROG_CPP
+AC_C_CONST
+
+AC_PROG_INSTALL
+
+AC_CHECK_LIB(util, humanize_number)
+
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
