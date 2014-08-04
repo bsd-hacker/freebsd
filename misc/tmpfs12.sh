@@ -80,7 +80,7 @@ for i in `jot $N 1`; do
 	    /dev/null 2>&1 &
 done
 daemon sh -c '(cd ../testcases/swap; ./swap -t 5m -i 20 -h -l 100)' > \
-    /dev/null 2>&!
+    /dev/null 2>&1
 
 sleep 60
 
