@@ -130,6 +130,13 @@ EOF
         || shtk_cli_error "Fetch of release.sh failed"
     chmod +x "${release_sh}"
 
+    local chrootdir="$(shtk_config_get CHROOTDIR)"
+
+    shtk_cli_info "Cleaning up ${chrootdir}"
+    rm -Rf "${chrootdir}"
+    chflags -R 0 "${chrootdir}"
+    rm -Rf "${chrootdir}"
+
     local ret=0
     shtk_process_run "${release_sh}" -c "${release_conf}" || ret=${?}
     rm -rf "${tmpdir}"; eval "remove_tmpdir() { true; }"
