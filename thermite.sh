@@ -118,6 +118,7 @@ check_use_zfs() {
 }
 
 truncate_logs() {
+	source_config || return 0
 	echo > ${logdir}/${rev}-${arch}-${kernel}-${type}.log
 	return 0
 }
@@ -241,7 +242,7 @@ send_logmail() {
 build_release() {
 	_build="${rev}-${arch}-${kernel}-${type}"
 	_conf="${scriptdir}/${_build}.conf"
-	[ ! -e ${_conf} ] && return 0
+	source_config || return 0
 	info "Building release: ${_build}"
 	printenv >> ${logdir}/${_build}.log
 	env -i /bin/sh ${srcdir}/release.sh -c ${_conf} \
