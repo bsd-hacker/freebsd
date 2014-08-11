@@ -47,7 +47,7 @@ if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		./$0 $m &
-		./$0 find $m &
+		./$0 find $m > /dev/null 2>&1 &
 	done
 
 	for i in `jot $mounts`; do
