@@ -28,7 +28,8 @@
 # $FreeBSD$
 #
 
-# Parallel mount and umount of file systems
+# Parallel mount and umount of file systems. Nullfs version.
+
 # "panic: Lock (lockmgr) null not locked @ kern/vfs_default.c:523." seen.
 # http://people.freebsd.org/~pho/stress/log/kostik698.txt
 # Fixed by r269708.
