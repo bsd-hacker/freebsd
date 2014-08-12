@@ -54,15 +54,16 @@ if [ $# -eq 0 ]; then
 	done
 else
 	if [ $1 = find ]; then
-		for i in `jot 64`; do
+		for i in `jot 128`; do
 			find ${mntpoint}* -maxdepth 1 -type f > /dev/null 2>&1
 		done
 	else
 
 		# The test: Parallel mount and unmounts
-		for i in `jot 64`; do
+		for i in `jot 128`; do
 			m=$1
 			mount -t nfs -o tcp -o nfsv3 -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp ${mntpoint}$m
+			sleep .5
 			opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
 			n=0
 			while mount | grep -qw ${mntpoint}$m; do
