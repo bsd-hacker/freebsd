@@ -29,7 +29,9 @@
 #
 
 # Parallel mount and umount of file systems
-# No problems seen.
+# "panic: Bad link elm 0xfffff8052a20cc00 prev->next != elm" seen:
+# http://people.freebsd.org/~pho/stress/log/crossmp3.txt
+# Fixed in r269853
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -39,14 +41,13 @@ N=`sysctl -n hw.ncpu`
 size=$((`sysctl -n hw.usermem` / 1024 / 1024 / N))
 
 mounts=$N		# Number of parallel scripts
-mdstart=$mdstart	# Use md unit numbers from this point
 
 if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
-		mount | grep "$mntpoint" | grep -q md$m && umount ${mntpoint}$m
-		mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
+		mount | grep "${mntpoint}$m" | grep -q md$m && umount ${mntpoint}$m
+		mdconfig -l | grep -q md$m && mdconfig -d -u $m
 
 		mdconfig -a -t swap -s ${size}m -u $m
 		bsdlabel -w md$m auto
@@ -85,7 +86,7 @@ else
 			chmod 777 ${mntpoint}$m
 			export RUNDIR=${mntpoint}$m/stressX
 			export CTRLDIR=${mntpoint}$m/stressX.control
-			(cd  ${mntpoint}$m; find . -delete)
+			(cd ${mntpoint}$m && find . -delete)
 			su $testuser -c 'cd ..; ./run.sh disk.cfg' > \
 			    /dev/null 2>&1
 
