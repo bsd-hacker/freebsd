@@ -76,7 +76,7 @@ else
 			find ${mntpoint}* -type f > /dev/null 2>&1
 		done
 	else
-		# The test: Parallel mount and unmounts
+		# The test: Parallel mount and unmount
 		m=$1
 		for i in `jot 200`; do
 			mount /dev/md${m}${part} ${mntpoint}$m
