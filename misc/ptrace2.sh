@@ -43,7 +43,7 @@ cat > race1.c <<EOF
 #include <stdio.h>
 #include <unistd.h>
 
-int 
+int
 main(void)
 {
 	pid_t pid;
@@ -92,7 +92,7 @@ cat > race2.c <<EOF
 #include <stdio.h>
 #include <unistd.h>
 
-int 
+int
 main(void)
 {
 	pid_t pid;

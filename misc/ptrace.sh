@@ -37,7 +37,7 @@ cc -o ptrace -Wall -Wextra -g ptrace.c || exit 1
 rm -f ptrace.c
 cd $here
 
-/tmp/ptrace 
+/tmp/ptrace
 
 rm -f /tmp/ptrace
 exit
