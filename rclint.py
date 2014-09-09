@@ -424,7 +424,7 @@ def do_rclint(filename):
     descexists = False
     for v in lineobj['Variable']:
         if v.name == 'desc':
-            descexists = False
+            descexists = True
             break
     if not descexists:
         error.give('no_description')
