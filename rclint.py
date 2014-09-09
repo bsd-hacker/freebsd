@@ -27,7 +27,7 @@
 __version__ = '$FreeBSD$'
 
 MAJOR = 0
-MINOR = 1
+MINOR = 2
 MICRO = 0
 
 DATADIR = '.'
@@ -143,7 +143,7 @@ class Variable(Statement):
                                            lines[number+self.length]))
                     self.length += 1
                 self.type = (
-                    'init' if self.name in ('name', 'rcvar') else 'basic')
+                    'init' if self.name in ('name', 'desc', 'rcvar') else 'basic')
 
         elif line[:4] == 'eval':
             self.value = line
@@ -420,6 +420,14 @@ def do_rclint(filename):
     for v in lineobj['Variable']:
         if v.is_empty():
             error.give('value_empty', v.line)
+
+    descexists = False
+    for v in lineobj['Variable']:
+        if v.name == 'desc':
+            descexists = False
+            break
+    if not descexists:
+        error.give('no_description')
 
     logging.debug('Checking for rcvar set correctly')
     for var in lineobj['Variable']:
