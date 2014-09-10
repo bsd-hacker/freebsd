@@ -4,14 +4,14 @@ ntest=1
 
 case "${dir}" in
 /*)
-	maindir="${dir}/../.."
+	maindir="${dir}/.."
 	;;
 *)
-	maindir="`pwd`/${dir}/../.."
+	maindir="`pwd`/${dir}/.."
 	;;
 esac
 fstest="${maindir}/pjdfstest"
-. ${maindir}/tests/conf
+. ${maindir}/conf
 
 expect()
 {
