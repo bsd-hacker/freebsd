@@ -1,0 +1,15 @@
+TOP=		${.CURDIR:H:H:H:H}
+
+.PATH: ${TOP}/contrib/pjdfstest
+
+BINDIR=		${TESTSBASE}/sys/pjdfstest
+PROG=		pjdfstest
+MAN=
+
+CFLAGS=		-D__OS_FreeBSD__ -DHAS_LCHMOD -DHAS_CHFLAGS -DHAS_FCHFLAGS
+CFLAGS+=	-DHAS_CHFLAGSAT -DHAS_LCHFLAGS -DHAS_FREEBSD_ACL -DHAS_BINDAT
+CFLAGS+=	-DHAS_CONNECTAT
+
+WARNS?=		6
+
+.include <bsd.prog.mk>

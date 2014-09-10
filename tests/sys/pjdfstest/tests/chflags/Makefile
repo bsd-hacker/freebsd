@@ -1,0 +1,22 @@
+.PATH: 
+
+TESTSDIR=	${TESTSBASE}/sys/pjdfstest/chflags
+
+SCRIPTSDIR=	${TESTSDIR}
+
+SCRIPTS=	00.t
+SCRIPTS+=	01.t
+SCRIPTS+=	02.t
+SCRIPTS+=	03.t
+SCRIPTS+=	04.t
+SCRIPTS+=	05.t
+SCRIPTS+=	06.t
+SCRIPTS+=	07.t
+SCRIPTS+=	08.t
+SCRIPTS+=	09.t
+SCRIPTS+=	10.t
+SCRIPTS+=	11.t
+SCRIPTS+=	12.t
+SCRIPTS+=	13.t
+
+.include <bsd.test.mk>
