@@ -1,11 +1,16 @@
-.PATH: ${.CURDIR:H:H:H:H}/contrib/pjdfstest/tests
+PJDFSTEST_SRCDIR=	${.CURDIR:H:H:H:H}/contrib/pjdfstest
 
 TESTSDIR=	${TESTSBASE}/sys/pjdfstest
 
-SCRIPTSDIR=	${TESTSDIR}
-SCRIPTS=	conf
-SCRIPTS+=	misc.sh
-SCRIPTSNAME_misc.sh=	misc.sh
+.PATH: ${.CURDIR} ${PJDFSTEST_SRCDIR}/tests
+
+FILESDIR=	${TESTSDIR}
+FILES=		conf
+FILES+=		misc.sh
+
+afterinstall: install-tests-symlink
+install-tests-symlink: .PHONY
+	${INSTALL_SYMLINK} . ${DESTDIR}${TESTSDIR}/tests
 
 KYUAFILE=	no
 
