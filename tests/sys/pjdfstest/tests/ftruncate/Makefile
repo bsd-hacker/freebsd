@@ -1,4 +1,4 @@
-TESTSDIR=	${TESTSBASE}/sys/pjdfstest/chown
+TESTSDIR=	${TESTSBASE}/sys/pjdfstest/ftruncate
 
 SCRIPTSDIR=	${TESTSDIR}
 

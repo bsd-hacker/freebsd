@@ -1,4 +1,4 @@
-TESTSDIR=	${TESTSBASE}/sys/pjdfstest/chflags
+TESTSDIR=	${TESTSBASE}/sys/pjdfstest/unlink
 
 SCRIPTSDIR=	${TESTSDIR}
 
