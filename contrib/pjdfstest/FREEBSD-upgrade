@@ -18,7 +18,6 @@ To merge the vendor branch into head do something like this:
 	cd .../base/head/contrib/pjdfstest
 	svn merge --accept=postpone \
 	    svn+ssh://svn.freebsd.org/base/vendor/pjdfstest/dist .
-	svn remove --force $(cat FREEBSD-Xlist)
 
 and resolve any conflicts that may arise at this point.
 
