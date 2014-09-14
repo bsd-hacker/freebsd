@@ -227,7 +227,7 @@ EOF
 setenv PATH "/usr/local/bin:/usr/local/sbin:\${PATH}"
 
 cd /usr/tests
-kyua test
+kyua test --results-file=\${HOME}/results.db
 shutdown -p now
 EOF
 
@@ -292,13 +292,13 @@ autotest_publish() {
     local mddev="$(mdconfig -a -t vnode -f "${image}")"
     mount -o ro "/dev/${mddev}p3" "${chrootdir}/vmimage/mnt"
     mkdir -p "${datadir}"
-    cp "${chrootdir}/vmimage/mnt/root/.kyua/store.db" "${datadir}/store.db"
+    cp "${chrootdir}/vmimage/mnt/root/results.db" "${datadir}/results.db"
     umount "${chrootdir}/vmimage/mnt"
     mdconfig -d -u "${mddev}"
 
     shtk_process_run /usr/local/bin/kyua report-html \
         --output="${datadir}/results" \
-        --store="${datadir}/store.db" \
+        --results-file="${datadir}/results.db" \
         --results-filter=
 }
 
