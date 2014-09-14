@@ -1,5 +1,3 @@
-.PATH: 
-
 TESTSDIR=	${TESTSBASE}/sys/pjdfstest/chflags
 
 SCRIPTSDIR=	${TESTSDIR}
