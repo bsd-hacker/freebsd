@@ -18,15 +18,12 @@ CFLAGS+=-I${SVNDIR}/include -I${SVNDIR} -I${.CURDIR}/.. \
 	-I${APRU}/include/private \
 	-I${APRU}/include
 
-LDADD=	-L${LIBSVN_WCDIR} -lsvn_wc \
-	-L${LIBSVN_DELTADIR} -lsvn_delta \
-	-L${LIBSVN_DIFFDIR} -lsvn_diff \
-	-L${LIBSVN_SUBRDIR} -lsvn_subr \
-	-L${LIBAPR_UTILDIR} -lapr-util \
-	-lbsdxml \
-	-L${LIBAPRDIR} -lapr \
-	-L${LIBSQLITEDIR} -lsqlite3 \
-	-lz -lcrypt
+LDFLAGS=-L${LIBSVN_WCDIR} -L${LIBSVN_DELTADIR} -L${LIBSVN_DIFFDIR} \
+	-L${LIBSVN_SUBRDIR} -L${LIBAPR_UTILDIR} -L${LIBAPRDIR} \
+	-L${LIBSQLITEDIR}
+
+LDADD=	-lsvn_wc -lsvn_delta -lsvn_diff -lsvn_subr -lserf -lapr-util -lbsdxml \
+	-lapr -lsqlite3 -lz -lcrypt
 
 DPADD=	${LIBSVN_WC} ${LIBSVN_DELTA} ${LIBSVN_DIFF} ${LIBSVN_SUBR} \
 	${LIBSERF} ${LIBAPR_UTIL} ${LIBBSDXML} ${LIBAPR} ${LIBSQLITE} \

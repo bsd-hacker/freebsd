@@ -18,17 +18,12 @@ CFLAGS+=-I${SVNDIR}/include -I${SVNDIR} -I${.CURDIR}/.. \
 	-I${APRU}/include/private \
 	-I${APRU}/include
 
-LDADD=	-L${LIBSVN_REPOSDIR} -lsvn_repos \
-	-L${LIBSVN_FSDIR} -lsvn_fs \
-	-L${LIBSVN_FS_FSDIR} -lsvn_fs_fs \
-	-L${LIBSVN_FS_UTILDIR} -lsvn_fs_util \
-	-L${LIBSVN_DELTADIR} -lsvn_delta \
-	-L${LIBSVN_SUBRDIR} -lsvn_subr \
-	-L${LIBAPR_UTILDIR} -lapr-util \
-	-lbsdxml \
-	-L${LIBAPRDIR} -lapr \
-	-L${LIBSQLITEDIR} -lsqlite3 \
-	-lz -lcrypt
+LDFLAGS= -L${LIBSVN_REPOSDIR} -L${LIBSVN_FSDIR} -L${LIBSVN_FS_FSDIR} \
+	 -L${LIBSVN_FS_UTILDIR} -L${LIBSVN_DELTADIR} -L${LIBSVN_SUBRDIR} \
+	 -L${LIBAPR_UTILDIR} -L${LIBAPRDIR} -L${LIBSQLITEDIR} \
+
+LDADD=	-lsvn_repos -lsvn_fs -lsvn_fs_fs -lsvn_fs_util -lsvn_delta \
+	-lsvn_subr -lapr-util -lbsdxml -lapr -lsqlite3 -lz -lcrypt \
 
 DPADD=	${LIBSVN_REPOS} ${LIBSVN_FS} ${LIBSVN_FS_FS} ${LIBSVN_FS_UTIL} \
 	${LIBSVN_DELTA} ${LIBSVN_SUBR} ${LIBAPR_UTIL} \
