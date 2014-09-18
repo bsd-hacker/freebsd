@@ -250,14 +250,28 @@ build_release() {
 
 	send_logmail ${logdir}/${_build}.log ${_build}
 
-	# Short circuit to skip vm image creation for non-x86 architectures.
-	# Also recreate the memstick.img for i386 while here.
+	# Recreate the memstick.img for i386 while here.
 	case ${arch} in
-		amd64)
-			;;
 		i386)
 			/bin/sh ${scriptdir}/remake-memstick.sh \
 				-c ${_conf} >> ${logdir}/${_build}.log
+			;;
+		*)
+			return 0
+			;;
+	esac
+	send_logmail ${logdir}/${_build}.log ${_build}
+	unset _build _conf
+}
+
+build_vmimage() {
+	_build="${rev}-${arch}-${kernel}-${type}"
+	_conf="${scriptdir}/${_build}.conf"
+	source_config || return 0
+
+	case ${arch} in
+		amd64|i386)
+			# continue
 			;;
 		*)
 			return 0
@@ -386,6 +400,7 @@ main() {
 	runall build_chroots
 	runall install_chroots
 	runall build_release
+	runall build_vmimage
 }
 
 main "$@"
