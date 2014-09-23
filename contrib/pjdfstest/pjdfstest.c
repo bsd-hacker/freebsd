@@ -1007,7 +1007,7 @@ set_gids(char *gids)
 	assert(gidset != NULL);
 	for (i = 0, g = strtok(gids, ","); g != NULL;
 	    g = strtok(NULL, ","), i++) {
-		if (i >= (unsigned)ngroups) {
+		if (i >= ngroups) {
 			fprintf(stderr, "too many gids\n");
 			exit(1);
 		}
