@@ -40,6 +40,9 @@ cc -o mmap13  -O2 -Wall -Wextra mmap13.c || exit 1
 rm -f mmap13.c
 cd $odir
 
+# Both the 5000 and 500 are empirical values.
+# Combined they demonstrate the leak in a consistent way.
+
 v1=`sysctl -n vm.stats.vm.v_wire_count`
 for i in `jot 5000`; do
 	/tmp/mmap13

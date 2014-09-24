@@ -55,11 +55,15 @@ EOF
 #include <unistd.h>
 
 int
-main(int argc, char **argv)
+main(void)
 {
 	void *addr;
 	size_t sz = 1;
 
+/*
+ * This is the minimum amount of C code ot takes to panic the kernel.
+ * This is as submitted and thus not a complete and correct test program.
+ */
 	addr = mmap(NULL, sz, PROT_READ, MAP_ANON, -1, 0);
 	if (addr == NULL)
 		err(1, "mmap");
