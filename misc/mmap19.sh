@@ -39,8 +39,7 @@ here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > mmap19.c
 cc -o mmap19 -Wall -Wextra -O2 mmap19.c -lpthread || exit 1
-rm -f mmap19.c /tmp/mmap19.core
-rm -f /tmp/mmap19.core
+rm -f mmap19.c
 
 daemon sh -c "(cd $here/../testcases/swap; ./swap -t 2m -i 20 -k)"
 rnd=`od -An -N1 -t u1 /dev/random | sed 's/ //g'`
@@ -54,6 +53,12 @@ rm -f /tmp/mmap19 /tmp/mmap19.core
 exit 0
 EOF
 #include <sys/types.h>
+#include <sys/mman.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -64,27 +69,21 @@ EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-#define PARALLEL 50
 #define LOOPS 50
-
-void *p;
-
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
+#define PARALLEL 50
+
 u_int32_t r[N];
+void *p;
 
 unsigned long
 makearg(void)
 {
-	unsigned int i;
 	unsigned long val;
+	unsigned int i;
 
 	val = arc4random();
 	i   = arc4random() % 100;
@@ -115,30 +114,32 @@ makeptr(void)
 	else
 		val = makearg();
 	val = trunc_page(val);
+
 	return ((void *)val);
 }
 
 void *
 tmmap(void *arg __unused)
 {
-	int i, fd;
 	size_t len;
+	int i, fd;
 
 	pthread_set_name_np(pthread_self(), __func__);
 	len = 1LL * 1024 * 1024 * 1024;
 
 	for (i = 0; i < 100; i++) {
-		if ((fd = open("/dev/zero", O_CREAT | O_TRUNC | O_RDWR, 0622)) == -1)
+		if ((fd = open("/dev/zero", O_CREAT | O_TRUNC | O_RDWR,
+		    0622)) == -1)
 			err(1,"open()");
 
-		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0)) !=
-				MAP_FAILED) {
+		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE,
+		    fd, 0)) != MAP_FAILED) {
 			usleep(100);
 			munmap(p, len);
 		}
 
-		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON, -1, 0)) !=
-		    MAP_FAILED) {
+		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON, -1,
+		    0)) != MAP_FAILED) {
 			usleep(100);
 			munmap(p, len);
 		}
@@ -151,9 +152,9 @@ tmmap(void *arg __unused)
 void *
 tmprotect(void *arg __unused)
 {
-	int i, n, prot;
 	const void *addr;
 	size_t len;
+	int i, n, prot;
 
 	pthread_set_name_np(pthread_self(), __func__);
 	n = 0;
@@ -166,16 +167,17 @@ tmprotect(void *arg __unused)
 		usleep(1000);
 	}
 	if (n < 10)
-		fprintf(stderr, "tmprotect() only succeeded %d times.\n", n);
+		fprintf(stderr, "Note: tmprotect() only succeeded %d times.\n",
+		    n);
+
 	return (NULL);
 }
 
 void
 test(void)
 {
-	int i;
-	int rc;
 	pthread_t tid[2];
+	int i, rc;
 
 	if ((rc = pthread_create(&tid[0], NULL, tmmap, NULL)) != 0)
 		errc(1, rc, "tmmap()");
@@ -193,14 +195,15 @@ test(void)
 	for (i = 0; i < 2; i++)
 		if ((rc = pthread_join(tid[i], NULL)) != 0)
 			errc(1, rc, "pthread_join(%d)", i);
+
 	_exit(0);
 }
 
 int
 main(void)
 {
-	int i, j;
 	struct rlimit rl;
+	int i, j;
 
 	rl.rlim_max = rl.rlim_cur = 0;
 	if (setrlimit(RLIMIT_CORE, &rl) == -1)
