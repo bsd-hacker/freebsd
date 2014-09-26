@@ -111,7 +111,7 @@ create_vmimage_qemu() {
 	chroot ${CHROOTDIR} make -s -C /usr/src DESTDIR=/vmimage/mnt \
 		installworld installkernel distribution
 	set -e
-	while ! umount ${CHROOTDIR}/vmimage/mnt/dev; do
+	while ! umount ${CHROOTDIR}/dev; do
 		sleep 1
 	done
 	create_etc
