@@ -44,10 +44,9 @@ cp /tmp/mmap5  /tmp/mmap5.inputfile
 (cd ../testcases/swap; ./swap -t 1m -i 2) &
 cp /tmp/mmap5 /tmp/mmap5.inputfile
 /tmp/mmap5  /tmp/mmap5.inputfile
-while ps auxww | grep -v grep | grep -qw swap; do
-	killall -9 swap 2>/dev/null
+while killall -9 swap; do
 	sleep .1
-done
+done > /dev/null 2>&1
 wait
 rm -f /tmp/mmap5  /tmp/mmap5.inputfile
 exit
