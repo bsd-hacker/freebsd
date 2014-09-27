@@ -77,6 +77,8 @@ create_etc() {
 }
 
 create_vmimage_qemu() {
+	# mkimg(1) supports the formats being created.
+	[ ! -z "${no_qemu}" ] && return 0
 	diskformats="qcow2"
 	if [ ! -x /usr/local/bin/qemu-img ]; then
 		echo "qemu-img not found, skipping qcow2 format."
@@ -131,17 +133,23 @@ create_vmimage_qemu() {
 		xz ${CHROOTDIR}/vmimage/${VM_IMAGE_NAME}.${_f}
 	done
 	mdconfig -d -u ${mddev}
-	mv ${CHROOTDIR}/vmimage/${VM_IMAGE_NAME}.rawdisk \
-		${CHROOTDIR}/vmimage/${VM_IMAGE_NAME}.raw
-	xz ${CHROOTDIR}/vmimage/${VM_IMAGE_NAME}.raw
+	rm ${CHROOTDIR}/vmimage/${VM_IMAGE_NAME}.rawdisk
 	return 0
 }
 
 create_vmimage_mkimg() {
-	diskformats="vmdk vhdf"
+	no_qemu=
+	diskformats="vmdk vhdf raw"
 
 	if [ ! -x /usr/bin/mkimg ]; then
 		return 0
+	fi
+
+	mkimg_version=$(/usr/bin/mkimg --version 2>/dev/null | awk '{print $2}')
+
+	if [ ! -z "${mkimg_version}" ]; then
+		diskformats="${diskformats} qcow2"
+		no_qemu=1
 	fi
 
 	if [ ! -d ${CHROOTDIR}/R/ftp ]; then
