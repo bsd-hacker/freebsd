@@ -307,8 +307,88 @@ image_copyin_stream(lba_t blk, int fd, uint64_t *sizep)
 static int
 image_copyin_mapped(lba_t blk, int fd, uint64_t *sizep)
 {
+	off_t cur, data, end, hole, pos;
+	void *buf;
+	uint64_t bytesize;
+	size_t sz;
+	int error;
 
-	return (image_copyin_stream(blk, fd, sizep));
+	/*
+	 * We'd like to know the size of the file and we must
+	 * be able to seek in order to mmap(2). If this isn't
+	 * possible, then treat the file as a stream/pipe.
+	 */
+	end = lseek(fd, 0L, SEEK_END);
+	if (end == -1L)
+		return (image_copyin_stream(blk, fd, sizep));
+
+	/*
+	 * We need the file opened for the duration and our
+	 * caller is going to close the file. Make a dup(2)
+	 * so that control the faith of the descriptor.
+	 */
+	fd = dup(fd);
+	if (fd == -1)
+		return (errno);
+
+	bytesize = 0;
+	cur = pos = 0;
+	error = 0;
+	while (!error && cur < end) {
+		hole = lseek(fd, cur, SEEK_HOLE);
+		data = lseek(fd, cur, SEEK_DATA);
+
+		fprintf(stderr, "XXX: %s: cur=%jd, pos=%jd, hole=%jd, "
+		    "data=%jd\n", __func__, (intmax_t)cur, (intmax_t)pos,
+		    (intmax_t)hole, (intmax_t)data);
+
+		if (cur == hole && data > hole) {
+			hole = pos;
+			pos = data & ~(secsz - 1);
+
+			fprintf(stderr, "GAP %jd-%jd\n",
+			    (intmax_t)hole, (intmax_t)pos);
+
+			blk += (pos - hole) / secsz;
+			error = image_chunk_skipto(blk);
+
+			bytesize += pos - hole;
+			cur = data;
+		} else if (cur == data && hole > data) {
+			data = pos;
+			pos = (hole + secsz - 1) & ~(secsz - 1);
+
+			fprintf(stderr, "DATA %jd-%jd data\n",
+			    (intmax_t)data, (intmax_t)pos);
+
+			/* Sloppy... */
+			sz = pos - data;
+			assert((off_t)sz == pos - data);
+
+			buf = image_file_map(fd, data, sz);
+			if (buf != NULL) {
+				error = image_chunk_copyin(blk, buf, sz,
+				    data, fd);
+				image_file_unmap(buf, sz);
+			} else
+				error = errno;
+			blk += sz / secsz;
+			bytesize += sz;
+			cur = hole;
+		} else {
+			/*
+			 * I don't know what this means or whether it
+			 * can happen at all...
+			 */
+			error = EDOOFUS;
+			break;
+		}
+	}
+	if (error)
+		close(fd);
+	if (!error && sizep != NULL)
+		*sizep = bytesize;
+	return (error);
 }
 
 int
