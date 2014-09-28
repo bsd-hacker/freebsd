@@ -86,7 +86,6 @@ image_swap_alloc(size_t size)
 		image_swap_size = ofs;
 		ofs = -1LL;
 	}
-	fprintf(stderr, "SWAP: off=%jd, size=%zu\n", (intmax_t)ofs, size);
 	return (ofs);
 }
 
@@ -338,16 +337,18 @@ image_copyin_mapped(lba_t blk, int fd, uint64_t *sizep)
 		hole = lseek(fd, cur, SEEK_HOLE);
 		data = lseek(fd, cur, SEEK_DATA);
 
-		fprintf(stderr, "XXX: %s: cur=%jd, pos=%jd, hole=%jd, "
-		    "data=%jd\n", __func__, (intmax_t)cur, (intmax_t)pos,
-		    (intmax_t)hole, (intmax_t)data);
+		/*
+		 * Treat the entire file as data if sparse files
+		 * are not supported by the underlying file system.
+		 */
+		if (hole == -1 && data == -1) {
+			data = cur;
+			hole = end;
+		}
 
 		if (cur == hole && data > hole) {
 			hole = pos;
 			pos = data & ~(secsz - 1);
-
-			fprintf(stderr, "GAP %jd-%jd\n",
-			    (intmax_t)hole, (intmax_t)pos);
 
 			blk += (pos - hole) / secsz;
 			error = image_chunk_skipto(blk);
@@ -357,9 +358,6 @@ image_copyin_mapped(lba_t blk, int fd, uint64_t *sizep)
 		} else if (cur == data && hole > data) {
 			data = pos;
 			pos = (hole + secsz - 1) & ~(secsz - 1);
-
-			fprintf(stderr, "DATA %jd-%jd data\n",
-			    (intmax_t)data, (intmax_t)pos);
 
 			/* Sloppy... */
 			sz = pos - data;
