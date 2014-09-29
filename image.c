@@ -45,14 +45,22 @@ __FBSDID("$FreeBSD$");
 #include "mkimg.h"
 
 struct chunk {
-	lba_t	ch_block;		/* Block address in image. */
-	off_t	ch_ofs;			/* Offset in backing file. */
 	STAILQ_ENTRY(chunk) ch_list;
 	size_t	ch_size;		/* Size of chunk in bytes. */
-	int	ch_fd;			/* FD of backing file. */
-	u_int	ch_flags;
-#define	CH_FLAGS_GAP		1	/* Chunk is a gap (no FD). */
-#define	CH_FLAGS_DIRTY		2	/* Data modified/only in memory. */
+	lba_t	ch_block;		/* Block address in image. */
+	union {
+		struct {
+			off_t	ofs;	/* Offset in backing file. */
+			int	fd;	/* FD of backing file. */
+		} file;
+		struct {
+			void	*ptr;	/* Pointer to data in memory */
+		} mem;
+	} ch_u;
+	u_int	ch_type;
+#define	CH_TYPE_ZEROES		0	/* Chunk is a gap (no data). */
+#define	CH_TYPE_FILE		1	/* File-backed chunk. */
+#define	CH_TYPE_MEMORY		2	/* Memory-backed chunk */
 };
 
 static STAILQ_HEAD(chunk_head, chunk) image_chunks;
@@ -100,9 +108,22 @@ image_chunk_dump(void)
 
 	fprintf(stderr, "%u chunks:\n", image_nchunks);
 	STAILQ_FOREACH(ch, &image_chunks, ch_list) {
-		fprintf(stderr, "\tblk=%jd, ofs=%jd, fd=%d, sz=%zu, fl=%u\n",
-		    (intmax_t)ch->ch_block, (intmax_t)ch->ch_ofs, ch->ch_fd,
-		    ch->ch_size, ch->ch_flags);
+		fprintf(stderr, "\tblk=%jd, sz=%zu, type=%u",
+		    (intmax_t)ch->ch_block, ch->ch_size, ch->ch_type);
+		switch (ch->ch_type) {
+		case CH_TYPE_ZEROES:
+			fputc('\n', stderr);
+			break;
+		case CH_TYPE_FILE:
+			fprintf(stderr, "; ofs=%jd, fd=%d\n",
+			    (intmax_t)ch->ch_u.file.ofs, ch->ch_u.file.fd);
+			break;
+		case CH_TYPE_MEMORY:
+			fprintf(stderr, "; ptr=%p\n", ch->ch_u.mem.ptr);
+			break;
+		default:
+			abort();
+		}
 	}
 }
 
@@ -142,7 +163,7 @@ image_chunk_skipto(lba_t to)
 	if ((uintmax_t)(to - from) > (uintmax_t)(SIZE_MAX / secsz))
 		return (EFBIG);
 	sz = (to - from) * secsz;
-	if (ch != NULL && (ch->ch_flags & CH_FLAGS_GAP)) {
+	if (ch != NULL && ch->ch_type == CH_TYPE_ZEROES) {
 		sz = image_chunk_grow(ch, sz);
 		if (sz == 0)
 			return (0);
@@ -154,8 +175,7 @@ image_chunk_skipto(lba_t to)
 	memset(ch, 0, sizeof(*ch));
 	ch->ch_block = from;
 	ch->ch_size = sz;
-	ch->ch_fd = -1;
-	ch->ch_flags |= CH_FLAGS_GAP;
+	ch->ch_type = CH_TYPE_ZEROES;
 	STAILQ_INSERT_TAIL(&image_chunks, ch, ch_list);
 	image_nchunks++;
 	return (0);
@@ -167,15 +187,15 @@ image_chunk_append(lba_t blk, size_t sz, off_t ofs, int fd)
 	struct chunk *ch;
 
 	ch = STAILQ_LAST(&image_chunks, chunk, ch_list);
-	if (ch != NULL && (ch->ch_flags & CH_FLAGS_GAP) == 0) {
-		if (fd == ch->ch_fd &&
+	if (ch != NULL && ch->ch_type == CH_TYPE_FILE) {
+		if (fd == ch->ch_u.file.fd &&
 		    blk == (lba_t)(ch->ch_block + (ch->ch_size / secsz)) &&
-		    ofs == (off_t)(ch->ch_ofs + ch->ch_size)) {
+		    ofs == (off_t)(ch->ch_u.file.ofs + ch->ch_size)) {
 			sz = image_chunk_grow(ch, sz);
 			if (sz == 0)
 				return (0);
 			blk = ch->ch_block + (ch->ch_size / secsz);
-			ofs = ch->ch_ofs + ch->ch_size;
+			ofs = ch->ch_u.file.ofs + ch->ch_size;
 		}
 	}
 	ch = malloc(sizeof(*ch));
@@ -183,9 +203,10 @@ image_chunk_append(lba_t blk, size_t sz, off_t ofs, int fd)
 		return (ENOMEM);
 	memset(ch, 0, sizeof(*ch));
 	ch->ch_block = blk;
-	ch->ch_ofs = ofs;
 	ch->ch_size = sz;
-	ch->ch_fd = fd;
+	ch->ch_type = CH_TYPE_FILE;
+	ch->ch_u.file.ofs = ofs;
+	ch->ch_u.file.fd = fd;
 	STAILQ_INSERT_TAIL(&image_chunks, ch, ch_list);
 	image_nchunks++;
 	return (0);
@@ -513,13 +534,12 @@ image_get_size(void)
 int
 image_set_size(lba_t blk)
 {
+	int error;
 
-	image_chunk_skipto(blk);
-
-	image_size = blk;
-	if (ftruncate(image_swap_fd, blk * secsz) == -1)
-		return (errno);
-	return (0);
+	error = image_chunk_skipto(blk);
+	if (!error)
+		image_size = blk;
+	return (error);
 }
 
 int
@@ -538,7 +558,24 @@ image_write(lba_t blk, void *buf, ssize_t len)
 static void
 image_cleanup(void)
 {
+	struct chunk *ch;
 
+	while ((ch = STAILQ_FIRST(&image_chunks)) != NULL) {
+		switch (ch->ch_type) {
+		case CH_TYPE_FILE:
+			/* We may be closing the same file multiple times. */
+			if (ch->ch_u.file.fd != -1)
+				close(ch->ch_u.file.fd);
+			break;
+		case CH_TYPE_MEMORY:
+			free(ch->ch_u.mem.ptr);
+			break;
+		default:
+			break;
+		}
+		STAILQ_REMOVE_HEAD(&image_chunks, ch_list);
+		free(ch);
+	}
 	if (image_swap_fd != -1)
 		close(image_swap_fd);
 	unlink(image_swap_file);
