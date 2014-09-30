@@ -73,6 +73,22 @@ static off_t image_swap_size;
 
 static lba_t image_size;
 
+static int
+is_empty_sector(void *buf)
+{
+	uint64_t *p = buf;
+	size_t n, max;
+
+	assert(((uintptr_t)p & 3) == 0);
+
+	max = secsz / sizeof(uint64_t);
+	for (n = 0; n < max; n++) {
+		if (p[n] != 0UL)
+			return (0);
+	}
+	return (1);
+}
+
 /*
  * Swap file handlng.
  */
@@ -102,11 +118,11 @@ image_swap_alloc(size_t size)
  */
 
 static void
-image_chunk_dump(void)
+image_chunk_dump(int count)
 {
 	struct chunk *ch;
 
-	fprintf(stderr, "%u chunks:\n", image_nchunks);
+	fprintf(stderr, "Dump %d: %u chunks:\n", count, image_nchunks);
 	STAILQ_FOREACH(ch, &image_chunks, ch_list) {
 		fprintf(stderr, "\tblk=%jd, sz=%zu, type=%u",
 		    (intmax_t)ch->ch_block, ch->ch_size, ch->ch_type);
@@ -127,6 +143,25 @@ image_chunk_dump(void)
 	}
 }
 
+static struct chunk *
+image_chunk_find(lba_t blk)
+{
+	static struct chunk *last = NULL;
+	struct chunk *ch;
+
+	ch = (last != NULL && last->ch_block <= blk)
+	    ? last : STAILQ_FIRST(&image_chunks);
+	while (ch != NULL) {
+		if (ch->ch_block <= blk &&
+		    (lba_t)(ch->ch_block + (ch->ch_size / secsz)) > blk) {
+			last = ch;
+			break;
+		}
+		ch = STAILQ_NEXT(ch, ch_list);
+	}
+	return (ch);
+}
+
 static size_t
 image_chunk_grow(struct chunk *ch, size_t sz)
 {
@@ -142,6 +177,50 @@ image_chunk_grow(struct chunk *ch, size_t sz)
 	assert(dsz < sz);
 	ch->ch_size = SIZE_MAX;
 	return (sz - dsz);
+}
+
+static struct chunk *
+image_chunk_memory(struct chunk *ch, lba_t blk)
+{
+	struct chunk *new;
+	void *ptr;
+
+	ptr = calloc(1, secsz);
+	if (ptr == NULL)
+		return (NULL);
+
+	if (ch->ch_block < blk) {
+		new = malloc(sizeof(*new));
+		if (new == NULL) {
+			free(ptr);
+			return (NULL);
+		}
+		memcpy(new, ch, sizeof(*new));
+		ch->ch_size = (blk - ch->ch_block) * secsz;
+		new->ch_block = blk;
+		new->ch_size -= ch->ch_size;
+		STAILQ_INSERT_AFTER(&image_chunks, ch, new, ch_list);
+		image_nchunks++;
+		ch = new;
+	}
+
+	if (ch->ch_size > secsz) {
+		new = malloc(sizeof(*new));
+		if (new == NULL) {
+			free(ptr);
+			return (NULL);
+		}
+		memcpy(new, ch, sizeof(*new));
+		ch->ch_size = secsz;
+		new->ch_block++;
+		new->ch_size -= secsz;
+		STAILQ_INSERT_AFTER(&image_chunks, ch, new, ch_list);
+		image_nchunks++;
+	}
+
+	ch->ch_type = CH_TYPE_MEMORY;
+	ch->ch_u.mem.ptr = ptr;
+	return (ch);
 }
 
 static int
@@ -215,24 +294,18 @@ image_chunk_append(lba_t blk, size_t sz, off_t ofs, int fd)
 static int
 image_chunk_copyin(lba_t blk, void *buf, size_t sz, off_t ofs, int fd)
 {
-	uint64_t *p = buf;
-	size_t n;
+	uint8_t *p = buf;
 	int error;
-
-	assert(((uintptr_t)p & 3) == 0);
 
 	error = 0;
 	sz = (sz + secsz - 1) & ~(secsz - 1);
 	while (!error && sz > 0) {
-		n = 0;
-		while (n < (secsz >> 3) && p[n] == 0)
-			n++;
-		if (n == (secsz >> 3))
+		if (is_empty_sector(p))
 			error = image_chunk_skipto(blk + 1);
 		else
 			error = image_chunk_append(blk, secsz, ofs, fd);
 		blk++;
-		p += (secsz >> 3);
+		p += secsz;
 		sz -= secsz;
 		ofs += secsz;
 	}
@@ -522,12 +595,9 @@ image_data(lba_t blk, lba_t size)
 lba_t
 image_get_size(void)
 {
-	static int once = 0;
+	static int count = 0;
 
-	if (once == 0) {
-		once++;
-		image_chunk_dump();
-	}
+	image_chunk_dump(count++);
 	return (image_size);
 }
 
@@ -545,13 +615,28 @@ image_set_size(lba_t blk)
 int
 image_write(lba_t blk, void *buf, ssize_t len)
 {
+	struct chunk *ch;
 
-	blk *= secsz;
-	if (lseek(image_swap_fd, blk, SEEK_SET) != blk)
-		return (errno);
-	len *= secsz;
-	if (sparse_write(image_swap_fd, buf, len) != len)
-		return (errno);
+	while (len > 0) {
+		if (!is_empty_sector(buf)) {
+			ch = image_chunk_find(blk);
+			if (ch == NULL)
+				return (ENXIO);
+			/* We may not be able to write to files. */
+			if (ch->ch_type == CH_TYPE_FILE)
+				return (EINVAL);
+			if (ch->ch_type == CH_TYPE_ZEROES) {
+				ch = image_chunk_memory(ch, blk);
+				if (ch == NULL)
+					return (ENOMEM);
+			}
+			assert(ch->ch_type == CH_TYPE_MEMORY);
+			memcpy(ch->ch_u.mem.ptr, buf, secsz);
+		}
+		blk++;
+		buf = (char *)buf + secsz;
+		len--;
+	}
 	return (0);
 }
 
