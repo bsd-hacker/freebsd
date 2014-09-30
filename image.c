@@ -568,28 +568,22 @@ image_copyout_region(int fd, lba_t blk, lba_t size)
 int
 image_data(lba_t blk, lba_t size)
 {
-	char *buffer, *p;
+	struct chunk *ch;
+	lba_t lim;
 
-	blk *= secsz;
-	if (lseek(image_swap_fd, blk, SEEK_SET) != blk)
-		return (1);
-
-	size *= secsz;
-	buffer = malloc(size);
-	if (buffer == NULL)
-		return (1);
-
-	if (read(image_swap_fd, buffer, size) != (ssize_t)size) {
-		free(buffer);
-		return (1);
+	while (1) {
+		ch = image_chunk_find(blk);
+		if (ch == NULL)
+			return (0);
+		if (ch->ch_type != CH_TYPE_ZEROES)
+			return (1);
+		lim = ch->ch_block + (ch->ch_size / secsz);
+		if (lim >= blk + size)
+			return (0);
+		size -= lim - blk;
+		blk = lim;
 	}
-
-	p = buffer;
-	while (size > 0 && *p == '\0')
-		size--, p++;
-
-	free(buffer);
-	return ((size == 0) ? 0 : 1);
+	/*NOTREACHED*/
 }
 
 lba_t
