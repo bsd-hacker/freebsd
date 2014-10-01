@@ -499,6 +499,10 @@ image_copyin(lba_t blk, int fd, uint64_t *sizep)
 	return (error);
 }
 
+/*
+ * Output/sink file handling.
+ */
+
 int
 image_copyout(int fd)
 {
@@ -523,46 +527,103 @@ image_copyout_done(int fd)
 	return (error);
 }
 
+static int
+image_copyout_memory(int fd, size_t size, void *ptr)
+{
+
+	if (write(fd, ptr, size) == -1)
+		return (errno);
+	return (0);
+}
+
+static int
+image_copyout_zeroes(int fd, size_t size)
+{
+	static uint8_t *zeroes = NULL;
+	size_t sz;
+	int error;
+
+	if (lseek(fd, (off_t)size, SEEK_CUR) != -1)
+		return (0);
+
+	/*
+	 * If we can't seek, we must write.
+	 */
+
+	if (zeroes == NULL) {
+		zeroes = calloc(1, secsz);
+		if (zeroes == NULL)
+			return (ENOMEM);
+	}
+
+	while (size > 0) {
+		sz = (size > secsz) ? secsz : size;
+		error = image_copyout_memory(fd, sz, zeroes);
+		if (error)
+			return (error);
+		size -= sz;
+	}
+	return (0);
+}
+
+static int
+image_copyout_file(int fd, size_t size, int ifd, off_t iofs)
+{
+	void *buf;
+	size_t iosz, sz;
+	int error;
+
+	iosz = secsz * image_swap_pgsz;
+
+	while (size > 0) {
+		sz = (size > iosz) ? iosz : size;
+		buf = image_file_map(ifd, iofs, sz);
+		if (buf == NULL)
+			return (errno);
+		error = image_copyout_memory(fd, sz, buf);
+		image_file_unmap(buf, sz);
+		if (error)
+			return (error);
+		size -= sz;
+		iofs += sz;
+	}
+	return (0);
+}
+
 int
 image_copyout_region(int fd, lba_t blk, lba_t size)
 {
-	char *buffer;
-	off_t ofs;
-	size_t bufsz, sz;
-	ssize_t rdsz, wrsz;
+	struct chunk *ch;
+	size_t ofs, sz;
 	int error;
 
-	bufsz = secsz * image_swap_pgsz;
-
-	ofs = lseek(fd, 0L, SEEK_CUR);
-
-	blk *= secsz;
-	if (lseek(image_swap_fd, blk, SEEK_SET) != blk)
-		return (errno);
-	buffer = malloc(bufsz);
-	if (buffer == NULL)
-		return (errno);
-	error = 0;
 	size *= secsz;
+
 	while (size > 0) {
-		sz = ((ssize_t)bufsz < size) ? bufsz : (size_t)size;
-		rdsz = read(image_swap_fd, buffer, sz);
-		if (rdsz <= 0) {
-			error = (rdsz < 0) ? errno : 0;
+		ch = image_chunk_find(blk);
+		if (ch == NULL)
+			return (EINVAL);
+		ofs = (blk - ch->ch_block) * secsz;
+		sz = ch->ch_size - ofs;
+		sz = ((lba_t)sz < size) ? sz : (size_t)size;
+		switch (ch->ch_type) {
+		case CH_TYPE_ZEROES:
+			error = image_copyout_zeroes(fd, sz);
 			break;
-		}
-		wrsz = (ofs == -1) ?
-		    write(fd, buffer, rdsz) :
-		    sparse_write(fd, buffer, rdsz);
-		if (wrsz < 0) {
-			error = errno;
+		case CH_TYPE_FILE:
+			error = image_copyout_file(fd, sz, ch->ch_u.file.fd,
+			    ch->ch_u.file.ofs + ofs);
 			break;
+		case CH_TYPE_MEMORY:
+			error = image_copyout_memory(fd, sz, ch->ch_u.mem.ptr);
+			break;
+		default:
+			return (EDOOFUS);
 		}
-		assert(wrsz == rdsz);
-		size -= rdsz;
+		size -= sz;
+		blk += sz / secsz;
 	}
-	free(buffer);
-	return (error);
+	return (0);
 }
 
 int
