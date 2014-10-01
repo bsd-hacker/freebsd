@@ -418,7 +418,7 @@ image_copyin_mapped(lba_t blk, int fd, uint64_t *sizep)
 
 		if (cur == hole && data > hole) {
 			hole = pos;
-			pos = data & ~(secsz - 1);
+			pos = data & ~((uint64_t)secsz - 1);
 
 			blk += (pos - hole) / secsz;
 			error = image_chunk_skipto(blk);
@@ -427,7 +427,7 @@ image_copyin_mapped(lba_t blk, int fd, uint64_t *sizep)
 			cur = data;
 		} else if (cur == data && hole > data) {
 			data = pos;
-			pos = (hole + secsz - 1) & ~(secsz - 1);
+			pos = (hole + secsz - 1) & ~((uint64_t)secsz - 1);
 
 			while (data < pos) {
 				sz = (pos - data > (off_t)iosz)
