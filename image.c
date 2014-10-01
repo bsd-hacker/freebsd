@@ -377,7 +377,7 @@ image_copyin_mapped(lba_t blk, int fd, uint64_t *sizep)
 	off_t cur, data, end, hole, pos;
 	void *buf;
 	uint64_t bytesize;
-	size_t sz;
+	size_t iosz, sz;
 	int error;
 
 	/*
@@ -397,6 +397,8 @@ image_copyin_mapped(lba_t blk, int fd, uint64_t *sizep)
 	fd = dup(fd);
 	if (fd == -1)
 		return (errno);
+
+	iosz = secsz * image_swap_pgsz;
 
 	bytesize = 0;
 	cur = pos = 0;
@@ -427,19 +429,22 @@ image_copyin_mapped(lba_t blk, int fd, uint64_t *sizep)
 			data = pos;
 			pos = (hole + secsz - 1) & ~(secsz - 1);
 
-			/* Sloppy... */
-			sz = pos - data;
-			assert((off_t)sz == pos - data);
+			while (data < pos) {
+				sz = (pos - data > (off_t)iosz)
+				    ? iosz : (size_t)(pos - data);
 
-			buf = image_file_map(fd, data, sz);
-			if (buf != NULL) {
-				error = image_chunk_copyin(blk, buf, sz,
-				    data, fd);
-				image_file_unmap(buf, sz);
-			} else
-				error = errno;
-			blk += sz / secsz;
-			bytesize += sz;
+				buf = image_file_map(fd, data, sz);
+				if (buf != NULL) {
+					error = image_chunk_copyin(blk, buf,
+					    sz, data, fd);
+					image_file_unmap(buf, sz);
+				} else
+					error = errno;
+
+				blk += sz / secsz;
+				bytesize += sz;
+				data += sz;
+			}
 			cur = hole;
 		} else {
 			/*
