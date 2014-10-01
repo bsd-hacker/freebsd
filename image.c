@@ -117,32 +117,6 @@ image_swap_alloc(size_t size)
  * Image chunk handling.
  */
 
-static void
-image_chunk_dump(int count)
-{
-	struct chunk *ch;
-
-	fprintf(stderr, "Dump %d: %u chunks:\n", count, image_nchunks);
-	STAILQ_FOREACH(ch, &image_chunks, ch_list) {
-		fprintf(stderr, "\tblk=%jd, sz=%zu, type=%u",
-		    (intmax_t)ch->ch_block, ch->ch_size, ch->ch_type);
-		switch (ch->ch_type) {
-		case CH_TYPE_ZEROES:
-			fputc('\n', stderr);
-			break;
-		case CH_TYPE_FILE:
-			fprintf(stderr, "; ofs=%jd, fd=%d\n",
-			    (intmax_t)ch->ch_u.file.ofs, ch->ch_u.file.fd);
-			break;
-		case CH_TYPE_MEMORY:
-			fprintf(stderr, "; ptr=%p\n", ch->ch_u.mem.ptr);
-			break;
-		default:
-			abort();
-		}
-	}
-}
-
 static struct chunk *
 image_chunk_find(lba_t blk)
 {
@@ -650,9 +624,7 @@ image_data(lba_t blk, lba_t size)
 lba_t
 image_get_size(void)
 {
-	static int count = 0;
 
-	image_chunk_dump(count++);
 	return (image_size);
 }
 
