@@ -10,8 +10,6 @@ MKIMG_VERSION=20140927
 CFLAGS+=-DMKIMG_VERSION=${MKIMG_VERSION}
 CFLAGS+=-DSPARSE_WRITE
 
-DEBUG_FLAGS=-O0 -gdwarf-2
-
 # List of formats to support
 SRCS+= \
 	qcow.c \
