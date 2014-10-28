@@ -917,7 +917,7 @@ static Elf64_Brandinfo linux_glibc2brand = {
 	.sysvec		= &elf_linux_sysvec,
 	.interp_newpath	= NULL,
 	.brand_note	= &linux64_brandnote,
-	.flags		= BI_CAN_EXEC_DYN | BI_BRAND_NOTE | BI_CAN_EXEC_INTERP
+	.flags		= BI_CAN_EXEC_DYN | BI_BRAND_NOTE
 };
 
 static Elf64_Brandinfo linux_glibc2brandshort = {
@@ -929,7 +929,7 @@ static Elf64_Brandinfo linux_glibc2brandshort = {
 	.sysvec		= &elf_linux_sysvec,
 	.interp_newpath	= NULL,
 	.brand_note	= &linux64_brandnote,
-	.flags		= BI_CAN_EXEC_DYN | BI_BRAND_NOTE | BI_CAN_EXEC_INTERP
+	.flags		= BI_CAN_EXEC_DYN | BI_BRAND_NOTE
 };
 
 Elf64_Brandinfo *linux_brandlist[] = {
