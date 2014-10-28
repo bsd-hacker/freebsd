@@ -188,31 +188,25 @@ static	int mwl_rxdesc = MWL_RXDESC;		/* # rx desc's to allocate */
 SYSCTL_INT(_hw_mwl, OID_AUTO, rxdesc, CTLFLAG_RW, &mwl_rxdesc,
 	    0, "rx descriptors allocated");
 static	int mwl_rxbuf = MWL_RXBUF;		/* # rx buffers to allocate */
-SYSCTL_INT(_hw_mwl, OID_AUTO, rxbuf, CTLFLAG_RW, &mwl_rxbuf,
+SYSCTL_INT(_hw_mwl, OID_AUTO, rxbuf, CTLFLAG_RWTUN, &mwl_rxbuf,
 	    0, "rx buffers allocated");
-TUNABLE_INT("hw.mwl.rxbuf", &mwl_rxbuf);
 static	int mwl_txbuf = MWL_TXBUF;		/* # tx buffers to allocate */
-SYSCTL_INT(_hw_mwl, OID_AUTO, txbuf, CTLFLAG_RW, &mwl_txbuf,
+SYSCTL_INT(_hw_mwl, OID_AUTO, txbuf, CTLFLAG_RWTUN, &mwl_txbuf,
 	    0, "tx buffers allocated");
-TUNABLE_INT("hw.mwl.txbuf", &mwl_txbuf);
 static	int mwl_txcoalesce = 8;		/* # tx packets to q before poking f/w*/
-SYSCTL_INT(_hw_mwl, OID_AUTO, txcoalesce, CTLFLAG_RW, &mwl_txcoalesce,
+SYSCTL_INT(_hw_mwl, OID_AUTO, txcoalesce, CTLFLAG_RWTUN, &mwl_txcoalesce,
 	    0, "tx buffers to send at once");
-TUNABLE_INT("hw.mwl.txcoalesce", &mwl_txcoalesce);
 static	int mwl_rxquota = MWL_RXBUF;		/* # max buffers to process */
-SYSCTL_INT(_hw_mwl, OID_AUTO, rxquota, CTLFLAG_RW, &mwl_rxquota,
+SYSCTL_INT(_hw_mwl, OID_AUTO, rxquota, CTLFLAG_RWTUN, &mwl_rxquota,
 	    0, "max rx buffers to process per interrupt");
-TUNABLE_INT("hw.mwl.rxquota", &mwl_rxquota);
 static	int mwl_rxdmalow = 3;			/* # min buffers for wakeup */
-SYSCTL_INT(_hw_mwl, OID_AUTO, rxdmalow, CTLFLAG_RW, &mwl_rxdmalow,
+SYSCTL_INT(_hw_mwl, OID_AUTO, rxdmalow, CTLFLAG_RWTUN, &mwl_rxdmalow,
 	    0, "min free rx buffers before restarting traffic");
-TUNABLE_INT("hw.mwl.rxdmalow", &mwl_rxdmalow);
 
 #ifdef MWL_DEBUG
 static	int mwl_debug = 0;
-SYSCTL_INT(_hw_mwl, OID_AUTO, debug, CTLFLAG_RW, &mwl_debug,
+SYSCTL_INT(_hw_mwl, OID_AUTO, debug, CTLFLAG_RWTUN, &mwl_debug,
 	    0, "control debugging printfs");
-TUNABLE_INT("hw.mwl.debug", &mwl_debug);
 enum {
 	MWL_DEBUG_XMIT		= 0x00000001,	/* basic xmit operation */
 	MWL_DEBUG_XMIT_DESC	= 0x00000002,	/* xmit descriptors */
@@ -1440,7 +1434,7 @@ mwl_start(struct ifnet *ifp)
 		 * Pass the frame to the h/w for transmission.
 		 */
 		if (mwl_tx_start(sc, ni, bf, m)) {
-			ifp->if_oerrors++;
+			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 			mwl_puttxbuf_head(txq, bf);
 			ieee80211_free_node(ni);
 			continue;
@@ -1510,7 +1504,7 @@ mwl_raw_xmit(struct ieee80211_node *ni, struct mbuf *m,
 	 * Pass the frame to the h/w for transmission.
 	 */
 	if (mwl_tx_start(sc, ni, bf, m)) {
-		ifp->if_oerrors++;
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 		mwl_puttxbuf_head(txq, bf);
 
 		ieee80211_free_node(ni);
@@ -2611,7 +2605,7 @@ mwl_rxbuf_init(struct mwl_softc *sc, struct mwl_rxbuf *bf)
 	return 0;
 }
 
-static int
+static void
 mwl_ext_free(struct mbuf *m, void *data, void *arg)
 {
 	struct mwl_softc *sc = arg;
@@ -2627,7 +2621,6 @@ mwl_ext_free(struct mbuf *m, void *data, void *arg)
 		sc->sc_rxblocked = 0;
 		mwl_hal_intrset(sc->sc_mh, sc->sc_imask);
 	}
-	return (EXT_FREE_OK);
 }
 
 struct mwl_frame_bar {
@@ -2748,7 +2741,7 @@ mwl_rx_proc(void *arg, int npending)
 #endif
 		status = ds->Status;
 		if (status & EAGLE_RXD_STATUS_DECRYPT_ERR_MASK) {
-			ifp->if_ierrors++;
+			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
 			sc->sc_stats.mst_rx_crypto++;
 			/*
 			 * NB: Check EAGLE_RXD_STATUS_GENERAL_DECRYPT_ERR
@@ -2894,7 +2887,7 @@ mwl_rx_proc(void *arg, int npending)
 			ieee80211_dump_pkt(ic, mtod(m, caddr_t),
 			    len, ds->Rate, rssi);
 		}
-		ifp->if_ipackets++;
+		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
 
 		/* dispatch */
 		ni = ieee80211_find_rxnode(ic,
@@ -3412,7 +3405,7 @@ mwl_tx_start(struct mwl_softc *sc, struct ieee80211_node *ni, struct mwl_txbuf *
 	STAILQ_INSERT_TAIL(&txq->active, bf, bf_list);
 	MWL_TXDESC_SYNC(txq, ds, BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
-	ifp->if_opackets++;
+	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
 	sc->sc_tx_timer = 5;
 	MWL_TXQ_UNLOCK(txq);
 
@@ -4792,7 +4785,7 @@ mwl_watchdog(void *arg)
 		mwl_reset(ifp);
 mwl_txq_dump(&sc->sc_txq[0]);/*XXX*/
 #endif
-		ifp->if_oerrors++;
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 		sc->sc_stats.mst_watchdog++;
 	}
 }
@@ -4935,8 +4928,10 @@ mwl_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	case SIOCGMVSTATS:
 		mwl_hal_gethwstats(sc->sc_mh, &sc->sc_stats.hw_stats);
 		/* NB: embed these numbers to get a consistent view */
-		sc->sc_stats.mst_tx_packets = ifp->if_opackets;
-		sc->sc_stats.mst_rx_packets = ifp->if_ipackets;
+		sc->sc_stats.mst_tx_packets =
+		    ifp->if_get_counter(ifp, IFCOUNTER_OPACKETS);
+		sc->sc_stats.mst_rx_packets =
+		    ifp->if_get_counter(ifp, IFCOUNTER_IPACKETS);
 		/*
 		 * NB: Drop the softc lock in case of a page fault;
 		 * we'll accept any potential inconsisentcy in the

@@ -42,7 +42,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sockio.h>
 #include <sys/taskqueue.h>
 #include <netinet/in.h>
-#include <net/neighbour.h>
 #include <net/route.h>
 
 #include <netinet/in_systm.h>
@@ -95,7 +94,7 @@ static void abort_socket(struct c4iw_ep *ep);
 static void send_mpa_req(struct c4iw_ep *ep);
 static int send_mpa_reject(struct c4iw_ep *ep, const void *pdata, u8 plen);
 static int send_mpa_reply(struct c4iw_ep *ep, const void *pdata, u8 plen);
-static void close_complete_upcall(struct c4iw_ep *ep);
+static void close_complete_upcall(struct c4iw_ep *ep, int status);
 static int abort_connection(struct c4iw_ep *ep);
 static void peer_close_upcall(struct c4iw_ep *ep);
 static void peer_abort_upcall(struct c4iw_ep *ep);
@@ -367,7 +366,7 @@ process_peer_close(struct c4iw_ep *ep)
 						C4IW_QP_ATTR_NEXT_STATE, &attrs, 1);
 			}
 			close_socket(&ep->com, 0);
-			close_complete_upcall(ep);
+			close_complete_upcall(ep, 0);
 			__state_set(&ep->com, DEAD);
 			release = 1;
 			disconnect = 0;
@@ -475,7 +474,7 @@ process_conn_error(struct c4iw_ep *ep)
 	if (state != ABORTING) {
 
 		CTR2(KTR_IW_CXGBE, "%s:pce1 %p", __func__, ep);
-		close_socket(&ep->com, 0);
+		close_socket(&ep->com, 1);
 		state_set(&ep->com, DEAD);
 		c4iw_put_ep(&ep->com);
 	}
@@ -529,7 +528,7 @@ process_close_complete(struct c4iw_ep *ep)
 				CTR2(KTR_IW_CXGBE, "%s:pcc4 %p", __func__, ep);
 				close_socket(&ep->com, 0);
 			}
-			close_complete_upcall(ep);
+			close_complete_upcall(ep, 0);
 			__state_set(&ep->com, DEAD);
 			release = 1;
 			break;
@@ -769,88 +768,72 @@ process_socket_event(struct c4iw_ep *ep)
 SYSCTL_NODE(_hw, OID_AUTO, iw_cxgbe, CTLFLAG_RD, 0, "iw_cxgbe driver parameters");
 
 int db_delay_usecs = 1;
-TUNABLE_INT("hw.iw_cxgbe.db_delay_usecs", &db_delay_usecs);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, db_delay_usecs, CTLFLAG_RW, &db_delay_usecs, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, db_delay_usecs, CTLFLAG_RWTUN, &db_delay_usecs, 0,
 		"Usecs to delay awaiting db fifo to drain");
 
 static int dack_mode = 1;
-TUNABLE_INT("hw.iw_cxgbe.dack_mode", &dack_mode);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, dack_mode, CTLFLAG_RW, &dack_mode, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, dack_mode, CTLFLAG_RWTUN, &dack_mode, 0,
 		"Delayed ack mode (default = 1)");
 
 int c4iw_max_read_depth = 8;
-TUNABLE_INT("hw.iw_cxgbe.c4iw_max_read_depth", &c4iw_max_read_depth);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, c4iw_max_read_depth, CTLFLAG_RW, &c4iw_max_read_depth, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, c4iw_max_read_depth, CTLFLAG_RWTUN, &c4iw_max_read_depth, 0,
 		"Per-connection max ORD/IRD (default = 8)");
 
 static int enable_tcp_timestamps;
-TUNABLE_INT("hw.iw_cxgbe.enable_tcp_timestamps", &enable_tcp_timestamps);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, enable_tcp_timestamps, CTLFLAG_RW, &enable_tcp_timestamps, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, enable_tcp_timestamps, CTLFLAG_RWTUN, &enable_tcp_timestamps, 0,
 		"Enable tcp timestamps (default = 0)");
 
 static int enable_tcp_sack;
-TUNABLE_INT("hw.iw_cxgbe.enable_tcp_sack", &enable_tcp_sack);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, enable_tcp_sack, CTLFLAG_RW, &enable_tcp_sack, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, enable_tcp_sack, CTLFLAG_RWTUN, &enable_tcp_sack, 0,
 		"Enable tcp SACK (default = 0)");
 
 static int enable_tcp_window_scaling = 1;
-TUNABLE_INT("hw.iw_cxgbe.enable_tcp_window_scaling", &enable_tcp_window_scaling);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, enable_tcp_window_scaling, CTLFLAG_RW, &enable_tcp_window_scaling, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, enable_tcp_window_scaling, CTLFLAG_RWTUN, &enable_tcp_window_scaling, 0,
 		"Enable tcp window scaling (default = 1)");
 
 int c4iw_debug = 1;
-TUNABLE_INT("hw.iw_cxgbe.c4iw_debug", &c4iw_debug);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, c4iw_debug, CTLFLAG_RW, &c4iw_debug, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, c4iw_debug, CTLFLAG_RWTUN, &c4iw_debug, 0,
 		"Enable debug logging (default = 0)");
 
 static int peer2peer;
-TUNABLE_INT("hw.iw_cxgbe.peer2peer", &peer2peer);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, peer2peer, CTLFLAG_RW, &peer2peer, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, peer2peer, CTLFLAG_RWTUN, &peer2peer, 0,
 		"Support peer2peer ULPs (default = 0)");
 
 static int p2p_type = FW_RI_INIT_P2PTYPE_READ_REQ;
-TUNABLE_INT("hw.iw_cxgbe.p2p_type", &p2p_type);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, p2p_type, CTLFLAG_RW, &p2p_type, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, p2p_type, CTLFLAG_RWTUN, &p2p_type, 0,
 		"RDMAP opcode to use for the RTR message: 1 = RDMA_READ 0 = RDMA_WRITE (default 1)");
 
 static int ep_timeout_secs = 60;
-TUNABLE_INT("hw.iw_cxgbe.ep_timeout_secs", &ep_timeout_secs);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, ep_timeout_secs, CTLFLAG_RW, &ep_timeout_secs, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, ep_timeout_secs, CTLFLAG_RWTUN, &ep_timeout_secs, 0,
 		"CM Endpoint operation timeout in seconds (default = 60)");
 
 static int mpa_rev = 1;
-TUNABLE_INT("hw.iw_cxgbe.mpa_rev", &mpa_rev);
 #ifdef IW_CM_MPAV2
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, mpa_rev, CTLFLAG_RW, &mpa_rev, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, mpa_rev, CTLFLAG_RWTUN, &mpa_rev, 0,
 		"MPA Revision, 0 supports amso1100, 1 is RFC0544 spec compliant, 2 is IETF MPA Peer Connect Draft compliant (default = 1)");
 #else
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, mpa_rev, CTLFLAG_RW, &mpa_rev, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, mpa_rev, CTLFLAG_RWTUN, &mpa_rev, 0,
 		"MPA Revision, 0 supports amso1100, 1 is RFC0544 spec compliant (default = 1)");
 #endif
 
 static int markers_enabled;
-TUNABLE_INT("hw.iw_cxgbe.markers_enabled", &markers_enabled);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, markers_enabled, CTLFLAG_RW, &markers_enabled, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, markers_enabled, CTLFLAG_RWTUN, &markers_enabled, 0,
 		"Enable MPA MARKERS (default(0) = disabled)");
 
 static int crc_enabled = 1;
-TUNABLE_INT("hw.iw_cxgbe.crc_enabled", &crc_enabled);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, crc_enabled, CTLFLAG_RW, &crc_enabled, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, crc_enabled, CTLFLAG_RWTUN, &crc_enabled, 0,
 		"Enable MPA CRC (default(1) = enabled)");
 
 static int rcv_win = 256 * 1024;
-TUNABLE_INT("hw.iw_cxgbe.rcv_win", &rcv_win);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, rcv_win, CTLFLAG_RW, &rcv_win, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, rcv_win, CTLFLAG_RWTUN, &rcv_win, 0,
 		"TCP receive window in bytes (default = 256KB)");
 
 static int snd_win = 128 * 1024;
-TUNABLE_INT("hw.iw_cxgbe.snd_win", &snd_win);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, snd_win, CTLFLAG_RW, &snd_win, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, snd_win, CTLFLAG_RWTUN, &snd_win, 0,
 		"TCP send window in bytes (default = 128KB)");
 
 int db_fc_threshold = 2000;
-TUNABLE_INT("hw.iw_cxgbe.db_fc_threshold", &db_fc_threshold);
-SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, db_fc_threshold, CTLFLAG_RW, &db_fc_threshold, 0,
+SYSCTL_INT(_hw_iw_cxgbe, OID_AUTO, db_fc_threshold, CTLFLAG_RWTUN, &db_fc_threshold, 0,
 		"QP count/threshold that triggers automatic");
 
 static void
@@ -1209,13 +1192,14 @@ static int send_mpa_reply(struct c4iw_ep *ep, const void *pdata, u8 plen)
 
 
 
-static void close_complete_upcall(struct c4iw_ep *ep)
+static void close_complete_upcall(struct c4iw_ep *ep, int status)
 {
 	struct iw_cm_event event;
 
 	CTR2(KTR_IW_CXGBE, "%s:ccuB %p", __func__, ep);
 	memset(&event, 0, sizeof(event));
 	event.event = IW_CM_EVENT_CLOSE;
+	event.status = status;
 
 	if (ep->com.cm_id) {
 
@@ -1234,7 +1218,7 @@ static int abort_connection(struct c4iw_ep *ep)
 	int err;
 
 	CTR2(KTR_IW_CXGBE, "%s:abB %p", __func__, ep);
-	close_complete_upcall(ep);
+	close_complete_upcall(ep, -ECONNRESET);
 	state_set(&ep->com, ABORTING);
 	abort_socket(ep);
 	err = close_socket(&ep->com, 0);
@@ -2101,14 +2085,15 @@ int c4iw_connect(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 		CTR2(KTR_IW_CXGBE, "%s:cc7 %p", __func__, ep);
 		printk(KERN_ERR MOD "%s - cannot find route.\n", __func__);
 		err = -EHOSTUNREACH;
-		goto fail3;
+		goto fail2;
 	}
 
-
-	if (!(rt->rt_ifp->if_flags & IFCAP_TOE)) {
+	if (!(rt->rt_ifp->if_capenable & IFCAP_TOE)) {
 
 		CTR2(KTR_IW_CXGBE, "%s:cc8 %p", __func__, ep);
 		printf("%s - interface not TOE capable.\n", __func__);
+		close_socket(&ep->com, 0);
+		err = -ENOPROTOOPT;
 		goto fail3;
 	}
 	tdev = TOEDEV(rt->rt_ifp);
@@ -2228,7 +2213,7 @@ int c4iw_ep_disconnect(struct c4iw_ep *ep, int abrupt, gfp_t gfp)
 
 		CTR2(KTR_IW_CXGBE, "%s:ced1 %p", __func__, ep);
 		fatal = 1;
-		close_complete_upcall(ep);
+		close_complete_upcall(ep, -EIO);
 		ep->com.state = DEAD;
 	}
 	CTR3(KTR_IW_CXGBE, "%s:ced2 %p %s", __func__, ep,

@@ -143,6 +143,7 @@ SUBDIR=	alias \
 	rwall \
 	script \
 	sed \
+	send-pr \
 	seq \
 	shar \
 	showmount \
@@ -162,6 +163,7 @@ SUBDIR=	alias \
 	${_tests} \
 	tftp \
 	time \
+	timeout \
 	tip \
 	top \
 	touch \
@@ -194,6 +196,7 @@ SUBDIR=	alias \
 	xargs \
 	xinstall \
 	${_xlint} \
+	xo \
 	${_xstr} \
 	xz \
 	xzdec \
@@ -263,10 +266,6 @@ SUBDIR+=	compile_et
 .if ${MK_LDNS_UTILS} != "no"
 SUBDIR+=	drill
 SUBDIR+=	host
-.endif
-
-.if ${MK_LIBTHR} != "no"
-SUBDIR+=	csup
 .endif
 
 .if ${MK_LOCATE} != "no"
@@ -362,7 +361,7 @@ SUBDIR+=	yacc
 SUBDIR+=	vi
 .endif
 
-.if ${MK_VT_SUPPORT} != "no"
+.if ${MK_VT} != "no"
 SUBDIR+=	vtfontcvt
 .endif
 

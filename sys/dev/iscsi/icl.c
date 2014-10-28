@@ -26,13 +26,15 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
  */
 
 /*
  * iSCSI Common Layer.  It's used by both the initiator and target to send
  * and receive iSCSI PDUs.
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/capsicum.h>
@@ -56,29 +58,24 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
-#include "icl.h"
-#include "iscsi_proto.h"
+#include <dev/iscsi/icl.h>
+#include <dev/iscsi/iscsi_proto.h>
 
 SYSCTL_NODE(_kern, OID_AUTO, icl, CTLFLAG_RD, 0, "iSCSI Common Layer");
 static int debug = 1;
-TUNABLE_INT("kern.icl.debug", &debug);
 SYSCTL_INT(_kern_icl, OID_AUTO, debug, CTLFLAG_RWTUN,
     &debug, 0, "Enable debug messages");
 static int coalesce = 1;
-TUNABLE_INT("kern.icl.coalesce", &coalesce);
 SYSCTL_INT(_kern_icl, OID_AUTO, coalesce, CTLFLAG_RWTUN,
     &coalesce, 0, "Try to coalesce PDUs before sending");
 static int partial_receive_len = 128 * 1024;
-TUNABLE_INT("kern.icl.partial_receive_len", &partial_receive_len);
 SYSCTL_INT(_kern_icl, OID_AUTO, partial_receive_len, CTLFLAG_RWTUN,
     &partial_receive_len, 0, "Minimum read size for partially received "
     "data segment");
 static int sendspace = 1048576;
-TUNABLE_INT("kern.icl.sendspace", &sendspace);
 SYSCTL_INT(_kern_icl, OID_AUTO, sendspace, CTLFLAG_RWTUN,
     &sendspace, 0, "Default send socket buffer size");
 static int recvspace = 1048576;
-TUNABLE_INT("kern.icl.recvspace", &recvspace);
 SYSCTL_INT(_kern_icl, OID_AUTO, recvspace, CTLFLAG_RWTUN,
     &recvspace, 0, "Default receive socket buffer size");
 
@@ -669,7 +666,10 @@ icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
 	}
 
 	if (error != 0) {
-		icl_pdu_free(request);
+		/*
+		 * Don't free the PDU; it's pointed to by ic->ic_receive_pdu
+		 * and will get freed in icl_conn_close().
+		 */
 		icl_conn_fail(ic);
 	}
 
@@ -771,6 +771,7 @@ icl_receive_thread(void *arg)
 
 	ICL_CONN_LOCK(ic);
 	ic->ic_receive_running = false;
+	cv_signal(&ic->ic_send_cv);
 	ICL_CONN_UNLOCK(ic);
 	kthread_exit();
 }
@@ -872,8 +873,6 @@ icl_conn_send_pdus(struct icl_conn *ic, struct icl_pdu_stailq *queue)
 	SOCKBUF_UNLOCK(&so->so_snd);
 
 	while (!STAILQ_EMPTY(queue)) {
-		if (ic->ic_disconnecting)
-			return;
 		request = STAILQ_FIRST(queue);
 		size = icl_pdu_size(request);
 		if (available < size) {
@@ -970,11 +969,6 @@ icl_send_thread(void *arg)
 	ic->ic_send_running = true;
 
 	for (;;) {
-		if (ic->ic_disconnecting) {
-			//ICL_DEBUG("terminating");
-			break;
-		}
-
 		for (;;) {
 			/*
 			 * If the local queue is empty, populate it from
@@ -1013,6 +1007,11 @@ icl_send_thread(void *arg)
 			break;
 		}
 
+		if (ic->ic_disconnecting) {
+			//ICL_DEBUG("terminating");
+			break;
+		}
+
 		cv_wait(&ic->ic_send_cv, ic->ic_lock);
 	}
 
@@ -1023,6 +1022,7 @@ icl_send_thread(void *arg)
 	STAILQ_CONCAT(&ic->ic_to_send, &queue);
 
 	ic->ic_send_running = false;
+	cv_signal(&ic->ic_send_cv);
 	ICL_CONN_UNLOCK(ic);
 	kthread_exit();
 }
@@ -1296,21 +1296,6 @@ icl_conn_handoff(struct icl_conn *ic, int fd)
 }
 
 void
-icl_conn_shutdown(struct icl_conn *ic)
-{
-	ICL_CONN_LOCK_ASSERT_NOT(ic);
-
-	ICL_CONN_LOCK(ic);
-	if (ic->ic_socket == NULL) {
-		ICL_CONN_UNLOCK(ic);
-		return;
-	}
-	ICL_CONN_UNLOCK(ic);
-
-	soshutdown(ic->ic_socket, SHUT_RDWR);
-}
-
-void
 icl_conn_close(struct icl_conn *ic)
 {
 	struct icl_pdu *pdu;
@@ -1342,15 +1327,11 @@ icl_conn_close(struct icl_conn *ic)
 	/*
 	 * Wake up the threads, so they can properly terminate.
 	 */
-	cv_signal(&ic->ic_receive_cv);
-	cv_signal(&ic->ic_send_cv);
 	while (ic->ic_receive_running || ic->ic_send_running) {
 		//ICL_DEBUG("waiting for send/receive threads to terminate");
-		ICL_CONN_UNLOCK(ic);
 		cv_signal(&ic->ic_receive_cv);
 		cv_signal(&ic->ic_send_cv);
-		pause("icl_close", 1 * hz);
-		ICL_CONN_LOCK(ic);
+		cv_wait(&ic->ic_send_cv, ic->ic_lock);
 	}
 	//ICL_DEBUG("send/receive threads terminated");
 

@@ -26,8 +26,10 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #include <assert.h>
 #include <stdint.h>
@@ -35,6 +37,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <netinet/in.h>
+#include <netdb.h>
+#include <sys/socket.h>
 
 #include "ctld.h"
 #include "iscsi_proto.h"
@@ -155,13 +159,58 @@ logout_new_response(struct pdu *request)
 	return (response);
 }
 
+static void
+discovery_add_target(struct keys *response_keys, const struct target *targ)
+{
+	struct portal *portal;
+	char *buf;
+	char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+	struct addrinfo *ai;
+	int ret;
+
+	keys_add(response_keys, "TargetName", targ->t_name);
+	TAILQ_FOREACH(portal, &targ->t_portal_group->pg_portals, p_next) {
+		ai = portal->p_ai;
+		ret = getnameinfo(ai->ai_addr, ai->ai_addrlen,
+		    hbuf, sizeof(hbuf), sbuf, sizeof(sbuf),
+		    NI_NUMERICHOST | NI_NUMERICSERV);
+		if (ret != 0) {
+			log_warnx("getnameinfo: %s", gai_strerror(ret));
+			continue;
+		}
+		switch (ai->ai_addr->sa_family) {
+		case AF_INET:
+			if (strcmp(hbuf, "0.0.0.0") == 0)
+				continue;
+			ret = asprintf(&buf, "%s:%s,%d", hbuf, sbuf,
+			    targ->t_portal_group->pg_tag);
+			break;
+		case AF_INET6:
+			if (strcmp(hbuf, "::") == 0)
+				continue;
+			ret = asprintf(&buf, "[%s]:%s,%d", hbuf, sbuf,
+			    targ->t_portal_group->pg_tag);
+			break;
+		default:
+			continue;
+		}
+		if (ret <= 0)
+		    log_err(1, "asprintf");
+		keys_add(response_keys, "TargetAddress", buf);
+		free(buf);
+	}
+}
+
 void
 discovery(struct connection *conn)
 {
 	struct pdu *request, *response;
 	struct keys *request_keys, *response_keys;
-	struct target *targ;
+	const struct portal_group *pg;
+	const struct target *targ;
 	const char *send_targets;
+
+	pg = conn->conn_portal->p_portal_group;
 
 	log_debugx("beginning discovery session; waiting for Text PDU");
 	request = text_receive(conn);
@@ -176,27 +225,22 @@ discovery(struct connection *conn)
 	response_keys = keys_new();
 
 	if (strcmp(send_targets, "All") == 0) {
-		TAILQ_FOREACH(targ,
-		    &conn->conn_portal->p_portal_group->pg_conf->conf_targets,
-		    t_next) {
-			if (targ->t_portal_group !=
-			    conn->conn_portal->p_portal_group) {
+		TAILQ_FOREACH(targ, &pg->pg_conf->conf_targets, t_next) {
+			if (targ->t_portal_group != pg) {
 				log_debugx("not returning target \"%s\"; "
 				    "belongs to a different portal group",
 				    targ->t_name);
 				continue;
 			}
-			keys_add(response_keys, "TargetName", targ->t_name);
+			discovery_add_target(response_keys, targ);
 		}
 	} else {
-		targ = target_find(conn->conn_portal->p_portal_group->pg_conf,
-		    send_targets);
+		targ = target_find(pg->pg_conf, send_targets);
 		if (targ == NULL) {
 			log_debugx("initiator requested information on unknown "
 			    "target \"%s\"; returning nothing", send_targets);
-		} else {
-			keys_add(response_keys, "TargetName", targ->t_name);
-		}
+		} else
+			discovery_add_target(response_keys, targ);
 	}
 	keys_save(response_keys, response);
 

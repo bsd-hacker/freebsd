@@ -102,6 +102,8 @@ xhci_pci_match(device_t self)
 	case 0x10421b21:
 		return ("ASMedia ASM1042 USB 3.0 controller");
 
+	case 0x0f358086:
+		return ("Intel Intel BayTrail USB 3.0 controller");
 	case 0x9c318086:
 	case 0x1e318086:
 		return ("Intel Panther Point USB 3.0 controller");
@@ -150,6 +152,8 @@ static int
 xhci_pci_port_route(device_t self, uint32_t set, uint32_t clear)
 {
 	uint32_t temp;
+	uint32_t usb3_mask;
+	uint32_t usb2_mask;
 
 	temp = pci_read_config(self, PCI_XHCI_INTEL_USB3_PSSEN, 4) |
 	    pci_read_config(self, PCI_XHCI_INTEL_XUSB2PR, 4);
@@ -157,8 +161,12 @@ xhci_pci_port_route(device_t self, uint32_t set, uint32_t clear)
 	temp |= set;
 	temp &= ~clear;
 
-	pci_write_config(self, PCI_XHCI_INTEL_USB3_PSSEN, temp, 4);
-	pci_write_config(self, PCI_XHCI_INTEL_XUSB2PR, temp, 4);
+	/* Don't set bits which the hardware doesn't support */
+	usb3_mask = pci_read_config(self, PCI_XHCI_INTEL_USB3PRM, 4);
+	usb2_mask = pci_read_config(self, PCI_XHCI_INTEL_USB2PRM, 4);
+
+	pci_write_config(self, PCI_XHCI_INTEL_USB3_PSSEN, temp & usb3_mask, 4);
+	pci_write_config(self, PCI_XHCI_INTEL_XUSB2PR, temp & usb2_mask, 4);
 
 	device_printf(self, "Port routing mask set to 0x%08x\n", temp);
 
@@ -238,6 +246,7 @@ xhci_pci_attach(device_t self)
 
 	/* On Intel chipsets reroute ports from EHCI to XHCI controller. */
 	switch (pci_get_devid(self)) {
+	case 0x0f358086:	/* BayTrail */
 	case 0x9c318086:	/* Panther Point */
 	case 0x1e318086:	/* Panther Point */
 	case 0x8c318086:	/* Lynx Point */

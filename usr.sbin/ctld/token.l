@@ -67,6 +67,9 @@ maxproc			{ return MAXPROC; }
 option			{ return OPTION; }
 path			{ return PATH; }
 pidfile			{ return PIDFILE; }
+isns-server		{ return ISNS_SERVER; }
+isns-period		{ return ISNS_PERIOD; }
+isns-timeout		{ return ISNS_TIMEOUT; }
 portal-group		{ return PORTAL_GROUP; }
 serial			{ return SERIAL; }
 size			{ return SIZE; }
@@ -74,8 +77,9 @@ target			{ return TARGET; }
 timeout			{ return TIMEOUT; }
 [0-9]+[kKmMgGtTpPeE]?	{ if (expand_number(yytext, &yylval.num) == 0)
 				return NUM;
-			  else
-				return STR;
+			  else {
+				yylval.str = strdup(yytext); return STR;
+			  }
 			}
 \"[^"]+\"		{ yylval.str = strndup(yytext + 1,
 			    strlen(yytext) - 2); return STR; }

@@ -87,7 +87,7 @@
  * largest physical address that is accessible by ISA DMA is split
  * into two PHYSSEG entries. 
  */
-#define	VM_PHYSSEG_MAX		31
+#define	VM_PHYSSEG_MAX		63
 
 /*
  * Create three free page pools: VM_FREEPOOL_DEFAULT is the default pool
@@ -175,8 +175,18 @@
 #define	VM_MAX_ADDRESS		UPT_MAX_ADDRESS
 #define	VM_MIN_ADDRESS		(0)
 
-#define	PHYS_TO_DMAP(x)		((x) | DMAP_MIN_ADDRESS)
-#define	DMAP_TO_PHYS(x)		((x) & ~DMAP_MIN_ADDRESS)
+#define	PHYS_TO_DMAP(x)	({						\
+	KASSERT((x) < dmaplimit,					\
+	    ("physical address %#jx not covered by the DMAP",		\
+	    (uintmax_t)x));						\
+	(x) | DMAP_MIN_ADDRESS; })
+
+#define	DMAP_TO_PHYS(x)	({						\
+	KASSERT((x) < (DMAP_MIN_ADDRESS + dmaplimit) &&			\
+	    (x) >= DMAP_MIN_ADDRESS,					\
+	    ("virtual address %#jx not covered by the DMAP",		\
+	    (uintmax_t)x));						\
+	(x) & ~DMAP_MIN_ADDRESS; })
 
 /*
  * How many physical pages per kmem arena virtual page.

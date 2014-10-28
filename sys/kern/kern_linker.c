@@ -66,9 +66,8 @@ __FBSDID("$FreeBSD$");
 
 #ifdef KLD_DEBUG
 int kld_debug = 0;
-SYSCTL_INT(_debug, OID_AUTO, kld_debug, CTLFLAG_RW | CTLFLAG_TUN,
+SYSCTL_INT(_debug, OID_AUTO, kld_debug, CTLFLAG_RWTUN,
     &kld_debug, 0, "Set various levels of KLD debug");
-TUNABLE_INT("debug.kld_debug", &kld_debug);
 #endif
 
 /*
@@ -293,10 +292,10 @@ linker_file_register_sysctls(linker_file_t lf)
 		return;
 
 	sx_xunlock(&kld_sx);
-	sysctl_lock();
+	sysctl_xlock();
 	for (oidp = start; oidp < stop; oidp++)
 		sysctl_register_oid(*oidp);
-	sysctl_unlock();
+	sysctl_xunlock();
 	sx_xlock(&kld_sx);
 }
 
@@ -314,10 +313,10 @@ linker_file_unregister_sysctls(linker_file_t lf)
 		return;
 
 	sx_xunlock(&kld_sx);
-	sysctl_lock();
+	sysctl_xlock();
 	for (oidp = start; oidp < stop; oidp++)
 		sysctl_unregister_oid(*oidp);
-	sysctl_unlock();
+	sysctl_xunlock();
 	sx_xlock(&kld_sx);
 }
 
@@ -574,6 +573,8 @@ linker_make_file(const char *pathname, linker_class_t lc)
 	lf = (linker_file_t)kobj_create((kobj_class_t)lc, M_LINKER, M_WAITOK);
 	if (lf == NULL)
 		return (NULL);
+	lf->ctors_addr = 0;
+	lf->ctors_size = 0;
 	lf->refs = 1;
 	lf->userrefs = 0;
 	lf->flags = 0;
@@ -985,9 +986,9 @@ linker_search_symbol_name(caddr_t value, char *buf, u_int buflen,
 {
 	int error;
 
-	sx_xlock(&kld_sx);
+	sx_slock(&kld_sx);
 	error = linker_debug_search_symbol_name(value, buf, buflen, offset);
-	sx_xunlock(&kld_sx);
+	sx_sunlock(&kld_sx);
 	return (error);
 }
 
@@ -1643,7 +1644,7 @@ SYSINIT(preload, SI_SUB_KLD, SI_ORDER_MIDDLE, linker_preload, 0);
 static char linker_hintfile[] = "linker.hints";
 static char linker_path[MAXPATHLEN] = "/boot/kernel;/boot/modules";
 
-SYSCTL_STRING(_kern, OID_AUTO, module_path, CTLFLAG_RW, linker_path,
+SYSCTL_STRING(_kern, OID_AUTO, module_path, CTLFLAG_RWTUN, linker_path,
     sizeof(linker_path), "module load search path");
 
 TUNABLE_STR("module_path", linker_path, sizeof(linker_path));

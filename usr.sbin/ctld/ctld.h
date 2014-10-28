@@ -35,10 +35,11 @@
 #include <sys/queue.h>
 #ifdef ICL_KERNEL_PROXY
 #include <sys/types.h>
-#include <sys/socket.h>
 #endif
+#include <sys/socket.h>
 #include <stdbool.h>
 #include <libutil.h>
+#include <openssl/md5.h>
 
 #define	DEFAULT_CONFIG_PATH		"/etc/ctl.conf"
 #define	DEFAULT_PIDFILE			"/var/run/ctld.pid"
@@ -67,6 +68,8 @@ struct auth_portal {
 	TAILQ_ENTRY(auth_portal)	ap_next;
 	struct auth_group		*ap_auth_group;
 	char				*ap_initator_portal;
+	struct sockaddr_storage		ap_sa;
+	int				ap_mask;
 };
 
 #define	AG_TYPE_UNKNOWN			0
@@ -143,11 +146,21 @@ struct target {
 	char				*t_alias;
 };
 
+struct isns {
+	TAILQ_ENTRY(isns)		i_next;
+	struct conf			*i_conf;
+	char				*i_addr;
+	struct addrinfo			*i_ai;
+};
+
 struct conf {
 	char				*conf_pidfile_path;
 	TAILQ_HEAD(, target)		conf_targets;
 	TAILQ_HEAD(, auth_group)	conf_auth_groups;
 	TAILQ_HEAD(, portal_group)	conf_portal_groups;
+	TAILQ_HEAD(, isns)		conf_isns;
+	int				conf_isns_period;
+	int				conf_isns_timeout;
 	int				conf_debug;
 	int				conf_timeout;
 	int				conf_maxproc;
@@ -178,6 +191,8 @@ struct connection {
 	char			*conn_initiator_name;
 	char			*conn_initiator_addr;
 	char			*conn_initiator_alias;
+	uint8_t			conn_initiator_isid[6];
+	struct sockaddr_storage	conn_initiator_sa;
 	uint32_t		conn_cmdsn;
 	uint32_t		conn_statsn;
 	size_t			conn_max_data_segment_length;
@@ -202,6 +217,35 @@ struct keys {
 	char		*keys_data;
 	size_t		keys_data_len;
 };
+
+#define	CHAP_CHALLENGE_LEN	1024
+
+struct chap {
+	unsigned char	chap_id;
+	char		chap_challenge[CHAP_CHALLENGE_LEN];
+	char		chap_response[MD5_DIGEST_LENGTH];
+};
+
+struct rchap {
+	char		*rchap_secret;
+	unsigned char	rchap_id;
+	void		*rchap_challenge;
+	size_t		rchap_challenge_len;
+};
+
+struct chap		*chap_new(void);
+char			*chap_get_id(const struct chap *chap);
+char			*chap_get_challenge(const struct chap *chap);
+int			chap_receive(struct chap *chap, const char *response);
+int			chap_authenticate(struct chap *chap,
+			    const char *secret);
+void			chap_delete(struct chap *chap);
+
+struct rchap		*rchap_new(const char *secret);
+int			rchap_receive(struct rchap *rchap,
+			    const char *id, const char *challenge);
+char			*rchap_get_response(struct rchap *rchap);
+void			rchap_delete(struct rchap *rchap);
 
 struct conf		*conf_new(void);
 struct conf		*conf_new_from_file(const char *path);
@@ -229,12 +273,16 @@ const struct auth_name	*auth_name_new(struct auth_group *ag,
 bool			auth_name_defined(const struct auth_group *ag);
 const struct auth_name	*auth_name_find(const struct auth_group *ag,
 			    const char *initiator_name);
+int			auth_name_check(const struct auth_group *ag,
+			    const char *initiator_name);
 
 const struct auth_portal	*auth_portal_new(struct auth_group *ag,
 				    const char *initiator_portal);
 bool			auth_portal_defined(const struct auth_group *ag);
 const struct auth_portal	*auth_portal_find(const struct auth_group *ag,
-				    const char *initiator_portal);
+				    const struct sockaddr_storage *sa);
+int				auth_portal_check(const struct auth_group *ag,
+				    const struct sockaddr_storage *sa);
 
 struct portal_group	*portal_group_new(struct conf *conf, const char *name);
 void			portal_group_delete(struct portal_group *pg);
@@ -242,6 +290,12 @@ struct portal_group	*portal_group_find(const struct conf *conf,
 			    const char *name);
 int			portal_group_add_listen(struct portal_group *pg,
 			    const char *listen, bool iser);
+
+int			isns_new(struct conf *conf, const char *addr);
+void			isns_delete(struct isns *is);
+void			isns_register(struct isns *isns, struct isns *oldisns);
+void			isns_check(struct isns *isns);
+void			isns_deregister(struct isns *isns);
 
 struct target		*target_new(struct conf *conf, const char *name);
 void			target_delete(struct target *target);
@@ -272,8 +326,8 @@ int			kernel_lun_add(struct lun *lun);
 int			kernel_lun_resize(struct lun *lun);
 int			kernel_lun_remove(struct lun *lun);
 void			kernel_handoff(struct connection *conn);
-int			kernel_port_on(void);
-int			kernel_port_off(void);
+int			kernel_port_add(struct target *targ);
+int			kernel_port_remove(struct target *targ);
 void			kernel_capsicate(void);
 
 #ifdef ICL_KERNEL_PROXY
@@ -320,6 +374,7 @@ void			log_debugx(const char *, ...) __printflike(1, 2);
 
 char			*checked_strdup(const char *);
 bool			valid_iscsi_name(const char *name);
+void			set_timeout(int timeout, int fatal);
 bool			timed_out(void);
 
 #endif /* !CTLD_H */

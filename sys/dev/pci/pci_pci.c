@@ -117,7 +117,6 @@ DRIVER_MODULE(pcib, pci, pcib_driver, pcib_devclass, NULL, NULL);
 SYSCTL_DECL(_hw_pci);
 
 static int pci_clear_pcib;
-TUNABLE_INT("hw.pci.clear_pcib", &pci_clear_pcib);
 SYSCTL_INT(_hw_pci, OID_AUTO, clear_pcib, CTLFLAG_RDTUN, &pci_clear_pcib, 0,
     "Clear firmware-assigned resources for PCI-PCI bridge I/O windows.");
 
@@ -978,14 +977,14 @@ pcib_attach_common(device_t dev)
 	{
 	    char *cp;
 
-	    if ((cp = getenv("smbios.planar.maker")) == NULL)
+	    if ((cp = kern_getenv("smbios.planar.maker")) == NULL)
 		break;
 	    if (strncmp(cp, "Compal", 6) != 0) {
 		freeenv(cp);
 		break;
 	    }
 	    freeenv(cp);
-	    if ((cp = getenv("smbios.planar.product")) == NULL)
+	    if ((cp = kern_getenv("smbios.planar.product")) == NULL)
 		break;
 	    if (strncmp(cp, "08A0", 4) != 0) {
 		freeenv(cp);

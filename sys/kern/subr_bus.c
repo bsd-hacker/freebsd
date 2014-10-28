@@ -54,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/uio.h>
 #include <sys/bus.h>
 #include <sys/interrupt.h>
+#include <sys/cpuset.h>
 
 #include <net/vnet.h>
 
@@ -63,7 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma.h>
 
 SYSCTL_NODE(_hw, OID_AUTO, bus, CTLFLAG_RW, NULL, NULL);
-SYSCTL_NODE(, OID_AUTO, dev, CTLFLAG_RW, NULL, NULL);
+SYSCTL_ROOT_NODE(OID_AUTO, dev, CTLFLAG_RW, NULL, NULL);
 
 /*
  * Used to attach drivers to devclasses.
@@ -135,6 +136,7 @@ struct device {
 #define	DF_DONENOMATCH	0x20		/* don't execute DEVICE_NOMATCH again */
 #define	DF_EXTERNALSOFTC 0x40		/* softc not allocated by us */
 #define	DF_REBID	0x80		/* Can rebid after attach */
+#define	DF_SUSPENDED	0x100		/* Device is suspended. */
 	u_int	order;			/**< order from device_add_child_ordered() */
 	void	*ivars;			/**< instance variables  */
 	void	*softc;			/**< current driver's variables  */
@@ -149,9 +151,8 @@ static MALLOC_DEFINE(M_BUS_SC, "bus-sc", "Bus data structures, softc");
 #ifdef BUS_DEBUG
 
 static int bus_debug = 1;
-TUNABLE_INT("bus.debug", &bus_debug);
-SYSCTL_INT(_debug, OID_AUTO, bus_debug, CTLFLAG_RW, &bus_debug, 0,
-    "Debug bus code");
+SYSCTL_INT(_debug, OID_AUTO, bus_debug, CTLFLAG_RWTUN, &bus_debug, 0,
+    "Bus debug level");
 
 #define PDEBUG(a)	if (bus_debug) {printf("%s:%d: ", __func__, __LINE__), printf a; printf("\n");}
 #define DEVICENAME(d)	((d)? device_get_name(d): "no device")
@@ -357,16 +358,14 @@ device_sysctl_fini(device_t dev)
 
 /* Deprecated way to adjust queue length */
 static int sysctl_devctl_disable(SYSCTL_HANDLER_ARGS);
-/* XXX Need to support old-style tunable hw.bus.devctl_disable" */
-SYSCTL_PROC(_hw_bus, OID_AUTO, devctl_disable, CTLTYPE_INT | CTLFLAG_RW |
+SYSCTL_PROC(_hw_bus, OID_AUTO, devctl_disable, CTLTYPE_INT | CTLFLAG_RWTUN |
     CTLFLAG_MPSAFE, NULL, 0, sysctl_devctl_disable, "I",
     "devctl disable -- deprecated");
 
 #define DEVCTL_DEFAULT_QUEUE_LEN 1000
 static int sysctl_devctl_queue(SYSCTL_HANDLER_ARGS);
 static int devctl_queue_length = DEVCTL_DEFAULT_QUEUE_LEN;
-TUNABLE_INT("hw.bus.devctl_queue", &devctl_queue_length);
-SYSCTL_PROC(_hw_bus, OID_AUTO, devctl_queue, CTLTYPE_INT | CTLFLAG_RW |
+SYSCTL_PROC(_hw_bus, OID_AUTO, devctl_queue, CTLTYPE_INT | CTLFLAG_RWTUN |
     CTLFLAG_MPSAFE, NULL, 0, sysctl_devctl_queue, "I", "devctl queue length");
 
 static d_open_t		devopen;
@@ -441,8 +440,6 @@ devopen(struct cdev *dev, int oflags, int devtype, struct thread *td)
 	}
 	/* move to init */
 	devsoftc.inuse = 1;
-	devsoftc.nonblock = 0;
-	devsoftc.async = 0;
 	mtx_unlock(&devsoftc.mtx);
 	return (0);
 }
@@ -453,6 +450,8 @@ devclose(struct cdev *dev, int fflag, int devtype, struct thread *td)
 
 	mtx_lock(&devsoftc.mtx);
 	devsoftc.inuse = 0;
+	devsoftc.nonblock = 0;
+	devsoftc.async = 0;
 	cv_broadcast(&devsoftc.cv);
 	funsetown(&devsoftc.sigio);
 	mtx_unlock(&devsoftc.mtx);
@@ -791,11 +790,12 @@ sysctl_devctl_disable(SYSCTL_HANDLER_ARGS)
 	struct dev_event_info *n1;
 	int dis, error;
 
-	dis = devctl_queue_length == 0;
+	dis = (devctl_queue_length == 0);
 	error = sysctl_handle_int(oidp, &dis, 0, req);
 	if (error || !req->newptr)
 		return (error);
-	mtx_lock(&devsoftc.mtx);
+	if (mtx_initialized(&devsoftc.mtx))
+		mtx_lock(&devsoftc.mtx);
 	if (dis) {
 		while (!TAILQ_EMPTY(&devsoftc.devq)) {
 			n1 = TAILQ_FIRST(&devsoftc.devq);
@@ -808,7 +808,8 @@ sysctl_devctl_disable(SYSCTL_HANDLER_ARGS)
 	} else {
 		devctl_queue_length = DEVCTL_DEFAULT_QUEUE_LEN;
 	}
-	mtx_unlock(&devsoftc.mtx);
+	if (mtx_initialized(&devsoftc.mtx))
+		mtx_unlock(&devsoftc.mtx);
 	return (0);
 }
 
@@ -824,7 +825,8 @@ sysctl_devctl_queue(SYSCTL_HANDLER_ARGS)
 		return (error);
 	if (q < 0)
 		return (EINVAL);
-	mtx_lock(&devsoftc.mtx);
+	if (mtx_initialized(&devsoftc.mtx))
+		mtx_lock(&devsoftc.mtx);
 	devctl_queue_length = q;
 	while (devsoftc.queued > devctl_queue_length) {
 		n1 = TAILQ_FIRST(&devsoftc.devq);
@@ -833,7 +835,8 @@ sysctl_devctl_queue(SYSCTL_HANDLER_ARGS)
 		free(n1, M_BUS);
 		devsoftc.queued--;
 	}
-	mtx_unlock(&devsoftc.mtx);
+	if (mtx_initialized(&devsoftc.mtx))
+		mtx_unlock(&devsoftc.mtx);
 	return (0);
 }
 
@@ -3300,7 +3303,10 @@ resource_list_alloc(struct resource_list *rl, device_t bus, device_t child,
 			rle->flags |= RLE_ALLOCATED;
 			return (rle->res);
 		}
-		panic("resource_list_alloc: resource entry is busy");
+		device_printf(bus,
+		    "resource entry %#x type %d for child %s is busy\n", *rid,
+		    type, device_get_nameunit(child));
+		return (NULL);
 	}
 
 	if (isdefault) {
@@ -3630,6 +3636,39 @@ bus_generic_shutdown(device_t dev)
 }
 
 /**
+ * @brief Default function for suspending a child device.
+ *
+ * This function is to be used by a bus's DEVICE_SUSPEND_CHILD().
+ */
+int
+bus_generic_suspend_child(device_t dev, device_t child)
+{
+	int	error;
+
+	error = DEVICE_SUSPEND(child);
+
+	if (error == 0)
+		dev->flags |= DF_SUSPENDED;
+
+	return (error);
+}
+
+/**
+ * @brief Default function for resuming a child device.
+ *
+ * This function is to be used by a bus's DEVICE_RESUME_CHILD().
+ */
+int
+bus_generic_resume_child(device_t dev, device_t child)
+{
+
+	DEVICE_RESUME(child);
+	dev->flags &= ~DF_SUSPENDED;
+
+	return (0);
+}
+
+/**
  * @brief Helper function for implementing DEVICE_SUSPEND()
  *
  * This function can be used to help implement the DEVICE_SUSPEND()
@@ -3645,12 +3684,12 @@ bus_generic_suspend(device_t dev)
 	device_t	child, child2;
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		error = DEVICE_SUSPEND(child);
+		error = BUS_SUSPEND_CHILD(dev, child);
 		if (error) {
 			for (child2 = TAILQ_FIRST(&dev->children);
 			     child2 && child2 != child;
 			     child2 = TAILQ_NEXT(child2, link))
-				DEVICE_RESUME(child2);
+				BUS_RESUME_CHILD(dev, child2);
 			return (error);
 		}
 	}
@@ -3669,7 +3708,7 @@ bus_generic_resume(device_t dev)
 	device_t	child;
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		DEVICE_RESUME(child);
+		BUS_RESUME_CHILD(dev, child);
 		/* if resume fails, there's nothing we can usefully do... */
 	}
 	return (0);
@@ -3716,6 +3755,25 @@ bus_print_child_footer(device_t dev, device_t child)
 /**
  * @brief Helper function for implementing BUS_PRINT_CHILD().
  *
+ * This function prints out the VM domain for the given device.
+ *
+ * @returns the number of characters printed
+ */
+int
+bus_print_child_domain(device_t dev, device_t child)
+{
+	int domain;
+
+	/* No domain? Don't print anything */
+	if (BUS_GET_DOMAIN(dev, child, &domain) != 0)
+		return (0);
+
+	return (printf(" numa-domain %d", domain));
+}
+
+/**
+ * @brief Helper function for implementing BUS_PRINT_CHILD().
+ *
  * This function simply calls bus_print_child_header() followed by
  * bus_print_child_footer().
  *
@@ -3727,6 +3785,7 @@ bus_generic_print_child(device_t dev, device_t child)
 	int	retval = 0;
 
 	retval += bus_print_child_header(dev, child);
+	retval += bus_print_child_domain(dev, child);
 	retval += bus_print_child_footer(dev, child);
 
 	return (retval);
@@ -4139,6 +4198,16 @@ int
 bus_generic_child_present(device_t dev, device_t child)
 {
 	return (BUS_CHILD_PRESENT(device_get_parent(dev), dev));
+}
+
+int
+bus_generic_get_domain(device_t dev, device_t child, int *domain)
+{
+
+	if (dev->parent)
+		return (BUS_GET_DOMAIN(dev->parent, dev, domain));
+
+	return (ENOENT);
 }
 
 /*

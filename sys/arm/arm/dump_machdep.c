@@ -50,8 +50,7 @@ __FBSDID("$FreeBSD$");
 CTASSERT(sizeof(struct kerneldumpheader) == 512);
 
 int do_minidump = 1;
-TUNABLE_INT("debug.minidump", &do_minidump);
-SYSCTL_INT(_debug, OID_AUTO, minidump, CTLFLAG_RW, &do_minidump, 0,
+SYSCTL_INT(_debug, OID_AUTO, minidump, CTLFLAG_RWTUN, &do_minidump, 0,
     "Enable mini crash dumps");
 
 /*
@@ -246,6 +245,29 @@ cb_dumphdr(struct md_pa *mdp, int seqnr, void *arg)
 	return (error);
 }
 
+/*
+ * Add a header to be used by libkvm to get the va to pa delta
+ */
+static int
+dump_os_header(struct dumperinfo *di)
+{
+	Elf_Phdr phdr;
+	int error;
+
+	bzero(&phdr, sizeof(phdr));
+	phdr.p_type = PT_DUMP_DELTA;
+	phdr.p_flags = PF_R;			/* XXX */
+	phdr.p_offset = 0;
+	phdr.p_vaddr = KERNVIRTADDR;
+	phdr.p_paddr = pmap_kextract(KERNVIRTADDR);
+	phdr.p_filesz = 0;
+	phdr.p_memsz = 0;
+	phdr.p_align = PAGE_SIZE;
+
+	error = buf_write(di, (char*)&phdr, sizeof(phdr));
+	return (error);
+}
+
 static int
 cb_size(struct md_pa *mdp, int seqnr, void *arg)
 {
@@ -272,7 +294,7 @@ foreach_chunk(callback_t cb, void *arg)
 	return (seqnr);
 }
 
-void
+int
 dumpsys(struct dumperinfo *di)
 {
 	Elf_Ehdr ehdr;
@@ -281,10 +303,8 @@ dumpsys(struct dumperinfo *di)
 	size_t hdrsz;
 	int error;
 
-	if (do_minidump) {
-		minidumpsys(di);
-		return;
-	}
+	if (do_minidump)
+		return (minidumpsys(di));
 
 	bzero(&ehdr, sizeof(ehdr));
 	ehdr.e_ident[EI_MAG0] = ELFMAG0;
@@ -311,7 +331,7 @@ dumpsys(struct dumperinfo *di)
 
 	/* Calculate dump size. */
 	dumpsize = 0L;
-	ehdr.e_phnum = foreach_chunk(cb_size, &dumpsize);
+	ehdr.e_phnum = foreach_chunk(cb_size, &dumpsize) + 1;
 	hdrsz = ehdr.e_phoff + ehdr.e_phnum * ehdr.e_phentsize;
 	fileofs = MD_ALIGN(hdrsz);
 	dumpsize += fileofs;
@@ -328,7 +348,7 @@ dumpsys(struct dumperinfo *di)
 	mkdumpheader(&kdh, KERNELDUMPMAGIC, KERNELDUMP_ARM_VERSION, dumpsize, di->blocksize);
 
 	printf("Dumping %llu MB (%d chunks)\n", (long long)dumpsize >> 20,
-	    ehdr.e_phnum);
+	    ehdr.e_phnum - 1);
 
 	/* Dump leader */
 	error = dump_write(di, &kdh, 0, dumplo, sizeof(kdh));
@@ -343,6 +363,8 @@ dumpsys(struct dumperinfo *di)
 
 	/* Dump program headers */
 	error = foreach_chunk(cb_dumphdr, di);
+	if (error >= 0)
+		error = dump_os_header(di);
 	if (error < 0)
 		goto fail;
 	buf_flush(di);
@@ -369,7 +391,7 @@ dumpsys(struct dumperinfo *di)
 	/* Signal completion, signoff and exit stage left. */
 	dump_write(di, NULL, 0, 0, 0);
 	printf("\nDump complete\n");
-	return;
+	return (0);
 
  fail:
 	if (error < 0)
@@ -381,4 +403,5 @@ dumpsys(struct dumperinfo *di)
 		printf("\nDump failed. Partition too small.\n");
 	else
 		printf("\n** DUMP FAILED (ERROR %d) **\n", error);
+	return (error);
 }

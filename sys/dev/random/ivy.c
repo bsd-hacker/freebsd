@@ -56,7 +56,7 @@ __FBSDID("$FreeBSD$");
 static int random_ivy_read(void *, int);
 
 static struct random_hardware_source random_ivy = {
-	.ident = "Hardware, Intel IvyBridge+ RNG",
+	.ident = "Hardware, Intel Secure Key RNG",
 	.source = RANDOM_PURE_RDRAND,
 	.read = random_ivy_read
 };
@@ -79,7 +79,7 @@ ivy_rng_store(long *buf)
 	    "2:\n\t"
 	    "mov	%2,%1\n\t" /* *buf = tmp */
 	    "3:"
-	    : "+q" (retry), "=m" (*buf), "=q" (tmp) : : "cc");
+	    : "+q" (retry), "=m" (*buf), "+q" (tmp) : : "cc");
 	return (retry);
 #else /* __GNUCLIKE_ASM */
 	return (0);

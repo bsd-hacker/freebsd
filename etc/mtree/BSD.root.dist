@@ -10,6 +10,8 @@
     boot
         defaults
         ..
+        dtb
+        ..
         firmware
         ..
         kernel
@@ -24,6 +26,8 @@
     etc
         X11
         ..
+        autofs
+        ..
         bluetooth
         ..
         casper
@@ -33,8 +37,6 @@
         devd
         ..
         dma
-        ..
-        gnats
         ..
         gss
         ..
@@ -61,6 +63,8 @@
         pkg
         ..
         ppp
+        ..
+        rc.conf.d
         ..
         rc.d
         ..

@@ -1458,7 +1458,7 @@ pollscan(td, fds, nfd)
 
 	FILEDESC_SLOCK(fdp);
 	for (i = 0; i < nfd; i++, fds++) {
-		if (fds->fd >= fdp->fd_nfiles) {
+		if (fds->fd > fdp->fd_lastfile) {
 			fds->revents = POLLNVAL;
 			n++;
 		} else if (fds->fd < 0) {
@@ -1600,10 +1600,12 @@ static void
 selfdfree(struct seltd *stp, struct selfd *sfp)
 {
 	STAILQ_REMOVE(&stp->st_selq, sfp, selfd, sf_link);
-	mtx_lock(sfp->sf_mtx);
-	if (sfp->sf_si)
-		TAILQ_REMOVE(&sfp->sf_si->si_tdlist, sfp, sf_threads);
-	mtx_unlock(sfp->sf_mtx);
+	if (sfp->sf_si != NULL) {
+		mtx_lock(sfp->sf_mtx);
+		if (sfp->sf_si != NULL)
+			TAILQ_REMOVE(&sfp->sf_si->si_tdlist, sfp, sf_threads);
+		mtx_unlock(sfp->sf_mtx);
+	}
 	uma_zfree(selfd_zone, sfp);
 }
 

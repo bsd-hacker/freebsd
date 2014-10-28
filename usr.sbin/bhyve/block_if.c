@@ -55,8 +55,7 @@ __FBSDID("$FreeBSD$");
 enum blockop {
 	BOP_READ,
 	BOP_WRITE,
-	BOP_FLUSH,
-	BOP_CANCEL
+	BOP_FLUSH
 };
 
 enum blockstat {
@@ -158,9 +157,6 @@ blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be)
 			err = errno;
 		break;
 	case BOP_FLUSH:
-		break;
-	case BOP_CANCEL:
-		err = EINTR;
 		break;
 	default:
 		err = EINVAL;
@@ -278,6 +274,7 @@ blockif_open(const char *optstr, const char *ident)
 
 	bc->bc_magic = BLOCKIF_SIG;
 	bc->bc_fd = fd;
+	bc->bc_rdonly = ro;
 	bc->bc_size = size;
 	bc->bc_sectsz = sectsz;
 	pthread_mutex_init(&bc->bc_mtx, NULL);
@@ -355,9 +352,28 @@ blockif_flush(struct blockif_ctxt *bc, struct blockif_req *breq)
 int
 blockif_cancel(struct blockif_ctxt *bc, struct blockif_req *breq)
 {
+	struct blockif_elem *be;
 
 	assert(bc->bc_magic == BLOCKIF_SIG);
-	return (blockif_request(bc, breq, BOP_CANCEL));
+
+	pthread_mutex_lock(&bc->bc_mtx);
+	TAILQ_FOREACH(be, &bc->bc_inuseq, be_link) {
+		if (be->be_req == breq)
+			break;
+	}
+	if (be == NULL) {
+		pthread_mutex_unlock(&bc->bc_mtx);
+		return (EINVAL);
+	}
+
+	TAILQ_REMOVE(&bc->bc_inuseq, be, be_link);
+	be->be_status = BST_FREE;
+	be->be_req = NULL;
+	TAILQ_INSERT_TAIL(&bc->bc_freeq, be, be_link);
+	bc->bc_req_count--;
+	pthread_mutex_unlock(&bc->bc_mtx);
+
+	return (0);
 }
 
 int
@@ -387,6 +403,55 @@ blockif_close(struct blockif_ctxt *bc)
 	free(bc);
 
 	return (0);
+}
+
+/*
+ * Return virtual C/H/S values for a given block. Use the algorithm
+ * outlined in the VHD specification to calculate values.
+ */
+void
+blockif_chs(struct blockif_ctxt *bc, uint16_t *c, uint8_t *h, uint8_t *s)
+{
+	off_t sectors;		/* total sectors of the block dev */
+	off_t hcyl;		/* cylinders times heads */
+	uint16_t secpt;		/* sectors per track */
+	uint8_t heads;
+
+	assert(bc->bc_magic == BLOCKIF_SIG);
+
+	sectors = bc->bc_size / bc->bc_sectsz;
+
+	/* Clamp the size to the largest possible with CHS */
+	if (sectors > 65535UL*16*255)
+		sectors = 65535UL*16*255;
+
+	if (sectors >= 65536UL*16*63) {
+		secpt = 255;
+		heads = 16;
+		hcyl = sectors / secpt;
+	} else {
+		secpt = 17;
+		hcyl = sectors / secpt;
+		heads = (hcyl + 1023) / 1024;
+
+		if (heads < 4)
+			heads = 4;
+
+		if (hcyl >= (heads * 1024) || heads > 16) {
+			secpt = 31;
+			heads = 16;
+			hcyl = sectors / secpt;
+		}
+		if (hcyl >= (heads * 1024)) {
+			secpt = 63;
+			heads = 16;
+			hcyl = sectors / secpt;
+		}
+	}
+
+	*c = hcyl / heads;
+	*h = heads;
+	*s = secpt;
 }
 
 /*

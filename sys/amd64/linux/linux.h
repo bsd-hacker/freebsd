@@ -44,6 +44,11 @@ extern u_char linux_debug_map[];
 #define	PTRIN(v)	(void *)(v)
 #define	PTROUT(v)	(uintptr_t)(v)
 
+#define	CP(src,dst,fld) do { (dst).fld = (src).fld; } while (0)
+#define	CP2(src,dst,sfld,dfld) do { (dst).dfld = (src).sfld; } while (0)
+#define	PTRIN_CP(src,dst,fld) \
+	do { (dst).fld = PTRIN((src).fld); } while (0)
+
 /*
  * Provide a separate set of types for the Linux types.
  */

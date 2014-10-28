@@ -810,6 +810,7 @@ struct linux_timer_create_args {
 };
 struct linux_timer_settime_args {
 	char timerid_l_[PADL_(l_timer_t)]; l_timer_t timerid; char timerid_r_[PADR_(l_timer_t)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 	char new_l_[PADL_(const struct itimerspec *)]; const struct itimerspec * new; char new_r_[PADR_(const struct itimerspec *)];
 	char old_l_[PADL_(struct itimerspec *)]; struct itimerspec * old; char old_r_[PADR_(struct itimerspec *)];
 };

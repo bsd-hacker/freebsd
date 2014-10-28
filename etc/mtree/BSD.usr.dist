@@ -108,6 +108,8 @@
         ..
         bsdinstall
         ..
+        hyperv
+        ..
         lpr
             ru
             ..
@@ -300,8 +302,6 @@
             bsdconfig
             ..
             csh
-            ..
-            cvsup
             ..
             diskless
             ..
