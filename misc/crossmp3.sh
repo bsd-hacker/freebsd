@@ -33,6 +33,9 @@
 # http://people.freebsd.org/~pho/stress/log/crossmp3.txt
 # Fixed in r269853
 
+# panic: softdep_waitidle: work added after flush:
+# http://people.freebsd.org/~pho/stress/log/crossmp3-2.txt, fixed by r273967.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
