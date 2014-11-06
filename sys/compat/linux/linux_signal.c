@@ -687,9 +687,17 @@ siginfo_to_lsiginfo(siginfo_t *si, l_siginfo_t *lsi, l_int sig)
 		lsi->lsi_band = si->si_band;
 		break;
 	case LINUX_SIGCHLD:
+		lsi->lsi_errno = 0;
 		lsi->lsi_pid = si->si_pid;
 		lsi->lsi_uid = si->si_uid;
-		lsi->lsi_status = si->si_status;
+
+		if (si->si_code == CLD_STOPPED)
+			lsi->lsi_status = BSD_TO_LINUX_SIGNAL(si->si_status);
+		else if (si->si_code == CLD_CONTINUED)
+			lsi->lsi_status = BSD_TO_LINUX_SIGNAL(SIGCONT);
+		else
+			lsi->lsi_status = si->si_status;
+
 		break;
 	case LINUX_SIGBUS:
 	case LINUX_SIGILL:
