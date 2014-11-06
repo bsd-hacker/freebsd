@@ -316,10 +316,6 @@ kern_thr_exit(struct thread *td)
 
 	PROC_LOCK(p);
 
-	/*
-	 * Shutting down last thread in the proc.  This will actually
-	 * call exit() in the trampoline when it returns.
-	 */
 	if (p->p_numthreads != 1) {
 		racct_sub(p, RACCT_NTHR, 1);
 		LIST_REMOVE(td, td_hash);
@@ -330,6 +326,12 @@ kern_thr_exit(struct thread *td)
 		thread_exit();
 		/* NOTREACHED */
 	}
+
+	/*
+	 * Ignore attempts to shut down last thread in the proc.  This
+	 * will actually call _exit(2) in the usermode trampoline when
+	 * it returns.
+	 */
 	PROC_UNLOCK(p);
 	rw_wunlock(&tidhash_lock);
 	return (0);

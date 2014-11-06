@@ -423,7 +423,6 @@ linux_copyout_strings(struct image_params *imgp)
 
 
 
-extern int _ucodesel, _udatasel;
 
 static void
 linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)

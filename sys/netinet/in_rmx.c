@@ -94,8 +94,18 @@ in_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 	if (IN_MULTICAST(ntohl(sin->sin_addr.s_addr)))
 		rt->rt_flags |= RTF_MULTICAST;
 
-	if (rt->rt_mtu == 0 && rt->rt_ifp != NULL)
-		rt->rt_mtu = rt->rt_ifp->if_mtu;
+	if (rt->rt_ifp != NULL) {
+
+		/*
+		 * Check route MTU:
+		 * inherit interface MTU if not set or
+		 * check if MTU is too large.
+		 */
+		if (rt->rt_mtu == 0) {
+			rt->rt_mtu = rt->rt_ifp->if_mtu;
+		} else if (rt->rt_mtu > rt->rt_ifp->if_mtu)
+			rt->rt_mtu = rt->rt_ifp->if_mtu;
+	}
 
 	return (rn_addroute(v_arg, n_arg, head, treenodes));
 }
@@ -341,22 +351,11 @@ in_inithead(void **head, int off)
 {
 	struct radix_node_head *rnh;
 
-	/* XXX MRT
-	 * This can be called from vfs_export.c too in which case 'off'
-	 * will be 0. We know the correct value so just use that and
-	 * return directly if it was 0.
-	 * This is a hack that replaces an even worse hack on a bad hack
-	 * on a bad design. After RELENG_7 this should be fixed but that
-	 * will change the ABI, so for now do it this way.
-	 */
 	if (!rn_inithead(head, 32))
 		return 0;
 
 	rnh = *head;
 	RADIX_NODE_HEAD_LOCK_INIT(rnh);
-
-	if (off == 0)		/* XXX MRT  see above */
-		return 1;	/* only do the rest for a real routing table */
 
 	rnh->rnh_addaddr = in_addroute;
 	in_setmatchfunc(rnh, V_drop_redirect);
