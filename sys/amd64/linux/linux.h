@@ -189,7 +189,7 @@ struct l_newstat {
 	(1UL & ((set).__bits[0] >> _SIG_IDX(sig)))
 
 #define	LINUX_SIGADDSET(set, sig)				\
-	(set).__bits[0] = 1UL << _SIG_IDX(sig)
+	(set).__bits[0] |= 1UL << _SIG_IDX(sig)
 
 /* sigaltstack */
 #define	LINUX_MINSIGSTKSZ	2048
