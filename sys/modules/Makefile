@@ -200,8 +200,8 @@ SUBDIR=	\
 	${_linprocfs} \
 	${_linsysfs} \
 	${_linux} \
+	${_linux_common} \
 	${_linux64} \
-	${_linuxcommon} \
 	lmc \
 	lpt \
 	mac_biba \
@@ -576,8 +576,6 @@ _mlx4=		mlx4
 _mlx4ib=	mlx4ib
 _mlxen=		mlxen
 .endif
-_linux64=	linux64
-_linuxcommon=	linux_common
 _mly=		mly
 .if ${MK_OFED} != "no" || defined(ALL_MODULES)
 _mthca=		mthca
@@ -615,6 +613,8 @@ _qlxgb=		qlxgb
 _qlxgbe=	qlxgbe
 _sfxge=		sfxge
 _vmm=		vmm
+_linux_common=	linux_common
+_linux64=	linux64
 .endif
 
 .if ${MACHINE_CPUARCH} == "i386"
