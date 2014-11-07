@@ -275,10 +275,10 @@ struct l_ucontext {
 #define	LINUX_SI_MAX_SIZE	128
 #define	LINUX_SI_PAD_SIZE	((LINUX_SI_MAX_SIZE - \
 				    LINUX_SI_PREAMBLE_SIZE) / sizeof(l_int))
-union l_sigval {
+typedef union l_sigval {
 	l_int		sival_int;
 	l_uintptr_t	sival_ptr;
-};
+} l_sigval_t;
 
 typedef struct l_siginfo {
 	l_int		lsi_signo;
@@ -303,7 +303,7 @@ typedef struct l_siginfo {
 		struct {
 			l_pid_t		_pid;		/* sender's pid */
 			l_uid_t		_uid;		/* sender's uid */
-			union l_sigval _sigval;
+			union l_sigval	_sigval;
 		} _rt;
 
 		struct {
