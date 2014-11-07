@@ -38,9 +38,11 @@ __FBSDID("$FreeBSD$");
 
 #include <compat/linux/linux_emul.h>
 #include <compat/linux/linux_mib.h>
+#include <compat/linux/linux_util.h>
 
 MODULE_VERSION(linux_common, 1);
 
+SET_DECLARE(linux_device_handler_set, struct linux_device_handler);
 
 static eventhandler_tag linux_exec_tag;
 static eventhandler_tag linux_thread_dtor_tag;
@@ -50,6 +52,7 @@ static eventhandler_tag	linux_exit_tag;
 static int
 linux_common_modevent(module_t mod, int type, void *data)
 {
+	struct linux_device_handler **ldhp;
 
 	switch(type) {
 	case MOD_LOAD:
@@ -60,9 +63,13 @@ linux_common_modevent(module_t mod, int type, void *data)
 		    linux_proc_exec, NULL, 1000);
 		linux_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
 		    linux_thread_dtor, NULL, EVENTHANDLER_PRI_ANY);
+		SET_FOREACH(ldhp, linux_device_handler_set)
+			linux_device_register_handler(*ldhp);
 		break;
 	case MOD_UNLOAD:
 		linux_osd_jail_deregister();
+		SET_FOREACH(ldhp, linux_device_handler_set)
+			linux_device_unregister_handler(*ldhp);
 		EVENTHANDLER_DEREGISTER(process_exit, linux_exit_tag);
 		EVENTHANDLER_DEREGISTER(process_exec, linux_exec_tag);
 		EVENTHANDLER_DEREGISTER(thread_dtor, linux_thread_dtor_tag);

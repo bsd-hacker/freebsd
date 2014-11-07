@@ -118,7 +118,6 @@ extern char _binary_linux32_locore_o_end;
 extern struct sysent linux_sysent[LINUX_SYS_MAXSYSCALL];
 
 SET_DECLARE(linux_ioctl_handler_set, struct linux_ioctl_handler);
-SET_DECLARE(linux_device_handler_set, struct linux_device_handler);
 
 static int	elf_linux_fixup(register_t **stack_base,
 		    struct image_params *iparams);
@@ -1154,7 +1153,6 @@ linux_elf_modevent(module_t mod, int type, void *data)
 	Elf32_Brandinfo **brandinfo;
 	int error;
 	struct linux_ioctl_handler **lihp;
-	struct linux_device_handler **ldhp;
 
 	error = 0;
 
@@ -1167,8 +1165,6 @@ linux_elf_modevent(module_t mod, int type, void *data)
 		if (error == 0) {
 			SET_FOREACH(lihp, linux_ioctl_handler_set)
 				linux_ioctl_register_handler(*lihp);
-			SET_FOREACH(ldhp, linux_device_handler_set)
-				linux_device_register_handler(*ldhp);
 			LIST_INIT(&futex_list);
 			mtx_init(&futex_mtx, "ftllk", NULL, MTX_DEF);
 			stclohz = (stathz ? stathz : hz);
@@ -1191,8 +1187,6 @@ linux_elf_modevent(module_t mod, int type, void *data)
 		if (error == 0) {
 			SET_FOREACH(lihp, linux_ioctl_handler_set)
 				linux_ioctl_unregister_handler(*lihp);
-			SET_FOREACH(ldhp, linux_device_handler_set)
-				linux_device_unregister_handler(*ldhp);
 			mtx_destroy(&futex_mtx);
 			if (bootverbose)
 				printf("Linux ELF exec handler removed\n");
