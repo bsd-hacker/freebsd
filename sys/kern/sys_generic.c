@@ -97,7 +97,7 @@ static int	pollout(struct thread *, struct pollfd *, struct pollfd *,
 		    u_int);
 static int	pollscan(struct thread *, struct pollfd *, u_int);
 static int	pollrescan(struct thread *);
-static int	kern_poll(struct thread *, struct pollfd *, uint32_t,
+static int	kern_poll(struct thread *, struct pollfd *, u_int,
 		    sbintime_t, sbintime_t);
 static int	selscan(struct thread *, fd_mask **, fd_mask **, int);
 static int	selrescan(struct thread *, fd_mask **, fd_mask **);
@@ -1326,7 +1326,7 @@ sys_poll(td, uap)
 }
 
 static int
-kern_poll(struct thread *td, struct pollfd *fds, uint32_t nfds,
+kern_poll(struct thread *td, struct pollfd *fds, u_int nfds,
     sbintime_t sbt, sbintime_t prec)
 {
 	struct pollfd *bits;
@@ -1378,7 +1378,7 @@ out:
 }
 
 int
-kern_ppoll(struct thread *td, struct pollfd *fds, uint32_t nfds,
+kern_ppoll(struct thread *td, struct pollfd *fds, u_int nfds,
     struct timespec *tsp, sigset_t *uset)
 {
 	struct timespec ts;
