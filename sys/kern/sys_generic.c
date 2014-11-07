@@ -97,6 +97,8 @@ static int	pollout(struct thread *, struct pollfd *, struct pollfd *,
 		    u_int);
 static int	pollscan(struct thread *, struct pollfd *, u_int);
 static int	pollrescan(struct thread *);
+static int	kern_poll(struct thread *, struct pollfd *, uint32_t,
+		    sbintime_t, sbintime_t);
 static int	selscan(struct thread *, fd_mask **, fd_mask **, int);
 static int	selrescan(struct thread *, fd_mask **, fd_mask **);
 static void	selfdalloc(struct thread *, void *);
@@ -1301,30 +1303,12 @@ sys_poll(td, uap)
 	struct thread *td;
 	struct poll_args *uap;
 {
-	struct pollfd *bits;
-	struct pollfd smallbits[32];
 	sbintime_t asbt, precision, rsbt;
-	u_int nfds;
-	int error;
-	size_t ni;
 
-	nfds = uap->nfds;
-	if (nfds > maxfilesperproc && nfds > FD_SETSIZE) 
-		return (EINVAL);
-	ni = nfds * sizeof(struct pollfd);
-	if (ni > sizeof(smallbits))
-		bits = malloc(ni, M_TEMP, M_WAITOK);
-	else
-		bits = smallbits;
-	error = copyin(uap->fds, bits, ni);
-	if (error)
-		goto done;
 	precision = 0;
 	if (uap->timeout != INFTIM) {
-		if (uap->timeout < 0) {
-			error = EINVAL;
-			goto done;
-		}
+		if (uap->timeout < 0)
+			return (EINVAL);
 		if (uap->timeout == 0)
 			asbt = 0;
 		else {
@@ -1337,13 +1321,37 @@ sys_poll(td, uap)
 		}
 	} else
 		asbt = -1;
+
+	return (kern_poll(td, uap->fds, uap->nfds, asbt, precision));
+}
+
+static int
+kern_poll(struct thread *td, struct pollfd *fds, uint32_t nfds,
+    sbintime_t sbt, sbintime_t prec)
+{
+	struct pollfd *bits;
+	struct pollfd smallbits[32];
+	int error;
+	size_t ni;
+
+	if (nfds > maxfilesperproc && nfds > FD_SETSIZE) 
+		return (EINVAL);
+	ni = nfds * sizeof(struct pollfd);
+	if (ni > sizeof(smallbits))
+		bits = malloc(ni, M_TEMP, M_WAITOK);
+	else
+		bits = smallbits;
+	error = copyin(fds, bits, ni);
+	if (error)
+		goto done;
+
 	seltdinit(td);
 	/* Iterate until the timeout expires or descriptors become ready. */
 	for (;;) {
 		error = pollscan(td, bits, nfds);
 		if (error || td->td_retval[0] != 0)
 			break;
-		error = seltdwait(td, asbt, precision);
+		error = seltdwait(td, sbt, prec);
 		if (error)
 			break;
 		error = pollrescan(td);
@@ -1359,7 +1367,7 @@ done:
 	if (error == EWOULDBLOCK)
 		error = 0;
 	if (error == 0) {
-		error = pollout(td, bits, uap->fds, nfds);
+		error = pollout(td, bits, fds, nfds);
 		if (error)
 			goto out;
 	}
@@ -1367,6 +1375,59 @@ out:
 	if (ni > sizeof(smallbits))
 		free(bits, M_TEMP);
 	return (error);
+}
+
+int
+kern_ppoll(struct thread *td, struct pollfd *fds, uint32_t nfds,
+    struct timespec *tsp, sigset_t *uset)
+{
+	struct timespec ts;
+	sbintime_t sbt, precision, tmp;
+	time_t over;
+	int error;
+
+	precision = 0;
+	if (tsp != NULL) {
+		if (tsp->tv_sec < 0)
+			return (EINVAL);
+		if (tsp->tv_nsec < 0 || tsp->tv_nsec >= 1000000000)
+			return (EINVAL);
+		if (tsp->tv_sec == 0 && tsp->tv_nsec == 0)
+			sbt = 0;
+		else {
+			ts = *tsp;
+			if (ts.tv_sec > INT32_MAX / 2) {
+				over = ts.tv_sec - INT32_MAX / 2;
+				ts.tv_sec -= over;
+			} else
+				over = 0;
+			tmp = tstosbt(ts);
+			precision = tmp;
+			precision >>= tc_precexp;
+			if (TIMESEL(&sbt, tmp))
+				sbt += tc_tick_sbt;
+			sbt += tmp;
+		}
+	} else
+		sbt = -1;
+
+	if (uset != NULL) {
+		error = kern_sigprocmask(td, SIG_SETMASK, uset,
+		    &td->td_oldsigmask, 0);
+		if (error != 0)
+			return (error);
+		td->td_pflags |= TDP_OLDMASK;
+		/*
+		 * Make sure that ast() is called on return to
+		 * usermode and TDP_OLDMASK is cleared, restoring old
+		 * sigmask.
+		 */
+		thread_lock(td);
+		td->td_flags |= TDF_ASTPENDING;
+		thread_unlock(td);
+	}
+
+	return (kern_poll(td, fds, nfds, sbt, precision));
 }
 
 static int
