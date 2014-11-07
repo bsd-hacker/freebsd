@@ -1377,6 +1377,41 @@ out:
 	return (error);
 }
 
+#ifndef _SYS_SYSPROTO_H_
+struct ppoll_args {
+	struct pollfd *fds;
+	u_int	nfds;
+	struct timespec	*ts;
+	sigset_ *set;
+};
+#endif
+int
+sys_ppoll(td, uap)
+	struct thread *td;
+	struct ppoll_args *uap;
+{
+	struct timespec ts, *tsp;
+	sigset_t set, *ssp;
+	int error;
+
+	if (uap->ts != NULL) {
+		error = copyin(uap->ts, &ts, sizeof(ts));
+		if (error)
+			return (error);
+		tsp = &ts;
+	} else
+		tsp = NULL;
+	if (uap->set != NULL) {
+		error = copyin(uap->set, &set, sizeof(set));
+		if (error)
+			return (error);
+		ssp = &set;
+	} else
+		ssp = NULL;
+
+	return (kern_ppoll(td, uap->fds, uap->nfds, tsp, ssp));
+}
+
 int
 kern_ppoll(struct thread *td, struct pollfd *fds, u_int nfds,
     struct timespec *tsp, sigset_t *uset)
