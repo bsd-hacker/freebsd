@@ -503,11 +503,12 @@ linux_wait4(struct thread *td, struct linux_wait4_args *args)
 		    args->pid, (void *)args->status, args->options,
 		    (void *)args->rusage);
 #endif
+	if (args->options & ~(LINUX_WUNTRACED | LINUX_WNOHANG |
+	    LINUX_WCONTINUED | __WCLONE | __WNOTHREAD | __WALL))
+		return (EINVAL);
 
-	options = (args->options & (WNOHANG | WUNTRACED));
-	/* WLINUXCLONE should be equal to __WCLONE, but we make sure */
-	if (args->options & __WCLONE)
-		options |= WLINUXCLONE;
+	options = WEXITED;
+	linux_to_bsd_waitopts(args->options, &options);
 
 	if (args->rusage != NULL)
 		rup = &ru;
@@ -530,6 +531,7 @@ linux_waitid(struct thread *td, struct linux_waitid_args *args)
 	siginfo_t siginfo;
 	l_siginfo_t lsi;
 	idtype_t idtype;
+	struct proc *p;
 	int error;
 
 	options = 0;
@@ -562,22 +564,23 @@ linux_waitid(struct thread *td, struct linux_waitid_args *args)
 	    &wru, &siginfo);
 	if (error)
 		return (error);
-	td->td_retval[0] = 0;
-
 	if (args->rusage != NULL) {
 		error = copyout(&wru.wru_children, args->rusage,
 		    sizeof(wru.wru_children));
 		if (error)
 			return (error);
 	}
-
 	if (args->info != NULL) {
-		sig = siginfo.si_signo;
-		if (siginfo.si_signo <= td->td_proc->p_sysent->sv_sigsize)
-			sig = td->td_proc->p_sysent->sv_sigtbl[_SIG_IDX(sig)];
-		siginfo_to_lsiginfo(&siginfo, &lsi, sig);
+		p = td->td_proc;
+		if (td->td_retval[0] == 0)
+			bzero(&lsi, sizeof(lsi));
+		else {
+			sig = BSD_TO_LINUX_SIGNAL(siginfo.si_signo);
+			siginfo_to_lsiginfo(&siginfo, &lsi, sig);
+		}
 		error = copyout(&lsi, args->info, sizeof(lsi));
 	}
+	td->td_retval[0] = 0;
 
 	return (error);
 }
