@@ -97,8 +97,6 @@ static int	pollout(struct thread *, struct pollfd *, struct pollfd *,
 		    u_int);
 static int	pollscan(struct thread *, struct pollfd *, u_int);
 static int	pollrescan(struct thread *);
-static int	kern_poll(struct thread *, struct pollfd *, u_int,
-		    sbintime_t, sbintime_t);
 static int	selscan(struct thread *, fd_mask **, fd_mask **, int);
 static int	selrescan(struct thread *, fd_mask **, fd_mask **);
 static void	selfdalloc(struct thread *, void *);
@@ -1291,135 +1289,34 @@ selscan(td, ibits, obits, nfd)
 	return (0);
 }
 
-#ifndef _SYS_SYSPROTO_H_
-struct poll_args {
-	struct pollfd *fds;
-	u_int	nfds;
-	int	timeout;
-};
-#endif
 int
-sys_poll(td, uap)
-	struct thread *td;
-	struct poll_args *uap;
+sys_poll(struct thread *td, struct poll_args *uap)
 {
-	sbintime_t asbt, precision, rsbt;
+	struct timespec ts, *tsp;
 
-	precision = 0;
 	if (uap->timeout != INFTIM) {
 		if (uap->timeout < 0)
 			return (EINVAL);
-		if (uap->timeout == 0)
-			asbt = 0;
-		else {
-			rsbt = SBT_1MS * uap->timeout;
-			precision = rsbt;
-			precision >>= tc_precexp;
-			if (TIMESEL(&asbt, rsbt))
-				asbt += tc_tick_sbt;
-			asbt += rsbt;
-		}
-	} else
-		asbt = -1;
-
-	return (kern_poll(td, uap->fds, uap->nfds, asbt, precision));
-}
-
-static int
-kern_poll(struct thread *td, struct pollfd *fds, u_int nfds,
-    sbintime_t sbt, sbintime_t prec)
-{
-	struct pollfd *bits;
-	struct pollfd smallbits[32];
-	int error;
-	size_t ni;
-
-	if (nfds > maxfilesperproc && nfds > FD_SETSIZE) 
-		return (EINVAL);
-	ni = nfds * sizeof(struct pollfd);
-	if (ni > sizeof(smallbits))
-		bits = malloc(ni, M_TEMP, M_WAITOK);
-	else
-		bits = smallbits;
-	error = copyin(fds, bits, ni);
-	if (error)
-		goto done;
-
-	seltdinit(td);
-	/* Iterate until the timeout expires or descriptors become ready. */
-	for (;;) {
-		error = pollscan(td, bits, nfds);
-		if (error || td->td_retval[0] != 0)
-			break;
-		error = seltdwait(td, sbt, prec);
-		if (error)
-			break;
-		error = pollrescan(td);
-		if (error || td->td_retval[0] != 0)
-			break;
-	}
-	seltdclear(td);
-
-done:
-	/* poll is not restarted after signals... */
-	if (error == ERESTART)
-		error = EINTR;
-	if (error == EWOULDBLOCK)
-		error = 0;
-	if (error == 0) {
-		error = pollout(td, bits, fds, nfds);
-		if (error)
-			goto out;
-	}
-out:
-	if (ni > sizeof(smallbits))
-		free(bits, M_TEMP);
-	return (error);
-}
-
-#ifndef _SYS_SYSPROTO_H_
-struct ppoll_args {
-	struct pollfd *fds;
-	u_int	nfds;
-	struct timespec	*ts;
-	sigset_ *set;
-};
-#endif
-int
-sys_ppoll(td, uap)
-	struct thread *td;
-	struct ppoll_args *uap;
-{
-	struct timespec ts, *tsp;
-	sigset_t set, *ssp;
-	int error;
-
-	if (uap->ts != NULL) {
-		error = copyin(uap->ts, &ts, sizeof(ts));
-		if (error)
-			return (error);
+		ts.tv_sec = uap->timeout / 1000;
+		ts.tv_nsec = (uap->timeout % 1000) * 1000000;
 		tsp = &ts;
 	} else
 		tsp = NULL;
-	if (uap->set != NULL) {
-		error = copyin(uap->set, &set, sizeof(set));
-		if (error)
-			return (error);
-		ssp = &set;
-	} else
-		ssp = NULL;
 
-	return (kern_ppoll(td, uap->fds, uap->nfds, tsp, ssp));
+	return (kern_poll(td, uap->fds, uap->nfds, tsp, NULL));
 }
 
 int
-kern_ppoll(struct thread *td, struct pollfd *fds, u_int nfds,
+kern_poll(struct thread *td, struct pollfd *fds, u_int nfds,
     struct timespec *tsp, sigset_t *uset)
 {
-	struct timespec ts;
+	struct pollfd *bits;
+	struct pollfd smallbits[32];
 	sbintime_t sbt, precision, tmp;
 	time_t over;
+	struct timespec ts;
 	int error;
+	size_t ni;
 
 	precision = 0;
 	if (tsp != NULL) {
@@ -1446,11 +1343,22 @@ kern_ppoll(struct thread *td, struct pollfd *fds, u_int nfds,
 	} else
 		sbt = -1;
 
+	if (nfds > maxfilesperproc && nfds > FD_SETSIZE) 
+		return (EINVAL);
+	ni = nfds * sizeof(struct pollfd);
+	if (ni > sizeof(smallbits))
+		bits = malloc(ni, M_TEMP, M_WAITOK);
+	else
+		bits = smallbits;
+	error = copyin(fds, bits, ni);
+	if (error)
+		goto done;
+
 	if (uset != NULL) {
 		error = kern_sigprocmask(td, SIG_SETMASK, uset,
 		    &td->td_oldsigmask, 0);
-		if (error != 0)
-			return (error);
+		if (error)
+			goto done;
 		td->td_pflags |= TDP_OLDMASK;
 		/*
 		 * Make sure that ast() is called on return to
@@ -1462,7 +1370,65 @@ kern_ppoll(struct thread *td, struct pollfd *fds, u_int nfds,
 		thread_unlock(td);
 	}
 
-	return (kern_poll(td, fds, nfds, sbt, precision));
+	seltdinit(td);
+	/* Iterate until the timeout expires or descriptors become ready. */
+	for (;;) {
+		error = pollscan(td, bits, nfds);
+		if (error || td->td_retval[0] != 0)
+			break;
+		error = seltdwait(td, sbt, precision);
+		if (error)
+			break;
+		error = pollrescan(td);
+		if (error || td->td_retval[0] != 0)
+			break;
+	}
+	seltdclear(td);
+
+done:
+	/* poll is not restarted after signals... */
+	if (error == ERESTART)
+		error = EINTR;
+	if (error == EWOULDBLOCK)
+		error = 0;
+	if (error == 0) {
+		error = pollout(td, bits, fds, nfds);
+		if (error)
+			goto out;
+	}
+out:
+	if (ni > sizeof(smallbits))
+		free(bits, M_TEMP);
+	return (error);
+}
+
+int
+sys_ppoll(struct thread *td, struct ppoll_args *uap)
+{
+	struct timespec ts, *tsp;
+	sigset_t set, *ssp;
+	int error;
+
+	if (uap->ts != NULL) {
+		error = copyin(uap->ts, &ts, sizeof(ts));
+		if (error)
+			return (error);
+		tsp = &ts;
+	} else
+		tsp = NULL;
+	if (uap->set != NULL) {
+		error = copyin(uap->set, &set, sizeof(set));
+		if (error)
+			return (error);
+		ssp = &set;
+	} else
+		ssp = NULL;
+	/*
+	 * fds is still a pointer to user space. kern_poll() will
+	 * take care of copyin that array to the kernel space.
+	 */
+
+	return (kern_poll(td, uap->fds, uap->nfds, tsp, ssp));
 }
 
 static int

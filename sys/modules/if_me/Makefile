@@ -2,7 +2,7 @@
 
 .PATH: ${.CURDIR}/../../net
 
-KMOD=	if_faith
-SRCS=	if_faith.c opt_inet.h opt_inet6.h
+KMOD=	if_me
+SRCS=	if_me.c
 
 .include <bsd.kmod.mk>

@@ -2205,7 +2205,7 @@ linux_ppoll(struct thread *td, struct linux_ppoll_args *args)
 	} else
 		tsp = NULL;
 
-	error = kern_ppoll(td, args->fds, args->nfds, tsp, ssp);
+	error = kern_poll(td, args->fds, args->nfds, tsp, ssp);
 
 	if (error == 0 && args->tsp) {
 		if (td->td_retval[0]) {
