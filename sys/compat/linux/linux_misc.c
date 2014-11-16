@@ -1975,7 +1975,7 @@ linux_sched_rr_get_interval(struct thread *td,
 	if (tdt == NULL)
 		return (ESRCH);
 
-	error = kern_sched_rr_get_interval(td, tdt, &ts);
+	error = kern_sched_rr_get_interval_td(td, tdt, &ts);
 	if (error != 0)
 		return (error);
 	lts.tv_sec = ts.tv_sec;
