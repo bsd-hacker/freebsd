@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <pthread_np.h>
 #include <signal.h>
 #include <unistd.h>
+#include <vdsk.h>
 
 #include <machine/atomic.h>
 
@@ -79,10 +80,7 @@ struct blockif_elem {
 
 struct blockif_ctxt {
 	int			bc_magic;
-	int			bc_fd;
 	int			bc_rdonly;
-	off_t			bc_size;
-	int			bc_sectsz;
 	pthread_t		bc_btid;
         pthread_mutex_t		bc_mtx;
         pthread_cond_t		bc_cond;
@@ -176,18 +174,17 @@ blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be)
 
 	switch (be->be_op) {
 	case BOP_READ:
-		if (preadv(bc->bc_fd, br->br_iov, br->br_iovcnt,
-			   br->br_offset) < 0)
+		if (vdsk_readv(bc, br->br_iov, br->br_iovcnt,
+		    br->br_offset) < 0)
 			err = errno;
 		break;
 	case BOP_WRITE:
-		if (bc->bc_rdonly)
-			err = EROFS;
-		else if (pwritev(bc->bc_fd, br->br_iov, br->br_iovcnt,
-			     br->br_offset) < 0)
+		if (vdsk_writev(bc, br->br_iov, br->br_iovcnt,
+		    br->br_offset) < 0)
 			err = errno;
 		break;
 	case BOP_FLUSH:
+		err = vdsk_flush(bc);
 		break;
 	default:
 		err = EINVAL;
@@ -267,9 +264,7 @@ blockif_open(const char *optstr, const char *ident)
 	char tname[MAXCOMLEN + 1];
 	char *nopt, *xopts;
 	struct blockif_ctxt *bc;
-	struct stat sbuf;
-	off_t size;
-	int extra, fd, i, sectsz;
+	int extra, i;
 	int nocache, sync, ro;
 
 	pthread_once(&blockif_once, blockif_init);
@@ -300,51 +295,20 @@ blockif_open(const char *optstr, const char *ident)
 	if (sync)
 		extra |= O_SYNC;
 
-	fd = open(nopt, (ro ? O_RDONLY : O_RDWR) | extra);
-	if (fd < 0 && !ro) {
+	bc = vdsk_open(nopt, (ro ? O_RDONLY : O_RDWR) | extra, sizeof(*bc));
+	if (bc == NULL && !ro) {
 		/* Attempt a r/w fail with a r/o open */
-		fd = open(nopt, O_RDONLY | extra);
+		bc = vdsk_open(nopt, O_RDONLY | extra, sizeof(*bc));
 		ro = 1;
 	}
 
-	if (fd < 0) {
+	if (bc == NULL) {
 		perror("Could not open backing file");
 		return (NULL);
 	}
 
-        if (fstat(fd, &sbuf) < 0) {
-                perror("Could not stat backing file");
-                close(fd);
-                return (NULL);
-        }
-
-        /*
-	 * Deal with raw devices
-	 */
-        size = sbuf.st_size;
-	sectsz = DEV_BSIZE;
-	if (S_ISCHR(sbuf.st_mode)) {
-		if (ioctl(fd, DIOCGMEDIASIZE, &size) < 0 ||
-		    ioctl(fd, DIOCGSECTORSIZE, &sectsz)) {
-			perror("Could not fetch dev blk/sector size");
-			close(fd);
-			return (NULL);
-		}
-		assert(size != 0);
-		assert(sectsz != 0);
-	}
-
-	bc = calloc(1, sizeof(struct blockif_ctxt));
-	if (bc == NULL) {
-		close(fd);
-		return (NULL);
-	}
-
 	bc->bc_magic = BLOCKIF_SIG;
-	bc->bc_fd = fd;
 	bc->bc_rdonly = ro;
-	bc->bc_size = size;
-	bc->bc_sectsz = sectsz;
 	pthread_mutex_init(&bc->bc_mtx, NULL);
 	pthread_cond_init(&bc->bc_cond, NULL);
 	TAILQ_INIT(&bc->bc_freeq);
@@ -521,8 +485,7 @@ blockif_close(struct blockif_ctxt *bc)
 	 * Release resources
 	 */
 	bc->bc_magic = 0;
-	close(bc->bc_fd);
-	free(bc);
+	vdsk_close(bc);
 
 	return (0);
 }
@@ -541,7 +504,7 @@ blockif_chs(struct blockif_ctxt *bc, uint16_t *c, uint8_t *h, uint8_t *s)
 
 	assert(bc->bc_magic == BLOCKIF_SIG);
 
-	sectors = bc->bc_size / bc->bc_sectsz;
+	sectors = vdsk_capacity(bc) / vdsk_sectorsize(bc);
 
 	/* Clamp the size to the largest possible with CHS */
 	if (sectors > 65535UL*16*255)
@@ -584,7 +547,7 @@ blockif_size(struct blockif_ctxt *bc)
 {
 
 	assert(bc->bc_magic == BLOCKIF_SIG);
-	return (bc->bc_size);
+	return (vdsk_capacity(bc));
 }
 
 int
@@ -592,7 +555,7 @@ blockif_sectsz(struct blockif_ctxt *bc)
 {
 
 	assert(bc->bc_magic == BLOCKIF_SIG);
-	return (bc->bc_sectsz);
+	return (vdsk_sectorsize(bc));
 }
 
 int

@@ -4,8 +4,8 @@ PROG=	bhyveload
 SRCS=	bhyveload.c
 MAN=	bhyveload.8
 
-DPADD+=	${LIBVMMAPI} ${LIBUTIL}
-LDADD+=	-lvmmapi -lutil
+DPADD+=	${LIBVDSK} ${LIBVMMAPI} ${LIBUTIL}
+LDADD+=	-lvdsk -lvmmapi -lutil
 
 WARNS?=	3
 

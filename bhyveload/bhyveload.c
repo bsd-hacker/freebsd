@@ -79,7 +79,7 @@ __FBSDID("$FreeBSD$");
 #include <sysexits.h>
 #include <termios.h>
 #include <unistd.h>
-
+#include <vdsk.h>
 #include <vmmapi.h>
 
 #include "userboot.h"
@@ -92,7 +92,7 @@ __FBSDID("$FreeBSD$");
 
 static char *host_base;
 static struct termios term, oldterm;
-static int disk_fd[NDISKS];
+static vdskctx disk[NDISKS];
 static int ndisks;
 static int consin_fd, consout_fd;
 
@@ -290,9 +290,9 @@ cb_diskread(void *arg, int unit, uint64_t from, void *to, size_t size,
 {
 	ssize_t n;
 
-	if (unit < 0 || unit >= ndisks )
+	if (unit < 0 || unit >= ndisks)
 		return (EIO);
-	n = pread(disk_fd[unit], to, size, from);
+	n = vdsk_read(disk[unit], to, size, from);
 	if (n < 0)
 		return (errno);
 	*resid = size - n;
@@ -302,20 +302,16 @@ cb_diskread(void *arg, int unit, uint64_t from, void *to, size_t size,
 static int
 cb_diskioctl(void *arg, int unit, u_long cmd, void *data)
 {
-	struct stat sb;
 
 	if (unit < 0 || unit >= ndisks)
 		return (EBADF);
 
 	switch (cmd) {
 	case DIOCGSECTORSIZE:
-		*(u_int *)data = 512;
+		*(u_int *)data = vdsk_sectorsize(disk[unit]);
 		break;
 	case DIOCGMEDIASIZE:
-		if (fstat(disk_fd[unit], &sb) == 0)
-			*(off_t *)data = sb.st_size;
-		else
-			return (ENOTTY);
+		*(off_t *)data = vdsk_capacity(disk[unit]);
 		break;
 	default:
 		return (ENOTTY);
@@ -607,21 +603,17 @@ altcons_open(char *path)
 static int
 disk_open(char *path)
 {
-	int err, fd;
+	vdskctx vdsk;
 
-	if (ndisks > NDISKS)
+	if (ndisks >= NDISKS)
 		return (ERANGE);
 
-	err = 0;
-	fd = open(path, O_RDONLY);
+	vdsk = vdsk_open(path, O_RDONLY, 0);
+	if (vdsk == NULL)
+		return (errno);
 
-	if (fd > 0) {
-		disk_fd[ndisks] = fd;
-		ndisks++;
-	} else 
-		err = errno;
-
-	return (err);
+	disk[ndisks++] = vdsk;
+	return (0);
 }
 
 static void
