@@ -49,6 +49,9 @@ int
 emulate_wrmsr(struct vmctx *ctx, int vcpu, uint32_t num, uint64_t val)
 {
 
+	if (num == MSR_PAT)
+		return 0;
+
 	if (cpu_vendor_intel) {
 		switch (num) {
 		case 0xd04:		/* Sandy Bridge uncore PMCs */
