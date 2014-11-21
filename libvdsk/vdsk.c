@@ -52,37 +52,50 @@ vdskctx
 vdsk_open(const char *path, int flags, size_t size)
 {
 	struct stat sb;
+	vdskctx ctx;
 	struct vdsk *vdsk;
 
-	size += sizeof(struct vdsk);
-	vdsk = malloc(size);
-	if (vdsk == NULL)
-		return (NULL);
+	ctx = NULL;
 
-	vdsk->fd = open(path, flags);
-	if (vdsk->fd == -1) {
-		free(vdsk);
-		return (NULL);
-	}
+	do {
+		size += sizeof(struct vdsk);
+		vdsk = calloc(1, size);
+		if (vdsk == NULL)
+			break;
 
-	if (fstat(vdsk->fd, &sb) == -1) {
-		close(vdsk->fd);
-		free(vdsk);
-		return (NULL);
-	}
+		vdsk->fd = open(path, flags);
+		if (vdsk->fd == -1)
+			break;
 
-	if (S_ISCHR(sb.st_mode)) {
-		if (ioctl(vdsk->fd, DIOCGMEDIASIZE, &vdsk->capacity) < 0 ||
-		    ioctl(vdsk->fd, DIOCGSECTORSIZE, &vdsk->sectorsize) < 0) {
-			close(vdsk->fd);
-			free(vdsk);
-			return (NULL);
+		if (fstat(vdsk->fd, &sb) == -1)
+			break;
+
+		if (S_ISCHR(sb.st_mode)) {
+			if (ioctl(vdsk->fd, DIOCGMEDIASIZE,
+			    &vdsk->capacity) < 0)
+				break;
+			if (ioctl(vdsk->fd, DIOCGSECTORSIZE,
+			    &vdsk->sectorsize) < 0)
+				break;
+		} else {
+			vdsk->capacity = sb.st_size;
+			vdsk->sectorsize = DEV_BSIZE;
 		}
-	} else {
-		vdsk->capacity = sb.st_size;
-		vdsk->sectorsize = DEV_BSIZE;
+
+		/* Complete... */
+		ctx = vdsk + 1;
+	} while (0);
+
+	if (ctx == NULL) {
+		if (vdsk != NULL) {
+			if (vdsk->fd != -1)
+				close(vdsk->fd);
+			free(vdsk);
+			vdsk = NULL;
+		}
 	}
-	return (vdsk + 1);
+
+	return (ctx);
 }
 
 int
