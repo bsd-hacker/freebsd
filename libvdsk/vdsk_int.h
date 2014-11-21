@@ -33,6 +33,6 @@ struct vdsk {
 	int	fd;
 	int	sectorsize;
 	off_t	capacity;
-};
+} __attribute__((align(16)));
 
 #endif /* __VDSK_INT_H__ */
