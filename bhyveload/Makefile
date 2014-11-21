@@ -9,6 +9,6 @@ LDADD+=	-lvmmapi -lutil
 
 WARNS?=	3
 
-CFLAGS+=-I${.CURDIR}/../../sys/boot/userboot
+CFLAGS+=-I/sys/boot/userboot
 
 .include <bsd.prog.mk>

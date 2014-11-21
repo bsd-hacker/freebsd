@@ -40,7 +40,7 @@ SRCS=	\
 	xmsr.c			\
 	spinup_ap.c
 
-.PATH:	${.CURDIR}/../../sys/amd64/vmm
+.PATH:	/sys/amd64/vmm
 SRCS+=	vmm_instruction_emul.c
 
 DPADD=	${LIBVMMAPI} ${LIBMD} ${LIBUTIL} ${LIBPTHREAD}
