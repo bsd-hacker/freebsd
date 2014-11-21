@@ -22,8 +22,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/cdefs.h>
@@ -47,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <assert.h>
 #include <pthread.h>
 #include <md5.h>
+#include <vdsk.h>
 
 #include "bhyverun.h"
 #include "pci_emul.h"
@@ -117,7 +116,6 @@ struct pci_vtblk_softc {
 	struct virtio_softc vbsc_vs;
 	pthread_mutex_t vsc_mtx;
 	struct vqueue_info vbsc_vq;
-	int		vbsc_fd;
 	struct vtblk_config vbsc_cfg;	
 	char vbsc_ident[VTBLK_BLK_ID_BYTES];
 };
@@ -206,36 +204,37 @@ pci_vtblk_proc(struct pci_vtblk_softc *sc, struct vqueue_info *vq)
 	DPRINTF(("virtio-block: %s op, %d bytes, %d segs, offset %ld\n\r", 
 		 writeop ? "write" : "read/ident", iolen, i - 1, offset));
 
+	err = 0;
+
 	switch (type) {
 	case VBH_OP_WRITE:
-		err = pwritev(sc->vbsc_fd, iov + 1, i - 1, offset);
+		if (vdsk_writev(sc, iov + 1, i - 1, offset) == -1)
+			err = errno;
 		break;
 	case VBH_OP_READ:
-		err = preadv(sc->vbsc_fd, iov + 1, i - 1, offset);
+		if (vdsk_readv(sc, iov + 1, i - 1, offset) == -1)
+			err = errno;
 		break;
 	case VBH_OP_IDENT:
 		/* Assume a single buffer */
 		strlcpy(iov[1].iov_base, sc->vbsc_ident,
 		    MIN(iov[1].iov_len, sizeof(sc->vbsc_ident)));
-		err = 0;
 		break;
 	case VBH_OP_FLUSH:
 	case VBH_OP_FLUSH_OUT:
-		err = fsync(sc->vbsc_fd);
+		err = vdsk_flush(sc);
 		break;
 	default:
-		err = -ENOSYS;
+		err = ENOSYS;
 		break;
 	}
 
 	/* convert errno into a virtio block error return */
-	if (err < 0) {
-		if (err == -ENOSYS)
-			*status = VTBLK_S_UNSUPP;
-		else
-			*status = VTBLK_S_IOERR;
-	} else
-		*status = VTBLK_S_OK;
+	switch (err) {
+	case 0:		*status = VTBLK_S_OK; break;
+	case ENOSYS:	*status = VTBLK_S_UNSUPP; break;
+	default:	*status = VTBLK_S_IOERR; break;
+	}
 
 	/*
 	 * Return the descriptor back to the host.
@@ -258,54 +257,20 @@ pci_vtblk_notify(void *vsc, struct vqueue_info *vq)
 static int
 pci_vtblk_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 {
-	struct stat sbuf;
 	MD5_CTX mdctx;
 	u_char digest[16];
 	struct pci_vtblk_softc *sc;
-	off_t size;	
-	int fd;
-	int sectsz;
 
 	if (opts == NULL) {
 		printf("virtio-block: backing device required\n");
 		return (1);
 	}
 
-	/*
-	 * The supplied backing file has to exist
-	 */
-	fd = open(opts, O_RDWR);
-	if (fd < 0) {
+	sc = vdsk_open(opts, O_RDWR, sizeof(*sc));
+	if (sc == NULL) {
 		perror("Could not open backing file");
 		return (1);
 	}
-
-	if (fstat(fd, &sbuf) < 0) {
-		perror("Could not stat backing file");
-		close(fd);
-		return (1);
-	}
-
-	/*
-	 * Deal with raw devices
-	 */
-	size = sbuf.st_size;
-	sectsz = DEV_BSIZE;
-	if (S_ISCHR(sbuf.st_mode)) {
-		if (ioctl(fd, DIOCGMEDIASIZE, &size) < 0 ||
-		    ioctl(fd, DIOCGSECTORSIZE, &sectsz)) {
-			perror("Could not fetch dev blk/sector size");
-			close(fd);
-			return (1);
-		}
-		assert(size != 0);
-		assert(sectsz != 0);
-	}
-
-	sc = calloc(1, sizeof(struct pci_vtblk_softc));
-
-	/* record fd of storage device/file */
-	sc->vbsc_fd = fd;
 
 	pthread_mutex_init(&sc->vsc_mtx, NULL);
 
@@ -327,9 +292,9 @@ pci_vtblk_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	    digest[0], digest[1], digest[2], digest[3], digest[4], digest[5]);
 
 	/* setup virtio block config space */
-	sc->vbsc_cfg.vbc_capacity = size / DEV_BSIZE; /* 512-byte units */
+	sc->vbsc_cfg.vbc_capacity = vdsk_capacity(sc) / DEV_BSIZE;
 	sc->vbsc_cfg.vbc_seg_max = VTBLK_MAXSEGS;
-	sc->vbsc_cfg.vbc_blk_size = sectsz;
+	sc->vbsc_cfg.vbc_blk_size = vdsk_sectorsize(sc);
 	sc->vbsc_cfg.vbc_size_max = 0;	/* not negotiated */
 	sc->vbsc_cfg.vbc_geom_c = 0;	/* no geometry */
 	sc->vbsc_cfg.vbc_geom_h = 0;
