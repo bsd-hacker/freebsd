@@ -155,9 +155,12 @@ vdsk_writev(vdskctx ctx, const struct iovec *iov, int iovcnt, off_t offset)
 }
 
 int
-vdsk_flush(vdskctx ctx __unused)
+vdsk_flush(vdskctx ctx)
 {
+	struct vdsk *vdsk = vdsk_deref(ctx);
+	int res;
 
-	return (0);
+	res = fsync(vdsk->fd);
+	return ((res == -1) ? errno : 0);
 }
 
