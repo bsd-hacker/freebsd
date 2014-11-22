@@ -51,9 +51,9 @@ vdsk_deref(vdskctx ctx)
 vdskctx
 vdsk_open(const char *path, int flags, size_t size)
 {
-	struct stat sb;
 	vdskctx ctx;
 	struct vdsk *vdsk;
+	int lck;
 
 	ctx = NULL;
 
@@ -63,14 +63,25 @@ vdsk_open(const char *path, int flags, size_t size)
 		if (vdsk == NULL)
 			break;
 
-		vdsk->fd = open(path, flags);
+		vdsk->fflags = flags + 1;
+		if ((vdsk->fflags & ~(O_ACCMODE | O_DIRECT | O_SYNC)) != 0) {
+			errno = EINVAL;
+			break;
+		}
+
+		vdsk->filename = realpath(path, NULL);
+		if (vdsk->filename == NULL)
+			break;
+
+		flags = (flags & O_ACCMODE) | O_CLOEXEC;
+		vdsk->fd = open(vdsk->filename, flags);
 		if (vdsk->fd == -1)
 			break;
 
-		if (fstat(vdsk->fd, &sb) == -1)
+		if (fstat(vdsk->fd, &vdsk->fsbuf) == -1)
 			break;
 
-		if (S_ISCHR(sb.st_mode)) {
+		if (S_ISCHR(vdsk->fsbuf.st_mode)) {
 			if (ioctl(vdsk->fd, DIOCGMEDIASIZE,
 			    &vdsk->capacity) < 0)
 				break;
@@ -78,9 +89,13 @@ vdsk_open(const char *path, int flags, size_t size)
 			    &vdsk->sectorsize) < 0)
 				break;
 		} else {
-			vdsk->capacity = sb.st_size;
+			vdsk->capacity = vdsk->fsbuf.st_size;
 			vdsk->sectorsize = DEV_BSIZE;
 		}
+
+		lck = (vdsk->fflags & FWRITE) ? LOCK_EX : LOCK_SH;
+		if (flock(vdsk->fd, lck | LOCK_NB) == -1)
+			break;
 
 		/* Complete... */
 		ctx = vdsk + 1;
@@ -90,8 +105,9 @@ vdsk_open(const char *path, int flags, size_t size)
 		if (vdsk != NULL) {
 			if (vdsk->fd != -1)
 				close(vdsk->fd);
+			if (vdsk->filename != NULL)
+				free(vdsk->filename);
 			free(vdsk);
-			vdsk = NULL;
 		}
 	}
 
@@ -103,7 +119,9 @@ vdsk_close(vdskctx ctx)
 {
 	struct vdsk *vdsk = vdsk_deref(ctx);
 
+	flock(vdsk->fd, LOCK_UN);
 	close(vdsk->fd);
+	free(vdsk->filename);
 	free(vdsk);
 	return (0);
 }
