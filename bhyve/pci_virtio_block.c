@@ -208,12 +208,10 @@ pci_vtblk_proc(struct pci_vtblk_softc *sc, struct vqueue_info *vq)
 
 	switch (type) {
 	case VBH_OP_WRITE:
-		if (vdsk_writev(sc, iov + 1, i - 1, offset) == -1)
-			err = errno;
+		err = vdsk_write(sc, iov + 1, i - 1, offset);
 		break;
 	case VBH_OP_READ:
-		if (vdsk_readv(sc, iov + 1, i - 1, offset) == -1)
-			err = errno;
+		err = vdsk_read(sc, iov + 1, i - 1, offset);
 		break;
 	case VBH_OP_IDENT:
 		/* Assume a single buffer */

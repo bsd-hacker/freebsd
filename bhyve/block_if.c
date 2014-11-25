@@ -172,14 +172,10 @@ blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be)
 
 	switch (be->be_op) {
 	case BOP_READ:
-		if (vdsk_readv(bc, br->br_iov, br->br_iovcnt,
-		    br->br_offset) < 0)
-			err = errno;
+		err = vdsk_read(bc, br->br_iov, br->br_iovcnt, br->br_offset);
 		break;
 	case BOP_WRITE:
-		if (vdsk_writev(bc, br->br_iov, br->br_iovcnt,
-		    br->br_offset) < 0)
-			err = errno;
+		err = vdsk_write(bc, br->br_iov, br->br_iovcnt, br->br_offset);
 		break;
 	case BOP_FLUSH:
 		err = vdsk_flush(bc);

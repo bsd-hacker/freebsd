@@ -289,18 +289,18 @@ cb_diskread(void *arg, int unit, uint64_t from, void *to, size_t size,
 	    size_t *resid)
 {
 	struct iovec iov;
-	ssize_t n;
+	int error;
 
 	if (unit < 0 || unit >= ndisks)
 		return (EIO);
 
 	iov.iov_base = to;
 	iov.iov_len = size;
-	n = vdsk_readv(disk[unit], &iov, 1, from);
-	if (n < 0)
-		return (errno);
-	*resid = size - n;
-	return (0);
+	error = vdsk_read(disk[unit], &iov, 1, from);
+	if (!error)
+		*resid = 0;
+
+	return (error);
 }
 
 static int
