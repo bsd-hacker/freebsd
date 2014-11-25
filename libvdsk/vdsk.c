@@ -143,16 +143,6 @@ vdsk_sectorsize(vdskctx ctx)
 }
 
 ssize_t
-vdsk_read(vdskctx ctx, void *buf, size_t nbytes, off_t offset)
-{
-	struct vdsk *vdsk = vdsk_deref(ctx);
-	ssize_t res;
-
-	res = pread(vdsk->fd, buf, nbytes, offset);
-	return (res);
-}
-
-ssize_t
 vdsk_readv(vdskctx ctx, const struct iovec *iov, int iovcnt, off_t offset)
 {
 	struct vdsk *vdsk = vdsk_deref(ctx);
