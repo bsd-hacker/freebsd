@@ -40,12 +40,47 @@ __FBSDID("$FreeBSD$");
 
 #include "vdsk_int.h"
 
+static inline int
+vdsk_is_dev(struct vdsk *vdsk)
+{
+
+	return ((S_ISCHR(vdsk->fsbuf.st_mode)) ? 1 : 0);
+}
+
 static struct vdsk *
 vdsk_deref(vdskctx ctx)
 {
 	struct vdsk *vdsk = ctx;
 
 	return (vdsk - 1);
+}
+
+static struct vdsk_format *
+vdsk_probe(struct vdsk *vdsk)
+{
+	struct vdsk_format *f, *fmt, **f_iter;
+	int error, probe;
+
+	fmt = NULL;
+	probe = VDSKFMT_HAS_HEADER | VDSKFMT_HAS_FOOTER;
+	probe |= (vdsk_is_dev(vdsk)) ? VDSKFMT_DEVICE_OK : 0;
+	probe |= (vdsk->fflags & FWRITE) ? VDSKFMT_CAN_WRITE : 0;
+	while (fmt == NULL && probe >= 0) {
+		SET_FOREACH(f_iter, libvdsk_formats) {
+			f = *f_iter;
+			if ((f->flags & probe) != probe)
+				continue;
+			error = f->probe(vdsk);
+			if (!error) {
+				fmt = f;
+				break;
+			}
+		}
+		probe -= VDSKFMT_HAS_FOOTER;
+	}
+	if (fmt == NULL)
+		errno = EFTYPE;
+	return (fmt);
 }
 
 vdskctx
@@ -81,7 +116,7 @@ vdsk_open(const char *path, int flags, size_t size)
 		if (fstat(vdsk->fd, &vdsk->fsbuf) == -1)
 			break;
 
-		if (S_ISCHR(vdsk->fsbuf.st_mode)) {
+		if (vdsk_is_dev(vdsk)) {
 			if (ioctl(vdsk->fd, DIOCGMEDIASIZE,
 			    &vdsk->capacity) < 0)
 				break;
@@ -93,9 +128,19 @@ vdsk_open(const char *path, int flags, size_t size)
 			vdsk->sectorsize = DEV_BSIZE;
 		}
 
+		vdsk->fmt = vdsk_probe(vdsk);
+		if (vdsk->fmt == NULL)
+			break;
+
 		lck = (vdsk->fflags & FWRITE) ? LOCK_EX : LOCK_SH;
 		if (flock(vdsk->fd, lck | LOCK_NB) == -1)
 			break;
+
+		errno = vdsk->fmt->open(vdsk);
+		if (errno != 0) {
+			flock(vdsk->fd, LOCK_UN);
+			break;
+		}
 
 		/* Complete... */
 		ctx = vdsk + 1;
@@ -119,6 +164,7 @@ vdsk_close(vdskctx ctx)
 {
 	struct vdsk *vdsk = vdsk_deref(ctx);
 
+	vdsk->fmt->close(vdsk);
 	flock(vdsk->fd, LOCK_UN);
 	close(vdsk->fd);
 	free(vdsk->filename);
@@ -146,29 +192,27 @@ int
 vdsk_read(vdskctx ctx, const struct iovec *iov, int iovcnt, off_t offset)
 {
 	struct vdsk *vdsk = vdsk_deref(ctx);
-	ssize_t res;
 
-	res = preadv(vdsk->fd, iov, iovcnt, offset);
-	return ((res == -1) ? errno : 0);
+	return (vdsk->fmt->read(vdsk, iov, iovcnt, offset));
 }
 
 int
 vdsk_write(vdskctx ctx, const struct iovec *iov, int iovcnt, off_t offset)
 {
 	struct vdsk *vdsk = vdsk_deref(ctx);
-	ssize_t res;
 
-	res = pwritev(vdsk->fd, iov, iovcnt, offset);
-	return ((res == -1) ? errno : 0);
+	if ((vdsk->fflags & FWRITE) == 0)
+		return (EROFS);
+	return (vdsk->fmt->write(vdsk, iov, iovcnt, offset));
 }
 
 int
 vdsk_flush(vdskctx ctx)
 {
 	struct vdsk *vdsk = vdsk_deref(ctx);
-	int res;
 
-	res = fsync(vdsk->fd);
-	return ((res == -1) ? errno : 0);
+	if ((vdsk->fflags & FWRITE) == 0)
+		return (0);
+	return (vdsk->fmt->flush(vdsk));
 }
 

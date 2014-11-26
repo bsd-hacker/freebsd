@@ -22,51 +22,82 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#ifndef __VDSK_INT_H__
-#define	__VDSK_INT_H__
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#include <sys/linker_set.h>
+#include <sys/disk.h>
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <vdsk.h>
 
-struct vdsk;
+#include "vdsk_int.h"
 
-/*
- * The disk format registration structure.
- */
-struct vdsk_format {
-	const char	*name;
-	const char	*description;
-	int	flags;
-#define	VDSKFMT_DEVICE_OK	1
-#define	VDSKFMT_CAN_WRITE	2
-#define	VDSKFMT_NO_METADATA	0
-#define	VDSKFMT_HAS_FOOTER	4
-#define	VDSKFMT_HAS_HEADER	8
-	int	(*probe)(struct vdsk *);
-	int	(*open)(struct vdsk *);
-	int	(*close)(struct vdsk *);
-	int	(*read)(struct vdsk *, const struct iovec *, int, off_t);
-	int	(*write)(struct vdsk *, const struct iovec *, int, off_t);
-	int	(*flush)(struct vdsk *);
+static int
+raw_probe(struct vdsk *vdsk __unused)
+{
+
+	return (0);
+}
+
+static int
+raw_open(struct vdsk *vdsk __unused)
+{
+
+	return (0);
+}
+
+static int
+raw_close(struct vdsk *vdsk __unused)
+{
+
+	return (0);
+}
+
+static int
+raw_read(struct vdsk *vdsk, const struct iovec *iov, int iovcnt, off_t offset)
+{
+	ssize_t res;
+
+	res = preadv(vdsk->fd, iov, iovcnt, offset);
+	return ((res == -1) ? errno : 0);
+}
+
+static int
+raw_write(struct vdsk *vdsk, const struct iovec *iov, int iovcnt, off_t offset)
+{
+	ssize_t res;
+
+	res = pwritev(vdsk->fd, iov, iovcnt, offset);
+	return ((res == -1) ? errno : 0);
+}
+
+static int
+raw_flush(struct vdsk *vdsk)
+{
+	int res;
+
+	res = fsync(vdsk->fd);
+	return ((res == -1) ? errno : 0);
+}
+
+static struct vdsk_format raw_format = {
+	.name = "raw",
+	.description = "Raw Disk File or Device",
+	.flags = VDSKFMT_CAN_WRITE | VDSKFMT_DEVICE_OK | VDSKFMT_NO_METADATA,
+	.probe = raw_probe,
+	.open = raw_open,
+	.close = raw_close,
+	.read = raw_read,
+	.write = raw_write,
+	.flush = raw_flush,
 };
+FORMAT_DEFINE(raw_format);
 
-SET_DECLARE(libvdsk_formats, struct vdsk_format);
-#define	FORMAT_DEFINE(nm)	DATA_SET(libvdsk_formats, nm)
-
-/*
- * The internal representation of a "disk".
- */
-struct vdsk {
-	struct vdsk_format *fmt;
-	int	fd;
-	int	fflags;
-	char	*filename;
-	struct stat fsbuf;
-	off_t	capacity;
-	int	sectorsize;
-} __attribute__((align(16)));
-
-#endif /* __VDSK_INT_H__ */
