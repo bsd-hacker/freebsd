@@ -8,7 +8,10 @@ INCS=	vdsk.h
 
 # List of formats to support
 SRCS+=	\
-	raw.c
+	qcow.c \
+	raw.c \
+	vhd.c \
+	vmdk.c
 
 DEBUG_FLAGS=-O0 -gdwarf-2
 
