@@ -56,6 +56,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/interrupt.h>
 #include <sys/cpuset.h>
 
+#include <sys/syslog.h>
+
 #include <net/vnet.h>
 
 #include <machine/cpu.h>
@@ -285,6 +287,7 @@ static void
 device_sysctl_init(device_t dev)
 {
 	devclass_t dc = dev->devclass;
+	int domain;
 
 	if (dev->sysctl_tree != NULL)
 		return;
@@ -314,6 +317,10 @@ device_sysctl_init(device_t dev)
 	    OID_AUTO, "%parent", CTLTYPE_STRING | CTLFLAG_RD,
 	    dev, DEVICE_SYSCTL_PARENT, device_sysctl_handler, "A",
 	    "parent device");
+	if (bus_get_domain(dev, &domain) == 0)
+		SYSCTL_ADD_INT(&dev->sysctl_ctx,
+		    SYSCTL_CHILDREN(dev->sysctl_tree), OID_AUTO, "%domain",
+		    CTLFLAG_RD, NULL, domain, "NUMA domain");
 }
 
 static void
@@ -4542,6 +4549,18 @@ bus_get_dma_tag(device_t dev)
 	return (BUS_GET_DMA_TAG(parent, dev));
 }
 
+/**
+ * @brief Wrapper function for BUS_GET_DOMAIN().
+ *
+ * This function simply calls the BUS_GET_DOMAIN() method of the
+ * parent of @p dev.
+ */
+int
+bus_get_domain(device_t dev, int *domain)
+{
+	return (BUS_GET_DOMAIN(device_get_parent(dev), dev, domain));
+}
+
 /* Resume all devices and then notify userland that we're up again. */
 static int
 root_resume(device_t dev)
@@ -5013,4 +5032,19 @@ bus_free_resource(device_t dev, int type, struct resource *r)
 	if (r == NULL)
 		return (0);
 	return (bus_release_resource(dev, type, rman_get_rid(r), r));
+}
+
+int
+device_getenv_int(device_t dev, const char *knob, int *iptr)
+{
+	char env[128];
+	int sz;
+
+	sz = snprintf(env, sizeof(env), "hw.%s.%d.%s", device_get_name(dev), device_get_unit(dev), knob);
+	if (sz >= sizeof(env)) {
+		/* XXX: log? return error? bump sysctl error? */
+		log(LOG_ERR, "device_getenv_int: knob too long: '%s'", knob);
+		return 0;
+	}
+	return (getenv_int(env, iptr));
 }

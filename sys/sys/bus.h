@@ -392,6 +392,7 @@ int	bus_activate_resource(device_t dev, int type, int rid,
 int	bus_deactivate_resource(device_t dev, int type, int rid,
 				struct resource *r);
 bus_dma_tag_t bus_get_dma_tag(device_t dev);
+int	bus_get_domain(device_t dev, int *domain);
 int	bus_release_resource(device_t dev, int type, int rid,
 			     struct resource *r);
 int	bus_free_resource(device_t dev, int type, struct resource *r);
@@ -448,6 +449,7 @@ const	char *device_get_nameunit(device_t dev);
 void	*device_get_softc(device_t dev);
 device_state_t	device_get_state(device_t dev);
 int	device_get_unit(device_t dev);
+int	device_getenv_int(device_t dev, const char *knob, int *iptr);
 struct sysctl_ctx_list *device_get_sysctl_ctx(device_t dev);
 struct sysctl_oid *device_get_sysctl_tree(device_t dev);
 int	device_is_alive(device_t dev);	/* did probe succeed? */
