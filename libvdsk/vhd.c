@@ -88,7 +88,7 @@ vhd_flush(struct vdsk *vdsk __unused)
 static struct vdsk_format vhd_format = {
 	.name = "vhd",
 	.description = "Virtual Hard Disk",
-	.flags = VDSKFMT_HAS_HEADER,
+	.flags = VDSKFMT_CAN_WRITE | VDSKFMT_HAS_HEADER,
 	.probe = vhd_probe,
 	.open = vhd_open,
 	.close = vhd_close,

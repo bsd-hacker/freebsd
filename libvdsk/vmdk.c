@@ -88,7 +88,7 @@ vmdk_flush(struct vdsk *vdsk __unused)
 static struct vdsk_format vmdk_format = {
 	.name = "vmdk",
 	.description = "Virtual Machine Disk",
-	.flags = VDSKFMT_HAS_HEADER,
+	.flags = VDSKFMT_CAN_WRITE | VDSKFMT_HAS_HEADER,
 	.probe = vmdk_probe,
 	.open = vmdk_open,
 	.close = vmdk_close,
