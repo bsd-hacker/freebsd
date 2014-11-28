@@ -58,26 +58,46 @@ vdsk_deref(vdskctx ctx)
 static struct vdsk_format *
 vdsk_probe(struct vdsk *vdsk)
 {
-	struct vdsk_format *f, *fmt, **f_iter;
+	struct vdsk_format **fmts;
+	struct vdsk_format *f, *fmt;
+	size_t idx, nfmts;
 	int error, probe;
+
+	/*
+	 * Create a mutable copy of the linker set.
+	 */
+	nfmts = SET_COUNT(libvdsk_formats);
+	fmts = malloc(nfmts * sizeof(*fmts));
+	if (fmts == NULL)
+		return (NULL);
+	memcpy(fmts, SET_BEGIN(libvdsk_formats), nfmts * sizeof(*fmts));
 
 	fmt = NULL;
 	probe = VDSKFMT_HAS_HEADER | VDSKFMT_HAS_FOOTER;
 	probe |= (vdsk_is_dev(vdsk)) ? VDSKFMT_DEVICE_OK : 0;
 	probe |= (vdsk->fflags & FWRITE) ? VDSKFMT_CAN_WRITE : 0;
 	while (fmt == NULL && probe >= 0) {
-		SET_FOREACH(f_iter, libvdsk_formats) {
-			f = *f_iter;
+		for (idx = 0; idx < nfmts; idx++) {
+			f = fmts[idx];
+			/* Skip formats we've probed already. */
+			if (f == NULL)
+				continue;
+			/* Skip formats we shouldn't probe now. */
 			if ((f->flags & probe) != probe)
 				continue;
+			/* White-out this format and probe it. */
+			fmts[idx] = NULL;
 			error = f->probe(vdsk);
 			if (!error) {
+				/* We have a match. */
 				fmt = f;
 				break;
 			}
 		}
-		probe -= VDSKFMT_HAS_FOOTER;
+		if (fmt == NULL)
+			probe -= VDSKFMT_HAS_FOOTER;
 	}
+	free(fmts);
 	if (fmt == NULL)
 		errno = EFTYPE;
 	return (fmt);
