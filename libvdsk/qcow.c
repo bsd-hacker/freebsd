@@ -88,12 +88,18 @@ qcow_probe(struct vdsk *vdsk)
 		return (errno);
 
 	if (read(vdsk->fd, hdr, vdsk->sectorsize) != vdsk->sectorsize)
-		return (errno);
+		goto out;
 
-	if (be32dec(&hdr->magic) != QCOW_MAGIC)
-		return (ENXIO);
+	if (be32dec(&hdr->magic) != QCOW_MAGIC) {
+		errno = ENXIO;
+		goto out;
+	}
 
-	return (0);
+	errno = 0;
+
+ out:
+	free(hdr);
+	return (errno);
 }
 
 static int
@@ -136,7 +142,7 @@ qcow_flush(struct vdsk *vdsk __unused)
 static struct vdsk_format qcow_format = {
 	.name = "qcow",
 	.description = "QEMU Copy-On-Write, version 1",
-	.flags = VDSKFMT_HAS_HEADER,
+	.flags = VDSKFMT_CAN_WRITE | VDSKFMT_HAS_HEADER,
 	.probe = qcow_probe,
 	.open = qcow_open,
 	.close = qcow_close,
