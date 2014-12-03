@@ -33,6 +33,7 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+[ -z "`type mkntfs 2>/dev/null`" ] && exit 0
 [ -c /dev/fuse ] || kldload fuse.ko
 
 . ../default.cfg

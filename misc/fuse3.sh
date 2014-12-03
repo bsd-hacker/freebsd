@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2012 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2014 EMC Corp.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,32 +28,17 @@
 # $FreeBSD$
 #
 
-# General Fuse test scenario
+# Demonstrate FUSE memory corruption.
+# http://people.freebsd.org/~pho/stress/log/fuse3.txt
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-. ../default.cfg
+# Start page stealer
+(cd ../testcases/swap; ./swap -t 10m -i 20 -h) &
+sleep 10
 
-[ -z "`type mkntfs 2>/dev/null`" ] && exit 0
-[ -c /dev/fuse ] || kldload fuse.ko
-
-MOUNT=/usr/local/bin/ntfs-3g
-
-mount | grep -q "$mntpoint" && umount $mntpoint
-mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
-
-mdconfig -a -t swap -s 1g -u $mdstart
-mkntfs -Ff /dev/md${mdstart} > /dev/null 2>&1 || exit 1
-
-$MOUNT /dev/md${mdstart} $mntpoint || exit 1
-
-export RUNDIR=$mntpoint/stressX
-export runRUNTIME=20m
-(cd ..; ./run.sh marcus.cfg)
-rm -rf $RUNDIR
-
-for i in `jot 10`; do
-	umount $mntpoint || sleep 2
-	mount | grep -q $mntpoint || break
+while pgrep -q swap; do
+	kldload fuse.ko
+	kldunload fuse.ko
 done
-mdconfig -d -u $mdstart
+wait
