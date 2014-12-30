@@ -43,7 +43,8 @@ SRCS=	\
 .PATH:	/sys/amd64/vmm
 SRCS+=	vmm_instruction_emul.c
 
-LIBADD=	vdsk vmmapi md util pthread
+DPADD=	${LIBVDSK} ${LIBVMMAPI} ${LIBMD} ${LIBUTIL} ${LIBPTHREAD}
+LDADD=	-lvdsk -lvmmapi -lmd -lutil -lpthread
 
 WARNS?=	2
 
