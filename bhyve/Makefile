@@ -4,7 +4,7 @@
 
 PROG=	bhyve
 
-DEBUG_FLAGS= -g -O0 
+DEBUG_FLAGS= -g -O0
 
 MAN=	bhyve.8
 
@@ -43,8 +43,7 @@ SRCS=	\
 .PATH:	/sys/amd64/vmm
 SRCS+=	vmm_instruction_emul.c
 
-DPADD=	${LIBVDSK} ${LIBVMMAPI} ${LIBMD} ${LIBUTIL} ${LIBPTHREAD}
-LDADD=	-lvdsk -lvmmapi -lmd -lutil -lpthread
+LIBADD=	vdsk vmmapi md util pthread
 
 WARNS?=	2
 
