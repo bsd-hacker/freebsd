@@ -35,6 +35,9 @@ The following sub-directories exists:
 ./testcases	Test programs
 ./tools		Supplementary tools used in stress testing
 
+These days most test development occur is stress2/misc, where the regression tests reside.
+To run all of these tests once, type "./all.sh -o" in the stress2/misc directory.
+
 The name stress2 indicates that this is the second generation of the Kernel Stress Test Suite.
 The first version (stress) was based mostly on scripts.
 
