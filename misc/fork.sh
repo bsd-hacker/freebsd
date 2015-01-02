@@ -42,11 +42,18 @@ cc -o fork -Wall -Wextra -O2 -g fork.c -lpthread || exit 1
 for i in `jot 100`; do
 	/tmp/fork &
 done
-sleep 10
-if ps -l | grep -v grep | egrep "fork\$"; then
+while ! pgrep -q fork; do
+	sleep .2
+done
+for i in `jot 30`; do
+	pgrep -q fork || break
+	sleep 1
+done
+if pgrep -q fork; then
 	echo FAIL
 	exit 1
 fi
+wait
 
 rm -f /tmp/fork /tmp/fork.c
 exit 0
