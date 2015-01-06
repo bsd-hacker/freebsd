@@ -34,9 +34,14 @@
 
 . ../default.cfg
 
+[ -z "$nfs_export" ] && exit 0
+ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
+    exit 0
+
 [ ! -d $mntpoint ] &&  mkdir $mntpoint
 mount | grep "$mntpoint" | grep nfs > /dev/null && umount $mntpoint
-mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
+mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw $nfs_export $mntpoint
+sleep 1
 rm -rf $mntpoint/stressX/*
 rm -rf /tmp/stressX.control
 
@@ -45,11 +50,11 @@ export RUNDIR=$mntpoint/nfs/stressX
 export runRUNTIME=1m
 rm -rf /tmp/stressX.control/*
 
-su $testuser -c "(cd ..; ./run.sh -a > /dev/null 2>&1)" & 
+su $testuser -c "(cd ..; ./run.sh io.cfg > /dev/null 2>&1)" &
 sleep 50
 
-while mount | grep -q $mntpoint; do
-	umount -f $mntpoint > /dev/null 2>&1
+while mount | grep -q "on $mntpoint "; do
+	umount -f $mntpoint || sleep 1
 done
 kill -9 $!
 ../tools/killall.sh

@@ -63,10 +63,12 @@ mount -t procfs procfs $mntpoint
 /tmp/readdir $mntpoint
 umount $mntpoint
 
-echo "Testing nfs"
-mount -t nfs -o nfsv3,tcp,nolockd 127.0.0.1:/tmp $mntpoint
-/tmp/readdir $mntpoint
-umount $mntpoint
+if ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1; then
+	echo "Testing nfs"
+	mount -t nfs -o nfsv3,tcp,nolockd $nfs_export $mntpoint
+	/tmp/readdir $mntpoint
+	umount $mntpoint
+fi
 
 mdconfig -a -t swap -s 1g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto

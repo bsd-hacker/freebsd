@@ -35,9 +35,13 @@
 
 . ../default.cfg
 
+[ -z "$nfs_export" ] && exit 0
+ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
+    exit 0
+
 [ ! -d $mntpoint ] &&  mkdir $mntpoint
 mount | grep "$mntpoint" | grep nfs > /dev/null && umount $mntpoint
-mount -t nfs -o nfsv3,tcp,nolockd -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
+mount -t nfs -o nfsv3,tcp,nolockd -o retrycnt=3 -o intr -o soft -o rw $nfs_export $mntpoint
 
 pids=""
 for i in `jot 10`; do

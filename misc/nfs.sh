@@ -34,8 +34,12 @@
 
 . ../default.cfg
 
+[ -z "$nfs_export" ] && exit 0
+ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
+    exit 0
+
 mount | grep "$mntpoint" | grep -q nfs && umount $mntpoint
-mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
+mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw $nfs_export $mntpoint
 
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes

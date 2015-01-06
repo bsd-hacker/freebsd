@@ -68,22 +68,25 @@ done
 
 mdconfig -d -u $mdstart
 
-mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
-rm -f /tmp/file
-/tmp/mountu $mntpoint/file &
-sleep 1
+if ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1; then
+	mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw $nfs_export \
+	    $mntpoint
+	rm -f /tmp/file
+	/tmp/mountu $mntpoint/file &
+	sleep 1
 
-if ! mount -u -o ro $mntpoint 2>&1 | grep -q "Device busy"; then
-	echo "NFS FAILED"
+	if ! mount -u -o ro $mntpoint 2>&1 | grep -q "Device busy"; then
+		echo "NFS FAILED"
+	fi
+	wait
+	umount $mntpoint
 fi
-wait
-umount $mntpoint
 
 if [ -x /sbin/mount_msdosfs ]; then
 	mdconfig -a -t swap -s 100m -u $mdstart
 	bsdlabel -w md${mdstart} auto
-	newfs_msdos -F 16 -b 8192 /dev/md${mdstart}a > /dev/null 2>&1
-	mount_msdosfs -m 777 /dev/md${mdstart}a $mntpoint
+	newfs_msdos -F 16 -b 8192 /dev/md${mdstart}$part > /dev/null 2>&1
+	mount_msdosfs -m 777 /dev/md${mdstart}$part $mntpoint
 	/tmp/mountu $mntpoint/file &
 
 	sleep 1
@@ -149,7 +152,6 @@ main(int argc __unused, char **argv)
 		}
 		err(1, "mmap(1)");
 	}
-//	fprintf(stderr, "%s mapped to %p\n", path, p);
 
 	c = p;
 	ps = getpagesize();

@@ -28,27 +28,32 @@
 # $FreeBSD$
 #
 
-# Page fault in nfs_advlock
+# Page fault seen:
+# http://people.freebsd.org/~pho/stress/log/lockf.txt
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
 
+[ -z "$nfs_export" ] && exit 0
+ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
+    exit 0
+
+pgrep -q lockd || { echo "lockd not running"; exit 0; }
+
 trap "rm -f /tmp/$0.$$.*" 0
 mount | grep "$mntpoint" | grep nfs > /dev/null && umount $mntpoint
 
 for i in `jot 100`; do
-	mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
+	mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw $nfs_export $mntpoint
+	sleep 1
 
 	for j in `jot 50`; do
-#		sh -c "lockf -t 10 $mntpoint/$0.$$.$j sleep 3" &
 		lockf -t 10 $mntpoint/$0.$$.$j sleep 3 &
 	done
 
 	while mount | grep -q ${mntpoint}; do
 		umount -f $mntpoint > /dev/null 2>&1
 	done
-	for j in `jot 50`; do
-		wait
-	done
+	wait
 done

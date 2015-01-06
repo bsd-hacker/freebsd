@@ -39,11 +39,15 @@
 
 . ../default.cfg
 
+[ -z "$nfs_export" ] && exit 0
+ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
+    exit 0
+
 [ ! -d $mntpoint ] &&  mkdir $mntpoint
 for i in `jot 10`; do
 	mount | grep "on $mntpoint " | grep -q nfs && umount $mntpoint
 	mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft \
-		-o rw 127.0.0.1:/tmp $mntpoint
+		-o rw $nfs_export $mntpoint
 
 	sleep .5
 	export RUNDIR=$mntpoint/nfs9/stressX

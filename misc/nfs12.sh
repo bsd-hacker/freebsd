@@ -36,7 +36,9 @@
 
 . ../default.cfg
 
-grep -q $mntpoint /etc/exports || { echo "$mntpoint missing from /etc/exports"; exit 0; }
+[ -z "$nfs_export" ] && exit 0
+ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
+    exit 0
 
 here=`pwd`
 cd /tmp
@@ -49,7 +51,8 @@ mount | grep "on $mntpoint " | grep nfs > /dev/null && umount $mntpoint
 version="-o nfsv3"	# The default
 [ $# -eq 1 ] &&  [ "$1" -eq 4 ] && version="-o nfsv4"
 for i in `jot 10`; do
-	mount -t nfs $version -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/tmp $mntpoint
+	mount -t nfs $version -o tcp -o retrycnt=3 -o intr -o soft -o rw \
+	    $nfs_export $mntpoint
 	sleep 2
 
 	(cd $mntpoint; /tmp/nfs12 > /dev/null 2>&1) &
@@ -144,7 +147,7 @@ main(void)
         int i;
 
 	for (i = 0; i < PARALLEL; i++) {
-		if (fork() == 0) 
+		if (fork() == 0)
 			tmmap();
 	}
 
