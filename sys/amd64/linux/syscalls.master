@@ -155,7 +155,7 @@
 				    char **envp); }
 60	AUE_EXIT	STD	{ void linux_exit(int rval); }
 61	AUE_WAIT4	STD	{ int linux_wait4(l_pid_t pid, \
-				    l_uint *status, l_int options, \
+				    l_int *status, l_int options, \
 				    struct l_rusage *rusage); }
 62	AUE_KILL	STD	{ int linux_kill(l_int pid, l_int signum); }
 63	AUE_NULL	STD	{ int linux_newuname( \
@@ -383,18 +383,18 @@
 219	AUE_NULL	UNIMPL	restart_syscall
 220	AUE_NULL	STD	{ int linux_semtimedop(void); }
 221	AUE_NULL	STD	{ int linux_fadvise64(int fd, l_loff_t offset, \
-					l_size_t len, int advice); }
+				    l_size_t len, int advice); }
 222	AUE_NULL	STD	{ int linux_timer_create(clockid_t clock_id, \
-					struct sigevent *evp, l_timer_t *timerid); }
+				    struct sigevent *evp, l_timer_t *timerid); }
 223	AUE_NULL	STD	{ int linux_timer_settime(l_timer_t timerid, l_int flags, \
-					const struct itimerspec *new, struct itimerspec *old); }
+				    const struct itimerspec *new, struct itimerspec *old); }
 224	AUE_NULL	STD	{ int linux_timer_gettime(l_timer_t timerid, struct itimerspec *setting); }
 225	AUE_NULL	STD	{ int linux_timer_getoverrun(l_timer_t timerid); }
 226	AUE_NULL	STD	{ int linux_timer_delete(l_timer_t timerid); }
-227	AUE_CLOCK_SETTIME	STD	{ int linux_clock_settime(l_clockid_t which, struct l_timespec *tp); }
-228	AUE_NULL	STD	{ int linux_clock_gettime(l_clockid_t which, struct l_timespec *tp); }
-229	AUE_NULL	STD	{ int linux_clock_getres(l_clockid_t which, struct l_timespec *tp); }
-230	AUE_NULL	STD	{ int linux_clock_nanosleep(l_clockid_t which, int flags, \
+227	AUE_CLOCK_SETTIME	STD	{ int linux_clock_settime(clockid_t which, struct l_timespec *tp); }
+228	AUE_NULL	STD	{ int linux_clock_gettime(clockid_t which, struct l_timespec *tp); }
+229	AUE_NULL	STD	{ int linux_clock_getres(clockid_t which, struct l_timespec *tp); }
+230	AUE_NULL	STD	{ int linux_clock_nanosleep(clockid_t which, int flags, \
 				    struct l_timespec *rqtp, struct l_timespec *rmtp); }
 231	AUE_EXIT	STD	{ int linux_exit_group(int error_code); }
 232	AUE_NULL	STD	{ int linux_epoll_wait(l_int epfd, struct epoll_event *events, \
@@ -416,7 +416,7 @@
 245	AUE_NULL	STD	{ int linux_mq_getsetattr(void); }
 246	AUE_NULL	STD	{ int linux_kexec_load(void); }
 247	AUE_WAIT6	STD	{ int linux_waitid(int idtype, l_pid_t id, l_siginfo_t *info, \
-					int options, struct l_rusage *rusage); }
+				    int options, struct l_rusage *rusage); }
 248	AUE_NULL	STD	{ int linux_add_key(void); }
 249	AUE_NULL	STD	{ int linux_request_key(void); }
 250	AUE_NULL	STD	{ int linux_keyctl(void); }
@@ -437,13 +437,13 @@
 261	AUE_FUTIMESAT	STD	{ int linux_futimesat(l_int dfd, char *filename, \
 				    struct l_timeval *utimes); }
 262	AUE_FSTATAT	STD	{ int linux_newfstatat(l_int dfd, char *pathname, \
-					struct l_stat64 *statbuf, l_int flag); }
+				    struct l_stat64 *statbuf, l_int flag); }
 263	AUE_UNLINKAT	STD	{ int linux_unlinkat(l_int dfd, const char *pathname, \
 				    l_int flag); }
 264	AUE_RENAMEAT	STD	{ int linux_renameat(l_int olddfd, const char *oldname, \
 				    l_int newdfd, const char *newname); }
 265	AUE_LINKAT	STD	{ int linux_linkat(l_int olddfd, const char *oldname, \
-					l_int newdfd, const char *newname, l_int flag); }
+				    l_int newdfd, const char *newname, l_int flag); }
 266	AUE_SYMLINKAT	STD	{ int linux_symlinkat(const char *oldname, l_int newdfd, \
 				    const char *newname); }
 267	AUE_READLINKAT	STD	{ int linux_readlinkat(l_int dfd, const char *path, \
@@ -453,10 +453,9 @@
 269	AUE_FACCESSAT	STD	{ int linux_faccessat(l_int dfd, const char *filename, \
 				    l_int amode); }
 270	AUE_SELECT	STD	{ int linux_pselect6(l_int nfds,			\
-		    			    l_fd_set *readfds, l_fd_set *writefds,	\
-					    l_fd_set *exceptfds,			\
-					    struct l_timespec *tsp, l_uintptr_t *sig); }
-271	AUE_POLL	STD	{ int linux_ppoll(struct pollfd* fds, uint32_t nfds,	\
+				    l_fd_set *readfds, l_fd_set *writefds, l_fd_set *exceptfds,	\
+				    struct l_timespec *tsp, l_uintptr_t *sig); }
+271	AUE_POLL	STD	{ int linux_ppoll(struct pollfd *fds, uint32_t nfds,	\
 				    struct l_timespec *tsp, l_sigset_t *sset, l_size_t ssize); }
 272	AUE_NULL	STD	{ int linux_unshare(void); }
 273	AUE_NULL	STD	{ int linux_set_robust_list(struct linux_robust_list_head *head, \
@@ -483,7 +482,7 @@
 290	AUE_NULL	STD	{ int linux_eventfd2(l_uint initval, l_int flags); }
 291	AUE_NULL	STD	{ int linux_epoll_create1(l_int flags); }
 292	AUE_NULL	STD	{ int linux_dup3(l_int oldfd,		\
-					l_int newfd, l_int flags); }
+				    l_int newfd, l_int flags); }
 293	AUE_NULL	STD	{ int linux_pipe2(l_int *pipefds, l_int flags); }
 294	AUE_NULL	STD	{ int linux_inotify_init1(void); }
 295	AUE_NULL	STD	{ int linux_preadv(void); }
@@ -494,9 +493,8 @@
 300	AUE_NULL	STD	{ int linux_fanotify_init(void); }
 301	AUE_NULL	STD	{ int linux_fanotify_mark(void); }
 302	AUE_NULL	STD	{ int linux_prlimit64(l_pid_t pid,	\
-					l_uint resource,		\
-					struct rlimit *new,		\
-					struct rlimit *old); }
+				    l_uint resource, struct rlimit *new,\
+				    struct rlimit *old); }
 303	AUE_NULL	STD	{ int linux_name_to_handle_at(void); }
 304	AUE_NULL	STD	{ int linux_open_by_handle_at(void); }
 305	AUE_NULL	STD	{ int linux_clock_adjtime(void); }

@@ -32,60 +32,16 @@
 #define _LINUX_SIGNAL_H_
 
 /*
- * Signalling
+ * si_code values
  */
-#define	LINUX_SIGHUP		1
-#define	LINUX_SIGINT		2
-#define	LINUX_SIGQUIT		3
-#define	LINUX_SIGILL		4
-#define	LINUX_SIGTRAP		5
-#define	LINUX_SIGABRT		6
-#define	LINUX_SIGIOT		LINUX_SIGABRT
-#define	LINUX_SIGBUS		7
-#define	LINUX_SIGFPE		8
-#define	LINUX_SIGKILL		9
-#define	LINUX_SIGUSR1		10
-#define	LINUX_SIGSEGV		11
-#define	LINUX_SIGUSR2		12
-#define	LINUX_SIGPIPE		13
-#define	LINUX_SIGALRM		14
-#define	LINUX_SIGTERM		15
-#define	LINUX_SIGSTKFLT		16
-#define	LINUX_SIGCHLD		17
-#define	LINUX_SIGCONT		18
-#define	LINUX_SIGSTOP		19
-#define	LINUX_SIGTSTP		20
-#define	LINUX_SIGTTIN		21
-#define	LINUX_SIGTTOU		22
-#define	LINUX_SIGURG		23
-#define	LINUX_SIGXCPU		24
-#define	LINUX_SIGXFSZ		25
-#define	LINUX_SIGVTALRM		26
-#define	LINUX_SIGPROF		27
-#define	LINUX_SIGWINCH		28
-#define	LINUX_SIGIO		29
-#define	LINUX_SIGPOLL		LINUX_SIGIO
-#define	LINUX_SIGPWR		30
-#define	LINUX_SIGSYS		31
-#define	LINUX_SIGRTMIN		32
-
-/* sigaction flags */
-#define	LINUX_SA_NOCLDSTOP	0x00000001
-#define	LINUX_SA_NOCLDWAIT	0x00000002
-#define	LINUX_SA_SIGINFO	0x00000004
-#define	LINUX_SA_RESTORER	0x04000000
-#define	LINUX_SA_ONSTACK	0x08000000
-#define	LINUX_SA_RESTART	0x10000000
-#define	LINUX_SA_INTERRUPT	0x20000000
-#define	LINUX_SA_NOMASK		0x40000000
-#define	LINUX_SA_ONESHOT	0x80000000
-
-/* sigprocmask actions */
-#define	LINUX_SIG_BLOCK		0
-#define	LINUX_SIG_UNBLOCK	1
-#define	LINUX_SIG_SETMASK	2
-
-#define	LINUX_SI_TKILL		-6;
+#define	LINUX_SI_USER		0	/* sent by kill, sigsend, raise */
+#define	LINUX_SI_KERNEL		0x80	/* sent by the kernel from somewhere */
+#define	LINUX_SI_QUEUE		-1	/* sent by sigqueue */
+#define	LINUX_SI_TIMER		-2	/* sent by timer expiration */
+#define	LINUX_SI_MESGQ		-3	/* sent by real time mesq state change */
+#define	LINUX_SI_ASYNCIO	-4	/* sent by AIO completion */
+#define	LINUX_SI_SIGIO		-5	/* sent by queued SIGIO */
+#define	LINUX_SI_TKILL		-6	/* sent by tkill system call */
 
 extern int bsd_to_linux_signal[];
 extern int linux_to_bsd_signal[];

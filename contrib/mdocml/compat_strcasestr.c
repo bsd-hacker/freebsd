@@ -1,14 +1,13 @@
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
-#ifdef HAVE_STRCASESTR
+#if HAVE_STRCASESTR
 
 int dummy;
 
 #else
 
-/*	($)NetBSD: strcasestr.c,v 1.2 2005/02/09 21:35:47 kleink Exp $ */
+/*	$Id: compat_strcasestr.c,v 1.4 2014/12/11 09:19:32 schwarze Exp $	*/
+/*	$NetBSD: strcasestr.c,v 1.3 2005/11/29 03:12:00 christos Exp $	*/
 
 /*-
  * Copyright (c) 1990, 1993

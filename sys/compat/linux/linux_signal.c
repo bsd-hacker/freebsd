@@ -57,29 +57,8 @@ __FBSDID("$FreeBSD$");
 
 static int	linux_do_tkill(struct thread *td, struct thread *tdt,
 		    ksiginfo_t *ksi);
+static void	sicode_to_lsicode(int si_code, int *lsi_code);
 
-
-int bsd_to_linux_signal[LINUX_SIGTBLSZ] = {
-	LINUX_SIGHUP, LINUX_SIGINT, LINUX_SIGQUIT, LINUX_SIGILL,
-	LINUX_SIGTRAP, LINUX_SIGABRT, 0, LINUX_SIGFPE,
-	LINUX_SIGKILL, LINUX_SIGBUS, LINUX_SIGSEGV, LINUX_SIGSYS,
-	LINUX_SIGPIPE, LINUX_SIGALRM, LINUX_SIGTERM, LINUX_SIGURG,
-	LINUX_SIGSTOP, LINUX_SIGTSTP, LINUX_SIGCONT, LINUX_SIGCHLD,
-	LINUX_SIGTTIN, LINUX_SIGTTOU, LINUX_SIGIO, LINUX_SIGXCPU,
-	LINUX_SIGXFSZ, LINUX_SIGVTALRM, LINUX_SIGPROF, LINUX_SIGWINCH,
-	0, LINUX_SIGUSR1, LINUX_SIGUSR2
-};
-
-int linux_to_bsd_signal[LINUX_SIGTBLSZ] = {
-	SIGHUP, SIGINT, SIGQUIT, SIGILL,
-	SIGTRAP, SIGABRT, SIGBUS, SIGFPE,
-	SIGKILL, SIGUSR1, SIGSEGV, SIGUSR2,
-	SIGPIPE, SIGALRM, SIGTERM, SIGBUS,
-	SIGCHLD, SIGCONT, SIGSTOP, SIGTSTP,
-	SIGTTIN, SIGTTOU, SIGURG, SIGXCPU,
-	SIGXFSZ, SIGVTALRM, SIGPROF, SIGWINCH,
-	SIGIO, SIGURG, SIGSYS
-};
 
 #if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 void
@@ -622,7 +601,7 @@ linux_tgkill(struct thread *td, struct linux_tgkill_args *args)
 
 	ksiginfo_init(&ksi);
 	ksi.ksi_signo = sig;
-	ksi.ksi_code = LINUX_SI_TKILL;
+	ksi.ksi_code = SI_LWP;
 	ksi.ksi_errno = 0;
 	ksi.ksi_pid = td->td_proc->p_pid;
 	ksi.ksi_uid = td->td_proc->p_ucred->cr_ruid;
@@ -649,10 +628,8 @@ linux_tkill(struct thread *td, struct linux_tkill_args *args)
 	if (!LINUX_SIG_VALID(args->sig))
 		return (EINVAL);
 
-	if (args->sig > 0 && args->sig <= LINUX_SIGTBLSZ)
-		sig = linux_to_bsd_signal[_SIG_IDX(args->sig)];
-	else
-		sig = args->sig;
+
+	sig = BSD_TO_LINUX_SIGNAL(args->sig);
 
 	tdt = linux_tdfind(td, args->tid, -1);
 	if (tdt == NULL)
@@ -660,7 +637,7 @@ linux_tkill(struct thread *td, struct linux_tkill_args *args)
 
 	ksiginfo_init(&ksi);
 	ksi.ksi_signo = sig;
-	ksi.ksi_code = LINUX_SI_TKILL;
+	ksi.ksi_code = SI_LWP;
 	ksi.ksi_errno = 0;
 	ksi.ksi_pid = td->td_proc->p_pid;
 	ksi.ksi_uid = td->td_proc->p_ucred->cr_ruid;
@@ -674,46 +651,35 @@ ksiginfo_to_lsiginfo(ksiginfo_t *ksi, l_siginfo_t *lsi, l_int sig)
 	siginfo_to_lsiginfo(&ksi->ksi_info, lsi, sig);
 }
 
-void
-siginfo_to_lsiginfo(siginfo_t *si, l_siginfo_t *lsi, l_int sig)
+static void
+sicode_to_lsicode(int si_code, int *lsi_code)
 {
 
-	lsi->lsi_signo = sig;
-	lsi->lsi_code = si->si_code;
-
-	switch (sig) {
-	case LINUX_SIGPOLL:
-		/* XXX si_fd? */
-		lsi->lsi_band = si->si_band;
+	switch (si_code) {
+	case SI_USER:
+		*lsi_code = LINUX_SI_TIMER;
 		break;
-	case LINUX_SIGCHLD:
-		lsi->lsi_errno = 0;
-		lsi->lsi_pid = si->si_pid;
-		lsi->lsi_uid = si->si_uid;
-
-		if (si->si_code == CLD_STOPPED)
-			lsi->lsi_status = BSD_TO_LINUX_SIGNAL(si->si_status);
-		else if (si->si_code == CLD_CONTINUED)
-			lsi->lsi_status = BSD_TO_LINUX_SIGNAL(SIGCONT);
-		else
-			lsi->lsi_status = si->si_status;
-
+	case SI_KERNEL:
+		*lsi_code = LINUX_SI_KERNEL;
 		break;
-	case LINUX_SIGBUS:
-	case LINUX_SIGILL:
-	case LINUX_SIGFPE:
-	case LINUX_SIGSEGV:
-		lsi->lsi_addr = PTROUT(si->si_addr);
+	case SI_QUEUE:
+		*lsi_code = LINUX_SI_QUEUE;
+		break;
+	case SI_TIMER:
+		*lsi_code = LINUX_SI_TIMER;
+		break;
+	case SI_MESGQ:
+		*lsi_code = LINUX_SI_MESGQ;
+		break;
+	case SI_ASYNCIO:
+		*lsi_code = LINUX_SI_ASYNCIO;
+		break;
+	case SI_LWP:
+		*lsi_code = LINUX_SI_TKILL;
 		break;
 	default:
-		/* XXX SI_TIMER etc... */
-		lsi->lsi_pid = si->si_pid;
-		lsi->lsi_uid = si->si_uid;
+		*lsi_code = si_code;
 		break;
-	}
-	if (sig >= LINUX_SIGRTMIN) {
-		lsi->lsi_int = si->si_value.sival_int;
-		lsi->lsi_ptr = PTROUT(si->si_value.sival_ptr);
 	}
 }
 
@@ -722,7 +688,7 @@ lsiginfo_to_ksiginfo(l_siginfo_t *lsi, ksiginfo_t *ksi, int sig)
 {
 
 	ksi->ksi_signo = sig;
-	ksi->ksi_code = lsi->lsi_code;
+	ksi->ksi_code = lsi->lsi_code;	/* XXX. Convert. */
 	ksi->ksi_pid = lsi->lsi_pid;
 	ksi->ksi_uid = lsi->lsi_uid;
 	ksi->ksi_status = lsi->lsi_status;
@@ -748,10 +714,7 @@ linux_rt_sigqueueinfo(struct thread *td, struct linux_rt_sigqueueinfo_args *args
 	if (linfo.lsi_code >= 0)
 		return (EPERM);
 
-	if (args->sig > 0 && args->sig <= LINUX_SIGTBLSZ)
-		sig = linux_to_bsd_signal[_SIG_IDX(args->sig)];
-	else
-		sig = args->sig;
+	sig = BSD_TO_LINUX_SIGNAL(args->sig);
 
 	error = ESRCH;
 	if ((p = pfind(args->pid)) != NULL ||
@@ -762,4 +725,68 @@ linux_rt_sigqueueinfo(struct thread *td, struct linux_rt_sigqueueinfo_args *args
 		PROC_UNLOCK(p);
 	}
 	return (error);
+}
+
+void
+siginfo_to_lsiginfo(siginfo_t *si, l_siginfo_t *lsi, l_int sig)
+{
+
+	/* sig alredy converted */
+ 	lsi->lsi_signo = sig;
+	sicode_to_lsicode(si->si_code, &lsi->lsi_code);
+ 
+	switch (si->si_code) {
+	case SI_LWP:
+ 		lsi->lsi_pid = si->si_pid;
+ 		lsi->lsi_uid = si->si_uid;
+		break;
+
+	case SI_TIMER:
+		lsi->lsi_int = si->si_value.sival_int;
+		lsi->lsi_ptr = PTROUT(si->si_value.sival_ptr);
+		lsi->lsi_tid = si->si_timerid;
+ 		break;
+
+	case SI_QUEUE:
+ 		lsi->lsi_pid = si->si_pid;
+ 		lsi->lsi_uid = si->si_uid;
+		lsi->lsi_ptr = PTROUT(si->si_value.sival_ptr);
+ 		break;
+
+	case SI_ASYNCIO:
+ 		lsi->lsi_int = si->si_value.sival_int;
+ 		lsi->lsi_ptr = PTROUT(si->si_value.sival_ptr);
+		break;
+
+	default:
+		switch (sig) {
+		case LINUX_SIGPOLL:
+			/* XXX si_fd? */
+			lsi->lsi_band = si->si_band;
+			break;
+		case LINUX_SIGCHLD:
+			lsi->lsi_errno = 0;
+			lsi->lsi_pid = si->si_pid;
+			lsi->lsi_uid = si->si_uid;
+
+			if (si->si_code == CLD_STOPPED)
+				lsi->lsi_status = BSD_TO_LINUX_SIGNAL(si->si_status);
+			else if (si->si_code == CLD_CONTINUED)
+				lsi->lsi_status = BSD_TO_LINUX_SIGNAL(SIGCONT);
+			else
+				lsi->lsi_status = si->si_status;
+			break;
+		case LINUX_SIGBUS:
+		case LINUX_SIGILL:
+		case LINUX_SIGFPE:
+		case LINUX_SIGSEGV:
+			lsi->lsi_addr = PTROUT(si->si_addr);
+			break;
+		default:
+ 			lsi->lsi_pid = si->si_pid;
+ 			lsi->lsi_uid = si->si_uid;
+			break;
+		}
+		break;
+ 	}
 }

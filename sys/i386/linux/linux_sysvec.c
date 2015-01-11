@@ -109,7 +109,6 @@ extern char _binary_linux_locore_o_end;
 extern struct sysent linux_sysent[LINUX_SYS_MAXSYSCALL];
 
 SET_DECLARE(linux_ioctl_handler_set, struct linux_ioctl_handler);
-SET_DECLARE(linux_device_handler_set, struct linux_device_handler);
 
 static int	linux_fixup(register_t **stack_base,
 		    struct image_params *iparams);
@@ -126,9 +125,9 @@ static void	linux_vdso_deinstall(void *param);
 static int linux_szplatform;
 const char *linux_kplatform;
 
+static eventhandler_tag linux_exit_tag;
 static eventhandler_tag linux_exec_tag;
 static eventhandler_tag linux_thread_dtor_tag;
-static eventhandler_tag	linux_exit_tag;
 
 /*
  * Linux syscalls return negative errno's, we do positive and map them
@@ -148,6 +147,28 @@ static int bsd_to_linux_errno[ELAST + 1] = {
 	-116, -66,  -6,  -6,  -6,  -6,  -6, -37, -38,  -9,
 	  -6,  -6, -43, -42, -75,-125, -84, -95, -16, -74,
 	 -72, -67, -71
+};
+
+int bsd_to_linux_signal[LINUX_SIGTBLSZ] = {
+	LINUX_SIGHUP, LINUX_SIGINT, LINUX_SIGQUIT, LINUX_SIGILL,
+	LINUX_SIGTRAP, LINUX_SIGABRT, 0, LINUX_SIGFPE,
+	LINUX_SIGKILL, LINUX_SIGBUS, LINUX_SIGSEGV, LINUX_SIGSYS,
+	LINUX_SIGPIPE, LINUX_SIGALRM, LINUX_SIGTERM, LINUX_SIGURG,
+	LINUX_SIGSTOP, LINUX_SIGTSTP, LINUX_SIGCONT, LINUX_SIGCHLD,
+	LINUX_SIGTTIN, LINUX_SIGTTOU, LINUX_SIGIO, LINUX_SIGXCPU,
+	LINUX_SIGXFSZ, LINUX_SIGVTALRM, LINUX_SIGPROF, LINUX_SIGWINCH,
+	0, LINUX_SIGUSR1, LINUX_SIGUSR2
+};
+
+int linux_to_bsd_signal[LINUX_SIGTBLSZ] = {
+	SIGHUP, SIGINT, SIGQUIT, SIGILL,
+	SIGTRAP, SIGABRT, SIGBUS, SIGFPE,
+	SIGKILL, SIGUSR1, SIGSEGV, SIGUSR2,
+	SIGPIPE, SIGALRM, SIGTERM, SIGBUS,
+	SIGCHLD, SIGCONT, SIGSTOP, SIGTSTP,
+	SIGTTIN, SIGTTOU, SIGURG, SIGXCPU,
+	SIGXFSZ, SIGVTALRM, SIGPROF, SIGWINCH,
+	SIGIO, SIGURG, SIGSYS
 };
 
 #define LINUX_T_UNKNOWN  255
@@ -420,9 +441,6 @@ linux_copyout_strings(struct image_params *imgp)
 
 	return (stack_base);
 }
-
-
-
 
 static void
 linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
@@ -993,7 +1011,8 @@ struct sysentvec linux_sysvec = {
 	.sv_shared_page_base = LINUX_SHAREDPAGE,
 	.sv_shared_page_len = PAGE_SIZE,
 	.sv_schedtail	= linux_schedtail,
-	.sv_thread_detach = linux_thread_detach
+	.sv_thread_detach = linux_thread_detach,
+	.sv_trap	= NULL,
 };
 INIT_SYSENTVEC(aout_sysvec, &linux_sysvec);
 
@@ -1032,7 +1051,8 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_shared_page_base = LINUX_SHAREDPAGE,
 	.sv_shared_page_len = PAGE_SIZE,
 	.sv_schedtail	= linux_schedtail,
-	.sv_thread_detach = linux_thread_detach
+	.sv_thread_detach = linux_thread_detach,
+	.sv_trap	= NULL,
 };
 
 static void
@@ -1138,7 +1158,6 @@ linux_elf_modevent(module_t mod, int type, void *data)
 	Elf32_Brandinfo **brandinfo;
 	int error;
 	struct linux_ioctl_handler **lihp;
-	struct linux_device_handler **ldhp;
 
 	error = 0;
 
@@ -1151,14 +1170,12 @@ linux_elf_modevent(module_t mod, int type, void *data)
 		if (error == 0) {
 			SET_FOREACH(lihp, linux_ioctl_handler_set)
 				linux_ioctl_register_handler(*lihp);
-			SET_FOREACH(ldhp, linux_device_handler_set)
-				linux_device_register_handler(*ldhp);
 			LIST_INIT(&futex_list);
 			mtx_init(&futex_mtx, "ftllk", NULL, MTX_DEF);
-			linux_exit_tag = EVENTHANDLER_REGISTER(process_exit,
-			    linux_proc_exit, (void *) elf_linux_sysvec.sv_flags, 1000);
-			linux_exec_tag = EVENTHANDLER_REGISTER(process_exec,
-			    linux_proc_exec, (void *) elf_linux_sysvec.sv_flags, 1000);
+			linux_exit_tag = EVENTHANDLER_REGISTER(process_exit, linux_proc_exit,
+			      NULL, 1000);
+			linux_exec_tag = EVENTHANDLER_REGISTER(process_exec, linux_proc_exec,
+			      NULL, 1000);
 			linux_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
 			    linux_thread_dtor, NULL, EVENTHANDLER_PRI_ANY);
 			linux_get_machine(&linux_kplatform);
@@ -1185,8 +1202,6 @@ linux_elf_modevent(module_t mod, int type, void *data)
 		if (error == 0) {
 			SET_FOREACH(lihp, linux_ioctl_handler_set)
 				linux_ioctl_unregister_handler(*lihp);
-			SET_FOREACH(ldhp, linux_device_handler_set)
-				linux_device_unregister_handler(*ldhp);
 			mtx_destroy(&futex_mtx);
 			EVENTHANDLER_DEREGISTER(process_exit, linux_exit_tag);
 			EVENTHANDLER_DEREGISTER(process_exec, linux_exec_tag);

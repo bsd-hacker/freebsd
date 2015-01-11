@@ -231,10 +231,6 @@ linux_clone_proc(struct thread *td, struct linux_clone_args *args)
 		    exit_signal);
 #endif
 
-	LINUX_CTR4(clone, "thread(%d): successful rfork to %d, "
-	    "stack %p sig = %d", td->td_tid, (int)p2->p_pid,
-	    args->stack, exit_signal);
-
 	if (args->flags & LINUX_CLONE_VFORK) {
 	   	PROC_LOCK(p2);
 	   	p2->p_flag |= P_PPWAIT;
@@ -278,7 +274,7 @@ linux_clone_thread(struct thread *td, struct linux_clone_args *args)
 	}
 #endif
 
-	LINUX_CTR4(clone, "thread(%d) flags %x ptid %p ctid %p",
+	LINUX_CTR4(clone_thread, "thread(%d) flags %x ptid %p ctid %p",
 	    td->td_tid, (unsigned)args->flags,
 	    args->parent_tidptr, args->child_tidptr);
 
@@ -355,7 +351,7 @@ linux_clone_thread(struct thread *td, struct linux_clone_args *args)
 		(int)newtd->td_tid, args->stack);
 #endif
 
-	LINUX_CTR2(clone, "thread(%d) successful clone to %d",
+	LINUX_CTR2(clone_thread, "thread(%d) successful clone to %d",
 	    td->td_tid, newtd->td_tid);
 
 	if (args->flags & LINUX_CLONE_PARENT_SETTID) {
@@ -399,20 +395,13 @@ linux_exit(struct thread *td, struct linux_exit_args *args)
 
 	LINUX_CTR2(exit, "thread(%d) (%d)", em->em_tid, args->rval);
 
-	linux_thread_detach(td);
-
 	p = td->td_proc;
 
-	/*
-	 * XXX. A race condition possible when last two threads of a process
-	 * exits via pthread_exit(). We should hold of p_mtx before
-	 * checking p_flag.
-	 */
-	if (p->p_flag & P_HADTHREADS)
-		return (kern_thr_exit(td));
-	else
-		exit1(td, W_EXITCODE(args->rval, 0));
-			/* NOTREACHED */
+	linux_thread_detach(td);
+
+	kern_thr_exit(td);
+	exit1(td, W_EXITCODE(args->rval, 0));
+		/* NOTREACHED */
 }
 
 int
@@ -443,9 +432,15 @@ linux_thread_detach(struct thread *td)
 	int error;
 
 	em = em_find(td);
-	KASSERT(em != NULL, ("thread_detach: thread emuldata not found.\n"));
+	KASSERT(em != NULL, ("thread_detach: emuldata not found.\n"));
 
-	LINUX_CTR1(exit, "thread detach(%d)", em->em_tid);
+	if (em->flags & LINUX_THREAD_DETACHED) {
+		LINUX_CTR1(thread_detach, "thread(%d) already detached", em->em_tid);
+		return;
+	}
+
+	em->flags |= LINUX_THREAD_DETACHED;
+	LINUX_CTR1(thread_detach, "thread(%d)", em->em_tid);
 
 	release_futexes(td, em);
 
@@ -453,7 +448,7 @@ linux_thread_detach(struct thread *td)
 
 	if (child_clear_tid != NULL) {
 
-		LINUX_CTR2(exit, "thread detach(%d) %p",
+		LINUX_CTR2(thread_detach, "thread(%d) %p",
 		    em->em_tid, child_clear_tid);
 	
 		error = copyout(&null, child_clear_tid, sizeof(null));

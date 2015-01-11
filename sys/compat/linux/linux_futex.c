@@ -171,11 +171,12 @@ LIN_SDT_PROBE_DEFINE2(futex, linux_get_robust_list, entry, "struct thread *",
 LIN_SDT_PROBE_DEFINE1(futex, linux_get_robust_list, copyout_error, "int");
 LIN_SDT_PROBE_DEFINE1(futex, linux_get_robust_list, return, "int");
 LIN_SDT_PROBE_DEFINE3(futex, handle_futex_death, entry,
-    "struct linux_emuldata *", "uint32_t *", "int");
+    "struct linux_emuldata *", "uint32_t *", "unsigned int");
 LIN_SDT_PROBE_DEFINE1(futex, handle_futex_death, copyin_error, "int");
 LIN_SDT_PROBE_DEFINE1(futex, handle_futex_death, return, "int");
 LIN_SDT_PROBE_DEFINE3(futex, fetch_robust_entry, entry,
-    "struct linux_robust_list **", "struct linux_robust_list **", "int *");
+    "struct linux_robust_list **", "struct linux_robust_list **",
+    "unsigned int *");
 LIN_SDT_PROBE_DEFINE1(futex, fetch_robust_entry, copyin_error, "int");
 LIN_SDT_PROBE_DEFINE1(futex, fetch_robust_entry, return, "int");
 LIN_SDT_PROBE_DEFINE2(futex, release_futexes, entry, "struct thread *",
@@ -806,10 +807,6 @@ linux_sys_futex(struct thread *td, struct linux_sys_futex_args *args)
 			LIN_SDT_PROBE0(futex, linux_sys_futex,
 			    invalid_cmp_requeue_use);
 			LIN_SDT_PROBE1(futex, linux_sys_futex, return, EINVAL);
-
-			LINUX_CTR2(sys_futex, "CMP_REQUEUE second %p eq first %p",
-			    args->uaddr2, args->uaddr);
-
 			return (EINVAL);
 		}
 
@@ -829,8 +826,6 @@ linux_sys_futex(struct thread *td, struct linux_sys_futex_args *args)
 		error = futex_get(args->uaddr2, NULL, &f2,
 		    flags | FUTEX_DONTEXISTS);
 		if (error) {
-			LINUX_CTR2(sys_futex, "CMP_REQUEUE second %p exists %d",
-			    args->uaddr2, error);
 			futex_put(f, NULL);
 
 			LIN_SDT_PROBE1(futex, linux_sys_futex, return, error);
@@ -1100,7 +1095,8 @@ linux_get_robust_list(struct thread *td, struct linux_get_robust_list_args *args
 }
 
 static int
-handle_futex_death(struct linux_emuldata *em, uint32_t *uaddr, int pi)
+handle_futex_death(struct linux_emuldata *em, uint32_t *uaddr,
+    unsigned int pi)
 {
 	uint32_t uval, nval, mval;
 	struct futex *f;
@@ -1149,7 +1145,7 @@ retry:
 
 static int
 fetch_robust_entry(struct linux_robust_list **entry,
-    struct linux_robust_list **head, int *pi)
+    struct linux_robust_list **head, unsigned int *pi)
 {
 	l_ulong uentry;
 	int error;

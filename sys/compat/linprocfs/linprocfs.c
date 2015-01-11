@@ -77,9 +77,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 
 #include <net/if.h>
-#include <net/if_types.h>
 #include <net/if_var.h>
-#include <net/vnet.h>
+#include <net/if_types.h>
 
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
@@ -669,7 +668,7 @@ linprocfs_doprocstat(PFS_FILL_ARGS)
 	PS_ADD("pgrp",		"%d",	p->p_pgid);
 	PS_ADD("session",	"%d",	p->p_session->s_sid);
 	PROC_UNLOCK(p);
-	PS_ADD("tty",		"%d",	kp.ki_tdev);
+	PS_ADD("tty",		"%ju",	(uintmax_t)kp.ki_tdev);
 	PS_ADD("tpgid",		"%d",	kp.ki_tpgid);
 	PS_ADD("flags",		"%u",	0); /* XXX */
 	PS_ADD("minflt",	"%lu",	kp.ki_rusage.ru_minflt);

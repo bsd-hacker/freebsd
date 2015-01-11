@@ -1,4 +1,4 @@
-/*	$Id: mansearch_const.c,v 1.5 2014/08/09 14:05:21 schwarze Exp $ */
+/*	$Id: mansearch_const.c,v 1.7 2014/12/01 08:05:52 schwarze Exp $ */
 /*
  * Copyright (c) 2014 Ingo Schwarze <schwarze@openbsd.org>
  *
@@ -14,14 +14,12 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
 #include <sys/types.h>
+
 #include <stdint.h>
 
-#include "manpath.h"
 #include "mansearch.h"
 
 const int mansearch_keymax = 40;

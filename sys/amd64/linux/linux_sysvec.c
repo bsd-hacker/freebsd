@@ -4,7 +4,7 @@
  * Copyright (c) 2003 Peter Wemm
  * Copyright (c) 2002 Doug Rabson
  * Copyright (c) 1998-1999 Andrew Gallatin
- * Copyright (c) 1994-1996 Søren Schmidt
+ * Copyright (c) 1994-1996 SÃ¸ren Schmidt
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
+
 #include "opt_compat.h"
 
 #define	__ELF_WORD_SIZE	64
@@ -94,9 +95,9 @@ MODULE_VERSION(linux64, 1);
 
 #if defined(DEBUG)
 SYSCTL_PROC(_compat_linux, OID_AUTO, debug,
-            CTLTYPE_STRING | CTLFLAG_RW,
-            0, 0, linux_sysctl_debug, "A",
-            "Linux debugging control");
+	    CTLTYPE_STRING | CTLFLAG_RW,
+	    0, 0, linux_sysctl_debug, "A",
+	    "Linux 64 debugging control");
 #endif
 
 /*
@@ -148,6 +149,28 @@ static int bsd_to_linux_errno[ELAST + 1] = {
 	-116, -66,  -6,  -6,  -6,  -6,  -6, -37, -38,  -9,
 	  -6,  -6, -43, -42, -75,-125, -84, -95, -16, -74,
 	 -72, -67, -71
+};
+
+int bsd_to_linux_signal[LINUX_SIGTBLSZ] = {
+	LINUX_SIGHUP, LINUX_SIGINT, LINUX_SIGQUIT, LINUX_SIGILL,
+	LINUX_SIGTRAP, LINUX_SIGABRT, 0, LINUX_SIGFPE,
+	LINUX_SIGKILL, LINUX_SIGBUS, LINUX_SIGSEGV, LINUX_SIGSYS,
+	LINUX_SIGPIPE, LINUX_SIGALRM, LINUX_SIGTERM, LINUX_SIGURG,
+	LINUX_SIGSTOP, LINUX_SIGTSTP, LINUX_SIGCONT, LINUX_SIGCHLD,
+	LINUX_SIGTTIN, LINUX_SIGTTOU, LINUX_SIGIO, LINUX_SIGXCPU,
+	LINUX_SIGXFSZ, LINUX_SIGVTALRM, LINUX_SIGPROF, LINUX_SIGWINCH,
+	0, LINUX_SIGUSR1, LINUX_SIGUSR2
+};
+
+int linux_to_bsd_signal[LINUX_SIGTBLSZ] = {
+	SIGHUP, SIGINT, SIGQUIT, SIGILL,
+	SIGTRAP, SIGABRT, SIGBUS, SIGFPE,
+	SIGKILL, SIGUSR1, SIGSEGV, SIGUSR2,
+	SIGPIPE, SIGALRM, SIGTERM, SIGBUS,
+	SIGCHLD, SIGCONT, SIGSTOP, SIGTSTP,
+	SIGTTIN, SIGTTOU, SIGURG, SIGXCPU,
+	SIGXFSZ, SIGVTALRM, SIGPROF, SIGWINCH,
+	SIGIO, SIGURG, SIGSYS
 };
 
 #define LINUX_T_UNKNOWN  255
@@ -453,7 +476,7 @@ linux_exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 		user_ldt_free(td);
 	else
 		mtx_unlock(&dt_lock);
-	
+
 	pcb->pcb_fsbase = 0;
 	pcb->pcb_gsbase = 0;
 	clear_pcb_flags(pcb, PCB_32BIT);
@@ -834,7 +857,7 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_shared_page_len = PAGE_SIZE,
 	.sv_schedtail	= linux_schedtail,
 	.sv_thread_detach = linux_thread_detach,
-	.sv_trap	= linux_vsyscall
+	.sv_trap	= linux_vsyscall,
 };
 
 static void

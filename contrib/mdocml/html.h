@@ -1,6 +1,6 @@
-/*	$Id: html.h,v 1.51 2014/04/20 16:46:04 schwarze Exp $ */
+/*	$Id: html.h,v 1.70 2014/12/02 10:08:06 schwarze Exp $ */
 /*
- * Copyright (c) 2008, 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
+ * Copyright (c) 2008-2011, 2014 Kristaps Dzonsons <kristaps@bsd.lv>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,10 +14,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifndef HTML_H
-#define HTML_H
-
-__BEGIN_DECLS
 
 enum	htmltag {
 	TAG_HTML,
@@ -44,18 +40,32 @@ enum	htmltag {
 	TAG_DT,
 	TAG_DD,
 	TAG_BLOCKQUOTE,
-	TAG_P,
 	TAG_PRE,
 	TAG_B,
 	TAG_I,
 	TAG_CODE,
 	TAG_SMALL,
+	TAG_STYLE,
+	TAG_MATH,
+	TAG_MROW,
+	TAG_MI,
+	TAG_MO,
+	TAG_MSUP,
+	TAG_MSUB,
+	TAG_MSUBSUP,
+	TAG_MFRAC,
+	TAG_MSQRT,
+	TAG_MFENCED,
+	TAG_MTABLE,
+	TAG_MTR,
+	TAG_MTD,
+	TAG_MUNDEROVER,
+	TAG_MUNDER,
+	TAG_MOVER,
 	TAG_MAX
 };
 
 enum	htmlattr {
-	ATTR_HTTPEQUIV,
-	ATTR_CONTENT,
 	ATTR_NAME,
 	ATTR_REL,
 	ATTR_HREF,
@@ -63,11 +73,12 @@ enum	htmlattr {
 	ATTR_MEDIA,
 	ATTR_CLASS,
 	ATTR_STYLE,
-	ATTR_WIDTH,
 	ATTR_ID,
-	ATTR_SUMMARY,
-	ATTR_ALIGN,
 	ATTR_COLSPAN,
+	ATTR_CHARSET,
+	ATTR_OPEN,
+	ATTR_CLOSE,
+	ATTR_MATHVARIANT,
 	ATTR_MAX
 };
 
@@ -103,12 +114,6 @@ struct	htmlpair {
 #define	PAIR_CLASS_INIT(p, v)	PAIR_INIT(p, ATTR_CLASS, v)
 #define	PAIR_HREF_INIT(p, v)	PAIR_INIT(p, ATTR_HREF, v)
 #define	PAIR_STYLE_INIT(p, h)	PAIR_INIT(p, ATTR_STYLE, (h)->buf)
-#define	PAIR_SUMMARY_INIT(p, v)	PAIR_INIT(p, ATTR_SUMMARY, v)
-
-enum	htmltype {
-	HTML_HTML_4_01_STRICT,
-	HTML_XHTML_1_0_STRICT
-};
 
 struct	html {
 	int		  flags;
@@ -119,10 +124,13 @@ struct	html {
 #define	HTML_NONOSPACE	 (1 << 4) /* never add spaces */
 #define	HTML_LITERAL	 (1 << 5) /* literal (e.g., <PRE>) context */
 #define	HTML_SKIPCHAR	 (1 << 6) /* skip the next character */
+#define	HTML_NOSPLIT	 (1 << 7) /* do not break line before .An */
+#define	HTML_SPLIT	 (1 << 8) /* break line before .An */
+#define	HTML_NONEWLINE	 (1 << 9) /* No line break in nofill mode. */
 	struct tagq	  tags; /* stack of open tags */
 	struct rofftbl	  tbl; /* current table */
 	struct tag	 *tblt; /* current open table scope */
-	struct mchars	 *symtab; /* character-escapes */
+	const struct mchars *symtab; /* character table */
 	char		 *base_man; /* base for manpage href */
 	char		 *base_includes; /* base for include href */
 	char		 *style; /* style-sheet URI */
@@ -131,10 +139,14 @@ struct	html {
 	struct tag	 *metaf; /* current open font scope */
 	enum htmlfont	  metal; /* last used font */
 	enum htmlfont	  metac; /* current font mode */
-	enum htmltype	  type; /* output media type */
 	int		  oflags; /* output options */
 #define	HTML_FRAGMENT	 (1 << 0) /* don't emit HTML/HEAD/BODY */
 };
+
+__BEGIN_DECLS
+
+struct	tbl_span;
+struct	eqn;
 
 void		  print_gen_decls(struct html *);
 void		  print_gen_head(struct html *);
@@ -146,6 +158,7 @@ void		  print_text(struct html *, const char *);
 void		  print_tblclose(struct html *);
 void		  print_tbl(struct html *, const struct tbl_span *);
 void		  print_eqn(struct html *, const struct eqn *);
+void		  print_paragraph(struct html *);
 
 #if __GNUC__ - 0 >= 4
 __attribute__((__format__ (__printf__, 2, 3)))
@@ -165,5 +178,3 @@ void		  buffmt_includes(struct html *, const char *);
 int		  html_strlen(const char *);
 
 __END_DECLS
-
-#endif /*!HTML_H*/

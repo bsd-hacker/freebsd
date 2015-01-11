@@ -546,7 +546,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 61: {
 		struct linux_wait4_args *p = params;
 		iarg[0] = p->pid; /* l_pid_t */
-		uarg[1] = (intptr_t) p->status; /* l_uint * */
+		uarg[1] = (intptr_t) p->status; /* l_int * */
 		iarg[2] = p->options; /* l_int */
 		uarg[3] = (intptr_t) p->rusage; /* struct l_rusage * */
 		*n_args = 4;
@@ -1673,7 +1673,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	/* linux_clock_settime */
 	case 227: {
 		struct linux_clock_settime_args *p = params;
-		iarg[0] = p->which; /* l_clockid_t */
+		iarg[0] = p->which; /* clockid_t */
 		uarg[1] = (intptr_t) p->tp; /* struct l_timespec * */
 		*n_args = 2;
 		break;
@@ -1681,7 +1681,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	/* linux_clock_gettime */
 	case 228: {
 		struct linux_clock_gettime_args *p = params;
-		iarg[0] = p->which; /* l_clockid_t */
+		iarg[0] = p->which; /* clockid_t */
 		uarg[1] = (intptr_t) p->tp; /* struct l_timespec * */
 		*n_args = 2;
 		break;
@@ -1689,7 +1689,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	/* linux_clock_getres */
 	case 229: {
 		struct linux_clock_getres_args *p = params;
-		iarg[0] = p->which; /* l_clockid_t */
+		iarg[0] = p->which; /* clockid_t */
 		uarg[1] = (intptr_t) p->tp; /* struct l_timespec * */
 		*n_args = 2;
 		break;
@@ -1697,7 +1697,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	/* linux_clock_nanosleep */
 	case 230: {
 		struct linux_clock_nanosleep_args *p = params;
-		iarg[0] = p->which; /* l_clockid_t */
+		iarg[0] = p->which; /* clockid_t */
 		iarg[1] = p->flags; /* int */
 		uarg[2] = (intptr_t) p->rqtp; /* struct l_timespec * */
 		uarg[3] = (intptr_t) p->rmtp; /* struct l_timespec * */
@@ -3177,7 +3177,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "l_pid_t";
 			break;
 		case 1:
-			p = "l_uint *";
+			p = "l_int *";
 			break;
 		case 2:
 			p = "l_int";
@@ -4809,7 +4809,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 227:
 		switch(ndx) {
 		case 0:
-			p = "l_clockid_t";
+			p = "clockid_t";
 			break;
 		case 1:
 			p = "struct l_timespec *";
@@ -4822,7 +4822,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 228:
 		switch(ndx) {
 		case 0:
-			p = "l_clockid_t";
+			p = "clockid_t";
 			break;
 		case 1:
 			p = "struct l_timespec *";
@@ -4835,7 +4835,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 229:
 		switch(ndx) {
 		case 0:
-			p = "l_clockid_t";
+			p = "clockid_t";
 			break;
 		case 1:
 			p = "struct l_timespec *";
@@ -4848,7 +4848,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 230:
 		switch(ndx) {
 		case 0:
-			p = "l_clockid_t";
+			p = "clockid_t";
 			break;
 		case 1:
 			p = "int";

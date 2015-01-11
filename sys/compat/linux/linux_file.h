@@ -82,17 +82,24 @@
 #define	LINUX_F_SETFD		2
 #define	LINUX_F_GETFL		3
 #define	LINUX_F_SETFL		4
+#ifndef LINUX_F_GETLK
 #define	LINUX_F_GETLK		5
 #define	LINUX_F_SETLK		6
 #define	LINUX_F_SETLKW		7
+#endif
+#ifndef LINUX_F_SETOWN
 #define	LINUX_F_SETOWN		8
 #define	LINUX_F_GETOWN		9
+#endif
+#ifndef LINUX_F_SETSIG
 #define	LINUX_F_SETSIG		10
 #define	LINUX_F_GETSIG		11
-
+#endif
+#ifndef LINUX_F_SETOWN_EX
 #define	LINUX_F_SETOWN_EX	15
 #define	LINUX_F_GETOWN_EX	16
 #define	LINUX_F_GETOWNER_UIDS	17
+#endif
 
 #define	LINUX_F_SPECIFIC_BASE	1024
 
@@ -112,8 +119,10 @@
 #define	LINUX_F_OWNER_PID	1
 #define	LINUX_F_OWNER_PGRP	2
 
+#ifndef LINUX_F_RDLCK
 #define	LINUX_F_RDLCK		0
 #define	LINUX_F_WRLCK		1
 #define	LINUX_F_UNLCK		2
+#endif
 
 #endif	/* !_LINUX_FILE_H_ */

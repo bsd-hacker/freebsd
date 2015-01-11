@@ -1,4 +1,4 @@
-/*	$Id: man_term.c,v 1.149 2014/06/20 23:02:31 schwarze Exp $ */
+/*	$Id: man_term.c,v 1.159 2014/12/04 02:05:42 schwarze Exp $ */
 /*
  * Copyright (c) 2008-2012 Kristaps Dzonsons <kristaps@bsd.lv>
  * Copyright (c) 2010-2014 Ingo Schwarze <schwarze@openbsd.org>
@@ -15,9 +15,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
 #include <sys/types.h>
 
@@ -125,7 +123,7 @@ static	const struct termact termacts[MAN_MAX] = {
 	{ NULL, NULL, 0 }, /* RE */
 	{ pre_RS, post_RS, 0 }, /* RS */
 	{ pre_ign, NULL, 0 }, /* DT */
-	{ pre_ign, NULL, 0 }, /* UC */
+	{ pre_ign, NULL, MAN_NOTEXT }, /* UC */
 	{ pre_PD, NULL, MAN_NOTEXT }, /* PD */
 	{ pre_ign, NULL, 0 }, /* AT */
 	{ pre_in, NULL, MAN_NOTEXT }, /* in */
@@ -143,27 +141,18 @@ void
 terminal_man(void *arg, const struct man *man)
 {
 	struct termp		*p;
-	const struct man_node	*n;
 	const struct man_meta	*meta;
+	struct man_node		*n;
 	struct mtermp		 mt;
 
 	p = (struct termp *)arg;
 
-	if (0 == p->defindent)
-		p->defindent = 7;
-
 	p->overstep = 0;
-	p->maxrmargin = p->defrmargin;
+	p->rmargin = p->maxrmargin = p->defrmargin;
 	p->tabwidth = term_len(p, 5);
 
-	if (NULL == p->symtab)
-		p->symtab = mchars_alloc();
-
-	n = man_node(man);
+	n = man_node(man)->child;
 	meta = man_meta(man);
-
-	term_begin(p, print_man_head, print_man_foot, meta);
-	p->flags |= TERMP_NOSPACE;
 
 	memset(&mt, 0, sizeof(struct mtermp));
 
@@ -171,10 +160,28 @@ terminal_man(void *arg, const struct man *man)
 	mt.offset = term_len(p, p->defindent);
 	mt.pardist = 1;
 
-	if (n->child)
-		print_man_nodelist(p, &mt, n->child, meta);
-
-	term_end(p);
+	if (p->synopsisonly) {
+		while (n != NULL) {
+			if (n->tok == MAN_SH &&
+			    n->child->child->type == MAN_TEXT &&
+			    !strcmp(n->child->child->string, "SYNOPSIS")) {
+				if (n->child->next->child != NULL)
+					print_man_nodelist(p, &mt,
+					    n->child->next->child, meta);
+				term_newln(p);
+				break;
+			}
+			n = n->next;
+		}
+	} else {
+		if (p->defindent == 0)
+			p->defindent = 7;
+		term_begin(p, print_man_head, print_man_foot, meta);
+		p->flags |= TERMP_NOSPACE;
+		if (n != NULL)
+			print_man_nodelist(p, &mt, n, meta);
+		term_end(p);
+	}
 }
 
 
@@ -194,7 +201,7 @@ a2width(const struct termp *p, const char *cp)
 {
 	struct roffsu	 su;
 
-	if ( ! a2roffsu(cp, &su, SCALE_BU))
+	if ( ! a2roffsu(cp, &su, SCALE_EN))
 		return(-1);
 
 	return((int)term_hspan(p, &su));
@@ -449,11 +456,6 @@ pre_in(DECL_ARGS)
 	else
 		p->offset = v;
 
-	/* Don't let this creep beyond the right margin. */
-
-	if (p->offset > p->rmargin)
-		p->offset = p->rmargin;
-
 	return(0);
 }
 
@@ -647,8 +649,7 @@ pre_IP(DECL_ARGS)
 		return(0);
 	case MAN_BODY:
 		p->offset = mt->offset + len;
-		p->rmargin = p->maxrmargin > p->offset ?
-		    p->maxrmargin : p->offset;
+		p->rmargin = p->maxrmargin;
 		break;
 	default:
 		break;
@@ -739,8 +740,7 @@ pre_TP(DECL_ARGS)
 		return(0);
 	case MAN_BODY:
 		p->offset = mt->offset + len;
-		p->rmargin = p->maxrmargin > p->offset ?
-		    p->maxrmargin : p->offset;
+		p->rmargin = p->maxrmargin;
 		p->trailspace = 0;
 		p->flags &= ~TERMP_NOBREAK;
 		break;
@@ -778,12 +778,18 @@ pre_SS(DECL_ARGS)
 		mt->fl &= ~MANT_LITERAL;
 		mt->lmargin[mt->lmargincur] = term_len(p, p->defindent);
 		mt->offset = term_len(p, p->defindent);
-		/* If following a prior empty `SS', no vspace. */
-		if (n->prev && MAN_SS == n->prev->tok)
-			if (NULL == n->prev->body->child)
-				break;
-		if (NULL == n->prev)
+
+		/*
+		 * No vertical space before the first subsection
+		 * and after an empty subsection.
+		 */
+
+		do {
+			n = n->prev;
+		} while (n != NULL && termacts[n->tok].flags & MAN_NOTEXT);
+		if (n == NULL || (n->tok == MAN_SS && n->body->child == NULL))
 			break;
+
 		for (i = 0; i < mt->pardist; i++)
 			term_vspace(p);
 		break;
@@ -827,13 +833,18 @@ pre_SH(DECL_ARGS)
 		mt->fl &= ~MANT_LITERAL;
 		mt->lmargin[mt->lmargincur] = term_len(p, p->defindent);
 		mt->offset = term_len(p, p->defindent);
-		/* If following a prior empty `SH', no vspace. */
-		if (n->prev && MAN_SH == n->prev->tok)
-			if (NULL == n->prev->body->child)
-				break;
-		/* If the first macro, no vspae. */
-		if (NULL == n->prev)
+
+		/*
+		 * No vertical space before the first section
+		 * and after an empty section.
+		 */
+
+		do {
+			n = n->prev;
+		} while (n != NULL && termacts[n->tok].flags & MAN_NOTEXT);
+		if (n == NULL || (n->tok == MAN_SH && n->body->child == NULL))
 			break;
+
 		for (i = 0; i < mt->pardist; i++)
 			term_vspace(p);
 		break;
@@ -891,8 +902,7 @@ pre_RS(DECL_ARGS)
 
 	mt->offset += sz;
 	p->offset = mt->offset;
-	p->rmargin = p->maxrmargin > p->offset ?
-	    p->maxrmargin : p->offset;
+	p->rmargin = p->maxrmargin;
 
 	if (++mt->lmarginsz < MAXMARGINS)
 		mt->lmargincur = mt->lmarginsz;
@@ -977,7 +987,11 @@ print_man_node(DECL_ARGS)
 		goto out;
 
 	case MAN_EQN:
+		if ( ! (n->flags & MAN_LINE))
+			p->flags |= TERMP_NOSPACE;
 		term_eqn(p, n->eqn);
+		if (n->next != NULL && ! (n->next->flags & MAN_LINE))
+			p->flags |= TERMP_NOSPACE;
 		return;
 	case MAN_TBL:
 		/*
@@ -1015,13 +1029,14 @@ out:
 	 * -man doesn't have nested macros, we don't need to be
 	 * more specific than this.
 	 */
-	if (MANT_LITERAL & mt->fl && ! (TERMP_NOBREAK & p->flags) &&
-	    (NULL == n->next || MAN_LINE & n->next->flags)) {
+	if (mt->fl & MANT_LITERAL &&
+	    ! (p->flags & (TERMP_NOBREAK | TERMP_NONEWLINE)) &&
+	    (n->next == NULL || n->next->flags & MAN_LINE)) {
 		rm = p->rmargin;
 		rmax = p->maxrmargin;
 		p->rmargin = p->maxrmargin = TERM_MAXMARGIN;
 		p->flags |= TERMP_NOSPACE;
-		if (NULL != n->string && '\0' != *n->string)
+		if (n->string != NULL && *n->string != '\0')
 			term_flushln(p);
 		else
 			term_newln(p);
@@ -1052,7 +1067,7 @@ print_man_foot(struct termp *p, const void *arg)
 {
 	const struct man_meta	*meta;
 	char			*title;
-	size_t			 datelen;
+	size_t			 datelen, titlen;
 
 	meta = (const struct man_meta *)arg;
 	assert(meta->title);
@@ -1089,7 +1104,8 @@ print_man_foot(struct termp *p, const void *arg)
 	p->flags |= TERMP_NOSPACE | TERMP_NOBREAK;
 	p->trailspace = 1;
 	p->offset = 0;
-	p->rmargin = (p->maxrmargin - datelen + term_len(p, 1)) / 2;
+	p->rmargin = p->maxrmargin > datelen ?
+	    (p->maxrmargin + term_len(p, 1) - datelen) / 2 : 0;
 
 	if (meta->source)
 		term_word(p, meta->source);
@@ -1097,11 +1113,10 @@ print_man_foot(struct termp *p, const void *arg)
 
 	/* At the bottom in the middle: manual date. */
 
-	p->flags |= TERMP_NOSPACE;
 	p->offset = p->rmargin;
-	p->rmargin = p->maxrmargin - term_strlen(p, title);
-	if (p->offset + datelen >= p->rmargin)
-		p->rmargin = p->offset + datelen;
+	titlen = term_strlen(p, title);
+	p->rmargin = p->maxrmargin > titlen ? p->maxrmargin - titlen : 0;
+	p->flags |= TERMP_NOSPACE;
 
 	term_word(p, meta->date);
 	term_flushln(p);
@@ -1144,7 +1159,7 @@ print_man_head(struct termp *p, const void *arg)
 	p->offset = 0;
 	p->rmargin = 2 * (titlen+1) + vollen < p->maxrmargin ?
 	    (p->maxrmargin - vollen + term_len(p, 1)) / 2 :
-	    p->maxrmargin - vollen;
+	    vollen < p->maxrmargin ? p->maxrmargin - vollen : 0;
 
 	term_word(p, title);
 	term_flushln(p);

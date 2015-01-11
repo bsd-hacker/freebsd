@@ -40,6 +40,10 @@
  */
 extern u_char linux_debug_map[];
 #define	ldebug(name)	isclr(linux_debug_map, LINUX_SYS_linux_ ## name)
+#define	ARGS(nm, fmt)	"linux(%ld/%ld): "#nm"("fmt")\n",			\
+			(long)td->td_proc->p_pid, (long)td->td_tid
+#define	LMSG(fmt)	"linux(%ld/%ld): "fmt"\n",				\
+			(long)td->td_proc->p_pid, (long)td->td_tid
 #define	LINUX_DTRACE	linuxulator32
 
 #define	LINUX32_MAXUSER		((1ul << 32) - PAGE_SIZE)
@@ -91,7 +95,6 @@ typedef l_uint		l_uid_t;
 typedef l_ushort	l_uid16_t;
 typedef l_int		l_timer_t;
 typedef l_int		l_mqd_t;
-typedef l_int		l_clockid_t;
 typedef	l_ulong		l_fd_mask;
 
 typedef struct {
@@ -259,10 +262,61 @@ struct l_statfs64 {
 /*
  * Signalling
  */
+#define	LINUX_SIGHUP		1
+#define	LINUX_SIGINT		2
+#define	LINUX_SIGQUIT		3
+#define	LINUX_SIGILL		4
+#define	LINUX_SIGTRAP		5
+#define	LINUX_SIGABRT		6
+#define	LINUX_SIGIOT		LINUX_SIGABRT
+#define	LINUX_SIGBUS		7
+#define	LINUX_SIGFPE		8
+#define	LINUX_SIGKILL		9
+#define	LINUX_SIGUSR1		10
+#define	LINUX_SIGSEGV		11
+#define	LINUX_SIGUSR2		12
+#define	LINUX_SIGPIPE		13
+#define	LINUX_SIGALRM		14
+#define	LINUX_SIGTERM		15
+#define	LINUX_SIGSTKFLT		16
+#define	LINUX_SIGCHLD		17
+#define	LINUX_SIGCONT		18
+#define	LINUX_SIGSTOP		19
+#define	LINUX_SIGTSTP		20
+#define	LINUX_SIGTTIN		21
+#define	LINUX_SIGTTOU		22
+#define	LINUX_SIGURG		23
+#define	LINUX_SIGXCPU		24
+#define	LINUX_SIGXFSZ		25
+#define	LINUX_SIGVTALRM		26
+#define	LINUX_SIGPROF		27
+#define	LINUX_SIGWINCH		28
+#define	LINUX_SIGIO		29
+#define	LINUX_SIGPOLL		LINUX_SIGIO
+#define	LINUX_SIGPWR		30
+#define	LINUX_SIGSYS		31
+#define	LINUX_SIGRTMIN		32
+
 #define	LINUX_SIGTBLSZ		31
 #define	LINUX_NSIG_WORDS	2
 #define	LINUX_NBPW		32
 #define	LINUX_NSIG		(LINUX_NBPW * LINUX_NSIG_WORDS)
+
+/* sigaction flags */
+#define	LINUX_SA_NOCLDSTOP	0x00000001
+#define	LINUX_SA_NOCLDWAIT	0x00000002
+#define	LINUX_SA_SIGINFO	0x00000004
+#define	LINUX_SA_RESTORER	0x04000000
+#define	LINUX_SA_ONSTACK	0x08000000
+#define	LINUX_SA_RESTART	0x10000000
+#define	LINUX_SA_INTERRUPT	0x20000000
+#define	LINUX_SA_NOMASK		0x40000000
+#define	LINUX_SA_ONESHOT	0x80000000
+
+/* sigprocmask actions */
+#define	LINUX_SIG_BLOCK		0
+#define	LINUX_SIG_UNBLOCK	1
+#define	LINUX_SIG_SETMASK	2
 
 /* sigset_t macros */
 #define	LINUX_SIGEMPTYSET(set)		(set).__bits[0] = (set).__bits[1] = 0

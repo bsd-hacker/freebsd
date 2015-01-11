@@ -15,7 +15,9 @@ HTML_SRCS=	eqn_html.c \
 		man_html.c \
 		mdoc_html.c \
 		tbl_html.c
+
 MAN_SRCS=	mdoc_man.c
+
 TERM_SRCS=	eqn_term.c \
 		man_term.c \
 		mdoc_term.c \
@@ -23,6 +25,12 @@ TERM_SRCS=	eqn_term.c \
 		term_ascii.c \
 		term_ps.c \
 		tbl_term.c
+
+DB_SRCS=	mandocdb.c \
+		mansearch.c \
+		mansearch_const.c \
+		manpath.c
+
 SRCS=		${HTML_SRCS} \
 		${MAN_SRCS} \
 		${TERM_SRCS} \
@@ -30,8 +38,12 @@ SRCS=		${HTML_SRCS} \
 		out.c \
 		tree.c
 
-WARNS?=	3
-CFLAGS+= -DHAVE_CONFIG_H
-LIBADD=	mandoc
+SRCS+=	${DB_SRCS}
+
+WARNS?=	2
+CFLAGS+= -DHAVE_CONFIG_H \
+	 -I${.CURDIR}/../../lib/libohash/ \
+	 -I${.CURDIR}/../../contrib/sqlite3
+LIBADD=	mandoc ohash sqlite3
 
 .include <bsd.prog.mk>

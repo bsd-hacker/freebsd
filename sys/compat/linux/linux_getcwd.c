@@ -119,7 +119,7 @@ linux_getcwd_scandir(lvpp, uvpp, bpp, bufp, td)
 	int     tries;
 	struct uio uio;
 	struct iovec iov;
-	char   *dirbuf = NULL;
+	char   *dirbuf;
 	int	dirbuflen;
 	ino_t   fileno;
 	struct vattr va;
@@ -139,7 +139,7 @@ linux_getcwd_scandir(lvpp, uvpp, bpp, bufp, td)
 			vput(lvp);
 			*lvpp = NULL;
 			*uvpp = NULL;
-			return error;
+			return (error);
 		}
 	}
 
@@ -170,7 +170,7 @@ linux_getcwd_scandir(lvpp, uvpp, bpp, bufp, td)
 		vput(lvp);
 		*lvpp = NULL;
 		*uvpp = NULL;
-		return error;
+		return (error);
 	}
 	uvp = *uvpp;
 
@@ -178,7 +178,7 @@ linux_getcwd_scandir(lvpp, uvpp, bpp, bufp, td)
 	if (bufp == NULL) {
 		vput(lvp);
 		*lvpp = NULL;
-		return 0;
+		return (0);
 	}
 	
 	fileno = va.va_fileid;
@@ -186,7 +186,7 @@ linux_getcwd_scandir(lvpp, uvpp, bpp, bufp, td)
 	dirbuflen = DIRBLKSIZ;
 	if (dirbuflen < va.va_blocksize)
 		dirbuflen = va.va_blocksize;
-	dirbuf = (char *)malloc(dirbuflen, M_LINUX, M_WAITOK);
+	dirbuf = malloc(dirbuflen, M_LINUX, M_WAITOK);
 
 #if 0
 unionread:
@@ -228,7 +228,7 @@ unionread:
 			continue;	/* once more, with feeling */
 		}
 
-		if (!error) {
+		if (error == 0) {
 			char   *cpos;
 			struct dirent *dp;
 			
@@ -275,7 +275,7 @@ out:
 	vput(lvp);
 	*lvpp = NULL;
 	free(dirbuf, M_LINUX);
-	return error;
+	return (error);
 }
 
 
@@ -399,7 +399,7 @@ out:
 	if (lvp)
 		vput(lvp);
 	vrele(rvp);
-	return error;
+	return (error);
 }
 
 
@@ -413,7 +413,7 @@ out:
 int
 linux_getcwd(struct thread *td, struct linux_getcwd_args *args)
 {
-	caddr_t bp, bend, path;
+	char *bp, *bend, *path;
 	int error, len, lenused;
 
 #ifdef DEBUG
@@ -426,18 +426,17 @@ linux_getcwd(struct thread *td, struct linux_getcwd_args *args)
 	if (len > MAXPATHLEN*4)
 		len = MAXPATHLEN*4;
 	else if (len < 2)
-		return ERANGE;
+		return (ERANGE);
 
-	path = (char *)malloc(len, M_LINUX, M_WAITOK);
+	path = malloc(len, M_LINUX, M_WAITOK);
 
 	error = kern___getcwd(td, path, UIO_SYSSPACE, len);
-	if (!error) {
+	if (error != 0) {
 		lenused = strlen(path) + 1;
 		if (lenused <= args->bufsize) {
 			td->td_retval[0] = lenused;
 			error = copyout(path, args->buf, lenused);
-		}
-		else
+		} else
 			error = ERANGE;
 	} else {
 		bp = &path[len];
@@ -450,11 +449,8 @@ linux_getcwd(struct thread *td, struct linux_getcwd_args *args)
 		 * limit it to N/2 vnodes for an N byte buffer.
 		 */
 
-		mtx_lock(&Giant);
-		error = linux_getcwd_common (td->td_proc->p_fd->fd_cdir, NULL,
+		error = linux_getcwd_common(td->td_proc->p_fd->fd_cdir, NULL,
 		    &bp, path, len/2, GETCWD_CHECK_ACCESS, td);
-		mtx_unlock(&Giant);
-
 		if (error)
 			goto out;
 		lenused = bend - bp;
@@ -466,4 +462,3 @@ out:
 	free(path, M_LINUX);
 	return (error);
 }
-

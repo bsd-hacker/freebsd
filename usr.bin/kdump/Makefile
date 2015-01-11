@@ -3,10 +3,6 @@
 
 .include <src.opts.mk>
 
-.if (${MACHINE_ARCH} == "amd64")
-SFX=		32
-.endif
-
 .PATH: ${.CURDIR}/../ktrace
 
 PROG=		kdump
@@ -23,17 +19,16 @@ CFLAGS+=-DHAVE_LIBCAPSICUM
 CFLAGS+=-DPF
 .endif
 
-.if ${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "i386"
-SRCS+=		linux_syscalls.c
-.endif
-.if ${MACHINE_ARCH} == "amd64"
-SRCS+=		linux32_syscalls.c
-.endif
-
 NO_WERROR?=	YES
 
-CLEANFILES=	ioctl.c kdump_subr.c kdump_subr.h linux_syscalls.c \
-		    linux32_syscalls.c
+CLEANFILES=	ioctl.c kdump_subr.c kdump_subr.h
+
+.if (${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "i386")
+CLEANFILES+=	linux_syscalls.c
+.endif
+.if (${MACHINE_ARCH} == "amd64")
+CLEANFILES+=	linux32_syscalls.c
+.endif
 
 ioctl.c: mkioctls
 	env MACHINE=${MACHINE} CPP="${CPP}" \
@@ -45,19 +40,13 @@ kdump_subr.h: mksubr
 
 kdump_subr.c: mksubr kdump_subr.h
 	sh ${.CURDIR}/mksubr ${DESTDIR}/usr/include >${.TARGET}
-
-linux_syscalls.c:
-	/bin/sh ${.CURDIR}/../../sys/kern/makesyscalls.sh \
+.if (${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "i386")
+	sh ${.CURDIR}/../../sys/kern/makesyscalls.sh \
 	    ${.CURDIR}/../../sys/${MACHINE_ARCH}/linux/syscalls.master ${.CURDIR}/linux_syscalls.conf
-	echo "int nlinux_syscalls = sizeof(linux_syscallnames) / sizeof(linux_syscallnames[0]);" \
-	    >> linux_syscalls.c
-
-.if ${MACHINE_ARCH} == "amd64"
-linux32_syscalls.c:
-	/bin/sh ${.CURDIR}/../../sys/kern/makesyscalls.sh \
+.endif
+.if (${MACHINE_ARCH} == "amd64")
+	sh ${.CURDIR}/../../sys/kern/makesyscalls.sh \
 	    ${.CURDIR}/../../sys/${MACHINE_ARCH}/linux32/syscalls.master ${.CURDIR}/linux32_syscalls.conf
-	echo "int nlinux32_syscalls = sizeof(linux32_syscallnames) / sizeof(linux32_syscallnames[0]);" \
-	    >> linux32_syscalls.c
 .endif
 
 .include <bsd.prog.mk>

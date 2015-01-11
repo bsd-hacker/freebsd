@@ -171,8 +171,7 @@ linux_setgroups16(struct thread *td, struct linux_setgroups16_args *args)
 		LIN_SDT_PROBE1(uid16, linux_setgroups16, return, EINVAL);
 		return (EINVAL);
 	}
-	linux_gidset = malloc(ngrp * sizeof(*linux_gidset),
-	    M_LINUX, M_WAITOK);
+	linux_gidset = malloc(ngrp * sizeof(*linux_gidset), M_LINUX, M_WAITOK);
 	error = copyin(args->gidset, linux_gidset, ngrp * sizeof(l_gid16_t));
 	if (error) {
 		LIN_SDT_PROBE1(uid16, linux_setgroups16, copyin_error, error);

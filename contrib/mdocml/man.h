@@ -1,4 +1,4 @@
-/*	$Id: man.h,v 1.65 2014/06/20 23:02:31 schwarze Exp $ */
+/*	$Id: man.h,v 1.67 2014/12/01 04:05:32 schwarze Exp $ */
 /*
  * Copyright (c) 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
  * Copyright (c) 2014 Ingo Schwarze <schwarze@openbsd.org>
@@ -15,8 +15,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifndef MAN_H
-#define MAN_H
 
 enum	mant {
 	MAN_br = 0,
@@ -68,7 +66,6 @@ enum	man_type {
 	MAN_BLOCK,
 	MAN_HEAD,
 	MAN_BODY,
-	MAN_TAIL,
 	MAN_TBL,
 	MAN_EQN
 };
@@ -117,5 +114,3 @@ const struct mparse   *man_mparse(const struct man *);
 void man_deroff(char **, const struct man_node *);
 
 __END_DECLS
-
-#endif /*!MAN_H*/

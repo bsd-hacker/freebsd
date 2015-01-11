@@ -206,7 +206,7 @@
 112	AUE_NULL	UNIMPL	idle
 113	AUE_NULL	UNIMPL	vm86old
 114	AUE_WAIT4	STD	{ int linux_wait4(l_pid_t pid, \
-				    l_uint *status, l_int options, \
+				    l_int *status, l_int options, \
 				    struct l_rusage *rusage); }
 115	AUE_SWAPOFF	STD	{ int linux_swapoff(void); }
 116	AUE_NULL	STD	{ int linux_sysinfo(struct l_sysinfo *info); }
@@ -444,10 +444,10 @@
 261	AUE_NULL	STD	{ int linux_timer_gettime(l_timer_t timerid, struct itimerspec *setting); }
 262	AUE_NULL	STD	{ int linux_timer_getoverrun(l_timer_t timerid); }
 263	AUE_NULL	STD	{ int linux_timer_delete(l_timer_t timerid); }
-264	AUE_CLOCK_SETTIME	STD	{ int linux_clock_settime(l_clockid_t which, struct l_timespec *tp); }
-265	AUE_NULL	STD	{ int linux_clock_gettime(l_clockid_t which, struct l_timespec *tp); }
-266	AUE_NULL	STD	{ int linux_clock_getres(l_clockid_t which, struct l_timespec *tp); }
-267	AUE_NULL	STD	{ int linux_clock_nanosleep(l_clockid_t which, int flags, \
+264	AUE_CLOCK_SETTIME	STD	{ int linux_clock_settime(clockid_t which, struct l_timespec *tp); }
+265	AUE_NULL	STD	{ int linux_clock_gettime(clockid_t which, struct l_timespec *tp); }
+266	AUE_NULL	STD	{ int linux_clock_getres(clockid_t which, struct l_timespec *tp); }
+267	AUE_NULL	STD	{ int linux_clock_nanosleep(clockid_t which, int flags, \
 					struct l_timespec *rqtp, struct l_timespec *rmtp); }
 268	AUE_STATFS	STD	{ int linux_statfs64(char *path, size_t bufsize, struct l_statfs64_buf *buf); }
 269	AUE_FSTATFS	STD	{ int linux_fstatfs64(void); }
@@ -509,11 +509,10 @@
 306	AUE_FCHMODAT	STD	{ int linux_fchmodat(l_int dfd, const char *filename, \
 					l_mode_t mode); }
 307	AUE_FACCESSAT	STD	{ int linux_faccessat(l_int dfd, const char *filename, l_int amode); }
-308	AUE_SELECT	STD	{ int linux_pselect6(l_int nfds,		\
-				    l_fd_set *readfds, l_fd_set *writefds,	\
-				    l_fd_set *exceptfds,			\
-				    struct l_timespec *tsp, l_uintptr_t *sig); }
-309	AUE_POLL	STD	{ int linux_ppoll(struct pollfd* fds, uint32_t nfds,	\
+308	AUE_SELECT	STD	{ int linux_pselect6(l_int nfds, l_fd_set *readfds,	\
+					l_fd_set *writefds, l_fd_set *exceptfds,	\
+					struct l_timespec *tsp, l_uintptr_t *sig); }
+309	AUE_POLL	STD	{ int linux_ppoll(struct pollfd *fds, uint32_t nfds,	\
 				    struct l_timespec *tsp, l_sigset_t *sset, l_size_t ssize); }
 310	AUE_NULL	STD	{ int linux_unshare(void); }
 ; linux 2.6.17:

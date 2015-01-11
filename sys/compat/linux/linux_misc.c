@@ -893,7 +893,11 @@ linux_waitpid(struct thread *td, struct linux_waitpid_args *args)
 		printf(ARGS(waitpid, "%d, %p, %d"),
 		    args->pid, (void *)args->status, args->options);
 #endif
-	options = 0;
+	if (args->options & ~(LINUX_WUNTRACED | LINUX_WNOHANG |
+	    LINUX_WCONTINUED | __WCLONE | __WNOTHREAD | __WALL))
+		return (EINVAL);
+
+	options = WEXITED;
 	linux_to_bsd_waitopts(args->options, &options);
 
 	return (linux_common_wait(td, args->pid, args->status, options, NULL));
@@ -911,8 +915,8 @@ linux_mknod(struct thread *td, struct linux_mknod_args *args)
 
 #ifdef DEBUG
 	if (ldebug(mknod))
-		printf(ARGS(mknod, "%s, %d, %jd"), path, args->mode,
-		    (intmax_t)args->dev);
+		printf(ARGS(mknod, "%s, %d, %ju"), path, args->mode,
+		    (uintmax_t)args->dev);
 #endif
 
 	switch (args->mode & S_IFMT) {
@@ -1335,7 +1339,9 @@ linux_sched_setscheduler(struct thread *td,
 	if (tdt == NULL)
 		return (ESRCH);
 
-	return (kern_sched_setscheduler(td, tdt, policy, &sched_param));
+	error = kern_sched_setscheduler(td, tdt, policy, &sched_param);
+	PROC_UNLOCK(tdt->td_proc);
+	return (error);
 }
 
 int
@@ -1355,6 +1361,7 @@ linux_sched_getscheduler(struct thread *td,
 		return (ESRCH);
 
 	error = kern_sched_getscheduler(td, tdt, &policy);
+	PROC_UNLOCK(tdt->td_proc);
 
 	switch (policy) {
 	case SCHED_OTHER:
@@ -1367,7 +1374,6 @@ linux_sched_getscheduler(struct thread *td,
 		td->td_retval[0] = LINUX_SCHED_RR;
 		break;
 	}
-
 	return (error);
 }
 
@@ -1647,8 +1653,6 @@ linux_exit_group(struct thread *td, struct linux_exit_group_args *args)
 	LINUX_CTR2(exit_group, "thread(%d) (%d)", td->td_tid,
 	    args->error_code);
 
-	linux_thread_detach(td);
-
 	/*
 	 * XXX: we should send a signal to the parent if
 	 * SIGNAL_EXIT_GROUP is set. We ignore that (temporarily?)
@@ -1763,9 +1767,9 @@ linux_prctl(struct thread *td, struct linux_prctl_args *args)
 
 #ifdef DEBUG
 	if (ldebug(prctl))
-		printf(ARGS(prctl, "%d, %jd, %jd, %jd, %jd"), args->option,
-		    (intmax_t)args->arg2, (intmax_t)args->arg3,
-		    (intmax_t)args->arg4, (intmax_t)args->arg5);
+		printf(ARGS(prctl, "%d, %ju, %ju, %ju, %ju"), args->option,
+		    (uintmax_t)args->arg2, (uintmax_t)args->arg3,
+		    (uintmax_t)args->arg4, (uintmax_t)args->arg5);
 #endif
 
 	switch (args->option) {
@@ -1865,7 +1869,9 @@ linux_sched_setparam(struct thread *td,
 	if (tdt == NULL)
 		return (ESRCH);
 
-	return (kern_sched_setparam(td, tdt, &sched_param));
+	error = kern_sched_setparam(td, tdt, &sched_param);
+	PROC_UNLOCK(tdt->td_proc);
+	return (error);
 }
 
 int
@@ -1886,8 +1892,10 @@ linux_sched_getparam(struct thread *td,
 		return (ESRCH);
 
 	error = kern_sched_getparam(td, tdt, &sched_param);
+	PROC_UNLOCK(tdt->td_proc);
 	if (error == 0)
-		error = copyout(&sched_param, uap->param, sizeof(sched_param));
+		error = copyout(&sched_param, uap->param,
+		    sizeof(sched_param));
 	return (error);
 }
 
@@ -1968,6 +1976,10 @@ linux_sched_rr_get_interval(struct thread *td,
 	struct thread *tdt;
 	int error;
 
+	/*
+	 * According to man in case the invalid pid specified
+	 * EINVAL should be returned.
+	 */
 	if (uap->pid < 0)
 		return (EINVAL);
 
@@ -1976,6 +1988,7 @@ linux_sched_rr_get_interval(struct thread *td,
 		return (ESRCH);
 
 	error = kern_sched_rr_get_interval_td(td, tdt, &ts);
+	PROC_UNLOCK(tdt->td_proc);
 	if (error != 0)
 		return (error);
 	lts.tv_sec = ts.tv_sec;
@@ -2184,19 +2197,17 @@ linux_ppoll(struct thread *td, struct linux_ppoll_args *args)
 	sigset_t ss;
 	int error;
 
-	if (args->sset) {
+	if (args->sset != NULL) {
 		if (args->ssize != sizeof(l_ss))
 			return (EINVAL);
 		error = copyin(args->sset, &l_ss, sizeof(l_ss));
 		if (error)
 			return (error);
 		linux_to_bsd_sigset(&l_ss, &ss);
-		SIGDELSET(ss, SIGKILL);
-		SIGDELSET(ss, SIGSTOP);
 		ssp = &ss;
 	} else
 		ssp = NULL;
-	if (args->tsp) {
+	if (args->tsp != NULL) {
 		error = copyin(args->tsp, &lts, sizeof(lts));
 		if (error)
 			return (error);
@@ -2210,7 +2221,7 @@ linux_ppoll(struct thread *td, struct linux_ppoll_args *args)
 
 	error = kern_poll(td, args->fds, args->nfds, tsp, ssp);
 
-	if (error == 0 && args->tsp) {
+	if (error == 0 && args->tsp != NULL) {
 		if (td->td_retval[0]) {
 			nanotime(&ts1);
 			timespecsub(&ts1, &ts0);

@@ -1,4 +1,4 @@
-/*	$Id: man_hash.c,v 1.27 2014/04/20 16:46:04 schwarze Exp $ */
+/*	$Id: man_hash.c,v 1.29 2014/12/01 08:05:52 schwarze Exp $ */
 /*
  * Copyright (c) 2008, 2009, 2010 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -14,9 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
 #include <sys/types.h>
 
@@ -26,7 +24,6 @@
 #include <string.h>
 
 #include "man.h"
-#include "mandoc.h"
 #include "libman.h"
 
 #define	HASH_DEPTH	 6

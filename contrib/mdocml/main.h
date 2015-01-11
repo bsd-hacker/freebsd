@@ -1,4 +1,4 @@
-/*	$Id: main.h,v 1.16 2014/04/20 16:46:04 schwarze Exp $ */
+/*	$Id: main.h,v 1.19 2014/12/01 08:05:52 schwarze Exp $ */
 /*
  * Copyright (c) 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -14,16 +14,14 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifndef	MAIN_H
-#define	MAIN_H
-
-__BEGIN_DECLS
-
-struct	mdoc;
-struct	man;
 
 #define	UNCONST(a)	((void *)(uintptr_t)(const void *)(a))
 
+__BEGIN_DECLS
+
+struct	mchars;
+struct	mdoc;
+struct	man;
 
 /*
  * Definitions for main.c-visible output device functions, e.g., -Thtml
@@ -32,8 +30,7 @@ struct	man;
  * terminal output routines with different character settings.
  */
 
-void		 *html_alloc(char *);
-void		 *xhtml_alloc(char *);
+void		 *html_alloc(const struct mchars *, char *);
 void		  html_mdoc(void *, const struct mdoc *);
 void		  html_man(void *, const struct man *);
 void		  html_free(void *);
@@ -44,18 +41,16 @@ void		  tree_man(void *, const struct man *);
 void		  man_mdoc(void *, const struct mdoc *);
 void		  man_man(void *, const struct man *);
 
-void		 *locale_alloc(char *);
-void		 *utf8_alloc(char *);
-void		 *ascii_alloc(char *);
+void		 *locale_alloc(const struct mchars *, char *);
+void		 *utf8_alloc(const struct mchars *, char *);
+void		 *ascii_alloc(const struct mchars *, char *);
 void		  ascii_free(void *);
 
-void		 *pdf_alloc(char *);
-void		 *ps_alloc(char *);
+void		 *pdf_alloc(const struct mchars *, char *);
+void		 *ps_alloc(const struct mchars *, char *);
 void		  pspdf_free(void *);
 
 void		  terminal_mdoc(void *, const struct mdoc *);
 void		  terminal_man(void *, const struct man *);
 
 __END_DECLS
-
-#endif /*!MAIN_H*/

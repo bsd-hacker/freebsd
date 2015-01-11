@@ -44,7 +44,6 @@ SUBDIR=	\
 	${_arcmsr} \
 	${_arcnet} \
 	${_asmc} \
-	${_asr} \
 	ata \
 	ath \
 	ath_pci \
@@ -90,7 +89,6 @@ SUBDIR=	\
 	cuse \
 	${_cxgb} \
 	${_cxgbe} \
-	${_cyclic} \
 	dc \
 	dcons \
 	dcons_crom \
@@ -251,14 +249,11 @@ SUBDIR=	\
 	netfpga10g \
 	${_netgraph} \
 	${_nfe} \
-	nfs_common \
 	nfscl \
-	nfsclient \
 	nfscommon \
 	nfsd \
 	nfslock \
 	nfslockd \
-	nfsserver \
 	nfssvc \
 	nge \
 	nmdm \
@@ -439,7 +434,6 @@ _pfsync=	pfsync
 
 .if ${MK_SOURCELESS_UCODE} != "no"
 _bce=		bce
-_cxgbe=		cxgbe
 _fatm=		fatm
 _fxp=		fxp
 _ispfw=		ispfw
@@ -451,6 +445,9 @@ _ti=		ti
 _txp=		txp
 .endif
 
+.if ${MK_SOURCELESS_UCODE} != "no" && ${MACHINE_CPUARCH} == "amd64"
+_cxgbe=		cxgbe
+.endif
 
 .if ${MACHINE_CPUARCH} != "arm" && ${MACHINE_CPUARCH} != "mips" && \
 	${MACHINE_CPUARCH} != "powerpc"
@@ -478,9 +475,6 @@ _cardbus=	cardbus
 _cbb=		cbb
 _cpuctl=	cpuctl
 _cpufreq=	cpufreq
-.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
-_cyclic=	cyclic
-.endif
 _dpms=		dpms
 _drm=		drm
 _drm2=		drm2
@@ -658,7 +652,6 @@ _xe=		xe
 .if ${MK_EISA} != "no"
 _ahb=		ahb
 .endif
-_asr=		asr
 _bios=		bios
 _cm=		cm
 .if ${MK_SOURCELESS_UCODE} != "no"
@@ -690,9 +683,6 @@ _cardbus=	cardbus
 _cbb=		cbb
 _cfi=		cfi
 _cpufreq=	cpufreq
-.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
-_cyclic=	cyclic
-.endif
 _drm=		drm
 .if ${MK_CDDL} != "no" || defined(ALL_MODULES)
 _dtrace=	dtrace

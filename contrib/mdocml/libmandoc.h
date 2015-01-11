@@ -1,4 +1,4 @@
-/*	$Id: libmandoc.h,v 1.42 2014/07/09 11:31:43 schwarze Exp $ */
+/*	$Id: libmandoc.h,v 1.51 2014/12/01 08:05:52 schwarze Exp $ */
 /*
  * Copyright (c) 2009, 2010, 2011, 2012 Kristaps Dzonsons <kristaps@bsd.lv>
  * Copyright (c) 2013, 2014 Ingo Schwarze <schwarze@openbsd.org>
@@ -15,8 +15,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifndef LIBMANDOC_H
-#define LIBMANDOC_H
 
 enum	rofferr {
 	ROFF_CONT, /* continue processing line */
@@ -30,8 +28,18 @@ enum	rofferr {
 	ROFF_ERR /* badness: puke and stop */
 };
 
+struct	buf {
+	char	*buf;
+	size_t	 sz;
+};
+
 __BEGIN_DECLS
 
+struct	mparse;
+struct	mchars;
+enum	mandocerr;
+struct	tbl_span;
+struct	eqn;
 struct	roff;
 struct	mdoc;
 struct	man;
@@ -55,38 +63,34 @@ struct	mdoc	*mdoc_alloc(struct roff *, struct mparse *,
 void		 mdoc_reset(struct mdoc *);
 int		 mdoc_parseln(struct mdoc *, int, char *, int);
 int		 mdoc_endparse(struct mdoc *);
-int		 mdoc_addspan(struct mdoc *, const struct tbl_span *);
-int		 mdoc_addeqn(struct mdoc *, const struct eqn *);
+void		 mdoc_addspan(struct mdoc *, const struct tbl_span *);
+void		 mdoc_addeqn(struct mdoc *, const struct eqn *);
 
 void		 man_free(struct man *);
 struct	man	*man_alloc(struct roff *, struct mparse *, int);
 void		 man_reset(struct man *);
 int		 man_parseln(struct man *, int, char *, int);
 int		 man_endparse(struct man *);
-int		 man_addspan(struct man *, const struct tbl_span *);
-int		 man_addeqn(struct man *, const struct eqn *);
+void		 man_addspan(struct man *, const struct tbl_span *);
+void		 man_addeqn(struct man *, const struct eqn *);
+
+int		 preconv_cue(const struct buf *, size_t);
+int		 preconv_encode(struct buf *, size_t *,
+			struct buf *, size_t *, int *);
 
 void		 roff_free(struct roff *);
-struct roff	*roff_alloc(struct mparse *, int);
+struct roff	*roff_alloc(struct mparse *, const struct mchars *, int);
 void		 roff_reset(struct roff *);
-enum rofferr	 roff_parseln(struct roff *, int,
-			char **, size_t *, int, int *);
+enum rofferr	 roff_parseln(struct roff *, int, struct buf *, int *);
 void		 roff_endparse(struct roff *);
 void		 roff_setreg(struct roff *, const char *, int, char sign);
 int		 roff_getreg(const struct roff *, const char *);
 char		*roff_strdup(const struct roff *, const char *);
 int		 roff_getcontrol(const struct roff *,
 			const char *, int *);
-#if 0
-char		 roff_eqndelim(const struct roff *);
-void		 roff_openeqn(struct roff *, const char *,
-			int, int, const char *);
-int		 roff_closeeqn(struct roff *);
-#endif
+int		 roff_getformat(const struct roff *);
 
 const struct tbl_span	*roff_span(const struct roff *);
 const struct eqn	*roff_eqn(const struct roff *);
 
 __END_DECLS
-
-#endif /*!LIBMANDOC_H*/

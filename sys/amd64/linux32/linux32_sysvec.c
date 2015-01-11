@@ -150,6 +150,28 @@ static int bsd_to_linux_errno[ELAST + 1] = {
 	 -72, -67, -71
 };
 
+int bsd_to_linux_signal[LINUX_SIGTBLSZ] = {
+	LINUX_SIGHUP, LINUX_SIGINT, LINUX_SIGQUIT, LINUX_SIGILL,
+	LINUX_SIGTRAP, LINUX_SIGABRT, 0, LINUX_SIGFPE,
+	LINUX_SIGKILL, LINUX_SIGBUS, LINUX_SIGSEGV, LINUX_SIGSYS,
+	LINUX_SIGPIPE, LINUX_SIGALRM, LINUX_SIGTERM, LINUX_SIGURG,
+	LINUX_SIGSTOP, LINUX_SIGTSTP, LINUX_SIGCONT, LINUX_SIGCHLD,
+	LINUX_SIGTTIN, LINUX_SIGTTOU, LINUX_SIGIO, LINUX_SIGXCPU,
+	LINUX_SIGXFSZ, LINUX_SIGVTALRM, LINUX_SIGPROF, LINUX_SIGWINCH,
+	0, LINUX_SIGUSR1, LINUX_SIGUSR2
+};
+
+int linux_to_bsd_signal[LINUX_SIGTBLSZ] = {
+	SIGHUP, SIGINT, SIGQUIT, SIGILL,
+	SIGTRAP, SIGABRT, SIGBUS, SIGFPE,
+	SIGKILL, SIGUSR1, SIGSEGV, SIGUSR2,
+	SIGPIPE, SIGALRM, SIGTERM, SIGBUS,
+	SIGCHLD, SIGCONT, SIGSTOP, SIGTSTP,
+	SIGTTIN, SIGTTOU, SIGURG, SIGXCPU,
+	SIGXFSZ, SIGVTALRM, SIGPROF, SIGWINCH,
+	SIGIO, SIGURG, SIGSYS
+};
+
 #define LINUX_T_UNKNOWN  255
 static int _bsd_to_linux_trapcode[] = {
 	LINUX_T_UNKNOWN,	/* 0 */
@@ -877,7 +899,7 @@ linux_copyout_strings(struct image_params *imgp)
 	    roundup(sizeof(canary), sizeof(char *));
 	copyout(canary, (void *)imgp->canary, sizeof(canary));
 
-/*
+	/*
 	 * If we have a valid auxargs ptr, prepare some room
 	 * on the stack.
 	 */
@@ -1043,7 +1065,6 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_shared_page_base = LINUX32_SHAREDPAGE,
 	.sv_shared_page_len = PAGE_SIZE,
 	.sv_schedtail	= linux_schedtail,
-	.sv_thread_detach = linux_thread_detach,
 	.sv_trap	= NULL,
 };
 

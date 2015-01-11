@@ -74,7 +74,6 @@ __FBSDID("$FreeBSD$");
 #include <compat/linux/linux_util.h>
 #include <compat/linux/linux_emul.h>
 
-
 struct l_old_select_argv {
 	l_int		nfds;
 	l_uintptr_t	readfds;
@@ -524,13 +523,6 @@ linux_mmap_common(struct thread *td, l_uintptr_t addr, l_size_t len, l_int prot,
 	error = 0;
 	bsd_args.flags = 0;
 	fp = NULL;
-
-	/*
-	 * Linux do not allow an offset which is not
-	 * modulo the pagesize.
-	 */
-	if (pos & PAGE_MASK)
-		return (EINVAL);
 
 	/*
 	 * Linux mmap(2):
