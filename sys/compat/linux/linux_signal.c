@@ -785,6 +785,10 @@ siginfo_to_lsiginfo(siginfo_t *si, l_siginfo_t *lsi, l_int sig)
 		default:
  			lsi->lsi_pid = si->si_pid;
  			lsi->lsi_uid = si->si_uid;
+			if (sig >= LINUX_SIGRTMIN) {
+ 				lsi->lsi_int = si->si_value.sival_int;
+ 				lsi->lsi_ptr = PTROUT(si->si_value.sival_ptr);
+			}
 			break;
 		}
 		break;
