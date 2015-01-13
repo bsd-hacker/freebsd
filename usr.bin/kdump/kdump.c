@@ -173,8 +173,10 @@ static int bsd_to_linux_errno[ELAST + 1] = {
 #endif
 
 #if defined(__amd64__)
-extern char *linux32_syscallnames[];
-extern int nlinux32_syscalls;
+extern const char *linux32_syscallnames[];
+#include <linux32_syscalls.c>
+static int nlinux_syscalls = sizeof(linux32_syscallnames) / \
+				sizeof(linux32_syscallnames[0]);
 #endif
 
 struct proc_info
