@@ -277,7 +277,7 @@ kern_sched_getscheduler(struct thread *td, struct thread *targettd,
 	struct proc *targetp;
 	int error;
 
-	targetp = td->td_proc;
+	targetp = targettd->td_proc;
 	PROC_LOCK_ASSERT(targetp, MA_OWNED);
 
 	error = p_cansee(td, targetp);
