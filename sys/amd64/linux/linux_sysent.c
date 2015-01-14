@@ -331,4 +331,5 @@ struct sysent linux_sysent[] = {
 	{ 0, (sy_call_t *)linux_process_vm_writev, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 310 = linux_process_vm_writev */
 	{ 0, (sy_call_t *)linux_kcmp, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 311 = linux_kcmp */
 	{ 0, (sy_call_t *)linux_finit_module, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 312 = linux_finit_module */
+	{ 0, (sy_call_t *)nosys, AUE_NULL, NULL, 0, 0, 0, SY_THR_ABSENT },			/* 313 = nosys */
 };

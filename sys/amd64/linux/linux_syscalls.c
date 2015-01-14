@@ -321,4 +321,5 @@ const char *linux_syscallnames[] = {
 	"linux_process_vm_writev",			/* 310 = linux_process_vm_writev */
 	"linux_kcmp",			/* 311 = linux_kcmp */
 	"linux_finit_module",			/* 312 = linux_finit_module */
+	"#313",			/* 313 = nosys */
 };

@@ -307,4 +307,4 @@
 #define	LINUX_SYS_linux_process_vm_writev	310
 #define	LINUX_SYS_linux_kcmp	311
 #define	LINUX_SYS_linux_finit_module	312
-#define	LINUX_SYS_MAXSYSCALL	313
+#define	LINUX_SYS_MAXSYSCALL	314
