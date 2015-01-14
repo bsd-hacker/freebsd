@@ -2004,6 +2004,7 @@ linux_sched_rr_get_interval(struct thread *td,
 struct thread *
 linux_tdfind(struct thread *td, lwpid_t tid, pid_t pid)
 {
+	struct linux_pemuldata *pem;
 	struct linux_emuldata *em;
 	struct thread *tdt;
 	struct proc *p;
@@ -2020,6 +2021,14 @@ linux_tdfind(struct thread *td, lwpid_t tid, pid_t pid)
 		 */
 		p = pfind(tid);
 		if (p) {
+			pem = pem_find(p);
+			if (pem == NULL) {
+				/*
+				 * p is not a Linuxulator process.
+				 */
+				PROC_UNLOCK(p);
+				return (NULL);
+			}
 			FOREACH_THREAD_IN_PROC(p, tdt) {
 				em = em_find(tdt);
 				if (tid == em->em_tid)
