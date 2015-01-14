@@ -338,14 +338,14 @@ sys_sched_rr_get_interval(struct thread *td,
 		targettd = FIRST_THREAD_IN_PROC(p);
 	}
 
-	error = kern_sched_rr_get_interval(td, targettd, &timespec);
+	error = kern_sched_rr_get_interval_td(td, targettd, &timespec);
 	if (error == 0)
 		error = copyout(&timespec, uap->interval, sizeof(timespec));
 	return (error);
 }
 
 int
-kern_sched_rr_get_interval(struct thread *td, struct thread *targettd,
+kern_sched_rr_get_interval_td(struct thread *td, struct thread *targettd,
     struct timespec *ts)
 {
 	struct proc *targetp;
