@@ -402,6 +402,8 @@ linux_epoll_ctl(struct thread *td, struct linux_epoll_ctl_args *args)
 	    cap_rights_init(&rights, CAP_KQUEUE_CHANGE), &epfp);
 	if (error != 0)
 		return (error);
+	if (epfp->f_type != DTYPE_KQUEUE)
+		goto leave1;
 
 	 /* Protect user data vector from incorrectly supplied fd. */
 	error = fget(td, args->fd, cap_rights_init(&rights, CAP_POLL_EVENT), &fp);
