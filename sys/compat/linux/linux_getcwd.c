@@ -431,7 +431,7 @@ linux_getcwd(struct thread *td, struct linux_getcwd_args *args)
 	path = malloc(len, M_LINUX, M_WAITOK);
 
 	error = kern___getcwd(td, path, UIO_SYSSPACE, len);
-	if (error != 0) {
+	if (error == 0) {
 		lenused = strlen(path) + 1;
 		if (lenused <= args->bufsize) {
 			td->td_retval[0] = lenused;
