@@ -114,7 +114,7 @@ t3(void *arg __unused)
 		if ((offset = lseek(fd, 0, SEEK_CUR)) == -1)
 			err(1, "lseek error");
 		if (offset != 1 && offset != START + 2)
-			fprintf(stderr, "FAIL #%d offset = %10jd (0x%09jx)\n", 
+			fprintf(stderr, "FAIL #%d offset = %10jd (0x%09jx)\n",
 					errors++, offset, offset);
 	}
 
@@ -155,6 +155,6 @@ main(void)
 	close(fd);
 	if (unlink(file) == -1)
 		err(3, "unlink(%s)", file);
-		
+
 	return (0);
 }
