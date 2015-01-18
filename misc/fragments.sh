@@ -57,7 +57,7 @@ mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
 cd $mntpoint
-su $testuser -c "/tmp/fragments" 
+su $testuser -c "/tmp/fragments"
 cd $here
 
 umount $mntpoint
@@ -87,7 +87,7 @@ EOF
 static	pid_t pid;
 static	char *buf;
 
-static int stop;
+static volatile sig_atomic_t stop;
 
 void
 handler(int i __unused) {
@@ -117,7 +117,7 @@ cleanup(int n)
 		sprintf(file,"t%05d", j);
 		if (stat(file, &sb) != 0)
 			continue;
-		
+
 		if (sb.st_size == 0) {
 			unlink(file);
 			continue;
@@ -269,7 +269,7 @@ main()
 	alarm(30 * 60);
 	for (j = 0; j < 50 && stop == 0; j++) {
 		for (i = 0; i < PARALLEL; i++) {
-			if (fork() == 0) 
+			if (fork() == 0)
 				test();
 		}
 		for (i = 0; i < PARALLEL; i++)
