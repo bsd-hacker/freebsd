@@ -48,20 +48,20 @@ rm -rf $dir
 mkdir -p $dir
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/alternativeFlushPath.c
-cc -o alternativeFlushPath -Wall -Wextra alternativeFlushPath.c
+cc -o /tmp/alternativeFlushPath -Wall -Wextra alternativeFlushPath.c
 rm -f alternativeFlushPath.c
 
 for j in `jot 10`; do
-   ./alternativeFlushPath &
+   /tmp/alternativeFlushPath &
 done
 for j in `jot 10`; do
    wait
 done
 sysctl vfs.altbufferflushes
 
-rm -rf alternativeFlushPath $dir
+rm -rf /tmp/alternativeFlushPath $dir
 
-exit 
+exit
 
 EOF
 #include <stdio.h>
@@ -74,7 +74,7 @@ EOF
 #include <sys/resource.h>
 #include <err.h>
 
-int more;
+static volatile sig_atomic_t more;
 
 static void
 handler(int i __unused) {
