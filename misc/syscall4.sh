@@ -35,13 +35,12 @@
 
 . ../default.cfg
 
-killall 2>&1 | grep -q q && q="-q"
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > syscall4.c
 rm -f /tmp/syscall4
 cc -o syscall4 -Wall -Wextra -O2 -g syscall4.c -lpthread || exit 1
-rm -f syscall4.c
+#rm -f syscall4.c
 
 kldstat -v | grep -q sysvmsg  || kldload sysvmsg
 kldstat -v | grep -q sysvsem  || kldload sysvsem
@@ -61,24 +60,24 @@ chmod 777 $mntpoint
 sleeptime=${sleeptime:-12}
 st=`date '+%s'`
 while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
+	daemon sh -c "(cd $odir/../testcases/swap; ./swap -t 5m -i 20 -k -h)" > /dev/null
 	(cd $mntpoint; /tmp/syscall4 $* ) &
 	start=`date '+%s'`
 	while [ $((`date '+%s'` - start)) -lt $sleeptime ]; do
 		ps aux | grep -v grep | egrep -q "syscall4$" || break
 		sleep .5
 	done
-	if ps aux | grep -v grep | egrep -q "syscall4$"; then
-		killall $q syscall4
-		ps aux | grep -v grep | egrep -q "syscall4 " &&
-		    killall $q -9 syscall4
-	fi
+	while pkill -9 syscall4; do
+		:
+	done
 	wait
+	pkill -9 swap
 	ipcs | grep nobody | awk '/^(q|m|s)/ {print " -" $1, $2}' |
 	    xargs -L 1 ipcrm
 done
-killall $q -9 syscall4
-ps aux | grep -v grep | egrep "syscall4" | egrep -v "\.sh" &&
-    killall $q -9 syscall4
+while pkill -9 syscall4; do
+	:
+done
 
 for i in `jot 10`; do
 	mount | grep -q md${mdstart}$part  && \
@@ -298,8 +297,10 @@ main(int argc, char **argv)
 	endpwent();
 
 	limit.rlim_cur = limit.rlim_max = 1000;
+#if defined(RLIMIT_NPTS)
 	if (setrlimit(RLIMIT_NPTS, &limit) < 0)
 		err(1, "setrlimit");
+#endif
 
 	signal(SIGALRM, hand);
 	signal(SIGILL,  hand);
@@ -310,10 +311,12 @@ main(int argc, char **argv)
 	signal(SIGSYS,  hand);
 	signal(SIGTRAP, hand);
 
+	if (argc > 2)
+		errx(1, "Usage: %s {<syscall no>}", argv[0]);
 	if (argc == 2) {
 		syscallno = atoi(argv[1]);
 		for (j = 0; j < (int)nitems(ignore); j++)
-			if (syscallno == ignore[j]) 
+			if (syscallno == ignore[j])
 				errx(0, "syscall #%d is on the ignore list.", syscallno);
 	}
 
@@ -327,11 +330,11 @@ main(int argc, char **argv)
 			if (pthread_create(&rp, NULL, test, NULL) != 0)
 				perror("pthread_create");
 			usleep(1000);
-			for (j = 0; j < 50; j++) 
+			for (j = 0; j < 50; j++)
 				if (pthread_create(&cp[j], NULL, calls, NULL) != 0)
 					perror("pthread_create");
 
-			for (j = 0; j < 50; j++) 
+			for (j = 0; j < 50; j++)
 				pthread_join(cp[j], NULL);
 			_exit(0);
 		}
