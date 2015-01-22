@@ -200,11 +200,11 @@ main(void)
 	while ((time(NULL) - start) < 120) {
 		if (fork() == 0) {
 			arc4random_stir();
-			for (j = 0; j < 1; j++) 
+			for (j = 0; j < 1; j++)
 				if (pthread_create(&cp[j], NULL, calls, NULL) != 0)
 					perror("pthread_create");
 
-			for (j = 0; j < 1; j++) 
+			for (j = 0; j < 1; j++)
 				pthread_join(cp[j], NULL);
 			_exit(0);
 		}

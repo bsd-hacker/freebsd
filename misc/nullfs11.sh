@@ -73,7 +73,7 @@ test() {
 		s=`date '+%s'`
 		for i in `jot $parallel`; do
 			(mkdir $mp2/test$i; cd $mp2/test$i; \
-			/tmp/fstool -l -f 50 -n 500 -s $((i * 4))k) & 
+			/tmp/fstool -l -f 50 -n 500 -s $((i * 4))k) &
 		done
 		for i in `jot $parallel`; do
 			wait

@@ -128,7 +128,7 @@ statThread(void *arg __unused)
 	return 0;
 }
 
-int 
+int
 main(void)
 {
 	char filename1 [20], filename2[20], filename3[20];

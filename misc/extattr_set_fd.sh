@@ -69,7 +69,7 @@ char buf[4096];
 int
 main(void)
 {
-	int fd; 
+	int fd;
 
 	if ((fd = open("theFile", O_RDWR | O_CREAT, 0622)) == -1)
 		err(1, "open(%s)", "theFile");

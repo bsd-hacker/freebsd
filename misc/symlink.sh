@@ -123,7 +123,7 @@ main(int argc, char **argv)
 		sprintf(file,"p%05d.%05d", pid, i);
 		if (unlink(file) == -1)
 			err(3, "unlink(%s)", file);
-		
+
 	}
 	return (0);
 }

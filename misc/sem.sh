@@ -73,7 +73,7 @@ __FBSDID("$FreeBSD$");
 
 int	semid = -1;
 key_t	semkey;
-struct	sembuf sop[2]; 
+struct	sembuf sop[2];
 
 size_t	pgsize;
 pid_t	pid;

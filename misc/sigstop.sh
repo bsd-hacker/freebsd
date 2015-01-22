@@ -42,7 +42,7 @@ cc -o sigstop -Wall -Wextra sigstop.c || exit 1
 rm -f sigstop.c
 cd $here
 
-su $testuser -c "/tmp/sigstop" 
+su $testuser -c "/tmp/sigstop"
 
 rm -f /tmp/sigstop
 exit

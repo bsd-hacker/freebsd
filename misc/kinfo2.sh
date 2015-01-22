@@ -127,7 +127,7 @@ list(void)
 	for (;;) {
 #if 0
 		printf("name: %-10s, inode %7d, type %2d, namelen %d, d_reclen %d\n",
-				dp->d_name, dp->d_fileno, dp->d_type, dp->d_namlen, 
+				dp->d_name, dp->d_fileno, dp->d_type, dp->d_namlen,
 				dp->d_reclen); fflush(stdout);
 #endif
 
@@ -163,13 +163,13 @@ main(int argc, char **argv)
 		alarm(60);
 		for (;;)
 			churning();
-	} 
+	}
 	if (r < 0) {
 		perror("fork");
 		exit(2);
 	}
 
-	for (;;) 
+	for (;;)
 		list();
 
 	return (0);

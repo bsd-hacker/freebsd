@@ -120,7 +120,7 @@ test(void)
 		sprintf(file,"p%05d.%05d", pid, i);
 		if (unlink(file) == -1)
 			warn("unlink(%s)", file);
-		
+
 	}
 	return (0);
 }
@@ -145,7 +145,7 @@ main(void)
 		if ((fd = open("rendezvous", O_CREAT, 0644)) == -1)
 			err(1, "open()");
 		close(fd);
-		
+
 		for (j = 0; j < PARALLEL; j++) {
 			wait(&status);
 			error += status;

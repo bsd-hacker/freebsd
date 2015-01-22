@@ -131,7 +131,7 @@ spin(void)
 	_exit(0);
 }
 
-void 
+void
 renamer()
 {
 	int fd, i;
@@ -176,6 +176,6 @@ main() {
 	for (i = 0; i < PARALLEL * 2; i++)
 		wait(NULL);
 	wait(NULL);
-		
+
 	return (0);
 }

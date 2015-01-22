@@ -39,7 +39,7 @@ sed '1,/^EOF/d' < $odir/$0 > posix_fadvise.c
 cc -o posix_fadvise -Wall -Wextra -O2 -g posix_fadvise.c
 
 n1=`vmstat -m | grep fadvise | awk '{print $2 + 0}'`
-/tmp/posix_fadvise 
+/tmp/posix_fadvise
 n2=`vmstat -m | grep fadvise | awk '{print $2 + 0}'`
 if [ $((n2 - n1)) -gt 10 ]; then
 	echo FAIL

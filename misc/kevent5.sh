@@ -99,7 +99,7 @@ test(void) {
 	close(kq);
 
 /* Once the rendezvous file is gone create a new kevent */
-		
+
 	if ((fd = open(file2, O_RDONLY, 0)) == -1)
 		err(1, "open(%s)(2)", file2);
 

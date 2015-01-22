@@ -90,6 +90,6 @@ main(void)
 		if (mkdir(name, 00700) == -1)
 			err(1, "mkdir(%s)", name);
 	}
-		
+
 	return (0);
 }

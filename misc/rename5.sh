@@ -122,7 +122,7 @@ main()
 		}
 
 		for (i = 0; i < 2; i++) {
-			if (fork() == 0) 
+			if (fork() == 0)
 				test();
 		}
 		for (i = 0; i < 2; i++)

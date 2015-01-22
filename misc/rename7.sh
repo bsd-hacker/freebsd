@@ -34,7 +34,7 @@
 # $ umount /mnt
 # umount: unmount of /mnt failed: Device busy
 # $ umount -f /mnt
-# $ 
+# $
 
 . ../default.cfg
 

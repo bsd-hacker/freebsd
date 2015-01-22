@@ -57,7 +57,7 @@ main()
 	/*
 	version = 0x2,
 	path = 0x28190cb1 <Address 0x28190cb1 out of bounds>,
-	hostname = 0x28167b90 <Address 0x28167b90 out of bounds>, 
+	hostname = 0x28167b90 <Address 0x28167b90 out of bounds>,
 	jailname = 0x28198700 <Address 0x28198700 out of bounds>,
 	ip4s = 0x0,
 	ip6s = 0x0,

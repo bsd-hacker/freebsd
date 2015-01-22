@@ -114,7 +114,7 @@ main(int argc, char **argv)
 	int i, status;
 
 	for (i = 0; i < 20; i++) {
-		if (fork() == 0) 
+		if (fork() == 0)
 			test();
 	}
 	for (i = 0; i < 20; i++)

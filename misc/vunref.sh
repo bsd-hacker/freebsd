@@ -72,7 +72,7 @@ if [ $# -eq 0 ]; then
 	sleep 2
 
 	while [ ! -z "`ls $RUNDIR/active.* 2>/dev/null`" ] ; do
-		../testcases/swap/swap -t 2m -i 20 
+		../testcases/swap/swap -t 2m -i 20
 	done
 
 	for i in `jot $mounts`; do
@@ -215,7 +215,7 @@ main()
 			return (1);
 
         for (i = 0; i < 2; i++) {
-                if (fork() == 0) 
+                if (fork() == 0)
                         test();
         }
         for (i = 0; i < 2; i++)

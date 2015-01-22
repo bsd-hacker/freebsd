@@ -56,7 +56,7 @@ main()
 	version = 0x0,
 	path = 0x2809cd61 <Address 0x2809cd61 out of bounds>,
 	hostname = 0x2809b650 <Address 0x2809b650 out of bounds>,
-	jailname = 0x0, 
+	jailname = 0x0,
 	ip4s = 0x1,
 	ip6s = 0x0,
 	ip4 = 0x0,

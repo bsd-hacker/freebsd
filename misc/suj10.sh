@@ -140,7 +140,7 @@ test(void)
 		sprintf(file,"p%05d.%05d", pid, i);
 		if (rmdir(file) == -1)
 			err(3, "unlink(%s)", file);
-		
+
 	}
 	chdir("..");
 	sprintf(file,"d%05d", pid);
@@ -168,7 +168,7 @@ main(void)
 		if ((fd = open("rendezvous", O_CREAT, 0644)) == -1)
 			err(1, "open()");
 		close(fd);
-		
+
 		for (j = 0; j < PARALLEL; j++)
 			wait(NULL);
 

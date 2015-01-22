@@ -151,13 +151,13 @@ main(int argc, char **argv)
 		alarm(60);
 		for (;;)
 			churning();
-	} 
+	}
 	if (r < 0) {
 		perror("fork");
 		exit(2);
 	}
 
-	for (;;) 
+	for (;;)
 		list();
 
 	return (0);

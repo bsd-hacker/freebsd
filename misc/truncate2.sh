@@ -42,7 +42,7 @@ cd $RUNDIR
 
 sleep 1
 while ps | grep -v grep | egrep -q "truncate2$"; do
-	$here/../testcases/swap/swap -t 2m -i 20 
+	$here/../testcases/swap/swap -t 2m -i 20
 done
 
 rm -f /tmp/truncate2
@@ -91,7 +91,7 @@ main(int argc, char **argv)
 	int i, status;
 
 	for (i = 0; i < 20; i++) {
-		if (fork() == 0) 
+		if (fork() == 0)
 			test();
 	}
 	for (i = 0; i < 20; i++)

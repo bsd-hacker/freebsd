@@ -170,6 +170,6 @@ main(int argc, char **argv)
 		if (pthread_cond_destroy(&cond) == -1)
 			err(1, "pthread_condattr_destroy");
 	}
-		
+
 	return (0);
 }

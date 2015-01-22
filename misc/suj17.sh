@@ -121,7 +121,7 @@ main()
 
 	for (i = 0; i < 1; i++) {
 		for (j = 0; j < 6; j++) {
-			if (fork() == 0) 
+			if (fork() == 0)
 				test();
 		}
 		if ((fd = open("rendezvous", O_CREAT, 0644)) == -1)
