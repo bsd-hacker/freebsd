@@ -42,7 +42,7 @@ usage() {
 
 info() {
 	out="${@}"
-	printf "INFO:\t${out}\n" >/dev/stdout
+	printf "$(date +%Y%m%d-%H:%M:%S)\tINFO:\t${out}\n" >/dev/stdout
 	unset out
 }
 
@@ -51,7 +51,7 @@ verbose() {
 		return 0
 	fi
 	out="${@}"
-	printf "DEBUG:\t${out}\n" >/dev/stdout
+	printf "$(date +%Y%m%d-%H:%M:%S)\tDEBUG:\t${out}\n" >/dev/stdout
 	unset out
 }
 
@@ -218,10 +218,14 @@ zfs_bootstrap() {
 
 prebuild_setup() {
 	info "Creating ${logdir}"
+	mkdir -p ${logdir}
 	info "Creating ${srcdir}"
-	mkdir -p "${logdir}" "${srcdir}"
+	mkdir -p ${srcdir}
+	info "Creating ${chroots}"
+	mkdir -p ${chroots}
 	info "Checking out src/release to ${srcdir}"
-	svn co -q --force svn://svn.freebsd.org/base/head/release ${srcdir}
+	svn co -q --force svn://svn.freebsd.org/base/${releasesrc}/release \
+		${srcdir}
 	info "Reverting any changes to ${srcdir}"
 	svn revert -R ${srcdir}
 }
@@ -244,8 +248,9 @@ build_release() {
 	_conf="${scriptdir}/${_build}.conf"
 	source_config || return 0
 	info "Building release: ${_build}"
-	printenv >> ${logdir}/${_build}.log
-	env -i /bin/sh ${srcdir}/release.sh -c ${_conf} \
+	set >> ${logdir}/${_build}.log
+	env -i __BUILDCONFDIR="${__BUILDCONFDIR}" \
+		/bin/sh ${srcdir}/release.sh -c ${_conf} \
 		>> ${logdir}/${_build}.log 2>&1
 
 	send_logmail ${logdir}/${_build}.log ${_build}
@@ -255,33 +260,6 @@ build_release() {
 		i386)
 			/bin/sh ${scriptdir}/remake-memstick.sh \
 				-c ${_conf} >> ${logdir}/${_build}.log
-			;;
-		*)
-			return 0
-			;;
-	esac
-	send_logmail ${logdir}/${_build}.log ${_build}
-	unset _build _conf
-}
-
-build_vmimage() {
-	_build="${rev}-${arch}-${kernel}-${type}"
-	_conf="${scriptdir}/${_build}.conf"
-	source_config || return 0
-
-	case ${arch} in
-		amd64|i386)
-			# continue
-			;;
-		*)
-			return 0
-			;;
-	esac
-	case ${kernel} in
-		GENERIC)
-			info "Building vm image: ${_build}"
-			env -i /bin/sh ${scriptdir}/mk-vmimage.sh -c ${_conf} \
-				>> ${logdir}/${_build}.log 2>&1
 			;;
 		*)
 			return 0
@@ -379,12 +357,17 @@ build_chroots() {
 }
 
 main() {
-	mkdir -p ../chroots/ ../logs/ ../release/
-	while getopts c: opt; do
+	releasesrc="head"
+	export __BUILDCONFDIR="$(dirname $(realpath ${0}))"
+
+	while getopts "c:d" opt; do
 		case ${opt} in
 			c)
 				CONF=${OPTARG}
 				[ -e ${CONF} ] && . $(realpath ${CONF})
+				;;
+			d)
+				debug=1
 				;;
 			\?)
 				usage
@@ -400,7 +383,6 @@ main() {
 	runall build_chroots
 	runall install_chroots
 	runall build_release
-	runall build_vmimage
 }
 
 main "$@"
