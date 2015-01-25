@@ -239,6 +239,7 @@ writer(void) {
 			err(1, "setsockopt(), %s:%d", __FILE__, __LINE__);
 
 		hostent = gethostbyname ("localhost");
+		bzero(&inetaddr, sizeof(inetaddr));
 		memcpy (&inetaddr.sin_addr.s_addr, hostent->h_addr,
 			sizeof (struct in_addr));
 
