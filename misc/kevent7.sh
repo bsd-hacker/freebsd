@@ -167,7 +167,8 @@ test(void *arg __unused)
 		}
 
 		if (fts_close(fts) == -1)
-			err(1, "fts_close()");
+			if (errno != ENOTDIR)
+				warn("fts_close()");
 		if (pipe(fds) == -1)
 			err(1, "pipe()");
 		if (socketpair(PF_UNIX, SOCK_SEQPACKET, 0, socketpr) == -1)
@@ -249,11 +250,11 @@ main(void)
 			if (pthread_create(&rp, NULL, test, NULL) != 0)
 				perror("pthread_create");
 			usleep(1000);
-			for (j = 0; j < 50; j++) 
+			for (j = 0; j < 50; j++)
 				if (pthread_create(&cp[j], NULL, calls, NULL) != 0)
 					perror("pthread_create");
 
-			for (j = 0; j < 50; j++) 
+			for (j = 0; j < 50; j++)
 				pthread_join(cp[j], NULL);
 			_exit(0);
 		}
