@@ -37,22 +37,22 @@
 
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > dl.c
-cc -o dl -Wall -Wextra -O2 -g dl.c
-rm -f dl.c
+sed '1,/^EOF/d' < $here/$0 > datamove4.c
+cc -o datamove4 -Wall -Wextra -O2 -g datamove4.c
+rm -f datamove4.c
 
 mount | grep -q "$mntpoint " && umount $mntpoint
 mount -t tmpfs tmpfs $mntpoint
 chmod 777 $mntpoint
 
 for i in `jot 5`; do
-	su $testuser -c "cd $mntpoint; /tmp/dl"
+	su $testuser -c "cd $mntpoint; /tmp/datamove4"
 done
 while mount | grep -q $mntpoint; do
 	umount -f $mntpoint > /dev/null 2>&1
 done
 
-rm -rf /tmp/dl
+rm -rf /tmp/datamove4
 exit 0
 EOF
 /*-
@@ -102,7 +102,7 @@ int	pagesize;
 char	wbuffer   [FILESIZE];
 
 /* Create a FILESIZE sized file - then remove file data from the cache */
-int 
+int
 prepareFile(char *filename, int *fdp)
 {
 	int	fd;
@@ -146,7 +146,7 @@ prepareFile(char *filename, int *fdp)
 
 
 /* mmap a 2 page buffer - first page is from fd1, second page from fd2 */
-int 
+int
 mapBuffer(char **bufferp, int fd1, int fd2)
 {
 	void *addr;
@@ -178,7 +178,7 @@ unmapBuffer(char *bufferp)
 		err(1, "unmap 2. buffer");
 }
 
-int 
+int
 startIO(int fd, char *buffer)
 {
 	ssize_t	len;
@@ -192,7 +192,7 @@ startIO(int fd, char *buffer)
 }
 
 
-int 
+int
 main()
 {
 

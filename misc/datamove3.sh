@@ -34,30 +34,32 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > dl.c
-cc -o dl -Wall dl.c -lpthread
-rm -f dl.c
+sed '1,/^EOF/d' < $here/$0 > datamove3.c
+cc -o datamove3 -Wall datamove3.c -lpthread
+rm -f datamove3.c
 
 n=5
 old=`sysctl vm.old_msync | awk '{print $NF}'`
 sysctl vm.old_msync=1
 for i in `jot $n`; do
-	mkdir -p /tmp/dl.dir.$i
-	cd /tmp/dl.dir.$i
-       	/tmp/dl &
+	mkdir -p /tmp/datamove3.dir.$i
+	cd /tmp/datamove3.dir.$i
+       	/tmp/datamove3 &
 done
 cd /tmp
 for i in `jot $n`; do
 	wait
 done
 for i in `jot $n`; do
-	rm -rf /tmp/dl.dir.$i
+	rm -rf /tmp/datamove3.dir.$i
 done
 sysctl vm.old_msync=$old
 
-rm -rf /tmp/dl
+rm -rf /tmp/datamove3
 exit 0
 EOF
 /*-
@@ -114,7 +116,7 @@ int pagesize;
 char wbuffer   [FILESIZE];
 
 /* Create a FILESIZE sized file - then remove file data from the cache */
-int 
+int
 prepareFile(char *filename, int *fdp)
 {
 	int fd;
@@ -180,7 +182,7 @@ mapBuffer(void *ar)
 }
 
 
-int 
+int
 startIO(int fd, char *buffer)
 {
 	ssize_t len;
@@ -195,7 +197,7 @@ startIO(int fd, char *buffer)
 
 
 
-int 
+int
 main(int argc, char *argv[], char *envp[])
 {
 

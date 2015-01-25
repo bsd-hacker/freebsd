@@ -28,40 +28,42 @@
 # $FreeBSD$
 #
 
-# There is a well-known problem in FreeBSD, caused by allowing page faults                                       
-# while doing filesystem data move to or from userspace during read(2) and                                       
-# write(2). The issue is that if the userspace address being read or write                                       
-# from/to is backed by the mapping of the same file we are doing i/o to,                                         
+# There is a well-known problem in FreeBSD, caused by allowing page faults
+# while doing filesystem data move to or from userspace during read(2) and
+# write(2). The issue is that if the userspace address being read or write
+# from/to is backed by the mapping of the same file we are doing i/o to,
 # we deadlock.
 
 # Test scenario by ups
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > dl.c
-cc -o dl -Wall dl.c
-rm -f dl.c
+sed '1,/^EOF/d' < $here/$0 > datamove.c
+cc -o datamove -Wall datamove.c
+rm -f datamove.c
 
 n=5
 old=`sysctl vm.old_msync | awk '{print $NF}'`
 sysctl vm.old_msync=1
 for i in `jot $n`; do
-	mkdir -p /tmp/dl.dir.$i
-	cd /tmp/dl.dir.$i
-       	/tmp/dl &
+	mkdir -p /tmp/datamove.dir.$i
+	cd /tmp/datamove.dir.$i
+       	/tmp/datamove &
 done
 cd /tmp
 for i in `jot $n`; do
 	wait
 done
 for i in `jot $n`; do
-	rm -rf /tmp/dl.dir.$i
+	rm -rf /tmp/datamove.dir.$i
 done
 sysctl vm.old_msync=$old
 
-rm -rf /tmp/dl
+rm -rf /tmp/datamove
 exit 0
 EOF
 /*-
@@ -123,7 +125,7 @@ int prepareFile(char* filename,int* fdp)
       perror("Creating file");
       return fd;
     }
-  
+
   len = write(fd,wbuffer,FILESIZE);
   if (len < 0)
     {
@@ -171,11 +173,11 @@ int mapBuffer(char** bufferp,int fd1,int fd2)
       perror("Mmap failed");
       return 1;
     }
- 
+
   buffer = addr;
-  addr = mmap(buffer + pagesize,pagesize, PROT_READ | PROT_WRITE , MAP_FIXED | 
-MAP_SHARED, fd2, 0);
- 
+  addr = mmap(buffer + pagesize,pagesize, PROT_READ | PROT_WRITE , MAP_FIXED |
+      MAP_SHARED, fd2, 0);
+
   if (addr == MAP_FAILED)
     {
       perror("Mmap2 failed");
@@ -190,7 +192,7 @@ int startIO(int fd,char *buffer)
 {
   ssize_t len;
   len = write(fd,buffer,2*pagesize);
-  if (len == -1) 
+  if (len == -1)
     {
       perror("write failed");
       return 1;
@@ -216,7 +218,7 @@ int main(int argc,char *argv[],char *envp[])
       || (mapBuffer(&bufferA,fdDelayA,fdB))
       || (mapBuffer(&bufferB,fdDelayB,fdA)))
     exit(1);
-  
+
   pid = fork();
 
   if (pid == 0)
@@ -233,8 +235,3 @@ int main(int argc,char *argv[],char *envp[])
   exit(status);
 
 }
-
-
-
-
-

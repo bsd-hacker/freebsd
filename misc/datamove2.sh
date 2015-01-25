@@ -34,18 +34,20 @@
 
 # Test scenario by ups
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > dl.c
-cc -o dl -Wall dl.c
-rm -f dl.c
+sed '1,/^EOF/d' < $here/$0 > datamove2.c
+cc -o datamove2 -Wall datamove2.c
+rm -f datamove2.c
 
 for i in `jot 2`; do
 	$here/../testcases/swap/swap -t 10m -i 200 -h &
-	/tmp/dl 
+	/tmp/datamove2
 	ps | grep swap | grep -v swap | awk '{print $1}' | xargs kill
 done
-rm -rf /tmp/dl
+rm -rf /tmp/datamove2
 exit 0
 EOF
 /*-
@@ -95,7 +97,7 @@ int	pagesize;
 char	wbuffer   [FILESIZE];
 
 /* Create a FILESIZE sized file - then remove file data from the cache */
-int 
+int
 prepareFile(char *filename, int *fdp)
 {
 	int	fd;
@@ -139,7 +141,7 @@ prepareFile(char *filename, int *fdp)
 
 
 /* mmap a 2 page buffer - first page is from fd1, second page from fd2 */
-int 
+int
 mapBuffer(char **bufferp, int fd1, int fd2)
 {
 	void *addr;
@@ -171,7 +173,7 @@ unmapBuffer(char *bufferp)
 		err(1, "unmap 2. buffer");
 }
 
-int 
+int
 startIO(int fd, char *buffer)
 {
 	ssize_t	len;
@@ -185,7 +187,7 @@ startIO(int fd, char *buffer)
 }
 
 
-int 
+int
 main(int argc, char *argv[], char *envp[])
 {
 
