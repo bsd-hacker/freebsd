@@ -52,30 +52,28 @@ done
 rm -f core
 exit
 EOF
-#include <string.h>
+#include <err.h>
 #include <signal.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
-#include <err.h>
+#include <unistd.h>
 
 #define SIZ 10*1024*1024
 
 int
 main(int argc, char **argv)
 {
-	char *cp = 0;
+	char *cp;
 
 	if ((cp = malloc(SIZ)) == NULL)
 		err(1, "Could not malloc 10Mb!");
 
 	memset(cp, 1, SIZ);
 
-//	printf("sleep %d\n", (120 - (time(NULL) % 120))); fflush(stdout);
 	sleep(120 - (time(NULL) % 120));
 	raise(SIGSEGV);
-//	printf(".\n");
 
 	return (0);
 }
