@@ -134,7 +134,6 @@ static const int MODPARM_rx_flip = 0;
  * to mirror the Linux MAX_SKB_FRAGS constant.
  */
 #define	MAX_TX_REQ_FRAGS (65536 / PAGE_SIZE + 2)
-#define	NF_TSO_MAXBURST ((IP_MAXPACKET / PAGE_SIZE) * MCLBYTES)
 
 #define RX_COPY_THRESHOLD 256
 
@@ -471,7 +470,7 @@ netfront_attach(device_t dev)
 #if __FreeBSD_version >= 700000
 	SYSCTL_ADD_INT(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
-	    OID_AUTO, "enable_lro", CTLTYPE_INT|CTLFLAG_RW,
+	    OID_AUTO, "enable_lro", CTLFLAG_RW,
 	    &xn_enable_lro, 0, "Large Receive Offload");
 #endif
 
@@ -823,8 +822,7 @@ network_alloc_rx_buffers(struct netfront_info *sc)
 			goto no_mbuf;
 		}
 
-		m_cljget(m_new, M_NOWAIT, MJUMPAGESIZE);
-		if ((m_new->m_flags & M_EXT) == 0) {
+		if (m_cljget(m_new, M_NOWAIT, MJUMPAGESIZE) == NULL) {
 			printf("%s: m_cljget failed\n", __func__);
 			m_freem(m_new);
 
@@ -1056,7 +1054,7 @@ xn_rxeof(struct netfront_info *np)
 		 * Break the mbuf chain first though.
 		 */
 		while ((m = mbufq_dequeue(&rxq)) != NULL) {
-			ifp->if_ipackets++;
+			if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
 			
 			/*
 			 * Do we really need to drop the rx lock?
@@ -1147,7 +1145,7 @@ xn_txeof(struct netfront_info *np)
 			 * mbuf of the chain.
 			 */
 			if (!m->m_next)
-				ifp->if_opackets++;
+				if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
 			if (__predict_false(gnttab_query_foreign_access(
 			    np->grant_tx_ref[id]) != 0)) {
 				panic("%s: grant id %u still in use by the "
@@ -1743,7 +1741,6 @@ xn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	int mask, error = 0;
 	switch(cmd) {
 	case SIOCSIFADDR:
-	case SIOCGIFADDR:
 #ifdef INET
 		XN_LOCK(sc);
 		if (ifa->ifa_addr->sa_family == AF_INET) {
@@ -2102,7 +2099,9 @@ create_netdev(device_t dev)
 	
     	ifp->if_hwassist = XN_CSUM_FEATURES;
     	ifp->if_capabilities = IFCAP_HWCSUM;
-	ifp->if_hw_tsomax = NF_TSO_MAXBURST;
+	ifp->if_hw_tsomax = 65536 - (ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN);
+	ifp->if_hw_tsomaxsegcount = MAX_TX_REQ_FRAGS;
+	ifp->if_hw_tsomaxsegsize = PAGE_SIZE;
 	
     	ether_ifattach(ifp, np->mac);
     	callout_init(&np->xn_stat_ch, CALLOUT_MPSAFE);

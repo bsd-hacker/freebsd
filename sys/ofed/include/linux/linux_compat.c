@@ -2,6 +2,7 @@
  * Copyright (c) 2010 Isilon Systems, Inc.
  * Copyright (c) 2010 iX Systems, Inc.
  * Copyright (c) 2010 Panasas, Inc.
+ * Copyright (c) 2013, 2014 Mellanox Technologies, Ltd.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -160,11 +161,25 @@ kobject_release(struct kref *kref)
 static void
 kobject_kfree(struct kobject *kobj)
 {
-
 	kfree(kobj);
 }
 
+static void
+kobject_kfree_name(struct kobject *kobj)
+{
+	if (kobj) {
+		kfree(kobj->name);
+	}
+}
+
 struct kobj_type kfree_type = { .release = kobject_kfree };
+
+static void
+dev_release(struct device *dev)
+{
+	pr_debug("dev_release: %s\n", dev_name(dev));
+	kfree(dev);
+}
 
 struct device *
 device_create(struct class *class, struct device *parent, dev_t devt,
@@ -178,6 +193,7 @@ device_create(struct class *class, struct device *parent, dev_t devt,
 	dev->class = class;
 	dev->devt = devt;
 	dev->driver_data = drvdata;
+	dev->release = dev_release;
 	va_start(args, fmt);
 	kobject_set_name_vargs(&dev->kobj, fmt, args);
 	va_end(args);
@@ -327,7 +343,8 @@ linux_dev_read(struct cdev *dev, struct uio *uio, int ioflag)
 		bytes = filp->f_op->read(filp, uio->uio_iov->iov_base,
 		    uio->uio_iov->iov_len, &uio->uio_offset);
 		if (bytes >= 0) {
-			uio->uio_iov->iov_base += bytes;
+			uio->uio_iov->iov_base =
+			    ((uint8_t *)uio->uio_iov->iov_base) + bytes;
 			uio->uio_iov->iov_len -= bytes;
 			uio->uio_resid -= bytes;
 		} else
@@ -361,7 +378,8 @@ linux_dev_write(struct cdev *dev, struct uio *uio, int ioflag)
 		bytes = filp->f_op->write(filp, uio->uio_iov->iov_base,
 		    uio->uio_iov->iov_len, &uio->uio_offset);
 		if (bytes >= 0) {
-			uio->uio_iov->iov_base += bytes;
+			uio->uio_iov->iov_base =
+			    ((uint8_t *)uio->uio_iov->iov_base) + bytes;
 			uio->uio_iov->iov_len -= bytes;
 			uio->uio_resid -= bytes;
 		} else
@@ -482,7 +500,8 @@ linux_file_read(struct file *file, struct uio *uio, struct ucred *active_cred,
 		bytes = filp->f_op->read(filp, uio->uio_iov->iov_base,
 		    uio->uio_iov->iov_len, &uio->uio_offset);
 		if (bytes >= 0) {
-			uio->uio_iov->iov_base += bytes;
+			uio->uio_iov->iov_base =
+			    ((uint8_t *)uio->uio_iov->iov_base) + bytes;
 			uio->uio_iov->iov_len -= bytes;
 			uio->uio_resid -= bytes;
 		} else
@@ -560,8 +579,29 @@ linux_file_ioctl(struct file *fp, u_long cmd, void *data, struct ucred *cred,
 	return (error);
 }
 
+static int
+linux_file_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
+    struct thread *td)
+{
+
+	return (EOPNOTSUPP);
+}
+
+static int
+linux_file_fill_kinfo(struct file *fp, struct kinfo_file *kif,
+    struct filedesc *fdp)
+{
+
+	return (0);
+}
+
 struct fileops linuxfileops = {
 	.fo_read = linux_file_read,
+	.fo_write = invfo_rdwr,
+	.fo_truncate = invfo_truncate,
+	.fo_kqfilter = invfo_kqfilter,
+	.fo_stat = linux_file_stat,
+	.fo_fill_kinfo = linux_file_fill_kinfo,
 	.fo_poll = linux_file_poll,
 	.fo_close = linux_file_close,
 	.fo_ioctl = linux_file_ioctl,
@@ -678,7 +718,7 @@ linux_compat_init(void)
 	struct sysctl_oid *rootoid;
 	int i;
 
-	rootoid = SYSCTL_ADD_NODE(NULL, SYSCTL_STATIC_CHILDREN(),
+	rootoid = SYSCTL_ADD_ROOT_NODE(NULL,
 	    OID_AUTO, "sys", CTLFLAG_RD|CTLFLAG_MPSAFE, NULL, "sys");
 	kobject_init(&class_root, &class_ktype);
 	kobject_set_name(&class_root, "class");
@@ -699,5 +739,13 @@ linux_compat_init(void)
 	for (i = 0; i < VMMAP_HASH_SIZE; i++)
 		LIST_INIT(&vmmaphead[i]);
 }
-
 SYSINIT(linux_compat, SI_SUB_DRIVERS, SI_ORDER_SECOND, linux_compat_init, NULL);
+
+static void
+linux_compat_uninit(void)
+{
+	kobject_kfree_name(&class_root);
+	kobject_kfree_name(&linux_rootdev.kobj);
+	kobject_kfree_name(&miscclass.kobj);
+}
+SYSUNINIT(linux_compat, SI_SUB_DRIVERS, SI_ORDER_SECOND, linux_compat_uninit, NULL);

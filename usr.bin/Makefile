@@ -9,7 +9,8 @@
 # Moved to secure: bdes
 #
 
-SUBDIR=	alias \
+SUBDIR=	${_addr2line} \
+	alias \
 	apply \
 	asa \
 	awk \
@@ -35,10 +36,12 @@ SUBDIR=	alias \
 	csplit \
 	ctlstat \
 	cut \
+	demandoc \
 	dirname \
+	dpv \
 	du \
-	ee \
 	elf2aout \
+	${_elfcopy} \
 	elfdump \
 	enigma \
 	env \
@@ -66,7 +69,6 @@ SUBDIR=	alias \
 	id \
 	ipcrm \
 	ipcs \
-	iscsictl \
 	join \
 	jot \
 	${_kdump} \
@@ -117,6 +119,7 @@ SUBDIR=	alias \
 	nfsstat \
 	nice \
 	nl \
+	${_nm} \
 	nohup \
 	opieinfo \
 	opiekey \
@@ -147,22 +150,25 @@ SUBDIR=	alias \
 	seq \
 	shar \
 	showmount \
+	${_size} \
 	sockstat \
+	soeliminate \
 	sort \
 	split \
 	stat \
 	stdbuf \
+	${_strings} \
 	su \
 	systat \
 	tabs \
 	tail \
-	talk \
 	tar \
 	tcopy \
 	tee \
 	${_tests} \
 	tftp \
 	time \
+	timeout \
 	tip \
 	top \
 	touch \
@@ -195,6 +201,7 @@ SUBDIR=	alias \
 	xargs \
 	xinstall \
 	${_xlint} \
+	xo \
 	${_xstr} \
 	xz \
 	xzdec \
@@ -230,6 +237,18 @@ SUBDIR+=	calendar
 _clang=		clang
 .endif
 
+.if ${MK_EE} != "no"
+SUBDIR+=	ee
+.endif
+
+.if ${MK_ELFTOOLCHAIN_TOOLS} != "no"
+_addr2line=	addr2line
+_elfcopy=	elfcopy
+_nm=		nm
+_size=		size
+_strings=	strings
+.endif
+
 .if ${MK_FMAKE} != "no"
 SUBDIR+=	make
 .endif
@@ -252,6 +271,10 @@ _mkcsmapper=	mkcsmapper
 _mkesdb=	mkesdb
 .endif
 
+.if ${MK_ISCSI} != "no"
+SUBDIR+=	iscsictl
+.endif
+
 .if ${MK_KDUMP} != "no"
 SUBDIR+=        kdump
 SUBDIR+=        truss
@@ -264,10 +287,6 @@ SUBDIR+=	compile_et
 .if ${MK_LDNS_UTILS} != "no"
 SUBDIR+=	drill
 SUBDIR+=	host
-.endif
-
-.if ${MK_LIBTHR} != "no"
-SUBDIR+=	csup
 .endif
 
 .if ${MK_LOCATE} != "no"
@@ -328,6 +347,10 @@ SUBDIR+=	rwho
 SUBDIR+=	vacation
 .endif
 
+.if ${MK_TALK} != "no"
+SUBDIR+=	talk
+.endif
+
 .if ${MK_TELNET} != "no"
 SUBDIR+=	telnet
 .endif
@@ -363,7 +386,7 @@ SUBDIR+=	yacc
 SUBDIR+=	vi
 .endif
 
-.if ${MK_VT_SUPPORT} != "no"
+.if ${MK_VT} != "no"
 SUBDIR+=	vtfontcvt
 .endif
 

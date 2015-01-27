@@ -52,8 +52,8 @@ typedef int (*mem_region_write_t)(void *vm, int cpuid, uint64_t gpa,
  * s
  */
 int vmm_emulate_instruction(void *vm, int cpuid, uint64_t gpa, struct vie *vie,
-			    mem_region_read_t mrr, mem_region_write_t mrw,
-			    void *mrarg);
+    struct vm_guest_paging *paging, mem_region_read_t mrr,
+    mem_region_write_t mrw, void *mrarg);
 
 int vie_update_register(void *vm, int vcpuid, enum vm_reg_name reg,
     uint64_t val, int size);
@@ -93,7 +93,7 @@ int vmm_fetch_instruction(struct vm *vm, int cpuid,
 int vmm_gla2gpa(struct vm *vm, int vcpuid, struct vm_guest_paging *paging,
     uint64_t gla, int prot, uint64_t *gpa);
 
-void vie_init(struct vie *vie);
+void vie_init(struct vie *vie, const char *inst_bytes, int inst_length);
 
 /*
  * Decode the instruction fetched into 'vie' so it can be emulated.
@@ -108,7 +108,7 @@ void vie_init(struct vie *vie);
  */
 #define	VIE_INVALID_GLA		(1UL << 63)	/* a non-canonical address */
 int vmm_decode_instruction(struct vm *vm, int cpuid, uint64_t gla,
-			   enum vm_cpu_mode cpu_mode, struct vie *vie);
+			   enum vm_cpu_mode cpu_mode, int csd, struct vie *vie);
 #endif	/* _KERNEL */
 
 #endif	/* _VMM_INSTRUCTION_EMUL_H_ */

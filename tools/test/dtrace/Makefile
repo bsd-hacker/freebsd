@@ -85,7 +85,8 @@ IGNORE=		\
 	${TESTSRCDIR}/tst/common/ip/tst.localtcpstate.ksh		\
 	${TESTSRCDIR}/tst/common/ip/tst.remotetcpstate.ksh		\
 	${TESTSRCDIR}/tst/common/scripting/tst.projid.ksh		\
-	${TESTSRCDIR}/tst/common/scripting/tst.taskid.ksh
+	${TESTSRCDIR}/tst/common/scripting/tst.taskid.ksh		\
+	${TESTSRCDIR}/tst/common/json/tst.usdt.c
 
 
 
@@ -337,12 +338,12 @@ listprgs	:
 
 .for _f in ${ALL_TESTCFILES}
 ${_f:T:S/c$/exe/} : ${_f}
-	gcc -o ${.TARGET} ${_f} -lrt
+	${CC} -o ${.TARGET} ${_f} -lrt
 .endfor
 
 .for _f in ${ALL_TESTEXEFILES}
 ${_f:T} : ${_f}
-	cp -f ${_f} ${.TARGET}
+	${CP} ${_f} ${.TARGET}
 	chmod a+x ${.TARGET}
 .endfor
 

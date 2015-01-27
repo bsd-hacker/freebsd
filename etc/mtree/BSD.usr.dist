@@ -14,6 +14,14 @@
     lib
         aout
         ..
+        clang
+            3.5.1
+                lib
+                    freebsd
+                    ..
+                ..
+            ..
+        ..
         compat
             aout
             ..
@@ -108,6 +116,8 @@
         ..
         bsdinstall
         ..
+        hyperv
+        ..
         lpr
             ru
             ..
@@ -124,6 +134,8 @@
     sbin
     ..
     share
+        atf
+        ..
         bsdconfig
             media
             ..
@@ -167,7 +179,11 @@
         doc
             IPv6
             ..
+            atf
+            ..
             atm
+            ..
+            binutils
             ..
             legal
                 intel_ipw
@@ -186,6 +202,8 @@
             ntp
             ..
             papers
+            ..
+            pjdfstest
             ..
             psd
                 01.cacm
@@ -300,8 +318,6 @@
             bsdconfig
             ..
             csh
-            ..
-            cvsup
             ..
             diskless
             ..

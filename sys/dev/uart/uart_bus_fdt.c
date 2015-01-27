@@ -74,7 +74,7 @@ static struct ofw_compat_data compat_data[] = {
 	{"atmel,at91rm9200-usart",(uintptr_t)&at91_usart_class},
 	{"atmel,at91sam9260-usart",(uintptr_t)&at91_usart_class},
 	{"cadence,uart",	(uintptr_t)&uart_cdnc_class},
-	{"exynos",		(uintptr_t)&uart_s3c2410_class},
+	{"exynos",		(uintptr_t)&uart_exynos4210_class},
 	{"fsl,imx6q-uart",	(uintptr_t)&uart_imx_class},
 	{"fsl,imx53-uart",	(uintptr_t)&uart_imx_class},
 	{"fsl,imx51-uart",	(uintptr_t)&uart_imx_class},
@@ -84,6 +84,7 @@ static struct ofw_compat_data compat_data[] = {
 	{"fsl,imx21-uart",	(uintptr_t)&uart_imx_class},
 	{"fsl,mvf600-uart",	(uintptr_t)&uart_vybrid_class},
 	{"lpc,uart",		(uintptr_t)&uart_lpc_class},
+	{"qcom,msm-uartdm",	(uintptr_t)&uart_msm_class},
 	{"ti,ns16550",		(uintptr_t)&uart_ti8250_class},
 	{"ns16550",		(uintptr_t)&uart_ns8250_class},
 	{NULL,			(uintptr_t)NULL},
@@ -156,3 +157,4 @@ uart_fdt_probe(device_t dev)
 }
 
 DRIVER_MODULE(uart, simplebus, uart_fdt_driver, uart_devclass, 0, 0);
+DRIVER_MODULE(uart, ofwbus, uart_fdt_driver, uart_devclass, 0, 0);

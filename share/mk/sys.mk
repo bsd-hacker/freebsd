@@ -67,6 +67,11 @@ CTFFLAGS	?=	-L VERSION
 
 CTFCONVERT	?=	ctfconvert
 CTFMERGE	?=	ctfmerge
+
+# cp(1) is used to copy source files to ${.OBJDIR}, make sure it can handle
+# read-only files as non-root by passing -f.
+CP		?=	cp -f
+
 DTRACE		?=	dtrace
 .if defined(CFLAGS) && (${CFLAGS:M-g} != "")
 CTFFLAGS	+=	-g
@@ -117,7 +122,8 @@ LEX		?=	lex
 LFLAGS		?=
 
 LD		?=	ld
-LDFLAGS		?=
+LDFLAGS		?=				# LDFLAGS is for CC, 
+_LDFLAGS	=	${LDFLAGS:S/-Wl,//g}	# strip -Wl, for LD
 
 LINT		?=	lint
 LINTFLAGS	?=	-cghapbx
@@ -136,6 +142,8 @@ OBJCFLAGS	?=	${OBJCINCLUDES} ${CFLAGS} -Wno-import
 
 OBJCOPY		?=	objcopy
 
+OBJDUMP		?=	objdump
+
 PC		?=	pc
 PFLAGS		?=
 
@@ -144,6 +152,10 @@ RFLAGS		?=
 .endif
 
 SHELL		?=	sh
+
+.if !defined(%POSIX)
+SIZE		?=	size
+.endif
 
 YACC		?=	yacc
 .if defined(%POSIX)

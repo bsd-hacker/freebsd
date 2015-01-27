@@ -60,7 +60,6 @@ COPTFLAGS+= -fno-strict-aliasing
 .if !defined(NO_CPU_COPTFLAGS)
 COPTFLAGS+= ${_CPUCFLAGS}
 .endif
-C_DIALECT= -std=c99
 NOSTDINC= -nostdinc
 
 INCLUDES= ${NOSTDINC} ${INCLMAGIC} -I. -I$S
@@ -88,7 +87,7 @@ INCLUDES+= -I$S/dev/cxgb -I$S/dev/cxgbe
 
 .endif
 
-CFLAGS=	${COPTFLAGS} ${C_DIALECT} ${DEBUG} ${CWARNFLAGS}
+CFLAGS=	${COPTFLAGS} ${DEBUG} ${CWARNFLAGS}
 CFLAGS+= ${INCLUDES} -D_KERNEL -DHAVE_KERNEL_OPTION_HEADERS -include opt_global.h
 CFLAGS_PARAM_INLINE_UNIT_GROWTH?=100
 CFLAGS_PARAM_LARGE_FUNCTION_GROWTH?=1000
@@ -104,13 +103,7 @@ CFLAGS.gcc+=${CFLAGS_ARCH_PARAMS}
 WERROR?= -Werror
 
 # XXX LOCORE means "don't declare C stuff" not "for locore.s".
-ASM_CFLAGS= -x assembler-with-cpp -DLOCORE ${CFLAGS}
-
-.if ${COMPILER_TYPE} == "clang"
-CLANG_NO_IAS= -no-integrated-as
-.else
-GCC_MS_EXTENSIONS= -fms-extensions
-.endif
+ASM_CFLAGS= -x assembler-with-cpp -DLOCORE ${CFLAGS} ${ASM_CFLAGS.${.IMPSRC:T}} 
 
 .if defined(PROFLEVEL) && ${PROFLEVEL} >= 1
 CFLAGS+=	-DGPROF
@@ -177,7 +170,7 @@ SYSTEM_DEP= Makefile ${SYSTEM_OBJS}
 SYSTEM_OBJS= locore.o ${MDOBJS} ${OBJS}
 SYSTEM_OBJS+= ${SYSTEM_CFILES:.c=.o}
 SYSTEM_OBJS+= hack.So
-SYSTEM_LD= @${LD} -Bdynamic -T ${LDSCRIPT} ${LDFLAGS} --no-warn-mismatch \
+SYSTEM_LD= @${LD} -Bdynamic -T ${LDSCRIPT} ${_LDFLAGS} --no-warn-mismatch \
 	-warn-common -export-dynamic -dynamic-linker /red/herring \
 	-o ${.TARGET} -X ${SYSTEM_OBJS} vers.o
 SYSTEM_LD_TAIL= @${OBJCOPY} --strip-symbol gcc2_compiled. ${.TARGET} ; \
