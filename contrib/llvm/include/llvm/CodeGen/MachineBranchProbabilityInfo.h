@@ -40,7 +40,7 @@ public:
     initializeMachineBranchProbabilityInfoPass(Registry);
   }
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
   }
 
@@ -60,8 +60,7 @@ public:
   uint32_t getSumForBlock(const MachineBasicBlock *MBB, uint32_t &Scale) const;
 
   // A 'Hot' edge is an edge which probability is >= 80%.
-  bool isEdgeHot(const MachineBasicBlock *Src,
-                 const MachineBasicBlock *Dst) const;
+  bool isEdgeHot(MachineBasicBlock *Src, MachineBasicBlock *Dst) const;
 
   // Return a hot successor for the block BB or null if there isn't one.
   // NB: This routine's complexity is linear on the number of successors.
@@ -73,15 +72,14 @@ public:
   // NB: This routine's complexity is linear on the number of successors of
   // Src. Querying sequentially for each successor's probability is a quadratic
   // query pattern.
-  BranchProbability getEdgeProbability(const MachineBasicBlock *Src,
-                                       const MachineBasicBlock *Dst) const;
+  BranchProbability getEdgeProbability(MachineBasicBlock *Src,
+                                       MachineBasicBlock *Dst) const;
 
   // Print value between 0 (0% probability) and 1 (100% probability),
   // however the value is never equal to 0, and can be 1 only iff SRC block
   // has only one successor.
-  raw_ostream &printEdgeProbability(raw_ostream &OS,
-                                    const MachineBasicBlock *Src,
-                                    const MachineBasicBlock *Dst) const;
+  raw_ostream &printEdgeProbability(raw_ostream &OS, MachineBasicBlock *Src,
+                                    MachineBasicBlock *Dst) const;
 };
 
 }

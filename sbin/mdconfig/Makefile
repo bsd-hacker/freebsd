@@ -5,7 +5,8 @@
 PROG=		mdconfig
 MAN=		mdconfig.8
 
-LIBADD=		util geom
+DPADD=	${LIBUTIL} ${LIBGEOM} ${LIBBSDXML} ${LIBSBUF} 
+LDADD=	-lutil -lgeom -lbsdxml -lsbuf
 
 .if ${MK_TESTS} != "no"
 SUBDIR+=    tests

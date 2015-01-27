@@ -327,12 +327,10 @@ int	bus_generic_detach(device_t dev);
 void	bus_generic_driver_added(device_t dev, driver_t *driver);
 bus_dma_tag_t
 	bus_generic_get_dma_tag(device_t dev, device_t child);
-int	bus_generic_get_domain(device_t dev, device_t child, int *domain);
 struct resource_list *
 	bus_generic_get_resource_list (device_t, device_t);
 void	bus_generic_new_pass(device_t dev);
 int	bus_print_child_header(device_t dev, device_t child);
-int	bus_print_child_domain(device_t dev, device_t child);
 int	bus_print_child_footer(device_t dev, device_t child);
 int	bus_generic_print_child(device_t dev, device_t child);
 int	bus_generic_probe(device_t dev);
@@ -392,7 +390,6 @@ int	bus_activate_resource(device_t dev, int type, int rid,
 int	bus_deactivate_resource(device_t dev, int type, int rid,
 				struct resource *r);
 bus_dma_tag_t bus_get_dma_tag(device_t dev);
-int	bus_get_domain(device_t dev, int *domain);
 int	bus_release_resource(device_t dev, int type, int rid,
 			     struct resource *r);
 int	bus_free_resource(device_t dev, int type, struct resource *r);
@@ -572,12 +569,6 @@ void	bus_data_generation_update(void);
 #define	BUS_PASS_TIMER		50	/* Timers and clocks. */
 #define	BUS_PASS_SCHEDULER	60	/* Start scheduler. */
 #define	BUS_PASS_DEFAULT	__INT_MAX /* Everything else. */
-
-#define	BUS_PASS_ORDER_FIRST	0
-#define	BUS_PASS_ORDER_EARLY	2
-#define	BUS_PASS_ORDER_MIDDLE	5
-#define	BUS_PASS_ORDER_LATE	7
-#define	BUS_PASS_ORDER_LAST	9
 
 extern int bus_current_pass;
 

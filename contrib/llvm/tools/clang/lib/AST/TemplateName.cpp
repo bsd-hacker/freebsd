@@ -78,7 +78,7 @@ TemplateDecl *TemplateName::getAsTemplateDecl() const {
   if (SubstTemplateTemplateParmStorage *sub = getAsSubstTemplateTemplateParm())
     return sub->getReplacement().getAsTemplateDecl();
 
-  return nullptr;
+  return 0;
 }
 
 bool TemplateName::isDependent() const {
@@ -121,7 +121,7 @@ bool TemplateName::containsUnexpandedParameterPack() const {
     return DTN->getQualifier() && 
       DTN->getQualifier()->containsUnexpandedParameterPack();
 
-  return getAsSubstTemplateTemplateParmPack() != nullptr;
+  return getAsSubstTemplateTemplateParmPack() != 0;
 }
 
 void

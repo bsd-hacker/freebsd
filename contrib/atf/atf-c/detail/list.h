@@ -1,4 +1,7 @@
-/* Copyright (c) 2008 The NetBSD Foundation, Inc.
+/*
+ * Automated Testing Framework (atf)
+ *
+ * Copyright (c) 2008 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,10 +24,11 @@
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
-#if !defined(ATF_C_DETAIL_LIST_H)
-#define ATF_C_DETAIL_LIST_H
+#if !defined(ATF_C_LIST_H)
+#define ATF_C_LIST_H
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -108,4 +112,4 @@ void atf_list_append_list(atf_list_t *, atf_list_t *);
          !atf_equal_list_citer_list_citer((iter), atf_list_end_c(list)); \
          iter = atf_list_citer_next(iter))
 
-#endif /* !defined(ATF_C_DETAIL_LIST_H) */
+#endif /* ATF_C_LIST_H */

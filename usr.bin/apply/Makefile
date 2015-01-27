@@ -4,8 +4,8 @@
 .include <src.opts.mk>
 
 PROG=	apply
-
-LIBADD=	sbuf
+DPADD=	${LIBSBUF}
+LDADD=	-lsbuf
 
 .if ${MK_TESTS} != "no"
 SUBDIR+= tests

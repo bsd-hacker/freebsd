@@ -21,15 +21,25 @@
  *
  */
 
-#define NETDISSECT_REWORKED
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/tcpdump/print-eap.c,v 1.5 2007-10-04 16:41:33 hannes Exp $";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
 #include <tcpdump-stdinc.h>
 
+#include <stdio.h>
+#include <string.h>
+
+#include "netdissect.h"
 #include "interface.h"
+#include "addrtoname.h"
 #include "extract.h"
+#include "ether.h"
 
 #define	EAP_FRAME_TYPE_PACKET		0
 #define	EAP_FRAME_TYPE_START		1
@@ -103,7 +113,7 @@ static const struct tok eap_type_values[] = {
     { EAP_TYPE_EXPANDED_TYPES,  "Expanded types" },
     { EAP_TYPE_EXPERIMENTAL,    "Experimental" },
     { 0, NULL}
-};
+};  
 
 #define EAP_TLS_EXTRACT_BIT_L(x) 	(((x)&0x80)>>7)
 
@@ -149,7 +159,7 @@ static const struct tok eap_aka_subtype_values[] = {
  * Print EAP requests / responses
  */
 void
-eap_print(netdissect_options *ndo,
+eap_print(netdissect_options *ndo _U_,
           register const u_char *cp,
           u_int length _U_)
 {
@@ -157,27 +167,27 @@ eap_print(netdissect_options *ndo,
     const u_char *tptr;
     u_int tlen, type, subtype;
     int count=0, len;
-
+    
     tptr = cp;
     tlen = length;
     eap = (const struct eap_frame_t *)cp;
-    ND_TCHECK(*eap);
+    TCHECK(*eap);
 
     /* in non-verbose mode just lets print the basic info */
-    if (ndo->ndo_vflag < 1) {
-	ND_PRINT((ndo, "%s (%u) v%u, len %u",
+    if (vflag < 1) {
+	printf("%s (%u) v%u, len %u",
                tok2str(eap_frame_type_values, "unknown", eap->type),
                eap->type,
                eap->version,
-               EXTRACT_16BITS(eap->length)));
+               EXTRACT_16BITS(eap->length));
 	return;
     }
-
-    ND_PRINT((ndo, "%s (%u) v%u, len %u",
+  
+    printf("%s (%u) v%u, len %u", 
            tok2str(eap_frame_type_values, "unknown", eap->type),
            eap->type,
            eap->version,
-           EXTRACT_16BITS(eap->length)));
+           EXTRACT_16BITS(eap->length));
 
     tptr += sizeof(const struct eap_frame_t);
     tlen -= sizeof(const struct eap_frame_t);
@@ -186,32 +196,33 @@ eap_print(netdissect_options *ndo,
     case EAP_FRAME_TYPE_PACKET:
         type = *(tptr);
         len = EXTRACT_16BITS(tptr+2);
-        ND_PRINT((ndo, ", %s (%u), id %u, len %u",
+        printf(", %s (%u), id %u, len %u",
                tok2str(eap_code_values, "unknown", type),
                type,
                *(tptr+1),
-               len));
+               len);
 
-        ND_TCHECK2(*tptr, len);
+        if (!TTEST2(*tptr, len)) 
+            goto trunc;
 
         if (type <= 2) { /* For EAP_REQUEST and EAP_RESPONSE only */
             subtype = *(tptr+4);
-            ND_PRINT((ndo, "\n\t\t Type %s (%u)",
+            printf("\n\t\t Type %s (%u)",
                    tok2str(eap_type_values, "unknown", *(tptr+4)),
-                   *(tptr + 4)));
+                   *(tptr+4));
 
-            switch (subtype) {
+            switch (subtype) {	
             case EAP_TYPE_IDENTITY:
                 if (len - 5 > 0) {
-                    ND_PRINT((ndo, ", Identity: "));
-                    safeputs(ndo, tptr + 5, len - 5);
+                    printf(", Identity: ");
+                    safeputs((const char *)tptr+5, len-5);
                 }
                 break;
 
             case EAP_TYPE_NOTIFICATION:
                 if (len - 5 > 0) {
-                    ND_PRINT((ndo, ", Notification: "));
-                    safeputs(ndo, tptr + 5, len - 5);
+                    printf(", Notification: ");
+                    safeputs((const char *)tptr+5, len-5);
                 }
                 break;
 
@@ -223,36 +234,36 @@ eap_print(netdissect_options *ndo,
                  * the desired authentication
                  * type one octet per type
                  */
-                while (count < len) {
-                    ND_PRINT((ndo, " %s (%u),",
+                while (count < len) {	
+                    printf(" %s (%u),", 
                            tok2str(eap_type_values, "unknown", *(tptr+count)),
-                           *(tptr + count)));
+                           *(tptr+count));
                     count++;
                 }
                 break;
 
             case EAP_TYPE_TTLS:
-                ND_PRINT((ndo, " TTLSv%u",
-                       EAP_TTLS_VERSION(*(tptr + 5)))); /* fall through */
+                printf(" TTLSv%u", 
+                       EAP_TTLS_VERSION(*(tptr+5))); /* fall through */
             case EAP_TYPE_TLS:
-                ND_PRINT((ndo, " flags [%s] 0x%02x,",
+                printf(" flags [%s] 0x%02x,", 
                        bittok2str(eap_tls_flags_values, "none", *(tptr+5)),
-                       *(tptr + 5)));
+                       *(tptr+5));
 
                 if (EAP_TLS_EXTRACT_BIT_L(*(tptr+5))) {
-		    ND_PRINT((ndo, " len %u", EXTRACT_32BITS(tptr + 6)));
+		    printf(" len %u", EXTRACT_32BITS(tptr+6));
                 }
                 break;
 
             case EAP_TYPE_FAST:
-                ND_PRINT((ndo, " FASTv%u",
-                       EAP_TTLS_VERSION(*(tptr + 5))));
-                ND_PRINT((ndo, " flags [%s] 0x%02x,",
+                printf(" FASTv%u",
+                       EAP_TTLS_VERSION(*(tptr+5)));
+                printf(" flags [%s] 0x%02x,",
                        bittok2str(eap_tls_flags_values, "none", *(tptr+5)),
-                       *(tptr + 5)));
+                       *(tptr+5));
 
                 if (EAP_TLS_EXTRACT_BIT_L(*(tptr+5))) {
-                    ND_PRINT((ndo, " len %u", EXTRACT_32BITS(tptr + 6)));
+                    printf(" len %u", EXTRACT_32BITS(tptr+6));
                 }
 
                 /* FIXME - TLV attributes follow */
@@ -260,14 +271,14 @@ eap_print(netdissect_options *ndo,
 
             case EAP_TYPE_AKA:
             case EAP_TYPE_SIM:
-                ND_PRINT((ndo, " subtype [%s] 0x%02x,",
+                printf(" subtype [%s] 0x%02x,",
                        tok2str(eap_aka_subtype_values, "unknown", *(tptr+5)),
-                       *(tptr + 5)));
+                       *(tptr+5));
 
                 /* FIXME - TLV attributes follow */
                 break;
 
-            case EAP_TYPE_MD5_CHALLENGE:
+            case EAP_TYPE_MD5_CHALLENGE:	
             case EAP_TYPE_OTP:
             case EAP_TYPE_GTC:
             case EAP_TYPE_EXPANDED_TYPES:
@@ -276,7 +287,7 @@ eap_print(netdissect_options *ndo,
                 break;
             }
         }
-        break;
+        break;	
 
     case EAP_FRAME_TYPE_LOGOFF:
     case EAP_FRAME_TYPE_ENCAP_ASF_ALERT:
@@ -286,7 +297,7 @@ eap_print(netdissect_options *ndo,
     return;
 
  trunc:
-    ND_PRINT((ndo, "\n\t[|EAP]"));
+    printf("\n\t[|EAP]");
 }
 
 /*

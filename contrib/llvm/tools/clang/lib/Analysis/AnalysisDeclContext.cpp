@@ -28,8 +28,8 @@
 #include "clang/Analysis/Support/BumpVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/SaveAndRestore.h"
 
 using namespace clang;
 
@@ -41,11 +41,11 @@ AnalysisDeclContext::AnalysisDeclContext(AnalysisDeclContextManager *Mgr,
   : Manager(Mgr),
     D(d),
     cfgBuildOptions(buildOptions),
-    forcedBlkExprs(nullptr),
+    forcedBlkExprs(0),
     builtCFG(false),
     builtCompleteCFG(false),
-    ReferencedBlockVars(nullptr),
-    ManagedAnalyses(nullptr)
+    ReferencedBlockVars(0),
+    ManagedAnalyses(0)
 {  
   cfgBuildOptions.forcedBlkExprs = &forcedBlkExprs;
 }
@@ -54,11 +54,11 @@ AnalysisDeclContext::AnalysisDeclContext(AnalysisDeclContextManager *Mgr,
                                          const Decl *d)
 : Manager(Mgr),
   D(d),
-  forcedBlkExprs(nullptr),
+  forcedBlkExprs(0),
   builtCFG(false),
   builtCompleteCFG(false),
-  ReferencedBlockVars(nullptr),
-  ManagedAnalyses(nullptr)
+  ReferencedBlockVars(0),
+  ManagedAnalyses(0)
 {  
   cfgBuildOptions.forcedBlkExprs = &forcedBlkExprs;
 }
@@ -68,8 +68,7 @@ AnalysisDeclContextManager::AnalysisDeclContextManager(bool useUnoptimizedCFG,
                                                        bool addInitializers,
                                                        bool addTemporaryDtors,
                                                        bool synthesizeBodies,
-                                                       bool addStaticInitBranch,
-                                                       bool addCXXNewAllocator)
+                                                       bool addStaticInitBranch)
   : SynthesizeBodies(synthesizeBodies)
 {
   cfgBuildOptions.PruneTriviallyFalseEdges = !useUnoptimizedCFG;
@@ -77,11 +76,12 @@ AnalysisDeclContextManager::AnalysisDeclContextManager(bool useUnoptimizedCFG,
   cfgBuildOptions.AddInitializers = addInitializers;
   cfgBuildOptions.AddTemporaryDtors = addTemporaryDtors;
   cfgBuildOptions.AddStaticInitBranches = addStaticInitBranch;
-  cfgBuildOptions.AddCXXNewAllocator = addCXXNewAllocator;
 }
 
 void AnalysisDeclContextManager::clear() {
-  llvm::DeleteContainerSeconds(Contexts);
+  for (ContextMap::iterator I = Contexts.begin(), E = Contexts.end(); I!=E; ++I)
+    delete I->second;
+  Contexts.clear();
 }
 
 static BodyFarm &getBodyFarm(ASTContext &C) {
@@ -94,21 +94,14 @@ Stmt *AnalysisDeclContext::getBody(bool &IsAutosynthesized) const {
   if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
     Stmt *Body = FD->getBody();
     if (!Body && Manager && Manager->synthesizeBodies()) {
-      Body = getBodyFarm(getASTContext()).getBody(FD);
-      if (Body)
-        IsAutosynthesized = true;
+      IsAutosynthesized = true;
+      return getBodyFarm(getASTContext()).getBody(FD);
     }
     return Body;
   }
-  else if (const ObjCMethodDecl *MD = dyn_cast<ObjCMethodDecl>(D)) {
-    Stmt *Body = MD->getBody();
-    if (!Body && Manager && Manager->synthesizeBodies()) {
-      Body = getBodyFarm(getASTContext()).getBody(MD);
-      if (Body)
-        IsAutosynthesized = true;
-    }
-    return Body;
-  } else if (const BlockDecl *BD = dyn_cast<BlockDecl>(D))
+  else if (const ObjCMethodDecl *MD = dyn_cast<ObjCMethodDecl>(D))
+    return MD->getBody();
+  else if (const BlockDecl *BD = dyn_cast<BlockDecl>(D))
     return BD->getBody();
   else if (const FunctionTemplateDecl *FunTmpl
            = dyn_cast_or_null<FunctionTemplateDecl>(D))
@@ -133,14 +126,15 @@ const ImplicitParamDecl *AnalysisDeclContext::getSelfDecl() const {
     return MD->getSelfDecl();
   if (const BlockDecl *BD = dyn_cast<BlockDecl>(D)) {
     // See if 'self' was captured by the block.
-    for (const auto &I : BD->captures()) {
-      const VarDecl *VD = I.getVariable();
+    for (BlockDecl::capture_const_iterator it = BD->capture_begin(),
+         et = BD->capture_end(); it != et; ++it) {
+      const VarDecl *VD = it->getVariable();
       if (VD->getName() == "self")
         return dyn_cast<ImplicitParamDecl>(VD);
     }    
   }
 
-  return nullptr;
+  return NULL;
 }
 
 void AnalysisDeclContext::registerForcedBlockExpression(const Stmt *stmt) {
@@ -189,9 +183,6 @@ CFG *AnalysisDeclContext::getCFG() {
 
     if (PM)
       addParentsForSyntheticStmts(cfg.get(), *PM);
-
-    // The Observer should only observe one build of the CFG.
-    getCFGBuildOptions().Observer = nullptr;
   }
   return cfg.get();
 }
@@ -208,9 +199,6 @@ CFG *AnalysisDeclContext::getUnoptimizedCFG() {
 
     if (PM)
       addParentsForSyntheticStmts(completeCFG.get(), *PM);
-
-    // The Observer should only observe one build of the CFG.
-    getCFGBuildOptions().Observer = nullptr;
   }
   return completeCFG.get();
 }
@@ -223,8 +211,8 @@ CFGStmtMap *AnalysisDeclContext::getCFGStmtMap() {
     cfgStmtMap.reset(CFGStmtMap::Build(c, &getParentMap()));
     return cfgStmtMap.get();
   }
-
-  return nullptr;
+    
+  return 0;
 }
 
 CFGReverseBlockReachabilityAnalysis *AnalysisDeclContext::getCFGReachablityAnalysis() {
@@ -235,8 +223,8 @@ CFGReverseBlockReachabilityAnalysis *AnalysisDeclContext::getCFGReachablityAnaly
     CFA.reset(new CFGReverseBlockReachabilityAnalysis(*c));
     return CFA.get();
   }
-
-  return nullptr;
+  
+  return 0;
 }
 
 void AnalysisDeclContext::dumpCFG(bool ShowColors) {
@@ -247,8 +235,10 @@ ParentMap &AnalysisDeclContext::getParentMap() {
   if (!PM) {
     PM.reset(new ParentMap(getBody()));
     if (const CXXConstructorDecl *C = dyn_cast<CXXConstructorDecl>(getDecl())) {
-      for (const auto *I : C->inits()) {
-        PM->addStmt(I->getInit());
+      for (CXXConstructorDecl::init_const_iterator I = C->init_begin(),
+                                                   E = C->init_end();
+           I != E; ++I) {
+        PM->addStmt((*I)->getInit());
       }
     }
     if (builtCFG)
@@ -401,7 +391,7 @@ const StackFrameContext *LocationContext::getCurrentStackFrame() const {
       return SFC;
     LC = LC->getParent();
   }
-  return nullptr;
+  return NULL;
 }
 
 bool LocationContext::inTopFrame() const {
@@ -445,7 +435,7 @@ void LocationContext::dumpStack(raw_ostream &OS, StringRef Indent) const {
   }
 }
 
-LLVM_DUMP_METHOD void LocationContext::dumpStack() const {
+void LocationContext::dumpStack() const {
   dumpStack(llvm::errs());
 }
 
@@ -463,6 +453,11 @@ public:
   FindBlockDeclRefExprsVals(BumpVector<const VarDecl*> &bevals,
                             BumpVectorContext &bc)
   : BEVals(bevals), BC(bc) {}
+
+  bool IsTrackedDecl(const VarDecl *VD) {
+    const DeclContext *DC = VD->getDeclContext();
+    return IgnoredContexts.count(DC) == 0;
+  }
 
   void VisitStmt(Stmt *S) {
     for (Stmt::child_range I = S->children(); I; ++I)
@@ -511,8 +506,9 @@ static DeclVec* LazyInitializeReferencedDecls(const BlockDecl *BD,
   new (BV) DeclVec(BC, 10);
 
   // Go through the capture list.
-  for (const auto &CI : BD->captures()) {
-    BV->push_back(CI.getVariable(), BC);
+  for (BlockDecl::capture_const_iterator CI = BD->capture_begin(),
+       CE = BD->capture_end(); CI != CE; ++CI) {
+    BV->push_back(CI->getVariable(), BC);
   }
 
   // Find the referenced global/static variables.
@@ -552,13 +548,15 @@ AnalysisDeclContext::~AnalysisDeclContext() {
   // Release the managed analyses.
   if (ManagedAnalyses) {
     ManagedAnalysisMap *M = (ManagedAnalysisMap*) ManagedAnalyses;
-    llvm::DeleteContainerSeconds(*M);
+    for (ManagedAnalysisMap::iterator I = M->begin(), E = M->end(); I!=E; ++I)
+      delete I->second;  
     delete M;
   }
 }
 
 AnalysisDeclContextManager::~AnalysisDeclContextManager() {
-  llvm::DeleteContainerSeconds(Contexts);
+  for (ContextMap::iterator I = Contexts.begin(), E = Contexts.end(); I!=E; ++I)
+    delete I->second;
 }
 
 LocationContext::~LocationContext() {}

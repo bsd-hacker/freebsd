@@ -16,8 +16,8 @@ SRCS=	Driver.cpp \
 lldb.1:
 	ln -fs ${LLDB_SRCS}/docs/lldb.1 ${.TARGET}
 
-DPADD=	${LIBEDIT} ${LIBNCURSESW} ${LIBEXECINFO} ${LIBPANEL} ${LIBZ}
-LDADD=	-ledit -lncursesw -lexecinfo -lpanel -lz
+DPADD=	${LIBEDIT} ${LIBCURSES} ${LIBEXECINFO}
+LDADD=	-lcurses -ledit -lexecinfo -lpanel
 
 LLDB_LIBS=\
 	lldb \
@@ -30,7 +30,6 @@ LLDB_LIBS=\
 	lldbExpression \
 	lldbHostFreeBSD \
 	lldbHostCommon \
-	lldbHostPOSIX \
 	lldbInterpreter \
 	lldbSymbol \
 	lldbTarget \
@@ -40,15 +39,12 @@ LLDB_LIBS=\
 	lldbPluginCXXItaniumABI \
 	lldbPluginDisassemblerLLVM \
 	lldbPluginInstructionARM \
-	lldbPluginInstructionARM64 \
-	lldbPluginJITLoaderGDB \
 	lldbPluginSymbolFileDWARF \
 	lldbPluginSymbolFileSymtab \
 	lldbPluginDynamicLoaderStatic \
 	lldbPluginDynamicLoaderPosixDYLD \
 	lldbPluginObjectContainerBSDArchive \
 	lldbPluginObjectFileELF \
-	lldbPluginObjectFileJIT \
 	lldbPluginSymbolVendorELF \
 	lldbPluginPlatformFreeBSD \
 	lldbPluginPlatformGDB \
@@ -82,73 +78,65 @@ LIBDEPS=\
 	clangbasic \
 	clanglex \
 	\
-	llvmmcdisassembler \
-	llvmobjcarcopts \
-	llvmprofiledata \
 	llvmoption \
-	llvmlinker \
-	llvmmcjit \
-	llvmruntimedyld \
-	llvmjit \
-	llvmexecutionengine \
-	llvmirreader \
-	llvmipo \
-	llvmvectorize \
-	llvminstrumentation \
-	llvmbitwriter \
-	llvmasmparser \
-	llvmaarch64disassembler \
-	llvmaarch64codegen \
-	llvmaarch64asmparser \
-	llvmaarch64desc \
-	llvmaarch64info \
-	llvmaarch64instprinter \
-	llvmaarch64utils \
-	llvmarmdisassembler \
-	llvmarmcodegen \
 	llvmarmasmparser \
-	llvmarmdesc \
-	llvmarminfo \
-	llvmarminstprinter \
-	llvmmipsdisassembler \
-	llvmmipscodegen \
+	llvmarmcodegen \
+	llvminstrumentation \
+	llvmirreader \
+	llvmlinker \
 	llvmmipsasmparser \
-	llvmmipsdesc \
-	llvmmipsinfo \
-	llvmmipsinstprinter \
-	llvmpowerpcdisassembler \
+	llvmmipscodegen \
+	llvmmipsdisassembler \
+	llvmobjcarcopts \
 	llvmpowerpccodegen \
-	llvmpowerpcasmparser \
+	llvmx86asmparser \
+	llvmx86codegen \
+	llvmx86disassembler \
+	llvmmcjit \
+	llvmmcdisassembler \
+	llvmarmdisassembler \
+	llvmselectiondag \
+	llvmipo \
+	llvmbitwriter \
+	llvmbitreader \
+	llvmasmparser \
+	llvminterpreter \
+	llvmjit \
+	llvmarmdesc \
+	llvmasmprinter \
+	llvmmipsdesc \
+	llvmmipsinstprinter \
 	llvmpowerpcdesc \
-	llvmpowerpcinfo \
 	llvmpowerpcinstprinter \
+	llvmpowerpcasmparser \
+	llvmruntimedyld \
+	llvmvectorize \
+	llvmx86desc \
+	llvmx86instprinter \
+	llvmexecutionengine \
+	llvmcodegen \
+	llvmscalaropts \
 	llvmsparcdisassembler \
 	llvmsparccodegen \
 	llvmsparcasmparser \
 	llvmsparcdesc \
 	llvmsparcinfo \
 	llvmsparcinstprinter \
-	llvmx86disassembler \
-	llvmx86asmparser \
-	llvmx86codegen \
-	llvmselectiondag \
-	llvmasmprinter \
-	llvmcodegen \
-	llvmscalaropts \
+	llvmarminfo \
+	llvmarminstprinter \
+	llvmmcparser \
+	llvmmipsinfo \
+	llvmpowerpcinfo \
+	llvmx86info \
+	llvmx86utils \
+	llvmobject \
 	llvminstcombine \
 	llvmtransformutils \
 	llvmipa \
 	llvmanalysis \
 	llvmtarget \
-	llvmx86desc \
-	llvmobject \
-	llvmmcparser \
-	llvmbitreader \
 	llvmcore \
-	llvmx86info \
-	llvmx86instprinter \
 	llvmmc \
-	llvmx86utils \
 	llvmsupport
 
 .include "../clang.prog.mk"

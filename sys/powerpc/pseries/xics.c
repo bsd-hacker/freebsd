@@ -169,7 +169,10 @@ xicp_attach(device_t dev)
 	sc->ibm_set_xive = rtas_token_lookup("ibm,set-xive");
 	sc->ibm_get_xive = rtas_token_lookup("ibm,get-xive");
 
-	powerpc_register_pic(dev, OF_xref_from_node(phandle), MAX_XICP_IRQS,
+	if (OF_getproplen(phandle, "ibm,phandle") > 0)
+		OF_getprop(phandle, "ibm,phandle", &phandle, sizeof(phandle));
+
+	powerpc_register_pic(dev, phandle, MAX_XICP_IRQS,
 	    1 /* Number of IPIs */, FALSE);
 	root_pic = dev;
 
@@ -181,9 +184,12 @@ xics_attach(device_t dev)
 {
 	phandle_t phandle = ofw_bus_get_node(dev);
 
+	if (OF_getproplen(phandle, "ibm,phandle") > 0)
+		OF_getprop(phandle, "ibm,phandle", &phandle, sizeof(phandle));
+
 	/* The XICP (root PIC) will handle all our interrupts */
-	powerpc_register_pic(root_pic, OF_xref_from_node(phandle),
-	    MAX_XICP_IRQS, 1 /* Number of IPIs */, FALSE);
+	powerpc_register_pic(root_pic, phandle, MAX_XICP_IRQS,
+	    1 /* Number of IPIs */, FALSE);
 
 	return (0);
 }

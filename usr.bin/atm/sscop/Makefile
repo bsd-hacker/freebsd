@@ -8,6 +8,7 @@ PROG=	sscop
 SRCS=	common.c sscop_main.c
 CFLAGS+= -I${CONTRIB} -DUSE_LIBBEGEMOT
 
-LIBADD=	begemot ngatm
+DPADD=	${LIBBEGEMOT} ${LIBNETGRAPH} ${LIBNGATM}
+LDADD=	-lbegemot -lnetgraph -lngatm
 
 .include <bsd.prog.mk>

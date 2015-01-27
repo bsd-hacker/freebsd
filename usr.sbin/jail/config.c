@@ -576,9 +576,7 @@ check_intparams(struct cfjail *j)
 
 	/*
 	 * IP addresses may include an interface to set that address on,
-	 * a netmask/suffix for that address and options for ifconfig.
-	 * These are copied to an internal command parameter and then stripped
-	 * so they won't be passed on to jailparam_set.
+	 * and a netmask/suffix for that address.
 	 */
 	defif = string_param(j->intparams[IP_INTERFACE]) != NULL;
 #ifdef INET
@@ -603,10 +601,6 @@ check_intparams(struct cfjail *j)
 				*cs = '\0';
 				s->len = cs - s->s;
 			}
-			if ((cs = strchr(s->s, ' ')) != NULL) {
-				*cs = '\0';
-				s->len = cs - s->s;
-			}
 		}
 	}
 #endif
@@ -628,10 +622,6 @@ check_intparams(struct cfjail *j)
 					    cs);
 					error = -1;	
 				}
-				*cs = '\0';
-				s->len = cs - s->s;
-			}
-			if ((cs = strchr(s->s, ' ')) != NULL) {
 				*cs = '\0';
 				s->len = cs - s->s;
 			}

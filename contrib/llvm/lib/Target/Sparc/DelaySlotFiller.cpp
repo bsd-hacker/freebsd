@@ -12,6 +12,7 @@
 // NOP is placed.
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "delay-slot-filler"
 #include "Sparc.h"
 #include "SparcSubtarget.h"
 #include "llvm/ADT/SmallSet.h"
@@ -25,8 +26,6 @@
 #include "llvm/Target/TargetRegisterInfo.h"
 
 using namespace llvm;
-
-#define DEBUG_TYPE "delay-slot-filler"
 
 STATISTIC(FilledSlots, "Number of delay slots filled");
 
@@ -50,12 +49,12 @@ namespace {
         Subtarget(&TM.getSubtarget<SparcSubtarget>()) {
     }
 
-    const char *getPassName() const override {
+    virtual const char *getPassName() const {
       return "SPARC Delay Slot Filler";
     }
 
     bool runOnMachineBasicBlock(MachineBasicBlock &MBB);
-    bool runOnMachineFunction(MachineFunction &F) override {
+    bool runOnMachineFunction(MachineFunction &F) {
       bool Changed = false;
 
       // This pass invalidates liveness information when it reorders
@@ -212,8 +211,12 @@ Filler::findDelayInstr(MachineBasicBlock &MBB,
     if (I->isDebugValue())
       continue;
 
-    if (I->hasUnmodeledSideEffects() || I->isInlineAsm() || I->isPosition() ||
-        I->hasDelaySlot() || I->isBundledWithSucc())
+
+    if (I->hasUnmodeledSideEffects()
+        || I->isInlineAsm()
+        || I->isLabel()
+        || I->hasDelaySlot()
+        || I->isBundledWithSucc())
       break;
 
     if (delayHasHazard(I, sawLoad, sawStore, RegDefs, RegUses)) {
@@ -476,7 +479,7 @@ bool Filler::tryCombineRestoreWithPrevInst(MachineBasicBlock &MBB,
          && MBBI->getOperand(1).getReg() == SP::G0
          && MBBI->getOperand(2).getReg() == SP::G0);
 
-  MachineBasicBlock::iterator PrevInst = std::prev(MBBI);
+  MachineBasicBlock::iterator PrevInst = llvm::prior(MBBI);
 
   // It cannot be combined with a bundled instruction.
   if (PrevInst->isBundledWithSucc())

@@ -151,7 +151,8 @@ uni_msg_pack_mbuf(struct uni_msg *msg, void *hdr, size_t hdrlen)
 
 	} else {
 		if ((n = uni_msg_len(msg)) > MHLEN) {
-			if (!(MCLGET(m0, M_NOWAIT)))
+			MCLGET(m0, M_NOWAIT);
+			if (!(m0->m_flags & M_EXT))
 				goto drop;
 			if (n > MCLBYTES)
 				n = MCLBYTES;
@@ -172,7 +173,8 @@ uni_msg_pack_mbuf(struct uni_msg *msg, void *hdr, size_t hdrlen)
 		last = m;
 
 		if (n > MLEN) {
-			if (!(MCLGET(m, M_NOWAIT)))
+			MCLGET(m, M_NOWAIT);
+			if (!(m->m_flags & M_EXT))
 				goto drop;
 			if (n > MCLBYTES)
 				n = MCLBYTES;

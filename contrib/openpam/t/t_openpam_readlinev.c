@@ -255,7 +255,7 @@ T_FUNC(unterminated_line, "unterminated line")
  * Boilerplate
  */
 
-static const struct t_test *t_plan[] = {
+const struct t_test *t_plan[] = {
 	T(empty_input),
 	T(empty_line),
 	T(unterminated_empty_line),

@@ -24,4 +24,6 @@ void InheritableAttr::anchor() { }
 
 void InheritableParamAttr::anchor() { }
 
+void MSInheritanceAttr::anchor() { }
+
 #include "clang/AST/AttrImpl.inc"

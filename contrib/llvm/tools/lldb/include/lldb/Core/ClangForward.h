@@ -58,7 +58,6 @@ namespace clang
     class DiagnosticsEngine;
     class DiagnosticOptions;
     class EnumDecl;
-    class EnumConstantDecl;
     class Expr;
     class ExternalASTSource;
     class ExtVectorElementExpr;

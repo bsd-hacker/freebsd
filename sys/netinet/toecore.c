@@ -329,6 +329,7 @@ toe_syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 {
 	struct socket *lso = inp->inp_socket;
 
+	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
 	INP_WLOCK_ASSERT(inp);
 
 	syncache_add(inc, to, th, inp, &lso, NULL, tod, todctx);
@@ -516,12 +517,15 @@ int
 toe_l2_resolve(struct toedev *tod, struct ifnet *ifp, struct sockaddr *sa,
     uint8_t *lladdr, uint16_t *vtag)
 {
+#ifdef INET
+	struct llentry *lle;
+#endif
 	int rc;
 
 	switch (sa->sa_family) {
 #ifdef INET
 	case AF_INET:
-		rc = arpresolve(ifp, 0, NULL, sa, lladdr, NULL);
+		rc = arpresolve(ifp, NULL, NULL, sa, lladdr, &lle);
 		break;
 #endif
 #ifdef INET6

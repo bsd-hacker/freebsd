@@ -34,7 +34,7 @@ namespace llvm {
 // IntervalPartition - This class builds and holds an "interval partition" for
 // a function.  This partition divides the control flow graph into a set of
 // maximal intervals, as defined with the properties above.  Intuitively, an
-// interval is a (possibly nonexistent) loop with a "tail" of non-looping
+// interval is a (possibly nonexistent) loop with a "tail" of non looping
 // nodes following it.
 //
 class IntervalPartition : public FunctionPass {
@@ -48,12 +48,12 @@ class IntervalPartition : public FunctionPass {
 public:
   static char ID; // Pass identification, replacement for typeid
 
-  IntervalPartition() : FunctionPass(ID), RootInterval(nullptr) {
+  IntervalPartition() : FunctionPass(ID), RootInterval(0) {
     initializeIntervalPartitionPass(*PassRegistry::getPassRegistry());
   }
 
   // run - Calculate the interval partition for this function
-  bool runOnFunction(Function &F) override;
+  virtual bool runOnFunction(Function &F);
 
   // IntervalPartition ctor - Build a reduced interval partition from an
   // existing interval graph.  This takes an additional boolean parameter to
@@ -62,7 +62,7 @@ public:
   IntervalPartition(IntervalPartition &I, bool);
 
   // print - Show contents in human readable format...
-  void print(raw_ostream &O, const Module* = nullptr) const override;
+  virtual void print(raw_ostream &O, const Module* = 0) const;
 
   // getRootInterval() - Return the root interval that contains the starting
   // block of the function.
@@ -77,11 +77,11 @@ public:
   // getBlockInterval - Return the interval that a basic block exists in.
   inline Interval *getBlockInterval(BasicBlock *BB) {
     IntervalMapTy::iterator I = IntervalMap.find(BB);
-    return I != IntervalMap.end() ? I->second : nullptr;
+    return I != IntervalMap.end() ? I->second : 0;
   }
 
   // getAnalysisUsage - Implement the Pass API
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
   }
 
@@ -89,7 +89,7 @@ public:
   const std::vector<Interval*> &getIntervals() const { return Intervals; }
 
   // releaseMemory - Reset state back to before function was analyzed
-  void releaseMemory() override;
+  void releaseMemory();
 
 private:
   // addIntervalToPartition - Add an interval to the internal list of intervals,

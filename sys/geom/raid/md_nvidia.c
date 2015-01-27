@@ -256,24 +256,23 @@ nvidia_meta_read(struct g_consumer *cp)
 		    pp->name, error);
 		return (NULL);
 	}
-	meta = (struct nvidia_raid_conf *)buf;
+	meta = malloc(sizeof(*meta), M_MD_NVIDIA, M_WAITOK);
+	memcpy(meta, buf, min(sizeof(*meta), pp->sectorsize));
+	g_free(buf);
 
 	/* Check if this is an NVIDIA RAID struct */
 	if (strncmp(meta->nvidia_id, NVIDIA_MAGIC, strlen(NVIDIA_MAGIC))) {
 		G_RAID_DEBUG(1, "NVIDIA signature check failed on %s", pp->name);
-		g_free(buf);
+		free(meta, M_MD_NVIDIA);
 		return (NULL);
 	}
 	if (meta->config_size > 128 ||
 	    meta->config_size < 30) {
 		G_RAID_DEBUG(1, "NVIDIA metadata size looks wrong: %d",
 		    meta->config_size);
-		g_free(buf);
+		free(meta, M_MD_NVIDIA);
 		return (NULL);
 	}
-	meta = malloc(sizeof(*meta), M_MD_NVIDIA, M_WAITOK);
-	memcpy(meta, buf, min(sizeof(*meta), pp->sectorsize));
-	g_free(buf);
 
 	/* Check metadata checksum. */
 	for (checksum = 0, ptr = (uint32_t *)meta,

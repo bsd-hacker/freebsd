@@ -30,6 +30,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/vnode.h>
+#include <sys/buf.h>
 #define _KERNEL
 #include <sys/mount.h>
 #undef _KERNEL

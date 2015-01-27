@@ -160,7 +160,8 @@ unionfs_lookup(struct vop_cachedlookup_args *ap)
 				    LK_RETRY);
 
 			vn_lock(dvp, LK_EXCLUSIVE | LK_RETRY);
-		} else if (error == ENOENT && (cnflags & MAKEENTRY) != 0)
+		} else if (error == ENOENT && (cnflags & MAKEENTRY) &&
+		    nameiop != CREATE)
 			cache_enter(dvp, NULLVP, cnp);
 
 		UNIONFS_INTERNAL_DEBUG("unionfs_lookup: leave (%d)\n", error);
@@ -336,7 +337,7 @@ unionfs_lookup_out:
 	if (lvp != NULLVP)
 		vrele(lvp);
 
-	if (error == ENOENT && (cnflags & MAKEENTRY) != 0)
+	if (error == ENOENT && (cnflags & MAKEENTRY) && nameiop != CREATE)
 		cache_enter(dvp, NULLVP, cnp);
 
 	UNIONFS_INTERNAL_DEBUG("unionfs_lookup: leave (%d)\n", error);

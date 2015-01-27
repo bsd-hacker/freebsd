@@ -241,6 +241,8 @@ agp_amd64_attach(device_t dev)
 		    4);
 	}
 
+	agp_flush_cache();
+
 	return (0);
 }
 

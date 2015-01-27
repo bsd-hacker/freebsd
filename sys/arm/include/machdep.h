@@ -20,7 +20,8 @@ struct trapframe;
 void arm_lock_cache_line(vm_offset_t);
 void init_proc0(vm_offset_t kstack);
 void halt(void);
-void abort_handler(struct trapframe *, int );
+void data_abort_handler(struct trapframe *);
+void prefetch_abort_handler(struct trapframe *);
 void set_stackptrs(int cpu);
 void undefinedinstruction_bounce(struct trapframe *);
 

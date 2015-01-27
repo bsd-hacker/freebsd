@@ -1,5 +1,4 @@
 //===------------------- StackMaps.h - StackMaps ----------------*- C++ -*-===//
-
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,7 +10,6 @@
 #ifndef LLVM_STACKMAPS
 #define LLVM_STACKMAPS
 
-#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include <map>
@@ -21,7 +19,6 @@ namespace llvm {
 
 class AsmPrinter;
 class MCExpr;
-class MCStreamer;
 
 /// \brief MI-level patchpoint operands.
 ///
@@ -95,28 +92,19 @@ public:
       : LocType(LocType), Size(Size), Reg(Reg), Offset(Offset) {}
   };
 
-  struct LiveOutReg {
-    unsigned short Reg;
-    unsigned short RegNo;
-    unsigned short Size;
-
-    LiveOutReg() : Reg(0), RegNo(0), Size(0) {}
-    LiveOutReg(unsigned short Reg, unsigned short RegNo, unsigned short Size)
-      : Reg(Reg), RegNo(RegNo), Size(Size) {}
-
-    void MarkInvalid() { Reg = 0; }
-
-    // Only sort by the dwarf register number.
-    bool operator< (const LiveOutReg &LO) const { return RegNo < LO.RegNo; }
-    static bool IsInvalid(const LiveOutReg &LO) { return LO.Reg == 0; }
-  };
+  // Typedef a function pointer for functions that parse sequences of operands
+  // and return a Location, plus a new "next" operand iterator.
+  typedef std::pair<Location, MachineInstr::const_mop_iterator>
+    (*OperandParser)(MachineInstr::const_mop_iterator,
+                     MachineInstr::const_mop_iterator, const TargetMachine&);
 
   // OpTypes are used to encode information about the following logical
   // operand (which may consist of several MachineOperands) for the
   // OpParser.
   typedef enum { DirectMemRefOp, IndirectMemRefOp, ConstantOp } OpType;
 
-  StackMaps(AsmPrinter &AP);
+  StackMaps(AsmPrinter &AP, OperandParser OpParser)
+    : AP(AP), OpParser(OpParser) {}
 
   /// \brief Generate a stackmap record for a stackmap instruction.
   ///
@@ -132,66 +120,54 @@ public:
   void serializeToStackMapSection();
 
 private:
-  static const char *WSMP;
-
   typedef SmallVector<Location, 8> LocationVec;
-  typedef SmallVector<LiveOutReg, 8> LiveOutVec;
-  typedef MapVector<int64_t, int64_t> ConstantPool;
-  typedef MapVector<const MCSymbol *, uint64_t> FnStackSizeMap;
 
   struct CallsiteInfo {
     const MCExpr *CSOffsetExpr;
-    uint64_t ID;
+    unsigned ID;
     LocationVec Locations;
-    LiveOutVec LiveOuts;
-    CallsiteInfo() : CSOffsetExpr(nullptr), ID(0) {}
-    CallsiteInfo(const MCExpr *CSOffsetExpr, uint64_t ID,
-                 LocationVec &Locations, LiveOutVec &LiveOuts)
-      : CSOffsetExpr(CSOffsetExpr), ID(ID), Locations(Locations),
-        LiveOuts(LiveOuts) {}
+    CallsiteInfo() : CSOffsetExpr(0), ID(0) {}
+    CallsiteInfo(const MCExpr *CSOffsetExpr, unsigned ID,
+                 LocationVec Locations)
+      : CSOffsetExpr(CSOffsetExpr), ID(ID), Locations(Locations) {}
   };
 
   typedef std::vector<CallsiteInfo> CallsiteInfoList;
 
+  struct ConstantPool {
+  private:
+    typedef std::map<int64_t, size_t> ConstantsMap;
+    std::vector<int64_t> ConstantsList;
+    ConstantsMap ConstantIndexes;
+
+  public:
+    size_t getNumConstants() const { return ConstantsList.size(); }
+    int64_t getConstant(size_t Idx) const { return ConstantsList[Idx]; }
+    size_t getConstantIndex(int64_t ConstVal) {
+      size_t NextIdx = ConstantsList.size();
+      ConstantsMap::const_iterator I =
+        ConstantIndexes.insert(ConstantIndexes.end(),
+                               std::make_pair(ConstVal, NextIdx));
+      if (I->second == NextIdx)
+        ConstantsList.push_back(ConstVal);
+      return I->second;
+    }
+  };
+
   AsmPrinter &AP;
+  OperandParser OpParser;
   CallsiteInfoList CSInfos;
   ConstantPool ConstPool;
-  FnStackSizeMap FnStackSize;
-
-  MachineInstr::const_mop_iterator
-  parseOperand(MachineInstr::const_mop_iterator MOI,
-               MachineInstr::const_mop_iterator MOE,
-               LocationVec &Locs, LiveOutVec &LiveOuts) const;
-
-  /// \brief Create a live-out register record for the given register @p Reg.
-  LiveOutReg createLiveOutReg(unsigned Reg,
-                              const TargetRegisterInfo *TRI) const;
-
-  /// \brief Parse the register live-out mask and return a vector of live-out
-  /// registers that need to be recorded in the stackmap.
-  LiveOutVec parseRegisterLiveOutMask(const uint32_t *Mask) const;
 
   /// This should be called by the MC lowering code _immediately_ before
   /// lowering the MI to an MCInst. It records where the operands for the
   /// instruction are stored, and outputs a label to record the offset of
   /// the call from the start of the text section. In special cases (e.g. AnyReg
   /// calling convention) the return register is also recorded if requested.
-  void recordStackMapOpers(const MachineInstr &MI, uint64_t ID,
+  void recordStackMapOpers(const MachineInstr &MI, uint32_t ID,
                            MachineInstr::const_mop_iterator MOI,
                            MachineInstr::const_mop_iterator MOE,
                            bool recordResult = false);
-
-  /// \brief Emit the stackmap header.
-  void emitStackmapHeader(MCStreamer &OS);
-
-  /// \brief Emit the function frame record for each function.
-  void emitFunctionFrameRecords(MCStreamer &OS);
-
-  /// \brief Emit the constant pool.
-  void emitConstantPoolEntries(MCStreamer &OS);
-
-  /// \brief Emit the callsite info for each stackmap/patchpoint intrinsic call.
-  void emitCallsiteEntries(MCStreamer &OS, const TargetRegisterInfo *TRI);
 };
 
 }

@@ -188,7 +188,7 @@ struct OperandsSignature {
       return true;
     }
 
-    const CodeGenRegisterClass *DstRC = nullptr;
+    const CodeGenRegisterClass *DstRC = 0;
 
     for (unsigned i = 0, e = InstPatNode->getNumChildren(); i != e; ++i) {
       TreePatternNode *Op = InstPatNode->getChild(i);
@@ -252,7 +252,7 @@ struct OperandsSignature {
       Record *OpLeafRec = OpDI->getDef();
 
       // For now, the only other thing we accept is register operands.
-      const CodeGenRegisterClass *RC = nullptr;
+      const CodeGenRegisterClass *RC = 0;
       if (OpLeafRec->isSubClassOf("RegisterOperand"))
         OpLeafRec = OpLeafRec->getValueAsDef("RegClass");
       if (OpLeafRec->isSubClassOf("RegisterClass"))
@@ -459,7 +459,7 @@ void FastISelMap::collectPatterns(CodeGenDAGPatterns &CGP) {
 
     // For now, ignore instructions where the first operand is not an
     // output register.
-    const CodeGenRegisterClass *DstRC = nullptr;
+    const CodeGenRegisterClass *DstRC = 0;
     std::string SubRegNo;
     if (Op->getName() != "EXTRACT_SUBREG") {
       Record *Op0Rec = II.Operands[0].Rec;
@@ -638,7 +638,7 @@ void FastISelMap::printFunctionDefinitions(raw_ostream &OS) {
 
               for (unsigned i = 0; i < Memo.PhysRegs->size(); ++i) {
                 if ((*Memo.PhysRegs)[i] != "")
-                  OS << "  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, "
+                  OS << "  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, "
                      << "TII.get(TargetOpcode::COPY), "
                      << (*Memo.PhysRegs)[i] << ").addReg(Op" << i << ");\n";
               }
@@ -729,7 +729,7 @@ void FastISelMap::printFunctionDefinitions(raw_ostream &OS) {
 
             for (unsigned i = 0; i < Memo.PhysRegs->size(); ++i) {
               if ((*Memo.PhysRegs)[i] != "")
-                OS << "  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, "
+                OS << "  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, "
                    << "TII.get(TargetOpcode::COPY), "
                    << (*Memo.PhysRegs)[i] << ").addReg(Op" << i << ");\n";
             }

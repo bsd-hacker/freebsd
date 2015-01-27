@@ -2,8 +2,9 @@
 
 .include <src.opts.mk>
 
-PROG=	truncate
-LIBADD=	util
+PROG=		truncate
+DPADD=		${LIBUTIL}
+LDADD=		-lutil
 
 .if ${MK_TESTS} != "no"
 SUBDIR+= tests

@@ -40,8 +40,12 @@
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/cons.h>
+#if (__FreeBSD_version >= 500000) 
 #include <sys/time.h>
 #include <sys/systm.h> 
+#else 
+#include <machine/clock.h>	/*to support DELAY function under 4.x BSD versions*/
+#endif
 
 #include <sys/stat.h>
 #include <sys/malloc.h>
@@ -49,9 +53,11 @@
 #include <sys/libkern.h>
 #include <sys/kernel.h>
 
+#if (__FreeBSD_version >= 500000)
 #include <sys/kthread.h>
 #include <sys/mutex.h>
 #include <sys/module.h>
+#endif
 
 #include <sys/eventhandler.h>
 #include <sys/bus.h>
@@ -59,7 +65,9 @@
 #include <sys/ioccom.h>
 
 #include <machine/resource.h>
+#if __FreeBSD_version >= 500043
 #include <machine/pci_cfgreg.h>
+#endif
 #include <machine/bus.h>
 #include <machine/stdarg.h>
 #include <sys/rman.h>
@@ -67,8 +75,17 @@
 #include <vm/vm.h>
 #include <vm/pmap.h>
 
+#if (__FreeBSD_version >= 500000)
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
+#else 
+#include <pci/pcivar.h>
+#include <pci/pcireg.h>
+#endif
+
+#if (__FreeBSD_version <= 500043)
+#include <sys/devicestat.h>
+#endif
 
 #include <cam/cam.h>
 #include <cam/cam_ccb.h>
@@ -79,6 +96,10 @@
 #include <cam/cam_periph.h>
 #include <cam/scsi/scsi_all.h>
 #include <cam/scsi/scsi_message.h>
+
+#if (__FreeBSD_version < 500043)
+#include <sys/bus_private.h>
+#endif
 
 
 typedef struct _INQUIRYDATA {
@@ -155,7 +176,7 @@ typedef struct _os_cmdext {
 	struct _os_cmdext *next;
 	union ccb         *ccb;
 	bus_dmamap_t       dma_map;
-	struct callout     timeout;
+	struct callout_handle timeout_ch;
 	SG                 psg[os_max_sg_descriptors];
 }
 OS_CMDEXT, *POS_CMDEXT;
@@ -169,7 +190,11 @@ typedef struct _vbus_ext {
 	
 	struct cam_sim   *sim;    /* sim for this vbus */
 	struct cam_path  *path;   /* peripheral, path, tgt, lun with this vbus */
+#if (__FreeBSD_version >= 500000)
 	struct mtx        lock; /* general purpose lock */
+#else 
+	int  			hpt_splx;
+#endif
 	bus_dma_tag_t     io_dmat; /* I/O buffer DMA tag */
 	
 	POS_CMDEXT        cmdext_list;
@@ -177,7 +202,7 @@ typedef struct _vbus_ext {
 	OSM_TASK         *tasks;
 	struct task       worker;
 	
-	struct callout    timer;
+	struct callout_handle timer;
 
 	eventhandler_tag  shutdown_eh;
 	
@@ -186,9 +211,19 @@ typedef struct _vbus_ext {
 }
 VBUS_EXT, *PVBUS_EXT;
 
+#if __FreeBSD_version >= 500000
 #define hpt_lock_vbus(vbus_ext)   mtx_lock(&(vbus_ext)->lock)
 #define hpt_unlock_vbus(vbus_ext) mtx_unlock(&(vbus_ext)->lock)
-#define	hpt_assert_vbus_locked(vbus_ext)	mtx_assert(&(vbus_ext)->lock, MA_OWNED)
+#else 
+static __inline	void	hpt_lock_vbus(PVBUS_EXT	vbus_ext)
+{
+	vbus_ext->hpt_splx = splcam();
+}
+static __inline	void	hpt_unlock_vbus(PVBUS_EXT vbus_ext)
+{
+	splx(vbus_ext->hpt_splx);
+}
+#endif
 
 
 #define HPT_OSM_TIMEOUT (20*hz)  /* timeout value for OS commands */
@@ -197,9 +232,36 @@ VBUS_EXT, *PVBUS_EXT;
 
 #define HPT_SCAN_BUS		_IO('H', 1)
 
+#if __FreeBSD_version >= 501000
+#define TASK_ENQUEUE(task)	taskqueue_enqueue(taskqueue_swi_giant,(task));
+#else 
 #define TASK_ENQUEUE(task)	taskqueue_enqueue(taskqueue_swi,(task));
+#endif
 
+#if __FreeBSD_version >= 500000
 static	__inline	int hpt_sleep(PVBUS_EXT vbus_ext, void *ident, int priority, const char *wmesg, int timo)
 {
 	return	msleep(ident, &vbus_ext->lock, priority, wmesg, timo);
 }
+#else 
+static	__inline	int hpt_sleep(PVBUS_EXT vbus_ext, void *ident, int priority, const char *wmesg, int timo)
+{
+	int retval = 0;
+	
+	asleep(ident, priority, wmesg, timo);
+	hpt_unlock_vbus(vbus_ext);
+	retval = await(priority, timo);
+	hpt_lock_vbus(vbus_ext);
+	
+	return retval;
+}
+#endif
+
+#if __FreeBSD_version < 501000
+#define	READ_16				0x88
+#define WRITE_16			0x8a
+#define SERVICE_ACTION_IN	0x9e
+#endif
+
+#define	HPT_DEV_MAJOR	200
+

@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  */
 
 /* Portions Copyright 2007 Jeremy Teo */
@@ -54,7 +54,6 @@
 #endif /* _KERNEL */
 
 #include <sys/dmu.h>
-#include <sys/dmu_objset.h>
 #include <sys/refcount.h>
 #include <sys/stat.h>
 #include <sys/zap.h>
@@ -68,8 +67,8 @@
 #include "zfs_comutil.h"
 
 /* Used by fstat(1). */
-SYSCTL_INT(_debug_sizeof, OID_AUTO, znode, CTLFLAG_RD,
-    SYSCTL_NULL_INT_PTR, sizeof(znode_t), "sizeof(znode_t)");
+SYSCTL_INT(_debug_sizeof, OID_AUTO, znode, CTLFLAG_RD, 0, sizeof(znode_t),
+    "sizeof(znode_t)");
 
 /*
  * Define ZNODE_STATS to turn on statistic gathering. By default, it is only
@@ -172,7 +171,7 @@ static struct {
 } znode_move_stats;
 #endif	/* ZNODE_STATS */
 
-#ifdef illumos
+#ifdef sun
 static void
 zfs_znode_move_impl(znode_t *ozp, znode_t *nzp)
 {
@@ -277,7 +276,7 @@ zfs_znode_move(void *buf, void *newbuf, size_t size, void *arg)
 	 * can safely ensure that the filesystem is not and will not be
 	 * unmounted. The next statement is equivalent to ZFS_ENTER().
 	 */
-	rrm_enter(&zfsvfs->z_teardown_lock, RW_READER, FTAG);
+	rrw_enter(&zfsvfs->z_teardown_lock, RW_READER, FTAG);
 	if (zfsvfs->z_unmounted) {
 		ZFS_EXIT(zfsvfs);
 		rw_exit(&zfsvfs_lock);
@@ -343,7 +342,7 @@ zfs_znode_move(void *buf, void *newbuf, size_t size, void *arg)
 
 	return (KMEM_CBRC_YES);
 }
-#endif /* illumos */
+#endif /* sun */
 
 void
 zfs_znode_init(void)
@@ -362,12 +361,12 @@ zfs_znode_init(void)
 void
 zfs_znode_fini(void)
 {
-#ifdef illumos
+#ifdef sun
 	/*
 	 * Cleanup vfs & vnode ops
 	 */
 	zfs_remove_op_tables();
-#endif
+#endif	/* sun */
 
 	/*
 	 * Cleanup zcache
@@ -378,7 +377,7 @@ zfs_znode_fini(void)
 	rw_destroy(&zfsvfs_lock);
 }
 
-#ifdef illumos
+#ifdef sun
 struct vnodeops *zfs_dvnodeops;
 struct vnodeops *zfs_fvnodeops;
 struct vnodeops *zfs_symvnodeops;
@@ -470,7 +469,7 @@ zfs_create_op_tables()
 
 	return (error);
 }
-#endif	/* illumos */
+#endif	/* sun */
 
 int
 zfs_create_share_dir(zfsvfs_t *zfsvfs, dmu_tx_t *tx)
@@ -689,7 +688,7 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	case VDIR:
 		zp->z_zn_prefetch = B_TRUE; /* z_prefetch default is enabled */
 		break;
-#ifdef illumos
+#ifdef sun
 	case VBLK:
 	case VCHR:
 		{
@@ -700,12 +699,12 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 			vp->v_rdev = zfs_cmpldev(rdev);
 		}
 		break;
-#endif
+#endif	/* sun */
 	case VFIFO:
-#ifdef illumos
+#ifdef sun
 	case VSOCK:
 	case VDOOR:
-#endif
+#endif	/* sun */
 		vp->v_op = &zfs_fifoops;
 		break;
 	case VREG:
@@ -714,14 +713,14 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 			vp->v_op = &zfs_shareops;
 		}
 		break;
-#ifdef illumos
+#ifdef sun
 	case VLNK:
 		vn_setops(vp, zfs_symvnodeops);
 		break;
 	default:
 		vn_setops(vp, zfs_evnodeops);
 		break;
-#endif
+#endif	/* sun */
 	}
 
 	mutex_enter(&zfsvfs->z_znodes_lock);
@@ -794,7 +793,7 @@ zfs_mknode(znode_t *dzp, vattr_t *vap, dmu_tx_t *tx, cred_t *cr,
 		gen = vap->va_nblocks;		/* ditto */
 	} else {
 		obj = 0;
-		vfs_timestamp(&now);
+		gethrestime(&now);
 		gen = dmu_tx_get_txg(tx);
 	}
 
@@ -1229,10 +1228,9 @@ again:
 		vnode_t *vp = ZTOV(zp);
 
 		err = insmntque(vp, zfsvfs->z_vfs);
-		if (err == 0) {
-			vp->v_hash = obj_num;
+		if (err == 0)
 			VOP_UNLOCK(vp, 0);
-		} else {
+		else {
 			zp->z_vnode = NULL;
 			zfs_znode_dmu_fini(zp);
 			zfs_znode_free(zp);
@@ -1426,7 +1424,7 @@ zfs_tstamp_update_setup(znode_t *zp, uint_t flag, uint64_t mtime[2],
 {
 	timestruc_t	now;
 
-	vfs_timestamp(&now);
+	gethrestime(&now);
 
 	if (have_tx) {	/* will sa_bulk_update happen really soon? */
 		zp->z_atime_dirty = 0;
@@ -1490,7 +1488,7 @@ zfs_grow_blocksize(znode_t *zp, uint64_t size, dmu_tx_t *tx)
 	dmu_object_size_from_db(sa_get_db(zp->z_sa_hdl), &zp->z_blksz, &dummy);
 }
 
-#ifdef illumos
+#ifdef sun
 /*
  * This is a dummy interface used when pvn_vplist_dirty() should *not*
  * be calling back into the fs for a putpage().  E.g.: when truncating
@@ -1504,7 +1502,7 @@ zfs_no_putpage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
 	ASSERT(0);
 	return (0);
 }
-#endif
+#endif	/* sun */
 
 /*
  * Increase the file length
@@ -1512,7 +1510,7 @@ zfs_no_putpage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
  *	IN:	zp	- znode of file to free data in.
  *		end	- new end-of-file
  *
- *	RETURN:	0 on success, error code on failure
+ * 	RETURN:	0 on success, error code on failure
  */
 static int
 zfs_extend(znode_t *zp, uint64_t end)
@@ -1544,13 +1542,8 @@ zfs_extend(znode_t *zp, uint64_t end)
 		 * We are growing the file past the current block size.
 		 */
 		if (zp->z_blksz > zp->z_zfsvfs->z_max_blksz) {
-			/*
-			 * File's blocksize is already larger than the
-			 * "recordsize" property.  Only let it grow to
-			 * the next power of 2.
-			 */
 			ASSERT(!ISP2(zp->z_blksz));
-			newblksz = MIN(end, 1 << highbit64(zp->z_blksz));
+			newblksz = MIN(end, SPA_MAXBLOCKSIZE);
 		} else {
 			newblksz = MIN(end, zp->z_zfsvfs->z_max_blksz);
 		}
@@ -1590,7 +1583,7 @@ zfs_extend(znode_t *zp, uint64_t end)
  *		off	- start of section to free.
  *		len	- length of section to free.
  *
- *	RETURN:	0 on success, error code on failure
+ * 	RETURN:	0 on success, error code on failure
  */
 static int
 zfs_free_range(znode_t *zp, uint64_t off, uint64_t len)
@@ -1637,7 +1630,7 @@ zfs_free_range(znode_t *zp, uint64_t off, uint64_t len)
  *	IN:	zp	- znode of file to free data in.
  *		end	- new end-of-file.
  *
- *	RETURN:	0 on success, error code on failure
+ * 	RETURN:	0 on success, error code on failure
  */
 static int
 zfs_trunc(znode_t *zp, uint64_t end)
@@ -1671,7 +1664,6 @@ zfs_trunc(znode_t *zp, uint64_t end)
 	tx = dmu_tx_create(zfsvfs->z_os);
 	dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_FALSE);
 	zfs_sa_upgrade_txholds(tx, zp);
-	dmu_tx_mark_netfree(tx);
 	error = dmu_tx_assign(tx, TXG_WAIT);
 	if (error) {
 		dmu_tx_abort(tx);
@@ -1714,7 +1706,7 @@ zfs_trunc(znode_t *zp, uint64_t end)
  *		flag	- current file open mode flags.
  *		log	- TRUE if this action should be logged
  *
- *	RETURN:	0 on success, error code on failure
+ * 	RETURN:	0 on success, error code on failure
  */
 int
 zfs_freesp(znode_t *zp, uint64_t off, uint64_t len, int flag, boolean_t log)

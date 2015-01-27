@@ -8,6 +8,7 @@ LINKS+=	${BINDIR}/swapon ${BINDIR}/swapctl
 MLINKS=	swapon.8 swapoff.8
 MLINKS+=swapon.8 swapctl.8
 
-LIBADD=	util
+DPADD=	${LIBUTIL}
+LDADD=	-lutil
 
 .include <bsd.prog.mk>

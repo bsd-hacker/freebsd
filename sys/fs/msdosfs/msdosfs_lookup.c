@@ -63,34 +63,14 @@
 
 static int msdosfs_lookup_(struct vnode *vdp, struct vnode **vpp,
     struct componentname *cnp, u_int64_t *inum);
+static int msdosfs_deget_dotdot(struct vnode *vp, u_long cluster, int blkoff,
+    struct vnode **rvp);
 
 int
 msdosfs_lookup(struct vop_cachedlookup_args *ap)
 {
 
 	return (msdosfs_lookup_(ap->a_dvp, ap->a_vpp, ap->a_cnp, NULL));
-}
-
-struct deget_dotdot {
-	u_long cluster;
-	int blkoff;
-};
-
-static int
-msdosfs_deget_dotdot(struct mount *mp, void *arg, int lkflags,
-    struct vnode **rvp)
-{
-	struct deget_dotdot *dd_arg;
-	struct denode *rdp;
-	struct msdosfsmount *pmp;
-	int error;
-
-	pmp = VFSTOMSDOSFS(mp);
-	dd_arg = arg;
-	error = deget(pmp, dd_arg->cluster, dd_arg->blkoff,  &rdp);
-	if (error == 0)
-		*rvp = DETOV(rdp);
-	return (error);
 }
 
 /*
@@ -130,7 +110,6 @@ msdosfs_lookup_(struct vnode *vdp, struct vnode **vpp,
 	struct msdosfsmount *pmp;
 	struct buf *bp = NULL;
 	struct direntry *dep = NULL;
-	struct deget_dotdot dd_arg;
 	u_char dosfilename[12];
 	int flags = cnp->cn_flags;
 	int nameiop = cnp->cn_nameiop;
@@ -416,7 +395,7 @@ notfound:
 	 * and 8.3 filenames.  Hence, it may not invalidate all negative
 	 * entries if a file with this name is later created.
 	 */
-	if ((cnp->cn_flags & MAKEENTRY) != 0)
+	if ((cnp->cn_flags & MAKEENTRY) && nameiop != CREATE)
 		cache_enter(vdp, *vpp, cnp);
 #endif
 	return (ENOENT);
@@ -545,11 +524,8 @@ foundroot:
 	 */
 	pdp = vdp;
 	if (flags & ISDOTDOT) {
-		dd_arg.cluster = cluster;
-		dd_arg.blkoff = blkoff;
-		error = vn_vget_ino_gen(vdp, msdosfs_deget_dotdot,
-		    &dd_arg, cnp->cn_lkflags, vpp);
-		if (error != 0) {
+		error = msdosfs_deget_dotdot(pdp, cluster, blkoff, vpp);
+		if (error) {
 			*vpp = NULL;
 			return (error);
 		}
@@ -584,6 +560,54 @@ foundroot:
 	return (0);
 }
 
+static int
+msdosfs_deget_dotdot(struct vnode *vp, u_long cluster, int blkoff,
+    struct vnode **rvp)
+{
+	struct mount *mp;
+	struct msdosfsmount *pmp;
+	struct denode *rdp;
+	int ltype, error;
+
+	mp = vp->v_mount;
+	pmp = VFSTOMSDOSFS(mp);
+	ltype = VOP_ISLOCKED(vp);
+	KASSERT(ltype == LK_EXCLUSIVE || ltype == LK_SHARED,
+	    ("msdosfs_deget_dotdot: vp not locked"));
+
+	error = vfs_busy(mp, MBF_NOWAIT);
+	if (error != 0) {
+		vfs_ref(mp);
+		VOP_UNLOCK(vp, 0);
+		error = vfs_busy(mp, 0);
+		vn_lock(vp, ltype | LK_RETRY);
+		vfs_rel(mp);
+		if (error != 0)
+			return (ENOENT);
+		if (vp->v_iflag & VI_DOOMED) {
+			vfs_unbusy(mp);
+			return (ENOENT);
+		}
+	}
+	VOP_UNLOCK(vp, 0);
+	error = deget(pmp, cluster, blkoff,  &rdp);
+	vfs_unbusy(mp);
+	if (error == 0)
+		*rvp = DETOV(rdp);
+	if (*rvp != vp)
+		vn_lock(vp, ltype | LK_RETRY);
+	if (vp->v_iflag & VI_DOOMED) {
+		if (error == 0) {
+			if (*rvp == vp)
+				vunref(*rvp);
+			else
+				vput(*rvp);
+		}
+		error = ENOENT;
+	}
+	return (error);
+}
+
 /*
  * dep  - directory entry to copy into the directory
  * ddep - directory to add to
@@ -592,8 +616,11 @@ foundroot:
  * cnp  - componentname needed for Win95 long filenames
  */
 int
-createde(struct denode *dep, struct denode *ddep, struct denode **depp,
-    struct componentname *cnp)
+createde(dep, ddep, depp, cnp)
+	struct denode *dep;
+	struct denode *ddep;
+	struct denode **depp;
+	struct componentname *cnp;
 {
 	int error;
 	u_long dirclust, diroffset;
@@ -722,7 +749,8 @@ createde(struct denode *dep, struct denode *ddep, struct denode **depp,
  * return 0 if not empty or error.
  */
 int
-dosdirempty(struct denode *dep)
+dosdirempty(dep)
+	struct denode *dep;
 {
 	int blsize;
 	int error;
@@ -798,7 +826,9 @@ dosdirempty(struct denode *dep)
  * The target inode is always unlocked on return.
  */
 int
-doscheckpath(struct denode *source, struct denode *target)
+doscheckpath(source, target)
+	struct denode *source;
+	struct denode *target;
 {
 	daddr_t scn;
 	struct msdosfsmount *pmp;
@@ -887,8 +917,11 @@ out:;
  * directory entry within the block.
  */
 int
-readep(struct msdosfsmount *pmp, u_long dirclust, u_long diroffset,
-    struct buf **bpp, struct direntry **epp)
+readep(pmp, dirclust, diroffset, bpp, epp)
+	struct msdosfsmount *pmp;
+	u_long dirclust, diroffset;
+	struct buf **bpp;
+	struct direntry **epp;
 {
 	int error;
 	daddr_t bn;
@@ -915,7 +948,10 @@ readep(struct msdosfsmount *pmp, u_long dirclust, u_long diroffset,
  * entry within the block.
  */
 int
-readde(struct denode *dep, struct buf **bpp, struct direntry **epp)
+readde(dep, bpp, epp)
+	struct denode *dep;
+	struct buf **bpp;
+	struct direntry **epp;
 {
 
 	return (readep(dep->de_pmp, dep->de_dirclust, dep->de_diroffset,
@@ -929,12 +965,11 @@ readde(struct denode *dep, struct buf **bpp, struct direntry **epp)
  * and will truncate the file to 0 length.  When the vnode containing the
  * denode is needed for some other purpose by VFS it will call
  * msdosfs_reclaim() which will remove the denode from the denode cache.
- *
- * pdep	directory where the entry is removed
- * dep	file to be removed
  */
 int
-removede(struct denode *pdep, struct denode *dep)
+removede(pdep, dep)
+	struct denode *pdep;	/* directory where the entry is removed */
+	struct denode *dep;	/* file to be removed */
 {
 	int error;
 	struct direntry *ep;
@@ -1001,7 +1036,10 @@ removede(struct denode *pdep, struct denode *dep)
  * Create a unique DOS name in dvp
  */
 int
-uniqdosname(struct denode *dep, struct componentname *cnp, u_char *cp)
+uniqdosname(dep, cnp, cp)
+	struct denode *dep;
+	struct componentname *cnp;
+	u_char *cp;
 {
 	struct msdosfsmount *pmp = dep->de_pmp;
 	struct direntry *dentp;
@@ -1067,7 +1105,8 @@ uniqdosname(struct denode *dep, struct componentname *cnp, u_char *cp)
  * Find any Win'95 long filename entry in directory dep
  */
 int
-findwin95(struct denode *dep)
+findwin95(dep)
+	struct denode *dep;
 {
 	struct msdosfsmount *pmp = dep->de_pmp;
 	struct direntry *dentp;

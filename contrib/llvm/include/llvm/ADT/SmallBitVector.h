@@ -54,7 +54,6 @@ class SmallBitVector {
   };
 
 public:
-  typedef unsigned size_type;
   // Encapsulation of a single bit.
   class reference {
     SmallBitVector &TheVector;
@@ -154,9 +153,11 @@ public:
       switchToLarge(new BitVector(*RHS.getPointer()));
   }
 
+#if LLVM_HAS_RVALUE_REFERENCES
   SmallBitVector(SmallBitVector &&RHS) : X(RHS.X) {
     RHS.X = 1;
   }
+#endif
 
   ~SmallBitVector() {
     if (!isSmall())
@@ -174,7 +175,7 @@ public:
   }
 
   /// count - Returns the number of bits which are set.
-  size_type count() const {
+  unsigned count() const {
     if (isSmall()) {
       uintptr_t Bits = getSmallBits();
       if (NumBaseBits == 32)
@@ -505,6 +506,7 @@ public:
     return *this;
   }
 
+#if LLVM_HAS_RVALUE_REFERENCES
   const SmallBitVector &operator=(SmallBitVector &&RHS) {
     if (this != &RHS) {
       clear();
@@ -512,6 +514,7 @@ public:
     }
     return *this;
   }
+#endif
 
   void swap(SmallBitVector &RHS) {
     std::swap(X, RHS.X);

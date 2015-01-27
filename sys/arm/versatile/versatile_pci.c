@@ -53,6 +53,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/fdt.h>
 
+#include <arm/versatile/versatile_pci_bus_space.h>
+
 #define	MEM_SYS		0
 #define	MEM_CORE	1
 #define	MEM_BASE	2
@@ -353,7 +355,7 @@ versatile_pci_activate_resource(device_t bus, device_t child, int type, int rid,
 		vaddr = (vm_offset_t)pmap_mapdev(rman_get_start(r),
 				rman_get_size(r));
 		rman_set_bushandle(r, vaddr);
-		rman_set_bustag(r, arm_base_bs_tag);
+		rman_set_bustag(r, versatile_bus_space_pcimem);
 		res = rman_activate_resource(r);
 		break;
 	case SYS_RES_IRQ:

@@ -2324,7 +2324,9 @@ dsp_stdclone(char *name, char *namep, char *sep, int use_sep, int *u, int *c)
 
 static void
 dsp_clone(void *arg,
+#if __FreeBSD_version >= 600034
     struct ucred *cred,
+#endif
     char *name, int namelen, struct cdev **dev)
 {
 	struct snddev_info *d;

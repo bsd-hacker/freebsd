@@ -36,6 +36,9 @@
 
 #include <stdio.h>
 
+#include <endian.h>
+#include <byteswap.h>
+
 #include <infiniband/verbs.h>
 #include <infiniband/arch.h>
 

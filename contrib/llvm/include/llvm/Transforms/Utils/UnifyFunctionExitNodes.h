@@ -24,16 +24,15 @@ namespace llvm {
 
 struct UnifyFunctionExitNodes : public FunctionPass {
   BasicBlock *ReturnBlock, *UnwindBlock, *UnreachableBlock;
-
 public:
   static char ID; // Pass identification, replacement for typeid
   UnifyFunctionExitNodes() : FunctionPass(ID),
-                             ReturnBlock(nullptr), UnwindBlock(nullptr) {
+                             ReturnBlock(0), UnwindBlock(0) {
     initializeUnifyFunctionExitNodesPass(*PassRegistry::getPassRegistry());
   }
 
   // We can preserve non-critical-edgeness when we unify function exit nodes
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
   // getReturn|Unwind|UnreachableBlock - Return the new single (or nonexistent)
   // return, unwind, or unreachable  basic blocks in the CFG.
@@ -42,7 +41,7 @@ public:
   BasicBlock *getUnwindBlock() const { return UnwindBlock; }
   BasicBlock *getUnreachableBlock() const { return UnreachableBlock; }
 
-  bool runOnFunction(Function &F) override;
+  virtual bool runOnFunction(Function &F);
 };
 
 Pass *createUnifyFunctionExitNodesPass();

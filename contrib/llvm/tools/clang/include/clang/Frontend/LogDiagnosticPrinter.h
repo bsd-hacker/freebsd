@@ -39,10 +39,7 @@ class LogDiagnosticPrinter : public DiagnosticConsumer {
     /// The level of the diagnostic.
     DiagnosticsEngine::Level DiagnosticLevel;
   };
-
-  void EmitDiagEntry(llvm::raw_ostream &OS,
-                     const LogDiagnosticPrinter::DiagEntry &DE);
-
+  
   raw_ostream &OS;
   const LangOptions *LangOpts;
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts;
@@ -65,14 +62,14 @@ public:
     DwarfDebugFlags = Value;
   }
 
-  void BeginSourceFile(const LangOptions &LO, const Preprocessor *PP) override {
+  void BeginSourceFile(const LangOptions &LO, const Preprocessor *PP) {
     LangOpts = &LO;
   }
 
-  void EndSourceFile() override;
+  void EndSourceFile();
 
-  void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
-                        const Diagnostic &Info) override;
+  virtual void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                                const Diagnostic &Info);
 };
 
 } // end namespace clang

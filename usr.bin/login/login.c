@@ -198,7 +198,7 @@ main(int argc, char *argv[])
 	(void)alarm(timeout);
 	(void)setpriority(PRIO_PROCESS, 0, 0);
 
-	openlog("login", 0, LOG_AUTH);
+	openlog("login", LOG_ODELAY, LOG_AUTH);
 
 	uid = getuid();
 	euid = geteuid();

@@ -9,7 +9,9 @@ UNBOUNDDIR= ${.CURDIR}/../../../contrib/unbound
 PROG=	unbound
 SRCS=	acl_list.c cachedump.c daemon.c remote.c stats.c unbound.c worker.c
 CFLAGS=	-I${UNBOUNDDIR} -I${LDNSDIR}
-LIBADD=	unbound util ssl crypto pthread
+DPADD=	${LIBUNBOUND} ${LIBLDNS} ${LIBUTIL} ${LIBSSL} ${LIBCRYPTO} ${LIBPTHREAD}
+LDADD=	-lunbound -lldns -lutil -lssl -lcrypto -lpthread
+USEPRIVATELIB=	ldns
 MAN=	unbound.8 unbound.conf.5
 
 .include <bsd.prog.mk>

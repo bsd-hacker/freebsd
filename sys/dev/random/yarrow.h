@@ -29,16 +29,9 @@
 #ifndef SYS_DEV_RANDOM_YARROW_H_INCLUDED
 #define SYS_DEV_RANDOM_YARROW_H_INCLUDED
 
-#ifdef _KERNEL
-typedef struct mtx mtx_t;
-#endif
-
-void random_yarrow_init_alg(void);
+void random_yarrow_init_alg(struct sysctl_ctx_list *);
 void random_yarrow_deinit_alg(void);
-void random_yarrow_read(uint8_t *, u_int);
-void random_yarrow_write(uint8_t *, u_int);
+int random_yarrow_read(void *, int);
 void random_yarrow_reseed(void);
-int random_yarrow_seeded(void);
-void random_yarrow_process_event(struct harvest_event *event);
 
 #endif

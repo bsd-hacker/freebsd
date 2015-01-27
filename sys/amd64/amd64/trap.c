@@ -97,8 +97,7 @@ PMC_SOFT_DEFINE( , , page_fault, write);
 #include <sys/dtrace_bsd.h>
 #endif
 
-extern void __noinline trap(struct trapframe *frame);
-extern void trap_check(struct trapframe *frame);
+extern void trap(struct trapframe *frame);
 extern void syscall(struct trapframe *frame);
 void dblfault_handler(struct trapframe *frame);
 
@@ -144,18 +143,20 @@ static char *trap_msg[] = {
 
 #ifdef KDB
 static int kdb_on_nmi = 1;
-SYSCTL_INT(_machdep, OID_AUTO, kdb_on_nmi, CTLFLAG_RWTUN,
+SYSCTL_INT(_machdep, OID_AUTO, kdb_on_nmi, CTLFLAG_RW,
 	&kdb_on_nmi, 0, "Go to KDB on NMI");
+TUNABLE_INT("machdep.kdb_on_nmi", &kdb_on_nmi);
 #endif
 static int panic_on_nmi = 1;
-SYSCTL_INT(_machdep, OID_AUTO, panic_on_nmi, CTLFLAG_RWTUN,
+SYSCTL_INT(_machdep, OID_AUTO, panic_on_nmi, CTLFLAG_RW,
 	&panic_on_nmi, 0, "Panic on NMI");
+TUNABLE_INT("machdep.panic_on_nmi", &panic_on_nmi);
 static int prot_fault_translation;
-SYSCTL_INT(_machdep, OID_AUTO, prot_fault_translation, CTLFLAG_RWTUN,
+SYSCTL_INT(_machdep, OID_AUTO, prot_fault_translation, CTLFLAG_RW,
     &prot_fault_translation, 0,
     "Select signal to deliver on protection fault");
 static int uprintf_signal;
-SYSCTL_INT(_machdep, OID_AUTO, uprintf_signal, CTLFLAG_RWTUN,
+SYSCTL_INT(_machdep, OID_AUTO, uprintf_signal, CTLFLAG_RW,
     &uprintf_signal, 0,
     "Print debugging information on trap signal to ctty");
 
@@ -218,6 +219,18 @@ trap(struct trapframe *frame)
 		mca_intr();
 		goto out;
 	}
+
+#ifdef KDTRACE_HOOKS
+	/*
+	 * A trap can occur while DTrace executes a probe. Before
+	 * executing the probe, DTrace blocks re-scheduling and sets
+	 * a flag in its per-cpu flags to indicate that it doesn't
+	 * want to fault. On returning from the probe, the no-fault
+	 * flag is cleared and finally re-scheduling is enabled.
+	 */
+	if (dtrace_trap_func != NULL && (*dtrace_trap_func)(frame, type))
+		goto out;
+#endif
 
 	if ((frame->tf_rflags & PSL_I) == 0) {
 		/*
@@ -301,10 +314,6 @@ trap(struct trapframe *frame)
 		case T_TSSFLT:		/* invalid TSS fault */
 			i = SIGBUS;
 			ucode = BUS_OBJERR;
-			break;
-		case T_ALIGNFLT:
-			i = SIGBUS;
-			ucode = BUS_ADRALN;
 			break;
 		case T_DOUBLEFLT:	/* double fault */
 		default:
@@ -436,8 +445,8 @@ trap(struct trapframe *frame)
 		case T_XMMFLT:		/* SIMD floating-point exception */
 		case T_FPOPFLT:		/* FPU operand fetch fault */
 			/*
-			 * For now, supporting kernel handler
-			 * registration for FPU traps is overkill.
+			 * XXXKIB for now disable any FPU traps in kernel
+			 * handler registration seems to be overkill
 			 */
 			trap_fatal(frame, 0);
 			goto out;
@@ -605,22 +614,6 @@ out:
 	return;
 }
 
-/*
- * Ensure that we ignore any DTrace-induced faults. This function cannot
- * be instrumented, so it cannot generate such faults itself.
- */
-void
-trap_check(struct trapframe *frame)
-{
-
-#ifdef KDTRACE_HOOKS
-	if (dtrace_trap_func != NULL &&
-	    (*dtrace_trap_func)(frame, frame->tf_trapno) != 0)
-		return;
-#endif
-	trap(frame);
-}
-
 static int
 trap_pfault(frame, usermode)
 	struct trapframe *frame;
@@ -771,6 +764,12 @@ nogo:
 	if (!usermode) {
 		if (td->td_intr_nesting_level == 0 &&
 		    curpcb->pcb_onfault != NULL) {
+			frame->tf_rip = (long)curpcb->pcb_onfault;
+			return (0);
+		}
+		if ((td->td_pflags & TDP_DEVMEMIO) != 0) {
+			KASSERT(curpcb->pcb_onfault != NULL,
+			    ("/dev/mem without pcb_onfault"));
 			frame->tf_rip = (long)curpcb->pcb_onfault;
 			return (0);
 		}

@@ -9,7 +9,8 @@ PROG=	wpa_priv
 SRCS=	drivers.c os_unix.c eloop.c common.c wpa_debug.c wpabuf.c wpa_priv.c \
 	driver_common.c l2_packet_freebsd.c
 
-LIBADD=	pcap
+DPADD+=	${LIBPCAP}
+LDADD+=	-lpcap
 
 .include "${.CURDIR}/../Makefile.crypto"
 

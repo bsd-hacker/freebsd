@@ -130,7 +130,7 @@ monitor_input(struct ieee80211_node *ni, struct mbuf *m, int rssi, int nf)
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ifnet *ifp = vap->iv_ifp;
 
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	ifp->if_ipackets++;
 
 	if (ieee80211_radiotap_active_vap(vap))
 		ieee80211_radiotap_rx(vap, m);

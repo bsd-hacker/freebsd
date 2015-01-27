@@ -1263,18 +1263,13 @@ install_dir(char *path)
 		if (!*p || (p != path && *p  == '/')) {
 			ch = *p;
 			*p = '\0';
-again:
-			if (stat(path, &sb) < 0) {
-				if (errno != ENOENT)
-					err(EX_OSERR, "stat %s", path);
-				if (mkdir(path, 0755) < 0) {
-					if (errno == EEXIST)
-						goto again;
+			if (stat(path, &sb)) {
+				if (errno != ENOENT || mkdir(path, 0755) < 0) {
 					err(EX_OSERR, "mkdir %s", path);
-				}
-				if (verbose)
+					/* NOTREACHED */
+				} else if (verbose)
 					(void)printf("install: mkdir %s\n",
-					    path);
+						     path);
 			} else if (!S_ISDIR(sb.st_mode))
 				errx(EX_OSERR, "%s exists but is not a directory", path);
 			if (!(*p = ch))

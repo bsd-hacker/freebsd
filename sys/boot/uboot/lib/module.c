@@ -34,10 +34,6 @@ __FBSDID("$FreeBSD$");
 #include <stand.h>
 #include <string.h>
 
-#if defined(LOADER_FDT_SUPPORT)
-#include <fdt_platform.h>
-#endif
-
 #include "bootstrap.h"
 #include "libuboot.h"
 

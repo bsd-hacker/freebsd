@@ -109,16 +109,15 @@ struct mlx4_err_cqe {
 
 static struct mlx4_cqe *get_cqe(struct mlx4_cq *cq, int entry)
 {
-	return cq->buf.buf + entry * cq->cqe_size;
+	return cq->buf.buf + entry * MLX4_CQ_ENTRY_SIZE;
 }
 
 static void *get_sw_cqe(struct mlx4_cq *cq, int n)
 {
 	struct mlx4_cqe *cqe = get_cqe(cq, n & cq->ibv_cq.cqe);
-	struct mlx4_cqe *tcqe = cq->cqe_size == 64 ? cqe + 1 : cqe;
 
-	return (!!(tcqe->owner_sr_opcode & MLX4_CQE_OWNER_MASK) ^
-		!!(n & (cq->ibv_cq.cqe + 1))) ? NULL : tcqe;
+	return (!!(cqe->owner_sr_opcode & MLX4_CQE_OWNER_MASK) ^
+		!!(n & (cq->ibv_cq.cqe + 1))) ? NULL : cqe;
 }
 
 static struct mlx4_cqe *next_cqe_sw(struct mlx4_cq *cq)
@@ -403,7 +402,6 @@ void __mlx4_cq_clean(struct mlx4_cq *cq, uint32_t qpn, struct mlx4_srq *srq)
 	uint8_t owner_bit;
 	int nfreed = 0;
 	int is_xrc_srq = 0;
-	int cqe_inc = cq->cqe_size == 64 ? 1 : 0;
 
 	if (srq && srq->ibv_srq.xrc_cq)
 		is_xrc_srq = 1;
@@ -425,7 +423,6 @@ void __mlx4_cq_clean(struct mlx4_cq *cq, uint32_t qpn, struct mlx4_srq *srq)
 	 */
 	while ((int) --prod_index - (int) cq->cons_index >= 0) {
 		cqe = get_cqe(cq, prod_index & cq->ibv_cq.cqe);
-		cqe += cqe_inc;
 		if (is_xrc_srq &&
 		    (ntohl(cqe->g_mlpath_rqpn & 0xffffff) == srq->srqn) &&
 		    !(cqe->owner_sr_opcode & MLX4_CQE_IS_SEND_MASK)) {
@@ -437,7 +434,6 @@ void __mlx4_cq_clean(struct mlx4_cq *cq, uint32_t qpn, struct mlx4_srq *srq)
 			++nfreed;
 		} else if (nfreed) {
 			dest = get_cqe(cq, (prod_index + nfreed) & cq->ibv_cq.cqe);
-			dest += cqe_inc;
 			owner_bit = dest->owner_sr_opcode & MLX4_CQE_OWNER_MASK;
 			memcpy(dest, cqe, sizeof *cqe);
 			dest->owner_sr_opcode = owner_bit |
@@ -477,32 +473,28 @@ void mlx4_cq_resize_copy_cqes(struct mlx4_cq *cq, void *buf, int old_cqe)
 {
 	struct mlx4_cqe *cqe;
 	int i;
-	int cqe_inc = cq->cqe_size == 64 ? 1 : 0;
 
 	i = cq->cons_index;
 	cqe = get_cqe(cq, (i & old_cqe));
-	cqe += cqe_inc;
 
 	while ((cqe->owner_sr_opcode & MLX4_CQE_OPCODE_MASK) != MLX4_CQE_OPCODE_RESIZE) {
 		cqe->owner_sr_opcode = (cqe->owner_sr_opcode & ~MLX4_CQE_OWNER_MASK) |
 			(((i + 1) & (cq->ibv_cq.cqe + 1)) ? MLX4_CQE_OWNER_MASK : 0);
-		memcpy(buf + ((i + 1) & cq->ibv_cq.cqe) * cq->cqe_size,
-		       cqe - cqe_inc, cq->cqe_size);
+		memcpy(buf + ((i + 1) & cq->ibv_cq.cqe) * MLX4_CQ_ENTRY_SIZE,
+		       cqe, MLX4_CQ_ENTRY_SIZE);
 		++i;
 		cqe = get_cqe(cq, (i & old_cqe));
-		cqe += cqe_inc;
 	}
 
 	++cq->cons_index;
 }
 
-int mlx4_alloc_cq_buf(struct mlx4_device *dev, struct mlx4_buf *buf, int nent,
-			int entry_size)
+int mlx4_alloc_cq_buf(struct mlx4_device *dev, struct mlx4_buf *buf, int nent)
 {
-	if (mlx4_alloc_buf(buf, align(nent * entry_size, dev->page_size),
+	if (mlx4_alloc_buf(buf, align(nent * MLX4_CQ_ENTRY_SIZE, dev->page_size),
 			   dev->page_size))
 		return -1;
-	memset(buf->buf, 0, nent * entry_size);
+	memset(buf->buf, 0, nent * MLX4_CQ_ENTRY_SIZE);
 
 	return 0;
 }

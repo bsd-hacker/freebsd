@@ -7,6 +7,7 @@ SRCS=		hcsecd.c lexer.l parser.y
 WARNS?=		2
 CFLAGS+=	-I${.CURDIR}
 
-LIBADD=		bluetooth
+DPADD=		${LIBBLUETOOTH}
+LDADD=		-lbluetooth
 
 .include <bsd.prog.mk>

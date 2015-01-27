@@ -18,23 +18,8 @@ using namespace clang;
 using namespace ento;
 
 StringRef CheckerBase::getTagDescription() const {
-  return getCheckName().getName();
-}
-
-CheckName CheckerBase::getCheckName() const { return Name; }
-
-CheckerProgramPointTag::CheckerProgramPointTag(StringRef CheckerName, 
-                                               StringRef Msg)
-  : SimpleProgramPointTag(CheckerName, Msg) {}
-
-CheckerProgramPointTag::CheckerProgramPointTag(const CheckerBase *Checker,
-                                               StringRef Msg)
-  : SimpleProgramPointTag(Checker->getCheckName().getName(), Msg) {}
-
-raw_ostream& clang::ento::operator<<(raw_ostream &Out,
-                                     const CheckerBase &Checker) {
-  Out << Checker.getCheckName().getName();
-  return Out;
+  // FIXME: We want to return the package + name of the checker here.
+  return "A Checker";  
 }
 
 void Checker<check::_VoidCheck, check::_VoidCheck, check::_VoidCheck,

@@ -28,6 +28,7 @@ LIB=	pam_nologin
 SRCS=	pam_nologin.c
 MAN=	pam_nologin.8
 
-LIBADD+=	util
+DPADD=	${LIBUTIL}
+LDADD=	-lutil
 
 .include <bsd.lib.mk>

@@ -92,33 +92,33 @@ cc_default_algo(SYSCTL_HANDLER_ARGS)
 {
 	char default_cc[TCP_CA_NAME_MAX];
 	struct cc_algo *funcs;
-	int error;
+	int err, found;
 
-	/* Get the current default: */
-	CC_LIST_RLOCK();
-	strlcpy(default_cc, CC_DEFAULT()->name, sizeof(default_cc));
-	CC_LIST_RUNLOCK();
+	err = found = 0;
 
-	error = sysctl_handle_string(oidp, default_cc, sizeof(default_cc), req);
+	if (req->newptr == NULL) {
+		/* Just print the current default. */
+		CC_LIST_RLOCK();
+		strlcpy(default_cc, CC_DEFAULT()->name, TCP_CA_NAME_MAX);
+		CC_LIST_RUNLOCK();
+		err = sysctl_handle_string(oidp, default_cc, 1, req);
+	} else {
+		/* Find algo with specified name and set it to default. */
+		CC_LIST_RLOCK();
+		STAILQ_FOREACH(funcs, &cc_list, entries) {
+			if (strncmp((char *)req->newptr, funcs->name,
+			    TCP_CA_NAME_MAX) == 0) {
+				found = 1;
+				V_default_cc_ptr = funcs;
+			}
+		}
+		CC_LIST_RUNLOCK();
 
-	/* Check for error or no change */
-	if (error != 0 || req->newptr == NULL)
-		goto done;
-
-	error = ESRCH;
-
-	/* Find algo with specified name and set it to default. */
-	CC_LIST_RLOCK();
-	STAILQ_FOREACH(funcs, &cc_list, entries) {
-		if (strncmp(default_cc, funcs->name, sizeof(default_cc)))
-			continue;
-		V_default_cc_ptr = funcs;
-		error = 0;
-		break;
+		if (!found)
+			err = ESRCH;
 	}
-	CC_LIST_RUNLOCK();
-done:
-	return (error);
+
+	return (err);
 }
 
 /*
@@ -166,7 +166,7 @@ cc_list_available(SYSCTL_HANDLER_ARGS)
 
 	if (!err) {
 		sbuf_finish(s);
-		err = sysctl_handle_string(oidp, sbuf_data(s), 0, req);
+		err = sysctl_handle_string(oidp, sbuf_data(s), 1, req);
 	}
 
 	sbuf_delete(s);
@@ -318,8 +318,7 @@ SYSINIT(cc, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_FIRST, cc_init, NULL);
 SYSCTL_NODE(_net_inet_tcp, OID_AUTO, cc, CTLFLAG_RW, NULL,
     "congestion control related settings");
 
-SYSCTL_PROC(_net_inet_tcp_cc, OID_AUTO, algorithm,
-    CTLFLAG_VNET | CTLTYPE_STRING | CTLFLAG_RW,
+SYSCTL_VNET_PROC(_net_inet_tcp_cc, OID_AUTO, algorithm, CTLTYPE_STRING|CTLFLAG_RW,
     NULL, 0, cc_default_algo, "A", "default congestion control algorithm");
 
 SYSCTL_PROC(_net_inet_tcp_cc, OID_AUTO, available, CTLTYPE_STRING|CTLFLAG_RD,

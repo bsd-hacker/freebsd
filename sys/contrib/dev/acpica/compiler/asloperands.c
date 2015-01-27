@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGES.
  */
+
 
 #include <contrib/dev/acpica/compiler/aslcompiler.h>
 #include "aslcompiler.y.h"
@@ -912,8 +913,8 @@ OpnDoDefinitionBlock (
          * We will use the AML filename that is embedded in the source file
          * for the output filename.
          */
-        Filename = UtStringCacheCalloc (strlen (Gbl_DirectoryPath) +
-            strlen ((char *) Child->Asl.Value.Buffer) + 1);
+        Filename = ACPI_ALLOCATE (strlen (Gbl_DirectoryPath) +
+                    strlen ((char *) Child->Asl.Value.Buffer) + 1);
 
         /* Prepend the current directory path */
 
@@ -921,7 +922,6 @@ OpnDoDefinitionBlock (
         strcat (Filename, (char *) Child->Asl.Value.Buffer);
 
         Gbl_OutputFilenamePrefix = Filename;
-        UtConvertBackslashes (Gbl_OutputFilenamePrefix);
     }
     Child->Asl.ParseOpcode = PARSEOP_DEFAULT_ARG;
 
@@ -968,7 +968,7 @@ OpnDoDefinitionBlock (
     if (Child->Asl.Value.String)
     {
         Length = ACPI_STRLEN (Child->Asl.Value.String);
-        Gbl_TableId = UtStringCacheCalloc (Length + 1);
+        Gbl_TableId = AcpiOsAllocate (Length + 1);
         ACPI_STRCPY (Gbl_TableId, Child->Asl.Value.String);
 
         /*

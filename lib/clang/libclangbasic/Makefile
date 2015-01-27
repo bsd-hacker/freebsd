@@ -5,8 +5,7 @@
 LIB=	clangbasic
 
 SRCDIR=	tools/clang/lib/Basic
-SRCS=	Attributes.cpp \
-	Builtins.cpp \
+SRCS=	Builtins.cpp \
 	CharInfo.cpp \
 	Diagnostic.cpp \
 	DiagnosticIDs.cpp \
@@ -24,12 +23,9 @@ SRCS=	Attributes.cpp \
 	Targets.cpp \
 	TokenKinds.cpp \
 	Version.cpp \
-	VersionTuple.cpp \
-	VirtualFileSystem.cpp \
-	Warnings.cpp
+	VersionTuple.cpp
 
-TGHDRS=	AttrHasAttributeImpl \
-	DiagnosticAnalysisKinds \
+TGHDRS=	DiagnosticAnalysisKinds \
 	DiagnosticASTKinds \
 	DiagnosticCommentKinds \
 	DiagnosticCommonKinds \

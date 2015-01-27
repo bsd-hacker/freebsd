@@ -193,7 +193,9 @@ private:
   SourceManager &SourceMgr;
   std::vector<RawComment *> Comments;
 
-  void addDeserializedComments(ArrayRef<RawComment *> DeserializedComments);
+  void addCommentsToFront(const std::vector<RawComment *> &C) {
+    Comments.insert(Comments.begin(), C.begin(), C.end());
+  }
 
   friend class ASTReader;
 };

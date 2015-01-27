@@ -42,7 +42,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/platform.h>
 #include <machine/pmap.h>
 
-#include <dev/ofw/openfirm.h>
 #include <dev/vt/vt.h>
 #include <dev/vt/hw/fb/vt_fb.h>
 #include <dev/vt/colors/vt_termcolors.h>
@@ -77,12 +76,8 @@ static struct vt_driver vt_ps3fb_driver = {
 	.vd_probe = ps3fb_probe,
 	.vd_init = ps3fb_init,
 	.vd_blank = vt_fb_blank,
-	.vd_bitblt_text = vt_fb_bitblt_text,
-	.vd_bitblt_bmp = vt_fb_bitblt_bitmap,
-	.vd_drawrect = vt_fb_drawrect,
-	.vd_setpixel = vt_fb_setpixel,
-	.vd_fb_ioctl = vt_fb_ioctl,
-	.vd_fb_mmap = vt_fb_mmap,
+	.vd_bitbltchr = vt_fb_bitbltchr,
+	.vd_maskbitbltchr = vt_fb_maskbitbltchr,
 	/* Better than VGA, but still generic driver. */
 	.vd_priority = VD_PRIORITY_GENERIC + 1,
 };
@@ -96,7 +91,9 @@ ps3fb_probe(struct vt_device *vd)
 	struct ps3fb_softc *sc;
 	int disable;
 	char compatible[64];
+#if 0
 	phandle_t root;
+#endif
 
 	disable = 0;
 	TUNABLE_INT_FETCH("hw.syscons.disable", &disable);
@@ -105,16 +102,18 @@ ps3fb_probe(struct vt_device *vd)
 
 	sc = &ps3fb_softc;
 
-	TUNABLE_STR_FETCH("hw.platform", compatible, sizeof(compatible));
-	if (strcmp(compatible, "ps3") == 0)
-		return (CN_INTERNAL);
-
+#if 0
 	root = OF_finddevice("/");
 	if (OF_getprop(root, "compatible", compatible, sizeof(compatible)) <= 0)
-                return (CN_DEAD);
+                return (0);
 	
 	if (strncmp(compatible, "sony,ps3", sizeof(compatible)) != 0)
+		return (0);
+#else
+	TUNABLE_STR_FETCH("hw.platform", compatible, sizeof(compatible));
+	if (strcmp(compatible, "ps3") != 0)
 		return (CN_DEAD);
+#endif
 
 	return (CN_INTERNAL);
 }
@@ -152,8 +151,7 @@ ps3fb_remap(void)
 	sc->fb_info.fb_pbase = fb_paddr;
 	for (va = 0; va < PS3FB_SIZE; va += PAGE_SIZE)
 		pmap_kenter_attr(0x10000000 + va, fb_paddr + va,
-		    VM_MEMATTR_WRITE_COMBINING);
-	sc->fb_info.fb_flags &= ~FB_FLAG_NOWRITE;
+		    VM_MEMATTR_WRITE_COMBINING); 
 }
 
 static int
@@ -173,16 +171,14 @@ ps3fb_init(struct vt_device *vd)
 	sc->fb_info.fb_bpp = sc->fb_info.fb_stride / sc->fb_info.fb_width * 8;
 
 	/*
-	 * Arbitrarily choose address for the framebuffer
+	 * The loader puts the FB at 0x10000000, so use that for now.
 	 */
 
 	sc->fb_info.fb_vbase = 0x10000000;
-	sc->fb_info.fb_flags |= FB_FLAG_NOWRITE; /* Not available yet */
-	sc->fb_info.fb_cmsize = 16;
 
 	/* 32-bit VGA palette */
-	vt_generate_cons_palette(sc->fb_info.fb_cmap, COLOR_FORMAT_RGB,
-	    255, 0, 255, 8, 255, 16);
+	vt_generate_vga_palette(sc->fb_info.fb_cmap, COLOR_FORMAT_RGB,
+	    255, 16, 255, 8, 255, 0);
 
 	/* Set correct graphics context */
 	lv1_gpu_context_attribute(sc->sc_fbcontext,
@@ -190,8 +186,11 @@ ps3fb_init(struct vt_device *vd)
 	lv1_gpu_context_attribute(sc->sc_fbcontext,
 	    L1GPU_CONTEXT_ATTRIBUTE_DISPLAY_FLIP, 1, 0, 0, 0);
 
+	fb_probe(&sc->fb_info);
 	vt_fb_init(vd);
-	sc->fb_info.fb_flags &= ~FB_FLAG_NOMMAP; /* Set wrongly by vt_fb_init */
+
+	/* Clear the screen. */
+	vt_fb_blank(vd, TC_BLACK);
 
 	return (CN_INTERNAL);
 }

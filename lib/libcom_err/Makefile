@@ -10,6 +10,8 @@ CFLAGS+=	-I${COM_ERRDIR}
 LDFLAGS=	-Wl,--no-undefined
 VERSION_MAP=	${COM_ERRDIR}/version-script.map
 
+SUBDIR=	doc
+
 .include <bsd.lib.mk>
 
 .PATH:	${COM_ERRDIR}

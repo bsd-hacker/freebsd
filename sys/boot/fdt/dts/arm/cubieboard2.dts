@@ -60,10 +60,6 @@
 		emac@01c0b000 {
 			status = "okay";
 		};
-
-		ahci: sata@01c18000 {
-			status = "okay";
-		};
 	};
 
 	chosen {

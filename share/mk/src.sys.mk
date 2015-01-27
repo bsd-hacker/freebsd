@@ -9,5 +9,5 @@
 SRCCONF?=	/etc/src.conf
 .if (exists(${SRCCONF}) || ${SRCCONF} != "/etc/src.conf") && !target(_srcconf_included_)
 .include "${SRCCONF}"
-_srcconf_included_:	.NOTMAIN
+_srcconf_included_:
 .endif

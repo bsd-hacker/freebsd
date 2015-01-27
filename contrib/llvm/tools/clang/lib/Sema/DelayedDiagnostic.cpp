@@ -19,29 +19,19 @@
 using namespace clang;
 using namespace sema;
 
-DelayedDiagnostic
-DelayedDiagnostic::makeAvailability(Sema::AvailabilityDiagnostic AD,
-                                    SourceLocation Loc,
+DelayedDiagnostic DelayedDiagnostic::makeDeprecation(SourceLocation Loc,
                                     const NamedDecl *D,
                                     const ObjCInterfaceDecl *UnknownObjCClass,
                                     const ObjCPropertyDecl  *ObjCProperty,
-                                    StringRef Msg,
-                                    bool ObjCPropertyAccess) {
+                                    StringRef Msg) {
   DelayedDiagnostic DD;
-  switch (AD) {
-    case Sema::AD_Deprecation:
-      DD.Kind = Deprecation;
-      break;
-    case Sema::AD_Unavailable:
-      DD.Kind = Unavailable;
-      break;
-  }
+  DD.Kind = Deprecation;
   DD.Triggered = false;
   DD.Loc = Loc;
   DD.DeprecationData.Decl = D;
   DD.DeprecationData.UnknownObjCClass = UnknownObjCClass;
   DD.DeprecationData.ObjCProperty = ObjCProperty;
-  char *MessageData = nullptr;
+  char *MessageData = 0;
   if (Msg.size()) {
     MessageData = new char [Msg.size()];
     memcpy(MessageData, Msg.data(), Msg.size());
@@ -49,18 +39,16 @@ DelayedDiagnostic::makeAvailability(Sema::AvailabilityDiagnostic AD,
 
   DD.DeprecationData.Message = MessageData;
   DD.DeprecationData.MessageLen = Msg.size();
-  DD.DeprecationData.ObjCPropertyAccess = ObjCPropertyAccess;
   return DD;
 }
 
 void DelayedDiagnostic::Destroy() {
-  switch (static_cast<DDKind>(Kind)) {
+  switch (Kind) {
   case Access: 
     getAccessData().~AccessedEntity(); 
     break;
 
-  case Deprecation:
-  case Unavailable:
+  case Deprecation: 
     delete [] DeprecationData.Message;
     break;
 

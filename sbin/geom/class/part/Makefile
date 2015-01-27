@@ -4,6 +4,7 @@
 
 GEOM_CLASS=	part
 
-LIBADD=	util
+DPADD=	${LIBUTIL}
+LDADD=	-lutil
 
 .include <bsd.lib.mk>

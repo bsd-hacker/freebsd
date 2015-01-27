@@ -410,7 +410,7 @@ cfi_attach(device_t dev)
 		    device_get_nameunit(dev)) < (sizeof(name) - 1) &&
 		    snprintf(value, sizeof(value), "0x%016jx", ppr) <
 		    (sizeof(value) - 1))
-			(void) kern_setenv(name, value);
+			(void) setenv(name, value);
 	}
 #endif
 

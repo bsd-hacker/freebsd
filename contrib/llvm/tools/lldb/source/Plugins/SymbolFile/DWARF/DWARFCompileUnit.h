@@ -54,7 +54,8 @@ public:
     dw_addr_t   GetBaseAddress() const { return m_base_addr; }
     void        ClearDIEs(bool keep_compile_unit_die);
     void        BuildAddressRangeTable (SymbolFileDWARF* dwarf2Data,
-                                        DWARFDebugAranges* debug_aranges);
+                                        DWARFDebugAranges* debug_aranges,
+                                        bool clear_dies_if_already_not_parsed);
 
     void
     SetBaseAddress(dw_addr_t base_addr)

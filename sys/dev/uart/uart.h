@@ -65,7 +65,6 @@ struct uart_bas {
 struct uart_class;
 
 extern struct uart_class uart_imx_class __attribute__((weak));
-extern struct uart_class uart_msm_class __attribute__((weak));
 extern struct uart_class uart_ns8250_class __attribute__((weak));
 extern struct uart_class uart_quicc_class __attribute__((weak));
 extern struct uart_class uart_s3c2410_class __attribute__((weak));
@@ -78,7 +77,6 @@ extern struct uart_class uart_cdnc_class __attribute__((weak));
 extern struct uart_class uart_ti8250_class __attribute__((weak));
 extern struct uart_class uart_vybrid_class __attribute__((weak));
 extern struct uart_class at91_usart_class __attribute__((weak));
-extern struct uart_class uart_exynos4210_class __attribute__((weak));
 
 #ifdef FDT
 struct ofw_compat_data;

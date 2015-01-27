@@ -84,13 +84,7 @@
 #    include "util/mini_event.h"
 #  endif
 #else
-#  ifdef HAVE_EVENT_H
-#    include <event.h>
-#  else
-#    include "event2/event.h"
-#    include "event2/event_struct.h"
-#    include "event2/event_compat.h"
-#  endif
+#  include <event.h>
 #endif
 
 #ifdef UB_ON_WINDOWS
@@ -269,6 +263,8 @@ checkrlimits(struct config_file* cfg)
 #ifdef HAVE_SETRLIMIT
 		if(setrlimit(RLIMIT_NOFILE, &rlim) < 0) {
 			log_warn("setrlimit: %s", strerror(errno));
+#else
+		if(1) {
 #endif
 			log_warn("cannot increase max open fds from %u to %u",
 				(unsigned)avail, (unsigned)total+10);
@@ -284,10 +280,8 @@ checkrlimits(struct config_file* cfg)
 			log_warn("increase ulimit or decrease threads, "
 				"ports in config to remove this warning");
 			return;
-#ifdef HAVE_SETRLIMIT
 		}
-#endif
-		verbose(VERB_ALGO, "increased limit(open files) from %u to %u",
+		log_warn("increased limit(open files) from %u to %u",
 			(unsigned)avail, (unsigned)total+10);
 	}
 #else	
@@ -299,14 +293,10 @@ checkrlimits(struct config_file* cfg)
 /** set verbosity, check rlimits, cache settings */
 static void
 apply_settings(struct daemon* daemon, struct config_file* cfg, 
-	int cmdline_verbose, int debug_mode)
+	int cmdline_verbose)
 {
 	/* apply if they have changed */
 	verbosity = cmdline_verbose + cfg->verbosity;
-	if (debug_mode > 1) {
-		cfg->use_syslog = 0;
-		cfg->logfile = NULL;
-	}
 	daemon_apply_cfg(daemon, cfg);
 	checkrlimits(cfg);
 }
@@ -443,10 +433,18 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 {
 #ifdef HAVE_GETPWNAM
 	struct passwd *pwd = NULL;
+	uid_t uid;
+	gid_t gid;
+	/* initialize, but not to 0 (root) */
+	memset(&uid, 112, sizeof(uid));
+	memset(&gid, 112, sizeof(gid));
+	log_assert(cfg);
 
 	if(cfg->username && cfg->username[0]) {
 		if((pwd = getpwnam(cfg->username)) == NULL)
 			fatal_exit("user '%s' does not exist.", cfg->username);
+		uid = pwd->pw_uid;
+		gid = pwd->pw_gid;
 		/* endpwent below, in case we need pwd for setusercontext */
 	}
 #endif
@@ -503,11 +501,18 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 #ifdef HAVE_KILL
 	if(cfg->pidfile && cfg->pidfile[0]) {
 		writepid(daemon->pidfile, getpid());
-		if(cfg->username && cfg->username[0]) {
-			if(chown(daemon->pidfile, cfg->uid, cfg->gid) == -1) {
+		if(!(cfg->chrootdir && cfg->chrootdir[0]) || 
+			(cfg->chrootdir && cfg->chrootdir[0] && 
+			strncmp(daemon->pidfile, cfg->chrootdir, 
+			strlen(cfg->chrootdir))==0)) {
+			/* delete of pidfile could potentially work,
+			 * chown to get permissions */
+			if(cfg->username && cfg->username[0]) {
+			  if(chown(daemon->pidfile, uid, gid) == -1) {
 				log_err("cannot chown %u.%u %s: %s",
-					(unsigned)cfg->uid, (unsigned)cfg->gid,
+					(unsigned)uid, (unsigned)gid,
 					daemon->pidfile, strerror(errno));
+			  }
 			}
 		}
 	}
@@ -522,7 +527,7 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 		/* setusercontext does initgroups, setuid, setgid, and
 		 * also resource limits from login config, but we
 		 * still call setresuid, setresgid to be sure to set all uid*/
-		if(setusercontext(NULL, pwd, cfg->uid, (unsigned)
+		if(setusercontext(NULL, pwd, uid, (unsigned)
 			LOGIN_SETALL & ~LOGIN_SETUSER & ~LOGIN_SETGROUP) != 0)
 			log_warn("unable to setusercontext %s: %s",
 				cfg->username, strerror(errno));
@@ -586,27 +591,27 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 #ifdef HAVE_GETPWNAM
 	if(cfg->username && cfg->username[0]) {
 #  ifdef HAVE_INITGROUPS
-		if(initgroups(cfg->username, cfg->gid) != 0)
+		if(initgroups(cfg->username, gid) != 0)
 			log_warn("unable to initgroups %s: %s",
 				cfg->username, strerror(errno));
 #  endif /* HAVE_INITGROUPS */
 		endpwent();
 
 #ifdef HAVE_SETRESGID
-		if(setresgid(cfg->gid,cfg->gid,cfg->gid) != 0)
+		if(setresgid(gid,gid,gid) != 0)
 #elif defined(HAVE_SETREGID) && !defined(DARWIN_BROKEN_SETREUID)
-		if(setregid(cfg->gid,cfg->gid) != 0)
+		if(setregid(gid,gid) != 0)
 #else /* use setgid */
-		if(setgid(cfg->gid) != 0)
+		if(setgid(gid) != 0)
 #endif /* HAVE_SETRESGID */
 			fatal_exit("unable to set group id of %s: %s", 
 				cfg->username, strerror(errno));
 #ifdef HAVE_SETRESUID
-		if(setresuid(cfg->uid,cfg->uid,cfg->uid) != 0)
+		if(setresuid(uid,uid,uid) != 0)
 #elif defined(HAVE_SETREUID) && !defined(DARWIN_BROKEN_SETREUID)
-		if(setreuid(cfg->uid,cfg->uid) != 0)
+		if(setreuid(uid,uid) != 0)
 #else /* use setuid */
-		if(setuid(cfg->uid) != 0)
+		if(setuid(uid) != 0)
 #endif /* HAVE_SETRESUID */
 			fatal_exit("unable to set user id of %s: %s", 
 				cfg->username, strerror(errno));
@@ -650,8 +655,7 @@ run_daemon(const char* cfgfile, int cmdline_verbose, int debug_mode)
 					cfgfile);
 			log_warn("Continuing with default config settings");
 		}
-		apply_settings(daemon, cfg, cmdline_verbose, debug_mode);
-		config_lookup_uid(cfg);
+		apply_settings(daemon, cfg, cmdline_verbose);
 	
 		/* prepare */
 		if(!daemon_open_shared_ports(daemon))
@@ -731,7 +735,7 @@ main(int argc, char* argv[])
 			verbosity++;
 			break;
 		case 'd':
-			debug_mode++;
+			debug_mode = 1;
 			break;
 		case 'w':
 			winopt = optarg;

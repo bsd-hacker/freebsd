@@ -23,10 +23,15 @@ LDADD=	-L${LIBSVN_WCDIR} -lsvn_wc \
 	-L${LIBSVN_DIFFDIR} -lsvn_diff \
 	-L${LIBSVN_SUBRDIR} -lsvn_subr \
 	-L${LIBAPR_UTILDIR} -lapr-util \
-	-L${LIBAPRDIR} -lapr
-LIBADD+=	bsdxml sqlite3 z pthread
+	-lbsdxml \
+	-L${LIBAPRDIR} -lapr \
+	-L${LIBSQLITEDIR} -lsqlite3 \
+	-lz -lcrypt
 
 DPADD=	${LIBSVN_WC} ${LIBSVN_DELTA} ${LIBSVN_DIFF} ${LIBSVN_SUBR} \
-	${LIBSERF} ${LIBAPR_UTIL}${LIBAPR}
+	${LIBSERF} ${LIBAPR_UTIL} ${LIBBSDXML} ${LIBAPR} ${LIBSQLITE} \
+	${LIBZ} ${LIBCRYPT}
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

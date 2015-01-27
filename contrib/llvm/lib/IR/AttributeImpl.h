@@ -39,7 +39,7 @@ class AttributeImpl : public FoldingSetNode {
 protected:
   enum AttrEntryKind {
     EnumAttrEntry,
-    IntAttrEntry,
+    AlignAttrEntry,
     StringAttrEntry
   };
 
@@ -49,7 +49,7 @@ public:
   virtual ~AttributeImpl();
 
   bool isEnumAttribute() const { return KindID == EnumAttrEntry; }
-  bool isIntAttribute() const { return KindID == IntAttrEntry; }
+  bool isAlignAttribute() const { return KindID == AlignAttrEntry; }
   bool isStringAttribute() const { return KindID == StringAttrEntry; }
 
   bool hasAttribute(Attribute::AttrKind A) const;
@@ -67,7 +67,7 @@ public:
   void Profile(FoldingSetNodeID &ID) const {
     if (isEnumAttribute())
       Profile(ID, getKindAsEnum(), 0);
-    else if (isIntAttribute())
+    else if (isAlignAttribute())
       Profile(ID, getKindAsEnum(), getValueAsInt());
     else
       Profile(ID, getKindAsString(), getValueAsString());
@@ -108,20 +108,19 @@ public:
   Attribute::AttrKind getEnumKind() const { return Kind; }
 };
 
-class IntAttributeImpl : public EnumAttributeImpl {
-  void anchor() override;
-  uint64_t Val;
+class AlignAttributeImpl : public EnumAttributeImpl {
+  virtual void anchor();
+  unsigned Align;
 
 public:
-  IntAttributeImpl(Attribute::AttrKind Kind, uint64_t Val)
-      : EnumAttributeImpl(IntAttrEntry, Kind), Val(Val) {
+  AlignAttributeImpl(Attribute::AttrKind Kind, unsigned Align)
+      : EnumAttributeImpl(AlignAttrEntry, Kind), Align(Align) {
     assert(
-        (Kind == Attribute::Alignment || Kind == Attribute::StackAlignment ||
-         Kind == Attribute::Dereferenceable) &&
-        "Wrong kind for int attribute!");
+        (Kind == Attribute::Alignment || Kind == Attribute::StackAlignment) &&
+        "Wrong kind for alignment attribute!");
   }
 
-  uint64_t getValue() const { return Val; }
+  unsigned getAlignment() const { return Align; }
 };
 
 class StringAttributeImpl : public AttributeImpl {
@@ -165,7 +164,6 @@ public:
 
   unsigned getAlignment() const;
   unsigned getStackAlignment() const;
-  uint64_t getDereferenceableBytes() const;
   std::string getAsString(bool InAttrGrp) const;
 
   typedef const Attribute *iterator;

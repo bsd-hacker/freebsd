@@ -414,7 +414,6 @@
 #define NT_PROCSTAT_OSREL	14
 #define NT_PROCSTAT_PSSTRINGS	15
 #define NT_PROCSTAT_AUXV	16
-#define	NT_X86_XSTATE		0x202
 
 
 /* Note segments for core files on NetBSD systems.  Note name

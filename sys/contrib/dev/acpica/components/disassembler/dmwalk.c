@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGES.
  */
+
 
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
@@ -284,8 +285,7 @@ AcpiDmBlockType (
 
     case AML_BUFFER_OP:
 
-        if ((Op->Common.DisasmOpcode == ACPI_DASM_UNICODE) ||
-            (Op->Common.DisasmOpcode == ACPI_DASM_UUID))
+        if (Op->Common.DisasmOpcode == ACPI_DASM_UNICODE)
         {
             return (BLOCK_NONE);
         }
@@ -568,7 +568,7 @@ AcpiDmDescendingOp (
 
                 /* Check for _HID and related EISAID() */
 
-                AcpiDmCheckForHardwareId (Op);
+                AcpiDmIsEisaId (Op);
                 AcpiOsPrintf (", ");
                 break;
 
@@ -842,15 +842,6 @@ AcpiDmAscendingOp (
             AcpiDmFieldPredefinedDescription (Op);
         }
 
-        /* Decode Notify() values */
-
-        if (Op->Common.AmlOpcode == AML_NOTIFY_OP)
-        {
-            AcpiDmNotifyDescription (Op);
-        }
-
-        AcpiDmDisplayTargetPathname (Op);
-
         /* Could be a nested operator, check if comma required */
 
         if (!AcpiDmCommaIfListMember (Op))
@@ -958,13 +949,6 @@ AcpiDmAscendingOp (
         }
 
         /*
-         * The parent Op is guaranteed to be valid because of the flag
-         * ACPI_PARSEOP_PARAMLIST -- which means that this op is part of
-         * a parameter list and thus has a valid parent.
-         */
-        ParentOp = Op->Common.Parent;
-
-        /*
          * Just completed a parameter node for something like "Buffer (param)".
          * Close the paren and open up the term list block with a brace
          */
@@ -972,24 +956,25 @@ AcpiDmAscendingOp (
         {
             AcpiOsPrintf (")");
 
-            /*
-             * Emit a description comment for a Name() operator that is a
-             * predefined ACPI name. Must check the grandparent.
-             */
-            ParentOp = ParentOp->Common.Parent;
-            if (ParentOp &&
-                (ParentOp->Asl.AmlOpcode == AML_NAME_OP))
-            {
-                AcpiDmPredefinedDescription (ParentOp);
-            }
+            /* Emit description comment for Name() with a predefined ACPI name */
 
+            ParentOp = Op->Common.Parent;
+            if (ParentOp)
+            {
+                ParentOp = ParentOp->Common.Parent;
+                if (ParentOp && ParentOp->Asl.AmlOpcode == AML_NAME_OP)
+                {
+                    AcpiDmPredefinedDescription (ParentOp);
+                }
+            }
             AcpiOsPrintf ("\n");
             AcpiDmIndent (Level - 1);
             AcpiOsPrintf ("{\n");
         }
         else
         {
-            ParentOp->Common.DisasmFlags |= ACPI_PARSEOP_EMPTY_TERMLIST;
+            Op->Common.Parent->Common.DisasmFlags |=
+                                    ACPI_PARSEOP_EMPTY_TERMLIST;
             AcpiOsPrintf (") {");
         }
     }

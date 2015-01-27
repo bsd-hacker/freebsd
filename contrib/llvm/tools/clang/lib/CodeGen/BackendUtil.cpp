@@ -13,15 +13,13 @@
 #include "clang/Basic/TargetOptions.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
-#include "clang/Frontend/Utils.h"
-#include "llvm/ADT/StringSwitch.h"
-#include "llvm/Bitcode/BitcodeWriterPass.h"
+#include "llvm/Analysis/Verifier.h"
+#include "llvm/Assembly/PrintModulePass.h"
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Verifier.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
@@ -38,7 +36,6 @@
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
-#include <memory>
 using namespace clang;
 using namespace llvm;
 
@@ -58,37 +55,38 @@ class EmitAssemblyHelper {
   mutable FunctionPassManager *PerFunctionPasses;
 
 private:
-  PassManager *getCodeGenPasses() const {
+  PassManager *getCodeGenPasses(TargetMachine *TM) const {
     if (!CodeGenPasses) {
       CodeGenPasses = new PassManager();
-      CodeGenPasses->add(new DataLayoutPass(TheModule));
+      CodeGenPasses->add(new DataLayout(TheModule));
       if (TM)
         TM->addAnalysisPasses(*CodeGenPasses);
     }
     return CodeGenPasses;
   }
 
-  PassManager *getPerModulePasses() const {
+  PassManager *getPerModulePasses(TargetMachine *TM) const {
     if (!PerModulePasses) {
       PerModulePasses = new PassManager();
-      PerModulePasses->add(new DataLayoutPass(TheModule));
+      PerModulePasses->add(new DataLayout(TheModule));
       if (TM)
         TM->addAnalysisPasses(*PerModulePasses);
     }
     return PerModulePasses;
   }
 
-  FunctionPassManager *getPerFunctionPasses() const {
+  FunctionPassManager *getPerFunctionPasses(TargetMachine *TM) const {
     if (!PerFunctionPasses) {
       PerFunctionPasses = new FunctionPassManager(TheModule);
-      PerFunctionPasses->add(new DataLayoutPass(TheModule));
+      PerFunctionPasses->add(new DataLayout(TheModule));
       if (TM)
         TM->addAnalysisPasses(*PerFunctionPasses);
     }
     return PerFunctionPasses;
   }
 
-  void CreatePasses();
+
+  void CreatePasses(TargetMachine *TM);
 
   /// CreateTargetMachine - Generates the TargetMachine.
   /// Returns Null if it is unable to create the target machine.
@@ -103,7 +101,8 @@ private:
   /// AddEmitPasses - Add passes necessary to emit assembly or LLVM IR.
   ///
   /// \return True on success.
-  bool AddEmitPasses(BackendAction Action, formatted_raw_ostream &OS);
+  bool AddEmitPasses(BackendAction Action, formatted_raw_ostream &OS,
+                     TargetMachine *TM);
 
 public:
   EmitAssemblyHelper(DiagnosticsEngine &_Diags,
@@ -113,18 +112,13 @@ public:
                      Module *M)
     : Diags(_Diags), CodeGenOpts(CGOpts), TargetOpts(TOpts), LangOpts(LOpts),
       TheModule(M), CodeGenerationTime("Code Generation Time"),
-      CodeGenPasses(nullptr), PerModulePasses(nullptr),
-      PerFunctionPasses(nullptr) {}
+      CodeGenPasses(0), PerModulePasses(0), PerFunctionPasses(0) {}
 
   ~EmitAssemblyHelper() {
     delete CodeGenPasses;
     delete PerModulePasses;
     delete PerFunctionPasses;
-    if (CodeGenOpts.DisableFree)
-      BuryPointer(TM.release());
   }
-
-  std::unique_ptr<TargetMachine> TM;
 
   void EmitAssembly(BackendAction Action, raw_ostream *OS);
 };
@@ -168,11 +162,6 @@ static void addSampleProfileLoaderPass(const PassManagerBuilder &Builder,
   PM.add(createSampleProfileLoaderPass(CGOpts.SampleProfileFile));
 }
 
-static void addAddDiscriminatorsPass(const PassManagerBuilder &Builder,
-                                     PassManagerBase &PM) {
-  PM.add(createAddDiscriminatorsPass());
-}
-
 static void addBoundsCheckingPass(const PassManagerBuilder &Builder,
                                     PassManagerBase &PM) {
   PM.add(createBoundsCheckingPass());
@@ -180,8 +169,20 @@ static void addBoundsCheckingPass(const PassManagerBuilder &Builder,
 
 static void addAddressSanitizerPasses(const PassManagerBuilder &Builder,
                                       PassManagerBase &PM) {
-  PM.add(createAddressSanitizerFunctionPass());
-  PM.add(createAddressSanitizerModulePass());
+  const PassManagerBuilderWrapper &BuilderWrapper =
+      static_cast<const PassManagerBuilderWrapper&>(Builder);
+  const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
+  const LangOptions &LangOpts = BuilderWrapper.getLangOpts();
+  PM.add(createAddressSanitizerFunctionPass(
+      LangOpts.Sanitize.InitOrder,
+      LangOpts.Sanitize.UseAfterReturn,
+      LangOpts.Sanitize.UseAfterScope,
+      CGOpts.SanitizerBlacklistFile,
+      CGOpts.SanitizeAddressZeroBaseShadow));
+  PM.add(createAddressSanitizerModulePass(
+      LangOpts.Sanitize.InitOrder,
+      CGOpts.SanitizerBlacklistFile,
+      CGOpts.SanitizeAddressZeroBaseShadow));
 }
 
 static void addMemorySanitizerPass(const PassManagerBuilder &Builder,
@@ -189,7 +190,8 @@ static void addMemorySanitizerPass(const PassManagerBuilder &Builder,
   const PassManagerBuilderWrapper &BuilderWrapper =
       static_cast<const PassManagerBuilderWrapper&>(Builder);
   const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
-  PM.add(createMemorySanitizerPass(CGOpts.SanitizeMemoryTrackOrigins));
+  PM.add(createMemorySanitizerPass(CGOpts.SanitizeMemoryTrackOrigins,
+                                   CGOpts.SanitizerBlacklistFile));
 
   // MemorySanitizer inserts complex instrumentation that mostly follows
   // the logic of the original code, but operates on "shadow" values.
@@ -206,7 +208,10 @@ static void addMemorySanitizerPass(const PassManagerBuilder &Builder,
 
 static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
                                    PassManagerBase &PM) {
-  PM.add(createThreadSanitizerPass());
+  const PassManagerBuilderWrapper &BuilderWrapper =
+      static_cast<const PassManagerBuilderWrapper&>(Builder);
+  const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
+  PM.add(createThreadSanitizerPass(CGOpts.SanitizerBlacklistFile));
 }
 
 static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
@@ -217,7 +222,7 @@ static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
   PM.add(createDataFlowSanitizerPass(CGOpts.SanitizerBlacklistFile));
 }
 
-void EmitAssemblyHelper::CreatePasses() {
+void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
   unsigned OptLevel = CodeGenOpts.OptimizationLevel;
   CodeGenOptions::InliningMethod Inlining = CodeGenOpts.getInlining();
 
@@ -235,13 +240,9 @@ void EmitAssemblyHelper::CreatePasses() {
   PMBuilder.SLPVectorize = CodeGenOpts.VectorizeSLP;
   PMBuilder.LoopVectorize = CodeGenOpts.VectorizeLoop;
 
-  PMBuilder.DisableTailCalls = CodeGenOpts.DisableTailCalls;
   PMBuilder.DisableUnitAtATime = !CodeGenOpts.UnitAtATime;
   PMBuilder.DisableUnrollLoops = !CodeGenOpts.UnrollLoops;
   PMBuilder.RerollLoops = CodeGenOpts.RerollLoops;
-
-  PMBuilder.addExtension(PassManagerBuilder::EP_EarlyAsPossible,
-                         addAddDiscriminatorsPass);
 
   if (!CodeGenOpts.SampleProfileFile.empty())
     PMBuilder.addExtension(PassManagerBuilder::EP_EarlyAsPossible,
@@ -297,12 +298,19 @@ void EmitAssemblyHelper::CreatePasses() {
   PMBuilder.LibraryInfo = new TargetLibraryInfo(TargetTriple);
   if (!CodeGenOpts.SimplifyLibCalls)
     PMBuilder.LibraryInfo->disableAllFunctions();
-
+  
   switch (Inlining) {
   case CodeGenOptions::NoInlining: break;
   case CodeGenOptions::NormalInlining: {
-    PMBuilder.Inliner =
-        createFunctionInliningPass(OptLevel, CodeGenOpts.OptimizeSize);
+    // FIXME: Derive these constants in a principled fashion.
+    unsigned Threshold = 225;
+    if (CodeGenOpts.OptimizeSize == 1)      // -Os
+      Threshold = 75;
+    else if (CodeGenOpts.OptimizeSize == 2) // -Oz
+      Threshold = 25;
+    else if (OptLevel > 2)
+      Threshold = 275;
+    PMBuilder.Inliner = createFunctionInliningPass(Threshold);
     break;
   }
   case CodeGenOptions::OnlyAlwaysInlining:
@@ -316,15 +324,13 @@ void EmitAssemblyHelper::CreatePasses() {
   }
 
   // Set up the per-function pass manager.
-  FunctionPassManager *FPM = getPerFunctionPasses();
+  FunctionPassManager *FPM = getPerFunctionPasses(TM);
   if (CodeGenOpts.VerifyModule)
     FPM->add(createVerifierPass());
   PMBuilder.populateFunctionPassManager(*FPM);
 
   // Set up the per-module pass manager.
-  PassManager *MPM = getPerModulePasses();
-  if (CodeGenOpts.VerifyModule)
-    MPM->add(createDebugInfoVerifierPass());
+  PassManager *MPM = getPerModulePasses(TM);
 
   if (!CodeGenOpts.DisableGCov &&
       (CodeGenOpts.EmitGcovArcs || CodeGenOpts.EmitGcovNotes)) {
@@ -354,19 +360,32 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   if (!TheTarget) {
     if (MustCreateTM)
       Diags.Report(diag::err_fe_unable_to_create_target) << Error;
-    return nullptr;
+    return 0;
   }
 
-  unsigned CodeModel =
-    llvm::StringSwitch<unsigned>(CodeGenOpts.CodeModel)
-      .Case("small", llvm::CodeModel::Small)
-      .Case("kernel", llvm::CodeModel::Kernel)
-      .Case("medium", llvm::CodeModel::Medium)
-      .Case("large", llvm::CodeModel::Large)
-      .Case("default", llvm::CodeModel::Default)
-      .Default(~0u);
-  assert(CodeModel != ~0u && "invalid code model!");
-  llvm::CodeModel::Model CM = static_cast<llvm::CodeModel::Model>(CodeModel);
+  // FIXME: Expose these capabilities via actual APIs!!!! Aside from just
+  // being gross, this is also totally broken if we ever care about
+  // concurrency.
+
+  TargetMachine::setAsmVerbosityDefault(CodeGenOpts.AsmVerbose);
+
+  TargetMachine::setFunctionSections(CodeGenOpts.FunctionSections);
+  TargetMachine::setDataSections    (CodeGenOpts.DataSections);
+
+  // FIXME: Parse this earlier.
+  llvm::CodeModel::Model CM;
+  if (CodeGenOpts.CodeModel == "small") {
+    CM = llvm::CodeModel::Small;
+  } else if (CodeGenOpts.CodeModel == "kernel") {
+    CM = llvm::CodeModel::Kernel;
+  } else if (CodeGenOpts.CodeModel == "medium") {
+    CM = llvm::CodeModel::Medium;
+  } else if (CodeGenOpts.CodeModel == "large") {
+    CM = llvm::CodeModel::Large;
+  } else {
+    assert(CodeGenOpts.CodeModel.empty() && "Invalid code model!");
+    CM = llvm::CodeModel::Default;
+  }
 
   SmallVector<const char *, 16> BackendArgs;
   BackendArgs.push_back("clang"); // Fake program name.
@@ -383,8 +402,8 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   for (unsigned i = 0, e = CodeGenOpts.BackendOptions.size(); i != e; ++i)
     BackendArgs.push_back(CodeGenOpts.BackendOptions[i].c_str());
   if (CodeGenOpts.NoGlobalMerge)
-    BackendArgs.push_back("-enable-global-merge=false");
-  BackendArgs.push_back(nullptr);
+    BackendArgs.push_back("-global-merge=false");
+  BackendArgs.push_back(0);
   llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1,
                                     BackendArgs.data());
 
@@ -417,12 +436,6 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   }
 
   llvm::TargetOptions Options;
-
-  if (CodeGenOpts.DisableIntegratedAS)
-    Options.DisableIntegratedAS = true;
-
-  if (CodeGenOpts.CompressDebugSections)
-    Options.CompressDebugSections = true;
 
   // Set frame pointer elimination mode.
   if (!CodeGenOpts.DisableFPElim) {
@@ -469,27 +482,32 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   Options.DisableTailCalls = CodeGenOpts.DisableTailCalls;
   Options.TrapFuncName = CodeGenOpts.TrapFuncName;
   Options.PositionIndependentExecutable = LangOpts.PIELevel != 0;
-  Options.FunctionSections = CodeGenOpts.FunctionSections;
-  Options.DataSections = CodeGenOpts.DataSections;
-
-  Options.MCOptions.MCRelaxAll = CodeGenOpts.RelaxAll;
-  Options.MCOptions.MCSaveTempLabels = CodeGenOpts.SaveTempLabels;
-  Options.MCOptions.MCUseDwarfDirectory = !CodeGenOpts.NoDwarfDirectoryAsm;
-  Options.MCOptions.MCNoExecStack = CodeGenOpts.NoExecStack;
-  Options.MCOptions.AsmVerbose = CodeGenOpts.AsmVerbose;
+  Options.EnableSegmentedStacks = CodeGenOpts.EnableSegmentedStacks;
 
   TargetMachine *TM = TheTarget->createTargetMachine(Triple, TargetOpts.CPU,
                                                      FeaturesStr, Options,
                                                      RM, CM, OptLevel);
 
+  if (CodeGenOpts.RelaxAll)
+    TM->setMCRelaxAll(true);
+  if (CodeGenOpts.SaveTempLabels)
+    TM->setMCSaveTempLabels(true);
+  if (CodeGenOpts.NoDwarf2CFIAsm)
+    TM->setMCUseCFI(false);
+  if (!CodeGenOpts.NoDwarfDirectoryAsm)
+    TM->setMCUseDwarfDirectory(true);
+  if (CodeGenOpts.NoExecStack)
+    TM->setMCNoExecStack(true);
+
   return TM;
 }
 
 bool EmitAssemblyHelper::AddEmitPasses(BackendAction Action,
-                                       formatted_raw_ostream &OS) {
+                                       formatted_raw_ostream &OS,
+                                       TargetMachine *TM) {
 
   // Create the code generator passes.
-  PassManager *PM = getCodeGenPasses();
+  PassManager *PM = getCodeGenPasses(TM);
 
   // Add LibraryInfo.
   llvm::Triple TargetTriple(TheModule->getTargetTriple());
@@ -528,34 +546,33 @@ bool EmitAssemblyHelper::AddEmitPasses(BackendAction Action,
 }
 
 void EmitAssemblyHelper::EmitAssembly(BackendAction Action, raw_ostream *OS) {
-  TimeRegion Region(llvm::TimePassesIsEnabled ? &CodeGenerationTime : nullptr);
+  TimeRegion Region(llvm::TimePassesIsEnabled ? &CodeGenerationTime : 0);
   llvm::formatted_raw_ostream FormattedOS;
 
   bool UsesCodeGen = (Action != Backend_EmitNothing &&
                       Action != Backend_EmitBC &&
                       Action != Backend_EmitLL);
-  if (!TM)
-    TM.reset(CreateTargetMachine(UsesCodeGen));
-
+  TargetMachine *TM = CreateTargetMachine(UsesCodeGen);
   if (UsesCodeGen && !TM) return;
-  CreatePasses();
+  llvm::OwningPtr<TargetMachine> TMOwner(CodeGenOpts.DisableFree ? 0 : TM);
+  CreatePasses(TM);
 
   switch (Action) {
   case Backend_EmitNothing:
     break;
 
   case Backend_EmitBC:
-    getPerModulePasses()->add(createBitcodeWriterPass(*OS));
+    getPerModulePasses(TM)->add(createBitcodeWriterPass(*OS));
     break;
 
   case Backend_EmitLL:
     FormattedOS.setStream(*OS, formatted_raw_ostream::PRESERVE_STREAM);
-    getPerModulePasses()->add(createPrintModulePass(FormattedOS));
+    getPerModulePasses(TM)->add(createPrintModulePass(&FormattedOS));
     break;
 
   default:
     FormattedOS.setStream(*OS, formatted_raw_ostream::PRESERVE_STREAM);
-    if (!AddEmitPasses(Action, FormattedOS))
+    if (!AddEmitPasses(Action, FormattedOS, TM))
       return;
   }
 
@@ -590,23 +607,10 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action, raw_ostream *OS) {
 void clang::EmitBackendOutput(DiagnosticsEngine &Diags,
                               const CodeGenOptions &CGOpts,
                               const clang::TargetOptions &TOpts,
-                              const LangOptions &LOpts, StringRef TDesc,
-                              Module *M, BackendAction Action,
-                              raw_ostream *OS) {
+                              const LangOptions &LOpts,
+                              Module *M,
+                              BackendAction Action, raw_ostream *OS) {
   EmitAssemblyHelper AsmHelper(Diags, CGOpts, TOpts, LOpts, M);
 
   AsmHelper.EmitAssembly(Action, OS);
-
-  // If an optional clang TargetInfo description string was passed in, use it to
-  // verify the LLVM TargetMachine's DataLayout.
-  if (AsmHelper.TM && !TDesc.empty()) {
-    std::string DLDesc =
-        AsmHelper.TM->getDataLayout()->getStringRepresentation();
-    if (DLDesc != TDesc) {
-      unsigned DiagID = Diags.getCustomDiagID(
-          DiagnosticsEngine::Error, "backend data layout '%0' does not match "
-                                    "expected target description '%1'");
-      Diags.Report(DiagID) << DLDesc << TDesc;
-    }
-  }
 }

@@ -14,7 +14,7 @@ all:		${PROG} goodaout ${TESTSCRIPTS}
 
 .for x in ${TESTSCRIPTS}
 ${x}: ${TD}/${x}
-	${CP} ${TD}/${x} .
+	cp ${TD}/${x} .
 	chmod +x ${x}
 .endfor
 

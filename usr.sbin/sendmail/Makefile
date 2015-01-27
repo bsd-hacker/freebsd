@@ -7,6 +7,8 @@ SENDMAIL_DIR=${.CURDIR}/../../contrib/sendmail
 SMDIR=	${SENDMAIL_DIR}/src
 .PATH: ${SMDIR}
 
+NO_PIE=	yes
+
 BINDIR=	/usr/libexec/sendmail
 
 PROG=	sendmail
@@ -45,7 +47,17 @@ CFLAGS+= -DNETINET6
 
 WARNS?=	1
 
-LIBADD=	util wrap sm smutil
+DPADD=	${LIBUTIL} ${LIBWRAP}
+LDADD=	-lutil -lwrap
+
+LIBSMDIR=	${.OBJDIR}/../../lib/libsm
+LIBSM=		${LIBSMDIR}/libsm.a
+
+LIBSMUTILDIR=	${.OBJDIR}/../../lib/libsmutil
+LIBSMUTIL=	${LIBSMUTILDIR}/libsmutil.a
+
+DPADD+=	${LIBSMUTIL} ${LIBSM}
+LDADD+=	${LIBSMUTIL} ${LIBSM}
 
 SRCS+=	sm_os.h
 CLEANFILES+=sm_os.h
@@ -53,7 +65,8 @@ CLEANFILES+=sm_os.h
 .if ${MK_OPENSSL} != "no"
 # STARTTLS support
 CFLAGS+=	-DSTARTTLS -D_FFR_TLS_1
-LIBADD+=	ssl crypto
+DPADD+=		${LIBSSL} ${LIBCRYPTO}
+LDADD+=		-lssl -lcrypto
 .endif
 
 # User customizations to the sendmail build environment

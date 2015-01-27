@@ -32,7 +32,7 @@ SparcELFMCAsmInfo::SparcELFMCAsmInfo(StringRef TT) {
   Data16bitsDirective = "\t.half\t";
   Data32bitsDirective = "\t.word\t";
   // .xword is only supported by V9.
-  Data64bitsDirective = (isV9) ? "\t.xword\t" : nullptr;
+  Data64bitsDirective = (isV9) ? "\t.xword\t" : 0;
   ZeroDirective = "\t.skip\t";
   CommentString = "!";
   HasLEB128 = true;
@@ -43,9 +43,7 @@ SparcELFMCAsmInfo::SparcELFMCAsmInfo(StringRef TT) {
   SunStyleELFSectionSwitchSyntax = true;
   UsesELFSectionDirectiveForBSS = true;
 
-  if (TheTriple.getOS() == llvm::Triple::Solaris ||
-      TheTriple.getOS() == llvm::Triple::OpenBSD)
-    UseIntegratedAssembler = true;
+  PrivateGlobalPrefix = ".L";
 }
 
 const MCExpr*

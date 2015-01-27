@@ -163,17 +163,18 @@ static void sscop_set_state(struct sscop *, u_int);
 	}								\
     } while(0)
 
-static inline struct sscop_msg *QFIND(sscop_msgq_head_t *q, u_int rn)
-{
-	struct sscop_msg *msg = NULL, *m;
-	MSGQ_FOREACH(m, q) {
-		if(m->seqno == rn) {
-			msg = m;
-			break;
-		}
-	}
-	return msg;
-}
+
+#define QFIND(Q,RN)							\
+    ({									\
+	struct sscop_msg *_msg = NULL, *_m;				\
+	MSGQ_FOREACH(_m, (Q)) {						\
+		if(_m->seqno == (RN)) {					\
+			_msg = _m;					\
+			break;						\
+		}							\
+	}								\
+	_msg;								\
+    })
 
 #define QINSERT(Q,M)							\
     do {								\

@@ -134,7 +134,7 @@ static void yyerror(const char *);
 extern int YYPARSE_DECL();
 
 #define YYERRCODE 256
-typedef int YYINT;
+typedef short YYINT;
 static const YYINT err_syntax10_lhs[] = {                -1,
     0,
 };

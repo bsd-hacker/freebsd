@@ -107,7 +107,7 @@ ItaniumABILanguageRuntime::GetDynamicTypeAndAddress (ValueObject &in_value,
                 if (symbol != NULL)
                 {
                     const char *name = symbol->GetMangled().GetDemangledName().AsCString();
-                    if (name && strstr(name, vtable_demangled_prefix) == name)
+                    if (strstr(name, vtable_demangled_prefix) == name)
                     {
                         Log *log (lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
                         if (log)
@@ -289,9 +289,7 @@ ItaniumABILanguageRuntime::CreateInstance (Process *process, lldb::LanguageType 
 {
     // FIXME: We have to check the process and make sure we actually know that this process supports
     // the Itanium ABI.
-    if (language == eLanguageTypeC_plus_plus ||
-        language == eLanguageTypeC_plus_plus_03 ||
-        language == eLanguageTypeC_plus_plus_11)
+    if (language == eLanguageTypeC_plus_plus)
         return new ItaniumABILanguageRuntime (process);
     else
         return NULL;

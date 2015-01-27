@@ -25,7 +25,6 @@
  */
 /*
  * Copyright (c) 2012 by Delphix. All rights reserved.
- * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -43,11 +42,11 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
-#ifdef illumos
+#if defined(sun)
 #include <alloca.h>
 #endif
 #include <libgen.h>
-#ifdef illumos
+#if defined(sun)
 #include <libproc.h>
 #endif
 
@@ -101,7 +100,7 @@ static int g_grabanon = 0;
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
 static dtrace_hdl_t *g_dtp;
-#ifdef illumos
+#if defined(sun)
 static char *g_etcfile = "/etc/system";
 static const char *g_etcbegin = "* vvvv Added by DTrace";
 static const char *g_etcend = "* ^^^^ Added by DTrace";
@@ -211,7 +210,7 @@ fatal(const char *fmt, ...)
 static void
 dfatal(const char *fmt, ...)
 {
-#if !defined(illumos) && defined(NEED_ERRLOC)
+#if !defined(sun) && defined(NEED_ERRLOC)
 	char *p_errfile = NULL;
 	int errline = 0;
 #endif
@@ -232,7 +231,7 @@ dfatal(const char *fmt, ...)
 		(void) fprintf(stderr, "%s\n",
 		    dtrace_errmsg(g_dtp, dtrace_errno(g_dtp)));
 	}
-#if !defined(illumos) && defined(NEED_ERRLOC)
+#if !defined(sun) && defined(NEED_ERRLOC)
 	dt_get_errloc(g_dtp, &p_errfile, &errline);
 	if (p_errfile != NULL)
 		printf("File '%s', line %d\n", p_errfile, errline);
@@ -397,7 +396,7 @@ dof_prune(const char *fname)
 	free(buf);
 }
 
-#ifdef illumos
+#if defined(sun)
 static void
 etcsystem_prune(void)
 {
@@ -508,13 +507,12 @@ etcsystem_add(void)
 
 	error("added forceload directives to %s\n", g_ofile);
 }
-#endif /* illumos */
+#endif
 
 static void
 print_probe_info(const dtrace_probeinfo_t *p)
 {
 	char buf[BUFSIZ];
-	char *user;
 	int i;
 
 	oprintf("\n\tProbe Description Attributes\n");
@@ -538,14 +536,10 @@ print_probe_info(const dtrace_probeinfo_t *p)
 	oprintf("\n\tArgument Types\n");
 
 	for (i = 0; i < p->dtp_argc; i++) {
-		if (p->dtp_argv[i].dtt_flags & DTT_FL_USER)
-			user = "userland ";
-		else
-			user = "";
 		if (ctf_type_name(p->dtp_argv[i].dtt_ctfp,
 		    p->dtp_argv[i].dtt_type, buf, sizeof (buf)) == NULL)
 			(void) strlcpy(buf, "(unknown)", sizeof (buf));
-		oprintf("\t\targs[%d]: %s%s\n", i, user, buf);
+		oprintf("\t\targs[%d]: %s\n", i, buf);
 	}
 
 	if (p->dtp_argc == 0)
@@ -643,7 +637,7 @@ anon_prog(const dtrace_cmd_t *dcp, dof_hdr_t *dof, int n)
 	p = (uchar_t *)dof;
 	q = p + dof->dofh_loadsz;
 
-#ifdef illumos
+#if defined(sun)
 	oprintf("dof-data-%d=0x%x", n, *p++);
 
 	while (p < q)
@@ -709,9 +703,6 @@ list_probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *arg)
 
 	if (g_verbose && dtrace_probe_info(dtp, pdp, &p) == 0)
 		print_probe_info(&p);
-
-	if (g_intr != 0)
-		return (1);
 
 	return (0);
 }
@@ -793,7 +784,7 @@ compile_str(dtrace_cmd_t *dcp)
 static void
 prochandler(struct ps_prochandle *P, const char *msg, void *arg)
 {
-#ifdef illumos
+#if defined(sun)
 	const psinfo_t *prp = Ppsinfo(P);
 	int pid = Pstatus(P)->pr_pid;
 	char name[SIG2STR_MAX];
@@ -807,13 +798,13 @@ prochandler(struct ps_prochandle *P, const char *msg, void *arg)
 		return;
 	}
 
-#ifdef illumos
+#if defined(sun)
 	switch (Pstate(P)) {
 #else
 	switch (proc_state(P)) {
 #endif
 	case PS_UNDEAD:
-#ifdef illumos
+#if defined(sun)
 		/*
 		 * Ideally we would like to always report pr_wstat here, but it
 		 * isn't possible given current /proc semantics.  If we grabbed
@@ -831,7 +822,7 @@ prochandler(struct ps_prochandle *P, const char *msg, void *arg)
 			notice("pid %d terminated by %d\n", pid,
 			    WTERMSIG(wstatus));
 #endif
-#ifdef illumos
+#if defined(sun)
 		} else if (prp != NULL && WEXITSTATUS(prp->pr_wstat) != 0) {
 			notice("pid %d exited with status %d\n",
 			    pid, WEXITSTATUS(prp->pr_wstat));
@@ -1223,34 +1214,11 @@ intr(int signo)
 		g_impatient = 1;
 }
 
-static void
-installsighands(void)
-{
-	struct sigaction act, oact;
-
-	(void) sigemptyset(&act.sa_mask);
-	act.sa_flags = 0;
-	act.sa_handler = intr;
-
-	if (sigaction(SIGINT, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGINT, &act, NULL);
-
-	if (sigaction(SIGTERM, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGTERM, &act, NULL);
-
-#ifndef illumos
-	if (sigaction(SIGPIPE, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGPIPE, &act, NULL);
-
-	if (sigaction(SIGUSR1, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGUSR1, &act, NULL);
-#endif
-}
-
 int
 main(int argc, char *argv[])
 {
 	dtrace_bufdesc_t buf;
+	struct sigaction act, oact;
 	dtrace_status_t status[2];
 	dtrace_optval_t opt;
 	dtrace_cmd_t *dcp;
@@ -1720,7 +1688,7 @@ main(int argc, char *argv[])
 
 	case DMODE_ANON:
 		if (g_ofile == NULL)
-#ifdef illumos
+#if defined(sun)
 			g_ofile = "/kernel/drv/dtrace.conf";
 #else
 			/*
@@ -1732,7 +1700,7 @@ main(int argc, char *argv[])
 #endif
 
 		dof_prune(g_ofile); /* strip out any old DOF directives */
-#ifdef illumos
+#if defined(sun)
 		etcsystem_prune(); /* string out any forceload directives */
 #endif
 
@@ -1765,7 +1733,7 @@ main(int argc, char *argv[])
 		 * that itself contains a #pragma D option quiet.
 		 */
 		error("saved anonymous enabling in %s\n", g_ofile);
-#ifdef illumos
+#if defined(sun)
 		etcsystem_add();
 		error("run update_drv(1M) or reboot to enable changes\n");
 #endif
@@ -1801,8 +1769,6 @@ main(int argc, char *argv[])
 	case DMODE_LIST:
 		if (g_ofile != NULL && (g_ofp = fopen(g_ofile, "a")) == NULL)
 			fatal("failed to open output file '%s'", g_ofile);
-
-		installsighands();
 
 		oprintf("%5s %10s %17s %33s %s\n",
 		    "ID", "PROVIDER", "MODULE", "FUNCTION", "NAME");
@@ -1889,7 +1855,20 @@ main(int argc, char *argv[])
 	if (opt != DTRACEOPT_UNSET)
 		notice("allowing destructive actions\n");
 
-	installsighands();
+	(void) sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	act.sa_handler = intr;
+
+	if (sigaction(SIGINT, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGINT, &act, NULL);
+
+	if (sigaction(SIGTERM, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGTERM, &act, NULL);
+
+#if !defined(sun)
+	if (sigaction(SIGUSR1, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGUSR1, &act, NULL);
+#endif
 
 	/*
 	 * Now that tracing is active and we are ready to consume trace data,

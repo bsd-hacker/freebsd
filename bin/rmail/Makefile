@@ -14,7 +14,13 @@ MAN=	rmail.8
 WARNS?=	2
 CFLAGS+=-I${SENDMAIL_DIR}/include -I.
 
-LIBADD=	sm
+NO_PIE=	yes
+
+LIBSMDIR=	${.OBJDIR}/../../lib/libsm
+LIBSM=		${LIBSMDIR}/libsm.a
+
+DPADD=	${LIBSM}
+LDADD=	${LIBSM}
 
 SRCS+=	sm_os.h
 CLEANFILES+=sm_os.h

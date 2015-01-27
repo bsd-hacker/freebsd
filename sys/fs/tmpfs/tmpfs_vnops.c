@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/rwlock.h>
 #include <sys/sched.h>
+#include <sys/sf_buf.h>
 #include <sys/stat.h>
 #include <sys/systm.h>
 #include <sys/sysctl.h>
@@ -67,13 +68,7 @@ SYSCTL_INT(_vfs_tmpfs, OID_AUTO, rename_restarts, CTLFLAG_RD,
     __DEVOLATILE(int *, &tmpfs_rename_restarts), 0,
     "Times rename had to restart due to lock contention");
 
-static int
-tmpfs_vn_get_ino_alloc(struct mount *mp, void *arg, int lkflags,
-    struct vnode **rvp)
-{
-
-	return (tmpfs_alloc_vp(mp, arg, lkflags, rvp));
-}
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_lookup(struct vop_cachedlookup_args *v)
@@ -81,9 +76,10 @@ tmpfs_lookup(struct vop_cachedlookup_args *v)
 	struct vnode *dvp = v->a_dvp;
 	struct vnode **vpp = v->a_vpp;
 	struct componentname *cnp = v->a_cnp;
+
+	int error;
 	struct tmpfs_dirent *de;
 	struct tmpfs_node *dnode;
-	int error;
 
 	dnode = VP_TO_TMPFS_DIR(dvp);
 	*vpp = NULLVP;
@@ -104,10 +100,17 @@ tmpfs_lookup(struct vop_cachedlookup_args *v)
 		goto out;
 	}
 	if (cnp->cn_flags & ISDOTDOT) {
-		error = vn_vget_ino_gen(dvp, tmpfs_vn_get_ino_alloc,
-		    dnode->tn_dir.tn_parent, cnp->cn_lkflags, vpp);
-		if (error != 0)
-			goto out;
+		int ltype = 0;
+
+		ltype = VOP_ISLOCKED(dvp);
+		vhold(dvp);
+		VOP_UNLOCK(dvp, 0);
+		/* Allocate a new vnode on the matching entry. */
+		error = tmpfs_alloc_vp(dvp->v_mount, dnode->tn_dir.tn_parent,
+		    cnp->cn_lkflags, vpp);
+
+		vn_lock(dvp, ltype | LK_RETRY);
+		vdrop(dvp);
 	} else if (cnp->cn_namelen == 1 && cnp->cn_nameptr[0] == '.') {
 		VREF(dvp);
 		*vpp = dvp;
@@ -170,7 +173,7 @@ tmpfs_lookup(struct vop_cachedlookup_args *v)
 
 				/* Allocate a new vnode on the matching entry. */
 				error = tmpfs_alloc_vp(dvp->v_mount, tnode,
-				    cnp->cn_lkflags, vpp);
+						cnp->cn_lkflags, vpp);
 				if (error != 0)
 					goto out;
 
@@ -185,9 +188,7 @@ tmpfs_lookup(struct vop_cachedlookup_args *v)
 				cnp->cn_flags |= SAVENAME;
 			} else {
 				error = tmpfs_alloc_vp(dvp->v_mount, tnode,
-				    cnp->cn_lkflags, vpp);
-				if (error != 0)
-					goto out;
+						cnp->cn_lkflags, vpp);
 			}
 		}
 	}
@@ -195,7 +196,7 @@ tmpfs_lookup(struct vop_cachedlookup_args *v)
 	/* Store the result of this lookup in the cache.  Avoid this if the
 	 * request was for creation, as it does not improve timings on
 	 * emprical tests. */
-	if ((cnp->cn_flags & MAKEENTRY) != 0)
+	if ((cnp->cn_flags & MAKEENTRY) && cnp->cn_nameiop != CREATE)
 		cache_enter(dvp, *vpp, cnp);
 
 out:
@@ -206,6 +207,8 @@ out:
 	return error;
 }
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_create(struct vop_create_args *v)
 {
@@ -213,15 +216,12 @@ tmpfs_create(struct vop_create_args *v)
 	struct vnode **vpp = v->a_vpp;
 	struct componentname *cnp = v->a_cnp;
 	struct vattr *vap = v->a_vap;
-	int error;
 
 	MPASS(vap->va_type == VREG || vap->va_type == VSOCK);
 
-	error = tmpfs_alloc_file(dvp, vpp, vap, cnp, NULL);
-	if (error == 0 && (cnp->cn_flags & MAKEENTRY) != 0)
-		cache_enter(dvp, *vpp, cnp);
-	return (error);
+	return tmpfs_alloc_file(dvp, vpp, vap, cnp, NULL);
 }
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_mknod(struct vop_mknod_args *v)
@@ -237,6 +237,8 @@ tmpfs_mknod(struct vop_mknod_args *v)
 
 	return tmpfs_alloc_file(dvp, vpp, vap, cnp, NULL);
 }
+
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_open(struct vop_open_args *v)
@@ -263,14 +265,14 @@ tmpfs_open(struct vop_open_args *v)
 	else {
 		error = 0;
 		/* For regular files, the call below is nop. */
-		KASSERT(vp->v_type != VREG || (node->tn_reg.tn_aobj->flags &
-		    OBJ_DEAD) == 0, ("dead object"));
 		vnode_create_vobject(vp, node->tn_size, v->a_td);
 	}
 
 	MPASS(VOP_ISLOCKED(vp));
 	return error;
 }
+
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_close(struct vop_close_args *v)
@@ -282,6 +284,8 @@ tmpfs_close(struct vop_close_args *v)
 
 	return (0);
 }
+
+/* --------------------------------------------------------------------- */
 
 int
 tmpfs_access(struct vop_access_args *v)
@@ -336,6 +340,8 @@ out:
 
 	return error;
 }
+
+/* --------------------------------------------------------------------- */
 
 int
 tmpfs_getattr(struct vop_getattr_args *v)
@@ -498,6 +504,8 @@ out:
 	return (error);
 }
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_fsync(struct vop_fsync_args *v)
 {
@@ -509,6 +517,8 @@ tmpfs_fsync(struct vop_fsync_args *v)
 
 	return 0;
 }
+
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_remove(struct vop_remove_args *v)
@@ -562,6 +572,8 @@ out:
 	return error;
 }
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_link(struct vop_link_args *v)
 {
@@ -576,7 +588,22 @@ tmpfs_link(struct vop_link_args *v)
 	MPASS(VOP_ISLOCKED(dvp));
 	MPASS(cnp->cn_flags & HASBUF);
 	MPASS(dvp != vp); /* XXX When can this be false? */
+
 	node = VP_TO_TMPFS_NODE(vp);
+
+	/* XXX: Why aren't the following two tests done by the caller? */
+
+	/* Hard links of directories are forbidden. */
+	if (vp->v_type == VDIR) {
+		error = EPERM;
+		goto out;
+	}
+
+	/* Cannot create cross-device links. */
+	if (dvp->v_mount != vp->v_mount) {
+		error = EXDEV;
+		goto out;
+	}
 
 	/* Ensure that we do not overflow the maximum number of links imposed
 	 * by the system. */
@@ -612,6 +639,8 @@ tmpfs_link(struct vop_link_args *v)
 out:
 	return error;
 }
+
+/* --------------------------------------------------------------------- */
 
 /*
  * We acquire all but fdvp locks using non-blocking acquisitions.  If we
@@ -1022,6 +1051,8 @@ out:
 	return error;
 }
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_mkdir(struct vop_mkdir_args *v)
 {
@@ -1034,6 +1065,8 @@ tmpfs_mkdir(struct vop_mkdir_args *v)
 
 	return tmpfs_alloc_file(dvp, vpp, vap, cnp, NULL);
 }
+
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_rmdir(struct vop_rmdir_args *v)
@@ -1128,6 +1161,8 @@ out:
 	return error;
 }
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_symlink(struct vop_symlink_args *v)
 {
@@ -1145,6 +1180,8 @@ tmpfs_symlink(struct vop_symlink_args *v)
 
 	return tmpfs_alloc_file(dvp, vpp, vap, cnp, target);
 }
+
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_readdir(struct vop_readdir_args *v)
@@ -1198,6 +1235,8 @@ tmpfs_readdir(struct vop_readdir_args *v)
 	return error;
 }
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_readlink(struct vop_readlink_args *v)
 {
@@ -1219,6 +1258,8 @@ tmpfs_readlink(struct vop_readlink_args *v)
 	return error;
 }
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_inactive(struct vop_inactive_args *v)
 {
@@ -1233,6 +1274,8 @@ tmpfs_inactive(struct vop_inactive_args *v)
 
 	return 0;
 }
+
+/* --------------------------------------------------------------------- */
 
 int
 tmpfs_reclaim(struct vop_reclaim_args *v)
@@ -1271,6 +1314,8 @@ tmpfs_reclaim(struct vop_reclaim_args *v)
 	return 0;
 }
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_print(struct vop_print_args *v)
 {
@@ -1293,6 +1338,8 @@ tmpfs_print(struct vop_print_args *v)
 
 	return 0;
 }
+
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_pathconf(struct vop_pathconf_args *v)
@@ -1382,6 +1429,8 @@ tmpfs_whiteout(struct vop_whiteout_args *ap)
 		panic("tmpfs_whiteout: unknown op");
 	}
 }
+
+/* --------------------------------------------------------------------- */
 
 /*
  * vnode operations vector used for files stored in a tmpfs file system.

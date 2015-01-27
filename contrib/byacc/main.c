@@ -1,4 +1,4 @@
-/* $Id: main.c,v 1.54 2014/10/06 22:40:07 tom Exp $ */
+/* $Id: main.c,v 1.50 2014/04/22 23:34:47 tom Exp $ */
 
 #include <signal.h>
 #ifndef _WIN32
@@ -208,6 +208,7 @@ usage(void)
 	,"  -b file_prefix        set filename prefix (default \"y.\")"
 	,"  -B                    create a backtracking parser"
 	,"  -d                    write definitions (" DEFINES_SUFFIX ")"
+	,"  -D                    enable value stack memory reclamation"
 	,"  -i                    write interface (y.tab.i)"
 	,"  -g                    write a graphical description"
 	,"  -l                    suppress #line directives"
@@ -491,8 +492,8 @@ close_tmpfiles(void)
     {
 	MY_TMPFILES *next = my_tmpfiles->next;
 
-	(void)chmod(my_tmpfiles->name, 0644);
-	(void)unlink(my_tmpfiles->name);
+	chmod(my_tmpfiles->name, 0644);
+	unlink(my_tmpfiles->name);
 
 	free(my_tmpfiles->name);
 	free(my_tmpfiles);
@@ -574,8 +575,6 @@ open_tmpfile(const char *label)
     result = 0;
     if (name != 0)
     {
-	mode_t save_umask = umask(0177);
-
 	if ((mark = strrchr(label, '_')) == 0)
 	    mark = label + strlen(label);
 
@@ -603,7 +602,6 @@ open_tmpfile(const char *label)
 		my_tmpfiles = item;
 	    }
 	}
-	(void)umask(save_umask);
     }
 #else
     result = tmpfile();

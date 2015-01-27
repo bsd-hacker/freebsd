@@ -9,7 +9,7 @@
 
 . /etc/rc.subr
 
-name="background_fsck"
+name="background-fsck"
 rcvar="background_fsck"
 start_cmd="bgfsck_start"
 stop_cmd=":"

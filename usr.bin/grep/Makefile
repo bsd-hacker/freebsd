@@ -11,7 +11,7 @@ PROG=	bsdgrep
 CLEANFILES+= bsdgrep.1
 
 bsdgrep.1: grep.1
-	${CP} ${.ALLSRC} ${.TARGET}
+	cp ${.ALLSRC} ${.TARGET}
 .endif
 SRCS=	file.c grep.c queue.c util.c
 
@@ -40,10 +40,12 @@ MLINKS= grep.1 egrep.1 \
 	grep.1 lzfgrep.1
 .endif
 
-LIBADD=	z
+LDADD=	-lz
+DPADD=	${LIBZ}
 
 .if ${MK_LZMA_SUPPORT} != "no"
-LIBADD+=	lzma
+LDADD+=	-llzma
+DPADD+=	${LIBLZMA}
 
 LINKS+=	${BINDIR}/${PROG} ${BINDIR}/xzgrep \
 	${BINDIR}/${PROG} ${BINDIR}/xzegrep \
@@ -56,7 +58,8 @@ CFLAGS+= -DWITHOUT_LZMA
 .endif
 
 .if ${MK_BZIP2_SUPPORT} != "no"
-LIBADD+=	bz2
+LDADD+=	-lbz2
+DPADD+=	${LIBBZ2}
 
 .if ${MK_BSD_GREP} == "yes"
 LINKS+= ${BINDIR}/grep ${BINDIR}/bzgrep \
@@ -72,17 +75,14 @@ CFLAGS+= -DWITHOUT_BZIP2
 
 .if ${MK_GNU_GREP_COMPAT} != "no"
 CFLAGS+= -I${DESTDIR}/usr/include/gnu
-LIBADD+=	gnuregex
+LDADD+=	-lgnuregex
+DPADD+=	${LIBGNUREGEX}
 .endif
 
 .if ${MK_NLS} != "no"
 .include "${.CURDIR}/nls/Makefile.inc"
 .else
 CFLAGS+= -DWITHOUT_NLS
-.endif
-
-.if ${MK_TESTS} != "no"
-SUBDIR+=	tests
 .endif
 
 .include <bsd.prog.mk>

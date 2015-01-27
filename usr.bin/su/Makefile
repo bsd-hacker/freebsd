@@ -7,11 +7,13 @@ PROG=	su
 
 WARNS?=	5
 
-LIBADD=	util pam
+DPADD=	${LIBUTIL} ${LIBPAM}
+LDADD=	-lutil ${MINUSLPAM}
 
 .if ${MK_AUDIT} != "no"
 CFLAGS+= -DUSE_BSM_AUDIT
-LIBADD+=	bsm
+DPADD+=  ${LIBBSM}
+LDADD+=  -lbsm
 .endif
 
 BINOWN=	root

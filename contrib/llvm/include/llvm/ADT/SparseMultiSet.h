@@ -76,10 +76,6 @@ template<typename ValueT,
          typename KeyFunctorT = llvm::identity<unsigned>,
          typename SparseT = uint8_t>
 class SparseMultiSet {
-  static_assert(std::numeric_limits<SparseT>::is_integer &&
-                !std::numeric_limits<SparseT>::is_signed,
-                "SparseT must be an unsigned integer type");
-
   /// The actual data that's stored, as a doubly-linked list implemented via
   /// indices into the DenseVector.  The doubly linked list is implemented
   /// circular in Prev indices, and INVALID-terminated in Next indices. This
@@ -185,10 +181,9 @@ public:
   typedef const ValueT &const_reference;
   typedef ValueT *pointer;
   typedef const ValueT *const_pointer;
-  typedef unsigned size_type;
 
   SparseMultiSet()
-    : Sparse(nullptr), Universe(0), FreelistIdx(SMSNode::INVALID), NumFree(0) {}
+    : Sparse(0), Universe(0), FreelistIdx(SMSNode::INVALID), NumFree(0) { }
 
   ~SparseMultiSet() { free(Sparse); }
 
@@ -249,6 +244,16 @@ public:
     typedef typename super::difference_type difference_type;
     typedef typename super::pointer pointer;
     typedef typename super::reference reference;
+
+    iterator_base(const iterator_base &RHS)
+      : SMS(RHS.SMS), Idx(RHS.Idx), SparseIdx(RHS.SparseIdx) { }
+
+    const iterator_base &operator=(const iterator_base &RHS) {
+      SMS = RHS.SMS;
+      Idx = RHS.Idx;
+      SparseIdx = RHS.SparseIdx;
+      return *this;
+    }
 
     reference operator*() const {
       assert(isKeyed() && SMS->sparseIndex(SMS->Dense[Idx].Data) == SparseIdx &&
@@ -328,7 +333,7 @@ public:
   /// This is not the same as BitVector::size() which returns the size of the
   /// universe.
   ///
-  size_type size() const {
+  unsigned size() const {
     assert(NumFree <= Dense.size() && "Out-of-bounds free entries");
     return Dense.size() - NumFree;
   }
@@ -349,6 +354,9 @@ public:
   ///
   iterator findIndex(unsigned Idx) {
     assert(Idx < Universe && "Key out of range");
+    assert(std::numeric_limits<SparseT>::is_integer &&
+           !std::numeric_limits<SparseT>::is_signed &&
+           "SparseT must be an unsigned integer type");
     const unsigned Stride = std::numeric_limits<SparseT>::max() + 1u;
     for (unsigned i = Sparse[Idx], e = Dense.size(); i < e; i += Stride) {
       const unsigned FoundIdx = sparseIndex(Dense[i]);
@@ -379,7 +387,7 @@ public:
 
   /// Returns the number of elements identified by Key. This will be linear in
   /// the number of elements of that key.
-  size_type count(const KeyT &Key) const {
+  unsigned count(const KeyT &Key) const {
     unsigned Ret = 0;
     for (const_iterator It = find(Key); It != end(); ++It)
       ++Ret;

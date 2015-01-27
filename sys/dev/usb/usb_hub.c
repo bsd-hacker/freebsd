@@ -86,25 +86,16 @@ enum {
 static int uhub_debug = 0;
 
 static SYSCTL_NODE(_hw_usb, OID_AUTO, uhub, CTLFLAG_RW, 0, "USB HUB");
-SYSCTL_INT(_hw_usb_uhub, OID_AUTO, debug, CTLFLAG_RWTUN, &uhub_debug, 0,
+SYSCTL_INT(_hw_usb_uhub, OID_AUTO, debug, CTLFLAG_RW | CTLFLAG_TUN, &uhub_debug, 0,
     "Debug level");
+TUNABLE_INT("hw.usb.uhub.debug", &uhub_debug);
 #endif
 
 #if USB_HAVE_POWERD
 static int usb_power_timeout = 30;	/* seconds */
 
-SYSCTL_INT(_hw_usb, OID_AUTO, power_timeout, CTLFLAG_RWTUN,
+SYSCTL_INT(_hw_usb, OID_AUTO, power_timeout, CTLFLAG_RW,
     &usb_power_timeout, 0, "USB power timeout");
-#endif
-
-#if USB_HAVE_DISABLE_ENUM
-static int usb_disable_enumeration = 0;
-SYSCTL_INT(_hw_usb, OID_AUTO, disable_enumeration, CTLFLAG_RWTUN,
-    &usb_disable_enumeration, 0, "Set to disable all USB device enumeration.");
-
-static int usb_disable_port_power = 0;
-SYSCTL_INT(_hw_usb, OID_AUTO, disable_port_power, CTLFLAG_RWTUN,
-    &usb_disable_port_power, 0, "Set to disable all USB port power.");
 #endif
 
 struct uhub_current_state {
@@ -121,10 +112,6 @@ struct uhub_softc {
 	struct mtx sc_mtx;		/* our mutex */
 	struct usb_device *sc_udev;	/* USB device */
 	struct usb_xfer *sc_xfer[UHUB_N_TRANSFER];	/* interrupt xfer */
-#if USB_HAVE_DISABLE_ENUM
-	int sc_disable_enumeration;
-	int sc_disable_port_power;
-#endif
 	uint8_t	sc_flags;
 #define	UHUB_FLAG_DID_EXPLORE 0x01
 };
@@ -632,9 +619,9 @@ repeat:
 	err = usbd_req_clear_port_feature(udev, NULL,
 	    portno, UHF_C_PORT_CONNECTION);
 
-	if (err)
+	if (err) {
 		goto error;
-
+	}
 	/* check if there is a child */
 
 	if (child != NULL) {
@@ -647,22 +634,14 @@ repeat:
 	/* get fresh status */
 
 	err = uhub_read_port_status(sc, portno);
-	if (err)
-		goto error;
-
-#if USB_HAVE_DISABLE_ENUM
-	/* check if we should skip enumeration from this USB HUB */
-	if (usb_disable_enumeration != 0 ||
-	    sc->sc_disable_enumeration != 0) {
-		DPRINTF("Enumeration is disabled!\n");
+	if (err) {
 		goto error;
 	}
-#endif
 	/* check if nothing is connected to the port */
 
-	if (!(sc->sc_st.port_status & UPS_CURRENT_CONNECT_STATUS))
+	if (!(sc->sc_st.port_status & UPS_CURRENT_CONNECT_STATUS)) {
 		goto error;
-
+	}
 	/* check if there is no power on the port and print a warning */
 
 	switch (udev->speed) {
@@ -1210,10 +1189,6 @@ uhub_attach(device_t dev)
 	struct usb_hub *hub;
 	struct usb_hub_descriptor hubdesc20;
 	struct usb_hub_ss_descriptor hubdesc30;
-#if USB_HAVE_DISABLE_ENUM
-	struct sysctl_ctx_list *sysctl_ctx;
-	struct sysctl_oid *sysctl_tree;
-#endif
 	uint16_t pwrdly;
 	uint16_t nports;
 	uint8_t x;
@@ -1411,24 +1386,6 @@ uhub_attach(device_t dev)
 	/* wait with power off for a while */
 	usb_pause_mtx(NULL, USB_MS_TO_TICKS(USB_POWER_DOWN_TIME));
 
-#if USB_HAVE_DISABLE_ENUM
-	/* Add device sysctls */
-
-	sysctl_ctx = device_get_sysctl_ctx(dev);
-	sysctl_tree = device_get_sysctl_tree(dev);
-
-	if (sysctl_ctx != NULL && sysctl_tree != NULL) {
-		(void) SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-		    OID_AUTO, "disable_enumeration", CTLFLAG_RWTUN,
-		    &sc->sc_disable_enumeration, 0,
-		    "Set to disable enumeration on this USB HUB.");
-
-		(void) SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-		    OID_AUTO, "disable_port_power", CTLFLAG_RWTUN,
-		    &sc->sc_disable_port_power, 0,
-		    "Set to disable USB port power on this USB HUB.");
-	}
-#endif
 	/*
 	 * To have the best chance of success we do things in the exact same
 	 * order as Windoze98.  This should not be necessary, but some
@@ -1483,27 +1440,13 @@ uhub_attach(device_t dev)
 			removable++;
 			break;
 		}
-		if (err == 0) {
-#if USB_HAVE_DISABLE_ENUM
-			/* check if we should disable USB port power or not */
-			if (usb_disable_port_power != 0 ||
-			    sc->sc_disable_port_power != 0) {
-				/* turn the power off */
-				DPRINTFN(2, "Turning port %d power off\n", portno);
-				err = usbd_req_clear_port_feature(udev, NULL,
-				    portno, UHF_PORT_POWER);
-			} else {
-#endif
-				/* turn the power on */
-				DPRINTFN(2, "Turning port %d power on\n", portno);
-				err = usbd_req_set_port_feature(udev, NULL,
-				    portno, UHF_PORT_POWER);
-#if USB_HAVE_DISABLE_ENUM
-			}
-#endif
+		if (!err) {
+			/* turn the power on */
+			err = usbd_req_set_port_feature(udev, NULL,
+			    portno, UHF_PORT_POWER);
 		}
-		if (err != 0) {
-			DPRINTFN(0, "port %d power on or off failed, %s\n",
+		if (err) {
+			DPRINTFN(0, "port %d power on failed, %s\n",
 			    portno, usbd_errstr(err));
 		}
 		DPRINTF("turn on port %d power\n",

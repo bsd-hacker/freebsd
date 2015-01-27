@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,8 +41,8 @@
  * POSSIBILITY OF SUCH DAMAGES.
  */
 
+
 #define __EVXFACE_C__
-#define EXPORT_ACPI_INTERFACES
 
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
@@ -265,7 +265,7 @@ AcpiRemoveNotifyHandler (
     ACPI_OPERAND_OBJECT     *ObjDesc;
     ACPI_OPERAND_OBJECT     *HandlerObj;
     ACPI_OPERAND_OBJECT     *PreviousHandlerObj;
-    ACPI_STATUS             Status = AE_OK;
+    ACPI_STATUS             Status;
     UINT32                  i;
 
 
@@ -280,6 +280,16 @@ AcpiRemoveNotifyHandler (
         return_ACPI_STATUS (AE_BAD_PARAMETER);
     }
 
+    /* Make sure all deferred notify tasks are completed */
+
+    AcpiOsWaitEventsComplete ();
+
+    Status = AcpiUtAcquireMutex (ACPI_MTX_NAMESPACE);
+    if (ACPI_FAILURE (Status))
+    {
+        return_ACPI_STATUS (Status);
+    }
+
     /* Root Object. Global handlers are removed here */
 
     if (Device == ACPI_ROOT_OBJECT)
@@ -288,12 +298,6 @@ AcpiRemoveNotifyHandler (
         {
             if (HandlerType & (i+1))
             {
-                Status = AcpiUtAcquireMutex (ACPI_MTX_NAMESPACE);
-                if (ACPI_FAILURE (Status))
-                {
-                    return_ACPI_STATUS (Status);
-                }
-
                 if (!AcpiGbl_GlobalNotify[i].Handler ||
                     (AcpiGbl_GlobalNotify[i].Handler != Handler))
                 {
@@ -306,23 +310,18 @@ AcpiRemoveNotifyHandler (
 
                 AcpiGbl_GlobalNotify[i].Handler = NULL;
                 AcpiGbl_GlobalNotify[i].Context = NULL;
-
-                (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
-
-                /* Make sure all deferred notify tasks are completed */
-
-                AcpiOsWaitEventsComplete ();
             }
         }
 
-        return_ACPI_STATUS (AE_OK);
+        goto UnlockAndExit;
     }
 
     /* All other objects: Are Notifies allowed on this object? */
 
     if (!AcpiEvIsNotifyObject (Node))
     {
-        return_ACPI_STATUS (AE_TYPE);
+        Status = AE_TYPE;
+        goto UnlockAndExit;
     }
 
     /* Must have an existing internal object */
@@ -330,7 +329,8 @@ AcpiRemoveNotifyHandler (
     ObjDesc = AcpiNsGetAttachedObject (Node);
     if (!ObjDesc)
     {
-        return_ACPI_STATUS (AE_NOT_EXIST);
+        Status = AE_NOT_EXIST;
+        goto UnlockAndExit;
     }
 
     /* Internal object exists. Find the handler and remove it */
@@ -339,12 +339,6 @@ AcpiRemoveNotifyHandler (
     {
         if (HandlerType & (i+1))
         {
-            Status = AcpiUtAcquireMutex (ACPI_MTX_NAMESPACE);
-            if (ACPI_FAILURE (Status))
-            {
-                return_ACPI_STATUS (Status);
-            }
-
             HandlerObj = ObjDesc->CommonNotify.NotifyList[i];
             PreviousHandlerObj = NULL;
 
@@ -376,16 +370,9 @@ AcpiRemoveNotifyHandler (
                     HandlerObj->Notify.Next[i];
             }
 
-            (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
-
-            /* Make sure all deferred notify tasks are completed */
-
-            AcpiOsWaitEventsComplete ();
             AcpiUtRemoveReference (HandlerObj);
         }
     }
-
-    return_ACPI_STATUS (Status);
 
 
 UnlockAndExit:
@@ -532,8 +519,6 @@ Exit:
     return_ACPI_STATUS (Status);
 }
 
-ACPI_EXPORT_SYMBOL (AcpiInstallSciHandler)
-
 
 /*******************************************************************************
  *
@@ -609,8 +594,6 @@ UnlockAndExit:
     (void) AcpiUtReleaseMutex (ACPI_MTX_EVENTS);
     return_ACPI_STATUS (Status);
 }
-
-ACPI_EXPORT_SYMBOL (AcpiRemoveSciHandler)
 
 
 /*******************************************************************************
@@ -986,6 +969,10 @@ AcpiRemoveGpeHandler (
         return_ACPI_STATUS (AE_BAD_PARAMETER);
     }
 
+    /* Make sure all deferred GPE tasks are completed */
+
+    AcpiOsWaitEventsComplete ();
+
     Status = AcpiUtAcquireMutex (ACPI_MTX_EVENTS);
     if (ACPI_FAILURE (Status))
     {
@@ -1036,24 +1023,16 @@ AcpiRemoveGpeHandler (
      * enabled, it should be enabled at this point to restore the
      * post-initialization configuration.
      */
-    if (((Handler->OriginalFlags & ACPI_GPE_DISPATCH_METHOD) ||
-         (Handler->OriginalFlags & ACPI_GPE_DISPATCH_NOTIFY)) &&
+    if ((Handler->OriginalFlags & ACPI_GPE_DISPATCH_METHOD) &&
         Handler->OriginallyEnabled)
     {
         (void) AcpiEvAddGpeReference (GpeEventInfo);
     }
 
-    AcpiOsReleaseLock (AcpiGbl_GpeLock, Flags);
-    (void) AcpiUtReleaseMutex (ACPI_MTX_EVENTS);
-
-    /* Make sure all deferred GPE tasks are completed */
-
-    AcpiOsWaitEventsComplete ();
-
     /* Now we can free the handler object */
 
     ACPI_FREE (Handler);
-    return_ACPI_STATUS (Status);
+
 
 UnlockAndExit:
     AcpiOsReleaseLock (AcpiGbl_GpeLock, Flags);

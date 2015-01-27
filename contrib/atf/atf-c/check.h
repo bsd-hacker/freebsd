@@ -1,4 +1,7 @@
-/* Copyright (c) 2008 The NetBSD Foundation, Inc.
+/*
+ * Automated Testing Framework (atf)
+ *
+ * Copyright (c) 2008 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,7 +24,8 @@
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #if !defined(ATF_C_CHECK_H)
 #define ATF_C_CHECK_H
@@ -66,4 +70,4 @@ atf_error_t atf_check_build_cxx_o(const char *, const char *,
                                   bool *);
 atf_error_t atf_check_exec_array(const char *const *, atf_check_result_t *);
 
-#endif /* !defined(ATF_C_CHECK_H) */
+#endif /* ATF_C_CHECK_H */

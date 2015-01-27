@@ -27,8 +27,6 @@
  * $FreeBSD$
  */
 
-#include <sys/param.h>
-#include <sys/file.h>
 #include <sys/time.h>
 #ifdef __FreeBSD__
 #include <sys/mount.h>
@@ -41,7 +39,6 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,20 +50,12 @@
 #endif
 #include <sys/cdefs.h>
 #else
-#ifndef nitems
-#define	nitems(x)	(sizeof((x)) / sizeof((x)[0]))
-#endif
-
 #ifndef __unused
-#ifdef __GNUC__
-#define	__unused	__attribute__((__unused__))
-#else
 #define __unused
 #endif
 #endif
-#endif
 
-static int verbose = 0;
+int verbose = 0;
 
 static int
 make_file(const char *pathname, off_t sz)
@@ -1340,6 +1329,7 @@ test15(int fd, __unused int argc, const __unused char **argv)
 	 */
 	int pid;
 	int pfd[2];
+	int fd2;
 	struct flock fl;
 	char ch;
 	int res;
@@ -1376,7 +1366,7 @@ test15(int fd, __unused int argc, const __unused char **argv)
 	if (read(pfd[0], &ch, 1) != 1)
 		err(1, "reading from pipe (child)");
 
-	(void)dup(fd);
+	fd2 = dup(fd);
 	if (flock(fd, LOCK_SH) < 0)
 		err(1, "flock shared");
 
@@ -1524,7 +1514,7 @@ struct test {
 	int intr;		/* non-zero if the test interrupts a lock */
 };
 
-static struct test tests[] = {
+struct test tests[] = {
 	{	test1,		1,	0	},
 	{	test2,		2,	0	},
 	{	test3,		3,	1	},
@@ -1542,6 +1532,7 @@ static struct test tests[] = {
 	{	test15,		15,	1	},
 	{	test16,		16,	1	},
 };
+int test_count = sizeof(tests) / sizeof(tests[0]);
 
 int
 main(int argc, const char *argv[])
@@ -1549,7 +1540,7 @@ main(int argc, const char *argv[])
 	int testnum;
 	int fd;
 	int nointr;
-	unsigned i;
+	int i;
 	struct sigaction sa;
 	int test_argc;
 	const char **test_argv;
@@ -1587,7 +1578,7 @@ main(int argc, const char *argv[])
 	}
 #endif
 
-	for (i = 0; i < nitems(tests); i++) {
+	for (i = 0; i < test_count; i++) {
 		if (tests[i].intr && nointr)
 			continue;
 		if (!testnum || tests[i].num == testnum)

@@ -60,7 +60,8 @@ static struct ttydevsw ofw_ttydevsw = {
 };
 
 static int			polltime;
-static struct callout		ofw_timer;
+static struct callout_handle	ofw_timeouthandle
+    = CALLOUT_HANDLE_INITIALIZER(&ofw_timeouthandle);
 
 #if defined(KDB)
 static int			alt_break_state;
@@ -100,7 +101,6 @@ cn_drvinit(void *unused)
 			return;
 		if (strlen(output) > 0)
 			tty_makealias(tp, "%s", output);
-		callout_init_mtx(&ofw_timer, tty_getlock(tp), 0);
 	}
 }
 
@@ -116,7 +116,7 @@ ofwtty_open(struct tty *tp)
 	if (polltime < 1)
 		polltime = 1;
 
-	callout_reset(&ofw_timer, polltime, ofw_timeout, tp);
+	ofw_timeouthandle = timeout(ofw_timeout, tp, polltime);
 
 	return (0);
 }
@@ -125,7 +125,8 @@ static void
 ofwtty_close(struct tty *tp)
 {
 
-	callout_stop(&ofw_timer);
+	/* XXX Should be replaced with callout_stop(9) */
+	untimeout(ofw_timeout, tp, ofw_timeouthandle);
 }
 
 static void
@@ -150,12 +151,13 @@ ofw_timeout(void *v)
 
 	tp = (struct tty *)v;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_lock(tp);
 	while ((c = ofw_cngetc(NULL)) != -1)
 		ttydisc_rint(tp, c, 0);
 	ttydisc_rint_done(tp);
+	tty_unlock(tp);
 
-	callout_schedule(&ofw_timer, polltime);
+	ofw_timeouthandle = timeout(ofw_timeout, tp, polltime);
 }
 
 static void

@@ -54,26 +54,12 @@ const char *const CommonOptionsParser::HelpMessage =
     "\n";
 
 CommonOptionsParser::CommonOptionsParser(int &argc, const char **argv,
-                                         cl::OptionCategory &Category,
                                          const char *Overview) {
-  static cl::opt<bool> Help("h", cl::desc("Alias for -help"), cl::Hidden);
-
-  static cl::opt<std::string> BuildPath("p", cl::desc("Build path"),
-                                        cl::Optional, cl::cat(Category));
+  static cl::opt<std::string> BuildPath(
+      "p", cl::desc("Build path"), cl::Optional);
 
   static cl::list<std::string> SourcePaths(
-      cl::Positional, cl::desc("<source0> [... <sourceN>]"), cl::OneOrMore,
-      cl::cat(Category));
-
-  // Hide unrelated options.
-  StringMap<cl::Option*> Options;
-  cl::getRegisteredOptions(Options);
-  for (StringMap<cl::Option *>::iterator I = Options.begin(), E = Options.end();
-       I != E; ++I) {
-    if (I->second->Category != &Category && I->first() != "help" &&
-        I->first() != "version")
-      I->second->setHiddenFlag(cl::ReallyHidden);
-  }
+      cl::Positional, cl::desc("<source0> [... <sourceN>]"), cl::OneOrMore);
 
   Compilations.reset(FixedCompilationDatabase::loadFromCommandLine(argc,
                                                                    argv));

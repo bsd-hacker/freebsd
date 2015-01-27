@@ -25,8 +25,7 @@ using namespace ento;
 namespace {
 class ReturnPointerRangeChecker : 
     public Checker< check::PreStmt<ReturnStmt> > {
-  mutable std::unique_ptr<BuiltinBug> BT;
-
+  mutable OwningPtr<BuiltinBug> BT;
 public:
     void checkPreStmt(const ReturnStmt *RS, CheckerContext &C) const;
 };
@@ -70,10 +69,9 @@ void ReturnPointerRangeChecker::checkPreStmt(const ReturnStmt *RS,
     // FIXME: This bug correspond to CWE-466.  Eventually we should have bug
     // types explicitly reference such exploit categories (when applicable).
     if (!BT)
-      BT.reset(new BuiltinBug(
-          this, "Return of pointer value outside of expected range",
-          "Returned pointer value points outside the original object "
-          "(potential buffer overflow)"));
+      BT.reset(new BuiltinBug("Return of pointer value outside of expected range",
+           "Returned pointer value points outside the original object "
+           "(potential buffer overflow)"));
 
     // FIXME: It would be nice to eventually make this diagnostic more clear,
     // e.g., by referencing the original declaration or by saying *why* this

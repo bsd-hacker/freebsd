@@ -41,7 +41,7 @@ struct kthr {
 	uintptr_t	pcb;
 	int		tid;
 	int		pid;
-	int		cpu;
+	u_char		cpu;
 };
 
 extern struct kthr *curkthr;

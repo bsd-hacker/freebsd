@@ -34,7 +34,8 @@ public:
   }
 
   bool operator<(const CountKey &RHS) const {
-    return std::tie(CallSite, BlockID) < std::tie(RHS.CallSite, RHS.BlockID);
+    return (CallSite == RHS.CallSite) ? (BlockID < RHS.BlockID) 
+                                      : (CallSite < RHS.CallSite);
   }
 
   void Profile(llvm::FoldingSetNodeID &ID) const {

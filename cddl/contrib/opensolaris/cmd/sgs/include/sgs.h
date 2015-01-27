@@ -48,7 +48,7 @@ extern "C" {
 
 #ifndef	_ASM
 #include <sys/types.h>
-#ifdef illumos
+#if defined(sun)
 #include <sys/machelf.h>
 #else
 #include <elf.h>

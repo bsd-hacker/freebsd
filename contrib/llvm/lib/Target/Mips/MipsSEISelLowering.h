@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MIPSSEISELLOWERING_H
-#define MIPSSEISELLOWERING_H
+#ifndef MipsSEISELLOWERING_H
+#define MipsSEISELLOWERING_H
 
 #include "MipsISelLowering.h"
 #include "MipsRegisterInfo.h"
@@ -20,8 +20,7 @@
 namespace llvm {
   class MipsSETargetLowering : public MipsTargetLowering  {
   public:
-    explicit MipsSETargetLowering(MipsTargetMachine &TM,
-                                  const MipsSubtarget &STI);
+    explicit MipsSETargetLowering(MipsTargetMachine &TM);
 
     /// \brief Enable MSA support for the given integer type and Register
     /// class.
@@ -31,35 +30,39 @@ namespace llvm {
     void addMSAFloatType(MVT::SimpleValueType Ty,
                          const TargetRegisterClass *RC);
 
-    bool allowsUnalignedMemoryAccesses(EVT VT, unsigned AS = 0,
-                                       bool *Fast = nullptr) const override;
+    virtual bool allowsUnalignedMemoryAccesses(EVT VT, bool *Fast) const;
 
-    SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+    virtual SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const;
 
-    SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
+    virtual SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const;
 
-    MachineBasicBlock *
-    EmitInstrWithCustomInserter(MachineInstr *MI,
-                                MachineBasicBlock *MBB) const override;
+    virtual MachineBasicBlock *
+    EmitInstrWithCustomInserter(MachineInstr *MI, MachineBasicBlock *MBB) const;
 
-    bool isShuffleMaskLegal(const SmallVectorImpl<int> &Mask,
-                            EVT VT) const override {
+    virtual bool isShuffleMaskLegal(const SmallVectorImpl<int> &Mask,
+                                    EVT VT) const {
       return false;
     }
 
-    const TargetRegisterClass *getRepRegClassFor(MVT VT) const override;
+    virtual const TargetRegisterClass *getRepRegClassFor(MVT VT) const {
+      if (VT == MVT::Untyped)
+        return Subtarget->hasDSP() ? &Mips::ACC64DSPRegClass :
+                                     &Mips::ACC64RegClass;
+
+      return TargetLowering::getRepRegClassFor(VT);
+    }
 
   private:
-    bool isEligibleForTailCallOptimization(
-        const CCState &CCInfo, unsigned NextStackOffset,
-        const MipsFunctionInfo &FI) const override;
+    virtual bool
+    isEligibleForTailCallOptimization(const MipsCC &MipsCCInfo,
+                                      unsigned NextStackOffset,
+                                      const MipsFunctionInfo& FI) const;
 
-    void
+    virtual void
     getOpndList(SmallVectorImpl<SDValue> &Ops,
                 std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
                 bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
-                CallLoweringInfo &CLI, SDValue Callee,
-                SDValue Chain) const override;
+                CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const;
 
     SDValue lowerLOAD(SDValue Op, SelectionDAG &DAG) const;
     SDValue lowerSTORE(SDValue Op, SelectionDAG &DAG) const;
@@ -93,11 +96,6 @@ namespace llvm {
     /// \brief Emit the INSERT_FD pseudo instruction
     MachineBasicBlock *emitINSERT_FD(MachineInstr *MI,
                                      MachineBasicBlock *BB) const;
-    /// \brief Emit the INSERT_([BHWD]|F[WD])_VIDX pseudo instruction
-    MachineBasicBlock *emitINSERT_DF_VIDX(MachineInstr *MI,
-                                          MachineBasicBlock *BB,
-                                          unsigned EltSizeInBytes,
-                                          bool IsFP) const;
     /// \brief Emit the FILL_FW pseudo instruction
     MachineBasicBlock *emitFILL_FW(MachineInstr *MI,
                                    MachineBasicBlock *BB) const;

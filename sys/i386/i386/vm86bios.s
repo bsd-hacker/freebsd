@@ -69,6 +69,8 @@ ENTRY(vm86_bioscall)
 	movl	PCPU(CURTHREAD),%ecx
 	cmpl	%ecx,PCPU(FPCURTHREAD)	/* do we need to save fp? */
 	jne	1f
+	testl	%ecx,%ecx
+	je 	1f			/* no curproc/npxproc */
 	pushl	%edx
 	movl	TD_PCB(%ecx),%ecx
 	pushl	PCB_SAVEFPU(%ecx)

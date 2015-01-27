@@ -653,13 +653,10 @@ svr4_mknod(td, retval, path, mode, dev)
 
 	CHECKALTEXIST(td, path, &newpath);
 
-	if (S_ISFIFO(mode)) {
-		error = kern_mkfifoat(td, AT_FDCWD, newpath, UIO_SYSSPACE,
-		    mode);
-	} else {
-		error = kern_mknodat(td, AT_FDCWD, newpath, UIO_SYSSPACE,
-		    mode, dev);
-	}
+	if (S_ISFIFO(mode))
+		error = kern_mkfifo(td, newpath, UIO_SYSSPACE, mode);
+	else
+		error = kern_mknod(td, newpath, UIO_SYSSPACE, mode, dev);
 	free(newpath, M_TEMP);
 	return (error);
 }
@@ -864,9 +861,9 @@ svr4_sys_times(td, uap)
 
 	p = td->td_proc;
 	PROC_LOCK(p);
-	PROC_STATLOCK(p);
+	PROC_SLOCK(p);
 	calcru(p, &utime, &stime);
-	PROC_STATUNLOCK(p);
+	PROC_SUNLOCK(p);
 	calccru(p, &cutime, &cstime);
 	PROC_UNLOCK(p);
 
@@ -1277,9 +1274,9 @@ loop:
 			pid = p->p_pid;
 			status = p->p_xstat;
 			ru = p->p_ru;
-			PROC_STATLOCK(p);
+			PROC_SLOCK(p);
 			calcru(p, &ru.ru_utime, &ru.ru_stime);
-			PROC_STATUNLOCK(p);
+			PROC_SUNLOCK(p);
 			PROC_UNLOCK(p);
 			sx_sunlock(&proctree_lock);
 
@@ -1304,9 +1301,9 @@ loop:
 			pid = p->p_pid;
 			status = W_STOPCODE(p->p_xstat);
 			ru = p->p_ru;
-			PROC_STATLOCK(p);
+			PROC_SLOCK(p);
 			calcru(p, &ru.ru_utime, &ru.ru_stime);
-			PROC_STATUNLOCK(p);
+			PROC_SUNLOCK(p);
 			PROC_UNLOCK(p);
 
 		        if (((uap->options & SVR4_WNOWAIT)) == 0) {
@@ -1328,9 +1325,9 @@ loop:
 			pid = p->p_pid;
 			ru = p->p_ru;
 			status = SIGCONT;
-			PROC_STATLOCK(p);
+			PROC_SLOCK(p);
 			calcru(p, &ru.ru_utime, &ru.ru_stime);
-			PROC_STATUNLOCK(p);
+			PROC_SUNLOCK(p);
 			PROC_UNLOCK(p);
 
 		        if (((uap->options & SVR4_WNOWAIT)) == 0) {

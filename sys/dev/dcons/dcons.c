@@ -37,9 +37,11 @@
 
 #include <sys/param.h>
 
-#if defined(_BOOT)
+#if defined(__DragonFly__) || defined(_BOOT)
 #include "dcons.h"
+#if defined(_BOOT)
 #include "stand.h"
+#endif
 #else
 #include <dev/dcons/dcons.h>
 #endif

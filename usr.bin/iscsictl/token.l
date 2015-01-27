@@ -46,7 +46,6 @@ extern int	yylex(void);
 
 %option noinput
 %option nounput
-%option noyywrap
 
 %%
 HeaderDigest		{ return HEADER_DIGEST; }
@@ -90,7 +89,6 @@ chapDigest		{ return IGNORED; }
 =			{ return EQUALS; }
 ;			{ return SEMICOLON; }
 #.*$			/* ignore comments */;
-\r\n			{ lineno++; }
 \n			{ lineno++; }
 [ \t]+			/* ignore whitespace */;
 .			{ yylval.str = strdup(yytext); return STR; }

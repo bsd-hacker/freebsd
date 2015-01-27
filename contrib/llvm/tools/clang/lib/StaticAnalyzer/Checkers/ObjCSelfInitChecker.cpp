@@ -62,13 +62,7 @@ class ObjCSelfInitChecker : public Checker<  check::PostObjCMessage,
                                              check::PostCall,
                                              check::Location,
                                              check::Bind > {
-  mutable std::unique_ptr<BugType> BT;
-
-  void checkForInvalidSelf(const Expr *E, CheckerContext &C,
-                           const char *errorStr) const;
-
 public:
-  ObjCSelfInitChecker() {}
   void checkPostObjCMessage(const ObjCMethodCall &Msg, CheckerContext &C) const;
   void checkPostStmt(const ObjCIvarRefExpr *E, CheckerContext &C) const;
   void checkPreStmt(const ReturnStmt *S, CheckerContext &C) const;
@@ -80,8 +74,19 @@ public:
   void checkPostCall(const CallEvent &CE, CheckerContext &C) const;
 
   void printState(raw_ostream &Out, ProgramStateRef State,
-                  const char *NL, const char *Sep) const override;
+                  const char *NL, const char *Sep) const;
 };
+} // end anonymous namespace
+
+namespace {
+
+class InitSelfBug : public BugType {
+  const std::string desc;
+public:
+  InitSelfBug() : BugType("Missing \"self = [(super or self) init...]\"",
+                          categories::CoreFoundationObjectiveC) {}
+};
+
 } // end anonymous namespace
 
 namespace {
@@ -141,8 +146,8 @@ static bool isInvalidSelf(const Expr *E, CheckerContext &C) {
   return true;
 }
 
-void ObjCSelfInitChecker::checkForInvalidSelf(const Expr *E, CheckerContext &C,
-                                              const char *errorStr) const {
+static void checkForInvalidSelf(const Expr *E, CheckerContext &C,
+                                const char *errorStr) {
   if (!E)
     return;
   
@@ -157,10 +162,8 @@ void ObjCSelfInitChecker::checkForInvalidSelf(const Expr *E, CheckerContext &C,
   if (!N)
     return;
 
-  if (!BT)
-    BT.reset(new BugType(this, "Missing \"self = [(super or self) init...]\"",
-                         categories::CoreFoundationObjectiveC));
-  BugReport *report = new BugReport(*BT, errorStr, N);
+  BugReport *report =
+    new BugReport(*new InitSelfBug(), errorStr, N);
   C.emitReport(report);
 }
 
@@ -202,10 +205,9 @@ void ObjCSelfInitChecker::checkPostStmt(const ObjCIvarRefExpr *E,
                                  C.getCurrentAnalysisDeclContext()->getDecl())))
     return;
 
-  checkForInvalidSelf(
-      E->getBase(), C,
-      "Instance variable used while 'self' is not set to the result of "
-      "'[(super or self) init...]'");
+  checkForInvalidSelf(E->getBase(), C,
+    "Instance variable used while 'self' is not set to the result of "
+                                                 "'[(super or self) init...]'");
 }
 
 void ObjCSelfInitChecker::checkPreStmt(const ReturnStmt *S,
@@ -216,8 +218,8 @@ void ObjCSelfInitChecker::checkPreStmt(const ReturnStmt *S,
     return;
 
   checkForInvalidSelf(S->getRetValue(), C,
-                      "Returning 'self' while it is not set to the result of "
-                      "'[(super or self) init...]'");
+    "Returning 'self' while it is not set to the result of "
+                                                 "'[(super or self) init...]'");
 }
 
 // When a call receives a reference to 'self', [Pre/Post]Call pass
@@ -345,7 +347,7 @@ void ObjCSelfInitChecker::printState(raw_ostream &Out, ProgramStateRef State,
   if (FlagMap.isEmpty() && !DidCallInit && !PreCallFlags)
     return;
 
-  Out << Sep << NL << *this << " :" << NL;
+  Out << Sep << NL << "ObjCSelfInitChecker:" << NL;
 
   if (DidCallInit)
     Out << "  An init method has been called." << NL;

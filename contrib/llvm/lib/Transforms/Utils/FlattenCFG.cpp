@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "flattencfg"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -21,19 +22,16 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "flattencfg"
-
 namespace {
 class FlattenCFGOpt {
   AliasAnalysis *AA;
   /// \brief Use parallel-and or parallel-or to generate conditions for
   /// conditional branches.
-  bool FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder,
-                            Pass *P = nullptr);
+  bool FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder, Pass *P = 0);
   /// \brief If \param BB is the merge block of an if-region, attempt to merge
   /// the if-region with an adjacent if-region upstream if two if-regions
   /// contain identical instructions.
-  bool MergeIfRegion(BasicBlock *BB, IRBuilder<> &Builder, Pass *P = nullptr);
+  bool MergeIfRegion(BasicBlock *BB, IRBuilder<> &Builder, Pass *P = 0);
   /// \brief Compare a pair of blocks: \p Block1 and \p Block2, which
   /// are from two if-regions whose entry blocks are \p Head1 and \p
   /// Head2.  \returns true if \p Block1 and \p Block2 contain identical
@@ -128,9 +126,9 @@ bool FlattenCFGOpt::FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder,
   if (PHI)
     return false; // For simplicity, avoid cases containing PHI nodes.
 
-  BasicBlock *LastCondBlock = nullptr;
-  BasicBlock *FirstCondBlock = nullptr;
-  BasicBlock *UnCondBlock = nullptr;
+  BasicBlock *LastCondBlock = NULL;
+  BasicBlock *FirstCondBlock = NULL;
+  BasicBlock *UnCondBlock = NULL;
   int Idx = -1;
 
   // Check predecessors of \param BB.
@@ -242,7 +240,7 @@ bool FlattenCFGOpt::FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder,
       BranchInst *BI = dyn_cast<BranchInst>(CurrBlock->getTerminator());
       CmpInst *CI = dyn_cast<CmpInst>(BI->getCondition());
       CmpInst::Predicate Predicate = CI->getPredicate();
-      // Canonicalize icmp_ne -> icmp_eq, fcmp_one -> fcmp_oeq
+      // Cannonicalize icmp_ne -> icmp_eq, fcmp_one -> fcmp_oeq
       if ((Predicate == CmpInst::ICMP_NE) || (Predicate == CmpInst::FCMP_ONE)) {
         CI->setPredicate(ICmpInst::getInversePredicate(Predicate));
         BI->swapSuccessors();

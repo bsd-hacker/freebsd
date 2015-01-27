@@ -2,7 +2,8 @@
 
 PROG=	ipcs
 SRCS=	ipcs.c ipc.c
-LIBADD=	kvm
+DPADD=	${LIBKVM}
+LDADD=	-lkvm
 
 WARNS?=	1
 

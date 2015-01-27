@@ -16,7 +16,7 @@
 #define __has_include(inc) 0
 #endif
 
-#if defined(__APPLE__) && !defined(LIBCXXRT)
+#ifdef __APPLE__
   #include <cxxabi.h>
 
   using namespace __cxxabiv1;

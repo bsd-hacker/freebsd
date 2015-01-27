@@ -386,9 +386,13 @@ next:
 			if (nreqs == 0)
 				errout("%s: syntax error describing %s\n",
 				       fname, this);
-			compile += match;
+			if (not)
+				compile += !match;
+			else
+				compile += match;
 			match = 1;
 			nreqs = 0;
+			not = 0;
 			continue;
 		}
 		if (eq(wd, "no-obj")) {
@@ -470,23 +474,19 @@ next:
 			       this, wd);
 		STAILQ_FOREACH(dp, &dtab, d_next)
 			if (eq(dp->d_name, wd)) {
-				if (not)
-					match = 0;
-				else
-					dp->d_done |= DEVDONE;
+				dp->d_done |= DEVDONE;
 				goto nextparam;
 			}
 		SLIST_FOREACH(op, &opt, op_next)
-			if (op->op_value == 0 && opteq(op->op_name, wd)) {
-				if (not)
-					match = 0;
+			if (op->op_value == 0 && opteq(op->op_name, wd))
 				goto nextparam;
-			}
-		match &= not;
+		match = 0;
 nextparam:;
-		not = 0;
 	}
-	compile += match;
+	if (not)
+		compile += !match;
+	else
+		compile += match;
 	if (compile && tp == NULL) {
 		if (std == 0 && nreqs == 0)
 			errout("%s: what is %s optional on?\n",

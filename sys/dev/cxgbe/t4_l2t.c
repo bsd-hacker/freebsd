@@ -113,15 +113,16 @@ found:
 int
 t4_write_l2e(struct adapter *sc, struct l2t_entry *e, int sync)
 {
-	struct wrq_cookie cookie;
+	struct wrqe *wr;
 	struct cpl_l2t_write_req *req;
 	int idx = e->idx + sc->vres.l2t.start;
 
 	mtx_assert(&e->lock, MA_OWNED);
 
-	req = start_wrq_wr(&sc->sge.mgmtq, howmany(sizeof(*req), 16), &cookie);
-	if (req == NULL)
+	wr = alloc_wrqe(sizeof(*req), &sc->sge.mgmtq);
+	if (wr == NULL)
 		return (ENOMEM);
+	req = wrtod(wr);
 
 	INIT_TP_WR(req, 0);
 	OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_L2T_WRITE_REQ, idx |
@@ -131,7 +132,7 @@ t4_write_l2e(struct adapter *sc, struct l2t_entry *e, int sync)
 	req->vlan = htons(e->vlan);
 	memcpy(req->dst_mac, e->dmac, sizeof(req->dst_mac));
 
-	commit_wrq_wr(&sc->sge.mgmtq, req, &cookie);
+	t4_wrq_tx(sc, wr);
 
 	if (sync && e->state != L2T_STATE_SWITCHING)
 		e->state = L2T_STATE_SYNC_WRITE;

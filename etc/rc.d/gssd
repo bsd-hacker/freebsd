@@ -9,8 +9,10 @@
 
 . /etc/rc.subr
 
-name=gssd
-rcvar=gssd_enable
+name="gssd"
 
 load_rc_config $name
+rcvar="gssd_enable"
+command="${gssd:-/usr/sbin/${name}}"
+eval ${name}_flags=\"${gssd_flags}\"
 run_rc_command "$1"

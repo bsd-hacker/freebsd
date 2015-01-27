@@ -2,7 +2,7 @@
 # $FreeBSD$
 
 PROG=	split
-
-LIBADD=	util
+LDADD=	-lutil
+DPADD=	${LIBUTIL}
 
 .include <bsd.prog.mk>

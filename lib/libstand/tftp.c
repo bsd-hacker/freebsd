@@ -447,12 +447,14 @@ tftp_read(struct open_file *f, void *addr, size_t size,
     size_t *resid /* out */)
 {
 	struct tftp_handle *tftpfile;
+	static int      tc = 0;
 	tftpfile = (struct tftp_handle *) f->f_fsdata;
 
 	while (size > 0) {
 		int needblock, count;
 
-		twiddle(32);
+		if (!(tc++ % 16))
+			twiddle();
 
 		needblock = tftpfile->off / tftpfile->tftp_blksize + 1;
 

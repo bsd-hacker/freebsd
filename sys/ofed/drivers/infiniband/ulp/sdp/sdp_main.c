@@ -69,7 +69,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/route.h>
 #include <net/vnet.h>
-#include <sys/sysctl.h>
 
 uma_zone_t	sdp_zone;
 struct rwlock	sdp_lock;
@@ -747,7 +746,7 @@ sdp_start_disconnect(struct sdp_sock *ssk)
 		    ("sdp_start_disconnect: sdp_drop() returned NULL"));
 	} else {
 		soisdisconnecting(so);
-		unread = sbused(&so->so_rcv);
+		unread = so->so_rcv.sb_cc;
 		sbflush(&so->so_rcv);
 		sdp_usrclosed(ssk);
 		if (!(ssk->flags & SDP_DROPPED)) {
@@ -889,7 +888,7 @@ sdp_append(struct sdp_sock *ssk, struct sockbuf *sb, struct mbuf *mb, int cnt)
 		m_adj(mb, SDP_HEAD_SIZE);
 		n->m_pkthdr.len += mb->m_pkthdr.len;
 		n->m_flags |= mb->m_flags & (M_PUSH | M_URG);
-		m_demote(mb, 1, 0);
+		m_demote(mb, 1);
 		sbcompress(sb, mb, sb->sb_mbtail);
 		return;
 	}
@@ -1259,7 +1258,7 @@ sdp_sorecv(struct socket *so, struct sockaddr **psa, struct uio *uio,
 	/* We will never ever get anything unless we are connected. */
 	if (!(so->so_state & (SS_ISCONNECTED|SS_ISDISCONNECTED))) {
 		/* When disconnecting there may be still some data left. */
-		if (sbavail(sb))
+		if (sb->sb_cc > 0)
 			goto deliver;
 		if (!(so->so_state & SS_ISDISCONNECTED))
 			error = ENOTCONN;
@@ -1267,7 +1266,7 @@ sdp_sorecv(struct socket *so, struct sockaddr **psa, struct uio *uio,
 	}
 
 	/* Socket buffer is empty and we shall not block. */
-	if (sbavail(sb) == 0 &&
+	if (sb->sb_cc == 0 &&
 	    ((so->so_state & SS_NBIO) || (flags & (MSG_DONTWAIT|MSG_NBIO)))) {
 		error = EAGAIN;
 		goto out;
@@ -1278,7 +1277,7 @@ restart:
 
 	/* Abort if socket has reported problems. */
 	if (so->so_error) {
-		if (sbavail(sb))
+		if (sb->sb_cc > 0)
 			goto deliver;
 		if (oresid > uio->uio_resid)
 			goto out;
@@ -1290,25 +1289,25 @@ restart:
 
 	/* Door is closed.  Deliver what is left, if any. */
 	if (sb->sb_state & SBS_CANTRCVMORE) {
-		if (sbavail(sb))
+		if (sb->sb_cc > 0)
 			goto deliver;
 		else
 			goto out;
 	}
 
 	/* Socket buffer got some data that we shall deliver now. */
-	if (sbavail(sb) && !(flags & MSG_WAITALL) &&
+	if (sb->sb_cc > 0 && !(flags & MSG_WAITALL) &&
 	    ((so->so_state & SS_NBIO) ||
 	     (flags & (MSG_DONTWAIT|MSG_NBIO)) ||
-	     sbavail(sb) >= sb->sb_lowat ||
-	     sbavail(sb) >= uio->uio_resid ||
-	     sbavail(sb) >= sb->sb_hiwat) ) {
+	     sb->sb_cc >= sb->sb_lowat ||
+	     sb->sb_cc >= uio->uio_resid ||
+	     sb->sb_cc >= sb->sb_hiwat) ) {
 		goto deliver;
 	}
 
 	/* On MSG_WAITALL we must wait until all data or error arrives. */
 	if ((flags & MSG_WAITALL) &&
-	    (sbavail(sb) >= uio->uio_resid || sbavail(sb) >= sb->sb_lowat))
+	    (sb->sb_cc >= uio->uio_resid || sb->sb_cc >= sb->sb_lowat))
 		goto deliver;
 
 	/*
@@ -1322,7 +1321,7 @@ restart:
 
 deliver:
 	SOCKBUF_LOCK_ASSERT(&so->so_rcv);
-	KASSERT(sbavail(sb), ("%s: sockbuf empty", __func__));
+	KASSERT(sb->sb_cc > 0, ("%s: sockbuf empty", __func__));
 	KASSERT(sb->sb_mb != NULL, ("%s: sb_mb == NULL", __func__));
 
 	/* Statistics. */
@@ -1330,7 +1329,7 @@ deliver:
 		uio->uio_td->td_ru.ru_msgrcv++;
 
 	/* Fill uio until full or current end of socket buffer is reached. */
-	len = min(uio->uio_resid, sbavail(sb));
+	len = min(uio->uio_resid, sb->sb_cc);
 	if (mp0 != NULL) {
 		/* Dequeue as many mbufs as possible. */
 		if (!(flags & MSG_PEEK) && len >= sb->sb_mb->m_len) {
@@ -1510,7 +1509,7 @@ sdp_urg(struct sdp_sock *ssk, struct mbuf *mb)
 	if (so == NULL)
 		return;
 
-	so->so_oobmark = sbused(&so->so_rcv) + mb->m_pkthdr.len - 1;
+	so->so_oobmark = so->so_rcv.sb_cc + mb->m_pkthdr.len - 1;
 	sohasoutofband(so);
 	ssk->oobflags &= ~(SDP_HAVEOOB | SDP_HADOOB);
 	if (!(so->so_options & SO_OOBINLINE)) {

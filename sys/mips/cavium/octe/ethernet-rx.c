@@ -304,7 +304,7 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 					m->m_pkthdr.csum_flags = 0; /* XXX */
 				}
 
-				if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+				ifp->if_ipackets++;
 
 				(*ifp->if_input)(ifp, m);
 			} else {

@@ -168,8 +168,6 @@ struct vmxnet3_rxqueue {
 	struct vmxnet3_softc		*vxrxq_sc;
 	int				 vxrxq_id;
 	int				 vxrxq_intr_idx;
-	struct mbuf			*vxrxq_mhead;
-	struct mbuf			*vxrxq_mtail;
 	struct vmxnet3_rxring		 vxrxq_cmd_ring[VMXNET3_RXRINGS_PERQ];
 	struct vmxnet3_comp_ring	 vxrxq_comp_ring;
 	struct vmxnet3_rxq_stats	 vxrxq_stats;
@@ -277,6 +275,8 @@ struct vmxnet3_softc {
  */
 #define VMXNET3_TX_MAXSEGS		32
 #define VMXNET3_TX_MAXSIZE		(VMXNET3_TX_MAXSEGS * MCLBYTES)
+#define VMXNET3_TSO_MAXSIZE \
+    (VMXNET3_TX_MAXSIZE - sizeof(struct ether_vlan_header))
 
 /*
  * Maximum support Tx segments size. The length field in the

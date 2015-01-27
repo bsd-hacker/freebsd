@@ -24,3 +24,4 @@ opt_drm.h:
 
 CWARNFLAGS.via_dma.c=		-Wno-unused-value
 CWARNFLAGS.via_dmablit.c=	-Wno-unused-value
+CWARNFLAGS+=			${CWARNFLAGS.${.IMPSRC:T}}

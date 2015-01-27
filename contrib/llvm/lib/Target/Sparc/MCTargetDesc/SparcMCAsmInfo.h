@@ -20,15 +20,15 @@ namespace llvm {
 class StringRef;
 
 class SparcELFMCAsmInfo : public MCAsmInfoELF {
-  void anchor() override;
+  virtual void anchor();
 public:
   explicit SparcELFMCAsmInfo(StringRef TT);
-  const MCExpr*
-  getExprForPersonalitySymbol(const MCSymbol *Sym, unsigned Encoding,
-                              MCStreamer &Streamer) const override;
-  const MCExpr* getExprForFDESymbol(const MCSymbol *Sym,
-                                    unsigned Encoding,
-                                    MCStreamer &Streamer) const override;
+  virtual const MCExpr* getExprForPersonalitySymbol(const MCSymbol *Sym,
+                                                    unsigned Encoding,
+                                                    MCStreamer &Streamer) const;
+  virtual const MCExpr* getExprForFDESymbol(const MCSymbol *Sym,
+                                            unsigned Encoding,
+                                            MCStreamer &Streamer) const;
 
 };
 

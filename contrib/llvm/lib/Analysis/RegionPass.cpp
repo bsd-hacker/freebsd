@@ -17,10 +17,9 @@
 #include "llvm/Analysis/RegionIterator.h"
 #include "llvm/Support/Timer.h"
 
+#define DEBUG_TYPE "regionpassmgr"
 #include "llvm/Support/Debug.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "regionpassmgr"
 
 //===----------------------------------------------------------------------===//
 // RGPassManager
@@ -32,33 +31,33 @@ RGPassManager::RGPassManager()
   : FunctionPass(ID), PMDataManager() {
   skipThisRegion = false;
   redoThisRegion = false;
-  RI = nullptr;
-  CurrentRegion = nullptr;
+  RI = NULL;
+  CurrentRegion = NULL;
 }
 
 // Recurse through all subregions and all regions  into RQ.
-static void addRegionIntoQueue(Region &R, std::deque<Region *> &RQ) {
-  RQ.push_back(&R);
-  for (const auto &E : R)
-    addRegionIntoQueue(*E, RQ);
+static void addRegionIntoQueue(Region *R, std::deque<Region *> &RQ) {
+  RQ.push_back(R);
+  for (Region::iterator I = R->begin(), E = R->end(); I != E; ++I)
+    addRegionIntoQueue(*I, RQ);
 }
 
 /// Pass Manager itself does not invalidate any analysis info.
 void RGPassManager::getAnalysisUsage(AnalysisUsage &Info) const {
-  Info.addRequired<RegionInfoPass>();
+  Info.addRequired<RegionInfo>();
   Info.setPreservesAll();
 }
 
 /// run - Execute all of the passes scheduled for execution.  Keep track of
 /// whether any of the passes modifies the function, and if so, return true.
 bool RGPassManager::runOnFunction(Function &F) {
-  RI = &getAnalysis<RegionInfoPass>().getRegionInfo();
+  RI = &getAnalysis<RegionInfo>();
   bool Changed = false;
 
   // Collect inherited analysis from Module level pass manager.
   populateInheritedAnalysis(TPM->activeStack);
 
-  addRegionIntoQueue(*RI->getTopLevelRegion(), RQ);
+  addRegionIntoQueue(RI->getTopLevelRegion(), RQ);
 
   if (RQ.empty()) // No regions, skip calling finalizers
     return false;
@@ -186,21 +185,19 @@ private:
 
 public:
   static char ID;
+  PrintRegionPass() : RegionPass(ID), Out(dbgs()) {}
   PrintRegionPass(const std::string &B, raw_ostream &o)
       : RegionPass(ID), Banner(B), Out(o) {}
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
   }
 
-  bool runOnRegion(Region *R, RGPassManager &RGM) override {
+  virtual bool runOnRegion(Region *R, RGPassManager &RGM) {
     Out << Banner;
-    for (const auto &BB : R->blocks()) {
-      if (BB)
-        BB->print(Out);
-      else
-        Out << "Printing <null> Block";
-    }
+    for (Region::block_iterator I = R->block_begin(), E = R->block_end();
+         I != E; ++I)
+      (*I)->print(Out);
 
     return false;
   }

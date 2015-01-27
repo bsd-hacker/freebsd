@@ -26,7 +26,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd July 3, 2014
+.Dd September 11, 2009
 .Dt SYSCONS 4
 .Os
 .Sh NAME
@@ -62,10 +62,6 @@ In
 .Pa /boot/device.hints :
 .Cd hint.sc.0.at="isa"
 .Cd hint.sc.0.vesa_mode=0x103
-.Pp
-In
-.Pa /boot/loader.conf :
-.Cd kern.vty=sc
 .Sh DESCRIPTION
 The
 .Nm
@@ -407,9 +403,7 @@ option too.
 The following driver flags can be used to control the
 .Nm
 driver.
-Driver flags can be set with the
-.Cd hint.sc.0.flags
-tunable, either in
+They can be set either in
 .Pa /boot/device.hints ,
 or else at the loader prompt (see
 .Xr loader 8 ) .
@@ -451,26 +445,6 @@ A list of the available mode can be obtained via
 This option instructs the syscons driver to periodically scan
 for a keyboard device if it is not currently attached to one.
 Otherwise, the driver only probes for a keyboard once during bootup.
-.El
-.Ss Loader Tunables
-These settings can be entered at the
-.Xr loader 8
-prompt or in
-.Xr loader.conf 5 .
-.Bl -tag -width indent
-.It Va kern.vty
-When both
-.Nm
-and
-.Xr vt 4
-have been compiled into the kernel, the one to use for the system console can
-be selected by setting this variable to
-.Ql sc
-or
-.Ql vt .
-If not set,
-.Nm
-provides the default system console.
 .El
 .Sh FILES
 .Bl -tag -width /usr/share/syscons/xxxxyyyyzzz -compact
@@ -559,7 +533,6 @@ to the kernel.
 .Xr splash 4 ,
 .Xr ukbd 4 ,
 .Xr vga 4 ,
-.Xr vt 4 ,
 .Xr kbdmap 5 ,
 .Xr rc.conf 5 ,
 .Xr ttys 5 ,
@@ -577,9 +550,9 @@ driver first appeared in
 The
 .Nm
 driver was written by
-.An S\(/oren Schmidt Aq Mt sos@FreeBSD.org .
+.An S\(/oren Schmidt Aq sos@FreeBSD.org .
 This manual page was written by
-.An Kazutaka Yokota Aq Mt yokota@FreeBSD.org .
+.An Kazutaka Yokota Aq yokota@FreeBSD.org .
 .Sh CAVEATS
 The amount of data that is possible to insert from the cut buffer is limited
 by the

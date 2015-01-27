@@ -2,7 +2,7 @@
 # $FreeBSD$
 
 PROG=	seq
-
-LIBADD=	m
+DPADD=	${LIBM}
+LDADD=	-lm
 
 .include <bsd.prog.mk>

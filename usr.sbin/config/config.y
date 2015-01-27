@@ -178,7 +178,7 @@ Config_spec:
 	      } |
 	OPTIONS Opt_list
 		|
-	NOOPTION NoOpt_list |
+	NOOPTION Save_id { rmopt_schedule(&opt, $2); } |
 	MAKEOPTIONS Mkopt_list
 		|
 	NOMAKEOPTION Save_id { rmopt_schedule(&mkopt, $2); } |
@@ -225,11 +225,6 @@ Opt_list:
 	Option
 		;
 
-NoOpt_list:
-	NoOpt_list COMMA NoOption
-	  	|
-	NoOption
-		;
 Option:
 	Save_id {
 		newopt(&opt, $1, NULL, 0);
@@ -240,11 +235,6 @@ Option:
 	Save_id EQUALS Opt_value {
 		newopt(&opt, $1, $3, 0);
 	      } ;
-
-NoOption:
-	Save_id {
-		rmopt_schedule(&opt, $1);
-		};
 
 Opt_value:
 	ID { $$ = $1; } |

@@ -55,7 +55,7 @@ public:
     GetRegisterSet (size_t reg_set);
 
     virtual uint32_t
-    ConvertRegisterKindToRegisterNumber (lldb::RegisterKind kind, uint32_t num);
+    ConvertRegisterKindToRegisterNumber (uint32_t kind, uint32_t num);
 
     
     //------------------------------------------------------------------

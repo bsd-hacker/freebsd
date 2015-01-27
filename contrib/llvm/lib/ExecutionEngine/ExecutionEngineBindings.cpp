@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "jit"
 #include "llvm-c/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/GenericValue.h"
@@ -22,10 +23,16 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "jit"
-
 // Wrapping the C bindings types.
 DEFINE_SIMPLE_CONVERSION_FUNCTIONS(GenericValue, LLVMGenericValueRef)
+
+inline DataLayout *unwrap(LLVMTargetDataRef P) {
+  return reinterpret_cast<DataLayout*>(P);
+}
+  
+inline LLVMTargetDataRef wrap(const DataLayout *P) {
+  return reinterpret_cast<LLVMTargetDataRef>(const_cast<DataLayout*>(P));
+}
 
 inline TargetLibraryInfo *unwrap(LLVMTargetLibraryInfoRef P) {
   return reinterpret_cast<TargetLibraryInfo*>(P);
@@ -34,11 +41,6 @@ inline TargetLibraryInfo *unwrap(LLVMTargetLibraryInfoRef P) {
 inline LLVMTargetLibraryInfoRef wrap(const TargetLibraryInfo *P) {
   TargetLibraryInfo *X = const_cast<TargetLibraryInfo*>(P);
   return reinterpret_cast<LLVMTargetLibraryInfoRef>(X);
-}
-
-inline LLVMTargetMachineRef wrap(const TargetMachine *P) {
-  return
-  reinterpret_cast<LLVMTargetMachineRef>(const_cast<TargetMachine*>(P));
 }
 
 /*===-- Operations on generic values --------------------------------------===*/
@@ -321,11 +323,6 @@ LLVMTargetDataRef LLVMGetExecutionEngineTargetData(LLVMExecutionEngineRef EE) {
   return wrap(unwrap(EE)->getDataLayout());
 }
 
-LLVMTargetMachineRef
-LLVMGetExecutionEngineTargetMachine(LLVMExecutionEngineRef EE) {
-  return wrap(unwrap(EE)->getTargetMachine());
-}
-
 void LLVMAddGlobalMapping(LLVMExecutionEngineRef EE, LLVMValueRef Global,
                           void* Addr) {
   unwrap(EE)->addGlobalMapping(unwrap<GlobalValue>(Global), Addr);
@@ -353,17 +350,17 @@ public:
   SimpleBindingMemoryManager(const SimpleBindingMMFunctions& Functions,
                              void *Opaque);
   virtual ~SimpleBindingMemoryManager();
+  
+  virtual uint8_t *allocateCodeSection(
+    uintptr_t Size, unsigned Alignment, unsigned SectionID,
+    StringRef SectionName);
 
-  uint8_t *allocateCodeSection(uintptr_t Size, unsigned Alignment,
-                               unsigned SectionID,
-                               StringRef SectionName) override;
+  virtual uint8_t *allocateDataSection(
+    uintptr_t Size, unsigned Alignment, unsigned SectionID,
+    StringRef SectionName, bool isReadOnly);
 
-  uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment,
-                               unsigned SectionID, StringRef SectionName,
-                               bool isReadOnly) override;
-
-  bool finalizeMemory(std::string *ErrMsg) override;
-
+  virtual bool finalizeMemory(std::string *ErrMsg);
+  
 private:
   SimpleBindingMMFunctions Functions;
   void *Opaque;
@@ -403,7 +400,7 @@ uint8_t *SimpleBindingMemoryManager::allocateDataSection(
 }
 
 bool SimpleBindingMemoryManager::finalizeMemory(std::string *ErrMsg) {
-  char *errMsgCString = nullptr;
+  char *errMsgCString = 0;
   bool result = Functions.FinalizeMemory(Opaque, &errMsgCString);
   assert((result || !errMsgCString) &&
          "Did not expect an error message if FinalizeMemory succeeded");
@@ -426,7 +423,7 @@ LLVMMCJITMemoryManagerRef LLVMCreateSimpleMCJITMemoryManager(
   
   if (!AllocateCodeSection || !AllocateDataSection || !FinalizeMemory ||
       !Destroy)
-    return nullptr;
+    return NULL;
   
   SimpleBindingMMFunctions functions;
   functions.AllocateCodeSection = AllocateCodeSection;

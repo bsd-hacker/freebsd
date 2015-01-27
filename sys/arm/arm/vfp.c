@@ -51,34 +51,29 @@ static struct undefined_handler vfp10_uh, vfp11_uh;
 /* If true the VFP unit has 32 double registers, otherwise it has 16 */
 static int is_d32;
 
-/*
- * About .fpu directives in this file...
- *
- * We should need simply .fpu vfpv3, but clang 3.5 has a quirk where setting
- * vfpv3 doesn't imply that vfp2 features are also available -- both have to be
- * explicitly set to get all the features of both.  This is probably a bug in
- * clang, so it may get fixed and require changes here some day.  Other changes
- * are probably coming in clang too, because there is email and open PRs
- * indicating they want to completely disable the ability to use .fpu and
- * similar directives in inline asm.  That would be catastrophic for us,
- * hopefully they come to their senses.  There was also some discusion of a new
- * syntax such as .push fpu=vfpv3; ...; .pop fpu; and that would be ideal for
- * us, better than what we have now really.
- *
- * For gcc, each .fpu directive completely overrides the prior directive, unlike
- * with clang, but luckily on gcc saying v3 implies all the v2 features as well.
- */
-
+/* The VFMXR command using coprocessor commands */
 #define fmxr(reg, val) \
-    __asm __volatile("	.fpu vfpv2\n .fpu vfpv3\n"			\
-		     "	vmsr	" __STRING(reg) ", %0"   :: "r"(val));
+    __asm __volatile("mcr p10, 7, %0, " __STRING(reg) " , c0, 0" :: "r"(val));
 
+/* The VFMRX command using coprocessor commands */
 #define fmrx(reg) \
 ({ u_int val = 0;\
-    __asm __volatile(" .fpu vfpv2\n .fpu vfpv3\n"			\
-		     "	vmrs	%0, " __STRING(reg) : "=r"(val));	\
+    __asm __volatile("mrc p10, 7, %0, " __STRING(reg) " , c0, 0" : "=r"(val));\
     val; \
 })
+
+/*
+ * Work around an issue with GCC where the asm it generates is not unified
+ * syntax and fails to assemble because it expects the ldcleq instruction in the
+ * form ldc<c>l, not in the UAL form ldcl<c>, and similar for stcleq.
+ */
+#ifdef __clang__
+#define	LDCLNE  "ldclne "
+#define	STCLNE  "stclne "
+#else
+#define	LDCLNE  "ldcnel "
+#define	STCLNE  "stcnel "
+#endif
 
 static u_int
 get_coprocessorACR(void)
@@ -108,25 +103,25 @@ vfp_init(void)
 	coproc |= COPROC10 | COPROC11;
 	set_coprocessorACR(coproc);
 	
-	fpsid = fmrx(fpsid);		/* read the vfp system id */
-	fpexc = fmrx(fpexc);		/* read the vfp exception reg */
+	fpsid = fmrx(VFPSID);		/* read the vfp system id */
+	fpexc = fmrx(VFPEXC);		/* read the vfp exception reg */
 
 	if (!(fpsid & VFPSID_HARDSOFT_IMP)) {
 		vfp_exists = 1;
 		is_d32 = 0;
-		PCPU_SET(vfpsid, fpsid);	/* save the fpsid */
+		PCPU_SET(vfpsid, fpsid);	/* save the VFPSID */
 
 		vfp_arch =
 		    (fpsid & VFPSID_SUBVERSION2_MASK) >> VFPSID_SUBVERSION_OFF;
 
 		if (vfp_arch >= VFP_ARCH3) {
-			tmp = fmrx(mvfr0);
+			tmp = fmrx(VMVFR0);
 			PCPU_SET(vfpmvfr0, tmp);
 
 			if ((tmp & VMVFR0_RB_MASK) == 2)
 				is_d32 = 1;
 
-			tmp = fmrx(mvfr1);
+			tmp = fmrx(VMVFR1);
 			PCPU_SET(vfpmvfr1, tmp);
 		}
 
@@ -166,10 +161,10 @@ vfp_bounce(u_int addr, u_int insn, struct trapframe *frame, int code)
 	 * something tried to executate a truly invalid instruction that maps to
 	 * the VFP.
 	 */
-	fpexc = fmrx(fpexc);
+	fpexc = fmrx(VFPEXC);
 	if (fpexc & VFPEXC_EN) {
 		/* Clear any exceptions */
-		fmxr(fpexc, fpexc & ~(VFPEXC_EX | VFPEXC_FP2V));
+		fmxr(VFPEXC, fpexc & ~(VFPEXC_EX | VFPEXC_FP2V));
 
 		/* kill the process - we do not handle emulation */
 		critical_exit();
@@ -197,7 +192,7 @@ vfp_bounce(u_int addr, u_int insn, struct trapframe *frame, int code)
 	 * the last thread to use the VFP on this core was this thread, then the
 	 * VFP state is valid, otherwise restore this thread's state to the VFP.
 	 */
-	fmxr(fpexc, fpexc | VFPEXC_EN);
+	fmxr(VFPEXC, fpexc | VFPEXC_EN);
 	curpcb = curthread->td_pcb;
 	cpu = PCPU_GET(cpu);
 	if (curpcb->pcb_vfpcpu != cpu || curthread != PCPU_GET(fpcurthread)) {
@@ -218,26 +213,22 @@ vfp_restore(struct vfp_state *vfpsave)
 {
 	uint32_t fpexc;
 
-	/* On vfpv3 we may need to restore FPINST and FPINST2 */
+	/* On VFPv2 we may need to restore FPINST and FPINST2 */
 	fpexc = vfpsave->fpexec;
 	if (fpexc & VFPEXC_EX) {
-		fmxr(fpinst, vfpsave->fpinst);
+		fmxr(VFPINST, vfpsave->fpinst);
 		if (fpexc & VFPEXC_FP2V)
-			fmxr(fpinst2, vfpsave->fpinst2);
+			fmxr(VFPINST2, vfpsave->fpinst2);
 	}
-	fmxr(fpscr, vfpsave->fpscr);
+	fmxr(VFPSCR, vfpsave->fpscr);
 
-	__asm __volatile(
-	    " .fpu	vfpv2\n"
-	    " .fpu	vfpv3\n"
-	    " vldmia	%0!, {d0-d15}\n"	/* d0-d15 */
-	    " cmp	%1, #0\n"		/* -D16 or -D32? */
-	    " vldmiane	%0!, {d16-d31}\n"	/* d16-d31 */
-	    " addeq	%0, %0, #128\n"		/* skip missing regs */
-	    : "+&r" (vfpsave) : "r" (is_d32) : "cc"
-	    );
+	__asm __volatile("ldc	p10, c0, [%0], #128\n" /* d0-d15 */
+			"cmp	%1, #0\n"		/* -D16 or -D32? */
+			LDCLNE "p11, c0, [%0], #128\n"	/* d16-d31 */
+			"addeq	%0, %0, #128\n"		/* skip missing regs */
+			: : "r" (vfpsave), "r" (is_d32) : "cc");
 
-	fmxr(fpexc, fpexc);
+	fmxr(VFPEXC, fpexc);
 }
 
 /*
@@ -250,31 +241,28 @@ vfp_store(struct vfp_state *vfpsave, boolean_t disable_vfp)
 {
 	uint32_t fpexc;
 
-	fpexc = fmrx(fpexc);		/* Is the vfp enabled? */
+	fpexc = fmrx(VFPEXC);		/* Is the vfp enabled? */
 	if (fpexc & VFPEXC_EN) {
 		vfpsave->fpexec = fpexc;
-		vfpsave->fpscr = fmrx(fpscr);
+		vfpsave->fpscr = fmrx(VFPSCR);
 
-		/* On vfpv3 we may need to save FPINST and FPINST2 */
+		/* On VFPv2 we may need to save FPINST and FPINST2 */
 		if (fpexc & VFPEXC_EX) {
-			vfpsave->fpinst = fmrx(fpinst);
+			vfpsave->fpinst = fmrx(VFPINST);
 			if (fpexc & VFPEXC_FP2V)
-				vfpsave->fpinst2 = fmrx(fpinst2);
+				vfpsave->fpinst2 = fmrx(VFPINST2);
 			fpexc &= ~VFPEXC_EX;
 		}
 
 		__asm __volatile(
-		    " .fpu	vfpv2\n"
-		    " .fpu	vfpv3\n"
-		    " vstmia	%0!, {d0-d15}\n"	/* d0-d15 */
-		    " cmp	%1, #0\n"		/* -D16 or -D32? */
-		    " vstmiane	r0!, {d16-d31}\n"	/* d16-d31 */
-		    " addeq	%0, %0, #128\n"		/* skip missing regs */
-		    : "+&r" (vfpsave) : "r" (is_d32) : "cc"
-		    );
+			"stc	p11, c0, [%0], #128\n"  /* d0-d15 */
+			"cmp	%1, #0\n"		/* -D16 or -D32? */
+			STCLNE "p11, c0, [%0], #128\n"	/* d16-d31 */
+			"addeq	%0, %0, #128\n"		/* skip missing regs */
+			: : "r" (vfpsave), "r" (is_d32) : "cc");
 
 		if (disable_vfp)
-			fmxr(fpexc , fpexc & ~VFPEXC_EN);
+			fmxr(VFPEXC , fpexc & ~VFPEXC_EN);
 	}
 }
 
@@ -293,9 +281,9 @@ vfp_discard(struct thread *td)
 	if (PCPU_GET(fpcurthread) == td)
 		PCPU_SET(fpcurthread, NULL);
 
-	tmp = fmrx(fpexc);
+	tmp = fmrx(VFPEXC);
 	if (tmp & VFPEXC_EN)
-		fmxr(fpexc, tmp & ~VFPEXC_EN);
+		fmxr(VFPEXC, tmp & ~VFPEXC_EN);
 }
 
 #endif

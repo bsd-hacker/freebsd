@@ -3,8 +3,8 @@
 LIB=	hdb
 LDFLAGS=	-Wl,--no-undefined
 VERSION_MAP=	${KRB5DIR}/lib/hdb/version-script.map
-LIBADD=	asn1 com_err krb5 roken heimsqlite
-DPADD=	${LDAPDPADD}
+LDADD=	-lasn1 -lcom_err -lkrb5 -lroken -lheimsqlite
+DPADD=	${LIBASN1} ${LIBCOM_ERR} ${LIBKRB5} ${LIBROKEN} ${LIBHEIMSQLITE} ${LDAPDPADD}
 
 MAN=	HDB.3 hdb_entry_ex.3
 
@@ -91,10 +91,10 @@ ${GEN}: hdb.asn1
 .SUFFIXES: .h .c .x .hx
 
 .x.c:   
-	${CP} ${.IMPSRC} ${.TARGET}
+	cp ${.IMPSRC} ${.TARGET}
 
 .hx.h:
-	${CP} ${.IMPSRC} ${.TARGET}
+	cp ${.IMPSRC} ${.TARGET}
 
 .include <bsd.lib.mk>
 

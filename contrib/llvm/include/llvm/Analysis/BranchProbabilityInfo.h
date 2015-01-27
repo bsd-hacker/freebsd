@@ -16,7 +16,6 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/IR/CFG.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/BranchProbability.h"
@@ -45,9 +44,9 @@ public:
     initializeBranchProbabilityInfoPass(*PassRegistry::getPassRegistry());
   }
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
-  bool runOnFunction(Function &F) override;
-  void print(raw_ostream &OS, const Module *M = nullptr) const override;
+  void getAnalysisUsage(AnalysisUsage &AU) const;
+  bool runOnFunction(Function &F);
+  void print(raw_ostream &OS, const Module *M = 0) const;
 
   /// \brief Get an edge's probability, relative to other out-edges of the Src.
   ///
@@ -98,9 +97,6 @@ public:
   /// This returns the sum of all raw edge weights from Src to Dst.
   /// It is guaranteed to fall between 1 and UINT32_MAX.
   uint32_t getEdgeWeight(const BasicBlock *Src, const BasicBlock *Dst) const;
-
-  uint32_t getEdgeWeight(const BasicBlock *Src,
-                         succ_const_iterator Dst) const;
 
   /// \brief Set the raw edge weight for a given edge.
   ///

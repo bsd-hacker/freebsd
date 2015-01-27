@@ -1,6 +1,6 @@
-SUBDIR=	libibcommon libibmad libibumad libibverbs libmlx4 libmthca \
-	libopensm libosmcomp libosmvendor libibcm librdmacm libsdp libcxgb4
+.include <bsd.own.mk>
 
-SUBDIR_PARALLEL=
+SUBDIR	= libibcommon libibmad libibumad libibverbs libmlx4 libmthca
+SUBDIR	+= libopensm libosmcomp libosmvendor libibcm librdmacm libsdp
 
 .include <bsd.subdir.mk>

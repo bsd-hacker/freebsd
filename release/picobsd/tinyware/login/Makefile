@@ -11,11 +11,13 @@ MAN=	login.1
 
 CFLAGS+=-DLOGALL
 
-LIBADD=	util crypt
+DPADD=	${LIBUTIL} ${LIBCRYPT}
+LDADD=	-lutil -lcrypt
 
 .if ${MK_PAM_SUPPORT} != "no"
 CFLAGS+= -DUSE_PAM
-LIBADD+=	pam
+DPADD+=	${LIBPAM}
+LDADD+=	${MINUSLPAM}
 .endif
 
 BINOWN=	root

@@ -101,7 +101,7 @@ english.base: dump ${SCAN} #Makefile
 
 
 dump: dump.c
-	${CC} -o ${.TARGET} ${.ALLSRC}
+	${CC} -o dump ${.ALLSRC}
 
 CLEANFILES+= dump ${CAT} english.base *.check __ck1 __ck2
 

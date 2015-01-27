@@ -662,7 +662,7 @@ nfs_read(struct open_file *f, void *buf, size_t size, size_t *resid)
 		       (int)fp->off);
 #endif
 	while ((int)size > 0) {
-		twiddle(16);
+		twiddle();
 		cc = nfs_readdata(fp, fp->off, (void *)addr, size);
 		/* XXX maybe should retry on certain errors */
 		if (cc == -1) {
@@ -1311,7 +1311,7 @@ nfs_read(struct open_file *f, void *buf, size_t size, size_t *resid)
 		       (int)fp->off);
 #endif
 	while ((int)size > 0) {
-		twiddle(16);
+		twiddle();
 		cc = nfs_readdata(fp, fp->off, (void *)addr, size);
 		/* XXX maybe should retry on certain errors */
 		if (cc == -1) {

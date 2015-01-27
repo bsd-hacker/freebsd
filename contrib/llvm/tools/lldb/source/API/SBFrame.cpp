@@ -63,9 +63,9 @@ SBFrame::SBFrame (const StackFrameSP &lldb_object_sp) :
     {
         SBStream sstr;
         GetDescription (sstr);
-        log->Printf ("SBFrame::SBFrame (sp=%p) => SBFrame(%p): %s",
-                     static_cast<void*>(lldb_object_sp.get()),
-                     static_cast<void*>(lldb_object_sp.get()), sstr.GetData());
+        log->Printf ("SBFrame::SBFrame (sp=%p) => SBFrame(%p): %s", 
+                     lldb_object_sp.get(), lldb_object_sp.get(), sstr.GetData());
+                     
     }
 }
 
@@ -141,9 +141,8 @@ SBFrame::GetSymbolContext (uint32_t resolve_scope) const
     }
 
     if (log)
-        log->Printf ("SBFrame(%p)::GetSymbolContext (resolve_scope=0x%8.8x) => SBSymbolContext(%p)",
-                     static_cast<void*>(frame), resolve_scope,
-                     static_cast<void*>(sb_sym_ctx.get()));
+        log->Printf ("SBFrame(%p)::GetSymbolContext (resolve_scope=0x%8.8x) => SBSymbolContext(%p)", 
+                     frame, resolve_scope, sb_sym_ctx.get());
 
     return sb_sym_ctx;
 }
@@ -185,9 +184,8 @@ SBFrame::GetModule () const
     }
 
     if (log)
-        log->Printf ("SBFrame(%p)::GetModule () => SBModule(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(module_sp.get()));
+        log->Printf ("SBFrame(%p)::GetModule () => SBModule(%p)", 
+                     frame, module_sp.get());
 
     return sb_module;
 }
@@ -226,9 +224,8 @@ SBFrame::GetCompileUnit () const
         }
     }
     if (log)
-        log->Printf ("SBFrame(%p)::GetCompileUnit () => SBCompileUnit(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(sb_comp_unit.get()));
+        log->Printf ("SBFrame(%p)::GetCompileUnit () => SBCompileUnit(%p)", 
+                     frame, sb_comp_unit.get());
 
     return sb_comp_unit;
 }
@@ -267,9 +264,8 @@ SBFrame::GetFunction () const
         }
     }
     if (log)
-        log->Printf ("SBFrame(%p)::GetFunction () => SBFunction(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(sb_function.get()));
+        log->Printf ("SBFrame(%p)::GetFunction () => SBFunction(%p)", 
+                     frame, sb_function.get());
 
     return sb_function;
 }
@@ -308,9 +304,8 @@ SBFrame::GetSymbol () const
         }
     }
     if (log)
-        log->Printf ("SBFrame(%p)::GetSymbol () => SBSymbol(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(sb_symbol.get()));
+        log->Printf ("SBFrame(%p)::GetSymbol () => SBSymbol(%p)", 
+                     frame, sb_symbol.get());
     return sb_symbol;
 }
 
@@ -344,14 +339,12 @@ SBFrame::GetBlock () const
         else
         {
             if (log)
-                log->Printf ("SBFrame(%p)::GetBlock () => error: process is running",
-                             static_cast<void*>(frame));
+                log->Printf ("SBFrame(%p)::GetBlock () => error: process is running", frame);
         }
     }
     if (log)
-        log->Printf ("SBFrame(%p)::GetBlock () => SBBlock(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(sb_block.GetPtr()));
+        log->Printf ("SBFrame(%p)::GetBlock () => SBBlock(%p)", 
+                     frame, sb_block.GetPtr());
     return sb_block;
 }
 
@@ -389,9 +382,8 @@ SBFrame::GetFrameBlock () const
         }
     }
     if (log)
-        log->Printf ("SBFrame(%p)::GetFrameBlock () => SBBlock(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(sb_block.GetPtr()));
+        log->Printf ("SBFrame(%p)::GetFrameBlock () => SBBlock(%p)", 
+                     frame, sb_block.GetPtr());
     return sb_block;    
 }
 
@@ -429,9 +421,8 @@ SBFrame::GetLineEntry () const
         }
     }
     if (log)
-        log->Printf ("SBFrame(%p)::GetLineEntry () => SBLineEntry(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(sb_line_entry.get()));
+        log->Printf ("SBFrame(%p)::GetLineEntry () => SBLineEntry(%p)", 
+                     frame, sb_line_entry.get());
     return sb_line_entry;
 }
 
@@ -439,16 +430,16 @@ uint32_t
 SBFrame::GetFrameID () const
 {
     uint32_t frame_idx = UINT32_MAX;
-
+    
     ExecutionContext exe_ctx(m_opaque_sp.get());
     StackFrame *frame = exe_ctx.GetFramePtr();
     if (frame)
         frame_idx = frame->GetFrameIndex ();
-
+    
     Log *log(GetLogIfAllCategoriesSet (LIBLLDB_LOG_API));
     if (log)
-        log->Printf ("SBFrame(%p)::GetFrameID () => %u",
-                     static_cast<void*>(frame), frame_idx);
+        log->Printf ("SBFrame(%p)::GetFrameID () => %u", 
+                     frame, frame_idx);
     return frame_idx;
 }
 
@@ -487,8 +478,7 @@ SBFrame::GetPC () const
     }
 
     if (log)
-        log->Printf ("SBFrame(%p)::GetPC () => 0x%" PRIx64,
-                     static_cast<void*>(frame), addr);
+        log->Printf ("SBFrame(%p)::GetPC () => 0x%" PRIx64, frame, addr);
 
     return addr;
 }
@@ -529,7 +519,7 @@ SBFrame::SetPC (addr_t new_pc)
 
     if (log)
         log->Printf ("SBFrame(%p)::SetPC (new_pc=0x%" PRIx64 ") => %i",
-                     static_cast<void*>(frame), new_pc, ret_val);
+                     frame, new_pc, ret_val);
 
     return ret_val;
 }
@@ -568,8 +558,7 @@ SBFrame::GetSP () const
         }
     }
     if (log)
-        log->Printf ("SBFrame(%p)::GetSP () => 0x%" PRIx64,
-                     static_cast<void*>(frame), addr);
+        log->Printf ("SBFrame(%p)::GetSP () => 0x%" PRIx64, frame, addr);
 
     return addr;
 }
@@ -610,8 +599,7 @@ SBFrame::GetFP () const
     }
 
     if (log)
-        log->Printf ("SBFrame(%p)::GetFP () => 0x%" PRIx64,
-                     static_cast<void*>(frame), addr);
+        log->Printf ("SBFrame(%p)::GetFP () => 0x%" PRIx64, frame, addr);
     return addr;
 }
 
@@ -650,9 +638,7 @@ SBFrame::GetPCAddress () const
         }
     }
     if (log)
-        log->Printf ("SBFrame(%p)::GetPCAddress () => SBAddress(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(sb_addr.get()));
+        log->Printf ("SBFrame(%p)::GetPCAddress () => SBAddress(%p)", frame, sb_addr.get());
     return sb_addr;
 }
 
@@ -741,6 +727,7 @@ SBFrame::FindVariable (const char *name)
     }
     return value;
 }
+                                    
 
 SBValue
 SBFrame::FindVariable (const char *name, lldb::DynamicValueType use_dynamic)
@@ -755,7 +742,7 @@ SBFrame::FindVariable (const char *name, lldb::DynamicValueType use_dynamic)
             log->Printf ("SBFrame::FindVariable called with empty name");
         return sb_value;
     }
-
+    
     ValueObjectSP value_sp;
     Mutex::Locker api_locker;
     ExecutionContext exe_ctx (m_opaque_sp.get(), api_locker);
@@ -779,7 +766,7 @@ SBFrame::FindVariable (const char *name, lldb::DynamicValueType use_dynamic)
                     const bool can_create = true;
                     const bool get_parent_variables = true;
                     const bool stop_if_block_is_inlined_function = true;
-
+                    
                     if (sc.block->AppendVariables (can_create, 
                                                    get_parent_variables,
                                                    stop_if_block_is_inlined_function,
@@ -807,11 +794,10 @@ SBFrame::FindVariable (const char *name, lldb::DynamicValueType use_dynamic)
                 log->Printf ("SBFrame::FindVariable () => error: process is running");
         }
     }
-
+    
     if (log)
-        log->Printf ("SBFrame(%p)::FindVariable (name=\"%s\") => SBValue(%p)",
-                     static_cast<void*>(frame), name,
-                     static_cast<void*>(value_sp.get()));
+        log->Printf ("SBFrame(%p)::FindVariable (name=\"%s\") => SBValue(%p)", 
+                     frame, name, value_sp.get());
 
     return sb_value;
 }
@@ -836,14 +822,14 @@ SBFrame::FindValue (const char *name, ValueType value_type, lldb::DynamicValueTy
 {
     Log *log(GetLogIfAllCategoriesSet (LIBLLDB_LOG_API));
     SBValue sb_value;
-
+    
     if (name == NULL || name[0] == '\0')
     {
         if (log)
             log->Printf ("SBFrame::FindValue called with empty name.");
         return sb_value;
     }
-
+    
     ValueObjectSP value_sp;
     Mutex::Locker api_locker;
     ExecutionContext exe_ctx (m_opaque_sp.get(), api_locker);
@@ -860,7 +846,7 @@ SBFrame::FindValue (const char *name, ValueType value_type, lldb::DynamicValueTy
             if (frame)
             {
                 VariableList variable_list;
-
+                
                 switch (value_type)
                 {
                 case eValueTypeVariableGlobal:      // global variable
@@ -868,6 +854,7 @@ SBFrame::FindValue (const char *name, ValueType value_type, lldb::DynamicValueTy
                 case eValueTypeVariableArgument:    // function argument variables
                 case eValueTypeVariableLocal:       // function local variables
                     {
+                        
                         SymbolContext sc (frame->GetSymbolContext (eSymbolContextBlock));
 
                         const bool can_create = true;
@@ -970,12 +957,12 @@ SBFrame::FindValue (const char *name, ValueType value_type, lldb::DynamicValueTy
                 log->Printf ("SBFrame::FindValue () => error: process is running");
         }
     }
-
+    
     if (log)
-        log->Printf ("SBFrame(%p)::FindVariableInScope (name=\"%s\", value_type=%i) => SBValue(%p)",
-                     static_cast<void*>(frame), name, value_type,
-                     static_cast<void*>(value_sp.get()));
+        log->Printf ("SBFrame(%p)::FindVariableInScope (name=\"%s\", value_type=%i) => SBValue(%p)", 
+                     frame, name, value_type, value_sp.get());
 
+    
     return sb_value;
 }
 
@@ -1012,9 +999,10 @@ SBFrame::GetThread () const
     {
         SBStream sstr;
         sb_thread.GetDescription (sstr);
-        log->Printf ("SBFrame(%p)::GetThread () => SBThread(%p): %s",
-                     static_cast<void*>(exe_ctx.GetFramePtr()),
-                     static_cast<void*>(thread_sp.get()), sstr.GetData());
+        log->Printf ("SBFrame(%p)::GetThread () => SBThread(%p): %s", 
+                     exe_ctx.GetFramePtr(), 
+                     thread_sp.get(), 
+                     sstr.GetData());
     }
 
     return sb_thread;
@@ -1051,12 +1039,11 @@ SBFrame::Disassemble () const
         {
             if (log)
                 log->Printf ("SBFrame::Disassemble () => error: process is running");
-        }
+        }            
     }
 
     if (log)
-        log->Printf ("SBFrame(%p)::Disassemble () => %s",
-                     static_cast<void*>(frame), disassembly);
+        log->Printf ("SBFrame(%p)::Disassemble () => %s", frame, disassembly);
 
     return disassembly;
 }
@@ -1097,9 +1084,12 @@ SBFrame::GetVariables (bool arguments,
     Target *target = exe_ctx.GetTargetPtr();
 
     if (log)
-        log->Printf ("SBFrame::GetVariables (arguments=%i, locals=%i, statics=%i, in_scope_only=%i)",
-                     arguments, locals, statics, in_scope_only);
-
+        log->Printf ("SBFrame::GetVariables (arguments=%i, locals=%i, statics=%i, in_scope_only=%i)", 
+                     arguments,
+                     locals,
+                     statics,
+                     in_scope_only);
+    
     Process *process = exe_ctx.GetProcessPtr();
     if (target && process)
     {
@@ -1166,13 +1156,13 @@ SBFrame::GetVariables (bool arguments,
         {
             if (log)
                 log->Printf ("SBFrame::GetVariables () => error: process is running");
-        }
+        }            
     }
 
     if (log)
-        log->Printf ("SBFrame(%p)::GetVariables (...) => SBValueList(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(value_list.opaque_ptr()));
+    {
+        log->Printf ("SBFrame(%p)::GetVariables (...) => SBValueList(%p)", frame, value_list.opaque_ptr());
+    }
 
     return value_list;
 }
@@ -1217,13 +1207,11 @@ SBFrame::GetRegisters ()
         {
             if (log)
                 log->Printf ("SBFrame::GetRegisters () => error: process is running");
-        }
+        }            
     }
 
     if (log)
-        log->Printf ("SBFrame(%p)::GetRegisters () => SBValueList(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(value_list.opaque_ptr()));
+        log->Printf ("SBFrame(%p)::GetRegisters () => SBValueList(%p)", frame, value_list.opaque_ptr());
 
     return value_list;
 }
@@ -1277,13 +1265,11 @@ SBFrame::FindRegister (const char *name)
         {
             if (log)
                 log->Printf ("SBFrame::FindRegister () => error: process is running");
-        }
+        }            
     }
 
     if (log)
-        log->Printf ("SBFrame(%p)::FindRegister () => SBValue(%p)",
-                     static_cast<void*>(frame),
-                     static_cast<void*>(value_sp.get()));
+        log->Printf ("SBFrame(%p)::FindRegister () => SBValue(%p)", frame, value_sp.get());
 
     return result;
 }
@@ -1369,19 +1355,19 @@ lldb::SBValue
 SBFrame::EvaluateExpression (const char *expr, const SBExpressionOptions &options)
 {
     Log *log(GetLogIfAllCategoriesSet (LIBLLDB_LOG_API));
-
+    
     Log *expr_log(GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
-    ExpressionResults exe_results = eExpressionSetupError;
+    ExecutionResults exe_results = eExecutionSetupError;
     SBValue expr_result;
-
+    
     if (expr == NULL || expr[0] == '\0')
     {
         if (log)
             log->Printf ("SBFrame::EvaluateExpression called with an empty expression");
         return expr_result;
     }
-
+    
     ValueObjectSP expr_value_sp;
 
     Mutex::Locker api_locker;
@@ -1393,7 +1379,7 @@ SBFrame::EvaluateExpression (const char *expr, const SBExpressionOptions &option
     StackFrame *frame = NULL;
     Target *target = exe_ctx.GetTargetPtr();
     Process *process = exe_ctx.GetProcessPtr();
-
+    
     if (target && process)
     {
         Process::StopLocker stop_locker;
@@ -1409,7 +1395,7 @@ SBFrame::EvaluateExpression (const char *expr, const SBExpressionOptions &option
                     Host::SetCrashDescriptionWithFormat ("SBFrame::EvaluateExpression (expr = \"%s\", fetch_dynamic_value = %u) %s",
                                                          expr, options.GetFetchDynamicValue(), frame_description.GetString().c_str());
                 }
-
+                
                 exe_results = target->EvaluateExpression (expr,
                                                           frame,
                                                           expr_value_sp,
@@ -1429,18 +1415,21 @@ SBFrame::EvaluateExpression (const char *expr, const SBExpressionOptions &option
         {
             if (log)
                 log->Printf ("SBFrame::EvaluateExpression () => error: process is running");
-        }
+        }            
     }
 
 #ifndef LLDB_DISABLE_PYTHON
     if (expr_log)
-        expr_log->Printf("** [SBFrame::EvaluateExpression] Expression result is %s, summary %s **",
-                         expr_result.GetValue(), expr_result.GetSummary());
-
+        expr_log->Printf("** [SBFrame::EvaluateExpression] Expression result is %s, summary %s **", 
+                         expr_result.GetValue(), 
+                         expr_result.GetSummary());
+    
     if (log)
-        log->Printf ("SBFrame(%p)::EvaluateExpression (expr=\"%s\") => SBValue(%p) (execution result=%d)",
-                     static_cast<void*>(frame), expr,
-                     static_cast<void*>(expr_value_sp.get()), exe_results);
+        log->Printf ("SBFrame(%p)::EvaluateExpression (expr=\"%s\") => SBValue(%p) (execution result=%d)", 
+                     frame, 
+                     expr, 
+                     expr_value_sp.get(),
+                     exe_results);
 #endif
 
     return expr_result;

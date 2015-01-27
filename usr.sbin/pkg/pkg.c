@@ -126,8 +126,7 @@ extract_pkg_static(int fd, char *p, int sz)
 	if (r == ARCHIVE_OK)
 		ret = 0;
 	else
-		warnx("failed to extract pkg-static: %s",
-		    archive_error_string(a));
+		warnx("fail to extract pkg-static");
 
 cleanup:
 	archive_read_free(a);

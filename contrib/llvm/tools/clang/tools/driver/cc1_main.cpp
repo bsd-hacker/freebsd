@@ -21,7 +21,6 @@
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/TextDiagnosticBuffer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
-#include "clang/Frontend/Utils.h"
 #include "clang/FrontendTool/Utils.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/LinkAllPasses.h"
@@ -57,15 +56,9 @@ static void LLVMErrorHandler(void *UserData, const std::string &Message,
   exit(GenCrashDiag ? 70 : 1);
 }
 
-#ifdef LINK_POLLY_INTO_TOOLS
-namespace polly {
-void initializePollyPasses(llvm::PassRegistry &Registry);
-}
-#endif
-
 int cc1_main(const char **ArgBegin, const char **ArgEnd,
              const char *Argv0, void *MainAddr) {
-  std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
+  OwningPtr<CompilerInstance> Clang(new CompilerInstance());
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   // Initialize targets first, so that --version shows registered targets.
@@ -73,11 +66,6 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
   llvm::InitializeAllAsmParsers();
-
-#ifdef LINK_POLLY_INTO_TOOLS
-  llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
-  polly::initializePollyPasses(Registry);
-#endif
 
   // Buffer diagnostics from argument parsing so that we can output them using a
   // well formed diagnostic object.
@@ -124,7 +112,7 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   if (Clang->getFrontendOpts().DisableFree) {
     if (llvm::AreStatisticsEnabled() || Clang->getFrontendOpts().ShowStats)
       llvm::PrintStatistics();
-    BuryPointer(Clang.release());
+    Clang.take();
     return !Success;
   }
 

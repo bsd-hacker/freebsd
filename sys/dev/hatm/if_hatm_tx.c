@@ -452,7 +452,7 @@ hatm_start(struct ifnet *ifp)
 		if ((tpd = hatm_alloc_tpd(sc, M_NOWAIT)) == NULL) {
 			hatm_free_txmbuf(sc);
 			m_freem(m);
-			if_inc_counter(sc->ifp, IFCOUNTER_OERRORS, 1);
+			sc->ifp->if_oerrors++;
 			continue;
 		}
 		tpd->cid = cid;
@@ -472,7 +472,7 @@ hatm_start(struct ifnet *ifp)
 				tpd->mbuf = NULL;
 				hatm_free_txmbuf(sc);
 				hatm_free_tpd(sc, tpd);
-				if_inc_counter(sc->ifp, IFCOUNTER_OERRORS, 1);
+				sc->ifp->if_oerrors++;
 				continue;
 			}
 			arg.mbuf = m;
@@ -484,17 +484,17 @@ hatm_start(struct ifnet *ifp)
 			if_printf(sc->ifp, "mbuf loaded error=%d\n",
 			    error);
 			hatm_free_tpd(sc, tpd);
-			if_inc_counter(sc->ifp, IFCOUNTER_OERRORS, 1);
+			sc->ifp->if_oerrors++;
 			continue;
 		}
 		if (arg.error) {
 			hatm_free_tpd(sc, tpd);
-			if_inc_counter(sc->ifp, IFCOUNTER_OERRORS, 1);
+			sc->ifp->if_oerrors++;
 			continue;
 		}
 		arg.vcc->opackets++;
 		arg.vcc->obytes += len;
-		if_inc_counter(sc->ifp, IFCOUNTER_OPACKETS, 1);
+		sc->ifp->if_opackets++;
 	}
 	mtx_unlock(&sc->mtx);
 }

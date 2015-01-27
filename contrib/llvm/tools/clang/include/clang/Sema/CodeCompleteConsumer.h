@@ -397,7 +397,7 @@ public:
       CodeCompletionString *Optional;
     };
 
-    Chunk() : Kind(CK_Text), Text(nullptr) { }
+    Chunk() : Kind(CK_Text), Text(0) { }
 
     explicit Chunk(ChunkKind Kind, const char *Text = "");
 
@@ -575,14 +575,14 @@ public:
                         CodeCompletionTUInfo &CCTUInfo)
     : Allocator(Allocator), CCTUInfo(CCTUInfo),
       Priority(0), Availability(CXAvailability_Available),
-      BriefComment(nullptr) { }
+      BriefComment(NULL) { }
 
   CodeCompletionBuilder(CodeCompletionAllocator &Allocator,
                         CodeCompletionTUInfo &CCTUInfo,
                         unsigned Priority, CXAvailabilityKind Availability)
     : Allocator(Allocator), CCTUInfo(CCTUInfo),
       Priority(Priority), Availability(Availability),
-      BriefComment(nullptr) { }
+      BriefComment(NULL) { }
 
   /// \brief Retrieve the allocator into which the code completion
   /// strings should be allocated.
@@ -700,7 +700,7 @@ public:
   /// \brief Build a result that refers to a declaration.
   CodeCompletionResult(const NamedDecl *Declaration,
                        unsigned Priority,
-                       NestedNameSpecifier *Qualifier = nullptr,
+                       NestedNameSpecifier *Qualifier = 0,
                        bool QualifierIsInformative = false,
                        bool Accessible = true)
     : Declaration(Declaration), Priority(Priority),
@@ -714,34 +714,36 @@ public:
 
   /// \brief Build a result that refers to a keyword or symbol.
   CodeCompletionResult(const char *Keyword, unsigned Priority = CCP_Keyword)
-    : Declaration(nullptr), Keyword(Keyword), Priority(Priority),
-      StartParameter(0), Kind(RK_Keyword), CursorKind(CXCursor_NotImplemented),
+    : Declaration(0), Keyword(Keyword), Priority(Priority), StartParameter(0),
+      Kind(RK_Keyword), CursorKind(CXCursor_NotImplemented),
       Availability(CXAvailability_Available), Hidden(false),
       QualifierIsInformative(0), StartsNestedNameSpecifier(false),
-      AllParametersAreInformative(false), DeclaringEntity(false),
-      Qualifier(nullptr) {}
+      AllParametersAreInformative(false), DeclaringEntity(false), Qualifier(0)
+  {
+  }
 
   /// \brief Build a result that refers to a macro.
   CodeCompletionResult(const IdentifierInfo *Macro,
                        unsigned Priority = CCP_Macro)
-    : Declaration(nullptr), Macro(Macro), Priority(Priority), StartParameter(0),
+    : Declaration(0), Macro(Macro), Priority(Priority), StartParameter(0),
       Kind(RK_Macro), CursorKind(CXCursor_MacroDefinition),
       Availability(CXAvailability_Available), Hidden(false),
       QualifierIsInformative(0), StartsNestedNameSpecifier(false),
-      AllParametersAreInformative(false), DeclaringEntity(false),
-      Qualifier(nullptr) {}
+      AllParametersAreInformative(false), DeclaringEntity(false), Qualifier(0)
+  {
+  }
 
   /// \brief Build a result that refers to a pattern.
   CodeCompletionResult(CodeCompletionString *Pattern,
                        unsigned Priority = CCP_CodePattern,
                        CXCursorKind CursorKind = CXCursor_NotImplemented,
                    CXAvailabilityKind Availability = CXAvailability_Available,
-                       const NamedDecl *D = nullptr)
+                       const NamedDecl *D = 0)
     : Declaration(D), Pattern(Pattern), Priority(Priority), StartParameter(0),
       Kind(RK_Pattern), CursorKind(CursorKind), Availability(Availability),
       Hidden(false), QualifierIsInformative(0),
       StartsNestedNameSpecifier(false), AllParametersAreInformative(false),
-      DeclaringEntity(false), Qualifier(nullptr)
+      DeclaringEntity(false), Qualifier(0)
   {
   }
 
@@ -752,8 +754,7 @@ public:
     : Declaration(D), Pattern(Pattern), Priority(Priority), StartParameter(0),
       Kind(RK_Pattern), Availability(CXAvailability_Available), Hidden(false),
       QualifierIsInformative(false), StartsNestedNameSpecifier(false),
-      AllParametersAreInformative(false), DeclaringEntity(false),
-      Qualifier(nullptr) {
+      AllParametersAreInformative(false), DeclaringEntity(false), Qualifier(0) {
     computeCursorKindAndAvailability();
   }  
   
@@ -965,19 +966,20 @@ public:
       CCTUInfo(new GlobalCodeCompletionAllocator) {}
 
   /// \brief Prints the finalized code-completion results.
-  void ProcessCodeCompleteResults(Sema &S, CodeCompletionContext Context,
-                                  CodeCompletionResult *Results,
-                                  unsigned NumResults) override;
+  virtual void ProcessCodeCompleteResults(Sema &S,
+                                          CodeCompletionContext Context,
+                                          CodeCompletionResult *Results,
+                                          unsigned NumResults);
 
-  void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
-                                 OverloadCandidate *Candidates,
-                                 unsigned NumCandidates) override;
+  virtual void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
+                                         OverloadCandidate *Candidates,
+                                         unsigned NumCandidates);
 
-  CodeCompletionAllocator &getAllocator() override {
+  virtual CodeCompletionAllocator &getAllocator() {
     return CCTUInfo.getAllocator();
   }
 
-  CodeCompletionTUInfo &getCodeCompletionTUInfo() override { return CCTUInfo; }
+  virtual CodeCompletionTUInfo &getCodeCompletionTUInfo() { return CCTUInfo; }
 };
 
 } // end namespace clang

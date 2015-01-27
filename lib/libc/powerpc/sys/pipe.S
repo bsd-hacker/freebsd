@@ -41,6 +41,5 @@ ENTRY(pipe)
 	blr			/* and return 0 */
 1:
 	b	PIC_PLT(HIDENAME(cerror))
-END(pipe)
 
 	.section .note.GNU-stack,"",%progbits

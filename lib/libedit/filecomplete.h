@@ -1,5 +1,3 @@
-/*	$NetBSD: filecomplete.h,v 1.9 2009/12/30 22:37:40 christos Exp $	*/
-
 /*-
  * Copyright (c) 1997 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -28,6 +26,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
+ *	$NetBSD: filecomplete.h,v 1.9 2009/12/30 22:37:40 christos Exp $
  * $FreeBSD$
  */
 #ifndef _FILECOMPLETE_H_
@@ -36,10 +35,10 @@
 int fn_complete(EditLine *,
     char *(*)(const char *, int),
     char **(*)(const char *, int, int),
-    const Char *, const Char *, const char *(*)(const char *), size_t,
+    const char *, const char *, const char *(*)(const char *), size_t,
     int *, int *, int *, int *,
-    const Char *(*)(const Char *, const Char *),
-    Char *(*)(const Char *),
+    const char *(*)(const char *, const char *),
+    char *(*)(const char *),
     char *(*)(const char *));
 
 void fn_display_match_list(EditLine *, char **, size_t, size_t);

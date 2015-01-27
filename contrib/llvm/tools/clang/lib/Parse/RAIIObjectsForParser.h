@@ -50,7 +50,7 @@ namespace clang {
   public:
     /// Begin suppressing access-like checks 
     SuppressAccessChecks(Parser &P, bool activate = true)
-        : S(P.getActions()), DiagnosticPool(nullptr) {
+        : S(P.getActions()), DiagnosticPool(NULL) {
       if (activate) {
         State = S.PushParsingDeclaration(DiagnosticPool);
         Active = true;
@@ -61,7 +61,7 @@ namespace clang {
 
     void done() {
       assert(Active && "trying to end an inactive suppression");
-      S.PopParsingDeclaration(State, nullptr);
+      S.PopParsingDeclaration(State, NULL);
       Active = false;
     }
 
@@ -93,7 +93,7 @@ namespace clang {
   public:
     enum NoParent_t { NoParent };
     ParsingDeclRAIIObject(Parser &P, NoParent_t _)
-        : Actions(P.getActions()), DiagnosticPool(nullptr) {
+        : Actions(P.getActions()), DiagnosticPool(NULL) {
       push();
     }
 
@@ -109,7 +109,7 @@ namespace clang {
     /// RAII object (which is assumed to be the current top pool).
     ParsingDeclRAIIObject(Parser &P, ParsingDeclRAIIObject *other)
         : Actions(P.getActions()),
-          DiagnosticPool(other ? other->DiagnosticPool.getParent() : nullptr) {
+          DiagnosticPool(other ? other->DiagnosticPool.getParent() : NULL) {
       if (other) {
         DiagnosticPool.steal(other->DiagnosticPool);
         other->abort();
@@ -137,7 +137,7 @@ namespace clang {
     /// Signals that the context was completed without an appropriate
     /// declaration being parsed.
     void abort() {
-      pop(nullptr);
+      pop(0);
     }
 
     void complete(Decl *D) {
@@ -148,7 +148,7 @@ namespace clang {
     /// Unregister this object from Sema, but remember all the
     /// diagnostics that were emitted into it.
     void abortAndRemember() {
-      pop(nullptr);
+      pop(0);
     }
 
   private:
@@ -415,8 +415,8 @@ namespace clang {
       
       return diagnoseOverflow();
     }
-
-    bool expectAndConsume(unsigned DiagID = diag::err_expected,
+    
+    bool expectAndConsume(unsigned DiagID,
                           const char *Msg = "",
                           tok::TokenKind SkipToTok = tok::unknown);
     bool consumeClose() {

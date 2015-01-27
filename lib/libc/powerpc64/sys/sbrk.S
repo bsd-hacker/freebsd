@@ -64,6 +64,5 @@ ENTRY(sbrk)
 	ld	%r0,16(%r1)
 	mtlr	%r0
 	blr
-END(sbrk)
 
 	.section .note.GNU-stack,"",%progbits

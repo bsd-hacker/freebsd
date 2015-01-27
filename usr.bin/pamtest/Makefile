@@ -5,7 +5,7 @@ OPENPAM=	${.CURDIR}/../../contrib/openpam
 
 PROG= pamtest
 SRCS= pamtest.c
-
-LIBADD=	pam
+DPADD= ${LIBPAM}
+LDADD= ${MINUSLPAM}
 
 .include <bsd.prog.mk>

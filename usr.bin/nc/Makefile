@@ -6,7 +6,8 @@ PROG=	nc
 SRCS=	netcat.c atomicio.c socks.c
 
 CFLAGS+=-DIPSEC
-LIBADD=	ipsec
+LDADD=	-lipsec
+DPADD=	${LIBIPSEC}
 
 WARNS?=	2
 

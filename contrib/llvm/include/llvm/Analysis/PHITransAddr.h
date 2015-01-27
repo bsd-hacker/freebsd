@@ -36,8 +36,8 @@ class PHITransAddr {
   /// Addr - The actual address we're analyzing.
   Value *Addr;
   
-  /// The DataLayout we are playing with if known, otherwise null.
-  const DataLayout *DL;
+  /// TD - The target data we are playing with if known, otherwise null.
+  const DataLayout *TD;
 
   /// TLI - The target library info if known, otherwise null.
   const TargetLibraryInfo *TLI;
@@ -45,8 +45,7 @@ class PHITransAddr {
   /// InstInputs - The inputs for our symbolic address.
   SmallVector<Instruction*, 4> InstInputs;
 public:
-  PHITransAddr(Value *addr, const DataLayout *DL)
-      : Addr(addr), DL(DL), TLI(nullptr) {
+  PHITransAddr(Value *addr, const DataLayout *td) : Addr(addr), TD(td), TLI(0) {
     // If the address is an instruction, the whole thing is considered an input.
     if (Instruction *I = dyn_cast<Instruction>(Addr))
       InstInputs.push_back(I);

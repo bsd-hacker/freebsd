@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGES.
  */
+
 
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
@@ -170,7 +171,8 @@ AcpiDbSetScope (
             goto ErrorExit;
         }
 
-        AcpiGbl_DbScopeBuf[0] = 0;
+        ACPI_STRCPY (AcpiGbl_DbScopeBuf, Name);
+        ACPI_STRCAT (AcpiGbl_DbScopeBuf, "\\");
     }
     else
     {
@@ -182,22 +184,9 @@ AcpiDbSetScope (
         {
             goto ErrorExit;
         }
-    }
 
-    /* Build the final pathname */
-
-    if (AcpiUtSafeStrcat (AcpiGbl_DbScopeBuf, sizeof (AcpiGbl_DbScopeBuf),
-        Name))
-    {
-        Status = AE_BUFFER_OVERFLOW;
-        goto ErrorExit;
-    }
-
-    if (AcpiUtSafeStrcat (AcpiGbl_DbScopeBuf, sizeof (AcpiGbl_DbScopeBuf),
-        "\\"))
-    {
-        Status = AE_BUFFER_OVERFLOW;
-        goto ErrorExit;
+        ACPI_STRCAT (AcpiGbl_DbScopeBuf, Name);
+        ACPI_STRCAT (AcpiGbl_DbScopeBuf, "\\");
     }
 
     AcpiGbl_DbScopeNode = Node;

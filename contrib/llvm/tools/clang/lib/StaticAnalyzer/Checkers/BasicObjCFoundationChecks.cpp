@@ -14,7 +14,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
-#include "SelectorExtras.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
@@ -40,8 +39,7 @@ using namespace ento;
 namespace {
 class APIMisuse : public BugType {
 public:
-  APIMisuse(const CheckerBase *checker, const char *name)
-      : BugType(checker, name, "API Misuse (Apple)") {}
+  APIMisuse(const char* name) : BugType(name, "API Misuse (Apple)") {}
 };
 } // end anonymous namespace
 
@@ -96,19 +94,7 @@ namespace {
   class NilArgChecker : public Checker<check::PreObjCMessage,
                                        check::PostStmt<ObjCDictionaryLiteral>,
                                        check::PostStmt<ObjCArrayLiteral> > {
-    mutable std::unique_ptr<APIMisuse> BT;
-
-    mutable llvm::SmallDenseMap<Selector, unsigned, 16> StringSelectors;
-    mutable Selector ArrayWithObjectSel;
-    mutable Selector AddObjectSel;
-    mutable Selector InsertObjectAtIndexSel;
-    mutable Selector ReplaceObjectAtIndexWithObjectSel;
-    mutable Selector SetObjectAtIndexedSubscriptSel;
-    mutable Selector ArrayByAddingObjectSel;
-    mutable Selector DictionaryWithObjectForKeySel;
-    mutable Selector SetObjectForKeySel;
-    mutable Selector SetObjectForKeyedSubscriptSel;
-    mutable Selector RemoveObjectForKeySel;
+    mutable OwningPtr<APIMisuse> BT;
 
     void warnIfNilExpr(const Expr *E,
                        const char *Msg,
@@ -184,13 +170,10 @@ void NilArgChecker::warnIfNilArg(CheckerContext &C,
           assert(Arg == 1);
           os << "Key argument ";
         }
-        os << "to '";
-        msg.getSelector().print(os);
-        os << "' cannot be nil";
+        os << "to '" << msg.getSelector().getAsString() << "' cannot be nil";
       } else {
-        os << "Argument to '" << GetReceiverInterfaceName(msg) << "' method '";
-        msg.getSelector().print(os);
-        os << "' cannot be nil";
+        os << "Argument to '" << GetReceiverInterfaceName(msg) << "' method '"
+        << msg.getSelector().getAsString() << "' cannot be nil";
       }
     }
     
@@ -205,7 +188,7 @@ void NilArgChecker::generateBugReport(ExplodedNode *N,
                                       const Expr *E,
                                       CheckerContext &C) const {
   if (!BT)
-    BT.reset(new APIMisuse(this, "nil argument"));
+    BT.reset(new APIMisuse("nil argument"));
 
   BugReport *R = new BugReport(*BT, Msg, N);
   R->addRange(Range);
@@ -227,62 +210,50 @@ void NilArgChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
   
   if (Class == FC_NSString) {
     Selector S = msg.getSelector();
-
+    
     if (S.isUnarySelector())
       return;
-
-    if (StringSelectors.empty()) {
-      ASTContext &Ctx = C.getASTContext();
-      Selector Sels[] = {
-        getKeywordSelector(Ctx, "caseInsensitiveCompare", nullptr),
-        getKeywordSelector(Ctx, "compare", nullptr),
-        getKeywordSelector(Ctx, "compare", "options", nullptr),
-        getKeywordSelector(Ctx, "compare", "options", "range", nullptr),
-        getKeywordSelector(Ctx, "compare", "options", "range", "locale",
-                           nullptr),
-        getKeywordSelector(Ctx, "componentsSeparatedByCharactersInSet",
-                           nullptr),
-        getKeywordSelector(Ctx, "initWithFormat",
-                           nullptr),
-        getKeywordSelector(Ctx, "localizedCaseInsensitiveCompare", nullptr),
-        getKeywordSelector(Ctx, "localizedCompare", nullptr),
-        getKeywordSelector(Ctx, "localizedStandardCompare", nullptr),
-      };
-      for (Selector KnownSel : Sels)
-        StringSelectors[KnownSel] = 0;
+    
+    // FIXME: This is going to be really slow doing these checks with
+    //  lexical comparisons.
+    
+    std::string NameStr = S.getAsString();
+    StringRef Name(NameStr);
+    assert(!Name.empty());
+    
+    // FIXME: Checking for initWithFormat: will not work in most cases
+    //  yet because [NSString alloc] returns id, not NSString*.  We will
+    //  need support for tracking expected-type information in the analyzer
+    //  to find these errors.
+    if (Name == "caseInsensitiveCompare:" ||
+        Name == "compare:" ||
+        Name == "compare:options:" ||
+        Name == "compare:options:range:" ||
+        Name == "compare:options:range:locale:" ||
+        Name == "componentsSeparatedByCharactersInSet:" ||
+        Name == "initWithFormat:") {
+      Arg = 0;
     }
-    auto I = StringSelectors.find(S);
-    if (I == StringSelectors.end())
-      return;
-    Arg = I->second;
   } else if (Class == FC_NSArray) {
     Selector S = msg.getSelector();
 
     if (S.isUnarySelector())
       return;
 
-    if (ArrayWithObjectSel.isNull()) {
-      ASTContext &Ctx = C.getASTContext();
-      ArrayWithObjectSel = getKeywordSelector(Ctx, "arrayWithObject", nullptr);
-      AddObjectSel = getKeywordSelector(Ctx, "addObject", nullptr);
-      InsertObjectAtIndexSel =
-        getKeywordSelector(Ctx, "insertObject", "atIndex", nullptr);
-      ReplaceObjectAtIndexWithObjectSel =
-        getKeywordSelector(Ctx, "replaceObjectAtIndex", "withObject", nullptr);
-      SetObjectAtIndexedSubscriptSel =
-        getKeywordSelector(Ctx, "setObject", "atIndexedSubscript", nullptr);
-      ArrayByAddingObjectSel =
-        getKeywordSelector(Ctx, "arrayByAddingObject", nullptr);
-    }
-
-    if (S == ArrayWithObjectSel || S == AddObjectSel ||
-        S == InsertObjectAtIndexSel || S == ArrayByAddingObjectSel) {
+    if (S.getNameForSlot(0).equals("addObject")) {
       Arg = 0;
-    } else if (S == SetObjectAtIndexedSubscriptSel) {
+    } else if (S.getNameForSlot(0).equals("insertObject") &&
+               S.getNameForSlot(1).equals("atIndex")) {
+      Arg = 0;
+    } else if (S.getNameForSlot(0).equals("replaceObjectAtIndex") &&
+               S.getNameForSlot(1).equals("withObject")) {
+      Arg = 1;
+    } else if (S.getNameForSlot(0).equals("setObject") &&
+               S.getNameForSlot(1).equals("atIndexedSubscript")) {
       Arg = 0;
       CanBeSubscript = true;
-    } else if (S == ReplaceObjectAtIndexWithObjectSel) {
-      Arg = 1;
+    } else if (S.getNameForSlot(0).equals("arrayByAddingObject")) {
+      Arg = 0;
     }
   } else if (Class == FC_NSDictionary) {
     Selector S = msg.getSelector();
@@ -290,26 +261,20 @@ void NilArgChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
     if (S.isUnarySelector())
       return;
 
-    if (DictionaryWithObjectForKeySel.isNull()) {
-      ASTContext &Ctx = C.getASTContext();
-      DictionaryWithObjectForKeySel =
-        getKeywordSelector(Ctx, "dictionaryWithObject", "forKey", nullptr);
-      SetObjectForKeySel =
-        getKeywordSelector(Ctx, "setObject", "forKey", nullptr);
-      SetObjectForKeyedSubscriptSel =
-        getKeywordSelector(Ctx, "setObject", "forKeyedSubscript", nullptr);
-      RemoveObjectForKeySel =
-        getKeywordSelector(Ctx, "removeObjectForKey", nullptr);
-    }
-
-    if (S == DictionaryWithObjectForKeySel || S == SetObjectForKeySel) {
+    if (S.getNameForSlot(0).equals("dictionaryWithObject") &&
+        S.getNameForSlot(1).equals("forKey")) {
       Arg = 0;
       warnIfNilArg(C, msg, /* Arg */1, Class);
-    } else if (S == SetObjectForKeyedSubscriptSel) {
+    } else if (S.getNameForSlot(0).equals("setObject") &&
+               S.getNameForSlot(1).equals("forKey")) {
+      Arg = 0;
+      warnIfNilArg(C, msg, /* Arg */1, Class);
+    } else if (S.getNameForSlot(0).equals("setObject") &&
+               S.getNameForSlot(1).equals("forKeyedSubscript")) {
       CanBeSubscript = true;
       Arg = 0;
       warnIfNilArg(C, msg, /* Arg */1, Class, CanBeSubscript);
-    } else if (S == RemoveObjectForKeySel) {
+    } else if (S.getNameForSlot(0).equals("removeObjectForKey")) {
       Arg = 0;
     }
   }
@@ -317,6 +282,7 @@ void NilArgChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
   // If argument is '0', report a warning.
   if ((Arg != InvalidArgIndex))
     warnIfNilArg(C, msg, Arg, Class, CanBeSubscript);
+
 }
 
 void NilArgChecker::checkPostStmt(const ObjCArrayLiteral *AL,
@@ -343,10 +309,10 @@ void NilArgChecker::checkPostStmt(const ObjCDictionaryLiteral *DL,
 
 namespace {
 class CFNumberCreateChecker : public Checker< check::PreStmt<CallExpr> > {
-  mutable std::unique_ptr<APIMisuse> BT;
+  mutable OwningPtr<APIMisuse> BT;
   mutable IdentifierInfo* II;
 public:
-  CFNumberCreateChecker() : II(nullptr) {}
+  CFNumberCreateChecker() : II(0) {}
 
   void checkPreStmt(const CallExpr *CE, CheckerContext &C) const;
 
@@ -514,8 +480,8 @@ void CFNumberCreateChecker::checkPreStmt(const CallExpr *CE,
       << " bits of the input integer will be lost.";
 
     if (!BT)
-      BT.reset(new APIMisuse(this, "Bad use of CFNumberCreate"));
-
+      BT.reset(new APIMisuse("Bad use of CFNumberCreate"));
+    
     BugReport *report = new BugReport(*BT, os.str(), N);
     report->addRange(CE->getArg(2)->getSourceRange());
     C.emitReport(report);
@@ -523,17 +489,15 @@ void CFNumberCreateChecker::checkPreStmt(const CallExpr *CE,
 }
 
 //===----------------------------------------------------------------------===//
-// CFRetain/CFRelease/CFMakeCollectable/CFAutorelease checking for null arguments.
+// CFRetain/CFRelease/CFMakeCollectable checking for null arguments.
 //===----------------------------------------------------------------------===//
 
 namespace {
 class CFRetainReleaseChecker : public Checker< check::PreStmt<CallExpr> > {
-  mutable std::unique_ptr<APIMisuse> BT;
-  mutable IdentifierInfo *Retain, *Release, *MakeCollectable, *Autorelease;
+  mutable OwningPtr<APIMisuse> BT;
+  mutable IdentifierInfo *Retain, *Release, *MakeCollectable;
 public:
-  CFRetainReleaseChecker()
-      : Retain(nullptr), Release(nullptr), MakeCollectable(nullptr),
-        Autorelease(nullptr) {}
+  CFRetainReleaseChecker(): Retain(0), Release(0), MakeCollectable(0) {}
   void checkPreStmt(const CallExpr *CE, CheckerContext &C) const;
 };
 } // end anonymous namespace
@@ -555,15 +519,13 @@ void CFRetainReleaseChecker::checkPreStmt(const CallExpr *CE,
     Retain = &Ctx.Idents.get("CFRetain");
     Release = &Ctx.Idents.get("CFRelease");
     MakeCollectable = &Ctx.Idents.get("CFMakeCollectable");
-    Autorelease = &Ctx.Idents.get("CFAutorelease");
-    BT.reset(new APIMisuse(
-        this, "null passed to CF memory management function"));
+    BT.reset(
+      new APIMisuse("null passed to CFRetain/CFRelease/CFMakeCollectable"));
   }
 
-  // Check if we called CFRetain/CFRelease/CFMakeCollectable/CFAutorelease.
+  // Check if we called CFRetain/CFRelease/CFMakeCollectable.
   const IdentifierInfo *FuncII = FD->getIdentifier();
-  if (!(FuncII == Retain || FuncII == Release || FuncII == MakeCollectable ||
-        FuncII == Autorelease))
+  if (!(FuncII == Retain || FuncII == Release || FuncII == MakeCollectable))
     return;
 
   // FIXME: The rest of this just checks that the argument is non-null.
@@ -586,7 +548,7 @@ void CFRetainReleaseChecker::checkPreStmt(const CallExpr *CE,
 
   // Are they equal?
   ProgramStateRef stateTrue, stateFalse;
-  std::tie(stateTrue, stateFalse) = state->assume(ArgIsNull);
+  llvm::tie(stateTrue, stateFalse) = state->assume(ArgIsNull);
 
   if (stateTrue && !stateFalse) {
     ExplodedNode *N = C.generateSink(stateTrue);
@@ -600,8 +562,6 @@ void CFRetainReleaseChecker::checkPreStmt(const CallExpr *CE,
       description = "Null pointer argument in call to CFRelease";
     else if (FuncII == MakeCollectable)
       description = "Null pointer argument in call to CFMakeCollectable";
-    else if (FuncII == Autorelease)
-      description = "Null pointer argument in call to CFAutorelease";
     else
       llvm_unreachable("impossible case");
 
@@ -626,7 +586,7 @@ class ClassReleaseChecker : public Checker<check::PreObjCMessage> {
   mutable Selector retainS;
   mutable Selector autoreleaseS;
   mutable Selector drainS;
-  mutable std::unique_ptr<BugType> BT;
+  mutable OwningPtr<BugType> BT;
 
 public:
   void checkPreObjCMessage(const ObjCMethodCall &msg, CheckerContext &C) const;
@@ -637,9 +597,9 @@ void ClassReleaseChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
                                               CheckerContext &C) const {
   
   if (!BT) {
-    BT.reset(new APIMisuse(
-        this, "message incorrectly sent to class instead of class instance"));
-
+    BT.reset(new APIMisuse("message incorrectly sent to class instead of class "
+                           "instance"));
+  
     ASTContext &Ctx = C.getASTContext();
     releaseS = GetNullarySelector("release", Ctx);
     retainS = GetNullarySelector("retain", Ctx);
@@ -660,9 +620,7 @@ void ClassReleaseChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
     SmallString<200> buf;
     llvm::raw_svector_ostream os(buf);
 
-    os << "The '";
-    S.print(os);
-    os << "' message should be sent to instances "
+    os << "The '" << S.getAsString() << "' message should be sent to instances "
           "of class '" << Class->getName()
        << "' and not the class directly";
   
@@ -685,7 +643,7 @@ class VariadicMethodTypeChecker : public Checker<check::PreObjCMessage> {
   mutable Selector orderedSetWithObjectsS;
   mutable Selector initWithObjectsS;
   mutable Selector initWithObjectsAndKeysS;
-  mutable std::unique_ptr<BugType> BT;
+  mutable OwningPtr<BugType> BT;
 
   bool isVariadicMessage(const ObjCMethodCall &msg) const;
 
@@ -745,8 +703,7 @@ VariadicMethodTypeChecker::isVariadicMessage(const ObjCMethodCall &msg) const {
 void VariadicMethodTypeChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
                                                     CheckerContext &C) const {
   if (!BT) {
-    BT.reset(new APIMisuse(this,
-                           "Arguments passed to variadic method aren't all "
+    BT.reset(new APIMisuse("Arguments passed to variadic method aren't all "
                            "Objective-C pointer types"));
 
     ASTContext &Ctx = C.getASTContext();
@@ -776,7 +733,8 @@ void VariadicMethodTypeChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
 
   // Verify that all arguments have Objective-C types.
   Optional<ExplodedNode*> errorNode;
-
+  ProgramStateRef state = C.getState();
+  
   for (unsigned I = variadicArgsBegin; I != variadicArgsEnd; ++I) {
     QualType ArgTy = msg.getArgExpr(I)->getType();
     if (ArgTy->isObjCObjectPointerType())
@@ -814,8 +772,8 @@ void VariadicMethodTypeChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
     else
       os << "Argument to method '";
 
-    msg.getSelector().print(os);
-    os << "' should be an Objective-C pointer type, not '";
+    os << msg.getSelector().getAsString() 
+       << "' should be an Objective-C pointer type, not '";
     ArgTy.print(os, C.getLangOpts());
     os << "'";
 
@@ -846,7 +804,7 @@ class ObjCLoopChecker
                                CheckerContext &C) const;
 
 public:
-  ObjCLoopChecker() : CountSelectorII(nullptr) {}
+  ObjCLoopChecker() : CountSelectorII(0) {}
   void checkPostStmt(const ObjCForCollectionStmt *FCS, CheckerContext &C) const;
   void checkPostObjCMessage(const ObjCMethodCall &M, CheckerContext &C) const;
   void checkDeadSymbols(SymbolReaper &SymReaper, CheckerContext &C) const;
@@ -886,7 +844,7 @@ static ProgramStateRef checkCollectionNonNil(CheckerContext &C,
                                              ProgramStateRef State,
                                              const ObjCForCollectionStmt *FCS) {
   if (!State)
-    return nullptr;
+    return NULL;
 
   SVal CollectionVal = C.getSVal(FCS->getCollection());
   Optional<DefinedSVal> KnownCollection = CollectionVal.getAs<DefinedSVal>();
@@ -894,10 +852,10 @@ static ProgramStateRef checkCollectionNonNil(CheckerContext &C,
     return State;
 
   ProgramStateRef StNonNil, StNil;
-  std::tie(StNonNil, StNil) = State->assume(*KnownCollection);
+  llvm::tie(StNonNil, StNil) = State->assume(*KnownCollection);
   if (StNil && !StNonNil) {
     // The collection is nil. This path is infeasible.
-    return nullptr;
+    return NULL;
   }
 
   return StNonNil;
@@ -911,7 +869,7 @@ static ProgramStateRef checkElementNonNil(CheckerContext &C,
                                           ProgramStateRef State,
                                           const ObjCForCollectionStmt *FCS) {
   if (!State)
-    return nullptr;
+    return NULL;
 
   // See if the collection is one where we /know/ the elements are non-nil.
   if (!isKnownNonNilCollectionType(FCS->getCollection()->getType()))
@@ -924,7 +882,7 @@ static ProgramStateRef checkElementNonNil(CheckerContext &C,
   Optional<Loc> ElementLoc;
   if (const DeclStmt *DS = dyn_cast<DeclStmt>(Element)) {
     const VarDecl *ElemDecl = cast<VarDecl>(DS->getSingleDecl());
-    assert(ElemDecl->getInit() == nullptr);
+    assert(ElemDecl->getInit() == 0);
     ElementLoc = State->getLValue(ElemDecl, LCtx);
   } else {
     ElementLoc = State->getSVal(Element, LCtx).getAs<Loc>();
@@ -951,7 +909,7 @@ assumeCollectionNonEmpty(CheckerContext &C, ProgramStateRef State,
     const bool *KnownNonEmpty = State->get<ContainerNonEmptyMap>(CollectionS);
     if (!KnownNonEmpty)
       return State->set<ContainerNonEmptyMap>(CollectionS, Assumption);
-    return (Assumption == *KnownNonEmpty) ? State : nullptr;
+    return (Assumption == *KnownNonEmpty) ? State : NULL;
   }
 
   SValBuilder &SvalBuilder = C.getSValBuilder();
@@ -976,7 +934,7 @@ assumeCollectionNonEmpty(CheckerContext &C, ProgramStateRef State,
                          const ObjCForCollectionStmt *FCS,
                          bool Assumption) {
   if (!State)
-    return nullptr;
+    return NULL;
 
   SymbolRef CollectionS =
     State->getSVal(FCS->getCollection(), C.getLocationContext()).getAsSymbol();
@@ -1091,11 +1049,11 @@ void ObjCLoopChecker::checkPostObjCMessage(const ObjCMethodCall &M,
 static SymbolRef getMethodReceiverIfKnownImmutable(const CallEvent *Call) {
   const ObjCMethodCall *Message = dyn_cast_or_null<ObjCMethodCall>(Call);
   if (!Message)
-    return nullptr;
+    return 0;
 
   const ObjCMethodDecl *MD = Message->getDecl();
   if (!MD)
-    return nullptr;
+    return 0;
 
   const ObjCInterfaceDecl *StaticClass;
   if (isa<ObjCProtocolDecl>(MD->getDeclContext())) {
@@ -1108,11 +1066,11 @@ static SymbolRef getMethodReceiverIfKnownImmutable(const CallEvent *Call) {
   }
 
   if (!StaticClass)
-    return nullptr;
+    return 0;
 
   switch (findKnownClass(StaticClass, /*IncludeSuper=*/false)) {
   case FC_None:
-    return nullptr;
+    return 0;
   case FC_NSArray:
   case FC_NSDictionary:
   case FC_NSEnumerator:
@@ -1177,10 +1135,7 @@ namespace {
 /// \brief The checker restricts the return values of APIs known to
 /// never (or almost never) return 'nil'.
 class ObjCNonNilReturnValueChecker
-  : public Checker<check::PostObjCMessage,
-                   check::PostStmt<ObjCArrayLiteral>,
-                   check::PostStmt<ObjCDictionaryLiteral>,
-                   check::PostStmt<ObjCBoxedExpr> > {
+  : public Checker<check::PostObjCMessage> {
     mutable bool Initialized;
     mutable Selector ObjectAtIndex;
     mutable Selector ObjectAtIndexedSubscript;
@@ -1188,32 +1143,13 @@ class ObjCNonNilReturnValueChecker
 
 public:
   ObjCNonNilReturnValueChecker() : Initialized(false) {}
-
-  ProgramStateRef assumeExprIsNonNull(const Expr *NonNullExpr,
-                                      ProgramStateRef State,
-                                      CheckerContext &C) const;
-  void assumeExprIsNonNull(const Expr *E, CheckerContext &C) const {
-    C.addTransition(assumeExprIsNonNull(E, C.getState(), C));
-  }
-
-  void checkPostStmt(const ObjCArrayLiteral *E, CheckerContext &C) const {
-    assumeExprIsNonNull(E, C);
-  }
-  void checkPostStmt(const ObjCDictionaryLiteral *E, CheckerContext &C) const {
-    assumeExprIsNonNull(E, C);
-  }
-  void checkPostStmt(const ObjCBoxedExpr *E, CheckerContext &C) const {
-    assumeExprIsNonNull(E, C);
-  }
-
   void checkPostObjCMessage(const ObjCMethodCall &M, CheckerContext &C) const;
 };
 }
 
-ProgramStateRef
-ObjCNonNilReturnValueChecker::assumeExprIsNonNull(const Expr *NonNullExpr,
-                                                  ProgramStateRef State,
-                                                  CheckerContext &C) const {
+static ProgramStateRef assumeExprIsNonNull(const Expr *NonNullExpr,
+                                           ProgramStateRef State,
+                                           CheckerContext &C) {
   SVal Val = State->getSVal(NonNullExpr, C.getLocationContext());
   if (Optional<DefinedOrUnknownSVal> DV = Val.getAs<DefinedOrUnknownSVal>())
     return State->assume(*DV, true);
@@ -1301,7 +1237,6 @@ void ento::registerObjCLoopChecker(CheckerManager &mgr) {
   mgr.registerChecker<ObjCLoopChecker>();
 }
 
-void
-ento::registerObjCNonNilReturnValueChecker(CheckerManager &mgr) {
+void ento::registerObjCNonNilReturnValueChecker(CheckerManager &mgr) {
   mgr.registerChecker<ObjCNonNilReturnValueChecker>();
 }

@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "internalize"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
@@ -33,8 +34,6 @@
 #include <fstream>
 #include <set>
 using namespace llvm;
-
-#define DEBUG_TYPE "internalize"
 
 STATISTIC(NumAliases  , "Number of aliases internalized");
 STATISTIC(NumFunctions, "Number of functions internalized");
@@ -60,11 +59,11 @@ namespace {
     explicit InternalizePass();
     explicit InternalizePass(ArrayRef<const char *> ExportList);
     void LoadFile(const char *Filename);
-    bool runOnModule(Module &M) override;
+    virtual bool runOnModule(Module &M);
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesCFG();
-      AU.addPreserved<CallGraphWrapperPass>();
+      AU.addPreserved<CallGraph>();
     }
   };
 } // end anonymous namespace
@@ -73,7 +72,8 @@ char InternalizePass::ID = 0;
 INITIALIZE_PASS(InternalizePass, "internalize",
                 "Internalize Global Symbols", false, false)
 
-InternalizePass::InternalizePass() : ModulePass(ID) {
+InternalizePass::InternalizePass()
+  : ModulePass(ID) {
   initializeInternalizePassPass(*PassRegistry::getPassRegistry());
   if (!APIFile.empty())           // If a filename is specified, use it.
     LoadFile(APIFile.c_str());
@@ -81,7 +81,7 @@ InternalizePass::InternalizePass() : ModulePass(ID) {
 }
 
 InternalizePass::InternalizePass(ArrayRef<const char *> ExportList)
-    : ModulePass(ID) {
+  : ModulePass(ID){
   initializeInternalizePassPass(*PassRegistry::getPassRegistry());
   for(ArrayRef<const char *>::const_iterator itr = ExportList.begin();
         itr != ExportList.end(); itr++) {
@@ -115,10 +115,6 @@ static bool shouldInternalize(const GlobalValue &GV,
   if (GV.hasAvailableExternallyLinkage())
     return false;
 
-  // Assume that dllexported symbols are referenced elsewhere
-  if (GV.hasDLLExportStorageClass())
-    return false;
-
   // Already has internal linkage
   if (GV.hasLocalLinkage())
     return false;
@@ -131,9 +127,8 @@ static bool shouldInternalize(const GlobalValue &GV,
 }
 
 bool InternalizePass::runOnModule(Module &M) {
-  CallGraphWrapperPass *CGPass = getAnalysisIfAvailable<CallGraphWrapperPass>();
-  CallGraph *CG = CGPass ? &CGPass->getCallGraph() : nullptr;
-  CallGraphNode *ExternalNode = CG ? CG->getExternalCallingNode() : nullptr;
+  CallGraph *CG = getAnalysisIfAvailable<CallGraph>();
+  CallGraphNode *ExternalNode = CG ? CG->getExternalCallingNode() : 0;
   bool Changed = false;
 
   SmallPtrSet<GlobalValue *, 8> Used;
@@ -155,11 +150,11 @@ bool InternalizePass::runOnModule(Module &M) {
   }
 
   // Mark all functions not in the api as internal.
+  // FIXME: maybe use private linkage?
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I) {
     if (!shouldInternalize(*I, ExternalNames))
       continue;
 
-    I->setVisibility(GlobalValue::DefaultVisibility);
     I->setLinkage(GlobalValue::InternalLinkage);
 
     if (ExternalNode)
@@ -191,12 +186,12 @@ bool InternalizePass::runOnModule(Module &M) {
 
   // Mark all global variables with initializers that are not in the api as
   // internal as well.
+  // FIXME: maybe use private linkage?
   for (Module::global_iterator I = M.global_begin(), E = M.global_end();
        I != E; ++I) {
     if (!shouldInternalize(*I, ExternalNames))
       continue;
 
-    I->setVisibility(GlobalValue::DefaultVisibility);
     I->setLinkage(GlobalValue::InternalLinkage);
     Changed = true;
     ++NumGlobals;
@@ -209,7 +204,6 @@ bool InternalizePass::runOnModule(Module &M) {
     if (!shouldInternalize(*I, ExternalNames))
       continue;
 
-    I->setVisibility(GlobalValue::DefaultVisibility);
     I->setLinkage(GlobalValue::InternalLinkage);
     Changed = true;
     ++NumAliases;
@@ -219,7 +213,9 @@ bool InternalizePass::runOnModule(Module &M) {
   return Changed;
 }
 
-ModulePass *llvm::createInternalizePass() { return new InternalizePass(); }
+ModulePass *llvm::createInternalizePass() {
+  return new InternalizePass();
+}
 
 ModulePass *llvm::createInternalizePass(ArrayRef<const char *> ExportList) {
   return new InternalizePass(ExportList);

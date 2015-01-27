@@ -24,7 +24,6 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Triple.h"
 
 #include "Utility/ARM_DWARF_Registers.h"
@@ -145,7 +144,7 @@ static RegisterInfo g_register_infos[] =
     {   "r13_svc", "sp_svc",  4, 0, eEncodingUint    , eFormatHex,   { LLDB_INVALID_REGNUM,  dwarf_r13_svc,      LLDB_INVALID_REGNUM,        LLDB_INVALID_REGNUM,    LLDB_INVALID_REGNUM },      NULL,              NULL},
     {   "r14_svc", "lr_svc",  4, 0, eEncodingUint    , eFormatHex,   { LLDB_INVALID_REGNUM,  dwarf_r14_svc,      LLDB_INVALID_REGNUM,        LLDB_INVALID_REGNUM,    LLDB_INVALID_REGNUM },      NULL,              NULL}
 };
-static const uint32_t k_num_register_infos = llvm::array_lengthof(g_register_infos);
+static const uint32_t k_num_register_infos = sizeof(g_register_infos)/sizeof(RegisterInfo);
 static bool g_register_info_names_constified = false;
 
 const lldb_private::RegisterInfo *
@@ -215,7 +214,7 @@ ABIMacOSX_arm::PrepareTrivialCall (Thread &thread,
     
     llvm::ArrayRef<addr_t>::iterator ai = args.begin(), ae = args.end();
     
-    for (size_t i = 0; i < llvm::array_lengthof(reg_names); ++i)
+    for (size_t i = 0; i < (sizeof(reg_names) / sizeof(reg_names[0])); ++i)
     {
         if (ai == ae)
             break;
@@ -523,13 +522,7 @@ ABIMacOSX_arm::SetReturnValueObject(lldb::StackFrameSP &frame_sp, lldb::ValueObj
     if (clang_type.IsIntegerType (is_signed) || clang_type.IsPointerType())
     {
         DataExtractor data;
-        Error data_error;
-        size_t num_bytes = new_value_sp->GetData(data, data_error);
-        if (data_error.Fail())
-        {
-            error.SetErrorStringWithFormat("Couldn't convert return value to raw data: %s", data_error.AsCString());
-            return error;
-        }
+        size_t num_bytes = new_value_sp->GetData(data);
         lldb::offset_t offset = 0;
         if (num_bytes <= 8)
         {

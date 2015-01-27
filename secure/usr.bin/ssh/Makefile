@@ -15,22 +15,29 @@ SRCS=	ssh.c readconf.c clientloop.c sshtty.c \
 # gss-genr.c really belongs in libssh; see src/secure/lib/libssh/Makefile
 SRCS+=	gss-genr.c
 
-LIBADD=	ssh
+DPADD=	${LIBSSH} ${LIBUTIL}
+LDADD=	-lssh -lutil
+USEPRIVATELIB= ssh
 
 .if ${MK_LDNS} != "no"
 CFLAGS+=	-DHAVE_LDNS=1
+DPADD+=	${LIBLDNS}
+LDADD+=	-lldns
+USEPRIVATELIB+= ldns
 .endif
 
 .if ${MK_KERBEROS_SUPPORT} != "no"
 CFLAGS+= -include krb5_config.h
-LIBADD+=	gssapi
+DPADD+=	 ${LIBGSSAPI}
+LDADD+=	 -lgssapi
 .endif
 
 .if ${MK_OPENSSH_NONE_CIPHER} != "no"
 CFLAGS+= -DNONE_CIPHER_ENABLED
 .endif
 
-LIBADD+=	crypto
+DPADD+= ${LIBCRYPT} ${LIBCRYPTO} ${LIBZ}
+LDADD+= -lcrypt -lcrypto -lz
 
 .if defined(LOCALBASE)
 CFLAGS+= -DXAUTH_PATH=\"${LOCALBASE}/bin/xauth\"

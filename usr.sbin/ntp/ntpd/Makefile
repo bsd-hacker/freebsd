@@ -4,6 +4,8 @@ MAN=
 
 .include <src.opts.mk>
 
+NO_PIE=	yes
+
 .PATH: ${.CURDIR}/../../../contrib/ntp/ntpd
 
 PROG=	ntpd
@@ -32,10 +34,12 @@ SRCS=	cmd_args.c	ntp_config.c \
 CFLAGS+= -I${.CURDIR}/../../../contrib/ntp/include -I${.CURDIR}/../ \
 	-I${.CURDIR}/../../../contrib/ntp/libopts -I${.CURDIR}
 
-LIBADD=	parse ntp m rt opts md
+DPADD=	${LIBPARSE} ${LIBNTP} ${LIBM} ${LIBMD} ${LIBRT} ${LIBOPTS}
+LDADD=	${LIBPARSE} ${LIBNTP} -lm -lmd -lrt ${LIBOPTS}
 
 .if ${MK_OPENSSL} != "no"
-LIBADD+=	crypto
+DPADD+=	${LIBCRYPTO}
+LDADD+=	-lcrypto
 .endif
 
 CLEANFILES+= .version version.c

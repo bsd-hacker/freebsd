@@ -43,6 +43,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/machdep.h>
 #include <machine/platform.h> 
 
+#include <dev/fdt/fdt_common.h>
+
 vm_offset_t
 platform_lastaddr(void)
 {
@@ -77,9 +79,6 @@ platform_devmap_init(void)
 
 	/* UART */
 	arm_devmap_add_entry(0x12C00000, 0x100000);
-
-	/* DWMMC */
-	arm_devmap_add_entry(0x12200000, 0x100000);
 
 	return (0);
 }

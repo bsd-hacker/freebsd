@@ -106,7 +106,7 @@ ClangASTImporter::CopyDecl (clang::ASTContext *dst_ast,
         return result;
     }
     
-    return nullptr;
+    return NULL;
 }
 
 lldb::clang_type_t
@@ -117,7 +117,7 @@ ClangASTImporter::DeportType (clang::ASTContext *dst_ctx,
     MinionSP minion_sp (GetMinion (dst_ctx, src_ctx));
     
     if (!minion_sp)
-        return nullptr;
+        return NULL;
     
     std::set<NamedDecl *> decls_to_deport;
     std::set<NamedDecl *> decls_already_deported;
@@ -130,7 +130,7 @@ ClangASTImporter::DeportType (clang::ASTContext *dst_ctx,
     minion_sp->ExecuteDeportWorkQueues();
     
     if (!result)
-        return nullptr;
+        return NULL;
     
     return result;
 
@@ -142,36 +142,39 @@ ClangASTImporter::DeportDecl (clang::ASTContext *dst_ctx,
                               clang::Decl *decl)
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
-
+    
     if (log)
         log->Printf("    [ClangASTImporter] DeportDecl called on (%sDecl*)%p from (ASTContext*)%p to (ASTContex*)%p",
-                    decl->getDeclKindName(), static_cast<void*>(decl),
-                    static_cast<void*>(src_ctx),
-                    static_cast<void*>(dst_ctx));
-
+                    decl->getDeclKindName(),
+                    decl,
+                    src_ctx,
+                    dst_ctx);
+    
     MinionSP minion_sp (GetMinion (dst_ctx, src_ctx));
-
+    
     if (!minion_sp)
-        return nullptr;
-
+        return NULL;
+    
     std::set<NamedDecl *> decls_to_deport;
     std::set<NamedDecl *> decls_already_deported;
-
+    
     minion_sp->InitDeportWorkQueues(&decls_to_deport,
                                     &decls_already_deported);
-
+    
     clang::Decl *result = CopyDecl(dst_ctx, src_ctx, decl);
 
     minion_sp->ExecuteDeportWorkQueues();
-
+    
     if (!result)
-        return nullptr;
-
+        return NULL;
+    
     if (log)
         log->Printf("    [ClangASTImporter] DeportDecl deported (%sDecl*)%p to (%sDecl*)%p",
-                    decl->getDeclKindName(), static_cast<void*>(decl),
-                    result->getDeclKindName(), static_cast<void*>(result));
-
+                    decl->getDeclKindName(),
+                    decl,
+                    result->getDeclKindName(),
+                    result);
+    
     return result;
 }
 
@@ -180,10 +183,11 @@ ClangASTImporter::CompleteDecl (clang::Decl *decl)
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
-    if (log)
+    if (log)    
         log->Printf("    [ClangASTImporter] CompleteDecl called on (%sDecl*)%p",
-                    decl->getDeclKindName(), static_cast<void*>(decl));
-
+                    decl->getDeclKindName(),
+                    decl);
+    
     if (ObjCInterfaceDecl *interface_decl = dyn_cast<ObjCInterfaceDecl>(decl)) 
     {
         if (!interface_decl->getDefinition())
@@ -408,10 +412,9 @@ void
 ClangASTImporter::ForgetDestination (clang::ASTContext *dst_ast)
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
-
+    
     if (log)
-        log->Printf("    [ClangASTImporter] Forgetting destination (ASTContext*)%p",
-                    static_cast<void*>(dst_ast));
+        log->Printf("    [ClangASTImporter] Forgetting destination (ASTContext*)%p", dst_ast); 
 
     m_metadata_map.erase(dst_ast);
 }
@@ -420,18 +423,17 @@ void
 ClangASTImporter::ForgetSource (clang::ASTContext *dst_ast, clang::ASTContext *src_ast)
 {
     ASTContextMetadataSP md = MaybeGetContextMetadata (dst_ast);
-
+    
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
-
+    
     if (log)
-        log->Printf("    [ClangASTImporter] Forgetting source->dest (ASTContext*)%p->(ASTContext*)%p",
-                    static_cast<void*>(src_ast), static_cast<void*>(dst_ast));
-
+        log->Printf("    [ClangASTImporter] Forgetting source->dest (ASTContext*)%p->(ASTContext*)%p", src_ast, dst_ast); 
+    
     if (!md)
         return;
-
+ 
     md->m_minions.erase(src_ast);
-
+    
     for (OriginMap::iterator iter = md->m_origins.begin();
          iter != md->m_origins.end();
          )
@@ -501,8 +503,8 @@ ClangASTImporter::Minion::ExecuteDeportWorkQueues ()
         to_context_md->m_origins.erase(decl);
     }
     
-    m_decls_to_deport = nullptr;
-    m_decls_already_deported = nullptr;
+    m_decls_to_deport = NULL;
+    m_decls_already_deported = NULL;
 }
 
 void
@@ -570,64 +572,64 @@ clang::Decl *
 ClangASTImporter::Minion::Imported (clang::Decl *from, clang::Decl *to)
 {
     ClangASTMetrics::RegisterClangImport();
-
-    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
-
-    lldb::user_id_t user_id = LLDB_INVALID_UID;
-    ClangASTMetadata *metadata = m_master.GetDeclMetadata(from);
-    if (metadata)
-        user_id = metadata->GetUserID();
     
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
+        
     if (log)
     {
+        lldb::user_id_t user_id;
+        ClangASTMetadata *metadata = m_master.GetDeclMetadata(from);
+        if (metadata)
+            user_id = metadata->GetUserID();
+        
         if (NamedDecl *from_named_decl = dyn_cast<clang::NamedDecl>(from))
         {
             std::string name_string;
             llvm::raw_string_ostream name_stream(name_string);
             from_named_decl->printName(name_stream);
             name_stream.flush();
-
+            
             log->Printf("    [ClangASTImporter] Imported (%sDecl*)%p, named %s (from (Decl*)%p), metadata 0x%" PRIx64,
-                        from->getDeclKindName(), static_cast<void*>(to),
-                        name_string.c_str(), static_cast<void*>(from),
+                        from->getDeclKindName(),
+                        to,
+                        name_string.c_str(),
+                        from,
                         user_id);
         }
         else
         {
             log->Printf("    [ClangASTImporter] Imported (%sDecl*)%p (from (Decl*)%p), metadata 0x%" PRIx64,
-                        from->getDeclKindName(), static_cast<void*>(to),
-                        static_cast<void*>(from), user_id);
+                        from->getDeclKindName(),
+                        to,
+                        from,
+                        user_id);
         }
     }
 
     ASTContextMetadataSP to_context_md = m_master.GetContextMetadata(&to->getASTContext());
     ASTContextMetadataSP from_context_md = m_master.MaybeGetContextMetadata(m_source_ctx);
-
+    
     if (from_context_md)
     {
         OriginMap &origins = from_context_md->m_origins;
-
+        
         OriginMap::iterator origin_iter = origins.find(from);
-
+        
         if (origin_iter != origins.end())
         {
-            if (to_context_md->m_origins.find(to) == to_context_md->m_origins.end() ||
-                user_id != LLDB_INVALID_UID)
-            {
-                to_context_md->m_origins[to] = origin_iter->second;
-            }
-                
+            to_context_md->m_origins[to] = origin_iter->second;
+            
             MinionSP direct_completer = m_master.GetMinion(&to->getASTContext(), origin_iter->second.ctx);
-
+            
             if (direct_completer.get() != this)
                 direct_completer->ASTImporter::Imported(origin_iter->second.decl, to);
-
+            
             if (log)
                 log->Printf("    [ClangASTImporter] Propagated origin (Decl*)%p/(ASTContext*)%p from (ASTContext*)%p to (ASTContext*)%p",
-                            static_cast<void*>(origin_iter->second.decl),
-                            static_cast<void*>(origin_iter->second.ctx),
-                            static_cast<void*>(&from->getASTContext()),
-                            static_cast<void*>(&to->getASTContext()));
+                            origin_iter->second.decl,
+                            origin_iter->second.ctx,
+                            &from->getASTContext(),
+                            &to->getASTContext());
         }
         else
         {
@@ -636,31 +638,27 @@ ClangASTImporter::Minion::Imported (clang::Decl *from, clang::Decl *to)
                 if (isa<TagDecl>(to) || isa<ObjCInterfaceDecl>(to))
                 {
                     NamedDecl *to_named_decl = dyn_cast<NamedDecl>(to);
-
+                    
                     if (!m_decls_already_deported->count(to_named_decl))
                         m_decls_to_deport->insert(to_named_decl);
                 }
-            }
-            
-            if (to_context_md->m_origins.find(to) == to_context_md->m_origins.end() ||
-                user_id != LLDB_INVALID_UID)
-            {
-                to_context_md->m_origins[to] = DeclOrigin(m_source_ctx, from);
-            }
 
+            }
+            to_context_md->m_origins[to] = DeclOrigin(m_source_ctx, from);
+            
             if (log)
                 log->Printf("    [ClangASTImporter] Decl has no origin information in (ASTContext*)%p",
-                            static_cast<void*>(&from->getASTContext()));
+                            &from->getASTContext());
         }
-
+        
         if (clang::NamespaceDecl *to_namespace = dyn_cast<clang::NamespaceDecl>(to))
         {
             clang::NamespaceDecl *from_namespace = dyn_cast<clang::NamespaceDecl>(from);
-
+            
             NamespaceMetaMap &namespace_maps = from_context_md->m_namespace_maps;
-
+            
             NamespaceMetaMap::iterator namespace_map_iter = namespace_maps.find(from_namespace);
-
+            
             if (namespace_map_iter != namespace_maps.end())
                 to_context_md->m_namespace_maps[to_namespace] = namespace_map_iter->second;
         }
@@ -668,21 +666,21 @@ ClangASTImporter::Minion::Imported (clang::Decl *from, clang::Decl *to)
     else
     {
         to_context_md->m_origins[to] = DeclOrigin (m_source_ctx, from);
-
+        
         if (log)
             log->Printf("    [ClangASTImporter] Sourced origin (Decl*)%p/(ASTContext*)%p into (ASTContext*)%p",
-                        static_cast<void*>(from),
-                        static_cast<void*>(m_source_ctx),
-                        static_cast<void*>(&to->getASTContext()));
+                        from,
+                        m_source_ctx,
+                        &to->getASTContext());
     }
-
+        
     if (TagDecl *from_tag_decl = dyn_cast<TagDecl>(from))
     {
         TagDecl *to_tag_decl = dyn_cast<TagDecl>(to);
-
+        
         to_tag_decl->setHasExternalLexicalStorage();
         to_tag_decl->setMustBuildLookupTable();
-
+        
         if (log)
             log->Printf("    [ClangASTImporter] To is a TagDecl - attributes %s%s [%s->%s]",
                         (to_tag_decl->hasExternalLexicalStorage() ? " Lexical" : ""),
@@ -690,32 +688,32 @@ ClangASTImporter::Minion::Imported (clang::Decl *from, clang::Decl *to)
                         (from_tag_decl->isCompleteDefinition() ? "complete" : "incomplete"),
                         (to_tag_decl->isCompleteDefinition() ? "complete" : "incomplete"));
     }
-
+    
     if (isa<NamespaceDecl>(from))
     {
         NamespaceDecl *to_namespace_decl = dyn_cast<NamespaceDecl>(to);
-
+        
         m_master.BuildNamespaceMap(to_namespace_decl);
-
+        
         to_namespace_decl->setHasExternalVisibleStorage();
     }
-
+    
     if (isa<ObjCInterfaceDecl>(from))
     {
         ObjCInterfaceDecl *to_interface_decl = dyn_cast<ObjCInterfaceDecl>(to);
-
+                
         to_interface_decl->setHasExternalLexicalStorage();
         to_interface_decl->setHasExternalVisibleStorage();
-
+        
         /*to_interface_decl->setExternallyCompleted();*/
-
+                
         if (log)
             log->Printf("    [ClangASTImporter] To is an ObjCInterfaceDecl - attributes %s%s%s",
                         (to_interface_decl->hasExternalLexicalStorage() ? " Lexical" : ""),
                         (to_interface_decl->hasExternalVisibleStorage() ? " Visible" : ""),
                         (to_interface_decl->hasDefinition() ? " HasDefinition" : ""));
     }
-
+    
     return clang::ASTImporter::Imported(from, to);
 }
 
@@ -724,12 +722,12 @@ clang::Decl *ClangASTImporter::Minion::GetOriginalDecl (clang::Decl *To)
     ASTContextMetadataSP to_context_md = m_master.GetContextMetadata(&To->getASTContext());
     
     if (!to_context_md)
-        return nullptr;
+        return NULL;
     
     OriginMap::iterator iter = to_context_md->m_origins.find(To);
     
     if (iter == to_context_md->m_origins.end())
-        return nullptr;
+        return NULL;
     
     return const_cast<clang::Decl*>(iter->second.decl);
 }

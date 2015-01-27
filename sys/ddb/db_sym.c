@@ -170,7 +170,11 @@ db_var_curvnet(struct db_variable *vp, db_expr_t *valuep, int op)
  * Add symbol table, with given name, to list of symbol tables.
  */
 void
-db_add_symbol_table(char *start, char *end, char *name, char *ref)
+db_add_symbol_table(start, end, name, ref)
+	char *start;
+	char *end;
+	char *name;
+	char *ref;
 {
 	if (db_nsymtab >= MAXNOSYMTABS) {
 		printf ("No slots left for %s symbol table", name);
@@ -191,7 +195,9 @@ db_add_symbol_table(char *start, char *end, char *name, char *ref)
  *  overwritten by each call... but in practice this seems okay.
  */
 static char *
-db_qualify(c_db_sym_t sym, char *symtabname)
+db_qualify(sym, symtabname)
+	c_db_sym_t	sym;
+	register char	*symtabname;
 {
 	const char	*symname;
 	static char     tmp[256];
@@ -203,7 +209,10 @@ db_qualify(c_db_sym_t sym, char *symtabname)
 
 
 boolean_t
-db_eqname(const char *src, const char *dst, int c)
+db_eqname(src, dst, c)
+	const char *src;
+	const char *dst;
+	int c;
 {
 	if (!strcmp(src, dst))
 	    return (TRUE);
@@ -213,7 +222,9 @@ db_eqname(const char *src, const char *dst, int c)
 }
 
 boolean_t
-db_value_of_name(const char *name, db_expr_t *valuep)
+db_value_of_name(name, valuep)
+	const char	*name;
+	db_expr_t	*valuep;
 {
 	c_db_sym_t	sym;
 
@@ -225,7 +236,9 @@ db_value_of_name(const char *name, db_expr_t *valuep)
 }
 
 boolean_t
-db_value_of_name_pcpu(const char *name, db_expr_t *valuep)
+db_value_of_name_pcpu(name, valuep)
+	const char	*name;
+	db_expr_t	*valuep;
 {
 	static char     tmp[256];
 	db_expr_t	value;
@@ -248,7 +261,9 @@ db_value_of_name_pcpu(const char *name, db_expr_t *valuep)
 }
 
 boolean_t
-db_value_of_name_vnet(const char *name, db_expr_t *valuep)
+db_value_of_name_vnet(name, valuep)
+	const char	*name;
+	db_expr_t	*valuep;
 {
 #ifdef VIMAGE
 	static char     tmp[256];
@@ -281,7 +296,8 @@ db_value_of_name_vnet(const char *name, db_expr_t *valuep)
  * otherwise, all symbol tables will be searched.
  */
 static c_db_sym_t
-db_lookup(const char *symstr)
+db_lookup(symstr)
+	const char *symstr;
 {
 	c_db_sym_t sp;
 	register int i;
@@ -338,7 +354,8 @@ static volatile boolean_t db_qualify_ambiguous_names = FALSE;
  * Used by db_symbol_values to decide whether to qualify a symbol.
  */
 static boolean_t
-db_symbol_is_ambiguous(c_db_sym_t sym)
+db_symbol_is_ambiguous(sym)
+	c_db_sym_t	sym;
 {
 	const char	*sym_name;
 	register int	i;
@@ -364,7 +381,10 @@ db_symbol_is_ambiguous(c_db_sym_t sym)
  * and the difference between val and the symbol found.
  */
 c_db_sym_t
-db_search_symbol(db_addr_t val, db_strategy_t strategy, db_expr_t *offp)
+db_search_symbol( val, strategy, offp)
+	register db_addr_t	val;
+	db_strategy_t		strategy;
+	db_expr_t		*offp;
 {
 	register
 	unsigned int	diff;
@@ -389,7 +409,10 @@ db_search_symbol(db_addr_t val, db_strategy_t strategy, db_expr_t *offp)
  * Return name and value of a symbol
  */
 void
-db_symbol_values(c_db_sym_t sym, const char **namep, db_expr_t *valuep)
+db_symbol_values(sym, namep, valuep)
+	c_db_sym_t	sym;
+	const char	**namep;
+	db_expr_t	*valuep;
 {
 	db_expr_t	value;
 
@@ -426,7 +449,9 @@ db_symbol_values(c_db_sym_t sym, const char **namep, db_expr_t *valuep)
 db_expr_t	db_maxoff = 0x10000;
 
 void
-db_printsym(db_expr_t off, db_strategy_t strategy)
+db_printsym(off, strategy)
+	db_expr_t	off;
+	db_strategy_t	strategy;
 {
 	db_expr_t	d;
 	char 		*filename;
@@ -461,13 +486,20 @@ db_printsym(db_expr_t off, db_strategy_t strategy)
 }
 
 static boolean_t
-db_line_at_pc(c_db_sym_t sym, char **filename, int *linenum, db_expr_t pc)
+db_line_at_pc( sym, filename, linenum, pc)
+	c_db_sym_t	sym;
+	char		**filename;
+	int		*linenum;
+	db_expr_t	pc;
 {
 	return X_db_line_at_pc( db_last_symtab, sym, filename, linenum, pc);
 }
 
 int
-db_sym_numargs(c_db_sym_t sym, int *nargp, char **argnames)
+db_sym_numargs(sym, nargp, argnames)
+	c_db_sym_t	sym;
+	int		*nargp;
+	char		**argnames;
 {
 	return X_db_sym_numargs(db_last_symtab, sym, nargp, argnames);
 }

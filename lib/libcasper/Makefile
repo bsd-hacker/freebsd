@@ -8,7 +8,8 @@ SHLIBDIR?=	/lib
 SRCS=	libcasper.c
 INCS=	libcasper.h
 
-LIBADD=	capsicum nv pjdlog
+DPADD=	${LIBCAPSICUM} ${LIBNV} ${LIBPJDLOG}
+LDADD=	-lcapsicum -lnv -lpjdlog
 
 CFLAGS+=-I${.CURDIR}
 CFLAGS+=-I${.CURDIR}/../libpjdlog

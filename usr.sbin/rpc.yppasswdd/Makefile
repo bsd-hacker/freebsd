@@ -20,7 +20,8 @@ CFLAGS+= -I${.CURDIR}/../../usr.sbin/vipw \
 	 -I${.CURDIR}/../../usr.sbin/ypserv \
 	 -I${.CURDIR}/../../libexec/ypxfr \
 	 -I${.CURDIR} -I.
-LIBADD=	rpcsvc crypt util
+DPADD=	${LIBRPCSVC} ${LIBCRYPT} ${LIBUTIL}
+LDADD=	-lrpcsvc -lcrypt -lutil
 
 CLEANFILES= ${GENSRCS}
 

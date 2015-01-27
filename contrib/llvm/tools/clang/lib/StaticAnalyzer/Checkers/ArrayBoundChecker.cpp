@@ -25,8 +25,7 @@ using namespace ento;
 namespace {
 class ArrayBoundChecker : 
     public Checker<check::Location> {
-  mutable std::unique_ptr<BuiltinBug> BT;
-
+  mutable OwningPtr<BuiltinBug> BT;
 public:
   void checkLocation(SVal l, bool isLoad, const Stmt* S,
                      CheckerContext &C) const;
@@ -67,9 +66,8 @@ void ArrayBoundChecker::checkLocation(SVal l, bool isLoad, const Stmt* LoadS,
       return;
   
     if (!BT)
-      BT.reset(new BuiltinBug(
-          this, "Out-of-bound array access",
-          "Access out-of-bound array element (buffer overflow)"));
+      BT.reset(new BuiltinBug("Out-of-bound array access",
+                       "Access out-of-bound array element (buffer overflow)"));
 
     // FIXME: It would be nice to eventually make this diagnostic more clear,
     // e.g., by referencing the original declaration or by saying *why* this

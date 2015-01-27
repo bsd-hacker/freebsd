@@ -49,8 +49,14 @@
 	 * dtrace_invop wants us to do.
 	 */
 	call	dtrace_invop
-	ALTENTRY(dtrace_invop_callsite)
+
+	/*
+	 * We pushed 3 times for the arguments to dtrace_invop,
+	 * so we need to increment the stack pointer to get rid of
+	 * those values.
+	 */
 	addl	$12, %esp
+	ALTENTRY(dtrace_invop_callsite)
 	cmpl	$DTRACE_INVOP_PUSHL_EBP, %eax
 	je	invop_push
 	cmpl	$DTRACE_INVOP_POPL_EBP, %eax

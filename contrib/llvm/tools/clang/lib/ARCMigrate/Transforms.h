@@ -127,29 +127,29 @@ public:
 
 class PropertyRewriteTraverser : public ASTTraverser {
 public:
-  void traverseObjCImplementation(ObjCImplementationContext &ImplCtx) override;
+  virtual void traverseObjCImplementation(ObjCImplementationContext &ImplCtx);
 };
 
 class BlockObjCVariableTraverser : public ASTTraverser {
 public:
-  void traverseBody(BodyContext &BodyCtx) override;
+  virtual void traverseBody(BodyContext &BodyCtx);
 };
 
 class ProtectedScopeTraverser : public ASTTraverser {
 public:
-  void traverseBody(BodyContext &BodyCtx) override;
+  virtual void traverseBody(BodyContext &BodyCtx);
 };
 
 // GC transformations
 
 class GCAttrsTraverser : public ASTTraverser {
 public:
-  void traverseTU(MigrationContext &MigrateCtx) override;
+  virtual void traverseTU(MigrationContext &MigrateCtx);
 };
 
 class GCCollectableCallsTraverser : public ASTTraverser {
 public:
-  void traverseBody(BodyContext &BodyCtx) override;
+  virtual void traverseBody(BodyContext &BodyCtx);
 };
 
 //===----------------------------------------------------------------------===//
@@ -189,7 +189,7 @@ class BodyTransform : public RecursiveASTVisitor<BodyTransform<BODY_TRANS> > {
 
   typedef RecursiveASTVisitor<BodyTransform<BODY_TRANS> > base;
 public:
-  BodyTransform(MigrationPass &pass) : Pass(pass), ParentD(nullptr) { }
+  BodyTransform(MigrationPass &pass) : Pass(pass), ParentD(0) { }
 
   bool TraverseStmt(Stmt *rootS) {
     if (rootS)

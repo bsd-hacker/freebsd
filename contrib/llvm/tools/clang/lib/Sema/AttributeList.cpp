@@ -13,11 +13,8 @@
 
 #include "clang/Sema/AttributeList.h"
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/Basic/IdentifierTable.h"
-#include "clang/Sema/SemaInternal.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 using namespace clang;
@@ -106,6 +103,14 @@ void AttributePool::takePool(AttributeList *pool) {
   } while (pool);
 }
 
+AttributeList *
+AttributePool::createIntegerAttribute(ASTContext &C, IdentifierInfo *Name,
+                                      SourceLocation TokLoc, int Arg) {
+  ArgsUnion IArg = IntegerLiteral::Create(C, llvm::APInt(32, (uint64_t) Arg),
+                                      C.IntTy, TokLoc);
+  return create(Name, TokLoc, 0, TokLoc, &IArg, 1, AttributeList::AS_GNU);
+}
+
 #include "clang/Sema/AttrParsedAttrKinds.inc"
 
 AttributeList::Kind AttributeList::getKind(const IdentifierInfo *Name,
@@ -113,25 +118,21 @@ AttributeList::Kind AttributeList::getKind(const IdentifierInfo *Name,
                                            Syntax SyntaxUsed) {
   StringRef AttrName = Name->getName();
 
-  SmallString<64> FullName;
+  // Normalize the attribute name, __foo__ becomes foo.
+  if (AttrName.startswith("__") && AttrName.endswith("__") &&
+      AttrName.size() >= 4)
+    AttrName = AttrName.substr(2, AttrName.size() - 4);
+
+  SmallString<64> Buf;
   if (ScopeName)
-    FullName += ScopeName->getName();
-
-  // Normalize the attribute name, __foo__ becomes foo. This is only allowable
-  // for GNU attributes.
-  bool IsGNU = SyntaxUsed == AS_GNU || (SyntaxUsed == AS_CXX11 &&
-                                        FullName == "gnu");
-  if (IsGNU && AttrName.size() >= 4 && AttrName.startswith("__") &&
-      AttrName.endswith("__"))
-    AttrName = AttrName.slice(2, AttrName.size() - 2);
-
+    Buf += ScopeName->getName();
   // Ensure that in the case of C++11 attributes, we look for '::foo' if it is
   // unscoped.
   if (ScopeName || SyntaxUsed == AS_CXX11)
-    FullName += "::";
-  FullName += AttrName;
+    Buf += "::";
+  Buf += AttrName;
 
-  return ::getAttrKind(FullName, SyntaxUsed);
+  return ::getAttrKind(Buf);
 }
 
 unsigned AttributeList::getAttributeSpellingListIndex() const {
@@ -148,15 +149,6 @@ struct ParsedAttrInfo {
   unsigned NumArgs : 4;
   unsigned OptArgs : 4;
   unsigned HasCustomParsing : 1;
-  unsigned IsTargetSpecific : 1;
-  unsigned IsType : 1;
-  unsigned IsKnownToGCC : 1;
-
-  bool (*DiagAppertainsToDecl)(Sema &S, const AttributeList &Attr,
-                               const Decl *);
-  bool (*DiagLangOpts)(Sema &S, const AttributeList &Attr);
-  bool (*ExistsInTarget)(const llvm::Triple &T);
-  unsigned (*SpellingIndexToSemanticSpelling)(const AttributeList &Attr);
 };
 
 namespace {
@@ -177,32 +169,4 @@ unsigned AttributeList::getMaxArgs() const {
 
 bool AttributeList::hasCustomParsing() const {
   return getInfo(*this).HasCustomParsing;
-}
-
-bool AttributeList::diagnoseAppertainsTo(Sema &S, const Decl *D) const {
-  return getInfo(*this).DiagAppertainsToDecl(S, *this, D);
-}
-
-bool AttributeList::diagnoseLangOpts(Sema &S) const {
-  return getInfo(*this).DiagLangOpts(S, *this);
-}
-
-bool AttributeList::isTargetSpecificAttr() const {
-  return getInfo(*this).IsTargetSpecific;
-}
-
-bool AttributeList::isTypeAttr() const {
-  return getInfo(*this).IsType;
-}
-
-bool AttributeList::existsInTarget(const llvm::Triple &T) const {
-  return getInfo(*this).ExistsInTarget(T);
-}
-
-bool AttributeList::isKnownToGCC() const {
-  return getInfo(*this).IsKnownToGCC;
-}
-
-unsigned AttributeList::getSemanticSpelling() const {
-  return getInfo(*this).SpellingIndexToSemanticSpelling(*this);
 }

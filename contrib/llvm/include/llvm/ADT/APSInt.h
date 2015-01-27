@@ -30,12 +30,18 @@ public:
   explicit APSInt(uint32_t BitWidth, bool isUnsigned = true)
    : APInt(BitWidth, 0), IsUnsigned(isUnsigned) {}
 
-  explicit APSInt(APInt I, bool isUnsigned = true)
-   : APInt(std::move(I)), IsUnsigned(isUnsigned) {}
+  explicit APSInt(const APInt &I, bool isUnsigned = true)
+   : APInt(I), IsUnsigned(isUnsigned) {}
 
-  APSInt &operator=(APInt RHS) {
+  APSInt &operator=(const APSInt &RHS) {
+    APInt::operator=(RHS);
+    IsUnsigned = RHS.IsUnsigned;
+    return *this;
+  }
+
+  APSInt &operator=(const APInt &RHS) {
     // Retain our current sign.
-    APInt::operator=(std::move(RHS));
+    APInt::operator=(RHS);
     return *this;
   }
 
@@ -56,7 +62,7 @@ public:
     APInt::toString(Str, Radix, isSigned());
   }
   /// toString - Converts an APInt to a std::string.  This is an inefficient
-  /// method; you should prefer passing in a SmallString instead.
+  /// method, your should prefer passing in a SmallString instead.
   std::string toString(unsigned Radix) const {
     return APInt::toString(Radix, isSigned());
   }

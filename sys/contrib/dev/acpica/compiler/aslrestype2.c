@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,7 @@
  * POSSIBILITY OF SUCH DAMAGES.
  */
 
+
 #include <contrib/dev/acpica/compiler/aslcompiler.h>
 #include "aslcompiler.y.h"
 #include <contrib/dev/acpica/include/amlcode.h>
@@ -60,7 +61,9 @@
  *
  * FUNCTION:    RsDoGeneralRegisterDescriptor
  *
- * PARAMETERS:  Info                - Parse Op and resource template offset
+ * PARAMETERS:  Op                  - Parent resource descriptor parse node
+ *              CurrentByteOffset   - Offset into the resource template AML
+ *                                    buffer (to track references to the desc)
  *
  * RETURN:      Completed resource node
  *
@@ -70,17 +73,16 @@
 
 ASL_RESOURCE_NODE *
 RsDoGeneralRegisterDescriptor (
-    ASL_RESOURCE_INFO       *Info)
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  CurrentByteOffset)
 {
     AML_RESOURCE            *Descriptor;
     ACPI_PARSE_OBJECT       *InitializerOp;
     ASL_RESOURCE_NODE       *Rnode;
-    UINT32                  CurrentByteOffset;
     UINT32                  i;
 
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
-    CurrentByteOffset = Info->CurrentByteOffset;
+    InitializerOp = Op->Asl.Child;
     Rnode = RsAllocateResourceNode (sizeof (AML_RESOURCE_GENERIC_REGISTER));
 
     Descriptor = Rnode->Buffer;
@@ -136,7 +138,7 @@ RsDoGeneralRegisterDescriptor (
 
         case 5: /* ResourceTag (ACPI 3.0b) */
 
-            UtAttachNamepathToOwner (Info->DescriptorTypeOp, InitializerOp);
+            UtAttachNamepathToOwner (Op, InitializerOp);
             break;
 
         default:
@@ -155,7 +157,9 @@ RsDoGeneralRegisterDescriptor (
  *
  * FUNCTION:    RsDoInterruptDescriptor
  *
- * PARAMETERS:  Info                - Parse Op and resource template offset
+ * PARAMETERS:  Op                  - Parent resource descriptor parse node
+ *              CurrentByteOffset   - Offset into the resource template AML
+ *                                    buffer (to track references to the desc)
  *
  * RETURN:      Completed resource node
  *
@@ -165,7 +169,8 @@ RsDoGeneralRegisterDescriptor (
 
 ASL_RESOURCE_NODE *
 RsDoInterruptDescriptor (
-    ASL_RESOURCE_INFO       *Info)
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  CurrentByteOffset)
 {
     AML_RESOURCE            *Descriptor;
     AML_RESOURCE            *Rover = NULL;
@@ -173,15 +178,13 @@ RsDoInterruptDescriptor (
     ASL_RESOURCE_NODE       *Rnode;
     UINT16                  StringLength = 0;
     UINT32                  OptionIndex = 0;
-    UINT32                  CurrentByteOffset;
     UINT32                  i;
     BOOLEAN                 HasResSourceIndex = FALSE;
     UINT8                   ResSourceIndex = 0;
     UINT8                   *ResSourceString = NULL;
 
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
-    CurrentByteOffset = Info->CurrentByteOffset;
+    InitializerOp = Op->Asl.Child;
     StringLength = RsGetStringDataLength (InitializerOp);
 
     /* Count the interrupt numbers */
@@ -208,9 +211,9 @@ RsDoInterruptDescriptor (
         OptionIndex += 4;
     }
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
+    InitializerOp = Op->Asl.Child;
     Rnode = RsAllocateResourceNode (sizeof (AML_RESOURCE_EXTENDED_IRQ) +
-        1 + OptionIndex + StringLength);
+                1 + OptionIndex + StringLength);
 
     Descriptor = Rnode->Buffer;
     Descriptor->ExtendedIrq.DescriptorType  = ACPI_RESOURCE_NAME_EXTENDED_IRQ;
@@ -300,7 +303,7 @@ RsDoInterruptDescriptor (
 
         case 6: /* ResourceTag */
 
-            UtAttachNamepathToOwner (Info->DescriptorTypeOp, InitializerOp);
+            UtAttachNamepathToOwner (Op, InitializerOp);
             break;
 
         default:
@@ -393,7 +396,9 @@ RsDoInterruptDescriptor (
  *
  * FUNCTION:    RsDoVendorLargeDescriptor
  *
- * PARAMETERS:  Info                - Parse Op and resource template offset
+ * PARAMETERS:  Op                  - Parent resource descriptor parse node
+ *              CurrentByteOffset   - Offset into the resource template AML
+ *                                    buffer (to track references to the desc)
  *
  * RETURN:      Completed resource node
  *
@@ -403,7 +408,8 @@ RsDoInterruptDescriptor (
 
 ASL_RESOURCE_NODE *
 RsDoVendorLargeDescriptor (
-    ASL_RESOURCE_INFO       *Info)
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  CurrentByteOffset)
 {
     AML_RESOURCE            *Descriptor;
     ACPI_PARSE_OBJECT       *InitializerOp;
@@ -414,7 +420,7 @@ RsDoVendorLargeDescriptor (
 
     /* Count the number of data bytes */
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
+    InitializerOp = Op->Asl.Child;
     InitializerOp = RsCompleteNodeAndGetNext (InitializerOp);
 
     for (i = 0; InitializerOp; i++)
@@ -426,7 +432,7 @@ RsDoVendorLargeDescriptor (
         InitializerOp = InitializerOp->Asl.Next;
     }
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
+    InitializerOp = Op->Asl.Child;
     InitializerOp = RsCompleteNodeAndGetNext (InitializerOp);
     Rnode = RsAllocateResourceNode (sizeof (AML_RESOURCE_VENDOR_LARGE) + i);
 

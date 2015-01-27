@@ -59,23 +59,22 @@ static struct mkimg_alias pc98_aliases[] = {
     {	ALIAS_NONE, 0 }
 };
 
-static lba_t
-pc98_metadata(u_int where, lba_t blk)
+static u_int
+pc98_metadata(u_int where)
 {
-	if (where == SCHEME_META_IMG_START)
-		blk += PC98_BOOTCODESZ / secsz;
-	return (round_track(blk));
+	u_int secs;
+
+	secs = PC98_BOOTCODESZ / secsz;
+	return ((where == SCHEME_META_IMG_START) ? secs : 0);
 }
 
 static void
-pc98_chs(u_short *cylp, u_char *hdp, u_char *secp, lba_t lba)
+pc98_chs(u_short *cyl, u_char *hd, u_char *sec, uint32_t lba __unused)
 {
-	u_int cyl, hd, sec;
 
-	mkimg_chs(lba, 0xffff, &cyl, &hd, &sec);
-	le16enc(cylp, cyl);
-	*hdp = hd;
-	*secp = sec;
+	*cyl = 0xffff;		/* XXX */
+	*hd = 0xff;		/* XXX */
+	*sec = 0xff;		/* XXX */
 }
 
 static int
@@ -84,7 +83,6 @@ pc98_write(lba_t imgsz __unused, void *bootcode)
 	struct part *part;
 	struct pc98_partition *dpbase, *dp;
 	u_char *buf;
-	lba_t size;
 	int error, ptyp;
 
 	buf = malloc(PC98_BOOTCODESZ);
@@ -98,7 +96,6 @@ pc98_write(lba_t imgsz __unused, void *bootcode)
 	le16enc(buf + PC98_MAGICOFS, PC98_MAGIC);
 	dpbase = (void *)(buf + secsz);
 	STAILQ_FOREACH(part, &partlist, link) {
-		size = round_track(part->size);
 		dp = dpbase + part->index;
 		ptyp = ALIAS_TYPE2INT(part->type);
 		dp->dp_mid = ptyp;
@@ -106,7 +103,7 @@ pc98_write(lba_t imgsz __unused, void *bootcode)
 		pc98_chs(&dp->dp_scyl, &dp->dp_shd, &dp->dp_ssect,
 		    part->block);
 		pc98_chs(&dp->dp_scyl, &dp->dp_shd, &dp->dp_ssect,
-		    part->block + size - 1);
+		    part->block + part->size - 1);
 		if (part->label != NULL)
 			memcpy(dp->dp_name, part->label, strlen(part->label));
 	}

@@ -22,9 +22,6 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
-/*
- * Copyright (c) 2014 by Delphix. All rights reserved.
- */
 
 #ifndef _SYS_UBERBLOCK_H
 #define	_SYS_UBERBLOCK_H
@@ -39,8 +36,8 @@ extern "C" {
 
 typedef struct uberblock uberblock_t;
 
-extern int uberblock_verify(uberblock_t *);
-extern boolean_t uberblock_update(uberblock_t *, vdev_t *, uint64_t);
+extern int uberblock_verify(uberblock_t *ub);
+extern int uberblock_update(uberblock_t *ub, vdev_t *rvd, uint64_t txg);
 
 #ifdef	__cplusplus
 }

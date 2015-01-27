@@ -35,6 +35,7 @@
 
 #include <string.h>
 
+int prefix(const char *, const char *);
 int number(const char *);
 int is_number(const char *);
 

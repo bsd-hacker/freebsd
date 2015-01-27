@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -144,10 +144,9 @@ AcpiEvFinishGpe (
 ACPI_STATUS
 AcpiEvCreateGpeBlock (
     ACPI_NAMESPACE_NODE     *GpeDevice,
-    UINT64                  Address,
-    UINT8                   SpaceId,
+    ACPI_GENERIC_ADDRESS    *GpeBlockAddress,
     UINT32                  RegisterCount,
-    UINT16                  GpeBlockBaseNumber,
+    UINT8                   GpeBlockBaseNumber,
     UINT32                  InterruptNumber,
     ACPI_GPE_BLOCK_INFO     **ReturnGpeBlock);
 
@@ -207,10 +206,9 @@ AcpiEvGetGpeDevice (
     ACPI_GPE_BLOCK_INFO     *GpeBlock,
     void                    *Context);
 
-ACPI_STATUS
+ACPI_GPE_XRUPT_INFO *
 AcpiEvGetGpeXruptBlock (
-    UINT32                  InterruptNumber,
-    ACPI_GPE_XRUPT_INFO     **GpeXruptBlock);
+    UINT32                  InterruptNumber);
 
 ACPI_STATUS
 AcpiEvDeleteGpeXrupt (

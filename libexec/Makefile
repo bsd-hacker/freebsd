@@ -28,6 +28,7 @@ SUBDIR=	${_atf} \
 	${_rtld-elf} \
 	save-entropy \
 	${_smrsh} \
+	talkd \
 	tcpd \
 	${_telnetd} \
 	${_tests} \
@@ -80,10 +81,6 @@ _mail.local=	mail.local
 _smrsh=		smrsh
 .endif
 
-.if ${MK_TALK} != "no"
-SUBDIR+=	talkd
-.endif
-
 .if ${MK_TELNET} != "no"
 _telnetd=	telnetd
 .endif
@@ -92,7 +89,5 @@ _telnetd=	telnetd
 _atf=		atf
 _tests=		tests
 .endif
-
-.include <bsd.arch.inc.mk>
 
 .include <bsd.subdir.mk>

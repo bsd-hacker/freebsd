@@ -27,7 +27,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd November 16, 2014
+.Dd July 27, 2013
 .Dt WATCHDOGD 8
 .Os
 .Sh NAME
@@ -79,12 +79,12 @@ reboot if there are problems with the script.
 The
 .Fl s Ar sleep
 argument can be used to control the sleep period between each execution
-of the check and defaults to 10 seconds.
+of the check and defaults to one second.
 .Pp
 The
 .Fl t Ar timeout
 specifies the desired timeout period in seconds.
-The default timeout is 128 seconds.
+The default timeout is 16 seconds.
 .Pp
 One possible circumstance which will cause a watchdog timeout is an interrupt
 storm.
@@ -302,12 +302,12 @@ utility appeared in
 The
 .Nm
 utility and manual page were written by
-.An Sean Kelly Aq Mt smkelly@FreeBSD.org
+.An Sean Kelly Aq smkelly@FreeBSD.org
 and
-.An Poul-Henning Kamp Aq Mt phk@FreeBSD.org .
+.An Poul-Henning Kamp Aq phk@FreeBSD.org .
 .Pp
 Some contributions made by
-.An Jeff Roberson Aq Mt jeff@FreeBSD.org .
+.An Jeff Roberson Aq jeff@FreeBSD.org .
 .Pp
 The pretimeout and softtimeout action system was added by
-.An Alfred Perlstein Aq Mt alfred@freebsd.org .
+.An Alfred Perlstein Aq alfred@freebsd.org .

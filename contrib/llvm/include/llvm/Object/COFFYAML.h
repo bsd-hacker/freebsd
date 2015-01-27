@@ -14,8 +14,7 @@
 #ifndef LLVM_OBJECT_COFFYAML_H
 #define LLVM_OBJECT_COFFYAML_H
 
-#include "llvm/ADT/Optional.h"
-#include "llvm/MC/YAML.h"
+#include "llvm/Object/YAML.h"
 #include "llvm/Support/COFF.h"
 
 namespace llvm {
@@ -36,10 +35,6 @@ inline SectionCharacteristics operator|(SectionCharacteristics a,
 // The structure of the yaml files is not an exact 1:1 match to COFF. In order
 // to use yaml::IO, we use these structures which are closer to the source.
 namespace COFFYAML {
-  LLVM_YAML_STRONG_TYPEDEF(uint8_t, COMDATType)
-  LLVM_YAML_STRONG_TYPEDEF(uint32_t, WeakExternalCharacteristics)
-  LLVM_YAML_STRONG_TYPEDEF(uint8_t, AuxSymbolType)
-
   struct Relocation {
     uint32_t VirtualAddress;
     uint16_t Type;
@@ -49,7 +44,7 @@ namespace COFFYAML {
   struct Section {
     COFF::section Header;
     unsigned Alignment;
-    yaml::BinaryRef SectionData;
+    object::yaml::BinaryRef SectionData;
     std::vector<Relocation> Relocations;
     StringRef Name;
     Section();
@@ -59,12 +54,7 @@ namespace COFFYAML {
     COFF::symbol Header;
     COFF::SymbolBaseType SimpleType;
     COFF::SymbolComplexType ComplexType;
-    Optional<COFF::AuxiliaryFunctionDefinition> FunctionDefinition;
-    Optional<COFF::AuxiliarybfAndefSymbol> bfAndefSymbol;
-    Optional<COFF::AuxiliaryWeakExternal> WeakExternal;
-    StringRef File;
-    Optional<COFF::AuxiliarySectionDefinition> SectionDefinition;
-    Optional<COFF::AuxiliaryCLRToken> CLRToken;
+    object::yaml::BinaryRef AuxiliaryData;
     StringRef Name;
     Symbol();
   };
@@ -84,21 +74,6 @@ LLVM_YAML_IS_SEQUENCE_VECTOR(COFFYAML::Relocation)
 
 namespace llvm {
 namespace yaml {
-
-template <>
-struct ScalarEnumerationTraits<COFFYAML::WeakExternalCharacteristics> {
-  static void enumeration(IO &IO, COFFYAML::WeakExternalCharacteristics &Value);
-};
-
-template <>
-struct ScalarEnumerationTraits<COFFYAML::AuxSymbolType> {
-  static void enumeration(IO &IO, COFFYAML::AuxSymbolType &Value);
-};
-
-template <>
-struct ScalarEnumerationTraits<COFFYAML::COMDATType> {
-  static void enumeration(IO &IO, COFFYAML::COMDATType &Value);
-};
 
 template <>
 struct ScalarEnumerationTraits<COFF::MachineTypes> {
@@ -121,13 +96,8 @@ struct ScalarEnumerationTraits<COFF::SymbolComplexType> {
 };
 
 template <>
-struct ScalarEnumerationTraits<COFF::RelocationTypeI386> {
-  static void enumeration(IO &IO, COFF::RelocationTypeI386 &Value);
-};
-
-template <>
-struct ScalarEnumerationTraits<COFF::RelocationTypeAMD64> {
-  static void enumeration(IO &IO, COFF::RelocationTypeAMD64 &Value);
+struct ScalarEnumerationTraits<COFF::RelocationTypeX86> {
+  static void enumeration(IO &IO, COFF::RelocationTypeX86 &Value);
 };
 
 template <>
@@ -148,26 +118,6 @@ struct MappingTraits<COFFYAML::Relocation> {
 template <>
 struct MappingTraits<COFF::header> {
   static void mapping(IO &IO, COFF::header &H);
-};
-
-template <> struct MappingTraits<COFF::AuxiliaryFunctionDefinition> {
-  static void mapping(IO &IO, COFF::AuxiliaryFunctionDefinition &AFD);
-};
-
-template <> struct MappingTraits<COFF::AuxiliarybfAndefSymbol> {
-  static void mapping(IO &IO, COFF::AuxiliarybfAndefSymbol &AAS);
-};
-
-template <> struct MappingTraits<COFF::AuxiliaryWeakExternal> {
-  static void mapping(IO &IO, COFF::AuxiliaryWeakExternal &AWE);
-};
-
-template <> struct MappingTraits<COFF::AuxiliarySectionDefinition> {
-  static void mapping(IO &IO, COFF::AuxiliarySectionDefinition &ASD);
-};
-
-template <> struct MappingTraits<COFF::AuxiliaryCLRToken> {
-  static void mapping(IO &IO, COFF::AuxiliaryCLRToken &ACT);
 };
 
 template <>

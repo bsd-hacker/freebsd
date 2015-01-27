@@ -35,7 +35,6 @@ SRCS	= \
 	drm_stub.c \
 	drm_sysctl.c \
 	drm_vm.c \
-	ttm_agp_backend.c \
 	ttm_lock.c \
 	ttm_object.c \
 	ttm_tt.c \
@@ -47,6 +46,7 @@ SRCS	= \
 	ttm_page_alloc.c \
 	ttm_bo_vm.c \
 	ati_pcigart.c
+#ttm_agp_backend.c
 #ttm_page_alloc_dma.c
 
 .if ${MACHINE_CPUARCH} == "amd64"

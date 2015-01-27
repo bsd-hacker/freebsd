@@ -45,7 +45,6 @@
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
 #include <contrib/dev/acpica/include/acdebug.h>
-#include <contrib/dev/acpica/include/amlresrc.h>
 
 /*
  * Dummy DSDT Table Header
@@ -90,9 +89,9 @@ static UINT64		 aml_simulate_prompt(char *msg, UINT64 def_val);
 static void		 aml_simulation_regload(const char *dumpfile);
 static void		 aml_simulation_regdump(const char *dumpfile);
 
-/* Stubs to simplify linkage to the ACPICA core subsystem. */
+/* Stubs to simplify linkage to the ACPI CA core subsystem. */
 ACPI_PHYSICAL_ADDRESS
-AcpiOsGetRootPointer(void)
+AeLocalGetRootPointer(void)
 {
 
 	return (0);
@@ -100,18 +99,6 @@ AcpiOsGetRootPointer(void)
 
 void
 AeTableOverride(ACPI_TABLE_HEADER *ExistingTable, ACPI_TABLE_HEADER **NewTable)
-{
-}
-
-void
-MpSaveGpioInfo(ACPI_PARSE_OBJECT *Op, AML_RESOURCE *Resource,
-    UINT32 PinCount, UINT16 *PinList, char *DeviceName)
-{
-}
-
-void
-MpSaveSerialInfo(ACPI_PARSE_OBJECT *Op, AML_RESOURCE *Resource,
-    char *DeviceName)
 {
 }
 

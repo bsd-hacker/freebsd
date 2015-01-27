@@ -200,6 +200,5 @@ static driver_t ocotp_driver = {
 
 static devclass_t ocotp_devclass;
 
-EARLY_DRIVER_MODULE(ocotp, simplebus, ocotp_driver, ocotp_devclass, 0, 0,
-    BUS_PASS_CPU + BUS_PASS_ORDER_FIRST);
+DRIVER_MODULE(ocotp, simplebus, ocotp_driver, ocotp_devclass, 0, 0);
 

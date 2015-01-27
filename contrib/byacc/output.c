@@ -1,4 +1,4 @@
-/* $Id: output.c,v 1.74 2014/10/05 23:21:09 tom Exp $ */
+/* $Id: output.c,v 1.67 2014/04/22 23:16:57 tom Exp $ */
 
 #include "defs.h"
 
@@ -51,43 +51,6 @@ static void
 puts_code(FILE * fp, const char *s)
 {
     fputs(s, fp);
-}
-
-static void
-puts_param_types(FILE * fp, param * list, int more)
-{
-    param *p;
-
-    if (list != 0)
-    {
-	for (p = list; p; p = p->next)
-	{
-	    size_t len_type = strlen(p->type);
-	    fprintf(fp, "%s%s%s%s%s", p->type,
-		    (((len_type != 0) && (p->type[len_type - 1] == '*'))
-		     ? ""
-		     : " "),
-		    p->name, p->type2,
-		    ((more || p->next) ? ", " : ""));
-	}
-    }
-    else
-    {
-	if (!more)
-	    fprintf(fp, "void");
-    }
-}
-
-static void
-puts_param_names(FILE * fp, param * list, int more)
-{
-    param *p;
-
-    for (p = list; p; p = p->next)
-    {
-	fprintf(fp, "%s%s", p->name,
-		((more || p->next) ? ", " : ""));
-    }
 }
 
 static void
@@ -1044,33 +1007,30 @@ output_ctable(void)
 {
     int i;
     int j;
-    int limit = (conflicts != 0) ? nconflicts : 0;
-
-    if (limit < high)
-	limit = (int)high;
-
-    output_line("#if YYBTYACC");
-    start_int_table("ctable", conflicts ? conflicts[0] : -1);
-
-    j = 10;
-    for (i = 1; i < limit; i++)
-    {
-	if (j >= 10)
-	{
-	    output_newline();
-	    j = 1;
-	}
-	else
-	    ++j;
-
-	output_int((conflicts != 0 && i < nconflicts) ? conflicts[i] : -1);
-    }
 
     if (conflicts)
-	FREE(conflicts);
+    {
+	output_line("#if YYBTYACC");
+	start_int_table("ctable", conflicts[0]);
 
-    end_table();
-    output_line("#endif");
+	j = 10;
+	for (i = 1; i < nconflicts; i++)
+	{
+	    if (j >= 10)
+	    {
+		output_newline();
+		j = 1;
+	    }
+	    else
+		++j;
+
+	    output_int(conflicts[i]);
+	}
+
+	end_table();
+	output_line("#endif");
+	FREE(conflicts);
+    }
 }
 #endif
 
@@ -1096,7 +1056,7 @@ output_actions(void)
     FREE(accessing_symbol);
 
     goto_actions();
-    FREE(goto_base);
+    FREE(goto_map + ntokens);
     FREE(from_state);
     FREE(to_state);
 
@@ -1647,7 +1607,15 @@ output_parse_decl(FILE * fp)
     putl_code(fp, "#else\n");
 
     puts_code(fp, "# define YYPARSE_DECL() yyparse(");
-    puts_param_types(fp, parse_param, 0);
+    if (!parse_param)
+	puts_code(fp, "void");
+    else
+    {
+	param *p;
+	for (p = parse_param; p; p = p->next)
+	    fprintf(fp, "%s %s%s%s", p->type, p->name, p->type2,
+		    p->next ? ", " : "");
+    }
     putl_code(fp, ")\n");
 
     putl_code(fp, "#endif\n");
@@ -1665,8 +1633,7 @@ output_lex_decl(FILE * fp)
 #if defined(YYBTYACC)
 	if (locations)
 	{
-	    putl_code(fp, "#  define YYLEX_DECL() yylex(YYSTYPE *yylval,"
-		      " YYLTYPE *yylloc,"
+	    putl_code(fp, "#  define YYLEX_DECL() yylex(YYSTYPE *yylval, YYLTYPE *yylloc,"
 		      " YYLEX_PARAM_TYPE YYLEX_PARAM)\n");
 	}
 	else
@@ -1679,8 +1646,7 @@ output_lex_decl(FILE * fp)
 #if defined(YYBTYACC)
 	if (locations)
 	{
-	    putl_code(fp, "#  define YYLEX_DECL() yylex(YYSTYPE *yylval,"
-		      " YYLTYPE *yylloc,"
+	    putl_code(fp, "#  define YYLEX_DECL() yylex(YYSTYPE *yylval, YYLTYPE *yylloc,"
 		      " void * YYLEX_PARAM)\n");
 	}
 	else
@@ -1706,6 +1672,8 @@ output_lex_decl(FILE * fp)
     putl_code(fp, "#else\n");
     if (pure_parser && lex_param)
     {
+	param *p;
+
 #if defined(YYBTYACC)
 	if (locations)
 	    puts_code(fp,
@@ -1713,7 +1681,9 @@ output_lex_decl(FILE * fp)
 	else
 #endif
 	    puts_code(fp, "# define YYLEX_DECL() yylex(YYSTYPE *yylval, ");
-	puts_param_types(fp, lex_param, 0);
+	for (p = lex_param; p; p = p->next)
+	    fprintf(fp, "%s %s%s%s", p->type, p->name, p->type2,
+		    p->next ? ", " : "");
 	putl_code(fp, ")\n");
 
 #if defined(YYBTYACC)
@@ -1722,7 +1692,8 @@ output_lex_decl(FILE * fp)
 	else
 #endif
 	    puts_code(fp, "# define YYLEX yylex(&yylval, ");
-	puts_param_names(fp, lex_param, 0);
+	for (p = lex_param; p; p = p->next)
+	    fprintf(fp, "%s%s", p->name, p->next ? ", " : "");
 	putl_code(fp, ")\n");
     }
     else if (pure_parser)
@@ -1743,12 +1714,17 @@ output_lex_decl(FILE * fp)
     }
     else if (lex_param)
     {
+	param *p;
+
 	puts_code(fp, "# define YYLEX_DECL() yylex(");
-	puts_param_types(fp, lex_param, 0);
+	for (p = lex_param; p; p = p->next)
+	    fprintf(fp, "%s %s%s%s", p->type, p->name, p->type2,
+		    p->next ? ", " : "");
 	putl_code(fp, ")\n");
 
 	puts_code(fp, "# define YYLEX yylex(");
-	puts_param_names(fp, lex_param, 0);
+	for (p = lex_param; p; p = p->next)
+	    fprintf(fp, "%s%s", p->name, p->next ? ", " : "");
 	putl_code(fp, ")\n");
     }
     else
@@ -1762,6 +1738,8 @@ output_lex_decl(FILE * fp)
 static void
 output_error_decl(FILE * fp)
 {
+    param *p;
+
     putc_code(fp, '\n');
     putl_code(fp, "/* Parameters sent to yyerror. */\n");
     putl_code(fp, "#ifndef YYERROR_DECL\n");
@@ -1770,20 +1748,22 @@ output_error_decl(FILE * fp)
     if (locations)
 	puts_code(fp, "YYLTYPE loc, ");
 #endif
-    puts_param_types(fp, parse_param, 1);
+    for (p = parse_param; p; p = p->next)
+	fprintf(fp, "%s %s%s, ", p->type, p->name, p->type2);
     putl_code(fp, "const char *s)\n");
     putl_code(fp, "#endif\n");
 
     putl_code(fp, "#ifndef YYERROR_CALL\n");
-
     puts_code(fp, "#define YYERROR_CALL(msg) yyerror(");
+
 #if defined(YYBTYACC)
     if (locations)
 	puts_code(fp, "yylloc, ");
 #endif
-    puts_param_names(fp, parse_param, 1);
-    putl_code(fp, "msg)\n");
+    for (p = parse_param; p; p = p->next)
+	fprintf(fp, "%s, ", p->name);
 
+    putl_code(fp, "msg)\n");
     putl_code(fp, "#endif\n");
 }
 
@@ -1793,42 +1773,24 @@ output_yydestruct_decl(FILE * fp)
 {
     putc_code(fp, '\n');
     putl_code(fp, "#ifndef YYDESTRUCT_DECL\n");
-
-    puts_code(fp,
-	      "#define YYDESTRUCT_DECL() "
-	      "yydestruct(const char *msg, int psymb, YYSTYPE *val");
 #if defined(YYBTYACC)
     if (locations)
-	puts_code(fp, ", YYLTYPE *loc");
+	putl_code(fp,
+		  "#define YYDESTRUCT_DECL() yydestruct(const char *msg, int psymb, YYSTYPE *val, YYLTYPE *loc)\n");
+    else
 #endif
-    if (parse_param)
-    {
-	puts_code(fp, ", ");
-	puts_param_types(fp, parse_param, 0);
-    }
-    putl_code(fp, ")\n");
-
+	putl_code(fp,
+		  "#define YYDESTRUCT_DECL() yydestruct(const char *msg, int psymb, YYSTYPE *val)\n");
     putl_code(fp, "#endif\n");
-
     putl_code(fp, "#ifndef YYDESTRUCT_CALL\n");
-
-    puts_code(fp, "#define YYDESTRUCT_CALL(msg, psymb, val");
 #if defined(YYBTYACC)
     if (locations)
-	puts_code(fp, ", loc");
+	putl_code(fp,
+		  "#define YYDESTRUCT_CALL(msg, psymb, val, loc) yydestruct(msg, psymb, val, loc)\n");
+    else
 #endif
-    puts_code(fp, ") yydestruct(msg, psymb, val");
-#if defined(YYBTYACC)
-    if (locations)
-	puts_code(fp, ", loc");
-#endif
-    if (parse_param)
-    {
-	puts_code(fp, ", ");
-	puts_param_names(fp, parse_param, 0);
-    }
-    putl_code(fp, ")\n");
-
+	putl_code(fp,
+		  "#define YYDESTRUCT_CALL(msg, psymb, val) yydestruct(msg, psymb, val)\n");
     putl_code(fp, "#endif\n");
 }
 

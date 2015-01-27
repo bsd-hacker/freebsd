@@ -32,7 +32,11 @@
 
 /* Cisco NetFlow protocol */
 
-#define NETDISSECT_REWORKED
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/tcpdump/print-cnfp.c,v 1.17 2005-04-20 20:53:18 guy Exp $";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -50,33 +54,32 @@
 #include "ipproto.h"
 
 struct nfhdr {
-	uint32_t	ver_cnt;	/* version [15], and # of records */
-	uint32_t	msys_uptime;
-	uint32_t	utc_sec;
-	uint32_t	utc_nsec;
-	uint32_t	sequence;	/* v5 flow sequence number */
-	uint32_t	reserved;	/* v5 only */
+	u_int32_t	ver_cnt;	/* version [15], and # of records */
+	u_int32_t	msys_uptime;
+	u_int32_t	utc_sec;
+	u_int32_t	utc_nsec;
+	u_int32_t	sequence;	/* v5 flow sequence number */
+	u_int32_t	reserved;	/* v5 only */
 };
 
 struct nfrec {
 	struct in_addr	src_ina;
 	struct in_addr	dst_ina;
 	struct in_addr	nhop_ina;
-	uint32_t	ifaces;		/* src,dst ifaces */
-	uint32_t	packets;
-	uint32_t	octets;
-	uint32_t	start_time;	/* sys_uptime value */
-	uint32_t	last_time;	/* sys_uptime value */
-	uint32_t	ports;		/* src,dst ports */
-	uint32_t	proto_tos;	/* proto, tos, pad, flags(v5) */
-	uint32_t	asses;		/* v1: flags; v5: src,dst AS */
-	uint32_t	masks;		/* src,dst addr prefix; v6: encaps */
+	u_int32_t	ifaces;		/* src,dst ifaces */
+	u_int32_t	packets;
+	u_int32_t	octets;
+	u_int32_t	start_time;	/* sys_uptime value */
+	u_int32_t	last_time;	/* sys_uptime value */
+	u_int32_t	ports;		/* src,dst ports */
+	u_int32_t	proto_tos;	/* proto, tos, pad, flags(v5) */
+	u_int32_t	asses;		/* v1: flags; v5: src,dst AS */
+	u_int32_t	masks;		/* src,dst addr prefix; v6: encaps */
 	struct in_addr	peer_nexthop;	/* v6: IP address of the nexthop within the peer (FIB)*/
 };
 
 void
-cnfp_print(netdissect_options *ndo,
-           const u_char *cp, const u_char *bp _U_)
+cnfp_print(const u_char *cp, const u_char *bp _U_)
 {
 	register const struct nfhdr *nh;
 	register const struct nfrec *nr;
@@ -88,7 +91,7 @@ cnfp_print(netdissect_options *ndo,
 
 	nh = (const struct nfhdr *)cp;
 
-	if ((const u_char *)(nh + 1) > ndo->ndo_snapend)
+	if ((const u_char *)(nh + 1) > snapend)
 		return;
 
 	nrecs = EXTRACT_32BITS(&nh->ver_cnt) & 0xffff;
@@ -102,31 +105,31 @@ cnfp_print(netdissect_options *ndo,
 	t = EXTRACT_32BITS(&nh->utc_sec);
 #endif
 
-	ND_PRINT((ndo, "NetFlow v%x, %u.%03u uptime, %u.%09u, ", ver,
+	printf("NetFlow v%x, %u.%03u uptime, %u.%09u, ", ver,
 	       EXTRACT_32BITS(&nh->msys_uptime)/1000,
 	       EXTRACT_32BITS(&nh->msys_uptime)%1000,
-	       EXTRACT_32BITS(&nh->utc_sec), EXTRACT_32BITS(&nh->utc_nsec)));
+	       EXTRACT_32BITS(&nh->utc_sec), EXTRACT_32BITS(&nh->utc_nsec));
 
 	if (ver == 5 || ver == 6) {
-		ND_PRINT((ndo, "#%u, ", EXTRACT_32BITS(&nh->sequence)));
+		printf("#%u, ", EXTRACT_32BITS(&nh->sequence));
 		nr = (const struct nfrec *)&nh[1];
-		ndo->ndo_snaplen -= 24;
+		snaplen -= 24;
 	} else {
 		nr = (const struct nfrec *)&nh->sequence;
-		ndo->ndo_snaplen -= 16;
+		snaplen -= 16;
 	}
 
-	ND_PRINT((ndo, "%2u recs", nrecs));
+	printf("%2u recs", nrecs);
 
-	for (; nrecs-- && (const u_char *)(nr + 1) <= ndo->ndo_snapend; nr++) {
+	for (; nrecs-- && (const u_char *)(nr + 1) <= snapend; nr++) {
 		char buf[20];
 		char asbuf[20];
 
-		ND_PRINT((ndo, "\n  started %u.%03u, last %u.%03u",
+		printf("\n  started %u.%03u, last %u.%03u",
 		       EXTRACT_32BITS(&nr->start_time)/1000,
 		       EXTRACT_32BITS(&nr->start_time)%1000,
 		       EXTRACT_32BITS(&nr->last_time)/1000,
-		       EXTRACT_32BITS(&nr->last_time)%1000));
+		       EXTRACT_32BITS(&nr->last_time)%1000);
 
 		asbuf[0] = buf[0] = '\0';
 		if (ver == 5 || ver == 6) {
@@ -135,8 +138,8 @@ cnfp_print(netdissect_options *ndo,
 			snprintf(asbuf, sizeof(asbuf), ":%u",
 				 (EXTRACT_32BITS(&nr->asses) >> 16) & 0xffff);
 		}
-		ND_PRINT((ndo, "\n    %s%s%s:%u ", intoa(nr->src_ina.s_addr), buf, asbuf,
-			EXTRACT_32BITS(&nr->ports) >> 16));
+		printf("\n    %s%s%s:%u ", intoa(nr->src_ina.s_addr), buf, asbuf,
+			EXTRACT_32BITS(&nr->ports) >> 16);
 
 		if (ver == 5 || ver ==6) {
 			snprintf(buf, sizeof(buf), "/%d",
@@ -144,17 +147,17 @@ cnfp_print(netdissect_options *ndo,
 			snprintf(asbuf, sizeof(asbuf), ":%u",
 				 EXTRACT_32BITS(&nr->asses) & 0xffff);
 		}
-		ND_PRINT((ndo, "> %s%s%s:%u ", intoa(nr->dst_ina.s_addr), buf, asbuf,
-			EXTRACT_32BITS(&nr->ports) & 0xffff));
+		printf("> %s%s%s:%u ", intoa(nr->dst_ina.s_addr), buf, asbuf,
+			EXTRACT_32BITS(&nr->ports) & 0xffff);
 
-		ND_PRINT((ndo, ">> %s\n    ", intoa(nr->nhop_ina.s_addr)));
+		printf(">> %s\n    ", intoa(nr->nhop_ina.s_addr));
 
 		pent = getprotobynumber((EXTRACT_32BITS(&nr->proto_tos) >> 8) & 0xff);
-		if (!pent || ndo->ndo_nflag)
-			ND_PRINT((ndo, "%u ",
-			       (EXTRACT_32BITS(&nr->proto_tos) >> 8) & 0xff));
+		if (!pent || nflag)
+			printf("%u ",
+			       (EXTRACT_32BITS(&nr->proto_tos) >> 8) & 0xff);
 		else
-			ND_PRINT((ndo, "%s ", pent->p_name));
+			printf("%s ", pent->p_name);
 
 		/* tcp flags for tcp only */
 		if (pent && pent->p_proto == IPPROTO_TCP) {
@@ -163,14 +166,14 @@ cnfp_print(netdissect_options *ndo,
 				flags = (EXTRACT_32BITS(&nr->asses) >> 24) & 0xff;
 			else
 				flags = (EXTRACT_32BITS(&nr->proto_tos) >> 16) & 0xff;
-			ND_PRINT((ndo, "%s%s%s%s%s%s%s",
-				flags & TH_FIN  ? "F" : "",
-				flags & TH_SYN  ? "S" : "",
-				flags & TH_RST  ? "R" : "",
-				flags & TH_PUSH ? "P" : "",
-				flags & TH_ACK  ? "A" : "",
-				flags & TH_URG  ? "U" : "",
-				flags           ? " " : ""));
+			if (flags & TH_FIN)	putchar('F');
+			if (flags & TH_SYN)	putchar('S');
+			if (flags & TH_RST)	putchar('R');
+			if (flags & TH_PUSH)	putchar('P');
+			if (flags & TH_ACK)	putchar('A');
+			if (flags & TH_URG)	putchar('U');
+			if (flags)
+				putchar(' ');
 		}
 
 		buf[0]='\0';
@@ -179,9 +182,9 @@ cnfp_print(netdissect_options *ndo,
 				 (EXTRACT_32BITS(&nr->masks) >> 8) & 0xff,
 				 (EXTRACT_32BITS(&nr->masks)) & 0xff);
 		}
-		ND_PRINT((ndo, "tos %u, %u (%u octets) %s",
+		printf("tos %u, %u (%u octets) %s",
 		       EXTRACT_32BITS(&nr->proto_tos) & 0xff,
 		       EXTRACT_32BITS(&nr->packets),
-		       EXTRACT_32BITS(&nr->octets), buf));
+		       EXTRACT_32BITS(&nr->octets), buf);
 	}
 }

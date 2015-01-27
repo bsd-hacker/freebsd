@@ -1,5 +1,5 @@
 # $FreeBSD$
 
-SUBDIR = readline
+SUBDIR = history readline
 
 .include <bsd.subdir.mk>

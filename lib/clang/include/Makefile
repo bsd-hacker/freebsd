@@ -8,13 +8,12 @@ LLVM_SRCS= ${.CURDIR}/../../../contrib/llvm
 
 .PATH: ${LLVM_SRCS}/tools/clang/lib/Headers
 
-INCSDIR=${INCLUDEDIR}/clang/3.5.1
+INCSDIR=${INCLUDEDIR}/clang/3.4.1
 
 INCS=	__wmmintrin_aes.h \
 	__wmmintrin_pclmul.h \
 	altivec.h \
 	ammintrin.h \
-	arm_acle.h \
 	avx2intrin.h \
 	avxintrin.h \
 	bmi2intrin.h \
@@ -24,13 +23,12 @@ INCS=	__wmmintrin_aes.h \
 	f16cintrin.h \
 	fma4intrin.h \
 	fmaintrin.h \
-	ia32intrin.h \
 	immintrin.h \
 	lzcntintrin.h \
 	mm3dnow.h \
 	mm_malloc.h \
 	mmintrin.h \
-	module.modulemap \
+	module.map \
 	nmmintrin.h \
 	pmmintrin.h \
 	popcntintrin.h \

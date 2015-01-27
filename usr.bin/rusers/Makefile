@@ -2,6 +2,7 @@
 
 PROG = rusers
 
-LIBADD=	rpcsvc
+DPADD=	${LIBRPCSVC}
+LDADD=	-lrpcsvc
 
 .include <bsd.prog.mk>

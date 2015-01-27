@@ -1328,7 +1328,8 @@ safe_process(device_t dev, struct cryptop *crp, int hint)
 					goto errout;
 				}
 				if (totlen >= MINCLSIZE) {
-					if (!(MCLGET(m, M_NOWAIT))) {
+					MCLGET(m, M_NOWAIT);
+					if ((m->m_flags & M_EXT) == 0) {
 						m_free(m);
 						safestats.st_nomcl++;
 						err = sc->sc_nqchip ?
@@ -1354,7 +1355,8 @@ safe_process(device_t dev, struct cryptop *crp, int hint)
 						len = MLEN;
 					}
 					if (top && totlen >= MINCLSIZE) {
-						if (!(MCLGET(m, M_NOWAIT))) {
+						MCLGET(m, M_NOWAIT);
+						if ((m->m_flags & M_EXT) == 0) {
 							*mp = m;
 							m_freem(top);
 							safestats.st_nomcl++;
@@ -1809,8 +1811,8 @@ safe_dma_malloc(
 			     BUS_DMA_NOWAIT, &dma->dma_map);
 	if (r != 0) {
 		device_printf(sc->sc_dev, "safe_dma_malloc: "
-			"bus_dmammem_alloc failed; size %ju, error %u\n",
-			(uintmax_t)size, r);
+			"bus_dmammem_alloc failed; size %zu, error %u\n",
+			size, r);
 		goto fail_1;
 	}
 

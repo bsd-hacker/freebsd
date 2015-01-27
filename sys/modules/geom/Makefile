@@ -1,10 +1,8 @@
 # $FreeBSD$
 
-SYSDIR?=${.CURDIR}/../..
-.include "${SYSDIR}/conf/kern.opts.mk"
-
 SUBDIR=	geom_bde \
 	geom_cache \
+	geom_ccd \
 	geom_concat \
 	geom_eli \
 	geom_gate \
@@ -26,9 +24,5 @@ SUBDIR=	geom_bde \
 	geom_vinum \
 	geom_virstor \
 	geom_zero
-
-.if ${MK_CCD} != "no" || defined(ALL_MODULES)
-SUBDIR+=	geom_ccd
-.endif
 
 .include <bsd.subdir.mk>

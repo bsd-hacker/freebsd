@@ -7,7 +7,6 @@ SHLIBDIR?= /lib
 
 LIB=	pcap
 SRCS=	grammar.y tokdefs.h version.h pcap-bpf.c \
-	pcap-netmap.c \
 	pcap.c pcap-common.c inet.c fad-getad.c gencode.c optimize.c nametoaddr.c \
 	etherent.c savefile.c bpf_filter.c bpf_image.c bpf_dump.c \
 	scanner.l sf-pcap.c sf-pcap-ng.c version.c
@@ -40,7 +39,6 @@ MAN=	pcap.3 \
 	pcap_findalldevs.3 \
 	pcap_freecode.3 \
 	pcap_get_selectable_fd.3 \
-	pcap_get_tstamp_precision.3 \
 	pcap_geterr.3 \
 	pcap_inject.3 \
 	pcap_is_swapped.3 \
@@ -58,12 +56,10 @@ MAN=	pcap.3 \
 	pcap_open_offline.3 \
 	pcap_set_buffer_size.3 \
 	pcap_set_datalink.3 \
-	pcap_set_immediate_mode.3 \
 	pcap_set_promisc.3 \
 	pcap_set_rfmon.3 \
 	pcap_set_snaplen.3 \
 	pcap_set_timeout.3 \
-	pcap_set_tstamp_precision.3 \
 	pcap_set_tstamp_type.3 \
 	pcap_setdirection.3 \
 	pcap_setfilter.3 \

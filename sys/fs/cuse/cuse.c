@@ -142,7 +142,6 @@ static struct cuse_server *cuse_alloc_unit[CUSE_DEVICES_MAX];
 static int cuse_alloc_unit_id[CUSE_DEVICES_MAX];
 static struct cuse_memory cuse_mem[CUSE_ALLOC_UNIT_MAX];
 
-static void cuse_server_wakeup_all_client_locked(struct cuse_server *pcs);
 static void cuse_client_kqfilter_read_detach(struct knote *kn);
 static void cuse_client_kqfilter_write_detach(struct knote *kn);
 static int cuse_client_kqfilter_read_event(struct knote *kn, long hint);
@@ -649,8 +648,6 @@ cuse_server_free(void *arg)
 		return;
 	}
 	cuse_server_is_closing(pcs);
-	/* final client wakeup, if any */
-	cuse_server_wakeup_all_client_locked(pcs);
 
 	TAILQ_REMOVE(&cuse_server_head, pcs, entry);
 
@@ -719,9 +716,6 @@ cuse_server_close(struct cdev *dev, int fflag, int devtype, struct thread *td)
 
 	cuse_lock();
 	cuse_server_is_closing(pcs);
-	/* final client wakeup, if any */
-	cuse_server_wakeup_all_client_locked(pcs);
-
 	knlist_clear(&pcs->selinfo.si_note, 1);
 	cuse_unlock();
 
@@ -819,9 +813,15 @@ cuse_proc2proc_copy(struct proc *proc_s, vm_offset_t data_s,
 			.uio_td = td,
 		};
 
-		PHOLD(proc_s);
+		PROC_LOCK(proc_s);
+		_PHOLD(proc_s);
+		PROC_UNLOCK(proc_s);
+
 		error = proc_rwmem(proc_s, &uio);
-		PRELE(proc_s);
+
+		PROC_LOCK(proc_s);
+		_PRELE(proc_s);
+		PROC_UNLOCK(proc_s);
 
 	} else if (proc_cur == proc_s) {
 		struct iovec iov = {
@@ -838,9 +838,15 @@ cuse_proc2proc_copy(struct proc *proc_s, vm_offset_t data_s,
 			.uio_td = td,
 		};
 
-		PHOLD(proc_d);
+		PROC_LOCK(proc_d);
+		_PHOLD(proc_d);
+		PROC_UNLOCK(proc_d);
+
 		error = proc_rwmem(proc_d, &uio);
-		PRELE(proc_d);
+
+		PROC_LOCK(proc_d);
+		_PRELE(proc_d);
+		PROC_UNLOCK(proc_d);
 	} else {
 		error = EINVAL;
 	}
@@ -924,18 +930,6 @@ cuse_server_wakeup_locked(struct cuse_server *pcs)
 {
 	selwakeup(&pcs->selinfo);
 	KNOTE_LOCKED(&pcs->selinfo.si_note, 0);
-}
-
-static void
-cuse_server_wakeup_all_client_locked(struct cuse_server *pcs)
-{
-	struct cuse_client *pcc;
-
-	TAILQ_FOREACH(pcc, &pcs->hcli, entry) {
-		pcc->cflags |= (CUSE_CLI_KNOTE_NEED_READ |
-		    CUSE_CLI_KNOTE_NEED_WRITE);
-	}
-	cuse_server_wakeup_locked(pcs);
 }
 
 static int
@@ -1244,7 +1238,11 @@ cuse_server_ioctl(struct cdev *dev, unsigned long cmd,
 		 * We don't know which direction caused the event.
 		 * Wakeup both!
 		 */
-		cuse_server_wakeup_all_client_locked(pcs);
+		TAILQ_FOREACH(pcc, &pcs->hcli, entry) {
+			pcc->cflags |= (CUSE_CLI_KNOTE_NEED_READ |
+			    CUSE_CLI_KNOTE_NEED_WRITE);
+		}
+		cuse_server_wakeup_locked(pcs);
 		cuse_unlock();
 		break;
 
@@ -1691,7 +1689,7 @@ cuse_client_poll(struct cdev *dev, int events, struct thread *td)
 
 	error = cuse_client_get(&pcc);
 	if (error != 0)
-		goto pollnval;
+		return (POLLNVAL);
 
 	temp = 0;
 
@@ -1719,10 +1717,8 @@ cuse_client_poll(struct cdev *dev, int events, struct thread *td)
 	error = cuse_client_receive_command_locked(pccmd, 0, 0);
 	cuse_unlock();
 
-	cuse_cmd_unlock(pccmd);
-
 	if (error < 0) {
-		goto pollnval;
+		revents = POLLNVAL;
 	} else {
 		revents = 0;
 		if (error & CUSE_POLL_READ)
@@ -1732,12 +1728,10 @@ cuse_client_poll(struct cdev *dev, int events, struct thread *td)
 		if (error & CUSE_POLL_ERROR)
 			revents |= (events & POLLHUP);
 	}
-	return (revents);
 
- pollnval:
-	/* XXX many clients don't understand POLLNVAL */
-	return (events & (POLLHUP | POLLPRI | POLLIN |
-	    POLLRDNORM | POLLOUT | POLLWRNORM));
+	cuse_cmd_unlock(pccmd);
+
+	return (revents);
 }
 
 static int

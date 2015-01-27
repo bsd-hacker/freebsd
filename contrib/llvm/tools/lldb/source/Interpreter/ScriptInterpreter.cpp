@@ -44,7 +44,7 @@ ScriptInterpreter::GetCommandInterpreter ()
 void 
 ScriptInterpreter::CollectDataForBreakpointCommandCallback 
 (
-    std::vector<BreakpointOptions *> &bp_options_vec,
+    BreakpointOptions *bp_options,
     CommandReturnObject &result
 )
 {
@@ -79,30 +79,6 @@ ScriptInterpreter::LanguageToString (lldb::ScriptLanguage language)
     }
 
     return return_value;
-}
-
-Error
-ScriptInterpreter::SetBreakpointCommandCallback (std::vector<BreakpointOptions *> &bp_options_vec,
-                                                 const char *callback_text)
-{
-    Error return_error;
-    for (BreakpointOptions *bp_options : bp_options_vec)
-    {
-        return_error = SetBreakpointCommandCallback(bp_options, callback_text);
-        if (return_error.Success())
-            break;
-    }
-    return return_error;
-}
-
-void
-ScriptInterpreter::SetBreakpointCommandCallbackFunction (std::vector<BreakpointOptions *> &bp_options_vec,
-                                                         const char *function_name)
-{
-    for (BreakpointOptions *bp_options : bp_options_vec)
-    {
-        SetBreakpointCommandCallbackFunction(bp_options, function_name);
-    }
 }
 
 std::unique_ptr<ScriptInterpreterLocker>
@@ -156,3 +132,12 @@ ScriptInterpreter::InitializeInterpreter (SWIGInitCallback python_swig_init_call
                                                     swig_plugin_get);
 #endif // #ifndef LLDB_DISABLE_PYTHON
 }
+
+void
+ScriptInterpreter::TerminateInterpreter ()
+{
+#ifndef LLDB_DISABLE_PYTHON
+    ScriptInterpreterPython::TerminateInterpreter ();
+#endif // #ifndef LLDB_DISABLE_PYTHON
+}
+

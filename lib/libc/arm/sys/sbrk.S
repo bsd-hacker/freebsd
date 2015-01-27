@@ -86,4 +86,3 @@ ENTRY(_sbrk)
 #endif
 .Lcurbrk:
 	.word	PIC_SYM(CURBRK, GOT)
-END(_sbrk)

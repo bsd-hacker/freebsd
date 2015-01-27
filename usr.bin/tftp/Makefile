@@ -7,7 +7,7 @@ PROG=	tftp
 SRCS=	main.c tftp-file.c tftp-io.c tftp-options.c tftp-transfer.c
 SRCS+=	tftp-utils.c tftp.c
 CFLAGS+=-I${.CURDIR}/../../libexec/tftpd
-
-LIBADD=	edit
+DPADD=	${LIBEDIT} ${LIBTERMCAP}
+LDADD=	-ledit -ltermcap
 
 .include <bsd.prog.mk>

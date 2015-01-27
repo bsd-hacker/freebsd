@@ -6,7 +6,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -72,6 +72,7 @@ AcpiHwLegacySleep (
     UINT32                  Pm1aControl;
     UINT32                  Pm1bControl;
     UINT32                  InValue;
+    UINT32                  Retry;
     ACPI_STATUS             Status;
 
 
@@ -191,12 +192,25 @@ AcpiHwLegacySleep (
 
     /* Wait for transition back to Working State */
 
+    Retry = 1000;
     do
     {
         Status = AcpiReadBitRegister (ACPI_BITREG_WAKE_STATUS, &InValue);
         if (ACPI_FAILURE (Status))
         {
             return_ACPI_STATUS (Status);
+        }
+
+        if (AcpiGbl_EnableInterpreterSlack)
+        {
+            /*
+             * Some BIOSs don't set WAK_STS at all.  Give up waiting after
+             * 1000 retries if it still isn't set.
+             */
+            if (Retry-- == 0)
+            {
+                break;
+            }
         }
 
     } while (!InValue);

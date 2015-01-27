@@ -17,7 +17,6 @@
 
 #include "lldb/Core/ConstString.h"
 #include "lldb/Core/Log.h"
-#include "lldb/Core/Module.h"
 #include "lldb/Core/Stream.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Expression/ClangExpressionDeclMap.h"
@@ -43,9 +42,6 @@ using namespace lldb_private;
 ClangUtilityFunction::ClangUtilityFunction (const char *text, 
                                             const char *name) :
     ClangExpression (),
-    m_expr_decl_map (),
-    m_execution_unit_sp (),
-    m_jit_module_wp (),
     m_function_text (ExpressionSourceCode::g_expression_prefix),
     m_function_name (name)
 {
@@ -55,14 +51,6 @@ ClangUtilityFunction::ClangUtilityFunction (const char *text,
 
 ClangUtilityFunction::~ClangUtilityFunction ()
 {
-    lldb::ProcessSP process_sp (m_jit_process_wp.lock());
-    if (process_sp)
-    {
-        lldb::ModuleSP jit_module_sp (m_jit_module_wp.lock());
-        if (jit_module_sp)
-            process_sp->GetTarget().GetImages().Remove(jit_module_sp);
-    }
-    
 }
 
 //------------------------------------------------------------------
@@ -120,9 +108,8 @@ ClangUtilityFunction::Install (Stream &error_stream,
         error_stream.PutCString ("error: current process state is unsuitable for expression parsing\n");
         return false;
     }
-    
-    const bool generate_debug_info = true;
-    ClangExpressionParser parser(exe_ctx.GetBestExecutionContextScope(), *this, generate_debug_info);
+        
+    ClangExpressionParser parser(exe_ctx.GetBestExecutionContextScope(), *this);
     
     unsigned num_errors = parser.Parse (error_stream);
     
@@ -143,29 +130,13 @@ ClangUtilityFunction::Install (Stream &error_stream,
     
     Error jit_error = parser.PrepareForExecution (m_jit_start_addr, 
                                                   m_jit_end_addr,
-                                                  m_execution_unit_sp,
+                                                  m_execution_unit_ap,
                                                   exe_ctx,
                                                   can_interpret,
                                                   eExecutionPolicyAlways);
     
     if (m_jit_start_addr != LLDB_INVALID_ADDRESS)
-    {
-        m_jit_process_wp = process->shared_from_this();
-        if (parser.GetGenerateDebugInfo())
-        {
-            lldb::ModuleSP jit_module_sp ( m_execution_unit_sp->GetJITModule());
-            
-            if (jit_module_sp)
-            {
-                ConstString const_func_name(FunctionName());
-                FileSpec jit_file;
-                jit_file.GetFilename() = const_func_name;
-                jit_module_sp->SetFileSpecAndObjectName (jit_file, ConstString());
-                m_jit_module_wp = jit_module_sp;
-                target->GetImages().Append(jit_module_sp);
-            }
-        }
-    }
+        m_jit_process_wp = lldb::ProcessWP(process->shared_from_this());
     
 #if 0
 	// jingham: look here

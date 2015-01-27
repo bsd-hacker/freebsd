@@ -42,8 +42,6 @@ elif [ -r /etc/rc.conf ]; then
 	. /etc/rc.conf 2>/dev/null
 fi
 
-[ $(/sbin/sysctl -n security.jail.jailed) = 0 ] || exit 0
-
 case ${entropy_dir} in
 [Nn][Oo])
 	exit 0
@@ -53,7 +51,7 @@ case ${entropy_dir} in
 	;;
 esac
 
-entropy_save_sz=${entropy_save_sz:-4096}
+entropy_save_sz=${entropy_save_sz:-2048}
 entropy_save_num=${entropy_save_num:-8}
 
 if [ ! -d "${entropy_dir}" ]; then

@@ -76,7 +76,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_vm.h"
-#include "opt_kdtrace.h"
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -90,7 +89,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/racct.h>
 #include <sys/resourcevar.h>
 #include <sys/sched.h>
-#include <sys/sdt.h>
 #include <sys/signalvar.h>
 #include <sys/smp.h>
 #include <sys/vnode.h>
@@ -117,13 +115,9 @@ __FBSDID("$FreeBSD$");
 
 /* the kernel process "vm_pageout"*/
 static void vm_pageout(void);
-static void vm_pageout_init(void);
 static int vm_pageout_clean(vm_page_t);
 static void vm_pageout_scan(struct vm_domain *vmd, int pass);
 static void vm_pageout_mightbe_oom(struct vm_domain *vmd, int pass);
-
-SYSINIT(pagedaemon_init, SI_SUB_KTHREAD_PAGE, SI_ORDER_FIRST, vm_pageout_init,
-    NULL);
 
 struct proc *pageproc;
 
@@ -132,12 +126,8 @@ static struct kproc_desc page_kp = {
 	vm_pageout,
 	&pageproc
 };
-SYSINIT(pagedaemon, SI_SUB_KTHREAD_PAGE, SI_ORDER_SECOND, kproc_start,
+SYSINIT(pagedaemon, SI_SUB_KTHREAD_PAGE, SI_ORDER_FIRST, kproc_start,
     &page_kp);
-
-SDT_PROVIDER_DEFINE(vm);
-SDT_PROBE_DEFINE(vm, , , vm__lowmem_cache);
-SDT_PROBE_DEFINE(vm, , , vm__lowmem_scan);
 
 #if !defined(NO_SWAPPING)
 /* the kernel process "vm_daemon"*/
@@ -179,12 +169,6 @@ static int vm_swap_idle_enabled = 0;
 static int vm_swap_enabled = 1;
 static int vm_swap_idle_enabled = 0;
 #endif
-
-static int vm_panic_on_oom = 0;
-
-SYSCTL_INT(_vm, OID_AUTO, panic_on_oom,
-	CTLFLAG_RWTUN, &vm_panic_on_oom, 0,
-	"panic on out of memory instead of killing the largest process");
 
 SYSCTL_INT(_vm, OID_AUTO, pageout_wakeup_thresh,
 	CTLFLAG_RW, &vm_pageout_wakeup_thresh, 0,
@@ -679,7 +663,6 @@ vm_pageout_grow_cache(int tries, vm_paddr_t low, vm_paddr_t high)
 		 * may acquire locks and/or sleep, so they can only be invoked
 		 * when "tries" is greater than zero.
 		 */
-		SDT_PROBE0(vm, , , vm__lowmem_cache);
 		EVENTHANDLER_INVOKE(vm_lowmem, 0);
 
 		/*
@@ -892,6 +875,14 @@ vm_pageout_map_deactivate_pages(map, desired)
 		tmpe = tmpe->next;
 	}
 
+#ifdef __ia64__
+	/*
+	 * Remove all non-wired, managed mappings if a process is swapped out.
+	 * This will free page table pages.
+	 */
+	if (desired == 0)
+		pmap_remove_pages(map->pmap);
+#else
 	/*
 	 * Remove all mappings if a process is swapped out, this will free page
 	 * table pages.
@@ -900,6 +891,7 @@ vm_pageout_map_deactivate_pages(map, desired)
 		pmap_remove(vm_map_pmap(map), vm_map_min(map),
 		    vm_map_max(map));
 	}
+#endif
 
 	vm_map_unlock(map);
 }
@@ -929,11 +921,10 @@ vm_pageout_scan(struct vm_domain *vmd, int pass)
 	 * some.  We rate limit to avoid thrashing.
 	 */
 	if (vmd == &vm_dom[0] && pass > 0 &&
-	    (ticks - lowmem_ticks) / hz >= lowmem_period) {
+	    lowmem_ticks + (lowmem_period * hz) < ticks) {
 		/*
 		 * Decrease registered cache sizes.
 		 */
-		SDT_PROBE0(vm, , , vm__lowmem_scan);
 		EVENTHANDLER_INVOKE(vm_lowmem, 0);
 		/*
 		 * We do this explicitly after the caches have been
@@ -1317,23 +1308,6 @@ relock_queues:
 	}
 	vm_pagequeue_unlock(pq);
 
-#if !defined(NO_SWAPPING)
-	/*
-	 * Wakeup the swapout daemon if we didn't cache or free the targeted
-	 * number of pages. 
-	 */
-	if (vm_swap_enabled && page_shortage > 0)
-		vm_req_vmdaemon(VM_SWAP_NORMAL);
-#endif
-
-	/*
-	 * Wakeup the sync daemon if we skipped a vnode in a writeable object
-	 * and we didn't cache or free enough pages.
-	 */
-	if (vnodes_skipped > 0 && page_shortage > vm_cnt.v_free_target -
-	    vm_cnt.v_free_min)
-		(void)speedup_syncer();
-
 	/*
 	 * Compute the number of pages we want to try to move from the
 	 * active queue to the inactive queue.
@@ -1443,6 +1417,20 @@ relock_queues:
 		}
 	}
 #endif
+		
+	/*
+	 * If we didn't get enough free pages, and we have skipped a vnode
+	 * in a writeable object, wakeup the sync daemon.  And kick swapout
+	 * if we did not get enough free pages.
+	 */
+	if (vm_paging_target() > 0) {
+		if (vnodes_skipped && vm_page_count_min())
+			(void) speedup_syncer();
+#if !defined(NO_SWAPPING)
+		if (vm_swap_enabled && vm_page_count_target())
+			vm_req_vmdaemon(VM_SWAP_NORMAL);
+#endif
+	}
 
 	/*
 	 * If we are critically low on one of RAM or swap and low on
@@ -1522,15 +1510,15 @@ vm_pageout_oom(int shortage)
 	FOREACH_PROC_IN_SYSTEM(p) {
 		int breakout;
 
-		PROC_LOCK(p);
-
+		if (PROC_TRYLOCK(p) == 0)
+			continue;
 		/*
 		 * If this is a system, protected or killed process, skip it.
 		 */
-		if (p->p_state != PRS_NORMAL || (p->p_flag & (P_INEXEC |
-		    P_PROTECTED | P_SYSTEM | P_WEXIT)) != 0 ||
-		    p->p_pid == 1 || P_KILLED(p) ||
-		    (p->p_pid < 48 && swap_pager_avail != 0)) {
+		if (p->p_state != PRS_NORMAL ||
+		    (p->p_flag & (P_INEXEC | P_PROTECTED | P_SYSTEM)) ||
+		    (p->p_pid == 1) || P_KILLED(p) ||
+		    ((p->p_pid < 48) && (swap_pager_avail != 0))) {
 			PROC_UNLOCK(p);
 			continue;
 		}
@@ -1563,14 +1551,11 @@ vm_pageout_oom(int shortage)
 			PROC_UNLOCK(p);
 			continue;
 		}
-		_PHOLD(p);
 		if (!vm_map_trylock_read(&vm->vm_map)) {
-			_PRELE(p);
-			PROC_UNLOCK(p);
 			vmspace_free(vm);
+			PROC_UNLOCK(p);
 			continue;
 		}
-		PROC_UNLOCK(p);
 		size = vmspace_swap_count(vm);
 		vm_map_unlock_read(&vm->vm_map);
 		if (shortage == VM_OOM_MEM)
@@ -1582,21 +1567,16 @@ vm_pageout_oom(int shortage)
 		 */
 		if (size > bigsize) {
 			if (bigproc != NULL)
-				PRELE(bigproc);
+				PROC_UNLOCK(bigproc);
 			bigproc = p;
 			bigsize = size;
-		} else {
-			PRELE(p);
-		}
+		} else
+			PROC_UNLOCK(p);
 	}
 	sx_sunlock(&allproc_lock);
 	if (bigproc != NULL) {
-		if (vm_panic_on_oom != 0)
-			panic("out of swap space");
-		PROC_LOCK(bigproc);
 		killproc(bigproc, "out of swap space");
 		sched_nice(bigproc, PRIO_MIN);
-		_PRELE(bigproc);
 		PROC_UNLOCK(bigproc);
 		wakeup(&vm_cnt.v_free_count);
 	}
@@ -1666,11 +1646,15 @@ vm_pageout_worker(void *arg)
 }
 
 /*
- *	vm_pageout_init initialises basic pageout daemon settings.
+ *	vm_pageout is the high level pageout daemon.
  */
 static void
-vm_pageout_init(void)
+vm_pageout(void)
 {
+#if MAXMEMDOM > 1
+	int error, i;
+#endif
+
 	/*
 	 * Initialize some paging parameters.
 	 */
@@ -1716,17 +1700,6 @@ vm_pageout_init(void)
 	/* XXX does not really belong here */
 	if (vm_page_max_wired == 0)
 		vm_page_max_wired = vm_cnt.v_free_count / 3;
-}
-
-/*
- *     vm_pageout is the high level pageout daemon.
- */
-static void
-vm_pageout(void)
-{
-#if MAXMEMDOM > 1
-	int error, i;
-#endif
 
 	swap_pager_swap_init();
 #if MAXMEMDOM > 1

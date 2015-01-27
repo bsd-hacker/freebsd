@@ -307,11 +307,6 @@ struct nstat {
 
 #endif /* __BSD_VISIBLE */
 
-#if __POSIX_VISIBLE >= 200809
-#define	UTIME_NOW	-1
-#define	UTIME_OMIT	-2
-#endif
-
 #ifndef _KERNEL
 __BEGIN_DECLS
 #if __BSD_VISIBLE
@@ -327,9 +322,6 @@ int	fchmod(int, mode_t);
 #endif
 #if __POSIX_VISIBLE >= 200809
 int	fchmodat(int, const char *, mode_t, int);
-int	futimens(int fd, const struct timespec times[2]);
-int	utimensat(int fd, const char *path, const struct timespec times[2],
-		int flag);
 #endif
 int	fstat(int, struct stat *);
 #if __BSD_VISIBLE

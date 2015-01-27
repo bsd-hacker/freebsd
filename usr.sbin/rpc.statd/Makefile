@@ -7,7 +7,8 @@ SRCS=	file.c sm_inter_svc.c sm_inter.h statd.c procs.c
 CFLAGS+= -I.
 WARNS?= 2
 
-LIBADD=	rpcsvc
+DPADD=	${LIBRPCSVC}
+LDADD=	-lrpcsvc
 
 CLEANFILES= sm_inter_svc.c sm_inter.h
 

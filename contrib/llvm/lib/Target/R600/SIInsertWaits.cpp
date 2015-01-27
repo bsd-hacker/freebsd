@@ -97,13 +97,13 @@ private:
 public:
   SIInsertWaits(TargetMachine &tm) :
     MachineFunctionPass(ID),
-    TII(nullptr),
-    TRI(nullptr),
+    TII(0),
+    TRI(0),
     ExpInstrTypesSeen(0) { }
 
-  bool runOnMachineFunction(MachineFunction &MF) override;
+  virtual bool runOnMachineFunction(MachineFunction &MF);
 
-  const char *getPassName() const override {
+  const char *getPassName() const {
     return "SI insert wait  instructions";
   }
 
@@ -273,17 +273,17 @@ bool SIInsertWaits::insertWait(MachineBasicBlock &MBB,
       continue;
 
     NeedWait = true;
-
+    
     if (Ordered[i]) {
       unsigned Value = LastIssued.Array[i] - Required.Array[i];
 
-      // Adjust the value to the real hardware possibilities.
+      // adjust the value to the real hardware posibilities
       Counts.Array[i] = std::min(Value, WaitCounts.Array[i]);
 
     } else
       Counts.Array[i] = 0;
 
-    // Remember on what we have waited on.
+    // Remember on what we have waited on
     WaitedOn.Array[i] = LastIssued.Array[i] - Counts.Array[i];
   }
 
@@ -341,8 +341,6 @@ Counters SIInsertWaits::handleOperands(MachineInstr &MI) {
   return Result;
 }
 
-// FIXME: Insert waits listed in Table 4.2 "Required User-Inserted Wait States"
-// around other non-memory instructions.
 bool SIInsertWaits::runOnMachineFunction(MachineFunction &MF) {
   bool Changes = false;
 

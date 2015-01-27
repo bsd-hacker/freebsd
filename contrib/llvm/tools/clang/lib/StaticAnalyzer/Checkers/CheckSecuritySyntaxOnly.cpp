@@ -46,18 +46,8 @@ struct ChecksFilter {
   DefaultBool check_vfork;
   DefaultBool check_FloatLoopCounter;
   DefaultBool check_UncheckedReturn;
-
-  CheckName checkName_gets;
-  CheckName checkName_getpw;
-  CheckName checkName_mktemp;
-  CheckName checkName_mkstemp;
-  CheckName checkName_strcpy;
-  CheckName checkName_rand;
-  CheckName checkName_vfork;
-  CheckName checkName_FloatLoopCounter;
-  CheckName checkName_UncheckedReturn;
 };
-
+  
 class WalkAST : public StmtVisitor<WalkAST> {
   BugReporter &BR;
   AnalysisDeclContext* AC;
@@ -149,7 +139,7 @@ void WalkAST::VisitCallExpr(CallExpr *CE) {
     .Case("rand_r", &WalkAST::checkCall_rand)
     .Case("random", &WalkAST::checkCall_random)
     .Case("vfork", &WalkAST::checkCall_vfork)
-    .Default(nullptr);
+    .Default(NULL);
 
   // If the callee isn't defined, it is not of security concern.
   // Check and evaluate the call.
@@ -189,7 +179,7 @@ getIncrementedVar(const Expr *expr, const VarDecl *x, const VarDecl *y) {
   if (const BinaryOperator *B = dyn_cast<BinaryOperator>(expr)) {
     if (!(B->isAssignmentOp() || B->isCompoundAssignmentOp() ||
           B->getOpcode() == BO_Comma))
-      return nullptr;
+      return NULL;
 
     if (const DeclRefExpr *lhs = getIncrementedVar(B->getLHS(), x, y))
       return lhs;
@@ -197,19 +187,19 @@ getIncrementedVar(const Expr *expr, const VarDecl *x, const VarDecl *y) {
     if (const DeclRefExpr *rhs = getIncrementedVar(B->getRHS(), x, y))
       return rhs;
 
-    return nullptr;
+    return NULL;
   }
 
   if (const DeclRefExpr *DR = dyn_cast<DeclRefExpr>(expr)) {
     const NamedDecl *ND = DR->getDecl();
-    return ND == x || ND == y ? DR : nullptr;
+    return ND == x || ND == y ? DR : NULL;
   }
 
   if (const UnaryOperator *U = dyn_cast<UnaryOperator>(expr))
     return U->isIncrementDecrementOp()
-      ? getIncrementedVar(U->getSubExpr(), x, y) : nullptr;
+      ? getIncrementedVar(U->getSubExpr(), x, y) : NULL;
 
-  return nullptr;
+  return NULL;
 }
 
 /// CheckLoopConditionForFloat - This check looks for 'for' statements that
@@ -253,14 +243,14 @@ void WalkAST::checkLoopConditionForFloat(const ForStmt *FS) {
     dyn_cast<DeclRefExpr>(B->getRHS()->IgnoreParenLValueCasts());
 
   // Does at least one of the variables have a floating point type?
-  drLHS = drLHS && drLHS->getType()->isRealFloatingType() ? drLHS : nullptr;
-  drRHS = drRHS && drRHS->getType()->isRealFloatingType() ? drRHS : nullptr;
+  drLHS = drLHS && drLHS->getType()->isRealFloatingType() ? drLHS : NULL;
+  drRHS = drRHS && drRHS->getType()->isRealFloatingType() ? drRHS : NULL;
 
   if (!drLHS && !drRHS)
     return;
 
-  const VarDecl *vdLHS = drLHS ? dyn_cast<VarDecl>(drLHS->getDecl()) : nullptr;
-  const VarDecl *vdRHS = drRHS ? dyn_cast<VarDecl>(drRHS->getDecl()) : nullptr;
+  const VarDecl *vdLHS = drLHS ? dyn_cast<VarDecl>(drLHS->getDecl()) : NULL;
+  const VarDecl *vdRHS = drRHS ? dyn_cast<VarDecl>(drRHS->getDecl()) : NULL;
 
   if (!vdLHS && !vdRHS)
     return;
@@ -291,7 +281,7 @@ void WalkAST::checkLoopConditionForFloat(const ForStmt *FS) {
 
   PathDiagnosticLocation FSLoc =
     PathDiagnosticLocation::createBegin(FS, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_FloatLoopCounter,
+  BR.EmitBasicReport(AC->getDecl(),
                      bugType, "Security", os.str(),
                      FSLoc, ranges);
 }
@@ -312,11 +302,11 @@ void WalkAST::checkCall_gets(const CallExpr *CE, const FunctionDecl *FD) {
     return;
 
   // Verify that the function takes a single argument.
-  if (FPT->getNumParams() != 1)
+  if (FPT->getNumArgs() != 1)
     return;
 
   // Is the argument a 'char*'?
-  const PointerType *PT = FPT->getParamType(0)->getAs<PointerType>();
+  const PointerType *PT = FPT->getArgType(0)->getAs<PointerType>();
   if (!PT)
     return;
 
@@ -326,7 +316,7 @@ void WalkAST::checkCall_gets(const CallExpr *CE, const FunctionDecl *FD) {
   // Issue a warning.
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_gets,
+  BR.EmitBasicReport(AC->getDecl(),
                      "Potential buffer overflow in call to 'gets'",
                      "Security",
                      "Call to function 'gets' is extremely insecure as it can "
@@ -348,15 +338,15 @@ void WalkAST::checkCall_getpw(const CallExpr *CE, const FunctionDecl *FD) {
     return;
 
   // Verify that the function takes two arguments.
-  if (FPT->getNumParams() != 2)
+  if (FPT->getNumArgs() != 2)
     return;
 
   // Verify the first argument type is integer.
-  if (!FPT->getParamType(0)->isIntegralOrUnscopedEnumerationType())
+  if (!FPT->getArgType(0)->isIntegralOrUnscopedEnumerationType())
     return;
 
   // Verify the second argument type is char*.
-  const PointerType *PT = FPT->getParamType(1)->getAs<PointerType>();
+  const PointerType *PT = FPT->getArgType(1)->getAs<PointerType>();
   if (!PT)
     return;
 
@@ -366,7 +356,7 @@ void WalkAST::checkCall_getpw(const CallExpr *CE, const FunctionDecl *FD) {
   // Issue a warning.
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_getpw,
+  BR.EmitBasicReport(AC->getDecl(),
                      "Potential buffer overflow in call to 'getpw'",
                      "Security",
                      "The getpw() function is dangerous as it may overflow the "
@@ -392,11 +382,11 @@ void WalkAST::checkCall_mktemp(const CallExpr *CE, const FunctionDecl *FD) {
     return;
 
   // Verify that the function takes a single argument.
-  if (FPT->getNumParams() != 1)
+  if (FPT->getNumArgs() != 1)
     return;
 
   // Verify that the argument is Pointer Type.
-  const PointerType *PT = FPT->getParamType(0)->getAs<PointerType>();
+  const PointerType *PT = FPT->getArgType(0)->getAs<PointerType>();
   if (!PT)
     return;
 
@@ -404,10 +394,10 @@ void WalkAST::checkCall_mktemp(const CallExpr *CE, const FunctionDecl *FD) {
   if (PT->getPointeeType().getUnqualifiedType() != BR.getContext().CharTy)
     return;
 
-  // Issue a warning.
+  // Issue a waring.
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_mktemp,
+  BR.EmitBasicReport(AC->getDecl(),
                      "Potential insecure temporary file in call 'mktemp'",
                      "Security",
                      "Call to function 'mktemp' is insecure as it always "
@@ -493,7 +483,7 @@ void WalkAST::checkCall_mkstemp(const CallExpr *CE, const FunctionDecl *FD) {
     out << " used as a suffix";
   }
   out << ')';
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_mkstemp,
+  BR.EmitBasicReport(AC->getDecl(),
                      "Insecure temporary file creation", "Security",
                      out.str(), CELoc, strArg->getSourceRange());
 }
@@ -514,7 +504,7 @@ void WalkAST::checkCall_strcpy(const CallExpr *CE, const FunctionDecl *FD) {
   // Issue a warning.
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_strcpy,
+  BR.EmitBasicReport(AC->getDecl(),
                      "Potential insecure memory buffer bounds restriction in "
                      "call 'strcpy'",
                      "Security",
@@ -541,7 +531,7 @@ void WalkAST::checkCall_strcat(const CallExpr *CE, const FunctionDecl *FD) {
   // Issue a warning.
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_strcpy,
+  BR.EmitBasicReport(AC->getDecl(),
                      "Potential insecure memory buffer bounds restriction in "
                      "call 'strcat'",
                      "Security",
@@ -561,14 +551,14 @@ bool WalkAST::checkCall_strCommon(const CallExpr *CE, const FunctionDecl *FD) {
     return false;
 
   // Verify the function takes two arguments, three in the _chk version.
-  int numArgs = FPT->getNumParams();
+  int numArgs = FPT->getNumArgs();
   if (numArgs != 2 && numArgs != 3)
     return false;
 
   // Verify the type for both arguments.
   for (int i = 0; i < 2; i++) {
     // Verify that the arguments are pointers.
-    const PointerType *PT = FPT->getParamType(i)->getAs<PointerType>();
+    const PointerType *PT = FPT->getArgType(i)->getAs<PointerType>();
     if (!PT)
       return false;
 
@@ -594,16 +584,17 @@ void WalkAST::checkCall_rand(const CallExpr *CE, const FunctionDecl *FD) {
   if (!FTP)
     return;
 
-  if (FTP->getNumParams() == 1) {
+  if (FTP->getNumArgs() == 1) {
     // Is the argument an 'unsigned short *'?
     // (Actually any integer type is allowed.)
-    const PointerType *PT = FTP->getParamType(0)->getAs<PointerType>();
+    const PointerType *PT = FTP->getArgType(0)->getAs<PointerType>();
     if (!PT)
       return;
 
     if (! PT->getPointeeType()->isIntegralOrUnscopedEnumerationType())
       return;
-  } else if (FTP->getNumParams() != 0)
+  }
+  else if (FTP->getNumArgs() != 0)
     return;
 
   // Issue a warning.
@@ -619,9 +610,8 @@ void WalkAST::checkCall_rand(const CallExpr *CE, const FunctionDecl *FD) {
 
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_rand, os1.str(),
-                     "Security", os2.str(), CELoc,
-                     CE->getCallee()->getSourceRange());
+  BR.EmitBasicReport(AC->getDecl(), os1.str(), "Security", os2.str(),
+                     CELoc, CE->getCallee()->getSourceRange());
 }
 
 //===----------------------------------------------------------------------===//
@@ -638,13 +628,13 @@ void WalkAST::checkCall_random(const CallExpr *CE, const FunctionDecl *FD) {
     return;
 
   // Verify that the function takes no argument.
-  if (FTP->getNumParams() != 0)
+  if (FTP->getNumArgs() != 0)
     return;
 
   // Issue a warning.
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_rand,
+  BR.EmitBasicReport(AC->getDecl(),
                      "'random' is not a secure random number generator",
                      "Security",
                      "The 'random' function produces a sequence of values that "
@@ -664,7 +654,7 @@ void WalkAST::checkCall_vfork(const CallExpr *CE, const FunctionDecl *FD) {
   // All calls to vfork() are insecure, issue a warning.
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_vfork,
+  BR.EmitBasicReport(AC->getDecl(),
                      "Potential insecure implementation-specific behavior in "
                      "call 'vfork'",
                      "Security",
@@ -688,7 +678,7 @@ void WalkAST::checkUncheckedReturnValue(CallExpr *CE) {
   if (!FD)
     return;
 
-  if (II_setid[0] == nullptr) {
+  if (II_setid[0] == NULL) {
     static const char * const identifiers[num_setids] = {
       "setuid", "setgid", "seteuid", "setegid",
       "setreuid", "setregid"
@@ -714,12 +704,12 @@ void WalkAST::checkUncheckedReturnValue(CallExpr *CE) {
 
   // Verify that the function takes one or two arguments (depending on
   //   the function).
-  if (FTP->getNumParams() != (identifierid < 4 ? 1 : 2))
+  if (FTP->getNumArgs() != (identifierid < 4 ? 1 : 2))
     return;
 
   // The arguments must be integers.
-  for (unsigned i = 0; i < FTP->getNumParams(); i++)
-    if (!FTP->getParamType(i)->isIntegralOrUnscopedEnumerationType())
+  for (unsigned i = 0; i < FTP->getNumArgs(); i++)
+    if (! FTP->getArgType(i)->isIntegralOrUnscopedEnumerationType())
       return;
 
   // Issue a warning.
@@ -735,9 +725,8 @@ void WalkAST::checkUncheckedReturnValue(CallExpr *CE) {
 
   PathDiagnosticLocation CELoc =
     PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
-  BR.EmitBasicReport(AC->getDecl(), filter.checkName_UncheckedReturn, os1.str(),
-                     "Security", os2.str(), CELoc,
-                     CE->getCallee()->getSourceRange());
+  BR.EmitBasicReport(AC->getDecl(), os1.str(), "Security", os2.str(),
+                     CELoc, CE->getCallee()->getSourceRange());
 }
 
 //===----------------------------------------------------------------------===//
@@ -757,13 +746,10 @@ public:
 };
 }
 
-#define REGISTER_CHECKER(name)                                                 \
-  void ento::register##name(CheckerManager &mgr) {                             \
-    SecuritySyntaxChecker *checker =                                           \
-        mgr.registerChecker<SecuritySyntaxChecker>();                          \
-    checker->filter.check_##name = true;                                       \
-    checker->filter.checkName_##name = mgr.getCurrentCheckName();              \
-  }
+#define REGISTER_CHECKER(name) \
+void ento::register##name(CheckerManager &mgr) {\
+  mgr.registerChecker<SecuritySyntaxChecker>()->filter.check_##name = true;\
+}
 
 REGISTER_CHECKER(gets)
 REGISTER_CHECKER(getpw)

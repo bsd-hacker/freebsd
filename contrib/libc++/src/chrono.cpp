@@ -46,7 +46,6 @@ system_clock::from_time_t(time_t t) _NOEXCEPT
     return system_clock::time_point(seconds(t));
 }
 
-#ifndef _LIBCPP_HAS_NO_MONOTONIC_CLOCK
 // steady_clock
 
 const bool steady_clock::is_steady;
@@ -109,8 +108,10 @@ steady_clock::now() _NOEXCEPT
 }
 
 #else  // __APPLE__
-// FIXME: if _LIBCPP_HAS_NO_MONOTONIC_CLOCK, then clock_gettime isn't going to
-// work. It may be possible to fall back on something else, depending on the system.
+// FIXME: We assume that clock_gettime(CLOCK_MONOTONIC) works on
+// non-apple systems.  Instead, we should check _POSIX_TIMERS and
+// _POSIX_MONOTONIC_CLOCK and fall back to something else if those
+// don't exist.
 
 // Warning:  If this is not truly steady, then it is non-conforming.  It is
 //  better for it to not exist and have the rest of libc++ use system_clock
@@ -125,8 +126,6 @@ steady_clock::now() _NOEXCEPT
     return time_point(seconds(tp.tv_sec) + nanoseconds(tp.tv_nsec));
 }
 #endif  // __APPLE__
-
-#endif // !_LIBCPP_HAS_NO_MONOTONIC_CLOCK
 
 }
 

@@ -29,7 +29,7 @@ namespace lldb_private {
 /// ExecutionContext object in the object state. Examples of these
 /// objects include: Process, Thread, RegisterContext and StackFrame.
 ///
-/// Objects can contain a valid pointer to an instance of this so they
+/// Bbjects can contain a valid pointer to an instance of this so they
 /// can reconstruct the execution context.
 ///
 /// Objects that adhere to this protocol can reconstruct enough of a

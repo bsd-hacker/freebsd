@@ -12,17 +12,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCELFStreamer.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/MC/MCAsmBackend.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/MC/MCAssembler.h"
+#include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCELF.h"
 #include "llvm/MC/MCELFSymbolFlags.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCObjectStreamer.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSectionELF.h"
@@ -35,22 +34,50 @@
 
 using namespace llvm;
 
+
+inline void MCELFStreamer::SetSection(StringRef Section, unsigned Type,
+                                      unsigned Flags, SectionKind Kind) {
+  SwitchSection(getContext().getELFSection(Section, Type, Flags, Kind));
+}
+
+inline void MCELFStreamer::SetSectionData() {
+  SetSection(".data",
+             ELF::SHT_PROGBITS,
+             ELF::SHF_WRITE | ELF::SHF_ALLOC,
+             SectionKind::getDataRel());
+  EmitCodeAlignment(4, 0);
+}
+
+inline void MCELFStreamer::SetSectionText() {
+  SetSection(".text",
+             ELF::SHT_PROGBITS,
+             ELF::SHF_EXECINSTR | ELF::SHF_ALLOC,
+             SectionKind::getText());
+  EmitCodeAlignment(4, 0);
+}
+
+inline void MCELFStreamer::SetSectionBss() {
+  SetSection(".bss",
+             ELF::SHT_NOBITS,
+             ELF::SHF_WRITE | ELF::SHF_ALLOC,
+             SectionKind::getBSS());
+  EmitCodeAlignment(4, 0);
+}
+
 MCELFStreamer::~MCELFStreamer() {
+}
+
+void MCELFStreamer::InitToTextSection() {
+  SetSectionText();
 }
 
 void MCELFStreamer::InitSections() {
   // This emulates the same behavior of GNU as. This makes it easier
   // to compare the output as the major sections are in the same order.
-  SwitchSection(getContext().getObjectFileInfo()->getTextSection());
-  EmitCodeAlignment(4);
-
-  SwitchSection(getContext().getObjectFileInfo()->getDataSection());
-  EmitCodeAlignment(4);
-
-  SwitchSection(getContext().getObjectFileInfo()->getBSSSection());
-  EmitCodeAlignment(4);
-
-  SwitchSection(getContext().getObjectFileInfo()->getTextSection());
+  SetSectionText();
+  SetSectionData();
+  SetSectionBss();
+  SetSectionText();
 }
 
 void MCELFStreamer::EmitLabel(MCSymbol *Symbol) {
@@ -63,6 +90,10 @@ void MCELFStreamer::EmitLabel(MCSymbol *Symbol) {
   MCSymbolData &SD = getAssembler().getSymbolData(*Symbol);
   if (Section.getFlags() & ELF::SHF_TLS)
     MCELF::SetType(SD, ELF::STT_TLS);
+}
+
+void MCELFStreamer::EmitDebugLabel(MCSymbol *Symbol) {
+  EmitLabel(Symbol);
 }
 
 void MCELFStreamer::EmitAssemblerFlag(MCAssemblerFlag Flag) {
@@ -95,8 +126,9 @@ void MCELFStreamer::ChangeSection(const MCSection *Section,
 
 void MCELFStreamer::EmitWeakReference(MCSymbol *Alias, const MCSymbol *Symbol) {
   getAssembler().getOrCreateSymbolData(*Symbol);
-  const MCExpr *Value = MCSymbolRefExpr::Create(
-      Symbol, MCSymbolRefExpr::VK_WEAKREF, getContext());
+  MCSymbolData &AliasSD = getAssembler().getOrCreateSymbolData(*Alias);
+  AliasSD.setFlags(AliasSD.getFlags() | ELF_Other_Weakref);
+  const MCExpr *Value = MCSymbolRefExpr::Create(Symbol, getContext());
   Alias->setVariableValue(Value);
 }
 
@@ -271,12 +303,11 @@ void MCELFStreamer::EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
   EmitCommonSymbol(Symbol, Size, ByteAlignment);
 }
 
-void MCELFStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
-                                  const SMLoc &Loc) {
+void MCELFStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size) {
   if (getCurrentSectionData()->isBundleLocked())
     report_fatal_error("Emitting values inside a locked bundle is forbidden");
   fixSymbolsInTLSFixups(Value);
-  MCObjectStreamer::EmitValueImpl(Value, Size, Loc);
+  MCObjectStreamer::EmitValueImpl(Value, Size);
 }
 
 void MCELFStreamer::EmitValueToAlignment(unsigned ByteAlignment,
@@ -340,6 +371,9 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_TLSLDM:
     case MCSymbolRefExpr::VK_TPOFF:
     case MCSymbolRefExpr::VK_DTPOFF:
+    case MCSymbolRefExpr::VK_ARM_TLSGD:
+    case MCSymbolRefExpr::VK_ARM_TPOFF:
+    case MCSymbolRefExpr::VK_ARM_GOTTPOFF:
     case MCSymbolRefExpr::VK_Mips_TLSGD:
     case MCSymbolRefExpr::VK_Mips_GOTTPREL:
     case MCSymbolRefExpr::VK_Mips_TPREL_HI:
@@ -393,22 +427,20 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
   }
 }
 
-void MCELFStreamer::EmitInstToFragment(const MCInst &Inst,
-                                       const MCSubtargetInfo &STI) {
-  this->MCObjectStreamer::EmitInstToFragment(Inst, STI);
+void MCELFStreamer::EmitInstToFragment(const MCInst &Inst) {
+  this->MCObjectStreamer::EmitInstToFragment(Inst);
   MCRelaxableFragment &F = *cast<MCRelaxableFragment>(getCurrentFragment());
 
   for (unsigned i = 0, e = F.getFixups().size(); i != e; ++i)
     fixSymbolsInTLSFixups(F.getFixups()[i].getValue());
 }
 
-void MCELFStreamer::EmitInstToData(const MCInst &Inst,
-                                   const MCSubtargetInfo &STI) {
+void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
   MCAssembler &Assembler = getAssembler();
   SmallVector<MCFixup, 4> Fixups;
   SmallString<256> Code;
   raw_svector_ostream VecOS(Code);
-  Assembler.getEmitter().EncodeInstruction(Inst, VecOS, Fixups, STI);
+  Assembler.getEmitter().EncodeInstruction(Inst, VecOS, Fixups);
   VecOS.flush();
 
   for (unsigned i = 0, e = Fixups.size(); i != e; ++i)
@@ -534,17 +566,19 @@ void MCELFStreamer::Flush() {
 }
 
 void MCELFStreamer::FinishImpl() {
-  EmitFrames(nullptr);
+  EmitFrames(NULL, true);
 
   Flush();
 
   this->MCObjectStreamer::FinishImpl();
 }
 
-MCStreamer *llvm::createELFStreamer(MCContext &Context, MCAsmBackend &MAB,
-                                    raw_ostream &OS, MCCodeEmitter *CE,
-                                    bool RelaxAll, bool NoExecStack) {
-  MCELFStreamer *S = new MCELFStreamer(Context, MAB, OS, CE);
+MCStreamer *llvm::createELFStreamer(MCContext &Context,
+                                    MCTargetStreamer *Streamer,
+                                    MCAsmBackend &MAB, raw_ostream &OS,
+                                    MCCodeEmitter *CE, bool RelaxAll,
+                                    bool NoExecStack) {
+  MCELFStreamer *S = new MCELFStreamer(Context, Streamer, MAB, OS, CE);
   if (RelaxAll)
     S->getAssembler().setRelaxAll(true);
   if (NoExecStack)
@@ -554,6 +588,10 @@ MCStreamer *llvm::createELFStreamer(MCContext &Context, MCAsmBackend &MAB,
 
 void MCELFStreamer::EmitThumbFunc(MCSymbol *Func) {
   llvm_unreachable("Generic ELF doesn't support this directive");
+}
+
+MCSymbolData &MCELFStreamer::getOrCreateSymbolData(MCSymbol *Symbol) {
+  return getAssembler().getOrCreateSymbolData(*Symbol);
 }
 
 void MCELFStreamer::EmitSymbolDesc(MCSymbol *Symbol, unsigned DescValue) {

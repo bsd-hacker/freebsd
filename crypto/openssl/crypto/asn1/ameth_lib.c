@@ -258,12 +258,7 @@ int EVP_PKEY_asn1_add_alias(int to, int from)
 	if (!ameth)
 		return 0;
 	ameth->pkey_base_id = to;
-	if (!EVP_PKEY_asn1_add0(ameth))
-		{
-		EVP_PKEY_asn1_free(ameth);
-		return 0;
-		}
-	return 1;
+	return EVP_PKEY_asn1_add0(ameth);
 	}
 
 int EVP_PKEY_asn1_get0_info(int *ppkey_id, int *ppkey_base_id, int *ppkey_flags,

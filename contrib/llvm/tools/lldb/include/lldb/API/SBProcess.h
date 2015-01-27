@@ -221,9 +221,6 @@ public:
     lldb::SBError
     Signal (int signal);
 
-    lldb::SBUnixSignals
-    GetUnixSignals();
-
     void
     SendAsyncInterrupt();
     
@@ -281,9 +278,6 @@ public:
     
     lldb::SBError
     UnloadImage (uint32_t image_token);
-    
-    lldb::SBError
-    SendEventData (const char *data);
     
     //------------------------------------------------------------------
     /// Return the number of different thread-origin extended backtraces

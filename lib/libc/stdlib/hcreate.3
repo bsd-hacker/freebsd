@@ -28,16 +28,11 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd July 21, 2014
+.Dd July 6, 2008
 .Dt HCREATE 3
 .Os
 .Sh NAME
-.Nm hcreate ,
-.Nm hcreate_r ,
-.Nm hdestroy ,
-.Nm hdestroy_r ,
-.Nm hsearch ,
-.Nm hsearch_r
+.Nm hcreate , hdestroy , hsearch
 .Nd manage hash search table
 .Sh LIBRARY
 .Lb libc
@@ -45,25 +40,16 @@
 .In search.h
 .Ft int
 .Fn hcreate "size_t nel"
-.Ft int
-.Fn hcreate_r "size_t nel" "struct hsearch_data *table"
 .Ft void
-.Fn hdestroy "void"
-.Ft void
-.Fn hdestroy_r "struct hsearch_data *table"
+.Fn hdestroy void
 .Ft ENTRY *
 .Fn hsearch "ENTRY item" "ACTION action"
-.Ft int
-.Fn hsearch_r "ENTRY item" "ACTION action" "ENTRY ** itemp" "struct hsearch_data *table"
 .Sh DESCRIPTION
 The
 .Fn hcreate ,
-.Fn hcreate_r ,
 .Fn hdestroy ,
-.Fn hdestroy_r
-.Fn hsearch ,
 and
-.Fn hsearch_r
+.Fn hsearch
 functions manage hash search tables.
 .Pp
 The
@@ -104,7 +90,7 @@ argument is a structure of type
 .Vt ENTRY
 (defined in the
 .In search.h
-header) that contains two pointers:
+header) containing two pointers:
 .Fa item.key
 points to the comparison key (a
 .Vt "char *" ) ,
@@ -150,50 +136,21 @@ is
 and
 .Fn hdestroy
 is called.
-.Pp
-The
-.Fn hcreate_r ,
-.Fn hdestroy_r ,
-and
-.Fn hsearch_r
-functions are re-entrant versions of the above functions that can
-operate on a table supplied by the user.
-The
-.Fn hsearch_r
-function returns
-.Dv 0
-if the action is
-.Dv ENTER
-and the element cannot be created,
-.Dv 1
-otherwise.
-If the element exists or can be created, it will be placed in
-.Fa itemp ,
-otherwise
-.Fa itemp
-will be set to
-.Dv NULL .
 .Sh RETURN VALUES
 The
 .Fn hcreate
-and
-.Fn hcreate_r
-functions return 0 if the table creation failed and the global variable
+function returns 0 if the table creation failed and the global variable
 .Va errno
 is set to indicate the error;
 otherwise, a non-zero value is returned.
 .Pp
 The
 .Fn hdestroy
-and
-.Fn hdestroy_r
-functions return no value.
+function does not return a value.
 .Pp
 The
 .Fn hsearch
-and
-.Fn hsearch_r
-functions return a
+function returns a
 .Dv NULL
 pointer if either the
 .Fa action
@@ -266,30 +223,14 @@ main(void)
 .Sh ERRORS
 The
 .Fn hcreate
-.Fn hcreate_r ,
-.Fn hsearch
 and
-.Fn hsearch_r
-functions will fail if:
+.Fn hsearch
+functions may fail if:
 .Bl -tag -width Er
 .It Bq Er ENOMEM
-Insufficient memory is available.
+Insufficient storage space is available.
 .It Bq Er EINVAL
 A table already exists.
-.El
-.Pp
-The
-.Fn hsearch
-and
-.Fn hsearch_r
-functions will also fail if the action is
-.Dv SEARCH
-and the element is not found:
-.Bl -tag -width Er
-.It Bq Er ESRCH
-The
-.Fa item
-given is not found.
 .El
 .Sh SEE ALSO
 .Xr bsearch 3 ,
@@ -313,15 +254,5 @@ and
 .Fn hsearch
 functions first appeared in
 .At V .
-The
-.Fn hcreate_r ,
-.Fn hdestroy_r
-and
-.Fn hsearch_r
-functions are
-.Tn GNU
-extensions.
 .Sh BUGS
-The original,
-.Pf non- Tn GNU
-interface permits the use of only one hash table at a time.
+The interface permits the use of only one hash table at a time.

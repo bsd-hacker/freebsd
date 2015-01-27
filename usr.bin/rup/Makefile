@@ -4,6 +4,7 @@ PROG=	rup
 
 WARNS?=	1
 
-LIBADD=	rpcsvc
+DPADD=	${LIBRPCSVC}
+LDADD=	-lrpcsvc
 
 .include <bsd.prog.mk>

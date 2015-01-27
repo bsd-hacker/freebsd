@@ -463,9 +463,9 @@ vfs_mount_alloc(struct vnode *vp, struct vfsconf *vfsp, const char *fspath,
 	mp->mnt_activevnodelistsize = 0;
 	mp->mnt_ref = 0;
 	(void) vfs_busy(mp, MBF_NOWAIT);
-	atomic_add_acq_int(&vfsp->vfc_refcount, 1);
 	mp->mnt_op = vfsp->vfc_vfsops;
 	mp->mnt_vfc = vfsp;
+	vfsp->vfc_refcount++;	/* XXX Unlocked */
 	mp->mnt_stat.f_type = vfsp->vfc_typenum;
 	mp->mnt_gen++;
 	strlcpy(mp->mnt_stat.f_fstypename, vfsp->vfc_name, MFSNAMELEN);
@@ -505,7 +505,7 @@ vfs_mount_destroy(struct mount *mp)
 		panic("vfs_mount_destroy: nonzero writeopcount");
 	if (mp->mnt_secondary_writes != 0)
 		panic("vfs_mount_destroy: nonzero secondary_writes");
-	atomic_subtract_rel_int(&mp->mnt_vfc->vfc_refcount, 1);
+	mp->mnt_vfc->vfc_refcount--;
 	if (!TAILQ_EMPTY(&mp->mnt_nvnodelist)) {
 		struct vnode *vp;
 
@@ -649,10 +649,6 @@ vfs_donmount(struct thread *td, uint64_t fsflags, struct uio *fsoptions)
 			fsflags |= MNT_SYNCHRONOUS;
 		else if (strcmp(opt->name, "union") == 0)
 			fsflags |= MNT_UNION;
-		else if (strcmp(opt->name, "automounted") == 0) {
-			fsflags |= MNT_AUTOMOUNTED;
-			vfs_freeopt(optlist, opt);
-		}
 	}
 
 	/*
@@ -740,12 +736,17 @@ sys_mount(td, uap)
 	}
 
 	AUDIT_ARG_TEXT(fstype);
+	mtx_lock(&Giant);
 	vfsp = vfs_byname_kld(fstype, td, &error);
 	free(fstype, M_TEMP);
-	if (vfsp == NULL)
+	if (vfsp == NULL) {
+		mtx_unlock(&Giant);
 		return (ENOENT);
-	if (vfsp->vfc_vfsops->vfs_cmount == NULL)
+	}
+	if (vfsp->vfc_vfsops->vfs_cmount == NULL) {
+		mtx_unlock(&Giant);
 		return (EOPNOTSUPP);
+	}
 
 	ma = mount_argsu(ma, "fstype", uap->type, MFSNAMELEN);
 	ma = mount_argsu(ma, "fspath", uap->path, MNAMELEN);
@@ -754,6 +755,7 @@ sys_mount(td, uap)
 	ma = mount_argb(ma, !(flags & MNT_NOEXEC), "noexec");
 
 	error = vfsp->vfc_vfsops->vfs_cmount(ma, uap->data, flags);
+	mtx_unlock(&Giant);
 	return (error);
 }
 
@@ -775,6 +777,7 @@ vfs_domount_first(
 	struct vnode *newdp;
 	int error;
 
+	mtx_assert(&Giant, MA_OWNED);
 	ASSERT_VOP_ELOCKED(vp, __func__);
 	KASSERT((fsflags & MNT_UPDATE) == 0, ("MNT_UPDATE shouldn't be here"));
 
@@ -886,6 +889,7 @@ vfs_domount_update(
 	int error, export_error;
 	uint64_t flag;
 
+	mtx_assert(&Giant, MA_OWNED);
 	ASSERT_VOP_ELOCKED(vp, __func__);
 	KASSERT((fsflags & MNT_UPDATE) != 0, ("MNT_UPDATE should be here"));
 
@@ -1087,6 +1091,7 @@ vfs_domount(
 	error = namei(&nd);
 	if (error != 0)
 		return (error);
+	mtx_lock(&Giant);
 	NDFREE(&nd, NDF_ONLY_PNBUF);
 	vp = nd.ni_vp;
 	if ((fsflags & MNT_UPDATE) == 0) {
@@ -1101,6 +1106,7 @@ vfs_domount(
 		free(pathbuf, M_TEMP);
 	} else
 		error = vfs_domount_update(td, vp, fsflags, optlist);
+	mtx_unlock(&Giant);
 
 	ASSERT_VI_UNLOCKED(vp, __func__);
 	ASSERT_VOP_UNLOCKED(vp, __func__);
@@ -1147,10 +1153,12 @@ sys_unmount(td, uap)
 		free(pathbuf, M_TEMP);
 		return (error);
 	}
+	mtx_lock(&Giant);
 	if (uap->flags & MNT_BYFSID) {
 		AUDIT_ARG_TEXT(pathbuf);
 		/* Decode the filesystem ID. */
 		if (sscanf(pathbuf, "FSID:%d:%d", &id0, &id1) != 2) {
+			mtx_unlock(&Giant);
 			free(pathbuf, M_TEMP);
 			return (EINVAL);
 		}
@@ -1190,15 +1198,19 @@ sys_unmount(td, uap)
 		 * now, so in the !MNT_BYFSID case return the more likely
 		 * EINVAL for compatibility.
 		 */
+		mtx_unlock(&Giant);
 		return ((uap->flags & MNT_BYFSID) ? ENOENT : EINVAL);
 	}
 
 	/*
 	 * Don't allow unmounting the root filesystem.
 	 */
-	if (mp->mnt_flag & MNT_ROOTFS)
+	if (mp->mnt_flag & MNT_ROOTFS) {
+		mtx_unlock(&Giant);
 		return (EINVAL);
+	}
 	error = dounmount(mp, uap->flags, td);
+	mtx_unlock(&Giant);
 	return (error);
 }
 
@@ -1215,6 +1227,8 @@ dounmount(mp, flags, td)
 	int error;
 	uint64_t async_flag;
 	int mnt_gen_r;
+
+	mtx_assert(&Giant, MA_OWNED);
 
 	if ((coveredvp = mp->mnt_vnodecovered) != NULL) {
 		mnt_gen_r = mp->mnt_gen;
@@ -1305,8 +1319,8 @@ dounmount(mp, flags, td)
 		}
 		vput(fsrootvp);
 	}
-	if ((mp->mnt_flag & MNT_RDONLY) != 0 || (flags & MNT_FORCE) != 0 ||
-	    (error = VFS_SYNC(mp, MNT_WAIT)) == 0)
+	if (((mp->mnt_flag & MNT_RDONLY) ||
+	     (error = VFS_SYNC(mp, MNT_WAIT)) == 0) || (flags & MNT_FORCE) != 0)
 		error = VFS_UNMOUNT(mp, flags);
 	vn_finished_write(mp);
 	/*

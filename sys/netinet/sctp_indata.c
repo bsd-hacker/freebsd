@@ -250,11 +250,6 @@ sctp_build_ctl_nchunk(struct sctp_inpcb *inp, struct sctp_sndrcvinfo *sinfo)
 
 	/* We need a CMSG header followed by the struct */
 	cmh = mtod(ret, struct cmsghdr *);
-	/*
-	 * Make sure that there is no un-initialized padding between the
-	 * cmsg header and cmsg data and after the cmsg data.
-	 */
-	memset(cmh, 0, len);
 	if (sctp_is_feature_on(inp, SCTP_PCB_FLAGS_RECVRCVINFO)) {
 		cmh->cmsg_level = IPPROTO_SCTP;
 		cmh->cmsg_len = CMSG_LEN(sizeof(struct sctp_rcvinfo));
@@ -1493,7 +1488,13 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		    the_len, M_NOWAIT);
 #ifdef SCTP_MBUF_LOGGING
 		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
-			sctp_log_mbc(dmbuf, SCTP_MBUF_ICOPY);
+			struct mbuf *mat;
+
+			for (mat = dmbuf; mat; mat = SCTP_BUF_NEXT(mat)) {
+				if (SCTP_BUF_IS_EXTENDED(mat)) {
+					sctp_log_mb(mat, SCTP_MBUF_ICOPY);
+				}
+			}
 		}
 #endif
 	} else {
@@ -2290,7 +2291,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
     struct sockaddr *src, struct sockaddr *dst,
     struct sctphdr *sh, struct sctp_inpcb *inp,
     struct sctp_tcb *stcb, struct sctp_nets *net, uint32_t * high_tsn,
-    uint8_t mflowtype, uint32_t mflowid,
+    uint8_t use_mflowid, uint32_t mflowid,
     uint32_t vrf_id, uint16_t port)
 {
 	struct sctp_data_chunk *ch, chunk_buf;
@@ -2385,7 +2386,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_19;
 				sctp_abort_association(inp, stcb, m, iphlen,
 				    src, dst, sh, op_err,
-				    mflowtype, mflowid,
+				    use_mflowid, mflowid,
 				    vrf_id, port);
 				return (2);
 			}
@@ -2400,7 +2401,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_19;
 				sctp_abort_association(inp, stcb, m, iphlen,
 				    src, dst, sh, op_err,
-				    mflowtype, mflowid,
+				    use_mflowid, mflowid,
 				    vrf_id, port);
 				return (2);
 			}
@@ -2469,7 +2470,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 					    m, iphlen,
 					    src, dst,
 					    sh, op_err,
-					    mflowtype, mflowid,
+					    use_mflowid, mflowid,
 					    vrf_id, port);
 					return (2);
 				}
@@ -2499,7 +2500,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 						SCTP_BUF_LEN(merr) = sizeof(*phd);
 						SCTP_BUF_NEXT(merr) = SCTP_M_COPYM(m, *offset, chk_length, M_NOWAIT);
 						if (SCTP_BUF_NEXT(merr)) {
-							if (sctp_pad_lastmbuf(SCTP_BUF_NEXT(merr), SCTP_SIZE32(chk_length) - chk_length, NULL) == NULL) {
+							if (sctp_pad_lastmbuf(SCTP_BUF_NEXT(merr), SCTP_SIZE32(chk_length) - chk_length, NULL)) {
 								sctp_m_freem(merr);
 							} else {
 								sctp_queue_op_err(stcb, merr);
@@ -2954,7 +2955,7 @@ sctp_strike_gap_ack_chunks(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				num_dests_sacked++;
 		}
 	}
-	if (stcb->asoc.prsctp_supported) {
+	if (stcb->asoc.peer_supports_prsctp) {
 		(void)SCTP_GETTIME_TIMEVAL(&now);
 	}
 	TAILQ_FOREACH(tp1, &asoc->sent_queue, sctp_next) {
@@ -2975,7 +2976,7 @@ sctp_strike_gap_ack_chunks(struct sctp_tcb *stcb, struct sctp_association *asoc,
 			/* done */
 			break;
 		}
-		if (stcb->asoc.prsctp_supported) {
+		if (stcb->asoc.peer_supports_prsctp) {
 			if ((PR_SCTP_TTL_ENABLED(tp1->flags)) && tp1->sent < SCTP_DATAGRAM_ACKED) {
 				/* Is it expired? */
 				if (timevalcmp(&now, &tp1->rec.data.timetodrop, >)) {
@@ -3229,7 +3230,7 @@ sctp_strike_gap_ack_chunks(struct sctp_tcb *stcb, struct sctp_association *asoc,
 			/* remove from the total flight */
 			sctp_total_flight_decrease(stcb, tp1);
 
-			if ((stcb->asoc.prsctp_supported) &&
+			if ((stcb->asoc.peer_supports_prsctp) &&
 			    (PR_SCTP_RTX_ENABLED(tp1->flags))) {
 				/*
 				 * Has it been retransmitted tv_sec times? -
@@ -3374,7 +3375,7 @@ sctp_try_advance_peer_ack_point(struct sctp_tcb *stcb,
 	struct timeval now;
 	int now_filled = 0;
 
-	if (asoc->prsctp_supported == 0) {
+	if (asoc->peer_supports_prsctp == 0) {
 		return (NULL);
 	}
 	TAILQ_FOREACH_SAFE(tp1, &asoc->sent_queue, sctp_next, tp2) {
@@ -4036,7 +4037,7 @@ again:
 		asoc->advanced_peer_ack_point = cumack;
 	}
 	/* PR-Sctp issues need to be addressed too */
-	if ((asoc->prsctp_supported) && (asoc->pr_sctp_cnt > 0)) {
+	if ((asoc->peer_supports_prsctp) && (asoc->pr_sctp_cnt > 0)) {
 		struct sctp_tmit_chunk *lchk;
 		uint32_t old_adv_peer_ack_point;
 
@@ -4473,7 +4474,7 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 			sctp_free_bufspace(stcb, asoc, tp1, 1);
 			sctp_m_freem(tp1->data);
 			tp1->data = NULL;
-			if (asoc->prsctp_supported && PR_SCTP_BUF_ENABLED(tp1->flags)) {
+			if (asoc->peer_supports_prsctp && PR_SCTP_BUF_ENABLED(tp1->flags)) {
 				asoc->sent_queue_cnt_removeable--;
 			}
 		}
@@ -4885,7 +4886,7 @@ again:
 		asoc->advanced_peer_ack_point = cum_ack;
 	}
 	/* C2. try to further move advancedPeerAckPoint ahead */
-	if ((asoc->prsctp_supported) && (asoc->pr_sctp_cnt > 0)) {
+	if ((asoc->peer_supports_prsctp) && (asoc->pr_sctp_cnt > 0)) {
 		struct sctp_tmit_chunk *lchk;
 		uint32_t old_adv_peer_ack_point;
 

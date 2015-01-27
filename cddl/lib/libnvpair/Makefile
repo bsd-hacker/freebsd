@@ -9,7 +9,6 @@ SRCS=	libnvpair.c \
 	nvpair_alloc_system.c \
 	nvpair_alloc_fixed.c \
 	nvpair.c \
-	nvpair_json.c \
 	fnvpair.c
 
 WARNS?=	0

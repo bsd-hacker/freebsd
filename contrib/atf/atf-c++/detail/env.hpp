@@ -1,3 +1,6 @@
+//
+// Automated Testing Framework (atf)
+//
 // Copyright (c) 2007 The NetBSD Foundation, Inc.
 // All rights reserved.
 //
@@ -22,9 +25,10 @@
 // IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 // IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-#if !defined(ATF_CXX_DETAIL_ENV_HPP)
-#define ATF_CXX_DETAIL_ENV_HPP
+#if !defined(_ATF_CXX_ENV_HPP_)
+#define _ATF_CXX_ENV_HPP_
 
 #include <string>
 
@@ -42,11 +46,6 @@ namespace env {
 //! must be defined.
 //!
 std::string get(const std::string&);
-
-//!
-//! \brief Returns the value of an environment variable with a default.
-//!
-std::string get(const std::string&, const std::string&);
 
 //!
 //! \brief Checks if the environment has a variable.
@@ -82,4 +81,4 @@ void unset(const std::string&);
 } // namespace env
 } // namespace atf
 
-#endif // !defined(ATF_CXX_DETAIL_ENV_HPP)
+#endif // !defined(_ATF_CXX_ENV_HPP_)

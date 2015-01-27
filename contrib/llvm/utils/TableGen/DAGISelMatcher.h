@@ -10,10 +10,10 @@
 #ifndef TBLGEN_DAGISELMATCHER_H
 #define TBLGEN_DAGISELMATCHER_H
 
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/CodeGen/MachineValueType.h"
+#include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/Support/Casting.h"
 
 namespace llvm {
@@ -40,7 +40,7 @@ void EmitMatcherTable(const Matcher *Matcher, const CodeGenDAGPatterns &CGP,
 class Matcher {
   // The next matcher node that is executed after this one.  Null if this is the
   // last stage of a match.
-  std::unique_ptr<Matcher> Next;
+  OwningPtr<Matcher> Next;
   virtual void anchor();
 public:
   enum KindTy {
@@ -64,7 +64,6 @@ public:
     SwitchType,           // Dispatch based on type.
     CheckChildType,       // Fail if child has wrong type.
     CheckInteger,         // Fail if wrong val.
-    CheckChildInteger,    // Fail if child is wrong val.
     CheckCondCode,        // Fail if not condcode.
     CheckValueType,
     CheckComplexPat,
@@ -97,9 +96,9 @@ public:
   Matcher *getNext() { return Next.get(); }
   const Matcher *getNext() const { return Next.get(); }
   void setNext(Matcher *C) { Next.reset(C); }
-  Matcher *takeNext() { return Next.release(); }
+  Matcher *takeNext() { return Next.take(); }
 
-  std::unique_ptr<Matcher> &getNextPtr() { return Next; }
+  OwningPtr<Matcher> &getNextPtr() { return Next; }
 
   bool isEqual(const Matcher *M) const {
     if (getKind() != M->getKind()) return false;
@@ -131,7 +130,6 @@ public:
     case CheckType:
     case CheckChildType:
     case CheckInteger:
-    case CheckChildInteger:
     case CheckCondCode:
     case CheckValueType:
     case CheckAndImm:
@@ -190,8 +188,8 @@ protected:
 class ScopeMatcher : public Matcher {
   SmallVector<Matcher*, 4> Children;
 public:
-  ScopeMatcher(ArrayRef<Matcher *> children)
-    : Matcher(Scope), Children(children.begin(), children.end()) {
+  ScopeMatcher(Matcher *const *children, unsigned numchildren)
+    : Matcher(Scope), Children(children, children+numchildren) {
   }
   virtual ~ScopeMatcher();
 
@@ -207,7 +205,7 @@ public:
 
   Matcher *takeChild(unsigned i) {
     Matcher *Res = Children[i];
-    Children[i] = nullptr;
+    Children[i] = 0;
     return Res;
   }
 
@@ -225,9 +223,9 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override { return false; }
-  unsigned getHashImpl() const override { return 12312; }
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const { return false; }
+  virtual unsigned getHashImpl() const { return 12312; }
 };
 
 /// RecordMatcher - Save the current node in the operand list.
@@ -250,11 +248,11 @@ public:
     return N->getKind() == RecordNode;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override { return true; }
-  unsigned getHashImpl() const override { return 0; }
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const { return true; }
+  virtual unsigned getHashImpl() const { return 0; }
 };
 
 /// RecordChildMatcher - Save a numbered child of the current node, or fail
@@ -284,14 +282,14 @@ public:
     return N->getKind() == RecordChild;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<RecordChildMatcher>(M)->getChildNo() == getChildNo();
   }
-  unsigned getHashImpl() const override { return getChildNo(); }
+  virtual unsigned getHashImpl() const { return getChildNo(); }
 };
 
 /// RecordMemRefMatcher - Save the current node's memref.
@@ -303,12 +301,12 @@ public:
     return N->getKind() == RecordMemRef;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override { return true; }
-  unsigned getHashImpl() const override { return 0; }
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const { return true; }
+  virtual unsigned getHashImpl() const { return 0; }
 };
 
 
@@ -322,12 +320,12 @@ public:
     return N->getKind() == CaptureGlueInput;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override { return true; }
-  unsigned getHashImpl() const override { return 0; }
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const { return true; }
+  virtual unsigned getHashImpl() const { return 0; }
 };
 
 /// MoveChildMatcher - This tells the interpreter to move into the
@@ -343,14 +341,14 @@ public:
     return N->getKind() == MoveChild;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<MoveChildMatcher>(M)->getChildNo() == getChildNo();
   }
-  unsigned getHashImpl() const override { return getChildNo(); }
+  virtual unsigned getHashImpl() const { return getChildNo(); }
 };
 
 /// MoveParentMatcher - This tells the interpreter to move to the parent
@@ -363,12 +361,12 @@ public:
     return N->getKind() == MoveParent;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override { return true; }
-  unsigned getHashImpl() const override { return 0; }
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const { return true; }
+  virtual unsigned getHashImpl() const { return 0; }
 };
 
 /// CheckSameMatcher - This checks to see if this node is exactly the same
@@ -386,14 +384,14 @@ public:
     return N->getKind() == CheckSame;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckSameMatcher>(M)->getMatchNumber() == getMatchNumber();
   }
-  unsigned getHashImpl() const override { return getMatchNumber(); }
+  virtual unsigned getHashImpl() const { return getMatchNumber(); }
 };
 
 /// CheckChildSameMatcher - This checks to see if child node is exactly the same
@@ -413,15 +411,15 @@ public:
     return N->getKind() == CheckChildSame;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckChildSameMatcher>(M)->ChildNo == ChildNo &&
            cast<CheckChildSameMatcher>(M)->MatchNumber == MatchNumber;
   }
-  unsigned getHashImpl() const override { return (MatchNumber << 2) | ChildNo; }
+  virtual unsigned getHashImpl() const { return (MatchNumber << 2) | ChildNo; }
 };
 
 /// CheckPatternPredicateMatcher - This checks the target-specific predicate
@@ -439,14 +437,14 @@ public:
     return N->getKind() == CheckPatternPredicate;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckPatternPredicateMatcher>(M)->getPredicate() == Predicate;
   }
-  unsigned getHashImpl() const override;
+  virtual unsigned getHashImpl() const;
 };
 
 /// CheckPredicateMatcher - This checks the target-specific predicate to
@@ -466,11 +464,11 @@ public:
   //virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckPredicateMatcher>(M)->Pred == Pred;
   }
-  unsigned getHashImpl() const override;
+  virtual unsigned getHashImpl() const;
 };
 
 
@@ -488,13 +486,13 @@ public:
     return N->getKind() == CheckOpcode;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override;
-  unsigned getHashImpl() const override;
-  bool isContradictoryImpl(const Matcher *M) const override;
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const;
+  virtual unsigned getHashImpl() const;
+  virtual bool isContradictoryImpl(const Matcher *M) const;
 };
 
 /// SwitchOpcodeMatcher - Switch based on the current node's opcode, dispatching
@@ -504,9 +502,9 @@ private:
 class SwitchOpcodeMatcher : public Matcher {
   SmallVector<std::pair<const SDNodeInfo*, Matcher*>, 8> Cases;
 public:
-  SwitchOpcodeMatcher(ArrayRef<std::pair<const SDNodeInfo*, Matcher*> > cases)
-    : Matcher(SwitchOpcode), Cases(cases.begin(), cases.end()) {}
-  virtual ~SwitchOpcodeMatcher();
+  SwitchOpcodeMatcher(const std::pair<const SDNodeInfo*, Matcher*> *cases,
+                      unsigned numcases)
+    : Matcher(SwitchOpcode), Cases(cases, cases+numcases) {}
 
   static inline bool classof(const Matcher *N) {
     return N->getKind() == SwitchOpcode;
@@ -519,9 +517,9 @@ public:
   const Matcher *getCaseMatcher(unsigned i) const { return Cases[i].second; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override { return false; }
-  unsigned getHashImpl() const override { return 4123; }
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const { return false; }
+  virtual unsigned getHashImpl() const { return 4123; }
 };
 
 /// CheckTypeMatcher - This checks to see if the current node has the
@@ -540,15 +538,15 @@ public:
     return N->getKind() == CheckType;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckTypeMatcher>(M)->Type == Type;
   }
-  unsigned getHashImpl() const override { return Type; }
-  bool isContradictoryImpl(const Matcher *M) const override;
+  virtual unsigned getHashImpl() const { return Type; }
+  virtual bool isContradictoryImpl(const Matcher *M) const;
 };
 
 /// SwitchTypeMatcher - Switch based on the current node's type, dispatching
@@ -558,9 +556,9 @@ private:
 class SwitchTypeMatcher : public Matcher {
   SmallVector<std::pair<MVT::SimpleValueType, Matcher*>, 8> Cases;
 public:
-  SwitchTypeMatcher(ArrayRef<std::pair<MVT::SimpleValueType, Matcher*> > cases)
-  : Matcher(SwitchType), Cases(cases.begin(), cases.end()) {}
-  virtual ~SwitchTypeMatcher();
+  SwitchTypeMatcher(const std::pair<MVT::SimpleValueType, Matcher*> *cases,
+                    unsigned numcases)
+  : Matcher(SwitchType), Cases(cases, cases+numcases) {}
 
   static inline bool classof(const Matcher *N) {
     return N->getKind() == SwitchType;
@@ -573,9 +571,9 @@ public:
   const Matcher *getCaseMatcher(unsigned i) const { return Cases[i].second; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override { return false; }
-  unsigned getHashImpl() const override { return 4123; }
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const { return false; }
+  virtual unsigned getHashImpl() const { return 4123; }
 };
 
 
@@ -595,16 +593,16 @@ public:
     return N->getKind() == CheckChildType;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckChildTypeMatcher>(M)->ChildNo == ChildNo &&
            cast<CheckChildTypeMatcher>(M)->Type == Type;
   }
-  unsigned getHashImpl() const override { return (Type << 3) | ChildNo; }
-  bool isContradictoryImpl(const Matcher *M) const override;
+  virtual unsigned getHashImpl() const { return (Type << 3) | ChildNo; }
+  virtual bool isContradictoryImpl(const Matcher *M) const;
 };
 
 
@@ -622,43 +620,15 @@ public:
     return N->getKind() == CheckInteger;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckIntegerMatcher>(M)->Value == Value;
   }
-  unsigned getHashImpl() const override { return Value; }
-  bool isContradictoryImpl(const Matcher *M) const override;
-};
-
-/// CheckChildIntegerMatcher - This checks to see if the child node is a
-/// ConstantSDNode with a specified integer value, if not it fails to match.
-class CheckChildIntegerMatcher : public Matcher {
-  unsigned ChildNo;
-  int64_t Value;
-public:
-  CheckChildIntegerMatcher(unsigned childno, int64_t value)
-    : Matcher(CheckChildInteger), ChildNo(childno), Value(value) {}
-
-  unsigned getChildNo() const { return ChildNo; }
-  int64_t getValue() const { return Value; }
-
-  static inline bool classof(const Matcher *N) {
-    return N->getKind() == CheckChildInteger;
-  }
-
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
-
-private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
-    return cast<CheckChildIntegerMatcher>(M)->ChildNo == ChildNo &&
-           cast<CheckChildIntegerMatcher>(M)->Value == Value;
-  }
-  unsigned getHashImpl() const override { return (Value << 3) | ChildNo; }
-  bool isContradictoryImpl(const Matcher *M) const override;
+  virtual unsigned getHashImpl() const { return Value; }
+  virtual bool isContradictoryImpl(const Matcher *M) const;
 };
 
 /// CheckCondCodeMatcher - This checks to see if the current node is a
@@ -675,14 +645,14 @@ public:
     return N->getKind() == CheckCondCode;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckCondCodeMatcher>(M)->CondCodeName == CondCodeName;
   }
-  unsigned getHashImpl() const override;
+  virtual unsigned getHashImpl() const;
 };
 
 /// CheckValueTypeMatcher - This checks to see if the current node is a
@@ -699,15 +669,15 @@ public:
     return N->getKind() == CheckValueType;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckValueTypeMatcher>(M)->TypeName == TypeName;
   }
-  unsigned getHashImpl() const override;
-  bool isContradictoryImpl(const Matcher *M) const override;
+  virtual unsigned getHashImpl() const;
+  bool isContradictoryImpl(const Matcher *M) const;
 };
 
 
@@ -744,15 +714,15 @@ public:
   }
 
   // Not safe to move a pattern predicate past a complex pattern.
-  bool isSafeToReorderWithPatternPredicate() const override { return false; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return false; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return &cast<CheckComplexPatMatcher>(M)->Pattern == &Pattern &&
            cast<CheckComplexPatMatcher>(M)->MatchNumber == MatchNumber;
   }
-  unsigned getHashImpl() const override {
+  virtual unsigned getHashImpl() const {
     return (unsigned)(intptr_t)&Pattern ^ MatchNumber;
   }
 };
@@ -771,14 +741,14 @@ public:
     return N->getKind() == CheckAndImm;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckAndImmMatcher>(M)->Value == Value;
   }
-  unsigned getHashImpl() const override { return Value; }
+  virtual unsigned getHashImpl() const { return Value; }
 };
 
 /// CheckOrImmMatcher - This checks to see if the current node is an 'and'
@@ -795,14 +765,14 @@ public:
     return N->getKind() == CheckOrImm;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CheckOrImmMatcher>(M)->Value == Value;
   }
-  unsigned getHashImpl() const override { return Value; }
+  virtual unsigned getHashImpl() const { return Value; }
 };
 
 /// CheckFoldableChainNodeMatcher - This checks to see if the current node
@@ -816,12 +786,12 @@ public:
     return N->getKind() == CheckFoldableChainNode;
   }
 
-  bool isSafeToReorderWithPatternPredicate() const override { return true; }
+  virtual bool isSafeToReorderWithPatternPredicate() const { return true; }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override { return true; }
-  unsigned getHashImpl() const override { return 0; }
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const { return true; }
+  virtual unsigned getHashImpl() const { return 0; }
 };
 
 /// EmitIntegerMatcher - This creates a new TargetConstant.
@@ -840,12 +810,12 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<EmitIntegerMatcher>(M)->Val == Val &&
            cast<EmitIntegerMatcher>(M)->VT == VT;
   }
-  unsigned getHashImpl() const override { return (Val << 4) | VT; }
+  virtual unsigned getHashImpl() const { return (Val << 4) | VT; }
 };
 
 /// EmitStringIntegerMatcher - A target constant whose value is represented
@@ -865,12 +835,12 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<EmitStringIntegerMatcher>(M)->Val == Val &&
            cast<EmitStringIntegerMatcher>(M)->VT == VT;
   }
-  unsigned getHashImpl() const override;
+  virtual unsigned getHashImpl() const;
 };
 
 /// EmitRegisterMatcher - This creates a new TargetConstant.
@@ -891,12 +861,12 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<EmitRegisterMatcher>(M)->Reg == Reg &&
            cast<EmitRegisterMatcher>(M)->VT == VT;
   }
-  unsigned getHashImpl() const override {
+  virtual unsigned getHashImpl() const {
     return ((unsigned)(intptr_t)Reg) << 4 | VT;
   }
 };
@@ -917,11 +887,11 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<EmitConvertToTargetMatcher>(M)->Slot == Slot;
   }
-  unsigned getHashImpl() const override { return Slot; }
+  virtual unsigned getHashImpl() const { return Slot; }
 };
 
 /// EmitMergeInputChainsMatcher - Emit a node that merges a list of input
@@ -931,8 +901,8 @@ private:
 class EmitMergeInputChainsMatcher : public Matcher {
   SmallVector<unsigned, 3> ChainNodes;
 public:
-  EmitMergeInputChainsMatcher(ArrayRef<unsigned> nodes)
-    : Matcher(EmitMergeInputChains), ChainNodes(nodes.begin(), nodes.end()) {}
+  EmitMergeInputChainsMatcher(const unsigned *nodes, unsigned NumNodes)
+    : Matcher(EmitMergeInputChains), ChainNodes(nodes, nodes+NumNodes) {}
 
   unsigned getNumNodes() const { return ChainNodes.size(); }
 
@@ -946,11 +916,11 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<EmitMergeInputChainsMatcher>(M)->ChainNodes == ChainNodes;
   }
-  unsigned getHashImpl() const override;
+  virtual unsigned getHashImpl() const;
 };
 
 /// EmitCopyToRegMatcher - Emit a CopyToReg node from a value to a physreg,
@@ -971,12 +941,12 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<EmitCopyToRegMatcher>(M)->SrcSlot == SrcSlot &&
            cast<EmitCopyToRegMatcher>(M)->DestPhysReg == DestPhysReg;
   }
-  unsigned getHashImpl() const override {
+  virtual unsigned getHashImpl() const {
     return SrcSlot ^ ((unsigned)(intptr_t)DestPhysReg << 4);
   }
 };
@@ -1000,12 +970,12 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<EmitNodeXFormMatcher>(M)->Slot == Slot &&
            cast<EmitNodeXFormMatcher>(M)->NodeXForm == NodeXForm;
   }
-  unsigned getHashImpl() const override {
+  virtual unsigned getHashImpl() const {
     return Slot ^ ((unsigned)(intptr_t)NodeXForm << 4);
   }
 };
@@ -1024,13 +994,13 @@ class EmitNodeMatcherCommon : public Matcher {
   int NumFixedArityOperands;
 public:
   EmitNodeMatcherCommon(const std::string &opcodeName,
-                        ArrayRef<MVT::SimpleValueType> vts,
-                        ArrayRef<unsigned> operands,
+                        const MVT::SimpleValueType *vts, unsigned numvts,
+                        const unsigned *operands, unsigned numops,
                         bool hasChain, bool hasInGlue, bool hasOutGlue,
                         bool hasmemrefs,
                         int numfixedarityoperands, bool isMorphNodeTo)
     : Matcher(isMorphNodeTo ? MorphNodeTo : EmitNode), OpcodeName(opcodeName),
-      VTs(vts.begin(), vts.end()), Operands(operands.begin(), operands.end()),
+      VTs(vts, vts+numvts), Operands(operands, operands+numops),
       HasChain(hasChain), HasInGlue(hasInGlue), HasOutGlue(hasOutGlue),
       HasMemRefs(hasmemrefs), NumFixedArityOperands(numfixedarityoperands) {}
 
@@ -1063,23 +1033,23 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override;
-  unsigned getHashImpl() const override;
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const;
+  virtual unsigned getHashImpl() const;
 };
 
 /// EmitNodeMatcher - This signals a successful match and generates a node.
 class EmitNodeMatcher : public EmitNodeMatcherCommon {
-  void anchor() override;
+  virtual void anchor();
   unsigned FirstResultSlot;
 public:
   EmitNodeMatcher(const std::string &opcodeName,
-                  ArrayRef<MVT::SimpleValueType> vts,
-                  ArrayRef<unsigned> operands,
+                  const MVT::SimpleValueType *vts, unsigned numvts,
+                  const unsigned *operands, unsigned numops,
                   bool hasChain, bool hasInFlag, bool hasOutFlag,
                   bool hasmemrefs,
                   int numfixedarityoperands, unsigned firstresultslot)
-  : EmitNodeMatcherCommon(opcodeName, vts, operands, hasChain,
+  : EmitNodeMatcherCommon(opcodeName, vts, numvts, operands, numops, hasChain,
                           hasInFlag, hasOutFlag, hasmemrefs,
                           numfixedarityoperands, false),
     FirstResultSlot(firstresultslot) {}
@@ -1093,16 +1063,16 @@ public:
 };
 
 class MorphNodeToMatcher : public EmitNodeMatcherCommon {
-  void anchor() override;
+  virtual void anchor();
   const PatternToMatch &Pattern;
 public:
   MorphNodeToMatcher(const std::string &opcodeName,
-                     ArrayRef<MVT::SimpleValueType> vts,
-                     ArrayRef<unsigned> operands,
+                     const MVT::SimpleValueType *vts, unsigned numvts,
+                     const unsigned *operands, unsigned numops,
                      bool hasChain, bool hasInFlag, bool hasOutFlag,
                      bool hasmemrefs,
                      int numfixedarityoperands, const PatternToMatch &pattern)
-    : EmitNodeMatcherCommon(opcodeName, vts, operands, hasChain,
+    : EmitNodeMatcherCommon(opcodeName, vts, numvts, operands, numops, hasChain,
                             hasInFlag, hasOutFlag, hasmemrefs,
                             numfixedarityoperands, true),
       Pattern(pattern) {
@@ -1121,8 +1091,8 @@ public:
 class MarkGlueResultsMatcher : public Matcher {
   SmallVector<unsigned, 3> GlueResultNodes;
 public:
-  MarkGlueResultsMatcher(ArrayRef<unsigned> nodes)
-    : Matcher(MarkGlueResults), GlueResultNodes(nodes.begin(), nodes.end()) {}
+  MarkGlueResultsMatcher(const unsigned *nodes, unsigned NumNodes)
+    : Matcher(MarkGlueResults), GlueResultNodes(nodes, nodes+NumNodes) {}
 
   unsigned getNumNodes() const { return GlueResultNodes.size(); }
 
@@ -1136,11 +1106,11 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<MarkGlueResultsMatcher>(M)->GlueResultNodes == GlueResultNodes;
   }
-  unsigned getHashImpl() const override;
+  virtual unsigned getHashImpl() const;
 };
 
 /// CompleteMatchMatcher - Complete a match by replacing the results of the
@@ -1150,9 +1120,9 @@ class CompleteMatchMatcher : public Matcher {
   SmallVector<unsigned, 2> Results;
   const PatternToMatch &Pattern;
 public:
-  CompleteMatchMatcher(ArrayRef<unsigned> results,
+  CompleteMatchMatcher(const unsigned *results, unsigned numresults,
                        const PatternToMatch &pattern)
-  : Matcher(CompleteMatch), Results(results.begin(), results.end()),
+  : Matcher(CompleteMatch), Results(results, results+numresults),
     Pattern(pattern) {}
 
   unsigned getNumResults() const { return Results.size(); }
@@ -1164,12 +1134,12 @@ public:
   }
 
 private:
-  void printImpl(raw_ostream &OS, unsigned indent) const override;
-  bool isEqualImpl(const Matcher *M) const override {
+  virtual void printImpl(raw_ostream &OS, unsigned indent) const;
+  virtual bool isEqualImpl(const Matcher *M) const {
     return cast<CompleteMatchMatcher>(M)->Results == Results &&
           &cast<CompleteMatchMatcher>(M)->Pattern == &Pattern;
   }
-  unsigned getHashImpl() const override;
+  virtual unsigned getHashImpl() const;
 };
 
 } // end namespace llvm

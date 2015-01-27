@@ -30,8 +30,6 @@
 #ifndef AEABI_VFP_H
 #define	AEABI_VFP_H
 
-#include <machine/acle-compat.h>
-
 /*
  * ASM helper macros. These allow the functions to be changed depending on
  * the endian-ness we are building for.
@@ -51,7 +49,7 @@
  * point falue. They will load the data from an ARM to a VFP register(s),
  * or from a VFP to an ARM register
  */
-#ifdef __ARM_BIG_ENDIAN
+#ifdef __ARMEB__
 #define	LOAD_DREG(vreg, reg0, reg1)   vmov vreg, reg1, reg0
 #define	UNLOAD_DREG(reg0, reg1, vreg) vmov reg1, reg0, vreg
 #else
@@ -67,7 +65,7 @@
  * C Helper macros
  */
 
-#if __ARM_ARCH >= 6
+#if defined(__FreeBSD_ARCH_armv6__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 6)
 /*
  * Generate a function that will either call into the VFP implementation,
  * or the soft float version for a given __aeabi_* helper. The function

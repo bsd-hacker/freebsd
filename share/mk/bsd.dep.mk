@@ -49,7 +49,7 @@ GTAGSFLAGS?=	-o
 HTAGSFLAGS?=
 
 .if ${CC} != "cc"
-MKDEPCMD?=	CC='${CC} ${DEPFLAGS}' mkdep
+MKDEPCMD?=	CC='${CC}' mkdep
 .else
 MKDEPCMD?=	mkdep
 .endif
@@ -73,16 +73,15 @@ tags: ${SRCS}
 CLEANFILES?=
 
 .if !exists(${.OBJDIR}/${DEPENDFILE})
-.for _S in ${SRCS:N*.[dhly]}
+.for _S in ${SRCS:N*.[hly]}
 ${_S:R}.o: ${_S}
 .endfor
 .endif
 
-# Lexical analyzers
 .for _LSRC in ${SRCS:M*.l:N*/*}
 .for _LC in ${_LSRC:R}.c
 ${_LC}: ${_LSRC}
-	${LEX} ${LFLAGS} -o${.TARGET} ${.ALLSRC}
+	${LEX} -t ${LFLAGS} ${.ALLSRC} > ${.TARGET}
 .if !exists(${.OBJDIR}/${DEPENDFILE})
 ${_LC:R}.o: ${_LC}
 .endif
@@ -91,7 +90,6 @@ CLEANFILES+= ${_LC}
 .endfor
 .endfor
 
-# Yacc grammars
 .for _YSRC in ${SRCS:M*.y:N*/*}
 .for _YC in ${_YSRC:R}.c
 SRCS:=	${SRCS:S/${_YSRC}/${_YC}/}
@@ -119,35 +117,6 @@ ${_YC:R}.o: ${_YC}
 .endif
 .endfor
 .endfor
-
-# DTrace probe definitions
-# libelf is currently needed for drti.o
-.if ${SRCS:M*.d}
-LDADD+=		-lelf
-DPADD+=		${LIBELF}
-CFLAGS+=	-I${.OBJDIR}
-.endif
-.for _DSRC in ${SRCS:M*.d:N*/*}
-.for _D in ${_DSRC:R}
-DHDRS+=	${_D}.h
-${_D}.h: ${_DSRC}
-	${DTRACE} -xnolibs -h -s ${.ALLSRC}
-SRCS:=	${SRCS:S/^${_DSRC}$//}
-OBJS+=	${_D}.o
-CLEANFILES+= ${_D}.h ${_D}.o
-${_D}.o: ${_DSRC} ${OBJS:S/^${_D}.o$//}
-	${DTRACE} -xnolibs -G -o ${.TARGET} -s ${.ALLSRC}
-.if defined(LIB)
-CLEANFILES+= ${_D}.So ${_D}.po
-${_D}.So: ${_DSRC} ${SOBJS:S/^${_D}.So$//}
-	${DTRACE} -xnolibs -G -o ${.TARGET} -s ${.ALLSRC}
-${_D}.po: ${_DSRC} ${POBJS:S/^${_D}.po$//}
-	${DTRACE} -xnolibs -G -o ${.TARGET} -s ${.ALLSRC}
-.endif
-.endfor
-.endfor
-beforedepend: ${DHDRS}
-beforebuild: ${DHDRS}
 .endif
 
 .if !target(depend)
@@ -212,10 +181,8 @@ cleandepend:
 .endif
 
 .if !target(checkdpadd) && (defined(DPADD) || defined(LDADD))
-_LDADD_FROM_DPADD=	${DPADD:R:T:C;^lib(.*)$;-l\1;g}
-# Ignore -Wl,--start-group/-Wl,--end-group as it might be required in the
-# LDADD list due to unresolved symbols
-_LDADD_CANONICALIZED=	${LDADD:N:R:T:C;^lib(.*)$;-l\1;g:N-Wl,--[es]*-group}
+_LDADD_FROM_DPADD=	${DPADD:C;^/usr/lib/lib(.*)\.a$;-l\1;}
+_LDADD_CANONICALIZED=	${LDADD:S/$//}
 checkdpadd:
 .if ${_LDADD_FROM_DPADD} != ${_LDADD_CANONICALIZED}
 	@echo ${.CURDIR}

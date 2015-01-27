@@ -10,7 +10,8 @@ CFLAGS+= -DHAS_ISBLANK -I. -I${AWKSRC} -DFOPEN_MAX=64
 
 WARNS?=	1
 
-LIBADD=	m
+DPADD=	${LIBM}
+LDADD=	-lm
 
 LINKS=	${BINDIR}/awk ${BINDIR}/nawk
 MLINKS=	awk.1 nawk.1

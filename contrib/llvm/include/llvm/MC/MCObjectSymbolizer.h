@@ -41,7 +41,7 @@ protected:
   const object::RelocationRef *findRelocationAt(uint64_t Addr);
   const object::SectionRef *findSectionContaining(uint64_t Addr);
 
-  MCObjectSymbolizer(MCContext &Ctx, std::unique_ptr<MCRelocationInfo> RelInfo,
+  MCObjectSymbolizer(MCContext &Ctx, OwningPtr<MCRelocationInfo> &RelInfo,
                      const object::ObjectFile *Obj);
 
 public:
@@ -50,11 +50,10 @@ public:
   bool tryAddingSymbolicOperand(MCInst &MI, raw_ostream &cStream,
                                 int64_t Value, uint64_t Address,
                                 bool IsBranch, uint64_t Offset,
-                                uint64_t InstSize) override;
+                                uint64_t InstSize);
 
   void tryAddingPcLoadReferenceComment(raw_ostream &cStream,
-                                       int64_t Value,
-                                       uint64_t Address) override;
+                                       int64_t Value, uint64_t Address);
   /// @}
 
   /// \brief Look for an external function symbol at \p Addr.
@@ -64,9 +63,8 @@ public:
 
   /// \brief Create an object symbolizer for \p Obj.
   static MCObjectSymbolizer *
-  createObjectSymbolizer(MCContext &Ctx,
-                         std::unique_ptr<MCRelocationInfo> RelInfo,
-                         const object::ObjectFile *Obj);
+    createObjectSymbolizer(MCContext &Ctx, OwningPtr<MCRelocationInfo> &RelInfo,
+                           const object::ObjectFile *Obj);
 
 private:
   typedef DenseMap<uint64_t, object::RelocationRef> AddrToRelocMap;

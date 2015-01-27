@@ -3439,7 +3439,7 @@ tulip_rx_intr(tulip_softc_t * const sc)
 	} else {
 	    CTR1(KTR_TULIP, "tulip_rx_intr: bad packet; status %08x",
 		DESC_STATUS(eop));
-	    if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+	    ifp->if_ierrors++;
 	    if (DESC_STATUS(eop) & (TULIP_DSTS_RxBADLENGTH|TULIP_DSTS_RxOVERFLOW|TULIP_DSTS_RxWATCHDOG)) {
 		sc->tulip_dot3stats.dot3StatsInternalMacReceiveErrors++;
 	    } else {
@@ -3479,7 +3479,7 @@ tulip_rx_intr(tulip_softc_t * const sc)
 #if defined(TULIP_DEBUG)
 	cnt++;
 #endif
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	ifp->if_ipackets++;
 	if (++eop == ri->ri_last)
 	    eop = ri->ri_first;
 	ri->ri_nextin = eop;
@@ -3501,7 +3501,7 @@ tulip_rx_intr(tulip_softc_t * const sc)
 	     */
 	    m0 = m_devget(mtod(ms, caddr_t), total_len, ETHER_ALIGN, ifp, NULL);
 	    if (m0 == NULL) {
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		goto skip_input;
 	    }
 #else
@@ -3675,7 +3675,7 @@ tulip_tx_intr(tulip_softc_t * const sc)
 		    if (d_status & TULIP_DSTS_ERRSUM) {
 			CTR1(KTR_TULIP, "tulip_tx_intr: output error: %08x",
 			    d_status);
-			if_inc_counter(sc->tulip_ifp, IFCOUNTER_OERRORS, 1);
+			sc->tulip_ifp->if_oerrors++;
 			if (d_status & TULIP_DSTS_TxEXCCOLL)
 			    sc->tulip_dot3stats.dot3StatsExcessiveCollisions++;
 			if (d_status & TULIP_DSTS_TxLATECOLL)
@@ -3696,7 +3696,7 @@ tulip_tx_intr(tulip_softc_t * const sc)
 			CTR2(KTR_TULIP,
 		    "tulip_tx_intr: output ok, collisions %d, status %08x",
 			    collisions, d_status);
-			if_inc_counter(sc->tulip_ifp, IFCOUNTER_COLLISIONS, collisions);
+			sc->tulip_ifp->if_collisions += collisions;
 			if (collisions == 1)
 			    sc->tulip_dot3stats.dot3StatsSingleCollisionFrames++;
 			else if (collisions > 1)
@@ -3730,7 +3730,7 @@ tulip_tx_intr(tulip_softc_t * const sc)
 	sc->tulip_txtimer = 0;
     else if (xmits > 0)
 	sc->tulip_txtimer = TULIP_TXTIMER;
-    if_inc_counter(sc->tulip_ifp, IFCOUNTER_OPACKETS, xmits);
+    sc->tulip_ifp->if_opackets += xmits;
     TULIP_PERFEND(txintr);
     return descs;
 }

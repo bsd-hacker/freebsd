@@ -65,8 +65,6 @@ __FBSDID("$FreeBSD$");
 
 #include "stand.h"
 
-struct fs_ops *exclusive_file_system;
-
 struct open_file files[SOPEN_MAX];
 
 static int
@@ -91,7 +89,6 @@ o_rainit(struct open_file *f)
 int
 open(const char *fname, int mode)
 {
-    struct fs_ops	*fs;
     struct open_file	*f;
     int			fd, i, error, besterror;
     const char		*file;
@@ -108,15 +105,6 @@ open(const char *fname, int mode)
     f->f_offset = 0;
     f->f_devdata = NULL;
     file = (char *)0;
-
-    if (exclusive_file_system != NULL) {
-	fs = exclusive_file_system;
-	error = (fs->fo_open)(fname, f);
-	if (error == 0)
-	    goto ok;
-	goto fail;
-    }
-
     error = devopen(f, fname, &file);
     if (error ||
 	(((f->f_flags & F_NODEV) == 0) && f->f_dev == (struct devsw *)0))
@@ -132,17 +120,20 @@ open(const char *fname, int mode)
     /* pass file name to the different filesystem open routines */
     besterror = ENOENT;
     for (i = 0; file_system[i] != NULL; i++) {
-	fs = file_system[i];
-	error = (fs->fo_open)(file, f);
-	if (error == 0)
-	    goto ok;
+
+	error = ((*file_system[i]).fo_open)(file, f);
+	if (error == 0) {
+	    
+	    f->f_ops = file_system[i];
+	    o_rainit(f);
+	    return (fd);
+	}
 	if (error != EINVAL)
 	    besterror = error;
     }
     error = besterror;
 
- fail:
-    if ((f->f_flags & F_NODEV) == 0 && f->f_dev != NULL)
+    if ((f->f_flags & F_NODEV) == 0)
 	f->f_dev->dv_close(f);
     if (error)
 	devclose(f);
@@ -151,9 +142,4 @@ open(const char *fname, int mode)
     f->f_flags = 0;
     errno = error;
     return (-1);
-
- ok:
-    f->f_ops = fs;
-    o_rainit(f);
-    return (fd);
 }

@@ -342,7 +342,8 @@ lldb_private::formatters::NSNumberSummaryProvider (ValueObject& valobj, Stream& 
                     stream.Printf("(long)%" PRId64,value);
                     break;
                 default:
-                    return false;
+                    stream.Printf("unexpected value:(info=%" PRIu64 ", value=%" PRIu64,i_bits,value);
+                    break;
             }
             return true;
         }
@@ -401,7 +402,8 @@ lldb_private::formatters::NSNumberSummaryProvider (ValueObject& valobj, Stream& 
                     break;
                 }
                 default:
-                    return false;
+                    stream.Printf("unexpected value: dt=%d",data_type);
+                    break;
             }
             return true;
         }

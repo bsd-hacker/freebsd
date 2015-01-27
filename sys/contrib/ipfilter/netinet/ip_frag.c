@@ -112,7 +112,7 @@ static void ipf_frag_free __P((ipf_frag_softc_t *, ipfr_t *));
 
 static frentry_t ipfr_block;
 
-const ipftuneable_t ipf_tuneables[] = {
+ipftuneable_t ipf_tuneables[] = {
 	{ { (void *)offsetof(ipf_frag_softc_t, ipfr_size) },
 		"frag_size",		1,	0x7fffffff,
 		stsizeof(ipf_frag_softc_t, ipfr_size),
@@ -930,8 +930,7 @@ ipf_frag_known(fin, passp)
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_natforget                                          */
 /* Returns:     Nil                                                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
-/*              ptr(I) - pointer to data structure                          */
+/* Parameters:  ptr(I) - pointer to data structure                          */
 /*                                                                          */
 /* Search through all of the fragment cache entries for NAT and wherever a  */
 /* pointer  is found to match ptr, reset it to NULL.                        */
@@ -955,8 +954,7 @@ ipf_frag_natforget(softc, ptr)
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_delete                                             */
 /* Returns:     Nil                                                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
-/*              fra(I)   - pointer to fragment structure to delete          */
+/* Parameters:  fra(I)   - pointer to fragment structure to delete          */
 /*              tail(IO) - pointer to the pointer to the tail of the frag   */
 /*                         list                                             */
 /*                                                                          */
@@ -993,10 +991,7 @@ ipf_frag_delete(softc, fra, tail)
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_free                                               */
 /* Returns:     Nil                                                         */
-/* Parameters:  softf(I) - pointer to fragment context information          */
-/*              fra(I)   - pointer to fragment structure to free            */
 /*                                                                          */
-/* Free up a fragment cache entry and bump relevent statistics.             */
 /* ------------------------------------------------------------------------ */
 static void
 ipf_frag_free(softf, fra)
@@ -1012,7 +1007,7 @@ ipf_frag_free(softf, fra)
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_clear                                              */
 /* Returns:     Nil                                                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
+/* Parameters:  Nil                                                         */
 /*                                                                          */
 /* Free memory in use by fragment state information kept.  Do the normal    */
 /* fragment state stuff first and then the NAT-fragment table.              */
@@ -1053,7 +1048,7 @@ ipf_frag_clear(softc)
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_expire                                             */
 /* Returns:     Nil                                                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
+/* Parameters:  Nil                                                         */
 /*                                                                          */
 /* Expire entries in the fragment cache table that have been there too long */
 /* ------------------------------------------------------------------------ */
@@ -1125,13 +1120,6 @@ ipf_frag_expire(softc)
 
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_pkt_next                                           */
-/* Returns:     int      - 0 == success, else error                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
-/*              token(I) - pointer to token information for this caller     */
-/*              itp(I)   - pointer to generic iterator from caller          */
-/*                                                                          */
-/* This function is used to step through the fragment cache list used for   */
-/* filter rules. The hard work is done by the more generic ipf_frag_next.   */
 /* ------------------------------------------------------------------------ */
 int
 ipf_frag_pkt_next(softc, token, itp)
@@ -1152,13 +1140,6 @@ ipf_frag_pkt_next(softc, token, itp)
 
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_nat_next                                           */
-/* Returns:     int      - 0 == success, else error                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
-/*              token(I) - pointer to token information for this caller     */
-/*              itp(I)   - pointer to generic iterator from caller          */
-/*                                                                          */
-/* This function is used to step through the fragment cache list used for   */
-/* NAT. The hard work is done by the more generic ipf_frag_next.            */
 /* ------------------------------------------------------------------------ */
 int
 ipf_frag_nat_next(softc, token, itp)
@@ -1179,8 +1160,7 @@ ipf_frag_nat_next(softc, token, itp)
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_next                                               */
 /* Returns:     int      - 0 == success, else error                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
-/*              token(I) - pointer to token information for this caller     */
+/* Parameters:  token(I) - pointer to token information for this caller     */
 /*              itp(I)   - pointer to generic iterator from caller          */
 /*              top(I)   - top of the fragment list                         */
 /*              lock(I)  - fragment cache lock                              */
@@ -1259,11 +1239,7 @@ ipf_frag_next(softc, token, itp, top
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_pkt_deref                                          */
 /* Returns:     Nil                                                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
-/*              data(I)  - pointer to frag cache pointer                    */
 /*                                                                          */
-/* This function is the external interface for dropping a reference to a    */
-/* fragment cache entry used by filter rules.                               */
 /* ------------------------------------------------------------------------ */
 void
 ipf_frag_pkt_deref(softc, data)
@@ -1285,11 +1261,7 @@ ipf_frag_pkt_deref(softc, data)
 /* ------------------------------------------------------------------------ */
 /* Function:    ipf_frag_nat_deref                                          */
 /* Returns:     Nil                                                         */
-/* Parameters:  softc(I) - pointer to soft context main structure           */
-/*              data(I)  - pointer to frag cache pointer                    */
 /*                                                                          */
-/* This function is the external interface for dropping a reference to a    */
-/* fragment cache entry used by NAT table entries.                          */
 /* ------------------------------------------------------------------------ */
 void
 ipf_frag_nat_deref(softc, data)

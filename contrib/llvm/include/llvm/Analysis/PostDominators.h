@@ -14,7 +14,7 @@
 #ifndef LLVM_ANALYSIS_POSTDOMINATORS_H
 #define LLVM_ANALYSIS_POSTDOMINATORS_H
 
-#include "llvm/IR/Dominators.h"
+#include "llvm/Analysis/Dominators.h"
 
 namespace llvm {
 
@@ -32,9 +32,9 @@ struct PostDominatorTree : public FunctionPass {
 
   ~PostDominatorTree();
 
-  bool runOnFunction(Function &F) override;
+  virtual bool runOnFunction(Function &F);
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
   }
 
@@ -79,17 +79,11 @@ struct PostDominatorTree : public FunctionPass {
     return DT->findNearestCommonDominator(A, B);
   }
 
-  /// Get all nodes post-dominated by R, including R itself.
-  void getDescendants(BasicBlock *R,
-                      SmallVectorImpl<BasicBlock *> &Result) const {
-    DT->getDescendants(R, Result);
-  }
-
-  void releaseMemory() override {
+  virtual void releaseMemory() {
     DT->releaseMemory();
   }
 
-  void print(raw_ostream &OS, const Module*) const override;
+  virtual void print(raw_ostream &OS, const Module*) const;
 };
 
 FunctionPass* createPostDomTree();

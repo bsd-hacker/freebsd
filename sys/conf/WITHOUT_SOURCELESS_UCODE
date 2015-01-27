@@ -13,6 +13,7 @@ nodevice	mwlfw
 nodevice	ralfw
 nodevice	runfw
 nodevice	sf
+nodevice	sn
 nodevice	ti
 nodevice	txp
 nodevice	ce

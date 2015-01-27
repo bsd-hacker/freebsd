@@ -14,11 +14,13 @@
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticOptions.h"
+#include "clang/Driver/CC1AsOptions.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/Utils.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/DataLayout.h"
@@ -33,7 +35,6 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCTargetAsmParser.h"
-#include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
@@ -52,11 +53,9 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
-#include <memory>
-#include <system_error>
+#include "llvm/Support/system_error.h"
 using namespace clang;
 using namespace clang::driver;
-using namespace clang::driver::options;
 using namespace llvm;
 using namespace llvm::opt;
 
@@ -86,8 +85,6 @@ struct AssemblerInvocation {
   unsigned NoInitialTextSection : 1;
   unsigned SaveTemporaryLabels : 1;
   unsigned GenDwarfForAssembly : 1;
-  unsigned CompressDebugSections : 1;
-  unsigned DwarfVersion;
   std::string DwarfDebugFlags;
   std::string DwarfDebugProducer;
   std::string DebugCompilationDir;
@@ -138,7 +135,6 @@ public:
     ShowEncoding = 0;
     RelaxAll = 0;
     NoExecStack = 0;
-    DwarfVersion = 3;
   }
 
   static bool CreateFromArgs(AssemblerInvocation &Res, const char **ArgBegin,
@@ -151,29 +147,26 @@ bool AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
                                          const char **ArgBegin,
                                          const char **ArgEnd,
                                          DiagnosticsEngine &Diags) {
+  using namespace clang::driver::cc1asoptions;
   bool Success = true;
 
   // Parse the arguments.
-  std::unique_ptr<OptTable> OptTbl(createDriverOptTable());
-
-  const unsigned IncludedFlagsBitmask = options::CC1AsOption;
+  OwningPtr<OptTable> OptTbl(createCC1AsOptTable());
   unsigned MissingArgIndex, MissingArgCount;
-  std::unique_ptr<InputArgList> Args(
-      OptTbl->ParseArgs(ArgBegin, ArgEnd, MissingArgIndex, MissingArgCount,
-                        IncludedFlagsBitmask));
+  OwningPtr<InputArgList> Args(
+    OptTbl->ParseArgs(ArgBegin, ArgEnd,MissingArgIndex, MissingArgCount));
 
   // Check for missing argument error.
   if (MissingArgCount) {
     Diags.Report(diag::err_drv_missing_argument)
-        << Args->getArgString(MissingArgIndex) << MissingArgCount;
+      << Args->getArgString(MissingArgIndex) << MissingArgCount;
     Success = false;
   }
 
   // Issue errors on unknown arguments.
-  for (arg_iterator it = Args->filtered_begin(OPT_UNKNOWN),
-                    ie = Args->filtered_end();
-       it != ie; ++it) {
-    Diags.Report(diag::err_drv_unknown_argument) << (*it)->getAsString(*Args);
+  for (arg_iterator it = Args->filtered_begin(cc1asoptions::OPT_UNKNOWN),
+         ie = Args->filtered_end(); it != ie; ++it) {
+    Diags.Report(diag::err_drv_unknown_argument) << (*it) ->getAsString(*Args);
     Success = false;
   }
 
@@ -192,14 +185,7 @@ bool AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
   Opts.IncludePaths = Args->getAllArgValues(OPT_I);
   Opts.NoInitialTextSection = Args->hasArg(OPT_n);
   Opts.SaveTemporaryLabels = Args->hasArg(OPT_msave_temp_labels);
-  Opts.GenDwarfForAssembly = Args->hasArg(OPT_g_Flag);
-  Opts.CompressDebugSections = Args->hasArg(OPT_compress_debug_sections);
-  if (Args->hasArg(OPT_gdwarf_2))
-    Opts.DwarfVersion = 2;
-  if (Args->hasArg(OPT_gdwarf_3))
-    Opts.DwarfVersion = 3;
-  if (Args->hasArg(OPT_gdwarf_4))
-    Opts.DwarfVersion = 4;
+  Opts.GenDwarfForAssembly = Args->hasArg(OPT_g);
   Opts.DwarfDebugFlags = Args->getLastArgValue(OPT_dwarf_debug_flags);
   Opts.DwarfDebugProducer = Args->getLastArgValue(OPT_dwarf_debug_producer);
   Opts.DebugCompilationDir = Args->getLastArgValue(OPT_fdebug_compilation_dir);
@@ -265,12 +251,11 @@ static formatted_raw_ostream *GetOutputStream(AssemblerInvocation &Opts,
   std::string Error;
   raw_fd_ostream *Out =
       new raw_fd_ostream(Opts.OutputPath.c_str(), Error,
-                         (Binary ? sys::fs::F_None : sys::fs::F_Text));
+                         (Binary ? sys::fs::F_Binary : sys::fs::F_None));
   if (!Error.empty()) {
     Diags.Report(diag::err_fe_unable_to_open_output)
       << Opts.OutputPath << Error;
-    delete Out;
-    return nullptr;
+    return 0;
   }
 
   return new formatted_raw_ostream(*Out, formatted_raw_ostream::DELETE_STREAM);
@@ -280,48 +265,43 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
                              DiagnosticsEngine &Diags) {
   // Get the target specific parser.
   std::string Error;
-  const Target *TheTarget = TargetRegistry::lookupTarget(Opts.Triple, Error);
-  if (!TheTarget)
-    return Diags.Report(diag::err_target_unknown_triple) << Opts.Triple;
-
-  ErrorOr<std::unique_ptr<MemoryBuffer>> Buffer =
-      MemoryBuffer::getFileOrSTDIN(Opts.InputFile);
-
-  if (std::error_code EC = Buffer.getError()) {
-    Error = EC.message();
-    return Diags.Report(diag::err_fe_error_reading) << Opts.InputFile;
+  const Target *TheTarget(TargetRegistry::lookupTarget(Opts.Triple, Error));
+  if (!TheTarget) {
+    Diags.Report(diag::err_target_unknown_triple) << Opts.Triple;
+    return false;
   }
+
+  OwningPtr<MemoryBuffer> BufferPtr;
+  if (error_code ec = MemoryBuffer::getFileOrSTDIN(Opts.InputFile, BufferPtr)) {
+    Error = ec.message();
+    Diags.Report(diag::err_fe_error_reading) << Opts.InputFile;
+    return false;
+  }
+  MemoryBuffer *Buffer = BufferPtr.take();
 
   SourceMgr SrcMgr;
 
   // Tell SrcMgr about this buffer, which is what the parser will pick up.
-  SrcMgr.AddNewSourceBuffer(Buffer->release(), SMLoc());
+  SrcMgr.AddNewSourceBuffer(Buffer, SMLoc());
 
   // Record the location of the include directories so that the lexer can find
   // it later.
   SrcMgr.setIncludeDirs(Opts.IncludePaths);
 
-  std::unique_ptr<MCRegisterInfo> MRI(TheTarget->createMCRegInfo(Opts.Triple));
+  OwningPtr<MCRegisterInfo> MRI(TheTarget->createMCRegInfo(Opts.Triple));
   assert(MRI && "Unable to create target register info!");
 
-  std::unique_ptr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, Opts.Triple));
+  OwningPtr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, Opts.Triple));
   assert(MAI && "Unable to create target asm info!");
 
-  // Ensure MCAsmInfo initialization occurs before any use, otherwise sections
-  // may be created with a combination of default and explicit settings.
-  if (Opts.CompressDebugSections)
-    MAI->setCompressDebugSections(true);
-
   bool IsBinary = Opts.OutputType == AssemblerInvocation::FT_Obj;
-  std::unique_ptr<formatted_raw_ostream> Out(
-      GetOutputStream(Opts, Diags, IsBinary));
+  formatted_raw_ostream *Out = GetOutputStream(Opts, Diags, IsBinary);
   if (!Out)
-    return true;
+    return false;
 
   // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
   // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
-  std::unique_ptr<MCObjectFileInfo> MOFI(new MCObjectFileInfo());
-
+  OwningPtr<MCObjectFileInfo> MOFI(new MCObjectFileInfo());
   MCContext Ctx(MAI.get(), MRI.get(), MOFI.get(), &SrcMgr);
   // FIXME: Assembler behavior can change with -static.
   MOFI->InitMCObjectFileInfo(Opts.Triple,
@@ -338,7 +318,6 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
     Ctx.setCompilationDir(Opts.DebugCompilationDir);
   if (!Opts.MainFileName.empty())
     Ctx.setMainFileName(StringRef(Opts.MainFileName));
-  Ctx.setDwarfVersion(Opts.DwarfVersion);
 
   // Build up the feature string from the target feature list.
   std::string FS;
@@ -348,24 +327,26 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
       FS += "," + Opts.Features[i];
   }
 
-  std::unique_ptr<MCStreamer> Str;
+  OwningPtr<MCStreamer> Str;
 
-  std::unique_ptr<MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
-  std::unique_ptr<MCSubtargetInfo> STI(
-      TheTarget->createMCSubtargetInfo(Opts.Triple, Opts.CPU, FS));
+  OwningPtr<MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
+  OwningPtr<MCSubtargetInfo>
+    STI(TheTarget->createMCSubtargetInfo(Opts.Triple, Opts.CPU, FS));
 
   // FIXME: There is a bit of code duplication with addPassesToEmitFile.
   if (Opts.OutputType == AssemblerInvocation::FT_Asm) {
     MCInstPrinter *IP =
       TheTarget->createMCInstPrinter(Opts.OutputAsmVariant, *MAI, *MCII, *MRI,
                                      *STI);
-    MCCodeEmitter *CE = nullptr;
-    MCAsmBackend *MAB = nullptr;
+    MCCodeEmitter *CE = 0;
+    MCAsmBackend *MAB = 0;
     if (Opts.ShowEncoding) {
       CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
       MAB = TheTarget->createMCAsmBackend(*MRI, Opts.Triple, Opts.CPU);
     }
     Str.reset(TheTarget->createAsmStreamer(Ctx, *Out, /*asmverbose*/true,
+                                           /*useLoc*/ true,
+                                           /*useCFI*/ true,
                                            /*useDwarfDirectory*/ true,
                                            IP, CE, MAB,
                                            Opts.ShowInst));
@@ -378,36 +359,31 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
     MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*MRI, Opts.Triple,
                                                       Opts.CPU);
     Str.reset(TheTarget->createMCObjectStreamer(Opts.Triple, Ctx, *MAB, *Out,
-                                                CE, *STI, Opts.RelaxAll,
+                                                CE, Opts.RelaxAll,
                                                 Opts.NoExecStack));
     Str.get()->InitSections();
   }
 
-  bool Failed = false;
-
-  std::unique_ptr<MCAsmParser> Parser(
-      createMCAsmParser(SrcMgr, Ctx, *Str.get(), *MAI));
-
-  // FIXME: init MCTargetOptions from sanitizer flags here.
-  MCTargetOptions Options;
-  std::unique_ptr<MCTargetAsmParser> TAP(
-      TheTarget->createMCAsmParser(*STI, *Parser, *MCII, Options));
-  if (!TAP)
-    Failed = Diags.Report(diag::err_target_unknown_triple) << Opts.Triple;
-
-  if (!Failed) {
-    Parser->setTargetParser(*TAP.get());
-    Failed = Parser->Run(Opts.NoInitialTextSection);
+  OwningPtr<MCAsmParser> Parser(createMCAsmParser(SrcMgr, Ctx,
+                                                  *Str.get(), *MAI));
+  OwningPtr<MCTargetAsmParser> TAP(TheTarget->createMCAsmParser(*STI, *Parser, *MCII));
+  if (!TAP) {
+    Diags.Report(diag::err_target_unknown_triple) << Opts.Triple;
+    return false;
   }
 
-  // Close the output stream early.
-  Out.reset();
+  Parser->setTargetParser(*TAP.get());
 
-  // Delete output file if there were errors.
-  if (Failed && Opts.OutputPath != "-")
+  bool Success = !Parser->Run(Opts.NoInitialTextSection);
+
+  // Close the output.
+  delete Out;
+
+  // Delete output on errors.
+  if (!Success && Opts.OutputPath != "-")
     sys::fs::remove(Opts.OutputPath);
 
-  return Failed;
+  return Success;
 }
 
 static void LLVMErrorHandler(void *UserData, const std::string &Message,
@@ -450,10 +426,10 @@ int cc1as_main(const char **ArgBegin, const char **ArgEnd,
   if (!AssemblerInvocation::CreateFromArgs(Asm, ArgBegin, ArgEnd, Diags))
     return 1;
 
+  // Honor -help.
   if (Asm.ShowHelp) {
-    std::unique_ptr<OptTable> Opts(driver::createDriverOptTable());
-    Opts->PrintHelp(llvm::outs(), "clang -cc1as", "Clang Integrated Assembler",
-                    /*Include=*/driver::options::CC1AsOption, /*Exclude=*/0);
+    OwningPtr<OptTable> Opts(driver::createCC1AsOptTable());
+    Opts->PrintHelp(llvm::outs(), "clang -cc1as", "Clang Integrated Assembler");
     return 0;
   }
 
@@ -474,17 +450,18 @@ int cc1as_main(const char **ArgBegin, const char **ArgEnd,
     Args[0] = "clang (LLVM option parsing)";
     for (unsigned i = 0; i != NumArgs; ++i)
       Args[i + 1] = Asm.LLVMArgs[i].c_str();
-    Args[NumArgs + 1] = nullptr;
+    Args[NumArgs + 1] = 0;
     llvm::cl::ParseCommandLineOptions(NumArgs + 1, Args);
   }
 
   // Execute the invocation, unless there were parsing errors.
-  bool Failed = Diags.hasErrorOccurred() || ExecuteAssembler(Asm, Diags);
+  bool Success = false;
+  if (!Diags.hasErrorOccurred())
+    Success = ExecuteAssembler(Asm, Diags);
 
   // If any timers were active but haven't been destroyed yet, print their
   // results now.
   TimerGroup::printAll(errs());
 
-  return !!Failed;
+  return !Success;
 }
-

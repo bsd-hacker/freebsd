@@ -68,7 +68,6 @@ ENTRY(setjmp)
 	stmw	%r9,20(%r6)
 	li	%r3,0			/* return (0) */
 	blr
-END(setjmp)
 
 	WEAK_REFERENCE(CNAME(__longjmp), longjmp)
 ENTRY(__longjmp)
@@ -87,6 +86,5 @@ ENTRY(__longjmp)
 	bnelr
 	li	%r3,1
 	blr
-END(__longjmp)
 
 	.section .note.GNU-stack,"",%progbits

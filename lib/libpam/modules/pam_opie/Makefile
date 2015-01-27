@@ -29,6 +29,7 @@ LIB=	pam_opie
 SRCS=	pam_opie.c
 MAN=	pam_opie.8
 
-LIBADD+=	opie
+DPADD=	${LIBOPIE}
+LDADD=	-lopie
 
 .include <bsd.lib.mk>

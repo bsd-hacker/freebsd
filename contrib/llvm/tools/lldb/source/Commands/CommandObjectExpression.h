@@ -96,9 +96,6 @@ protected:
                         Stream *output_stream,
                         Stream *error_stream,
                         CommandReturnObject *result = NULL);
-    
-    void
-    GetMultilineExpression ();
 
     OptionGroupOptions m_option_group;
     OptionGroupFormat m_format_options;

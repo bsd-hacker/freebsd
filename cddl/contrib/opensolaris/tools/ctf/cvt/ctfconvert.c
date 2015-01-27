@@ -155,7 +155,7 @@ main(int argc, char **argv)
 	int keep_stabs = 0;
 	int c;
 
-#ifdef illumos
+#if defined(sun)
 	sighold(SIGINT);
 	sighold(SIGQUIT);
 	sighold(SIGTERM);
@@ -221,7 +221,7 @@ main(int argc, char **argv)
 	 */
 	set_terminate_cleanup(terminate_cleanup);
 
-#ifdef illumos
+#if defined(sun)
 	sigset(SIGINT, handle_sig);
 	sigset(SIGQUIT, handle_sig);
 	sigset(SIGTERM, handle_sig);

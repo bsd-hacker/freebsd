@@ -436,11 +436,8 @@ static int ocsp_req_find_signer(X509 **psigner, OCSP_REQUEST *req, X509_NAME *nm
 	if(!(flags & OCSP_NOINTERN))
 		{
 		signer = X509_find_by_subject(req->optionalSignature->certs, nm);
-		if (signer)
-			{
-			*psigner = signer;
-			return 1;
-			}
+		*psigner = signer;
+		return 1;
 		}
 
 	signer = X509_find_by_subject(certs, nm);

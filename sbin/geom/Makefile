@@ -14,7 +14,8 @@ MAN=
 WARNS?=	2
 CFLAGS+=-I${.CURDIR} -I${.CURDIR}/core -DSTATIC_GEOM_CLASSES
 
-LIBADD=	geom util
+DPADD=	${LIBGEOM} ${LIBSBUF} ${LIBBSDXML} ${LIBUTIL}
+LDADD=	-lgeom -lsbuf -lbsdxml -lutil
 
 .include <bsd.prog.mk>
 

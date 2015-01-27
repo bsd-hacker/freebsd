@@ -39,24 +39,18 @@ const ASTNodeKind::KindInfo ASTNodeKind::AllKindInfo[] = {
 #include "clang/AST/TypeNodes.def"
 };
 
-bool ASTNodeKind::isBaseOf(ASTNodeKind Other, unsigned *Distance) const {
-  return isBaseOf(KindId, Other.KindId, Distance);
+bool ASTNodeKind::isBaseOf(ASTNodeKind Other) const {
+  return isBaseOf(KindId, Other.KindId);
 }
 
 bool ASTNodeKind::isSame(ASTNodeKind Other) const {
   return KindId != NKI_None && KindId == Other.KindId;
 }
 
-bool ASTNodeKind::isBaseOf(NodeKindId Base, NodeKindId Derived,
-                           unsigned *Distance) {
+bool ASTNodeKind::isBaseOf(NodeKindId Base, NodeKindId Derived) {
   if (Base == NKI_None || Derived == NKI_None) return false;
-  unsigned Dist = 0;
-  while (Derived != Base && Derived != NKI_None) {
+  while (Derived != Base && Derived != NKI_None)
     Derived = AllKindInfo[Derived].ParentId;
-    ++Dist;
-  }
-  if (Distance)
-    *Distance = Dist;
   return Derived == Base;
 }
 
@@ -77,7 +71,7 @@ void DynTypedNode::print(llvm::raw_ostream &OS,
   else if (const Decl *D = get<Decl>())
     D->print(OS, PP);
   else if (const Stmt *S = get<Stmt>())
-    S->printPretty(OS, nullptr, PP);
+    S->printPretty(OS, 0, PP);
   else if (const Type *T = get<Type>())
     QualType(T, 0).print(OS, PP);
   else

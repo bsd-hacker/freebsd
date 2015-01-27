@@ -68,9 +68,7 @@ int opiechallenge FUNCTION((mp, name, ss), struct opie *mp AND char *name AND ch
   }
 
   if (rval ||
-    (snprintf(ss, OPIE_CHALLENGE_MAX+1, "otp-%s %d %s ext", algids[MDX], mp->opie_n - 1, mp->opie_seed) >= OPIE_CHALLENGE_MAX+1)) {
-    if (!rval)
-      rval = 1;
+    (snprintf(ss, OPIE_CHALLENGE_MAX, "otp-%s %d %s ext", algids[MDX], mp->opie_n - 1, mp->opie_seed) >= OPIE_CHALLENGE_MAX)) {
     opierandomchallenge(ss);
     memset(mp, 0, sizeof(*mp));
   }

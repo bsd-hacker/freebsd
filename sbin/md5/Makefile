@@ -16,6 +16,7 @@ MLINKS=	md5.1 rmd160.1 \
 NO_WMISSING_VARIABLE_DECLARATIONS=
 WFORMAT?=	1
 
-LIBADD=	md
+DPADD=	${LIBMD}
+LDADD=	-lmd
 
 .include <bsd.prog.mk>

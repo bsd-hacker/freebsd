@@ -67,13 +67,6 @@ public:
     pos_type tellp();
     basic_ostream& seekp(pos_type);
     basic_ostream& seekp(off_type, ios_base::seekdir);
-protected:
-    basic_ostream(const basic_ostream& rhs) = delete;
-    basic_ostream(basic_ostream&& rhs);
-    // 27.7.3.3 Assign/swap
-    basic_ostream& operator=(basic_ostream& rhs) = delete;
-    basic_ostream& operator=(const basic_ostream&& rhs);
-    void swap(basic_ostream& rhs);
 };
 
 // 27.7.2.6.4 character inserters
@@ -169,19 +162,14 @@ protected:
 #endif
 
     // 27.7.2.3 Assign/swap
+#if _LIBCPP_STD_VER > 11
+    basic_ostream& operator=(const basic_ostream&) = delete;
+#endif
 #ifndef _LIBCPP_HAS_NO_RVALUE_REFERENCES
     _LIBCPP_INLINE_VISIBILITY
     basic_ostream& operator=(basic_ostream&& __rhs);
 #endif
     void swap(basic_ostream& __rhs);
-
-#ifndef _LIBCPP_HAS_NO_DELETED_FUNCTIONS
-    basic_ostream           (const basic_ostream& __rhs) = delete;
-    basic_ostream& operator=(const basic_ostream& __rhs) = delete;
-#else
-    basic_ostream           (const basic_ostream& __rhs); // not defined
-    basic_ostream& operator=(const basic_ostream& __rhs); // not defined
-#endif
 public:
 
     // 27.7.2.4 Prefix/suffix:
@@ -741,8 +729,7 @@ basic_ostream<_CharT, _Traits>::operator<<(const void* __n)
 
 template<class _CharT, class _Traits>
 basic_ostream<_CharT, _Traits>&
-__put_character_sequence(basic_ostream<_CharT, _Traits>& __os,
-                          const _CharT* __str, size_t __len)
+operator<<(basic_ostream<_CharT, _Traits>& __os, _CharT __c)
 {
 #ifndef _LIBCPP_NO_EXCEPTIONS
     try
@@ -753,11 +740,11 @@ __put_character_sequence(basic_ostream<_CharT, _Traits>& __os,
         {
             typedef ostreambuf_iterator<_CharT, _Traits> _Ip;
             if (__pad_and_output(_Ip(__os),
-                                 __str,
+                                 &__c,
                                  (__os.flags() & ios_base::adjustfield) == ios_base::left ?
-                                     __str + __len :
-                                     __str,
-                                 __str + __len,
+                                     &__c + 1 :
+                                     &__c,
+                                 &__c + 1,
                                  __os,
                                  __os.fill()).failed())
                 __os.setstate(ios_base::badbit | ios_base::failbit);
@@ -770,14 +757,6 @@ __put_character_sequence(basic_ostream<_CharT, _Traits>& __os,
     }
 #endif  // _LIBCPP_NO_EXCEPTIONS
     return __os;
-}
-
-
-template<class _CharT, class _Traits>
-basic_ostream<_CharT, _Traits>&
-operator<<(basic_ostream<_CharT, _Traits>& __os, _CharT __c)
-{
-    return _VSTD::__put_character_sequence(__os, &__c, 1);
 }
 
 template<class _CharT, class _Traits>
@@ -817,28 +796,129 @@ template<class _Traits>
 basic_ostream<char, _Traits>&
 operator<<(basic_ostream<char, _Traits>& __os, char __c)
 {
-    return _VSTD::__put_character_sequence(__os, &__c, 1);
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    try
+    {
+#endif  // _LIBCPP_NO_EXCEPTIONS
+        typename basic_ostream<char, _Traits>::sentry __s(__os);
+        if (__s)
+        {
+            typedef ostreambuf_iterator<char, _Traits> _Ip;
+            if (__pad_and_output(_Ip(__os),
+                                 &__c,
+                                 (__os.flags() & ios_base::adjustfield) == ios_base::left ?
+                                     &__c + 1 :
+                                     &__c,
+                                 &__c + 1,
+                                 __os,
+                                 __os.fill()).failed())
+                __os.setstate(ios_base::badbit | ios_base::failbit);
+        }
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    }
+    catch (...)
+    {
+        __os.__set_badbit_and_consider_rethrow();
+    }
+#endif  // _LIBCPP_NO_EXCEPTIONS
+    return __os;
 }
 
 template<class _Traits>
 basic_ostream<char, _Traits>&
 operator<<(basic_ostream<char, _Traits>& __os, signed char __c)
 {
-    return _VSTD::__put_character_sequence(__os, (char *) &__c, 1);
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    try
+    {
+#endif  // _LIBCPP_NO_EXCEPTIONS
+        typename basic_ostream<char, _Traits>::sentry __s(__os);
+        if (__s)
+        {
+            typedef ostreambuf_iterator<char, _Traits> _Ip;
+            if (__pad_and_output(_Ip(__os),
+                                 (char*)&__c,
+                                 (__os.flags() & ios_base::adjustfield) == ios_base::left ?
+                                     (char*)&__c + 1 :
+                                     (char*)&__c,
+                                 (char*)&__c + 1,
+                                 __os,
+                                 __os.fill()).failed())
+                __os.setstate(ios_base::badbit | ios_base::failbit);
+        }
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    }
+    catch (...)
+    {
+        __os.__set_badbit_and_consider_rethrow();
+    }
+#endif  // _LIBCPP_NO_EXCEPTIONS
+    return __os;
 }
 
 template<class _Traits>
 basic_ostream<char, _Traits>&
 operator<<(basic_ostream<char, _Traits>& __os, unsigned char __c)
 {
-    return _VSTD::__put_character_sequence(__os, (char *) &__c, 1);
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    try
+    {
+#endif  // _LIBCPP_NO_EXCEPTIONS
+        typename basic_ostream<char, _Traits>::sentry __s(__os);
+        if (__s)
+        {
+            typedef ostreambuf_iterator<char, _Traits> _Ip;
+            if (__pad_and_output(_Ip(__os),
+                                 (char*)&__c,
+                                 (__os.flags() & ios_base::adjustfield) == ios_base::left ?
+                                     (char*)&__c + 1 :
+                                     (char*)&__c,
+                                 (char*)&__c + 1,
+                                 __os,
+                                 __os.fill()).failed())
+                __os.setstate(ios_base::badbit | ios_base::failbit);
+        }
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    }
+    catch (...)
+    {
+        __os.__set_badbit_and_consider_rethrow();
+    }
+#endif  // _LIBCPP_NO_EXCEPTIONS
+    return __os;
 }
 
 template<class _CharT, class _Traits>
 basic_ostream<_CharT, _Traits>&
 operator<<(basic_ostream<_CharT, _Traits>& __os, const _CharT* __str)
 {
-    return _VSTD::__put_character_sequence(__os, __str, _Traits::length(__str));
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    try
+    {
+#endif  // _LIBCPP_NO_EXCEPTIONS
+        typename basic_ostream<_CharT, _Traits>::sentry __s(__os);
+        if (__s)
+        {
+            typedef ostreambuf_iterator<_CharT, _Traits> _Ip;
+            size_t __len = _Traits::length(__str);
+            if (__pad_and_output(_Ip(__os),
+                                 __str,
+                                 (__os.flags() & ios_base::adjustfield) == ios_base::left ?
+                                     __str + __len :
+                                     __str,
+                                 __str + __len,
+                                 __os,
+                                 __os.fill()).failed())
+                __os.setstate(ios_base::badbit | ios_base::failbit);
+        }
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    }
+    catch (...)
+    {
+        __os.__set_badbit_and_consider_rethrow();
+    }
+#endif  // _LIBCPP_NO_EXCEPTIONS
+    return __os;
 }
 
 template<class _CharT, class _Traits>
@@ -891,23 +971,99 @@ template<class _Traits>
 basic_ostream<char, _Traits>&
 operator<<(basic_ostream<char, _Traits>& __os, const char* __str)
 {
-    return _VSTD::__put_character_sequence(__os, __str, _Traits::length(__str));
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    try
+    {
+#endif  // _LIBCPP_NO_EXCEPTIONS
+        typename basic_ostream<char, _Traits>::sentry __s(__os);
+        if (__s)
+        {
+            typedef ostreambuf_iterator<char, _Traits> _Ip;
+            size_t __len = _Traits::length(__str);
+            if (__pad_and_output(_Ip(__os),
+                                 __str,
+                                 (__os.flags() & ios_base::adjustfield) == ios_base::left ?
+                                     __str + __len :
+                                     __str,
+                                 __str + __len,
+                                 __os,
+                                 __os.fill()).failed())
+                __os.setstate(ios_base::badbit | ios_base::failbit);
+        }
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    }
+    catch (...)
+    {
+        __os.__set_badbit_and_consider_rethrow();
+    }
+#endif  // _LIBCPP_NO_EXCEPTIONS
+    return __os;
 }
 
 template<class _Traits>
 basic_ostream<char, _Traits>&
 operator<<(basic_ostream<char, _Traits>& __os, const signed char* __str)
 {
-    const char *__s = (const char *) __str;
-    return _VSTD::__put_character_sequence(__os, __s, _Traits::length(__s));
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    try
+    {
+#endif  // _LIBCPP_NO_EXCEPTIONS
+        typename basic_ostream<char, _Traits>::sentry __s(__os);
+        if (__s)
+        {
+            typedef ostreambuf_iterator<char, _Traits> _Ip;
+            size_t __len = _Traits::length((const char*)__str);
+            if (__pad_and_output(_Ip(__os),
+                                 (const char*)__str,
+                                 (__os.flags() & ios_base::adjustfield) == ios_base::left ?
+                                     (const char*)__str + __len :
+                                     (const char*)__str,
+                                 (const char*)__str + __len,
+                                 __os,
+                                 __os.fill()).failed())
+                __os.setstate(ios_base::badbit | ios_base::failbit);
+        }
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    }
+    catch (...)
+    {
+        __os.__set_badbit_and_consider_rethrow();
+    }
+#endif  // _LIBCPP_NO_EXCEPTIONS
+    return __os;
 }
 
 template<class _Traits>
 basic_ostream<char, _Traits>&
 operator<<(basic_ostream<char, _Traits>& __os, const unsigned char* __str)
 {
-    const char *__s = (const char *) __str;
-    return _VSTD::__put_character_sequence(__os, __s, _Traits::length(__s));
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    try
+    {
+#endif  // _LIBCPP_NO_EXCEPTIONS
+        typename basic_ostream<char, _Traits>::sentry __s(__os);
+        if (__s)
+        {
+            typedef ostreambuf_iterator<char, _Traits> _Ip;
+            size_t __len = _Traits::length((const char*)__str);
+            if (__pad_and_output(_Ip(__os),
+                                 (const char*)__str,
+                                 (__os.flags() & ios_base::adjustfield) == ios_base::left ?
+                                     (const char*)__str + __len :
+                                     (const char*)__str,
+                                 (const char*)__str + __len,
+                                 __os,
+                                 __os.fill()).failed())
+                __os.setstate(ios_base::badbit | ios_base::failbit);
+        }
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    }
+    catch (...)
+    {
+        __os.__set_badbit_and_consider_rethrow();
+    }
+#endif  // _LIBCPP_NO_EXCEPTIONS
+    return __os;
 }
 
 template <class _CharT, class _Traits>
@@ -1077,7 +1233,33 @@ basic_ostream<_CharT, _Traits>&
 operator<<(basic_ostream<_CharT, _Traits>& __os,
            const basic_string<_CharT, _Traits, _Allocator>& __str)
 {
-    return _VSTD::__put_character_sequence(__os, __str.data(), __str.size());
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    try
+    {
+#endif  // _LIBCPP_NO_EXCEPTIONS
+        typename basic_ostream<_CharT, _Traits>::sentry __s(__os);
+        if (__s)
+        {
+            typedef ostreambuf_iterator<_CharT, _Traits> _Ip;
+            size_t __len = __str.size();
+            if (__pad_and_output(_Ip(__os),
+                                 __str.data(),
+                                 (__os.flags() & ios_base::adjustfield) == ios_base::left ?
+                                     __str.data() + __len :
+                                     __str.data(),
+                                 __str.data() + __len,
+                                 __os,
+                                 __os.fill()).failed())
+                __os.setstate(ios_base::badbit | ios_base::failbit);
+        }
+#ifndef _LIBCPP_NO_EXCEPTIONS
+    }
+    catch (...)
+    {
+        __os.__set_badbit_and_consider_rethrow();
+    }
+#endif  // _LIBCPP_NO_EXCEPTIONS
+    return __os;
 }
 
 template <class _CharT, class _Traits>

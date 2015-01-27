@@ -78,9 +78,12 @@ static int
 dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
     int flags __unused, struct thread *td)
 {
+#if __FreeBSD_version < 800039
+	dtrace_state_t *state = dev->si_drv1;
+#else
 	dtrace_state_t *state;
 	devfs_get_cdevpriv((void **) &state);
-
+#endif
 	int error = 0;
 	if (state == NULL)
 		return (EINVAL);
@@ -578,14 +581,14 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			return (EINVAL);
 
 		mutex_enter(&dtrace_provider_lock);
-#ifdef illumos
+#if defined(sun)
 		mutex_enter(&mod_lock);
 #endif
 		mutex_enter(&dtrace_lock);
 
 		if (desc->dtargd_id > dtrace_nprobes) {
 			mutex_exit(&dtrace_lock);
-#ifdef illumos
+#if defined(sun)
 			mutex_exit(&mod_lock);
 #endif
 			mutex_exit(&dtrace_provider_lock);
@@ -594,7 +597,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if ((probe = dtrace_probes[desc->dtargd_id - 1]) == NULL) {
 			mutex_exit(&dtrace_lock);
-#ifdef illumos
+#if defined(sun)
 			mutex_exit(&mod_lock);
 #endif
 			mutex_exit(&dtrace_provider_lock);
@@ -620,7 +623,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			    probe->dtpr_id, probe->dtpr_arg, desc);
 		}
 
-#ifdef illumos
+#if defined(sun)
 		mutex_exit(&mod_lock);
 #endif
 		mutex_exit(&dtrace_provider_lock);
@@ -779,7 +782,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		dstate = &state->dts_vstate.dtvs_dynvars;
 
 		for (i = 0; i < NCPU; i++) {
-#ifndef illumos
+#if !defined(sun)
 			if (pcpu_find(i) == NULL)
 				continue;
 #endif

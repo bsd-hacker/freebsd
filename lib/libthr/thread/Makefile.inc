@@ -14,7 +14,6 @@ SRCS+= \
 	thr_cond.c \
 	thr_condattr.c \
 	thr_create.c \
-	thr_ctrdtr.c \
 	thr_detach.c \
 	thr_equal.c \
 	thr_event.c \

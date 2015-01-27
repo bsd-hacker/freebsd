@@ -13,9 +13,7 @@ SRCS=	GDBRemoteCommunication.cpp \
 	ProcessGDBRemoteLog.cpp \
 	ThreadGDBRemote.cpp
 
-TGHDRS=	AttrList \
-	Attrs \
-	DiagnosticCommonKinds \
+TGHDRS=	DiagnosticCommonKinds \
 	DeclNodes \
 	StmtNodes \
 	CommentCommandList

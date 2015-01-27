@@ -57,10 +57,11 @@ ParseAuxvEntry(DataExtractor &data,
 DataBufferSP
 AuxVector::GetAuxvData()
 {
-    if (m_process)
-        return m_process->GetAuxvData ();
-    else
-        return DataBufferSP ();
+#if defined(__linux__) || defined(__FreeBSD__)
+    if (m_process->GetPluginName() == ProcessElfCore::GetPluginNameStatic())
+        return static_cast<ProcessElfCore *>(m_process)->GetAuxvData();
+#endif
+    return lldb_private::Host::GetAuxvData(m_process);
 }
 
 void

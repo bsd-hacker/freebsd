@@ -27,7 +27,7 @@ namespace llvm {
     
     LibCallInfo *LCI;
     
-    explicit LibCallAliasAnalysis(LibCallInfo *LC = nullptr)
+    explicit LibCallAliasAnalysis(LibCallInfo *LC = 0)
         : FunctionPass(ID), LCI(LC) {
       initializeLibCallAliasAnalysisPass(*PassRegistry::getPassRegistry());
     }
@@ -38,17 +38,17 @@ namespace llvm {
     ~LibCallAliasAnalysis();
     
     ModRefResult getModRefInfo(ImmutableCallSite CS,
-                               const Location &Loc) override;
- 
+                               const Location &Loc);
+    
     ModRefResult getModRefInfo(ImmutableCallSite CS1,
-                               ImmutableCallSite CS2) override {
+                               ImmutableCallSite CS2) {
       // TODO: Could compare two direct calls against each other if we cared to.
       return AliasAnalysis::getModRefInfo(CS1, CS2);
     }
-
-    void getAnalysisUsage(AnalysisUsage &AU) const override;
-
-    bool runOnFunction(Function &F) override {
+    
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+    
+    virtual bool runOnFunction(Function &F) {
       InitializeAliasAnalysis(this);                 // set up super class
       return false;
     }
@@ -57,7 +57,7 @@ namespace llvm {
     /// an analysis interface through multiple inheritance.  If needed, it
     /// should override this to adjust the this pointer as needed for the
     /// specified pass info.
-    void *getAdjustedAnalysisPointer(const void *PI) override {
+    virtual void *getAdjustedAnalysisPointer(const void *PI) {
       if (PI == &AliasAnalysis::ID)
         return (AliasAnalysis*)this;
       return this;

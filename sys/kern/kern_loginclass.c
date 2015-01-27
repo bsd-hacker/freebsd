@@ -51,13 +51,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/loginclass.h>
 #include <sys/malloc.h>
+#include <sys/mutex.h>
 #include <sys/types.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/queue.h>
 #include <sys/racct.h>
 #include <sys/refcount.h>
-#include <sys/rwlock.h>
 #include <sys/sysproto.h>
 #include <sys/systm.h>
 
@@ -68,8 +68,8 @@ LIST_HEAD(, loginclass)	loginclasses;
 /*
  * Lock protecting loginclasses list.
  */
-static struct rwlock loginclasses_lock;
-RW_SYSINIT(loginclasses_init, &loginclasses_lock, "loginclasses lock");
+static struct mtx loginclasses_lock;
+MTX_SYSINIT(loginclasses_init, &loginclasses_lock, "loginclasses lock", MTX_DEF);
 
 void
 loginclass_hold(struct loginclass *lc)
@@ -87,37 +87,16 @@ loginclass_free(struct loginclass *lc)
 	if (old > 1 && atomic_cmpset_int(&lc->lc_refcount, old, old - 1))
 		return;
 
-	rw_wlock(&loginclasses_lock);
-	if (!refcount_release(&lc->lc_refcount)) {
-		rw_wunlock(&loginclasses_lock);
+	mtx_lock(&loginclasses_lock);
+	if (refcount_release(&lc->lc_refcount)) {
+		racct_destroy(&lc->lc_racct);
+		LIST_REMOVE(lc, lc_next);
+		mtx_unlock(&loginclasses_lock);
+		free(lc, M_LOGINCLASS);
+
 		return;
 	}
-
-	racct_destroy(&lc->lc_racct);
-	LIST_REMOVE(lc, lc_next);
-	rw_wunlock(&loginclasses_lock);
-
-	free(lc, M_LOGINCLASS);
-}
-
-/*
- * Look up a loginclass struct for the parameter name.
- * loginclasses_lock must be locked.
- * Increase refcount on loginclass struct returned.
- */
-static struct loginclass *
-loginclass_lookup(const char *name)
-{
-	struct loginclass *lc;
-
-	rw_assert(&loginclasses_lock, RA_LOCKED);
-	LIST_FOREACH(lc, &loginclasses, lc_next)
-		if (strcmp(name, lc->lc_name) == 0) {
-			loginclass_hold(lc);
-			break;
-		}
-
-	return (lc);
+	mtx_unlock(&loginclasses_lock);
 }
 
 /*
@@ -130,39 +109,34 @@ loginclass_lookup(const char *name)
 struct loginclass *
 loginclass_find(const char *name)
 {
-	struct loginclass *lc, *new_lc;
+	struct loginclass *lc, *newlc;
 
 	if (name[0] == '\0' || strlen(name) >= MAXLOGNAME)
 		return (NULL);
 
-	rw_rlock(&loginclasses_lock);
-	lc = loginclass_lookup(name);
-	rw_runlock(&loginclasses_lock);
-	if (lc != NULL)
+	newlc = malloc(sizeof(*newlc), M_LOGINCLASS, M_ZERO | M_WAITOK);
+	racct_create(&newlc->lc_racct);
+
+	mtx_lock(&loginclasses_lock);
+	LIST_FOREACH(lc, &loginclasses, lc_next) {
+		if (strcmp(name, lc->lc_name) != 0)
+			continue;
+
+		/* Found loginclass with a matching name? */
+		loginclass_hold(lc);
+		mtx_unlock(&loginclasses_lock);
+		racct_destroy(&newlc->lc_racct);
+		free(newlc, M_LOGINCLASS);
 		return (lc);
-
-	new_lc = malloc(sizeof(*new_lc), M_LOGINCLASS, M_ZERO | M_WAITOK);
-	racct_create(&new_lc->lc_racct);
-	refcount_init(&new_lc->lc_refcount, 1);
-	strcpy(new_lc->lc_name, name);
-
-	rw_wlock(&loginclasses_lock);
-	/*
-	 * There's a chance someone created our loginclass while we
-	 * were in malloc and not holding the lock, so we have to
-	 * make sure we don't insert a duplicate loginclass.
-	 */
-	if ((lc = loginclass_lookup(name)) == NULL) {
-		LIST_INSERT_HEAD(&loginclasses, new_lc, lc_next);
-		rw_wunlock(&loginclasses_lock);
-		lc = new_lc;
-	} else {
-		rw_wunlock(&loginclasses_lock);
-		racct_destroy(&new_lc->lc_racct);
-		free(new_lc, M_LOGINCLASS);
 	}
 
-	return (lc);
+	/* Add new loginclass. */
+	strcpy(newlc->lc_name, name);
+	refcount_init(&newlc->lc_refcount, 1);
+	LIST_INSERT_HEAD(&loginclasses, newlc, lc_next);
+	mtx_unlock(&loginclasses_lock);
+
+	return (newlc);
 }
 
 /*
@@ -178,14 +152,24 @@ struct getloginclass_args {
 int
 sys_getloginclass(struct thread *td, struct getloginclass_args *uap)
 {
-	struct loginclass *lc;
+	int error = 0;
 	size_t lcnamelen;
+	struct proc *p;
+	struct loginclass *lc;
 
-	lc = td->td_ucred->cr_loginclass;
+	p = td->td_proc;
+	PROC_LOCK(p);
+	lc = p->p_ucred->cr_loginclass;
+	loginclass_hold(lc);
+	PROC_UNLOCK(p);
+
 	lcnamelen = strlen(lc->lc_name) + 1;
 	if (lcnamelen > uap->namelen)
-		return (ERANGE);
-	return (copyout(lc->lc_name, uap->namebuf, lcnamelen));
+		error = ERANGE;
+	if (error == 0)
+		error = copyout(lc->lc_name, uap->namebuf, lcnamelen);
+	loginclass_free(lc);
+	return (error);
 }
 
 /*
@@ -238,8 +222,8 @@ loginclass_racct_foreach(void (*callback)(struct racct *racct,
 {
 	struct loginclass *lc;
 
-	rw_rlock(&loginclasses_lock);
+	mtx_lock(&loginclasses_lock);
 	LIST_FOREACH(lc, &loginclasses, lc_next)
 		(callback)(lc->lc_racct, arg2, arg3);
-	rw_runlock(&loginclasses_lock);
+	mtx_unlock(&loginclasses_lock);
 }

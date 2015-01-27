@@ -3,8 +3,8 @@
 
 PROG=	nfsstat
 CFLAGS+=-DNFS
-
-LIBADD=	kvm
+DPADD=  ${LIBKVM}
+LDADD= -lkvm
 
 WARNS?=	3
 

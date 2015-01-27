@@ -19,14 +19,14 @@
 namespace std
 {
 
-class shared_timed_mutex
+class shared_mutex
 {
 public:
-    shared_timed_mutex();
-    ~shared_timed_mutex();
+    shared_mutex();
+    ~shared_mutex();
 
-    shared_timed_mutex(const shared_timed_mutex&) = delete;
-    shared_timed_mutex& operator=(const shared_timed_mutex&) = delete;
+    shared_mutex(const shared_mutex&) = delete;
+    shared_mutex& operator=(const shared_mutex&) = delete;
 
     // Exclusive ownership
     void lock(); // blocking
@@ -112,13 +112,9 @@ template <class Mutex>
 #pragma GCC system_header
 #endif
 
-#ifdef _LIBCPP_HAS_NO_THREADS
-#error <shared_mutex> is not supported on this single threaded system
-#else // !_LIBCPP_HAS_NO_THREADS
-
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-class _LIBCPP_TYPE_VIS shared_timed_mutex
+class _LIBCPP_TYPE_VIS shared_mutex
 {
     mutex               __mut_;
     condition_variable  __gate1_;
@@ -128,11 +124,11 @@ class _LIBCPP_TYPE_VIS shared_timed_mutex
     static const unsigned __write_entered_ = 1U << (sizeof(unsigned)*__CHAR_BIT__ - 1);
     static const unsigned __n_readers_ = ~__write_entered_;
 public:
-    shared_timed_mutex();
-    _LIBCPP_INLINE_VISIBILITY ~shared_timed_mutex() = default;
+    shared_mutex();
+    _LIBCPP_INLINE_VISIBILITY ~shared_mutex() = default;
 
-    shared_timed_mutex(const shared_timed_mutex&) = delete;
-    shared_timed_mutex& operator=(const shared_timed_mutex&) = delete;
+    shared_mutex(const shared_mutex&) = delete;
+    shared_mutex& operator=(const shared_mutex&) = delete;
 
     // Exclusive ownership
     void lock();
@@ -167,7 +163,7 @@ public:
 
 template <class _Clock, class _Duration>
 bool
-shared_timed_mutex::try_lock_until(
+shared_mutex::try_lock_until(
                         const chrono::time_point<_Clock, _Duration>& __abs_time)
 {
     unique_lock<mutex> __lk(__mut_);
@@ -202,7 +198,7 @@ shared_timed_mutex::try_lock_until(
 
 template <class _Clock, class _Duration>
 bool
-shared_timed_mutex::try_lock_shared_until(
+shared_mutex::try_lock_shared_until(
                         const chrono::time_point<_Clock, _Duration>& __abs_time)
 {
     unique_lock<mutex> __lk(__mut_);
@@ -236,7 +232,7 @@ private:
 
 public:
     _LIBCPP_INLINE_VISIBILITY
-    shared_lock() _NOEXCEPT
+    shared_lock() noexcept
         : __m_(nullptr),
           __owns_(false)
         {}
@@ -248,7 +244,7 @@ public:
         {__m_->lock_shared();}
 
     _LIBCPP_INLINE_VISIBILITY
-    shared_lock(mutex_type& __m, defer_lock_t) _NOEXCEPT
+    shared_lock(mutex_type& __m, defer_lock_t) noexcept
         : __m_(&__m),
           __owns_(false)
         {}
@@ -292,7 +288,7 @@ public:
     shared_lock& operator=(shared_lock const&) = delete;
 
     _LIBCPP_INLINE_VISIBILITY
-    shared_lock(shared_lock&& __u) _NOEXCEPT
+    shared_lock(shared_lock&& __u) noexcept
         : __m_(__u.__m_),
           __owns_(__u.__owns_)
         {
@@ -301,7 +297,7 @@ public:
         }
 
     _LIBCPP_INLINE_VISIBILITY
-    shared_lock& operator=(shared_lock&& __u) _NOEXCEPT
+    shared_lock& operator=(shared_lock&& __u) noexcept
     {
         if (__owns_)
             __m_->unlock_shared();
@@ -324,14 +320,14 @@ public:
 
     // Setters
     _LIBCPP_INLINE_VISIBILITY
-    void swap(shared_lock& __u) _NOEXCEPT
+    void swap(shared_lock& __u) noexcept
     {
         _VSTD::swap(__m_, __u.__m_);
         _VSTD::swap(__owns_, __u.__owns_);
     }
 
     _LIBCPP_INLINE_VISIBILITY
-    mutex_type* release() _NOEXCEPT
+    mutex_type* release() noexcept
     {
         mutex_type* __m = __m_;
         __m_ = nullptr;
@@ -341,13 +337,13 @@ public:
 
     // Getters
     _LIBCPP_INLINE_VISIBILITY
-    bool owns_lock() const _NOEXCEPT {return __owns_;}
+    bool owns_lock() const noexcept {return __owns_;}
 
     _LIBCPP_INLINE_VISIBILITY
-    explicit operator bool () const _NOEXCEPT {return __owns_;}
+    explicit operator bool () const noexcept {return __owns_;}
 
     _LIBCPP_INLINE_VISIBILITY
-    mutex_type* mutex() const _NOEXCEPT {return __m_;}
+    mutex_type* mutex() const noexcept {return __m_;}
 };
 
 template <class _Mutex>
@@ -413,12 +409,10 @@ shared_lock<_Mutex>::unlock()
 template <class _Mutex>
 inline _LIBCPP_INLINE_VISIBILITY
 void
-swap(shared_lock<_Mutex>& __x, shared_lock<_Mutex>& __y) _NOEXCEPT
+swap(shared_lock<_Mutex>& __x, shared_lock<_Mutex>& __y) noexcept
     {__x.swap(__y);}
 
 _LIBCPP_END_NAMESPACE_STD
-
-#endif  // !_LIBCPP_HAS_NO_THREADS
 
 #endif  // _LIBCPP_STD_VER > 11
 

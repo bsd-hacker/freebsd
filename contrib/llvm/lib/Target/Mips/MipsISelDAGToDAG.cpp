@@ -11,31 +11,30 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "mips-isel"
 #include "MipsISelDAGToDAG.h"
-#include "MCTargetDesc/MipsBaseInfo.h"
-#include "Mips.h"
 #include "Mips16ISelDAGToDAG.h"
+#include "MipsSEISelDAGToDAG.h"
+#include "Mips.h"
+#include "MCTargetDesc/MipsBaseInfo.h"
 #include "MipsMachineFunction.h"
 #include "MipsRegisterInfo.h"
-#include "MipsSEISelDAGToDAG.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
-#include "llvm/IR/CFG.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/CFG.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "mips-isel"
 
 //===----------------------------------------------------------------------===//
 // Instruction Selector Implementation
@@ -47,7 +46,6 @@ using namespace llvm;
 //===----------------------------------------------------------------------===//
 
 bool MipsDAGToDAGISel::runOnMachineFunction(MachineFunction &MF) {
-  Subtarget = &TM.getSubtarget<MipsSubtarget>();
   bool Ret = SelectionDAGISel::runOnMachineFunction(MF);
 
   processFunctionAfterISel(MF);
@@ -91,12 +89,6 @@ bool MipsDAGToDAGISel::selectIntAddr(SDValue Addr, SDValue &Base,
 
 bool MipsDAGToDAGISel::selectIntAddrMM(SDValue Addr, SDValue &Base,
                                        SDValue &Offset) const {
-  llvm_unreachable("Unimplemented function.");
-  return false;
-}
-
-bool MipsDAGToDAGISel::selectIntAddrMSA(SDValue Addr, SDValue &Base,
-                                        SDValue &Offset) const {
   llvm_unreachable("Unimplemented function.");
   return false;
 }
@@ -184,7 +176,7 @@ SDNode* MipsDAGToDAGISel::Select(SDNode *Node) {
   if (Node->isMachineOpcode()) {
     DEBUG(errs() << "== "; Node->dump(CurDAG); errs() << "\n");
     Node->setNodeId(-1);
-    return nullptr;
+    return NULL;
   }
 
   // See if subclasses can handle this node.
@@ -203,9 +195,8 @@ SDNode* MipsDAGToDAGISel::Select(SDNode *Node) {
 #ifndef NDEBUG
   case ISD::LOAD:
   case ISD::STORE:
-    assert((Subtarget->systemSupportsUnalignedAccess() ||
-            cast<MemSDNode>(Node)->getMemoryVT().getSizeInBits() / 8 <=
-            cast<MemSDNode>(Node)->getAlignment()) &&
+    assert(cast<MemSDNode>(Node)->getMemoryVT().getSizeInBits() / 8 <=
+           cast<MemSDNode>(Node)->getAlignment() &&
            "Unexpected unaligned loads/stores.");
     break;
 #endif
@@ -215,7 +206,7 @@ SDNode* MipsDAGToDAGISel::Select(SDNode *Node) {
   SDNode *ResNode = SelectCode(Node);
 
   DEBUG(errs() << "=> ");
-  if (ResNode == nullptr || ResNode == Node)
+  if (ResNode == NULL || ResNode == Node)
     DEBUG(Node->dump(CurDAG));
   else
     DEBUG(ResNode->dump(CurDAG));

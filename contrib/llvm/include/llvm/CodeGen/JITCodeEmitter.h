@@ -51,7 +51,7 @@ class Function;
 /// occurred, more memory is allocated, and we reemit the code into it.
 /// 
 class JITCodeEmitter : public MachineCodeEmitter {
-  void anchor() override;
+  virtual void anchor();
 public:
   virtual ~JITCodeEmitter() {}
 
@@ -59,15 +59,15 @@ public:
   /// about to be code generated.  This initializes the BufferBegin/End/Ptr
   /// fields.
   ///
-  void startFunction(MachineFunction &F) override = 0;
+  virtual void startFunction(MachineFunction &F) = 0;
 
   /// finishFunction - This callback is invoked when the specified function has
   /// finished code generation.  If a buffer overflow has occurred, this method
   /// returns true (the callee is required to try again), otherwise it returns
   /// false.
   ///
-  bool finishFunction(MachineFunction &F) override = 0;
-
+  virtual bool finishFunction(MachineFunction &F) = 0;
+  
   /// allocIndirectGV - Allocates and fills storage for an indirect
   /// GlobalValue, and returns the address.
   virtual void *allocIndirectGV(const GlobalValue *GV,
@@ -248,19 +248,19 @@ public:
   
   
   /// emitLabel - Emits a label
-  void emitLabel(MCSymbol *Label) override = 0;
+  virtual void emitLabel(MCSymbol *Label) = 0;
 
   /// allocateSpace - Allocate a block of space in the current output buffer,
   /// returning null (and setting conditions to indicate buffer overflow) on
   /// failure.  Alignment is the alignment in bytes of the buffer desired.
-  void *allocateSpace(uintptr_t Size, unsigned Alignment) override {
+  virtual void *allocateSpace(uintptr_t Size, unsigned Alignment) {
     emitAlignment(Alignment);
     void *Result;
     
     // Check for buffer overflow.
     if (Size >= (uintptr_t)(BufferEnd-CurBufferPtr)) {
       CurBufferPtr = BufferEnd;
-      Result = nullptr;
+      Result = 0;
     } else {
       // Allocate the space.
       Result = CurBufferPtr;
@@ -278,18 +278,18 @@ public:
   /// StartMachineBasicBlock - This should be called by the target when a new
   /// basic block is about to be emitted.  This way the MCE knows where the
   /// start of the block is, and can implement getMachineBasicBlockAddress.
-  void StartMachineBasicBlock(MachineBasicBlock *MBB) override = 0;
-
+  virtual void StartMachineBasicBlock(MachineBasicBlock *MBB) = 0;
+  
   /// getCurrentPCValue - This returns the address that the next emitted byte
   /// will be output to.
   ///
-  uintptr_t getCurrentPCValue() const override {
+  virtual uintptr_t getCurrentPCValue() const {
     return (uintptr_t)CurBufferPtr;
   }
 
   /// getCurrentPCOffset - Return the offset from the start of the emitted
   /// buffer that we are currently writing to.
-  uintptr_t getCurrentPCOffset() const override {
+  uintptr_t getCurrentPCOffset() const {
     return CurBufferPtr-BufferBegin;
   }
 
@@ -298,45 +298,42 @@ public:
   /// creates jump tables or constant pools in memory on the fly while the
   /// object code emitters rely on a linker to have real addresses and should
   /// use relocations instead.
-  bool earlyResolveAddresses() const override { return true; }
+  bool earlyResolveAddresses() const { return true; }
 
   /// addRelocation - Whenever a relocatable address is needed, it should be
   /// noted with this interface.
-  void addRelocation(const MachineRelocation &MR) override = 0;
-
+  virtual void addRelocation(const MachineRelocation &MR) = 0;
+  
   /// FIXME: These should all be handled with relocations!
   
   /// getConstantPoolEntryAddress - Return the address of the 'Index' entry in
   /// the constant pool that was last emitted with the emitConstantPool method.
   ///
-  uintptr_t getConstantPoolEntryAddress(unsigned Index) const override = 0;
+  virtual uintptr_t getConstantPoolEntryAddress(unsigned Index) const = 0;
 
   /// getJumpTableEntryAddress - Return the address of the jump table with index
   /// 'Index' in the function that last called initJumpTableInfo.
   ///
-  uintptr_t getJumpTableEntryAddress(unsigned Index) const override = 0;
-
+  virtual uintptr_t getJumpTableEntryAddress(unsigned Index) const = 0;
+  
   /// getMachineBasicBlockAddress - Return the address of the specified
   /// MachineBasicBlock, only usable after the label for the MBB has been
   /// emitted.
   ///
-  uintptr_t
-    getMachineBasicBlockAddress(MachineBasicBlock *MBB) const override = 0;
+  virtual uintptr_t getMachineBasicBlockAddress(MachineBasicBlock *MBB) const= 0;
 
   /// getLabelAddress - Return the address of the specified Label, only usable
   /// after the Label has been emitted.
   ///
-  uintptr_t getLabelAddress(MCSymbol *Label) const override = 0;
-
+  virtual uintptr_t getLabelAddress(MCSymbol *Label) const = 0;
+  
   /// Specifies the MachineModuleInfo object. This is used for exception handling
   /// purposes.
-  void setModuleInfo(MachineModuleInfo* Info) override = 0;
+  virtual void setModuleInfo(MachineModuleInfo* Info) = 0;
 
   /// getLabelLocations - Return the label locations map of the label IDs to
   /// their address.
-  virtual DenseMap<MCSymbol*, uintptr_t> *getLabelLocations() {
-    return nullptr;
-  }
+  virtual DenseMap<MCSymbol*, uintptr_t> *getLabelLocations() { return 0; }
 };
 
 } // End llvm namespace

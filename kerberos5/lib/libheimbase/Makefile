@@ -2,7 +2,7 @@
 
 LIB=	heimbase
 LDFLAGS=	-Wl,--no-undefined
-LIBADD=	pthread
+LDADD=	-lpthread
 VERSION_MAP= ${KRB5DIR}/base/version-script.map
 
 INCS=	heimbase.h

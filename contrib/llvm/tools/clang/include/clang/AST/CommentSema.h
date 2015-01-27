@@ -84,8 +84,8 @@ public:
       T *Mem = Allocator.Allocate<T>(Size);
       std::uninitialized_copy(Source.begin(), Source.end(), Mem);
       return llvm::makeArrayRef(Mem, Size);
-    }
-    return ArrayRef<T>();
+    } else
+      return llvm::makeArrayRef(static_cast<T *>(NULL), 0);
   }
 
   ParagraphComment *actOnParagraphComment(

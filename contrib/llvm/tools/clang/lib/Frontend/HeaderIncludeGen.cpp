@@ -40,24 +40,23 @@ public:
       delete OutputFile;
   }
 
-  void FileChanged(SourceLocation Loc, FileChangeReason Reason,
-                   SrcMgr::CharacteristicKind FileType,
-                   FileID PrevFID) override;
+  virtual void FileChanged(SourceLocation Loc, FileChangeReason Reason,
+                           SrcMgr::CharacteristicKind FileType,
+                           FileID PrevFID);
 };
 }
 
 void clang::AttachHeaderIncludeGen(Preprocessor &PP, bool ShowAllHeaders,
                                    StringRef OutputPath, bool ShowDepth,
                                    bool MSStyle) {
-  raw_ostream *OutputFile = MSStyle ? &llvm::outs() : &llvm::errs();
+  raw_ostream *OutputFile = &llvm::errs();
   bool OwnsOutputFile = false;
 
   // Open the output file, if used.
   if (!OutputPath.empty()) {
     std::string Error;
     llvm::raw_fd_ostream *OS = new llvm::raw_fd_ostream(
-        OutputPath.str().c_str(), Error,
-        llvm::sys::fs::F_Append | llvm::sys::fs::F_Text);
+        OutputPath.str().c_str(), Error, llvm::sys::fs::F_Append);
     if (!Error.empty()) {
       PP.getDiagnostics().Report(
         clang::diag::warn_fe_cc_print_header_failure) << Error;
@@ -131,6 +130,5 @@ void HeaderIncludesCallback::FileChanged(SourceLocation Loc,
     Msg += '\n';
 
     OutputFile->write(Msg.data(), Msg.size());
-    OutputFile->flush();
   }
 }

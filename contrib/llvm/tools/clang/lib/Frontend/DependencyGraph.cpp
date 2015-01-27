@@ -46,13 +46,17 @@ public:
                           StringRef SysRoot)
     : PP(_PP), OutputFile(OutputFile.str()), SysRoot(SysRoot.str()) { }
 
-  void InclusionDirective(SourceLocation HashLoc, const Token &IncludeTok,
-                          StringRef FileName, bool IsAngled,
-                          CharSourceRange FilenameRange, const FileEntry *File,
-                          StringRef SearchPath, StringRef RelativePath,
-                          const Module *Imported) override;
+  virtual void InclusionDirective(SourceLocation HashLoc,
+                                  const Token &IncludeTok,
+                                  StringRef FileName,
+                                  bool IsAngled,
+                                  CharSourceRange FilenameRange,
+                                  const FileEntry *File,
+                                  StringRef SearchPath,
+                                  StringRef RelativePath,
+                                  const Module *Imported);
 
-  void EndOfMainFile() override {
+  virtual void EndOfMainFile() {
     OutputGraphFile();
   }
   
@@ -79,7 +83,7 @@ void DependencyGraphCallback::InclusionDirective(SourceLocation HashLoc,
   SourceManager &SM = PP->getSourceManager();
   const FileEntry *FromFile
     = SM.getFileEntryForID(SM.getFileID(SM.getExpansionLoc(HashLoc)));
-  if (!FromFile)
+  if (FromFile == 0) 
     return;
 
   Dependencies[FromFile].push_back(File);
@@ -97,7 +101,7 @@ DependencyGraphCallback::writeNodeReference(raw_ostream &OS,
 
 void DependencyGraphCallback::OutputGraphFile() {
   std::string Err;
-  llvm::raw_fd_ostream OS(OutputFile.c_str(), Err, llvm::sys::fs::F_Text);
+  llvm::raw_fd_ostream OS(OutputFile.c_str(), Err);
   if (!Err.empty()) {
     PP->getDiagnostics().Report(diag::err_fe_error_opening)
       << OutputFile << Err;

@@ -8,7 +8,8 @@ PROG=		ipsend
 SRCS=		ipsend.c ip.c ipsopt.c iplang_y.c iplang_l.l sbpf.c \
 		sock.c 44arp.c
 MAN=		ipsend.1 ipsend.5
-LIBADD+=	l
+DPADD+=		${LIBL}
+LDADD+=		-ll
 
 CFLAGS+=	-I${NETBSDSRCDIR}/dist/ipf/ipsend
 CFLAGS+=	-I${NETBSDSRCDIR}/dist/ipf/iplang

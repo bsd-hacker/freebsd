@@ -13,16 +13,19 @@ YFLAGS=
 WARNS?=	2
 WFORMAT=0
 
-LIBADD=	util crypt
+DPADD=	${LIBUTIL} ${LIBCRYPT}
+LDADD=	-lutil -lcrypt
 
 # XXX Kluge! Conversation mechanism needs to be fixed.
-LIBADD+=	opie md
+DPADD+=	${LIBOPIE} ${LIBMD}
+LDADD+=	-lopie -lmd
 
 LSDIR=	../../bin/ls
 .PATH:	${.CURDIR}/${LSDIR}
 SRCS+=	ls.c cmp.c print.c util.c
 CFLAGS+=-Dmain=ls_main -I${.CURDIR}/${LSDIR}
-LIBADD+=	m
+DPADD+=	${LIBM}
+LDADD+=	-lm
 
 .if ${MK_INET6_SUPPORT} != "no"
 CFLAGS+=-DINET6
@@ -30,7 +33,8 @@ CFLAGS+=-DINET6
 
 .if ${MK_PAM_SUPPORT} != "no"
 CFLAGS+=-DUSE_PAM
-LIBADD+=	pam
+DPADD+= ${LIBPAM}
+LDADD+= ${MINUSLPAM}
 .endif
 
 .include <bsd.prog.mk>

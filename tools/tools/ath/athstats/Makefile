@@ -23,7 +23,8 @@ CFLAGS+=-DATH_SUPPORT_TDMA
 
 CFLAGS.clang+= -fbracket-depth=512
 
-LIBADD=	bsdstat
+USEPRIVATELIB=
+LDADD=	-lbsdstat
 
 opt_ah.h:
 	echo "#define AH_DEBUG 1" > opt_ah.h

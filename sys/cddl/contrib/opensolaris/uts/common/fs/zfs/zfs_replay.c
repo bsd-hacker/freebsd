@@ -820,7 +820,7 @@ top:
 static int
 zfs_replay_truncate(zfsvfs_t *zfsvfs, lr_truncate_t *lr, boolean_t byteswap)
 {
-#ifdef illumos
+#ifdef sun
 	znode_t *zp;
 	flock64_t fl;
 	int error;
@@ -843,10 +843,10 @@ zfs_replay_truncate(zfsvfs_t *zfsvfs, lr_truncate_t *lr, boolean_t byteswap)
 	VN_RELE(ZTOV(zp));
 
 	return (error);
-#else
+#else	/* !sun */
 	ZFS_LOG(0, "Unexpected code path, report to pjd@FreeBSD.org");
 	return (EOPNOTSUPP);
-#endif
+#endif	/* !sun */
 }
 
 static int

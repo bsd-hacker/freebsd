@@ -1,13 +1,9 @@
 /*
- * Copyright (c) 2014 The FreeBSD Foundation.
  * Copyright (C) 2005 David Xu <davidxu@freebsd.org>.
  * Copyright (c) 2003 Daniel Eischen <deischen@freebsd.org>.
  * Copyright (C) 2000 Jason Evans <jasone@freebsd.org>.
  * All rights reserved.
  * 
- * Portions of this software were developed by Konstantin Belousov
- * under sponsorship from the FreeBSD Foundation.
- *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -31,6 +27,8 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
 /*
@@ -63,9 +61,6 @@
  *
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "namespace.h"
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -92,15 +87,85 @@ __FBSDID("$FreeBSD$");
 #include <pthread.h>
 #include "un-namespace.h"
 
-#include "libc_private.h"
 #include "thr_private.h"
 
-#ifdef SYSCALL_COMPAT
-extern int __fcntl_compat(int, int, ...);
-#endif
+extern int	__creat(const char *, mode_t);
+extern int	__pselect(int, fd_set *, fd_set *, fd_set *,
+			const struct timespec *, const sigset_t *);
+extern unsigned	__sleep(unsigned int);
+extern int	__system(const char *);
+extern int	__tcdrain(int);
+extern int	__usleep(useconds_t);
+extern pid_t	__wait(int *);
+extern pid_t	__waitpid(pid_t, int *, int);
+extern int	__sys_aio_suspend(const struct aiocb * const[], int,
+			const struct timespec *);
+extern int	__sys_accept(int, struct sockaddr *, socklen_t *);
+extern int	__sys_accept4(int, struct sockaddr *, socklen_t *, int);
+extern int	__sys_connect(int, const struct sockaddr *, socklen_t);
+extern int	__sys_fsync(int);
+extern int	__sys_msync(void *, size_t, int);
+extern int	__sys_pselect(int, fd_set *, fd_set *, fd_set *,
+			const struct timespec *, const sigset_t *);
+extern int	__sys_poll(struct pollfd *, unsigned, int);
+extern ssize_t	__sys_recv(int, void *, size_t, int);
+extern ssize_t	__sys_recvfrom(int, void *, size_t, int, struct sockaddr *, socklen_t *);
+extern ssize_t	__sys_recvmsg(int, struct msghdr *, int);
+extern int	__sys_select(int, fd_set *, fd_set *, fd_set *, struct timeval *);
+extern int	__sys_sendfile(int, int, off_t, size_t, struct sf_hdtr *,
+			off_t *, int);
+extern ssize_t	__sys_sendmsg(int, const struct msghdr *, int);
+extern ssize_t	__sys_sendto(int, const void *,size_t, int, const struct sockaddr *, socklen_t);
+extern ssize_t	__sys_readv(int, const struct iovec *, int);
+extern pid_t	__sys_wait4(pid_t, int *, int, struct rusage *);
+extern ssize_t	__sys_writev(int, const struct iovec *, int);
 
-static int
-__thr_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+int	___creat(const char *, mode_t);
+int	___pselect(int, fd_set *, fd_set *, fd_set *, 
+		const struct timespec *, const sigset_t *);
+unsigned	___sleep(unsigned);
+int	___system(const char *);
+int	___tcdrain(int);
+int	___usleep(useconds_t useconds);
+pid_t	___wait(int *);
+pid_t	___waitpid(pid_t, int *, int);
+int	__accept(int, struct sockaddr *, socklen_t *);
+int	__accept4(int, struct sockaddr *, socklen_t *, int);
+int	__aio_suspend(const struct aiocb * const iocbs[], int,
+		const struct timespec *);
+int	__close(int);
+int	__connect(int, const struct sockaddr *, socklen_t);
+int	__fcntl(int, int,...);
+#ifdef SYSCALL_COMPAT
+extern int __fcntl_compat(int, int,...);
+#endif
+int	__fsync(int);
+int	__msync(void *, size_t, int);
+int	__nanosleep(const struct timespec *, struct timespec *);
+int	__open(const char *, int,...);
+int	__openat(int, const char *, int,...);
+int	__poll(struct pollfd *, unsigned int, int);
+ssize_t	__read(int, void *buf, size_t);
+ssize_t	__readv(int, const struct iovec *, int);
+ssize_t	__recvfrom(int, void *, size_t, int f, struct sockaddr *, socklen_t *);
+ssize_t	__recvmsg(int, struct msghdr *, int);
+int	__select(int, fd_set *, fd_set *, fd_set *, struct timeval *);
+ssize_t	__sendmsg(int, const struct msghdr *, int);
+ssize_t	__sendto(int, const void *, size_t, int,
+		const struct sockaddr *, socklen_t);
+pid_t	__wait3(int *, int, struct rusage *);
+pid_t	__wait4(pid_t, int *, int, struct rusage *);
+ssize_t	__write(int, const void *, size_t);
+ssize_t	__writev(int, const struct iovec *, int);
+
+__weak_reference(__accept, accept);
+
+/*
+ * Cancellation behavior:
+ *   If thread is canceled, no socket is created.
+ */
+int
+__accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 {
 	struct pthread *curthread;
 	int ret;
@@ -113,12 +178,14 @@ __thr_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
  	return (ret);
 }
 
+__weak_reference(__accept4, accept4);
+
 /*
  * Cancellation behavior:
  *   If thread is canceled, no socket is created.
  */
-static int
-__thr_accept4(int s, struct sockaddr *addr, socklen_t *addrlen, int flags)
+int
+__accept4(int s, struct sockaddr *addr, socklen_t *addrlen, int flags)
 {
 	struct pthread *curthread;
 	int ret;
@@ -131,20 +198,23 @@ __thr_accept4(int s, struct sockaddr *addr, socklen_t *addrlen, int flags)
  	return (ret);
 }
 
-static int
-__thr_aio_suspend(const struct aiocb * const iocbs[], int niocb, const struct
+__weak_reference(__aio_suspend, aio_suspend);
+
+int
+__aio_suspend(const struct aiocb * const iocbs[], int niocb, const struct
     timespec *timeout)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	int ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_aio_suspend(iocbs, niocb, timeout);
 	_thr_cancel_leave(curthread, 1);
 
 	return (ret);
 }
+
+__weak_reference(__close, close);
 
 /*
  * Cancellation behavior:
@@ -153,13 +223,12 @@ __thr_aio_suspend(const struct aiocb * const iocbs[], int niocb, const struct
  *   descriptor is always deleted despite whether the thread is canceled
  *   or not.
  */
-static int
-__thr_close(int fd)
+int
+__close(int fd)
 {
-	struct pthread *curthread;
-	int ret;
+	struct pthread	*curthread = _get_curthread();
+	int	ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter2(curthread, 0);
 	ret = __sys_close(fd);
 	_thr_cancel_leave(curthread, 1);
@@ -167,23 +236,45 @@ __thr_close(int fd)
 	return (ret);
 }
 
+__weak_reference(__connect, connect);
+
 /*
  * Cancellation behavior:
  *   If the thread is canceled, connection is not made.
  */
-static int
-__thr_connect(int fd, const struct sockaddr *name, socklen_t namelen)
+int
+__connect(int fd, const struct sockaddr *name, socklen_t namelen)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	int ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_connect(fd, name, namelen);
 	_thr_cancel_leave(curthread, ret == -1);
 
  	return (ret);
 }
+
+__weak_reference(___creat, creat);
+
+/*
+ * Cancellation behavior:
+ *   If thread is canceled, file is not created.
+ */
+int
+___creat(const char *path, mode_t mode)
+{
+	struct pthread *curthread = _get_curthread();
+	int ret;
+
+	_thr_cancel_enter(curthread);
+	ret = __creat(path, mode);
+	_thr_cancel_leave(curthread, ret == -1);
+	
+	return ret;
+}
+
+__weak_reference(__fcntl, fcntl);
 
 /*
  * Cancellation behavior:
@@ -192,14 +283,13 @@ __thr_connect(int fd, const struct sockaddr *name, socklen_t namelen)
  *   is failure, this means the function does not generate side effect
  *   if it is canceled.
  */
-static int
-__thr_fcntl(int fd, int cmd, ...)
+int
+__fcntl(int fd, int cmd,...)
 {
-	struct pthread *curthread;
-	int ret;
+	struct pthread *curthread = _get_curthread();
+	int	ret;
 	va_list	ap;
 
-	curthread = _get_curthread();
 	va_start(ap, cmd);
 	if (cmd == F_OSETLKW || cmd == F_SETLKW) {
 		_thr_cancel_enter(curthread);
@@ -221,17 +311,18 @@ __thr_fcntl(int fd, int cmd, ...)
 	return (ret);
 }
 
+__weak_reference(__fsync, fsync);
+
 /*
  * Cancellation behavior:
  *   Thread may be canceled after system call.
  */
-static int
-__thr_fsync(int fd)
+int
+__fsync(int fd)
 {
-	struct pthread *curthread;
-	int ret;
+	struct pthread *curthread = _get_curthread();
+	int	ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter2(curthread, 0);
 	ret = __sys_fsync(fd);
 	_thr_cancel_leave(curthread, 1);
@@ -239,32 +330,34 @@ __thr_fsync(int fd)
 	return (ret);
 }
 
+__weak_reference(__msync, msync);
+
 /*
  * Cancellation behavior:
  *   Thread may be canceled after system call.
  */
-static int
-__thr_msync(void *addr, size_t len, int flags)
+int
+__msync(void *addr, size_t len, int flags)
 {
-	struct pthread *curthread;
-	int ret;
+	struct pthread *curthread = _get_curthread();
+	int	ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter2(curthread, 0);
 	ret = __sys_msync(addr, len, flags);
 	_thr_cancel_leave(curthread, 1);
 
-	return (ret);
+	return ret;
 }
 
-static int
-__thr_nanosleep(const struct timespec *time_to_sleep,
+__weak_reference(__nanosleep, nanosleep);
+
+int
+__nanosleep(const struct timespec *time_to_sleep,
     struct timespec *time_remaining)
 {
-	struct pthread *curthread;
-	int ret;
+	struct pthread *curthread = _get_curthread();
+	int		ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_nanosleep(time_to_sleep, time_remaining);
 	_thr_cancel_leave(curthread, 1);
@@ -272,68 +365,99 @@ __thr_nanosleep(const struct timespec *time_to_sleep,
 	return (ret);
 }
 
+__weak_reference(__open, open);
+
 /*
  * Cancellation behavior:
  *   If the thread is canceled, file is not opened.
  */
-static int
-__thr_openat(int fd, const char *path, int flags, ...)
+int
+__open(const char *path, int flags,...)
 {
-	struct pthread *curthread;
-	int mode, ret;
+	struct pthread *curthread = _get_curthread();
+	int	ret;
+	int	mode = 0;
 	va_list	ap;
 
-	
 	/* Check if the file is being created: */
-	if ((flags & O_CREAT) != 0) {
+	if (flags & O_CREAT) {
 		/* Get the creation mode: */
 		va_start(ap, flags);
 		mode = va_arg(ap, int);
 		va_end(ap);
-	} else {
-		mode = 0;
 	}
 	
-	curthread = _get_curthread();
+	_thr_cancel_enter(curthread);
+	ret = __sys_open(path, flags, mode);
+	_thr_cancel_leave(curthread, ret == -1);
+
+	return ret;
+}
+
+__weak_reference(__openat, openat);
+
+/*
+ * Cancellation behavior:
+ *   If the thread is canceled, file is not opened.
+ */
+int
+__openat(int fd, const char *path, int flags, ...)
+{
+	struct pthread *curthread = _get_curthread();
+	int	ret;
+	int	mode = 0;
+	va_list	ap;
+
+	
+	/* Check if the file is being created: */
+	if (flags & O_CREAT) {
+		/* Get the creation mode: */
+		va_start(ap, flags);
+		mode = va_arg(ap, int);
+		va_end(ap);
+	}
+	
 	_thr_cancel_enter(curthread);
 	ret = __sys_openat(fd, path, flags, mode);
 	_thr_cancel_leave(curthread, ret == -1);
 
-	return (ret);
+	return ret;
 }
+
+__weak_reference(__poll, poll);
 
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call returns something,
  *   the thread is not canceled.
  */
-static int
-__thr_poll(struct pollfd *fds, unsigned int nfds, int timeout)
+int
+__poll(struct pollfd *fds, unsigned int nfds, int timeout)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	int ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_poll(fds, nfds, timeout);
 	_thr_cancel_leave(curthread, ret == -1);
 
-	return (ret);
+	return ret;
 }
+
+__weak_reference(___pselect, pselect);
 
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call returns something,
  *   the thread is not canceled.
  */
-static int
-__thr_pselect(int count, fd_set *rfds, fd_set *wfds, fd_set *efds, 
+int 
+___pselect(int count, fd_set *rfds, fd_set *wfds, fd_set *efds, 
 	const struct timespec *timo, const sigset_t *mask)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	int ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_pselect(count, rfds, wfds, efds, timo, mask);
 	_thr_cancel_leave(curthread, ret == -1);
@@ -341,264 +465,321 @@ __thr_pselect(int count, fd_set *rfds, fd_set *wfds, fd_set *efds,
 	return (ret);
 }
 
+__weak_reference(__read, read);
+
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call got some data, 
  *   the thread is not canceled.
  */
-static ssize_t
-__thr_read(int fd, void *buf, size_t nbytes)
+ssize_t
+__read(int fd, void *buf, size_t nbytes)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	ssize_t	ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_read(fd, buf, nbytes);
 	_thr_cancel_leave(curthread, ret == -1);
 
-	return (ret);
+	return ret;
 }
+
+__weak_reference(__readv, readv);
 
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call got some data, 
  *   the thread is not canceled.
  */
-static ssize_t
-__thr_readv(int fd, const struct iovec *iov, int iovcnt)
+ssize_t
+__readv(int fd, const struct iovec *iov, int iovcnt)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	ssize_t ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_readv(fd, iov, iovcnt);
 	_thr_cancel_leave(curthread, ret == -1);
-	return (ret);
+	return ret;
 }
+
+__weak_reference(__recvfrom, recvfrom);
 
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call got some data, 
  *   the thread is not canceled.
  */
-static ssize_t
-__thr_recvfrom(int s, void *b, size_t l, int f, struct sockaddr *from,
+ssize_t
+__recvfrom(int s, void *b, size_t l, int f, struct sockaddr *from,
     socklen_t *fl)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	ssize_t ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_recvfrom(s, b, l, f, from, fl);
 	_thr_cancel_leave(curthread, ret == -1);
 	return (ret);
 }
 
+__weak_reference(__recvmsg, recvmsg);
+
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call got some data, 
  *   the thread is not canceled.
  */
-static ssize_t
-__thr_recvmsg(int s, struct msghdr *m, int f)
+ssize_t
+__recvmsg(int s, struct msghdr *m, int f)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	ssize_t ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_recvmsg(s, m, f);
 	_thr_cancel_leave(curthread, ret == -1);
 	return (ret);
 }
 
+__weak_reference(__select, select);
+
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call returns something,
  *   the thread is not canceled.
  */
-static int 
-__thr_select(int numfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+int 
+__select(int numfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 	struct timeval *timeout)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	int ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_select(numfds, readfds, writefds, exceptfds, timeout);
 	_thr_cancel_leave(curthread, ret == -1);
-	return (ret);
+	return ret;
 }
+
+__weak_reference(__sendmsg, sendmsg);
 
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call sent
  *   data, the thread is not canceled.
  */
-static ssize_t
-__thr_sendmsg(int s, const struct msghdr *m, int f)
+ssize_t
+__sendmsg(int s, const struct msghdr *m, int f)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	ssize_t ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_sendmsg(s, m, f);
 	_thr_cancel_leave(curthread, ret <= 0);
 	return (ret);
 }
 
+__weak_reference(__sendto, sendto);
+
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call sent some
  *   data, the thread is not canceled.
  */
-static ssize_t
-__thr_sendto(int s, const void *m, size_t l, int f, const struct sockaddr *t,
+ssize_t
+__sendto(int s, const void *m, size_t l, int f, const struct sockaddr *t,
     socklen_t tl)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	ssize_t ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_sendto(s, m, l, f, t, tl);
 	_thr_cancel_leave(curthread, ret <= 0);
 	return (ret);
 }
 
-static int
-__thr_system(const char *string)
-{
-	struct pthread *curthread;
-	int ret;
+__weak_reference(___sleep, sleep);
 
-	curthread = _get_curthread();
+unsigned int
+___sleep(unsigned int seconds)
+{
+	struct pthread *curthread = _get_curthread();
+	unsigned int	ret;
+
 	_thr_cancel_enter(curthread);
-	ret = __libc_system(string);
+	ret = __sleep(seconds);
 	_thr_cancel_leave(curthread, 1);
+	
 	return (ret);
 }
+
+__weak_reference(___system, system);
+
+int
+___system(const char *string)
+{
+	struct pthread *curthread = _get_curthread();
+	int	ret;
+
+	_thr_cancel_enter(curthread);
+	ret = __system(string);
+	_thr_cancel_leave(curthread, 1);
+	
+	return ret;
+}
+
+__weak_reference(___tcdrain, tcdrain);
 
 /*
  * Cancellation behavior:
  *   If thread is canceled, the system call is not completed,
  *   this means not all bytes were drained.
  */
-static int
-__thr_tcdrain(int fd)
+int
+___tcdrain(int fd)
 {
-	struct pthread *curthread;
-	int ret;
+	struct pthread *curthread = _get_curthread();
+	int	ret;
 	
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
-	ret = __libc_tcdrain(fd);
+	ret = __tcdrain(fd);
 	_thr_cancel_leave(curthread, ret == -1);
 	return (ret);
 }
+
+__weak_reference(___usleep, usleep);
+
+int
+___usleep(useconds_t useconds)
+{
+	struct pthread *curthread = _get_curthread();
+	int		ret;
+
+	_thr_cancel_enter(curthread);
+	ret = __usleep(useconds);
+	_thr_cancel_leave(curthread, 1);
+	
+	return (ret);
+}
+
+__weak_reference(___wait, wait);
 
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the system call returns
  *   a child pid, the thread is not canceled.
  */
-static pid_t
-__thr_wait4(pid_t pid, int *status, int options, struct rusage *rusage)
+pid_t
+___wait(int *istat)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
+	pid_t	ret;
+
+	_thr_cancel_enter(curthread);
+	ret = __wait(istat);
+	_thr_cancel_leave(curthread, ret <= 0);
+
+	return ret;
+}
+
+__weak_reference(__wait3, wait3);
+
+/*
+ * Cancellation behavior:
+ *   Thread may be canceled at start, but if the system call returns
+ *   a child pid, the thread is not canceled.
+ */
+pid_t
+__wait3(int *status, int options, struct rusage *rusage)
+{
+	struct pthread *curthread = _get_curthread();
 	pid_t ret;
 
-	curthread = _get_curthread();
+	_thr_cancel_enter(curthread);
+	ret = _wait4(WAIT_ANY, status, options, rusage);
+	_thr_cancel_leave(curthread, ret <= 0);
+
+	return (ret);
+}
+
+__weak_reference(__wait4, wait4);
+
+/*
+ * Cancellation behavior:
+ *   Thread may be canceled at start, but if the system call returns
+ *   a child pid, the thread is not canceled.
+ */
+pid_t
+__wait4(pid_t pid, int *status, int options, struct rusage *rusage)
+{
+	struct pthread *curthread = _get_curthread();
+	pid_t ret;
+
 	_thr_cancel_enter(curthread);
 	ret = __sys_wait4(pid, status, options, rusage);
 	_thr_cancel_leave(curthread, ret <= 0);
-	return (ret);
+
+	return ret;
 }
+
+__weak_reference(___waitpid, waitpid);
+
+/*
+ * Cancellation behavior:
+ *   Thread may be canceled at start, but if the system call returns
+ *   a child pid, the thread is not canceled.
+ */
+pid_t
+___waitpid(pid_t wpid, int *status, int options)
+{
+	struct pthread *curthread = _get_curthread();
+	pid_t	ret;
+
+	_thr_cancel_enter(curthread);
+	ret = __waitpid(wpid, status, options);
+	_thr_cancel_leave(curthread, ret <= 0);
+	
+	return ret;
+}
+
+__weak_reference(__write, write);
 
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the thread wrote some data,
  *   it is not canceled.
  */
-static ssize_t
-__thr_write(int fd, const void *buf, size_t nbytes)
+ssize_t
+__write(int fd, const void *buf, size_t nbytes)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	ssize_t	ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_write(fd, buf, nbytes);
 	_thr_cancel_leave(curthread, (ret <= 0));
-	return (ret);
+	return ret;
 }
+
+__weak_reference(__writev, writev);
 
 /*
  * Cancellation behavior:
  *   Thread may be canceled at start, but if the thread wrote some data,
  *   it is not canceled.
  */
-static ssize_t
-__thr_writev(int fd, const struct iovec *iov, int iovcnt)
+ssize_t
+__writev(int fd, const struct iovec *iov, int iovcnt)
 {
-	struct pthread *curthread;
+	struct pthread *curthread = _get_curthread();
 	ssize_t ret;
 
-	curthread = _get_curthread();
 	_thr_cancel_enter(curthread);
 	ret = __sys_writev(fd, iov, iovcnt);
 	_thr_cancel_leave(curthread, (ret <= 0));
-	return (ret);
-}
-
-void
-__thr_interpose_libc(void)
-{
-
-	__set_error_selector(__error_threaded);
-#define	SLOT(name)					\
-	*(__libc_interposing_slot(INTERPOS_##name)) =	\
-	    (interpos_func_t)__thr_##name;
-	SLOT(accept);
-	SLOT(accept4);
-	SLOT(aio_suspend);
-	SLOT(close);
-	SLOT(connect);
-	SLOT(fcntl);
-	SLOT(fsync);
-	SLOT(fork);
-	SLOT(msync);
-	SLOT(nanosleep);
-	SLOT(openat);
-	SLOT(poll);
-	SLOT(pselect);
-	SLOT(read);
-	SLOT(readv);
-	SLOT(recvfrom);
-	SLOT(recvmsg);
-	SLOT(select);
-	SLOT(sendmsg);
-	SLOT(sendto);
-	SLOT(setcontext);
-	SLOT(sigaction);
-	SLOT(sigprocmask);
-	SLOT(sigsuspend);
-	SLOT(sigwait);
-	SLOT(sigtimedwait);
-	SLOT(sigwaitinfo);
-	SLOT(swapcontext);
-	SLOT(system);
-	SLOT(tcdrain);
-	SLOT(wait4);
-	SLOT(write);
-	SLOT(writev);
-#undef SLOT
-	*(__libc_interposing_slot(
-	    INTERPOS__pthread_mutex_init_calloc_cb)) =
-	    (interpos_func_t)_pthread_mutex_init_calloc_cb;
+	return ret;
 }

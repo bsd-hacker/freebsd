@@ -73,7 +73,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/malloc.h>
-#include <sys/sbuf.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
@@ -123,31 +122,31 @@ static void tcp_hc_purge(void *);
 static SYSCTL_NODE(_net_inet_tcp, OID_AUTO, hostcache, CTLFLAG_RW, 0,
     "TCP Host cache");
 
-SYSCTL_UINT(_net_inet_tcp_hostcache, OID_AUTO, cachelimit, CTLFLAG_VNET | CTLFLAG_RDTUN,
+SYSCTL_VNET_UINT(_net_inet_tcp_hostcache, OID_AUTO, cachelimit, CTLFLAG_RDTUN,
     &VNET_NAME(tcp_hostcache.cache_limit), 0,
     "Overall entry limit for hostcache");
 
-SYSCTL_UINT(_net_inet_tcp_hostcache, OID_AUTO, hashsize, CTLFLAG_VNET | CTLFLAG_RDTUN,
+SYSCTL_VNET_UINT(_net_inet_tcp_hostcache, OID_AUTO, hashsize, CTLFLAG_RDTUN,
     &VNET_NAME(tcp_hostcache.hashsize), 0,
     "Size of TCP hostcache hashtable");
 
-SYSCTL_UINT(_net_inet_tcp_hostcache, OID_AUTO, bucketlimit,
-    CTLFLAG_VNET | CTLFLAG_RDTUN, &VNET_NAME(tcp_hostcache.bucket_limit), 0,
+SYSCTL_VNET_UINT(_net_inet_tcp_hostcache, OID_AUTO, bucketlimit,
+    CTLFLAG_RDTUN, &VNET_NAME(tcp_hostcache.bucket_limit), 0,
     "Per-bucket hash limit for hostcache");
 
-SYSCTL_UINT(_net_inet_tcp_hostcache, OID_AUTO, count, CTLFLAG_VNET | CTLFLAG_RD,
+SYSCTL_VNET_UINT(_net_inet_tcp_hostcache, OID_AUTO, count, CTLFLAG_RD,
      &VNET_NAME(tcp_hostcache.cache_count), 0,
     "Current number of entries in hostcache");
 
-SYSCTL_INT(_net_inet_tcp_hostcache, OID_AUTO, expire, CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_VNET_INT(_net_inet_tcp_hostcache, OID_AUTO, expire, CTLFLAG_RW,
     &VNET_NAME(tcp_hostcache.expire), 0,
     "Expire time of TCP hostcache entries");
 
-SYSCTL_INT(_net_inet_tcp_hostcache, OID_AUTO, prune, CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_VNET_INT(_net_inet_tcp_hostcache, OID_AUTO, prune, CTLFLAG_RW,
     &VNET_NAME(tcp_hostcache.prune), 0,
     "Time between purge runs");
 
-SYSCTL_INT(_net_inet_tcp_hostcache, OID_AUTO, purge, CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_VNET_INT(_net_inet_tcp_hostcache, OID_AUTO, purge, CTLFLAG_RW,
     &VNET_NAME(tcp_hostcache.purgeall), 0,
     "Expire all entires on next purge run");
 
@@ -296,7 +295,6 @@ tcp_hc_lookup(struct in_conninfo *inc)
 	 */
 	TAILQ_FOREACH(hc_entry, &hc_head->hch_bucket, rmx_q) {
 		if (inc->inc_flags & INC_ISIPV6) {
-			/* XXX: check ip6_zoneid */
 			if (memcmp(&inc->inc6_faddr, &hc_entry->ip6,
 			    sizeof(inc->inc6_faddr)) == 0)
 				return hc_entry;
@@ -388,10 +386,9 @@ tcp_hc_insert(struct in_conninfo *inc)
 	 * Initialize basic information of hostcache entry.
 	 */
 	bzero(hc_entry, sizeof(*hc_entry));
-	if (inc->inc_flags & INC_ISIPV6) {
-		hc_entry->ip6 = inc->inc6_faddr;
-		hc_entry->ip6_zoneid = inc->inc6_zoneid;
-	} else
+	if (inc->inc_flags & INC_ISIPV6)
+		bcopy(&inc->inc6_faddr, &hc_entry->ip6, sizeof(hc_entry->ip6));
+	else
 		hc_entry->ip4 = inc->inc_faddr;
 	hc_entry->rmx_head = hc_head;
 	hc_entry->rmx_expire = V_tcp_hostcache.expire;
@@ -596,27 +593,30 @@ tcp_hc_update(struct in_conninfo *inc, struct hc_metrics_lite *hcml)
 static int
 sysctl_tcp_hc_list(SYSCTL_HANDLER_ARGS)
 {
+	int bufsize;
 	int linesize = 128;
-	struct sbuf sb;
-	int i, error;
+	char *p, *buf;
+	int len, i, error;
 	struct hc_metrics *hc_entry;
 #ifdef INET6
 	char ip6buf[INET6_ADDRSTRLEN];
 #endif
 
-	sbuf_new(&sb, NULL, linesize * (V_tcp_hostcache.cache_count + 1),
-	    SBUF_FIXEDLEN);
+	bufsize = linesize * (V_tcp_hostcache.cache_count + 1);
 
-	sbuf_printf(&sb,
-	        "\nIP address        MTU  SSTRESH      RTT   RTTVAR BANDWIDTH "
+	p = buf = (char *)malloc(bufsize, M_TEMP, M_WAITOK|M_ZERO);
+
+	len = snprintf(p, linesize,
+		"\nIP address        MTU  SSTRESH      RTT   RTTVAR BANDWIDTH "
 		"    CWND SENDPIPE RECVPIPE HITS  UPD  EXP\n");
+	p += len;
 
 #define msec(u) (((u) + 500) / 1000)
 	for (i = 0; i < V_tcp_hostcache.hashsize; i++) {
 		THC_LOCK(&V_tcp_hostcache.hashbase[i].hch_mtx);
 		TAILQ_FOREACH(hc_entry, &V_tcp_hostcache.hashbase[i].hch_bucket,
 			      rmx_q) {
-			sbuf_printf(&sb,
+			len = snprintf(p, linesize,
 			    "%-15s %5lu %8lu %6lums %6lums %9lu %8lu %8lu %8lu "
 			    "%4lu %4lu %4i\n",
 			    hc_entry->ip4.s_addr ? inet_ntoa(hc_entry->ip4) :
@@ -638,13 +638,13 @@ sysctl_tcp_hc_list(SYSCTL_HANDLER_ARGS)
 			    hc_entry->rmx_hits,
 			    hc_entry->rmx_updates,
 			    hc_entry->rmx_expire);
+			p += len;
 		}
 		THC_UNLOCK(&V_tcp_hostcache.hashbase[i].hch_mtx);
 	}
 #undef msec
-	sbuf_finish(&sb);
-	error = SYSCTL_OUT(req, sbuf_data(&sb), sbuf_len(&sb));
-	sbuf_delete(&sb);
+	error = SYSCTL_OUT(req, buf, p - buf);
+	free(buf, M_TEMP);
 	return(error);
 }
 

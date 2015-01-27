@@ -46,7 +46,7 @@ public:
   /// construct - This should only be called for non-global statistics.
   void construct(const char *name, const char *desc) {
     Name = name; Desc = desc;
-    Value = 0; Initialized = false;
+    Value = 0; Initialized = 0;
   }
 
   // Allow use of this class as the value itself.

@@ -42,9 +42,7 @@ ObjectFile::FindPlugin (const lldb::ModuleSP &module_sp,
         Timer scoped_timer (__PRETTY_FUNCTION__,
                             "ObjectFile::FindPlugin (module = %s, file = %p, file_offset = 0x%8.8" PRIx64 ", file_size = 0x%8.8" PRIx64 ")",
                             module_sp->GetFileSpec().GetPath().c_str(),
-                            static_cast<const void*>(file),
-                            static_cast<uint64_t>(file_offset),
-                            static_cast<uint64_t>(file_size));
+                            file, (uint64_t) file_offset, (uint64_t) file_size);
         if (file)
         {
             FileSpec archive_file;
@@ -59,13 +57,13 @@ ObjectFile::FindPlugin (const lldb::ModuleSP &module_sp,
                 // first
                 if (file_exists && module_sp->GetObjectName())
                 {
-                    for (uint32_t idx = 0; (create_object_container_callback = PluginManager::GetObjectContainerCreateCallbackAtIndex(idx)) != nullptr; ++idx)
+                    for (uint32_t idx = 0; (create_object_container_callback = PluginManager::GetObjectContainerCreateCallbackAtIndex(idx)) != NULL; ++idx)
                     {
                         std::unique_ptr<ObjectContainer> object_container_ap(create_object_container_callback(module_sp, data_sp, data_offset, file, file_offset, file_size));
-
+                        
                         if (object_container_ap.get())
                             object_file_sp = object_container_ap->GetObjectFile(file);
-
+                        
                         if (object_file_sp.get())
                             return object_file_sp;
                     }
@@ -101,13 +99,13 @@ ObjectFile::FindPlugin (const lldb::ModuleSP &module_sp,
                         // from the container plugins since we had a name. Also, don't read
                         // ANY data in case there is data cached in the container plug-ins
                         // (like BSD archives caching the contained objects within an file).
-                        for (uint32_t idx = 0; (create_object_container_callback = PluginManager::GetObjectContainerCreateCallbackAtIndex(idx)) != nullptr; ++idx)
+                        for (uint32_t idx = 0; (create_object_container_callback = PluginManager::GetObjectContainerCreateCallbackAtIndex(idx)) != NULL; ++idx)
                         {
                             std::unique_ptr<ObjectContainer> object_container_ap(create_object_container_callback(module_sp, data_sp, data_offset, file, file_offset, file_size));
-
+                            
                             if (object_container_ap.get())
                                 object_file_sp = object_container_ap->GetObjectFile(file);
-
+                            
                             if (object_file_sp.get())
                                 return object_file_sp;
                         }
@@ -123,7 +121,7 @@ ObjectFile::FindPlugin (const lldb::ModuleSP &module_sp,
                 // Check if this is a normal object file by iterating through
                 // all object file plugin instances.
                 ObjectFileCreateInstance create_object_file_callback;
-                for (uint32_t idx = 0; (create_object_file_callback = PluginManager::GetObjectFileCreateCallbackAtIndex(idx)) != nullptr; ++idx)
+                for (uint32_t idx = 0; (create_object_file_callback = PluginManager::GetObjectFileCreateCallbackAtIndex(idx)) != NULL; ++idx)
                 {
                     object_file_sp.reset (create_object_file_callback(module_sp, data_sp, data_offset, file, file_offset, file_size));
                     if (object_file_sp.get())
@@ -133,7 +131,7 @@ ObjectFile::FindPlugin (const lldb::ModuleSP &module_sp,
                 // Check if this is a object container by iterating through
                 // all object container plugin instances and then trying to get
                 // an object file from the container.
-                for (uint32_t idx = 0; (create_object_container_callback = PluginManager::GetObjectContainerCreateCallbackAtIndex(idx)) != nullptr; ++idx)
+                for (uint32_t idx = 0; (create_object_container_callback = PluginManager::GetObjectContainerCreateCallbackAtIndex(idx)) != NULL; ++idx)
                 {
                     std::unique_ptr<ObjectContainer> object_container_ap(create_object_container_callback(module_sp, data_sp, data_offset, file, file_offset, file_size));
 
@@ -159,26 +157,26 @@ ObjectFile::FindPlugin (const lldb::ModuleSP &module_sp,
                         DataBufferSP &data_sp)
 {
     ObjectFileSP object_file_sp;
-
+    
     if (module_sp)
     {
         Timer scoped_timer (__PRETTY_FUNCTION__,
                             "ObjectFile::FindPlugin (module = %s, process = %p, header_addr = 0x%" PRIx64 ")",
                             module_sp->GetFileSpec().GetPath().c_str(),
-                            static_cast<void*>(process_sp.get()), header_addr);
+                            process_sp.get(), header_addr);
         uint32_t idx;
-
+        
         // Check if this is a normal object file by iterating through
         // all object file plugin instances.
         ObjectFileCreateMemoryInstance create_callback;
-        for (idx = 0; (create_callback = PluginManager::GetObjectFileCreateMemoryCallbackAtIndex(idx)) != nullptr; ++idx)
+        for (idx = 0; (create_callback = PluginManager::GetObjectFileCreateMemoryCallbackAtIndex(idx)) != NULL; ++idx)
         {
             object_file_sp.reset (create_callback(module_sp, data_sp, process_sp, header_addr));
             if (object_file_sp.get())
                 return object_file_sp;
         }
+        
     }
-
     // We didn't find it, so clear our shared pointer in case it
     // contains anything and return an empty shared pointer
     object_file_sp.reset();
@@ -222,14 +220,14 @@ ObjectFile::GetModuleSpecifications (const lldb_private::FileSpec& file,
     ObjectFileGetModuleSpecifications callback;
     uint32_t i;
     // Try the ObjectFile plug-ins
-    for (i = 0; (callback = PluginManager::GetObjectFileGetModuleSpecificationsCallbackAtIndex(i)) != nullptr; ++i)
+    for (i = 0; (callback = PluginManager::GetObjectFileGetModuleSpecificationsCallbackAtIndex(i)) != NULL; ++i)
     {
         if (callback (file, data_sp, data_offset, file_offset, file_size, specs) > 0)
             return specs.GetSize() - initial_count;
     }
 
     // Try the ObjectContainer plug-ins
-    for (i = 0; (callback = PluginManager::GetObjectContainerGetModuleSpecificationsCallbackAtIndex(i)) != nullptr; ++i)
+    for (i = 0; (callback = PluginManager::GetObjectContainerGetModuleSpecificationsCallbackAtIndex(i)) != NULL; ++i)
     {
         if (callback (file, data_sp, data_offset, file_offset, file_size, specs) > 0)
             return specs.GetSize() - initial_count;
@@ -241,7 +239,7 @@ ObjectFile::ObjectFile (const lldb::ModuleSP &module_sp,
                         const FileSpec *file_spec_ptr,
                         lldb::offset_t file_offset,
                         lldb::offset_t length,
-                        const lldb::DataBufferSP& data_sp,
+                        lldb::DataBufferSP& data_sp,
                         lldb::offset_t data_offset
 ) :
     ModuleChild (module_sp),
@@ -263,12 +261,27 @@ ObjectFile::ObjectFile (const lldb::ModuleSP &module_sp,
         m_data.SetData (data_sp, data_offset, length);
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
-        log->Printf ("%p ObjectFile::ObjectFile() module = %p (%s), file = %s, file_offset = 0x%8.8" PRIx64 ", size = %" PRIu64,
-                     static_cast<void*>(this),
-                     static_cast<void*>(module_sp.get()),
-                     module_sp->GetSpecificationDescription().c_str(),
-                     m_file ? m_file.GetPath().c_str() : "<NULL>",
-                     m_file_offset, m_length);
+    {
+        if (m_file)
+        {
+            log->Printf ("%p ObjectFile::ObjectFile() module = %p (%s), file = %s, file_offset = 0x%8.8" PRIx64 ", size = %" PRIu64,
+                         this,
+                         module_sp.get(),
+                         module_sp->GetSpecificationDescription().c_str(),
+                         m_file.GetPath().c_str(),
+                         m_file_offset,
+                         m_length);
+        }
+        else
+        {
+            log->Printf ("%p ObjectFile::ObjectFile() module = %p (%s), file = <NULL>, file_offset = 0x%8.8" PRIx64 ", size = %" PRIu64,
+                         this,
+                         module_sp.get(),
+                         module_sp->GetSpecificationDescription().c_str(),
+                         m_file_offset,
+                         m_length);
+        }
+    }
 }
 
 
@@ -293,11 +306,14 @@ ObjectFile::ObjectFile (const lldb::ModuleSP &module_sp,
         m_data.SetData (header_data_sp, 0, header_data_sp->GetByteSize());
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
+    {
         log->Printf ("%p ObjectFile::ObjectFile() module = %p (%s), process = %p, header_addr = 0x%" PRIx64,
-                     static_cast<void*>(this),
-                     static_cast<void*>(module_sp.get()),
+                     this,
+                     module_sp.get(),
                      module_sp->GetSpecificationDescription().c_str(),
-                     static_cast<void*>(process_sp.get()), m_memory_addr);
+                     process_sp.get(),
+                     m_memory_addr);
+    }
 }
 
 
@@ -305,8 +321,7 @@ ObjectFile::~ObjectFile()
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
-        log->Printf ("%p ObjectFile::~ObjectFile ()\n",
-                     static_cast<void*>(this));
+        log->Printf ("%p ObjectFile::~ObjectFile ()\n", this);
 }
 
 bool 
@@ -335,12 +350,9 @@ ObjectFile::GetAddressClass (addr_t file_addr)
                     const SectionType section_type = section_sp->GetType();
                     switch (section_type)
                     {
-                    case eSectionTypeInvalid:
-                        return eAddressClassUnknown;
-                    case eSectionTypeCode:
-                        return eAddressClassCode;
-                    case eSectionTypeContainer:
-                        return eAddressClassUnknown;
+                    case eSectionTypeInvalid:               return eAddressClassUnknown;
+                    case eSectionTypeCode:                  return eAddressClassCode;
+                    case eSectionTypeContainer:             return eAddressClassUnknown;
                     case eSectionTypeData:
                     case eSectionTypeDataCString:
                     case eSectionTypeDataCStringPointers:
@@ -370,18 +382,16 @@ ObjectFile::GetAddressClass (addr_t file_addr)
                     case eSectionTypeDWARFAppleNamespaces:
                     case eSectionTypeDWARFAppleObjC:
                         return eAddressClassDebug;
-                    case eSectionTypeEHFrame:
-                        return eAddressClassRuntime;
+                    case eSectionTypeEHFrame:               return eAddressClassRuntime;
                     case eSectionTypeELFSymbolTable:
                     case eSectionTypeELFDynamicSymbols:
                     case eSectionTypeELFRelocationEntries:
                     case eSectionTypeELFDynamicLinkInfo:
-                    case eSectionTypeOther:
-                        return eAddressClassUnknown;
+                    case eSectionTypeOther:                 return eAddressClassUnknown;
                     }
                 }
             }
-
+            
             const SymbolType symbol_type = symbol->GetType();
             switch (symbol_type)
             {
@@ -439,7 +449,7 @@ ObjectFile::ReadMemory (const ProcessSP &process_sp, lldb::addr_t addr, size_t b
 }
 
 size_t
-ObjectFile::GetData (lldb::offset_t offset, size_t length, DataExtractor &data) const
+ObjectFile::GetData (off_t offset, size_t length, DataExtractor &data) const
 {
     // The entire file has already been mmap'ed into m_data, so just copy from there
     // as the back mmap buffer will be shared with shared pointers.
@@ -447,7 +457,7 @@ ObjectFile::GetData (lldb::offset_t offset, size_t length, DataExtractor &data) 
 }
 
 size_t
-ObjectFile::CopyData (lldb::offset_t offset, size_t length, void *dst) const
+ObjectFile::CopyData (off_t offset, size_t length, void *dst) const
 {
     // The entire file has already been mmap'ed into m_data, so just copy from there
     // Note that the data remains in target byte order.
@@ -456,7 +466,7 @@ ObjectFile::CopyData (lldb::offset_t offset, size_t length, void *dst) const
 
 
 size_t
-ObjectFile::ReadSectionData (const Section *section, lldb::offset_t section_offset, void *dst, size_t dst_len) const
+ObjectFile::ReadSectionData (const Section *section, off_t section_offset, void *dst, size_t dst_len) const
 {
     // If some other objectfile owns this data, pass this to them.
     if (section->GetObjectFile() != this)
@@ -475,11 +485,11 @@ ObjectFile::ReadSectionData (const Section *section, lldb::offset_t section_offs
     }
     else
     {
-        const lldb::offset_t section_file_size = section->GetFileSize();
+        const uint64_t section_file_size = section->GetFileSize();
         if (section_offset < section_file_size)
         {
-            const size_t section_bytes_left = section_file_size - section_offset;
-            size_t section_dst_len = dst_len;
+            const uint64_t section_bytes_left = section_file_size - section_offset;
+            uint64_t section_dst_len = dst_len;
             if (section_dst_len > section_bytes_left)
                 section_dst_len = section_bytes_left;
             return CopyData (section->GetFileOffset() + section_offset, section_dst_len, dst);
@@ -591,9 +601,11 @@ ObjectFile::ClearSymtab ()
         lldb_private::Mutex::Locker locker(module_sp->GetMutex());
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
         if (log)
+        {
             log->Printf ("%p ObjectFile::ClearSymtab () symtab = %p",
-                         static_cast<void*>(this),
-                         static_cast<void*>(m_symtab_ap.get()));
+                         this,
+                         m_symtab_ap.get());
+        }
         m_symtab_ap.reset();
     }
 }
@@ -601,14 +613,11 @@ ObjectFile::ClearSymtab ()
 SectionList *
 ObjectFile::GetSectionList()
 {
-    if (m_sections_ap.get() == nullptr)
+    if (m_sections_ap.get() == NULL)
     {
         ModuleSP module_sp(GetModule());
         if (module_sp)
-        {
-            lldb_private::Mutex::Locker locker(module_sp->GetMutex());
             CreateSections(*module_sp->GetUnifiedSectionList());
-        }
     }
     return m_sections_ap.get();
 }

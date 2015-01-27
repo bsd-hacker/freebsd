@@ -5,7 +5,7 @@
 
 PROG=	lpc
 MAN=	lpc.8
-SRCS=	lpc.c cmds.c cmdtab.c movejobs.c
+SRCS=	lpc.c cmds.c cmdtab.c movejobs.c 
 BINGRP=	daemon
 BINMODE= 2555
 
@@ -13,6 +13,9 @@ CFLAGS+= -I${.CURDIR}/../common_source
 
 WARNS?=	0
 
-LIBADD=	lpr edit
+DPADD=	${LIBLPR} ${LIBEDIT} ${LIBTERMCAP}
+LDADD=	${LIBLPR} -ledit -ltermcap
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

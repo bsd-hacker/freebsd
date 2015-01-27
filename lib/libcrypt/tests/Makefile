@@ -7,6 +7,6 @@ TESTSDIR= ${TESTSBASE}/lib/libcrypt
 ATF_TESTS_C= crypt_tests
 
 CFLAGS+= -I${.CURDIR:H}
-LIBADD=	crypt
+LDADD+= -L${.OBJDIR:H} -lcrypt
 
 .include <bsd.test.mk>

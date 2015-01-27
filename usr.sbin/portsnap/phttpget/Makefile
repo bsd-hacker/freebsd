@@ -1,7 +1,7 @@
 # $FreeBSD$
 
 PROG=	phttpget
-MAN=	phttpget.8
+MAN=
 
 BINDIR=	${LIBEXECDIR}
 

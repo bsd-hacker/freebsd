@@ -754,7 +754,7 @@ lpe_rxintr(struct lpe_softc *sc)
 
 		/* Check received frame for errors */
 		if (hws->lhs_info & LPE_HWDESC_RXERRS) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			lpe_discard_rxbuf(sc, cons);
 			lpe_init_rxbuf(sc, cons);
 			goto skip;
@@ -764,7 +764,7 @@ lpe_rxintr(struct lpe_softc *sc)
 		m->m_pkthdr.rcvif = ifp;
 		m->m_data += 2;
 
-		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		ifp->if_ipackets++;
 
 		lpe_unlock(sc);
 		(*ifp->if_input)(ifp, m);	
@@ -800,12 +800,12 @@ lpe_txintr(struct lpe_softc *sc)
 		bus_dmamap_sync(sc->lpe_cdata.lpe_tx_buf_tag,
 		    txd->lpe_txdesc_dmamap, BUS_DMASYNC_POSTWRITE);
 
-		if_inc_counter(ifp, IFCOUNTER_COLLISIONS, LPE_HWDESC_COLLISIONS(hws->lhs_info));
+		ifp->if_collisions += LPE_HWDESC_COLLISIONS(hws->lhs_info);
 
 		if (hws->lhs_info & LPE_HWDESC_TXERRS)
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 		else
-			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+			ifp->if_opackets++;
 
 		if (txd->lpe_txdesc_first) {
 			bus_dmamap_unload(sc->lpe_cdata.lpe_tx_buf_tag,

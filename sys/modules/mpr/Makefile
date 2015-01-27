@@ -15,3 +15,4 @@ SRCS+=	device_if.h bus_if.h pci_if.h
 CWARNFLAGS.mpr_sas.c=		${NO_WUNNEEDED_INTERNAL_DECL}
 # XXX Work around clang warning, until maintainer approves fix.
 CWARNFLAGS.mpr_mapping.c=	${NO_WSOMETIMES_UNINITIALIZED}
+CWARNFLAGS+=			${CWARNFLAGS.${.IMPSRC:T}}

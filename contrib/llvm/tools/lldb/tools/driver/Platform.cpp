@@ -8,13 +8,16 @@
 //===----------------------------------------------------------------------===//
 
 // this file is only relevant for Visual C++
-#if defined( _WIN32 )
+#if defined( _MSC_VER )
 
 #include <process.h>
 #include <assert.h>
-#include <stdlib.h>
 
 #include "Platform.h"
+
+// index one of the variable arguments
+//  presuming "(EditLine *el, ..." is first in the argument list
+#define GETARG( Y, X ) ( (void* ) *( ( (int**) &(Y) ) + (X) ) )
 
 // the control handler or SIGINT handler
 static sighandler_t _ctrlHandler = NULL;
@@ -39,16 +42,14 @@ ioctl (int d, int request, ...)
     // request the console windows size
     case ( TIOCGWINSZ ):
         {
-            va_list vl;
-            va_start(vl,request);
-	     // locate the window size structure on stack
-	     winsize *ws = va_arg(vl, winsize*);
+            // locate the window size structure on stack
+            winsize *ws = (winsize*) GETARG( d, 2 );
             // get screen buffer information
             CONSOLE_SCREEN_BUFFER_INFO info;
-            if ( GetConsoleScreenBufferInfo( GetStdHandle( STD_OUTPUT_HANDLE ), &info ) == TRUE )
-                // fill in the columns
-                ws->ws_col = info.dwMaximumWindowSize.X;
-            va_end(vl);
+            GetConsoleScreenBufferInfo( GetStdHandle( STD_OUTPUT_HANDLE ), &info );
+            // fill in the columns
+            ws->ws_col = info.dwMaximumWindowSize.X;
+            //
             return 0;
         }
         break;
@@ -84,7 +85,6 @@ tcgetattr (int fildes, struct termios *termios_p)
     return -1;
 }
 
-#ifdef _MSC_VER
 sighandler_t
 signal (int sig, sighandler_t sigFunc)
 {
@@ -107,6 +107,5 @@ signal (int sig, sighandler_t sigFunc)
     }
     return 0;
 }
-#endif
 
 #endif

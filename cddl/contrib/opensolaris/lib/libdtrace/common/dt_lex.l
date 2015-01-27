@@ -23,10 +23,6 @@
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  */
-/*
- * Copyright (c) 2013 by Delphix. All rights reserved.
- * Copyright (c) 2013, Joyent, Inc. All rights reserved.
- */
 
 #include <string.h>
 #include <stdlib.h>
@@ -44,7 +40,7 @@
  * We need to undefine lex's input and unput macros so that references to these
  * call the functions provided at the end of this source file.
  */
-#ifdef illumos
+#if defined(sun)
 #undef input
 #undef unput
 #else
@@ -79,7 +75,7 @@
 #endif
 
 static int id_or_type(const char *);
-#ifdef illumos
+#if defined(sun)
 static int input(void);
 static void unput(int);
 #endif
@@ -97,17 +93,13 @@ static void unput(int);
 %}
 
 %e 1500		/* maximum nodes */
-%p 4900		/* maximum positions */
+%p 3700		/* maximum positions */
 %n 600		/* maximum states */
-%a 3000		/* maximum transitions */
 
 %s S0 S1 S2 S3 S4
 
 RGX_AGG		"@"[a-zA-Z_][0-9a-zA-Z_]*
 RGX_PSPEC	[-$:a-zA-Z_.?*\\\[\]!][-$:0-9a-zA-Z_.`?*\\\[\]!]*
-RGX_ALTIDENT	[a-zA-Z_][0-9a-zA-Z_]*
-RGX_LMID	LM[0-9a-fA-F]+`
-RGX_MOD_IDENT	[a-zA-Z_`][0-9a-z.A-Z_`]*`
 RGX_IDENT	[a-zA-Z_`][0-9a-zA-Z_`]*
 RGX_INT		([0-9]+|0[xX][0-9A-Fa-f]+)[uU]?[lL]?[lL]?
 RGX_FP		([0-9]+("."?)[0-9]*|"."[0-9]+)((e|E)("+"|-)?[0-9]+)?[fFlL]?
@@ -177,7 +169,6 @@ if (yypcb->pcb_token != 0) {
 <S0>typedef	return (DT_KEY_TYPEDEF);
 <S0>union	return (DT_KEY_UNION);
 <S0>unsigned	return (DT_KEY_UNSIGNED);
-<S0>userland	return (DT_KEY_USERLAND);
 <S0>void	return (DT_KEY_VOID);
 <S0>volatile	return (DT_KEY_VOLATILE);
 <S0>while	return (DT_KEY_WHILE);
@@ -356,9 +347,7 @@ if (yypcb->pcb_token != 0) {
 			return (DT_TOK_INT);
 		}
 
-<S0>{RGX_IDENT} |
-<S0>{RGX_MOD_IDENT}{RGX_IDENT} |
-<S0>{RGX_MOD_IDENT} {
+<S0>{RGX_IDENT}	{
 			return (id_or_type(yytext));
 		}
 
@@ -740,7 +729,7 @@ yyinit(dt_pcb_t *pcb)
 	yypcb = pcb;
 	yylineno = 1;
 	yypragma = NULL;
-#ifdef illumos
+#if defined(sun)
 	yysptr = yysbuf;
 #endif
 }
@@ -838,7 +827,7 @@ id_or_type(const char *s)
 	return (ttok);
 }
 
-#ifdef illumos
+#if defined(sun)
 static int
 input(void)
 {
@@ -880,4 +869,4 @@ unput(int c)
 	*yysptr++ = c;
 	yytchar = c;
 }
-#endif /* illumos */
+#endif

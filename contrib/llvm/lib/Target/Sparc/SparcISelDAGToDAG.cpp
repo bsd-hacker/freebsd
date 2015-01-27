@@ -41,7 +41,7 @@ public:
       TM(tm) {
   }
 
-  SDNode *Select(SDNode *N) override;
+  SDNode *Select(SDNode *N);
 
   // Complex Pattern Selectors.
   bool SelectADDRrr(SDValue N, SDValue &R1, SDValue &R2);
@@ -49,11 +49,11 @@ public:
 
   /// SelectInlineAsmMemoryOperand - Implement addressing mode selection for
   /// inline asm expressions.
-  bool SelectInlineAsmMemoryOperand(const SDValue &Op,
-                                    char ConstraintCode,
-                                    std::vector<SDValue> &OutOps) override;
+  virtual bool SelectInlineAsmMemoryOperand(const SDValue &Op,
+                                            char ConstraintCode,
+                                            std::vector<SDValue> &OutOps);
 
-  const char *getPassName() const override {
+  virtual const char *getPassName() const {
     return "SPARC DAG->DAG Pattern Instruction Selection";
   }
 
@@ -143,7 +143,7 @@ SDNode *SparcDAGToDAGISel::Select(SDNode *N) {
   SDLoc dl(N);
   if (N->isMachineOpcode()) {
     N->setNodeId(-1);
-    return nullptr;   // Already selected.
+    return NULL;   // Already selected.
   }
 
   switch (N->getOpcode()) {

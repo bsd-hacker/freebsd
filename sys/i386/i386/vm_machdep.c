@@ -106,10 +106,6 @@ __FBSDID("$FreeBSD$");
 #define	NSFBUFS		(512 + maxusers * 16)
 #endif
 
-#if !defined(CPU_DISABLE_SSE) && defined(I686_CPU)
-#define CPU_ENABLE_SSE
-#endif
-
 _Static_assert(OFFSETOF_CURTHREAD == offsetof(struct pcpu, pc_curthread),
     "OFFSETOF_CURTHREAD does not correspond with offset of pc_curthread.");
 _Static_assert(OFFSETOF_CURPCB == offsetof(struct pcpu, pc_curpcb),
@@ -122,54 +118,40 @@ static u_int	cpu_reset_proxyid;
 static volatile u_int	cpu_reset_proxy_active;
 #endif
 
-union savefpu *
-get_pcb_user_save_td(struct thread *td)
-{
-	vm_offset_t p;
+static int nsfbufs;
+static int nsfbufspeak;
+static int nsfbufsused;
 
-	p = td->td_kstack + td->td_kstack_pages * PAGE_SIZE -
-	    cpu_max_ext_state_size;
-	KASSERT((p % 64) == 0, ("Unaligned pcb_user_save area"));
-	return ((union savefpu *)p);
-}
+SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufs, CTLFLAG_RDTUN, &nsfbufs, 0,
+    "Maximum number of sendfile(2) sf_bufs available");
+SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufspeak, CTLFLAG_RD, &nsfbufspeak, 0,
+    "Number of sendfile(2) sf_bufs at peak usage");
+SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufsused, CTLFLAG_RD, &nsfbufsused, 0,
+    "Number of sendfile(2) sf_bufs in use");
 
-union savefpu *
-get_pcb_user_save_pcb(struct pcb *pcb)
-{
-	vm_offset_t p;
+static void	sf_buf_init(void *arg);
+SYSINIT(sock_sf, SI_SUB_MBUF, SI_ORDER_ANY, sf_buf_init, NULL);
 
-	p = (vm_offset_t)(pcb + 1);
-	return ((union savefpu *)p);
-}
+LIST_HEAD(sf_head, sf_buf);
 
-struct pcb *
-get_pcb_td(struct thread *td)
-{
-	vm_offset_t p;
+/*
+ * A hash table of active sendfile(2) buffers
+ */
+static struct sf_head *sf_buf_active;
+static u_long sf_buf_hashmask;
 
-	p = td->td_kstack + td->td_kstack_pages * PAGE_SIZE -
-	    cpu_max_ext_state_size - sizeof(struct pcb);
-	return ((struct pcb *)p);
-}
+#define	SF_BUF_HASH(m)	(((m) - vm_page_array) & sf_buf_hashmask)
 
-void *
-alloc_fpusave(int flags)
-{
-	void *res;
-#ifdef CPU_ENABLE_SSE
-	struct savefpu_ymm *sf;
-#endif
+static TAILQ_HEAD(, sf_buf) sf_buf_freelist;
+static u_int	sf_buf_alloc_want;
 
-	res = malloc(cpu_max_ext_state_size, M_DEVBUF, flags);
-#ifdef CPU_ENABLE_SSE
-	if (use_xsave) {
-		sf = (struct savefpu_ymm *)res;
-		bzero(&sf->sv_xstate.sx_hd, sizeof(sf->sv_xstate.sx_hd));
-		sf->sv_xstate.sx_hd.xstate_bv = xsave_mask;
-	}
-#endif
-	return (res);
-}
+/*
+ * A lock used to synchronize access to the hash table and free list
+ */
+static struct mtx sf_buf_lock;
+
+extern int	_ucodesel, _udatasel;
+
 /*
  * Finish a fork operation, with process p2 nearly set up.
  * Copy and update the pcb, set up the stack so that the child
@@ -219,16 +201,15 @@ cpu_fork(td1, p2, td2, flags)
 #endif
 
 	/* Point the pcb to the top of the stack */
-	pcb2 = get_pcb_td(td2);
+	pcb2 = (struct pcb *)(td2->td_kstack +
+	    td2->td_kstack_pages * PAGE_SIZE) - 1;
 	td2->td_pcb = pcb2;
 
 	/* Copy td1's pcb */
 	bcopy(td1->td_pcb, pcb2, sizeof(*pcb2));
 
 	/* Properly initialize pcb_save */
-	pcb2->pcb_save = get_pcb_user_save_pcb(pcb2);
-	bcopy(get_pcb_user_save_td(td1), get_pcb_user_save_pcb(pcb2),
-	    cpu_max_ext_state_size);
+	pcb2->pcb_save = &pcb2->pcb_user_save;
 
 	/* Point mdproc and then copy over td1's contents */
 	mdp2 = &p2->p_md;
@@ -405,22 +386,12 @@ cpu_thread_swapout(struct thread *td)
 void
 cpu_thread_alloc(struct thread *td)
 {
-	struct pcb *pcb;
-#ifdef CPU_ENABLE_SSE
-	struct xstate_hdr *xhdr;
-#endif
 
-	td->td_pcb = pcb = get_pcb_td(td);
-	td->td_frame = (struct trapframe *)((caddr_t)pcb - 16) - 1;
-	pcb->pcb_ext = NULL; 
-	pcb->pcb_save = get_pcb_user_save_pcb(pcb);
-#ifdef CPU_ENABLE_SSE
-	if (use_xsave) {
-		xhdr = (struct xstate_hdr *)(pcb->pcb_save + 1);
-		bzero(xhdr, sizeof(*xhdr));
-		xhdr->xstate_bv = xsave_mask;
-	}
-#endif
+	td->td_pcb = (struct pcb *)(td->td_kstack +
+	    td->td_kstack_pages * PAGE_SIZE) - 1;
+	td->td_frame = (struct trapframe *)((caddr_t)td->td_pcb - 16) - 1;
+	td->td_pcb->pcb_ext = NULL; 
+	td->td_pcb->pcb_save = &td->td_pcb->pcb_user_save;
 }
 
 void
@@ -488,9 +459,7 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 	bcopy(td0->td_pcb, pcb2, sizeof(*pcb2));
 	pcb2->pcb_flags &= ~(PCB_NPXINITDONE | PCB_NPXUSERINITDONE |
 	    PCB_KERNNPX);
-	pcb2->pcb_save = get_pcb_user_save_pcb(pcb2);
-	bcopy(get_pcb_user_save_td(td0), pcb2->pcb_save,
-	    cpu_max_ext_state_size);
+	pcb2->pcb_save = &pcb2->pcb_user_save;
 
 	/*
 	 * Create a new fresh stack for the new thread.
@@ -781,12 +750,121 @@ cpu_reset_real()
 }
 
 /*
+ * Allocate a pool of sf_bufs (sendfile(2) or "super-fast" if you prefer. :-))
+ */
+static void
+sf_buf_init(void *arg)
+{
+	struct sf_buf *sf_bufs;
+	vm_offset_t sf_base;
+	int i;
+
+	nsfbufs = NSFBUFS;
+	TUNABLE_INT_FETCH("kern.ipc.nsfbufs", &nsfbufs);
+
+	sf_buf_active = hashinit(nsfbufs, M_TEMP, &sf_buf_hashmask);
+	TAILQ_INIT(&sf_buf_freelist);
+	sf_base = kva_alloc(nsfbufs * PAGE_SIZE);
+	sf_bufs = malloc(nsfbufs * sizeof(struct sf_buf), M_TEMP,
+	    M_NOWAIT | M_ZERO);
+	for (i = 0; i < nsfbufs; i++) {
+		sf_bufs[i].kva = sf_base + i * PAGE_SIZE;
+		TAILQ_INSERT_TAIL(&sf_buf_freelist, &sf_bufs[i], free_entry);
+	}
+	sf_buf_alloc_want = 0;
+	mtx_init(&sf_buf_lock, "sf_buf", NULL, MTX_DEF);
+}
+
+/*
+ * Invalidate the cache lines that may belong to the page, if
+ * (possibly old) mapping of the page by sf buffer exists.  Returns
+ * TRUE when mapping was found and cache invalidated.
+ */
+boolean_t
+sf_buf_invalidate_cache(vm_page_t m)
+{
+	struct sf_head *hash_list;
+	struct sf_buf *sf;
+	boolean_t ret;
+
+	hash_list = &sf_buf_active[SF_BUF_HASH(m)];
+	ret = FALSE;
+	mtx_lock(&sf_buf_lock);
+	LIST_FOREACH(sf, hash_list, list_entry) {
+		if (sf->m == m) {
+			/*
+			 * Use pmap_qenter to update the pte for
+			 * existing mapping, in particular, the PAT
+			 * settings are recalculated.
+			 */
+			pmap_qenter(sf->kva, &m, 1);
+			pmap_invalidate_cache_range(sf->kva, sf->kva +
+			    PAGE_SIZE);
+			ret = TRUE;
+			break;
+		}
+	}
+	mtx_unlock(&sf_buf_lock);
+	return (ret);
+}
+
+/*
  * Get an sf_buf from the freelist.  May block if none are available.
  */
-void
-sf_buf_map(struct sf_buf *sf, int flags)
+struct sf_buf *
+sf_buf_alloc(struct vm_page *m, int flags)
 {
 	pt_entry_t opte, *ptep;
+	struct sf_head *hash_list;
+	struct sf_buf *sf;
+#ifdef SMP
+	cpuset_t other_cpus;
+	u_int cpuid;
+#endif
+	int error;
+
+	KASSERT(curthread->td_pinned > 0 || (flags & SFB_CPUPRIVATE) == 0,
+	    ("sf_buf_alloc(SFB_CPUPRIVATE): curthread not pinned"));
+	hash_list = &sf_buf_active[SF_BUF_HASH(m)];
+	mtx_lock(&sf_buf_lock);
+	LIST_FOREACH(sf, hash_list, list_entry) {
+		if (sf->m == m) {
+			sf->ref_count++;
+			if (sf->ref_count == 1) {
+				TAILQ_REMOVE(&sf_buf_freelist, sf, free_entry);
+				nsfbufsused++;
+				nsfbufspeak = imax(nsfbufspeak, nsfbufsused);
+			}
+#ifdef SMP
+			goto shootdown;	
+#else
+			goto done;
+#endif
+		}
+	}
+	while ((sf = TAILQ_FIRST(&sf_buf_freelist)) == NULL) {
+		if (flags & SFB_NOWAIT)
+			goto done;
+		sf_buf_alloc_want++;
+		SFSTAT_INC(sf_allocwait);
+		error = msleep(&sf_buf_freelist, &sf_buf_lock,
+		    (flags & SFB_CATCH) ? PCATCH | PVM : PVM, "sfbufa", 0);
+		sf_buf_alloc_want--;
+
+		/*
+		 * If we got a signal, don't risk going back to sleep. 
+		 */
+		if (error)
+			goto done;
+	}
+	TAILQ_REMOVE(&sf_buf_freelist, sf, free_entry);
+	if (sf->m != NULL)
+		LIST_REMOVE(sf, list_entry);
+	LIST_INSERT_HEAD(hash_list, sf, list_entry);
+	sf->ref_count = 1;
+	sf->m = m;
+	nsfbufsused++;
+	nsfbufspeak = imax(nsfbufspeak, nsfbufsused);
 
 	/*
 	 * Update the sf_buf's virtual-to-physical mapping, flushing the
@@ -798,11 +876,11 @@ sf_buf_map(struct sf_buf *sf, int flags)
 	ptep = vtopte(sf->kva);
 	opte = *ptep;
 #ifdef XEN
-       PT_SET_MA(sf->kva, xpmap_ptom(VM_PAGE_TO_PHYS(sf->m)) | pgeflag
-	   | PG_RW | PG_V | pmap_cache_bits(sf->m->md.pat_mode, 0));
+       PT_SET_MA(sf->kva, xpmap_ptom(VM_PAGE_TO_PHYS(m)) | pgeflag
+	   | PG_RW | PG_V | pmap_cache_bits(m->md.pat_mode, 0));
 #else
-	*ptep = VM_PAGE_TO_PHYS(sf->m) | pgeflag | PG_RW | PG_V |
-	    pmap_cache_bits(sf->m->md.pat_mode, 0);
+	*ptep = VM_PAGE_TO_PHYS(m) | pgeflag | PG_RW | PG_V |
+	    pmap_cache_bits(m->md.pat_mode, 0);
 #endif
 
 	/*
@@ -814,21 +892,7 @@ sf_buf_map(struct sf_buf *sf, int flags)
 #ifdef SMP
 	if ((opte & (PG_V | PG_A)) ==  (PG_V | PG_A))
 		CPU_ZERO(&sf->cpumask);
-
-	sf_buf_shootdown(sf, flags);
-#else
-	if ((opte & (PG_V | PG_A)) ==  (PG_V | PG_A))
-		pmap_invalidate_page(kernel_pmap, sf->kva);
-#endif
-}
-
-#ifdef SMP
-void
-sf_buf_shootdown(struct sf_buf *sf, int flags)
-{
-	cpuset_t other_cpus;
-	u_int cpuid;
-
+shootdown:
 	sched_pin();
 	cpuid = PCPU_GET(cpuid);
 	if (!CPU_ISSET(cpuid, &sf->cpumask)) {
@@ -845,50 +909,42 @@ sf_buf_shootdown(struct sf_buf *sf, int flags)
 		}
 	}
 	sched_unpin();
-}
-#endif
-
-/*
- * MD part of sf_buf_free().
- */
-int
-sf_buf_unmap(struct sf_buf *sf)
-{
-#ifdef XEN
-	/*
-	 * Xen doesn't like having dangling R/W mappings
-	 */
-	pmap_qremove(sf->kva, 1);
-	return (1);
 #else
-	return (0);
+	if ((opte & (PG_V | PG_A)) ==  (PG_V | PG_A))
+		pmap_invalidate_page(kernel_pmap, sf->kva);
 #endif
-}
-
-static void
-sf_buf_invalidate(struct sf_buf *sf)
-{
-	vm_page_t m = sf->m;
-
-	/*
-	 * Use pmap_qenter to update the pte for
-	 * existing mapping, in particular, the PAT
-	 * settings are recalculated.
-	 */
-	pmap_qenter(sf->kva, &m, 1);
-	pmap_invalidate_cache_range(sf->kva, sf->kva + PAGE_SIZE, FALSE);
+done:
+	mtx_unlock(&sf_buf_lock);
+	return (sf);
 }
 
 /*
- * Invalidate the cache lines that may belong to the page, if
- * (possibly old) mapping of the page by sf buffer exists.  Returns
- * TRUE when mapping was found and cache invalidated.
+ * Remove a reference from the given sf_buf, adding it to the free
+ * list when its reference count reaches zero.  A freed sf_buf still,
+ * however, retains its virtual-to-physical mapping until it is
+ * recycled or reactivated by sf_buf_alloc(9).
  */
-boolean_t
-sf_buf_invalidate_cache(vm_page_t m)
+void
+sf_buf_free(struct sf_buf *sf)
 {
 
-	return (sf_buf_process_page(m, sf_buf_invalidate));
+	mtx_lock(&sf_buf_lock);
+	sf->ref_count--;
+	if (sf->ref_count == 0) {
+		TAILQ_INSERT_TAIL(&sf_buf_freelist, sf, free_entry);
+		nsfbufsused--;
+#ifdef XEN
+/*
+ * Xen doesn't like having dangling R/W mappings
+ */
+		pmap_qremove(sf->kva, 1);
+		sf->m = NULL;
+		LIST_REMOVE(sf, list_entry);
+#endif
+		if (sf_buf_alloc_want > 0)
+			wakeup(&sf_buf_freelist);
+	}
+	mtx_unlock(&sf_buf_lock);
 }
 
 /*

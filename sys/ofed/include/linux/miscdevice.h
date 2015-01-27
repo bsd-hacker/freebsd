@@ -2,7 +2,6 @@
  * Copyright (c) 2010 Isilon Systems, Inc.
  * Copyright (c) 2010 iX Systems, Inc.
  * Copyright (c) 2010 Panasas, Inc.
- * Copyright (c) 2013, 2014 Mellanox Technologies, Ltd.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,8 +40,6 @@ struct miscdevice  {
 	const struct file_operations *fops;
 	struct cdev	*cdev;
 	int		minor;
-	const char *nodename;
-	umode_t mode;
 };
 
 extern struct class	miscclass;

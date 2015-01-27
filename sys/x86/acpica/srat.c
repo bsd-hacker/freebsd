@@ -62,8 +62,6 @@ int num_mem;
 static ACPI_TABLE_SRAT *srat;
 static vm_paddr_t srat_physaddr;
 
-static int vm_domains[VM_PHYSSEG_MAX];
-
 static void	srat_walk_table(acpi_subtable_handler *handler, void *arg);
 
 /*
@@ -249,6 +247,7 @@ check_phys_avail(void)
 static int
 renumber_domains(void)
 {
+	int domains[VM_PHYSSEG_MAX];
 	int i, j, slot;
 
 	/* Enumerate all the domains. */
@@ -256,17 +255,17 @@ renumber_domains(void)
 	for (i = 0; i < num_mem; i++) {
 		/* See if this domain is already known. */
 		for (j = 0; j < vm_ndomains; j++) {
-			if (vm_domains[j] >= mem_info[i].domain)
+			if (domains[j] >= mem_info[i].domain)
 				break;
 		}
-		if (j < vm_ndomains && vm_domains[j] == mem_info[i].domain)
+		if (j < vm_ndomains && domains[j] == mem_info[i].domain)
 			continue;
 
 		/* Insert the new domain at slot 'j'. */
 		slot = j;
 		for (j = vm_ndomains; j > slot; j--)
-			vm_domains[j] = vm_domains[j - 1];
-		vm_domains[slot] = mem_info[i].domain;
+			domains[j] = domains[j - 1];
+		domains[slot] = mem_info[i].domain;
 		vm_ndomains++;
 		if (vm_ndomains > MAXMEMDOM) {
 			vm_ndomains = 1;
@@ -281,15 +280,15 @@ renumber_domains(void)
 		 * If the domain is already the right value, no need
 		 * to renumber.
 		 */
-		if (vm_domains[i] == i)
+		if (domains[i] == i)
 			continue;
 
 		/* Walk the cpu[] and mem_info[] arrays to renumber. */
 		for (j = 0; j < num_mem; j++)
-			if (mem_info[j].domain == vm_domains[i])
+			if (mem_info[j].domain == domains[i])
 				mem_info[j].domain = i;
 		for (j = 0; j <= MAX_APIC_ID; j++)
-			if (cpus[j].enabled && cpus[j].domain == vm_domains[i])
+			if (cpus[j].enabled && cpus[j].domain == domains[i])
 				cpus[j].domain = i;
 	}
 	KASSERT(vm_ndomains > 0,
@@ -342,7 +341,7 @@ srat_walk_table(acpi_subtable_handler *handler, void *arg)
 }
 
 /*
- * Setup per-CPU domain IDs.
+ * Setup per-CPU ACPI IDs.
  */
 static void
 srat_set_cpus(void *dummy)
@@ -363,30 +362,10 @@ srat_set_cpus(void *dummy)
 			panic("SRAT: CPU with APIC ID %u is not known",
 			    pc->pc_apic_id);
 		pc->pc_domain = cpu->domain;
-		CPU_SET(i, &cpuset_domain[cpu->domain]);
 		if (bootverbose)
 			printf("SRAT: CPU %u has memory domain %d\n", i,
 			    cpu->domain);
 	}
 }
 SYSINIT(srat_set_cpus, SI_SUB_CPU, SI_ORDER_ANY, srat_set_cpus, NULL);
-
-/*
- * Map a _PXM value to a VM domain ID.
- *
- * Returns the domain ID, or -1 if no domain ID was found.
- */
-int
-acpi_map_pxm_to_vm_domainid(int pxm)
-{
-	int i;
-
-	for (i = 0; i < vm_ndomains; i++) {
-		if (vm_domains[i] == pxm)
-			return (i);
-	}
-
-	return (-1);
-}
-
 #endif /* MAXMEMDOM > 1 */

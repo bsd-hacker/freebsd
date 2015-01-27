@@ -34,16 +34,16 @@ public:
   ~MachineFunctionAnalysis();
 
   MachineFunction &getMF() const { return *MF; }
-
-  const char* getPassName() const override {
+  
+  virtual const char* getPassName() const {
     return "Machine Function Analysis";
   }
 
 private:
-  bool doInitialization(Module &M) override;
-  bool runOnFunction(Function &F) override;
-  void releaseMemory() override;
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
+  virtual bool doInitialization(Module &M);
+  virtual bool runOnFunction(Function &F);
+  virtual void releaseMemory();
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 };
 
 } // End llvm namespace

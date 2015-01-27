@@ -47,13 +47,12 @@ namespace clang {
     
     /// \brief If this particular record type has an overridden layout,
     /// return that layout.
-    bool
+    virtual bool 
     layoutRecordType(const RecordDecl *Record,
        uint64_t &Size, uint64_t &Alignment,
        llvm::DenseMap<const FieldDecl *, uint64_t> &FieldOffsets,
        llvm::DenseMap<const CXXRecordDecl *, CharUnits> &BaseOffsets,
-       llvm::DenseMap<const CXXRecordDecl *,
-                      CharUnits> &VirtualBaseOffsets) override;
+       llvm::DenseMap<const CXXRecordDecl *, CharUnits> &VirtualBaseOffsets);
     
     /// \brief Dump the overridden layouts.
     void dump();

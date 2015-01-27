@@ -4,7 +4,8 @@ PROG=	casperd
 
 SRCS=	casperd.c zygote.c
 
-LIBADD=	casper nv pjdlog util
+DPADD=	${LIBCASPER} ${LIBCAPSICUM} ${LIBNV} ${LIBPJDLOG} ${LIBUTIL}
+LDADD=	-lcasper -lcapsicum -lnv -lpjdlog -lutil
 
 MAN=	casperd.8
 

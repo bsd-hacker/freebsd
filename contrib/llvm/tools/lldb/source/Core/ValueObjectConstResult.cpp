@@ -276,12 +276,6 @@ ValueObjectConstResult::GetTypeName()
     return m_type_name;
 }
 
-ConstString
-ValueObjectConstResult::GetDisplayTypeName()
-{
-    return GetClangType().GetDisplayTypeName();
-}
-
 bool
 ValueObjectConstResult::UpdateValue ()
 {

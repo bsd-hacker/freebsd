@@ -35,8 +35,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
-
 #include <err.h>
 #include <stdio.h>
 #include <string.h>
@@ -89,8 +87,6 @@ main(int argc, char *argv[], char *envp[])
 	FILE *config;
 	char *line, *cp, *from, *to, *ap;
 	const char *progname;
-	char localmailerconf[MAXPATHLEN];
-	const char *mailerconf;
 	size_t len, lineno = 0;
 	int i;
 	struct arglist al;
@@ -102,18 +98,11 @@ main(int argc, char *argv[], char *envp[])
 	initarg(&al);
 	addarg(&al, argv[0]);
 
-	snprintf(localmailerconf, MAXPATHLEN, "%s/etc/mail/mailer.conf",
-	    getenv("LOCALBASE") ? getenv("LOCALBASE") : "/usr/local");
-
-	mailerconf = localmailerconf;
-	if ((config = fopen(localmailerconf, "r")) == NULL)
-		mailerconf = _PATH_MAILERCONF;
-
-	if (config == NULL && ((config = fopen(mailerconf, "r")) == NULL)) {
+	if ((config = fopen(_PATH_MAILERCONF, "r")) == NULL) {
 		addarg(&al, NULL);
 		openlog(getprogname(), LOG_PID, LOG_MAIL);
 		syslog(LOG_INFO, "cannot open %s, using %s as default MTA",
-		    mailerconf, _PATH_DEFAULTMTA);
+		    _PATH_MAILERCONF, _PATH_DEFAULTMTA);
 		closelog();
 		execve(_PATH_DEFAULTMTA, al.argv, envp);
 		err(EX_OSERR, "cannot exec %s", _PATH_DEFAULTMTA);
@@ -123,7 +112,7 @@ main(int argc, char *argv[], char *envp[])
 	for (;;) {
 		if ((line = fparseln(config, &len, &lineno, NULL, 0)) == NULL) {
 			if (feof(config))
-				errx(EX_CONFIG, "no mapping in %s", mailerconf);
+				errx(EX_CONFIG, "no mapping in %s", _PATH_MAILERCONF);
 			err(EX_CONFIG, "cannot parse line %lu", (u_long)lineno);
 		}
 
@@ -168,6 +157,6 @@ main(int argc, char *argv[], char *envp[])
 	/*NOTREACHED*/
 parse_error:
 	errx(EX_CONFIG, "parse error in %s at line %lu",
-	    mailerconf, (u_long)lineno);
+	    _PATH_MAILERCONF, (u_long)lineno);
 	/*NOTREACHED*/
 }

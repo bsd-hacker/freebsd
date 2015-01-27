@@ -3,6 +3,7 @@
 PROG=	ccdconfig
 MAN=	ccdconfig.8
 
-LIBADD=	geom
+DPADD=	${LIBGEOM}
+LDADD=	-lgeom
 
 .include <bsd.prog.mk>

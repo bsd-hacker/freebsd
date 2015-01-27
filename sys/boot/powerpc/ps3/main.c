@@ -145,7 +145,7 @@ main(void)
 	setenv("LINES", "24", 1);
 	setenv("hw.platform", "ps3", 1);
 
-	interact(NULL);			/* doesn't return */
+	interact();			/* doesn't return */
 
 	return (0);
 }

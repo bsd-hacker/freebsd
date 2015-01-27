@@ -82,7 +82,7 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 		return; /* sleep duration has already past */
 	}
 
-#ifdef illumos
+#if defined(sun)
 	tv.tv_sec = (earliest - now) / NANOSEC;
 	tv.tv_nsec = (earliest - now) % NANOSEC;
 
@@ -184,7 +184,7 @@ dtrace_go(dtrace_hdl_t *dtp)
 {
 	dtrace_enable_io_t args;
 	void *dof;
-	int error, r;
+	int err;
 
 	if (dtp->dt_active)
 		return (dt_set_errno(dtp, EINVAL));
@@ -206,12 +206,11 @@ dtrace_go(dtrace_hdl_t *dtp)
 
 	args.dof = dof;
 	args.n_matched = 0;
-	r = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
-	error = errno;
+	err = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 	dtrace_dof_destroy(dtp, dof);
 
-	if (r == -1 && (error != ENOTTY || dtp->dt_vector == NULL))
-		return (dt_set_errno(dtp, error));
+	if (err == -1 && (errno != ENOTTY || dtp->dt_vector == NULL))
+		return (dt_set_errno(dtp, errno));
 
 	if (dt_ioctl(dtp, DTRACEIOC_GO, &dtp->dt_beganon) == -1) {
 		if (errno == EACCES)

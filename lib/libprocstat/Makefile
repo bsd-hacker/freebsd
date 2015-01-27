@@ -19,7 +19,8 @@ INCS=		libprocstat.h
 CFLAGS+=	-I. -I${.CURDIR} -D_KVM_VNODE
 SHLIB_MAJOR=	1
 
-LIBADD=		elf kvm util
+DPADD=		${LIBELF} ${LIBKVM} ${LIBUTIL}
+LDADD=		-lelf -lkvm -lutil
 
 MAN=		libprocstat.3
 

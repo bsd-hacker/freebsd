@@ -24,8 +24,6 @@ namespace clang {
 class ASTContext;
 class Decl;
 class FunctionDecl;
-class ObjCMethodDecl;
-class ObjCPropertyDecl;
 class Stmt;
   
 class BodyFarm {
@@ -34,10 +32,7 @@ public:
   
   /// Factory method for creating bodies for ordinary functions.
   Stmt *getBody(const FunctionDecl *D);
-
-  /// Factory method for creating bodies for Objective-C properties.
-  Stmt *getBody(const ObjCMethodDecl *D);
-
+  
 private:
   typedef llvm::DenseMap<const Decl *, Optional<Stmt *> > BodyMap;
 

@@ -48,6 +48,8 @@
 #include <fs/tmpfs/tmpfs_fifoops.h>
 #include <fs/tmpfs/tmpfs_vnops.h>
 
+/* --------------------------------------------------------------------- */
+
 static int
 tmpfs_fifo_kqfilter(struct vop_kqfilter_args *ap)
 {
@@ -68,6 +70,8 @@ tmpfs_fifo_kqfilter(struct vop_kqfilter_args *ap)
 
 	return fifo_specops.vop_kqfilter(ap);
 }
+
+/* --------------------------------------------------------------------- */
 
 static int
 tmpfs_fifo_close(struct vop_close_args *v)

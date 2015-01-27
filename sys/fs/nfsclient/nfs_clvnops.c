@@ -1184,7 +1184,8 @@ nfs_lookup(struct vop_lookup_args *ap)
 			return (EJUSTRETURN);
 		}
 
-		if ((cnp->cn_flags & MAKEENTRY) != 0 && dattrflag) {
+		if ((cnp->cn_flags & MAKEENTRY) && cnp->cn_nameiop != CREATE &&
+		    dattrflag) {
 			/*
 			 * Cache the modification time of the parent
 			 * directory from the post-op attributes in
@@ -1606,6 +1607,20 @@ again:
 		}
 	} else if (NFS_ISV34(dvp) && (fmode & O_EXCL)) {
 		if (nfscl_checksattr(vap, &nfsva)) {
+			/*
+			 * We are normally called with only a partially
+			 * initialized VAP. Since the NFSv3 spec says that
+			 * the server may use the file attributes to
+			 * store the verifier, the spec requires us to do a
+			 * SETATTR RPC. FreeBSD servers store the verifier in
+			 * atime, but we can't really assume that all servers
+			 * will so we ensure that our SETATTR sets both atime
+			 * and mtime.
+			 */
+			if (vap->va_mtime.tv_sec == VNOVAL)
+				vfs_timestamp(&vap->va_mtime);
+			if (vap->va_atime.tv_sec == VNOVAL)
+				vap->va_atime = vap->va_mtime;
 			error = nfsrpc_setattr(newvp, vap, NULL, cnp->cn_cred,
 			    cnp->cn_thread, &nfsva, &attrflag, NULL);
 			if (error && (vap->va_uid != (uid_t)VNOVAL ||
@@ -1960,6 +1975,10 @@ nfs_link(struct vop_link_args *ap)
 	struct nfsnode *np, *tdnp;
 	struct nfsvattr nfsva, dnfsva;
 	int error = 0, attrflag, dattrflag;
+
+	if (vp->v_mount != tdvp->v_mount) {
+		return (EXDEV);
+	}
 
 	/*
 	 * Push all writes to the server, so that the attribute cache

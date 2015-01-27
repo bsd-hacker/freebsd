@@ -10,6 +10,7 @@ CFLAGS+= -I${.CURDIR}/../newkey
 .if ${MK_NIS} != "no"
 CFLAGS+= -DYP
 .endif
-LIBADD+=	rpcsvc mp
+DPADD=	${LIBRPCSVC} ${LIBMP} ${LIBCRYPTO}
+LDADD=	-lrpcsvc -lmp -lcrypto
 
 .include <bsd.prog.mk>

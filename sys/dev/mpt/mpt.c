@@ -1320,21 +1320,18 @@ mpt_wait_req(struct mpt_softc *mpt, request_t *req,
 	     mpt_req_state_t state, mpt_req_state_t mask,
 	     int sleep_ok, int time_ms)
 {
+	int   error;
 	int   timeout;
 	u_int saved_cnt;
-	sbintime_t sbt;
 
 	/*
-	 * time_ms is in ms, 0 indicates infinite wait.
-	 * Convert to sbintime_t or 500us units depending on
+	 * timeout is in ms.  0 indicates infinite wait.
+	 * Convert to ticks or 500us units depending on
 	 * our sleep mode.
 	 */
 	if (sleep_ok != 0) {
-		sbt = SBT_1MS * time_ms;
-		/* Set timeout as well so final timeout check works. */
-		timeout = time_ms;
+		timeout = (time_ms * hz) / 1000;
 	} else {
-		sbt = 0; /* Squelch bogus gcc warning. */
 		timeout = time_ms * 2;
 	}
 	req->state |= REQ_STATE_NEED_WAKEUP;
@@ -1342,8 +1339,8 @@ mpt_wait_req(struct mpt_softc *mpt, request_t *req,
 	saved_cnt = mpt->reset_cnt;
 	while ((req->state & mask) != state && mpt->reset_cnt == saved_cnt) {
 		if (sleep_ok != 0) {
-			if (mpt_sleep(mpt, req, PUSER, "mptreq", sbt) ==
-			    EWOULDBLOCK) {
+			error = mpt_sleep(mpt, req, PUSER, "mptreq", timeout);
+			if (error == EWOULDBLOCK) {
 				timeout = 0;
 				break;
 			}

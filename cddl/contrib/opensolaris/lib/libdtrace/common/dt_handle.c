@@ -31,7 +31,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <assert.h>
-#ifdef illumos
+#if defined(sun)
 #include <alloca.h>
 #endif
 

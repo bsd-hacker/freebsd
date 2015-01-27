@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,13 +41,12 @@
  * POSSIBILITY OF SUCH DAMAGES.
  */
 
+
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
-#include <contrib/dev/acpica/include/acutils.h>
 #include <contrib/dev/acpica/include/acdisasm.h>
 #include <contrib/dev/acpica/include/acparser.h>
 #include <contrib/dev/acpica/include/amlcode.h>
-#include <contrib/dev/acpica/include/acinterp.h>
 
 
 #ifdef ACPI_DISASSEMBLER
@@ -58,15 +57,11 @@
 /* Local prototypes */
 
 static void
-AcpiDmUuid (
-    ACPI_PARSE_OBJECT       *Op);
-
-static void
 AcpiDmUnicode (
     ACPI_PARSE_OBJECT       *Op);
 
 static void
-AcpiDmGetHardwareIdType (
+AcpiDmIsEisaIdElement (
     ACPI_PARSE_OBJECT       *Op);
 
 static void
@@ -74,9 +69,6 @@ AcpiDmPldBuffer (
     UINT32                  Level,
     UINT8                   *ByteData,
     UINT32                  ByteCount);
-
-
-#define ACPI_BUFFER_BYTES_PER_LINE      8
 
 
 /*******************************************************************************
@@ -101,9 +93,6 @@ AcpiDmDisasmByteList (
     UINT32                  ByteCount)
 {
     UINT32                  i;
-    UINT32                  j;
-    UINT32                  CurrentIndex;
-    UINT8                   BufChar;
 
 
     if (!ByteCount)
@@ -111,68 +100,39 @@ AcpiDmDisasmByteList (
         return;
     }
 
-    for (i = 0; i < ByteCount; i += ACPI_BUFFER_BYTES_PER_LINE)
+    /* Dump the byte list */
+
+    for (i = 0; i < ByteCount; i++)
     {
-        /* Line indent and offset prefix for each new line */
+        /* New line every 8 bytes */
 
-        AcpiDmIndent (Level);
-        if (ByteCount > ACPI_BUFFER_BYTES_PER_LINE)
+        if (((i % 8) == 0) && (i < ByteCount))
         {
-            AcpiOsPrintf ("/* %04X */ ", i);
-        }
-
-        /* Dump the actual hex values */
-
-        for (j = 0; j < ACPI_BUFFER_BYTES_PER_LINE; j++)
-        {
-            CurrentIndex = i + j;
-            if (CurrentIndex >= ByteCount)
+            if (i > 0)
             {
-                /* Dump fill spaces */
-
-                AcpiOsPrintf ("      ");
-                continue;
+                AcpiOsPrintf ("\n");
             }
 
-            AcpiOsPrintf (" 0x%2.2X", ByteData[CurrentIndex]);
-
-            /* Add comma if there are more bytes to display */
-
-            if (CurrentIndex < (ByteCount - 1))
+            AcpiDmIndent (Level);
+            if (ByteCount > 8)
             {
-                AcpiOsPrintf (",");
-            }
-            else
-            {
-                AcpiOsPrintf (" ");
+                AcpiOsPrintf ("/* %04X */  ", i);
             }
         }
 
-        /* Dump the ASCII equivalents within a comment */
+        AcpiOsPrintf (" 0x%2.2X", (UINT32) ByteData[i]);
 
-        AcpiOsPrintf ("  /* ");
-        for (j = 0; j < ACPI_BUFFER_BYTES_PER_LINE; j++)
+        /* Add comma if there are more bytes to display */
+
+        if (i < (ByteCount -1))
         {
-            CurrentIndex = i + j;
-            if (CurrentIndex >= ByteCount)
-            {
-                break;
-            }
-
-            BufChar = ByteData[CurrentIndex];
-            if (ACPI_IS_PRINT (BufChar))
-            {
-                AcpiOsPrintf ("%c", BufChar);
-            }
-            else
-            {
-                AcpiOsPrintf (".");
-            }
+            AcpiOsPrintf (",");
         }
+    }
 
-        /* Finished with this line */
-
-        AcpiOsPrintf (" */\n");
+    if (Level)
+    {
+        AcpiOsPrintf ("\n");
     }
 }
 
@@ -221,11 +181,6 @@ AcpiDmByteList (
         AcpiOsPrintf ("\n");
         break;
 
-    case ACPI_DASM_UUID:
-
-        AcpiDmUuid (Op);
-        break;
-
     case ACPI_DASM_UNICODE:
 
         AcpiDmUnicode (Op);
@@ -245,137 +200,6 @@ AcpiDmByteList (
          */
         AcpiDmDisasmByteList (Info->Level, ByteData, ByteCount);
         break;
-    }
-}
-
-
-/*******************************************************************************
- *
- * FUNCTION:    AcpiDmIsUuidBuffer
- *
- * PARAMETERS:  Op              - Buffer Object to be examined
- *
- * RETURN:      TRUE if buffer contains a UUID
- *
- * DESCRIPTION: Determine if a buffer Op contains a UUID
- *
- * To help determine whether the buffer is a UUID versus a raw data buffer,
- * there a are a couple bytes we can look at:
- *
- *    xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx
- *
- * The variant covered by the UUID specification is indicated by the two most
- * significant bits of N being 1 0 (i.e., the hexadecimal N will always be
- * 8, 9, A, or B).
- *
- * The variant covered by the UUID specification has five versions. For this
- * variant, the four bits of M indicates the UUID version (i.e., the
- * hexadecimal M will be either 1, 2, 3, 4, or 5).
- *
- ******************************************************************************/
-
-BOOLEAN
-AcpiDmIsUuidBuffer (
-    ACPI_PARSE_OBJECT       *Op)
-{
-    UINT8                   *ByteData;
-    UINT32                  ByteCount;
-    ACPI_PARSE_OBJECT       *SizeOp;
-    ACPI_PARSE_OBJECT       *NextOp;
-
-
-    /* Buffer size is the buffer argument */
-
-    SizeOp = Op->Common.Value.Arg;
-
-    /* Next, the initializer byte list to examine */
-
-    NextOp = SizeOp->Common.Next;
-    if (!NextOp)
-    {
-        return (FALSE);
-    }
-
-    /* Extract the byte list info */
-
-    ByteData = NextOp->Named.Data;
-    ByteCount = (UINT32) NextOp->Common.Value.Integer;
-
-    /* Byte count must be exactly 16 */
-
-    if (ByteCount != UUID_BUFFER_LENGTH)
-    {
-        return (FALSE);
-    }
-
-    /* Check for valid "M" and "N" values (see function header above) */
-
-    if (((ByteData[7] & 0xF0) == 0x00) || /* M={1,2,3,4,5} */
-        ((ByteData[7] & 0xF0) > 0x50)  ||
-        ((ByteData[8] & 0xF0) < 0x80)  || /* N={8,9,A,B} */
-        ((ByteData[8] & 0xF0) > 0xB0))
-    {
-        return (FALSE);
-    }
-
-    /* Ignore the Size argument in the disassembly of this buffer op */
-
-    SizeOp->Common.DisasmFlags |= ACPI_PARSEOP_IGNORE;
-    return (TRUE);
-}
-
-
-/*******************************************************************************
- *
- * FUNCTION:    AcpiDmUuid
- *
- * PARAMETERS:  Op              - Byte List op containing a UUID
- *
- * RETURN:      None
- *
- * DESCRIPTION: Dump a buffer containing a UUID as a standard ASCII string.
- *
- * Output Format:
- * In its canonical form, the UUID is represented by a string containing 32
- * lowercase hexadecimal digits, displayed in 5 groups separated by hyphens.
- * The complete form is 8-4-4-4-12 for a total of 36 characters (32
- * alphanumeric characters representing hex digits and 4 hyphens). In bytes,
- * 4-2-2-2-6. Example:
- *
- *    ToUUID ("107ededd-d381-4fd7-8da9-08e9a6c79644")
- *
- ******************************************************************************/
-
-static void
-AcpiDmUuid (
-    ACPI_PARSE_OBJECT       *Op)
-{
-    UINT8                   *Data;
-    const char              *Description;
-
-
-    Data = ACPI_CAST_PTR (UINT8, Op->Named.Data);
-
-    /* Emit the 36-byte UUID string in the proper format/order */
-
-    AcpiOsPrintf (
-        "\"%2.2x%2.2x%2.2x%2.2x-"
-        "%2.2x%2.2x-"
-        "%2.2x%2.2x-"
-        "%2.2x%2.2x-"
-        "%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x\")",
-        Data[3], Data[2], Data[1], Data[0],
-        Data[5], Data[4],
-        Data[7], Data[6],
-        Data[8], Data[9],
-        Data[10], Data[11], Data[12], Data[13], Data[14], Data[15]);
-
-    /* Dump the UUID description string if available */
-
-    Description = AcpiAhMatchUuid (Data);
-    if (Description)
-    {
-        AcpiOsPrintf (" /* %s */", Description);
     }
 }
 
@@ -713,20 +537,19 @@ AcpiDmUnicode (
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiDmGetHardwareIdType
+ * FUNCTION:    AcpiDmIsEisaIdElement
  *
  * PARAMETERS:  Op              - Op to be examined
  *
  * RETURN:      None
  *
- * DESCRIPTION: Determine the type of the argument to a _HID or _CID
- *              1) Strings are allowed
- *              2) If Integer, determine if it is a valid EISAID
+ * DESCRIPTION: Determine if an Op (argument to _HID or _CID) can be converted
+ *              to an EISA ID.
  *
  ******************************************************************************/
 
 static void
-AcpiDmGetHardwareIdType (
+AcpiDmIsEisaIdElement (
     ACPI_PARSE_OBJECT       *Op)
 {
     UINT32                  BigEndianId;
@@ -734,66 +557,55 @@ AcpiDmGetHardwareIdType (
     UINT32                  i;
 
 
-    switch (Op->Common.AmlOpcode)
+    /* The parameter must be either a word or a dword */
+
+    if ((Op->Common.AmlOpcode != AML_DWORD_OP) &&
+        (Op->Common.AmlOpcode != AML_WORD_OP))
     {
-    case AML_STRING_OP:
-
-        /* Mark this string as an _HID/_CID string */
-
-        Op->Common.DisasmOpcode = ACPI_DASM_HID_STRING;
-        break;
-
-    case AML_WORD_OP:
-    case AML_DWORD_OP:
-
-        /* Determine if a Word/Dword is a valid encoded EISAID */
-
-        /* Swap from little-endian to big-endian to simplify conversion */
-
-        BigEndianId = AcpiUtDwordByteSwap ((UINT32) Op->Common.Value.Integer);
-
-        /* Create the 3 leading ASCII letters */
-
-        Prefix[0] = ((BigEndianId >> 26) & 0x1F) + 0x40;
-        Prefix[1] = ((BigEndianId >> 21) & 0x1F) + 0x40;
-        Prefix[2] = ((BigEndianId >> 16) & 0x1F) + 0x40;
-
-        /* Verify that all 3 are ascii and alpha */
-
-        for (i = 0; i < 3; i++)
-        {
-            if (!ACPI_IS_ASCII (Prefix[i]) ||
-                !ACPI_IS_ALPHA (Prefix[i]))
-            {
-                return;
-            }
-        }
-
-        /* Mark this node as convertable to an EISA ID string */
-
-        Op->Common.DisasmOpcode = ACPI_DASM_EISAID;
-        break;
-
-    default:
-        break;
+        return;
     }
+
+    /* Swap from little-endian to big-endian to simplify conversion */
+
+    BigEndianId = AcpiUtDwordByteSwap ((UINT32) Op->Common.Value.Integer);
+
+    /* Create the 3 leading ASCII letters */
+
+    Prefix[0] = ((BigEndianId >> 26) & 0x1F) + 0x40;
+    Prefix[1] = ((BigEndianId >> 21) & 0x1F) + 0x40;
+    Prefix[2] = ((BigEndianId >> 16) & 0x1F) + 0x40;
+
+    /* Verify that all 3 are ascii and alpha */
+
+    for (i = 0; i < 3; i++)
+    {
+        if (!ACPI_IS_ASCII (Prefix[i]) ||
+            !ACPI_IS_ALPHA (Prefix[i]))
+        {
+            return;
+        }
+    }
+
+    /* OK - mark this node as convertable to an EISA ID */
+
+    Op->Common.DisasmOpcode = ACPI_DASM_EISAID;
 }
 
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiDmCheckForHardwareId
+ * FUNCTION:    AcpiDmIsEisaId
  *
  * PARAMETERS:  Op              - Op to be examined
  *
  * RETURN:      None
  *
- * DESCRIPTION: Determine if a Name() Op is a _HID/_CID.
+ * DESCRIPTION: Determine if a Name() Op can be converted to an EisaId.
  *
  ******************************************************************************/
 
 void
-AcpiDmCheckForHardwareId (
+AcpiDmIsEisaId (
     ACPI_PARSE_OBJECT       *Op)
 {
     UINT32                  Name;
@@ -818,7 +630,7 @@ AcpiDmCheckForHardwareId (
 
     if (ACPI_COMPARE_NAME (&Name, METHOD_NAME__HID))
     {
-        AcpiDmGetHardwareIdType (NextOp);
+        AcpiDmIsEisaIdElement (NextOp);
         return;
     }
 
@@ -833,24 +645,20 @@ AcpiDmCheckForHardwareId (
 
     if (NextOp->Common.AmlOpcode != AML_PACKAGE_OP)
     {
-        AcpiDmGetHardwareIdType (NextOp);
+        AcpiDmIsEisaIdElement (NextOp);
         return;
     }
 
-    /* _CID with Package: get the package length, check all elements */
+    /* _CID with Package: get the package length */
 
     NextOp = AcpiPsGetDepthNext (NULL, NextOp);
-    if (!NextOp)
-    {
-        return;
-    }
 
     /* Don't need to use the length, just walk the peer list */
 
     NextOp = NextOp->Common.Next;
     while (NextOp)
     {
-        AcpiDmGetHardwareIdType (NextOp);
+        AcpiDmIsEisaIdElement (NextOp);
         NextOp = NextOp->Common.Next;
     }
 }
@@ -858,38 +666,41 @@ AcpiDmCheckForHardwareId (
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiDmDecompressEisaId
+ * FUNCTION:    AcpiDmEisaId
  *
  * PARAMETERS:  EncodedId       - Raw encoded EISA ID.
  *
  * RETURN:      None
  *
- * DESCRIPTION: Convert an encoded EISAID back to the original ASCII String
- *              and emit the correct ASL statement. If the ID is known, emit
- *              a description of the ID as a comment.
+ * DESCRIPTION: Convert an encoded EISAID back to the original ASCII String.
  *
  ******************************************************************************/
 
 void
-AcpiDmDecompressEisaId (
+AcpiDmEisaId (
     UINT32                  EncodedId)
 {
-    char                    IdBuffer[ACPI_EISAID_STRING_SIZE];
-    const AH_DEVICE_ID      *Info;
+    UINT32                  BigEndianId;
 
 
-    /* Convert EISAID to a string an emit the statement */
+    /* Swap from little-endian to big-endian to simplify conversion */
 
-    AcpiExEisaIdToString (IdBuffer, EncodedId);
-    AcpiOsPrintf ("EisaId (\"%s\")", IdBuffer);
+    BigEndianId = AcpiUtDwordByteSwap (EncodedId);
 
-    /* If we know about the ID, emit the description */
 
-    Info = AcpiAhMatchHardwareId (IdBuffer);
-    if (Info)
-    {
-        AcpiOsPrintf (" /* %s */", Info->Description);
-    }
+    /* Split to form "AAANNNN" string */
+
+    AcpiOsPrintf ("EisaId (\"%c%c%c%4.4X\")",
+
+        /* Three Alpha characters (AAA), 5 bits each */
+
+        (int) ((BigEndianId >> 26) & 0x1F) + 0x40,
+        (int) ((BigEndianId >> 21) & 0x1F) + 0x40,
+        (int) ((BigEndianId >> 16) & 0x1F) + 0x40,
+
+        /* Numeric part (NNNN) is simply the lower 16 bits */
+
+        (UINT32) (BigEndianId & 0xFFFF));
 }
 
 #endif

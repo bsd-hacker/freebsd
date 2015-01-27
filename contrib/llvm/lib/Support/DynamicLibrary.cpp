@@ -7,19 +7,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements the operating system DynamicLibrary concept.
+//  This header file implements the operating system DynamicLibrary concept.
 //
 // FIXME: This file leaks ExplicitSymbols and OpenedHandles!
 //
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/DynamicLibrary.h"
-#include "llvm-c/Support.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Config/config.h"
-#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm-c/Support.h"
 #include <cstdio>
 #include <cstring>
 
@@ -51,14 +51,14 @@ using namespace llvm::sys;
 //===          independent code.
 //===----------------------------------------------------------------------===//
 
-static DenseSet<void *> *OpenedHandles = nullptr;
+static DenseSet<void *> *OpenedHandles = 0;
 
 DynamicLibrary DynamicLibrary::getPermanentLibrary(const char *filename,
                                                    std::string *errMsg) {
   SmartScopedLock<true> lock(*SymbolsMutex);
 
   void *handle = dlopen(filename, RTLD_LAZY|RTLD_GLOBAL);
-  if (!handle) {
+  if (handle == 0) {
     if (errMsg) *errMsg = dlerror();
     return DynamicLibrary();
   }
@@ -66,11 +66,11 @@ DynamicLibrary DynamicLibrary::getPermanentLibrary(const char *filename,
 #ifdef __CYGWIN__
   // Cygwin searches symbols only in the main
   // with the handle of dlopen(NULL, RTLD_GLOBAL).
-  if (!filename)
+  if (filename == NULL)
     handle = RTLD_DEFAULT;
 #endif
 
-  if (!OpenedHandles)
+  if (OpenedHandles == 0)
     OpenedHandles = new DenseSet<void *>();
 
   // If we've already loaded this library, dlclose() the handle in order to
@@ -83,7 +83,7 @@ DynamicLibrary DynamicLibrary::getPermanentLibrary(const char *filename,
 
 void *DynamicLibrary::getAddressOfSymbol(const char *symbolName) {
   if (!isValid())
-    return nullptr;
+    return NULL;
   return dlsym(Data, symbolName);
 }
 
@@ -166,7 +166,7 @@ void* DynamicLibrary::SearchForAddressOfSymbol(const char *symbolName) {
 #endif
 #undef EXPLICIT_SYMBOL
 
-  return nullptr;
+  return 0;
 }
 
 #endif // LLVM_ON_WIN32

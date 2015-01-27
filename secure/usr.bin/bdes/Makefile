@@ -5,6 +5,7 @@ PROG=	bdes
 
 WARNS?=	2
 
-LIBADD=	crypto
+DPADD=	${LIBCRYPTO}
+LDADD=	-lcrypto
 
 .include <bsd.prog.mk>

@@ -33,14 +33,9 @@ static char sccsid[] = "@(#)rewinddir.c	8.1 (Berkeley) 6/8/93";
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "namespace.h"
 #include <sys/types.h>
 #include <dirent.h>
-#include <pthread.h>
-#include <unistd.h>
-#include "un-namespace.h"
 
-#include "libc_private.h"
 #include "gen-private.h"
 #include "telldir.h"
 
@@ -49,16 +44,6 @@ rewinddir(dirp)
 	DIR *dirp;
 {
 
-	if (__isthreaded)
-		_pthread_mutex_lock(&dirp->dd_lock);
-	if (dirp->dd_flags & __DTF_READALL)
-		_filldir(dirp, false);
-	else {
-		(void) lseek(dirp->dd_fd, 0, SEEK_SET);
-		dirp->dd_seek = 0;
-	}
-	dirp->dd_loc = 0;
-	_reclaim_telldir(dirp);
-	if (__isthreaded)
-		_pthread_mutex_unlock(&dirp->dd_lock);
+	_seekdir(dirp, dirp->dd_rewind);
+	dirp->dd_rewind = telldir(dirp);
 }

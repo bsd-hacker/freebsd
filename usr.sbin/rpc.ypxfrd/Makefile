@@ -11,7 +11,8 @@ CFLAGS+= -I. -DXFRBLOCKSIZE=65535
 
 WARNS?=	2
 
-LIBADD=	rpcsvc
+DPADD=	${LIBRPCSVC}
+LDADD=	-lrpcsvc
 
 CLEANFILES= ypxfrd_svc.c ypxfrd.h
 

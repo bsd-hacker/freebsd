@@ -144,7 +144,7 @@ typedef int YYSTYPE;
 extern int YYPARSE_DECL();
 
 #define YYERRCODE 256
-typedef int YYINT;
+typedef short YYINT;
 static const YYINT empty_lhs[] = {                       -1,
     0,
 };

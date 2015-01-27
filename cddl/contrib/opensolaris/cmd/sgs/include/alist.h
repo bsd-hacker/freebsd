@@ -39,7 +39,7 @@ extern "C" {
 #endif
 
 #include <sys/types.h>
-#ifdef illumos
+#if defined(sun)
 #include <sys/machelf.h>
 #else
 #include <sys/elf.h>

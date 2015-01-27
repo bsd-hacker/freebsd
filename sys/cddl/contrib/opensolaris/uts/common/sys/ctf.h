@@ -27,7 +27,7 @@
 #ifndef	_CTF_H
 #define	_CTF_H
 
-#ifdef illumos
+#if defined(sun)
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 #endif
 

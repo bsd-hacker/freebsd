@@ -157,7 +157,7 @@ static boolean_t	db_ed_style = TRUE;
  * Utility routine - discard tokens through end-of-line.
  */
 void
-db_skip_to_eol(void)
+db_skip_to_eol()
 {
 	int	t;
 	do {
@@ -252,8 +252,11 @@ db_command_unregister(struct command_table *list, struct command *cmd)
  * Helper function to match a single command.
  */
 static void
-db_cmd_match(char *name, struct command *cmd, struct command **cmdp,
-    int *resultp)
+db_cmd_match(name, cmd, cmdp, resultp)
+	char *		name;
+	struct command	*cmd;
+	struct command	**cmdp;	/* out */
+	int *		resultp;
 {
 	char *lp, *rp;
 	int c;
@@ -288,7 +291,10 @@ db_cmd_match(char *name, struct command *cmd, struct command **cmdp,
  * Search for command prefix.
  */
 static int
-db_cmd_search(char *name, struct command_table *table, struct command **cmdp)
+db_cmd_search(name, table, cmdp)
+	char *		name;
+	struct command_table *table;
+	struct command	**cmdp;	/* out */
 {
 	struct command	*cmd;
 	int		result = CMD_NONE;
@@ -309,7 +315,8 @@ db_cmd_search(char *name, struct command_table *table, struct command **cmdp)
 }
 
 static void
-db_cmd_list(struct command_table *table)
+db_cmd_list(table)
+	struct command_table *table;
 {
 	register struct command	*cmd;
 
@@ -320,8 +327,10 @@ db_cmd_list(struct command_table *table)
 }
 
 static void
-db_command(struct command **last_cmdp, struct command_table *cmd_table,
-    int dopager)
+db_command(last_cmdp, cmd_table, dopager)
+	struct command	**last_cmdp;	/* IN_OUT */
+	struct command_table *cmd_table;
+	int dopager;
 {
 	struct command	*cmd = NULL;
 	int		t;
@@ -474,7 +483,7 @@ DB_COMMAND(panic, db_panic)
 }
 
 void
-db_command_loop(void)
+db_command_loop()
 {
 	/*
 	 * Initialize 'prev' and 'next' to dot.
@@ -512,7 +521,8 @@ db_command_script(const char *command)
 }
 
 void
-db_error(const char *s)
+db_error(s)
+	const char *s;
 {
 	if (s)
 	    db_printf("%s", s);
@@ -571,7 +581,11 @@ db_fncall_generic(db_expr_t addr, db_expr_t *rv, int nargs, db_expr_t args[])
 }
 
 static void
-db_fncall(db_expr_t dummy1, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
+db_fncall(dummy1, dummy2, dummy3, dummy4)
+	db_expr_t	dummy1;
+	boolean_t	dummy2;
+	db_expr_t	dummy3;
+	char *		dummy4;
 {
 	db_expr_t	fn_addr;
 	db_expr_t	args[DB_MAXARGS];
@@ -625,12 +639,16 @@ db_halt(db_expr_t dummy, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
 }
 
 static void
-db_kill(db_expr_t dummy1, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
+db_kill(dummy1, dummy2, dummy3, dummy4)
+	db_expr_t	dummy1;
+	boolean_t	dummy2;
+	db_expr_t	dummy3;
+	char *		dummy4;
 {
 	db_expr_t old_radix, pid, sig;
 	struct proc *p;
 
-#define	DB_ERROR(f)	do { db_printf f; db_flush_lex(); goto out; } while (0)
+#define DB_ERROR(f)	do { db_printf f; db_flush_lex(); goto out; } while (0)
 
 	/*
 	 * PIDs and signal numbers are typically represented in base
@@ -714,7 +732,11 @@ db_reset(db_expr_t addr, boolean_t have_addr, db_expr_t count __unused,
 }
 
 static void
-db_watchdog(db_expr_t dummy1, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
+db_watchdog(dummy1, dummy2, dummy3, dummy4)
+	db_expr_t	dummy1;
+	boolean_t	dummy2;
+	db_expr_t	dummy3;
+	char *		dummy4;
 {
 	db_expr_t old_radix, tout;
 	int err, i;

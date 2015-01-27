@@ -1,3 +1,6 @@
+//
+// Automated Testing Framework (atf)
+//
 // Copyright (c) 2007 The NetBSD Foundation, Inc.
 // All rights reserved.
 //
@@ -22,9 +25,10 @@
 // IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 // IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-#if !defined(ATF_CXX_DETAIL_EXCEPTIONS_HPP)
-#define ATF_CXX_DETAIL_EXCEPTIONS_HPP
+#if !defined(_ATF_CXX_EXCEPTIONS_HPP_)
+#define _ATF_CXX_EXCEPTIONS_HPP_
 
 #include <stdexcept>
 #include <string>
@@ -51,4 +55,4 @@ void throw_atf_error(struct atf_error *);
 
 } // namespace atf
 
-#endif // !defined(ATF_CXX_DETAIL_EXCEPTIONS_HPP)
+#endif // !defined(_ATF_CXX_EXCEPTIONS_HPP_)

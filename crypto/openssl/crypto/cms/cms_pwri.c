@@ -93,10 +93,9 @@ CMS_RecipientInfo *CMS_add0_recipient_password(CMS_ContentInfo *cms,
 	X509_ALGOR *encalg = NULL;
 	unsigned char iv[EVP_MAX_IV_LENGTH];
 	int ivlen;
-
 	env = cms_get0_enveloped(cms);
 	if (!env)
-		return NULL;
+		goto err;
 
 	if (wrap_nid <= 0)
 		wrap_nid = NID_id_alg_PWRI_KEK;

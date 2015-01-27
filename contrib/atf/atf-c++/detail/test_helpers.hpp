@@ -1,3 +1,6 @@
+//
+// Automated Testing Framework (atf)
+//
 // Copyright (c) 2009 The NetBSD Foundation, Inc.
 // All rights reserved.
 //
@@ -22,11 +25,12 @@
 // IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 // IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-#if defined(ATF_CXX_DETAIL_TEST_HELPERS_H)
+#if defined(TESTS_ATF_ATF_CXX_TEST_HELPERS_H)
 #   error "Cannot include test_helpers.hpp more than once."
 #else
-#   define ATF_CXX_DETAIL_TEST_HELPERS_H
+#   define TESTS_ATF_ATF_CXX_TEST_HELPERS_H
 #endif
 
 #include <cstdlib>
@@ -34,9 +38,9 @@
 #include <sstream>
 #include <utility>
 
-#include <atf-c++.hpp>
-
-#include <atf-c++/detail/process.hpp>
+#include "../macros.hpp"
+#include "../tests.hpp"
+#include "process.hpp"
 
 #define HEADER_TC(name, hdrname) \
     ATF_TEST_CASE(name); \

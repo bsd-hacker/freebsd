@@ -31,13 +31,13 @@ class TargetSelectionDAGInfo {
   TargetSelectionDAGInfo(const TargetSelectionDAGInfo &) LLVM_DELETED_FUNCTION;
   void operator=(const TargetSelectionDAGInfo &) LLVM_DELETED_FUNCTION;
 
-  const DataLayout *DL;
+  const DataLayout *TD;
 
 protected:
-  const DataLayout *getDataLayout() const { return DL; }
+  const DataLayout *getDataLayout() const { return TD; }
 
 public:
-  explicit TargetSelectionDAGInfo(const DataLayout *DL);
+  explicit TargetSelectionDAGInfo(const TargetMachine &TM);
   virtual ~TargetSelectionDAGInfo();
 
   /// EmitTargetCodeForMemcpy - Emit target-specific code that performs a

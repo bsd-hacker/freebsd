@@ -36,7 +36,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/rman.h>
 
-#include <machine/armreg.h>
 #include <machine/bus.h>
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
@@ -150,7 +149,7 @@ at91_aic_attach(device_t dev)
 	/* Disable and clear all interrupts. */
 	WR4(sc, IC_IDCR, 0xffffffff);
 	WR4(sc, IC_ICCR, 0xffffffff);
-	enable_interrupts(PSR_I | PSR_F);
+	enable_interrupts(I32_bit | F32_bit);
 
 	return (err);
 }
@@ -177,9 +176,13 @@ static driver_t at91_aic_driver = {
 static devclass_t at91_aic_devclass;
 
 #ifdef FDT
+DRIVER_MODULE(at91_aic, simplebus, at91_aic_driver, at91_aic_devclass, NULL,
+    NULL);
+#else
+DRIVER_MODULE(at91_aic, atmelarm, at91_aic_driver, at91_aic_devclass, NULL,
+    NULL);
+#endif
+/* not yet
 EARLY_DRIVER_MODULE(at91_aic, simplebus, at91_aic_driver, at91_aic_devclass,
     NULL, NULL, BUS_PASS_INTERRUPT);
-#else
-EARLY_DRIVER_MODULE(at91_aic, atmelarm, at91_aic_driver, at91_aic_devclass,
-    NULL, NULL, BUS_PASS_INTERRUPT);
-#endif
+*/

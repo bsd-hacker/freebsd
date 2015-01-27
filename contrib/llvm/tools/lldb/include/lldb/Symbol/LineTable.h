@@ -85,7 +85,7 @@ public:
                      bool is_epilogue_begin,
                      bool is_terminal_entry);
 
-    // Used to instantiate the LineSequence helper class
+    // Used to instantiate the LineSequence helper classw
     LineSequence*
     CreateLineSequenceContainer ();
 
@@ -111,7 +111,7 @@ public:
     /// Dump all line entries in this line table to the stream \a s.
     ///
     /// @param[in] s
-    ///     The stream to which to dump the object description.
+    ///     The stream to which to dump the object descripton.
     ///
     /// @param[in] style
     ///     The display style for the address.

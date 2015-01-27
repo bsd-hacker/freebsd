@@ -39,7 +39,7 @@ public:
   /// passed in, then the types are printed symbolically if possible, using the
   /// symbol table from the module.
   ///
-  void print(raw_ostream &o, const Module *M) const override;
+  void print(raw_ostream &o, const Module *M) const;
 
 private:
   /// IncorporateType - Incorporate one type and all of its subtypes into the
@@ -53,10 +53,10 @@ private:
 
 public:
   /// run - This incorporates all types used by the specified module
-  bool runOnModule(Module &M) override;
+  bool runOnModule(Module &M);
 
   /// getAnalysisUsage - We do not modify anything.
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
   }
 };

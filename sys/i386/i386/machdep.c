@@ -109,11 +109,7 @@ __FBSDID("$FreeBSD$");
 #include <ddb/db_sym.h>
 #endif
 
-#ifdef PC98
-#include <pc98/pc98/pc98_machdep.h>
-#else
 #include <isa/rtc.h>
-#endif
 
 #include <net/netisr.h>
 
@@ -181,8 +177,12 @@ extern unsigned long physfree;
 /* Sanity check for __curthread() */
 CTASSERT(offsetof(struct pcpu, pc_curthread) == 0);
 
-extern register_t init386(int first);
+extern void init386(int first);
 extern void dblfault_handler(void);
+
+extern void printcpuinfo(void);	/* XXX header file */
+extern void finishidentcpu(void);
+extern void panicifcpuunsupported(void);
 
 #define	CS_SECURE(cs)		(ISPL(cs) == SEL_UPL)
 #define	EFL_SECURE(ef, oef)	((((ef) ^ (oef)) & ~PSL_USERCHANGE) == 0)
@@ -193,15 +193,17 @@ extern void dblfault_handler(void);
 
 static void cpu_startup(void *);
 static void fpstate_drop(struct thread *td);
-static void get_fpcontext(struct thread *td, mcontext_t *mcp,
-    char *xfpusave, size_t xfpusave_len);
-static int  set_fpcontext(struct thread *td, const mcontext_t *mcp,
-    char *xfpustate, size_t xfpustate_len);
+static void get_fpcontext(struct thread *td, mcontext_t *mcp);
+static int  set_fpcontext(struct thread *td, const mcontext_t *mcp);
 #ifdef CPU_ENABLE_SSE
 static void set_fpregs_xmm(struct save87 *, struct savexmm *);
 static void fill_fpregs_xmm(struct savexmm *, struct save87 *);
 #endif /* CPU_ENABLE_SSE */
 SYSINIT(cpu, SI_SUB_CPU, SI_ORDER_FIRST, cpu_startup, NULL);
+
+#ifdef DDB
+extern vm_offset_t ksym_start, ksym_end;
+#endif
 
 /* Intel ICH registers */
 #define ICH_PMBASE	0x400
@@ -209,14 +211,6 @@ SYSINIT(cpu, SI_SUB_CPU, SI_ORDER_FIRST, cpu_startup, NULL);
 
 int	_udatasel, _ucodesel;
 u_int	basemem;
-
-#ifdef PC98
-int	need_pre_dma_flush;	/* If 1, use wbinvd befor DMA transfer. */
-int	need_post_dma_flush;	/* If 1, use invd after DMA transfer. */
-
-static int	ispc98 = 1;
-SYSCTL_INT(_machdep, OID_AUTO, ispc98, CTLFLAG_RD, &ispc98, 0, "");
-#endif
 
 int cold = 1;
 
@@ -262,9 +256,6 @@ struct mem_range_softc mem_range_softc;
  struct init_ops init_ops = {
 	.early_clock_source_init =	i8254_init,
 	.early_delay =			i8254_delay,
-#ifdef DEV_APIC
-	.msi_init =			msi_init,
-#endif
  };
 
 static void
@@ -273,8 +264,7 @@ cpu_startup(dummy)
 {
 	uintmax_t memsize;
 	char *sysenv;
-
-#ifndef PC98
+	
 	/*
 	 * On MacBooks, we need to disallow the legacy USB circuit to
 	 * generate an SMI# because this can cause several problems,
@@ -283,15 +273,13 @@ cpu_startup(dummy)
 	 * We do this by disabling a bit in the SMI_EN (SMI Control and
 	 * Enable register) of the Intel ICH LPC Interface Bridge.
 	 */
-	sysenv = kern_getenv("smbios.system.product");
+	sysenv = getenv("smbios.system.product");
 	if (sysenv != NULL) {
 		if (strncmp(sysenv, "MacBook1,1", 10) == 0 ||
 		    strncmp(sysenv, "MacBook3,1", 10) == 0 ||
-		    strncmp(sysenv, "MacBook4,1", 10) == 0 ||
 		    strncmp(sysenv, "MacBookPro1,1", 13) == 0 ||
 		    strncmp(sysenv, "MacBookPro1,2", 13) == 0 ||
 		    strncmp(sysenv, "MacBookPro3,1", 13) == 0 ||
-		    strncmp(sysenv, "MacBookPro4,1", 13) == 0 ||
 		    strncmp(sysenv, "Macmini1,1", 10) == 0) {
 			if (bootverbose)
 				printf("Disabling LEGACY_USB_EN bit on "
@@ -300,7 +288,6 @@ cpu_startup(dummy)
 		}
 		freeenv(sysenv);
 	}
-#endif /* !PC98 */
 
 	/*
 	 * Good {morning,afternoon,evening,night}.
@@ -316,7 +303,7 @@ cpu_startup(dummy)
 	 * Display physical memory if SMBIOS reports reasonable amount.
 	 */
 	memsize = 0;
-	sysenv = kern_getenv("smbios.memory.enabled");
+	sysenv = getenv("smbios.memory.enabled");
 	if (sysenv != NULL) {
 		memsize = (uintmax_t)strtoul(sysenv, (char **)NULL, 10) << 10;
 		freeenv(sysenv);
@@ -365,7 +352,7 @@ cpu_startup(dummy)
  * Send an interrupt to process.
  *
  * Stack is set up to allow sigcode stored
- * at top to call routine, followed by call
+ * at top to call routine, followed by kcall
  * to sigreturn routine below.  After sigreturn
  * resets the signal mask, the stack, and the
  * frame pointer, it returns to the user
@@ -644,8 +631,6 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	char *sp;
 	struct trapframe *regs;
 	struct segment_descriptor *sdp;
-	char *xfpusave;
-	size_t xfpusave_len;
 	int sig;
 	int oonstack;
 
@@ -670,18 +655,6 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	regs = td->td_frame;
 	oonstack = sigonstack(regs->tf_esp);
 
-#ifdef CPU_ENABLE_SSE
-	if (cpu_max_ext_state_size > sizeof(union savefpu) && use_xsave) {
-		xfpusave_len = cpu_max_ext_state_size - sizeof(union savefpu);
-		xfpusave = __builtin_alloca(xfpusave_len);
-	} else {
-#else
-	{
-#endif
-		xfpusave_len = 0;
-		xfpusave = NULL;
-	}
-
 	/* Save user context. */
 	bzero(&sf, sizeof(sf));
 	sf.sf_uc.uc_sigmask = *mask;
@@ -692,7 +665,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	sf.sf_uc.uc_mcontext.mc_gs = rgs();
 	bcopy(regs, &sf.sf_uc.uc_mcontext.mc_fs, sizeof(*regs));
 	sf.sf_uc.uc_mcontext.mc_len = sizeof(sf.sf_uc.uc_mcontext); /* magic */
-	get_fpcontext(td, &sf.sf_uc.uc_mcontext, xfpusave, xfpusave_len);
+	get_fpcontext(td, &sf.sf_uc.uc_mcontext);
 	fpstate_drop(td);
 	/*
 	 * Unconditionally fill the fsbase and gsbase into the mcontext.
@@ -703,6 +676,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	sdp = &td->td_pcb->pcb_gsd;
 	sf.sf_uc.uc_mcontext.mc_gsbase = sdp->sd_hibase << 24 |
 	    sdp->sd_lobase;
+	sf.sf_uc.uc_mcontext.mc_flags = 0;
 	bzero(sf.sf_uc.uc_mcontext.mc_spare2,
 	    sizeof(sf.sf_uc.uc_mcontext.mc_spare2));
 	bzero(sf.sf_uc.__spare__, sizeof(sf.sf_uc.__spare__));
@@ -710,19 +684,13 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	/* Allocate space for the signal handler context. */
 	if ((td->td_pflags & TDP_ALTSTACK) != 0 && !oonstack &&
 	    SIGISMEMBER(psp->ps_sigonstack, sig)) {
-		sp = td->td_sigstk.ss_sp + td->td_sigstk.ss_size;
+		sp = td->td_sigstk.ss_sp +
+		    td->td_sigstk.ss_size - sizeof(struct sigframe);
 #if defined(COMPAT_43)
 		td->td_sigstk.ss_flags |= SS_ONSTACK;
 #endif
 	} else
-		sp = (char *)regs->tf_esp - 128;
-	if (xfpusave != NULL) {
-		sp -= xfpusave_len;
-		sp = (char *)((unsigned int)sp & ~0x3F);
-		sf.sf_uc.uc_mcontext.mc_xfpustate = (register_t)sp;
-	}
-	sp -= sizeof(struct sigframe);
-
+		sp = (char *)regs->tf_esp - sizeof(struct sigframe);
 	/* Align to 16 bytes. */
 	sfp = (struct sigframe *)((unsigned int)sp & ~0xF);
 
@@ -783,10 +751,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	/*
 	 * Copy the sigframe out to the user's stack.
 	 */
-	if (copyout(&sf, sfp, sizeof(*sfp)) != 0 ||
-	    (xfpusave != NULL && copyout(xfpusave,
-	    (void *)sf.sf_uc.uc_mcontext.mc_xfpustate, xfpusave_len)
-	    != 0)) {
+	if (copyout(&sf, sfp, sizeof(*sfp)) != 0) {
 #ifdef DEBUG
 		printf("process %ld has trashed its stack\n", (long)p->p_pid);
 #endif
@@ -1046,25 +1011,15 @@ sys_sigreturn(td, uap)
 	} */ *uap;
 {
 	ucontext_t uc;
-	struct proc *p;
 	struct trapframe *regs;
 	ucontext_t *ucp;
-	char *xfpustate;
-	size_t xfpustate_len;
 	int cs, eflags, error, ret;
 	ksiginfo_t ksi;
-
-	p = td->td_proc;
 
 	error = copyin(uap->sigcntxp, &uc, sizeof(uc));
 	if (error != 0)
 		return (error);
 	ucp = &uc;
-	if ((ucp->uc_mcontext.mc_flags & ~_MC_FLAG_MASK) != 0) {
-		uprintf("pid %d (%s): sigreturn mc_flags %x\n", p->p_pid,
-		    td->td_name, ucp->uc_mcontext.mc_flags);
-		return (EINVAL);
-	}
 	regs = td->td_frame;
 	eflags = ucp->uc_mcontext.mc_eflags;
 	if (eflags & PSL_VM) {
@@ -1135,30 +1090,7 @@ sys_sigreturn(td, uap)
 			return (EINVAL);
 		}
 
-		if ((uc.uc_mcontext.mc_flags & _MC_HASFPXSTATE) != 0) {
-			xfpustate_len = uc.uc_mcontext.mc_xfpustate_len;
-			if (xfpustate_len > cpu_max_ext_state_size -
-			    sizeof(union savefpu)) {
-				uprintf(
-			    "pid %d (%s): sigreturn xfpusave_len = 0x%zx\n",
-				    p->p_pid, td->td_name, xfpustate_len);
-				return (EINVAL);
-			}
-			xfpustate = __builtin_alloca(xfpustate_len);
-			error = copyin((const void *)uc.uc_mcontext.mc_xfpustate,
-			    xfpustate, xfpustate_len);
-			if (error != 0) {
-				uprintf(
-	"pid %d (%s): sigreturn copying xfpustate failed\n",
-				    p->p_pid, td->td_name);
-				return (error);
-			}
-		} else {
-			xfpustate = NULL;
-			xfpustate_len = 0;
-		}
-		ret = set_fpcontext(td, &ucp->uc_mcontext, xfpustate,
-		    xfpustate_len);
+		ret = set_fpcontext(td, &ucp->uc_mcontext);
 		if (ret != 0)
 			return (ret);
 		bcopy(&ucp->uc_mcontext.mc_fs, regs, sizeof(*regs));
@@ -1299,14 +1231,14 @@ cpu_halt(void)
 void (*cpu_idle_hook)(sbintime_t) = NULL;	/* ACPI idle hook. */
 static int	cpu_ident_amdc1e = 0;	/* AMD C1E supported. */
 static int	idle_mwait = 1;		/* Use MONITOR/MWAIT for short idle. */
-SYSCTL_INT(_machdep, OID_AUTO, idle_mwait, CTLFLAG_RWTUN, &idle_mwait,
+TUNABLE_INT("machdep.idle_mwait", &idle_mwait);
+SYSCTL_INT(_machdep, OID_AUTO, idle_mwait, CTLFLAG_RW, &idle_mwait,
     0, "Use MONITOR/MWAIT for short idle");
 
 #define	STATE_RUNNING	0x0
 #define	STATE_MWAIT	0x1
 #define	STATE_SLEEPING	0x2
 
-#ifndef PC98
 static void
 cpu_idle_acpi(sbintime_t sbt)
 {
@@ -1325,7 +1257,6 @@ cpu_idle_acpi(sbintime_t sbt)
 		__asm __volatile("sti; hlt");
 	*state = STATE_RUNNING;
 }
-#endif /* !PC98 */
 
 #ifndef XEN
 static void
@@ -1443,7 +1374,7 @@ cpu_probe_amdc1e(void)
 	}
 }
 
-#if defined(PC98) || defined(XEN)
+#ifdef XEN
 void (*cpu_idle_fn)(sbintime_t) = cpu_idle_hlt;
 #else
 void (*cpu_idle_fn)(sbintime_t) = cpu_idle_acpi;
@@ -1480,7 +1411,7 @@ cpu_idle(int busy)
 
 #ifndef XEN
 	/* Apply AMD APIC timer C1E workaround. */
-	if (cpu_ident_amdc1e && cpu_disable_c3_sleep) {
+	if (cpu_ident_amdc1e && cpu_disable_deep_sleep) {
 		msr = rdmsr(MSR_AMDK8_IPM);
 		if (msr & AMDK8_CMPHALT)
 			wrmsr(MSR_AMDK8_IPM, msr & ~AMDK8_CMPHALT);
@@ -1531,9 +1462,7 @@ struct {
 	{ cpu_idle_spin, "spin" },
 	{ cpu_idle_mwait, "mwait" },
 	{ cpu_idle_hlt, "hlt" },
-#ifndef PC98
 	{ cpu_idle_acpi, "acpi" },
-#endif
 	{ NULL, NULL }
 };
 
@@ -1550,11 +1479,9 @@ idle_sysctl_available(SYSCTL_HANDLER_ARGS)
 		if (strstr(idle_tbl[i].id_name, "mwait") &&
 		    (cpu_feature2 & CPUID2_MON) == 0)
 			continue;
-#ifndef PC98
 		if (strcmp(idle_tbl[i].id_name, "acpi") == 0 &&
 		    cpu_idle_hook == NULL)
 			continue;
-#endif
 		p += sprintf(p, "%s%s", p != avail ? ", " : "",
 		    idle_tbl[i].id_name);
 	}
@@ -1589,11 +1516,9 @@ idle_sysctl(SYSCTL_HANDLER_ARGS)
 		if (strstr(idle_tbl[i].id_name, "mwait") &&
 		    (cpu_feature2 & CPUID2_MON) == 0)
 			continue;
-#ifndef PC98
 		if (strcmp(idle_tbl[i].id_name, "acpi") == 0 &&
 		    cpu_idle_hook == NULL)
 			continue;
-#endif
 		if (strcmp(idle_tbl[i].id_name, buf))
 			continue;
 		cpu_idle_fn = idle_tbl[i].id_fn;
@@ -1656,9 +1581,17 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 			 */
 		        reset_dbregs();
                 }
-		pcb->pcb_flags &= ~PCB_DBREGS;
+                pcb->pcb_flags &= ~PCB_DBREGS;
         }
 
+	/*
+	 * Initialize the math emulator (if any) for the current process.
+	 * Actually, just clear the bit that says that the emulator has
+	 * been initialized.  Initialization is delayed until the process
+	 * traps to the emulator (if it is done at all) mainly because
+	 * emulators don't provide an entry point for initialization.
+	 */
+	td->td_pcb->pcb_flags &= ~FP_SOFTFP;
 	pcb->pcb_initial_npxcw = __INITIAL_NPXCW__;
 
 	/*
@@ -1707,10 +1640,6 @@ u_long bootdev;		/* not a struct cdev *- encoding is different */
 SYSCTL_ULONG(_machdep, OID_AUTO, guessed_bootdev,
 	CTLFLAG_RD, &bootdev, 0, "Maybe the Boot device (not in struct cdev *format)");
 
-static char bootmethod[16] = "BIOS";
-SYSCTL_STRING(_machdep, OID_AUTO, bootmethod, CTLFLAG_RD, bootmethod, 0,
-    "System firmware boot method");
-
 /*
  * Initialize 386 and configure to run kernel
  */
@@ -1732,6 +1661,10 @@ static struct gate_descriptor idt0[NIDT];
 struct gate_descriptor *idt = &idt0[0];	/* interrupt descriptor table */
 struct region_descriptor r_gdt, r_idt;	/* table descriptors */
 struct mtx dt_lock;			/* lock for GDT and LDT */
+
+#if defined(I586_CPU) && !defined(NO_F00F_HACK)
+extern int has_f00f_bug;
+#endif
 
 static struct i386tss dblfault_tss;
 static char dblfault_stack[PAGE_SIZE];
@@ -2071,7 +2004,7 @@ sdtossd(sd, ssd)
 	ssd->ssd_gran  = sd->sd_gran;
 }
 
-#if !defined(PC98) && !defined(XEN)
+#ifndef XEN
 static int
 add_physmap_entry(uint64_t base, uint64_t length, vm_paddr_t *physmap,
     int *physmap_idxp)
@@ -2178,9 +2111,7 @@ add_smap_entries(struct bios_smap *smapbase, vm_paddr_t *physmap,
 		if (!add_smap_entry(smap, physmap, physmap_idxp))
 			break;
 }
-#endif /* !PC98 && !XEN */
 
-#ifndef XEN
 static void
 basemem_setup(void)
 {
@@ -2228,7 +2159,7 @@ basemem_setup(void)
 	for (i = basemem / 4; i < 160; i++)
 		pte[i] = (i << PAGE_SHIFT) | PG_V | PG_RW | PG_U;
 }
-#endif /* !XEN */
+#endif
 
 /*
  * Populate the (physmap) array with base/bound pairs describing the
@@ -2243,279 +2174,14 @@ basemem_setup(void)
  *
  * XXX first should be vm_paddr_t.
  */
-#ifdef PC98
-static void
-getmemsize(int first)
-{
-	int off, physmap_idx, pa_indx, da_indx;
-	u_long physmem_tunable, memtest;
-	vm_paddr_t physmap[PHYSMAP_SIZE];
-	pt_entry_t *pte;
-	quad_t dcons_addr, dcons_size;
-	int i;
-	int pg_n;
-	u_int extmem;
-	u_int under16;
-	vm_paddr_t pa;
-
-	bzero(physmap, sizeof(physmap));
-
-	/* XXX - some of EPSON machines can't use PG_N */
-	pg_n = PG_N;
-	if (pc98_machine_type & M_EPSON_PC98) {
-		switch (epson_machine_id) {
-#ifdef WB_CACHE
-		default:
-#endif
-		case EPSON_PC486_HX:
-		case EPSON_PC486_HG:
-		case EPSON_PC486_HA:
-			pg_n = 0;
-			break;
-		}
-	}
-
-	under16 = pc98_getmemsize(&basemem, &extmem);
-	basemem_setup();
-
-	physmap[0] = 0;
-	physmap[1] = basemem * 1024;
-	physmap_idx = 2;
-	physmap[physmap_idx] = 0x100000;
-	physmap[physmap_idx + 1] = physmap[physmap_idx] + extmem * 1024;
-
-	/*
-	 * Now, physmap contains a map of physical memory.
-	 */
-
-#ifdef SMP
-	/* make hole for AP bootstrap code */
-	physmap[1] = mp_bootaddress(physmap[1]);
-#endif
-
-	/*
-	 * Maxmem isn't the "maximum memory", it's one larger than the
-	 * highest page of the physical address space.  It should be
-	 * called something like "Maxphyspage".  We may adjust this 
-	 * based on ``hw.physmem'' and the results of the memory test.
-	 */
-	Maxmem = atop(physmap[physmap_idx + 1]);
-
-#ifdef MAXMEM
-	Maxmem = MAXMEM / 4;
-#endif
-
-	if (TUNABLE_ULONG_FETCH("hw.physmem", &physmem_tunable))
-		Maxmem = atop(physmem_tunable);
-
-	/*
-	 * By default keep the memtest enabled.  Use a general name so that
-	 * one could eventually do more with the code than just disable it.
-	 */
-	memtest = 1;
-	TUNABLE_ULONG_FETCH("hw.memtest.tests", &memtest);
-
-	if (atop(physmap[physmap_idx + 1]) != Maxmem &&
-	    (boothowto & RB_VERBOSE))
-		printf("Physical memory use set to %ldK\n", Maxmem * 4);
-
-	/*
-	 * If Maxmem has been increased beyond what the system has detected,
-	 * extend the last memory segment to the new limit.
-	 */ 
-	if (atop(physmap[physmap_idx + 1]) < Maxmem)
-		physmap[physmap_idx + 1] = ptoa((vm_paddr_t)Maxmem);
-
-	/*
-	 * We need to divide chunk if Maxmem is larger than 16MB and
-	 * under 16MB area is not full of memory.
-	 * (1) system area (15-16MB region) is cut off
-	 * (2) extended memory is only over 16MB area (ex. Melco "HYPERMEMORY")
-	 */
-	if ((under16 != 16 * 1024) && (extmem > 15 * 1024)) {
-		/* 15M - 16M region is cut off, so need to divide chunk */
-		physmap[physmap_idx + 1] = under16 * 1024;
-		physmap_idx += 2;
-		physmap[physmap_idx] = 0x1000000;
-		physmap[physmap_idx + 1] = physmap[2] + extmem * 1024;
-	}
-
-	/* call pmap initialization to make new kernel address space */
-	pmap_bootstrap(first);
-
-	/*
-	 * Size up each available chunk of physical memory.
-	 */
-	physmap[0] = PAGE_SIZE;		/* mask off page 0 */
-	pa_indx = 0;
-	da_indx = 1;
-	phys_avail[pa_indx++] = physmap[0];
-	phys_avail[pa_indx] = physmap[0];
-	dump_avail[da_indx] = physmap[0];
-	pte = CMAP3;
-
-	/*
-	 * Get dcons buffer address
-	 */
-	if (getenv_quad("dcons.addr", &dcons_addr) == 0 ||
-	    getenv_quad("dcons.size", &dcons_size) == 0)
-		dcons_addr = 0;
-
-	/*
-	 * physmap is in bytes, so when converting to page boundaries,
-	 * round up the start address and round down the end address.
-	 */
-	for (i = 0; i <= physmap_idx; i += 2) {
-		vm_paddr_t end;
-
-		end = ptoa((vm_paddr_t)Maxmem);
-		if (physmap[i + 1] < end)
-			end = trunc_page(physmap[i + 1]);
-		for (pa = round_page(physmap[i]); pa < end; pa += PAGE_SIZE) {
-			int tmp, page_bad, full;
-			int *ptr = (int *)CADDR3;
-
-			full = FALSE;
-			/*
-			 * block out kernel memory as not available.
-			 */
-			if (pa >= KERNLOAD && pa < first)
-				goto do_dump_avail;
-
-			/*
-			 * block out dcons buffer
-			 */
-			if (dcons_addr > 0
-			    && pa >= trunc_page(dcons_addr)
-			    && pa < dcons_addr + dcons_size)
-				goto do_dump_avail;
-
-			page_bad = FALSE;
-			if (memtest == 0)
-				goto skip_memtest;
-
-			/*
-			 * map page into kernel: valid, read/write,non-cacheable
-			 */
-			*pte = pa | PG_V | PG_RW | pg_n;
-			invltlb();
-
-			tmp = *(int *)ptr;
-			/*
-			 * Test for alternating 1's and 0's
-			 */
-			*(volatile int *)ptr = 0xaaaaaaaa;
-			if (*(volatile int *)ptr != 0xaaaaaaaa)
-				page_bad = TRUE;
-			/*
-			 * Test for alternating 0's and 1's
-			 */
-			*(volatile int *)ptr = 0x55555555;
-			if (*(volatile int *)ptr != 0x55555555)
-				page_bad = TRUE;
-			/*
-			 * Test for all 1's
-			 */
-			*(volatile int *)ptr = 0xffffffff;
-			if (*(volatile int *)ptr != 0xffffffff)
-				page_bad = TRUE;
-			/*
-			 * Test for all 0's
-			 */
-			*(volatile int *)ptr = 0x0;
-			if (*(volatile int *)ptr != 0x0)
-				page_bad = TRUE;
-			/*
-			 * Restore original value.
-			 */
-			*(int *)ptr = tmp;
-
-skip_memtest:
-			/*
-			 * Adjust array of valid/good pages.
-			 */
-			if (page_bad == TRUE)
-				continue;
-			/*
-			 * If this good page is a continuation of the
-			 * previous set of good pages, then just increase
-			 * the end pointer. Otherwise start a new chunk.
-			 * Note that "end" points one higher than end,
-			 * making the range >= start and < end.
-			 * If we're also doing a speculative memory
-			 * test and we at or past the end, bump up Maxmem
-			 * so that we keep going. The first bad page
-			 * will terminate the loop.
-			 */
-			if (phys_avail[pa_indx] == pa) {
-				phys_avail[pa_indx] += PAGE_SIZE;
-			} else {
-				pa_indx++;
-				if (pa_indx == PHYS_AVAIL_ARRAY_END) {
-					printf(
-		"Too many holes in the physical address space, giving up\n");
-					pa_indx--;
-					full = TRUE;
-					goto do_dump_avail;
-				}
-				phys_avail[pa_indx++] = pa;	/* start */
-				phys_avail[pa_indx] = pa + PAGE_SIZE; /* end */
-			}
-			physmem++;
-do_dump_avail:
-			if (dump_avail[da_indx] == pa) {
-				dump_avail[da_indx] += PAGE_SIZE;
-			} else {
-				da_indx++;
-				if (da_indx == DUMP_AVAIL_ARRAY_END) {
-					da_indx--;
-					goto do_next;
-				}
-				dump_avail[da_indx++] = pa;	/* start */
-				dump_avail[da_indx] = pa + PAGE_SIZE; /* end */
-			}
-do_next:
-			if (full)
-				break;
-		}
-	}
-	*pte = 0;
-	invltlb();
-	
-	/*
-	 * XXX
-	 * The last chunk must contain at least one page plus the message
-	 * buffer to avoid complicating other code (message buffer address
-	 * calculation, etc.).
-	 */
-	while (phys_avail[pa_indx - 1] + PAGE_SIZE +
-	    round_page(msgbufsize) >= phys_avail[pa_indx]) {
-		physmem -= atop(phys_avail[pa_indx] - phys_avail[pa_indx - 1]);
-		phys_avail[pa_indx--] = 0;
-		phys_avail[pa_indx--] = 0;
-	}
-
-	Maxmem = atop(phys_avail[pa_indx]);
-
-	/* Trim off space for the message buffer. */
-	phys_avail[pa_indx] -= round_page(msgbufsize);
-
-	/* Map the message buffer. */
-	for (off = 0; off < round_page(msgbufsize); off += PAGE_SIZE)
-		pmap_kenter((vm_offset_t)msgbufp + off, phys_avail[pa_indx] +
-		    off);
-
-	PT_UPDATES_FLUSH();
-}
-#else /* PC98 */
 static void
 getmemsize(int first)
 {
 	int has_smap, off, physmap_idx, pa_indx, da_indx;
-	u_long memtest;
+	u_long physmem_tunable, memtest;
 	vm_paddr_t physmap[PHYSMAP_SIZE];
 	pt_entry_t *pte;
-	quad_t dcons_addr, dcons_size, physmem_tunable;
+	quad_t dcons_addr, dcons_size;
 #ifndef XEN
 	int hasbrokenint12, i, res;
 	u_int extmem;
@@ -2699,7 +2365,7 @@ physmap_done:
 	Maxmem = MAXMEM / 4;
 #endif
 
-	if (TUNABLE_QUAD_FETCH("hw.physmem", &physmem_tunable))
+	if (TUNABLE_ULONG_FETCH("hw.physmem", &physmem_tunable))
 		Maxmem = atop(physmem_tunable);
 
 	/*
@@ -2905,21 +2571,18 @@ do_next:
 
 	PT_UPDATES_FLUSH();
 }
-#endif /* PC98 */
 
 #ifdef XEN
 #define MTOPSIZE (1<<(14 + PAGE_SHIFT))
 
-register_t
+void
 init386(first)
 	int first;
 {
 	unsigned long gdtmachpfn;
 	int error, gsel_tss, metadata_missing, x, pa;
+	size_t kstack0_sz;
 	struct pcpu *pc;
-#ifdef CPU_ENABLE_SSE
-	struct xstate_hdr *xhdr;
-#endif
 	struct callback_register event = {
 		.type = CALLBACKTYPE_event,
 		.address = {GSEL(GCODE_SEL, SEL_KPL), (unsigned long)Xhypervisor_callback },
@@ -2931,6 +2594,8 @@ init386(first)
 
 	thread0.td_kstack = proc0kstack;
 	thread0.td_kstack_pages = KSTACK_PAGES;
+	kstack0_sz = thread0.td_kstack_pages * PAGE_SIZE;
+	thread0.td_pcb = (struct pcb *)(thread0.td_kstack + kstack0_sz) - 1;
 
 	/*
  	 * This may be done better later if it gets more high level
@@ -3010,6 +2675,7 @@ init386(first)
 
 	PCPU_SET(prvspace, pc);
 	PCPU_SET(curthread, &thread0);
+	PCPU_SET(curpcb, thread0.td_pcb);
 
 	/*
 	 * Initialize mutexes.
@@ -3073,7 +2739,8 @@ init386(first)
 #endif
 
 #ifdef DDB
-	db_fetch_ksymtab(bootinfo.bi_symtab, bootinfo.bi_esymtab);
+	ksym_start = bootinfo.bi_symtab;
+	ksym_end = bootinfo.bi_esymtab;
 #endif
 
 	kdb_init();
@@ -3089,8 +2756,16 @@ init386(first)
 	setidt(IDT_GP, &IDTVEC(prot),  SDT_SYS386TGT, SEL_KPL,
 	    GSEL(GCODE_SEL, SEL_KPL));
 	initializecpu();	/* Initialize CPU registers */
-	initializecpucache();
 
+	/* make an initial tss so cpu can get interrupt stack on syscall! */
+	/* Note: -16 is so we can grow the trapframe if we came from vm86 */
+	PCPU_SET(common_tss.tss_esp0, thread0.td_kstack +
+	    kstack0_sz - sizeof(struct pcb) - 16);
+	PCPU_SET(common_tss.tss_ss0, GSEL(GDATA_SEL, SEL_KPL));
+	gsel_tss = GSEL(GPROC0_SEL, SEL_KPL);
+	HYPERVISOR_stack_switch(GSEL(GDATA_SEL, SEL_KPL),
+	    PCPU_GET(common_tss.tss_esp0));
+	
 	/* pointer to selector slot for %fs/%gs */
 	PCPU_SET(fsgs_gdt, &gdt[GUFS_SEL].sd);
 
@@ -3118,32 +2793,6 @@ init386(first)
 	/* now running on new page tables, configured,and u/iom is accessible */
 
 	msgbufinit(msgbufp, msgbufsize);
-#ifdef DEV_NPX
-	npxinit(true);
-#endif
-	/*
-	 * Set up thread0 pcb after npxinit calculated pcb + fpu save
-	 * area size.  Zero out the extended state header in fpu save
-	 * area.
-	 */
-	thread0.td_pcb = get_pcb_td(&thread0);
-	bzero(get_pcb_user_save_td(&thread0), cpu_max_ext_state_size);
-#ifdef CPU_ENABLE_SSE
-	if (use_xsave) {
-		xhdr = (struct xstate_hdr *)(get_pcb_user_save_td(&thread0) +
-		    1);
-		xhdr->xstate_bv = xsave_mask;
-	}
-#endif
-	PCPU_SET(curpcb, thread0.td_pcb);
-	/* make an initial tss so cpu can get interrupt stack on syscall! */
-	/* Note: -16 is so we can grow the trapframe if we came from vm86 */
-	PCPU_SET(common_tss.tss_esp0, (vm_offset_t)thread0.td_pcb - 16);
-	PCPU_SET(common_tss.tss_ss0, GSEL(GDATA_SEL, SEL_KPL));
-	gsel_tss = GSEL(GPROC0_SEL, SEL_KPL);
-	HYPERVISOR_stack_switch(GSEL(GDATA_SEL, SEL_KPL),
-	    PCPU_GET(common_tss.tss_esp0));
-	
 	/* transfer to user mode */
 
 	_ucodesel = GSEL(GUCODE_SEL, SEL_UPL);
@@ -3162,38 +2811,28 @@ init386(first)
 	thread0.td_pcb->pcb_gsd = PCPU_GET(fsgs_gdt)[1];
 
 	cpu_probe_amdc1e();
-
-	/* Location of kernel stack for locore */
-	return ((register_t)thread0.td_pcb);
 }
 
 #else
-register_t
+void
 init386(first)
 	int first;
 {
 	struct gate_descriptor *gdp;
 	int gsel_tss, metadata_missing, x, pa;
+	size_t kstack0_sz;
 	struct pcpu *pc;
-#ifdef CPU_ENABLE_SSE
-	struct xstate_hdr *xhdr;
-#endif
 
 	thread0.td_kstack = proc0kstack;
 	thread0.td_kstack_pages = KSTACK_PAGES;
+	kstack0_sz = thread0.td_kstack_pages * PAGE_SIZE;
+	thread0.td_pcb = (struct pcb *)(thread0.td_kstack + kstack0_sz) - 1;
 
 	/*
  	 * This may be done better later if it gets more high level
  	 * components in it. If so just link td->td_proc here.
 	 */
 	proc_linkup0(&proc0, &thread0);
-
-#ifdef PC98
-	/*
-	 * Initialize DMAC
-	 */
-	pc98_init_dmac();
-#endif
 
 	metadata_missing = 0;
 	if (bootinfo.bi_modulep) {
@@ -3241,6 +2880,7 @@ init386(first)
 	first += DPCPU_SIZE;
 	PCPU_SET(prvspace, pc);
 	PCPU_SET(curthread, &thread0);
+	PCPU_SET(curpcb, thread0.td_pcb);
 
 	/*
 	 * Initialize mutexes.
@@ -3357,9 +2997,7 @@ init386(first)
 
 #ifdef DEV_ISA
 #ifdef DEV_ATPIC
-#ifndef PC98
 	elcr_probe();
-#endif
 	atpic_startup();
 #else
 	/* Reset and mask the atpics and leave them shut down. */
@@ -3377,7 +3015,8 @@ init386(first)
 #endif
 
 #ifdef DDB
-	db_fetch_ksymtab(bootinfo.bi_symtab, bootinfo.bi_esymtab);
+	ksym_start = bootinfo.bi_symtab;
+	ksym_end = bootinfo.bi_esymtab;
 #endif
 
 	kdb_init();
@@ -3393,7 +3032,17 @@ init386(first)
 	setidt(IDT_GP, &IDTVEC(prot),  SDT_SYS386TGT, SEL_KPL,
 	    GSEL(GCODE_SEL, SEL_KPL));
 	initializecpu();	/* Initialize CPU registers */
-	initializecpucache();
+
+	/* make an initial tss so cpu can get interrupt stack on syscall! */
+	/* Note: -16 is so we can grow the trapframe if we came from vm86 */
+	PCPU_SET(common_tss.tss_esp0, thread0.td_kstack +
+	    kstack0_sz - sizeof(struct pcb) - 16);
+	PCPU_SET(common_tss.tss_ss0, GSEL(GDATA_SEL, SEL_KPL));
+	gsel_tss = GSEL(GPROC0_SEL, SEL_KPL);
+	PCPU_SET(tss_gdt, &gdt[GPROC0_SEL].sd);
+	PCPU_SET(common_tssd, *PCPU_GET(tss_gdt));
+	PCPU_SET(common_tss.tss_ioopt, (sizeof (struct i386tss)) << 16);
+	ltr(gsel_tss);
 
 	/* pointer to selector slot for %fs/%gs */
 	PCPU_SET(fsgs_gdt, &gdt[GUFS_SEL].sd);
@@ -3422,33 +3071,6 @@ init386(first)
 	/* now running on new page tables, configured,and u/iom is accessible */
 
 	msgbufinit(msgbufp, msgbufsize);
-#ifdef DEV_NPX
-	npxinit(true);
-#endif
-	/*
-	 * Set up thread0 pcb after npxinit calculated pcb + fpu save
-	 * area size.  Zero out the extended state header in fpu save
-	 * area.
-	 */
-	thread0.td_pcb = get_pcb_td(&thread0);
-	bzero(get_pcb_user_save_td(&thread0), cpu_max_ext_state_size);
-#ifdef CPU_ENABLE_SSE
-	if (use_xsave) {
-		xhdr = (struct xstate_hdr *)(get_pcb_user_save_td(&thread0) +
-		    1);
-		xhdr->xstate_bv = xsave_mask;
-	}
-#endif
-	PCPU_SET(curpcb, thread0.td_pcb);
-	/* make an initial tss so cpu can get interrupt stack on syscall! */
-	/* Note: -16 is so we can grow the trapframe if we came from vm86 */
-	PCPU_SET(common_tss.tss_esp0, (vm_offset_t)thread0.td_pcb - 16);
-	PCPU_SET(common_tss.tss_ss0, GSEL(GDATA_SEL, SEL_KPL));
-	gsel_tss = GSEL(GPROC0_SEL, SEL_KPL);
-	PCPU_SET(tss_gdt, &gdt[GPROC0_SEL].sd);
-	PCPU_SET(common_tssd, *PCPU_GET(tss_gdt));
-	PCPU_SET(common_tss.tss_ioopt, (sizeof (struct i386tss)) << 16);
-	ltr(gsel_tss);
 
 	/* make a call gate to reenter kernel with */
 	gdp = &ldt[LSYS5CALLS_SEL].gd;
@@ -3487,9 +3109,6 @@ init386(first)
 #ifdef FDT
 	x86_init_fdt();
 #endif
-
-	/* Location of kernel stack for locore */
-	return ((register_t)thread0.td_pcb);
 }
 #endif
 
@@ -3499,46 +3118,6 @@ cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 
 	pcpu->pc_acpi_id = 0xffffffff;
 }
-
-#ifndef PC98
-static int
-smap_sysctl_handler(SYSCTL_HANDLER_ARGS)
-{
-	struct bios_smap *smapbase;
-	struct bios_smap_xattr smap;
-	caddr_t kmdp;
-	uint32_t *smapattr;
-	int count, error, i;
-
-	/* Retrieve the system memory map from the loader. */
-	kmdp = preload_search_by_type("elf kernel");
-	if (kmdp == NULL)
-		kmdp = preload_search_by_type("elf32 kernel");
-	if (kmdp == NULL)
-		return (0);
-	smapbase = (struct bios_smap *)preload_search_info(kmdp,
-	    MODINFO_METADATA | MODINFOMD_SMAP);
-	if (smapbase == NULL)
-		return (0);
-	smapattr = (uint32_t *)preload_search_info(kmdp,
-	    MODINFO_METADATA | MODINFOMD_SMAP_XATTR);
-	count = *((u_int32_t *)smapbase - 1) / sizeof(*smapbase);
-	error = 0;
-	for (i = 0; i < count; i++) {
-		smap.base = smapbase[i].base;
-		smap.length = smapbase[i].length;
-		smap.type = smapbase[i].type;
-		if (smapattr != NULL)
-			smap.xattr = smapattr[i];
-		else
-			smap.xattr = 0;
-		error = SYSCTL_OUT(req, &smap, sizeof(smap));
-	}
-	return (error);
-}
-SYSCTL_PROC(_machdep, OID_AUTO, smap, CTLTYPE_OPAQUE|CTLFLAG_RD, NULL, 0,
-    smap_sysctl_handler, "S,bios_smap_xattr", "Raw BIOS SMAP data");
-#endif /* !PC98 */
 
 void
 spinlock_enter(void)
@@ -3772,11 +3351,11 @@ fill_fpregs(struct thread *td, struct fpreg *fpregs)
 #endif
 #ifdef CPU_ENABLE_SSE
 	if (cpu_fxsr)
-		fill_fpregs_xmm(&get_pcb_user_save_td(td)->sv_xmm,
+		fill_fpregs_xmm(&td->td_pcb->pcb_user_save.sv_xmm,
 		    (struct save87 *)fpregs);
 	else
 #endif /* CPU_ENABLE_SSE */
-		bcopy(&get_pcb_user_save_td(td)->sv_87, fpregs,
+		bcopy(&td->td_pcb->pcb_user_save.sv_87, fpregs,
 		    sizeof(*fpregs));
 	return (0);
 }
@@ -3788,10 +3367,10 @@ set_fpregs(struct thread *td, struct fpreg *fpregs)
 #ifdef CPU_ENABLE_SSE
 	if (cpu_fxsr)
 		set_fpregs_xmm((struct save87 *)fpregs,
-		    &get_pcb_user_save_td(td)->sv_xmm);
+		    &td->td_pcb->pcb_user_save.sv_xmm);
 	else
 #endif /* CPU_ENABLE_SSE */
-		bcopy(fpregs, &get_pcb_user_save_td(td)->sv_87,
+		bcopy(fpregs, &td->td_pcb->pcb_user_save.sv_87,
 		    sizeof(*fpregs));
 #ifdef DEV_NPX
 	npxuserinited(td);
@@ -3837,14 +3416,12 @@ get_mcontext(struct thread *td, mcontext_t *mcp, int flags)
 	mcp->mc_esp = tp->tf_esp;
 	mcp->mc_ss = tp->tf_ss;
 	mcp->mc_len = sizeof(*mcp);
-	get_fpcontext(td, mcp, NULL, 0);
+	get_fpcontext(td, mcp);
 	sdp = &td->td_pcb->pcb_fsd;
 	mcp->mc_fsbase = sdp->sd_hibase << 24 | sdp->sd_lobase;
 	sdp = &td->td_pcb->pcb_gsd;
 	mcp->mc_gsbase = sdp->sd_hibase << 24 | sdp->sd_lobase;
 	mcp->mc_flags = 0;
-	mcp->mc_xfpustate = 0;
-	mcp->mc_xfpustate_len = 0;
 	bzero(mcp->mc_spare2, sizeof(mcp->mc_spare2));
 	return (0);
 }
@@ -3859,54 +3436,37 @@ int
 set_mcontext(struct thread *td, const mcontext_t *mcp)
 {
 	struct trapframe *tp;
-	char *xfpustate;
 	int eflags, ret;
 
 	tp = td->td_frame;
-	if (mcp->mc_len != sizeof(*mcp) ||
-	    (mcp->mc_flags & ~_MC_FLAG_MASK) != 0)
+	if (mcp->mc_len != sizeof(*mcp))
 		return (EINVAL);
 	eflags = (mcp->mc_eflags & PSL_USERCHANGE) |
 	    (tp->tf_eflags & ~PSL_USERCHANGE);
-	if (mcp->mc_flags & _MC_HASFPXSTATE) {
-		if (mcp->mc_xfpustate_len > cpu_max_ext_state_size -
-		    sizeof(union savefpu))
-			return (EINVAL);
-		xfpustate = __builtin_alloca(mcp->mc_xfpustate_len);
-		ret = copyin((void *)mcp->mc_xfpustate, xfpustate,
-		    mcp->mc_xfpustate_len);
-		if (ret != 0)
-			return (ret);
-	} else
-		xfpustate = NULL;
-	ret = set_fpcontext(td, mcp, xfpustate, mcp->mc_xfpustate_len);
-	if (ret != 0)
-		return (ret);
-	tp->tf_fs = mcp->mc_fs;
-	tp->tf_es = mcp->mc_es;
-	tp->tf_ds = mcp->mc_ds;
-	tp->tf_edi = mcp->mc_edi;
-	tp->tf_esi = mcp->mc_esi;
-	tp->tf_ebp = mcp->mc_ebp;
-	tp->tf_ebx = mcp->mc_ebx;
-	tp->tf_edx = mcp->mc_edx;
-	tp->tf_ecx = mcp->mc_ecx;
-	tp->tf_eax = mcp->mc_eax;
-	tp->tf_eip = mcp->mc_eip;
-	tp->tf_eflags = eflags;
-	tp->tf_esp = mcp->mc_esp;
-	tp->tf_ss = mcp->mc_ss;
-	td->td_pcb->pcb_gs = mcp->mc_gs;
-	return (0);
+	if ((ret = set_fpcontext(td, mcp)) == 0) {
+		tp->tf_fs = mcp->mc_fs;
+		tp->tf_es = mcp->mc_es;
+		tp->tf_ds = mcp->mc_ds;
+		tp->tf_edi = mcp->mc_edi;
+		tp->tf_esi = mcp->mc_esi;
+		tp->tf_ebp = mcp->mc_ebp;
+		tp->tf_ebx = mcp->mc_ebx;
+		tp->tf_edx = mcp->mc_edx;
+		tp->tf_ecx = mcp->mc_ecx;
+		tp->tf_eax = mcp->mc_eax;
+		tp->tf_eip = mcp->mc_eip;
+		tp->tf_eflags = eflags;
+		tp->tf_esp = mcp->mc_esp;
+		tp->tf_ss = mcp->mc_ss;
+		td->td_pcb->pcb_gs = mcp->mc_gs;
+		ret = 0;
+	}
+	return (ret);
 }
 
 static void
-get_fpcontext(struct thread *td, mcontext_t *mcp, char *xfpusave,
-    size_t xfpusave_len)
+get_fpcontext(struct thread *td, mcontext_t *mcp)
 {
-#ifdef CPU_ENABLE_SSE
-	size_t max_len, len;
-#endif
 
 #ifndef DEV_NPX
 	mcp->mc_fpformat = _MC_FPFMT_NODEV;
@@ -3914,56 +3474,37 @@ get_fpcontext(struct thread *td, mcontext_t *mcp, char *xfpusave,
 	bzero(mcp->mc_fpstate, sizeof(mcp->mc_fpstate));
 #else
 	mcp->mc_ownedfp = npxgetregs(td);
-	bcopy(get_pcb_user_save_td(td), &mcp->mc_fpstate[0],
+	bcopy(&td->td_pcb->pcb_user_save, &mcp->mc_fpstate[0],
 	    sizeof(mcp->mc_fpstate));
 	mcp->mc_fpformat = npxformat();
-#ifdef CPU_ENABLE_SSE
-	if (!use_xsave || xfpusave_len == 0)
-		return;
-	max_len = cpu_max_ext_state_size - sizeof(union savefpu);
-	len = xfpusave_len;
-	if (len > max_len) {
-		len = max_len;
-		bzero(xfpusave + max_len, len - max_len);
-	}
-	mcp->mc_flags |= _MC_HASFPXSTATE;
-	mcp->mc_xfpustate_len = len;
-	bcopy(get_pcb_user_save_td(td) + 1, xfpusave, len);
-#endif
 #endif
 }
 
 static int
-set_fpcontext(struct thread *td, const mcontext_t *mcp, char *xfpustate,
-    size_t xfpustate_len)
+set_fpcontext(struct thread *td, const mcontext_t *mcp)
 {
-	union savefpu *fpstate;
-	int error;
 
 	if (mcp->mc_fpformat == _MC_FPFMT_NODEV)
 		return (0);
 	else if (mcp->mc_fpformat != _MC_FPFMT_387 &&
 	    mcp->mc_fpformat != _MC_FPFMT_XMM)
 		return (EINVAL);
-	else if (mcp->mc_ownedfp == _MC_FPOWNED_NONE) {
+	else if (mcp->mc_ownedfp == _MC_FPOWNED_NONE)
 		/* We don't care what state is left in the FPU or PCB. */
 		fpstate_drop(td);
-		error = 0;
-	} else if (mcp->mc_ownedfp == _MC_FPOWNED_FPU ||
+	else if (mcp->mc_ownedfp == _MC_FPOWNED_FPU ||
 	    mcp->mc_ownedfp == _MC_FPOWNED_PCB) {
 #ifdef DEV_NPX
-		fpstate = (union savefpu *)&mcp->mc_fpstate;
 #ifdef CPU_ENABLE_SSE
 		if (cpu_fxsr)
-			fpstate->sv_xmm.sv_env.en_mxcsr &= cpu_mxcsr_mask;
+			((union savefpu *)&mcp->mc_fpstate)->sv_xmm.sv_env.
+			    en_mxcsr &= cpu_mxcsr_mask;
 #endif
-		error = npxsetregs(td, fpstate, xfpustate, xfpustate_len);
-#else
-		error = EINVAL;
+		npxsetregs(td, (union savefpu *)&mcp->mc_fpstate);
 #endif
 	} else
 		return (EINVAL);
-	return (error);
+	return (0);
 }
 
 static void

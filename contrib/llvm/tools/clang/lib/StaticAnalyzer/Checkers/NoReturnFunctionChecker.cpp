@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
-#include "SelectorExtras.h"
 #include "clang/AST/Attr.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
@@ -29,8 +28,6 @@ namespace {
 
 class NoReturnFunctionChecker : public Checker< check::PostCall,
                                                 check::PostObjCMessage > {
-  mutable Selector HandleFailureInFunctionSel;
-  mutable Selector HandleFailureInMethodSel;
 public:
   void checkPostCall(const CallEvent &CE, CheckerContext &C) const;
   void checkPostObjCMessage(const ObjCMethodCall &msg, CheckerContext &C) const;
@@ -40,10 +37,11 @@ public:
 
 void NoReturnFunctionChecker::checkPostCall(const CallEvent &CE,
                                             CheckerContext &C) const {
+  ProgramStateRef state = C.getState();
   bool BuildSinks = false;
 
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(CE.getDecl()))
-    BuildSinks = FD->hasAttr<AnalyzerNoReturnAttr>() || FD->isNoReturn();
+    BuildSinks = FD->getAttr<AnalyzerNoReturnAttr>() || FD->isNoReturn();
 
   const Expr *Callee = CE.getOriginExpr();
   if (!BuildSinks && Callee)
@@ -84,6 +82,24 @@ void NoReturnFunctionChecker::checkPostCall(const CallEvent &CE,
     C.generateSink();
 }
 
+static bool END_WITH_NULL isMultiArgSelector(const Selector *Sel, ...) {
+  va_list argp;
+  va_start(argp, Sel);
+
+  unsigned Slot = 0;
+  const char *Arg;
+  while ((Arg = va_arg(argp, const char *))) {
+    if (!Sel->getNameForSlot(Slot).equals(Arg))
+      break; // still need to va_end!
+    ++Slot;
+  }
+
+  va_end(argp);
+
+  // We only succeeded if we made it to the end of the argument list.
+  return (Arg == NULL);
+}
+
 void NoReturnFunctionChecker::checkPostObjCMessage(const ObjCMethodCall &Msg,
                                                    CheckerContext &C) const {
   // Check if the method is annotated with analyzer_noreturn.
@@ -120,17 +136,13 @@ void NoReturnFunctionChecker::checkPostObjCMessage(const ObjCMethodCall &Msg,
   default:
     return;
   case 4:
-    lazyInitKeywordSelector(HandleFailureInFunctionSel, C.getASTContext(),
-                            "handleFailureInFunction", "file", "lineNumber",
-                            "description", nullptr);
-    if (Sel != HandleFailureInFunctionSel)
+    if (!isMultiArgSelector(&Sel, "handleFailureInFunction", "file",
+                            "lineNumber", "description", NULL))
       return;
     break;
   case 5:
-    lazyInitKeywordSelector(HandleFailureInMethodSel, C.getASTContext(),
-                            "handleFailureInMethod", "object", "file",
-                            "lineNumber", "description", nullptr);
-    if (Sel != HandleFailureInMethodSel)
+    if (!isMultiArgSelector(&Sel, "handleFailureInMethod", "object", "file",
+                            "lineNumber", "description", NULL))
       return;
     break;
   }
@@ -138,6 +150,7 @@ void NoReturnFunctionChecker::checkPostObjCMessage(const ObjCMethodCall &Msg,
   // If we got here, it's one of the messages we care about.
   C.generateSink();
 }
+
 
 void ento::registerNoReturnFunctionChecker(CheckerManager &mgr) {
   mgr.registerChecker<NoReturnFunctionChecker>();

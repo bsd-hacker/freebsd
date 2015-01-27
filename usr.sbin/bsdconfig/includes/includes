@@ -69,12 +69,10 @@ show_include()
 		-v use_color=${USE_COLOR:-0} \
 		-v re="$pattern" \
 		-v show_desc=${SHOW_DESC:-0} '
-        function _asorti(src, dest)
+        function asorti(src, dest)
         {
-		k = nitems = 0;
-
 		# Copy src indices to dest and calculate array length
-		for (i in src) dest[++nitems] = i
+		nitems = 0; for (i in src) dest[++nitems] = i
 
 		# Sort the array of indices (dest) using insertion sort method
 		for (i = 1; i <= nitems; k = i++)
@@ -120,7 +118,7 @@ show_include()
 		}
 	}
 	END {
-		n = _asorti(syntax, sorted_indices)
+		n = asorti(syntax, sorted_indices)
 		for (i = 1; i <= n; i++)
 			printf "%s", syntax[sorted_indices[i]]
 	}' "$file" )

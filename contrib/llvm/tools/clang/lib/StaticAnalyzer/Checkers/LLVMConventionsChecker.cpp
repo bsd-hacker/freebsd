@@ -58,7 +58,7 @@ static bool IsStdString(QualType T) {
 
   const TypedefNameDecl *TD = TT->getDecl();
 
-  if (!TD->isInStdNamespace())
+  if (!InNamespace(TD, "std"))
     return false;
 
   return TD->getName() == "string";
@@ -115,14 +115,11 @@ static bool IsSmallVector(QualType T) {
 
 namespace {
 class StringRefCheckerVisitor : public StmtVisitor<StringRefCheckerVisitor> {
-  const Decl *DeclWithIssue;
   BugReporter &BR;
-  const CheckerBase *Checker;
-
+  const Decl *DeclWithIssue;
 public:
-  StringRefCheckerVisitor(const Decl *declWithIssue, BugReporter &br,
-                          const CheckerBase *checker)
-      : DeclWithIssue(declWithIssue), BR(br), Checker(checker) {}
+  StringRefCheckerVisitor(const Decl *declWithIssue, BugReporter &br)
+    : BR(br), DeclWithIssue(declWithIssue) {}
   void VisitChildren(Stmt *S) {
     for (Stmt::child_iterator I = S->child_begin(), E = S->child_end() ;
       I != E; ++I)
@@ -136,17 +133,16 @@ private:
 };
 } // end anonymous namespace
 
-static void CheckStringRefAssignedTemporary(const Decl *D, BugReporter &BR,
-                                            const CheckerBase *Checker) {
-  StringRefCheckerVisitor walker(D, BR, Checker);
+static void CheckStringRefAssignedTemporary(const Decl *D, BugReporter &BR) {
+  StringRefCheckerVisitor walker(D, BR);
   walker.Visit(D->getBody());
 }
 
 void StringRefCheckerVisitor::VisitDeclStmt(DeclStmt *S) {
   VisitChildren(S);
 
-  for (auto *I : S->decls())
-    if (VarDecl *VD = dyn_cast<VarDecl>(I))
+  for (DeclStmt::decl_iterator I = S->decl_begin(), E = S->decl_end();I!=E; ++I)
+    if (VarDecl *VD = dyn_cast<VarDecl>(*I))
       VisitVarDecl(VD);
 }
 
@@ -183,7 +179,7 @@ void StringRefCheckerVisitor::VisitVarDecl(VarDecl *VD) {
                      "std::string that it outlives";
   PathDiagnosticLocation VDLoc =
     PathDiagnosticLocation::createBegin(VD, BR.getSourceManager());
-  BR.EmitBasicReport(DeclWithIssue, Checker, desc, "LLVM Conventions", desc,
+  BR.EmitBasicReport(DeclWithIssue, desc, "LLVM Conventions", desc,
                      VDLoc, Init->getSourceRange());
 }
 
@@ -201,7 +197,9 @@ static bool IsPartOfAST(const CXXRecordDecl *R) {
   if (IsClangStmt(R) || IsClangType(R) || IsClangDecl(R) || IsClangAttr(R))
     return true;
 
-  for (const auto &BS : R->bases()) {
+  for (CXXRecordDecl::base_class_const_iterator I = R->bases_begin(),
+                                                E = R->bases_end(); I!=E; ++I) {
+    CXXBaseSpecifier BS = *I;
     QualType T = BS.getType();
     if (const RecordType *baseT = T->getAs<RecordType>()) {
       CXXRecordDecl *baseD = cast<CXXRecordDecl>(baseT->getDecl());
@@ -218,26 +216,23 @@ class ASTFieldVisitor {
   SmallVector<FieldDecl*, 10> FieldChain;
   const CXXRecordDecl *Root;
   BugReporter &BR;
-  const CheckerBase *Checker;
-
 public:
-  ASTFieldVisitor(const CXXRecordDecl *root, BugReporter &br,
-                  const CheckerBase *checker)
-      : Root(root), BR(br), Checker(checker) {}
+  ASTFieldVisitor(const CXXRecordDecl *root, BugReporter &br)
+    : Root(root), BR(br) {}
 
   void Visit(FieldDecl *D);
   void ReportError(QualType T);
 };
 } // end anonymous namespace
 
-static void CheckASTMemory(const CXXRecordDecl *R, BugReporter &BR,
-                           const CheckerBase *Checker) {
+static void CheckASTMemory(const CXXRecordDecl *R, BugReporter &BR) {
   if (!IsPartOfAST(R))
     return;
 
-  for (auto *I : R->fields()) {
-    ASTFieldVisitor walker(R, BR, Checker);
-    walker.Visit(I);
+  for (RecordDecl::field_iterator I = R->field_begin(), E = R->field_end();
+       I != E; ++I) {
+    ASTFieldVisitor walker(R, BR);
+    walker.Visit(*I);
   }
 }
 
@@ -251,8 +246,9 @@ void ASTFieldVisitor::Visit(FieldDecl *D) {
 
   if (const RecordType *RT = T->getAs<RecordType>()) {
     const RecordDecl *RD = RT->getDecl()->getDefinition();
-    for (auto *I : RD->fields())
-      Visit(I);
+    for (RecordDecl::field_iterator I = RD->field_begin(), E = RD->field_end();
+         I != E; ++I)
+      Visit(*I);
   }
 
   FieldChain.pop_back();
@@ -288,8 +284,8 @@ void ASTFieldVisitor::ReportError(QualType T) {
   // the class may be in the header file, for example).
   PathDiagnosticLocation L = PathDiagnosticLocation::createBegin(
                                FieldChain.front(), BR.getSourceManager());
-  BR.EmitBasicReport(Root, Checker, "AST node allocates heap memory",
-                     "LLVM Conventions", os.str(), L);
+  BR.EmitBasicReport(Root, "AST node allocates heap memory", "LLVM Conventions",
+                     os.str(), L);
 }
 
 //===----------------------------------------------------------------------===//
@@ -304,12 +300,12 @@ public:
   void checkASTDecl(const CXXRecordDecl *R, AnalysisManager& mgr,
                     BugReporter &BR) const {
     if (R->isCompleteDefinition())
-      CheckASTMemory(R, BR, this);
+      CheckASTMemory(R, BR);
   }
 
   void checkASTCodeBody(const Decl *D, AnalysisManager& mgr,
                         BugReporter &BR) const {
-    CheckStringRefAssignedTemporary(D, BR, this);
+    CheckStringRefAssignedTemporary(D, BR);
   }
 };
 }

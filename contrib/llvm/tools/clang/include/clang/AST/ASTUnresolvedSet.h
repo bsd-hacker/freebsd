@@ -32,6 +32,9 @@ class ASTUnresolvedSet {
 
   DeclsTy Decls;
 
+  ASTUnresolvedSet(const ASTUnresolvedSet &) LLVM_DELETED_FUNCTION;
+  void operator=(const ASTUnresolvedSet &) LLVM_DELETED_FUNCTION;
+
   friend class LazyASTUnresolvedSet;
 
 public:

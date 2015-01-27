@@ -6,7 +6,6 @@ DOC_PREFIX?= ${RELN_ROOT}/../../../doc
 RELEASETYPE!= grep -o 'release.type "[a-z]*"' ${RELN_ROOT}/share/xml/release.ent | sed 's|[a-z.]* "\([a-z]*\)"|\1|'
 RELEASEURL!= grep -o 'release.url \"[^\"]*\"' ${RELN_ROOT}/share/xml/release.ent | sed 's|[^ ]* "\([^"]*\)"|\1|'
 RELEASEBRANCH!= grep -o 'release.branch "\([^"]*\)"' ${RELN_ROOT}/share/xml/release.ent | sed 's|[^ ]* "\([^"]*\)"|\1|'
-RELEASEMAILLIST!= grep -o 'release.maillist "\([^"]*\)"' ${RELN_ROOT}/share/xml/release.ent | sed 's|[^ ]* "\([^"]*\)"|\1|'
 .if ${RELEASETYPE} == "current"
 PROFILING+= --param profile.attribute "'releasetype'" --param profile.value "'current'"
 .elif ${RELEASETYPE} == "snapshot"
@@ -16,7 +15,6 @@ PROFILING+= --param profile.attribute "'releasetype'" --param profile.value "'re
 .endif
 XSLTPROCFLAGS+= --param release.url "'${RELEASEURL}'"
 XSLTPROCFLAGS+= --param release.branch "'${RELEASEBRANCH}'"
-XSLTPROCFLAGS+= --param release.maillist "'${RELEASEMAILLIST}'"
 
 # Find the RELNOTESng document catalogs
 EXTRA_CATALOGS+= file://${RELN_ROOT}/${LANGCODE}/share/xml/catalog.xml \

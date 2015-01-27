@@ -2,6 +2,7 @@
 
 PROG= cdcontrol
 
-LIBADD=	edit
+DPADD=	${LIBEDIT} ${LIBTERMCAP}
+LDADD=	-ledit -ltermcap
 
 .include <bsd.prog.mk>

@@ -2,7 +2,8 @@
 
 PROG=	keylogin
 
-LIBADD=	rpcsvc
+DPADD=	${LIBRPCSVC}
+LDADD=	-lrpcsvc
 
 WARNS?=	0
 

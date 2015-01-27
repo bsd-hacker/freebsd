@@ -33,7 +33,7 @@
  * APIs for the barrier synchronization primitive.
  */
 
-#ifdef illumos
+#if defined(sun)
 #include <synch.h>
 #else
 #include <semaphore.h>

@@ -531,10 +531,8 @@ __vfwprintf(FILE *fp, locale_t locale, const wchar_t *fmt0, va_list ap)
 
 
 	/* sorry, fwprintf(read_only_file, L"") returns WEOF, not 0 */
-	if (prepwrite(fp) != 0) {
-		errno = EBADF;
+	if (prepwrite(fp) != 0)
 		return (EOF);
-	}
 
 	convbuf = NULL;
 	fmt = (wchar_t *)fmt0;

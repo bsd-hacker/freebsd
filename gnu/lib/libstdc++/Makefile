@@ -16,6 +16,9 @@ LIB=		stdc++
 SHLIB_MAJOR=	6
 
 CFLAGS+=	-DIN_GLIBCPP_V3 -DHAVE_CONFIG_H
+.if ${MACHINE_CPUARCH} == "arm" && ${MK_ARM_EABI} == "no"
+CFLAGS+=	-D_GLIBCXX_SJLJ_EXCEPTIONS=1
+.endif
 CFLAGS+=	-I${.CURDIR} -I${SUPDIR} -I${GCCDIR} -I${SRCDIR}/include
 CFLAGS+=	-I${GCCLIB}/include -I${SRCDIR}/include -I.
 CFLAGS+=	-frandom-seed=RepeatabilityConsideredGood
@@ -23,8 +26,8 @@ CXXFLAGS+=	-fno-implicit-templates -ffunction-sections -fdata-sections \
 		-Wno-deprecated
 PO_CXXFLAGS=	${CXXFLAGS:N-ffunction-sections}
 
-LIBADD+=	m
-LDADD=		-Wl,-f,libsupc++.so.1
+DPADD=		${LIBM}
+LDADD=		-lm  -Wl,-f,libsupc++.so.1
 
 # libstdc++ sources
 SRCS+=	bitmap_allocator.cc pool_allocator.cc \
@@ -593,7 +596,7 @@ gthr-default.h: ${GCCDIR}/gthr-posix.h
 
 CLEANFILES+=	${THRHDRS}
 
-.if ${MACHINE_CPUARCH} == "arm"
+.if ${MACHINE_CPUARCH} == "arm" && ${MK_ARM_EABI} != "no"
 unwind.h: ${GCCDIR}/config/arm/unwind-arm.h
 .else
 unwind.h: ${GCCDIR}/unwind-generic.h

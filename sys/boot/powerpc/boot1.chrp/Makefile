@@ -15,7 +15,7 @@ MAN=
 CFLAGS= -ffreestanding -msoft-float -Os \
 	-I${.CURDIR}/../../common -I${.CURDIR}/../../../ \
 	-D_STANDALONE
-LDFLAGS=-nostdlib -static -Wl,-N
+LDFLAGS=-nostdlib -static -N
 
 .include "${.CURDIR}/../Makefile.inc"
 .PATH:  ${.CURDIR}/../../../libkern ${.CURDIR}/../../../../lib/libc/powerpc/gen ${.CURDIR}

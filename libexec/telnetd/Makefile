@@ -20,26 +20,30 @@ WFORMAT?=	0
 CFLAGS+=	-DLINEMODE -DUSE_TERMIO -DDIAGNOSTICS -DOLD_ENVIRON \
 		-DENV_HACK -DSTREAMSPTY
 
+NO_PIE=	yes
+
 .if ${MK_INET6_SUPPORT} != "no"
 CFLAGS+=	-DINET6
 .endif
 
 CFLAGS+=	-I${TELNETDIR}
-CFLAGS+=	-I${TELNETDIR}/telnet
 
 LIBTELNET=	${.OBJDIR}/../../lib/libtelnet/libtelnet.a
 
-LIBADD=		telnet util ncursesw
+DPADD=		${LIBUTIL} ${LIBTERMCAP} ${LIBTELNET}
+LDADD=		-lutil -ltermcap ${LIBTELNET}
 
 .if ${MK_OPENSSL} != "no"
 SRCS+=		authenc.c
 CFLAGS+=	-DAUTHENTICATION -DENCRYPTION
-LIBADD+=	mp crypto pam
+DPADD+=		${LIBMP} ${LIBCRYPTO} ${LIBCRYPT} ${LIBPAM}
+LDADD+=		-lmp -lcrypto -lcrypt ${MINUSLPAM}
 .endif
 
 .if ${MK_KERBEROS_SUPPORT} != "no"
 CFLAGS+=	-DKRB5 -DFORWARD -Dnet_write=telnet_net_write
-LIBADD+=	krb5 roken
+DPADD+=		${LIBKRB5} ${LIBHX509} ${LIBASN1} ${LIBROKEN} ${LIBCOM_ERR}
+LDADD+=		-lkrb5 -lhx509 -lasn1 -lroken -lcom_err
 .endif
 
 .include <bsd.prog.mk>

@@ -52,7 +52,8 @@ int snd_unit = -1;
 TUNABLE_INT("hw.snd.default_unit", &snd_unit);
 
 static int snd_unit_auto = -1;
-SYSCTL_INT(_hw_snd, OID_AUTO, default_auto, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.snd.default_auto", &snd_unit_auto);
+SYSCTL_INT(_hw_snd, OID_AUTO, default_auto, CTLFLAG_RW,
     &snd_unit_auto, 0, "assign default unit to a newly attached device");
 
 int snd_maxautovchans = 16;
@@ -124,7 +125,11 @@ snd_setup_intr(device_t dev, struct resource *res, int flags, driver_intr_t hand
 	if (d != NULL && (flags & INTR_MPSAFE))
 		d->flags |= SD_F_MPSAFE;
 
-	return bus_setup_intr(dev, res, flags, NULL, hand, param, cookiep);
+	return bus_setup_intr(dev, res, flags,
+#if __FreeBSD_version >= 700031
+			NULL,
+#endif
+			hand, param, cookiep);
 }
 
 static void

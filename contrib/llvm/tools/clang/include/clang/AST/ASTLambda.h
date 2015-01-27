@@ -36,9 +36,9 @@ inline bool isLambdaCallOperator(const DeclContext *DC) {
   return isLambdaCallOperator(cast<CXXMethodDecl>(DC));
 }
 
-inline bool isGenericLambdaCallOperatorSpecialization(const CXXMethodDecl *MD) {
+inline bool isGenericLambdaCallOperatorSpecialization(CXXMethodDecl *MD) {
   if (!MD) return false;
-  const CXXRecordDecl *LambdaClass = MD->getParent();
+  CXXRecordDecl *LambdaClass = MD->getParent();
   if (LambdaClass && LambdaClass->isGenericLambda())
     return isLambdaCallOperator(MD) && 
                     MD->isFunctionTemplateSpecialization();

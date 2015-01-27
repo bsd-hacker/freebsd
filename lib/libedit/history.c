@@ -1,5 +1,3 @@
-/*	$NetBSD: history.c,v 1.47 2014/05/11 01:05:17 christos Exp $	*/
-
 /*-
  * Copyright (c) 1992, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -30,22 +28,21 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ *	$NetBSD: history.c,v 1.34 2009/09/07 21:24:33 christos Exp $
  */
 
-#include "config.h"
 #if !defined(lint) && !defined(SCCSID)
-#if 0
 static char sccsid[] = "@(#)history.c	8.1 (Berkeley) 6/4/93";
-#else
-__RCSID("$NetBSD: history.c,v 1.47 2014/05/11 01:05:17 christos Exp $");
-#endif
 #endif /* not lint && not SCCSID */
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
 /*
- * hist.c: TYPE(History) access functions
+ * hist.c: History access functions
  */
+#include "sys.h"
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -55,15 +52,14 @@ __FBSDID("$FreeBSD$");
 static const char hist_cookie[] = "_HiStOrY_V2_\n";
 
 #include "histedit.h"
-#include "chartype.h"
 
-typedef int (*history_gfun_t)(void *, TYPE(HistEvent) *);
-typedef int (*history_efun_t)(void *, TYPE(HistEvent) *, const Char *);
-typedef void (*history_vfun_t)(void *, TYPE(HistEvent) *);
-typedef int (*history_sfun_t)(void *, TYPE(HistEvent) *, const int);
+typedef int (*history_gfun_t)(ptr_t, HistEvent *);
+typedef int (*history_efun_t)(ptr_t, HistEvent *, const char *);
+typedef void (*history_vfun_t)(ptr_t, HistEvent *);
+typedef int (*history_sfun_t)(ptr_t, HistEvent *, const int);
 
-struct TYPE(history) {
-	void *h_ref;		/* Argument for history fcns	 */
+struct history {
+	ptr_t h_ref;		/* Argument for history fcns	 */
 	int h_ent;		/* Last entry point for history	 */
 	history_gfun_t h_first;	/* Get the first element	 */
 	history_gfun_t h_next;	/* Get the next element		 */
@@ -88,30 +84,30 @@ struct TYPE(history) {
 #define	HADD(h, ev, str)	(*(h)->h_add)((h)->h_ref, ev, str)
 #define	HDEL(h, ev, n)		(*(h)->h_del)((h)->h_ref, ev, n)
 
-#define	h_strdup(a)	Strdup(a)
+#define	h_strdup(a)	strdup(a)
 #define	h_malloc(a)	malloc(a)
 #define	h_realloc(a, b)	realloc((a), (b))
 #define	h_free(a)	free(a)
 
 typedef struct {
     int		num;
-    Char	*str;
+    char	*str;
 } HistEventPrivate;
 
 
 
-private int history_setsize(TYPE(History) *, TYPE(HistEvent) *, int);
-private int history_getsize(TYPE(History) *, TYPE(HistEvent) *);
-private int history_setunique(TYPE(History) *, TYPE(HistEvent) *, int);
-private int history_getunique(TYPE(History) *, TYPE(HistEvent) *);
-private int history_set_fun(TYPE(History) *, TYPE(History) *);
-private int history_load(TYPE(History) *, const char *);
-private int history_save(TYPE(History) *, const char *);
-private int history_save_fp(TYPE(History) *, FILE *);
-private int history_prev_event(TYPE(History) *, TYPE(HistEvent) *, int);
-private int history_next_event(TYPE(History) *, TYPE(HistEvent) *, int);
-private int history_next_string(TYPE(History) *, TYPE(HistEvent) *, const Char *);
-private int history_prev_string(TYPE(History) *, TYPE(HistEvent) *, const Char *);
+private int history_setsize(History *, HistEvent *, int);
+private int history_getsize(History *, HistEvent *);
+private int history_setunique(History *, HistEvent *, int);
+private int history_getunique(History *, HistEvent *);
+private int history_set_fun(History *, History *);
+private int history_load(History *, const char *);
+private int history_save(History *, const char *);
+private int history_save_fp(History *, FILE*);
+private int history_prev_event(History *, HistEvent *, int);
+private int history_next_event(History *, HistEvent *, int);
+private int history_next_string(History *, HistEvent *, const char *);
+private int history_prev_string(History *, HistEvent *, const char *);
 
 
 /***********************************************************************/
@@ -120,7 +116,7 @@ private int history_prev_string(TYPE(History) *, TYPE(HistEvent) *, const Char *
  * Builtin- history implementation
  */
 typedef struct hentry_t {
-	TYPE(HistEvent) ev;		/* What we return		 */
+	HistEvent ev;		/* What we return		 */
 	void *data;		/* data				 */
 	struct hentry_t *next;	/* Next entry			 */
 	struct hentry_t *prev;	/* Previous entry		 */
@@ -132,27 +128,27 @@ typedef struct history_t {
 	int max;		/* Maximum number of events	*/
 	int cur;		/* Current number of events	*/
 	int eventid;		/* For generation of unique event id	 */
-	int flags;		/* TYPE(History) flags		*/
+	int flags;		/* History flags		*/
 #define H_UNIQUE	1	/* Store only unique elements	*/
 } history_t;
 
-private int history_def_next(void *, TYPE(HistEvent) *);
-private int history_def_first(void *, TYPE(HistEvent) *);
-private int history_def_prev(void *, TYPE(HistEvent) *);
-private int history_def_last(void *, TYPE(HistEvent) *);
-private int history_def_curr(void *, TYPE(HistEvent) *);
-private int history_def_set(void *, TYPE(HistEvent) *, const int);
-private void history_def_clear(void *, TYPE(HistEvent) *);
-private int history_def_enter(void *, TYPE(HistEvent) *, const Char *);
-private int history_def_add(void *, TYPE(HistEvent) *, const Char *);
-private int history_def_del(void *, TYPE(HistEvent) *, const int);
+private int history_def_next(ptr_t, HistEvent *);
+private int history_def_first(ptr_t, HistEvent *);
+private int history_def_prev(ptr_t, HistEvent *);
+private int history_def_last(ptr_t, HistEvent *);
+private int history_def_curr(ptr_t, HistEvent *);
+private int history_def_set(ptr_t, HistEvent *, const int);
+private void history_def_clear(ptr_t, HistEvent *);
+private int history_def_enter(ptr_t, HistEvent *, const char *);
+private int history_def_add(ptr_t, HistEvent *, const char *);
+private int history_def_del(ptr_t, HistEvent *, const int);
 
-private int history_def_init(void **, TYPE(HistEvent) *, int);
-private int history_def_insert(history_t *, TYPE(HistEvent) *, const Char *);
-private void history_def_delete(history_t *, TYPE(HistEvent) *, hentry_t *);
+private int history_def_init(ptr_t *, HistEvent *, int);
+private int history_def_insert(history_t *, HistEvent *, const char *);
+private void history_def_delete(history_t *, HistEvent *, hentry_t *);
 
-private int history_deldata_nth(history_t *, TYPE(HistEvent) *, int, void **);
-private int history_set_nth(void *, TYPE(HistEvent) *, int);
+private int history_deldata_nth(history_t *, HistEvent *, int, void **);
+private int history_set_nth(ptr_t, HistEvent *, int);
 
 #define	history_def_setsize(p, num)(void) (((history_t *)p)->max = (num))
 #define	history_def_getsize(p)  (((history_t *)p)->cur)
@@ -170,23 +166,23 @@ private int history_set_nth(void *, TYPE(HistEvent) *, int);
 				}
 
 /* error messages */
-static const Char *const he_errlist[] = {
-	STR("OK"),
-	STR("unknown error"),
-	STR("malloc() failed"),
-	STR("first event not found"),
-	STR("last event not found"),
-	STR("empty list"),
-	STR("no next event"),
-	STR("no previous event"),
-	STR("current event is invalid"),
-	STR("event not found"),
-	STR("can't read history from file"),
-	STR("can't write history"),
-	STR("required parameter(s) not supplied"),
-	STR("history size negative"),
-	STR("function not allowed with other history-functions-set the default"),
-	STR("bad parameters")
+static const char *const he_errlist[] = {
+	"OK",
+	"unknown error",
+	"malloc() failed",
+	"first event not found",
+	"last event not found",
+	"empty list",
+	"no next event",
+	"no previous event",
+	"current event is invalid",
+	"event not found",
+	"can't read history from file",
+	"can't write history",
+	"required parameter(s) not supplied",
+	"history size negative",
+	"function not allowed with other history-functions-set the default",
+	"bad parameters"
 };
 /* error codes */
 #define	_HE_OK                   0
@@ -210,7 +206,7 @@ static const Char *const he_errlist[] = {
  *	Default function to return the first event in the history.
  */
 private int
-history_def_first(void *p, TYPE(HistEvent) *ev)
+history_def_first(ptr_t p, HistEvent *ev)
 {
 	history_t *h = (history_t *) p;
 
@@ -219,10 +215,10 @@ history_def_first(void *p, TYPE(HistEvent) *ev)
 		*ev = h->cursor->ev;
 	else {
 		he_seterrev(ev, _HE_FIRST_NOTFOUND);
-		return -1;
+		return (-1);
 	}
 
-	return 0;
+	return (0);
 }
 
 
@@ -230,7 +226,7 @@ history_def_first(void *p, TYPE(HistEvent) *ev)
  *	Default function to return the last event in the history.
  */
 private int
-history_def_last(void *p, TYPE(HistEvent) *ev)
+history_def_last(ptr_t p, HistEvent *ev)
 {
 	history_t *h = (history_t *) p;
 
@@ -239,10 +235,10 @@ history_def_last(void *p, TYPE(HistEvent) *ev)
 		*ev = h->cursor->ev;
 	else {
 		he_seterrev(ev, _HE_LAST_NOTFOUND);
-		return -1;
+		return (-1);
 	}
 
-	return 0;
+	return (0);
 }
 
 
@@ -250,24 +246,24 @@ history_def_last(void *p, TYPE(HistEvent) *ev)
  *	Default function to return the next event in the history.
  */
 private int
-history_def_next(void *p, TYPE(HistEvent) *ev)
+history_def_next(ptr_t p, HistEvent *ev)
 {
 	history_t *h = (history_t *) p;
 
 	if (h->cursor == &h->list) {
 		he_seterrev(ev, _HE_EMPTY_LIST);
-		return -1;
+		return (-1);
 	}
 
 	if (h->cursor->next == &h->list) {
 		he_seterrev(ev, _HE_END_REACHED);
-		return -1;
+		return (-1);
 	}
 
         h->cursor = h->cursor->next;
         *ev = h->cursor->ev;
 
-	return 0;
+	return (0);
 }
 
 
@@ -275,25 +271,25 @@ history_def_next(void *p, TYPE(HistEvent) *ev)
  *	Default function to return the previous event in the history.
  */
 private int
-history_def_prev(void *p, TYPE(HistEvent) *ev)
+history_def_prev(ptr_t p, HistEvent *ev)
 {
 	history_t *h = (history_t *) p;
 
 	if (h->cursor == &h->list) {
 		he_seterrev(ev,
 		    (h->cur > 0) ? _HE_END_REACHED : _HE_EMPTY_LIST);
-		return -1;
+		return (-1);
 	}
 
 	if (h->cursor->prev == &h->list) {
 		he_seterrev(ev, _HE_START_REACHED);
-		return -1;
+		return (-1);
 	}
 
         h->cursor = h->cursor->prev;
         *ev = h->cursor->ev;
 
-	return 0;
+	return (0);
 }
 
 
@@ -301,7 +297,7 @@ history_def_prev(void *p, TYPE(HistEvent) *ev)
  *	Default function to return the current event in the history.
  */
 private int
-history_def_curr(void *p, TYPE(HistEvent) *ev)
+history_def_curr(ptr_t p, HistEvent *ev)
 {
 	history_t *h = (history_t *) p;
 
@@ -310,10 +306,10 @@ history_def_curr(void *p, TYPE(HistEvent) *ev)
 	else {
 		he_seterrev(ev,
 		    (h->cur > 0) ? _HE_CURR_INVALID : _HE_EMPTY_LIST);
-		return -1;
+		return (-1);
 	}
 
-	return 0;
+	return (0);
 }
 
 
@@ -322,13 +318,13 @@ history_def_curr(void *p, TYPE(HistEvent) *ev)
  *	given one.
  */
 private int
-history_def_set(void *p, TYPE(HistEvent) *ev, const int n)
+history_def_set(ptr_t p, HistEvent *ev, const int n)
 {
 	history_t *h = (history_t *) p;
 
 	if (h->cur == 0) {
 		he_seterrev(ev, _HE_EMPTY_LIST);
-		return -1;
+		return (-1);
 	}
 	if (h->cursor == &h->list || h->cursor->ev.num != n) {
 		for (h->cursor = h->list.next; h->cursor != &h->list;
@@ -338,9 +334,9 @@ history_def_set(void *p, TYPE(HistEvent) *ev, const int n)
 	}
 	if (h->cursor == &h->list) {
 		he_seterrev(ev, _HE_NOT_FOUND);
-		return -1;
+		return (-1);
 	}
-	return 0;
+	return (0);
 }
 
 
@@ -349,13 +345,13 @@ history_def_set(void *p, TYPE(HistEvent) *ev, const int n)
  *	n-th one.
  */
 private int
-history_set_nth(void *p, TYPE(HistEvent) *ev, int n)
+history_set_nth(ptr_t p, HistEvent *ev, int n)
 {
 	history_t *h = (history_t *) p;
 
 	if (h->cur == 0) {
 		he_seterrev(ev, _HE_EMPTY_LIST);
-		return -1;
+		return (-1);
 	}
 	for (h->cursor = h->list.prev; h->cursor != &h->list;
 	    h->cursor = h->cursor->prev)
@@ -363,9 +359,9 @@ history_set_nth(void *p, TYPE(HistEvent) *ev, int n)
 			break;
 	if (h->cursor == &h->list) {
 		he_seterrev(ev, _HE_NOT_FOUND);
-		return -1;
+		return (-1);
 	}
-	return 0;
+	return (0);
 }
 
 
@@ -373,46 +369,45 @@ history_set_nth(void *p, TYPE(HistEvent) *ev, int n)
  *	Append string to element
  */
 private int
-history_def_add(void *p, TYPE(HistEvent) *ev, const Char *str)
+history_def_add(ptr_t p, HistEvent *ev, const char *str)
 {
 	history_t *h = (history_t *) p;
 	size_t len;
-	Char *s;
+	char *s;
 	HistEventPrivate *evp = (void *)&h->cursor->ev;
 
 	if (h->cursor == &h->list)
-		return history_def_enter(p, ev, str);
-	len = Strlen(evp->str) + Strlen(str) + 1;
-	s = h_malloc(len * sizeof(*s));
+		return (history_def_enter(p, ev, str));
+	len = strlen(evp->str) + strlen(str) + 1;
+	s = (char *) h_malloc(len);
 	if (s == NULL) {
 		he_seterrev(ev, _HE_MALLOC_FAILED);
-		return -1;
+		return (-1);
 	}
-	(void) Strncpy(s, h->cursor->ev.str, len);
-        s[len - 1] = '\0';
-	(void) Strncat(s, str, len - Strlen(s) - 1);
-	h_free(evp->str);
+	(void) strlcpy(s, h->cursor->ev.str, len);
+	(void) strlcat(s, str, len);
+	h_free((ptr_t)evp->str);
 	evp->str = s;
 	*ev = h->cursor->ev;
-	return 0;
+	return (0);
 }
 
 
 private int
-history_deldata_nth(history_t *h, TYPE(HistEvent) *ev,
+history_deldata_nth(history_t *h, HistEvent *ev,
     int num, void **data)
 {
 	if (history_set_nth(h, ev, num) != 0)
-		return -1;
+		return (-1);
 	/* magic value to skip delete (just set to n-th history) */
 	if (data == (void **)-1)
-		return 0;
-	ev->str = Strdup(h->cursor->ev.str);
+		return (0);
+	ev->str = strdup(h->cursor->ev.str);
 	ev->num = h->cursor->ev.num;
 	if (data)
 		*data = h->cursor->data;
 	history_def_delete(h, ev, h->cursor);
-	return 0;
+	return (0);
 }
 
 
@@ -421,16 +416,16 @@ history_deldata_nth(history_t *h, TYPE(HistEvent) *ev,
  */
 /* ARGSUSED */
 private int
-history_def_del(void *p, TYPE(HistEvent) *ev __attribute__((__unused__)),
+history_def_del(ptr_t p, HistEvent *ev __unused,
     const int num)
 {
 	history_t *h = (history_t *) p;
 	if (history_def_set(h, ev, num) != 0)
-		return -1;
-	ev->str = Strdup(h->cursor->ev.str);
+		return (-1);
+	ev->str = strdup(h->cursor->ev.str);
 	ev->num = h->cursor->ev.num;
 	history_def_delete(h, ev, h->cursor);
-	return 0;
+	return (0);
 }
 
 
@@ -440,7 +435,7 @@ history_def_del(void *p, TYPE(HistEvent) *ev __attribute__((__unused__)),
 /* ARGSUSED */
 private void
 history_def_delete(history_t *h, 
-		   TYPE(HistEvent) *ev __attribute__((__unused__)), hentry_t *hp)
+		   HistEvent *ev __unused, hentry_t *hp)
 {
 	HistEventPrivate *evp = (void *)&hp->ev;
 	if (hp == &h->list)
@@ -452,7 +447,7 @@ history_def_delete(history_t *h,
 	}
 	hp->prev->next = hp->next;
 	hp->next->prev = hp->prev;
-	h_free(evp->str);
+	h_free((ptr_t) evp->str);
 	h_free(hp);
 	h->cur--;
 }
@@ -462,31 +457,29 @@ history_def_delete(history_t *h,
  *	Insert element with string str in the h list
  */
 private int
-history_def_insert(history_t *h, TYPE(HistEvent) *ev, const Char *str)
+history_def_insert(history_t *h, HistEvent *ev, const char *str)
 {
-	hentry_t *c;
 
-	c = h_malloc(sizeof(*c));
-	if (c == NULL)
+	h->cursor = (hentry_t *) h_malloc(sizeof(hentry_t));
+	if (h->cursor == NULL)
 		goto oomem;
-	if ((c->ev.str = h_strdup(str)) == NULL) {
-		h_free(c);
+	if ((h->cursor->ev.str = h_strdup(str)) == NULL) {
+		h_free((ptr_t)h->cursor);
 		goto oomem;
 	}
-	c->data = NULL;
-	c->ev.num = ++h->eventid;
-	c->next = h->list.next;
-	c->prev = &h->list;
-	h->list.next->prev = c;
-	h->list.next = c;
+	h->cursor->data = NULL;
+	h->cursor->ev.num = ++h->eventid;
+	h->cursor->next = h->list.next;
+	h->cursor->prev = &h->list;
+	h->list.next->prev = h->cursor;
+	h->list.next = h->cursor;
 	h->cur++;
-	h->cursor = c;
 
-	*ev = c->ev;
-	return 0;
+	*ev = h->cursor->ev;
+	return (0);
 oomem:
 	he_seterrev(ev, _HE_MALLOC_FAILED);
-	return -1;
+	return (-1);
 }
 
 
@@ -494,16 +487,16 @@ oomem:
  *	Default function to enter an item in the history
  */
 private int
-history_def_enter(void *p, TYPE(HistEvent) *ev, const Char *str)
+history_def_enter(ptr_t p, HistEvent *ev, const char *str)
 {
 	history_t *h = (history_t *) p;
 
 	if ((h->flags & H_UNIQUE) != 0 && h->list.next != &h->list &&
-	    Strcmp(h->list.next->ev.str, str) == 0)
-	    return 0;
+	    strcmp(h->list.next->ev.str, str) == 0)
+	    return (0); 
 
 	if (history_def_insert(h, ev, str) == -1)
-		return -1;	/* error, keep error message */
+		return (-1);	/* error, keep error message */
 
 	/*
          * Always keep at least one entry.
@@ -512,7 +505,7 @@ history_def_enter(void *p, TYPE(HistEvent) *ev, const Char *str)
 	while (h->cur > h->max && h->cur > 0)
 		history_def_delete(h, ev, h->list.prev);
 
-	return 1;
+	return (1);
 }
 
 
@@ -521,9 +514,9 @@ history_def_enter(void *p, TYPE(HistEvent) *ev, const Char *str)
  */
 /* ARGSUSED */
 private int
-history_def_init(void **p, TYPE(HistEvent) *ev __attribute__((__unused__)), int n)
+history_def_init(ptr_t *p, HistEvent *ev __unused, int n)
 {
-	history_t *h = (history_t *) h_malloc(sizeof(*h));
+	history_t *h = (history_t *) h_malloc(sizeof(history_t));
 	if (h == NULL)
 		return -1;
 
@@ -537,7 +530,7 @@ history_def_init(void **p, TYPE(HistEvent) *ev __attribute__((__unused__)), int 
 	h->list.ev.num = 0;
 	h->cursor = &h->list;
 	h->flags = 0;
-	*p = h;
+	*p = (ptr_t) h;
 	return 0;
 }
 
@@ -546,13 +539,12 @@ history_def_init(void **p, TYPE(HistEvent) *ev __attribute__((__unused__)), int 
  *	Default history cleanup function
  */
 private void
-history_def_clear(void *p, TYPE(HistEvent) *ev)
+history_def_clear(ptr_t p, HistEvent *ev)
 {
 	history_t *h = (history_t *) p;
 
 	while (h->list.prev != &h->list)
 		history_def_delete(h, ev, h->list.prev);
-	h->cursor = &h->list;
 	h->eventid = 0;
 	h->cur = 0;
 }
@@ -565,16 +557,16 @@ history_def_clear(void *p, TYPE(HistEvent) *ev)
 /* history_init():
  *	Initialization function.
  */
-public TYPE(History) *
-FUN(history,init)(void)
+public History *
+history_init(void)
 {
-	TYPE(HistEvent) ev;
-	TYPE(History) *h = (TYPE(History) *) h_malloc(sizeof(*h));
+	HistEvent ev;
+	History *h = (History *) h_malloc(sizeof(History));
 	if (h == NULL)
 		return NULL;
 
 	if (history_def_init(&h->h_ref, &ev, 0) == -1) {
-		h_free(h);
+		h_free((ptr_t)h);
 		return NULL;
 	}
 	h->h_ent = -1;
@@ -589,7 +581,7 @@ FUN(history,init)(void)
 	h->h_add = history_def_add;
 	h->h_del = history_def_del;
 
-	return h;
+	return (h);
 }
 
 
@@ -597,9 +589,9 @@ FUN(history,init)(void)
  *	clean up history;
  */
 public void
-FUN(history,end)(TYPE(History) *h)
+history_end(History *h)
 {
-	TYPE(HistEvent) ev;
+	HistEvent ev;
 
 	if (h->h_next == history_def_next)
 		history_def_clear(h->h_ref, &ev);
@@ -613,19 +605,19 @@ FUN(history,end)(TYPE(History) *h)
  *	Set history number of events
  */
 private int
-history_setsize(TYPE(History) *h, TYPE(HistEvent) *ev, int num)
+history_setsize(History *h, HistEvent *ev, int num)
 {
 
 	if (h->h_next != history_def_next) {
 		he_seterrev(ev, _HE_NOT_ALLOWED);
-		return -1;
+		return (-1);
 	}
 	if (num < 0) {
 		he_seterrev(ev, _HE_BAD_PARAM);
-		return -1;
+		return (-1);
 	}
 	history_def_setsize(h->h_ref, num);
-	return 0;
+	return (0);
 }
 
 
@@ -633,18 +625,18 @@ history_setsize(TYPE(History) *h, TYPE(HistEvent) *ev, int num)
  *      Get number of events currently in history
  */
 private int
-history_getsize(TYPE(History) *h, TYPE(HistEvent) *ev)
+history_getsize(History *h, HistEvent *ev)
 {
 	if (h->h_next != history_def_next) {
 		he_seterrev(ev, _HE_NOT_ALLOWED);
-		return -1;
+		return (-1);
 	}
 	ev->num = history_def_getsize(h->h_ref);
 	if (ev->num < -1) {
 		he_seterrev(ev, _HE_SIZE_NEGATIVE);
-		return -1;
+		return (-1);
 	}
-	return 0;
+	return (0);
 }
 
 
@@ -652,15 +644,15 @@ history_getsize(TYPE(History) *h, TYPE(HistEvent) *ev)
  *	Set if adjacent equal events should not be entered in history.
  */
 private int
-history_setunique(TYPE(History) *h, TYPE(HistEvent) *ev, int uni)
+history_setunique(History *h, HistEvent *ev, int uni)
 {
 
 	if (h->h_next != history_def_next) {
 		he_seterrev(ev, _HE_NOT_ALLOWED);
-		return -1;
+		return (-1);
 	}
 	history_def_setunique(h->h_ref, uni);
-	return 0;
+	return (0);
 }
 
 
@@ -668,14 +660,14 @@ history_setunique(TYPE(History) *h, TYPE(HistEvent) *ev, int uni)
  *	Get if adjacent equal events should not be entered in history.
  */
 private int
-history_getunique(TYPE(History) *h, TYPE(HistEvent) *ev)
+history_getunique(History *h, HistEvent *ev)
 {
 	if (h->h_next != history_def_next) {
 		he_seterrev(ev, _HE_NOT_ALLOWED);
-		return -1;
+		return (-1);
 	}
 	ev->num = history_def_getunique(h->h_ref);
-	return 0;
+	return (0);
 }
 
 
@@ -683,17 +675,16 @@ history_getunique(TYPE(History) *h, TYPE(HistEvent) *ev)
  *	Set history functions
  */
 private int
-history_set_fun(TYPE(History) *h, TYPE(History) *nh)
+history_set_fun(History *h, History *nh)
 {
-	TYPE(HistEvent) ev;
+	HistEvent ev;
 
 	if (nh->h_first == NULL || nh->h_next == NULL || nh->h_last == NULL ||
 	    nh->h_prev == NULL || nh->h_curr == NULL || nh->h_set == NULL ||
 	    nh->h_enter == NULL || nh->h_add == NULL || nh->h_clear == NULL ||
 	    nh->h_del == NULL || nh->h_ref == NULL) {
 		if (h->h_next != history_def_next) {
-			if (history_def_init(&h->h_ref, &ev, 0) == -1)
-				return -1;
+			history_def_init(&h->h_ref, &ev, 0);
 			h->h_first = history_def_first;
 			h->h_next = history_def_next;
 			h->h_last = history_def_last;
@@ -705,7 +696,7 @@ history_set_fun(TYPE(History) *h, TYPE(History) *nh)
 			h->h_add = history_def_add;
 			h->h_del = history_def_del;
 		}
-		return -1;
+		return (-1);
 	}
 	if (h->h_next == history_def_next)
 		history_def_clear(h->h_ref, &ev);
@@ -722,28 +713,25 @@ history_set_fun(TYPE(History) *h, TYPE(History) *nh)
 	h->h_add = nh->h_add;
 	h->h_del = nh->h_del;
 
-	return 0;
+	return (0);
 }
 
 
 /* history_load():
- *	TYPE(History) load function
+ *	History load function
  */
 private int
-history_load(TYPE(History) *h, const char *fname)
+history_load(History *h, const char *fname)
 {
 	FILE *fp;
 	char *line;
 	size_t sz, max_size;
 	char *ptr;
 	int i = -1;
-	TYPE(HistEvent) ev;
-#ifdef WIDECHAR
-	static ct_buffer_t conv;
-#endif
+	HistEvent ev;
 
 	if ((fp = fopen(fname, "r")) == NULL)
-		return i;
+		return (i);
 
 	if ((line = fgetln(fp, &sz)) == NULL)
 		goto done;
@@ -751,7 +739,7 @@ history_load(TYPE(History) *h, const char *fname)
 	if (strncmp(line, hist_cookie, sz) != 0)
 		goto done;
 
-	ptr = h_malloc((max_size = 1024) * sizeof(*ptr));
+	ptr = h_malloc(max_size = 1024);
 	if (ptr == NULL)
 		goto done;
 	for (i = 0; (line = fgetln(fp, &sz)) != NULL; i++) {
@@ -764,8 +752,8 @@ history_load(TYPE(History) *h, const char *fname)
 
 		if (max_size < sz) {
 			char *nptr;
-			max_size = (sz + 1024) & (size_t)~1023;
-			nptr = h_realloc(ptr, max_size * sizeof(*ptr));
+			max_size = (sz + 1024) & ~1023;
+			nptr = h_realloc(ptr, max_size);
 			if (nptr == NULL) {
 				i = -1;
 				goto oomem;
@@ -774,82 +762,77 @@ history_load(TYPE(History) *h, const char *fname)
 		}
 		(void) strunvis(ptr, line);
 		line[sz] = c;
-		if (HENTER(h, &ev, ct_decode_string(ptr, &conv)) == -1) {
+		if (HENTER(h, &ev, ptr) == -1) {
 			i = -1;
 			goto oomem;
 		}
 	}
 oomem:
-	h_free(ptr);
+	h_free((ptr_t)ptr);
 done:
 	(void) fclose(fp);
-	return i;
+	return (i);
 }
 
-
 /* history_save_fp():
- *	TYPE(History) save function
+ *	History save with open FILE*
  */
-private int
-history_save_fp(TYPE(History) *h, FILE *fp)
+private int history_save_fp(History *h, FILE* fp)
 {
-	TYPE(HistEvent) ev;
+	HistEvent ev;
 	int i = -1, retval;
 	size_t len, max_size;
 	char *ptr;
-	const char *str;
-#ifdef WIDECHAR
-	static ct_buffer_t conv;
-#endif
 
 	if (fchmod(fileno(fp), S_IRUSR|S_IWUSR) == -1)
 		goto done;
 	if (fputs(hist_cookie, fp) == EOF)
 		goto done;
-	ptr = h_malloc((max_size = 1024) * sizeof(*ptr));
+	ptr = h_malloc(max_size = 1024);
 	if (ptr == NULL)
 		goto done;
 	for (i = 0, retval = HLAST(h, &ev);
 	    retval != -1;
 	    retval = HPREV(h, &ev), i++) {
-		str = ct_encode_string(ev.str, &conv);
-		len = strlen(str) * 4;
+		len = strlen(ev.str) * 4;
 		if (len >= max_size) {
 			char *nptr;
-			max_size = (len + 1024) & (size_t)~1023;
-			nptr = h_realloc(ptr, max_size * sizeof(*ptr));
+			max_size = (len + 1024) & ~1023;
+			nptr = h_realloc(ptr, max_size);
 			if (nptr == NULL) {
 				i = -1;
 				goto oomem;
 			}
 			ptr = nptr;
 		}
-		(void) strvis(ptr, str, VIS_WHITE);
+		(void) strvis(ptr, ev.str, VIS_WHITE);
 		(void) fprintf(fp, "%s\n", ptr);
 	}
 oomem:
-	h_free(ptr);
+	h_free((ptr_t)ptr);
 done:
-	return i;
+	return (i);
+	
 }
 
 
 /* history_save():
- *    History save function
+ *	History save function
  */
 private int
-history_save(TYPE(History) *h, const char *fname)
+history_save(History *h, const char *fname)
 {
-    FILE *fp;
-    int i;
+	FILE *fp;
+	int i;
 
-    if ((fp = fopen(fname, "w")) == NULL)
-	return -1;
+	if ((fp = fopen(fname, "w")) == NULL)
+		return (-1);
 
-    i = history_save_fp(h, fp);
+	i = history_save_fp(h, fp);
 
-    (void) fclose(fp);
-    return i;
+done:
+	(void) fclose(fp);
+	return (i);
 }
 
 
@@ -857,33 +840,33 @@ history_save(TYPE(History) *h, const char *fname)
  *	Find the previous event, with number given
  */
 private int
-history_prev_event(TYPE(History) *h, TYPE(HistEvent) *ev, int num)
+history_prev_event(History *h, HistEvent *ev, int num)
 {
 	int retval;
 
 	for (retval = HCURR(h, ev); retval != -1; retval = HPREV(h, ev))
 		if (ev->num == num)
-			return 0;
+			return (0);
 
 	he_seterrev(ev, _HE_NOT_FOUND);
-	return -1;
+	return (-1);
 }
 
 
 private int
-history_next_evdata(TYPE(History) *h, TYPE(HistEvent) *ev, int num, void **d)
+history_next_evdata(History *h, HistEvent *ev, int num, void **d)
 {
 	int retval;
 
 	for (retval = HCURR(h, ev); retval != -1; retval = HPREV(h, ev))
-		if (ev->num == num) {
+		if (num-- <= 0) {
 			if (d)
 				*d = ((history_t *)h->h_ref)->cursor->data;
-			return 0;
+			return (0);
 		}
 
 	he_seterrev(ev, _HE_NOT_FOUND);
-	return -1;
+	return (-1);
 }
 
 
@@ -891,16 +874,16 @@ history_next_evdata(TYPE(History) *h, TYPE(HistEvent) *ev, int num, void **d)
  *	Find the next event, with number given
  */
 private int
-history_next_event(TYPE(History) *h, TYPE(HistEvent) *ev, int num)
+history_next_event(History *h, HistEvent *ev, int num)
 {
 	int retval;
 
 	for (retval = HCURR(h, ev); retval != -1; retval = HNEXT(h, ev))
 		if (ev->num == num)
-			return 0;
+			return (0);
 
 	he_seterrev(ev, _HE_NOT_FOUND);
-	return -1;
+	return (-1);
 }
 
 
@@ -908,17 +891,17 @@ history_next_event(TYPE(History) *h, TYPE(HistEvent) *ev, int num)
  *	Find the previous event beginning with string
  */
 private int
-history_prev_string(TYPE(History) *h, TYPE(HistEvent) *ev, const Char *str)
+history_prev_string(History *h, HistEvent *ev, const char *str)
 {
-	size_t len = Strlen(str);
+	size_t len = strlen(str);
 	int retval;
 
 	for (retval = HCURR(h, ev); retval != -1; retval = HNEXT(h, ev))
-		if (Strncmp(str, ev->str, len) == 0)
-			return 0;
+		if (strncmp(str, ev->str, len) == 0)
+			return (0);
 
 	he_seterrev(ev, _HE_NOT_FOUND);
-	return -1;
+	return (-1);
 }
 
 
@@ -926,17 +909,17 @@ history_prev_string(TYPE(History) *h, TYPE(HistEvent) *ev, const Char *str)
  *	Find the next event beginning with string
  */
 private int
-history_next_string(TYPE(History) *h, TYPE(HistEvent) *ev, const Char *str)
+history_next_string(History *h, HistEvent *ev, const char *str)
 {
-	size_t len = Strlen(str);
+	size_t len = strlen(str);
 	int retval;
 
 	for (retval = HCURR(h, ev); retval != -1; retval = HPREV(h, ev))
-		if (Strncmp(str, ev->str, len) == 0)
-			return 0;
+		if (strncmp(str, ev->str, len) == 0)
+			return (0);
 
 	he_seterrev(ev, _HE_NOT_FOUND);
-	return -1;
+	return (-1);
 }
 
 
@@ -944,10 +927,10 @@ history_next_string(TYPE(History) *h, TYPE(HistEvent) *ev, const Char *str)
  *	User interface to history functions.
  */
 int
-FUNW(history)(TYPE(History) *h, TYPE(HistEvent) *ev, int fun, ...)
+history(History *h, HistEvent *ev, int fun, ...)
 {
 	va_list va;
-	const Char *str;
+	const char *str;
 	int retval;
 
 	va_start(va, fun);
@@ -972,7 +955,7 @@ FUNW(history)(TYPE(History) *h, TYPE(HistEvent) *ev, int fun, ...)
 		break;
 
 	case H_ADD:
-		str = va_arg(va, const Char *);
+		str = va_arg(va, const char *);
 		retval = HADD(h, ev, str);
 		break;
 
@@ -981,13 +964,13 @@ FUNW(history)(TYPE(History) *h, TYPE(HistEvent) *ev, int fun, ...)
 		break;
 
 	case H_ENTER:
-		str = va_arg(va, const Char *);
+		str = va_arg(va, const char *);
 		if ((retval = HENTER(h, ev, str)) != -1)
 			h->h_ent = ev->num;
 		break;
 
 	case H_APPEND:
-		str = va_arg(va, const Char *);
+		str = va_arg(va, const char *);
 		if ((retval = HSET(h, ev, h->h_ent)) != -1)
 			retval = HADD(h, ev, str);
 		break;
@@ -1034,9 +1017,9 @@ FUNW(history)(TYPE(History) *h, TYPE(HistEvent) *ev, int fun, ...)
 		break;
 
 	case H_SAVE_FP:
-		retval = history_save_fp(h, va_arg(va, FILE *));
+		retval = history_save_fp(h, va_arg(va, FILE*));
 		if (retval == -1)
-		    he_seterrev(ev, _HE_HIST_WRITE);
+			he_seterrev(ev, _HE_HIST_WRITE);
 		break;
 
 	case H_PREV_EVENT:
@@ -1048,18 +1031,18 @@ FUNW(history)(TYPE(History) *h, TYPE(HistEvent) *ev, int fun, ...)
 		break;
 
 	case H_PREV_STR:
-		retval = history_prev_string(h, ev, va_arg(va, const Char *));
+		retval = history_prev_string(h, ev, va_arg(va, const char *));
 		break;
 
 	case H_NEXT_STR:
-		retval = history_next_string(h, ev, va_arg(va, const Char *));
+		retval = history_next_string(h, ev, va_arg(va, const char *));
 		break;
 
 	case H_FUNC:
 	{
-		TYPE(History) hf;
+		History hf;
 
-		hf.h_ref = va_arg(va, void *);
+		hf.h_ref = va_arg(va, ptr_t);
 		h->h_ent = -1;
 		hf.h_first = va_arg(va, history_gfun_t);
 		hf.h_next = va_arg(va, history_gfun_t);
@@ -1078,7 +1061,7 @@ FUNW(history)(TYPE(History) *h, TYPE(HistEvent) *ev, int fun, ...)
 	}
 
 	case H_END:
-		FUN(history,end)(h);
+		history_end(h);
 		retval = 0;
 		break;
 
@@ -1100,10 +1083,10 @@ FUNW(history)(TYPE(History) *h, TYPE(HistEvent) *ev, int fun, ...)
 
 	case H_REPLACE: /* only use after H_NEXT_EVDATA */
 	{
-		const Char *line = va_arg(va, const Char *);
+		const char *line = va_arg(va, const char *);
 		void *d = va_arg(va, void *);
-		const Char *s;
-		if(!line || !(s = Strdup(line))) {
+		const char *s;
+		if(!line || !(s = strdup(line))) {
 			retval = -1;
 			break;
 		}

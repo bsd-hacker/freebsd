@@ -174,44 +174,48 @@ print_header(struct ipfw_flow_id *id)
 }
 
 static void
-list_flow(struct buf_pr *bp, struct dn_flow *ni)
+list_flow(struct dn_flow *ni, int *print)
 {
 	char buff[255];
 	struct protoent *pe = NULL;
 	struct in_addr ina;
 	struct ipfw_flow_id *id = &ni->fid;
 
+	if (*print) {
+		print_header(&ni->fid);
+		*print = 0;
+	}
 	pe = getprotobynumber(id->proto);
 		/* XXX: Should check for IPv4 flows */
-	bprintf(bp, "%3u%c", (ni->oid.id) & 0xff,
+	printf("%3u%c", (ni->oid.id) & 0xff,
 		id->extra ? '*' : ' ');
 	if (!IS_IP6_FLOW_ID(id)) {
 		if (pe)
-			bprintf(bp, "%-4s ", pe->p_name);
+			printf("%-4s ", pe->p_name);
 		else
-			bprintf(bp, "%4u ", id->proto);
+			printf("%4u ", id->proto);
 		ina.s_addr = htonl(id->src_ip);
-		bprintf(bp, "%15s/%-5d ",
+		printf("%15s/%-5d ",
 		    inet_ntoa(ina), id->src_port);
 		ina.s_addr = htonl(id->dst_ip);
-		bprintf(bp, "%15s/%-5d ",
+		printf("%15s/%-5d ",
 		    inet_ntoa(ina), id->dst_port);
 	} else {
 		/* Print IPv6 flows */
 		if (pe != NULL)
-			bprintf(bp, "%9s ", pe->p_name);
+			printf("%9s ", pe->p_name);
 		else
-			bprintf(bp, "%9u ", id->proto);
-		bprintf(bp, "%7d  %39s/%-5d ", id->flow_id6,
+			printf("%9u ", id->proto);
+		printf("%7d  %39s/%-5d ", id->flow_id6,
 		    inet_ntop(AF_INET6, &(id->src_ip6), buff, sizeof(buff)),
 		    id->src_port);
-		bprintf(bp, " %39s/%-5d ",
+		printf(" %39s/%-5d ",
 		    inet_ntop(AF_INET6, &(id->dst_ip6), buff, sizeof(buff)),
 		    id->dst_port);
 	}
-	pr_u64(bp, &ni->tot_pkts, 4);
-	pr_u64(bp, &ni->tot_bytes, 8);
-	bprintf(bp, "%2u %4u %3u",
+	pr_u64(&ni->tot_pkts, 4);
+	pr_u64(&ni->tot_bytes, 8);
+	printf("%2u %4u %3u\n",
 	    ni->length, ni->len_bytes, ni->drops);
 }
 
@@ -299,10 +303,8 @@ list_pipes(struct dn_id *oid, struct dn_id *end)
 {
     char buf[160];	/* pending buffer */
     int toPrint = 1;	/* print header */
-    struct buf_pr bp;
 
     buf[0] = '\0';
-    bp_alloc(&bp, 4096);
     for (; oid != end; oid = O_NEXT(oid, oid->len)) {
 	if (oid->len < sizeof(*oid))
 		errx(1, "invalid oid len %d\n", oid->len);
@@ -344,12 +346,7 @@ list_pipes(struct dn_id *oid, struct dn_id *end)
 	    break;
 
 	case DN_FLOW:
-	    if (toPrint != 0) {
-		    print_header(&((struct dn_flow *)oid)->fid);
-		    toPrint = 0;
-	    }
-	    list_flow(&bp, (struct dn_flow *)oid);
-	    printf("%s\n", bp.buf);
+	    list_flow((struct dn_flow *)oid, &toPrint);
 	    break;
 
 	case DN_LINK: {
@@ -387,8 +384,6 @@ list_pipes(struct dn_id *oid, struct dn_id *end)
 	}
 	flush_buf(buf); // XXX does it really go here ?
     }
-
-    bp_free(&bp);
 }
 
 /*

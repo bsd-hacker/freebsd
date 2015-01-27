@@ -658,7 +658,7 @@ ale_attach(device_t dev)
 	ifp->if_capenable &= ~IFCAP_RXCSUM;
 
 	/* Tell the upper layer(s) we support long frames. */
-	ifp->if_hdrlen = sizeof(struct ether_vlan_header);
+	ifp->if_data.ifi_hdrlen = sizeof(struct ether_vlan_header);
 
 	/* Create local taskq. */
 	sc->ale_tq = taskqueue_create_fast("ale_taskq", M_WAITOK,
@@ -946,6 +946,8 @@ ale_sysctl_node(struct ale_softc *sc)
 	    &stats->tx_late_colls, "Late collisions");
 	ALE_SYSCTL_STAT_ADD32(ctx, child, "excess_colls",
 	    &stats->tx_excess_colls, "Excessive collisions");
+	ALE_SYSCTL_STAT_ADD32(ctx, child, "abort",
+	    &stats->tx_abort, "Aborted frames due to Excessive collisions");
 	ALE_SYSCTL_STAT_ADD32(ctx, child, "underruns",
 	    &stats->tx_underrun, "FIFO underruns");
 	ALE_SYSCTL_STAT_ADD32(ctx, child, "desc_underruns",
@@ -1951,13 +1953,13 @@ ale_watchdog(struct ale_softc *sc)
 	ifp = sc->ale_ifp;
 	if ((sc->ale_flags & ALE_FLAG_LINK) == 0) {
 		if_printf(sc->ale_ifp, "watchdog timeout (lost link)\n");
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		ale_init_locked(sc);
 		return;
 	}
 	if_printf(sc->ale_ifp, "watchdog timeout -- resetting\n");
-	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+	ifp->if_oerrors++;
 	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	ale_init_locked(sc);
 	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
@@ -2195,6 +2197,7 @@ ale_stats_update(struct ale_softc *sc)
 	stat->tx_multi_colls += smb->tx_multi_colls;
 	stat->tx_late_colls += smb->tx_late_colls;
 	stat->tx_excess_colls += smb->tx_excess_colls;
+	stat->tx_abort += smb->tx_abort;
 	stat->tx_underrun += smb->tx_underrun;
 	stat->tx_desc_underrun += smb->tx_desc_underrun;
 	stat->tx_lenerrs += smb->tx_lenerrs;
@@ -2203,22 +2206,28 @@ ale_stats_update(struct ale_softc *sc)
 	stat->tx_mcast_bytes += smb->tx_mcast_bytes;
 
 	/* Update counters in ifnet. */
-	if_inc_counter(ifp, IFCOUNTER_OPACKETS, smb->tx_frames);
+	ifp->if_opackets += smb->tx_frames;
 
-	if_inc_counter(ifp, IFCOUNTER_COLLISIONS, smb->tx_single_colls +
+	ifp->if_collisions += smb->tx_single_colls +
 	    smb->tx_multi_colls * 2 + smb->tx_late_colls +
-	    smb->tx_excess_colls * HDPX_CFG_RETRY_DEFAULT);
+	    smb->tx_abort * HDPX_CFG_RETRY_DEFAULT;
 
-	if_inc_counter(ifp, IFCOUNTER_OERRORS, smb->tx_late_colls +
-	    smb->tx_excess_colls + smb->tx_underrun + smb->tx_pkts_truncated);
+	/*
+	 * XXX
+	 * tx_pkts_truncated counter looks suspicious. It constantly
+	 * increments with no sign of Tx errors. This may indicate
+	 * the counter name is not correct one so I've removed the
+	 * counter in output errors.
+	 */
+	ifp->if_oerrors += smb->tx_abort + smb->tx_late_colls +
+	    smb->tx_underrun;
 
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, smb->rx_frames);
+	ifp->if_ipackets += smb->rx_frames;
 
-	if_inc_counter(ifp, IFCOUNTER_IERRORS,
-	    smb->rx_crcerrs + smb->rx_lenerrs +
+	ifp->if_ierrors += smb->rx_crcerrs + smb->rx_lenerrs +
 	    smb->rx_runts + smb->rx_pkts_truncated +
 	    smb->rx_fifo_oflows + smb->rx_rrs_errs +
-	    smb->rx_alignerrs);
+	    smb->rx_alignerrs;
 }
 
 static int
@@ -2540,7 +2549,7 @@ ale_rxeof(struct ale_softc *sc, int count)
 		m = m_devget((char *)(rs + 1), length - ETHER_CRC_LEN,
 		    ETHER_ALIGN, ifp, NULL);
 		if (m == NULL) {
-			if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+			ifp->if_iqdrops++;
 			ale_rx_update_page(sc, &rx_page, length, &prod);
 			continue;
 		}

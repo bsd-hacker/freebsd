@@ -9,7 +9,8 @@ MLINKS=	ed.1 red.1
 
 .if ${MK_OPENSSL} != "no" && ${MK_ED_CRYPTO} != "no"
 CFLAGS+=-DDES
-LIBADD=	crypto
+DPADD=	${LIBCRYPTO}
+LDADD=	-lcrypto
 .endif
 
 .include <bsd.prog.mk>

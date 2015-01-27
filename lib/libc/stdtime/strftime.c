@@ -46,10 +46,10 @@ __FBSDID("$FreeBSD$");
 #include "timelocal.h"
 
 static char *	_add(const char *, char *, const char *);
-static char *	_conv(int, const char *, char *, const char *, locale_t);
+static char *	_conv(int, const char *, char *, const char *);
 static char *	_fmt(const char *, const struct tm *, char *, const char *,
 			int *, locale_t);
-static char *	_yconv(int, int, int, int, char *, const char *, locale_t);
+static char *	_yconv(int, int, int, int, char *, const char *);
 
 extern char *	tzname[];
 
@@ -101,16 +101,16 @@ strftime_l(char * __restrict s, size_t maxsize, const char * __restrict format,
 	if (warn != IN_NONE && getenv(YEAR_2000_NAME) != NULL) {
 		(void) fprintf_l(stderr, loc, "\n");
 		if (format == NULL)
-			(void) fputs("NULL strftime format ", stderr);
+			(void) fprintf_l(stderr, loc, "NULL strftime format ");
 		else	(void) fprintf_l(stderr, loc, "strftime format \"%s\" ",
 				format);
-		(void) fputs("yields only two digits of years in ", stderr);
+		(void) fprintf_l(stderr, loc, "yields only two digits of years in ");
 		if (warn == IN_SOME)
-			(void) fputs("some locales", stderr);
+			(void) fprintf_l(stderr, loc, "some locales");
 		else if (warn == IN_THIS)
-			(void) fputs("the current locale", stderr);
-		else	(void) fputs("all locales", stderr);
-		(void) fputs("\n", stderr);
+			(void) fprintf_l(stderr, loc, "the current locale");
+		else	(void) fprintf_l(stderr, loc, "all locales");
+		(void) fprintf_l(stderr, loc, "\n");
 	}
 #endif /* !defined NO_RUN_TIME_WARNINGS_ABOUT_YEAR_2000_PROBLEMS_THANK_YOU */
 	if (p == s + maxsize)
@@ -183,7 +183,7 @@ label:
 				 * (ado, 1993-05-24)
 				 */
 				pt = _yconv(t->tm_year, TM_YEAR_BASE, 1, 0,
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 'c':
 				{
@@ -200,9 +200,8 @@ label:
 				pt = _fmt("%m/%d/%y", t, pt, ptlim, warnp, loc);
 				continue;
 			case 'd':
-				pt = _conv(t->tm_mday,
-					fmt_padding[PAD_FMT_DAYOFMONTH][PadIndex],
-					pt, ptlim, loc);
+				pt = _conv(t->tm_mday, fmt_padding[PAD_FMT_DAYOFMONTH][PadIndex],
+					pt, ptlim);
 				continue;
 			case 'E':
 				if (Ealternative || Oalternative)
@@ -228,26 +227,24 @@ label:
 				goto label;
 			case 'e':
 				pt = _conv(t->tm_mday,
-					fmt_padding[PAD_FMT_SDAYOFMONTH][PadIndex],
-					pt, ptlim, loc);
+					fmt_padding[PAD_FMT_SDAYOFMONTH][PadIndex], pt, ptlim);
 				continue;
 			case 'F':
 				pt = _fmt("%Y-%m-%d", t, pt, ptlim, warnp, loc);
 				continue;
 			case 'H':
 				pt = _conv(t->tm_hour, fmt_padding[PAD_FMT_HMS][PadIndex],
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 'I':
 				pt = _conv((t->tm_hour % 12) ?
 					(t->tm_hour % 12) : 12,
 					fmt_padding[PAD_FMT_HMS][PadIndex],
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 'j':
 				pt = _conv(t->tm_yday + 1,
-					fmt_padding[PAD_FMT_DAYOFYEAR][PadIndex],
-					pt, ptlim, loc);
+					fmt_padding[PAD_FMT_DAYOFYEAR][PadIndex], pt, ptlim);
 				continue;
 			case 'k':
 				/*
@@ -261,7 +258,7 @@ label:
 				 * (ado, 1993-05-24)
 				 */
 				pt = _conv(t->tm_hour, fmt_padding[PAD_FMT_SHMS][PadIndex],
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 #ifdef KITCHEN_SINK
 			case 'K':
@@ -284,16 +281,16 @@ label:
 				pt = _conv((t->tm_hour % 12) ?
 					(t->tm_hour % 12) : 12,
 					fmt_padding[PAD_FMT_SHMS][PadIndex],
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 'M':
 				pt = _conv(t->tm_min, fmt_padding[PAD_FMT_HMS][PadIndex],
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 'm':
 				pt = _conv(t->tm_mon + 1,
 					fmt_padding[PAD_FMT_MONTH][PadIndex],
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 'n':
 				pt = _add("\n", pt, ptlim);
@@ -312,7 +309,7 @@ label:
 				continue;
 			case 'S':
 				pt = _conv(t->tm_sec, fmt_padding[PAD_FMT_HMS][PadIndex],
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 's':
 				{
@@ -324,9 +321,9 @@ label:
 					tm = *t;
 					mkt = mktime(&tm);
 					if (TYPE_SIGNED(time_t))
-						(void) sprintf_l(buf, loc, "%ld",
+						(void) sprintf(buf, "%ld",
 							(long) mkt);
-					else	(void) sprintf_l(buf, loc, "%lu",
+					else	(void) sprintf(buf, "%lu",
 							(unsigned long) mkt);
 					pt = _add(buf, pt, ptlim);
 				}
@@ -340,8 +337,7 @@ label:
 			case 'U':
 				pt = _conv((t->tm_yday + DAYSPERWEEK -
 					t->tm_wday) / DAYSPERWEEK,
-					fmt_padding[PAD_FMT_WEEKOFYEAR][PadIndex],
-					pt, ptlim, loc);
+					fmt_padding[PAD_FMT_WEEKOFYEAR][PadIndex], pt, ptlim);
 				continue;
 			case 'u':
 				/*
@@ -352,7 +348,7 @@ label:
 				 */
 				pt = _conv((t->tm_wday == 0) ?
 					DAYSPERWEEK : t->tm_wday,
-					"%d", pt, ptlim, loc);
+					"%d", pt, ptlim);
 				continue;
 			case 'V':	/* ISO 8601 week number */
 			case 'G':	/* ISO 8601 year (four digits) */
@@ -433,13 +429,13 @@ label:
 #endif /* defined XPG4_1994_04_09 */
 					if (*format == 'V')
 						pt = _conv(w, fmt_padding[PAD_FMT_WEEKOFYEAR][PadIndex],
-							pt, ptlim, loc);
+							pt, ptlim);
 					else if (*format == 'g') {
 						*warnp = IN_ALL;
 						pt = _yconv(year, base, 0, 1,
-							pt, ptlim, loc);
+							pt, ptlim);
 					} else	pt = _yconv(year, base, 1, 1,
-							pt, ptlim, loc);
+							pt, ptlim);
 				}
 				continue;
 			case 'v':
@@ -455,11 +451,10 @@ label:
 					(t->tm_wday ?
 					(t->tm_wday - 1) :
 					(DAYSPERWEEK - 1))) / DAYSPERWEEK,
-					fmt_padding[PAD_FMT_WEEKOFYEAR][PadIndex],
-					pt, ptlim, loc);
+					fmt_padding[PAD_FMT_WEEKOFYEAR][PadIndex], pt, ptlim);
 				continue;
 			case 'w':
-				pt = _conv(t->tm_wday, "%d", pt, ptlim, loc);
+				pt = _conv(t->tm_wday, "%d", pt, ptlim);
 				continue;
 			case 'X':
 				pt = _fmt(tptr->X_fmt, t, pt, ptlim, warnp, loc);
@@ -478,11 +473,11 @@ label:
 			case 'y':
 				*warnp = IN_ALL;
 				pt = _yconv(t->tm_year, TM_YEAR_BASE, 0, 1,
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 'Y':
 				pt = _yconv(t->tm_year, TM_YEAR_BASE, 1, 1,
-					pt, ptlim, loc);
+					pt, ptlim);
 				continue;
 			case 'Z':
 #ifdef TM_ZONE
@@ -551,8 +546,7 @@ label:
 				diff = (diff / MINSPERHOUR) * 100 +
 					(diff % MINSPERHOUR);
 				pt = _conv(diff,
-					fmt_padding[PAD_FMT_YEAR][PadIndex],
-					pt, ptlim, loc);
+					fmt_padding[PAD_FMT_YEAR][PadIndex], pt, ptlim);
 				}
 				continue;
 			case '+':
@@ -592,16 +586,15 @@ label:
 }
 
 static char *
-_conv(n, format, pt, ptlim, loc)
+_conv(n, format, pt, ptlim)
 const int		n;
 const char * const	format;
 char * const		pt;
 const char * const	ptlim;
-locale_t		loc;
 {
 	char	buf[INT_STRLEN_MAXIMUM(int) + 1];
 
-	(void) sprintf_l(buf, loc, format, n);
+	(void) sprintf(buf, format, n);
 	return _add(buf, pt, ptlim);
 }
 
@@ -625,14 +618,13 @@ const char * const	ptlim;
  */
 
 static char *
-_yconv(a, b, convert_top, convert_yy, pt, ptlim, loc)
+_yconv(a, b, convert_top, convert_yy, pt, ptlim)
 const int		a;
 const int		b;
 const int		convert_top;
 const int		convert_yy;
 char *			pt;
 const char * const	ptlim;
-locale_t		loc;
 {
 	register int	lead;
 	register int	trail;
@@ -651,10 +643,9 @@ locale_t		loc;
 	if (convert_top) {
 		if (lead == 0 && trail < 0)
 			pt = _add("-0", pt, ptlim);
-		else	pt = _conv(lead, "%02d", pt, ptlim, loc);
+		else	pt = _conv(lead, "%02d", pt, ptlim);
 	}
 	if (convert_yy)
-		pt = _conv(((trail < 0) ? -trail : trail), "%02d", pt,
-		     ptlim, loc);
+		pt = _conv(((trail < 0) ? -trail : trail), "%02d", pt, ptlim);
 	return (pt);
 }

@@ -12,6 +12,7 @@ LIBDEPS=llvmirreader \
 	llvmbitwriter \
 	llvmbitreader \
 	llvmipo \
+	llvmobjcarcopts \
 	llvmvectorize \
 	llvmscalaropts \
 	llvminstcombine \
@@ -20,6 +21,7 @@ LIBDEPS=llvmirreader \
 	llvmanalysis \
 	llvmtarget \
 	llvmmc \
+	llvmobject \
 	llvmcore \
 	llvmsupport
 

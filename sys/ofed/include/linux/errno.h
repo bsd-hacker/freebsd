@@ -2,7 +2,6 @@
  * Copyright (c) 2010 Isilon Systems, Inc.
  * Copyright (c) 2010 iX Systems, Inc.
  * Copyright (c) 2010 Panasas, Inc.
- * Copyright (c) 2013, 2014 Mellanox Technologies, Ltd.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,11 +31,9 @@
 
 #include <sys/errno.h>
 
-#define	ECOMM           ESTALE
-#define	ENODATA         ECONNREFUSED
-#define	ENOIOCTLCMD     ENOIOCTL
-#define	ERESTARTSYS     ERESTART
-#define	ENOTSUPP        EOPNOTSUPP
-#define	ENONET          EHOSTDOWN
+#define	ECOMM		ESTALE
+#define	ENODATA		ECONNREFUSED
+#define	ENOIOCTLCMD	ENOIOCTL		/* XXX this is negative */
+#define ERESTARTSYS     ERESTART		/* XXX this is negative */
 
-#endif					/* _LINUX_ERRNO_H_ */
+#endif	/* _LINUX_ERRNO_H_ */

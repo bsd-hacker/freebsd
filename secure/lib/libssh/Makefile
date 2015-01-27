@@ -34,13 +34,17 @@ SRCS+=	getrrsetbyname.c
 LDNSDIR=	${.CURDIR}/../../../contrib/ldns
 CFLAGS+=	-DHAVE_LDNS=1 -I${LDNSDIR}
 SRCS+=	getrrsetbyname-ldns.c
-LIBADD+=	ldns
+DPADD+=	${LIBLDNS}
+LDADD+=	-lldns
+USEPRIVATELIB+= ldns
 .endif
 
 CFLAGS+= -I${SSHDIR} -include ssh_namespace.h
 
 .if ${MK_KERBEROS_SUPPORT} != "no"
 CFLAGS+= -include krb5_config.h
+DPADD+=	${LIBGSSAPI} ${LIBKRB5} ${LIBHX509} ${LIBASN1} ${LIBCOM_ERR} ${LIBMD} ${LIBROKEN}
+LDADD+=	-lgssapi -lkrb5 -lhx509 -lasn1 -lcom_err -lmd -lroken
 .endif
 
 .if ${MK_OPENSSH_NONE_CIPHER} != "no"
@@ -49,7 +53,8 @@ CFLAGS+= -DNONE_CIPHER_ENABLED
 
 NO_LINT=
 
-LIBADD+=	crypto crypt z
+DPADD+=	${LIBCRYPTO} ${LIBCRYPT} ${LIBZ}
+LDADD+=	-lcrypto -lcrypt -lz
 
 .include <bsd.lib.mk>
 

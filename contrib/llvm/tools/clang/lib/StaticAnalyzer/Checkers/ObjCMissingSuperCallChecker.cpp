@@ -181,11 +181,15 @@ void ObjCSuperCallChecker::checkASTDecl(const ObjCImplementationDecl *D,
 
 
   // Iterate over all instance methods.
-  for (auto *MD : D->instance_methods()) {
-    Selector S = MD->getSelector();
+  for (ObjCImplementationDecl::instmeth_iterator I = D->instmeth_begin(),
+                                                 E = D->instmeth_end();
+       I != E; ++I) {
+    Selector S = (*I)->getSelector();
     // Find out whether this is a selector that we want to check.
     if (!SelectorsForClass[SuperclassName].count(S))
       continue;
+
+    ObjCMethodDecl *MD = *I;
 
     // Check if the method calls its superclass implementation.
     if (MD->getBody())
@@ -208,7 +212,7 @@ void ObjCSuperCallChecker::checkASTDecl(const ObjCImplementationDecl *D,
            << "' instance method in " << SuperclassName.str() << " subclass '"
            << *D << "' is missing a [super " << S.getAsString() << "] call";
 
-        BR.EmitBasicReport(MD, this, Name, categories::CoreFoundationObjectiveC,
+        BR.EmitBasicReport(MD, Name, categories::CoreFoundationObjectiveC,
                            os.str(), DLoc);
       }
     }

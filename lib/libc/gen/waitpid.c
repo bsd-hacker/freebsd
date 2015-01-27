@@ -40,14 +40,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/resource.h>
 #include "un-namespace.h"
 
-#include "libc_private.h"
-
 pid_t
 __waitpid(pid_t pid, int *istat, int options)
 {
-
-	return (((pid_t (*)(pid_t, int *, int, struct rusage *))
-	    __libc_interposing[INTERPOS_wait4])(pid, istat, options, NULL));
+	return (_wait4(pid, istat, options, (struct rusage *)0));
 }
 
 __weak_reference(__waitpid, waitpid);

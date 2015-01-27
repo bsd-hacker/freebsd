@@ -22,22 +22,11 @@
 #include "ProcessFreeBSD.h"
 #include "ProcessPOSIXLog.h"
 #include "Plugins/Process/Utility/InferiorCallPOSIX.h"
-#include "Plugins/Process/Utility/FreeBSDSignals.h"
 #include "ProcessMonitor.h"
 #include "FreeBSDThread.h"
 
 using namespace lldb;
 using namespace lldb_private;
-
-namespace
-{
-    UnixSignalsSP&
-    GetFreeBSDSignals ()
-    {
-        static UnixSignalsSP s_freebsd_signals_sp (new FreeBSDSignals ());
-        return s_freebsd_signals_sp;
-    }
-}
 
 //------------------------------------------------------------------------------
 // Static functions.
@@ -124,8 +113,7 @@ ProcessFreeBSD::EnablePluginLogging(Stream *strm, Args &command)
 // Constructors and destructors.
 
 ProcessFreeBSD::ProcessFreeBSD(Target& target, Listener &listener)
-    : ProcessPOSIX(target, listener, GetFreeBSDSignals ()),
-      m_resume_signo(0)
+    : ProcessPOSIX(target, listener)
 {
 }
 
@@ -144,6 +132,8 @@ ProcessFreeBSD::DoDetach(bool keep_stopped)
         return error;
     }
 
+    DisableAllBreakpointSites();
+
     error = m_monitor->Detach(GetID());
 
     if (error.Success())
@@ -156,6 +146,9 @@ Error
 ProcessFreeBSD::DoResume()
 {
     Log *log (ProcessPOSIXLog::GetLogIfAllCategoriesSet (POSIX_LOG_PROCESS));
+
+    // FreeBSD's ptrace() uses 0 to indicate "no signal is to be sent."
+    int resume_signal = 0;
 
     SetPrivateState(eStateRunning);
 
@@ -179,11 +172,11 @@ ProcessFreeBSD::DoResume()
     }
 
     if (log)
-        log->Printf("process %" PRIu64 " resuming (%s)", GetID(), do_step ? "step" : "continue");
+        log->Printf("process %lu resuming (%s)", GetID(), do_step ? "step" : "continue");
     if (do_step)
-        m_monitor->SingleStep(GetID(), m_resume_signo);
+        m_monitor->SingleStep(GetID(), resume_signal);
     else
-        m_monitor->Resume(GetID(), m_resume_signo);
+        m_monitor->Resume(GetID(), resume_signal);
 
     return Error();
 }
@@ -235,7 +228,6 @@ ProcessFreeBSD::UpdateThreadList(ThreadList &old_thread_list, ThreadList &new_th
 Error
 ProcessFreeBSD::WillResume()
 {
-    m_resume_signo = 0;
     m_suspend_tids.clear();
     m_run_tids.clear();
     m_step_tids.clear();
@@ -282,3 +274,4 @@ ProcessFreeBSD::SendMessage(const ProcessMessage &message)
 
     m_message_queue.push(message);
 }
+

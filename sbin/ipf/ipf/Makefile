@@ -35,7 +35,10 @@ ipf_l.h: lexer.h
 LIBIPF_SRCS!=	cd ${.CURDIR}/../libipf && ${MAKE} -V SRCS
 SRCS+=	${LIBIPF_SRCS}
 .else
-LIBADD+=	pcap
+DPADD+=	${LIBPCAP}
+LDADD+=	-lpcap
 .endif
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

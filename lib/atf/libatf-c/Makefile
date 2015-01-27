@@ -28,31 +28,22 @@
 .include <src.opts.mk>
 .include <bsd.init.mk>
 
-_CFLAGS:=	${CFLAGS}
-_CPPFLAGS:=	${CPPFLAGS}
-_CXXFLAGS:=	${CXXFLAGS}
-
 LIB=		atf-c
 PRIVATELIB=	true
-SHLIB_MAJOR=	1
+SHLIB_MAJOR=	0
 
 ATF=		${.CURDIR:H:H:H}/contrib/atf
 .PATH:		${ATF}
 .PATH:		${ATF}/atf-c
 .PATH:		${ATF}/atf-c/detail
 
-CFLAGS+=	-DATF_BUILD_CC='"${CC}"'
-CFLAGS+=	-DATF_BUILD_CFLAGS='"${_CFLAGS}"'
-CFLAGS+=	-DATF_BUILD_CPP='"${CPP}"'
-CFLAGS+=	-DATF_BUILD_CPPFLAGS='"${_CPPFLAGS}"'
-CFLAGS+=	-DATF_BUILD_CXX='"${CXX}"'
-CFLAGS+=	-DATF_BUILD_CXXFLAGS='"${_CXXFLAGS}"'
 CFLAGS+=	-I${ATF}
 CFLAGS+=	-I${.CURDIR}
 CFLAGS+=	-I.
 
 SRCS=		build.c \
 		check.c \
+		config.c \
 		dynstr.c \
 		env.c \
 		error.c \
@@ -70,6 +61,7 @@ SRCS=		build.c \
 
 INCS=		build.h \
 		check.h \
+		config.h \
 		defs.h \
 		error.h \
 		error_fwd.h \
@@ -82,8 +74,7 @@ INCSDIR=	${INCLUDEDIR}/atf-c
 INCS+=		atf-c.h
 INCSDIR_atf-c.h= ${INCLUDEDIR}
 
-MAN=		atf-c.3
-MLINKS+=	atf-c.3 atf-c-api.3  # Backwards compatibility.
+MAN=		atf-c-api.3
 
 .if ${MK_TESTS} != "no"
 SUBDIR=		tests

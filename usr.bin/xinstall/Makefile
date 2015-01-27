@@ -12,6 +12,7 @@ CFLAGS+=	-I${.CURDIR}/../../contrib/mtree
 CFLAGS+=	-I${.CURDIR}/../../lib/libnetbsd
 CFLAGS+=	-I${.CURDIR}/../../lib/libmd
 
-LIBADD=	md
+DPADD+=		${LIBMD}
+LDADD+=		-lmd
 
 .include <bsd.prog.mk>

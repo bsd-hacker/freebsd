@@ -10,7 +10,8 @@ CFLAGS+=	-I${OPENBSMDIR}
 PROG=	audit
 MAN=	audit.8
 
-LIBADD=	bsm
+DPADD=	${LIBBSM}
+LDADD=	-lbsm
 
 WARNS?=	5
 

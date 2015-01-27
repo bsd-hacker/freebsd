@@ -20,14 +20,12 @@
 using namespace lldb;
 using namespace lldb_private;
 
-//  Constructor
-
 HistoryThread::HistoryThread (lldb_private::Process &process, 
                               lldb::tid_t tid,
                               std::vector<lldb::addr_t> pcs, 
                               uint32_t stop_id, 
                               bool stop_id_is_valid) : 
-        Thread (process, tid, true),
+        Thread (process, tid),
         m_framelist_mutex(),
         m_framelist(),
         m_pcs (pcs),
@@ -42,18 +40,14 @@ HistoryThread::HistoryThread (lldb_private::Process &process,
     m_unwinder_ap.reset (new HistoryUnwind (*this, pcs, stop_id, stop_id_is_valid));
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
-        log->Printf ("%p HistoryThread::HistoryThread",
-                     static_cast<void*>(this));
+        log->Printf ("%p HistoryThread::HistoryThread", this);
 }
-
-//  Destructor
 
 HistoryThread::~HistoryThread ()
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
-        log->Printf ("%p HistoryThread::~HistoryThread (tid=0x%" PRIx64 ")",
-                     static_cast<void*>(this), GetID());
+        log->Printf ("%p HistoryThread::~HistoryThread (tid=0x%" PRIx64 ")", this, GetID());
     DestroyThread();
 }
 
@@ -78,7 +72,7 @@ HistoryThread::CreateRegisterContextForFrame (StackFrame *frame)
 lldb::StackFrameListSP
 HistoryThread::GetStackFrameList ()
 {
-    Mutex::Locker (m_framelist_mutex);   // FIXME do not throw away the lock after we acquire it..
+    Mutex::Locker (m_framelist_mutex);
     if (m_framelist.get() == NULL)
     {
         m_framelist.reset (new StackFrameList (*this, StackFrameListSP(), true));

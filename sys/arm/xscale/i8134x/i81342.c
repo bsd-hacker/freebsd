@@ -34,7 +34,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 
 #define	_ARM32_BUS_DMA_PRIVATE
-#include <machine/armreg.h>
 #include <machine/bus.h>
 #include <machine/intr.h>
 
@@ -249,7 +248,7 @@ void
 cpu_reset(void)
 {
 
-	disable_interrupts(PSR_I);
+	disable_interrupts(I32_bit);
 	/* XXX: Use the watchdog to reset for now */
 	__asm __volatile("mcr p6, 0, %0, c8, c9, 0\n"
 	    		 "mcr p6, 0, %1, c7, c9, 0\n"

@@ -23,10 +23,8 @@
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
-/*
- * Copyright (c) 2013 by Delphix. All rights reserved.
- * Copyright (c) 2013, Joyent, Inc. All rights reserved.
- */
+
+#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <dt_impl.h>
 
@@ -104,7 +102,6 @@
 %token	DT_KEY_TYPEDEF
 %token	DT_KEY_UNION
 %token	DT_KEY_UNSIGNED
-%token	DT_KEY_USERLAND
 %token	DT_KEY_VOID
 %token	DT_KEY_VOLATILE
 %token	DT_KEY_WHILE
@@ -206,8 +203,6 @@
 %type	<l_tok>		assignment_operator
 %type	<l_tok>		unary_operator
 %type	<l_tok>		struct_or_union
-
-%type	<l_str>		dtrace_keyword_ident
 
 %%
 
@@ -393,16 +388,10 @@ postfix_expression:
 	|	postfix_expression DT_TOK_DOT DT_TOK_TNAME {
 			$$ = OP2(DT_TOK_DOT, $1, dt_node_ident($3));
 		}
-	|	postfix_expression DT_TOK_DOT dtrace_keyword_ident {
-			$$ = OP2(DT_TOK_DOT, $1, dt_node_ident($3));
-		}
 	|	postfix_expression DT_TOK_PTR DT_TOK_IDENT {
 			$$ = OP2(DT_TOK_PTR, $1, dt_node_ident($3));
 		}
 	|	postfix_expression DT_TOK_PTR DT_TOK_TNAME {
-			$$ = OP2(DT_TOK_PTR, $1, dt_node_ident($3));
-		}
-	|	postfix_expression DT_TOK_PTR dtrace_keyword_ident {
 			$$ = OP2(DT_TOK_PTR, $1, dt_node_ident($3));
 		}
 	|	postfix_expression DT_TOK_ADDADD {
@@ -417,10 +406,6 @@ postfix_expression:
 		}
 	|	DT_TOK_OFFSETOF DT_TOK_LPAR type_name DT_TOK_COMMA 
 		    DT_TOK_TNAME DT_TOK_RPAR {
-			$$ = dt_node_offsetof($3, $5);
-		}
-	|	DT_TOK_OFFSETOF DT_TOK_LPAR type_name DT_TOK_COMMA
-		    dtrace_keyword_ident DT_TOK_RPAR {
 			$$ = dt_node_offsetof($3, $5);
 		}
 	|	DT_TOK_XLATE DT_TOK_LT type_name DT_TOK_GT
@@ -648,7 +633,6 @@ type_specifier:	DT_KEY_VOID { $$ = dt_decl_spec(CTF_K_INTEGER, DUP("void")); }
 	|	DT_KEY_DOUBLE { $$ = dt_decl_spec(CTF_K_FLOAT, DUP("double")); }
 	|	DT_KEY_SIGNED { $$ = dt_decl_attr(DT_DA_SIGNED); }
 	|	DT_KEY_UNSIGNED { $$ = dt_decl_attr(DT_DA_UNSIGNED); }
-	|	DT_KEY_USERLAND { $$ = dt_decl_attr(DT_DA_USER); }
 	|	DT_KEY_STRING {
 			$$ = dt_decl_spec(CTF_K_TYPEDEF, DUP("string"));
 		}
@@ -845,17 +829,6 @@ function:	DT_TOK_LPAR { dt_scope_push(NULL, CTF_ERR); }
 function_parameters:
 		/* empty */ 		{ $$ = NULL; }
 	|	parameter_type_list	{ $$ = $1; }
-	;
-
-dtrace_keyword_ident:
-	  DT_KEY_PROBE { $$ = DUP("probe"); }
-	| DT_KEY_PROVIDER { $$ = DUP("provider"); }
-	| DT_KEY_SELF { $$ = DUP("self"); }
-	| DT_KEY_STRING { $$ = DUP("string"); }
-	| DT_TOK_STRINGOF { $$ = DUP("stringof"); }
-	| DT_KEY_USERLAND { $$ = DUP("userland"); }
-	| DT_TOK_XLATE { $$ = DUP("xlate"); }
-	| DT_KEY_XLATOR { $$ = DUP("translator"); }
 	;
 
 %%

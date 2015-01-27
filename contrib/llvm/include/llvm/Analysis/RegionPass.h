@@ -1,4 +1,4 @@
-//===- RegionPass.h - RegionPass class --------------------------*- C++ -*-===//
+//===- RegionPass.h - RegionPass class ------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -55,8 +55,7 @@ public:
   /// @param Banner The banner to separate different printed passes.
   ///
   /// @return The pass to print the LLVM IR in the region.
-  Pass *createPrinterPass(raw_ostream &O,
-                          const std::string &Banner) const override;
+  Pass *createPrinterPass(raw_ostream &O, const std::string &Banner) const;
 
   using llvm::Pass::doInitialization;
   using llvm::Pass::doFinalization;
@@ -69,12 +68,12 @@ public:
   /// @name PassManager API
   ///
   //@{
-  void preparePassManager(PMStack &PMS) override;
+  void preparePassManager(PMStack &PMS);
 
-  void assignPassManager(PMStack &PMS,
-                         PassManagerType PMT = PMT_RegionPassManager) override;
+  virtual void assignPassManager(PMStack &PMS,
+    PassManagerType PMT = PMT_RegionPassManager);
 
-  PassManagerType getPotentialPassManagerType() const override {
+  virtual PassManagerType getPotentialPassManagerType() const {
     return PMT_RegionPassManager;
   }
   //@}
@@ -95,21 +94,21 @@ public:
   /// @brief Execute all of the passes scheduled for execution.
   ///
   /// @return True if any of the passes modifies the function.
-  bool runOnFunction(Function &F) override;
+  bool runOnFunction(Function &F);
 
   /// Pass Manager itself does not invalidate any analysis info.
   /// RGPassManager needs RegionInfo.
-  void getAnalysisUsage(AnalysisUsage &Info) const override;
+  void getAnalysisUsage(AnalysisUsage &Info) const;
 
-  const char *getPassName() const override {
+  virtual const char *getPassName() const {
     return "Region Pass Manager";
   }
 
-  PMDataManager *getAsPMDataManager() override { return this; }
-  Pass *getAsPass() override { return this; }
+  virtual PMDataManager *getAsPMDataManager() { return this; }
+  virtual Pass *getAsPass() { return this; }
 
   /// @brief Print passes managed by this manager.
-  void dumpPassStructure(unsigned Offset) override;
+  void dumpPassStructure(unsigned Offset);
 
   /// @brief Get passes contained by this manager.
   Pass *getContainedPass(unsigned N) {
@@ -118,7 +117,7 @@ public:
     return FP;
   }
 
-  PassManagerType getPassManagerType() const override {
+  virtual PassManagerType getPassManagerType() const {
     return PMT_RegionPassManager;
   }
 };

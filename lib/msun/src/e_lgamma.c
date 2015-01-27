@@ -21,8 +21,6 @@ __FBSDID("$FreeBSD$");
  * Method: call __ieee754_lgamma_r
  */
 
-#include <float.h>
-
 #include "math.h"
 #include "math_private.h"
 
@@ -33,7 +31,3 @@ __ieee754_lgamma(double x)
 {
 	return __ieee754_lgamma_r(x,&signgam);
 }
-
-#if (LDBL_MANT_DIG == 53)
-__weak_reference(lgamma, lgammal);
-#endif

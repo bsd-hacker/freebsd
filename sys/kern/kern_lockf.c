@@ -469,9 +469,6 @@ lf_advlockasync(struct vop_advlockasync_args *ap, struct lockf **statep,
 			return (EOVERFLOW);
 		end = start + oadd;
 	}
-
-retry_setlock:
-
 	/*
 	 * Avoid the common case of unlocking when inode has no locks.
 	 */
@@ -740,18 +737,12 @@ retry_setlock:
 
 	VI_UNLOCK(vp);
 
-	if (freestate != NULL) {
+	if (freestate) {
 		sx_xlock(&lf_lock_states_lock);
 		LIST_REMOVE(freestate, ls_link);
 		sx_xunlock(&lf_lock_states_lock);
 		sx_destroy(&freestate->ls_lock);
 		free(freestate, M_LOCKF);
-		freestate = NULL;
-	}
-
-	if (error == EDOOFUS) {
-		KASSERT(ap->a_op == F_SETLK, ("EDOOFUS"));
-		goto retry_setlock;
 	}
 	return (error);
 }
@@ -1468,7 +1459,7 @@ lf_setlock(struct lockf *state, struct lockf_entry *lock, struct vnode *vp,
 		lock->lf_refs++;
 		error = sx_sleep(lock, &state->ls_lock, priority, lockstr, 0);
 		if (lf_free_lock(lock)) {
-			error = EDOOFUS;
+			error = EINTR;
 			goto out;
 		}
 

@@ -7,12 +7,15 @@
 LDIRS=	BSD_daemon \
 	FreeBSD_version \
 	IPv6 \
+	bhyve \
 	bootforth \
 	csh \
+	cvsup \
 	diskless \
 	drivers \
 	etc \
 	find_interface \
+	hast \
 	ibcs2 \
 	indent \
 	ipfw \
@@ -40,6 +43,7 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	FreeBSD_version/Makefile \
 	FreeBSD_version/README \
 	IPv6/USAGE \
+	bhyve/vmrun.sh \
 	bootforth/README \
 	bootforth/boot.4th \
 	bootforth/frames.4th \
@@ -48,6 +52,10 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	bootforth/menuconf.4th \
 	bootforth/screen.4th \
 	csh/dot.cshrc \
+	cvsup/README \
+	cvsup/cvs-supfile \
+	cvsup/stable-supfile \
+	cvsup/standard-supfile \
 	diskless/ME \
 	diskless/README.BOOTP \
 	diskless/README.TEMPLATING \
@@ -61,6 +69,11 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	find_interface/Makefile \
 	find_interface/README \
 	find_interface/find_interface.c \
+	hast/ucarp.sh \
+	hast/ucarp_down.sh \
+	hast/ucarp_up.sh \
+	hast/vip-down.sh \
+	hast/vip-up.sh \
 	ibcs2/README \
 	ibcs2/hello.uu \
 	indent/indent.pro \
@@ -193,22 +206,6 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 BINDIR= ${SHAREDIR}/examples
 
 NO_OBJ=
-
-.if ${MK_HAST} != "no"
-LDIRS+=		hast
-XFILES+=	hast/ucarp.sh \
-		hast/ucarp_down.sh \
-		hast/ucarp_up.sh \
-		hast/vip-down.sh \
-		hast/vip-up.sh
-.endif
-
-.if ${MACHINE_CPUARCH} == "amd64"
-.if ${MK_BHYVE} != "no"
-LDIRS+=		bhyve
-XFILES+=	bhyve/vmrun.sh
-.endif
-.endif
 
 # Define SHARED to indicate whether you want symbolic links to the system
 # source (``symlinks''), or a separate copy (``copies''); (latter useful

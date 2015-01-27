@@ -9,7 +9,6 @@
 
 #include "lldb/API/SBDefines.h"
 #include "lldb/API/SBType.h"
-#include "lldb/API/SBTypeEnumMember.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/Core/ConstString.h"
 #include "lldb/Core/Log.h"
@@ -17,8 +16,6 @@
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangASTType.h"
 #include "lldb/Symbol/Type.h"
-
-#include "clang/AST/Decl.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -367,27 +364,6 @@ SBType::GetVirtualBaseClassAtIndex (uint32_t idx)
     return sb_type_member;
 }
 
-SBTypeEnumMemberList
-SBType::GetEnumMembers ()
-{
-    SBTypeEnumMemberList sb_enum_member_list;
-    if (IsValid())
-    {
-        const clang::EnumDecl *enum_decl = m_opaque_sp->GetClangASTType(true).GetFullyUnqualifiedType().GetAsEnumDecl();
-        if (enum_decl)
-        {
-            clang::EnumDecl::enumerator_iterator enum_pos, enum_end_pos;
-            for (enum_pos = enum_decl->enumerator_begin(), enum_end_pos = enum_decl->enumerator_end(); enum_pos != enum_end_pos; ++enum_pos)
-            {
-                SBTypeEnumMember enum_member;
-                enum_member.reset(new TypeEnumMemberImpl(*enum_pos, ClangASTType(m_opaque_sp->GetClangASTContext(true), enum_decl->getIntegerType())));
-                sb_enum_member_list.Append(enum_member);
-            }
-        }
-    }
-    return sb_enum_member_list;
-}
-
 SBTypeMember
 SBType::GetFieldAtIndex (uint32_t idx)
 {
@@ -436,14 +412,6 @@ SBType::GetName()
     if (!IsValid())
         return "";
     return m_opaque_sp->GetName().GetCString();
-}
-
-const char *
-SBType::GetDisplayTypeName ()
-{
-    if (!IsValid())
-        return "";
-    return m_opaque_sp->GetDisplayTypeName().GetCString();
 }
 
 lldb::TypeClass

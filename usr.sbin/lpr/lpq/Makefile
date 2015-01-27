@@ -10,6 +10,9 @@ BINMODE= 6555
 
 CFLAGS+= -I${.CURDIR}/../common_source
 
-LIBADD=	lpr
+DPADD=	${LIBLPR}
+LDADD=	${LIBLPR}
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

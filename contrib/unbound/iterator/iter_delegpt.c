@@ -147,9 +147,7 @@ delegpt_find_addr(struct delegpt* dp, struct sockaddr_storage* addr,
 {
 	struct delegpt_addr* p = dp->target_list;
 	while(p) {
-		if(sockaddr_cmp_addr(addr, addrlen, &p->addr, p->addrlen)==0
-			&& ((struct sockaddr_in*)addr)->sin_port ==
-			   ((struct sockaddr_in*)&p->addr)->sin_port) {
+		if(sockaddr_cmp_addr(addr, addrlen, &p->addr, p->addrlen)==0) {
 			return p;
 		}
 		p = p->next_target;

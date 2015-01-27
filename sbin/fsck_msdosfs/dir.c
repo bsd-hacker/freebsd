@@ -206,7 +206,7 @@ static char longName[DOSLONGNAMELEN] = "";
 static u_char *buffer = NULL;
 static u_char *delbuf = NULL;
 
-static struct dosDirEntry *rootDir;
+struct dosDirEntry *rootDir;
 static struct dosDirEntry *lostDir;
 
 /*
@@ -419,14 +419,13 @@ checksize(struct bootblock *boot, struct fatEntry *fat, u_char *p,
 		      fullpath(dir));
 		if (ask(1, "Drop superfluous clusters")) {
 			cl_t cl;
-			u_int32_t sz, len;
+			u_int32_t sz = 0;
 
-			for (cl = dir->head, len = sz = 0;
-			    (sz += boot->ClusterSize) < dir->size; len++)
+			for (cl = dir->head; (sz += boot->ClusterSize) <
+			    dir->size;)
 				cl = fat[cl].next;
 			clearchain(boot, fat, fat[cl].next);
 			fat[cl].next = CLUST_EOF;
-			fat[dir->head].length = len;
 			return FSFATMOD;
 		} else
 			return FSERROR;

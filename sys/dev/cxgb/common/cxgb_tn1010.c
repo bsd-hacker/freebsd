@@ -129,7 +129,7 @@ static int tn1010_advertise(struct cphy *phy, unsigned int advert)
 			  ADVERTISE_LOOP_TIMING);
 }
 
-static int tn1010_get_link_status(struct cphy *phy, int *link_state,
+static int tn1010_get_link_status(struct cphy *phy, int *link_ok,
 				  int *speed, int *duplex, int *fc)
 {
 	unsigned int status, lpa, adv;
@@ -139,9 +139,8 @@ static int tn1010_get_link_status(struct cphy *phy, int *link_state,
 	if (err)
 		return err;
 
-	if (link_state)
-		*link_state = status & F_LINK_STAT ? PHY_LINK_UP :
-		    PHY_LINK_DOWN;
+	if (link_ok)
+		*link_ok = (status & F_LINK_STAT) != 0;
 
 	if (G_ANEG_STAT(status) == ANEG_COMPLETE) {
 		sp = (status & F_ANEG_SPEED_1G) ? SPEED_1000 : SPEED_10000;

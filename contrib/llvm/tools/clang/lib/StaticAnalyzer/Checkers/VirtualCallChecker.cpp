@@ -28,7 +28,6 @@ using namespace ento;
 namespace {
 
 class WalkAST : public StmtVisitor<WalkAST> {
-  const CheckerBase *Checker;
   BugReporter &BR;
   AnalysisDeclContext *AC;
 
@@ -59,10 +58,11 @@ class WalkAST : public StmtVisitor<WalkAST> {
   const CallExpr *visitingCallExpr;
   
 public:
-  WalkAST(const CheckerBase *checker, BugReporter &br,
-          AnalysisDeclContext *ac)
-      : Checker(checker), BR(br), AC(ac), visitingCallExpr(nullptr) {}
-
+  WalkAST(BugReporter &br, AnalysisDeclContext *ac)
+    : BR(br),
+      AC(ac),
+      visitingCallExpr(0) {}
+  
   bool hasWork() const { return !WList.empty(); }
 
   /// This method adds a CallExpr to the worklist and marks the callee as
@@ -187,19 +187,21 @@ void WalkAST::ReportVirtualCall(const CallExpr *CE, bool isPure) {
   if (isPure) {
     os << "\n" <<  "Call pure virtual functions during construction or "
        << "destruction may leads undefined behaviour";
-    BR.EmitBasicReport(AC->getDecl(), Checker,
+    BR.EmitBasicReport(AC->getDecl(),
                        "Call pure virtual function during construction or "
                        "Destruction",
-                       "Cplusplus", os.str(), CELoc, R);
+                       "Cplusplus",
+                       os.str(), CELoc, R);
     return;
   }
   else {
     os << "\n" << "Call virtual functions during construction or "
        << "destruction will never go to a more derived class";
-    BR.EmitBasicReport(AC->getDecl(), Checker,
+    BR.EmitBasicReport(AC->getDecl(),
                        "Call virtual function during construction or "
                        "Destruction",
-                       "Cplusplus", os.str(), CELoc, R);
+                       "Cplusplus",
+                       os.str(), CELoc, R);
     return;
   }
 }
@@ -213,10 +215,11 @@ class VirtualCallChecker : public Checker<check::ASTDecl<CXXRecordDecl> > {
 public:
   void checkASTDecl(const CXXRecordDecl *RD, AnalysisManager& mgr,
                     BugReporter &BR) const {
-    WalkAST walker(this, BR, mgr.getAnalysisDeclContext(RD));
+    WalkAST walker(BR, mgr.getAnalysisDeclContext(RD));
 
     // Check the constructors.
-    for (const auto *I : RD->ctors()) {
+    for (CXXRecordDecl::ctor_iterator I = RD->ctor_begin(), E = RD->ctor_end();
+         I != E; ++I) {
       if (!I->isCopyOrMoveConstructor())
         if (Stmt *Body = I->getBody()) {
           walker.Visit(Body);

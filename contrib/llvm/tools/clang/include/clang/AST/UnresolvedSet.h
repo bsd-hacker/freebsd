@@ -27,7 +27,7 @@ namespace clang {
 /// non-const iterator.
 class UnresolvedSetIterator {
 private:
-  typedef MutableArrayRef<DeclAccessPair> DeclsTy;
+  typedef llvm::MutableArrayRef<DeclAccessPair> DeclsTy;
   typedef DeclsTy::iterator IteratorTy;
 
   IteratorTy ir;

@@ -72,11 +72,10 @@ CFLAGS+=	-DLOADER_TFTP_SUPPORT
 CFLAGS+=	-I${.CURDIR}/../../fdt
 CFLAGS+=	-I${.OBJDIR}/../../fdt
 CFLAGS+=	-DLOADER_FDT_SUPPORT
-LIBUBOOT_FDT=	${.OBJDIR}/../../uboot/fdt/libuboot_fdt.a
 LIBFDT=		${.OBJDIR}/../../fdt/libfdt.a
 .endif
 
-.if ${MK_FORTH} != "no"
+.if !defined(NO_FORTH)
 # Enable BootForth
 BOOT_FORTH=	yes
 CFLAGS+=	-DBOOT_FORTH -I${.CURDIR}/../../ficl -I${.CURDIR}/../../ficl/arm
@@ -113,8 +112,8 @@ CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand/
 # clang doesn't understand %D as a specifier to printf
 NO_WERROR.clang=
 
-DPADD=		${LIBFICL} ${LIBUBOOT} ${LIBFDT} ${LIBUBOOT_FDT} ${LIBSTAND}
-LDADD=		${LIBFICL} ${LIBUBOOT} ${LIBFDT} ${LIBUBOOT_FDT} -lstand
+DPADD=		${LIBFICL} ${LIBUBOOT} ${LIBFDT} ${LIBSTAND}
+LDADD=		${LIBFICL} ${LIBUBOOT} ${LIBFDT} -lstand
 
 vers.c:	${.CURDIR}/../../common/newvers.sh ${.CURDIR}/version
 	sh ${.CURDIR}/../../common/newvers.sh ${.CURDIR}/version ${NEWVERSWHAT}

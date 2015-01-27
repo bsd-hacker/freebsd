@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -248,11 +248,10 @@ AcpiUtCheckAddressRange (
     while (RangeInfo)
     {
         /*
-         * Check if the requested address/length overlaps this
-         * address range. There are four cases to consider:
+         * Check if the requested Address/Length overlaps this AddressRange.
+         * Four cases to consider:
          *
-         * 1) Input address/length is contained completely in the
-         *    address range
+         * 1) Input address/length is contained completely in the address range
          * 2) Input address/length overlaps range at the range start
          * 3) Input address/length overlaps range at the range end
          * 4) Input address/length completely encompasses the range
@@ -268,13 +267,10 @@ AcpiUtCheckAddressRange (
                 Pathname = AcpiNsGetExternalPathname (RangeInfo->RegionNode);
 
                 ACPI_WARNING ((AE_INFO,
-                    "%s range 0x%p-0x%p conflicts with OpRegion 0x%p-0x%p (%s)",
-                    AcpiUtGetRegionName (SpaceId),
+                    "0x%p-0x%p %s conflicts with Region %s %d",
                     ACPI_CAST_PTR (void, Address),
                     ACPI_CAST_PTR (void, EndAddress),
-                    ACPI_CAST_PTR (void, RangeInfo->StartAddress),
-                    ACPI_CAST_PTR (void, RangeInfo->EndAddress),
-                    Pathname));
+                    AcpiUtGetRegionName (SpaceId), Pathname, OverlapCount));
                 ACPI_FREE (Pathname);
             }
         }

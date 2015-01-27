@@ -92,6 +92,7 @@ static void fddi_input(struct ifnet *ifp, struct mbuf *m);
  * Encapsulate a packet of type family for the local net.
  * Use trailer local net encapsulation if enough data in first
  * packet leaves a multiple of 512 bytes of data in remainder.
+ * Assumes that ifp is actually pointer to arpcom structure.
  */
 static int
 fddi_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
@@ -101,8 +102,8 @@ fddi_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	int loop_copy = 0, error = 0, hdrcmplt = 0;
  	u_char esrc[FDDI_ADDR_LEN], edst[FDDI_ADDR_LEN];
 	struct fddi_header *fh;
-#ifdef INET
-	int is_gw;
+#if defined(INET) || defined(INET6)
+	struct llentry *lle;
 #endif
 
 #ifdef MAC
@@ -121,11 +122,11 @@ fddi_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	switch (dst->sa_family) {
 #ifdef INET
 	case AF_INET: {
-		is_gw = 0;
-		if (ro != NULL && ro->ro_rt != NULL &&
-		    (ro->ro_rt->rt_flags & RTF_GATEWAY) != 0)
-			is_gw = 1;
-		error = arpresolve(ifp, is_gw, m, dst, edst, NULL);
+		struct rtentry *rt0 = NULL;
+
+		if (ro != NULL)
+			rt0 = ro->ro_rt;
+		error = arpresolve(ifp, rt0, m, dst, edst, &lle);
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		type = htons(ETHERTYPE_IP);
@@ -161,7 +162,7 @@ fddi_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 #endif /* INET */
 #ifdef INET6
 	case AF_INET6:
-		error = nd6_storelladdr(ifp, m, dst, (u_char *)edst, NULL);
+		error = nd6_storelladdr(ifp, m, dst, (u_char *)edst, &lle);
 		if (error)
 			return (error); /* Something bad happened */
 		type = htons(ETHERTYPE_IPV6);
@@ -287,12 +288,12 @@ fddi_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 
 	error = (ifp->if_transmit)(ifp, m);
 	if (error)
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 
 	return (error);
 
 bad:
-	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+	ifp->if_oerrors++;
 	if (m)
 		m_freem(m);
 	return (error);
@@ -316,20 +317,20 @@ fddi_input(ifp, m)
 	 */
 	if ((m->m_flags & M_PKTHDR) == 0) {
 		if_printf(ifp, "discard frame w/o packet header\n");
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		m_freem(m);
 		return;
 	}
 	if (m->m_pkthdr.rcvif == NULL) {
 		if_printf(ifp, "discard frame w/o interface pointer\n");
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		m_freem(m);
 		return;
         }
 
 	m = m_pullup(m, FDDI_HDR_LEN);
 	if (m == NULL) {
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		goto dropanyway;
 	}
 	fh = mtod(m, struct fddi_header *);
@@ -361,7 +362,7 @@ fddi_input(ifp, m)
 	/*
 	 * Update interface statistics.
 	 */
-	if_inc_counter(ifp, IFCOUNTER_IBYTES, m->m_pkthdr.len);
+	ifp->if_ibytes += m->m_pkthdr.len;
 	getmicrotime(&ifp->if_lastchange);
 
 	/*
@@ -382,7 +383,7 @@ fddi_input(ifp, m)
 			m->m_flags |= M_BCAST;
 		else
 			m->m_flags |= M_MCAST;
-		if_inc_counter(ifp, IFCOUNTER_IMCASTS, 1);
+		ifp->if_imcasts++;
 	}
 
 #ifdef M_LINK0
@@ -400,7 +401,7 @@ fddi_input(ifp, m)
 
 	m = m_pullup(m, LLC_SNAPFRAMELEN);
 	if (m == 0) {
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		goto dropanyway;
 	}
 	l = mtod(m, struct llc *);
@@ -411,13 +412,13 @@ fddi_input(ifp, m)
 		u_int16_t type;
 		if ((l->llc_control != LLC_UI) ||
 		    (l->llc_ssap != LLC_SNAP_LSAP)) {
-			if_inc_counter(ifp, IFCOUNTER_NOPROTO, 1);
+			ifp->if_noproto++;
 			goto dropanyway;
 		}
 		if (l->llc_snap.org_code[0] != 0 ||
 		    l->llc_snap.org_code[1] != 0 ||
 		    l->llc_snap.org_code[2] != 0) {
-			if_inc_counter(ifp, IFCOUNTER_NOPROTO, 1);
+			ifp->if_noproto++;
 			goto dropanyway;
 		}
 
@@ -450,7 +451,7 @@ fddi_input(ifp, m)
 #endif
 		default:
 			/* printf("fddi_input: unknown protocol 0x%x\n", type); */
-			if_inc_counter(ifp, IFCOUNTER_NOPROTO, 1);
+			ifp->if_noproto++;
 			goto dropanyway;
 		}
 		break;
@@ -458,7 +459,7 @@ fddi_input(ifp, m)
 		
 	default:
 		/* printf("fddi_input: unknown dsap 0x%x\n", l->llc_dsap); */
-		if_inc_counter(ifp, IFCOUNTER_NOPROTO, 1);
+		ifp->if_noproto++;
 		goto dropanyway;
 	}
 	M_SETFIB(m, ifp->if_fib);
@@ -466,7 +467,7 @@ fddi_input(ifp, m)
 	return;
 
 dropanyway:
-	if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+	ifp->if_iqdrops++;
 	if (m)
 		m_freem(m);
 	return;

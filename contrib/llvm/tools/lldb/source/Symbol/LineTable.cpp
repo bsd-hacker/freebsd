@@ -93,26 +93,16 @@ LineTable::AppendLineEntryToSequence
     bool is_terminal_entry
 )
 {
-    assert(sequence != nullptr);
+    assert(sequence != NULL);
     LineSequenceImpl* seq = reinterpret_cast<LineSequenceImpl*>(sequence);
     Entry entry(file_addr, line, column, file_idx, is_start_of_statement, is_start_of_basic_block, is_prologue_end, is_epilogue_begin, is_terminal_entry);
-    entry_collection &entries = seq->m_entries;
-    // Replace the last entry if the address is the same, otherwise append it. If we have multiple
-    // line entries at the same address, this indicates illegal DWARF so this "fixes" the line table
-    // to be correct. If not fixed this can cause a line entry's address that when resolved back to
-    // a symbol context, could resolve to a different line entry. We really want a 1 to 1 mapping
-    // here to avoid these kinds of inconsistencies. We will need tor revisit this if the DWARF line
-    // tables are updated to allow multiple entries at the same address legally.
-    if (!entries.empty() && entries.back().file_addr == file_addr)
-        entries.back() = entry;
-    else
-        entries.push_back (entry);
+    seq->m_entries.push_back (entry);
 }
 
 void
 LineTable::InsertSequence (LineSequence* sequence)
 {
-    assert(sequence != nullptr);
+    assert(sequence != NULL);
     LineSequenceImpl* seq = reinterpret_cast<LineSequenceImpl*>(sequence);
     if (seq->m_entries.empty())
         return;
@@ -193,7 +183,7 @@ LineTable::GetLineEntryAtIndex(uint32_t idx, LineEntry& line_entry)
 bool
 LineTable::FindLineEntryByAddress (const Address &so_addr, LineEntry& line_entry, uint32_t *index_ptr)
 {
-    if (index_ptr != nullptr )
+    if (index_ptr != NULL )
         *index_ptr = UINT32_MAX;
 
     bool success = false;
@@ -257,7 +247,7 @@ LineTable::FindLineEntryByAddress (const Address &so_addr, LineEntry& line_entry
                 {
                     uint32_t match_idx = std::distance (begin_pos, pos);
                     success = ConvertEntryAtIndexToLineEntry(match_idx, line_entry);
-                    if (index_ptr != nullptr && success)
+                    if (index_ptr != NULL && success)
                         *index_ptr = match_idx;
                 }
             }
@@ -503,8 +493,8 @@ LineTable::LinkLineTable (const FileRangeMap &file_range_map)
     LineSequenceImpl sequence;
     const size_t count = m_entries.size();
     LineEntry line_entry;
-    const FileRangeMap::Entry *file_range_entry = nullptr;
-    const FileRangeMap::Entry *prev_file_range_entry = nullptr;
+    const FileRangeMap::Entry *file_range_entry = NULL;
+    const FileRangeMap::Entry *prev_file_range_entry = NULL;
     lldb::addr_t prev_file_addr = LLDB_INVALID_ADDRESS;
     bool prev_entry_was_linked = false;
     bool range_changed = false;
@@ -514,7 +504,7 @@ LineTable::LinkLineTable (const FileRangeMap &file_range_map)
         
         const bool end_sequence = entry.is_terminal_entry;
         const lldb::addr_t lookup_file_addr = entry.file_addr - (end_sequence ? 1 : 0);
-        if (file_range_entry == nullptr || !file_range_entry->Contains(lookup_file_addr))
+        if (file_range_entry == NULL || !file_range_entry->Contains(lookup_file_addr))
         {
             prev_file_range_entry = file_range_entry;
             file_range_entry = file_range_map.FindEntryThatContains(lookup_file_addr);
@@ -583,13 +573,13 @@ LineTable::LinkLineTable (const FileRangeMap &file_range_map)
         }
         else
         {
-            prev_entry_was_linked = file_range_entry != nullptr;
+            prev_entry_was_linked = file_range_entry != NULL;
         }
         prev_file_addr = entry.file_addr;
         range_changed = false;
     }
     if (line_table_ap->m_entries.empty())
-        return nullptr;
+        return NULL;
     return line_table_ap.release();
 }
 

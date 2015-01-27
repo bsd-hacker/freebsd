@@ -56,10 +56,10 @@ static const char sccsid[] = "@(#)touch.c	8.1 (Berkeley) 6/6/93";
 #include <time.h>
 #include <unistd.h>
 
-static void	stime_arg1(const char *, struct timespec *);
-static void	stime_arg2(const char *, int, struct timespec *);
-static void	stime_darg(const char *, struct timespec *);
-static void	stime_file(const char *, struct timespec *);
+static void	stime_arg1(const char *, struct timeval *);
+static void	stime_arg2(const char *, int, struct timeval *);
+static void	stime_darg(const char *, struct timeval *);
+static void	stime_file(const char *, struct timeval *);
 static int	timeoffset(const char *);
 static void	usage(const char *);
 
@@ -67,17 +67,19 @@ int
 main(int argc, char *argv[])
 {
 	struct stat sb;
-	struct timespec ts[2];
-	int atflag;
+	struct timeval tv[2];
+	int (*stat_f)(const char *, struct stat *);
+	int (*utimes_f)(const char *, const struct timeval *);
 	int Aflag, aflag, cflag, mflag, ch, fd, len, rval, timeset;
 	char *p;
 	char *myname;
 
 	myname = basename(argv[0]);
 	Aflag = aflag = cflag = mflag = timeset = 0;
-	atflag = 0;
-	if (clock_gettime(CLOCK_REALTIME, &ts[0]) == -1)
-		err(1, "clock_gettime(CLOCK_REALTIME)");
+	stat_f = stat;
+	utimes_f = utimes;
+	if (gettimeofday(&tv[0], NULL) == -1)
+		err(1, "gettimeofday");
 
 	while ((ch = getopt(argc, argv, "A:acd:fhmr:t:")) != -1)
 		switch(ch) {
@@ -92,25 +94,26 @@ main(int argc, char *argv[])
 			break;
 		case 'd':
 			timeset = 1;
-			stime_darg(optarg, ts);
+			stime_darg(optarg, tv);
 			break;
 		case 'f':
 			/* No-op for compatibility. */
 			break;
 		case 'h':
 			cflag = 1;
-			atflag = AT_SYMLINK_NOFOLLOW;
+			stat_f = lstat;
+			utimes_f = lutimes;
 			break;
 		case 'm':
 			mflag = 1;
 			break;
 		case 'r':
 			timeset = 1;
-			stime_file(optarg, ts);
+			stime_file(optarg, tv);
 			break;
 		case 't':
 			timeset = 1;
-			stime_arg1(optarg, ts);
+			stime_arg1(optarg, tv);
 			break;
 		default:
 			usage(myname);
@@ -129,9 +132,9 @@ main(int argc, char *argv[])
 			 * that time once and for all here.
 			 */
 			if (aflag)
-				ts[0].tv_sec += Aflag;
+				tv[0].tv_sec += Aflag;
 			if (mflag)
-				ts[1].tv_sec += Aflag;
+				tv[1].tv_sec += Aflag;
 			Aflag = 0;		/* done our job */
 		}
 	} else {
@@ -145,11 +148,11 @@ main(int argc, char *argv[])
 			len = p - argv[0];
 			if (*p == '\0' && (len == 8 || len == 10)) {
 				timeset = 1;
-				stime_arg2(*argv++, len == 10, ts);
+				stime_arg2(*argv++, len == 10, tv);
 			}
 		}
 		/* Both times default to the same. */
-		ts[1] = ts[0];
+		tv[1] = tv[0];
 	}
 
 	if (*argv == NULL)
@@ -160,7 +163,7 @@ main(int argc, char *argv[])
 
 	for (rval = 0; *argv; ++argv) {
 		/* See if the file exists. */
-		if (fstatat(AT_FDCWD, *argv, &sb, atflag) != 0) {
+		if (stat_f(*argv, &sb) != 0) {
 			if (errno != ENOENT) {
 				rval = 1;
 				warn("%s", *argv);
@@ -184,9 +187,9 @@ main(int argc, char *argv[])
 		}
 
 		if (!aflag)
-			ts[0] = sb.st_atim;
+			TIMESPEC_TO_TIMEVAL(&tv[0], &sb.st_atim);
 		if (!mflag)
-			ts[1] = sb.st_mtim;
+			TIMESPEC_TO_TIMEVAL(&tv[1], &sb.st_mtim);
 
 		/*
 		 * We're adjusting the times based on the file times, not a
@@ -194,17 +197,17 @@ main(int argc, char *argv[])
 		 */
 		if (Aflag) {
 			if (aflag) {
-				ts[0] = sb.st_atim;
-				ts[0].tv_sec += Aflag;
+				TIMESPEC_TO_TIMEVAL(&tv[0], &sb.st_atim);
+				tv[0].tv_sec += Aflag;
 			}
 			if (mflag) {
-				ts[1] = sb.st_mtim;
-				ts[1].tv_sec += Aflag;
+				TIMESPEC_TO_TIMEVAL(&tv[1], &sb.st_mtim);
+				tv[1].tv_sec += Aflag;
 			}
 		}
 
-		/* Try utimensat(2). */
-		if (!utimensat(AT_FDCWD, *argv, ts, atflag))
+		/* Try utimes(2). */
+		if (!utimes_f(*argv, tv))
 			continue;
 
 		/* If the user specified a time, nothing else we can do. */
@@ -220,7 +223,7 @@ main(int argc, char *argv[])
 		 * The permission checks are different, too, in that the
 		 * ability to write the file is sufficient.  Take a shot.
 		 */
-		 if (!utimensat(AT_FDCWD, *argv, NULL, atflag))
+		 if (!utimes_f(*argv, NULL))
 			continue;
 
 		rval = 1;
@@ -232,7 +235,7 @@ main(int argc, char *argv[])
 #define	ATOI2(ar)	((ar)[0] - '0') * 10 + ((ar)[1] - '0'); (ar) += 2;
 
 static void
-stime_arg1(const char *arg, struct timespec *tvp)
+stime_arg1(const char *arg, struct timeval *tvp)
 {
 	time_t now;
 	struct tm *t;
@@ -288,7 +291,7 @@ stime_arg1(const char *arg, struct timespec *tvp)
 	if (tvp[0].tv_sec == -1)
 		goto terr;
 
-	tvp[0].tv_nsec = tvp[1].tv_nsec = 0;
+	tvp[0].tv_usec = tvp[1].tv_usec = 0;
 	return;
 
 terr:
@@ -296,7 +299,7 @@ terr:
 }
 
 static void
-stime_arg2(const char *arg, int year, struct timespec *tvp)
+stime_arg2(const char *arg, int year, struct timeval *tvp)
 {
 	time_t now;
 	struct tm *t;
@@ -322,18 +325,18 @@ stime_arg2(const char *arg, int year, struct timespec *tvp)
 		errx(1,
 	"out of range or illegal time specification: MMDDhhmm[yy]");
 
-	tvp[0].tv_nsec = tvp[1].tv_nsec = 0;
+	tvp[0].tv_usec = tvp[1].tv_usec = 0;
 }
 
 static void
-stime_darg(const char *arg, struct timespec *tvp)
+stime_darg(const char *arg, struct timeval *tvp)
 {
 	struct tm t = { .tm_sec = 0 };
 	const char *fmt, *colon;
 	char *p;
 	int val, isutc = 0;
 
-	tvp[0].tv_nsec = 0;
+	tvp[0].tv_usec = 0;
 	t.tm_isdst = -1;
 	colon = strchr(arg, ':');
 	if (colon == NULL || strchr(colon + 1, ':') == NULL)
@@ -346,9 +349,9 @@ stime_darg(const char *arg, struct timespec *tvp)
 	/* POSIX: must have at least one digit after dot */
 	if ((*p == '.' || *p == ',') && isdigit((unsigned char)p[1])) {
 		p++;
-		val = 100000000;
+		val = 100000;
 		while (isdigit((unsigned char)*p)) {
-			tvp[0].tv_nsec += val * (*p - '0');
+			tvp[0].tv_usec += val * (*p - '0');
 			p++;
 			val /= 10;
 		}
@@ -400,14 +403,14 @@ timeoffset(const char *arg)
 }
 
 static void
-stime_file(const char *fname, struct timespec *tsp)
+stime_file(const char *fname, struct timeval *tvp)
 {
 	struct stat sb;
 
 	if (stat(fname, &sb))
 		err(1, "%s", fname);
-	tsp[0] = sb.st_atim;
-	tsp[1] = sb.st_mtim;
+	TIMESPEC_TO_TIMEVAL(tvp, &sb.st_atim);
+	TIMESPEC_TO_TIMEVAL(tvp + 1, &sb.st_mtim);
 }
 
 static void

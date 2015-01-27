@@ -11,7 +11,8 @@ LINKS=	${BINDIR}/sunlabel ${BINDIR}/disklabel
 MLINKS=	sunlabel.8 disklabel.8
 .endif
 
-LIBADD=	geom
+DPADD=	${LIBGEOM}
+LDADD=	-lgeom
 
 .include <bsd.prog.mk>
 

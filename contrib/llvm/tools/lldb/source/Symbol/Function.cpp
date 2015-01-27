@@ -215,7 +215,7 @@ Function::Function
     m_prologue_byte_size (0)
 {
     m_block.SetParentScope(this);
-    assert(comp_unit != nullptr);
+    assert(comp_unit != NULL);
 }
 
 Function::Function
@@ -239,7 +239,7 @@ Function::Function
     m_prologue_byte_size (0)
 {
     m_block.SetParentScope(this);
-    assert(comp_unit != nullptr);
+    assert(comp_unit != NULL);
 }
 
 
@@ -253,10 +253,10 @@ Function::GetStartLineSourceInfo (FileSpec &source_file, uint32_t &line_no)
     line_no = 0;
     source_file.Clear();
     
-    if (m_comp_unit == nullptr)
+    if (m_comp_unit == NULL)
         return;
         
-    if (m_type != nullptr && m_type->GetDeclaration().GetLine() != 0)
+    if (m_type != NULL && m_type->GetDeclaration().GetLine() != 0)
     {
         source_file = m_type->GetDeclaration().GetFile();
         line_no = m_type->GetDeclaration().GetLine();
@@ -264,11 +264,11 @@ Function::GetStartLineSourceInfo (FileSpec &source_file, uint32_t &line_no)
     else 
     {
         LineTable *line_table = m_comp_unit->GetLineTable();
-        if (line_table == nullptr)
+        if (line_table == NULL)
             return;
             
         LineEntry line_entry;
-        if (line_table->FindLineEntryByAddress (GetAddressRange().GetBaseAddress(), line_entry, nullptr))
+        if (line_table->FindLineEntryByAddress (GetAddressRange().GetBaseAddress(), line_entry, NULL))
         {
             line_no = line_entry.line;
             source_file = line_entry.file;
@@ -288,11 +288,11 @@ Function::GetEndLineSourceInfo (FileSpec &source_file, uint32_t &line_no)
     scratch_addr.SetOffset (scratch_addr.GetOffset() + GetAddressRange().GetByteSize() - 1);
     
     LineTable *line_table = m_comp_unit->GetLineTable();
-    if (line_table == nullptr)
+    if (line_table == NULL)
         return;
         
     LineEntry line_entry;
-    if (line_table->FindLineEntryByAddress (scratch_addr, line_entry, nullptr))
+    if (line_table->FindLineEntryByAddress (scratch_addr, line_entry, NULL))
     {
         line_no = line_entry.line;
         source_file = line_entry.file;
@@ -354,16 +354,20 @@ Function::GetDescription(Stream *s, lldb::DescriptionLevel level, Target *target
 void
 Function::Dump(Stream *s, bool show_context) const
 {
-    s->Printf("%p: ", static_cast<const void*>(this));
+    s->Printf("%p: ", this);
     s->Indent();
-    *s << "Function" << static_cast<const UserID&>(*this);
+    *s << "Function" << (const UserID&)*this;
 
     m_mangled.Dump(s);
 
     if (m_type)
-        s->Printf(", type = %p", static_cast<void*>(m_type));
+    {
+        s->Printf(", type = %p", m_type);
+    }
     else if (m_type_uid != LLDB_INVALID_UID)
+    {
         s->Printf(", type_uid = 0x%8.8" PRIx64, m_type_uid);
+    }
 
     s->EOL();
     // Dump the root object
@@ -411,7 +415,7 @@ Function::GetInstructions (const ExecutionContext &exe_ctx,
     {
         const bool prefer_file_cache = false;
         return Disassembler::DisassembleRange (module_sp->GetArchitecture(),
-                                               nullptr,
+                                               NULL,
                                                flavor,
                                                exe_ctx,
                                                GetAddressRange(),
@@ -467,17 +471,17 @@ Function::GetClangDeclContext()
     CalculateSymbolContext (&sc);
     
     if (!sc.module_sp)
-        return nullptr;
+        return NULL;
     
     SymbolVendor *sym_vendor = sc.module_sp->GetSymbolVendor();
     
     if (!sym_vendor)
-        return nullptr;
+        return NULL;
     
     SymbolFile *sym_file = sym_vendor->GetSymbolFile();
     
     if (!sym_file)
-        return nullptr;
+        return NULL;
     
     return sym_file->GetClangDeclContextForTypeUID (sc, m_uid);
 }
@@ -485,24 +489,24 @@ Function::GetClangDeclContext()
 Type*
 Function::GetType()
 {
-    if (m_type == nullptr)
+    if (m_type == NULL)
     {
         SymbolContext sc;
         
         CalculateSymbolContext (&sc);
         
         if (!sc.module_sp)
-            return nullptr;
+            return NULL;
         
         SymbolVendor *sym_vendor = sc.module_sp->GetSymbolVendor();
         
-        if (sym_vendor == nullptr)
-            return nullptr;
+        if (sym_vendor == NULL)
+            return NULL;
         
         SymbolFile *sym_file = sym_vendor->GetSymbolFile();
         
-        if (sym_file == nullptr)
-            return nullptr;
+        if (sym_file == NULL)
+            return NULL;
         
         m_type = sym_file->ResolveTypeUID(m_type_uid);
     }

@@ -59,7 +59,7 @@ private:
 public:
 
   MachinePassRegistryNode(const char *N, const char *D, MachinePassCtor C)
-  : Next(nullptr)
+  : Next(NULL)
   , Name(N)
   , Description(D)
   , Ctor(C)
@@ -123,7 +123,7 @@ class RegisterPassParser : public MachinePassRegistryListener,
                    public cl::parser<typename RegistryClass::FunctionPassCtor> {
 public:
   RegisterPassParser() {}
-  ~RegisterPassParser() { RegistryClass::setListener(nullptr); }
+  ~RegisterPassParser() { RegistryClass::setListener(NULL); }
 
   void initialize(cl::Option &O) {
     cl::parser<typename RegistryClass::FunctionPassCtor>::initialize(O);
@@ -142,10 +142,12 @@ public:
 
   // Implement the MachinePassRegistryListener callbacks.
   //
-  void NotifyAdd(const char *N, MachinePassCtor C, const char *D) override {
+  virtual void NotifyAdd(const char *N,
+                         MachinePassCtor C,
+                         const char *D) {
     this->addLiteralOption(N, (typename RegistryClass::FunctionPassCtor)C, D);
   }
-  void NotifyRemove(const char *N) override {
+  virtual void NotifyRemove(const char *N) {
     this->removeLiteralOption(N);
   }
 };

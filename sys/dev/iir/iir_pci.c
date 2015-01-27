@@ -183,18 +183,15 @@ static int
 iir_pci_attach(device_t dev)
 {
     struct gdt_softc    *gdt;
-    struct resource     *irq = NULL;
+    struct resource     *io = NULL, *irq = NULL;
     int                 retries, rid, error = 0;
     void                *ih;
     u_int8_t            protocol;  
-
-    gdt = device_get_softc(dev);
-    mtx_init(&gdt->sc_lock, "iir", NULL, MTX_DEF);
-
+ 
     /* map DPMEM */
     rid = PCI_DPMEM;
-    gdt->sc_dpmem = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
-    if (gdt->sc_dpmem == NULL) {
+    io = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+    if (io == NULL) {
         device_printf(dev, "can't allocate register resources\n");
         error = ENOMEM;
         goto err;
@@ -210,8 +207,12 @@ iir_pci_attach(device_t dev)
         goto err;
     }
 
+    gdt = device_get_softc(dev);
     gdt->sc_devnode = dev;
     gdt->sc_init_level = 0;
+    gdt->sc_dpmemt = rman_get_bustag(io);
+    gdt->sc_dpmemh = rman_get_bushandle(io);
+    gdt->sc_dpmembase = rman_get_start(io);
     gdt->sc_hanum = device_get_unit(dev);
     gdt->sc_bus = pci_get_bus(dev);
     gdt->sc_slot = pci_get_slot(dev);
@@ -226,70 +227,85 @@ iir_pci_attach(device_t dev)
 
     /* initialize RP controller */
     /* check and reset interface area */
-    bus_write_4(gdt->sc_dpmem, GDT_MPR_IC, htole32(GDT_MPR_MAGIC));
-    if (bus_read_4(gdt->sc_dpmem, GDT_MPR_IC) != htole32(GDT_MPR_MAGIC)) {
-	device_printf(dev, "cannot access DPMEM at 0x%lx (shadowed?)\n",
-	    rman_get_start(gdt->sc_dpmem));
+    bus_space_write_4(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC,
+                      htole32(GDT_MPR_MAGIC));
+    if (bus_space_read_4(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC) !=
+        htole32(GDT_MPR_MAGIC)) {
+        printf("cannot access DPMEM at 0x%jx (shadowed?)\n",
+               (uintmax_t)gdt->sc_dpmembase);
         error = ENXIO;
         goto err;
     }
-    bus_set_region_4(gdt->sc_dpmem, GDT_I960_SZ, htole32(0), GDT_MPR_SZ >> 2);
+    bus_space_set_region_4(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_I960_SZ, htole32(0),
+                           GDT_MPR_SZ >> 2);
 
     /* Disable everything */
-    bus_write_1(gdt->sc_dpmem, GDT_EDOOR_EN,
-	bus_read_1(gdt->sc_dpmem, GDT_EDOOR_EN) | 4);
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_EDOOR, 0xff);
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_STATUS, 0);
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_IC + GDT_CMD_INDEX, 0);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_EDOOR_EN,
+                      bus_space_read_1(gdt->sc_dpmemt, gdt->sc_dpmemh, 
+                                       GDT_EDOOR_EN) | 4);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_EDOOR, 0xff);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC + GDT_S_STATUS,
+                      0);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC + GDT_CMD_INDEX,
+                      0);
 
-    bus_write_4(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_INFO,
-	htole32(rman_get_start(gdt->sc_dpmem)));
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_CMD_INDX, 0xff);
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_LDOOR, 1);
+    bus_space_write_4(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC + GDT_S_INFO,
+                      htole32(gdt->sc_dpmembase));
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC + GDT_S_CMD_INDX,
+                      0xff);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_LDOOR, 1);
 
     DELAY(20);
     retries = GDT_RETRIES;
-    while (bus_read_1(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_STATUS) != 0xff) {
+    while (bus_space_read_1(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                            GDT_MPR_IC + GDT_S_STATUS) != 0xff) {
         if (--retries == 0) {
-            device_printf(dev, "DEINIT failed\n");
+            printf("DEINIT failed\n");
             error = ENXIO;
             goto err;
         }
         DELAY(1);
     }
 
-    protocol = (uint8_t)le32toh(bus_read_4(gdt->sc_dpmem,
-	    GDT_MPR_IC + GDT_S_INFO));
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_STATUS, 0);
+    protocol = (uint8_t)le32toh(bus_space_read_4(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                                                  GDT_MPR_IC + GDT_S_INFO));
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC + GDT_S_STATUS,
+                      0);
     if (protocol != GDT_PROTOCOL_VERSION) {
-        device_printf(dev, "unsupported protocol %d\n", protocol);
+        printf("unsupported protocol %d\n", protocol);
         error = ENXIO;
         goto err;
     }
     
-    /* special command to controller BIOS */
-    bus_write_4(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_INFO, htole32(0));
-    bus_write_4(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_INFO + sizeof (u_int32_t),
-	htole32(0));
-    bus_write_4(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_INFO + 2 * sizeof (u_int32_t),
-	htole32(1));
-    bus_write_4(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_INFO + 3 * sizeof (u_int32_t),
-	htole32(0));
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_CMD_INDX, 0xfe);
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_LDOOR, 1);
+    /* special commnd to controller BIOS */
+    bus_space_write_4(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC + GDT_S_INFO,
+                      htole32(0));
+    bus_space_write_4(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                      GDT_MPR_IC + GDT_S_INFO + sizeof (u_int32_t), htole32(0));
+    bus_space_write_4(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                      GDT_MPR_IC + GDT_S_INFO + 2 * sizeof (u_int32_t),
+                      htole32(1));
+    bus_space_write_4(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                      GDT_MPR_IC + GDT_S_INFO + 3 * sizeof (u_int32_t),
+                      htole32(0));
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC + GDT_S_CMD_INDX,
+                      0xfe);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_LDOOR, 1);
 
     DELAY(20);
     retries = GDT_RETRIES;
-    while (bus_read_1(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_STATUS) != 0xfe) {
+    while (bus_space_read_1(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                            GDT_MPR_IC + GDT_S_STATUS) != 0xfe) {
         if (--retries == 0) {
-            device_printf(dev, "initialization error\n");
+            printf("initialization error\n");
             error = ENXIO;
             goto err;
         }
         DELAY(1);
     }
 
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_IC + GDT_S_STATUS, 0);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_IC + GDT_S_STATUS,
+                      0);
 
     gdt->sc_ic_all_size = GDT_MPR_SZ;
     
@@ -310,7 +326,7 @@ iir_pci_attach(device_t dev)
                            /*nsegments*/GDT_MAXSG,
                            /*maxsegsz*/BUS_SPACE_MAXSIZE_32BIT,
 			   /*flags*/0, /*lockfunc*/busdma_lock_mutex,
-			   /*lockarg*/&gdt->sc_lock, &gdt->sc_parent_dmat) != 0) {
+			   /*lockarg*/&Giant, &gdt->sc_parent_dmat) != 0) {
         error = ENXIO;
         goto err;
     }
@@ -326,7 +342,7 @@ iir_pci_attach(device_t dev)
     iir_attach(gdt);
 
     /* associate interrupt handler */
-    if (bus_setup_intr(dev, irq, INTR_TYPE_CAM | INTR_MPSAFE, 
+    if (bus_setup_intr( dev, irq, INTR_TYPE_CAM, 
                         NULL, iir_intr, gdt, &ih )) {
         device_printf(dev, "Unable to register interrupt handler\n");
         error = ENXIO;
@@ -339,11 +355,10 @@ iir_pci_attach(device_t dev)
 err:
     if (irq)
         bus_release_resource( dev, SYS_RES_IRQ, 0, irq );
-
-    if (gdt->sc_dpmem)
-        bus_release_resource( dev, SYS_RES_MEMORY, rid, gdt->sc_dpmem );
-    mtx_destroy(&gdt->sc_lock);
-
+/*
+    if (io)
+        bus_release_resource( dev, SYS_RES_MEMORY, rid, io );
+*/
     return (error);
 }
 
@@ -356,9 +371,11 @@ gdt_pci_enable_intr(struct gdt_softc *gdt)
 
     switch(GDT_CLASS(gdt)) {
       case GDT_MPR:
-        bus_write_1(gdt->sc_dpmem, GDT_MPR_EDOOR, 0xff);
-        bus_write_1(gdt->sc_dpmem, GDT_EDOOR_EN,
-	    bus_read_1(gdt->sc_dpmem, GDT_EDOOR_EN) & ~4);
+        bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                          GDT_MPR_EDOOR, 0xff);
+        bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_EDOOR_EN,
+                          bus_space_read_1(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                                           GDT_EDOOR_EN) & ~4);
         break;
     }
 }
@@ -379,14 +396,15 @@ gdt_mpr_copy_cmd(struct gdt_softc *gdt, struct gdt_ccb *gccb)
 
     gdt->sc_cmd_off += cp_count;
 
-    bus_write_region_4(gdt->sc_dpmem, GDT_MPR_IC + GDT_DPR_CMD + dp_offset, 
-	(u_int32_t *)gccb->gc_cmd, cp_count >> 2);
-    bus_write_2(gdt->sc_dpmem,
-	GDT_MPR_IC + GDT_COMM_QUEUE + cmd_no * GDT_COMM_Q_SZ + GDT_OFFSET,
-	htole16(GDT_DPMEM_COMMAND_OFFSET + dp_offset));
-    bus_write_2(gdt->sc_dpmem,
-	GDT_MPR_IC + GDT_COMM_QUEUE + cmd_no * GDT_COMM_Q_SZ + GDT_SERV_ID,
-	htole16(gccb->gc_service));
+    bus_space_write_region_4(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                             GDT_MPR_IC + GDT_DPR_CMD + dp_offset, 
+                             (u_int32_t *)gccb->gc_cmd, cp_count >> 2);
+    bus_space_write_2(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                      GDT_MPR_IC + GDT_COMM_QUEUE + cmd_no * GDT_COMM_Q_SZ + GDT_OFFSET,
+                      htole16(GDT_DPMEM_COMMAND_OFFSET + dp_offset));
+    bus_space_write_2(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                      GDT_MPR_IC + GDT_COMM_QUEUE + cmd_no * GDT_COMM_Q_SZ + GDT_SERV_ID,
+                      htole16(gccb->gc_service));
 }
 
 u_int8_t
@@ -394,7 +412,7 @@ gdt_mpr_get_status(struct gdt_softc *gdt)
 {
     GDT_DPRINTF(GDT_D_MISC, ("gdt_mpr_get_status(%p) ", gdt));
         
-    return bus_read_1(gdt->sc_dpmem, GDT_MPR_EDOOR);
+    return bus_space_read_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_EDOOR);
 }
 
 void
@@ -404,32 +422,39 @@ gdt_mpr_intr(struct gdt_softc *gdt, struct gdt_intr_ctx *ctx)
 
     GDT_DPRINTF(GDT_D_INTR, ("gdt_mpr_intr(%p) ", gdt));
 
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_EDOOR, 0xff);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_EDOOR, 0xff);
 
     if (ctx->istatus & 0x80) {          /* error flag */
         ctx->istatus &= ~0x80;
-        ctx->cmd_status = bus_read_2(gdt->sc_dpmem, GDT_MPR_STATUS);
+        ctx->cmd_status = bus_space_read_2(gdt->sc_dpmemt,
+                                           gdt->sc_dpmemh, GDT_MPR_STATUS);
     } else                                      /* no error */
         ctx->cmd_status = GDT_S_OK;
 
-    ctx->info = bus_read_4(gdt->sc_dpmem, GDT_MPR_INFO);
-    ctx->service = bus_read_2(gdt->sc_dpmem, GDT_MPR_SERVICE);
-    ctx->info2 = bus_read_4(gdt->sc_dpmem, GDT_MPR_INFO + sizeof (u_int32_t));
+    ctx->info =
+        bus_space_read_4(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_INFO);
+    ctx->service = 
+        bus_space_read_2(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_SERVICE);
+    ctx->info2 = 
+        bus_space_read_4(gdt->sc_dpmemt, gdt->sc_dpmemh, 
+                         GDT_MPR_INFO + sizeof (u_int32_t));
 
     /* event string */
     if (ctx->istatus == GDT_ASYNCINDEX) {
         if (ctx->service != GDT_SCREENSERVICE && 
             (gdt->sc_fw_vers & 0xff) >= 0x1a) {
-            gdt->sc_dvr.severity = bus_read_1(gdt->sc_dpmem, GDT_SEVERITY);
+            gdt->sc_dvr.severity = 
+                bus_space_read_1(gdt->sc_dpmemt,gdt->sc_dpmemh, GDT_SEVERITY);
             for (i = 0; i < 256; ++i) {
-                gdt->sc_dvr.event_string[i] = bus_read_1(gdt->sc_dpmem,
-		    GDT_EVT_BUF + i);
+                gdt->sc_dvr.event_string[i] = 
+                    bus_space_read_1(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                                     GDT_EVT_BUF + i);
                 if (gdt->sc_dvr.event_string[i] == 0)
                     break;
             }
         }
     }
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_SEMA1, 0);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_SEMA1, 0);
 }
 
 void
@@ -437,7 +462,7 @@ gdt_mpr_release_event(struct gdt_softc *gdt)
 {
     GDT_DPRINTF(GDT_D_MISC, ("gdt_mpr_release_event(%p) ", gdt));
     
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_LDOOR, 1);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_LDOOR, 1);
 }
 
 void
@@ -445,7 +470,7 @@ gdt_mpr_set_sema0(struct gdt_softc *gdt)
 {
     GDT_DPRINTF(GDT_D_MISC, ("gdt_mpr_set_sema0(%p) ", gdt));
 
-    bus_write_1(gdt->sc_dpmem, GDT_MPR_SEMA0, 1);
+    bus_space_write_1(gdt->sc_dpmemt, gdt->sc_dpmemh, GDT_MPR_SEMA0, 1);
 }
 
 int
@@ -453,5 +478,6 @@ gdt_mpr_test_busy(struct gdt_softc *gdt)
 {
     GDT_DPRINTF(GDT_D_MISC, ("gdt_mpr_test_busy(%p) ", gdt));
 
-    return (bus_read_1(gdt->sc_dpmem, GDT_MPR_SEMA0) & 1);
+    return (bus_space_read_1(gdt->sc_dpmemt, gdt->sc_dpmemh,
+                             GDT_MPR_SEMA0) & 1);
 }

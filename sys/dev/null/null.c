@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
+#include <sys/priv.h>
 #include <sys/disk.h>
 #include <sys/bus.h>
 #include <sys/filio.h>
@@ -109,7 +110,9 @@ null_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t data __unused,
 
 	switch (cmd) {
 	case DIOCSKERNELDUMP:
-		error = set_dumper(NULL, NULL, td);
+		error = priv_check(td, PRIV_SETDUMPER);
+		if (error == 0)
+			error = set_dumper(NULL, NULL);
 		break;
 	case FIONBIO:
 		break;

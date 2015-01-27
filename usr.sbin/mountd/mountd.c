@@ -627,6 +627,7 @@ create_service(struct netconfig *nconf)
 
 	/* Get mountd's address on this transport */
 	memset(&hints, 0, sizeof hints);
+	hints.ai_flags = AI_PASSIVE;
 	hints.ai_family = si.si_af;
 	hints.ai_socktype = si.si_socktype;
 	hints.ai_protocol = si.si_proto;
@@ -642,8 +643,6 @@ create_service(struct netconfig *nconf)
 			out_of_mem();
 		sock_fd[sock_fdcnt++] = -1;	/* Set invalid for now. */
 		mallocd_res = 0;
-
-		hints.ai_flags = AI_PASSIVE;
 
 		/*	
 		 * XXX - using RPC library internal functions.
@@ -1745,7 +1744,6 @@ get_exportlist(void)
 		iov[3].iov_len = strlen(fsp->f_mntonname) + 1;
 		iov[5].iov_base = fsp->f_mntfromname;
 		iov[5].iov_len = strlen(fsp->f_mntfromname) + 1;
-		errmsg[0] = '\0';
 
 		if (nmount(iov, iovlen, fsp->f_flags) < 0 &&
 		    errno != ENOENT && errno != ENOTSUP) {
@@ -2503,7 +2501,6 @@ do_mount(struct exportlist *ep, struct grouplist *grp, int exflags,
 			iov[3].iov_len = strlen(fsb->f_mntonname) + 1;
 			iov[5].iov_base = fsb->f_mntfromname; /* "from" */
 			iov[5].iov_len = strlen(fsb->f_mntfromname) + 1;
-			errmsg[0] = '\0';
 	
 			while (nmount(iov, iovlen, fsb->f_flags) < 0) {
 				if (cp)

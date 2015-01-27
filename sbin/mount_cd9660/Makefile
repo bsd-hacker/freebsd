@@ -4,7 +4,8 @@
 PROG=	mount_cd9660
 SRCS=	mount_cd9660.c getmntopts.c
 MAN=	mount_cd9660.8
-LIBADD=	kiconv
+DPADD=	${LIBKICONV}
+LDADD=	-lkiconv
 
 MOUNT=	${.CURDIR}/../mount
 CFLAGS+= -I${MOUNT}

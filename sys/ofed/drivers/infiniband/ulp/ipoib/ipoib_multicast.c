@@ -70,7 +70,7 @@ static void ipoib_mcast_free(struct ipoib_mcast *mcast)
 	tx_dropped = mcast->pkt_queue.ifq_len;
 	_IF_DRAIN(&mcast->pkt_queue);	/* XXX Locking. */
 
-	if_inc_counter(dev, IFCOUNTER_OERRORS, tx_dropped);
+	dev->if_oerrors += tx_dropped;
 
 	kfree(mcast);
 }
@@ -255,7 +255,7 @@ ipoib_mcast_sendonly_join_complete(int status,
 					mcast->mcmember.mgid.raw, ":", status);
 
 		/* Flush out any queued packets */
-		if_inc_counter(priv->dev, IFCOUNTER_OERRORS, mcast->pkt_queue.ifq_len);
+		priv->dev->if_oerrors += mcast->pkt_queue.ifq_len;
 		_IF_DRAIN(&mcast->pkt_queue);
 
 		/* Clear the busy flag so we try again */
@@ -617,7 +617,7 @@ ipoib_mcast_send(struct ipoib_dev_priv *priv, void *mgid, struct mbuf *mb)
 	if (!test_bit(IPOIB_FLAG_OPER_UP, &priv->flags)		||
 	    !priv->broadcast					||
 	    !test_bit(IPOIB_MCAST_FLAG_ATTACHED, &priv->broadcast->flags)) {
-		if_inc_counter(dev, IFCOUNTER_OERRORS, 1);
+		++dev->if_oerrors;
 		m_freem(mb);
 		return;
 	}
@@ -632,7 +632,7 @@ ipoib_mcast_send(struct ipoib_dev_priv *priv, void *mgid, struct mbuf *mb)
 		if (!mcast) {
 			ipoib_warn(priv, "unable to allocate memory for "
 				   "multicast structure\n");
-			if_inc_counter(dev, IFCOUNTER_OERRORS, 1);
+			++dev->if_oerrors;
 			m_freem(mb);
 			goto out;
 		}
@@ -647,7 +647,7 @@ ipoib_mcast_send(struct ipoib_dev_priv *priv, void *mgid, struct mbuf *mb)
 		if (mcast->pkt_queue.ifq_len < IPOIB_MAX_MCAST_QUEUE) {
 			_IF_ENQUEUE(&mcast->pkt_queue, mb);
 		} else {
-			if_inc_counter(dev, IFCOUNTER_OERRORS, 1);
+			++dev->if_oerrors;
 			m_freem(mb);
 		}
 

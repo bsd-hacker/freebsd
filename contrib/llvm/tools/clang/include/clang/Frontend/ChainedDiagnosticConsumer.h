@@ -11,7 +11,7 @@
 #define LLVM_CLANG_FRONTEND_CHAINEDDIAGNOSTICCONSUMER_H
 
 #include "clang/Basic/Diagnostic.h"
-#include <memory>
+#include "llvm/ADT/OwningPtr.h"
 
 namespace clang {
 class LangOptions;
@@ -22,8 +22,8 @@ class LangOptions;
 /// diagnostics should be included in counts.
 class ChainedDiagnosticConsumer : public DiagnosticConsumer {
   virtual void anchor();
-  std::unique_ptr<DiagnosticConsumer> Primary;
-  std::unique_ptr<DiagnosticConsumer> Secondary;
+  OwningPtr<DiagnosticConsumer> Primary;
+  OwningPtr<DiagnosticConsumer> Secondary;
 
 public:
   ChainedDiagnosticConsumer(DiagnosticConsumer *_Primary,
@@ -32,28 +32,28 @@ public:
     Secondary.reset(_Secondary);
   }
 
-  void BeginSourceFile(const LangOptions &LO,
-                       const Preprocessor *PP) override {
+  virtual void BeginSourceFile(const LangOptions &LO,
+                               const Preprocessor *PP) {
     Primary->BeginSourceFile(LO, PP);
     Secondary->BeginSourceFile(LO, PP);
   }
 
-  void EndSourceFile() override {
+  virtual void EndSourceFile() {
     Secondary->EndSourceFile();
     Primary->EndSourceFile();
   }
 
-  void finish() override {
+  virtual void finish() {
     Secondary->finish();
     Primary->finish();
   }
 
-  bool IncludeInDiagnosticCounts() const override {
+  virtual bool IncludeInDiagnosticCounts() const {
     return Primary->IncludeInDiagnosticCounts();
   }
 
-  void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
-                        const Diagnostic &Info) override {
+  virtual void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                                const Diagnostic &Info) {
     // Default implementation (Warnings/errors count).
     DiagnosticConsumer::HandleDiagnostic(DiagLevel, Info);
 

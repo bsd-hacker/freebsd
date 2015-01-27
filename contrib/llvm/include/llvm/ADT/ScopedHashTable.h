@@ -148,7 +148,6 @@ public:
   /// ScopeTy - This is a helpful typedef that allows clients to get easy access
   /// to the name of the scope for this hash table.
   typedef ScopedHashTableScope<K, V, KInfo, AllocatorTy> ScopeTy;
-  typedef unsigned size_type;
 private:
   typedef ScopedHashTableVal<K, V> ValTy;
   DenseMap<K, ValTy*, KInfo> TopLevelMap;
@@ -160,19 +159,20 @@ private:
   void operator=(const ScopedHashTable&);  // NOT YET IMPLEMENTED
   friend class ScopedHashTableScope<K, V, KInfo, AllocatorTy>;
 public:
-  ScopedHashTable() : CurScope(nullptr) {}
+  ScopedHashTable() : CurScope(0) {}
   ScopedHashTable(AllocatorTy A) : CurScope(0), Allocator(A) {}
   ~ScopedHashTable() {
-    assert(!CurScope && TopLevelMap.empty() && "Scope imbalance!");
+    assert(CurScope == 0 && TopLevelMap.empty() && "Scope imbalance!");
   }
   
 
   /// Access to the allocator.
-  AllocatorTy &getAllocator() { return Allocator; }
-  const AllocatorTy &getAllocator() const { return Allocator; }
+  typedef typename ReferenceAdder<AllocatorTy>::result AllocatorRefTy;
+  typedef typename ReferenceAdder<const AllocatorTy>::result AllocatorCRefTy;
+  AllocatorRefTy getAllocator() { return Allocator; }
+  AllocatorCRefTy getAllocator() const { return Allocator; }
 
-  /// Return 1 if the specified key is in the table, 0 otherwise.
-  size_type count(const K &Key) const {
+  bool count(const K &Key) const {
     return TopLevelMap.count(Key);
   }
 
@@ -222,7 +222,7 @@ ScopedHashTableScope<K, V, KInfo, Allocator>::
   ScopedHashTableScope(ScopedHashTable<K, V, KInfo, Allocator> &ht) : HT(ht) {
   PrevScope = HT.CurScope;
   HT.CurScope = this;
-  LastValInScope = nullptr;
+  LastValInScope = 0;
 }
 
 template <typename K, typename V, typename KInfo, typename Allocator>
@@ -233,7 +233,7 @@ ScopedHashTableScope<K, V, KInfo, Allocator>::~ScopedHashTableScope() {
   // Pop and delete all values corresponding to this scope.
   while (ScopedHashTableVal<K, V> *ThisEntry = LastValInScope) {
     // Pop this value out of the TopLevelMap.
-    if (!ThisEntry->getNextForKey()) {
+    if (ThisEntry->getNextForKey() == 0) {
       assert(HT.TopLevelMap[ThisEntry->getKey()] == ThisEntry &&
              "Scope imbalance!");
       HT.TopLevelMap.erase(ThisEntry->getKey());

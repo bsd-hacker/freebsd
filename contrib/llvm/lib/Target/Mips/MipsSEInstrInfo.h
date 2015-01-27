@@ -24,48 +24,48 @@ class MipsSEInstrInfo : public MipsInstrInfo {
   bool IsN64;
 
 public:
-  explicit MipsSEInstrInfo(const MipsSubtarget &STI);
+  explicit MipsSEInstrInfo(MipsTargetMachine &TM);
 
-  const MipsRegisterInfo &getRegisterInfo() const override;
+  virtual const MipsRegisterInfo &getRegisterInfo() const;
 
   /// isLoadFromStackSlot - If the specified machine instruction is a direct
   /// load from a stack slot, return the virtual or physical register number of
   /// the destination along with the FrameIndex of the loaded stack slot.  If
   /// not, return 0.  This predicate must return 0 if the instruction has
   /// any side effects other than loading from the stack slot.
-  unsigned isLoadFromStackSlot(const MachineInstr *MI,
-                               int &FrameIndex) const override;
+  virtual unsigned isLoadFromStackSlot(const MachineInstr *MI,
+                                       int &FrameIndex) const;
 
   /// isStoreToStackSlot - If the specified machine instruction is a direct
   /// store to a stack slot, return the virtual or physical register number of
   /// the source reg along with the FrameIndex of the loaded stack slot.  If
   /// not, return 0.  This predicate must return 0 if the instruction has
   /// any side effects other than storing to the stack slot.
-  unsigned isStoreToStackSlot(const MachineInstr *MI,
-                              int &FrameIndex) const override;
+  virtual unsigned isStoreToStackSlot(const MachineInstr *MI,
+                                      int &FrameIndex) const;
 
-  void copyPhysReg(MachineBasicBlock &MBB,
-                   MachineBasicBlock::iterator MI, DebugLoc DL,
-                   unsigned DestReg, unsigned SrcReg,
-                   bool KillSrc) const override;
+  virtual void copyPhysReg(MachineBasicBlock &MBB,
+                           MachineBasicBlock::iterator MI, DebugLoc DL,
+                           unsigned DestReg, unsigned SrcReg,
+                           bool KillSrc) const;
 
-  void storeRegToStack(MachineBasicBlock &MBB,
-                       MachineBasicBlock::iterator MI,
-                       unsigned SrcReg, bool isKill, int FrameIndex,
-                       const TargetRegisterClass *RC,
-                       const TargetRegisterInfo *TRI,
-                       int64_t Offset) const override;
+  virtual void storeRegToStack(MachineBasicBlock &MBB,
+                               MachineBasicBlock::iterator MI,
+                               unsigned SrcReg, bool isKill, int FrameIndex,
+                               const TargetRegisterClass *RC,
+                               const TargetRegisterInfo *TRI,
+                               int64_t Offset) const;
 
-  void loadRegFromStack(MachineBasicBlock &MBB,
-                        MachineBasicBlock::iterator MI,
-                        unsigned DestReg, int FrameIndex,
-                        const TargetRegisterClass *RC,
-                        const TargetRegisterInfo *TRI,
-                        int64_t Offset) const override;
+  virtual void loadRegFromStack(MachineBasicBlock &MBB,
+                                MachineBasicBlock::iterator MI,
+                                unsigned DestReg, int FrameIndex,
+                                const TargetRegisterClass *RC,
+                                const TargetRegisterInfo *TRI,
+                                int64_t Offset) const;
 
-  bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const override;
+  virtual bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const;
 
-  unsigned getOppositeBranchOpc(unsigned Opc) const override;
+  virtual unsigned getOppositeBranchOpc(unsigned Opc) const;
 
   /// Adjust SP by Amount bytes.
   void adjustStackPtr(unsigned SP, int64_t Amount, MachineBasicBlock &MBB,
@@ -79,9 +79,10 @@ public:
                          unsigned *NewImm) const;
 
 private:
-  unsigned getAnalyzableBrOpc(unsigned Opc) const override;
+  virtual unsigned getAnalyzableBrOpc(unsigned Opc) const;
 
-  void expandRetRA(MachineBasicBlock &MBB, MachineBasicBlock::iterator I) const;
+  void expandRetRA(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
+                   unsigned Opc) const;
 
   std::pair<bool, bool> compareOpndSize(unsigned Opc,
                                         const MachineFunction &MF) const;

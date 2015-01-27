@@ -3,7 +3,8 @@
 LIB=	wind
 LDFLAGS=	-Wl,--no-undefined
 VERSION_MAP= ${KRB5DIR}/lib/wind/version-script.map
-LIBADD=	com_err roken
+LDADD=	-lcom_err -lroken
+DPADD=	${LIBCOM_ERR} ${LIBROKEN}
 
 INCS=	wind.h \
 	wind_err.h

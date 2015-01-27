@@ -42,7 +42,11 @@
  * TODO: Among other things to print ok MacIntosh and Vendor values
  */
 
-#define NETDISSECT_REWORKED
+#ifndef lint
+static const char rcsid[] _U_ =
+    "$Id: print-radius.c,v 1.28 2005-09-26 01:01:55 guy Exp $";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -51,19 +55,19 @@
 
 #include <string.h>
 
+#include <stdio.h>
+
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"
 #include "oui.h"
-
-static const char tstr[] = " [|radius]";
 
 #define TAM_SIZE(x) (sizeof(x)/sizeof(x[0]) )
 
 #define PRINT_HEX(bytes_len, ptr_data)                               \
            while(bytes_len)                                          \
            {                                                         \
-              ND_PRINT((ndo, "%02X", *ptr_data ));                   \
+              printf("%02X", *ptr_data );                            \
               ptr_data++;                                            \
               bytes_len--;                                           \
            }
@@ -80,7 +84,7 @@ static const char tstr[] = " [|radius]";
 #define RADCMD_STATUS_CLI  13 /* Status-Client       */
 #define RADCMD_RESERVED   255 /* Reserved            */
 
-static const struct tok radius_command_values[] = {
+static struct tok radius_command_values[] = {
     { RADCMD_ACCESS_REQ, "Access Request" },
     { RADCMD_ACCESS_ACC, "Access Accept" },
     { RADCMD_ACCESS_REJ, "Access Reject" },
@@ -132,24 +136,24 @@ static const struct tok radius_command_values[] = {
 /********************************/
 
 
-static void print_attr_string(netdissect_options *, register u_char *, u_int, u_short );
-static void print_attr_num(netdissect_options *, register u_char *, u_int, u_short );
-static void print_vendor_attr(netdissect_options *, register u_char *, u_int, u_short );
-static void print_attr_address(netdissect_options *, register u_char *, u_int, u_short);
-static void print_attr_time(netdissect_options *, register u_char *, u_int, u_short);
-static void print_attr_strange(netdissect_options *, register u_char *, u_int, u_short);
+static void print_attr_string(register u_char *, u_int, u_short );
+static void print_attr_num(register u_char *, u_int, u_short );
+static void print_vendor_attr(register u_char *, u_int, u_short );
+static void print_attr_address(register u_char *, u_int, u_short);
+static void print_attr_time(register u_char *, u_int, u_short);
+static void print_attr_strange(register u_char *, u_int, u_short);
 
 
-struct radius_hdr { uint8_t  code; /* Radius packet code  */
-                    uint8_t  id;   /* Radius packet id    */
-                    uint16_t len;  /* Radius total length */
-                    uint8_t  auth[16]; /* Authenticator   */
+struct radius_hdr { u_int8_t  code; /* Radius packet code  */
+                    u_int8_t  id;   /* Radius packet id    */
+                    u_int16_t len;  /* Radius total length */
+                    u_int8_t  auth[16]; /* Authenticator   */
                   };
 
 #define MIN_RADIUS_LEN	20
 
-struct radius_attr { uint8_t type; /* Attribute type   */
-                     uint8_t len;  /* Attribute length */
+struct radius_attr { u_int8_t type; /* Attribute type   */
+                     u_int8_t len;  /* Attribute length */
                    };
 
 
@@ -333,7 +337,7 @@ struct attrtype { const char *name;      /* Attribute name                 */
                   const char **subtypes; /* Standard Values (if any)       */
                   u_char siz_subtypes;   /* Size of total standard values  */
                   u_char first_subtype;  /* First standard value is 0 or 1 */
-                  void (*print_func)(netdissect_options *, register u_char *, u_int, u_short);
+                  void (*print_func)(register u_char *, u_int, u_short );
                 } attr_type[]=
   {
      { NULL,                              NULL, 0, 0, NULL               },
@@ -425,7 +429,7 @@ struct attrtype { const char *name;      /* Attribute name                 */
      { "Accounting Tunnel packets lost",  NULL, 0, 0, print_attr_num }, /*86*/
      { "NAS Port ID",                     NULL, 0, 0, print_attr_string },
      { "Framed Pool",                     NULL, 0, 0, print_attr_string },
-     { "Chargeable User Identity",        NULL, 0, 0, print_attr_string },
+     { "Unassigned",                      NULL, 0, 0, NULL },
      { "Tunnel Client Authentication ID", NULL, 0, 0, print_attr_string },
      { "Tunnel Server Authentication ID", NULL, 0, 0, print_attr_string },
      { "Unassigned",                      NULL, 0, 0, NULL }, /*92*/
@@ -441,26 +445,25 @@ struct attrtype { const char *name;      /* Attribute name                 */
 /* Returns nothing.          */
 /*****************************/
 static void
-print_attr_string(netdissect_options *ndo,
-                  register u_char *data, u_int length, u_short attr_code)
+print_attr_string(register u_char *data, u_int length, u_short attr_code )
 {
    register u_int i;
 
-   ND_TCHECK2(data[0],length);
+   TCHECK2(data[0],length);
 
    switch(attr_code)
    {
       case TUNNEL_PASS:
            if (length < 3)
            {
-              ND_PRINT((ndo, "%s", tstr));
+              printf(" [|radius]");
               return;
            }
            if (*data && (*data <=0x1F) )
-              ND_PRINT((ndo, "Tag %u, ",*data));
+              printf("Tag %u, ",*data);
            data++;
            length--;
-           ND_PRINT((ndo, "Salt %u ", EXTRACT_16BITS(data)));
+           printf("Salt %u ",EXTRACT_16BITS(data) );
            data+=2;
            length-=2;
         break;
@@ -474,10 +477,10 @@ print_attr_string(netdissect_options *ndo,
            {
               if (length < 1)
               {
-                 ND_PRINT((ndo, "%s", tstr));
+                 printf(" [|radius]");
                  return;
               }
-              ND_PRINT((ndo, "Tag %u", *data));
+              printf("Tag %u",*data);
               data++;
               length--;
            }
@@ -485,20 +488,20 @@ print_attr_string(netdissect_options *ndo,
    }
 
    for (i=0; *data && i < length ; i++, data++)
-       ND_PRINT((ndo, "%c", (*data < 32 || *data > 128) ? '.' : *data));
+       printf("%c",(*data < 32 || *data > 128) ? '.' : *data );
 
    return;
 
    trunc:
-      ND_PRINT((ndo, "%s", tstr));
+      printf(" [|radius]");
 }
 
 /*
  * print vendor specific attributes
  */
+
 static void
-print_vendor_attr(netdissect_options *ndo,
-                  register u_char *data, u_int length, u_short attr_code _U_)
+print_vendor_attr(register u_char *data, u_int length, u_short attr_code _U_)
 {
     u_int idx;
     u_int vendor_id;
@@ -507,52 +510,54 @@ print_vendor_attr(netdissect_options *ndo,
 
     if (length < 4)
         goto trunc;
-    ND_TCHECK2(*data, 4);
+    TCHECK2(*data, 4);
     vendor_id = EXTRACT_32BITS(data);
     data+=4;
     length-=4;
 
-    ND_PRINT((ndo, "Vendor: %s (%u)",
+    printf("Vendor: %s (%u)",
            tok2str(smi_values,"Unknown",vendor_id),
-           vendor_id));
+           vendor_id);
 
     while (length >= 2) {
-	ND_TCHECK2(*data, 2);
+	TCHECK2(*data, 2);
 
         vendor_type = *(data);
         vendor_length = *(data+1);
 
         if (vendor_length < 2)
         {
-            ND_PRINT((ndo, "\n\t    Vendor Attribute: %u, Length: %u (bogus, must be >= 2)",
+            printf("\n\t    Vendor Attribute: %u, Length: %u (bogus, must be >= 2)",
                    vendor_type,
-                   vendor_length));
+                   vendor_length);
             return;
         }
         if (vendor_length > length)
         {
-            ND_PRINT((ndo, "\n\t    Vendor Attribute: %u, Length: %u (bogus, goes past end of vendor-specific attribute)",
+            printf("\n\t    Vendor Attribute: %u, Length: %u (bogus, goes past end of vendor-specific attribute)",
                    vendor_type,
-                   vendor_length));
+                   vendor_length);
             return;
         }
         data+=2;
         vendor_length-=2;
         length-=2;
-	ND_TCHECK2(*data, vendor_length);
+	TCHECK2(*data, vendor_length);
 
-        ND_PRINT((ndo, "\n\t    Vendor Attribute: %u, Length: %u, Value: ",
+        printf("\n\t    Vendor Attribute: %u, Length: %u, Value: ",
                vendor_type,
-               vendor_length));
+               vendor_length);
         for (idx = 0; idx < vendor_length ; idx++, data++)
-            ND_PRINT((ndo, "%c", (*data < 32 || *data > 128) ? '.' : *data));
+            printf("%c",(*data < 32 || *data > 128) ? '.' : *data );
         length-=vendor_length;
     }
     return;
 
    trunc:
-     ND_PRINT((ndo, "%s", tstr));
+     printf(" [|radius]");
 }
+
+
 
 /******************************/
 /* Print an attribute numeric */
@@ -562,32 +567,31 @@ print_vendor_attr(netdissect_options *ndo,
 /* Returns nothing.           */
 /******************************/
 static void
-print_attr_num(netdissect_options *ndo,
-               register u_char *data, u_int length, u_short attr_code)
+print_attr_num(register u_char *data, u_int length, u_short attr_code )
 {
-   uint8_t tag;
-   uint32_t timeout;
+   u_int8_t tag;
+   u_int32_t timeout;
 
    if (length != 4)
    {
-       ND_PRINT((ndo, "ERROR: length %u != 4", length));
+       printf("ERROR: length %u != 4", length);
        return;
    }
 
-   ND_TCHECK2(data[0],4);
+   TCHECK2(data[0],4);
                           /* This attribute has standard values */
    if (attr_type[attr_code].siz_subtypes)
    {
       static const char **table;
-      uint32_t data_value;
+      u_int32_t data_value;
       table = attr_type[attr_code].subtypes;
 
       if ( (attr_code == TUNNEL_TYPE) || (attr_code == TUNNEL_MEDIUM) )
       {
          if (!*data)
-            ND_PRINT((ndo, "Tag[Unused]"));
+            printf("Tag[Unused]");
          else
-            ND_PRINT((ndo, "Tag[%d]", *data));
+            printf("Tag[%d]", *data);
          data++;
          data_value = EXTRACT_24BITS(data);
       }
@@ -595,12 +599,12 @@ print_attr_num(netdissect_options *ndo,
       {
          data_value = EXTRACT_32BITS(data);
       }
-      if ( data_value <= (uint32_t)(attr_type[attr_code].siz_subtypes - 1 +
+      if ( data_value <= (u_int32_t)(attr_type[attr_code].siz_subtypes - 1 +
             attr_type[attr_code].first_subtype) &&
 	   data_value >= attr_type[attr_code].first_subtype )
-         ND_PRINT((ndo, "%s", table[data_value]));
+         printf("%s",table[data_value]);
       else
-         ND_PRINT((ndo, "#%u", data_value));
+         printf("#%u",data_value);
    }
    else
    {
@@ -608,9 +612,9 @@ print_attr_num(netdissect_options *ndo,
       {
         case FRM_IPX:
              if (EXTRACT_32BITS( data) == 0xFFFFFFFE )
-                ND_PRINT((ndo, "NAS Select"));
+                printf("NAS Select");
              else
-                ND_PRINT((ndo, "%d", EXTRACT_32BITS(data)));
+                printf("%d",EXTRACT_32BITS( data) );
           break;
 
         case SESSION_TIMEOUT:
@@ -620,44 +624,44 @@ print_attr_num(netdissect_options *ndo,
         case ACCT_INT_INTERVAL:
              timeout = EXTRACT_32BITS( data);
              if ( timeout < 60 )
-                ND_PRINT((ndo,  "%02d secs", timeout));
+                printf( "%02d secs", timeout);
              else
              {
                 if ( timeout < 3600 )
-                   ND_PRINT((ndo,  "%02d:%02d min",
-                          timeout / 60, timeout % 60));
+                   printf( "%02d:%02d min",
+                          timeout / 60, timeout % 60);
                 else
-                   ND_PRINT((ndo, "%02d:%02d:%02d hours",
+                   printf( "%02d:%02d:%02d hours",
                           timeout / 3600, (timeout % 3600) / 60,
-                          timeout % 60));
+                          timeout % 60);
              }
           break;
 
         case FRM_ATALK_LINK:
              if (EXTRACT_32BITS(data) )
-                ND_PRINT((ndo, "%d", EXTRACT_32BITS(data)));
+                printf("%d",EXTRACT_32BITS(data) );
              else
-                ND_PRINT((ndo, "Unnumbered"));
+                printf("Unnumbered" );
           break;
 
         case FRM_ATALK_NETWORK:
              if (EXTRACT_32BITS(data) )
-                ND_PRINT((ndo, "%d", EXTRACT_32BITS(data)));
+                printf("%d",EXTRACT_32BITS(data) );
              else
-                ND_PRINT((ndo, "NAS assigned"));
+                printf("NAS assigned" );
           break;
 
         case TUNNEL_PREFERENCE:
             tag = *data;
             data++;
             if (tag == 0)
-               ND_PRINT((ndo, "Tag (Unused) %d", EXTRACT_24BITS(data)));
+               printf("Tag (Unused) %d",EXTRACT_24BITS(data) );
             else
-               ND_PRINT((ndo, "Tag (%d) %d", tag, EXTRACT_24BITS(data)));
+               printf("Tag (%d) %d", tag, EXTRACT_24BITS(data) );
           break;
 
         default:
-             ND_PRINT((ndo, "%d", EXTRACT_32BITS(data)));
+             printf("%d",EXTRACT_32BITS( data) );
           break;
 
       } /* switch */
@@ -667,8 +671,9 @@ print_attr_num(netdissect_options *ndo,
    return;
 
    trunc:
-     ND_PRINT((ndo, "%s", tstr));
+     printf(" [|radius]");
 }
+
 
 /*****************************/
 /* Print an attribute IPv4   */
@@ -678,40 +683,40 @@ print_attr_num(netdissect_options *ndo,
 /* Returns nothing.          */
 /*****************************/
 static void
-print_attr_address(netdissect_options *ndo,
-                   register u_char *data, u_int length, u_short attr_code)
+print_attr_address(register u_char *data, u_int length, u_short attr_code )
 {
    if (length != 4)
    {
-       ND_PRINT((ndo, "ERROR: length %u != 4", length));
+       printf("ERROR: length %u != 4", length);
        return;
    }
 
-   ND_TCHECK2(data[0],4);
+   TCHECK2(data[0],4);
 
    switch(attr_code)
    {
       case FRM_IPADDR:
       case LOG_IPHOST:
            if (EXTRACT_32BITS(data) == 0xFFFFFFFF )
-              ND_PRINT((ndo, "User Selected"));
+              printf("User Selected");
            else
               if (EXTRACT_32BITS(data) == 0xFFFFFFFE )
-                 ND_PRINT((ndo, "NAS Select"));
+                 printf("NAS Select");
               else
-                 ND_PRINT((ndo, "%s",ipaddr_string(ndo, data)));
+                 printf("%s",ipaddr_string(data));
       break;
 
       default:
-          ND_PRINT((ndo, "%s", ipaddr_string(ndo, data)));
+          printf("%s",ipaddr_string(data) );
       break;
    }
 
    return;
 
    trunc:
-     ND_PRINT((ndo, "%s", tstr));
+     printf(" [|radius]");
 }
+
 
 /*************************************/
 /* Print an attribute of 'secs since */
@@ -721,31 +726,30 @@ print_attr_address(netdissect_options *ndo,
 /*************************************/
 /* Returns nothing.                  */
 /*************************************/
-static void
-print_attr_time(netdissect_options *ndo,
-                register u_char *data, u_int length, u_short attr_code _U_)
+static void print_attr_time(register u_char *data, u_int length, u_short attr_code _U_)
 {
    time_t attr_time;
    char string[26];
 
    if (length != 4)
    {
-       ND_PRINT((ndo, "ERROR: length %u != 4", length));
+       printf("ERROR: length %u != 4", length);
        return;
    }
 
-   ND_TCHECK2(data[0],4);
+   TCHECK2(data[0],4);
 
    attr_time = EXTRACT_32BITS(data);
    strlcpy(string, ctime(&attr_time), sizeof(string));
    /* Get rid of the newline */
    string[24] = '\0';
-   ND_PRINT((ndo, "%.24s", string));
+   printf("%.24s", string);
    return;
 
    trunc:
-     ND_PRINT((ndo, "%s", tstr));
+     printf(" [|radius]");
 }
+
 
 /***********************************/
 /* Print an attribute of 'strange' */
@@ -754,9 +758,7 @@ print_attr_time(netdissect_options *ndo,
 /***********************************/
 /* Returns nothing.                */
 /***********************************/
-static void
-print_attr_strange(netdissect_options *ndo,
-                   register u_char *data, u_int length, u_short attr_code)
+static void print_attr_strange(register u_char *data, u_int length, u_short attr_code)
 {
    u_short len_data;
 
@@ -765,45 +767,45 @@ print_attr_strange(netdissect_options *ndo,
       case ARAP_PASS:
            if (length != 16)
            {
-               ND_PRINT((ndo, "ERROR: length %u != 16", length));
+               printf("ERROR: length %u != 16", length);
                return;
            }
-           ND_PRINT((ndo, "User_challenge ("));
-           ND_TCHECK2(data[0],8);
+           printf("User_challenge (");
+           TCHECK2(data[0],8);
            len_data = 8;
            PRINT_HEX(len_data, data);
-           ND_PRINT((ndo, ") User_resp("));
-           ND_TCHECK2(data[0],8);
+           printf(") User_resp(");
+           TCHECK2(data[0],8);
            len_data = 8;
            PRINT_HEX(len_data, data);
-           ND_PRINT((ndo, ")"));
+           printf(")");
         break;
 
       case ARAP_FEATURES:
            if (length != 14)
            {
-               ND_PRINT((ndo, "ERROR: length %u != 14", length));
+               printf("ERROR: length %u != 14", length);
                return;
            }
-           ND_TCHECK2(data[0],1);
+           TCHECK2(data[0],1);
            if (*data)
-              ND_PRINT((ndo, "User can change password"));
+              printf("User can change password");
            else
-              ND_PRINT((ndo, "User cannot change password"));
+              printf("User cannot change password");
            data++;
-           ND_TCHECK2(data[0],1);
-           ND_PRINT((ndo, ", Min password length: %d", *data));
+           TCHECK2(data[0],1);
+           printf(", Min password length: %d",*data);
            data++;
-           ND_PRINT((ndo, ", created at: "));
-           ND_TCHECK2(data[0],4);
+           printf(", created at: ");
+           TCHECK2(data[0],4);
            len_data = 4;
            PRINT_HEX(len_data, data);
-           ND_PRINT((ndo, ", expires in: "));
-           ND_TCHECK2(data[0],4);
+           printf(", expires in: ");
+           TCHECK2(data[0],4);
            len_data = 4;
            PRINT_HEX(len_data, data);
-           ND_PRINT((ndo, ", Current Time: "));
-           ND_TCHECK2(data[0],4);
+           printf(", Current Time: ");
+           TCHECK2(data[0],4);
            len_data = 4;
            PRINT_HEX(len_data, data);
         break;
@@ -811,10 +813,10 @@ print_attr_strange(netdissect_options *ndo,
       case ARAP_CHALLENGE_RESP:
            if (length < 8)
            {
-               ND_PRINT((ndo, "ERROR: length %u != 8", length));
+               printf("ERROR: length %u != 8", length);
                return;
            }
-           ND_TCHECK2(data[0],8);
+           TCHECK2(data[0],8);
            len_data = 8;
            PRINT_HEX(len_data, data);
         break;
@@ -822,12 +824,13 @@ print_attr_strange(netdissect_options *ndo,
    return;
 
    trunc:
-     ND_PRINT((ndo, "%s", tstr));
+     printf(" [|radius]");
 }
 
+
+
 static void
-radius_attrs_print(netdissect_options *ndo,
-                   register const u_char *attr, u_int length)
+radius_attrs_print(register const u_char *attr, u_int length)
 {
    register const struct radius_attr *rad_attr = (struct radius_attr *)attr;
    const char *attr_string;
@@ -836,32 +839,32 @@ radius_attrs_print(netdissect_options *ndo,
    {
      if (length < 2)
         goto trunc;
-     ND_TCHECK(*rad_attr);
-
+     TCHECK(*rad_attr);
+     
      if (rad_attr->type > 0 && rad_attr->type < TAM_SIZE(attr_type))
 	attr_string = attr_type[rad_attr->type].name;
      else
 	attr_string = "Unknown";
      if (rad_attr->len < 2)
      {
-	ND_PRINT((ndo, "\n\t  %s Attribute (%u), length: %u (bogus, must be >= 2)",
+	printf("\n\t  %s Attribute (%u), length: %u (bogus, must be >= 2)",
                attr_string,
                rad_attr->type,
-               rad_attr->len));
+               rad_attr->len);
 	return;
      }
      if (rad_attr->len > length)
      {
-	ND_PRINT((ndo, "\n\t  %s Attribute (%u), length: %u (bogus, goes past end of packet)",
+	printf("\n\t  %s Attribute (%u), length: %u (bogus, goes past end of packet)",
                attr_string,
                rad_attr->type,
-               rad_attr->len));
+               rad_attr->len);
         return;
      }
-     ND_PRINT((ndo, "\n\t  %s Attribute (%u), length: %u, Value: ",
+     printf("\n\t  %s Attribute (%u), length: %u, Value: ",
             attr_string,
             rad_attr->type,
-            rad_attr->len));
+            rad_attr->len);
 
      if (rad_attr->type < TAM_SIZE(attr_type))
      {
@@ -869,13 +872,13 @@ radius_attrs_print(netdissect_options *ndo,
          {
              if ( attr_type[rad_attr->type].print_func )
                  (*attr_type[rad_attr->type].print_func)(
-                     ndo, ((u_char *)(rad_attr+1)),
+                     ((u_char *)(rad_attr+1)),
                      rad_attr->len - 2, rad_attr->type);
          }
      }
      /* do we also want to see a hex dump ? */
-     if (ndo->ndo_vflag> 1)
-         print_unknown_data(ndo, (u_char *)rad_attr+2, "\n\t    ", (rad_attr->len)-2);
+     if (vflag> 1)
+         print_unknown_data((u_char *)rad_attr+2,"\n\t    ",(rad_attr->len)-2);
 
      length-=(rad_attr->len);
      rad_attr = (struct radius_attr *)( ((char *)(rad_attr))+rad_attr->len);
@@ -883,52 +886,52 @@ radius_attrs_print(netdissect_options *ndo,
    return;
 
 trunc:
-   ND_PRINT((ndo, "%s", tstr));
+   printf(" [|radius]");
 }
 
+
 void
-radius_print(netdissect_options *ndo,
-             const u_char *dat, u_int length)
+radius_print(const u_char *dat, u_int length)
 {
    register const struct radius_hdr *rad;
    u_int len, auth_idx;
 
-   ND_TCHECK2(*dat, MIN_RADIUS_LEN);
+   TCHECK2(*dat, MIN_RADIUS_LEN);
    rad = (struct radius_hdr *)dat;
    len = EXTRACT_16BITS(&rad->len);
 
    if (len < MIN_RADIUS_LEN)
    {
-	  ND_PRINT((ndo, "%s", tstr));
+	  printf(" [|radius]");
 	  return;
    }
 
    if (len > length)
 	  len = length;
 
-   if (ndo->ndo_vflag < 1) {
-       ND_PRINT((ndo, "RADIUS, %s (%u), id: 0x%02x length: %u",
+   if (vflag < 1) {
+       printf("RADIUS, %s (%u), id: 0x%02x length: %u",
               tok2str(radius_command_values,"Unknown Command",rad->code),
               rad->code,
               rad->id,
-              len));
+              len);
        return;
    }
    else {
-       ND_PRINT((ndo, "RADIUS, length: %u\n\t%s (%u), id: 0x%02x, Authenticator: ",
+       printf("RADIUS, length: %u\n\t%s (%u), id: 0x%02x, Authenticator: ",
               len,
               tok2str(radius_command_values,"Unknown Command",rad->code),
               rad->code,
-              rad->id));
+              rad->id);
 
        for(auth_idx=0; auth_idx < 16; auth_idx++)
-            ND_PRINT((ndo, "%02x", rad->auth[auth_idx]));
+            printf("%02x", rad->auth[auth_idx] );
    }
 
    if (len > MIN_RADIUS_LEN)
-      radius_attrs_print(ndo, dat + MIN_RADIUS_LEN, len - MIN_RADIUS_LEN);
+      radius_attrs_print( dat + MIN_RADIUS_LEN, len - MIN_RADIUS_LEN);
    return;
 
 trunc:
-   ND_PRINT((ndo, "%s", tstr));
+   printf(" [|radius]");
 }

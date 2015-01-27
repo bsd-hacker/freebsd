@@ -62,9 +62,10 @@ struct cam_ccbq {
 	struct ccb_hdr_tailq	queue_extra_head;
 	int	queue_extra_entries;
 	int	total_openings;
-	int	allocated;
+	int	devq_openings;
 	int	dev_openings;
 	int	dev_active;
+	int	held;
 };
 
 struct cam_ed;
@@ -187,8 +188,8 @@ cam_ccbq_pending_ccb_count(struct cam_ccbq *ccbq)
 static __inline void
 cam_ccbq_take_opening(struct cam_ccbq *ccbq)
 {
-
-	ccbq->allocated++;
+	ccbq->devq_openings--;
+	ccbq->held++;
 }
 
 static __inline void
@@ -196,6 +197,8 @@ cam_ccbq_insert_ccb(struct cam_ccbq *ccbq, union ccb *new_ccb)
 {
 	struct ccb_hdr *old_ccb;
 	struct camq *queue = &ccbq->queue;
+
+	ccbq->held--;
 
 	/*
 	 * If queue is already full, try to resize.
@@ -261,7 +264,7 @@ cam_ccbq_send_ccb(struct cam_ccbq *ccbq, union ccb *send_ccb)
 
 	send_ccb->ccb_h.pinfo.index = CAM_ACTIVE_INDEX;
 	ccbq->dev_active++;
-	ccbq->dev_openings--;
+	ccbq->dev_openings--;		
 }
 
 static __inline void
@@ -269,14 +272,15 @@ cam_ccbq_ccb_done(struct cam_ccbq *ccbq, union ccb *done_ccb)
 {
 
 	ccbq->dev_active--;
-	ccbq->dev_openings++;
+	ccbq->dev_openings++;	
+	ccbq->held++;
 }
 
 static __inline void
 cam_ccbq_release_opening(struct cam_ccbq *ccbq)
 {
-
-	ccbq->allocated--;
+	ccbq->held--;
+	ccbq->devq_openings++;
 }
 
 #endif /* _KERNEL */

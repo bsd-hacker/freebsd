@@ -3,7 +3,8 @@
 PROG=	mount_udf
 SRCS=	mount_udf.c getmntopts.c
 MAN=	mount_udf.8
-LIBADD=	kiconv
+DPADD=	${LIBKICONV}
+LDADD=	-lkiconv
 
 MOUNT=	${.CURDIR}/../mount
 CFLAGS+= -I${MOUNT} -I${.CURDIR}/../../sys

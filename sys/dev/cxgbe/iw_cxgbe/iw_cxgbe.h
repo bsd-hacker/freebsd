@@ -41,6 +41,7 @@
 #include <linux/sched.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
+#include <linux/inet.h>
 #include <linux/wait.h>
 #include <linux/kref.h>
 #include <linux/timer.h>

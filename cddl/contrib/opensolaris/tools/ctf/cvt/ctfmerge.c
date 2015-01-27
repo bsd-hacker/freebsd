@@ -176,20 +176,20 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <assert.h>
-#ifdef illumos
+#if defined(sun)
 #include <synch.h>
 #endif
 #include <signal.h>
 #include <libgen.h>
 #include <string.h>
 #include <errno.h>
-#ifdef illumos
+#if defined(sun)
 #include <alloca.h>
 #endif
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/mman.h>
-#ifdef illumos
+#if defined(sun)
 #include <sys/sysconf.h>
 #endif
 
@@ -232,7 +232,7 @@ usage(void)
 	    progname, progname);
 }
 
-#ifdef illumos
+#if defined(sun)
 static void
 bigheap(void)
 {
@@ -280,7 +280,7 @@ bigheap(void)
 
 	(void) memcntl(NULL, 0, MC_HAT_ADVISE, (caddr_t)&mha, 0, 0);
 }
-#endif	/* illumos */
+#endif
 
 static void
 finalize_phase_one(workqueue_t *wq)
@@ -707,7 +707,7 @@ start_threads(workqueue_t *wq)
 		    (void *(*)(void *))worker_thread, wq);
 	}
 
-#ifdef illumos
+#if defined(sun)
 	sigset(SIGINT, handle_sig);
 	sigset(SIGQUIT, handle_sig);
 	sigset(SIGTERM, handle_sig);

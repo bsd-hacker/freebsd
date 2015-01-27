@@ -45,8 +45,7 @@ STRIP?=	-s
 
 .if ${MK_DEBUG_FILES} != "no" && empty(DEBUG_FLAGS:M-g) && \
     empty(DEBUG_FLAGS:M-gdwarf*)
-SHARED_CFLAGS+= -g
-SHARED_CXXFLAGS+= -g
+CFLAGS+= -g
 CTFFLAGS+= -g
 .endif
 
@@ -118,8 +117,7 @@ PO_FLAG=-pg
 	${CC} ${PICFLAG} -DPIC ${CFLAGS} ${ACFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
-all: beforebuild .WAIT
-beforebuild: objwarn
+all: objwarn
 
 .if defined(PRIVATELIB)
 _LIBDIR:=${LIBPRIVATEDIR}
@@ -156,12 +154,11 @@ LDFLAGS+=	-Wl,--version-script=${VERSION_MAP}
 .endif
 
 .if defined(USEPRIVATELIB)
-LDFLAGS+= -rpath ${LIBPRIVATEDIR}
+LDFLAGS+= -L${_SHLIBDIRPREFIX}${LIBPRIVATEDIR} -rpath ${LIBPRIVATEDIR}
 .endif
 
 .if defined(LIB) && !empty(LIB) || defined(SHLIB_NAME)
 OBJS+=		${SRCS:N*.h:R:S/$/.o/}
-NOPATH_FILES+=	${OBJS}
 .endif
 
 .if defined(LIB) && !empty(LIB)
@@ -183,7 +180,6 @@ lib${LIB}.a: ${OBJS} ${STATICOBJS}
 .if ${MK_PROFILE} != "no" && defined(LIB) && !empty(LIB)
 _LIBS+=		lib${LIB}_p.a
 POBJS+=		${OBJS:.o=.po} ${STATICOBJS:.o=.po}
-NOPATH_FILES+=	${POBJS}
 
 lib${LIB}_p.a: ${POBJS}
 	@${ECHO} building profiled ${LIB} library
@@ -199,7 +195,6 @@ lib${LIB}_p.a: ${POBJS}
 .if defined(SHLIB_NAME) || \
     defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB)
 SOBJS+=		${OBJS:.o=.So}
-NOPATH_FILES+=	${SOBJS}
 .endif
 
 .if defined(SHLIB_NAME)
@@ -207,12 +202,7 @@ _LIBS+=		${SHLIB_NAME}
 
 SOLINKOPTS=	-shared -Wl,-x
 .if !defined(ALLOW_SHARED_TEXTREL)
-.if defined(LD_FATAL_WARNINGS) && ${LD_FATAL_WARNINGS} == "no"
-SOLINKOPTS+=	-Wl,--no-fatal-warnings
-.else
-SOLINKOPTS+=	-Wl,--fatal-warnings
-.endif
-SOLINKOPTS+=	-Wl,--warn-shared-textrel
+SOLINKOPTS+=	-Wl,--fatal-warnings -Wl,--warn-shared-textrel
 .endif
 
 .if target(beforelinking)
@@ -263,7 +253,6 @@ lib${LIB}_pic.a: ${SOBJS}
 LINTLIB=	llib-l${LIB}.ln
 _LIBS+=		${LINTLIB}
 LINTOBJS+=	${SRCS:M*.c:.c=.ln}
-NOPATH_FILES+=	${LINTOBJS}
 
 ${LINTLIB}: ${LINTOBJS}
 	@${ECHO} building lint library ${.TARGET}
@@ -312,11 +301,11 @@ _SHLINSTALLFLAGS:=	${_SHLINSTALLFLAGS${ie}}
 realinstall: _libinstall
 .ORDER: beforeinstall _libinstall
 _libinstall:
-.if defined(LIB) && !empty(LIB) && ${MK_INSTALLLIB} != "no" && !defined(PRIVATELIB)
+.if defined(LIB) && !empty(LIB) && ${MK_INSTALLLIB} != "no"
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB}.a ${DESTDIR}${_LIBDIR}
 .endif
-.if ${MK_PROFILE} != "no" && defined(LIB) && !empty(LIB) && !defined(PRIVATELIB)
+.if ${MK_PROFILE} != "no" && defined(LIB) && !empty(LIB)
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB}_p.a ${DESTDIR}${_LIBDIR}
 .endif
@@ -332,7 +321,7 @@ _libinstall:
 	    ${_INSTALLFLAGS} \
 	    ${SHLIB_NAME}.debug ${DESTDIR}${DEBUGFILEDIR}
 .endif
-.if defined(SHLIB_LINK) && !defined(PRIVATELIB)
+.if defined(SHLIB_LINK)
 # ${_SHLIBDIRPREFIX} and ${_LDSCRIPTROOT} are both needed when cross-building
 # and when building 32 bits library shims.  ${_SHLIBDIRPREFIX} is the directory
 # prefix where shared objects will be installed by the install target.
@@ -373,7 +362,7 @@ _libinstall:
 .endif # SHLIB_LDSCRIPT
 .endif # SHLIB_LINK
 .endif # SHIB_NAME
-.if defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB) && ${MK_TOOLCHAIN} != "no" && !defined(PRIVATELIB)
+.if defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB) && ${MK_TOOLCHAIN} != "no"
 	${INSTALL} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB}_pic.a ${DESTDIR}${_LIBDIR}
 .endif
@@ -462,10 +451,6 @@ clean:
 .if !empty(VERSION_DEF) && !empty(SYMBOL_MAPS)
 	rm -f ${VERSION_MAP}
 .endif
-.endif
-
-.if !empty(_LIBS)
-NOPATH_FILES+=	${_LIBS}
 .endif
 
 .include <bsd.obj.mk>

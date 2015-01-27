@@ -23,16 +23,6 @@
 		};
 	};
 
-	clocks {
-		slow_xtal {
-			clock-frequency = <32768>;
-		};
-
-		main_xtal {
-			clock-frequency = <12000000>;
-		};
-	};
-
 	ahb {
 		apb {
 			pinctrl@fffff400 {

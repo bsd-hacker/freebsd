@@ -26,15 +26,12 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-
-using namespace llvm;
-
-#define DEBUG_TYPE "hexagon-instrinfo"
-
 #define GET_INSTRINFO_CTOR_DTOR
 #define GET_INSTRMAP_INFO
 #include "HexagonGenInstrInfo.inc"
 #include "HexagonGenDFAPacketizer.inc"
+
+using namespace llvm;
 
 ///
 /// Constants for Hexagon instructions.
@@ -138,7 +135,7 @@ HexagonInstrInfo::InsertBranch(MachineBasicBlock &MBB,MachineBasicBlock *TBB,
       regPos = 1;
     }
 
-    if (!FBB) {
+    if (FBB == 0) {
       if (Cond.empty()) {
         // Due to a bug in TailMerging/CFG Optimization, we need to add a
         // special case handling of a predicated jump followed by an
@@ -150,11 +147,11 @@ HexagonInstrInfo::InsertBranch(MachineBasicBlock &MBB,MachineBasicBlock *TBB,
         if (isPredicated(Term) && !AnalyzeBranch(MBB, NewTBB, NewFBB, Cond,
                                                  false)) {
           MachineBasicBlock *NextBB =
-            std::next(MachineFunction::iterator(&MBB));
+            llvm::next(MachineFunction::iterator(&MBB));
           if (NewTBB == NextBB) {
             ReverseBranchCondition(Cond);
             RemoveBranch(MBB);
-            return InsertBranch(MBB, TBB, nullptr, Cond, DL);
+            return InsertBranch(MBB, TBB, 0, Cond, DL);
           }
         }
         BuildMI(&MBB, DL, get(BOpc)).addMBB(TBB);
@@ -177,8 +174,8 @@ bool HexagonInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
                                  MachineBasicBlock *&FBB,
                                  SmallVectorImpl<MachineOperand> &Cond,
                                  bool AllowModify) const {
-  TBB = nullptr;
-  FBB = nullptr;
+  TBB = NULL;
+  FBB = NULL;
 
   // If the block has no terminators, it just falls into the block after it.
   MachineBasicBlock::instr_iterator I = MBB.instr_end();
@@ -227,7 +224,7 @@ bool HexagonInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
 
   // Get the last instruction in the block.
   MachineInstr *LastInst = I;
-  MachineInstr *SecondLastInst = nullptr;
+  MachineInstr *SecondLastInst = NULL;
   // Find one more terminator if present.
   do {
     if (&*I != LastInst && !I->isBundle() && isUnpredicatedTerminator(I)) {
@@ -560,7 +557,7 @@ MachineInstr *HexagonInstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
                                           const SmallVectorImpl<unsigned> &Ops,
                                                     int FI) const {
   // Hexagon_TODO: Implement.
-  return nullptr;
+  return(0);
 }
 
 unsigned HexagonInstrInfo::createVR(MachineFunction* MF, MVT VT) const {
@@ -1538,13 +1535,14 @@ int HexagonInstrInfo::GetDotOldOp(const int opc) const {
   int NewOp = opc;
   if (isPredicated(NewOp) && isPredicatedNew(NewOp)) { // Get predicate old form
     NewOp = Hexagon::getPredOldOpcode(NewOp);
-    assert(NewOp >= 0 &&
-           "Couldn't change predicate new instruction to its old form.");
+    if (NewOp < 0)
+      assert(0 && "Couldn't change predicate new instruction to its old form.");
   }
 
-  if (isNewValueStore(NewOp)) { // Convert into non-new-value format
+  if (isNewValueStore(NewOp)) { // Convert into non new-value format
     NewOp = Hexagon::getNonNVStore(NewOp);
-    assert(NewOp >= 0 && "Couldn't change new-value store to its old form.");
+    if (NewOp < 0)
+      assert(0 && "Couldn't change new-value store to its old form.");
   }
   return NewOp;
 }
@@ -1656,7 +1654,7 @@ bool HexagonInstrInfo::isSchedulingBoundary(const MachineInstr *MI,
     return false;
 
   // Terminators and labels can't be scheduled around.
-  if (MI->getDesc().isTerminator() || MI->isPosition() || MI->isInlineAsm())
+  if (MI->getDesc().isTerminator() || MI->isLabel() || MI->isInlineAsm())
     return true;
 
   return false;
@@ -1795,7 +1793,7 @@ bool HexagonInstrInfo::NonExtEquivalentExists (const MachineInstr *MI) const {
     return true;
 
   if (MI->getDesc().mayLoad() || MI->getDesc().mayStore()) {
-    // Check addressing mode and retrieve non-ext equivalent instruction.
+    // Check addressing mode and retreive non-ext equivalent instruction.
 
     switch (getAddrMode(MI)) {
     case HexagonII::Absolute :
@@ -1829,7 +1827,7 @@ short HexagonInstrInfo::getNonExtOpcode (const MachineInstr *MI) const {
       return NonExtOpcode;
 
   if (MI->getDesc().mayLoad() || MI->getDesc().mayStore()) {
-    // Check addressing mode and retrieve non-ext equivalent instruction.
+    // Check addressing mode and retreive non-ext equivalent instruction.
     switch (getAddrMode(MI)) {
     case HexagonII::Absolute :
       return Hexagon::getBasedWithImmOffset(MI->getOpcode());

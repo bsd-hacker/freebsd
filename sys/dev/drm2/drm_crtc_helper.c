@@ -53,7 +53,7 @@ drm_fetch_cmdline_mode_from_kenv(struct drm_connector *connector,
 	    strlen(drm_get_connector_name(connector)), M_TEMP, M_WAITOK);
 	strcpy(tun_var_name, tun_prefix);
 	strcat(tun_var_name, drm_get_connector_name(connector));
-	tun_mode = kern_getenv(tun_var_name);
+	tun_mode = getenv(tun_var_name);
 	if (tun_mode != NULL) {
 		res = drm_mode_parse_command_line_for_connector(tun_mode,
 		    connector, cmdline_mode);
@@ -549,7 +549,7 @@ int drm_crtc_helper_set_config(struct drm_mode_set *set)
 	int count = 0, ro, fail = 0;
 	struct drm_crtc_helper_funcs *crtc_funcs;
 	struct drm_mode_set save_set;
-	int ret;
+	int ret = 0;
 	int i;
 
 	DRM_DEBUG_KMS("\n");

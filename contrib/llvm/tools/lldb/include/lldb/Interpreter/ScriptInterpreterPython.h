@@ -24,8 +24,6 @@
 #include "lldb/Interpreter/PythonDataObjects.h"
 #include "lldb/Host/Terminal.h"
 
-class IOHandlerPythonInterpreter;
-
 namespace lldb_private {
     
 class ScriptInterpreterPython :
@@ -58,7 +56,7 @@ public:
     ExecuteMultipleLines (const char *in_string,
                           const ExecuteScriptOptions &options = ExecuteScriptOptions());
 
-    Error
+    bool
     ExportFunctionDefinitionToInterpreter (StringList &function_def);
 
     bool
@@ -132,10 +130,10 @@ public:
                           lldb_private::CommandReturnObject& cmd_retobj,
                           Error& error);
     
-    Error
+    bool
     GenerateFunction(const char *signature, const StringList &input);
     
-    Error
+    bool
     GenerateBreakpointCommandCallbackData (StringList &input, std::string& output);
 
     bool
@@ -172,9 +170,6 @@ public:
                         lldb::ScriptInterpreterObjectSP& callee_wrapper_sp,
                         std::string& retval);
     
-    virtual void
-    Clear ();
-
     virtual bool
     GetDocumentationForItem (const char* item, std::string& dest);
     
@@ -225,21 +220,17 @@ public:
     AcquireInterpreterLock ();
     
     void
-    CollectDataForBreakpointCommandCallback (std::vector<BreakpointOptions *> &bp_options_vec,
+    CollectDataForBreakpointCommandCallback (BreakpointOptions *bp_options,
                                              CommandReturnObject &result);
 
     void 
     CollectDataForWatchpointCommandCallback (WatchpointOptions *wp_options,
                                              CommandReturnObject &result);
 
-    /// Set the callback body text into the callback for the breakpoint.
-    Error
-    SetBreakpointCommandCallback (BreakpointOptions *bp_options,
-                                  const char *callback_body);
-
+    /// Set a Python one-liner as the callback for the breakpoint.
     void 
-    SetBreakpointCommandCallbackFunction (BreakpointOptions *bp_options,
-                                          const char *function_name);
+    SetBreakpointCommandCallback (BreakpointOptions *bp_options,
+                                  const char *oneliner);
 
     /// Set a one-liner as the callback for the watchpoint.
     void 
@@ -284,19 +275,6 @@ public:
     }
 
     
-    PyThreadState *
-    GetThreadState()
-    {
-        return m_command_thread_state;
-    }
-
-    void
-    SetThreadState (PyThreadState *s)
-    {
-        if (s)
-            m_command_thread_state = s;
-    }
-
     //----------------------------------------------------------------------
     // IOHandlerDelegate
     //----------------------------------------------------------------------
@@ -357,8 +335,7 @@ protected:
         virtual
         ~ScriptInterpreterPythonObject()
         {
-            if (Py_IsInitialized())
-                Py_XDECREF(m_object);
+            Py_XDECREF(m_object);
             m_object = NULL;
         }
         private:
@@ -415,7 +392,7 @@ public:
 //    	FILE*                    m_tmp_fh;
         PyGILState_STATE         m_GILState;
 	};
-protected:
+private:
 
     enum ActiveIOHandler {
         eIOHandlerNone,

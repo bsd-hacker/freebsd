@@ -277,13 +277,15 @@ sii_meta_read(struct g_consumer *cp)
 		    pp->name, error);
 		return (NULL);
 	}
-	meta = (struct sii_raid_conf *)buf;
+	meta = malloc(sizeof(*meta), M_MD_SII, M_WAITOK);
+	memcpy(meta, buf, min(sizeof(*meta), pp->sectorsize));
+	g_free(buf);
 
 	/* Check vendor ID. */
 	if (meta->vendor_id != 0x1095) {
 		G_RAID_DEBUG(1, "SiI vendor ID check failed on %s (0x%04x)",
 		    pp->name, meta->vendor_id);
-		g_free(buf);
+		free(meta, M_MD_SII);
 		return (NULL);
 	}
 
@@ -291,12 +293,9 @@ sii_meta_read(struct g_consumer *cp)
 	if (meta->version_major != 2) {
 		G_RAID_DEBUG(1, "SiI version check failed on %s (%d.%d)",
 		    pp->name, meta->version_major, meta->version_minor);
-		g_free(buf);
+		free(meta, M_MD_SII);
 		return (NULL);
 	}
-	meta = malloc(sizeof(*meta), M_MD_SII, M_WAITOK);
-	memcpy(meta, buf, min(sizeof(*meta), pp->sectorsize));
-	g_free(buf);
 
 	/* Check metadata checksum. */
 	for (checksum = 0, ptr = (uint16_t *)meta, i = 0; i <= 159; i++)

@@ -97,7 +97,7 @@ namespace {
     static char ID;
     ARMCGBR() : MachineFunctionPass(ID) {}
 
-    bool runOnMachineFunction(MachineFunction &MF) override {
+    virtual bool runOnMachineFunction(MachineFunction &MF) {
       ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
       if (AFI->getGlobalBaseReg() == 0)
         return false;
@@ -146,11 +146,11 @@ namespace {
       return true;
     }
 
-    const char *getPassName() const override {
+    virtual const char *getPassName() const {
       return "ARM PIC Global Base Reg Initialization";
     }
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
     }

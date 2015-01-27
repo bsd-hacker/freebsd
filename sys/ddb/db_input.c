@@ -346,7 +346,7 @@ db_readline(lstart, lsize)
 }
 
 void
-db_check_interrupt(void)
+db_check_interrupt()
 {
 	register int	c;
 

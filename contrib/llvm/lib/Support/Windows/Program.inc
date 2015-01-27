@@ -11,7 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "WindowsSupport.h"
+#include "Windows.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/FileSystem.h"
 #include <cstdio>
 #include <fcntl.h>
@@ -186,7 +187,7 @@ static bool Execute(ProcessInfo &PI, StringRef Program, const char **args,
   }
 
   // Now build the command line.
-  std::unique_ptr<char[]> command(new char[len+1]);
+  OwningArrayPtr<char> command(new char[len+1]);
   char *p = command.get();
 
   for (unsigned i = 0; args[i]; i++) {
@@ -226,7 +227,7 @@ static bool Execute(ProcessInfo &PI, StringRef Program, const char **args,
     // an environment block by concatenating them.
     for (unsigned i = 0; envp[i]; ++i) {
       SmallVector<wchar_t, MAX_PATH> EnvString;
-      if (std::error_code ec = windows::UTF8ToUTF16(envp[i], EnvString)) {
+      if (error_code ec = windows::UTF8ToUTF16(envp[i], EnvString)) {
         SetLastError(ec.value());
         MakeErrMsg(ErrMsg, "Unable to convert environment variable to UTF-16");
         return false;
@@ -290,7 +291,7 @@ static bool Execute(ProcessInfo &PI, StringRef Program, const char **args,
   fflush(stderr);
 
   SmallVector<wchar_t, MAX_PATH> ProgramUtf16;
-  if (std::error_code ec = windows::UTF8ToUTF16(Program, ProgramUtf16)) {
+  if (error_code ec = windows::UTF8ToUTF16(Program, ProgramUtf16)) {
     SetLastError(ec.value());
     MakeErrMsg(ErrMsg,
                std::string("Unable to convert application name to UTF-16"));
@@ -298,7 +299,7 @@ static bool Execute(ProcessInfo &PI, StringRef Program, const char **args,
   }
 
   SmallVector<wchar_t, MAX_PATH> CommandUtf16;
-  if (std::error_code ec = windows::UTF8ToUTF16(command.get(), CommandUtf16)) {
+  if (error_code ec = windows::UTF8ToUTF16(command.get(), CommandUtf16)) {
     SetLastError(ec.value());
     MakeErrMsg(ErrMsg,
                std::string("Unable to convert command-line to UTF-16"));
@@ -422,18 +423,25 @@ ProcessInfo sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
   return WaitResult;
 }
 
-  std::error_code sys::ChangeStdinToBinary(){
+error_code sys::ChangeStdinToBinary(){
   int result = _setmode( _fileno(stdin), _O_BINARY );
   if (result == -1)
-    return std::error_code(errno, std::generic_category());
-  return std::error_code();
+    return error_code(errno, generic_category());
+  return make_error_code(errc::success);
 }
 
-  std::error_code sys::ChangeStdoutToBinary(){
+error_code sys::ChangeStdoutToBinary(){
   int result = _setmode( _fileno(stdout), _O_BINARY );
   if (result == -1)
-    return std::error_code(errno, std::generic_category());
-  return std::error_code();
+    return error_code(errno, generic_category());
+  return make_error_code(errc::success);
+}
+
+error_code sys::ChangeStderrToBinary(){
+  int result = _setmode( _fileno(stderr), _O_BINARY );
+  if (result == -1)
+    return error_code(errno, generic_category());
+  return make_error_code(errc::success);
 }
 
 bool llvm::sys::argumentsFitWithinSystemLimits(ArrayRef<const char*> Args) {

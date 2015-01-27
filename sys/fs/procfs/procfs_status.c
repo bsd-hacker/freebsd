@@ -125,9 +125,9 @@ procfs_doprocstatus(PFS_FILL_ARGS)
 	if (p->p_flag & P_INMEM) {
 		struct timeval start, ut, st;
 
-		PROC_STATLOCK(p);
+		PROC_SLOCK(p);
 		calcru(p, &ut, &st);
-		PROC_STATUNLOCK(p);
+		PROC_SUNLOCK(p);
 		start = p->p_stats->p_start;
 		timevaladd(&start, &boottime);
 		sbuf_printf(sb, " %jd,%ld %jd,%ld %jd,%ld",

@@ -56,8 +56,6 @@ namespace CodeGen {
   class CallArgList :
     public SmallVector<CallArg, 16> {
   public:
-    CallArgList() : StackBase(nullptr), StackBaseMem(nullptr) {}
-
     struct Writeback {
       /// The original argument.  Note that the argument l-value
       /// is potentially null.
@@ -99,12 +97,9 @@ namespace CodeGen {
 
     bool hasWritebacks() const { return !Writebacks.empty(); }
 
-    typedef llvm::iterator_range<SmallVectorImpl<Writeback>::const_iterator>
-      writeback_const_range;
-
-    writeback_const_range writebacks() const {
-      return writeback_const_range(Writebacks.begin(), Writebacks.end());
-    }
+    typedef SmallVectorImpl<Writeback>::const_iterator writeback_iterator;
+    writeback_iterator writeback_begin() const { return Writebacks.begin(); }
+    writeback_iterator writeback_end() const { return Writebacks.end(); }
 
     void addArgCleanupDeactivation(EHScopeStack::stable_iterator Cleanup,
                                    llvm::Instruction *IsActiveIP) {
@@ -118,14 +113,6 @@ namespace CodeGen {
       return CleanupsToDeactivate;
     }
 
-    void allocateArgumentMemory(CodeGenFunction &CGF);
-    llvm::Instruction *getStackBase() const { return StackBase; }
-    void freeArgumentMemory(CodeGenFunction &CGF) const;
-
-    /// \brief Returns if we're using an inalloca struct to pass arguments in
-    /// memory.
-    bool isUsingInAlloca() const { return StackBase; }
-
   private:
     SmallVector<Writeback, 1> Writebacks;
 
@@ -133,17 +120,6 @@ namespace CodeGen {
     /// is used to cleanup objects that are owned by the callee once the call
     /// occurs.
     SmallVector<CallArgCleanup, 1> CleanupsToDeactivate;
-
-    /// The stacksave call.  It dominates all of the argument evaluation.
-    llvm::CallInst *StackBase;
-
-    /// The alloca holding the stackbase.  We need it to maintain SSA form.
-    llvm::AllocaInst *StackBaseMem;
-
-    /// The iterator pointing to the stack restore cleanup.  We manually run and
-    /// deactivate this cleanup after the call in the unexceptional case because
-    /// it doesn't run in the normal order.
-    EHScopeStack::stable_iterator StackCleanup;
   };
 
   /// FunctionArgList - Type for representing both the decl and type

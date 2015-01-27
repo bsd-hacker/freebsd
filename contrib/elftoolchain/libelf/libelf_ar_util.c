@@ -34,23 +34,21 @@
 #include "_libelf.h"
 #include "_libelf_ar.h"
 
-ELFTC_VCSID("$Id: libelf_ar_util.c 3013 2014-03-23 06:16:59Z jkoshy $");
+ELFTC_VCSID("$Id: libelf_ar_util.c 2365 2011-12-29 04:36:44Z jkoshy $");
 
 /*
  * Convert a string bounded by `start' and `start+sz' (exclusive) to a
  * number in the specified base.
  */
 int
-_libelf_ar_get_number(const char *src, size_t sz, unsigned int base,
-    size_t *ret)
+_libelf_ar_get_number(const char *s, size_t sz, int base, size_t *ret)
 {
+	int c, v;
 	size_t r;
-	unsigned int c, v;
-	const unsigned char *e, *s;
+	const char *e;
 
 	assert(base <= 10);
 
-	s = (const unsigned char *) src;
 	e = s + sz;
 
 	/* skip leading blanks */
@@ -81,18 +79,17 @@ _libelf_ar_get_number(const char *src, size_t sz, unsigned int base,
 char *
 _libelf_ar_get_translated_name(const struct ar_hdr *arh, Elf *ar)
 {
-	char *s;
-	unsigned char c;
+	char c, *s;
 	size_t len, offset;
-	const unsigned char *buf, *p, *q, *r;
+	const char *buf, *p, *q, *r;
 	const size_t bufsize = sizeof(arh->ar_name);
 
 	assert(arh != NULL);
 	assert(ar->e_kind == ELF_K_AR);
-	assert((const unsigned char *) arh >= ar->e_rawfile &&
-	    (const unsigned char *) arh < ar->e_rawfile + ar->e_rawsize);
+	assert((const char *) arh >= ar->e_rawfile &&
+	    (const char *) arh < ar->e_rawfile + ar->e_rawsize);
 
-	buf = (const unsigned char *) arh->ar_name;
+	buf = arh->ar_name;
 
 	/*
 	 * Check for extended naming.
@@ -107,8 +104,8 @@ _libelf_ar_get_translated_name(const struct ar_hdr *arh, Elf *ar)
 		 * the archive string table where the actual name
 		 * resides.
 		 */
-		if (_libelf_ar_get_number((const char *) (buf + 1),
-			bufsize - 1, 10, &offset) == 0) {
+		if (_libelf_ar_get_number(buf + 1, bufsize - 1, 10,
+			&offset) == 0) {
 			LIBELF_SET_ERROR(ARCHIVE, 0);
 			return (NULL);
 		}
@@ -123,21 +120,21 @@ _libelf_ar_get_translated_name(const struct ar_hdr *arh, Elf *ar)
 
 		for (; p < r && *p != '/'; p++)
 			;
-		len = (size_t) (p - q + 1); /* space for the trailing NUL */
+		len = p - q + 1; /* space for the trailing NUL */
 
 		if ((s = malloc(len)) == NULL) {
 			LIBELF_SET_ERROR(RESOURCE, 0);
 			return (NULL);
 		}
 
-		(void) strncpy(s, (const char *) q, len - 1);
+		(void) strncpy(s, q, len - 1);
 		s[len - 1] = '\0';
 
 		return (s);
 	} else if (IS_EXTENDED_BSD_NAME(buf)) {
 		r = buf + LIBELF_AR_BSD_EXTENDED_NAME_PREFIX_SIZE;
 
-		if (_libelf_ar_get_number((const char *) r, bufsize -
+		if (_libelf_ar_get_number(r, bufsize -
 			LIBELF_AR_BSD_EXTENDED_NAME_PREFIX_SIZE, 10,
 			&len) == 0) {
 			LIBELF_SET_ERROR(ARCHIVE, 0);
@@ -156,9 +153,9 @@ _libelf_ar_get_translated_name(const struct ar_hdr *arh, Elf *ar)
 		/*
 		 * The file name follows the archive header.
 		 */
-		q = (const unsigned char *) (arh + 1);
+		q = (const char *) (arh + 1);
 
-		(void) strncpy(s, (const char *) q, len);
+		(void) strncpy(s, q, len);
 		s[len] = '\0';
 
 		return (s);
@@ -186,10 +183,10 @@ _libelf_ar_get_translated_name(const struct ar_hdr *arh, Elf *ar)
 				q--;
 		}
 
-		len = (size_t) (q - buf + 2); /* Space for a trailing NUL. */
+		len = q - buf + 2; /* Add space for a trailing NUL. */
 	} else {
 		/* The buffer only had blanks. */
-		buf = (const unsigned char *) "";
+		buf = "";
 		len = 1;
 	}
 
@@ -198,7 +195,7 @@ _libelf_ar_get_translated_name(const struct ar_hdr *arh, Elf *ar)
 		return (NULL);
 	}
 
-	(void) strncpy(s, (const char *) buf, len - 1);
+	(void) strncpy(s, buf, len - 1);
 	s[len - 1] = '\0';
 
 	return (s);
@@ -232,8 +229,8 @@ _libelf_ar_open(Elf *e, int reporterror)
 {
 	size_t sz;
 	int scanahead;
+	char *s, *end;
 	struct ar_hdr arh;
-	unsigned char *s, *end;
 
 	_libelf_init_elf(e, ELF_K_AR);
 
@@ -267,7 +264,7 @@ _libelf_ar_open(Elf *e, int reporterror)
 		(void) memcpy(&(ARH), (S), sizeof((ARH)));		\
 		if ((ARH).ar_fmag[0] != '`' || (ARH).ar_fmag[1] != '\n') \
 			goto error;					\
-		if (_libelf_ar_get_number((char *) (ARH).ar_size,	\
+		if (_libelf_ar_get_number((ARH).ar_size,		\
 		    sizeof((ARH).ar_size), 10, &(SZ)) == 0)		\
 			goto error;					\
 	} while (0)
@@ -279,8 +276,7 @@ _libelf_ar_open(Elf *e, int reporterror)
 	 */
 	if (arh.ar_name[0] == '/') {
 
-		if (sz == 0)
-			goto error;
+		assert(sz > 0);
 
 		e->e_flags |= LIBELF_F_AR_VARIANT_SVR4;
 

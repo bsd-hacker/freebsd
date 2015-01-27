@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright 2012 Milan Jurik. All rights reserved.
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  * Copyright (c) 2011-2012 Pawel Jakub Dawidek <pawel@dawidek.net>.
@@ -65,10 +65,9 @@
 #include <zfs_prop.h>
 #include <zfs_deleg.h>
 #include <libuutil.h>
-#ifdef illumos
+#ifdef sun
 #include <aclutils.h>
 #include <directory.h>
-#include <idmap.h>
 #endif
 
 #include "zfs_iter.h"
@@ -275,9 +274,9 @@ get_usage(zfs_help_t idx)
 	case HELP_ROLLBACK:
 		return (gettext("\trollback [-rRf] <snapshot>\n"));
 	case HELP_SEND:
-		return (gettext("\tsend [-DnPpRvLe] [-[iI] snapshot] "
+		return (gettext("\tsend [-DnPpRv] [-[iI] snapshot] "
 		    "<snapshot>\n"
-		    "\tsend [-Le] [-i snapshot|bookmark] "
+		    "\tsend [-i snapshot|bookmark] "
 		    "<filesystem|volume|snapshot>\n"));
 	case HELP_SET:
 		return (gettext("\tset <property=value> "
@@ -591,7 +590,6 @@ finish_progress(char *done)
 	free(pt_header);
 	pt_header = NULL;
 }
-
 /*
  * zfs clone [-p] [-o prop=value] ... <snap> <fs | vol>
  *
@@ -2391,9 +2389,10 @@ userspace_cb(void *arg, const char *domain, uid_t rid, uint64_t space)
 		/* SMB */
 		char sid[ZFS_MAXNAMELEN + 32];
 		uid_t id;
-#ifdef illumos
+		uint64_t classes;
+#ifdef sun
 		int err;
-		int flag = IDMAP_REQ_FLG_USE_CACHE;
+		directory_error_t e;
 #endif
 
 		smbentity = B_TRUE;
@@ -2402,27 +2401,24 @@ userspace_cb(void *arg, const char *domain, uid_t rid, uint64_t space)
 
 		if (prop == ZFS_PROP_GROUPUSED || prop == ZFS_PROP_GROUPQUOTA) {
 			type = USTYPE_SMB_GRP;
-#ifdef illumos
+#ifdef sun
 			err = sid_to_id(sid, B_FALSE, &id);
 #endif
 		} else {
 			type = USTYPE_SMB_USR;
-#ifdef illumos
+#ifdef sun
 			err = sid_to_id(sid, B_TRUE, &id);
 #endif
 		}
 
-#ifdef illumos
+#ifdef sun
 		if (err == 0) {
 			rid = id;
 			if (!cb->cb_sid2posix) {
-				if (type == USTYPE_SMB_USR) {
-					(void) idmap_getwinnamebyuid(rid, flag,
-					    &name, NULL);
-				} else {
-					(void) idmap_getwinnamebygid(rid, flag,
-					    &name, NULL);
-				}
+				e = directory_name_from_sid(NULL, sid, &name,
+				    &classes);
+				if (e != NULL)
+					directory_error_free(e);
 				if (name == NULL)
 					name = sid;
 			}
@@ -3372,7 +3368,6 @@ rollback_check_dependent(zfs_handle_t *zhp, void *data)
 	zfs_close(zhp);
 	return (0);
 }
-
 /*
  * Report any snapshots more recent than the one specified.  Used when '-r' is
  * not specified.  We reuse this same callback for the snapshot dependents - if
@@ -3712,7 +3707,7 @@ zfs_do_send(int argc, char **argv)
 	boolean_t extraverbose = B_FALSE;
 
 	/* check options */
-	while ((c = getopt(argc, argv, ":i:I:RDpvnPLe")) != -1) {
+	while ((c = getopt(argc, argv, ":i:I:RDpvnP")) != -1) {
 		switch (c) {
 		case 'i':
 			if (fromname)
@@ -3746,12 +3741,6 @@ zfs_do_send(int argc, char **argv)
 			break;
 		case 'n':
 			flags.dryrun = B_TRUE;
-			break;
-		case 'L':
-			flags.largeblock = B_TRUE;
-			break;
-		case 'e':
-			flags.embed_data = B_TRUE;
 			break;
 		case ':':
 			(void) fprintf(stderr, gettext("missing argument for "
@@ -3791,7 +3780,6 @@ zfs_do_send(int argc, char **argv)
 	if (strchr(argv[0], '@') == NULL ||
 	    (fromname && strchr(fromname, '#') != NULL)) {
 		char frombuf[ZFS_MAXNAMELEN];
-		enum lzc_send_flags lzc_flags = 0;
 
 		if (flags.replicate || flags.doall || flags.props ||
 		    flags.dedup || flags.dryrun || flags.verbose ||
@@ -3806,11 +3794,6 @@ zfs_do_send(int argc, char **argv)
 		if (zhp == NULL)
 			return (1);
 
-		if (flags.largeblock)
-			lzc_flags |= LZC_SEND_FLAG_LARGE_BLOCK;
-		if (flags.embed_data)
-			lzc_flags |= LZC_SEND_FLAG_EMBED_DATA;
-
 		if (fromname != NULL &&
 		    (fromname[0] == '#' || fromname[0] == '@')) {
 			/*
@@ -3824,7 +3807,7 @@ zfs_do_send(int argc, char **argv)
 			(void) strlcat(frombuf, fromname, sizeof (frombuf));
 			fromname = frombuf;
 		}
-		err = zfs_send_one(zhp, fromname, STDOUT_FILENO, lzc_flags);
+		err = zfs_send_one(zhp, fromname, STDOUT_FILENO);
 		zfs_close(zhp);
 		return (err != 0);
 	}
@@ -6110,7 +6093,7 @@ unshare_unmount_path(int op, char *path, int flags, boolean_t is_manual)
 	/*
 	 * Search for the given (major,minor) pair in the mount table.
 	 */
-#ifdef illumos
+#ifdef sun
 	rewind(mnttab_file);
 	while ((ret = getextmntent(mnttab_file, &entry, 0)) == 0) {
 		if (entry.mnt_major == major(statbuf.st_dev) &&
@@ -6864,9 +6847,6 @@ zfs_do_bookmark(int argc, char **argv)
 		case ENOTSUP:
 			err_msg = "bookmark feature not enabled";
 			break;
-		case ENOSPC:
-			err_msg = "out of space";
-			break;
 		default:
 			err_msg = "unknown error";
 			break;
@@ -6875,7 +6855,7 @@ zfs_do_bookmark(int argc, char **argv)
 		    dgettext(TEXT_DOMAIN, err_msg));
 	}
 
-	return (ret != 0);
+	return (ret);
 
 usage:
 	usage(B_FALSE);

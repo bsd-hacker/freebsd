@@ -1,18 +1,16 @@
 # $FreeBSD$
 
-SYSDIR?=${.CURDIR}/../..
-.PATH: ${SYSDIR}/net ${SYSDIR}/netinet ${SYSDIR}/netinet6
-.include "${SYSDIR}/conf/kern.opts.mk"
+.PATH: ${.CURDIR}/../../net ${.CURDIR}/../../netinet ${.CURDIR}/../../netinet6
 
 KMOD=	if_gre
-SRCS=	if_gre.c opt_inet.h opt_inet6.h
+SRCS=	if_gre.c ip_gre.c opt_inet.h opt_inet6.h
 
-.if ${MK_INET_SUPPORT} != "no"
-SRCS+=	ip_gre.c
-.endif
+.if !defined(KERNBUILDDIR)
+opt_inet.h:
+	echo "#define INET 1" > ${.TARGET}
 
-.if ${MK_INET6_SUPPORT} != "no"
-SRCS+=	ip6_gre.c
+opt_inet6.h:
+	echo "#define INET6 1" > ${.TARGET}
 .endif
 
 .include <bsd.kmod.mk>

@@ -186,10 +186,10 @@ struct ThunkInfo {
   /// an ABI-specific comparator.
   const CXXMethodDecl *Method;
 
-  ThunkInfo() : Method(nullptr) { }
+  ThunkInfo() : Method(0) { }
 
   ThunkInfo(const ThisAdjustment &This, const ReturnAdjustment &Return,
-            const CXXMethodDecl *Method = nullptr)
+            const CXXMethodDecl *Method = 0)
       : This(This), Return(Return), Method(Method) {}
 
   friend bool operator==(const ThunkInfo &LHS, const ThunkInfo &RHS) {
@@ -197,9 +197,7 @@ struct ThunkInfo {
            LHS.Method == RHS.Method;
   }
 
-  bool isEmpty() const {
-    return This.isEmpty() && Return.isEmpty() && Method == nullptr;
-  }
+  bool isEmpty() const { return This.isEmpty() && Return.isEmpty() && Method == 0; }
 };  
 
 } // end namespace clang

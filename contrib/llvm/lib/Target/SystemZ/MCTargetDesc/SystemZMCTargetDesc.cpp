@@ -16,8 +16,6 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/TargetRegistry.h"
 
-using namespace llvm;
-
 #define GET_INSTRINFO_MC_DESC
 #include "SystemZGenInstrInfo.inc"
 
@@ -26,6 +24,8 @@ using namespace llvm;
 
 #define GET_REGINFO_MC_DESC
 #include "SystemZGenRegisterInfo.inc"
+
+using namespace llvm;
 
 const unsigned SystemZMC::GR32Regs[16] = {
   SystemZ::R0L, SystemZ::R1L, SystemZ::R2L, SystemZ::R3L,
@@ -98,8 +98,7 @@ static MCAsmInfo *createSystemZMCAsmInfo(const MCRegisterInfo &MRI,
                                          StringRef TT) {
   MCAsmInfo *MAI = new SystemZMCAsmInfo(TT);
   MCCFIInstruction Inst =
-      MCCFIInstruction::createDefCfa(nullptr,
-                                     MRI.getDwarfRegNum(SystemZ::R15D, true),
+      MCCFIInstruction::createDefCfa(0, MRI.getDwarfRegNum(SystemZ::R15D, true),
                                      SystemZMC::CFAOffsetFromInitialSP);
   MAI->addInitialFrameState(Inst);
   return MAI;
@@ -186,10 +185,9 @@ static MCStreamer *createSystemZMCObjectStreamer(const Target &T, StringRef TT,
                                                  MCAsmBackend &MAB,
                                                  raw_ostream &OS,
                                                  MCCodeEmitter *Emitter,
-                                                 const MCSubtargetInfo &STI,
                                                  bool RelaxAll,
                                                  bool NoExecStack) {
-  return createELFStreamer(Ctx, MAB, OS, Emitter, RelaxAll, NoExecStack);
+  return createELFStreamer(Ctx, 0, MAB, OS, Emitter, RelaxAll, NoExecStack);
 }
 
 extern "C" void LLVMInitializeSystemZTargetMC() {

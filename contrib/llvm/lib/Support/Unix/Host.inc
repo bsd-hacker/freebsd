@@ -64,6 +64,6 @@ std::string sys::getDefaultTargetTriple() {
     Triple += getOSVersion();
   }
 
-  return Triple::normalize(Triple);
+  return Triple;
 }
 #endif // __FreeBSD__

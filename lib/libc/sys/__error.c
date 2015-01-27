@@ -32,25 +32,14 @@ __FBSDID("$FreeBSD$");
 
 extern int errno;
 
-static int *
-__error_unthreaded(void)
-{
-
-	return (&errno);
-}
-
-static int *(*__error_selector)(void) = __error_unthreaded;
-
-void
-__set_error_selector(int *(*arg)(void))
-{
-
-	__error_selector = arg;
-}
+/*
+ * Declare a weak reference in case the application is not linked
+ * with libpthread.
+ */
+__weak_reference(__error_unthreaded, __error);
 
 int *
-__error(void)
+__error_unthreaded(void)
 {
-
-	return (__error_selector());
+	return(&errno);
 }

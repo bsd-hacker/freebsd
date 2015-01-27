@@ -54,10 +54,9 @@ struct partition_metadata {
 struct partition_metadata *get_part_metadata(const char *name, int create);
 void delete_part_metadata(const char *name);
 
-int part_wizard(const char *fstype);
+int part_wizard(void);
 int scripted_editor(int argc, const char **argv);
-int wizard_makeparts(struct gmesh *mesh, const char *disk, const char *fstype,
-    int interactive);
+int wizard_makeparts(struct gmesh *mesh, const char *disk, int interactive);
 
 /* gpart operations */
 void gpart_delete(struct gprovider *pp);
@@ -76,10 +75,9 @@ void set_default_part_metadata(const char *name, const char *scheme,
 /* machine-dependent bootability checks */
 const char *default_scheme(void);
 int is_scheme_bootable(const char *scheme);
-int is_fs_bootable(const char *scheme, const char *fs);
 size_t bootpart_size(const char *scheme);
 const char *bootpart_type(const char *scheme);
 const char *bootcode_path(const char *scheme);
-const char *partcode_path(const char *scheme, const char *fs_type);
+const char *partcode_path(const char *scheme);
 
 #endif

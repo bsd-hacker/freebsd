@@ -27,7 +27,6 @@ namespace llvm {
 
   void initializeXCoreLowerThreadLocalPass(PassRegistry &p);
 
-  FunctionPass *createXCoreFrameToArgsOffsetEliminationPass();
   FunctionPass *createXCoreISelDag(XCoreTargetMachine &TM,
                                    CodeGenOpt::Level OptLevel);
   ModulePass *createXCoreLowerThreadLocalPass();

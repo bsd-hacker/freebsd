@@ -428,6 +428,8 @@ ar933x_bus_getsig(struct uart_softc *sc)
 
 	/*
 	 * For now, let's just return that DSR/DCD/CTS is asserted.
+	 *
+	 * XXX TODO: actually verify whether this is correct!
 	 */
 	SIGCHG(1, sig, SER_DSR, SER_DDSR);
 	SIGCHG(1, sig, SER_CTS, SER_DCTS);
@@ -439,31 +441,80 @@ ar933x_bus_getsig(struct uart_softc *sc)
 	return (sig);
 }
 
-/*
- * XXX TODO: actually implement the rest of this!
- */
 static int
 ar933x_bus_ioctl(struct uart_softc *sc, int request, intptr_t data)
 {
-	int error = 0;
+#if 0
+	struct uart_bas *bas;
+	int baudrate, divisor, error;
+	uint8_t efr, lcr;
 
-	/* XXX lock */
+	bas = &sc->sc_bas;
+	error = 0;
+	uart_lock(sc->sc_hwmtx);
 	switch (request) {
 	case UART_IOCTL_BREAK:
+		lcr = uart_getreg(bas, REG_LCR);
+		if (data)
+			lcr |= LCR_SBREAK;
+		else
+			lcr &= ~LCR_SBREAK;
+		uart_setreg(bas, REG_LCR, lcr);
+		uart_barrier(bas);
+		break;
 	case UART_IOCTL_IFLOW:
+		lcr = uart_getreg(bas, REG_LCR);
+		uart_barrier(bas);
+		uart_setreg(bas, REG_LCR, 0xbf);
+		uart_barrier(bas);
+		efr = uart_getreg(bas, REG_EFR);
+		if (data)
+			efr |= EFR_RTS;
+		else
+			efr &= ~EFR_RTS;
+		uart_setreg(bas, REG_EFR, efr);
+		uart_barrier(bas);
+		uart_setreg(bas, REG_LCR, lcr);
+		uart_barrier(bas);
+		break;
 	case UART_IOCTL_OFLOW:
+		lcr = uart_getreg(bas, REG_LCR);
+		uart_barrier(bas);
+		uart_setreg(bas, REG_LCR, 0xbf);
+		uart_barrier(bas);
+		efr = uart_getreg(bas, REG_EFR);
+		if (data)
+			efr |= EFR_CTS;
+		else
+			efr &= ~EFR_CTS;
+		uart_setreg(bas, REG_EFR, efr);
+		uart_barrier(bas);
+		uart_setreg(bas, REG_LCR, lcr);
+		uart_barrier(bas);
 		break;
 	case UART_IOCTL_BAUD:
-		*(int*)data = 115200;
+		lcr = uart_getreg(bas, REG_LCR);
+		uart_setreg(bas, REG_LCR, lcr | LCR_DLAB);
+		uart_barrier(bas);
+		divisor = uart_getreg(bas, REG_DLL) |
+		    (uart_getreg(bas, REG_DLH) << 8);
+		uart_barrier(bas);
+		uart_setreg(bas, REG_LCR, lcr);
+		uart_barrier(bas);
+		baudrate = (divisor > 0) ? bas->rclk / divisor / 16 : 0;
+		if (baudrate > 0)
+			*(int*)data = baudrate;
+		else
+			error = ENXIO;
 		break;
 	default:
 		error = EINVAL;
 		break;
 	}
-
-	/* XXX unlock */
-
+	uart_unlock(sc->sc_hwmtx);
 	return (error);
+#endif
+	return (ENXIO);
 }
 
 /*
@@ -530,8 +581,6 @@ ar933x_bus_ipend(struct uart_softc *sc)
 
 	/*
 	 * Only signal TX idle if we're not busy transmitting.
-	 *
-	 * XXX I never get _out_ of txbusy? Debug that!
 	 */
 	if (sc->sc_txbusy) {
 		if (isr & AR933X_UART_INT_TX_EMPTY) {

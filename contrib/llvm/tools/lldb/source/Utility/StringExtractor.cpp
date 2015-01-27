@@ -63,6 +63,16 @@ xdigit_to_sint (char ch)
     return ch - '0';
 }
 
+static inline unsigned int
+xdigit_to_uint (uint8_t ch)
+{
+    if (ch >= 'a' && ch <= 'f')
+        return 10u + ch - 'a';
+    if (ch >= 'A' && ch <= 'F')
+        return 10u + ch - 'A';
+    return ch - '0';
+}
+
 //----------------------------------------------------------------------
 // StringExtractor constructor
 //----------------------------------------------------------------------
@@ -155,7 +165,7 @@ StringExtractor::GetU32 (uint32_t fail_value, int base)
 {
     if (m_index < m_packet.size())
     {
-        char *end = nullptr;
+        char *end = NULL;
         const char *start = m_packet.c_str();
         const char *cstr = start + m_index;
         uint32_t result = ::strtoul (cstr, &end, base);
@@ -174,7 +184,7 @@ StringExtractor::GetS32 (int32_t fail_value, int base)
 {
     if (m_index < m_packet.size())
     {
-        char *end = nullptr;
+        char *end = NULL;
         const char *start = m_packet.c_str();
         const char *cstr = start + m_index;
         int32_t result = ::strtol (cstr, &end, base);
@@ -194,7 +204,7 @@ StringExtractor::GetU64 (uint64_t fail_value, int base)
 {
     if (m_index < m_packet.size())
     {
-        char *end = nullptr;
+        char *end = NULL;
         const char *start = m_packet.c_str();
         const char *cstr = start + m_index;
         uint64_t result = ::strtoull (cstr, &end, base);
@@ -213,7 +223,7 @@ StringExtractor::GetS64 (int64_t fail_value, int base)
 {
     if (m_index < m_packet.size())
     {
-        char *end = nullptr;
+        char *end = NULL;
         const char *start = m_packet.c_str();
         const char *cstr = start + m_index;
         int64_t result = ::strtoll (cstr, &end, base);
@@ -419,18 +429,6 @@ StringExtractor::GetHexByteString (std::string &str)
 }
 
 size_t
-StringExtractor::GetHexByteStringFixedLength (std::string &str, uint32_t nibble_length)
-{
-    str.clear();
-
-    uint32_t nibble_count = 0;
-    for (const char *pch = Peek(); (nibble_count < nibble_length) && (pch != nullptr); str.append(1, GetHexU8(0, false)), pch = Peek (), nibble_count += 2)
-    {}
-
-    return str.size();
-}
-
-size_t
 StringExtractor::GetHexByteStringTerminatedBy (std::string &str,
                                                char terminator)
 {
@@ -440,7 +438,6 @@ StringExtractor::GetHexByteStringTerminatedBy (std::string &str,
         str.append(1, ch);
     if (Peek() && *Peek() == terminator)
         return str.size();
-
     str.clear();
     return str.size();
 }

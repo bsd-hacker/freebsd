@@ -522,12 +522,12 @@ macb_watchdog(struct macb_softc *sc)
 	ifp = sc->ifp;
 	if ((sc->flags & MACB_FLAG_LINK) == 0) {
 		if_printf(ifp, "watchdog timeout (missed link)\n");
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 		return;
 	}
 
 	if_printf(ifp, "watchdog timeout\n");
-	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+	ifp->if_oerrors++;
 	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	macbinit_locked(sc);
 	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
@@ -677,7 +677,7 @@ macb_tx_cleanup(struct macb_softc *sc)
 					  td->dmamap);
 			m_freem(td->buff);
 			td->buff = NULL;
-			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+			ifp->if_opackets++;
 		}
 
 		do {
@@ -732,7 +732,7 @@ macb_rx(struct macb_softc *sc)
 		bus_dmamap_sync(sc->dmatag_ring_rx,
 		    sc->rx_desc[sc->rx_cons].dmamap, BUS_DMASYNC_POSTREAD);
 		if (macb_new_rxbuf(sc, sc->rx_cons) != 0) {
-			if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+			ifp->if_iqdrops++;
 			first = sc->rx_cons;
 			
 			do  {
@@ -781,7 +781,7 @@ macb_rx(struct macb_softc *sc)
 			m->m_flags |= M_PKTHDR;
 			m->m_pkthdr.len = rxbytes;
 			m->m_pkthdr.rcvif = ifp;
-			if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+			ifp->if_ipackets++;
 
 			nsegs = 0;
 			MACB_UNLOCK(sc);

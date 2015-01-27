@@ -703,9 +703,6 @@ arge_attach(device_t dev)
 	ifp->if_snd.ifq_maxlen = ifqmaxlen;
 	IFQ_SET_READY(&ifp->if_snd);
 
-	/* Tell the upper layer(s) we support long frames. */
-	ifp->if_capabilities |= IFCAP_VLAN_MTU;
-
 	ifp->if_capenable = ifp->if_capabilities;
 #ifdef DEVICE_POLLING
 	ifp->if_capabilities |= IFCAP_POLLING;
@@ -2147,7 +2144,7 @@ arge_tx_locked(struct arge_softc *sc)
 
 		txd = &sc->arge_cdata.arge_txdesc[cons];
 
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		ifp->if_opackets++;
 
 		bus_dmamap_sync(sc->arge_cdata.arge_tx_tag, txd->tx_dmamap,
 		    BUS_DMASYNC_POSTWRITE);
@@ -2209,7 +2206,7 @@ arge_rx_locked(struct arge_softc *sc)
 		m->m_pkthdr.rcvif = ifp;
 		/* Skip 4 bytes of CRC */
 		m->m_pkthdr.len = m->m_len = packet_len - ETHER_CRC_LEN;
-		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		ifp->if_ipackets++;
 		rx_npkts++;
 
 		ARGE_UNLOCK(sc);

@@ -148,8 +148,6 @@ static struct ng_type typestruct = {
 };
 NETGRAPH_INIT(framerelay, &typestruct);
 
-#define ERROUT(x)		do { error = (x); goto done; } while (0)
-
 /*
  * Given a DLCI, return the index of the  context table entry for it,
  * Allocating a new one if needs be, or -1 if none available.
@@ -337,8 +335,10 @@ ngfrm_rcvdata(hook_p hook, item_p item)
 	char   *data;
 
 	/* Data doesn't come in from just anywhere (e.g debug hook) */
-	if (ctxp == NULL)
-		ERROUT(ENETDOWN);
+	if (ctxp == NULL) {
+		error = ENETDOWN;
+		goto bad;
+	}
 
 	/* If coming from downstream, decode it to a channel */
 	dlci = ctxp->dlci;
@@ -351,16 +351,20 @@ ngfrm_rcvdata(hook_p hook, item_p item)
 
 	/* If there is no live channel, throw it away */
 	if ((sc->downstream.hook == NULL)
-	    || ((ctxp->flags & CHAN_ACTIVE) == 0))
-		ERROUT(ENETDOWN);
+	    || ((ctxp->flags & CHAN_ACTIVE) == 0)) {
+		error = ENETDOWN;
+		goto bad;
+	}
 
 	/* Store the DLCI on the front of the packet */
 	alen = sc->addrlen;
 	if (alen == 0)
 		alen = 2;	/* default value for transmit */
 	M_PREPEND(m, alen, M_NOWAIT);
-	if (m == NULL)
-		ERROUT(ENOBUFS);
+	if (m == NULL) {
+		error = ENOBUFS;
+		goto bad;
+	}
 	data = mtod(m, char *);
 
 	/*
@@ -397,7 +401,7 @@ ngfrm_rcvdata(hook_p hook, item_p item)
 	NG_FWD_NEW_DATA(error, item, sc->downstream.hook, m);
 	return (error);
 
-done:
+bad:
 	NG_FREE_ITEM(item);
 	NG_FREE_M(m);
 	return (error);
@@ -418,8 +422,10 @@ ngfrm_decode(node_p node, item_p item)
 	struct mbuf *m;
 
 	NGI_GET_M(item, m);
-	if (m->m_len < 4 && (m = m_pullup(m, 4)) == NULL)
-		ERROUT(ENOBUFS);
+	if (m->m_len < 4 && (m = m_pullup(m, 4)) == NULL) {
+		error = ENOBUFS;
+		goto out;
+	}
 	data = mtod(m, char *);
 	if ((alen = sc->addrlen) == 0) {
 		sc->addrlen = alen = ngfrm_addrlen(data);
@@ -441,11 +447,14 @@ ngfrm_decode(node_p node, item_p item)
 		SHIFTIN(makeup + 3, data[3], dlci);
 		break;
 	default:
-		ERROUT(EINVAL);
+		error = EINVAL;
+		goto out;
 	}
 
-	if (dlci > 1023)
-		ERROUT(EINVAL);
+	if (dlci > 1023) {
+		error = EINVAL;
+		goto out;
+	}
 	ctxnum = sc->ALT[dlci];
 	if ((ctxnum & CTX_VALID) && sc->channel[ctxnum &= CTX_VALUE].hook) {
 		/* Send it */
@@ -455,7 +464,7 @@ ngfrm_decode(node_p node, item_p item)
 	} else {
 		error = ENETDOWN;
 	}
-done:
+out:
 	NG_FREE_ITEM(item);
 	NG_FREE_M(m);
 	return (error);

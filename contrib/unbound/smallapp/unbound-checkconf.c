@@ -392,17 +392,10 @@ morechecks(struct config_file* cfg, const char* fname)
 	
 	if(strcmp(cfg->module_conf, "iterator") != 0 
 		&& strcmp(cfg->module_conf, "validator iterator") != 0
-		&& strcmp(cfg->module_conf, "dns64 validator iterator") != 0
-		&& strcmp(cfg->module_conf, "dns64 iterator") != 0
 #ifdef WITH_PYTHONMODULE
 		&& strcmp(cfg->module_conf, "python iterator") != 0 
 		&& strcmp(cfg->module_conf, "python validator iterator") != 0 
 		&& strcmp(cfg->module_conf, "validator python iterator") != 0
-		&& strcmp(cfg->module_conf, "dns64 python iterator") != 0 
-		&& strcmp(cfg->module_conf, "dns64 python validator iterator") != 0 
-		&& strcmp(cfg->module_conf, "dns64 validator python iterator") != 0
-		&& strcmp(cfg->module_conf, "python dns64 iterator") != 0 
-		&& strcmp(cfg->module_conf, "python dns64 validator iterator") != 0 
 #endif
 		) {
 		fatal_exit("module conf '%s' is not known to work",
@@ -416,7 +409,7 @@ morechecks(struct config_file* cfg, const char* fname)
 		endpwent();
 	}
 #endif
-	if(cfg->remote_control_enable && cfg->remote_control_use_cert) {
+	if(cfg->remote_control_enable) {
 		check_chroot_string("server-key-file", &cfg->server_key_file,
 			cfg->chrootdir, cfg);
 		check_chroot_string("server-cert-file", &cfg->server_cert_file,
@@ -466,11 +459,6 @@ checkconf(const char* cfgfile, const char* opt)
 		config_delete(cfg);
 		exit(1);
 	}
-	if(opt) {
-		print_option(cfg, opt);
-		config_delete(cfg);
-		return;
-	}
 	morechecks(cfg, cfgfile);
 	check_mod(cfg, iter_get_funcblock());
 	check_mod(cfg, val_get_funcblock());
@@ -480,7 +468,8 @@ checkconf(const char* cfgfile, const char* opt)
 #endif
 	check_fwd(cfg);
 	check_hints(cfg);
-	printf("unbound-checkconf: no errors in %s\n", cfgfile);
+	if(opt) print_option(cfg, opt);
+	else	printf("unbound-checkconf: no errors in %s\n", cfgfile);
 	config_delete(cfg);
 }
 

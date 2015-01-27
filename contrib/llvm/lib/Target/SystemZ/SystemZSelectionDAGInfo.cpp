@@ -11,15 +11,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "systemz-selectiondag-info"
 #include "SystemZTargetMachine.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 
 using namespace llvm;
 
-#define DEBUG_TYPE "systemz-selectiondag-info"
-
-SystemZSelectionDAGInfo::SystemZSelectionDAGInfo(const DataLayout &DL)
-    : TargetSelectionDAGInfo(&DL) {}
+SystemZSelectionDAGInfo::
+SystemZSelectionDAGInfo(const SystemZTargetMachine &TM)
+  : TargetSelectionDAGInfo(TM) {
+}
 
 SystemZSelectionDAGInfo::~SystemZSelectionDAGInfo() {
 }
@@ -61,7 +62,7 @@ EmitTargetCodeForMemcpy(SelectionDAG &DAG, SDLoc DL, SDValue Chain,
   if (IsVolatile)
     return SDValue();
 
-  if (auto *CSize = dyn_cast<ConstantSDNode>(Size))
+  if (ConstantSDNode *CSize = dyn_cast<ConstantSDNode>(Size))
     return emitMemMem(DAG, DL, SystemZISD::MVC, SystemZISD::MVC_LOOP,
                       Chain, Dst, Src, CSize->getZExtValue());
   return SDValue();
@@ -92,11 +93,11 @@ EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc DL, SDValue Chain,
   if (IsVolatile)
     return SDValue();
 
-  if (auto *CSize = dyn_cast<ConstantSDNode>(Size)) {
+  if (ConstantSDNode *CSize = dyn_cast<ConstantSDNode>(Size)) {
     uint64_t Bytes = CSize->getZExtValue();
     if (Bytes == 0)
       return SDValue();
-    if (auto *CByte = dyn_cast<ConstantSDNode>(Byte)) {
+    if (ConstantSDNode *CByte = dyn_cast<ConstantSDNode>(Byte)) {
       // Handle cases that can be done using at most two of
       // MVI, MVHI, MVHHI and MVGHI.  The latter two can only be
       // used if ByteVal is all zeros or all ones; in other casees,
@@ -136,7 +137,7 @@ EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc DL, SDValue Chain,
     assert(Bytes >= 2 && "Should have dealt with 0- and 1-byte cases already");
 
     // Handle the special case of a memset of 0, which can use XC.
-    auto *CByte = dyn_cast<ConstantSDNode>(Byte);
+    ConstantSDNode *CByte = dyn_cast<ConstantSDNode>(Byte);
     if (CByte && CByte->getZExtValue() == 0)
       return emitMemMem(DAG, DL, SystemZISD::XC, SystemZISD::XC_LOOP,
                         Chain, Dst, Dst, Bytes);
@@ -193,7 +194,7 @@ EmitTargetCodeForMemcmp(SelectionDAG &DAG, SDLoc DL, SDValue Chain,
                         SDValue Src1, SDValue Src2, SDValue Size,
                         MachinePointerInfo Op1PtrInfo,
                         MachinePointerInfo Op2PtrInfo) const {
-  if (auto *CSize = dyn_cast<ConstantSDNode>(Size)) {
+  if (ConstantSDNode *CSize = dyn_cast<ConstantSDNode>(Size)) {
     uint64_t Bytes = CSize->getZExtValue();
     assert(Bytes > 0 && "Caller should have handled 0-size case");
     Chain = emitCLC(DAG, DL, Chain, Src1, Src2, Bytes);
@@ -229,7 +230,7 @@ EmitTargetCodeForMemchr(SelectionDAG &DAG, SDLoc DL, SDValue Chain,
   Ops.push_back(DAG.getConstant(SystemZ::CCMASK_SRST_FOUND, MVT::i32));
   Ops.push_back(Glue);
   VTs = DAG.getVTList(PtrVT, MVT::Glue);
-  End = DAG.getNode(SystemZISD::SELECT_CCMASK, DL, VTs, Ops);
+  End = DAG.getNode(SystemZISD::SELECT_CCMASK, DL, VTs, &Ops[0], Ops.size());
   return std::make_pair(End, Chain);
 }
 

@@ -96,8 +96,7 @@ GetServerAddress(void)
 	memcpy(p_ARP->target_ip, serverIPAddr, 4);
 
 	// wait until transmit is available
-	while (!(*AT91C_EMAC_TSR & AT91C_EMAC_BNQ)) 
-		continue;
+	while (!(*AT91C_EMAC_TSR & AT91C_EMAC_BNQ)) ;
 
   	*AT91C_EMAC_TSR |= AT91C_EMAC_COMP;
 	*AT91C_EMAC_TAR = (unsigned)transmitBuffer;
@@ -158,8 +157,7 @@ Send_TFTP_Packet(char *tftpData, unsigned tftpLength)
 
 	udpHdr->udp_cksum = SWAP16(t_checksum);
 
-	while (!(*AT91C_EMAC_TSR & AT91C_EMAC_BNQ))
-		continue;
+	while (!(*AT91C_EMAC_TSR & AT91C_EMAC_BNQ)) ;
 
   	*AT91C_EMAC_TSR |= AT91C_EMAC_COMP;
 	*AT91C_EMAC_TAR = (unsigned)tftpSendPacket;

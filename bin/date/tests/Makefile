@@ -4,6 +4,6 @@
 
 TESTSDIR=	${TESTSBASE}/bin/date
 
-ATF_TESTS_SH=	format_string_test
+TAP_TESTS_SH=	legacy_test
 
 .include <bsd.test.mk>

@@ -70,11 +70,13 @@ MLINKS+=libradius.3 rad_acct_open.3 \
 
 WARNS?=		3
 
-.if ${MK_OPENSSL} != "no"
-LIBADD+=	crypto
-CFLAGS+=	-DWITH_SSL
+.if ${MK_OPENSSL} == "no"
+DPADD=		${LIBMD}
+LDADD=		-lmd
 .else
-LIBADD+=	md
+DPADD=		${LIBCRYPTO}
+LDADD=		-lcrypto
+CFLAGS+=	-DWITH_SSL
 .endif
 
 .include <bsd.lib.mk>

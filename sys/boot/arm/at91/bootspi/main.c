@@ -43,8 +43,6 @@
 #include "spi_flash.h"
 #include "ee.h"
 
-int main(void);
-
 int
 main(void)
 {

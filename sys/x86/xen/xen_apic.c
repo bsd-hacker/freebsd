@@ -40,11 +40,9 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/cpufunc.h>
 #include <machine/cpu.h>
-#include <machine/intr_machdep.h>
 #include <machine/smp.h>
 
 #include <x86/apicreg.h>
-#include <x86/apicvar.h>
 
 #include <xen/xen-os.h>
 #include <xen/features.h>
@@ -258,7 +256,6 @@ xen_pv_lapic_enable_cmc(void)
 
 }
 
-#ifdef SMP
 static void
 xen_pv_lapic_ipi_raw(register_t icrlo, u_int dest)
 {
@@ -311,7 +308,6 @@ xen_pv_lapic_ipi_wait(int delay)
 	XEN_APIC_UNSUPPORTED;
 	return (0);
 }
-#endif
 
 static int
 xen_pv_lapic_set_lvt_mask(u_int apic_id, u_int lvt, u_char masked)
@@ -367,11 +363,9 @@ struct apic_ops xen_apic_ops = {
 	.disable_pmc		= xen_pv_lapic_disable_pmc,
 	.reenable_pmc		= xen_pv_lapic_reenable_pmc,
 	.enable_cmc		= xen_pv_lapic_enable_cmc,
-#ifdef SMP
 	.ipi_raw		= xen_pv_lapic_ipi_raw,
 	.ipi_vectored		= xen_pv_lapic_ipi_vectored,
 	.ipi_wait		= xen_pv_lapic_ipi_wait,
-#endif
 	.set_lvt_mask		= xen_pv_lapic_set_lvt_mask,
 	.set_lvt_mode		= xen_pv_lapic_set_lvt_mode,
 	.set_lvt_polarity	= xen_pv_lapic_set_lvt_polarity,

@@ -10,6 +10,8 @@ MAN=	id.1 groups.1 whoami.1
 
 .if ${MK_AUDIT} != "no"
 CFLAGS+=	-DUSE_BSM_AUDIT
+DPADD+=	${LIBBSM}
+LDADD+=	-lbsm
 .endif
 
 .include <bsd.prog.mk>

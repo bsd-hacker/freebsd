@@ -40,7 +40,6 @@
 
 #include <linux/sched.h>
 #include <linux/mm.h>
-#include <linux/fs.h>
 
 #include "mthca_dev.h"
 #include "mthca_cmd.h"

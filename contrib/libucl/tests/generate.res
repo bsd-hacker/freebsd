@@ -1,4 +1,3 @@
-key0 = 0.100000;
 key1 = "test string";
 key2 = "test \\nstring";
 key3 = "  test string    \n";

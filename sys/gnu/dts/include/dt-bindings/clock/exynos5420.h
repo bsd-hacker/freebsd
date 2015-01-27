@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013 Samsung Electronics Co., Ltd.
- * Author: Andrzej Hajda <a.hajda@samsung.com>
+ * Author: Andrzej Haja <a.hajda@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -58,11 +58,9 @@
 #define CLK_SCLK_GSCL_WA	156
 #define CLK_SCLK_GSCL_WB	157
 #define CLK_SCLK_HDMIPHY	158
-#define CLK_MAU_EPLL		159
-#define CLK_SCLK_HSIC_12M	160
-#define CLK_SCLK_MPHY_IXTAL24	161
 
 /* gate clocks */
+#define CLK_ACLK66_PERIC	256
 #define CLK_UART0		257
 #define CLK_UART1		258
 #define CLK_UART2		259
@@ -71,10 +69,10 @@
 #define CLK_I2C1		262
 #define CLK_I2C2		263
 #define CLK_I2C3		264
-#define CLK_USI0		265
-#define CLK_USI1		266
-#define CLK_USI2		267
-#define CLK_USI3		268
+#define CLK_I2C4		265
+#define CLK_I2C5		266
+#define CLK_I2C6		267
+#define CLK_I2C7		268
 #define CLK_I2C_HDMI		269
 #define CLK_TSADC		270
 #define CLK_SPI0		271
@@ -87,9 +85,9 @@
 #define CLK_PCM2		278
 #define CLK_PWM			279
 #define CLK_SPDIF		280
-#define CLK_USI4		281
-#define CLK_USI5		282
-#define CLK_USI6		283
+#define CLK_I2C8		281
+#define CLK_I2C9		282
+#define CLK_I2C10		283
 #define CLK_ACLK66_PSGEN	300
 #define CLK_CHIPID		301
 #define CLK_SYSREG		302
@@ -142,8 +140,7 @@
 #define CLK_HDMI		413
 #define CLK_ACLK300_DISP1	420
 #define CLK_FIMD1		421
-#define CLK_SMMU_FIMD1M0	422
-#define CLK_SMMU_FIMD1M1	423
+#define CLK_SMMU_FIMD1		422
 #define CLK_ACLK166		430
 #define CLK_MIXER		431
 #define CLK_ACLK266		440
@@ -155,7 +152,6 @@
 #define CLK_JPEG		451
 #define CLK_JPEG2		452
 #define CLK_SMMU_JPEG		453
-#define CLK_SMMU_JPEG2		454
 #define CLK_ACLK300_GSCL	460
 #define CLK_SMMU_GSCL0		461
 #define CLK_SMMU_GSCL1		462
@@ -163,7 +159,7 @@
 #define CLK_GSCL_WB		464
 #define CLK_GSCL0		465
 #define CLK_GSCL1		466
-#define CLK_FIMC_3AA		467
+#define CLK_CLK_3AA		467
 #define CLK_ACLK266_G2D		470
 #define CLK_SSS			471
 #define CLK_SLIM_SSS		472
@@ -176,34 +172,12 @@
 #define CLK_SMMU_FIMCL1		493
 #define CLK_SMMU_FIMCL3		494
 #define CLK_FIMC_LITE3		495
-#define CLK_FIMC_LITE0		496
-#define CLK_FIMC_LITE1		497
 #define CLK_ACLK_G3D		500
 #define CLK_G3D			501
 #define CLK_SMMU_MIXER		502
-#define CLK_SMMU_G2D		503
-#define CLK_SMMU_MDMA0		504
-#define CLK_MC			505
-#define CLK_TOP_RTC		506
-#define CLK_SCLK_UART_ISP	510
-#define CLK_SCLK_SPI0_ISP	511
-#define CLK_SCLK_SPI1_ISP	512
-#define CLK_SCLK_PWM_ISP	513
-#define CLK_SCLK_ISP_SENSOR0	514
-#define CLK_SCLK_ISP_SENSOR1	515
-#define CLK_SCLK_ISP_SENSOR2	516
-#define CLK_ACLK432_SCALER	517
-#define CLK_ACLK432_CAM		518
-#define CLK_ACLK_FL1550_CAM	519
-#define CLK_ACLK550_CAM		520
 
 /* mux clocks */
 #define CLK_MOUT_HDMI		640
-#define CLK_MOUT_G3D		641
-#define CLK_MOUT_VPLL		642
-#define CLK_MOUT_MAUDIO0	643
-#define CLK_MOUT_USER_ACLK333	644
-#define CLK_MOUT_SW_ACLK333	645
 
 /* divider clocks */
 #define CLK_DOUT_PIXEL		768

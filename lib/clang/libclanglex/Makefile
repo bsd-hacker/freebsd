@@ -28,7 +28,7 @@ SRCS=	HeaderMap.cpp \
 	TokenConcatenation.cpp \
 	TokenLexer.cpp
 
-TGHDRS=	AttrSpellingListIndex \
+TGHDRS=	AttrSpellings \
 	DiagnosticCommonKinds \
 	DiagnosticLexKinds
 

@@ -30,7 +30,7 @@
  * dynamic array of strings later when the VM subsystem is up.
  *
  * We make these available through the kenv(2) syscall for userland
- * and through kern_getenv()/freeenv() kern_setenv() kern_unsetenv() testenv() for
+ * and through getenv()/freeenv() setenv() unsetenv() testenv() for
  * the kernel.
  */
 
@@ -156,7 +156,7 @@ sys_kenv(td, uap)
 		if (error)
 			goto done;
 #endif
-		value = kern_getenv(name);
+		value = getenv(name);
 		if (value == NULL) {
 			error = ENOENT;
 			goto done;
@@ -188,7 +188,7 @@ sys_kenv(td, uap)
 		error = mac_kenv_check_set(td->td_ucred, name, value);
 		if (error == 0)
 #endif
-			kern_setenv(name, value);
+			setenv(name, value);
 		free(value, M_TEMP);
 		break;
 	case KENV_UNSET:
@@ -197,7 +197,7 @@ sys_kenv(td, uap)
 		if (error)
 			goto done;
 #endif
-		error = kern_unsetenv(name);
+		error = unsetenv(name);
 		if (error)
 			error = ENOENT;
 		break;
@@ -224,7 +224,7 @@ init_static_kenv(char *buf, size_t len)
 static void
 init_dynamic_kenv(void *data __unused)
 {
-	char *cp, *cpnext;
+	char *cp;
 	size_t len;
 	int i;
 
@@ -232,8 +232,7 @@ init_dynamic_kenv(void *data __unused)
 		M_WAITOK | M_ZERO);
 	i = 0;
 	if (kern_envp && *kern_envp != '\0') {
-		for (cp = kern_envp; cp != NULL; cp = cpnext) {
-			cpnext = kernenv_next(cp);
+		for (cp = kern_envp; cp != NULL; cp = kernenv_next(cp)) {
 			len = strlen(cp) + 1;
 			if (len > KENV_MNAMELEN + 1 + KENV_MVALLEN + 1) {
 				printf(
@@ -244,7 +243,6 @@ init_dynamic_kenv(void *data __unused)
 			if (i < KENV_SIZE) {
 				kenvp[i] = malloc(len, M_KENV, M_WAITOK);
 				strcpy(kenvp[i++], cp);
-				memset(cp, 0, strlen(cp));
 			} else
 				printf(
 				"WARNING: too many kenv strings, ignoring %s\n",
@@ -262,10 +260,8 @@ void
 freeenv(char *env)
 {
 
-	if (dynamic_kenv && env != NULL) {
-		memset(env, 0, strlen(env));
+	if (dynamic_kenv)
 		free(env, M_KENV);
-	}
 }
 
 /*
@@ -316,7 +312,7 @@ _getenv_static(const char *name)
  * after use.
  */
 char *
-kern_getenv(const char *name)
+getenv(const char *name)
 {
 	char buf[KENV_MNAMELEN + 1 + KENV_MVALLEN + 1];
 	char *ret;
@@ -377,7 +373,7 @@ setenv_static(const char *name, const char *value)
  * Set an environment variable by name.
  */
 int
-kern_setenv(const char *name, const char *value)
+setenv(const char *name, const char *value)
 {
 	char *buf, *cp, *oldenv;
 	int namelen, vallen, i;
@@ -426,7 +422,7 @@ kern_setenv(const char *name, const char *value)
  * Unset an environment variable string.
  */
 int
-kern_unsetenv(const char *name)
+unsetenv(const char *name)
 {
 	char *cp, *oldenv;
 	int i, j;
@@ -441,7 +437,6 @@ kern_unsetenv(const char *name)
 			kenvp[i++] = kenvp[j];
 		kenvp[i] = NULL;
 		mtx_unlock(&kenv_lock);
-		memset(oldenv, 0, strlen(oldenv));
 		free(oldenv, M_KENV);
 		return (0);
 	}

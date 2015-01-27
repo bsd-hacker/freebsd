@@ -7,6 +7,9 @@ MAN=
 
 CFLAGS+= -I${.CURDIR}/../../../contrib/ntp/include -I${.CURDIR}/../
 
-LIBADD=	ntp
+DPADD=	${LIBNTP}
+LDADD=	${LIBNTP}
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

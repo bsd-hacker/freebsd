@@ -14,13 +14,16 @@ SRCS+=	opt_ktrace.h opt_sysvipc.h
 CLEANFILES=	svr4_assym.h svr4_genassym.o
 
 svr4_assym.h: svr4_genassym.o
-	sh ${SYSDIR}/kern/genassym.sh svr4_genassym.o > ${.TARGET}
+.if exists(@)
+svr4_assym.h: @/kern/genassym.sh
+.endif
+	sh @/kern/genassym.sh svr4_genassym.o > ${.TARGET}
 
 svr4_locore.o: svr4_locore.s svr4_assym.h
 	${CC} -c -x assembler-with-cpp -DLOCORE ${CFLAGS} \
 		${.IMPSRC} -o ${.TARGET}
 
-svr4_genassym.o: svr4_genassym.c svr4.h
+svr4_genassym.o: svr4_genassym.c svr4.h @ machine
 	${CC} -c ${CFLAGS:N-fno-common} ${.IMPSRC}
 
 .if !defined(KERNBUILDDIR) && defined(DEBUG)

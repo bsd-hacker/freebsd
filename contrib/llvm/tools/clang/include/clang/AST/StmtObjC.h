@@ -107,7 +107,7 @@ public:
   SourceLocation getLocStart() const LLVM_READONLY { return AtCatchLoc; }
   SourceLocation getLocEnd() const LLVM_READONLY { return Body->getLocEnd(); }
 
-  bool hasEllipsis() const { return getCatchParamDecl() == nullptr; }
+  bool hasEllipsis() const { return getCatchParamDecl() == 0; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ObjCAtCatchStmtClass;
@@ -222,13 +222,13 @@ public:
   /// \brief Retrieve the \@finally statement, if any.
   const ObjCAtFinallyStmt *getFinallyStmt() const {
     if (!HasFinally)
-      return nullptr;
+      return 0;
     
     return cast_or_null<ObjCAtFinallyStmt>(getStmts()[1 + NumCatchStmts]);
   }
   ObjCAtFinallyStmt *getFinallyStmt() {
     if (!HasFinally)
-      return nullptr;
+      return 0;
     
     return cast_or_null<ObjCAtFinallyStmt>(getStmts()[1 + NumCatchStmts]);
   }

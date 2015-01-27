@@ -42,7 +42,6 @@
 #ifndef __WIN__
 #include <unistd.h>
 #endif
-#include <sys/socket.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

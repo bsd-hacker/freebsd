@@ -536,8 +536,6 @@ unionfs_relookup(struct vnode *dvp, struct vnode **vpp,
 		cn->cn_flags |= (cnp->cn_flags & (DOWHITEOUT | SAVESTART));
 	else if (RENAME == nameiop)
 		cn->cn_flags |= (cnp->cn_flags & SAVESTART);
-	else if (nameiop == CREATE)
-		cn->cn_flags |= NOCACHE;
 
 	vref(dvp);
 	VOP_UNLOCK(dvp, LK_RELEASE);

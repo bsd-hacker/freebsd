@@ -2,7 +2,8 @@
 
 LIB=	gssapi_spnego
 LDFLAGS= -Wl,-Bsymbolic -Wl,--no-undefined
-LIBADD=	gssapi heimbase asn1 roken
+LDADD=	-lgssapi -lheimbase -lasn1 -lroken
+DPADD=	${LIBGSSAPI} ${LIBHEIMBASE} ${LIBASN1} ${LIBROKEN}
 SHLIB_MAJOR=	10
 
 SRCS=	accept_sec_context.c \
@@ -45,10 +46,10 @@ ${GEN}: spnego.asn1 spnego.opt
 .SUFFIXES: .h .c .x .hx
 
 .x.c:   
-	${CP} ${.IMPSRC} ${.TARGET}
+	cp ${.IMPSRC} ${.TARGET}
 
 .hx.h:
-	${CP} ${.IMPSRC} ${.TARGET}
+	cp ${.IMPSRC} ${.TARGET}
 
 .include <bsd.lib.mk>
 

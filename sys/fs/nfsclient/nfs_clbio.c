@@ -129,20 +129,23 @@ ncl_getpages(struct vop_getpages_args *ap)
 	npages = btoc(count);
 
 	/*
-	 * Since the caller has busied the requested page, that page's valid
-	 * field will not be changed by other threads.
-	 */
-	vm_page_assert_xbusied(pages[ap->a_reqpage]);
-
-	/*
 	 * If the requested page is partially valid, just return it and
 	 * allow the pager to zero-out the blanks.  Partially valid pages
 	 * can only occur at the file EOF.
 	 */
+	VM_OBJECT_WLOCK(object);
 	if (pages[ap->a_reqpage]->valid != 0) {
-		vm_pager_free_nonreq(object, pages, ap->a_reqpage, npages);
-		return (VM_PAGER_OK);
+		for (i = 0; i < npages; ++i) {
+			if (i != ap->a_reqpage) {
+				vm_page_lock(pages[i]);
+				vm_page_free(pages[i]);
+				vm_page_unlock(pages[i]);
+			}
+		}
+		VM_OBJECT_WUNLOCK(object);
+		return (0);
 	}
+	VM_OBJECT_WUNLOCK(object);
 
 	/*
 	 * We use only the kva address for the buffer, but this is extremely
@@ -172,7 +175,15 @@ ncl_getpages(struct vop_getpages_args *ap)
 
 	if (error && (uio.uio_resid == count)) {
 		ncl_printf("nfs_getpages: error %d\n", error);
-		vm_pager_free_nonreq(object, pages, ap->a_reqpage, npages);
+		VM_OBJECT_WLOCK(object);
+		for (i = 0; i < npages; ++i) {
+			if (i != ap->a_reqpage) {
+				vm_page_lock(pages[i]);
+				vm_page_free(pages[i]);
+				vm_page_unlock(pages[i]);
+			}
+		}
+		VM_OBJECT_WUNLOCK(object);
 		return (VM_PAGER_ERROR);
 	}
 

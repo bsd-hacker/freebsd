@@ -23,50 +23,52 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+#ifndef lint
+static const char rcsid[] =
+  "$FreeBSD$";
+#endif
 
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
+
+#include <stdlib.h>
+#include <unistd.h>
+
+#include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_gre.h>
+#include <net/route.h>
 
 #include <ctype.h>
-#include <limits.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <err.h>
+#include <errno.h>
 
 #include "ifconfig.h"
-
-#define	GREBITS	"\020\01ENABLE_CSUM\02ENABLE_SEQ"
 
 static	void gre_status(int s);
 
 static void
 gre_status(int s)
 {
-	uint32_t opts = 0;
+	int grekey = 0;
 
-	ifr.ifr_data = (caddr_t)&opts;
+	ifr.ifr_data = (caddr_t)&grekey;
 	if (ioctl(s, GREGKEY, &ifr) == 0)
-		if (opts != 0)
-			printf("\tgrekey: 0x%x (%u)\n", opts, opts);
-	opts = 0;
-	if (ioctl(s, GREGOPTS, &ifr) != 0 || opts == 0)
-		return;
-	printb("\toptions", opts, GREBITS);
-	putchar('\n');
+		if (grekey != 0)
+			printf("\tgrekey: %d\n", grekey);
 }
 
 static void
 setifgrekey(const char *val, int dummy __unused, int s, 
     const struct afswtch *afp)
 {
-	uint32_t grekey = strtol(val, NULL, 0);
+	uint32_t grekey = atol(val);
 
 	strncpy(ifr.ifr_name, name, sizeof (ifr.ifr_name));
 	ifr.ifr_data = (caddr_t)&grekey;
@@ -74,35 +76,8 @@ setifgrekey(const char *val, int dummy __unused, int s,
 		warn("ioctl (set grekey)");
 }
 
-static void
-setifgreopts(const char *val, int d, int s, const struct afswtch *afp)
-{
-	uint32_t opts;
-
-	ifr.ifr_data = (caddr_t)&opts;
-	if (ioctl(s, GREGOPTS, &ifr) == -1) {
-		warn("ioctl(GREGOPTS)");
-		return;
-	}
-
-	if (d < 0)
-		opts &= ~(-d);
-	else
-		opts |= d;
-
-	if (ioctl(s, GRESOPTS, &ifr) == -1) {
-		warn("ioctl(GIFSOPTS)");
-		return;
-	}
-}
-
-
 static struct cmd gre_cmds[] = {
 	DEF_CMD_ARG("grekey",			setifgrekey),
-	DEF_CMD("enable_csum", GRE_ENABLE_CSUM,	setifgreopts),
-	DEF_CMD("-enable_csum",-GRE_ENABLE_CSUM,setifgreopts),
-	DEF_CMD("enable_seq", GRE_ENABLE_SEQ,	setifgreopts),
-	DEF_CMD("-enable_seq",-GRE_ENABLE_SEQ,	setifgreopts),
 };
 static struct afswtch af_gre = {
 	.af_name	= "af_gre",

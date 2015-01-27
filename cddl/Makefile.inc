@@ -8,6 +8,7 @@ IGNORE_PRAGMA=	YES
 CFLAGS+=	-DNEED_SOLARIS_BOOLEAN
 
 WARNS?=		6
+CSTD?=		gnu89
 
 # Do not lint the CDDL stuff. It is all externally maintained and
 # lint output is wasteful noise here.

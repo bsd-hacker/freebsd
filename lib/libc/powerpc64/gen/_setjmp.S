@@ -80,7 +80,6 @@ ENTRY(_setjmp)
 	std	%r31,40 + 22*8(%r3)
 	li	%r3,0
 	blr
-END(_setjmp)
 
 ENTRY(_longjmp)
 	ld	%r9,40 + 0*8(%r3)
@@ -114,6 +113,5 @@ ENTRY(_longjmp)
 	bnelr
 	li	%r3,1
 	blr
-END(_longjmp)
 
 	.section .note.GNU-stack,"",%progbits

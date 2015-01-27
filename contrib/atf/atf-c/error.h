@@ -1,4 +1,7 @@
-/* Copyright (c) 2008 The NetBSD Foundation, Inc.
+/*
+ * Automated Testing Framework (atf)
+ *
+ * Copyright (c) 2008 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,15 +24,16 @@
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #if !defined(ATF_C_ERROR_H)
 #define ATF_C_ERROR_H
 
-#include <atf-c/error_fwd.h>
-
 #include <stdbool.h>
 #include <stddef.h>
+
+#include <atf-c/error_fwd.h>
 
 /* ---------------------------------------------------------------------
  * The "atf_error" type.
@@ -64,4 +68,4 @@ const char *atf_libc_error_msg(const atf_error_t);
 
 atf_error_t atf_no_memory_error(void);
 
-#endif /* !defined(ATF_C_ERROR_H) */
+#endif /* ATF_C_ERROR_H */

@@ -36,13 +36,17 @@
  * SUCH DAMAGE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
+/* $Id: inet_ntop.c,v 1.8 2005-02-09 02:25:46 guy Exp $ */
+
+#ifndef lint
+static const char rcsid[] _U_ =
+     "@(#) $Header: /tcpdump/master/tcpdump/missing/inet_ntop.c,v 1.8 2005-02-09 02:25:46 guy Exp $";
 #endif
 
 #include <tcpdump-stdinc.h>
 
 #include <stdio.h>
+#include <errno.h>
 
 /*
  *
@@ -122,9 +126,7 @@ inet_ntop_v6 (const u_char *src, char *dst, size_t size)
   for (i = 0; i < IN6ADDRSZ; i++)
       words[i/2] |= (src[i] << ((1 - (i % 2)) << 3));
 
-  best.len = 0;
   best.base = -1;
-  cur.len = 0;
   cur.base  = -1;
   for (i = 0; i < (IN6ADDRSZ / INT16SZ); i++)
   {
@@ -178,7 +180,7 @@ inet_ntop_v6 (const u_char *src, char *dst, size_t size)
       tp += strlen(tp);
       break;
     }
-    tp += sprintf (tp, "%lx", words[i]);
+    tp += sprintf (tp, "%lX", words[i]);
   }
 
   /* Was it a trailing run of 0x00's?
@@ -195,6 +197,7 @@ inet_ntop_v6 (const u_char *src, char *dst, size_t size)
     return (NULL);
   }
   return strcpy (dst, tmp);
+  return (NULL);
 }
 #endif   /* INET6 */
 

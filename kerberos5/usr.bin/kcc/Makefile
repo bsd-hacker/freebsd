@@ -8,13 +8,18 @@ CFLAGS+=	-I${KRB5DIR}/lib/hx509 \
 		-I${KRB5DIR}/lib/asn1 \
 		-I${KRB5DIR}/lib/roken \
 		-I${KRB5DIR}/lib/sl -I.
-LIBADD=	krb5 roken asn1 kafs5 edit sl vers
+DPADD=	${LIBKRB5} ${LIBHEIMNTLM} ${LIBROKEN} ${LIBASN1} ${LIBCRYPTO} \
+	${LIBCRYPT} ${LIBKAFS5} ${LIBSL} ${LIBVERS} ${LIBEDIT}
+LDADD=	-lkrb5 -lheimntlm -lroken -lasn1 -lcrypto -lcrypt -lkafs5 ${LIBSL} \
+	${LIBVERS} -ledit
 SRCS=	kcc.c \
 	kcc-commands.c \
 	kcc-commands.h \
 	klist.c \
 	kswitch.c \
 	copy_cred_cache.c
+
+NO_PIE=	yes
 
 kcc-commands.h: kcc-commands.in
 	${SLC} ${.ALLSRC:M*.in}

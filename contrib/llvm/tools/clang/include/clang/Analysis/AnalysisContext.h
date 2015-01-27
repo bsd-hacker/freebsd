@@ -19,8 +19,8 @@
 #include "clang/Analysis/CFG.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/Allocator.h"
-#include <memory>
 
 namespace clang {
 
@@ -69,16 +69,16 @@ class AnalysisDeclContext {
 
   const Decl * const D;
 
-  std::unique_ptr<CFG> cfg, completeCFG;
-  std::unique_ptr<CFGStmtMap> cfgStmtMap;
+  OwningPtr<CFG> cfg, completeCFG;
+  OwningPtr<CFGStmtMap> cfgStmtMap;
 
   CFG::BuildOptions cfgBuildOptions;
   CFG::BuildOptions::ForcedBlkExprs *forcedBlkExprs;
 
   bool builtCFG, builtCompleteCFG;
-  std::unique_ptr<ParentMap> PM;
-  std::unique_ptr<PseudoConstantAnalysis> PCA;
-  std::unique_ptr<CFGReverseBlockReachabilityAnalysis> CFA;
+  OwningPtr<ParentMap> PM;
+  OwningPtr<PseudoConstantAnalysis> PCA;
+  OwningPtr<CFGReverseBlockReachabilityAnalysis> CFA;
 
   llvm::BumpPtrAllocator A;
 
@@ -252,7 +252,7 @@ public:
   virtual void Profile(llvm::FoldingSetNodeID &ID) = 0;
 
   void dumpStack(raw_ostream &OS, StringRef Indent = "") const;
-  void dumpStack() const;
+  LLVM_ATTRIBUTE_USED void dumpStack() const;
 
 public:
   static void ProfileCommon(llvm::FoldingSetNodeID &ID,
@@ -287,11 +287,11 @@ public:
   const CFGBlock *getCallSiteBlock() const { return Block; }
 
   /// Return true if the current LocationContext has no caller context.
-  bool inTopFrame() const override { return getParent() == nullptr;  }
+  virtual bool inTopFrame() const { return getParent() == 0;  }
 
   unsigned getIndex() const { return Index; }
 
-  void Profile(llvm::FoldingSetNodeID &ID) override;
+  void Profile(llvm::FoldingSetNodeID &ID);
 
   static void Profile(llvm::FoldingSetNodeID &ID, AnalysisDeclContext *ctx,
                       const LocationContext *parent, const Stmt *s,
@@ -317,7 +317,7 @@ class ScopeContext : public LocationContext {
 public:
   ~ScopeContext() {}
 
-  void Profile(llvm::FoldingSetNodeID &ID) override;
+  void Profile(llvm::FoldingSetNodeID &ID);
 
   static void Profile(llvm::FoldingSetNodeID &ID, AnalysisDeclContext *ctx,
                       const LocationContext *parent, const Stmt *s) {
@@ -349,7 +349,7 @@ public:
   
   const void *getContextData() const { return ContextData; }
 
-  void Profile(llvm::FoldingSetNodeID &ID) override;
+  void Profile(llvm::FoldingSetNodeID &ID);
 
   static void Profile(llvm::FoldingSetNodeID &ID, AnalysisDeclContext *ctx,
                       const LocationContext *parent, const BlockDecl *bd,
@@ -409,8 +409,7 @@ public:
                              bool addInitializers = false,
                              bool addTemporaryDtors = false,
                              bool synthesizeBodies = false,
-                             bool addStaticInitBranches = false,
-                             bool addCXXNewAllocator = true);
+                             bool addStaticInitBranches = false);
 
   ~AnalysisDeclContextManager();
 
@@ -438,8 +437,7 @@ public:
 
   // Get the top level stack frame.
   const StackFrameContext *getStackFrame(const Decl *D) {
-    return LocContexts.getStackFrame(getContext(D), nullptr, nullptr, nullptr,
-                                     0);
+    return LocContexts.getStackFrame(getContext(D), 0, 0, 0, 0);
   }
 
   // Get a stack frame with parent.

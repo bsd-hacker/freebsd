@@ -11,22 +11,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CODEGEN_ASMPRINTER_DIEHASH_H__
-#define CODEGEN_ASMPRINTER_DIEHASH_H__
-
 #include "DIE.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/MD5.h"
 
 namespace llvm {
 
-class AsmPrinter;
 class CompileUnit;
 
 /// \brief An object containing the capability of hashing and adding hash
 /// attributes onto a DIE.
 class DIEHash {
-
   // The entry for a particular attribute.
   struct AttrEntry {
     const DIEValue *Val;
@@ -89,8 +84,6 @@ class DIEHash {
   };
 
 public:
-  DIEHash(AsmPrinter *A = nullptr) : AP(A) {}
-
   /// \brief Computes the ODR signature.
   uint64_t computeDIEODRSignature(const DIE &Die);
 
@@ -112,17 +105,13 @@ private:
   void computeHash(const DIE &Die);
 
   // Routines that add DIEValues to the hash.
-public:
-  /// \brief Adds \param Value to the hash.
-  void update(uint8_t Value) { Hash.update(Value); }
-
+private:
   /// \brief Encodes and adds \param Value to the hash as a ULEB128.
   void addULEB128(uint64_t Value);
 
   /// \brief Encodes and adds \param Value to the hash as a SLEB128.
   void addSLEB128(int64_t Value);
 
-private:
   /// \brief Adds \param Str to the hash and includes a NULL byte.
   void addString(StringRef Str);
 
@@ -132,13 +121,6 @@ private:
 
   /// \brief Hashes the attributes in \param Attrs in order.
   void hashAttributes(const DIEAttrs &Attrs, dwarf::Tag Tag);
-
-  /// \brief Hashes the data in a block like DIEValue, e.g. DW_FORM_block or
-  /// DW_FORM_exprloc.
-  void hashBlockData(const SmallVectorImpl<DIEValue *> &Values);
-
-  /// \brief Hashes the contents pointed to in the .debug_loc section.
-  void hashLocList(const DIELocList &LocList);
 
   /// \brief Hashes an individual attribute.
   void hashAttribute(AttrEntry Attr, dwarf::Tag Tag);
@@ -154,16 +136,12 @@ private:
                                 StringRef Name);
 
   /// \brief Hashes a reference to a previously referenced type DIE.
-  void hashRepeatedTypeReference(dwarf::Attribute Attribute,
-                                 unsigned DieNumber);
+  void hashRepeatedTypeReference(dwarf::Attribute Attribute, unsigned DieNumber);
 
   void hashNestedType(const DIE &Die, StringRef Name);
 
 private:
   MD5 Hash;
-  AsmPrinter *AP;
   DenseMap<const DIE *, unsigned> Numbering;
 };
 }
-
-#endif

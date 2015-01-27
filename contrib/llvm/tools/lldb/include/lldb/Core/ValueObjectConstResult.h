@@ -80,9 +80,6 @@ public:
     virtual ConstString
     GetTypeName();
 
-    virtual ConstString
-    GetDisplayTypeName();
-    
     virtual bool
     IsInScope ();
 

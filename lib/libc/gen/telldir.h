@@ -36,7 +36,6 @@
 #define	_TELLDIR_H_
 
 #include <sys/queue.h>
-#include <stdbool.h>
 
 /*
  * One of these structures is malloced to describe the current directory
@@ -60,7 +59,6 @@ struct _telldir {
 	long	td_loccnt;	/* index of entry for sequential readdir's */
 };
 
-bool		_filldir(DIR *, bool);
 struct dirent	*_readdir_unlocked(DIR *, int);
 void 		_reclaim_telldir(DIR *);
 void 		_seekdir(DIR *, long);

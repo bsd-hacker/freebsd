@@ -2,7 +2,7 @@
 
 PROG=	mkulzma
 MAN=	mkulzma.8
-
-LIBADD=	lzma
+DPADD=	${LIBLZMA}
+LDADD=	-llzma
 
 .include <bsd.prog.mk>

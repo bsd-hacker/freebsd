@@ -24,7 +24,6 @@
 #include "clang/Tooling/ArgumentsAdjusters.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Config/llvm-config.h"
 #include "llvm/Option/Option.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
@@ -32,13 +31,11 @@
 #include "llvm/Support/raw_ostream.h"
 
 // For chdir, see the comment in ClangTool::run for more information.
-#ifdef LLVM_ON_WIN32
+#ifdef _WIN32
 #  include <direct.h>
 #else
 #  include <unistd.h>
 #endif
-
-#define DEBUG_TYPE "clang-tooling"
 
 namespace clang {
 namespace tooling {
@@ -54,8 +51,10 @@ FrontendActionFactory::~FrontendActionFactory() {}
 /// \brief Builds a clang driver initialized for running clang tools.
 static clang::driver::Driver *newDriver(clang::DiagnosticsEngine *Diagnostics,
                                         const char *BinaryName) {
+  const std::string DefaultOutputName = "a.out";
   clang::driver::Driver *CompilerDriver = new clang::driver::Driver(
-      BinaryName, llvm::sys::getDefaultTargetTriple(), *Diagnostics);
+    BinaryName, llvm::sys::getDefaultTargetTriple(),
+    DefaultOutputName, *Diagnostics);
   CompilerDriver->setTitle("clang_based_tool");
   return CompilerDriver;
 }
@@ -75,7 +74,7 @@ static const llvm::opt::ArgStringList *getCC1Arguments(
     Jobs.Print(error_stream, "; ", true);
     Diagnostics->Report(clang::diag::err_fe_expected_compiler_job)
         << error_stream.str();
-    return nullptr;
+    return NULL;
   }
 
   // The one job we find should be to invoke clang again.
@@ -83,7 +82,7 @@ static const llvm::opt::ArgStringList *getCC1Arguments(
       cast<clang::driver::Command>(*Jobs.begin());
   if (StringRef(Cmd->getCreator().getName()) != "clang") {
     Diagnostics->Report(clang::diag::err_fe_expected_clang_command);
-    return nullptr;
+    return NULL;
   }
 
   return &Cmd->getArguments();
@@ -100,7 +99,6 @@ static clang::CompilerInvocation *newInvocation(
       *Diagnostics);
   Invocation->getFrontendOpts().DisableFree = false;
   Invocation->getCodeGenOpts().DisableFree = false;
-  Invocation->getDependencyOutputOpts() = DependencyOutputOptions();
   return Invocation;
 }
 
@@ -129,7 +127,7 @@ bool runToolOnCodeWithArgs(clang::FrontendAction *ToolAction, const Twine &Code,
   llvm::IntrusiveRefCntPtr<FileManager> Files(
       new FileManager(FileSystemOptions()));
   ToolInvocation Invocation(getSyntaxOnlyToolArgs(Args, FileNameRef), ToolAction,
-                            Files.get());
+                            Files.getPtr());
 
   SmallString<1024> CodeStorage;
   Invocation.mapVirtualFile(FileNameRef,
@@ -145,7 +143,7 @@ std::string getAbsolutePath(StringRef File) {
   }
 
   SmallString<1024> AbsolutePath = RelativePath;
-  std::error_code EC = llvm::sys::fs::make_absolute(AbsolutePath);
+  llvm::error_code EC = llvm::sys::fs::make_absolute(AbsolutePath);
   assert(!EC);
   (void)EC;
   llvm::sys::path::native(AbsolutePath);
@@ -160,26 +158,26 @@ class SingleFrontendActionFactory : public FrontendActionFactory {
 public:
   SingleFrontendActionFactory(FrontendAction *Action) : Action(Action) {}
 
-  FrontendAction *create() override { return Action; }
+  FrontendAction *create() { return Action; }
 };
 
 }
 
-ToolInvocation::ToolInvocation(std::vector<std::string> CommandLine,
+ToolInvocation::ToolInvocation(ArrayRef<std::string> CommandLine,
                                ToolAction *Action, FileManager *Files)
-    : CommandLine(std::move(CommandLine)),
+    : CommandLine(CommandLine.vec()),
       Action(Action),
       OwnsAction(false),
       Files(Files),
-      DiagConsumer(nullptr) {}
+      DiagConsumer(NULL) {}
 
-ToolInvocation::ToolInvocation(std::vector<std::string> CommandLine,
+ToolInvocation::ToolInvocation(ArrayRef<std::string> CommandLine,
                                FrontendAction *FAction, FileManager *Files)
-    : CommandLine(std::move(CommandLine)),
+    : CommandLine(CommandLine.vec()),
       Action(new SingleFrontendActionFactory(FAction)),
       OwnsAction(true),
       Files(Files),
-      DiagConsumer(nullptr) {}
+      DiagConsumer(NULL) {}
 
 ToolInvocation::~ToolInvocation() {
   if (OwnsAction)
@@ -198,8 +196,8 @@ void ToolInvocation::mapVirtualFile(StringRef FilePath, StringRef Content) {
 
 bool ToolInvocation::run() {
   std::vector<const char*> Argv;
-  for (const std::string &Str : CommandLine)
-    Argv.push_back(Str.c_str());
+  for (int I = 0, E = CommandLine.size(); I != E; ++I)
+    Argv.push_back(CommandLine[I].c_str());
   const char *const BinaryName = Argv[0];
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
   TextDiagnosticPrinter DiagnosticPrinter(
@@ -208,25 +206,28 @@ bool ToolInvocation::run() {
       IntrusiveRefCntPtr<clang::DiagnosticIDs>(new DiagnosticIDs()), &*DiagOpts,
       DiagConsumer ? DiagConsumer : &DiagnosticPrinter, false);
 
-  const std::unique_ptr<clang::driver::Driver> Driver(
+  const OwningPtr<clang::driver::Driver> Driver(
       newDriver(&Diagnostics, BinaryName));
   // Since the input might only be virtual, don't check whether it exists.
   Driver->setCheckInputsExist(false);
-  const std::unique_ptr<clang::driver::Compilation> Compilation(
+  const OwningPtr<clang::driver::Compilation> Compilation(
       Driver->BuildCompilation(llvm::makeArrayRef(Argv)));
   const llvm::opt::ArgStringList *const CC1Args = getCC1Arguments(
       &Diagnostics, Compilation.get());
-  if (!CC1Args) {
+  if (CC1Args == NULL) {
     return false;
   }
-  std::unique_ptr<clang::CompilerInvocation> Invocation(
+  OwningPtr<clang::CompilerInvocation> Invocation(
       newInvocation(&Diagnostics, *CC1Args));
-  for (const auto &It : MappedFileContents) {
+  for (llvm::StringMap<StringRef>::const_iterator
+           It = MappedFileContents.begin(), End = MappedFileContents.end();
+       It != End; ++It) {
     // Inject the code as the given file name into the preprocessor options.
-    auto *Input = llvm::MemoryBuffer::getMemBuffer(It.getValue());
-    Invocation->getPreprocessorOpts().addRemappedFile(It.getKey(), Input);
+    const llvm::MemoryBuffer *Input =
+        llvm::MemoryBuffer::getMemBuffer(It->getValue());
+    Invocation->getPreprocessorOpts().addRemappedFile(It->getKey(), Input);
   }
-  return runInvocation(BinaryName, Compilation.get(), Invocation.release());
+  return runInvocation(BinaryName, Compilation.get(), Invocation.take());
 }
 
 bool ToolInvocation::runInvocation(
@@ -253,10 +254,10 @@ bool FrontendActionFactory::runInvocation(CompilerInvocation *Invocation,
 
   // The FrontendAction can have lifetime requirements for Compiler or its
   // members, and we need to ensure it's deleted earlier than Compiler. So we
-  // pass it to an std::unique_ptr declared after the Compiler variable.
-  std::unique_ptr<FrontendAction> ScopedToolAction(create());
+  // pass it to an OwningPtr declared after the Compiler variable.
+  OwningPtr<FrontendAction> ScopedToolAction(create());
 
-  // Create the compiler's actual diagnostics engine.
+  // Create the compilers actual diagnostics engine.
   Compiler.createDiagnostics(DiagConsumer, /*ShouldOwnClient=*/false);
   if (!Compiler.hasDiagnostics())
     return false;
@@ -271,18 +272,18 @@ bool FrontendActionFactory::runInvocation(CompilerInvocation *Invocation,
 
 ClangTool::ClangTool(const CompilationDatabase &Compilations,
                      ArrayRef<std::string> SourcePaths)
-    : Files(new FileManager(FileSystemOptions())), DiagConsumer(nullptr) {
+    : Files(new FileManager(FileSystemOptions())), DiagConsumer(NULL) {
   ArgsAdjusters.push_back(new ClangStripOutputAdjuster());
   ArgsAdjusters.push_back(new ClangSyntaxOnlyAdjuster());
-  for (const auto &SourcePath : SourcePaths) {
-    std::string File(getAbsolutePath(SourcePath));
+  for (unsigned I = 0, E = SourcePaths.size(); I != E; ++I) {
+    SmallString<1024> File(getAbsolutePath(SourcePaths[I]));
 
     std::vector<CompileCommand> CompileCommandsForFile =
-      Compilations.getCompileCommands(File);
+      Compilations.getCompileCommands(File.str());
     if (!CompileCommandsForFile.empty()) {
-      for (CompileCommand &CompileCommand : CompileCommandsForFile) {
-        CompileCommands.push_back(
-            std::make_pair(File, std::move(CompileCommand)));
+      for (int I = 0, E = CompileCommandsForFile.size(); I != E; ++I) {
+        CompileCommands.push_back(std::make_pair(File.str(),
+                                  CompileCommandsForFile[I]));
       }
     } else {
       // FIXME: There are two use cases here: doing a fuzzy
@@ -290,7 +291,7 @@ ClangTool::ClangTool(const CompilationDatabase &Compilations,
       // about the .cc files that were not found, and the use case where I
       // specify all files I want to run over explicitly, where this should
       // be an error. We'll want to add an option for this.
-      llvm::errs() << "Skipping " << File << ". Compile command not found.\n";
+      llvm::outs() << "Skipping " << File << ". Command line not found.\n";
     }
   }
 }
@@ -331,7 +332,8 @@ int ClangTool::run(ToolAction *Action) {
       llvm::sys::fs::getMainExecutable("clang_tool", &StaticSymbol);
 
   bool ProcessingFailed = false;
-  for (const auto &Command : CompileCommands) {
+  for (unsigned I = 0; I < CompileCommands.size(); ++I) {
+    std::string File = CompileCommands[I].first;
     // FIXME: chdir is thread hostile; on the other hand, creating the same
     // behavior as chdir is complex: chdir resolves the path once, thus
     // guaranteeing that all subsequent relative path operations work
@@ -339,27 +341,28 @@ int ClangTool::run(ToolAction *Action) {
     // for example on network filesystems, where symlinks might be switched
     // during runtime of the tool. Fixing this depends on having a file system
     // abstraction that allows openat() style interactions.
-    if (chdir(Command.second.Directory.c_str()))
+    if (chdir(CompileCommands[I].second.Directory.c_str()))
       llvm::report_fatal_error("Cannot chdir into \"" +
-                               Twine(Command.second.Directory) + "\n!");
-    std::vector<std::string> CommandLine = Command.second.CommandLine;
-    for (ArgumentsAdjuster *Adjuster : ArgsAdjusters)
-      CommandLine = Adjuster->Adjust(CommandLine);
+                               CompileCommands[I].second.Directory + "\n!");
+    std::vector<std::string> CommandLine = CompileCommands[I].second.CommandLine;
+    for (unsigned I = 0, E = ArgsAdjusters.size(); I != E; ++I)
+      CommandLine = ArgsAdjusters[I]->Adjust(CommandLine);
     assert(!CommandLine.empty());
     CommandLine[0] = MainExecutable;
     // FIXME: We need a callback mechanism for the tool writer to output a
     // customized message for each file.
     DEBUG({
-      llvm::dbgs() << "Processing: " << Command.first << ".\n";
+      llvm::dbgs() << "Processing: " << File << ".\n";
     });
-    ToolInvocation Invocation(std::move(CommandLine), Action, Files.get());
+    ToolInvocation Invocation(CommandLine, Action, Files.getPtr());
     Invocation.setDiagnosticConsumer(DiagConsumer);
-    for (const auto &MappedFile : MappedFileContents) {
-      Invocation.mapVirtualFile(MappedFile.first, MappedFile.second);
+    for (int I = 0, E = MappedFileContents.size(); I != E; ++I) {
+      Invocation.mapVirtualFile(MappedFileContents[I].first,
+                                MappedFileContents[I].second);
     }
     if (!Invocation.run()) {
       // FIXME: Diagnostics should be used instead.
-      llvm::errs() << "Error while processing " << Command.first << ".\n";
+      llvm::errs() << "Error while processing " << File << ".\n";
       ProcessingFailed = true;
     }
   }
@@ -369,58 +372,55 @@ int ClangTool::run(ToolAction *Action) {
 namespace {
 
 class ASTBuilderAction : public ToolAction {
-  std::vector<std::unique_ptr<ASTUnit>> &ASTs;
+  std::vector<ASTUnit *> &ASTs;
 
 public:
-  ASTBuilderAction(std::vector<std::unique_ptr<ASTUnit>> &ASTs) : ASTs(ASTs) {}
+  ASTBuilderAction(std::vector<ASTUnit *> &ASTs) : ASTs(ASTs) {}
 
   bool runInvocation(CompilerInvocation *Invocation, FileManager *Files,
-                     DiagnosticConsumer *DiagConsumer) override {
+                     DiagnosticConsumer *DiagConsumer) {
     // FIXME: This should use the provided FileManager.
-    std::unique_ptr<ASTUnit> AST = ASTUnit::LoadFromCompilerInvocation(
+    ASTUnit *AST = ASTUnit::LoadFromCompilerInvocation(
         Invocation, CompilerInstance::createDiagnostics(
                         &Invocation->getDiagnosticOpts(), DiagConsumer,
                         /*ShouldOwnClient=*/false));
     if (!AST)
       return false;
 
-    ASTs.push_back(std::move(AST));
+    ASTs.push_back(AST);
     return true;
   }
 };
 
 }
 
-int ClangTool::buildASTs(std::vector<std::unique_ptr<ASTUnit>> &ASTs) {
+int ClangTool::buildASTs(std::vector<ASTUnit *> &ASTs) {
   ASTBuilderAction Action(ASTs);
   return run(&Action);
 }
 
-std::unique_ptr<ASTUnit> buildASTFromCode(const Twine &Code,
-                                          const Twine &FileName) {
+ASTUnit *buildASTFromCode(const Twine &Code, const Twine &FileName) {
   return buildASTFromCodeWithArgs(Code, std::vector<std::string>(), FileName);
 }
 
-std::unique_ptr<ASTUnit>
-buildASTFromCodeWithArgs(const Twine &Code,
-                         const std::vector<std::string> &Args,
-                         const Twine &FileName) {
+ASTUnit *buildASTFromCodeWithArgs(const Twine &Code,
+                                  const std::vector<std::string> &Args,
+                                  const Twine &FileName) {
   SmallString<16> FileNameStorage;
   StringRef FileNameRef = FileName.toNullTerminatedStringRef(FileNameStorage);
 
-  std::vector<std::unique_ptr<ASTUnit>> ASTs;
+  std::vector<ASTUnit *> ASTs;
   ASTBuilderAction Action(ASTs);
-  ToolInvocation Invocation(getSyntaxOnlyToolArgs(Args, FileNameRef), &Action,
-                            nullptr);
+  ToolInvocation Invocation(getSyntaxOnlyToolArgs(Args, FileNameRef), &Action, 0);
 
   SmallString<1024> CodeStorage;
   Invocation.mapVirtualFile(FileNameRef,
                             Code.toNullTerminatedStringRef(CodeStorage));
   if (!Invocation.run())
-    return nullptr;
+    return 0;
 
   assert(ASTs.size() == 1);
-  return std::move(ASTs[0]);
+  return ASTs[0];
 }
 
 } // end namespace tooling

@@ -37,7 +37,8 @@ WARNS?=	1
 CFLAGS+= -I${.CURDIR} -I${.CURDIR}/../../lib/libipsec
 YFLAGS=	-d
 
-LIBADD=	l y
+DPADD=	${LIBL} ${LIBY}
+LDADD=	-ll -ly
 
 CLEANFILES=	y.tab.c y.tab.h key_test.o keytest
 
@@ -54,7 +55,8 @@ CFLAGS+= -DIPSEC_DEBUG -DYY_NO_UNPUT
 CFLAGS+= -DINET6
 .endif
 CFLAGS+= -I.
-LIBADD+=	ipsec
+DPADD+=	${LIBIPSEC}
+LDADD+=	-lipsec
 CLEANFILES+=	scriptdump y.tab.h
 
 #SCRIPTS= scriptdump

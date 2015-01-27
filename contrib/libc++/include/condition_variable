@@ -115,8 +115,6 @@ public:
 #pragma GCC system_header
 #endif
 
-#ifndef _LIBCPP_HAS_NO_THREADS
-
 _LIBCPP_BEGIN_NAMESPACE_STD
 
 class _LIBCPP_TYPE_VIS condition_variable_any
@@ -254,7 +252,5 @@ _LIBCPP_FUNC_VIS
 void notify_all_at_thread_exit(condition_variable& cond, unique_lock<mutex> lk);
 
 _LIBCPP_END_NAMESPACE_STD
-
-#endif // !_LIBCPP_HAS_NO_THREADS
 
 #endif  // _LIBCPP_CONDITION_VARIABLE

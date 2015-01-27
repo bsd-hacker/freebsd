@@ -8,7 +8,8 @@ PROG=	flowctl
 MAN=	flowctl.8
 
 WARNS?= 2
-LIBADD=	netgraph
+DPADD=  ${LIBNETGRAPH}
+LDADD=  -lnetgraph
 
 .if ${MK_INET6_SUPPORT} != "no"
 CFLAGS+= -DINET6

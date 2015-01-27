@@ -42,7 +42,6 @@ static const char rcsid[] =
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
 #include <ifaddrs.h>
 
 #include <arpa/inet.h>
@@ -99,21 +98,20 @@ static void
 setip6lifetime(const char *cmd, const char *val, int s, 
     const struct afswtch *afp)
 {
-	struct timespec now;
-	time_t newval;
+	time_t newval, t;
 	char *ep;
 
-	clock_gettime(CLOCK_MONOTONIC_FAST, &now);
+	t = time(NULL);
 	newval = (time_t)strtoul(val, &ep, 0);
 	if (val == ep)
 		errx(1, "invalid %s", cmd);
 	if (afp->af_af != AF_INET6)
 		errx(1, "%s not allowed for the AF", cmd);
 	if (strcmp(cmd, "vltime") == 0) {
-		in6_addreq.ifra_lifetime.ia6t_expire = now.tv_sec + newval;
+		in6_addreq.ifra_lifetime.ia6t_expire = t + newval;
 		in6_addreq.ifra_lifetime.ia6t_vltime = newval;
 	} else if (strcmp(cmd, "pltime") == 0) {
-		in6_addreq.ifra_lifetime.ia6t_preferred = now.tv_sec + newval;
+		in6_addreq.ifra_lifetime.ia6t_preferred = t + newval;
 		in6_addreq.ifra_lifetime.ia6t_pltime = newval;
 	}
 }
@@ -174,10 +172,8 @@ in6_status(int s __unused, const struct ifaddrs *ifa)
 	int s6;
 	u_int32_t flags6;
 	struct in6_addrlifetime lifetime;
-	struct timespec now;
+	time_t t = time(NULL);
 	int error;
-
-	clock_gettime(CLOCK_MONOTONIC_FAST, &now);
 
 	memset(&null_sin, 0, sizeof(null_sin));
 
@@ -254,8 +250,6 @@ in6_status(int s __unused, const struct ifaddrs *ifa)
 		printf("autoconf ");
 	if ((flags6 & IN6_IFF_TEMPORARY) != 0)
 		printf("temporary ");
-	if ((flags6 & IN6_IFF_PREFER_SOURCE) != 0)
-		printf("prefer_source ");
 
 	if (((struct sockaddr_in6 *)(ifa->ifa_addr))->sin6_scope_id)
 		printf("scopeid 0x%x ",
@@ -264,15 +258,15 @@ in6_status(int s __unused, const struct ifaddrs *ifa)
 	if (ip6lifetime && (lifetime.ia6t_preferred || lifetime.ia6t_expire)) {
 		printf("pltime ");
 		if (lifetime.ia6t_preferred) {
-			printf("%s ", lifetime.ia6t_preferred < now.tv_sec
-				? "0" : sec2str(lifetime.ia6t_preferred - now.tv_sec));
+			printf("%s ", lifetime.ia6t_preferred < t
+				? "0" : sec2str(lifetime.ia6t_preferred - t));
 		} else
 			printf("infty ");
 
 		printf("vltime ");
 		if (lifetime.ia6t_expire) {
-			printf("%s ", lifetime.ia6t_expire < now.tv_sec
-				? "0" : sec2str(lifetime.ia6t_expire - now.tv_sec));
+			printf("%s ", lifetime.ia6t_expire < t
+				? "0" : sec2str(lifetime.ia6t_expire - t));
 		} else
 			printf("infty ");
 	}
@@ -467,8 +461,6 @@ static struct cmd inet6_cmds[] = {
 	DEF_CMD("-deprecated", -IN6_IFF_DEPRECATED,	setip6flags),
 	DEF_CMD("autoconf",	IN6_IFF_AUTOCONF,	setip6flags),
 	DEF_CMD("-autoconf",	-IN6_IFF_AUTOCONF,	setip6flags),
-	DEF_CMD("prefer_source",IN6_IFF_PREFER_SOURCE,	setip6flags),
-	DEF_CMD("-prefer_source",-IN6_IFF_PREFER_SOURCE,setip6flags),
 	DEF_CMD("accept_rtadv",	ND6_IFF_ACCEPT_RTADV,	setnd6flags),
 	DEF_CMD("-accept_rtadv",-ND6_IFF_ACCEPT_RTADV,	setnd6flags),
 	DEF_CMD("no_radr",	ND6_IFF_NO_RADR,	setnd6flags),

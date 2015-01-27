@@ -18,11 +18,11 @@
 #include "SystemZMCInstLower.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
-#include "llvm/IR/Mangler.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInstBuilder.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Target/Mangler.h"
 
 using namespace llvm;
 
@@ -151,20 +151,11 @@ void SystemZAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
 #undef LOWER_HIGH
 
-  case SystemZ::Serialize:
-    if (Subtarget->hasFastSerialization())
-      LoweredMI = MCInstBuilder(SystemZ::AsmBCR)
-        .addImm(14).addReg(SystemZ::R0D);
-    else
-      LoweredMI = MCInstBuilder(SystemZ::AsmBCR)
-        .addImm(15).addReg(SystemZ::R0D);
-    break;
-
   default:
     Lower.lower(MI, LoweredMI);
     break;
   }
-  EmitToStreamer(OutStreamer, LoweredMI);
+  OutStreamer.EmitInstruction(LoweredMI);
 }
 
 // Convert a SystemZ-specific constant pool modifier into the associated
@@ -179,7 +170,8 @@ getModifierVariantKind(SystemZCP::SystemZCPModifier Modifier) {
 
 void SystemZAsmPrinter::
 EmitMachineConstantPoolValue(MachineConstantPoolValue *MCPV) {
-  auto *ZCPV = static_cast<SystemZConstantPoolValue*>(MCPV);
+  SystemZConstantPoolValue *ZCPV =
+    static_cast<SystemZConstantPoolValue*>(MCPV);
 
   const MCExpr *Expr =
     MCSymbolRefExpr::Create(getSymbol(ZCPV->getGlobalValue()),
@@ -220,7 +212,7 @@ bool SystemZAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
 
 void SystemZAsmPrinter::EmitEndOfAsmFile(Module &M) {
   if (Subtarget->isTargetELF()) {
-    auto &TLOFELF =
+    const TargetLoweringObjectFileELF &TLOFELF =
       static_cast<const TargetLoweringObjectFileELF &>(getObjFileLowering());
 
     MachineModuleInfoELF &MMIELF = MMI->getObjFileInfo<MachineModuleInfoELF>();

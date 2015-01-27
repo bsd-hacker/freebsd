@@ -31,6 +31,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/ethtool.h>
 #include <linux/netdevice.h>
 
 #include "ipoib.h"

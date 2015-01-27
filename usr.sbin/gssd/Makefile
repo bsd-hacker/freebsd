@@ -9,9 +9,11 @@ SRCS=	gssd.c gssd.h gssd_svc.c gssd_xdr.c gssd_prot.c
 CFLAGS+= -I.
 WARNS?= 1
 
-LIBADD=	gssapi
+DPADD=	${LIBGSSAPI}
+LDADD=	-lgssapi
 .if ${MK_KERBEROS_SUPPORT} != "no"
-LIBADD+=	krb5 roken
+DPADD+=	${LIBKRB5} ${LIBHX509} ${LIBASN1} ${LIBROKEN} ${LIBCOM_ERR} ${LIBCRYPT} ${LIBCRYPTO}
+LDADD+=	-lkrb5 -lhx509 -lasn1 -lroken -lcom_err -lcrypt -lcrypto
 .else
 CFLAGS+= -DWITHOUT_KERBEROS
 .endif

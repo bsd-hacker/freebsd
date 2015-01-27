@@ -643,7 +643,7 @@ static void hptiop_request_callback_mvfrey(struct hpt_iop_hba * hba,
 
 		ccb = (union ccb *)srb->ccb;
 
-		callout_stop(&srb->timeout);
+		untimeout(hptiop_reset_adapter, hba, srb->timeout_ch);
 
 		if (ccb->ccb_h.flags & CAM_CDB_POINTER)
 			cdb = ccb->csio.cdb_io.cdb_ptr;
@@ -2013,13 +2013,12 @@ static int hptiop_attach(device_t dev)
 	}
 
 	hba->sim = cam_sim_alloc(hptiop_action, hptiop_poll, driver_name,
-			hba, unit, &hba->lock, hba->max_requests - 1, 1, devq);
+			hba, unit, &Giant, hba->max_requests - 1, 1, devq);
 	if (!hba->sim) {
 		device_printf(dev, "cam_sim_alloc failed\n");
 		cam_simq_free(devq);
 		goto srb_dmamap_unload;
 	}
-	hptiop_lock_adapter(hba);
 	if (xpt_bus_register(hba->sim, dev, 0) != CAM_SUCCESS)
 	{
 		device_printf(dev, "xpt_bus_register failed\n");
@@ -2032,7 +2031,6 @@ static int hptiop_attach(device_t dev)
 		device_printf(dev, "xpt_create_path failed\n");
 		goto deregister_xpt_bus;
 	}
-	hptiop_unlock_adapter(hba);
 
 	bzero(&set_config, sizeof(set_config));
 	set_config.iop_id = unit;
@@ -2058,7 +2056,7 @@ static int hptiop_attach(device_t dev)
 		goto free_hba_path;
 	}
 
-	if (bus_setup_intr(hba->pcidev, hba->irq_res, INTR_TYPE_CAM | INTR_MPSAFE,
+	if (bus_setup_intr(hba->pcidev, hba->irq_res, INTR_TYPE_CAM,
 				NULL, hptiop_pci_intr, hba, &hba->irq_handle))
 	{
 		device_printf(dev, "allocate intr function failed!\n");
@@ -2088,7 +2086,6 @@ teartown_irq_resource:
 free_irq_resource:
 	bus_release_resource(dev, SYS_RES_IRQ, 0, hba->irq_res);
 
-	hptiop_lock_adapter(hba);
 free_hba_path:
 	xpt_free_path(hba->path);
 
@@ -2097,7 +2094,6 @@ deregister_xpt_bus:
 
 free_cam_sim:
 	cam_sim_free(hba->sim, /*free devq*/ TRUE);
-	hptiop_unlock_adapter(hba);
 
 srb_dmamap_unload:
 	if (hba->uncached_ptr)
@@ -2149,10 +2145,9 @@ static int hptiop_detach(device_t dev)
 	if (hptiop_send_sync_msg(hba,
 		IOPMU_INBOUND_MSG0_STOP_BACKGROUND_TASK, 60000))
 		goto out;
-	hptiop_unlock_adapter(hba);
 
 	hptiop_release_resource(hba);
-	return (0);
+	error = 0;
 out:
 	hptiop_unlock_adapter(hba);
 	return error;
@@ -2187,10 +2182,7 @@ static void hptiop_pci_intr(void *arg)
 
 static void hptiop_poll(struct cam_sim *sim)
 {
-	struct hpt_iop_hba *hba;
-
-	hba = cam_sim_softc(sim);
-	hba->ops->iop_intr(hba);
+	hptiop_pci_intr(cam_sim_softc(sim));
 }
 
 static void hptiop_async(void * callback_arg, u_int32_t code,
@@ -2297,20 +2289,21 @@ static void hptiop_action(struct cam_sim *sim, union ccb *ccb)
 	switch (ccb->ccb_h.func_code) {
 
 	case XPT_SCSI_IO:
+		hptiop_lock_adapter(hba);
 		if (ccb->ccb_h.target_lun != 0 ||
 			ccb->ccb_h.target_id >= hba->max_devices ||
 			(ccb->ccb_h.flags & CAM_CDB_PHYS))
 		{
 			ccb->ccb_h.status = CAM_TID_INVALID;
 			xpt_done(ccb);
-			return;
+			goto scsi_done;
 		}
 
 		if ((srb = hptiop_get_srb(hba)) == NULL) {
 			device_printf(hba->pcidev, "srb allocated failed");
 			ccb->ccb_h.status = CAM_REQ_CMP_ERR;
 			xpt_done(ccb);
-			return;
+			goto scsi_done;
 		}
 
 		srb->ccb = ccb;
@@ -2329,15 +2322,19 @@ static void hptiop_action(struct cam_sim *sim, union ccb *ccb)
 			ccb->ccb_h.status = CAM_REQ_CMP_ERR;
 			hptiop_free_srb(hba, srb);
 			xpt_done(ccb);
-			return;
+			goto scsi_done;
 		}
 
+scsi_done:
+		hptiop_unlock_adapter(hba);
 		return;
 
 	case XPT_RESET_BUS:
 		device_printf(hba->pcidev, "reset adapter");
+		hptiop_lock_adapter(hba);
 		hba->msg_done = 0;
 		hptiop_reset_adapter(hba);
+		hptiop_unlock_adapter(hba);
 		break;
 
 	case XPT_GET_TRAN_SETTINGS:
@@ -2632,7 +2629,7 @@ static void hptiop_post_req_mvfrey(struct hpt_iop_hba *hba,
 	BUS_SPACE_RD4_MVFREY2(inbound_write_ptr);
 
 	if (req->header.type == IOP_REQUEST_TYPE_SCSI_COMMAND) {
-		callout_reset(&srb->timeout, 20 * hz, hptiop_reset_adapter, hba);
+		srb->timeout_ch = timeout(hptiop_reset_adapter, hba, 20*hz);
 	}
 }
 
@@ -2744,7 +2741,7 @@ static void hptiop_map_srb(void *arg, bus_dma_segment_t *segs,
 				tmp_srb->phy_addr = phy_addr;
 			}
 
-			callout_init_mtx(&tmp_srb->timeout, &hba->lock, 0);
+			callout_handle_init(&tmp_srb->timeout_ch);
 			hptiop_free_srb(hba, tmp_srb);
 			hba->srb[i] = tmp_srb;
 			phy_addr += HPT_SRB_MAX_SIZE;
@@ -2788,10 +2785,6 @@ static  int hptiop_os_query_remove_device(struct hpt_iop_hba * hba,
 static void hptiop_release_resource(struct hpt_iop_hba *hba)
 {
 	int i;
-
-	if (hba->ioctl_dev)
-		destroy_dev(hba->ioctl_dev);
-
 	if (hba->path) {
 		struct ccb_setasync ccb;
 
@@ -2804,14 +2797,9 @@ static void hptiop_release_resource(struct hpt_iop_hba *hba)
 		xpt_free_path(hba->path);
 	}
 
-	if (hba->irq_handle)
-		bus_teardown_intr(hba->pcidev, hba->irq_res, hba->irq_handle);
-
 	if (hba->sim) {
-		hptiop_lock_adapter(hba);
 		xpt_bus_deregister(cam_sim_path(hba->sim));
 		cam_sim_free(hba->sim, TRUE);
-		hptiop_unlock_adapter(hba);
 	}
 
 	if (hba->ctlcfg_dmat) {
@@ -2825,7 +2813,6 @@ static void hptiop_release_resource(struct hpt_iop_hba *hba)
 		struct hpt_iop_srb *srb = hba->srb[i];
 		if (srb->dma_map)
 			bus_dmamap_destroy(hba->io_dmat, srb->dma_map);
-		callout_drain(&srb->timeout);
 	}
 
 	if (hba->srb_dmat) {
@@ -2840,6 +2827,9 @@ static void hptiop_release_resource(struct hpt_iop_hba *hba)
 	if (hba->parent_dmat)
 		bus_dma_tag_destroy(hba->parent_dmat);
 
+	if (hba->irq_handle)
+		bus_teardown_intr(hba->pcidev, hba->irq_res, hba->irq_handle);
+
 	if (hba->irq_res)
 		bus_release_resource(hba->pcidev, SYS_RES_IRQ,
 					0, hba->irq_res);
@@ -2850,5 +2840,6 @@ static void hptiop_release_resource(struct hpt_iop_hba *hba)
 	if (hba->bar2_res)
 		bus_release_resource(hba->pcidev, SYS_RES_MEMORY,
 					hba->bar2_rid, hba->bar2_res);
-	mtx_destroy(&hba->lock);
+	if (hba->ioctl_dev)
+		destroy_dev(hba->ioctl_dev);
 }

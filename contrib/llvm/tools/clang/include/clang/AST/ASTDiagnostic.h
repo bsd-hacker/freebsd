@@ -36,9 +36,12 @@ namespace clang {
   void FormatASTNodeDiagnosticArgument(
       DiagnosticsEngine::ArgumentKind Kind,
       intptr_t Val,
-      StringRef Modifier,
-      StringRef Argument,
-      ArrayRef<DiagnosticsEngine::ArgumentValue> PrevArgs,
+      const char *Modifier,
+      unsigned ModLen,
+      const char *Argument,
+      unsigned ArgLen,
+      const DiagnosticsEngine::ArgumentValue *PrevArgs,
+      unsigned NumPrevArgs,
       SmallVectorImpl<char> &Output,
       void *Cookie,
       ArrayRef<intptr_t> QualTypeVals);

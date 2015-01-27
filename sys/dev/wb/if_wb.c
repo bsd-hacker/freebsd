@@ -143,7 +143,7 @@ static int wb_probe(device_t);
 static int wb_attach(device_t);
 static int wb_detach(device_t);
 
-static void wb_bfree(struct mbuf *, void *addr, void *args);
+static int wb_bfree(struct mbuf *, void *addr, void *args);
 static int wb_newbuf(struct wb_softc *, struct wb_chain_onefrag *,
 		struct mbuf *);
 static int wb_encap(struct wb_softc *, struct wb_chain *, struct mbuf *);
@@ -823,9 +823,11 @@ wb_list_rx_init(sc)
 	return(0);
 }
 
-static void
+static int
 wb_bfree(struct mbuf *m, void *buf, void *args)
 {
+
+	return (EXT_FREE_OK);
 }
 
 /*
@@ -895,7 +897,7 @@ wb_rxeof(sc)
 		    (WB_RXBYTES(cur_rx->wb_ptr->wb_status) > 1536) ||
 		    !(rxstat & WB_RXSTAT_LASTFRAG) ||
 		    !(rxstat & WB_RXSTAT_RXCMP)) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			wb_newbuf(sc, cur_rx, m);
 			device_printf(sc->wb_dev,
 			    "receiver babbling: possible chip bug,"
@@ -907,7 +909,7 @@ wb_rxeof(sc)
 		}
 
 		if (rxstat & WB_RXSTAT_RXERR) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			wb_newbuf(sc, cur_rx, m);
 			break;
 		}
@@ -928,12 +930,12 @@ wb_rxeof(sc)
 		    NULL);
 		wb_newbuf(sc, cur_rx, m);
 		if (m0 == NULL) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			break;
 		}
 		m = m0;
 
-		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		ifp->if_ipackets++;
 		WB_UNLOCK(sc);
 		(*ifp->if_input)(ifp, m);
 		WB_LOCK(sc);
@@ -986,16 +988,16 @@ wb_txeof(sc)
 			break;
 
 		if (txstat & WB_TXSTAT_TXERR) {
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 			if (txstat & WB_TXSTAT_ABORT)
-				if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
+				ifp->if_collisions++;
 			if (txstat & WB_TXSTAT_LATECOLL)
-				if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
+				ifp->if_collisions++;
 		}
 
-		if_inc_counter(ifp, IFCOUNTER_COLLISIONS, (txstat & WB_TXSTAT_COLLCNT) >> 3);
+		ifp->if_collisions += (txstat & WB_TXSTAT_COLLCNT) >> 3;
 
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		ifp->if_opackets++;
 		m_freem(cur_tx->wb_mbuf);
 		cur_tx->wb_mbuf = NULL;
 
@@ -1064,7 +1066,7 @@ wb_intr(arg)
 			break;
 
 		if ((status & WB_ISR_RX_NOBUF) || (status & WB_ISR_RX_ERR)) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			wb_reset(sc);
 			if (status & WB_ISR_RX_ERR)
 				wb_fixmedia(sc);
@@ -1093,7 +1095,7 @@ wb_intr(arg)
 		}
 
 		if (status & WB_ISR_TX_UNDERRUN) {
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 			wb_txeof(sc);
 			WB_CLRBIT(sc, WB_NETCFG, WB_NETCFG_TX_ON);
 			/* Jack up TX threshold */
@@ -1194,7 +1196,8 @@ wb_encap(sc, c, m_head)
 		if (m_new == NULL)
 			return(1);
 		if (m_head->m_pkthdr.len > MHLEN) {
-			if (!(MCLGET(m_new, M_NOWAIT))) {
+			MCLGET(m_new, M_NOWAIT);
+			if (!(m_new->m_flags & M_EXT)) {
 				m_freem(m_new);
 				return(1);
 			}
@@ -1552,7 +1555,7 @@ wb_watchdog(sc)
 
 	WB_LOCK_ASSERT(sc);
 	ifp = sc->wb_ifp;
-	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+	ifp->if_oerrors++;
 	if_printf(ifp, "watchdog timeout\n");
 #ifdef foo
 	if (!(wb_phy_readreg(sc, PHY_BMSR) & PHY_BMSR_LINKSTAT))

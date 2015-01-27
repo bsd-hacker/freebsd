@@ -40,7 +40,7 @@
  * From there:
  *	struct netmap_ring *NETMAP_TXRING(nifp, index)
  *	struct netmap_ring *NETMAP_RXRING(nifp, index)
- *		we can access ring->cur, ring->head, ring->tail, etc.
+ *		we can access ring->nr_cur, ring->nr_avail, ring->nr_flags
  *
  *	ring->slot[i] gives us the i-th slot (we can access
  *		directly len, flags, buf_idx)
@@ -149,21 +149,21 @@ nm_ring_space(struct netmap_ring *ring)
 #define ND(_fmt, ...) do {} while(0)
 #define D(_fmt, ...)						\
 	do {							\
-		struct timeval _t0;				\
-		gettimeofday(&_t0, NULL);			\
+		struct timeval t0;				\
+		gettimeofday(&t0, NULL);			\
 		fprintf(stderr, "%03d.%06d %s [%d] " _fmt "\n",	\
-		    (int)(_t0.tv_sec % 1000), (int)_t0.tv_usec,	\
+		    (int)(t0.tv_sec % 1000), (int)t0.tv_usec,	\
 		    __FUNCTION__, __LINE__, ##__VA_ARGS__);	\
         } while (0)
 
 /* Rate limited version of "D", lps indicates how many per second */
 #define RD(lps, format, ...)                                    \
     do {                                                        \
-        static int __t0, __cnt;                                 \
+        static int t0, __cnt;                                   \
         struct timeval __xxts;                                  \
         gettimeofday(&__xxts, NULL);                            \
-        if (__t0 != __xxts.tv_sec) {                            \
-            __t0 = __xxts.tv_sec;                               \
+        if (t0 != __xxts.tv_sec) {                              \
+            t0 = __xxts.tv_sec;                                 \
             __cnt = 0;                                          \
         }                                                       \
         if (__cnt++ < lps) {                                    \
@@ -495,23 +495,23 @@ nm_open(const char *ifname, const struct nmreq *req,
 			(char *)d->mem + d->memsize;
 	}
 
-	if (d->req.nr_flags ==  NR_REG_SW) { /* host stack */
+	if (nr_flags ==  NR_REG_SW) { /* host stack */
 		d->first_tx_ring = d->last_tx_ring = d->req.nr_tx_rings;
 		d->first_rx_ring = d->last_rx_ring = d->req.nr_rx_rings;
-	} else if (d->req.nr_flags ==  NR_REG_ALL_NIC) { /* only nic */
+	} else if (nr_flags ==  NR_REG_ALL_NIC) { /* only nic */
 		d->first_tx_ring = 0;
 		d->first_rx_ring = 0;
 		d->last_tx_ring = d->req.nr_tx_rings - 1;
 		d->last_rx_ring = d->req.nr_rx_rings - 1;
-	} else if (d->req.nr_flags ==  NR_REG_NIC_SW) {
+	} else if (nr_flags ==  NR_REG_NIC_SW) {
 		d->first_tx_ring = 0;
 		d->first_rx_ring = 0;
 		d->last_tx_ring = d->req.nr_tx_rings;
 		d->last_rx_ring = d->req.nr_rx_rings;
-	} else if (d->req.nr_flags == NR_REG_ONE_NIC) {
+	} else if (nr_flags == NR_REG_ONE_NIC) {
 		/* XXX check validity */
 		d->first_tx_ring = d->last_tx_ring =
-		d->first_rx_ring = d->last_rx_ring = d->req.nr_ringid & NETMAP_RING_MASK;
+		d->first_rx_ring = d->last_rx_ring = nr_ringid;
 	} else { /* pipes */
 		d->first_tx_ring = d->last_tx_ring = 0;
 		d->first_rx_ring = d->last_rx_ring = 0;
@@ -543,8 +543,7 @@ fail:
 	nm_close(d);
 	if (errmsg)
 		D("%s %s", errmsg, ifname);
-	if (errno == 0)
-		errno = EINVAL;
+	errno = EINVAL;
 	return NULL;
 }
 

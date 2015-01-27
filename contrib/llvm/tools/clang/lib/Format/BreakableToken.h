@@ -90,9 +90,10 @@ protected:
 /// \c getSplit() needs to be implemented by child classes.
 class BreakableSingleLineToken : public BreakableToken {
 public:
-  unsigned getLineCount() const override;
-  unsigned getLineLengthAfterSplit(unsigned LineIndex, unsigned TailOffset,
-                                   StringRef::size_type Length) const override;
+  virtual unsigned getLineCount() const;
+  virtual unsigned getLineLengthAfterSplit(unsigned LineIndex,
+                                           unsigned TailOffset,
+                                           StringRef::size_type Length) const;
 
 protected:
   BreakableSingleLineToken(const FormatToken &Tok, unsigned IndentLevel,
@@ -122,12 +123,13 @@ public:
                          StringRef Postfix, bool InPPDirective,
                          encoding::Encoding Encoding, const FormatStyle &Style);
 
-  Split getSplit(unsigned LineIndex, unsigned TailOffset,
-                 unsigned ColumnLimit) const override;
-  void insertBreak(unsigned LineIndex, unsigned TailOffset, Split Split,
-                   WhitespaceManager &Whitespaces) override;
-  void replaceWhitespace(unsigned LineIndex, unsigned TailOffset, Split Split,
-                         WhitespaceManager &Whitespaces) override {}
+  virtual Split getSplit(unsigned LineIndex, unsigned TailOffset,
+                         unsigned ColumnLimit) const;
+  virtual void insertBreak(unsigned LineIndex, unsigned TailOffset, Split Split,
+                           WhitespaceManager &Whitespaces);
+  virtual void replaceWhitespace(unsigned LineIndex, unsigned TailOffset,
+                                 Split Split,
+                                 WhitespaceManager &Whitespaces) {}
 };
 
 class BreakableLineComment : public BreakableSingleLineToken {
@@ -140,14 +142,15 @@ public:
                        unsigned StartColumn, bool InPPDirective,
                        encoding::Encoding Encoding, const FormatStyle &Style);
 
-  Split getSplit(unsigned LineIndex, unsigned TailOffset,
-                 unsigned ColumnLimit) const override;
-  void insertBreak(unsigned LineIndex, unsigned TailOffset, Split Split,
-                   WhitespaceManager &Whitespaces) override;
-  void replaceWhitespace(unsigned LineIndex, unsigned TailOffset, Split Split,
-                         WhitespaceManager &Whitespaces) override;
-  void replaceWhitespaceBefore(unsigned LineIndex,
-                               WhitespaceManager &Whitespaces) override;
+  virtual Split getSplit(unsigned LineIndex, unsigned TailOffset,
+                         unsigned ColumnLimit) const;
+  virtual void insertBreak(unsigned LineIndex, unsigned TailOffset, Split Split,
+                           WhitespaceManager &Whitespaces);
+  virtual void replaceWhitespace(unsigned LineIndex, unsigned TailOffset,
+                                 Split Split,
+                                 WhitespaceManager &Whitespaces);
+  virtual void replaceWhitespaceBefore(unsigned LineIndex,
+                                       WhitespaceManager &Whitespaces);
 
 private:
   // The prefix without an additional space if one was added.
@@ -167,17 +170,19 @@ public:
                         bool FirstInLine, bool InPPDirective,
                         encoding::Encoding Encoding, const FormatStyle &Style);
 
-  unsigned getLineCount() const override;
-  unsigned getLineLengthAfterSplit(unsigned LineIndex, unsigned TailOffset,
-                                   StringRef::size_type Length) const override;
-  Split getSplit(unsigned LineIndex, unsigned TailOffset,
-                 unsigned ColumnLimit) const override;
-  void insertBreak(unsigned LineIndex, unsigned TailOffset, Split Split,
-                   WhitespaceManager &Whitespaces) override;
-  void replaceWhitespace(unsigned LineIndex, unsigned TailOffset, Split Split,
-                         WhitespaceManager &Whitespaces) override;
-  void replaceWhitespaceBefore(unsigned LineIndex,
-                               WhitespaceManager &Whitespaces) override;
+  virtual unsigned getLineCount() const;
+  virtual unsigned getLineLengthAfterSplit(unsigned LineIndex,
+                                           unsigned TailOffset,
+                                           StringRef::size_type Length) const;
+  virtual Split getSplit(unsigned LineIndex, unsigned TailOffset,
+                         unsigned ColumnLimit) const;
+  virtual void insertBreak(unsigned LineIndex, unsigned TailOffset, Split Split,
+                           WhitespaceManager &Whitespaces);
+  virtual void replaceWhitespace(unsigned LineIndex, unsigned TailOffset,
+                                 Split Split,
+                                 WhitespaceManager &Whitespaces);
+  virtual void replaceWhitespaceBefore(unsigned LineIndex,
+                                       WhitespaceManager &Whitespaces);
 
 private:
   // Rearranges the whitespace between Lines[LineIndex-1] and Lines[LineIndex],
@@ -212,7 +217,7 @@ private:
   // StartOfLineColumn[i] is the target column at which Line[i] should be.
   // Note that this excludes a leading "* " or "*" in case all lines have
   // a "*" prefix.
-  SmallVector<int, 16> StartOfLineColumn;
+  SmallVector<unsigned, 16> StartOfLineColumn;
 
   // The column at which the text of a broken line should start.
   // Note that an optional decoration would go before that column.

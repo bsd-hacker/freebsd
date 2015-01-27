@@ -51,21 +51,10 @@ public:
   
   /// \brief The location of the module definition.
   SourceLocation DefinitionLoc;
-
+  
   /// \brief The parent of this module. This will be NULL for the top-level
   /// module.
   Module *Parent;
-
-  /// \brief The module map file that (along with the module name) uniquely
-  /// identifies this module.
-  ///
-  /// The particular module that \c Name refers to may depend on how the module
-  /// was found in header search. However, the combination of \c Name and
-  /// \c ModuleMap will be globally unique for top-level modules. In the case of
-  /// inferred modules, \c ModuleMap will contain the module map that allowed
-  /// the inference (e.g. contained 'Module *') rather than the virtual
-  /// inferred module map file.
-  const FileEntry *ModuleMap;
   
   /// \brief The umbrella header or directory.
   llvm::PointerUnion<const DirectoryEntry *, const FileEntry *> Umbrella;
@@ -99,19 +88,7 @@ public:
   SmallVector<const FileEntry *, 2> ExcludedHeaders;
 
   /// \brief The headers that are private to this module.
-  SmallVector<const FileEntry *, 2> PrivateHeaders;
-
-  /// \brief Information about a header directive as found in the module map
-  /// file.
-  struct HeaderDirective {
-    SourceLocation FileNameLoc;
-    std::string FileName;
-    bool IsUmbrella;
-  };
-
-  /// \brief Headers that are mentioned in the module map file but could not be
-  /// found on the file system.
-  SmallVector<HeaderDirective, 1> MissingHeaders;
+  llvm::SmallVector<const FileEntry *, 2> PrivateHeaders;
 
   /// \brief An individual requirement: a feature name and a flag indicating
   /// the required state of that feature.
@@ -123,13 +100,8 @@ public:
   /// will be false to indicate that this (sub)module is not available.
   SmallVector<Requirement, 2> Requirements;
 
-  /// \brief Whether this module is missing a feature from \c Requirements.
-  unsigned IsMissingRequirement : 1;
-
-  /// \brief Whether this module is available in the current translation unit.
-  ///
-  /// If the module is missing headers or does not meet all requirements then
-  /// this bit will be 0.
+  /// \brief Whether this module is available in the current
+  /// translation unit.
   unsigned IsAvailable : 1;
 
   /// \brief Whether this module was loaded from a module file.
@@ -144,15 +116,7 @@ public:
   /// \brief Whether this is a "system" module (which assumes that all
   /// headers in it are system headers).
   unsigned IsSystem : 1;
-
-  /// \brief Whether this is an 'extern "C"' module (which implicitly puts all
-  /// headers in it within an 'extern "C"' block, and allows the module to be
-  /// imported within such a block).
-  unsigned IsExternC : 1;
-
-  /// \brief Whether this is an inferred submodule (module * { ... }).
-  unsigned IsInferred : 1;
-
+  
   /// \brief Whether we should infer submodules for this module based on 
   /// the headers.
   ///
@@ -184,13 +148,10 @@ public:
     MacrosVisible,
     /// \brief All of the names in this module are visible.
     AllVisible
-  };
-
-  /// \brief The visibility of names within this particular module.
+  };  
+  
+  ///\ brief The visibility of names within this particular module.
   NameVisibilityKind NameVisibility;
-
-  /// \brief The location at which macros within this module became visible.
-  SourceLocation MacroVisibilityLoc;
 
   /// \brief The location of the inferred submodule.
   SourceLocation InferredSubmoduleLoc;
@@ -282,11 +243,19 @@ public:
   /// \brief The list of conflicts.
   std::vector<Conflict> Conflicts;
 
+  /// \brief Construct a top-level module.
+  explicit Module(StringRef Name, SourceLocation DefinitionLoc,
+                  bool IsFramework)
+    : Name(Name), DefinitionLoc(DefinitionLoc), Parent(0),Umbrella(),ASTFile(0),
+      IsAvailable(true), IsFromModuleFile(false), IsFramework(IsFramework), 
+      IsExplicit(false), IsSystem(false),
+      InferSubmodules(false), InferExplicitSubmodules(false),
+      InferExportWildcard(false), ConfigMacrosExhaustive(false),
+      NameVisibility(Hidden) { }
+  
   /// \brief Construct a new module or submodule.
-  ///
-  /// For an explanation of \p ModuleMap, see Module::ModuleMap.
-  Module(StringRef Name, SourceLocation DefinitionLoc, Module *Parent,
-         const FileEntry *ModuleMap, bool IsFramework, bool IsExplicit);
+  Module(StringRef Name, SourceLocation DefinitionLoc, Module *Parent, 
+         bool IsFramework, bool IsExplicit);
   
   ~Module();
   
@@ -307,15 +276,14 @@ public:
   /// this module.
   bool isAvailable(const LangOptions &LangOpts, 
                    const TargetInfo &Target,
-                   Requirement &Req,
-                   HeaderDirective &MissingHeader) const;
+                   Requirement &Req) const;
 
   /// \brief Determine whether this module is a submodule.
-  bool isSubModule() const { return Parent != nullptr; }
+  bool isSubModule() const { return Parent != 0; }
   
   /// \brief Determine whether this module is a submodule of the given other
   /// module.
-  bool isSubModuleOf(const Module *Other) const;
+  bool isSubModuleOf(Module *Other) const;
   
   /// \brief Determine whether this module is a part of a framework,
   /// either because it is a framework module or because it is a submodule
@@ -362,8 +330,7 @@ public:
 
   /// \brief Set the serialized AST file for the top-level module of this module.
   void setASTFile(const FileEntry *File) {
-    assert((File == nullptr || getASTFile() == nullptr ||
-            getASTFile() == File) && "file path changed");
+    assert((getASTFile() == 0 || getASTFile() == File) && "file path changed");
     getTopLevelModule()->ASTFile = File;
   }
 
@@ -415,9 +382,6 @@ public:
                       const LangOptions &LangOpts,
                       const TargetInfo &Target);
 
-  /// \brief Mark this module and all of its submodules as unavailable.
-  void markUnavailable(bool MissingRequirement = false);
-
   /// \brief Find the submodule with the given name.
   ///
   /// \returns The submodule if found, or NULL otherwise.
@@ -425,10 +389,6 @@ public:
 
   /// \brief Determine whether the specified module would be visible to
   /// a lookup at the end of this module.
-  ///
-  /// FIXME: This may return incorrect results for (submodules of) the
-  /// module currently being built, if it's queried before we see all
-  /// of its imports.
   bool isModuleVisible(const Module *M) const {
     if (VisibleModulesCache.empty())
       buildVisibleModulesCache();

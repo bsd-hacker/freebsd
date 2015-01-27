@@ -62,7 +62,6 @@
 #include <sys/systm.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
-#include <sys/sysctl.h>
 #include <sys/taskqueue.h>
 
 #include <machine/bus.h>

@@ -6,7 +6,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -693,28 +693,26 @@ void
 AcpiNsTerminate (
     void)
 {
-    ACPI_STATUS             Status;
+    ACPI_OPERAND_OBJECT     *ObjDesc;
 
 
     ACPI_FUNCTION_TRACE (NsTerminate);
 
 
     /*
-     * Free the entire namespace -- all nodes and all objects
-     * attached to the nodes
+     * 1) Free the entire namespace -- all nodes and objects
+     *
+     * Delete all object descriptors attached to namepsace nodes
      */
     AcpiNsDeleteNamespaceSubtree (AcpiGbl_RootNode);
 
-    /* Delete any objects attached to the root node */
+    /* Detach any objects attached to the root */
 
-    Status = AcpiUtAcquireMutex (ACPI_MTX_NAMESPACE);
-    if (ACPI_FAILURE (Status))
+    ObjDesc = AcpiNsGetAttachedObject (AcpiGbl_RootNode);
+    if (ObjDesc)
     {
-        return_VOID;
+        AcpiNsDetachObject (AcpiGbl_RootNode);
     }
-
-    AcpiNsDeleteNode (AcpiGbl_RootNode);
-    (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
 
     ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "Namespace freed\n"));
     return_VOID;

@@ -170,7 +170,4 @@ extern vm_offset_t vm_max_kernel_address;
 #define	VM_MAX_AUTOTUNE_MAXUSERS	384
 #endif
 
-#define	SFBUF
-#define	SFBUF_MAP
-
 #endif	/* _MACHINE_VMPARAM_H_ */

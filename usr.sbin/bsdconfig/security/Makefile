@@ -10,4 +10,7 @@ FILES=		INDEX USAGE
 SCRIPTSDIR=	${FILESDIR}
 SCRIPTS=	kern_securelevel security
 
+beforeinstall:
+	mkdir -p ${DESTDIR}${FILESDIR}
+
 .include <bsd.prog.mk>

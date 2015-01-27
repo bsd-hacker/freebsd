@@ -98,4 +98,3 @@ ENTRY(_brk)
 	.word	PIC_SYM(_C_LABEL(minbrk), GOT)
 .Lcurbrk:
 	.word	PIC_SYM(CURBRK, GOT)
-END(_brk)

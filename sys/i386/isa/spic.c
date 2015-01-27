@@ -87,6 +87,7 @@ static d_poll_t		spicpoll;
 
 static struct cdevsw spic_cdevsw = {
 	.d_version =	D_VERSION,
+	.d_flags =	D_NEEDGIANT,
 	.d_open =	spicopen,
 	.d_close =	spicclose,
 	.d_read =	spicread,
@@ -105,10 +106,8 @@ struct spic_softc {
 	int sc_opened;
 	int sc_sleeping;
 	int sc_buttonlast;
-	struct callout sc_timeout;
-	struct mtx sc_lock;
+	struct callout_handle sc_timeout_ch;
 	device_t sc_dev;
-	struct cdev *sc_cdev;
 	struct selinfo sc_rsel;
 	u_char sc_buf[SCBUFLEN];
 	int sc_count;
@@ -338,8 +337,6 @@ spic_attach(device_t dev)
 	sc = device_get_softc(dev);
 
 	sc->sc_dev = dev;
-	mtx_init(&sc->sc_lock, "spic", NULL, MTX_DEF);
-	callout_init_mtx(&sc->sc_timeout, &sc->sc_lock, 0);
 	
 	spic_pollrate = (hz/50); /* Every 50th of a second */
 
@@ -348,8 +345,7 @@ spic_attach(device_t dev)
 	spic_call1(sc, 0x92);
 
 	/* There can be only one */
-	sc->sc_cdev = make_dev(&spic_cdevsw, 0, 0, 0, 0600, "jogdial");
-	sc->sc_cdev->si_drv1 = sc;
+	make_dev(&spic_cdevsw, 0, 0, 0, 0600, "jogdial");
 
 	return 0;
 }
@@ -361,7 +357,6 @@ spictimeout(void *arg)
 	u_char b, event, param;
 	int j;
 
-	mtx_assert(&sc->sc_lock, MA_OWNED);
 	if (!sc->sc_opened) {
 		device_printf(sc->sc_dev, "timeout called while closed!\n");
 		return;
@@ -431,7 +426,7 @@ spictimeout(void *arg)
 		}
 	else {
 		/* No event. Wait some more */
-		callout_reset(&sc->sc_timeout, spic_pollrate, spictimeout, sc);
+		sc->sc_timeout_ch = timeout(spictimeout, sc, spic_pollrate);
 		return;
 	}
 
@@ -444,7 +439,7 @@ spictimeout(void *arg)
 	}
 	spic_call2(sc, 0x81, 0xff); /* Clear event */
 
-	callout_reset(&sc->sc_timeout, spic_pollrate, spictimeout, sc);
+	sc->sc_timeout_ch = timeout(spictimeout, sc, spic_pollrate);
 }
 
 static int
@@ -452,21 +447,17 @@ spicopen(struct cdev *dev, int flag, int fmt, struct thread *td)
 {
 	struct spic_softc *sc;
 
-	sc = dev->si_drv1;
+	sc = devclass_get_softc(spic_devclass, 0);
 
-	mtx_lock(&sc->sc_lock);
-	if (sc->sc_opened) {
-		mtx_unlock(&sc->sc_lock);
-		return (EBUSY);
-	}
+	if (sc->sc_opened)
+		return EBUSY;
 
 	sc->sc_opened++;
 	sc->sc_count=0;
 
 	/* Start the polling */
-	callout_reset(&sc->sc_timeout, spic_pollrate, spictimeout, sc);
-	mtx_unlock(&sc->sc_lock);
-	return (0);
+	timeout(spictimeout, sc, spic_pollrate);
+	return 0;
 }
 
 static int
@@ -474,13 +465,11 @@ spicclose(struct cdev *dev, int flag, int fmt, struct thread *td)
 {
 	struct spic_softc *sc;
 
-	sc = dev->si_drv1;
-	mtx_lock(&sc->sc_lock);
+	sc = devclass_get_softc(spic_devclass, 0);
 
 	/* Stop polling */
-	callout_stop(&sc->sc_timeout);
+	untimeout(spictimeout, sc, sc->sc_timeout_ch);
 	sc->sc_opened = 0;
-	mtx_unlock(&sc->sc_lock);
 	return 0;
 }
 
@@ -488,31 +477,34 @@ static int
 spicread(struct cdev *dev, struct uio *uio, int flag)
 {
 	struct spic_softc *sc;
-	int l, error;
+	int l, s, error;
 	u_char buf[SCBUFLEN];
 
-	sc = dev->si_drv1;
+	sc = devclass_get_softc(spic_devclass, 0);
 
 	if (uio->uio_resid <= 0) /* What kind of a read is this?! */
-		return (0);
+		return 0;
 
-	mtx_lock(&sc->sc_lock);
+	s = spltty();
 	while (!(sc->sc_count)) {
 		sc->sc_sleeping=1;
-		error = mtx_sleep(sc, &sc->sc_lock, PZERO | PCATCH, "jogrea", 0);
+		error = tsleep( sc, PZERO | PCATCH, "jogrea", 0);
 		sc->sc_sleeping=0;
 		if (error) {
-			mtx_unlock(&sc->sc_lock);
-			return (error);
+			splx(s);
+			return error;
 		}
 	}
+	splx(s);
 
+	s = spltty();
 	l = min(uio->uio_resid, sc->sc_count);
 	bcopy(sc->sc_buf, buf, l);
 	sc->sc_count -= l;
 	bcopy(sc->sc_buf + l, sc->sc_buf, l);
-	mtx_unlock(&sc->sc_lock);
-	return (uiomove(buf, l, uio));
+	splx(s);
+	return uiomove(buf, l, uio);
+
 }
 
 static int
@@ -520,28 +512,28 @@ spicioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag, struct thread *t
 {
 	struct spic_softc *sc;
 
-	sc = dev->si_drv1;
+	sc = devclass_get_softc(spic_devclass, 0);
 
-	return (EIO);
+	return EIO;
 }
 
 static int
 spicpoll(struct cdev *dev, int events, struct thread *td)
 {
 	struct spic_softc *sc;
-	int revents = 0;
+	int revents = 0, s;
 
-	sc = dev->si_drv1;
-	mtx_lock(&sc->sc_lock);
+	sc = devclass_get_softc(spic_devclass, 0);
+	s = spltty();
 	if (events & (POLLIN | POLLRDNORM)) {
 		if (sc->sc_count)
 			revents |= events & (POLLIN | POLLRDNORM);
 		else
 			selrecord(td, &sc->sc_rsel); /* Who shall we wake? */
 	}
-	mtx_unlock(&sc->sc_lock);
+	splx(s);
 
-	return (revents);
+	return revents;
 }
 
 

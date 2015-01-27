@@ -30,12 +30,13 @@ SHLIB_MINOR=	0
 SRCS=		cuse_lib.c
 INCS=		cuse.h
 MAN=		cuse.3
+PTHREAD_LIBS?=	-lpthread
 CFLAGS+=	-D_GNU_SOURCE
 .if defined(HAVE_DEBUG)
 CFLAGS+=	-g
 CFLAGS+=	-DHAVE_DEBUG
 .endif
-LIBADD=	pthread
+LDADD+=	${PTHREAD_LIBS}
 
 MLINKS=
 MLINKS+= cuse.3 cuse_alloc_unit_number.3

@@ -57,10 +57,6 @@
 
 #include <openssl/stack.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #ifndef CHECKED_PTR_OF
 #define CHECKED_PTR_OF(type, p) \
     ((void*) (1 ? p : (type*)0))
@@ -2664,8 +2660,4 @@ DECLARE_SPECIAL_STACK_OF(OPENSSL_BLOCK, void)
 #define lh_SSL_SESSION_free(lh) LHM_lh_free(SSL_SESSION,lh)
 /* End of util/mkstack.pl block, you may now edit :-) */
 
-
-#ifdef  __cplusplus
-}
-#endif
 #endif /* !defined HEADER_SAFESTACK_H */

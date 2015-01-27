@@ -143,8 +143,7 @@ struct fxp_desc_list {
 };
 
 struct fxp_ident {
-	uint16_t	vendor;
-	uint16_t	device;
+	uint16_t	devid;
 	int16_t		revid;		/* -1 matches anything */
 	uint8_t		ich;
 	const char	*name;

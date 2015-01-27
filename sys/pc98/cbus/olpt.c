@@ -140,7 +140,6 @@ struct lpt_softc {
 	struct resource *res_port;
 	struct resource *res_irq;
 	void *sc_ih;
-	struct callout timer;
 
 	int	sc_port;
 	short	sc_state;
@@ -320,7 +319,6 @@ lpt_attach(device_t dev)
 
 	unit = device_get_unit(dev);
 	sc = device_get_softc(dev);
-	callout_init(&sc->timer, 0);
 
 	rid = 0;
 	sc->res_port = isa_alloc_resourcev(dev, SYS_RES_IOPORT, &rid,
@@ -420,8 +418,8 @@ lptopen (struct cdev *dev, int flags, int fmt, struct thread *td)
 	lprintf(("irq %x\n", sc->sc_irq));
 	if (sc->sc_irq & LP_USE_IRQ) {
 		sc->sc_state |= TOUT;
-		sc->sc_backoff = hz / LPTOUTINITIAL;;
-		callout_reset(&sc->timer, sc->sc_backoff, lptout, sc);
+		timeout (lptout, (caddr_t)sc,
+			 (sc->sc_backoff = hz/LPTOUTINITIAL));
 	}
 
 	lprintf(("opened.\n"));
@@ -439,7 +437,7 @@ lptout (void *arg)
 		sc->sc_backoff++;
 		if (sc->sc_backoff > hz/LPTOUTMAX)
 			sc->sc_backoff = sc->sc_backoff > hz/LPTOUTMAX;
-		callout_reset(&sc->timer, sc->sc_backoff, lptout, sc);
+		timeout (lptout, (caddr_t)sc, sc->sc_backoff);
 	} else
 		sc->sc_state &= ~TOUT;
 

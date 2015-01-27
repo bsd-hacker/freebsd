@@ -56,8 +56,12 @@ The
 driver responds to disk-specific
 .Fn ioctl
 commands, namely the
-.Dv DIOCGPART
-command.
+.Dv DIOCGDINFO ,
+.Dv DIOCGPART ,
+.Dv DIOCWDINFO ,
+and
+.Dv DIOCSDINFO ,
+commands.
 Other disk-specific
 .Fn ioctl
 commands will return an error.

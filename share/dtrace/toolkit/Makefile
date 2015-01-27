@@ -5,10 +5,10 @@
 DTRACETOOLKIT= ../../../cddl/contrib/dtracetoolkit
 
 SCRIPTS=	${DTRACETOOLKIT}/execsnoop \
-		${DTRACETOOLKIT}/hotkernel \
 		${DTRACETOOLKIT}/hotuser   \
+		${DTRACETOOLKIT}/hotkernel \
 		${DTRACETOOLKIT}/opensnoop \
-		${DTRACETOOLKIT}/procsystime
+		${DTRACETOOLKIT}/procsystime \
 
 SCRIPTSDIR= ${SHAREDIR}/dtrace/toolkit
 

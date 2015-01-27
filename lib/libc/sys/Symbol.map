@@ -245,6 +245,7 @@ FBSD_1.0 {
 	setaudit;
 	setaudit_addr;
 	setauid;
+	setcontext;
 	setegid;
 	seteuid;
 	setgid;
@@ -285,6 +286,7 @@ FBSD_1.0 {
 	__stack_chk_guard;
 	stat;
 	statfs;
+	swapcontext;
 	swapoff;
 	swapon;
 	symlink;
@@ -349,6 +351,7 @@ FBSD_1.1 {
 	mkfifoat;
 	mknodat;
 	msgctl;
+	openat;
 	readlinkat;
 	renameat;
 	setfib;
@@ -394,12 +397,6 @@ FBSD_1.3 {
 	posix_fadvise;
 	procctl;
 	wait6;
-};
-
-FBSD_1.4 {
-	futimens;
-	ppoll;
-	utimensat;
 };
 
 FBSDprivate_1.0 {
@@ -824,8 +821,6 @@ FBSDprivate_1.0 {
 	__sys_pipe;
 	_poll;
 	__sys_poll;
-	_ppoll;
-	__sys_ppoll;
 	_preadv;
 	__sys_preadv;
 	_procctl;
@@ -1047,9 +1042,7 @@ FBSDprivate_1.0 {
 	__sys_write;
 	_writev;
 	__sys_writev;
-	__set_error_selector;
+	__error_unthreaded;
 	nlm_syscall;
 	gssd_syscall;
-	__libc_interposing_slot;
-	__libc_sigwait;
 };

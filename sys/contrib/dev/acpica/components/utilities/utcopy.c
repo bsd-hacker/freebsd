@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -564,10 +564,10 @@ AcpiUtCopyEsimpleToIsimple (
 
     case ACPI_TYPE_LOCAL_REFERENCE:
 
-        /* An incoming reference is defined to be a namespace node */
+        /* TBD: should validate incoming handle */
 
-        InternalObject->Reference.Class = ACPI_REFCLASS_REFOF;
-        InternalObject->Reference.Object = ExternalObject->Reference.Handle;
+        InternalObject->Reference.Class = ACPI_REFCLASS_NAME;
+        InternalObject->Reference.Node = ExternalObject->Reference.Handle;
         break;
 
     default:
@@ -1061,13 +1061,6 @@ AcpiUtCopyIobjectToIobject (
     else
     {
         Status = AcpiUtCopySimpleObject (SourceDesc, *DestDesc);
-    }
-
-    /* Delete the allocated object if copy failed */
-
-    if (ACPI_FAILURE (Status))
-    {
-        AcpiUtRemoveReference(*DestDesc);
     }
 
     return_ACPI_STATUS (Status);

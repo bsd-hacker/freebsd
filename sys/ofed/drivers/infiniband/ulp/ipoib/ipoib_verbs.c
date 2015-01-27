@@ -32,6 +32,7 @@
  */
 
 #include "ipoib.h"
+#include <linux/ethtool.h>
 
 int ipoib_mcast_attach(struct ipoib_dev_priv *priv, u16 mlid, union ib_gid *mgid, int set_qkey)
 {

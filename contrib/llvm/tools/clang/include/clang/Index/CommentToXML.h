@@ -11,7 +11,6 @@
 #define LLVM_CLANG_INDEX_COMMENTTOXML_H
 
 #include "clang/Basic/LLVM.h"
-#include <memory>
 
 namespace clang {
 class ASTContext;
@@ -25,12 +24,11 @@ namespace index {
 class SimpleFormatContext;
 
 class CommentToXMLConverter {
-  std::unique_ptr<SimpleFormatContext> FormatContext;
+  SimpleFormatContext *FormatContext;
   unsigned FormatInMemoryUniqueId;
 
 public:
-  CommentToXMLConverter();
-  ~CommentToXMLConverter();
+  CommentToXMLConverter() : FormatContext(0), FormatInMemoryUniqueId(0) {}
 
   void convertCommentToHTML(const comments::FullComment *FC,
                             SmallVectorImpl<char> &HTML,

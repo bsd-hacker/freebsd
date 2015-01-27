@@ -10,6 +10,9 @@
 PROG=	wire-test
 MAN=	wire-test.8
 
-LIBADD=	amu
+DPADD=	${LIBAMU}
+LDADD=	${LIBAMU}
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

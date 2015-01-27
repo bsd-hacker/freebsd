@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,7 +42,6 @@
  */
 
 #define __TBXFACE_C__
-#define EXPORT_ACPI_INTERFACES
 
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
@@ -162,7 +161,7 @@ AcpiInitializeTables (
     return_ACPI_STATUS (Status);
 }
 
-ACPI_EXPORT_SYMBOL_INIT (AcpiInitializeTables)
+ACPI_EXPORT_SYMBOL (AcpiInitializeTables)
 
 
 /*******************************************************************************
@@ -205,7 +204,7 @@ AcpiReallocateRootTable (
     return_ACPI_STATUS (Status);
 }
 
-ACPI_EXPORT_SYMBOL_INIT (AcpiReallocateRootTable)
+ACPI_EXPORT_SYMBOL (AcpiReallocateRootTable)
 
 
 /*******************************************************************************
@@ -262,7 +261,7 @@ AcpiGetTableHeader (
         {
             if ((AcpiGbl_RootTableList.Tables[i].Flags &
                     ACPI_TABLE_ORIGIN_MASK) ==
-                ACPI_TABLE_ORIGIN_INTERNAL_PHYSICAL)
+                ACPI_TABLE_ORIGIN_MAPPED)
             {
                 Header = AcpiOsMapMemory (
                             AcpiGbl_RootTableList.Tables[i].Address,
@@ -345,7 +344,7 @@ AcpiGetTable (
             continue;
         }
 
-        Status = AcpiTbValidateTable (&AcpiGbl_RootTableList.Tables[i]);
+        Status = AcpiTbVerifyTable (&AcpiGbl_RootTableList.Tables[i]);
         if (ACPI_SUCCESS (Status))
         {
             *OutTable = AcpiGbl_RootTableList.Tables[i].Pointer;
@@ -406,7 +405,7 @@ AcpiGetTableByIndex (
     {
         /* Table is not mapped, map it */
 
-        Status = AcpiTbValidateTable (&AcpiGbl_RootTableList.Tables[TableIndex]);
+        Status = AcpiTbVerifyTable (&AcpiGbl_RootTableList.Tables[TableIndex]);
         if (ACPI_FAILURE (Status))
         {
             (void) AcpiUtReleaseMutex (ACPI_MTX_TABLES);

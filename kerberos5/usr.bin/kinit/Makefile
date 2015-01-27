@@ -2,7 +2,12 @@
 
 PROG=	kinit
 CFLAGS+=-I${KRB5DIR}/lib/roken
-LIBADD=	kafs5 krb5 heimntlm roken crypto vers
+DPADD=	${LIBKAFS5} ${LIBKRB5} ${LIBHEIMNTLM} ${LIBROKEN} ${LIBVERS} \
+	${LIBASN1} ${LIBCRYPTO} ${LIBCRYPT}
+LDADD=	-lkafs5 -lkrb5 -lheimntlm -lroken ${LIBVERS} \
+	-lasn1 -lcrypto -lcrypt -lcom_err
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>
 

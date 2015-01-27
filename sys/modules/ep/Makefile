@@ -1,9 +1,8 @@
 # $FreeBSD$
 
-SYSDIR?=${.CURDIR}/../..
-.include "${SYSDIR}/conf/kern.opts.mk"
+.include <src.opts.mk>
 
-.PATH: ${SYSDIR}/dev/ep
+.PATH: ${.CURDIR}/../../dev/ep
 
 KMOD=	if_ep
 SRCS=	if_ep.c

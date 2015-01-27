@@ -1165,7 +1165,8 @@ mn_rx_intr(struct mn_softc *sc, u_int32_t vector)
 				mn_free_desc(dp);
 				return; /* ENOBUFS */
 			}
-			if (!(MCLGET(m, M_NOWAIT))) {
+			MCLGET(m, M_NOWAIT);
+			if((m->m_flags & M_EXT) == 0) {
 				mn_free_desc(dp);
 				m_freem(m);
 				return; /* ENOBUFS */

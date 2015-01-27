@@ -33,6 +33,13 @@
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 
+#if (__FreeBSD_version < 500000)
+#include <sys/proc.h>
+#include <sys/kthread.h>
+#include <sys/wait.h>
+#include <sys/sysproto.h>
+#endif
+
 #ifndef __KERNEL__
 #define __KERNEL__
 #endif
@@ -59,7 +66,7 @@ static int event_queue_head=0, event_queue_tail=0;
 
 static int hpt_get_event(PHPT_EVENT pEvent);
 static int hpt_set_array_state(DEVICEID idArray, DWORD state);
-static void lock_driver_idle(IAL_ADAPTER_T *pAdapter);
+static intrmask_t lock_driver_idle(IAL_ADAPTER_T *pAdapter);
 static void HPTLIBAPI thread_io_done(_VBUS_ARG PCommand pCmd);
 static int HPTLIBAPI R1ControlSgl(_VBUS_ARG PCommand pCmd,
     FPSCAT_GATH pSgTable, int logical);
@@ -151,7 +158,6 @@ ioctl_ReportEvent(UCHAR event, PVOID param)
 		get_disk_location(&((PVDevice)param)->u.disk, &controller, &channel);
 		hpt_printk(("Device removed: controller %d channel %d\n", controller, channel));
 	}
-	wakeup(param);
 }
 
 static int
@@ -189,17 +195,30 @@ hpt_delete_array(_VBUS_ARG DEVICEID id, DWORD options)
 /* just to prevent driver from sending more commands */
 static void HPTLIBAPI nothing(_VBUS_ARG void *notused){}
 
-void
+intrmask_t
 lock_driver_idle(IAL_ADAPTER_T *pAdapter)
 {
+	intrmask_t oldspl;
 	_VBUS_INST(&pAdapter->VBus)
-	mtx_lock(&pAdapter->lock);
+	oldspl = lock_driver();
 	while (pAdapter->outstandingCommands) {
 		KdPrint(("outstandingCommands is %d, wait..\n", pAdapter->outstandingCommands));
 		if (!mWaitingForIdle(_VBUS_P0)) CallWhenIdle(_VBUS_P nothing, 0);
-		mtx_sleep(pAdapter, &pAdapter->lock, 0, "hptidle", 0);
+		unlock_driver(oldspl);
+/*Schedule out*/
+#if (__FreeBSD_version < 500000)
+		YIELD_THREAD;
+#else 
+#if (__FreeBSD_version > 700033)
+		pause("switch", 1);
+#else
+		tsleep(lock_driver_idle, PPAUSE, "switch", 1);
+#endif
+#endif
+		oldspl = lock_driver();
 	}
 	CheckIdleCall(_VBUS_P0);
+	return oldspl;
 }
 
 int Kernel_DeviceIoControl(_VBUS_ARG
@@ -310,7 +329,9 @@ int Kernel_DeviceIoControl(_VBUS_ARG
 		default:
 		{
 			PVDevice pVDev;
-
+#ifdef SUPPORT_ARRAY
+			intrmask_t oldspl;
+#endif
 			switch(dwIoControlCode) {
 			/* read-only ioctl functions can be called directly. */
 			case HPT_IOCTL_GET_VERSION:
@@ -361,13 +382,13 @@ int Kernel_DeviceIoControl(_VBUS_ARG
 					 * create_array, and other functions can't be executed while channel is 
 					 * perform I/O commands. Wait until driver is idle.
 					 */
-					lock_driver_idle(pAdapter);
+					oldspl = lock_driver_idle(pAdapter);
 					if (hpt_default_ioctl(_VBUS_P dwIoControlCode, lpInBuffer, nInBufferSize, 
 						lpOutBuffer, nOutBufferSize, lpBytesReturned) == -1) {
-						mtx_unlock(&pAdapter->lock);
+						unlock_driver(oldspl);
 						return -1;
 					}
-					mtx_unlock(&pAdapter->lock);
+					unlock_driver(oldspl);
 				}
 				else
 					return -1;
@@ -380,7 +401,7 @@ int Kernel_DeviceIoControl(_VBUS_ARG
 				case HPT_IOCTL_CREATE_ARRAY:
 				{
 					pAdapter=(IAL_ADAPTER_T *)(ID_TO_VDEV(*(DEVICEID *)lpOutBuffer))->pVBus->OsExt;
-					mtx_lock(&pAdapter->lock);
+					oldspl = lock_driver();
                     if(((PCREATE_ARRAY_PARAMS)lpInBuffer)->CreateFlags & CAF_CREATE_AND_DUPLICATE)
 				    {
 						  (ID_TO_VDEV(*(DEVICEID *)lpOutBuffer))->u.array.rf_auto_rebuild = 0;
@@ -394,7 +415,7 @@ int Kernel_DeviceIoControl(_VBUS_ARG
 				    {
                           hpt_queue_dpc((HPT_DPC)hpt_rebuild_data_block, pAdapter, ID_TO_VDEV(*(DEVICEID *)lpOutBuffer), REBUILD_PARITY);
 					}
-					mtx_unlock(&pAdapter->lock);
+					unlock_driver(oldspl);
                     break;
 				}
 
@@ -402,7 +423,7 @@ int Kernel_DeviceIoControl(_VBUS_ARG
 				case HPT_IOCTL_CREATE_ARRAY_V2:
 				{
 					pAdapter=(IAL_ADAPTER_T *)(ID_TO_VDEV(*(DEVICEID *)lpOutBuffer))->pVBus->OsExt;
-					mtx_lock(&pAdapter->lock);
+					oldspl = lock_driver();
 				             if(((PCREATE_ARRAY_PARAMS_V2)lpInBuffer)->CreateFlags & CAF_CREATE_AND_DUPLICATE) {
 						  (ID_TO_VDEV(*(DEVICEID *)lpOutBuffer))->u.array.rf_auto_rebuild = 0;
 				                          hpt_queue_dpc((HPT_DPC)hpt_rebuild_data_block, pAdapter, ID_TO_VDEV(*(DEVICEID *)lpOutBuffer), DUPLICATE);
@@ -411,7 +432,7 @@ int Kernel_DeviceIoControl(_VBUS_ARG
 					} else if(((PCREATE_ARRAY_PARAMS_V2)lpInBuffer)->CreateFlags & CAF_CREATE_R5_BUILD_PARITY) {
 				                          hpt_queue_dpc((HPT_DPC)hpt_rebuild_data_block, pAdapter, ID_TO_VDEV(*(DEVICEID *)lpOutBuffer), REBUILD_PARITY);
 					}
-					mtx_unlock(&pAdapter->lock);
+					unlock_driver(oldspl);
 					break;
 				}
 				case HPT_IOCTL_ADD_DISK_TO_ARRAY:
@@ -420,16 +441,23 @@ int Kernel_DeviceIoControl(_VBUS_ARG
 					pAdapter=(IAL_ADAPTER_T *)pArray->pVBus->OsExt;
 					if(pArray->u.array.rf_rebuilding == 0)
 					{		
-						mtx_lock(&pAdapter->lock);
+						DWORD timeout = 0;
+						oldspl = lock_driver();
 						pArray->u.array.rf_auto_rebuild = 0;
 						pArray->u.array.rf_abort_rebuild = 0;
 						hpt_queue_dpc((HPT_DPC)hpt_rebuild_data_block, pAdapter, pArray, DUPLICATE);
+						unlock_driver(oldspl);
 						while (!pArray->u.array.rf_rebuilding)
 						{
-							if (mtx_sleep(pArray, &pAdapter->lock, 0, "hptwait", hz * 3) != 0)
+#if (__FreeBSD_version > 700033)
+							pause("pause", 1);
+#else
+							tsleep((caddr_t)Kernel_DeviceIoControl, PPAUSE, "pause", 1);
+#endif
+							if ( timeout >= hz*3)
 								break;
+							timeout ++;
 						}
-						mtx_unlock(&pAdapter->lock);
 					}
 					break;
 				}
@@ -447,7 +475,9 @@ int Kernel_DeviceIoControl(_VBUS_ARG
 static int
 hpt_get_event(PHPT_EVENT pEvent)
 {
+	intrmask_t oldspl = lock_driver();
 	int ret = event_queue_remove(pEvent);
+	unlock_driver(oldspl);
 	return ret;
 }
 
@@ -457,6 +487,8 @@ hpt_set_array_state(DEVICEID idArray, DWORD state)
 	IAL_ADAPTER_T *pAdapter;
 	PVDevice pVDevice = ID_TO_VDEV(idArray);
 	int	i;
+	DWORD timeout = 0;
+	intrmask_t oldspl;
 
 	if(idArray == 0 || check_VDevice_valid(pVDevice))	return -1;
 	if(!mIsArray(pVDevice))
@@ -469,27 +501,32 @@ hpt_set_array_state(DEVICEID idArray, DWORD state)
 	{
 		case MIRROR_REBUILD_START:
 		{
-			mtx_lock(&pAdapter->lock);
 			if (pVDevice->u.array.rf_rebuilding ||
 				pVDevice->u.array.rf_verifying ||
-				pVDevice->u.array.rf_initializing) {
-				mtx_unlock(&pAdapter->lock);
+				pVDevice->u.array.rf_initializing)
 				return -1;
-			}
 			
+			oldspl = lock_driver();
+
 			pVDevice->u.array.rf_auto_rebuild = 0;
 			pVDevice->u.array.rf_abort_rebuild = 0;
 
 			hpt_queue_dpc((HPT_DPC)hpt_rebuild_data_block, pAdapter, pVDevice, 
 				(UCHAR)((pVDevice->u.array.CriticalMembers || pVDevice->VDeviceType == VD_RAID_1)? DUPLICATE : REBUILD_PARITY));
 
+			unlock_driver(oldspl);
+
 			while (!pVDevice->u.array.rf_rebuilding)
 			{
-				if (mtx_sleep(pVDevice, &pAdapter->lock, 0,
-				    "hptwait", hz * 20) != 0)
+#if (__FreeBSD_version > 700033)
+				pause("pause", 1);
+#else
+				tsleep((caddr_t)hpt_set_array_state, PPAUSE, "pause", 1);
+#endif
+				if ( timeout >= hz*20)
 					break;
+				timeout ++;
 			}
-			mtx_unlock(&pAdapter->lock);
 		}
 
 		break;
@@ -500,22 +537,25 @@ hpt_set_array_state(DEVICEID idArray, DWORD state)
 				if(pVDevice->u.array.pMember[i] != 0 && pVDevice->u.array.pMember[i]->VDeviceType == VD_RAID_1)
 					hpt_set_array_state(VDEV_TO_ID(pVDevice->u.array.pMember[i]), state);
 			}
-
-			mtx_lock(&pAdapter->lock);
-			if(pVDevice->u.array.rf_rebuilding != 1) {
-				mtx_unlock(&pAdapter->lock);
-				return -1;
-			}
 			
+			if(pVDevice->u.array.rf_rebuilding != 1)
+				return -1;
+			
+			oldspl = lock_driver();
 			pVDevice->u.array.rf_abort_rebuild = 1;
+			unlock_driver(oldspl);
 			
 			while (pVDevice->u.array.rf_abort_rebuild)
 			{
-				if (mtx_sleep(pVDevice, &pAdapter->lock, 0,
-				    "hptabrt", hz * 20) != 0)
+#if (__FreeBSD_version > 700033)
+				pause("pause", 1);
+#else
+				tsleep((caddr_t)hpt_set_array_state, PPAUSE, "pause", 1);
+#endif
+				if ( timeout >= hz*20)
 					break;
+				timeout ++;
 			}
-			mtx_unlock(&pAdapter->lock);
 		}
 		break;
 
@@ -523,86 +563,98 @@ hpt_set_array_state(DEVICEID idArray, DWORD state)
 		{
 			/*if(pVDevice->u.array.rf_verifying)
 				return -1;*/
-			mtx_lock(&pAdapter->lock);
 			if (pVDevice->u.array.rf_rebuilding ||
 				pVDevice->u.array.rf_verifying ||
-				pVDevice->u.array.rf_initializing) {
-				mtx_unlock(&pAdapter->lock);
+				pVDevice->u.array.rf_initializing)
 				return -1;
-			}
 
+			oldspl = lock_driver();
             pVDevice->u.array.RebuildSectors = 0;
 			hpt_queue_dpc((HPT_DPC)hpt_rebuild_data_block, pAdapter, pVDevice, VERIFY);
+			unlock_driver(oldspl);
 			
 			while (!pVDevice->u.array.rf_verifying)
 			{
-				if (mtx_sleep(pVDevice, &pAdapter->lock, 0,
-				    "hptvrfy", hz * 20) != 0)
+#if (__FreeBSD_version > 700033)
+				pause("pause", 1);
+#else
+				tsleep((caddr_t)hpt_set_array_state, PPAUSE, "pause", 1);
+#endif
+				if ( timeout >= hz*20)
 					break;
+				timeout ++;
 			}
-			mtx_unlock(&pAdapter->lock);
 		}
 		break;
 
 		case AS_VERIFY_ABORT:
 		{
-			mtx_lock(&pAdapter->lock);
-			if(pVDevice->u.array.rf_verifying != 1) {
-				mtx_unlock(&pAdapter->lock);
+			if(pVDevice->u.array.rf_verifying != 1)
 				return -1;
-			}
 				
+			oldspl = lock_driver();
 			pVDevice->u.array.rf_abort_rebuild = 1;
+			unlock_driver(oldspl);
 			
 			while (pVDevice->u.array.rf_abort_rebuild)
 			{
-				if (mtx_sleep(pVDevice, &pAdapter->lock, 0,
-				    "hptvrfy", hz * 80) != 0)
+#if (__FreeBSD_version > 700033)
+				pause("pause", 1);
+#else
+				tsleep((caddr_t)hpt_set_array_state, PPAUSE, "pause", 1);
+#endif
+				if ( timeout >= hz*80)
 					break;
+				timeout ++;
 			}
-			mtx_unlock(&pAdapter->lock);
 		}
 		break;
 
 		case AS_INITIALIZE_START:
 		{
-			mtx_lock(&pAdapter->lock);
 			if (pVDevice->u.array.rf_rebuilding ||
 				pVDevice->u.array.rf_verifying ||
-				pVDevice->u.array.rf_initializing) {
-				mtx_unlock(&pAdapter->lock);
+				pVDevice->u.array.rf_initializing)
 				return -1;
-			}
 
+			oldspl = lock_driver();
 			hpt_queue_dpc((HPT_DPC)hpt_rebuild_data_block, pAdapter, pVDevice, VERIFY);
+			unlock_driver(oldspl);
 			
 			while (!pVDevice->u.array.rf_initializing)
 			{
-				if (mtx_sleep(pVDevice, &pAdapter->lock, 0,
-				    "hptinit", hz * 80) != 0)
+#if (__FreeBSD_version > 700033)
+				pause("pause", 1);
+#else
+				tsleep((caddr_t)hpt_set_array_state, PPAUSE, "pause", 1);
+#endif
+				if ( timeout >= hz*80)
 					break;
+				timeout ++;
 			}
-			mtx_unlock(&pAdapter->lock);
 		}
 		break;
 
 		case AS_INITIALIZE_ABORT:
 		{
-			mtx_lock(&pAdapter->lock);
-			if(pVDevice->u.array.rf_initializing != 1) {
-				mtx_unlock(&pAdapter->lock);
+			if(pVDevice->u.array.rf_initializing != 1)
 				return -1;
-			}
 				
+			oldspl = lock_driver();
 			pVDevice->u.array.rf_abort_rebuild = 1;
+			unlock_driver(oldspl);
 			
 			while (pVDevice->u.array.rf_abort_rebuild)
 			{
-				if (mtx_sleep(pVDevice, &pAdapter->lock, 0,
-				    "hptinit", hz * 80) != 0)
+#if (__FreeBSD_version > 700033)
+				pause("pause", 1);
+#else
+				tsleep((caddr_t)hpt_set_array_state, PPAUSE, "pause", 1);
+#endif
+				if ( timeout >= hz*80)
 					break;
+				timeout ++;
 			}
-			mtx_unlock(&pAdapter->lock);
 		}
 		break;
 
@@ -687,19 +739,21 @@ thread_io_done(_VBUS_ARG PCommand pCmd)
 void
 hpt_rebuild_data_block(IAL_ADAPTER_T *pAdapter, PVDevice pArray, UCHAR flags)
 {
+	DWORD timeout = 0;
     ULONG capacity = pArray->VDeviceCapacity / (pArray->u.array.bArnMember-1);
     PCommand pCmd;
 	UINT result;
 	int needsync=0, retry=0, needdelete=0;
 	void *buffer = 0;
+	intrmask_t oldspl;
 
 	_VBUS_INST(&pAdapter->VBus)
 
 	if (pArray->u.array.rf_broken==1 ||
     	pArray->u.array.RebuildSectors>=capacity)
 		return;
-
-	mtx_lock(&pAdapter->lock);
+		
+	oldspl = lock_driver();
 	
 	switch(flags)
 	{
@@ -743,7 +797,9 @@ retry_cmd:
 		#define MAX_REBUILD_SECTORS 0x40
 
 		/* take care for discontinuous buffer in R1ControlSgl */
+		unlock_driver(oldspl);
 		buffer = malloc(SECTOR_TO_BYTE(MAX_REBUILD_SECTORS), M_DEVBUF, M_NOWAIT);
+		oldspl = lock_driver();
 		if(!buffer) {
 			FreeCommand(_VBUS_P pCmd);
 			hpt_printk(("can't allocate rebuild buffer\n"));
@@ -798,7 +854,12 @@ retry_cmd:
 	CheckPendingCall(_VBUS_P0);
 
 	if (!End_Job) {
-		mtx_sleep(pCmd, &pAdapter->lock, 0, "hptrbld", hz * 60);
+		unlock_driver(oldspl);
+		while (!End_Job) {
+			tsleep((caddr_t)pCmd, PPAUSE, "pause", hz);
+			if (timeout++>60) break;
+		}
+		oldspl = lock_driver();
 		if (!End_Job) {
 			hpt_printk(("timeout, reset\n"));
 			fResetVBus(_VBUS_P0);
@@ -807,7 +868,9 @@ retry_cmd:
 
 	result = pCmd->Result;
 	FreeCommand(_VBUS_P pCmd);
+	unlock_driver(oldspl);
 	if (buffer) free(buffer, M_DEVBUF);
+	oldspl = lock_driver();
 	KdPrintI(("cmd finished %d", result));
 
 	switch(result)
@@ -937,7 +1000,18 @@ fail:
 		KdPrintI(("currcmds is %d, wait..\n", pAdapter->outstandingCommands));
 		/* put this to have driver stop processing system commands quickly */
 		if (!mWaitingForIdle(_VBUS_P0)) CallWhenIdle(_VBUS_P nothing, 0);
-		mtx_sleep(pAdapter, &pAdapter->lock, 0, "hptidle", 0);
+		unlock_driver(oldspl);
+		/*Schedule out*/
+#if (__FreeBSD_version < 500000)		
+		YIELD_THREAD; 
+#else 
+#if (__FreeBSD_version > 700033)
+		pause("switch", 1);
+#else
+		tsleep(hpt_rebuild_data_block, PPAUSE, "switch", 1);
+#endif
+#endif
+		oldspl = lock_driver();
 	}
 		
 	if (needsync) SyncArrayInfo(pArray);
@@ -945,5 +1019,5 @@ fail:
 		fDeleteArray(_VBUS_P pArray, TRUE);
 
 	Check_Idle_Call(pAdapter);
-	mtx_unlock(&pAdapter->lock);
+	unlock_driver(oldspl);
 }

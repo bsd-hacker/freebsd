@@ -49,7 +49,7 @@ static int 	db_read_char(void);
 static void 	db_unread_char(int);
 
 int
-db_read_line(void)
+db_read_line()
 {
 	int	i;
 
@@ -97,7 +97,7 @@ db_flush_line()
 static int	db_look_char = 0;
 
 static int
-db_read_char(void)
+db_read_char()
 {
 	int	c;
 
@@ -148,7 +148,7 @@ char	db_tok_string[TOK_STRING_SIZE];
 db_expr_t	db_radix = 16;
 
 void
-db_flush_lex(void)
+db_flush_lex()
 {
 	db_flush_line();
 	db_look_char = 0;
@@ -156,7 +156,7 @@ db_flush_lex(void)
 }
 
 static int
-db_lex(void)
+db_lex()
 {
 	int	c;
 

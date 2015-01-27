@@ -7,8 +7,6 @@ TESTSDIR=	${TESTSBASE}/lib/atf/libatf-c++/detail
 ATF=		${.CURDIR:H:H:H:H:H}/contrib/atf
 .PATH:		${ATF}/atf-c++/detail
 
-CFLAGS+=	-DATF_C_TESTS_BASE='"${TESTSBASE}/lib/atf/libatf-c"'
-CFLAGS+=	-DATF_INCLUDEDIR='"${INCLUDEDIR}"'
 CFLAGS+=	-I${ATF}
 
 .for _T in	application_test \
@@ -16,6 +14,7 @@ CFLAGS+=	-I${ATF}
 		exceptions_test \
 		fs_test \
 		process_test \
+		sanity_test \
 		text_test
 ATF_TESTS_CXX+=	${_T}
 SRCS.${_T}=	${_T}.cpp test_helpers.cpp

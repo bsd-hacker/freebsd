@@ -83,8 +83,9 @@ static SYSCTL_NODE(_hw, OID_AUTO, bwn, CTLFLAG_RD, 0,
 
 #ifdef BWN_DEBUG
 static	int bwn_debug = 0;
-SYSCTL_INT(_hw_bwn, OID_AUTO, debug, CTLFLAG_RWTUN, &bwn_debug, 0,
+SYSCTL_INT(_hw_bwn, OID_AUTO, debug, CTLFLAG_RW, &bwn_debug, 0,
     "Broadcom debugging printfs");
+TUNABLE_INT("hw.bwn.debug", &bwn_debug);
 enum {
 	BWN_DEBUG_XMIT		= 0x00000001,	/* basic xmit operation */
 	BWN_DEBUG_RECV		= 0x00000002,	/* basic recv operation */
@@ -1311,7 +1312,7 @@ bwn_start_locked(struct ifnet *ifp)
 		if (ni == NULL) {
 			device_printf(sc->sc_dev, "unexpected NULL ni\n");
 			m_freem(m);
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 			continue;
 		}
 		KASSERT(ni != NULL, ("%s:%d: fail", __func__, __LINE__));
@@ -1321,7 +1322,7 @@ bwn_start_locked(struct ifnet *ifp)
 			if (k == NULL) {
 				ieee80211_free_node(ni);
 				m_freem(m);
-				if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+				ifp->if_oerrors++;
 				continue;
 			}
 		}
@@ -1330,7 +1331,7 @@ bwn_start_locked(struct ifnet *ifp)
 		if (bwn_tx_start(sc, ni, m) != 0) {
 			if (ni != NULL)
 				ieee80211_free_node(ni);
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 			continue;
 		}
 
@@ -1587,7 +1588,7 @@ bwn_watchdog(void *arg)
 
 	if (sc->sc_watchdog_timer != 0 && --sc->sc_watchdog_timer == 0) {
 		if_printf(ifp, "device timeout\n");
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 	}
 	callout_schedule(&sc->sc_watchdog_ch, hz);
 }
@@ -2748,7 +2749,7 @@ bwn_raw_xmit(struct ieee80211_node *ni, struct mbuf *m,
 	if (bwn_tx_isfull(sc, m)) {
 		ieee80211_free_node(ni);
 		m_freem(m);
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 		BWN_UNLOCK(sc);
 		return (ENOBUFS);
 	}
@@ -2756,7 +2757,7 @@ bwn_raw_xmit(struct ieee80211_node *ni, struct mbuf *m,
 	if (bwn_tx_start(sc, ni, m) != 0) {
 		if (ni != NULL)
 			ieee80211_free_node(ni);
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 	}
 	sc->sc_watchdog_timer = 5;
 	BWN_UNLOCK(sc);
@@ -8929,14 +8930,14 @@ bwn_dma_rxeof(struct bwn_dma_ring *dr, int *slot)
 	m = meta->mt_m;
 
 	if (bwn_dma_newbuf(dr, desc, meta, 0)) {
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		return;
 	}
 
 	rxhdr = mtod(m, struct bwn_rxhdr4 *);
 	len = le16toh(rxhdr->frame_len);
 	if (len <= 0) {
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		return;
 	}
 	if (bwn_dma_check_redzone(dr, m)) {
@@ -9366,7 +9367,7 @@ bwn_rxeof(struct bwn_mac *mac, struct mbuf *m, const void *_rxhdr)
 	rssi = rxhdr->phy.abg.rssi;	/* XXX incorrect RSSI calculation? */
 	noise = mac->mac_stats.link_noise;
 
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	ifp->if_ipackets++;
 
 	BWN_UNLOCK(sc);
 
@@ -9441,7 +9442,7 @@ bwn_dma_handle_txeof(struct bwn_mac *mac,
 
 		dr->dr_usedslot--;
 		if (meta->mt_islast) {
-			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+			ifp->if_opackets++;
 			break;
 		}
 		slot = bwn_dma_nextslot(dr, slot);
@@ -9487,7 +9488,7 @@ bwn_pio_handle_txeof(struct bwn_mac *mac,
 	tp->tp_m = NULL;
 	TAILQ_INSERT_TAIL(&tq->tq_pktlist, tp, tp_list);
 
-	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+	ifp->if_opackets++;
 
 	sc->sc_watchdog_timer = 0;
 	if (tq->tq_stop) {

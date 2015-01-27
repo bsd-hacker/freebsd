@@ -1,7 +1,8 @@
 # $FreeBSD$
 
 LIB=	roken
-LIBADD=	crypt
+LDADD=	-lcrypt
+DPADD=	${LIBCRYPT}
 VERSION_MAP=	${KRB5DIR}/lib/roken/version-script.map
 INCS=	roken.h \
 	roken-common.h \

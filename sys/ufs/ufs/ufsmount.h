@@ -33,6 +33,8 @@
 #ifndef _UFS_UFS_UFSMOUNT_H_
 #define	_UFS_UFS_UFSMOUNT_H_
 
+#include <sys/buf.h>	/* XXX For struct workhead. */
+
 /*
  * Arguments to mount UFS-based filesystems
  */

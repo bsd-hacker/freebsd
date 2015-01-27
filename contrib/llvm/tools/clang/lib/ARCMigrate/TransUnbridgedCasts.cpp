@@ -60,14 +60,13 @@ namespace {
 class UnbridgedCastRewriter : public RecursiveASTVisitor<UnbridgedCastRewriter>{
   MigrationPass &Pass;
   IdentifierInfo *SelfII;
-  std::unique_ptr<ParentMap> StmtMap;
+  OwningPtr<ParentMap> StmtMap;
   Decl *ParentD;
   Stmt *Body;
-  mutable std::unique_ptr<ExprSet> Removables;
+  mutable OwningPtr<ExprSet> Removables;
 
 public:
-  UnbridgedCastRewriter(MigrationPass &pass)
-    : Pass(pass), ParentD(nullptr), Body(nullptr) {
+  UnbridgedCastRewriter(MigrationPass &pass) : Pass(pass), ParentD(0), Body(0) {
     SelfII = &Pass.Ctx.Idents.get("self");
   }
 
@@ -134,11 +133,11 @@ private:
     Expr *inner = E->IgnoreParenCasts();
     if (CallExpr *callE = dyn_cast<CallExpr>(inner)) {
       if (FunctionDecl *FD = callE->getDirectCallee()) {
-        if (FD->hasAttr<CFReturnsRetainedAttr>()) {
+        if (FD->getAttr<CFReturnsRetainedAttr>()) {
           castToObjCObject(E, /*retained=*/true);
           return;
         }
-        if (FD->hasAttr<CFReturnsNotRetainedAttr>()) {
+        if (FD->getAttr<CFReturnsNotRetainedAttr>()) {
           castToObjCObject(E, /*retained=*/false);
           return;
         }
@@ -284,7 +283,7 @@ private:
     SourceLocation Loc = E->getExprLoc();
     assert(Loc.isMacroID());
     SourceLocation MacroBegin, MacroEnd;
-    std::tie(MacroBegin, MacroEnd) = SM.getImmediateExpansionRange(Loc);
+    llvm::tie(MacroBegin, MacroEnd) = SM.getImmediateExpansionRange(Loc);
     SourceRange SubRange = E->getSubExpr()->IgnoreParenImpCasts()->getSourceRange();
     SourceLocation InnerBegin = SM.getImmediateMacroCallerLoc(SubRange.getBegin());
     SourceLocation InnerEnd = SM.getImmediateMacroCallerLoc(SubRange.getEnd());
@@ -440,7 +439,7 @@ private:
         }
         if (i < callE->getNumArgs() && i < FD->getNumParams()) {
           ParmVarDecl *PD = FD->getParamDecl(i);
-          if (PD->hasAttr<CFConsumedAttr>()) {
+          if (PD->getAttr<CFConsumedAttr>()) {
             isConsumed = true;
             return true;
           }

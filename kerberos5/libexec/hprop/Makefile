@@ -10,10 +10,13 @@ CFLAGS+=-I${KRB5DIR}/lib/hx509
 CFLAGS+=-I${KRB5DIR}/lib/ntlm
 CFLAGS+=-I${KRB5DIR}/kdc
 CFLAGS+=-I${.OBJDIR}/../../lib/libkrb5
-LIBADD=	hdb krb5 roken vers
-DPADD=	${LDAPDPADD}
-LDADD=	${LDAPLDADD}
+DPADD=	${LIBHDB} ${LIBKRB5} ${LIBHX509} ${LIBROKEN} ${LIBVERS} \
+	${LIBASN1} ${LIBCRYPTO} ${LIBCRYPT} ${LIBCOM_ERR} ${LDAPDPADD}
+LDADD=	-lhdb -lkrb5 -lhx509 -lroken ${LIBVERS} \
+	-lasn1 -lcrypto -lcrypt -lcom_err ${LDAPLDADD}
 LDFLAGS=${LDAPLDFLAGS}
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>
 

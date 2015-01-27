@@ -25,23 +25,11 @@ inline PartialDiagnostic Sema::PDiag(unsigned DiagID) {
   return PartialDiagnostic(DiagID, Context.getDiagAllocator());
 }
 
-inline bool
-FTIHasSingleVoidParameter(const DeclaratorChunk::FunctionTypeInfo &FTI) {
-  return FTI.NumParams == 1 && !FTI.isVariadic &&
-         FTI.Params[0].Ident == nullptr && FTI.Params[0].Param &&
-         cast<ParmVarDecl>(FTI.Params[0].Param)->getType()->isVoidType();
-}
-
-inline bool
-FTIHasNonVoidParameters(const DeclaratorChunk::FunctionTypeInfo &FTI) {
-  // Assume FTI is well-formed.
-  return FTI.NumParams && !FTIHasSingleVoidParameter(FTI);
-}
 
 // This requires the variable to be non-dependent and the initializer
 // to not be value dependent.
 inline bool IsVariableAConstantExpression(VarDecl *Var, ASTContext &Context) {
-  const VarDecl *DefVD = nullptr;
+  const VarDecl *DefVD = 0;
   return !isa<ParmVarDecl>(Var) &&
     Var->isUsableInConstantExpressions(Context) &&
     Var->getAnyInitializer(DefVD) && DefVD->checkInitIsICE(); 
@@ -74,18 +62,6 @@ inline void MarkVarDeclODRUsed(VarDecl *Var,
 
   Var->markUsed(SemaRef.Context);
 }
-
-/// Return a DLL attribute from the declaration.
-inline InheritableAttr *getDLLAttr(Decl *D) {
-  assert(!(D->hasAttr<DLLImportAttr>() && D->hasAttr<DLLExportAttr>()) &&
-         "A declaration cannot be both dllimport and dllexport.");
-  if (auto *Import = D->getAttr<DLLImportAttr>())
-    return Import;
-  if (auto *Export = D->getAttr<DLLExportAttr>())
-    return Export;
-  return nullptr;
-}
-
 }
 
 #endif

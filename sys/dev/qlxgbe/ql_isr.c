@@ -156,10 +156,10 @@ qla_rx_intr(qla_host_t *ha, qla_sgl_rcv_t *sgc, uint32_t sds_idx)
 		mpf->m_pkthdr.csum_flags = 0;
 	}
 
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	ifp->if_ipackets++;
 
 	mpf->m_pkthdr.flowid = sgc->rss_hash;
-	M_HASHTYPE_SET(mpf, M_HASHTYPE_OPAQUE);
+	mpf->m_flags |= M_FLOWID;
 
 	(*ifp->if_input)(ifp, mpf);
 
@@ -324,9 +324,9 @@ qla_lro_intr(qla_host_t *ha, qla_sgl_lro_t *sgc, uint32_t sds_idx)
 	mpf->m_pkthdr.csum_data = 0xFFFF;
 
 	mpf->m_pkthdr.flowid = sgc->rss_hash;
-	M_HASHTYPE_SET(mpf, M_HASHTYPE_OPAQUE);
+	mpf->m_flags |= M_FLOWID;
 
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	ifp->if_ipackets++;
 
 	(*ifp->if_input)(ifp, mpf);
 

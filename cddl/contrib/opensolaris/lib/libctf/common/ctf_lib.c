@@ -34,14 +34,14 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#ifdef illumos
+#if defined(sun)
 #include <dlfcn.h>
 #else
 #include <zlib.h>
 #endif
 #include <gelf.h>
 
-#ifdef illumos
+#if defined(sun)
 #ifdef _LP64
 static const char *_libctf_zlib = "/usr/lib/64/libz.so";
 #else
@@ -58,7 +58,7 @@ static struct {
 static size_t _PAGESIZE;
 static size_t _PAGEMASK;
 
-#ifdef illumos
+#if defined(sun)
 #pragma init(_libctf_init)
 #else
 void    _libctf_init(void) __attribute__ ((constructor));
@@ -66,7 +66,7 @@ void    _libctf_init(void) __attribute__ ((constructor));
 void
 _libctf_init(void)
 {
-#ifdef illumos
+#if defined(sun)
 	const char *p = getenv("LIBCTF_DECOMPRESSOR");
 
 	if (p != NULL)
@@ -87,7 +87,7 @@ _libctf_init(void)
 void *
 ctf_zopen(int *errp)
 {
-#ifdef illumos
+#if defined(sun)
 	ctf_dprintf("decompressing CTF data using %s\n", _libctf_zlib);
 
 	if (zlib.z_dlp != NULL)
@@ -274,7 +274,7 @@ ctf_fdopen(int fd, int *errp)
 	 */
 	if (nbytes >= (ssize_t) sizeof (Elf32_Ehdr) &&
 	    bcmp(&hdr.e32.e_ident[EI_MAG0], ELFMAG, SELFMAG) == 0) {
-#if BYTE_ORDER == _BIG_ENDIAN
+#ifdef	_BIG_ENDIAN
 		uchar_t order = ELFDATA2MSB;
 #else
 		uchar_t order = ELFDATA2LSB;

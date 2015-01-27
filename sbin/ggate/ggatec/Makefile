@@ -10,6 +10,7 @@ CFLAGS+= -DMAX_SEND_SIZE=32768
 CFLAGS+= -DLIBGEOM
 CFLAGS+= -I${.CURDIR}/../shared
 
-LIBADD=	geom util pthread
+DPADD=	${LIBGEOM} ${LIBSBUF} ${LIBBSDXML} ${LIBUTIL} ${LIBPTHREAD}
+LDADD=	-lgeom -lsbuf -lbsdxml -lutil -lpthread
 
 .include <bsd.prog.mk>

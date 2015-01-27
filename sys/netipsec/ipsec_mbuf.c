@@ -37,8 +37,11 @@
 #include <sys/mbuf.h>
 #include <sys/socket.h>
 
+#include <net/route.h>
 #include <net/vnet.h>
+
 #include <netinet/in.h>
+
 #include <netipsec/ipsec.h>
 
 /*

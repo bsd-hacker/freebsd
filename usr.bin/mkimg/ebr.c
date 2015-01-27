@@ -49,23 +49,22 @@ static struct mkimg_alias ebr_aliases[] = {
     {	ALIAS_NONE, 0 }
 };
 
-static lba_t
-ebr_metadata(u_int where, lba_t blk)
+static u_int
+ebr_metadata(u_int where)
 {
+	u_int secs;
 
-	blk += (where == SCHEME_META_PART_BEFORE) ? 1 : 0;
-	return (round_track(blk));
+	secs = (where == SCHEME_META_PART_BEFORE) ? nsecs : 0;
+	return (secs);
 }
 
 static void
-ebr_chs(u_char *cylp, u_char *hdp, u_char *secp, lba_t lba)
+ebr_chs(u_char *cyl, u_char *hd, u_char *sec, uint32_t lba __unused)
 {
-	u_int cyl, hd, sec;
 
-	mkimg_chs(lba, 1023, &cyl, &hd, &sec);
-	*cylp = cyl;
-	*hdp = hd;
-	*secp = (sec & 0x3f) | ((cyl >> 2) & 0xc0);
+	*cyl = 0xff;		/* XXX */
+	*hd = 0xff;		/* XXX */
+	*sec = 0xff;		/* XXX */
 }
 
 static int
@@ -74,7 +73,7 @@ ebr_write(lba_t imgsz __unused, void *bootcode __unused)
 	u_char *ebr;
 	struct dos_partition *dp;
 	struct part *part, *next;
-	lba_t block, size;
+	lba_t block;
 	int error;
 
 	ebr = malloc(secsz);
@@ -86,26 +85,24 @@ ebr_write(lba_t imgsz __unused, void *bootcode __unused)
 	error = 0;
 	STAILQ_FOREACH_SAFE(part, &partlist, link, next) {
 		block = part->block - nsecs;
-		size = round_track(part->size);
 		dp = (void *)(ebr + DOSPARTOFF);
 		ebr_chs(&dp->dp_scyl, &dp->dp_shd, &dp->dp_ssect, nsecs);
 		dp->dp_typ = ALIAS_TYPE2INT(part->type);
 		ebr_chs(&dp->dp_ecyl, &dp->dp_ehd, &dp->dp_esect,
-		    part->block + size - 1);
+		    part->block + part->size - 1);
 		le32enc(&dp->dp_start, nsecs);
-		le32enc(&dp->dp_size, size);
+		le32enc(&dp->dp_size, part->size);
 
 		/* Add link entry */
 		if (next != NULL) {
-			size = round_track(next->size);
 			dp++;
 			ebr_chs(&dp->dp_scyl, &dp->dp_shd, &dp->dp_ssect,
 			    next->block - nsecs);
 			dp->dp_typ = DOSPTYP_EXT;
 			ebr_chs(&dp->dp_ecyl, &dp->dp_ehd, &dp->dp_esect,
-			    next->block + size - 1);
+			    next->block + next->size - 1);
 			le32enc(&dp->dp_start, next->block - nsecs);
-			le32enc(&dp->dp_size, size + nsecs);
+			le32enc(&dp->dp_size, next->size + nsecs);
 		}
 
 		error = image_write(block, ebr, 1);

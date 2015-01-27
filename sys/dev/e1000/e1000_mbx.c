@@ -1,6 +1,6 @@
 /******************************************************************************
 
-  Copyright (c) 2001-2014, Intel Corporation 
+  Copyright (c) 2001-2010, Intel Corporation 
   All rights reserved.
   
   Redistribution and use in source and binary forms, with or without 
@@ -38,8 +38,7 @@
  *  e1000_null_mbx_check_for_flag - No-op function, return 0
  *  @hw: pointer to the HW structure
  **/
-static s32 e1000_null_mbx_check_for_flag(struct e1000_hw E1000_UNUSEDARG *hw,
-					 u16 E1000_UNUSEDARG mbx_id)
+static s32 e1000_null_mbx_check_for_flag(struct e1000_hw *hw, u16 mbx_id)
 {
 	DEBUGFUNC("e1000_null_mbx_check_flag");
 
@@ -50,10 +49,8 @@ static s32 e1000_null_mbx_check_for_flag(struct e1000_hw E1000_UNUSEDARG *hw,
  *  e1000_null_mbx_transact - No-op function, return 0
  *  @hw: pointer to the HW structure
  **/
-static s32 e1000_null_mbx_transact(struct e1000_hw E1000_UNUSEDARG *hw,
-				   u32 E1000_UNUSEDARG *msg,
-				   u16 E1000_UNUSEDARG size,
-				   u16 E1000_UNUSEDARG mbx_id)
+static s32 e1000_null_mbx_transact(struct e1000_hw *hw, u32 *msg, u16 size,
+                            u16 mbx_id)
 {
 	DEBUGFUNC("e1000_null_mbx_rw_msg");
 
@@ -357,8 +354,7 @@ static s32 e1000_check_for_bit_vf(struct e1000_hw *hw, u32 mask)
  *
  *  returns SUCCESS if the PF has set the Status bit or else ERR_MBX
  **/
-static s32 e1000_check_for_msg_vf(struct e1000_hw *hw,
-				  u16 E1000_UNUSEDARG mbx_id)
+static s32 e1000_check_for_msg_vf(struct e1000_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
 
@@ -379,8 +375,7 @@ static s32 e1000_check_for_msg_vf(struct e1000_hw *hw,
  *
  *  returns SUCCESS if the PF has set the ACK bit or else ERR_MBX
  **/
-static s32 e1000_check_for_ack_vf(struct e1000_hw *hw,
-				  u16 E1000_UNUSEDARG mbx_id)
+static s32 e1000_check_for_ack_vf(struct e1000_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
 
@@ -401,15 +396,14 @@ static s32 e1000_check_for_ack_vf(struct e1000_hw *hw,
  *
  *  returns TRUE if the PF has set the reset done bit or else FALSE
  **/
-static s32 e1000_check_for_rst_vf(struct e1000_hw *hw,
-				  u16 E1000_UNUSEDARG mbx_id)
+static s32 e1000_check_for_rst_vf(struct e1000_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
 
 	DEBUGFUNC("e1000_check_for_rst_vf");
 
 	if (!e1000_check_for_bit_vf(hw, (E1000_V2PMAILBOX_RSTD |
-					 E1000_V2PMAILBOX_RSTI))) {
+	                                 E1000_V2PMAILBOX_RSTI))) {
 		ret_val = E1000_SUCCESS;
 		hw->mbx.stats.rsts++;
 	}
@@ -449,7 +443,7 @@ static s32 e1000_obtain_mbx_lock_vf(struct e1000_hw *hw)
  *  returns SUCCESS if it successfully copied message into the buffer
  **/
 static s32 e1000_write_mbx_vf(struct e1000_hw *hw, u32 *msg, u16 size,
-			      u16 E1000_UNUSEDARG mbx_id)
+                              u16 mbx_id)
 {
 	s32 ret_val;
 	u16 i;
@@ -490,7 +484,7 @@ out_no_write:
  *  returns SUCCESS if it successfuly read message from buffer
  **/
 static s32 e1000_read_mbx_vf(struct e1000_hw *hw, u32 *msg, u16 size,
-			     u16 E1000_UNUSEDARG mbx_id)
+                             u16 mbx_id)
 {
 	s32 ret_val = E1000_SUCCESS;
 	u16 i;
@@ -663,7 +657,7 @@ static s32 e1000_obtain_mbx_lock_pf(struct e1000_hw *hw, u16 vf_number)
  *  returns SUCCESS if it successfully copied message into the buffer
  **/
 static s32 e1000_write_mbx_pf(struct e1000_hw *hw, u32 *msg, u16 size,
-			      u16 vf_number)
+                              u16 vf_number)
 {
 	s32 ret_val;
 	u16 i;
@@ -706,7 +700,7 @@ out_no_write:
  *  a message due to a VF request so no polling for message is needed.
  **/
 static s32 e1000_read_mbx_pf(struct e1000_hw *hw, u32 *msg, u16 size,
-			     u16 vf_number)
+                             u16 vf_number)
 {
 	s32 ret_val;
 	u16 i;
@@ -745,7 +739,6 @@ s32 e1000_init_mbx_params_pf(struct e1000_hw *hw)
 	switch (hw->mac.type) {
 	case e1000_82576:
 	case e1000_i350:
-	case e1000_i354:
 		mbx->timeout = 0;
 		mbx->usec_delay = 0;
 

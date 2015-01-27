@@ -8,10 +8,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Host/OptionParser.h"
-#include "lldb/Host/HostGetOpt.h"
-#include "lldb/lldb-private-types.h"
 
-#include <vector>
+#if (!defined( _MSC_VER ) && defined( _WIN32 ))
+#define _BSD_SOURCE // Required so that getopt.h defines optreset
+#endif
+#include "lldb/Host/HostGetOpt.h"
 
 using namespace lldb_private;
 
@@ -39,19 +40,7 @@ OptionParser::Parse (int argc,
                      const Option *longopts,
                      int *longindex)
 {
-    std::vector<option> opts;
-    while (longopts->definition != nullptr)
-    {
-        option opt;
-        opt.flag = longopts->flag;
-        opt.val = longopts->val;
-        opt.name = longopts->definition->long_option;
-        opt.has_arg = longopts->definition->option_has_arg;
-        opts.push_back(opt);
-        ++longopts;
-    }
-    opts.push_back(option());
-    return getopt_long_only(argc, argv, optstring, &opts[0], longindex);
+    return getopt_long_only(argc, argv, optstring, (const option*)longopts, longindex);
 }
 
 char*

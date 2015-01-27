@@ -1,4 +1,4 @@
-//===--- MacroArgs.cpp - Formal argument info for Macros ------------------===//
+//===--- TokenLexer.cpp - Lex from a token stream -------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the MacroArgs interface.
+// This file implements the TokenLexer interface.
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,7 +27,7 @@ MacroArgs *MacroArgs::create(const MacroInfo *MI,
                              bool VarargsElided, Preprocessor &PP) {
   assert(MI->isFunctionLike() &&
          "Can't have args for an object-like macro!");
-  MacroArgs **ResultEnt = nullptr;
+  MacroArgs **ResultEnt = 0;
   unsigned ClosestMatch = ~0U;
   
   // See if we have an entry with a big enough argument list to reuse on the
@@ -46,7 +46,7 @@ MacroArgs *MacroArgs::create(const MacroInfo *MI,
     }
   
   MacroArgs *Result;
-  if (!ResultEnt) {
+  if (ResultEnt == 0) {
     // Allocate memory for a MacroArgs object with the lexer tokens at the end.
     Result = (MacroArgs*)malloc(sizeof(MacroArgs) + 
                                 UnexpArgTokens.size() * sizeof(Token));

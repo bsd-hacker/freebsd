@@ -121,10 +121,8 @@ static driver_t simplebus_driver = {
 	sizeof(struct simplebus_softc)
 };
 static devclass_t simplebus_devclass;
-EARLY_DRIVER_MODULE(simplebus, ofwbus, simplebus_driver, simplebus_devclass,
-    0, 0, BUS_PASS_BUS);
-EARLY_DRIVER_MODULE(simplebus, simplebus, simplebus_driver, simplebus_devclass,
-    0, 0, BUS_PASS_BUS + BUS_PASS_ORDER_MIDDLE);
+DRIVER_MODULE(simplebus, ofwbus, simplebus_driver, simplebus_devclass, 0, 0);
+DRIVER_MODULE(simplebus, simplebus, simplebus_driver, simplebus_devclass, 0, 0);
 
 static int
 simplebus_probe(device_t dev)
@@ -133,13 +131,7 @@ simplebus_probe(device_t dev)
 	if (!ofw_bus_status_okay(dev))
 		return (ENXIO);
 
-	/*
-	 * FDT data puts a "simple-bus" compatible string on many things that
-	 * have children but aren't really busses in our world.  Without a
-	 * ranges property we will fail to attach, so just fail to probe too.
-	 */
-	if (!(ofw_bus_is_compatible(dev, "simple-bus") &&
-	    ofw_bus_has_prop(dev, "ranges")) &&
+	if (!ofw_bus_is_compatible(dev, "simple-bus") &&
 	    (ofw_bus_get_type(dev) == NULL || strcmp(ofw_bus_get_type(dev),
 	     "soc") != 0))
 		return (ENXIO);
@@ -253,6 +245,12 @@ simplebus_setup_dinfo(device_t dev, phandle_t node)
 {
 	struct simplebus_softc *sc;
 	struct simplebus_devinfo *ndi;
+	uint32_t *reg, *intr, icells;
+	uint64_t phys, size;
+	phandle_t iparent;
+	int i, j, k;
+	int nintr;
+	int nreg;
 
 	sc = device_get_softc(dev);
 
@@ -263,8 +261,60 @@ simplebus_setup_dinfo(device_t dev, phandle_t node)
 	}
 
 	resource_list_init(&ndi->rl);
-	ofw_bus_reg_to_rl(dev, node, sc->acells, sc->scells, &ndi->rl);
-	ofw_bus_intr_to_rl(dev, node, &ndi->rl);
+	nreg = OF_getencprop_alloc(node, "reg", sizeof(*reg), (void **)&reg);
+	if (nreg == -1)
+		nreg = 0;
+	if (nreg % (sc->acells + sc->scells) != 0) {
+		if (bootverbose)
+			device_printf(dev, "Malformed reg property on <%s>\n",
+			    ndi->obdinfo.obd_name);
+		nreg = 0;
+	}
+
+	for (i = 0, k = 0; i < nreg; i += sc->acells + sc->scells, k++) {
+		phys = size = 0;
+		for (j = 0; j < sc->acells; j++) {
+			phys <<= 32;
+			phys |= reg[i + j];
+		}
+		for (j = 0; j < sc->scells; j++) {
+			size <<= 32;
+			size |= reg[i + sc->acells + j];
+		}
+		
+		resource_list_add(&ndi->rl, SYS_RES_MEMORY, k,
+		    phys, phys + size - 1, size);
+	}
+	free(reg, M_OFWPROP);
+
+	nintr = OF_getencprop_alloc(node, "interrupts",  sizeof(*intr),
+	    (void **)&intr);
+	if (nintr > 0) {
+		if (OF_searchencprop(node, "interrupt-parent", &iparent,
+		    sizeof(iparent)) == -1) {
+			device_printf(dev, "No interrupt-parent found, "
+			    "assuming direct parent\n");
+			iparent = OF_parent(node);
+		}
+		if (OF_searchencprop(OF_xref_phandle(iparent), 
+		    "#interrupt-cells", &icells, sizeof(icells)) == -1) {
+			device_printf(dev, "Missing #interrupt-cells property, "
+			    "assuming <1>\n");
+			icells = 1;
+		}
+		if (icells < 1 || icells > nintr) {
+			device_printf(dev, "Invalid #interrupt-cells property "
+			    "value <%d>, assuming <1>\n", icells);
+			icells = 1;
+		}
+		for (i = 0, k = 0; i < nintr; i += icells, k++) {
+			intr[i] = ofw_bus_map_intr(dev, iparent, icells,
+			    &intr[i]);
+			resource_list_add(&ndi->rl, SYS_RES_IRQ, k, intr[i],
+			    intr[i], 1);
+		}
+		free(intr, M_OFWPROP);
+	}
 
 	return (ndi);
 }

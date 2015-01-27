@@ -17,9 +17,9 @@
 
 using namespace llvm;
 
-AMDGPURegisterInfo::AMDGPURegisterInfo(const AMDGPUSubtarget &st)
+AMDGPURegisterInfo::AMDGPURegisterInfo(TargetMachine &tm)
 : AMDGPUGenRegisterInfo(0),
-  ST(st)
+  TM(tm)
   { }
 
 //===----------------------------------------------------------------------===//
@@ -27,10 +27,10 @@ AMDGPURegisterInfo::AMDGPURegisterInfo(const AMDGPUSubtarget &st)
 // they are not supported at this time.
 //===----------------------------------------------------------------------===//
 
-const MCPhysReg AMDGPURegisterInfo::CalleeSavedReg = AMDGPU::NoRegister;
+const uint16_t AMDGPURegisterInfo::CalleeSavedReg = AMDGPU::NoRegister;
 
-const MCPhysReg*
-AMDGPURegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
+const uint16_t* AMDGPURegisterInfo::getCalleeSavedRegs(const MachineFunction *MF)
+                                                                         const {
   return &CalleeSavedReg;
 }
 
@@ -38,7 +38,7 @@ void AMDGPURegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
                                              int SPAdj,
                                              unsigned FIOperandNum,
                                              RegScavenger *RS) const {
-  llvm_unreachable("Subroutines not supported yet");
+  assert(!"Subroutines not supported yet");
 }
 
 unsigned AMDGPURegisterInfo::getFrameRegister(const MachineFunction &MF) const {
@@ -54,7 +54,7 @@ unsigned AMDGPURegisterInfo::getSubRegFromChannel(unsigned Channel) const {
     AMDGPU::sub15
   };
 
-  assert(Channel < array_lengthof(SubRegs));
+  assert (Channel < array_lengthof(SubRegs));
   return SubRegs[Channel];
 }
 

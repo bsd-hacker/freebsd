@@ -787,7 +787,7 @@ foreach (keys %rcodes) {
 	push (@runref, $_) unless exists $urcodes{$_};
 }
 
-if($debug && @funref) {
+if($debug && defined(@funref) ) {
 	print STDERR "The following function codes were not referenced:\n";
 	foreach(sort @funref)
 	{
@@ -795,7 +795,7 @@ if($debug && @funref) {
 	}
 }
 
-if($debug && @runref) {
+if($debug && defined(@runref) ) {
 	print STDERR "The following reason codes were not referenced:\n";
 	foreach(sort @runref)
 	{

@@ -1,10 +1,7 @@
 # $FreeBSD$
 
-SHLIBDIR?= /lib
-
-.include <src.opts.mk>
-
 LIB=	nv
+SHLIBDIR?= /lib
 SHLIB_MAJOR= 0
 
 SRCS=	dnvlist.c
@@ -149,7 +146,7 @@ MLINKS+=nv.3 nvlist_existsv.3 \
 	nv.3 nvlist_takev_nvlist.3 \
 	nv.3 nvlist_takev_descriptor.3 \
 	nv.3 nvlist_takev_binary.3 \
-	nv.3 nvlist_freev.3 \
+	nv.3 nvlist_freef.3 \
 	nv.3 nvlist_freev_type.3 \
 	nv.3 nvlist_freev_null.3 \
 	nv.3 nvlist_freev_bool.3 \
@@ -160,9 +157,5 @@ MLINKS+=nv.3 nvlist_existsv.3 \
 	nv.3 nvlist_freev_binary.3
 
 WARNS?=	6
-
-.if ${MK_TESTS} != "no"
-SUBDIR+=	tests
-.endif
 
 .include <bsd.lib.mk>

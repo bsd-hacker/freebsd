@@ -21,7 +21,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/FunctionSummary.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/WorkList.h"
-#include <memory>
+#include "llvm/ADT/OwningPtr.h"
 
 namespace clang {
 
@@ -60,12 +60,12 @@ private:
   SubEngine& SubEng;
 
   /// G - The simulation graph.  Each node is a (location,state) pair.
-  std::unique_ptr<ExplodedGraph> G;
+  OwningPtr<ExplodedGraph> G;
 
   /// WList - A set of queued nodes that need to be processed by the
   ///  worklist algorithm.  It is up to the implementation of WList to decide
   ///  the order that nodes are processed.
-  std::unique_ptr<WorkList> WList;
+  OwningPtr<WorkList> WList;
 
   /// BCounterFactory - A factory object for created BlockCounter objects.
   ///   These are used to record for key nodes in the ExplodedGraph the
@@ -120,7 +120,7 @@ public:
 
   /// takeGraph - Returns the exploded graph.  Ownership of the graph is
   ///  transferred to the caller.
-  ExplodedGraph *takeGraph() { return G.release(); }
+  ExplodedGraph* takeGraph() { return G.take(); }
 
   /// ExecuteWorkList - Run the worklist algorithm for a maximum number of
   ///  steps.  Returns true if there is still simulation state on the worklist.
@@ -312,7 +312,7 @@ public:
 /// \class NodeBuilderWithSinks
 /// \brief This node builder keeps track of the generated sink nodes.
 class NodeBuilderWithSinks: public NodeBuilder {
-  void anchor() override;
+  virtual void anchor();
 protected:
   SmallVector<ExplodedNode*, 2> sinksGenerated;
   ProgramPoint &Location;
@@ -324,13 +324,13 @@ public:
 
   ExplodedNode *generateNode(ProgramStateRef State,
                              ExplodedNode *Pred,
-                             const ProgramPointTag *Tag = nullptr) {
+                             const ProgramPointTag *Tag = 0) {
     const ProgramPoint &LocalLoc = (Tag ? Location.withTag(Tag) : Location);
     return NodeBuilder::generateNode(LocalLoc, State, Pred);
   }
 
   ExplodedNode *generateSink(ProgramStateRef State, ExplodedNode *Pred,
-                             const ProgramPointTag *Tag = nullptr) {
+                             const ProgramPointTag *Tag = 0) {
     const ProgramPoint &LocalLoc = (Tag ? Location.withTag(Tag) : Location);
     ExplodedNode *N = NodeBuilder::generateSink(LocalLoc, State, Pred);
     if (N && N->isSink())
@@ -355,16 +355,14 @@ public:
   /// nodes currently owned by another builder(with larger scope), use
   /// Enclosing builder to transfer ownership.
   StmtNodeBuilder(ExplodedNode *SrcNode, ExplodedNodeSet &DstSet,
-                  const NodeBuilderContext &Ctx,
-                  NodeBuilder *Enclosing = nullptr)
+                      const NodeBuilderContext &Ctx, NodeBuilder *Enclosing = 0)
     : NodeBuilder(SrcNode, DstSet, Ctx), EnclosingBldr(Enclosing) {
     if (EnclosingBldr)
       EnclosingBldr->takeNodes(SrcNode);
   }
 
   StmtNodeBuilder(ExplodedNodeSet &SrcSet, ExplodedNodeSet &DstSet,
-                  const NodeBuilderContext &Ctx,
-                  NodeBuilder *Enclosing = nullptr)
+                      const NodeBuilderContext &Ctx, NodeBuilder *Enclosing = 0)
     : NodeBuilder(SrcSet, DstSet, Ctx), EnclosingBldr(Enclosing) {
     if (EnclosingBldr)
       for (ExplodedNodeSet::iterator I = SrcSet.begin(),
@@ -380,7 +378,7 @@ public:
   ExplodedNode *generateNode(const Stmt *S,
                              ExplodedNode *Pred,
                              ProgramStateRef St,
-                             const ProgramPointTag *tag = nullptr,
+                             const ProgramPointTag *tag = 0,
                              ProgramPoint::Kind K = ProgramPoint::PostStmtKind){
     const ProgramPoint &L = ProgramPoint::getProgramPoint(S, K,
                                   Pred->getLocationContext(), tag);
@@ -390,7 +388,7 @@ public:
   ExplodedNode *generateSink(const Stmt *S,
                              ExplodedNode *Pred,
                              ProgramStateRef St,
-                             const ProgramPointTag *tag = nullptr,
+                             const ProgramPointTag *tag = 0,
                              ProgramPoint::Kind K = ProgramPoint::PostStmtKind){
     const ProgramPoint &L = ProgramPoint::getProgramPoint(S, K,
                                   Pred->getLocationContext(), tag);
@@ -401,7 +399,7 @@ public:
 /// \brief BranchNodeBuilder is responsible for constructing the nodes
 /// corresponding to the two branches of the if statement - true and false.
 class BranchNodeBuilder: public NodeBuilder {
-  void anchor() override;
+  virtual void anchor();
   const CFGBlock *DstT;
   const CFGBlock *DstF;
 

@@ -15,7 +15,6 @@
 #include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Core/IOHandler.h"
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/Module.h"
 #include "lldb/Core/State.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/ValueObjectRegister.h"
@@ -158,7 +157,6 @@ IOHandlerConfirm::IOHandlerConfirm (Debugger &debugger,
                       NULL,     // NULL editline_name means no history loaded/saved
                       NULL,
                       false,    // Multi-line
-                      0,
                       *this),
     m_default_response (default_response),
     m_user_response (default_response)
@@ -313,7 +311,6 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                                       const char *editline_name, // Used for saving history files
                                       const char *prompt,
                                       bool multi_line,
-                                      uint32_t line_number_start,
                                       IOHandlerDelegate &delegate) :
     IOHandlerEditline(debugger,
                       StreamFileSP(), // Inherit input from top input reader
@@ -323,7 +320,6 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                       editline_name,  // Used for saving history files
                       prompt,
                       multi_line,
-                      line_number_start,
                       delegate)
 {
 }
@@ -336,13 +332,11 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                                       const char *editline_name, // Used for saving history files
                                       const char *prompt,
                                       bool multi_line,
-                                      uint32_t line_number_start,
                                       IOHandlerDelegate &delegate) :
     IOHandler (debugger, input_sp, output_sp, error_sp, flags),
     m_editline_ap (),
     m_delegate (delegate),
     m_prompt (),
-    m_base_line_number (line_number_start),
     m_multi_line (multi_line)
 {
     SetPrompt(prompt);
@@ -352,20 +346,16 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
 #ifndef _MSC_VER
     use_editline = m_input_sp->GetFile().GetIsRealTerminal();
 #else
-    // Editline is causing issues on Windows, so use the fallback.
-    use_editline = false;
+    use_editline = true;
 #endif
 
     if (use_editline)
     {
         m_editline_ap.reset(new Editline (editline_name,
                                           prompt ? prompt : "",
-                                          multi_line,
                                           GetInputFILE (),
                                           GetOutputFILE (),
                                           GetErrorFILE ()));
-        if (m_base_line_number > 0)
-            m_editline_ap->ShowLineNumbers(true, m_base_line_number);
         m_editline_ap->SetLineCompleteCallback (LineCompletedCallback, this);
         m_editline_ap->SetAutoCompleteCallback (AutoCompleteCallback, this);
     }
@@ -379,11 +369,11 @@ IOHandlerEditline::~IOHandlerEditline ()
 
 
 bool
-IOHandlerEditline::GetLine (std::string &line, bool &interrupted)
+IOHandlerEditline::GetLine (std::string &line)
 {
     if (m_editline_ap)
     {
-        return m_editline_ap->GetLine(line, interrupted).Success();
+        return m_editline_ap->GetLine(line).Success();
     }
     else
     {
@@ -411,16 +401,7 @@ IOHandlerEditline::GetLine (std::string &line, bool &interrupted)
             while (!done)
             {
                 if (fgets(buffer, sizeof(buffer), in) == NULL)
-                {
-                    const int saved_errno = errno;
-                    if (feof(in))
-                        done = true;
-                    else if (ferror(in))
-                    {
-                        if (saved_errno != EINTR)
-                            done = true;
-                    }
-                }
+                    done = true;
                 else
                 {
                     got_line = true;
@@ -510,62 +491,33 @@ IOHandlerEditline::SetPrompt (const char *p)
     return true;
 }
 
-void
-IOHandlerEditline::SetBaseLineNumber (uint32_t line)
-{
-    m_base_line_number = line;
-    if (m_editline_ap)
-        m_editline_ap->ShowLineNumbers (true, line);
-    
-}
 bool
-IOHandlerEditline::GetLines (StringList &lines, bool &interrupted)
+IOHandlerEditline::GetLines (StringList &lines)
 {
     bool success = false;
     if (m_editline_ap)
     {
         std::string end_token;
-        success = m_editline_ap->GetLines(end_token, lines, interrupted).Success();
+        success = m_editline_ap->GetLines(end_token, lines).Success();
     }
     else
     {
         LineStatus lines_status = LineStatus::Success;
-        Error error;
 
         while (lines_status == LineStatus::Success)
         {
-            // Show line numbers if we are asked to
             std::string line;
-            if (m_base_line_number > 0 && GetIsInteractive())
+            if (GetLine(line))
             {
-                FILE *out = GetOutputFILE();
-                if (out)
-                    ::fprintf(out, "%u%s", m_base_line_number + (uint32_t)lines.GetSize(), GetPrompt() == NULL ? " " : "");
-            }
-            
-            bool interrupted = false;
-            if (GetLine(line, interrupted))
-            {
-                if (interrupted)
-                {
-                    lines_status = LineStatus::Done;
-                }
-                else
-                {
-                    lines.AppendString(line);
-                    lines_status = m_delegate.IOHandlerLinesUpdated(*this, lines, lines.GetSize() - 1, error);
-                }
+                lines.AppendString(line);
+                Error error;
+                lines_status = m_delegate.IOHandlerLinesUpdated(*this, lines, lines.GetSize() - 1, error);
             }
             else
             {
                 lines_status = LineStatus::Done;
             }
         }
-        
-        // Call the IOHandlerLinesUpdated function with UINT32_MAX as the line
-        // number to indicate all lines are complete
-        m_delegate.IOHandlerLinesUpdated(*this, lines, UINT32_MAX, error);
-
         success = lines.GetSize() > 0;
     }
     return success;
@@ -580,21 +532,13 @@ IOHandlerEditline::Run ()
     std::string line;
     while (IsActive())
     {
-        bool interrupted = false;
         if (m_multi_line)
         {
             StringList lines;
-            if (GetLines (lines, interrupted))
+            if (GetLines (lines))
             {
-                if (interrupted)
-                {
-                    m_done = true;
-                }
-                else
-                {
-                    line = lines.CopyList();
-                    m_delegate.IOHandlerInputComplete(*this, line);
-                }
+                line = lines.CopyList();
+                m_delegate.IOHandlerInputComplete(*this, line);
             }
             else
             {
@@ -603,10 +547,9 @@ IOHandlerEditline::Run ()
         }
         else
         {
-            if (GetLine(line, interrupted))
+            if (GetLine(line))
             {
-                if (!interrupted)
-                    m_delegate.IOHandlerInputComplete(*this, line);
+                m_delegate.IOHandlerInputComplete(*this, line);
             }
             else
             {
@@ -619,7 +562,7 @@ IOHandlerEditline::Run ()
 void
 IOHandlerEditline::Hide ()
 {
-    if (m_editline_ap)
+    if (m_editline_ap && m_editline_ap->GettingLine())
         m_editline_ap->Hide();
 }
 
@@ -627,10 +570,8 @@ IOHandlerEditline::Hide ()
 void
 IOHandlerEditline::Refresh ()
 {
-    if (m_editline_ap)
-    {
+    if (m_editline_ap && m_editline_ap->GettingLine())
         m_editline_ap->Refresh();
-    }
     else
     {
         const char *prompt = GetPrompt();
@@ -653,16 +594,11 @@ IOHandlerEditline::Cancel ()
         m_editline_ap->Interrupt ();
 }
 
-bool
+void
 IOHandlerEditline::Interrupt ()
 {
-    // Let the delgate handle it first
-    if (m_delegate.IOHandlerInterrupt(*this))
-        return true;
-
     if (m_editline_ap)
-        return m_editline_ap->Interrupt();
-    return false;
+        m_editline_ap->Interrupt();
 }
 
 void
@@ -1372,7 +1308,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                     const size_t max_length = help_delegate_ap->GetMaxLineLength();
                     Rect bounds = GetBounds();
                     bounds.Inset(1, 1);
-                    if (max_length + 4 < static_cast<size_t>(bounds.size.width))
+                    if (max_length + 4 < bounds.size.width)
                     {
                         bounds.origin.x += (bounds.size.width - max_length + 4)/2;
                         bounds.size.width = max_length + 4;
@@ -1387,7 +1323,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                         }
                     }
                     
-                    if (num_lines + 2 < static_cast<size_t>(bounds.size.height))
+                    if (num_lines + 2 < bounds.size.height)
                     {
                         bounds.origin.y += (bounds.size.height - num_lines + 2)/2;
                         bounds.size.height = num_lines + 2;
@@ -1885,9 +1821,9 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
         for (size_t i=0; i<num_submenus; ++i)
         {
             Menu *submenu = submenus[i].get();
-            if (static_cast<size_t>(m_max_submenu_name_length) < submenu->m_name.size())
+            if (m_max_submenu_name_length < submenu->m_name.size())
                 m_max_submenu_name_length = submenu->m_name.size();
-            if (static_cast<size_t>(m_max_submenu_key_name_length) < submenu->m_key_name.size())
+            if (m_max_submenu_key_name_length < submenu->m_key_name.size())
                 m_max_submenu_key_name_length = submenu->m_key_name.size();
         }
     }
@@ -1896,9 +1832,9 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
     Menu::AddSubmenu (const MenuSP &menu_sp)
     {
         menu_sp->m_parent = this;
-        if (static_cast<size_t>(m_max_submenu_name_length) < menu_sp->m_name.size())
+        if (m_max_submenu_name_length < menu_sp->m_name.size())
             m_max_submenu_name_length = menu_sp->m_name.size();
-        if (static_cast<size_t>(m_max_submenu_key_name_length) < menu_sp->m_key_name.size())
+        if (m_max_submenu_key_name_length < menu_sp->m_key_name.size())
             m_max_submenu_key_name_length = menu_sp->m_key_name.size();
         m_submenus.push_back(menu_sp);
     }
@@ -1914,7 +1850,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
             if (width > 2)
             {
                 width -= 2;
-                for (int i=0; i< width; ++i)
+                for (size_t i=0; i< width; ++i)
                     window.PutChar(ACS_HLINE);
             }
             window.PutChar(ACS_RTEE);
@@ -2015,8 +1951,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                 window.Box();
                 for (size_t i=0; i<num_submenus; ++i)
                 {
-                    const bool is_selected =
-                      (i == static_cast<size_t>(selected_idx));
+                    const bool is_selected = i == selected_idx;
                     window.MoveCursor(x, y + i);
                     if (is_selected)
                     {
@@ -2055,7 +1990,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                 case KEY_DOWN:
                 case KEY_UP:
                     // Show last menu or first menu
-                    if (selected_idx < static_cast<int>(num_submenus))
+                    if (selected_idx < num_submenus)
                         run_menu_sp = submenus[selected_idx];
                     else if (!submenus.empty())
                         run_menu_sp = submenus.front();
@@ -2065,9 +2000,9 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                 case KEY_RIGHT:
                 {
                     ++m_selected;
-                    if (m_selected >= static_cast<int>(num_submenus))
+                    if (m_selected >= num_submenus)
                         m_selected = 0;
-                    if (m_selected < static_cast<int>(num_submenus))
+                    if (m_selected < num_submenus)
                         run_menu_sp = submenus[m_selected];
                     else if (!submenus.empty())
                         run_menu_sp = submenus.front();
@@ -2080,7 +2015,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                     --m_selected;
                     if (m_selected < 0)
                         m_selected = num_submenus - 1;
-                    if (m_selected < static_cast<int>(num_submenus))
+                    if (m_selected < num_submenus)
                         run_menu_sp = submenus[m_selected];
                     else if (!submenus.empty())
                         run_menu_sp = submenus.front();
@@ -2134,7 +2069,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                         const int start_select = m_selected;
                         while (++m_selected != start_select)
                         {
-                            if (static_cast<size_t>(m_selected) >= num_submenus)
+                            if (m_selected >= num_submenus)
                                 m_selected = 0;
                             if (m_submenus[m_selected]->GetType() == Type::Separator)
                                 continue;
@@ -2151,7 +2086,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                         const int start_select = m_selected;
                         while (--m_selected != start_select)
                         {
-                            if (m_selected < static_cast<int>(0))
+                            if (m_selected < 0)
                                 m_selected = num_submenus - 1;
                             if (m_submenus[m_selected]->GetType() == Type::Separator)
                                 continue;
@@ -2163,7 +2098,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                     break;
                     
                 case KEY_RETURN:
-                    if (static_cast<size_t>(selected_idx) < num_submenus)
+                    if (selected_idx < num_submenus)
                     {
                         if (submenus[selected_idx]->Action() == MenuActionResult::Quit)
                             return eQuitApplication;
@@ -2178,11 +2113,13 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                     
                 default:
                 {
+                    bool handled = false;
                     for (size_t i=0; i<num_submenus; ++i)
                     {
                         Menu *menu = submenus[i].get();
                         if (menu->GetKeyValue() == key)
                         {
+                            handled = true;
                             SetSelectedSubmenuIndex(i);
                             window.GetParent()->RemoveSubWindow(&window);
                             if (menu->Action() == MenuActionResult::Quit)
@@ -2351,7 +2288,6 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                                     ConstString broadcaster_class (broadcaster->GetBroadcasterClass());
                                     if (broadcaster_class == broadcaster_class_process)
                                     {
-                                        debugger.GetCommandInterpreter().UpdateExecutionContext(NULL);
                                         update = true;
                                         continue; // Don't get any key, just update our view
                                     }
@@ -2366,7 +2302,6 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                     switch (key_result)
                     {
                         case eKeyHandled:
-                            debugger.GetCommandInterpreter().UpdateExecutionContext(NULL);
                             update = true;
                             break;
                         case eKeyNotHandled:
@@ -2558,7 +2493,6 @@ public:
     TreeItem (TreeItem *parent, TreeDelegate &delegate, bool might_have_children) :
         m_parent (parent),
         m_delegate (delegate),
-        m_user_data (NULL),
         m_identifier (0),
         m_row_idx (-1),
         m_children (),
@@ -2574,7 +2508,6 @@ public:
         {
             m_parent = rhs.m_parent;
             m_delegate = rhs.m_delegate;
-            m_user_data = rhs.m_user_data;
             m_identifier = rhs.m_identifier;
             m_row_idx = rhs.m_row_idx;
             m_children = rhs.m_children;
@@ -2640,14 +2573,11 @@ public:
         SetRowIndex(row_idx);
         ++row_idx;
 
-        const bool expanded = IsExpanded();
-
-        // The root item must calculate its children,
-        // or we must calculate the number of children
-        // if the item is expanded
-        if (m_parent == NULL || expanded)
+        // The root item must calculate its children
+        if (m_parent == NULL)
             GetNumChildren();
         
+        const bool expanded = IsExpanded();
         for (auto &item : m_children)
         {
             if (expanded)
@@ -2720,8 +2650,7 @@ public:
                 window.PutChar (ACS_DIAMOND);
                 window.PutChar (ACS_HLINE);
             }
-            bool highlight =
-              (selected_row_idx == static_cast<size_t>(m_row_idx)) && window.IsActive();
+            bool highlight = (selected_row_idx == m_row_idx) && window.IsActive();
 
             if (highlight)
                 window.AttributeOn(A_REVERSE);
@@ -2788,11 +2717,11 @@ public:
     TreeItem *
     GetItemForRowIndex (uint32_t row_idx)
     {
-        if (static_cast<uint32_t>(m_row_idx) == row_idx)
+        if (m_row_idx == row_idx)
             return this;
         if (m_children.empty())
             return NULL;
-        if (static_cast<uint32_t>(m_children.back().m_row_idx) < row_idx)
+        if (m_children.back().m_row_idx < row_idx)
             return NULL;
         if (IsExpanded())
         {
@@ -2806,18 +2735,17 @@ public:
         return NULL;
     }
     
-    void *
-    GetUserData() const
-    {
-        return m_user_data;
-    }
-    
-    void
-    SetUserData (void *user_data)
-    {
-        m_user_data = user_data;
-    }
-
+//    void *
+//    GetUserData() const
+//    {
+//        return m_user_data;
+//    }
+//    
+//    void
+//    SetUserData (void *user_data)
+//    {
+//        m_user_data = user_data;
+//    }
     uint64_t
     GetIdentifier() const
     {
@@ -2831,16 +2759,10 @@ public:
     }
     
 
-    void
-    SetMightHaveChildren (bool b)
-    {
-        m_might_have_children = b;
-    }
-
 protected:
     TreeItem *m_parent;
     TreeDelegate &m_delegate;
-    void *m_user_data;
+    //void *m_user_data;
     uint64_t m_identifier;
     int m_row_idx; // Zero based visible row index, -1 if not visible or for the root item
     std::vector<TreeItem> m_children;
@@ -3082,9 +3004,12 @@ protected:
 class FrameTreeDelegate : public TreeDelegate
 {
 public:
-    FrameTreeDelegate () :
-        TreeDelegate()
+    FrameTreeDelegate (const ThreadSP &thread_sp) :
+        TreeDelegate(),
+        m_thread_wp()
     {
+        if (thread_sp)
+            m_thread_wp = thread_sp;
     }
     
     virtual ~FrameTreeDelegate()
@@ -3094,11 +3019,11 @@ public:
     virtual void
     TreeDelegateDrawTreeItem (TreeItem &item, Window &window)
     {
-        Thread* thread = (Thread*)item.GetUserData();
-        if (thread)
+        ThreadSP thread_sp = m_thread_wp.lock();
+        if (thread_sp)
         {
             const uint64_t frame_idx = item.GetIdentifier();
-            StackFrameSP frame_sp = thread->GetStackFrameAtIndex(frame_idx);
+            StackFrameSP frame_sp = thread_sp->GetStackFrameAtIndex(frame_idx);
             if (frame_sp)
             {
                 StreamString strm;
@@ -3123,16 +3048,23 @@ public:
     virtual bool
     TreeDelegateItemSelected (TreeItem &item)
     {
-        Thread* thread = (Thread*)item.GetUserData();
-        if (thread)
+        ThreadSP thread_sp = m_thread_wp.lock();
+        if (thread_sp)
         {
-            thread->GetProcess()->GetThreadList().SetSelectedThreadByID(thread->GetID());
             const uint64_t frame_idx = item.GetIdentifier();
-            thread->SetSelectedFrameByIndex(frame_idx);
+            thread_sp->SetSelectedFrameByIndex(frame_idx);
             return true;
         }
         return false;
     }
+    void
+    SetThread (ThreadSP thread_sp)
+    {
+        m_thread_wp = thread_sp;
+    }
+    
+protected:
+    ThreadWP m_thread_wp;
 };
 
 class ThreadTreeDelegate : public TreeDelegate
@@ -3141,6 +3073,7 @@ public:
     ThreadTreeDelegate (Debugger &debugger) :
         TreeDelegate(),
         m_debugger (debugger),
+        m_thread_wp (),
         m_tid (LLDB_INVALID_THREAD_ID),
         m_stop_id (UINT32_MAX)
     {
@@ -3151,25 +3084,10 @@ public:
     {
     }
     
-    ProcessSP
-    GetProcess ()
-    {
-        return m_debugger.GetCommandInterpreter().GetExecutionContext().GetProcessSP();
-    }
-
-    ThreadSP
-    GetThread (const TreeItem &item)
-    {
-        ProcessSP process_sp = GetProcess ();
-        if (process_sp)
-            return process_sp->GetThreadList().FindThreadByID(item.GetIdentifier());
-        return ThreadSP();
-    }
-    
     virtual void
     TreeDelegateDrawTreeItem (TreeItem &item, Window &window)
     {
-        ThreadSP thread_sp = GetThread (item);
+        ThreadSP thread_sp = m_thread_wp.lock();
         if (thread_sp)
         {
             StreamString strm;
@@ -3185,36 +3103,43 @@ public:
     virtual void
     TreeDelegateGenerateChildren (TreeItem &item)
     {
-        ProcessSP process_sp = GetProcess ();
-        if (process_sp && process_sp->IsAlive())
+        TargetSP target_sp (m_debugger.GetSelectedTarget());
+        if (target_sp)
         {
-            StateType state = process_sp->GetState();
-            if (StateIsStoppedState(state, true))
+            ProcessSP process_sp = target_sp->GetProcessSP();
+            if (process_sp && process_sp->IsAlive())
             {
-                ThreadSP thread_sp = GetThread (item);
-                if (thread_sp)
+                StateType state = process_sp->GetState();
+                if (StateIsStoppedState(state, true))
                 {
-                    if (m_stop_id == process_sp->GetStopID() && thread_sp->GetID() == m_tid)
-                        return; // Children are already up to date
-                    if (!m_frame_delegate_sp)
+                    ThreadSP thread_sp = process_sp->GetThreadList().GetSelectedThread();
+                    if (thread_sp)
                     {
-                        // Always expand the thread item the first time we show it
-                        m_frame_delegate_sp.reset (new FrameTreeDelegate());
-                    }
+                        if (m_stop_id == process_sp->GetStopID() && thread_sp->GetID() == m_tid)
+                            return; // Children are already up to date
+                        if (m_frame_delegate_sp)
+                            m_frame_delegate_sp->SetThread(thread_sp);
+                        else
+                        {
+                            // Always expand the thread item the first time we show it
+                            item.Expand();
+                            m_frame_delegate_sp.reset (new FrameTreeDelegate(thread_sp));
+                        }
 
-                    m_stop_id = process_sp->GetStopID();
-                    m_tid = thread_sp->GetID();
-                    
-                    TreeItem t (&item, *m_frame_delegate_sp, false);
-                    size_t num_frames = thread_sp->GetStackFrameCount();
-                    item.Resize (num_frames, t);
-                    for (size_t i=0; i<num_frames; ++i)
-                    {
-                        item[i].SetUserData(thread_sp.get());
-                        item[i].SetIdentifier(i);
+                        m_stop_id = process_sp->GetStopID();
+                        m_thread_wp = thread_sp;
+                        m_tid = thread_sp->GetID();
+                        
+                        TreeItem t (&item, *m_frame_delegate_sp, false);
+                        size_t num_frames = thread_sp->GetStackFrameCount();
+                        item.Resize (num_frames, t);
+                        for (size_t i=0; i<num_frames; ++i)
+                        {
+                            item[i].SetIdentifier(i);
+                        }
                     }
+                    return;
                 }
-                return;
             }
         }
         item.ClearChildren();
@@ -3223,24 +3148,16 @@ public:
     virtual bool
     TreeDelegateItemSelected (TreeItem &item)
     {
-        ProcessSP process_sp = GetProcess ();
-        if (process_sp && process_sp->IsAlive())
+        ThreadSP thread_sp = m_thread_wp.lock();
+        if (thread_sp)
         {
-            StateType state = process_sp->GetState();
-            if (StateIsStoppedState(state, true))
+            ThreadList &thread_list = thread_sp->GetProcess()->GetThreadList();
+            Mutex::Locker locker (thread_list.GetMutex());
+            ThreadSP selected_thread_sp = thread_list.GetSelectedThread();
+            if (selected_thread_sp->GetID() != thread_sp->GetID())
             {
-                ThreadSP thread_sp = GetThread (item);
-                if (thread_sp)
-                {
-                    ThreadList &thread_list = thread_sp->GetProcess()->GetThreadList();
-                    Mutex::Locker locker (thread_list.GetMutex());
-                    ThreadSP selected_thread_sp = thread_list.GetSelectedThread();
-                    if (selected_thread_sp->GetID() != thread_sp->GetID())
-                    {
-                        thread_list.SetSelectedThreadByID(thread_sp->GetID());
-                        return true;
-                    }
-                }
+                thread_list.SetSelectedThreadByID(thread_sp->GetID());
+                return true;
             }
         }
         return false;
@@ -3248,97 +3165,9 @@ public:
 
 protected:
     Debugger &m_debugger;
+    ThreadWP m_thread_wp;
     std::shared_ptr<FrameTreeDelegate> m_frame_delegate_sp;
     lldb::user_id_t m_tid;
-    uint32_t m_stop_id;
-};
-
-class ThreadsTreeDelegate : public TreeDelegate
-{
-public:
-    ThreadsTreeDelegate (Debugger &debugger) :
-        TreeDelegate(),
-        m_thread_delegate_sp (),
-        m_debugger (debugger),
-        m_stop_id (UINT32_MAX)
-    {
-    }
-    
-    virtual
-    ~ThreadsTreeDelegate()
-    {
-    }
-    
-    ProcessSP
-    GetProcess ()
-    {
-        return m_debugger.GetCommandInterpreter().GetExecutionContext().GetProcessSP();
-    }
-
-    virtual void
-    TreeDelegateDrawTreeItem (TreeItem &item, Window &window)
-    {
-        ProcessSP process_sp = GetProcess ();
-        if (process_sp && process_sp->IsAlive())
-        {
-            StreamString strm;
-            ExecutionContext exe_ctx (process_sp);
-            const char *format = "process ${process.id}{, name = ${process.name}}";
-            if (Debugger::FormatPrompt (format, NULL, &exe_ctx, NULL, strm))
-            {
-                int right_pad = 1;
-                window.PutCStringTruncated(strm.GetString().c_str(), right_pad);
-            }
-        }
-    }
-
-    virtual void
-    TreeDelegateGenerateChildren (TreeItem &item)
-    {
-        ProcessSP process_sp = GetProcess ();
-        if (process_sp && process_sp->IsAlive())
-        {
-            StateType state = process_sp->GetState();
-            if (StateIsStoppedState(state, true))
-            {
-                const uint32_t stop_id = process_sp->GetStopID();
-                if (m_stop_id == stop_id)
-                    return; // Children are already up to date
-                
-                m_stop_id = stop_id;
-
-                if (!m_thread_delegate_sp)
-                {
-                    // Always expand the thread item the first time we show it
-                    //item.Expand();
-                    m_thread_delegate_sp.reset (new ThreadTreeDelegate(m_debugger));
-                }
-                
-                TreeItem t (&item, *m_thread_delegate_sp, false);
-                ThreadList &threads = process_sp->GetThreadList();
-                Mutex::Locker locker (threads.GetMutex());
-                size_t num_threads = threads.GetSize();
-                item.Resize (num_threads, t);
-                for (size_t i=0; i<num_threads; ++i)
-                {
-                    item[i].SetIdentifier(threads.GetThreadAtIndex(i)->GetID());
-                    item[i].SetMightHaveChildren(true);
-                }
-                return;
-            }
-        }
-        item.ClearChildren();
-    }
-    
-    virtual bool
-    TreeDelegateItemSelected (TreeItem &item)
-    {
-        return false;
-    }
-    
-protected:
-    std::shared_ptr<ThreadTreeDelegate> m_thread_delegate_sp;
-    Debugger &m_debugger;
     uint32_t m_stop_id;
 };
 
@@ -3501,7 +3330,7 @@ public:
                 // Page up key
                 if (m_first_visible_row > 0)
                 {
-                    if (static_cast<int>(m_first_visible_row) > m_max_y)
+                    if (m_first_visible_row > m_max_y)
                         m_first_visible_row -= m_max_y;
                     else
                         m_first_visible_row = 0;
@@ -3512,7 +3341,7 @@ public:
             case '.':
             case KEY_NPAGE:
                 // Page down key
-                if (m_num_rows > static_cast<size_t>(m_max_y))
+                if (m_num_rows > m_max_y)
                 {
                     if (m_first_visible_row + m_max_y < m_num_rows)
                     {
@@ -3679,7 +3508,7 @@ protected:
             // Save the row index in each Row structure
             row.row_idx = m_num_rows;
             if ((m_num_rows >= m_first_visible_row) &&
-                ((m_num_rows - m_first_visible_row) < static_cast<size_t>(NumVisibleRows())))
+                ((m_num_rows - m_first_visible_row) < NumVisibleRows()))
             {
                 row.x = m_min_x;
                 row.y = m_num_rows - m_first_visible_row + 1;
@@ -4051,7 +3880,7 @@ HelpDialogDelegate::WindowDelegateDraw (Window &window, bool force)
     int y = 1;
     const int min_y = y;
     const int max_y = window_height - 1 - y;
-    const size_t num_visible_lines = max_y - min_y + 1;
+    const int num_visible_lines = max_y - min_y + 1;
     const size_t num_lines = m_text.GetSize();
     const char *bottom_message;
     if (num_lines <= num_visible_lines)
@@ -4099,7 +3928,7 @@ HelpDialogDelegate::WindowDelegateHandleChar (Window &window, int key)
             case ',':
                 if (m_first_visible_line > 0)
                 {
-                    if (static_cast<size_t>(m_first_visible_line) >= num_visible_lines)
+                    if (m_first_visible_line >= num_visible_lines)
                         m_first_visible_line -= num_visible_lines;
                     else
                         m_first_visible_line = 0;
@@ -4110,7 +3939,7 @@ HelpDialogDelegate::WindowDelegateHandleChar (Window &window, int key)
                 if (m_first_visible_line + num_visible_lines < num_lines)
                 {
                     m_first_visible_line += num_visible_lines;
-                    if (static_cast<size_t>(m_first_visible_line) > num_lines)
+                    if (m_first_visible_line > num_lines)
                         m_first_visible_line = num_lines - num_visible_lines;
                 }
                 break;
@@ -4242,7 +4071,7 @@ public:
                     {
                         Process *process = exe_ctx.GetProcessPtr();
                         if (process && process->IsAlive() && StateIsStoppedState (process->GetState(), true))
-                            exe_ctx.GetThreadRef().StepIn(true);
+                            exe_ctx.GetThreadRef().StepIn(true, true);
                     }
                 }
                 return MenuActionResult::Handled;
@@ -4526,13 +4355,9 @@ public:
 
             if (StateIsStoppedState(state, true))
             {
-                StreamString strm;
-                const char *format = "Thread: ${thread.id%tid}";
-                if (thread && Debugger::FormatPrompt (format, NULL, &exe_ctx, NULL, strm))
-                {
-                    window.MoveCursor (40, 0);
-                    window.PutCStringTruncated(strm.GetString().c_str(), 1);
-                }
+                window.MoveCursor (40, 0);
+                if (thread)
+                    window.Printf ("Thread: 0x%4.4" PRIx64, thread->GetID());
 
                 window.MoveCursor (60, 0);
                 if (frame)
@@ -4567,7 +4392,6 @@ public:
         m_disassembly_scope (NULL),
         m_disassembly_sp (),
         m_disassembly_range (),
-        m_title (),
         m_line_width (4),
         m_selected_line (0),
         m_pc_line (0),
@@ -4580,30 +4404,31 @@ public:
         m_max_y (0)
     {
     }
-
+    
+    
     virtual
     ~SourceFileWindowDelegate()
     {
     }
-
+    
     void
     Update (const SymbolContext &sc)
     {
         m_sc = sc;
     }
-
+    
     uint32_t
     NumVisibleLines () const
     {
         return m_max_y - m_min_y;
     }
-
+    
     virtual const char *
     WindowDelegateGetHelpText ()
     {
         return "Source/Disassembly window keyboard shortcuts:";
     }
-
+    
     virtual KeyHelp *
     WindowDelegateGetKeyHelp ()
     {
@@ -4630,7 +4455,7 @@ public:
         };
         return g_source_view_key_help;
     }
-
+    
     virtual bool
     WindowDelegateDraw (Window &window, bool force)
     {
@@ -4648,18 +4473,20 @@ public:
                 update_location = true;
             }
         }
-
+        
         m_min_x = 1;
-        m_min_y = 2;
+        m_min_y = 1;
         m_max_x = window.GetMaxX()-1;
         m_max_y = window.GetMaxY()-1;
-
+        
         const uint32_t num_visible_lines = NumVisibleLines();
         StackFrameSP frame_sp;
         bool set_selected_line_to_pc = false;
 
+        
         if (update_location)
         {
+            
             const bool process_alive = process ? process->IsAlive() : false;
             bool thread_changed = false;
             if (process_alive)
@@ -4685,17 +4512,9 @@ public:
             const bool stop_id_changed = stop_id != m_stop_id;
             bool frame_changed = false;
             m_stop_id = stop_id;
-            m_title.Clear();
             if (frame_sp)
             {
                 m_sc = frame_sp->GetSymbolContext(eSymbolContextEverything);
-                if (m_sc.module_sp)
-                {
-                    m_title.Printf("%s", m_sc.module_sp->GetFileSpec().GetFilename().GetCString());
-                    ConstString func_name = m_sc.GetFunctionName();
-                    if (func_name)
-                        m_title.Printf("`%s", func_name.GetCString());
-                }
                 const uint32_t frame_idx = frame_sp->GetFrameIndex();
                 frame_changed = frame_idx != m_frame_idx;
                 m_frame_idx = frame_idx;
@@ -4706,9 +4525,9 @@ public:
                 frame_changed = m_frame_idx != UINT32_MAX;
                 m_frame_idx = UINT32_MAX;
             }
-
+            
             const bool context_changed = thread_changed || frame_changed || stop_id_changed;
-
+            
             if (process_alive)
             {
                 if (m_sc.line_entry.IsValid())
@@ -4724,7 +4543,7 @@ public:
                     {
                         // Same file, nothing to do, we should either have the
                         // lines or not (source file missing)
-                        if (m_selected_line >= static_cast<size_t>(m_first_visible_line))
+                        if (m_selected_line >= m_first_visible_line)
                         {
                             if (m_selected_line >= m_first_visible_line + num_visible_lines)
                                 m_first_visible_line = m_selected_line - 10;
@@ -4748,7 +4567,7 @@ public:
                             int m_line_width = 1;
                             for (size_t n = num_lines; n >= 10; n = n / 10)
                                 ++m_line_width;
-
+                            
                             snprintf (m_line_format, sizeof(m_line_format), " %%%iu ", m_line_width);
                             if (num_lines < num_visible_lines || m_selected_line < num_visible_lines)
                                 m_first_visible_line = 0;
@@ -4761,7 +4580,7 @@ public:
                 {
                     m_file_sp.reset();
                 }
-
+                
                 if (!m_file_sp || m_file_sp->GetNumLines() == 0)
                 {
                     // Show disassembly
@@ -4816,23 +4635,11 @@ public:
                 m_pc_line = UINT32_MAX;
             }
         }
-
-        const int window_width = window.GetWidth();
+        
+            
         window.Erase();
         window.DrawTitleBox ("Sources");
-        if (!m_title.GetString().empty())
-        {
-            window.AttributeOn(A_REVERSE);
-            window.MoveCursor(1, 1);
-            window.PutChar(' ');
-            window.PutCStringTruncated(m_title.GetString().c_str(), 1);
-            int x = window.GetCursorX();
-            if (x < window_width - 1)
-            {
-                window.Printf ("%*s", window_width - x - 1, "");
-            }
-            window.AttributeOff(A_REVERSE);
-        }
+        
 
         Target *target = exe_ctx.GetTargetPtr();
         const size_t num_source_lines = GetNumSourceLines();
@@ -4862,16 +4669,17 @@ public:
                     }
                 }
             }
-
+            
+        
             const attr_t selected_highlight_attr = A_REVERSE;
             const attr_t pc_highlight_attr = COLOR_PAIR(1);
 
-            for (size_t i=0; i<num_visible_lines; ++i)
+            for (int i=0; i<num_visible_lines; ++i)
             {
                 const uint32_t curr_line = m_first_visible_line + i;
                 if (curr_line < num_source_lines)
                 {
-                    const int line_y = m_min_y+i;
+                    const int line_y = 1+i;
                     window.MoveCursor(1, line_y);
                     const bool is_pc_line = curr_line == m_pc_line;
                     const bool line_is_selected = m_selected_line == curr_line;
@@ -4883,13 +4691,13 @@ public:
                         highlight_attr = pc_highlight_attr;
                     else if (line_is_selected)
                         highlight_attr = selected_highlight_attr;
-
+                    
                     if (bp_lines.find(curr_line+1) != bp_lines.end())
                         bp_attr = COLOR_PAIR(2);
 
                     if (bp_attr)
                         window.AttributeOn(bp_attr);
-
+                    
                     window.Printf (m_line_format, curr_line + 1);
 
                     if (bp_attr)
@@ -4901,7 +4709,7 @@ public:
                         window.PutChar(ACS_DIAMOND);
                     else
                         window.PutChar(' ');
-
+                    
                     if (highlight_attr)
                         window.AttributeOn(highlight_attr);
                     const uint32_t line_len = m_file_sp->GetLineLength(curr_line + 1, false);
@@ -4919,15 +4727,15 @@ public:
                             if (stop_description && stop_description[0])
                             {
                                 size_t stop_description_len = strlen(stop_description);
-                                int desc_x = window_width - stop_description_len - 16;
+                                int desc_x = window.GetWidth() - stop_description_len - 16;
                                 window.Printf ("%*s", desc_x - window.GetCursorX(), "");
-                                //window.MoveCursor(window_width - stop_description_len - 15, line_y);
+                                //window.MoveCursor(window.GetWidth() - stop_description_len - 15, line_y);
                                 window.Printf ("<<< Thread %u: %s ", thread->GetIndexID(), stop_description);
                             }
                         }
                         else
                         {
-                            window.Printf ("%*s", window_width - window.GetCursorX() - 1, "");
+                            window.Printf ("%*s", window.GetWidth() - window.GetCursorX() - 1, "");
                         }
                     }
                     if (highlight_attr)
@@ -4969,15 +4777,16 @@ public:
                         }
                     }
                 }
-
+                
+                
                 const attr_t selected_highlight_attr = A_REVERSE;
                 const attr_t pc_highlight_attr = COLOR_PAIR(1);
-
+                
                 StreamString strm;
 
                 InstructionList &insts = m_disassembly_sp->GetInstructionList();
                 Address pc_address;
-
+                
                 if (frame_sp)
                     pc_address = frame_sp->GetFrameCodeAddress();
                 const uint32_t pc_idx = pc_address.IsValid() ? insts.GetIndexOfInstructionAtAddress (pc_address) : UINT32_MAX;
@@ -4987,12 +4796,12 @@ public:
                 }
 
                 const uint32_t non_visible_pc_offset = (num_visible_lines / 5);
-                if (static_cast<size_t>(m_first_visible_line) >= num_disassembly_lines)
+                if (m_first_visible_line >= num_disassembly_lines)
                     m_first_visible_line = 0;
 
                 if (pc_idx < num_disassembly_lines)
                 {
-                    if (pc_idx < static_cast<uint32_t>(m_first_visible_line) ||
+                    if (pc_idx < m_first_visible_line ||
                         pc_idx >= m_first_visible_line + num_visible_lines)
                         m_first_visible_line = pc_idx - non_visible_pc_offset;
                 }
@@ -5003,9 +4812,8 @@ public:
                     Instruction *inst = insts.GetInstructionAtIndex(inst_idx).get();
                     if (!inst)
                         break;
-
-                    const int line_y = m_min_y+i;
-                    window.MoveCursor(1, line_y);
+                    
+                    window.MoveCursor(1, i+1);
                     const bool is_pc_line = frame_sp && inst_idx == pc_idx;
                     const bool line_is_selected = m_selected_line == inst_idx;
                     // Highlight the line as the PC line first, then if the selected line
@@ -5016,29 +4824,28 @@ public:
                         highlight_attr = pc_highlight_attr;
                     else if (line_is_selected)
                         highlight_attr = selected_highlight_attr;
-
+                    
                     if (bp_file_addrs.find(inst->GetAddress().GetFileAddress()) != bp_file_addrs.end())
                         bp_attr = COLOR_PAIR(2);
-
+                    
                     if (bp_attr)
                         window.AttributeOn(bp_attr);
-
-                    window.Printf (" 0x%16.16llx ",
-                                   static_cast<unsigned long long>(inst->GetAddress().GetLoadAddress(target)));
-
+                    
+                    window.Printf (" 0x%16.16llx ", inst->GetAddress().GetLoadAddress(target));
+                        
                     if (bp_attr)
                         window.AttributeOff(bp_attr);
-
+                        
                     window.PutChar(ACS_VLINE);
                     // Mark the line with the PC with a diamond
                     if (is_pc_line)
                         window.PutChar(ACS_DIAMOND);
                     else
                         window.PutChar(' ');
-
+                    
                     if (highlight_attr)
                         window.AttributeOn(highlight_attr);
-
+                    
                     const char *mnemonic = inst->GetMnemonic(&exe_ctx);
                     const char *operands = inst->GetOperands(&exe_ctx);
                     const char *comment = inst->GetComment(&exe_ctx);
@@ -5049,7 +4856,7 @@ public:
                         operands = NULL;
                     if (comment && comment[0] == '\0')
                         comment = NULL;
-
+                    
                     strm.Clear();
 
                     if (mnemonic && operands && comment)
@@ -5058,10 +4865,10 @@ public:
                         strm.Printf ("%-8s %s", mnemonic, operands);
                     else if (mnemonic)
                         strm.Printf ("%s", mnemonic);
-
+                    
                     int right_pad = 1;
                     window.PutCStringTruncated(strm.GetString().c_str(), right_pad);
-
+                    
                     if (is_pc_line && frame_sp && frame_sp->GetConcreteFrameIndex() == 0)
                     {
                         StopInfoSP stop_info_sp;
@@ -5073,15 +4880,15 @@ public:
                             if (stop_description && stop_description[0])
                             {
                                 size_t stop_description_len = strlen(stop_description);
-                                int desc_x = window_width - stop_description_len - 16;
+                                int desc_x = window.GetWidth() - stop_description_len - 16;
                                 window.Printf ("%*s", desc_x - window.GetCursorX(), "");
-                                //window.MoveCursor(window_width - stop_description_len - 15, line_y);
+                                //window.MoveCursor(window.GetWidth() - stop_description_len - 15, line_y);
                                 window.Printf ("<<< Thread %u: %s ", thread->GetIndexID(), stop_description);
                             }
                         }
                         else
                         {
-                            window.Printf ("%*s", window_width - window.GetCursorX() - 1, "");
+                            window.Printf ("%*s", window.GetWidth() - window.GetCursorX() - 1, "");
                         }
                     }
                     if (highlight_attr)
@@ -5092,7 +4899,7 @@ public:
         window.DeferredRefresh();
         return true; // Drawing handled
     }
-
+    
     size_t
     GetNumLines ()
     {
@@ -5101,7 +4908,7 @@ public:
             num_lines = GetNumDisassemblyLines();
         return num_lines;
     }
-
+    
     size_t
     GetNumSourceLines () const
     {
@@ -5128,13 +4935,13 @@ public:
             case ',':
             case KEY_PPAGE:
                 // Page up key
-                if (static_cast<uint32_t>(m_first_visible_line) > num_visible_lines)
+                if (m_first_visible_line > num_visible_lines)
                     m_first_visible_line -= num_visible_lines;
                 else
                     m_first_visible_line = 0;
                 m_selected_line = m_first_visible_line;
                 return eKeyHandled;
-
+                
             case '.':
             case KEY_NPAGE:
                 // Page down key
@@ -5148,12 +4955,12 @@ public:
                     m_selected_line = m_first_visible_line;
                 }
                 return eKeyHandled;
-
+                
             case KEY_UP:
                 if (m_selected_line > 0)
                 {
                     m_selected_line--;
-                    if (static_cast<size_t>(m_first_visible_line) > m_selected_line)
+                    if (m_first_visible_line > m_selected_line)
                         m_first_visible_line = m_selected_line;
                 }
                 return eKeyHandled;
@@ -5166,7 +4973,7 @@ public:
                         m_first_visible_line++;
                 }
                 return eKeyHandled;
-
+                
             case '\r':
             case '\n':
             case KEY_ENTER:
@@ -5260,7 +5067,7 @@ public:
                         exe_ctx.GetProcessRef().Resume();
                 }
                 return eKeyHandled;
-
+                
             case 'o':
                 // 'o' == step out
                 {
@@ -5289,11 +5096,12 @@ public:
                     if (exe_ctx.HasThreadScope() && StateIsStoppedState (exe_ctx.GetProcessRef().GetState(), true))
                     {
                         bool source_step = (c == 's');
-                        exe_ctx.GetThreadRef().StepIn(source_step);
+                        bool avoid_code_without_debug_info = true;
+                        exe_ctx.GetThreadRef().StepIn(source_step, avoid_code_without_debug_info);
                     }
                 }
                 return eKeyHandled;
-
+                
             case 'h':
                 window.CreateHelpSubwindow ();
                 return eKeyHandled;
@@ -5303,7 +5111,7 @@ public:
         }
         return eKeyNotHandled;
     }
-
+    
 protected:
     typedef std::set<uint32_t> BreakpointLines;
     typedef std::set<lldb::addr_t> BreakpointAddrs;
@@ -5314,7 +5122,6 @@ protected:
     SymbolContextScope *m_disassembly_scope;
     lldb::DisassemblerSP m_disassembly_sp;
     AddressRange m_disassembly_range;
-    StreamString m_title;
     lldb::user_id_t m_tid;
     char m_line_format[8];
     int m_line_width;
@@ -5428,7 +5235,7 @@ IOHandlerCursesGUI::Activate ()
         main_window_sp->SetDelegate (std::static_pointer_cast<WindowDelegate>(app_delegate_sp));
         source_window_sp->SetDelegate (WindowDelegateSP(new SourceFileWindowDelegate(m_debugger)));
         variables_window_sp->SetDelegate (WindowDelegateSP(new FrameVariablesWindowDelegate(m_debugger)));
-        TreeDelegateSP thread_delegate_sp (new ThreadsTreeDelegate(m_debugger));
+        TreeDelegateSP thread_delegate_sp (new ThreadTreeDelegate(m_debugger));
         threads_window_sp->SetDelegate (WindowDelegateSP(new TreeWindowDelegate(m_debugger, thread_delegate_sp)));
         status_window_sp->SetDelegate (WindowDelegateSP(new StatusBarWindowDelegate(m_debugger)));
 
@@ -5484,10 +5291,9 @@ IOHandlerCursesGUI::Cancel ()
 {
 }
 
-bool
+void
 IOHandlerCursesGUI::Interrupt ()
 {
-    return false;
 }
 
 

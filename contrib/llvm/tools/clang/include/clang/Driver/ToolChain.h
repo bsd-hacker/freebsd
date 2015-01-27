@@ -11,13 +11,12 @@
 #define CLANG_DRIVER_TOOLCHAIN_H_
 
 #include "clang/Driver/Action.h"
-#include "clang/Driver/Multilib.h"
 #include "clang/Driver/Types.h"
 #include "clang/Driver/Util.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/Path.h"
-#include <memory>
 #include <string>
 
 namespace llvm {
@@ -66,19 +65,17 @@ private:
   /// programs.
   path_list ProgramPaths;
 
-  mutable std::unique_ptr<Tool> Clang;
-  mutable std::unique_ptr<Tool> Assemble;
-  mutable std::unique_ptr<Tool> Link;
+  mutable OwningPtr<Tool> Clang;
+  mutable OwningPtr<Tool> Assemble;
+  mutable OwningPtr<Tool> Link;
   Tool *getClang() const;
   Tool *getAssemble() const;
   Tool *getLink() const;
   Tool *getClangAs() const;
 
-  mutable std::unique_ptr<SanitizerArgs> SanitizerArguments;
+  mutable OwningPtr<SanitizerArgs> SanitizerArguments;
 
 protected:
-  MultilibSet Multilibs;
-
   ToolChain(const Driver &D, const llvm::Triple &T,
             const llvm::opt::ArgList &Args);
 
@@ -130,8 +127,6 @@ public:
   path_list &getProgramPaths() { return ProgramPaths; }
   const path_list &getProgramPaths() const { return ProgramPaths; }
 
-  const MultilibSet &getMultilibs() const { return Multilibs; }
-
   const SanitizerArgs& getSanitizerArgs() const;
 
   // Tool access.
@@ -144,7 +139,7 @@ public:
   virtual llvm::opt::DerivedArgList *
   TranslateArgs(const llvm::opt::DerivedArgList &Args,
                 const char *BoundArch) const {
-    return nullptr;
+    return 0;
   }
 
   /// Choose a tool to use to handle the action \p JA.
@@ -155,10 +150,6 @@ public:
   std::string GetFilePath(const char *Name) const;
   std::string GetProgramPath(const char *Name) const;
 
-  /// Returns the linker path, respecting the -fuse-ld= argument to determine
-  /// the linker suffix or name.
-  std::string GetLinkerPath() const;
-
   /// \brief Dispatch to the specific toolchain for verbose printing.
   ///
   /// This is used when handling the verbose option to print detailed,
@@ -167,10 +158,6 @@ public:
   virtual void printVerboseInfo(raw_ostream &OS) const {};
 
   // Platform defaults information
-
-  /// \brief Returns true if the toolchain is targeting a non-native
-  /// architecture.
-  virtual bool isCrossCompiling() const;
 
   /// HasNativeLTOLinker - Check whether the linker and related tools have
   /// native LLVM support.
@@ -206,7 +193,7 @@ public:
   virtual bool UseObjCMixedDispatch() const { return false; }
 
   /// GetDefaultStackProtectorLevel - Get the default stack protector level for
-  /// this tool chain (0=off, 1=on, 2=strong, 3=all).
+  /// this tool chain (0=off, 1=on, 2=all).
   virtual unsigned GetDefaultStackProtectorLevel(bool KernelOrKext) const {
     return 0;
   }
@@ -287,9 +274,6 @@ public:
   /// \brief Add options that need to be passed to cc1 for this target.
   virtual void addClangTargetOptions(const llvm::opt::ArgList &DriverArgs,
                                      llvm::opt::ArgStringList &CC1Args) const;
-
-  /// \brief Add warning options that need to be passed to cc1 for this target.
-  virtual void addClangWarningOptions(llvm::opt::ArgStringList &CC1Args) const;
 
   // GetRuntimeLibType - Determine the runtime library type to use with the
   // given compilation arguments.

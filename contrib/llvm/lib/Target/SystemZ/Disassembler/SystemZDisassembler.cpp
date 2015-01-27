@@ -17,29 +17,28 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "systemz-disassembler"
-
 typedef MCDisassembler::DecodeStatus DecodeStatus;
 
 namespace {
 class SystemZDisassembler : public MCDisassembler {
 public:
-  SystemZDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx)
-    : MCDisassembler(STI, Ctx) {}
+  SystemZDisassembler(const MCSubtargetInfo &STI)
+    : MCDisassembler(STI) {}
   virtual ~SystemZDisassembler() {}
 
   // Override MCDisassembler.
-  DecodeStatus getInstruction(MCInst &instr, uint64_t &size,
-                              const MemoryObject &region, uint64_t address,
-                              raw_ostream &vStream,
-                              raw_ostream &cStream) const override;
+  virtual DecodeStatus getInstruction(MCInst &instr,
+                                      uint64_t &size,
+                                      const MemoryObject &region,
+                                      uint64_t address,
+                                      raw_ostream &vStream,
+                                      raw_ostream &cStream) const LLVM_OVERRIDE;
 };
 } // end anonymous namespace
 
 static MCDisassembler *createSystemZDisassembler(const Target &T,
-                                                 const MCSubtargetInfo &STI,
-                                                 MCContext &Ctx) {
-  return new SystemZDisassembler(STI, Ctx);
+                                                 const MCSubtargetInfo &STI) {
+  return new SystemZDisassembler(STI);
 }
 
 extern "C" void LLVMInitializeSystemZDisassembler() {

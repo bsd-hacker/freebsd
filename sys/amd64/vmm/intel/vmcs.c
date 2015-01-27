@@ -103,14 +103,6 @@ vmcs_field_encoding(int ident)
 		return (VMCS_GUEST_LDTR_SELECTOR);
 	case VM_REG_GUEST_EFER:
 		return (VMCS_GUEST_IA32_EFER);
-	case VM_REG_GUEST_PDPTE0:
-		return (VMCS_GUEST_PDPTE0);
-	case VM_REG_GUEST_PDPTE1:
-		return (VMCS_GUEST_PDPTE1);
-	case VM_REG_GUEST_PDPTE2:
-		return (VMCS_GUEST_PDPTE2);
-	case VM_REG_GUEST_PDPTE3:
-		return (VMCS_GUEST_PDPTE3);
 	default:
 		return (-1);
 	}
@@ -332,6 +324,7 @@ vmcs_init(struct vmcs *vmcs)
 	int error, codesel, datasel, tsssel;
 	u_long cr0, cr4, efer;
 	uint64_t pat, fsbase, idtrbase;
+	uint32_t exc_bitmap;
 
 	codesel = vmm_get_host_codesel();
 	datasel = vmm_get_host_datasel();
@@ -414,6 +407,11 @@ vmcs_init(struct vmcs *vmcs)
 
 	/* instruction pointer */
 	if ((error = vmwrite(VMCS_HOST_RIP, (u_long)vmx_exit_guest)) != 0)
+		goto done;
+
+	/* exception bitmap */
+	exc_bitmap = 1 << IDT_MC;
+	if ((error = vmwrite(VMCS_EXCEPTION_BITMAP, exc_bitmap)) != 0)
 		goto done;
 
 	/* link pointer */

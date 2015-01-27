@@ -750,6 +750,14 @@ out:
 			goto noerror;
 
 		/*
+		 * Some Samsung SSDs report supported Asynchronous Notification,
+		 * but return ABORT on attempt to enable it.
+		 */
+		} else if (softc->action == PROBE_SETAN &&
+		    status == CAM_ATA_STATUS_ERROR) {
+			goto noerror;
+
+		/*
 		 * SES and SAF-TE SEPs have different IDENTIFY commands,
 		 * but SATA specification doesn't tell how to identify them.
 		 * Until better way found, just try another if first fail.
@@ -1051,8 +1059,7 @@ noerror:
 		}
 		/* FALLTHROUGH */
 	case PROBE_SETDMAAA:
-		if (path->device->protocol != PROTO_ATA &&
-		    (ident_buf->satasupport & ATA_SUPPORT_ASYNCNOTIF) &&
+		if ((ident_buf->satasupport & ATA_SUPPORT_ASYNCNOTIF) &&
 		    (!(softc->caps & CTS_SATA_CAPS_H_AN)) !=
 		    (!(ident_buf->sataenabled & ATA_SUPPORT_ASYNCNOTIF))) {
 			PROBE_SET_ACTION(softc, PROBE_SETAN);
@@ -1173,7 +1180,7 @@ notsata:
 		else
 			caps = 0;
 		/* Remember what transport thinks about AEN. */
-		if ((caps & CTS_SATA_CAPS_H_AN) && path->device->protocol != PROTO_ATA)
+		if (caps & CTS_SATA_CAPS_H_AN)
 			path->device->inq_flags |= SID_AEN;
 		else
 			path->device->inq_flags &= ~SID_AEN;

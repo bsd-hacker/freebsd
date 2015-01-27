@@ -33,15 +33,16 @@ PPP_NO_PAM=
 .endif
 
 .if defined(PPP_NO_SUID)
-BINMODE=554
+BINMODE=550
 .else
-BINMODE=4554
+BINMODE=4550
 BINOWN=	root
 .endif
 BINGRP=	network
 M4FLAGS=
 
-LIBADD=	md util z
+LDADD= -lcrypt -lmd -lutil -lz
+DPADD=	${LIBCRYPT} ${LIBMD} ${LIBUTIL} ${LIBZ}
 
 .if defined(PPP_CONFDIR) && !empty(PPP_CONFDIR)
 CFLAGS+=-DPPP_CONFDIR=\"${PPP_CONFDIR}\"
@@ -59,7 +60,8 @@ CFLAGS+=-DNOINET6
 CFLAGS+=-DNONAT
 .else
 SRCS+=	nat_cmd.c
-LIBADD+=	alias
+LDADD+=	-lalias
+DPADD+= ${LIBALIAS}
 .endif
 
 .if defined(PPP_NO_ATM)
@@ -78,21 +80,24 @@ SRCS+=	id.c
 CFLAGS+=-DNODES
 .else
 SRCS+=	chap_ms.c mppe.c
-LIBADD+=	crypto
+LDADD+= -lcrypto
+DPADD+= ${LIBCRYPTO}
 .endif
 
 .if defined(PPP_NO_RADIUS)
 CFLAGS+=-DNORADIUS
 .else
 SRCS+=	radius.c
-LIBADD+=	radius
+LDADD+=	-lradius
+DPADD+= ${LIBRADIUS}
 .endif
 
 .if defined(PPP_NO_NETGRAPH)
 CFLAGS+=-DNONETGRAPH
 .else
 SRCS+=	ether.c
-LIBADD+=	netgraph
+LDADD+=	-lnetgraph
+DPADD+= ${LIBNETGRAPH}
 .if defined(EXPERIMENTAL_NETGRAPH)
 CFLAGS+=-DEXPERIMENTAL_NETGRAPH
 SRCS+=	netgraph.c
@@ -102,7 +107,8 @@ SRCS+=	netgraph.c
 .if defined(PPP_NO_PAM)
 CFLAGS+=-DNOPAM
 .else
-LIBADD+=	pam
+LDADD+=	${MINUSLPAM}
+DPADD+=	${LIBPAM}
 .endif
 
 .include <bsd.prog.mk>

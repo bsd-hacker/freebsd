@@ -1,6 +1,6 @@
 #!/bin/sh
 #-
-# Copyright (c) 2010-2014 Devin Teske
+# Copyright (c) 2010-2013 Devin Teske
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,7 @@ BSDCFG_SHARE="/usr/share/bsdconfig"
 #
 # Version information
 #
-SYSRC_VERSION="6.2 Nov-3,2014"
+SYSRC_VERSION="6.0 Nov-07,2013"
 
 #
 # Options
@@ -80,7 +80,7 @@ die()
 #
 usage()
 {
-	f_err "Usage: %s [OPTIONS] name[[+]=value] ...\n" "$pgm"
+	f_err "Usage: %s [OPTIONS] name[=value] ...\n" "$pgm"
 	f_err "Try \`%s --help' for more information.\n" "$pgm"
 	die
 }
@@ -94,7 +94,7 @@ help()
 	local optfmt="\t%-11s%s\n"
 	local envfmt="\t%-17s%s\n"
 
-	f_err "Usage: %s [OPTIONS] name[[+]=value] ...\n" "$pgm"
+	f_err "Usage: %s [OPTIONS] name[=value] ...\n" "$pgm"
 
 	f_err "OPTIONS:\n"
 	f_err "$optfmt" "-a" \
@@ -102,7 +102,7 @@ help()
 	f_err "$optfmt" "-A" \
 	      "Dump a list of all configuration variables (incl. defaults)."
 	f_err "$optfmt" "-c" \
-	      "Check. Return success if set or no changes, else error."
+	      "Check. Return success if no changes needed, else error."
 	f_err "$optfmt" "-d" \
 	      "Print a description of the given variable."
 	f_err "$optfmt" "-D" \
@@ -134,7 +134,7 @@ help()
 	f_err "$optfmt" "-N" \
 	      "Show only variable names, not their values."
 	f_err "$optfmt" "-q" \
-	      "Quiet. Disable verbose and hide certain errors."
+	      "Quiet. Ignore previous \`-v' and/or SYSRC_VERBOSE."
 	f_err "$optfmt" "-R dir" \
 	      "Operate within the root directory \`dir' rather than \`/'."
 	f_err "$optfmt" "-v" \
@@ -152,6 +152,8 @@ help()
 	      "Override default rc_conf_files (even if set to NULL)."
 	f_err "$envfmt" "RC_DEFAULTS" \
 	      "Location of \`/etc/defaults/rc.conf' file."
+	f_err "$envfmt" "SYSRC_VERBOSE" \
+	      "Default verbosity. Set to non-NULL to enable."
 
 	die
 }
@@ -525,14 +527,9 @@ fi
 #
 # Process command-line arguments
 #
-status=$SUCCESS
+costatus=$SUCCESS
 while [ $# -gt 0 ]; do
 	NAME="${1%%=*}"
-
-	case "$NAME" in
-	*+) mode=APPEND NAME="${NAME%+}" ;;
-	 *) mode=ASSIGN
-	esac
 
 	[ "$DESCRIBE" ] && \
 		echo "$NAME: $( f_sysrc_desc "$NAME" )"
@@ -561,7 +558,7 @@ while [ $# -gt 0 ]; do
 		# desire to set some value
 		#
 		if [ "$DELETE" ]; then
-			f_sysrc_delete "$NAME" || status=$FAILURE
+			f_sysrc_delete "$NAME"
 			shift 1
 			continue
 		fi
@@ -571,23 +568,10 @@ while [ $# -gt 0 ]; do
 		#
 		if [ "$CHECK_ONLY" ]; then
 			if ! IGNORED=$( f_sysrc_get "$NAME?" ); then
-				status=$FAILURE
-				[ "$SYSRC_VERBOSE" ] &&
-					echo "$NAME: not currently set"
-				shift 1
-				continue
-			fi
-			value=$( f_sysrc_get "$NAME" )
-			if [ "$value" != "${1#*=}" ]; then
-				status=$FAILURE
-				if [ "$SYSRC_VERBOSE" ]; then
-					echo -n "$( f_sysrc_find "$NAME" ): "
-					echo -n "$NAME: would change from "
-					echo "\`$value' to \`${1#*=}'"
-				fi
-			elif [ "$SYSRC_VERBOSE" ]; then
-				echo -n "$( f_sysrc_find "$NAME" ): "
-				echo "$NAME: already set to \`$value'"
+				costatus=$FAILURE
+			else
+				value=$( f_sysrc_get "$NAME" )
+				[ "$value" = "${1#*=}" ] || costatus=$FAILURE
 			fi
 			shift 1
 			continue
@@ -598,25 +582,14 @@ while [ $# -gt 0 ]; do
 		#
 		if [ ! "$SHOW_VALUE" ]; then
 			echo "$NAME"
-			case "$mode" in
-			APPEND)
-				before=$( f_sysrc_get "$NAME" )
-				f_sysrc_set "$NAME" "$before${1#*=}"
-				;;
-			*)
-				f_sysrc_set "$NAME" "${1#*=}"
-			esac
+			f_sysrc_set "$NAME" "${1#*}"
 		else
 			if [ "$SHOW_FILE" ]; then
 				before=$( f_sysrc_find "$NAME" )
 			else
 				before=$( f_sysrc_get "$NAME" )
 			fi
-			if case "$mode" in
-				APPEND) f_sysrc_set "$NAME" "$before${1#*=}" ;;
-				     *) f_sysrc_set "$NAME" "${1#*=}"
-				esac
-			then
+			if f_sysrc_set "$NAME" "${1#*=}"; then
 				if [ "$SHOW_FILE" ]; then
 					after=$( f_sysrc_find "$NAME" )
 				else
@@ -631,10 +604,10 @@ while [ $# -gt 0 ]; do
 		;;
 	*)
 		if ! IGNORED=$( f_sysrc_get "$NAME?" ); then
-			[ "$IGNORE_UNKNOWNS" -o "$QUIET" ] ||
+			[ "$IGNORE_UNKNOWNS" ] ||
 				echo "$pgm: unknown variable '$NAME'"
 			shift 1
-			status=$FAILURE
+			costatus=$FAILURE
 			continue
 		fi
 
@@ -658,7 +631,7 @@ while [ $# -gt 0 ]; do
 		# If `-x' or `-X' is passed, delete the variable
 		#
 		if [ "$DELETE" ]; then
-			f_sysrc_delete "$NAME" || status=$FAILURE
+			f_sysrc_delete "$NAME"
 			shift 1
 			continue
 		fi
@@ -694,7 +667,7 @@ while [ $# -gt 0 ]; do
 	shift 1
 done
 
-exit $status # $SUCCESS unless error occurred with either `-c' or `-x'
+[ ! "$CHECK_ONLY" ] || exit $costatus
 
 ################################################################################
 # END

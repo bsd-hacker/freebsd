@@ -52,4 +52,3 @@ ENTRY(strncmp)
 	beq	1b
 	sub	r0, r2, r3
 	RET
-END(strncmp)

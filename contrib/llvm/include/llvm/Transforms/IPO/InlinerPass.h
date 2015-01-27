@@ -36,16 +36,16 @@ struct Inliner : public CallGraphSCCPass {
   /// getAnalysisUsage - For this class, we declare that we require and preserve
   /// the call graph.  If the derived class implements this method, it should
   /// always explicitly call the implementation here.
-  void getAnalysisUsage(AnalysisUsage &Info) const override;
+  virtual void getAnalysisUsage(AnalysisUsage &Info) const;
 
   // Main run interface method, this implements the interface required by the
   // Pass class.
-  bool runOnSCC(CallGraphSCC &SCC) override;
+  virtual bool runOnSCC(CallGraphSCC &SCC);
 
   using llvm::Pass::doFinalization;
   // doFinalization - Remove now-dead linkonce functions at the end of
   // processing to avoid breaking the SCC traversal.
-  bool doFinalization(CallGraph &CG) override;
+  virtual bool doFinalization(CallGraph &CG);
 
   /// This method returns the value specified by the -inline-threshold value,
   /// specified on the command line.  This is typically not directly needed.

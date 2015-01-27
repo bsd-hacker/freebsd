@@ -510,7 +510,7 @@ void ipoib_cm_handle_rx_wc(struct ipoib_dev_priv *priv, struct ib_wc *wc)
 		ipoib_dbg(priv, "cm recv error "
 			   "(status=%d, wrid=%d vend_err %x)\n",
 			   wc->status, wr_id, wc->vendor_err);
-		if_inc_counter(dev, IFCOUNTER_IERRORS, 1);
+		++dev->if_ierrors;
 		if (has_srq)
 			goto repost;
 		else {
@@ -542,7 +542,7 @@ void ipoib_cm_handle_rx_wc(struct ipoib_dev_priv *priv, struct ib_wc *wc)
 		 * this packet and reuse the old buffer.
 		 */
 		ipoib_dbg(priv, "failed to allocate receive buffer %d\n", wr_id);
-		if_inc_counter(dev, IFCOUNTER_IERRORS, 1);
+		++dev->if_ierrors;
 		memcpy(&rx_ring[wr_id], &saverx, sizeof(saverx));
 		goto repost;
 	}
@@ -554,8 +554,8 @@ void ipoib_cm_handle_rx_wc(struct ipoib_dev_priv *priv, struct ib_wc *wc)
 
 	ipoib_dma_mb(priv, mb, wc->byte_len);
 
-	if_inc_counter(dev, IFCOUNTER_IPACKETS, 1);
-	if_inc_counter(dev, IFCOUNTER_IBYTES, mb->m_pkthdr.len);
+	++dev->if_ipackets;
+	dev->if_ibytes += mb->m_pkthdr.len;
 
 	mb->m_pkthdr.rcvif = dev;
 	proto = *mtod(mb, uint16_t *);
@@ -615,7 +615,7 @@ void ipoib_cm_send(struct ipoib_dev_priv *priv, struct mbuf *mb, struct ipoib_cm
 	if (unlikely(mb->m_pkthdr.len > tx->mtu)) {
 		ipoib_warn(priv, "packet len %d (> %d) too long to send, dropping\n",
 			   mb->m_pkthdr.len, tx->mtu);
-		if_inc_counter(dev, IFCOUNTER_OERRORS, 1);
+		++dev->if_oerrors;
 		ipoib_cm_mb_too_long(priv, mb, IPOIB_CM_MTU(tx->mtu));
 		return;
 	}
@@ -635,7 +635,7 @@ void ipoib_cm_send(struct ipoib_dev_priv *priv, struct mbuf *mb, struct ipoib_cm
 	tx_req->mb = mb;
 	if (unlikely(ipoib_dma_map_tx(priv->ca, (struct ipoib_tx_buf *)tx_req,
 	    priv->cm.num_frags))) {
-		if_inc_counter(dev, IFCOUNTER_OERRORS, 1);
+		++dev->if_oerrors;
 		if (tx_req->mb)
 			m_freem(tx_req->mb);
 		return;
@@ -643,7 +643,7 @@ void ipoib_cm_send(struct ipoib_dev_priv *priv, struct mbuf *mb, struct ipoib_cm
 
 	if (unlikely(post_send(priv, tx, tx_req, tx->tx_head & (ipoib_sendq_size - 1)))) {
 		ipoib_warn(priv, "post_send failed\n");
-		if_inc_counter(dev, IFCOUNTER_OERRORS, 1);
+		++dev->if_oerrors;
 		ipoib_dma_unmap_tx(priv->ca, (struct ipoib_tx_buf *)tx_req);
 		m_freem(mb);
 	} else {
@@ -681,7 +681,7 @@ void ipoib_cm_handle_tx_wc(struct ipoib_dev_priv *priv, struct ib_wc *wc)
 	ipoib_dma_unmap_tx(priv->ca, (struct ipoib_tx_buf *)tx_req);
 
 	/* FIXME: is this right? Shouldn't we only increment on success? */
-	if_inc_counter(dev, IFCOUNTER_OPACKETS, 1);
+	++dev->if_opackets;
 
 	m_freem(tx_req->mb);
 

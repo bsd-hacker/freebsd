@@ -31,10 +31,6 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/vmm.h>
 
-#include <vmmapi.h>
-
-#include <assert.h>
-#include <errno.h>
 #include <stdio.h>
 
 #include "inout.h"
@@ -52,30 +48,29 @@ atkbdc_data_handler(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
     uint32_t *eax, void *arg)
 {
 	if (bytes != 1)
-		return (-1);
+		return (INOUT_ERROR);
 
 	*eax = 0;
 
-	return (0);
+	return (INOUT_OK);
 }
 
 static int
 atkbdc_sts_ctl_handler(struct vmctx *ctx, int vcpu, int in, int port,
     int bytes, uint32_t *eax, void *arg)
 {
-	int error, retval;
+	int retval;
 
 	if (bytes != 1)
-		return (-1);
+		return (INOUT_ERROR);
 
-	retval = 0;
+	retval = INOUT_OK;
 	if (in) {
 		*eax = KBD_SYS_FLAG;	/* system passed POST */
 	} else {
 		switch (*eax) {
 		case KBDC_RESET:	/* Pulse "reset" line. */
-			error = vm_suspend(ctx, VM_SUSPEND_RESET);
-			assert(error == 0 || errno == EALREADY);
+			retval = INOUT_RESET;
 			break;
 		}
 	}

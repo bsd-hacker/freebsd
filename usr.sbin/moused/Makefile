@@ -3,7 +3,8 @@
 PROG=	moused
 MAN=	moused.8
 
-LIBADD=	m util
+DPADD=	${LIBUTIL}  ${LIBM}
+LDADD=	-lutil -lm
 
 #BINMODE=4555
 #PRECIOUSPROG=

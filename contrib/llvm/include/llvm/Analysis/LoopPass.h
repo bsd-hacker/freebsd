@@ -32,8 +32,7 @@ public:
 
   /// getPrinterPass - Get a pass to print the function corresponding
   /// to a Loop.
-  Pass *createPrinterPass(raw_ostream &O,
-                          const std::string &Banner) const override;
+  Pass *createPrinterPass(raw_ostream &O, const std::string &Banner) const;
 
   // runOnLoop - This method should be implemented by the subclass to perform
   // whatever action is necessary for the specified Loop.
@@ -57,13 +56,14 @@ public:
   // LPPassManager passes. In such case, pop LPPassManager from the
   // stack. This will force assignPassManager() to create new
   // LPPassManger as expected.
-  void preparePassManager(PMStack &PMS) override;
+  void preparePassManager(PMStack &PMS);
 
   /// Assign pass manager to manage this pass
-  void assignPassManager(PMStack &PMS, PassManagerType PMT) override;
+  virtual void assignPassManager(PMStack &PMS,
+                                 PassManagerType PMT);
 
   ///  Return what kind of Pass Manager can manage this pass.
-  PassManagerType getPotentialPassManagerType() const override {
+  virtual PassManagerType getPotentialPassManagerType() const {
     return PMT_LoopPassManager;
   }
 
@@ -81,11 +81,6 @@ public:
 
   /// deleteAnalysisValue - Delete analysis info associated with value V.
   virtual void deleteAnalysisValue(Value *V, Loop *L) {}
-
-protected:
-  /// skipOptnoneFunction - Containing function has Attribute::OptimizeNone
-  /// and most transformation passes should skip it.
-  bool skipOptnoneFunction(const Loop *L) const;
 };
 
 class LPPassManager : public FunctionPass, public PMDataManager {
@@ -95,21 +90,21 @@ public:
 
   /// run - Execute all of the passes scheduled for execution.  Keep track of
   /// whether any of the passes modifies the module, and if so, return true.
-  bool runOnFunction(Function &F) override;
+  bool runOnFunction(Function &F);
 
   /// Pass Manager itself does not invalidate any analysis info.
   // LPPassManager needs LoopInfo.
-  void getAnalysisUsage(AnalysisUsage &Info) const override;
+  void getAnalysisUsage(AnalysisUsage &Info) const;
 
-  const char *getPassName() const override {
+  virtual const char *getPassName() const {
     return "Loop Pass Manager";
   }
 
-  PMDataManager *getAsPMDataManager() override { return this; }
-  Pass *getAsPass() override { return this; }
+  virtual PMDataManager *getAsPMDataManager() { return this; }
+  virtual Pass *getAsPass() { return this; }
 
   /// Print passes managed by this manager
-  void dumpPassStructure(unsigned Offset) override;
+  void dumpPassStructure(unsigned Offset);
 
   LoopPass *getContainedPass(unsigned N) {
     assert(N < PassVector.size() && "Pass number out of range!");
@@ -117,7 +112,7 @@ public:
     return LP;
   }
 
-  PassManagerType getPassManagerType() const override {
+  virtual PassManagerType getPassManagerType() const {
     return PMT_LoopPassManager;
   }
 

@@ -39,7 +39,7 @@ public:
                             const char *Msg)
     : S(S), TheDecl(D), Loc(Loc), Message(Msg) {}
 
-  void print(raw_ostream &OS) const override;
+  virtual void print(raw_ostream &OS) const;
 };
 
 }

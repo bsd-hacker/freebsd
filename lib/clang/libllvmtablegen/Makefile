@@ -8,7 +8,6 @@ SRCDIR=	lib/TableGen
 SRCS=	Error.cpp \
 	Main.cpp \
 	Record.cpp \
-	SetTheory.cpp \
 	StringMatcher.cpp \
 	TableGenBackend.cpp \
 	TGLexer.cpp \

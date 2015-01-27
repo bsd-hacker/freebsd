@@ -337,8 +337,7 @@ getsourcefilter(int s, uint32_t interface, struct sockaddr *group,
 {
 	struct __msfilterreq	 msfr;
 	sockunion_t		*psu;
-	socklen_t		 optlen;
-	int			 err, level, nsrcs, optname;
+	int			 err, level, nsrcs, optlen, optname;
 
 	if (interface == 0 || group == NULL || numsrc == NULL ||
 	    fmode == NULL) {

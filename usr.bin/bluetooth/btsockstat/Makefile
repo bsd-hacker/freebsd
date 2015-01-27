@@ -6,6 +6,7 @@ WARNS?=		2
 BINGRP=		kmem
 BINMODE=	2555
 
-LIBADD=		bluetooth kvm
+DPADD=		${LIBBLUETOOTH} ${LIBKVM}
+LDADD=		-lbluetooth -lkvm
 
 .include <bsd.prog.mk>

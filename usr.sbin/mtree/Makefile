@@ -11,11 +11,12 @@ SRCS=	compare.c crc.c create.c excludes.c misc.c mtree.c spec.c verify.c
 SRCS+=	specspec.c
 
 CFLAGS+= -DMD5 -DSHA1 -DRMD160 -DSHA256
-LIBADD=	md
+DPADD=	${LIBMD}
+LDADD=	-lmd
 
 CLEANFILES+=	fmtree.8
 
 fmtree.8: mtree.8
-	${CP} ${.ALLSRC} ${.TARGET}
+	cp ${.ALLSRC} ${.TARGET}
 
 .include <bsd.prog.mk>

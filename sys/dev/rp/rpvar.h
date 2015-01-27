@@ -43,7 +43,6 @@
 
 struct rp_port {
 	struct tty *		rp_tty; /* cross reference */
-	struct callout		rp_timer;
 
 	unsigned char		state;	/* state of dtr */
 

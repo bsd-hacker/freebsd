@@ -1012,6 +1012,10 @@ sk_jumbo_newbuf(sc_if, idx)
 	m = m_getjcl(M_NOWAIT, MT_DATA, M_PKTHDR, MJUM9BYTES);
 	if (m == NULL)
 		return (ENOBUFS);
+	if ((m->m_flags & M_EXT) == 0) {
+		m_freem(m);
+		return (ENOBUFS);
+	}
 	m->m_pkthdr.len = m->m_len = MJUM9BYTES;
 	/*
 	 * Adjust alignment so packet payload begins on a
@@ -1492,7 +1496,7 @@ sk_attach(dev)
 	 * Must appear after the call to ether_ifattach() because
 	 * ether_ifattach() sets ifi_hdrlen to the default value.
 	 */
-        ifp->if_hdrlen = sizeof(struct ether_vlan_header);
+        ifp->if_data.ifi_hdrlen = sizeof(struct ether_vlan_header);
 
 	/*
 	 * Do miibus setup.
@@ -2552,7 +2556,7 @@ sk_watchdog(arg)
 	sk_txeof(sc_if);
 	if (sc_if->sk_cdata.sk_tx_cnt != 0) {
 		if_printf(sc_if->sk_ifp, "watchdog timeout\n");
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		sk_init_locked(sc_if);
 	}
@@ -2767,7 +2771,7 @@ sk_rxeof(sc_if)
 		    SK_RXBYTES(sk_ctl) < SK_MIN_FRAMELEN ||
 		    SK_RXBYTES(sk_ctl) > SK_MAX_FRAMELEN ||
 		    sk_rxvalid(sc, rxstat, SK_RXBYTES(sk_ctl)) == 0) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			sk_discard_rxbuf(sc_if, cons);
 			continue;
 		}
@@ -2775,14 +2779,14 @@ sk_rxeof(sc_if)
 		m = rxd->rx_m;
 		csum = le32toh(cur_rx->sk_csum);
 		if (sk_newbuf(sc_if, cons) != 0) {
-			if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+			ifp->if_iqdrops++;
 			/* reuse old buffer */
 			sk_discard_rxbuf(sc_if, cons);
 			continue;
 		}
 		m->m_pkthdr.rcvif = ifp;
 		m->m_pkthdr.len = m->m_len = SK_RXBYTES(sk_ctl);
-		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		ifp->if_ipackets++;
 		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0)
 			sk_rxcksum(ifp, m, csum);
 		SK_IF_UNLOCK(sc_if);
@@ -2835,7 +2839,7 @@ sk_jumbo_rxeof(sc_if)
 		    SK_RXBYTES(sk_ctl) < SK_MIN_FRAMELEN ||
 		    SK_RXBYTES(sk_ctl) > SK_JUMBO_FRAMELEN ||
 		    sk_rxvalid(sc, rxstat, SK_RXBYTES(sk_ctl)) == 0) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			sk_discard_jumbo_rxbuf(sc_if, cons);
 			continue;
 		}
@@ -2843,14 +2847,14 @@ sk_jumbo_rxeof(sc_if)
 		m = jrxd->rx_m;
 		csum = le32toh(cur_rx->sk_csum);
 		if (sk_jumbo_newbuf(sc_if, cons) != 0) {
-			if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+			ifp->if_iqdrops++;
 			/* reuse old buffer */
 			sk_discard_jumbo_rxbuf(sc_if, cons);
 			continue;
 		}
 		m->m_pkthdr.rcvif = ifp;
 		m->m_pkthdr.len = m->m_len = SK_RXBYTES(sk_ctl);
-		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		ifp->if_ipackets++;
 		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0)
 			sk_rxcksum(ifp, m, csum);
 		SK_IF_UNLOCK(sc_if);
@@ -2901,7 +2905,7 @@ sk_txeof(sc_if)
 		    BUS_DMASYNC_POSTWRITE);
 		bus_dmamap_unload(sc_if->sk_cdata.sk_tx_tag, txd->tx_dmamap);
 
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		ifp->if_opackets++;
 		m_freem(txd->tx_m);
 		txd->tx_m = NULL;
 		STAILQ_REMOVE_HEAD(&sc_if->sk_cdata.sk_txbusyq, tx_q);

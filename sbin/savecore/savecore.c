@@ -151,10 +151,7 @@ getbounds(void) {
 	}
 
 	if (fgets(buf, sizeof buf, fp) == NULL) {
-		if (feof(fp))
-			syslog(LOG_WARNING, "bounds file is empty, using 0");
-		else
-			syslog(LOG_WARNING, "bounds file: %s", strerror(errno));
+		syslog(LOG_WARNING, "unable to read from bounds, using 0");
 		fclose(fp);
 		return (ret);
 	}
@@ -163,7 +160,6 @@ getbounds(void) {
 	ret = (int)strtol(buf, NULL, 10);
 	if (ret == 0 && (errno == EINVAL || errno == ERANGE))
 		syslog(LOG_WARNING, "invalid value found in bounds, using 0");
-	fclose(fp);
 	return (ret);
 }
 

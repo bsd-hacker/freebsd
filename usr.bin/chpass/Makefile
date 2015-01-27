@@ -16,9 +16,11 @@ CFLAGS+= -DYP
 #CFLAGS+=-DRESTRICT_FULLNAME_CHANGE
 CFLAGS+=-I${.CURDIR}/../../usr.sbin/pwd_mkdb -I${.CURDIR}/../../lib/libc/gen -I.
 
-LIBADD=	crypt util
+DPADD=	${LIBCRYPT} ${LIBUTIL}
+LDADD=	-lcrypt -lutil
 .if ${MK_NIS} != "no"
-LIBADD+=	ypclnt
+DPADD+=	${LIBYPCLNT}
+LDADD+=	-lypclnt
 .endif 
 
 LINKS=	${BINDIR}/chpass ${BINDIR}/chfn

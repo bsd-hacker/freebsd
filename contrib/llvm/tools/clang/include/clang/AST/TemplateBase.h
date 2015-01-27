@@ -18,7 +18,6 @@
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
 #include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -35,7 +34,8 @@ struct PrintingPolicy;
 class TypeSourceInfo;
 class ValueDecl;
 
-/// \brief Represents a template argument.
+/// \brief Represents a template argument within a class template
+/// specialization.
 class TemplateArgument {
 public:
   /// \brief The kind of template argument we're storing.
@@ -52,19 +52,16 @@ public:
     /// was provided for a non-type template parameter.
     NullPtr,
     /// The template argument is an integral value stored in an llvm::APSInt
-    /// that was provided for an integral non-type template parameter.
+    /// that was provided for an integral non-type template parameter. 
     Integral,
-    /// The template argument is a template name that was provided for a
+    /// The template argument is a template name that was provided for a 
     /// template template parameter.
     Template,
-    /// The template argument is a pack expansion of a template name that was
+    /// The template argument is a pack expansion of a template name that was 
     /// provided for a template template parameter.
     TemplateExpansion,
-    /// The template argument is an expression, and we've not resolved it to one
-    /// of the other forms yet, either because it's dependent or because we're
-    /// representing a non-canonical template argument (for instance, in a
-    /// TemplateSpecializationType). Also used to represent a non-dependent
-    /// __uuidof expression (a Microsoft extension).
+    /// The template argument is a value- or type-dependent expression or a
+    /// non-dependent __uuidof expression stored in an Expr*.
     Expression,
     /// The template argument is actually a parameter pack. Arguments are stored
     /// in the Args struct.
@@ -205,7 +202,7 @@ public:
   }
 
   static TemplateArgument getEmptyPack() {
-    return TemplateArgument((TemplateArgument*)nullptr, 0);
+    return TemplateArgument((TemplateArgument*)0, 0);
   }
 
   /// \brief Create a new template argument pack by copying the given set of
@@ -328,12 +325,6 @@ public:
     return Args.Args + Args.NumArgs;
   }
 
-  /// \brief Iterator range referencing all of the elements of a template
-  /// argument pack.
-  llvm::iterator_range<pack_iterator> pack_elements() const {
-    return llvm::make_range(pack_begin(), pack_end());
-  }
-
   /// \brief The number of template arguments in the given template argument
   /// pack.
   unsigned pack_size() const {
@@ -342,9 +333,9 @@ public:
   }
 
   /// \brief Return the array of arguments in this template argument pack.
-  ArrayRef<TemplateArgument> getPackAsArray() const {
+  llvm::ArrayRef<TemplateArgument> getPackAsArray() const {
     assert(getKind() == Pack);
-    return ArrayRef<TemplateArgument>(Args.Args, Args.NumArgs);
+    return llvm::ArrayRef<TemplateArgument>(Args.Args, Args.NumArgs);
   }
 
   /// \brief Determines whether two template arguments are superficially the
@@ -550,10 +541,6 @@ public:
     return Arguments[I];
   }
 
-  TemplateArgumentLoc &operator[](unsigned I) {
-    return Arguments[I];
-  }
-
   void addArgument(const TemplateArgumentLoc &Loc) {
     Arguments.push_back(Loc);
   }
@@ -578,8 +565,7 @@ struct ASTTemplateArgumentListInfo {
 
     /// Force ASTTemplateArgumentListInfo to the right alignment
     /// for the following array of TemplateArgumentLocs.
-    llvm::AlignedCharArray<
-        llvm::AlignOf<TemplateArgumentLoc>::Alignment, 1> Aligner;
+    void *Aligner;
   };
 
   /// \brief Retrieve the template arguments

@@ -20,30 +20,25 @@
  *
  */
 
-#define NETDISSECT_REWORKED
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/tcpdump/print-lane.c,v 1.25 2005-11-13 12:12:42 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
 #include <tcpdump-stdinc.h>
 
+#include <stdio.h>
+#include <pcap.h>
+
 #include "interface.h"
+#include "addrtoname.h"
 #include "extract.h"
 #include "ether.h"
-
-struct lecdatahdr_8023 {
-  uint16_t le_header;
-  uint8_t h_dest[ETHER_ADDR_LEN];
-  uint8_t h_source[ETHER_ADDR_LEN];
-  uint16_t h_type;
-};
-
-struct lane_controlhdr {
-  uint16_t lec_header;
-  uint8_t lec_proto;
-  uint8_t lec_vers;
-  uint16_t lec_opcode;
-};
+#include "lane.h"
 
 static const struct tok lecop2str[] = {
 	{ 0x0001,	"configure request" },
@@ -68,7 +63,7 @@ static const struct tok lecop2str[] = {
 static void
 lane_hdr_print(netdissect_options *ndo, const u_char *bp)
 {
-	ND_PRINT((ndo, "lecid:%x ", EXTRACT_16BITS(bp)));
+	(void)ND_PRINT((ndo, "lecid:%x ", EXTRACT_16BITS(bp)));
 }
 
 /*
@@ -80,12 +75,12 @@ lane_hdr_print(netdissect_options *ndo, const u_char *bp)
  * This assumes 802.3, not 802.5, LAN emulation.
  */
 void
-lane_print(netdissect_options *ndo, const u_char *p, u_int length, u_int caplen)
+lane_print(const u_char *p, u_int length, u_int caplen)
 {
 	struct lane_controlhdr *lec;
 
 	if (caplen < sizeof(struct lane_controlhdr)) {
-		ND_PRINT((ndo, "[|lane]"));
+		printf("[|lane]");
 		return;
 	}
 
@@ -94,9 +89,9 @@ lane_print(netdissect_options *ndo, const u_char *p, u_int length, u_int caplen)
 		/*
 		 * LE Control.
 		 */
-		ND_PRINT((ndo, "lec: proto %x vers %x %s",
+		printf("lec: proto %x vers %x %s",
 		    lec->lec_proto, lec->lec_vers,
-		    tok2str(lecop2str, "opcode-#%u", EXTRACT_16BITS(&lec->lec_opcode))));
+		    tok2str(lecop2str, "opcode-#%u", EXTRACT_16BITS(&lec->lec_opcode)));
 		return;
 	}
 
@@ -111,13 +106,13 @@ lane_print(netdissect_options *ndo, const u_char *p, u_int length, u_int caplen)
 	 * Now print the encapsulated frame, under the assumption
 	 * that it's an Ethernet frame.
 	 */
-	ether_print(ndo, p, length, caplen, lane_hdr_print, p - 2);
+	ether_print(gndo, p, length, caplen, lane_hdr_print, p - 2);
 }
 
 u_int
-lane_if_print(netdissect_options *ndo, const struct pcap_pkthdr *h, const u_char *p)
+lane_if_print(const struct pcap_pkthdr *h, const u_char *p)
 {
-	lane_print(ndo, p, h->len, h->caplen);
+	lane_print(p, h->len, h->caplen);
 
 	return (sizeof(struct lecdatahdr_8023));
 }

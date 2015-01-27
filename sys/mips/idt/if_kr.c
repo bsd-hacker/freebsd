@@ -1395,13 +1395,13 @@ kr_tx(struct kr_softc *sc)
 		txd = &sc->kr_cdata.kr_txdesc[cons];
 
 		if (devcs & KR_DMATX_DEVCS_TOK)
-			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+			ifp->if_opackets++;
 		else {
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 			/* collisions: medium busy, late collision */
 			if ((devcs & KR_DMATX_DEVCS_EC) || 
 			    (devcs & KR_DMATX_DEVCS_LC))
-				if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
+				ifp->if_collisions++;
 		}
 
 		bus_dmamap_sync(sc->kr_cdata.kr_tx_tag, txd->tx_dmamap,
@@ -1460,11 +1460,11 @@ kr_rx(struct kr_softc *sc)
 		error = 1;
 
 		if (packet_len != count)
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 		else if (count < 64)
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 		else if ((cur_rx->kr_devcs & KR_DMARX_DEVCS_LD) == 0)
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 		else if ((cur_rx->kr_devcs & KR_DMARX_DEVCS_ROK) != 0) {
 			error = 0;
 			bus_dmamap_sync(sc->kr_cdata.kr_rx_tag, rxd->rx_dmamap,
@@ -1474,7 +1474,7 @@ kr_rx(struct kr_softc *sc)
 			m->m_pkthdr.rcvif = ifp;
 			/* Skip 4 bytes of CRC */
 			m->m_pkthdr.len = m->m_len = packet_len - ETHER_CRC_LEN;
-			if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+			ifp->if_ipackets++;
 
 			KR_UNLOCK(sc);
 			(*ifp->if_input)(ifp, m);

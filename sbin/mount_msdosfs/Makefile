@@ -5,7 +5,8 @@
 PROG=	mount_msdosfs
 SRCS=	mount_msdosfs.c getmntopts.c
 MAN=	mount_msdosfs.8
-LIBADD=	kiconv
+DPADD=	${LIBKICONV}
+LDADD=	-lkiconv
 
 MOUNT=	${.CURDIR}/../mount
 CFLAGS+= -I${MOUNT}

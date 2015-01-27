@@ -1,4 +1,7 @@
-/* Copyright (c) 2008 The NetBSD Foundation, Inc.
+/*
+ * Automated Testing Framework (atf)
+ *
+ * Copyright (c) 2008 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,9 +24,8 @@
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
-
-#include "atf-c/macros.h"
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -39,10 +41,10 @@
 
 #include <atf-c.h>
 
-#include "atf-c/detail/fs.h"
-#include "atf-c/detail/process.h"
-#include "atf-c/detail/test_helpers.h"
-#include "atf-c/detail/text.h"
+#include "detail/fs.h"
+#include "detail/process.h"
+#include "detail/test_helpers.h"
+#include "detail/text.h"
 
 /* ---------------------------------------------------------------------
  * Auxiliary functions.
@@ -835,6 +837,7 @@ ATF_TC_BODY(msg_embedded_fmt, tc)
  * Tests cases for the header file.
  * --------------------------------------------------------------------- */
 
+HEADER_TC(include, "atf-c/macros.h");
 BUILD_TC(use, "macros_h_test.c",
          "Tests that the macros provided by the atf-c/macros.h file "
          "do not cause syntax errors when used",
@@ -886,6 +889,7 @@ ATF_TP_ADD_TCS(tp)
     ATF_TP_ADD_TC(tp, msg_embedded_fmt);
 
     /* Add the test cases for the header file. */
+    ATF_TP_ADD_TC(tp, include);
     ATF_TP_ADD_TC(tp, use);
     ATF_TP_ADD_TC(tp, detect_unused_tests);
 

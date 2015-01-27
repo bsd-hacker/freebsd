@@ -2,7 +2,8 @@
 
 .if ${MK_OPENSSL} != "no" && !defined(RELEASE_CRUNCH)
 SRCS+=	crypto_openssl.c random.c sha1-prf.c sha256-prf.c
-LIBADD+=	ssl crypto
+DPADD+=	${LIBSSL} ${LIBCRYPTO}
+LDADD+=	-lssl -lcrypto
 CFLAGS+= -DCONFIG_SHA256
 .else
 CFLAGS+=-DCONFIG_CRYPTO_INTERNAL

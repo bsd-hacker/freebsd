@@ -110,6 +110,11 @@ static int		pci_write_vpd_reg(device_t pcib, pcicfgregs *cfg,
 			    int reg, uint32_t data);
 #endif
 static void		pci_read_vpd(device_t pcib, pcicfgregs *cfg);
+static void		pci_disable_msi(device_t dev);
+static void		pci_enable_msi(device_t dev, uint64_t address,
+			    uint16_t data);
+static void		pci_enable_msix(device_t dev, u_int index,
+			    uint64_t address, uint32_t data);
 static void		pci_mask_msix(device_t dev, u_int index);
 static void		pci_unmask_msix(device_t dev, u_int index);
 static int		pci_msi_blacklisted(void);
@@ -131,8 +136,6 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(device_detach,	bus_generic_detach),
 #endif
 	DEVMETHOD(device_shutdown,	bus_generic_shutdown),
-	DEVMETHOD(device_suspend,	bus_generic_suspend),
-	DEVMETHOD(device_resume,	pci_resume),
 
 	/* Bus interface */
 	DEVMETHOD(bus_print_child,	pci_print_child),
@@ -159,8 +162,6 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(bus_child_pnpinfo_str, pci_child_pnpinfo_str_method),
 	DEVMETHOD(bus_child_location_str, pci_child_location_str_method),
 	DEVMETHOD(bus_remap_intr,	pci_remap_intr_method),
-	DEVMETHOD(bus_suspend_child,	pci_suspend_child),
-	DEVMETHOD(bus_resume_child,	pci_resume_child),
 
 	/* PCI interface */
 	DEVMETHOD(pci_read_config,	pci_read_config_method),
@@ -179,15 +180,11 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(pci_find_htcap,	pci_find_htcap_method),
 	DEVMETHOD(pci_alloc_msi,	pci_alloc_msi_method),
 	DEVMETHOD(pci_alloc_msix,	pci_alloc_msix_method),
-	DEVMETHOD(pci_enable_msi,	pci_enable_msi_method),
-	DEVMETHOD(pci_enable_msix,	pci_enable_msix_method),
-	DEVMETHOD(pci_disable_msi,	pci_disable_msi_method),
 	DEVMETHOD(pci_remap_msix,	pci_remap_msix_method),
 	DEVMETHOD(pci_release_msi,	pci_release_msi_method),
 	DEVMETHOD(pci_msi_count,	pci_msi_count_method),
 	DEVMETHOD(pci_msix_count,	pci_msix_count_method),
 	DEVMETHOD(pci_get_rid,		pci_get_rid_method),
-	DEVMETHOD(pci_child_added,	pci_child_added_method),
 
 	DEVMETHOD_END
 };
@@ -209,7 +206,6 @@ struct pci_quirk {
 #define	PCI_QUIRK_ENABLE_MSI_VM	3 /* Older chipset in VM where MSI works */
 #define	PCI_QUIRK_UNMAP_REG	4 /* Ignore PCI map register */
 #define	PCI_QUIRK_DISABLE_MSIX	5 /* MSI-X doesn't work */
-#define	PCI_QUIRK_MSI_INTX_BUG	6 /* PCIM_CMD_INTxDIS disables MSI */
 	int	arg1;
 	int	arg2;
 };
@@ -269,26 +265,6 @@ static const struct pci_quirk pci_quirks[] = {
 	 */
 	{ 0x43851002, PCI_QUIRK_UNMAP_REG,	0x14,	0 },
 
-	/*
-	 * Atheros AR8161/AR8162/E2200 Ethernet controllers have a bug that
-	 * MSI interrupt does not assert if PCIM_CMD_INTxDIS bit of the
-	 * command register is set.
-	 */
-	{ 0x10911969, PCI_QUIRK_MSI_INTX_BUG,	0,	0 },
-	{ 0xE0911969, PCI_QUIRK_MSI_INTX_BUG,	0,	0 },
-	{ 0x10901969, PCI_QUIRK_MSI_INTX_BUG,	0,	0 },
-
-	/*
-	 * Broadcom BCM5714(S)/BCM5715(S)/BCM5780(S) Ethernet MACs don't
-	 * issue MSI interrupts with PCIM_CMD_INTxDIS set either.
-	 */
-	{ 0x166814e4, PCI_QUIRK_MSI_INTX_BUG,	0,	0 }, /* BCM5714 */
-	{ 0x166914e4, PCI_QUIRK_MSI_INTX_BUG,	0,	0 }, /* BCM5714S */
-	{ 0x166a14e4, PCI_QUIRK_MSI_INTX_BUG,	0,	0 }, /* BCM5780 */
-	{ 0x166b14e4, PCI_QUIRK_MSI_INTX_BUG,	0,	0 }, /* BCM5780S */
-	{ 0x167814e4, PCI_QUIRK_MSI_INTX_BUG,	0,	0 }, /* BCM5715 */
-	{ 0x167914e4, PCI_QUIRK_MSI_INTX_BUG,	0,	0 }, /* BCM5715S */
-
 	{ 0 }
 };
 
@@ -306,20 +282,22 @@ static int pcie_chipset, pcix_chipset;
 SYSCTL_NODE(_hw, OID_AUTO, pci, CTLFLAG_RD, 0, "PCI bus tuning parameters");
 
 static int pci_enable_io_modes = 1;
-SYSCTL_INT(_hw_pci, OID_AUTO, enable_io_modes, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.pci.enable_io_modes", &pci_enable_io_modes);
+SYSCTL_INT(_hw_pci, OID_AUTO, enable_io_modes, CTLFLAG_RW,
     &pci_enable_io_modes, 1,
     "Enable I/O and memory bits in the config register.  Some BIOSes do not\n\
 enable these bits correctly.  We'd like to do this all the time, but there\n\
 are some peripherals that this causes problems with.");
 
 static int pci_do_realloc_bars = 0;
-SYSCTL_INT(_hw_pci, OID_AUTO, realloc_bars, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.pci.realloc_bars", &pci_do_realloc_bars);
+SYSCTL_INT(_hw_pci, OID_AUTO, realloc_bars, CTLFLAG_RW,
     &pci_do_realloc_bars, 0,
-    "Attempt to allocate a new range for any BARs whose original "
-    "firmware-assigned ranges fail to allocate during the initial device scan.");
+    "Attempt to allocate a new range for any BARs whose original firmware-assigned ranges fail to allocate during the initial device scan.");
 
 static int pci_do_power_nodriver = 0;
-SYSCTL_INT(_hw_pci, OID_AUTO, do_power_nodriver, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.pci.do_power_nodriver", &pci_do_power_nodriver);
+SYSCTL_INT(_hw_pci, OID_AUTO, do_power_nodriver, CTLFLAG_RW,
     &pci_do_power_nodriver, 0,
   "Place a function into D3 state when no driver attaches to it.  0 means\n\
 disable.  1 means conservatively place devices into D3 state.  2 means\n\
@@ -327,25 +305,30 @@ agressively place devices into D3 state.  3 means put absolutely everything\n\
 in D3 state.");
 
 int pci_do_power_resume = 1;
-SYSCTL_INT(_hw_pci, OID_AUTO, do_power_resume, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.pci.do_power_resume", &pci_do_power_resume);
+SYSCTL_INT(_hw_pci, OID_AUTO, do_power_resume, CTLFLAG_RW,
     &pci_do_power_resume, 1,
   "Transition from D3 -> D0 on resume.");
 
 int pci_do_power_suspend = 1;
-SYSCTL_INT(_hw_pci, OID_AUTO, do_power_suspend, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.pci.do_power_suspend", &pci_do_power_suspend);
+SYSCTL_INT(_hw_pci, OID_AUTO, do_power_suspend, CTLFLAG_RW,
     &pci_do_power_suspend, 1,
   "Transition from D0 -> D3 on suspend.");
 
 static int pci_do_msi = 1;
-SYSCTL_INT(_hw_pci, OID_AUTO, enable_msi, CTLFLAG_RWTUN, &pci_do_msi, 1,
+TUNABLE_INT("hw.pci.enable_msi", &pci_do_msi);
+SYSCTL_INT(_hw_pci, OID_AUTO, enable_msi, CTLFLAG_RW, &pci_do_msi, 1,
     "Enable support for MSI interrupts");
 
 static int pci_do_msix = 1;
-SYSCTL_INT(_hw_pci, OID_AUTO, enable_msix, CTLFLAG_RWTUN, &pci_do_msix, 1,
+TUNABLE_INT("hw.pci.enable_msix", &pci_do_msix);
+SYSCTL_INT(_hw_pci, OID_AUTO, enable_msix, CTLFLAG_RW, &pci_do_msix, 1,
     "Enable support for MSI-X interrupts");
 
 static int pci_honor_msi_blacklist = 1;
-SYSCTL_INT(_hw_pci, OID_AUTO, honor_msi_blacklist, CTLFLAG_RDTUN,
+TUNABLE_INT("hw.pci.honor_msi_blacklist", &pci_honor_msi_blacklist);
+SYSCTL_INT(_hw_pci, OID_AUTO, honor_msi_blacklist, CTLFLAG_RD,
     &pci_honor_msi_blacklist, 1, "Honor chipset blacklist for MSI/MSI-X");
 
 #if defined(__i386__) || defined(__amd64__)
@@ -353,22 +336,26 @@ static int pci_usb_takeover = 1;
 #else
 static int pci_usb_takeover = 0;
 #endif
+TUNABLE_INT("hw.pci.usb_early_takeover", &pci_usb_takeover);
 SYSCTL_INT(_hw_pci, OID_AUTO, usb_early_takeover, CTLFLAG_RDTUN,
     &pci_usb_takeover, 1, "Enable early takeover of USB controllers.\n\
 Disable this if you depend on BIOS emulation of USB devices, that is\n\
 you use USB devices (like keyboard or mouse) but do not load USB drivers");
 
 static int pci_clear_bars;
+TUNABLE_INT("hw.pci.clear_bars", &pci_clear_bars);
 SYSCTL_INT(_hw_pci, OID_AUTO, clear_bars, CTLFLAG_RDTUN, &pci_clear_bars, 0,
     "Ignore firmware-assigned resources for BARs.");
 
 #if defined(NEW_PCIB) && defined(PCI_RES_BUS)
 static int pci_clear_buses;
+TUNABLE_INT("hw.pci.clear_buses", &pci_clear_buses);
 SYSCTL_INT(_hw_pci, OID_AUTO, clear_buses, CTLFLAG_RDTUN, &pci_clear_buses, 0,
     "Ignore firmware-assigned bus numbers.");
 #endif
 
 static int pci_enable_ari = 1;
+TUNABLE_INT("hw.pci.enable_ari", &pci_enable_ari);
 SYSCTL_INT(_hw_pci, OID_AUTO, enable_ari, CTLFLAG_RDTUN, &pci_enable_ari,
     0, "Enable support for PCIe Alternative RID Interpretation");
 
@@ -1367,10 +1354,9 @@ pci_find_extcap_method(device_t dev, device_t child, int capability,
  * Support for MSI-X message interrupts.
  */
 void
-pci_enable_msix_method(device_t dev, device_t child, u_int index,
-    uint64_t address, uint32_t data)
+pci_enable_msix(device_t dev, u_int index, uint64_t address, uint32_t data)
 {
-	struct pci_devinfo *dinfo = device_get_ivars(child);
+	struct pci_devinfo *dinfo = device_get_ivars(dev);
 	struct pcicfg_msix *msix = &dinfo->cfg.msix;
 	uint32_t offset;
 
@@ -1381,7 +1367,7 @@ pci_enable_msix_method(device_t dev, device_t child, u_int index,
 	bus_write_4(msix->msix_table_res, offset + 8, data);
 
 	/* Enable MSI -> HT mapping. */
-	pci_ht_map_msi(child, address);
+	pci_ht_map_msi(dev, address);
 }
 
 void
@@ -1893,46 +1879,45 @@ pci_set_max_read_req(device_t dev, int size)
  * Support for MSI message signalled interrupts.
  */
 void
-pci_enable_msi_method(device_t dev, device_t child, uint64_t address,
-    uint16_t data)
+pci_enable_msi(device_t dev, uint64_t address, uint16_t data)
 {
-	struct pci_devinfo *dinfo = device_get_ivars(child);
+	struct pci_devinfo *dinfo = device_get_ivars(dev);
 	struct pcicfg_msi *msi = &dinfo->cfg.msi;
 
 	/* Write data and address values. */
-	pci_write_config(child, msi->msi_location + PCIR_MSI_ADDR,
+	pci_write_config(dev, msi->msi_location + PCIR_MSI_ADDR,
 	    address & 0xffffffff, 4);
 	if (msi->msi_ctrl & PCIM_MSICTRL_64BIT) {
-		pci_write_config(child, msi->msi_location + PCIR_MSI_ADDR_HIGH,
+		pci_write_config(dev, msi->msi_location + PCIR_MSI_ADDR_HIGH,
 		    address >> 32, 4);
-		pci_write_config(child, msi->msi_location + PCIR_MSI_DATA_64BIT,
+		pci_write_config(dev, msi->msi_location + PCIR_MSI_DATA_64BIT,
 		    data, 2);
 	} else
-		pci_write_config(child, msi->msi_location + PCIR_MSI_DATA, data,
+		pci_write_config(dev, msi->msi_location + PCIR_MSI_DATA, data,
 		    2);
 
 	/* Enable MSI in the control register. */
 	msi->msi_ctrl |= PCIM_MSICTRL_MSI_ENABLE;
-	pci_write_config(child, msi->msi_location + PCIR_MSI_CTRL,
-	    msi->msi_ctrl, 2);
+	pci_write_config(dev, msi->msi_location + PCIR_MSI_CTRL, msi->msi_ctrl,
+	    2);
 
 	/* Enable MSI -> HT mapping. */
-	pci_ht_map_msi(child, address);
+	pci_ht_map_msi(dev, address);
 }
 
 void
-pci_disable_msi_method(device_t dev, device_t child)
+pci_disable_msi(device_t dev)
 {
-	struct pci_devinfo *dinfo = device_get_ivars(child);
+	struct pci_devinfo *dinfo = device_get_ivars(dev);
 	struct pcicfg_msi *msi = &dinfo->cfg.msi;
 
 	/* Disable MSI -> HT mapping. */
-	pci_ht_map_msi(child, 0);
+	pci_ht_map_msi(dev, 0);
 
 	/* Disable MSI in the control register. */
 	msi->msi_ctrl &= ~PCIM_MSICTRL_MSI_ENABLE;
-	pci_write_config(child, msi->msi_location + PCIR_MSI_CTRL,
-	    msi->msi_ctrl, 2);
+	pci_write_config(dev, msi->msi_location + PCIR_MSI_CTRL, msi->msi_ctrl,
+	    2);
 }
 
 /*
@@ -3283,14 +3268,14 @@ pci_reserve_secbus(device_t bus, device_t dev, pcicfgregs *cfg,
 
 	case 0x00dd10de:
 		/* Compaq R3000 BIOS sets wrong subordinate bus number. */
-		if ((cp = kern_getenv("smbios.planar.maker")) == NULL)
+		if ((cp = getenv("smbios.planar.maker")) == NULL)
 			break;
 		if (strncmp(cp, "Compal", 6) != 0) {
 			freeenv(cp);
 			break;
 		}
 		freeenv(cp);
-		if ((cp = kern_getenv("smbios.planar.product")) == NULL)
+		if ((cp = getenv("smbios.planar.product")) == NULL)
 			break;
 		if (strncmp(cp, "08A0", 4) != 0) {
 			freeenv(cp);
@@ -3544,13 +3529,6 @@ pci_add_child(device_t bus, struct pci_devinfo *dinfo)
 	pci_cfg_restore(dinfo->cfg.dev, dinfo);
 	pci_print_verbose(dinfo);
 	pci_add_resources(bus, dinfo->cfg.dev, 0, 0);
-	pci_child_added(dinfo->cfg.dev);
-}
-
-void
-pci_child_added_method(device_t dev, device_t child)
-{
-
 }
 
 static int
@@ -3649,8 +3627,8 @@ pci_detach(device_t dev)
 static void
 pci_set_power_child(device_t dev, device_t child, int state)
 {
-	struct pci_devinfo *dinfo;
 	device_t pcib;
+	struct pci_devinfo *dinfo;
 	int dstate;
 
 	/*
@@ -3664,8 +3642,8 @@ pci_set_power_child(device_t dev, device_t child, int state)
 	dinfo = device_get_ivars(child);
 	dstate = state;
 	if (device_is_attached(child) &&
-	    PCIB_POWER_FOR_SLEEP(pcib, child, &dstate) == 0)
-		pci_set_powerstate(child, dstate);
+	    PCIB_POWER_FOR_SLEEP(pcib, dev, &dstate) == 0)
+	    pci_set_powerstate(child, dstate);
 }
 
 int
@@ -3675,14 +3653,8 @@ pci_suspend_child(device_t dev, device_t child)
 	int error;
 
 	dinfo = device_get_ivars(child);
-
-	/*
-	 * Save the PCI configuration space for the child and set the
-	 * device in the appropriate power state for this sleep state.
-	 */
 	pci_cfg_save(child, dinfo, 0);
 
-	/* Suspend devices before potentially powering them down. */
 	error = bus_generic_suspend_child(dev, child);
 
 	if (error)
@@ -3698,56 +3670,16 @@ int
 pci_resume_child(device_t dev, device_t child)
 {
 	struct pci_devinfo *dinfo;
+	int error;
 
 	if (pci_do_power_resume)
 		pci_set_power_child(dev, child, PCI_POWERSTATE_D0);
 
 	dinfo = device_get_ivars(child);
 	pci_cfg_restore(child, dinfo);
-	if (!device_is_attached(child))
-		pci_cfg_save(child, dinfo, 1);
+	error = bus_generic_resume_child(dev, child);
 
-	bus_generic_resume_child(dev, child);
-
-	return (0);
-}
-
-int
-pci_resume(device_t dev)
-{
-	int error;
-
-	if ((error = device_get_children(dev, &devlist, &numdevs)) != 0)
-		return (error);
-
-	/*
-	 * Resume critical devices first, then everything else later.
-	 */
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		switch (pci_get_class(child)) {
-		case PCIC_DISPLAY:
-		case PCIC_MEMORY:
-		case PCIC_BRIDGE:
-		case PCIC_BASEPERIPH:
-			BUS_RESUME_CHILD(dev, child);
-			break;
-		}
-	}
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		switch (pci_get_class(child)) {
-		case PCIC_DISPLAY:
-		case PCIC_MEMORY:
-		case PCIC_BRIDGE:
-		case PCIC_BASEPERIPH:
-			break;
-		default:
-			BUS_RESUME_CHILD(dev, child);
-		}
-	}
-	free(devlist, M_TEMP);
-	return (0);
+	return (error);
 }
 
 static void
@@ -3878,16 +3810,8 @@ pci_setup_intr(device_t dev, device_t child, struct resource *irq, int flags,
 			mte->mte_handlers++;
 		}
 
-		/*
-		 * Make sure that INTx is disabled if we are using MSI/MSI-X,
-		 * unless the device is affected by PCI_QUIRK_MSI_INTX_BUG,
-		 * in which case we "enable" INTx so MSI/MSI-X actually works.
-		 */
-		if (!pci_has_quirk(pci_get_devid(child),
-		    PCI_QUIRK_MSI_INTX_BUG))
-			pci_set_command_bit(dev, child, PCIM_CMD_INTxDIS);
-		else
-			pci_clear_command_bit(dev, child, PCIM_CMD_INTxDIS);
+		/* Make sure that INTx is disabled if we are using MSI/MSIX */
+		pci_set_command_bit(dev, child, PCIM_CMD_INTxDIS);
 	bad:
 		if (error) {
 			(void)bus_generic_teardown_intr(dev, child, irq,
@@ -3979,7 +3903,6 @@ pci_print_child(device_t dev, device_t child)
 	retval += printf(" at device %d.%d", pci_get_slot(child),
 	    pci_get_function(child));
 
-	retval += bus_print_child_domain(dev, child);
 	retval += bus_print_child_footer(dev, child);
 
 	return (retval);

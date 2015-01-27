@@ -108,9 +108,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/in6_pcb.h>
 #include <netinet6/scope6_var.h>
 
-static struct inpcb *in6_pcblookup_hash_locked(struct inpcbinfo *,
-    struct in6_addr *, u_int, struct in6_addr *, u_int, int, struct ifnet *);
-
 int
 in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
     struct ucred *cred)
@@ -205,7 +202,6 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 				    &sin6->sin6_addr, lport,
 				    INPLOOKUP_WILDCARD, cred);
 				if (t &&
-				    ((inp->inp_flags2 & INP_BINDMULTI) == 0) &&
 				    ((t->inp_flags & INP_TIMEWAIT) == 0) &&
 				    (so->so_type != SOCK_STREAM ||
 				     IN6_IS_ADDR_UNSPECIFIED(&t->in6p_faddr)) &&
@@ -215,16 +211,6 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 				    (inp->inp_cred->cr_uid !=
 				     t->inp_cred->cr_uid))
 					return (EADDRINUSE);
-
-				/*
-				 * If the socket is a BINDMULTI socket, then
-				 * the credentials need to match and the
-				 * original socket also has to have been bound
-				 * with BINDMULTI.
-				 */
-				if (t && (! in_pcbbind_check_bindmulti(inp, t)))
-					return (EADDRINUSE);
-
 #ifdef INET
 				if ((inp->inp_flags & IN6P_IPV6_V6ONLY) == 0 &&
 				    IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr)) {
@@ -235,7 +221,6 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 					    sin.sin_addr, lport,
 					    INPLOOKUP_WILDCARD, cred);
 					if (t &&
-					    ((inp->inp_flags2 & INP_BINDMULTI) == 0) &&
 					    ((t->inp_flags &
 					      INP_TIMEWAIT) == 0) &&
 					    (so->so_type != SOCK_STREAM ||
@@ -243,9 +228,6 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 					      INADDR_ANY) &&
 					    (inp->inp_cred->cr_uid !=
 					     t->inp_cred->cr_uid))
-						return (EADDRINUSE);
-
-					if (t && (! in_pcbbind_check_bindmulti(inp, t)))
 						return (EADDRINUSE);
 				}
 #endif
@@ -322,7 +304,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
  *   a bit of a kludge, but cleaning up the internal interfaces would
  *   have forced minor changes in every protocol).
  */
-static int
+int
 in6_pcbladdr(register struct inpcb *inp, struct sockaddr *nam,
     struct in6_addr *plocal_addr6)
 {
@@ -712,9 +694,8 @@ in6_pcblookup_local(struct inpcbinfo *pcbinfo, struct in6_addr *laddr,
 		 * Look for an unconnected (wildcard foreign addr) PCB that
 		 * matches the local address and port we're looking for.
 		 */
-		head = &pcbinfo->ipi_hashbase[INP_PCBHASH(
-		    INP6_PCBHASHKEY(&in6addr_any), lport, 0,
-		    pcbinfo->ipi_hashmask)];
+		head = &pcbinfo->ipi_hashbase[INP_PCBHASH(INADDR_ANY, lport,
+		    0, pcbinfo->ipi_hashmask)];
 		LIST_FOREACH(inp, head, inp_hash) {
 			/* XXX inp locking */
 			if ((inp->inp_vflag & INP_IPV6) == 0)
@@ -870,14 +851,21 @@ in6_pcblookup_group(struct inpcbinfo *pcbinfo, struct inpcbgroup *pcbgroup,
 	struct inpcbhead *head;
 	struct inpcb *inp, *tmpinp;
 	u_short fport = fport_arg, lport = lport_arg;
+	int faith;
+
+	if (faithprefix_p != NULL)
+		faith = (*faithprefix_p)(laddr);
+	else
+		faith = 0;
 
 	/*
 	 * First look for an exact match.
 	 */
 	tmpinp = NULL;
 	INP_GROUP_LOCK(pcbgroup);
-	head = &pcbgroup->ipg_hashbase[INP_PCBHASH(
-	    INP6_PCBHASHKEY(faddr), lport, fport, pcbgroup->ipg_hashmask)];
+	head = &pcbgroup->ipg_hashbase[
+	    INP_PCBHASH(faddr->s6_addr32[3] /* XXX */, lport, fport,
+	    pcbgroup->ipg_hashmask)];
 	LIST_FOREACH(inp, head, inp_pcbgrouphash) {
 		/* XXX inp locking */
 		if ((inp->inp_vflag & INP_IPV6) == 0)
@@ -903,67 +891,6 @@ in6_pcblookup_group(struct inpcbinfo *pcbinfo, struct inpcbgroup *pcbgroup,
 	}
 
 	/*
-	 * Then look for a wildcard match in the pcbgroup.
-	 */
-	if ((lookupflags & INPLOOKUP_WILDCARD) != 0) {
-		struct inpcb *local_wild = NULL, *local_exact = NULL;
-		struct inpcb *jail_wild = NULL;
-		int injail;
-
-		/*
-		 * Order of socket selection - we always prefer jails.
-		 *      1. jailed, non-wild.
-		 *      2. jailed, wild.
-		 *      3. non-jailed, non-wild.
-		 *      4. non-jailed, wild.
-		 */
-		head = &pcbgroup->ipg_hashbase[
-		    INP_PCBHASH(INADDR_ANY, lport, 0, pcbgroup->ipg_hashmask)];
-		LIST_FOREACH(inp, head, inp_pcbgrouphash) {
-			/* XXX inp locking */
-			if ((inp->inp_vflag & INP_IPV6) == 0)
-				continue;
-
-			if (!IN6_IS_ADDR_UNSPECIFIED(&inp->in6p_faddr) ||
-			    inp->inp_lport != lport) {
-				continue;
-			}
-
-			injail = prison_flag(inp->inp_cred, PR_IP6);
-			if (injail) {
-				if (prison_check_ip6(inp->inp_cred,
-				    laddr) != 0)
-					continue;
-			} else {
-				if (local_exact != NULL)
-					continue;
-			}
-
-			if (IN6_ARE_ADDR_EQUAL(&inp->in6p_laddr, laddr)) {
-				if (injail)
-					goto found;
-				else
-					local_exact = inp;
-			} else if (IN6_IS_ADDR_UNSPECIFIED(&inp->in6p_laddr)) {
-				if (injail)
-					jail_wild = inp;
-				else
-					local_wild = inp;
-			}
-		} /* LIST_FOREACH */
-
-		inp = jail_wild;
-		if (inp == NULL)
-			inp = jail_wild;
-		if (inp == NULL)
-			inp = local_exact;
-		if (inp == NULL)
-			inp = local_wild;
-		if (inp != NULL)
-			goto found;
-	}
-
-	/*
 	 * Then look for a wildcard match, if requested.
 	 */
 	if ((lookupflags & INPLOOKUP_WILDCARD) != 0) {
@@ -978,9 +905,8 @@ in6_pcblookup_group(struct inpcbinfo *pcbinfo, struct inpcbgroup *pcbgroup,
 		 *      3. non-jailed, non-wild.
 		 *      4. non-jailed, wild.
 		 */
-		head = &pcbinfo->ipi_wildbase[INP_PCBHASH(
-		    INP6_PCBHASHKEY(&in6addr_any), lport, 0,
-		    pcbinfo->ipi_wildmask)];
+		head = &pcbinfo->ipi_wildbase[INP_PCBHASH(INADDR_ANY, lport,
+		    0, pcbinfo->ipi_wildmask)];
 		LIST_FOREACH(inp, head, inp_pcbgroup_wild) {
 			/* XXX inp locking */
 			if ((inp->inp_vflag & INP_IPV6) == 0)
@@ -990,6 +916,10 @@ in6_pcblookup_group(struct inpcbinfo *pcbinfo, struct inpcbgroup *pcbgroup,
 			    inp->inp_lport != lport) {
 				continue;
 			}
+
+			/* XXX inp locking */
+			if (faith && (inp->inp_flags & INP_FAITH) == 0)
+				continue;
 
 			injail = prison_flag(inp->inp_cred, PR_IP6);
 			if (injail) {
@@ -1047,7 +977,7 @@ found:
 /*
  * Lookup PCB in hash list.
  */
-static struct inpcb *
+struct inpcb *
 in6_pcblookup_hash_locked(struct inpcbinfo *pcbinfo, struct in6_addr *faddr,
     u_int fport_arg, struct in6_addr *laddr, u_int lport_arg,
     int lookupflags, struct ifnet *ifp)
@@ -1055,18 +985,25 @@ in6_pcblookup_hash_locked(struct inpcbinfo *pcbinfo, struct in6_addr *faddr,
 	struct inpcbhead *head;
 	struct inpcb *inp, *tmpinp;
 	u_short fport = fport_arg, lport = lport_arg;
+	int faith;
 
 	KASSERT((lookupflags & ~(INPLOOKUP_WILDCARD)) == 0,
 	    ("%s: invalid lookup flags %d", __func__, lookupflags));
 
 	INP_HASH_LOCK_ASSERT(pcbinfo);
 
+	if (faithprefix_p != NULL)
+		faith = (*faithprefix_p)(laddr);
+	else
+		faith = 0;
+
 	/*
 	 * First look for an exact match.
 	 */
 	tmpinp = NULL;
-	head = &pcbinfo->ipi_hashbase[INP_PCBHASH(
-	    INP6_PCBHASHKEY(faddr), lport, fport, pcbinfo->ipi_hashmask)];
+	head = &pcbinfo->ipi_hashbase[
+	    INP_PCBHASH(faddr->s6_addr32[3] /* XXX */, lport, fport,
+	    pcbinfo->ipi_hashmask)];
 	LIST_FOREACH(inp, head, inp_hash) {
 		/* XXX inp locking */
 		if ((inp->inp_vflag & INP_IPV6) == 0)
@@ -1104,9 +1041,8 @@ in6_pcblookup_hash_locked(struct inpcbinfo *pcbinfo, struct in6_addr *faddr,
 		 *      3. non-jailed, non-wild.
 		 *      4. non-jailed, wild.
 		 */
-		head = &pcbinfo->ipi_hashbase[INP_PCBHASH(
-		    INP6_PCBHASHKEY(&in6addr_any), lport, 0,
-		    pcbinfo->ipi_hashmask)];
+		head = &pcbinfo->ipi_hashbase[INP_PCBHASH(INADDR_ANY, lport,
+		    0, pcbinfo->ipi_hashmask)];
 		LIST_FOREACH(inp, head, inp_hash) {
 			/* XXX inp locking */
 			if ((inp->inp_vflag & INP_IPV6) == 0)
@@ -1116,6 +1052,10 @@ in6_pcblookup_hash_locked(struct inpcbinfo *pcbinfo, struct in6_addr *faddr,
 			    inp->inp_lport != lport) {
 				continue;
 			}
+
+			/* XXX inp locking */
+			if (faith && (inp->inp_flags & INP_FAITH) == 0)
+				continue;
 
 			injail = prison_flag(inp->inp_cred, PR_IP6);
 			if (injail) {
@@ -1252,7 +1192,7 @@ in6_pcblookup_mbuf(struct inpcbinfo *pcbinfo, struct in6_addr *faddr,
 	 * XXXRW: As above, that policy belongs in the pcbgroup code.
 	 */
 	if (in_pcbgroup_enabled(pcbinfo) &&
-	    M_HASHTYPE_TEST(m, M_HASHTYPE_NONE) == 0) {
+	    !(M_HASHTYPE_TEST(m, M_HASHTYPE_NONE))) {
 		pcbgroup = in6_pcbgroup_byhash(pcbinfo, M_HASHTYPE_GET(m),
 		    m->m_pkthdr.flowid);
 		if (pcbgroup != NULL)

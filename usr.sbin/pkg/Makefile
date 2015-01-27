@@ -6,6 +6,9 @@ MAN=	pkg.7
 
 CFLAGS+=-I${.CURDIR}/../../contrib/libucl/include
 .PATH:	${.CURDIR}/../../contrib/libucl/include
-LIBADD=	archive fetch ucl sbuf crypto
+DPADD=	${LIBARCHIVE} ${LIBELF} ${LIBFETCH} ${LIBUCL} ${LIBSBUF} ${LIBSSL} \
+	${LIBCRYPTO} ${LIBM}
+LDADD=	-larchive -lelf -lfetch -lucl -lsbuf -lssl -lcrypto -lm
+USEPRIVATELIB=	ucl
 
 .include <bsd.prog.mk>

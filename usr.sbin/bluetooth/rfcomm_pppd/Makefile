@@ -8,6 +8,7 @@ MAN=		rfcomm_pppd.8
 SRCS=		rfcomm_pppd.c rfcomm_sdp.c
 WARNS?=		2
 
-LIBADD=		bluetooth sdp
+DPADD=		${LIBBLUETOOTH} ${LIBSDP}
+LDADD=		-lbluetooth -lsdp
 
 .include <bsd.prog.mk>

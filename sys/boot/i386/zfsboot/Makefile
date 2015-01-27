@@ -3,7 +3,6 @@
 .PATH:		${.CURDIR}/../boot2 ${.CURDIR}/../common ${.CURDIR}/../../common
 
 FILES=		zfsboot
-MAN=		zfsboot.8
 
 NM?=		nm
 

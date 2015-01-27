@@ -21,7 +21,6 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2013 by Delphix. All rights reserved.
  */
 
 /*
@@ -112,7 +111,7 @@ vdev_error(const char *fmt, ...)
 	va_end(ap);
 }
 
-#ifdef illumos
+#ifdef sun
 static void
 libdiskmgt_error(int error)
 {
@@ -274,7 +273,7 @@ check_device(const char *path, boolean_t force, boolean_t isspare)
 
 	return (check_slice(path, force, B_FALSE, isspare));
 }
-#endif	/* illumos */
+#endif	/* sun */
 
 /*
  * Check that a file is valid.  All we can do in this case is check that it's
@@ -290,7 +289,7 @@ check_file(const char *file, boolean_t force, boolean_t isspare)
 	pool_state_t state;
 	boolean_t inuse;
 
-#ifdef illumos
+#ifdef sun
 	if (dm_inuse_swap(file, &err)) {
 		if (err)
 			libdiskmgt_error(err);
@@ -377,7 +376,7 @@ check_device(const char *name, boolean_t force, boolean_t isspare)
 static boolean_t
 is_whole_disk(const char *arg)
 {
-#ifdef illumos
+#ifdef sun
 	struct dk_gpt *label;
 	int	fd;
 	char	path[MAXPATHLEN];
@@ -653,7 +652,6 @@ get_replication(nvlist_t *nvroot, boolean_t fatal)
 			dontreport = 0;
 			vdev_size = -1ULL;
 			for (c = 0; c < children; c++) {
-				boolean_t is_replacing, is_spare;
 				nvlist_t *cnv = child[c];
 				char *path;
 				struct stat64 statbuf;
@@ -670,19 +668,16 @@ get_replication(nvlist_t *nvroot, boolean_t fatal)
 				 * If this is a replacing or spare vdev, then
 				 * get the real first child of the vdev.
 				 */
-				is_replacing = strcmp(childtype,
-				    VDEV_TYPE_REPLACING) == 0;
-				is_spare = strcmp(childtype,
-				    VDEV_TYPE_SPARE) == 0;
-				if (is_replacing || is_spare) {
+				if (strcmp(childtype,
+				    VDEV_TYPE_REPLACING) == 0 ||
+				    strcmp(childtype, VDEV_TYPE_SPARE) == 0) {
 					nvlist_t **rchild;
 					uint_t rchildren;
 
 					verify(nvlist_lookup_nvlist_array(cnv,
 					    ZPOOL_CONFIG_CHILDREN, &rchild,
 					    &rchildren) == 0);
-					assert((is_replacing && rchildren == 2)
-					    || (is_spare && rchildren >= 2));
+					assert(rchildren == 2);
 					cnv = rchild[0];
 
 					verify(nvlist_lookup_string(cnv,
@@ -915,7 +910,7 @@ check_replication(nvlist_t *config, nvlist_t *newroot)
 	return (ret);
 }
 
-#ifdef illumos
+#ifdef sun
 /*
  * Go through and find any whole disks in the vdev specification, labelling them
  * as appropriate.  When constructing the vdev spec, we were unable to open this
@@ -1019,7 +1014,7 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 
 	return (0);
 }
-#endif	/* illumos */
+#endif	/* sun */
 
 /*
  * Determine if the given path is a hot spare within the given configuration.
@@ -1073,8 +1068,8 @@ is_spare(nvlist_t *config, const char *path)
  * Go through and find any devices that are in use.  We rely on libdiskmgt for
  * the majority of this task.
  */
-static boolean_t
-is_device_in_use(nvlist_t *config, nvlist_t *nv, boolean_t force,
+static int
+check_in_use(nvlist_t *config, nvlist_t *nv, boolean_t force,
     boolean_t replacing, boolean_t isspare)
 {
 	nvlist_t **child;
@@ -1083,7 +1078,6 @@ is_device_in_use(nvlist_t *config, nvlist_t *nv, boolean_t force,
 	int ret;
 	char buf[MAXPATHLEN];
 	uint64_t wholedisk;
-	boolean_t anyinuse = B_FALSE;
 
 	verify(nvlist_lookup_string(nv, ZPOOL_CONFIG_TYPE, &type) == 0);
 
@@ -1098,7 +1092,7 @@ is_device_in_use(nvlist_t *config, nvlist_t *nv, boolean_t force,
 		 * regardless of what libdiskmgt or zpool_in_use() says.
 		 */
 		if (replacing) {
-#ifdef illumos
+#ifdef sun
 			if (nvlist_lookup_uint64(nv, ZPOOL_CONFIG_WHOLE_DISK,
 			    &wholedisk) == 0 && wholedisk)
 				(void) snprintf(buf, sizeof (buf), "%ss0",
@@ -1108,37 +1102,38 @@ is_device_in_use(nvlist_t *config, nvlist_t *nv, boolean_t force,
 				(void) strlcpy(buf, path, sizeof (buf));
 
 			if (is_spare(config, buf))
-				return (B_FALSE);
+				return (0);
 		}
 
 		if (strcmp(type, VDEV_TYPE_DISK) == 0)
 			ret = check_device(path, force, isspare);
-		else if (strcmp(type, VDEV_TYPE_FILE) == 0)
+
+		if (strcmp(type, VDEV_TYPE_FILE) == 0)
 			ret = check_file(path, force, isspare);
 
-		return (ret != 0);
+		return (ret);
 	}
 
 	for (c = 0; c < children; c++)
-		if (is_device_in_use(config, child[c], force, replacing,
-		    B_FALSE))
-			anyinuse = B_TRUE;
+		if ((ret = check_in_use(config, child[c], force,
+		    replacing, B_FALSE)) != 0)
+			return (ret);
 
 	if (nvlist_lookup_nvlist_array(nv, ZPOOL_CONFIG_SPARES,
 	    &child, &children) == 0)
 		for (c = 0; c < children; c++)
-			if (is_device_in_use(config, child[c], force, replacing,
-			    B_TRUE))
-				anyinuse = B_TRUE;
+			if ((ret = check_in_use(config, child[c], force,
+			    replacing, B_TRUE)) != 0)
+				return (ret);
 
 	if (nvlist_lookup_nvlist_array(nv, ZPOOL_CONFIG_L2CACHE,
 	    &child, &children) == 0)
 		for (c = 0; c < children; c++)
-			if (is_device_in_use(config, child[c], force, replacing,
-			    B_FALSE))
-				anyinuse = B_TRUE;
+			if ((ret = check_in_use(config, child[c], force,
+			    replacing, B_FALSE)) != 0)
+				return (ret);
 
-	return (anyinuse);
+	return (0);
 }
 
 static const char *
@@ -1422,7 +1417,7 @@ split_mirror_vdev(zpool_handle_t *zhp, char *newname, nvlist_t *props,
 			return (NULL);
 		}
 
-#ifdef illumos
+#ifdef sun
 		if (!flags.dryrun && make_disks(zhp, newroot) != 0) {
 			nvlist_free(newroot);
 			return (NULL);
@@ -1492,7 +1487,7 @@ make_root_vdev(zpool_handle_t *zhp, int force, int check_rep,
 	 * uses (such as a dedicated dump device) that even '-f' cannot
 	 * override.
 	 */
-	if (is_device_in_use(poolconfig, newroot, force, replacing, B_FALSE)) {
+	if (check_in_use(poolconfig, newroot, force, replacing, B_FALSE) != 0) {
 		nvlist_free(newroot);
 		return (NULL);
 	}
@@ -1507,7 +1502,7 @@ make_root_vdev(zpool_handle_t *zhp, int force, int check_rep,
 		return (NULL);
 	}
 
-#ifdef illumos
+#ifdef sun
 	/*
 	 * Run through the vdev specification and label any whole disks found.
 	 */

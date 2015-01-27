@@ -38,7 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <stdint.h>
 #include <fnmatch.h>
 #include <dirent.h>
-#ifdef WITH_BSNMP
+#ifndef RESCUE
 #include <bsnmp/asn1.h>
 #include <bsnmp/snmp.h>
 #include <bsnmp/snmpclient.h>
@@ -444,7 +444,7 @@ help_func(int argc, char *argv[])
 	exit(1);
 }
 
-#ifdef WITH_BSNMP
+#ifndef RESCUE
 /*
  * Parse a server specification
  *
@@ -527,16 +527,16 @@ main(int argc, char *argv[])
 	int opt, i;
 	const struct cmdtab *match, *cc, *tab;
 
-#ifdef WITH_BSNMP
+#ifndef RESCUE
 	snmp_client_init(&snmp_client);
 	snmp_client.trans = SNMP_TRANS_LOC_STREAM;
 	snmp_client_set_host(&snmp_client, PATH_ILMI_SOCK);
 #endif
 
-#ifdef WITH_BSNMP
-#define	OPTSTR	"htvs:"
-#else
+#ifdef RESCUE
 #define OPTSTR	"htv"
+#else
+#define	OPTSTR	"htvs:"
 #endif
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1)
@@ -545,7 +545,7 @@ main(int argc, char *argv[])
 		  case 'h':
 			help_func(0, argv);
 
-#ifdef WITH_BSNMP
+#ifndef RESCUE
 		  case 's':
 			parse_server(optarg);
 			break;
@@ -570,7 +570,7 @@ main(int argc, char *argv[])
 		err(1, NULL);
 	memcpy(main_tab, static_main_tab, sizeof(static_main_tab));
 
-#ifdef WITH_BSNMP
+#ifndef RESCUE
 	/* XXX while this is compiled in */
 	device_register();
 #endif

@@ -823,7 +823,7 @@ T_FUNC(escaped_double_quote_within_double_quotes,
  * Boilerplate
  */
 
-static const struct t_test *t_plan[] = {
+const struct t_test *t_plan[] = {
 	T(empty_input),
 	T(empty_line),
 	T(single_whitespace),

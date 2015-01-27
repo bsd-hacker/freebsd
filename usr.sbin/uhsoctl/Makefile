@@ -4,6 +4,7 @@ PROG=	uhsoctl
 MAN=	uhsoctl.1
 WARNS?=	1
 
-LIBADD=	util
+DPADD=	${LIBUTIL}
+LDADD=	-lutil
 
 .include <bsd.prog.mk>

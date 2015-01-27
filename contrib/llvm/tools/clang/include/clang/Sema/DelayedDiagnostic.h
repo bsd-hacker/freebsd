@@ -113,7 +113,7 @@ private:
 /// the complete parsing of the current declaration.
 class DelayedDiagnostic {
 public:
-  enum DDKind { Deprecation, Unavailable, Access, ForbiddenType };
+  enum DDKind { Deprecation, Access, ForbiddenType };
 
   unsigned char Kind; // actually a DDKind
   bool Triggered;
@@ -122,14 +122,11 @@ public:
 
   void Destroy();
 
-  static DelayedDiagnostic makeAvailability(Sema::AvailabilityDiagnostic AD,
-                                            SourceLocation Loc,
-                                            const NamedDecl *D,
-                                            const ObjCInterfaceDecl *UnknownObjCClass,
-                                            const ObjCPropertyDecl  *ObjCProperty,
-                                            StringRef Msg,
-                                            bool ObjCPropertyAccess);
-
+  static DelayedDiagnostic makeDeprecation(SourceLocation Loc,
+           const NamedDecl *D,
+           const ObjCInterfaceDecl *UnknownObjCClass,
+           const ObjCPropertyDecl  *ObjCProperty,
+           StringRef Msg);
 
   static DelayedDiagnostic makeAccess(SourceLocation Loc,
                                       const AccessedEntity &Entity) {
@@ -165,14 +162,12 @@ public:
   }
 
   const NamedDecl *getDeprecationDecl() const {
-    assert((Kind == Deprecation || Kind == Unavailable) &&
-           "Not a deprecation diagnostic.");
+    assert(Kind == Deprecation && "Not a deprecation diagnostic.");
     return DeprecationData.Decl;
   }
 
   StringRef getDeprecationMessage() const {
-    assert((Kind == Deprecation || Kind == Unavailable) &&
-           "Not a deprecation diagnostic.");
+    assert(Kind == Deprecation && "Not a deprecation diagnostic.");
     return StringRef(DeprecationData.Message,
                            DeprecationData.MessageLen);
   }
@@ -203,10 +198,6 @@ public:
   const ObjCPropertyDecl *getObjCProperty() const {
     return DeprecationData.ObjCProperty;
   }
-    
-  bool getObjCPropertyAccess() const {
-    return DeprecationData.ObjCPropertyAccess;
-  }
   
 private:
 
@@ -216,7 +207,6 @@ private:
     const ObjCPropertyDecl  *ObjCProperty;
     const char *Message;
     size_t MessageLen;
-    bool ObjCPropertyAccess;
   };
 
   struct FTD {
@@ -254,7 +244,7 @@ public:
 
   /// Does this pool, or any of its ancestors, contain any diagnostics?
   bool empty() const {
-    return (Diagnostics.empty() && (!Parent || Parent->empty()));
+    return (Diagnostics.empty() && (Parent == NULL || Parent->empty()));
   }
 
   /// Add a diagnostic to this pool.
@@ -267,7 +257,7 @@ public:
     if (pool.Diagnostics.empty()) return;
 
     if (Diagnostics.empty()) {
-      Diagnostics = std::move(pool.Diagnostics);
+      Diagnostics = llvm_move(pool.Diagnostics);
     } else {
       Diagnostics.append(pool.pool_begin(), pool.pool_end());
     }

@@ -29,7 +29,7 @@ using namespace ento;
 
 namespace {
 class VLASizeChecker : public Checker< check::PreStmt<DeclStmt> > {
-  mutable std::unique_ptr<BugType> BT;
+  mutable OwningPtr<BugType> BT;
   enum VLASize_Kind { VLA_Garbage, VLA_Zero, VLA_Tainted };
 
   void reportBug(VLASize_Kind Kind,
@@ -51,8 +51,7 @@ void VLASizeChecker::reportBug(VLASize_Kind Kind,
     return;
 
   if (!BT)
-    BT.reset(new BuiltinBug(
-        this, "Dangerous variable-length array (VLA) declaration"));
+    BT.reset(new BuiltinBug("Dangerous variable-length array (VLA) declaration"));
 
   SmallString<256> buf;
   llvm::raw_svector_ostream os(buf);
@@ -106,7 +105,7 @@ void VLASizeChecker::checkPreStmt(const DeclStmt *DS, CheckerContext &C) const {
   
   // Check if the size is tainted.
   if (state->isTainted(sizeV)) {
-    reportBug(VLA_Tainted, SE, nullptr, C);
+    reportBug(VLA_Tainted, SE, 0, C);
     return;
   }
 
@@ -114,7 +113,7 @@ void VLASizeChecker::checkPreStmt(const DeclStmt *DS, CheckerContext &C) const {
   DefinedSVal sizeD = sizeV.castAs<DefinedSVal>();
 
   ProgramStateRef stateNotZero, stateZero;
-  std::tie(stateNotZero, stateZero) = state->assume(sizeD);
+  llvm::tie(stateNotZero, stateZero) = state->assume(sizeD);
 
   if (stateZero && !stateNotZero) {
     reportBug(VLA_Zero, SE, stateZero, C);

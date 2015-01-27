@@ -38,8 +38,6 @@
 #include <machine/asm.h>
 __FBSDID("$FreeBSD$");
 
-.syntax	unified
-
 /* LINTSTUB: Func: void *memcpy(void *dst, const void *src, size_t len) */
 ENTRY(memcpy)
 	pld	[r1]
@@ -54,12 +52,12 @@ ENTRY(memcpy)
 	ldrb	ip, [r1], #0x01
 	sub	r2, r2, #0x01
 	strb	ip, [r3], #0x01
-	ldrble	ip, [r1], #0x01
+	ldrleb	ip, [r1], #0x01
 	suble	r2, r2, #0x01
-	strble	ip, [r3], #0x01
-	ldrblt	ip, [r1], #0x01
+	strleb	ip, [r3], #0x01
+	ldrltb	ip, [r1], #0x01
 	sublt	r2, r2, #0x01
-	strblt	ip, [r3], #0x01
+	strltb	ip, [r3], #0x01
 
 	/* Destination buffer is now word aligned */
 .Lmemcpy_wordaligned:
@@ -136,7 +134,7 @@ ENTRY(memcpy)
 
 .Lmemcpy_w_lessthan128:
 	adds	r2, r2, #0x80		/* Adjust for extra sub */
-	ldmfdeq	sp!, {r4-r9}
+	ldmeqfd	sp!, {r4-r9}
 	bxeq	lr			/* Return now if done */
 	subs	r2, r2, #0x20
 	blt	.Lmemcpy_w_lessthan32
@@ -161,7 +159,7 @@ ENTRY(memcpy)
 
 .Lmemcpy_w_lessthan32:
 	adds	r2, r2, #0x20		/* Adjust for extra sub */
-	ldmfdeq	sp!, {r4-r9}
+	ldmeqfd	sp!, {r4-r9}
 	bxeq	lr			/* Return now if done */
 
 	and	r4, r2, #0x18
@@ -197,11 +195,11 @@ ENTRY(memcpy)
 	addlt	r2, r2, #0x04
 	ldrb	ip, [r1], #0x01
 	cmp	r2, #0x02
-	ldrbge	r2, [r1], #0x01
+	ldrgeb	r2, [r1], #0x01
 	strb	ip, [r3], #0x01
-	ldrbgt	ip, [r1]
-	strbge	r2, [r3], #0x01
-	strbgt	ip, [r3]
+	ldrgtb	ip, [r1]
+	strgeb	r2, [r3], #0x01
+	strgtb	ip, [r3]
 	bx	lr
 
 
@@ -255,7 +253,7 @@ ENTRY(memcpy)
 	bge	.Lmemcpy_bad1_loop16
 
 	adds	r2, r2, #0x10         
-	ldmfdeq	sp!, {r4-r7}
+	ldmeqfd	sp!, {r4-r7}
 	bxeq	lr			/* Return now if done */
 	subs	r2, r2, #0x04
 	sublt	r1, r1, #0x03
@@ -316,7 +314,7 @@ ENTRY(memcpy)
 	bge	.Lmemcpy_bad2_loop16
 
 	adds	r2, r2, #0x10         
-	ldmfdeq	sp!, {r4-r7}
+	ldmeqfd	sp!, {r4-r7}
 	bxeq	lr			/* Return now if done */
 	subs	r2, r2, #0x04
 	sublt	r1, r1, #0x02
@@ -377,7 +375,7 @@ ENTRY(memcpy)
 	bge	.Lmemcpy_bad3_loop16
 
 	adds	r2, r2, #0x10         
-	ldmfdeq	sp!, {r4-r7}
+	ldmeqfd	sp!, {r4-r7}
 	bxeq	lr			/* Return now if done */
 	subs	r2, r2, #0x04
 	sublt	r1, r1, #0x01
@@ -406,11 +404,11 @@ ENTRY(memcpy)
 	bxeq	lr
 	ldrb	ip, [r1], #0x01
 	cmp	r2, #0x02
-	ldrbge	r2, [r1], #0x01
+	ldrgeb	r2, [r1], #0x01
 	strb	ip, [r3], #0x01
-	ldrbgt	ip, [r1]
-	strbge	r2, [r3], #0x01
-	strbgt	ip, [r3]
+	ldrgtb	ip, [r1]
+	strgeb	r2, [r3], #0x01
+	strgtb	ip, [r3]
 	bx	lr
 
 
@@ -442,7 +440,7 @@ ENTRY(memcpy)
 	ldrb	ip, [r1], #0x01
 1:	subs	r2, r2, #0x01
 	strb	ip, [r3], #0x01
-	ldrbne	ip, [r1], #0x01
+	ldrneb	ip, [r1], #0x01
 	bne	1b
 	bx	lr
 
@@ -1783,4 +1781,3 @@ ENTRY(memcpy)
 	strb	r1, [r0, #0x0b]
 	bx	lr
 #endif	/* !_STANDALONE */
-END(memcpy)

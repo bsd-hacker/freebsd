@@ -117,9 +117,8 @@ err:
 
 /* read/writes from s->s2->mac_data using length for encrypt and 
  * decrypt.  It sets s->s2->padding and s->[rw]length
- * if we are encrypting
- * Returns 0 on error and 1 on success */
-int ssl2_enc(SSL *s, int send)
+ * if we are encrypting */
+void ssl2_enc(SSL *s, int send)
 	{
 	EVP_CIPHER_CTX *ds;
 	unsigned long l;
@@ -137,7 +136,7 @@ int ssl2_enc(SSL *s, int send)
 		}
 
 	/* check for NULL cipher */
-	if (ds == NULL) return 1;
+	if (ds == NULL) return;
 
 
 	bs=ds->cipher->block_size;
@@ -146,10 +145,7 @@ int ssl2_enc(SSL *s, int send)
 	if (bs == 8)
 		l=(l+7)/8*8;
 
-	if(EVP_Cipher(ds,s->s2->mac_data,s->s2->mac_data,l) < 1)
-		return 0;
-
-	return 1;
+	EVP_Cipher(ds,s->s2->mac_data,s->s2->mac_data,l);
 	}
 
 void ssl2_mac(SSL *s, unsigned char *md, int send)

@@ -749,11 +749,6 @@ ath_beacon_generate(struct ath_softc *sc, struct ieee80211vap *vap)
 			 *
 			 * More thought is required here.
 			 */
-			/*
-			 * XXX can we even stop TX DMA here? Check what the
-			 * reference driver does for cabq for beacons, given
-			 * that stopping TX requires RX is paused.
-			 */
 			ath_tx_draintxq(sc, cabq);
 		}
 	}

@@ -10,6 +10,9 @@
 PROG=	mk-amd-map
 MAN=	mk-amd-map.8
 
-LIBADD=	amu
+DPADD=	${LIBAMU}
+LDADD=	${LIBAMU}
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

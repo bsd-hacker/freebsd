@@ -32,7 +32,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 23, 2015
+.Dd September 23, 2013
 .Dt RIGHTS 4
 .Os
 .Sh NAME
@@ -272,13 +272,9 @@ with the
 flag.
 .It Dv CAP_FUTIMES
 Permit
-.Xr futimens 2
+.Xr futimes 2
 and
-.Xr futimes 2 ,
-and permit
 .Xr futimesat 2
-and
-.Xr utimensat 2
 if the
 .Dv CAP_LOOKUP
 right is also present.
@@ -671,8 +667,8 @@ Project.
 .Sh AUTHORS
 .An -nosplit
 This manual page was created by
-.An Pawel Jakub Dawidek Aq Mt pawel@dawidek.net
+.An Pawel Jakub Dawidek Aq pawel@dawidek.net
 under sponsorship from the FreeBSD Foundation based on the
 .Xr cap_new 2
 manual page by
-.An Robert Watson Aq Mt rwatson@FreeBSD.org .
+.An "Robert Watson" Aq rwatson@FreeBSD.org .

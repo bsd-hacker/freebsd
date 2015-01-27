@@ -55,12 +55,12 @@ class BumpVector {
 public:
   // Default ctor - Initialize to empty.
   explicit BumpVector(BumpVectorContext &C, unsigned N)
-  : Begin(nullptr), End(nullptr), Capacity(nullptr) {
+  : Begin(NULL), End(NULL), Capacity(NULL) {
     reserve(C, N);
   }
   
   ~BumpVector() {
-    if (std::is_class<T>::value) {
+    if (llvm::is_class<T>::value) {
       // Destroy the constructed elements in the vector.
       destroy_range(Begin, End);
     }
@@ -130,7 +130,7 @@ public:
   }
   
   void clear() {
-    if (std::is_class<T>::value) {
+    if (llvm::is_class<T>::value) {
       destroy_range(Begin, End);
     }
     End = Begin;
@@ -223,7 +223,7 @@ void BumpVector<T>::grow(BumpVectorContext &C, size_t MinSize) {
   T *NewElts = C.getAllocator().template Allocate<T>(NewCapacity);
   
   // Copy the elements over.
-  if (std::is_class<T>::value) {
+  if (llvm::is_class<T>::value) {
     std::uninitialized_copy(Begin, End, NewElts);
     // Destroy the original elements.
     destroy_range(Begin, End);

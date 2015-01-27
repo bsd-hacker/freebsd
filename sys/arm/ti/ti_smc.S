@@ -26,8 +26,7 @@
 #include <machine/asm.h>
 __FBSDID("$FreeBSD$");
 
-	.cpu cortex-a8
-	.arch_extension sec
+.arch armv7a
 
 /* Issue a smc #0 call */
 /* r0 and r1 contains the eventual arguments, r2 contains the function ID */

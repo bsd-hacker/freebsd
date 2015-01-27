@@ -21,27 +21,27 @@ using namespace serialization;
 using namespace reader;
 
 ModuleFile::ModuleFile(ModuleKind Kind, unsigned Generation)
-  : Kind(Kind), File(nullptr), DirectlyImported(false),
+  : Kind(Kind), File(0), DirectlyImported(false),
     Generation(Generation), SizeInBits(0),
     LocalNumSLocEntries(0), SLocEntryBaseID(0),
-    SLocEntryBaseOffset(0), SLocEntryOffsets(nullptr),
+    SLocEntryBaseOffset(0), SLocEntryOffsets(0),
     LocalNumIdentifiers(0),
-    IdentifierOffsets(nullptr), BaseIdentifierID(0),
-    IdentifierTableData(nullptr), IdentifierLookupTable(nullptr),
-    LocalNumMacros(0), MacroOffsets(nullptr),
+    IdentifierOffsets(0), BaseIdentifierID(0), IdentifierTableData(0),
+    IdentifierLookupTable(0),
+    LocalNumMacros(0), MacroOffsets(0),
     BasePreprocessedEntityID(0),
-    PreprocessedEntityOffsets(nullptr), NumPreprocessedEntities(0),
+    PreprocessedEntityOffsets(0), NumPreprocessedEntities(0),
     LocalNumHeaderFileInfos(0), 
-    HeaderFileInfoTableData(nullptr), HeaderFileInfoTable(nullptr),
+    HeaderFileInfoTableData(0), HeaderFileInfoTable(0),
     LocalNumSubmodules(0), BaseSubmoduleID(0),
-    LocalNumSelectors(0), SelectorOffsets(nullptr), BaseSelectorID(0),
-    SelectorLookupTableData(nullptr), SelectorLookupTable(nullptr),
-    LocalNumDecls(0), DeclOffsets(nullptr), BaseDeclID(0),
-    LocalNumCXXBaseSpecifiers(0), CXXBaseSpecifiersOffsets(nullptr),
-    FileSortedDecls(nullptr), NumFileSortedDecls(0),
-    RedeclarationsMap(nullptr), LocalNumRedeclarationsInMap(0),
-    ObjCCategoriesMap(nullptr), LocalNumObjCCategoriesInMap(0),
-    LocalNumTypes(0), TypeOffsets(nullptr), BaseTypeIndex(0)
+    LocalNumSelectors(0), SelectorOffsets(0), BaseSelectorID(0),
+    SelectorLookupTableData(0), SelectorLookupTable(0), LocalNumDecls(0),
+    DeclOffsets(0), BaseDeclID(0),
+    LocalNumCXXBaseSpecifiers(0), CXXBaseSpecifiersOffsets(0),
+    FileSortedDecls(0), NumFileSortedDecls(0),
+    RedeclarationsMap(0), LocalNumRedeclarationsInMap(0),
+    ObjCCategoriesMap(0), LocalNumObjCCategoriesInMap(0),
+    LocalNumTypes(0), TypeOffsets(0), BaseTypeIndex(0)
 {}
 
 ModuleFile::~ModuleFile() {

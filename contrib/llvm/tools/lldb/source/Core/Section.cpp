@@ -13,8 +13,6 @@
 #include "lldb/Target/SectionLoadList.h"
 #include "lldb/Target/Target.h"
 
-#include <limits>
-
 using namespace lldb;
 using namespace lldb_private;
 
@@ -27,7 +25,6 @@ Section::Section (const ModuleSP &module_sp,
                   addr_t byte_size,
                   lldb::offset_t file_offset,
                   lldb::offset_t file_size,
-                  uint32_t log2align,
                   uint32_t flags) :
     ModuleChild     (module_sp),
     UserID          (sect_id),
@@ -40,7 +37,6 @@ Section::Section (const ModuleSP &module_sp,
     m_byte_size     (byte_size),
     m_file_offset   (file_offset),
     m_file_size     (file_size),
-    m_log2align     (log2align),
     m_children      (),
     m_fake          (false),
     m_encrypted     (false),
@@ -60,7 +56,6 @@ Section::Section (const lldb::SectionSP &parent_section_sp,
                   addr_t byte_size,
                   lldb::offset_t file_offset,
                   lldb::offset_t file_size,
-                  uint32_t log2align,
                   uint32_t flags) :
     ModuleChild     (module_sp),
     UserID          (sect_id),
@@ -73,7 +68,6 @@ Section::Section (const lldb::SectionSP &parent_section_sp,
     m_byte_size     (byte_size),
     m_file_offset   (file_offset),
     m_file_size     (file_size),
-    m_log2align     (log2align),
     m_children      (),
     m_fake          (false),
     m_encrypted     (false),
@@ -146,7 +140,7 @@ Section::GetLoadBaseAddress (Target *target) const
         if (load_base_addr != LLDB_INVALID_ADDRESS)
             load_base_addr += GetOffset();
     }
-    if (load_base_addr == LLDB_INVALID_ADDRESS)
+    else
     {
         load_base_addr = target->GetSectionLoadList().GetSectionLoadAddress (const_cast<Section *>(this)->shared_from_this());
     }
@@ -337,14 +331,10 @@ SectionList::operator = (const SectionList& rhs)
 size_t
 SectionList::AddSection (const lldb::SectionSP& section_sp)
 {
-    if (section_sp)
-    {
-        size_t section_index = m_sections.size();
-        m_sections.push_back(section_sp);
-        return section_index;
-    }
-
-    return std::numeric_limits<size_t>::max ();
+    assert (section_sp.get());
+    size_t section_index = m_sections.size();
+    m_sections.push_back(section_sp);
+    return section_index;
 }
 
 // Warning, this can be slow as it's removing items from a std::vector.
@@ -443,16 +433,14 @@ SectionList::FindSectionByName (const ConstString &section_dstr) const
         for (sect_iter = m_sections.begin(); sect_iter != end && sect_sp.get() == NULL; ++sect_iter)
         {
             Section *child_section = sect_iter->get();
-            if (child_section)
+            assert (child_section);
+            if (child_section->GetName() == section_dstr)
             {
-                if (child_section->GetName() == section_dstr)
-                {
-                    sect_sp = *sect_iter;
-                }
-                else
-                {
-                    sect_sp = child_section->GetChildren().FindSectionByName(section_dstr);
-                }
+                sect_sp = *sect_iter;
+            }
+            else
+            {
+                sect_sp = child_section->GetChildren().FindSectionByName(section_dstr);
             }
         }
     }

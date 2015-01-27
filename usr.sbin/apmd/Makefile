@@ -7,7 +7,8 @@ SRCS=	apmd.c apmdlex.l apmdparse.y y.tab.h
 
 WARNS?=	3
 
-LIBADD=	l
+DPADD=	${LIBL}
+LDADD=	-ll
 
 CFLAGS+= -I${.CURDIR}
 

@@ -241,8 +241,7 @@ int dtls1_enc(SSL *s, int send)
 				return 0;
 			}
 		
-		if(EVP_Cipher(ds,rec->data,rec->input,l) < 1)
-			return -1;
+		EVP_Cipher(ds,rec->data,rec->input,l);
 
 #ifdef KSSL_DEBUG
 		{

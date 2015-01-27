@@ -28,7 +28,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_ddb.h"
-#include "opt_kstack_usage_prof.h"
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -90,7 +89,8 @@ struct proc *intrproc;
 static MALLOC_DEFINE(M_ITHREAD, "ithread", "Interrupt Threads");
 
 static int intr_storm_threshold = 1000;
-SYSCTL_INT(_hw, OID_AUTO, intr_storm_threshold, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.intr_storm_threshold", &intr_storm_threshold);
+SYSCTL_INT(_hw, OID_AUTO, intr_storm_threshold, CTLFLAG_RW,
     &intr_storm_threshold, 0,
     "Number of consecutive interrupts before storm protection is enabled");
 static TAILQ_HEAD(, intr_event) event_list =
@@ -250,7 +250,7 @@ intr_event_update(struct intr_event *ie)
 int
 intr_event_create(struct intr_event **event, void *source, int flags, int irq,
     void (*pre_ithread)(void *), void (*post_ithread)(void *),
-    void (*post_filter)(void *), int (*assign_cpu)(void *, int),
+    void (*post_filter)(void *), int (*assign_cpu)(void *, u_char),
     const char *fmt, ...)
 {
 	struct intr_event *ie;
@@ -293,8 +293,9 @@ intr_event_create(struct intr_event **event, void *source, int flags, int irq,
  * the interrupt event.
  */
 int
-intr_event_bind(struct intr_event *ie, int cpu)
+intr_event_bind(struct intr_event *ie, u_char cpu)
 {
+	cpuset_t mask;
 	lwpid_t id;
 	int error;
 
@@ -315,9 +316,14 @@ intr_event_bind(struct intr_event *ie, int cpu)
 	 */
 	mtx_lock(&ie->ie_lock);
 	if (ie->ie_thread != NULL) {
+		CPU_ZERO(&mask);
+		if (cpu == NOCPU)
+			CPU_COPY(cpuset_root, &mask);
+		else
+			CPU_SET(cpu, &mask);
 		id = ie->ie_thread->it_thread->td_tid;
 		mtx_unlock(&ie->ie_lock);
-		error = cpuset_setithread(id, cpu);
+		error = cpuset_setthread(id, &mask);
 		if (error)
 			return (error);
 	} else
@@ -326,10 +332,14 @@ intr_event_bind(struct intr_event *ie, int cpu)
 	if (error) {
 		mtx_lock(&ie->ie_lock);
 		if (ie->ie_thread != NULL) {
-			cpu = ie->ie_cpu;
+			CPU_ZERO(&mask);
+			if (ie->ie_cpu == NOCPU)
+				CPU_COPY(cpuset_root, &mask);
+			else
+				CPU_SET(ie->ie_cpu, &mask);
 			id = ie->ie_thread->it_thread->td_tid;
 			mtx_unlock(&ie->ie_lock);
-			(void)cpuset_setithread(id, cpu);
+			(void)cpuset_setthread(id, &mask);
 		} else
 			mtx_unlock(&ie->ie_lock);
 		return (error);
@@ -362,7 +372,8 @@ intr_setaffinity(int irq, void *m)
 {
 	struct intr_event *ie;
 	cpuset_t *mask;
-	int cpu, n;
+	u_char cpu;
+	int n;
 
 	mask = m;
 	cpu = NOCPU;
@@ -376,7 +387,7 @@ intr_setaffinity(int irq, void *m)
 				continue;
 			if (cpu != NOCPU)
 				return (EINVAL);
-			cpu = n;
+			cpu = (u_char)n;
 		}
 	}
 	ie = intr_lookup(irq);
@@ -885,10 +896,13 @@ intr_event_schedule_thread(struct intr_event *ie)
 	 * If any of the handlers for this ithread claim to be good
 	 * sources of entropy, then gather some.
 	 */
-	if (ie->ie_flags & IE_ENTROPY) {
+	if (harvest.interrupt && ie->ie_flags & IE_ENTROPY) {
+		CTR3(KTR_INTR, "%s: pid %d (%s) gathering entropy", __func__,
+		    p->p_pid, td->td_name);
 		entropy.event = (uintptr_t)ie;
 		entropy.td = ctd;
-		random_harvest(&entropy, sizeof(entropy), 2, RANDOM_INTERRUPT);
+		random_harvest(&entropy, sizeof(entropy), 2,
+		    RANDOM_INTERRUPT);
 	}
 
 	KASSERT(p != NULL, ("ithread %s has no process", ie->ie_name));
@@ -1036,10 +1050,13 @@ intr_event_schedule_thread(struct intr_event *ie, struct intr_thread *it)
 	 * If any of the handlers for this ithread claim to be good
 	 * sources of entropy, then gather some.
 	 */
-	if (ie->ie_flags & IE_ENTROPY) {
+	if (harvest.interrupt && ie->ie_flags & IE_ENTROPY) {
+		CTR3(KTR_INTR, "%s: pid %d (%s) gathering entropy", __func__,
+		    p->p_pid, td->td_name);
 		entropy.event = (uintptr_t)ie;
 		entropy.td = ctd;
-		random_harvest(&entropy, sizeof(entropy), 2, RANDOM_INTERRUPT);
+		random_harvest(&entropy, sizeof(entropy), 2,
+		    RANDOM_INTERRUPT);
 	}
 
 	KASSERT(p != NULL, ("ithread %s has no process", ie->ie_name));
@@ -1072,7 +1089,7 @@ intr_event_schedule_thread(struct intr_event *ie, struct intr_thread *it)
  * a PIC.
  */
 static int
-swi_assign_cpu(void *arg, int cpu)
+swi_assign_cpu(void *arg, u_char cpu)
 {
 
 	return (0);
@@ -1124,9 +1141,14 @@ swi_sched(void *cookie, int flags)
 	CTR3(KTR_INTR, "swi_sched: %s %s need=%d", ie->ie_name, ih->ih_name,
 	    ih->ih_need);
 
-	entropy.event = (uintptr_t)ih;
-	entropy.td = curthread;
-	random_harvest(&entropy, sizeof(entropy), 1, RANDOM_SWI);
+	if (harvest.swi) {
+		CTR2(KTR_INTR, "swi_sched: pid %d (%s) gathering entropy",
+		    curproc->p_pid, curthread->td_name);
+		entropy.event = (uintptr_t)ih;
+		entropy.td = curthread;
+		random_harvest(&entropy, sizeof(entropy), 1,
+		    RANDOM_SWI);
+	}
 
 	/*
 	 * Set ih_need for this handler so that if the ithread is already
@@ -1384,10 +1406,6 @@ intr_event_handle(struct intr_event *ie, struct trapframe *frame)
 	int error, ret, thread;
 
 	td = curthread;
-
-#ifdef KSTACK_USAGE_PROF
-	intr_prof_stack_use(td, frame);
-#endif
 
 	/* An interrupt with no event or handlers is a stray interrupt. */
 	if (ie == NULL || TAILQ_EMPTY(&ie->ie_handlers))

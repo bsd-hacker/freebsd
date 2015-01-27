@@ -10,9 +10,9 @@ WARNS?=	2
 CFLAGS+=-I${.CURDIR}/../mount
 
 .if defined(NOSUID)
-BINMODE=554
+BINMODE=550
 .else
-BINMODE=4554
+BINMODE=4550
 BINOWN=	root
 .endif
 BINGRP=	operator

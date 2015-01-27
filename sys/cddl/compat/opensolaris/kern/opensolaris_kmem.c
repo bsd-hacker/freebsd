@@ -133,6 +133,13 @@ kmem_size(void)
 	return (kmem_size_val);
 }
 
+uint64_t
+kmem_used(void)
+{
+
+	return (vmem_size(kmem_arena, VMEM_ALLOC));
+}
+
 static int
 kmem_std_constructor(void *mem, int size __unused, void *private, int flags)
 {

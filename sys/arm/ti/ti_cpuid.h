@@ -67,13 +67,16 @@
 
 #define	AM335X_DEVREV(x)	((x) >> 28)
 
-#define	CHIP_OMAP_4	0
-#define	CHIP_AM335X	1
+#define	CHIP_OMAP_3	0
+#define	CHIP_OMAP_4	1
+#define	CHIP_AM335X	2
 
 static __inline int ti_chip(void)
 {
 #if defined(SOC_OMAP4)
 	return CHIP_OMAP_4;
+#elif defined(SOC_OMAP3)
+	return CHIP_OMAP_3;
 #elif defined(SOC_TI_AM335X)
 	return CHIP_AM335X;
 #else

@@ -29,7 +29,7 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
-#ifdef illumos
+#if defined(sun)
 #pragma weak gmatch = _gmatch
 
 #include "gen_synonyms.h"
@@ -38,11 +38,10 @@
 #include <libgen.h>
 #include <stdlib.h>
 #include <limits.h>
-#ifdef illumos
+#if defined(sun)
 #include <widec.h>
 #include "_range.h"
 #else
-#include <ctype.h>
 /* DOODAD */ static int multibyte = 0;
 #define WCHAR_CSMASK    0x30000000
 #define valid_range(c1, c2) \

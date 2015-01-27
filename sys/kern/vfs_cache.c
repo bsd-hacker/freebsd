@@ -264,7 +264,7 @@ SYSCTL_INT(_debug, OID_AUTO, vfscache, CTLFLAG_RW, &doingcache, 0,
     "VFS namecache enabled");
 
 /* Export size information to userland */
-SYSCTL_INT(_debug_sizeof, OID_AUTO, namecache, CTLFLAG_RD, SYSCTL_NULL_INT_PTR,
+SYSCTL_INT(_debug_sizeof, OID_AUTO, namecache, CTLFLAG_RD, 0,
     sizeof(struct namecache), "sizeof(struct namecache)");
 
 /*
@@ -1043,6 +1043,14 @@ vfs_cache_lookup(ap)
 	return (error);
 }
 
+
+#ifndef _SYS_SYSPROTO_H_
+struct  __getcwd_args {
+	u_char	*buf;
+	u_int	buflen;
+};
+#endif
+
 /*
  * XXX All of these sysctls would probably be more productive dead.
  */
@@ -1061,7 +1069,7 @@ sys___getcwd(td, uap)
 }
 
 int
-kern___getcwd(struct thread *td, char *buf, enum uio_seg bufseg, u_int buflen)
+kern___getcwd(struct thread *td, u_char *buf, enum uio_seg bufseg, u_int buflen)
 {
 	char *bp, *tmpbuf;
 	struct filedesc *fdp;
@@ -1416,7 +1424,7 @@ cache_enter(struct vnode *dvp, struct vnode *vp, struct componentname *cnp)
  * This function updates path string to vnode's full global path
  * and checks the size of the new path string against the pathlen argument.
  *
- * Requires a locked, referenced vnode.
+ * Requires a locked, referenced vnode and GIANT lock held.
  * Vnode is re-locked on success or ENODEV, otherwise unlocked.
  *
  * If sysctl debug.disablefullpath is set, ENODEV is returned,

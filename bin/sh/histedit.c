@@ -166,10 +166,9 @@ sethistsize(const char *hs)
 	HistEvent he;
 
 	if (hist != NULL) {
-		if (hs == NULL || !is_number(hs))
+		if (hs == NULL || *hs == '\0' ||
+		   (histsize = atoi(hs)) < 0)
 			histsize = 100;
-		else
-			histsize = atoi(hs);
 		history(hist, &he, H_SETSIZE, histsize);
 		history(hist, &he, H_SETUNIQUE, 1);
 	}

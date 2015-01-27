@@ -99,8 +99,8 @@ SBValueList::SBValueList (const SBValueList &rhs) :
     if (log)
     {
         log->Printf ("SBValueList::SBValueList (rhs.ap=%p) => this.ap = %p",
-                     static_cast<void*>(rhs.IsValid() ? rhs.m_opaque_ap.get() : NULL),
-                     static_cast<void*>(m_opaque_ap.get()));
+                     (rhs.IsValid() ? rhs.m_opaque_ap.get() : NULL), 
+                     m_opaque_ap.get());
     }
 }
 
@@ -114,9 +114,9 @@ SBValueList::SBValueList (const ValueListImpl *lldb_object_ptr) :
 
     if (log)
     {
-        log->Printf ("SBValueList::SBValueList (lldb_object_ptr=%p) => this.ap = %p",
-                     static_cast<const void*>(lldb_object_ptr),
-                     static_cast<void*>(m_opaque_ap.get()));
+        log->Printf ("SBValueList::SBValueList (lldb_object_ptr=%p) => this.ap = %p", 
+                     lldb_object_ptr, 
+                     m_opaque_ap.get());
     }
 }
 
@@ -218,8 +218,7 @@ SBValueList::GetValueAtIndex (uint32_t idx) const
         SBStream sstr;
         sb_value.GetDescription (sstr);
         log->Printf ("SBValueList::GetValueAtIndex (this.ap=%p, idx=%d) => SBValue (this.sp = %p, '%s')", 
-                     static_cast<void*>(m_opaque_ap.get()), idx,
-                     static_cast<void*>(sb_value.GetSP().get()), sstr.GetData());
+                     m_opaque_ap.get(), idx, sb_value.GetSP().get(), sstr.GetData());
     }
 
     return sb_value;
@@ -238,8 +237,7 @@ SBValueList::GetSize () const
         size = m_opaque_ap->GetSize();
 
     if (log)
-        log->Printf ("SBValueList::GetSize (this.ap=%p) => %d",
-                     static_cast<void*>(m_opaque_ap.get()), size);
+        log->Printf ("SBValueList::GetSize (this.ap=%p) => %d", m_opaque_ap.get(), size);
 
     return size;
 }

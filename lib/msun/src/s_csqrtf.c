@@ -49,12 +49,12 @@ csqrtf(float complex z)
 
 	/* Handle special cases. */
 	if (z == 0)
-		return (CMPLXF(0, b));
+		return (cpackf(0, b));
 	if (isinf(b))
-		return (CMPLXF(INFINITY, b));
+		return (cpackf(INFINITY, b));
 	if (isnan(a)) {
 		t = (b - b) / (b - b);	/* raise invalid if b is not a NaN */
-		return (CMPLXF(a, t));	/* return NaN + NaN i */
+		return (cpackf(a, t));	/* return NaN + NaN i */
 	}
 	if (isinf(a)) {
 		/*
@@ -64,9 +64,9 @@ csqrtf(float complex z)
 		 * csqrtf(-inf + y i)   = 0   +  inf i
 		 */
 		if (signbit(a))
-			return (CMPLXF(fabsf(b - b), copysignf(a, b)));
+			return (cpackf(fabsf(b - b), copysignf(a, b)));
 		else
-			return (CMPLXF(a, copysignf(b - b, b)));
+			return (cpackf(a, copysignf(b - b, b)));
 	}
 	/*
 	 * The remaining special case (b is NaN) is handled just fine by
@@ -80,9 +80,9 @@ csqrtf(float complex z)
 	 */
 	if (a >= 0) {
 		t = sqrt((a + hypot(a, b)) * 0.5);
-		return (CMPLXF(t, b / (2.0 * t)));
+		return (cpackf(t, b / (2.0 * t)));
 	} else {
 		t = sqrt((-a + hypot(a, b)) * 0.5);
-		return (CMPLXF(fabsf(b) / (2.0 * t), copysignf(t, b)));
+		return (cpackf(fabsf(b) / (2.0 * t), copysignf(t, b)));
 	}
 }

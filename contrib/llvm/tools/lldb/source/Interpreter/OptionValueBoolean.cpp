@@ -16,7 +16,6 @@
 #include "lldb/Core/Stream.h"
 #include "lldb/Core/StringList.h"
 #include "lldb/Interpreter/Args.h"
-#include "llvm/ADT/STLExtras.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -59,7 +58,7 @@ OptionValueBoolean::SetValueFromCString (const char *value_cstr,
             }
             else
             {
-                if (value_cstr == nullptr)
+                if (value_cstr == NULL)
                     error.SetErrorString ("invalid boolean string value: NULL");
                 else if (value_cstr[0] == '\0')
                     error.SetErrorString ("invalid boolean string value <empty>");
@@ -111,7 +110,7 @@ OptionValueBoolean::AutoComplete (CommandInterpreter &interpreter,
         { "1"    , 1 },
         { "0"    , 1 },
     };
-    const size_t k_num_autocomplete_entries = llvm::array_lengthof(g_autocomplete_entries);
+    const size_t k_num_autocomplete_entries = sizeof(g_autocomplete_entries)/sizeof(StringEntry);
     
     if (s && s[0])
     {

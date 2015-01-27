@@ -37,7 +37,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/tty.h>
 #include <sys/ttydefaults.h>
 #include <sys/kernel.h>
-#include <sys/cons.h>
 #include <sys/consio.h>
 #include <sys/mouse.h>
 
@@ -166,7 +165,7 @@ static struct ttydevsw smdev_ttydevsw = {
 static void
 sm_attach_mouse(void *unused)
 {
-	if (!vty_enabled(VTY_SC))
+	if (getenv("hw.syscons.disable"))
 		return;
 	sysmouse_tty = tty_alloc(&smdev_ttydevsw, NULL);
 	tty_makedev(sysmouse_tty, NULL, "sysmouse");

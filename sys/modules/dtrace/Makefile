@@ -1,9 +1,11 @@
 # $FreeBSD$
 
+.include <bsd.own.mk>
 .include "Makefile.inc"
 
 SUBDIR=		dtmalloc	\
 		dtnfscl		\
+		dtnfsclient	\
 		dtrace		\
 		dtraceall	\
 		dtrace_test	\

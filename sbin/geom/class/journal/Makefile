@@ -5,7 +5,8 @@
 GEOM_CLASS=	journal
 SRCS+=	geom_journal_ufs.c
 
-LIBADD=	ufs md
+DPADD=	${LIBMD} ${LIBUFS}
+LDADD=	-lmd -lufs
 
 CFLAGS+=-I${.CURDIR}/../../../../sys
 

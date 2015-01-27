@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 15, 2015
+.Dd December 25, 2013
 .Dt PERIODIC.CONF 5
 .Os
 .Sh NAME
@@ -498,11 +498,6 @@ for yesterday's mail rejects.
 Set to
 .Dq Li YES
 if you want to enable NTP status check.
-.It Va daily_status_world_kernel
-.Pq Vt bool
-Set to
-.Dq Li YES
-to check the running userland and kernel are in sync.
 .It Va daily_queuerun_enable
 .Pq Vt bool
 Set to
@@ -710,7 +705,7 @@ they will be always run unless their
 or
 .Va ..._period
 variable is set to
-.Dq NO .
+.Dq No .
 .Bl -tag -offset 4n -width 2n
 .It Va security_status_diff_flags
 .Pq Vt str
@@ -978,4 +973,4 @@ The
 file appeared in
 .Fx 4.1 .
 .Sh AUTHORS
-.An Brian Somers Aq Mt brian@Awfulhak.org
+.An Brian Somers Aq brian@Awfulhak.org

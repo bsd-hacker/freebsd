@@ -10,6 +10,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/edit_distance.h"
 #include <bitset>
 
@@ -281,7 +282,7 @@ void StringRef::split(SmallVectorImpl<StringRef> &A,
   // rest.data() is used to distinguish cases like "a," that splits into
   // "a" + "" and "a" that splits into "a" + 0.
   for (int splits = 0;
-       rest.data() != nullptr && (MaxSplit < 0 || splits < MaxSplit);
+       rest.data() != NULL && (MaxSplit < 0 || splits < MaxSplit);
        ++splits) {
     std::pair<StringRef, StringRef> p = rest.split(Separators);
 
@@ -290,7 +291,7 @@ void StringRef::split(SmallVectorImpl<StringRef> &A,
     rest = p.second;
   }
   // If we have a tail left, add it.
-  if (rest.data() != nullptr && (rest.size() != 0 || KeepEmpty))
+  if (rest.data() != NULL && (rest.size() != 0 || KeepEmpty))
     A.push_back(rest);
 }
 

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,8 +41,8 @@
  * POSSIBILITY OF SUCH DAMAGES.
  */
 
+
 #define __UTXFINIT_C__
-#define EXPORT_ACPI_INTERFACES
 
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
@@ -130,19 +130,11 @@ AcpiInitializeSubsystem (
 
     /* If configured, initialize the AML debugger */
 
-#ifdef ACPI_DEBUGGER
-    Status = AcpiDbInitialize ();
-    if (ACPI_FAILURE (Status))
-    {
-        ACPI_EXCEPTION ((AE_INFO, Status, "During Debugger initialization"));
-        return_ACPI_STATUS (Status);
-    }
-#endif
-
-    return_ACPI_STATUS (AE_OK);
+    ACPI_DEBUGGER_EXEC (Status = AcpiDbInitialize ());
+    return_ACPI_STATUS (Status);
 }
 
-ACPI_EXPORT_SYMBOL_INIT (AcpiInitializeSubsystem)
+ACPI_EXPORT_SYMBOL (AcpiInitializeSubsystem)
 
 
 /*******************************************************************************
@@ -264,7 +256,7 @@ AcpiEnableSubsystem (
     return_ACPI_STATUS (Status);
 }
 
-ACPI_EXPORT_SYMBOL_INIT (AcpiEnableSubsystem)
+ACPI_EXPORT_SYMBOL (AcpiEnableSubsystem)
 
 
 /*******************************************************************************
@@ -363,4 +355,4 @@ AcpiInitializeObjects (
     return_ACPI_STATUS (Status);
 }
 
-ACPI_EXPORT_SYMBOL_INIT (AcpiInitializeObjects)
+ACPI_EXPORT_SYMBOL (AcpiInitializeObjects)

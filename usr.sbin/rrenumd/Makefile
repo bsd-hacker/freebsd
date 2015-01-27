@@ -23,7 +23,8 @@ YFLAGS=	-d
 
 WARNS?=	2
 
-LIBADD=	ipsec l y
+LDADD=	-lipsec -ll -ly
+DPADD=	${LIBIPSEC} ${LIBL} ${LIBY}
 
 CLEANFILES=	y.tab.h
 SRCS+=	y.tab.h

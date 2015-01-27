@@ -1,4 +1,7 @@
-/* Copyright (c) 2008 The NetBSD Foundation, Inc.
+/*
+ * Automated Testing Framework (atf)
+ *
+ * Copyright (c) 2008 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,9 +24,8 @@
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
-
-#include "atf-c/check.h"
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <sys/wait.h>
 
@@ -35,15 +37,17 @@
 #include <unistd.h>
 
 #include "atf-c/build.h"
+#include "atf-c/check.h"
+#include "atf-c/config.h"
 #include "atf-c/defs.h"
-#include "atf-c/detail/dynstr.h"
-#include "atf-c/detail/env.h"
-#include "atf-c/detail/fs.h"
-#include "atf-c/detail/list.h"
-#include "atf-c/detail/process.h"
-#include "atf-c/detail/sanity.h"
 #include "atf-c/error.h"
 #include "atf-c/utils.h"
+
+#include "detail/dynstr.h"
+#include "detail/fs.h"
+#include "detail/list.h"
+#include "detail/process.h"
+#include "detail/sanity.h"
 
 /* ---------------------------------------------------------------------
  * Auxiliary functions.
@@ -56,7 +60,7 @@ create_tmpdir(atf_fs_path_t *dir)
     atf_error_t err;
 
     err = atf_fs_path_init_fmt(dir, "%s/check.XXXXXX",
-                               atf_env_get_with_default("TMPDIR", "/tmp"));
+                               atf_config_get("atf_workdir"));
     if (atf_is_error(err))
         goto out;
 

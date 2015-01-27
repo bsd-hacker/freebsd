@@ -78,6 +78,7 @@ __FBSDID("$FreeBSD$");
 #ifdef INET6
 #include <netinet/icmp6.h>
 #include <netinet/ip6.h>
+#include <netinet6/ip6protosw.h>
 #include <netinet6/in6_var.h>
 #include <netinet6/ip6_var.h>
 #include <netinet6/scope6_var.h>
@@ -216,21 +217,18 @@ static VNET_DEFINE(int, carp_ifdown_adj) = CARP_MAXSKEW;
 static int carp_demote_adj_sysctl(SYSCTL_HANDLER_ARGS);
 
 SYSCTL_NODE(_net_inet, IPPROTO_CARP,	carp,	CTLFLAG_RW, 0,	"CARP");
-SYSCTL_INT(_net_inet_carp, OID_AUTO, allow, CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_VNET_INT(_net_inet_carp, OID_AUTO, allow, CTLFLAG_RW,
     &VNET_NAME(carp_allow), 0, "Accept incoming CARP packets");
-SYSCTL_INT(_net_inet_carp, OID_AUTO, preempt, CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_VNET_INT(_net_inet_carp, OID_AUTO, preempt, CTLFLAG_RW,
     &VNET_NAME(carp_preempt), 0, "High-priority backup preemption mode");
-SYSCTL_INT(_net_inet_carp, OID_AUTO, log, CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_VNET_INT(_net_inet_carp, OID_AUTO, log, CTLFLAG_RW,
     &VNET_NAME(carp_log), 0, "CARP log level");
-SYSCTL_PROC(_net_inet_carp, OID_AUTO, demotion,
-    CTLFLAG_VNET | CTLTYPE_INT | CTLFLAG_RW,
+SYSCTL_VNET_PROC(_net_inet_carp, OID_AUTO, demotion, CTLTYPE_INT|CTLFLAG_RW,
     0, 0, carp_demote_adj_sysctl, "I",
     "Adjust demotion factor (skew of advskew)");
-SYSCTL_INT(_net_inet_carp, OID_AUTO, senderr_demotion_factor,
-    CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_VNET_INT(_net_inet_carp, OID_AUTO, senderr_demotion_factor, CTLFLAG_RW,
     &VNET_NAME(carp_senderr_adj), 0, "Send error demotion factor adjustment");
-SYSCTL_INT(_net_inet_carp, OID_AUTO, ifdown_demotion_factor,
-    CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_VNET_INT(_net_inet_carp, OID_AUTO, ifdown_demotion_factor, CTLFLAG_RW,
     &VNET_NAME(carp_ifdown_adj), 0,
     "Interface down demotion factor adjustment");
 
@@ -304,12 +302,11 @@ static void	carp_destroy(struct carp_softc *);
 static struct carp_if
 		*carp_alloc_if(struct ifnet *);
 static void	carp_free_if(struct carp_if *);
-static void	carp_set_state(struct carp_softc *, int, const char* reason);
+static void	carp_set_state(struct carp_softc *, int);
 static void	carp_sc_state(struct carp_softc *);
 static void	carp_setrun(struct carp_softc *, sa_family_t);
 static void	carp_master_down(void *);
-static void	carp_master_down_locked(struct carp_softc *,
-    		    const char* reason);
+static void	carp_master_down_locked(struct carp_softc *);
 static void	carp_send_ad(void *);
 static void	carp_send_ad_locked(struct carp_softc *);
 static void	carp_addroute(struct carp_softc *);
@@ -438,22 +435,18 @@ carp_hmac_verify(struct carp_softc *sc, uint32_t counter[2],
  * but it seems more efficient this way or not possible otherwise.
  */
 #ifdef INET
-int
-carp_input(struct mbuf **mp, int *offp, int proto)
+void
+carp_input(struct mbuf *m, int hlen)
 {
-	struct mbuf *m = *mp;
 	struct ip *ip = mtod(m, struct ip *);
 	struct carp_header *ch;
 	int iplen, len;
-
-	iplen = *offp;
-	*mp = NULL;
 
 	CARPSTATS_INC(carps_ipackets);
 
 	if (!V_carp_allow) {
 		m_freem(m);
-		return (IPPROTO_DONE);
+		return;
 	}
 
 	/* verify that the IP TTL is 255.  */
@@ -463,7 +456,7 @@ carp_input(struct mbuf **mp, int *offp, int proto)
 		    ip->ip_ttl,
 		    m->m_pkthdr.rcvif->if_xname);
 		m_freem(m);
-		return (IPPROTO_DONE);
+		return;
 	}
 
 	iplen = ip->ip_hl << 2;
@@ -474,14 +467,14 @@ carp_input(struct mbuf **mp, int *offp, int proto)
 		    "on %s\n", __func__, m->m_len - sizeof(struct ip),
 		    m->m_pkthdr.rcvif->if_xname);
 		m_freem(m);
-		return (IPPROTO_DONE);
+		return;
 	}
 
 	if (iplen + sizeof(*ch) < m->m_len) {
 		if ((m = m_pullup(m, iplen + sizeof(*ch))) == NULL) {
 			CARPSTATS_INC(carps_hdrops);
 			CARP_DEBUG("%s: pullup failed\n", __func__);
-			return (IPPROTO_DONE);
+			return;
 		}
 		ip = mtod(m, struct ip *);
 	}
@@ -498,12 +491,12 @@ carp_input(struct mbuf **mp, int *offp, int proto)
 		    m->m_pkthdr.len,
 		    m->m_pkthdr.rcvif->if_xname);
 		m_freem(m);
-		return (IPPROTO_DONE);
+		return;
 	}
 
 	if ((m = m_pullup(m, len)) == NULL) {
 		CARPSTATS_INC(carps_hdrops);
-		return (IPPROTO_DONE);
+		return;
 	}
 	ip = mtod(m, struct ip *);
 	ch = (struct carp_header *)((char *)ip + iplen);
@@ -515,12 +508,11 @@ carp_input(struct mbuf **mp, int *offp, int proto)
 		CARP_DEBUG("%s: checksum failed on %s\n", __func__,
 		    m->m_pkthdr.rcvif->if_xname);
 		m_freem(m);
-		return (IPPROTO_DONE);
+		return;
 	}
 	m->m_data -= iplen;
 
 	carp_input_c(m, ch, AF_INET);
-	return (IPPROTO_DONE);
 }
 #endif
 
@@ -655,8 +647,11 @@ carp_input_c(struct mbuf *m, struct carp_header *ch, sa_family_t af)
 		if (timevalcmp(&sc_tv, &ch_tv, >) ||
 		    timevalcmp(&sc_tv, &ch_tv, ==)) {
 			callout_stop(&sc->sc_ad_tmo);
-			carp_set_state(sc, BACKUP,
-			    "more frequent advertisement received");
+			CARP_LOG("VHID %u@%s: MASTER -> BACKUP "
+			    "(more frequent advertisement received)\n",
+			    sc->sc_vhid,
+			    sc->sc_carpdev->if_xname);
+			carp_set_state(sc, BACKUP);
 			carp_setrun(sc, 0);
 			carp_delroute(sc);
 		}
@@ -667,8 +662,11 @@ carp_input_c(struct mbuf *m, struct carp_header *ch, sa_family_t af)
 		 * and this one claims to be slower, treat him as down.
 		 */
 		if (V_carp_preempt && timevalcmp(&sc_tv, &ch_tv, <)) {
-			carp_master_down_locked(sc,
-			    "preempting a slower master");
+			CARP_LOG("VHID %u@%s: BACKUP -> MASTER "
+			    "(preempting a slower master)\n",
+			    sc->sc_vhid,
+			    sc->sc_carpdev->if_xname);
+			carp_master_down_locked(sc);
 			break;
 		}
 
@@ -679,7 +677,11 @@ carp_input_c(struct mbuf *m, struct carp_header *ch, sa_family_t af)
 		 */
 		sc_tv.tv_sec = sc->sc_advbase * 3;
 		if (timevalcmp(&sc_tv, &ch_tv, <)) {
-			carp_master_down_locked(sc, "master will time out");
+			CARP_LOG("VHID %u@%s: BACKUP -> MASTER "
+			    "(master timed out)\n",
+			    sc->sc_vhid,
+			    sc->sc_carpdev->if_xname);
+			carp_master_down_locked(sc);
 			break;
 		}
 
@@ -831,7 +833,7 @@ carp_send_ad_locked(struct carp_softc *sc)
 		m->m_pkthdr.len = len;
 		m->m_pkthdr.rcvif = NULL;
 		m->m_len = len;
-		M_ALIGN(m, m->m_len);
+		MH_ALIGN(m, m->m_len);
 		m->m_flags |= M_MCAST;
 		ip = mtod(m, struct ip *);
 		ip->ip_v = IPVERSION;
@@ -883,7 +885,7 @@ carp_send_ad_locked(struct carp_softc *sc)
 		m->m_pkthdr.len = len;
 		m->m_pkthdr.rcvif = NULL;
 		m->m_len = len;
-		M_ALIGN(m, m->m_len);
+		MH_ALIGN(m, m->m_len);
 		m->m_flags |= M_MCAST;
 		ip6 = mtod(m, struct ip6_hdr *);
 		bzero(ip6, sizeof(*ip6));
@@ -1144,7 +1146,10 @@ carp_master_down(void *v)
 
 	CURVNET_SET(sc->sc_carpdev->if_vnet);
 	if (sc->sc_state == BACKUP) {
-		carp_master_down_locked(sc, "master timed out");
+		CARP_LOG("VHID %u@%s: BACKUP -> MASTER (master down)\n",
+		    sc->sc_vhid,
+		    sc->sc_carpdev->if_xname);
+		carp_master_down_locked(sc);
 	}
 	CURVNET_RESTORE();
 
@@ -1152,14 +1157,14 @@ carp_master_down(void *v)
 }
 
 static void
-carp_master_down_locked(struct carp_softc *sc, const char *reason)
+carp_master_down_locked(struct carp_softc *sc)
 {
 
 	CARP_LOCK_ASSERT(sc);
 
 	switch (sc->sc_state) {
 	case BACKUP:
-		carp_set_state(sc, MASTER, reason);
+		carp_set_state(sc, MASTER);
 		carp_send_ad_locked(sc);
 #ifdef INET
 		carp_send_arp(sc);
@@ -1200,7 +1205,10 @@ carp_setrun(struct carp_softc *sc, sa_family_t af)
 
 	switch (sc->sc_state) {
 	case INIT:
-		carp_set_state(sc, BACKUP, "initialization complete");
+		CARP_LOG("VHID %u@%s: INIT -> BACKUP\n",
+		    sc->sc_vhid,
+		    sc->sc_carpdev->if_xname);
+		carp_set_state(sc, BACKUP);
 		carp_setrun(sc, 0);
 		break;
 	case BACKUP:
@@ -1688,11 +1696,13 @@ carp_ioctl(struct ifreq *ifr, u_long cmd, struct thread *td)
 			}
 			sc->sc_advbase = carpr.carpr_advbase;
 		}
-		if (carpr.carpr_advskew >= 255) {
-			error = EINVAL;
-			break;
+		if (carpr.carpr_advskew > 0) {
+			if (carpr.carpr_advskew >= 255) {
+				error = EINVAL;
+				break;
+			}
+			sc->sc_advskew = carpr.carpr_advskew;
 		}
-		sc->sc_advskew = carpr.carpr_advskew;
 		if (carpr.carpr_key[0] != '\0') {
 			bcopy(carpr.carpr_key, sc->sc_key, sizeof(sc->sc_key));
 			carp_hmac_prepare(sc);
@@ -1702,14 +1712,12 @@ carp_ioctl(struct ifreq *ifr, u_long cmd, struct thread *td)
 			switch (carpr.carpr_state) {
 			case BACKUP:
 				callout_stop(&sc->sc_ad_tmo);
-				carp_set_state(sc, BACKUP,
-				    "user requested via ifconfig");
+				carp_set_state(sc, BACKUP);
 				carp_setrun(sc, 0);
 				carp_delroute(sc);
 				break;
 			case MASTER:
-				carp_master_down_locked(sc,
-				    "user requested via ifconfig");
+				carp_master_down_locked(sc);
 				break;
 			default:
 				break;
@@ -1951,7 +1959,7 @@ carp_detach_locked(struct ifaddr *ifa)
 }
 
 static void
-carp_set_state(struct carp_softc *sc, int state, const char *reason)
+carp_set_state(struct carp_softc *sc, int state)
 {
 
 	CARP_LOCK_ASSERT(sc);
@@ -1960,14 +1968,10 @@ carp_set_state(struct carp_softc *sc, int state, const char *reason)
 		const char *carp_states[] = { CARP_STATES };
 		char subsys[IFNAMSIZ+5];
 
-		snprintf(subsys, IFNAMSIZ+5, "%u@%s", sc->sc_vhid,
-		    sc->sc_carpdev->if_xname);
-
-		CARP_LOG("%s: %s -> %s (%s)\n", subsys,
-		    carp_states[sc->sc_state], carp_states[state], reason);
-
 		sc->sc_state = state;
 
+		snprintf(subsys, IFNAMSIZ+5, "%u@%s", sc->sc_vhid,
+		    sc->sc_carpdev->if_xname);
 		devctl_notify("CARP", subsys, carp_states[state], NULL);
 	}
 }
@@ -2001,13 +2005,13 @@ carp_sc_state(struct carp_softc *sc)
 #ifdef INET6
 		callout_stop(&sc->sc_md6_tmo);
 #endif
-		carp_set_state(sc, INIT, "hardware interface down");
+		carp_set_state(sc, INIT);
 		carp_setrun(sc, 0);
 		if (!sc->sc_suppress)
 			carp_demote_adj(V_carp_ifdown_adj, "interface down");
 		sc->sc_suppress = 1;
 	} else {
-		carp_set_state(sc, INIT, "hardware interface up");
+		carp_set_state(sc, INIT);
 		carp_setrun(sc, 0);
 		if (sc->sc_suppress)
 			carp_demote_adj(-V_carp_ifdown_adj, "interface up");
@@ -2046,7 +2050,7 @@ static struct protosw in_carp_protosw = {
 	.pr_protocol =		IPPROTO_CARP,
 	.pr_flags =		PR_ATOMIC|PR_ADDR,
 	.pr_input =		carp_input,
-	.pr_output =		rip_output,
+	.pr_output =		(pr_output_t *)rip_output,
 	.pr_ctloutput =		rip_ctloutput,
 	.pr_usrreqs =		&rip_usrreqs
 };
@@ -2054,7 +2058,7 @@ static struct protosw in_carp_protosw = {
 
 #ifdef INET6
 extern	struct domain inet6domain;
-static struct protosw in6_carp_protosw = {
+static struct ip6protosw in6_carp_protosw = {
 	.pr_type =		SOCK_RAW,
 	.pr_domain =		&inet6domain,
 	.pr_protocol =		IPPROTO_CARP,

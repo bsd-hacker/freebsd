@@ -46,7 +46,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <sys/timetc.h>
 
-#include <machine/armreg.h>
 #include <machine/bus.h>
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
@@ -176,7 +175,7 @@ cpu_initclocks(void)
 
 	/* Report the clock frequency. */
 
-	oldirqstate = disable_interrupts(PSR_I);
+	oldirqstate = disable_interrupts(I32_bit);
 
 	irq = bus_alloc_resource(dev, SYS_RES_IRQ, &rid, IXP425_INT_TMR0,
 	    IXP425_INT_TMR0, 1, RF_ACTIVE);

@@ -136,8 +136,7 @@ static driver_t ofwbus_driver = {
 	sizeof(struct ofwbus_softc)
 };
 static devclass_t ofwbus_devclass;
-EARLY_DRIVER_MODULE(ofwbus, nexus, ofwbus_driver, ofwbus_devclass, 0, 0,
-    BUS_PASS_BUS + BUS_PASS_ORDER_MIDDLE);
+EARLY_DRIVER_MODULE(ofwbus, nexus, ofwbus_driver, ofwbus_devclass, 0, 0, BUS_PASS_BUS);
 MODULE_VERSION(ofwbus, 1);
 
 static const char *const ofwbus_excl_name[] = {
@@ -399,16 +398,10 @@ ofwbus_adjust_resource(device_t bus, device_t child __unused, int type,
 }
 
 static int
-ofwbus_release_resource(device_t bus, device_t child, int type,
+ofwbus_release_resource(device_t bus __unused, device_t child, int type,
     int rid, struct resource *r)
 {
-	struct resource_list_entry *rle;
 	int error;
-
-	/* Clean resource list entry */
-	rle = resource_list_find(BUS_GET_RESOURCE_LIST(bus, child), type, rid);
-	if (rle != NULL)
-		rle->res = NULL;
 
 	if ((rman_get_flags(r) & RF_ACTIVE) != 0) {
 		error = bus_deactivate_resource(child, type, rid, r);
@@ -441,7 +434,12 @@ ofwbus_setup_dinfo(device_t dev, phandle_t node)
 {
 	struct ofwbus_softc *sc;
 	struct ofwbus_devinfo *ndi;
-	const char *nodename;
+	uint32_t *reg, *intr, icells;
+	uint64_t phys, size;
+	phandle_t iparent;
+	int i, j;
+	int nintr;
+	int nreg;
 
 	sc = device_get_softc(dev);
 
@@ -450,16 +448,57 @@ ofwbus_setup_dinfo(device_t dev, phandle_t node)
 		free(ndi, M_DEVBUF);
 		return (NULL);
 	}
-	nodename = ndi->ndi_obdinfo.obd_name;
-	if (OFWBUS_EXCLUDED(nodename, ndi->ndi_obdinfo.obd_type)) {
+	if (OFWBUS_EXCLUDED(ndi->ndi_obdinfo.obd_name,
+	    ndi->ndi_obdinfo.obd_type)) {
 		ofw_bus_gen_destroy_devinfo(&ndi->ndi_obdinfo);
 		free(ndi, M_DEVBUF);
 		return (NULL);
 	}
 
 	resource_list_init(&ndi->ndi_rl);
-	ofw_bus_reg_to_rl(dev, node, sc->acells, sc->scells, &ndi->ndi_rl);
-	ofw_bus_intr_to_rl(dev, node, &ndi->ndi_rl);
+	nreg = OF_getencprop_alloc(node, "reg", sizeof(*reg), (void **)&reg);
+	if (nreg == -1)
+		nreg = 0;
+	if (nreg % (sc->acells + sc->scells) != 0) {
+		if (bootverbose)
+			device_printf(dev, "Malformed reg property on <%s>\n",
+			    ndi->ndi_obdinfo.obd_name);
+		nreg = 0;
+	}
+
+	for (i = 0; i < nreg; i += sc->acells + sc->scells) {
+		phys = size = 0;
+		for (j = 0; j < sc->acells; j++) {
+			phys <<= 32;
+			phys |= reg[i + j];
+		}
+		for (j = 0; j < sc->scells; j++) {
+			size <<= 32;
+			size |= reg[i + sc->acells + j];
+		}
+		/* Skip the dummy reg property of glue devices like ssm(4). */
+		if (size != 0)
+			resource_list_add(&ndi->ndi_rl, SYS_RES_MEMORY, i,
+			    phys, phys + size - 1, size);
+	}
+	free(reg, M_OFWPROP);
+
+	nintr = OF_getencprop_alloc(node, "interrupts",  sizeof(*intr),
+	    (void **)&intr);
+	if (nintr > 0) {
+		iparent = 0;
+		OF_searchencprop(node, "interrupt-parent", &iparent,
+		    sizeof(iparent));
+		OF_searchencprop(OF_xref_phandle(iparent), "#interrupt-cells",
+		    &icells, sizeof(icells));
+		for (i = 0; i < nintr; i+= icells) {
+			intr[i] = ofw_bus_map_intr(dev, iparent, icells,
+			    &intr[i]);
+			resource_list_add(&ndi->ndi_rl, SYS_RES_IRQ, i, intr[i],
+			    intr[i], 1);
+		}
+		free(intr, M_OFWPROP);
+	}
 
 	return (ndi);
 }

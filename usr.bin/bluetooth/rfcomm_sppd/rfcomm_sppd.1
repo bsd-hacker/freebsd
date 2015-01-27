@@ -33,9 +33,10 @@
 .Nd RFCOMM Serial Port Profile daemon
 .Sh SYNOPSIS
 .Nm
-.Op Fl bhtS
+.Op Fl bhS
 .Fl a Ar address
 .Fl c Ar channel
+.Op Fl t Ar tty
 .Sh DESCRIPTION
 The
 .Nm
@@ -52,7 +53,7 @@ Once connection is established, the
 .Nm
 utility provides access to the server's remote serial port via stdin/stdout
 or via
-.Xr pts 4
+.Xr pty 4
 interface if
 .Fl t
 option was specified.
@@ -71,7 +72,8 @@ daemon.
 If
 .Fl t
 options was specified,
-the server side of the virtual serial port is attached to a pseudo-terminal.
+the server side of the virtual serial port is attached to the pseudo-terminal
+.Ar tty .
 Otherwise the virtual serial port is attached to the stdin/stdout.
 .Nm
 should be run as root in order to communicate with
@@ -144,22 +146,24 @@ Display usage message and exit.
 .It Fl S
 Server mode; see
 .Sx DESCRIPTION .
-.It Fl t
-Use slave pseudo tty.
+.It Fl t Ar tty
+Slave pseudo tty name.
 If not set stdin/stdout will be used.
 This option is required if
 .Fl b
 option was specified.
 .El
 .Sh FILES
-.Bl -tag -width ".Pa /dev/pts/[num]" -compact
-.It Pa /dev/pts/[num]
+.Bl -tag -width ".Pa /dev/tty[p-sP-S][0-9a-v]" -compact
+.It Pa /dev/pty[p-sP-S][0-9a-v]
+master pseudo terminals
+.It Pa /dev/tty[p-sP-S][0-9a-v]
 slave pseudo terminals
 .El
 .Sh EXIT STATUS
 .Ex -std
 .Sh EXAMPLES
-.Dl "rfcomm_sppd -a 00:01:02:03:04:05 -c 1 -t"
+.Dl "rfcomm_sppd -a 00:01:02:03:04:05 -c 1 -t /dev/ttyp1"
 .Pp
 Will start the
 .Nm
@@ -167,20 +171,16 @@ utility and open RFCOMM connection to the server at
 .Li 00:01:02:03:04:05
 and channel
 .Li 1 .
-Once the connection has been established, a
-.Xr pts 4
+Once the connection has been established,
+.Pa /dev/ttyp1
 can be used to talk to the remote serial port on the server.
-.Nm
-prints the name of the
-.Xr pts 4
-to use on stdout.
 .Sh SEE ALSO
 .Xr bluetooth 3 ,
 .Xr ng_btsocket 4 ,
-.Xr pts 4 ,
+.Xr pty 4 ,
 .Xr rfcomm_pppd 8 ,
 .Xr sdpd 8
 .Sh AUTHORS
-.An Maksim Yevmenkin Aq Mt m_evmenkin@yahoo.com
+.An Maksim Yevmenkin Aq m_evmenkin@yahoo.com
 .Sh BUGS
 Please report if found.

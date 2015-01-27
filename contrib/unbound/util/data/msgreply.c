@@ -78,7 +78,7 @@ parse_create_qinfo(sldns_buffer* pkt, struct msg_parse* msg,
 }
 
 /** constructor for replyinfo */
-struct reply_info*
+static struct reply_info*
 construct_reply_info_base(struct regional* region, uint16_t flags, size_t qd,
 	time_t ttl, time_t prettl, size_t an, size_t ns, size_t ar, 
 	size_t total, enum sec_status sec)
@@ -576,12 +576,10 @@ reply_info_delete(void* d, void* ATTR_UNUSED(arg))
 }
 
 hashvalue_t 
-query_info_hash(struct query_info *q, uint16_t flags)
+query_info_hash(struct query_info *q)
 {
 	hashvalue_t h = 0xab;
 	h = hashlittle(&q->qtype, sizeof(q->qtype), h);
-	if(q->qtype == LDNS_RR_TYPE_AAAA && (flags&BIT_CD))
-		h++;
 	h = hashlittle(&q->qclass, sizeof(q->qclass), h);
 	h = dname_query_hash(q->qname, h);
 	return h;
@@ -773,14 +771,15 @@ log_dns_msg(const char* str, struct query_info* qinfo, struct reply_info* rep)
 		region, 65535, 1)) {
 		log_info("%s: log_dns_msg: out of memory", str);
 	} else {
-		char* s = sldns_wire2str_pkt(sldns_buffer_begin(buf),
+		char* str = sldns_wire2str_pkt(sldns_buffer_begin(buf),
 			sldns_buffer_limit(buf));
-		if(!s) {
+		if(!str) {
 			log_info("%s: log_dns_msg: ldns tostr failed", str);
 		} else {
-			log_info("%s %s", str, s);
+			log_info("%s %s", 
+				str, (char*)sldns_buffer_begin(buf));
 		}
-		free(s);
+		free(str);
 	}
 	sldns_buffer_free(buf);
 	regional_destroy(region);

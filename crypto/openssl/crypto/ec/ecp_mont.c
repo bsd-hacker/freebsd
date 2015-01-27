@@ -72,6 +72,9 @@
 
 const EC_METHOD *EC_GFp_mont_method(void)
 	{
+#ifdef OPENSSL_FIPS
+	return fips_ec_gfp_mont_method();
+#else
 	static const EC_METHOD ret = {
 		EC_FLAGS_DEFAULT_OCT,
 		NID_X9_62_prime_field,
@@ -111,12 +114,8 @@ const EC_METHOD *EC_GFp_mont_method(void)
 		ec_GFp_mont_field_decode,
 		ec_GFp_mont_field_set_to_one };
 
-#ifdef OPENSSL_FIPS
-	if (FIPS_mode())
-		return fips_ec_gfp_mont_method();
-#endif
-
 	return &ret;
+#endif
 	}
 
 

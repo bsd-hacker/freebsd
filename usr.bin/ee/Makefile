@@ -8,7 +8,8 @@ CFLAGS+= -DHAS_NCURSES -DHAS_UNISTD -DHAS_STDARG -DHAS_STDLIB \
 PROG=	ee
 LINKS=	${BINDIR}/ee ${BINDIR}/ree ${BINDIR}/ee ${BINDIR}/edit
 MLINKS=	ee.1 ree.1 ee.1 edit.1
-LIBADD=	ncursesw
+DPADD=	${LIBNCURSES}
+LDADD=	-lncurses
 
 WARNS?=	2
 

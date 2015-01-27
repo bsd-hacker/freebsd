@@ -24,12 +24,10 @@ using namespace ento;
 namespace {
 class WalkAST : public StmtVisitor<WalkAST> {
   BugReporter &BR;
-  const CheckerBase *Checker;
   AnalysisDeclContext* AC;
 
 public:
-  WalkAST(BugReporter &br, const CheckerBase *checker, AnalysisDeclContext *ac)
-      : BR(br), Checker(checker), AC(ac) {}
+  WalkAST(BugReporter &br, AnalysisDeclContext* ac) : BR(br), AC(ac) {}
   void VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E);
   void VisitStmt(Stmt *S) { VisitChildren(S); }
   void VisitChildren(Stmt *S);
@@ -47,7 +45,7 @@ void WalkAST::VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E) {
   if (E->getKind() != UETT_SizeOf)
     return;
 
-  // If an explicit type is used in the code, usually the coder knows what they are
+  // If an explicit type is used in the code, usually the coder knows what he is
   // doing.
   if (E->isArgumentType())
     return;
@@ -64,7 +62,7 @@ void WalkAST::VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E) {
 
     PathDiagnosticLocation ELoc =
       PathDiagnosticLocation::createBegin(E, BR.getSourceManager(), AC);
-    BR.EmitBasicReport(AC->getDecl(), Checker,
+    BR.EmitBasicReport(AC->getDecl(),
                        "Potential unintended use of sizeof() on pointer type",
                        categories::LogicError,
                        "The code calls sizeof() on a pointer type. "
@@ -82,7 +80,7 @@ class SizeofPointerChecker : public Checker<check::ASTCodeBody> {
 public:
   void checkASTCodeBody(const Decl *D, AnalysisManager& mgr,
                         BugReporter &BR) const {
-    WalkAST walker(BR, this, mgr.getAnalysisDeclContext(D));
+    WalkAST walker(BR, mgr.getAnalysisDeclContext(D));
     walker.Visit(D->getBody());
   }
 };

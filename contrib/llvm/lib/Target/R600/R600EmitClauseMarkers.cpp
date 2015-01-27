@@ -25,15 +25,12 @@
 
 using namespace llvm;
 
-namespace llvm {
-  void initializeR600EmitClauseMarkersPass(PassRegistry&);
-}
-
 namespace {
 
-class R600EmitClauseMarkers : public MachineFunctionPass {
+class R600EmitClauseMarkersPass : public MachineFunctionPass {
 
 private:
+  static char ID;
   const R600InstrInfo *TII;
   int Address;
 
@@ -290,13 +287,10 @@ private:
   }
 
 public:
-  static char ID;
-  R600EmitClauseMarkers() : MachineFunctionPass(ID), TII(nullptr), Address(0) {
+  R600EmitClauseMarkersPass(TargetMachine &tm) : MachineFunctionPass(ID),
+    TII(0), Address(0) { }
 
-    initializeR600EmitClauseMarkersPass(*PassRegistry::getPassRegistry());
-  }
-
-  bool runOnMachineFunction(MachineFunction &MF) override {
+  virtual bool runOnMachineFunction(MachineFunction &MF) {
     TII = static_cast<const R600InstrInfo *>(MF.getTarget().getInstrInfo());
 
     for (MachineFunction::iterator BB = MF.begin(), BB_E = MF.end();
@@ -315,21 +309,17 @@ public:
     return false;
   }
 
-  const char *getPassName() const override {
+  const char *getPassName() const {
     return "R600 Emit Clause Markers Pass";
   }
 };
 
-char R600EmitClauseMarkers::ID = 0;
+char R600EmitClauseMarkersPass::ID = 0;
 
 } // end anonymous namespace
 
-INITIALIZE_PASS_BEGIN(R600EmitClauseMarkers, "emitclausemarkers",
-                      "R600 Emit Clause Markters", false, false)
-INITIALIZE_PASS_END(R600EmitClauseMarkers, "emitclausemarkers",
-                      "R600 Emit Clause Markters", false, false)
 
-llvm::FunctionPass *llvm::createR600EmitClauseMarkers() {
-  return new R600EmitClauseMarkers();
+llvm::FunctionPass *llvm::createR600EmitClauseMarkers(TargetMachine &TM) {
+  return new R600EmitClauseMarkersPass(TM);
 }
 

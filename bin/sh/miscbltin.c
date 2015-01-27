@@ -411,32 +411,13 @@ static const struct limits limits[] = {
 	{ (char *) 0,		(char *)0,	0,		   0, '\0' }
 };
 
-enum limithow { SOFT = 0x1, HARD = 0x2 };
-
-static void
-printlimit(enum limithow how, const struct rlimit *limit,
-    const struct limits *l)
-{
-	rlim_t val = 0;
-
-	if (how & SOFT)
-		val = limit->rlim_cur;
-	else if (how & HARD)
-		val = limit->rlim_max;
-	if (val == RLIM_INFINITY)
-		out1str("unlimited\n");
-	else
-	{
-		val /= l->factor;
-		out1fmt("%jd\n", (intmax_t)val);
-	}
-}
-
 int
 ulimitcmd(int argc __unused, char **argv __unused)
 {
+	int	c;
 	rlim_t val = 0;
-	enum limithow how = SOFT | HARD;
+	enum { SOFT = 0x1, HARD = 0x2 }
+			how = SOFT | HARD;
 	const struct limits	*l;
 	int		set, all = 0;
 	int		optc, what;
@@ -472,22 +453,17 @@ ulimitcmd(int argc __unused, char **argv __unused)
 		if (strcmp(p, "unlimited") == 0)
 			val = RLIM_INFINITY;
 		else {
-			char *end;
-			uintmax_t uval;
+			val = 0;
 
-			if (*p < '0' || *p > '9')
+			while ((c = *p++) >= '0' && c <= '9')
+			{
+				val = (val * 10) + (long)(c - '0');
+				if (val < 0)
+					break;
+			}
+			if (c)
 				error("bad number");
-			errno = 0;
-			uval = strtoumax(p, &end, 10);
-			if (errno != 0 || *end != '\0')
-				error("bad number");
-			if (uval > UINTMAX_MAX / l->factor)
-				error("bad number");
-			uval *= l->factor;
-			val = (rlim_t)uval;
-			if (val < 0 || (uintmax_t)val != uval ||
-			    val == RLIM_INFINITY)
-				error("bad number");
+			val *= l->factor;
 		}
 	}
 	if (all) {
@@ -495,6 +471,10 @@ ulimitcmd(int argc __unused, char **argv __unused)
 			char optbuf[40];
 			if (getrlimit(l->cmd, &limit) < 0)
 				error("can't get limit: %s", strerror(errno));
+			if (how & SOFT)
+				val = limit.rlim_cur;
+			else if (how & HARD)
+				val = limit.rlim_max;
 
 			if (l->units)
 				snprintf(optbuf, sizeof(optbuf),
@@ -503,7 +483,13 @@ ulimitcmd(int argc __unused, char **argv __unused)
 				snprintf(optbuf, sizeof(optbuf),
 					"(-%c) ", l->option);
 			out1fmt("%-18s %18s ", l->name, optbuf);
-			printlimit(how, &limit, l);
+			if (val == RLIM_INFINITY)
+				out1str("unlimited\n");
+			else
+			{
+				val /= l->factor;
+				out1fmt("%jd\n", (intmax_t)val);
+			}
 		}
 		return 0;
 	}
@@ -517,7 +503,19 @@ ulimitcmd(int argc __unused, char **argv __unused)
 			limit.rlim_max = val;
 		if (setrlimit(l->cmd, &limit) < 0)
 			error("bad limit: %s", strerror(errno));
-	} else
-		printlimit(how, &limit, l);
+	} else {
+		if (how & SOFT)
+			val = limit.rlim_cur;
+		else if (how & HARD)
+			val = limit.rlim_max;
+
+		if (val == RLIM_INFINITY)
+			out1str("unlimited\n");
+		else
+		{
+			val /= l->factor;
+			out1fmt("%jd\n", (intmax_t)val);
+		}
+	}
 	return 0;
 }

@@ -76,7 +76,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
-#include <netinet6/ip6_var.h>
 #include <netinet/ip_icmp.h>
 
 #ifdef INET6
@@ -192,7 +191,6 @@ static volatile VNET_DEFINE(int, pf_pfil_hooked);
 VNET_DEFINE(int,		pf_end_threads);
 
 struct rwlock			pf_rules_lock;
-struct sx			pf_ioctl_lock;
 
 /* pfsync */
 pfsync_state_import_t 		*pfsync_state_import_ptr = NULL;
@@ -266,15 +264,6 @@ pfattach(void)
 
 	/* XXX do our best to avoid a conflict */
 	V_pf_status.hostid = arc4random();
-
-	for (int i = 0; i < PFRES_MAX; i++)
-		V_pf_status.counters[i] = counter_u64_alloc(M_WAITOK);
-	for (int i = 0; i < LCNT_MAX; i++)
-		V_pf_status.lcounters[i] = counter_u64_alloc(M_WAITOK);
-	for (int i = 0; i < FCNT_MAX; i++)
-		V_pf_status.fcounters[i] = counter_u64_alloc(M_WAITOK);
-	for (int i = 0; i < SCNT_MAX; i++)
-		V_pf_status.scounters[i] = counter_u64_alloc(M_WAITOK);
 
 	if ((error = kproc_create(pf_purge_thread, curvnet, NULL, 0, 0,
 	    "pf purge")) != 0)
@@ -1097,18 +1086,20 @@ pfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags, struct thread *td
 
 	switch (cmd) {
 	case DIOCSTART:
-		sx_xlock(&pf_ioctl_lock);
+		PF_RULES_WLOCK();
 		if (V_pf_status.running)
 			error = EEXIST;
 		else {
 			int cpu;
 
+			PF_RULES_WUNLOCK();
 			error = hook_pf();
 			if (error) {
 				DPFPRINTF(PF_DEBUG_MISC,
 				    ("pf: pfil registration failed\n"));
 				break;
 			}
+			PF_RULES_WLOCK();
 			V_pf_status.running = 1;
 			V_pf_status.since = time_second;
 
@@ -1117,23 +1108,27 @@ pfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags, struct thread *td
 
 			DPFPRINTF(PF_DEBUG_MISC, ("pf: started\n"));
 		}
+		PF_RULES_WUNLOCK();
 		break;
 
 	case DIOCSTOP:
-		sx_xlock(&pf_ioctl_lock);
+		PF_RULES_WLOCK();
 		if (!V_pf_status.running)
 			error = ENOENT;
 		else {
 			V_pf_status.running = 0;
+			PF_RULES_WUNLOCK();
 			error = dehook_pf();
 			if (error) {
 				V_pf_status.running = 1;
 				DPFPRINTF(PF_DEBUG_MISC,
 				    ("pf: pfil unregistration failed\n"));
 			}
+			PF_RULES_WLOCK();
 			V_pf_status.since = time_second;
 			DPFPRINTF(PF_DEBUG_MISC, ("pf: stopped\n"));
 		}
+		PF_RULES_WUNLOCK();
 		break;
 
 	case DIOCADDRULE: {
@@ -1792,32 +1787,8 @@ DIOCGETSTATES_full:
 
 	case DIOCGETSTATUS: {
 		struct pf_status *s = (struct pf_status *)addr;
-
 		PF_RULES_RLOCK();
-		s->running = V_pf_status.running;
-		s->since   = V_pf_status.since;
-		s->debug   = V_pf_status.debug;
-		s->hostid  = V_pf_status.hostid;
-		s->states  = V_pf_status.states;
-		s->src_nodes = V_pf_status.src_nodes;
-
-		for (int i = 0; i < PFRES_MAX; i++)
-			s->counters[i] =
-			    counter_u64_fetch(V_pf_status.counters[i]);
-		for (int i = 0; i < LCNT_MAX; i++)
-			s->lcounters[i] =
-			    counter_u64_fetch(V_pf_status.lcounters[i]);
-		for (int i = 0; i < FCNT_MAX; i++)
-			s->fcounters[i] =
-			    counter_u64_fetch(V_pf_status.fcounters[i]);
-		for (int i = 0; i < SCNT_MAX; i++)
-			s->scounters[i] =
-			    counter_u64_fetch(V_pf_status.scounters[i]);
-
-		bcopy(V_pf_status.ifname, s->ifname, IFNAMSIZ);
-		bcopy(V_pf_status.pf_chksum, s->pf_chksum,
-		    PF_MD5_DIGEST_LENGTH);
-
+		bcopy(&V_pf_status, s, sizeof(struct pf_status));
 		pfi_update_status(s->ifname, s);
 		PF_RULES_RUNLOCK();
 		break;
@@ -1838,12 +1809,9 @@ DIOCGETSTATES_full:
 
 	case DIOCCLRSTATUS: {
 		PF_RULES_WLOCK();
-		for (int i = 0; i < PFRES_MAX; i++)
-			counter_u64_zero(V_pf_status.counters[i]);
-		for (int i = 0; i < FCNT_MAX; i++)
-			counter_u64_zero(V_pf_status.fcounters[i]);
-		for (int i = 0; i < SCNT_MAX; i++)
-			counter_u64_zero(V_pf_status.scounters[i]);
+		bzero(V_pf_status.counters, sizeof(V_pf_status.counters));
+		bzero(V_pf_status.fcounters, sizeof(V_pf_status.fcounters));
+		bzero(V_pf_status.scounters, sizeof(V_pf_status.scounters));
 		V_pf_status.since = time_second;
 		if (*V_pf_status.ifname)
 			pfi_update_status(V_pf_status.ifname, NULL);
@@ -3189,6 +3157,7 @@ DIOCCHANGEADDR_error:
 
 		pf_clear_srcnodes(NULL);
 		pf_purge_expired_src_nodes();
+		V_pf_status.src_nodes = 0;
 		break;
 	}
 
@@ -3257,8 +3226,6 @@ DIOCCHANGEADDR_error:
 		break;
 	}
 fail:
-	if (sx_xlocked(&pf_ioctl_lock))
-		sx_xunlock(&pf_ioctl_lock);
 	CURVNET_RESTORE();
 
 	return (error);
@@ -3488,15 +3455,6 @@ shutdown_pf(void)
 	counter_u64_free(V_pf_default_rule.states_tot);
 	counter_u64_free(V_pf_default_rule.src_nodes);
 
-	for (int i = 0; i < PFRES_MAX; i++)
-		counter_u64_free(V_pf_status.counters[i]);
-	for (int i = 0; i < LCNT_MAX; i++)
-		counter_u64_free(V_pf_status.lcounters[i]);
-	for (int i = 0; i < FCNT_MAX; i++)
-		counter_u64_free(V_pf_status.fcounters[i]);
-	for (int i = 0; i < SCNT_MAX; i++)
-		counter_u64_free(V_pf_status.scounters[i]);
-
 	do {
 		if ((error = pf_begin_rules(&t[0], PF_RULESET_SCRUB, &nn))
 		    != 0) {
@@ -3620,11 +3578,12 @@ pf_check6_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 	int chk;
 
 	/* We need a proper CSUM before we start (s. OpenBSD ip_output) */
-	if ((*m)->m_pkthdr.csum_flags & CSUM_DELAY_DATA_IPV6) {
-		in6_delayed_cksum(*m,
-		    (*m)->m_pkthdr.len - sizeof(struct ip6_hdr),
-		    sizeof(struct ip6_hdr));
-		(*m)->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA_IPV6;
+	if ((*m)->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+#ifdef INET
+		/* XXX-BZ copy&paste error from r126261? */
+		in_delayed_cksum(*m);
+#endif
+		(*m)->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
 	}
 	CURVNET_SET(ifp->if_vnet);
 	chk = pf_test6(PF_OUT, ifp, m, inp);
@@ -3731,7 +3690,6 @@ pf_load(void)
 	VNET_LIST_RUNLOCK();
 
 	rw_init(&pf_rules_lock, "pf rulesets");
-	sx_init(&pf_ioctl_lock, "pf ioctl");
 
 	pf_dev = make_dev(&pf_cdevsw, 0, 0, 0, 0600, PF_NAME);
 	if ((error = pfattach()) != 0)
@@ -3745,7 +3703,9 @@ pf_unload(void)
 {
 	int error = 0;
 
+	PF_RULES_WLOCK();
 	V_pf_status.running = 0;
+	PF_RULES_WUNLOCK();
 	swi_remove(V_pf_swi_cookie);
 	error = dehook_pf();
 	if (error) {
@@ -3774,7 +3734,6 @@ pf_unload(void)
 	PF_RULES_WUNLOCK();
 	destroy_dev(pf_dev);
 	rw_destroy(&pf_rules_lock);
-	sx_destroy(&pf_ioctl_lock);
 
 	return (error);
 }

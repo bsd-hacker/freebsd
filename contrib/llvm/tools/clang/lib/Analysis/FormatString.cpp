@@ -507,7 +507,7 @@ analyze_format_string::LengthModifier::toString() const {
   case None:
     return "";
   }
-  return nullptr;
+  return NULL;
 }
 
 //===----------------------------------------------------------------------===//
@@ -539,7 +539,7 @@ const char *ConversionSpecifier::toString() const {
   case nArg: return "n";
   case PercentArg:  return "%";
   case ScanListArg: return "[";
-  case InvalidSpecifier: return nullptr;
+  case InvalidSpecifier: return NULL;
 
   // POSIX unicode extensions.
   case CArg: return "C";
@@ -556,7 +556,7 @@ const char *ConversionSpecifier::toString() const {
   // GlibC specific specifiers.
   case PrintErrno: return "m";
   }
-  return nullptr;
+  return NULL;
 }
 
 Optional<ConversionSpecifier>

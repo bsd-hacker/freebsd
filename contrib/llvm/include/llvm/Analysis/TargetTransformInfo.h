@@ -59,6 +59,11 @@ protected:
   /// group's stack.
   void pushTTIStack(Pass *P);
 
+  /// All pass subclasses must in their finalizePass routine call popTTIStack
+  /// to update the pointers tracking the previous TTI instance in the analysis
+  /// group's stack, and the top of the analysis group's stack.
+  void popTTIStack();
+
   /// All pass subclasses must call TargetTransformInfo::getAnalysisUsage.
   virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
@@ -105,7 +110,7 @@ public:
   /// The returned cost is defined in terms of \c TargetCostConstants, see its
   /// comments for a detailed explanation of the cost values.
   virtual unsigned getOperationCost(unsigned Opcode, Type *Ty,
-                                    Type *OpTy = nullptr) const;
+                                    Type *OpTy = 0) const;
 
   /// \brief Estimate the cost of a GEP operation when lowered.
   ///
@@ -198,23 +203,11 @@ public:
     /// The cost threshold for the unrolled loop when optimizing for size (set
     /// to UINT_MAX to disable).
     unsigned OptSizeThreshold;
-    /// The cost threshold for the unrolled loop, like Threshold, but used
-    /// for partial/runtime unrolling (set to UINT_MAX to disable).
-    unsigned PartialThreshold;
-    /// The cost threshold for the unrolled loop when optimizing for size, like
-    /// OptSizeThreshold, but used for partial/runtime unrolling (set to UINT_MAX
-    /// to disable).
-    unsigned PartialOptSizeThreshold;
     /// A forced unrolling factor (the number of concatenated bodies of the
     /// original loop in the unrolled loop body). When set to 0, the unrolling
     /// transformation will select an unrolling factor based on the current cost
     /// threshold and other factors.
     unsigned Count;
-    // Set the maximum unrolling factor. The unrolling factor may be selected
-    // using the appropriate cost threshold, but may not exceed this number
-    // (set to UINT_MAX to disable). This does not apply in cases where the
-    // loop is being fully unrolled.
-    unsigned MaxCount;
     /// Allow partial unrolling (unrolling of loops to expand the size of the
     /// loop body, not only to eliminate small constant-trip-count loops).
     bool     Partial;
@@ -248,19 +241,20 @@ public:
     PSK_FastHardware
   };
 
-  /// \brief Return true if the specified immediate is legal add immediate, that
-  /// is the target has add instructions which can add a register with the
-  /// immediate without having to materialize the immediate into a register.
+  /// isLegalAddImmediate - Return true if the specified immediate is legal
+  /// add immediate, that is the target has add instructions which can add
+  /// a register with the immediate without having to materialize the
+  /// immediate into a register.
   virtual bool isLegalAddImmediate(int64_t Imm) const;
 
-  /// \brief Return true if the specified immediate is legal icmp immediate,
-  /// that is the target has icmp instructions which can compare a register
-  /// against the immediate without having to materialize the immediate into a
-  /// register.
+  /// isLegalICmpImmediate - Return true if the specified immediate is legal
+  /// icmp immediate, that is the target has icmp instructions which can compare
+  /// a register against the immediate without having to materialize the
+  /// immediate into a register.
   virtual bool isLegalICmpImmediate(int64_t Imm) const;
 
-  /// \brief Return true if the addressing mode represented by AM is legal for
-  /// this target, for a load/store of the specified type.
+  /// isLegalAddressingMode - Return true if the addressing mode represented by
+  /// AM is legal for this target, for a load/store of the specified type.
   /// The type may be VoidTy, in which case only return true if the addressing
   /// mode is legal for a load/store of any legal type.
   /// TODO: Handle pre/postinc as well.
@@ -278,41 +272,35 @@ public:
                                    int64_t BaseOffset, bool HasBaseReg,
                                    int64_t Scale) const;
 
-  /// \brief Return true if it's free to truncate a value of type Ty1 to type
-  /// Ty2. e.g. On x86 it's free to truncate a i32 value in register EAX to i16
-  /// by referencing its sub-register AX.
+  /// isTruncateFree - Return true if it's free to truncate a value of
+  /// type Ty1 to type Ty2. e.g. On x86 it's free to truncate a i32 value in
+  /// register EAX to i16 by referencing its sub-register AX.
   virtual bool isTruncateFree(Type *Ty1, Type *Ty2) const;
 
-  /// \brief Return true if this type is legal.
+  /// Is this type legal.
   virtual bool isTypeLegal(Type *Ty) const;
 
-  /// \brief Returns the target's jmp_buf alignment in bytes.
+  /// getJumpBufAlignment - returns the target's jmp_buf alignment in bytes
   virtual unsigned getJumpBufAlignment() const;
 
-  /// \brief Returns the target's jmp_buf size in bytes.
+  /// getJumpBufSize - returns the target's jmp_buf size in bytes.
   virtual unsigned getJumpBufSize() const;
 
-  /// \brief Return true if switches should be turned into lookup tables for the
-  /// target.
+  /// shouldBuildLookupTables - Return true if switches should be turned into
+  /// lookup tables for the target.
   virtual bool shouldBuildLookupTables() const;
 
-  /// \brief Return hardware support for population count.
+  /// getPopcntSupport - Return hardware support for population count.
   virtual PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) const;
 
-  /// \brief Return true if the hardware has a fast square-root instruction.
+  /// haveFastSqrt -- Return true if the hardware has a fast square-root
+  /// instruction.
   virtual bool haveFastSqrt(Type *Ty) const;
 
-  /// \brief Return the expected cost of materializing for the given integer
-  /// immediate of the specified type.
+  /// getIntImmCost - Return the expected cost of materializing the given
+  /// integer immediate of the specified type.
   virtual unsigned getIntImmCost(const APInt &Imm, Type *Ty) const;
 
-  /// \brief Return the expected cost of materialization for the given integer
-  /// immediate of the specified type for a given instruction. The cost can be
-  /// zero if the immediate can be folded into the specified instruction.
-  virtual unsigned getIntImmCost(unsigned Opc, unsigned Idx, const APInt &Imm,
-                                 Type *Ty) const;
-  virtual unsigned getIntImmCost(Intrinsic::ID IID, unsigned Idx,
-                                 const APInt &Imm, Type *Ty) const;
   /// @}
 
   /// \name Vector Target Information
@@ -322,17 +310,15 @@ public:
   enum ShuffleKind {
     SK_Broadcast,       ///< Broadcast element 0 to all other elements.
     SK_Reverse,         ///< Reverse the order of the vector.
-    SK_Alternate,       ///< Choose alternate elements from vector.
     SK_InsertSubvector, ///< InsertSubvector. Index indicates start offset.
     SK_ExtractSubvector ///< ExtractSubvector Index indicates start offset.
   };
 
   /// \brief Additional information about an operand's possible values.
   enum OperandValueKind {
-    OK_AnyValue,                 // Operand can have any value.
-    OK_UniformValue,             // Operand is uniform (splat of a value).
-    OK_UniformConstantValue,     // Operand is uniform constant.
-    OK_NonUniformConstantValue   // Operand is a non uniform constant value.
+    OK_AnyValue,            // Operand can have any value.
+    OK_UniformValue,        // Operand is uniform (splat of a value).
+    OK_UniformConstantValue // Operand is uniform constant.
   };
 
   /// \return The number of scalar or vector registers that the target has.
@@ -357,7 +343,7 @@ public:
   /// The index and subtype parameters are used by the subvector insertion and
   /// extraction shuffle kinds.
   virtual unsigned getShuffleCost(ShuffleKind Kind, Type *Tp, int Index = 0,
-                                  Type *SubTp = nullptr) const;
+                                  Type *SubTp = 0) const;
 
   /// \return The expected cost of cast instructions, such as bitcast, trunc,
   /// zext, etc.
@@ -370,7 +356,7 @@ public:
 
   /// \returns The expected cost of compare and select instructions.
   virtual unsigned getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
-                                      Type *CondTy = nullptr) const;
+                                      Type *CondTy = 0) const;
 
   /// \return The expected cost of vector Insert and Extract.
   /// Use -1 to indicate that there is no information on the index value.

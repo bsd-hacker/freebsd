@@ -5,6 +5,7 @@ PROG=		bt3cfw
 MAN=		bt3cfw.8
 WARNS?=		2
 
-LIBADD+=	netgraph
+DPADD=		${LIBNETGRAPH}
+LDADD=		-lnetgraph
 
 .include <bsd.prog.mk>

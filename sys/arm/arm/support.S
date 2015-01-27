@@ -91,8 +91,6 @@ __FBSDID("$FreeBSD$");
 
 #include "assym.s"
 
-	.syntax	unified
-
 .L_arm_memcpy:
 	.word	_C_LABEL(_arm_memcpy)
 .L_arm_bzero:
@@ -132,7 +130,7 @@ ENTRY(bzero)
 .Lnormal0:
 	mov	r3, #0x00
 	b	do_memset
-END(bzero)
+
 /* LINTSTUB: Func: void *memset(void *, int, size_t) */
 ENTRY(memset)
 	and	r3, r1, #0xff		/* We deal with bytes */
@@ -169,39 +167,39 @@ do_memset:
 .Lmemset_loop128:
 	subs	r1, r1, #0x80
 #ifdef _ARM_ARCH_5E
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
 #else
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
 #endif
 	bgt	.Lmemset_loop128
 	RETeq			/* Zero length so just exit */
@@ -212,15 +210,15 @@ do_memset:
 .Lmemset_loop32:
 	subs	r1, r1, #0x20
 #ifdef _ARM_ARCH_5E
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
 #else
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
 #endif
 	bgt	.Lmemset_loop32
 	RETeq			/* Zero length so just exit */
@@ -229,11 +227,11 @@ do_memset:
 
 	/* Deal with 16 bytes or more */
 #ifdef _ARM_ARCH_5E
-	strdge	r2, [ip], #0x08
-	strdge	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
+	strged	r2, [ip], #0x08
 #else
-	stmiage	ip!, {r2-r3}
-	stmiage	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
+	stmgeia	ip!, {r2-r3}
 #endif
 	RETeq			/* Zero length so just exit */
 
@@ -256,17 +254,17 @@ do_memset:
 #endif
 
 	strb	r3, [ip], #0x01		/* Set 1 byte */
-	strbge	r3, [ip], #0x01		/* Set another byte */
-	strbgt	r3, [ip]		/* and a third */
+	strgeb	r3, [ip], #0x01		/* Set another byte */
+	strgtb	r3, [ip]		/* and a third */
 	RET			/* Exit */
 
 .Lmemset_wordunaligned:
 	rsb	r2, r2, #0x004
 	strb	r3, [ip], #0x01		/* Set 1 byte */
 	cmp	r2, #0x02
-	strbge	r3, [ip], #0x01		/* Set another byte */
+	strgeb	r3, [ip], #0x01		/* Set another byte */
 	sub	r1, r1, r2
-	strbgt	r3, [ip], #0x01		/* and a third */
+	strgtb	r3, [ip], #0x01		/* and a third */
 	cmp	r1, #0x04		/* More than 4 bytes left? */
 	bge	.Lmemset_wordaligned	/* Yup */
 
@@ -275,11 +273,11 @@ do_memset:
 	RETeq			/* Zero length so exit */
 	strb	r3, [ip], #0x01		/* Set 1 byte */
 	cmp	r1, #0x02
-	strbge	r3, [ip], #0x01		/* Set another byte */
-	strbgt	r3, [ip]		/* and a third */
+	strgeb	r3, [ip], #0x01		/* Set another byte */
+	strgtb	r3, [ip]		/* and a third */
 	RET			/* Exit */
-EEND(memset)
 END(bzero)
+END(memset)
 
 ENTRY(bcmp)
 	mov	ip, r0
@@ -289,7 +287,7 @@ ENTRY(bcmp)
 
 	/* Are both addresses aligned the same way? */
 	cmp	r2, #0x00
-	eorsne	r3, ip, r1
+	eornes	r3, ip, r1
 	RETeq			/* len == 0, or same addresses! */
 	tst	r3, #0x03
 	subne	r2, r2, #0x01
@@ -369,23 +367,23 @@ ENTRY(bcmp)
 	ldrb	r0, [ip, #0x00]		/* r0 = b1#0 */
 	ldrb	r2, [r1, #0x01]		/* r2 = b2#1 */
 	subs	r0, r0, r3		/* r0 = b1#0 - b2#0 */
-	ldrbeq	r3, [ip, #0x01]		/* r3 = b1#1 */
+	ldreqb	r3, [ip, #0x01]		/* r3 = b1#1 */
 	RETne			/* Return if mismatch on #0 */
 	subs	r0, r3, r2		/* r0 = b1#1 - b2#1 */
-	ldrbeq	r3, [r1, #0x02]		/* r3 = b2#2 */
-	ldrbeq	r0, [ip, #0x02]		/* r0 = b1#2 */
+	ldreqb	r3, [r1, #0x02]		/* r3 = b2#2 */
+	ldreqb	r0, [ip, #0x02]		/* r0 = b1#2 */
 	RETne			/* Return if mismatch on #1 */
 	ldrb	r2, [r1, #0x03]		/* r2 = b2#3 */
 	subs	r0, r0, r3		/* r0 = b1#2 - b2#2 */
-	ldrbeq	r3, [ip, #0x03]		/* r3 = b1#3 */
+	ldreqb	r3, [ip, #0x03]		/* r3 = b1#3 */
 	RETne			/* Return if mismatch on #2 */
 	subs	r0, r3, r2		/* r0 = b1#3 - b2#3 */
-	ldrbeq	r3, [r1, #0x04]		/* r3 = b2#4 */
-	ldrbeq	r0, [ip, #0x04]		/* r0 = b1#4 */
+	ldreqb	r3, [r1, #0x04]		/* r3 = b2#4 */
+	ldreqb	r0, [ip, #0x04]		/* r0 = b1#4 */
 	RETne			/* Return if mismatch on #3 */
 	ldrb	r2, [r1, #0x05]		/* r2 = b2#5 */
 	subs	r0, r0, r3		/* r0 = b1#4 - b2#4 */
-	ldrbeq	r3, [ip, #0x05]		/* r3 = b1#5 */
+	ldreqb	r3, [ip, #0x05]		/* r3 = b1#5 */
 	RETne			/* Return if mismatch on #4 */
 	sub	r0, r3, r2		/* r0 = b1#5 - b2#5 */
 	RET
@@ -396,7 +394,7 @@ ENTRY(bcopy)
 	eor     r0, r1, r0
 	eor     r1, r0, r1
 	eor     r0, r1, r0
-EENTRY(memmove)
+ENTRY(memmove)
 	/* Do the buffers overlap? */
 	cmp	r0, r1
 	RETeq		/* Bail now if src/dst are the same */
@@ -439,8 +437,8 @@ EENTRY(memmove)
 	bge	.Lmemmove_floop32
 
 	cmn	r2, #0x10
-	ldmiage	r1!, {r3, r4, r12, lr}	/* blat a remaining 16 bytes */
-	stmiage	r0!, {r3, r4, r12, lr}
+	ldmgeia	r1!, {r3, r4, r12, lr}	/* blat a remaining 16 bytes */
+	stmgeia	r0!, {r3, r4, r12, lr}
 	subge	r2, r2, #0x10
 	ldmia	sp!, {r4}		/* return r4 */
 
@@ -449,9 +447,9 @@ EENTRY(memmove)
 
 	/* blat 12 bytes at a time */
 .Lmemmove_floop12:
-	ldmiage	r1!, {r3, r12, lr}
-	stmiage	r0!, {r3, r12, lr}
-	subsge	r2, r2, #0x0c
+	ldmgeia	r1!, {r3, r12, lr}
+	stmgeia	r0!, {r3, r12, lr}
+	subges	r2, r2, #0x0c
 	bge	.Lmemmove_floop12
 
 .Lmemmove_fl12:
@@ -461,23 +459,23 @@ EENTRY(memmove)
 	subs	r2, r2, #4
 	ldrlt	r3, [r1], #4
 	strlt	r3, [r0], #4
-	ldmiage	r1!, {r3, r12}
-	stmiage	r0!, {r3, r12}
+	ldmgeia	r1!, {r3, r12}
+	stmgeia	r0!, {r3, r12}
 	subge	r2, r2, #4
 
 .Lmemmove_fl4:
 	/* less than 4 bytes to go */
 	adds	r2, r2, #4
-	ldmiaeq	sp!, {r0, pc}		/* done */
+	ldmeqia	sp!, {r0, pc}		/* done */
 
 	/* copy the crud byte at a time */
 	cmp	r2, #2
 	ldrb	r3, [r1], #1
 	strb	r3, [r0], #1
-	ldrbge	r3, [r1], #1
-	strbge	r3, [r0], #1
-	ldrbgt	r3, [r1], #1
-	strbgt	r3, [r0], #1
+	ldrgeb	r3, [r1], #1
+	strgeb	r3, [r0], #1
+	ldrgtb	r3, [r1], #1
+	strgtb	r3, [r0], #1
 	ldmia	sp!, {r0, pc}
 
 	/* erg - unaligned destination */
@@ -488,10 +486,10 @@ EENTRY(memmove)
 	/* align destination with byte copies */
 	ldrb	r3, [r1], #1
 	strb	r3, [r0], #1
-	ldrbge	r3, [r1], #1
-	strbge	r3, [r0], #1
-	ldrbgt	r3, [r1], #1
-	strbgt	r3, [r0], #1
+	ldrgeb	r3, [r1], #1
+	strgeb	r3, [r0], #1
+	ldrgtb	r3, [r1], #1
+	strgtb	r3, [r0], #1
 	subs	r2, r2, r12
 	blt	.Lmemmove_fl4		/* less the 4 bytes */
 
@@ -706,12 +704,12 @@ EENTRY(memmove)
 
 .Lmemmove_bl32:
 	cmn	r2, #0x10
-	ldmdbge	r1!, {r3, r4, r12, lr}	/* blat a remaining 16 bytes */
-	stmdbge	r0!, {r3, r4, r12, lr}
+	ldmgedb	r1!, {r3, r4, r12, lr}	/* blat a remaining 16 bytes */
+	stmgedb	r0!, {r3, r4, r12, lr}
 	subge	r2, r2, #0x10
 	adds	r2, r2, #0x14
-	ldmdbge	r1!, {r3, r12, lr}	/* blat a remaining 12 bytes */
-	stmdbge	r0!, {r3, r12, lr}
+	ldmgedb	r1!, {r3, r12, lr}	/* blat a remaining 12 bytes */
+	stmgedb	r0!, {r3, r12, lr}
 	subge	r2, r2, #0x0c
 	ldmia	sp!, {r4, lr}
 
@@ -721,8 +719,8 @@ EENTRY(memmove)
 	subs	r2, r2, #4
 	ldrlt	r3, [r1, #-4]!
 	strlt	r3, [r0, #-4]!
-	ldmdbge	r1!, {r3, r12}
-	stmdbge	r0!, {r3, r12}
+	ldmgedb	r1!, {r3, r12}
+	stmgedb	r0!, {r3, r12}
 	subge	r2, r2, #4
 
 .Lmemmove_bl4:
@@ -734,10 +732,10 @@ EENTRY(memmove)
 	cmp	r2, #2
 	ldrb	r3, [r1, #-1]!
 	strb	r3, [r0, #-1]!
-	ldrbge	r3, [r1, #-1]!
-	strbge	r3, [r0, #-1]!
-	ldrbgt	r3, [r1, #-1]!
-	strbgt	r3, [r0, #-1]!
+	ldrgeb	r3, [r1, #-1]!
+	strgeb	r3, [r0, #-1]!
+	ldrgtb	r3, [r1, #-1]!
+	strgtb	r3, [r0, #-1]!
 	RET
 
 	/* erg - unaligned destination */
@@ -747,10 +745,10 @@ EENTRY(memmove)
 	/* align destination with byte copies */
 	ldrb	r3, [r1, #-1]!
 	strb	r3, [r0, #-1]!
-	ldrbge	r3, [r1, #-1]!
-	strbge	r3, [r0, #-1]!
-	ldrbgt	r3, [r1, #-1]!
-	strbgt	r3, [r0, #-1]!
+	ldrgeb	r3, [r1, #-1]!
+	strgeb	r3, [r0, #-1]!
+	ldrgtb	r3, [r1, #-1]!
+	strgtb	r3, [r0, #-1]!
 	subs	r2, r2, r12
 	blt	.Lmemmove_bl4		/* less than 4 bytes to go */
 	ands	r12, r1, #3
@@ -933,8 +931,8 @@ EENTRY(memmove)
 .Lmemmove_bsrcul1l4:
 	add	r1, r1, #1
 	b	.Lmemmove_bl4
-EEND(memmove)
 END(bcopy)
+END(memmove)
 
 #if !defined(_ARM_ARCH_5E)
 ENTRY(memcpy)
@@ -997,8 +995,8 @@ ENTRY(memcpy)
 	bge	.Lmemcpy_loop32
 
 	cmn	r2, #0x10
-	ldmiage	r1!, {r3, r4, r12, lr}	/* blat a remaining 16 bytes */
-	stmiage	r0!, {r3, r4, r12, lr}
+	ldmgeia	r1!, {r3, r4, r12, lr}	/* blat a remaining 16 bytes */
+	stmgeia	r0!, {r3, r4, r12, lr}
 	subge	r2, r2, #0x10
 	ldmia	sp!, {r4}		/* return r4 */
 
@@ -1007,9 +1005,9 @@ ENTRY(memcpy)
 
 	/* blat 12 bytes at a time */
 .Lmemcpy_loop12:
-	ldmiage	r1!, {r3, r12, lr}
-	stmiage	r0!, {r3, r12, lr}
-	subsge	r2, r2, #0x0c
+	ldmgeia	r1!, {r3, r12, lr}
+	stmgeia	r0!, {r3, r12, lr}
+	subges	r2, r2, #0x0c
 	bge	.Lmemcpy_loop12
 
 .Lmemcpy_l12:
@@ -1019,26 +1017,26 @@ ENTRY(memcpy)
 	subs	r2, r2, #4
 	ldrlt	r3, [r1], #4
 	strlt	r3, [r0], #4
-	ldmiage	r1!, {r3, r12}
-	stmiage	r0!, {r3, r12}
+	ldmgeia	r1!, {r3, r12}
+	stmgeia	r0!, {r3, r12}
 	subge	r2, r2, #4
 
 .Lmemcpy_l4:
 	/* less than 4 bytes to go */
 	adds	r2, r2, #4
 #ifdef __APCS_26_
-	ldmiaeq sp!, {r0, pc}^		/* done */
+	ldmeqia sp!, {r0, pc}^		/* done */
 #else
-	ldmiaeq	sp!, {r0, pc}		/* done */
+	ldmeqia	sp!, {r0, pc}		/* done */
 #endif
 	/* copy the crud byte at a time */
 	cmp	r2, #2
 	ldrb	r3, [r1], #1
 	strb	r3, [r0], #1
-	ldrbge	r3, [r1], #1
-	strbge	r3, [r0], #1
-	ldrbgt	r3, [r1], #1
-	strbgt	r3, [r0], #1
+	ldrgeb	r3, [r1], #1
+	strgeb	r3, [r0], #1
+	ldrgtb	r3, [r1], #1
+	strgtb	r3, [r0], #1
 	ldmia	sp!, {r0, pc}
 
 	/* erg - unaligned destination */
@@ -1049,10 +1047,10 @@ ENTRY(memcpy)
 	/* align destination with byte copies */
 	ldrb	r3, [r1], #1
 	strb	r3, [r0], #1
-	ldrbge	r3, [r1], #1
-	strbge	r3, [r0], #1
-	ldrbgt	r3, [r1], #1
-	strbgt	r3, [r0], #1
+	ldrgeb	r3, [r1], #1
+	strgeb	r3, [r0], #1
+	ldrgtb	r3, [r1], #1
+	strgtb	r3, [r0], #1
 	subs	r2, r2, r12
 	blt	.Lmemcpy_l4		/* less the 4 bytes */
 
@@ -1215,12 +1213,12 @@ ENTRY(memcpy)
 	ldrb	ip, [r1], #0x01
 	sub	r2, r2, #0x01
 	strb	ip, [r3], #0x01
-	ldrble	ip, [r1], #0x01
+	ldrleb	ip, [r1], #0x01
 	suble	r2, r2, #0x01
-	strble	ip, [r3], #0x01
-	ldrblt	ip, [r1], #0x01
+	strleb	ip, [r3], #0x01
+	ldrltb	ip, [r1], #0x01
 	sublt	r2, r2, #0x01
-	strblt	ip, [r3], #0x01
+	strltb	ip, [r3], #0x01
 
 	/* Destination buffer is now word aligned */
 .Lmemcpy_wordaligned:
@@ -1297,7 +1295,7 @@ ENTRY(memcpy)
 
 .Lmemcpy_w_lessthan128:
 	adds	r2, r2, #0x80		/* Adjust for extra sub */
-	ldmfdeq	sp!, {r4-r9}
+	ldmeqfd	sp!, {r4-r9}
 	RETeq			/* Return now if done */
 	subs	r2, r2, #0x20
 	blt	.Lmemcpy_w_lessthan32
@@ -1322,7 +1320,7 @@ ENTRY(memcpy)
 
 .Lmemcpy_w_lessthan32:
 	adds	r2, r2, #0x20		/* Adjust for extra sub */
-	ldmfdeq	sp!, {r4-r9}
+	ldmeqfd	sp!, {r4-r9}
 	RETeq			/* Return now if done */
 
 	and	r4, r2, #0x18
@@ -1358,14 +1356,12 @@ ENTRY(memcpy)
 	addlt	r2, r2, #0x04
 	ldrb	ip, [r1], #0x01
 	cmp	r2, #0x02
-	ldrbge	r2, [r1], #0x01
+	ldrgeb	r2, [r1], #0x01
 	strb	ip, [r3], #0x01
-	ldrbgt	ip, [r1]
-	strbge	r2, [r3], #0x01
-	strbgt	ip, [r3]
+	ldrgtb	ip, [r1]
+	strgeb	r2, [r3], #0x01
+	strgtb	ip, [r3]
 	RET
-/* Place a literal pool here for the above ldr instructions to use */
-.ltorg
 
 
 /*
@@ -1418,7 +1414,7 @@ ENTRY(memcpy)
 	bge	.Lmemcpy_bad1_loop16
 
 	adds	r2, r2, #0x10
-	ldmfdeq	sp!, {r4-r7}
+	ldmeqfd	sp!, {r4-r7}
 	RETeq			/* Return now if done */
 	subs	r2, r2, #0x04
 	sublt	r1, r1, #0x03
@@ -1479,7 +1475,7 @@ ENTRY(memcpy)
 	bge	.Lmemcpy_bad2_loop16
 
 	adds	r2, r2, #0x10
-	ldmfdeq	sp!, {r4-r7}
+	ldmeqfd	sp!, {r4-r7}
 	RETeq			/* Return now if done */
 	subs	r2, r2, #0x04
 	sublt	r1, r1, #0x02
@@ -1540,7 +1536,7 @@ ENTRY(memcpy)
 	bge	.Lmemcpy_bad3_loop16
 
 	adds	r2, r2, #0x10
-	ldmfdeq	sp!, {r4-r7}
+	ldmeqfd	sp!, {r4-r7}
 	RETeq			/* Return now if done */
 	subs	r2, r2, #0x04
 	sublt	r1, r1, #0x01
@@ -1569,11 +1565,11 @@ ENTRY(memcpy)
 	RETeq
 	ldrb	ip, [r1], #0x01
 	cmp	r2, #0x02
-	ldrbge	r2, [r1], #0x01
+	ldrgeb	r2, [r1], #0x01
 	strb	ip, [r3], #0x01
-	ldrbgt	ip, [r1]
-	strbge	r2, [r3], #0x01
-	strbgt	ip, [r3]
+	ldrgtb	ip, [r1]
+	strgeb	r2, [r3], #0x01
+	strgtb	ip, [r3]
 	RET
 
 
@@ -1603,7 +1599,7 @@ ENTRY(memcpy)
 	ldrb	ip, [r1], #0x01
 1:	subs	r2, r2, #0x01
 	strb	ip, [r3], #0x01
-	ldrbne	ip, [r1], #0x01
+	ldrneb	ip, [r1], #0x01
 	bne	1b
 	RET
 
@@ -2949,17 +2945,13 @@ END(memcpy)
 
 ENTRY(user)
 	nop
-END(user)
 ENTRY(btrap)
 	nop
-END(btrap)
 ENTRY(etrap)
 	nop
-END(etrap)
 ENTRY(bintr)
 	nop
-END(bintr)
 ENTRY(eintr)
 	nop
-END(eintr)
+
 #endif

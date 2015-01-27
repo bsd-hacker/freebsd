@@ -60,7 +60,7 @@ public:
     WriteAllRegisterValues (const lldb::DataBufferSP &data_sp);
 
     virtual uint32_t
-    ConvertRegisterKindToRegisterNumber (lldb::RegisterKind kind, uint32_t num);
+    ConvertRegisterKindToRegisterNumber (uint32_t kind, uint32_t num);
     
 private:
     //------------------------------------------------------------------

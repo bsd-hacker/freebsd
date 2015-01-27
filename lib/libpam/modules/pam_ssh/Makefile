@@ -13,7 +13,9 @@ SRCS+=	roaming_dummy.c
 WARNS?=	3
 CFLAGS+= -I${SSHDIR} -include ssh_namespace.h
 
-LIBADD=	ssh
+DPADD=	${LIBSSH} ${LIBCRYPTO} ${LIBCRYPT}
+LDADD=	-lssh -lcrypto -lcrypt
+USEPRIVATELIB= ssh
 
 .include <bsd.lib.mk>
 

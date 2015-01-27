@@ -145,8 +145,7 @@ public:
     /// @return
     ///     The synchronicity of our callback.
     //------------------------------------------------------------------
-    bool IsCallbackSynchronous () const
-    {
+    bool IsCallbackSynchronous () {
         return m_callback_is_synchronous;
     }
     
@@ -281,7 +280,7 @@ public:
     /// Returns true if the breakpoint option has a callback set.
     //------------------------------------------------------------------
     bool
-    HasCallback() const;
+    HasCallback();
 
     //------------------------------------------------------------------
     /// This is the default empty callback.

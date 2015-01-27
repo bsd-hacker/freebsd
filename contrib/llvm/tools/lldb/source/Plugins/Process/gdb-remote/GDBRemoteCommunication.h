@@ -271,7 +271,7 @@ protected:
     
 
     lldb_private::Error
-    StartListenThread (const char *hostname = "127.0.0.1",
+    StartListenThread (const char *hostname = "localhost",
                        uint16_t port = 0);
 
     bool

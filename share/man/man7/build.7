@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd December 31, 2014
+.Dd June 17, 2014
 .Dt BUILD 7
 .Os
 .Sh NAME
@@ -40,7 +40,8 @@ normally
 and
 .Pa /usr/ports .
 These directories may be initially empty or non-existent until updated with
-.Xr svn 1
+.Xr csup 1 ,
+.Xr svn 1 ,
 or
 .Xr portsnap 8 .
 Directory
@@ -445,21 +446,6 @@ process.
 .Bd -literal -offset indent
 make PORTS_MODULES=emulators/kqemu-kmod kernel
 .Ed
-.It Va STRIPBIN
-Command to use at install time when stripping binaries.
-Be sure to add any additional tools required to run
-.Va STRIPBIN
-to the
-.Va LOCAL_ITOOLS
-.Xr make 1
-variable before running the
-.Cm distributeworld
-or
-.Cm installworld
-targets.
-See
-.Xr install 1
-for more details.
 .It Va SUBDIR_OVERRIDE
 Override the default list of sub-directories and only build the
 sub-directory named in this variable.
@@ -630,6 +616,7 @@ make TARGET=sparc64 DESTDIR=/clients/sparc64 installworld
 .Ed
 .Sh SEE ALSO
 .Xr cc 1 ,
+.Xr csup 1 ,
 .Xr install 1 ,
 .Xr make 1 ,
 .Xr svn 1 ,
@@ -643,4 +630,4 @@ make TARGET=sparc64 DESTDIR=/clients/sparc64 installworld
 .Xr reboot 8 ,
 .Xr shutdown 8
 .Sh AUTHORS
-.An Mike W. Meyer Aq Mt mwm@mired.org
+.An Mike W. Meyer Aq mwm@mired.org .

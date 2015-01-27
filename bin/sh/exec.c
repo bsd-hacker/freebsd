@@ -365,7 +365,7 @@ find_command(const char *name, struct cmdentry *entry, int act,
 	for (;(fullname = padvance(&path, name)) != NULL; stunalloc(fullname)) {
 		idx++;
 		if (pathopt) {
-			if (strncmp(pathopt, "func", 4) == 0) {
+			if (prefix("func", pathopt)) {
 				/* handled below */
 			} else {
 				continue; /* ignore unimplemented options */

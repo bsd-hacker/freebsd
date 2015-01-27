@@ -275,6 +275,14 @@ static int vnlru_nowhere;
 SYSCTL_INT(_debug, OID_AUTO, vnlru_nowhere, CTLFLAG_RW,
     &vnlru_nowhere, 0, "Number of times the vnlru process ran without success");
 
+/*
+ * Macros to control when a vnode is freed and recycled.  All require
+ * the vnode interlock.
+ */
+#define VCANRECYCLE(vp) (((vp)->v_iflag & VI_FREE) && !(vp)->v_holdcnt)
+#define VSHOULDFREE(vp) (!((vp)->v_iflag & VI_FREE) && !(vp)->v_holdcnt)
+#define VSHOULDBUSY(vp) (((vp)->v_iflag & VI_FREE) && (vp)->v_holdcnt)
+
 /* Shift count for (uintptr_t)vp to initialize vp->v_hash. */
 static int vnsz2log;
 
@@ -632,7 +640,7 @@ vfs_getnewfsid(struct mount *mp)
  */
 enum { TSP_SEC, TSP_HZ, TSP_USEC, TSP_NSEC };
 
-static int timestamp_precision = TSP_USEC;
+static int timestamp_precision = TSP_SEC;
 SYSCTL_INT(_vfs, OID_AUTO, timestamp_precision, CTLFLAG_RW,
     &timestamp_precision, 0, "File timestamp precision (0: seconds, "
     "1: sec + ns accurate to 1/HZ, 2: sec + ns truncated to ms, "
@@ -841,21 +849,11 @@ vnlru_free(int count)
 			TAILQ_INSERT_TAIL(&vnode_free_list, vp, v_actfreelist);
 			continue;
 		}
-		VNASSERT((vp->v_iflag & VI_FREE) != 0 && vp->v_holdcnt == 0,
-		    vp, ("vp inconsistent on freelist"));
-
-		/*
-		 * The clear of VI_FREE prevents activation of the
-		 * vnode.  There is no sense in putting the vnode on
-		 * the mount point active list, only to remove it
-		 * later during recycling.  Inline the relevant part
-		 * of vholdl(), to avoid triggering assertions or
-		 * activating.
-		 */
+		VNASSERT(VCANRECYCLE(vp), vp,
+		    ("vp inconsistent on freelist"));
 		freevnodes--;
 		vp->v_iflag &= ~VI_FREE;
-		vp->v_holdcnt++;
-
+		vholdl(vp);
 		mtx_unlock(&vnode_free_list_mtx);
 		VI_UNLOCK(vp);
 		vtryrecycle(vp);
@@ -1567,7 +1565,6 @@ buf_vlist_add(struct buf *bp, struct bufobj *bo, b_xflags_t xflags)
 	int error;
 
 	ASSERT_BO_WLOCKED(bo);
-	KASSERT((bo->bo_flag & BO_DEAD) == 0, ("dead bo %p", bo));
 	KASSERT((bp->b_xflags & (BX_VNDIRTY|BX_VNCLEAN)) == 0,
 	    ("buf_vlist_add: Buf %p has existing xflags %d", bp, bp->b_xflags));
 	bp->b_xflags |= xflags;
@@ -1774,8 +1771,6 @@ sync_vnode(struct synclist *slp, struct bufobj **bo, struct thread *td)
 	return (0);
 }
 
-static int first_printf = 1;
-
 /*
  * System filesystem synchronizer daemon.
  */
@@ -1789,10 +1784,12 @@ sched_sync(void)
 	int last_work_seen;
 	int net_worklist_len;
 	int syncer_final_iter;
+	int first_printf;
 	int error;
 
 	last_work_seen = 0;
 	syncer_final_iter = 0;
+	first_printf = 1;
 	syncer_state = SYNCER_RUNNING;
 	starttime = time_uptime;
 	td->td_pflags |= TDP_NORUNNINGBUF;
@@ -1864,15 +1861,8 @@ sched_sync(void)
 				continue;
 			}
 
-			if (first_printf == 0) {
-				/*
-				 * Drop the sync mutex, because some watchdog
-				 * drivers need to sleep while patting
-				 */
-				mtx_unlock(&sync_mtx);
+			if (first_printf == 0)
 				wdog_kern_pat(WD_LASTVAL);
-				mtx_lock(&sync_mtx);
-			}
 
 		}
 		if (syncer_state == SYNCER_FINAL_DELAY && syncer_final_iter > 0)
@@ -1954,25 +1944,6 @@ syncer_shutdown(void *arg, int howto)
 	mtx_unlock(&sync_mtx);
 	cv_broadcast(&sync_wakeup);
 	kproc_shutdown(arg, howto);
-}
-
-void
-syncer_suspend(void)
-{
-
-	syncer_shutdown(updateproc, 0);
-}
-
-void
-syncer_resume(void)
-{
-
-	mtx_lock(&sync_mtx);
-	first_printf = 1;
-	syncer_state = SYNCER_RUNNING;
-	mtx_unlock(&sync_mtx);
-	cv_broadcast(&sync_wakeup);
-	kproc_resume(updateproc);
 }
 
 /*
@@ -2071,13 +2042,13 @@ v_incr_usecount(struct vnode *vp)
 {
 
 	CTR2(KTR_VFS, "%s: vp %p", __func__, vp);
-	vholdl(vp);
 	vp->v_usecount++;
 	if (vp->v_type == VCHR && vp->v_rdev != NULL) {
 		dev_lock();
 		vp->v_rdev->si_usecount++;
 		dev_unlock();
 	}
+	vholdl(vp);
 }
 
 /*
@@ -2354,18 +2325,11 @@ vholdl(struct vnode *vp)
 	struct mount *mp;
 
 	CTR2(KTR_VFS, "%s: vp %p", __func__, vp);
-#ifdef INVARIANTS
-	/* getnewvnode() calls v_incr_usecount() without holding interlock. */
-	if (vp->v_type != VNON || vp->v_data != NULL) {
-		ASSERT_VI_LOCKED(vp, "vholdl");
-		VNASSERT(vp->v_holdcnt > 0 || (vp->v_iflag & VI_FREE) != 0,
-		    vp, ("vholdl: free vnode is held"));
-	}
-#endif
 	vp->v_holdcnt++;
-	if ((vp->v_iflag & VI_FREE) == 0)
+	if (!VSHOULDBUSY(vp))
 		return;
-	VNASSERT(vp->v_holdcnt == 1, vp, ("vholdl: wrong hold count"));
+	ASSERT_VI_LOCKED(vp, "vholdl");
+	VNASSERT((vp->v_iflag & VI_FREE) != 0, vp, ("vnode not free"));
 	VNASSERT(vp->v_op != NULL, vp, ("vholdl: vnode already reclaimed."));
 	/*
 	 * Remove a vnode from the free list, mark it as in use,
@@ -2428,7 +2392,7 @@ vdropl(struct vnode *vp)
 		    ("vdropl: vnode already reclaimed."));
 		VNASSERT((vp->v_iflag & VI_FREE) == 0, vp,
 		    ("vnode already free"));
-		VNASSERT(vp->v_holdcnt == 0, vp,
+		VNASSERT(VSHOULDFREE(vp), vp,
 		    ("vdropl: freeing when we shouldn't"));
 		active = vp->v_iflag & VI_ACTIVE;
 		vp->v_iflag &= ~VI_ACTIVE;
@@ -2804,6 +2768,16 @@ vgonel(struct vnode *vp)
 	vfs_notify_upper(vp, VFS_NOTIFY_UPPER_RECLAIM);
 
 	/*
+	 * Clean out any buffers associated with the vnode.
+	 * If the flush fails, just toss the buffers.
+	 */
+	mp = NULL;
+	if (!TAILQ_EMPTY(&vp->v_bufobj.bo_dirty.bv_hd))
+		(void) vn_start_secondary_write(vp, &mp, V_WAIT);
+	if (vinvalbuf(vp, V_SAVE, 0, 0) != 0)
+		vinvalbuf(vp, 0, 0, 0);
+
+	/*
 	 * If purging an active vnode, it must be closed and
 	 * deactivated before being reclaimed.
 	 */
@@ -2817,29 +2791,6 @@ vgonel(struct vnode *vp)
 	}
 	if (vp->v_type == VSOCK)
 		vfs_unp_reclaim(vp);
-
-	/*
-	 * Clean out any buffers associated with the vnode.
-	 * If the flush fails, just toss the buffers.
-	 */
-	mp = NULL;
-	if (!TAILQ_EMPTY(&vp->v_bufobj.bo_dirty.bv_hd))
-		(void) vn_start_secondary_write(vp, &mp, V_WAIT);
-	if (vinvalbuf(vp, V_SAVE, 0, 0) != 0) {
-		while (vinvalbuf(vp, 0, 0, 0) != 0)
-			;
-	}
-#ifdef INVARIANTS
-	BO_LOCK(&vp->v_bufobj);
-	KASSERT(TAILQ_EMPTY(&vp->v_bufobj.bo_dirty.bv_hd) &&
-	    vp->v_bufobj.bo_dirty.bv_cnt == 0 &&
-	    TAILQ_EMPTY(&vp->v_bufobj.bo_clean.bv_hd) &&
-	    vp->v_bufobj.bo_clean.bv_cnt == 0,
-	    ("vp %p bufobj not invalidated", vp));
-	vp->v_bufobj.bo_flag |= BO_DEAD;
-	BO_UNLOCK(&vp->v_bufobj);
-#endif
-
 	/*
 	 * Reclaim the vnode.
 	 */
@@ -3273,7 +3224,6 @@ sysctl_vfs_conflist(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = 0;
-	vfsconf_slock();
 	TAILQ_FOREACH(vfsp, &vfsconf, vfc_list) {
 #ifdef COMPAT_FREEBSD32
 		if (req->flags & SCTL_MASK32)
@@ -3284,12 +3234,11 @@ sysctl_vfs_conflist(SYSCTL_HANDLER_ARGS)
 		if (error)
 			break;
 	}
-	vfsconf_sunlock();
 	return (error);
 }
 
-SYSCTL_PROC(_vfs, OID_AUTO, conflist, CTLTYPE_OPAQUE | CTLFLAG_RD |
-    CTLFLAG_MPSAFE, NULL, 0, sysctl_vfs_conflist,
+SYSCTL_PROC(_vfs, OID_AUTO, conflist, CTLTYPE_OPAQUE | CTLFLAG_RD,
+    NULL, 0, sysctl_vfs_conflist,
     "S,xvfsconf", "List of all configured filesystems");
 
 #ifndef BURN_BRIDGES
@@ -3319,12 +3268,9 @@ vfs_sysctl(SYSCTL_HANDLER_ARGS)
 	case VFS_CONF:
 		if (namelen != 3)
 			return (ENOTDIR);	/* overloaded */
-		vfsconf_slock();
-		TAILQ_FOREACH(vfsp, &vfsconf, vfc_list) {
+		TAILQ_FOREACH(vfsp, &vfsconf, vfc_list)
 			if (vfsp->vfc_typenum == name[2])
 				break;
-		}
-		vfsconf_sunlock();
 		if (vfsp == NULL)
 			return (EOPNOTSUPP);
 #ifdef COMPAT_FREEBSD32
@@ -3337,9 +3283,8 @@ vfs_sysctl(SYSCTL_HANDLER_ARGS)
 	return (EOPNOTSUPP);
 }
 
-static SYSCTL_NODE(_vfs, VFS_GENERIC, generic, CTLFLAG_RD | CTLFLAG_SKIP |
-    CTLFLAG_MPSAFE, vfs_sysctl,
-    "Generic filesystem");
+static SYSCTL_NODE(_vfs, VFS_GENERIC, generic, CTLFLAG_RD | CTLFLAG_SKIP,
+    vfs_sysctl, "Generic filesystem");
 
 #if 1 || defined(COMPAT_PRELITE2)
 
@@ -3350,7 +3295,6 @@ sysctl_ovfs_conf(SYSCTL_HANDLER_ARGS)
 	struct vfsconf *vfsp;
 	struct ovfsconf ovfs;
 
-	vfsconf_slock();
 	TAILQ_FOREACH(vfsp, &vfsconf, vfc_list) {
 		bzero(&ovfs, sizeof(ovfs));
 		ovfs.vfc_vfsops = vfsp->vfc_vfsops;	/* XXX used as flag */
@@ -3359,13 +3303,10 @@ sysctl_ovfs_conf(SYSCTL_HANDLER_ARGS)
 		ovfs.vfc_refcount = vfsp->vfc_refcount;
 		ovfs.vfc_flags = vfsp->vfc_flags;
 		error = SYSCTL_OUT(req, &ovfs, sizeof ovfs);
-		if (error != 0) {
-			vfsconf_sunlock();
-			return (error);
-		}
+		if (error)
+			return error;
 	}
-	vfsconf_sunlock();
-	return (0);
+	return 0;
 }
 
 #endif /* 1 || COMPAT_PRELITE2 */
@@ -3463,9 +3404,8 @@ sysctl_vnode(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_kern, KERN_VNODE, vnode, CTLTYPE_OPAQUE | CTLFLAG_RD |
-    CTLFLAG_MPSAFE, 0, 0, sysctl_vnode, "S,xvnode",
-    "");
+SYSCTL_PROC(_kern, KERN_VNODE, vnode, CTLTYPE_OPAQUE|CTLFLAG_RD,
+    0, 0, sysctl_vnode, "S,xvnode", "");
 #endif
 
 /*
@@ -3808,20 +3748,17 @@ vn_isdisk(struct vnode *vp, int *errp)
 {
 	int error;
 
-	if (vp->v_type != VCHR) {
-		error = ENOTBLK;
-		goto out;
-	}
 	error = 0;
 	dev_lock();
-	if (vp->v_rdev == NULL)
+	if (vp->v_type != VCHR)
+		error = ENOTBLK;
+	else if (vp->v_rdev == NULL)
 		error = ENXIO;
 	else if (vp->v_rdev->si_devsw == NULL)
 		error = ENXIO;
 	else if (!(vp->v_rdev->si_devsw->d_flags & D_DISK))
 		error = ENOTBLK;
 	dev_unlock();
-out:
 	if (errp != NULL)
 		*errp = error;
 	return (error == 0);

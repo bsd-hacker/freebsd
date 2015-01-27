@@ -33,7 +33,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/linker.h>
 #include <machine/bootinfo.h>
 #include <machine/cpufunc.h>
-#include <machine/metadata.h>
 #include <machine/psl.h>
 #include <machine/specialreg.h>
 #include "bootstrap.h"
@@ -177,15 +176,14 @@ bi_checkcpu(void)
  * - Module metadata are formatted and placed in kernel space.
  */
 int
-bi_load64(char *args, vm_offset_t addr, vm_offset_t *modulep,
-    vm_offset_t *kernendp, int add_smap)
+bi_load64(char *args, vm_offset_t *modulep, vm_offset_t *kernendp)
 {
     struct preloaded_file	*xp, *kfp;
     struct i386_devdesc		*rootdev;
     struct file_metadata	*md;
+    vm_offset_t			addr;
     u_int64_t			kernend;
     u_int64_t			envp;
-    u_int64_t			module;
     vm_offset_t			size;
     char			*rootdevname;
     int				howto;
@@ -212,18 +210,21 @@ bi_load64(char *args, vm_offset_t addr, vm_offset_t *modulep,
     /* Try reading the /etc/fstab file to select the root device */
     getrootmount(i386_fmtdev((void *)rootdev));
 
-    if (addr == 0) {
-        /* find the last module in the chain */
-        for (xp = file_findfile(NULL, NULL); xp != NULL; xp = xp->f_next) {
-            if (addr < (xp->f_addr + xp->f_size))
-                addr = xp->f_addr + xp->f_size;
-        }
+    /* find the last module in the chain */
+    addr = 0;
+    for (xp = file_findfile(NULL, NULL); xp != NULL; xp = xp->f_next) {
+	if (addr < (xp->f_addr + xp->f_size))
+	    addr = xp->f_addr + xp->f_size;
     }
     /* pad to a page boundary */
     addr = roundup(addr, PAGE_SIZE);
 
-    /* place the metadata before anything */
-    module = *modulep = addr;
+    /* copy our environment */
+    envp = addr;
+    addr = bi_copyenv(addr);
+
+    /* pad to a page boundary */
+    addr = roundup(addr, PAGE_SIZE);
 
     kfp = file_findfile(NULL, "elf kernel");
     if (kfp == NULL)
@@ -234,30 +235,20 @@ bi_load64(char *args, vm_offset_t addr, vm_offset_t *modulep,
     file_addmetadata(kfp, MODINFOMD_HOWTO, sizeof howto, &howto);
     file_addmetadata(kfp, MODINFOMD_ENVP, sizeof envp, &envp);
     file_addmetadata(kfp, MODINFOMD_KERNEND, sizeof kernend, &kernend);
-    file_addmetadata(kfp, MODINFOMD_MODULEP, sizeof module, &module);
-    if (add_smap != 0)
-        bios_addsmapdata(kfp);
+    bios_addsmapdata(kfp);
 
+    /* Figure out the size and location of the metadata */
+    *modulep = addr;
     size = bi_copymodules64(0);
-
-    /* copy our environment */
-    envp = roundup(addr + size, PAGE_SIZE);
-    addr = bi_copyenv(envp);
-
-    /* set kernend */
-    kernend = roundup(addr, PAGE_SIZE);
+    kernend = roundup(addr + size, PAGE_SIZE);
     *kernendp = kernend;
 
     /* patch MODINFOMD_KERNEND */
     md = file_findmetadata(kfp, MODINFOMD_KERNEND);
     bcopy(&kernend, md->md_data, sizeof kernend);
 
-    /* patch MODINFOMD_ENVP */
-    md = file_findmetadata(kfp, MODINFOMD_ENVP);
-    bcopy(&envp, md->md_data, sizeof envp);
-
     /* copy module list and metadata */
-    (void)bi_copymodules64(*modulep);
+    (void)bi_copymodules64(addr);
 
     return(0);
 }

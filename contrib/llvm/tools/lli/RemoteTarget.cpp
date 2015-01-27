@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "RemoteTarget.h"
+#include "RemoteTargetExternal.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/Memory.h"
@@ -20,6 +21,28 @@
 #include <string>
 
 using namespace llvm;
+
+// Static methods
+RemoteTarget *RemoteTarget::createRemoteTarget() {
+  return new RemoteTarget;
+}
+
+RemoteTarget *RemoteTarget::createExternalRemoteTarget(std::string &ChildName) {
+#ifdef LLVM_ON_UNIX
+  return new RemoteTargetExternal(ChildName);
+#else
+  return 0;
+#endif
+}
+
+bool RemoteTarget::hostSupportsExternalRemoteTarget() {
+#ifdef LLVM_ON_UNIX
+  return true;
+#else
+  return false;
+#endif
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Simulated remote execution
@@ -30,39 +53,37 @@ using namespace llvm;
 
 bool RemoteTarget::allocateSpace(size_t Size, unsigned Alignment,
                                  uint64_t &Address) {
-  sys::MemoryBlock *Prev = Allocations.size() ? &Allocations.back() : nullptr;
+  sys::MemoryBlock *Prev = Allocations.size() ? &Allocations.back() : NULL;
   sys::MemoryBlock Mem = sys::Memory::AllocateRWX(Size, Prev, &ErrorMsg);
-  if (Mem.base() == nullptr)
-    return false;
+  if (Mem.base() == NULL)
+    return true;
   if ((uintptr_t)Mem.base() % Alignment) {
     ErrorMsg = "unable to allocate sufficiently aligned memory";
-    return false;
+    return true;
   }
   Address = reinterpret_cast<uint64_t>(Mem.base());
-  Allocations.push_back(Mem);
-  return true;
+  return false;
 }
 
 bool RemoteTarget::loadData(uint64_t Address, const void *Data, size_t Size) {
   memcpy ((void*)Address, Data, Size);
-  return true;
+  return false;
 }
 
 bool RemoteTarget::loadCode(uint64_t Address, const void *Data, size_t Size) {
   memcpy ((void*)Address, Data, Size);
   sys::MemoryBlock Mem((void*)Address, Size);
   sys::Memory::setExecutable(Mem, &ErrorMsg);
-  return true;
+  return false;
 }
 
 bool RemoteTarget::executeCode(uint64_t Address, int &RetVal) {
   int (*fn)(void) = (int(*)(void))Address;
   RetVal = fn();
-  return true;
+  return false;
 }
 
-bool RemoteTarget::create() {
-  return true;
+void RemoteTarget::create() {
 }
 
 void RemoteTarget::stop() {

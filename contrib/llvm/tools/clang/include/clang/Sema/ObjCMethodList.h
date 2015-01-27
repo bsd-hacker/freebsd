@@ -26,7 +26,7 @@ struct ObjCMethodList {
   /// \brief The next list object and 2 bits for extra info.
   llvm::PointerIntPair<ObjCMethodList *, 2> NextAndExtraBits;
 
-  ObjCMethodList() : Method(nullptr) { }
+  ObjCMethodList() : Method(0) { }
   ObjCMethodList(ObjCMethodDecl *M, ObjCMethodList *C)
     : Method(M), NextAndExtraBits(C, 0) { }
 

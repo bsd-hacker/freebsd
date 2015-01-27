@@ -31,9 +31,7 @@ SRCS=	DWARFAbbreviationDeclaration.cpp \
 	SymbolFileDWARFDebugMap.cpp \
 	UniqueDWARFASTType.cpp
 
-TGHDRS=	AttrList \
-	Attrs \
-	DiagnosticCommonKinds \
+TGHDRS=	DiagnosticCommonKinds \
 	DeclNodes \
 	StmtNodes \
 	CommentCommandList \

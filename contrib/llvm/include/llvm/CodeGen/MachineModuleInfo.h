@@ -35,14 +35,14 @@
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Metadata.h"
-#include "llvm/IR/ValueHandle.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MachineLocation.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/DataTypes.h"
+#include "llvm/Support/DebugLoc.h"
 #include "llvm/Support/Dwarf.h"
+#include "llvm/Support/ValueHandle.h"
 
 namespace llvm {
 
@@ -71,7 +71,7 @@ struct LandingPadInfo {
   std::vector<int> TypeIds;              // List of type ids (filters negative)
 
   explicit LandingPadInfo(MachineBasicBlock *MBB)
-    : LandingPadBlock(MBB), LandingPadLabel(nullptr), Personality(nullptr) {}
+    : LandingPadBlock(MBB), LandingPadLabel(0), Personality(0) {}
 };
 
 //===----------------------------------------------------------------------===//
@@ -168,13 +168,10 @@ class MachineModuleInfo : public ImmutablePass {
 public:
   static char ID; // Pass identification, replacement for typeid
 
-  struct VariableDbgInfo {
-    TrackingVH<MDNode> Var;
-    unsigned Slot;
-    DebugLoc Loc;
-  };
-  typedef SmallVector<VariableDbgInfo, 4> VariableDbgInfoMapTy;
-  VariableDbgInfoMapTy VariableDbgInfos;
+  typedef std::pair<unsigned, DebugLoc> UnsignedDebugLocPair;
+  typedef SmallVector<std::pair<TrackingVH<MDNode>, UnsignedDebugLocPair>, 4>
+    VariableDbgInfoMapTy;
+  VariableDbgInfoMapTy VariableDbgInfo;
 
   MachineModuleInfo();  // DUMMY CONSTRUCTOR, DO NOT CALL.
   // Real constructor.
@@ -183,8 +180,8 @@ public:
   ~MachineModuleInfo();
 
   // Initialization and Finalization
-  bool doInitialization(Module &) override;
-  bool doFinalization(Module &) override;
+  virtual bool doInitialization(Module &);
+  virtual bool doFinalization(Module &);
 
   /// EndFunction - Discard function meta information.
   ///
@@ -201,7 +198,7 @@ public:
   ///
   template<typename Ty>
   Ty &getObjFileInfo() {
-    if (ObjFileMMI == nullptr)
+    if (ObjFileMMI == 0)
       ObjFileMMI = new Ty(*this);
     return *static_cast<Ty*>(ObjFileMMI);
   }
@@ -241,10 +238,8 @@ public:
     return FrameInstructions;
   }
 
-  unsigned LLVM_ATTRIBUTE_UNUSED_RESULT
-  addFrameInst(const MCCFIInstruction &Inst) {
+  void addFrameInst(const MCCFIInstruction &Inst) {
     FrameInstructions.push_back(Inst);
-    return FrameInstructions.size() - 1;
   }
 
   /// getCompactUnwindEncoding - Returns the compact unwind encoding for a
@@ -334,7 +329,7 @@ public:
 
   /// TidyLandingPads - Remap landing pad labels and remove any deleted landing
   /// pads.
-  void TidyLandingPads(DenseMap<MCSymbol*, uintptr_t> *LPMap = nullptr);
+  void TidyLandingPads(DenseMap<MCSymbol*, uintptr_t> *LPMap = 0);
 
   /// getLandingPads - Return a reference to the landing pad info for the
   /// current function.
@@ -404,11 +399,10 @@ public:
   /// setVariableDbgInfo - Collect information used to emit debugging
   /// information of a variable.
   void setVariableDbgInfo(MDNode *N, unsigned Slot, DebugLoc Loc) {
-    VariableDbgInfo Info = { N, Slot, Loc };
-    VariableDbgInfos.push_back(std::move(Info));
+    VariableDbgInfo.push_back(std::make_pair(N, std::make_pair(Slot, Loc)));
   }
 
-  VariableDbgInfoMapTy &getVariableDbgInfo() { return VariableDbgInfos; }
+  VariableDbgInfoMapTy &getVariableDbgInfo() { return VariableDbgInfo; }
 
 }; // End class MachineModuleInfo
 

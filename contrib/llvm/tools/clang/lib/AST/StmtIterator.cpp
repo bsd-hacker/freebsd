@@ -27,7 +27,7 @@ static inline const VariableArrayType *FindVA(const Type* t) {
     t = vt->getElementType().getTypePtr();
   }
 
-  return nullptr;
+  return NULL;
 }
 
 void StmtIteratorBase::NextVA() {
@@ -54,7 +54,7 @@ void StmtIteratorBase::NextVA() {
 }
 
 void StmtIteratorBase::NextDecl(bool ImmediateAdvance) {
-  assert(getVAPtr() == nullptr);
+  assert (getVAPtr() == NULL);
   assert(inDeclGroup());
 
   if (ImmediateAdvance)
@@ -93,12 +93,12 @@ bool StmtIteratorBase::HandleDecl(Decl* D) {
 }
 
 StmtIteratorBase::StmtIteratorBase(Decl** dgi, Decl** dge)
-  : stmt(nullptr), DGI(dgi), RawVAPtr(DeclGroupMode), DGE(dge) {
+  : stmt(0), DGI(dgi), RawVAPtr(DeclGroupMode), DGE(dge) {
   NextDecl(false);
 }
 
 StmtIteratorBase::StmtIteratorBase(const VariableArrayType* t)
-  : stmt(nullptr), DGI(nullptr), RawVAPtr(SizeOfTypeVAMode) {
+  : stmt(0), DGI(0), RawVAPtr(SizeOfTypeVAMode) {
   RawVAPtr |= reinterpret_cast<uintptr_t>(t);
 }
 

@@ -13,7 +13,8 @@ CFLAGS += -I${.CURDIR}
 
 WARNS?=	3
 
-LIBADD+=	bsdxml sbuf
+DPADD=	${LIBBSDXML} ${LIBSBUF}
+LDADD=	-lbsdxml -lsbuf
 
 MAN=	libgeom.3
 

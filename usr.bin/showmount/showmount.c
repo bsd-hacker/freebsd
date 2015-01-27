@@ -110,11 +110,11 @@ main(int argc, char **argv)
 {
 	register struct exportslist *exp;
 	register struct grouplist *grp;
-	register int rpcs = 0, mntvers = 3;
+	register int rpcs = 0, mntvers = 1;
 	const char *host;
 	int ch, estat;
 
-	while ((ch = getopt(argc, argv, "ade13")) != -1)
+	while ((ch = getopt(argc, argv, "ade3")) != -1)
 		switch (ch) {
 		case 'a':
 			if (type == 0) {
@@ -132,9 +132,6 @@ main(int argc, char **argv)
 			break;
 		case 'e':
 			rpcs |= DOEXPORTS;
-			break;
-		case '1':
-			mntvers = 1;
 			break;
 		case '3':
 			mntvers = 3;

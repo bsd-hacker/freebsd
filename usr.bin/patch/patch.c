@@ -23,7 +23,7 @@
  * -C option added in 1998, original code by Marc Espie, based on FreeBSD
  * behaviour
  *
- * $OpenBSD: patch.c,v 1.54 2014/12/13 10:31:07 tobias Exp $
+ * $OpenBSD: patch.c,v 1.50 2012/05/15 19:32:02 millert Exp $
  * $FreeBSD$
  *
  */
@@ -150,8 +150,8 @@ main(int argc, char *argv[])
 	const	char *tmpdir;
 	char	*v;
 
-	setvbuf(stdout, NULL, _IOLBF, 0);
-	setvbuf(stderr, NULL, _IOLBF, 0);
+	setlinebuf(stdout);
+	setlinebuf(stderr);
 	for (i = 0; i < MAXFILEC; i++)
 		filearg[i] = NULL;
 
@@ -215,13 +215,13 @@ main(int argc, char *argv[])
 	for (open_patch_file(filearg[1]); there_is_another_patch();
 	    reinitialize_almost_everything()) {
 		/* for each patch in patch file */
-
+		
 		patch_seen = true;
 
 		warn_on_invalid_line = true;
 
 		if (outname == NULL)
-			outname = xstrdup(filearg[0]);
+			outname = savestr(filearg[0]);
 
 		/* for ed script just up and do it and exit */
 		if (diff_type == ED_DIFF) {
@@ -416,7 +416,7 @@ main(int argc, char *argv[])
 		}
 		set_signals(1);
 	}
-
+	
 	if (!patch_seen)
 		error = 2;
 
@@ -514,10 +514,10 @@ get_some_switches(void)
 			/* FALLTHROUGH */
 		case 'z':
 			/* must directly follow 'b' case for backwards compat */
-			simple_backup_suffix = xstrdup(optarg);
+			simple_backup_suffix = savestr(optarg);
 			break;
 		case 'B':
-			origprae = xstrdup(optarg);
+			origprae = savestr(optarg);
 			break;
 		case 'c':
 			diff_type = CONTEXT_DIFF;
@@ -555,7 +555,7 @@ get_some_switches(void)
 		case 'i':
 			if (++filec == MAXFILEC)
 				fatal("too many file arguments\n");
-			filearg[filec] = xstrdup(optarg);
+			filearg[filec] = savestr(optarg);
 			break;
 		case 'l':
 			canonicalize = true;
@@ -567,7 +567,7 @@ get_some_switches(void)
 			noreverse = true;
 			break;
 		case 'o':
-			outname = xstrdup(optarg);
+			outname = savestr(optarg);
 			break;
 		case 'p':
 			strippath = atoi(optarg);
@@ -611,12 +611,12 @@ get_some_switches(void)
 	Argv += optind;
 
 	if (Argc > 0) {
-		filearg[0] = xstrdup(*Argv++);
+		filearg[0] = savestr(*Argv++);
 		Argc--;
 		while (Argc > 0) {
 			if (++filec == MAXFILEC)
 				fatal("too many file arguments\n");
-			filearg[filec] = xstrdup(*Argv++);
+			filearg[filec] = savestr(*Argv++);
 			Argc--;
 		}
 	}
@@ -634,7 +634,7 @@ usage(void)
 "             [-r rej-name] [-V t | nil | never] [-x number] [-z backup-ext]\n"
 "             [--posix] [origfile [patchfile]]\n"
 "       patch <patchfile\n");
-	my_exit(EXIT_FAILURE);
+	my_exit(EXIT_SUCCESS);
 }
 
 /*

@@ -80,7 +80,6 @@ public:
                                 const MCAsmLayout &Layout,
                                 const MCFragment *Fragment,
                                 const MCFixup &Fixup, MCValue Target,
-                                bool &IsPCRel,
                                 uint64_t &FixedValue) = 0;
 
   /// \brief Check whether the difference (A - B) between two symbol

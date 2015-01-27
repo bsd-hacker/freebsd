@@ -47,7 +47,15 @@ SectionLoadHistory::GetLastStopID() const
 SectionLoadList *
 SectionLoadHistory::GetSectionLoadListForStopID (uint32_t stop_id, bool read_only)
 {
-    if (!m_stop_id_to_section_load_list.empty())
+    if (m_stop_id_to_section_load_list.empty())
+    {
+        SectionLoadListSP section_load_list_sp(new SectionLoadList());
+        if (stop_id == eStopIDNow)
+            stop_id = 0;
+        m_stop_id_to_section_load_list[stop_id] = section_load_list_sp;
+        return section_load_list_sp.get();
+    }
+    else
     {
         if (read_only)
         {
@@ -57,7 +65,7 @@ SectionLoadHistory::GetSectionLoadListForStopID (uint32_t stop_id, bool read_onl
             if (stop_id == eStopIDNow)
             {
                 // If we are asking for the latest and greatest value, it is always
-                // at the end of our list because that will be the highest stop ID.
+                // at the end of our list becuase that will be the highest stop ID.
                 StopIDToSectionLoadList::reverse_iterator rpos = m_stop_id_to_section_load_list.rbegin();
                 return rpos->second.get();
             }
@@ -97,18 +105,13 @@ SectionLoadHistory::GetSectionLoadListForStopID (uint32_t stop_id, bool read_onl
             return section_load_list_sp.get();
         }
     }
-    SectionLoadListSP section_load_list_sp(new SectionLoadList());
-    if (stop_id == eStopIDNow)
-        stop_id = 0;
-    m_stop_id_to_section_load_list[stop_id] = section_load_list_sp;
-    return section_load_list_sp.get();
+    return NULL;
 }
 
 SectionLoadList &
 SectionLoadHistory::GetCurrentSectionLoadList ()
 {
     const bool read_only = true;
-    Mutex::Locker locker(m_mutex);
     SectionLoadList *section_load_list = GetSectionLoadListForStopID (eStopIDNow, read_only);
     assert(section_load_list != NULL);
     return *section_load_list;

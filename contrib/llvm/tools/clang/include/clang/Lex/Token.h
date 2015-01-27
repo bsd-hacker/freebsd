@@ -18,7 +18,6 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TemplateKinds.h"
 #include "clang/Basic/TokenKinds.h"
-#include "llvm/ADT/StringRef.h"
 #include <cstdlib>
 
 namespace clang {
@@ -63,7 +62,8 @@ class Token {
   void *PtrData;
 
   /// Kind - The actual flavor of token this is.
-  tok::TokenKind Kind;
+  ///
+  unsigned short Kind;
 
   /// Flags - Bits we track about this token, members of the TokenFlags enum.
   unsigned char Flags;
@@ -83,13 +83,13 @@ public:
     IgnoredComma = 0x80    // This comma is not a macro argument separator (MS).
   };
 
-  tok::TokenKind getKind() const { return Kind; }
+  tok::TokenKind getKind() const { return (tok::TokenKind)Kind; }
   void setKind(tok::TokenKind K) { Kind = K; }
 
   /// is/isNot - Predicates to check if this token is a specific kind, as in
   /// "if (Tok.is(tok::l_brace)) {...}".
-  bool is(tok::TokenKind K) const { return Kind == K; }
-  bool isNot(tok::TokenKind K) const { return Kind != K; }
+  bool is(tok::TokenKind K) const { return Kind == (unsigned) K; }
+  bool isNot(tok::TokenKind K) const { return Kind != (unsigned) K; }
 
   /// \brief Return true if this is a raw identifier (when lexing
   /// in raw mode) or a non-keyword identifier (when lexing in non-raw mode).
@@ -145,13 +145,15 @@ public:
     setAnnotationEndLoc(R.getEnd());
   }
 
-  const char *getName() const { return tok::getTokenName(Kind); }
+  const char *getName() const {
+    return tok::getTokenName( (tok::TokenKind) Kind);
+  }
 
   /// \brief Reset all flags to cleared.
   void startToken() {
     Kind = tok::unknown;
     Flags = 0;
-    PtrData = nullptr;
+    PtrData = 0;
     UintData = 0;
     Loc = SourceLocation();
   }
@@ -161,19 +163,19 @@ public:
            "getIdentifierInfo() on a tok::raw_identifier token!");
     assert(!isAnnotation() &&
            "getIdentifierInfo() on an annotation token!");
-    if (isLiteral()) return nullptr;
+    if (isLiteral()) return 0;
     return (IdentifierInfo*) PtrData;
   }
   void setIdentifierInfo(IdentifierInfo *II) {
     PtrData = (void*) II;
   }
 
-  /// getRawIdentifier - For a raw identifier token (i.e., an identifier
-  /// lexed in raw mode), returns a reference to the text substring in the
-  /// buffer if known.
-  StringRef getRawIdentifier() const {
+  /// getRawIdentifierData - For a raw identifier token (i.e., an identifier
+  /// lexed in raw mode), returns a pointer to the start of it in the text
+  /// buffer if known, null otherwise.
+  const char *getRawIdentifierData() const {
     assert(is(tok::raw_identifier));
-    return StringRef(reinterpret_cast<const char *>(PtrData), getLength());
+    return reinterpret_cast<const char*>(PtrData);
   }
   void setRawIdentifierData(const char *Ptr) {
     assert(is(tok::raw_identifier));

@@ -2,7 +2,8 @@
 
 LIB=	heimipcc
 PRIVATELIB=
-LIBADD=	heimbase roken pthread
+LDADD=	-lheimbase -lroken -lpthread
+DPADD=	${LIBHEIMBASE} ${LIBROKEN} ${LIBPTHREAD}
 
 SRCS=	\
 	client.c \

@@ -41,7 +41,6 @@ static const char sccsid[] = "@(#)pr_time.c	8.2 (Berkeley) 4/4/94";
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
-#include <libxo/xo.h>
 
 #include "extern.h"
 
@@ -83,14 +82,12 @@ pr_attime(time_t *started, time_t *now)
 	(void)wcsftime(buf, sizeof(buf), fmt, &tp);
 	len = wcslen(buf);
 	width = wcswidth(buf, len);
-	xo_attr("since", "%lu", (unsigned long) *started);
-	xo_attr("delta", "%lu", (unsigned long) diff);
 	if (len == width)
-		xo_emit("{:login-time/%-7.7ls/%ls}", buf);
+		(void)wprintf(L"%-7.7ls", buf);
 	else if (width < 7)
-	        xo_emit("{:login-time/%ls}%.*s", buf, 7 - width, "      ");
+		(void)wprintf(L"%ls%.*s", buf, 7 - width, "      ");
 	else {
-		xo_emit("{:login-time/%ls}", buf);
+		(void)wprintf(L"%ls", buf);
 		offset = width - 7;
 	}
 	return (offset);
@@ -107,7 +104,7 @@ pr_idle(time_t idle)
 	/* If idle more than 36 hours, print as a number of days. */
 	if (idle >= 36 * 3600) {
 		int days = idle / 86400;
-		xo_emit(" {:idle/%dday%s} ", days, days > 1 ? "s" : " " );
+		(void)printf(" %dday%s ", days, days > 1 ? "s" : " " );
 		if (days >= 100)
 			return (2);
 		if (days >= 10)
@@ -116,15 +113,15 @@ pr_idle(time_t idle)
 
 	/* If idle more than an hour, print as HH:MM. */
 	else if (idle >= 3600)
-		xo_emit(" {:idle/%2d:%02d/} ",
+		(void)printf(" %2d:%02d ",
 		    (int)(idle / 3600), (int)((idle % 3600) / 60));
 
 	else if (idle / 60 == 0)
-		xo_emit("     - ");
+		(void)printf("     - ");
 
 	/* Else print the minutes idle. */
 	else
-		xo_emit("    {:idle/%2d} ", (int)(idle / 60));
+		(void)printf("    %2d ", (int)(idle / 60));
 
 	return (0); /* not idle longer than 9 days */
 }

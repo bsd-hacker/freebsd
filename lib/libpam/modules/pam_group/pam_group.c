@@ -47,14 +47,15 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 
 #define PAM_SM_AUTH
-#define PAM_SM_ACCOUNT
 
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 #include <security/openpam.h>
 
-static int
-pam_group(pam_handle_t *pamh)
+
+PAM_EXTERN int
+pam_sm_authenticate(pam_handle_t *pamh, int flags __unused,
+    int argc __unused, const char *argv[] __unused)
 {
 	int local, remote;
 	const char *group, *user;
@@ -95,12 +96,14 @@ pam_group(pam_handle_t *pamh)
 	if ((grp = getgrnam(group)) == NULL || grp->gr_mem == NULL)
 		goto failed;
 
-	/* check if user's own primary group */
+	/* check if the group is empty */
+	if (*grp->gr_mem == NULL)
+		goto failed;
+
+	/* check membership */
 	if (pwd->pw_gid == grp->gr_gid)
 		goto found;
-
-	/* iterate over members */
-	for (list = grp->gr_mem; list != NULL && *list != NULL; ++list)
+	for (list = grp->gr_mem; *list != NULL; ++list)
 		if (strcmp(*list, pwd->pw_name) == 0)
 			goto found;
 
@@ -120,27 +123,11 @@ pam_group(pam_handle_t *pamh)
 }
 
 PAM_EXTERN int
-pam_sm_authenticate(pam_handle_t *pamh, int flags __unused,
-    int argc __unused, const char *argv[] __unused)
-{
-
-	return (pam_group(pamh));
-}
-
-PAM_EXTERN int
 pam_sm_setcred(pam_handle_t * pamh __unused, int flags __unused,
     int argc __unused, const char *argv[] __unused)
 {
 
 	return (PAM_SUCCESS);
-}
-
-PAM_EXTERN int
-pam_sm_acct_mgmt(pam_handle_t *pamh, int flags __unused,
-    int argc __unused, const char *argv[] __unused)
-{
-
-	return (pam_group(pamh));
 }
 
 PAM_MODULE_ENTRY("pam_group");

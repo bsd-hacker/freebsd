@@ -9,10 +9,16 @@ SRCS=	mail.local.c
 MAN=	mail.local.8
 CFLAGS+=-I${SENDMAIL_DIR}/include -I.
 
+NO_PIE=	yes
+
 WARNS?=	2
 WFORMAT=0
 
-LIBADD=	sm
+LIBSMDIR=	${.OBJDIR}/../../lib/libsm
+LIBSM=		${LIBSMDIR}/libsm.a
+
+DPADD=	${LIBSM}
+LDADD=	${LIBSM}
 
 SRCS+=	sm_os.h
 CLEANFILES+=sm_os.h

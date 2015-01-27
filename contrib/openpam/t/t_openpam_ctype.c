@@ -94,7 +94,7 @@ T_OC(pfcs)
  * Boilerplate
  */
 
-static const struct t_test *t_plan[] = {
+const struct t_test *t_plan[] = {
 	T(t_oc_digit),
 	T(t_oc_xdigit),
 	T(t_oc_upper),

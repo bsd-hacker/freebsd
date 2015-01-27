@@ -216,9 +216,6 @@ void
 sglist_free(struct sglist *sg)
 {
 
-	if (sg == NULL)
-		return;
-
 	if (refcount_release(&sg->sg_refs))
 		free(sg, M_SGLIST);
 }

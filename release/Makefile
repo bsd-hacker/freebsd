@@ -8,13 +8,8 @@
 #  memstick: Builds memory stick image (memstick.img)
 #  mini-memstick: Builds minimal memory stick image (mini-memstick.img)
 #  ftp: Sets up FTP distribution area (ftp)
-#  release: Invokes real-release, vm-release, and cloudware-release targets
-#  real-release: Build all media and FTP distribution area
-#  vm-release: Build all virtual machine image targets
-#  cloudware-release: Build all cloud hosting provider targets
-#  install: Invokes the release-install and vm-install targets
-#  release-install: Copies all release installation media into ${DESTDIR}
-#  vm-install: Copies all virtual machine images into ${DESTDIR}
+#  release: Build all media and FTP distribution area
+#  install: Copies all release media into ${DESTDIR}
 #
 # Variables affecting the build process:
 #  WORLDDIR: location of src tree -- must have built world and default kernel
@@ -28,10 +23,6 @@
 #  WITH_DVD: if set, generate dvd1.iso
 #  WITH_COMPRESSED_IMAGES: if set, compress installation images with xz(1)
 #		(uncompressed images are not removed)
-#  WITH_VMIMAGES: if set, build virtual machine images with the release
-#  WITH_COMPRESSED_VMIMAGES: if set, compress virtual machine disk images
-#  		with xz(1) (extremely time consuming)
-#  WITH_CLOUDWARE: if set, build cloud hosting disk images with the release
 #  TARGET/TARGET_ARCH: architecture of built release
 #
 
@@ -62,16 +53,10 @@ ${_V}!=	eval $$(awk '/^${_V}=/{print}' ${.CURDIR}/../sys/conf/newvers.sh); echo 
 .for _V in ${TARGET_ARCH}
 .if !empty(TARGET:M${_V})
 OSRELEASE=	${TYPE}-${REVISION}-${BRANCH}-${TARGET}
-VOLUME_LABEL=	${REVISION:C/[.-]/_/g}_${BRANCH:C/[.-]/_/g}_${TARGET}
 .else
 OSRELEASE=	${TYPE}-${REVISION}-${BRANCH}-${TARGET}-${TARGET_ARCH}
-VOLUME_LABEL=	${REVISION:C/[.-]/_/g}_${BRANCH:C/[.-]/_/g}_${TARGET_ARCH}
 .endif
 .endfor
-.endif
-
-.if !defined(VOLUME_LABEL) || empty(VOLUME_LABEL)
-VOLUME_LABEL=	FreeBSD_Install
 .endif
 
 .if !exists(${DOCDIR})
@@ -170,13 +155,10 @@ system: packagesystem
 	mkdir -p release
 	cd ${WORLDDIR} && ${IMAKE} installkernel installworld distribution \
 		DESTDIR=${.OBJDIR}/release MK_RESCUE=no MK_KERNEL_SYMBOLS=no \
-		MK_PROFILE=no MK_SENDMAIL=no MK_TESTS=no MK_LIB32=no \
-		MK_DEBUG_FILES=no
+		MK_PROFILE=no MK_SENDMAIL=no MK_TESTS=no MK_LIB32=no
 # Copy distfiles
 	mkdir -p release/usr/freebsd-dist
-	for dist in MANIFEST $$(ls *.txz | grep -v -- '-dbg'); \
-	    do cp $${dist} release/usr/freebsd-dist; \
-	done
+	cp *.txz MANIFEST release/usr/freebsd-dist
 # Copy documentation, if generated
 .if !defined(NODOC)
 	cp reldoc/* release
@@ -186,7 +168,6 @@ system: packagesystem
 	echo sendmail_enable=\"NONE\" > release/etc/rc.conf
 	echo hostid_enable=\"NO\" >> release/etc/rc.conf
 	echo debug.witness.trace=0 >> release/etc/sysctl.conf
-	echo vfs.mountroot.timeout=\"10\" >> release/boot/loader.conf
 	cp ${.CURDIR}/rc.local release/etc
 	touch ${.TARGET}
 
@@ -199,7 +180,7 @@ bootonly: packagesystem
 	    MK_INSTALLLIB=no MK_LIB32=no MK_MAIL=no \
 	    MK_NCP=no MK_TOOLCHAIN=no MK_PROFILE=no \
 	    MK_INSTALLIB=no MK_RESCUE=no MK_DICT=no \
-	    MK_KERNEL_SYMBOLS=no MK_TESTS=no MK_DEBUG_FILES=no
+	    MK_KERNEL_SYMBOLS=no MK_TESTS=no
 # Copy manifest only (no distfiles) to get checksums
 	mkdir -p bootonly/usr/freebsd-dist
 	cp MANIFEST bootonly/usr/freebsd-dist
@@ -212,7 +193,6 @@ bootonly: packagesystem
 	echo sendmail_enable=\"NONE\" > bootonly/etc/rc.conf
 	echo hostid_enable=\"NO\" >> bootonly/etc/rc.conf
 	echo debug.witness.trace=0 >> bootonly/etc/sysctl.conf
-	echo vfs.mountroot.timeout=\"10\" >> bootonly/boot/loader.conf
 	cp ${.CURDIR}/rc.local bootonly/etc
 
 dvd:
@@ -220,12 +200,10 @@ dvd:
 	mkdir -p ${.TARGET}
 	cd ${WORLDDIR} && ${IMAKE} installkernel installworld distribution \
 		DESTDIR=${.OBJDIR}/${.TARGET} MK_RESCUE=no MK_KERNEL_SYMBOLS=no \
-		MK_TESTS=no MK_DEBUG_FILES=no
+		MK_TESTS=no
 # Copy distfiles
 	mkdir -p ${.TARGET}/usr/freebsd-dist
-	for dist in MANIFEST $$(ls *.txz | grep -v -- '-dbg'); \
-	    do cp $${dist} ${.TARGET}/usr/freebsd-dist; \
-	done
+	cp *.txz MANIFEST ${.TARGET}/usr/freebsd-dist
 # Copy documentation, if generated
 .if !defined(NODOC)
 	cp reldoc/* ${.TARGET}
@@ -235,19 +213,18 @@ dvd:
 	echo sendmail_enable=\"NONE\" > ${.TARGET}/etc/rc.conf
 	echo hostid_enable=\"NO\" >> ${.TARGET}/etc/rc.conf
 	echo debug.witness.trace=0 >> ${.TARGET}/etc/sysctl.conf
-	echo vfs.mountroot.timeout=\"10\" >> ${.TARGET}/boot/loader.conf
 	cp ${.CURDIR}/rc.local ${.TARGET}/etc
 	touch ${.TARGET}
 
 release.iso: disc1.iso
 disc1.iso: system
-	sh ${.CURDIR}/${TARGET}/mkisoimages.sh -b ${VOLUME_LABEL}_CD ${.TARGET} release
+	sh ${.CURDIR}/${TARGET}/mkisoimages.sh -b FreeBSD_Install ${.TARGET} release
 
 dvd1.iso: dvd pkg-stage
-	sh ${.CURDIR}/${TARGET}/mkisoimages.sh -b ${VOLUME_LABEL}_DVD ${.TARGET} dvd
+	sh ${.CURDIR}/${TARGET}/mkisoimages.sh -b FreeBSD_Install ${.TARGET} dvd
 
 bootonly.iso: bootonly
-	sh ${.CURDIR}/${TARGET}/mkisoimages.sh -b ${VOLUME_LABEL}_BO ${.TARGET} bootonly
+	sh ${.CURDIR}/${TARGET}/mkisoimages.sh -b FreeBSD_Install ${.TARGET} bootonly
 
 memstick: memstick.img
 memstick.img: system
@@ -278,16 +255,11 @@ ftp: packagesystem
 	mkdir -p ftp
 	cp *.txz MANIFEST ftp
 
-release:	real-release vm-release cloudware-release
-	@true
-
-real-release:
+release:
 	${MAKE} -C ${.CURDIR} ${.MAKEFLAGS} obj
 	${MAKE} -C ${.CURDIR} ${.MAKEFLAGS} ${RELEASE_TARGETS}
 
-install:	release-install vm-install
-
-release-install:
+install:
 .if defined(DESTDIR) && !empty(DESTDIR)
 	mkdir -p ${DESTDIR}
 .endif
@@ -300,5 +272,3 @@ release-install:
 .endfor
 	cd ${DESTDIR} && sha256 ${OSRELEASE}* > ${DESTDIR}/CHECKSUM.SHA256
 	cd ${DESTDIR} && md5 ${OSRELEASE}* > ${DESTDIR}/CHECKSUM.MD5
-
-.include "${.CURDIR}/Makefile.vm"

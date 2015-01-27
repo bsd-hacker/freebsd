@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "spiller"
+
 #include "Spiller.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/LiveRangeEdit.h"
@@ -25,8 +27,6 @@
 #include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
-
-#define DEBUG_TYPE "spiller"
 
 namespace {
   enum SpillerName { trivial, inline_ };
@@ -89,9 +89,8 @@ protected:
     unsigned ss = vrm->assignVirt2StackSlot(li->reg);
 
     // Iterate over reg uses/defs.
-    for (MachineRegisterInfo::reg_instr_iterator
-         regItr = mri->reg_instr_begin(li->reg);
-         regItr != mri->reg_instr_end();) {
+    for (MachineRegisterInfo::reg_iterator
+         regItr = mri->reg_begin(li->reg); regItr != mri->reg_end();) {
 
       // Grab the use/def instr.
       MachineInstr *mi = &*regItr;
@@ -99,7 +98,9 @@ protected:
       DEBUG(dbgs() << "  Processing " << *mi);
 
       // Step regItr to the next use/def instr.
-      ++regItr;
+      do {
+        ++regItr;
+      } while (regItr != mri->reg_end() && (&*regItr == mi));
 
       // Collect uses & defs for this instr.
       SmallVector<unsigned, 2> indices;
@@ -142,9 +143,9 @@ protected:
       if (hasDef) {
         MachineInstrSpan MIS(miItr);
 
-        tii->storeRegToStackSlot(*mi->getParent(), std::next(miItr), NewVReg,
+        tii->storeRegToStackSlot(*mi->getParent(), llvm::next(miItr), NewVReg,
                                  true, ss, trc, tri);
-        lis->InsertMachineInstrRangeInMaps(std::next(miItr), MIS.end());
+        lis->InsertMachineInstrRangeInMaps(llvm::next(miItr), MIS.end());
       }
     }
   }
@@ -163,7 +164,7 @@ public:
                  VirtRegMap &vrm)
     : SpillerBase(pass, mf, vrm) {}
 
-  void spill(LiveRangeEdit &LRE) override {
+  void spill(LiveRangeEdit &LRE) {
     // Ignore spillIs - we don't use it.
     trivialSpillEverywhere(LRE);
   }

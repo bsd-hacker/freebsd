@@ -91,7 +91,7 @@ static void	db_pager(void);
  * Force pending whitespace.
  */
 void
-db_force_whitespace(void)
+db_force_whitespace()
 {
 	register int last_print, next_tab;
 
@@ -308,7 +308,7 @@ db_pager(void)
  * Return output position
  */
 int
-db_print_position(void)
+db_print_position()
 {
 	return (db_output_position);
 }

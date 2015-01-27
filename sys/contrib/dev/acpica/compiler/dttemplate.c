@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -187,12 +187,6 @@ GetTemplate:
     }
 
     Status = DtCreateOneTemplate (Signature, TableData);
-
-
-    /* Shutdown ACPICA subsystem */
-
-    (void) AcpiTerminate ();
-    CmDeleteCaches ();
     return (Status);
 }
 
@@ -403,5 +397,6 @@ DtCreateOneTemplate (
 Cleanup:
     fclose (File);
     AcpiOsRedirectOutput (stdout);
+    ACPI_FREE (DisasmFilename);
     return (Status);
 }

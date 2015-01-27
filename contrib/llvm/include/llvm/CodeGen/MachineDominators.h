@@ -15,11 +15,11 @@
 #ifndef LLVM_CODEGEN_MACHINEDOMINATORS_H
 #define LLVM_CODEGEN_MACHINEDOMINATORS_H
 
+#include "llvm/Analysis/DominatorInternals.h"
+#include "llvm/Analysis/Dominators.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/Support/GenericDomTree.h"
-#include "llvm/Support/GenericDomTreeConstruction.h"
 
 namespace llvm {
 
@@ -48,7 +48,7 @@ public:
 
   DominatorTreeBase<MachineBasicBlock>& getBase() { return *DT; }
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
   /// getRoots -  Return the root blocks of the current CFG.  This may include
   /// multiple blocks if we are computing post dominators.  For forward
@@ -66,7 +66,7 @@ public:
     return DT->getRootNode();
   }
 
-  bool runOnMachineFunction(MachineFunction &F) override;
+  virtual bool runOnMachineFunction(MachineFunction &F);
 
   inline bool dominates(const MachineDomTreeNode* A,
                         const MachineDomTreeNode* B) const {
@@ -166,9 +166,9 @@ public:
     return DT->isReachableFromEntry(A);
   }
 
-  void releaseMemory() override;
+  virtual void releaseMemory();
 
-  void print(raw_ostream &OS, const Module*) const override;
+  virtual void print(raw_ostream &OS, const Module*) const;
 };
 
 //===-------------------------------------

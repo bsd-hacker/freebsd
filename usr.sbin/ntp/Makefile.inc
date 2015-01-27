@@ -14,6 +14,10 @@ CFLAGS+= ${NTPDEFS} ${DEFS_LOCAL} ${CLOCKDEFS}
 CFLAGS+= -DOPENSSL
 .endif
 
+LIBOPTS=	${.OBJDIR}/../libopts/libopts.a
+LIBPARSE=	${.OBJDIR}/../libparse/libparse.a
+LIBNTP=	${.OBJDIR}/../libntp/libntp.a
+
 WARNS?=	0
 
 .include "../Makefile.inc"

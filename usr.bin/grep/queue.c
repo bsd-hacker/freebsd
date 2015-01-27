@@ -1,4 +1,4 @@
-/*	$NetBSD: queue.c,v 1.5 2011/08/31 16:24:57 plunky Exp $	*/
+/*	$NetBSD: queue.c,v 1.2 2011/02/16 01:31:33 joerg Exp $	*/
 /*	$FreeBSD$	*/
 
 /*-
@@ -68,11 +68,8 @@ enqueue(struct str *x)
 
 	STAILQ_INSERT_TAIL(&queue, item, list);
 
-	if (++count > Bflag) {
-		item = dequeue();
-		free(item->data.dat);
-		free(item);
-	}
+	if (++count > Bflag)
+		free(dequeue());
 }
 
 static struct qentry *
@@ -95,8 +92,7 @@ printqueue(void)
 	struct qentry *item;
 
 	while ((item = dequeue()) != NULL) {
-		printline(&item->data, '-', NULL, 0);
-		free(item->data.dat);
+		printline(&item->data, '-', (regmatch_t *)NULL, 0);
 		free(item);
 	}
 }
@@ -106,8 +102,6 @@ clearqueue(void)
 {
 	struct qentry *item;
 
-	while ((item = dequeue()) != NULL) {
-		free(item->data.dat);
+	while ((item = dequeue()) != NULL)
 		free(item);
-	}
 }

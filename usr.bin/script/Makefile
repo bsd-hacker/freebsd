@@ -2,7 +2,7 @@
 # $FreeBSD$
 
 PROG=	script
-
-LIBADD=	util
+LDADD=	-lutil
+DPADD=	${LIBUTIL}
 
 .include <bsd.prog.mk>

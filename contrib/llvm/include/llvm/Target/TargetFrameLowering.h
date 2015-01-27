@@ -93,19 +93,6 @@ public:
   /// stack pointer.
   virtual bool isFPCloseToIncomingSP() const { return true; }
 
-  /// assignCalleeSavedSpillSlots - Allows target to override spill slot
-  /// assignment logic.  If implemented, assignCalleeSavedSpillSlots() should
-  /// assign frame slots to all CSI entries and return true.  If this method
-  /// returns false, spill slots will be assigned using generic implementation.
-  /// assignCalleeSavedSpillSlots() may add, delete or rearrange elements of
-  /// CSI.
-  virtual bool
-  assignCalleeSavedSpillSlots(MachineFunction &MF,
-                              const TargetRegisterInfo *TRI,
-                              std::vector<CalleeSavedInfo> &CSI) const {
-    return false;
-  }
-
   /// getCalleeSavedSpillSlots - This method returns a pointer to an array of
   /// pairs, that contains an entry for each callee saved register that must be
   /// spilled to a particular stack location if it is spilled.
@@ -118,7 +105,7 @@ public:
   virtual const SpillSlot *
   getCalleeSavedSpillSlots(unsigned &NumEntries) const {
     NumEntries = 0;
-    return nullptr;
+    return 0;
   }
 
   /// targetHandlesStackFrameRounding - Returns true if the target is
@@ -203,7 +190,7 @@ public:
   /// before PrologEpilogInserter scans the physical registers used to determine
   /// what callee saved registers should be spilled. This method is optional.
   virtual void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
-                                             RegScavenger *RS = nullptr) const {
+                                                RegScavenger *RS = NULL) const {
 
   }
 
@@ -213,7 +200,7 @@ public:
   /// replaced with direct constants.  This method is optional.
   ///
   virtual void processFunctionBeforeFrameFinalized(MachineFunction &MF,
-                                             RegScavenger *RS = nullptr) const {
+                                               RegScavenger *RS = NULL) const {
   }
 
   /// eliminateCallFramePseudoInstr - This method is called during prolog/epilog

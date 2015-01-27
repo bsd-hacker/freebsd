@@ -5,7 +5,8 @@ PROG=	partedit
 LINKS= ${BINDIR}/partedit ${BINDIR}/autopart \
        ${BINDIR}/partedit ${BINDIR}/scriptedpart
 SYMLINKS= ${BINDIR}/partedit /usr/sbin/sade
-LIBADD+=	geom ncursesw util dialog m
+DPADD=	${LIBGEOM} ${LIBNCURSESW} ${LIBUTIL} ${LIBDIALOG} ${LIBM}
+LDADD=	-lgeom -lncursesw -lutil -ldialog -lm
 
 PARTEDIT_ARCH= ${MACHINE}
 .if ${MACHINE} == "i386" || ${MACHINE} == "amd64"

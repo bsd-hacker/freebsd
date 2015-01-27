@@ -157,12 +157,10 @@ mem_write(void *ctx, int vcpu, uint64_t gpa, uint64_t wval, int size, void *arg)
 }
 
 int
-emulate_mem(struct vmctx *ctx, int vcpu, uint64_t paddr, struct vie *vie,
-    struct vm_guest_paging *paging)
-
+emulate_mem(struct vmctx *ctx, int vcpu, uint64_t paddr, struct vie *vie)
 {
 	struct mmio_rb_range *entry;
-	int err, immutable;
+	int err;
 	
 	pthread_rwlock_rdlock(&mmio_rwlock);
 	/*
@@ -186,28 +184,10 @@ emulate_mem(struct vmctx *ctx, int vcpu, uint64_t paddr, struct vie *vie,
 	}
 
 	assert(entry != NULL);
-
-	/*
-	 * An 'immutable' memory range is guaranteed to be never removed
-	 * so there is no need to hold 'mmio_rwlock' while calling the
-	 * handler.
-	 *
-	 * XXX writes to the PCIR_COMMAND register can cause register_mem()
-	 * to be called. If the guest is using PCI extended config space
-	 * to modify the PCIR_COMMAND register then register_mem() can
-	 * deadlock on 'mmio_rwlock'. However by registering the extended
-	 * config space window as 'immutable' the deadlock can be avoided.
-	 */
-	immutable = (entry->mr_param.flags & MEM_F_IMMUTABLE);
-	if (immutable)
-		pthread_rwlock_unlock(&mmio_rwlock);
-
-	err = vmm_emulate_instruction(ctx, vcpu, paddr, vie, paging,
+	err = vmm_emulate_instruction(ctx, vcpu, paddr, vie,
 				      mem_read, mem_write, &entry->mr_param);
-
-	if (!immutable)
-		pthread_rwlock_unlock(&mmio_rwlock);
-
+	pthread_rwlock_unlock(&mmio_rwlock);
+	
 	return (err);
 }
 
@@ -264,7 +244,6 @@ unregister_mem(struct mem_range *memp)
 		mr = &entry->mr_param;
 		assert(mr->name == memp->name);
 		assert(mr->base == memp->base && mr->size == memp->size); 
-		assert((mr->flags & MEM_F_IMMUTABLE) == 0);
 		RB_REMOVE(mmio_rb_tree, &mmio_rb_root, entry);
 
 		/* flush Per-vCPU cache */	

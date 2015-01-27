@@ -33,7 +33,6 @@
 ZFS_COMMON_OBJS +=		\
 	arc.o			\
 	bplist.o		\
-	blkptr.o		\
 	bpobj.o			\
 	bptree.o		\
 	dbuf.o			\

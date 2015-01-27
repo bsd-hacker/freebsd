@@ -667,6 +667,15 @@ count_unused(struct ip_list* p)
 	return num;
 }
 
+static int get_random(void)
+{
+	int r;
+	if (RAND_bytes((unsigned char*)&r, (int)sizeof(r)) == 1) {
+		return r;
+	}
+	return (int)random();
+}
+
 /** pick random unused element from IP list */
 static struct ip_list*
 pick_random_ip(struct ip_list* list)
@@ -676,7 +685,7 @@ pick_random_ip(struct ip_list* list)
 	int sel;
 	if(num == 0) return NULL;
 	/* not perfect, but random enough */
-	sel = (int)arc4random_uniform((uint32_t)num);
+	sel = get_random() % num;
 	/* skip over unused elements that we did not select */
 	while(sel > 0 && p) {
 		if(!p->used) sel--;

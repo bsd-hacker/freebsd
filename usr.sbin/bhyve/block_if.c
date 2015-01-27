@@ -43,30 +43,25 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <pthread.h>
 #include <pthread_np.h>
-#include <signal.h>
 #include <unistd.h>
 
-#include <machine/atomic.h>
-
 #include "bhyverun.h"
-#include "mevent.h"
 #include "block_if.h"
 
 #define BLOCKIF_SIG	0xb109b109
 
-#define BLOCKIF_MAXREQ	33
+#define BLOCKIF_MAXREQ	32
 
 enum blockop {
 	BOP_READ,
 	BOP_WRITE,
-	BOP_FLUSH
+	BOP_FLUSH,
+	BOP_CANCEL
 };
 
 enum blockstat {
 	BST_FREE,
-	BST_PEND,
-	BST_BUSY,
-	BST_DONE
+	BST_INUSE
 };
 
 struct blockif_elem {
@@ -74,7 +69,6 @@ struct blockif_elem {
 	struct blockif_req  *be_req;
 	enum blockop	     be_op;
 	enum blockstat	     be_status;
-	pthread_t            be_tid;
 };
 
 struct blockif_ctxt {
@@ -88,24 +82,12 @@ struct blockif_ctxt {
         pthread_cond_t		bc_cond;
 	int			bc_closing;
 
-	/* Request elements and free/pending/busy queues */
+	/* Request elements and free/inuse queues */
 	TAILQ_HEAD(, blockif_elem) bc_freeq;       
-	TAILQ_HEAD(, blockif_elem) bc_pendq;
-	TAILQ_HEAD(, blockif_elem) bc_busyq;
+	TAILQ_HEAD(, blockif_elem) bc_inuseq;       
 	u_int			bc_req_count;
 	struct blockif_elem	bc_reqs[BLOCKIF_MAXREQ];
 };
-
-static pthread_once_t blockif_once = PTHREAD_ONCE_INIT;
-
-struct blockif_sig_elem {
-	pthread_mutex_t			bse_mtx;
-	pthread_cond_t			bse_cond;
-	int				bse_pending;
-	struct blockif_sig_elem		*bse_next;
-};
-
-static struct blockif_sig_elem *blockif_bse_head;
 
 static int
 blockif_enqueue(struct blockif_ctxt *bc, struct blockif_req *breq,
@@ -120,10 +102,10 @@ blockif_enqueue(struct blockif_ctxt *bc, struct blockif_req *breq,
 	assert(be->be_status == BST_FREE);
 
 	TAILQ_REMOVE(&bc->bc_freeq, be, be_link);
-	be->be_status = BST_PEND;
+	be->be_status = BST_INUSE;
 	be->be_req = breq;
 	be->be_op = op;
-	TAILQ_INSERT_TAIL(&bc->bc_pendq, be, be_link);
+	TAILQ_INSERT_TAIL(&bc->bc_inuseq, be, be_link);
 
 	bc->bc_req_count++;
 
@@ -131,38 +113,26 @@ blockif_enqueue(struct blockif_ctxt *bc, struct blockif_req *breq,
 }
 
 static int
-blockif_dequeue(struct blockif_ctxt *bc, struct blockif_elem **bep)
+blockif_dequeue(struct blockif_ctxt *bc, struct blockif_elem *el)
 {
 	struct blockif_elem *be;
 
 	if (bc->bc_req_count == 0)
 		return (ENOENT);
 
-	be = TAILQ_FIRST(&bc->bc_pendq);
+	be = TAILQ_FIRST(&bc->bc_inuseq);
 	assert(be != NULL);
-	assert(be->be_status == BST_PEND);
-	TAILQ_REMOVE(&bc->bc_pendq, be, be_link);
-	be->be_status = BST_BUSY;
-	be->be_tid = bc->bc_btid;
-	TAILQ_INSERT_TAIL(&bc->bc_busyq, be, be_link);
+	assert(be->be_status == BST_INUSE);
+	*el = *be;
 
-	*bep = be;
-
-	return (0);
-}
-
-static void
-blockif_complete(struct blockif_ctxt *bc, struct blockif_elem *be)
-{
-	assert(be->be_status == BST_DONE);
-
-	TAILQ_REMOVE(&bc->bc_busyq, be, be_link);
-	be->be_tid = 0;
+	TAILQ_REMOVE(&bc->bc_inuseq, be, be_link);
 	be->be_status = BST_FREE;
 	be->be_req = NULL;
 	TAILQ_INSERT_TAIL(&bc->bc_freeq, be, be_link);
-
+	
 	bc->bc_req_count--;
+
+	return (0);
 }
 
 static void
@@ -189,12 +159,13 @@ blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be)
 		break;
 	case BOP_FLUSH:
 		break;
+	case BOP_CANCEL:
+		err = EINTR;
+		break;
 	default:
 		err = EINVAL;
 		break;
 	}
-
-	be->be_status = BST_DONE;
 
 	(*br->br_callback)(br, err);
 }
@@ -203,17 +174,16 @@ static void *
 blockif_thr(void *arg)
 {
 	struct blockif_ctxt *bc;
-	struct blockif_elem *be;
+	struct blockif_elem req;
 
 	bc = arg;
 
 	for (;;) {
 		pthread_mutex_lock(&bc->bc_mtx);
-		while (!blockif_dequeue(bc, &be)) {
+		while (!blockif_dequeue(bc, &req)) {
 			pthread_mutex_unlock(&bc->bc_mtx);
-			blockif_proc(bc, be);
+			blockif_proc(bc, &req);
 			pthread_mutex_lock(&bc->bc_mtx);
-			blockif_complete(bc, be);
 		}
 		pthread_cond_wait(&bc->bc_cond, &bc->bc_mtx);
 		pthread_mutex_unlock(&bc->bc_mtx);
@@ -229,38 +199,6 @@ blockif_thr(void *arg)
 	return (NULL);
 }
 
-static void
-blockif_sigcont_handler(int signal, enum ev_type type, void *arg)
-{
-	struct blockif_sig_elem *bse;
-
-	for (;;) {
-		/*
-		 * Process the entire list even if not intended for
-		 * this thread.
-		 */
-		do {
-			bse = blockif_bse_head;
-			if (bse == NULL)
-				return;
-		} while (!atomic_cmpset_ptr((uintptr_t *)&blockif_bse_head,
-					    (uintptr_t)bse,
-					    (uintptr_t)bse->bse_next));
-
-		pthread_mutex_lock(&bse->bse_mtx);
-		bse->bse_pending = 0;
-		pthread_cond_signal(&bse->bse_cond);
-		pthread_mutex_unlock(&bse->bse_mtx);
-	}
-}
-
-static void
-blockif_init(void)
-{
-	mevent_add(SIGCONT, EVF_SIGNAL, blockif_sigcont_handler, NULL);
-	(void) signal(SIGCONT, SIG_IGN);
-}
-
 struct blockif_ctxt *
 blockif_open(const char *optstr, const char *ident)
 {
@@ -271,8 +209,6 @@ blockif_open(const char *optstr, const char *ident)
 	off_t size;
 	int extra, fd, i, sectsz;
 	int nocache, sync, ro;
-
-	pthread_once(&blockif_once, blockif_init);
 
 	nocache = 0;
 	sync = 0;
@@ -342,14 +278,12 @@ blockif_open(const char *optstr, const char *ident)
 
 	bc->bc_magic = BLOCKIF_SIG;
 	bc->bc_fd = fd;
-	bc->bc_rdonly = ro;
 	bc->bc_size = size;
 	bc->bc_sectsz = sectsz;
 	pthread_mutex_init(&bc->bc_mtx, NULL);
 	pthread_cond_init(&bc->bc_cond, NULL);
 	TAILQ_INIT(&bc->bc_freeq);
-	TAILQ_INIT(&bc->bc_pendq);
-	TAILQ_INIT(&bc->bc_busyq);
+	TAILQ_INIT(&bc->bc_inuseq);
 	bc->bc_req_count = 0;
 	for (i = 0; i < BLOCKIF_MAXREQ; i++) {
 		bc->bc_reqs[i].be_status = BST_FREE;
@@ -421,81 +355,9 @@ blockif_flush(struct blockif_ctxt *bc, struct blockif_req *breq)
 int
 blockif_cancel(struct blockif_ctxt *bc, struct blockif_req *breq)
 {
-	struct blockif_elem *be;
 
 	assert(bc->bc_magic == BLOCKIF_SIG);
-
-	pthread_mutex_lock(&bc->bc_mtx);
-	/*
-	 * Check pending requests.
-	 */
-	TAILQ_FOREACH(be, &bc->bc_pendq, be_link) {
-		if (be->be_req == breq)
-			break;
-	}
-	if (be != NULL) {
-		/*
-		 * Found it.
-		 */
-		TAILQ_REMOVE(&bc->bc_pendq, be, be_link);
-		be->be_status = BST_FREE;
-		be->be_req = NULL;
-		TAILQ_INSERT_TAIL(&bc->bc_freeq, be, be_link);
-		bc->bc_req_count--;
-		pthread_mutex_unlock(&bc->bc_mtx);
-
-		return (0);
-	}
-
-	/*
-	 * Check in-flight requests.
-	 */
-	TAILQ_FOREACH(be, &bc->bc_busyq, be_link) {
-		if (be->be_req == breq)
-			break;
-	}
-	if (be == NULL) {
-		/*
-		 * Didn't find it.
-		 */
-		pthread_mutex_unlock(&bc->bc_mtx);
-		return (EINVAL);
-	}
-
-	/*
-	 * Interrupt the processing thread to force it return
-	 * prematurely via it's normal callback path.
-	 */
-	while (be->be_status == BST_BUSY) {
-		struct blockif_sig_elem bse, *old_head;
-
-		pthread_mutex_init(&bse.bse_mtx, NULL);
-		pthread_cond_init(&bse.bse_cond, NULL);
-
-		bse.bse_pending = 1;
-
-		do {
-			old_head = blockif_bse_head;
-			bse.bse_next = old_head;
-		} while (!atomic_cmpset_ptr((uintptr_t *)&blockif_bse_head,
-					    (uintptr_t)old_head,
-					    (uintptr_t)&bse));
-
-		pthread_kill(be->be_tid, SIGCONT);
-
-		pthread_mutex_lock(&bse.bse_mtx);
-		while (bse.bse_pending)
-			pthread_cond_wait(&bse.bse_cond, &bse.bse_mtx);
-		pthread_mutex_unlock(&bse.bse_mtx);
-	}
-
-	pthread_mutex_unlock(&bc->bc_mtx);
-
-	/*
-	 * The processing thread has been interrupted.  Since it's not
-	 * clear if the callback has been invoked yet, return EBUSY.
-	 */
-	return (EBUSY);
+	return (blockif_request(bc, breq, BOP_CANCEL));
 }
 
 int
@@ -528,55 +390,6 @@ blockif_close(struct blockif_ctxt *bc)
 }
 
 /*
- * Return virtual C/H/S values for a given block. Use the algorithm
- * outlined in the VHD specification to calculate values.
- */
-void
-blockif_chs(struct blockif_ctxt *bc, uint16_t *c, uint8_t *h, uint8_t *s)
-{
-	off_t sectors;		/* total sectors of the block dev */
-	off_t hcyl;		/* cylinders times heads */
-	uint16_t secpt;		/* sectors per track */
-	uint8_t heads;
-
-	assert(bc->bc_magic == BLOCKIF_SIG);
-
-	sectors = bc->bc_size / bc->bc_sectsz;
-
-	/* Clamp the size to the largest possible with CHS */
-	if (sectors > 65535UL*16*255)
-		sectors = 65535UL*16*255;
-
-	if (sectors >= 65536UL*16*63) {
-		secpt = 255;
-		heads = 16;
-		hcyl = sectors / secpt;
-	} else {
-		secpt = 17;
-		hcyl = sectors / secpt;
-		heads = (hcyl + 1023) / 1024;
-
-		if (heads < 4)
-			heads = 4;
-
-		if (hcyl >= (heads * 1024) || heads > 16) {
-			secpt = 31;
-			heads = 16;
-			hcyl = sectors / secpt;
-		}
-		if (hcyl >= (heads * 1024)) {
-			secpt = 63;
-			heads = 16;
-			hcyl = sectors / secpt;
-		}
-	}
-
-	*c = hcyl / heads;
-	*h = heads;
-	*s = secpt;
-}
-
-/*
  * Accessors
  */
 off_t
@@ -600,7 +413,7 @@ blockif_queuesz(struct blockif_ctxt *bc)
 {
 
 	assert(bc->bc_magic == BLOCKIF_SIG);
-	return (BLOCKIF_MAXREQ - 1);
+	return (BLOCKIF_MAXREQ);
 }
 
 int

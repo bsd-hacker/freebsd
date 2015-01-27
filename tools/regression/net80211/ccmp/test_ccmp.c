@@ -680,7 +680,7 @@ runtest(struct ieee80211com *ic, struct ciphertest *t)
 		printf("FAIL: decap botch; data does not compare\n");
 		printtest(t);
 		cmpfail(mtod(m, const void *), m->m_pkthdr.len,
-			t->plaintext, t_plaintext_len);
+			t->plaintext, sizeof(t->plaintext));
 		goto bad;
 	}
 	m_freem(m);

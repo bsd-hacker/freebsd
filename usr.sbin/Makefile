@@ -8,6 +8,7 @@ SUBDIR=	adduser \
 	binmiscctl \
 	bootparamd \
 	bsdconfig \
+	bsdinstall \
 	cdcontrol \
 	chkgrp \
 	chown \
@@ -24,10 +25,10 @@ SUBDIR=	adduser \
 	digictl \
 	diskinfo \
 	dumpcis \
+	etcupdate \
 	extattr \
 	extattrctl \
 	fifolog \
-	fstyp \
 	fwcontrol \
 	getfmac \
 	getpmac \
@@ -36,6 +37,7 @@ SUBDIR=	adduser \
 	ifmcstat \
 	inetd \
 	iostat \
+	iscsid \
 	kldxref \
 	mailwrapper \
 	makefs \
@@ -91,7 +93,6 @@ SUBDIR=	adduser \
 	trpt \
 	tzsetup \
 	ugidfw \
-	vigr \
 	vipw \
 	wake \
 	watch \
@@ -123,16 +124,8 @@ SUBDIR+=	praudit
 SUBDIR+=	authpf
 .endif
 
-.if ${MK_AUTOFS} != "no"
-SUBDIR+=	autofs
-.endif
-
 .if ${MK_BLUETOOTH} != "no"
 SUBDIR+=	bluetooth
-.endif
-
-.if ${MK_BSDINSTALL} != "no"
-SUBDIR+=	bsdinstall
 .endif
 
 .if ${MK_BSNMP} != "no"
@@ -167,6 +160,7 @@ SUBDIR+=	gpioctl
 .endif
 
 .if ${MK_INET6} != "no"
+SUBDIR+=	faithd
 SUBDIR+=	ip6addrctl
 SUBDIR+=	mld6query
 SUBDIR+=	ndp
@@ -181,10 +175,6 @@ SUBDIR+=	traceroute6
 
 .if ${MK_IPFW} != "no"
 SUBDIR+=	ipfwpcap
-.endif
-
-.if ${MK_ISCSI} != "no"
-SUBDIR+=	iscsid
 .endif
 
 .if ${MK_JAIL} != "no"
@@ -267,7 +257,6 @@ SUBDIR+=	pkg
 SUBDIR+=	pmcannotate
 SUBDIR+=	pmccontrol
 SUBDIR+=	pmcstat
-SUBDIR+=	pmcstudy
 .endif
 
 .if ${MK_PORTSNAP} != "no"
@@ -286,10 +275,6 @@ SUBDIR+=	repquota
 
 .if ${MK_RCMDS} != "no"
 SUBDIR+=	rwhod
-.endif
-
-.if ${MK_RCS} != "no"
-SUBDIR+=	etcupdate
 .endif
 
 .if ${MK_SENDMAIL} != "no"

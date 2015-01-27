@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
 #include "opt_ddb.h"
+#include "opt_global.h"
 #include "opt_ktrace.h"
 
 #include <sys/param.h>
@@ -604,7 +605,7 @@ trap(struct trapframe *trapframe)
 	/*
 	 * A trap can occur while DTrace executes a probe. Before
 	 * executing the probe, DTrace blocks re-scheduling and sets
-	 * a flag in its per-cpu flags to indicate that it doesn't
+	 * a flag in it's per-cpu flags to indicate that it doesn't
 	 * want to fault. On returning from the probe, the no-fault
 	 * flag is cleared and finally re-scheduling is enabled.
 	 *
@@ -617,8 +618,7 @@ trap(struct trapframe *trapframe)
 	 * XXXDTRACE: add pid probe handler here (if ever)
 	 */
 	if (!usermode) {
-		if (dtrace_trap_func != NULL &&
-		    (*dtrace_trap_func)(trapframe, type) != 0)
+		if (dtrace_trap_func != NULL && (*dtrace_trap_func)(trapframe, type))
 			return (trapframe->pc);
 	}
 #endif

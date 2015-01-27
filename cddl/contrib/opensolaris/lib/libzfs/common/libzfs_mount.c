@@ -21,7 +21,6 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2014 by Delphix. All rights reserved.
  */
 
 /*
@@ -139,7 +138,7 @@ is_shared(libzfs_handle_t *hdl, const char *mountpoint, zfs_share_proto_t proto)
 
 		*tab = '\0';
 		if (strcmp(buf, mountpoint) == 0) {
-#ifdef illumos
+#ifdef sun
 			/*
 			 * the protocol field is the third field
 			 * skip over second field
@@ -172,7 +171,7 @@ is_shared(libzfs_handle_t *hdl, const char *mountpoint, zfs_share_proto_t proto)
 	return (SHARED_NOT_SHARED);
 }
 
-#ifdef illumos
+#ifdef sun
 /*
  * Returns true if the specified directory is empty.  If we can't open the
  * directory at all, return true so that the mount can fail with a more
@@ -297,7 +296,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		}
 	}
 
-#ifdef illumos	/* FreeBSD: overlay mounts are not checked. */
+#ifdef sun	/* FreeBSD: overlay mounts are not checked. */
 	/*
 	 * Determine if the mountpoint is empty.  If so, refuse to perform the
 	 * mount.  We don't perform this check if MS_OVERLAY is specified, which
@@ -507,7 +506,7 @@ zfs_is_shared_smb(zfs_handle_t *zhp, char **where)
  * initialized in _zfs_init_libshare() are actually present.
  */
 
-#ifdef illumos
+#ifdef sun
 static sa_handle_t (*_sa_init)(int);
 static void (*_sa_fini)(sa_handle_t);
 static sa_share_t (*_sa_find_share)(sa_handle_t, char *);
@@ -534,7 +533,7 @@ static void (*_sa_update_sharetab_ts)(sa_handle_t);
 static void
 _zfs_init_libshare(void)
 {
-#ifdef illumos
+#ifdef sun
 	void *libshare;
 	char path[MAXPATHLEN];
 	char isa[MAXISALEN];
@@ -605,7 +604,7 @@ zfs_init_libshare(libzfs_handle_t *zhandle, int service)
 {
 	int ret = SA_OK;
 
-#ifdef illumos
+#ifdef sun
 	if (_sa_init == NULL)
 		ret = SA_CONFIG_ERR;
 
@@ -646,7 +645,7 @@ void
 zfs_uninit_libshare(libzfs_handle_t *zhandle)
 {
 	if (zhandle != NULL && zhandle->libzfs_sharehdl != NULL) {
-#ifdef illumos
+#ifdef sun
 		if (_sa_fini != NULL)
 			_sa_fini(zhandle->libzfs_sharehdl);
 #endif
@@ -663,7 +662,7 @@ zfs_uninit_libshare(libzfs_handle_t *zhandle)
 int
 zfs_parse_options(char *options, zfs_share_proto_t proto)
 {
-#ifdef illumos
+#ifdef sun
 	if (_sa_parse_legacy_options != NULL) {
 		return (_sa_parse_legacy_options(NULL, options,
 		    proto_table[proto].p_name));
@@ -674,7 +673,7 @@ zfs_parse_options(char *options, zfs_share_proto_t proto)
 #endif
 }
 
-#ifdef illumos
+#ifdef sun
 /*
  * zfs_sa_find_share(handle, path)
  *
@@ -716,7 +715,7 @@ zfs_sa_disable_share(sa_share_t share, char *proto)
 		return (_sa_disable_share(share, proto));
 	return (SA_CONFIG_ERR);
 }
-#endif	/* illumos */
+#endif	/* sun */
 
 /*
  * Share the given filesystem according to the options in the specified
@@ -737,6 +736,16 @@ zfs_share_proto(zfs_handle_t *zhp, zfs_share_proto_t *proto)
 	if (!zfs_is_mountable(zhp, mountpoint, sizeof (mountpoint), NULL))
 		return (0);
 
+#ifdef sun
+	if ((ret = zfs_init_libshare(hdl, SA_INIT_SHARE_API)) != SA_OK) {
+		(void) zfs_error_fmt(hdl, EZFS_SHARENFSFAILED,
+		    dgettext(TEXT_DOMAIN, "cannot share '%s': %s"),
+		    zfs_get_name(zhp), _sa_errorstr != NULL ?
+		    _sa_errorstr(ret) : "");
+		return (-1);
+	}
+#endif
+
 	for (curr_proto = proto; *curr_proto != PROTO_END; curr_proto++) {
 		/*
 		 * Return success if there are no share options.
@@ -747,17 +756,6 @@ zfs_share_proto(zfs_handle_t *zhp, zfs_share_proto_t *proto)
 		    strcmp(shareopts, "off") == 0)
 			continue;
 
-#ifdef illumos
-		ret = zfs_init_libshare(hdl, SA_INIT_SHARE_API);
-		if (ret != SA_OK) {
-			(void) zfs_error_fmt(hdl, EZFS_SHARENFSFAILED,
-			    dgettext(TEXT_DOMAIN, "cannot share '%s': %s"),
-			    zfs_get_name(zhp), _sa_errorstr != NULL ?
-			    _sa_errorstr(ret) : "");
-			return (-1);
-		}
-#endif
-
 		/*
 		 * If the 'zoned' property is set, then zfs_is_mountable()
 		 * will have already bailed out if we are in the global zone.
@@ -767,7 +765,7 @@ zfs_share_proto(zfs_handle_t *zhp, zfs_share_proto_t *proto)
 		if (zfs_prop_get_int(zhp, ZFS_PROP_ZONED))
 			continue;
 
-#ifdef illumos
+#ifdef sun
 		share = zfs_sa_find_share(hdl->libzfs_sharehdl, mountpoint);
 		if (share == NULL) {
 			/*
@@ -856,7 +854,7 @@ static int
 unshare_one(libzfs_handle_t *hdl, const char *name, const char *mountpoint,
     zfs_share_proto_t proto)
 {
-#ifdef illumos
+#ifdef sun
 	sa_share_t share;
 	int err;
 	char *mntpt;

@@ -128,7 +128,8 @@ mlphy_probe(dev)
 	 * encountered the 6692 on an Olicom card with a ThunderLAN
 	 * controller chip.
 	 */
-	if (!mii_dev_mac_match(dev, "tl"))
+	if (strcmp(device_get_name(device_get_parent(device_get_parent(dev))),
+	    "tl") != 0)
 		return (ENXIO);
 
 	device_set_desc(dev, "Micro Linear 6692 media interface");

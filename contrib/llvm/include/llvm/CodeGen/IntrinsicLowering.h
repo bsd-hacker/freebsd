@@ -24,13 +24,13 @@ namespace llvm {
   class DataLayout;
 
   class IntrinsicLowering {
-    const DataLayout& DL;
+    const DataLayout& TD;
 
     
     bool Warned;
   public:
-    explicit IntrinsicLowering(const DataLayout &DL) :
-      DL(DL), Warned(false) {}
+    explicit IntrinsicLowering(const DataLayout &td) :
+      TD(td), Warned(false) {}
 
     /// AddPrototypes - This method, if called, causes all of the prototypes
     /// that might be needed by an intrinsic lowering implementation to be

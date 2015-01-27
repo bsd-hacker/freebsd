@@ -15,13 +15,14 @@
 #ifndef REMOTEMEMORYMANAGER_H
 #define REMOTEMEMORYMANAGER_H
 
-#include "RemoteTarget.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/JITMemoryManager.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Memory.h"
 #include <utility>
+
+#include "RemoteTarget.h"
 
 namespace llvm {
 
@@ -63,52 +64,49 @@ private:
   RemoteTarget *Target;
 
 public:
-  RemoteMemoryManager() : Target(nullptr) {}
+  RemoteMemoryManager() : Target(NULL) {}
   virtual ~RemoteMemoryManager();
 
   uint8_t *allocateCodeSection(uintptr_t Size, unsigned Alignment,
-                               unsigned SectionID,
-                               StringRef SectionName) override;
+                               unsigned SectionID, StringRef SectionName);
 
   uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment,
                                unsigned SectionID, StringRef SectionName,
-                               bool IsReadOnly) override;
+                               bool IsReadOnly);
 
   // For now, remote symbol resolution is not support in lli.  The MCJIT
   // interface does support this, but clients must provide their own
   // mechanism for finding remote symbol addresses.  MCJIT will resolve
   // symbols from Modules it contains.
-  uint64_t getSymbolAddress(const std::string &Name) override { return 0; }
+  uint64_t getSymbolAddress(const std::string &Name) { return 0; }
 
-  void notifyObjectLoaded(ExecutionEngine *EE, const ObjectImage *Obj) override;
+  void notifyObjectLoaded(ExecutionEngine *EE, const ObjectImage *Obj);
 
-  bool finalizeMemory(std::string *ErrMsg) override;
+  bool finalizeMemory(std::string *ErrMsg);
 
   // For now, remote EH frame registration isn't supported.  Remote symbol
   // resolution is a prerequisite to supporting remote EH frame registration.
-  void registerEHFrames(uint8_t *Addr, uint64_t LoadAddr,
-                        size_t Size) override {}
-  void deregisterEHFrames(uint8_t *Addr, uint64_t LoadAddr,
-                          size_t Size) override {}
+  void registerEHFrames(uint8_t *Addr, uint64_t LoadAddr, size_t Size) {}
+  void deregisterEHFrames(uint8_t *Addr, uint64_t LoadAddr, size_t Size) {}
 
   // This is a non-interface function used by lli
   void setRemoteTarget(RemoteTarget *T) { Target = T; }
 
   // The following obsolete JITMemoryManager calls are stubbed out for
   // this model.
-  void setMemoryWritable() override;
-  void setMemoryExecutable() override;
-  void setPoisonMemory(bool poison) override;
-  void AllocateGOT() override;
-  uint8_t *getGOTBase() const override;
-  uint8_t *startFunctionBody(const Function *F, uintptr_t &ActualSize) override;
+  void setMemoryWritable();
+  void setMemoryExecutable();
+  void setPoisonMemory(bool poison);
+  void AllocateGOT();
+  uint8_t *getGOTBase() const;
+  uint8_t *startFunctionBody(const Function *F, uintptr_t &ActualSize);
   uint8_t *allocateStub(const GlobalValue* F, unsigned StubSize,
-                        unsigned Alignment) override;
+                        unsigned Alignment);
   void endFunctionBody(const Function *F, uint8_t *FunctionStart,
-                       uint8_t *FunctionEnd) override;
-  uint8_t *allocateSpace(intptr_t Size, unsigned Alignment) override;
-  uint8_t *allocateGlobal(uintptr_t Size, unsigned Alignment) override;
-  void deallocateFunctionBody(void *Body) override;
+                       uint8_t *FunctionEnd);
+  uint8_t *allocateSpace(intptr_t Size, unsigned Alignment);
+  uint8_t *allocateGlobal(uintptr_t Size, unsigned Alignment);
+  void deallocateFunctionBody(void *Body);
 };
 
 } // end namespace llvm

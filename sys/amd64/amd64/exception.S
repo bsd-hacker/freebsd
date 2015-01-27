@@ -153,13 +153,9 @@ IDTVEC(xmm)
 IDTVEC(tss)
 	TRAP_ERR(T_TSSFLT)
 IDTVEC(missing)
-	subq	$TF_ERR,%rsp
-	movl	$T_SEGNPFLT,TF_TRAPNO(%rsp)
-	jmp	prot_addrf
+	TRAP_ERR(T_SEGNPFLT)
 IDTVEC(stk)
-	subq	$TF_ERR,%rsp
-	movl	$T_STKFLT,TF_TRAPNO(%rsp)
-	jmp	prot_addrf
+	TRAP_ERR(T_STKFLT)
 IDTVEC(align)
 	TRAP_ERR(T_ALIGNFLT)
 
@@ -232,7 +228,7 @@ alltraps_pushregs_no_rdi:
 	.type	calltrap,@function
 calltrap:
 	movq	%rsp,%rdi
-	call	trap_check
+	call	trap
 	MEXITCOUNT
 	jmp	doreti			/* Handle any pending ASTs */
 
@@ -322,7 +318,6 @@ IDTVEC(page)
 IDTVEC(prot)
 	subq	$TF_ERR,%rsp
 	movl	$T_PROTFLT,TF_TRAPNO(%rsp)
-prot_addrf:
 	movq	$0,TF_ADDR(%rsp)
 	movq	%rdi,TF_RDI(%rsp)	/* free up a GP register */
 	leaq	doreti_iret(%rip),%rdi

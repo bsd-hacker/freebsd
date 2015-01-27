@@ -1,4 +1,7 @@
-/* Copyright (c) 2008 The NetBSD Foundation, Inc.
+/*
+ * Automated Testing Framework (atf)
+ *
+ * Copyright (c) 2008 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,24 +24,24 @@
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
-
-#include "atf-c/detail/test_helpers.h"
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <atf-c.h>
-
 #include "atf-c/build.h"
 #include "atf-c/check.h"
-#include "atf-c/detail/dynstr.h"
-#include "atf-c/detail/env.h"
-#include "atf-c/detail/fs.h"
-#include "atf-c/detail/process.h"
+#include "atf-c/config.h"
 #include "atf-c/error.h"
+#include "atf-c/macros.h"
+
+#include "dynstr.h"
+#include "fs.h"
+#include "process.h"
+#include "test_helpers.h"
 
 bool
 build_check_c_o(const char *path)
@@ -47,8 +50,7 @@ build_check_c_o(const char *path)
     atf_dynstr_t iflag;
     const char *optargs[4];
 
-    RE(atf_dynstr_init_fmt(&iflag, "-I%s", atf_env_get_with_default(
-        "ATF_INCLUDEDIR", ATF_INCLUDEDIR)));
+    RE(atf_dynstr_init_fmt(&iflag, "-I%s", atf_config_get("atf_includedir")));
 
     optargs[0] = atf_dynstr_cstring(&iflag);
     optargs[1] = "-Wall";

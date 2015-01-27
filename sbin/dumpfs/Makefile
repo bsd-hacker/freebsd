@@ -3,7 +3,8 @@
 
 PROG=	dumpfs
 WARNS?=	2
-LIBADD=	ufs
+DPADD=	${LIBUFS}
+LDADD=	-lufs
 MAN=	dumpfs.8
 
 .include <bsd.prog.mk>

@@ -117,6 +117,7 @@ DRIVER_MODULE(pcib, pci, pcib_driver, pcib_devclass, NULL, NULL);
 SYSCTL_DECL(_hw_pci);
 
 static int pci_clear_pcib;
+TUNABLE_INT("hw.pci.clear_pcib", &pci_clear_pcib);
 SYSCTL_INT(_hw_pci, OID_AUTO, clear_pcib, CTLFLAG_RDTUN, &pci_clear_pcib, 0,
     "Clear firmware-assigned resources for PCI-PCI bridge I/O windows.");
 
@@ -977,14 +978,14 @@ pcib_attach_common(device_t dev)
 	{
 	    char *cp;
 
-	    if ((cp = kern_getenv("smbios.planar.maker")) == NULL)
+	    if ((cp = getenv("smbios.planar.maker")) == NULL)
 		break;
 	    if (strncmp(cp, "Compal", 6) != 0) {
 		freeenv(cp);
 		break;
 	    }
 	    freeenv(cp);
-	    if ((cp = kern_getenv("smbios.planar.product")) == NULL)
+	    if ((cp = getenv("smbios.planar.product")) == NULL)
 		break;
 	    if (strncmp(cp, "08A0", 4) != 0) {
 		freeenv(cp);
@@ -1114,13 +1115,11 @@ int
 pcib_resume(device_t dev)
 {
 	device_t	pcib;
-	int dstate;
 
 	if (pci_do_power_resume) {
 		pcib = device_get_parent(device_get_parent(dev));
-		dstate = PCI_POWERSTATE_D0;
-		if (PCIB_POWER_FOR_SLEEP(pcib, dev, &dstate) == 0)
-			pci_set_powerstate(dev, dstate);
+		if (PCIB_POWER_FOR_SLEEP(pcib, dev, NULL) == 0)
+			pci_set_powerstate(dev, PCI_POWERSTATE_D0);
 	}
 	pcib_cfg_restore(device_get_softc(dev));
 	return (bus_generic_resume(dev));

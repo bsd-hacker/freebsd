@@ -29,7 +29,8 @@ CLEANFILES=	ncurses_def.h
 
 CFLAGS+=	-I${SRCDIR}
 
-LIBADD+=	ncurses${LIB_SUFFIX}
+DPADD=	${LIBNCURSES${LIB_SUFFIX:tu}}
+LDADD=	-lncurses${LIB_SUFFIX}
 
 .if defined(ENABLE_WIDEC)
 INCS=	panel.h

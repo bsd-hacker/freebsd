@@ -364,7 +364,7 @@ ng_sppp_rcvdata (hook_p hook, item_p item)
 	}
 
 	/* Update interface stats */
-	if_inc_counter(SP2IFP(pp), IFCOUNTER_IPACKETS, 1);
+	SP2IFP(pp)->if_ipackets++;
 
 	/* Note receiving interface */
 	m->m_pkthdr.rcvif = SP2IFP(pp);

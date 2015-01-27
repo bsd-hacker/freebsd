@@ -235,7 +235,7 @@ getwm(p)
 		char buf[INTSIZE];
 		int i;
 	} u;
-	register int i, hi;
+	register int i;
 
 	for (i = 0; i < (int)INTSIZE; i++)
 		u.buf[i] = *p++;
@@ -243,11 +243,10 @@ getwm(p)
 	i = u.i;
 
 	if (i > MAXPATHLEN || i < -(MAXPATHLEN)) {
-		hi = ntohl(i);
-		if (hi > MAXPATHLEN || hi < -(MAXPATHLEN))
+		i = ntohl(i);
+		if (i > MAXPATHLEN || i < -(MAXPATHLEN))
 			errx(1, "integer out of +-MAXPATHLEN (%d): %u",
-			    MAXPATHLEN, abs(i) < abs(hi) ? i : hi);
-		return(hi);
+			    MAXPATHLEN, abs(i) < abs(htonl(i)) ? i : htonl(i));
 	}
 	return(i);
 }
@@ -264,16 +263,16 @@ int
 getwf(fp)
 	FILE *fp;
 {
-	register int word, hword;
+	register int word;
 
 	word = getw(fp);
 
 	if (word > MAXPATHLEN || word < -(MAXPATHLEN)) {
-		hword = ntohl(word);
-		if (hword > MAXPATHLEN || hword < -(MAXPATHLEN))
+		word = ntohl(word);
+		if (word > MAXPATHLEN || word < -(MAXPATHLEN))
 			errx(1, "integer out of +-MAXPATHLEN (%d): %u",
-			    MAXPATHLEN, abs(word) < abs(hword) ? word : hword);
-		return(hword);
+			    MAXPATHLEN, abs(word) < abs(htonl(word)) ? word :
+				htonl(word));
 	}
 	return(word);
 }

@@ -22,7 +22,7 @@ SymbolFile*
 SymbolFile::FindPlugin (ObjectFile* obj_file)
 {
     std::unique_ptr<SymbolFile> best_symfile_ap;
-    if (obj_file != nullptr)
+    if (obj_file != NULL)
     {
         
         // We need to test the abilities of this section list. So create what it would
@@ -46,7 +46,7 @@ SymbolFile::FindPlugin (ObjectFile* obj_file)
         uint32_t best_symfile_abilities = 0;
 
         SymbolFileCreateInstance create_callback;
-        for (uint32_t idx = 0; (create_callback = PluginManager::GetSymbolFileCreateCallbackAtIndex(idx)) != nullptr; ++idx)
+        for (uint32_t idx = 0; (create_callback = PluginManager::GetSymbolFileCreateCallbackAtIndex(idx)) != NULL; ++idx)
         {
             std::unique_ptr<SymbolFile> curr_symfile_ap(create_callback(obj_file));
 
@@ -79,7 +79,7 @@ SymbolFile::GetTypeList ()
 {
     if (m_obj_file)
         return m_obj_file->GetModule()->GetTypeList();
-    return nullptr;
+    return NULL;
 }
 
 lldb_private::ClangASTContext &       

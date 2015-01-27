@@ -7,6 +7,7 @@ MAN=	rshd.8
 WARNS?=	3
 WFORMAT=0
 
-LIBADD=	util pam
+DPADD=	${LIBUTIL} ${LIBPAM}
+LDADD=	-lutil ${MINUSLPAM}
 
 .include <bsd.prog.mk>

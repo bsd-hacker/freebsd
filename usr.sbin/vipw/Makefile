@@ -4,6 +4,7 @@
 PROG=	vipw
 MAN=	vipw.8
 
-LIBADD=	util
+DPADD=	${LIBUTIL}
+LDADD=	-lutil
 
 .include <bsd.prog.mk>

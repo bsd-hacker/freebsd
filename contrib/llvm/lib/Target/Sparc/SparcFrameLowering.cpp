@@ -14,7 +14,6 @@
 #include "SparcFrameLowering.h"
 #include "SparcInstrInfo.h"
 #include "SparcMachineFunctionInfo.h"
-#include "SparcSubtarget.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -33,9 +32,6 @@ DisableLeafProc("disable-sparc-leaf-proc",
                 cl::desc("Disable Sparc leaf procedure optimization."),
                 cl::Hidden);
 
-SparcFrameLowering::SparcFrameLowering(const SparcSubtarget &ST)
-    : TargetFrameLowering(TargetFrameLowering::StackGrowsDown,
-                          ST.is64Bit() ? 16 : 8, 0, ST.is64Bit() ? 16 : 8) {}
 
 void SparcFrameLowering::emitSPAdjustment(MachineFunction &MF,
                                           MachineBasicBlock &MBB,
@@ -103,33 +99,28 @@ void SparcFrameLowering::emitPrologue(MachineFunction &MF) const {
     SAVEri = SP::ADDri;
     SAVErr = SP::ADDrr;
   }
-  NumBytes =
-      -MF.getTarget().getSubtarget<SparcSubtarget>().getAdjustedFrameSize(
-          NumBytes);
+  NumBytes = - SubTarget.getAdjustedFrameSize(NumBytes);
   emitSPAdjustment(MF, MBB, MBBI, NumBytes, SAVErr, SAVEri);
 
   MachineModuleInfo &MMI = MF.getMMI();
   const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
+  MCSymbol *FrameLabel = MMI.getContext().CreateTempSymbol();
+  BuildMI(MBB, MBBI, dl, TII.get(SP::PROLOG_LABEL)).addSym(FrameLabel);
+
   unsigned regFP = MRI->getDwarfRegNum(SP::I6, true);
 
   // Emit ".cfi_def_cfa_register 30".
-  unsigned CFIIndex =
-      MMI.addFrameInst(MCCFIInstruction::createDefCfaRegister(nullptr, regFP));
-  BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
-      .addCFIIndex(CFIIndex);
-
+  MMI.addFrameInst(MCCFIInstruction::createDefCfaRegister(FrameLabel,
+                                                          regFP));
   // Emit ".cfi_window_save".
-  CFIIndex = MMI.addFrameInst(MCCFIInstruction::createWindowSave(nullptr));
-  BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
-      .addCFIIndex(CFIIndex);
+  MMI.addFrameInst(MCCFIInstruction::createWindowSave(FrameLabel));
 
   unsigned regInRA = MRI->getDwarfRegNum(SP::I7, true);
   unsigned regOutRA = MRI->getDwarfRegNum(SP::O7, true);
   // Emit ".cfi_register 15, 31".
-  CFIIndex = MMI.addFrameInst(
-      MCCFIInstruction::createRegister(nullptr, regOutRA, regInRA));
-  BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
-      .addCFIIndex(CFIIndex);
+  MMI.addFrameInst(MCCFIInstruction::createRegister(FrameLabel,
+                                                    regOutRA,
+                                                    regInRA));
 }
 
 void SparcFrameLowering::
@@ -168,8 +159,7 @@ void SparcFrameLowering::emitEpilogue(MachineFunction &MF,
   if (NumBytes == 0)
     return;
 
-  NumBytes = MF.getTarget().getSubtarget<SparcSubtarget>().getAdjustedFrameSize(
-      NumBytes);
+  NumBytes = SubTarget.getAdjustedFrameSize(NumBytes);
   emitSPAdjustment(MF, MBB, MBBI, NumBytes, SP::ADDrr, SP::ADDri);
 }
 

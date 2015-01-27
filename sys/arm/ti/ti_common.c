@@ -29,6 +29,8 @@
  * SUCH DAMAGE.
  */
 
+#include "opt_global.h"
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 

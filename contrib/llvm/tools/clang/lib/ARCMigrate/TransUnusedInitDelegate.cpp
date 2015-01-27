@@ -39,7 +39,7 @@ class UnusedInitRewriter : public RecursiveASTVisitor<UnusedInitRewriter> {
 
 public:
   UnusedInitRewriter(MigrationPass &pass)
-    : Body(nullptr), Pass(pass) { }
+    : Body(0), Pass(pass) { }
 
   void transformBody(Stmt *body, Decl *ParentD) {
     Body = body;

@@ -24,10 +24,17 @@ CFLAGS+=	-I${GCCLIB}/include -I${GCCDIR}/config -I${GCCDIR} -I. \
 CRTS_CFLAGS=	-DCRTSTUFFS_O -DSHARED ${PICFLAG}
 MKDEP=		-DCRT_BEGIN
 
-.if ${TARGET_CPUARCH} == "arm"
+.if ${TARGET_CPUARCH} == "arm" && ${MK_ARM_EABI} != "no"
 CFLAGS+=	-DTARGET_ARM_EABI
 .endif
 
+.if ${MACHINE_CPUARCH} == "ia64"
+BEGINSRC=	crtbegin.asm
+ENDSRC=		crtend.asm
+CFLAGS+=	-x assembler-with-cpp	# Ugly hack
+CFLAGS+=	-include osreldate.h
+.undef SRCS				# hack for 'make depend'
+.endif
 .if ${MACHINE_CPUARCH} == "powerpc"
 TGTOBJS=	crtsavres.o
 SRCS+=		crtsavres.asm
@@ -66,7 +73,7 @@ crtendS.o:	${ENDSRC}
 
 CLEANFILES+=	tm.h tconfig.h options.h optionlist cs-tconfig.h cs-tm.h
 tm.h tconfig.h options.h: ${CCDIR}/cc_tools/Makefile
-	(cd ${.CURDIR}; ${MAKE} -f ${.ALLSRC} MFILE=${.ALLSRC} GCCDIR=${GCCDIR} ${.TARGET})
+	${MAKE} -f ${.ALLSRC} MFILE=${.ALLSRC} GCCDIR=${GCCDIR} ${.TARGET}
 
 realinstall:
 .for file in ${OBJS} ${SOBJS} ${TGTOBJS}

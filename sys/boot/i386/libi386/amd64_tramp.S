@@ -84,7 +84,7 @@ amd64_tramp:
 
 	/* Turn on PAE */
 	movl	%cr4, %eax
-	orl	$CR4_PAE, %eax
+	orl	$(CR4_PAE | CR4_PSE), %eax
 	movl	%eax, %cr4
 
 	/* Set %cr3 for PT4 */

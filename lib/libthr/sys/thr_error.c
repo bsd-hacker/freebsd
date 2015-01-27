@@ -42,9 +42,8 @@
 #undef errno
 extern	int	errno;
 
-__weak_reference(__error_threaded, __error);
 int *
-__error_threaded(void)
+__error(void)
 {
 	struct pthread *curthread;
 

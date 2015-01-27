@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 
 extern int svr4_szsigcode;
 extern char svr4_sigcode[];
+extern int _udatasel, _ucodesel;
 
 static void svr4_getsiginfo(union svr4_siginfo *, int, u_long, caddr_t);
 

@@ -31,8 +31,11 @@ namespace CodeGen {
 class CodeGenVTables {
   CodeGenModule &CGM;
 
-  VTableContextBase *VTContext;
-
+  // FIXME: Consider moving ItaniumVTContext and MicrosoftVTContext into
+  // respective CXXABI classes?
+  ItaniumVTableContext ItaniumVTContext;
+  OwningPtr<MicrosoftVTableContext> MicrosoftVTContext;
+  
   /// VTableAddressPointsMapTy - Address points for a single vtable.
   typedef llvm::DenseMap<BaseSubobject, uint64_t> VTableAddressPointsMapTy;
 
@@ -61,19 +64,18 @@ public:
   /// decl.
   /// \param Components - The vtable components; this is really an array of
   /// VTableComponents.
-  llvm::Constant *CreateVTableInitializer(
-      const CXXRecordDecl *RD, const VTableComponent *Components,
-      unsigned NumComponents, const VTableLayout::VTableThunkTy *VTableThunks,
-      unsigned NumVTableThunks, llvm::Constant *RTTI);
+  llvm::Constant *CreateVTableInitializer(const CXXRecordDecl *RD,
+                                          const VTableComponent *Components, 
+                                          unsigned NumComponents,
+                                const VTableLayout::VTableThunkTy *VTableThunks,
+                                          unsigned NumVTableThunks);
 
   CodeGenVTables(CodeGenModule &CGM);
 
-  ItaniumVTableContext &getItaniumVTableContext() {
-    return *cast<ItaniumVTableContext>(VTContext);
-  }
+  ItaniumVTableContext &getItaniumVTableContext() { return ItaniumVTContext; }
 
   MicrosoftVTableContext &getMicrosoftVTableContext() {
-    return *cast<MicrosoftVTableContext>(VTContext);
+    return *MicrosoftVTContext.get();
   }
 
   /// getSubVTTIndex - Return the index of the sub-VTT for the base class of the
@@ -98,7 +100,7 @@ public:
                              VTableAddressPointsMapTy& AddressPoints);
 
     
-  /// GetAddrOfVTT - Get the address of the VTT for the given record decl.
+  /// GetAddrOfVTable - Get the address of the VTT for the given record decl.
   llvm::GlobalVariable *GetAddrOfVTT(const CXXRecordDecl *RD);
 
   /// EmitVTTDefinition - Emit the definition of the given vtable.

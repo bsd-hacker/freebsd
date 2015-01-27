@@ -17,7 +17,7 @@
 #include "clang/Tooling/Tooling.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Path.h"
-#include <system_error>
+#include "llvm/Support/system_error.h"
 
 namespace clang {
 namespace tooling {
@@ -118,15 +118,15 @@ std::vector<std::string> unescapeCommandLine(
 }
 
 class JSONCompilationDatabasePlugin : public CompilationDatabasePlugin {
-  CompilationDatabase *loadFromDirectory(StringRef Directory,
-                                         std::string &ErrorMessage) override {
+  virtual CompilationDatabase *loadFromDirectory(
+      StringRef Directory, std::string &ErrorMessage) {
     SmallString<1024> JSONDatabasePath(Directory);
     llvm::sys::path::append(JSONDatabasePath, "compile_commands.json");
-    std::unique_ptr<CompilationDatabase> Database(
+    OwningPtr<CompilationDatabase> Database(
         JSONCompilationDatabase::loadFromFile(JSONDatabasePath, ErrorMessage));
     if (!Database)
-      return nullptr;
-    return Database.release();
+      return NULL;
+    return Database.take();
   }
 };
 
@@ -144,36 +144,37 @@ volatile int JSONAnchorSource = 0;
 JSONCompilationDatabase *
 JSONCompilationDatabase::loadFromFile(StringRef FilePath,
                                       std::string &ErrorMessage) {
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> DatabaseBuffer =
-      llvm::MemoryBuffer::getFile(FilePath);
-  if (std::error_code Result = DatabaseBuffer.getError()) {
+  OwningPtr<llvm::MemoryBuffer> DatabaseBuffer;
+  llvm::error_code Result =
+    llvm::MemoryBuffer::getFile(FilePath, DatabaseBuffer);
+  if (Result != 0) {
     ErrorMessage = "Error while opening JSON database: " + Result.message();
-    return nullptr;
+    return NULL;
   }
-  std::unique_ptr<JSONCompilationDatabase> Database(
-      new JSONCompilationDatabase(DatabaseBuffer->release()));
+  OwningPtr<JSONCompilationDatabase> Database(
+    new JSONCompilationDatabase(DatabaseBuffer.take()));
   if (!Database->parse(ErrorMessage))
-    return nullptr;
-  return Database.release();
+    return NULL;
+  return Database.take();
 }
 
 JSONCompilationDatabase *
 JSONCompilationDatabase::loadFromBuffer(StringRef DatabaseString,
                                         std::string &ErrorMessage) {
-  std::unique_ptr<llvm::MemoryBuffer> DatabaseBuffer(
+  OwningPtr<llvm::MemoryBuffer> DatabaseBuffer(
       llvm::MemoryBuffer::getMemBuffer(DatabaseString));
-  std::unique_ptr<JSONCompilationDatabase> Database(
-      new JSONCompilationDatabase(DatabaseBuffer.release()));
+  OwningPtr<JSONCompilationDatabase> Database(
+      new JSONCompilationDatabase(DatabaseBuffer.take()));
   if (!Database->parse(ErrorMessage))
-    return nullptr;
-  return Database.release();
+    return NULL;
+  return Database.take();
 }
 
 std::vector<CompileCommand>
 JSONCompilationDatabase::getCompileCommands(StringRef FilePath) const {
   SmallString<128> NativeFilePath;
   llvm::sys::path::native(FilePath, NativeFilePath);
-
+  std::vector<StringRef> PossibleMatches;
   std::string Error;
   llvm::raw_string_ostream ES(Error);
   StringRef Match = MatchTrie.findEquivalent(NativeFilePath.str(), ES);
@@ -234,12 +235,12 @@ bool JSONCompilationDatabase::parse(std::string &ErrorMessage) {
     return false;
   }
   llvm::yaml::Node *Root = I->getRoot();
-  if (!Root) {
+  if (Root == NULL) {
     ErrorMessage = "Error while parsing YAML.";
     return false;
   }
   llvm::yaml::SequenceNode *Array = dyn_cast<llvm::yaml::SequenceNode>(Root);
-  if (!Array) {
+  if (Array == NULL) {
     ErrorMessage = "Expected array.";
     return false;
   }
@@ -247,30 +248,30 @@ bool JSONCompilationDatabase::parse(std::string &ErrorMessage) {
                                           AE = Array->end();
        AI != AE; ++AI) {
     llvm::yaml::MappingNode *Object = dyn_cast<llvm::yaml::MappingNode>(&*AI);
-    if (!Object) {
+    if (Object == NULL) {
       ErrorMessage = "Expected object.";
       return false;
     }
-    llvm::yaml::ScalarNode *Directory = nullptr;
-    llvm::yaml::ScalarNode *Command = nullptr;
-    llvm::yaml::ScalarNode *File = nullptr;
+    llvm::yaml::ScalarNode *Directory = NULL;
+    llvm::yaml::ScalarNode *Command = NULL;
+    llvm::yaml::ScalarNode *File = NULL;
     for (llvm::yaml::MappingNode::iterator KVI = Object->begin(),
                                            KVE = Object->end();
          KVI != KVE; ++KVI) {
       llvm::yaml::Node *Value = (*KVI).getValue();
-      if (!Value) {
+      if (Value == NULL) {
         ErrorMessage = "Expected value.";
         return false;
       }
       llvm::yaml::ScalarNode *ValueString =
           dyn_cast<llvm::yaml::ScalarNode>(Value);
-      if (!ValueString) {
+      if (ValueString == NULL) {
         ErrorMessage = "Expected string as value.";
         return false;
       }
       llvm::yaml::ScalarNode *KeyString =
           dyn_cast<llvm::yaml::ScalarNode>((*KVI).getKey());
-      if (!KeyString) {
+      if (KeyString == NULL) {
         ErrorMessage = "Expected strings as key.";
         return false;
       }

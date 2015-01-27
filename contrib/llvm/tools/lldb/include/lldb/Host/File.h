@@ -16,7 +16,6 @@
 #include <sys/types.h>
 
 #include "lldb/lldb-private.h"
-#include "lldb/Host/IOObject.h"
 
 namespace lldb_private {
 
@@ -27,7 +26,7 @@ namespace lldb_private {
 /// A file class that divides abstracts the LLDB core from host file
 /// functionality.
 //----------------------------------------------------------------------
-class File : public IOObject
+class File
 {
 public:
     static int kInvalidDescriptor;
@@ -49,22 +48,22 @@ public:
     ConvertOpenOptionsForPOSIXOpen (uint32_t open_options);
     
     File() : 
-        IOObject(eFDTypeFile, false),
         m_descriptor (kInvalidDescriptor),
         m_stream (kInvalidStream),
         m_options (0),
         m_own_stream (false),
+        m_own_descriptor (false),
         m_is_interactive (eLazyBoolCalculate),
         m_is_real_terminal (eLazyBoolCalculate)
     {
     }
     
     File (FILE *fh, bool transfer_ownership) :
-        IOObject(eFDTypeFile, false),
         m_descriptor (kInvalidDescriptor),
         m_stream (fh),
         m_options (0),
         m_own_stream (transfer_ownership),
+        m_own_descriptor (false),
         m_is_interactive (eLazyBoolCalculate),
         m_is_real_terminal (eLazyBoolCalculate)
     {
@@ -119,11 +118,11 @@ public:
           uint32_t permissions = lldb::eFilePermissionsFileDefault);
     
     File (int fd, bool transfer_ownership) :
-        IOObject(eFDTypeFile, transfer_ownership),
         m_descriptor (fd),
         m_stream (kInvalidStream),
         m_options (0),
-        m_own_stream (false)
+        m_own_stream (false),
+        m_own_descriptor (transfer_ownership)
     {
     }
 
@@ -222,10 +221,6 @@ public:
 
     int
     GetDescriptor() const;
-
-    WaitableHandle
-    GetWaitableHandle();
-
 
     void
     SetDescriptor(int fd, bool transfer_ownership);
@@ -336,7 +331,7 @@ public:
     ///
     /// @param[in/out] offset
     ///     The offset to seek to within the file relative to the 
-    ///     end of the file which gets filled in with the resulting
+    ///     end of the file which gets filled in the the resulting
     ///     absolute file offset.
     ///
     /// @param[in] error_ptr
@@ -487,7 +482,7 @@ public:
     ///
     /// Just knowing a file is a interactive isn't enough, we also need
     /// to know if the terminal has a width and height so we can do
-    /// cursor movement and other terminal manipulations by sending
+    /// cursor movement and other terminal maninpulations by sending
     /// escape sequences.
     ///
     /// @return
@@ -546,6 +541,7 @@ protected:
     FILE *m_stream;
     uint32_t m_options;
     bool m_own_stream;
+    bool m_own_descriptor;
     LazyBool m_is_interactive;
     LazyBool m_is_real_terminal;
 };

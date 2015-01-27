@@ -57,11 +57,11 @@ private:
   ///
   const char *Scanned;
 
-  void write_impl(const char *Ptr, size_t Size) override;
+  virtual void write_impl(const char *Ptr, size_t Size) LLVM_OVERRIDE;
 
   /// current_pos - Return the current position within the stream,
   /// not counting the bytes currently in the buffer.
-  uint64_t current_pos() const override {
+  virtual uint64_t current_pos() const LLVM_OVERRIDE {
     // Our current position in the stream is all the contents which have been
     // written to the underlying stream (*not* the current position of the
     // underlying stream).
@@ -85,12 +85,12 @@ public:
   /// underneath it.
   ///
   formatted_raw_ostream(raw_ostream &Stream, bool Delete = false) 
-    : raw_ostream(), TheStream(nullptr), DeleteStream(false), Position(0, 0) {
+    : raw_ostream(), TheStream(0), DeleteStream(false), Position(0, 0) {
     setStream(Stream, Delete);
   }
   explicit formatted_raw_ostream()
-    : raw_ostream(), TheStream(nullptr), DeleteStream(false), Position(0, 0) {
-    Scanned = nullptr;
+    : raw_ostream(), TheStream(0), DeleteStream(false), Position(0, 0) {
+    Scanned = 0;
   }
 
   ~formatted_raw_ostream() {
@@ -114,7 +114,7 @@ public:
       SetUnbuffered();
     TheStream->SetUnbuffered();
 
-    Scanned = nullptr;
+    Scanned = 0;
   }
 
   /// PadToColumn - Align the output to some column number.  If the current
@@ -129,23 +129,25 @@ public:
 
   /// getLine - Return the line number
   unsigned getLine() { return Position.second; }
-
-  raw_ostream &resetColor() override {
+  
+  raw_ostream &resetColor() {
     TheStream->resetColor();
     return *this;
   }
-
-  raw_ostream &reverseColor() override {
+  
+  raw_ostream &reverseColor() {
     TheStream->reverseColor();
     return *this;
   }
-
-  raw_ostream &changeColor(enum Colors Color, bool Bold, bool BG) override {
+  
+  raw_ostream &changeColor(enum Colors Color,
+                           bool Bold,
+                           bool BG) {
     TheStream->changeColor(Color, Bold, BG);
     return *this;
   }
-
-  bool is_displayed() const override {
+  
+  bool is_displayed() const {
     return TheStream->is_displayed();
   }
 

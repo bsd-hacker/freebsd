@@ -220,11 +220,10 @@ public:
     bool First;
 
   public:
-    FindUniqueBinding(SymbolRef sym)
-      : Sym(sym), Binding(nullptr), First(true) {}
+    FindUniqueBinding(SymbolRef sym) : Sym(sym), Binding(0), First(true) {}
 
     bool HandleBinding(StoreManager& SMgr, Store store, const MemRegion* R,
-                       SVal val) override;
+                       SVal val);
     LLVM_EXPLICIT operator bool() { return First && Binding; }
     const MemRegion *getRegion() { return Binding; }
   };

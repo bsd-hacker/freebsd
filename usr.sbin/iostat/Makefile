@@ -4,7 +4,8 @@
 PROG=	iostat
 MAN=	iostat.8
 
-LIBADD=	devstat kvm m
+DPADD=	${LIBDEVSTAT} ${LIBKVM} ${LIBM}
+LDADD=	-ldevstat -lkvm -lm
 
 WARNS?=	1
 

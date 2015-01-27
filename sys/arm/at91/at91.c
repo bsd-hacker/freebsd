@@ -42,7 +42,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 #include <vm/vm_extern.h>
 
-#include <machine/armreg.h>
 #define	_ARM32_BUS_DMA_PRIVATE
 #include <machine/bus.h>
 #include <machine/devmap.h>
@@ -55,7 +54,7 @@ __FBSDID("$FreeBSD$");
 uint32_t at91_master_clock;
 
 static int
-at91_bs_map(bus_space_tag_t tag, bus_addr_t bpa, bus_size_t size, int flags,
+at91_bs_map(void *t, bus_addr_t bpa, bus_size_t size, int flags,
     bus_space_handle_t *bshp)
 {
 	vm_paddr_t pa, endpa;
@@ -77,18 +76,23 @@ at91_bs_map(bus_space_tag_t tag, bus_addr_t bpa, bus_size_t size, int flags,
 }
 
 static void
-at91_bs_unmap(bus_space_tag_t tag, bus_space_handle_t h, bus_size_t size)
+at91_bs_unmap(void *t, bus_space_handle_t h, bus_size_t size)
 {
-	vm_offset_t va;
+	vm_offset_t va, endva;
 
-	va = (vm_offset_t)h;
+	if (t == 0)
+		return;
+	va = trunc_page((vm_offset_t)t);
 	if (va >= AT91_BASE && va <= AT91_BASE + 0xff00000)
 		return;
-	pmap_unmapdev(va, size);
+	endva = round_page((vm_offset_t)t + size);
+
+	/* Free the kernel virtual mapping. */
+	kva_free(va, endva - va);
 }
 
 static int
-at91_bs_subregion(bus_space_tag_t tag, bus_space_handle_t bsh, bus_size_t offset,
+at91_bs_subregion(void *t, bus_space_handle_t bsh, bus_size_t offset,
     bus_size_t size, bus_space_handle_t *nbshp)
 {
 
@@ -97,7 +101,7 @@ at91_bs_subregion(bus_space_tag_t tag, bus_space_handle_t bsh, bus_size_t offset
 }
 
 static void
-at91_barrier(bus_space_tag_t tag, bus_space_handle_t bsh, bus_size_t size, bus_size_t b,
+at91_barrier(void *t, bus_space_handle_t bsh, bus_size_t size, bus_size_t b,
     int a)
 {
 }
@@ -116,112 +120,113 @@ bus_dma_get_range_nb(void)
 }
 
 bs_protos(generic);
+bs_protos(generic_armv4);
 
 struct bus_space at91_bs_tag = {
-	/* privdata is whatever the implementer wants; unused in base tag */
-	.bs_privdata	= NULL,
+	/* cookie */
+	(void *) 0,
 
 	/* mapping/unmapping */
-	.bs_map		= at91_bs_map,
-	.bs_unmap	= at91_bs_unmap,
-	.bs_subregion	= at91_bs_subregion,
+	at91_bs_map,
+	at91_bs_unmap,
+	at91_bs_subregion,
 
 	/* allocation/deallocation */
-	.bs_alloc	= generic_bs_alloc,
-	.bs_free	= generic_bs_free,
+	NULL,
+	NULL,
 
 	/* barrier */
-	.bs_barrier	= at91_barrier,
+	at91_barrier,
 
 	/* read (single) */
-	.bs_r_1		= NULL,	/* Use inline code in bus.h */
-	.bs_r_2		= NULL,	/* Use inline code in bus.h */
-	.bs_r_4		= NULL,	/* Use inline code in bus.h */
-	.bs_r_8		= NULL,	/* Use inline code in bus.h */
+	generic_bs_r_1,
+	generic_armv4_bs_r_2,
+	generic_bs_r_4,
+	NULL,
 
 	/* read multiple */
-	.bs_rm_1	= generic_bs_rm_1,
-	.bs_rm_2	= generic_bs_rm_2,
-	.bs_rm_4	= generic_bs_rm_4,
-	.bs_rm_8	= BS_UNIMPLEMENTED,
+	generic_bs_rm_1,
+	generic_armv4_bs_rm_2,
+	generic_bs_rm_4,
+	NULL,
 
 	/* read region */
-	.bs_rr_1	= generic_bs_rr_1,
-	.bs_rr_2	= generic_bs_rr_2,
-	.bs_rr_4	= generic_bs_rr_4,
-	.bs_rr_8	= BS_UNIMPLEMENTED,
+	generic_bs_rr_1,
+	generic_armv4_bs_rr_2,
+	generic_bs_rr_4,
+	NULL,
 
 	/* write (single) */
-	.bs_w_1		= NULL,	/* Use inline code in bus.h */
-	.bs_w_2		= NULL,	/* Use inline code in bus.h */
-	.bs_w_4		= NULL,	/* Use inline code in bus.h */
-	.bs_w_8		= NULL,	/* Use inline code in bus.h */
+	generic_bs_w_1,
+	generic_armv4_bs_w_2,
+	generic_bs_w_4,
+	NULL,
 
 	/* write multiple */
-	.bs_wm_1	= generic_bs_wm_1,
-	.bs_wm_2	= generic_bs_wm_2,
-	.bs_wm_4	= generic_bs_wm_4,
-	.bs_wm_8	= BS_UNIMPLEMENTED,
+	generic_bs_wm_1,
+	generic_armv4_bs_wm_2,
+	generic_bs_wm_4,
+	NULL,
 
 	/* write region */
-	.bs_wr_1	= generic_bs_wr_1,
-	.bs_wr_2	= generic_bs_wr_2,
-	.bs_wr_4	= generic_bs_wr_4,
-	.bs_wr_8	= BS_UNIMPLEMENTED,
+	NULL,
+	generic_armv4_bs_wr_2,
+	generic_bs_wr_4,
+	NULL,
 
 	/* set multiple */
-	.bs_sm_1	= BS_UNIMPLEMENTED,
-	.bs_sm_2	= BS_UNIMPLEMENTED,
-	.bs_sm_4	= BS_UNIMPLEMENTED,
-	.bs_sm_8	= BS_UNIMPLEMENTED,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
 
 	/* set region */
-	.bs_sr_1	= generic_bs_sr_1,
-	.bs_sr_2	= generic_bs_sr_2,
-	.bs_sr_4	= generic_bs_sr_4,
-	.bs_sr_8	= BS_UNIMPLEMENTED,
+	NULL,
+	generic_armv4_bs_sr_2,
+	generic_bs_sr_4,
+	NULL,
 
 	/* copy */
-	.bs_c_1		= BS_UNIMPLEMENTED,
-	.bs_c_2		= generic_bs_c_2,
-	.bs_c_4		= BS_UNIMPLEMENTED,
-	.bs_c_8		= BS_UNIMPLEMENTED,
+	NULL,
+	generic_armv4_bs_c_2,
+	NULL,
+	NULL,
 
-	/* read stream (single) */
-	.bs_r_1_s	= NULL,   /* Use inline code in bus.h */ 
-	.bs_r_2_s	= NULL,   /* Use inline code in bus.h */ 
-	.bs_r_4_s	= NULL,   /* Use inline code in bus.h */ 
-	.bs_r_8_s	= NULL,   /* Use inline code in bus.h */ 
+	/* read (single) stream */
+	generic_bs_r_1,
+	generic_armv4_bs_r_2,
+	generic_bs_r_4,
+	NULL,
 
 	/* read multiple stream */
-	.bs_rm_1_s	= generic_bs_rm_1,
-	.bs_rm_2_s	= generic_bs_rm_2,
-	.bs_rm_4_s	= generic_bs_rm_4,
-	.bs_rm_8_s	= BS_UNIMPLEMENTED,
+	generic_bs_rm_1,
+	generic_armv4_bs_rm_2,
+	generic_bs_rm_4,
+	NULL,
 
 	/* read region stream */
-	.bs_rr_1_s	= generic_bs_rr_1,
-	.bs_rr_2_s	= generic_bs_rr_2,
-	.bs_rr_4_s	= generic_bs_rr_4,
-	.bs_rr_8_s	= BS_UNIMPLEMENTED,
+	generic_bs_rr_1,
+	generic_armv4_bs_rr_2,
+	generic_bs_rr_4,
+	NULL,
 
-	/* write stream (single) */
-	.bs_w_1_s	= NULL,   /* Use inline code in bus.h */ 
-	.bs_w_2_s	= NULL,   /* Use inline code in bus.h */ 
-	.bs_w_4_s	= NULL,   /* Use inline code in bus.h */ 
-	.bs_w_8_s	= NULL,   /* Use inline code in bus.h */ 
+	/* write (single) stream */
+	generic_bs_w_1,
+	generic_armv4_bs_w_2,
+	generic_bs_w_4,
+	NULL,
 
 	/* write multiple stream */
-	.bs_wm_1_s	= generic_bs_wm_1,
-	.bs_wm_2_s	= generic_bs_wm_2,
-	.bs_wm_4_s	= generic_bs_wm_4,
-	.bs_wm_8_s	= BS_UNIMPLEMENTED,
+	generic_bs_wm_1,
+	generic_armv4_bs_wm_2,
+	generic_bs_wm_4,
+	NULL,
 
 	/* write region stream */
-	.bs_wr_1_s	= generic_bs_wr_1,
-	.bs_wr_2_s	= generic_bs_wr_2,
-	.bs_wr_4_s	= generic_bs_wr_4,
-	.bs_wr_8_s	= BS_UNIMPLEMENTED,
+	NULL,
+	generic_armv4_bs_wr_2,
+	generic_bs_wr_4,
+	NULL,
 };
 
 #ifndef FDT
@@ -250,7 +255,7 @@ at91_cpu_add_builtin_children(device_t dev, const struct cpu_devs *walker)
 {
 	int i;
 
-	for (i = 0; walker->name; i++, walker++) {
+	for (i = 1; walker->name; i++, walker++) {
 		at91_add_child(dev, i, walker->name, walker->unit,
 		    walker->mem_base, walker->mem_len, walker->irq0,
 		    walker->irq1, walker->irq2);
@@ -298,7 +303,7 @@ at91_attach(device_t dev)
 
 	bus_generic_probe(dev);
 	bus_generic_attach(dev);
-	enable_interrupts(PSR_I | PSR_F);
+	enable_interrupts(I32_bit | F32_bit);
 	return (0);
 }
 

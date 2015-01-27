@@ -2,11 +2,16 @@
 
 .PATH: ${.CURDIR}/../../contrib/com_err
 
+LIBVERS=	${.OBJDIR}/../../kerberos5/lib/libvers/libvers.a
+
 PROG=	compile_et
 SRCS=	compile_et.c parse.y lex.l
-LIBADD=	roken vers
+LDADD=	-lroken ${LIBVERS}
+DPADD=	${LIBROKEN} ${LIBVERS}
 CFLAGS+=-I. -I${.CURDIR}/../../contrib/com_err
 
 WARNS?=	0
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

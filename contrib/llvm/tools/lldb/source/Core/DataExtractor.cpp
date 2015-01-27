@@ -52,7 +52,7 @@ ReadInt16(const unsigned char* ptr, offset_t offset)
 }
 
 static inline uint32_t
-ReadInt32 (const unsigned char* ptr, offset_t offset = 0)
+ReadInt32 (const unsigned char* ptr, offset_t offset)
 {
     uint32_t value;
     memcpy (&value, ptr + offset, 4);
@@ -60,7 +60,7 @@ ReadInt32 (const unsigned char* ptr, offset_t offset = 0)
 }
 
 static inline uint64_t 
-ReadInt64(const unsigned char* ptr, offset_t offset = 0)
+ReadInt64(const unsigned char* ptr, offset_t offset)
 {
     uint64_t value;
     memcpy (&value, ptr + offset, 8);
@@ -72,6 +72,22 @@ ReadInt16(const void* ptr)
 {
     uint16_t value;
     memcpy (&value, ptr, 2);
+    return value;
+}
+
+static inline uint32_t
+ReadInt32 (const void* ptr)
+{
+    uint32_t value;
+    memcpy (&value, ptr, 4);
+    return value;
+}
+
+static inline uint64_t
+ReadInt64(const void* ptr)
+{
+    uint64_t value;
+    memcpy (&value, ptr, 8);
     return value;
 }
 
@@ -393,7 +409,7 @@ DataExtractor::GetU8 (offset_t *offset_ptr) const
 //
 // RETURNS the non-NULL buffer pointer upon successful extraction of
 // all the requested bytes, or NULL when the data is not available in
-// the buffer due to being out of bounds, or insufficient data.
+// the buffer due to being out of bounds, or unsufficient data.
 //----------------------------------------------------------------------
 void *
 DataExtractor::GetU8 (offset_t *offset_ptr, void *dst, uint32_t count) const
@@ -474,7 +490,7 @@ DataExtractor::GetU64_unchecked (offset_t *offset_ptr) const
 //
 // RETURNS the non-NULL buffer pointer upon successful extraction of
 // all the requested bytes, or NULL when the data is not available
-// in the buffer due to being out of bounds, or insufficient data.
+// in the buffer due to being out of bounds, or unsufficient data.
 //----------------------------------------------------------------------
 void *
 DataExtractor::GetU16 (offset_t *offset_ptr, void *void_dst, uint32_t count) const
@@ -537,7 +553,7 @@ DataExtractor::GetU32 (offset_t *offset_ptr) const
 //
 // RETURNS the non-NULL buffer pointer upon successful extraction of
 // all the requested bytes, or NULL when the data is not available
-// in the buffer due to being out of bounds, or insufficient data.
+// in the buffer due to being out of bounds, or unsufficient data.
 //----------------------------------------------------------------------
 void *
 DataExtractor::GetU32 (offset_t *offset_ptr, void *void_dst, uint32_t count) const
@@ -1108,7 +1124,7 @@ DataExtractor::CopyByteOrderedData (offset_t src_offset,
 // follows the NULL terminator byte.
 //
 // If the offset pointed to by "offset_ptr" is out of bounds, or if
-// "length" is non-zero and there aren't enough available
+// "length" is non-zero and there aren't enough avaialable
 // bytes, NULL will be returned and "offset_ptr" will not be
 // updated.
 //----------------------------------------------------------------------
@@ -1134,7 +1150,7 @@ DataExtractor::GetCStr (offset_t *offset_ptr) const
         
         // We reached the end of the data without finding a NULL C string
         // terminator. Fall through and return NULL otherwise anyone that
-        // would have used the result as a C string can wander into
+        // would have used the result as a C string can wonder into
         // unknown memory...
     }
     return NULL;
@@ -1475,7 +1491,7 @@ DataExtractor::Dump (Stream *s,
                 if (item_format == eFormatBytesWithASCII && offset > line_start_offset)
                 {
                     s->Printf("%*s", static_cast<int>((num_per_line - (offset - line_start_offset)) * 3 + 2), "");
-                    Dump(s, line_start_offset, eFormatCharPrintable, 1, offset - line_start_offset, SIZE_MAX, LLDB_INVALID_ADDRESS, 0, 0);
+                    Dump(s, line_start_offset, eFormatCharPrintable, 1, offset - line_start_offset, LLDB_INVALID_OFFSET, LLDB_INVALID_ADDRESS, 0, 0);
                 }
                 s->EOL();
             }
@@ -1500,7 +1516,7 @@ DataExtractor::Dump (Stream *s,
                 s->Printf ("%s", GetMaxU64Bitfield(&offset, item_byte_size, item_bit_size, item_bit_offset) ? "true" : "false");
             else
             {
-                s->Printf("error: unsupported byte size (%" PRIu64 ") for boolean format", (uint64_t)item_byte_size);
+                s->Printf("error: unsupported byte size (%zu) for boolean format", item_byte_size);
                 return offset;
             }
             break;
@@ -1709,7 +1725,7 @@ DataExtractor::Dump (Stream *s,
                 }
                 else
                 {
-                    s->Printf("error: unsupported byte size (%" PRIu64 ") for complex integer format", (uint64_t)item_byte_size);
+                    s->Printf("error: unsupported byte size (%zu) for complex integer format", item_byte_size);
                     return offset;
                 }
             }
@@ -1741,7 +1757,7 @@ DataExtractor::Dump (Stream *s,
             }
             else
             {
-                s->Printf("error: unsupported byte size (%" PRIu64 ") for complex float format", (uint64_t)item_byte_size);
+                s->Printf("error: unsupported byte size (%zu) for complex float format", item_byte_size);
                 return offset;
             }
             break;
@@ -1823,11 +1839,14 @@ DataExtractor::Dump (Stream *s,
                             else if (item_bit_size == ast->getTypeSize(ast->LongDoubleTy))
                             {
                                 llvm::APInt apint;
-                                switch (target_sp->GetArchitecture().GetMachine())
+                                switch (target_sp->GetArchitecture().GetCore())
                                 {
-                                    case llvm::Triple::x86:
-                                    case llvm::Triple::x86_64:
-                                        // clang will assert when constructing the apfloat if we use a 16 byte integer value
+                                    case ArchSpec::eCore_x86_32_i386:
+                                    case ArchSpec::eCore_x86_32_i486:
+                                    case ArchSpec::eCore_x86_32_i486sx:
+                                    case ArchSpec::eCore_x86_64_x86_64:
+                                    case ArchSpec::eCore_x86_64_x86_64h:
+                                        // clang will assert when contructing the apfloat if we use a 16 byte integer value
                                         if (GetAPInt (*this, &offset, 10, apint))
                                         {
                                             llvm::APFloat apfloat (ast->getFloatTypeSemantics(ast->LongDoubleTy), apint);
@@ -1890,7 +1909,7 @@ DataExtractor::Dump (Stream *s,
                     }
                     else
                     {
-                        s->Printf("error: unsupported byte size (%" PRIu64 ") for float format", (uint64_t)item_byte_size);
+                        s->Printf("error: unsupported byte size (%zu) for float format", item_byte_size);
                         return offset;
                     }
                     ss.flush();
@@ -1954,7 +1973,7 @@ DataExtractor::Dump (Stream *s,
             }
             else
             {
-                s->Printf("error: unsupported byte size (%" PRIu64 ") for hex float format", (uint64_t)item_byte_size);
+                s->Printf("error: unsupported byte size (%zu) for hex float format", item_byte_size);
                 return offset;
             }
             break;
@@ -2039,7 +2058,7 @@ DataExtractor::Dump (Stream *s,
     if (item_format == eFormatBytesWithASCII && offset > line_start_offset)
     {
         s->Printf("%*s", static_cast<int>((num_per_line - (offset - line_start_offset)) * 3 + 2), "");
-        Dump(s, line_start_offset, eFormatCharPrintable, 1, offset - line_start_offset, SIZE_MAX, LLDB_INVALID_ADDRESS, 0, 0);
+        Dump(s, line_start_offset, eFormatCharPrintable, 1, offset - line_start_offset, LLDB_INVALID_OFFSET, LLDB_INVALID_ADDRESS, 0, 0);
     }
     return offset;  // Return the offset at which we ended up
 }

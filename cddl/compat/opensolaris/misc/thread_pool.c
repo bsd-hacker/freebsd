@@ -233,11 +233,12 @@ tpool_create(uint_t min_threads, uint_t max_threads, uint_t linger,
 		return (NULL);
 	}
 
-	tpool = calloc(1, sizeof (*tpool));
+	tpool = malloc(sizeof (*tpool));
 	if (tpool == NULL) {
 		errno = ENOMEM;
 		return (NULL);
 	}
+	bzero(tpool, sizeof(*tpool));
 	(void) pthread_mutex_init(&tpool->tp_mutex, NULL);
 	(void) pthread_cond_init(&tpool->tp_busycv, NULL);
 	(void) pthread_cond_init(&tpool->tp_workcv, NULL);
@@ -266,8 +267,9 @@ tpool_dispatch(tpool_t *tpool, void (*func)(void *), void *arg)
 {
 	tpool_job_t *job;
 
-	if ((job = calloc(1, sizeof (*job))) == NULL)
+	if ((job = malloc(sizeof (*job))) == NULL)
 		return (-1);
+	bzero(job, sizeof(*job));
 	job->tpj_next = NULL;
 	job->tpj_func = func;
 	job->tpj_arg = arg;

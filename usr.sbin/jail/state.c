@@ -60,7 +60,7 @@ dep_setup(int docf)
 	const char *cs;
 	char *pname;
 	size_t plen;
-	int deps, ldeps;
+	int error, deps, ldeps;
 
 	if (!docf) {
 		/*
@@ -88,6 +88,7 @@ dep_setup(int docf)
 	TAILQ_FOREACH(j, &cfjails, tq)
 		jails_byname[njails++] = j;
 	qsort(jails_byname, njails, sizeof(struct cfjail *), cmp_jailptr);
+	error = 0;
 	deps = 0;
 	ldeps = 0;
 	plen = 0;
@@ -330,15 +331,15 @@ start_state(const char *target, int docf, unsigned state, int running)
 			 * -R matches its wildcards against currently running
 			 * jails, not against the config file.
 			 */
-			jiov[0].iov_base = __DECONST(char *, "lastjid");
+			*(const void **)&jiov[0].iov_base = "lastjid";
 			jiov[0].iov_len = sizeof("lastjid");
 			jiov[1].iov_base = &jid;
 			jiov[1].iov_len = sizeof(jid);
-			jiov[2].iov_base = __DECONST(char *, "jid");
+			*(const void **)&jiov[2].iov_base = "jid";
 			jiov[2].iov_len = sizeof("jid");
 			jiov[3].iov_base = &jid;
 			jiov[3].iov_len = sizeof(jid);
-			jiov[4].iov_base = __DECONST(char *, "name");
+			*(const void **)&jiov[4].iov_base = "name";
 			jiov[4].iov_len = sizeof("name");
 			jiov[5].iov_base = &namebuf;
 			jiov[5].iov_len = sizeof(namebuf);
@@ -453,12 +454,12 @@ running_jid(const char *name, int flags)
 	int jid;
 
 	if ((jid = strtol(name, &ep, 10)) && !*ep) {
-		jiov[0].iov_base = __DECONST(char *, "jid");
+		*(const void **)&jiov[0].iov_base = "jid";
 		jiov[0].iov_len = sizeof("jid");
 		jiov[1].iov_base = &jid;
 		jiov[1].iov_len = sizeof(jid);
 	} else {
-		jiov[0].iov_base = __DECONST(char *, "name");
+		*(const void **)&jiov[0].iov_base = "name";
 		jiov[0].iov_len = sizeof("name");
 		jiov[1].iov_len = strlen(name) + 1;
 		jiov[1].iov_base = alloca(jiov[1].iov_len);

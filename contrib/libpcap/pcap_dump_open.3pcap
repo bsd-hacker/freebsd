@@ -1,3 +1,5 @@
+.\" @(#) $Header: /tcpdump/master/libpcap/pcap_dump_open.3pcap.in,v 1.1 2008-10-23 05:56:59 guy Exp $
+.\"
 .\" Copyright (c) 1994, 1996, 1997
 .\"	The Regents of the University of California.  All rights reserved.
 .\"
@@ -41,7 +43,7 @@ the same format as those used by
 .BR tcpdump (1)
 and
 .BR tcpslice (1).
-The name "-" is a synonym
+The name "-" in a synonym
 for
 .BR stdout .
 .PP

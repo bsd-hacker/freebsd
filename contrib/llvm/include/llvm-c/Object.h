@@ -78,6 +78,7 @@ void LLVMMoveToNextRelocation(LLVMRelocationIteratorRef RI);
 // SymbolRef accessors
 const char *LLVMGetSymbolName(LLVMSymbolIteratorRef SI);
 uint64_t LLVMGetSymbolAddress(LLVMSymbolIteratorRef SI);
+uint64_t LLVMGetSymbolFileOffset(LLVMSymbolIteratorRef SI);
 uint64_t LLVMGetSymbolSize(LLVMSymbolIteratorRef SI);
 
 // RelocationRef accessors

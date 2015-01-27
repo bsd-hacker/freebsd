@@ -30,7 +30,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <ctype.h>
-#ifdef illumos
+#if defined(sun)
 #include <alloca.h>
 #endif
 

@@ -16,9 +16,9 @@
 #define LLVM_CLANG_BASIC_TARGETINFO_H
 
 #include "clang/Basic/AddressSpaces.h"
+#include "clang/Basic/TargetCXXABI.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/Specifiers.h"
-#include "clang/Basic/TargetCXXABI.h"
 #include "clang/Basic/TargetOptions.h"
 #include "clang/Basic/VersionTuple.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -47,7 +47,7 @@ namespace Builtin { struct Info; }
 /// \brief Exposes information about the current target.
 ///
 class TargetInfo : public RefCountedBase<TargetInfo> {
-  std::shared_ptr<TargetOptions> TargetOpts;
+  IntrusiveRefCntPtr<TargetOptions> TargetOpts;
   llvm::Triple Triple;
 protected:
   // Target values set by the ctor of the actual target implementation.  Default
@@ -94,9 +94,8 @@ public:
   /// \param Opts - The options to use to initialize the target. The target may
   /// modify the options to canonicalize the target feature information to match
   /// what the backend expects.
-  static TargetInfo *
-  CreateTargetInfo(DiagnosticsEngine &Diags,
-                   const std::shared_ptr<TargetOptions> &Opts);
+  static TargetInfo* CreateTargetInfo(DiagnosticsEngine &Diags,
+                                      TargetOptions *Opts);
 
   virtual ~TargetInfo();
 
@@ -104,6 +103,10 @@ public:
   TargetOptions &getTargetOpts() const { 
     assert(TargetOpts && "Missing target options");
     return *TargetOpts; 
+  }
+
+  void setTargetOpts(TargetOptions *TargetOpts) {
+    this->TargetOpts = TargetOpts;
   }
 
   ///===---- Target Data Type Query Methods -------------------------------===//
@@ -170,7 +173,7 @@ public:
   };
 
 protected:
-  IntType SizeType, IntMaxType, PtrDiffType, IntPtrType, WCharType,
+  IntType SizeType, IntMaxType, UIntMaxType, PtrDiffType, IntPtrType, WCharType,
           WIntType, Char16Type, Char32Type, Int64Type, SigAtomicType,
           ProcessIDType;
 
@@ -206,43 +209,18 @@ protected:
 public:
   IntType getSizeType() const { return SizeType; }
   IntType getIntMaxType() const { return IntMaxType; }
-  IntType getUIntMaxType() const {
-    return getCorrespondingUnsignedType(IntMaxType);
-  }
+  IntType getUIntMaxType() const { return UIntMaxType; }
   IntType getPtrDiffType(unsigned AddrSpace) const {
     return AddrSpace == 0 ? PtrDiffType : getPtrDiffTypeV(AddrSpace);
   }
   IntType getIntPtrType() const { return IntPtrType; }
-  IntType getUIntPtrType() const {
-    return getCorrespondingUnsignedType(IntPtrType);
-  }
   IntType getWCharType() const { return WCharType; }
   IntType getWIntType() const { return WIntType; }
   IntType getChar16Type() const { return Char16Type; }
   IntType getChar32Type() const { return Char32Type; }
   IntType getInt64Type() const { return Int64Type; }
-  IntType getUInt64Type() const {
-    return getCorrespondingUnsignedType(Int64Type);
-  }
   IntType getSigAtomicType() const { return SigAtomicType; }
   IntType getProcessIDType() const { return ProcessIDType; }
-
-  static IntType getCorrespondingUnsignedType(IntType T) {
-    switch (T) {
-    case SignedChar:
-      return UnsignedChar;
-    case SignedShort:
-      return UnsignedShort;
-    case SignedInt:
-      return UnsignedInt;
-    case SignedLong:
-      return UnsignedLong;
-    case SignedLongLong:
-      return UnsignedLongLong;
-    default:
-      llvm_unreachable("Unexpected signed integer type");
-    }
-  }
 
   /// \brief Return the width (in bits) of the specified integer type enum.
   ///
@@ -251,9 +229,6 @@ public:
 
   /// \brief Return integer type with specified width.
   IntType getIntTypeByWidth(unsigned BitWidth, bool IsSigned) const;
-
-  /// \brief Return the smallest integer type with at least the specified width.
-  IntType getLeastIntTypeByWidth(unsigned BitWidth, bool IsSigned) const;
 
   /// \brief Return floating point type with specified width.
   RealType getRealTypeByWidth(unsigned BitWidth) const;
@@ -308,7 +283,7 @@ public:
   unsigned getLongLongAlign() const { return LongLongAlign; }
 
   /// \brief Determine whether the __int128 type is supported on this target.
-  virtual bool hasInt128Type() const { return getPointerWidth(0) >= 64; } // FIXME
+  bool hasInt128Type() const { return getPointerWidth(0) >= 64; } // FIXME
 
   /// \brief Return the alignment that is suitable for storing any
   /// object with a fundamental alignment requirement.
@@ -446,13 +421,7 @@ public:
   /// \brief Return the constant suffix for the specified integer type enum.
   ///
   /// For example, SignedLong -> "L".
-  const char *getTypeConstantSuffix(IntType T) const;
-
-  /// \brief Return the printf format modifier for the specified
-  /// integer type enum.
-  ///
-  /// For example, SignedLong -> "l".
-  static const char *getTypeFormatModifier(IntType T);
+  static const char *getTypeConstantSuffix(IntType T);
 
   /// \brief Check whether the given real type should use the "fpret" flavor of
   /// Objective-C message passing on this target.
@@ -610,7 +579,6 @@ public:
   }
 
   const char *getTargetDescription() const {
-    assert(DescriptionString);
     return DescriptionString;
   }
 
@@ -636,6 +604,24 @@ public:
   /// either; the entire thing is pretty badly mangled.
   virtual bool hasProtectedVisibility() const { return true; }
 
+  /// \brief Return the section to use for CFString literals, or 0 if no
+  /// special section is used.
+  virtual const char *getCFStringSection() const {
+    return "__DATA,__cfstring";
+  }
+
+  /// \brief Return the section to use for NSString literals, or 0 if no
+  /// special section is used.
+  virtual const char *getNSStringSection() const {
+    return "__OBJC,__cstring_object,regular,no_dead_strip";
+  }
+
+  /// \brief Return the section to use for NSString literals, or 0 if no
+  /// special section is used (NonFragile ABI).
+  virtual const char *getNSStringNonFragileABISection() const {
+    return "__DATA, __objc_stringobj, regular, no_dead_strip";
+  }
+
   /// \brief An optional hook that targets can implement to perform semantic
   /// checking on attribute((section("foo"))) specifiers.
   ///
@@ -655,7 +641,7 @@ public:
   ///
   /// Apply changes to the target information with respect to certain
   /// language options which change the target configuration.
-  virtual void adjust(const LangOptions &Opts);
+  virtual void setForcedLangOptions(LangOptions &Opts);
 
   /// \brief Get the default set of target features for the CPU;
   /// this should include all legal feature strings on the target.
@@ -663,7 +649,9 @@ public:
   }
 
   /// \brief Get the ABI currently in use.
-  virtual StringRef getABI() const { return StringRef(); }
+  virtual const char *getABI() const {
+    return "";
+  }
 
   /// \brief Get the C++ ABI currently in use.
   TargetCXXABI getCXXABI() const {
@@ -764,7 +752,7 @@ public:
 
   /// \brief Return the section to use for C++ static initialization functions.
   virtual const char *getStaticInitSectionSpecifier() const {
-    return nullptr;
+    return 0;
   }
 
   const LangAS::Map &getAddressSpaceMap() const {
@@ -830,7 +818,7 @@ protected:
                                 unsigned &NumAliases) const = 0;
   virtual void getGCCAddlRegNames(const AddlRegName *&Addl,
                                   unsigned &NumAddl) const {
-    Addl = nullptr;
+    Addl = 0;
     NumAddl = 0;
   }
   virtual bool validateAsmConstraint(const char *&Name,

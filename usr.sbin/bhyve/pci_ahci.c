@@ -48,7 +48,6 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
-#include <pthread_np.h>
 #include <inttypes.h>
 
 #include "bhyverun.h"
@@ -116,8 +115,7 @@ static FILE *dbg;
 struct ahci_ioreq {
 	struct blockif_req io_req;
 	struct ahci_port *io_pr;
-	STAILQ_ENTRY(ahci_ioreq) io_flist;
-	TAILQ_ENTRY(ahci_ioreq) io_blist;
+	STAILQ_ENTRY(ahci_ioreq) io_list;
 	uint8_t *cfis;
 	uint32_t len;
 	uint32_t done;
@@ -162,7 +160,6 @@ struct ahci_port {
 	struct ahci_ioreq *ioreq;
 	int ioqsz;
 	STAILQ_HEAD(ahci_fhead, ahci_ioreq) iofhd;
-	TAILQ_HEAD(ahci_bhead, ahci_ioreq) iobhd;
 };
 
 struct ahci_cmd_hdr {
@@ -339,9 +336,8 @@ ahci_write_fis_d2h(struct ahci_port *p, int slot, uint8_t *cfis, uint32_t tfd)
 	fis[13] = cfis[13];
 	if (fis[2] & ATA_S_ERROR)
 		p->is |= AHCI_P_IX_TFE;
-	else
-		p->ci &= ~(1 << slot);
 	p->tfd = tfd;
+	p->ci &= ~(1 << slot);
 	ahci_write_fis(p, FIS_TYPE_REGD2H, fis);
 }
 
@@ -360,72 +356,6 @@ ahci_write_reset_fis_d2h(struct ahci_port *p)
 	}
 	fis[12] = 1;
 	ahci_write_fis(p, FIS_TYPE_REGD2H, fis);
-}
-
-static void
-ahci_check_stopped(struct ahci_port *p)
-{
-	/*
-	 * If we are no longer processing the command list and nothing
-	 * is in-flight, clear the running bit, the current command
-	 * slot, the command issue and active bits.
-	 */
-	if (!(p->cmd & AHCI_P_CMD_ST)) {
-		if (p->pending == 0) {
-			p->cmd &= ~(AHCI_P_CMD_CR | AHCI_P_CMD_CCS_MASK);
-			p->ci = 0;
-			p->sact = 0;
-		}
-	}
-}
-
-static void
-ahci_port_stop(struct ahci_port *p)
-{
-	struct ahci_ioreq *aior;
-	uint8_t *cfis;
-	int slot;
-	int ncq;
-	int error;
-
-	assert(pthread_mutex_isowned_np(&p->pr_sc->mtx));
-
-	TAILQ_FOREACH(aior, &p->iobhd, io_blist) {
-		/*
-		 * Try to cancel the outstanding blockif request.
-		 */
-		error = blockif_cancel(p->bctx, &aior->io_req);
-		if (error != 0)
-			continue;
-
-		slot = aior->slot;
-		cfis = aior->cfis;
-		if (cfis[2] == ATA_WRITE_FPDMA_QUEUED ||
-		    cfis[2] == ATA_READ_FPDMA_QUEUED)
-			ncq = 1;
-
-		if (ncq)
-			p->sact &= ~(1 << slot);
-		else
-			p->ci &= ~(1 << slot);
-
-		/*
-		 * This command is now done.
-		 */
-		p->pending &= ~(1 << slot);
-
-		/*
-		 * Delete the blockif request from the busy list
-		 */
-		TAILQ_REMOVE(&p->iobhd, aior, io_blist);
-
-		/*
-		 * Move the blockif request back to the free list
-		 */
-		STAILQ_INSERT_TAIL(&p->iofhd, aior, io_flist);
-	}
-
-	ahci_check_stopped(p);
 }
 
 static void
@@ -561,7 +491,7 @@ ahci_handle_dma(struct ahci_port *p, int slot, uint8_t *cfis, uint32_t done,
 	 */
 	aior = STAILQ_FIRST(&p->iofhd);
 	assert(aior != NULL);
-	STAILQ_REMOVE_HEAD(&p->iofhd, io_flist);
+	STAILQ_REMOVE_HEAD(&p->iofhd, io_list);
 	aior->cfis = cfis;
 	aior->slot = slot;
 	aior->len = len;
@@ -572,19 +502,13 @@ ahci_handle_dma(struct ahci_port *p, int slot, uint8_t *cfis, uint32_t done,
 	if (iovcnt > BLOCKIF_IOV_MAX) {
 		aior->prdtl = iovcnt - BLOCKIF_IOV_MAX;
 		iovcnt = BLOCKIF_IOV_MAX;
+		/*
+		 * Mark this command in-flight.
+		 */
+		p->pending |= 1 << slot;
 	} else
 		aior->prdtl = 0;
 	breq->br_iovcnt = iovcnt;
-
-	/*
-	 * Mark this command in-flight.
-	 */
-	p->pending |= 1 << slot;
-
-	/*
-	 * Stuff request onto busy list
-	 */
-	TAILQ_INSERT_HEAD(&p->iobhd, aior, io_blist);
 
 	/*
 	 * Build up the iovec based on the prdt
@@ -621,23 +545,13 @@ ahci_handle_flush(struct ahci_port *p, int slot, uint8_t *cfis)
 	 */
 	aior = STAILQ_FIRST(&p->iofhd);
 	assert(aior != NULL);
-	STAILQ_REMOVE_HEAD(&p->iofhd, io_flist);
+	STAILQ_REMOVE_HEAD(&p->iofhd, io_list);
 	aior->cfis = cfis;
 	aior->slot = slot;
 	aior->len = 0;
 	aior->done = 0;
 	aior->prdtl = 0;
 	breq = &aior->io_req;
-
-	/*
-	 * Mark this command in-flight.
-	 */
-	p->pending |= 1 << slot;
-
-	/*
-	 * Stuff request onto busy list
-	 */
-	TAILQ_INSERT_HEAD(&p->iobhd, aior, io_blist);
 
 	err = blockif_flush(p->bctx, breq);
 	assert(err == 0);
@@ -684,16 +598,10 @@ handle_identify(struct ahci_port *p, int slot, uint8_t *cfis)
 	} else {
 		uint16_t buf[256];
 		uint64_t sectors;
-		uint16_t cyl;
-		uint8_t sech, heads;
 
 		sectors = blockif_size(p->bctx) / blockif_sectsz(p->bctx);
-		blockif_chs(p->bctx, &cyl, &heads, &sech);
 		memset(buf, 0, sizeof(buf));
 		buf[0] = 0x0040;
-		buf[1] = cyl;
-		buf[3] = heads;
-		buf[6] = sech;
 		/* TODO emulate different serial? */
 		ata_string((uint8_t *)(buf+10), "123456", 20);
 		ata_string((uint8_t *)(buf+23), "001", 8);
@@ -737,8 +645,8 @@ handle_identify(struct ahci_port *p, int slot, uint8_t *cfis)
 		write_prdt(p, slot, cfis, (void *)buf, sizeof(buf));
 		p->tfd = ATA_S_DSC | ATA_S_READY;
 		p->is |= AHCI_P_IX_DP;
-		p->ci &= ~(1 << slot);
 	}
+	p->ci &= ~(1 << slot);
 	ahci_generate_intr(p->pr_sc);
 }
 
@@ -780,8 +688,8 @@ handle_atapi_identify(struct ahci_port *p, int slot, uint8_t *cfis)
 		write_prdt(p, slot, cfis, (void *)buf, sizeof(buf));
 		p->tfd = ATA_S_DSC | ATA_S_READY;
 		p->is |= AHCI_P_IX_DHR;
-		p->ci &= ~(1 << slot);
 	}
+	p->ci &= ~(1 << slot);
 	ahci_generate_intr(p->pr_sc);
 }
 
@@ -1046,7 +954,7 @@ atapi_read(struct ahci_port *p, int slot, uint8_t *cfis,
 	 */
 	aior = STAILQ_FIRST(&p->iofhd);
 	assert(aior != NULL);
-	STAILQ_REMOVE_HEAD(&p->iofhd, io_flist);
+	STAILQ_REMOVE_HEAD(&p->iofhd, io_list);
 	aior->cfis = cfis;
 	aior->slot = slot;
 	aior->len = len;
@@ -1060,16 +968,6 @@ atapi_read(struct ahci_port *p, int slot, uint8_t *cfis,
 	} else
 		aior->prdtl = 0;
 	breq->br_iovcnt = iovcnt;
-
-	/*
-	 * Mark this command in-flight.
-	 */
-	p->pending |= 1 << slot;
-
-	/*
-	 * Stuff request onto busy list
-	 */
-	TAILQ_INSERT_HEAD(&p->iobhd, aior, io_blist);
 
 	/*
 	 * Build up the iovec based on the prdt
@@ -1394,6 +1292,7 @@ ahci_handle_cmd(struct ahci_port *p, int slot, uint8_t *cfis)
 		if (!p->atapi) {
 			p->tfd = (ATA_E_ABORT << 8) | ATA_S_READY | ATA_S_ERROR;
 			p->is |= AHCI_P_IX_TFE;
+			p->ci &= ~(1 << slot);
 			ahci_generate_intr(p->pr_sc);
 		} else
 			handle_packet_cmd(p, slot, cfis);
@@ -1402,6 +1301,7 @@ ahci_handle_cmd(struct ahci_port *p, int slot, uint8_t *cfis)
 		WPRINTF("Unsupported cmd:%02x\n", cfis[2]);
 		p->tfd = (ATA_E_ABORT << 8) | ATA_S_READY | ATA_S_ERROR;
 		p->is |= AHCI_P_IX_TFE;
+		p->ci &= ~(1 << slot);
 		ahci_generate_intr(p->pr_sc);
 		break;
 	}
@@ -1469,11 +1369,8 @@ ahci_handle_port(struct ahci_port *p)
 	 * are already in-flight.
 	 */
 	for (i = 0; (i < 32) && p->ci; i++) {
-		if ((p->ci & (1 << i)) && !(p->pending & (1 << i))) {
-			p->cmd &= ~AHCI_P_CMD_CCS_MASK;
-			p->cmd |= i << AHCI_P_CMD_CCS_SHIFT;
+		if ((p->ci & (1 << i)) && !(p->pending & (1 << i)))
 			ahci_handle_slot(p, i);
-		}
 	}
 }
 
@@ -1510,14 +1407,9 @@ ata_ioreq_cb(struct blockif_req *br, int err)
 	pthread_mutex_lock(&sc->mtx);
 
 	/*
-	 * Delete the blockif request from the busy list
-	 */
-	TAILQ_REMOVE(&p->iobhd, aior, io_blist);
-
-	/*
 	 * Move the blockif request back to the free list
 	 */
-	STAILQ_INSERT_TAIL(&p->iofhd, aior, io_flist);
+	STAILQ_INSERT_TAIL(&p->iofhd, aior, io_list);
 
 	if (pending && !err) {
 		ahci_handle_dma(p, slot, cfis, aior->done,
@@ -1538,18 +1430,17 @@ ata_ioreq_cb(struct blockif_req *br, int err)
 			p->serr |= (1 << slot);
 	}
 
+	/*
+	 * This command is now complete.
+	 */
+	p->pending &= ~(1 << slot);
+
 	if (ncq) {
 		p->sact &= ~(1 << slot);
 		ahci_write_fis_sdb(p, slot, tfd);
 	} else
 		ahci_write_fis_d2h(p, slot, cfis, tfd);
 
-	/*
-	 * This command is now complete.
-	 */
-	p->pending &= ~(1 << slot);
-
-	ahci_check_stopped(p);
 out:
 	pthread_mutex_unlock(&sc->mtx);
 	DPRINTF("%s exit\n", __func__);
@@ -1579,14 +1470,9 @@ atapi_ioreq_cb(struct blockif_req *br, int err)
 	pthread_mutex_lock(&sc->mtx);
 
 	/*
-	 * Delete the blockif request from the busy list
-	 */
-	TAILQ_REMOVE(&p->iobhd, aior, io_blist);
-
-	/*
 	 * Move the blockif request back to the free list
 	 */
-	STAILQ_INSERT_TAIL(&p->iofhd, aior, io_flist);
+	STAILQ_INSERT_TAIL(&p->iofhd, aior, io_list);
 
 	if (pending && !err) {
 		atapi_read(p, slot, cfis, aior->done, hdr->prdtl - pending);
@@ -1606,12 +1492,6 @@ atapi_ioreq_cb(struct blockif_req *br, int err)
 	cfis[4] = (cfis[4] & ~7) | ATA_I_CMD | ATA_I_IN;
 	ahci_write_fis_d2h(p, slot, cfis, tfd);
 
-	/*
-	 * This command is now complete.
-	 */
-	p->pending &= ~(1 << slot);
-
-	ahci_check_stopped(p);
 out:
 	pthread_mutex_unlock(&sc->mtx);
 	DPRINTF("%s exit\n", __func__);
@@ -1638,10 +1518,8 @@ pci_ahci_ioreq_init(struct ahci_port *pr)
 		else
 			vr->io_req.br_callback = atapi_ioreq_cb;
 		vr->io_req.br_param = vr;
-		STAILQ_INSERT_TAIL(&pr->iofhd, vr, io_flist);
+		STAILQ_INSERT_TAIL(&pr->iofhd, vr, io_list);
 	}
-
-	TAILQ_INIT(&pr->iobhd);
 }
 
 static void
@@ -1679,7 +1557,9 @@ pci_ahci_port_write(struct pci_ahci_softc *sc, uint64_t offset, uint64_t value)
 		p->cmd = value;
 		
 		if (!(value & AHCI_P_CMD_ST)) {
-			ahci_port_stop(p);
+			p->cmd &= ~(AHCI_P_CMD_CR | AHCI_P_CMD_CCS_MASK);
+			p->ci = 0;
+			p->sact = 0;
 		} else {
 			uint64_t clb;
 

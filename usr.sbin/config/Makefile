@@ -13,7 +13,8 @@ CFLAGS+= -I. -I${.CURDIR}
 
 NO_WMISSING_VARIABLE_DECLARATIONS=
 
-LIBADD=	l sbuf
+DPADD=	${LIBL} ${LIBSBUF}
+LDADD=	-ll -lsbuf
 
 CLEANFILES+=	kernconf.c
 

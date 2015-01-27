@@ -12,12 +12,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/FileSystem.h"
+
+#include "Windows.h"
 #include <algorithm>
 #include <stdio.h>
 #include <vector>
-
-// The Windows.h header must be after LLVM and standard headers.
-#include "WindowsSupport.h"
 
 #ifdef __MINGW32__
  #include <imagehlp.h>
@@ -318,7 +317,8 @@ static void Cleanup() {
 
   if (FilesToRemove != NULL)
     while (!FilesToRemove->empty()) {
-      llvm::sys::fs::remove(FilesToRemove->back());
+      bool Existed;
+      llvm::sys::fs::remove(FilesToRemove->back(), Existed);
       FilesToRemove->pop_back();
     }
 

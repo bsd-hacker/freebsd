@@ -80,24 +80,6 @@ public:
     GetDynamicLoaderCreateCallbackForPluginName (const ConstString &name);
 
     //------------------------------------------------------------------
-    // JITLoader
-    //------------------------------------------------------------------
-    static bool
-    RegisterPlugin (const ConstString &name,
-                    const char *description,
-                    JITLoaderCreateInstance create_callback,
-                    DebuggerInitializeCallback debugger_init_callback = NULL);
-
-    static bool
-    UnregisterPlugin (JITLoaderCreateInstance create_callback);
-
-    static JITLoaderCreateInstance
-    GetJITLoaderCreateCallbackAtIndex (uint32_t idx);
-
-    static JITLoaderCreateInstance
-    GetJITLoaderCreateCallbackForPluginName (const ConstString &name);
-
-    //------------------------------------------------------------------
     // EmulateInstruction
     //------------------------------------------------------------------
     static bool
@@ -175,8 +157,7 @@ public:
                     const char *description,
                     ObjectFileCreateInstance create_callback,
                     ObjectFileCreateMemoryInstance create_memory_callback,
-                    ObjectFileGetModuleSpecifications get_module_specifications,
-                    ObjectFileSaveCore save_core = NULL);
+                    ObjectFileGetModuleSpecifications get_module_specifications);
 
     static bool
     UnregisterPlugin (ObjectFileCreateInstance create_callback);
@@ -196,8 +177,6 @@ public:
     static ObjectFileCreateMemoryInstance
     GetObjectFileCreateMemoryCallbackForPluginName (const ConstString &name);
 
-    static Error
-    SaveCore (const lldb::ProcessSP &process_sp, const FileSpec &outfile);
 
     //------------------------------------------------------------------
     // ObjectContainer

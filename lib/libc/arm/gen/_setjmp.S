@@ -89,7 +89,6 @@ ENTRY(_setjmp)
 
         mov	r0, #0x00000000
 	RET
-END(_setjmp)
 
 .L_setjmp_magic:
 	.word	_JB_MAGIC__SETJMP
@@ -141,4 +140,3 @@ botch:
 #else
 	b	.
 #endif
-END(_longjmp)

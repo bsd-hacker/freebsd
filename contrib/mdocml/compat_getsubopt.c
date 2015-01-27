@@ -1,12 +1,13 @@
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
 
-#if HAVE_GETSUBOPT
+#ifdef HAVE_GETSUBOPT
 
 int dummy;
 
 #else
 
-/*	$Id: compat_getsubopt.c,v 1.5 2014/08/17 20:53:50 schwarze Exp $	*/
 /*	$OpenBSD: getsubopt.c,v 1.4 2005/08/08 08:05:36 espie Exp $	*/
 
 /*-
@@ -42,11 +43,18 @@ int dummy;
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * The SVID interface to getsubopt provides no way of figuring out which
+ * part of the suboptions list wasn't matched.  This makes error messages
+ * tricky...  The extern variable suboptarg is a pointer to the token
+ * which didn't match.
+ */
+char *suboptarg;
+
 int
 getsubopt(char **optionp, char * const *tokens, char **valuep)
 {
 	int cnt;
-	char *suboptarg;
 	char *p;
 
 	suboptarg = *valuep = NULL;

@@ -15,14 +15,12 @@
 #ifndef LLVM_CLANG_TOKENKINDS_H
 #define LLVM_CLANG_TOKENKINDS_H
 
-#include "llvm/Support/Compiler.h"
-
 namespace clang {
 
 namespace tok {
 
 /// \brief Provides a simple uniform namespace for tokens from all C languages.
-enum TokenKind : unsigned short {
+enum TokenKind {
 #define TOK(X) X,
 #include "clang/Basic/TokenKinds.def"
   NUM_TOKENS
@@ -54,7 +52,7 @@ enum OnOffSwitch {
 ///
 /// The name of a token will be an internal name (such as "l_square")
 /// and should not be used as part of diagnostic messages.
-const char *getTokenName(TokenKind Kind) LLVM_READNONE;
+const char *getTokenName(enum TokenKind Kind);
 
 /// \brief Determines the spelling of simple punctuation tokens like
 /// '!' or '%', and returns NULL for literal and annotation tokens.
@@ -63,11 +61,7 @@ const char *getTokenName(TokenKind Kind) LLVM_READNONE;
 /// and will not produce any alternative spellings (e.g., a
 /// digraph). For the actual spelling of a given Token, use
 /// Preprocessor::getSpelling().
-const char *getPunctuatorSpelling(TokenKind Kind) LLVM_READNONE;
-
-/// \brief Determines the spelling of simple keyword and contextual keyword
-/// tokens like 'int' and 'dynamic_cast'. Returns NULL for other token kinds.
-const char *getKeywordSpelling(TokenKind Kind) LLVM_READNONE;
+const char *getTokenSimpleSpelling(enum TokenKind Kind);
 
 /// \brief Return true if this is a raw identifier or an identifier kind.
 inline bool isAnyIdentifier(TokenKind K) {

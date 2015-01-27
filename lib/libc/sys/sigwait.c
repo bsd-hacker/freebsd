@@ -28,21 +28,13 @@ __FBSDID("$FreeBSD$");
 
 #include <errno.h>
 #include <signal.h>
-#include "libc_private.h"
 
-__weak_reference(__libc_sigwait, __sigwait);
+int __sys_sigwait(const sigset_t * restrict, int * restrict);
 
-#pragma weak sigwait
-int
-sigwait(const sigset_t *set, int *sig)
-{
-
-	return (((int (*)(const sigset_t *, int *))
-	    __libc_interposing[INTERPOS_sigwait])(set, sig));
-}
+__weak_reference(__sigwait, sigwait);
 
 int
-__libc_sigwait(const sigset_t *set, int *sig)
+__sigwait(const sigset_t * restrict set, int * restrict sig)
 {
 	int ret;
 

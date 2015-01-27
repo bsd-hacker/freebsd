@@ -43,7 +43,7 @@ __FBSDID("$FreeBSD$");
 #include "glue.h"
 
 #if defined(LOADER_FDT_SUPPORT)
-#include <fdt_platform.h>
+#include "libuboot.h"
 #endif
 
 static int

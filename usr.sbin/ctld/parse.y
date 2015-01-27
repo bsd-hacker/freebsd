@@ -58,17 +58,17 @@ extern void	yyrestart(FILE *);
 %}
 
 %token ALIAS AUTH_GROUP AUTH_TYPE BACKEND BLOCKSIZE CHAP CHAP_MUTUAL
-%token CLOSING_BRACKET DEBUG DEVICE_ID DISCOVERY_AUTH_GROUP DISCOVERY_FILTER
-%token INITIATOR_NAME INITIATOR_PORTAL ISNS_SERVER ISNS_PERIOD ISNS_TIMEOUT
-%token LISTEN LISTEN_ISER LUN MAXPROC OPENING_BRACKET OPTION
-%token PATH PIDFILE PORTAL_GROUP REDIRECT SEMICOLON SERIAL SIZE STR
-%token TARGET TIMEOUT 
+%token CLOSING_BRACKET DEBUG DEVICE_ID DISCOVERY_AUTH_GROUP INITIATOR_NAME
+%token INITIATOR_PORTAL LISTEN LISTEN_ISER LUN MAXPROC NUM OPENING_BRACKET
+%token OPTION PATH PIDFILE PORTAL_GROUP SERIAL SIZE STR TARGET TIMEOUT
 
 %union
 {
+	uint64_t num;
 	char *str;
 }
 
+%token <num> NUM
 %token <str> STR
 
 %%
@@ -76,8 +76,6 @@ extern void	yyrestart(FILE *);
 statements:
 	|
 	statements statement
-	|
-	statements statement SEMICOLON
 	;
 
 statement:
@@ -89,12 +87,6 @@ statement:
 	|
 	pidfile
 	|
-	isns_server
-	|
-	isns_period
-	|
-	isns_timeout
-	|
 	auth_group
 	|
 	portal_group
@@ -102,45 +94,21 @@ statement:
 	target
 	;
 
-debug:		DEBUG STR
+debug:		DEBUG NUM
 	{
-		uint64_t tmp;
-
-		if (expand_number($2, &tmp) != 0) {
-			yyerror("invalid numeric value");
-			free($2);
-			return (1);
-		}
-			
-		conf->conf_debug = tmp;
+		conf->conf_debug = $2;
 	}
 	;
 
-timeout:	TIMEOUT STR
+timeout:	TIMEOUT NUM
 	{
-		uint64_t tmp;
-
-		if (expand_number($2, &tmp) != 0) {
-			yyerror("invalid numeric value");
-			free($2);
-			return (1);
-		}
-
-		conf->conf_timeout = tmp;
+		conf->conf_timeout = $2;
 	}
 	;
 
-maxproc:	MAXPROC STR
+maxproc:	MAXPROC NUM
 	{
-		uint64_t tmp;
-
-		if (expand_number($2, &tmp) != 0) {
-			yyerror("invalid numeric value");
-			free($2);
-			return (1);
-		}
-
-		conf->conf_maxproc = tmp;
+		conf->conf_maxproc = $2;
 	}
 	;
 
@@ -152,45 +120,6 @@ pidfile:	PIDFILE STR
 			return (1);
 		}
 		conf->conf_pidfile_path = $2;
-	}
-	;
-
-isns_server:	ISNS_SERVER STR
-	{
-		int error;
-
-		error = isns_new(conf, $2);
-		free($2);
-		if (error != 0)
-			return (1);
-	}
-	;
-
-isns_period:	ISNS_PERIOD STR
-	{
-		uint64_t tmp;
-
-		if (expand_number($2, &tmp) != 0) {
-			yyerror("invalid numeric value");
-			free($2);
-			return (1);
-		}
-
-		conf->conf_isns_period = tmp;
-	}
-	;
-
-isns_timeout:	ISNS_TIMEOUT STR
-	{
-		uint64_t tmp;
-
-		if (expand_number($2, &tmp) != 0) {
-			yyerror("invalid numeric value");
-			free($2);
-			return (1);
-		}
-
-		conf->conf_isns_timeout = tmp;
 	}
 	;
 
@@ -223,8 +152,6 @@ auth_group_name:	STR
 auth_group_entries:
 	|
 	auth_group_entries auth_group_entry
-	|
-	auth_group_entries auth_group_entry SEMICOLON
 	;
 
 auth_group_entry:
@@ -243,7 +170,7 @@ auth_group_auth_type:	AUTH_TYPE STR
 	{
 		int error;
 
-		error = auth_group_set_type(auth_group, $2);
+		error = auth_group_set_type_str(auth_group, $2);
 		free($2);
 		if (error != 0)
 			return (1);
@@ -327,20 +254,14 @@ portal_group_name:	STR
 portal_group_entries:
 	|
 	portal_group_entries portal_group_entry
-	|
-	portal_group_entries portal_group_entry SEMICOLON
 	;
 
 portal_group_entry:
 	portal_group_discovery_auth_group
 	|
-	portal_group_discovery_filter
-	|
 	portal_group_listen
 	|
 	portal_group_listen_iser
-	|
-	portal_group_redirect
 	;
 
 portal_group_discovery_auth_group:	DISCOVERY_AUTH_GROUP STR
@@ -360,17 +281,6 @@ portal_group_discovery_auth_group:	DISCOVERY_AUTH_GROUP STR
 			return (1);
 		}
 		free($2);
-	}
-	;
-
-portal_group_discovery_filter:	DISCOVERY_FILTER STR
-	{
-		int error;
-
-		error = portal_group_set_filter(portal_group, $2);
-		free($2);
-		if (error != 0)
-			return (1);
 	}
 	;
 
@@ -396,17 +306,6 @@ portal_group_listen_iser:	LISTEN_ISER STR
 	}
 	;
 
-portal_group_redirect:	REDIRECT STR
-	{
-		int error;
-
-		error = portal_group_set_redirection(portal_group, $2);
-		free($2);
-		if (error != 0)
-			return (1);
-	}
-	;
-
 target:	TARGET target_name
     OPENING_BRACKET target_entries CLOSING_BRACKET
 	{
@@ -426,8 +325,6 @@ target_name:	STR
 target_entries:
 	|
 	target_entries target_entry
-	|
-	target_entries target_entry SEMICOLON
 	;
 
 target_entry:
@@ -446,8 +343,6 @@ target_entry:
 	target_initiator_portal
 	|
 	target_portal_group
-	|
-	target_redirect
 	|
 	target_lun
 	;
@@ -504,7 +399,7 @@ target_auth_type:	AUTH_TYPE STR
 			}
 			target->t_auth_group->ag_target = target;
 		}
-		error = auth_group_set_type(target->t_auth_group, $2);
+		error = auth_group_set_type_str(target->t_auth_group, $2);
 		free($2);
 		if (error != 0)
 			return (1);
@@ -651,17 +546,6 @@ target_portal_group:	PORTAL_GROUP STR
 	}
 	;
 
-target_redirect:	REDIRECT STR
-	{
-		int error;
-
-		error = target_set_redirection(target, $2);
-		free($2);
-		if (error != 0)
-			return (1);
-	}
-	;
-
 target_lun:	LUN lun_number
     OPENING_BRACKET lun_entries CLOSING_BRACKET
 	{
@@ -669,17 +553,9 @@ target_lun:	LUN lun_number
 	}
 	;
 
-lun_number:	STR
+lun_number:	NUM
 	{
-		uint64_t tmp;
-
-		if (expand_number($1, &tmp) != 0) {
-			yyerror("invalid numeric value");
-			free($1);
-			return (1);
-		}
-
-		lun = lun_new(target, tmp);
+		lun = lun_new(target, $1);
 		if (lun == NULL)
 			return (1);
 	}
@@ -688,8 +564,6 @@ lun_number:	STR
 lun_entries:
 	|
 	lun_entries lun_entry
-	|
-	lun_entries lun_entry SEMICOLON
 	;
 
 lun_entry:
@@ -722,23 +596,15 @@ lun_backend:	BACKEND STR
 	}
 	;
 
-lun_blocksize:	BLOCKSIZE STR
+lun_blocksize:	BLOCKSIZE NUM
 	{
-		uint64_t tmp;
-
-		if (expand_number($2, &tmp) != 0) {
-			yyerror("invalid numeric value");
-			free($2);
-			return (1);
-		}
-
 		if (lun->l_blocksize != 0) {
 			log_warnx("blocksize for lun %d, target \"%s\" "
 			    "specified more than once",
 			    lun->l_lun, target->t_name);
 			return (1);
 		}
-		lun_set_blocksize(lun, tmp);
+		lun_set_blocksize(lun, $2);
 	}
 	;
 
@@ -759,7 +625,7 @@ lun_device_id:	DEVICE_ID STR
 lun_option:	OPTION STR STR
 	{
 		struct lun_option *clo;
-
+		
 		clo = lun_option_new(lun, $2, $3);
 		free($2);
 		free($3);
@@ -796,23 +662,15 @@ lun_serial:	SERIAL STR
 	}
 	;
 
-lun_size:	SIZE STR
+lun_size:	SIZE NUM
 	{
-		uint64_t tmp;
-
-		if (expand_number($2, &tmp) != 0) {
-			yyerror("invalid numeric value");
-			free($2);
-			return (1);
-		}
-
 		if (lun->l_size != 0) {
 			log_warnx("size for lun %d, target \"%s\" "
 			    "specified more than once",
 			    lun->l_lun, target->t_name);
 			return (1);
 		}
-		lun_set_size(lun, tmp);
+		lun_set_size(lun, $2);
 	}
 	;
 %%

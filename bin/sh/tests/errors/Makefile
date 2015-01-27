@@ -1,11 +1,9 @@
 # $FreeBSD$
 
-TESTSDIR=	${TESTSBASE}/bin/sh/${.CURDIR:T}
+.include <bsd.own.mk>
 
-.PATH: ${.CURDIR:H}
-ATF_TESTS_SH=	functional_test
-
-FILESDIR=	${TESTSDIR}
+FILESDIR=	${TESTSBASE}/bin/sh/errors
+KYUAFILE=	no
 
 FILES=		assignment-error1.0
 FILES+=		assignment-error2.0

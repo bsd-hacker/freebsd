@@ -2917,10 +2917,6 @@ Exit:
 
 /***************************************************
  ***************************************************/
-static boolean_t __osm_invalid_link_rank_diff(const uint32_t val)
-{
-	return (val != 1U && val != -1U);
-}
 
 static int __osm_ftree_fabric_construct_sw_ports(IN ftree_fabric_t * p_ftree,
 						 IN ftree_sw_t * p_sw)
@@ -2997,7 +2993,7 @@ static int __osm_ftree_fabric_construct_sw_ports(IN ftree_fabric_t * p_ftree,
 
 			p_remote_hca_or_sw = (void *)p_remote_sw;
 
-			if (__osm_invalid_link_rank_diff(p_sw->rank - p_remote_sw->rank)) {
+			if (abs(p_sw->rank - p_remote_sw->rank) != 1) {
 				OSM_LOG(&p_ftree->p_osm->log, OSM_LOG_ERROR,
 					"ERR AB16: "
 					"Illegal link between switches with ranks %u and %u:\n"

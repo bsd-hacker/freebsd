@@ -46,7 +46,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscall.h>
 #include <sys/sysent.h>
 #include <sys/systm.h>
-#include <sys/kernel.h>
 #include <sys/uio.h>
 #include <sys/signalvar.h>
 #include <sys/vmmeter.h>
@@ -168,7 +167,7 @@ trap(struct trapframe *frame)
 	/*
 	 * A trap can occur while DTrace executes a probe. Before
 	 * executing the probe, DTrace blocks re-scheduling and sets
-	 * a flag in its per-cpu flags to indicate that it doesn't
+	 * a flag in it's per-cpu flags to indicate that it doesn't
 	 * want to fault. On returning from the probe, the no-fault
 	 * flag is cleared and finally re-scheduling is enabled.
 	 *
@@ -177,7 +176,7 @@ trap(struct trapframe *frame)
 	 * handled the trap and modified the trap frame so that this
 	 * function can return normally.
 	 */
-	if (dtrace_trap_func != NULL && (*dtrace_trap_func)(frame, type) != 0)
+	if (dtrace_trap_func != NULL && (*dtrace_trap_func)(frame, type))
 		return;
 #endif
 
@@ -193,7 +192,6 @@ trap(struct trapframe *frame)
 		case EXC_TRC:
 			frame->srr1 &= ~PSL_SE;
 			sig = SIGTRAP;
-			ucode = TRAP_TRACE;
 			break;
 
 #ifdef __powerpc64__
@@ -201,17 +199,13 @@ trap(struct trapframe *frame)
 		case EXC_DSE:
 			if (handle_user_slb_spill(&p->p_vmspace->vm_pmap,
 			    (type == EXC_ISE) ? frame->srr0 :
-			    frame->cpu.aim.dar) != 0) {
+			    frame->cpu.aim.dar) != 0)
 				sig = SIGSEGV;
-				ucode = SEGV_MAPERR;
-			}
 			break;
 #endif
 		case EXC_DSI:
 		case EXC_ISI:
 			sig = trap_pfault(frame, 1);
-			if (sig == SIGSEGV)
-				ucode = SEGV_MAPERR;
 			break;
 
 		case EXC_SC:
@@ -246,10 +240,8 @@ trap(struct trapframe *frame)
 			break;
 
 		case EXC_ALI:
-			if (fix_unaligned(td, frame) != 0) {
+			if (fix_unaligned(td, frame) != 0)
 				sig = SIGBUS;
-				ucode = BUS_ADRALN;
-			}
 			else
 				frame->srr0 += 4;
 			break;
@@ -259,8 +251,7 @@ trap(struct trapframe *frame)
 			if (frame->srr1 & EXC_PGM_TRAP) {
 #ifdef KDTRACE_HOOKS
 				inst = fuword32((const void *)frame->srr0);
-				if (inst == 0x0FFFDDDD &&
-				    dtrace_pid_probe_ptr != NULL) {
+				if (inst == 0x0FFFDDDD && dtrace_pid_probe_ptr != NULL) {
 					struct reg regs;
 					fill_regs(td, &regs);
 					(*dtrace_pid_probe_ptr)(&regs);
@@ -268,27 +259,9 @@ trap(struct trapframe *frame)
 				}
 #endif
  				sig = SIGTRAP;
-				ucode = TRAP_BRKPT;
 			} else {
 				sig = ppc_instr_emulate(frame, td->td_pcb);
-				if (sig == SIGILL) {
-					if (frame->srr1 & EXC_PGM_PRIV)
-						ucode = ILL_PRVOPC;
-					else if (frame->srr1 & EXC_PGM_ILLEGAL)
-						ucode = ILL_ILLOPC;
-				} else if (sig == SIGFPE)
-					ucode = FPE_FLTINV;	/* Punt for now, invalid operation. */
 			}
-			break;
-
-		case EXC_MCHK:
-			/*
-			 * Note that this may not be recoverable for the user
-			 * process, depending on the type of machine check,
-			 * but it at least prevents the kernel from dying.
-			 */
-			sig = SIGBUS;
-			ucode = BUS_OBJERR;
 			break;
 
 		default:
@@ -303,7 +276,7 @@ trap(struct trapframe *frame)
 #ifdef KDTRACE_HOOKS
 		case EXC_PGM:
 			if (frame->srr1 & EXC_PGM_TRAP) {
-				if (*(uint32_t *)frame->srr0 == EXC_DTRACE) {
+				if (*(uint32_t *)frame->srr0 == 0x7c810808) {
 					if (dtrace_invop_jump_addr != NULL) {
 						dtrace_invop_jump_addr(frame);
 						return;

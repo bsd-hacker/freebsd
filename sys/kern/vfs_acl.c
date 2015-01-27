@@ -148,7 +148,6 @@ acl_copyin(void *user_acl, struct acl *kernel_acl, acl_type_t type)
 static int
 acl_copyout(struct acl *kernel_acl, void *user_acl, acl_type_t type)
 {
-	uint32_t am;
 	int error;
 	struct oldacl old;
 
@@ -163,11 +162,8 @@ acl_copyout(struct acl *kernel_acl, void *user_acl, acl_type_t type)
 		break;
 
 	default:
-		error = fueword32((char *)user_acl +
-		    offsetof(struct acl, acl_maxcnt), &am);
-		if (error == -1)
-			return (EFAULT);
-		if (am != ACL_MAX_ENTRIES)
+		if (fuword32((char *)user_acl +
+		    offsetof(struct acl, acl_maxcnt)) != ACL_MAX_ENTRIES)
 			return (EINVAL);
 
 		error = copyout(kernel_acl, user_acl, sizeof(*kernel_acl));

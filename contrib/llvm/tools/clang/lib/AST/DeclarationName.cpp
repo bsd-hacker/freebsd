@@ -143,16 +143,13 @@ raw_ostream &operator<<(raw_ostream &OS, DeclarationName N) {
   case DeclarationName::ObjCZeroArgSelector:
   case DeclarationName::ObjCOneArgSelector:
   case DeclarationName::ObjCMultiArgSelector:
-    N.getObjCSelector().print(OS);
-    return OS;
+    return OS << N.getObjCSelector().getAsString();
 
   case DeclarationName::CXXConstructorName: {
     QualType ClassType = N.getCXXNameType();
     if (const RecordType *ClassRec = ClassType->getAs<RecordType>())
       return OS << *ClassRec->getDecl();
-    LangOptions LO;
-    LO.CPlusPlus = true;
-    return OS << ClassType.getAsString(PrintingPolicy(LO));
+    return OS << ClassType.getAsString();
   }
 
   case DeclarationName::CXXDestructorName: {
@@ -160,14 +157,12 @@ raw_ostream &operator<<(raw_ostream &OS, DeclarationName N) {
     QualType Type = N.getCXXNameType();
     if (const RecordType *Rec = Type->getAs<RecordType>())
       return OS << *Rec->getDecl();
-    LangOptions LO;
-    LO.CPlusPlus = true;
-    return OS << Type.getAsString(PrintingPolicy(LO));
+    return OS << Type.getAsString();
   }
 
   case DeclarationName::CXXOperatorName: {
     static const char* const OperatorNames[NUM_OVERLOADED_OPERATORS] = {
-      nullptr,
+      0,
 #define OVERLOADED_OPERATOR(Name,Spelling,Token,Unary,Binary,MemberOnly) \
       Spelling,
 #include "clang/Basic/OperatorKinds.def"
@@ -189,10 +184,7 @@ raw_ostream &operator<<(raw_ostream &OS, DeclarationName N) {
     QualType Type = N.getCXXNameType();
     if (const RecordType *Rec = Type->getAs<RecordType>())
       return OS << *Rec->getDecl();
-    LangOptions LO;
-    LO.CPlusPlus = true;
-    LO.Bool = true;
-    return OS << Type.getAsString(PrintingPolicy(LO));
+    return OS << Type.getAsString();
   }
   case DeclarationName::CXXUsingDirective:
     return OS << "<using-directive>";
@@ -273,7 +265,7 @@ IdentifierInfo *DeclarationName::getCXXLiteralIdentifier() const {
   if (CXXLiteralOperatorIdName *CXXLit = getAsCXXLiteralOperatorIdName())
     return CXXLit->ID;
   else
-    return nullptr;
+    return 0;
 }
 
 void *DeclarationName::getFETokenInfoAsVoidSlow() const {
@@ -346,7 +338,7 @@ DeclarationNameTable::DeclarationNameTable(const ASTContext &C) : Ctx(C) {
   for (unsigned Op = 0; Op < NUM_OVERLOADED_OPERATORS; ++Op) {
     CXXOperatorNames[Op].ExtraKindOrNumArgs
       = Op + DeclarationNameExtra::CXXConversionFunction;
-    CXXOperatorNames[Op].FETokenInfo = nullptr;
+    CXXOperatorNames[Op].FETokenInfo = 0;
   }
 }
 
@@ -407,14 +399,14 @@ DeclarationNameTable::getCXXSpecialName(DeclarationName::NameKind Kind,
   ID.AddInteger(EKind);
   ID.AddPointer(Ty.getAsOpaquePtr());
 
-  void *InsertPos = nullptr;
+  void *InsertPos = 0;
   if (CXXSpecialName *Name = SpecialNames->FindNodeOrInsertPos(ID, InsertPos))
     return DeclarationName(Name);
 
   CXXSpecialName *SpecialName = new (Ctx) CXXSpecialName;
   SpecialName->ExtraKindOrNumArgs = EKind;
   SpecialName->Type = Ty;
-  SpecialName->FETokenInfo = nullptr;
+  SpecialName->FETokenInfo = 0;
 
   SpecialNames->InsertNode(SpecialName, InsertPos);
   return DeclarationName(SpecialName);
@@ -434,7 +426,7 @@ DeclarationNameTable::getCXXLiteralOperatorName(IdentifierInfo *II) {
   llvm::FoldingSetNodeID ID;
   ID.AddPointer(II);
 
-  void *InsertPos = nullptr;
+  void *InsertPos = 0;
   if (CXXLiteralOperatorIdName *Name =
                                LiteralNames->FindNodeOrInsertPos(ID, InsertPos))
     return DeclarationName (Name);
@@ -442,7 +434,7 @@ DeclarationNameTable::getCXXLiteralOperatorName(IdentifierInfo *II) {
   CXXLiteralOperatorIdName *LiteralName = new (Ctx) CXXLiteralOperatorIdName;
   LiteralName->ExtraKindOrNumArgs = DeclarationNameExtra::CXXLiteralOperator;
   LiteralName->ID = II;
-  LiteralName->FETokenInfo = nullptr;
+  LiteralName->FETokenInfo = 0;
 
   LiteralNames->InsertNode(LiteralName, InsertPos);
   return DeclarationName(LiteralName);
@@ -455,7 +447,7 @@ DeclarationNameLoc::DeclarationNameLoc(DeclarationName Name) {
   case DeclarationName::CXXConstructorName:
   case DeclarationName::CXXDestructorName:
   case DeclarationName::CXXConversionFunctionName:
-    NamedType.TInfo = nullptr;
+    NamedType.TInfo = 0;
     break;
   case DeclarationName::CXXOperatorName:
     CXXOperatorName.BeginOpNameLoc = SourceLocation().getRawEncoding();
@@ -545,10 +537,7 @@ void DeclarationNameInfo::printName(raw_ostream &OS) const {
         OS << '~';
       else if (Name.getNameKind() == DeclarationName::CXXConversionFunctionName)
         OS << "operator ";
-      LangOptions LO;
-      LO.CPlusPlus = true;
-      LO.Bool = true;
-      OS << TInfo->getType().getAsString(PrintingPolicy(LO));
+      OS << TInfo->getType().getAsString();
     } else
       OS << Name;
     return;

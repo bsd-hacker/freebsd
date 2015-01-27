@@ -3,7 +3,8 @@
 PROG=	boot0cfg
 MAN=	boot0cfg.8
 
-LIBADD=	geom
+DPADD=	${LIBGEOM} ${LIBBSDXML} ${LIBSBUF}
+LDADD=	-lgeom -lbsdxml -lsbuf
 
 NO_WCAST_ALIGN=
 

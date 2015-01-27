@@ -46,6 +46,5 @@
 	nop
 	bl	CNAME(abort)	/* abort */
 	nop
- END(_ctx_start)
 
 	.section .note.GNU-stack,"",%progbits

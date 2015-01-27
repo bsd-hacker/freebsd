@@ -52,7 +52,7 @@ __FBSDID("$FreeBSD$");
 #else
 
 	.text
-	.align	2
+	.align	0
 
 #ifdef _ARM_ARCH_6
 #define GET_PCB(tmp) \

@@ -37,8 +37,6 @@
 #include <sys/types.h>
 #include <sys/signalvar.h>
 #include <sys/ioctl.h>
-#include <sys/link_elf.h>
-#include <sys/resource.h>
 #include <sys/sysctl.h>
 #include <sys/ttycom.h>
 #include <sys/mman.h>
@@ -303,7 +301,7 @@ _thread_init_hack(void)
 void
 _libpthread_init(struct pthread *curthread)
 {
-	int fd, first, dlopened;
+	int fd, first = 0;
 
 	/* Check if this function has already been called: */
 	if ((_thr_initial != NULL) && (curthread == NULL))
@@ -317,7 +315,6 @@ _libpthread_init(struct pthread *curthread)
 	if (sizeof(jmp_table) != (sizeof(pthread_func_t) * PJT_MAX * 2))
 		PANIC("Thread jump table not properly initialized");
 	memcpy(__thr_jtable, jmp_table, sizeof(jmp_table));
-	__thr_interpose_libc();
 
 	/*
 	 * Check for the special case of this process running as
@@ -351,10 +348,7 @@ _libpthread_init(struct pthread *curthread)
 		if (curthread == NULL)
 			PANIC("Can't allocate initial thread");
 		init_main_thread(curthread);
-	} else {
-		first = 0;
 	}
-		
 	/*
 	 * Add the thread to the thread list queue.
 	 */
@@ -366,8 +360,7 @@ _libpthread_init(struct pthread *curthread)
 
 	if (first) {
 		_thr_initial = curthread;
-		dlopened = _rtld_is_dlopened(&_thread_autoinit_dummy_decl) != 0;
-		_thr_signal_init(dlopened);
+		_thr_signal_init();
 		if (_thread_event_mask & TD_CREATE)
 			_thr_report_creation(curthread, curthread);
 		/*
@@ -448,10 +441,9 @@ init_main_thread(struct pthread *thread)
 static void
 init_private(void)
 {
-	struct rlimit rlim;
 	size_t len;
 	int mib[2];
-	char *env, *env_bigstack, *env_splitstack;
+	char *env;
 
 	_thr_umutex_init(&_mutex_static_lock);
 	_thr_umutex_init(&_cond_static_lock);
@@ -479,13 +471,6 @@ init_private(void)
 		len = sizeof (_usrstack);
 		if (sysctl(mib, 2, &_usrstack, &len, NULL, 0) == -1)
 			PANIC("Cannot get kern.usrstack from sysctl");
-		env_bigstack = getenv("LIBPTHREAD_BIGSTACK_MAIN");
-		env_splitstack = getenv("LIBPTHREAD_SPLITSTACK_MAIN");
-		if (env_bigstack != NULL || env_splitstack == NULL) {
-			if (getrlimit(RLIMIT_STACK, &rlim) == -1)
-				PANIC("Cannot get stack rlimit");
-			_thr_stack_initial = rlim.rlim_cur;
-		}
 		len = sizeof(_thr_is_smp);
 		sysctlbyname("kern.smp.cpus", &_thr_is_smp, &len, NULL, 0);
 		_thr_is_smp = (_thr_is_smp > 1);

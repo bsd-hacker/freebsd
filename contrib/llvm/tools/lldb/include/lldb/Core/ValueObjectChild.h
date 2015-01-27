@@ -32,7 +32,7 @@ public:
         return m_byte_size;
     }
 
-    virtual lldb::offset_t
+    virtual off_t
     GetByteOffset()
     {
         return m_byte_offset;
@@ -61,9 +61,6 @@ public:
 
     virtual ConstString
     GetQualifiedTypeName();
-    
-    virtual ConstString
-    GetDisplayTypeName();
     
     virtual bool
     IsInScope ();

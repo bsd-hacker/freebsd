@@ -29,7 +29,7 @@
  */
 
 #if defined(HAVE_CONFIG_H)
-#include "config.h"
+#include "bconfig.h"
 #endif
 
 #include <stdio.h>

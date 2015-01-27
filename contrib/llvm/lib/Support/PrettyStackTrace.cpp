@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm-c/Core.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Config/config.h"     // Get autoconf configuration settings
 #include "llvm/Support/ManagedStatic.h"
@@ -21,6 +20,7 @@
 #include "llvm/Support/ThreadLocal.h"
 #include "llvm/Support/Watchdog.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm-c/Core.h"
 
 #ifdef HAVE_CRASHREPORTERCLIENT_H
 #include <CrashReporterClient.h>
@@ -46,7 +46,7 @@ static unsigned PrintStack(const PrettyStackTraceEntry *Entry, raw_ostream &OS){
 /// PrintCurStackTrace - Print the current stack trace to the specified stream.
 static void PrintCurStackTrace(raw_ostream &OS) {
   // Don't print an empty trace.
-  if (!PrettyStackTraceHead->get()) return;
+  if (PrettyStackTraceHead->get() == 0) return;
   
   // If there are pretty stack frames registered, walk and emit them.
   OS << "Stack dump:\n";
@@ -136,7 +136,7 @@ void PrettyStackTraceProgram::print(raw_ostream &OS) const {
 }
 
 static bool RegisterCrashPrinter() {
-  sys::AddSignalHandler(CrashHandler, nullptr);
+  sys::AddSignalHandler(CrashHandler, 0);
   return false;
 }
 

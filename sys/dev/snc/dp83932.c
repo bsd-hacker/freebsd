@@ -369,7 +369,7 @@ outloop:
 	sc->mtd_prev = sc->mtd_free;
 	sc->mtd_free = mtd_next;
 
-	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);		/* # of pkts */
+	ifp->if_opackets++;		/* # of pkts */
 
 	/* Jump back for possibly more punishment. */
 	goto outloop;
@@ -935,12 +935,11 @@ sonictxint(struct snc_softc *sc)
 
 		txp_status = SRO(sc, txp, TXP_STATUS);
 
-		if_inc_counter(ifp, IFCOUNTER_COLLISIONS,
-		    (txp_status & TCR_EXC) ? 16 :
-		    ((txp_status & TCR_NC) >> 12));
+		ifp->if_collisions += (txp_status & TCR_EXC) ? 16 :
+			((txp_status & TCR_NC) >> 12);
 
 		if ((txp_status & TCR_PTX) == 0) {
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 			device_printf(sc->sc_dev, "Tx packet status=0x%x\n",
 				      txp_status);
 			
@@ -990,11 +989,11 @@ sonicrxint(struct snc_softc *sc)
 			u_int32_t pkt =
 			    sc->rbuf[orra & RBAMASK] + (rxpkt_ptr & PAGE_MASK);
 			if (sonic_read(sc, pkt, len))
-				if_inc_counter(sc->sc_ifp, IFCOUNTER_IPACKETS, 1);
+				sc->sc_ifp->if_ipackets++;
 			else
-				if_inc_counter(sc->sc_ifp, IFCOUNTER_IERRORS, 1);
+				sc->sc_ifp->if_ierrors++;
 		} else
-			if_inc_counter(sc->sc_ifp, IFCOUNTER_IERRORS, 1);
+			sc->sc_ifp->if_ierrors++;
 
 		/*
 		 * give receive buffer area back to chip.
@@ -1129,7 +1128,8 @@ sonic_get(struct snc_softc *sc, u_int32_t pkt, int datalen)
 			len = MLEN;
 		}
 		if (datalen >= MINCLSIZE) {
-			if (!(MCLGET(m, M_NOWAIT))) {
+			MCLGET(m, M_NOWAIT);
+			if ((m->m_flags & M_EXT) == 0) {
 				if (top) m_freem(top);
 				return (0);
 			}

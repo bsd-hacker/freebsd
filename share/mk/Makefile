@@ -11,7 +11,7 @@ FILES=	\
 	bsd.crunchgen.mk \
 	bsd.dep.mk \
 	bsd.doc.mk \
-	bsd.dtb.mk \
+	bsd.dtrace.mk \
 	bsd.endian.mk \
 	bsd.files.mk \
 	bsd.incs.mk \

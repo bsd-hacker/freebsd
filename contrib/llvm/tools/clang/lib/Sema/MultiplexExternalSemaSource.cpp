@@ -46,12 +46,7 @@ Decl *MultiplexExternalSemaSource::GetExternalDecl(uint32_t ID) {
   for(size_t i = 0; i < Sources.size(); ++i)
     if (Decl *Result = Sources[i]->GetExternalDecl(ID))
       return Result;
-  return nullptr;
-}
-
-void MultiplexExternalSemaSource::CompleteRedeclChain(const Decl *D) {
-  for (size_t i = 0; i < Sources.size(); ++i)
-    Sources[i]->CompleteRedeclChain(D);
+  return 0;
 }
 
 Selector MultiplexExternalSemaSource::GetExternalSelector(uint32_t ID) {
@@ -75,7 +70,7 @@ Stmt *MultiplexExternalSemaSource::GetExternalDeclStmt(uint64_t Offset) {
   for(size_t i = 0; i < Sources.size(); ++i)
     if (Stmt *Result = Sources[i]->GetExternalDeclStmt(Offset))
       return Result;
-  return nullptr;
+  return 0;
 }
 
 CXXBaseSpecifier *MultiplexExternalSemaSource::GetExternalCXXBaseSpecifiers(
@@ -83,7 +78,7 @@ CXXBaseSpecifier *MultiplexExternalSemaSource::GetExternalCXXBaseSpecifiers(
   for(size_t i = 0; i < Sources.size(); ++i)
     if (CXXBaseSpecifier *R = Sources[i]->GetExternalCXXBaseSpecifiers(Offset))
       return R;
-  return nullptr;
+  return 0; 
 }
 
 bool MultiplexExternalSemaSource::

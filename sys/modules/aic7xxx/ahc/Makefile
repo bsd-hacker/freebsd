@@ -1,10 +1,9 @@
 
 # $FreeBSD$
 
-SYSDIR?=${.CURDIR}/../../..
-.include "${SYSDIR}/conf/kern.opts.mk"
+.include <src.opts.mk>
 
-.PATH:	${SYSDIR}/dev/aic7xxx
+.PATH:	${.CURDIR}/../../../dev/aic7xxx
 KMOD=	ahc
 .if ${MK_EISA} != "no"
 SUBDIR+= ahc_eisa
@@ -21,25 +20,21 @@ REG_PRINT_OPT= -p aic7xxx_reg_print.c
 .endif
 BEFORE_DEPEND = ${GENSRCS}
 
-../aicasm/aicasm: ${SYSDIR}/dev/aic7xxx/aicasm/*.[chyl]
+../aicasm/aicasm: ${.CURDIR}/../../../dev/aic7xxx/aicasm/*.[chyl]
 	( cd ${.CURDIR}/../aicasm; ${MAKE} aicasm; )
 
 .if make(ahcfirmware)
 ahcfirmware: ${GENSRCS}
 ${GENSRCS}:								 \
-		${SYSDIR}/dev/aic7xxx/aic7xxx.{reg,seq}	 \
-		${SYSDIR}/cam/scsi/scsi_message.h 
-	../aicasm/aicasm ${INCLUDES} -I${SYSDIR}/cam/scsi	 \
-			-I${SYSDIR}/dev/aic7xxx		 \
+		${.CURDIR}/../../../dev/aic7xxx/aic7xxx.{reg,seq}	 \
+		${.CURDIR}/../../../cam/scsi/scsi_message.h 
+	../aicasm/aicasm ${INCLUDES} -I${.CURDIR}/../../../cam/scsi	 \
+			-I${.CURDIR}/../../../dev/aic7xxx		 \
 			-o aic7xxx_seq.h -r aic7xxx_reg.h		 \
 			${REG_PRINT_OPT}				 \
-			-i ${SYSDIR}/dev/aic7xxx/aic7xxx_osm.h \
-			${SYSDIR}/dev/aic7xxx/aic7xxx.seq
-.elif defined(.MAKE.LEVEL)
-# This target interfers with fmake's world view and causes this message
-# to appear when building the tree from 8.x worlds where fmake is the
-# default. fmake doens't define .MAKE.LEVEL so key off that to omit it,
-# while still allowing more-modern makes to theoretically update things.
+			-i ${.CURDIR}/../../../dev/aic7xxx/aic7xxx_osm.h \
+			${.CURDIR}/../../../dev/aic7xxx/aic7xxx.seq
+.else
 ${GENSRCS}:
 	@echo "Error: ${.TARGET} is missing.  Run 'make ahcfirmware'"
 .endif

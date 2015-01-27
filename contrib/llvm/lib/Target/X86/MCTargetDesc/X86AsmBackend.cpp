@@ -37,29 +37,23 @@ MCDisableArithRelaxation("mc-x86-disable-arith-relaxation",
 
 static unsigned getFixupKindLog2Size(unsigned Kind) {
   switch (Kind) {
-  default:
-    llvm_unreachable("invalid fixup kind!");
+  default: llvm_unreachable("invalid fixup kind!");
   case FK_PCRel_1:
   case FK_SecRel_1:
-  case FK_Data_1:
-    return 0;
+  case FK_Data_1: return 0;
   case FK_PCRel_2:
   case FK_SecRel_2:
-  case FK_Data_2:
-    return 1;
+  case FK_Data_2: return 1;
   case FK_PCRel_4:
   case X86::reloc_riprel_4byte:
   case X86::reloc_riprel_4byte_movq_load:
   case X86::reloc_signed_4byte:
   case X86::reloc_global_offset_table:
   case FK_SecRel_4:
-  case FK_Data_4:
-    return 2;
+  case FK_Data_4: return 2;
   case FK_PCRel_8:
   case FK_SecRel_8:
-  case FK_Data_8:
-  case X86::reloc_global_offset_table8:
-    return 3;
+  case FK_Data_8: return 3;
   }
 }
 
@@ -73,12 +67,11 @@ public:
 };
 
 class X86AsmBackend : public MCAsmBackend {
-  const StringRef CPU;
+  StringRef CPU;
   bool HasNopl;
-  const uint64_t MaxNopLength;
 public:
   X86AsmBackend(const Target &T, StringRef _CPU)
-    : MCAsmBackend(), CPU(_CPU), MaxNopLength(_CPU == "slm" ? 7 : 15) {
+    : MCAsmBackend(), CPU(_CPU) {
     HasNopl = CPU != "generic" && CPU != "i386" && CPU != "i486" &&
               CPU != "i586" && CPU != "pentium" && CPU != "pentium-mmx" &&
               CPU != "i686" && CPU != "k6" && CPU != "k6-2" && CPU != "k6-3" &&
@@ -86,11 +79,11 @@ public:
               CPU != "c3" && CPU != "c3-2";
   }
 
-  unsigned getNumFixupKinds() const override {
+  unsigned getNumFixupKinds() const {
     return X86::NumTargetFixupKinds;
   }
 
-  const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
+  const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const {
     const static MCFixupKindInfo Infos[X86::NumTargetFixupKinds] = {
       { "reloc_riprel_4byte", 0, 4 * 8, MCFixupKindInfo::FKF_IsPCRel },
       { "reloc_riprel_4byte_movq_load", 0, 4 * 8, MCFixupKindInfo::FKF_IsPCRel},
@@ -107,7 +100,7 @@ public:
   }
 
   void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
-                  uint64_t Value, bool IsPCRel) const override {
+                  uint64_t Value) const {
     unsigned Size = 1 << getFixupKindLog2Size(Fixup.getKind());
 
     assert(Fixup.getOffset() + Size <= DataSize &&
@@ -124,15 +117,16 @@ public:
       Data[Fixup.getOffset() + i] = uint8_t(Value >> (i * 8));
   }
 
-  bool mayNeedRelaxation(const MCInst &Inst) const override;
+  bool mayNeedRelaxation(const MCInst &Inst) const;
 
-  bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
+  bool fixupNeedsRelaxation(const MCFixup &Fixup,
+                            uint64_t Value,
                             const MCRelaxableFragment *DF,
-                            const MCAsmLayout &Layout) const override;
+                            const MCAsmLayout &Layout) const;
 
-  void relaxInstruction(const MCInst &Inst, MCInst &Res) const override;
+  void relaxInstruction(const MCInst &Inst, MCInst &Res) const;
 
-  bool writeNopData(uint64_t Count, MCObjectWriter *OW) const override;
+  bool writeNopData(uint64_t Count, MCObjectWriter *OW) const;
 };
 } // end anonymous namespace
 
@@ -223,9 +217,9 @@ static unsigned getRelaxedOpcodeArith(unsigned Op) {
   case X86::CMP64mi8: return X86::CMP64mi32;
 
     // PUSH
-  case X86::PUSH32i8:  return X86::PUSHi32;
-  case X86::PUSH16i8:  return X86::PUSHi16;
-  case X86::PUSH64i8:  return X86::PUSH64i32;
+  case X86::PUSHi8: return X86::PUSHi32;
+  case X86::PUSHi16: return X86::PUSHi32;
+  case X86::PUSH64i8: return X86::PUSH64i32;
   case X86::PUSH64i16: return X86::PUSH64i32;
   }
 }
@@ -320,7 +314,7 @@ bool X86AsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
     {0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00},
   };
 
-  // This CPU doesn't support long nops. If needed add more.
+  // This CPU doesnt support long nops. If needed add more.
   // FIXME: Can we get this from the subtarget somehow?
   // FIXME: We could generated something better than plain 0x90.
   if (!HasNopl) {
@@ -332,7 +326,7 @@ bool X86AsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
   // 15 is the longest single nop instruction.  Emit as many 15-byte nops as
   // needed, then emit a nop of the remaining length.
   do {
-    const uint8_t ThisNopLength = (uint8_t) std::min(Count, MaxNopLength);
+    const uint8_t ThisNopLength = (uint8_t) std::min(Count, (uint64_t) 15);
     const uint8_t Prefixes = ThisNopLength <= 10 ? 0 : ThisNopLength - 10;
     for (uint8_t i = 0; i < Prefixes; i++)
       OW->Write8(0x66);
@@ -353,7 +347,14 @@ class ELFX86AsmBackend : public X86AsmBackend {
 public:
   uint8_t OSABI;
   ELFX86AsmBackend(const Target &T, uint8_t _OSABI, StringRef CPU)
-      : X86AsmBackend(T, CPU), OSABI(_OSABI) {}
+    : X86AsmBackend(T, CPU), OSABI(_OSABI) {
+    HasReliableSymbolDifference = true;
+  }
+
+  virtual bool doesSectionRequireSymbols(const MCSection &Section) const {
+    const MCSectionELF &ES = static_cast<const MCSectionELF&>(Section);
+    return ES.getFlags() & ELF::SHF_MERGE;
+  }
 };
 
 class ELFX86_32AsmBackend : public ELFX86AsmBackend {
@@ -361,19 +362,8 @@ public:
   ELFX86_32AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
     : ELFX86AsmBackend(T, OSABI, CPU) {}
 
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createX86ELFObjectWriter(OS, /*IsELF64*/ false, OSABI, ELF::EM_386);
-  }
-};
-
-class ELFX86_X32AsmBackend : public ELFX86AsmBackend {
-public:
-  ELFX86_X32AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
-      : ELFX86AsmBackend(T, OSABI, CPU) {}
-
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
-    return createX86ELFObjectWriter(OS, /*IsELF64*/ false, OSABI,
-                                    ELF::EM_X86_64);
   }
 };
 
@@ -382,7 +372,7 @@ public:
   ELFX86_64AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
     : ELFX86AsmBackend(T, OSABI, CPU) {}
 
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createX86ELFObjectWriter(OS, /*IsELF64*/ true, OSABI, ELF::EM_X86_64);
   }
 };
@@ -396,7 +386,7 @@ public:
     , Is64Bit(is64Bit) {
   }
 
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createX86WinCOFFObjectWriter(OS, Is64Bit);
   }
 };
@@ -729,37 +719,43 @@ public:
 };
 
 class DarwinX86_32AsmBackend : public DarwinX86AsmBackend {
+  bool SupportsCU;
 public:
   DarwinX86_32AsmBackend(const Target &T, const MCRegisterInfo &MRI,
-                         StringRef CPU)
-      : DarwinX86AsmBackend(T, MRI, CPU, false) {}
+                         StringRef CPU, bool SupportsCU)
+    : DarwinX86AsmBackend(T, MRI, CPU, false), SupportsCU(SupportsCU) {}
 
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createX86MachObjectWriter(OS, /*Is64Bit=*/false,
                                      MachO::CPU_TYPE_I386,
                                      MachO::CPU_SUBTYPE_I386_ALL);
   }
 
   /// \brief Generate the compact unwind encoding for the CFI instructions.
-  uint32_t generateCompactUnwindEncoding(
-                             ArrayRef<MCCFIInstruction> Instrs) const override {
-    return generateCompactUnwindEncodingImpl(Instrs);
+  virtual uint32_t
+  generateCompactUnwindEncoding(ArrayRef<MCCFIInstruction> Instrs) const {
+    return SupportsCU ? generateCompactUnwindEncodingImpl(Instrs) : 0;
   }
 };
 
 class DarwinX86_64AsmBackend : public DarwinX86AsmBackend {
+  bool SupportsCU;
   const MachO::CPUSubTypeX86 Subtype;
 public:
   DarwinX86_64AsmBackend(const Target &T, const MCRegisterInfo &MRI,
-                         StringRef CPU, MachO::CPUSubTypeX86 st)
-      : DarwinX86AsmBackend(T, MRI, CPU, true), Subtype(st) {}
+                         StringRef CPU, bool SupportsCU,
+                         MachO::CPUSubTypeX86 st)
+    : DarwinX86AsmBackend(T, MRI, CPU, true), SupportsCU(SupportsCU),
+      Subtype(st) {
+    HasReliableSymbolDifference = true;
+  }
 
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createX86MachObjectWriter(OS, /*Is64Bit=*/true,
                                      MachO::CPU_TYPE_X86_64, Subtype);
   }
 
-  bool doesSectionRequireSymbols(const MCSection &Section) const override {
+  virtual bool doesSectionRequireSymbols(const MCSection &Section) const {
     // Temporary labels in the string literals sections require symbols. The
     // issue is that the x86_64 relocation format does not allow symbol +
     // offset, and so the linker does not have enough information to resolve the
@@ -769,33 +765,33 @@ public:
     //
     // See <rdar://problem/4765733>.
     const MCSectionMachO &SMO = static_cast<const MCSectionMachO&>(Section);
-    return SMO.getType() == MachO::S_CSTRING_LITERALS;
+    return SMO.getType() == MCSectionMachO::S_CSTRING_LITERALS;
   }
 
-  bool isSectionAtomizable(const MCSection &Section) const override {
+  virtual bool isSectionAtomizable(const MCSection &Section) const {
     const MCSectionMachO &SMO = static_cast<const MCSectionMachO&>(Section);
     // Fixed sized data sections are uniqued, they cannot be diced into atoms.
     switch (SMO.getType()) {
     default:
       return true;
 
-    case MachO::S_4BYTE_LITERALS:
-    case MachO::S_8BYTE_LITERALS:
-    case MachO::S_16BYTE_LITERALS:
-    case MachO::S_LITERAL_POINTERS:
-    case MachO::S_NON_LAZY_SYMBOL_POINTERS:
-    case MachO::S_LAZY_SYMBOL_POINTERS:
-    case MachO::S_MOD_INIT_FUNC_POINTERS:
-    case MachO::S_MOD_TERM_FUNC_POINTERS:
-    case MachO::S_INTERPOSING:
+    case MCSectionMachO::S_4BYTE_LITERALS:
+    case MCSectionMachO::S_8BYTE_LITERALS:
+    case MCSectionMachO::S_16BYTE_LITERALS:
+    case MCSectionMachO::S_LITERAL_POINTERS:
+    case MCSectionMachO::S_NON_LAZY_SYMBOL_POINTERS:
+    case MCSectionMachO::S_LAZY_SYMBOL_POINTERS:
+    case MCSectionMachO::S_MOD_INIT_FUNC_POINTERS:
+    case MCSectionMachO::S_MOD_TERM_FUNC_POINTERS:
+    case MCSectionMachO::S_INTERPOSING:
       return false;
     }
   }
 
   /// \brief Generate the compact unwind encoding for the CFI instructions.
-  uint32_t generateCompactUnwindEncoding(
-                             ArrayRef<MCCFIInstruction> Instrs) const override {
-    return generateCompactUnwindEncodingImpl(Instrs);
+  virtual uint32_t
+  generateCompactUnwindEncoding(ArrayRef<MCCFIInstruction> Instrs) const {
+    return SupportsCU ? generateCompactUnwindEncodingImpl(Instrs) : 0;
   }
 };
 
@@ -807,10 +803,12 @@ MCAsmBackend *llvm::createX86_32AsmBackend(const Target &T,
                                            StringRef CPU) {
   Triple TheTriple(TT);
 
-  if (TheTriple.isOSBinFormatMachO())
-    return new DarwinX86_32AsmBackend(T, MRI, CPU);
+  if (TheTriple.isOSDarwin() || TheTriple.getEnvironment() == Triple::MachO)
+    return new DarwinX86_32AsmBackend(T, MRI, CPU,
+                                      TheTriple.isMacOSX() &&
+                                      !TheTriple.isMacOSXVersionLT(10, 7));
 
-  if (TheTriple.isOSWindows() && !TheTriple.isOSBinFormatELF())
+  if (TheTriple.isOSWindows() && TheTriple.getEnvironment() != Triple::ELF)
     return new WindowsX86AsmBackend(T, false, CPU);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
@@ -823,20 +821,19 @@ MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T,
                                            StringRef CPU) {
   Triple TheTriple(TT);
 
-  if (TheTriple.isOSBinFormatMachO()) {
+  if (TheTriple.isOSDarwin() || TheTriple.getEnvironment() == Triple::MachO) {
     MachO::CPUSubTypeX86 CS =
         StringSwitch<MachO::CPUSubTypeX86>(TheTriple.getArchName())
             .Case("x86_64h", MachO::CPU_SUBTYPE_X86_64_H)
             .Default(MachO::CPU_SUBTYPE_X86_64_ALL);
-    return new DarwinX86_64AsmBackend(T, MRI, CPU, CS);
+    return new DarwinX86_64AsmBackend(T, MRI, CPU,
+                                      TheTriple.isMacOSX() &&
+                                      !TheTriple.isMacOSXVersionLT(10, 7), CS);
   }
 
-  if (TheTriple.isOSWindows() && !TheTriple.isOSBinFormatELF())
+  if (TheTriple.isOSWindows() && TheTriple.getEnvironment() != Triple::ELF)
     return new WindowsX86AsmBackend(T, true, CPU);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
-
-  if (TheTriple.getEnvironment() == Triple::GNUX32)
-    return new ELFX86_X32AsmBackend(T, OSABI, CPU);
   return new ELFX86_64AsmBackend(T, OSABI, CPU);
 }

@@ -148,7 +148,7 @@ xlr_parse_mmu_options(void)
 	 * We don't support sharing TLB per core - TODO
 	 */
 	xlr_shtlb_enabled = 0;
-	if ((hw_env = kern_getenv("xlr.shtlb")) != NULL) {
+	if ((hw_env = getenv("xlr.shtlb")) != NULL) {
 		start = hw_env;
 		tmp = strtoul(start, &end, 0);
 		if (start != end)
@@ -230,9 +230,9 @@ xlr_set_boot_flags(void)
 {
 	char *p;
 
-	p = kern_getenv("bootflags");
+	p = getenv("bootflags");
 	if (p == NULL)
-		p = kern_getenv("boot_flags");  /* old style */
+		p = getenv("boot_flags");  /* old style */
 	if (p == NULL)
 		return;
 
@@ -458,9 +458,9 @@ platform_start(__register_t a0 __unused,
 		printf("\t%s\n", arg);
 		n = strsep(&arg, "=");
 		if (arg == NULL)
-			kern_setenv(n, "1");
+			setenv(n, "1");
 		else
-			kern_setenv(n, arg);
+			setenv(n, arg);
 	}
 
 	xlr_set_boot_flags();

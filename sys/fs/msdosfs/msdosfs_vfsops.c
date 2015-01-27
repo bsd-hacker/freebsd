@@ -797,15 +797,11 @@ msdosfs_unmount(struct mount *mp, int mntflags)
 	int error, flags;
 
 	flags = 0;
-	error = msdosfs_sync(mp, MNT_WAIT);
-	if ((mntflags & MNT_FORCE) != 0) {
+	if (mntflags & MNT_FORCE)
 		flags |= FORCECLOSE;
-	} else if (error != 0) {
-		return (error);
-	}
 	error = vflush(mp, 0, flags, curthread);
-	if (error != 0 && error != ENXIO)
-		return (error);
+	if (error && error != ENXIO)
+		return error;
 	pmp = VFSTOMSDOSFS(mp);
 	if ((pmp->pm_flags & MSDOSFSMNT_RONLY) == 0) {
 		error = markvoldirty(pmp, 0);

@@ -4,7 +4,7 @@
 PROG=	lock
 BINOWN=	root
 BINMODE=4555
-
-LIBADD=	crypt
+DPADD=	${LIBCRYPT}
+LDADD=	-lcrypt
 
 .include <bsd.prog.mk>

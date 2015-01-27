@@ -26,8 +26,8 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/InstVisitor.h"
 #include "llvm/Support/Compiler.h"
 
 namespace llvm {
@@ -48,13 +48,13 @@ public:
   /// analysis and whether the visit completed or aborted early.
   class PtrInfo {
   public:
-    PtrInfo() : AbortedInfo(nullptr, false), EscapedInfo(nullptr, false) {}
+    PtrInfo() : AbortedInfo(0, false), EscapedInfo(0, false) {}
 
     /// \brief Reset the pointer info, clearing all state.
     void reset() {
-      AbortedInfo.setPointer(nullptr);
+      AbortedInfo.setPointer(0);
       AbortedInfo.setInt(false);
-      EscapedInfo.setPointer(nullptr);
+      EscapedInfo.setPointer(0);
       EscapedInfo.setInt(false);
     }
 
@@ -76,14 +76,14 @@ public:
 
     /// \brief Mark the visit as aborted. Intended for use in a void return.
     /// \param I The instruction which caused the visit to abort, if available.
-    void setAborted(Instruction *I = nullptr) {
+    void setAborted(Instruction *I = 0) {
       AbortedInfo.setInt(true);
       AbortedInfo.setPointer(I);
     }
 
     /// \brief Mark the pointer as escaped. Intended for use in a void return.
     /// \param I The instruction which escapes the pointer, if available.
-    void setEscaped(Instruction *I = nullptr) {
+    void setEscaped(Instruction *I = 0) {
       EscapedInfo.setInt(true);
       EscapedInfo.setPointer(I);
     }
@@ -92,7 +92,7 @@ public:
     /// for use in a void return.
     /// \param I The instruction which both escapes the pointer and aborts the
     /// visit, if available.
-    void setEscapedAndAborted(Instruction *I = nullptr) {
+    void setEscapedAndAborted(Instruction *I = 0) {
       setEscaped(I);
       setAborted(I);
     }
@@ -219,7 +219,7 @@ public:
       U = ToVisit.UseAndIsOffsetKnown.getPointer();
       IsOffsetKnown = ToVisit.UseAndIsOffsetKnown.getInt();
       if (IsOffsetKnown)
-        Offset = std::move(ToVisit.Offset);
+        Offset = llvm_move(ToVisit.Offset);
 
       Instruction *I = cast<Instruction>(U->getUser());
       static_cast<DerivedT*>(this)->visit(I);

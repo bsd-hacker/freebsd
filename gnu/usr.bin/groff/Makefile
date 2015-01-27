@@ -1,9 +1,5 @@
 # $FreeBSD$
 
-SUBDIR=		contrib font man src tmac
-
-.for subdir in ${SUBDIR:Nsrc}
-SUBDIR_DEPEND_${subdir}=	src
-.endfor
+SUBDIR=		contrib doc font man src tmac
 
 .include <bsd.subdir.mk>

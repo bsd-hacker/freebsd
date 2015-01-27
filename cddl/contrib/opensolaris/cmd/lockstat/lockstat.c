@@ -46,9 +46,10 @@
 #include <signal.h>
 #include <assert.h>
 
-#ifdef illumos
+#if defined(sun)
 #define	GETOPT_EOF	EOF
 #else
+/* FreeBSD */ 
 #include <sys/time.h>
 #include <sys/resource.h>
 
@@ -56,7 +57,7 @@
 #define	GETOPT_EOF		(-1)
 
 typedef	uintptr_t	pc_t;
-#endif
+#endif /* defined(sun) */
 
 #define	LOCKSTAT_OPTSTR	"x:bths:n:d:i:l:f:e:ckwWgCHEATID:RpPo:V"
 
@@ -213,9 +214,10 @@ static ls_event_info_t g_event_info[LS_MAX_EVENTS] = {
 	{ 'H',	"Lock",	"Unknown event (type 53)",		"units"	},
 	{ 'H',	"Lock",	"Unknown event (type 54)",		"units"	},
 	{ 'H',	"Lock",	"Unknown event (type 55)",		"units"	},
-#ifdef illumos
+#if defined(sun)
 	{ 'I',	"CPU+PIL", "Profiling interrupt",		"nsec",
 #else
+	/* FreeBSD */
 	{ 'I',	"CPU+Pri_Class", "Profiling interrupt",		"nsec",
 #endif
 	    "profile:::profile-97", NULL },
@@ -229,7 +231,7 @@ static ls_event_info_t g_event_info[LS_MAX_EVENTS] = {
 	{ 'E',	"Lock",	"Lockstat record failure",		"(N/A)"	},
 };
 
-#ifndef illumos
+#if !defined(sun)
 static char *g_pri_class[] = {
 	"",
 	"Intr",
@@ -596,7 +598,7 @@ filter_add(char **filt, char *what, uintptr_t base, uintptr_t size)
 		*filt[0] = '\0';
 	}
 
-#ifdef illumos
+#if defined(sun)
 	(void) sprintf(c, "%s(%s >= 0x%p && %s < 0x%p)", *filt[0] != '\0' ?
 	    " || " : "", what, (void *)base, what, (void *)(base + size));
 #else
@@ -674,7 +676,7 @@ dprog_addevent(int event)
 		 * the number of nanoseconds) is the number of nanoseconds
 		 * late -- and it's stored in arg2.
 		 */
-#ifdef illumos
+#if defined(sun)
 		arg0 = "(uintptr_t)curthread->t_cpu + \n"
 		    "\t    curthread->t_cpu->cpu_profile_pil";
 #else
@@ -822,7 +824,7 @@ dprog_compile()
 }
 
 static void
-#ifdef illumos
+#if defined(sun)
 status_fire(void)
 #else
 status_fire(int i)
@@ -1421,7 +1423,7 @@ main(int argc, char **argv)
 		exit(127);
 	}
 
-#ifdef illumos
+#if defined(sun)
 	while (waitpid(child, &status, WEXITED) != child)
 #else
 	while (waitpid(child, &status, 0) != child)
@@ -1466,7 +1468,7 @@ main(int argc, char **argv)
 			dfail("failed to walk aggregate");
 	}
 
-#ifdef illumos
+#if defined(sun)
 	if ((data_buf = memalign(sizeof (uint64_t),
 	    (g_nrecs + 1) * g_recsize)) == NULL)
 #else
@@ -1498,7 +1500,7 @@ main(int argc, char **argv)
 	if (g_gflag) {
 		lsrec_t *newlsp, *oldlsp;
 
-#ifdef illumos
+#if defined(sun)
 		newlsp = memalign(sizeof (uint64_t),
 		    g_nrecs_used * LS_TIME * (g_stkdepth + 1));
 #else
@@ -1662,7 +1664,7 @@ format_symbol(char *buf, uintptr_t addr, int show_size)
 	else if (symoff == 0)
 		(void) sprintf(buf, "%s", symname);
 	else if (symoff < 16 && bcmp(symname, "cpu[", 4) == 0)	/* CPU+PIL */
-#ifdef illumos
+#if defined(sun)
 		(void) sprintf(buf, "%s+%ld", symname, (long)symoff);
 #else
 		(void) sprintf(buf, "%s+%s", symname, g_pri_class[(int)symoff]);

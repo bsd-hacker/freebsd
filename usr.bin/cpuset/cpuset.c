@@ -48,7 +48,6 @@ __FBSDID("$FreeBSD$");
 
 static int Cflag;
 static int cflag;
-static int dflag;
 static int gflag;
 static int iflag;
 static int jflag;
@@ -162,8 +161,7 @@ printset(cpuset_t *mask)
 	printf("\n");
 }
 
-static const char *whichnames[] = { NULL, "tid", "pid", "cpuset", "irq", "jail",
-				    "domain" };
+static const char *whichnames[] = { NULL, "tid", "pid", "cpuset", "irq", "jail" };
 static const char *levelnames[] = { NULL, " root", " cpuset", "" };
 
 static void
@@ -208,19 +206,16 @@ main(int argc, char *argv[])
 	level = CPU_LEVEL_WHICH;
 	which = CPU_WHICH_PID;
 	id = pid = tid = setid = -1;
-	while ((ch = getopt(argc, argv, "Ccd:gij:l:p:rs:t:x:")) != -1) {
+	while ((ch = getopt(argc, argv, "Ccgij:l:p:rs:t:x:")) != -1) {
 		switch (ch) {
 		case 'C':
 			Cflag = 1;
 			break;
 		case 'c':
+			if (rflag)
+				usage();
 			cflag = 1;
 			level = CPU_LEVEL_CPUSET;
-			break;
-		case 'd':
-			dflag = 1;
-			which = CPU_WHICH_DOMAIN;
-			id = atoi(optarg);
 			break;
 		case 'g':
 			gflag = 1;
@@ -243,6 +238,8 @@ main(int argc, char *argv[])
 			id = pid = atoi(optarg);
 			break;
 		case 'r':
+			if (cflag)
+				usage();
 			level = CPU_LEVEL_ROOT;
 			rflag = 1;
 			break;
@@ -271,7 +268,7 @@ main(int argc, char *argv[])
 		if (argc || Cflag || lflag)
 			usage();
 		/* Only one identity specifier. */
-		if (dflag + jflag + xflag + sflag + pflag + tflag > 1)
+		if (jflag + xflag + sflag + pflag + tflag > 1)
 			usage();
 		if (iflag)
 			printsetid();
@@ -279,13 +276,13 @@ main(int argc, char *argv[])
 			printaffinity();
 		exit(EXIT_SUCCESS);
 	}
-	if (dflag || iflag || rflag)
+	if (iflag)
 		usage();
 	/*
 	 * The user wants to run a command with a set and possibly cpumask.
 	 */
 	if (argc) {
-		if (Cflag || pflag || tflag || xflag || jflag)
+		if (Cflag | pflag | rflag | tflag | xflag | jflag)
 			usage();
 		if (sflag) {
 			if (cpuset_setid(CPU_WHICH_PID, -1, setid))
@@ -306,9 +303,9 @@ main(int argc, char *argv[])
 	/*
 	 * We're modifying something that presently exists.
 	 */
-	if (Cflag && (jflag || !pflag || sflag || tflag || xflag))
+	if (Cflag && (sflag || rflag || !pflag || tflag || xflag || jflag))
 		usage();
-	if (!lflag && cflag)
+	if (!lflag && (cflag || rflag))
 		usage();
 	if (!lflag && !(Cflag || sflag))
 		usage();
@@ -357,9 +354,8 @@ usage(void)
 	fprintf(stderr,
 	    "       cpuset [-c] [-l cpu-list] -C -p pid\n");
 	fprintf(stderr,
-	    "       cpuset [-c] [-l cpu-list] [-j jailid | -p pid | -t tid | -s setid | -x irq]\n");
+	    "       cpuset [-cr] [-l cpu-list] [-j jailid | -p pid | -t tid | -s setid | -x irq]\n");
 	fprintf(stderr,
-	    "       cpuset -g [-cir] [-d domain | -j jailid | -p pid | -t tid | -s setid |\n"
-	    "              -x irq]\n");
+	    "       cpuset [-cgir] [-j jailid | -p pid | -t tid | -s setid | -x irq]\n");
 	exit(1);
 }

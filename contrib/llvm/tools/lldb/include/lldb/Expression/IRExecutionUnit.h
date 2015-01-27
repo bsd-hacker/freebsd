@@ -30,7 +30,6 @@
 #include "lldb/Expression/ClangExpressionParser.h"
 #include "lldb/Expression/IRMemoryMap.h"
 #include "lldb/Host/Mutex.h"
-#include "lldb/Symbol/ObjectFile.h"
 
 namespace llvm {
     
@@ -61,10 +60,7 @@ class Error;
 /// into the target process, the IRExecutionUnit knows how to copy the
 /// emitted code into the target process.
 //----------------------------------------------------------------------
-class IRExecutionUnit :
-    public std::enable_shared_from_this<IRExecutionUnit>,
-    public IRMemoryMap,
-    public ObjectFileJITDelegate
+class IRExecutionUnit : public IRMemoryMap
 {
 public:
     //------------------------------------------------------------------
@@ -81,14 +77,12 @@ public:
     //------------------------------------------------------------------
     ~IRExecutionUnit();
         
-    llvm::Module *
-    GetModule()
+    llvm::Module *GetModule()
     {
         return m_module;
     }
     
-    llvm::Function *
-    GetFunction()
+    llvm::Function *GetFunction()
     {
         if (m_module)
             return m_module->getFunction (m_name.AsCString());
@@ -96,10 +90,9 @@ public:
             return NULL;
     }
     
-    void
-    GetRunnableInfo (Error &error,
-                     lldb::addr_t &func_addr,
-                     lldb::addr_t &func_end);
+    void GetRunnableInfo(Error &error,
+                         lldb::addr_t &func_addr,
+                         lldb::addr_t &func_end);
     
     //------------------------------------------------------------------
     /// Accessors for IRForTarget and other clients that may want binary
@@ -107,36 +100,11 @@ public:
     /// IRExecutionUnit unless the client explicitly chooses to free it.
     //------------------------------------------------------------------
     
-    lldb::addr_t
-    WriteNow (const uint8_t *bytes,
-              size_t size,
-              Error &error);
+    lldb::addr_t WriteNow(const uint8_t *bytes,
+                          size_t size,
+                          Error &error);
     
-    void
-    FreeNow (lldb::addr_t allocation);
-    
-    //------------------------------------------------------------------
-    /// ObjectFileJITDelegate overrides
-    //------------------------------------------------------------------
-    virtual lldb::ByteOrder
-    GetByteOrder () const;
-    
-    virtual uint32_t
-    GetAddressByteSize () const;
-    
-    virtual void
-    PopulateSymtab (lldb_private::ObjectFile *obj_file,
-                    lldb_private::Symtab &symtab);
-    
-    virtual void
-    PopulateSectionList (lldb_private::ObjectFile *obj_file,
-                         lldb_private::SectionList &section_list);
-    
-    virtual bool
-    GetArchitecture (lldb_private::ArchSpec &arch);
-    
-    lldb::ModuleSP
-    GetJITModule ();
+    void FreeNow(lldb::addr_t allocation);
     
 private:
     //------------------------------------------------------------------
@@ -212,7 +180,6 @@ private:
     public:
         MemoryManager (IRExecutionUnit &parent);
         
-        virtual ~MemoryManager();
         //------------------------------------------------------------------
         /// Passthrough interface stub
         //------------------------------------------------------------------
@@ -456,7 +423,7 @@ private:
         //------------------------------------------------------------------
         /// Constructor
         ///
-        /// Initializes class variables.
+        /// Initializes class variabes.
         ///
         /// @param[in] name
         ///     The name of the function.
@@ -483,47 +450,31 @@ private:
     
     //----------------------------------------------------------------------
     /// @class AllocationRecord IRExecutionUnit.h "lldb/Expression/IRExecutionUnit.h"
-    /// @brief Encapsulates a single allocation request made by the JIT.
+    /// @brief Enacpsulates a single allocation request made by the JIT.
     ///
     /// Allocations made by the JIT are first queued up and then applied in
     /// bulk to the underlying process.
     //----------------------------------------------------------------------
-    enum class AllocationKind {
-        Stub, Code, Data, Global, Bytes
-    };
-    
-    static lldb::SectionType
-    GetSectionTypeFromSectionName (const llvm::StringRef &name,
-                                   AllocationKind alloc_kind);
-    
     struct AllocationRecord {
-        std::string         m_name;
-        lldb::addr_t        m_process_address;
-        uintptr_t           m_host_address;
-        uint32_t            m_permissions;
-        lldb::SectionType   m_sect_type;
-        size_t              m_size;
-        unsigned            m_alignment;
-        unsigned            m_section_id;
+        lldb::addr_t    m_process_address;
+        uintptr_t       m_host_address;
+        uint32_t        m_permissions;
+        size_t          m_size;
+        unsigned        m_alignment;
+        unsigned        m_section_id;
         
         AllocationRecord (uintptr_t host_address,
                           uint32_t permissions,
-                          lldb::SectionType sect_type,
                           size_t size,
                           unsigned alignment,
-                          unsigned section_id,
-                          const char *name) :
-            m_name (),
+                          unsigned section_id = eSectionIDInvalid) :
             m_process_address(LLDB_INVALID_ADDRESS),
             m_host_address(host_address),
             m_permissions(permissions),
-            m_sect_type (sect_type),
             m_size(size),
             m_alignment(alignment),
             m_section_id(section_id)
         {
-            if (name && name[0])
-                m_name = name;
         }
         
         void dump (Log *log);

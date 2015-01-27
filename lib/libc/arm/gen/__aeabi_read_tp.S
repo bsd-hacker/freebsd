@@ -38,7 +38,6 @@ ENTRY(__aeabi_read_tp)
 	mrc	p15, 0, r0, c13, c0, 3
 #endif
 	RET
-END(__aeabi_read_tp)
 
 #ifdef ARM_TP_ADDRESS
 .Larm_tp_address:

@@ -118,13 +118,8 @@ template<typename ValueT,
          typename KeyFunctorT = llvm::identity<unsigned>,
          typename SparseT = uint8_t>
 class SparseSet {
-  static_assert(std::numeric_limits<SparseT>::is_integer &&
-                !std::numeric_limits<SparseT>::is_signed,
-                "SparseT must be an unsigned integer type");
-
   typedef typename KeyFunctorT::argument_type KeyT;
   typedef SmallVector<ValueT, 8> DenseT;
-  typedef unsigned size_type;
   DenseT Dense;
   SparseT *Sparse;
   unsigned Universe;
@@ -143,7 +138,7 @@ public:
   typedef ValueT *pointer;
   typedef const ValueT *const_pointer;
 
-  SparseSet() : Sparse(nullptr), Universe(0) {}
+  SparseSet() : Sparse(0), Universe(0) {}
   ~SparseSet() { free(Sparse); }
 
   /// setUniverse - Set the universe size which determines the largest key the
@@ -187,7 +182,7 @@ public:
   /// This is not the same as BitVector::size() which returns the size of the
   /// universe.
   ///
-  size_type size() const { return Dense.size(); }
+  unsigned size() const { return Dense.size(); }
 
   /// clear - Clears the set.  This is a very fast constant time operation.
   ///
@@ -203,6 +198,9 @@ public:
   ///
   iterator findIndex(unsigned Idx) {
     assert(Idx < Universe && "Key out of range");
+    assert(std::numeric_limits<SparseT>::is_integer &&
+           !std::numeric_limits<SparseT>::is_signed &&
+           "SparseT must be an unsigned integer type");
     const unsigned Stride = std::numeric_limits<SparseT>::max() + 1u;
     for (unsigned i = Sparse[Idx], e = size(); i < e; i += Stride) {
       const unsigned FoundIdx = ValIndexOf(Dense[i]);
@@ -229,11 +227,10 @@ public:
     return const_cast<SparseSet*>(this)->findIndex(KeyIndexOf(Key));
   }
 
-  /// count - Returns 1 if this set contains an element identified by Key,
-  /// 0 otherwise.
+  /// count - Returns true if this set contains an element identified by Key.
   ///
-  size_type count(const KeyT &Key) const {
-    return find(Key) == end() ? 0 : 1;
+  bool count(const KeyT &Key) const {
+    return find(Key) != end();
   }
 
   /// insert - Attempts to insert a new element.

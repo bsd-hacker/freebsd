@@ -11,9 +11,9 @@
 #define CLANG_DRIVER_JOB_H_
 
 #include "clang/Basic/LLVM.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Option/Option.h"
-#include <memory>
 
 namespace llvm {
   class raw_ostream;
@@ -76,8 +76,8 @@ public:
   Command(const Action &_Source, const Tool &_Creator, const char *_Executable,
           const llvm::opt::ArgStringList &_Arguments);
 
-  void Print(llvm::raw_ostream &OS, const char *Terminator, bool Quote,
-             bool CrashReport = false) const override;
+  virtual void Print(llvm::raw_ostream &OS, const char *Terminator,
+                     bool Quote, bool CrashReport = false) const;
 
   virtual int Execute(const StringRef **Redirects, std::string *ErrMsg,
                       bool *ExecutionFailed) const;
@@ -87,8 +87,6 @@ public:
 
   /// getCreator - Return the Tool which caused the creation of this job.
   const Tool &getCreator() const { return Creator; }
-
-  const char *getExecutable() const { return Executable; }
 
   const llvm::opt::ArgStringList &getArguments() const { return Arguments; }
 
@@ -106,18 +104,18 @@ public:
                   const char *Executable_, const ArgStringList &Arguments_,
                   Command *Fallback_);
 
-  void Print(llvm::raw_ostream &OS, const char *Terminator, bool Quote,
-             bool CrashReport = false) const override;
+  virtual void Print(llvm::raw_ostream &OS, const char *Terminator,
+                     bool Quote, bool CrashReport = false) const;
 
-  int Execute(const StringRef **Redirects, std::string *ErrMsg,
-              bool *ExecutionFailed) const override;
+  virtual int Execute(const StringRef **Redirects, std::string *ErrMsg,
+                      bool *ExecutionFailed) const;
 
   static bool classof(const Job *J) {
     return J->getKind() == FallbackCommandClass;
   }
 
 private:
-  std::unique_ptr<Command> Fallback;
+  OwningPtr<Command> Fallback;
 };
 
 /// JobList - A sequence of jobs to perform.
@@ -135,8 +133,8 @@ public:
   JobList();
   virtual ~JobList();
 
-  void Print(llvm::raw_ostream &OS, const char *Terminator,
-             bool Quote, bool CrashReport = false) const override;
+  virtual void Print(llvm::raw_ostream &OS, const char *Terminator,
+                     bool Quote, bool CrashReport = false) const;
 
   /// Add a job to the list (taking ownership).
   void addJob(Job *J) { Jobs.push_back(J); }

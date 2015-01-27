@@ -104,12 +104,6 @@ DataBufferHeap::CopyData (const void *src, uint64_t src_len)
 }
 
 void
-DataBufferHeap::AppendData (const void *src, uint64_t src_len)
-{
-    m_data.insert(m_data.end(), (uint8_t *)src, (uint8_t *)src + src_len);
-}
-
-void
 DataBufferHeap::Clear()
 {
     buffer_t empty;

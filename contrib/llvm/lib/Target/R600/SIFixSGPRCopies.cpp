@@ -65,6 +65,7 @@
 /// ultimately led to the creation of an illegal COPY.
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "sgpr-copies"
 #include "AMDGPU.h"
 #include "SIInstrInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
@@ -75,8 +76,6 @@
 #include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
-
-#define DEBUG_TYPE "sgpr-copies"
 
 namespace {
 
@@ -98,9 +97,9 @@ private:
 public:
   SIFixSGPRCopies(TargetMachine &tm) : MachineFunctionPass(ID) { }
 
-  bool runOnMachineFunction(MachineFunction &MF) override;
+  virtual bool runOnMachineFunction(MachineFunction &MF);
 
-  const char *getPassName() const override {
+  const char *getPassName() const {
     return "SI Fix SGPR copies";
   }
 
@@ -142,8 +141,8 @@ const TargetRegisterClass *SIFixSGPRCopies::inferRegClassFromUses(
 
   const TargetRegisterClass *RC = MRI.getRegClass(Reg);
   RC = TRI->getSubRegClass(RC, SubReg);
-  for (MachineRegisterInfo::use_instr_iterator
-       I = MRI.use_instr_begin(Reg), E = MRI.use_instr_end(); I != E; ++I) {
+  for (MachineRegisterInfo::use_iterator I = MRI.use_begin(Reg),
+                                         E = MRI.use_end(); I != E; ++I) {
     switch (I->getOpcode()) {
     case AMDGPU::COPY:
       RC = TRI->getCommonSubClass(RC, inferRegClassFromUses(TRI, MRI,
@@ -185,8 +184,7 @@ bool SIFixSGPRCopies::isVGPRToSGPRCopy(const MachineInstr &Copy,
   const TargetRegisterClass *SrcRC;
 
   if (!TargetRegisterInfo::isVirtualRegister(SrcReg) ||
-      DstRC == &AMDGPU::M0RegRegClass ||
-      MRI.getRegClass(SrcReg) == &AMDGPU::VReg_1RegClass)
+      DstRC == &AMDGPU::M0RegRegClass)
     return false;
 
   SrcRC = TRI->getSubRegClass(MRI.getRegClass(SrcReg), SrcSubReg);
@@ -256,19 +254,6 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
         DEBUG(MI.print(dbgs()));
 
         TII->moveToVALU(MI);
-        break;
-      }
-      case AMDGPU::INSERT_SUBREG: {
-        const TargetRegisterClass *DstRC, *Src0RC, *Src1RC;
-        DstRC = MRI.getRegClass(MI.getOperand(0).getReg());
-        Src0RC = MRI.getRegClass(MI.getOperand(1).getReg());
-        Src1RC = MRI.getRegClass(MI.getOperand(2).getReg());
-        if (TRI->isSGPRClass(DstRC) &&
-            (TRI->hasVGPRs(Src0RC) || TRI->hasVGPRs(Src1RC))) {
-          DEBUG(dbgs() << " Fixing INSERT_SUBREG:\n");
-          DEBUG(MI.print(dbgs()));
-          TII->moveToVALU(MI);
-        }
         break;
       }
       }

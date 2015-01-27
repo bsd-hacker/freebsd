@@ -7,7 +7,6 @@
  * See LICENSE for the license.
  *
  */
-#include "config.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -17,7 +16,7 @@
 #endif
 
 #include "util/config_file.h"
-#include "configparser.h"
+#include "util/configparser.h"
 void ub_c_error(const char *message);
 
 #if 0
@@ -27,13 +26,13 @@ void ub_c_error(const char *message);
 #endif
 
 /** avoid warning in about fwrite return value */
-#define ECHO ub_c_error_msg("syntax error at text: %s", ub_c_text)
+#define ECHO ub_c_error_msg("syntax error at text: %s", yytext)
 
 /** A parser variable, this is a statement in the config file which is
  * of the form variable: value1 value2 ...  nargs is the number of values. */
 #define YDVAR(nargs, var) \
 	num_args=(nargs); \
-	LEXOUT(("v(%s%d) ", ub_c_text, num_args)); \
+	LEXOUT(("v(%s%d) ", yytext, num_args)); \
 	if(num_args > 0) { BEGIN(val); } \
 	return (var);
 
@@ -167,7 +166,7 @@ static void config_end_include(void)
 #define yy_set_bol(at_bol) \
         { \
 	        if ( ! yy_current_buffer ) \
-	                yy_current_buffer = yy_create_buffer( ub_c_in, YY_BUF_SIZE ); \
+	                yy_current_buffer = yy_create_buffer( yyin, YY_BUF_SIZE ); \
 	        yy_current_buffer->yy_ch_buf[0] = ((at_bol)?'\n':' '); \
         }
 #endif
@@ -201,7 +200,7 @@ SQANY     [^\'\n\r\\]|\\.
 	LEXOUT(("SP ")); /* ignore */ }
 <INITIAL,val>{SPACE}*{COMMENT}.*	{ 
 	/* note that flex makes the longest match and '.' is any but not nl */
-	LEXOUT(("comment(%s) ", ub_c_text)); /* ignore */ }
+	LEXOUT(("comment(%s) ", yytext)); /* ignore */ }
 server{COLON}			{ YDVAR(0, VAR_SERVER) }
 num-threads{COLON}		{ YDVAR(1, VAR_NUM_THREADS) }
 verbosity{COLON}		{ YDVAR(1, VAR_VERBOSITY) }
@@ -309,7 +308,6 @@ log-queries{COLON}		{ YDVAR(1, VAR_LOG_QUERIES) }
 local-zone{COLON}		{ YDVAR(2, VAR_LOCAL_ZONE) }
 local-data{COLON}		{ YDVAR(1, VAR_LOCAL_DATA) }
 local-data-ptr{COLON}		{ YDVAR(1, VAR_LOCAL_DATA_PTR) }
-unblock-lan-zones{COLON}	{ YDVAR(1, VAR_UNBLOCK_LAN_ZONES) }
 statistics-interval{COLON}	{ YDVAR(1, VAR_STATISTICS_INTERVAL) }
 statistics-cumulative{COLON}	{ YDVAR(1, VAR_STATISTICS_CUMULATIVE) }
 extended-statistics{COLON}	{ YDVAR(1, VAR_EXTENDED_STATISTICS) }
@@ -317,7 +315,6 @@ remote-control{COLON}		{ YDVAR(0, VAR_REMOTE_CONTROL) }
 control-enable{COLON}		{ YDVAR(1, VAR_CONTROL_ENABLE) }
 control-interface{COLON}	{ YDVAR(1, VAR_CONTROL_INTERFACE) }
 control-port{COLON}		{ YDVAR(1, VAR_CONTROL_PORT) }
-control-use-cert{COLON}		{ YDVAR(1, VAR_CONTROL_USE_CERT) }
 server-key-file{COLON}		{ YDVAR(1, VAR_SERVER_KEY_FILE) }
 server-cert-file{COLON}		{ YDVAR(1, VAR_SERVER_CERT_FILE) }
 control-key-file{COLON}		{ YDVAR(1, VAR_CONTROL_KEY_FILE) }
@@ -328,97 +325,76 @@ domain-insecure{COLON}		{ YDVAR(1, VAR_DOMAIN_INSECURE) }
 minimal-responses{COLON}	{ YDVAR(1, VAR_MINIMAL_RESPONSES) }
 rrset-roundrobin{COLON}		{ YDVAR(1, VAR_RRSET_ROUNDROBIN) }
 max-udp-size{COLON}		{ YDVAR(1, VAR_MAX_UDP_SIZE) }
-dns64-prefix{COLON}		{ YDVAR(1, VAR_DNS64_PREFIX) }
-dns64-synthall{COLON}		{ YDVAR(1, VAR_DNS64_SYNTHALL) }
-dnstap{COLON}			{ YDVAR(0, VAR_DNSTAP) }
-dnstap-enable{COLON}		{ YDVAR(1, VAR_DNSTAP_ENABLE) }
-dnstap-socket-path{COLON}	{ YDVAR(1, VAR_DNSTAP_SOCKET_PATH) }
-dnstap-send-identity{COLON}	{ YDVAR(1, VAR_DNSTAP_SEND_IDENTITY) }
-dnstap-send-version{COLON}	{ YDVAR(1, VAR_DNSTAP_SEND_VERSION) }
-dnstap-identity{COLON}		{ YDVAR(1, VAR_DNSTAP_IDENTITY) }
-dnstap-version{COLON}		{ YDVAR(1, VAR_DNSTAP_VERSION) }
-dnstap-log-resolver-query-messages{COLON}	{
-		YDVAR(1, VAR_DNSTAP_LOG_RESOLVER_QUERY_MESSAGES) }
-dnstap-log-resolver-response-messages{COLON}	{
-		YDVAR(1, VAR_DNSTAP_LOG_RESOLVER_RESPONSE_MESSAGES) }
-dnstap-log-client-query-messages{COLON}		{
-		YDVAR(1, VAR_DNSTAP_LOG_CLIENT_QUERY_MESSAGES) }
-dnstap-log-client-response-messages{COLON}	{
-		YDVAR(1, VAR_DNSTAP_LOG_CLIENT_RESPONSE_MESSAGES) }
-dnstap-log-forwarder-query-messages{COLON}	{
-		YDVAR(1, VAR_DNSTAP_LOG_FORWARDER_QUERY_MESSAGES) }
-dnstap-log-forwarder-response-messages{COLON}	{
-		YDVAR(1, VAR_DNSTAP_LOG_FORWARDER_RESPONSE_MESSAGES) }
 <INITIAL,val>{NEWLINE}		{ LEXOUT(("NL\n")); cfg_parser->line++; }
 
 	/* Quoted strings. Strip leading and ending quotes */
 <val>\"			{ BEGIN(quotedstring); LEXOUT(("QS ")); }
 <quotedstring><<EOF>>   {
-        ub_c_error("EOF inside quoted string");
+        yyerror("EOF inside quoted string");
 	if(--num_args == 0) { BEGIN(INITIAL); }
 	else		    { BEGIN(val); }
 }
-<quotedstring>{DQANY}*  { LEXOUT(("STR(%s) ", ub_c_text)); yymore(); }
-<quotedstring>{NEWLINE} { ub_c_error("newline inside quoted string, no end \""); 
+<quotedstring>{DQANY}*  { LEXOUT(("STR(%s) ", yytext)); yymore(); }
+<quotedstring>{NEWLINE} { yyerror("newline inside quoted string, no end \""); 
 			  cfg_parser->line++; BEGIN(INITIAL); }
 <quotedstring>\" {
         LEXOUT(("QE "));
 	if(--num_args == 0) { BEGIN(INITIAL); }
 	else		    { BEGIN(val); }
-        ub_c_text[ub_c_leng - 1] = '\0';
-	ub_c_lval.str = strdup(ub_c_text);
-	if(!ub_c_lval.str)
-		ub_c_error("out of memory");
+        yytext[yyleng - 1] = '\0';
+	yylval.str = strdup(yytext);
+	if(!yylval.str)
+		yyerror("out of memory");
         return STRING_ARG;
 }
 
 	/* Single Quoted strings. Strip leading and ending quotes */
 <val>\'			{ BEGIN(singlequotedstr); LEXOUT(("SQS ")); }
 <singlequotedstr><<EOF>>   {
-        ub_c_error("EOF inside quoted string");
+        yyerror("EOF inside quoted string");
 	if(--num_args == 0) { BEGIN(INITIAL); }
 	else		    { BEGIN(val); }
 }
-<singlequotedstr>{SQANY}*  { LEXOUT(("STR(%s) ", ub_c_text)); yymore(); }
-<singlequotedstr>{NEWLINE} { ub_c_error("newline inside quoted string, no end '"); 
+<singlequotedstr>{SQANY}*  { LEXOUT(("STR(%s) ", yytext)); yymore(); }
+<singlequotedstr>{NEWLINE} { yyerror("newline inside quoted string, no end '"); 
 			     cfg_parser->line++; BEGIN(INITIAL); }
 <singlequotedstr>\' {
         LEXOUT(("SQE "));
 	if(--num_args == 0) { BEGIN(INITIAL); }
 	else		    { BEGIN(val); }
-        ub_c_text[ub_c_leng - 1] = '\0';
-	ub_c_lval.str = strdup(ub_c_text);
-	if(!ub_c_lval.str)
-		ub_c_error("out of memory");
+        yytext[yyleng - 1] = '\0';
+	yylval.str = strdup(yytext);
+	if(!yylval.str)
+		yyerror("out of memory");
         return STRING_ARG;
 }
 
 	/* include: directive */
 <INITIAL,val>include{COLON}	{ 
-	LEXOUT(("v(%s) ", ub_c_text)); inc_prev = YYSTATE; BEGIN(include); }
+	LEXOUT(("v(%s) ", yytext)); inc_prev = YYSTATE; BEGIN(include); }
 <include><<EOF>>	{
-        ub_c_error("EOF inside include directive");
+        yyerror("EOF inside include directive");
         BEGIN(inc_prev);
 }
 <include>{SPACE}*	{ LEXOUT(("ISP ")); /* ignore */ }
 <include>{NEWLINE}	{ LEXOUT(("NL\n")); cfg_parser->line++;}
 <include>\"		{ LEXOUT(("IQS ")); BEGIN(include_quoted); }
 <include>{UNQUOTEDLETTER}*	{
-	LEXOUT(("Iunquotedstr(%s) ", ub_c_text));
-	config_start_include_glob(ub_c_text);
+	LEXOUT(("Iunquotedstr(%s) ", yytext));
+	config_start_include_glob(yytext);
 	BEGIN(inc_prev);
 }
 <include_quoted><<EOF>>	{
-        ub_c_error("EOF inside quoted string");
+        yyerror("EOF inside quoted string");
         BEGIN(inc_prev);
 }
-<include_quoted>{DQANY}*	{ LEXOUT(("ISTR(%s) ", ub_c_text)); yymore(); }
-<include_quoted>{NEWLINE}	{ ub_c_error("newline before \" in include name"); 
+<include_quoted>{DQANY}*	{ LEXOUT(("ISTR(%s) ", yytext)); yymore(); }
+<include_quoted>{NEWLINE}	{ yyerror("newline before \" in include name"); 
 				  cfg_parser->line++; BEGIN(inc_prev); }
 <include_quoted>\"	{
 	LEXOUT(("IQE "));
-	ub_c_text[ub_c_leng - 1] = '\0';
-	config_start_include_glob(ub_c_text);
+	yytext[yyleng - 1] = '\0';
+	config_start_include_glob(yytext);
 	BEGIN(inc_prev);
 }
 <INITIAL,val><<EOF>>	{
@@ -427,21 +403,21 @@ dnstap-log-forwarder-response-messages{COLON}	{
 	if (!config_include_stack) {
 		yyterminate();
 	} else {
-		fclose(ub_c_in);
+		fclose(yyin);
 		config_end_include();
 	}
 }
 
-<val>{UNQUOTEDLETTER}*	{ LEXOUT(("unquotedstr(%s) ", ub_c_text)); 
+<val>{UNQUOTEDLETTER}*	{ LEXOUT(("unquotedstr(%s) ", yytext)); 
 			if(--num_args == 0) { BEGIN(INITIAL); }
-			ub_c_lval.str = strdup(ub_c_text); return STRING_ARG; }
+			yylval.str = strdup(yytext); return STRING_ARG; }
 
 {UNQUOTEDLETTER_NOCOLON}*	{
-	ub_c_error_msg("unknown keyword '%s'", ub_c_text);
+	ub_c_error_msg("unknown keyword '%s'", yytext);
 	}
 
 <*>.	{
-	ub_c_error_msg("stray '%s'", ub_c_text);
+	ub_c_error_msg("stray '%s'", yytext);
 	}
 
 %%

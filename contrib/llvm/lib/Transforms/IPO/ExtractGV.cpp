@@ -27,10 +27,11 @@ using namespace llvm;
 /// the split module remain valid.
 static void makeVisible(GlobalValue &GV, bool Delete) {
   bool Local = GV.hasLocalLinkage();
+  if (Local)
+    GV.setVisibility(GlobalValue::HiddenVisibility);
+
   if (Local || Delete) {
     GV.setLinkage(GlobalValue::ExternalLinkage);
-    if (Local)
-      GV.setVisibility(GlobalValue::HiddenVisibility);
     return;
   }
 
@@ -67,7 +68,7 @@ namespace {
     explicit GVExtractorPass(std::vector<GlobalValue*>& GVs, bool deleteS = true)
       : ModulePass(ID), Named(GVs.begin(), GVs.end()), deleteStuff(deleteS) {}
 
-    bool runOnModule(Module &M) override {
+    bool runOnModule(Module &M) {
       // Visit the global inline asm.
       if (!deleteStuff)
         M.setModuleInlineAsm("");
@@ -94,7 +95,7 @@ namespace {
 	makeVisible(*I, Delete);
 
         if (Delete)
-          I->setInitializer(nullptr);
+          I->setInitializer(0);
       }
 
       // Visit the Functions.
@@ -133,7 +134,7 @@ namespace {
           } else {
             Declaration =
               new GlobalVariable(M, Ty, false, GlobalValue::ExternalLinkage,
-                                 nullptr, CurI->getName());
+                                 0, CurI->getName());
 
           }
           CurI->replaceAllUsesWith(Declaration);

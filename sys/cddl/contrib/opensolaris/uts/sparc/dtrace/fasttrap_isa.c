@@ -24,6 +24,8 @@
  * Use is subject to license terms.
  */
 
+#pragma ident	"%Z%%M%	%I%	%E% SMI"
+
 #include <sys/fasttrap_isa.h>
 #include <sys/fasttrap_impl.h>
 #include <sys/dtrace.h>
@@ -1408,7 +1410,7 @@ fasttrap_getreg(struct regs *rp, uint_t reg)
 		value = dtrace_getreg_win(reg, 1);
 		dtrace_interrupt_enable(cookie);
 
-		atomic_inc_64(&fasttrap_getreg_fast_cnt);
+		atomic_add_64(&fasttrap_getreg_fast_cnt, 1);
 
 		return (value);
 	}
@@ -1433,7 +1435,7 @@ fasttrap_getreg(struct regs *rp, uint_t reg)
 				if ((long)mpcb->mpcb_spbuf[i] != rp->r_sp)
 					continue;
 
-				atomic_inc_64(&fasttrap_getreg_mpcb_cnt);
+				atomic_add_64(&fasttrap_getreg_mpcb_cnt, 1);
 				return (rwin[i].rw_local[reg - 16]);
 			} while (i > 0);
 		}
@@ -1453,7 +1455,7 @@ fasttrap_getreg(struct regs *rp, uint_t reg)
 				if ((long)mpcb->mpcb_spbuf[i] != rp->r_sp)
 					continue;
 
-				atomic_inc_64(&fasttrap_getreg_mpcb_cnt);
+				atomic_add_64(&fasttrap_getreg_mpcb_cnt, 1);
 				return (rwin[i].rw_local[reg - 16]);
 			} while (i > 0);
 		}
@@ -1464,7 +1466,7 @@ fasttrap_getreg(struct regs *rp, uint_t reg)
 		v32[0] = 0;
 	}
 
-	atomic_inc_64(&fasttrap_getreg_slow_cnt);
+	atomic_add_64(&fasttrap_getreg_slow_cnt, 1);
 	return (value);
 
 err:
@@ -1503,7 +1505,7 @@ fasttrap_putreg(struct regs *rp, uint_t reg, ulong_t value)
 	if (dtrace_getotherwin() > 0) {
 		dtrace_putreg_win(reg, value);
 		dtrace_interrupt_enable(cookie);
-		atomic_inc_64(&fasttrap_putreg_fast_cnt);
+		atomic_add_64(&fasttrap_putreg_fast_cnt, 1);
 		return;
 	}
 	dtrace_interrupt_enable(cookie);
@@ -1534,7 +1536,7 @@ fasttrap_putreg(struct regs *rp, uint_t reg, ulong_t value)
 					continue;
 
 				rwin[i].rw_local[reg - 16] = value;
-				atomic_inc_64(&fasttrap_putreg_mpcb_cnt);
+				atomic_add_64(&fasttrap_putreg_mpcb_cnt, 1);
 				return;
 			} while (i > 0);
 		}
@@ -1547,7 +1549,7 @@ fasttrap_putreg(struct regs *rp, uint_t reg, ulong_t value)
 			rwin[mpcb->mpcb_wbcnt].rw_local[reg - 16] = value;
 			mpcb->mpcb_spbuf[mpcb->mpcb_wbcnt] = (caddr_t)rp->r_sp;
 			mpcb->mpcb_wbcnt++;
-			atomic_inc_64(&fasttrap_putreg_mpcb_cnt);
+			atomic_add_64(&fasttrap_putreg_mpcb_cnt, 1);
 			return;
 		}
 	} else {
@@ -1565,7 +1567,7 @@ fasttrap_putreg(struct regs *rp, uint_t reg, ulong_t value)
 					continue;
 
 				rwin[i].rw_local[reg - 16] = v32;
-				atomic_inc_64(&fasttrap_putreg_mpcb_cnt);
+				atomic_add_64(&fasttrap_putreg_mpcb_cnt, 1);
 				return;
 			} while (i > 0);
 		}
@@ -1578,12 +1580,12 @@ fasttrap_putreg(struct regs *rp, uint_t reg, ulong_t value)
 			rwin[mpcb->mpcb_wbcnt].rw_local[reg - 16] = v32;
 			mpcb->mpcb_spbuf[mpcb->mpcb_wbcnt] = (caddr_t)rp->r_sp;
 			mpcb->mpcb_wbcnt++;
-			atomic_inc_64(&fasttrap_putreg_mpcb_cnt);
+			atomic_add_64(&fasttrap_putreg_mpcb_cnt, 1);
 			return;
 		}
 	}
 
-	atomic_inc_64(&fasttrap_putreg_slow_cnt);
+	atomic_add_64(&fasttrap_putreg_slow_cnt, 1);
 	return;
 
 err:

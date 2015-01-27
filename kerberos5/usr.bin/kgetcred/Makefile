@@ -3,7 +3,10 @@
 PROG=	kgetcred
 CFLAGS+=	-I${KRB5DIR}/lib/asn1 \
 		-I${KRB5DIR}/lib/roken
-LIBADD=	krb5 roken asn1 vers
+DPADD=	${LIBKRB5} ${LIBROKEN} ${LIBASN1} ${LIBCRYPTO} ${LIBCRYPT} ${LIBVERS}
+LDADD=	-lkrb5 -lroken -lasn1 -lcrypto -lcrypt ${LIBVERS}
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>
 

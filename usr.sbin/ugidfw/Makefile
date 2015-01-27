@@ -3,6 +3,7 @@
 PROG=	ugidfw
 MAN=	ugidfw.8
 
-LIBADD=	ugidfw
+DPADD=	${LIBUGIDFW}
+LDADD=	-lugidfw
 
 .include <bsd.prog.mk>

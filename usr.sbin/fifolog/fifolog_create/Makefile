@@ -4,12 +4,15 @@ PROG=	fifolog_create
 
 CFLAGS+= -I${.CURDIR}/../lib
 
-LIBADD=	util fifolog
+DPADD=	${LIBFIFOLOG} ${LIBUTIL}
+LDADD=	${LIBFIFOLOG} -lutil
 
 MAN=	fifolog.1
 MLINKS=	fifolog.1 fifolog_create.1 \
 	fifolog.1 fifolog_reader.1 \
 	fifolog.1 fifolog_writer.1
+
+NO_PIE=	yes
 
 regress:
 	rm -f /tmp/fifolog.?

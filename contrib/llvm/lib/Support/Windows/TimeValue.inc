@@ -11,9 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "WindowsSupport.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/raw_ostream.h"
+#include "Windows.h"
 #include <cctype>
 #include <time.h>
 
@@ -34,7 +32,6 @@ TimeValue TimeValue::now() {
 }
 
 std::string TimeValue::str() const {
-  std::string S;
   struct tm *LT;
 #ifdef __MINGW32__
   // Old versions of mingw don't have _localtime64_s. Remove this once we drop support
@@ -50,11 +47,13 @@ std::string TimeValue::str() const {
   LT = &Storage;
 #endif
 
-  char Buffer[sizeof("YYYY-MM-DD HH:MM:SS")];
-  strftime(Buffer, sizeof(Buffer), "%Y-%m-%d %H:%M:%S", LT);
-  raw_string_ostream OS(S);
-  OS << format("%s.%.9u", static_cast<const char *>(Buffer),
-               this->nanoseconds());
-  OS.flush();
-  return S;
+  char Buffer[25];
+  // FIXME: the windows version of strftime doesn't support %e
+  strftime(Buffer, 25, "%b %d %H:%M %Y", LT);
+  assert((Buffer[3] == ' ' && isdigit(Buffer[5]) && Buffer[6] == ' ') &&
+         "Unexpected format in strftime()!");
+  // Emulate %e on %d to mute '0'.
+  if (Buffer[4] == '0')
+    Buffer[4] = ' ';
+  return std::string(Buffer);
 }

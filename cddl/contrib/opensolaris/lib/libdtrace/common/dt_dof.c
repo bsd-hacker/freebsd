@@ -26,12 +26,12 @@
  */
 
 #include <sys/types.h>
-#ifdef illumos
+#if defined(sun)
 #include <sys/sysmacros.h>
 #endif
 
 #include <strings.h>
-#ifdef illumos
+#if defined(sun)
 #include <alloca.h>
 #endif
 #include <assert.h>
@@ -469,7 +469,7 @@ dof_add_probe(dt_idhash_t *dhp, dt_ident_t *idp, void *data)
 		 * locally so an alternate symbol is added for the purpose
 		 * of this relocation.
 		 */
-		if (pip->pi_rname == NULL)
+		if (pip->pi_rname[0] == '\0')
 			dofr.dofr_name = dofpr.dofpr_func;
 		else
 			dofr.dofr_name = dof_add_string(ddo, pip->pi_rname);

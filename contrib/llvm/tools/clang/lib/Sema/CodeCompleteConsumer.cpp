@@ -15,6 +15,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/Sema.h"
 #include "llvm/ADT/STLExtras.h"
@@ -218,7 +219,7 @@ const char *CodeCompletionString::getAnnotation(unsigned AnnotationNr) const {
   if (AnnotationNr < NumAnnotations)
     return reinterpret_cast<const char * const*>(end())[AnnotationNr];
   else
-    return nullptr;
+    return 0;
 }
 
 
@@ -247,8 +248,8 @@ const char *CodeCompletionString::getTypedText() const {
   for (iterator C = begin(), CEnd = end(); C != CEnd; ++C)
     if (C->Kind == CK_TypedText)
       return C->Text;
-
-  return nullptr;
+  
+  return 0;
 }
 
 const char *CodeCompletionAllocator::CopyString(StringRef String) {
@@ -278,7 +279,7 @@ StringRef CodeCompletionTUInfo::getParentName(const DeclContext *DC) {
 
   // If we already processed this DeclContext and assigned empty to it, the
   // data pointer will be non-null.
-  if (CachedParentName.data() != nullptr)
+  if (CachedParentName.data() != 0)
     return StringRef();
 
   // Find the interesting names.
@@ -405,7 +406,7 @@ CodeCompleteConsumer::OverloadCandidate::getFunction() const {
   else if (getKind() == CK_FunctionTemplate)
     return FunctionTemplate->getTemplatedDecl();
   else
-    return nullptr;
+    return 0;
 }
 
 const FunctionType *

@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGES.
  */
+
 
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
@@ -259,11 +260,6 @@ AcpiDmResourceTemplate (
     ACPI_NAMESPACE_NODE     *Node;
 
 
-    if (Op->Asl.AmlOpcode != AML_FIELD_OP)
-    {
-        Info->MappingOp = Op;
-    }
-
     Level = Info->Level;
     ResourceName = ACPI_DEFAULT_RESNAME;
     Node = Op->Common.Node;
@@ -332,7 +328,7 @@ AcpiDmResourceTemplate (
 
                 /* Go ahead and insert EndDependentFn() */
 
-                AcpiDmEndDependentDescriptor (Info, Aml, ResourceLength, Level);
+                AcpiDmEndDependentDescriptor (Aml, ResourceLength, Level);
 
                 AcpiDmIndent (Level);
                 AcpiOsPrintf (
@@ -354,7 +350,7 @@ AcpiDmResourceTemplate (
         }
 
         AcpiGbl_DmResourceDispatch [ResourceIndex] (
-            Info, Aml, ResourceLength, Level);
+            Aml, ResourceLength, Level);
 
         /* Descriptor post-processing */
 

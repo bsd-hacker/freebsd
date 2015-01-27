@@ -345,7 +345,7 @@ static void sv_usage(void)
 #ifndef OPENSSL_NO_SSL2
 	fprintf(stderr," -ssl2         - use SSLv2\n");
 #endif
-#ifndef OPENSSL_NO_SSL3_METHOD
+#ifndef OPENSSL_NO_SSL3
 	fprintf(stderr," -ssl3         - use SSLv3\n");
 #endif
 #ifndef OPENSSL_NO_TLS1
@@ -368,9 +368,7 @@ static void sv_usage(void)
 	               "                 Use \"openssl ecparam -list_curves\" for all names\n"  \
 	               "                 (default is sect163r2).\n");
 #endif
-	fprintf(stderr," -test_cipherlist - Verifies the order of the ssl cipher lists.\n"
-		       "                    When this option is requested, the cipherlist\n"
-		       "                    tests are run instead of handshake tests.\n");
+	fprintf(stderr," -test_cipherlist - verifies the order of the ssl cipher lists\n");
 	}
 
 static void print_details(SSL *c_ssl, const char *prefix)
@@ -551,7 +549,6 @@ int main(int argc, char *argv[])
 #ifdef OPENSSL_FIPS
 	int fips_mode=0;
 #endif
-        int no_protocol = 0;
 
 	verbose = 0;
 	debug = 0;
@@ -661,26 +658,11 @@ int main(int argc, char *argv[])
 			}
 #endif
 		else if	(strcmp(*argv,"-ssl2") == 0)
-			{
-#ifdef OPENSSL_NO_SSL2
-			no_protocol = 1;
-#endif
-			ssl2 = 1;
-			}
+			ssl2=1;
 		else if	(strcmp(*argv,"-tls1") == 0)
-			{
-#ifdef OPENSSL_NO_TLS1
-			no_protocol = 1;
-#endif
-			tls1 = 1;
-			}
+			tls1=1;
 		else if	(strcmp(*argv,"-ssl3") == 0)
-			{
-#ifdef OPENSSL_NO_SSL3_METHOD
-			no_protocol = 1;
-#endif
-			ssl3 = 1;
-			}
+			ssl3=1;
 		else if	(strncmp(*argv,"-num",4) == 0)
 			{
 			if (--argc < 1) goto bad;
@@ -799,37 +781,11 @@ bad:
 		goto end;
 		}
 
-	/*
-	 * test_cipherlist prevails over protocol switch: we test the cipherlist
-	 * for all enabled protocols.
-	 */
 	if (test_cipherlist == 1)
 		{
 		/* ensure that the cipher list are correctly sorted and exit */
-		fprintf(stdout, "Testing cipherlist order only. Ignoring all "
-			"other options.\n");
 		if (do_test_cipherlist() == 0)
 			EXIT(1);
-		ret = 0;
-		goto end;
-		}
-
-	if (ssl2 + ssl3 + tls1 > 1)
-		{
-		fprintf(stderr, "At most one of -ssl2, -ssl3, or -tls1 should "
-			"be requested.\n");
-		EXIT(1);
-		}
-
-	/*
-	 * Testing was requested for a compiled-out protocol (e.g. SSLv2).
-         * Ideally, we would error out, but the generic test wrapper can't know
-	 * when to expect failure. So we do nothing and return success.
-	 */
-	if (no_protocol)
-		{
-		fprintf(stderr, "Testing was requested for a disabled protocol. "
-			"Skipping tests.\n");
 		ret = 0;
 		goto end;
 		}
@@ -912,25 +868,30 @@ bad:
 	}
 #endif
 
-/* At this point, ssl2/ssl3/tls1 is only set if the protocol is available.
- * (Otherwise we exit early.)
- * However the compiler doesn't know this, so we ifdef. */
-#ifndef OPENSSL_NO_SSL2
+#if !defined(OPENSSL_NO_SSL2) && !defined(OPENSSL_NO_SSL3)
 	if (ssl2)
 		meth=SSLv2_method();
-	else
-#endif
-#ifndef OPENSSL_NO_SSL3
-	if (ssl3)
-		meth=SSLv3_method();
-	else
-#endif
-#ifndef OPENSSL_NO_TLS1
+	else 
 	if (tls1)
 		meth=TLSv1_method();
 	else
+	if (ssl3)
+		meth=SSLv3_method();
+	else
+		meth=SSLv23_method();
+#else
+#ifdef OPENSSL_NO_SSL2
+	if (tls1)
+		meth=TLSv1_method();
+	else
+	if (ssl3)
+		meth=SSLv3_method();
+	else
+		meth=SSLv23_method();
+#else
+	meth=SSLv2_method();
 #endif
-	meth=SSLv23_method();
+#endif
 
 	c_ctx=SSL_CTX_new(meth);
 	s_ctx=SSL_CTX_new(meth);

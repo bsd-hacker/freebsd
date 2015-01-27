@@ -35,6 +35,8 @@
 #endif /* HAVE_CONFIG_H */
 
 #include <stdio.h>
+#include <endian.h>
+#include <byteswap.h>
 
 #include <infiniband/verbs.h>
 

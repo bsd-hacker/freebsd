@@ -8,7 +8,8 @@ CFLAGS=	-I${.CURDIR}/../../contrib/dma \
 	-DLIBEXEC_PATH='"/usr/libexec"' -DDMA_VERSION='"v0.9+"' \
 	-DDMA_ROOT_USER='"mailnull"' \
 	-DDMA_GROUP='"mail"'
-LIBADD=	ssl crypto
+DPADD=	${LIBSSL} ${LIBCRYPTO}
+LDADD=	-lssl -lcrypto
 
 PROG=	dma
 SRCS=	aliases_parse.y \

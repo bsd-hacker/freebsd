@@ -283,11 +283,12 @@ mbp_free(struct mbpool *p, void *ptr)
 /*
  * Mbuf system external mbuf free routine
  */
-void
+int
 mbp_ext_free(struct mbuf *m, void *buf, void *arg)
 {
-
 	mbp_free(arg, buf);
+
+	return (EXT_FREE_OK);
 }
 
 /*

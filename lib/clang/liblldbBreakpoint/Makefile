@@ -27,9 +27,7 @@ SRCS=	Breakpoint.cpp \
 	WatchpointList.cpp \
 	WatchpointOptions.cpp
 
-TGHDRS=	AttrList \
-	Attrs \
-	DiagnosticCommonKinds \
+TGHDRS=	DiagnosticCommonKinds \
 	DeclNodes \
 	StmtNodes \
 	CommentCommandList

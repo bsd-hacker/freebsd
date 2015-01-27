@@ -206,17 +206,8 @@ isci_task_request_complete(SCI_CONTROLLER_HANDLE_T scif_controller,
 		break;
 
 	case SCI_FAILURE_TIMEOUT:
-		if (isci_controller->fail_on_task_timeout) {
-			retry_task = FALSE;
-			isci_log_message(0, "ISCI",
-			    "task timeout - not retrying\n");
-			scif_cb_domain_device_removed(isci_controller,
-			    isci_remote_device->domain, isci_remote_device);
-		} else {
-			retry_task = TRUE;
-			isci_log_message(0, "ISCI",
-			    "task timeout - retrying\n");
-		}
+		retry_task = TRUE;
+		isci_log_message(0, "ISCI", "task timeout - retrying\n");
 		break;
 
 	case SCI_TASK_FAILURE:

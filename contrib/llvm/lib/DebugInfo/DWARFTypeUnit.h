@@ -19,16 +19,14 @@ private:
   uint64_t TypeHash;
   uint32_t TypeOffset;
 public:
-  DWARFTypeUnit(const DWARFDebugAbbrev *DA, StringRef IS, StringRef RS,
-                StringRef SS, StringRef SOS, StringRef AOS,
+  DWARFTypeUnit(const DWARFDebugAbbrev *DA, StringRef IS, StringRef AS,
+                StringRef RS, StringRef SS, StringRef SOS, StringRef AOS,
                 const RelocAddrMap *M, bool LE)
-      : DWARFUnit(DA, IS, RS, SS, SOS, AOS, M, LE) {}
-  uint32_t getHeaderSize() const override {
-    return DWARFUnit::getHeaderSize() + 12;
-  }
+      : DWARFUnit(DA, IS, AS, RS, SS, SOS, AOS, M, LE) {}
+  uint32_t getSize() const LLVM_OVERRIDE { return DWARFUnit::getSize() + 12; }
   void dump(raw_ostream &OS);
 protected:
-  bool extractImpl(DataExtractor debug_info, uint32_t *offset_ptr) override;
+  bool extractImpl(DataExtractor debug_info, uint32_t *offset_ptr) LLVM_OVERRIDE;
 };
 
 }

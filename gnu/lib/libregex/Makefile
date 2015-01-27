@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+SUBDIR=		doc
+
 LIB=		gnuregex
 SHLIB_MAJOR=	5
 

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -73,15 +73,13 @@ DtCreateSubtable (
     DT_SUBTABLE             **RetSubtable)
 {
     DT_SUBTABLE             *Subtable;
-    char                    *String;
 
 
-    Subtable = UtSubtableCacheCalloc ();
+    Subtable = UtLocalCalloc (sizeof (DT_SUBTABLE));
 
     /* Create a new buffer for the subtable data */
 
-    String = UtStringCacheCalloc (Length);
-    Subtable->Buffer = ACPI_CAST_PTR (UINT8, String);
+    Subtable->Buffer = UtLocalCalloc (Length);
     ACPI_MEMCPY (Subtable->Buffer, Buffer, Length);
 
     Subtable->Length = Length;

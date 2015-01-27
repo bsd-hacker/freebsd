@@ -17,11 +17,13 @@ NGCTL_NO_LIBEDIT=
 NGCTL_NO_LIBEDIT=
 .endif
 
-LIBADD=	netgraph
+DPADD=	${LIBNETGRAPH}
+LDADD=	-lnetgraph
 
 .if !defined(NGCTL_NO_LIBEDIT)
 CFLAGS+= -DEDITLINE
-LIBADD+=	edit pthread
+DPADD+=	${LIBPTHREAD} ${LIBEDIT} ${LIBTERMCAP}
+LDADD+=	-lpthread -ledit -ltermcap
 .endif
 
 .include <bsd.prog.mk>

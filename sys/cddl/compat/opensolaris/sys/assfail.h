@@ -46,24 +46,20 @@ void assfail3(const char *, uintmax_t, const char *, uintmax_t, const char *,
 #else	/* !defined(_KERNEL) */
 
 #ifndef HAVE_ASSFAIL
-extern int aok;
-
 static __inline int
 __assfail(const char *expr, const char *file, int line)
 {
 
 	(void)fprintf(stderr, "Assertion failed: (%s), file %s, line %d.\n",
 	    expr, file, line);
-	if (!aok)
-		abort();
+	abort();
+	/* NOTREACHED */
 	return (0);
 }
 #define assfail __assfail
 #endif
 
 #ifndef HAVE_ASSFAIL3
-extern int aok;
-
 static __inline void
 __assfail3(const char *expr, uintmax_t lv, const char *op, uintmax_t rv,
     const char *file, int line) {
@@ -71,8 +67,8 @@ __assfail3(const char *expr, uintmax_t lv, const char *op, uintmax_t rv,
 	(void)fprintf(stderr,
 	    "Assertion failed: %s (0x%jx %s 0x%jx), file %s, line %d.\n",
 	    expr, lv, op, rv, file, line);
-	if (!aok)
-		abort();
+        abort();
+        /* NOTREACHED */
 }
 #define assfail3 __assfail3
 #endif

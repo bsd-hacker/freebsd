@@ -38,7 +38,7 @@
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
-#include <sys/rwlock.h>
+#include <sys/mutex.h>
 #include <sys/malloc.h>
 #include <sys/mount.h>
 #include <sys/proc.h>
@@ -57,7 +57,7 @@
 #define	NULL_NHASH(vp) (&null_node_hashtbl[vfs_hash_index(vp) & null_hash_mask])
 
 static LIST_HEAD(null_node_hashhead, null_node) *null_node_hashtbl;
-static struct rwlock null_hash_lock;
+static struct mtx null_hashmtx;
 static u_long null_hash_mask;
 
 static MALLOC_DEFINE(M_NULLFSHASH, "nullfs_hash", "NULLFS hash table");
@@ -75,7 +75,7 @@ nullfs_init(vfsp)
 
 	null_node_hashtbl = hashinit(desiredvnodes, M_NULLFSHASH,
 	    &null_hash_mask);
-	rw_init(&null_hash_lock, "nullhs");
+	mtx_init(&null_hashmtx, "nullhs", NULL, MTX_DEF);
 	return (0);
 }
 
@@ -84,7 +84,7 @@ nullfs_uninit(vfsp)
 	struct vfsconf *vfsp;
 {
 
-	rw_destroy(&null_hash_lock);
+	mtx_destroy(&null_hashmtx);
 	hashdestroy(null_node_hashtbl, M_NULLFSHASH, null_hash_mask);
 	return (0);
 }
@@ -111,7 +111,7 @@ null_hashget(mp, lowervp)
 	 * reference count (but NOT the lower vnode's VREF counter).
 	 */
 	hd = NULL_NHASH(lowervp);
-	rw_rlock(&null_hash_lock);
+	mtx_lock(&null_hashmtx);
 	LIST_FOREACH(a, hd, null_hash) {
 		if (a->null_lowervp == lowervp && NULLTOV(a)->v_mount == mp) {
 			/*
@@ -122,11 +122,11 @@ null_hashget(mp, lowervp)
 			 */
 			vp = NULLTOV(a);
 			vref(vp);
-			rw_runlock(&null_hash_lock);
+			mtx_unlock(&null_hashmtx);
 			return (vp);
 		}
 	}
-	rw_runlock(&null_hash_lock);
+	mtx_unlock(&null_hashmtx);
 	return (NULLVP);
 }
 
@@ -144,7 +144,7 @@ null_hashins(mp, xp)
 	struct vnode *ovp;
 
 	hd = NULL_NHASH(xp->null_lowervp);
-	rw_wlock(&null_hash_lock);
+	mtx_lock(&null_hashmtx);
 	LIST_FOREACH(oxp, hd, null_hash) {
 		if (oxp->null_lowervp == xp->null_lowervp &&
 		    NULLTOV(oxp)->v_mount == mp) {
@@ -154,12 +154,12 @@ null_hashins(mp, xp)
 			 */
 			ovp = NULLTOV(oxp);
 			vref(ovp);
-			rw_wunlock(&null_hash_lock);
+			mtx_unlock(&null_hashmtx);
 			return (ovp);
 		}
 	}
 	LIST_INSERT_HEAD(hd, xp, null_hash);
-	rw_wunlock(&null_hash_lock);
+	mtx_unlock(&null_hashmtx);
 	return (NULLVP);
 }
 
@@ -277,9 +277,9 @@ null_hashrem(xp)
 	struct null_node *xp;
 {
 
-	rw_wlock(&null_hash_lock);
+	mtx_lock(&null_hashmtx);
 	LIST_REMOVE(xp, null_hash);
-	rw_wunlock(&null_hash_lock);
+	mtx_unlock(&null_hashmtx);
 }
 
 #ifdef DIAGNOSTIC

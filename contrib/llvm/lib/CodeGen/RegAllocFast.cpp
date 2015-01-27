@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "regalloc"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IndexedMap.h"
@@ -36,8 +37,6 @@
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
 using namespace llvm;
-
-#define DEBUG_TYPE "regalloc"
 
 STATISTIC(NumStores, "Number of stores added");
 STATISTIC(NumLoads , "Number of loads added");
@@ -76,7 +75,7 @@ namespace {
       bool Dirty;               // Register needs spill.
 
       explicit LiveReg(unsigned v)
-        : LastUse(nullptr), VirtReg(v), PhysReg(0), LastOpNum(0), Dirty(false){}
+        : LastUse(0), VirtReg(v), PhysReg(0), LastOpNum(0), Dirty(false) {}
 
       unsigned getSparseSetIndex() const {
         return TargetRegisterInfo::virtReg2Index(VirtReg);
@@ -145,23 +144,23 @@ namespace {
     // not be erased.
     bool isBulkSpilling;
 
-    enum : unsigned {
+    enum LLVM_ENUM_INT_TYPE(unsigned) {
       spillClean = 1,
       spillDirty = 100,
       spillImpossible = ~0u
     };
   public:
-    const char *getPassName() const override {
+    virtual const char *getPassName() const {
       return "Fast Register Allocator";
     }
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
 
   private:
-    bool runOnMachineFunction(MachineFunction &Fn) override;
+    bool runOnMachineFunction(MachineFunction &Fn);
     void AllocateBasicBlock();
     void handleThroughOperands(MachineInstr *MI,
                                SmallVectorImpl<unsigned> &VirtDead);
@@ -225,7 +224,7 @@ bool RAFast::isLastUseOfLocalReg(MachineOperand &MO) {
 
   // Check that the use/def chain has exactly one operand - MO.
   MachineRegisterInfo::reg_nodbg_iterator I = MRI->reg_nodbg_begin(MO.getReg());
-  if (&*I != &MO)
+  if (&I.getOperand() != &MO)
     return false;
   return ++I == MRI->reg_nodbg_end();
 }
@@ -320,7 +319,7 @@ void RAFast::spillVirtReg(MachineBasicBlock::iterator MI,
     // now.
     LRIDbgValues.clear();
     if (SpillKill)
-      LR.LastUse = nullptr; // Don't kill register again
+      LR.LastUse = 0; // Don't kill register again
   }
   killVirtReg(LRI);
 }
@@ -586,12 +585,12 @@ RAFast::defineVirtReg(MachineInstr *MI, unsigned OpNum,
          "Not a virtual register");
   LiveRegMap::iterator LRI;
   bool New;
-  std::tie(LRI, New) = LiveVirtRegs.insert(LiveReg(VirtReg));
+  tie(LRI, New) = LiveVirtRegs.insert(LiveReg(VirtReg));
   if (New) {
     // If there is no hint, peek at the only use of this register.
     if ((!Hint || !TargetRegisterInfo::isPhysicalRegister(Hint)) &&
         MRI->hasOneNonDBGUse(VirtReg)) {
-      const MachineInstr &UseMI = *MRI->use_instr_nodbg_begin(VirtReg);
+      const MachineInstr &UseMI = *MRI->use_nodbg_begin(VirtReg);
       // It's a copy, use the destination register as a hint.
       if (UseMI.isCopyLike())
         Hint = UseMI.getOperand(0).getReg();
@@ -619,7 +618,7 @@ RAFast::reloadVirtReg(MachineInstr *MI, unsigned OpNum,
          "Not a virtual register");
   LiveRegMap::iterator LRI;
   bool New;
-  std::tie(LRI, New) = LiveVirtRegs.insert(LiveReg(VirtReg));
+  tie(LRI, New) = LiveVirtRegs.insert(LiveReg(VirtReg));
   MachineOperand &MO = MI->getOperand(OpNum);
   if (New) {
     LRI = allocVirtReg(MI, LRI, Hint);

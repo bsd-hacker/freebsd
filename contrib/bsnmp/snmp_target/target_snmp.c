@@ -301,7 +301,6 @@ op_snmp_target_addrs(struct snmp_context *ctx __unused, struct snmp_value *val,
 		default:
 			break;	
 		}
-		return (SNMP_ERR_NOERROR);
 
 	default:
 		abort();
@@ -626,7 +625,6 @@ op_snmp_notify(struct snmp_context *ctx __unused, struct snmp_value *val,
 		default:
 			break;
 		}
-		return (SNMP_ERR_NOERROR);
 
 	default:
 		abort();
@@ -665,14 +663,13 @@ target_append_index(struct asn_oid *oid, uint sub, const char *name)
 static int
 target_decode_index(const struct asn_oid *oid, uint sub, char *name)
 {
-	uint32_t i;
+	uint32_t i, len;
 
-	if (oid->len - sub != oid->subs[sub] + 1 || oid->subs[sub] >=
-	    SNMP_ADM_STR32_SIZ)
+	if ((len = oid->len - sub) >= SNMP_ADM_STR32_SIZ)
 		return (-1);
 
-	for (i = 0; i < oid->subs[sub]; i++)
-		name[i] = oid->subs[sub + i + 1];
+	for (i = 0; i < len; i++)
+		name[i] = oid->subs[sub + i];
 	name[i] = '\0';
 
 	return (0);

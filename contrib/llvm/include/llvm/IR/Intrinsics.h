@@ -71,9 +71,6 @@ namespace Intrinsic {
 
   /// Map a GCC builtin name to an intrinsic ID.
   ID getIntrinsicForGCCBuiltin(const char *Prefix, const char *BuiltinName);
-
-  /// Map a MS builtin name to an intrinsic ID.
-  ID getIntrinsicForMSBuiltin(const char *Prefix, const char *BuiltinName);
   
   /// IITDescriptor - This is a type descriptor which explains the type
   /// requirements of an intrinsic.  This is returned by
@@ -82,7 +79,7 @@ namespace Intrinsic {
     enum IITDescriptorKind {
       Void, VarArg, MMX, Metadata, Half, Float, Double,
       Integer, Vector, Pointer, Struct,
-      Argument, ExtendArgument, TruncArgument, HalfVecArgument
+      Argument, ExtendVecArgument, TruncVecArgument
     } Kind;
     
     union {
@@ -101,13 +98,13 @@ namespace Intrinsic {
       AK_AnyPointer
     };
     unsigned getArgumentNumber() const {
-      assert(Kind == Argument || Kind == ExtendArgument ||
-             Kind == TruncArgument || Kind == HalfVecArgument);
+      assert(Kind == Argument || Kind == ExtendVecArgument || 
+             Kind == TruncVecArgument);
       return Argument_Info >> 2;
     }
     ArgKind getArgumentKind() const {
-      assert(Kind == Argument || Kind == ExtendArgument ||
-             Kind == TruncArgument || Kind == HalfVecArgument);
+      assert(Kind == Argument || Kind == ExtendVecArgument || 
+             Kind == TruncVecArgument);
       return (ArgKind)(Argument_Info&3);
     }
     

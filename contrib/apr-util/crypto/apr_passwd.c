@@ -66,12 +66,6 @@ static void crypt_mutex_unlock(void)
 #endif
 #endif
 
-#if defined(WIN32) || defined(BEOS) || defined(NETWARE) || defined(__ANDROID__)
-#define CRYPT_MISSING 1
-#else
-#define CRYPT_MISSING 0
-#endif
-
 /*
  * Validate a plaintext password against a smashed one.  Uses either
  * crypt() (if available) or apr_md5_encode() or apr_sha1_base64(), depending
@@ -83,7 +77,7 @@ APU_DECLARE(apr_status_t) apr_password_validate(const char *passwd,
                                                 const char *hash)
 {
     char sample[200];
-#if !CRYPT_MISSING
+#if !defined(WIN32) && !defined(BEOS) && !defined(NETWARE)
     char *crypt_pw;
 #endif
     if (hash[0] == '$'
@@ -106,7 +100,7 @@ APU_DECLARE(apr_status_t) apr_password_validate(const char *passwd,
         /*
          * It's not our algorithm, so feed it to crypt() if possible.
          */
-#if CRYPT_MISSING
+#if defined(WIN32) || defined(BEOS) || defined(NETWARE)
         return (strcmp(passwd, hash) == 0) ? APR_SUCCESS : APR_EMISMATCH;
 #elif defined(CRYPT_R_CRYPTD)
         apr_status_t rv;

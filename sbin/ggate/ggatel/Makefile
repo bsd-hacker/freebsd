@@ -9,6 +9,7 @@ SRCS=	ggatel.c ggate.c
 CFLAGS+= -DLIBGEOM
 CFLAGS+= -I${.CURDIR}/../shared
 
-LIBADD=	geom util
+DPADD=	${LIBGEOM} ${LIBSBUF} ${LIBBSDXML} ${LIBUTIL}
+LDADD=	-lgeom -lsbuf -lbsdxml -lutil
 
 .include <bsd.prog.mk>

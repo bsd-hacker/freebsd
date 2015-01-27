@@ -4,7 +4,8 @@
 
 PROG=	rtquery
 MAN=	rtquery.8
-LIBADD=	md
+LDADD=	-lmd
+DPADD=	${LIBMD}
 WARNS?=	3
 NO_WARRAY_BOUNDS=
 

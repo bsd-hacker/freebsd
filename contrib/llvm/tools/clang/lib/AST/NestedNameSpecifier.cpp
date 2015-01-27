@@ -30,7 +30,7 @@ NestedNameSpecifier::FindOrInsert(const ASTContext &Context,
   llvm::FoldingSetNodeID ID;
   Mockup.Profile(ID);
 
-  void *InsertPos = nullptr;
+  void *InsertPos = 0;
   NestedNameSpecifier *NNS
     = Context.NestedNameSpecifiers.FindNodeOrInsertPos(ID, InsertPos);
   if (!NNS) {
@@ -61,8 +61,7 @@ NestedNameSpecifier::Create(const ASTContext &Context,
                             const NamespaceDecl *NS) {
   assert(NS && "Namespace cannot be NULL");
   assert((!Prefix ||
-          (Prefix->getAsType() == nullptr &&
-           Prefix->getAsIdentifier() == nullptr)) &&
+          (Prefix->getAsType() == 0 && Prefix->getAsIdentifier() == 0)) &&
          "Broken nested name specifier");
   NestedNameSpecifier Mockup;
   Mockup.Prefix.setPointer(Prefix);
@@ -77,8 +76,7 @@ NestedNameSpecifier::Create(const ASTContext &Context,
                             NamespaceAliasDecl *Alias) {
   assert(Alias && "Namespace alias cannot be NULL");
   assert((!Prefix ||
-          (Prefix->getAsType() == nullptr &&
-           Prefix->getAsIdentifier() == nullptr)) &&
+          (Prefix->getAsType() == 0 && Prefix->getAsIdentifier() == 0)) &&
          "Broken nested name specifier");
   NestedNameSpecifier Mockup;
   Mockup.Prefix.setPointer(Prefix);
@@ -103,7 +101,7 @@ NestedNameSpecifier *
 NestedNameSpecifier::Create(const ASTContext &Context, IdentifierInfo *II) {
   assert(II && "Identifier cannot be NULL");
   NestedNameSpecifier Mockup;
-  Mockup.Prefix.setPointer(nullptr);
+  Mockup.Prefix.setPointer(0);
   Mockup.Prefix.setInt(StoredIdentifier);
   Mockup.Specifier = II;
   return FindOrInsert(Context, Mockup);
@@ -119,7 +117,7 @@ NestedNameSpecifier::GlobalSpecifier(const ASTContext &Context) {
 }
 
 NestedNameSpecifier::SpecifierKind NestedNameSpecifier::getKind() const {
-  if (!Specifier)
+  if (Specifier == 0)
     return Global;
 
   switch (Prefix.getInt()) {
@@ -146,7 +144,7 @@ NamespaceDecl *NestedNameSpecifier::getAsNamespace() const {
   if (Prefix.getInt() == StoredNamespaceOrAlias)
     return dyn_cast<NamespaceDecl>(static_cast<NamedDecl *>(Specifier));
 
-  return nullptr;
+  return 0;
 }
 
 /// \brief Retrieve the namespace alias stored in this nested name
@@ -155,7 +153,7 @@ NamespaceAliasDecl *NestedNameSpecifier::getAsNamespaceAlias() const {
   if (Prefix.getInt() == StoredNamespaceOrAlias)
     return dyn_cast<NamespaceAliasDecl>(static_cast<NamedDecl *>(Specifier));
 
-  return nullptr;
+  return 0;
 }
 
 
@@ -439,7 +437,7 @@ namespace {
 
 NestedNameSpecifierLocBuilder::
 NestedNameSpecifierLocBuilder(const NestedNameSpecifierLocBuilder &Other) 
-  : Representation(Other.Representation), Buffer(nullptr),
+  : Representation(Other.Representation), Buffer(0),
     BufferSize(0), BufferCapacity(0)
 {
   if (!Other.Buffer)
@@ -453,8 +451,10 @@ NestedNameSpecifierLocBuilder(const NestedNameSpecifierLocBuilder &Other)
   }
   
   // Deep copy
-  Append(Other.Buffer, Other.Buffer + Other.BufferSize, Buffer, BufferSize,
-         BufferCapacity);
+  BufferSize = Other.BufferSize;
+  BufferCapacity = Other.BufferSize;
+  Buffer = static_cast<char *>(malloc(BufferCapacity));
+  memcpy(Buffer, Other.Buffer, BufferSize);
 }
 
 NestedNameSpecifierLocBuilder &
@@ -477,7 +477,7 @@ operator=(const NestedNameSpecifierLocBuilder &Other) {
   
   if (!Other.Buffer) {
     // Empty.
-    Buffer = nullptr;
+    Buffer = 0;
     BufferSize = 0;
     return *this;
   }
@@ -490,8 +490,10 @@ operator=(const NestedNameSpecifierLocBuilder &Other) {
   }
   
   // Deep copy.
-  Append(Other.Buffer, Other.Buffer + Other.BufferSize, Buffer, BufferSize,
-         BufferCapacity);
+  BufferSize = Other.BufferSize;
+  BufferCapacity = BufferSize;
+  Buffer = static_cast<char *>(malloc(BufferSize));
+  memcpy(Buffer, Other.Buffer, BufferSize);
   return *this;
 }
 
@@ -597,7 +599,7 @@ void NestedNameSpecifierLocBuilder::Adopt(NestedNameSpecifierLoc Other) {
     free(Buffer);
 
   if (!Other) {
-    Representation = nullptr;
+    Representation = 0;
     BufferSize = 0;
     return;
   }

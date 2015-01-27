@@ -14,7 +14,8 @@ CFLAGS+= -I${PAMDIR}/include -I${.CURDIR}/../../libpam
 NO_PIC=
 .else
 SHLIB_NAME?=	${LIB}.so.${SHLIB_MAJOR}
-LIBADD+=	pam
+DPADD+=		${LIBPAM}
+LDADD+=		-lpam
 .endif
 
 .include "../Makefile.inc"

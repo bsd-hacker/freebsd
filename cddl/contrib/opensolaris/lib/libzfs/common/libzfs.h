@@ -42,7 +42,6 @@
 #include <sys/fs/zfs.h>
 #include <sys/avl.h>
 #include <sys/zfs_ioctl.h>
-#include <libzfs_core.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -608,19 +607,13 @@ typedef struct sendflags {
 
 	/* show progress (ie. -v) */
 	boolean_t progress;
-
-	/* large blocks (>128K) are permitted */
-	boolean_t largeblock;
-
-	/* WRITE_EMBEDDED records of type DATA are permitted */
-	boolean_t embed_data;
 } sendflags_t;
 
 typedef boolean_t (snapfilter_cb_t)(zfs_handle_t *, void *);
 
 extern int zfs_send(zfs_handle_t *, const char *, const char *,
     sendflags_t *, int, snapfilter_cb_t, void *, nvlist_t **);
-extern int zfs_send_one(zfs_handle_t *, const char *, int, enum lzc_send_flags);
+extern int zfs_send_one(zfs_handle_t *, const char *, int);
 
 extern int zfs_promote(zfs_handle_t *);
 extern int zfs_hold(zfs_handle_t *, const char *, const char *,
@@ -789,10 +782,10 @@ extern boolean_t libzfs_fru_compare(libzfs_handle_t *, const char *,
 extern boolean_t libzfs_fru_notself(libzfs_handle_t *, const char *);
 extern int zpool_fru_set(zpool_handle_t *, uint64_t, const char *);
 
-#ifndef illumos
+#ifndef sun
 extern int zmount(const char *, const char *, int, char *, char *, int, char *,
     int);
-#endif
+#endif	/* !sun */
 
 #ifdef	__cplusplus
 }

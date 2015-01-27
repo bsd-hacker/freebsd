@@ -107,7 +107,6 @@ static int	vtnet_alloc_virtqueues(struct vtnet_softc *);
 static int	vtnet_setup_interface(struct vtnet_softc *);
 static int	vtnet_change_mtu(struct vtnet_softc *, int);
 static int	vtnet_ioctl(struct ifnet *, u_long, caddr_t);
-static uint64_t	vtnet_get_counter(struct ifnet *, ift_counter);
 
 static int	vtnet_rxq_populate(struct vtnet_rxq *);
 static void	vtnet_rxq_free_mbufs(struct vtnet_rxq *);
@@ -129,8 +128,6 @@ static int	vtnet_rxq_eof(struct vtnet_rxq *);
 static void	vtnet_rx_vq_intr(void *);
 static void	vtnet_rxq_tq_intr(void *, int);
 
-static int	vtnet_txq_below_threshold(struct vtnet_txq *);
-static int	vtnet_txq_notify(struct vtnet_txq *);
 static void	vtnet_txq_free_mbufs(struct vtnet_txq *);
 static int	vtnet_txq_offload_ctx(struct vtnet_txq *, struct mbuf *,
 		    int *, int *, int *);
@@ -152,7 +149,7 @@ static void	vtnet_txq_tq_deferred(void *, int);
 #endif
 static void	vtnet_txq_start(struct vtnet_txq *);
 static void	vtnet_txq_tq_intr(void *, int);
-static int	vtnet_txq_eof(struct vtnet_txq *);
+static void	vtnet_txq_eof(struct vtnet_txq *);
 static void	vtnet_tx_vq_intr(void *);
 static void	vtnet_tx_start_all(struct vtnet_softc *);
 
@@ -161,8 +158,11 @@ static void	vtnet_qflush(struct ifnet *);
 #endif
 
 static int	vtnet_watchdog(struct vtnet_txq *);
-static void	vtnet_accum_stats(struct vtnet_softc *,
-		    struct vtnet_rxq_stats *, struct vtnet_txq_stats *);
+static void	vtnet_rxq_accum_stats(struct vtnet_rxq *,
+		    struct vtnet_rxq_stats *);
+static void	vtnet_txq_accum_stats(struct vtnet_txq *,
+		    struct vtnet_txq_stats *);
+static void	vtnet_accumulate_stats(struct vtnet_softc *);
 static void	vtnet_tick(void *);
 
 static void	vtnet_start_taskqueues(struct vtnet_softc *);
@@ -206,8 +206,6 @@ static void	vtnet_ifmedia_sts(struct ifnet *, struct ifmediareq *);
 static void	vtnet_get_hwaddr(struct vtnet_softc *);
 static void	vtnet_set_hwaddr(struct vtnet_softc *);
 static void	vtnet_vlan_tag_remove(struct mbuf *);
-static void	vtnet_set_rx_process_limit(struct vtnet_softc *);
-static void	vtnet_set_tx_intr_threshold(struct vtnet_softc *);
 
 static void	vtnet_setup_rxq_sysctl(struct sysctl_ctx_list *,
 		    struct sysctl_oid_list *, struct vtnet_rxq *);
@@ -242,6 +240,19 @@ static int vtnet_mq_max_pairs = 0;
 TUNABLE_INT("hw.vtnet.mq_max_pairs", &vtnet_mq_max_pairs);
 static int vtnet_rx_process_limit = 512;
 TUNABLE_INT("hw.vtnet.rx_process_limit", &vtnet_rx_process_limit);
+
+/*
+ * Reducing the number of transmit completed interrupts can improve
+ * performance. To do so, the define below keeps the Tx vq interrupt
+ * disabled and adds calls to vtnet_txeof() in the start and watchdog
+ * paths. The price to pay for this is the m_free'ing of transmitted
+ * mbufs may be delayed until the watchdog fires.
+ *
+ * BMV: Reintroduce this later as a run-time option, if it makes
+ * sense after the EVENT_IDX feature is supported.
+ *
+ * #define VTNET_TX_INTR_MODERATION
+ */
 
 static uma_zone_t vtnet_tx_header_zone;
 
@@ -287,10 +298,6 @@ static device_method_t vtnet_methods[] = {
 	DEVMETHOD_END
 };
 
-#ifdef DEV_NETMAP
-#include <dev/netmap/if_vtnet_netmap.h>
-#endif /* DEV_NETMAP */
-
 static driver_t vtnet_driver = {
 	"vtnet",
 	vtnet_methods,
@@ -298,8 +305,6 @@ static driver_t vtnet_driver = {
 };
 static devclass_t vtnet_devclass;
 
-DRIVER_MODULE(vtnet, virtio_mmio, vtnet_driver, vtnet_devclass,
-    vtnet_modevent, 0);
 DRIVER_MODULE(vtnet, virtio_pci, vtnet_driver, vtnet_devclass,
     vtnet_modevent, 0);
 MODULE_VERSION(vtnet, 1);
@@ -399,10 +404,6 @@ vtnet_attach(device_t dev)
 		goto fail;
 	}
 
-#ifdef DEV_NETMAP
-	vtnet_netmap_attach(sc);
-#endif /* DEV_NETMAP */
-
 	vtnet_start_taskqueues(sc);
 
 fail:
@@ -431,10 +432,6 @@ vtnet_detach(device_t dev)
 
 		ether_ifdetach(ifp);
 	}
-
-#ifdef DEV_NETMAP
-	netmap_detach(ifp);
-#endif /* DEV_NETMAP */
 
 	vtnet_free_taskqueues(sc);
 
@@ -599,8 +596,6 @@ vtnet_setup_features(struct vtnet_softc *sc)
 
 	vtnet_negotiate_features(sc);
 
-	if (virtio_with_feature(dev, VIRTIO_RING_F_INDIRECT_DESC))
-		sc->vtnet_flags |= VTNET_FLAG_INDIRECT;
 	if (virtio_with_feature(dev, VIRTIO_RING_F_EVENT_IDX))
 		sc->vtnet_flags |= VTNET_FLAG_EVENT_IDX;
 
@@ -908,6 +903,7 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 {
 	device_t dev;
 	struct ifnet *ifp;
+	int limit;
 
 	dev = sc->vtnet_dev;
 
@@ -923,7 +919,7 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_init = vtnet_init;
 	ifp->if_ioctl = vtnet_ioctl;
-	ifp->if_get_counter = vtnet_get_counter;
+
 #ifndef VTNET_LEGACY_TX
 	ifp->if_transmit = vtnet_txq_mq_start;
 	ifp->if_qflush = vtnet_qflush;
@@ -949,7 +945,7 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 		ifp->if_capabilities |= IFCAP_LINKSTATE;
 
 	/* Tell the upper layer(s) we support long frames. */
-	ifp->if_hdrlen = sizeof(struct ether_vlan_header);
+	ifp->if_data.ifi_hdrlen = sizeof(struct ether_vlan_header);
 	ifp->if_capabilities |= IFCAP_JUMBO_MTU | IFCAP_VLAN_MTU;
 
 	if (virtio_with_feature(dev, VIRTIO_NET_F_CSUM)) {
@@ -971,13 +967,8 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 			ifp->if_capabilities |= IFCAP_VLAN_HWTSO;
 	}
 
-	if (virtio_with_feature(dev, VIRTIO_NET_F_GUEST_CSUM)) {
+	if (virtio_with_feature(dev, VIRTIO_NET_F_GUEST_CSUM))
 		ifp->if_capabilities |= IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6;
-
-		if (virtio_with_feature(dev, VIRTIO_NET_F_GUEST_TSO4) ||
-		    virtio_with_feature(dev, VIRTIO_NET_F_GUEST_TSO6))
-			ifp->if_capabilities |= IFCAP_LRO;
-	}
 
 	if (ifp->if_capabilities & IFCAP_HWCSUM) {
 		/*
@@ -996,6 +987,12 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 	 * Capabilities after here are not enabled by default.
 	 */
 
+	if (ifp->if_capabilities & IFCAP_RXCSUM) {
+		if (virtio_with_feature(dev, VIRTIO_NET_F_GUEST_TSO4) ||
+		    virtio_with_feature(dev, VIRTIO_NET_F_GUEST_TSO6))
+			ifp->if_capabilities |= IFCAP_LRO;
+	}
+
 	if (sc->vtnet_flags & VTNET_FLAG_VLAN_FILTER) {
 		ifp->if_capabilities |= IFCAP_VLAN_HWFILTER;
 
@@ -1005,8 +1002,11 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 		    vtnet_unregister_vlan, sc, EVENTHANDLER_PRI_FIRST);
 	}
 
-	vtnet_set_rx_process_limit(sc);
-	vtnet_set_tx_intr_threshold(sc);
+	limit = vtnet_tunable_int(sc, "rx_process_limit",
+	    vtnet_rx_process_limit);
+	if (limit < 0)
+		limit = INT_MAX;
+	sc->vtnet_rx_process_limit = limit;
 
 	return (0);
 }
@@ -1705,7 +1705,7 @@ vtnet_rxq_input(struct vtnet_rxq *rxq, struct mbuf *m,
 	}
 
 	m->m_pkthdr.flowid = rxq->vtnrx_id;
-	M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
+	m->m_flags |= M_FLOWID;
 
 	/*
 	 * BMV: FreeBSD does not have the UNNECESSARY and PARTIAL checksum
@@ -1747,12 +1747,6 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 	count = sc->vtnet_rx_process_limit;
 
 	VTNET_RXQ_LOCK_ASSERT(rxq);
-
-#ifdef DEV_NETMAP
-	if (netmap_rx_irq(ifp, 0, &deq)) {
-		return (FALSE);
-	}
-#endif /* DEV_NETMAP */
 
 	while (count-- > 0) {
 		m = virtqueue_dequeue(vq, &len);
@@ -1901,44 +1895,6 @@ vtnet_rxq_tq_intr(void *xrxq, int pending)
 	}
 
 	VTNET_RXQ_UNLOCK(rxq);
-}
-
-static int
-vtnet_txq_below_threshold(struct vtnet_txq *txq)
-{
-	struct vtnet_softc *sc;
-	struct virtqueue *vq;
-
-	sc = txq->vtntx_sc;
-	vq = txq->vtntx_vq;
-
-	return (virtqueue_nfree(vq) <= sc->vtnet_tx_intr_thresh);
-}
-
-static int
-vtnet_txq_notify(struct vtnet_txq *txq)
-{
-	struct virtqueue *vq;
-
-	vq = txq->vtntx_vq;
-
-	txq->vtntx_watchdog = VTNET_TX_TIMEOUT;
-	virtqueue_notify(vq);
-
-	if (vtnet_txq_enable_intr(txq) == 0)
-		return (0);
-
-	/*
-	 * Drain frames that were completed since last checked. If this
-	 * causes the queue to go above the threshold, the caller should
-	 * continue transmitting.
-	 */
-	if (vtnet_txq_eof(txq) != 0 && vtnet_txq_below_threshold(txq) == 0) {
-		virtqueue_disable_intr(vq);
-		return (1);
-	}
-
-	return (0);
 }
 
 static void
@@ -2215,11 +2171,11 @@ vtnet_start_locked(struct vtnet_txq *txq, struct ifnet *ifp)
 	struct vtnet_softc *sc;
 	struct virtqueue *vq;
 	struct mbuf *m0;
-	int tries, enq;
+	int enq;
 
 	sc = txq->vtntx_sc;
 	vq = txq->vtntx_vq;
-	tries = 0;
+	enq = 0;
 
 	VTNET_TXQ_LOCK_ASSERT(txq);
 
@@ -2228,9 +2184,6 @@ vtnet_start_locked(struct vtnet_txq *txq, struct ifnet *ifp)
 		return;
 
 	vtnet_txq_eof(txq);
-
-again:
-	enq = 0;
 
 	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
 		if (virtqueue_full(vq))
@@ -2250,12 +2203,9 @@ again:
 		ETHER_BPF_MTAP(ifp, m0);
 	}
 
-	if (enq > 0 && vtnet_txq_notify(txq) != 0) {
-		if (tries++ < VTNET_NOTIFY_RETRIES)
-			goto again;
-
-		txq->vtntx_stats.vtxs_rescheduled++;
-		taskqueue_enqueue(txq->vtntx_tq, &txq->vtntx_intrtask);
+	if (enq > 0) {
+		virtqueue_notify(vq);
+		txq->vtntx_watchdog = VTNET_TX_TIMEOUT;
 	}
 }
 
@@ -2282,13 +2232,13 @@ vtnet_txq_mq_start_locked(struct vtnet_txq *txq, struct mbuf *m)
 	struct virtqueue *vq;
 	struct buf_ring *br;
 	struct ifnet *ifp;
-	int enq, tries, error;
+	int enq, error;
 
 	sc = txq->vtntx_sc;
 	vq = txq->vtntx_vq;
 	br = txq->vtntx_br;
 	ifp = sc->vtnet_ifp;
-	tries = 0;
+	enq = 0;
 	error = 0;
 
 	VTNET_TXQ_LOCK_ASSERT(txq);
@@ -2308,16 +2258,14 @@ vtnet_txq_mq_start_locked(struct vtnet_txq *txq, struct mbuf *m)
 
 	vtnet_txq_eof(txq);
 
-again:
-	enq = 0;
-
 	while ((m = drbr_peek(ifp, br)) != NULL) {
 		if (virtqueue_full(vq)) {
 			drbr_putback(ifp, br, m);
 			break;
 		}
 
-		if (vtnet_txq_encap(txq, &m) != 0) {
+		error = vtnet_txq_encap(txq, &m);
+		if (error) {
 			if (m != NULL)
 				drbr_putback(ifp, br, m);
 			else
@@ -2330,12 +2278,9 @@ again:
 		ETHER_BPF_MTAP(ifp, m);
 	}
 
-	if (enq > 0 && vtnet_txq_notify(txq) != 0) {
-		if (tries++ < VTNET_NOTIFY_RETRIES)
-			goto again;
-
-		txq->vtntx_stats.vtxs_rescheduled++;
-		taskqueue_enqueue(txq->vtntx_tq, &txq->vtntx_intrtask);
+	if (enq > 0) {
+		virtqueue_notify(vq);
+		txq->vtntx_watchdog = VTNET_TX_TIMEOUT;
 	}
 
 	return (0);
@@ -2351,8 +2296,7 @@ vtnet_txq_mq_start(struct ifnet *ifp, struct mbuf *m)
 	sc = ifp->if_softc;
 	npairs = sc->vtnet_act_vq_pairs;
 
-	/* check if flowid is set */
-	if (M_HASHTYPE_GET(m) != M_HASHTYPE_NONE)
+	if (m->m_flags & M_FLOWID)
 		i = m->m_pkthdr.flowid % npairs;
 	else
 		i = curcpu % npairs;
@@ -2424,33 +2368,30 @@ vtnet_txq_tq_intr(void *xtxq, int pending)
 	}
 
 	vtnet_txq_eof(txq);
+
 	vtnet_txq_start(txq);
+
+	if (vtnet_txq_enable_intr(txq) != 0) {
+		vtnet_txq_disable_intr(txq);
+		txq->vtntx_stats.vtxs_rescheduled++;
+		taskqueue_enqueue(txq->vtntx_tq, &txq->vtntx_intrtask);
+	}
 
 	VTNET_TXQ_UNLOCK(txq);
 }
 
-static int
+static void
 vtnet_txq_eof(struct vtnet_txq *txq)
 {
 	struct virtqueue *vq;
 	struct vtnet_tx_header *txhdr;
 	struct mbuf *m;
-	int deq;
 
 	vq = txq->vtntx_vq;
-	deq = 0;
 	VTNET_TXQ_LOCK_ASSERT(txq);
-
-#ifdef DEV_NETMAP
-	if (netmap_tx_irq(txq->vtntx_sc->vtnet_ifp, txq->vtntx_id)) {
-		virtqueue_disable_intr(vq); // XXX luigi
-		return 0; // XXX or 1 ?
-	}
-#endif /* DEV_NETMAP */
 
 	while ((txhdr = virtqueue_dequeue(vq, NULL)) != NULL) {
 		m = txhdr->vth_mbuf;
-		deq++;
 
 		txq->vtntx_stats.vtxs_opackets++;
 		txq->vtntx_stats.vtxs_obytes += m->m_pkthdr.len;
@@ -2463,8 +2404,6 @@ vtnet_txq_eof(struct vtnet_txq *txq)
 
 	if (virtqueue_empty(vq))
 		txq->vtntx_watchdog = 0;
-
-	return (deq);
 }
 
 static void
@@ -2473,10 +2412,12 @@ vtnet_tx_vq_intr(void *xtxq)
 	struct vtnet_softc *sc;
 	struct vtnet_txq *txq;
 	struct ifnet *ifp;
+	int tries;
 
 	txq = xtxq;
 	sc = txq->vtntx_sc;
 	ifp = sc->vtnet_ifp;
+	tries = 0;
 
 	if (__predict_false(txq->vtntx_id >= sc->vtnet_act_vq_pairs)) {
 		/*
@@ -2491,15 +2432,30 @@ vtnet_tx_vq_intr(void *xtxq)
 
 	VTNET_TXQ_LOCK(txq);
 
+again:
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
 		VTNET_TXQ_UNLOCK(txq);
 		return;
 	}
 
 	vtnet_txq_eof(txq);
+
 	vtnet_txq_start(txq);
 
-	VTNET_TXQ_UNLOCK(txq);
+	if (vtnet_txq_enable_intr(txq) != 0) {
+		vtnet_txq_disable_intr(txq);
+		/*
+		 * This is an occasional race, so retry a few times
+		 * before scheduling the taskqueue.
+		 */
+		if (tries++ < VTNET_INTR_DISABLE_RETRIES)
+			goto again;
+
+		VTNET_TXQ_UNLOCK(txq);
+		txq->vtntx_stats.vtxs_rescheduled++;
+		taskqueue_enqueue(txq->vtntx_tq, &txq->vtntx_intrtask);
+	} else
+		VTNET_TXQ_UNLOCK(txq);
 }
 
 static void
@@ -2546,91 +2502,93 @@ vtnet_qflush(struct ifnet *ifp)
 static int
 vtnet_watchdog(struct vtnet_txq *txq)
 {
-	struct ifnet *ifp;
+	struct vtnet_softc *sc;
 
-	ifp = txq->vtntx_sc->vtnet_ifp;
+	sc = txq->vtntx_sc;
 
 	VTNET_TXQ_LOCK(txq);
-	if (txq->vtntx_watchdog == 1) {
-		/*
-		 * Only drain completed frames if the watchdog is about to
-		 * expire. If any frames were drained, there may be enough
-		 * free descriptors now available to transmit queued frames.
-		 * In that case, the timer will immediately be decremented
-		 * below, but the timeout is generous enough that should not
-		 * be a problem.
-		 */
-		if (vtnet_txq_eof(txq) != 0)
-			vtnet_txq_start(txq);
-	}
-
+	if (sc->vtnet_flags & VTNET_FLAG_EVENT_IDX)
+		vtnet_txq_eof(txq);
 	if (txq->vtntx_watchdog == 0 || --txq->vtntx_watchdog) {
 		VTNET_TXQ_UNLOCK(txq);
 		return (0);
 	}
 	VTNET_TXQ_UNLOCK(txq);
 
-	if_printf(ifp, "watchdog timeout on queue %d\n", txq->vtntx_id);
+	if_printf(sc->vtnet_ifp, "watchdog timeout on queue %d\n",
+	    txq->vtntx_id);
 	return (1);
 }
 
 static void
-vtnet_accum_stats(struct vtnet_softc *sc, struct vtnet_rxq_stats *rxacc,
-    struct vtnet_txq_stats *txacc)
+vtnet_rxq_accum_stats(struct vtnet_rxq *rxq, struct vtnet_rxq_stats *accum)
 {
+	struct vtnet_rxq_stats *st;
 
-	bzero(rxacc, sizeof(struct vtnet_rxq_stats));
-	bzero(txacc, sizeof(struct vtnet_txq_stats));
+	st = &rxq->vtnrx_stats;
 
-	for (int i = 0; i < sc->vtnet_max_vq_pairs; i++) {
-		struct vtnet_rxq_stats *rxst;
-		struct vtnet_txq_stats *txst;
-
-		rxst = &sc->vtnet_rxqs[i].vtnrx_stats;
-		rxacc->vrxs_ipackets += rxst->vrxs_ipackets;
-		rxacc->vrxs_ibytes += rxst->vrxs_ibytes;
-		rxacc->vrxs_iqdrops += rxst->vrxs_iqdrops;
-		rxacc->vrxs_csum += rxst->vrxs_csum;
-		rxacc->vrxs_csum_failed += rxst->vrxs_csum_failed;
-		rxacc->vrxs_rescheduled += rxst->vrxs_rescheduled;
-
-		txst = &sc->vtnet_txqs[i].vtntx_stats;
-		txacc->vtxs_opackets += txst->vtxs_opackets;
-		txacc->vtxs_obytes += txst->vtxs_obytes;
-		txacc->vtxs_csum += txst->vtxs_csum;
-		txacc->vtxs_tso += txst->vtxs_tso;
-		txacc->vtxs_rescheduled += txst->vtxs_rescheduled;
-	}
+	accum->vrxs_ipackets += st->vrxs_ipackets;
+	accum->vrxs_ibytes += st->vrxs_ibytes;
+	accum->vrxs_iqdrops += st->vrxs_iqdrops;
+	accum->vrxs_csum += st->vrxs_csum;
+	accum->vrxs_csum_failed += st->vrxs_csum_failed;
+	accum->vrxs_rescheduled += st->vrxs_rescheduled;
 }
 
-static uint64_t
-vtnet_get_counter(if_t ifp, ift_counter cnt)
+static void
+vtnet_txq_accum_stats(struct vtnet_txq *txq, struct vtnet_txq_stats *accum)
 {
-	struct vtnet_softc *sc;
+	struct vtnet_txq_stats *st;
+
+	st = &txq->vtntx_stats;
+
+	accum->vtxs_opackets += st->vtxs_opackets;
+	accum->vtxs_obytes += st->vtxs_obytes;
+	accum->vtxs_csum += st->vtxs_csum;
+	accum->vtxs_tso += st->vtxs_tso;
+	accum->vtxs_rescheduled += st->vtxs_rescheduled;
+}
+
+static void
+vtnet_accumulate_stats(struct vtnet_softc *sc)
+{
+	struct ifnet *ifp;
+	struct vtnet_statistics *st;
 	struct vtnet_rxq_stats rxaccum;
 	struct vtnet_txq_stats txaccum;
+	int i;
 
-	sc = if_getsoftc(ifp);
-	vtnet_accum_stats(sc, &rxaccum, &txaccum);
+	ifp = sc->vtnet_ifp;
+	st = &sc->vtnet_stats;
+	bzero(&rxaccum, sizeof(struct vtnet_rxq_stats));
+	bzero(&txaccum, sizeof(struct vtnet_txq_stats));
 
-	switch (cnt) {
-	case IFCOUNTER_IPACKETS:
-		return (rxaccum.vrxs_ipackets);
-	case IFCOUNTER_IQDROPS:
-		return (rxaccum.vrxs_iqdrops);
-	case IFCOUNTER_IERRORS:
-		return (rxaccum.vrxs_ierrors);
-	case IFCOUNTER_OPACKETS:
-		return (txaccum.vtxs_opackets);
-#ifndef VTNET_LEGACY_TX
-	case IFCOUNTER_OBYTES:
-		return (txaccum.vtxs_obytes);
-	case IFCOUNTER_OMCASTS:
-		return (txaccum.vtxs_omcasts);
-#endif
-	default:
-		return (if_get_counter_default(ifp, cnt));
+	for (i = 0; i < sc->vtnet_max_vq_pairs; i++) {
+		vtnet_rxq_accum_stats(&sc->vtnet_rxqs[i], &rxaccum);
+		vtnet_txq_accum_stats(&sc->vtnet_txqs[i], &txaccum);
 	}
+
+	st->rx_csum_offloaded = rxaccum.vrxs_csum;
+	st->rx_csum_failed = rxaccum.vrxs_csum_failed;
+	st->rx_task_rescheduled = rxaccum.vrxs_rescheduled;
+	st->tx_csum_offloaded = txaccum.vtxs_csum;
+	st->tx_tso_offloaded = txaccum.vtxs_tso;
+	st->tx_task_rescheduled = txaccum.vtxs_rescheduled;
+
+	/*
+	 * With the exception of if_ierrors, these ifnet statistics are
+	 * only updated in the driver, so just set them to our accumulated
+	 * values. if_ierrors is updated in ether_input() for malformed
+	 * frames that we should have already discarded.
+	 */
+	ifp->if_ipackets = rxaccum.vrxs_ipackets;
+	ifp->if_iqdrops = rxaccum.vrxs_iqdrops;
+	ifp->if_ierrors = rxaccum.vrxs_ierrors;
+	ifp->if_opackets = txaccum.vtxs_opackets;
+#ifndef VTNET_LEGACY_TX
+	ifp->if_obytes = txaccum.vtxs_obytes;
+	ifp->if_omcasts = txaccum.vtxs_omcasts;
+#endif
 }
 
 static void
@@ -2645,6 +2603,7 @@ vtnet_tick(void *xsc)
 	timedout = 0;
 
 	VTNET_CORE_LOCK_ASSERT(sc);
+	vtnet_accumulate_stats(sc);
 
 	for (i = 0; i < sc->vtnet_act_vq_pairs; i++)
 		timedout |= vtnet_watchdog(&sc->vtnet_txqs[i]);
@@ -2909,11 +2868,6 @@ vtnet_init_rx_queues(struct vtnet_softc *sc)
 	    ("%s: too many rx mbufs %d for %d segments", __func__,
 	    sc->vtnet_rx_nmbufs, sc->vtnet_rx_nsegs));
 
-#ifdef DEV_NETMAP
-	if (vtnet_netmap_init_rx_buffers(sc))
-		return 0;
-#endif /* DEV_NETMAP */
-
 	for (i = 0; i < sc->vtnet_act_vq_pairs; i++) {
 		rxq = &sc->vtnet_rxqs[i];
 
@@ -3008,9 +2962,9 @@ vtnet_reinit(struct vtnet_softc *sc)
 	if (ifp->if_capenable & IFCAP_TXCSUM_IPV6)
 		ifp->if_hwassist |= VTNET_CSUM_OFFLOAD_IPV6;
 	if (ifp->if_capenable & IFCAP_TSO4)
-		ifp->if_hwassist |= CSUM_IP_TSO;
+		ifp->if_hwassist |= CSUM_TSO;
 	if (ifp->if_capenable & IFCAP_TSO6)
-		ifp->if_hwassist |= CSUM_IP6_TSO;
+		ifp->if_hwassist |= CSUM_TSO; /* No CSUM_TSO_IPV6. */
 
 	if (sc->vtnet_flags & VTNET_FLAG_CTRL_VQ)
 		vtnet_init_rx_filters(sc);
@@ -3065,13 +3019,6 @@ vtnet_init(void *xsc)
 	struct vtnet_softc *sc;
 
 	sc = xsc;
-
-#ifdef DEV_NETMAP
-	if (!NA(sc->vtnet_ifp)) {
-		D("try to attach again");
-		vtnet_netmap_attach(sc);
-	}
-#endif /* DEV_NETMAP */
 
 	VTNET_CORE_LOCK(sc);
 	vtnet_init_locked(sc);
@@ -3619,50 +3566,6 @@ vtnet_vlan_tag_remove(struct mbuf *m)
 }
 
 static void
-vtnet_set_rx_process_limit(struct vtnet_softc *sc)
-{
-	int limit;
-
-	limit = vtnet_tunable_int(sc, "rx_process_limit",
-	    vtnet_rx_process_limit);
-	if (limit < 0)
-		limit = INT_MAX;
-	sc->vtnet_rx_process_limit = limit;
-}
-
-static void
-vtnet_set_tx_intr_threshold(struct vtnet_softc *sc)
-{
-	device_t dev;
-	int size, thresh;
-
-	dev = sc->vtnet_dev;
-	size = virtqueue_size(sc->vtnet_txqs[0].vtntx_vq);
-
-	/*
-	 * The Tx interrupt is disabled until the queue free count falls
-	 * below our threshold. Completed frames are drained from the Tx
-	 * virtqueue before transmitting new frames and in the watchdog
-	 * callout, so the frequency of Tx interrupts is greatly reduced,
-	 * at the cost of not freeing mbufs as quickly as they otherwise
-	 * would be.
-	 *
-	 * N.B. We assume all the Tx queues are the same size.
-	 */
-	thresh = size / 4;
-
-	/*
-	 * Without indirect descriptors, leave enough room for the most
-	 * segments we handle.
-	 */
-	if ((sc->vtnet_flags & VTNET_FLAG_INDIRECT) == 0 &&
-	    thresh < sc->vtnet_tx_nsegs)
-		thresh = sc->vtnet_tx_nsegs;
-
-	sc->vtnet_tx_intr_thresh = thresh;
-}
-
-static void
 vtnet_setup_rxq_sysctl(struct sysctl_ctx_list *ctx,
     struct sysctl_oid_list *child, struct vtnet_rxq *rxq)
 {
@@ -3751,18 +3654,8 @@ vtnet_setup_stat_sysctl(struct sysctl_ctx_list *ctx,
     struct sysctl_oid_list *child, struct vtnet_softc *sc)
 {
 	struct vtnet_statistics *stats;
-	struct vtnet_rxq_stats rxaccum;
-	struct vtnet_txq_stats txaccum;
-
-	vtnet_accum_stats(sc, &rxaccum, &txaccum);
 
 	stats = &sc->vtnet_stats;
-	stats->rx_csum_offloaded = rxaccum.vrxs_csum;
-	stats->rx_csum_failed = rxaccum.vrxs_csum_failed;
-	stats->rx_task_rescheduled = rxaccum.vrxs_rescheduled;
-	stats->tx_csum_offloaded = txaccum.vtxs_csum;
-	stats->tx_tso_offloaded = txaccum.vtxs_tso;
-	stats->tx_task_rescheduled = txaccum.vtxs_rescheduled;
 
 	SYSCTL_ADD_UQUAD(ctx, child, OID_AUTO, "mbuf_alloc_failed",
 	    CTLFLAG_RD, &stats->mbuf_alloc_failed,
@@ -3867,18 +3760,8 @@ vtnet_rxq_disable_intr(struct vtnet_rxq *rxq)
 static int
 vtnet_txq_enable_intr(struct vtnet_txq *txq)
 {
-	struct virtqueue *vq;
 
-	vq = txq->vtntx_vq;
-
-	if (vtnet_txq_below_threshold(txq) != 0)
-		return (virtqueue_postpone_intr(vq, VQ_POSTPONE_LONG));
-
-	/*
-	 * The free count is above our threshold. Keep the Tx interrupt
-	 * disabled until the queue is fuller.
-	 */
-	return (0);
+	return (virtqueue_postpone_intr(txq->vtntx_vq, VQ_POSTPONE_LONG));
 }
 
 static void

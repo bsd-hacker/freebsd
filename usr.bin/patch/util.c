@@ -202,22 +202,6 @@ savestr(const char *s)
 }
 
 /*
- * Allocate a unique area for a string.  Call fatal if out of memory.
- */
-char *
-xstrdup(const char *s)
-{
-	char	*rv;
-
-	if (!s)
-		s = "Oops";
-	rv = strdup(s);
-	if (rv == NULL)
-		fatal("out of memory\n");
-	return rv;
-}
-
-/*
  * Vanilla terminal output (buffered).
  */
 void
@@ -428,7 +412,7 @@ checked_in(char *file)
 void
 version(void)
 {
-	printf("patch 2.0-12u10 FreeBSD\n");
+	fprintf(stderr, "patch 2.0-12u10 FreeBSD\n");
 	my_exit(EXIT_SUCCESS);
 }
 

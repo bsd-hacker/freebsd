@@ -38,7 +38,7 @@ public:
     bool equals(const LivenessValues &V) const;
 
     LivenessValues()
-      : liveStmts(nullptr), liveDecls(nullptr) {}
+      : liveStmts(0), liveDecls(0) {}
 
     LivenessValues(llvm::ImmutableSet<const Stmt *> LiveStmts,
                    llvm::ImmutableSet<const VarDecl *> LiveDecls)

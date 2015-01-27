@@ -3,6 +3,7 @@
 
 PROG=	usbhidaction
 
-LIBADD=	usbhid
+LDADD=	-lusbhid
+DPADD=	${LIBUSBHID}
 
 .include <bsd.prog.mk>

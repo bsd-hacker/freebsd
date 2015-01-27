@@ -4,6 +4,7 @@
 PROG=	dmesg
 MAN=	dmesg.8
 
-LIBADD=	kvm
+LDADD=	-lkvm
+DPADD=	${LIBKVM}
 
 .include <bsd.prog.mk>

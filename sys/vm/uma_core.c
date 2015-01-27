@@ -73,7 +73,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
-#include <sys/random.h>
 #include <sys/rwlock.h>
 #include <sys/sbuf.h>
 #include <sys/sched.h>
@@ -136,8 +135,8 @@ static LIST_HEAD(,uma_keg) uma_kegs = LIST_HEAD_INITIALIZER(uma_kegs);
 static LIST_HEAD(,uma_zone) uma_cachezones =
     LIST_HEAD_INITIALIZER(uma_cachezones);
 
-/* This RW lock protects the keg list */
-static struct rwlock_padalign uma_rwlock;
+/* This mutex protects the keg list */
+static struct mtx_padalign uma_mtx;
 
 /* Linked list of boot time pages */
 static LIST_HEAD(,uma_slab) uma_boot_pages =
@@ -145,8 +144,6 @@ static LIST_HEAD(,uma_slab) uma_boot_pages =
 
 /* This mutex protects the boot time pages list */
 static struct mtx_padalign uma_boot_pages_mtx;
-
-static struct sx uma_drain_lock;
 
 /* Is the VM done starting up? */
 static int booted = 0;
@@ -284,7 +281,8 @@ SYSCTL_PROC(_vm, OID_AUTO, zone_stats, CTLFLAG_RD|CTLTYPE_STRUCT,
     0, 0, sysctl_vm_zone_stats, "s,struct uma_type_header", "Zone Stats");
 
 static int zone_warnings = 1;
-SYSCTL_INT(_vm, OID_AUTO, zone_warnings, CTLFLAG_RWTUN, &zone_warnings, 0,
+TUNABLE_INT("vm.zone_warnings", &zone_warnings);
+SYSCTL_INT(_vm, OID_AUTO, zone_warnings, CTLFLAG_RW, &zone_warnings, 0,
     "Warn when UMA zones becomes full");
 
 /*
@@ -900,14 +898,16 @@ zone_drain_wait(uma_zone_t zone, int waitok)
 	while (zone->uz_flags & UMA_ZFLAG_DRAINING) {
 		if (waitok == M_NOWAIT)
 			goto out;
+		mtx_unlock(&uma_mtx);
 		msleep(zone, zone->uz_lockptr, PVM, "zonedrain", 1);
+		mtx_lock(&uma_mtx);
 	}
 	zone->uz_flags |= UMA_ZFLAG_DRAINING;
 	bucket_cache_drain(zone);
 	ZONE_UNLOCK(zone);
 	/*
 	 * The DRAINING flag protects us from being freed while
-	 * we're running.  Normally the uma_rwlock would protect us but we
+	 * we're running.  Normally the uma_mtx would protect us but we
 	 * must be able to release and acquire the right lock for each keg.
 	 */
 	zone_foreach_keg(zone, &keg_drain);
@@ -1543,9 +1543,9 @@ keg_ctor(void *mem, int size, void *udata, int flags)
 
 	LIST_INSERT_HEAD(&keg->uk_zones, zone, uz_link);
 
-	rw_wlock(&uma_rwlock);
+	mtx_lock(&uma_mtx);
 	LIST_INSERT_HEAD(&uma_kegs, keg, uk_link);
-	rw_wunlock(&uma_rwlock);
+	mtx_unlock(&uma_mtx);
 	return (0);
 }
 
@@ -1595,9 +1595,9 @@ zone_ctor(void *mem, int size, void *udata, int flags)
 		zone->uz_release = arg->release;
 		zone->uz_arg = arg->arg;
 		zone->uz_lockptr = &zone->uz_lock;
-		rw_wlock(&uma_rwlock);
+		mtx_lock(&uma_mtx);
 		LIST_INSERT_HEAD(&uma_cachezones, zone, uz_link);
-		rw_wunlock(&uma_rwlock);
+		mtx_unlock(&uma_mtx);
 		goto out;
 	}
 
@@ -1614,7 +1614,7 @@ zone_ctor(void *mem, int size, void *udata, int flags)
 		zone->uz_fini = arg->fini;
 		zone->uz_lockptr = &keg->uk_lock;
 		zone->uz_flags |= UMA_ZONE_SECONDARY;
-		rw_wlock(&uma_rwlock);
+		mtx_lock(&uma_mtx);
 		ZONE_LOCK(zone);
 		LIST_FOREACH(z, &keg->uk_zones, uz_link) {
 			if (LIST_NEXT(z, uz_link) == NULL) {
@@ -1623,7 +1623,7 @@ zone_ctor(void *mem, int size, void *udata, int flags)
 			}
 		}
 		ZONE_UNLOCK(zone);
-		rw_wunlock(&uma_rwlock);
+		mtx_unlock(&uma_mtx);
 	} else if (keg == NULL) {
 		if ((keg = uma_kcreate(zone, arg->size, arg->uminit, arg->fini,
 		    arg->align, arg->flags)) == NULL)
@@ -1721,9 +1721,9 @@ zone_dtor(void *arg, int size, void *udata)
 	if (!(zone->uz_flags & UMA_ZFLAG_INTERNAL))
 		cache_drain(zone);
 
-	rw_wlock(&uma_rwlock);
+	mtx_lock(&uma_mtx);
 	LIST_REMOVE(zone, uz_link);
-	rw_wunlock(&uma_rwlock);
+	mtx_unlock(&uma_mtx);
 	/*
 	 * XXX there are some races here where
 	 * the zone can be drained but zone lock
@@ -1745,9 +1745,9 @@ zone_dtor(void *arg, int size, void *udata)
 	 * We only destroy kegs from non secondary zones.
 	 */
 	if (keg != NULL && (zone->uz_flags & UMA_ZONE_SECONDARY) == 0)  {
-		rw_wlock(&uma_rwlock);
+		mtx_lock(&uma_mtx);
 		LIST_REMOVE(keg, uk_link);
-		rw_wunlock(&uma_rwlock);
+		mtx_unlock(&uma_mtx);
 		zone_free_item(kegs, keg, NULL, SKIP_NONE);
 	}
 	ZONE_LOCK_FINI(zone);
@@ -1769,12 +1769,12 @@ zone_foreach(void (*zfunc)(uma_zone_t))
 	uma_keg_t keg;
 	uma_zone_t zone;
 
-	rw_rlock(&uma_rwlock);
+	mtx_lock(&uma_mtx);
 	LIST_FOREACH(keg, &uma_kegs, uk_link) {
 		LIST_FOREACH(zone, &keg->uk_zones, uz_link)
 			zfunc(zone);
 	}
-	rw_runlock(&uma_rwlock);
+	mtx_unlock(&uma_mtx);
 }
 
 /* Public functions */
@@ -1790,7 +1790,7 @@ uma_startup(void *bootmem, int boot_pages)
 #ifdef UMA_DEBUG
 	printf("Creating uma keg headers zone and keg.\n");
 #endif
-	rw_init(&uma_rwlock, "UMA lock");
+	mtx_init(&uma_mtx, "UMA lock", NULL, MTX_DEF);
 
 	/* "manually" create the initial zone */
 	memset(&args, 0, sizeof(args));
@@ -1834,6 +1834,9 @@ uma_startup(void *bootmem, int boot_pages)
 	zone_ctor(zones, sizeof(struct uma_zone), &args, M_WAITOK);
 
 #ifdef UMA_DEBUG
+	printf("Initializing pcpu cache locks.\n");
+#endif
+#ifdef UMA_DEBUG
 	printf("Creating slab and hash zones.\n");
 #endif
 
@@ -1875,7 +1878,6 @@ uma_startup2(void)
 {
 	booted = UMA_STARTUP2;
 	bucket_enable();
-	sx_init(&uma_drain_lock, "umadrain");
 #ifdef UMA_DEBUG
 	printf("UMA startup2 complete.\n");
 #endif
@@ -1930,8 +1932,6 @@ uma_zcreate(const char *name, size_t size, uma_ctor ctor, uma_dtor dtor,
 
 {
 	struct uma_zctor_args args;
-	uma_zone_t res;
-	bool locked;
 
 	/* This stuff is essential for the zone ctor */
 	memset(&args, 0, sizeof(args));
@@ -1945,16 +1945,7 @@ uma_zcreate(const char *name, size_t size, uma_ctor ctor, uma_dtor dtor,
 	args.flags = flags;
 	args.keg = NULL;
 
-	if (booted < UMA_STARTUP2) {
-		locked = false;
-	} else {
-		sx_slock(&uma_drain_lock);
-		locked = true;
-	}
-	res = zone_alloc_item(zones, &args, M_WAITOK);
-	if (locked)
-		sx_sunlock(&uma_drain_lock);
-	return (res);
+	return (zone_alloc_item(zones, &args, M_WAITOK));
 }
 
 /* See uma.h */
@@ -1964,8 +1955,6 @@ uma_zsecond_create(char *name, uma_ctor ctor, uma_dtor dtor,
 {
 	struct uma_zctor_args args;
 	uma_keg_t keg;
-	uma_zone_t res;
-	bool locked;
 
 	keg = zone_first_keg(master);
 	memset(&args, 0, sizeof(args));
@@ -1979,17 +1968,8 @@ uma_zsecond_create(char *name, uma_ctor ctor, uma_dtor dtor,
 	args.flags = keg->uk_flags | UMA_ZONE_SECONDARY;
 	args.keg = keg;
 
-	if (booted < UMA_STARTUP2) {
-		locked = false;
-	} else {
-		sx_slock(&uma_drain_lock);
-		locked = true;
-	}
 	/* XXX Attaches only one keg of potentially many. */
-	res = zone_alloc_item(zones, &args, M_WAITOK);
-	if (locked)
-		sx_sunlock(&uma_drain_lock);
-	return (res);
+	return (zone_alloc_item(zones, &args, M_WAITOK));
 }
 
 /* See uma.h */
@@ -2107,9 +2087,7 @@ void
 uma_zdestroy(uma_zone_t zone)
 {
 
-	sx_slock(&uma_drain_lock);
 	zone_free_item(zones, zone, NULL, SKIP_NONE);
-	sx_sunlock(&uma_drain_lock);
 }
 
 /* See uma.h */
@@ -2121,12 +2099,6 @@ uma_zalloc_arg(uma_zone_t zone, void *udata, int flags)
 	uma_bucket_t bucket;
 	int lockfail;
 	int cpu;
-
-#if 0
-	/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-	/* The entropy here is desirable, but the harvesting is expensive */
-	random_harvest(&(zone->uz_name), sizeof(void *), 1, RANDOM_UMA_ALLOC);
-#endif
 
 	/* This is the fast path allocation */
 #ifdef UMA_DEBUG_ALLOC_1
@@ -2158,11 +2130,6 @@ uma_zalloc_arg(uma_zone_t zone, void *udata, int flags)
 			    	zone->uz_fini(item, zone->uz_size);
 				return (NULL);
 			}
-#if 0
-			/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-			/* The entropy here is desirable, but the harvesting is expensive */
-			random_harvest(&item, sizeof(void *), 1, RANDOM_UMA_ALLOC);
-#endif
 			return (item);
 		}
 		/* This is unfortunate but should not be fatal. */
@@ -2205,11 +2172,6 @@ zalloc_start:
 #endif
 		if (flags & M_ZERO)
 			uma_zero_item(item, zone);
-#if 0
-		/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-		/* The entropy here is desirable, but the harvesting is expensive */
-		random_harvest(&item, sizeof(void *), 1, RANDOM_UMA_ALLOC);
-#endif
 		return (item);
 	}
 
@@ -2330,11 +2292,6 @@ zalloc_start:
 zalloc_item:
 	item = zone_alloc_item(zone, udata, flags);
 
-#if 0
-	/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-	/* The entropy here is desirable, but the harvesting is expensive */
-	random_harvest(&item, sizeof(void *), 1, RANDOM_UMA_ALLOC);
-#endif
 	return (item);
 }
 
@@ -2681,19 +2638,6 @@ uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
 	uma_bucket_t bucket;
 	int lockfail;
 	int cpu;
-
-#if 0
-	/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-	/* The entropy here is desirable, but the harvesting is expensive */
-	struct entropy {
-		const void *uz_name;
-		const void *item;
-	} entropy;
-
-	entropy.uz_name = zone->uz_name;
-	entropy.item = item;
-	random_harvest(&entropy, sizeof(struct entropy), 2, RANDOM_UMA_ALLOC);
-#endif
 
 #ifdef UMA_DEBUG_ALLOC_1
 	printf("Freeing item %p to %s(%p)\n", item, zone->uz_name, zone);
@@ -3229,7 +3173,6 @@ uma_reclaim(void)
 #ifdef UMA_DEBUG
 	printf("UMA: vm asked us to release pages!\n");
 #endif
-	sx_xlock(&uma_drain_lock);
 	bucket_enable();
 	zone_foreach(zone_drain);
 	if (vm_page_count_min()) {
@@ -3244,7 +3187,6 @@ uma_reclaim(void)
 	zone_drain(slabzone);
 	zone_drain(slabrefzone);
 	bucket_zone_drain();
-	sx_xunlock(&uma_drain_lock);
 }
 
 /* See uma.h */
@@ -3423,12 +3365,12 @@ sysctl_vm_zone_count(SYSCTL_HANDLER_ARGS)
 	int count;
 
 	count = 0;
-	rw_rlock(&uma_rwlock);
+	mtx_lock(&uma_mtx);
 	LIST_FOREACH(kz, &uma_kegs, uk_link) {
 		LIST_FOREACH(z, &kz->uk_zones, uz_link)
 			count++;
 	}
-	rw_runlock(&uma_rwlock);
+	mtx_unlock(&uma_mtx);
 	return (sysctl_handle_int(oidp, &count, 0, req));
 }
 
@@ -3453,7 +3395,7 @@ sysctl_vm_zone_stats(SYSCTL_HANDLER_ARGS)
 	sbuf_new_for_sysctl(&sbuf, NULL, 128, req);
 
 	count = 0;
-	rw_rlock(&uma_rwlock);
+	mtx_lock(&uma_mtx);
 	LIST_FOREACH(kz, &uma_kegs, uk_link) {
 		LIST_FOREACH(z, &kz->uk_zones, uz_link)
 			count++;
@@ -3529,7 +3471,7 @@ skip:
 			ZONE_UNLOCK(z);
 		}
 	}
-	rw_runlock(&uma_rwlock);
+	mtx_unlock(&uma_mtx);
 	error = sbuf_finish(&sbuf);
 	sbuf_delete(&sbuf);
 	return (error);

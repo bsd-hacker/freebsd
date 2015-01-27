@@ -40,7 +40,7 @@ die(char *format, ...)
 {
 	va_list ap;
 	int err = errno;
-#ifndef illumos
+#if !defined(sun)
 	const char *progname = getprogname();
 #endif
 
@@ -54,7 +54,7 @@ die(char *format, ...)
 	if (format[strlen(format) - 1] != '\n')
 		(void) fprintf(stderr, ": %s\n", strerror(err));
 
-#ifndef illumos
+#if defined(__FreeBSD__)
 	exit(0);
 #else
 	exit(1);
@@ -65,7 +65,7 @@ void
 elfdie(char *format, ...)
 {
 	va_list ap;
-#ifndef illumos
+#if !defined(sun)
 	const char *progname = getprogname();
 #endif
 
@@ -79,7 +79,7 @@ elfdie(char *format, ...)
 	if (format[strlen(format) - 1] != '\n')
 		(void) fprintf(stderr, ": %s\n", elf_errmsg(elf_errno()));
 
-#ifndef illumos
+#if defined(__FreeBSD__)
 	exit(0);
 #else
 	exit(1);

@@ -119,18 +119,7 @@ class FJAL16_ins<bits<1> _X, string asmstr,
          !strconcat(asmstr, "\t$imm\n\tnop"),[],
          itin>  {
   let isCodeGenOnly=1;
-  let Size=6;
 }
-
-class FJALB16_ins<bits<1> _X, string asmstr,
-                 InstrItinClass itin>:
-  FJAL16<_X, (outs), (ins simm20:$imm),
-         !strconcat(asmstr, "\t$imm\t# branch\n\tnop"),[],
-         itin>  {
-  let isCodeGenOnly=1;
-  let Size=6;
-}
-
 //
 // EXT-I instruction format
 //
@@ -300,7 +289,7 @@ class FI8_MOV32R16_ins<string asmstr, InstrItinClass itin>:
 
 //
 // This are pseudo formats for multiply
-// This first one can be changed to non-pseudo now.
+// This first one can be changed to non pseudo now.
 //
 // MULT
 //
@@ -745,13 +734,6 @@ def DivuRxRy16: FRR16_div_ins<0b11011, "divu", IIAlu> {
 def Jal16 : FJAL16_ins<0b0, "jal", IIAlu> {
   let hasDelaySlot = 0;  // not true, but we add the nop for now
   let isCall=1;
-  let Defs = [RA];
-}
-
-def JalB16 : FJALB16_ins<0b0, "jal", IIAlu>, branch16 {
-  let hasDelaySlot = 0;  // not true, but we add the nop for now
-  let isBranch=1;
-  let Defs = [RA];
 }
 
 //
@@ -787,7 +769,7 @@ def JrcRx16: FRR16_JALRC_ins<1, 1, 0, "jrc", IIAlu> {
 // Purpose: Load Byte (Extended)
 // To load a byte from memory as a signed value.
 //
-def LbRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10011, "lb", mem16, II_LB>, MayLoad{
+def LbRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10011, "lb", mem16, IILoad>, MayLoad{
   let isCodeGenOnly = 1;
 }
 
@@ -797,7 +779,7 @@ def LbRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10011, "lb", mem16, II_LB>, MayLoad{
 // To load a byte from memory as a unsigned value.
 //
 def LbuRxRyOffMemX16:
-  FEXT_RRI16_mem_ins<0b10100, "lbu", mem16, II_LBU>, MayLoad {
+  FEXT_RRI16_mem_ins<0b10100, "lbu", mem16, IILoad>, MayLoad {
   let isCodeGenOnly = 1;
 }
 
@@ -806,7 +788,7 @@ def LbuRxRyOffMemX16:
 // Purpose: Load Halfword signed (Extended)
 // To load a halfword from memory as a signed value.
 //
-def LhRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10100, "lh", mem16, II_LH>, MayLoad{
+def LhRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10100, "lh", mem16, IILoad>, MayLoad{
   let isCodeGenOnly = 1;
 }
 
@@ -816,7 +798,7 @@ def LhRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10100, "lh", mem16, II_LH>, MayLoad{
 // To load a halfword from memory as an unsigned value.
 //
 def LhuRxRyOffMemX16:
-  FEXT_RRI16_mem_ins<0b10100, "lhu", mem16, II_LHU>, MayLoad {
+  FEXT_RRI16_mem_ins<0b10100, "lhu", mem16, IILoad>, MayLoad {
   let isCodeGenOnly = 1;
 }
 
@@ -843,7 +825,7 @@ def LiRxImmAlignX16: FEXT_RI16_ins<0b01101, ".align 2\n\tli", IIAlu> {
 // Purpose: Load Word (Extended)
 // To load a word from memory as a signed value.
 //
-def LwRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10011, "lw", mem16, II_LW>, MayLoad{
+def LwRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10011, "lw", mem16, IILoad>, MayLoad{
   let isCodeGenOnly = 1;
 }
 
@@ -851,13 +833,13 @@ def LwRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10011, "lw", mem16, II_LW>, MayLoad{
 // Purpose: Load Word (SP-Relative, Extended)
 // To load an SP-relative word from memory as a signed value.
 //
-def LwRxSpImmX16: FEXT_RI16_SP_explicit_ins<0b10010, "lw", II_LW>, MayLoad{
+def LwRxSpImmX16: FEXT_RI16_SP_explicit_ins<0b10010, "lw", IILoad>, MayLoad{
   let Uses = [SP];
 }
 
-def LwRxPcTcp16: FRI16_TCP_ins<0b10110, "lw", II_LW>, MayLoad;
+def LwRxPcTcp16: FRI16_TCP_ins<0b10110, "lw", IILoad>, MayLoad;
 
-def LwRxPcTcpX16: FEXT_RI16_TCP_ins<0b10110, "lw", II_LW>, MayLoad;
+def LwRxPcTcpX16: FEXT_RI16_TCP_ins<0b10110, "lw", IILoad>, MayLoad;
 //
 // Format: MOVE r32, rz MIPS16e
 // Purpose: Move
@@ -959,18 +941,26 @@ def OrRxRxRy16: FRxRxRy16_ins<0b01101, "or", IIAlu>, ArithLogic16Defs<1>;
 // stack
 //
 
-def Restore16:
-  FI8_SVRS16<0b1, (outs), (ins variable_ops),
-             "", [], II_RESTORE >, MayLoad {
+// fixed form for restoring RA and the frame
+// for direct object emitter, encoding needs to be adjusted for the
+// frame size
+//
+let ra=1, s=0,s0=1,s1=1 in
+def RestoreRaF16:
+  FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
+             "restore\t$$ra,  $$s0, $$s1, $$s2, $frame_size", [], IILoad >, MayLoad {
   let isCodeGenOnly = 1;
-  let Defs = [SP];
+  let Defs = [S0, S1, S2, RA, SP];
   let Uses = [SP];
 }
 
-
-def RestoreX16:
-  FI8_SVRS16<0b1, (outs), (ins variable_ops),
-             "", [], II_RESTORE >, MayLoad {
+// Use Restore to increment SP since SP is not a Mip 16 register, this
+// is an easy way to do that which does not require a register.
+//
+let ra=0, s=0,s0=0,s1=0 in
+def RestoreIncSpF16:
+  FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
+             "restore\t$frame_size", [], IILoad >, MayLoad {
   let isCodeGenOnly = 1;
   let Defs = [SP];
   let Uses = [SP];
@@ -983,17 +973,23 @@ def RestoreX16:
 // To set up a stack frame on entry to a subroutine,
 // saving return address and static registers, and adjusting stack
 //
-def Save16: 
-  FI8_SVRS16<0b1, (outs), (ins variable_ops),
-             "", [], II_SAVE >, MayStore {
+let ra=1, s=1,s0=1,s1=1 in
+def SaveRaF16:
+  FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
+             "save\t$$ra, $$s0, $$s1, $$s2, $frame_size", [], IIStore >, MayStore {
   let isCodeGenOnly = 1;
-  let Uses = [SP];
+  let Uses = [RA, SP, S0, S1, S2];
   let Defs = [SP];
 }
 
-def SaveX16:
-  FI8_SVRS16<0b1, (outs), (ins variable_ops),
-             "", [], II_SAVE >, MayStore {
+//
+// Use Save to decrement the SP by a constant since SP is not
+// a Mips16 register.
+//
+let ra=0, s=0,s0=0,s1=0 in
+def SaveDecSpF16:
+  FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
+             "save\t$frame_size", [], IIStore >, MayStore {
   let isCodeGenOnly = 1;
   let Uses = [SP];
   let Defs = [SP];
@@ -1004,7 +1000,7 @@ def SaveX16:
 // To store a byte to memory.
 //
 def SbRxRyOffMemX16:
-  FEXT_RRI16_mem2_ins<0b11000, "sb", mem16, II_SB>, MayStore;
+  FEXT_RRI16_mem2_ins<0b11000, "sb", mem16, IIStore>, MayStore;
 
 //
 // Format: SEB rx MIPS16e
@@ -1142,7 +1138,7 @@ def SelTBtneZSltiu: SeliT<"btnez", "sltiu">;
 // To store a halfword to memory.
 //
 def ShRxRyOffMemX16:
-  FEXT_RRI16_mem2_ins<0b11001, "sh", mem16, II_SH>, MayStore;
+  FEXT_RRI16_mem2_ins<0b11001, "sh", mem16, IIStore>, MayStore;
 
 //
 // Format: SLL rx, ry, sa MIPS16e
@@ -1278,7 +1274,7 @@ def SubuRxRyRz16: FRRR16_ins<0b11, "subu", IIAlu>, ArithLogic16Defs<0>;
 // To store a word to memory.
 //
 def SwRxRyOffMemX16:
-  FEXT_RRI16_mem2_ins<0b11011, "sw", mem16, II_SW>, MayStore;
+  FEXT_RRI16_mem2_ins<0b11011, "sw", mem16, IIStore>, MayStore;
 
 //
 // Format: SW rx, offset(sp) MIPS16e
@@ -1286,7 +1282,7 @@ def SwRxRyOffMemX16:
 // To store an SP-relative word to memory.
 //
 def SwRxSpImmX16: FEXT_RI16_SP_Store_explicit_ins
-  <0b11010, "sw", II_SW>, MayStore;
+  <0b11010, "sw", IIStore>, MayStore;
 
 //
 //
@@ -1370,19 +1366,15 @@ def : Mips16Pat<(MipsJmpLink (i32 texternalsym:$dst)),
                 (Jal16 texternalsym:$dst)>;
 
 // Indirect branch
-def: Mips16Pat<(brind CPU16Regs:$rs), (JrcRx16 CPU16Regs:$rs)> {
-  // Ensure that the addition of MIPS32r6/MIPS64r6 support does not change
-  // MIPS16's behaviour.
-  let AddedComplexity = 1;
-}
+def: Mips16Pat<
+  (brind CPU16Regs:$rs),
+  (JrcRx16 CPU16Regs:$rs)>;
 
 // Jump and Link (Call)
 let isCall=1, hasDelaySlot=0 in
 def JumpLinkReg16:
   FRR16_JALRC<0, 0, 0, (outs), (ins CPU16Regs:$rs),
-              "jalrc \t$rs", [(MipsJmpLink CPU16Regs:$rs)], IIBranch> {
-  let Defs = [RA];
-}
+              "jalrc \t$rs", [(MipsJmpLink CPU16Regs:$rs)], IIBranch>;
 
 // Mips16 pseudos
 let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1, hasCtrlDep=1,
@@ -1898,7 +1890,7 @@ def GotPrologue16:
   MipsPseudo16<
     (outs CPU16Regs:$rh, CPU16Regs:$rl),
     (ins simm16:$immHi, simm16:$immLo),
-    "li\t$rh, $immHi\n\taddiu\t$rl, $$pc, $immLo\n ",[]> ;
+    ".align 2\n\tli\t$rh, $immHi\n\taddiu\t$rl, $$pc, $immLo\n ",[]> ;
 
 // An operand for the CONSTPOOL_ENTRY pseudo-instruction.
 def cpinst_operand : Operand<i32> {

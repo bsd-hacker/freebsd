@@ -1,3 +1,6 @@
+//
+// Automated Testing Framework (atf)
+//
 // Copyright (c) 2007 The NetBSD Foundation, Inc.
 // All rights reserved.
 //
@@ -22,11 +25,10 @@
 // IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 // IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-#include "atf-c++/detail/application.hpp"
+//
 
 #if defined(HAVE_CONFIG_H)
-#include "config.h"
+#include "bconfig.h"
 #endif
 
 extern "C" {
@@ -43,7 +45,8 @@ extern "C" {
 #include "atf-c/defs.h"
 }
 
-#include "atf-c++/detail/sanity.hpp"
+#include "application.hpp"
+#include "sanity.hpp"
 
 #if !defined(HAVE_VSNPRINTF_IN_STD)
 namespace std {

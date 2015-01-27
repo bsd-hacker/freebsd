@@ -39,7 +39,6 @@
 #include <linux/dma-attrs.h>
 
 struct ib_ucontext;
-struct vm_area_struct;
 
 struct ib_umem {
 	struct ib_ucontext     *context;

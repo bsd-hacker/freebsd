@@ -3,6 +3,7 @@
 
 PROG=		bthost
 
-LIBADD=		bluetooth
+DPADD=		${LIBBLUETOOTH}
+LDADD=		-lbluetooth 
 
 .include <bsd.prog.mk>

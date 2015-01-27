@@ -10,7 +10,6 @@
 
 #include "AMDGPUMCTargetDesc.h"
 #include "llvm/MC/MCELFObjectWriter.h"
-#include "llvm/MC/MCFixup.h"
 
 using namespace llvm;
 
@@ -20,9 +19,10 @@ class AMDGPUELFObjectWriter : public MCELFObjectTargetWriter {
 public:
   AMDGPUELFObjectWriter();
 protected:
-  unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
-                        bool IsPCRel) const override {
-    return Fixup.getKind();
+  virtual unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
+                                bool IsPCRel, bool IsRelocWithSymbol,
+                                int64_t Addend) const {
+    llvm_unreachable("Not implemented");
   }
 
 };

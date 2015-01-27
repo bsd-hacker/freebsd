@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Host/Terminal.h"
-#include "llvm/ADT/STLExtras.h"
 
 #include <fcntl.h>
 #include <signal.h>
@@ -251,7 +250,7 @@ TerminalState::TTYStateIsValid() const
 bool
 TerminalState::ProcessGroupIsValid() const
 {
-    return static_cast<int32_t>(m_process_group) != -1;
+    return m_process_group != -1;
 }
 
 //------------------------------------------------------------------
@@ -275,7 +274,7 @@ TerminalStateSwitcher::~TerminalStateSwitcher ()
 uint32_t
 TerminalStateSwitcher::GetNumberOfStates() const
 {
-    return llvm::array_lengthof(m_ttystates);
+    return sizeof(m_ttystates)/sizeof(TerminalState);
 }
 
 //------------------------------------------------------------------

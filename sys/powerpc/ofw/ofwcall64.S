@@ -52,13 +52,6 @@ GLOBAL(openfirmware_entry)
 GLOBAL(rtas_entry)
 	.llong	0			/* RTAS entry point */
 
-TOC_ENTRY(ofmsr)
-TOC_ENTRY(ofwstk)
-TOC_ENTRY(rtasmsr)
-TOC_ENTRY(openfirmware_entry)
-TOC_ENTRY(rtas_entry)
-TOC_ENTRY(rtas_regsave)
-
 /*
  * Open Firmware Real-mode Entry Point. This is a huge pain.
  */
@@ -101,20 +94,16 @@ ASENTRY_NOPROF(ofwcall)
 	mfmsr	%r6
 
 	/* read client interface handler */
-	ld	%r4,TOC_REF(openfirmware_entry)(%r2)
-	ld	%r4,0(%r4)
-
-	/* Get OF stack pointer */
-	ld	%r7,TOC_REF(ofwstk)(%r2)
-	addi	%r7,%r7,OFWSTKSZ-32
+	lis	%r4,openfirmware_entry@ha
+	ld	%r4,openfirmware_entry@l(%r4)
 
 	/*
 	 * Set the MSR to the OF value. This has the side effect of disabling
 	 * exceptions, which is important for the next few steps.
 	 */
 
-	ld	%r5,TOC_REF(ofmsr)(%r2)
-	ld	%r5,0(%r5)
+	lis	%r5,ofmsr@ha
+	ld	%r5,ofmsr@l(%r5)
 	mtmsrd	%r5
 	isync
 
@@ -125,7 +114,8 @@ ASENTRY_NOPROF(ofwcall)
 	 * the old MSR so we can get them back later.
 	 */
 	mr	%r5,%r1
-	mr	%r1,%r7
+	lis	%r1,(ofwstk+OFWSTKSZ-32)@ha
+	addi	%r1,%r1,(ofwstk+OFWSTKSZ-32)@l
 	std	%r5,8(%r1)	/* Save real stack pointer */
 	std	%r2,16(%r1)	/* Save old TOC */
 	std	%r6,24(%r1)	/* Save old MSR */
@@ -222,18 +212,17 @@ ASENTRY_NOPROF(rtascall)
 	/* Record the old MSR */
 	mfmsr	%r6
 
-	/* Read RTAS entry and reg save area pointers */
-	ld	%r5,TOC_REF(rtas_entry)(%r2)
-	ld	%r5,0(%r5)
-	ld	%r8,TOC_REF(rtas_regsave)(%r2)
+	/* read client interface handler */
+	lis	%r5,rtas_entry@ha
+	ld	%r5,rtas_entry@l(%r5)
 
 	/*
 	 * Set the MSR to the RTAS value. This has the side effect of disabling
 	 * exceptions, which is important for the next few steps.
 	 */
 
-	ld	%r7,TOC_REF(rtasmsr)(%r2)
-	ld	%r7,0(%r7)
+	lis	%r7,rtasmsr@ha
+	ld	%r7,rtasmsr@l(%r7)
 	mtmsrd	%r7
 	isync
 
@@ -244,7 +233,8 @@ ASENTRY_NOPROF(rtascall)
 	 * are below 4 GB, so this is safe.
 	 */
 	mr	%r7,%r1
-	mr	%r1,%r8
+	lis	%r1,rtas_regsave@ha
+	addi	%r1,%r1,rtas_regsave@l
 	std	%r7,0(%r1)	/* Save 64-bit stack pointer */
 	std	%r2,8(%r1)	/* Save TOC */
 	std	%r6,16(%r1)	/* Save MSR */

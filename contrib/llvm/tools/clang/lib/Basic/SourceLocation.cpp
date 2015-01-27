@@ -61,15 +61,14 @@ void SourceLocation::print(raw_ostream &OS, const SourceManager &SM)const{
   OS << '>';
 }
 
-LLVM_DUMP_METHOD std::string
-SourceLocation::printToString(const SourceManager &SM) const {
+std::string SourceLocation::printToString(const SourceManager &SM) const {
   std::string S;
   llvm::raw_string_ostream OS(S);
   print(OS, SM);
   return OS.str();
 }
 
-LLVM_DUMP_METHOD void SourceLocation::dump(const SourceManager &SM) const {
+void SourceLocation::dump(const SourceManager &SM) const {
   print(llvm::errs(), SM);
 }
 
@@ -123,7 +122,7 @@ bool FullSourceLoc::isBeforeInTranslationUnitThan(SourceLocation Loc) const {
   return SrcMgr->isBeforeInTranslationUnit(*this, Loc);
 }
 
-LLVM_DUMP_METHOD void FullSourceLoc::dump() const {
+void FullSourceLoc::dump() const {
   SourceLocation::dump(*SrcMgr);
 }
 

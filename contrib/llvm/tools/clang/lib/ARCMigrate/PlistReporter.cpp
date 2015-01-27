@@ -9,27 +9,86 @@
 
 #include "Internals.h"
 #include "clang/Basic/FileManager.h"
-#include "clang/Basic/PlistSupport.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Lexer.h"
 using namespace clang;
 using namespace arcmt;
-using namespace markup;
 
-static StringRef getLevelName(DiagnosticsEngine::Level Level) {
-  switch (Level) {
-  case DiagnosticsEngine::Ignored:
-    llvm_unreachable("ignored");
-  case DiagnosticsEngine::Note:
-    return "note";
-  case DiagnosticsEngine::Remark:
-  case DiagnosticsEngine::Warning:
-    return "warning";
-  case DiagnosticsEngine::Fatal:
-  case DiagnosticsEngine::Error:
-    return "error";
+// FIXME: This duplicates significant functionality from PlistDiagnostics.cpp,
+// it would be jolly good if there was a reusable PlistWriter or something.
+
+typedef llvm::DenseMap<FileID, unsigned> FIDMap;
+
+static void AddFID(FIDMap &FIDs, SmallVectorImpl<FileID> &V,
+                   const SourceManager &SM, SourceLocation L) {
+
+  FileID FID = SM.getFileID(SM.getExpansionLoc(L));
+  FIDMap::iterator I = FIDs.find(FID);
+  if (I != FIDs.end()) return;
+  FIDs[FID] = V.size();
+  V.push_back(FID);
+}
+
+static unsigned GetFID(const FIDMap& FIDs, const SourceManager &SM,
+                       SourceLocation L) {
+  FileID FID = SM.getFileID(SM.getExpansionLoc(L));
+  FIDMap::const_iterator I = FIDs.find(FID);
+  assert(I != FIDs.end());
+  return I->second;
+}
+
+static raw_ostream& Indent(raw_ostream& o, const unsigned indent) {
+  for (unsigned i = 0; i < indent; ++i) o << ' ';
+  return o;
+}
+
+static void EmitLocation(raw_ostream& o, const SourceManager &SM,
+                         const LangOptions &LangOpts,
+                         SourceLocation L, const FIDMap &FM,
+                         unsigned indent, bool extend = false) {
+
+  FullSourceLoc Loc(SM.getExpansionLoc(L), const_cast<SourceManager&>(SM));
+
+  // Add in the length of the token, so that we cover multi-char tokens.
+  unsigned offset =
+    extend ? Lexer::MeasureTokenLength(Loc, SM, LangOpts) - 1 : 0;
+
+  Indent(o, indent) << "<dict>\n";
+  Indent(o, indent) << " <key>line</key><integer>"
+                    << Loc.getExpansionLineNumber() << "</integer>\n";
+  Indent(o, indent) << " <key>col</key><integer>"
+                    << Loc.getExpansionColumnNumber() + offset << "</integer>\n";
+  Indent(o, indent) << " <key>file</key><integer>"
+                    << GetFID(FM, SM, Loc) << "</integer>\n";
+  Indent(o, indent) << "</dict>\n";
+}
+
+static void EmitRange(raw_ostream& o, const SourceManager &SM,
+                      const LangOptions &LangOpts,
+                      CharSourceRange R, const FIDMap &FM,
+                      unsigned indent) {
+  Indent(o, indent) << "<array>\n";
+  EmitLocation(o, SM, LangOpts, R.getBegin(), FM, indent+1);
+  EmitLocation(o, SM, LangOpts, R.getEnd(), FM, indent+1, R.isTokenRange());
+  Indent(o, indent) << "</array>\n";
+}
+
+static raw_ostream& EmitString(raw_ostream& o,
+                                     StringRef s) {
+  o << "<string>";
+  for (StringRef::const_iterator I=s.begin(), E=s.end(); I!=E; ++I) {
+    char c = *I;
+    switch (c) {
+    default:   o << c; break;
+    case '&':  o << "&amp;"; break;
+    case '<':  o << "&lt;"; break;
+    case '>':  o << "&gt;"; break;
+    case '\'': o << "&apos;"; break;
+    case '\"': o << "&quot;"; break;
+    }
   }
-  llvm_unreachable("Invalid DiagnosticsEngine level!");
+  o << "</string>";
+  return o;
 }
 
 void arcmt::writeARCDiagsToPlist(const std::string &outPath,
@@ -57,13 +116,17 @@ void arcmt::writeARCDiagsToPlist(const std::string &outPath,
   }
 
   std::string errMsg;
-  llvm::raw_fd_ostream o(outPath.c_str(), errMsg, llvm::sys::fs::F_Text);
+  llvm::raw_fd_ostream o(outPath.c_str(), errMsg);
   if (!errMsg.empty()) {
     llvm::errs() << "error: could not create file: " << outPath << '\n';
     return;
   }
 
-  EmitPlistHeader(o);
+  // Write the plist header.
+  o << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+  "<!DOCTYPE plist PUBLIC \"-//Apple Computer//DTD PLIST 1.0//EN\" "
+  "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+  "<plist version=\"1.0\">\n";
 
   // Write the root object: a <dict> containing...
   //  - "files", an <array> mapping from FIDs to file names
@@ -72,8 +135,11 @@ void arcmt::writeARCDiagsToPlist(const std::string &outPath,
        " <key>files</key>\n"
        " <array>\n";
 
-  for (FileID FID : Fids)
-    EmitString(o << "  ", SM.getFileEntryForID(FID)->getName()) << '\n';
+  for (SmallVectorImpl<FileID>::iterator I=Fids.begin(), E=Fids.end();
+       I!=E; ++I) {
+    o << "  ";
+    EmitString(o, SM.getFileEntryForID(*I)->getName()) << '\n';
+  }
 
   o << " </array>\n"
        " <key>diagnostics</key>\n"
@@ -96,7 +162,12 @@ void arcmt::writeARCDiagsToPlist(const std::string &outPath,
     EmitString(o, DiagIDs.getCategoryNameFromID(
                           DiagIDs.getCategoryNumberForDiag(D.getID()))) << '\n';
     o << "   <key>type</key>";
-    EmitString(o, getLevelName(D.getLevel())) << '\n';
+    if (D.getLevel() >= DiagnosticsEngine::Error)
+      EmitString(o, "error") << '\n';
+    else if (D.getLevel() == DiagnosticsEngine::Warning)
+      EmitString(o, "warning") << '\n';
+    else
+      EmitString(o, "note") << '\n';
 
     // Output the location of the bug.
     o << "  <key>location</key>\n";

@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "calcspillweights"
+
 #include "llvm/CodeGen/CalcSpillWeights.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/MachineBlockFrequencyInfo.h"
@@ -19,8 +21,6 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "calcspillweights"
 
 void llvm::calculateSpillWeightsAndHints(LiveIntervals &LIS,
                            MachineFunction &MF,
@@ -96,8 +96,8 @@ void
 VirtRegAuxInfo::calculateSpillWeightAndHint(LiveInterval &li) {
   MachineRegisterInfo &mri = MF.getRegInfo();
   const TargetRegisterInfo &tri = *MF.getTarget().getRegisterInfo();
-  MachineBasicBlock *mbb = nullptr;
-  MachineLoop *loop = nullptr;
+  MachineBasicBlock *mbb = 0;
+  MachineLoop *loop = 0;
   bool isExiting = false;
   float totalWeight = 0;
   SmallPtrSet<MachineInstr*, 8> visited;
@@ -112,10 +112,8 @@ VirtRegAuxInfo::calculateSpillWeightAndHint(LiveInterval &li) {
   // Don't recompute spill weight for an unspillable register.
   bool Spillable = li.isSpillable();
 
-  for (MachineRegisterInfo::reg_instr_iterator
-       I = mri.reg_instr_begin(li.reg), E = mri.reg_instr_end();
-       I != E; ) {
-    MachineInstr *mi = &*(I++);
+  for (MachineRegisterInfo::reg_iterator I = mri.reg_begin(li.reg);
+       MachineInstr *mi = I.skipInstruction();) {
     if (mi->isIdentityCopy() || mi->isImplicitDef() || mi->isDebugValue())
       continue;
     if (!visited.insert(mi))
@@ -132,9 +130,9 @@ VirtRegAuxInfo::calculateSpillWeightAndHint(LiveInterval &li) {
 
       // Calculate instr weight.
       bool reads, writes;
-      std::tie(reads, writes) = mi->readsWritesVirtualRegister(li.reg);
+      tie(reads, writes) = mi->readsWritesVirtualRegister(li.reg);
       weight = LiveIntervals::getSpillWeight(
-        writes, reads, &MBFI, mi);
+          writes, reads, MBFI.getBlockFreq(mi->getParent()));
 
       // Give extra weight to what looks like a loop induction variable update.
       if (writes && isExiting && LIS.isLiveOutOfMBB(li, mbb))
@@ -149,11 +147,7 @@ VirtRegAuxInfo::calculateSpillWeightAndHint(LiveInterval &li) {
     unsigned hint = copyHint(mi, li.reg, tri, mri);
     if (!hint)
       continue;
-    // Force hweight onto the stack so that x86 doesn't add hidden precision,
-    // making the comparison incorrectly pass (i.e., 1 > 1 == true??).
-    //
-    // FIXME: we probably shouldn't use floats at all.
-    volatile float hweight = Hint[hint] += weight;
+    float hweight = Hint[hint] += weight;
     if (TargetRegisterInfo::isPhysicalRegister(hint)) {
       if (hweight > bestPhys && mri.isAllocatable(hint))
         bestPhys = hweight, hintPhys = hint;

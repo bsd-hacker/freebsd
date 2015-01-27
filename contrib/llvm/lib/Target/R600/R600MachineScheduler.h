@@ -26,7 +26,7 @@ namespace llvm {
 
 class R600SchedStrategy : public MachineSchedStrategy {
 
-  const ScheduleDAGMILive *DAG;
+  const ScheduleDAGMI *DAG;
   const R600InstrInfo *TII;
   const R600RegisterInfo *TRI;
   MachineRegisterInfo *MRI;
@@ -68,16 +68,17 @@ class R600SchedStrategy : public MachineSchedStrategy {
 
 public:
   R600SchedStrategy() :
-    DAG(nullptr), TII(nullptr), TRI(nullptr), MRI(nullptr) {
+    DAG(0), TII(0), TRI(0), MRI(0) {
   }
 
-  virtual ~R600SchedStrategy() {}
+  virtual ~R600SchedStrategy() {
+  }
 
-  void initialize(ScheduleDAGMI *dag) override;
-  SUnit *pickNode(bool &IsTopNode) override;
-  void schedNode(SUnit *SU, bool IsTopNode) override;
-  void releaseTopNode(SUnit *SU) override;
-  void releaseBottomNode(SUnit *SU) override;
+  virtual void initialize(ScheduleDAGMI *dag);
+  virtual SUnit *pickNode(bool &IsTopNode);
+  virtual void schedNode(SUnit *SU, bool IsTopNode);
+  virtual void releaseTopNode(SUnit *SU);
+  virtual void releaseBottomNode(SUnit *SU);
 
 private:
   std::vector<MachineInstr *> InstructionsGroupCandidate;

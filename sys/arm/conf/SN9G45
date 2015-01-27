@@ -40,8 +40,8 @@ options 	FFS			# Berkeley Fast Filesystem
 #options 	UFS_DIRHASH		# Improve performance on big directories
 #options 	MD_ROOT			# MD is a potential root device
 #options 	MD_ROOT_SIZE=4096	# 4MB ram disk
-options 	NFSCL			# Network Filesystem Client
-#options 	NFSD			# Network Filesystem Server
+options 	NFSCL			# New Network Filesystem Client
+#options 	NFSD			# New Network Filesystem Server
 #options 	NFSLOCKD		# Network Lock Manager
 #options 	NFS_ROOT		# NFS usable as /, requires NFSCL
 #options 	BOOTP_NFSROOT
@@ -95,10 +95,10 @@ option 		AT91_ATE_USE_RMII
 device		at91_wdt		# WDT: Watchdog timer
 
 # SCSI peripherals
-device		scbus			# SCSI bus (required for ATA/SCSI)
+device		scbus			# SCSI bus (required for SCSI)
 device		da			# Direct Access (disks)
 device		cd			# CD
-device		pass			# Passthrough device (direct ATA/SCSI access)
+device		pass			# Passthrough device (direct SCSI access)
 
 # USB support
 device		ohci			# OHCI localbus->USB interface

@@ -223,8 +223,7 @@
 	{Correction Span} i1
 	{Head Offset Count} i1
 	{Data Strobe Offset Count} i1
-	{LBPERE (LBP Error Reporting Enabled)} t1
-	{Reserved} *t7
+	{Reserved} *i1
 	{Write Retry Count} i1
 	{Reserved} *i1
 	{Recovery Time Limit} i2

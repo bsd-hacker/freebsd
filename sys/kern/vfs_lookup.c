@@ -96,8 +96,9 @@ nameiinit(void *dummy __unused)
 SYSINIT(vfs, SI_SUB_VFS, SI_ORDER_SECOND, nameiinit, NULL);
 
 static int lookup_shared = 1;
-SYSCTL_INT(_vfs, OID_AUTO, lookup_shared, CTLFLAG_RWTUN, &lookup_shared, 0,
+SYSCTL_INT(_vfs, OID_AUTO, lookup_shared, CTLFLAG_RW, &lookup_shared, 0,
     "Enables/Disables shared locks for path name translation");
+TUNABLE_INT("vfs.lookup_shared", &lookup_shared);
 
 /*
  * Convert a pathname into a pointer to a locked vnode.
@@ -119,16 +120,6 @@ SYSCTL_INT(_vfs, OID_AUTO, lookup_shared, CTLFLAG_RWTUN, &lookup_shared, 0,
  *		if symbolic link, massage name in buffer and continue
  *	}
  */
-static void
-namei_cleanup_cnp(struct componentname *cnp)
-{
-	uma_zfree(namei_zone, cnp->cn_pnbuf);
-#ifdef DIAGNOSTIC
-	cnp->cn_pnbuf = NULL;
-	cnp->cn_nameptr = NULL;
-#endif
-}
-
 int
 namei(struct nameidata *ndp)
 {
@@ -193,7 +184,11 @@ namei(struct nameidata *ndp)
 	}
 #endif
 	if (error) {
-		namei_cleanup_cnp(cnp);
+		uma_zfree(namei_zone, cnp->cn_pnbuf);
+#ifdef DIAGNOSTIC
+		cnp->cn_pnbuf = NULL;
+		cnp->cn_nameptr = NULL;
+#endif
 		ndp->ni_vp = NULL;
 		return (error);
 	}
@@ -260,7 +255,11 @@ namei(struct nameidata *ndp)
 			}
 		}
 		if (error) {
-			namei_cleanup_cnp(cnp);
+			uma_zfree(namei_zone, cnp->cn_pnbuf);
+#ifdef DIAGNOSTIC
+			cnp->cn_pnbuf = NULL;
+			cnp->cn_nameptr = NULL;
+#endif
 			return (error);
 		}
 	}
@@ -286,7 +285,6 @@ namei(struct nameidata *ndp)
 				if (KTRPOINT(curthread, KTR_CAPFAIL))
 					ktrcapfail(CAPFAIL_LOOKUP, NULL, NULL);
 #endif
-				namei_cleanup_cnp(cnp);
 				return (ENOTCAPABLE);
 			}
 			while (*(cnp->cn_nameptr) == '/') {
@@ -299,7 +297,11 @@ namei(struct nameidata *ndp)
 		ndp->ni_startdir = dp;
 		error = lookup(ndp);
 		if (error) {
-			namei_cleanup_cnp(cnp);
+			uma_zfree(namei_zone, cnp->cn_pnbuf);
+#ifdef DIAGNOSTIC
+			cnp->cn_pnbuf = NULL;
+			cnp->cn_nameptr = NULL;
+#endif
 			SDT_PROBE(vfs, namei, lookup, return, error, NULL, 0,
 			    0, 0);
 			return (error);
@@ -309,7 +311,11 @@ namei(struct nameidata *ndp)
 		 */
 		if ((cnp->cn_flags & ISSYMLINK) == 0) {
 			if ((cnp->cn_flags & (SAVENAME | SAVESTART)) == 0) {
-				namei_cleanup_cnp(cnp);
+				uma_zfree(namei_zone, cnp->cn_pnbuf);
+#ifdef DIAGNOSTIC
+				cnp->cn_pnbuf = NULL;
+				cnp->cn_nameptr = NULL;
+#endif
 			} else
 				cnp->cn_flags |= HASBUF;
 
@@ -371,7 +377,11 @@ namei(struct nameidata *ndp)
 		vput(ndp->ni_vp);
 		dp = ndp->ni_dvp;
 	}
-	namei_cleanup_cnp(cnp);
+	uma_zfree(namei_zone, cnp->cn_pnbuf);
+#ifdef DIAGNOSTIC
+	cnp->cn_pnbuf = NULL;
+	cnp->cn_nameptr = NULL;
+#endif
 	vput(ndp->ni_vp);
 	ndp->ni_vp = NULL;
 	vrele(ndp->ni_dvp);
@@ -390,7 +400,6 @@ compute_cn_lkflags(struct mount *mp, int lkflags, int cnflags)
 		lkflags &= ~LK_SHARED;
 		lkflags |= LK_EXCLUSIVE;
 	}
-	lkflags |= LK_NODDLKTREAT;
 	return (lkflags);
 }
 

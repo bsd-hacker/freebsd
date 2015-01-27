@@ -13,7 +13,8 @@ CFLAGS+= -I${.CURDIR}/../ypserv -I. -I${.CURDIR}/../../libexec/ypxfr
 
 WARNS?=	1
 
-LIBADD=	rpcsvc
+DPADD=	${LIBRPCSVC}
+LDADD=	-lrpcsvc
 
 CLEANFILES= ypupdate_prot_svc.c ypupdate_prot.h
 

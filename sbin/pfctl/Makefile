@@ -28,6 +28,7 @@ CFLAGS+= -DWITH_INET
 
 YFLAGS=
 
-LIBADD=	m md
+LDADD+=	-lm -lmd
+DPADD+=	${LIBM} ${LIBMD}
 
 .include <bsd.prog.mk>

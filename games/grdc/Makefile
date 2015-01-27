@@ -2,7 +2,7 @@
 
 PROG=	grdc
 MAN=	grdc.6
-DPADD=	${LIBNCURSESW}
-LDADD=	-lncursesw
+DPADD=	${LIBNCURSES}
+LDADD=	-lncurses
 
 .include <bsd.prog.mk>

@@ -88,8 +88,7 @@ public:
 
 private:
   /// \brief Builds the global specifier.
-  NestedNameSpecifier()
-    : Prefix(nullptr, StoredIdentifier), Specifier(nullptr) {}
+  NestedNameSpecifier() : Prefix(0, StoredIdentifier), Specifier(0) { }
 
   /// \brief Copy constructor used internally to clone nested name
   /// specifiers.
@@ -161,7 +160,7 @@ public:
     if (Prefix.getInt() == StoredIdentifier)
       return (IdentifierInfo *)Specifier;
 
-    return nullptr;
+    return 0;
   }
 
   /// \brief Retrieve the namespace stored in this nested name
@@ -178,7 +177,7 @@ public:
         Prefix.getInt() == StoredTypeSpecWithTemplate)
       return (const Type *)Specifier;
 
-    return nullptr;
+    return 0;
   }
 
   /// \brief Whether this nested name specifier refers to a dependent
@@ -223,7 +222,7 @@ class NestedNameSpecifierLoc {
 
 public:
   /// \brief Construct an empty nested-name-specifier.
-  NestedNameSpecifierLoc() : Qualifier(nullptr), Data(nullptr) { }
+  NestedNameSpecifierLoc() : Qualifier(0), Data(0) { }
 
   /// \brief Construct a nested-name-specifier with source location information
   /// from
@@ -345,8 +344,7 @@ class NestedNameSpecifierLocBuilder {
 
 public:
   NestedNameSpecifierLocBuilder()
-    : Representation(nullptr), Buffer(nullptr), BufferSize(0),
-      BufferCapacity(0) {}
+    : Representation(0), Buffer(0), BufferSize(0), BufferCapacity(0) { }
 
   NestedNameSpecifierLocBuilder(const NestedNameSpecifierLocBuilder &Other);
 
@@ -459,7 +457,7 @@ public:
   /// \brief Clear out this builder, and prepare it to build another
   /// nested-name-specifier with source-location information.
   void Clear() {
-    Representation = nullptr;
+    Representation = 0;
     BufferSize = 0;
   }
 

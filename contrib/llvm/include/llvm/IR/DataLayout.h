@@ -27,9 +27,6 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/DataTypes.h"
 
-// this needs to be outside of the namespace, to avoid conflict with llvm-c decl
-typedef struct LLVMOpaqueTargetData *LLVMTargetDataRef;
-
 namespace llvm {
 
 class Value;
@@ -37,7 +34,6 @@ class Type;
 class IntegerType;
 class StructType;
 class StructLayout;
-class Triple;
 class GlobalVariable;
 class LLVMContext;
 template<typename T>
@@ -49,7 +45,8 @@ enum AlignTypeEnum {
   INTEGER_ALIGN = 'i',               ///< Integer type alignment
   VECTOR_ALIGN = 'v',                ///< Vector type alignment
   FLOAT_ALIGN = 'f',                 ///< Floating point type alignment
-  AGGREGATE_ALIGN = 'a'              ///< Aggregate alignment
+  AGGREGATE_ALIGN = 'a',             ///< Aggregate alignment
+  STACK_ALIGN = 's'                  ///< Stack objects alignment
 };
 
 /// Layout alignment element.
@@ -81,52 +78,38 @@ struct LayoutAlignElem {
 struct PointerAlignElem {
   unsigned            ABIAlign;       ///< ABI alignment for this type/bitw
   unsigned            PrefAlign;      ///< Pref. alignment for this type/bitw
-  uint32_t            TypeByteWidth;  ///< Type byte width
+  uint32_t            TypeBitWidth;   ///< Type bit width
   uint32_t            AddressSpace;   ///< Address space for the pointer type
 
   /// Initializer
-  static PointerAlignElem get(uint32_t AddressSpace, unsigned ABIAlign,
-                             unsigned PrefAlign, uint32_t TypeByteWidth);
+  static PointerAlignElem get(uint32_t addr_space, unsigned abi_align,
+                             unsigned pref_align, uint32_t bit_width);
   /// Equality predicate
   bool operator==(const PointerAlignElem &rhs) const;
 };
 
-/// This class holds a parsed version of the target data layout string in a
-/// module and provides methods for querying it. The target data layout string
-/// is specified *by the target* - a frontend generating LLVM IR is required to
-/// generate the right target data for the target being codegen'd to.
-class DataLayout {
+
+/// DataLayout - This class holds a parsed version of the target data layout
+/// string in a module and provides methods for querying it.  The target data
+/// layout string is specified *by the target* - a frontend generating LLVM IR
+/// is required to generate the right target data for the target being codegen'd
+/// to.  If some measure of portability is desired, an empty string may be
+/// specified in the module.
+class DataLayout : public ImmutablePass {
 private:
   bool          LittleEndian;          ///< Defaults to false
   unsigned      StackNaturalAlign;     ///< Stack natural alignment
-
-  enum ManglingModeT {
-    MM_None,
-    MM_ELF,
-    MM_MachO,
-    MM_WINCOFF,
-    MM_Mips
-  };
-  ManglingModeT ManglingMode;
 
   SmallVector<unsigned char, 8> LegalIntWidths; ///< Legal Integers.
 
   /// Alignments - Where the primitive type alignment data is stored.
   ///
-  /// @sa reset().
+  /// @sa init().
   /// @note Could support multiple size pointer alignments, e.g., 32-bit
   /// pointers vs. 64-bit pointers by extending LayoutAlignment, but for now,
   /// we don't.
   SmallVector<LayoutAlignElem, 16> Alignments;
-  typedef SmallVector<PointerAlignElem, 8> PointersTy;
-  PointersTy Pointers;
-
-  PointersTy::const_iterator
-  findPointerLowerBound(uint32_t AddressSpace) const {
-    return const_cast<DataLayout *>(this)->findPointerLowerBound(AddressSpace);
-  }
-
-  PointersTy::iterator findPointerLowerBound(uint32_t AddressSpace);
+  DenseMap<unsigned, PointerAlignElem> Pointers;
 
   /// InvalidAlignmentElem - This member is a signal that a requested alignment
   /// type and bit width were not found in the SmallVector.
@@ -146,8 +129,8 @@ private:
                             bool ABIAlign, Type *Ty) const;
 
   //! Set/initialize pointer alignments
-  void setPointerAlignment(uint32_t AddrSpace, unsigned ABIAlign,
-                           unsigned PrefAlign, uint32_t TypeByteWidth);
+  void setPointerAlignment(uint32_t addr_space, unsigned abi_align,
+      unsigned pref_align, uint32_t bit_width);
 
   //! Internal helper method that returns requested alignment for type.
   unsigned getAlignment(Type *Ty, bool abi_or_pref) const;
@@ -172,38 +155,41 @@ private:
   /// malformed.
   void parseSpecifier(StringRef LayoutDescription);
 
-  // Free all internal data structures.
-  void clear();
-
 public:
-  /// Constructs a DataLayout from a specification string. See reset().
-  explicit DataLayout(StringRef LayoutDescription) : LayoutMap(nullptr) {
-    reset(LayoutDescription);
+  /// Default ctor.
+  ///
+  /// @note This has to exist, because this is a pass, but it should never be
+  /// used.
+  DataLayout();
+
+  /// Constructs a DataLayout from a specification string. See init().
+  explicit DataLayout(StringRef LayoutDescription)
+    : ImmutablePass(ID) {
+    init(LayoutDescription);
   }
 
   /// Initialize target data from properties stored in the module.
   explicit DataLayout(const Module *M);
 
-  DataLayout(const DataLayout &DL) : LayoutMap(nullptr) { *this = DL; }
-
-  DataLayout &operator=(const DataLayout &DL) {
-    clear();
-    LittleEndian = DL.isLittleEndian();
-    StackNaturalAlign = DL.StackNaturalAlign;
-    ManglingMode = DL.ManglingMode;
-    LegalIntWidths = DL.LegalIntWidths;
-    Alignments = DL.Alignments;
-    Pointers = DL.Pointers;
-    return *this;
-  }
-
-  bool operator==(const DataLayout &Other) const;
-  bool operator!=(const DataLayout &Other) const { return !(*this == Other); }
+  DataLayout(const DataLayout &DL) :
+    ImmutablePass(ID),
+    LittleEndian(DL.isLittleEndian()),
+    StackNaturalAlign(DL.StackNaturalAlign),
+    LegalIntWidths(DL.LegalIntWidths),
+    Alignments(DL.Alignments),
+    Pointers(DL.Pointers),
+    LayoutMap(0)
+  { }
 
   ~DataLayout();  // Not virtual, do not subclass this class
 
-  /// Parse a data layout string (with fallback to default values).
-  void reset(StringRef LayoutDescription);
+  /// DataLayout is an immutable pass, but holds state.  This allows the pass
+  /// manager to clear its mutable state.
+  bool doFinalization(Module &M);
+
+  /// Parse a data layout string (with fallback to default values). Ensure that
+  /// the data layout pass is registered.
+  void init(StringRef LayoutDescription);
 
   /// Layout endianness...
   bool isLittleEndian() const { return LittleEndian; }
@@ -222,8 +208,8 @@ public:
   /// The width is specified in bits.
   ///
   bool isLegalInteger(unsigned Width) const {
-    for (unsigned LegalIntWidth : LegalIntWidths)
-      if (LegalIntWidth == Width)
+    for (unsigned i = 0, e = (unsigned)LegalIntWidths.size(); i != e; ++i)
+      if (LegalIntWidths[i] == Width)
         return true;
     return false;
   }
@@ -237,57 +223,13 @@ public:
     return (StackNaturalAlign != 0) && (Align > StackNaturalAlign);
   }
 
-  bool hasMicrosoftFastStdCallMangling() const {
-    return ManglingMode == MM_WINCOFF;
-  }
-
-  bool hasLinkerPrivateGlobalPrefix() const {
-    return ManglingMode == MM_MachO;
-  }
-
-  const char *getLinkerPrivateGlobalPrefix() const {
-    if (ManglingMode == MM_MachO)
-      return "l";
-    return getPrivateGlobalPrefix();
-  }
-
-  char getGlobalPrefix() const {
-    switch (ManglingMode) {
-    case MM_None:
-    case MM_ELF:
-    case MM_Mips:
-      return '\0';
-    case MM_MachO:
-    case MM_WINCOFF:
-      return '_';
-    }
-    llvm_unreachable("invalid mangling mode");
-  }
-
-  const char *getPrivateGlobalPrefix() const {
-    switch (ManglingMode) {
-    case MM_None:
-      return "";
-    case MM_ELF:
-      return ".L";
-    case MM_Mips:
-      return "$";
-    case MM_MachO:
-    case MM_WINCOFF:
-      return "L";
-    }
-    llvm_unreachable("invalid mangling mode");
-  }
-
-  static const char *getManglingComponent(const Triple &T);
-
   /// fitsInLegalInteger - This function returns true if the specified type fits
   /// in a native integer type supported by the CPU.  For example, if the CPU
   /// only supports i32 as a native integer type, then i27 fits in a legal
-  /// integer type but i45 does not.
+  // integer type but i45 does not.
   bool fitsInLegalInteger(unsigned Width) const {
-    for (unsigned LegalIntWidth : LegalIntWidths)
-      if (Width <= LegalIntWidth)
+    for (unsigned i = 0, e = (unsigned)LegalIntWidths.size(); i != e; ++i)
+      if (Width <= LegalIntWidths[i])
         return true;
     return false;
   }
@@ -295,18 +237,34 @@ public:
   /// Layout pointer alignment
   /// FIXME: The defaults need to be removed once all of
   /// the backends/clients are updated.
-  unsigned getPointerABIAlignment(unsigned AS = 0) const;
+  unsigned getPointerABIAlignment(unsigned AS = 0) const {
+    DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
+    if (val == Pointers.end()) {
+      val = Pointers.find(0);
+    }
+    return val->second.ABIAlign;
+  }
 
   /// Return target's alignment for stack-based pointers
   /// FIXME: The defaults need to be removed once all of
   /// the backends/clients are updated.
-  unsigned getPointerPrefAlignment(unsigned AS = 0) const;
-
+  unsigned getPointerPrefAlignment(unsigned AS = 0) const {
+    DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
+    if (val == Pointers.end()) {
+      val = Pointers.find(0);
+    }
+    return val->second.PrefAlign;
+  }
   /// Layout pointer size
   /// FIXME: The defaults need to be removed once all of
   /// the backends/clients are updated.
-  unsigned getPointerSize(unsigned AS = 0) const;
-
+  unsigned getPointerSize(unsigned AS = 0) const {
+    DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
+    if (val == Pointers.end()) {
+      val = Pointers.find(0);
+    }
+    return val->second.TypeBitWidth;
+  }
   /// Layout pointer size, in bits
   /// FIXME: The defaults need to be removed once all of
   /// the backends/clients are updated.
@@ -386,6 +344,10 @@ public:
   /// an integer type of the specified bitwidth.
   unsigned getABIIntegerTypeAlignment(unsigned BitWidth) const;
 
+  /// getCallFrameTypeAlignment - Return the minimum ABI-required alignment
+  /// for the specified type when it is part of a call frame.
+  unsigned getCallFrameTypeAlignment(Type *Ty) const;
+
   /// getPrefTypeAlignment - Return the preferred stack/global alignment for
   /// the specified type.  This is always at least as good as the ABI alignment.
   unsigned getPrefTypeAlignment(Type *Ty) const;
@@ -411,11 +373,11 @@ public:
   /// none are set.
   Type *getLargestLegalIntType(LLVMContext &C) const {
     unsigned LargestSize = getLargestLegalIntTypeSize();
-    return (LargestSize == 0) ? nullptr : Type::getIntNTy(C, LargestSize);
+    return (LargestSize == 0) ? 0 : Type::getIntNTy(C, LargestSize);
   }
 
-  /// getLargestLegalIntTypeSize - Return the size of largest legal integer
-  /// type size, or 0 if none are set.
+  /// getLargestLegalIntType - Return the size of largest legal integer type
+  /// size, or 0 if none are set.
   unsigned getLargestLegalIntTypeSize() const;
 
   /// getIndexedOffset - return the offset from the beginning of the type for
@@ -446,31 +408,6 @@ public:
     assert((Alignment & (Alignment-1)) == 0 && "Alignment must be power of 2!");
     return (Val + (Alignment-1)) & ~UIntTy(Alignment-1);
   }
-};
-
-inline DataLayout *unwrap(LLVMTargetDataRef P) {
-   return reinterpret_cast<DataLayout*>(P);
-}
-
-inline LLVMTargetDataRef wrap(const DataLayout *P) {
-   return reinterpret_cast<LLVMTargetDataRef>(const_cast<DataLayout*>(P));
-}
-
-class DataLayoutPass : public ImmutablePass {
-  DataLayout DL;
-
-public:
-  /// This has to exist, because this is a pass, but it should never be used.
-  DataLayoutPass();
-  ~DataLayoutPass();
-
-  const DataLayout &getDataLayout() const { return DL; }
-
-  // For use with the C API. C++ code should always use the constructor that
-  // takes a module.
-  explicit DataLayoutPass(const DataLayout &DL);
-
-  explicit DataLayoutPass(const Module *M);
 
   static char ID; // Pass identification, replacement for typeid
 };

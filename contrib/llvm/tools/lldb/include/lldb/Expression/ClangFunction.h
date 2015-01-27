@@ -88,8 +88,7 @@ public:
     ClangFunction (ExecutionContextScope &exe_scope,
                    Function &function_ptr, 
                    ClangASTContext *ast_context, 
-                   const ValueList &arg_value_list,
-                   const char *name);
+                   const ValueList &arg_value_list);
     
     //------------------------------------------------------------------
     /// Constructor
@@ -115,8 +114,7 @@ public:
     ClangFunction (ExecutionContextScope &exe_scope,
                    const ClangASTType &return_type,
                    const Address& function_address, 
-                   const ValueList &arg_value_list,
-                   const char *name);
+                   const ValueList &arg_value_list);
     
     //------------------------------------------------------------------
     /// Destructor
@@ -253,9 +251,9 @@ public:
     ///     The result value will be put here after running the function.
     ///
     /// @return
-    ///     Returns one of the ExpressionResults enum indicating function call status.
+    ///     Returns one of the ExecutionResults enum indicating function call status.
     //------------------------------------------------------------------
-    lldb::ExpressionResults
+    ExecutionResults 
     ExecuteFunction(ExecutionContext &exe_ctx, 
                     lldb::addr_t *args_addr_ptr, 
                     const EvaluateExpressionOptions &options,
@@ -412,9 +410,7 @@ private:
     //------------------------------------------------------------------
 
     std::unique_ptr<ClangExpressionParser> m_parser;                 ///< The parser responsible for compiling the function.
-    std::shared_ptr<IRExecutionUnit> m_execution_unit_sp;
-    lldb::ModuleWP                  m_jit_module_wp;
-    std::string                     m_name;                         ///< The name of this clang function - for debugging purposes.
+    std::unique_ptr<IRExecutionUnit> m_execution_unit_ap;
     
     Function                       *m_function_ptr;                 ///< The function we're going to call.  May be NULL if we don't have debug info for the function.
     Address                         m_function_addr;                ///< If we don't have the FunctionSP, we at least need the address & return type.

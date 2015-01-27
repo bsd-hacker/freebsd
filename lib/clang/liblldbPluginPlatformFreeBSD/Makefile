@@ -7,9 +7,7 @@ LIB=	lldbPluginPlatformFreeBSD
 SRCDIR=	tools/lldb/source/Plugins/Platform/FreeBSD
 SRCS=	PlatformFreeBSD.cpp
 
-TGHDRS=	AttrList \
-	Attrs \
-	DiagnosticCommonKinds \
+TGHDRS=	DiagnosticCommonKinds \
 	DeclNodes \
 	StmtNodes \
 	CommentCommandList

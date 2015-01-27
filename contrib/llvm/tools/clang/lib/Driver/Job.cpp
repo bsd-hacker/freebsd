@@ -7,11 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/Driver/Driver.h"
-#include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Job.h"
-#include "clang/Driver/Tool.h"
-#include "clang/Driver/ToolChain.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -41,7 +37,7 @@ static int skipArgs(const char *Flag) {
     .Cases("-internal-externc-isystem", "-iprefix", "-iwithprefix", true)
     .Cases("-iwithprefixbefore", "-isysroot", "-isystem", "-iquote", true)
     .Cases("-resource-dir", "-serialize-diagnostic-file", true)
-    .Cases("-dwarf-debug-flags", "-ivfsoverlay", true)
+    .Case("-dwarf-debug-flags", true)
     .Default(false);
 
   // Match found.
@@ -62,8 +58,7 @@ static int skipArgs(const char *Flag) {
 
   // These flags are treated as a single argument (e.g., -F<Dir>).
   StringRef FlagRef(Flag);
-  if (FlagRef.startswith("-F") || FlagRef.startswith("-I") ||
-      FlagRef.startswith("-fmodules-cache-path="))
+  if (FlagRef.startswith("-F") || FlagRef.startswith("-I"))
     return 1;
 
   return 0;
@@ -124,9 +119,9 @@ int Command::Execute(const StringRef **Redirects, std::string *ErrMsg,
   Argv.push_back(Executable);
   for (size_t i = 0, e = Arguments.size(); i != e; ++i)
     Argv.push_back(Arguments[i]);
-  Argv.push_back(nullptr);
+  Argv.push_back(0);
 
-  return llvm::sys::ExecuteAndWait(Executable, Argv.data(), /*env*/ nullptr,
+  return llvm::sys::ExecuteAndWait(Executable, Argv.data(), /*env*/ 0,
                                    Redirects, /*secondsToWait*/ 0,
                                    /*memoryLimit*/ 0, ErrMsg, ExecutionFailed);
 }
@@ -163,9 +158,6 @@ int FallbackCommand::Execute(const StringRef **Redirects, std::string *ErrMsg,
     ErrMsg->clear();
   if (ExecutionFailed)
     *ExecutionFailed = false;
-
-  const Driver &D = getCreator().getToolChain().getDriver();
-  D.Diag(diag::warn_drv_invoking_fallback) << Fallback->getExecutable();
 
   int SecondaryStatus = Fallback->Execute(Redirects, ErrMsg, ExecutionFailed);
   return SecondaryStatus;

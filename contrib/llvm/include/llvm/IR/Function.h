@@ -18,12 +18,11 @@
 #ifndef LLVM_IR_FUNCTION_H
 #define LLVM_IR_FUNCTION_H
 
-#include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
-#include "llvm/IR/GlobalObject.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/Support/Compiler.h"
 
 namespace llvm {
@@ -68,7 +67,8 @@ private:
   mutable ilist_half_node<Argument> Sentinel;
 };
 
-class Function : public GlobalObject, public ilist_node<Function> {
+class Function : public GlobalValue,
+                 public ilist_node<Function> {
 public:
   typedef iplist<Argument> ArgumentListType;
   typedef iplist<BasicBlock> BasicBlockListType;
@@ -122,11 +122,11 @@ private:
   /// the module.
   ///
   Function(FunctionType *Ty, LinkageTypes Linkage,
-           const Twine &N = "", Module *M = nullptr);
+           const Twine &N = "", Module *M = 0);
 
 public:
   static Function *Create(FunctionType *Ty, LinkageTypes Linkage,
-                          const Twine &N = "", Module *M = nullptr) {
+                          const Twine &N = "", Module *M = 0) {
     return new(0) Function(Ty, Linkage, N, M);
   }
 
@@ -233,12 +233,6 @@ public:
     return AttributeSets.getParamAlignment(i);
   }
 
-  /// @brief Extract the number of dereferenceable bytes for a call or
-  /// parameter (0=unknown).
-  uint64_t getDereferenceableBytes(unsigned i) const {
-    return AttributeSets.getDereferenceableBytes(i);
-  }
-
   /// @brief Determine if the function does not access memory.
   bool doesNotAccessMemory() const {
     return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
@@ -303,8 +297,7 @@ public:
   /// @brief Determine if the function returns a structure through first
   /// pointer argument.
   bool hasStructRetAttr() const {
-    return AttributeSets.hasAttribute(1, Attribute::StructRet) ||
-           AttributeSets.hasAttribute(2, Attribute::StructRet);
+    return AttributeSets.hasAttribute(1, Attribute::StructRet);
   }
 
   /// @brief Determine if the parameter does not alias other parameters.
@@ -342,7 +335,7 @@ public:
 
   /// copyAttributesFrom - copy all additional attributes (those not needed to
   /// create a Function) from the Function Src to this one.
-  void copyAttributesFrom(const GlobalValue *Src) override;
+  void copyAttributesFrom(const GlobalValue *Src);
 
   /// deleteBody - This method deletes the body of the function, and converts
   /// the linkage to external.
@@ -355,12 +348,12 @@ public:
   /// removeFromParent - This method unlinks 'this' from the containing module,
   /// but does not delete it.
   ///
-  void removeFromParent() override;
+  virtual void removeFromParent();
 
   /// eraseFromParent - This method unlinks 'this' from the containing module
   /// and deletes it.
   ///
-  void eraseFromParent() override;
+  virtual void eraseFromParent();
 
 
   /// Get the underlying elements of the Function... the basic block list is
@@ -411,9 +404,9 @@ public:
   const BasicBlock        &back() const { return BasicBlocks.back();  }
         BasicBlock        &back()       { return BasicBlocks.back();  }
 
-/// @name Function Argument Iteration
-/// @{
-
+  //===--------------------------------------------------------------------===//
+  // Argument iterator forwarding functions
+  //
   arg_iterator arg_begin() {
     CheckLazyArguments();
     return ArgumentList.begin();
@@ -430,16 +423,6 @@ public:
     CheckLazyArguments();
     return ArgumentList.end();
   }
-
-  iterator_range<arg_iterator> args() {
-    return iterator_range<arg_iterator>(arg_begin(), arg_end());
-  }
-
-  iterator_range<const_arg_iterator> args() const {
-    return iterator_range<const_arg_iterator>(arg_begin(), arg_end());
-  }
-
-/// @}
 
   size_t arg_size() const;
   bool arg_empty() const;
@@ -489,7 +472,7 @@ public:
   /// other than direct calls or invokes to it, or blockaddress expressions.
   /// Optionally passes back an offending user for diagnostic purposes.
   ///
-  bool hasAddressTaken(const User** = nullptr) const;
+  bool hasAddressTaken(const User** = 0) const;
 
   /// isDefTriviallyDead - Return true if it is trivially safe to remove
   /// this function definition from the module (because it isn't externally
@@ -511,12 +494,12 @@ private:
 
 inline ValueSymbolTable *
 ilist_traits<BasicBlock>::getSymTab(Function *F) {
-  return F ? &F->getValueSymbolTable() : nullptr;
+  return F ? &F->getValueSymbolTable() : 0;
 }
 
 inline ValueSymbolTable *
 ilist_traits<Argument>::getSymTab(Function *F) {
-  return F ? &F->getValueSymbolTable() : nullptr;
+  return F ? &F->getValueSymbolTable() : 0;
 }
 
 } // End llvm namespace

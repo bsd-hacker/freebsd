@@ -10,7 +10,8 @@ SHLIB_MAJOR=	1
 INCS=		execinfo.h
 SRCS=		backtrace.c symtab.c unwind.c
 
-LIBADD=		elf
+DPADD=		${LIBELF}
+LDADD=		-lelf
 
 MAN=		backtrace.3
 

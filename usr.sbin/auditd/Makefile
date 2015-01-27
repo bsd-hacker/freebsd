@@ -11,7 +11,8 @@ PROG=	auditd
 SRCS=	auditd.c audit_warn.c auditd_fbsd.c
 MAN=	auditd.8
 
-LIBADD=	auditd bsm
+DPADD=	${LIBAUDITD} ${LIBBSM}
+LDADD=	-lauditd -lbsm
 
 WARNS?=	3
 

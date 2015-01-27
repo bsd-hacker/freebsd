@@ -85,14 +85,14 @@ namespace llvm {
 
     VNInfo::Allocator& getVNInfoAllocator() { return VNInfoAllocator; }
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override;
-    void releaseMemory() override;
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+    virtual void releaseMemory();
 
     /// runOnMachineFunction - pass entry point
-    bool runOnMachineFunction(MachineFunction&) override;
+    virtual bool runOnMachineFunction(MachineFunction&);
 
     /// print - Implement the dump method.
-    void print(raw_ostream &O, const Module* = nullptr) const override;
+    virtual void print(raw_ostream &O, const Module* = 0) const;
   };
 }
 

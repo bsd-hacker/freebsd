@@ -27,8 +27,7 @@ namespace lldb_private
 /// This class encapsulates a group of memory objects that must be readable
 /// or writable from the host process regardless of whether the process
 /// exists.  This allows the IR interpreter as well as JITted code to access
-/// the same memory.  All allocations made by this class are represented as
-/// disjoint intervals.
+/// the same memory.
 ///
 /// Point queries against this group of memory objects can be made by the
 /// address in the tar at which they reside.  If the inferior does not
@@ -67,7 +66,7 @@ public:
     uint32_t GetAddressByteSize();
     
     // This function can return NULL.
-    ExecutionContextScope *GetBestExecutionContextScope() const;
+    ExecutionContextScope *GetBestExecutionContextScope();
 
 protected:
     // This function should only be used if you know you are using the JIT.
@@ -119,12 +118,7 @@ private:
     lldb::addr_t FindSpace (size_t size);
     bool ContainsHostOnlyAllocations ();
     AllocationMap::iterator FindAllocation (lldb::addr_t addr, size_t size);
-
-    // Returns true if the given allocation intersects any allocation in the memory map.
-    bool IntersectsAllocation (lldb::addr_t addr, size_t size) const;
-
-    // Returns true if the two given allocations intersect each other.
-    static bool AllocationsIntersect (lldb::addr_t addr1, size_t size1, lldb::addr_t addr2, size_t size2);
+    bool IntersectsAllocation (lldb::addr_t addr, size_t size);
 };
     
 }

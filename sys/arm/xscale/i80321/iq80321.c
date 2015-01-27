@@ -52,7 +52,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/malloc.h>
 #include <sys/rman.h>
-#include <machine/armreg.h>
 #include <machine/bus.h>
 #include <machine/intr.h>
 
@@ -326,7 +325,7 @@ arm_unmask_irq(uintptr_t nb)
 void
 cpu_reset()
 {
-	(void) disable_interrupts(PSR_I|PSR_F);
+	(void) disable_interrupts(I32_bit|F32_bit);
 	*(__volatile uint32_t *)(IQ80321_80321_VBASE + VERDE_ATU_BASE +
 	    ATU_PCSR) = PCSR_RIB | PCSR_RPB;
 	printf("Reset failed!\n");

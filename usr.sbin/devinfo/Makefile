@@ -3,6 +3,7 @@
 PROG=	devinfo
 MAN=	devinfo.8
 
-LIBADD=	devinfo
+DPADD=	${LIBDEVINFO}
+LDADD=	-ldevinfo
 
 .include <bsd.prog.mk>

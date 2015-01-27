@@ -21,44 +21,51 @@
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#define NETDISSECT_REWORKED
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ah.c,v 1.22 2003-11-19 00:36:06 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
 #include <tcpdump-stdinc.h>
 
+#include <stdio.h>
+
 #include "ah.h"
 
 #include "interface.h"
+#include "addrtoname.h"
 #include "extract.h"
 
 int
-ah_print(netdissect_options *ndo, register const u_char *bp)
+ah_print(register const u_char *bp)
 {
 	register const struct ah *ah;
 	register const u_char *ep;
 	int sumlen;
-	uint32_t spi;
+	u_int32_t spi;
 
 	ah = (const struct ah *)bp;
-	ep = ndo->ndo_snapend;		/* 'ep' points to the end of available data. */
+	ep = snapend;		/* 'ep' points to the end of available data. */
 
-	ND_TCHECK(*ah);
+	TCHECK(*ah);
 
 	sumlen = ah->ah_len << 2;
 	spi = EXTRACT_32BITS(&ah->ah_spi);
 
-	ND_PRINT((ndo, "AH(spi=0x%08x", spi));
-	if (ndo->ndo_vflag)
-		ND_PRINT((ndo, ",sumlen=%d", sumlen));
-	ND_PRINT((ndo, ",seq=0x%x", EXTRACT_32BITS(ah + 1)));
+	printf("AH(spi=0x%08x", spi);
+	if (vflag)
+		printf(",sumlen=%d", sumlen);
+	printf(",seq=0x%x", EXTRACT_32BITS(ah + 1));
 	if (bp + sizeof(struct ah) + sumlen > ep)
-		ND_PRINT((ndo, "[truncated]"));
-	ND_PRINT((ndo, "): "));
+		fputs("[truncated]", stdout);
+	fputs("): ", stdout);
 
 	return sizeof(struct ah) + sumlen;
  trunc:
-	ND_PRINT((ndo, "[|AH]"));
+	fputs("[|AH]", stdout);
 	return -1;
 }

@@ -254,7 +254,7 @@ patm_rx(struct patm_softc *sc, struct idt_rsqe *rsqe)
 
 	} else if (vcc->vcc.aal == ATMIO_AAL_5) {
 		if (stat & IDT_RSQE_CRC) {
-			if_inc_counter(sc->ifp, IFCOUNTER_IERRORS, 1);
+			sc->ifp->if_ierrors++;
 			if (vcc->chain != NULL) {
 				m_freem(vcc->chain);
 				vcc->chain = vcc->last = NULL;
@@ -312,9 +312,9 @@ patm_rx(struct patm_softc *sc, struct idt_rsqe *rsqe)
 	}
 #endif
 
-	if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
+	sc->ifp->if_ipackets++;
 	/* this is in if_atmsubr.c */
-	/* if_inc_counter(sc->ifp, IFCOUNTER_IBYTES, m->m_pkthdr.len); */
+	/* sc->ifp->if_ibytes += m->m_pkthdr.len; */
 
 	vcc->ibytes += m->m_pkthdr.len;
 	vcc->ipackets++;
@@ -471,7 +471,7 @@ patm_rx_raw(struct patm_softc *sc, u_char *cell)
 	  default:
 	  case PATM_RAW_CELL:
 		m->m_len = m->m_pkthdr.len = 53;
-		M_ALIGN(m, 53);
+		MH_ALIGN(m, 53);
 		dst = mtod(m, u_char *);
 		*dst++ = *cell++;
 		*dst++ = *cell++;
@@ -483,7 +483,7 @@ patm_rx_raw(struct patm_softc *sc, u_char *cell)
 
 	  case PATM_RAW_NOHEC:
 		m->m_len = m->m_pkthdr.len = 52;
-		M_ALIGN(m, 52);
+		MH_ALIGN(m, 52);
 		dst = mtod(m, u_char *);
 		*dst++ = *cell++;
 		*dst++ = *cell++;
@@ -494,7 +494,7 @@ patm_rx_raw(struct patm_softc *sc, u_char *cell)
 
 	  case PATM_RAW_CS:
 		m->m_len = m->m_pkthdr.len = 64;
-		M_ALIGN(m, 64);
+		MH_ALIGN(m, 64);
 		dst = mtod(m, u_char *);
 		*dst++ = *cell++;
 		*dst++ = *cell++;
@@ -511,9 +511,9 @@ patm_rx_raw(struct patm_softc *sc, u_char *cell)
 		break;
 	}
 
-	if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
+	sc->ifp->if_ipackets++;
 	/* this is in if_atmsubr.c */
-	/* if_inc_counter(sc->ifp, IFCOUNTER_IBYTES, m->m_pkthdr.len); */
+	/* sc->ifp->if_ibytes += m->m_pkthdr.len; */
 
 	vcc->ibytes += m->m_pkthdr.len;
 	vcc->ipackets++;

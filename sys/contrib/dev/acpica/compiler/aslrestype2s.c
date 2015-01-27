@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGES.
  */
+
 
 #include <contrib/dev/acpica/compiler/aslcompiler.h>
 #include "aslcompiler.y.h"
@@ -267,7 +268,9 @@ RsGetVendorData (
  *
  * FUNCTION:    RsDoGpioIntDescriptor
  *
- * PARAMETERS:  Info                - Parse Op and resource template offset
+ * PARAMETERS:  Op                  - Parent resource descriptor parse node
+ *              CurrentByteOffset   - Offset into the resource template AML
+ *                                    buffer (to track references to the desc)
  *
  * RETURN:      Completed resource node
  *
@@ -277,7 +280,8 @@ RsGetVendorData (
 
 ASL_RESOURCE_NODE *
 RsDoGpioIntDescriptor (
-    ASL_RESOURCE_INFO       *Info)
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  CurrentByteOffset)
 {
     AML_RESOURCE            *Descriptor;
     ACPI_PARSE_OBJECT       *InitializerOp;
@@ -285,18 +289,14 @@ RsDoGpioIntDescriptor (
     char                    *ResourceSource = NULL;
     UINT8                   *VendorData = NULL;
     UINT16                  *InterruptList = NULL;
-    UINT16                  *PinList = NULL;
     UINT16                  ResSourceLength;
     UINT16                  VendorLength;
     UINT16                  InterruptLength;
     UINT16                  DescriptorSize;
-    UINT32                  CurrentByteOffset;
-    UINT32                  PinCount = 0;
     UINT32                  i;
 
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
-    CurrentByteOffset = Info->CurrentByteOffset;
+    InitializerOp = Op->Asl.Child;
 
     /*
      * Calculate lengths for fields that have variable length:
@@ -324,7 +324,6 @@ RsDoGpioIntDescriptor (
     /* Build pointers to optional areas */
 
     InterruptList = ACPI_ADD_PTR (UINT16, Descriptor, sizeof (AML_RESOURCE_GPIO));
-    PinList = InterruptList;
     ResourceSource = ACPI_ADD_PTR (char, InterruptList, InterruptLength);
     VendorData = ACPI_ADD_PTR (UINT8, ResourceSource, ResSourceLength);
 
@@ -408,7 +407,7 @@ RsDoGpioIntDescriptor (
 
         case 8: /* Resource Tag (Descriptor Name) */
 
-            UtAttachNamepathToOwner (Info->DescriptorTypeOp, InitializerOp);
+            UtAttachNamepathToOwner (Op, InitializerOp);
             break;
 
         case 9: /* Vendor Data (Optional - Buffer of BYTEs) (_VEN) */
@@ -439,7 +438,6 @@ RsDoGpioIntDescriptor (
              */
             *InterruptList = (UINT16) InitializerOp->Asl.Value.Integer;
             InterruptList++;
-            PinCount++;
 
             /* Case 10: First interrupt number in list */
 
@@ -468,7 +466,6 @@ RsDoGpioIntDescriptor (
         InitializerOp = RsCompleteNodeAndGetNext (InitializerOp);
     }
 
-    MpSaveGpioInfo (Info->MappingOp, Descriptor, PinCount, PinList, ResourceSource);
     return (Rnode);
 }
 
@@ -477,7 +474,9 @@ RsDoGpioIntDescriptor (
  *
  * FUNCTION:    RsDoGpioIoDescriptor
  *
- * PARAMETERS:  Info                - Parse Op and resource template offset
+ * PARAMETERS:  Op                  - Parent resource descriptor parse node
+ *              CurrentByteOffset   - Offset into the resource template AML
+ *                                    buffer (to track references to the desc)
  *
  * RETURN:      Completed resource node
  *
@@ -487,7 +486,8 @@ RsDoGpioIntDescriptor (
 
 ASL_RESOURCE_NODE *
 RsDoGpioIoDescriptor (
-    ASL_RESOURCE_INFO       *Info)
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  CurrentByteOffset)
 {
     AML_RESOURCE            *Descriptor;
     ACPI_PARSE_OBJECT       *InitializerOp;
@@ -495,18 +495,14 @@ RsDoGpioIoDescriptor (
     char                    *ResourceSource = NULL;
     UINT8                   *VendorData = NULL;
     UINT16                  *InterruptList = NULL;
-    UINT16                  *PinList = NULL;
     UINT16                  ResSourceLength;
     UINT16                  VendorLength;
     UINT16                  InterruptLength;
     UINT16                  DescriptorSize;
-    UINT32                  CurrentByteOffset;
-    UINT32                  PinCount = 0;
     UINT32                  i;
 
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
-    CurrentByteOffset = Info->CurrentByteOffset;
+    InitializerOp = Op->Asl.Child;
 
     /*
      * Calculate lengths for fields that have variable length:
@@ -517,7 +513,6 @@ RsDoGpioIoDescriptor (
     ResSourceLength = RsGetStringDataLength (InitializerOp);
     VendorLength = RsGetBufferDataLength (InitializerOp);
     InterruptLength = RsGetInterruptDataLength (InitializerOp);
-    PinList = InterruptList;
 
     DescriptorSize = ACPI_AML_SIZE_LARGE (AML_RESOURCE_GPIO) +
         ResSourceLength + VendorLength + InterruptLength;
@@ -535,7 +530,6 @@ RsDoGpioIoDescriptor (
     /* Build pointers to optional areas */
 
     InterruptList = ACPI_ADD_PTR (UINT16, Descriptor, sizeof (AML_RESOURCE_GPIO));
-    PinList = InterruptList;
     ResourceSource = ACPI_ADD_PTR (char, InterruptList, InterruptLength);
     VendorData = ACPI_ADD_PTR (UINT8, ResourceSource, ResSourceLength);
 
@@ -619,7 +613,7 @@ RsDoGpioIoDescriptor (
 
         case 8: /* Resource Tag (Descriptor Name) */
 
-            UtAttachNamepathToOwner (Info->DescriptorTypeOp, InitializerOp);
+            UtAttachNamepathToOwner (Op, InitializerOp);
             break;
 
         case 9: /* Vendor Data (Optional - Buffer of BYTEs) (_VEN) */
@@ -649,7 +643,6 @@ RsDoGpioIoDescriptor (
              */
             *InterruptList = (UINT16) InitializerOp->Asl.Value.Integer;
             InterruptList++;
-            PinCount++;
 
             /* Case 10: First interrupt number in list */
 
@@ -678,7 +671,6 @@ RsDoGpioIoDescriptor (
         InitializerOp = RsCompleteNodeAndGetNext (InitializerOp);
     }
 
-    MpSaveGpioInfo (Info->MappingOp, Descriptor, PinCount, PinList, ResourceSource);
     return (Rnode);
 }
 
@@ -687,7 +679,9 @@ RsDoGpioIoDescriptor (
  *
  * FUNCTION:    RsDoI2cSerialBusDescriptor
  *
- * PARAMETERS:  Info                - Parse Op and resource template offset
+ * PARAMETERS:  Op                  - Parent resource descriptor parse node
+ *              CurrentByteOffset   - Offset into the resource template AML
+ *                                    buffer (to track references to the desc)
  *
  * RETURN:      Completed resource node
  *
@@ -697,7 +691,8 @@ RsDoGpioIoDescriptor (
 
 ASL_RESOURCE_NODE *
 RsDoI2cSerialBusDescriptor (
-    ASL_RESOURCE_INFO       *Info)
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  CurrentByteOffset)
 {
     AML_RESOURCE            *Descriptor;
     ACPI_PARSE_OBJECT       *InitializerOp;
@@ -707,12 +702,10 @@ RsDoI2cSerialBusDescriptor (
     UINT16                  ResSourceLength;
     UINT16                  VendorLength;
     UINT16                  DescriptorSize;
-    UINT32                  CurrentByteOffset;
     UINT32                  i;
 
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
-    CurrentByteOffset = Info->CurrentByteOffset;
+    InitializerOp = Op->Asl.Child;
 
     /*
      * Calculate lengths for fields that have variable length:
@@ -808,7 +801,7 @@ RsDoI2cSerialBusDescriptor (
 
         case 7: /* Resource Tag (Descriptor Name) */
 
-            UtAttachNamepathToOwner (Info->DescriptorTypeOp, InitializerOp);
+            UtAttachNamepathToOwner (Op, InitializerOp);
             break;
 
         case 8: /* Vendor Data (Optional - Buffer of BYTEs) (_VEN) */
@@ -825,7 +818,6 @@ RsDoI2cSerialBusDescriptor (
         InitializerOp = RsCompleteNodeAndGetNext (InitializerOp);
     }
 
-    MpSaveSerialInfo (Info->MappingOp, Descriptor, ResourceSource);
     return (Rnode);
 }
 
@@ -834,7 +826,9 @@ RsDoI2cSerialBusDescriptor (
  *
  * FUNCTION:    RsDoSpiSerialBusDescriptor
  *
- * PARAMETERS:  Info                - Parse Op and resource template offset
+ * PARAMETERS:  Op                  - Parent resource descriptor parse node
+ *              CurrentByteOffset   - Offset into the resource template AML
+ *                                    buffer (to track references to the desc)
  *
  * RETURN:      Completed resource node
  *
@@ -844,7 +838,8 @@ RsDoI2cSerialBusDescriptor (
 
 ASL_RESOURCE_NODE *
 RsDoSpiSerialBusDescriptor (
-    ASL_RESOURCE_INFO       *Info)
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  CurrentByteOffset)
 {
     AML_RESOURCE            *Descriptor;
     ACPI_PARSE_OBJECT       *InitializerOp;
@@ -854,12 +849,10 @@ RsDoSpiSerialBusDescriptor (
     UINT16                  ResSourceLength;
     UINT16                  VendorLength;
     UINT16                  DescriptorSize;
-    UINT32                  CurrentByteOffset;
     UINT32                  i;
 
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
-    CurrentByteOffset = Info->CurrentByteOffset;
+    InitializerOp = Op->Asl.Child;
 
     /*
      * Calculate lengths for fields that have variable length:
@@ -983,7 +976,7 @@ RsDoSpiSerialBusDescriptor (
 
         case 11: /* Resource Tag (Descriptor Name) */
 
-            UtAttachNamepathToOwner (Info->DescriptorTypeOp, InitializerOp);
+            UtAttachNamepathToOwner (Op, InitializerOp);
             break;
 
         case 12: /* Vendor Data (Optional - Buffer of BYTEs) (_VEN) */
@@ -1000,7 +993,6 @@ RsDoSpiSerialBusDescriptor (
         InitializerOp = RsCompleteNodeAndGetNext (InitializerOp);
     }
 
-    MpSaveSerialInfo (Info->MappingOp, Descriptor, ResourceSource);
     return (Rnode);
 }
 
@@ -1009,7 +1001,9 @@ RsDoSpiSerialBusDescriptor (
  *
  * FUNCTION:    RsDoUartSerialBusDescriptor
  *
- * PARAMETERS:  Info                - Parse Op and resource template offset
+ * PARAMETERS:  Op                  - Parent resource descriptor parse node
+ *              CurrentByteOffset   - Offset into the resource template AML
+ *                                    buffer (to track references to the desc)
  *
  * RETURN:      Completed resource node
  *
@@ -1019,7 +1013,8 @@ RsDoSpiSerialBusDescriptor (
 
 ASL_RESOURCE_NODE *
 RsDoUartSerialBusDescriptor (
-    ASL_RESOURCE_INFO       *Info)
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  CurrentByteOffset)
 {
     AML_RESOURCE            *Descriptor;
     ACPI_PARSE_OBJECT       *InitializerOp;
@@ -1029,12 +1024,10 @@ RsDoUartSerialBusDescriptor (
     UINT16                  ResSourceLength;
     UINT16                  VendorLength;
     UINT16                  DescriptorSize;
-    UINT32                  CurrentByteOffset;
     UINT32                  i;
 
 
-    InitializerOp = Info->DescriptorTypeOp->Asl.Child;
-    CurrentByteOffset = Info->CurrentByteOffset;
+    InitializerOp = Op->Asl.Child;
 
     /*
      * Calculate lengths for fields that have variable length:
@@ -1175,7 +1168,7 @@ RsDoUartSerialBusDescriptor (
 
         case 12: /* Resource Tag (Descriptor Name) */
 
-            UtAttachNamepathToOwner (Info->DescriptorTypeOp, InitializerOp);
+            UtAttachNamepathToOwner (Op, InitializerOp);
             break;
 
         case 13: /* Vendor Data (Optional - Buffer of BYTEs) (_VEN) */
@@ -1192,6 +1185,5 @@ RsDoUartSerialBusDescriptor (
         InitializerOp = RsCompleteNodeAndGetNext (InitializerOp);
     }
 
-    MpSaveSerialInfo (Info->MappingOp, Descriptor, ResourceSource);
     return (Rnode);
 }

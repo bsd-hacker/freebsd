@@ -33,7 +33,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/rman.h>
 #include <sys/timetc.h>
-#include <machine/armreg.h>
 #include <machine/bus.h>
 #include <machine/intr.h>
 
@@ -106,7 +105,7 @@ pxa_icu_attach(device_t dev)
 	pxa_icu_set_iclr(0);
 
 	/* XXX: This should move to configure_final or something. */
-	enable_interrupts(PSR_I|PSR_F);
+	enable_interrupts(I32_bit|F32_bit);
 
 	return (0);
 }

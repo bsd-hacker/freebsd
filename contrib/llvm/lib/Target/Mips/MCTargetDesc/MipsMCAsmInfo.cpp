@@ -38,7 +38,7 @@ MipsMCAsmInfo::MipsMCAsmInfo(StringRef TT) {
   ZeroDirective               = "\t.space\t";
   GPRel32Directive            = "\t.gpword\t";
   GPRel64Directive            = "\t.gpdword\t";
-  UseAssignmentForEHBegin = true;
+  DebugLabelSuffix            = "=.";
   SupportsDebugInformation = true;
   ExceptionsType = ExceptionHandling::DwarfCFI;
   HasLEB128 = true;

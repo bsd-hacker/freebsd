@@ -1,5 +1,3 @@
-/*	$NetBSD: parse.h,v 1.7 2009/12/30 22:37:40 christos Exp $	*/
-
 /*-
  * Copyright (c) 1992, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -32,6 +30,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)parse.h	8.1 (Berkeley) 6/4/93
+ *	$NetBSD: parse.h,v 1.6 2005/05/29 04:58:15 lukem Exp $
  * $FreeBSD$
  */
 
@@ -41,9 +40,9 @@
 #ifndef _h_el_parse
 #define	_h_el_parse
 
-protected int	 parse_line(EditLine *, const Char *);
-protected int	 parse__escape(const Char **);
-protected Char	*parse__string(Char *, const Char *);
-protected int	 parse_cmd(EditLine *, const Char *);
+protected int	 parse_line(EditLine *, const char *);
+protected int	 parse__escape(const char **);
+protected char	*parse__string(char *, const char *);
+protected int	 parse_cmd(EditLine *, const char *);
 
 #endif /* _h_el_parse */

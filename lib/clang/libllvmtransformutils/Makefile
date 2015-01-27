@@ -5,9 +5,7 @@
 LIB=	llvmtransformutils
 
 SRCDIR=	lib/Transforms/Utils
-SRCS=	ASanStackFrameLayout.cpp \
-	AddDiscriminators.cpp \
-	BasicBlockUtils.cpp \
+SRCS=	BasicBlockUtils.cpp \
 	BreakCriticalEdges.cpp \
 	BuildLibCalls.cpp \
 	BypassSlowDivision.cpp \
@@ -15,7 +13,6 @@ SRCS=	ASanStackFrameLayout.cpp \
 	CloneModule.cpp \
 	CmpInstAnalysis.cpp \
 	CodeExtractor.cpp \
-	CtorUtils.cpp \
 	DemoteRegToStack.cpp \
 	FlattenCFG.cpp \
 	GlobalStatus.cpp \
@@ -39,6 +36,7 @@ SRCS=	ASanStackFrameLayout.cpp \
 	SimplifyIndVar.cpp \
 	SimplifyInstructions.cpp \
 	SimplifyLibCalls.cpp \
+	SpecialCaseList.cpp \
 	UnifyFunctionExitNodes.cpp \
 	ValueMapper.cpp
 

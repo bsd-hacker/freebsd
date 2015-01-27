@@ -100,7 +100,7 @@ OptionValueArch::AutoComplete (CommandInterpreter &interpreter,
                                                          s,
                                                          match_start_point,
                                                          max_return_elements,
-                                                         nullptr,
+                                                         NULL,
                                                          word_complete,
                                                          matches);
     return matches.GetSize();

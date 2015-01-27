@@ -111,8 +111,7 @@ static const struct {
 	{ EDT_BADAGGVAR, "Invalid aggregation variable identifier" },
 	{ EDT_OVERSION,	"Client requested deprecated version of library" },
 	{ EDT_ENABLING_ERR, "Failed to enable probe" },
-	{ EDT_NOPROBES, "No probe sites found for declared provider" },
-	{ EDT_CANTLOAD, "Failed to load module" },
+	{ EDT_NOPROBES, "No probe sites found for declared provider" }
 };
 
 static const int _dt_nerr = sizeof (_dt_errlist) / sizeof (_dt_errlist[0]);
@@ -145,7 +144,7 @@ dtrace_errno(dtrace_hdl_t *dtp)
 	return (dtp->dt_errno);
 }
 
-#ifdef illumos
+#if defined(sun)
 int
 dt_set_errno(dtrace_hdl_t *dtp, int err)
 {

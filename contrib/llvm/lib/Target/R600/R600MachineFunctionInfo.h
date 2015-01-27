@@ -21,7 +21,7 @@
 namespace llvm {
 
 class R600MachineFunctionInfo : public AMDGPUMachineFunction {
-  void anchor() override;
+  virtual void anchor();
 public:
   R600MachineFunctionInfo(const MachineFunction &MF);
   SmallVector<unsigned, 4> LiveOuts;

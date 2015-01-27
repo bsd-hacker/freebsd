@@ -225,14 +225,14 @@ namespace lldb_private {
             return m_flags.GetSkipReferences();
         }
         
-        virtual bool
-        DoesPrintChildren (ValueObject* valobj) const
+        bool
+        DoesPrintChildren () const
         {
             return !m_flags.GetDontShowChildren();
         }
         
-        virtual bool
-        DoesPrintValue (ValueObject* valobj) const
+        bool
+        DoesPrintValue () const
         {
             return !m_flags.GetDontShowValue();
         }
@@ -243,8 +243,8 @@ namespace lldb_private {
             return m_flags.GetShowMembersOneLiner();
         }
         
-        virtual bool
-        HideNames (ValueObject* valobj) const
+        bool
+        HideNames () const
         {
             return m_flags.GetHideItemNames();
         }
@@ -267,13 +267,13 @@ namespace lldb_private {
             m_flags.SetSkipReferences(value);
         }
         
-        virtual void
+        void
         SetDoesPrintChildren (bool value)
         {
             m_flags.SetDontShowChildren(!value);
         }
         
-        virtual void
+        void
         SetDoesPrintValue (bool value)
         {
             m_flags.SetDontShowValue(!value);
@@ -285,7 +285,7 @@ namespace lldb_private {
             m_flags.SetShowMembersOneLiner(value);
         }
         
-        virtual void
+        void
         SetHideNames (bool value)
         {
             m_flags.SetHideItemNames(value);

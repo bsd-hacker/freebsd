@@ -47,7 +47,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/pci/pcivar.h>
 
-#include <machine/armreg.h>
 #include <machine/bus.h>
 #include <machine/cpu.h>
 #include <machine/pcb.h>
@@ -71,7 +70,7 @@ extern struct ixp425_softc *ixp425_softc;
 #define	PCI_CSR_READ_4(sc, reg)	\
 	bus_read_4(sc->sc_csr, reg)
 
-#define PCI_CONF_LOCK(s)	(s) = disable_interrupts(PSR_I)
+#define PCI_CONF_LOCK(s)	(s) = disable_interrupts(I32_bit)
 #define PCI_CONF_UNLOCK(s)	restore_interrupts((s))
 
 static device_probe_t ixppcib_probe;
@@ -320,12 +319,9 @@ static int
 ixppcib_activate_resource(device_t bus, device_t child, int type, int rid,
     struct resource *r)
 {
-	struct ixppcib_softc *sc = device_get_softc(bus);
-	int error;
 
-	error = rman_activate_resource(r);
-	if (error)
-		return (error);
+	struct ixppcib_softc *sc = device_get_softc(bus);
+
 	switch (type) {
 	case SYS_RES_IOPORT:
 		rman_set_bustag(r, &sc->sc_pci_iot);
@@ -338,7 +334,7 @@ ixppcib_activate_resource(device_t bus, device_t child, int type, int rid,
 		break;
 	}
 		
-	return (0);
+	return (rman_activate_resource(r));
 }
 
 static int

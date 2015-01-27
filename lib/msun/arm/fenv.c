@@ -30,9 +30,7 @@
 #define	__fenv_static
 #include "fenv.h"
 
-#include <machine/acle-compat.h>
-
-#if __ARM_ARCH >= 6
+#if defined(__FreeBSD_ARCH_armv6__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 6)
 #define FENV_ARMv6
 #endif
 

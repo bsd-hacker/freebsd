@@ -34,23 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscall.h>
 #include "libc_private.h"
 
-#pragma weak fcntl
-int
-fcntl(int fd, int cmd, ...)
-{
-	va_list args;
-	long arg;
-
-	va_start(args, cmd);
-	arg = va_arg(args, long);
-	va_end(args);
-
-	return (((int (*)(int, int, ...))
-	    __libc_interposing[INTERPOS_fcntl])(fd, cmd, arg));
-}
-
-#ifdef SYSCALL_COMPAT
-__weak_reference(__fcntl_compat, __fcntl);
+__weak_reference(__fcntl_compat, fcntl);
 
 int
 __fcntl_compat(int fd, int cmd, ...)
@@ -103,7 +87,3 @@ __fcntl_compat(int fd, int cmd, ...)
 		return (__sys_fcntl(fd, cmd, arg));
 	}
 }
-#else
-__weak_reference(__sys_fcntl, __fcntl_compat);
-__weak_reference(__sys_fcntl, __fcntl);
-#endif

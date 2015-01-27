@@ -6,7 +6,7 @@ LIB=	llvmscalaropts
 
 SRCDIR=	lib/Transforms/Scalar
 SRCS=	ADCE.cpp \
-	ConstantHoisting.cpp \
+	CodeGenPrepare.cpp \
 	ConstantProp.cpp \
 	CorrelatedValuePropagation.cpp \
 	DCE.cpp \
@@ -14,10 +14,10 @@ SRCS=	ADCE.cpp \
 	EarlyCSE.cpp \
 	FlattenCFGPass.cpp \
 	GVN.cpp \
+	GlobalMerge.cpp \
 	IndVarSimplify.cpp \
 	JumpThreading.cpp \
 	LICM.cpp \
-	LoadCombine.cpp \
 	LoopDeletion.cpp \
 	LoopIdiomRecognize.cpp \
 	LoopRerollPass.cpp \
@@ -27,7 +27,6 @@ SRCS=	ADCE.cpp \
 	LoopUnswitch.cpp \
 	LowerAtomic.cpp \
 	MemCpyOptimizer.cpp \
-	MergedLoadStoreMotion.cpp \
 	PartiallyInlineLibCalls.cpp \
 	Reassociate.cpp \
 	Reg2Mem.cpp \
@@ -35,8 +34,6 @@ SRCS=	ADCE.cpp \
 	SROA.cpp \
 	SampleProfile.cpp \
 	ScalarReplAggregates.cpp \
-	Scalarizer.cpp \
-	SeparateConstOffsetFromGEP.cpp \
 	SimplifyCFGPass.cpp \
 	Sink.cpp \
 	StructurizeCFG.cpp \

@@ -112,16 +112,15 @@ whereobj:
 
 .if ${CANONICALOBJDIR} != ${.CURDIR} && exists(${CANONICALOBJDIR}/)
 cleanobj:
-	@-rm -rf ${CANONICALOBJDIR}
+	@rm -rf ${CANONICALOBJDIR}
 .else
 cleanobj: clean cleandepend
 .endif
 	@if [ -L ${.CURDIR}/obj ]; then rm -f ${.CURDIR}/obj; fi
 
 # Tell bmake not to look for generated files via .PATH
-NOPATH_FILES+=	${CLEANFILES}
-.if !empty(NOPATH_FILES)
-.NOPATH: ${NOPATH_FILES}
+.if !empty(CLEANFILES)
+.NOPATH: ${CLEANFILES}
 .endif
 
 .if !target(clean)
@@ -130,7 +129,7 @@ clean:
 	rm -f ${CLEANFILES}
 .endif
 .if defined(CLEANDIRS) && !empty(CLEANDIRS)
-	-rm -rf ${CLEANDIRS}
+	rm -rf ${CLEANDIRS}
 .endif
 .endif
 

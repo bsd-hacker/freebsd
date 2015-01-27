@@ -9,8 +9,8 @@
 
 #include "clang/Index/CommentToXML.h"
 #include "SimpleFormatContext.h"
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/Comment.h"
 #include "clang/AST/CommentVisitor.h"
 #include "clang/Format/Format.h"
@@ -97,7 +97,7 @@ struct FullCommentParts {
 
 FullCommentParts::FullCommentParts(const FullComment *C,
                                    const CommandTraits &Traits) :
-    Brief(nullptr), Headerfile(nullptr), FirstParagraph(nullptr) {
+    Brief(NULL), Headerfile(NULL), FirstParagraph(NULL) {
   for (Comment::child_iterator I = C->child_begin(), E = C->child_end();
        I != E; ++I) {
     const Comment *Child = *I;
@@ -563,7 +563,6 @@ public:
 
   // Helpers.
   void appendToResultWithXMLEscaping(StringRef S);
-  void appendToResultWithCDATAEscaping(StringRef S);
 
   void formatTextOfDeclaration(const DeclInfo *DI,
                                SmallString<128> &Declaration);
@@ -668,27 +667,14 @@ void CommentASTToXMLConverter::visitInlineCommandComment(
 
 void CommentASTToXMLConverter::visitHTMLStartTagComment(
     const HTMLStartTagComment *C) {
-  Result << "<rawHTML";
-  if (C->isMalformed())
-    Result << " isMalformed=\"1\"";
-  Result << ">";
-  {
-    SmallString<32> Tag;
-    {
-      llvm::raw_svector_ostream TagOS(Tag);
-      printHTMLStartTagComment(C, TagOS);
-    }
-    appendToResultWithCDATAEscaping(Tag);
-  }
-  Result << "</rawHTML>";
+  Result << "<rawHTML><![CDATA[";
+  printHTMLStartTagComment(C, Result);
+  Result << "]]></rawHTML>";
 }
 
 void
 CommentASTToXMLConverter::visitHTMLEndTagComment(const HTMLEndTagComment *C) {
-  Result << "<rawHTML";
-  if (C->isMalformed())
-    Result << " isMalformed=\"1\"";
-  Result << ">&lt;/" << C->getTagName() << "&gt;</rawHTML>";
+  Result << "<rawHTML>&lt;/" << C->getTagName() << "&gt;</rawHTML>";
 }
 
 void
@@ -1114,31 +1100,6 @@ void CommentASTToXMLConverter::appendToResultWithXMLEscaping(StringRef S) {
   }
 }
 
-void CommentASTToXMLConverter::appendToResultWithCDATAEscaping(StringRef S) {
-  if (S.empty())
-    return;
-
-  Result << "<![CDATA[";
-  while (!S.empty()) {
-    size_t Pos = S.find("]]>");
-    if (Pos == 0) {
-      Result << "]]]]><![CDATA[>";
-      S = S.drop_front(3);
-      continue;
-    }
-    if (Pos == StringRef::npos)
-      Pos = S.size();
-
-    Result << S.substr(0, Pos);
-
-    S = S.drop_front(Pos);
-  }
-  Result << "]]>";
-}
-
-CommentToXMLConverter::CommentToXMLConverter() : FormatInMemoryUniqueId(0) {}
-CommentToXMLConverter::~CommentToXMLConverter() {}
-
 void CommentToXMLConverter::convertCommentToHTML(const FullComment *FC,
                                                  SmallVectorImpl<char> &HTML,
                                                  const ASTContext &Context) {
@@ -1150,7 +1111,7 @@ void CommentToXMLConverter::convertCommentToHTML(const FullComment *FC,
 void CommentToXMLConverter::convertHTMLTagNodeToText(
     const comments::HTMLTagComment *HTC, SmallVectorImpl<char> &Text,
     const ASTContext &Context) {
-  CommentASTToHTMLConverter Converter(nullptr, Text,
+  CommentASTToHTMLConverter Converter(0, Text,
                                       Context.getCommentCommandTraits());
   Converter.visit(HTC);
 }
@@ -1158,10 +1119,13 @@ void CommentToXMLConverter::convertHTMLTagNodeToText(
 void CommentToXMLConverter::convertCommentToXML(const FullComment *FC,
                                                 SmallVectorImpl<char> &XML,
                                                 const ASTContext &Context) {
-  if (!FormatContext || (FormatInMemoryUniqueId % 1000) == 0) {
-    // Create a new format context, or re-create it after some number of
-    // iterations, so the buffers don't grow too large.
-    FormatContext.reset(new SimpleFormatContext(Context.getLangOpts()));
+  if (!FormatContext) {
+    FormatContext = new SimpleFormatContext(Context.getLangOpts());
+  } else if ((FormatInMemoryUniqueId % 1000) == 0) {
+    // Delete after some number of iterations, so the buffers don't grow
+    // too large.
+    delete FormatContext;
+    FormatContext = new SimpleFormatContext(Context.getLangOpts());
   }
 
   CommentASTToXMLConverter Converter(FC, XML, Context.getCommentCommandTraits(),

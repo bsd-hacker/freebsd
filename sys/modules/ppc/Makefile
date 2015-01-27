@@ -17,4 +17,8 @@ SRCS+=	ppc_acpi.c
 SRCS+=	ppc_isa.c
 .endif
 
+.if ${MACHINE_CPUARCH} == "ia64"
+SRCS+=	ppc_acpi.c
+.endif
+
 .include <bsd.kmod.mk>

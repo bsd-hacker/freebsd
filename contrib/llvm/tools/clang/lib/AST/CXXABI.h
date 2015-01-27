@@ -44,6 +44,7 @@ public:
 };
 
 /// Creates an instance of a C++ ABI class.
+CXXABI *CreateARMCXXABI(ASTContext &Ctx);
 CXXABI *CreateItaniumCXXABI(ASTContext &Ctx);
 CXXABI *CreateMicrosoftCXXABI(ASTContext &Ctx);
 }

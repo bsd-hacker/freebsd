@@ -84,6 +84,7 @@ __FBSDID("$FreeBSD$");
 #ifdef INET6
 #include <netinet/ip6.h>
 #include <netinet6/ip6_var.h>
+#include <netinet6/ip6protosw.h>
 #endif
 
 #include <machine/stdarg.h>
@@ -114,20 +115,18 @@ encap_init(void)
 }
 
 #ifdef INET
-int
-encap4_input(struct mbuf **mp, int *offp, int proto)
+void
+encap4_input(struct mbuf *m, int off)
 {
 	struct ip *ip;
-	struct mbuf *m;
+	int proto;
 	struct sockaddr_in s, d;
 	const struct protosw *psw;
 	struct encaptab *ep, *match;
-	int matchprio, off, prio;
+	int prio, matchprio;
 
-	m = *mp;
-	off = *offp;
 	ip = mtod(m, struct ip *);
-	*mp = NULL;
+	proto = ip->ip_p;
 
 	bzero(&s, sizeof(s));
 	s.sin_family = AF_INET;
@@ -189,16 +188,14 @@ encap4_input(struct mbuf **mp, int *offp, int proto)
 		psw = match->psw;
 		if (psw && psw->pr_input) {
 			encap_fillarg(m, match);
-			*mp = m;
-			(*psw->pr_input)(mp, offp, proto);
+			(*psw->pr_input)(m, off);
 		} else
 			m_freem(m);
-		return (IPPROTO_DONE);
+		return;
 	}
 
 	/* last resort: inject to raw socket */
-	*mp = m;
-	return (rip_input(mp, offp, proto));
+	rip_input(m, off);
 }
 #endif
 
@@ -209,7 +206,7 @@ encap6_input(struct mbuf **mp, int *offp, int proto)
 	struct mbuf *m = *mp;
 	struct ip6_hdr *ip6;
 	struct sockaddr_in6 s, d;
-	const struct protosw *psw;
+	const struct ip6protosw *psw;
 	struct encaptab *ep, *match;
 	int prio, matchprio;
 
@@ -255,7 +252,7 @@ encap6_input(struct mbuf **mp, int *offp, int proto)
 
 	if (match) {
 		/* found a match */
-		psw = match->psw;
+		psw = (const struct ip6protosw *)match->psw;
 		if (psw && psw->pr_input) {
 			encap_fillarg(m, match);
 			return (*psw->pr_input)(mp, offp, proto);

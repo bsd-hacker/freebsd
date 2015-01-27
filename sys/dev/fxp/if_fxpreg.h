@@ -28,6 +28,8 @@
  * $FreeBSD$
  */
 
+#define FXP_VENDORID_INTEL	0x8086
+
 #define FXP_PCI_MMBA	0x10
 #define FXP_PCI_IOBA	0x14
 

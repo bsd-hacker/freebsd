@@ -117,13 +117,7 @@ public:
 
     void
     SetCallback (BreakpointHitCallback callback, void *baton);
-    
-    void
-    SetScriptCallbackFunction (const char *callback_function_name);
-    
-    SBError
-    SetScriptCallbackBody (const char *script_body_text);
-    
+
     size_t
     GetNumResolvedLocations() const;
 

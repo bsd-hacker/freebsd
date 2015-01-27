@@ -1,3 +1,6 @@
+//
+// Automated Testing Framework (atf)
+//
 // Copyright (c) 2007 The NetBSD Foundation, Inc.
 // All rights reserved.
 //
@@ -22,10 +25,11 @@
 // IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 // IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-#include "atf-c++/detail/env.hpp"
+#include "../macros.hpp"
 
-#include <atf-c++.hpp>
+#include "env.hpp"
 
 // ------------------------------------------------------------------------
 // Test cases for the free functions.
@@ -42,19 +46,6 @@ ATF_TEST_CASE_BODY(has_get)
     ATF_REQUIRE(!atf::env::get("PATH").empty());
 
     ATF_REQUIRE(!atf::env::has("_UNDEFINED_VARIABLE_"));
-}
-
-ATF_TEST_CASE(get_with_default);
-ATF_TEST_CASE_HEAD(get_with_default)
-{
-    set_md_var("descr", "Tests the get function with a default value");
-}
-ATF_TEST_CASE_BODY(get_with_default)
-{
-    ATF_REQUIRE(atf::env::has("PATH"));
-    ATF_REQUIRE(atf::env::get("PATH", "default value") != "default value");
-
-    ATF_REQUIRE_EQ(atf::env::get("_UNDEFINED_VARIABLE_", "foo bar"), "foo bar");
 }
 
 ATF_TEST_CASE(set);
@@ -95,7 +86,6 @@ ATF_INIT_TEST_CASES(tcs)
 {
     // Add the test cases for the free functions.
     ATF_ADD_TEST_CASE(tcs, has_get);
-    ATF_ADD_TEST_CASE(tcs, get_with_default);
     ATF_ADD_TEST_CASE(tcs, set);
     ATF_ADD_TEST_CASE(tcs, unset);
 }

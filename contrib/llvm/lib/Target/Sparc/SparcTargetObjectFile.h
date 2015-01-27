@@ -24,10 +24,9 @@ public:
   {}
 
   const MCExpr *
-  getTTypeGlobalReference(const GlobalValue *GV, unsigned Encoding,
-                          Mangler &Mang, const TargetMachine &TM,
-                          MachineModuleInfo *MMI,
-                          MCStreamer &Streamer) const override;
+  getTTypeGlobalReference(const GlobalValue *GV, Mangler *Mang,
+                          MachineModuleInfo *MMI, unsigned Encoding,
+                          MCStreamer &Streamer) const;
 };
 
 } // end namespace llvm

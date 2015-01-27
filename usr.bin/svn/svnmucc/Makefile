@@ -31,12 +31,17 @@ LDADD=	-L${LIBSVN_CLIENTDIR} -lsvn_client \
 	-L${LIBSVN_SUBRDIR} -lsvn_subr \
 	-L${LIBSERFDIR} -lserf \
 	-L${LIBAPR_UTILDIR} -lapr-util \
-	-L${LIBAPRDIR} -lapr
-LIBADD+=	bsdxml sqlite3 z crypto ssl pthread
+	-lbsdxml \
+	-L${LIBAPRDIR} -lapr \
+	-L${LIBSQLITEDIR} -lsqlite3 \
+	-lz -lcrypt -lmagic -lcrypto -lssl -lpthread
 
 DPADD=	${LIBSVN_CLIENT} ${LIBSVN_RA} ${LIBSVN_RA_LOCAL} ${LIBSVN_RA_SVN} \
 	${LIBSVN_RA_SERF} ${LIBSVN_REPOS} ${LIBSVN_FS} ${LIBSVN_FS_FS} \
 	${LIBSVN_FS_UTIL} ${LIBSVN_DELTA} ${LIBSVN_SUBR} ${LIBSERF} \
-	${LIBAPR_UTIL} ${LIBAPR}
+	${LIBAPR_UTIL} ${LIBBSDXML} ${LIBAPR} ${LIBSQLITE} ${LIBZ} \
+	${LIBCRYPT} ${LIBMAGIC} ${LIBCRYPTO} ${LIBSSL} ${LIBPTHREAD}
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

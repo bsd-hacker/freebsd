@@ -27,7 +27,7 @@ LOADER_FDT_SUPPORT=	no
 .endif
 
 .if ${LOADER_FDT_SUPPORT} == "yes"
-CFLAGS+= -DLOADER_FDT_SUPPORT -I${.CURDIR}/../../fdt
+CFLAGS+= -DLOADER_FDT_SUPPORT
 .endif
 
 # Pick up FDT includes

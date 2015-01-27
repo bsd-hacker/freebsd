@@ -47,7 +47,7 @@ class ScoreboardHazardRecognizer : public ScheduleHazardRecognizer {
     // Indices into the Scoreboard that represent the current cycle.
     size_t Head;
   public:
-    Scoreboard():Data(nullptr), Depth(0), Head(0) { }
+    Scoreboard():Data(NULL), Depth(0), Head(0) { }
     ~Scoreboard() {
       delete[] Data;
     }
@@ -62,7 +62,7 @@ class ScoreboardHazardRecognizer : public ScheduleHazardRecognizer {
     }
 
     void reset(size_t d = 1) {
-      if (!Data) {
+      if (Data == NULL) {
         Depth = d;
         Data = new unsigned[Depth];
       }
@@ -110,15 +110,15 @@ public:
 
   /// atIssueLimit - Return true if no more instructions may be issued in this
   /// cycle.
-  bool atIssueLimit() const override;
+  virtual bool atIssueLimit() const;
 
   // Stalls provides an cycle offset at which SU will be scheduled. It will be
   // negative for bottom-up scheduling.
-  HazardType getHazardType(SUnit *SU, int Stalls) override;
-  void Reset() override;
-  void EmitInstruction(SUnit *SU) override;
-  void AdvanceCycle() override;
-  void RecedeCycle() override;
+  virtual HazardType getHazardType(SUnit *SU, int Stalls);
+  virtual void Reset();
+  virtual void EmitInstruction(SUnit *SU);
+  virtual void AdvanceCycle();
+  virtual void RecedeCycle();
 };
 
 }

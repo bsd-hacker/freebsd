@@ -32,8 +32,7 @@ SBCommunication::SBCommunication(const char * broadcaster_name) :
 
     if (log)
         log->Printf ("SBCommunication::SBCommunication (broadcaster_name=\"%s\") => "
-                     "SBCommunication(%p)", broadcaster_name,
-                     static_cast<void*>(m_opaque));
+                     "SBCommunication(%p)", broadcaster_name, m_opaque);
 }
 
 SBCommunication::~SBCommunication()
@@ -98,9 +97,8 @@ SBCommunication::AdoptFileDesriptor (int fd, bool owns_fd)
     }
 
     if (log)
-        log->Printf ("SBCommunication(%p)::AdoptFileDescriptor (fd=%d, ownd_fd=%i) => %s",
-                     static_cast<void*>(m_opaque), fd, owns_fd,
-                     Communication::ConnectionStatusAsCString (status));
+        log->Printf ("SBCommunication(%p)::AdoptFileDescriptor (fd=%d, ownd_fd=%i) => %s", 
+                     m_opaque, fd, owns_fd, Communication::ConnectionStatusAsCString (status));
 
     return status;
 }
@@ -116,8 +114,7 @@ SBCommunication::Disconnect ()
         status = m_opaque->Disconnect ();
 
     if (log)
-        log->Printf ("SBCommunication(%p)::Disconnect () => %s",
-                     static_cast<void*>(m_opaque),
+        log->Printf ("SBCommunication(%p)::Disconnect () => %s", m_opaque,
                      Communication::ConnectionStatusAsCString (status));
 
     return status;
@@ -132,8 +129,7 @@ SBCommunication::IsConnected () const
         result = m_opaque->IsConnected ();
 
     if (log)
-        log->Printf ("SBCommunication(%p)::IsConnected () => %i",
-                     static_cast<void*>(m_opaque), result);
+        log->Printf ("SBCommunication(%p)::IsConnected () => %i", m_opaque, result);
 
     return false;
 }
@@ -144,8 +140,10 @@ SBCommunication::Read (void *dst, size_t dst_len, uint32_t timeout_usec, Connect
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_API));
     if (log)
         log->Printf ("SBCommunication(%p)::Read (dst=%p, dst_len=%" PRIu64 ", timeout_usec=%u, &status)...",
-                     static_cast<void*>(m_opaque), static_cast<void*>(dst),
-                     static_cast<uint64_t>(dst_len), timeout_usec);
+                     m_opaque,
+                     dst,
+                     (uint64_t)dst_len,
+                     timeout_usec);
     size_t bytes_read = 0;
     if (m_opaque)
         bytes_read = m_opaque->Read (dst, dst_len, timeout_usec, status, NULL);
@@ -154,10 +152,12 @@ SBCommunication::Read (void *dst, size_t dst_len, uint32_t timeout_usec, Connect
 
     if (log)
         log->Printf ("SBCommunication(%p)::Read (dst=%p, dst_len=%" PRIu64 ", timeout_usec=%u, &status=%s) => %" PRIu64,
-                     static_cast<void*>(m_opaque), static_cast<void*>(dst),
-                     static_cast<uint64_t>(dst_len), timeout_usec,
+                     m_opaque,
+                     dst,
+                     (uint64_t)dst_len,
+                     timeout_usec,
                      Communication::ConnectionStatusAsCString (status),
-                     static_cast<uint64_t>(bytes_read));
+                     (uint64_t)bytes_read);
     return bytes_read;
 }
 
@@ -174,10 +174,7 @@ SBCommunication::Write (const void *src, size_t src_len, ConnectionStatus &statu
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_API));
     if (log)
         log->Printf ("SBCommunication(%p)::Write (src=%p, src_len=%" PRIu64 ", &status=%s) => %" PRIu64,
-                     static_cast<void*>(m_opaque), static_cast<const void*>(src),
-                     static_cast<uint64_t>(src_len),
-                     Communication::ConnectionStatusAsCString (status),
-                     static_cast<uint64_t>(bytes_written));
+                     m_opaque, src, (uint64_t)src_len, Communication::ConnectionStatusAsCString (status), (uint64_t)bytes_written);
 
     return 0;
 }
@@ -192,8 +189,7 @@ SBCommunication::ReadThreadStart ()
         success = m_opaque->StartReadThread ();
 
     if (log)
-        log->Printf ("SBCommunication(%p)::ReadThreadStart () => %i",
-                     static_cast<void*>(m_opaque), success);
+        log->Printf ("SBCommunication(%p)::ReadThreadStart () => %i", m_opaque, success);
 
     return success;
 }
@@ -204,16 +200,14 @@ SBCommunication::ReadThreadStop ()
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_API));
     if (log)
-        log->Printf ("SBCommunication(%p)::ReadThreadStop ()...",
-                     static_cast<void*>(m_opaque));
+        log->Printf ("SBCommunication(%p)::ReadThreadStop ()...", m_opaque);
 
     bool success = false;
     if (m_opaque)
         success = m_opaque->StopReadThread ();
 
     if (log)
-        log->Printf ("SBCommunication(%p)::ReadThreadStop () => %i",
-                     static_cast<void*>(m_opaque), success);
+        log->Printf ("SBCommunication(%p)::ReadThreadStop () => %i", m_opaque, success);
 
     return success;
 }
@@ -226,8 +220,7 @@ SBCommunication::ReadThreadIsRunning ()
         result = m_opaque->ReadThreadIsRunning ();
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_API));
     if (log)
-        log->Printf ("SBCommunication(%p)::ReadThreadIsRunning () => %i",
-                     static_cast<void*>(m_opaque), result);
+        log->Printf ("SBCommunication(%p)::ReadThreadIsRunning () => %i", m_opaque, result);
     return result;
 }
 
@@ -249,9 +242,7 @@ SBCommunication::SetReadThreadBytesReceivedCallback
 
     if (log)
         log->Printf ("SBCommunication(%p)::SetReadThreadBytesReceivedCallback (callback=%p, baton=%p) => %i",
-                     static_cast<void*>(m_opaque),
-                     reinterpret_cast<void*>(reinterpret_cast<intptr_t>(callback)),
-                     static_cast<void*>(callback_baton), result);
+                     m_opaque, callback, callback_baton, result);
 
     return result;
 }
@@ -265,8 +256,7 @@ SBCommunication::GetBroadcaster ()
 
     if (log)
         log->Printf ("SBCommunication(%p)::GetBroadcaster () => SBBroadcaster (%p)",
-                     static_cast<void*>(m_opaque),
-                     static_cast<void*>(broadcaster.get()));
+                     m_opaque, broadcaster.get());
 
     return broadcaster;
 }

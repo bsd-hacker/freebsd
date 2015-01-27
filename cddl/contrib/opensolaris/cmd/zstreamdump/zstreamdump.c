@@ -49,11 +49,13 @@
  */
 #define	DUMP_GROUPING	4
 
+uint64_t drr_record_count[DRR_NUMTYPES];
 uint64_t total_write_size = 0;
 uint64_t total_stream_len = 0;
 FILE *send_stream = 0;
 boolean_t do_byteswap = B_FALSE;
 boolean_t do_cksum = B_TRUE;
+#define	INITIAL_BUFLEN (1<<20)
 
 static void
 usage(void)
@@ -64,18 +66,6 @@ usage(void)
 	(void) fprintf(stderr, "\t -d -- dump contents of blocks modified, "
 	    "implies verbose\n");
 	exit(1);
-}
-
-static void *
-safe_malloc(size_t size)
-{
-	void *rv = malloc(size);
-	if (rv == NULL) {
-		(void) fprintf(stderr, "ERROR; failed to allocate %zu bytes\n",
-		    size);
-		abort();
-	}
-	return (rv);
 }
 
 /*
@@ -133,7 +123,7 @@ print_block(char *buf, int length)
 	 * Start printing ASCII characters at a constant offset, after
 	 * the hex prints. Leave 3 characters per byte on a line (2 digit
 	 * hex number plus 1 space) plus spaces between characters and
-	 * groupings.
+	 * groupings
 	 */
 	int ascii_start = BYTES_PER_LINE * 3 +
 	    BYTES_PER_LINE / DUMP_GROUPING + 2;
@@ -169,9 +159,7 @@ print_block(char *buf, int length)
 int
 main(int argc, char *argv[])
 {
-	char *buf = safe_malloc(SPA_MAXBLOCKSIZE);
-	uint64_t drr_record_count[DRR_NUMTYPES] = { 0 };
-	uint64_t total_records = 0;
+	char *buf = malloc(INITIAL_BUFLEN);
 	dmu_replay_record_t thedrr;
 	dmu_replay_record_t *drr = &thedrr;
 	struct drr_begin *drrb = &thedrr.drr_u.drr_begin;
@@ -182,7 +170,6 @@ main(int argc, char *argv[])
 	struct drr_write_byref *drrwbr = &thedrr.drr_u.drr_write_byref;
 	struct drr_free *drrf = &thedrr.drr_u.drr_free;
 	struct drr_spill *drrs = &thedrr.drr_u.drr_spill;
-	struct drr_write_embedded *drrwe = &thedrr.drr_u.drr_write_embedded;
 	char c;
 	boolean_t verbose = B_FALSE;
 	boolean_t first = B_TRUE;
@@ -277,7 +264,6 @@ main(int argc, char *argv[])
 		}
 
 		drr_record_count[drr->drr_type]++;
-		total_records++;
 
 		switch (drr->drr_type) {
 		case DRR_BEGIN:
@@ -318,9 +304,9 @@ main(int argc, char *argv[])
 				nvlist_t *nv;
 				int sz = drr->drr_payloadlen;
 
-				if (sz > SPA_MAXBLOCKSIZE) {
+				if (sz > INITIAL_BUFLEN) {
 					free(buf);
-					buf = safe_malloc(sz);
+					buf = malloc(sz);
 				}
 				(void) ssread(buf, sz, &zc);
 				if (ferror(send_stream))
@@ -390,8 +376,8 @@ main(int argc, char *argv[])
 				    drro->drr_bonuslen);
 			}
 			if (drro->drr_bonuslen > 0) {
-				(void) ssread(buf,
-				    P2ROUNDUP(drro->drr_bonuslen, 8), &zc);
+				(void) ssread(buf, P2ROUNDUP(drro->drr_bonuslen,
+				    8), &zc);
 				if (dump) {
 					print_block(buf,
 					    P2ROUNDUP(drro->drr_bonuslen, 8));
@@ -520,38 +506,6 @@ main(int argc, char *argv[])
 				print_block(buf, drrs->drr_length);
 			}
 			break;
-		case DRR_WRITE_EMBEDDED:
-			if (do_byteswap) {
-				drrwe->drr_object =
-				    BSWAP_64(drrwe->drr_object);
-				drrwe->drr_offset =
-				    BSWAP_64(drrwe->drr_offset);
-				drrwe->drr_length =
-				    BSWAP_64(drrwe->drr_length);
-				drrwe->drr_toguid =
-				    BSWAP_64(drrwe->drr_toguid);
-				drrwe->drr_lsize =
-				    BSWAP_32(drrwe->drr_lsize);
-				drrwe->drr_psize =
-				    BSWAP_32(drrwe->drr_psize);
-			}
-			if (verbose) {
-				(void) printf("WRITE_EMBEDDED object = %llu "
-				    "offset = %llu length = %llu\n"
-				    "toguid = %llx comp = %u etype = %u "
-				    "lsize = %u psize = %u\n",
-				    (u_longlong_t)drrwe->drr_object,
-				    (u_longlong_t)drrwe->drr_offset,
-				    (u_longlong_t)drrwe->drr_length,
-				    (u_longlong_t)drrwe->drr_toguid,
-				    drrwe->drr_compression,
-				    drrwe->drr_etype,
-				    drrwe->drr_lsize,
-				    drrwe->drr_psize);
-			}
-			(void) ssread(buf,
-			    P2ROUNDUP(drrwe->drr_psize, 8), &zc);
-			break;
 		}
 		pcksum = zc;
 	}
@@ -570,16 +524,18 @@ main(int argc, char *argv[])
 	    (u_longlong_t)drr_record_count[DRR_FREEOBJECTS]);
 	(void) printf("\tTotal DRR_WRITE records = %lld\n",
 	    (u_longlong_t)drr_record_count[DRR_WRITE]);
-	(void) printf("\tTotal DRR_WRITE_BYREF records = %lld\n",
-	    (u_longlong_t)drr_record_count[DRR_WRITE_BYREF]);
-	(void) printf("\tTotal DRR_WRITE_EMBEDDED records = %lld\n",
-	    (u_longlong_t)drr_record_count[DRR_WRITE_EMBEDDED]);
 	(void) printf("\tTotal DRR_FREE records = %lld\n",
 	    (u_longlong_t)drr_record_count[DRR_FREE]);
 	(void) printf("\tTotal DRR_SPILL records = %lld\n",
 	    (u_longlong_t)drr_record_count[DRR_SPILL]);
 	(void) printf("\tTotal records = %lld\n",
-	    (u_longlong_t)total_records);
+	    (u_longlong_t)(drr_record_count[DRR_BEGIN] +
+	    drr_record_count[DRR_OBJECT] +
+	    drr_record_count[DRR_FREEOBJECTS] +
+	    drr_record_count[DRR_WRITE] +
+	    drr_record_count[DRR_FREE] +
+	    drr_record_count[DRR_SPILL] +
+	    drr_record_count[DRR_END]));
 	(void) printf("\tTotal write size = %lld (0x%llx)\n",
 	    (u_longlong_t)total_write_size, (u_longlong_t)total_write_size);
 	(void) printf("\tTotal stream length = %lld (0x%llx)\n",

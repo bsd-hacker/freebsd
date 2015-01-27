@@ -95,7 +95,7 @@ public:
         }
         
         if (log)
-            log->Printf("Allocated %s (0x%" PRIx64 ") successfully", m_persistent_variable_sp->GetName().GetCString(), mem);
+            log->Printf("Allocated %s (0x%" PRIx64 ") sucessfully", m_persistent_variable_sp->GetName().GetCString(), mem);
         
         // Put the location of the spare memory into the live data of the ValueObject.
                 
@@ -443,26 +443,10 @@ public:
             return;
         }
         
-        Error valobj_error = valobj_sp->GetError();
-        
-        if (valobj_error.Fail())
-        {
-            err.SetErrorStringWithFormat("couldn't get the value of variable %s: %s", m_variable_sp->GetName().AsCString(), valobj_error.AsCString());
-            return;
-        }
-        
         if (m_is_reference)
         {
             DataExtractor valobj_extractor;
-            Error extract_error;
-            valobj_sp->GetData(valobj_extractor, extract_error);
-            
-            if (!extract_error.Success())
-            {
-                err.SetErrorStringWithFormat("couldn't read contents of reference variable %s: %s", m_variable_sp->GetName().AsCString(), extract_error.AsCString());
-                return;
-            }
-            
+            valobj_sp->GetData(valobj_extractor);
             lldb::offset_t offset = 0;
             lldb::addr_t reference_addr = valobj_extractor.GetAddress(&offset);
             
@@ -494,14 +478,8 @@ public:
             else
             {
                 DataExtractor data;
-                Error extract_error;
-                valobj_sp->GetData(data, extract_error);
-                if (!extract_error.Success())
-                {
-                    err.SetErrorStringWithFormat("couldn't get the value of %s: %s", m_variable_sp->GetName().AsCString(), extract_error.AsCString());
-                    return;
-                }
-                    
+                valobj_sp->GetData(data);
+                
                 if (m_temporary_allocation != LLDB_INVALID_ADDRESS)
                 {
                     err.SetErrorStringWithFormat("trying to create a temporary region for %s but one exists", m_variable_sp->GetName().AsCString());
@@ -534,8 +512,6 @@ public:
                 
                 m_temporary_allocation = map.Malloc(data.GetByteSize(), byte_align, lldb::ePermissionsReadable | lldb::ePermissionsWritable, IRMemoryMap::eAllocationPolicyMirror, alloc_error);
                 m_temporary_allocation_size = data.GetByteSize();
-                
-                m_original_data.reset(new DataBufferHeap(data.GetDataStart(), data.GetByteSize()));
                 
                 if (!alloc_error.Success())
                 {
@@ -609,28 +585,14 @@ public:
                 return;
             }
             
-            bool actually_write = true;
-            
-            if (m_original_data)
-            {
-                if ((data.GetByteSize() == m_original_data->GetByteSize()) &&
-                    !memcmp(m_original_data->GetBytes(), data.GetDataStart(), data.GetByteSize()))
-                {
-                    actually_write = false;
-                }
-            }
-            
             Error set_error;
             
-            if (actually_write)
+            valobj_sp->SetData(data, set_error);
+            
+            if (!set_error.Success())
             {
-                valobj_sp->SetData(data, set_error);
-                
-                if (!set_error.Success())
-                {
-                    err.SetErrorStringWithFormat("couldn't write the new contents of %s back into the variable", m_variable_sp->GetName().AsCString());
-                    return;
-                }
+                err.SetErrorStringWithFormat("couldn't write the new contents of %s back into the variable", m_variable_sp->GetName().AsCString());
+                return;
             }
             
             Error free_error;
@@ -643,7 +605,6 @@ public:
                 return;
             }
             
-            m_original_data.reset();
             m_temporary_allocation = LLDB_INVALID_ADDRESS;
             m_temporary_allocation_size = 0;
         }
@@ -739,7 +700,6 @@ private:
     bool                m_is_reference;
     lldb::addr_t        m_temporary_allocation;
     size_t              m_temporary_allocation_size;
-    lldb::DataBufferSP  m_original_data;
 };
 
 uint32_t
@@ -1352,44 +1312,43 @@ Materializer::DematerializerSP
 Materializer::Materialize (lldb::StackFrameSP &frame_sp, IRMemoryMap &map, lldb::addr_t process_address, Error &error)
 {
     ExecutionContextScope *exe_scope = frame_sp.get();
-
+        
     if (!exe_scope)
         exe_scope = map.GetBestExecutionContextScope();
-
+    
     DematerializerSP dematerializer_sp = m_dematerializer_wp.lock();
-
+    
     if (dematerializer_sp)
     {
         error.SetErrorToGenericError();
         error.SetErrorString("Couldn't materialize: already materialized");
     }
-
+    
     DematerializerSP ret(new Dematerializer(*this, frame_sp, map, process_address));
-
+    
     if (!exe_scope)
     {
         error.SetErrorToGenericError();
         error.SetErrorString("Couldn't materialize: target doesn't exist");
     }
-
+    
     for (EntityUP &entity_up : m_entities)
     {
         entity_up->Materialize(frame_sp, map, process_address, error);
-
+        
         if (!error.Success())
             return DematerializerSP();
     }
-
+    
     if (Log *log = lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS))
     {
-        log->Printf("Materializer::Materialize (frame_sp = %p, process_address = 0x%" PRIx64 ") materialized:",
-                    static_cast<void*>(frame_sp.get()), process_address);
+        log->Printf("Materializer::Materialize (frame_sp = %p, process_address = 0x%" PRIx64 ") materialized:", frame_sp.get(), process_address);
         for (EntityUP &entity_up : m_entities)
             entity_up->DumpToLog(map, process_address, log);
     }
-
+    
     m_dematerializer_wp = ret;
-
+    
     return ret;
 }
 
@@ -1401,15 +1360,15 @@ Materializer::Dematerializer::Dematerialize (Error &error, lldb::ClangExpression
     lldb::ThreadSP thread_sp = m_thread_wp.lock();
     if (thread_sp)
         frame_sp = thread_sp->GetFrameWithStackID(m_stack_id);
-
+    
     ExecutionContextScope *exe_scope = m_map->GetBestExecutionContextScope();
-
+    
     if (!IsValid())
     {
         error.SetErrorToGenericError();
         error.SetErrorString("Couldn't dematerialize: invalid dematerializer");
     }
-
+    
     if (!exe_scope)
     {
         error.SetErrorToGenericError();
@@ -1419,12 +1378,11 @@ Materializer::Dematerializer::Dematerialize (Error &error, lldb::ClangExpression
     {
         if (Log *log =lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS))
         {
-            log->Printf("Materializer::Dematerialize (frame_sp = %p, process_address = 0x%" PRIx64 ") about to dematerialize:",
-                        static_cast<void*>(frame_sp.get()), m_process_address);
+            log->Printf("Materializer::Dematerialize (frame_sp = %p, process_address = 0x%" PRIx64 ") about to dematerialize:", frame_sp.get(), m_process_address);
             for (EntityUP &entity_up : m_materializer->m_entities)
                 entity_up->DumpToLog(*m_map, m_process_address, log);
         }
-
+        
         for (EntityUP &entity_up : m_materializer->m_entities)
         {
             if (entity_up.get() == m_materializer->m_result_entity)
@@ -1435,12 +1393,12 @@ Materializer::Dematerializer::Dematerialize (Error &error, lldb::ClangExpression
             {
                 entity_up->Dematerialize (frame_sp, *m_map, m_process_address, frame_top, frame_bottom, error);
             }
-
+                
             if (!error.Success())
                 break;
         }
     }
-
+    
     Wipe();
 }
 

@@ -23,9 +23,9 @@
 #include "clang/Sema/ExternalSemaSource.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/CrashRecoveryContext.h"
 #include <cstdio>
-#include <memory>
 
 using namespace clang;
 
@@ -36,7 +36,7 @@ class PrettyStackTraceParserEntry : public llvm::PrettyStackTraceEntry {
   const Parser &P;
 public:
   PrettyStackTraceParserEntry(const Parser &p) : P(p) {}
-  void print(raw_ostream &OS) const override;
+  virtual void print(raw_ostream &OS) const;
 };
 
 /// If a crash happens while the parser is active, print out a line indicating
@@ -88,8 +88,7 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      CodeCompleteConsumer *CompletionConsumer,
                      bool SkipFunctionBodies) {
 
-  std::unique_ptr<Sema> S(
-      new Sema(PP, Ctx, *Consumer, TUKind, CompletionConsumer));
+  OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer, TUKind, CompletionConsumer));
 
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(S.get());
@@ -110,8 +109,8 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
 
   ASTConsumer *Consumer = &S.getASTConsumer();
 
-  std::unique_ptr<Parser> ParseOP(
-      new Parser(S.getPreprocessor(), S, SkipFunctionBodies));
+  OwningPtr<Parser> ParseOP(new Parser(S.getPreprocessor(), S,
+                                       SkipFunctionBodies));
   Parser &P = *ParseOP.get();
 
   PrettyStackTraceParserEntry CrashInfo(P);

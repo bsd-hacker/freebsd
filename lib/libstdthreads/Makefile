@@ -32,7 +32,8 @@ MLINKS=	thrd_create.3 call_once.3 \
 	thrd_create.3 tss_get.3 \
 	thrd_create.3 tss_set.3
 
-LIBADD=	pthread
+DPADD=	${LIBPTHREAD}
+LDADD=	-lpthread
 
 VERSION_DEF= ${.CURDIR}/../libc/Versions.def
 SYMBOL_MAPS= ${.CURDIR}/Symbol.map

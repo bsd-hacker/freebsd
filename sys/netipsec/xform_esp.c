@@ -58,6 +58,7 @@
 #include <netinet/ip_ecn.h>
 #include <netinet/ip6.h>
 
+#include <net/route.h>
 #include <netipsec/ipsec.h>
 #include <netipsec/ah.h>
 #include <netipsec/ah_var.h>
@@ -86,8 +87,8 @@ VNET_PCPUSTAT_SYSUNINIT(espstat);
 #endif /* VIMAGE */
 
 SYSCTL_DECL(_net_inet_esp);
-SYSCTL_INT(_net_inet_esp, OID_AUTO, esp_enable,
-	CTLFLAG_VNET | CTLFLAG_RW, &VNET_NAME(esp_enable), 0, "");
+SYSCTL_VNET_INT(_net_inet_esp, OID_AUTO,
+	esp_enable,	CTLFLAG_RW,	&VNET_NAME(esp_enable),	0, "");
 SYSCTL_VNET_PCPUSTAT(_net_inet_esp, IPSECCTL_STATS, stats,
     struct espstat, espstat,
     "ESP statistics (struct espstat, netipsec/esp_var.h");
@@ -270,16 +271,18 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 {
 	struct auth_hash *esph;
 	struct enc_xform *espx;
+	struct tdb_ident *tdbi;
 	struct tdb_crypto *tc;
 	int plen, alen, hlen;
+	struct m_tag *mtag;
 	struct newesp *esp;
+
 	struct cryptodesc *crde;
 	struct cryptop *crp;
 
 	IPSEC_ASSERT(sav != NULL, ("null SA"));
 	IPSEC_ASSERT(sav->tdb_encalgxform != NULL, ("null encoding xform"));
 
-	alen = 0;
 	/* Valid IP Packet length ? */
 	if ( (skip&3) || (m->m_pkthdr.len&3) ){
 		DPRINTF(("%s: misaligned packet, skip %u pkt len %u",
@@ -312,7 +315,8 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 			alen = AH_HMAC_HASHLEN;
 			break;
 		}
-	}
+	}else
+		alen = 0;
 
 	/*
 	 * Verify payload length is multiple of encryption algorithm
@@ -337,8 +341,7 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 	/*
 	 * Check sequence number.
 	 */
-	if (esph != NULL && sav->replay != NULL &&
-	    !ipsec_chkreplay(ntohl(esp->esp_seq), sav)) {
+	if (esph && sav->replay && !ipsec_chkreplay(ntohl(esp->esp_seq), sav)) {
 		DPRINTF(("%s: packet replay check for %s\n", __func__,
 		    ipsec_logsastr(sav)));	/*XXX*/
 		ESPSTAT_INC(esps_replay);
@@ -348,6 +351,18 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 
 	/* Update the counters */
 	ESPSTAT_ADD(esps_ibytes, m->m_pkthdr.len - (skip + hlen + alen));
+
+	/* Find out if we've already done crypto */
+	for (mtag = m_tag_find(m, PACKET_TAG_IPSEC_IN_CRYPTO_DONE, NULL);
+	     mtag != NULL;
+	     mtag = m_tag_find(m, PACKET_TAG_IPSEC_IN_CRYPTO_DONE, mtag)) {
+		tdbi = (struct tdb_ident *) (mtag + 1);
+		if (tdbi->proto == sav->sah->saidx.proto &&
+		    tdbi->spi == sav->spi &&
+		    !bcmp(&tdbi->dst, &sav->sah->saidx.dst,
+			  sizeof(union sockaddr_union)))
+			break;
+	}
 
 	/* Get crypto descriptors */
 	crp = crypto_getreq(esph && espx ? 2 : 1);
@@ -360,8 +375,12 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 	}
 
 	/* Get IPsec-specific opaque pointer */
-	tc = (struct tdb_crypto *) malloc(sizeof(struct tdb_crypto) + alen,
-	    M_XDATA, M_NOWAIT | M_ZERO);
+	if (esph == NULL || mtag != NULL)
+		tc = (struct tdb_crypto *) malloc(sizeof(struct tdb_crypto),
+		    M_XDATA, M_NOWAIT|M_ZERO);
+	else
+		tc = (struct tdb_crypto *) malloc(sizeof(struct tdb_crypto) + alen,
+		    M_XDATA, M_NOWAIT|M_ZERO);
 	if (tc == NULL) {
 		crypto_freereq(crp);
 		DPRINTF(("%s: failed to allocate tdb_crypto\n", __func__));
@@ -370,7 +389,9 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 		return ENOBUFS;
 	}
 
-	if (esph != NULL) {
+	tc->tc_ptr = (caddr_t) mtag;
+
+	if (esph) {
 		struct cryptodesc *crda = crp->crp_desc;
 
 		IPSEC_ASSERT(crda != NULL, ("null ah crypto descriptor"));
@@ -385,8 +406,9 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 		crda->crd_klen = _KEYBITS(sav->key_auth);
 
 		/* Copy the authenticator */
-		m_copydata(m, m->m_pkthdr.len - alen, alen,
-		    (caddr_t) (tc + 1));
+		if (mtag == NULL)
+			m_copydata(m, m->m_pkthdr.len - alen, alen,
+				   (caddr_t) (tc + 1));
 
 		/* Chain authentication request */
 		crde = crda->crd_next;
@@ -412,17 +434,22 @@ esp_input(struct mbuf *m, struct secasvar *sav, int skip, int protoff)
 	tc->tc_sav = sav;
 
 	/* Decryption descriptor */
-	IPSEC_ASSERT(crde != NULL, ("null esp crypto descriptor"));
-	crde->crd_skip = skip + hlen;
-	crde->crd_len = m->m_pkthdr.len - (skip + hlen + alen);
-	crde->crd_inject = skip + hlen - sav->ivlen;
+	if (espx) {
+		IPSEC_ASSERT(crde != NULL, ("null esp crypto descriptor"));
+		crde->crd_skip = skip + hlen;
+		crde->crd_len = m->m_pkthdr.len - (skip + hlen + alen);
+		crde->crd_inject = skip + hlen - sav->ivlen;
 
-	crde->crd_alg = espx->type;
-	crde->crd_key = sav->key_enc->key_data;
-	crde->crd_klen = _KEYBITS(sav->key_enc);
-	/* XXX Rounds ? */
+		crde->crd_alg = espx->type;
+		crde->crd_key = sav->key_enc->key_data;
+		crde->crd_klen = _KEYBITS(sav->key_enc);
+		/* XXX Rounds ? */
+	}
 
-	return (crypto_dispatch(crp));
+	if (mtag == NULL)
+		return crypto_dispatch(crp);
+	else
+		return esp_input_cb(crp);
 }
 
 /*
@@ -438,6 +465,7 @@ esp_input_cb(struct cryptop *crp)
 	struct auth_hash *esph;
 	struct enc_xform *espx;
 	struct tdb_crypto *tc;
+	struct m_tag *mtag;
 	struct secasvar *sav;
 	struct secasindex *saidx;
 	caddr_t ptr;
@@ -449,6 +477,7 @@ esp_input_cb(struct cryptop *crp)
 	IPSEC_ASSERT(tc != NULL, ("null opaque crypto data area!"));
 	skip = tc->tc_skip;
 	protoff = tc->tc_protoff;
+	mtag = (struct m_tag *) tc->tc_ptr;
 	m = (struct mbuf *) crp->crp_buf;
 
 	sav = tc->tc_sav;
@@ -498,20 +527,30 @@ esp_input_cb(struct cryptop *crp)
 			alen = AH_HMAC_HASHLEN;
 			break;
 		}
+		/*
+		 * If we have a tag, it means an IPsec-aware NIC did
+		 * the verification for us.  Otherwise we need to
+		 * check the authentication calculation.
+		 */
 		AHSTAT_INC(ahs_hist[sav->alg_auth]);
-		/* Copy the authenticator from the packet */
-		m_copydata(m, m->m_pkthdr.len - alen, alen, aalg);
-		ptr = (caddr_t) (tc + 1);
+		if (mtag == NULL) {
+			/* Copy the authenticator from the packet */
+			m_copydata(m, m->m_pkthdr.len - alen,
+				alen, aalg);
 
-		/* Verify authenticator */
-		if (bcmp(ptr, aalg, alen) != 0) {
-			DPRINTF(("%s: authentication hash mismatch for "
-			    "packet in SA %s/%08lx\n", __func__,
-			    ipsec_address(&saidx->dst),
-			    (u_long) ntohl(sav->spi)));
-			ESPSTAT_INC(esps_badauth);
-			error = EACCES;
-			goto bad;
+			ptr = (caddr_t) (tc + 1);
+
+			/* Verify authenticator */
+			if (bcmp(ptr, aalg, alen) != 0) {
+				DPRINTF(("%s: "
+		    "authentication hash mismatch for packet in SA %s/%08lx\n",
+				    __func__,
+				    ipsec_address(&saidx->dst),
+				    (u_long) ntohl(sav->spi)));
+				ESPSTAT_INC(esps_badauth);
+				error = EACCES;
+				goto bad;
+			}
 		}
 
 		/* Remove trailing authenticator */
@@ -597,12 +636,12 @@ esp_input_cb(struct cryptop *crp)
 	switch (saidx->dst.sa.sa_family) {
 #ifdef INET6
 	case AF_INET6:
-		error = ipsec6_common_input_cb(m, sav, skip, protoff);
+		error = ipsec6_common_input_cb(m, sav, skip, protoff, mtag);
 		break;
 #endif
 #ifdef INET
 	case AF_INET:
-		error = ipsec4_common_input_cb(m, sav, skip, protoff);
+		error = ipsec4_common_input_cb(m, sav, skip, protoff, mtag);
 		break;
 #endif
 	default:

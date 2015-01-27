@@ -47,22 +47,22 @@ namespace llvm {
     LatencyPriorityQueue() : Picker(this) {
     }
 
-    bool isBottomUp() const override { return false; }
+    bool isBottomUp() const { return false; }
 
-    void initNodes(std::vector<SUnit> &sunits) override {
+    void initNodes(std::vector<SUnit> &sunits) {
       SUnits = &sunits;
       NumNodesSolelyBlocking.resize(SUnits->size(), 0);
     }
 
-    void addNode(const SUnit *SU) override {
+    void addNode(const SUnit *SU) {
       NumNodesSolelyBlocking.resize(SUnits->size(), 0);
     }
 
-    void updateNode(const SUnit *SU) override {
+    void updateNode(const SUnit *SU) {
     }
 
-    void releaseState() override {
-      SUnits = nullptr;
+    void releaseState() {
+      SUnits = 0;
     }
 
     unsigned getLatency(unsigned NodeNum) const {
@@ -75,21 +75,21 @@ namespace llvm {
       return NumNodesSolelyBlocking[NodeNum];
     }
 
-    bool empty() const override { return Queue.empty(); }
+    bool empty() const { return Queue.empty(); }
 
-    void push(SUnit *U) override;
+    virtual void push(SUnit *U);
 
-    SUnit *pop() override;
+    virtual SUnit *pop();
 
-    void remove(SUnit *SU) override;
+    virtual void remove(SUnit *SU);
 
-    void dump(ScheduleDAG* DAG) const override;
+    virtual void dump(ScheduleDAG* DAG) const;
 
     // scheduledNode - As nodes are scheduled, we look to see if there are any
     // successor nodes that have a single unscheduled predecessor.  If so, that
     // single predecessor has a higher priority, since scheduling it will make
     // the node available.
-    void scheduledNode(SUnit *Node) override;
+    void scheduledNode(SUnit *Node);
 
 private:
     void AdjustPriorityOfUnscheduledPreds(SUnit *SU);

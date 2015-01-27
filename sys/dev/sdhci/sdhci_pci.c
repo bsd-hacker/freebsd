@@ -71,21 +71,20 @@ __FBSDID("$FreeBSD$");
  */
 #define	SDHC_PCI_MODE_KEY		0xf9
 #define	SDHC_PCI_MODE			0x150
-#define	 SDHC_PCI_MODE_SD20		0x10
+#define	SDHC_PCI_MODE_SD20		0x10
 #define	SDHC_PCI_BASE_FREQ_KEY		0xfc
 #define	SDHC_PCI_BASE_FREQ		0xe1
 
 static const struct sdhci_device {
 	uint32_t	model;
 	uint16_t	subvendor;
-	const char	*desc;
+	char		*desc;
 	u_int		quirks;
 } sdhci_devices[] = {
 	{ 0x08221180, 	0xffff,	"RICOH R5C822 SD",
 	    SDHCI_QUIRK_FORCE_DMA },
-	{ 0xe8221180, 	0xffff,	"RICOH R5CE822 SD",
-	    SDHCI_QUIRK_FORCE_DMA |
-	    SDHCI_QUIRK_LOWER_FREQUENCY },
+	{ 0xe8221180, 	0xffff,	"RICOH SD",
+	    SDHCI_QUIRK_FORCE_DMA },
 	{ 0xe8231180, 	0xffff,	"RICOH R5CE823 SD",
 	    SDHCI_QUIRK_LOWER_FREQUENCY },
 	{ 0x8034104c, 	0xffff, "TI XX21/XX11 SD",
@@ -110,20 +109,23 @@ static const struct sdhci_device {
 };
 
 struct sdhci_pci_softc {
+	device_t	dev;		/* Controller device */
 	u_int		quirks;		/* Chip specific quirks */
 	struct resource *irq_res;	/* IRQ resource */
+	int 		irq_rid;
 	void 		*intrhand;	/* Interrupt handle */
 
 	int		num_slots;	/* Number of slots on this controller */
 	struct sdhci_slot slots[6];
 	struct resource	*mem_res[6];	/* Memory resource */
-	uint8_t		cfg_freq;	/* Saved mode */
-	uint8_t		cfg_mode;	/* Saved frequency */
+	int		mem_rid[6];
 };
 
-static int sdhci_enable_msi = 1;
-SYSCTL_INT(_hw_sdhci, OID_AUTO, enable_msi, CTLFLAG_RDTUN, &sdhci_enable_msi,
-    0, "Enable MSI interrupts");
+static SYSCTL_NODE(_hw, OID_AUTO, sdhci_pci, CTLFLAG_RD, 0, "sdhci PCI driver");
+
+int	sdhci_pci_debug;
+TUNABLE_INT("hw.sdhci_pci.debug", &sdhci_pci_debug);
+SYSCTL_INT(_hw_sdhci_pci, OID_AUTO, debug, CTLFLAG_RW, &sdhci_pci_debug, 0, "Debug level");
 
 static uint8_t
 sdhci_pci_read_1(device_t dev, struct sdhci_slot *slot, bus_size_t off)
@@ -208,40 +210,18 @@ static void sdhci_pci_intr(void *arg);
 static void
 sdhci_lower_frequency(device_t dev)
 {
-	struct sdhci_pci_softc *sc = device_get_softc(dev);
 
-	/*
-	 * Enable SD2.0 mode.
-	 * NB: for RICOH R5CE823, this changes the PCI device ID to 0xe822.
-	 */
+	/* Enable SD2.0 mode. */
 	pci_write_config(dev, SDHC_PCI_MODE_KEY, 0xfc, 1);
-	sc->cfg_mode = pci_read_config(dev, SDHC_PCI_MODE, 1);
 	pci_write_config(dev, SDHC_PCI_MODE, SDHC_PCI_MODE_SD20, 1);
 	pci_write_config(dev, SDHC_PCI_MODE_KEY, 0x00, 1);
 
 	/*
 	 * Some SD/MMC cards don't work with the default base
-	 * clock frequency of 200 MHz.  Lower it to 50 MHz.
+	 * clock frequency of 200MHz.  Lower it to 50Hz.
 	 */
 	pci_write_config(dev, SDHC_PCI_BASE_FREQ_KEY, 0x01, 1);
-	sc->cfg_freq = pci_read_config(dev, SDHC_PCI_BASE_FREQ, 1);
 	pci_write_config(dev, SDHC_PCI_BASE_FREQ, 50, 1);
-	pci_write_config(dev, SDHC_PCI_BASE_FREQ_KEY, 0x00, 1);
-}
-
-static void
-sdhci_restore_frequency(device_t dev)
-{
-	struct sdhci_pci_softc *sc = device_get_softc(dev);
-
-	/* Restore mode. */
-	pci_write_config(dev, SDHC_PCI_MODE_KEY, 0xfc, 1);
-	pci_write_config(dev, SDHC_PCI_MODE, sc->cfg_mode, 1);
-	pci_write_config(dev, SDHC_PCI_MODE_KEY, 0x00, 1);
-
-	/* Restore frequency. */
-	pci_write_config(dev, SDHC_PCI_BASE_FREQ_KEY, 0x01, 1);
-	pci_write_config(dev, SDHC_PCI_BASE_FREQ, sc->cfg_freq, 1);
 	pci_write_config(dev, SDHC_PCI_BASE_FREQ_KEY, 0x00, 1);
 }
 
@@ -252,13 +232,13 @@ sdhci_pci_probe(device_t dev)
 	uint16_t subvendor;
 	uint8_t class, subclass;
 	int i, result;
-
+	
 	model = (uint32_t)pci_get_device(dev) << 16;
 	model |= (uint32_t)pci_get_vendor(dev) & 0x0000ffff;
 	subvendor = pci_get_subvendor(dev);
 	class = pci_get_class(dev);
 	subclass = pci_get_subclass(dev);
-
+	
 	result = ENXIO;
 	for (i = 0; sdhci_devices[i].model != 0; i++) {
 		if (sdhci_devices[i].model == model &&
@@ -274,7 +254,7 @@ sdhci_pci_probe(device_t dev)
 		device_set_desc(dev, "Generic SD HCI");
 		result = BUS_PROBE_GENERIC;
 	}
-
+	
 	return (result);
 }
 
@@ -284,11 +264,16 @@ sdhci_pci_attach(device_t dev)
 	struct sdhci_pci_softc *sc = device_get_softc(dev);
 	uint32_t model;
 	uint16_t subvendor;
-	int bar, err, rid, slots, i;
+	uint8_t class, subclass, progif;
+	int err, slots, bar, i;
 
+	sc->dev = dev;
 	model = (uint32_t)pci_get_device(dev) << 16;
 	model |= (uint32_t)pci_get_vendor(dev) & 0x0000ffff;
 	subvendor = pci_get_subvendor(dev);
+	class = pci_get_class(dev);
+	subclass = pci_get_subclass(dev);
+	progif = pci_get_progif(dev);
 	/* Apply chip specific quirks. */
 	for (i = 0; sdhci_devices[i].model != 0; i++) {
 		if (sdhci_devices[i].model == model &&
@@ -311,15 +296,11 @@ sdhci_pci_attach(device_t dev)
 		return (EINVAL);
 	}
 	/* Allocate IRQ. */
-	i = 1;
-	rid = 0;
-	if (sdhci_enable_msi != 0 && pci_alloc_msi(dev, &i) == 0)
-		rid = 1;
-	sc->irq_res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
-		RF_ACTIVE | (rid != 0 ? 0 : RF_SHAREABLE));
+	sc->irq_rid = 0;
+	sc->irq_res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &sc->irq_rid,
+	    RF_SHAREABLE | RF_ACTIVE);
 	if (sc->irq_res == NULL) {
 		device_printf(dev, "Can't allocate IRQ\n");
-		pci_release_msi(dev);
 		return (ENOMEM);
 	}
 	/* Scan all slots. */
@@ -327,9 +308,9 @@ sdhci_pci_attach(device_t dev)
 		struct sdhci_slot *slot = &sc->slots[sc->num_slots];
 
 		/* Allocate memory. */
-		rid = PCIR_BAR(bar + i);
-		sc->mem_res[i] = bus_alloc_resource(dev, SYS_RES_MEMORY,
-		    &rid, 0ul, ~0ul, 0x100, RF_ACTIVE);
+		sc->mem_rid[i] = PCIR_BAR(bar + i);
+		sc->mem_res[i] = bus_alloc_resource(dev,
+		    SYS_RES_MEMORY, &(sc->mem_rid[i]), 0ul, ~0ul, 0x100, RF_ACTIVE);
 		if (sc->mem_res[i] == NULL) {
 			device_printf(dev, "Can't allocate memory for slot %d\n", i);
 			continue;
@@ -337,6 +318,7 @@ sdhci_pci_attach(device_t dev)
 
 		if (sdhci_init_slot(dev, slot, i) != 0)
 			continue;
+
 
 		sc->num_slots++;
 	}
@@ -353,7 +335,7 @@ sdhci_pci_attach(device_t dev)
 
 		sdhci_start_slot(slot);
 	}
-
+		
 	return (0);
 }
 
@@ -365,28 +347,15 @@ sdhci_pci_detach(device_t dev)
 
 	bus_teardown_intr(dev, sc->irq_res, sc->intrhand);
 	bus_release_resource(dev, SYS_RES_IRQ,
-	    rman_get_rid(sc->irq_res), sc->irq_res);
-	pci_release_msi(dev);
+	    sc->irq_rid, sc->irq_res);
 
 	for (i = 0; i < sc->num_slots; i++) {
 		struct sdhci_slot *slot = &sc->slots[i];
 
 		sdhci_cleanup_slot(slot);
 		bus_release_resource(dev, SYS_RES_MEMORY,
-		    rman_get_rid(sc->mem_res[i]), sc->mem_res[i]);
+		    sc->mem_rid[i], sc->mem_res[i]);
 	}
-	if (sc->quirks & SDHCI_QUIRK_LOWER_FREQUENCY)
-		sdhci_restore_frequency(dev);
-	return (0);
-}
-
-static int
-sdhci_pci_shutdown(device_t dev)
-{
-	struct sdhci_pci_softc *sc = device_get_softc(dev);
-
-	if (sc->quirks & SDHCI_QUIRK_LOWER_FREQUENCY)
-		sdhci_restore_frequency(dev);
 	return (0);
 }
 
@@ -400,7 +369,7 @@ sdhci_pci_suspend(device_t dev)
 	if (err)
 		return (err);
 	for (i = 0; i < sc->num_slots; i++)
-		sdhci_generic_suspend(&sc->slots[i]);
+		 sdhci_generic_suspend(&sc->slots[i]);
 	return (0);
 }
 
@@ -414,6 +383,7 @@ sdhci_pci_resume(device_t dev)
 		sdhci_generic_resume(&sc->slots[i]);
 	return (bus_generic_resume(dev));
 }
+
 
 static void
 sdhci_pci_intr(void *arg)
@@ -432,7 +402,6 @@ static device_method_t sdhci_methods[] = {
 	DEVMETHOD(device_probe, sdhci_pci_probe),
 	DEVMETHOD(device_attach, sdhci_pci_attach),
 	DEVMETHOD(device_detach, sdhci_pci_detach),
-	DEVMETHOD(device_shutdown, sdhci_pci_shutdown),
 	DEVMETHOD(device_suspend, sdhci_pci_suspend),
 	DEVMETHOD(device_resume, sdhci_pci_resume),
 
@@ -467,6 +436,5 @@ static driver_t sdhci_pci_driver = {
 };
 static devclass_t sdhci_pci_devclass;
 
-DRIVER_MODULE(sdhci_pci, pci, sdhci_pci_driver, sdhci_pci_devclass, NULL,
-    NULL);
+DRIVER_MODULE(sdhci_pci, pci, sdhci_pci_driver, sdhci_pci_devclass, 0, 0);
 MODULE_DEPEND(sdhci_pci, sdhci, 1, 1, 1);

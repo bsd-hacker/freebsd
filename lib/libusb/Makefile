@@ -19,7 +19,8 @@ PTHREAD_LIBS?=	-lpthread
 
 WARNS?=		2
 
-LIBADD=		pthread
+DPADD=		${LIBPTHREAD}
+LDADD=		${PTHREAD_LIBS}
 
 MLINKS+=	libusb.3 usb.3
 
@@ -37,7 +38,6 @@ SRCS+=		libusb10_io.c
 CFLAGS+=	-DCOMPAT_32BIT
 .endif
 
-.ifndef COMPAT_32BIT
 beforeinstall:
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 		${.CURDIR}/libusb-0.1.pc ${DESTDIR}${LIBDATADIR}/pkgconfig
@@ -45,7 +45,6 @@ beforeinstall:
 		${.CURDIR}/libusb-1.0.pc ${DESTDIR}${LIBDATADIR}/pkgconfig
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 		${.CURDIR}/libusb-2.0.pc ${DESTDIR}${LIBDATADIR}/pkgconfig
-.endif
 
 #
 # Cross platform support

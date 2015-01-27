@@ -5,6 +5,7 @@ PROG=	nghook
 MAN=	nghook.8
 SRCS=	main.c
 
-LIBADD=	netgraph
+DPADD=	${LIBNETGRAPH}
+LDADD=	-lnetgraph
 
 .include <bsd.prog.mk>

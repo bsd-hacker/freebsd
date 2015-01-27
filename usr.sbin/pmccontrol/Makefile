@@ -5,7 +5,8 @@
 PROG=	pmccontrol
 MAN=	pmccontrol.8
 
-LIBADD+=	pmc
+DPADD=	${LIBPMC}
+LDADD=	-lpmc
 
 SRCS=	pmccontrol.c
 

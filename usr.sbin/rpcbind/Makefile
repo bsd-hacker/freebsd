@@ -16,6 +16,7 @@ CFLAGS+= -DINET6
 
 WARNS?=	1
 
-LIBADD=	wrap
+DPADD=	${LIBWRAP} ${LIBUTIL}
+LDADD=	-lwrap -lutil
 
 .include <bsd.prog.mk>

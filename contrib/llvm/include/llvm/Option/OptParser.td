@@ -75,7 +75,6 @@ class OptionGroup<string name> {
   string Name = name;
   string HelpText = ?;
   OptionGroup Group = ?;
-  list<OptionFlag> Flags = [];
 }
 
 // Define the option class.

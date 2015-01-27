@@ -57,7 +57,7 @@ qls_tx_comp(qla_host_t *ha, uint32_t txr_idx, q81_tx_mac_comp_t *tx_comp)
 	txb = &ha->tx_ring[txr_idx].tx_buf[tx_idx];
 
 	if (txb->m_head) {
-		if_inc_counter(ha->ifp, IFCOUNTER_OPACKETS, 1);
+		ha->ifp->if_opackets++;
 		bus_dmamap_sync(ha->tx_tag, txb->map,
 		        BUS_DMASYNC_POSTWRITE);
 		bus_dmamap_unload(ha->tx_tag, txb->map);
@@ -190,7 +190,7 @@ qls_rx_comp(qla_host_t *ha, uint32_t rxr_idx, uint32_t cq_idx, q81_rx_t *cq_e)
 			if ((cq_e->flags1 & Q81_RX_FLAGS1_RSS_MATCH_MASK)) {
 				rxr->rss_int++;
 				mp->m_pkthdr.flowid = cq_e->rss;
-				M_HASHTYPE_SET(mp, M_HASHTYPE_OPAQUE);
+				mp->m_flags |= M_FLOWID;
 			}
 			if (cq_e->flags0 & (Q81_RX_FLAGS0_TE |
 				Q81_RX_FLAGS0_NU | Q81_RX_FLAGS0_IE)) {
@@ -201,7 +201,7 @@ qls_rx_comp(qla_host_t *ha, uint32_t rxr_idx, uint32_t cq_idx, q81_rx_t *cq_e)
 					CSUM_PSEUDO_HDR;
 				mp->m_pkthdr.csum_data = 0xFFFF;
 			}
-			if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+			ifp->if_ipackets++;
 
 			if (lro->lro_cnt && (tcp_lro_rx(lro, mp, 0) == 0)) {
 				/* LRO packet has been successfuly queued */

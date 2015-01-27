@@ -1,7 +1,7 @@
-/*	$Id: chars.c,v 1.65 2014/10/29 00:17:43 schwarze Exp $ */
+/*	$Id: chars.c,v 1.54 2013/06/20 22:39:30 schwarze Exp $ */
 /*
  * Copyright (c) 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
- * Copyright (c) 2011, 2014 Ingo Schwarze <schwarze@openbsd.org>
+ * Copyright (c) 2011 Ingo Schwarze <schwarze@openbsd.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,9 +15,9 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+#ifdef HAVE_CONFIG_H
 #include "config.h"
-
-#include <sys/types.h>
+#endif
 
 #include <assert.h>
 #include <ctype.h>
@@ -25,7 +25,6 @@
 #include <string.h>
 
 #include "mandoc.h"
-#include "mandoc_aux.h"
 #include "libmandoc.h"
 
 #define	PRINT_HI	 126
@@ -38,7 +37,7 @@ struct	ln {
 	int		  unicode;
 };
 
-#define	LINES_MAX	  330
+#define	LINES_MAX	  329
 
 #define CHAR(in, ch, code) \
 	{ NULL, (in), (ch), (code) },
@@ -52,9 +51,8 @@ struct	mchars {
 	struct ln	**htab;
 };
 
-static	const struct ln	 *find(const struct mchars *,
+static	const struct ln	 *find(const struct mchars *, 
 				const char *, size_t);
-
 
 void
 mchars_free(struct mchars *arg)
@@ -104,53 +102,47 @@ mchars_spec2cp(const struct mchars *arg, const char *p, size_t sz)
 	const struct ln	*ln;
 
 	ln = find(arg, p, sz);
-	return(ln != NULL ? ln->unicode : sz == 1 ? (unsigned char)*p : -1);
+	if (NULL == ln)
+		return(-1);
+	return(ln->unicode);
 }
 
-int
+char
 mchars_num2char(const char *p, size_t sz)
 {
-	int	  i;
+	int		  i;
 
-	i = mandoc_strntoi(p, sz, 10);
-	return(i >= 0 && i < 256 ? i : -1);
+	if ((i = mandoc_strntoi(p, sz, 10)) < 0)
+		return('\0');
+	return(i > 0 && i < 256 && isprint(i) ? 
+			/* LINTED */ i : '\0');
 }
 
 int
 mchars_num2uc(const char *p, size_t sz)
 {
-	int	 i;
+	int               i;
 
-	i = mandoc_strntoi(p, sz, 16);
-	assert(i >= 0 && i <= 0x10FFFF);
-	return(i);
+	if ((i = mandoc_strntoi(p, sz, 16)) < 0)
+		return('\0');
+	/* FIXME: make sure we're not in a bogus range. */
+	return(i > 0x80 && i <= 0x10FFFF ? i : '\0');
 }
 
 const char *
-mchars_spec2str(const struct mchars *arg,
+mchars_spec2str(const struct mchars *arg, 
 		const char *p, size_t sz, size_t *rsz)
 {
 	const struct ln	*ln;
 
 	ln = find(arg, p, sz);
-	if (ln == NULL) {
+	if (NULL == ln) {
 		*rsz = 1;
-		return(sz == 1 ? p : NULL);
+		return(NULL);
 	}
 
 	*rsz = strlen(ln->ascii);
 	return(ln->ascii);
-}
-
-const char *
-mchars_uc2str(int uc)
-{
-	int	 i;
-
-	for (i = 0; i < LINES_MAX; i++)
-		if (uc == lines[i].unicode)
-			return(lines[i].ascii);
-	return("<?>");
 }
 
 static const struct ln *
@@ -167,8 +159,8 @@ find(const struct mchars *tab, const char *p, size_t sz)
 	hash = (int)p[0] - PRINT_LO;
 
 	for (pp = tab->htab[hash]; pp; pp = pp->next)
-		if (0 == strncmp(pp->code, p, sz) &&
-		    '\0' == pp->code[(int)sz])
+		if (0 == strncmp(pp->code, p, sz) && 
+				'\0' == pp->code[(int)sz])
 			return(pp);
 
 	return(NULL);

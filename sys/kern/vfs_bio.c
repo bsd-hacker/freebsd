@@ -98,8 +98,7 @@ struct	buf_ops buf_ops_bio = {
 struct buf *buf;		/* buffer header pool */
 caddr_t unmapped_buf;
 
-/* Used below and for softdep flushing threads in ufs/ffs/ffs_softdep.c */
-struct proc *bufdaemonproc;
+static struct proc *bufdaemonproc;
 
 static int inmem(struct vnode *vp, daddr_t blkno);
 static void vm_hold_free_pages(struct buf *bp, int newbsize);
@@ -667,10 +666,6 @@ bd_speedup(void)
 	mtx_unlock(&bdlock);
 }
 
-#ifndef NSWBUF_MIN
-#define	NSWBUF_MIN	16
-#endif
-
 #ifdef __i386__
 #define	TRANSIENT_DENOM	5
 #else
@@ -782,10 +777,11 @@ kern_vfs_bio_buffer_alloc(caddr_t v, long physmem_est)
 	 * swbufs are used as temporary holders for I/O, such as paging I/O.
 	 * We have no less then 16 and no more then 256.
 	 */
-	nswbuf = min(nbuf / 4, 256);
-	TUNABLE_INT_FETCH("kern.nswbuf", &nswbuf);
+	nswbuf = max(min(nbuf/4, 256), 16);
+#ifdef NSWBUF_MIN
 	if (nswbuf < NSWBUF_MIN)
 		nswbuf = NSWBUF_MIN;
+#endif
 
 	/*
 	 * Reserve space for the buffer cache buffers
@@ -1883,18 +1879,15 @@ out:
 static void
 vfs_vmio_release(struct buf *bp)
 {
-	vm_object_t obj;
-	vm_page_t m;
 	int i;
+	vm_page_t m;
 
 	if ((bp->b_flags & B_UNMAPPED) == 0) {
 		BUF_CHECK_MAPPED(bp);
 		pmap_qremove(trunc_page((vm_offset_t)bp->b_data), bp->b_npages);
 	} else
 		BUF_CHECK_UNMAPPED(bp);
-	obj = bp->b_bufobj->bo_object;
-	if (obj != NULL)
-		VM_OBJECT_WLOCK(obj);
+	VM_OBJECT_WLOCK(bp->b_bufobj->bo_object);
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
 		bp->b_pages[i] = NULL;
@@ -1919,8 +1912,7 @@ vfs_vmio_release(struct buf *bp)
 			vm_page_try_to_cache(m);
 		vm_page_unlock(m);
 	}
-	if (obj != NULL)
-		VM_OBJECT_WUNLOCK(obj);
+	VM_OBJECT_WUNLOCK(bp->b_bufobj->bo_object);
 	
 	if (bp->b_bufsize) {
 		bufspacewakeup();
@@ -2978,7 +2970,6 @@ bp_unmapped_get_kva(struct buf *bp, daddr_t blkno, int size, int gbflags)
 	 * if the buffer was mapped.
 	 */
 	bsize = vn_isdisk(bp->b_vp, NULL) ? DEV_BSIZE : bp->b_bufobj->bo_bsize;
-	KASSERT(bsize != 0, ("bsize == 0, check bo->bo_bsize"));
 	offset = blkno * bsize;
 	maxsize = size + (offset & PAGE_MASK);
 	maxsize = imax(maxsize, bsize);
@@ -3228,7 +3219,6 @@ loop:
 			return NULL;
 
 		bsize = vn_isdisk(vp, NULL) ? DEV_BSIZE : bo->bo_bsize;
-		KASSERT(bsize != 0, ("bsize == 0, check bo->bo_bsize"));
 		offset = blkno * bsize;
 		vmio = vp->v_object != NULL;
 		if (vmio) {

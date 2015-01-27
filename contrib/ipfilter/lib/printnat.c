@@ -153,8 +153,7 @@ printnat(np, opts)
 
 	} else if (np->in_redir & NAT_REWRITE) {
 		PRINTF(" -> src ");
-		if (np->in_nsrc.na_atype == FRI_LOOKUP &&
-		    np->in_nsrc.na_type == IPLT_DSTLIST) {
+		if (np->in_nsrc.na_type == IPLT_DSTLIST) {
 			PRINTF("dstlist/");
 			if (np->in_nsrc.na_subtype == 0)
 				PRINTF("%d", np->in_nsrc.na_num);
@@ -175,8 +174,7 @@ printnat(np, opts)
 			}
 		}
 		PRINTF(" dst ");
-		if (np->in_ndst.na_atype == FRI_LOOKUP &&
-		    np->in_ndst.na_type == IPLT_DSTLIST) {
+		if (np->in_ndst.na_type == IPLT_DSTLIST) {
 			PRINTF("dstlist/");
 			if (np->in_ndst.na_subtype == 0)
 				PRINTF("%d", np->in_nsrc.na_num);

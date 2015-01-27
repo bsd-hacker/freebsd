@@ -55,7 +55,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/signalvar.h>
-#include <sys/sx.h>
 #include <sys/systm.h>
 #include <sys/uio.h>
 
@@ -73,9 +72,6 @@ MALLOC_DEFINE(M_MEMDESC, "memdesc", "memory range descriptors");
 
 struct mem_range_softc mem_range_softc;
 
-static struct sx tmppt_lock;
-SX_SYSINIT(tmppt, &tmppt_lock, "mem4map");
-
 /* ARGSUSED */
 int
 memrw(struct cdev *dev, struct uio *uio, int flags)
@@ -85,6 +81,8 @@ memrw(struct cdev *dev, struct uio *uio, int flags)
 	struct iovec *iov;
 	int error = 0;
 	vm_offset_t addr, eaddr;
+
+	GIANT_REQUIRED;
 
 	while (uio->uio_resid > 0 && error == 0) {
 		iov = uio->uio_iov;
@@ -111,7 +109,6 @@ memrw(struct cdev *dev, struct uio *uio, int flags)
 			}
 			if (!address_valid)
 				return (EINVAL);
-			sx_xlock(&tmppt_lock);
 			pmap_kenter((vm_offset_t)_tmppt, v);
 			o = (int)uio->uio_offset & PAGE_MASK;
 			c = (u_int)(PAGE_SIZE - ((int)iov->iov_base & PAGE_MASK));
@@ -119,7 +116,6 @@ memrw(struct cdev *dev, struct uio *uio, int flags)
 			c = min(c, (u_int)iov->iov_len);
 			error = uiomove((caddr_t)&_tmppt[o], (int)c, uio);
 			pmap_qremove((vm_offset_t)_tmppt, 1);
-			sx_xunlock(&tmppt_lock);
 			continue;
 		}
 		else if (dev2unit(dev) == CDEV_MINOR_KMEM) {

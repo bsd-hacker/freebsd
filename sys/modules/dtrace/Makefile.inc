@@ -3,6 +3,7 @@
 IGNORE_PRAGMA=	1
 
 load	:
+	-kldload cyclic
 	-kldload dtrace
 .if ${MACHINE_CPUARCH} == "i386"
 	-kldload sdt
@@ -24,4 +25,5 @@ unload	:
 	-kldunload sdt
 .endif
 	-kldunload dtrace
+	-kldunload cyclic
 	kldstat

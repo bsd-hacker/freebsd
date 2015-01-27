@@ -639,7 +639,7 @@ drm_calc_vbltimestamp_from_scanoutpos(struct drm_device *dev, int crtc,
 u32 drm_get_last_vbltimestamp(struct drm_device *dev, int crtc,
 			      struct timeval *tvblank, unsigned flags)
 {
-	int ret;
+	int ret = 0;
 
 	/* Define requested maximum error on timestamps (nanoseconds). */
 	int max_error = (int) drm_timestamp_precision * 1000;
@@ -930,15 +930,18 @@ int drm_modeset_ctl(struct drm_device *dev, void *data,
 		    struct drm_file *file_priv)
 {
 	struct drm_modeset_ctl *modeset = data;
+	int ret = 0;
 	unsigned int crtc;
 
 	/* If drm_vblank_init() hasn't been called yet, just no-op */
 	if (!dev->num_crtcs)
-		return 0;
+		goto out;
 
 	crtc = modeset->crtc;
-	if (crtc >= dev->num_crtcs)
-		return -EINVAL;
+	if (crtc >= dev->num_crtcs) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	switch (modeset->cmd) {
 	case _DRM_PRE_MODESET:
@@ -948,11 +951,12 @@ int drm_modeset_ctl(struct drm_device *dev, void *data,
 		drm_vblank_post_modeset(dev, crtc);
 		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
 		break;
 	}
 
-	return 0;
+out:
+	return ret;
 }
 
 static void
@@ -1050,7 +1054,7 @@ int drm_wait_vblank(struct drm_device *dev, void *data,
 		    struct drm_file *file_priv)
 {
 	union drm_wait_vblank *vblwait = data;
-	int ret;
+	int ret = 0;
 	unsigned int flags, seq, crtc, high_crtc;
 
 	if (/*(!drm_dev_to_irq(dev)) || */(!dev->irq_enabled))

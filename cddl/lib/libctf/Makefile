@@ -16,7 +16,6 @@ SRCS=		ctf_create.c \
 		ctf_subr.c \
 		ctf_types.c \
 		ctf_util.c
-MAN=		ctf.5
 
 WARNS?=		0
 CFLAGS+=	-DCTF_OLD_VERSIONS

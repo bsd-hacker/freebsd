@@ -1,3 +1,6 @@
+//
+// Automated Testing Framework (atf)
+//
 // Copyright (c) 2009 The NetBSD Foundation, Inc.
 // All rights reserved.
 //
@@ -22,14 +25,15 @@
 // IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 // IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-#include "atf-c++/detail/application.hpp"
+//
 
 extern "C" {
 #include <unistd.h>
 }
 
-#include <atf-c++.hpp>
+#include "application.hpp"
+
+#include "../macros.hpp"
 
 class getopt_app : public atf::application::app {
 public:

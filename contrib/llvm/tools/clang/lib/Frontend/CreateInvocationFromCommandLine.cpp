@@ -32,7 +32,7 @@ using namespace llvm::opt;
 CompilerInvocation *
 clang::createInvocationFromCommandLine(ArrayRef<const char *> ArgList,
                             IntrusiveRefCntPtr<DiagnosticsEngine> Diags) {
-  if (!Diags.get()) {
+  if (!Diags.getPtr()) {
     // No diagnostics engine was provided, so create our own diagnostics object
     // with the default options.
     Diags = CompilerInstance::createDiagnostics(new DiagnosticOptions);
@@ -47,17 +47,17 @@ clang::createInvocationFromCommandLine(ArrayRef<const char *> ArgList,
 
   // FIXME: We shouldn't have to pass in the path info.
   driver::Driver TheDriver("clang", llvm::sys::getDefaultTargetTriple(),
-                           *Diags);
+                           "a.out", *Diags);
 
   // Don't check that inputs exist, they may have been remapped.
   TheDriver.setCheckInputsExist(false);
 
-  std::unique_ptr<driver::Compilation> C(TheDriver.BuildCompilation(Args));
+  OwningPtr<driver::Compilation> C(TheDriver.BuildCompilation(Args));
 
   // Just print the cc1 options if -### was present.
   if (C->getArgs().hasArg(driver::options::OPT__HASH_HASH_HASH)) {
     C->getJobs().Print(llvm::errs(), "\n", true);
-    return nullptr;
+    return 0;
   }
 
   // We expect to get back exactly one command job, if we didn't something
@@ -68,22 +68,22 @@ clang::createInvocationFromCommandLine(ArrayRef<const char *> ArgList,
     llvm::raw_svector_ostream OS(Msg);
     Jobs.Print(OS, "; ", true);
     Diags->Report(diag::err_fe_expected_compiler_job) << OS.str();
-    return nullptr;
+    return 0;
   }
 
   const driver::Command *Cmd = cast<driver::Command>(*Jobs.begin());
   if (StringRef(Cmd->getCreator().getName()) != "clang") {
     Diags->Report(diag::err_fe_expected_clang_command);
-    return nullptr;
+    return 0;
   }
 
   const ArgStringList &CCArgs = Cmd->getArguments();
-  std::unique_ptr<CompilerInvocation> CI(new CompilerInvocation());
+  OwningPtr<CompilerInvocation> CI(new CompilerInvocation());
   if (!CompilerInvocation::CreateFromArgs(*CI,
                                      const_cast<const char **>(CCArgs.data()),
                                      const_cast<const char **>(CCArgs.data()) +
                                      CCArgs.size(),
                                      *Diags))
-    return nullptr;
-  return CI.release();
+    return 0;
+  return CI.take();
 }

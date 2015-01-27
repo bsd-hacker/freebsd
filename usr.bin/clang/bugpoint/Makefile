@@ -16,13 +16,12 @@ SRCS=	BugDriver.cpp \
 	bugpoint.cpp
 
 TGHDRS=	Intrinsics
-LIBDEPS=llvmcodegen \
-	llvmobjcarcopts \
-	llvmirreader \
+LIBDEPS=llvmirreader \
 	llvmbitwriter \
 	llvmbitreader \
 	llvmlinker \
 	llvmipo \
+	llvmobjcarcopts \
 	llvmvectorize \
 	llvmscalaropts \
 	llvminstcombine \
@@ -32,6 +31,7 @@ LIBDEPS=llvmcodegen \
 	llvmanalysis \
 	llvmtarget \
 	llvmmc \
+	llvmobject \
 	llvmasmparser \
 	llvmcore \
 	llvmsupport

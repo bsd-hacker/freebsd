@@ -576,8 +576,8 @@ lp_intr(void *arg)
 		sc->sc_iferrs = 0;
 
 		len -= CLPIPHDRLEN;
-		if_inc_counter(sc->sc_ifp, IFCOUNTER_IPACKETS, 1);
-		if_inc_counter(sc->sc_ifp, IFCOUNTER_IBYTES, len);
+		sc->sc_ifp->if_ipackets++;
+		sc->sc_ifp->if_ibytes += len;
 		top = m_devget(sc->sc_ifbuf + CLPIPHDRLEN, len, 0, sc->sc_ifp,
 		    0);
 		if (top) {
@@ -630,8 +630,8 @@ lp_intr(void *arg)
 		sc->sc_iferrs = 0;
 
 		len -= LPIPHDRLEN;
-		if_inc_counter(sc->sc_ifp, IFCOUNTER_IPACKETS, 1);
-		if_inc_counter(sc->sc_ifp, IFCOUNTER_IBYTES, len);
+		sc->sc_ifp->if_ipackets++;
+		sc->sc_ifp->if_ibytes += len;
 		top = m_devget(sc->sc_ifbuf + LPIPHDRLEN, len, 0, sc->sc_ifp,
 		    0);
 		if (top) {
@@ -651,7 +651,7 @@ lp_intr(void *arg)
 err:
 	ppb_wdtr(ppbus, 0);
 	lprintf("R");
-	if_inc_counter(sc->sc_ifp, IFCOUNTER_IERRORS, 1);
+	sc->sc_ifp->if_ierrors++;
 	sc->sc_iferrs++;
 
 	/*
@@ -768,11 +768,11 @@ lpoutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	nend:
 		ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 		if (err)  {			/* if we didn't timeout... */
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 			lprintf("X");
 		} else {
-			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
-			if_inc_counter(ifp, IFCOUNTER_OBYTES, m->m_pkthdr.len);
+			ifp->if_opackets++;
+			ifp->if_obytes += m->m_pkthdr.len;
 			if (bpf_peers_present(ifp->if_bpf))
 				lptap(ifp, m);
 		}
@@ -814,11 +814,11 @@ end:
 
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 	if (err)  {			/* if we didn't timeout... */
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 		lprintf("X");
 	} else {
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
-		if_inc_counter(ifp, IFCOUNTER_OBYTES, m->m_pkthdr.len);
+		ifp->if_opackets++;
+		ifp->if_obytes += m->m_pkthdr.len;
 		if (bpf_peers_present(ifp->if_bpf))
 			lptap(ifp, m);
 	}

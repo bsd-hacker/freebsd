@@ -28,8 +28,6 @@
 #include "lib.h"
 #include "at91rm9200_lowlevel.h"
 
-int main(void);
-
 int
 main(void)
 {

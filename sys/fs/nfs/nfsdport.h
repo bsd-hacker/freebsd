@@ -115,9 +115,3 @@ struct nfsexstuff {
 #define	NFSRV_MINFH	(sizeof (fhandle_t))
 #define	NFSRV_MAXFH	(sizeof (fhandle_t))
 
-/* Use this macro for debug printfs. */
-#define	NFSD_DEBUG(level, ...)	do {					\
-		if (nfsd_debuglevel >= (level))				\
-			printf(__VA_ARGS__);				\
-	} while (0)
-

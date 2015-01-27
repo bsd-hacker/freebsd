@@ -29,6 +29,5 @@ __FBSDID("$FreeBSD$");
 
 ENTRY(__eabi)
 	blr
-END(__eabi)
 
 	.section .note.GNU-stack,"",%progbits

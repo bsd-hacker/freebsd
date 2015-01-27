@@ -5,8 +5,7 @@
 LIB=	llvmmc
 
 SRCDIR=	lib/MC
-SRCS=	ConstantPools.cpp \
-	ELFObjectWriter.cpp \
+SRCS=	ELFObjectWriter.cpp \
 	MCAsmBackend.cpp \
 	MCAsmInfo.cpp \
 	MCAsmInfoCOFF.cpp \
@@ -14,6 +13,7 @@ SRCS=	ConstantPools.cpp \
 	MCAsmInfoELF.cpp \
 	MCAsmStreamer.cpp \
 	MCAssembler.cpp \
+	MCAtom.cpp \
 	MCCodeEmitter.cpp \
 	MCCodeGenInfo.cpp \
 	MCContext.cpp \
@@ -23,17 +23,22 @@ SRCS=	ConstantPools.cpp \
 	MCELFStreamer.cpp \
 	MCExpr.cpp \
 	MCExternalSymbolizer.cpp \
+	MCFunction.cpp \
 	MCInst.cpp \
 	MCInstPrinter.cpp \
 	MCInstrAnalysis.cpp \
 	MCLabel.cpp \
-	MCLinkerOptimizationHint.cpp \
 	MCMachOStreamer.cpp \
 	MCMachObjectTargetWriter.cpp \
+	MCModule.cpp \
+	MCModuleYAML.cpp \
 	MCNullStreamer.cpp \
+	MCObjectDisassembler.cpp \
 	MCObjectFileInfo.cpp \
 	MCObjectStreamer.cpp \
+	MCObjectSymbolizer.cpp \
 	MCObjectWriter.cpp \
+	MCPureStreamer.cpp \
 	MCRegisterInfo.cpp \
 	MCRelocationInfo.cpp \
 	MCSection.cpp \
@@ -44,15 +49,12 @@ SRCS=	ConstantPools.cpp \
 	MCSubtargetInfo.cpp \
 	MCSymbol.cpp \
 	MCSymbolizer.cpp \
-	MCTargetOptions.cpp \
 	MCValue.cpp \
 	MCWin64EH.cpp \
 	MachObjectWriter.cpp \
-	StringTableBuilder.cpp \
 	SubtargetFeature.cpp \
 	WinCOFFObjectWriter.cpp \
-	WinCOFFStreamer.cpp \
-	YAML.cpp
+	WinCOFFStreamer.cpp
 
 .if ${MK_CLANG_EXTRAS} != "no" || ${MK_LLDB} != "no"
 SRCS+=	MCDisassembler.cpp

@@ -66,29 +66,47 @@ bool Parser::MayBeDesignationStart() {
   }
   
   // Parse up to (at most) the token after the closing ']' to determine 
-  // whether this is a C99 designator or a lambda.
+  // whether this is a C99 designator or a lambda.
   TentativeParsingAction Tentative(*this);
-
-  LambdaIntroducer Intro;
-  bool SkippedInits = false;
-  Optional<unsigned> DiagID(ParseLambdaIntroducer(Intro, &SkippedInits));
-
-  if (DiagID) {
-    // If this can't be a lambda capture list, it's a designator.
-    Tentative.Revert();
-    return true;
+  ConsumeBracket();
+  while (true) {
+    switch (Tok.getKind()) {
+    case tok::equal:
+    case tok::amp:
+    case tok::identifier:
+    case tok::kw_this:
+      // These tokens can occur in a capture list or a constant-expression.
+      // Keep looking.
+      ConsumeToken();
+      continue;
+      
+    case tok::comma:
+      // Since a comma cannot occur in a constant-expression, this must
+      // be a lambda.
+      Tentative.Revert();
+      return false;
+      
+    case tok::r_square: {
+      // Once we hit the closing square bracket, we look at the next
+      // token. If it's an '=', this is a designator. Otherwise, it's a
+      // lambda expression. This decision favors lambdas over the older
+      // GNU designator syntax, which allows one to omit the '=', but is
+      // consistent with GCC.
+      ConsumeBracket();
+      tok::TokenKind Kind = Tok.getKind();
+      Tentative.Revert();
+      return Kind == tok::equal;
+    }
+      
+    default:
+      // Anything else cannot occur in a lambda capture list, so it
+      // must be a designator.
+      Tentative.Revert();
+      return true;
+    }
   }
-
-  // Once we hit the closing square bracket, we look at the next
-  // token. If it's an '=', this is a designator. Otherwise, it's a
-  // lambda expression. This decision favors lambdas over the older
-  // GNU designator syntax, which allows one to omit the '=', but is
-  // consistent with GCC.
-  tok::TokenKind Kind = Tok.getKind();
-  // FIXME: If we didn't skip any inits, parse the lambda from here
-  // rather than throwing away then reparsing the LambdaIntroducer.
-  Tentative.Revert();
-  return Kind == tok::equal;
+  
+  return true;
 }
 
 static void CheckArrayDesignatorSyntax(Parser &P, SourceLocation Loc,
@@ -219,7 +237,7 @@ ExprResult Parser::ParseInitializerWithPotentialDesignator() {
         return ParseAssignmentExprWithObjCMessageExprStart(StartLoc,
                                                            ConsumeToken(),
                                                            ParsedType(), 
-                                                           nullptr);
+                                                           0);
       }
 
       // Parse the receiver, which is either a type or an expression.
@@ -237,7 +255,7 @@ ExprResult Parser::ParseInitializerWithPotentialDesignator() {
         return ParseAssignmentExprWithObjCMessageExprStart(StartLoc, 
                                                            SourceLocation(), 
                                    ParsedType::getFromOpaquePtr(TypeOrExpr),
-                                                           nullptr);
+                                                           0);
       }
 
       // If the receiver was an expression, we still don't know
@@ -264,7 +282,7 @@ ExprResult Parser::ParseInitializerWithPotentialDesignator() {
           return ParseAssignmentExprWithObjCMessageExprStart(StartLoc,
                                                              ConsumeToken(),
                                                              ParsedType(),
-                                                             nullptr);
+                                                             0);
         ConsumeToken(); // the identifier
         if (!ReceiverType) {
           SkipUntil(tok::r_square, StopAtSemi);
@@ -274,7 +292,7 @@ ExprResult Parser::ParseInitializerWithPotentialDesignator() {
         return ParseAssignmentExprWithObjCMessageExprStart(StartLoc, 
                                                            SourceLocation(), 
                                                            ReceiverType, 
-                                                           nullptr);
+                                                           0);
 
       case Sema::ObjCInstanceMessage:
         // Fall through; we'll just parse the expression and
@@ -309,12 +327,12 @@ ExprResult Parser::ParseInitializerWithPotentialDesignator() {
       return ParseAssignmentExprWithObjCMessageExprStart(StartLoc,
                                                          SourceLocation(),
                                                          ParsedType(),
-                                                         Idx.get());
+                                                         Idx.take());
     }
 
     // If this is a normal array designator, remember it.
     if (Tok.isNot(tok::ellipsis)) {
-      Desig.AddDesignator(Designator::getArray(Idx.get(), StartLoc));
+      Desig.AddDesignator(Designator::getArray(Idx.release(), StartLoc));
     } else {
       // Handle the gnu array range extension.
       Diag(Tok, diag::ext_gnu_array_range);
@@ -325,8 +343,8 @@ ExprResult Parser::ParseInitializerWithPotentialDesignator() {
         SkipUntil(tok::r_square, StopAtSemi);
         return RHS;
       }
-      Desig.AddDesignator(Designator::getArrayRange(Idx.get(),
-                                                    RHS.get(),
+      Desig.AddDesignator(Designator::getArrayRange(Idx.release(),
+                                                    RHS.release(),
                                                     StartLoc, EllipsisLoc));
     }
 
@@ -426,7 +444,7 @@ ExprResult Parser::ParseBraceInitializer() {
     
     // If we couldn't parse the subelement, bail out.
     if (!SubElt.isInvalid()) {
-      InitExprs.push_back(SubElt.get());
+      InitExprs.push_back(SubElt.release());
     } else {
       InitExprsOk = false;
 
@@ -475,7 +493,7 @@ bool Parser::ParseMicrosoftIfExistsBraceInitializer(ExprVector &InitExprs,
   
   BalancedDelimiterTracker Braces(*this, tok::l_brace);
   if (Braces.consumeOpen()) {
-    Diag(Tok, diag::err_expected) << tok::l_brace;
+    Diag(Tok, diag::err_expected_lbrace);
     return false;
   }
 
@@ -494,7 +512,7 @@ bool Parser::ParseMicrosoftIfExistsBraceInitializer(ExprVector &InitExprs,
     return false;
   }
 
-  while (!isEofOrEom()) {
+  while (Tok.isNot(tok::eof)) {
     trailingComma = false;
     // If we know that this cannot be a designation, just parse the nested
     // initializer directly.
@@ -509,7 +527,7 @@ bool Parser::ParseMicrosoftIfExistsBraceInitializer(ExprVector &InitExprs,
     
     // If we couldn't parse the subelement, bail out.
     if (!SubElt.isInvalid())
-      InitExprs.push_back(SubElt.get());
+      InitExprs.push_back(SubElt.release());
     else
       InitExprsOk = false;
 

@@ -47,17 +47,15 @@ class DiagnosticsEngine;
 /// When errors are encountered, return false and, if Diags is non-null,
 /// report the error(s).
 bool ParseDiagnosticArgs(DiagnosticOptions &Opts, llvm::opt::ArgList &Args,
-                         DiagnosticsEngine *Diags = nullptr);
+                         DiagnosticsEngine *Diags = 0);
 
 class CompilerInvocationBase : public RefCountedBase<CompilerInvocation> {
-  void operator=(const CompilerInvocationBase &) LLVM_DELETED_FUNCTION;
-
-public:
+protected:
   /// Options controlling the language variant.
-  std::shared_ptr<LangOptions> LangOpts;
+  IntrusiveRefCntPtr<LangOptions> LangOpts;
 
   /// Options controlling the target.
-  std::shared_ptr<TargetOptions> TargetOpts;
+  IntrusiveRefCntPtr<TargetOptions> TargetOpts;
 
   /// Options controlling the diagnostic engine.
   IntrusiveRefCntPtr<DiagnosticOptions> DiagnosticOpts;
@@ -68,17 +66,17 @@ public:
   /// Options controlling the preprocessor (aside from \#include handling).
   IntrusiveRefCntPtr<PreprocessorOptions> PreprocessorOpts;
 
+public:
   CompilerInvocationBase();
-  ~CompilerInvocationBase();
 
   CompilerInvocationBase(const CompilerInvocationBase &X);
   
-  LangOptions *getLangOpts() { return LangOpts.get(); }
-  const LangOptions *getLangOpts() const { return LangOpts.get(); }
+  LangOptions *getLangOpts() { return LangOpts.getPtr(); }
+  const LangOptions *getLangOpts() const { return LangOpts.getPtr(); }
 
-  TargetOptions &getTargetOpts() { return *TargetOpts.get(); }
+  TargetOptions &getTargetOpts() { return *TargetOpts.getPtr(); }
   const TargetOptions &getTargetOpts() const {
-    return *TargetOpts.get();
+    return *TargetOpts.getPtr();
   }
 
   DiagnosticOptions &getDiagnosticOpts() const { return *DiagnosticOpts; }
@@ -205,14 +203,6 @@ public:
 
   /// @}
 };
-
-namespace vfs {
-  class FileSystem;
-}
-
-IntrusiveRefCntPtr<vfs::FileSystem>
-createVFSFromCompilerInvocation(const CompilerInvocation &CI,
-                                DiagnosticsEngine &Diags);
 
 } // end namespace clang
 

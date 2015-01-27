@@ -71,15 +71,15 @@ uint8_t *SectionMemoryManager::allocateSection(MemoryGroup &MemGroup,
   //
   // FIXME: Initialize the Near member for each memory group to avoid
   // interleaving.
-  std::error_code ec;
+  error_code ec;
   sys::MemoryBlock MB = sys::Memory::allocateMappedMemory(RequiredSize,
                                                           &MemGroup.Near,
                                                           sys::Memory::MF_READ |
                                                             sys::Memory::MF_WRITE,
                                                           ec);
   if (ec) {
-    // FIXME: Add error propagation to the interface.
-    return nullptr;
+    // FIXME: Add error propogation to the interface.
+    return NULL;
   }
 
   // Save this address as the basis for our next request
@@ -105,7 +105,7 @@ uint8_t *SectionMemoryManager::allocateSection(MemoryGroup &MemGroup,
 bool SectionMemoryManager::finalizeMemory(std::string *ErrMsg)
 {
   // FIXME: Should in-progress permissions be reverted if an error occurs?
-  std::error_code ec;
+  error_code ec;
 
   // Don't allow free memory blocks to be used after setting protection flags.
   CodeMem.FreeMem.clear();
@@ -143,20 +143,19 @@ bool SectionMemoryManager::finalizeMemory(std::string *ErrMsg)
   return false;
 }
 
-std::error_code
-SectionMemoryManager::applyMemoryGroupPermissions(MemoryGroup &MemGroup,
-                                                  unsigned Permissions) {
+error_code SectionMemoryManager::applyMemoryGroupPermissions(MemoryGroup &MemGroup,
+                                                             unsigned Permissions) {
 
   for (int i = 0, e = MemGroup.AllocatedMem.size(); i != e; ++i) {
-    std::error_code ec;
-    ec =
-        sys::Memory::protectMappedMemory(MemGroup.AllocatedMem[i], Permissions);
-    if (ec) {
-      return ec;
-    }
+      error_code ec;
+      ec = sys::Memory::protectMappedMemory(MemGroup.AllocatedMem[i],
+                                            Permissions);
+      if (ec) {
+        return ec;
+      }
   }
 
-  return std::error_code();
+  return error_code::success();
 }
 
 void SectionMemoryManager::invalidateInstructionCache() {

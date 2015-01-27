@@ -80,7 +80,7 @@ static char da[] = "da";
 
 static struct nlist namelist[] = {
 #define X_SUM		0
-	{ "_vm_cnt" },
+	{ "_cnt" },
 #define X_HZ		1
 	{ "_hz" },
 #define X_STATHZ	2
@@ -148,7 +148,7 @@ static void	cpustats(void);
 static void	pcpustats(int, u_long, int);
 static void	devstats(void);
 static void	doforkst(void);
-static void	dointr(unsigned int, int);
+static void	dointr(void);
 static void	dosum(void);
 static void	dovmstat(unsigned int, int);
 static void	domemstat_malloc(void);
@@ -163,7 +163,7 @@ static void	printhdr(int, u_long);
 static void	usage(void);
 
 static long	pct(long, long);
-static long long	getuptime(void);
+static long	getuptime(void);
 
 static char   **getdrivedata(char **);
 
@@ -259,18 +259,8 @@ main(int argc, char *argv[])
 			errx(1, "kvm_openfiles: %s", errbuf);
 	}
 
-retry_nlist:
 	if (kd != NULL && (c = kvm_nlist(kd, namelist)) != 0) {
 		if (c > 0) {
-			/*
-			 * 'cnt' was renamed to 'vm_cnt'. If 'vm_cnt' is not
-			 * found try looking up older 'cnt' symbol.
-			 * */
-			if (namelist[X_SUM].n_type == 0 &&
-			    strcmp(namelist[X_SUM].n_name, "_vm_cnt") == 0) {
-				namelist[X_SUM].n_name = "_cnt";
-				goto retry_nlist;
-			}
 			warnx("undefined symbols:");
 			for (c = 0;
 			     c < (int)(sizeof(namelist)/sizeof(namelist[0]));
@@ -299,12 +289,15 @@ retry_nlist:
 		argv = getdrivedata(argv);
 	}
 
+#define	BACKWARD_COMPATIBILITY
+#ifdef	BACKWARD_COMPATIBILITY
 	if (*argv) {
 		f = atof(*argv);
 		interval = f * 1000;
 		if (*++argv)
 			reps = atoi(*argv);
 	}
+#endif
 
 	if (interval) {
 		if (!reps)
@@ -325,7 +318,7 @@ retry_nlist:
 		dotimes();
 #endif
 	if (todo & INTRSTAT)
-		dointr(interval, reps);
+		dointr();
 	if (todo & VMSTAT)
 		dovmstat(interval, reps);
 	exit(0);
@@ -406,15 +399,14 @@ getdrivedata(char **argv)
 	return(argv);
 }
 
-/* Return system uptime in nanoseconds */
-static long long
+static long
 getuptime(void)
 {
 	struct timespec sp;
 
-	(void)clock_gettime(CLOCK_UPTIME, &sp);
+	(void)clock_gettime(CLOCK_MONOTONIC, &sp);
 
-	return((long long)sp.tv_sec * 1000000000LL + sp.tv_nsec);
+	return(sp.tv_sec);
 }
 
 static void
@@ -655,11 +647,9 @@ dovmstat(unsigned int interval, int reps)
 	u_long cpumask;
 	int rate_adj;
 
-	uptime = getuptime() / 1000000000LL;
+	uptime = getuptime();
 	halfuptime = uptime / 2;
 	rate_adj = 1;
-	ncpus = 1;
-	maxid = 0;
 
 	/*
 	 * If the user stops the program (control-Z) and then resumes it,
@@ -705,7 +695,7 @@ dovmstat(unsigned int interval, int reps)
 	}
 	for (hdrcnt = 1;;) {
 		if (!--hdrcnt)
-			printhdr(maxid, cpumask);
+			printhdr(ncpus, cpumask);
 		if (kd != NULL) {
 			if (kvm_getcptime(kd, cur.cp_time) < 0)
 				errx(1, "kvm_getcptime: %s", kvm_geterr(kd));
@@ -756,7 +746,7 @@ dovmstat(unsigned int interval, int reps)
 				errx(1, "%s", devstat_errbuf);
 				break;
 			case 1:
-				printhdr(maxid, cpumask);
+				printhdr(ncpus, cpumask);
 				break;
 			default:
 				break;
@@ -768,26 +758,22 @@ dovmstat(unsigned int interval, int reps)
 
 		fill_vmmeter(&sum);
 		fill_vmtotal(&total);
-		(void)printf("%1d %1d %1d",
+		(void)printf("%2d %1d %1d",
 		    total.t_rq - 1, total.t_dw + total.t_pw, total.t_sw);
 #define vmstat_pgtok(a) ((a) * (sum.v_page_size >> 10))
 #define	rate(x)	(((x) * rate_adj + halfuptime) / uptime)	/* round */
 		if (hflag) {
-			printf("");
-			prthuman(total.t_avm * (u_int64_t)sum.v_page_size, 5);
 			printf(" ");
-			prthuman(total.t_free * (u_int64_t)sum.v_page_size, 5);
+			prthuman(total.t_avm * (u_int64_t)sum.v_page_size, 7);
 			printf(" ");
-			(void)printf("%5lu ",
-			    (unsigned long)rate(sum.v_vm_faults -
-			    osum.v_vm_faults));
+			prthuman(total.t_free * (u_int64_t)sum.v_page_size, 6);
+			printf(" ");
 		} else {
-			printf(" %7d", vmstat_pgtok(total.t_avm));
-			printf(" %7d ", vmstat_pgtok(total.t_free));
-			(void)printf("%4lu ",
-			    (unsigned long)rate(sum.v_vm_faults -
-			    osum.v_vm_faults));
+			printf(" %7d ", vmstat_pgtok(total.t_avm));
+			printf(" %6d ", vmstat_pgtok(total.t_free));
 		}
+		(void)printf("%5lu ",
+		    (unsigned long)rate(sum.v_vm_faults - osum.v_vm_faults));
 		(void)printf("%3lu ",
 		    (unsigned long)rate(sum.v_reactivated - osum.v_reactivated));
 		(void)printf("%3lu ",
@@ -798,10 +784,10 @@ dovmstat(unsigned int interval, int reps)
 		    (osum.v_swapout + osum.v_vnodeout)));
 		(void)printf("%5lu ",
 		    (unsigned long)rate(sum.v_tfree - osum.v_tfree));
-		(void)printf("%4lu ",
+		(void)printf("%3lu ",
 		    (unsigned long)rate(sum.v_pdpages - osum.v_pdpages));
 		devstats();
-		(void)printf("%4lu %5lu %5lu",
+		(void)printf("%4lu %4lu %4lu",
 		    (unsigned long)rate(sum.v_intr - osum.v_intr),
 		    (unsigned long)rate(sum.v_syscall - osum.v_syscall),
 		    (unsigned long)rate(sum.v_swtch - osum.v_swtch));
@@ -829,46 +815,36 @@ dovmstat(unsigned int interval, int reps)
 }
 
 static void
-printhdr(int maxid, u_long cpumask)
+printhdr(int ncpus, u_long cpumask)
 {
 	int i, num_shown;
 
 	num_shown = (num_selected < maxshowdevs) ? num_selected : maxshowdevs;
-	if (hflag) {
-		(void)printf("procs  memory      page%*s ", 19, "");
-	} else {
-		(void)printf("procs     memory       page%*s ", 19, "");
-	}
+	(void)printf(" procs      memory      page%*s", 19, "");
 	if (num_shown > 1)
-		(void)printf("   disks %*s", num_shown * 4 - 7, "");
+		(void)printf(" disks %*s", num_shown * 4 - 7, "");
 	else if (num_shown == 1)
-		(void)printf("   disk");
-	(void)printf("   faults      ");
+		(void)printf("disk");
+	(void)printf("   faults         ");
 	if (Pflag) {
-		for (i = 0; i <= maxid; i++) {
+		for (i = 0; i < ncpus; i++) {
 			if (cpumask & (1ul << i))
-				printf("  cpu%d   ", i);
+				printf("cpu%-2d    ", i);
 		}
 		printf("\n");
 	} else
-		printf("   cpu\n");
-	if (hflag) {
-		(void)printf("r b w  avm   fre   flt  re  pi  po    fr   sr ");
-	} else {
-		(void)printf("r b w     avm     fre  flt  re  pi  po    fr   sr ");
-	}
+		printf("cpu\n");
+	(void)printf(" r b w     avm    fre   flt  re  pi  po    fr  sr ");
 	for (i = 0; i < num_devices; i++)
 		if ((dev_select[i].selected)
 		 && (dev_select[i].selected <= maxshowdevs))
 			(void)printf("%c%c%d ", dev_select[i].device_name[0],
 				     dev_select[i].device_name[1],
 				     dev_select[i].unit_number);
-	(void)printf("  in    sy    cs");
+	(void)printf("  in   sy   cs");
 	if (Pflag) {
-		for (i = 0; i <= maxid; i++) {
-			if (cpumask & (1ul << i))
-				printf(" us sy id");
-		}
+		for (i = 0; i < ncpus; i++)
+			printf(" us sy id");
 		printf("\n");
 	} else
 		printf(" us sy id\n");
@@ -995,8 +971,7 @@ dosum(void)
 	(void)printf("%9u intransit blocking page faults\n", sum.v_intrans);
 	(void)printf("%9u total VM faults taken\n", sum.v_vm_faults);
 	(void)printf("%9u page faults requiring I/O\n", sum.v_io_faults);
-	(void)printf("%9u pages affected by kernel thread creation\n",
-	    sum.v_kthreadpages);
+	(void)printf("%9u pages affected by kernel thread creation\n", sum.v_kthreadpages);
 	(void)printf("%9u pages affected by  fork()\n", sum.v_forkpages);
 	(void)printf("%9u pages affected by vfork()\n", sum.v_vforkpages);
 	(void)printf("%9u pages affected by rfork()\n", sum.v_rforkpages);
@@ -1138,8 +1113,7 @@ pcpustats(int ncpus, u_long cpumask, int maxid)
 			continue;
 		for (state = 0; state < CPUSTATES; ++state) {
 			tmp = cur_cp_times[i * CPUSTATES + state];
-			cur_cp_times[i * CPUSTATES + state] -= last_cp_times[i *
-			    CPUSTATES + state];
+			cur_cp_times[i * CPUSTATES + state] -= last_cp_times[i * CPUSTATES + state];
 			last_cp_times[i * CPUSTATES + state] = tmp;
 		}
 	}
@@ -1166,133 +1140,61 @@ pcpustats(int ncpus, u_long cpumask, int maxid)
 	}
 }
 
-static unsigned int
-read_intrcnts(unsigned long **intrcnts)
-{
-	size_t intrcntlen;
-
-	if (kd != NULL) {
-		kread(X_SINTRCNT, &intrcntlen, sizeof(intrcntlen));
-		if ((*intrcnts = malloc(intrcntlen)) == NULL)
-			err(1, "malloc()");
-		kread(X_INTRCNT, *intrcnts, intrcntlen);
-	} else {
-		for (*intrcnts = NULL, intrcntlen = 1024; ; intrcntlen *= 2) {
-			*intrcnts = reallocf(*intrcnts, intrcntlen);
-			if (*intrcnts == NULL)
-				err(1, "reallocf()");
-			if (mysysctl("hw.intrcnt",
-			    *intrcnts, &intrcntlen, NULL, 0) == 0)
-				break;
-		}
-	}
-
-	return (intrcntlen / sizeof(unsigned long));
-}
-
 static void
-print_intrcnts(unsigned long *intrcnts, unsigned long *old_intrcnts,
-		char *intrnames, unsigned int nintr,
-		size_t istrnamlen, long long period_ms)
+dointr(void)
 {
-	unsigned long *intrcnt, *old_intrcnt;
-	uint64_t inttotal, old_inttotal, total_count, total_rate;
-	char* intrname;
-	unsigned int i;
-
-	inttotal = 0;
-	old_inttotal = 0;
-	intrname = intrnames;
-	for (i = 0, intrcnt=intrcnts, old_intrcnt=old_intrcnts; i < nintr; i++) {
-		if (intrname[0] != '\0' && (*intrcnt != 0 || aflag)) {
-			unsigned long count, rate;
-
-			count = *intrcnt - *old_intrcnt;
-			rate = (count * 1000 + period_ms / 2) / period_ms;
-			(void)printf("%-*s %20lu %10lu\n", (int)istrnamlen,
-			    intrname, count, rate);
-		}
-		intrname += strlen(intrname) + 1;
-		inttotal += *intrcnt++;
-		old_inttotal += *old_intrcnt++;
-	}
-	total_count = inttotal - old_inttotal;
-	total_rate = (total_count * 1000 + period_ms / 2) / period_ms;
-	(void)printf("%-*s %20" PRIu64 " %10" PRIu64 "\n", (int)istrnamlen,
-	    "Total", total_count, total_rate);
-}
-
-static void
-dointr(unsigned int interval, int reps)
-{
-	unsigned long *intrcnts;
-	long long uptime, period_ms;
-	unsigned long *old_intrcnts = NULL;
-	size_t clen, inamlen, istrnamlen;
-	char *intrnames, *intrname;
+	unsigned long *intrcnt, uptime;
+	uint64_t inttotal;
+	size_t clen, inamlen, intrcntlen, istrnamlen;
+	unsigned int i, nintr;
+	char *intrname, *tintrname;
 
 	uptime = getuptime();
-
-	/* Get the names of each interrupt source */
 	if (kd != NULL) {
+		kread(X_SINTRCNT, &intrcntlen, sizeof(intrcntlen));
 		kread(X_SINTRNAMES, &inamlen, sizeof(inamlen));
-		if ((intrnames = malloc(inamlen)) == NULL)
+		if ((intrcnt = malloc(intrcntlen)) == NULL ||
+		    (intrname = malloc(inamlen)) == NULL)
 			err(1, "malloc()");
-		kread(X_INTRNAMES, intrnames, inamlen);
+		kread(X_INTRCNT, intrcnt, intrcntlen);
+		kread(X_INTRNAMES, intrname, inamlen);
 	} else {
-		for (intrnames = NULL, inamlen = 1024; ; inamlen *= 2) {
-			if ((intrnames = reallocf(intrnames, inamlen)) == NULL)
+		for (intrcnt = NULL, intrcntlen = 1024; ; intrcntlen *= 2) {
+			if ((intrcnt = reallocf(intrcnt, intrcntlen)) == NULL)
+				err(1, "reallocf()");
+			if (mysysctl("hw.intrcnt",
+			    intrcnt, &intrcntlen, NULL, 0) == 0)
+				break;
+		}
+		for (intrname = NULL, inamlen = 1024; ; inamlen *= 2) {
+			if ((intrname = reallocf(intrname, inamlen)) == NULL)
 				err(1, "reallocf()");
 			if (mysysctl("hw.intrnames",
-			    intrnames, &inamlen, NULL, 0) == 0)
+			    intrname, &inamlen, NULL, 0) == 0)
 				break;
 		}
 	}
-
-	/* Determine the length of the longest interrupt name */
-	intrname = intrnames;
+	nintr = intrcntlen / sizeof(unsigned long);
+	tintrname = intrname;
 	istrnamlen = strlen("interrupt");
-	while(*intrname != '\0') {
-		clen = strlen(intrname);
+	for (i = 0; i < nintr; i++) {
+		clen = strlen(tintrname);
 		if (clen > istrnamlen)
 			istrnamlen = clen;
-		intrname += strlen(intrname) + 1;
+		tintrname += clen + 1;
 	}
 	(void)printf("%-*s %20s %10s\n", (int)istrnamlen, "interrupt", "total",
 	    "rate");
-
-	/* 
-	 * Loop reps times printing differential interrupt counts.  If reps is
-	 * zero, then run just once, printing total counts
-	 */
-	period_ms = uptime / 1000000;
-	while(1) {
-		unsigned int nintr;
-		long long old_uptime;
-
-		nintr = read_intrcnts(&intrcnts);
-		/* 
-		 * Initialize old_intrcnts to 0 for the first pass, so
-		 * print_intrcnts will print total interrupts since boot
-		 */
-		if (old_intrcnts == NULL) {
-			old_intrcnts = calloc(nintr, sizeof(unsigned long));
-			if (old_intrcnts == NULL)
-				err(1, "calloc()");
-		}
-
-		print_intrcnts(intrcnts, old_intrcnts, intrnames, nintr,
-		    istrnamlen, period_ms);
-
-		free(old_intrcnts);
-		old_intrcnts = intrcnts;
-		if (reps >= 0 && --reps <= 0)
-			break;
-		usleep(interval * 1000);
-		old_uptime = uptime;
-		uptime = getuptime();
-		period_ms = (uptime - old_uptime) / 1000000;
+	inttotal = 0;
+	for (i = 0; i < nintr; i++) {
+		if (intrname[0] != '\0' && (*intrcnt != 0 || aflag))
+			(void)printf("%-*s %20lu %10lu\n", (int)istrnamlen,
+			    intrname, *intrcnt, *intrcnt / uptime);
+		intrname += strlen(intrname) + 1;
+		inttotal += *intrcnt++;
 	}
+	(void)printf("%-*s %20" PRIu64 " %10" PRIu64 "\n", (int)istrnamlen,
+	    "Total", inttotal, inttotal / uptime);
 }
 
 static void
@@ -1448,7 +1350,7 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr, "%s%s",
-		"usage: vmstat [-afHhimPsz] [-M core [-N system]] [-c count] [-n devs]\n",
-		"              [-p type,if,pass] [-w wait] [disks] [wait [count]]\n");
+		"usage: vmstat [-afHhimPsz] [-c count] [-M core [-N system]] [-w wait]\n",
+		"              [-n devs] [-p type,if,pass] [disks]\n");
 	exit(1);
 }

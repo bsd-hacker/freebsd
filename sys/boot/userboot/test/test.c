@@ -36,7 +36,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -293,7 +292,6 @@ test_copyin(void *arg, const void *from, uint64_t to, size_t size)
 	if (to + size > image_size)
 		size = image_size - to;
 	memcpy(&image[to], from, size);
-	return(0);
 }
 
 int
@@ -306,7 +304,6 @@ test_copyout(void *arg, uint64_t from, void *to, size_t size)
 	if (from + size > image_size)
 		size = image_size - from;
 	memcpy(to, &image[from], size);
-	return(0);
 }
 
 void
@@ -336,7 +333,7 @@ test_setgdt(void *arg, uint64_t v, size_t sz)
 void
 test_exec(void *arg, uint64_t pc)
 {
-	printf("Execute at 0x%"PRIu64"\n", pc);
+	printf("Execute at 0x%llx\n", pc);
 	test_exit(arg, 0);
 }
 
@@ -414,7 +411,7 @@ void
 usage()
 {
 
-	printf("usage: [-d <disk image path>] [-h <host filesystem path>\n");
+	printf("usage: %s [-d <disk image path>] [-h <host filesystem path>\n");
 	exit(1);
 }
 

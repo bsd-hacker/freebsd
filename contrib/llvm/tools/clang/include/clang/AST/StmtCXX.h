@@ -39,7 +39,7 @@ public:
     HandlerBlock(handlerBlock) {}
 
   CXXCatchStmt(EmptyShell Empty)
-  : Stmt(CXXCatchStmtClass), ExceptionDecl(nullptr), HandlerBlock(nullptr) {}
+  : Stmt(CXXCatchStmtClass), ExceptionDecl(0), HandlerBlock(0) {}
 
   SourceLocation getLocStart() const LLVM_READONLY { return CatchLoc; }
   SourceLocation getLocEnd() const LLVM_READONLY {

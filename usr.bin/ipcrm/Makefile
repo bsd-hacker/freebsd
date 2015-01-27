@@ -2,7 +2,8 @@
 
 PROG=	ipcrm
 SRCS=	ipcrm.c ipc.c
-LIBADD=	kvm
+DPADD=	${LIBKVM}
+LDADD=	-lkvm
 CFLAGS+=-I${.CURDIR}/../ipcs
 .PATH:  ${.CURDIR}/../ipcs
 

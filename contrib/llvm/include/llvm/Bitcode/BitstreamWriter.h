@@ -97,7 +97,7 @@ public:
     : Out(O), CurBit(0), CurValue(0), CurCodeSize(2) {}
 
   ~BitstreamWriter() {
-    assert(CurBit == 0 && "Unflushed data remaining");
+    assert(CurBit == 0 && "Unflused data remaining");
     assert(BlockScope.empty() && CurAbbrevs.empty() && "Block imbalance");
 
     // Free the BlockInfoRecords.
@@ -204,7 +204,7 @@ public:
          i != e; ++i)
       if (BlockInfoRecords[i].BlockID == BlockID)
         return &BlockInfoRecords[i];
-    return nullptr;
+    return 0;
   }
 
   void EnterSubblock(unsigned BlockID, unsigned CodeLen) {
@@ -347,7 +347,7 @@ private:
             EmitAbbreviatedField(EltEnc, (unsigned char)BlobData[i]);
 
           // Know that blob data is consumed for assertion below.
-          BlobData = nullptr;
+          BlobData = 0;
         } else {
           // Emit a vbr6 to indicate the number of elements present.
           EmitVBR(static_cast<uint32_t>(Vals.size()-RecordIdx), 6);
@@ -378,7 +378,7 @@ private:
             WriteByte((unsigned char)BlobData[i]);
 
           // Know that blob data is consumed for assertion below.
-          BlobData = nullptr;
+          BlobData = 0;
         } else {
           for (unsigned e = Vals.size(); RecordIdx != e; ++RecordIdx) {
             assert(isUInt<8>(Vals[RecordIdx]) &&
@@ -397,7 +397,7 @@ private:
       }
     }
     assert(RecordIdx == Vals.size() && "Not all record operands emitted!");
-    assert(BlobData == nullptr &&
+    assert(BlobData == 0 &&
            "Blob data specified for record that doesn't use it!");
   }
 

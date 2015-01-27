@@ -30,9 +30,9 @@
 
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -42,8 +42,8 @@ namespace tooling {
 /// \brief Specifies the working directory and command of a compilation.
 struct CompileCommand {
   CompileCommand() {}
-  CompileCommand(Twine Directory, std::vector<std::string> CommandLine)
-      : Directory(Directory.str()), CommandLine(std::move(CommandLine)) {}
+  CompileCommand(Twine Directory, ArrayRef<std::string> CommandLine)
+    : Directory(Directory.str()), CommandLine(CommandLine) {}
 
   /// \brief The working directory the command was executed from.
   std::string Directory;
@@ -166,7 +166,7 @@ public:
   /// The argument list is meant to be compatible with normal llvm command line
   /// parsing in main methods.
   /// int main(int argc, char **argv) {
-  ///   std::unique_ptr<FixedCompilationDatabase> Compilations(
+  ///   OwningPtr<FixedCompilationDatabase> Compilations(
   ///     FixedCompilationDatabase::loadFromCommandLine(argc, argv));
   ///   cl::ParseCommandLineOptions(argc, argv);
   ///   ...
@@ -190,19 +190,19 @@ public:
   /// Will always return a vector with one entry that contains the directory
   /// and command line specified at construction with "clang-tool" as argv[0]
   /// and 'FilePath' as positional argument.
-  std::vector<CompileCommand>
-  getCompileCommands(StringRef FilePath) const override;
+  virtual std::vector<CompileCommand> getCompileCommands(
+    StringRef FilePath) const;
 
   /// \brief Returns the list of all files available in the compilation database.
   ///
   /// Note: This is always an empty list for the fixed compilation database.
-  std::vector<std::string> getAllFiles() const override;
+  virtual std::vector<std::string> getAllFiles() const;
 
   /// \brief Returns all compile commands for all the files in the compilation
   /// database.
   ///
   /// Note: This is always an empty list for the fixed compilation database.
-  std::vector<CompileCommand> getAllCompileCommands() const override;
+  virtual std::vector<CompileCommand> getAllCompileCommands() const;
 
 private:
   /// This is built up to contain a single entry vector to be returned from

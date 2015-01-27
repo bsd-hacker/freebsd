@@ -19,15 +19,14 @@
  *
  * CDDL HEADER END
  */
-/*
- * Copyright 2014 Garrett D'Amore <garrett@damore.org>
- */
 /*	Copyright (c) 1988 AT&T	*/
 /*	  All Rights Reserved  	*/
 
 
 #ifndef _NLIST_H
 #define	_NLIST_H
+
+#pragma ident	"%Z%%M%	%I%	%E% SMI"	/* SVr4.0 1.8.2.4 */
 
 #ifdef	__cplusplus
 extern "C" {
@@ -42,7 +41,11 @@ struct nlist {
 	char		n_numaux;	/* number of aux. entries */
 };
 
+#if defined(__STDC__)
 extern int nlist(const char *, struct nlist *);
+#else	/* __STDC__ */
+extern int nlist();
+#endif  /* __STDC__ */
 
 #ifdef	__cplusplus
 }

@@ -147,13 +147,12 @@ struct tom_tunables {
 	int indsz;
 	int ddp_thres;
 	int rx_coalesce;
-	int tx_align;
 };
 
 int t4_register_uld(struct uld_info *);
 int t4_unregister_uld(struct uld_info *);
 int t4_activate_uld(struct adapter *, int);
 int t4_deactivate_uld(struct adapter *, int);
-void t4_iscsi_init(struct ifnet *, unsigned int, const unsigned int *);
 #endif
+
 #endif

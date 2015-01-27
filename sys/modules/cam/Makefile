@@ -43,4 +43,9 @@ SRCS+=	ata_pmp.c
 
 EXPORT_SYMS=	YES	# XXX evaluate
 
+.if !defined(KERNBUILDDIR)
+opt_scsi.h:
+	echo "#define SCSI_DELAY 15000" > ${.TARGET}
+.endif
+
 .include <bsd.kmod.mk>

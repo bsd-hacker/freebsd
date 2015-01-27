@@ -8,7 +8,8 @@ MAN8=	mfiutil.8
 
 CFLAGS.gcc+= -fno-builtin-strftime
 
-LIBADD=	util
+DPADD=	${LIBUTIL}
+LDADD=	-lutil
 
 # Here be dragons
 .ifdef DEBUG

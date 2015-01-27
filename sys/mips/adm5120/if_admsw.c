@@ -655,7 +655,8 @@ admsw_start(struct ifnet *ifp)
 				break;
 			}
 			if (m0->m_pkthdr.len > MHLEN) {
-				if (!(MCLGET(m, M_NOWAIT))) {
+				MCLGET(m, M_NOWAIT);
+				if ((m->m_flags & M_EXT) == 0) {
 					device_printf(sc->sc_dev, 
 					    "unable to allocate Tx cluster\n");
 					m_freem(m);
@@ -924,7 +925,7 @@ admsw_txintr(struct admsw_softc *sc, int prio)
 		gotone = 1;
 		/* printf("clear tx slot %d\n",i); */
 
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		ifp->if_opackets++;
 
 		sc->sc_txfree++;
 	}
@@ -1046,7 +1047,7 @@ admsw_rxintr(struct admsw_softc *sc, int high)
 
 		m = ds->ds_mbuf;
 		if (admsw_add_rxlbuf(sc, i) != 0) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			ADMSW_INIT_RXLDESC(sc, i);
 			bus_dmamap_sync(sc->sc_bufs_dmat, ds->ds_dmamap,
 			    BUS_DMASYNC_PREREAD);
@@ -1065,7 +1066,7 @@ admsw_rxintr(struct admsw_softc *sc, int high)
 
 		/* Pass it on. */
 		(*ifp->if_input)(ifp, m);
-		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		ifp->if_ipackets++;
 	}
 
 	/* Update the receive pointer. */
@@ -1226,7 +1227,8 @@ admsw_add_rxbuf(struct admsw_softc *sc, int idx, int high)
 	if (m == NULL)
 		return (ENOBUFS);
 
-	if (!(MCLGET(m, M_NOWAIT))) {
+	MCLGET(m, M_NOWAIT);
+	if ((m->m_flags & M_EXT) == 0) {
 		m_freem(m);
 		return (ENOBUFS);
 	}

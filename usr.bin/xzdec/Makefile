@@ -22,6 +22,7 @@ CFLAGS+=	-DHAVE_CONFIG_H \
 		-I${LZMALIBDIR} \
 		-I${XZDIR}/common
 
-LIBADD=	lzma
+DPADD=	${LIBLZMA}
+LDADD=	-llzma
 
 .include <bsd.prog.mk>

@@ -1,4 +1,4 @@
-/*	$NetBSD: grep.c,v 1.6 2011/04/18 03:48:23 joerg Exp $	*/
+/*	$NetBSD: grep.c,v 1.4 2011/02/16 01:31:33 joerg Exp $	*/
 /* 	$FreeBSD$	*/
 /*	$OpenBSD: grep.c,v 1.42 2010/07/02 22:18:03 tedu Exp $	*/
 
@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <libgen.h>
 #include <locale.h>
 #include <stdbool.h>
-#define _WITH_GETLINE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -305,7 +304,6 @@ read_patterns(const char *fn)
 	FILE *f;
 	char *line;
 	size_t len;
-	ssize_t rlen;
 
 	if ((f = fopen(fn, "r")) == NULL)
 		err(2, "%s", fn);
@@ -313,11 +311,8 @@ read_patterns(const char *fn)
 		fclose(f);
 		return;
 	}
-	len = 0;
-	line = NULL;
-	while ((rlen = getline(&line, &len, f)) != -1)
+	while ((line = fgetln(f, &len)) != NULL)
 		add_pattern(line, line[0] == '\n' ? 0 : len);
-	free(line);
 	if (ferror(f))
 		err(2, "%s", fn);
 	fclose(f);

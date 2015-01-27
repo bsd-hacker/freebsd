@@ -1,4 +1,4 @@
-//===--- TargetBuiltins.h - Target specific builtin IDs ---------*- C++ -*-===//
+//===--- TargetBuiltins.h - Target specific builtin IDs -------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -21,35 +21,23 @@
 
 namespace clang {
 
-  namespace NEON {
-  enum {
-    LastTIBuiltin = clang::Builtin::FirstTSBuiltin - 1,
-#define BUILTIN(ID, TYPE, ATTRS) BI##ID,
-#include "clang/Basic/BuiltinsNEON.def"
-    FirstTSBuiltin
-  };
-  }
-
-  /// \brief ARM builtins
-  namespace ARM {
+  /// \brief AArch64 builtins
+  namespace AArch64 {
     enum {
       LastTIBuiltin = clang::Builtin::FirstTSBuiltin-1,
-      LastNEONBuiltin = NEON::FirstTSBuiltin - 1,
 #define BUILTIN(ID, TYPE, ATTRS) BI##ID,
-#include "clang/Basic/BuiltinsARM.def"
+#include "clang/Basic/BuiltinsAArch64.def"
       LastTSBuiltin
     };
   }
-
-  /// \brief AArch64 builtins
-  namespace AArch64 {
-  enum {
-    LastTIBuiltin = clang::Builtin::FirstTSBuiltin - 1,
-    LastNEONBuiltin = NEON::FirstTSBuiltin - 1,
-  #define BUILTIN(ID, TYPE, ATTRS) BI##ID,
-  #include "clang/Basic/BuiltinsAArch64.def"
-    LastTSBuiltin
-  };
+  /// \brief ARM builtins
+  namespace ARM {
+    enum {
+        LastTIBuiltin = clang::Builtin::FirstTSBuiltin-1,
+#define BUILTIN(ID, TYPE, ATTRS) BI##ID,
+#include "clang/Basic/BuiltinsARM.def"
+        LastTSBuiltin
+    };
   }
 
   /// \brief PPC builtins
@@ -72,15 +60,6 @@ namespace clang {
     };
   }
 
-  /// \brief R600 builtins
-  namespace R600 {
-  enum {
-    LastTIBuiltin = clang::Builtin::FirstTSBuiltin - 1,
-  #define BUILTIN(ID, TYPE, ATTRS) BI##ID,
-  #include "clang/Basic/BuiltinsR600.def"
-    LastTSBuiltin
-  };
-  }
 
   /// \brief X86 builtins
   namespace X86 {
@@ -112,7 +91,6 @@ namespace clang {
       Poly8,
       Poly16,
       Poly64,
-      Poly128,
       Float16,
       Float32,
       Float64

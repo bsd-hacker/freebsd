@@ -15,7 +15,8 @@ CFLAGS+=-DREAL_DAEMON_DIR=\"/usr/libexec\" \
 CFLAGS+=-DINET6
 .endif
 
-LIBADD=	wrap
+DPADD=	${LIBWRAP}
+LDADD=	-lwrap
 
 WARNS?=	1
 

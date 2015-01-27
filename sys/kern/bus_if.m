@@ -672,21 +672,10 @@ METHOD int remap_intr {
 } DEFAULT null_remap_intr;
 
 /**
- * @brief Suspend a given child
+ * @brief Resume a child of the bus
  *
- * @param _dev		the parent device of @p _child
- * @param _child	the device to suspend
- */
-METHOD int suspend_child {
-	device_t	_dev;
-	device_t	_child;
-} DEFAULT bus_generic_suspend_child;
-
-/**
- * @brief Resume a given child
- *
- * @param _dev		the parent device of @p _child
- * @param _child	the device to resume
+ * @param _dev		the bus device
+ * @param _child	the child device
  */
 METHOD int resume_child {
 	device_t	_dev;
@@ -694,14 +683,12 @@ METHOD int resume_child {
 } DEFAULT bus_generic_resume_child;
 
 /**
- * @brief Get the VM domain handle for the given bus and child.
+ * @brief Suspend a child of the bus
  *
  * @param _dev		the bus device
  * @param _child	the child device
- * @param _domain	a pointer to the bus's domain handle identifier
  */
-METHOD int get_domain {
+METHOD int suspend_child {
 	device_t	_dev;
 	device_t	_child;
-	int		*_domain;
-} DEFAULT bus_generic_get_domain;
+} DEFAULT bus_generic_suspend_child;

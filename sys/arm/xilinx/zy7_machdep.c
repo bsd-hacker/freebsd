@@ -33,6 +33,8 @@
  * (v1.4) November 16, 2012.  Xilinx doc UG585.
  */
 
+#include "opt_global.h"
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 

@@ -38,6 +38,7 @@
 #include <rdma/ib_cache.h>
 
 #include <linux/slab.h>
+#include <linux/inet.h>
 #include <linux/string.h>
 
 #include "mlx4_ib.h"

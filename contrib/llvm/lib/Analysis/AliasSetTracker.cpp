@@ -13,8 +13,8 @@
 
 #include "llvm/Analysis/AliasSetTracker.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Assembly/Writer.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
@@ -22,6 +22,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/InstIterator.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -55,13 +56,10 @@ void AliasSet::mergeSetIn(AliasSet &AS, AliasSetTracker &AST) {
       AliasTy = MayAlias;
   }
 
-  bool ASHadUnknownInsts = !AS.UnknownInsts.empty();
   if (UnknownInsts.empty()) {            // Merge call sites...
-    if (ASHadUnknownInsts) {
+    if (!AS.UnknownInsts.empty())
       std::swap(UnknownInsts, AS.UnknownInsts);
-      addRef();
-    }
-  } else if (ASHadUnknownInsts) {
+  } else if (!AS.UnknownInsts.empty()) {
     UnknownInsts.insert(UnknownInsts.end(), AS.UnknownInsts.begin(), AS.UnknownInsts.end());
     AS.UnknownInsts.clear();
   }
@@ -75,18 +73,16 @@ void AliasSet::mergeSetIn(AliasSet &AS, AliasSetTracker &AST) {
     AS.PtrList->setPrevInList(PtrListEnd);
     PtrListEnd = AS.PtrListEnd;
 
-    AS.PtrList = nullptr;
+    AS.PtrList = 0;
     AS.PtrListEnd = &AS.PtrList;
-    assert(*AS.PtrListEnd == nullptr && "End of list is not null?");
+    assert(*AS.PtrListEnd == 0 && "End of list is not null?");
   }
-  if (ASHadUnknownInsts)
-    AS.dropRef(AST);
 }
 
 void AliasSetTracker::removeAliasSet(AliasSet *AS) {
   if (AliasSet *Fwd = AS->Forward) {
     Fwd->dropRef(*this);
-    AS->Forward = nullptr;
+    AS->Forward = 0;
   }
   AliasSets.erase(AS);
 }
@@ -120,16 +116,14 @@ void AliasSet::addPointer(AliasSetTracker &AST, PointerRec &Entry,
   Entry.updateSizeAndTBAAInfo(Size, TBAAInfo);
 
   // Add it to the end of the list...
-  assert(*PtrListEnd == nullptr && "End of list is not null?");
+  assert(*PtrListEnd == 0 && "End of list is not null?");
   *PtrListEnd = &Entry;
   PtrListEnd = Entry.setPrevInList(PtrListEnd);
-  assert(*PtrListEnd == nullptr && "End of list is not null?");
+  assert(*PtrListEnd == 0 && "End of list is not null?");
   addRef();               // Entry points to alias set.
 }
 
 void AliasSet::addUnknownInst(Instruction *I, AliasAnalysis &AA) {
-  if (UnknownInsts.empty())
-    addRef();
   UnknownInsts.push_back(I);
 
   if (!I->mayWriteToMemory()) {
@@ -224,15 +218,14 @@ void AliasSetTracker::clear() {
 AliasSet *AliasSetTracker::findAliasSetForPointer(const Value *Ptr,
                                                   uint64_t Size,
                                                   const MDNode *TBAAInfo) {
-  AliasSet *FoundSet = nullptr;
-  for (iterator I = begin(), E = end(); I != E;) {
-    iterator Cur = I++;
-    if (Cur->Forward || !Cur->aliasesPointer(Ptr, Size, TBAAInfo, AA)) continue;
+  AliasSet *FoundSet = 0;
+  for (iterator I = begin(), E = end(); I != E; ++I) {
+    if (I->Forward || !I->aliasesPointer(Ptr, Size, TBAAInfo, AA)) continue;
     
-    if (!FoundSet) {      // If this is the first alias set ptr can go into.
-      FoundSet = Cur;     // Remember it.
+    if (FoundSet == 0) {  // If this is the first alias set ptr can go into.
+      FoundSet = I;       // Remember it.
     } else {              // Otherwise, we must merge the sets.
-      FoundSet->mergeSetIn(*Cur, *this);     // Merge in contents.
+      FoundSet->mergeSetIn(*I, *this);     // Merge in contents.
     }
   }
 
@@ -253,15 +246,15 @@ bool AliasSetTracker::containsPointer(Value *Ptr, uint64_t Size,
 
 
 AliasSet *AliasSetTracker::findAliasSetForUnknownInst(Instruction *Inst) {
-  AliasSet *FoundSet = nullptr;
-  for (iterator I = begin(), E = end(); I != E;) {
-    iterator Cur = I++;
-    if (Cur->Forward || !Cur->aliasesUnknownInst(Inst, AA))
+  AliasSet *FoundSet = 0;
+  for (iterator I = begin(), E = end(); I != E; ++I) {
+    if (I->Forward || !I->aliasesUnknownInst(Inst, AA))
       continue;
-    if (!FoundSet)            // If this is the first alias set ptr can go into.
-      FoundSet = Cur;         // Remember it.
-    else if (!Cur->Forward)   // Otherwise, we must merge the sets.
-      FoundSet->mergeSetIn(*Cur, *this);     // Merge in contents.
+    
+    if (FoundSet == 0)        // If this is the first alias set ptr can go into.
+      FoundSet = I;           // Remember it.
+    else if (!I->Forward)     // Otherwise, we must merge the sets.
+      FoundSet->mergeSetIn(*I, *this);     // Merge in contents.
   }
   return FoundSet;
 }
@@ -401,8 +394,6 @@ void AliasSetTracker::add(const AliasSetTracker &AST) {
 /// tracker.
 void AliasSetTracker::remove(AliasSet &AS) {
   // Drop all call sites.
-  if (!AS.UnknownInsts.empty())
-    AS.dropRef(*this);
   AS.UnknownInsts.clear();
   
   // Clear the alias set.
@@ -499,10 +490,10 @@ void AliasSetTracker::deleteValue(Value *PtrVal) {
   if (Instruction *Inst = dyn_cast<Instruction>(PtrVal)) {
     if (Inst->mayReadOrWriteMemory()) {
       // Scan all the alias sets to see if this call site is contained.
-      for (iterator I = begin(), E = end(); I != E;) {
-        iterator Cur = I++;
-        if (!Cur->Forward)
-          Cur->removeUnknownInst(*this, Inst);
+      for (iterator I = begin(), E = end(); I != E; ++I) {
+        if (I->Forward) continue;
+        
+        I->removeUnknownInst(Inst);
       }
     }
   }
@@ -575,7 +566,7 @@ void AliasSet::print(raw_ostream &OS) const {
     OS << "Pointers: ";
     for (iterator I = begin(), E = end(); I != E; ++I) {
       if (I != begin()) OS << ", ";
-      I.getPointer()->printAsOperand(OS << "(");
+      WriteAsOperand(OS << "(", I.getPointer());
       OS << ", " << I.getSize() << ")";
     }
   }
@@ -583,7 +574,7 @@ void AliasSet::print(raw_ostream &OS) const {
     OS << "\n    " << UnknownInsts.size() << " Unknown instructions: ";
     for (unsigned i = 0, e = UnknownInsts.size(); i != e; ++i) {
       if (i) OS << ", ";
-      UnknownInsts[i]->printAsOperand(OS);
+      WriteAsOperand(OS, UnknownInsts[i]);
     }
   }
   OS << "\n";
@@ -637,12 +628,12 @@ namespace {
       initializeAliasSetPrinterPass(*PassRegistry::getPassRegistry());
     }
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesAll();
       AU.addRequired<AliasAnalysis>();
     }
 
-    bool runOnFunction(Function &F) override {
+    virtual bool runOnFunction(Function &F) {
       Tracker = new AliasSetTracker(getAnalysis<AliasAnalysis>());
 
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I)

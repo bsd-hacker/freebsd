@@ -18,6 +18,7 @@
 #define LLVM_MC_DISASSEMBLER_H
 
 #include "llvm-c/Disassembler.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
 #include <string>
@@ -55,23 +56,23 @@ private:
   // LLVMDisasmInstruction().
   //
   // The LLVM target corresponding to the disassembler.
-  // FIXME: using std::unique_ptr<const llvm::Target> causes a malloc error
+  // FIXME: using llvm::OwningPtr<const llvm::Target> causes a malloc error
   //        when this LLVMDisasmContext is deleted.
   const Target *TheTarget;
   // The assembly information for the target architecture.
-  std::unique_ptr<const llvm::MCAsmInfo> MAI;
+  llvm::OwningPtr<const llvm::MCAsmInfo> MAI;
   // The register information for the target architecture.
-  std::unique_ptr<const llvm::MCRegisterInfo> MRI;
+  llvm::OwningPtr<const llvm::MCRegisterInfo> MRI;
   // The subtarget information for the target architecture.
-  std::unique_ptr<const llvm::MCSubtargetInfo> MSI;
+  llvm::OwningPtr<const llvm::MCSubtargetInfo> MSI;
   // The instruction information for the target architecture.
-  std::unique_ptr<const llvm::MCInstrInfo> MII;
+  llvm::OwningPtr<const llvm::MCInstrInfo> MII;
   // The assembly context for creating symbols and MCExprs.
-  std::unique_ptr<const llvm::MCContext> Ctx;
+  llvm::OwningPtr<const llvm::MCContext> Ctx;
   // The disassembler for the target architecture.
-  std::unique_ptr<const llvm::MCDisassembler> DisAsm;
+  llvm::OwningPtr<const llvm::MCDisassembler> DisAsm;
   // The instruction printer for the target architecture.
-  std::unique_ptr<llvm::MCInstPrinter> IP;
+  llvm::OwningPtr<llvm::MCInstPrinter> IP;
   // The options used to set up the disassembler.
   uint64_t Options;
   // The CPU string.

@@ -13,8 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/InitializePasses.h"
-#include "llvm-c/Initialization.h"
 #include "llvm/PassRegistry.h"
+#include "llvm-c/Initialization.h"
 
 using namespace llvm;
 

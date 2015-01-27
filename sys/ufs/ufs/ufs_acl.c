@@ -45,7 +45,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/acl.h>
 #include <sys/event.h>
 #include <sys/extattr.h>
-#include <sys/proc.h>
 
 #include <ufs/ufs/quota.h>
 #include <ufs/ufs/inode.h>

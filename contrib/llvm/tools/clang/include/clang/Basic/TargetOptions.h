@@ -15,13 +15,15 @@
 #ifndef LLVM_CLANG_FRONTEND_TARGETOPTIONS_H
 #define LLVM_CLANG_FRONTEND_TARGETOPTIONS_H
 
+#include "clang/Basic/LLVM.h"
+#include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include <string>
 #include <vector>
 
 namespace clang {
 
 /// \brief Options for controlling the target.
-class TargetOptions {
+class TargetOptions : public RefCountedBase<TargetOptions> {
 public:
   /// If given, the name of the target triple to compile for. If not given the
   /// target will be selected to match the host.
@@ -35,6 +37,10 @@ public:
 
   /// If given, the name of the target ABI to use.
   std::string ABI;
+
+  /// If given, the name of the target C++ ABI to use. If not given, defaults
+  /// to "itanium".
+  std::string CXXABI;
 
   /// If given, the version string of the linker in use.
   std::string LinkerVersion;

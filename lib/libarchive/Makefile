@@ -4,9 +4,19 @@
 LIBARCHIVEDIR=	${.CURDIR}/../../contrib/libarchive
 
 LIB=	archive
+DPADD=	${LIBZ}
+LDADD=	-lz
 
-LIBADD=	z bz2 lzma bsdxml
-CFLAGS+= -DHAVE_BZLIB_H=1 -DHAVE_LIBLZMA=1 -DHAVE_LZMA_H=1
+DPADD+= ${LIBBZ2}
+LDADD+= -lbz2
+CFLAGS+= -DHAVE_BZLIB_H=1
+
+DPADD+= ${LIBLZMA}
+LDADD+= -llzma
+CFLAGS+= -DHAVE_LIBLZMA=1 -DHAVE_LZMA_H=1
+
+DPADD+= ${LIBBSDXML}
+LDADD+= -lbsdxml
 
 # FreeBSD SHLIB_MAJOR value is managed as part of the FreeBSD system.
 # It has no real relation to the libarchive version number.
@@ -17,9 +27,11 @@ CFLAGS+=	-I${.OBJDIR}
 
 .if ${MK_OPENSSL} != "no"
 CFLAGS+=	-DWITH_OPENSSL
-LIBADD+=	crypto
+DPADD+=	${LIBCRYPTO}
+LDADD+=	-lcrypto
 .else
-LIBADD+=	md
+DPADD+=	${LIBMD}
+LDADD+=	-lmd
 .endif
 
 .if ${MK_ICONV} != "no"
@@ -29,19 +41,13 @@ SHARED_CFLAGS+=	-DHAVE_ICONV=1 -DHAVE_ICONV_H=1 -DICONV_CONST=const
 .endif
 
 .if ${MACHINE_ARCH:Marm*} != "" || ${MACHINE_ARCH:Mmips*} != "" || \
-	${MACHINE_ARCH:Msparc64*} != ""
+	${MACHINE_ARCH:Msparc64*} != "" || ${MACHINE_ARCH:Mia64*} != ""
 NO_WCAST_ALIGN=	yes
 .if ${MACHINE_ARCH:M*64*} == ""
 CFLAGS+=	-DPPMD_32BIT
 .endif
 .endif
 NO_WCAST_ALIGN.clang=
-
-.ifndef COMPAT_32BIT
-beforeinstall:
-	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
-		${.CURDIR}/libarchive.pc ${DESTDIR}${LIBDATADIR}/pkgconfig
-.endif
 
 .PATH: ${LIBARCHIVEDIR}/libarchive
 

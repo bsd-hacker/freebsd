@@ -29,7 +29,6 @@
 #include <gelf.h>
 #include <libelf.h>
 #include <limits.h>
-#include <stdint.h>
 
 #include "_libelf.h"
 

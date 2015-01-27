@@ -30,10 +30,11 @@
 
 LIB=		atf-c++
 PRIVATELIB=	true
-SHLIB_MAJOR=	2
+SHLIB_MAJOR=	1
 
 # libatf-c++ depends on the C version of the ATF library to build.
-LIBADD+=	atf_c
+DPADD=		${LIBATFC}
+LDADD=		-latf-c
 
 LDFLAGS+=	-L${.OBJDIR}/../libatf-c
 
@@ -51,6 +52,7 @@ CFLAGS+=	-DHAVE_CONFIG_H
 SRCS=		application.cpp \
 		build.cpp \
 		check.cpp \
+		config.cpp \
 		env.cpp \
 		exceptions.cpp \
 		fs.cpp \
@@ -61,6 +63,7 @@ SRCS=		application.cpp \
 
 INCS=		build.hpp \
 		check.hpp \
+		config.hpp \
 		macros.hpp \
 		tests.hpp \
 		utils.hpp
@@ -69,8 +72,7 @@ INCSDIR=	${INCLUDEDIR}/atf-c++
 INCS+=		atf-c++.hpp
 INCSDIR_atf-c++.hpp= ${INCLUDEDIR}
 
-MAN=		atf-c++.3
-MLINKS+=	atf-c++.3 atf-c-api++.3  # Backwards compatibility.
+MAN=		atf-c++-api.3
 
 .if ${MK_TESTS} != "no"
 SUBDIR=		tests

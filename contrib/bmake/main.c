@@ -1,4 +1,4 @@
-/*	$NetBSD: main.c,v 1.226 2014/02/07 17:23:35 pooka Exp $	*/
+/*	$NetBSD: main.c,v 1.225 2013/09/14 15:09:34 matt Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -69,7 +69,7 @@
  */
 
 #ifndef MAKE_NATIVE
-static char rcsid[] = "$NetBSD: main.c,v 1.226 2014/02/07 17:23:35 pooka Exp $";
+static char rcsid[] = "$NetBSD: main.c,v 1.225 2013/09/14 15:09:34 matt Exp $";
 #else
 #include <sys/cdefs.h>
 #ifndef lint
@@ -81,7 +81,7 @@ __COPYRIGHT("@(#) Copyright (c) 1988, 1989, 1990, 1993\
 #if 0
 static char sccsid[] = "@(#)main.c	8.3 (Berkeley) 3/19/94";
 #else
-__RCSID("$NetBSD: main.c,v 1.226 2014/02/07 17:23:35 pooka Exp $");
+__RCSID("$NetBSD: main.c,v 1.225 2013/09/14 15:09:34 matt Exp $");
 #endif
 #endif /* not lint */
 #endif
@@ -1102,12 +1102,11 @@ main(int argc, char **argv)
 	 */
 #ifndef NO_PWD_OVERRIDE
 	if (!ignorePWD) {
-		char *pwd, *ptmp1 = NULL, *ptmp2 = NULL;
+		char *pwd;
 
 		if ((pwd = getenv("PWD")) != NULL &&
-		    Var_Value("MAKEOBJDIRPREFIX", VAR_CMD, &ptmp1) == NULL) {
-			const char *makeobjdir = Var_Value("MAKEOBJDIR",
-			    VAR_CMD, &ptmp2);
+		    getenv("MAKEOBJDIRPREFIX") == NULL) {
+			const char *makeobjdir = getenv("MAKEOBJDIR");
 
 			if (makeobjdir == NULL || !strchr(makeobjdir, '$')) {
 				if (stat(pwd, &sb) == 0 &&
@@ -1116,8 +1115,6 @@ main(int argc, char **argv)
 					(void)strncpy(curdir, pwd, MAXPATHLEN);
 			}
 		}
-		free(ptmp1);
-		free(ptmp2);
 	}
 #endif
 	Var_Set(".CURDIR", curdir, VAR_GLOBAL, 0);
@@ -1134,13 +1131,11 @@ main(int argc, char **argv)
 	Dir_Init(curdir);
 	(void)Main_SetObjdir(curdir);
 
-	if ((path = Var_Value("MAKEOBJDIRPREFIX", VAR_CMD, &p1)) != NULL) {
+	if ((path = getenv("MAKEOBJDIRPREFIX")) != NULL) {
 		(void)snprintf(mdpath, MAXPATHLEN, "%s%s", path, curdir);
 		(void)Main_SetObjdir(mdpath);
-		free(p1);
-	} else if ((path = Var_Value("MAKEOBJDIR", VAR_CMD, &p1)) != NULL) {
+	} else if ((path = getenv("MAKEOBJDIR")) != NULL) {
 		(void)Main_SetObjdir(path);
-		free(p1);
 	} else {
 		(void)snprintf(mdpath, MAXPATHLEN, "%s.%s", _PATH_OBJDIR, machine);
 		if (!Main_SetObjdir(mdpath) && !Main_SetObjdir(_PATH_OBJDIR)) {

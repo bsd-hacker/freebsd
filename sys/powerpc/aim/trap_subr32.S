@@ -299,10 +299,10 @@ CNAME(restorebridgesize) = .-CNAME(restorebridge)
  * not still hanging around in the trap handling region
  * once the MMU is turned on.
  */
-	.globl	CNAME(rstcode), CNAME(rstcodeend)
+	.globl	CNAME(rstcode), CNAME(rstsize)
 CNAME(rstcode):
 	ba	cpu_reset
-CNAME(rstcodeend):
+CNAME(rstsize) = . - CNAME(rstcode)
 
 cpu_reset:
 	bl	1f
@@ -313,6 +313,7 @@ cpu_reset:
 	mflr	%r1
 	addi	%r1,%r1,(124-16)@l
 
+	lis	%r3,1@l
 	bla	CNAME(cpudep_ap_early_bootstrap)
 	lis	%r3,1@l
 	bla	CNAME(pmap_cpu_bootstrap)
@@ -339,14 +340,14 @@ cpu_reset:
  * (except ISI/DSI, ALI, and the interrupts)
  */
 
-	.globl	CNAME(trapcode),CNAME(trapcodeend)
+	.globl	CNAME(trapcode),CNAME(trapsize)
 CNAME(trapcode):
 	mtsprg1	%r1			/* save SP */
 	mflr	%r1			/* Save the old LR in r1 */
 	mtsprg2 %r1			/* And then in SPRG2 */
 	li	%r1, 0x20		/* How to get the vector from LR */
 	bla	generictrap		/* LR & SPRG3 is exception # */
-CNAME(trapcodeend):
+CNAME(trapsize) = .-CNAME(trapcode)
 
 /*
  * 64-bit version of trapcode. Identical, except it calls generictrap64.
@@ -362,7 +363,7 @@ CNAME(trapcode64):
 /*
  * For ALI: has to save DSISR and DAR
  */
-	.globl	CNAME(alitrap),CNAME(aliend)
+	.globl	CNAME(alitrap),CNAME(alisize)
 CNAME(alitrap):
 	mtsprg1	%r1			/* save SP */
 	GET_CPUINFO(%r1)
@@ -386,7 +387,7 @@ CNAME(alitrap):
 	mfsrr1	%r31
 	mtcr	%r31
 	bla	s_trap
-CNAME(aliend):
+CNAME(alisize) = .-CNAME(alitrap)
 
 /*
  * G2 specific: instuction TLB miss.
@@ -594,7 +595,7 @@ CNAME(dsmisssize) = .-CNAME(dsmisstrap)
  * Has to handle BAT spills
  * and standard pagetable spills
  */
-	.globl	CNAME(dsitrap),CNAME(dsiend)
+	.globl	CNAME(dsitrap),CNAME(dsisize)
 CNAME(dsitrap):
 	mtsprg1	%r1			/* save SP */
 	GET_CPUINFO(%r1)
@@ -645,7 +646,7 @@ CNAME(dsitrap):
 1:
 	mflr	%r28			/* save LR (SP already saved) */
 	bla	disitrap
-CNAME(dsiend):
+CNAME(dsisize) = .-CNAME(dsitrap)
 
 /*
  * Preamble code for DSI/ISI traps
@@ -883,14 +884,15 @@ CNAME(rfi_patch2):
 /*
  * In case of KDB we want a separate trap catcher for it
  */
-	.globl	CNAME(dblow),CNAME(dbend)
+	.globl	CNAME(dblow),CNAME(dbsize)
 CNAME(dblow):
 	mtsprg1	%r1			/* save SP */
 	mtsprg2	%r29			/* save r29 */
 	mfcr	%r29			/* save CR in r29 */
 	mfsrr1	%r1
 	mtcr	%r1
-	bf	17,1f			/* branch if privileged */
+	bf	17,2f			/* branch if privileged */
+1:
 	/* Unprivileged case */
 	mtcr	%r29			/* put the condition register back */
         mfsprg2	%r29			/* ... and r29 */
@@ -899,7 +901,19 @@ CNAME(dblow):
 	li	%r1, 0	 		/* How to get the vector from LR */
 
         bla     generictrap		/* and we look like a generic trap */
-1:
+2:
+#ifdef KDTRACE_HOOKS
+	/* Privileged, so drop to KDB */
+	mfsrr0	%r1
+	mtsprg3	%r3
+	lwz	%r1,0(%r1)
+	/* Check if it's a DTrace trap. */
+	li	%r3,0x0808
+	addis	%r3,%r3,0x7c81
+	cmplw	%cr0,%r3,%r1
+	mfsprg3	%r3
+	beq	%cr0,1b
+#endif
 	/* Privileged, so drop to KDB */
 	GET_CPUINFO(%r1)
 	stw	%r28,(PC_DBSAVE+CPUSAVE_R28)(%r1)	/* free r28 */
@@ -909,5 +923,5 @@ CNAME(dblow):
         stw	%r31,(PC_DBSAVE+CPUSAVE_R31)(%r1)	/* free r31 */
         mflr	%r28					/* save LR */
 	bla	dbtrap
-CNAME(dbend):
+CNAME(dbsize) = .-CNAME(dblow)
 #endif /* KDB */

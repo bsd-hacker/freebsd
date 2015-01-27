@@ -64,9 +64,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef  __cplusplus
-extern "C" {
-#endif
 typedef struct _pqueue *pqueue;
 
 typedef struct _pitem
@@ -94,7 +91,4 @@ pitem *pqueue_next(piterator *iter);
 void   pqueue_print(pqueue pq);
 int    pqueue_size(pqueue pq);
 
-#ifdef  __cplusplus
-}
-#endif
 #endif /* ! HEADER_PQUEUE_H */

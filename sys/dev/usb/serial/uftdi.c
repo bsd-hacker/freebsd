@@ -86,7 +86,7 @@ static SYSCTL_NODE(_hw_usb, OID_AUTO, uftdi, CTLFLAG_RW, 0, "USB uftdi");
 
 #ifdef USB_DEBUG
 static int uftdi_debug = 0;
-SYSCTL_INT(_hw_usb_uftdi, OID_AUTO, debug, CTLFLAG_RWTUN,
+SYSCTL_INT(_hw_usb_uftdi, OID_AUTO, debug, CTLFLAG_RW,
     &uftdi_debug, 0, "Debug level");
 #endif
 
@@ -298,7 +298,6 @@ static const STRUCT_USB_HOST_ID uftdi_devs[] = {
 	UFTDI_DEV(CONTEC, COM1USBH, 0),
 	UFTDI_DEV(DRESDENELEKTRONIK, SENSORTERMINALBOARD, 0),
 	UFTDI_DEV(DRESDENELEKTRONIK, WIRELESSHANDHELDTERMINAL, 0),
-	UFTDI_DEV(DRESDENELEKTRONIK, DE_RFNODE, 0),
 	UFTDI_DEV(DRESDENELEKTRONIK, LEVELSHIFTERSTICKLOWCOST, 0),
 	UFTDI_DEV(ELEKTOR, FT323R, 0),
 	UFTDI_DEV(EVOLUTION, ER1, 0),
@@ -933,6 +932,7 @@ static const struct jtag_by_name {
  * creation of tty devices for jtag interfaces.  Enabled by default.
  */
 static int skip_jtag_interfaces = 1;
+TUNABLE_INT("hw.usb.uftdi.skip_jtag_interfaces", &skip_jtag_interfaces);
 SYSCTL_INT(_hw_usb_uftdi, OID_AUTO, skip_jtag_interfaces, CTLFLAG_RWTUN,
     &skip_jtag_interfaces, 1, "Skip creating tty devices for jtag interfaces");
 
@@ -1035,7 +1035,7 @@ uftdi_devtype_setup(struct uftdi_softc *sc, struct usb_attach_arg *uaa)
 		} else {
 			sc->sc_devtype = DEVT_232R;
 			device_printf(sc->sc_dev, "Warning: unknown FTDI "
-			    "device type, bcdDevice=0x%04x, assuming 232R\n", 
+			    "device type, bcdDevice=0x%04x, assuming 232R", 
 			    uaa->info.bcdDevice);
 		}
 		sc->sc_ucom.sc_portno = 0;

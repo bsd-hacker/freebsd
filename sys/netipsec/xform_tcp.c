@@ -47,6 +47,7 @@
 #include <netinet/tcp.h>
 #include <netinet/tcp_var.h>
 
+#include <net/route.h>
 #include <net/vnet.h>
 
 #include <netipsec/ipsec.h>

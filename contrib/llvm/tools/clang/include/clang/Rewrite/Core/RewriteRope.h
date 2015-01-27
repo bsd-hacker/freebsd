@@ -14,7 +14,6 @@
 #ifndef LLVM_CLANG_REWRITEROPE_H
 #define LLVM_CLANG_REWRITEROPE_H
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Compiler.h"
 #include <cassert>
 #include <cstddef>
@@ -61,7 +60,7 @@ namespace clang {
     unsigned StartOffs;
     unsigned EndOffs;
 
-    RopePiece() : StrData(nullptr), StartOffs(0), EndOffs(0) {}
+    RopePiece() : StrData(0), StartOffs(0), EndOffs(0) {}
 
     RopePiece(RopeRefCountString *Str, unsigned Start, unsigned End)
       : StrData(Str), StartOffs(Start), EndOffs(End) {
@@ -122,8 +121,7 @@ namespace clang {
     // begin iterator.
     RopePieceBTreeIterator(const void /*RopePieceBTreeNode*/ *N);
     // end iterator
-    RopePieceBTreeIterator()
-      : CurNode(nullptr), CurPiece(nullptr), CurChar(0) {}
+    RopePieceBTreeIterator() : CurNode(0), CurPiece(0), CurChar(0) {}
 
     char operator*() const {
       return (*CurPiece)[CurChar];
@@ -146,11 +144,7 @@ namespace clang {
     inline RopePieceBTreeIterator operator++(int) { // Postincrement
       RopePieceBTreeIterator tmp = *this; ++*this; return tmp;
     }
-
-    llvm::StringRef piece() const {
-      return llvm::StringRef(&(*CurPiece)[0], CurPiece->size());
-    }
-
+  private:
     void MoveToNextPiece();
   };
 
@@ -196,9 +190,9 @@ class RewriteRope {
   enum { AllocChunkSize = 4080 };
 
 public:
-  RewriteRope() :  AllocBuffer(nullptr), AllocOffs(AllocChunkSize) {}
+  RewriteRope() :  AllocBuffer(0), AllocOffs(AllocChunkSize) {}
   RewriteRope(const RewriteRope &RHS)
-    : Chunks(RHS.Chunks), AllocBuffer(nullptr), AllocOffs(AllocChunkSize) {
+    : Chunks(RHS.Chunks), AllocBuffer(0), AllocOffs(AllocChunkSize) {
   }
 
   ~RewriteRope() {

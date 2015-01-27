@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGES.
  */
+
 
 #include <contrib/dev/acpica/compiler/aslcompiler.h>
 #include "aslcompiler.y.h"
@@ -402,7 +403,6 @@ OpcDoConnection (
     ACPI_PARSE_OBJECT       *BufferOp;
     ACPI_PARSE_OBJECT       *BufferLengthOp;
     ACPI_PARSE_OBJECT       *BufferDataOp;
-    ASL_RESOURCE_INFO       Info;
     UINT8                   State;
 
 
@@ -417,10 +417,8 @@ OpcDoConnection (
     BufferLengthOp = BufferOp->Asl.Child;
     BufferDataOp = BufferLengthOp->Asl.Next;
 
-    Info.DescriptorTypeOp = BufferDataOp->Asl.Next;
-    Info.CurrentByteOffset = 0;
     State = ACPI_RSTATE_NORMAL;
-    Rnode = RsDoOneResourceDescriptor (&Info, &State);
+    Rnode = RsDoOneResourceDescriptor (BufferDataOp->Asl.Next, 0, &State);
     if (!Rnode)
     {
         return; /* error */
@@ -625,10 +623,10 @@ OpcDoEisaId (
             (UINT32) ((UINT8) (InString[1] - 0x40)) << 21 |
             (UINT32) ((UINT8) (InString[2] - 0x40)) << 16 |
 
-            (AcpiUtAsciiCharToHex (InString[3])) << 12 |
-            (AcpiUtAsciiCharToHex (InString[4])) << 8  |
-            (AcpiUtAsciiCharToHex (InString[5])) << 4  |
-             AcpiUtAsciiCharToHex (InString[6]);
+            (UtHexCharToValue (InString[3])) << 12 |
+            (UtHexCharToValue (InString[4])) << 8  |
+            (UtHexCharToValue (InString[5])) << 4  |
+             UtHexCharToValue (InString[6]);
 
         /* Swap to little-endian to get final ID (see function header) */
 
@@ -668,7 +666,7 @@ OpcDoUuId (
     ACPI_PARSE_OBJECT       *Op)
 {
     char                    *InString;
-    UINT8                   *Buffer;
+    char                    *Buffer;
     ACPI_STATUS             Status = AE_OK;
     ACPI_PARSE_OBJECT       *NewOp;
 
@@ -683,7 +681,7 @@ OpcDoUuId (
     }
     else
     {
-        AcpiUtConvertStringToUuid (InString, Buffer);
+        (void) AuConvertStringToUuid (InString, Buffer);
     }
 
     /* Change Op to a Buffer */

@@ -42,11 +42,6 @@ class CCIf<string predicate, CCAction A> : CCPredicateAction<A> {
 class CCIfByVal<CCAction A> : CCIf<"ArgFlags.isByVal()", A> {
 }
 
-/// CCIfConsecutiveRegs - If the current argument has InConsecutiveRegs
-/// parameter attribute, apply Action A.
-class CCIfConsecutiveRegs<CCAction A> : CCIf<"ArgFlags.isInConsecutiveRegs()", A> {
-}
-
 /// CCIfCC - Match if the current calling convention is 'CC'.
 class CCIfCC<string CC, CCAction A>
   : CCIf<!strconcat("State.getCallingConv() == ", CC), A> {}
@@ -66,9 +61,6 @@ class CCIfSplit<CCAction A> : CCIf<"ArgFlags.isSplit()", A> {}
 /// CCIfSRet - If this argument is marked with the 'sret' attribute, apply
 /// the specified action.
 class CCIfSRet<CCAction A> : CCIf<"ArgFlags.isSRet()", A> {}
-
-/// CCIfVarArg - If the current function is vararg - apply the action
-class CCIfVarArg<CCAction A> : CCIf<"State.isVarArg()", A> {}
 
 /// CCIfNotVarArg - If the current function is not vararg - apply the action
 class CCIfNotVarArg<CCAction A> : CCIf<"!State.isVarArg()", A> {}
@@ -97,15 +89,11 @@ class CCAssignToStack<int size, int align> : CCAction {
   int Align = align;
 }
 
-/// CCAssignToStackWithShadow - Same as CCAssignToStack, but with a list of
-/// registers to be shadowed. Note that, unlike CCAssignToRegWithShadow, this
-/// shadows ALL of the registers in shadowList.
-class CCAssignToStackWithShadow<int size,
-                                int align,
-                                list<Register> shadowList> : CCAction {
-  int Size = size;
-  int Align = align;
-  list<Register> ShadowRegList = shadowList;
+/// CCAssignToStackWithShadow - Same as CCAssignToStack, but with a register
+/// to be shadowed.
+class CCAssignToStackWithShadow<int size, int align, Register reg> :
+        CCAssignToStack<size, align> {
+  Register ShadowReg = reg;
 }
 
 /// CCPassByVal - This action always matches: it assigns the value to a stack
@@ -119,12 +107,6 @@ class CCPassByVal<int size, int align> : CCAction {
 /// CCPromoteToType - If applied, this promotes the specified current value to
 /// the specified type.
 class CCPromoteToType<ValueType destTy> : CCAction {
-  ValueType DestTy = destTy;
-}
-
-/// CCPromoteToUpperBitsInType - If applied, this promotes the specified current
-/// value to the specified type and shifts the value into the upper bits.
-class CCPromoteToUpperBitsInType<ValueType destTy> : CCAction {
   ValueType DestTy = destTy;
 }
 
@@ -150,13 +132,6 @@ class CCDelegateTo<CallingConv cc> : CCAction {
 /// that the target supports.
 class CallingConv<list<CCAction> actions> {
   list<CCAction> Actions = actions;
-  bit Custom = 0;
-}
-
-/// CustomCallingConv - An instance of this is used to declare calling
-/// conventions that are implemented using a custom function of the same name.
-class CustomCallingConv : CallingConv<[]> {
-  let Custom = 1;
 }
 
 /// CalleeSavedRegs - A list of callee saved registers for a given calling

@@ -33,11 +33,13 @@ CFLAGS+=-DPF
 
 BINGRP=	kmem
 BINMODE=2555
-LIBADD=	kvm memstat util
+DPADD=	${LIBKVM} ${LIBMEMSTAT} ${LIBUTIL}
+LDADD=	-lkvm -lmemstat -lutil
 
 .if ${MK_NETGRAPH_SUPPORT} != "no"
 SRCS+=	netgraph.c
-LIBADD+=	netgraph
+DPADD+=	${LIBNETGRAPH}
+LDADD+=	-lnetgraph
 CFLAGS+=-DNETGRAPH
 .endif
 

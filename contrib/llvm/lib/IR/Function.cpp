@@ -18,13 +18,13 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/ValueTypes.h"
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/LeakDetector.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/CallSite.h"
+#include "llvm/Support/InstIterator.h"
+#include "llvm/Support/LeakDetector.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/RWMutex.h"
 #include "llvm/Support/StringPool.h"
@@ -44,7 +44,7 @@ void Argument::anchor() { }
 
 Argument::Argument(Type *Ty, const Twine &Name, Function *Par)
   : Value(Ty, Value::ArgumentVal) {
-  Parent = nullptr;
+  Parent = 0;
 
   // Make sure that we get added to a function
   LeakDetector::addGarbageObject(this);
@@ -76,20 +76,6 @@ unsigned Argument::getArgNo() const {
   return ArgIdx;
 }
 
-/// hasNonNullAttr - Return true if this argument has the nonnull attribute on
-/// it in its containing function. Also returns true if at least one byte is
-/// known to be dereferenceable and the pointer is in addrspace(0).
-bool Argument::hasNonNullAttr() const {
-  if (!getType()->isPointerTy()) return false;
-  if (getParent()->getAttributes().
-        hasAttribute(getArgNo()+1, Attribute::NonNull))
-    return true;
-  else if (getDereferenceableBytes() > 0 &&
-           getType()->getPointerAddressSpace() == 0)
-    return true;
-  return false;
-}
-
 /// hasByValAttr - Return true if this argument has the byval attribute on it
 /// in its containing function.
 bool Argument::hasByValAttr() const {
@@ -98,31 +84,10 @@ bool Argument::hasByValAttr() const {
     hasAttribute(getArgNo()+1, Attribute::ByVal);
 }
 
-/// \brief Return true if this argument has the inalloca attribute on it in
-/// its containing function.
-bool Argument::hasInAllocaAttr() const {
-  if (!getType()->isPointerTy()) return false;
-  return getParent()->getAttributes().
-    hasAttribute(getArgNo()+1, Attribute::InAlloca);
-}
-
-bool Argument::hasByValOrInAllocaAttr() const {
-  if (!getType()->isPointerTy()) return false;
-  AttributeSet Attrs = getParent()->getAttributes();
-  return Attrs.hasAttribute(getArgNo() + 1, Attribute::ByVal) ||
-         Attrs.hasAttribute(getArgNo() + 1, Attribute::InAlloca);
-}
-
 unsigned Argument::getParamAlignment() const {
   assert(getType()->isPointerTy() && "Only pointers have alignments");
   return getParent()->getParamAlignment(getArgNo()+1);
 
-}
-
-uint64_t Argument::getDereferenceableBytes() const {
-  assert(getType()->isPointerTy() &&
-         "Only pointers have dereferenceable bytes");
-  return getParent()->getDereferenceableBytes(getArgNo()+1);
 }
 
 /// hasNestAttr - Return true if this argument has the nest attribute on
@@ -229,8 +194,8 @@ void Function::eraseFromParent() {
 
 Function::Function(FunctionType *Ty, LinkageTypes Linkage,
                    const Twine &name, Module *ParentModule)
-  : GlobalObject(PointerType::getUnqual(Ty),
-                Value::FunctionVal, nullptr, 0, Linkage, name) {
+  : GlobalValue(PointerType::getUnqual(Ty),
+                Value::FunctionVal, 0, 0, Linkage, name) {
   assert(FunctionType::isValidReturnType(getReturnType()) &&
          "invalid return type");
   SymTab = new ValueSymbolTable();
@@ -313,7 +278,7 @@ void Function::dropAllReferences() {
     BasicBlocks.begin()->eraseFromParent();
 
   // Prefix data is stored in a side table.
-  setPrefixData(nullptr);
+  setPrefixData(0);
 }
 
 void Function::addAttribute(unsigned i, Attribute::AttrKind attr) {
@@ -368,10 +333,10 @@ void Function::clearGC() {
     GCNames->erase(this);
     if (GCNames->empty()) {
       delete GCNames;
-      GCNames = nullptr;
+      GCNames = 0;
       if (GCNamePool->empty()) {
         delete GCNamePool;
-        GCNamePool = nullptr;
+        GCNamePool = 0;
       }
     }
   }
@@ -381,7 +346,7 @@ void Function::clearGC() {
 /// create a Function) from the Function Src to this one.
 void Function::copyAttributesFrom(const GlobalValue *Src) {
   assert(isa<Function>(Src) && "Expected a Function!");
-  GlobalObject::copyAttributesFrom(Src);
+  GlobalValue::copyAttributesFrom(Src);
   const Function *SrcF = cast<Function>(Src);
   setCallingConv(SrcF->getCallingConv());
   setAttributes(SrcF->getAttributes());
@@ -392,7 +357,7 @@ void Function::copyAttributesFrom(const GlobalValue *Src) {
   if (SrcF->hasPrefixData())
     setPrefixData(SrcF->getPrefixData());
   else
-    setPrefixData(nullptr);
+    setPrefixData(0);
 }
 
 /// getIntrinsicID - This method returns the ID number of the specified
@@ -486,12 +451,11 @@ enum IIT_Info {
   IIT_STRUCT3 = 20,
   IIT_STRUCT4 = 21,
   IIT_STRUCT5 = 22,
-  IIT_EXTEND_ARG = 23,
-  IIT_TRUNC_ARG = 24,
+  IIT_EXTEND_VEC_ARG = 23,
+  IIT_TRUNC_VEC_ARG = 24,
   IIT_ANYPTR = 25,
   IIT_V1   = 26,
-  IIT_VARARG = 27,
-  IIT_HALF_VEC_ARG = 28
+  IIT_VARARG = 27
 };
 
 
@@ -577,21 +541,15 @@ static void DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Argument, ArgInfo));
     return;
   }
-  case IIT_EXTEND_ARG: {
+  case IIT_EXTEND_VEC_ARG: {
     unsigned ArgInfo = (NextElt == Infos.size() ? 0 : Infos[NextElt++]);
-    OutputTable.push_back(IITDescriptor::get(IITDescriptor::ExtendArgument,
+    OutputTable.push_back(IITDescriptor::get(IITDescriptor::ExtendVecArgument,
                                              ArgInfo));
     return;
   }
-  case IIT_TRUNC_ARG: {
+  case IIT_TRUNC_VEC_ARG: {
     unsigned ArgInfo = (NextElt == Infos.size() ? 0 : Infos[NextElt++]);
-    OutputTable.push_back(IITDescriptor::get(IITDescriptor::TruncArgument,
-                                             ArgInfo));
-    return;
-  }
-  case IIT_HALF_VEC_ARG: {
-    unsigned ArgInfo = (NextElt == Infos.size() ? 0 : Infos[NextElt++]);
-    OutputTable.push_back(IITDescriptor::get(IITDescriptor::HalfVecArgument,
+    OutputTable.push_back(IITDescriptor::get(IITDescriptor::TruncVecArgument,
                                              ArgInfo));
     return;
   }
@@ -683,24 +641,12 @@ static Type *DecodeFixedType(ArrayRef<Intrinsic::IITDescriptor> &Infos,
 
   case IITDescriptor::Argument:
     return Tys[D.getArgumentNumber()];
-  case IITDescriptor::ExtendArgument: {
-    Type *Ty = Tys[D.getArgumentNumber()];
-    if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-      return VectorType::getExtendedElementVectorType(VTy);
+  case IITDescriptor::ExtendVecArgument:
+    return VectorType::getExtendedElementVectorType(cast<VectorType>(
+                                                  Tys[D.getArgumentNumber()]));
 
-    return IntegerType::get(Context, 2 * cast<IntegerType>(Ty)->getBitWidth());
-  }
-  case IITDescriptor::TruncArgument: {
-    Type *Ty = Tys[D.getArgumentNumber()];
-    if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-      return VectorType::getTruncatedElementVectorType(VTy);
-
-    IntegerType *ITy = cast<IntegerType>(Ty);
-    assert(ITy->getBitWidth() % 2 == 0);
-    return IntegerType::get(Context, ITy->getBitWidth() / 2);
-  }
-  case IITDescriptor::HalfVecArgument:
-    return VectorType::getHalfElementsVectorType(cast<VectorType>(
+  case IITDescriptor::TruncVecArgument:
+    return VectorType::getTruncatedElementVectorType(cast<VectorType>(
                                                   Tys[D.getArgumentNumber()]));
   }
   llvm_unreachable("unhandled");
@@ -747,23 +693,18 @@ Function *Intrinsic::getDeclaration(Module *M, ID id, ArrayRef<Type*> Tys) {
 #include "llvm/IR/Intrinsics.gen"
 #undef GET_LLVM_INTRINSIC_FOR_GCC_BUILTIN
 
-// This defines the "Intrinsic::getIntrinsicForMSBuiltin()" method.
-#define GET_LLVM_INTRINSIC_FOR_MS_BUILTIN
-#include "llvm/IR/Intrinsics.gen"
-#undef GET_LLVM_INTRINSIC_FOR_MS_BUILTIN
-
 /// hasAddressTaken - returns true if there are any uses of this function
 /// other than direct calls or invokes to it.
 bool Function::hasAddressTaken(const User* *PutOffender) const {
-  for (const Use &U : uses()) {
-    const User *FU = U.getUser();
-    if (isa<BlockAddress>(FU))
+  for (Value::const_use_iterator I = use_begin(), E = use_end(); I != E; ++I) {
+    const User *U = *I;
+    if (isa<BlockAddress>(U))
       continue;
-    if (!isa<CallInst>(FU) && !isa<InvokeInst>(FU))
-      return PutOffender ? (*PutOffender = FU, true) : true;
-    ImmutableCallSite CS(cast<Instruction>(FU));
-    if (!CS.isCallee(&U))
-      return PutOffender ? (*PutOffender = FU, true) : true;
+    if (!isa<CallInst>(U) && !isa<InvokeInst>(U))
+      return PutOffender ? (*PutOffender = U, true) : true;
+    ImmutableCallSite CS(cast<Instruction>(U));
+    if (!CS.isCallee(I))
+      return PutOffender ? (*PutOffender = U, true) : true;
   }
   return false;
 }
@@ -775,8 +716,8 @@ bool Function::isDefTriviallyDead() const {
     return false;
 
   // Check if the function is used by anything other than a blockaddress.
-  for (const User *U : users())
-    if (!isa<BlockAddress>(U))
+  for (Value::const_use_iterator I = use_begin(), E = use_end(); I != E; ++I)
+    if (!isa<BlockAddress>(*I))
       return false;
 
   return true;
@@ -787,8 +728,10 @@ bool Function::isDefTriviallyDead() const {
 bool Function::callsFunctionThatReturnsTwice() const {
   for (const_inst_iterator
          I = inst_begin(this), E = inst_end(this); I != E; ++I) {
-    ImmutableCallSite CS(&*I);
-    if (CS && CS.hasFnAttr(Attribute::ReturnsTwice))
+    const CallInst* callInst = dyn_cast<CallInst>(&*I);
+    if (!callInst)
+      continue;
+    if (callInst->canReturnTwice())
       return true;
   }
 

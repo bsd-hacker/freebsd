@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -116,7 +116,7 @@ AcpiDsCreateExternalRegion (
      * OperationRegion not found. Generate an External for it, and
      * insert the name into the namespace.
      */
-    AcpiDmAddOpToExternalList (Op, Path, ACPI_TYPE_REGION, 0, 0);
+    AcpiDmAddToExternalList (Op, Path, ACPI_TYPE_REGION, 0);
     Status = AcpiNsLookup (WalkState->ScopeInfo, Path, ACPI_TYPE_REGION,
        ACPI_IMODE_LOAD_PASS1, ACPI_NS_SEARCH_PARENT, WalkState, Node);
     if (ACPI_FAILURE (Status))
@@ -391,7 +391,6 @@ AcpiDsGetFieldNames (
              */
             Info->ResourceBuffer = NULL;
             Info->ConnectionNode = NULL;
-            Info->PinNumberIndex = 0;
 
             /*
              * A Connection() is either an actual resource descriptor (buffer)
@@ -467,7 +466,6 @@ AcpiDsGetFieldNames (
             }
 
             Info->FieldBitPosition += Info->FieldBitLength;
-            Info->PinNumberIndex++; /* Index relative to previous Connection() */
             break;
 
         default:

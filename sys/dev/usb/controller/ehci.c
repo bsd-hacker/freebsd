@@ -98,14 +98,19 @@ static int ehciiaadbug = 0;
 static int ehcilostintrbug = 0;
 
 static SYSCTL_NODE(_hw_usb, OID_AUTO, ehci, CTLFLAG_RW, 0, "USB ehci");
-SYSCTL_INT(_hw_usb_ehci, OID_AUTO, debug, CTLFLAG_RWTUN,
+SYSCTL_INT(_hw_usb_ehci, OID_AUTO, debug, CTLFLAG_RW | CTLFLAG_TUN,
     &ehcidebug, 0, "Debug level");
-SYSCTL_INT(_hw_usb_ehci, OID_AUTO, no_hs, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.usb.ehci.debug", &ehcidebug);
+SYSCTL_INT(_hw_usb_ehci, OID_AUTO, no_hs, CTLFLAG_RW | CTLFLAG_TUN,
     &ehcinohighspeed, 0, "Disable High Speed USB");
-SYSCTL_INT(_hw_usb_ehci, OID_AUTO, iaadbug, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.usb.ehci.no_hs", &ehcinohighspeed);
+SYSCTL_INT(_hw_usb_ehci, OID_AUTO, iaadbug, CTLFLAG_RW | CTLFLAG_TUN,
     &ehciiaadbug, 0, "Enable doorbell bug workaround");
-SYSCTL_INT(_hw_usb_ehci, OID_AUTO, lostintrbug, CTLFLAG_RWTUN,
+TUNABLE_INT("hw.usb.ehci.iaadbug", &ehciiaadbug);
+SYSCTL_INT(_hw_usb_ehci, OID_AUTO, lostintrbug, CTLFLAG_RW | CTLFLAG_TUN,
     &ehcilostintrbug, 0, "Enable lost interrupt bug workaround");
+TUNABLE_INT("hw.usb.ehci.lostintrbug", &ehcilostintrbug);
+
 
 static void ehci_dump_regs(ehci_softc_t *sc);
 static void ehci_dump_sqh(ehci_softc_t *sc, ehci_qh_t *sqh);
@@ -210,7 +215,7 @@ ehci_reset(ehci_softc_t *sc)
 			return (0);
 		}
 	}
-	device_printf(sc->sc_bus.bdev, "reset timeout\n");
+	device_printf(sc->sc_bus.bdev, "Reset timeout\n");
 	return (USB_ERR_IOERROR);
 }
 
@@ -285,7 +290,7 @@ ehci_init_sub(struct ehci_softc *sc)
 		}
 	}
 	if (hcr) {
-		device_printf(sc->sc_bus.bdev, "run timeout\n");
+		device_printf(sc->sc_bus.bdev, "Run timeout\n");
 		return (USB_ERR_IOERROR);
 	}
 	return (USB_ERR_NORMAL_COMPLETION);

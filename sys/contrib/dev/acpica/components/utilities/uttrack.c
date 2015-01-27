@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -151,23 +151,10 @@ AcpiUtAllocateAndTrack (
     ACPI_STATUS             Status;
 
 
-    /* Check for an inadvertent size of zero bytes */
-
-    if (!Size)
-    {
-        ACPI_WARNING ((Module, Line,
-            "Attempt to allocate zero bytes, allocating 1 byte"));
-        Size = 1;
-    }
-
-    Allocation = AcpiOsAllocate (Size + sizeof (ACPI_DEBUG_MEM_HEADER));
+    Allocation = AcpiUtAllocate (Size + sizeof (ACPI_DEBUG_MEM_HEADER),
+                    Component, Module, Line);
     if (!Allocation)
     {
-        /* Report allocation error */
-
-        ACPI_WARNING ((Module, Line,
-            "Could not allocate size %u", (UINT32) Size));
-
         return (NULL);
     }
 
@@ -217,16 +204,8 @@ AcpiUtAllocateZeroedAndTrack (
     ACPI_STATUS             Status;
 
 
-    /* Check for an inadvertent size of zero bytes */
-
-    if (!Size)
-    {
-        ACPI_WARNING ((Module, Line,
-            "Attempt to allocate zero bytes, allocating 1 byte"));
-        Size = 1;
-    }
-
-    Allocation = AcpiOsAllocateZeroed (Size + sizeof (ACPI_DEBUG_MEM_HEADER));
+    Allocation = AcpiUtAllocateZeroed (Size + sizeof (ACPI_DEBUG_MEM_HEADER),
+                    Component, Module, Line);
     if (!Allocation)
     {
         /* Report allocation error */
@@ -307,8 +286,7 @@ AcpiUtFreeAndTrack (
     }
 
     AcpiOsFree (DebugBlock);
-    ACPI_DEBUG_PRINT ((ACPI_DB_ALLOCATIONS, "%p freed (block %p)\n",
-        Allocation, DebugBlock));
+    ACPI_DEBUG_PRINT ((ACPI_DB_ALLOCATIONS, "%p freed\n", Allocation));
     return_VOID;
 }
 

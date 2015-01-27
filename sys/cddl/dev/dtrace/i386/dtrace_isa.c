@@ -413,8 +413,7 @@ dtrace_getarg(int arg, int aframes)
 	for (i = 1; i <= aframes; i++) {
 		fp = fp->f_frame;
 
-		if (P2ROUNDUP(fp->f_retaddr, 4) ==
-		    (long)dtrace_invop_callsite) {
+		if (fp->f_retaddr == (long)dtrace_invop_callsite) {
 			/*
 			 * If we pass through the invalid op handler, we will
 			 * use the pointer that it passed to the stack as the
@@ -423,7 +422,7 @@ dtrace_getarg(int arg, int aframes)
 			 * beyond the EIP/RIP that was pushed when the trap was
 			 * taken -- hence the "+ 1" below.
 			 */
-			stack = ((uintptr_t **)&fp[1])[0] + 1;
+			stack = ((uintptr_t **)&fp[1])[1] + 1;
 			goto load;
 		}
 
@@ -439,7 +438,7 @@ dtrace_getarg(int arg, int aframes)
 	 */
 	arg++;
 
-	stack = (uintptr_t *)fp + 2;
+	stack = (uintptr_t *)&fp[1];
 
 load:
 	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);

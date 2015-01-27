@@ -64,7 +64,8 @@ struct buf_ring {
 static __inline int
 buf_ring_enqueue(struct buf_ring *br, void *buf)
 {
-	uint32_t prod_head, prod_next, cons_tail;
+	uint32_t prod_head, prod_next;
+	uint32_t cons_tail;
 #ifdef DEBUG_BUFRING
 	int i;
 	for (i = br->br_cons_head; i != br->br_prod_head;
@@ -76,25 +77,27 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 	critical_enter();
 	do {
 		prod_head = br->br_prod_head;
-		prod_next = (prod_head + 1) & br->br_prod_mask;
 		cons_tail = br->br_cons_tail;
 
+		prod_next = (prod_head + 1) & br->br_prod_mask;
+		
 		if (prod_next == cons_tail) {
-			rmb();
-			if (prod_head == br->br_prod_head &&
-			    cons_tail == br->br_cons_tail) {
-				br->br_drops++;
-				critical_exit();
-				return (ENOBUFS);
-			}
-			continue;
+			br->br_drops++;
+			critical_exit();
+			return (ENOBUFS);
 		}
-	} while (!atomic_cmpset_acq_int(&br->br_prod_head, prod_head, prod_next));
+	} while (!atomic_cmpset_int(&br->br_prod_head, prod_head, prod_next));
 #ifdef DEBUG_BUFRING
 	if (br->br_ring[prod_head] != NULL)
 		panic("dangling value in enqueue");
 #endif	
 	br->br_ring[prod_head] = buf;
+
+	/*
+	 * The full memory barrier also avoids that br_prod_tail store
+	 * is reordered before the br_ring[prod_head] is full setup.
+	 */
+	mb();
 
 	/*
 	 * If there are other enqueues in progress
@@ -103,7 +106,7 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 	 */   
 	while (br->br_prod_tail != prod_head)
 		cpu_spinwait();
-	atomic_store_rel_int(&br->br_prod_tail, prod_next);
+	br->br_prod_tail = prod_next;
 	critical_exit();
 	return (0);
 }
@@ -116,23 +119,37 @@ static __inline void *
 buf_ring_dequeue_mc(struct buf_ring *br)
 {
 	uint32_t cons_head, cons_next;
+	uint32_t prod_tail;
 	void *buf;
+	int success;
 
 	critical_enter();
 	do {
 		cons_head = br->br_cons_head;
-		cons_next = (cons_head + 1) & br->br_cons_mask;
+		prod_tail = br->br_prod_tail;
 
-		if (cons_head == br->br_prod_tail) {
+		cons_next = (cons_head + 1) & br->br_cons_mask;
+		
+		if (cons_head == prod_tail) {
 			critical_exit();
 			return (NULL);
 		}
-	} while (!atomic_cmpset_acq_int(&br->br_cons_head, cons_head, cons_next));
+		
+		success = atomic_cmpset_int(&br->br_cons_head, cons_head,
+		    cons_next);
+	} while (success == 0);		
 
 	buf = br->br_ring[cons_head];
 #ifdef DEBUG_BUFRING
 	br->br_ring[cons_head] = NULL;
 #endif
+
+	/*
+	 * The full memory barrier also avoids that br_ring[cons_read]
+	 * load is reordered after br_cons_tail is set.
+	 */
+	mb();
+	
 	/*
 	 * If there are other dequeues in progress
 	 * that preceeded us, we need to wait for them
@@ -141,7 +158,7 @@ buf_ring_dequeue_mc(struct buf_ring *br)
 	while (br->br_cons_tail != cons_head)
 		cpu_spinwait();
 
-	atomic_store_rel_int(&br->br_cons_tail, cons_next);
+	br->br_cons_tail = cons_next;
 	critical_exit();
 
 	return (buf);

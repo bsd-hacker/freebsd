@@ -1,4 +1,4 @@
-/*	$Id: out.h,v 1.26 2014/12/01 08:05:52 schwarze Exp $ */
+/*	$Id: out.h,v 1.21 2011/07/17 15:24:25 kristaps Exp $ */
 /*
  * Copyright (c) 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -14,6 +14,8 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+#ifndef OUT_H
+#define OUT_H
 
 enum	roffscale {
 	SCALE_CM, /* centimeters (c) */
@@ -32,7 +34,6 @@ enum	roffscale {
 struct	roffcol {
 	size_t		 width; /* width of cell */
 	size_t		 decimal; /* decimal position in cell */
-	int		 flags; /* layout flags, see tbl_cell */
 };
 
 struct	roffsu {
@@ -50,22 +51,21 @@ struct	rofftbl {
 	void		*arg; /* passed to slen and len */
 };
 
+__BEGIN_DECLS
+
 #define	SCALE_VS_INIT(p, v) \
 	do { (p)->unit = SCALE_VS; \
 	     (p)->scale = (v); } \
 	while (/* CONSTCOND */ 0)
 
 #define	SCALE_HS_INIT(p, v) \
-	do { (p)->unit = SCALE_EN; \
+	do { (p)->unit = SCALE_BU; \
 	     (p)->scale = (v); } \
 	while (/* CONSTCOND */ 0)
 
-__BEGIN_DECLS
-
-struct	tbl_span;
-
-int		  a2roffsu(const char *, struct roffsu *, enum roffscale);
-void		  tblcalc(struct rofftbl *tbl,
-			const struct tbl_span *, size_t);
+int	  	  a2roffsu(const char *, struct roffsu *, enum roffscale);
+void	  	  tblcalc(struct rofftbl *tbl, const struct tbl_span *);
 
 __END_DECLS
+
+#endif /*!OUT_H*/

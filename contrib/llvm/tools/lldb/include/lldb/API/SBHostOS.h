@@ -25,15 +25,12 @@ public:
     static lldb::SBFileSpec
     GetLLDBPythonPath ();
 
-    static lldb::SBFileSpec
-    GetLLDBPath (lldb::PathType path_type);
-
     static void
     ThreadCreated (const char *name);
 
     static lldb::thread_t
     ThreadCreate (const char *name,
-                  lldb::thread_func_t thread_function,
+                  thread_func_t thread_function,
                   void *thread_arg,
                   lldb::SBError *err);
 
@@ -46,7 +43,7 @@ public:
                   lldb::SBError *err);
     static bool
     ThreadJoin (lldb::thread_t thread,
-                lldb::thread_result_t *result,
+                thread_result_t *result,
                 lldb::SBError *err);
 
 

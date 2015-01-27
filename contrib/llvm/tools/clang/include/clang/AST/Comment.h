@@ -100,26 +100,16 @@ protected:
   };
   enum { NumInlineCommandCommentBits = NumInlineContentCommentBits + 10 };
 
-  class HTMLTagCommentBitfields {
-    friend class HTMLTagComment;
-
-    unsigned : NumInlineContentCommentBits;
-
-    /// True if we found that this tag is malformed in some way.
-    unsigned IsMalformed : 1;
-  };
-  enum { NumHTMLTagCommentBits = NumInlineContentCommentBits + 1 };
-
   class HTMLStartTagCommentBitfields {
     friend class HTMLStartTagComment;
 
-    unsigned : NumHTMLTagCommentBits;
+    unsigned : NumInlineContentCommentBits;
 
     /// True if this tag is self-closing (e. g., <br />).  This is based on tag
     /// spelling in comment (plain <br> would not set this flag).
     unsigned IsSelfClosing : 1;
   };
-  enum { NumHTMLStartTagCommentBits = NumHTMLTagCommentBits + 1 };
+  enum { NumHTMLStartTagCommentBits = NumInlineContentCommentBits + 1 };
 
   class ParagraphCommentBitfields {
     friend class ParagraphComment;
@@ -165,7 +155,6 @@ protected:
     InlineContentCommentBitfields InlineContentCommentBits;
     TextCommentBitfields TextCommentBits;
     InlineCommandCommentBitfields InlineCommandCommentBits;
-    HTMLTagCommentBitfields HTMLTagCommentBits;
     HTMLStartTagCommentBitfields HTMLStartTagCommentBits;
     ParagraphCommentBitfields ParagraphCommentBits;
     BlockCommandCommentBitfields BlockCommandCommentBits;
@@ -205,9 +194,9 @@ public:
 
   const char *getCommentKindName() const;
 
-  void dump() const;
-  void dumpColor() const;
-  void dump(const ASTContext &Context) const;
+  LLVM_ATTRIBUTE_USED void dump() const;
+  LLVM_ATTRIBUTE_USED void dumpColor() const;
+  LLVM_ATTRIBUTE_USED void dump(const ASTContext &Context) const;
   void dump(raw_ostream &OS, const CommandTraits *Traits,
             const SourceManager *SM) const;
 
@@ -278,9 +267,9 @@ public:
     return C->getCommentKind() == TextCommentKind;
   }
 
-  child_iterator child_begin() const { return nullptr; }
+  child_iterator child_begin() const { return NULL; }
 
-  child_iterator child_end() const { return nullptr; }
+  child_iterator child_end() const { return NULL; }
 
   StringRef getText() const LLVM_READONLY { return Text; }
 
@@ -336,9 +325,9 @@ public:
     return C->getCommentKind() == InlineCommandCommentKind;
   }
 
-  child_iterator child_begin() const { return nullptr; }
+  child_iterator child_begin() const { return NULL; }
 
-  child_iterator child_end() const { return nullptr; }
+  child_iterator child_end() const { return NULL; }
 
   unsigned getCommandID() const {
     return InlineCommandCommentBits.CommandID;
@@ -371,7 +360,8 @@ public:
 };
 
 /// Abstract class for opening and closing HTML tags.  HTML tags are always
-/// treated as inline content (regardless HTML semantics).
+/// treated as inline content (regardless HTML semantics); opening and closing
+/// tags are not matched.
 class HTMLTagComment : public InlineContentComment {
 protected:
   StringRef TagName;
@@ -387,7 +377,6 @@ protected:
       TagName(TagName),
       TagNameRange(TagNameBegin, TagNameEnd) {
     setLocation(TagNameBegin);
-    HTMLTagCommentBits.IsMalformed = 0;
   }
 
 public:
@@ -402,14 +391,6 @@ public:
     SourceLocation L = getLocation();
     return SourceRange(L.getLocWithOffset(1),
                        L.getLocWithOffset(1 + TagName.size()));
-  }
-
-  bool isMalformed() const {
-    return HTMLTagCommentBits.IsMalformed;
-  }
-
-  void setIsMalformed() {
-    HTMLTagCommentBits.IsMalformed = 1;
   }
 };
 
@@ -469,9 +450,9 @@ public:
     return C->getCommentKind() == HTMLStartTagCommentKind;
   }
 
-  child_iterator child_begin() const { return nullptr; }
+  child_iterator child_begin() const { return NULL; }
 
-  child_iterator child_end() const { return nullptr; }
+  child_iterator child_end() const { return NULL; }
 
   unsigned getNumAttrs() const {
     return Attributes.size();
@@ -524,9 +505,9 @@ public:
     return C->getCommentKind() == HTMLEndTagCommentKind;
   }
 
-  child_iterator child_begin() const { return nullptr; }
+  child_iterator child_begin() const { return NULL; }
 
-  child_iterator child_end() const { return nullptr; }
+  child_iterator child_end() const { return NULL; }
 };
 
 /// Block content (contains inline content).
@@ -620,7 +601,7 @@ protected:
                       unsigned CommandID,
                       CommandMarkerKind CommandMarker) :
       BlockContentComment(K, LocBegin, LocEnd),
-      Paragraph(nullptr) {
+      Paragraph(NULL) {
     setLocation(getCommandNameBeginLoc());
     BlockCommandCommentBits.CommandID = CommandID;
     BlockCommandCommentBits.CommandMarker = CommandMarker;
@@ -632,7 +613,7 @@ public:
                       unsigned CommandID,
                       CommandMarkerKind CommandMarker) :
       BlockContentComment(BlockCommandCommentKind, LocBegin, LocEnd),
-      Paragraph(nullptr) {
+      Paragraph(NULL) {
     setLocation(getCommandNameBeginLoc());
     BlockCommandCommentBits.CommandID = CommandID;
     BlockCommandCommentBits.CommandMarker = CommandMarker;
@@ -718,7 +699,7 @@ private:
   unsigned ParamIndex;
 
 public:
-  enum : unsigned {
+  enum LLVM_ENUM_INT_TYPE(unsigned) {
     InvalidParamIndex = ~0U,
     VarArgParamIndex = ~0U/*InvalidParamIndex*/ - 1U
   };
@@ -880,9 +861,9 @@ public:
     return C->getCommentKind() == VerbatimBlockLineCommentKind;
   }
 
-  child_iterator child_begin() const { return nullptr; }
+  child_iterator child_begin() const { return NULL; }
 
-  child_iterator child_end() const { return nullptr; }
+  child_iterator child_end() const { return NULL; }
 
   StringRef getText() const LLVM_READONLY {
     return Text;
@@ -967,9 +948,9 @@ public:
     return C->getCommentKind() == VerbatimLineCommentKind;
   }
 
-  child_iterator child_begin() const { return nullptr; }
+  child_iterator child_begin() const { return NULL; }
 
-  child_iterator child_end() const { return nullptr; }
+  child_iterator child_end() const { return NULL; }
 
   StringRef getText() const {
     return Text;
@@ -1000,9 +981,9 @@ struct DeclInfo {
   /// that we consider a "function".
   ArrayRef<const ParmVarDecl *> ParamVars;
 
-  /// Function return type if \c CommentDecl is something that we consider
+  /// Function result type if \c CommentDecl is something that we consider
   /// a "function".
-  QualType ReturnType;
+  QualType ResultType;
 
   /// Template parameters that can be referenced by \\tparam if \c CommentDecl is
   /// a template (\c IsTemplateDecl or \c IsTemplatePartialSpecialization is

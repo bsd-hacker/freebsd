@@ -73,8 +73,8 @@ namespace llvm {
                Instruction *Destination) :
       Src(Source),
       Dst(Destination),
-      NextPredecessor(nullptr),
-      NextSuccessor(nullptr) {}
+      NextPredecessor(NULL),
+      NextSuccessor(NULL) {}
     virtual ~Dependence() {}
 
     /// Dependence::DVEntry - Each level in the distance/direction vector
@@ -96,7 +96,7 @@ namespace llvm {
       bool Splitable : 1; // Splitting the loop will break dependence.
       const SCEV *Distance; // NULL implies no distance available.
       DVEntry() : Direction(ALL), Scalar(true), PeelFirst(false),
-                  PeelLast(false), Splitable(false), Distance(nullptr) { }
+                  PeelLast(false), Splitable(false), Distance(NULL) { }
     };
 
     /// getSrc - Returns the source instruction for this dependence.
@@ -154,7 +154,7 @@ namespace llvm {
 
     /// getDistance - Returns the distance (or NULL) associated with a
     /// particular level.
-    virtual const SCEV *getDistance(unsigned Level) const { return nullptr; }
+    virtual const SCEV *getDistance(unsigned Level) const { return NULL; }
 
     /// isPeelFirst - Returns true if peeling the first iteration from
     /// this loop will break this dependence.
@@ -227,45 +227,45 @@ namespace llvm {
 
     /// isLoopIndependent - Returns true if this is a loop-independent
     /// dependence.
-    bool isLoopIndependent() const override { return LoopIndependent; }
+    bool isLoopIndependent() const { return LoopIndependent; }
 
     /// isConfused - Returns true if this dependence is confused
     /// (the compiler understands nothing and makes worst-case
     /// assumptions).
-    bool isConfused() const override { return false; }
+    bool isConfused() const { return false; }
 
     /// isConsistent - Returns true if this dependence is consistent
     /// (occurs every time the source and destination are executed).
-    bool isConsistent() const override { return Consistent; }
+    bool isConsistent() const { return Consistent; }
 
     /// getLevels - Returns the number of common loops surrounding the
     /// source and destination of the dependence.
-    unsigned getLevels() const override { return Levels; }
+    unsigned getLevels() const { return Levels; }
 
     /// getDirection - Returns the direction associated with a particular
     /// level.
-    unsigned getDirection(unsigned Level) const override;
+    unsigned getDirection(unsigned Level) const;
 
     /// getDistance - Returns the distance (or NULL) associated with a
     /// particular level.
-    const SCEV *getDistance(unsigned Level) const override;
+    const SCEV *getDistance(unsigned Level) const;
 
     /// isPeelFirst - Returns true if peeling the first iteration from
     /// this loop will break this dependence.
-    bool isPeelFirst(unsigned Level) const override;
+    bool isPeelFirst(unsigned Level) const;
 
     /// isPeelLast - Returns true if peeling the last iteration from
     /// this loop will break this dependence.
-    bool isPeelLast(unsigned Level) const override;
+    bool isPeelLast(unsigned Level) const;
 
     /// isSplitable - Returns true if splitting the loop will break
     /// the dependence.
-    bool isSplitable(unsigned Level) const override;
+    bool isSplitable(unsigned Level) const;
 
     /// isScalar - Returns true if a particular level is scalar; that is,
     /// if no subscript in the source or destination mention the induction
     /// variable associated with the loop at this level.
-    bool isScalar(unsigned Level) const override;
+    bool isScalar(unsigned Level) const;
   private:
     unsigned short Levels;
     bool LoopIndependent;
@@ -910,8 +910,7 @@ namespace llvm {
                          const Constraint &CurConstraint) const;
 
     bool tryDelinearize(const SCEV *SrcSCEV, const SCEV *DstSCEV,
-                        SmallVectorImpl<Subscript> &Pair,
-                        const SCEV *ElementSize) const;
+                        SmallVectorImpl<Subscript> &Pair) const;
 
   public:
     static char ID; // Class identification, replacement for typeinfo
@@ -919,10 +918,10 @@ namespace llvm {
       initializeDependenceAnalysisPass(*PassRegistry::getPassRegistry());
     }
 
-    bool runOnFunction(Function &F) override;
-    void releaseMemory() override;
-    void getAnalysisUsage(AnalysisUsage &) const override;
-    void print(raw_ostream &, const Module * = nullptr) const override;
+    bool runOnFunction(Function &F);
+    void releaseMemory();
+    void getAnalysisUsage(AnalysisUsage &) const;
+    void print(raw_ostream &, const Module * = 0) const;
   }; // class DependenceAnalysis
 
   /// createDependenceAnalysisPass - This creates an instance of the

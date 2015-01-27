@@ -11,8 +11,6 @@ SRCS=	common.c md5-internal.c md5.c os_unix.c sha1-internal.c sha1-pbkdf2.c sha1
 CFLAGS+= -DINTERNAL_SHA1
 CFLAGS+= -DINTERNAL_MD5
 
-LIBADD+=	util
-
 MAN=	wpa_passphrase.8
 
 .include <bsd.prog.mk>

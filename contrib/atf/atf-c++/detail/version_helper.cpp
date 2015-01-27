@@ -27,7 +27,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(HAVE_CONFIG_H)
-#include "config.h"
+#include "bconfig.h"
 #endif
 
 #include <cstdlib>

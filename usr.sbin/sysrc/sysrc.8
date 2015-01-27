@@ -1,4 +1,4 @@
-.\" Copyright (c) 2011-2014 Devin Teske
+.\" Copyright (c) 2011-2013 Devin Teske
 .\" All rights reserved.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd November 4, 2014
+.Dd Nov 20, 2013
 .Dt SYSRC 8
 .Os
 .Sh NAME
@@ -35,7 +35,7 @@
 .Op Fl cdDeFhinNqvx
 .Op Fl f Ar file
 .Op Fl j Ar jail | Fl R Ar dir
-.Ar name Ns Op Ns Oo + Oc Ns = Ns Ar value
+.Ar name Ns Op = Ns Ar value
 .Ar ...
 .Nm
 .Op Fl cdDeFhinNqvx
@@ -58,14 +58,11 @@ Dump a list of all non-default configuration variables.
 Dump a list of all configuration variables
 .Pq incl. defaults .
 .It Fl c
-Check only.
-For querying, return success if all requested variables are set
-.Pq even if NULL ,
-otherwise return error status.
-For assignments, return success if no changes are required, otherwise failure.
+Check if the value will change when assigning a new value.
 If verbose
 .Pq see Dq Fl v
-prints a message stating whether variables are set and/or changes are required.
+prints a message stating whether a change would occur.
+Exits with success if no change is necessary, else returns error status.
 .It Fl d
 Print a description of the given variable.
 .It Fl D
@@ -111,12 +108,14 @@ Show only variable values, not their names.
 Show only variable names, not their values.
 .It Fl q
 Quiet.
-Disable verbose and hide certain errors.
+Ignore previous occurrences of
+.Fl v
+flag.
 .It Fl R Ar dir
 Operate within the root directory
-.Sq Ar dir
+.Pq Sq Ar dir
 rather than
-.Sq / .
+.Pq Sq / .
 .It Fl v
 Verbose.
 Print the pathname of the specific
@@ -128,17 +127,13 @@ Print version information to stdout and exit.
 Remove variable(s) from specified file(s).
 .El
 .Pp
-This utility has a similar syntax to
+This utility works similar to
 .Xr sysctl 8 .
 It shares the `-e' and `-n' options
 .Pq detailed above
 and also has the same
 .Ql name[=value]
-syntax for making queries/assignments.
-In addition
-.Pq unlike Xr sysctl 8 ,
-.Ql name+=value
-is supported for appending values.
+syntax for querying/setting configuration options.
 .Pp
 However, while
 .Xr sysctl 8
@@ -247,12 +242,6 @@ Working on other files, such as
 -f /etc/crontab MAILTO
 .Dl returns the value of the MAILTO setting Pq if configured .
 .Pp
-Appending to existing values:
-.Pp
-.Nm
-\&cloned_interfaces+=" gif0"
-.Dl appends Qo \ gif0 Qc to $cloned_interfaces .
-.Pp
 In addition to the above syntax,
 .Nm
 also supports inline
@@ -312,8 +301,8 @@ A
 utility first appeared in
 .Fx 9.2 .
 .Sh AUTHORS
-.An Devin Teske Aq Mt dteske@FreeBSD.org
+.An Devin Teske Aq dteske@FreeBSD.org
 .Sh THANKS TO
 Brandon Gooch, Garrett Cooper, Julian Elischer, Pawel Jakub Dawidek,
-Cyrille Lefevre, Ross West, Stefan Esser, Marco Steinbach, Jilles Tjoelker,
-Allan Jude, and Lars Engels for suggestions, help, and testing.
+Cyrille Lefevre, Ross West, Stefan Esser, Marco Steinbach, and Jilles Tjoelker
+for suggestions and help.

@@ -7,6 +7,7 @@ SRCS=	btpand.c bnep.c channel.c client.c event.c packet.c server.c sdp.c tap.c
 
 WARNS?=	3
 
-LIBADD=	bluetooth sdp util
+DPADD+=	${LIBBLUETOOTH} ${LIBSDP} ${LIBUTIL}
+LDADD+=	-lbluetooth -lsdp -lutil
 
 .include <bsd.prog.mk>

@@ -314,11 +314,6 @@ begin:
 	}
 	cp = line;
 	*cp++ = ch;
-	/* Negation operator is a word by itself. */
-	if (ch == '!') {
-		*cp = 0;
-		return (line);
-	}
 	while ((ch = getc(fp)) != EOF) {
 		if (isspace(ch))
 			break;

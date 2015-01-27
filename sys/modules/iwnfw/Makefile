@@ -1,7 +1,6 @@
 # $FreeBSD$
 
-SUBDIR=	iwn100		\
-	iwn105		\
+SUBDIR=	iwn105		\
 	iwn135		\
 	iwn1000		\
 	iwn2000		\

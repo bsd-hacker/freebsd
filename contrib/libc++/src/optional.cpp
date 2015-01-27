@@ -9,7 +9,8 @@
 
 #include "experimental/optional"
 
-_LIBCPP_BEGIN_NAMESPACE_EXPERIMENTAL
+namespace std  // purposefully not using versioning namespace
+{ namespace experimental {
 
 #ifdef _LIBCPP_HAS_NO_DEFAULTED_FUNCTIONS
 
@@ -21,4 +22,4 @@ bad_optional_access::~bad_optional_access() _NOEXCEPT = default;
 
 #endif
 
-_LIBCPP_END_NAMESPACE_EXPERIMENTAL
+}}  // std::experimental

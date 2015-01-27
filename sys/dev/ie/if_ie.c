@@ -427,13 +427,13 @@ ierint(struct ie_softc *sc)
 		status = sc->rframes[i]->ie_fd_status;
 
 		if ((status & IE_FD_COMPLETE) && (status & IE_FD_OK)) {
-			if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
+			sc->ifp->if_ipackets++;
 			if (!--timesthru) {
-				if_inc_counter(sc->ifp, IFCOUNTER_IERRORS,
+				sc->ifp->if_ierrors +=
 				    sc->scb->ie_err_crc +
 				    sc->scb->ie_err_align +
 				    sc->scb->ie_err_resource +
-				    sc->scb->ie_err_overrun);
+				    sc->scb->ie_err_overrun;
 				sc->scb->ie_err_crc = 0;
 				sc->scb->ie_err_align = 0;
 				sc->scb->ie_err_resource = 0;
@@ -477,24 +477,24 @@ ietint(struct ie_softc *sc)
 
 		if (status & IE_XS_LATECOLL) {
 			if_printf(ifp, "late collision\n");
-			if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_collisions++;
+			ifp->if_oerrors++;
 		} else if (status & IE_XS_NOCARRIER) {
 			if_printf(ifp, "no carrier\n");
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 		} else if (status & IE_XS_LOSTCTS) {
 			if_printf(ifp, "lost CTS\n");
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 		} else if (status & IE_XS_UNDERRUN) {
 			if_printf(ifp, "DMA underrun\n");
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 		} else if (status & IE_XS_EXCMAX) {
 			if_printf(ifp, "too many collisions\n");
-			if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 16);
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_collisions += 16;
+			ifp->if_oerrors++;
 		} else {
-			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
-			if_inc_counter(ifp, IFCOUNTER_COLLISIONS, status & IE_XS_MAXCOLL);
+			ifp->if_opackets++;
+			ifp->if_collisions += status & IE_XS_MAXCOLL;
 		}
 	}
 	sc->xmit_count = 0;
@@ -539,7 +539,7 @@ iernr(struct ie_softc *sc)
 #endif
 	ie_ack(sc, IE_ST_WHENCE);
 
-	if_inc_counter(sc->ifp, IFCOUNTER_IERRORS, 1);
+	sc->ifp->if_ierrors++;
 	return (0);
 }
 
@@ -688,12 +688,16 @@ ieget(struct ie_softc *sc, struct mbuf **mp)
 	 */
 	if (!check_eh(sc, &eh)) {
 		ie_drop_packet_buffer(sc);
+		sc->ifp->if_ierrors--;	/* just this case, it's not an
+						 * error
+						 */
 		return (-1);
 	}
 
 	MGETHDR(m, M_NOWAIT, MT_DATA);
 	if (!m) {
 		ie_drop_packet_buffer(sc);
+		/* XXXX if_ierrors++; */
 		return (-1);
 	}
 
@@ -728,7 +732,8 @@ ieget(struct ie_softc *sc, struct mbuf **mp)
 			m->m_len = MLEN;
 		}
 		if (resid >= MINCLSIZE) {
-			if (MCLGET(m, M_NOWAIT))
+			MCLGET(m, M_NOWAIT);
+			if (m->m_flags & M_EXT)
 				m->m_len = min(resid, MCLBYTES);
 		} else {
 			if (resid < m->m_len) {
@@ -854,7 +859,7 @@ ie_readframe(struct ie_softc *sc, int	num/* frame number to read */)
 
 	if (rfd.ie_fd_status & IE_FD_OK) {
 		if (ieget(sc, &m)) {
-			if_inc_counter(sc->ifp, IFCOUNTER_IERRORS, 1);	/* this counts as an
+			sc->ifp->if_ierrors++;	/* this counts as an
 							 * error */
 			return;
 		}
@@ -948,8 +953,6 @@ iestart_locked(struct ifnet *ifp)
 		if (!m)
 			break;
 
-		BPF_MTAP(ifp, m); 
-
 		buffer = sc->xmit_cbuffs[sc->xmit_count];
 		len = 0;
 
@@ -961,6 +964,13 @@ iestart_locked(struct ifnet *ifp)
 
 		m_freem(m0);
 		len = max(len, ETHER_MIN_LEN);
+
+		/*
+		 * See if bpf is listening on this interface, let it see the
+		 * packet before we commit it to the wire.
+		 */
+		BPF_TAP(sc->ifp,
+			(void *)sc->xmit_cbuffs[sc->xmit_count], len);
 
 		sc->xmit_buffs[sc->xmit_count]->ie_xmit_flags =
 		    IE_XMIT_LAST|len;

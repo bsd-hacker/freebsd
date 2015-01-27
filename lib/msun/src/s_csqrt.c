@@ -58,12 +58,12 @@ csqrt(double complex z)
 
 	/* Handle special cases. */
 	if (z == 0)
-		return (CMPLX(0, b));
+		return (cpack(0, b));
 	if (isinf(b))
-		return (CMPLX(INFINITY, b));
+		return (cpack(INFINITY, b));
 	if (isnan(a)) {
 		t = (b - b) / (b - b);	/* raise invalid if b is not a NaN */
-		return (CMPLX(a, t));	/* return NaN + NaN i */
+		return (cpack(a, t));	/* return NaN + NaN i */
 	}
 	if (isinf(a)) {
 		/*
@@ -73,9 +73,9 @@ csqrt(double complex z)
 		 * csqrt(-inf + y i)   = 0   +  inf i
 		 */
 		if (signbit(a))
-			return (CMPLX(fabs(b - b), copysign(a, b)));
+			return (cpack(fabs(b - b), copysign(a, b)));
 		else
-			return (CMPLX(a, copysign(b - b, b)));
+			return (cpack(a, copysign(b - b, b)));
 	}
 	/*
 	 * The remaining special case (b is NaN) is handled just fine by
@@ -94,10 +94,10 @@ csqrt(double complex z)
 	/* Algorithm 312, CACM vol 10, Oct 1967. */
 	if (a >= 0) {
 		t = sqrt((a + hypot(a, b)) * 0.5);
-		result = CMPLX(t, b / (2 * t));
+		result = cpack(t, b / (2 * t));
 	} else {
 		t = sqrt((-a + hypot(a, b)) * 0.5);
-		result = CMPLX(fabs(b) / (2 * t), copysign(t, b));
+		result = cpack(fabs(b) / (2 * t), copysign(t, b));
 	}
 
 	/* Rescale. */

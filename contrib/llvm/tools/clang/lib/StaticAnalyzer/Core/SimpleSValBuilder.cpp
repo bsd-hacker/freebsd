@@ -21,9 +21,9 @@ using namespace ento;
 namespace {
 class SimpleSValBuilder : public SValBuilder {
 protected:
-  SVal dispatchCast(SVal val, QualType castTy) override;
-  SVal evalCastFromNonLoc(NonLoc val, QualType castTy) override;
-  SVal evalCastFromLoc(Loc val, QualType castTy) override;
+  virtual SVal dispatchCast(SVal val, QualType castTy);
+  virtual SVal evalCastFromNonLoc(NonLoc val, QualType castTy);
+  virtual SVal evalCastFromLoc(Loc val, QualType castTy);
 
 public:
   SimpleSValBuilder(llvm::BumpPtrAllocator &alloc, ASTContext &context,
@@ -31,19 +31,19 @@ public:
                     : SValBuilder(alloc, context, stateMgr) {}
   virtual ~SimpleSValBuilder() {}
 
-  SVal evalMinus(NonLoc val) override;
-  SVal evalComplement(NonLoc val) override;
-  SVal evalBinOpNN(ProgramStateRef state, BinaryOperator::Opcode op,
-                   NonLoc lhs, NonLoc rhs, QualType resultTy) override;
-  SVal evalBinOpLL(ProgramStateRef state, BinaryOperator::Opcode op,
-                   Loc lhs, Loc rhs, QualType resultTy) override;
-  SVal evalBinOpLN(ProgramStateRef state, BinaryOperator::Opcode op,
-                   Loc lhs, NonLoc rhs, QualType resultTy) override;
+  virtual SVal evalMinus(NonLoc val);
+  virtual SVal evalComplement(NonLoc val);
+  virtual SVal evalBinOpNN(ProgramStateRef state, BinaryOperator::Opcode op,
+                           NonLoc lhs, NonLoc rhs, QualType resultTy);
+  virtual SVal evalBinOpLL(ProgramStateRef state, BinaryOperator::Opcode op,
+                           Loc lhs, Loc rhs, QualType resultTy);
+  virtual SVal evalBinOpLN(ProgramStateRef state, BinaryOperator::Opcode op,
+                           Loc lhs, NonLoc rhs, QualType resultTy);
 
   /// getKnownValue - evaluates a given SVal. If the SVal has only one possible
   ///  (integer) value, that value is returned. Otherwise, returns NULL.
-  const llvm::APSInt *getKnownValue(ProgramStateRef state, SVal V) override;
-
+  virtual const llvm::APSInt *getKnownValue(ProgramStateRef state, SVal V);
+  
   SVal MakeSymIntVal(const SymExpr *LHS, BinaryOperator::Opcode op,
                      const llvm::APSInt &RHS, QualType resultTy);
 };
@@ -97,7 +97,7 @@ SVal SimpleSValBuilder::evalCastFromNonLoc(NonLoc val, QualType castTy) {
     return UnknownVal();
   }
 
-  // If value is a non-integer constant, produce unknown.
+  // If value is a non integer constant, produce unknown.
   if (!val.getAs<nonloc::ConcreteInt>())
     return UnknownVal();
 
@@ -108,7 +108,7 @@ SVal SimpleSValBuilder::evalCastFromNonLoc(NonLoc val, QualType castTy) {
   }
 
   // Only handle casts from integers to integers - if val is an integer constant
-  // being cast to a non-integer type, produce unknown.
+  // being cast to a non integer type, produce unknown.
   if (!isLocType && !castTy->isIntegralOrEnumerationType())
     return UnknownVal();
 
@@ -158,7 +158,7 @@ SVal SimpleSValBuilder::evalCastFromLoc(Loc val, QualType castTy) {
       }
 
       case loc::GotoLabelKind:
-        // Labels and non-symbolic memory regions are always true.
+        // Labels and non symbolic memory regions are always true.
         return makeTruthVal(true, castTy);
     }
   }
@@ -569,10 +569,11 @@ static SVal evalBinOpFieldRegionFieldRegion(const FieldRegion *LeftFR,
   // members and the units in which bit-fields reside have addresses that
   // increase in the order in which they are declared."
   bool leftFirst = (op == BO_LT || op == BO_LE);
-  for (const auto *I : RD->fields()) {
-    if (I == LeftFD)
+  for (RecordDecl::field_iterator I = RD->field_begin(),
+       E = RD->field_end(); I!=E; ++I) {
+    if (*I == LeftFD)
       return SVB.makeTruthVal(leftFirst, resultTy);
-    if (I == RightFD)
+    if (*I == RightFD)
       return SVB.makeTruthVal(!leftFirst, resultTy);
   }
 
@@ -817,7 +818,7 @@ SVal SimpleSValBuilder::evalBinOpLL(ProgramStateRef state,
     RegionOffset LeftOffset = LeftMR->getAsOffset();
     RegionOffset RightOffset = RightMR->getAsOffset();
 
-    if (LeftOffset.getRegion() != nullptr &&
+    if (LeftOffset.getRegion() != NULL &&
         LeftOffset.getRegion() == RightOffset.getRegion() &&
         !LeftOffset.hasSymbolicOffset() && !RightOffset.hasSymbolicOffset()) {
       int64_t left = LeftOffset.getOffset();
@@ -900,7 +901,7 @@ SVal SimpleSValBuilder::evalBinOpLN(ProgramStateRef state,
   if (const MemRegion *region = lhs.getAsRegion()) {
     rhs = convertToArrayIndex(rhs).castAs<NonLoc>();
     SVal index = UnknownVal();
-    const MemRegion *superR = nullptr;
+    const MemRegion *superR = 0;
     QualType elementType;
 
     if (const ElementRegion *elemReg = dyn_cast<ElementRegion>(region)) {
@@ -928,7 +929,7 @@ SVal SimpleSValBuilder::evalBinOpLN(ProgramStateRef state,
 const llvm::APSInt *SimpleSValBuilder::getKnownValue(ProgramStateRef state,
                                                    SVal V) {
   if (V.isUnknownOrUndef())
-    return nullptr;
+    return NULL;
 
   if (Optional<loc::ConcreteInt> X = V.getAs<loc::ConcreteInt>())
     return &X->getValue();
@@ -940,5 +941,5 @@ const llvm::APSInt *SimpleSValBuilder::getKnownValue(ProgramStateRef state,
     return state->getConstraintManager().getSymVal(state, Sym);
 
   // FIXME: Add support for SymExprs.
-  return nullptr;
+  return NULL;
 }

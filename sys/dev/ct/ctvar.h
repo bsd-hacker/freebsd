@@ -44,8 +44,15 @@
  * Host adapter structure
  *****************************************************************/
 struct ct_bus_access_handle {
-	struct resource *ch_io;			/* core chip ctrl port */
-	struct resource *ch_mem;		/* data port (shm) */
+	bus_space_tag_t ch_iot;			/* core chip ctrl port tag */
+	bus_space_tag_t ch_delayt;		/* delay port tag */
+	bus_space_tag_t ch_datat;		/* data port tag (pio) */
+	bus_space_tag_t ch_memt;		/* data port tag (shm) */
+
+	bus_space_handle_t ch_ioh;
+	bus_space_handle_t ch_delaybah;
+	bus_space_handle_t ch_datah;
+	bus_space_handle_t ch_memh;
 
 	void (*ch_bus_weight)(struct ct_bus_access_handle *);
 
@@ -125,5 +132,5 @@ struct ct_targ_info {
  *****************************************************************/
 int ctprobesubr(struct ct_bus_access_handle *, u_int, int, u_int, int *);
 void ctattachsubr(struct ct_softc *);
-void ctintr(void *);
+int ctintr(void *);
 #endif	/* !_CTVAR_H_ */

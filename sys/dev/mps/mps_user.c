@@ -101,6 +101,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/mps/mps_ioctl.h>
 #include <dev/mps/mpsvar.h>
 #include <dev/mps/mps_table.h>
+#include <dev/mps/mps_sas.h>
 #include <dev/pci/pcivar.h>
 #include <dev/pci/pcireg.h>
 
@@ -309,10 +310,6 @@ mps_user_read_extcfg_header(struct mps_softc *sc,
 	hdr->PageNumber = ext_page_req->header.PageNumber;
 	hdr->ExtPageType = ext_page_req->header.ExtPageType;
 	params.page_address = le32toh(ext_page_req->page_address);
-	params.buffer = NULL;
-	params.length = 0;
-	params.callback = NULL;
-
 	if ((error = mps_read_config_page(sc, &params)) != 0) {
 		/*
 		 * Leave the request. Without resetting the chip, it's

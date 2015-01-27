@@ -571,7 +571,7 @@ ex_start_locked(struct ifnet *ifp)
 			BPF_MTAP(ifp, opkt);
 
 			sc->tx_timeout = 2;
-			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+			ifp->if_opackets++;
 			m_freem(opkt);
 		} else {
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
@@ -684,12 +684,12 @@ ex_tx_intr(struct ex_softc *sc)
 		sc->tx_head = CSR_READ_2(sc, IO_PORT_REG);
 
 		if (tx_status & TX_OK_bit) {
-			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+			ifp->if_opackets++;
 		} else {
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 		}
 
-		if_inc_counter(ifp, IFCOUNTER_COLLISIONS, tx_status & No_Collisions_bits);
+		ifp->if_collisions += tx_status & No_Collisions_bits;
 	}
 
 	/*
@@ -737,7 +737,7 @@ ex_rx_intr(struct ex_softc *sc)
 			MGETHDR(m, M_NOWAIT, MT_DATA);
 			ipkt = m;
 			if (ipkt == NULL) {
-				if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+				ifp->if_iqdrops++;
 			} else {
 				ipkt->m_pkthdr.rcvif = ifp;
 				ipkt->m_pkthdr.len = pkt_len;
@@ -745,11 +745,12 @@ ex_rx_intr(struct ex_softc *sc)
 
 				while (pkt_len > 0) {
 					if (pkt_len >= MINCLSIZE) {
-						if (MCLGET(m, M_NOWAIT)) {
+						MCLGET(m, M_NOWAIT);
+						if (m->m_flags & M_EXT) {
 							m->m_len = MCLBYTES;
 						} else {
 							m_freem(ipkt);
-							if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+							ifp->if_iqdrops++;
 							goto rx_another;
 						}
 					}
@@ -772,7 +773,7 @@ ex_rx_intr(struct ex_softc *sc)
 						MGET(m->m_next, M_NOWAIT, MT_DATA);
 						if (m->m_next == NULL) {
 							m_freem(ipkt);
-							if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+							ifp->if_iqdrops++;
 							goto rx_another;
 						}
 						m = m->m_next;
@@ -791,10 +792,10 @@ ex_rx_intr(struct ex_softc *sc)
 				EX_UNLOCK(sc);
 				(*ifp->if_input)(ifp, ipkt);
 				EX_LOCK(sc);
-				if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+				ifp->if_ipackets++;
 			}
 		} else {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 		}
 		CSR_WRITE_2(sc, HOST_ADDR_REG, sc->rx_head);
 rx_another: ;
@@ -982,7 +983,7 @@ ex_watchdog(void *arg)
 
 		DODEBUG(Status, printf("OIDLE watchdog\n"););
 
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 		ex_reset(sc);
 		ex_start_locked(ifp);
 

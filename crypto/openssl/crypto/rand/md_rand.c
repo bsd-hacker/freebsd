@@ -159,6 +159,7 @@ const char RAND_version[]="RAND" OPENSSL_VERSION_PTEXT;
 static void ssleay_rand_cleanup(void);
 static void ssleay_rand_seed(const void *buf, int num);
 static void ssleay_rand_add(const void *buf, int num, double add_entropy);
+static int ssleay_rand_bytes(unsigned char *buf, int num, int pseudo);
 static int ssleay_rand_nopseudo_bytes(unsigned char *buf, int num);
 static int ssleay_rand_pseudo_bytes(unsigned char *buf, int num);
 static int ssleay_rand_status(void);
@@ -333,7 +334,7 @@ static void ssleay_rand_seed(const void *buf, int num)
 	ssleay_rand_add(buf, num, (double)num);
 	}
 
-int ssleay_rand_bytes(unsigned char *buf, int num, int pseudo, int lock)
+static int ssleay_rand_bytes(unsigned char *buf, int num, int pseudo)
 	{
 	static volatile int stirred_pool = 0;
 	int i,j,k,st_num,st_idx;
@@ -382,7 +383,10 @@ int ssleay_rand_bytes(unsigned char *buf, int num, int pseudo, int lock)
 	 * are fed into the hash function and the results are kept in the
 	 * global 'md'.
 	 */
-	if (lock)
+#ifdef OPENSSL_FIPS
+	/* NB: in FIPS mode we are already under a lock */
+	if (!FIPS_mode())
+#endif
 		CRYPTO_w_lock(CRYPTO_LOCK_RAND);
 
 	/* prevent ssleay_rand_bytes() from trying to obtain the lock again */
@@ -462,7 +466,9 @@ int ssleay_rand_bytes(unsigned char *buf, int num, int pseudo, int lock)
 
 	/* before unlocking, we must clear 'crypto_lock_rand' */
 	crypto_lock_rand = 0;
-	if (lock)
+#ifdef OPENSSL_FIPS
+	if (!FIPS_mode())
+#endif
 		CRYPTO_w_unlock(CRYPTO_LOCK_RAND);
 
 	while (num > 0)
@@ -515,11 +521,15 @@ int ssleay_rand_bytes(unsigned char *buf, int num, int pseudo, int lock)
 	MD_Init(&m);
 	MD_Update(&m,(unsigned char *)&(md_c[0]),sizeof(md_c));
 	MD_Update(&m,local_md,MD_DIGEST_LENGTH);
-	if (lock)
+#ifdef OPENSSL_FIPS
+	if (!FIPS_mode())
+#endif
 		CRYPTO_w_lock(CRYPTO_LOCK_RAND);
 	MD_Update(&m,md,MD_DIGEST_LENGTH);
 	MD_Final(&m,md);
-	if (lock)
+#ifdef OPENSSL_FIPS
+	if (!FIPS_mode())
+#endif
 		CRYPTO_w_unlock(CRYPTO_LOCK_RAND);
 
 	EVP_MD_CTX_cleanup(&m);
@@ -538,14 +548,14 @@ int ssleay_rand_bytes(unsigned char *buf, int num, int pseudo, int lock)
 
 static int ssleay_rand_nopseudo_bytes(unsigned char *buf, int num)
 	{
-	return ssleay_rand_bytes(buf, num, 0, 1);
+	return ssleay_rand_bytes(buf, num, 0);
 	}
 
 /* pseudo-random bytes that are guaranteed to be unique but not
    unpredictable */
 static int ssleay_rand_pseudo_bytes(unsigned char *buf, int num) 
 	{
-	return ssleay_rand_bytes(buf, num, 1, 1);
+	return ssleay_rand_bytes(buf, num, 1);
 	}
 
 static int ssleay_rand_status(void)

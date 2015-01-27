@@ -727,7 +727,7 @@ badpat:
       for (unsigned int i = 0; i < fg->len; i++)
 	if (fg->pattern[i] == '\\')
 	  escaped = !escaped;
-	else if (fg->pattern[i] == '.' && fg->escmap && escaped)
+	else if (fg->pattern[i] == '.' && escaped)
 	  {
 	    fg->escmap[i] = true;
 	    escaped = false;

@@ -63,7 +63,7 @@ class DeclGroupRef {
   }
 
 public:
-  DeclGroupRef() : D(nullptr) {}
+  DeclGroupRef() : D(0) {}
 
   explicit DeclGroupRef(Decl* d) : D(d) {}
   explicit DeclGroupRef(DeclGroup* dg)
@@ -80,7 +80,7 @@ public:
   typedef Decl** iterator;
   typedef Decl* const * const_iterator;
 
-  bool isNull() const { return D == nullptr; }
+  bool isNull() const { return D == 0; }
   bool isSingleDecl() const { return getKind() == SingleDeclKind; }
   bool isDeclGroup() const { return getKind() == DeclGroupKind; }
 
@@ -102,26 +102,26 @@ public:
 
   iterator begin() {
     if (isSingleDecl())
-      return D ? &D : nullptr;
+      return D ? &D : 0;
     return &getDeclGroup()[0];
   }
 
   iterator end() {
     if (isSingleDecl())
-      return D ? &D+1 : nullptr;
+      return D ? &D+1 : 0;
     DeclGroup &G = getDeclGroup();
     return &G[0] + G.size();
   }
 
   const_iterator begin() const {
     if (isSingleDecl())
-      return D ? &D : nullptr;
+      return D ? &D : 0;
     return &getDeclGroup()[0];
   }
 
   const_iterator end() const {
     if (isSingleDecl())
-      return D ? &D+1 : nullptr;
+      return D ? &D+1 : 0;
     const DeclGroup &G = getDeclGroup();
     return &G[0] + G.size();
   }

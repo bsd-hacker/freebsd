@@ -13,7 +13,6 @@ SUBDIR_ORDERED=	${_csu} \
 	libc \
 	libc_nonshared \
 	libcompiler_rt \
-	${_libclang_rt} \
 	${_libcplusplus} \
 	${_libcxxrt} \
 	libelf \
@@ -43,17 +42,14 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libcrypt \
 	libdevinfo \
 	libdevstat \
-	libdpv \
 	libdwarf \
 	libedit \
-	${_libelftc} \
-	${_libevent} \
+	${_libefi} \
 	libexecinfo \
 	libexpat \
 	libfetch \
-	libfigpar \
 	libgeom \
-	${_libgpio} \
+	${_libgpib} \
 	${_libgssapi} \
 	${_librpcsec_gss} \
 	${_libiconv_modules} \
@@ -74,7 +70,6 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	${_libnetgraph} \
 	${_libngatm} \
 	libnv \
-	libohash \
 	libopie \
 	libpam \
 	libpcap \
@@ -92,7 +87,6 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	${_libsmb} \
 	${_libsmdb} \
 	${_libsmutil} \
-	libsqlite3 \
 	libstand \
 	libstdbuf \
 	libstdthreads \
@@ -111,7 +105,6 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	${_libvgl} \
 	${_libvmmapi} \
 	libwrap \
-	libxo \
 	liby \
 	${_libypclnt} \
 	libz \
@@ -134,7 +127,7 @@ SUBDIR_DEPEND_libcam= libsbuf
 SUBDIR_DEPEND_libcapsicum= libnv
 SUBDIR_DEPEND_libcasper= libcapsicum libnv libpjdlog
 SUBDIR_DEPEND_libdevstat= libkvm
-SUBDIR_DEPEND_libdpv= libfigpar ncurses libutil
+SUBDIR_DEPEND_libdiaglog= ncurses
 SUBDIR_DEPEND_libedit= ncurses
 SUBDIR_DEPEND_libg++= msun
 SUBDIR_DEPEND_libgeom= libexpat libsbuf
@@ -191,12 +184,8 @@ _clang=		clang
 _cuse=		libcuse
 .endif
 
-.if ${MK_ELFTOOLCHAIN_TOOLS} != "no"
-_libelftc=	libelftc
-.endif
-
-.if ${MK_GPIO} != "no"
-_libgpio=	libgpio
+.if ${MK_GPIB} != "no"
+_libgpib=	libgpib
 .endif
 
 .if ${MK_GSSAPI} != "no"
@@ -214,15 +203,6 @@ _libcom_err= libcom_err
 
 .if ${MK_LDNS} != "no"
 _libldns=	libldns
-.endif
-
-# The libraries under libclang_rt can only be built by clang, and only make
-# sense to build when clang is enabled at all.  Furthermore, they can only be
-# built for certain architectures.
-.if ${MK_CLANG} != "no" && ${COMPILER_TYPE} == "clang" && \
-    (${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64" || \
-    (${MACHINE_CPUARCH} == "arm" && ${MACHINE_ARCH} != "armeb"))
-_libclang_rt=	libclang_rt
 .endif
 
 .if ${MK_LIBCPLUSPLUS} != "no"
@@ -246,10 +226,6 @@ _libnetgraph=	libnetgraph
 _libypclnt=	libypclnt
 .endif
 
-.if ${MK_PF} != "no"
-_libevent=	libevent
-.endif
-
 .if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
 _libsmb=	libsmb
 _libvgl=	libvgl
@@ -258,9 +234,12 @@ _librtld_db=	librtld_db
 .endif
 
 .if ${MACHINE_CPUARCH} == "amd64"
-.if ${MK_BHYVE} != "no"
 _libvmmapi=	libvmmapi
 .endif
+
+.if ${MACHINE_CPUARCH} == "ia64"
+_libefi=	libefi
+_libsmb=	libsmb
 .endif
 
 .if ${MACHINE_CPUARCH} == "mips"
@@ -297,10 +276,8 @@ _libsmutil=	libsmutil
 _libtelnet=	libtelnet
 .endif
 
-.if ${MK_TESTS_SUPPORT} != "no"
-_atf=		atf
-.endif
 .if ${MK_TESTS} != "no"
+_atf=		atf
 _tests=		tests
 .endif
 

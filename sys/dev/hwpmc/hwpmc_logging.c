@@ -37,9 +37,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#if (__FreeBSD_version >= 1100000)
 #include <sys/capsicum.h>
-#endif
 #include <sys/file.h>
 #include <sys/kernel.h>
 #include <sys/kthread.h>
@@ -68,7 +66,8 @@ SYSCTL_DECL(_kern_hwpmc);
  */
 
 static int pmclog_buffer_size = PMC_LOG_BUFFER_SIZE;
-SYSCTL_INT(_kern_hwpmc, OID_AUTO, logbuffersize, CTLFLAG_RDTUN,
+TUNABLE_INT(PMC_SYSCTL_NAME_PREFIX "logbuffersize", &pmclog_buffer_size);
+SYSCTL_INT(_kern_hwpmc, OID_AUTO, logbuffersize, CTLFLAG_TUN|CTLFLAG_RD,
     &pmclog_buffer_size, 0, "size of log buffers in kilobytes");
 
 /*
@@ -76,7 +75,8 @@ SYSCTL_INT(_kern_hwpmc, OID_AUTO, logbuffersize, CTLFLAG_RDTUN,
  */
 
 static int pmc_nlogbuffers = PMC_NLOGBUFFERS;
-SYSCTL_INT(_kern_hwpmc, OID_AUTO, nbuffers, CTLFLAG_RDTUN,
+TUNABLE_INT(PMC_SYSCTL_NAME_PREFIX "nbuffers", &pmc_nlogbuffers);
+SYSCTL_INT(_kern_hwpmc, OID_AUTO, nbuffers, CTLFLAG_TUN|CTLFLAG_RD,
     &pmc_nlogbuffers, 0, "number of global log buffers");
 
 /*
@@ -570,9 +570,8 @@ pmclog_configure_log(struct pmc_mdep *md, struct pmc_owner *po, int logfd)
 {
 	int error;
 	struct proc *p;
-#if (__FreeBSD_version >= 1100000)
 	cap_rights_t rights;
-#endif
+
 	/*
 	 * As long as it is possible to get a LOR between pmc_sx lock and
 	 * proctree/allproc sx locks used for adding a new process, assure
@@ -595,12 +594,11 @@ pmclog_configure_log(struct pmc_mdep *md, struct pmc_owner *po, int logfd)
 		po->po_file));
 
 	/* get a reference to the file state */
-#if (__FreeBSD_version >= 1100000)
 	error = fget_write(curthread, logfd,
 	    cap_rights_init(&rights, CAP_WRITE), &po->po_file);
 	if (error)
 		goto error;
-#endif
+
 	/* mark process as owning a log file */
 	po->po_flags |= PMC_PO_OWNS_LOGFILE;
 	error = kproc_create(pmclog_loop, po, &po->po_kthread,

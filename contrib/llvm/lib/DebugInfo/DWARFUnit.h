@@ -10,6 +10,7 @@
 #ifndef LLVM_DEBUGINFO_DWARFUNIT_H
 #define LLVM_DEBUGINFO_DWARFUNIT_H
 
+#include "llvm/ADT/OwningPtr.h"
 #include "DWARFDebugAbbrev.h"
 #include "DWARFDebugInfoEntry.h"
 #include "DWARFDebugRangeList.h"
@@ -29,6 +30,7 @@ class raw_ostream;
 class DWARFUnit {
   const DWARFDebugAbbrev *Abbrev;
   StringRef InfoSection;
+  StringRef AbbrevSection;
   StringRef RangeSection;
   uint32_t RangeSectionBase;
   StringRef StringSection;
@@ -48,24 +50,23 @@ class DWARFUnit {
   std::vector<DWARFDebugInfoEntryMinimal> DieArray;
 
   class DWOHolder {
-    std::unique_ptr<object::ObjectFile> DWOFile;
-    std::unique_ptr<DWARFContext> DWOContext;
+    OwningPtr<object::ObjectFile> DWOFile;
+    OwningPtr<DWARFContext> DWOContext;
     DWARFUnit *DWOU;
   public:
     DWOHolder(object::ObjectFile *DWOFile);
     DWARFUnit *getUnit() const { return DWOU; }
   };
-  std::unique_ptr<DWOHolder> DWO;
+  OwningPtr<DWOHolder> DWO;
 
 protected:
   virtual bool extractImpl(DataExtractor debug_info, uint32_t *offset_ptr);
-  /// Size in bytes of the unit header.
-  virtual uint32_t getHeaderSize() const { return 11; }
 
 public:
-  DWARFUnit(const DWARFDebugAbbrev *DA, StringRef IS, StringRef RS,
-            StringRef SS, StringRef SOS, StringRef AOS, const RelocAddrMap *M,
-            bool LE);
+
+  DWARFUnit(const DWARFDebugAbbrev *DA, StringRef IS, StringRef AS,
+            StringRef RS, StringRef SS, StringRef SOS, StringRef AOS,
+            const RelocAddrMap *M, bool LE);
 
   virtual ~DWARFUnit();
 
@@ -102,7 +103,12 @@ public:
                         DWARFDebugRangeList &RangeList) const;
   void clear();
   uint32_t getOffset() const { return Offset; }
+  /// Size in bytes of the compile unit header.
+  virtual uint32_t getSize() const { return 11; }
+  uint32_t getFirstDIEOffset() const { return Offset + getSize(); }
   uint32_t getNextUnitOffset() const { return Offset + Length + 4; }
+  /// Size in bytes of the .debug_info data associated with this compile unit.
+  size_t getDebugInfoSize() const { return Length + 4 - getSize(); }
   uint32_t getLength() const { return Length; }
   uint16_t getVersion() const { return Version; }
   const DWARFAbbreviationDeclarationSet *getAbbreviations() const {
@@ -118,13 +124,15 @@ public:
   const DWARFDebugInfoEntryMinimal *
   getCompileUnitDIE(bool extract_cu_die_only = true) {
     extractDIEsIfNeeded(extract_cu_die_only);
-    return DieArray.empty() ? nullptr : &DieArray[0];
+    return DieArray.empty() ? NULL : &DieArray[0];
   }
 
   const char *getCompilationDir();
   uint64_t getDWOId();
 
-  void collectAddressRanges(DWARFAddressRangesVector &CURanges);
+  void buildAddressRangeTable(DWARFDebugAranges *debug_aranges,
+                              bool clear_dies_if_already_not_parsed,
+                              uint32_t CUOffsetInAranges);
 
   /// getInlinedChainForAddress - fetches inlined chain for a given address.
   /// Returns empty chain if there is no subprogram containing address. The
@@ -132,9 +140,6 @@ public:
   DWARFDebugInfoEntryInlinedChain getInlinedChainForAddress(uint64_t Address);
 
 private:
-  /// Size in bytes of the .debug_info data associated with this compile unit.
-  size_t getDebugInfoSize() const { return Length + 4 - getHeaderSize(); }
-
   /// extractDIEsIfNeeded - Parses a compile unit and indexes its DIEs if it
   /// hasn't already been done. Returns the number of DIEs parsed at this call.
   size_t extractDIEsIfNeeded(bool CUDieOnly);

@@ -77,7 +77,6 @@ static int 	asmc_key_read(device_t dev, const char *key, uint8_t *buf,
     uint8_t);
 static int 	asmc_fan_count(device_t dev);
 static int 	asmc_fan_getvalue(device_t dev, const char *key, int fan);
-static int 	asmc_fan_setvalue(device_t dev, const char *key, int fan, int speed);
 static int 	asmc_temp_getvalue(device_t dev, const char *key);
 static int 	asmc_sms_read(device_t, const char *key, int16_t *val);
 static void 	asmc_sms_calibrate(device_t dev);
@@ -95,7 +94,6 @@ static int	asmc_key_dump(device_t, int);
 /*
  * Model functions.
  */
-static int 	asmc_mb_sysctl_fanid(SYSCTL_HANDLER_ARGS);
 static int 	asmc_mb_sysctl_fanspeed(SYSCTL_HANDLER_ARGS);
 static int 	asmc_mb_sysctl_fansafespeed(SYSCTL_HANDLER_ARGS);
 static int 	asmc_mb_sysctl_fanminspeed(SYSCTL_HANDLER_ARGS);
@@ -117,7 +115,6 @@ struct asmc_model {
 	int (*smc_sms_x)(SYSCTL_HANDLER_ARGS);
 	int (*smc_sms_y)(SYSCTL_HANDLER_ARGS);
 	int (*smc_sms_z)(SYSCTL_HANDLER_ARGS);
-	int (*smc_fan_id)(SYSCTL_HANDLER_ARGS);
 	int (*smc_fan_speed)(SYSCTL_HANDLER_ARGS);
 	int (*smc_fan_safespeed)(SYSCTL_HANDLER_ARGS);
 	int (*smc_fan_minspeed)(SYSCTL_HANDLER_ARGS);
@@ -137,7 +134,7 @@ static struct asmc_model *asmc_match(device_t dev);
 #define ASMC_SMS_FUNCS	asmc_mb_sysctl_sms_x, asmc_mb_sysctl_sms_y, \
 			asmc_mb_sysctl_sms_z
 
-#define ASMC_FAN_FUNCS	asmc_mb_sysctl_fanid, asmc_mb_sysctl_fanspeed, asmc_mb_sysctl_fansafespeed, \
+#define ASMC_FAN_FUNCS	asmc_mb_sysctl_fanspeed, asmc_mb_sysctl_fansafespeed, \
 			asmc_mb_sysctl_fanminspeed, \
 			asmc_mb_sysctl_fanmaxspeed, \
 			asmc_mb_sysctl_fantargetspeed
@@ -199,18 +196,6 @@ struct asmc_model asmc_models[] = {
 	  ASMC_SMS_FUNCS, ASMC_FAN_FUNCS, ASMC_LIGHT_FUNCS,
 	  ASMC_MBP4_TEMPS, ASMC_MBP4_TEMPNAMES, ASMC_MBP4_TEMPDESCS
 	},
-
-	{ 
-	  "MacBookPro8,2", "Apple SMC MacBook Pro (early 2011)",
-	  ASMC_SMS_FUNCS, ASMC_FAN_FUNCS, ASMC_LIGHT_FUNCS,
-	  ASMC_MBP8_TEMPS, ASMC_MBP8_TEMPNAMES, ASMC_MBP8_TEMPDESCS
-	},
-
-	{ 
-	  "MacBookPro11,3", "Apple SMC MacBook Pro Retina Core i7 (2013/2014)",
-	  ASMC_SMS_FUNCS, ASMC_FAN_FUNCS, ASMC_LIGHT_FUNCS,
-	  ASMC_MBP11_TEMPS, ASMC_MBP11_TEMPNAMES, ASMC_MBP11_TEMPDESCS
-	},
 	
 	/* The Mac Mini has no SMS */
 	{ 
@@ -219,15 +204,6 @@ struct asmc_model asmc_models[] = {
 	  ASMC_FAN_FUNCS,
 	  NULL, NULL, NULL,
 	  ASMC_MM_TEMPS, ASMC_MM_TEMPNAMES, ASMC_MM_TEMPDESCS
-	},
-
-	/* The Mac Mini 3,1 has no SMS */
-	{ 
-	  "Macmini3,1", "Apple SMC Mac Mini 3,1",
-	  NULL, NULL, NULL,
-	  ASMC_FAN_FUNCS,
-	  NULL, NULL, NULL,
-	  ASMC_MM31_TEMPS, ASMC_MM31_TEMPNAMES, ASMC_MM31_TEMPDESCS
 	},
 
 	/* Idem for the MacPro */
@@ -239,25 +215,10 @@ struct asmc_model asmc_models[] = {
 	  ASMC_MP_TEMPS, ASMC_MP_TEMPNAMES, ASMC_MP_TEMPDESCS
 	},
 
-	/* Idem for the MacPro  2010*/
-	{
-	  "MacPro5,1", "Apple SMC MacPro (2010)",
-	  NULL, NULL, NULL,
-	  ASMC_FAN_FUNCS,
-	  NULL, NULL, NULL,
-	  ASMC_MP5_TEMPS, ASMC_MP5_TEMPNAMES, ASMC_MP5_TEMPDESCS
-	},
-
 	{
 	  "MacBookAir1,1", "Apple SMC MacBook Air",
 	  ASMC_SMS_FUNCS, ASMC_FAN_FUNCS, NULL, NULL, NULL,
 	  ASMC_MBA_TEMPS, ASMC_MBA_TEMPNAMES, ASMC_MBA_TEMPDESCS
-	},	
-
-	{
-	  "MacBookAir3,1", "Apple SMC MacBook Air Core 2 Duo (Late 2010)",
-	  ASMC_SMS_FUNCS, ASMC_FAN_FUNCS, NULL, NULL, NULL,
-	  ASMC_MBA3_TEMPS, ASMC_MBA3_TEMPNAMES, ASMC_MBA3_TEMPDESCS
 	},	
 
 	
@@ -310,7 +271,7 @@ asmc_match(device_t dev)
 	int i;
 	char *model;
 
-	model = kern_getenv("smbios.system.product");
+	model = getenv("smbios.system.product");
 	if (model == NULL)
 		return (NULL);
 
@@ -391,12 +352,6 @@ asmc_attach(device_t dev)
 
 		SYSCTL_ADD_PROC(sysctlctx,
 		    SYSCTL_CHILDREN(sc->sc_fan_tree[i]),
-		    OID_AUTO, "id", CTLTYPE_STRING | CTLFLAG_RD,
-		    dev, j, model->smc_fan_id, "I",
-		    "Fan ID");
-
-		SYSCTL_ADD_PROC(sysctlctx,
-		    SYSCTL_CHILDREN(sc->sc_fan_tree[i]),
 		    OID_AUTO, "speed", CTLTYPE_INT | CTLFLAG_RD,
 		    dev, j, model->smc_fan_speed, "I",
 		    "Fan speed in RPM");
@@ -411,21 +366,21 @@ asmc_attach(device_t dev)
 		SYSCTL_ADD_PROC(sysctlctx,
 		    SYSCTL_CHILDREN(sc->sc_fan_tree[i]),
 		    OID_AUTO, "minspeed",
-		    CTLTYPE_INT | CTLFLAG_RW,
+		    CTLTYPE_INT | CTLFLAG_RD,
 		    dev, j, model->smc_fan_minspeed, "I",
 		    "Fan minimum speed in RPM");
 
 		SYSCTL_ADD_PROC(sysctlctx,
 		    SYSCTL_CHILDREN(sc->sc_fan_tree[i]),
 		    OID_AUTO, "maxspeed",
-		    CTLTYPE_INT | CTLFLAG_RW,
+		    CTLTYPE_INT | CTLFLAG_RD,
 		    dev, j, model->smc_fan_maxspeed, "I",
 		    "Fan maximum speed in RPM");
 
 		SYSCTL_ADD_PROC(sysctlctx,
 		    SYSCTL_CHILDREN(sc->sc_fan_tree[i]),
 		    OID_AUTO, "targetspeed",
-		    CTLTYPE_INT | CTLFLAG_RW,
+		    CTLTYPE_INT | CTLFLAG_RD,
 		    dev, j, model->smc_fan_targetspeed, "I",
 		    "Fan target speed in RPM");
 	}
@@ -677,10 +632,11 @@ nosms:
 
 	if (bootverbose) {
 		/*
-		 * The number of keys is a 32 bit buffer
+		 * XXX: The number of keys is a 32 bit buffer, but
+		 * right now Apple only uses the last 8 bit.
 		 */
 		asmc_key_read(dev, ASMC_NKEYS, buf, 4);
-		device_printf(dev, "number of keys: %d\n", ntohl(*(uint32_t*)buf));
+		device_printf(dev, "number of keys: %d\n", buf[3]);
 	}	      
 
 #ifdef DEBUG
@@ -941,7 +897,7 @@ asmc_fan_count(device_t dev)
 {
 	uint8_t buf[1];
 
-	if (asmc_key_read(dev, ASMC_KEY_FANCOUNT, buf, sizeof buf) < 0)
+	if (asmc_key_read(dev, ASMC_KEY_FANCOUNT, buf, 1) < 0)
 		return (-1);
 
 	return (buf[0]);
@@ -955,44 +911,11 @@ asmc_fan_getvalue(device_t dev, const char *key, int fan)
 	char fankey[5];
 
 	snprintf(fankey, sizeof(fankey), key, fan);
-	if (asmc_key_read(dev, fankey, buf, sizeof buf) < 0)
+	if (asmc_key_read(dev, fankey, buf, 2) < 0)
 		return (-1);
 	speed = (buf[0] << 6) | (buf[1] >> 2);
 
 	return (speed);
-}
-
-static char*
-asmc_fan_getstring(device_t dev, const char *key, int fan)
-{
-	uint8_t buf[16];
-	char fankey[5];
-	char* desc;
-
-	snprintf(fankey, sizeof(fankey), key, fan);
-	if (asmc_key_read(dev, fankey, buf, sizeof buf) < 0)
-		return (NULL);
-	desc = buf+4;
-
-	return (desc);
-}
-
-static int
-asmc_fan_setvalue(device_t dev, const char *key, int fan, int speed)
-{
-	uint8_t buf[2];
-	char fankey[5];
-
-	speed *= 4;
-
-	buf[0] = speed>>8;
-	buf[1] = speed;
-
-	snprintf(fankey, sizeof(fankey), key, fan);
-	if (asmc_key_write(dev, fankey, buf, sizeof buf) < 0)
-		return (-1);
-
-	return (0);
 }
 
 static int
@@ -1005,22 +928,6 @@ asmc_mb_sysctl_fanspeed(SYSCTL_HANDLER_ARGS)
 
 	v = asmc_fan_getvalue(dev, ASMC_KEY_FANSPEED, fan);
 	error = sysctl_handle_int(oidp, &v, 0, req);
-
-	return (error);
-}
-
-static int
-asmc_mb_sysctl_fanid(SYSCTL_HANDLER_ARGS)
-{
-	device_t dev = (device_t) arg1;
-	int fan = arg2;
-	int error = true;
-	char* desc;
-
-	desc = asmc_fan_getstring(dev, ASMC_KEY_FANID, fan);
-
-	if (desc != NULL)
-		error = sysctl_handle_string(oidp, desc, 0, req);
 
 	return (error);
 }
@@ -1051,11 +958,6 @@ asmc_mb_sysctl_fanminspeed(SYSCTL_HANDLER_ARGS)
 	v = asmc_fan_getvalue(dev, ASMC_KEY_FANMINSPEED, fan);
 	error = sysctl_handle_int(oidp, &v, 0, req);
 
-	if (error == 0 && req->newptr != NULL) {
-		unsigned int newspeed = v;
-		asmc_fan_setvalue(dev, ASMC_KEY_FANMINSPEED, fan, newspeed);
-	}
-
 	return (error);
 }
 
@@ -1069,11 +971,6 @@ asmc_mb_sysctl_fanmaxspeed(SYSCTL_HANDLER_ARGS)
 
 	v = asmc_fan_getvalue(dev, ASMC_KEY_FANMAXSPEED, fan);
 	error = sysctl_handle_int(oidp, &v, 0, req);
-
-	if (error == 0 && req->newptr != NULL) {
-		unsigned int newspeed = v;
-		asmc_fan_setvalue(dev, ASMC_KEY_FANMAXSPEED, fan, newspeed);
-	}
 
 	return (error);
 }
@@ -1089,11 +986,6 @@ asmc_mb_sysctl_fantargetspeed(SYSCTL_HANDLER_ARGS)
 	v = asmc_fan_getvalue(dev, ASMC_KEY_FANTARGETSPEED, fan);
 	error = sysctl_handle_int(oidp, &v, 0, req);
 
-	if (error == 0 && req->newptr != NULL) {
-		unsigned int newspeed = v;
-		asmc_fan_setvalue(dev, ASMC_KEY_FANTARGETSPEED, fan, newspeed);
-	}
-
 	return (error);
 }
 
@@ -1108,7 +1000,7 @@ asmc_temp_getvalue(device_t dev, const char *key)
 	/*
 	 * Check for invalid temperatures.
 	 */
-	if (asmc_key_read(dev, key, buf, sizeof buf) < 0)
+	if (asmc_key_read(dev, key, buf, 2) < 0)
 		return (-1);
 
 	return (buf[0]);
@@ -1141,7 +1033,7 @@ asmc_sms_read(device_t dev, const char *key, int16_t *val)
 	case 'X':
 	case 'Y':
 	case 'Z':
-		error =	asmc_key_read(dev, key, buf, sizeof buf);
+		error =	asmc_key_read(dev, key, buf, 2);
 		break;
 	default:
 		device_printf(dev, "%s called with invalid argument %s\n",
@@ -1283,7 +1175,7 @@ asmc_mb_sysctl_sms_z(SYSCTL_HANDLER_ARGS)
 
 	asmc_sms_read(dev, ASMC_KEY_SMS_Z, &val);
 	v = (int32_t) val;
-	error = sysctl_handle_int(oidp, &v, 0, req);
+	error = sysctl_handle_int(oidp, &v, sizeof(v), req);
 
 	return (error);
 }
@@ -1296,9 +1188,9 @@ asmc_mbp_sysctl_light_left(SYSCTL_HANDLER_ARGS)
 	int error;
 	int32_t v;
 
-	asmc_key_read(dev, ASMC_KEY_LIGHTLEFT, buf, sizeof buf);
+	asmc_key_read(dev, ASMC_KEY_LIGHTLEFT, buf, 6);
 	v = buf[2];
-	error = sysctl_handle_int(oidp, &v, 0, req);
+	error = sysctl_handle_int(oidp, &v, sizeof(v), req);
 
 	return (error);
 }
@@ -1311,9 +1203,9 @@ asmc_mbp_sysctl_light_right(SYSCTL_HANDLER_ARGS)
 	int error;
 	int32_t v;
 	
-	asmc_key_read(dev, ASMC_KEY_LIGHTRIGHT, buf, sizeof buf);
+	asmc_key_read(dev, ASMC_KEY_LIGHTRIGHT, buf, 6);
 	v = buf[2];
-	error = sysctl_handle_int(oidp, &v, 0, req);
+	error = sysctl_handle_int(oidp, &v, sizeof(v), req);
 	
 	return (error);
 }
@@ -1324,19 +1216,19 @@ asmc_mbp_sysctl_light_control(SYSCTL_HANDLER_ARGS)
 	device_t dev = (device_t) arg1;
 	uint8_t buf[2];
 	int error;
-	static unsigned int level;
-	int v;
-
-	v = level;
-	error = sysctl_handle_int(oidp, &v, 0, req);
-
+	unsigned int level;
+	static int32_t v;
+	
+	error = sysctl_handle_int(oidp, &v, sizeof(v), req);
 	if (error == 0 && req->newptr != NULL) {
-		if (v < 0 || v > 255)
+		level = *(unsigned int *)req->newptr;
+		if (level > 255)
 			return (EINVAL);
-		level = v;
+		v = level;
 		buf[0] = level;
 		buf[1] = 0x00;
-		asmc_key_write(dev, ASMC_KEY_LIGHTVALUE, buf, sizeof buf);
+		asmc_key_write(dev, ASMC_KEY_LIGHTVALUE, buf, 2);
 	}
+	
 	return (error);
 }

@@ -314,6 +314,10 @@ EFI_STATUS
 #define EFI_IMAGE_MACHINE_IA32      0x014c
 #endif
 
+#if !defined(EFI_IMAGE_MACHINE_IA64)
+#define EFI_IMAGE_MACHINE_IA64      0x0200
+#endif
+
 #if !defined(EFI_IMAGE_MACHINE_EBC)
 #define EFI_IMAGE_MACHINE_EBC       0x0EBC
 #endif
@@ -842,8 +846,6 @@ typedef struct {
 #define SAL_SYSTEM_TABLE_GUID    \
   { 0xeb9d2d32, 0x2d88, 0x11d3, 0x9a, 0x16, 0x0, 0x90, 0x27, 0x3f, 0xc1, 0x4d }
 
-#define FDT_TABLE_GUID    \
-  { 0xb1b621d5, 0xf19c, 0x41a5, 0x83, 0x0b, 0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0 }
 
 typedef struct _EFI_CONFIGURATION_TABLE {
   EFI_GUID                VendorGuid;

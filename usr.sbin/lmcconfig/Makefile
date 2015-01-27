@@ -3,7 +3,8 @@
 PROG=	lmcconfig
 MAN=	lmcconfig.8
 
-LIBADD=	netgraph
+DPADD=	${LIBNETGRAPH}
+LDADD=	-lnetgraph
 
 WARNS?=	3
 

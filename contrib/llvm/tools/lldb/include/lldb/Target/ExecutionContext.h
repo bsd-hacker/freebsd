@@ -18,10 +18,10 @@
 /// variable value from a data section in one of the object files in 
 /// a target). There are two types of objects that hold onto execution
 /// contexts: ExecutionContextRef and ExecutionContext. Both of these
-/// objects are described below.
+/// objects are deascribed below.
 /// 
 /// Not all objects in an ExectionContext objects will be valid. If you want
-/// to refer strongly (ExectionContext) or weakly (ExectionContextRef) to
+/// to refer stronly (ExectionContext) or weakly (ExectionContextRef) to
 /// a process, then only the process and target references will be valid.
 /// For threads, only the thread, process and target references will be
 /// filled in. For frames, all of the objects will be filled in.
@@ -49,7 +49,7 @@ namespace lldb_private {
 /// context that might change over time. For example, if an object wants
 /// to refer to a stack frame, it should hold onto an ExecutionContextRef
 /// to a frame object. The backing object that represents the stack frame
-/// might change over time and instances of this object can track the logical
+/// might change over time and instaces of this object can track the logical
 /// object that refers to a frame even if it does change.
 ///
 /// These objects also don't keep execution objects around longer than they
@@ -64,7 +64,7 @@ namespace lldb_private {
 /// don't keep these objects around, they are safe to keep around. 
 ///
 /// The general rule of thumb is all long lived objects that want to
-/// refer to execution contexts should use ExecutionContextRef objects.
+/// refer to execution contexts should use ExecutionContextRef objcts. 
 /// The ExecutionContext class is used to temporarily get shared 
 /// pointers to any execution context objects that are still around
 /// so they are guaranteed to exist during a function that requires the
@@ -89,7 +89,7 @@ public:
     /// Construct using an ExecutionContext object that might be NULL.
     /// 
     /// If \a exe_ctx_ptr is valid, then make weak references to any
-    /// valid objects in the ExecutionContext, otherwise no weak 
+    /// valid objects in the ExecutionContext, othewise no weak 
     /// references to any execution context objects will be made.
     //------------------------------------------------------------------
     ExecutionContextRef (const ExecutionContext *exe_ctx_ptr);
@@ -104,7 +104,7 @@ public:
     //------------------------------------------------------------------
     /// Assignment operator
     /// 
-    /// Copy all weak references in \a rhs.
+    /// Copy all weak refernces in \a rhs.
     //------------------------------------------------------------------
     ExecutionContextRef &
     operator =(const ExecutionContextRef &rhs);
@@ -112,7 +112,7 @@ public:
     //------------------------------------------------------------------
     /// Assignment operator from a ExecutionContext
     /// 
-    /// Make weak references to any strongly referenced objects in \a exe_ctx.
+    /// Make weak refernces to any stringly referenced objects in \a exe_ctx.
     //------------------------------------------------------------------
     ExecutionContextRef &
     operator =(const ExecutionContext &exe_ctx);
@@ -129,13 +129,13 @@ public:
     /// Construct using an execution context scope.
     ///
     /// If the ExecutionContextScope object is valid and refers to a frame,
-    /// make weak references too the frame, thread, process and target.
+    /// make weak refernces too the frame, thread, process and target.
     /// If the ExecutionContextScope object is valid and refers to a thread,
-    /// make weak references too the thread, process and target.
+    /// make weak refernces too the thread, process and target.
     /// If the ExecutionContextScope object is valid and refers to a process,
-    /// make weak references too the process and target.
+    /// make weak refernces too the process and target.
     /// If the ExecutionContextScope object is valid and refers to a target,
-    /// make weak references too the target.
+    /// make weak refernces too the target.
     //------------------------------------------------------------------
     ExecutionContextRef (ExecutionContextScope *exe_scope);
 
@@ -143,13 +143,13 @@ public:
     /// Construct using an execution context scope.
     ///
     /// If the ExecutionContextScope object refers to a frame,
-    /// make weak references too the frame, thread, process and target.
+    /// make weak refernces too the frame, thread, process and target.
     /// If the ExecutionContextScope object refers to a thread,
-    /// make weak references too the thread, process and target.
+    /// make weak refernces too the thread, process and target.
     /// If the ExecutionContextScope object refers to a process,
-    /// make weak references too the process and target.
+    /// make weak refernces too the process and target.
     /// If the ExecutionContextScope object refers to a target,
-    /// make weak references too the target.
+    /// make weak refernces too the target.
     //------------------------------------------------------------------
     ExecutionContextRef (ExecutionContextScope &exe_scope);
 
@@ -302,8 +302,8 @@ public:
 
     //------------------------------------------------------------------
     /// Returns true if this object has a weak reference to a thread.
-    /// The return value is only an indication of whether this object has
-    /// a weak reference and does not indicate whether the weak reference
+    /// The return value is only an indication of wether this object has
+    /// a weak reference and does not indicate wether the weak rerference
     /// is valid or not.
     //------------------------------------------------------------------
     bool
@@ -314,8 +314,8 @@ public:
 
     //------------------------------------------------------------------
     /// Returns true if this object has a weak reference to a frame.
-    /// The return value is only an indication of whether this object has
-    /// a weak reference and does not indicate whether the weak reference
+    /// The return value is only an indication of wether this object has
+    /// a weak reference and does not indicate wether the weak rerference
     /// is valid or not.
     //------------------------------------------------------------------
     bool

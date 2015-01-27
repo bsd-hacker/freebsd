@@ -20,689 +20,50 @@
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#define NETDISSECT_REWORKED
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/tcpdump/print-802_11.c,v 1.49 2007-12-29 23:25:02 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
 #include <tcpdump-stdinc.h>
 
+#include <stdio.h>
+#include <pcap.h>
 #include <string.h>
 
 #include "interface.h"
 #include "addrtoname.h"
+#include "ethertype.h"
 
 #include "extract.h"
 
 #include "cpack.h"
 
-
-/* Lengths of 802.11 header components. */
-#define	IEEE802_11_FC_LEN		2
-#define	IEEE802_11_DUR_LEN		2
-#define	IEEE802_11_DA_LEN		6
-#define	IEEE802_11_SA_LEN		6
-#define	IEEE802_11_BSSID_LEN		6
-#define	IEEE802_11_RA_LEN		6
-#define	IEEE802_11_TA_LEN		6
-#define	IEEE802_11_SEQ_LEN		2
-#define	IEEE802_11_CTL_LEN		2
-#define	IEEE802_11_IV_LEN		3
-#define	IEEE802_11_KID_LEN		1
-
-/* Frame check sequence length. */
-#define	IEEE802_11_FCS_LEN		4
-
-/* Lengths of beacon components. */
-#define	IEEE802_11_TSTAMP_LEN		8
-#define	IEEE802_11_BCNINT_LEN		2
-#define	IEEE802_11_CAPINFO_LEN		2
-#define	IEEE802_11_LISTENINT_LEN	2
-
-#define	IEEE802_11_AID_LEN		2
-#define	IEEE802_11_STATUS_LEN		2
-#define	IEEE802_11_REASON_LEN		2
-
-/* Length of previous AP in reassocation frame */
-#define	IEEE802_11_AP_LEN		6
-
-#define	T_MGMT 0x0  /* management */
-#define	T_CTRL 0x1  /* control */
-#define	T_DATA 0x2 /* data */
-#define	T_RESV 0x3  /* reserved */
-
-#define	ST_ASSOC_REQUEST   	0x0
-#define	ST_ASSOC_RESPONSE 	0x1
-#define	ST_REASSOC_REQUEST   	0x2
-#define	ST_REASSOC_RESPONSE  	0x3
-#define	ST_PROBE_REQUEST   	0x4
-#define	ST_PROBE_RESPONSE   	0x5
-/* RESERVED 			0x6  */
-/* RESERVED 			0x7  */
-#define	ST_BEACON   		0x8
-#define	ST_ATIM			0x9
-#define	ST_DISASSOC		0xA
-#define	ST_AUTH			0xB
-#define	ST_DEAUTH		0xC
-#define	ST_ACTION		0xD
-/* RESERVED 			0xE  */
-/* RESERVED 			0xF  */
-
-static const struct tok st_str[] = {
-	{ ST_ASSOC_REQUEST,    "Assoc Request"    },
-	{ ST_ASSOC_RESPONSE,   "Assoc Response"   },
-	{ ST_REASSOC_REQUEST,  "ReAssoc Request"  },
-	{ ST_REASSOC_RESPONSE, "ReAssoc Response" },
-	{ ST_PROBE_REQUEST,    "Probe Request"    },
-	{ ST_PROBE_RESPONSE,   "Probe Response"   },
-	{ ST_BEACON,           "Beacon"           },
-	{ ST_ATIM,             "ATIM"             },
-	{ ST_DISASSOC,         "Disassociation"   },
-	{ ST_AUTH,             "Authentication"   },
-	{ ST_DEAUTH,           "DeAuthentication" },
-	{ ST_ACTION,           "Action"           },
-	{ 0, NULL }
-};
-
-#define CTRL_CONTROL_WRAPPER	0x7
-#define	CTRL_BAR	0x8
-#define	CTRL_BA		0x9
-#define	CTRL_PS_POLL	0xA
-#define	CTRL_RTS	0xB
-#define	CTRL_CTS	0xC
-#define	CTRL_ACK	0xD
-#define	CTRL_CF_END	0xE
-#define	CTRL_END_ACK	0xF
-
-static const struct tok ctrl_str[] = {
-	{ CTRL_CONTROL_WRAPPER, "Control Wrapper" },
-	{ CTRL_BAR,             "BAR"             },
-	{ CTRL_BA,              "BA"              },
-	{ CTRL_PS_POLL,         "Power Save-Poll" },
-	{ CTRL_RTS,             "Request-To-Send" },
-	{ CTRL_CTS,             "Clear-To-Send"   },
-	{ CTRL_ACK,             "Acknowledgment"  },
-	{ CTRL_CF_END,          "CF-End"          },
-	{ CTRL_END_ACK,         "CF-End+CF-Ack"   },
-	{ 0, NULL }
-};
-
-#define	DATA_DATA			0x0
-#define	DATA_DATA_CF_ACK		0x1
-#define	DATA_DATA_CF_POLL		0x2
-#define	DATA_DATA_CF_ACK_POLL		0x3
-#define	DATA_NODATA			0x4
-#define	DATA_NODATA_CF_ACK		0x5
-#define	DATA_NODATA_CF_POLL		0x6
-#define	DATA_NODATA_CF_ACK_POLL		0x7
-
-#define DATA_QOS_DATA			0x8
-#define DATA_QOS_DATA_CF_ACK		0x9
-#define DATA_QOS_DATA_CF_POLL		0xA
-#define DATA_QOS_DATA_CF_ACK_POLL	0xB
-#define DATA_QOS_NODATA			0xC
-#define DATA_QOS_CF_POLL_NODATA		0xE
-#define DATA_QOS_CF_ACK_POLL_NODATA	0xF
-
-/*
- * The subtype field of a data frame is, in effect, composed of 4 flag
- * bits - CF-Ack, CF-Poll, Null (means the frame doesn't actually have
- * any data), and QoS.
- */
-#define DATA_FRAME_IS_CF_ACK(x)		((x) & 0x01)
-#define DATA_FRAME_IS_CF_POLL(x)	((x) & 0x02)
-#define DATA_FRAME_IS_NULL(x)		((x) & 0x04)
-#define DATA_FRAME_IS_QOS(x)		((x) & 0x08)
-
-/*
- * Bits in the frame control field.
- */
-#define	FC_VERSION(fc)		((fc) & 0x3)
-#define	FC_TYPE(fc)		(((fc) >> 2) & 0x3)
-#define	FC_SUBTYPE(fc)		(((fc) >> 4) & 0xF)
-#define	FC_TO_DS(fc)		((fc) & 0x0100)
-#define	FC_FROM_DS(fc)		((fc) & 0x0200)
-#define	FC_MORE_FLAG(fc)	((fc) & 0x0400)
-#define	FC_RETRY(fc)		((fc) & 0x0800)
-#define	FC_POWER_MGMT(fc)	((fc) & 0x1000)
-#define	FC_MORE_DATA(fc)	((fc) & 0x2000)
-#define	FC_WEP(fc)		((fc) & 0x4000)
-#define	FC_ORDER(fc)		((fc) & 0x8000)
-
-struct mgmt_header_t {
-	uint16_t	fc;
-	uint16_t 	duration;
-	uint8_t		da[6];
-	uint8_t		sa[6];
-	uint8_t		bssid[6];
-	uint16_t	seq_ctrl;
-};
-
-#define	MGMT_HDRLEN	(IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+\
-			 IEEE802_11_DA_LEN+IEEE802_11_SA_LEN+\
-			 IEEE802_11_BSSID_LEN+IEEE802_11_SEQ_LEN)
-
-#define	CAPABILITY_ESS(cap)	((cap) & 0x0001)
-#define	CAPABILITY_IBSS(cap)	((cap) & 0x0002)
-#define	CAPABILITY_CFP(cap)	((cap) & 0x0004)
-#define	CAPABILITY_CFP_REQ(cap)	((cap) & 0x0008)
-#define	CAPABILITY_PRIVACY(cap)	((cap) & 0x0010)
-
-struct ssid_t {
-	uint8_t		element_id;
-	uint8_t		length;
-	u_char		ssid[33];  /* 32 + 1 for null */
-};
-
-struct rates_t {
-	uint8_t		element_id;
-	uint8_t		length;
-	uint8_t		rate[16];
-};
-
-struct challenge_t {
-	uint8_t		element_id;
-	uint8_t		length;
-	uint8_t		text[254]; /* 1-253 + 1 for null */
-};
-
-struct fh_t {
-	uint8_t		element_id;
-	uint8_t		length;
-	uint16_t	dwell_time;
-	uint8_t		hop_set;
-	uint8_t 	hop_pattern;
-	uint8_t		hop_index;
-};
-
-struct ds_t {
-	uint8_t		element_id;
-	uint8_t		length;
-	uint8_t		channel;
-};
-
-struct cf_t {
-	uint8_t		element_id;
-	uint8_t		length;
-	uint8_t		count;
-	uint8_t		period;
-	uint16_t	max_duration;
-	uint16_t	dur_remaing;
-};
-
-struct tim_t {
-	uint8_t		element_id;
-	uint8_t		length;
-	uint8_t		count;
-	uint8_t		period;
-	uint8_t		bitmap_control;
-	uint8_t		bitmap[251];
-};
-
-#define	E_SSID 		0
-#define	E_RATES 	1
-#define	E_FH	 	2
-#define	E_DS 		3
-#define	E_CF	 	4
-#define	E_TIM	 	5
-#define	E_IBSS 		6
-/* reserved 		7 */
-/* reserved 		8 */
-/* reserved 		9 */
-/* reserved 		10 */
-/* reserved 		11 */
-/* reserved 		12 */
-/* reserved 		13 */
-/* reserved 		14 */
-/* reserved 		15 */
-/* reserved 		16 */
-
-#define	E_CHALLENGE 	16
-/* reserved 		17 */
-/* reserved 		18 */
-/* reserved 		19 */
-/* reserved 		16 */
-/* reserved 		16 */
-
-
-struct mgmt_body_t {
-	uint8_t   	timestamp[IEEE802_11_TSTAMP_LEN];
-	uint16_t  	beacon_interval;
-	uint16_t 	listen_interval;
-	uint16_t 	status_code;
-	uint16_t 	aid;
-	u_char		ap[IEEE802_11_AP_LEN];
-	uint16_t	reason_code;
-	uint16_t	auth_alg;
-	uint16_t	auth_trans_seq_num;
-	int		challenge_present;
-	struct challenge_t  challenge;
-	uint16_t	capability_info;
-	int		ssid_present;
-	struct ssid_t	ssid;
-	int		rates_present;
-	struct rates_t 	rates;
-	int		ds_present;
-	struct ds_t	ds;
-	int		cf_present;
-	struct cf_t	cf;
-	int		fh_present;
-	struct fh_t	fh;
-	int		tim_present;
-	struct tim_t	tim;
-};
-
-struct ctrl_rts_t {
-	uint16_t	fc;
-	uint16_t	duration;
-	uint8_t		ra[6];
-	uint8_t		ta[6];
-	uint8_t		fcs[4];
-};
-
-#define	CTRL_RTS_HDRLEN	(IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+\
-			 IEEE802_11_RA_LEN+IEEE802_11_TA_LEN)
-
-struct ctrl_cts_t {
-	uint16_t	fc;
-	uint16_t	duration;
-	uint8_t		ra[6];
-	uint8_t		fcs[4];
-};
-
-#define	CTRL_CTS_HDRLEN	(IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+IEEE802_11_RA_LEN)
-
-struct ctrl_ack_t {
-	uint16_t	fc;
-	uint16_t	duration;
-	uint8_t		ra[6];
-	uint8_t		fcs[4];
-};
-
-#define	CTRL_ACK_HDRLEN	(IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+IEEE802_11_RA_LEN)
-
-struct ctrl_ps_poll_t {
-	uint16_t	fc;
-	uint16_t	aid;
-	uint8_t		bssid[6];
-	uint8_t		ta[6];
-	uint8_t		fcs[4];
-};
-
-#define	CTRL_PS_POLL_HDRLEN	(IEEE802_11_FC_LEN+IEEE802_11_AID_LEN+\
-				 IEEE802_11_BSSID_LEN+IEEE802_11_TA_LEN)
-
-struct ctrl_end_t {
-	uint16_t	fc;
-	uint16_t	duration;
-	uint8_t		ra[6];
-	uint8_t		bssid[6];
-	uint8_t		fcs[4];
-};
-
-#define	CTRL_END_HDRLEN	(IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+\
-			 IEEE802_11_RA_LEN+IEEE802_11_BSSID_LEN)
-
-struct ctrl_end_ack_t {
-	uint16_t	fc;
-	uint16_t	duration;
-	uint8_t		ra[6];
-	uint8_t		bssid[6];
-	uint8_t		fcs[4];
-};
-
-#define	CTRL_END_ACK_HDRLEN	(IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+\
-				 IEEE802_11_RA_LEN+IEEE802_11_BSSID_LEN)
-
-struct ctrl_ba_t {
-	uint16_t	fc;
-	uint16_t	duration;
-	uint8_t		ra[6];
-	uint8_t		fcs[4];
-};
-
-#define	CTRL_BA_HDRLEN	(IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+IEEE802_11_RA_LEN)
-
-struct ctrl_bar_t {
-	uint16_t	fc;
-	uint16_t	dur;
-	uint8_t		ra[6];
-	uint8_t		ta[6];
-	uint16_t	ctl;
-	uint16_t	seq;
-	uint8_t		fcs[4];
-};
-
-#define	CTRL_BAR_HDRLEN		(IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+\
-				 IEEE802_11_RA_LEN+IEEE802_11_TA_LEN+\
-				 IEEE802_11_CTL_LEN+IEEE802_11_SEQ_LEN)
-
-struct meshcntl_t {
-	uint8_t		flags;
-	uint8_t		ttl;
-	uint8_t		seq[4];
-	uint8_t		addr4[6];
-	uint8_t		addr5[6];
-	uint8_t		addr6[6];
-};
-
-#define	IV_IV(iv)	((iv) & 0xFFFFFF)
-#define	IV_PAD(iv)	(((iv) >> 24) & 0x3F)
-#define	IV_KEYID(iv)	(((iv) >> 30) & 0x03)
-
-/* $FreeBSD$ */
-/* NetBSD: ieee802_11_radio.h,v 1.2 2006/02/26 03:04:03 dyoung Exp  */
-
-/*-
- * Copyright (c) 2003, 2004 David Young.  All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of David Young may not be used to endorse or promote
- *    products derived from this software without specific prior
- *    written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY DAVID YOUNG ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
- * PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL DAVID
- * YOUNG BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
- * TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
- * OF SUCH DAMAGE.
- */
-
-/* A generic radio capture format is desirable. It must be
- * rigidly defined (e.g., units for fields should be given),
- * and easily extensible.
- *
- * The following is an extensible radio capture format. It is
- * based on a bitmap indicating which fields are present.
- *
- * I am trying to describe precisely what the application programmer
- * should expect in the following, and for that reason I tell the
- * units and origin of each measurement (where it applies), or else I
- * use sufficiently weaselly language ("is a monotonically nondecreasing
- * function of...") that I cannot set false expectations for lawyerly
- * readers.
- */
-
-/*
- * The radio capture header precedes the 802.11 header.
- *
- * Note well: all radiotap fields are little-endian.
- */
-struct ieee80211_radiotap_header {
-	uint8_t		it_version;	/* Version 0. Only increases
-					 * for drastic changes,
-					 * introduction of compatible
-					 * new fields does not count.
-					 */
-	uint8_t		it_pad;
-	uint16_t       it_len;         /* length of the whole
-					 * header in bytes, including
-					 * it_version, it_pad,
-					 * it_len, and data fields.
-					 */
-	uint32_t       it_present;     /* A bitmap telling which
-					 * fields are present. Set bit 31
-					 * (0x80000000) to extend the
-					 * bitmap by another 32 bits.
-					 * Additional extensions are made
-					 * by setting bit 31.
-					 */
-};
-
-/* Name                                 Data type       Units
- * ----                                 ---------       -----
- *
- * IEEE80211_RADIOTAP_TSFT              uint64_t       microseconds
- *
- *      Value in microseconds of the MAC's 64-bit 802.11 Time
- *      Synchronization Function timer when the first bit of the
- *      MPDU arrived at the MAC. For received frames, only.
- *
- * IEEE80211_RADIOTAP_CHANNEL           2 x uint16_t   MHz, bitmap
- *
- *      Tx/Rx frequency in MHz, followed by flags (see below).
- *	Note that IEEE80211_RADIOTAP_XCHANNEL must be used to
- *	represent an HT channel as there is not enough room in
- *	the flags word.
- *
- * IEEE80211_RADIOTAP_FHSS              uint16_t       see below
- *
- *      For frequency-hopping radios, the hop set (first byte)
- *      and pattern (second byte).
- *
- * IEEE80211_RADIOTAP_RATE              uint8_t        500kb/s or index
- *
- *      Tx/Rx data rate.  If bit 0x80 is set then it represents an
- *	an MCS index and not an IEEE rate.
- *
- * IEEE80211_RADIOTAP_DBM_ANTSIGNAL     int8_t          decibels from
- *                                                      one milliwatt (dBm)
- *
- *      RF signal power at the antenna, decibel difference from
- *      one milliwatt.
- *
- * IEEE80211_RADIOTAP_DBM_ANTNOISE      int8_t          decibels from
- *                                                      one milliwatt (dBm)
- *
- *      RF noise power at the antenna, decibel difference from one
- *      milliwatt.
- *
- * IEEE80211_RADIOTAP_DB_ANTSIGNAL      uint8_t        decibel (dB)
- *
- *      RF signal power at the antenna, decibel difference from an
- *      arbitrary, fixed reference.
- *
- * IEEE80211_RADIOTAP_DB_ANTNOISE       uint8_t        decibel (dB)
- *
- *      RF noise power at the antenna, decibel difference from an
- *      arbitrary, fixed reference point.
- *
- * IEEE80211_RADIOTAP_LOCK_QUALITY      uint16_t       unitless
- *
- *      Quality of Barker code lock. Unitless. Monotonically
- *      nondecreasing with "better" lock strength. Called "Signal
- *      Quality" in datasheets.  (Is there a standard way to measure
- *      this?)
- *
- * IEEE80211_RADIOTAP_TX_ATTENUATION    uint16_t       unitless
- *
- *      Transmit power expressed as unitless distance from max
- *      power set at factory calibration.  0 is max power.
- *      Monotonically nondecreasing with lower power levels.
- *
- * IEEE80211_RADIOTAP_DB_TX_ATTENUATION uint16_t       decibels (dB)
- *
- *      Transmit power expressed as decibel distance from max power
- *      set at factory calibration.  0 is max power.  Monotonically
- *      nondecreasing with lower power levels.
- *
- * IEEE80211_RADIOTAP_DBM_TX_POWER      int8_t          decibels from
- *                                                      one milliwatt (dBm)
- *
- *      Transmit power expressed as dBm (decibels from a 1 milliwatt
- *      reference). This is the absolute power level measured at
- *      the antenna port.
- *
- * IEEE80211_RADIOTAP_FLAGS             uint8_t        bitmap
- *
- *      Properties of transmitted and received frames. See flags
- *      defined below.
- *
- * IEEE80211_RADIOTAP_ANTENNA           uint8_t        antenna index
- *
- *      Unitless indication of the Rx/Tx antenna for this packet.
- *      The first antenna is antenna 0.
- *
- * IEEE80211_RADIOTAP_RX_FLAGS          uint16_t       bitmap
- *
- *     Properties of received frames. See flags defined below.
- *
- * IEEE80211_RADIOTAP_XCHANNEL          uint32_t	bitmap
- *					uint16_t	MHz
- *					uint8_t		channel number
- *					uint8_t		.5 dBm
- *
- *	Extended channel specification: flags (see below) followed by
- *	frequency in MHz, the corresponding IEEE channel number, and
- *	finally the maximum regulatory transmit power cap in .5 dBm
- *	units.  This property supersedes IEEE80211_RADIOTAP_CHANNEL
- *	and only one of the two should be present.
- *
- * IEEE80211_RADIOTAP_MCS		uint8_t		known
- *					uint8_t		flags
- *					uint8_t		mcs
- *
- *	Bitset indicating which fields have known values, followed
- *	by bitset of flag values, followed by the MCS rate index as
- *	in IEEE 802.11n.
- *
- * IEEE80211_RADIOTAP_VENDOR_NAMESPACE
- *					uint8_t  OUI[3]
- *                                   uint8_t  subspace
- *                                   uint16_t length
- *
- *     The Vendor Namespace Field contains three sub-fields. The first
- *     sub-field is 3 bytes long. It contains the vendor's IEEE 802
- *     Organizationally Unique Identifier (OUI). The fourth byte is a
- *     vendor-specific "namespace selector."
- *
- */
-enum ieee80211_radiotap_type {
-	IEEE80211_RADIOTAP_TSFT = 0,
-	IEEE80211_RADIOTAP_FLAGS = 1,
-	IEEE80211_RADIOTAP_RATE = 2,
-	IEEE80211_RADIOTAP_CHANNEL = 3,
-	IEEE80211_RADIOTAP_FHSS = 4,
-	IEEE80211_RADIOTAP_DBM_ANTSIGNAL = 5,
-	IEEE80211_RADIOTAP_DBM_ANTNOISE = 6,
-	IEEE80211_RADIOTAP_LOCK_QUALITY = 7,
-	IEEE80211_RADIOTAP_TX_ATTENUATION = 8,
-	IEEE80211_RADIOTAP_DB_TX_ATTENUATION = 9,
-	IEEE80211_RADIOTAP_DBM_TX_POWER = 10,
-	IEEE80211_RADIOTAP_ANTENNA = 11,
-	IEEE80211_RADIOTAP_DB_ANTSIGNAL = 12,
-	IEEE80211_RADIOTAP_DB_ANTNOISE = 13,
-	IEEE80211_RADIOTAP_RX_FLAGS = 14,
-	/* NB: gap for netbsd definitions */
-	IEEE80211_RADIOTAP_XCHANNEL = 18,
-	IEEE80211_RADIOTAP_MCS = 19,
-	IEEE80211_RADIOTAP_NAMESPACE = 29,
-	IEEE80211_RADIOTAP_VENDOR_NAMESPACE = 30,
-	IEEE80211_RADIOTAP_EXT = 31
-};
-
-/* channel attributes */
-#define	IEEE80211_CHAN_TURBO	0x00010	/* Turbo channel */
-#define	IEEE80211_CHAN_CCK	0x00020	/* CCK channel */
-#define	IEEE80211_CHAN_OFDM	0x00040	/* OFDM channel */
-#define	IEEE80211_CHAN_2GHZ	0x00080	/* 2 GHz spectrum channel. */
-#define	IEEE80211_CHAN_5GHZ	0x00100	/* 5 GHz spectrum channel */
-#define	IEEE80211_CHAN_PASSIVE	0x00200	/* Only passive scan allowed */
-#define	IEEE80211_CHAN_DYN	0x00400	/* Dynamic CCK-OFDM channel */
-#define	IEEE80211_CHAN_GFSK	0x00800	/* GFSK channel (FHSS PHY) */
-#define	IEEE80211_CHAN_GSM	0x01000	/* 900 MHz spectrum channel */
-#define	IEEE80211_CHAN_STURBO	0x02000	/* 11a static turbo channel only */
-#define	IEEE80211_CHAN_HALF	0x04000	/* Half rate channel */
-#define	IEEE80211_CHAN_QUARTER	0x08000	/* Quarter rate channel */
-#define	IEEE80211_CHAN_HT20	0x10000	/* HT 20 channel */
-#define	IEEE80211_CHAN_HT40U	0x20000	/* HT 40 channel w/ ext above */
-#define	IEEE80211_CHAN_HT40D	0x40000	/* HT 40 channel w/ ext below */
-
-/* Useful combinations of channel characteristics, borrowed from Ethereal */
-#define IEEE80211_CHAN_A \
-        (IEEE80211_CHAN_5GHZ | IEEE80211_CHAN_OFDM)
-#define IEEE80211_CHAN_B \
-        (IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_CCK)
-#define IEEE80211_CHAN_G \
-        (IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_DYN)
-#define IEEE80211_CHAN_TA \
-        (IEEE80211_CHAN_5GHZ | IEEE80211_CHAN_OFDM | IEEE80211_CHAN_TURBO)
-#define IEEE80211_CHAN_TG \
-        (IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_DYN  | IEEE80211_CHAN_TURBO)
-
-
-/* For IEEE80211_RADIOTAP_FLAGS */
-#define	IEEE80211_RADIOTAP_F_CFP	0x01	/* sent/received
-						 * during CFP
-						 */
-#define	IEEE80211_RADIOTAP_F_SHORTPRE	0x02	/* sent/received
-						 * with short
-						 * preamble
-						 */
-#define	IEEE80211_RADIOTAP_F_WEP	0x04	/* sent/received
-						 * with WEP encryption
-						 */
-#define	IEEE80211_RADIOTAP_F_FRAG	0x08	/* sent/received
-						 * with fragmentation
-						 */
-#define	IEEE80211_RADIOTAP_F_FCS	0x10	/* frame includes FCS */
-#define	IEEE80211_RADIOTAP_F_DATAPAD	0x20	/* frame has padding between
-						 * 802.11 header and payload
-						 * (to 32-bit boundary)
-						 */
-#define	IEEE80211_RADIOTAP_F_BADFCS	0x40	/* does not pass FCS check */
-
-/* For IEEE80211_RADIOTAP_RX_FLAGS */
-#define IEEE80211_RADIOTAP_F_RX_BADFCS	0x0001	/* frame failed crc check */
-#define IEEE80211_RADIOTAP_F_RX_PLCP_CRC	0x0002	/* frame failed PLCP CRC check */
-
-/* For IEEE80211_RADIOTAP_MCS known */
-#define IEEE80211_RADIOTAP_MCS_BANDWIDTH_KNOWN		0x01
-#define IEEE80211_RADIOTAP_MCS_MCS_INDEX_KNOWN		0x02	/* MCS index field */
-#define IEEE80211_RADIOTAP_MCS_GUARD_INTERVAL_KNOWN	0x04
-#define IEEE80211_RADIOTAP_MCS_HT_FORMAT_KNOWN		0x08
-#define IEEE80211_RADIOTAP_MCS_FEC_TYPE_KNOWN		0x10
-#define IEEE80211_RADIOTAP_MCS_STBC_KNOWN		0x20
-
-/* For IEEE80211_RADIOTAP_MCS flags */
-#define IEEE80211_RADIOTAP_MCS_BANDWIDTH_MASK	0x03
-#define IEEE80211_RADIOTAP_MCS_BANDWIDTH_20	0
-#define IEEE80211_RADIOTAP_MCS_BANDWIDTH_40	1
-#define IEEE80211_RADIOTAP_MCS_BANDWIDTH_20L	2
-#define IEEE80211_RADIOTAP_MCS_BANDWIDTH_20U	3
-#define IEEE80211_RADIOTAP_MCS_SHORT_GI		0x04 /* short guard interval */
-#define IEEE80211_RADIOTAP_MCS_HT_GREENFIELD	0x08
-#define IEEE80211_RADIOTAP_MCS_FEC_LDPC		0x10
-#define IEEE80211_RADIOTAP_MCS_STBC_MASK	0x60
-#define		IEEE80211_RADIOTAP_MCS_STBC_1	1
-#define		IEEE80211_RADIOTAP_MCS_STBC_2	2
-#define		IEEE80211_RADIOTAP_MCS_STBC_3	3
-#define IEEE80211_RADIOTAP_MCS_STBC_SHIFT	5
-
-static const char tstr[] = "[|802.11]";
+#include "ieee802_11.h"
+#include "ieee802_11_radio.h"
 
 /* Radiotap state */
 /*  This is used to save state when parsing/processing parameters */
 struct radiotap_state
 {
-	uint32_t	present;
+	u_int32_t	present;
 
-	uint8_t		rate;
+	u_int8_t	rate;
 };
 
 #define PRINT_SSID(p) \
 	if (p.ssid_present) { \
-		ND_PRINT((ndo, " (")); \
-		fn_print(ndo, p.ssid.ssid, NULL); \
-		ND_PRINT((ndo, ")")); \
+		printf(" ("); \
+		fn_print(p.ssid.ssid, NULL); \
+		printf(")"); \
 	}
 
 #define PRINT_RATE(_sep, _r, _suf) \
-	ND_PRINT((ndo, "%s%2.1f%s", _sep, (.5 * ((_r) & 0x7f)), _suf))
+	printf("%s%2.1f%s", _sep, (.5 * ((_r) & 0x7f)), _suf)
 #define PRINT_RATES(p) \
 	if (p.rates_present) { \
 		int z; \
@@ -713,14 +74,14 @@ struct radiotap_state
 			sep = " "; \
 		} \
 		if (p.rates.length != 0) \
-			ND_PRINT((ndo, " Mbit]")); \
+			printf(" Mbit]"); \
 	}
 
 #define PRINT_DS_CHANNEL(p) \
 	if (p.ds_present) \
-		ND_PRINT((ndo, " CH: %u", p.ds.channel)); \
-	ND_PRINT((ndo, "%s", \
-	    CAPABILITY_PRIVACY(p.capability_info) ? ", PRIVACY" : ""));
+		printf(" CH: %u", p.ds.channel); \
+	printf("%s", \
+	    CAPABILITY_PRIVACY(p.capability_info) ? ", PRIVACY" : "" );
 
 #define MAX_MCS_INDEX	76
 
@@ -1187,7 +548,9 @@ static const char *status_text[] = {
 	"The request has not been successful as one or more parameters "
 	  "have invalid values",				/* 38 */
 	"The TS has not been created because the request cannot be honored. "
-	  "Try again with the suggested changes to the TSPEC",	/* 39 */
+	  "However, a suggested TSPEC is provided so that the initiating QSTA"
+	  "may attempt to set another TS with the suggested changes to the "
+	  "TSPEC",						/* 39 */
 	"Invalid Information Element",				/* 40 */
 	"Group Cipher is not valid",				/* 41 */
 	"Pairwise Cipher is not valid",				/* 42 */
@@ -1274,25 +637,23 @@ static const char *reason_text[] = {
 #define NUM_REASONS	(sizeof reason_text / sizeof reason_text[0])
 
 static int
-wep_print(netdissect_options *ndo,
-          const u_char *p)
+wep_print(const u_char *p)
 {
-	uint32_t iv;
+	u_int32_t iv;
 
-	if (!ND_TTEST2(*p, IEEE802_11_IV_LEN + IEEE802_11_KID_LEN))
+	if (!TTEST2(*p, IEEE802_11_IV_LEN + IEEE802_11_KID_LEN))
 		return 0;
 	iv = EXTRACT_LE_32BITS(p);
 
-	ND_PRINT((ndo, "Data IV:%3x Pad %x KeyID %x", IV_IV(iv), IV_PAD(iv),
-	    IV_KEYID(iv)));
+	printf("Data IV:%3x Pad %x KeyID %x", IV_IV(iv), IV_PAD(iv),
+	    IV_KEYID(iv));
 
 	return 1;
 }
 
 static int
-parse_elements(netdissect_options *ndo,
-               struct mgmt_body_t *pbody, const u_char *p, int offset,
-               u_int length)
+parse_elements(struct mgmt_body_t *pbody, const u_char *p, int offset,
+    u_int length)
 {
 	u_int elementlen;
 	struct ssid_t ssid;
@@ -1313,28 +674,23 @@ parse_elements(netdissect_options *ndo,
 	pbody->tim_present = 0;
 
 	while (length != 0) {
-		/* Make sure we at least have the element ID and length. */
-		if (!ND_TTEST2(*(p + offset), 2))
+		if (!TTEST2(*(p + offset), 1))
 			return 0;
-		if (length < 2)
+		if (length < 1)
 			return 0;
-		elementlen = *(p + offset + 1);
-
-		/* Make sure we have the entire element. */
-		if (!ND_TTEST2(*(p + offset + 2), elementlen))
-			return 0;
-		if (length < elementlen + 2)
-			return 0;
-
 		switch (*(p + offset)) {
 		case E_SSID:
+			if (!TTEST2(*(p + offset), 2))
+				return 0;
+			if (length < 2)
+				return 0;
 			memcpy(&ssid, p + offset, 2);
 			offset += 2;
 			length -= 2;
 			if (ssid.length != 0) {
 				if (ssid.length > sizeof(ssid.ssid) - 1)
 					return 0;
-				if (!ND_TTEST2(*(p + offset), ssid.length))
+				if (!TTEST2(*(p + offset), ssid.length))
 					return 0;
 				if (length < ssid.length)
 					return 0;
@@ -1356,6 +712,10 @@ parse_elements(netdissect_options *ndo,
 			}
 			break;
 		case E_CHALLENGE:
+			if (!TTEST2(*(p + offset), 2))
+				return 0;
+			if (length < 2)
+				return 0;
 			memcpy(&challenge, p + offset, 2);
 			offset += 2;
 			length -= 2;
@@ -1363,7 +723,7 @@ parse_elements(netdissect_options *ndo,
 				if (challenge.length >
 				    sizeof(challenge.text) - 1)
 					return 0;
-				if (!ND_TTEST2(*(p + offset), challenge.length))
+				if (!TTEST2(*(p + offset), challenge.length))
 					return 0;
 				if (length < challenge.length)
 					return 0;
@@ -1386,13 +746,17 @@ parse_elements(netdissect_options *ndo,
 			}
 			break;
 		case E_RATES:
+			if (!TTEST2(*(p + offset), 2))
+				return 0;
+			if (length < 2)
+				return 0;
 			memcpy(&rates, p + offset, 2);
 			offset += 2;
 			length -= 2;
 			if (rates.length != 0) {
 				if (rates.length > sizeof rates.rate)
 					return 0;
-				if (!ND_TTEST2(*(p + offset), rates.length))
+				if (!TTEST2(*(p + offset), rates.length))
 					return 0;
 				if (length < rates.length)
 					return 0;
@@ -1422,17 +786,13 @@ parse_elements(netdissect_options *ndo,
 			}
 			break;
 		case E_DS:
-			memcpy(&ds, p + offset, 2);
-			offset += 2;
-			length -= 2;
-			if (ds.length != 1) {
-				offset += ds.length;
-				length -= ds.length;
-				break;
-			}
-			ds.channel = *(p + offset);
-			offset += 1;
-			length -= 1;
+			if (!TTEST2(*(p + offset), 3))
+				return 0;
+			if (length < 3)
+				return 0;
+			memcpy(&ds, p + offset, 3);
+			offset += 3;
+			length -= 3;
 			/*
 			 * Present and not truncated.
 			 *
@@ -1446,17 +806,13 @@ parse_elements(netdissect_options *ndo,
 			}
 			break;
 		case E_CF:
-			memcpy(&cf, p + offset, 2);
-			offset += 2;
-			length -= 2;
-			if (cf.length != 6) {
-				offset += cf.length;
-				length -= cf.length;
-				break;
-			}
-			memcpy(&cf.count, p + offset, 6);
-			offset += 6;
-			length -= 6;
+			if (!TTEST2(*(p + offset), 8))
+				return 0;
+			if (length < 8)
+				return 0;
+			memcpy(&cf, p + offset, 8);
+			offset += 8;
+			length -= 8;
 			/*
 			 * Present and not truncated.
 			 *
@@ -1470,20 +826,29 @@ parse_elements(netdissect_options *ndo,
 			}
 			break;
 		case E_TIM:
+			if (!TTEST2(*(p + offset), 2))
+				return 0;
+			if (length < 2)
+				return 0;
 			memcpy(&tim, p + offset, 2);
 			offset += 2;
 			length -= 2;
-			if (tim.length <= 3) {
-				offset += tim.length;
-				length -= tim.length;
-				break;
-			}
-			if (tim.length - 3 > (int)sizeof tim.bitmap)
+			if (!TTEST2(*(p + offset), 3))
+				return 0;
+			if (length < 3)
 				return 0;
 			memcpy(&tim.count, p + offset, 3);
 			offset += 3;
 			length -= 3;
 
+			if (tim.length <= 3)
+				break;
+			if (tim.length - 3 > (int)sizeof tim.bitmap)
+				return 0;
+			if (!TTEST2(*(p + offset), tim.length - 3))
+				return 0;
+			if (length < (u_int)(tim.length - 3))
+				return 0;
 			memcpy(tim.bitmap, p + (tim.length - 3),
 			    (tim.length - 3));
 			offset += tim.length - 3;
@@ -1502,11 +867,20 @@ parse_elements(netdissect_options *ndo,
 			break;
 		default:
 #if 0
-			ND_PRINT((ndo, "(1) unhandled element_id (%d)  ",
-			    *(p + offset)));
+			printf("(1) unhandled element_id (%d)  ",
+			    *(p + offset));
 #endif
-			offset += 2 + elementlen;
-			length -= 2 + elementlen;
+			if (!TTEST2(*(p + offset), 2))
+				return 0;
+			if (length < 2)
+				return 0;
+			elementlen = *(p + offset + 1);
+			if (!TTEST2(*(p + offset + 2), elementlen))
+				return 0;
+			if (length < elementlen + 2)
+				return 0;
+			offset += elementlen + 2;
+			length -= elementlen + 2;
 			break;
 		}
 	}
@@ -1520,8 +894,7 @@ parse_elements(netdissect_options *ndo,
  *********************************************************************************/
 
 static int
-handle_beacon(netdissect_options *ndo,
-              const u_char *p, u_int length)
+handle_beacon(const u_char *p, u_int length)
 {
 	struct mgmt_body_t pbody;
 	int offset = 0;
@@ -1529,7 +902,7 @@ handle_beacon(netdissect_options *ndo,
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!ND_TTEST2(*p, IEEE802_11_TSTAMP_LEN + IEEE802_11_BCNINT_LEN +
+	if (!TTEST2(*p, IEEE802_11_TSTAMP_LEN + IEEE802_11_BCNINT_LEN +
 	    IEEE802_11_CAPINFO_LEN))
 		return 0;
 	if (length < IEEE802_11_TSTAMP_LEN + IEEE802_11_BCNINT_LEN +
@@ -1545,20 +918,19 @@ handle_beacon(netdissect_options *ndo,
 	offset += IEEE802_11_CAPINFO_LEN;
 	length -= IEEE802_11_CAPINFO_LEN;
 
-	ret = parse_elements(ndo, &pbody, p, offset, length);
+	ret = parse_elements(&pbody, p, offset, length);
 
 	PRINT_SSID(pbody);
 	PRINT_RATES(pbody);
-	ND_PRINT((ndo, " %s",
-	    CAPABILITY_ESS(pbody.capability_info) ? "ESS" : "IBSS"));
+	printf(" %s",
+	    CAPABILITY_ESS(pbody.capability_info) ? "ESS" : "IBSS");
 	PRINT_DS_CHANNEL(pbody);
 
 	return ret;
 }
 
 static int
-handle_assoc_request(netdissect_options *ndo,
-                     const u_char *p, u_int length)
+handle_assoc_request(const u_char *p, u_int length)
 {
 	struct mgmt_body_t pbody;
 	int offset = 0;
@@ -1566,7 +938,7 @@ handle_assoc_request(netdissect_options *ndo,
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!ND_TTEST2(*p, IEEE802_11_CAPINFO_LEN + IEEE802_11_LISTENINT_LEN))
+	if (!TTEST2(*p, IEEE802_11_CAPINFO_LEN + IEEE802_11_LISTENINT_LEN))
 		return 0;
 	if (length < IEEE802_11_CAPINFO_LEN + IEEE802_11_LISTENINT_LEN)
 		return 0;
@@ -1577,7 +949,7 @@ handle_assoc_request(netdissect_options *ndo,
 	offset += IEEE802_11_LISTENINT_LEN;
 	length -= IEEE802_11_LISTENINT_LEN;
 
-	ret = parse_elements(ndo, &pbody, p, offset, length);
+	ret = parse_elements(&pbody, p, offset, length);
 
 	PRINT_SSID(pbody);
 	PRINT_RATES(pbody);
@@ -1585,8 +957,7 @@ handle_assoc_request(netdissect_options *ndo,
 }
 
 static int
-handle_assoc_response(netdissect_options *ndo,
-                      const u_char *p, u_int length)
+handle_assoc_response(const u_char *p, u_int length)
 {
 	struct mgmt_body_t pbody;
 	int offset = 0;
@@ -1594,7 +965,7 @@ handle_assoc_response(netdissect_options *ndo,
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!ND_TTEST2(*p, IEEE802_11_CAPINFO_LEN + IEEE802_11_STATUS_LEN +
+	if (!TTEST2(*p, IEEE802_11_CAPINFO_LEN + IEEE802_11_STATUS_LEN +
 	    IEEE802_11_AID_LEN))
 		return 0;
 	if (length < IEEE802_11_CAPINFO_LEN + IEEE802_11_STATUS_LEN +
@@ -1610,20 +981,19 @@ handle_assoc_response(netdissect_options *ndo,
 	offset += IEEE802_11_AID_LEN;
 	length -= IEEE802_11_AID_LEN;
 
-	ret = parse_elements(ndo, &pbody, p, offset, length);
+	ret = parse_elements(&pbody, p, offset, length);
 
-	ND_PRINT((ndo, " AID(%x) :%s: %s", ((uint16_t)(pbody.aid << 2 )) >> 2 ,
+	printf(" AID(%x) :%s: %s", ((u_int16_t)(pbody.aid << 2 )) >> 2 ,
 	    CAPABILITY_PRIVACY(pbody.capability_info) ? " PRIVACY " : "",
 	    (pbody.status_code < NUM_STATUSES
 		? status_text[pbody.status_code]
-		: "n/a")));
+		: "n/a"));
 
 	return ret;
 }
 
 static int
-handle_reassoc_request(netdissect_options *ndo,
-                       const u_char *p, u_int length)
+handle_reassoc_request(const u_char *p, u_int length)
 {
 	struct mgmt_body_t pbody;
 	int offset = 0;
@@ -1631,7 +1001,7 @@ handle_reassoc_request(netdissect_options *ndo,
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!ND_TTEST2(*p, IEEE802_11_CAPINFO_LEN + IEEE802_11_LISTENINT_LEN +
+	if (!TTEST2(*p, IEEE802_11_CAPINFO_LEN + IEEE802_11_LISTENINT_LEN +
 	    IEEE802_11_AP_LEN))
 		return 0;
 	if (length < IEEE802_11_CAPINFO_LEN + IEEE802_11_LISTENINT_LEN +
@@ -1647,25 +1017,23 @@ handle_reassoc_request(netdissect_options *ndo,
 	offset += IEEE802_11_AP_LEN;
 	length -= IEEE802_11_AP_LEN;
 
-	ret = parse_elements(ndo, &pbody, p, offset, length);
+	ret = parse_elements(&pbody, p, offset, length);
 
 	PRINT_SSID(pbody);
-	ND_PRINT((ndo, " AP : %s", etheraddr_string(ndo,  pbody.ap )));
+	printf(" AP : %s", etheraddr_string( pbody.ap ));
 
 	return ret;
 }
 
 static int
-handle_reassoc_response(netdissect_options *ndo,
-                        const u_char *p, u_int length)
+handle_reassoc_response(const u_char *p, u_int length)
 {
 	/* Same as a Association Reponse */
-	return handle_assoc_response(ndo, p, length);
+	return handle_assoc_response(p, length);
 }
 
 static int
-handle_probe_request(netdissect_options *ndo,
-                     const u_char *p, u_int length)
+handle_probe_request(const u_char *p, u_int length)
 {
 	struct mgmt_body_t  pbody;
 	int offset = 0;
@@ -1673,7 +1041,7 @@ handle_probe_request(netdissect_options *ndo,
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	ret = parse_elements(ndo, &pbody, p, offset, length);
+	ret = parse_elements(&pbody, p, offset, length);
 
 	PRINT_SSID(pbody);
 	PRINT_RATES(pbody);
@@ -1682,8 +1050,7 @@ handle_probe_request(netdissect_options *ndo,
 }
 
 static int
-handle_probe_response(netdissect_options *ndo,
-                      const u_char *p, u_int length)
+handle_probe_response(const u_char *p, u_int length)
 {
 	struct mgmt_body_t  pbody;
 	int offset = 0;
@@ -1691,7 +1058,7 @@ handle_probe_response(netdissect_options *ndo,
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!ND_TTEST2(*p, IEEE802_11_TSTAMP_LEN + IEEE802_11_BCNINT_LEN +
+	if (!TTEST2(*p, IEEE802_11_TSTAMP_LEN + IEEE802_11_BCNINT_LEN +
 	    IEEE802_11_CAPINFO_LEN))
 		return 0;
 	if (length < IEEE802_11_TSTAMP_LEN + IEEE802_11_BCNINT_LEN +
@@ -1707,7 +1074,7 @@ handle_probe_response(netdissect_options *ndo,
 	offset += IEEE802_11_CAPINFO_LEN;
 	length -= IEEE802_11_CAPINFO_LEN;
 
-	ret = parse_elements(ndo, &pbody, p, offset, length);
+	ret = parse_elements(&pbody, p, offset, length);
 
 	PRINT_SSID(pbody);
 	PRINT_RATES(pbody);
@@ -1724,30 +1091,28 @@ handle_atim(void)
 }
 
 static int
-handle_disassoc(netdissect_options *ndo,
-                const u_char *p, u_int length)
+handle_disassoc(const u_char *p, u_int length)
 {
 	struct mgmt_body_t  pbody;
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!ND_TTEST2(*p, IEEE802_11_REASON_LEN))
+	if (!TTEST2(*p, IEEE802_11_REASON_LEN))
 		return 0;
 	if (length < IEEE802_11_REASON_LEN)
 		return 0;
 	pbody.reason_code = EXTRACT_LE_16BITS(p);
 
-	ND_PRINT((ndo, ": %s",
+	printf(": %s",
 	    (pbody.reason_code < NUM_REASONS)
 		? reason_text[pbody.reason_code]
-		: "Reserved"));
+		: "Reserved" );
 
 	return 1;
 }
 
 static int
-handle_auth(netdissect_options *ndo,
-            const u_char *p, u_int length)
+handle_auth(const u_char *p, u_int length)
 {
 	struct mgmt_body_t  pbody;
 	int offset = 0;
@@ -1755,7 +1120,7 @@ handle_auth(netdissect_options *ndo,
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!ND_TTEST2(*p, 6))
+	if (!TTEST2(*p, 6))
 		return 0;
 	if (length < 6)
 		return 0;
@@ -1769,12 +1134,12 @@ handle_auth(netdissect_options *ndo,
 	offset += 2;
 	length -= 2;
 
-	ret = parse_elements(ndo, &pbody, p, offset, length);
+	ret = parse_elements(&pbody, p, offset, length);
 
 	if ((pbody.auth_alg == 1) &&
 	    ((pbody.auth_trans_seq_num == 2) ||
 	     (pbody.auth_trans_seq_num == 3))) {
-		ND_PRINT((ndo, " (%s)-%x [Challenge Text] %s",
+		printf(" (%s)-%x [Challenge Text] %s",
 		    (pbody.auth_alg < NUM_AUTH_ALGS)
 			? auth_alg_text[pbody.auth_alg]
 			: "Reserved",
@@ -1782,10 +1147,10 @@ handle_auth(netdissect_options *ndo,
 		    ((pbody.auth_trans_seq_num % 2)
 		        ? ((pbody.status_code < NUM_STATUSES)
 			       ? status_text[pbody.status_code]
-			       : "n/a") : "")));
+			       : "n/a") : ""));
 		return ret;
 	}
-	ND_PRINT((ndo, " (%s)-%x: %s",
+	printf(" (%s)-%x: %s",
 	    (pbody.auth_alg < NUM_AUTH_ALGS)
 		? auth_alg_text[pbody.auth_alg]
 		: "Reserved",
@@ -1794,125 +1159,126 @@ handle_auth(netdissect_options *ndo,
 	        ? ((pbody.status_code < NUM_STATUSES)
 		    ? status_text[pbody.status_code]
 	            : "n/a")
-	        : ""));
+	        : "");
 
 	return ret;
 }
 
 static int
-handle_deauth(netdissect_options *ndo,
-              const struct mgmt_header_t *pmh, const u_char *p, u_int length)
+handle_deauth(const struct mgmt_header_t *pmh, const u_char *p, u_int length)
 {
 	struct mgmt_body_t  pbody;
+	int offset = 0;
 	const char *reason = NULL;
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!ND_TTEST2(*p, IEEE802_11_REASON_LEN))
+	if (!TTEST2(*p, IEEE802_11_REASON_LEN))
 		return 0;
 	if (length < IEEE802_11_REASON_LEN)
 		return 0;
 	pbody.reason_code = EXTRACT_LE_16BITS(p);
+	offset += IEEE802_11_REASON_LEN;
+	length -= IEEE802_11_REASON_LEN;
 
 	reason = (pbody.reason_code < NUM_REASONS)
 			? reason_text[pbody.reason_code]
 			: "Reserved";
 
-	if (ndo->ndo_eflag) {
-		ND_PRINT((ndo, ": %s", reason));
+	if (eflag) {
+		printf(": %s", reason);
 	} else {
-		ND_PRINT((ndo, " (%s): %s", etheraddr_string(ndo, pmh->sa), reason));
+		printf(" (%s): %s", etheraddr_string(pmh->sa), reason);
 	}
 	return 1;
 }
 
 #define	PRINT_HT_ACTION(v) (\
-	(v) == 0 ? ND_PRINT((ndo, "TxChWidth")) : \
-	(v) == 1 ? ND_PRINT((ndo, "MIMOPwrSave")) : \
-		   ND_PRINT((ndo, "Act#%d", (v))) \
+	(v) == 0 ? printf("TxChWidth") : \
+	(v) == 1 ? printf("MIMOPwrSave") : \
+		   printf("Act#%d", (v)) \
 )
 #define	PRINT_BA_ACTION(v) (\
-	(v) == 0 ? ND_PRINT((ndo, "ADDBA Request")) : \
-	(v) == 1 ? ND_PRINT((ndo, "ADDBA Response")) : \
-	(v) == 2 ? ND_PRINT((ndo, "DELBA")) : \
-		   ND_PRINT((ndo, "Act#%d", (v))) \
+	(v) == 0 ? printf("ADDBA Request") : \
+	(v) == 1 ? printf("ADDBA Response") : \
+	(v) == 2 ? printf("DELBA") : \
+		   printf("Act#%d", (v)) \
 )
 #define	PRINT_MESHLINK_ACTION(v) (\
-	(v) == 0 ? ND_PRINT((ndo, "Request")) : \
-	(v) == 1 ? ND_PRINT((ndo, "Report")) : \
-		   ND_PRINT((ndo, "Act#%d", (v))) \
+	(v) == 0 ? printf("Request") : \
+	(v) == 1 ? printf("Report") : \
+		   printf("Act#%d", (v)) \
 )
 #define	PRINT_MESHPEERING_ACTION(v) (\
-	(v) == 0 ? ND_PRINT((ndo, "Open")) : \
-	(v) == 1 ? ND_PRINT((ndo, "Confirm")) : \
-	(v) == 2 ? ND_PRINT((ndo, "Close")) : \
-		   ND_PRINT((ndo, "Act#%d", (v))) \
+	(v) == 0 ? printf("Open") : \
+	(v) == 1 ? printf("Confirm") : \
+	(v) == 2 ? printf("Close") : \
+		   printf("Act#%d", (v)) \
 )
 #define	PRINT_MESHPATH_ACTION(v) (\
-	(v) == 0 ? ND_PRINT((ndo, "Request")) : \
-	(v) == 1 ? ND_PRINT((ndo, "Report")) : \
-	(v) == 2 ? ND_PRINT((ndo, "Error")) : \
-	(v) == 3 ? ND_PRINT((ndo, "RootAnnouncement")) : \
-		   ND_PRINT((ndo, "Act#%d", (v))) \
+	(v) == 0 ? printf("Request") : \
+	(v) == 1 ? printf("Report") : \
+	(v) == 2 ? printf("Error") : \
+	(v) == 3 ? printf("RootAnnouncement") : \
+		   printf("Act#%d", (v)) \
 )
 
 #define PRINT_MESH_ACTION(v) (\
-	(v) == 0 ? ND_PRINT((ndo, "MeshLink")) : \
-	(v) == 1 ? ND_PRINT((ndo, "HWMP")) : \
-	(v) == 2 ? ND_PRINT((ndo, "Gate Announcement")) : \
-	(v) == 3 ? ND_PRINT((ndo, "Congestion Control")) : \
-	(v) == 4 ? ND_PRINT((ndo, "MCCA Setup Request")) : \
-	(v) == 5 ? ND_PRINT((ndo, "MCCA Setup Reply")) : \
-	(v) == 6 ? ND_PRINT((ndo, "MCCA Advertisement Request")) : \
-	(v) == 7 ? ND_PRINT((ndo, "MCCA Advertisement")) : \
-	(v) == 8 ? ND_PRINT((ndo, "MCCA Teardown")) : \
-	(v) == 9 ? ND_PRINT((ndo, "TBTT Adjustment Request")) : \
-	(v) == 10 ? ND_PRINT((ndo, "TBTT Adjustment Response")) : \
-		   ND_PRINT((ndo, "Act#%d", (v))) \
+	(v) == 0 ? printf("MeshLink") : \
+	(v) == 1 ? printf("HWMP") : \
+	(v) == 2 ? printf("Gate Announcement") : \
+	(v) == 3 ? printf("Congestion Control") : \
+	(v) == 4 ? printf("MCCA Setup Request") : \
+	(v) == 5 ? printf("MCCA Setup Reply") : \
+	(v) == 6 ? printf("MCCA Advertisement Request") : \
+	(v) == 7 ? printf("MCCA Advertisement") : \
+	(v) == 8 ? printf("MCCA Teardown") : \
+	(v) == 9 ? printf("TBTT Adjustment Request") : \
+	(v) == 10 ? printf("TBTT Adjustment Response") : \
+		   printf("Act#%d", (v)) \
 )
 #define PRINT_MULTIHOP_ACTION(v) (\
-	(v) == 0 ? ND_PRINT((ndo, "Proxy Update")) : \
-	(v) == 1 ? ND_PRINT((ndo, "Proxy Update Confirmation")) : \
-		   ND_PRINT((ndo, "Act#%d", (v))) \
+	(v) == 0 ? printf("Proxy Update") : \
+	(v) == 1 ? printf("Proxy Update Confirmation") : \
+		   printf("Act#%d", (v)) \
 )
 #define PRINT_SELFPROT_ACTION(v) (\
-	(v) == 1 ? ND_PRINT((ndo, "Peering Open")) : \
-	(v) == 2 ? ND_PRINT((ndo, "Peering Confirm")) : \
-	(v) == 3 ? ND_PRINT((ndo, "Peering Close")) : \
-	(v) == 4 ? ND_PRINT((ndo, "Group Key Inform")) : \
-	(v) == 5 ? ND_PRINT((ndo, "Group Key Acknowledge")) : \
-		   ND_PRINT((ndo, "Act#%d", (v))) \
+	(v) == 1 ? printf("Peering Open") : \
+	(v) == 2 ? printf("Peering Confirm") : \
+	(v) == 3 ? printf("Peering Close") : \
+	(v) == 4 ? printf("Group Key Inform") : \
+	(v) == 5 ? printf("Group Key Acknowledge") : \
+		   printf("Act#%d", (v)) \
 )
 
 static int
-handle_action(netdissect_options *ndo,
-              const struct mgmt_header_t *pmh, const u_char *p, u_int length)
+handle_action(const struct mgmt_header_t *pmh, const u_char *p, u_int length)
 {
-	if (!ND_TTEST2(*p, 2))
+	if (!TTEST2(*p, 2))
 		return 0;
 	if (length < 2)
 		return 0;
-	if (ndo->ndo_eflag) {
-		ND_PRINT((ndo, ": "));
+	if (eflag) {
+		printf(": ");
 	} else {
-		ND_PRINT((ndo, " (%s): ", etheraddr_string(ndo, pmh->sa)));
+		printf(" (%s): ", etheraddr_string(pmh->sa));
 	}
 	switch (p[0]) {
-	case 0: ND_PRINT((ndo, "Spectrum Management Act#%d", p[1])); break;
-	case 1: ND_PRINT((ndo, "QoS Act#%d", p[1])); break;
-	case 2: ND_PRINT((ndo, "DLS Act#%d", p[1])); break;
-	case 3: ND_PRINT((ndo, "BA ")); PRINT_BA_ACTION(p[1]); break;
-	case 7: ND_PRINT((ndo, "HT ")); PRINT_HT_ACTION(p[1]); break;
-	case 13: ND_PRINT((ndo, "MeshAction ")); PRINT_MESH_ACTION(p[1]); break;
+	case 0: printf("Spectrum Management Act#%d", p[1]); break;
+	case 1: printf("QoS Act#%d", p[1]); break;
+	case 2: printf("DLS Act#%d", p[1]); break;
+	case 3: printf("BA "); PRINT_BA_ACTION(p[1]); break;
+	case 7: printf("HT "); PRINT_HT_ACTION(p[1]); break;
+	case 13: printf("MeshAction "); PRINT_MESH_ACTION(p[1]); break;
 	case 14:
-		ND_PRINT((ndo, "MultiohopAction "));
+		printf("MultiohopAction ");
 		PRINT_MULTIHOP_ACTION(p[1]); break;
 	case 15:
-		ND_PRINT((ndo, "SelfprotectAction "));
+		printf("SelfprotectAction ");
 		PRINT_SELFPROT_ACTION(p[1]); break;
-	case 127: ND_PRINT((ndo, "Vendor Act#%d", p[1])); break;
+	case 127: printf("Vendor Act#%d", p[1]); break;
 	default:
-		ND_PRINT((ndo, "Reserved(%d) Act#%d", p[0], p[1]));
+		printf("Reserved(%d) Act#%d", p[0], p[1]);
 		break;
 	}
 	return 1;
@@ -1925,43 +1291,57 @@ handle_action(netdissect_options *ndo,
 
 
 static int
-mgmt_body_print(netdissect_options *ndo,
-                uint16_t fc, const struct mgmt_header_t *pmh,
-                const u_char *p, u_int length)
+mgmt_body_print(u_int16_t fc, const struct mgmt_header_t *pmh,
+    const u_char *p, u_int length)
 {
-	ND_PRINT((ndo, "%s", tok2str(st_str, "Unhandled Management subtype(%x)", FC_SUBTYPE(fc))));
 	switch (FC_SUBTYPE(fc)) {
 	case ST_ASSOC_REQUEST:
-		return handle_assoc_request(ndo, p, length);
+		printf("Assoc Request");
+		return handle_assoc_request(p, length);
 	case ST_ASSOC_RESPONSE:
-		return handle_assoc_response(ndo, p, length);
+		printf("Assoc Response");
+		return handle_assoc_response(p, length);
 	case ST_REASSOC_REQUEST:
-		return handle_reassoc_request(ndo, p, length);
+		printf("ReAssoc Request");
+		return handle_reassoc_request(p, length);
 	case ST_REASSOC_RESPONSE:
-		return handle_reassoc_response(ndo, p, length);
+		printf("ReAssoc Response");
+		return handle_reassoc_response(p, length);
 	case ST_PROBE_REQUEST:
-		return handle_probe_request(ndo, p, length);
+		printf("Probe Request");
+		return handle_probe_request(p, length);
 	case ST_PROBE_RESPONSE:
-		return handle_probe_response(ndo, p, length);
+		printf("Probe Response");
+		return handle_probe_response(p, length);
 	case ST_BEACON:
-		return handle_beacon(ndo, p, length);
+		printf("Beacon");
+		return handle_beacon(p, length);
 	case ST_ATIM:
+		printf("ATIM");
 		return handle_atim();
 	case ST_DISASSOC:
-		return handle_disassoc(ndo, p, length);
+		printf("Disassociation");
+		return handle_disassoc(p, length);
 	case ST_AUTH:
-		if (!ND_TTEST2(*p, 3))
+		printf("Authentication");
+		if (!TTEST2(*p, 3))
 			return 0;
 		if ((p[0] == 0 ) && (p[1] == 0) && (p[2] == 0)) {
-			ND_PRINT((ndo, "Authentication (Shared-Key)-3 "));
-			return wep_print(ndo, p);
+			printf("Authentication (Shared-Key)-3 ");
+			return wep_print(p);
 		}
-		return handle_auth(ndo, p, length);
+		return handle_auth(p, length);
 	case ST_DEAUTH:
-		return handle_deauth(ndo, pmh, p, length);
+		printf("DeAuthentication");
+		return handle_deauth(pmh, p, length);
+		break;
 	case ST_ACTION:
-		return handle_action(ndo, pmh, p, length);
+		printf("Action");
+		return handle_action(pmh, p, length);
+		break;
 	default:
+		printf("Unhandled Management subtype(%x)",
+		    FC_SUBTYPE(fc));
 		return 1;
 	}
 }
@@ -1972,72 +1352,81 @@ mgmt_body_print(netdissect_options *ndo,
  *********************************************************************************/
 
 static int
-ctrl_body_print(netdissect_options *ndo,
-                uint16_t fc, const u_char *p)
+ctrl_body_print(u_int16_t fc, const u_char *p)
 {
-	ND_PRINT((ndo, "%s", tok2str(ctrl_str, "Unknown Ctrl Subtype", FC_SUBTYPE(fc))));
 	switch (FC_SUBTYPE(fc)) {
 	case CTRL_CONTROL_WRAPPER:
+		printf("Control Wrapper");
 		/* XXX - requires special handling */
 		break;
 	case CTRL_BAR:
-		if (!ND_TTEST2(*p, CTRL_BAR_HDRLEN))
+		printf("BAR");
+		if (!TTEST2(*p, CTRL_BAR_HDRLEN))
 			return 0;
-		if (!ndo->ndo_eflag)
-			ND_PRINT((ndo, " RA:%s TA:%s CTL(%x) SEQ(%u) ",
-			    etheraddr_string(ndo, ((const struct ctrl_bar_t *)p)->ra),
-			    etheraddr_string(ndo, ((const struct ctrl_bar_t *)p)->ta),
+		if (!eflag)
+			printf(" RA:%s TA:%s CTL(%x) SEQ(%u) ",
+			    etheraddr_string(((const struct ctrl_bar_t *)p)->ra),
+			    etheraddr_string(((const struct ctrl_bar_t *)p)->ta),
 			    EXTRACT_LE_16BITS(&(((const struct ctrl_bar_t *)p)->ctl)),
-			    EXTRACT_LE_16BITS(&(((const struct ctrl_bar_t *)p)->seq))));
+			    EXTRACT_LE_16BITS(&(((const struct ctrl_bar_t *)p)->seq)));
 		break;
 	case CTRL_BA:
-		if (!ND_TTEST2(*p, CTRL_BA_HDRLEN))
+		printf("BA");
+		if (!TTEST2(*p, CTRL_BA_HDRLEN))
 			return 0;
-		if (!ndo->ndo_eflag)
-			ND_PRINT((ndo, " RA:%s ",
-			    etheraddr_string(ndo, ((const struct ctrl_ba_t *)p)->ra)));
+		if (!eflag)
+			printf(" RA:%s ",
+			    etheraddr_string(((const struct ctrl_ba_t *)p)->ra));
 		break;
 	case CTRL_PS_POLL:
-		if (!ND_TTEST2(*p, CTRL_PS_POLL_HDRLEN))
+		printf("Power Save-Poll");
+		if (!TTEST2(*p, CTRL_PS_POLL_HDRLEN))
 			return 0;
-		ND_PRINT((ndo, " AID(%x)",
-		    EXTRACT_LE_16BITS(&(((const struct ctrl_ps_poll_t *)p)->aid))));
+		printf(" AID(%x)",
+		    EXTRACT_LE_16BITS(&(((const struct ctrl_ps_poll_t *)p)->aid)));
 		break;
 	case CTRL_RTS:
-		if (!ND_TTEST2(*p, CTRL_RTS_HDRLEN))
+		printf("Request-To-Send");
+		if (!TTEST2(*p, CTRL_RTS_HDRLEN))
 			return 0;
-		if (!ndo->ndo_eflag)
-			ND_PRINT((ndo, " TA:%s ",
-			    etheraddr_string(ndo, ((const struct ctrl_rts_t *)p)->ta)));
+		if (!eflag)
+			printf(" TA:%s ",
+			    etheraddr_string(((const struct ctrl_rts_t *)p)->ta));
 		break;
 	case CTRL_CTS:
-		if (!ND_TTEST2(*p, CTRL_CTS_HDRLEN))
+		printf("Clear-To-Send");
+		if (!TTEST2(*p, CTRL_CTS_HDRLEN))
 			return 0;
-		if (!ndo->ndo_eflag)
-			ND_PRINT((ndo, " RA:%s ",
-			    etheraddr_string(ndo, ((const struct ctrl_cts_t *)p)->ra)));
+		if (!eflag)
+			printf(" RA:%s ",
+			    etheraddr_string(((const struct ctrl_cts_t *)p)->ra));
 		break;
 	case CTRL_ACK:
-		if (!ND_TTEST2(*p, CTRL_ACK_HDRLEN))
+		printf("Acknowledgment");
+		if (!TTEST2(*p, CTRL_ACK_HDRLEN))
 			return 0;
-		if (!ndo->ndo_eflag)
-			ND_PRINT((ndo, " RA:%s ",
-			    etheraddr_string(ndo, ((const struct ctrl_ack_t *)p)->ra)));
+		if (!eflag)
+			printf(" RA:%s ",
+			    etheraddr_string(((const struct ctrl_ack_t *)p)->ra));
 		break;
 	case CTRL_CF_END:
-		if (!ND_TTEST2(*p, CTRL_END_HDRLEN))
+		printf("CF-End");
+		if (!TTEST2(*p, CTRL_END_HDRLEN))
 			return 0;
-		if (!ndo->ndo_eflag)
-			ND_PRINT((ndo, " RA:%s ",
-			    etheraddr_string(ndo, ((const struct ctrl_end_t *)p)->ra)));
+		if (!eflag)
+			printf(" RA:%s ",
+			    etheraddr_string(((const struct ctrl_end_t *)p)->ra));
 		break;
 	case CTRL_END_ACK:
-		if (!ND_TTEST2(*p, CTRL_END_ACK_HDRLEN))
+		printf("CF-End+CF-Ack");
+		if (!TTEST2(*p, CTRL_END_ACK_HDRLEN))
 			return 0;
-		if (!ndo->ndo_eflag)
-			ND_PRINT((ndo, " RA:%s ",
-			    etheraddr_string(ndo, ((const struct ctrl_end_ack_t *)p)->ra)));
+		if (!eflag)
+			printf(" RA:%s ",
+			    etheraddr_string(((const struct ctrl_end_ack_t *)p)->ra));
 		break;
+	default:
+		printf("Unknown Ctrl Subtype");
 	}
 	return 1;
 }
@@ -2057,27 +1446,26 @@ ctrl_body_print(netdissect_options *ndo,
  */
 
 static void
-data_header_print(netdissect_options *ndo,
-                  uint16_t fc, const u_char *p, const uint8_t **srcp,
-                  const uint8_t **dstp)
+data_header_print(u_int16_t fc, const u_char *p, const u_int8_t **srcp,
+    const u_int8_t **dstp)
 {
 	u_int subtype = FC_SUBTYPE(fc);
 
 	if (DATA_FRAME_IS_CF_ACK(subtype) || DATA_FRAME_IS_CF_POLL(subtype) ||
 	    DATA_FRAME_IS_QOS(subtype)) {
-		ND_PRINT((ndo, "CF "));
+		printf("CF ");
 		if (DATA_FRAME_IS_CF_ACK(subtype)) {
 			if (DATA_FRAME_IS_CF_POLL(subtype))
-				ND_PRINT((ndo, "Ack/Poll"));
+				printf("Ack/Poll");
 			else
-				ND_PRINT((ndo, "Ack"));
+				printf("Ack");
 		} else {
 			if (DATA_FRAME_IS_CF_POLL(subtype))
-				ND_PRINT((ndo, "Poll"));
+				printf("Poll");
 		}
 		if (DATA_FRAME_IS_QOS(subtype))
-			ND_PRINT((ndo, "+QoS"));
-		ND_PRINT((ndo, " "));
+			printf("+QoS");
+		printf(" ");
 	}
 
 #define ADDR1  (p + 4)
@@ -2090,41 +1478,41 @@ data_header_print(netdissect_options *ndo,
 			*srcp = ADDR2;
 		if (dstp != NULL)
 			*dstp = ADDR1;
-		if (!ndo->ndo_eflag)
+		if (!eflag)
 			return;
-		ND_PRINT((ndo, "DA:%s SA:%s BSSID:%s ",
-		    etheraddr_string(ndo, ADDR1), etheraddr_string(ndo, ADDR2),
-		    etheraddr_string(ndo, ADDR3)));
+		printf("DA:%s SA:%s BSSID:%s ",
+		    etheraddr_string(ADDR1), etheraddr_string(ADDR2),
+		    etheraddr_string(ADDR3));
 	} else if (!FC_TO_DS(fc) && FC_FROM_DS(fc)) {
 		if (srcp != NULL)
 			*srcp = ADDR3;
 		if (dstp != NULL)
 			*dstp = ADDR1;
-		if (!ndo->ndo_eflag)
+		if (!eflag)
 			return;
-		ND_PRINT((ndo, "DA:%s BSSID:%s SA:%s ",
-		    etheraddr_string(ndo, ADDR1), etheraddr_string(ndo, ADDR2),
-		    etheraddr_string(ndo, ADDR3)));
+		printf("DA:%s BSSID:%s SA:%s ",
+		    etheraddr_string(ADDR1), etheraddr_string(ADDR2),
+		    etheraddr_string(ADDR3));
 	} else if (FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
 		if (srcp != NULL)
 			*srcp = ADDR2;
 		if (dstp != NULL)
 			*dstp = ADDR3;
-		if (!ndo->ndo_eflag)
+		if (!eflag)
 			return;
-		ND_PRINT((ndo, "BSSID:%s SA:%s DA:%s ",
-		    etheraddr_string(ndo, ADDR1), etheraddr_string(ndo, ADDR2),
-		    etheraddr_string(ndo, ADDR3)));
+		printf("BSSID:%s SA:%s DA:%s ",
+		    etheraddr_string(ADDR1), etheraddr_string(ADDR2),
+		    etheraddr_string(ADDR3));
 	} else if (FC_TO_DS(fc) && FC_FROM_DS(fc)) {
 		if (srcp != NULL)
 			*srcp = ADDR4;
 		if (dstp != NULL)
 			*dstp = ADDR3;
-		if (!ndo->ndo_eflag)
+		if (!eflag)
 			return;
-		ND_PRINT((ndo, "RA:%s TA:%s DA:%s SA:%s ",
-		    etheraddr_string(ndo, ADDR1), etheraddr_string(ndo, ADDR2),
-		    etheraddr_string(ndo, ADDR3), etheraddr_string(ndo, ADDR4)));
+		printf("RA:%s TA:%s DA:%s SA:%s ",
+		    etheraddr_string(ADDR1), etheraddr_string(ADDR2),
+		    etheraddr_string(ADDR3), etheraddr_string(ADDR4));
 	}
 
 #undef ADDR1
@@ -2134,8 +1522,8 @@ data_header_print(netdissect_options *ndo,
 }
 
 static void
-mgmt_header_print(netdissect_options *ndo,
-                  const u_char *p, const uint8_t **srcp, const uint8_t **dstp)
+mgmt_header_print(const u_char *p, const u_int8_t **srcp,
+    const u_int8_t **dstp)
 {
 	const struct mgmt_header_t *hp = (const struct mgmt_header_t *) p;
 
@@ -2143,75 +1531,73 @@ mgmt_header_print(netdissect_options *ndo,
 		*srcp = hp->sa;
 	if (dstp != NULL)
 		*dstp = hp->da;
-	if (!ndo->ndo_eflag)
+	if (!eflag)
 		return;
 
-	ND_PRINT((ndo, "BSSID:%s DA:%s SA:%s ",
-	    etheraddr_string(ndo, (hp)->bssid), etheraddr_string(ndo, (hp)->da),
-	    etheraddr_string(ndo, (hp)->sa)));
+	printf("BSSID:%s DA:%s SA:%s ",
+	    etheraddr_string((hp)->bssid), etheraddr_string((hp)->da),
+	    etheraddr_string((hp)->sa));
 }
 
 static void
-ctrl_header_print(netdissect_options *ndo,
-                  uint16_t fc, const u_char *p, const uint8_t **srcp,
-                  const uint8_t **dstp)
+ctrl_header_print(u_int16_t fc, const u_char *p, const u_int8_t **srcp,
+    const u_int8_t **dstp)
 {
 	if (srcp != NULL)
 		*srcp = NULL;
 	if (dstp != NULL)
 		*dstp = NULL;
-	if (!ndo->ndo_eflag)
+	if (!eflag)
 		return;
 
 	switch (FC_SUBTYPE(fc)) {
 	case CTRL_BAR:
-		ND_PRINT((ndo, " RA:%s TA:%s CTL(%x) SEQ(%u) ",
-		    etheraddr_string(ndo, ((const struct ctrl_bar_t *)p)->ra),
-		    etheraddr_string(ndo, ((const struct ctrl_bar_t *)p)->ta),
+		printf(" RA:%s TA:%s CTL(%x) SEQ(%u) ",
+		    etheraddr_string(((const struct ctrl_bar_t *)p)->ra),
+		    etheraddr_string(((const struct ctrl_bar_t *)p)->ta),
 		    EXTRACT_LE_16BITS(&(((const struct ctrl_bar_t *)p)->ctl)),
-		    EXTRACT_LE_16BITS(&(((const struct ctrl_bar_t *)p)->seq))));
+		    EXTRACT_LE_16BITS(&(((const struct ctrl_bar_t *)p)->seq)));
 		break;
 	case CTRL_BA:
-		ND_PRINT((ndo, "RA:%s ",
-		    etheraddr_string(ndo, ((const struct ctrl_ba_t *)p)->ra)));
+		printf("RA:%s ",
+		    etheraddr_string(((const struct ctrl_ba_t *)p)->ra));
 		break;
 	case CTRL_PS_POLL:
-		ND_PRINT((ndo, "BSSID:%s TA:%s ",
-		    etheraddr_string(ndo, ((const struct ctrl_ps_poll_t *)p)->bssid),
-		    etheraddr_string(ndo, ((const struct ctrl_ps_poll_t *)p)->ta)));
+		printf("BSSID:%s TA:%s ",
+		    etheraddr_string(((const struct ctrl_ps_poll_t *)p)->bssid),
+		    etheraddr_string(((const struct ctrl_ps_poll_t *)p)->ta));
 		break;
 	case CTRL_RTS:
-		ND_PRINT((ndo, "RA:%s TA:%s ",
-		    etheraddr_string(ndo, ((const struct ctrl_rts_t *)p)->ra),
-		    etheraddr_string(ndo, ((const struct ctrl_rts_t *)p)->ta)));
+		printf("RA:%s TA:%s ",
+		    etheraddr_string(((const struct ctrl_rts_t *)p)->ra),
+		    etheraddr_string(((const struct ctrl_rts_t *)p)->ta));
 		break;
 	case CTRL_CTS:
-		ND_PRINT((ndo, "RA:%s ",
-		    etheraddr_string(ndo, ((const struct ctrl_cts_t *)p)->ra)));
+		printf("RA:%s ",
+		    etheraddr_string(((const struct ctrl_cts_t *)p)->ra));
 		break;
 	case CTRL_ACK:
-		ND_PRINT((ndo, "RA:%s ",
-		    etheraddr_string(ndo, ((const struct ctrl_ack_t *)p)->ra)));
+		printf("RA:%s ",
+		    etheraddr_string(((const struct ctrl_ack_t *)p)->ra));
 		break;
 	case CTRL_CF_END:
-		ND_PRINT((ndo, "RA:%s BSSID:%s ",
-		    etheraddr_string(ndo, ((const struct ctrl_end_t *)p)->ra),
-		    etheraddr_string(ndo, ((const struct ctrl_end_t *)p)->bssid)));
+		printf("RA:%s BSSID:%s ",
+		    etheraddr_string(((const struct ctrl_end_t *)p)->ra),
+		    etheraddr_string(((const struct ctrl_end_t *)p)->bssid));
 		break;
 	case CTRL_END_ACK:
-		ND_PRINT((ndo, "RA:%s BSSID:%s ",
-		    etheraddr_string(ndo, ((const struct ctrl_end_ack_t *)p)->ra),
-		    etheraddr_string(ndo, ((const struct ctrl_end_ack_t *)p)->bssid)));
+		printf("RA:%s BSSID:%s ",
+		    etheraddr_string(((const struct ctrl_end_ack_t *)p)->ra),
+		    etheraddr_string(((const struct ctrl_end_ack_t *)p)->bssid));
 		break;
 	default:
-		ND_PRINT((ndo, "(H) Unknown Ctrl Subtype"));
+		printf("(H) Unknown Ctrl Subtype");
 		break;
 	}
 }
 
 static int
-extract_header_length(netdissect_options *ndo,
-                      uint16_t fc)
+extract_header_length(u_int16_t fc)
 {
 	int len;
 
@@ -2243,7 +1629,7 @@ extract_header_length(netdissect_options *ndo,
 			len += 2;
 		return len;
 	default:
-		ND_PRINT((ndo, "unknown IEEE802.11 frame type (%d)", FC_TYPE(fc)));
+		printf("unknown IEEE802.11 frame type (%d)", FC_TYPE(fc));
 		return 0;
 	}
 }
@@ -2260,58 +1646,56 @@ extract_mesh_header_length(const u_char *p)
  * "srcp" and "dstp" aren't null.
  */
 static void
-ieee_802_11_hdr_print(netdissect_options *ndo,
-                      uint16_t fc, const u_char *p, u_int hdrlen,
-                      u_int meshdrlen, const uint8_t **srcp,
-                      const uint8_t **dstp)
+ieee_802_11_hdr_print(u_int16_t fc, const u_char *p, u_int hdrlen,
+    u_int meshdrlen, const u_int8_t **srcp, const u_int8_t **dstp)
 {
-	if (ndo->ndo_vflag) {
+	if (vflag) {
 		if (FC_MORE_DATA(fc))
-			ND_PRINT((ndo, "More Data "));
+			printf("More Data ");
 		if (FC_MORE_FLAG(fc))
-			ND_PRINT((ndo, "More Fragments "));
+			printf("More Fragments ");
 		if (FC_POWER_MGMT(fc))
-			ND_PRINT((ndo, "Pwr Mgmt "));
+			printf("Pwr Mgmt ");
 		if (FC_RETRY(fc))
-			ND_PRINT((ndo, "Retry "));
+			printf("Retry ");
 		if (FC_ORDER(fc))
-			ND_PRINT((ndo, "Strictly Ordered "));
+			printf("Strictly Ordered ");
 		if (FC_WEP(fc))
-			ND_PRINT((ndo, "WEP Encrypted "));
+			printf("WEP Encrypted ");
 		if (FC_TYPE(fc) != T_CTRL || FC_SUBTYPE(fc) != CTRL_PS_POLL)
-			ND_PRINT((ndo, "%dus ",
+			printf("%dus ",
 			    EXTRACT_LE_16BITS(
-			        &((const struct mgmt_header_t *)p)->duration)));
+			        &((const struct mgmt_header_t *)p)->duration));
 	}
 	if (meshdrlen != 0) {
 		const struct meshcntl_t *mc =
 		    (const struct meshcntl_t *)&p[hdrlen - meshdrlen];
 		int ae = mc->flags & 3;
 
-		ND_PRINT((ndo, "MeshData (AE %d TTL %u seq %u", ae, mc->ttl,
-		    EXTRACT_LE_32BITS(mc->seq)));
+		printf("MeshData (AE %d TTL %u seq %u", ae, mc->ttl,
+		    EXTRACT_LE_32BITS(mc->seq));
 		if (ae > 0)
-			ND_PRINT((ndo, " A4:%s", etheraddr_string(ndo, mc->addr4)));
+			printf(" A4:%s", etheraddr_string(mc->addr4));
 		if (ae > 1)
-			ND_PRINT((ndo, " A5:%s", etheraddr_string(ndo, mc->addr5)));
+			printf(" A5:%s", etheraddr_string(mc->addr5));
 		if (ae > 2)
-			ND_PRINT((ndo, " A6:%s", etheraddr_string(ndo, mc->addr6)));
-		ND_PRINT((ndo, ") "));
+			printf(" A6:%s", etheraddr_string(mc->addr6));
+		printf(") ");
 	}
 
 	switch (FC_TYPE(fc)) {
 	case T_MGMT:
-		mgmt_header_print(ndo, p, srcp, dstp);
+		mgmt_header_print(p, srcp, dstp);
 		break;
 	case T_CTRL:
-		ctrl_header_print(ndo, fc, p, srcp, dstp);
+		ctrl_header_print(fc, p, srcp, dstp);
 		break;
 	case T_DATA:
-		data_header_print(ndo, fc, p, srcp, dstp);
+		data_header_print(fc, p, srcp, dstp);
 		break;
 	default:
-		ND_PRINT((ndo, "(header) unknown IEEE802.11 frame type (%d)",
-		    FC_TYPE(fc)));
+		printf("(header) unknown IEEE802.11 frame type (%d)",
+		    FC_TYPE(fc));
 		*srcp = NULL;
 		*dstp = NULL;
 		break;
@@ -2323,19 +1707,18 @@ ieee_802_11_hdr_print(netdissect_options *ndo,
 #endif
 
 static u_int
-ieee802_11_print(netdissect_options *ndo,
-                 const u_char *p, u_int length, u_int orig_caplen, int pad,
-                 u_int fcslen)
+ieee802_11_print(const u_char *p, u_int length, u_int orig_caplen, int pad,
+    u_int fcslen)
 {
-	uint16_t fc;
+	u_int16_t fc;
 	u_int caplen, hdrlen, meshdrlen;
-	const uint8_t *src, *dst;
+	const u_int8_t *src, *dst;
 	u_short extracted_ethertype;
 
 	caplen = orig_caplen;
 	/* Remove FCS, if present */
 	if (length < fcslen) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return caplen;
 	}
 	length -= fcslen;
@@ -2343,19 +1726,19 @@ ieee802_11_print(netdissect_options *ndo,
 		/* Amount of FCS in actual packet data, if any */
 		fcslen = caplen - length;
 		caplen -= fcslen;
-		ndo->ndo_snapend -= fcslen;
+		snapend -= fcslen;
 	}
 
 	if (caplen < IEEE802_11_FC_LEN) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return orig_caplen;
 	}
 
 	fc = EXTRACT_LE_16BITS(p);
-	hdrlen = extract_header_length(ndo, fc);
+	hdrlen = extract_header_length(fc);
 	if (pad)
 		hdrlen = roundup2(hdrlen, 4);
-	if (ndo->ndo_Hflag && FC_TYPE(fc) == T_DATA &&
+	if (Hflag && FC_TYPE(fc) == T_DATA &&
 	    DATA_FRAME_IS_QOS(FC_SUBTYPE(fc))) {
 		meshdrlen = extract_mesh_header_length(p+hdrlen);
 		hdrlen += meshdrlen;
@@ -2364,11 +1747,11 @@ ieee802_11_print(netdissect_options *ndo,
 
 
 	if (caplen < hdrlen) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return hdrlen;
 	}
 
-	ieee_802_11_hdr_print(ndo, fc, p, hdrlen, meshdrlen, &src, &dst);
+	ieee_802_11_hdr_print(fc, p, hdrlen, meshdrlen, &src, &dst);
 
 	/*
 	 * Go past the 802.11 header.
@@ -2379,15 +1762,15 @@ ieee802_11_print(netdissect_options *ndo,
 
 	switch (FC_TYPE(fc)) {
 	case T_MGMT:
-		if (!mgmt_body_print(ndo, fc,
+		if (!mgmt_body_print(fc,
 		    (const struct mgmt_header_t *)(p - hdrlen), p, length)) {
-			ND_PRINT((ndo, "%s", tstr));
+			printf("[|802.11]");
 			return hdrlen;
 		}
 		break;
 	case T_CTRL:
-		if (!ctrl_body_print(ndo, fc, p - hdrlen)) {
-			ND_PRINT((ndo, "%s", tstr));
+		if (!ctrl_body_print(fc, p - hdrlen)) {
+			printf("[|802.11]");
 			return hdrlen;
 		}
 		break;
@@ -2396,29 +1779,29 @@ ieee802_11_print(netdissect_options *ndo,
 			return hdrlen;	/* no-data frame */
 		/* There may be a problem w/ AP not having this bit set */
 		if (FC_WEP(fc)) {
-			if (!wep_print(ndo, p)) {
-				ND_PRINT((ndo, "%s", tstr));
+			if (!wep_print(p)) {
+				printf("[|802.11]");
 				return hdrlen;
 			}
-		} else if (llc_print(ndo, p, length, caplen, dst, src,
+		} else if (llc_print(p, length, caplen, dst, src,
 		    &extracted_ethertype) == 0) {
 			/*
 			 * Some kinds of LLC packet we cannot
 			 * handle intelligently
 			 */
-			if (!ndo->ndo_eflag)
-				ieee_802_11_hdr_print(ndo, fc, p - hdrlen, hdrlen,
+			if (!eflag)
+				ieee_802_11_hdr_print(fc, p - hdrlen, hdrlen,
 				    meshdrlen, NULL, NULL);
 			if (extracted_ethertype)
-				ND_PRINT((ndo, "(LLC %s) ",
+				printf("(LLC %s) ",
 				    etherproto_string(
-				        htons(extracted_ethertype))));
-			if (!ndo->ndo_suppress_default_print)
-				ND_DEFAULTPRINT(p, caplen);
+				        htons(extracted_ethertype)));
+			if (!suppress_default_print)
+				default_print(p, caplen);
 		}
 		break;
 	default:
-		ND_PRINT((ndo, "unknown 802.11 frame type (%d)", FC_TYPE(fc)));
+		printf("unknown 802.11 frame type (%d)", FC_TYPE(fc));
 		break;
 	}
 
@@ -2432,10 +1815,9 @@ ieee802_11_print(netdissect_options *ndo,
  * is the number of bytes actually captured.
  */
 u_int
-ieee802_11_if_print(netdissect_options *ndo,
-                    const struct pcap_pkthdr *h, const u_char *p)
+ieee802_11_if_print(const struct pcap_pkthdr *h, const u_char *p)
 {
-	return ieee802_11_print(ndo, p, h->len, h->caplen, 0, 0);
+	return ieee802_11_print(p, h->len, h->caplen, 0, 0);
 }
 
 #define	IEEE80211_CHAN_FHSS \
@@ -2463,52 +1845,50 @@ ieee802_11_if_print(netdissect_options *ndo,
 	(IS_CHAN_PUREG(flags) || IS_CHAN_G(flags))
 
 static void
-print_chaninfo(netdissect_options *ndo,
-               int freq, int flags)
+print_chaninfo(int freq, int flags)
 {
-	ND_PRINT((ndo, "%u MHz", freq));
+	printf("%u MHz", freq);
 	if (IS_CHAN_FHSS(flags))
-		ND_PRINT((ndo, " FHSS"));
+		printf(" FHSS");
 	if (IS_CHAN_A(flags)) {
 		if (flags & IEEE80211_CHAN_HALF)
-			ND_PRINT((ndo, " 11a/10Mhz"));
+			printf(" 11a/10Mhz");
 		else if (flags & IEEE80211_CHAN_QUARTER)
-			ND_PRINT((ndo, " 11a/5Mhz"));
+			printf(" 11a/5Mhz");
 		else
-			ND_PRINT((ndo, " 11a"));
+			printf(" 11a");
 	}
 	if (IS_CHAN_ANYG(flags)) {
 		if (flags & IEEE80211_CHAN_HALF)
-			ND_PRINT((ndo, " 11g/10Mhz"));
+			printf(" 11g/10Mhz");
 		else if (flags & IEEE80211_CHAN_QUARTER)
-			ND_PRINT((ndo, " 11g/5Mhz"));
+			printf(" 11g/5Mhz");
 		else
-			ND_PRINT((ndo, " 11g"));
+			printf(" 11g");
 	} else if (IS_CHAN_B(flags))
-		ND_PRINT((ndo, " 11b"));
+		printf(" 11b");
 	if (flags & IEEE80211_CHAN_TURBO)
-		ND_PRINT((ndo, " Turbo"));
+		printf(" Turbo");
 	if (flags & IEEE80211_CHAN_HT20)
-		ND_PRINT((ndo, " ht/20"));
+		printf(" ht/20");
 	else if (flags & IEEE80211_CHAN_HT40D)
-		ND_PRINT((ndo, " ht/40-"));
+		printf(" ht/40-");
 	else if (flags & IEEE80211_CHAN_HT40U)
-		ND_PRINT((ndo, " ht/40+"));
-	ND_PRINT((ndo, " "));
+		printf(" ht/40+");
+	printf(" ");
 }
 
 static int
-print_radiotap_field(netdissect_options *ndo,
-                     struct cpack_state *s, uint32_t bit, uint8_t *flags,
-                     struct radiotap_state *state, uint32_t presentflags)
+print_radiotap_field(struct cpack_state *s, u_int32_t bit, u_int8_t *flags,
+						struct radiotap_state *state, u_int32_t presentflags)
 {
 	union {
 		int8_t		i8;
-		uint8_t		u8;
+		u_int8_t	u8;
 		int16_t		i16;
-		uint16_t	u16;
-		uint32_t	u32;
-		uint64_t	u64;
+		u_int16_t	u16;
+		u_int32_t	u32;
+		u_int64_t	u64;
 	} u, u2, u3, u4;
 	int rc;
 
@@ -2579,9 +1959,9 @@ print_radiotap_field(netdissect_options *ndo,
 		rc = cpack_uint8(s, &u3.u8);
 		break;
 	case IEEE80211_RADIOTAP_VENDOR_NAMESPACE: {
-		uint8_t vns[3];
-		uint16_t length;
-		uint8_t subspace;
+		u_int8_t vns[3];
+		u_int16_t length;
+		u_int8_t subspace;
 
 		if ((cpack_align_and_reserve(s, 2)) == NULL) {
 			rc = -1;
@@ -2613,12 +1993,12 @@ print_radiotap_field(netdissect_options *ndo,
 		 * size we do not know, so we cannot
 		 * proceed.  Just print the bit number.
 		 */
-		ND_PRINT((ndo, "[bit %u] ", bit));
+		printf("[bit %u] ", bit);
 		return -1;
 	}
 
 	if (rc != 0) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return rc;
 	}
 
@@ -2633,10 +2013,10 @@ print_radiotap_field(netdissect_options *ndo,
 		 */
 		if (presentflags & (1 << IEEE80211_RADIOTAP_XCHANNEL))
 			break;
-		print_chaninfo(ndo, u.u16, u2.u16);
+		print_chaninfo(u.u16, u2.u16);
 		break;
 	case IEEE80211_RADIOTAP_FHSS:
-		ND_PRINT((ndo, "fhset %d fhpat %d ", u.u16 & 0xff, (u.u16 >> 8) & 0xff));
+		printf("fhset %d fhpat %d ", u.u16 & 0xff, (u.u16 >> 8) & 0xff);
 		break;
 	case IEEE80211_RADIOTAP_RATE:
 		/*
@@ -2677,57 +2057,57 @@ print_radiotap_field(netdissect_options *ndo,
 			 * information from Flags, at least on
 			 * FreeBSD?
 			 */
-			ND_PRINT((ndo, "MCS %u ", u.u8 & 0x7f));
+			printf("MCS %u ", u.u8 & 0x7f);
 		} else
-			ND_PRINT((ndo, "%2.1f Mb/s ", .5 * u.u8));
+			printf("%2.1f Mb/s ", .5*u.u8);
 		break;
 	case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
-		ND_PRINT((ndo, "%ddB signal ", u.i8));
+		printf("%ddB signal ", u.i8);
 		break;
 	case IEEE80211_RADIOTAP_DBM_ANTNOISE:
-		ND_PRINT((ndo, "%ddB noise ", u.i8));
+		printf("%ddB noise ", u.i8);
 		break;
 	case IEEE80211_RADIOTAP_DB_ANTSIGNAL:
-		ND_PRINT((ndo, "%ddB signal ", u.u8));
+		printf("%ddB signal ", u.u8);
 		break;
 	case IEEE80211_RADIOTAP_DB_ANTNOISE:
-		ND_PRINT((ndo, "%ddB noise ", u.u8));
+		printf("%ddB noise ", u.u8);
 		break;
 	case IEEE80211_RADIOTAP_LOCK_QUALITY:
-		ND_PRINT((ndo, "%u sq ", u.u16));
+		printf("%u sq ", u.u16);
 		break;
 	case IEEE80211_RADIOTAP_TX_ATTENUATION:
-		ND_PRINT((ndo, "%d tx power ", -(int)u.u16));
+		printf("%d tx power ", -(int)u.u16);
 		break;
 	case IEEE80211_RADIOTAP_DB_TX_ATTENUATION:
-		ND_PRINT((ndo, "%ddB tx power ", -(int)u.u8));
+		printf("%ddB tx power ", -(int)u.u8);
 		break;
 	case IEEE80211_RADIOTAP_DBM_TX_POWER:
-		ND_PRINT((ndo, "%ddBm tx power ", u.i8));
+		printf("%ddBm tx power ", u.i8);
 		break;
 	case IEEE80211_RADIOTAP_FLAGS:
 		if (u.u8 & IEEE80211_RADIOTAP_F_CFP)
-			ND_PRINT((ndo, "cfp "));
+			printf("cfp ");
 		if (u.u8 & IEEE80211_RADIOTAP_F_SHORTPRE)
-			ND_PRINT((ndo, "short preamble "));
+			printf("short preamble ");
 		if (u.u8 & IEEE80211_RADIOTAP_F_WEP)
-			ND_PRINT((ndo, "wep "));
+			printf("wep ");
 		if (u.u8 & IEEE80211_RADIOTAP_F_FRAG)
-			ND_PRINT((ndo, "fragmented "));
+			printf("fragmented ");
 		if (u.u8 & IEEE80211_RADIOTAP_F_BADFCS)
-			ND_PRINT((ndo, "bad-fcs "));
+			printf("bad-fcs ");
 		break;
 	case IEEE80211_RADIOTAP_ANTENNA:
-		ND_PRINT((ndo, "antenna %d ", u.u8));
+		printf("antenna %d ", u.u8);
 		break;
 	case IEEE80211_RADIOTAP_TSFT:
-		ND_PRINT((ndo, "%" PRIu64 "us tsft ", u.u64));
+		printf("%" PRIu64 "us tsft ", u.u64);
 		break;
 	case IEEE80211_RADIOTAP_RX_FLAGS:
 		/* Do nothing for now */
 		break;
 	case IEEE80211_RADIOTAP_XCHANNEL:
-		print_chaninfo(ndo, u2.u16, u.u32);
+		print_chaninfo(u2.u16, u.u32);
 		break;
 	case IEEE80211_RADIOTAP_MCS: {
 		static const char *bandwidth[4] = {
@@ -2752,7 +2132,7 @@ print_radiotap_field(netdissect_options *ndo,
 					 * the guard interval, so we can look
 					 * up the rate.
 					 */
-					htrate =
+					htrate = 
 						ieee80211_float_htrates \
 							[u3.u8] \
 							[((u2.u8 & IEEE80211_RADIOTAP_MCS_BANDWIDTH_MASK) == IEEE80211_RADIOTAP_MCS_BANDWIDTH_40 ? 1 : 0)] \
@@ -2776,39 +2156,34 @@ print_radiotap_field(netdissect_options *ndo,
 				 * We have the rate.
 				 * Print it.
 				 */
-				ND_PRINT((ndo, "%.1f Mb/s MCS %u ", htrate, u3.u8));
+				printf("%.1f Mb/s MCS %u ", htrate, u3.u8);
 			} else {
 				/*
 				 * We at least have the MCS index.
 				 * Print it.
 				 */
-				ND_PRINT((ndo, "MCS %u ", u3.u8));
+				printf("MCS %u ", u3.u8);
 			}
 		}
 		if (u.u8 & IEEE80211_RADIOTAP_MCS_BANDWIDTH_KNOWN) {
-			ND_PRINT((ndo, "%s ",
-				bandwidth[u2.u8 & IEEE80211_RADIOTAP_MCS_BANDWIDTH_MASK]));
+			printf("%s ",
+				bandwidth[u2.u8 & IEEE80211_RADIOTAP_MCS_BANDWIDTH_MASK]);
 		}
 		if (u.u8 & IEEE80211_RADIOTAP_MCS_GUARD_INTERVAL_KNOWN) {
-			ND_PRINT((ndo, "%s GI ",
+			printf("%s GI ",
 				(u2.u8 & IEEE80211_RADIOTAP_MCS_SHORT_GI) ?
-				"short" : "lon"));
+				"short" : "lon");
 		}
 		if (u.u8 & IEEE80211_RADIOTAP_MCS_HT_FORMAT_KNOWN) {
-			ND_PRINT((ndo, "%s ",
+			printf("%s ",
 				(u2.u8 & IEEE80211_RADIOTAP_MCS_HT_GREENFIELD) ?
-				"greenfield" : "mixed"));
+				"greenfield" : "mixed");
 		}
 		if (u.u8 & IEEE80211_RADIOTAP_MCS_FEC_TYPE_KNOWN) {
-			ND_PRINT((ndo, "%s FEC ",
+			printf("%s FEC ",
 				(u2.u8 & IEEE80211_RADIOTAP_MCS_FEC_LDPC) ?
-				"LDPC" : "BCC"));
+				"LDPC" : "BCC");
 		}
-		if (u.u8 & IEEE80211_RADIOTAP_MCS_STBC_KNOWN) {
-			ND_PRINT((ndo, "RX-STBC%u ",
-				(u2.u8 & IEEE80211_RADIOTAP_MCS_STBC_MASK) >> IEEE80211_RADIOTAP_MCS_STBC_SHIFT));
-		}
-
 		break;
 		}
 	}
@@ -2816,8 +2191,7 @@ print_radiotap_field(netdissect_options *ndo,
 }
 
 static u_int
-ieee802_11_radio_print(netdissect_options *ndo,
-                       const u_char *p, u_int length, u_int caplen)
+ieee802_11_radio_print(const u_char *p, u_int length, u_int caplen)
 {
 #define	BITNO_32(x) (((x) >> 16) ? 16 + BITNO_16((x) >> 16) : BITNO_16((x)))
 #define	BITNO_16(x) (((x) >> 8) ? 8 + BITNO_8((x) >> 8) : BITNO_8((x)))
@@ -2830,19 +2204,20 @@ ieee802_11_radio_print(netdissect_options *ndo,
 
 	struct cpack_state cpacker;
 	struct ieee80211_radiotap_header *hdr;
-	uint32_t present, next_present;
-	uint32_t presentflags = 0;
-	uint32_t *presentp, *last_presentp;
+	u_int32_t present, next_present;
+	u_int32_t presentflags = 0;
+	u_int32_t *presentp, *last_presentp;
 	enum ieee80211_radiotap_type bit;
 	int bit0;
+	const u_char *iter;
 	u_int len;
-	uint8_t flags;
+	u_int8_t flags;
 	int pad;
 	u_int fcslen;
 	struct radiotap_state state;
 
 	if (caplen < sizeof(*hdr)) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return caplen;
 	}
 
@@ -2851,20 +2226,25 @@ ieee802_11_radio_print(netdissect_options *ndo,
 	len = EXTRACT_LE_16BITS(&hdr->it_len);
 
 	if (caplen < len) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return caplen;
 	}
-	cpack_init(&cpacker, (uint8_t *)hdr, len); /* align against header start */
-	cpack_advance(&cpacker, sizeof(*hdr)); /* includes the 1st bitmap */
 	for (last_presentp = &hdr->it_present;
 	     IS_EXTENDED(last_presentp) &&
 	     (u_char*)(last_presentp + 1) <= p + len;
-	     last_presentp++)
-	  cpack_advance(&cpacker, sizeof(hdr->it_present)); /* more bitmaps */
+	     last_presentp++);
 
 	/* are there more bitmap extensions than bytes in header? */
 	if (IS_EXTENDED(last_presentp)) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
+		return caplen;
+	}
+
+	iter = (u_char*)(last_presentp + 1);
+
+	if (cpack_init(&cpacker, (u_int8_t*)iter, len - (iter - p)) != 0) {
+		/* XXX */
+		printf("[|802.11]");
 		return caplen;
 	}
 
@@ -2890,7 +2270,7 @@ ieee802_11_radio_print(netdissect_options *ndo,
 			bit = (enum ieee80211_radiotap_type)
 			    (bit0 + BITNO_32(present ^ next_present));
 
-			if (print_radiotap_field(ndo, &cpacker, bit, &flags, &state, presentflags) != 0)
+			if (print_radiotap_field(&cpacker, bit, &flags, &state, presentflags) != 0)
 				goto out;
 		}
 	}
@@ -2900,7 +2280,7 @@ out:
 		pad = 1;	/* Atheros padding */
 	if (flags & IEEE80211_RADIOTAP_F_FCS)
 		fcslen = 4;	/* FCS at end of packet */
-	return len + ieee802_11_print(ndo, p + len, length - len, caplen - len, pad,
+	return len + ieee802_11_print(p + len, length - len, caplen - len, pad,
 	    fcslen);
 #undef BITNO_32
 #undef BITNO_16
@@ -2911,13 +2291,12 @@ out:
 }
 
 static u_int
-ieee802_11_avs_radio_print(netdissect_options *ndo,
-                           const u_char *p, u_int length, u_int caplen)
+ieee802_11_avs_radio_print(const u_char *p, u_int length, u_int caplen)
 {
-	uint32_t caphdr_len;
+	u_int32_t caphdr_len;
 
 	if (caplen < 8) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return caplen;
 	}
 
@@ -2928,16 +2307,16 @@ ieee802_11_avs_radio_print(netdissect_options *ndo,
 		 * to be large enough to include even the version
 		 * cookie or capture header length!
 		 */
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return caplen;
 	}
 
 	if (caplen < caphdr_len) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return caplen;
 	}
 
-	return caphdr_len + ieee802_11_print(ndo, p + caphdr_len,
+	return caphdr_len + ieee802_11_print(p + caphdr_len,
 	    length - caphdr_len, caplen - caphdr_len, 0, 0);
 }
 
@@ -2961,29 +2340,28 @@ ieee802_11_avs_radio_print(netdissect_options *ndo,
  * indicate whether it's a Prism header or an AVS header).
  */
 u_int
-prism_if_print(netdissect_options *ndo,
-               const struct pcap_pkthdr *h, const u_char *p)
+prism_if_print(const struct pcap_pkthdr *h, const u_char *p)
 {
 	u_int caplen = h->caplen;
 	u_int length = h->len;
-	uint32_t msgcode;
+	u_int32_t msgcode;
 
 	if (caplen < 4) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return caplen;
 	}
 
 	msgcode = EXTRACT_32BITS(p);
 	if (msgcode == WLANCAP_MAGIC_COOKIE_V1 ||
 	    msgcode == WLANCAP_MAGIC_COOKIE_V2)
-		return ieee802_11_avs_radio_print(ndo, p, length, caplen);
+		return ieee802_11_avs_radio_print(p, length, caplen);
 
 	if (caplen < PRISM_HDR_LEN) {
-		ND_PRINT((ndo, "%s", tstr));
+		printf("[|802.11]");
 		return caplen;
 	}
 
-	return PRISM_HDR_LEN + ieee802_11_print(ndo, p + PRISM_HDR_LEN,
+	return PRISM_HDR_LEN + ieee802_11_print(p + PRISM_HDR_LEN,
 	    length - PRISM_HDR_LEN, caplen - PRISM_HDR_LEN, 0, 0);
 }
 
@@ -2992,10 +2370,9 @@ prism_if_print(netdissect_options *ndo,
  * header, containing information such as radio information.
  */
 u_int
-ieee802_11_radio_if_print(netdissect_options *ndo,
-                          const struct pcap_pkthdr *h, const u_char *p)
+ieee802_11_radio_if_print(const struct pcap_pkthdr *h, const u_char *p)
 {
-	return ieee802_11_radio_print(ndo, p, h->len, h->caplen);
+	return ieee802_11_radio_print(p, h->len, h->caplen);
 }
 
 /*
@@ -3004,8 +2381,7 @@ ieee802_11_radio_if_print(netdissect_options *ndo,
  * which we currently ignore.
  */
 u_int
-ieee802_11_radio_avs_if_print(netdissect_options *ndo,
-                              const struct pcap_pkthdr *h, const u_char *p)
+ieee802_11_radio_avs_if_print(const struct pcap_pkthdr *h, const u_char *p)
 {
-	return ieee802_11_avs_radio_print(ndo, p, h->len, h->caplen);
+	return ieee802_11_avs_radio_print(p, h->len, h->caplen);
 }

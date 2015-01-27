@@ -3,7 +3,8 @@
 LIB=	hx509
 LDFLAGS=	-Wl,--no-undefined
 VERSION_MAP= ${KRB5DIR}/lib/hx509/version-script.map
-LIBADD=	asn1 com_err crypto roken wind
+LDADD=	-lasn1 -lcom_err -lcrypto -lroken -lwind
+DPADD=	${LIBASN1} ${LIBCOM_ERR} ${LIBCRYPTO} ${LIBROKEN} ${LIBWIND}
 
 MAN=	hx509.3 \
 	hx509_ca.3 \
@@ -285,10 +286,10 @@ ${GEN_CRMF}: crmf.asn1
 .SUFFIXES: .h .c .x .hx
 
 .x.c:   
-	${CP} ${.IMPSRC} ${.TARGET}
+	cp ${.IMPSRC} ${.TARGET}
 
 .hx.h:
-	${CP} ${.IMPSRC} ${.TARGET}
+	cp ${.IMPSRC} ${.TARGET}
 
 .include <bsd.lib.mk>
 

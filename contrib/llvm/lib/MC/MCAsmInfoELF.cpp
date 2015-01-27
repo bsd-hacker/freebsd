@@ -20,5 +20,4 @@ void MCAsmInfoELF::anchor() { }
 MCAsmInfoELF::MCAsmInfoELF() {
   HasIdentDirective = true;
   WeakRefDirective = "\t.weak\t";
-  PrivateGlobalPrefix = ".L";
 }

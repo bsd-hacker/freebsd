@@ -41,9 +41,6 @@ public:
     
     virtual ConstString
     GetQualifiedTypeName();
-    
-    virtual ConstString
-    GetDisplayTypeName();
 
     virtual bool
     MightHaveChildren();

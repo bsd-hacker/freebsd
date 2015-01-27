@@ -12,6 +12,7 @@
 //
 //===---------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "jit"
 #include "Mips.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
 #include "MipsInstrInfo.h"
@@ -23,8 +24,8 @@
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/Passes.h"
@@ -39,8 +40,6 @@
 #endif
 
 using namespace llvm;
-
-#define DEBUG_TYPE "jit"
 
 STATISTIC(NumEmitted, "Number of machine instructions emitted");
 
@@ -57,7 +56,7 @@ class MipsCodeEmitter : public MachineFunctionPass {
   const std::vector<MachineJumpTableEntry> *MJTEs;
   bool IsPIC;
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequired<MachineModuleInfo> ();
     MachineFunctionPass::getAnalysisUsage(AU);
   }
@@ -66,13 +65,13 @@ class MipsCodeEmitter : public MachineFunctionPass {
 
 public:
   MipsCodeEmitter(TargetMachine &tm, JITCodeEmitter &mce)
-    : MachineFunctionPass(ID), JTI(nullptr), II(nullptr), TD(nullptr),
-      TM(tm), MCE(mce), MCPEs(nullptr), MJTEs(nullptr),
+    : MachineFunctionPass(ID), JTI(0), II(0), TD(0),
+      TM(tm), MCE(mce), MCPEs(0), MJTEs(0),
       IsPIC(TM.getRelocationModel() == Reloc::PIC_) {}
 
-  bool runOnMachineFunction(MachineFunction &MF) override;
+  bool runOnMachineFunction(MachineFunction &MF);
 
-  const char *getPassName() const override {
+  virtual const char *getPassName() const {
     return "Mips Machine Code Emitter";
   }
 
@@ -110,28 +109,19 @@ private:
   unsigned getBranchTargetOpValueMM(const MachineInstr &MI,
                                     unsigned OpNo) const;
 
-  unsigned getBranchTarget21OpValue(const MachineInstr &MI,
-                                    unsigned OpNo) const;
-  unsigned getBranchTarget26OpValue(const MachineInstr &MI,
-                                    unsigned OpNo) const;
-  unsigned getJumpOffset16OpValue(const MachineInstr &MI, unsigned OpNo) const;
-
   unsigned getBranchTargetOpValue(const MachineInstr &MI, unsigned OpNo) const;
   unsigned getMemEncoding(const MachineInstr &MI, unsigned OpNo) const;
   unsigned getMemEncodingMMImm12(const MachineInstr &MI, unsigned OpNo) const;
-  unsigned getMSAMemEncoding(const MachineInstr &MI, unsigned OpNo) const;
   unsigned getSizeExtEncoding(const MachineInstr &MI, unsigned OpNo) const;
   unsigned getSizeInsEncoding(const MachineInstr &MI, unsigned OpNo) const;
   unsigned getLSAImmEncoding(const MachineInstr &MI, unsigned OpNo) const;
-  unsigned getSimm19Lsl2Encoding(const MachineInstr &MI, unsigned OpNo) const;
-  unsigned getSimm18Lsl3Encoding(const MachineInstr &MI, unsigned OpNo) const;
+
+  void emitGlobalAddressUnaligned(const GlobalValue *GV, unsigned Reloc,
+                                  int Offset) const;
 
   /// Expand pseudo instructions with accumulator register operands.
   void expandACCInstr(MachineBasicBlock::instr_iterator MI,
                       MachineBasicBlock &MBB, unsigned Opc) const;
-
-  void expandPseudoIndirectBranch(MachineBasicBlock::instr_iterator MI,
-                                  MachineBasicBlock &MBB) const;
 
   /// \brief Expand pseudo instruction. Return true if MI was expanded.
   bool expandPseudos(MachineBasicBlock::instr_iterator &MI,
@@ -150,7 +140,7 @@ bool MipsCodeEmitter::runOnMachineFunction(MachineFunction &MF) {
   TD = Target.getDataLayout();
   Subtarget = &TM.getSubtarget<MipsSubtarget> ();
   MCPEs = &MF.getConstantPool()->getConstants();
-  MJTEs = nullptr;
+  MJTEs = 0;
   if (MF.getJumpTableInfo()) MJTEs = &MF.getJumpTableInfo()->getJumpTables();
   JTI->Initialize(MF, IsPIC, Subtarget->isLittle());
   MCE.setModuleInfo(&getAnalysis<MachineModuleInfo> ());
@@ -213,24 +203,6 @@ unsigned MipsCodeEmitter::getBranchTargetOpValueMM(const MachineInstr &MI,
   return 0;
 }
 
-unsigned MipsCodeEmitter::getBranchTarget21OpValue(const MachineInstr &MI,
-                                                   unsigned OpNo) const {
-  llvm_unreachable("Unimplemented function.");
-  return 0;
-}
-
-unsigned MipsCodeEmitter::getBranchTarget26OpValue(const MachineInstr &MI,
-                                                   unsigned OpNo) const {
-  llvm_unreachable("Unimplemented function.");
-  return 0;
-}
-
-unsigned MipsCodeEmitter::getJumpOffset16OpValue(const MachineInstr &MI,
-                                                 unsigned OpNo) const {
-  llvm_unreachable("Unimplemented function.");
-  return 0;
-}
-
 unsigned MipsCodeEmitter::getBranchTargetOpValue(const MachineInstr &MI,
                                                  unsigned OpNo) const {
   MachineOperand MO = MI.getOperand(OpNo);
@@ -252,12 +224,6 @@ unsigned MipsCodeEmitter::getMemEncodingMMImm12(const MachineInstr &MI,
   return 0;
 }
 
-unsigned MipsCodeEmitter::getMSAMemEncoding(const MachineInstr &MI,
-                                            unsigned OpNo) const {
-  llvm_unreachable("Unimplemented function.");
-  return 0;
-}
-
 unsigned MipsCodeEmitter::getSizeExtEncoding(const MachineInstr &MI,
                                              unsigned OpNo) const {
   // size is encoded as size-1.
@@ -273,18 +239,6 @@ unsigned MipsCodeEmitter::getSizeInsEncoding(const MachineInstr &MI,
 
 unsigned MipsCodeEmitter::getLSAImmEncoding(const MachineInstr &MI,
                                             unsigned OpNo) const {
-  llvm_unreachable("Unimplemented function.");
-  return 0;
-}
-
-unsigned MipsCodeEmitter::getSimm18Lsl3Encoding(const MachineInstr &MI,
-                                                unsigned OpNo) const {
-  llvm_unreachable("Unimplemented function.");
-  return 0;
-}
-
-unsigned MipsCodeEmitter::getSimm19Lsl2Encoding(const MachineInstr &MI,
-                                                unsigned OpNo) const {
   llvm_unreachable("Unimplemented function.");
   return 0;
 }
@@ -317,6 +271,14 @@ void MipsCodeEmitter::emitGlobalAddress(const GlobalValue *GV, unsigned Reloc,
   MCE.addRelocation(MachineRelocation::getGV(MCE.getCurrentPCOffset(), Reloc,
                                              const_cast<GlobalValue *>(GV), 0,
                                              MayNeedFarStub));
+}
+
+void MipsCodeEmitter::emitGlobalAddressUnaligned(const GlobalValue *GV,
+                                           unsigned Reloc, int Offset) const {
+  MCE.addRelocation(MachineRelocation::getGV(MCE.getCurrentPCOffset(), Reloc,
+                             const_cast<GlobalValue *>(GV), 0, false));
+  MCE.addRelocation(MachineRelocation::getGV(MCE.getCurrentPCOffset() + Offset,
+                      Reloc, const_cast<GlobalValue *>(GV), 0, false));
 }
 
 void MipsCodeEmitter::
@@ -376,44 +338,9 @@ void MipsCodeEmitter::expandACCInstr(MachineBasicBlock::instr_iterator MI,
     .addReg(MI->getOperand(1).getReg()).addReg(MI->getOperand(2).getReg());
 }
 
-void MipsCodeEmitter::expandPseudoIndirectBranch(
-    MachineBasicBlock::instr_iterator MI, MachineBasicBlock &MBB) const {
-  // This logic is duplicated from MipsAsmPrinter::emitPseudoIndirectBranch()
-  bool HasLinkReg = false;
-  unsigned Opcode = 0;
-
-  if (Subtarget->hasMips64r6()) {
-    // MIPS64r6 should use (JALR64 ZERO_64, $rs)
-    Opcode = Mips::JALR64;
-    HasLinkReg = true;
-  } else if (Subtarget->hasMips32r6()) {
-    // MIPS32r6 should use (JALR ZERO, $rs)
-    Opcode = Mips::JALR;
-    HasLinkReg = true;
-  } else if (Subtarget->inMicroMipsMode())
-    // microMIPS should use (JR_MM $rs)
-    Opcode = Mips::JR_MM;
-  else {
-    // Everything else should use (JR $rs)
-    Opcode = Mips::JR;
-  }
-
-  auto MIB = BuildMI(MBB, &*MI, MI->getDebugLoc(), II->get(Opcode));
-
-  if (HasLinkReg) {
-    unsigned ZeroReg = Subtarget->isGP64bit() ? Mips::ZERO_64 : Mips::ZERO;
-    MIB.addReg(ZeroReg);
-  }
-
-  MIB.addReg(MI->getOperand(0).getReg());
-}
-
 bool MipsCodeEmitter::expandPseudos(MachineBasicBlock::instr_iterator &MI,
                                     MachineBasicBlock &MBB) const {
   switch (MI->getOpcode()) {
-  default:
-    llvm_unreachable("Unhandled pseudo");
-    return false;
   case Mips::NOP:
     BuildMI(MBB, &*MI, MI->getDebugLoc(), II->get(Mips::SLL), Mips::ZERO)
       .addReg(Mips::ZERO).addImm(0);
@@ -454,17 +381,8 @@ bool MipsCodeEmitter::expandPseudos(MachineBasicBlock::instr_iterator &MI,
   case Mips::PseudoMSUBU:
     expandACCInstr(MI, MBB, Mips::MSUBU);
     break;
-  case Mips::PseudoReturn:
-  case Mips::PseudoReturn64:
-  case Mips::PseudoIndirectBranch:
-  case Mips::PseudoIndirectBranch64:
-      expandPseudoIndirectBranch(MI, MBB);
-      break;
-  case TargetOpcode::CFI_INSTRUCTION:
-  case TargetOpcode::IMPLICIT_DEF:
-  case TargetOpcode::KILL:
-      // Do nothing
-      return false;
+  default:
+    return false;
   }
 
   (MI--)->eraseFromBundle();

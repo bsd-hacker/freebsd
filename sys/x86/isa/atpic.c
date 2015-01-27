@@ -33,7 +33,6 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_auto_eoi.h"
 #include "opt_isa.h"
-#include "opt_mca.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -58,9 +57,6 @@ __FBSDID("$FreeBSD$");
 #include <isa/isareg.h>
 #endif
 #include <isa/isavar.h>
-#ifdef DEV_MCA
-#include <i386/bios/mca_machdep.h>
-#endif
 
 #ifdef __amd64__
 #define	SDT_ATPIC	SDT_SYSIGT
@@ -528,7 +524,7 @@ atpic_init(void *dummy __unused)
 		intr_register_source(&ai->at_intsrc);
 	}
 }
-SYSINIT(atpic_init, SI_SUB_INTR, SI_ORDER_FOURTH, atpic_init, NULL);
+SYSINIT(atpic_init, SI_SUB_INTR, SI_ORDER_SECOND + 1, atpic_init, NULL);
 
 void
 atpic_handle_intr(u_int vector, struct trapframe *frame)

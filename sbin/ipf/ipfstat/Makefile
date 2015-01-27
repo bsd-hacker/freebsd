@@ -5,6 +5,9 @@ NOGCCERROR=	# defined
 PROG=		ipfstat
 SRCS=		ipfstat.c
 MAN=		ipfstat.8
-LIBADD+=	ncursesw
+DPADD+=  	${LIBCURSES}
+LDADD+=  	-lcurses
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

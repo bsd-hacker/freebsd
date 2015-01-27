@@ -11,20 +11,19 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "asm-printer"
 #include "InstPrinter/NVPTXInstPrinter.h"
-#include "MCTargetDesc/NVPTXBaseInfo.h"
 #include "NVPTX.h"
+#include "MCTargetDesc/NVPTXBaseInfo.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstrInfo.h"
-#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbol.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
 #include <cctype>
 using namespace llvm;
-
-#define DEBUG_TYPE "asm-printer"
 
 #include "NVPTXGenAsmWriter.inc"
 
@@ -57,13 +56,13 @@ void NVPTXInstPrinter::printRegName(raw_ostream &OS, unsigned RegNo) const {
     OS << "%r";
     break;
   case 4:
-    OS << "%rd";
+    OS << "%rl";
     break;
   case 5:
     OS << "%f";
     break;
   case 6:
-    OS << "%fd";
+    OS << "%fl";
     break;
   }
 

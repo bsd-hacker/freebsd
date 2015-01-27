@@ -33,8 +33,6 @@
 #include <machine/asm.h>
 __FBSDID("$FreeBSD$");
 
-#include <machine/sysreg.h>
-
 	.cpu cortex-a8
 
 .Lcoherency_level:
@@ -72,12 +70,12 @@ ENTRY(armv7_setttb)
  	dsb
 				
 	orr 	r0, r0, #PT_ATTR
- 	mcr	CP15_TTBR0(r0)
+ 	mcr	p15, 0, r0, c2, c0, 0	/* Translation Table Base Register 0 (TTBR0) */
 	isb
 #ifdef SMP
- 	mcr	CP15_TLBIALLIS
+ 	mcr     p15, 0, r0, c8, c3, 0   /* invalidate I+D TLBs Inner Shareable*/
 #else
- 	mcr     CP15_TLBIALL
+ 	mcr     p15, 0, r0, c8, c7, 0   /* invalidate I+D TLBs */
 #endif
  	dsb
  	isb
@@ -87,11 +85,11 @@ END(armv7_setttb)
 ENTRY(armv7_tlb_flushID)
 	dsb
 #ifdef SMP
-	mcr	CP15_TLBIALLIS
-	mcr	CP15_BPIALLIS
+	mcr	p15, 0, r0, c8, c3, 0	/* flush Unified TLB all entries Inner Shareable */
+	mcr	p15, 0, r0, c7, c1, 6	/* flush BTB Inner Shareable */
 #else
-	mcr	CP15_TLBIALL
-	mcr	CP15_BPIALL
+	mcr	p15, 0, r0, c8, c7, 0	/* flush Unified TLB all entries */
+	mcr	p15, 0, r0, c7, c5, 6	/* flush BTB */
 #endif
 	dsb
 	isb
@@ -102,11 +100,11 @@ ENTRY(armv7_tlb_flushID_SE)
 	ldr	r1, .Lpage_mask
 	bic	r0, r0, r1
 #ifdef SMP
-	mcr	CP15_TLBIMVAAIS(r0)
-	mcr	CP15_BPIALLIS
+	mcr	p15, 0, r0, c8, c3, 3	/* flush Unified TLB single entry Inner Shareable */
+	mcr	p15, 0, r0, c7, c1, 6	/* flush BTB Inner Shareable */
 #else
-	mcr	CP15_TLBIMVA(r0)
-	mcr	CP15_BPIALL
+	mcr	p15, 0, r0, c8, c7, 1	/* flush Unified TLB single entry */
+	mcr	p15, 0, r0, c7, c5, 6	/* flush BTB */
 #endif
 	dsb
 	isb
@@ -151,7 +149,7 @@ Loop3:
 	orr	r6, r6, r7, lsl r2
 
 	/* Clean and invalidate data cache by way/index */
-	mcr	CP15_DCCISW(r6)
+	mcr	p15, 0, r6, c7, c14, 2
 	subs	r9, r9, #1
 	bge	Loop3
 	subs	r7, r7, #1
@@ -170,9 +168,9 @@ ENTRY(armv7_idcache_wbinv_all)
 	stmdb	sp!, {lr}
 	bl armv7_dcache_wbinv_all
 #ifdef SMP
-	mcr	CP15_ICIALLUIS
+	mcr	p15, 0, r0, c7, c1, 0	/* Invalidate all I caches to PoU (ICIALLUIS) */
 #else
-	mcr	CP15_ICIALLU
+	mcr	p15, 0, r0, c7, c5, 0	/* Invalidate all I caches to PoU (ICIALLU) */
 #endif
 	dsb
 	isb
@@ -193,7 +191,7 @@ ENTRY(armv7_dcache_wb_range)
 	add	r1, r1, r2
 	bic	r0, r0, r3
 .Larmv7_wb_next:
-	mcr	CP15_DCCMVAC(r0)
+	mcr	p15, 0, r0, c7, c10, 1	/* Clean D cache SE with VA */
 	add	r0, r0, ip
 	subs	r1, r1, ip
 	bhi	.Larmv7_wb_next
@@ -208,7 +206,7 @@ ENTRY(armv7_dcache_wbinv_range)
 	add     r1, r1, r2
 	bic     r0, r0, r3
 .Larmv7_wbinv_next:
-	mcr	CP15_DCCIMVAC(r0)
+	mcr	p15, 0, r0, c7, c14, 1	/* Purge D cache SE with VA */
 	add	r0, r0, ip
 	subs	r1, r1, ip
 	bhi	.Larmv7_wbinv_next
@@ -227,7 +225,7 @@ ENTRY(armv7_dcache_inv_range)
 	add     r1, r1, r2
 	bic     r0, r0, r3
 .Larmv7_inv_next:
-	mcr	CP15_DCIMVAC(r0)
+	mcr	p15, 0, r0, c7, c6, 1	/* Invalidate D cache SE with VA */
 	add	r0, r0, ip
 	subs	r1, r1, ip
 	bhi	.Larmv7_inv_next
@@ -242,8 +240,8 @@ ENTRY(armv7_idcache_wbinv_range)
 	add     r1, r1, r2
 	bic     r0, r0, r3
 .Larmv7_id_wbinv_next:
-	mcr	CP15_ICIMVAU(r0)
-	mcr	CP15_DCCIMVAC(r0)
+	mcr	p15, 0, r0, c7, c5, 1	/* Invalidate I cache SE with VA */
+	mcr	p15, 0, r0, c7, c14, 1	/* Purge D cache SE with VA */
 	add	r0, r0, ip
 	subs	r1, r1, ip
 	bhi	.Larmv7_id_wbinv_next
@@ -254,9 +252,9 @@ END(armv7_idcache_wbinv_range)
 
 ENTRY_NP(armv7_icache_sync_all)
 #ifdef SMP
-	mcr	CP15_ICIALLUIS
+	mcr	p15, 0, r0, c7, c1, 0	/* Invalidate all I cache to PoU Inner Shareable */
 #else
-	mcr	CP15_ICIALLU
+	mcr	p15, 0, r0, c7, c5, 0	/* Invalidate all I cache to PoU (ICIALLU) */
 #endif
 	isb				/* instruction synchronization barrier */
 	dsb				/* data synchronization barrier */
@@ -266,8 +264,8 @@ END(armv7_icache_sync_all)
 ENTRY_NP(armv7_icache_sync_range)
 	ldr	ip, .Larmv7_line_size
 .Larmv7_sync_next:
-	mcr	CP15_ICIMVAU(r0)
-	mcr	CP15_DCCMVAC(r0)
+	mcr	p15, 0, r0, c7, c5, 1	/* Invalidate I cache SE with VA */
+	mcr	p15, 0, r0, c7, c10, 1	/* Clean D cache SE with VA */
 	add	r0, r0, ip
 	subs	r1, r1, ip
 	bhi	.Larmv7_sync_next
@@ -285,13 +283,13 @@ END(armv7_cpu_sleep)
 ENTRY(armv7_context_switch)
 	dsb
 	orr     r0, r0, #PT_ATTR
-
-	mcr	CP15_TTBR0(r0)
+			
+	mcr	p15, 0, r0, c2, c0, 0	/* set the new TTB */
 	isb
 #ifdef SMP
-	mcr	CP15_TLBIALLIS
+	mcr	p15, 0, r0, c8, c3, 0	/* and flush the I+D tlbs Inner Sharable */
 #else
-	mcr	CP15_TLBIALL
+	mcr	p15, 0, r0, c8, c7, 0	/* and flush the I+D tlbs */
 #endif
 	dsb
 	isb
@@ -311,12 +309,12 @@ ENTRY(armv7_sev)
 END(armv7_sev)
 
 ENTRY(armv7_auxctrl)
-	mrc	CP15_ACTLR(r2)
+	mrc p15, 0, r2, c1, c0, 1
 	bic r3, r2, r0	/* Clear bits */
 	eor r3, r3, r1  /* XOR bits */
 
 	teq r2, r3
-	mcrne	CP15_ACTLR(r3)
+	mcrne p15, 0, r3, c1, c0, 1
 	mov r0, r2
 	RET
 END(armv7_auxctrl)
@@ -327,8 +325,8 @@ END(armv7_auxctrl)
  */
 ENTRY(armv7_idcache_inv_all)
 	mov     r0, #0
-	mcr	CP15_CSSELR(r0)		@ set cache level to L1
-	mrc	CP15_CCSIDR(r0)
+	mcr     p15, 2, r0, c0, c0, 0   @ set cache level to L1
+	mrc     p15, 1, r0, c0, c0, 0   @ read CCSIDR
 
 	ubfx    r2, r0, #13, #15        @ get num sets - 1 from CCSIDR
 	ubfx    r3, r0, #3, #10         @ get numways - 1 from CCSIDR
@@ -347,7 +345,7 @@ ENTRY(armv7_idcache_inv_all)
 	mov     r2, ip                  @ r2 now contains set way decr
 
 	/* r3 = ways/sets, r2 = way decr, r1 = set decr, r0 and ip are free */
-1:	mcr	CP15_DCISW(r3)		@ invalidate line
+1:      mcr     p15, 0, r3, c7, c6, 2   @ invalidate line
 	movs    r0, r3                  @ get current way/set
 	beq     2f                      @ at 0 means we are done.
 	movs    r0, r0, lsl #10         @ clear way bits leaving only set bits
@@ -357,10 +355,10 @@ ENTRY(armv7_idcache_inv_all)
 
 2:	dsb                             @ wait for stores to finish
 	mov     r0, #0                  @ and ...
-	mcr	CP15_ICIALLU		@ invalidate instruction+branch cache
+	mcr     p15, 0, r0, c7, c5, 0   @ invalidate instruction+branch cache
 	isb                             @ instruction sync barrier
 	bx      lr                      @ return
-END(armv7_idcache_inv_all)
+END(armv7_l1cache_inv_all)
 
 ENTRY_NP(armv7_sleep)
 	dsb

@@ -127,7 +127,6 @@ extern char *telcmds[];
 #define	TELOPT_KERMIT	47	/* RFC2840 - Kermit */
 #define	TELOPT_EXOPL	255	/* extended-options-list */
 
-#define	COMPORT_SET_BAUDRATE	1	/* RFC2217 - Com Port Set Baud Rate */
 
 #define	NTELOPTS	(1+TELOPT_KERMIT)
 #ifdef TELOPTS

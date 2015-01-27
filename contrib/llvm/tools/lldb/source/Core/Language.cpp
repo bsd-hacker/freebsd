@@ -10,7 +10,6 @@
 #include "lldb/lldb-private.h"
 #include "lldb/Core/Language.h"
 #include "lldb/Core/Stream.h"
-#include "llvm/ADT/STLExtras.h"
 #include <string.h>
 
 using namespace lldb;
@@ -49,7 +48,8 @@ g_languages[] =
     { { "python"  , NULL          , "Python"              } }
 };
 
-static const size_t g_num_languages = llvm::array_lengthof(g_languages);
+static const size_t
+g_num_languages = sizeof(g_languages)/sizeof(LanguageStrings);
 
 Language::Language(LanguageType language) :
     m_language (language)

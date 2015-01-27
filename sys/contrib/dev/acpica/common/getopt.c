@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -51,12 +51,14 @@
  *    "f|"      - Option has required single-char sub-options
  */
 
+#include <stdio.h>
+#include <string.h>
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
 #include <contrib/dev/acpica/include/acapps.h>
 
 #define ACPI_OPTION_ERROR(msg, badchar) \
-    if (AcpiGbl_Opterr) {AcpiLogError ("%s%c\n", msg, badchar);}
+    if (AcpiGbl_Opterr) {fprintf (stderr, "%s%c\n", msg, badchar);}
 
 
 int                 AcpiGbl_Opterr = 1;
@@ -121,7 +123,7 @@ AcpiGetoptArgument (
  * PARAMETERS:  argc, argv          - from main
  *              opts                - options info list
  *
- * RETURN:      Option character or ACPI_OPT_END
+ * RETURN:      Option character or EOF
  *
  * DESCRIPTION: Get the next option
  *
@@ -143,12 +145,12 @@ AcpiGetopt(
             argv[AcpiGbl_Optind][0] != '-' ||
             argv[AcpiGbl_Optind][1] == '\0')
         {
-            return (ACPI_OPT_END);
+            return (EOF);
         }
-        else if (ACPI_STRCMP (argv[AcpiGbl_Optind], "--") == 0)
+        else if (strcmp (argv[AcpiGbl_Optind], "--") == 0)
         {
             AcpiGbl_Optind++;
-            return (ACPI_OPT_END);
+            return (EOF);
         }
     }
 
@@ -159,7 +161,7 @@ AcpiGetopt(
     /* Make sure that the option is legal */
 
     if (CurrentChar == ':' ||
-       (OptsPtr = ACPI_STRCHR (opts, CurrentChar)) == NULL)
+       (OptsPtr = strchr (opts, CurrentChar)) == NULL)
     {
         ACPI_OPTION_ERROR ("Illegal option: -", CurrentChar);
 

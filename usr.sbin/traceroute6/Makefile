@@ -27,6 +27,7 @@ CFLAGS+= -I${.CURDIR} -I${TRACEROUTE_DISTDIR} -I.
 
 WARNS?=	3
 
-LIBADD=	ipsec
+DPADD=	${LIBIPSEC}
+LDADD=	-lipsec
 
 .include <bsd.prog.mk>

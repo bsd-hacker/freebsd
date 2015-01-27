@@ -90,7 +90,7 @@ public:
 
   /// \brief Check whether there are modifications for a given file.
   bool IsModified(FileID ID) const {
-    return Rewrite.getRewriteBufferFor(ID) != nullptr;
+    return Rewrite.getRewriteBufferFor(ID) != NULL;
   }
 
   // Iteration over files with changes.
@@ -106,18 +106,18 @@ public:
   ///
   /// \returns true if there was an error, false otherwise.
   bool WriteFixedFiles(
-     std::vector<std::pair<std::string, std::string> > *RewrittenFiles=nullptr);
+         std::vector<std::pair<std::string, std::string> > *RewrittenFiles = 0);
 
   /// IncludeInDiagnosticCounts - This method (whose default implementation
   /// returns true) indicates whether the diagnostics handled by this
   /// DiagnosticConsumer should be included in the number of diagnostics
   /// reported by DiagnosticsEngine.
-  bool IncludeInDiagnosticCounts() const override;
+  virtual bool IncludeInDiagnosticCounts() const;
 
   /// HandleDiagnostic - Handle this diagnostic, reporting it to the user or
   /// capturing it to a log as needed.
-  void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
-                        const Diagnostic &Info) override;
+  virtual void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                                const Diagnostic &Info);
 
   /// \brief Emit a diagnostic via the adapted diagnostic client.
   void Diag(SourceLocation Loc, unsigned DiagID);

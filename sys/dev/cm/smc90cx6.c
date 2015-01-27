@@ -512,7 +512,7 @@ cm_srint_locked(vsc)
 		 * count it as input error (we dont have any other
 		 * detectable)
 		 */
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		goto cleanup;
 	}
 
@@ -540,14 +540,17 @@ cm_srint_locked(vsc)
 	 */
 	if ((len + 2 + 2) > MHLEN) {
 		/* attach an mbuf cluster */
-		if (!(MCLGET(m, M_NOWAIT))) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		MCLGET(m, M_NOWAIT);
+
+		/* Insist on getting a cluster */
+		if ((m->m_flags & M_EXT) == 0) {
+			ifp->if_ierrors++;
 			goto cleanup;
 		}
 	}
 
 	if (m == 0) {
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		ifp->if_ierrors++;
 		goto cleanup;
 	}
 
@@ -569,7 +572,7 @@ cm_srint_locked(vsc)
 	CM_LOCK(sc);
 
 	m = NULL;
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	ifp->if_ipackets++;
 
 cleanup:
 
@@ -617,7 +620,7 @@ cm_tint_locked(sc, isr)
 	 */
 
 	if (isr & CM_TMA || sc->sc_broadcast[buffer])
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		ifp->if_opackets++;
 #ifdef CMRETRANSMIT
 	else if (ifp->if_flags & IFF_LINK2 && sc->sc_timer > 0
 	    && --sc->sc_retransmits[buffer] > 0) {
@@ -627,7 +630,7 @@ cm_tint_locked(sc, isr)
 	}
 #endif
 	else
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 
 
 	/* We know we can accept another buffer at this point. */
@@ -727,7 +730,7 @@ cmintr(arg)
 			 * PUTREG(CMCMD, CM_CONF(CONF_LONG));
 			 */
 			PUTREG(CMCMD, CM_CLR(CLR_RECONFIG));
-			if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
+			ifp->if_collisions++;
 
 			/*
 			 * If less than 2 seconds per reconfig:

@@ -30,7 +30,7 @@ protected:
   NodeTy *getPrev() { return Prev; }
   const NodeTy *getPrev() const { return Prev; }
   void setPrev(NodeTy *P) { Prev = P; }
-  ilist_half_node() : Prev(nullptr) {}
+  ilist_half_node() : Prev(0) {}
 };
 
 template<typename NodeTy>
@@ -48,7 +48,7 @@ class ilist_node : private ilist_half_node<NodeTy> {
   const NodeTy *getNext() const { return Next; }
   void setNext(NodeTy *N) { Next = N; }
 protected:
-  ilist_node() : Next(nullptr) {}
+  ilist_node() : Next(0) {}
 
 public:
   /// @name Adjacent Node Accessors
@@ -60,7 +60,7 @@ public:
 
     // Check for sentinel.
     if (!Prev->getNext())
-      return nullptr;
+      return 0;
 
     return Prev;
   }
@@ -71,7 +71,7 @@ public:
 
     // Check for sentinel.
     if (!Prev->getNext())
-      return nullptr;
+      return 0;
 
     return Prev;
   }
@@ -82,7 +82,7 @@ public:
 
     // Check for sentinel.
     if (!Next->getNext())
-      return nullptr;
+      return 0;
 
     return Next;
   }
@@ -93,7 +93,7 @@ public:
 
     // Check for sentinel.
     if (!Next->getNext())
-      return nullptr;
+      return 0;
 
     return Next;
   }

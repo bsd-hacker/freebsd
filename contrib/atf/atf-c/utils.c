@@ -1,4 +1,7 @@
-/* Copyright (c) 2010 The NetBSD Foundation, Inc.
+/*
+ * Automated Testing Framework (atf)
+ *
+ * Copyright (c) 2010 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,7 +24,8 @@
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "atf-c/utils.h"
 
@@ -39,35 +43,7 @@
 
 #include <atf-c.h>
 
-#include "atf-c/detail/dynstr.h"
-
-/** Allocate a filename to be used by atf_utils_{fork,wait}.
- *
- * In case of a failure, marks the calling test as failed when in_parent is
- * true, else terminates execution.
- *
- * \param [out] name String to contain the generated file.
- * \param pid PID of the process that will write to the file.
- * \param suffix Either "out" or "err".
- * \param in_parent If true, fail with atf_tc_fail; else use err(3). */
-static void
-init_out_filename(atf_dynstr_t *name, const pid_t pid, const char *suffix,
-                  const bool in_parent)
-{
-    atf_error_t error;
-
-    error = atf_dynstr_init_fmt(name, "atf_utils_fork_%d_%s.txt",
-                                (int)pid, suffix);
-    if (atf_is_error(error)) {
-        char buffer[1024];
-        atf_error_format(error, buffer, sizeof(buffer));
-        if (in_parent) {
-            atf_tc_fail("Failed to create output file: %s", buffer);
-        } else {
-            err(EXIT_FAILURE, "Failed to create output file: %s", buffer);
-        }
-    }
-}
+#include "detail/dynstr.h"
 
 /** Searches for a regexp in a string.
  *
@@ -256,17 +232,8 @@ atf_utils_fork(void)
         atf_tc_fail("fork failed");
 
     if (pid == 0) {
-        atf_dynstr_t out_name;
-        init_out_filename(&out_name, getpid(), "out", false);
-
-        atf_dynstr_t err_name;
-        init_out_filename(&err_name, getpid(), "err", false);
-
-        atf_utils_redirect(STDOUT_FILENO, atf_dynstr_cstring(&out_name));
-        atf_utils_redirect(STDERR_FILENO, atf_dynstr_cstring(&err_name));
-
-        atf_dynstr_fini(&err_name);
-        atf_dynstr_fini(&out_name);
+        atf_utils_redirect(STDOUT_FILENO, "atf_utils_fork_out.txt");
+        atf_utils_redirect(STDERR_FILENO, "atf_utils_fork_err.txt");
     }
     return pid;
 }
@@ -418,14 +385,8 @@ atf_utils_wait(const pid_t pid, const int exitstatus, const char *expout,
     int status;
     ATF_REQUIRE(waitpid(pid, &status, 0) != -1);
 
-    atf_dynstr_t out_name;
-    init_out_filename(&out_name, pid, "out", true);
-
-    atf_dynstr_t err_name;
-    init_out_filename(&err_name, pid, "err", true);
-
-    atf_utils_cat_file(atf_dynstr_cstring(&out_name), "subprocess stdout: ");
-    atf_utils_cat_file(atf_dynstr_cstring(&err_name), "subprocess stderr: ");
+    atf_utils_cat_file("atf_utils_fork_out.txt", "subprocess stdout: ");
+    atf_utils_cat_file("atf_utils_fork_err.txt", "subprocess stderr: ");
 
     ATF_REQUIRE(WIFEXITED(status));
     ATF_REQUIRE_EQ(exitstatus, WEXITSTATUS(status));
@@ -435,22 +396,20 @@ atf_utils_wait(const pid_t pid, const int exitstatus, const char *expout,
 
     if (strlen(expout) > save_prefix_length &&
         strncmp(expout, save_prefix, save_prefix_length) == 0) {
-        atf_utils_copy_file(atf_dynstr_cstring(&out_name),
+        atf_utils_copy_file("atf_utils_fork_out.txt",
                             expout + save_prefix_length);
     } else {
-        ATF_REQUIRE(atf_utils_compare_file(atf_dynstr_cstring(&out_name),
-                                           expout));
+        ATF_REQUIRE(atf_utils_compare_file("atf_utils_fork_out.txt", expout));
     }
 
     if (strlen(experr) > save_prefix_length &&
         strncmp(experr, save_prefix, save_prefix_length) == 0) {
-        atf_utils_copy_file(atf_dynstr_cstring(&err_name),
+        atf_utils_copy_file("atf_utils_fork_err.txt",
                             experr + save_prefix_length);
     } else {
-        ATF_REQUIRE(atf_utils_compare_file(atf_dynstr_cstring(&err_name),
-                                           experr));
+        ATF_REQUIRE(atf_utils_compare_file("atf_utils_fork_err.txt", experr));
     }
 
-    ATF_REQUIRE(unlink(atf_dynstr_cstring(&out_name)) != -1);
-    ATF_REQUIRE(unlink(atf_dynstr_cstring(&err_name)) != -1);
+    ATF_REQUIRE(unlink("atf_utils_fork_out.txt") != -1);
+    ATF_REQUIRE(unlink("atf_utils_fork_err.txt") != -1);
 }

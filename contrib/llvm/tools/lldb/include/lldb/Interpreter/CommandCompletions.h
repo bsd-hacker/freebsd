@@ -195,7 +195,7 @@ public:
     };
 
     //----------------------------------------------------------------------
-    // SourceFileCompleter implements the source file completer
+    // SouceFileCompleter implements the source file completer
     //----------------------------------------------------------------------
     class SourceFileCompleter : public Completer
     {

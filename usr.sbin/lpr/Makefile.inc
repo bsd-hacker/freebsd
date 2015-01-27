@@ -6,4 +6,6 @@
 CFLAGS+= -DINET6
 .endif
 
+LIBLPR=	${.OBJDIR}/../common_source/liblpr.a
+
 .include "../Makefile.inc"

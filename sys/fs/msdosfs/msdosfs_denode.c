@@ -92,8 +92,11 @@ de_vncmpf(struct vnode *vp, void *arg)
  * depp	     - returns the address of the gotten denode.
  */
 int
-deget(struct msdosfsmount *pmp, u_long dirclust, u_long diroffset,
-    struct denode **depp)
+deget(pmp, dirclust, diroffset, depp)
+	struct msdosfsmount *pmp;	/* so we know the maj/min number */
+	u_long dirclust;		/* cluster this dir entry came from */
+	u_long diroffset;		/* index of entry within the cluster */
+	struct denode **depp;		/* returns the addr of the gotten denode */
 {
 	int error;
 	uint64_t inode;
@@ -281,7 +284,9 @@ deget(struct msdosfsmount *pmp, u_long dirclust, u_long diroffset,
 }
 
 int
-deupdat(struct denode *dep, int waitfor)
+deupdat(dep, waitfor)
+	struct denode *dep;
+	int waitfor;
 {
 	struct direntry dir;
 	struct timespec ts;
@@ -329,7 +334,11 @@ deupdat(struct denode *dep, int waitfor)
  * Truncate the file described by dep to the length specified by length.
  */
 int
-detrunc(struct denode *dep, u_long length, int flags, struct ucred *cred)
+detrunc(dep, length, flags, cred)
+	struct denode *dep;
+	u_long length;
+	int flags;
+	struct ucred *cred;
 {
 	int error;
 	int allerror;
@@ -468,7 +477,10 @@ detrunc(struct denode *dep, u_long length, int flags, struct ucred *cred)
  * Extend the file described by dep to length specified by length.
  */
 int
-deextend(struct denode *dep, u_long length, struct ucred *cred)
+deextend(dep, length, cred)
+	struct denode *dep;
+	u_long length;
+	struct ucred *cred;
 {
 	struct msdosfsmount *pmp = dep->de_pmp;
 	u_long count;
@@ -513,7 +525,8 @@ deextend(struct denode *dep, u_long length, struct ucred *cred)
  * been moved to a new directory.
  */
 void
-reinsert(struct denode *dep)
+reinsert(dep)
+	struct denode *dep;
 {
 	struct vnode *vp;
 
@@ -536,7 +549,10 @@ reinsert(struct denode *dep)
 }
 
 int
-msdosfs_reclaim(struct vop_reclaim_args *ap)
+msdosfs_reclaim(ap)
+	struct vop_reclaim_args /* {
+		struct vnode *a_vp;
+	} */ *ap;
 {
 	struct vnode *vp = ap->a_vp;
 	struct denode *dep = VTODE(vp);
@@ -567,7 +583,11 @@ msdosfs_reclaim(struct vop_reclaim_args *ap)
 }
 
 int
-msdosfs_inactive(struct vop_inactive_args *ap)
+msdosfs_inactive(ap)
+	struct vop_inactive_args /* {
+		struct vnode *a_vp;
+		struct thread *a_td;
+	} */ *ap;
 {
 	struct vnode *vp = ap->a_vp;
 	struct denode *dep = VTODE(vp);

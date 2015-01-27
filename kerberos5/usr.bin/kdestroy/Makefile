@@ -2,8 +2,13 @@
 
 PROG=	kdestroy
 CFLAGS+=-I${KRB5DIR}/lib/roken
-LIBADD=	kafs5 krb5 roken vers
+DPADD=	${LIBKAFS5} ${LIBKRB5} ${LIBHEIMNTLM} ${LIBROKEN} ${LIBVERS} \
+	${LIBASN1} ${LIBCRYPTO} ${LIBCRYPT}
+LDADD=	-lkafs5 -lkrb5 -lheimntlm -lroken ${LIBVERS} \
+	-lasn1 -lcrypto -lcrypt
 MAN=	kdestroy.1
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>
 

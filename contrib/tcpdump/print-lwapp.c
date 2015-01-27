@@ -17,18 +17,26 @@
  * Original code by Carles Kishimoto <carles.kishimoto@gmail.com>
  */
 
-#define NETDISSECT_REWORKED
+#ifndef lint
+static const char rcsid[] _U_ =
+"@(#) $Header: /tcpdump/master/tcpdump/print-lwapp.c,v 1.1 2007-07-24 16:07:30 hannes Exp $";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
 #include <tcpdump-stdinc.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "interface.h"
 #include "extract.h"
 #include "addrtoname.h"
 
-/*
+/* 
  * LWAPP transport (common) header
  *      0                   1                   2                   3
  *     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -41,10 +49,10 @@
  */
 
 struct lwapp_transport_header {
-    uint8_t  version;
-    uint8_t  frag_id;
-    uint8_t  length[2];
-    uint16_t status;
+    u_int8_t  version;
+    u_int8_t  frag_id;
+    u_int8_t  length[2];
+    u_int16_t status;
 };
 
 /*
@@ -61,16 +69,16 @@ struct lwapp_transport_header {
  */
 
 struct lwapp_control_header {
-    uint8_t  msg_type;
-    uint8_t  seq_num;
-    uint8_t  len[2];
-    uint8_t  session_id[4];
+    u_int8_t  msg_type;
+    u_int8_t  seq_num;
+    u_int8_t  len[2];
+    u_int8_t  session_id[4];
 };
 
 #define LWAPP_VERSION 0
-#define	LWAPP_EXTRACT_VERSION(x) (((x)&0xC0)>>6)
-#define	LWAPP_EXTRACT_RID(x) (((x)&0x38)>>3)
-#define LWAPP_EXTRACT_CONTROL_BIT(x) (((x)&0x04)>>2)
+#define	LWAPP_EXTRACT_VERSION(x) (((x)&0xC0)>>6) 
+#define	LWAPP_EXTRACT_RID(x) (((x)&0x38)>>3) 
+#define LWAPP_EXTRACT_CONTROL_BIT(x) (((x)&0x04)>>2) 
 
 static const struct tok lwapp_header_bits_values[] = {
     { 0x01, "Last Fragment Bit"},
@@ -146,9 +154,9 @@ static const struct tok lwapp_msg_type_values[] = {
     { 0, NULL}
 };
 
-/*
+/* 
  * LWAPP message elements
- *
+ * 
  * 0                   1                   2                   3
  * 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -156,13 +164,12 @@ static const struct tok lwapp_msg_type_values[] = {
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
 struct lwapp_message_header {
-    uint8_t type;
-    uint8_t length[2];
+    u_int8_t type;
+    u_int8_t length[2];
 };
 
 void
-lwapp_control_print(netdissect_options *ndo,
-                    const u_char *pptr, u_int len, int has_ap_ident) {
+lwapp_control_print(const u_char *pptr, u_int len, int has_ap_ident) {
 
     const struct lwapp_transport_header *lwapp_trans_header;
     const struct lwapp_control_header *lwapp_control_header;
@@ -174,45 +181,47 @@ lwapp_control_print(netdissect_options *ndo,
 
     if (has_ap_ident) {
         /* check if enough bytes for AP identity */
-        ND_TCHECK2(*tptr, 6);
+        if (!TTEST2(*tptr, 6))
+            goto trunc;
         lwapp_trans_header = (const struct lwapp_transport_header *)(pptr+6);
     } else {
         lwapp_trans_header = (const struct lwapp_transport_header *)pptr;
     }
-    ND_TCHECK(*lwapp_trans_header);
+    TCHECK(*lwapp_trans_header);
 
     /*
      * Sanity checking of the header.
      */
     if (LWAPP_EXTRACT_VERSION(lwapp_trans_header->version) != LWAPP_VERSION) {
-	ND_PRINT((ndo, "LWAPP version %u packet not supported",
-               LWAPP_EXTRACT_VERSION(lwapp_trans_header->version)));
+	printf("LWAPP version %u packet not supported",
+               LWAPP_EXTRACT_VERSION(lwapp_trans_header->version));
 	return;
     }
 
     /* non-verbose */
-    if (ndo->ndo_vflag < 1) {
-        ND_PRINT((ndo, "LWAPPv%u, %s frame, Flags [%s], length %u",
+    if (vflag < 1) {
+        printf("LWAPPv%u, %s frame, Flags [%s], length %u",
                LWAPP_EXTRACT_VERSION(lwapp_trans_header->version),
                LWAPP_EXTRACT_CONTROL_BIT(lwapp_trans_header->version) ? "Control" : "Data",
                bittok2str(lwapp_header_bits_values,"none",(lwapp_trans_header->version)&0x07),
-               len));
+               len);
         return;
     }
 
     /* ok they seem to want to know everything - lets fully decode it */
     tlen=EXTRACT_16BITS(lwapp_trans_header->length);
 
-    ND_PRINT((ndo, "LWAPPv%u, %s frame, Radio-id %u, Flags [%s], Frag-id %u, length %u",
+    printf("LWAPPv%u, %s frame, Radio-id %u, Flags [%s], Frag-id %u, length %u",
            LWAPP_EXTRACT_VERSION(lwapp_trans_header->version),
            LWAPP_EXTRACT_CONTROL_BIT(lwapp_trans_header->version) ? "Control" : "Data",
            LWAPP_EXTRACT_RID(lwapp_trans_header->version),
            bittok2str(lwapp_header_bits_values,"none",(lwapp_trans_header->version)&0x07),
 	   lwapp_trans_header->frag_id,
-	   tlen));
+	   tlen);
 
     if (has_ap_ident) {
-        ND_PRINT((ndo, "\n\tAP identity: %s", etheraddr_string(ndo, tptr)));
+        printf("\n\tAP identity: %s",
+               etheraddr_string(tptr));
         tptr+=sizeof(const struct lwapp_transport_header)+6;
     } else {
         tptr+=sizeof(const struct lwapp_transport_header);
@@ -221,21 +230,23 @@ lwapp_control_print(netdissect_options *ndo,
     while(tlen>0) {
 
         /* did we capture enough for fully decoding the object header ? */
-        ND_TCHECK2(*tptr, sizeof(struct lwapp_control_header));
+        if (!TTEST2(*tptr, sizeof(struct lwapp_control_header)))
+            goto trunc;
 
         lwapp_control_header = (const struct lwapp_control_header *)tptr;
 	msg_tlen = EXTRACT_16BITS(lwapp_control_header->len);
 
-	/* print message header */
-        ND_PRINT((ndo, "\n\t  Msg type: %s (%u), Seqnum: %u, Msg len: %d, Session: 0x%08x",
+	/* print message header */ 
+        printf("\n\t  Msg type: %s (%u), Seqnum: %u, Msg len: %d, Session: 0x%08x",
                tok2str(lwapp_msg_type_values,"Unknown",lwapp_control_header->msg_type),
                lwapp_control_header->msg_type,
                lwapp_control_header->seq_num,
                msg_tlen,
-               EXTRACT_32BITS(lwapp_control_header->session_id)));
+               EXTRACT_32BITS(lwapp_control_header->session_id));
 
         /* did we capture enough for fully decoding the message */
-        ND_TCHECK2(*tptr, msg_tlen);
+        if (!TTEST2(*tptr, msg_tlen))
+            goto trunc;
 
 	/* XXX - Decode sub messages for each message */
         switch(lwapp_control_header->msg_type) {
@@ -280,12 +291,11 @@ lwapp_control_print(netdissect_options *ndo,
     return;
 
  trunc:
-    ND_PRINT((ndo, "\n\t\t packet exceeded snapshot"));
+    printf("\n\t\t packet exceeded snapshot");
 }
 
 void
-lwapp_data_print(netdissect_options *ndo,
-                 const u_char *pptr, u_int len) {
+lwapp_data_print(const u_char *pptr, u_int len) {
 
     const struct lwapp_transport_header *lwapp_trans_header;
     const u_char *tptr;
@@ -294,50 +304,51 @@ lwapp_data_print(netdissect_options *ndo,
     tptr=pptr;
 
     /* check if enough bytes for AP identity */
-    ND_TCHECK2(*tptr, 6);
+    if (!TTEST2(*tptr, 6))
+        goto trunc;
     lwapp_trans_header = (const struct lwapp_transport_header *)pptr;
-    ND_TCHECK(*lwapp_trans_header);
+    TCHECK(*lwapp_trans_header);
 
     /*
      * Sanity checking of the header.
      */
     if (LWAPP_EXTRACT_VERSION(lwapp_trans_header->version) != LWAPP_VERSION) {
-        ND_PRINT((ndo, "LWAPP version %u packet not supported",
-               LWAPP_EXTRACT_VERSION(lwapp_trans_header->version)));
+        printf("LWAPP version %u packet not supported",
+               LWAPP_EXTRACT_VERSION(lwapp_trans_header->version));
         return;
     }
 
     /* non-verbose */
-    if (ndo->ndo_vflag < 1) {
-        ND_PRINT((ndo, "LWAPPv%u, %s frame, Flags [%s], length %u",
+    if (vflag < 1) {
+        printf("LWAPPv%u, %s frame, Flags [%s], length %u",
                LWAPP_EXTRACT_VERSION(lwapp_trans_header->version),
                LWAPP_EXTRACT_CONTROL_BIT(lwapp_trans_header->version) ? "Control" : "Data",
                bittok2str(lwapp_header_bits_values,"none",(lwapp_trans_header->version)&0x07),
-               len));
+               len);
         return;
     }
 
     /* ok they seem to want to know everything - lets fully decode it */
     tlen=EXTRACT_16BITS(lwapp_trans_header->length);
 
-    ND_PRINT((ndo, "LWAPPv%u, %s frame, Radio-id  %u, Flags [%s], Frag-id  %u, length %u",
+    printf("LWAPPv%u, %s frame, Radio-id  %u, Flags [%s], Frag-id  %u, length %u",
            LWAPP_EXTRACT_VERSION(lwapp_trans_header->version),
            LWAPP_EXTRACT_CONTROL_BIT(lwapp_trans_header->version) ? "Control" : "Data",
            LWAPP_EXTRACT_RID(lwapp_trans_header->version),
            bittok2str(lwapp_header_bits_values,"none",(lwapp_trans_header->version)&0x07),
            lwapp_trans_header->frag_id,
-           tlen));
+           tlen);
 
     tptr+=sizeof(const struct lwapp_transport_header);
     tlen-=sizeof(const struct lwapp_transport_header);
 
     /* FIX - An IEEE 802.11 frame follows - hexdump for now */
-    print_unknown_data(ndo, tptr, "\n\t", tlen);
+    print_unknown_data(tptr, "\n\t", tlen);
 
     return;
 
  trunc:
-    ND_PRINT((ndo, "\n\t\t packet exceeded snapshot"));
+    printf("\n\t\t packet exceeded snapshot");
 }
 
 /*

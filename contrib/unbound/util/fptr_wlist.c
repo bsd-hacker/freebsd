@@ -51,7 +51,6 @@
 #include "services/localzone.h"
 #include "services/cache/infra.h"
 #include "services/cache/rrset.h"
-#include "dns64/dns64.h"
 #include "iterator/iterator.h"
 #include "iterator/iter_fwd.h"
 #include "validator/validator.h"
@@ -259,7 +258,7 @@ fptr_whitelist_hash_markdelfunc(lruhash_markdelfunc_t fptr)
 int 
 fptr_whitelist_modenv_send_query(struct outbound_entry* (*fptr)(
         uint8_t* qname, size_t qnamelen, uint16_t qtype, uint16_t qclass,
-        uint16_t flags, int dnssec, int want_dnssec, int nocaps,
+        uint16_t flags, int dnssec, int want_dnssec, 
 	struct sockaddr_storage* addr, socklen_t addrlen, 
 	uint8_t* zone, size_t zonelen,
 	struct module_qstate* q))
@@ -280,7 +279,7 @@ fptr_whitelist_modenv_detach_subs(void (*fptr)(
 int 
 fptr_whitelist_modenv_attach_sub(int (*fptr)(
         struct module_qstate* qstate, struct query_info* qinfo,
-        uint16_t qflags, int prime, int valrec, struct module_qstate** newq))
+        uint16_t qflags, int prime, struct module_qstate** newq))
 {
 	if(fptr == &mesh_attach_sub) return 1;
 	return 0;
@@ -296,7 +295,7 @@ fptr_whitelist_modenv_kill_sub(void (*fptr)(struct module_qstate* newq))
 int 
 fptr_whitelist_modenv_detect_cycle(int (*fptr)(        
 	struct module_qstate* qstate, struct query_info* qinfo,         
-	uint16_t flags, int prime, int valrec))
+	uint16_t flags, int prime))
 {
 	if(fptr == &mesh_detect_cycle) return 1;
 	return 0;
@@ -307,7 +306,6 @@ fptr_whitelist_mod_init(int (*fptr)(struct module_env* env, int id))
 {
 	if(fptr == &iter_init) return 1;
 	else if(fptr == &val_init) return 1;
-	else if(fptr == &dns64_init) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_init) return 1;
 #endif
@@ -319,7 +317,6 @@ fptr_whitelist_mod_deinit(void (*fptr)(struct module_env* env, int id))
 {
 	if(fptr == &iter_deinit) return 1;
 	else if(fptr == &val_deinit) return 1;
-	else if(fptr == &dns64_deinit) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_deinit) return 1;
 #endif
@@ -332,7 +329,6 @@ fptr_whitelist_mod_operate(void (*fptr)(struct module_qstate* qstate,
 {
 	if(fptr == &iter_operate) return 1;
 	else if(fptr == &val_operate) return 1;
-	else if(fptr == &dns64_operate) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_operate) return 1;
 #endif
@@ -345,7 +341,6 @@ fptr_whitelist_mod_inform_super(void (*fptr)(
 {
 	if(fptr == &iter_inform_super) return 1;
 	else if(fptr == &val_inform_super) return 1;
-	else if(fptr == &dns64_inform_super) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_inform_super) return 1;
 #endif
@@ -358,7 +353,6 @@ fptr_whitelist_mod_clear(void (*fptr)(struct module_qstate* qstate,
 {
 	if(fptr == &iter_clear) return 1;
 	else if(fptr == &val_clear) return 1;
-	else if(fptr == &dns64_clear) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_clear) return 1;
 #endif
@@ -370,7 +364,6 @@ fptr_whitelist_mod_get_mem(size_t (*fptr)(struct module_env* env, int id))
 {
 	if(fptr == &iter_get_mem) return 1;
 	else if(fptr == &val_get_mem) return 1;
-	else if(fptr == &dns64_get_mem) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_get_mem) return 1;
 #endif

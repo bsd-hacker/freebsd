@@ -3,6 +3,7 @@
 PROG=	powerd
 MAN=	powerd.8
 
-LIBADD=	util
+DPADD=	${LIBUTIL}
+LDADD=	-lutil
 
 .include <bsd.prog.mk>

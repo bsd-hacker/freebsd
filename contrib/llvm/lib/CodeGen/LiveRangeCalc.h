@@ -92,7 +92,7 @@ class LiveRangeCalc {
     VNInfo *Value;
 
     LiveInBlock(LiveRange &LR, MachineDomTreeNode *node, SlotIndex kill)
-      : LR(LR), DomNode(node), Kill(kill), Value(nullptr) {}
+      : LR(LR), DomNode(node), Kill(kill), Value(0) {}
   };
 
   /// LiveIn - Work list of blocks where the live-in value has yet to be
@@ -125,8 +125,7 @@ class LiveRangeCalc {
   void updateLiveIns();
 
 public:
-  LiveRangeCalc() : MF(nullptr), MRI(nullptr), Indexes(nullptr),
-                    DomTree(nullptr), Alloc(nullptr) {}
+  LiveRangeCalc() : MF(0), MRI(0), Indexes(0), DomTree(0), Alloc(0) {}
 
   //===--------------------------------------------------------------------===//
   // High-level interface.
@@ -204,7 +203,7 @@ public:
   /// addLiveInBlock().
   void setLiveOutValue(MachineBasicBlock *MBB, VNInfo *VNI) {
     Seen.set(MBB->getNumber());
-    LiveOut[MBB] = LiveOutPair(VNI, nullptr);
+    LiveOut[MBB] = LiveOutPair(VNI, (MachineDomTreeNode *)0);
   }
 
   /// addLiveInBlock - Add a block with an unknown live-in value.  This

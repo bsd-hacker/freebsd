@@ -79,7 +79,7 @@ __FBSDID("$FreeBSD$");
 static int uhid_debug = 0;
 
 static SYSCTL_NODE(_hw_usb, OID_AUTO, uhid, CTLFLAG_RW, 0, "USB uhid");
-SYSCTL_INT(_hw_usb_uhid, OID_AUTO, debug, CTLFLAG_RWTUN,
+SYSCTL_INT(_hw_usb_uhid, OID_AUTO, debug, CTLFLAG_RW,
     &uhid_debug, 0, "Debug level");
 #endif
 
@@ -759,20 +759,9 @@ uhid_attach(device_t dev)
 			sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 		}
 	} else if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
-	    (uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER) &&
+		    (uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER) &&
 	    (uaa->info.bInterfaceProtocol == UIPROTO_XBOX360_GAMEPAD)) {
-		static const uint8_t reportbuf[3] = {1, 3, 0};
-		/*
-		 * Turn off the four LEDs on the gamepad which
-		 * are blinking by default:
-		 */
-		error = usbd_req_set_report(uaa->device, NULL,
-		    __DECONST(void *, reportbuf), sizeof(reportbuf),
-		    uaa->info.bIfaceIndex, UHID_OUTPUT_REPORT, 0);
-		if (error) {
-			DPRINTF("set output report failed, error=%s (ignored)\n",
-			    usbd_errstr(error));
-		}
+
 		/* the Xbox 360 gamepad has no report descriptor */
 		sc->sc_repdesc_size = sizeof(uhid_xb360gp_report_descr);
 		sc->sc_repdesc_ptr = (void *)&uhid_xb360gp_report_descr;

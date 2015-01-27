@@ -343,9 +343,7 @@ ep_attach(struct ep_softc *sc)
 	EP_FSET(sc, F_RX_FIRST);
 	sc->top = sc->mcur = 0;
 
-	EP_LOCK(sc);
 	epstop(sc);
-	EP_UNLOCK(sc);
 
 	return (0);
 }
@@ -512,7 +510,7 @@ startagain:
 	 */
 	if (len + pad > ETHER_MAX_LEN) {
 		/* packet is obviously too large: toss it */
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		ifp->if_oerrors++;
 		m_freem(m0);
 		goto readcheck;
 	}
@@ -564,7 +562,7 @@ startagain:
 	BPF_MTAP(ifp, m0);
 
 	sc->tx_timer = 2;
-	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+	ifp->if_opackets++;
 	m_freem(m0);
 
 	/*
@@ -640,8 +638,7 @@ rescan:
 			    CSR_READ_2(sc, EP_W4_FIFO_DIAG));
 			printf("\tStat: %x\n", sc->stat);
 			printf("\tIpackets=%d, Opackets=%d\n",
-			    ifp->if_get_counter(ifp, IFCOUNTER_IPACKETS),
-			    ifp->if_get_counter(ifp, IFCOUNTER_OPACKETS));
+			    ifp->if_ipackets, ifp->if_opackets);
 			printf("\tNOF=%d, NOMB=%d, RXOF=%d, RXOL=%d, TXU=%d\n",
 			    sc->rx_no_first, sc->rx_no_mbuf, sc->rx_overrunf,
 			    sc->rx_overrunl, sc->tx_underrun);
@@ -651,7 +648,7 @@ rescan:
 			device_printf(sc->dev,
 			    "Status: %x (input buffer overflow)\n", status);
 #else
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			++ifp->if_ierrors;
 #endif
 
 #endif
@@ -684,9 +681,9 @@ rescan:
 						 * TXS_MAX_COLLISION we
 						 * shouldn't get here
 						 */
-						if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
+						++ifp->if_collisions;
 					}
-					if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+					++ifp->if_oerrors;
 					CSR_WRITE_2(sc, EP_COMMAND, TX_ENABLE);
 					/*
 				         * To have a tx_avail_int but giving
@@ -732,7 +729,7 @@ epread(struct ep_softc *sc)
 read_again:
 
 	if (status & ERR_RX) {
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		++ifp->if_ierrors;
 		if (status & ERR_RX_OVERRUN) {
 			/*
 		         * We can think the rx latency is actually
@@ -830,7 +827,7 @@ read_again:
 		return;
 	}
 	CSR_WRITE_2(sc, EP_COMMAND, RX_DISCARD_TOP_PACK);
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	++ifp->if_ipackets;
 	EP_FSET(sc, F_RX_FIRST);
 	top->m_pkthdr.rcvif = sc->ifp;
 	top->m_pkthdr.len = sc->cur_len;
@@ -1003,9 +1000,6 @@ epwatchdog(struct ep_softc *sc)
 static void
 epstop(struct ep_softc *sc)
 {
-
-	EP_ASSERT_LOCKED(sc);
-
 	CSR_WRITE_2(sc, EP_COMMAND, RX_DISABLE);
 	CSR_WRITE_2(sc, EP_COMMAND, RX_DISCARD_TOP_PACK);
 	EP_BUSY_WAIT(sc);

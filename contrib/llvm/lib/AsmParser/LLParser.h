@@ -22,7 +22,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/Type.h"
-#include "llvm/IR/ValueHandle.h"
+#include "llvm/Support/ValueHandle.h"
 #include <map>
 
 namespace llvm {
@@ -34,7 +34,6 @@ namespace llvm {
   class Instruction;
   class Constant;
   class GlobalValue;
-  class Comdat;
   class MDString;
   class MDNode;
   class StructType;
@@ -123,9 +122,6 @@ namespace llvm {
     std::map<unsigned, std::pair<GlobalValue*, LocTy> > ForwardRefValIDs;
     std::vector<GlobalValue*> NumberedVals;
 
-    // Comdat forward reference information.
-    std::map<std::string, LocTy> ForwardRefComdats;
-
     // References to blockaddress.  The key is the function ValID, the value is
     // a list of references to blocks in that function.
     std::map<ValID, std::vector<std::pair<ValID, GlobalValue*> > >
@@ -158,10 +154,6 @@ namespace llvm {
     GlobalValue *GetGlobalVal(const std::string &N, Type *Ty, LocTy Loc);
     GlobalValue *GetGlobalVal(unsigned ID, Type *Ty, LocTy Loc);
 
-    /// Get a Comdat with the specified name, creating a forward reference
-    /// record if needed.
-    Comdat *getComdat(const std::string &N, LocTy Loc);
-
     // Helper Routines.
     bool ParseToken(lltok::Kind T, const char *ErrMsg);
     bool EatIfPresent(lltok::Kind T) {
@@ -184,8 +176,7 @@ namespace llvm {
       return FMF;
     }
 
-    bool ParseOptionalToken(lltok::Kind T, bool &Present,
-                            LocTy *Loc = nullptr) {
+    bool ParseOptionalToken(lltok::Kind T, bool &Present, LocTy *Loc = 0) {
       if (Lex.getKind() != T) {
         Present = false;
       } else {
@@ -202,17 +193,9 @@ namespace llvm {
       Loc = Lex.getLoc();
       return ParseUInt32(Val);
     }
-    bool ParseUInt64(uint64_t &Val);
-    bool ParseUInt64(uint64_t &Val, LocTy &Loc) {
-      Loc = Lex.getLoc();
-      return ParseUInt64(Val);
-    }
 
     bool ParseTLSModel(GlobalVariable::ThreadLocalMode &TLM);
     bool ParseOptionalThreadLocal(GlobalVariable::ThreadLocalMode &TLM);
-    bool parseOptionalUnnamedAddr(bool &UnnamedAddr) {
-      return ParseOptionalToken(lltok::kw_unnamed_addr, UnnamedAddr);
-    }
     bool ParseOptionalAddrSpace(unsigned &AddrSpace);
     bool ParseOptionalParamAttrs(AttrBuilder &B);
     bool ParseOptionalReturnAttrs(AttrBuilder &B);
@@ -221,16 +204,12 @@ namespace llvm {
       bool HasLinkage; return ParseOptionalLinkage(Linkage, HasLinkage);
     }
     bool ParseOptionalVisibility(unsigned &Visibility);
-    bool ParseOptionalDLLStorageClass(unsigned &DLLStorageClass);
     bool ParseOptionalCallingConv(CallingConv::ID &CC);
     bool ParseOptionalAlignment(unsigned &Alignment);
-    bool ParseOptionalDereferenceableBytes(uint64_t &Bytes);
     bool ParseScopeAndOrdering(bool isAtomic, SynchronizationScope &Scope,
                                AtomicOrdering &Ordering);
-    bool ParseOrdering(AtomicOrdering &Ordering);
     bool ParseOptionalStackAlignment(unsigned &Alignment);
     bool ParseOptionalCommaAlign(unsigned &Alignment, bool &AteExtraComma);
-    bool ParseOptionalCommaInAlloca(bool &IsInAlloca);
     bool ParseIndexList(SmallVectorImpl<unsigned> &Indices,bool &AteExtraComma);
     bool ParseIndexList(SmallVectorImpl<unsigned> &Indices) {
       bool AteExtraComma;
@@ -255,13 +234,8 @@ namespace llvm {
     bool ParseUnnamedGlobal();
     bool ParseNamedGlobal();
     bool ParseGlobal(const std::string &Name, LocTy Loc, unsigned Linkage,
-                     bool HasLinkage, unsigned Visibility,
-                     unsigned DLLStorageClass,
-                     GlobalVariable::ThreadLocalMode TLM, bool UnnamedAddr);
-    bool ParseAlias(const std::string &Name, LocTy Loc, unsigned Visibility,
-                    unsigned DLLStorageClass,
-                    GlobalVariable::ThreadLocalMode TLM, bool UnnamedAddr);
-    bool parseComdat();
+                     bool HasLinkage, unsigned Visibility);
+    bool ParseAlias(const std::string &Name, LocTy Loc, unsigned Visibility);
     bool ParseStandaloneMetadata();
     bool ParseNamedMetadata();
     bool ParseMDString(MDString *&Result);
@@ -369,11 +343,10 @@ namespace llvm {
                             PerFunctionState &PFS);
 
     // Constant Parsing.
-    bool ParseValID(ValID &ID, PerFunctionState *PFS = nullptr);
+    bool ParseValID(ValID &ID, PerFunctionState *PFS = NULL);
     bool ParseGlobalValue(Type *Ty, Constant *&V);
     bool ParseGlobalTypeAndValue(Constant *&V);
     bool ParseGlobalValueVector(SmallVectorImpl<Constant*> &Elts);
-    bool parseOptionalComdat(Comdat *&C);
     bool ParseMetadataListValue(ValID &ID, PerFunctionState *PFS);
     bool ParseMetadataValue(ValID &ID, PerFunctionState *PFS);
     bool ParseMDNodeVector(SmallVectorImpl<Value*> &, PerFunctionState *PFS);
@@ -392,8 +365,6 @@ namespace llvm {
     bool ParseFunctionHeader(Function *&Fn, bool isDefine);
     bool ParseFunctionBody(Function &Fn);
     bool ParseBasicBlock(PerFunctionState &PFS);
-
-    enum TailCallType { TCT_None, TCT_Tail, TCT_MustTail };
 
     // Instruction Parsing.  Each instruction parsing routine can return with a
     // normal result, an error result, or return having eaten an extra comma.
@@ -421,8 +392,7 @@ namespace llvm {
     bool ParseShuffleVector(Instruction *&I, PerFunctionState &PFS);
     int ParsePHI(Instruction *&I, PerFunctionState &PFS);
     bool ParseLandingPad(Instruction *&I, PerFunctionState &PFS);
-    bool ParseCall(Instruction *&I, PerFunctionState &PFS,
-                   CallInst::TailCallKind IsTail);
+    bool ParseCall(Instruction *&I, PerFunctionState &PFS, bool isTail);
     int ParseAlloc(Instruction *&I, PerFunctionState &PFS);
     int ParseLoad(Instruction *&I, PerFunctionState &PFS);
     int ParseStore(Instruction *&I, PerFunctionState &PFS);

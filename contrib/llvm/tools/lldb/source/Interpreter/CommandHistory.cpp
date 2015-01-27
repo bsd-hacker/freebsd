@@ -41,17 +41,17 @@ CommandHistory::FindString (const char* input_str) const
 {
     Mutex::Locker locker(m_mutex);
     if (!input_str)
-        return nullptr;
+        return NULL;
     if (input_str[0] != g_repeat_char)
-        return nullptr;
+        return NULL;
     if (input_str[1] == '-')
     {
         bool success;
         size_t idx = Args::StringToUInt32 (input_str+2, 0, 0, &success);
         if (!success)
-            return nullptr;
+            return NULL;
         if (idx > m_history.size())
-            return nullptr;
+            return NULL;
         idx = m_history.size() - idx;
         return m_history[idx].c_str();
         
@@ -59,7 +59,7 @@ CommandHistory::FindString (const char* input_str) const
     else if (input_str[1] == g_repeat_char)
     {
         if (m_history.empty())
-            return nullptr;
+            return NULL;
         else
             return m_history.back().c_str();
     }
@@ -68,9 +68,9 @@ CommandHistory::FindString (const char* input_str) const
         bool success;
         uint32_t idx = Args::StringToUInt32 (input_str+1, 0, 0, &success);
         if (!success)
-            return nullptr;
+            return NULL;
         if (idx >= m_history.size())
-            return nullptr;
+            return NULL;
         return m_history[idx].c_str();
     }
 }
@@ -81,7 +81,7 @@ CommandHistory::GetStringAtIndex (size_t idx) const
     Mutex::Locker locker(m_mutex);
     if (idx < m_history.size())
         return m_history[idx].c_str();
-    return nullptr;
+    return NULL;
 }
 
 const char*
@@ -95,7 +95,7 @@ CommandHistory::GetRecentmostString () const
 {
     Mutex::Locker locker(m_mutex);
     if (m_history.empty())
-        return nullptr;
+        return NULL;
     return m_history.back().c_str();
 }
 
@@ -137,7 +137,7 @@ CommandHistory::Dump (Stream& stream,
         if (!hist_item.empty())
         {
             stream.Indent();
-            stream.Printf("%4" PRIu64 ": %s\n", (uint64_t)counter, hist_item.c_str());
+            stream.Printf ("%4zu: %s\n", counter, hist_item.c_str());
         }
     }
 }

@@ -485,7 +485,7 @@ ed_watchdog(struct ed_softc *sc)
 
 	ifp = sc->ifp;
 	log(LOG_ERR, "%s: device timeout\n", ifp->if_xname);
-	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+	ifp->if_oerrors++;
 
 	ed_reset(ifp);
 }
@@ -900,7 +900,7 @@ ed_rint(struct ed_softc *sc)
 			 */
 			ed_get_packet(sc, packet_ptr + sizeof(struct ed_ring),
 				      len - sizeof(struct ed_ring));
-			if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+			ifp->if_ipackets++;
 		} else {
 			/*
 			 * Really BAD. The ring pointers are corrupted.
@@ -908,7 +908,7 @@ ed_rint(struct ed_softc *sc)
 			log(LOG_ERR,
 			    "%s: NIC memory corrupt - invalid packet length %d\n",
 			    ifp->if_xname, len);
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			ed_reset(ifp);
 			return;
 		}
@@ -1055,14 +1055,14 @@ edintr(void *arg)
 				/*
 				 * update output errors counter
 				 */
-				if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+				ifp->if_oerrors++;
 			} else {
 
 				/*
 				 * Update total number of successfully
 				 * transmitted packets.
 				 */
-				if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+				ifp->if_opackets++;
 			}
 
 			/*
@@ -1080,7 +1080,7 @@ edintr(void *arg)
 			 * Add in total number of collisions on last
 			 * transmission.
 			 */
-			if_inc_counter(ifp, IFCOUNTER_COLLISIONS, collisions);
+			ifp->if_collisions += collisions;
 			switch(collisions) {
 			case 0:
 			case 16:
@@ -1123,7 +1123,7 @@ edintr(void *arg)
 			 * fixed in later revs. -DG
 			 */
 			if (isr & ED_ISR_OVW) {
-				if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+				ifp->if_ierrors++;
 #ifdef DIAGNOSTIC
 				log(LOG_WARNING,
 				    "%s: warning - receiver ring buffer overrun\n",
@@ -1150,7 +1150,7 @@ edintr(void *arg)
 						sc->mibdata.dot3StatsAlignmentErrors++;
 					if (rsr & ED_RSR_FO)
 						sc->mibdata.dot3StatsInternalMacReceiveErrors++;
-					if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+					ifp->if_ierrors++;
 #ifdef ED_DEBUG
 					if_printf(ifp, "receive error %x\n",
 					       ed_nic_inb(sc, ED_P0_RSR));
@@ -1323,7 +1323,10 @@ ed_get_packet(struct ed_softc *sc, bus_size_t buf, u_short len)
 	 */
 	if ((len + 2) > MHLEN) {
 		/* Attach an mbuf cluster */
-		if (!(MCLGET(m, M_NOWAIT))) {
+		MCLGET(m, M_NOWAIT);
+
+		/* Insist on getting a cluster */
+		if ((m->m_flags & M_EXT) == 0) {
 			m_freem(m);
 			return;
 		}

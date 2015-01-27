@@ -66,7 +66,8 @@ public:
         selName = "getArgument";
       else if (E->getSelector() == setArgumentSel)
         selName = "setArgument";
-      else
+
+      if (selName.empty())
         return true;
 
       Expr *parm = E->getArg(0)->IgnoreParenCasts();
@@ -74,12 +75,13 @@ public:
       if (pointee.isNull())
         return true;
 
-      if (pointee.getObjCLifetime() > Qualifiers::OCL_ExplicitNone)
-        Pass.TA.report(parm->getLocStart(),
-                       diag::err_arcmt_nsinvocation_ownership,
-                       parm->getSourceRange())
-            << selName;
-
+      if (pointee.getObjCLifetime() > Qualifiers::OCL_ExplicitNone) {
+        std::string err = "NSInvocation's ";
+        err += selName;
+        err += " is not safe to be used with an object with ownership other "
+            "than __unsafe_unretained";
+        Pass.TA.reportError(err, parm->getLocStart(), parm->getSourceRange());
+      }
       return true;
     }
 

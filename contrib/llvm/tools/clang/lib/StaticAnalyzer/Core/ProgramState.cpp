@@ -175,6 +175,7 @@ ProgramState::invalidateRegionsImpl(ValueList Values,
                                     const CallEvent *Call) const {
   ProgramStateManager &Mgr = getStateManager();
   SubEngine* Eng = Mgr.getOwningEngine();
+  InvalidatedSymbols ConstIS;
 
   InvalidatedSymbols Invalidated;
   if (!IS)
@@ -207,7 +208,7 @@ ProgramState::invalidateRegionsImpl(ValueList Values,
 
   const StoreRef &newStore =
   Mgr.StoreMgr->invalidateRegions(getStore(), Values, E, Count, LCtx, Call,
-                                  *IS, *ITraits, nullptr, nullptr);
+                                  *IS, *ITraits, NULL, NULL);
   return makeWithStore(newStore);
 }
 
@@ -387,7 +388,7 @@ ProgramStateRef ProgramStateManager::getPersistentState(ProgramState &State) {
   if (ProgramState *I = StateSet.FindNodeOrInsertPos(ID, InsertPos))
     return I;
 
-  ProgramState *newState = nullptr;
+  ProgramState *newState = 0;
   if (!freeStates.empty()) {
     newState = freeStates.back();
     freeStates.pop_back();    

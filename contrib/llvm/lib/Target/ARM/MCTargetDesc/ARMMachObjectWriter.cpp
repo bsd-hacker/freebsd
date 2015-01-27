@@ -32,7 +32,6 @@ class ARMMachObjectWriter : public MCMachObjectTargetWriter {
                                     const MCFragment *Fragment,
                                     const MCFixup &Fixup,
                                     MCValue Target,
-                                    unsigned Type,
                                     unsigned Log2Size,
                                     uint64_t &FixedValue);
   void RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
@@ -57,7 +56,7 @@ public:
   void RecordRelocation(MachObjectWriter *Writer,
                         const MCAssembler &Asm, const MCAsmLayout &Layout,
                         const MCFragment *Fragment, const MCFixup &Fixup,
-                        MCValue Target, uint64_t &FixedValue) override;
+                        MCValue Target, uint64_t &FixedValue);
 };
 }
 
@@ -83,14 +82,10 @@ static bool getARMFixupKindMachOInfo(unsigned Kind, unsigned &RelocType,
     Log2Size = llvm::Log2_32(8);
     return true;
 
-    // These fixups are expected to always be resolvable at assembly time and
-    // have no relocations supported.
+    // Handle 24-bit branch kinds.
   case ARM::fixup_arm_ldst_pcrel_12:
   case ARM::fixup_arm_pcrel_10:
   case ARM::fixup_arm_adr_pcrel_12:
-    return false;
-
-    // Handle 24-bit branch kinds.
   case ARM::fixup_arm_condbranch:
   case ARM::fixup_arm_uncondbranch:
   case ARM::fixup_arm_uncondbl:
@@ -124,19 +119,23 @@ static bool getARMFixupKindMachOInfo(unsigned Kind, unsigned &RelocType,
   //      0 - arm instructions
   //      1 - thumb instructions
   case ARM::fixup_arm_movt_hi16:
+  case ARM::fixup_arm_movt_hi16_pcrel:
     RelocType = unsigned(MachO::ARM_RELOC_HALF);
     Log2Size = 1;
     return true;
   case ARM::fixup_t2_movt_hi16:
+  case ARM::fixup_t2_movt_hi16_pcrel:
     RelocType = unsigned(MachO::ARM_RELOC_HALF);
     Log2Size = 3;
     return true;
 
   case ARM::fixup_arm_movw_lo16:
+  case ARM::fixup_arm_movw_lo16_pcrel:
     RelocType = unsigned(MachO::ARM_RELOC_HALF);
     Log2Size = 0;
     return true;
   case ARM::fixup_t2_movw_lo16:
+  case ARM::fixup_t2_movw_lo16_pcrel:
     RelocType = unsigned(MachO::ARM_RELOC_HALF);
     Log2Size = 2;
     return true;
@@ -157,7 +156,7 @@ RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
 
   // See <reloc.h>.
   const MCSymbol *A = &Target.getSymA()->getSymbol();
-  const MCSymbolData *A_SD = &Asm.getSymbolData(*A);
+  MCSymbolData *A_SD = &Asm.getSymbolData(*A);
 
   if (!A_SD->getFragment())
     Asm.getContext().FatalError(Fixup.getLoc(),
@@ -171,7 +170,7 @@ RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
   FixedValue += SecAddr;
 
   if (const MCSymbolRefExpr *B = Target.getSymB()) {
-    const MCSymbolData *B_SD = &Asm.getSymbolData(B->getSymbol());
+    MCSymbolData *B_SD = &Asm.getSymbolData(B->getSymbol());
 
     if (!B_SD->getFragment())
       Asm.getContext().FatalError(Fixup.getLoc(),
@@ -203,19 +202,22 @@ RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
   switch ((unsigned)Fixup.getKind()) {
   default: break;
   case ARM::fixup_arm_movt_hi16:
+  case ARM::fixup_arm_movt_hi16_pcrel:
     MovtBit = 1;
     // The thumb bit shouldn't be set in the 'other-half' bit of the
     // relocation, but it will be set in FixedValue if the base symbol
     // is a thumb function. Clear it out here.
-    if (Asm.isThumbFunc(A))
+    if (A_SD->getFlags() & SF_ThumbFunc)
       FixedValue &= 0xfffffffe;
     break;
   case ARM::fixup_t2_movt_hi16:
-    if (Asm.isThumbFunc(A))
+  case ARM::fixup_t2_movt_hi16_pcrel:
+    if (A_SD->getFlags() & SF_ThumbFunc)
       FixedValue &= 0xfffffffe;
     MovtBit = 1;
     // Fallthrough
   case ARM::fixup_t2_movw_lo16:
+  case ARM::fixup_t2_movw_lo16_pcrel:
     ThumbBit = 1;
     break;
   }
@@ -252,15 +254,15 @@ void ARMMachObjectWriter::RecordARMScatteredRelocation(MachObjectWriter *Writer,
                                                     const MCFragment *Fragment,
                                                     const MCFixup &Fixup,
                                                     MCValue Target,
-                                                    unsigned Type,
                                                     unsigned Log2Size,
                                                     uint64_t &FixedValue) {
   uint32_t FixupOffset = Layout.getFragmentOffset(Fragment)+Fixup.getOffset();
   unsigned IsPCRel = Writer->isFixupKindPCRel(Asm, Fixup.getKind());
+  unsigned Type = MachO::ARM_RELOC_VANILLA;
 
   // See <reloc.h>.
   const MCSymbol *A = &Target.getSymA()->getSymbol();
-  const MCSymbolData *A_SD = &Asm.getSymbolData(*A);
+  MCSymbolData *A_SD = &Asm.getSymbolData(*A);
 
   if (!A_SD->getFragment())
     Asm.getContext().FatalError(Fixup.getLoc(),
@@ -273,8 +275,7 @@ void ARMMachObjectWriter::RecordARMScatteredRelocation(MachObjectWriter *Writer,
   uint32_t Value2 = 0;
 
   if (const MCSymbolRefExpr *B = Target.getSymB()) {
-    assert(Type == MachO::ARM_RELOC_VANILLA && "invalid reloc for 2 symbols");
-    const MCSymbolData *B_SD = &Asm.getSymbolData(B->getSymbol());
+    MCSymbolData *B_SD = &Asm.getSymbolData(B->getSymbol());
 
     if (!B_SD->getFragment())
       Asm.getContext().FatalError(Fixup.getLoc(),
@@ -376,12 +377,11 @@ void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
       return RecordARMScatteredHalfRelocation(Writer, Asm, Layout, Fragment,
                                               Fixup, Target, FixedValue);
     return RecordARMScatteredRelocation(Writer, Asm, Layout, Fragment, Fixup,
-                                        Target, RelocType, Log2Size,
-                                        FixedValue);
+                                        Target, Log2Size, FixedValue);
   }
 
   // Get the symbol data, if any.
-  const MCSymbolData *SD = nullptr;
+  MCSymbolData *SD = 0;
   if (Target.getSymA())
     SD = &Asm.getSymbolData(Target.getSymA()->getSymbol());
 
@@ -395,8 +395,7 @@ void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
     Offset += 1 << Log2Size;
   if (Offset && SD && !Writer->doesSymbolRequireExternRelocation(SD))
     return RecordARMScatteredRelocation(Writer, Asm, Layout, Fragment, Fixup,
-                                        Target, RelocType, Log2Size,
-                                        FixedValue);
+                                        Target, Log2Size, FixedValue);
 
   // See <reloc.h>.
   uint32_t FixupOffset = Layout.getFragmentOffset(Fragment)+Fixup.getOffset();
@@ -462,11 +461,15 @@ void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
     switch ((unsigned)Fixup.getKind()) {
     default: break;
     case ARM::fixup_arm_movw_lo16:
+    case ARM::fixup_arm_movw_lo16_pcrel:
     case ARM::fixup_t2_movw_lo16:
+    case ARM::fixup_t2_movw_lo16_pcrel:
       Value = (FixedValue >> 16) & 0xffff;
       break;
     case ARM::fixup_arm_movt_hi16:
+    case ARM::fixup_arm_movt_hi16_pcrel:
     case ARM::fixup_t2_movt_hi16:
+    case ARM::fixup_t2_movt_hi16_pcrel:
       Value = FixedValue & 0xffff;
       break;
     }

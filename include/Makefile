@@ -42,9 +42,10 @@ LDIRS=	bsm cam geom net net80211 netgraph netinet netinet6 \
 LSUBDIRS=	cam/ata cam/scsi \
 	dev/acpica dev/agp dev/an dev/bktr dev/ciss dev/filemon dev/firewire \
 	dev/hwpmc \
-	dev/ic dev/iicbus dev/io dev/lmc dev/mfi dev/nvme \
+	dev/ic dev/iicbus ${_dev_ieee488} dev/io dev/lmc dev/mfi dev/nvme \
 	dev/ofw dev/pbio dev/pci ${_dev_powermac_nvram} dev/ppbus dev/smbus \
 	dev/speaker dev/usb dev/utopia dev/vkbd dev/wi \
+	fs/cuse \
 	fs/devfs fs/fdescfs fs/msdosfs fs/nandfs fs/nfs fs/nullfs \
 	fs/procfs fs/smbfs fs/udf fs/unionfs \
 	geom/cache geom/concat geom/eli geom/gate geom/journal geom/label \
@@ -58,12 +59,12 @@ LSUBDIRS=	cam/ata cam/scsi \
 
 LSUBSUBDIRS=	dev/mpt/mpilib
 
-.if ${MK_CUSE} != "no"
-LSUBDIRS+=	fs/cuse
-.endif
-
 .if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64"
 _dev_powermac_nvram=	dev/powermac_nvram
+.endif
+
+.if ${MK_GPIB} != "no"
+_dev_ieee488=	dev/ieee488
 .endif
 
 .if ${MK_GSSAPI} != "no"
@@ -157,8 +158,6 @@ copies:
 .endfor
 	cd ${.CURDIR}/../sys/dev/acpica; \
 	${INSTALL} -C -o ${BINOWN} -g ${BINGRP} -m 444 acpiio.h \
-	    ${DESTDIR}${INCLUDEDIR}/dev/acpica; \
-	${INSTALL} -C -o ${BINOWN} -g ${BINGRP} -m 444 acpi_hpet.h \
 	    ${DESTDIR}${INCLUDEDIR}/dev/acpica
 	cd ${.CURDIR}/../sys/dev/agp; \
 	${INSTALL} -C -o ${BINOWN} -g ${BINGRP} -m 444 agpreg.h \
@@ -244,7 +243,7 @@ symlinks:
 	done
 .endfor
 	cd ${.CURDIR}/../sys/dev/acpica; \
-	for h in acpiio.h acpi_hpet.h; do \
+	for h in acpiio.h; do \
 		ln -fs ../../../../sys/dev/acpica/$$h \
 		    ${DESTDIR}${INCLUDEDIR}/dev/acpica; \
 	done

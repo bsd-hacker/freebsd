@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/ASTMatchers/Dynamic/VariantValue.h"
+
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -37,8 +38,7 @@ public:
   }
 
   virtual void makeTypedMatcher(MatcherOps &Ops) const {
-    bool Ignore;
-    if (Ops.canConstructFrom(Matcher, Ignore))
+    if (Ops.canConstructFrom(Matcher))
       Ops.constructFrom(Matcher);
   }
 
@@ -48,8 +48,8 @@ private:
 
 class VariantMatcher::PolymorphicPayload : public VariantMatcher::Payload {
 public:
-  PolymorphicPayload(std::vector<DynTypedMatcher> MatchersIn)
-      : Matchers(std::move(MatchersIn)) {}
+  PolymorphicPayload(ArrayRef<DynTypedMatcher> MatchersIn)
+      : Matchers(MatchersIn) {}
 
   virtual ~PolymorphicPayload() {}
 
@@ -70,25 +70,15 @@ public:
   }
 
   virtual void makeTypedMatcher(MatcherOps &Ops) const {
-    bool FoundIsExact = false;
-    const DynTypedMatcher *Found = nullptr;
-    int NumFound = 0;
+    const DynTypedMatcher *Found = NULL;
     for (size_t i = 0, e = Matchers.size(); i != e; ++i) {
-      bool IsExactMatch;
-      if (Ops.canConstructFrom(Matchers[i], IsExactMatch)) {
-        if (Found) {
-          if (FoundIsExact) {
-            assert(!IsExactMatch && "We should not have two exact matches.");
-            continue;
-          }
-        }
+      if (Ops.canConstructFrom(Matchers[i])) {
+        if (Found)
+          return;
         Found = &Matchers[i];
-        FoundIsExact = IsExactMatch;
-        ++NumFound;
       }
     }
-    // We only succeed if we found exactly one, or if we found an exact match.
-    if (Found && (FoundIsExact || NumFound == 1))
+    if (Found)
       Ops.constructFrom(*Found);
   }
 
@@ -98,8 +88,8 @@ public:
 class VariantMatcher::VariadicOpPayload : public VariantMatcher::Payload {
 public:
   VariadicOpPayload(ast_matchers::internal::VariadicOperatorFunction Func,
-                    std::vector<VariantMatcher> Args)
-      : Func(Func), Args(std::move(Args)) {}
+                    ArrayRef<VariantMatcher> Args)
+      : Func(Func), Args(Args) {}
 
   virtual llvm::Optional<DynTypedMatcher> getSingleMatcher() const {
     return llvm::Optional<DynTypedMatcher>();
@@ -131,14 +121,14 @@ VariantMatcher VariantMatcher::SingleMatcher(const DynTypedMatcher &Matcher) {
 }
 
 VariantMatcher
-VariantMatcher::PolymorphicMatcher(std::vector<DynTypedMatcher> Matchers) {
-  return VariantMatcher(new PolymorphicPayload(std::move(Matchers)));
+VariantMatcher::PolymorphicMatcher(ArrayRef<DynTypedMatcher> Matchers) {
+  return VariantMatcher(new PolymorphicPayload(Matchers));
 }
 
 VariantMatcher VariantMatcher::VariadicOperatorMatcher(
     ast_matchers::internal::VariadicOperatorFunction Func,
-    std::vector<VariantMatcher> Args) {
-  return VariantMatcher(new VariadicOpPayload(Func, std::move(Args)));
+    ArrayRef<VariantMatcher> Args) {
+  return VariantMatcher(new VariadicOpPayload(Func, Args));
 }
 
 llvm::Optional<DynTypedMatcher> VariantMatcher::getSingleMatcher() const {

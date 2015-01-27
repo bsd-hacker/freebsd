@@ -8,6 +8,7 @@ SRCS=		send_recv.c link_policy.c link_control.c \
 		util.c
 WARNS?=		2
 
-LIBADD=		bluetooth
+DPADD=		${LIBBLUETOOTH}
+LDADD=		-lbluetooth
 
 .include <bsd.prog.mk>

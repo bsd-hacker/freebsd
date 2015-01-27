@@ -539,10 +539,9 @@ static int
 adt746x_sensor_read(struct adt746x_sensor *sens)
 {
 	struct adt746x_softc *sc;
-	int tmp = 0;
+	uint16_t tmp = 0;
 	uint16_t val;
-	uint8_t data[1], data1[1];
-	int8_t temp;
+	uint8_t temp, data[1], data1[1];
 
 	sc = device_get_softc(sens->dev);
 	if (sens->type != ADT746X_SENSOR_SPEED) {

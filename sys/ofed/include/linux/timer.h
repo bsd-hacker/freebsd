@@ -2,7 +2,6 @@
  * Copyright (c) 2010 Isilon Systems, Inc.
  * Copyright (c) 2010 iX Systems, Inc.
  * Copyright (c) 2010 Panasas, Inc.
- * Copyright (c) 2013, 2014 Mellanox Technologies, Ltd.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -86,7 +85,5 @@ round_jiffies(unsigned long j)
 {
 	return roundup(j, hz);
 }
-
-#define round_jiffies_relative(j) round_jiffies(j)
 
 #endif /* _LINUX_TIMER_H_ */

@@ -15,7 +15,6 @@
 
 #include "lldb/lldb-private.h"
 #include "lldb/Host/Mutex.h"
-#include "lldb/Utility/Iterable.h"
 
 namespace lldb_private {
 
@@ -138,7 +137,7 @@ public:
     ///
     /// Clears the list of modules and releases a reference to each
     /// module object and if the reference count goes to zero, the
-    /// module will be deleted. Also release all memory that might be
+    /// module will be deleted. Also relese all memory that might be
     /// held by any collection classes (like std::vector)
     //------------------------------------------------------------------
     void
@@ -150,7 +149,7 @@ public:
     /// the supplied stream \a s.
     ///
     /// @param[in] s
-    ///     The stream to which to dump the object description.
+    ///     The stream to which to dump the object descripton.
     ///
     /// @see Module::Dump(Stream *) const
     //------------------------------------------------------------------
@@ -308,7 +307,7 @@ public:
                          VariableList& variable_list) const;
 
     //------------------------------------------------------------------
-    /// Find global and static variables by regular expression.
+    /// Find global and static variables by regular exression.
     ///
     /// @param[in] regex
     ///     A regular expression to use when matching the name.
@@ -577,14 +576,6 @@ protected:
     mutable Mutex m_modules_mutex;
 
     Notifier* m_notifier;
-    
-public:
-    typedef LockingAdaptedIterable<collection, lldb::ModuleSP, vector_adapter> ModuleIterable;
-    ModuleIterable
-    Modules()
-    {
-        return ModuleIterable(m_modules, GetMutex());
-    }
     
 };
 

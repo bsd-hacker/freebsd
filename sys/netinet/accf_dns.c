@@ -75,7 +75,7 @@ sohasdns(struct socket *so, void *arg, int waitflag)
 	struct sockbuf *sb = &so->so_rcv;
 
 	/* If the socket is full, we're ready. */
-	if (sbused(sb) >= sb->sb_hiwat || sb->sb_mbcnt >= sb->sb_mbmax)
+	if (sb->sb_cc >= sb->sb_hiwat || sb->sb_mbcnt >= sb->sb_mbmax)
 		goto ready;
 
 	/* Check to see if we have a request. */
@@ -115,14 +115,14 @@ skippacket(struct sockbuf *sb) {
 	unsigned long packlen;
 	struct packet q, *p = &q;
 
-	if (sbavail(sb) < 2)
+	if (sb->sb_cc < 2)
 		return DNS_WAIT;
 
 	q.m = sb->sb_mb;
 	q.n = q.m->m_nextpkt;
 	q.moff = 0;
 	q.offset = 0;
-	q.len = sbavail(sb);
+	q.len = sb->sb_cc;
 
 	GET16(p, packlen);
 	if (packlen + 2 > q.len)

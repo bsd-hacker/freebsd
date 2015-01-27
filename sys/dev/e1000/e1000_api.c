@@ -1,6 +1,6 @@
 /******************************************************************************
 
-  Copyright (c) 2001-2014, Intel Corporation 
+  Copyright (c) 2001-2013, Intel Corporation 
   All rights reserved.
   
   Redistribution and use in source and binary forms, with or without 
@@ -293,10 +293,6 @@ s32 e1000_set_mac_type(struct e1000_hw *hw)
 	case E1000_DEV_ID_PCH_LPT_I217_V:
 	case E1000_DEV_ID_PCH_LPTLP_I218_LM:
 	case E1000_DEV_ID_PCH_LPTLP_I218_V:
-	case E1000_DEV_ID_PCH_I218_LM2:
-	case E1000_DEV_ID_PCH_I218_V2:
-	case E1000_DEV_ID_PCH_I218_LM3:
-	case E1000_DEV_ID_PCH_I218_V3:
 		mac->type = e1000_pch_lpt;
 		break;
 	case E1000_DEV_ID_82575EB_COPPER:
@@ -832,12 +828,10 @@ void e1000_config_collision_dist(struct e1000_hw *hw)
  *
  *  Sets a Receive Address Register (RAR) to the specified address.
  **/
-int e1000_rar_set(struct e1000_hw *hw, u8 *addr, u32 index)
+void e1000_rar_set(struct e1000_hw *hw, u8 *addr, u32 index)
 {
 	if (hw->mac.ops.rar_set)
-		return hw->mac.ops.rar_set(hw, addr, index);
-
-	return E1000_SUCCESS;
+		hw->mac.ops.rar_set(hw, addr, index);
 }
 
 /**

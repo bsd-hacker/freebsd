@@ -52,10 +52,23 @@ __FBSDID("$FreeBSD$");
 #include "sdhci.h"
 #include "sdhci_if.h"
 
-SYSCTL_NODE(_hw, OID_AUTO, sdhci, CTLFLAG_RD, 0, "sdhci driver");
+struct sdhci_softc;
 
-static int sdhci_debug;
-SYSCTL_INT(_hw_sdhci, OID_AUTO, debug, CTLFLAG_RWTUN, &sdhci_debug, 0, "Debug level");
+struct sdhci_softc {
+	device_t	dev;		/* Controller device */
+	struct resource *irq_res;	/* IRQ resource */
+	int 		irq_rid;
+	void 		*intrhand;	/* Interrupt handle */
+
+	int		num_slots;	/* Number of slots on this controller */
+	struct sdhci_slot slots[6];
+};
+
+static SYSCTL_NODE(_hw, OID_AUTO, sdhci, CTLFLAG_RD, 0, "sdhci driver");
+
+int	sdhci_debug = 0;
+TUNABLE_INT("hw.sdhci.debug", &sdhci_debug);
+SYSCTL_INT(_hw_sdhci, OID_AUTO, debug, CTLFLAG_RW, &sdhci_debug, 0, "Debug level");
 
 #define RD1(slot, off)	SDHCI_READ_1((slot)->bus, (slot), (off))
 #define RD2(slot, off)	SDHCI_READ_2((slot)->bus, (slot), (off))
@@ -149,6 +162,7 @@ static void
 sdhci_reset(struct sdhci_slot *slot, uint8_t mask)
 {
 	int timeout;
+	uint8_t res;
 
 	if (slot->quirks & SDHCI_QUIRK_NO_CARD_NO_RESET) {
 		if (!(RD4(slot, SDHCI_PRESENT_STATE) &
@@ -167,43 +181,26 @@ sdhci_reset(struct sdhci_slot *slot, uint8_t mask)
 		sdhci_set_clock(slot, clock);
 	}
 
+	WR1(slot, SDHCI_SOFTWARE_RESET, mask);
+
 	if (mask & SDHCI_RESET_ALL) {
 		slot->clock = 0;
 		slot->power = 0;
 	}
 
-	WR1(slot, SDHCI_SOFTWARE_RESET, mask);
-
-	if (slot->quirks & SDHCI_QUIRK_WAITFOR_RESET_ASSERTED) {
-		/*
-		 * Resets on TI OMAPs and AM335x are incompatible with SDHCI
-		 * specification.  The reset bit has internal propagation delay,
-		 * so a fast read after write returns 0 even if reset process is
-		 * in progress. The workaround is to poll for 1 before polling
-		 * for 0.  In the worst case, if we miss seeing it asserted the
-		 * time we spent waiting is enough to ensure the reset finishes.
-		 */
-		timeout = 10000;
-		while ((RD1(slot, SDHCI_SOFTWARE_RESET) & mask) != mask) {
-			if (timeout <= 0)
-				break;
-			timeout--;
-			DELAY(1);
-		}
-	}
-
 	/* Wait max 100 ms */
-	timeout = 10000;
+	timeout = 100;
 	/* Controller clears the bits when it's done */
-	while (RD1(slot, SDHCI_SOFTWARE_RESET) & mask) {
-		if (timeout <= 0) {
-			slot_printf(slot, "Reset 0x%x never completed.\n",
-			    mask);
+	while ((res = RD1(slot, SDHCI_SOFTWARE_RESET)) & mask) {
+		if (timeout == 0) {
+			slot_printf(slot,
+			    "Reset 0x%x never completed - 0x%x.\n",
+			    (int)mask, (int)res);
 			sdhci_dumpregs(slot);
 			return;
 		}
 		timeout--;
-		DELAY(10);
+		DELAY(1000);
 	}
 }
 
@@ -696,8 +693,7 @@ sdhci_generic_update_ios(device_t brdev, device_t reqdev)
 		slot->hostctrl |= SDHCI_CTRL_4BITBUS;
 	else
 		slot->hostctrl &= ~SDHCI_CTRL_4BITBUS;
-	if (ios->timing == bus_timing_hs && 
-	    !(slot->quirks & SDHCI_QUIRK_DONT_SET_HISPD_BIT))
+	if (ios->timing == bus_timing_hs)
 		slot->hostctrl |= SDHCI_CTRL_HISPD;
 	else
 		slot->hostctrl &= ~SDHCI_CTRL_HISPD;
@@ -730,13 +726,9 @@ sdhci_timeout(void *arg)
 	struct sdhci_slot *slot = arg;
 
 	if (slot->curcmd != NULL) {
-		slot_printf(slot, " Controller timeout\n");
-		sdhci_dumpregs(slot);
 		sdhci_reset(slot, SDHCI_RESET_CMD|SDHCI_RESET_DATA);
 		slot->curcmd->error = MMC_ERR_TIMEOUT;
 		sdhci_req_done(slot);
-	} else {
-		slot_printf(slot, " Spurious timeout - no active command\n");
 	}
 }
  
@@ -985,6 +977,7 @@ sdhci_finish_data(struct sdhci_slot *slot)
 {
 	struct mmc_data *data = slot->curcmd->data;
 
+	slot->data_done = 1;
 	/* Interrupt aggregation: Restore command interrupt.
 	 * Auxiliary restore point for the case when data interrupt
 	 * happened first. */
@@ -993,7 +986,7 @@ sdhci_finish_data(struct sdhci_slot *slot)
 		    slot->intmask |= SDHCI_INT_RESPONSE);
 	}
 	/* Unload rest of data from DMA buffer. */
-	if (!slot->data_done && (slot->flags & SDHCI_USE_DMA)) {
+	if (slot->flags & SDHCI_USE_DMA) {
 		if (data->flags & MMC_DATA_READ) {
 			size_t left = data->len - slot->offset;
 			bus_dmamap_sync(slot->dmatag, slot->dmamap, 
@@ -1004,7 +997,6 @@ sdhci_finish_data(struct sdhci_slot *slot)
 			bus_dmamap_sync(slot->dmatag, slot->dmamap, 
 			    BUS_DMASYNC_POSTWRITE);
 	}
-	slot->data_done = 1;
 	/* If there was error - reset the host. */
 	if (slot->curcmd->error) {
 		sdhci_reset(slot, SDHCI_RESET_CMD);
@@ -1172,7 +1164,12 @@ sdhci_data_irq(struct sdhci_slot *slot, uint32_t intmask)
 	}
 	if (slot->curcmd->error) {
 		/* No need to continue after any error. */
-		goto done;
+		if (slot->flags & PLATFORM_DATA_STARTED) {
+			slot->flags &= ~PLATFORM_DATA_STARTED;
+			SDHCI_PLATFORM_FINISH_TRANSFER(slot->bus, slot);
+		} else
+			sdhci_finish_data(slot);
+		return;
 	}
 
 	/* Handle PIO interrupt. */
@@ -1228,15 +1225,6 @@ sdhci_data_irq(struct sdhci_slot *slot, uint32_t intmask)
 			SDHCI_PLATFORM_FINISH_TRANSFER(slot->bus, slot);
 		} else
 			sdhci_finish_data(slot);
-	}
-done:
-	if (slot->curcmd != NULL && slot->curcmd->error != 0) {
-		if (slot->flags & PLATFORM_DATA_STARTED) {
-			slot->flags &= ~PLATFORM_DATA_STARTED;
-			SDHCI_PLATFORM_FINISH_TRANSFER(slot->bus, slot);
-		} else
-			sdhci_finish_data(slot);
-		return;
 	}
 }
 
@@ -1299,9 +1287,7 @@ sdhci_generic_intr(struct sdhci_slot *slot)
 	/* Handle data interrupts. */
 	if (intmask & SDHCI_INT_DATA_MASK) {
 		WR4(slot, SDHCI_INT_STATUS, intmask & SDHCI_INT_DATA_MASK);
-		/* Dont call data_irq in case of errored command */
-		if ((intmask & SDHCI_INT_CMD_ERROR_MASK) == 0)
-			sdhci_data_irq(slot, intmask & SDHCI_INT_DATA_MASK);
+		sdhci_data_irq(slot, intmask & SDHCI_INT_DATA_MASK);
 	}
 	/* Handle AutoCMD12 error interrupt. */
 	if (intmask & SDHCI_INT_ACMD12ERR) {

@@ -56,7 +56,7 @@ const FunctionDecl *SVal::getAsFunctionDecl() const {
         return FD;
   }
 
-  return nullptr;
+  return 0;
 }
 
 /// \brief If this SVal is a location (subclasses Loc) and wraps a symbol,
@@ -78,7 +78,7 @@ SymbolRef SVal::getAsLocSymbol(bool IncludeBaseRegions) const {
                                       dyn_cast<SymbolicRegion>(R->StripCasts()))
       return SymR->getSymbol();
   }
-  return nullptr;
+  return 0;
 }
 
 /// Get the symbol in the SVal or its base region.
@@ -86,7 +86,7 @@ SymbolRef SVal::getLocSymbolInBase() const {
   Optional<loc::MemRegionVal> X = getAs<loc::MemRegionVal>();
 
   if (!X)
-    return nullptr;
+    return 0;
 
   const MemRegion *R = X->getRegion();
 
@@ -97,7 +97,7 @@ SymbolRef SVal::getLocSymbolInBase() const {
       R = SR->getSuperRegion();
   }
 
-  return nullptr;
+  return 0;
 }
 
 // TODO: The next 3 functions have to be simplified.
@@ -139,12 +139,12 @@ const MemRegion *SVal::getAsRegion() const {
   if (Optional<nonloc::LocAsInteger> X = getAs<nonloc::LocAsInteger>())
     return X->getLoc().getAsRegion();
 
-  return nullptr;
+  return 0;
 }
 
 const MemRegion *loc::MemRegionVal::stripCasts(bool StripBaseCasts) const {
   const MemRegion *R = getRegion();
-  return R ?  R->StripCasts(StripBaseCasts) : nullptr;
+  return R ?  R->StripCasts(StripBaseCasts) : NULL;
 }
 
 const void *nonloc::LazyCompoundVal::getStore() const {

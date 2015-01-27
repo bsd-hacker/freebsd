@@ -1,7 +1,8 @@
 # $FreeBSD$
 
 PROG=	pppoed
-LIBADD=	netgraph
+DPADD=	${LIBNETGRAPH}
+LDADD=	-lnetgraph
 MAN=	pppoed.8
 
 WARNS?=	1

@@ -56,24 +56,23 @@ struct DOTGraphTraits<RegionNode*> : public DefaultDOTGraphTraits {
 };
 
 template<>
-struct DOTGraphTraits<RegionInfoPass*> : public DOTGraphTraits<RegionNode*> {
+struct DOTGraphTraits<RegionInfo*> : public DOTGraphTraits<RegionNode*> {
 
-  DOTGraphTraits (bool isSimple = false)
+  DOTGraphTraits (bool isSimple=false)
     : DOTGraphTraits<RegionNode*>(isSimple) {}
 
-  static std::string getGraphName(RegionInfoPass *DT) {
+  static std::string getGraphName(RegionInfo *DT) {
     return "Region Graph";
   }
 
-  std::string getNodeLabel(RegionNode *Node, RegionInfoPass *G) {
-    RegionInfo &RI = G->getRegionInfo();
+  std::string getNodeLabel(RegionNode *Node, RegionInfo *G) {
     return DOTGraphTraits<RegionNode*>::getNodeLabel(Node,
-                                                     reinterpret_cast<RegionNode*>(RI.getTopLevelRegion()));
+                                                     G->getTopLevelRegion());
   }
 
   std::string getEdgeAttributes(RegionNode *srcNode,
-    GraphTraits<RegionInfo*>::ChildIteratorType CI, RegionInfoPass *G) {
-    RegionInfo &RI = G->getRegionInfo();
+    GraphTraits<RegionInfo*>::ChildIteratorType CI, RegionInfo *RI) {
+
     RegionNode *destNode = *CI;
 
     if (srcNode->isSubRegion() || destNode->isSubRegion())
@@ -83,7 +82,7 @@ struct DOTGraphTraits<RegionInfoPass*> : public DOTGraphTraits<RegionNode*> {
     BasicBlock *srcBB = srcNode->getNodeAs<BasicBlock>();
     BasicBlock *destBB = destNode->getNodeAs<BasicBlock>();
 
-    Region *R = RI.getRegionFor(destBB);
+    Region *R = RI->getRegionFor(destBB);
 
     while (R && R->getParent())
       if (R->getParent()->getEntry() == destBB)
@@ -99,45 +98,44 @@ struct DOTGraphTraits<RegionInfoPass*> : public DOTGraphTraits<RegionNode*> {
 
   // Print the cluster of the subregions. This groups the single basic blocks
   // and adds a different background color for each group.
-  static void printRegionCluster(const Region &R,
-                                 GraphWriter<RegionInfoPass*> &GW,
+  static void printRegionCluster(const Region *R, GraphWriter<RegionInfo*> &GW,
                                  unsigned depth = 0) {
     raw_ostream &O = GW.getOStream();
-    O.indent(2 * depth) << "subgraph cluster_" << static_cast<const void*>(&R)
+    O.indent(2 * depth) << "subgraph cluster_" << static_cast<const void*>(R)
       << " {\n";
     O.indent(2 * (depth + 1)) << "label = \"\";\n";
 
-    if (!onlySimpleRegions || R.isSimple()) {
+    if (!onlySimpleRegions || R->isSimple()) {
       O.indent(2 * (depth + 1)) << "style = filled;\n";
       O.indent(2 * (depth + 1)) << "color = "
-        << ((R.getDepth() * 2 % 12) + 1) << "\n";
+        << ((R->getDepth() * 2 % 12) + 1) << "\n";
 
     } else {
       O.indent(2 * (depth + 1)) << "style = solid;\n";
       O.indent(2 * (depth + 1)) << "color = "
-        << ((R.getDepth() * 2 % 12) + 2) << "\n";
+        << ((R->getDepth() * 2 % 12) + 2) << "\n";
     }
 
-    for (Region::const_iterator RI = R.begin(), RE = R.end(); RI != RE; ++RI)
-      printRegionCluster(**RI, GW, depth + 1);
+    for (Region::const_iterator RI = R->begin(), RE = R->end(); RI != RE; ++RI)
+      printRegionCluster(*RI, GW, depth + 1);
 
-    const RegionInfo &RI = *static_cast<const RegionInfo*>(R.getRegionInfo());
+    RegionInfo *RI = R->getRegionInfo();
 
-    for (const auto &BB : R.blocks())
-      if (RI.getRegionFor(BB) == &R)
+    for (Region::const_block_iterator BI = R->block_begin(),
+         BE = R->block_end(); BI != BE; ++BI)
+      if (RI->getRegionFor(*BI) == R)
         O.indent(2 * (depth + 1)) << "Node"
-          << static_cast<const void*>(RI.getTopLevelRegion()->getBBNode(BB))
+          << static_cast<const void*>(RI->getTopLevelRegion()->getBBNode(*BI))
           << ";\n";
 
     O.indent(2 * depth) << "}\n";
   }
 
-  static void addCustomGraphFeatures(const RegionInfoPass* RIP,
-                                     GraphWriter<RegionInfoPass*> &GW) {
-    const RegionInfo &RI = RIP->getRegionInfo();
+  static void addCustomGraphFeatures(const RegionInfo* RI,
+                                     GraphWriter<RegionInfo*> &GW) {
     raw_ostream &O = GW.getOStream();
     O << "\tcolorscheme = \"paired12\"\n";
-    printRegionCluster(*RI.getTopLevelRegion(), GW, 4);
+    printRegionCluster(RI->getTopLevelRegion(), GW, 4);
   }
 };
 } //end namespace llvm
@@ -145,28 +143,28 @@ struct DOTGraphTraits<RegionInfoPass*> : public DOTGraphTraits<RegionNode*> {
 namespace {
 
 struct RegionViewer
-  : public DOTGraphTraitsViewer<RegionInfoPass, false> {
+  : public DOTGraphTraitsViewer<RegionInfo, false> {
   static char ID;
-  RegionViewer() : DOTGraphTraitsViewer<RegionInfoPass, false>("reg", ID){
+  RegionViewer() : DOTGraphTraitsViewer<RegionInfo, false>("reg", ID){
     initializeRegionViewerPass(*PassRegistry::getPassRegistry());
   }
 };
 char RegionViewer::ID = 0;
 
 struct RegionOnlyViewer
-  : public DOTGraphTraitsViewer<RegionInfoPass, true> {
+  : public DOTGraphTraitsViewer<RegionInfo, true> {
   static char ID;
-  RegionOnlyViewer() : DOTGraphTraitsViewer<RegionInfoPass, true>("regonly", ID) {
+  RegionOnlyViewer() : DOTGraphTraitsViewer<RegionInfo, true>("regonly", ID) {
     initializeRegionOnlyViewerPass(*PassRegistry::getPassRegistry());
   }
 };
 char RegionOnlyViewer::ID = 0;
 
 struct RegionPrinter
-  : public DOTGraphTraitsPrinter<RegionInfoPass, false> {
+  : public DOTGraphTraitsPrinter<RegionInfo, false> {
   static char ID;
   RegionPrinter() :
-    DOTGraphTraitsPrinter<RegionInfoPass, false>("reg", ID) {
+    DOTGraphTraitsPrinter<RegionInfo, false>("reg", ID) {
       initializeRegionPrinterPass(*PassRegistry::getPassRegistry());
     }
 };
@@ -178,7 +176,7 @@ INITIALIZE_PASS(RegionPrinter, "dot-regions",
 
 INITIALIZE_PASS(RegionViewer, "view-regions", "View regions of function",
                 true, true)
-
+                
 INITIALIZE_PASS(RegionOnlyViewer, "view-regions-only",
                 "View regions of function (with no function bodies)",
                 true, true)
@@ -186,10 +184,10 @@ INITIALIZE_PASS(RegionOnlyViewer, "view-regions-only",
 namespace {
 
 struct RegionOnlyPrinter
-  : public DOTGraphTraitsPrinter<RegionInfoPass, true> {
+  : public DOTGraphTraitsPrinter<RegionInfo, true> {
   static char ID;
   RegionOnlyPrinter() :
-    DOTGraphTraitsPrinter<RegionInfoPass, true>("reg", ID) {
+    DOTGraphTraitsPrinter<RegionInfo, true>("reg", ID) {
       initializeRegionOnlyPrinterPass(*PassRegistry::getPassRegistry());
     }
 };

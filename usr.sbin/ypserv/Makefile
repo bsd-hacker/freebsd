@@ -12,7 +12,8 @@ CFLAGS+= -DDB_CACHE -DTCP_WRAPPER -I.
 
 WARNS?=	0
 
-LIBADD=	wrap
+DPADD=	${LIBWRAP}
+LDADD=	-lwrap
 
 CLEANFILES= yp_svc.c ypxfr_clnt.c yp.h
 

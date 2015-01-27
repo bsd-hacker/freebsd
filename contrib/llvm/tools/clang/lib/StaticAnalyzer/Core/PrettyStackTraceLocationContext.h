@@ -33,7 +33,7 @@ public:
     assert(LCtx);
   }
 
-  void print(raw_ostream &OS) const override {
+  virtual void print(raw_ostream &OS) const {
     OS << "While analyzing stack: \n";
     LCtx->dumpStack(OS, "\t");
   }

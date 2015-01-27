@@ -276,10 +276,10 @@ busdma_init(void *dummy)
 /*
  * This init historically used SI_SUB_VM, but now the init code requires
  * malloc(9) using M_DEVBUF memory, which is set up later than SI_SUB_VM, by
- * SI_SUB_KMEM and SI_ORDER_THIRD, so we'll go right after that by using
- * SI_SUB_KMEM and SI_ORDER_FOURTH.
+ * SI_SUB_KMEM and SI_ORDER_SECOND, so we'll go right after that by using
+ * SI_SUB_KMEM and SI_ORDER_THIRD.
  */
-SYSINIT(busdma, SI_SUB_KMEM, SI_ORDER_FOURTH, busdma_init, NULL);
+SYSINIT(busdma, SI_SUB_KMEM, SI_ORDER_THIRD, busdma_init, NULL);
 
 /*
  * End block of code useful to transplant to other implementations.
@@ -1346,9 +1346,9 @@ alloc_bounce_zone(bus_dma_tag_t dmat)
 	SYSCTL_ADD_STRING(busdma_sysctl_tree(bz),
 	    SYSCTL_CHILDREN(busdma_sysctl_tree_top(bz)), OID_AUTO,
 	    "lowaddr", CTLFLAG_RD, bz->lowaddrid, 0, "");
-	SYSCTL_ADD_ULONG(busdma_sysctl_tree(bz),
+	SYSCTL_ADD_INT(busdma_sysctl_tree(bz),
 	    SYSCTL_CHILDREN(busdma_sysctl_tree_top(bz)), OID_AUTO,
-	    "alignment", CTLFLAG_RD, &bz->alignment, "");
+	    "alignment", CTLFLAG_RD, &bz->alignment, 0, "");
 
 	return (0);
 }

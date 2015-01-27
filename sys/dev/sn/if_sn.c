@@ -409,7 +409,7 @@ startagain:
 	 */
 	if (len + pad > ETHER_MAX_LEN - ETHER_CRC_LEN) {
 		if_printf(ifp, "large packet discarded (A)\n");
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		++ifp->if_oerrors;
 		IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
 		m_freem(m);
 		goto readcheck;
@@ -556,7 +556,7 @@ startagain:
 
 	BPF_MTAP(ifp, top);
 
-	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+	ifp->if_opackets++;
 	m_freem(top);
 
 
@@ -625,7 +625,7 @@ snresume(struct ifnet *ifp)
 	 */
 	if (len + pad > ETHER_MAX_LEN - ETHER_CRC_LEN) {
 		if_printf(ifp, "large packet discarded (B)\n");
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		++ifp->if_oerrors;
 		IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
 		m_freem(m);
 		return;
@@ -750,7 +750,7 @@ snresume(struct ifnet *ifp)
 
 	BPF_MTAP(ifp, top);
 
-	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+	ifp->if_opackets++;
 	m_freem(top);
 
 try_start:
@@ -830,7 +830,7 @@ snintr_locked(struct sn_softc *sc)
 		SMC_SELECT_BANK(sc, 2);
 		CSR_WRITE_1(sc, INTR_ACK_REG_B, IM_RX_OVRN_INT);
 
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		++ifp->if_ierrors;
 	}
 	/*
 	 * Got a packet.
@@ -896,11 +896,11 @@ snintr_locked(struct sn_softc *sc)
 			device_printf(sc->dev, 
 			    "Successful packet caused interrupt\n");
 		} else {
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			++ifp->if_oerrors;
 		}
 
 		if (tx_status & EPHSR_LATCOL)
-			if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
+			++ifp->if_collisions;
 
 		/*
 		 * Some of these errors will have disabled transmit.
@@ -951,12 +951,12 @@ snintr_locked(struct sn_softc *sc)
 		/*
 		 * Single collisions
 		 */
-		if_inc_counter(ifp, IFCOUNTER_COLLISIONS, card_stats & ECR_COLN_MASK);
+		ifp->if_collisions += card_stats & ECR_COLN_MASK;
 
 		/*
 		 * Multiple collisions
 		 */
-		if_inc_counter(ifp, IFCOUNTER_COLLISIONS, (card_stats & ECR_MCOLN_MASK) >> 4);
+		ifp->if_collisions += (card_stats & ECR_MCOLN_MASK) >> 4;
 
 		SMC_SELECT_BANK(sc, 2);
 
@@ -1041,7 +1041,7 @@ read_another:
 	 * Account for receive errors and discard.
 	 */
 	if (status & RS_ERRORS) {
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		++ifp->if_ierrors;
 		goto out;
 	}
 	/*
@@ -1065,11 +1065,16 @@ read_another:
 	m->m_pkthdr.len = m->m_len = packet_length;
 
 	/*
-	 * Attach an mbuf cluster.
+	 * Attach an mbuf cluster
 	 */
-	if (!(MCLGET(m, M_NOWAIT))) {
+	MCLGET(m, M_NOWAIT);
+
+	/*
+	 * Insist on getting a cluster
+	 */
+	if ((m->m_flags & M_EXT) == 0) {
 		m_freem(m);
-		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+		++ifp->if_ierrors;
 		printf("sn: snread() kernel memory allocation problem\n");
 		goto out;
 	}
@@ -1084,7 +1089,7 @@ read_another:
 		data += packet_length & ~1;
 		*data = CSR_READ_1(sc, DATA_REG_B);
 	}
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	++ifp->if_ipackets;
 
 	/*
 	 * Remove link layer addresses and whatnot.

@@ -21,9 +21,13 @@ RegisterContextCorePOSIX_mips64::RegisterContextCorePOSIX_mips64(Thread &thread,
                                                                  const DataExtractor &fpregset)
     : RegisterContextPOSIX_mips64(thread, 0, register_info)
 {
-    m_gpr_buffer.reset(new DataBufferHeap(gpregset.GetDataStart(), gpregset.GetByteSize()));
-    m_gpr.SetData(m_gpr_buffer);
-    m_gpr.SetByteOrder(gpregset.GetByteOrder());
+    size_t i;
+    lldb::offset_t offset = 0;
+
+    for (i = 0; i < k_num_gpr_registers_mips64; i++)
+    {
+        m_reg[i] = gpregset.GetU64(&offset);
+    }
 }
 
 RegisterContextCorePOSIX_mips64::~RegisterContextCorePOSIX_mips64()
@@ -59,14 +63,10 @@ RegisterContextCorePOSIX_mips64::WriteFPR()
 bool
 RegisterContextCorePOSIX_mips64::ReadRegister(const RegisterInfo *reg_info, RegisterValue &value)
 {
-    lldb::offset_t offset = reg_info->byte_offset;
-    uint64_t v = m_gpr.GetMaxU64(&offset, reg_info->byte_size);
-    if (offset == reg_info->byte_offset + reg_info->byte_size)
-    {
-        value = v;
-        return true;
-    }
-    return false;
+    int reg_num = reg_info->byte_offset / 8;
+    assert(reg_num < k_num_gpr_registers_mips64);
+    value = m_reg[reg_num];
+    return true;
 }
 
 bool

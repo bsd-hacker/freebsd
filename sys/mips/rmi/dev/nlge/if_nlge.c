@@ -697,9 +697,7 @@ nlge_msgring_handler(int bucket, int size, int code, int stid,
 			printf("ERROR: Tx fb error (%d) on port %d\n", tx_error,
 			    port);
 		}
-		tx_error ?
-		    if_inc_counter(ifp, IFCOUNTER_OERRORS, 1) :
-		    if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		tx_error ? ifp->if_oerrors++ : ifp->if_opackets++;
 	} else if (ctrl == CTRL_SNGL || ctrl == CTRL_START) {
 		/* Rx Packet */
 
@@ -778,7 +776,7 @@ fail:
 			NLGE_UNLOCK(sc);
 		}
 		m_freem(m);
-		if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+		ifp->if_iqdrops++;
 	}
 	return (error);
 }
@@ -827,7 +825,7 @@ nlge_rx(struct nlge_softc *sc, vm_paddr_t paddr, int len)
 	m->m_pkthdr.len = m->m_len = len;
 	m->m_pkthdr.rcvif = ifp;
 
-	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+	ifp->if_ipackets++;
 	(*ifp->if_input)(ifp, m);
 }
 

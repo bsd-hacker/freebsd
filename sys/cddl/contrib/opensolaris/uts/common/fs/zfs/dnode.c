@@ -57,46 +57,9 @@ static dnode_phys_t dnode_phys_zero;
 int zfs_default_bs = SPA_MINBLOCKSHIFT;
 int zfs_default_ibs = DN_MAX_INDBLKSHIFT;
 
-#ifdef illumos
+#ifdef sun
 static kmem_cbrc_t dnode_move(void *, void *, size_t, void *);
 #endif
-
-static int
-dbuf_compare(const void *x1, const void *x2)
-{
-	const dmu_buf_impl_t *d1 = x1;
-	const dmu_buf_impl_t *d2 = x2;
-
-	if (d1->db_level < d2->db_level) {
-		return (-1);
-	}
-	if (d1->db_level > d2->db_level) {
-		return (1);
-	}
-
-	if (d1->db_blkid < d2->db_blkid) {
-		return (-1);
-	}
-	if (d1->db_blkid > d2->db_blkid) {
-		return (1);
-	}
-
-	if (d1->db_state == DB_SEARCH) {
-		ASSERT3S(d2->db_state, !=, DB_SEARCH);
-		return (-1);
-	} else if (d2->db_state == DB_SEARCH) {
-		ASSERT3S(d1->db_state, !=, DB_SEARCH);
-		return (1);
-	}
-
-	if ((uintptr_t)d1 < (uintptr_t)d2) {
-		return (-1);
-	}
-	if ((uintptr_t)d1 > (uintptr_t)d2) {
-		return (1);
-	}
-	return (0);
-}
 
 /* ARGSUSED */
 static int
@@ -152,7 +115,7 @@ dnode_cons(void *arg, void *unused, int kmflag)
 
 	dn->dn_dbufs_count = 0;
 	dn->dn_unlisted_l0_blkid = 0;
-	avl_create(&dn->dn_dbufs, dbuf_compare, sizeof (dmu_buf_impl_t),
+	list_create(&dn->dn_dbufs, sizeof (dmu_buf_impl_t),
 	    offsetof(dmu_buf_impl_t, db_link));
 
 	dn->dn_moved = 0;
@@ -206,7 +169,7 @@ dnode_dest(void *arg, void *unused)
 
 	ASSERT0(dn->dn_dbufs_count);
 	ASSERT0(dn->dn_unlisted_l0_blkid);
-	avl_destroy(&dn->dn_dbufs);
+	list_destroy(&dn->dn_dbufs);
 }
 
 void
@@ -511,10 +474,10 @@ dnode_allocate(dnode_t *dn, dmu_object_type_t ot, int blocksize, int ibs,
 {
 	int i;
 
-	ASSERT3U(blocksize, <=,
-	    spa_maxblocksize(dmu_objset_spa(dn->dn_objset)));
 	if (blocksize == 0)
 		blocksize = 1 << zfs_default_bs;
+	else if (blocksize > SPA_MAXBLOCKSIZE)
+		blocksize = SPA_MAXBLOCKSIZE;
 	else
 		blocksize = P2ROUNDUP(blocksize, SPA_MINBLOCKSIZE);
 
@@ -542,7 +505,7 @@ dnode_allocate(dnode_t *dn, dmu_object_type_t ot, int blocksize, int ibs,
 	ASSERT0(dn->dn_assigned_txg);
 	ASSERT(refcount_is_zero(&dn->dn_tx_holds));
 	ASSERT3U(refcount_count(&dn->dn_holds), <=, 1);
-	ASSERT(avl_is_empty(&dn->dn_dbufs));
+	ASSERT3P(list_head(&dn->dn_dbufs), ==, NULL);
 
 	for (i = 0; i < TXG_SIZE; i++) {
 		ASSERT0(dn->dn_next_nblkptr[i]);
@@ -595,8 +558,7 @@ dnode_reallocate(dnode_t *dn, dmu_object_type_t ot, int blocksize,
 	int nblkptr;
 
 	ASSERT3U(blocksize, >=, SPA_MINBLOCKSIZE);
-	ASSERT3U(blocksize, <=,
-	    spa_maxblocksize(dmu_objset_spa(dn->dn_objset)));
+	ASSERT3U(blocksize, <=, SPA_MAXBLOCKSIZE);
 	ASSERT0(blocksize % SPA_MINBLOCKSIZE);
 	ASSERT(dn->dn_object != DMU_META_DNODE_OBJECT || dmu_tx_private_ok(tx));
 	ASSERT(tx->tx_txg != 0);
@@ -728,8 +690,8 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	ndn->dn_dirtyctx_firstset = odn->dn_dirtyctx_firstset;
 	ASSERT(refcount_count(&odn->dn_tx_holds) == 0);
 	refcount_transfer(&ndn->dn_holds, &odn->dn_holds);
-	ASSERT(avl_is_empty(&ndn->dn_dbufs));
-	avl_swap(&ndn->dn_dbufs, &odn->dn_dbufs);
+	ASSERT(list_is_empty(&ndn->dn_dbufs));
+	list_move_tail(&ndn->dn_dbufs, &odn->dn_dbufs);
 	ndn->dn_dbufs_count = odn->dn_dbufs_count;
 	ndn->dn_unlisted_l0_blkid = odn->dn_unlisted_l0_blkid;
 	ndn->dn_bonus = odn->dn_bonus;
@@ -763,7 +725,7 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	 */
 	odn->dn_dbuf = NULL;
 	odn->dn_handle = NULL;
-	avl_create(&odn->dn_dbufs, dbuf_compare, sizeof (dmu_buf_impl_t),
+	list_create(&odn->dn_dbufs, sizeof (dmu_buf_impl_t),
 	    offsetof(dmu_buf_impl_t, db_link));
 	odn->dn_dbufs_count = 0;
 	odn->dn_unlisted_l0_blkid = 0;
@@ -813,7 +775,7 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	odn->dn_moved = (uint8_t)-1;
 }
 
-#ifdef illumos
+#ifdef sun
 #ifdef	_KERNEL
 /*ARGSUSED*/
 static kmem_cbrc_t
@@ -956,7 +918,7 @@ dnode_move(void *buf, void *newbuf, size_t size, void *arg)
 	return (KMEM_CBRC_YES);
 }
 #endif	/* _KERNEL */
-#endif	/* illumos */
+#endif	/* sun */
 
 void
 dnode_special_close(dnode_handle_t *dnh)
@@ -1027,7 +989,7 @@ dnode_buf_pageout(dmu_buf_t *db, void *arg)
 		dnh->dnh_dnode = NULL;
 	}
 	kmem_free(children_dnodes, sizeof (dnode_children_t) +
-	    epb * sizeof (dnode_handle_t));
+	    (epb - 1) * sizeof (dnode_handle_t));
 }
 
 /*
@@ -1112,22 +1074,17 @@ dnode_hold_impl(objset_t *os, uint64_t object, int flag,
 		int i;
 		dnode_children_t *winner;
 		children_dnodes = kmem_zalloc(sizeof (dnode_children_t) +
-		    epb * sizeof (dnode_handle_t), KM_SLEEP);
+		    (epb - 1) * sizeof (dnode_handle_t), KM_SLEEP);
 		children_dnodes->dnc_count = epb;
 		dnh = &children_dnodes->dnc_children[0];
 		for (i = 0; i < epb; i++) {
 			zrl_init(&dnh[i].dnh_zrlock);
 			dnh[i].dnh_dnode = NULL;
 		}
-		if (winner = dmu_buf_set_user(&db->db, children_dnodes,
+		if (winner = dmu_buf_set_user(&db->db, children_dnodes, NULL,
 		    dnode_buf_pageout)) {
-
-			for (i = 0; i < epb; i++) {
-				zrl_destroy(&dnh[i].dnh_zrlock);
-			}
-
 			kmem_free(children_dnodes, sizeof (dnode_children_t) +
-			    epb * sizeof (dnode_handle_t));
+			    (epb - 1) * sizeof (dnode_handle_t));
 			children_dnodes = winner;
 		}
 	}
@@ -1274,8 +1231,7 @@ dnode_setdirty(dnode_t *dn, dmu_tx_t *tx)
 		return;
 	}
 
-	ASSERT(!refcount_is_zero(&dn->dn_holds) ||
-	    !avl_is_empty(&dn->dn_dbufs));
+	ASSERT(!refcount_is_zero(&dn->dn_holds) || list_head(&dn->dn_dbufs));
 	ASSERT(dn->dn_datablksz != 0);
 	ASSERT0(dn->dn_next_bonuslen[txg&TXG_MASK]);
 	ASSERT0(dn->dn_next_blksz[txg&TXG_MASK]);
@@ -1348,12 +1304,13 @@ dnode_free(dnode_t *dn, dmu_tx_t *tx)
 int
 dnode_set_blksz(dnode_t *dn, uint64_t size, int ibs, dmu_tx_t *tx)
 {
-	dmu_buf_impl_t *db;
+	dmu_buf_impl_t *db, *db_next;
 	int err;
 
-	ASSERT3U(size, <=, spa_maxblocksize(dmu_objset_spa(dn->dn_objset)));
 	if (size == 0)
 		size = SPA_MINBLOCKSIZE;
+	if (size > SPA_MAXBLOCKSIZE)
+		size = SPA_MAXBLOCKSIZE;
 	else
 		size = P2ROUNDUP(size, SPA_MINBLOCKSIZE);
 
@@ -1370,8 +1327,9 @@ dnode_set_blksz(dnode_t *dn, uint64_t size, int ibs, dmu_tx_t *tx)
 		goto fail;
 
 	mutex_enter(&dn->dn_dbufs_mtx);
-	for (db = avl_first(&dn->dn_dbufs); db != NULL;
-	    db = AVL_NEXT(&dn->dn_dbufs, db)) {
+	for (db = list_head(&dn->dn_dbufs); db; db = db_next) {
+		db_next = list_next(&dn->dn_dbufs, db);
+
 		if (db->db_blkid != 0 && db->db_blkid != DMU_BONUS_BLKID &&
 		    db->db_blkid != DMU_SPILL_BLKID) {
 			mutex_exit(&dn->dn_dbufs_mtx);
@@ -1858,8 +1816,8 @@ dnode_next_offset_level(dnode_t *dn, int flags, uint64_t *offset,
 		*offset = *offset >> span;
 		for (i = BF64_GET(*offset, 0, epbs);
 		    i >= 0 && i < epb; i += inc) {
-			if (BP_GET_FILL(&bp[i]) >= minfill &&
-			    BP_GET_FILL(&bp[i]) <= maxfill &&
+			if (bp[i].blk_fill >= minfill &&
+			    bp[i].blk_fill <= maxfill &&
 			    (hole || bp[i].blk_birth > txg))
 				break;
 			if (inc > 0 || *offset > 0)
@@ -1944,15 +1902,6 @@ dnode_next_offset(dnode_t *dn, int flags, uint64_t *offset,
 	while (error == 0 && --lvl >= minlvl) {
 		error = dnode_next_offset_level(dn,
 		    flags, offset, lvl, blkfill, txg);
-	}
-
-	/*
-	 * There's always a "virtual hole" at the end of the object, even
-	 * if all BP's which physically exist are non-holes.
-	 */
-	if ((flags & DNODE_FIND_HOLE) && error == ESRCH && txg == 0 &&
-	    minlvl == 1 && blkfill == 1 && !(flags & DNODE_FIND_BACKWARDS)) {
-		error = 0;
 	}
 
 	if (error == 0 && (flags & DNODE_FIND_BACKWARDS ?

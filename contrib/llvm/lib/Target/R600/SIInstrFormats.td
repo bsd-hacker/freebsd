@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 class InstSI <dag outs, dag ins, string asm, list<dag> pattern> :
-    AMDGPUInst<outs, ins, asm, pattern>, PredicateControl {
+    AMDGPUInst<outs, ins, asm, pattern> {
 
   field bits<1> VM_CNT = 0;
   field bits<1> EXP_CNT = 0;
@@ -37,35 +37,26 @@ class InstSI <dag outs, dag ins, string asm, list<dag> pattern> :
   let TSFlags{9} = SALU;
 }
 
-class Enc32 {
-
-  field bits<32> Inst;
-  int Size = 4;
-}
-
-class Enc64 {
-
-  field bits<64> Inst;
-  int Size = 8;
-}
-
-class VOP3Common <dag outs, dag ins, string asm, list<dag> pattern> :
+class Enc32 <dag outs, dag ins, string asm, list<dag> pattern> :
     InstSI <outs, ins, asm, pattern> {
 
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let UseNamedOperandTable = 1;
-  let VOP3 = 1;
+  field bits<32> Inst;
+  let Size = 4;
+}
 
-  int Size = 8;
+class Enc64 <dag outs, dag ins, string asm, list<dag> pattern> :
+    InstSI <outs, ins, asm, pattern> {
+
+  field bits<64> Inst;
+  let Size = 8;
 }
 
 //===----------------------------------------------------------------------===//
 // Scalar operations
 //===----------------------------------------------------------------------===//
 
-class SOP1e <bits<8> op> : Enc32 {
+class SOP1 <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc32<outs, ins, asm, pattern> {
 
   bits<7> SDST;
   bits<8> SSRC0;
@@ -74,10 +65,16 @@ class SOP1e <bits<8> op> : Enc32 {
   let Inst{15-8} = op;
   let Inst{22-16} = SDST;
   let Inst{31-23} = 0x17d; //encoding;
+
+  let mayLoad = 0;
+  let mayStore = 0;
+  let hasSideEffects = 0;
+  let SALU = 1;
 }
 
-class SOP2e <bits<7> op> : Enc32 {
-
+class SOP2 <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc32 <outs, ins, asm, pattern> {
+  
   bits<7> SDST;
   bits<8> SSRC0;
   bits<8> SSRC1;
@@ -87,64 +84,6 @@ class SOP2e <bits<7> op> : Enc32 {
   let Inst{22-16} = SDST;
   let Inst{29-23} = op;
   let Inst{31-30} = 0x2; // encoding
-}
-
-class SOPCe <bits<7> op> : Enc32 {
-
-  bits<8> SSRC0;
-  bits<8> SSRC1;
-
-  let Inst{7-0} = SSRC0;
-  let Inst{15-8} = SSRC1;
-  let Inst{22-16} = op;
-  let Inst{31-23} = 0x17e;
-}
-
-class SOPKe <bits<5> op> : Enc32 {
-
-  bits <7> SDST;
-  bits <16> SIMM16;
-
-  let Inst{15-0} = SIMM16;
-  let Inst{22-16} = SDST;
-  let Inst{27-23} = op;
-  let Inst{31-28} = 0xb; //encoding
-}
-
-class SOPPe <bits<7> op> : Enc32 {
-
-  bits <16> simm16;
-
-  let Inst{15-0} = simm16;
-  let Inst{22-16} = op;
-  let Inst{31-23} = 0x17f; // encoding
-}
-
-class SMRDe <bits<5> op, bits<1> imm> : Enc32 {
-
-  bits<7> SDST;
-  bits<7> SBASE;
-  bits<8> OFFSET;
-
-  let Inst{7-0} = OFFSET;
-  let Inst{8} = imm;
-  let Inst{14-9} = SBASE{6-1};
-  let Inst{21-15} = SDST;
-  let Inst{26-22} = op;
-  let Inst{31-27} = 0x18; //encoding
-}
-
-class SOP1 <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI<outs, ins, asm, pattern>, SOP1e <op> {
-
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let SALU = 1;
-}
-
-class SOP2 <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern>, SOP2e<op> {
 
   let mayLoad = 0;
   let mayStore = 0;
@@ -153,7 +92,15 @@ class SOP2 <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
 }
 
 class SOPC <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
-  InstSI<outs, ins, asm, pattern>, SOPCe <op> {
+  Enc32<outs, ins, asm, pattern> {
+
+  bits<8> SSRC0;
+  bits<8> SSRC1;
+
+  let Inst{7-0} = SSRC0;
+  let Inst{15-8} = SSRC1;
+  let Inst{22-16} = op;
+  let Inst{31-23} = 0x17e;
 
   let DisableEncoding = "$dst";
   let mayLoad = 0;
@@ -163,7 +110,15 @@ class SOPC <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
 }
 
 class SOPK <bits<5> op, dag outs, dag ins, string asm, list<dag> pattern> :
-   InstSI <outs, ins , asm, pattern>, SOPKe<op> {
+   Enc32 <outs, ins , asm, pattern> {
+
+  bits <7> SDST;
+  bits <16> SIMM16;
+  
+  let Inst{15-0} = SIMM16;
+  let Inst{22-16} = SDST;
+  let Inst{27-23} = op;
+  let Inst{31-28} = 0xb; //encoding
 
   let mayLoad = 0;
   let mayStore = 0;
@@ -171,8 +126,17 @@ class SOPK <bits<5> op, dag outs, dag ins, string asm, list<dag> pattern> :
   let SALU = 1;
 }
 
-class SOPP <bits<7> op, dag ins, string asm, list<dag> pattern> :
-		InstSI <(outs), ins, asm, pattern >, SOPPe <op> {
+class SOPP <bits<7> op, dag ins, string asm, list<dag> pattern> : Enc32 <
+  (outs),
+  ins,
+  asm,
+  pattern > {
+
+  bits <16> SIMM16;
+
+  let Inst{15-0} = SIMM16;
+  let Inst{22-16} = op;
+  let Inst{31-23} = 0x17f; // encoding
 
   let mayLoad = 0;
   let mayStore = 0;
@@ -181,7 +145,18 @@ class SOPP <bits<7> op, dag ins, string asm, list<dag> pattern> :
 }
 
 class SMRD <bits<5> op, bits<1> imm, dag outs, dag ins, string asm,
-            list<dag> pattern> : InstSI<outs, ins, asm, pattern>, SMRDe<op, imm> {
+            list<dag> pattern> : Enc32<outs, ins, asm, pattern> {
+
+  bits<7> SDST;
+  bits<7> SBASE;
+  bits<8> OFFSET;
+  
+  let Inst{7-0} = OFFSET;
+  let Inst{8} = imm;
+  let Inst{14-9} = SBASE{6-1};
+  let Inst{21-15} = SDST;
+  let Inst{26-22} = op;
+  let Inst{31-27} = 0x18; //encoding
 
   let LGKM_CNT = 1;
   let SMRD = 1;
@@ -190,47 +165,61 @@ class SMRD <bits<5> op, bits<1> imm, dag outs, dag ins, string asm,
 //===----------------------------------------------------------------------===//
 // Vector ALU operations
 //===----------------------------------------------------------------------===//
+    
+let Uses = [EXEC] in {
 
-class VOP1e <bits<8> op> : Enc32 {
+class VOP1 <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc32 <outs, ins, asm, pattern> {
 
   bits<8> VDST;
   bits<9> SRC0;
-
+  
   let Inst{8-0} = SRC0;
   let Inst{16-9} = op;
   let Inst{24-17} = VDST;
   let Inst{31-25} = 0x3f; //encoding
+  
+  let mayLoad = 0;
+  let mayStore = 0;
+  let hasSideEffects = 0;
+  let UseNamedOperandTable = 1;
+  let VOP1 = 1;
 }
 
-class VOP2e <bits<6> op> : Enc32 {
+class VOP2 <bits<6> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc32 <outs, ins, asm, pattern> {
 
   bits<8> VDST;
   bits<9> SRC0;
   bits<8> VSRC1;
-
+  
   let Inst{8-0} = SRC0;
   let Inst{16-9} = VSRC1;
   let Inst{24-17} = VDST;
   let Inst{30-25} = op;
   let Inst{31} = 0x0; //encoding
+  
+  let mayLoad = 0;
+  let mayStore = 0;
+  let hasSideEffects = 0;
+  let UseNamedOperandTable = 1;
+  let VOP2 = 1;
 }
 
-class VOP3e <bits<9> op> : Enc64 {
+class VOP3 <bits<9> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc64 <outs, ins, asm, pattern> {
 
   bits<8> dst;
-  bits<2> src0_modifiers;
   bits<9> src0;
-  bits<2> src1_modifiers;
   bits<9> src1;
-  bits<2> src2_modifiers;
   bits<9> src2;
+  bits<3> abs;
   bits<1> clamp;
   bits<2> omod;
+  bits<3> neg;
 
   let Inst{7-0} = dst;
-  let Inst{8} = src0_modifiers{1};
-  let Inst{9} = src1_modifiers{1};
-  let Inst{10} = src2_modifiers{1};
+  let Inst{10-8} = abs;
   let Inst{11} = clamp;
   let Inst{25-17} = op;
   let Inst{31-26} = 0x34; //encoding
@@ -238,22 +227,25 @@ class VOP3e <bits<9> op> : Enc64 {
   let Inst{49-41} = src1;
   let Inst{58-50} = src2;
   let Inst{60-59} = omod;
-  let Inst{61} = src0_modifiers{0};
-  let Inst{62} = src1_modifiers{0};
-  let Inst{63} = src2_modifiers{0};
+  let Inst{63-61} = neg;
+  
+  let mayLoad = 0;
+  let mayStore = 0;
+  let hasSideEffects = 0;
+  let UseNamedOperandTable = 1;
+  let VOP3 = 1;
 }
 
-class VOP3be <bits<9> op> : Enc64 {
+class VOP3b <bits<9> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc64 <outs, ins, asm, pattern> {
 
   bits<8> dst;
-  bits<2> src0_modifiers;
   bits<9> src0;
-  bits<2> src1_modifiers;
   bits<9> src1;
-  bits<2> src2_modifiers;
   bits<9> src2;
   bits<7> sdst;
   bits<2> omod;
+  bits<3> neg;
 
   let Inst{7-0} = dst;
   let Inst{14-8} = sdst;
@@ -263,12 +255,17 @@ class VOP3be <bits<9> op> : Enc64 {
   let Inst{49-41} = src1;
   let Inst{58-50} = src2;
   let Inst{60-59} = omod;
-  let Inst{61} = src0_modifiers{0};
-  let Inst{62} = src1_modifiers{0};
-  let Inst{63} = src2_modifiers{0};
+  let Inst{63-61} = neg;
+
+  let mayLoad = 0;
+  let mayStore = 0;
+  let hasSideEffects = 0;
+  let UseNamedOperandTable = 1;
+  let VOP3 = 1;
 }
 
-class VOPCe <bits<8> op> : Enc32 {
+class VOPC <bits<8> op, dag ins, string asm, list<dag> pattern> :
+    Enc32 <(outs VCCReg:$dst), ins, asm, pattern> {
 
   bits<9> SRC0;
   bits<8> VSRC1;
@@ -277,9 +274,16 @@ class VOPCe <bits<8> op> : Enc32 {
   let Inst{16-9} = VSRC1;
   let Inst{24-17} = op;
   let Inst{31-25} = 0x3e;
+ 
+  let DisableEncoding = "$dst";
+  let mayLoad = 0;
+  let mayStore = 0;
+  let hasSideEffects = 0;
+  let VOPC = 1;
 }
 
-class VINTRPe <bits<2> op> : Enc32 {
+class VINTRP <bits <2> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc32 <outs, ins, asm, pattern> {
 
   bits<8> VDST;
   bits<8> VSRC;
@@ -292,9 +296,22 @@ class VINTRPe <bits<2> op> : Enc32 {
   let Inst{17-16} = op;
   let Inst{25-18} = VDST;
   let Inst{31-26} = 0x32; // encoding
+
+  let neverHasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 0;
 }
 
-class DSe <bits<8> op> : Enc64 {
+} // End Uses = [EXEC]
+
+//===----------------------------------------------------------------------===//
+// Vector I/O operations
+//===----------------------------------------------------------------------===//
+
+let Uses = [EXEC] in {
+
+class DS <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc64 <outs, ins, asm, pattern> {
 
   bits<8> vdst;
   bits<1> gds;
@@ -313,9 +330,12 @@ class DSe <bits<8> op> : Enc64 {
   let Inst{47-40} = data0;
   let Inst{55-48} = data1;
   let Inst{63-56} = vdst;
+
+  let LGKM_CNT = 1;
 }
 
-class MUBUFe <bits<7> op> : Enc64 {
+class MUBUF <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc64<outs, ins, asm, pattern> {
 
   bits<12> offset;
   bits<1> offen;
@@ -344,9 +364,15 @@ class MUBUFe <bits<7> op> : Enc64 {
   let Inst{54} = slc;
   let Inst{55} = tfe;
   let Inst{63-56} = soffset;
+
+  let VM_CNT = 1;
+  let EXP_CNT = 1;
+
+  let neverHasSideEffects = 1;
 }
 
-class MTBUFe <bits<3> op> : Enc64 {
+class MTBUF <bits<3> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc64<outs, ins, asm, pattern> {
 
   bits<8> VDATA;
   bits<12> OFFSET;
@@ -377,9 +403,15 @@ class MTBUFe <bits<3> op> : Enc64 {
   let Inst{54} = SLC;
   let Inst{55} = TFE;
   let Inst{63-56} = SOFFSET;
+
+  let VM_CNT = 1;
+  let EXP_CNT = 1;
+
+  let neverHasSideEffects = 1;
 }
 
-class MIMGe <bits<7> op> : Enc64 {
+class MIMG <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
+    Enc64 <outs, ins, asm, pattern> {
 
   bits<8> VDATA;
   bits<4> DMASK;
@@ -392,7 +424,7 @@ class MIMGe <bits<7> op> : Enc64 {
   bits<1> SLC;
   bits<8> VADDR;
   bits<7> SRSRC;
-  bits<7> SSAMP;
+  bits<7> SSAMP; 
 
   let Inst{11-8} = DMASK;
   let Inst{12} = UNORM;
@@ -408,9 +440,18 @@ class MIMGe <bits<7> op> : Enc64 {
   let Inst{47-40} = VDATA;
   let Inst{52-48} = SRSRC{6-2};
   let Inst{57-53} = SSAMP{6-2};
+
+  let VM_CNT = 1;
+  let EXP_CNT = 1;
+  let MIMG = 1;
 }
 
-class EXPe : Enc64 {
+def EXP : Enc64<
+  (outs),
+  (ins i32imm:$en, i32imm:$tgt, i32imm:$compr, i32imm:$done, i32imm:$vm,
+       VReg_32:$src0, VReg_32:$src1, VReg_32:$src2, VReg_32:$src3),
+  "EXP $en, $tgt, $compr, $done, $vm, $src0, $src1, $src2, $src3",
+  [] > {
 
   bits<4> EN;
   bits<6> TGT;
@@ -432,102 +473,6 @@ class EXPe : Enc64 {
   let Inst{47-40} = VSRC1;
   let Inst{55-48} = VSRC2;
   let Inst{63-56} = VSRC3;
-}
-
-let Uses = [EXEC] in {
-
-class VOP1 <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern>, VOP1e<op> {
-
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let UseNamedOperandTable = 1;
-  let VOP1 = 1;
-}
-
-class VOP2 <bits<6> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern>, VOP2e<op> {
-
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let UseNamedOperandTable = 1;
-  let VOP2 = 1;
-}
-
-class VOP3 <bits<9> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    VOP3Common <outs, ins, asm, pattern>, VOP3e<op>;
-
-class VOP3b <bits<9> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    VOP3Common <outs, ins, asm, pattern>, VOP3be<op>;
-
-class VOPC <bits<8> op, dag ins, string asm, list<dag> pattern> :
-    InstSI <(outs VCCReg:$dst), ins, asm, pattern>, VOPCe <op> {
-
-  let DisableEncoding = "$dst";
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let UseNamedOperandTable = 1;
-  let VOPC = 1;
-}
-
-class VINTRP <bits <2> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern>, VINTRPe<op> {
-
-  let neverHasSideEffects = 1;
-  let mayLoad = 1;
-  let mayStore = 0;
-}
-
-} // End Uses = [EXEC]
-
-//===----------------------------------------------------------------------===//
-// Vector I/O operations
-//===----------------------------------------------------------------------===//
-
-let Uses = [EXEC] in {
-
-class DS <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern> , DSe<op> {
-
-  let LGKM_CNT = 1;
-}
-
-class MUBUF <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI<outs, ins, asm, pattern>, MUBUFe <op> {
-
-  let VM_CNT = 1;
-  let EXP_CNT = 1;
-
-  let neverHasSideEffects = 1;
-  let UseNamedOperandTable = 1;
-}
-
-class MTBUF <bits<3> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI<outs, ins, asm, pattern>, MTBUFe <op> {
-
-  let VM_CNT = 1;
-  let EXP_CNT = 1;
-
-  let neverHasSideEffects = 1;
-}
-
-class MIMG <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern>, MIMGe <op> {
-
-  let VM_CNT = 1;
-  let EXP_CNT = 1;
-  let MIMG = 1;
-}
-
-def EXP : InstSI<
-  (outs),
-  (ins i32imm:$en, i32imm:$tgt, i32imm:$compr, i32imm:$done, i32imm:$vm,
-       VReg_32:$src0, VReg_32:$src1, VReg_32:$src2, VReg_32:$src3),
-  "EXP $en, $tgt, $compr, $done, $vm, $src0, $src1, $src2, $src3",
-  [] >, EXPe {
 
   let EXP_CNT = 1;
 }

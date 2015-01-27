@@ -61,12 +61,6 @@ namespace lldb_private {
 class IRForTarget : public llvm::ModulePass
 {
 public:
-    enum class LookupResult {
-        Success,
-        Fail,
-        Ignore
-    };
-    
     //------------------------------------------------------------------
     /// Constructor
     ///
@@ -188,7 +182,7 @@ private:
     //------------------------------------------------------------------
     
     //------------------------------------------------------------------
-    /// Get the address of a function, and a location to put the complete
+    /// Get the address of a fuction, and a location to put the complete
     /// Value of the function if one is available.
     ///
     /// @param[in] function
@@ -207,7 +201,7 @@ private:
     /// @return
     ///     The pointer.
     //------------------------------------------------------------------ 
-    LookupResult
+    bool 
     GetFunctionAddress (llvm::Function *function,
                         uint64_t &ptr,
                         lldb_private::ConstString &name,
@@ -579,7 +573,7 @@ private:
     ReplaceStrings ();
     
     //------------------------------------------------------------------
-    /// A basic block-level pass to find all literals that will be 
+    /// A basick block-level pass to find all literals that will be 
     /// allocated as statics by the JIT (in contrast to the Strings, 
     /// which already are statics) and synthesize loads for them.
     //------------------------------------------------------------------

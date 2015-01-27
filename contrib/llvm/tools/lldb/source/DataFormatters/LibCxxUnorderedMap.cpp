@@ -81,12 +81,9 @@ lldb_private::formatters::LibcxxStdUnorderedMapSyntheticFrontEnd::GetChildAtInde
     if (!val_hash.first)
         return lldb::ValueObjectSP();
     StreamString stream;
-    stream.Printf("[%" PRIu64 "]", (uint64_t)idx);
+    stream.Printf("[%zu]",idx);
     DataExtractor data;
-    Error error;
-    val_hash.first->GetData(data, error);
-    if (error.Fail())
-        return lldb::ValueObjectSP();
+    val_hash.first->GetData(data);
     const bool thread_and_frame_only_if_stopped = true;
     ExecutionContext exe_ctx = val_hash.first->GetExecutionContextRef().Lock(thread_and_frame_only_if_stopped);
     return val_hash.first->CreateValueObjectFromData(stream.GetData(),

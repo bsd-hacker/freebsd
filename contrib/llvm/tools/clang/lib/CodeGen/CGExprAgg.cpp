@@ -370,29 +370,6 @@ AggExprEmitter::VisitCXXStdInitializerListExpr(CXXStdInitializerListExpr *E) {
   }
 }
 
-/// \brief Determine if E is a trivial array filler, that is, one that is
-/// equivalent to zero-initialization.
-static bool isTrivialFiller(Expr *E) {
-  if (!E)
-    return true;
-
-  if (isa<ImplicitValueInitExpr>(E))
-    return true;
-
-  if (auto *ILE = dyn_cast<InitListExpr>(E)) {
-    if (ILE->getNumInits())
-      return false;
-    return isTrivialFiller(ILE->getArrayFiller());
-  }
-
-  if (auto *Cons = dyn_cast_or_null<CXXConstructExpr>(E))
-    return Cons->getConstructor()->isDefaultConstructor() &&
-           Cons->getConstructor()->isTrivial();
-
-  // FIXME: Are there other cases where we can avoid emitting an initializer?
-  return false;
-}
-
 /// \brief Emit initialization of an array from an initializer list.
 void AggExprEmitter::EmitArrayInit(llvm::Value *DestPtr, llvm::ArrayType *AType,
                                    QualType elementType, InitListExpr *E) {
@@ -412,9 +389,9 @@ void AggExprEmitter::EmitArrayInit(llvm::Value *DestPtr, llvm::ArrayType *AType,
   // already-constructed members if an initializer throws.
   // For that, we'll need an EH cleanup.
   QualType::DestructionKind dtorKind = elementType.isDestructedType();
-  llvm::AllocaInst *endOfInit = nullptr;
+  llvm::AllocaInst *endOfInit = 0;
   EHScopeStack::stable_iterator cleanup;
-  llvm::Instruction *cleanupDominator = nullptr;
+  llvm::Instruction *cleanupDominator = 0;
   if (CGF.needsEHCleanup(dtorKind)) {
     // In principle we could tell the cleanup where we are more
     // directly, but the control flow can get so varied here that it
@@ -458,8 +435,14 @@ void AggExprEmitter::EmitArrayInit(llvm::Value *DestPtr, llvm::ArrayType *AType,
   }
 
   // Check whether there's a non-trivial array-fill expression.
+  // Note that this will be a CXXConstructExpr even if the element
+  // type is an array (or array of array, etc.) of class type.
   Expr *filler = E->getArrayFiller();
-  bool hasTrivialFiller = isTrivialFiller(filler);
+  bool hasTrivialFiller = true;
+  if (CXXConstructExpr *cons = dyn_cast_or_null<CXXConstructExpr>(filler)) {
+    assert(cons->getConstructor()->isDefaultConstructor());
+    hasTrivialFiller = cons->getConstructor()->isTrivial();
+  }
 
   // Any remaining elements need to be zero-initialized, possibly
   // using the filler expression.  We can skip this if the we're
@@ -556,7 +539,7 @@ static Expr *findPeephole(Expr *op, CastKind kind) {
       if (castE->getCastKind() == CK_NoOp)
         continue;
     }
-    return nullptr;
+    return 0;
   }
 }
 
@@ -730,7 +713,6 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
   case CK_CopyAndAutoreleaseBlockObject:
   case CK_BuiltinFnToFnPtr:
   case CK_ZeroToOCLEvent:
-  case CK_AddressSpaceConversion:
     llvm_unreachable("cast kind invalid for aggregate types");
   }
 }
@@ -909,16 +891,14 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
   // Bind the common expression if necessary.
   CodeGenFunction::OpaqueValueMapping binding(CGF, E);
 
-  RegionCounter Cnt = CGF.getPGORegionCounter(E);
   CodeGenFunction::ConditionalEvaluation eval(CGF);
-  CGF.EmitBranchOnBoolExpr(E->getCond(), LHSBlock, RHSBlock, Cnt.getCount());
+  CGF.EmitBranchOnBoolExpr(E->getCond(), LHSBlock, RHSBlock);
 
   // Save whether the destination's lifetime is externally managed.
   bool isExternallyDestructed = Dest.isExternallyDestructed();
 
   eval.begin(CGF);
   CGF.EmitBlock(LHSBlock);
-  Cnt.beginRegion(Builder);
   Visit(E->getTrueExpr());
   eval.end(CGF);
 
@@ -948,11 +928,7 @@ void AggExprEmitter::VisitVAArgExpr(VAArgExpr *VE) {
   llvm::Value *ArgPtr = CGF.EmitVAArg(ArgValue, VE->getType());
 
   if (!ArgPtr) {
-    // If EmitVAArg fails, we fall back to the LLVM instruction.
-    llvm::Value *Val =
-        Builder.CreateVAArg(ArgValue, CGF.ConvertType(VE->getType()));
-    if (!Dest.isIgnored())
-      Builder.CreateStore(Val, Dest.getAddr());
+    CGF.ErrorUnsupported(VE, "aggregate va_arg expression");
     return;
   }
 
@@ -1061,7 +1037,7 @@ AggExprEmitter::EmitInitializationToLValue(Expr *E, LValue LV) {
     return;
   case TEK_Scalar:
     if (LV.isSimple()) {
-      CGF.EmitScalarInit(E, /*D=*/nullptr, LV, /*Captured=*/false);
+      CGF.EmitScalarInit(E, /*D=*/0, LV, /*Captured=*/false);
     } else {
       CGF.EmitStoreThroughLValue(RValue::get(CGF.EmitScalarExpr(E)), LV);
     }
@@ -1137,16 +1113,6 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
     return;
   }
 
-  if (E->getType()->isAtomicType()) {
-    // An _Atomic(T) object can be list-initialized from an expression
-    // of the same type.
-    assert(E->getNumInits() == 1 &&
-           CGF.getContext().hasSameUnqualifiedType(E->getInit(0)->getType(),
-                                                   E->getType()) &&
-           "unexpected list initialization for atomic object");
-    return Visit(E->getInit(0));
-  }
-
   assert(E->getType()->isRecordType() && "Only support structs/unions here!");
 
   // Do struct initialization; this code just sets each individual member
@@ -1168,7 +1134,9 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
 #ifndef NDEBUG
       // Make sure that it's really an empty and not a failure of
       // semantic analysis.
-      for (const auto *Field : record->fields())
+      for (RecordDecl::field_iterator Field = record->field_begin(),
+                                   FieldEnd = record->field_end();
+           Field != FieldEnd; ++Field)
         assert(Field->isUnnamedBitfield() && "Only unnamed bitfields allowed");
 #endif
       return;
@@ -1192,12 +1160,14 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
   // We'll need to enter cleanup scopes in case any of the member
   // initializers throw an exception.
   SmallVector<EHScopeStack::stable_iterator, 16> cleanups;
-  llvm::Instruction *cleanupDominator = nullptr;
+  llvm::Instruction *cleanupDominator = 0;
 
   // Here we iterate over the fields; this makes it simpler to both
   // default-initialize fields and skip over unnamed fields.
   unsigned curInitIndex = 0;
-  for (const auto *field : record->fields()) {
+  for (RecordDecl::field_iterator field = record->field_begin(),
+                               fieldEnd = record->field_end();
+       field != fieldEnd; ++field) {
     // We're done once we hit the flexible array member.
     if (field->getType()->isIncompleteArrayType())
       break;
@@ -1214,7 +1184,7 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
       break;
     
 
-    LValue LV = CGF.EmitLValueForFieldInitialization(DestLV, field);
+    LValue LV = CGF.EmitLValueForFieldInitialization(DestLV, *field);
     // We never generate write-barries for initialized fields.
     LV.setNonGC(true);
     
@@ -1279,7 +1249,7 @@ static CharUnits GetNumNonZeroBytesInInit(const Expr *E, CodeGenFunction &CGF) {
   // If this is an initlist expr, sum up the size of sizes of the (present)
   // elements.  If this is something weird, assume the whole thing is non-zero.
   const InitListExpr *ILE = dyn_cast<InitListExpr>(E);
-  if (!ILE || !CGF.getTypes().isZeroInitializable(ILE->getType()))
+  if (ILE == 0 || !CGF.getTypes().isZeroInitializable(ILE->getType()))
     return CGF.getContext().getTypeSizeInChars(E->getType());
   
   // InitListExprs for structs have to be handled carefully.  If there are
@@ -1291,7 +1261,8 @@ static CharUnits GetNumNonZeroBytesInInit(const Expr *E, CodeGenFunction &CGF) {
       CharUnits NumNonZeroBytes = CharUnits::Zero();
       
       unsigned ILEElement = 0;
-      for (const auto *Field : SD->fields()) {
+      for (RecordDecl::field_iterator Field = SD->field_begin(),
+           FieldEnd = SD->field_end(); Field != FieldEnd; ++Field) {
         // We're done once we hit the flexible array member or run out of
         // InitListExpr elements.
         if (Field->getType()->isIncompleteArrayType() ||
@@ -1328,8 +1299,7 @@ static void CheckAggExprForMemSetUse(AggValueSlot &Slot, const Expr *E,
                                      CodeGenFunction &CGF) {
   // If the slot is already known to be zeroed, nothing to do.  Don't mess with
   // volatile stores.
-  if (Slot.isZeroed() || Slot.isVolatile() || Slot.getAddr() == nullptr)
-    return;
+  if (Slot.isZeroed() || Slot.isVolatile() || Slot.getAddr() == 0) return;
 
   // C++ objects with a user-declared constructor don't need zero'ing.
   if (CGF.getLangOpts().CPlusPlus)
@@ -1376,7 +1346,7 @@ static void CheckAggExprForMemSetUse(AggValueSlot &Slot, const Expr *E,
 void CodeGenFunction::EmitAggExpr(const Expr *E, AggValueSlot Slot) {
   assert(E && hasAggregateEvaluationKind(E->getType()) &&
          "Invalid aggregate expression to emit");
-  assert((Slot.getAddr() != nullptr || Slot.isIgnored()) &&
+  assert((Slot.getAddr() != 0 || Slot.isIgnored()) &&
          "slot has bits but no address");
 
   // Optimize the slot if possible.
@@ -1496,10 +1466,10 @@ void CodeGenFunction::EmitAggregateCopy(llvm::Value *DestPtr,
   // memcpy, as well as the TBAA tags for the members of the struct, in case
   // the optimizer wishes to expand it in to scalar memory operations.
   llvm::MDNode *TBAAStructTag = CGM.getTBAAStructInfo(Ty);
-
+  
   Builder.CreateMemCpy(DestPtr, SrcPtr,
                        llvm::ConstantInt::get(IntPtrTy, 
                                               TypeInfo.first.getQuantity()),
                        alignment.getQuantity(), isVolatile,
-                       /*TBAATag=*/nullptr, TBAAStructTag);
+                       /*TBAATag=*/0, TBAAStructTag);
 }

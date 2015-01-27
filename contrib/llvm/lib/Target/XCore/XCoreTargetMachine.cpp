@@ -25,8 +25,14 @@ XCoreTargetMachine::XCoreTargetMachine(const Target &T, StringRef TT,
                                        const TargetOptions &Options,
                                        Reloc::Model RM, CodeModel::Model CM,
                                        CodeGenOpt::Level OL)
-    : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
-      Subtarget(TT, CPU, FS, *this) {
+  : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
+    Subtarget(TT, CPU, FS),
+    DL("e-p:32:32:32-a0:0:32-f32:32:32-f64:32:32-i1:8:32-i8:8:32-"
+               "i16:16:32-i32:32:32-i64:32:32-n32"),
+    InstrInfo(),
+    FrameLowering(Subtarget),
+    TLInfo(*this),
+    TSInfo(*this) {
   initAsmInfo();
 }
 
@@ -41,9 +47,8 @@ public:
     return getTM<XCoreTargetMachine>();
   }
 
-  bool addPreISel() override;
-  bool addInstSelector() override;
-  bool addPreEmitPass() override;
+  virtual bool addPreISel();
+  virtual bool addInstSelector();
 };
 } // namespace
 
@@ -58,11 +63,6 @@ bool XCorePassConfig::addPreISel() {
 
 bool XCorePassConfig::addInstSelector() {
   addPass(createXCoreISelDag(getXCoreTargetMachine(), getOptLevel()));
-  return false;
-}
-
-bool XCorePassConfig::addPreEmitPass() {
-  addPass(createXCoreFrameToArgsOffsetEliminationPass());
   return false;
 }
 

@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2013, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -77,10 +77,6 @@ AcpiBufferToResource (
     void                    *Resource;
     void                    *CurrentResourcePtr;
 
-
-    ACPI_FUNCTION_TRACE (AcpiBufferToResource);
-
-
     /*
      * Note: we allow AE_AML_NO_RESOURCE_END_TAG, since an end tag
      * is not required here.
@@ -96,7 +92,7 @@ AcpiBufferToResource (
     }
     if (ACPI_FAILURE (Status))
     {
-        return_ACPI_STATUS (Status);
+        return (Status);
     }
 
     /* Allocate a buffer for the converted resource */
@@ -105,7 +101,7 @@ AcpiBufferToResource (
     CurrentResourcePtr = Resource;
     if (!Resource)
     {
-        return_ACPI_STATUS (AE_NO_MEMORY);
+        return (AE_NO_MEMORY);
     }
 
     /* Perform the AML-to-Resource conversion */
@@ -125,10 +121,8 @@ AcpiBufferToResource (
         *ResourcePtr = Resource;
     }
 
-    return_ACPI_STATUS (Status);
+    return (Status);
 }
-
-ACPI_EXPORT_SYMBOL (AcpiBufferToResource)
 
 
 /*******************************************************************************
@@ -303,7 +297,7 @@ AcpiRsCreatePciRoutingTable (
          */
         UserPrt->Length = (sizeof (ACPI_PCI_ROUTING_TABLE) - 4);
 
-        /* Each subpackage must be of length 4 */
+        /* Each sub-package must be of length 4 */
 
         if ((*TopObjectList)->Package.Count != 4)
         {
@@ -314,7 +308,7 @@ AcpiRsCreatePciRoutingTable (
         }
 
         /*
-         * Dereference the subpackage.
+         * Dereference the sub-package.
          * The SubObjectList will now point to an array of the four IRQ
          * elements: [Address, Pin, Source, SourceIndex]
          */
@@ -323,7 +317,7 @@ AcpiRsCreatePciRoutingTable (
         /* 1) First subobject: Dereference the PRT.Address */
 
         ObjDesc = SubObjectList[0];
-        if (!ObjDesc || ObjDesc->Common.Type != ACPI_TYPE_INTEGER)
+        if (ObjDesc->Common.Type != ACPI_TYPE_INTEGER)
         {
             ACPI_ERROR ((AE_INFO, "(PRT[%u].Address) Need Integer, found %s",
                 Index, AcpiUtGetObjectTypeName (ObjDesc)));
@@ -335,7 +329,7 @@ AcpiRsCreatePciRoutingTable (
         /* 2) Second subobject: Dereference the PRT.Pin */
 
         ObjDesc = SubObjectList[1];
-        if (!ObjDesc || ObjDesc->Common.Type != ACPI_TYPE_INTEGER)
+        if (ObjDesc->Common.Type != ACPI_TYPE_INTEGER)
         {
             ACPI_ERROR ((AE_INFO, "(PRT[%u].Pin) Need Integer, found %s",
                 Index, AcpiUtGetObjectTypeName (ObjDesc)));
@@ -416,7 +410,7 @@ AcpiRsCreatePciRoutingTable (
         /* 4) Fourth subobject: Dereference the PRT.SourceIndex */
 
         ObjDesc = SubObjectList[3];
-        if (!ObjDesc || ObjDesc->Common.Type != ACPI_TYPE_INTEGER)
+        if (ObjDesc->Common.Type != ACPI_TYPE_INTEGER)
         {
             ACPI_ERROR ((AE_INFO,
                 "(PRT[%u].SourceIndex) Need Integer, found %s",
@@ -441,22 +435,23 @@ AcpiRsCreatePciRoutingTable (
  *
  * FUNCTION:    AcpiRsCreateAmlResources
  *
- * PARAMETERS:  ResourceList            - Pointer to the resource list buffer
- *              OutputBuffer            - Where the AML buffer is returned
+ * PARAMETERS:  LinkedListBuffer        - Pointer to the resource linked list
+ *              OutputBuffer            - Pointer to the user's buffer
  *
  * RETURN:      Status  AE_OK if okay, else a valid ACPI_STATUS code.
  *              If the OutputBuffer is too small, the error will be
  *              AE_BUFFER_OVERFLOW and OutputBuffer->Length will point
  *              to the size buffer needed.
  *
- * DESCRIPTION: Converts a list of device resources to an AML bytestream
- *              to be used as input for the _SRS control method.
+ * DESCRIPTION: Takes the linked list of device resources and
+ *              creates a bytestream to be used as input for the
+ *              _SRS control method.
  *
  ******************************************************************************/
 
 ACPI_STATUS
 AcpiRsCreateAmlResources (
-    ACPI_BUFFER             *ResourceList,
+    ACPI_RESOURCE           *LinkedListBuffer,
     ACPI_BUFFER             *OutputBuffer)
 {
     ACPI_STATUS             Status;
@@ -466,15 +461,17 @@ AcpiRsCreateAmlResources (
     ACPI_FUNCTION_TRACE (RsCreateAmlResources);
 
 
-    /* Params already validated, no need to re-validate here */
+    ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "LinkedListBuffer = %p\n",
+        LinkedListBuffer));
 
-    ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "ResourceList Buffer = %p\n",
-        ResourceList->Pointer));
-
-    /* Get the buffer size needed for the AML byte stream */
-
-    Status = AcpiRsGetAmlLength (ResourceList->Pointer,
-                ResourceList->Length, &AmlSizeNeeded);
+    /*
+     * Params already validated, so we don't re-validate here
+     *
+     * Pass the LinkedListBuffer into a module that calculates
+     * the buffer size needed for the byte stream.
+     */
+    Status = AcpiRsGetAmlLength (LinkedListBuffer,
+                &AmlSizeNeeded);
 
     ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "AmlSizeNeeded=%X, %s\n",
         (UINT32) AmlSizeNeeded, AcpiFormatException (Status)));
@@ -493,14 +490,14 @@ AcpiRsCreateAmlResources (
 
     /* Do the conversion */
 
-    Status = AcpiRsConvertResourcesToAml (ResourceList->Pointer,
-                AmlSizeNeeded, OutputBuffer->Pointer);
+    Status = AcpiRsConvertResourcesToAml (LinkedListBuffer, AmlSizeNeeded,
+                    OutputBuffer->Pointer);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
     }
 
     ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "OutputBuffer %p Length %X\n",
-        OutputBuffer->Pointer, (UINT32) OutputBuffer->Length));
+            OutputBuffer->Pointer, (UINT32) OutputBuffer->Length));
     return_ACPI_STATUS (AE_OK);
 }

@@ -32,7 +32,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/namei.h>
-#include <sys/fcntl.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/filedesc.h>
@@ -146,7 +145,7 @@ ibcs2_stat(td, uap)
 
 	CHECKALTEXIST(td, uap->path, &path);
 
-	error = kern_statat(td, 0, AT_FDCWD, path, UIO_SYSSPACE, &st, NULL);
+	error = kern_stat(td, path, UIO_SYSSPACE, &st);
 	free(path, M_TEMP);
 	if (error)
 		return (error);
@@ -167,8 +166,7 @@ ibcs2_lstat(td, uap)
 
 	CHECKALTEXIST(td, uap->path, &path);
 
-	error = kern_statat(td, AT_SYMLINK_NOFOLLOW, AT_FDCWD, path,
-	    UIO_SYSSPACE, &st, NULL);
+	error = kern_lstat(td, path, UIO_SYSSPACE, &st);
 	free(path, M_TEMP);
 	if (error)
 		return (error);

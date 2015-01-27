@@ -2,7 +2,8 @@
 
 PROG=	openssl
 
-LIBADD=	ssl crypto
+DPADD=	${LIBSSL} ${LIBCRYPTO}
+LDADD=	-lssl -lcrypto
 
 .if exists(Makefile.man)
 .include "Makefile.man"

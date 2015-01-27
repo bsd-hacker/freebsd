@@ -28,7 +28,7 @@ public:
   typedef DiagList::iterator iterator;
   typedef DiagList::const_iterator const_iterator;
 private:
-  DiagList Errors, Warnings, Remarks, Notes;
+  DiagList Errors, Warnings, Notes;
 public:
   const_iterator err_begin() const  { return Errors.begin(); }
   const_iterator err_end() const    { return Errors.end(); }
@@ -36,14 +36,11 @@ public:
   const_iterator warn_begin() const { return Warnings.begin(); }
   const_iterator warn_end() const   { return Warnings.end(); }
 
-  const_iterator remark_begin() const { return Remarks.begin(); }
-  const_iterator remark_end() const   { return Remarks.end(); }
-
   const_iterator note_begin() const { return Notes.begin(); }
   const_iterator note_end() const   { return Notes.end(); }
 
-  void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
-                        const Diagnostic &Info) override;
+  virtual void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                                const Diagnostic &Info);
 
   /// FlushDiagnostics - Flush the buffered diagnostics to an given
   /// diagnostic engine.

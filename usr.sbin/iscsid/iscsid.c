@@ -26,10 +26,8 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
+ * $FreeBSD$
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -151,8 +149,8 @@ resolve_addr(const struct connection *conn, const char *address,
 }
 
 static struct connection *
-connection_new(unsigned int session_id, const uint8_t isid[8], uint16_t tsih,
-    const struct iscsi_session_conf *conf, int iscsi_fd)
+connection_new(unsigned int session_id, const struct iscsi_session_conf *conf,
+    int iscsi_fd)
 {
 	struct connection *conn;
 	struct addrinfo *from_ai, *to_ai;
@@ -160,7 +158,7 @@ connection_new(unsigned int session_id, const uint8_t isid[8], uint16_t tsih,
 #ifdef ICL_KERNEL_PROXY
 	struct iscsi_daemon_connect idc;
 #endif
-	int error, sockbuf;
+	int error;
 
 	conn = calloc(1, sizeof(*conn));
 	if (conn == NULL)
@@ -178,8 +176,6 @@ connection_new(unsigned int session_id, const uint8_t isid[8], uint16_t tsih,
 	conn->conn_first_burst_length = 65536;
 
 	conn->conn_session_id = session_id;
-	memcpy(&conn->conn_isid, isid, sizeof(conn->conn_isid));
-	conn->conn_tsih = tsih;
 	conn->conn_iscsi_fd = iscsi_fd;
 
 	/*
@@ -237,14 +233,6 @@ connection_new(unsigned int session_id, const uint8_t isid[8], uint16_t tsih,
 		fail(conn, strerror(errno));
 		log_err(1, "failed to create socket for %s", from_addr);
 	}
-	sockbuf = SOCKBUF_SIZE;
-	if (setsockopt(conn->conn_socket, SOL_SOCKET, SO_RCVBUF,
-	    &sockbuf, sizeof(sockbuf)) == -1)
-		log_warn("setsockopt(SO_RCVBUF) failed");
-	sockbuf = SOCKBUF_SIZE;
-	if (setsockopt(conn->conn_socket, SOL_SOCKET, SO_SNDBUF,
-	    &sockbuf, sizeof(sockbuf)) == -1)
-		log_warn("setsockopt(SO_SNDBUF) failed");
 	if (from_ai != NULL) {
 		error = bind(conn->conn_socket, from_ai->ai_addr,
 		    from_ai->ai_addrlen);
@@ -276,7 +264,7 @@ handoff(struct connection *conn)
 	idh.idh_socket = conn->conn_socket;
 	strlcpy(idh.idh_target_alias, conn->conn_target_alias,
 	    sizeof(idh.idh_target_alias));
-	idh.idh_tsih = conn->conn_tsih;
+	memcpy(idh.idh_isid, conn->conn_isid, sizeof(idh.idh_isid));
 	idh.idh_statsn = conn->conn_statsn;
 	idh.idh_header_digest = conn->conn_header_digest;
 	idh.idh_data_digest = conn->conn_data_digest;
@@ -442,8 +430,7 @@ handle_request(int iscsi_fd, const struct iscsi_daemon_request *request, int tim
 		setproctitle("%s", request->idr_conf.isc_target_addr);
 	}
 
-	conn = connection_new(request->idr_session_id, request->idr_isid,
-	    request->idr_tsih, &request->idr_conf, iscsi_fd);
+	conn = connection_new(request->idr_session_id, &request->idr_conf, iscsi_fd);
 	set_timeout(timeout);
 	capsicate(conn);
 	login(conn);

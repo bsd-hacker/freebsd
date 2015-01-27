@@ -30,6 +30,14 @@ SRCS+=	pack_dev.c
 SRCS+=	ffs_tables.c
 
 CFLAGS+=	-I${.CURDIR}/../../lib/libnetbsd
-LIBADD=		netbsd util sbuf
+LIBNETBSDDIR=	${.OBJDIR}/../../lib/libnetbsd
+LIBNETBSD=	${LIBNETBSDDIR}/libnetbsd.a
+DPADD+=		${LIBNETBSD}
+LDADD+=		${LIBNETBSD}
+
+DPADD+=  ${LIBSBUF} ${LIBUTIL}
+LDADD+=  -lsbuf -lutil
+
+NO_PIE=	yes
 
 .include <bsd.prog.mk>

@@ -5,7 +5,8 @@ PROG=		bc
 SRCS=		bc.y scan.l tty.c
 CFLAGS+=	-I. -I${.CURDIR}
 
-LIBADD=		edit
+LDADD+=		-ledit -lcurses
+DPADD+=		${LIBEDIT} ${LIBCURSES}
 
 NO_WMISSING_VARIABLE_DECLARATIONS=
 

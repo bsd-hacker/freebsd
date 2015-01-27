@@ -50,23 +50,19 @@
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/IR/Dominators.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InlineAsm.h"
-#include "llvm/IR/InstVisitor.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InstVisitor.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/SpecialCaseList.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include <algorithm>
+#include "llvm/Transforms/Utils/SpecialCaseList.h"
 #include <iterator>
-#include <set>
-#include <utility>
 
 using namespace llvm;
 
@@ -100,22 +96,6 @@ static cl::opt<bool> ClArgsABI(
     cl::desc("Use the argument ABI rather than the TLS ABI"),
     cl::Hidden);
 
-// Controls whether the pass includes or ignores the labels of pointers in load
-// instructions.
-static cl::opt<bool> ClCombinePointerLabelsOnLoad(
-    "dfsan-combine-pointer-labels-on-load",
-    cl::desc("Combine the label of the pointer with the label of the data when "
-             "loading from memory."),
-    cl::Hidden, cl::init(true));
-
-// Controls whether the pass includes or ignores the labels of pointers in
-// stores instructions.
-static cl::opt<bool> ClCombinePointerLabelsOnStore(
-    "dfsan-combine-pointer-labels-on-store",
-    cl::desc("Combine the label of the pointer with the label of the data when "
-             "storing in memory."),
-    cl::Hidden, cl::init(false));
-
 static cl::opt<bool> ClDebugNonzeroLabels(
     "dfsan-debug-nonzero-labels",
     cl::desc("Insert calls to __dfsan_nonzero_label on observing a parameter, "
@@ -123,51 +103,6 @@ static cl::opt<bool> ClDebugNonzeroLabels(
     cl::Hidden);
 
 namespace {
-
-StringRef GetGlobalTypeString(const GlobalValue &G) {
-  // Types of GlobalVariables are always pointer types.
-  Type *GType = G.getType()->getElementType();
-  // For now we support blacklisting struct types only.
-  if (StructType *SGType = dyn_cast<StructType>(GType)) {
-    if (!SGType->isLiteral())
-      return SGType->getName();
-  }
-  return "<unknown type>";
-}
-
-class DFSanABIList {
-  std::unique_ptr<SpecialCaseList> SCL;
-
- public:
-  DFSanABIList(SpecialCaseList *SCL) : SCL(SCL) {}
-
-  /// Returns whether either this function or its source file are listed in the
-  /// given category.
-  bool isIn(const Function &F, const StringRef Category) const {
-    return isIn(*F.getParent(), Category) ||
-           SCL->inSection("fun", F.getName(), Category);
-  }
-
-  /// Returns whether this global alias is listed in the given category.
-  ///
-  /// If GA aliases a function, the alias's name is matched as a function name
-  /// would be.  Similarly, aliases of globals are matched like globals.
-  bool isIn(const GlobalAlias &GA, const StringRef Category) const {
-    if (isIn(*GA.getParent(), Category))
-      return true;
-
-    if (isa<FunctionType>(GA.getType()->getElementType()))
-      return SCL->inSection("fun", GA.getName(), Category);
-
-    return SCL->inSection("global", GA.getName(), Category) ||
-           SCL->inSection("type", GetGlobalTypeString(GA), Category);
-  }
-
-  /// Returns whether this module is listed in the given category.
-  bool isIn(const Module &M, const StringRef Category) const {
-    return SCL->inSection("src", M.getModuleIdentifier(), Category);
-  }
-};
 
 class DataFlowSanitizer : public ModulePass {
   friend struct DFSanFunction;
@@ -213,7 +148,7 @@ class DataFlowSanitizer : public ModulePass {
     WK_Custom
   };
 
-  const DataLayout *DL;
+  DataLayout *DL;
   Module *Mod;
   LLVMContext *Ctx;
   IntegerType *ShadowTy;
@@ -239,11 +174,12 @@ class DataFlowSanitizer : public ModulePass {
   Constant *DFSanSetLabelFn;
   Constant *DFSanNonzeroLabelFn;
   MDNode *ColdCallWeights;
-  DFSanABIList ABIList;
+  OwningPtr<SpecialCaseList> ABIList;
   DenseMap<Value *, Function *> UnwrappedFnMap;
   AttributeSet ReadOnlyNoneAttrs;
 
   Value *getShadowAddress(Value *Addr, Instruction *Pos);
+  Value *combineShadows(Value *V1, Value *V2, Instruction *Pos);
   bool isInstrumented(const Function *F);
   bool isInstrumented(const GlobalAlias *GA);
   FunctionType *getArgsFunctionType(FunctionType *T);
@@ -259,17 +195,15 @@ class DataFlowSanitizer : public ModulePass {
 
  public:
   DataFlowSanitizer(StringRef ABIListFile = StringRef(),
-                    void *(*getArgTLS)() = nullptr,
-                    void *(*getRetValTLS)() = nullptr);
+                    void *(*getArgTLS)() = 0, void *(*getRetValTLS)() = 0);
   static char ID;
-  bool doInitialization(Module &M) override;
-  bool runOnModule(Module &M) override;
+  bool doInitialization(Module &M);
+  bool runOnModule(Module &M);
 };
 
 struct DFSanFunction {
   DataFlowSanitizer &DFS;
   Function *F;
-  DominatorTree DT;
   DataFlowSanitizer::InstrumentedABI IA;
   bool IsNativeABI;
   Value *ArgTLSPtr;
@@ -281,26 +215,15 @@ struct DFSanFunction {
   DenseSet<Instruction *> SkipInsts;
   DenseSet<Value *> NonZeroChecks;
 
-  struct CachedCombinedShadow {
-    BasicBlock *Block;
-    Value *Shadow;
-  };
-  DenseMap<std::pair<Value *, Value *>, CachedCombinedShadow>
-      CachedCombinedShadows;
-  DenseMap<Value *, std::set<Value *>> ShadowElements;
-
   DFSanFunction(DataFlowSanitizer &DFS, Function *F, bool IsNativeABI)
       : DFS(DFS), F(F), IA(DFS.getInstrumentedABI()),
-        IsNativeABI(IsNativeABI), ArgTLSPtr(nullptr), RetvalTLSPtr(nullptr),
-        LabelReturnAlloca(nullptr) {
-    DT.recalculate(*F);
-  }
+        IsNativeABI(IsNativeABI), ArgTLSPtr(0), RetvalTLSPtr(0),
+        LabelReturnAlloca(0) {}
   Value *getArgTLSPtr();
   Value *getArgTLS(unsigned Index, Instruction *Pos);
   Value *getRetvalTLS();
   Value *getShadow(Value *V);
   void setShadow(Instruction *I, Value *Shadow);
-  Value *combineShadows(Value *V1, Value *V2, Instruction *Pos);
   Value *combineOperandShadows(Instruction *Inst);
   Value *loadShadow(Value *ShadowAddr, uint64_t Size, uint64_t Align,
                     Instruction *Pos);
@@ -364,7 +287,7 @@ FunctionType *DataFlowSanitizer::getArgsFunctionType(FunctionType *T) {
     ArgTypes.push_back(ShadowPtrTy);
   Type *RetType = T->getReturnType();
   if (!RetType->isVoidTy())
-    RetType = StructType::get(RetType, ShadowTy, (Type *)nullptr);
+    RetType = StructType::get(RetType, ShadowTy, (Type *)0);
   return FunctionType::get(RetType, ArgTypes, T->isVarArg());
 }
 
@@ -404,10 +327,9 @@ FunctionType *DataFlowSanitizer::getCustomFunctionType(FunctionType *T) {
 }
 
 bool DataFlowSanitizer::doInitialization(Module &M) {
-  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
-  if (!DLP)
-    report_fatal_error("data layout missing");
-  DL = &DLP->getDataLayout();
+  DL = getAnalysisIfAvailable<DataLayout>();
+  if (!DL)
+    return false;
 
   Mod = &M;
   Ctx = &M.getContext();
@@ -434,20 +356,18 @@ bool DataFlowSanitizer::doInitialization(Module &M) {
 
   if (GetArgTLSPtr) {
     Type *ArgTLSTy = ArrayType::get(ShadowTy, 64);
-    ArgTLS = nullptr;
+    ArgTLS = 0;
     GetArgTLS = ConstantExpr::getIntToPtr(
         ConstantInt::get(IntptrTy, uintptr_t(GetArgTLSPtr)),
         PointerType::getUnqual(
-            FunctionType::get(PointerType::getUnqual(ArgTLSTy),
-                              (Type *)nullptr)));
+            FunctionType::get(PointerType::getUnqual(ArgTLSTy), (Type *)0)));
   }
   if (GetRetvalTLSPtr) {
-    RetvalTLS = nullptr;
+    RetvalTLS = 0;
     GetRetvalTLS = ConstantExpr::getIntToPtr(
         ConstantInt::get(IntptrTy, uintptr_t(GetRetvalTLSPtr)),
         PointerType::getUnqual(
-            FunctionType::get(PointerType::getUnqual(ShadowTy),
-                              (Type *)nullptr)));
+            FunctionType::get(PointerType::getUnqual(ShadowTy), (Type *)0)));
   }
 
   ColdCallWeights = MDBuilder(*Ctx).createBranchWeights(1, 1000);
@@ -455,11 +375,11 @@ bool DataFlowSanitizer::doInitialization(Module &M) {
 }
 
 bool DataFlowSanitizer::isInstrumented(const Function *F) {
-  return !ABIList.isIn(*F, "uninstrumented");
+  return !ABIList->isIn(*F, "uninstrumented");
 }
 
 bool DataFlowSanitizer::isInstrumented(const GlobalAlias *GA) {
-  return !ABIList.isIn(*GA, "uninstrumented");
+  return !ABIList->isIn(*GA, "uninstrumented");
 }
 
 DataFlowSanitizer::InstrumentedABI DataFlowSanitizer::getInstrumentedABI() {
@@ -467,11 +387,11 @@ DataFlowSanitizer::InstrumentedABI DataFlowSanitizer::getInstrumentedABI() {
 }
 
 DataFlowSanitizer::WrapperKind DataFlowSanitizer::getWrapperKind(Function *F) {
-  if (ABIList.isIn(*F, "functional"))
+  if (ABIList->isIn(*F, "functional"))
     return WK_Functional;
-  if (ABIList.isIn(*F, "discard"))
+  if (ABIList->isIn(*F, "discard"))
     return WK_Discard;
-  if (ABIList.isIn(*F, "custom"))
+  if (ABIList->isIn(*F, "custom"))
     return WK_Custom;
 
   return WK_Warning;
@@ -560,7 +480,7 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
   if (!DL)
     return false;
 
-  if (ABIList.isIn(M, "skip"))
+  if (ABIList->isIn(M, "skip"))
     return false;
 
   if (!GetArgTLSPtr) {
@@ -585,7 +505,6 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
   DFSanUnionLoadFn =
       Mod->getOrInsertFunction("__dfsan_union_load", DFSanUnionLoadFnTy);
   if (Function *F = dyn_cast<Function>(DFSanUnionLoadFn)) {
-    F->addAttribute(AttributeSet::FunctionIndex, Attribute::ReadOnly);
     F->addAttribute(AttributeSet::ReturnIndex, Attribute::ZExt);
   }
   DFSanUnimplementedFn =
@@ -617,7 +536,8 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
     ++i;
     // Don't stop on weak.  We assume people aren't playing games with the
     // instrumentedness of overridden weak aliases.
-    if (auto F = dyn_cast<Function>(GA->getBaseObject())) {
+    if (Function *F = dyn_cast<Function>(
+            GA->resolveAliasedGlobal(/*stopOnWeak=*/false))) {
       bool GAInst = isInstrumented(GA), FInst = isInstrumented(F);
       if (GAInst && FInst) {
         addGlobalNamePrefix(GA);
@@ -627,7 +547,7 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
         // below will take care of instrumenting it.
         Function *NewF =
             buildWrapperFunction(F, "", GA->getLinkage(), F->getFunctionType());
-        GA->replaceAllUsesWith(ConstantExpr::getBitCast(NewF, GA->getType()));
+        GA->replaceAllUsesWith(NewF);
         NewF->takeName(GA);
         GA->eraseFromParent();
         FnsToInstrument.push_back(NewF);
@@ -669,10 +589,10 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
         }
         NewF->getBasicBlockList().splice(NewF->begin(), F.getBasicBlockList());
 
-        for (Function::user_iterator UI = F.user_begin(), UE = F.user_end();
-             UI != UE;) {
-          BlockAddress *BA = dyn_cast<BlockAddress>(*UI);
-          ++UI;
+        for (Function::use_iterator ui = F.use_begin(), ue = F.use_end();
+             ui != ue;) {
+          BlockAddress *BA = dyn_cast<BlockAddress>(ui.getUse().getUser());
+          ++ui;
           if (BA) {
             BA->replaceAllUsesWith(
                 BlockAddress::get(NewF, BA->getBasicBlock()));
@@ -692,7 +612,7 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
                // function... yet.
     } else if (FT->isVarArg()) {
       UnwrappedFnMap[&F] = &F;
-      *i = nullptr;
+      *i = 0;
     } else if (!IsZeroArgsVoidRet || getWrapperKind(&F) == WK_Custom) {
       // Build a wrapper function for F.  The wrapper simply calls F, and is
       // added to FnsToInstrument so that any instrumentation according to its
@@ -743,8 +663,9 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
 
     // DFSanVisitor may create new basic blocks, which confuses df_iterator.
     // Build a copy of the list before iterating over it.
-    llvm::SmallVector<BasicBlock *, 4> BBList(
-        depth_first(&(*i)->getEntryBlock()));
+    llvm::SmallVector<BasicBlock *, 4> BBList;
+    std::copy(df_begin(&(*i)->getEntryBlock()), df_end(&(*i)->getEntryBlock()),
+              std::back_inserter(BBList));
 
     for (llvm::SmallVector<BasicBlock *, 4>::iterator i = BBList.begin(),
                                                       e = BBList.end();
@@ -797,9 +718,10 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
         while (isa<PHINode>(Pos) || isa<AllocaInst>(Pos))
           Pos = Pos->getNextNode();
         IRBuilder<> IRB(Pos);
-        Value *Ne = IRB.CreateICmpNE(*i, DFSF.DFS.ZeroShadow);
+        Instruction *NeInst = cast<Instruction>(
+            IRB.CreateICmpNE(*i, DFSF.DFS.ZeroShadow));
         BranchInst *BI = cast<BranchInst>(SplitBlockAndInsertIfThen(
-            Ne, Pos, /*Unreachable=*/false, ColdCallWeights));
+            NeInst, /*Unreachable=*/ false, ColdCallWeights));
         IRBuilder<> ThenIRB(BI);
         ThenIRB.CreateCall(DFSF.DFS.DFSanNonzeroLabelFn);
       }
@@ -888,72 +810,37 @@ Value *DataFlowSanitizer::getShadowAddress(Value *Addr, Instruction *Pos) {
 
 // Generates IR to compute the union of the two given shadows, inserting it
 // before Pos.  Returns the computed union Value.
-Value *DFSanFunction::combineShadows(Value *V1, Value *V2, Instruction *Pos) {
-  if (V1 == DFS.ZeroShadow)
+Value *DataFlowSanitizer::combineShadows(Value *V1, Value *V2,
+                                         Instruction *Pos) {
+  if (V1 == ZeroShadow)
     return V2;
-  if (V2 == DFS.ZeroShadow)
+  if (V2 == ZeroShadow)
     return V1;
   if (V1 == V2)
     return V1;
-
-  auto V1Elems = ShadowElements.find(V1);
-  auto V2Elems = ShadowElements.find(V2);
-  if (V1Elems != ShadowElements.end() && V2Elems != ShadowElements.end()) {
-    if (std::includes(V1Elems->second.begin(), V1Elems->second.end(),
-                      V2Elems->second.begin(), V2Elems->second.end())) {
-      return V1;
-    } else if (std::includes(V2Elems->second.begin(), V2Elems->second.end(),
-                             V1Elems->second.begin(), V1Elems->second.end())) {
-      return V2;
-    }
-  } else if (V1Elems != ShadowElements.end()) {
-    if (V1Elems->second.count(V2))
-      return V1;
-  } else if (V2Elems != ShadowElements.end()) {
-    if (V2Elems->second.count(V1))
-      return V2;
-  }
-
-  auto Key = std::make_pair(V1, V2);
-  if (V1 > V2)
-    std::swap(Key.first, Key.second);
-  CachedCombinedShadow &CCS = CachedCombinedShadows[Key];
-  if (CCS.Block && DT.dominates(CCS.Block, Pos->getParent()))
-    return CCS.Shadow;
-
   IRBuilder<> IRB(Pos);
   BasicBlock *Head = Pos->getParent();
   Value *Ne = IRB.CreateICmpNE(V1, V2);
-  BranchInst *BI = cast<BranchInst>(SplitBlockAndInsertIfThen(
-      Ne, Pos, /*Unreachable=*/false, DFS.ColdCallWeights, &DT));
-  IRBuilder<> ThenIRB(BI);
-  CallInst *Call = ThenIRB.CreateCall2(DFS.DFSanUnionFn, V1, V2);
-  Call->addAttribute(AttributeSet::ReturnIndex, Attribute::ZExt);
-  Call->addAttribute(1, Attribute::ZExt);
-  Call->addAttribute(2, Attribute::ZExt);
+  Instruction *NeInst = dyn_cast<Instruction>(Ne);
+  if (NeInst) {
+    BranchInst *BI = cast<BranchInst>(SplitBlockAndInsertIfThen(
+        NeInst, /*Unreachable=*/ false, ColdCallWeights));
+    IRBuilder<> ThenIRB(BI);
+    CallInst *Call = ThenIRB.CreateCall2(DFSanUnionFn, V1, V2);
+    Call->addAttribute(AttributeSet::ReturnIndex, Attribute::ZExt);
+    Call->addAttribute(1, Attribute::ZExt);
+    Call->addAttribute(2, Attribute::ZExt);
 
-  BasicBlock *Tail = BI->getSuccessor(0);
-  PHINode *Phi = PHINode::Create(DFS.ShadowTy, 2, "", Tail->begin());
-  Phi->addIncoming(Call, Call->getParent());
-  Phi->addIncoming(V1, Head);
-
-  CCS.Block = Tail;
-  CCS.Shadow = Phi;
-
-  std::set<Value *> UnionElems;
-  if (V1Elems != ShadowElements.end()) {
-    UnionElems = V1Elems->second;
+    BasicBlock *Tail = BI->getSuccessor(0);
+    PHINode *Phi = PHINode::Create(ShadowTy, 2, "", Tail->begin());
+    Phi->addIncoming(Call, Call->getParent());
+    Phi->addIncoming(V1, Head);
+    Pos = Phi;
+    return Phi;
   } else {
-    UnionElems.insert(V1);
+    assert(0 && "todo");
+    return 0;
   }
-  if (V2Elems != ShadowElements.end()) {
-    UnionElems.insert(V2Elems->second.begin(), V2Elems->second.end());
-  } else {
-    UnionElems.insert(V2);
-  }
-  ShadowElements[Phi] = std::move(UnionElems);
-
-  return Phi;
 }
 
 // A convenience function which folds the shadows of each of the operands
@@ -965,7 +852,7 @@ Value *DFSanFunction::combineOperandShadows(Instruction *Inst) {
 
   Value *Shadow = getShadow(Inst->getOperand(0));
   for (unsigned i = 1, n = Inst->getNumOperands(); i != n; ++i) {
-    Shadow = combineShadows(Shadow, getShadow(Inst->getOperand(i)), Inst);
+    Shadow = DFS.combineShadows(Shadow, getShadow(Inst->getOperand(i)), Inst);
   }
   return Shadow;
 }
@@ -1018,8 +905,9 @@ Value *DFSanFunction::loadShadow(Value *Addr, uint64_t Size, uint64_t Align,
     IRBuilder<> IRB(Pos);
     Value *ShadowAddr1 =
         IRB.CreateGEP(ShadowAddr, ConstantInt::get(DFS.IntptrTy, 1));
-    return combineShadows(IRB.CreateAlignedLoad(ShadowAddr, ShadowAlign),
-                          IRB.CreateAlignedLoad(ShadowAddr1, ShadowAlign), Pos);
+    return DFS.combineShadows(IRB.CreateAlignedLoad(ShadowAddr, ShadowAlign),
+                              IRB.CreateAlignedLoad(ShadowAddr1, ShadowAlign),
+                              Pos);
   }
   }
   if (Size % (64 / DFS.ShadowWidth) == 0) {
@@ -1046,27 +934,16 @@ Value *DFSanFunction::loadShadow(Value *Addr, uint64_t Size, uint64_t Align,
 
     BasicBlock *Head = Pos->getParent();
     BasicBlock *Tail = Head->splitBasicBlock(Pos);
-
-    if (DomTreeNode *OldNode = DT.getNode(Head)) {
-      std::vector<DomTreeNode *> Children(OldNode->begin(), OldNode->end());
-
-      DomTreeNode *NewNode = DT.addNewBlock(Tail, Head);
-      for (auto Child : Children)
-        DT.changeImmediateDominator(Child, NewNode);
-    }
-
     // In the following code LastBr will refer to the previous basic block's
     // conditional branch instruction, whose true successor is fixed up to point
     // to the next block during the loop below or to the tail after the final
     // iteration.
     BranchInst *LastBr = BranchInst::Create(FallbackBB, FallbackBB, ShadowsEq);
     ReplaceInstWithInst(Head->getTerminator(), LastBr);
-    DT.addNewBlock(FallbackBB, Head);
 
     for (uint64_t Ofs = 64 / DFS.ShadowWidth; Ofs != Size;
          Ofs += 64 / DFS.ShadowWidth) {
       BasicBlock *NextBB = BasicBlock::Create(*DFS.Ctx, "", F);
-      DT.addNewBlock(NextBB, LastBr->getParent());
       IRBuilder<> NextIRB(NextBB);
       WideAddr = NextIRB.CreateGEP(WideAddr, ConstantInt::get(DFS.IntptrTy, 1));
       Value *NextWideShadow = NextIRB.CreateAlignedLoad(WideAddr, ShadowAlign);
@@ -1101,15 +978,14 @@ void DFSanVisitor::visitLoadInst(LoadInst &LI) {
     Align = 1;
   }
   IRBuilder<> IRB(&LI);
-  Value *Shadow = DFSF.loadShadow(LI.getPointerOperand(), Size, Align, &LI);
-  if (ClCombinePointerLabelsOnLoad) {
-    Value *PtrShadow = DFSF.getShadow(LI.getPointerOperand());
-    Shadow = DFSF.combineShadows(Shadow, PtrShadow, &LI);
-  }
-  if (Shadow != DFSF.DFS.ZeroShadow)
-    DFSF.NonZeroChecks.insert(Shadow);
+  Value *LoadedShadow =
+      DFSF.loadShadow(LI.getPointerOperand(), Size, Align, &LI);
+  Value *PtrShadow = DFSF.getShadow(LI.getPointerOperand());
+  Value *CombinedShadow = DFSF.DFS.combineShadows(LoadedShadow, PtrShadow, &LI);
+  if (CombinedShadow != DFSF.DFS.ZeroShadow)
+    DFSF.NonZeroChecks.insert(CombinedShadow);
 
-  DFSF.setShadow(&LI, Shadow);
+  DFSF.setShadow(&LI, CombinedShadow);
 }
 
 void DFSanFunction::storeShadow(Value *Addr, uint64_t Size, uint64_t Align,
@@ -1174,13 +1050,8 @@ void DFSanVisitor::visitStoreInst(StoreInst &SI) {
   } else {
     Align = 1;
   }
-
-  Value* Shadow = DFSF.getShadow(SI.getValueOperand());
-  if (ClCombinePointerLabelsOnStore) {
-    Value *PtrShadow = DFSF.getShadow(SI.getPointerOperand());
-    Shadow = DFSF.combineShadows(Shadow, PtrShadow, &SI);
-  }
-  DFSF.storeShadow(SI.getPointerOperand(), Size, Align, Shadow, &SI);
+  DFSF.storeShadow(SI.getPointerOperand(), Size, Align,
+                   DFSF.getShadow(SI.getValueOperand()), &SI);
 }
 
 void DFSanVisitor::visitBinaryOperator(BinaryOperator &BO) {
@@ -1217,11 +1088,12 @@ void DFSanVisitor::visitInsertValueInst(InsertValueInst &I) {
 
 void DFSanVisitor::visitAllocaInst(AllocaInst &I) {
   bool AllLoadsStores = true;
-  for (User *U : I.users()) {
-    if (isa<LoadInst>(U))
+  for (Instruction::use_iterator i = I.use_begin(), e = I.use_end(); i != e;
+       ++i) {
+    if (isa<LoadInst>(*i))
       continue;
 
-    if (StoreInst *SI = dyn_cast<StoreInst>(U)) {
+    if (StoreInst *SI = dyn_cast<StoreInst>(*i)) {
       if (SI->getPointerOperand() == &I)
         continue;
     }
@@ -1243,9 +1115,9 @@ void DFSanVisitor::visitSelectInst(SelectInst &I) {
 
   if (isa<VectorType>(I.getCondition()->getType())) {
     DFSF.setShadow(
-        &I,
-        DFSF.combineShadows(
-            CondShadow, DFSF.combineShadows(TrueShadow, FalseShadow, &I), &I));
+        &I, DFSF.DFS.combineShadows(
+                CondShadow,
+                DFSF.DFS.combineShadows(TrueShadow, FalseShadow, &I), &I));
   } else {
     Value *ShadowSel;
     if (TrueShadow == FalseShadow) {
@@ -1254,7 +1126,7 @@ void DFSanVisitor::visitSelectInst(SelectInst &I) {
       ShadowSel =
           SelectInst::Create(I.getCondition(), TrueShadow, FalseShadow, "", &I);
     }
-    DFSF.setShadow(&I, DFSF.combineShadows(CondShadow, ShadowSel, &I));
+    DFSF.setShadow(&I, DFSF.DFS.combineShadows(CondShadow, ShadowSel, &I));
   }
 }
 
@@ -1427,7 +1299,7 @@ void DFSanVisitor::visitCallSite(CallSite CS) {
     }
   }
 
-  Instruction *Next = nullptr;
+  Instruction *Next = 0;
   if (!CS.getType()->isVoidTy()) {
     if (InvokeInst *II = dyn_cast<InvokeInst>(CS.getInstruction())) {
       if (II->getNormalDest()->getSinglePredecessor()) {

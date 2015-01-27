@@ -20,7 +20,8 @@ CFLAGS+= -I${.CURDIR}/../../sys
 CLEANFILES+= template.c
 
 MAN=	gbde.8
-LIBADD=	md util geom
+DPADD=	${LIBMD} ${LIBUTIL} ${LIBGEOM}
+LDADD=	-lmd -lutil -lgeom
 
 template.c: template.txt
 	file2c 'const char template[] = {' ',0};' \

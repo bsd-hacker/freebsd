@@ -43,11 +43,10 @@ namespace sys {
     // Opaque data used to interface with OS-specific dynamic library handling.
     void *Data;
 
-  public:
     explicit DynamicLibrary(void *data = &Invalid) : Data(data) {}
-
+  public:
     /// Returns true if the object refers to a valid library.
-    bool isValid() const { return Data != &Invalid; }
+    bool isValid() { return Data != &Invalid; }
 
     /// Searches through the library for the symbol \p symbolName. If it is
     /// found, the address of that symbol is returned. If not, NULL is returned.
@@ -66,7 +65,7 @@ namespace sys {
     /// It is safe to call this function multiple times for the same library.
     /// @brief Open a dynamic library permanently.
     static DynamicLibrary getPermanentLibrary(const char *filename,
-                                              std::string *errMsg = nullptr);
+                                              std::string *errMsg = 0);
 
     /// This function permanently loads the dynamic library at the given path.
     /// Use this instead of getPermanentLibrary() when you won't need to get
@@ -74,7 +73,7 @@ namespace sys {
     ///
     /// It is safe to call this function multiple times for the same library.
     static bool LoadLibraryPermanently(const char *Filename,
-                                       std::string *ErrMsg = nullptr) {
+                                       std::string *ErrMsg = 0) {
       return !getPermanentLibrary(Filename, ErrMsg).isValid();
     }
 

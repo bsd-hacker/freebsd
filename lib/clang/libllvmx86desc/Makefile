@@ -13,8 +13,7 @@ SRCS=	X86AsmBackend.cpp \
 	X86MCTargetDesc.cpp \
 	X86MachORelocationInfo.cpp \
 	X86MachObjectWriter.cpp \
-	X86WinCOFFObjectWriter.cpp \
-	X86WinCOFFStreamer.cpp
+	X86WinCOFFObjectWriter.cpp
 CFLAGS+= -I${LLVM_SRCS}/${SRCDIR}/..
 
 TGHDRS=	X86GenInstrInfo \

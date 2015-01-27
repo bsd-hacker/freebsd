@@ -216,7 +216,8 @@ typedef struct mbuf PDQ_OS_DATABUF_T;
     PDQ_OS_DATABUF_T *x_m0; \
     MGETHDR(x_m0, M_NOWAIT, MT_DATA); \
     if (x_m0 != NULL) { \
-	if (!(MCLGET(x_m0, M_NOWAIT))) { \
+	MCLGET(x_m0, M_NOWAIT);	\
+	if ((x_m0->m_flags & M_EXT) == 0) { \
 	    m_free(x_m0); \
 	    (b) = NULL; \
 	} else { \

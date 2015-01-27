@@ -6,24 +6,19 @@ LIB=	llvmasmprinter
 
 SRCDIR=	lib/CodeGen/AsmPrinter
 SRCS=	ARMException.cpp \
-	AddressPool.cpp \
 	AsmPrinter.cpp \
 	AsmPrinterDwarf.cpp \
 	AsmPrinterInlineAsm.cpp \
 	DIE.cpp \
 	DIEHash.cpp \
-	DbgValueHistoryCalculator.cpp \
 	DwarfAccelTable.cpp \
 	DwarfCFIException.cpp \
+	DwarfCompileUnit.cpp \
 	DwarfDebug.cpp \
-	DwarfFile.cpp \
-	DwarfStringPool.cpp \
-	DwarfUnit.cpp \
-	EHStreamer.cpp \
+	DwarfException.cpp \
 	ErlangGCPrinter.cpp \
 	OcamlGCPrinter.cpp \
-	Win64Exception.cpp \
-	WinCodeViewLineTables.cpp
+	Win64Exception.cpp
 
 TGHDRS=	Intrinsics
 

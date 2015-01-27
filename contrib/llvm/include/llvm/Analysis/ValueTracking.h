@@ -27,25 +27,24 @@ namespace llvm {
   class MDNode;
   class TargetLibraryInfo;
 
-  /// Determine which bits of V are known to be either zero or one and return
-  /// them in the KnownZero/KnownOne bit sets.
+  /// ComputeMaskedBits - Determine which of the bits specified in Mask are
+  /// known to be either zero or one and return them in the KnownZero/KnownOne
+  /// bit sets.  This code only analyzes bits in Mask, in order to short-circuit
+  /// processing.
   ///
   /// This function is defined on values with integer type, values with pointer
   /// type (but only if TD is non-null), and vectors of integers.  In the case
-  /// where V is a vector, the known zero and known one values are the
+  /// where V is a vector, the mask, known zero, and known one values are the
   /// same width as the vector element, and the bit is set only if it is true
   /// for all of the elements in the vector.
-  void computeKnownBits(Value *V,  APInt &KnownZero, APInt &KnownOne,
-                        const DataLayout *TD = nullptr, unsigned Depth = 0);
-  /// Compute known bits from the range metadata.
-  /// \p KnownZero the set of bits that are known to be zero
-  void computeKnownBitsFromRangeMetadata(const MDNode &Ranges,
-                                         APInt &KnownZero);
+  void ComputeMaskedBits(Value *V,  APInt &KnownZero, APInt &KnownOne,
+                         const DataLayout *TD = 0, unsigned Depth = 0);
+  void computeMaskedBitsLoad(const MDNode &Ranges, APInt &KnownZero);
 
   /// ComputeSignBit - Determine whether the sign bit is known to be zero or
-  /// one.  Convenience wrapper around computeKnownBits.
+  /// one.  Convenience wrapper around ComputeMaskedBits.
   void ComputeSignBit(Value *V, bool &KnownZero, bool &KnownOne,
-                      const DataLayout *TD = nullptr, unsigned Depth = 0);
+                      const DataLayout *TD = 0, unsigned Depth = 0);
 
   /// isKnownToBeAPowerOfTwo - Return true if the given value is known to have
   /// exactly one bit set when defined. For vectors return true if every
@@ -58,8 +57,7 @@ namespace llvm {
   /// when defined.  For vectors return true if every element is known to be
   /// non-zero when defined.  Supports values with integer or pointer type and
   /// vectors of integers.
-  bool isKnownNonZero(Value *V, const DataLayout *TD = nullptr,
-                      unsigned Depth = 0);
+  bool isKnownNonZero(Value *V, const DataLayout *TD = 0, unsigned Depth = 0);
 
   /// MaskedValueIsZero - Return true if 'V & Mask' is known to be zero.  We use
   /// this predicate to simplify operations downstream.  Mask is known to be
@@ -71,7 +69,7 @@ namespace llvm {
   /// same width as the vector element, and the bit is set only if it is true
   /// for all of the elements in the vector.
   bool MaskedValueIsZero(Value *V, const APInt &Mask, 
-                         const DataLayout *TD = nullptr, unsigned Depth = 0);
+                         const DataLayout *TD = 0, unsigned Depth = 0);
 
   
   /// ComputeNumSignBits - Return the number of times the sign bit of the
@@ -82,7 +80,7 @@ namespace llvm {
   ///
   /// 'Op' must have a scalar integer type.
   ///
-  unsigned ComputeNumSignBits(Value *Op, const DataLayout *TD = nullptr,
+  unsigned ComputeNumSignBits(Value *Op, const DataLayout *TD = 0,
                               unsigned Depth = 0);
 
   /// ComputeMultiple - This function computes the integer multiple of Base that
@@ -114,7 +112,7 @@ namespace llvm {
   /// insertvalues when a part of a nested struct is extracted.
   Value *FindInsertedValue(Value *V,
                            ArrayRef<unsigned> idx_range,
-                           Instruction *InsertBefore = nullptr);
+                           Instruction *InsertBefore = 0);
 
   /// GetPointerBaseWithConstantOffset - Analyze the specified pointer to see if
   /// it can be expressed as a base pointer plus a constant offset.  Return the
@@ -145,10 +143,10 @@ namespace llvm {
   /// being addressed.  Note that the returned value has pointer type if the
   /// specified value does.  If the MaxLookup value is non-zero, it limits the
   /// number of instructions to be stripped off.
-  Value *GetUnderlyingObject(Value *V, const DataLayout *TD = nullptr,
+  Value *GetUnderlyingObject(Value *V, const DataLayout *TD = 0,
                              unsigned MaxLookup = 6);
   static inline const Value *
-  GetUnderlyingObject(const Value *V, const DataLayout *TD = nullptr,
+  GetUnderlyingObject(const Value *V, const DataLayout *TD = 0,
                       unsigned MaxLookup = 6) {
     return GetUnderlyingObject(const_cast<Value *>(V), TD, MaxLookup);
   }
@@ -158,7 +156,7 @@ namespace llvm {
   /// multiple objects.
   void GetUnderlyingObjects(Value *V,
                             SmallVectorImpl<Value *> &Objects,
-                            const DataLayout *TD = nullptr,
+                            const DataLayout *TD = 0,
                             unsigned MaxLookup = 6);
 
   /// onlyUsedByLifetimeMarkers - Return true if the only users of this pointer
@@ -184,12 +182,12 @@ namespace llvm {
   /// However, this method can return true for instructions that read memory;
   /// for such instructions, moving them may change the resulting value.
   bool isSafeToSpeculativelyExecute(const Value *V,
-                                    const DataLayout *TD = nullptr);
+                                    const DataLayout *TD = 0);
 
   /// isKnownNonNull - Return true if this pointer couldn't possibly be null by
   /// its definition.  This returns true for allocas, non-extern-weak globals
   /// and byval arguments.
-  bool isKnownNonNull(const Value *V, const TargetLibraryInfo *TLI = nullptr);
+  bool isKnownNonNull(const Value *V, const TargetLibraryInfo *TLI = 0);
 
 } // end namespace llvm
 

@@ -5,6 +5,7 @@ PROG=		l2ping
 MAN=		l2ping.8
 WARNS?=		2
 
-LIBADD=		bluetooth
+DPADD=		${LIBBLUETOOTH}
+LDADD=		-lbluetooth
 
 .include <bsd.prog.mk>

@@ -430,9 +430,9 @@ public:
     typedef const value_type&                                    reference;
     typedef typename __pointer_traits::template
 #ifndef _LIBCPP_HAS_NO_TEMPLATE_ALIASES
-            rebind<const value_type>
+            rebind<value_type>
 #else
-            rebind<const value_type>::other
+            rebind<value_type>::other
 #endif
                                                                  pointer;
 

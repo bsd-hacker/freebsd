@@ -54,11 +54,9 @@ _TESTS=
 .include <plain.test.mk>
 .include <tap.test.mk>
 
-.for ts in ${TESTS_SUBDIRS}
-.if empty(SUBDIR:M${ts})
-SUBDIR+= ${ts}
+.if !empty(TESTS_SUBDIRS)
+SUBDIR+= ${TESTS_SUBDIRS}
 .endif
-.endfor
 
 # it is rare for test cases to have man pages
 .if !defined(MAN)

@@ -383,33 +383,16 @@ struct {								\
 #define	RB_PROTOTYPE_STATIC(name, type, field, cmp)			\
 	RB_PROTOTYPE_INTERNAL(name, type, field, cmp, __unused static)
 #define RB_PROTOTYPE_INTERNAL(name, type, field, cmp, attr)		\
-	RB_PROTOTYPE_INSERT_COLOR(name, type, attr);			\
-	RB_PROTOTYPE_REMOVE_COLOR(name, type, attr);			\
-	RB_PROTOTYPE_INSERT(name, type, attr);				\
-	RB_PROTOTYPE_REMOVE(name, type, attr);				\
-	RB_PROTOTYPE_FIND(name, type, attr);				\
-	RB_PROTOTYPE_NFIND(name, type, attr);				\
-	RB_PROTOTYPE_NEXT(name, type, attr);				\
-	RB_PROTOTYPE_PREV(name, type, attr);				\
-	RB_PROTOTYPE_MINMAX(name, type, attr);
-#define RB_PROTOTYPE_INSERT_COLOR(name, type, attr)			\
-	attr void name##_RB_INSERT_COLOR(struct name *, struct type *)
-#define RB_PROTOTYPE_REMOVE_COLOR(name, type, attr)			\
-	attr void name##_RB_REMOVE_COLOR(struct name *, struct type *, struct type *)
-#define RB_PROTOTYPE_REMOVE(name, type, attr)				\
-	attr struct type *name##_RB_REMOVE(struct name *, struct type *)
-#define RB_PROTOTYPE_INSERT(name, type, attr)				\
-	attr struct type *name##_RB_INSERT(struct name *, struct type *)
-#define RB_PROTOTYPE_FIND(name, type, attr)				\
-	attr struct type *name##_RB_FIND(struct name *, struct type *)
-#define RB_PROTOTYPE_NFIND(name, type, attr)				\
-	attr struct type *name##_RB_NFIND(struct name *, struct type *)
-#define RB_PROTOTYPE_NEXT(name, type, attr)				\
-	attr struct type *name##_RB_NEXT(struct type *)
-#define RB_PROTOTYPE_PREV(name, type, attr)				\
-	attr struct type *name##_RB_PREV(struct type *)
-#define RB_PROTOTYPE_MINMAX(name, type, attr)				\
-	attr struct type *name##_RB_MINMAX(struct name *, int)
+attr void name##_RB_INSERT_COLOR(struct name *, struct type *);		\
+attr void name##_RB_REMOVE_COLOR(struct name *, struct type *, struct type *);\
+attr struct type *name##_RB_REMOVE(struct name *, struct type *);	\
+attr struct type *name##_RB_INSERT(struct name *, struct type *);	\
+attr struct type *name##_RB_FIND(struct name *, struct type *);		\
+attr struct type *name##_RB_NFIND(struct name *, struct type *);	\
+attr struct type *name##_RB_NEXT(struct type *);			\
+attr struct type *name##_RB_PREV(struct type *);			\
+attr struct type *name##_RB_MINMAX(struct name *, int);			\
+									\
 
 /* Main rb operation.
  * Moves node close to the key of elm to top
@@ -419,17 +402,6 @@ struct {								\
 #define	RB_GENERATE_STATIC(name, type, field, cmp)			\
 	RB_GENERATE_INTERNAL(name, type, field, cmp, __unused static)
 #define RB_GENERATE_INTERNAL(name, type, field, cmp, attr)		\
-	RB_GENERATE_INSERT_COLOR(name, type, field, attr)		\
-	RB_GENERATE_REMOVE_COLOR(name, type, field, attr)		\
-	RB_GENERATE_INSERT(name, type, field, cmp, attr)		\
-	RB_GENERATE_REMOVE(name, type, field, attr)			\
-	RB_GENERATE_FIND(name, type, field, cmp, attr)			\
-	RB_GENERATE_NFIND(name, type, field, cmp, attr)			\
-	RB_GENERATE_NEXT(name, type, field, attr)			\
-	RB_GENERATE_PREV(name, type, field, attr)			\
-	RB_GENERATE_MINMAX(name, type, field, attr)
-
-#define RB_GENERATE_INSERT_COLOR(name, type, field, attr)		\
 attr void								\
 name##_RB_INSERT_COLOR(struct name *head, struct type *elm)		\
 {									\
@@ -472,9 +444,8 @@ name##_RB_INSERT_COLOR(struct name *head, struct type *elm)		\
 		}							\
 	}								\
 	RB_COLOR(head->rbh_root, field) = RB_BLACK;			\
-}
-
-#define RB_GENERATE_REMOVE_COLOR(name, type, field, attr)		\
+}									\
+									\
 attr void								\
 name##_RB_REMOVE_COLOR(struct name *head, struct type *parent, struct type *elm) \
 {									\
@@ -551,9 +522,8 @@ name##_RB_REMOVE_COLOR(struct name *head, struct type *parent, struct type *elm)
 	}								\
 	if (elm)							\
 		RB_COLOR(elm, field) = RB_BLACK;			\
-}
-
-#define RB_GENERATE_REMOVE(name, type, field, attr)			\
+}									\
+									\
 attr struct type *							\
 name##_RB_REMOVE(struct name *head, struct type *elm)			\
 {									\
@@ -620,8 +590,7 @@ color:									\
 		name##_RB_REMOVE_COLOR(head, parent, child);		\
 	return (old);							\
 }									\
-
-#define RB_GENERATE_INSERT(name, type, field, cmp, attr)		\
+									\
 /* Inserts a node into the RB tree */					\
 attr struct type *							\
 name##_RB_INSERT(struct name *head, struct type *elm)			\
@@ -651,9 +620,8 @@ name##_RB_INSERT(struct name *head, struct type *elm)			\
 		RB_ROOT(head) = elm;					\
 	name##_RB_INSERT_COLOR(head, elm);				\
 	return (NULL);							\
-}
-
-#define RB_GENERATE_FIND(name, type, field, cmp, attr)			\
+}									\
+									\
 /* Finds the node with the same key as elm */				\
 attr struct type *							\
 name##_RB_FIND(struct name *head, struct type *elm)			\
@@ -670,9 +638,8 @@ name##_RB_FIND(struct name *head, struct type *elm)			\
 			return (tmp);					\
 	}								\
 	return (NULL);							\
-}
-
-#define RB_GENERATE_NFIND(name, type, field, cmp, attr)			\
+}									\
+									\
 /* Finds the first node greater than or equal to the search key */	\
 attr struct type *							\
 name##_RB_NFIND(struct name *head, struct type *elm)			\
@@ -692,9 +659,8 @@ name##_RB_NFIND(struct name *head, struct type *elm)			\
 			return (tmp);					\
 	}								\
 	return (res);							\
-}
-
-#define RB_GENERATE_NEXT(name, type, field, attr)			\
+}									\
+									\
 /* ARGSUSED */								\
 attr struct type *							\
 name##_RB_NEXT(struct type *elm)					\
@@ -715,9 +681,8 @@ name##_RB_NEXT(struct type *elm)					\
 		}							\
 	}								\
 	return (elm);							\
-}
-
-#define RB_GENERATE_PREV(name, type, field, attr)			\
+}									\
+									\
 /* ARGSUSED */								\
 attr struct type *							\
 name##_RB_PREV(struct type *elm)					\
@@ -738,9 +703,8 @@ name##_RB_PREV(struct type *elm)					\
 		}							\
 	}								\
 	return (elm);							\
-}
-
-#define RB_GENERATE_MINMAX(name, type, field, attr)			\
+}									\
+									\
 attr struct type *							\
 name##_RB_MINMAX(struct name *head, int val)				\
 {									\

@@ -31,16 +31,15 @@ Broadcaster::Broadcaster (BroadcasterManager *manager, const char *name) :
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
-        log->Printf ("%p Broadcaster::Broadcaster(\"%s\")",
-                     static_cast<void*>(this), m_broadcaster_name.AsCString());
+        log->Printf ("%p Broadcaster::Broadcaster(\"%s\")", this, m_broadcaster_name.AsCString());
+
 }
 
 Broadcaster::~Broadcaster()
 {
     Log *log (lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
-        log->Printf ("%p Broadcaster::~Broadcaster(\"%s\")",
-                     static_cast<void*>(this), m_broadcaster_name.AsCString());
+        log->Printf ("%p Broadcaster::~Broadcaster(\"%s\")", this, m_broadcaster_name.AsCString());
 
     Clear();
 }
@@ -227,7 +226,7 @@ Broadcaster::PrivateBroadcastEvent (EventSP &event_sp, bool unique)
     const uint32_t event_type = event_sp->GetType();
 
     Mutex::Locker event_types_locker(m_listeners_mutex);
-
+    
     Listener *hijacking_listener = NULL;
     if (!m_hijacking_listeners.empty())
     {
@@ -243,9 +242,11 @@ Broadcaster::PrivateBroadcastEvent (EventSP &event_sp, bool unique)
         StreamString event_description;
         event_sp->Dump  (&event_description);
         log->Printf ("%p Broadcaster(\"%s\")::BroadcastEvent (event_sp = {%s}, unique =%i) hijack = %p",
-                     static_cast<void*>(this), m_broadcaster_name.AsCString(""),
-                     event_description.GetData(), unique,
-                     static_cast<void*>(hijacking_listener));
+                     this,
+                     m_broadcaster_name.AsCString(""),
+                     event_description.GetData(),
+                     unique,
+                     hijacking_listener);
     }
 
     if (hijacking_listener)
@@ -292,12 +293,16 @@ bool
 Broadcaster::HijackBroadcaster (Listener *listener, uint32_t event_mask)
 {
     Mutex::Locker event_types_locker(m_listeners_mutex);
-
+    
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_EVENTS));
     if (log)
+    {
         log->Printf ("%p Broadcaster(\"%s\")::HijackBroadcaster (listener(\"%s\")=%p)",
-                     static_cast<void*>(this), m_broadcaster_name.AsCString(""),
-                     listener->m_name.c_str(), static_cast<void*>(listener));
+                     this,
+                     m_broadcaster_name.AsCString(""),
+                     listener->m_name.c_str(),
+                     listener);
+    }
     m_hijacking_listeners.push_back(listener);
     m_hijacking_masks.push_back(event_mask);
     return true;
@@ -315,9 +320,10 @@ Broadcaster::RestoreBroadcaster ()
         {
             Listener *listener = m_hijacking_listeners.back();
             log->Printf ("%p Broadcaster(\"%s\")::RestoreBroadcaster (about to pop listener(\"%s\")=%p)",
-                         static_cast<void*>(this),
+                         this,
                          m_broadcaster_name.AsCString(""),
-                         listener->m_name.c_str(), static_cast<void*>(listener));
+                         listener->m_name.c_str(),
+                         listener);
         }
         m_hijacking_listeners.pop_back();
     }

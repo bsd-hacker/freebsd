@@ -37,7 +37,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/linker.h>
 #include <sys/module.h>
 #include <sys/queue.h>
-#include <sys/stdint.h>
 
 #include "bootstrap.h"
 
@@ -66,12 +65,7 @@ static void			moduledir_rebuild(void);
 /* load address should be tweaked by first module loaded (kernel) */
 static vm_offset_t	loadaddr = 0;
 
-#if defined(LOADER_FDT_SUPPORT)
-static const char	*default_searchpath =
-    "/boot/kernel;/boot/modules;/boot/dtb";
-#else
 static const char	*default_searchpath ="/boot/kernel;/boot/modules";
-#endif
 
 static STAILQ_HEAD(, moduledir) moduledir_list = STAILQ_HEAD_INITIALIZER(moduledir_list);
 
@@ -139,7 +133,7 @@ command_load(int argc, char *argv[])
 	    command_errmsg = "invalid load type";
 	    return(CMD_ERROR);
 	}
-	return (file_loadraw(argv[1], typestr, 1) ? CMD_OK : CMD_ERROR);
+	return(file_loadraw(argv[1], typestr) ? CMD_OK : CMD_ERROR);
     }
     /*
      * Do we have explicit KLD load ?
@@ -194,21 +188,7 @@ command_load_geli(int argc, char *argv[])
     argv += (optind - 1);
     argc -= (optind - 1);
     sprintf(typestr, "%s:geli_keyfile%d", argv[1], num);
-    return (file_loadraw(argv[2], typestr, 1) ? CMD_OK : CMD_ERROR);
-}
-
-void
-unload(void)
-{
-    struct preloaded_file *fp;
-
-    while (preloaded_files != NULL) {
-	fp = preloaded_files;
-	preloaded_files = preloaded_files->f_next;
-	file_discard(fp);
-    }
-    loadaddr = 0;
-    unsetenv("kernelname");
+    return(file_loadraw(argv[2], typestr) ? CMD_OK : CMD_ERROR);
 }
 
 COMMAND_SET(unload, "unload", "unload all modules", command_unload);
@@ -216,7 +196,15 @@ COMMAND_SET(unload, "unload", "unload all modules", command_unload);
 static int
 command_unload(int argc, char *argv[])
 {
-    unload();
+    struct preloaded_file	*fp;
+    
+    while (preloaded_files != NULL) {
+	fp = preloaded_files;
+	preloaded_files = preloaded_files->f_next;
+	file_discard(fp);
+    }
+    loadaddr = 0;
+    unsetenv("kernelname");
     return(CMD_OK);
 }
 
@@ -248,10 +236,8 @@ command_lsmod(int argc, char *argv[])
 
     pager_open();
     for (fp = preloaded_files; fp; fp = fp->f_next) {
-	sprintf(lbuf, " %p: ", (void *) fp->f_addr);
-	pager_output(lbuf);
-	pager_output(fp->f_name);
-	sprintf(lbuf, " (%s, 0x%lx)\n", fp->f_type, (long)fp->f_size);
+	sprintf(lbuf, " %p: %s (%s, 0x%lx)\n", 
+		(void *) fp->f_addr, fp->f_name, fp->f_type, (long) fp->f_size);
 	pager_output(lbuf);
 	if (fp->f_args != NULL) {
 	    pager_output("    args: ");
@@ -371,7 +357,7 @@ file_load_dependencies(struct preloaded_file *base_file)
  * no arguments or anything.
  */
 struct preloaded_file *
-file_loadraw(char *name, char *type, int insert)
+file_loadraw(char *name, char *type)
 {
     struct preloaded_file	*fp;
     char			*cp;
@@ -401,8 +387,6 @@ file_loadraw(char *name, char *type, int insert)
     if (archsw.arch_loadaddr != NULL)
 	loadaddr = archsw.arch_loadaddr(LOAD_RAW, name, loadaddr);
 
-    printf("%s ", name);
-
     laddr = loadaddr;
     for (;;) {
 	/* read in 4k chunks; size is not really important */
@@ -417,9 +401,7 @@ file_loadraw(char *name, char *type, int insert)
 	}
 	laddr += got;
     }
-
-    printf("size=%#jx\n", (uintmax_t)(laddr - loadaddr));
-
+    
     /* Looks OK so far; create & populate control structure */
     fp = file_alloc();
     fp->f_name = strdup(name);
@@ -434,8 +416,7 @@ file_loadraw(char *name, char *type, int insert)
     loadaddr = laddr;
 
     /* Add to the list of loaded files */
-    if (insert != 0)
-    	file_insert_tail(fp);
+    file_insert_tail(fp);
     close(fd);
     return(fp);
 }
@@ -538,7 +519,7 @@ mod_loadkld(const char *kldname, int argc, char *argv[])
  * NULL may be passed as a wildcard to either.
  */
 struct preloaded_file *
-file_findfile(const char *name, const char *type)
+file_findfile(char *name, char *type)
 {
     struct preloaded_file *fp;
 
@@ -939,7 +920,7 @@ moduledir_readhints(struct moduledir *mdp)
     path = moduledir_fullpath(mdp, "linker.hints");
     if (stat(path, &st) != 0 ||
 	st.st_size < (ssize_t)(sizeof(version) + sizeof(int)) ||
-	st.st_size > LINKER_HINTS_MAX || (fd = open(path, O_RDONLY)) < 0) {
+	st.st_size > 100 * 1024 || (fd = open(path, O_RDONLY)) < 0) {
 	free(path);
 	mdp->d_flags |= MDIR_NOHINTS;
 	return;

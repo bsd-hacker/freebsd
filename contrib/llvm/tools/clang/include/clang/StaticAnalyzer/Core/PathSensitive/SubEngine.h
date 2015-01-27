@@ -122,7 +122,7 @@ public:
   inline ProgramStateRef 
   processRegionChange(ProgramStateRef state,
                       const MemRegion* MR) {
-    return processRegionChanges(state, nullptr, MR, MR, nullptr);
+    return processRegionChanges(state, 0, MR, MR, 0);
   }
 
   virtual ProgramStateRef

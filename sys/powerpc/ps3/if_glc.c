@@ -731,7 +731,7 @@ glc_rxintr(struct glc_softc *sc)
 			restart_rxdma = 1;
 
 		if (sc->sc_rxdmadesc[i].rxerror & GELIC_RXERRORS) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			goto requeue;
 		}
 
@@ -747,11 +747,11 @@ glc_rxintr(struct glc_softc *sc)
 		}
 
 		if (glc_add_rxbuf(sc, i)) {
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			goto requeue;
 		}
 
-		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		ifp->if_ipackets++;
 		m->m_pkthdr.rcvif = ifp;
 		m->m_len = sc->sc_rxdmadesc[i].valid_size;
 		m->m_pkthdr.len = m->m_len;
@@ -810,7 +810,7 @@ glc_txintr(struct glc_softc *sc)
 		    != 0) {
 			lv1_net_stop_tx_dma(sc->sc_bus, sc->sc_dev, 0);
 			kickstart = 1;
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			ifp->if_oerrors++;
 		}
 
 		if (sc->sc_txdmadesc[txs->txs_lastdesc].cmd_stat &
@@ -818,7 +818,7 @@ glc_txintr(struct glc_softc *sc)
 			kickstart = 1;
 
 		STAILQ_INSERT_TAIL(&sc->sc_txfreeq, txs, txs_q);
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		ifp->if_opackets++;
 		progress = 1;
 	}
 

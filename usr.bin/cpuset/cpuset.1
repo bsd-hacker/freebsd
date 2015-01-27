@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 8, 2015
+.Dd January 14, 2011
 .Dt CPUSET 1
 .Os
 .Sh NAME
@@ -46,13 +46,12 @@
 .Fl C
 .Fl p Ar pid
 .Nm
-.Op Fl c
+.Op Fl cr
 .Op Fl l Ar cpu-list
 .Op Fl j Ar jailid | Fl p Ar pid | Fl t Ar tid | Fl s Ar setid | Fl x Ar irq
 .Nm
-.Fl g
-.Op Fl cir
-.Op Fl d Ar domain | j Ar jailid | Fl p Ar pid | Fl t Ar tid | Fl s Ar setid | Fl x Ar irq
+.Op Fl cgir
+.Op Fl j Ar jailid | Fl p Ar pid | Fl t Ar tid | Fl s Ar setid | Fl x Ar irq
 .Sh DESCRIPTION
 The
 .Nm
@@ -63,7 +62,7 @@ about processor binding, sets, and available processors in the system.
 .Nm
 requires a target to modify or query.
 The target may be specified as a command, process id, thread id, a
-cpuset id, an irq, a jail id, or a NUMA domain.
+cpuset id, an irq or a jail id.
 Using
 .Fl g
 the target's set id or mask may be queried.
@@ -109,8 +108,6 @@ Create a new cpuset and assign the target process to that set.
 .It Fl c
 The requested operation should reference the cpuset available via the
 target specifier.
-.It Fl d Ar domain
-Specifies a NUMA domain id as the target of the operation.
 .It Fl g
 Causes
 .Nm
@@ -194,4 +191,4 @@ The
 command first appeared in
 .Fx 7.1 .
 .Sh AUTHORS
-.An Jeffrey Roberson Aq Mt jeff@FreeBSD.org
+.An Jeffrey Roberson Aq jeff@FreeBSD.org

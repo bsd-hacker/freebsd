@@ -29,9 +29,8 @@ using namespace ento;
 namespace {
 class NonNullParamChecker
   : public Checker< check::PreCall > {
-  mutable std::unique_ptr<BugType> BTAttrNonNull;
-  mutable std::unique_ptr<BugType> BTNullRefArg;
-
+  mutable OwningPtr<BugType> BTAttrNonNull;
+  mutable OwningPtr<BugType> BTNullRefArg;
 public:
 
   void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
@@ -44,7 +43,7 @@ public:
 } // end anonymous namespace
 
 void NonNullParamChecker::checkPreCall(const CallEvent &Call,
-                                       CheckerContext &C) const {
+                                      CheckerContext &C) const {
   const Decl *FD = Call.getDecl();
   if (!FD)
     return;
@@ -67,12 +66,6 @@ void NonNullParamChecker::checkPreCall(const CallEvent &Call,
     }
 
     bool haveAttrNonNull = Att && Att->isNonNull(idx);
-    if (!haveAttrNonNull) {
-      // Check if the parameter is also marked 'nonnull'.
-      ArrayRef<ParmVarDecl*> parms = Call.parameters();
-      if (idx < parms.size())
-        haveAttrNonNull = parms[idx]->hasAttr<NonNullAttr>();
-    }
 
     if (!haveRefTypeParam && !haveAttrNonNull)
       continue;
@@ -105,9 +98,7 @@ void NonNullParamChecker::checkPreCall(const CallEvent &Call,
         V = *CSV_I;
         DV = V.getAs<DefinedSVal>();
         assert(++CSV_I == CSV->end());
-        // FIXME: Handle (some_union){ some_other_union_val }, which turns into
-        // a LazyCompoundVal inside a CompoundVal.
-        if (!V.getAs<Loc>())
+        if (!DV)
           continue;
         // Retrieve the corresponding expression.
         if (const CompoundLiteralExpr *CE = dyn_cast<CompoundLiteralExpr>(ArgE))
@@ -123,14 +114,14 @@ void NonNullParamChecker::checkPreCall(const CallEvent &Call,
 
     ConstraintManager &CM = C.getConstraintManager();
     ProgramStateRef stateNotNull, stateNull;
-    std::tie(stateNotNull, stateNull) = CM.assumeDual(state, *DV);
+    llvm::tie(stateNotNull, stateNull) = CM.assumeDual(state, *DV);
 
     if (stateNull && !stateNotNull) {
       // Generate an error node.  Check for a null node in case
       // we cache out.
       if (ExplodedNode *errorNode = C.generateSink(stateNull)) {
 
-        BugReport *R = nullptr;
+        BugReport *R = 0;
         if (haveAttrNonNull)
           R = genReportNullAttrNonNull(errorNode, ArgE);
         else if (haveRefTypeParam)
@@ -165,7 +156,8 @@ BugReport *NonNullParamChecker::genReportNullAttrNonNull(
   // the BugReport is passed to 'EmitWarning'.
   if (!BTAttrNonNull)
     BTAttrNonNull.reset(new BugType(
-        this, "Argument with 'nonnull' attribute passed null", "API"));
+                            "Argument with 'nonnull' attribute passed null",
+                            "API"));
 
   BugReport *R = new BugReport(*BTAttrNonNull,
                   "Null pointer passed as an argument to a 'nonnull' parameter",
@@ -179,14 +171,14 @@ BugReport *NonNullParamChecker::genReportNullAttrNonNull(
 BugReport *NonNullParamChecker::genReportReferenceToNullPointer(
   const ExplodedNode *ErrorNode, const Expr *ArgE) const {
   if (!BTNullRefArg)
-    BTNullRefArg.reset(new BuiltinBug(this, "Dereference of null pointer"));
+    BTNullRefArg.reset(new BuiltinBug("Dereference of null pointer"));
 
   BugReport *R = new BugReport(*BTNullRefArg,
                                "Forming reference to null pointer",
                                ErrorNode);
   if (ArgE) {
     const Expr *ArgEDeref = bugreporter::getDerefExpr(ArgE);
-    if (!ArgEDeref)
+    if (ArgEDeref == 0)
       ArgEDeref = ArgE;
     bugreporter::trackNullOrUndefValue(ErrorNode,
                                        ArgEDeref,

@@ -1085,7 +1085,8 @@ my_newbuf(struct my_softc * sc, struct my_chain_onefrag * c)
 		    "no memory for rx list -- packet dropped!\n");
 		return (ENOBUFS);
 	}
-	if (!(MCLGET(m_new, M_NOWAIT))) {
+	MCLGET(m_new, M_NOWAIT);
+	if (!(m_new->m_flags & M_EXT)) {
 		device_printf(sc->my_dev,
 		    "no memory for rx list -- packet dropped!\n");
 		m_freem(m_new);
@@ -1120,7 +1121,7 @@ my_rxeof(struct my_softc * sc)
 		sc->my_cdata.my_rx_head = cur_rx->my_nextdesc;
 
 		if (rxstat & MY_ES) {	/* error summary: give up this rx pkt */
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 			cur_rx->my_ptr->my_status = MY_OWNByNIC;
 			continue;
 		}
@@ -1133,7 +1134,7 @@ my_rxeof(struct my_softc * sc)
 			    total_len, 0, ifp, NULL);
 			cur_rx->my_ptr->my_status = MY_OWNByNIC;
 			if (m == NULL) {
-				if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+				ifp->if_ierrors++;
 				continue;
 			}
 		} else {
@@ -1146,14 +1147,14 @@ my_rxeof(struct my_softc * sc)
 			 * little else we can do in this situation.
 			 */
 			if (my_newbuf(sc, cur_rx) == ENOBUFS) {
-				if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+				ifp->if_ierrors++;
 				cur_rx->my_ptr->my_status = MY_OWNByNIC;
 				continue;
 			}
 			m->m_pkthdr.rcvif = ifp;
 			m->m_pkthdr.len = m->m_len = total_len;
 		}
-		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		ifp->if_ipackets++;
 		eh = mtod(m, struct ether_header *);
 #if NBPFILTER > 0
 		/*
@@ -1211,16 +1212,16 @@ my_txeof(struct my_softc * sc)
 			break;
 		if (!(CSR_READ_4(sc, MY_TCRRCR) & MY_Enhanced)) {
 			if (txstat & MY_TXERR) {
-				if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+				ifp->if_oerrors++;
 				if (txstat & MY_EC) /* excessive collision */
-					if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
+					ifp->if_collisions++;
 				if (txstat & MY_LC)	/* late collision */
-					if_inc_counter(ifp, IFCOUNTER_COLLISIONS, 1);
+					ifp->if_collisions++;
 			}
-			if_inc_counter(ifp, IFCOUNTER_COLLISIONS,
-			    (txstat & MY_NCRMASK) >> MY_NCRShift);
+			ifp->if_collisions += (txstat & MY_NCRMASK) >>
+			    MY_NCRShift;
 		}
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		ifp->if_opackets++;
 		m_freem(cur_tx->my_mbuf);
 		cur_tx->my_mbuf = NULL;
 		if (sc->my_cdata.my_tx_head == sc->my_cdata.my_tx_tail) {
@@ -1231,7 +1232,7 @@ my_txeof(struct my_softc * sc)
 		sc->my_cdata.my_tx_head = cur_tx->my_nextdesc;
 	}
 	if (CSR_READ_4(sc, MY_TCRRCR) & MY_Enhanced) {
-		if_inc_counter(ifp, IFCOUNTER_COLLISIONS, (CSR_READ_4(sc, MY_TSR) & MY_NCRMask));
+		ifp->if_collisions += (CSR_READ_4(sc, MY_TSR) & MY_NCRMask);
 	}
 	return;
 }
@@ -1292,7 +1293,7 @@ my_intr(void *arg)
 
 		if ((status & MY_RBU) || (status & MY_RxErr)) {
 			/* rx buffer unavailable or rx error */
-			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
+			ifp->if_ierrors++;
 #ifdef foo
 			my_stop(sc);
 			my_reset(sc);
@@ -1351,7 +1352,8 @@ my_encap(struct my_softc * sc, struct my_chain * c, struct mbuf * m_head)
 		return (1);
 	}
 	if (m_head->m_pkthdr.len > MHLEN) {
-		if (!(MCLGET(m_new, M_NOWAIT))) {
+		MCLGET(m_new, M_NOWAIT);
+		if (!(m_new->m_flags & M_EXT)) {
 			m_freem(m_new);
 			device_printf(sc->my_dev, "no memory for tx list");
 			return (1);
@@ -1699,7 +1701,7 @@ my_watchdog(void *arg)
 		return;
 
 	ifp = sc->my_ifp;
-	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+	ifp->if_oerrors++;
 	if_printf(ifp, "watchdog timeout\n");
 	if (!(my_phy_readreg(sc, PHY_BMSR) & PHY_BMSR_LINKSTAT))
 		if_printf(ifp, "no carrier - transceiver cable problem?\n");

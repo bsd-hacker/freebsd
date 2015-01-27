@@ -5,7 +5,8 @@
 
 PROG=	pkill
 
-LIBADD=	kvm
+DPADD=	${LIBKVM}
+LDADD=	-lkvm
 
 LINKS=	${BINDIR}/pkill ${BINDIR}/pgrep
 MLINKS=	pkill.1 pgrep.1

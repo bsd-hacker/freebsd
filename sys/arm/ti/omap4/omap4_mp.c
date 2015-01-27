@@ -41,7 +41,7 @@ __FBSDID("$FreeBSD$");
 void
 platform_mp_init_secondary(void)
 {
-	arm_init_secondary_ic();
+	gic_init_secondary();
 }
 
 void

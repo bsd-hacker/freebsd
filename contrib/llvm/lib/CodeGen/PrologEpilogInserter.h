@@ -37,12 +37,12 @@ namespace llvm {
       initializePEIPass(*PassRegistry::getPassRegistry());
     }
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override;
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
     /// runOnMachineFunction - Insert prolog/epilog code and replace abstract
     /// frame indexes with appropriate references.
     ///
-    bool runOnMachineFunction(MachineFunction &Fn) override;
+    bool runOnMachineFunction(MachineFunction &Fn);
 
   private:
     RegScavenger *RS;

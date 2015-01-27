@@ -171,7 +171,7 @@ detect_hs21(struct bce_softc *bce_sc)
 
 	found = 0;
 	if (bce_sc->bce_chipid == HS21_BCM_CHIPID) {
-		sysenv = kern_getenv("smbios.system.product");
+		sysenv = getenv("smbios.system.product");
 		if (sysenv != NULL) {
 			if (strncmp(sysenv, HS21_PRODUCT_ID,
 			    strlen(HS21_PRODUCT_ID)) == 0)
@@ -198,6 +198,7 @@ brgphy_attach(device_t dev)
 	struct bge_softc *bge_sc = NULL;
 	struct bce_softc *bce_sc = NULL;
 	struct mii_softc *sc;
+	if_t ifp;
 
 	bsc = device_get_softc(dev);
 	sc = &bsc->mii_sc;
@@ -206,12 +207,13 @@ brgphy_attach(device_t dev)
 	    &brgphy_funcs, 0);
 
 	bsc->serdes_flags = 0;
+	ifp = sc->mii_pdata->mii_ifp;
 
 	/* Find the MAC driver associated with this PHY. */
-	if (mii_dev_mac_match(dev, "bge"))
-		bge_sc = mii_dev_mac_softc(dev);
-	else if (mii_dev_mac_match(dev, "bce"))
-		bce_sc = mii_dev_mac_softc(dev);
+	if (strcmp(if_getdname(ifp), "bge") == 0)
+		bge_sc = if_getsoftc(ifp);
+	else if (strcmp(if_getdname(ifp), "bce") == 0)
+		bce_sc = if_getsoftc(ifp);
 
 	/* Handle any special cases based on the PHY ID */
 	switch (sc->mii_mpd_oui) {
@@ -931,10 +933,11 @@ brgphy_reset(struct mii_softc *sc)
 	ifp = sc->mii_pdata->mii_ifp;
 
 	/* Find the driver associated with this PHY. */
-	if (mii_phy_mac_match(sc, "bge"))
-		bge_sc = mii_phy_mac_softc(sc);
-	else if (mii_phy_mac_match(sc, "bce"))
-		bce_sc = mii_phy_mac_softc(sc);
+	if (strcmp(if_getdname(ifp), "bge") == 0)	{
+		bge_sc = if_getsoftc(ifp);
+	} else if (strcmp(if_getdname(ifp), "bce") == 0) {
+		bce_sc = if_getsoftc(ifp);
+	}
 
 	if (bge_sc) {
 		/* Fix up various bugs */

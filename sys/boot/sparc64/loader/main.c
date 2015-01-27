@@ -897,7 +897,7 @@ main(int (*openfirm)(void *))
 	printf("bootpath=\"%s\"\n", bootpath);
 
 	/* Give control to the machine independent loader code. */
-	interact(NULL);
+	interact();
 	return (1);
 }
 

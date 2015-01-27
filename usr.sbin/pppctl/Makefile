@@ -5,6 +5,7 @@ MAN=	pppctl.8
 
 WARNS?=	2
 
-LIBADD=	edit pthread
+DPADD=	${LIBPTHREAD} ${LIBEDIT} ${LIBTERMCAP}
+LDADD=	-lpthread -ledit -ltermcap
 
 .include <bsd.prog.mk>

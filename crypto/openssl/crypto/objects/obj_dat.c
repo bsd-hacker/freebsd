@@ -471,12 +471,11 @@ int OBJ_obj2txt(char *buf, int buf_len, const ASN1_OBJECT *a, int no_name)
 	const unsigned char *p;
 	char tbuf[DECIMAL_SIZE(i)+DECIMAL_SIZE(l)+2];
 
-	/* Ensure that, at every state, |buf| is NUL-terminated. */
-	if (buf && buf_len > 0)
-		buf[0] = '\0';
-
-	if ((a == NULL) || (a->data == NULL))
+	if ((a == NULL) || (a->data == NULL)) {
+		buf[0]='\0';
 		return(0);
+	}
+
 
 	if (!no_name && (nid=OBJ_obj2nid(a)) != NID_undef)
 		{
@@ -555,10 +554,9 @@ int OBJ_obj2txt(char *buf, int buf_len, const ASN1_OBJECT *a, int no_name)
 				i=(int)(l/40);
 				l-=(long)(i*40);
 				}
-			if (buf && (buf_len > 1))
+			if (buf && (buf_len > 0))
 				{
 				*buf++ = i + '0';
-				*buf = '\0';
 				buf_len--;
 				}
 			n++;
@@ -573,10 +571,9 @@ int OBJ_obj2txt(char *buf, int buf_len, const ASN1_OBJECT *a, int no_name)
 			i = strlen(bndec);
 			if (buf)
 				{
-				if (buf_len > 1)
+				if (buf_len > 0)
 					{
 					*buf++ = '.';
-					*buf = '\0';
 					buf_len--;
 					}
 				BUF_strlcpy(buf,bndec,buf_len);
@@ -810,3 +807,4 @@ err:
 	OPENSSL_free(buf);
 	return(ok);
 	}
+

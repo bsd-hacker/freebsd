@@ -394,7 +394,7 @@ umountfs(struct statfs *sfs)
 	 * has been unmounted.
 	 */
 	if (ai != NULL && !(fflag & MNT_FORCE) && do_rpc) {
-		clp = clnt_create(hostp, MOUNTPROG, MOUNTVERS3, "udp");
+		clp = clnt_create(hostp, MOUNTPROG, MOUNTVERS, "udp");
 		if (clp  == NULL) {
 			warnx("%s: %s", hostp,
 			    clnt_spcreateerror("MOUNTPROG"));

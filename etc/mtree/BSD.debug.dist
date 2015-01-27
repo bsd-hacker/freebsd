@@ -24,26 +24,10 @@
             games
             ..
             lib
-                clang
-                    3.5.1
-                        lib
-                            freebsd
-                            ..
-                        ..
-                    ..
-                ..
                 engines
-                ..
-                i18n
-                ..
-                private
                 ..
             ..
             lib32
-                i18n
-                ..
-                private
-                ..
             ..
             libexec
                 bsdinstall

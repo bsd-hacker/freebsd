@@ -74,25 +74,6 @@ ObjectContainerBSDArchive::Object::Extract (const DataExtractor& data, lldb::off
     size_t ar_name_len = 0;
     std::string str;
     char *err;
-    
-    
-    // File header
-    //
-    // The common format is as follows.
-    //
-    //  Offset  Length	Name            Format
-    //  0       16      File name       ASCII right padded with spaces (no spaces allowed in file name)
-    //  16      12      File mod        Decimal as cstring right padded with spaces
-    //  28      6       Owner ID        Decimal as cstring right padded with spaces
-    //  34      6       Group ID        Decimal as cstring right padded with spaces
-    //  40      8       File mode       Octal   as cstring right padded with spaces
-    //  48      10      File byte size  Decimal as cstring right padded with spaces
-    //  58      2       File magic      0x60 0x0A
-
-    // Make sure there is enough data for the file header and bail if not
-    if (!data.ValidOffsetForDataOfSize(offset, 60))
-        return LLDB_INVALID_OFFSET;
-
     str.assign ((const char *)data.GetData(&offset, 16),    16);
     if (str.find("#1/") == 0)
     {
@@ -129,11 +110,7 @@ ObjectContainerBSDArchive::Object::Extract (const DataExtractor& data, lldb::off
     {
         if (ar_name_len > 0)
         {
-            const void *ar_name_ptr = data.GetData(&offset, ar_name_len);
-            // Make sure there was enough data for the string value and bail if not
-            if (ar_name_ptr == NULL)
-                return LLDB_INVALID_OFFSET;
-            str.assign ((const char *)ar_name_ptr, ar_name_len);
+            str.assign ((const char *)data.GetData(&offset, ar_name_len), ar_name_len);
             ar_name.SetCString (str.c_str());
         }
         ar_file_offset = offset;
@@ -247,7 +224,7 @@ ObjectContainerBSDArchive::Archive::FindCachedArchive (const FileSpec &file, con
                 // whose modification time doesn't match. It doesn't make sense
                 // for us to continue to use this BSD archive since we cache only
                 // the object info which consists of file time info and also the
-                // file offset and file size of any contained objects. Since
+                // file offset and file size of any contianed objects. Since
                 // this information is now out of date, we won't get the correct
                 // information if we go and extract the file data, so we should 
                 // remove the old and outdated entry.
@@ -358,9 +335,7 @@ ObjectContainerBSDArchive::CreateInstance
                 Timer scoped_timer (__PRETTY_FUNCTION__,
                                     "ObjectContainerBSDArchive::CreateInstance (module = %s, file = %p, file_offset = 0x%8.8" PRIx64 ", file_size = 0x%8.8" PRIx64 ")",
                                     module_sp->GetFileSpec().GetPath().c_str(),
-                                    static_cast<const void*>(file),
-                                    static_cast<uint64_t>(file_offset),
-                                    static_cast<uint64_t>(length));
+                                    file, (uint64_t) file_offset, (uint64_t) length);
 
                 // Map the entire .a file to be sure that we don't lose any data if the file
                 // gets updated by a new build while this .a file is being used for debugging
@@ -482,11 +457,11 @@ ObjectContainerBSDArchive::ParseHeader ()
 void
 ObjectContainerBSDArchive::Dump (Stream *s) const
 {
-    s->Printf("%p: ", static_cast<const void*>(this));
+    s->Printf("%p: ", this);
     s->Indent();
     const size_t num_archs = GetNumArchitectures();
     const size_t num_objects = GetNumObjects();
-    s->Printf("ObjectContainerBSDArchive, num_archs = %" PRIu64 ", num_objects = %" PRIu64 "", (uint64_t)num_archs, (uint64_t)num_objects);
+    s->Printf("ObjectContainerBSDArchive, num_archs = %zu, num_objects = %zu", num_archs, num_objects);
     uint32_t i;
     ArchSpec arch;
     s->IndentMore();

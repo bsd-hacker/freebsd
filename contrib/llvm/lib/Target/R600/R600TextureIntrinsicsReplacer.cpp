@@ -18,7 +18,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/InstVisitor.h"
+#include "llvm/InstVisitor.h"
 
 using namespace llvm;
 
@@ -209,7 +209,7 @@ public:
     FunctionPass(ID) {
   }
 
-  bool doInitialization(Module &M) override {
+  virtual bool doInitialization(Module &M) {
     LLVMContext &Ctx = M.getContext();
     Mod = &M;
     FloatType = Type::getFloatTy(Ctx);
@@ -245,16 +245,16 @@ public:
     return false;
   }
 
-  bool runOnFunction(Function &F) override {
+  virtual bool runOnFunction(Function &F) {
     visit(F);
     return false;
   }
 
-  const char *getPassName() const override {
+  virtual const char *getPassName() const {
     return "R600 Texture Intrinsics Replacer";
   }
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  void getAnalysisUsage(AnalysisUsage &AU) const {
   }
 
   void visitCallInst(CallInst &I) {

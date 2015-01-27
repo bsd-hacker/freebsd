@@ -158,7 +158,7 @@ class PressureDiffs {
   unsigned Size;
   unsigned Max;
 public:
-  PressureDiffs(): PDiffArray(nullptr), Size(0), Max(0) {}
+  PressureDiffs(): PDiffArray(0), Size(0), Max(0) {}
   ~PressureDiffs() { free(PDiffArray); }
 
   void clear() { Size = 0; }
@@ -285,12 +285,12 @@ class RegPressureTracker {
 
 public:
   RegPressureTracker(IntervalPressure &rp) :
-    MF(nullptr), TRI(nullptr), RCI(nullptr), LIS(nullptr), MBB(nullptr), P(rp),
-    RequireIntervals(true), TrackUntiedDefs(false) {}
+    MF(0), TRI(0), RCI(0), LIS(0), MBB(0), P(rp), RequireIntervals(true),
+    TrackUntiedDefs(false) {}
 
   RegPressureTracker(RegionPressure &rp) :
-    MF(nullptr), TRI(nullptr), RCI(nullptr), LIS(nullptr), MBB(nullptr), P(rp),
-    RequireIntervals(false), TrackUntiedDefs(false) {}
+    MF(0), TRI(0), RCI(0), LIS(0), MBB(0), P(rp), RequireIntervals(false),
+    TrackUntiedDefs(false) {}
 
   void reset();
 
@@ -318,8 +318,7 @@ public:
   SlotIndex getCurrSlot() const;
 
   /// Recede across the previous instruction.
-  bool recede(SmallVectorImpl<unsigned> *LiveUses = nullptr,
-              PressureDiff *PDiff = nullptr);
+  bool recede(SmallVectorImpl<unsigned> *LiveUses = 0, PressureDiff *PDiff = 0);
 
   /// Advance across the current instruction.
   bool advance();
@@ -394,7 +393,7 @@ public:
                                          MaxPressureLimit);
 
     assert(isBottomClosed() && "Uninitialized pressure tracker");
-    return getMaxUpwardPressureDelta(MI, nullptr, Delta, CriticalPSets,
+    return getMaxUpwardPressureDelta(MI, 0, Delta, CriticalPSets,
                                      MaxPressureLimit);
   }
 
@@ -434,8 +433,10 @@ protected:
   void bumpDownwardPressure(const MachineInstr *MI);
 };
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void dumpRegSetPressure(ArrayRef<unsigned> SetPressure,
                         const TargetRegisterInfo *TRI);
+#endif
 } // end namespace llvm
 
 #endif

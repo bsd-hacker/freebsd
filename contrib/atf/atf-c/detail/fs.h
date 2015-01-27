@@ -1,4 +1,7 @@
-/* Copyright (c) 2008 The NetBSD Foundation, Inc.
+/*
+ * Automated Testing Framework (atf)
+ *
+ * Copyright (c) 2008 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,10 +24,11 @@
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
-#if !defined(ATF_C_DETAIL_FS_H)
-#define ATF_C_DETAIL_FS_H
+#if !defined(ATF_C_FS_H)
+#define ATF_C_FS_H
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -32,8 +36,9 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
-#include <atf-c/detail/dynstr.h>
 #include <atf-c/error_fwd.h>
+
+#include "dynstr.h"
 
 /* ---------------------------------------------------------------------
  * The "atf_fs_path" type.
@@ -125,4 +130,4 @@ atf_error_t atf_fs_mkstemp(atf_fs_path_t *, int *);
 atf_error_t atf_fs_rmdir(const atf_fs_path_t *);
 atf_error_t atf_fs_unlink(const atf_fs_path_t *);
 
-#endif /* !defined(ATF_C_DETAIL_FS_H) */
+#endif /* !defined(ATF_C_FS_H) */

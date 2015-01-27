@@ -30,8 +30,6 @@
 
 typedef void fn_t(void);
 
-int main(void);
-
 int
 main(void)
 {

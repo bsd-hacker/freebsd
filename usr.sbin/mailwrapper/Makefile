@@ -6,7 +6,8 @@
 PROG=	mailwrapper
 MAN=	mailwrapper.8
 
-LIBADD=	util
+DPADD=	${LIBUTIL}
+LDADD=	-lutil
 .endif
 
 .if ${MK_MAILWRAPPER} != "no" || ${MK_SENDMAIL} != "no"

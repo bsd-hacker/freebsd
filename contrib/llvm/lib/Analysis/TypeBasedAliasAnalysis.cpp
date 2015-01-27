@@ -144,7 +144,7 @@ namespace {
     const MDNode *Node;
 
   public:
-    TBAANode() : Node(nullptr) {}
+    TBAANode() : Node(0) {}
     explicit TBAANode(const MDNode *N) : Node(N) {}
 
     /// getNode - Get the MDNode for this TBAANode.
@@ -182,6 +182,7 @@ namespace {
     const MDNode *Node;
 
   public:
+    TBAAStructTagNode() : Node(0) {}
     explicit TBAAStructTagNode(const MDNode *N) : Node(N) {}
 
     /// Get the MDNode for this TBAAStructTagNode.
@@ -217,7 +218,7 @@ namespace {
     const MDNode *Node;
 
   public:
-    TBAAStructTypeNode() : Node(nullptr) {}
+    TBAAStructTypeNode() : Node(0) {}
     explicit TBAAStructTypeNode(const MDNode *N) : Node(N) {}
 
     /// Get the MDNode for this TBAAStructTypeNode.
@@ -280,7 +281,7 @@ namespace {
       initializeTypeBasedAliasAnalysisPass(*PassRegistry::getPassRegistry());
     }
 
-    void initializePass() override {
+    virtual void initializePass() {
       InitializeAliasAnalysis(this);
     }
 
@@ -288,7 +289,7 @@ namespace {
     /// an analysis interface through multiple inheritance.  If needed, it
     /// should override this to adjust the this pointer as needed for the
     /// specified pass info.
-    void *getAdjustedAnalysisPointer(const void *PI) override {
+    virtual void *getAdjustedAnalysisPointer(const void *PI) {
       if (PI == &AliasAnalysis::ID)
         return (AliasAnalysis*)this;
       return this;
@@ -298,15 +299,15 @@ namespace {
     bool PathAliases(const MDNode *A, const MDNode *B) const;
 
   private:
-    void getAnalysisUsage(AnalysisUsage &AU) const override;
-    AliasResult alias(const Location &LocA, const Location &LocB) override;
-    bool pointsToConstantMemory(const Location &Loc, bool OrLocal) override;
-    ModRefBehavior getModRefBehavior(ImmutableCallSite CS) override;
-    ModRefBehavior getModRefBehavior(const Function *F) override;
-    ModRefResult getModRefInfo(ImmutableCallSite CS,
-                               const Location &Loc) override;
-    ModRefResult getModRefInfo(ImmutableCallSite CS1,
-                               ImmutableCallSite CS2) override;
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+    virtual AliasResult alias(const Location &LocA, const Location &LocB);
+    virtual bool pointsToConstantMemory(const Location &Loc, bool OrLocal);
+    virtual ModRefBehavior getModRefBehavior(ImmutableCallSite CS);
+    virtual ModRefBehavior getModRefBehavior(const Function *F);
+    virtual ModRefResult getModRefInfo(ImmutableCallSite CS,
+                                       const Location &Loc);
+    virtual ModRefResult getModRefInfo(ImmutableCallSite CS1,
+                                       ImmutableCallSite CS2);
   };
 }  // End of anonymous namespace
 
@@ -339,8 +340,7 @@ static bool isStructPathTBAA(const MDNode *MD) {
 bool
 TypeBasedAliasAnalysis::Aliases(const MDNode *A,
                                 const MDNode *B) const {
-  // Make sure that both MDNodes are struct-path aware.
-  if (isStructPathTBAA(A) && isStructPathTBAA(B))
+  if (isStructPathTBAA(A))
     return PathAliases(A, B);
 
   // Keep track of the root node for A and B.
@@ -386,10 +386,6 @@ TypeBasedAliasAnalysis::Aliases(const MDNode *A,
 bool
 TypeBasedAliasAnalysis::PathAliases(const MDNode *A,
                                     const MDNode *B) const {
-  // Verify that both input nodes are struct-path aware.
-  assert(isStructPathTBAA(A) && "MDNode A is not struct-path aware.");
-  assert(isStructPathTBAA(B) && "MDNode B is not struct-path aware.");
-
   // Keep track of the root node for A and B.
   TBAAStructTypeNode RootA, RootB;
   TBAAStructTagNode TagA(A), TagB(B);
@@ -559,40 +555,38 @@ bool MDNode::isTBAAVtableAccess() const {
 
 MDNode *MDNode::getMostGenericTBAA(MDNode *A, MDNode *B) {
   if (!A || !B)
-    return nullptr;
+    return NULL;
 
   if (A == B)
     return A;
 
   // For struct-path aware TBAA, we use the access type of the tag.
-  bool StructPath = isStructPathTBAA(A) && isStructPathTBAA(B);
+  bool StructPath = isStructPathTBAA(A);
   if (StructPath) {
     A = cast_or_null<MDNode>(A->getOperand(1));
-    if (!A) return nullptr;
+    if (!A) return 0;
     B = cast_or_null<MDNode>(B->getOperand(1));
-    if (!B) return nullptr;
+    if (!B) return 0;
   }
 
   SmallVector<MDNode *, 4> PathA;
   MDNode *T = A;
   while (T) {
     PathA.push_back(T);
-    T = T->getNumOperands() >= 2 ? cast_or_null<MDNode>(T->getOperand(1))
-                                 : nullptr;
+    T = T->getNumOperands() >= 2 ? cast_or_null<MDNode>(T->getOperand(1)) : 0;
   }
 
   SmallVector<MDNode *, 4> PathB;
   T = B;
   while (T) {
     PathB.push_back(T);
-    T = T->getNumOperands() >= 2 ? cast_or_null<MDNode>(T->getOperand(1))
-                                 : nullptr;
+    T = T->getNumOperands() >= 2 ? cast_or_null<MDNode>(T->getOperand(1)) : 0;
   }
 
   int IA = PathA.size() - 1;
   int IB = PathB.size() - 1;
 
-  MDNode *Ret = nullptr;
+  MDNode *Ret = 0;
   while (IA >= 0 && IB >=0) {
     if (PathA[IA] == PathB[IB])
       Ret = PathA[IA];
@@ -605,7 +599,7 @@ MDNode *MDNode::getMostGenericTBAA(MDNode *A, MDNode *B) {
     return Ret;
 
   if (!Ret)
-    return nullptr;
+    return 0;
   // We need to convert from a type node to a tag node.
   Type *Int64 = IntegerType::get(A->getContext(), 64);
   Value *Ops[3] = { Ret, Ret, ConstantInt::get(Int64, 0) };

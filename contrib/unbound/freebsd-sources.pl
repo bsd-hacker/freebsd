@@ -51,11 +51,7 @@ sub get_sources($) {
     close(MAKE);
     chomp($objs);
     $objs =~ s/\.l?o\b/.c/g;
-    return map {
-	/lexer/ && s/c$/l/;
-	/parser/ && s/c$/y/;
-	$_;
-    } split(/\s+/, $objs);
+    return (split(/\s+/, $objs));
 }
 
 MAIN:{
@@ -74,3 +70,4 @@ MAIN:{
 }
 
 1;
+

@@ -31,7 +31,6 @@
 #include <machine/asm.h>
 __FBSDID("$FreeBSD$");
 
-	.syntax	unified
 
 /*
  * ffs - find first set bit, this algorithm isolates the first set
@@ -63,7 +62,7 @@ ENTRY(ffs)
 	rsbne   r0, r0, r0, lsl #16 /* r0 = X * 0x0450fbaf */
               
 	/* now lookup in table indexed on top 6 bits of r0 */
-	ldrbne  r0, [ r2, r0, lsr #26 ]
+	ldrneb  r0, [ r2, r0, lsr #26 ]
 
 	RET
 .text;

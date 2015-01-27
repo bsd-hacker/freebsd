@@ -29,7 +29,7 @@
 
 #include <machine/asmacros.h>
 
-#include "vmx_assym.h"
+#include "vmx_assym.s"
 
 #ifdef SMP
 #define	LK	lock ;
