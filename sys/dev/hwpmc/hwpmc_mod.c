@@ -192,6 +192,7 @@ static int	pmc_detach_process(struct proc *p, struct pmc *pm);
 static int	pmc_detach_one_process(struct proc *p, struct pmc *pm,
     int flags);
 static void	pmc_destroy_owner_descriptor(struct pmc_owner *po);
+static void	pmc_destroy_pmc_descriptor(struct pmc *pm);
 static struct pmc_owner *pmc_find_owner_descriptor(struct proc *p);
 static int	pmc_find_pmc(pmc_id_t pmcid, struct pmc **pm);
 static struct pmc *pmc_find_pmc_descriptor_in_process(struct pmc_owner *po,
@@ -234,8 +235,7 @@ static void pmc_generic_cpu_finalize(struct pmc_mdep *md);
 SYSCTL_DECL(_kern_hwpmc);
 
 static int pmc_callchaindepth = PMC_CALLCHAIN_DEPTH;
-TUNABLE_INT(PMC_SYSCTL_NAME_PREFIX "callchaindepth", &pmc_callchaindepth);
-SYSCTL_INT(_kern_hwpmc, OID_AUTO, callchaindepth, CTLFLAG_TUN|CTLFLAG_RD,
+SYSCTL_INT(_kern_hwpmc, OID_AUTO, callchaindepth, CTLFLAG_RDTUN,
     &pmc_callchaindepth, 0, "depth of call chain records");
 
 #ifdef	DEBUG
@@ -244,7 +244,7 @@ char	pmc_debugstr[PMC_DEBUG_STRSIZE];
 TUNABLE_STR(PMC_SYSCTL_NAME_PREFIX "debugflags", pmc_debugstr,
     sizeof(pmc_debugstr));
 SYSCTL_PROC(_kern_hwpmc, OID_AUTO, debugflags,
-    CTLTYPE_STRING|CTLFLAG_RW|CTLFLAG_TUN,
+    CTLTYPE_STRING | CTLFLAG_RWTUN | CTLFLAG_NOFETCH,
     0, 0, pmc_debugflags_sysctl_handler, "A", "debug flags");
 #endif
 
@@ -254,8 +254,7 @@ SYSCTL_PROC(_kern_hwpmc, OID_AUTO, debugflags,
  */
 
 static int pmc_hashsize = PMC_HASH_SIZE;
-TUNABLE_INT(PMC_SYSCTL_NAME_PREFIX "hashsize", &pmc_hashsize);
-SYSCTL_INT(_kern_hwpmc, OID_AUTO, hashsize, CTLFLAG_TUN|CTLFLAG_RD,
+SYSCTL_INT(_kern_hwpmc, OID_AUTO, hashsize, CTLFLAG_RDTUN,
     &pmc_hashsize, 0, "rows in hash tables");
 
 /*
@@ -263,8 +262,7 @@ SYSCTL_INT(_kern_hwpmc, OID_AUTO, hashsize, CTLFLAG_TUN|CTLFLAG_RD,
  */
 
 static int pmc_nsamples = PMC_NSAMPLES;
-TUNABLE_INT(PMC_SYSCTL_NAME_PREFIX "nsamples", &pmc_nsamples);
-SYSCTL_INT(_kern_hwpmc, OID_AUTO, nsamples, CTLFLAG_TUN|CTLFLAG_RD,
+SYSCTL_INT(_kern_hwpmc, OID_AUTO, nsamples, CTLFLAG_RDTUN,
     &pmc_nsamples, 0, "number of PC samples per CPU");
 
 
@@ -273,8 +271,7 @@ SYSCTL_INT(_kern_hwpmc, OID_AUTO, nsamples, CTLFLAG_TUN|CTLFLAG_RD,
  */
 
 static int pmc_mtxpool_size = PMC_MTXPOOL_SIZE;
-TUNABLE_INT(PMC_SYSCTL_NAME_PREFIX "mtxpoolsize", &pmc_mtxpool_size);
-SYSCTL_INT(_kern_hwpmc, OID_AUTO, mtxpoolsize, CTLFLAG_TUN|CTLFLAG_RD,
+SYSCTL_INT(_kern_hwpmc, OID_AUTO, mtxpoolsize, CTLFLAG_RDTUN,
     &pmc_mtxpool_size, 0, "size of spin mutex pool");
 
 
@@ -288,8 +285,7 @@ SYSCTL_INT(_kern_hwpmc, OID_AUTO, mtxpoolsize, CTLFLAG_TUN|CTLFLAG_RD,
  */
 
 static int pmc_unprivileged_syspmcs = 0;
-TUNABLE_INT("security.bsd.unprivileged_syspmcs", &pmc_unprivileged_syspmcs);
-SYSCTL_INT(_security_bsd, OID_AUTO, unprivileged_syspmcs, CTLFLAG_RW,
+SYSCTL_INT(_security_bsd, OID_AUTO, unprivileged_syspmcs, CTLFLAG_RWTUN,
     &pmc_unprivileged_syspmcs, 0,
     "allow unprivileged process to allocate system PMCs");
 
@@ -324,7 +320,12 @@ static struct syscall_module_data pmc_syscall_mod = {
 	NULL,
 	&pmc_syscall_num,
 	&pmc_sysent,
+#if (__FreeBSD_version >= 1100000)
+	{ 0, NULL },
+	SY_THR_STATIC_KLD,
+#else
 	{ 0, NULL }
+#endif
 };
 
 static moduledata_t pmc_mod = {
@@ -753,6 +754,7 @@ pmc_remove_owner(struct pmc_owner *po)
 		    ("[pmc,%d] owner %p != po %p", __LINE__, pm->pm_owner, po));
 
 		pmc_release_pmc_descriptor(pm);	/* will unlink from the list */
+		pmc_destroy_pmc_descriptor(pm);
 	}
 
 	KASSERT(po->po_sscount == 0,
@@ -2165,9 +2167,7 @@ pmc_allocate_pmc_descriptor(void)
 static void
 pmc_destroy_pmc_descriptor(struct pmc *pm)
 {
-	(void) pm;
 
-#ifdef	DEBUG
 	KASSERT(pm->pm_state == PMC_STATE_DELETED ||
 	    pm->pm_state == PMC_STATE_FREE,
 	    ("[pmc,%d] destroying non-deleted PMC", __LINE__));
@@ -2178,7 +2178,8 @@ pmc_destroy_pmc_descriptor(struct pmc *pm)
 	KASSERT(pm->pm_runcount == 0,
 	    ("[pmc,%d] pmc has non-zero run count %d", __LINE__,
 		pm->pm_runcount));
-#endif
+
+	free(pm, M_PMC);
 }
 
 static void
@@ -2211,10 +2212,10 @@ pmc_wait_for_pmc_idle(struct pmc *pm)
  *  - detaches the PMC from hardware
  *  - unlinks all target threads that were attached to it
  *  - removes the PMC from its owner's list
- *  - destroy's the PMC private mutex
+ *  - destroys the PMC private mutex
  *
- * Once this function completes, the given pmc pointer can be safely
- * FREE'd by the caller.
+ * Once this function completes, the given pmc pointer can be freed by
+ * calling pmc_destroy_pmc_descriptor().
  */
 
 static void
@@ -2364,8 +2365,6 @@ pmc_release_pmc_descriptor(struct pmc *pm)
 		LIST_REMOVE(pm, pm_next);
 		pm->pm_owner = NULL;
 	}
-
-	pmc_destroy_pmc_descriptor(pm);
 }
 
 /*
@@ -3372,7 +3371,6 @@ pmc_syscall_handler(struct thread *td, void *syscall_args)
 
 		if (n == (int) md->pmd_npmc) {
 			pmc_destroy_pmc_descriptor(pmc);
-			free(pmc, M_PMC);
 			pmc = NULL;
 			error = EINVAL;
 			break;
@@ -3408,7 +3406,6 @@ pmc_syscall_handler(struct thread *td, void *syscall_args)
 			    (error = pcd->pcd_config_pmc(cpu, adjri, pmc)) != 0) {
 				(void) pcd->pcd_release_pmc(cpu, adjri, pmc);
 				pmc_destroy_pmc_descriptor(pmc);
-				free(pmc, M_PMC);
 				pmc = NULL;
 				pmc_restore_cpu_binding(&pb);
 				error = EPERM;
@@ -3436,7 +3433,7 @@ pmc_syscall_handler(struct thread *td, void *syscall_args)
 		if ((error =
 		    pmc_register_owner(curthread->td_proc, pmc)) != 0) {
 			pmc_release_pmc_descriptor(pmc);
-			free(pmc, M_PMC);
+			pmc_destroy_pmc_descriptor(pmc);
 			pmc = NULL;
 			break;
 		}
@@ -3679,8 +3676,7 @@ pmc_syscall_handler(struct thread *td, void *syscall_args)
 		po = pm->pm_owner;
 		pmc_release_pmc_descriptor(pm);
 		pmc_maybe_remove_owner(po);
-
-		free(pm, M_PMC);
+		pmc_destroy_pmc_descriptor(pm);
 	}
 	break;
 
@@ -4757,8 +4753,9 @@ pmc_initialize(void)
 	if (pmc_callchaindepth <= 0 ||
 	    pmc_callchaindepth > PMC_CALLCHAIN_DEPTH_MAX) {
 		(void) printf("hwpmc: tunable \"callchaindepth\"=%d out of "
-		    "range.\n", pmc_callchaindepth);
-		pmc_callchaindepth = PMC_CALLCHAIN_DEPTH;
+		    "range - using %d.\n", pmc_callchaindepth,
+		    PMC_CALLCHAIN_DEPTH_MAX);
+		pmc_callchaindepth = PMC_CALLCHAIN_DEPTH_MAX;
 	}
 
 	md = pmc_md_initialize();

@@ -10,8 +10,6 @@ _CPUCFLAGS =
 MACHINE_CPU = i486
 . elif ${MACHINE_CPUARCH} == "amd64"
 MACHINE_CPU = amd64 sse2 sse mmx
-. elif ${MACHINE_CPUARCH} == "ia64"
-MACHINE_CPU = itanium
 . elif ${MACHINE_CPUARCH} == "powerpc"
 MACHINE_CPU = aim
 . elif ${MACHINE_CPUARCH} == "sparc64"
@@ -101,7 +99,7 @@ _CPUCFLAGS = -march=armv5te -D__XSCALE__
 . elif ${CPUTYPE} == "armv6"
 _CPUCFLAGS = -march=${CPUTYPE} -DARM_ARCH_6=1
 . elif ${CPUTYPE} == "cortexa"
-_CPUCFLAGS = -DARM_ARCH_6=1 -mfpu=vfp
+_CPUCFLAGS = -march=armv7 -DARM_ARCH_6=1 -mfpu=vfp
 .  else
 _CPUCFLAGS = -mcpu=${CPUTYPE}
 .  endif
@@ -234,10 +232,6 @@ MACHINE_CPU = ssse3 sse3
 MACHINE_CPU = sse3
 .  endif
 MACHINE_CPU += amd64 sse2 sse mmx
-. elif ${MACHINE_CPUARCH} == "ia64"
-.  if ${CPUTYPE} == "itanium"
-MACHINE_CPU = itanium
-.  endif
 . elif ${MACHINE_ARCH} == "powerpc"
 .  if ${CPUTYPE} == "e500"
 MACHINE_CPU = booke
@@ -257,6 +251,10 @@ MACHINE_CPU = v9 ultrasparc ultrasparc3
 CFLAGS += -G0
 .endif
 
+.if ${MACHINE_ARCH} == "armv6"
+_CPUCFLAGS += -mfloat-abi=softfp
+.endif
+
 # NB: COPTFLAGS is handled in /usr/src/sys/conf/kern.pre.mk
 
 .if !defined(NO_CPU_CFLAGS)
@@ -266,3 +264,4 @@ CFLAGS += ${_CPUCFLAGS}
 # Add in any architecture-specific CFLAGS.  
 # These come from make.conf or the command line or the environment.
 CFLAGS += ${CFLAGS.${MACHINE_ARCH}}
+CXXFLAGS += ${CXXFLAGS.${MACHINE_ARCH}}

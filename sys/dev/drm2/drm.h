@@ -163,7 +163,7 @@ struct drm_hw_lock {
 /* This is beyond ugly, and only works on GCC.  However, it allows me to use
  * drm.h in places (i.e., in the X-server) where I can't use size_t.  The real
  * fix is to use uint32_t instead of size_t, but that fix will break existing
- * LP64 (i.e., PowerPC64, SPARC64, IA-64, Alpha, etc.) systems.  That *will*
+ * LP64 (i.e., PowerPC64, SPARC64, Alpha, etc.) systems.  That *will*
  * eventually happen, though.  I chose 'unsigned long' to be the fallback type
  * because that works on all the platforms I know about.  Hopefully, the
  * real fix will happen before that bites us.
@@ -1018,6 +1018,9 @@ struct drm_event_vblank {
 #define DRM_CAP_PRIME 0x5
 #define DRM_CAP_TIMESTAMP_MONOTONIC 0x6
 
+#define DRM_PRIME_CAP_IMPORT 0x1
+#define DRM_PRIME_CAP_EXPORT 0x2
+
 #include "drm_mode.h"
 
 /**
@@ -1126,6 +1129,8 @@ struct drm_event_vblank {
 #define DRM_IOCTL_MODE_GETPLANE		DRM_IOWR(0xB6, struct drm_mode_get_plane)
 #define DRM_IOCTL_MODE_SETPLANE		DRM_IOWR(0xB7, struct drm_mode_set_plane)
 #define DRM_IOCTL_MODE_ADDFB2		DRM_IOWR(0xB8, struct drm_mode_fb_cmd2)
+#define DRM_IOCTL_MODE_OBJ_GETPROPERTIES	DRM_IOWR(0xB9, struct drm_mode_obj_get_properties)
+#define DRM_IOCTL_MODE_OBJ_SETPROPERTY	DRM_IOWR(0xBA, struct drm_mode_obj_set_property)
 
 #define DRM_IOCTL_MM_INIT               DRM_IOWR(0xc0, struct drm_mm_init_arg)
 #define DRM_IOCTL_MM_TAKEDOWN           DRM_IOWR(0xc1, struct drm_mm_type_arg)

@@ -117,15 +117,15 @@ struct g_part_alias_list {
 	{ "dragonfly-legacy", G_PART_ALIAS_DFBSD_LEGACY },
 	{ "dragonfly-hammer", G_PART_ALIAS_DFBSD_HAMMER },
 	{ "dragonfly-hammer2", G_PART_ALIAS_DFBSD_HAMMER2 },
+	{ "prep-boot", G_PART_ALIAS_PREP_BOOT },
 };
 
 SYSCTL_DECL(_kern_geom);
 SYSCTL_NODE(_kern_geom, OID_AUTO, part, CTLFLAG_RW, 0,
     "GEOM_PART stuff");
 static u_int check_integrity = 1;
-TUNABLE_INT("kern.geom.part.check_integrity", &check_integrity);
 SYSCTL_UINT(_kern_geom_part, OID_AUTO, check_integrity,
-    CTLFLAG_RW | CTLFLAG_TUN, &check_integrity, 1,
+    CTLFLAG_RWTUN, &check_integrity, 1,
     "Enable integrity checking");
 
 /*
@@ -143,6 +143,7 @@ static g_orphan_t g_part_orphan;
 static g_spoiled_t g_part_spoiled;
 static g_start_t g_part_start;
 static g_resize_t g_part_resize;
+static g_ioctl_t g_part_ioctl;
 
 static struct g_class g_part_class = {
 	.name = "PART",
@@ -159,7 +160,8 @@ static struct g_class g_part_class = {
 	.orphan = g_part_orphan,
 	.spoiled = g_part_spoiled,
 	.start = g_part_start,
-	.resize = g_part_resize
+	.resize = g_part_resize,
+	.ioctl = g_part_ioctl,
 };
 
 DECLARE_GEOM_CLASS(g_part_class, g_part);
@@ -2057,6 +2059,25 @@ g_part_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 		    table->gpt_opened ? "true": "false");
 		G_PART_DUMPCONF(table, NULL, sb, indent);
 	}
+}
+
+/*-
+ * This start routine is only called for non-trivial requests, all the
+ * trivial ones are handled autonomously by the slice code.
+ * For requests we handle here, we must call the g_io_deliver() on the
+ * bio, and return non-zero to indicate to the slice code that we did so.
+ * This code executes in the "DOWN" I/O path, this means:
+ *    * No sleeping.
+ *    * Don't grab the topology lock.
+ *    * Don't call biowait, g_getattr(), g_setattr() or g_read_data()
+ */
+static int
+g_part_ioctl(struct g_provider *pp, u_long cmd, void *data, int fflag, struct thread *td)
+{
+	struct g_part_table *table;
+
+	table = pp->geom->softc;
+	return G_PART_IOCTL(table, pp, cmd, data, fflag, td);
 }
 
 static void

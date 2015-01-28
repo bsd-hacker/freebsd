@@ -412,7 +412,17 @@ p_ere_exp(struct parse *p)
 	case '\\':
 		(void)REQUIRE(MORE(), REG_EESCAPE);
 		wc = WGETNEXT();
-		ordinary(p, wc);
+		switch (wc) {
+		case '<':
+			EMIT(OBOW, 0);
+			break;
+		case '>':
+			EMIT(OEOW, 0);
+			break;
+		default:
+			ordinary(p, wc);
+			break;
+		}
 		break;
 	case '{':		/* okay as ordinary except if digit follows */
 		(void)REQUIRE(!MORE() || !isdigit((uch)PEEK()), REG_BADRPT);
@@ -568,6 +578,12 @@ p_simp_re(struct parse *p,
 		break;
 	case '[':
 		p_bracket(p);
+		break;
+	case BACKSL|'<':
+		EMIT(OBOW, 0);
+		break;
+	case BACKSL|'>':
+		EMIT(OEOW, 0);
 		break;
 	case BACKSL|'{':
 		SETERROR(REG_BADRPT);
@@ -1700,8 +1716,10 @@ computematchjumps(struct parse *p, struct re_guts *g)
 	}
 
 	g->matchjump = (int*) malloc(g->mlen * sizeof(unsigned int));
-	if (g->matchjump == NULL)	/* Not a fatal error */
+	if (g->matchjump == NULL) {	/* Not a fatal error */
+		free(pmatches);
 		return;
+	}
 
 	/* Set maximum possible jump for each character in the pattern */
 	for (mindex = 0; mindex < g->mlen; mindex++)

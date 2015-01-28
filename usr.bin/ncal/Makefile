@@ -4,8 +4,7 @@
 
 PROG=	ncal
 
-DPADD=	${LIBCALENDAR} ${LIBTERMCAP}
-LDADD=	-lcalendar -ltermcap
+LIBADD=	calendar ncursesw
 
 LINKS=	${BINDIR}/ncal ${BINDIR}/cal
 MLINKS=	ncal.1 cal.1
