@@ -29,9 +29,9 @@
 #
 
 # Test the amd64 implementation of:
-# 1. Per-process private ldt and corresponding i386 arch syscalls.                                    
-# 2. Per-process private io permission bitmap and corresponding                                       
-#    i386 arch syscalls.                      
+# 1. Per-process private ldt and corresponding i386 arch syscalls.
+# 2. Per-process private io permission bitmap and corresponding
+#    i386 arch syscalls.
 # 3. Sigcontext
 
 # The tests must be compiled on i386 and run on amd64
@@ -274,7 +274,7 @@ main(int argc, char *argv[])
 		return (1);
 	}
 	inb(port_num);
-	
+
 	return (0);
 }
 EOF
