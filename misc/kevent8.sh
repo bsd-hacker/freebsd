@@ -54,7 +54,7 @@ chmod 777 $mntpoint
 su $testuser -c "(cd $mntpoint; /tmp/kevent8)" &
 sleep 99
 umount -f $mntpoint
-killall kevent8
+pkill kevent8
 wait
 
 while mount | grep -q $mntpoint; do
