@@ -53,7 +53,7 @@ rm -f devfs2.c
 
 rm devfs2
 
-exit 
+exit
 
 EOF
 #include <pthread.h>
@@ -94,7 +94,7 @@ main()
 	pthread_t threads[2];
 	int i;
 	int r;
-	
+
 	if ((r = pthread_create(&threads[0], NULL, thr1, 0)) != 0)
 		err(1, "pthread_create(): %s\n", strerror(r));
 	if ((r = pthread_create(&threads[1], NULL, thr2, 0)) != 0)
