@@ -126,8 +126,7 @@ tmmap(void *arg __unused)
 	len = 1LL * 1024 * 1024 * 1024;
 
 	for (i = 0; i < 100; i++) {
-		if ((fd = open("/dev/zero", O_CREAT | O_TRUNC | O_RDWR,
-		    0622)) == -1)
+		if ((fd = open("/dev/zero", O_RDWR)) == -1)
 			err(1,"open()");
 
 		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE,
@@ -254,6 +253,7 @@ main(void)
 	for (i = 0; i < N; i++)
 		r[i] = arc4random();
 
+	alarm(1200);
 	for (i = 0; i < LOOPS; i++) {
 		for (j = 0; j < PARALLEL; j++) {
 			if (fork() == 0)
