@@ -31,6 +31,7 @@
 # Test scenario by marcus@freebsd.org
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ -z "`type perl 2>/dev/null`" ] && exit 0
 
 . ../default.cfg
 
@@ -103,7 +104,7 @@ test(void) {
 int main(int argc, char **argv)
 {
 	int i;
-	
+
 	i = 0;
 	signal(SIGALRM, handler);
 	alarm(60);
