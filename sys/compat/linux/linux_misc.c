@@ -2004,7 +2004,6 @@ linux_sched_rr_get_interval(struct thread *td,
 struct thread *
 linux_tdfind(struct thread *td, lwpid_t tid, pid_t pid)
 {
-	struct linux_pemuldata *pem;
 	struct linux_emuldata *em;
 	struct thread *tdt;
 	struct proc *p;
@@ -2020,9 +2019,8 @@ linux_tdfind(struct thread *td, lwpid_t tid, pid_t pid)
 		 * Initial thread where the tid equal to the pid.
 		 */
 		p = pfind(tid);
-		if (p) {
-			pem = pem_find(p);
-			if (pem == NULL) {
+		if (p != NULL) {
+			if (SV_PROC_ABI(p) != SV_ABI_LINUX) {
 				/*
 				 * p is not a Linuxulator process.
 				 */
