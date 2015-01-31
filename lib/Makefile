@@ -53,7 +53,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libfetch \
 	libfigpar \
 	libgeom \
-	libgpio \
+	${_libgpio} \
 	${_libgssapi} \
 	${_librpcsec_gss} \
 	${_libiconv_modules} \
@@ -195,6 +195,10 @@ _cuse=		libcuse
 _libelftc=	libelftc
 .endif
 
+.if ${MK_GPIO} != "no"
+_libgpio=	libgpio
+.endif
+
 .if ${MK_GSSAPI} != "no"
 _libgssapi=	libgssapi
 _librpcsec_gss=	librpcsec_gss
@@ -254,7 +258,9 @@ _librtld_db=	librtld_db
 .endif
 
 .if ${MACHINE_CPUARCH} == "amd64"
+.if ${MK_BHYVE} != "no"
 _libvmmapi=	libvmmapi
+.endif
 .endif
 
 .if ${MACHINE_CPUARCH} == "mips"
