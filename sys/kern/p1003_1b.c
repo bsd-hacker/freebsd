@@ -130,7 +130,9 @@ sys_sched_setparam(struct thread *td, struct sched_setparam_args *uap)
 		targettd = FIRST_THREAD_IN_PROC(targetp);
 	}
 
-	return (kern_sched_setparam(td, targettd, &sched_param));
+	e = kern_sched_setparam(td, targettd, &sched_param);
+	PROC_UNLOCK(targetp);
+	return (e);
 }
 
 int
@@ -145,8 +147,8 @@ kern_sched_setparam(struct thread *td, struct thread *targettd,
 
 	error = p_cansched(td, targetp);
 	if (error == 0)
-		error = ksched_setparam(ksched, targettd, param);
-	PROC_UNLOCK(targetp);
+		error = ksched_setparam(ksched, targettd,
+		    (const struct sched_param *)param);
 	return (error);
 }
 
@@ -170,7 +172,8 @@ sys_sched_getparam(struct thread *td, struct sched_getparam_args *uap)
 		targettd = FIRST_THREAD_IN_PROC(targetp);
 	}
 
-	e = ksched_getparam(ksched, targettd, &sched_param);
+	e = kern_sched_getparam(td, targettd, &sched_param);
+	PROC_UNLOCK(targetp);
 	if (e == 0)
 		e = copyout(&sched_param, uap->param, sizeof(sched_param));
 	return (e);
@@ -189,7 +192,6 @@ kern_sched_getparam(struct thread *td, struct thread *targettd,
 	error = p_cansee(td, targetp);
 	if (error == 0)
 		error = ksched_getparam(ksched, targettd, param);
-	PROC_UNLOCK(targetp);
 	return (error);
 }
 
@@ -216,8 +218,10 @@ sys_sched_setscheduler(struct thread *td, struct sched_setscheduler_args *uap)
 		targettd = FIRST_THREAD_IN_PROC(targetp);
 	}
 
-	return (kern_sched_setscheduler(td, targettd, uap->policy,
-	    &sched_param));
+	e = kern_sched_setscheduler(td, targettd, uap->policy,
+	    &sched_param);
+	PROC_UNLOCK(targetp);
+	return (e);
 }
 
 int
@@ -232,16 +236,13 @@ kern_sched_setscheduler(struct thread *td, struct thread *targettd,
 
 	/* Don't allow non root user to set a scheduler policy. */
 	error = priv_check(td, PRIV_SCHED_SET);
-	if (error) {
-		PROC_UNLOCK(targetp);
+	if (error)
 		return (error);
-	}
 
 	error = p_cansched(td, targetp);
 	if (error == 0)
 		error = ksched_setscheduler(ksched, targettd, policy,
-		    param);
-	PROC_UNLOCK(targetp);
+		    (const struct sched_param *)param);
 	return (error);
 }
 
@@ -263,7 +264,8 @@ sys_sched_getscheduler(struct thread *td, struct sched_getscheduler_args *uap)
 		targettd = FIRST_THREAD_IN_PROC(targetp);
 	}
 
-	e = ksched_getscheduler(ksched, targettd, &policy);
+	e = kern_sched_getscheduler(td, targettd, &policy);
+	PROC_UNLOCK(targetp);
 	if (e == 0)
 		td->td_retval[0] = policy;
 
@@ -283,8 +285,6 @@ kern_sched_getscheduler(struct thread *td, struct thread *targettd,
 	error = p_cansee(td, targetp);
 	if (error == 0)
 		error = ksched_getscheduler(ksched, targettd, policy);
-	PROC_UNLOCK(targetp);
-
 	return (error);
 }
 
@@ -323,44 +323,53 @@ sys_sched_rr_get_interval(struct thread *td,
     struct sched_rr_get_interval_args *uap)
 {
 	struct timespec timespec;
-	struct thread *targettd;
-	struct proc *p;
 	int error;
 
-	if (uap->pid == 0) {
-		targettd = td;
-		p = td->td_proc;
-		PROC_LOCK(p);
-	} else {
-		p = pfind(uap->pid);
-		if (p == NULL)
-			return (ESRCH);
-		targettd = FIRST_THREAD_IN_PROC(p);
-	}
-
-	error = kern_sched_rr_get_interval_td(td, targettd, &timespec);
+	error = kern_sched_rr_get_interval(td, uap->pid, &timespec);
 	if (error == 0)
 		error = copyout(&timespec, uap->interval, sizeof(timespec));
 	return (error);
 }
 
 int
+kern_sched_rr_get_interval(struct thread *td, pid_t pid,
+    struct timespec *ts)
+{
+	int e;
+	struct thread *targettd;
+	struct proc *targetp;
+
+	if (pid == 0) {
+		targettd = td;
+		targetp = td->td_proc;
+		PROC_LOCK(targetp);
+	} else {
+		targetp = pfind(pid);
+		if (targetp == NULL)
+			return (ESRCH);
+		targettd = FIRST_THREAD_IN_PROC(targetp);
+	}
+
+	e = kern_sched_rr_get_interval_td(td, targettd, ts);
+	PROC_UNLOCK(targetp);
+	return (e);
+}
+
+int
 kern_sched_rr_get_interval_td(struct thread *td, struct thread *targettd,
     struct timespec *ts)
 {
-	struct proc *targetp;
+	struct proc *p;
 	int error;
 
-	targetp = targettd->td_proc;
-	PROC_LOCK_ASSERT(targetp, MA_OWNED);
+	p = targettd->td_proc;
+	PROC_LOCK_ASSERT(p, MA_OWNED);
 
-	error = p_cansee(td, targetp);
+	error = p_cansee(td, p);
 	if (error == 0)
 		error = ksched_rr_get_interval(ksched, targettd, ts);
-	PROC_UNLOCK(targetp);
 	return (error);
 }
-
 #endif
 
 static void
