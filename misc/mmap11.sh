@@ -33,6 +33,8 @@
 # http://people.freebsd.org/~pho/stress/log/mmap11.txt
 # No problems seen after r271681.
 
+# http://people.freebsd.org/~pho/stress/log/kostik730.txt, Fixed in r273784
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 here=`pwd`
@@ -127,8 +129,7 @@ tmmap(void *arg __unused)
 	len = 1LL * 1024 * 1024 * 1024;
 
 	for (i = 0; i < 100; i++) {
-		if ((fd = open("/dev/zero", O_CREAT | O_TRUNC | O_RDWR,
-		    0622)) == -1)
+		if ((fd = open("/dev/zero", O_RDWR)) == -1)
 			err(1,"open()");
 
 		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE,
@@ -255,7 +256,7 @@ test(void)
 		errc(1, rc, "tmprotect()");
 	if ((rc = pthread_create(&tid[3], NULL, tmlockall, NULL)) != 0)
 		errc(1, rc, "tmlockall()");
-	if ((rc = pthread_create(&tid[3], NULL, tmsync, NULL)) != 0)
+	if ((rc = pthread_create(&tid[4], NULL, tmsync, NULL)) != 0)
 		errc(1, rc, "tmlockall()");
 
 	for (i = 0; i < 100; i++) {
