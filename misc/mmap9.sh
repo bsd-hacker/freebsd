@@ -38,6 +38,7 @@ dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/mmap9.c
+# At one point during the fix development, only the thread version would panic
 cc -o mmap9  -O2 -Wall -Wextra mmap9.c           || exit 1
 cc -o mmap9p -O2 -Wall -Wextra mmap9.c -lpthread || exit 1
 rm -f mmap9.c
@@ -63,6 +64,10 @@ main(void)
 	size_t sz = 1;
 	char *addr;
 
+/*
+ * This is the minimum amount of C code it takes to panic the kernel.
+ * This is as submitted and thus not a complete and correct test program.
+ */
 	addr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_ANON,
 	    -1, 0);
 	if (addr == NULL)
