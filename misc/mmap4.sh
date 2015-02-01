@@ -54,8 +54,6 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 /tmp/mmap4 /$mntpoint/file
-ls -lh $mntpoint
-df -h
 
 cd $here
 rm -f /tmp/mmap4
