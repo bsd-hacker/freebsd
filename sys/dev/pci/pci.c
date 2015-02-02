@@ -131,8 +131,6 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(device_detach,	bus_generic_detach),
 #endif
 	DEVMETHOD(device_shutdown,	bus_generic_shutdown),
-	DEVMETHOD(device_suspend,	bus_generic_suspend),
-	DEVMETHOD(device_resume,	pci_resume),
 
 	/* Bus interface */
 	DEVMETHOD(bus_print_child,	pci_print_child),
@@ -159,8 +157,6 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(bus_child_pnpinfo_str, pci_child_pnpinfo_str_method),
 	DEVMETHOD(bus_child_location_str, pci_child_location_str_method),
 	DEVMETHOD(bus_remap_intr,	pci_remap_intr_method),
-	DEVMETHOD(bus_suspend_child,	pci_suspend_child),
-	DEVMETHOD(bus_resume_child,	pci_resume_child),
 
 	/* PCI interface */
 	DEVMETHOD(pci_read_config,	pci_read_config_method),
@@ -3709,45 +3705,6 @@ pci_resume_child(device_t dev, device_t child)
 
 	bus_generic_resume_child(dev, child);
 
-	return (0);
-}
-
-int
-pci_resume(device_t dev)
-{
-	device_t child, *devlist;
-	int error, i, numdevs;
-
-	if ((error = device_get_children(dev, &devlist, &numdevs)) != 0)
-		return (error);
-
-	/*
-	 * Resume critical devices first, then everything else later.
-	 */
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		switch (pci_get_class(child)) {
-		case PCIC_DISPLAY:
-		case PCIC_MEMORY:
-		case PCIC_BRIDGE:
-		case PCIC_BASEPERIPH:
-			BUS_RESUME_CHILD(dev, child);
-			break;
-		}
-	}
-	for (i = 0; i < numdevs; i++) {
-		child = devlist[i];
-		switch (pci_get_class(child)) {
-		case PCIC_DISPLAY:
-		case PCIC_MEMORY:
-		case PCIC_BRIDGE:
-		case PCIC_BASEPERIPH:
-			break;
-		default:
-			BUS_RESUME_CHILD(dev, child);
-		}
-	}
-	free(devlist, M_TEMP);
 	return (0);
 }
 
