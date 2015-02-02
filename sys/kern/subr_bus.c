@@ -4598,14 +4598,14 @@ root_suspend(device_t dev)
 
 	TAILQ_FOREACH_REVERSE(dl, &passes, driver_list, passlink) {
 		bus_current_pass = dl->pass;
-		printf("New pass: %d\n", bus_current_pass);
+		if (bootverbose)
+			printf("New pass: %d\n", bus_current_pass);
 		error = bus_generic_suspend(dev);
 		if (error != 0)
 			break;
 	}
 
 	if (error != 0) {
-		printf("Error %d\n", error);
 		TAILQ_FOREACH_FROM(dl, &passes, passlink) {
 			if (dl->pass <= bus_current_pass)
 				continue;
