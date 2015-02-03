@@ -49,8 +49,10 @@ u1=$mdstart
 u2=$((u1 + 1))
 d1=/tmp/diskimage1
 d2=/tmp/diskimage2
-[ -d mp1 ] || mkdir mp1
-[ -d mp2 ] || mkdir mp2
+mp1=$mntpoint
+mp2=${mntpoint}2
+[ -d $mp1 ] || mkdir $mp1
+[ -d $mp2 ] || mkdir $mp2
 truncate -s 20g $d1
 truncate -s 20g $d2
 
@@ -61,17 +63,17 @@ mdconfig -l | grep -q md${u1} && mdconfig -d -u $u1
 
 mdconfig -a -t vnode -f $d1 -u $u1
 bsdlabel -w md$u1 auto
-newfs -b 65536 -f 65536 -O2 md${u1}${part} > /dev/null
+newfs -b 65536 -f 65536 -O2 md${u1}$part > /dev/null
 
 mdconfig -a -t vnode -f $d2 -u $u2
 bsdlabel -w md$u2 auto
-newfs -b 65536 -f 65536 -O2 md${u2}${part} > /dev/null
+newfs -b 65536 -f 65536 -O2 md${u2}$part > /dev/null
 
-mount /dev/md${u1}$part mp1
-mount /dev/md${u2}$part mp2
+mount /dev/md${u1}$part $mp1
+mount /dev/md${u2}$part $mp2
 
-/tmp/nbufkv `pwd`/mp1 &
-/tmp/nbufkv `pwd`/mp2 &
+/tmp/nbufkv /$mp1 &
+/tmp/nbufkv /$mp2 &
 wait;wait
 
 umount /dev/md${u2}$part
@@ -83,7 +85,7 @@ mount | grep -q /dev/md${u1}$part && umount -f /dev/md${u1}$part
 mdconfig -d -u $u2
 mdconfig -d -u $u1
 
-rm -rf mp1 mp2 $d1 $d2 /tmp/nbufkv
+rm -rf $d1 $d2 /tmp/nbufkv
 exit
 EOF
 #include <sys/types.h>
@@ -122,7 +124,7 @@ main(int argc, char **argv)
 
 	sprintf(path, "%s/nbufkv.%06d", argv[1], getpid());
 	if ((fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0640)) == -1)
-		err(1,"open()");
+		err(1,"open(%s)", path);
 	if (ftruncate(fd, len) == -1)
 		err(1, "ftruncate");
 
