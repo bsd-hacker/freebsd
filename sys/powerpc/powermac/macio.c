@@ -71,8 +71,8 @@ struct macio_softc {
 	struct resource	*sc_memr;
 	int          sc_rev;
 	int          sc_devid;
-	uint32_t     saved_fcrs[11];
-	uint32_t     saved_mbcr;
+	uint32_t     sc_saved_fcrs[11];
+	uint32_t     sc_saved_mbcr;
 };
 
 static MALLOC_DEFINE(M_MACIO, "macio", "macio device information");
@@ -717,7 +717,8 @@ macio_enable_wireless(device_t dev, bool enable)
 	return (0);
 }
 
-int macio_reset_ata(device_t atadev)
+int
+macio_reset_ata(device_t atadev)
 {
 	device_t dev;
 	struct macio_softc *sc;
@@ -761,68 +762,13 @@ int macio_reset_ata(device_t atadev)
 	return (0);
 }
 
-static int macio_suspend(device_t dev)
+static int
+macio_suspend_keylargo(device_t dev)
 {
 	struct macio_softc *sc = device_get_softc(dev);
 	uint32_t temp;
-	uint32_t fcr_bits[3][2];
 
-	powerpc_sync();
-
-	if (sc->sc_devid == 0x22) {
-	    fcr_bits[0][0] = KEYLARGO_FCR0_SLEEP_SET;
-	    fcr_bits[0][1] = KEYLARGO_FCR0_SLEEP_CLR;
-	    fcr_bits[1][0] = KEYLARGO_FCR1_SLEEP_SET;
-	    fcr_bits[1][1] = KEYLARGO_FCR1_SLEEP_CLR;
-	    fcr_bits[2][0] = KEYLARGO_FCR2_SLEEP_SET;
-	    fcr_bits[2][0] = KEYLARGO_FCR2_SLEEP_SET;
-	    fcr_bits[3][1] = KEYLARGO_FCR3_SLEEP_CLR;
-	    fcr_bits[3][1] = KEYLARGO_FCR3_SLEEP_CLR;
-	} else if (sc->sc_devid == 0x25) {
-	    fcr_bits[0][0] = PANGEA_FCR0_SLEEP_SET;
-	    fcr_bits[0][1] = PANGEA_FCR0_SLEEP_CLR;
-	    fcr_bits[1][0] = PANGEA_FCR1_SLEEP_SET;
-	    fcr_bits[1][1] = PANGEA_FCR1_SLEEP_CLR;
-	    fcr_bits[2][0] = PANGEA_FCR2_SLEEP_SET;
-	    fcr_bits[2][0] = PANGEA_FCR2_SLEEP_SET;
-	    fcr_bits[3][1] = PANGEA_FCR3_SLEEP_CLR;
-	    fcr_bits[3][1] = PANGEA_FCR3_SLEEP_CLR;
-	} else if (sc->sc_devid == 0x3e) {
-	    fcr_bits[0][0] = INTREPID_FCR0_SLEEP_SET;
-	    fcr_bits[0][1] = INTREPID_FCR0_SLEEP_CLR;
-	    fcr_bits[1][0] = INTREPID_FCR1_SLEEP_SET;
-	    fcr_bits[1][1] = INTREPID_FCR1_SLEEP_CLR;
-	    fcr_bits[2][0] = INTREPID_FCR2_SLEEP_SET;
-	    fcr_bits[2][0] = INTREPID_FCR2_SLEEP_SET;
-	    fcr_bits[3][1] = INTREPID_FCR3_SLEEP_CLR;
-	    fcr_bits[3][1] = INTREPID_FCR3_SLEEP_CLR;
-	} else if (sc->sc_devid == 0x4f) {
-	    fcr_bits[0][0] = K2_FCR0_SLEEP_SET;
-	    fcr_bits[0][1] = K2_FCR0_SLEEP_CLR;
-	    fcr_bits[1][0] = K2_FCR1_SLEEP_SET;
-	    fcr_bits[1][1] = K2_FCR1_SLEEP_CLR;
-	    fcr_bits[2][0] = K2_FCR2_SLEEP_SET;
-	    fcr_bits[2][0] = K2_FCR2_SLEEP_SET;
-	    fcr_bits[3][1] = K2_FCR3_SLEEP_CLR;
-	    fcr_bits[3][1] = K2_FCR3_SLEEP_CLR;
-	}
-
-	sc->saved_fcrs[0] = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
-	sc->saved_fcrs[1] = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
-	sc->saved_fcrs[2] = bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
-	sc->saved_fcrs[3] = bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
-	sc->saved_fcrs[4] = bus_read_4(sc->sc_memr, KEYLARGO_FCR4);
-	sc->saved_fcrs[5] = bus_read_4(sc->sc_memr, KEYLARGO_FCR5);
-
-	if (sc->sc_devid == 0x4f) {
-		sc->saved_fcrs[6] = bus_read_4(sc->sc_memr, K2_FCR6);
-		sc->saved_fcrs[7] = bus_read_4(sc->sc_memr, K2_FCR7);
-		sc->saved_fcrs[8] = bus_read_4(sc->sc_memr, K2_FCR8);
-		sc->saved_fcrs[9] = bus_read_4(sc->sc_memr, K2_FCR9);
-		sc->saved_fcrs[10] = bus_read_4(sc->sc_memr, K2_FCR10);
-	}
-
-	temp = sc->saved_fcrs[0];
+	temp = sc->sc_saved_fcrs[0];
 	if (sc->sc_devid == 0x22) {
 	    temp |= FCR0_USB_REF_SUSPEND;
 	    bus_write_4(sc->sc_memr, KEYLARGO_FCR0, temp);
@@ -830,63 +776,185 @@ static int macio_suspend(device_t dev)
 	    DELAY(1000);
 	}
 
-	temp |= fcr_bits[0][0];
-	temp &= ~fcr_bits[0][1];
+	temp = sc->sc_saved_fcrs[0];
+	temp |= KEYLARGO_FCR0_SLEEP_SET;
+	temp &= KEYLARGO_FCR0_SLEEP_CLR;
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, temp);
 	eieio(); powerpc_sync();
 
 	if (sc->sc_devid == 0x22) {
 		temp = bus_read_4(sc->sc_memr, KEYLARGO_MEDIABAY);
-		sc->saved_mbcr = temp;
+		sc->sc_saved_mbcr = temp;
 		temp |= KEYLARGO_MB0_DEV_ENABLE;
 		bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, temp);
 		eieio(); powerpc_sync();
 	}
 
-	temp = sc->saved_fcrs[1];
-	temp |= fcr_bits[1][0];
-	temp &= ~fcr_bits[1][1];
-
+	temp = sc->sc_saved_fcrs[1];
+	temp |= KEYLARGO_FCR1_SLEEP_SET;
+	temp &= KEYLARGO_FCR1_SLEEP_CLR;
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, temp);
 	eieio(); powerpc_sync();
-
-	temp = sc->saved_fcrs[2];
-	temp |= fcr_bits[2][0];
-	temp &= ~fcr_bits[2][1];
+	temp = sc->sc_saved_fcrs[2];
+	temp |= KEYLARGO_FCR2_SLEEP_SET;
+	temp &= KEYLARGO_FCR2_SLEEP_CLR;
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, temp);
 	eieio(); powerpc_sync();
-
-	temp = sc->saved_fcrs[3];
-	temp |= fcr_bits[3][0];
-	temp &= ~fcr_bits[3][1];
+	temp = sc->sc_saved_fcrs[3];
+	temp |= KEYLARGO_FCR3_SLEEP_SET;
+	temp &= KEYLARGO_FCR3_SLEEP_CLR;
 	if (sc->sc_rev >= 2)
 		temp |= (FCR3_SHUTDOWN_PLL_2X | FCR3_SHUTDOWN_PLL_TOTAL);
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, temp);
 	eieio(); powerpc_sync();
-	powerpc_sync();
+
 	return (0);
 }
 
-static int macio_resume(device_t dev)
+static int
+macio_suspend_pangea(device_t dev)
+{
+	struct macio_softc *sc = device_get_softc(dev);
+	uint32_t temp;
+
+	temp = sc->sc_saved_fcrs[0];
+	temp |= PANGEA_FCR0_SLEEP_SET;
+	temp &= PANGEA_FCR0_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[1];
+	temp |= PANGEA_FCR1_SLEEP_SET;
+	temp &= PANGEA_FCR1_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[2];
+	temp |= PANGEA_FCR2_SLEEP_SET;
+	temp &= PANGEA_FCR2_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[3];
+	temp |= PANGEA_FCR3_SLEEP_SET;
+	temp &= PANGEA_FCR3_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, temp);
+	eieio(); powerpc_sync();
+
+	return (0);
+}
+
+static int
+macio_suspend_intrepid(device_t dev)
+{
+	struct macio_softc *sc = device_get_softc(dev);
+	uint32_t temp;
+
+	temp = sc->sc_saved_fcrs[0];
+	temp |= INTREPID_FCR0_SLEEP_SET;
+	temp &= INTREPID_FCR0_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[1];
+	temp |= INTREPID_FCR1_SLEEP_SET;
+	temp &= INTREPID_FCR1_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[2];
+	temp |= INTREPID_FCR2_SLEEP_SET;
+	temp &= INTREPID_FCR2_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[3];
+	temp |= INTREPID_FCR3_SLEEP_SET;
+	temp &= INTREPID_FCR3_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, temp);
+	eieio(); powerpc_sync();
+
+	return (0);
+}
+
+static int
+macio_suspend_k2(device_t dev)
+{
+	struct macio_softc *sc = device_get_softc(dev);
+	uint32_t temp;
+
+	temp = sc->sc_saved_fcrs[0];
+	temp |= K2_FCR0_SLEEP_SET;
+	temp &= K2_FCR0_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[1];
+	temp |= K2_FCR1_SLEEP_SET;
+	temp &= K2_FCR1_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[2];
+	temp |= K2_FCR2_SLEEP_SET;
+	temp &= K2_FCR2_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, temp);
+	eieio(); powerpc_sync();
+	temp = sc->sc_saved_fcrs[3];
+	temp |= K2_FCR3_SLEEP_SET;
+	temp &= K2_FCR3_SLEEP_CLR;
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, temp);
+	eieio(); powerpc_sync();
+
+	return (0);
+}
+
+static int
+macio_suspend(device_t dev)
+{
+	struct macio_softc *sc = device_get_softc(dev);
+
+	sc->sc_saved_fcrs[0] = bus_read_4(sc->sc_memr, KEYLARGO_FCR0);
+	sc->sc_saved_fcrs[1] = bus_read_4(sc->sc_memr, KEYLARGO_FCR1);
+	sc->sc_saved_fcrs[2] = bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
+	sc->sc_saved_fcrs[3] = bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
+	sc->sc_saved_fcrs[4] = bus_read_4(sc->sc_memr, KEYLARGO_FCR4);
+	sc->sc_saved_fcrs[5] = bus_read_4(sc->sc_memr, KEYLARGO_FCR5);
+
+	if (sc->sc_devid == 0x4f) {
+		sc->sc_saved_fcrs[6] = bus_read_4(sc->sc_memr, K2_FCR6);
+		sc->sc_saved_fcrs[7] = bus_read_4(sc->sc_memr, K2_FCR7);
+		sc->sc_saved_fcrs[8] = bus_read_4(sc->sc_memr, K2_FCR8);
+		sc->sc_saved_fcrs[9] = bus_read_4(sc->sc_memr, K2_FCR9);
+		sc->sc_saved_fcrs[10] = bus_read_4(sc->sc_memr, K2_FCR10);
+	}
+
+	if (sc->sc_devid == 0x22) {
+		return macio_suspend_keylargo(dev);
+	} else if (sc->sc_devid == 0x25) {
+		return macio_suspend_pangea(dev);
+	} else if (sc->sc_devid == 0x3e) {
+		return macio_suspend_intrepid(dev);
+	} else if (sc->sc_devid == 0x4f) {
+		return macio_suspend_k2(dev);
+	}
+
+	return (0);
+}
+
+static int
+macio_resume(device_t dev)
 {
 	struct macio_softc *sc = device_get_softc(dev);
 
 	if (sc->sc_devid == 0x22)
-		bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, sc->saved_mbcr);
+		bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, sc->sc_saved_mbcr);
 
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, sc->saved_fcrs[0]);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, sc->saved_fcrs[1]);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, sc->saved_fcrs[2]);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, sc->saved_fcrs[3]);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR4, sc->saved_fcrs[4]);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->saved_fcrs[5]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, sc->sc_saved_fcrs[0]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR1, sc->sc_saved_fcrs[1]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, sc->sc_saved_fcrs[2]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, sc->sc_saved_fcrs[3]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR4, sc->sc_saved_fcrs[4]);
+	bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->sc_saved_fcrs[5]);
 
 	if (sc->sc_devid == 0x4f) {
-		bus_write_4(sc->sc_memr, K2_FCR6, sc->saved_fcrs[6]);
-		bus_write_4(sc->sc_memr, K2_FCR7, sc->saved_fcrs[7]);
-		bus_write_4(sc->sc_memr, K2_FCR8, sc->saved_fcrs[8]);
-		bus_write_4(sc->sc_memr, K2_FCR9, sc->saved_fcrs[9]);
-		bus_write_4(sc->sc_memr, K2_FCR10, sc->saved_fcrs[10]);
+		bus_write_4(sc->sc_memr, K2_FCR6, sc->sc_saved_fcrs[6]);
+		bus_write_4(sc->sc_memr, K2_FCR7, sc->sc_saved_fcrs[7]);
+		bus_write_4(sc->sc_memr, K2_FCR8, sc->sc_saved_fcrs[8]);
+		bus_write_4(sc->sc_memr, K2_FCR9, sc->sc_saved_fcrs[9]);
+		bus_write_4(sc->sc_memr, K2_FCR10, sc->sc_saved_fcrs[10]);
 	}
 
 	/* Let things settle. */
