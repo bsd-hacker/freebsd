@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/kthread.h>
 #include <sys/clock.h>
+#include <sys/mount.h>	/* For syncer_suspend()/syncer_resume() */
 #include <sys/proc.h>
 #include <sys/reboot.h>
 #include <sys/sysctl.h>
@@ -1226,6 +1227,9 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 	if (error || !req->newptr)
 		return (error);
 
+	EVENTHANDLER_INVOKE(power_suspend_early);
+	stop_all_proc();
+	syncer_suspend();
 	EVENTHANDLER_INVOKE(power_suspend);
 	mtx_lock(&Giant);
 	error = DEVICE_SUSPEND(root_bus);
@@ -1237,6 +1241,8 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 		DEVICE_RESUME(root_bus);
 	}
 	mtx_unlock(&Giant);
+	syncer_resume();
+	resume_all_proc();
 	EVENTHANDLER_INVOKE(power_resume);
 	printf("Fully resumed.\n");
 
