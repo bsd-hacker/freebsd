@@ -186,11 +186,11 @@ main(void)
 			arc4random_stir();
 			for (j = 0; j < N; j++)
 				r[j] = arc4random();
-			for (j = 0; j < 50; j++) 
+			for (j = 0; j < 50; j++)
 				if (pthread_create(&cp[j], NULL, calls, NULL) != 0)
 					perror("pthread_create");
 
-			for (j = 0; j < 50; j++) 
+			for (j = 0; j < 50; j++)
 				pthread_join(cp[j], NULL);
 			_exit(0);
 		}

@@ -53,7 +53,7 @@
 #         ATIME=Apr  2 11:24:33 2009 [0 nsec]
 # OWNER=pho GRP=wheel LINKCNT=1 FLAGS=0 BLKCNT=0 GEN=1deaab3a
 # fsdb (inum: 198)> quit
-# $ 
+# $
 
 # Consistency is restored by a umount + mount of the FS
 
@@ -87,6 +87,7 @@ for i in `jot 30`; do
 done
 
 if ls -l ${dir}/file.0* 2>&1 | egrep "file.0[0-9]" | grep -q "No such file"; then
+	echo FAIL
 	echo "ls -l ${dir}/file.0*"
 	ls -l ${dir}/file.0*
 fi
@@ -144,7 +145,7 @@ pm(void)
 			if (stat(dp->d_name, &statb) == -1) {
 				warn("stat(%s)", dp->d_name);
 				printf("name: %-10s, inode %7d, type %2d, namelen %d, d_reclen %d\n",
-					dp->d_name, dp->d_fileno, dp->d_type, dp->d_namlen, 
+					dp->d_name, dp->d_fileno, dp->d_type, dp->d_namlen,
 					dp->d_reclen);
 				fflush(stdout);
 			} else {
@@ -207,7 +208,7 @@ main(int argc, char **argv)
 			reader();
 			if (waitpid(pid, &status, 0) == -1)
 				warn("waitpid(%d)", pid);
-		} else 
+		} else
 			err(1, "fork(), %s:%d",  __FILE__, __LINE__);
 
 		if (unlink(path) == -1)
