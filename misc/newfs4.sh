@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -39,45 +39,45 @@
 
 odir=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $odir/$0 > io.c
-cc -o io -Wall io.c
-rm -f io.c
+sed '1,/^EOF/d' < $odir/$0 > newfs4.c
+cc -o newfs4 -Wall -Wextra newfs4.c
+rm -f newfs4.c
 cd $odir
 
-mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpoint
+mount | grep "$mntpoint" | grep -q md${mdstart}$part && umount $mntpoint
 mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
 size=9	# Gb
-[ `df -k $(dirname $diskimage) | tail -1 | awk '{print $4'}` -lt $((size * 1024 * 1024)) ] && \
-		echo "Not enough disk space." && exit 1
+[ `df -k $(dirname $diskimage) | tail -1 | \
+    awk '{print $4'}` -lt $((size * 1024 * 1024)) ] && \
+    echo "Not enough disk space on `dirname $diskimage`." && exit 1
 truncate -s ${size}G $diskimage
 
 blocksize="-b 65536"
 opt="-O2 -U"
 mdconfig -a -t vnode -f $diskimage -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs $blocksize $opt md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}${part} $mntpoint
+newfs $blocksize $opt md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
 
 cd $mntpoint
 truncate -s 2g f1
 truncate -s 2g f2
 truncate -s 2g f3
 truncate -s 2g f4
-/tmp/io f1 &
-/tmp/io f2 &
-/tmp/io f3 &
-/tmp/io f4 &
-wait;wait;wait;wait
+/tmp/newfs4 f1 &
+/tmp/newfs4 f2 &
+/tmp/newfs4 f3 &
+/tmp/newfs4 f4 &
+wait
 
-while mount | grep "$mntpoint" | grep -q md${mdstart}${part}; do
-	umount -f $mntpoint > /dev/null 2>&1
+while mount | grep "$mntpoint" | grep -q md${mdstart}$part; do
+	umount -f $mntpoint || sleep 1
 done
 
 mdconfig -d -u $mdstart
 rm -f $diskimage
-rm -f $RUNDIR/fsx.$$.*
-rm -f /tmp/io
+rm -f /tmp/newfs4
 exit
 
 EOF
