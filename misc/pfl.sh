@@ -48,7 +48,7 @@ md1=$mdstart
 md2=$((mdstart + 1))
 
 opt=$([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-j" || echo "-U")
-mount | grep $mp1 | grep -q /dev/md && umount -f $mp1
+mount | grep "on $mp1 " | grep -q /dev/md && umount -f $mp1
 mdconfig -l | grep -q md$md1 &&  mdconfig -d -u $md1
 mdconfig -a -t swap -s 2g -u $md1
 bsdlabel -w md$md1 auto
@@ -56,7 +56,7 @@ newfs $opt md${md1}$part > /dev/null
 mount /dev/md${md1}$part $mp1
 chmod 777 $mp1
 
-mount | grep $mp2 | grep -q /dev/md && umount -f $mp2
+mount | grep "on $mp2 " | grep -q /dev/md && umount -f $mp2
 mdconfig -l | grep -q md$md2 &&  mdconfig -d -u $md2
 mdconfig -a -t swap -s 2g -u $md2
 bsdlabel -w md$md2 auto
@@ -127,7 +127,7 @@ test(void)
 		sprintf(file,"p%05d.%05d", pid, i);
 		if (unlink(file) == -1)
 			err(3, "unlink(%s)", file);
-		
+
 	}
 	chdir("..");
 	sprintf(file,"d%05d", pid);
@@ -152,7 +152,7 @@ main(void)
 				exit(0);
 			}
 		}
-		
+
 		for (j = 0; j < PARALLEL; j++)
 			wait(NULL);
 
