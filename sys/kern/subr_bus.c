@@ -3695,12 +3695,21 @@ bus_generic_suspend(device_t dev)
 		return (0);
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		error = BUS_SUSPEND_CHILD(dev, child);
+		/* First traverse the tree, then suspend this child. */
+		if (!(child->flags & DF_SUSPENDED))
+			error = bus_generic_suspend(child);
+		if (error == 0) {
+			if (child->pass >= bus_current_pass &&
+			    device_is_attached(child))
+				error = BUS_SUSPEND_CHILD(dev, child);
+		}
 		if (error) {
 			for (child2 = TAILQ_FIRST(&dev->children);
 			     child2 && child2 != child;
-			     child2 = TAILQ_NEXT(child2, link))
+			     child2 = TAILQ_NEXT(child2, link)) {
 				BUS_RESUME_CHILD(dev, child2);
+				bus_generic_resume(child2);
+			}
 			return (error);
 		}
 	}
@@ -3720,8 +3729,11 @@ bus_generic_resume(device_t dev)
 	device_t	child;
 
 	TAILQ_FOREACH(child, &dev->children, link) {
-		BUS_RESUME_CHILD(dev, child);
+		if (child->pass == bus_current_pass && (child->flags & DF_SUSPENDED))
+			BUS_RESUME_CHILD(dev, child);
 		/* if resume fails, there's nothing we can usefully do... */
+		if (child->pass <= bus_current_pass)
+			bus_generic_resume(child);
 	}
 	return (0);
 }
