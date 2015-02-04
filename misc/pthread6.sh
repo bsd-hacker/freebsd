@@ -39,8 +39,7 @@ rm -f pthread6.c /tmp/pthread6.core
 rm -f /tmp/pthread6.core
 
 daemon sh -c "(cd $here/../testcases/swap; ./swap -t 2m -i 20 -k)"
-rnd=`od -An -N1 -t u1 /dev/urandom | sed 's/ //g'`
-sleep $((rnd % 10))
+sleep `jot -r 1 1 9`
 for i in `jot 50`; do
 	/tmp/pthread6
 done
@@ -299,7 +298,7 @@ main(void)
 				test();
 		}
 
-		for (j = 0; j < PARALLEL; j++) 
+		for (j = 0; j < PARALLEL; j++)
 			wait(NULL);
 	}
 
