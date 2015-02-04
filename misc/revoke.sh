@@ -35,21 +35,21 @@ dir=/tmp
 
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/revoke.c
-cc -o revoke -Wall revoke.c
+cc -o revoke -Wall revoke.c || exit 1
 rm -f revoke.c
 
 n=100	# Number of times to test
 for i in `jot $n`; do
-   ./revoke /dev/ttyv9&
-   ./revoke /dev/ttyva&
-   ./revoke /dev/ttyvb&
-   ./revoke /dev/ttyvc&
+   ./revoke /dev/ttyv9 > /dev/null 2>&1 &
+   ./revoke /dev/ttyva > /dev/null 2>&1 &
+   ./revoke /dev/ttyvb > /dev/null 2>&1 &
+   ./revoke /dev/ttyvc > /dev/null 2>&1 &
    for j in `jot 4`; do
       wait
    done
 done
 
-#rm -f revoke
+rm -f revoke
 
 exit
 EOF
@@ -67,7 +67,7 @@ EOF
 /*#define TTY "/dev/ttyv9"*/	/* should be totally unused */
 #define CTTY "/dev/tty"
 
-int 
+int
 main(int argc, char **argv)
 {
 	int		ttyfd;
