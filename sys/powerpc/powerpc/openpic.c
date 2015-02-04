@@ -389,25 +389,35 @@ openpic_suspend(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	sc->sc_saved_config = bus_read_4(sc->sc_memr, OPENPIC_CONFIG);
+	sc->sc_saved_config = openpic_read(sc, OPENPIC_CONFIG);
+	sc->sc_saved_spurious = openpic_read(sc, OPENPIC_SPURIOUS_VECTOR);
+	sc->sc_saved_tfreq = openpic_read(sc, OPENPIC_TFREQ);
 	for (i = 0; i < 4; i++) {
-		sc->sc_saved_ipis[i] = bus_read_4(sc->sc_memr, OPENPIC_IPI_VECTOR(i));
+		sc->sc_saved_ipis[i] =
+		    openpic_read(sc, OPENPIC_IPI_VECTOR(i));
 	}
 
 	for (i = 0; i < 4; i++) {
-		sc->sc_saved_prios[i] = bus_read_4(sc->sc_memr, OPENPIC_PCPU_TPR(i));
+		sc->sc_saved_prios[i] =
+		    openpic_read(sc, OPENPIC_PCPU_TPR(i));
 	}
 
 	for (i = 0; i < OPENPIC_TIMERS; i++) {
-		sc->sc_saved_timers[i].tcnt = bus_read_4(sc->sc_memr, OPENPIC_TCNT(i));
-		sc->sc_saved_timers[i].tbase = bus_read_4(sc->sc_memr, OPENPIC_TBASE(i));
-		sc->sc_saved_timers[i].tvec = bus_read_4(sc->sc_memr, OPENPIC_TVEC(i));
-		sc->sc_saved_timers[i].tdst = bus_read_4(sc->sc_memr, OPENPIC_TDST(i));
+		sc->sc_saved_timers[i].tcnt =
+		    openpic_read(sc, OPENPIC_TCNT(i));
+		sc->sc_saved_timers[i].tbase =
+		    openpic_read(sc, OPENPIC_TBASE(i));
+		sc->sc_saved_timers[i].tvec =
+		    openpic_read(sc, OPENPIC_TVEC(i));
+		sc->sc_saved_timers[i].tdst =
+		    openpic_read(sc, OPENPIC_TDST(i));
 	}
 
-	for (i = 0; i < OPENPIC_SRC_VECTOR_COUNT; i++)
-		sc->sc_saved_vectors[i] =
-		    bus_read_4(sc->sc_memr, OPENPIC_SRC_VECTOR(i)) & ~OPENPIC_ACTIVITY;
+	for (i = 0; i < OPENPIC_SRC_VECTOR_COUNT; i++) {
+		sc->sc_saved_src[i] = openpic_read(sc,
+		    OPENPIC_SRC_VECTOR(i)) & ~OPENPIC_ACTIVITY;
+		sc->sc_saved_dest[i] = openpic_read(sc, OPENPIC_IDEST(i));
+	}
 
 	return (0);
 }
@@ -420,24 +430,34 @@ openpic_resume(device_t dev)
 
     	sc = device_get_softc(dev);
 
-	sc->sc_saved_config = bus_read_4(sc->sc_memr, OPENPIC_CONFIG);
+	openpic_write(sc, OPENPIC_CONFIG, sc->sc_saved_config);
+	openpic_write(sc, OPENPIC_SPURIOUS_VECTOR, sc->sc_saved_spurious);
+	openpic_write(sc, OPENPIC_TFREQ, sc->sc_saved_tfreq);
 	for (i = 0; i < 4; i++) {
-		bus_write_4(sc->sc_memr, OPENPIC_IPI_VECTOR(i), sc->sc_saved_ipis[i]);
+		openpic_write(sc, OPENPIC_IPI_VECTOR(i),
+		    sc->sc_saved_ipis[i]);
 	}
 
 	for (i = 0; i < 4; i++) {
-		bus_write_4(sc->sc_memr, OPENPIC_PCPU_TPR(i), sc->sc_saved_prios[i]);
+		openpic_write(sc, OPENPIC_PCPU_TPR(i),
+		    sc->sc_saved_prios[i]);
 	}
 
 	for (i = 0; i < OPENPIC_TIMERS; i++) {
-		bus_write_4(sc->sc_memr, OPENPIC_TCNT(i), sc->sc_saved_timers[i].tcnt);
-		bus_write_4(sc->sc_memr, OPENPIC_TBASE(i), sc->sc_saved_timers[i].tbase);
-		bus_write_4(sc->sc_memr, OPENPIC_TVEC(i), sc->sc_saved_timers[i].tvec);
-		bus_write_4(sc->sc_memr, OPENPIC_TDST(i), sc->sc_saved_timers[i].tdst);
+		openpic_write(sc, OPENPIC_TCNT(i),
+		    sc->sc_saved_timers[i].tcnt);
+		openpic_write(sc, OPENPIC_TBASE(i),
+		    sc->sc_saved_timers[i].tbase);
+		openpic_write(sc, OPENPIC_TVEC(i),
+		    sc->sc_saved_timers[i].tvec);
+		openpic_write(sc, OPENPIC_TDST(i),
+		    sc->sc_saved_timers[i].tdst);
 	}
 
-	for (i = 0; i < OPENPIC_SRC_VECTOR_COUNT; i++)
-		bus_write_4(sc->sc_memr, OPENPIC_SRC_VECTOR(i), sc->sc_saved_vectors[i]);
+	for (i = 0; i < OPENPIC_SRC_VECTOR_COUNT; i++) {
+		openpic_write(sc, OPENPIC_SRC_VECTOR(i), sc->sc_saved_src[i]);
+		openpic_write(sc, OPENPIC_IDEST(i), sc->sc_saved_dest[i]);
+	}
 
 	return (0);
 }

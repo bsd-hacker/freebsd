@@ -56,10 +56,13 @@ struct openpic_softc {
 
 	/* Saved states. */
 	uint32_t		sc_saved_config;
+	uint32_t		sc_saved_spurious;
+	uint32_t		sc_saved_tfreq;
 	uint32_t		sc_saved_ipis[4];
 	uint32_t		sc_saved_prios[4];
 	struct openpic_timer	sc_saved_timers[OPENPIC_TIMERS];
-	uint32_t		sc_saved_vectors[OPENPIC_SRC_VECTOR_COUNT];
+	uint32_t		sc_saved_src[OPENPIC_SRC_VECTOR_COUNT];
+	uint32_t		sc_saved_dest[OPENPIC_SRC_VECTOR_COUNT];
 	
 };
 
