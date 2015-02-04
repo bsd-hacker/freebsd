@@ -1126,7 +1126,6 @@ linux_waitid(struct thread *td, struct linux_waitid_args *args)
 			sig = BSD_TO_LINUX_SIGNAL(siginfo.si_signo);
 			siginfo_to_lsiginfo(&siginfo, &lsi, sig);
 		}
-		siginfo_to_lsiginfo(&siginfo, &lsi, sig);
 		error = copyout(&lsi, args->info, sizeof(lsi));
 	}
 	td->td_retval[0] = 0;
