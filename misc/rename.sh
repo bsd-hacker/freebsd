@@ -69,7 +69,7 @@ EOF
 static char dir1[128];
 static char dir2[128];
 
-int 
+int
 main(int argc, char **argv)
 {
 	int i, status;
