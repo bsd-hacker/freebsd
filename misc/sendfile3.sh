@@ -31,8 +31,7 @@
 # Test scenario for sendfile deadlock (processes stuck in sfbufa)
 
 # Variation of sendfile.sh
-
-. ../default.cfg
+# kern.ipc.nsfbufs should be low for this test
 
 odir=`pwd`
 
@@ -47,7 +46,6 @@ in=/tmp/inputFile
 out=/tmp/outputFile
 parallel=20
 
-[ `sysctl kern.ipc.nsfbufs | awk '{print $NF}'` -gt 512 ] && echo "kern.ipc.nsfbufs should be low for this test"
 for i in 50m 100m; do
 	rm -f $in
 	dd if=/dev/random of=$in bs=$i count=1 2>&1 | \
@@ -66,18 +64,20 @@ done
 rm -f $in /tmp/sendfile3
 exit
 EOF
-#include <err.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+
+#include <netinet/in.h>
+
+#include <err.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 int port;
@@ -149,7 +149,7 @@ writer(void) {
 	off_t off = 0;
 
 	on = 1;
-	for (i = 1; i < 5; i++) {
+	for (i = 0; i < 5; i++) {
 		if ((tcpsock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 			err(1, "socket(), %s:%d", __FILE__, __LINE__);
 
@@ -157,6 +157,7 @@ writer(void) {
 		    SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on)) < 0)
 			err(1, "setsockopt(), %s:%d", __FILE__, __LINE__);
 
+		bzero((char *) &inetaddr, sizeof(inetaddr));
 		hostent = gethostbyname ("localhost");
 		memcpy (&inetaddr.sin_addr.s_addr, hostent->h_addr,
 			sizeof (struct in_addr));
@@ -184,8 +185,6 @@ writer(void) {
 
 	if (sendfile(fd, tcpsock, 0, statb.st_size, NULL, &off, 0) == -1)
 		err(1, "sendfile");
-
-	return;
 }
 
 int
@@ -209,7 +208,7 @@ main(int argc, char **argv)
 		reader();
 		kill(pid, SIGINT);
 		waitpid(pid, NULL, 0);
-	} else 
+	} else
 		err(1, "fork(), %s:%d",  __FILE__, __LINE__);
 
 	return (0);
