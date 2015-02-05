@@ -28,8 +28,6 @@
 # $FreeBSD$
 #
 
-[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
-
 # Sendfile(2) over posix shmfd
 # Test scenario by kib@
 
@@ -43,7 +41,7 @@ cc -o sendfile_shm -Wall -Wextra -O2 sendfile_shm.c || exit 1
 rm -f sendfile_shm.c
 cd $here
 
-daemon ../testcases/swap/swap -t 2m -i 20 > /dev/null 2>&1 
+daemon ../testcases/swap/swap -t 2m -i 20 > /dev/null 2>&1
 sleep 5
 for i in `jot 10`; do
 	/tmp/sendfile_shm /boot/kernel/kernel /tmp/sendfile_shm.$i > \
@@ -52,8 +50,7 @@ done
 for i in `jot 10`; do
 	wait
 done
-while ps aux | grep -v grep | grep -q swap; do
-	killall -9 swap
+while pkill -9 swap; do
 	sleep .5
 done
 for i in `jot 10`; do
@@ -198,6 +195,6 @@ main(int argc, char *argv[])
 		sleep(1);
 		receivefd(s[1], outfd, st.st_size);
 	}
-	
+
 	return (0);
 }
