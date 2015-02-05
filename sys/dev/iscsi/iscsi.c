@@ -1306,6 +1306,16 @@ iscsi_ioctl_daemon_wait(struct iscsi_softc *sc,
 		request->idr_tsih = 0;	/* New or reinstated session. */
 		memcpy(&request->idr_conf, &is->is_conf,
 		    sizeof(request->idr_conf));
+		
+		error = icl_limits(is->is_conf.isc_offload,
+		    &request->idr_limits.isl_max_data_segment_length);
+		if (error != 0) {
+			ISCSI_SESSION_WARN(is, "icl_limits for offload \"%s\" "
+			    "failed with error %d", is->is_conf.isc_offload,
+			    error);
+			sx_sunlock(&sc->sc_lock);
+			return (error);
+		}
 
 		sx_sunlock(&sc->sc_lock);
 		return (0);
@@ -1731,7 +1741,13 @@ iscsi_ioctl_session_add(struct iscsi_softc *sc, struct iscsi_session_add *isa)
 		return (EBUSY);
 	}
 
-	is->is_conn = icl_new_conn(NULL, "iscsi", &is->is_lock);
+	is->is_conn = icl_new_conn(is->is_conf.isc_offload,
+	    "iscsi", &is->is_lock);
+	if (is->is_conn == NULL) {
+		sx_xunlock(&sc->sc_lock);
+		free(is, M_ISCSI);
+		return (EINVAL);
+	}
 	is->is_conn->ic_receive = iscsi_receive_callback;
 	is->is_conn->ic_error = iscsi_error_callback;
 	is->is_conn->ic_prv0 = is;
@@ -1750,14 +1766,16 @@ iscsi_ioctl_session_add(struct iscsi_softc *sc, struct iscsi_session_add *isa)
 	arc4rand(&is->is_isid[1], 5, 0);
 	is->is_tsih = 0;
 	callout_init(&is->is_callout, 1);
-	callout_reset(&is->is_callout, 1 * hz, iscsi_callout, is);
-	TAILQ_INSERT_TAIL(&sc->sc_sessions, is, is_next);
 
 	error = kthread_add(iscsi_maintenance_thread, is, NULL, NULL, 0, 0, "iscsimt");
 	if (error != 0) {
 		ISCSI_SESSION_WARN(is, "kthread_add(9) failed with error %d", error);
+		sx_xunlock(&sc->sc_lock);
 		return (error);
 	}
+
+	callout_reset(&is->is_callout, 1 * hz, iscsi_callout, is);
+	TAILQ_INSERT_TAIL(&sc->sc_sessions, is, is_next);
 
 	/*
 	 * Trigger immediate reconnection.
@@ -1836,6 +1854,7 @@ iscsi_ioctl_session_list(struct iscsi_softc *sc, struct iscsi_session_list *isl)
 		iss.iss_id = is->is_id;
 		strlcpy(iss.iss_target_alias, is->is_target_alias, sizeof(iss.iss_target_alias));
 		strlcpy(iss.iss_reason, is->is_reason, sizeof(iss.iss_reason));
+		strlcpy(iss.iss_offload, is->is_conn->ic_offload, sizeof(iss.iss_offload));
 
 		if (is->is_conn->ic_header_crc32c)
 			iss.iss_header_digest = ISCSI_DIGEST_CRC32C;
