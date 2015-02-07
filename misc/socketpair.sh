@@ -30,6 +30,9 @@
 
 # Page fault due to recursion. Fixed in r216150.
 
+# Looping in kernel: http://people.freebsd.org/~pho/stress/log/kostik737.txt
+# Fixed in r274712
+
 . ../default.cfg
 
 here=`pwd`
