@@ -87,7 +87,7 @@ setup(void)
 	printf("setup: pid %d. Total %luMb\n",
 		getpid(), size / 1024 / 1024 * INCARNATIONS);
 #endif
-	
+
 	if (size == 0)
 		errx(1, "Argument too small");
 
