@@ -50,7 +50,7 @@ newfs -j md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-su $testuser -c "cd $mntpoint; /tmp/suj6"
+su $testuser -c "cd $mntpoint; /tmp/suj6" > /dev/null
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
@@ -104,7 +104,7 @@ test(int size)
 
 
 	sprintf(file,"p%05d", getpid());
-	if ((fd = creat(file, 0660)) == -1) 
+	if ((fd = creat(file, 0660)) == -1)
 		err(1, "creat(%s)", file);
 
 	to = sizeof(buf);
