@@ -30,7 +30,7 @@
 
 # Regression test for statfs problems with deleting a large number of files
 
-# $ ./statfs.sh 
+# $ ./statfs.sh
 # Filesystem  1K-blocks    Used Avail Capacity iused  ifree %iused  Mounted on
 # /dev/ad0s1e   1982798 1782134 42042    98%    4965 254105    2%   /tmp
 # Free inodes on /tmp: 254105
@@ -42,7 +42,6 @@
 # $ df -i /tmp
 # Filesystem  1K-blocks    Used Avail Capacity iused  ifree %iused  Mounted on
 # /dev/ad0s1e   1982798 1784528 39648    98%    4965 254105    2%   /tmp
-
 
 odir=`pwd`
 dir=/tmp
@@ -122,7 +121,7 @@ main()
 		sprintf(file,"p%06d.%05d", pid, i);
 		if (unlink(file) == -1)
 			err(3, "unlink(%s)", file);
-		
+
 	}
 	printf("\n");
 	return (0);
