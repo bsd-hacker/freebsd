@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
 
     int sig;
     sscanf(argv[3], "%d", &sig);
-    
+
     if( syscall(SYS_thr_kill2, pid, id, sig) ) {
         perror("syscall");
     }
@@ -200,25 +200,29 @@ sleep 300 > gdbfifo &	# Keep the fifo open
 fifopid=$!
 
 gdb ./waitthread < gdbfifo > gdbout 2>&1 &
+gdbpid=$!
 echo "set args 8" > gdbfifo
 echo "run"        > gdbfifo
-sleep .2
+sleep .5
 
 pid=`ps | grep -v grep | grep "waitthread 8" | sed 's/^ *//;s/ .*//'`
-[ -z "$pid" ] && echo "Could not find pid" && exit 1
-procstat -t $pid > pstat
+if [ -n "$pid" ]; then
+	procstat -t $pid > pstat
 
-t1=`grep fifo  pstat | awk '{print $2}'`
-t2=`grep umtxn pstat | awk '{print $2}' | tail -1`
+	t1=`grep fifo  pstat | awk '{print $2}'`
+	t2=`grep umtxn pstat | awk '{print $2}' | tail -1`
 
-./tkill $pid $t1 5	# SIGTRAP
-./tkill $pid $t2 2	# SIGINT
+	./tkill $pid $t1 5	# SIGTRAP
+	./tkill $pid $t2 2	# SIGINT
 
-echo "c"    > gdbfifo
-echo "quit" > gdbfifo
+	echo "c"    > gdbfifo
+	echo "quit" > gdbfifo
+	sleep 1
+	grep -q "signal SIGINT" gdbout || echo FAIL
+else
+	echo "Did not find pid for test program waitthread"
+fi
 
-kill $fifopid
-
-grep -q "signal SIGINT" gdbout || echo FAIL
+kill $fifopid $gdbpid > /dev/null 2>&1
 rm -f gdbfifo gdbout pstat waitthread tkill /tmp/waitthread
 ps | grep -v grep | grep waitthread | awk '{print $1}' | xargs kill
