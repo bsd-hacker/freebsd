@@ -39,9 +39,9 @@
 dir=/tmp
 odir=`pwd`
 cd $dir
-sed '1,/^EOF/d' < $odir/$0 > $dir/mv4.c
-cc -o mv4  -Wall -Wextra mv4.c -lpthread || exit 1
-rm -f mv4.c
+sed '1,/^EOF/d' < $odir/$0 > $dir/umountf7.c
+cc -o umountf7  -Wall -Wextra umountf7.c -lpthread || exit 1
+rm -f umountf7.c
 cd $odir
 
 mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint
@@ -57,24 +57,22 @@ for j in `jot $parallel`; do
 	[ -d $mntpoint/$j ] || mkdir $mntpoint/$j
 done
 for j in `jot $parallel`; do
-	(cd $mntpoint/$j; /tmp/mv4 100000) &
+	(cd $mntpoint/$j; /tmp/umountf7 100000) &
 done
-sleep 60
+sleep 30
 umount -f $mntpoint
-killall mv4
-for j in `jot $parallel`; do
-	wait
-done
-while ps auxww | grep -v grep | grep -qw swap; do
-	killall -9 swap 2>/dev/null
+pkill umountf7
+wait
+while pkill -9 swap; do
+	:
 done
 find $mntpoint -type f
 
-while mount | grep $mntpoint | grep -q /dev/md; do
+while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
-rm -f /tmp/mv4
+rm -f /tmp/umountf7
 exit
 
 EOF
