@@ -55,7 +55,8 @@ n=$syscall
 
 rm -f /tmp/syscall2.log
 while [ $n -gt 0 ]; do
-	echo "`date '+%T'` syscall $n" | tee /dev/tty >> /tmp/syscall2.log
+	echo "`date '+%T'` syscall $n"
+	echo "`date '+%T'` syscall $n" >> /tmp/syscall2.log
 	for i in `jot 5`; do
 		su ${testuser} -c "sh -c \"/tmp/syscall2 -t 30s -i 100 -h -l 100 -k $n\""
 	done
