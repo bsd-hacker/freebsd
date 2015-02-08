@@ -41,13 +41,15 @@ syscall=$((syscall - 1))
 args=`getopt ars:t: $*`
 [ $? -ne 0 ] && echo "Usage $0 [-a] [-r] [-s number] [-t seconds]" && exit 1
 set -- $args
+last=/tmp/syscall5.last
+log=/tmp/syscall5.log
 for i; do
 	case "$i" in
 	-a)	all=1		# Test all syscalls
 		shift
 		;;
-	-r)	[ -h .syscall5.last ] &&
-			syscall=`ls -l .syscall5.last | awk '{print $NF}'`
+	-r)	[ -h $last ] &&
+			syscall=`ls -l $last | awk '{print $NF}'`
 			syscall=$((syscall - 1))
 		shift
 		;;
@@ -73,12 +75,12 @@ rfork
 pselect
 "
 
-rm -f ./syscall5.log
+rm -f $log
 n=$syscall
 start=`date '+%s'`
 while [ $n -gt 0 ]; do
 	ps -lUnobody | grep syscall4 | awk '{print $2}' | xargs kill
-	ln -fs $n .syscall5.last
+	ln -fs $n $last
 	name=`grep -w "$n$" /usr/include/sys/syscall.h | awk '{print $2}' |
 		sed 's/SYS_//'`
 	[ -z "$name" ] && name="unknown"
@@ -87,13 +89,13 @@ while [ $n -gt 0 ]; do
 		[ $name = "Excluded" ] &&
 		    { n=$((n - 1)); continue; }
 	fi
-	echo "`date '+%T'` syscall $n ($name)" | 
-		tee /dev/tty >> ./syscall5.log
+	echo "`date '+%T'` syscall $n ($name)"
+	echo "`date '+%T'` syscall $n ($name)"  >> $log
 	printf "`date '+%T'` syscall $n ($name)\r\n" > /dev/console
 	sync; sleep 1
-	echo "$broken" | grep -qw "$name" || 
+	echo "$broken" | grep -qw "$name" ||
 		./syscall4.sh $n || break
 	n=$((n - 1))
 	[ -z "$all" -a `date '+%s'` -gt $((start + 1800)) ] && break
 done
-rm -f ./syscall5.log .syscall5-last
+rm -f $log $last
