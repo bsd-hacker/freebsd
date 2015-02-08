@@ -32,14 +32,18 @@
 
 # Test problems with "umount -f and fsx. Results in a "KDB: enter: watchdog timeout"
 
+# http://people.freebsd.org/~pho/stress/log/kostik745.txt
+# Fixed by r275743
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-fsxc=`find -x / /usr/src -name fsx.c | tail -1`
+. ../default.cfg
+
+fsxc=`find -x /usr/src -name fsx.c | tail -1`
+[ -z "$fsxc" ] && fsxc=`find -x / -name fsx.c | tail -1`
 [ -z "$fsxc" ] && exit
 
 cc -o /tmp/fsx $fsxc
-
-. ../default.cfg
 
 D=$diskimage
 dede $D 1m 1k || exit 1
@@ -55,10 +59,14 @@ sleep 5
 for i in `jot 100`; do
 	/tmp/fsx -S $i -q ${mntpoint}/xxx$i > /dev/null &
 done
-sleep 30 
+sleep 30
 umount -f $mntpoint &
-sleep 300
-killall fsx
+for i in `jot 10`; do
+	sleep 30
+	pgrep -q fsx || break
+done
+pgrep -q fsx && echo FAIL && pkill fsx
 sleep 5
+wait
 mdconfig -d -u $mdstart
 rm -f $D /tmp/fsx
