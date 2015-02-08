@@ -53,8 +53,6 @@ mdconfig -a -t vnode -f $D -u ${mdstart}
 bsdlabel -w md${mdstart} auto
 newfs md${mdstart}${part} > /dev/null 2>&1
 mount /dev/md${mdstart}${part} $mntpoint
-#newfs_msdos -F 32 -b 8192 /dev/md${mdstart}a
-#mount -t msdosfs /dev/md${mdstart}a $mntpoint
 export RUNDIR=$mntpoint/stressX
 for i in `jot 25`; do
 	(cd /$mntpoint; /tmp/umountf3) &
