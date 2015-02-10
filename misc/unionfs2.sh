@@ -38,7 +38,7 @@ for i in 1 0; do
 
    export RUNDIR=/var/tmp/unionfs/stressX
    export runRUNTIME=10m            # Run tests for 10 minutes
-   (cd ..; ./run.sh disk.cfg) 
+   (cd ..; ./run.sh disk.cfg)
    false
    while mount | grep -q /unionfs; do
       umount /tmp/stressX > /dev/null 2>&1
