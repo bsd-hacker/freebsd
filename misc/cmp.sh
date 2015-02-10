@@ -40,7 +40,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > cmp.c
-cc -o cmp -Wall -Wextra -O2 -g cmp.c || exit 1
+mycc -o cmp -Wall -Wextra -O2 -g cmp.c || exit 1
 rm -f cmp.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

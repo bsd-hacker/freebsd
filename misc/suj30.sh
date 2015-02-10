@@ -39,7 +39,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > suj30.c
-cc -o suj30 -Wall -Wextra -O2 suj30.c -lpthread
+mycc -o suj30 -Wall -Wextra -O2 suj30.c -lpthread
 rm -f suj30.c
 
 mount | grep "on $mntpoint " | grep -q md$mdstart && umount $mntpoint

@@ -37,7 +37,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > rdwr.c
-cc -o rdwr -Wall rdwr.c || exit
+mycc -o rdwr -Wall rdwr.c || exit
 rm -f rdwr.c
 
 oldclamp=`sysctl debug.devfs_iosize_max_clamp 2>/dev/null |

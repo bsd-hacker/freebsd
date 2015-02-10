@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > datamove4.c
-cc -o datamove4 -Wall -Wextra -O2 -g datamove4.c
+mycc -o datamove4 -Wall -Wextra -O2 -g datamove4.c
 rm -f datamove4.c
 
 mount | grep -q "$mntpoint " && umount $mntpoint

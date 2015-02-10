@@ -37,7 +37,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rename11.c
-cc -o rename11 -Wall -Wextra rename11.c || exit 1
+mycc -o rename11 -Wall -Wextra rename11.c || exit 1
 rm -f rename11.c
 
 mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint

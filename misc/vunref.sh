@@ -44,7 +44,7 @@ cd $RUNDIR
 
 if [ $# -eq 0 ]; then
 	sed '1,/^EOF/d' < $here/$0 > vunref.c
-	cc -o vunref -Wall -Wextra -O2 vunref.c
+	mycc -o /tmp/vunref -Wall -Wextra -O2 vunref.c
 	rm -f vunref.c
 	cd $here
 
@@ -84,14 +84,14 @@ if [ $# -eq 0 ]; then
 		mdconfig -d -u $m
 		rm -f $D$m
 	done
-	rm -f $RUNDIR/vunref $RUNDIR/active.* $diskimage.* ${mntpoint}*/p*
+	rm -f /tmp/vunref $RUNDIR/active.* $diskimage.* ${mntpoint}*/p*
 
 else
 	if [ $1 = mmap ]; then
 		touch $RUNDIR/active.$2
 		for i in `jot 500`; do
 			cd ${mntpoint}$2
-			$RUNDIR/vunref > /dev/null 2>&1
+			/tmp/vunref > /dev/null 2>&1
 			cd /
 			[ -f $RUNDIR/active.$2 ] || exit
 			sleep 0.1

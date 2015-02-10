@@ -36,7 +36,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > jail3.c
-cc -o jail3 -Wall jail3.c
+mycc -o jail3 -Wall jail3.c
 rm -f jail3.c
 cd $odir
 /tmp/jail3

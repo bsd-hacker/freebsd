@@ -40,7 +40,7 @@ dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/umountf7.c
-cc -o umountf7  -Wall -Wextra umountf7.c -lpthread || exit 1
+mycc -o umountf7  -Wall -Wextra umountf7.c -lpthread || exit 1
 rm -f umountf7.c
 cd $odir
 

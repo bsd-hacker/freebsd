@@ -32,10 +32,12 @@
 
 # Test scenario by kib@
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > f_offset.c
-cc -o f_offset -Wall -Wextra -O2 f_offset.c -lpthread
+mycc -o f_offset -Wall -Wextra -O2 f_offset.c -lpthread
 rm -f f_offset.c
 
 /tmp/f_offset

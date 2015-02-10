@@ -39,7 +39,7 @@ I=`dirname $diskimage`/dir.iso
 export here=`pwd`
 cd /tmp
 
-cc -o fstool $here/../tools/fstool.c
+mycc -o fstool $here/../tools/fstool.c
 
 rm -rf $D $I
 mkdir $D

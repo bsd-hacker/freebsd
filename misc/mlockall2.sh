@@ -30,6 +30,8 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 # core dumps seen in watchdogd after mlockall() was added.
 # This scenario demonstrates the problem. Fixed in r242012.
 
@@ -38,7 +40,7 @@ mem=`sysctl hw.usermem | awk '{print $NF}'`
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > mlockall2.c
-cc -o mlockall2 -Wall -Wextra -O2 -g mlockall2.c
+mycc -o mlockall2 -Wall -Wextra -O2 -g mlockall2.c
 rm -f mlockall2.c
 cd $here
 

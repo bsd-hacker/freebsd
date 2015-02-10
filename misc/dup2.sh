@@ -30,11 +30,13 @@
 
 # Regression test for r234131.
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/dup2.c
-cc -o dup2  -Wall -Wextra dup2.c || exit 1
+mycc -o dup2  -Wall -Wextra dup2.c || exit 1
 rm -f dup2.c
 cd $odir
 

@@ -37,12 +37,14 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 mount | grep -q "/proc " || mount -t procfs procfs /proc
 
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > procfs_lr.c
-cc -o procfs_lr -Wall -Wextra -O2 procfs_lr.c || exit 1
+mycc -o procfs_lr -Wall -Wextra -O2 procfs_lr.c || exit 1
 rm -f procfs_lr.c
 
 /tmp/procfs_lr 2>/dev/null

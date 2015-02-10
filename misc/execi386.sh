@@ -34,6 +34,8 @@
 
 [ `uname -p` = "amd64" ] || exit 0
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 
@@ -63,7 +65,7 @@ main() {
 }
 EOF
 
-cc -o execi386 -Wall -Wextra -O2 -g execi386.c -lpthread || exit 1
+mycc -o execi386 -Wall -Wextra -O2 -g execi386.c -lpthread || exit 1
 
 cat > /tmp/i386.c <<EOF
 #include <stdio.h>
@@ -76,7 +78,7 @@ main(void)
 }
 EOF
 
-cc -m32 -o i386 -Wall -Wextra -O2 -g i386.c || exit 1
+mycc -m32 -o i386 -Wall -Wextra -O2 -g i386.c || exit 1
 
 ./execi386 > /dev/null || echo FAIL
 

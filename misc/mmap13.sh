@@ -32,11 +32,13 @@
 # Test scenario by: Mark Johnston markj@
 # Fixed in r269134.
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/mmap13.c
-cc -o mmap13  -O2 -Wall -Wextra mmap13.c || exit 1
+mycc -o mmap13  -O2 -Wall -Wextra mmap13.c || exit 1
 rm -f mmap13.c
 cd $odir
 

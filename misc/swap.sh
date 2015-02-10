@@ -30,11 +30,13 @@
 
 # Swap test. Variation of testcases/swap.
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/swap.c
-cc -o swap -Wall -Wextra -O2 swap.c || exit 1
+mycc -o swap -Wall -Wextra -O2 swap.c || exit 1
 rm -f swap.c
 
 usermem=`sysctl hw.usermem | sed 's/.* //'`

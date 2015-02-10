@@ -32,10 +32,12 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pts.c
-cc -o pts -Wall -Wextra -O2 pts.c -lutil
+mycc -o pts -Wall -Wextra -O2 pts.c -lutil
 rm -f pts.c
 
 /tmp/pts &

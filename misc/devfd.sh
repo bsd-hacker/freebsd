@@ -42,7 +42,7 @@ odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > devfd.c
 rm -f /tmp/devfd
-cc -o devfd -Wall -Wextra -O2 -g devfd.c -lpthread || exit 1
+mycc -o devfd -Wall -Wextra -O2 -g devfd.c -lpthread || exit 1
 rm -f devfd.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

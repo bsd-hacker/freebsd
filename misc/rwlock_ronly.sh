@@ -32,11 +32,13 @@
 # Demonstrate process looping in kernel mode.
 # Fixed in r251684.
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/rwlock_ronly.c
-cc -o rwlock_ronly -Wall -Wextra rwlock_ronly.c || exit 1
+mycc -o rwlock_ronly -Wall -Wextra rwlock_ronly.c || exit 1
 rm -f rwlock_ronly.c
 cd $odir
 

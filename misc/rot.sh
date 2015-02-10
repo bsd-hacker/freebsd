@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rot.c
-cc -o rot -Wall -Wextra -O2 -g rot.c || exit 1
+mycc -o rot -Wall -Wextra -O2 -g rot.c || exit 1
 rm -f rot.c
 cd $here
 

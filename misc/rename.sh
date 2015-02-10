@@ -35,10 +35,12 @@
 
 # Test scenario by tegge
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rename.c
-cc -o rename -Wall rename.c
+mycc -o rename -Wall rename.c
 rm -f rename.c
 
 rm -rf /tmp/rename.dir.*

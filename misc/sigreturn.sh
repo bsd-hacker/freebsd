@@ -32,11 +32,13 @@
 # http://people.freebsd.org/~pho/stress/log/freebsd4_sigreturn.txt
 # Fixed in r251033.
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/sigreturn.c
-cc -o sigreturn -Wall -Wextra sigreturn.c -lpthread || exit 1
+mycc -o sigreturn -Wall -Wextra sigreturn.c -lpthread || exit 1
 rm -f sigreturn.c
 cd $odir
 

@@ -39,7 +39,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > tmpfs6.c
-cc -o tmpfs6 -Wall -Wextra -O2  tmpfs6.c || exit 1
+mycc -o tmpfs6 -Wall -Wextra -O2  tmpfs6.c || exit 1
 rm -f tmpfs6.c
 
 mount | grep $mntpoint | grep -q tmpfs && umount $mntpoint

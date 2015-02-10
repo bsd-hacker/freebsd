@@ -37,10 +37,12 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > mmap11.c
-cc -o mmap11 -Wall -Wextra -O2 -g mmap11.c -lpthread || exit 1
+mycc -o mmap11 -Wall -Wextra -O2 -g mmap11.c -lpthread || exit 1
 rm -f mmap11.c
 
 daemon sh -c "(cd $here/../testcases/swap; ./swap -t 2m -i 20 -k)"

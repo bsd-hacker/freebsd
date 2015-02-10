@@ -34,11 +34,13 @@
 
 # Test scenario by: Mark Johnston markj@
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/mmap12.c
-cc -o mmap12  -O2 -Wall -Wextra mmap12.c || exit 1
+mycc -o mmap12  -O2 -Wall -Wextra mmap12.c || exit 1
 rm -f mmap12.c
 cd $odir
 

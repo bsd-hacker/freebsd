@@ -40,7 +40,7 @@ set -e
 
 odir=`pwd`
 cd /tmp
-cat > server.c <<EOF
+cat > sendfile6_server.c <<EOF
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 EOF
-cat > client.c <<EOF
+cat > sendfile6_client.c <<EOF
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -229,10 +229,10 @@ int fake_sendfile(int from, int to);
 int real_sendfile(int from, int to);
 EOF
 
-cc -c -Wall -Wextra -O2 util.c
-cc -o server -Wall -Wextra -O2 server.c util.o
-cc -o client -Wall -Wextra -O2 client.c util.o
-rm -f server.c client.c util.c util.o util.h mysocket
+mycc -c -Wall -Wextra -O2 util.c
+mycc -o sendfile6_server -Wall -Wextra -O2 sendfile6_server.c util.o
+mycc -o sendfile6_client -Wall -Wextra -O2 sendfile6_client.c util.o
+rm -f sendfile6_server.c sendfile6_client.c util.c util.o util.h mysocket
 
 mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
@@ -243,12 +243,12 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 dd if=/dev/random of=$mntpoint/data bs=123456 count=1 > /dev/null 2>&1
-./server $mntpoint/data mysocket &
+./sendfile6_server $mntpoint/data mysocket &
 sleep 0.2
-./client mysocket > data.$$
-cmp $mntpoint/data data.$$ || 
+./sendfile6_client mysocket > data.$$
+cmp $mntpoint/data data.$$ ||
 	{ echo "FAIL Data mismatch"; ls -l $mntpoint/data data.$$; }
-rm -f data.$$ server client mysocket
+rm -f data.$$ sendfile6_server sendfile6_client mysocket
 
 while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1

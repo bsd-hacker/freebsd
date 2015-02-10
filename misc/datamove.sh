@@ -43,7 +43,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > datamove.c
-cc -o datamove -Wall datamove.c
+mycc -o datamove -Wall datamove.c
 rm -f datamove.c
 
 n=5

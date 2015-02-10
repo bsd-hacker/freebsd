@@ -37,7 +37,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kinfo2.c
-cc -o kinfo2 -Wall kinfo2.c -lutil
+mycc -o kinfo2 -Wall kinfo2.c -lutil
 rm -f kinfo2.c
 
 mount | grep -q procfs || mount -t procfs procfs /procfs

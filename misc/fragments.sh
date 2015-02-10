@@ -43,7 +43,7 @@ here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > fragments.c
 rm -f /tmp/fragments
-cc -o fragments -Wall -Wextra -O2 -g fragments.c
+mycc -o fragments -Wall -Wextra -O2 -g fragments.c
 rm -f fragments.c
 cd $here
 

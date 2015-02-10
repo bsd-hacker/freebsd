@@ -48,7 +48,7 @@ mp2=/mnt2
 [ -d $mp2 ] || mkdir $mp2
 rm -f $CACHE $NOCACHE
 
-cc -o /tmp/fstool ../tools/fstool.c
+mycc -o /tmp/fstool ../tools/fstool.c
 
 test() {
 	opt=$1

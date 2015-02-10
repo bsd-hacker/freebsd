@@ -40,7 +40,7 @@ odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > flock_open_close.c
 rm -f /tmp/flock_open_close
-cc -o flock_open_close -Wall -Wextra -O2 -g flock_open_close.c -lpthread || exit 1
+mycc -o flock_open_close -Wall -Wextra -O2 -g flock_open_close.c -lpthread || exit 1
 rm -f flock_open_close.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

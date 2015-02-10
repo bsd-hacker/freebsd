@@ -36,6 +36,8 @@
 
 # Fixed in r243901.
 
+. ../default.cfg
+
 rm -f /tmp/crwriter /tmp/crlogger || exit 1
 
 cat > /tmp/crwriter.c <<EOF
@@ -72,7 +74,7 @@ main(void)
 	return (0);
 }
 EOF
-cc -o /tmp/crwriter -Wall -Wextra -O2 -g /tmp/crwriter.c
+mycc -o /tmp/crwriter -Wall -Wextra -O2 -g /tmp/crwriter.c
 rm -f /tmp/crwriter.c
 
 cat > /tmp/crlogger.c <<EOF
@@ -305,7 +307,7 @@ main(int argc, char **argv)
 	return (0);
 }
 EOF
-cc -o /tmp/crlogger -Wall -Wextra -O2 -g /tmp/crlogger.c
+mycc -o /tmp/crlogger -Wall -Wextra -O2 -g /tmp/crlogger.c
 rm -f /tmp/crlogger.c
 
 N=200

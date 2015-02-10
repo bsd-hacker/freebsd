@@ -31,11 +31,13 @@
 # Test scenario inspired by alc@
 # Threaded version in order to "use the same pmap", as pointed out by kib@
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/wire_no_page.c
-cc -o mmap7  -Wall -Wextra wire_no_page.c -lpthread || exit 1
+mycc -o mmap7  -Wall -Wextra wire_no_page.c -lpthread || exit 1
 rm -f wire_no_page.c
 cd $odir
 

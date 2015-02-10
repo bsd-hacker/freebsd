@@ -37,7 +37,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kevent5.c
-cc -o kevent5 -Wall -Wextra -O2 -g kevent5.c || exit 1
+mycc -o kevent5 -Wall -Wextra -O2 -g kevent5.c || exit 1
 rm -f kevent5.c
 
 [ -d $RUNDIR ] || mkdir -p $RUNDIR

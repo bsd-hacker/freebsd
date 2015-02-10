@@ -30,6 +30,9 @@
 
 # Regression test for r246484.
 
+. ../default.cfg
+
+cd /tmp
 cat > vfork1.c <<- EOF
 #include <err.h>
 #include <stdio.h>
@@ -55,7 +58,7 @@ main(void)
 	return (0);
 }
 EOF
-cc -o vfork1 -Wall -Wextra -g vfork1.c
+mycc -o vfork1 -Wall -Wextra -g vfork1.c
 rm  vfork1.c
 
 cat > vfork2.c <<- EOF
@@ -111,7 +114,7 @@ main(int argc, char **argv)
 	return (0);
 }
 EOF
-cc -o vfork2 -Wall -Wextra -g vfork2.c
+mycc -o vfork2 -Wall -Wextra -g vfork2.c
 rm  vfork2.c
 
 ./vfork1 &

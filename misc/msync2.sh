@@ -31,11 +31,13 @@
 # "panic: vm_pageout_flush: partially invalid page xx index 0/1" seen.
 # Fixed in r255566.
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/msync2.c
-cc -o msync2  -Wall -Wextra msync2.c || exit 1
+mycc -o msync2  -Wall -Wextra msync2.c || exit 1
 rm -f msync2.c
 cd $odir
 

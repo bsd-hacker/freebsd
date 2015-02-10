@@ -43,7 +43,7 @@ fsxc=`find -x /usr/src -name fsx.c | tail -1`
 [ -z "$fsxc" ] && fsxc=`find -x / -name fsx.c | tail -1`
 [ -z "$fsxc" ] && exit
 
-cc -o /tmp/fsx $fsxc
+mycc -o /tmp/fsx $fsxc
 
 D=$diskimage
 dede $D 1m 1k || exit 1

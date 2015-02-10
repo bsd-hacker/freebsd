@@ -30,10 +30,12 @@
 
 # _exit(2) test scenario with focus on shared channel tear down.
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pthread3.c
-cc -o pthread3 -Wall -Wextra -O2 -g -gdwarf-2 pthread3.c -lpthread || exit 1
+mycc -o pthread3 -Wall -Wextra -O2 -g -gdwarf-2 pthread3.c -lpthread || exit 1
 rm -f pthread3.c
 
 for i in `jot 8`; do

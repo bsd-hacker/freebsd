@@ -43,7 +43,7 @@ ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > nfs12.c
-cc -o nfs12 -Wall -Wextra -O2 -g nfs12.c
+mycc -o nfs12 -Wall -Wextra -O2 -g nfs12.c
 rm -f nfs12.c
 cd $here
 

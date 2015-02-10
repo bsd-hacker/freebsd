@@ -33,11 +33,13 @@
 # Variation of sendfile.sh
 # kern.ipc.nsfbufs should be low for this test
 
+. ../default.cfg
+
 odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > sendfile3.c
-cc -o sendfile3 -Wall -Wextra sendfile3.c
+mycc -o sendfile3 -Wall -Wextra sendfile3.c
 rm -f sendfile3.c
 [ -d "$RUNDIR" ] || mkdir -p $RUNDIR
 cd $RUNDIR

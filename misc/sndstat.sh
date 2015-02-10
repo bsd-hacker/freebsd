@@ -41,7 +41,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sndstat.c
-cc -o sndstat -Wall -Wextra sndstat.c -lpthread
+mycc -o sndstat -Wall -Wextra sndstat.c -lpthread
 rm -f sndstat.c
 
 /tmp/sndstat > /dev/null

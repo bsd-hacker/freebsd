@@ -35,7 +35,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > truncate.c
-cc -o truncate -Wall -Wextra -O2 truncate.c || exit 1
+mycc -o truncate -Wall -Wextra -O2 truncate.c || exit 1
 rm -f truncate.c
 [ -d $RUNDIR ] || mkdir -p $RUNDIR
 cd $RUNDIR

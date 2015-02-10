@@ -34,6 +34,8 @@
 
 # Test scenario by Dan McNulty <dkmcnulty gmail.com>
 
+. ../default.cfg
+
 cat > waitthread.c <<EOF
 #include <unistd.h>
 #include <stdlib.h>
@@ -188,8 +190,8 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
 }
 EOF
-cc -o waitthread -Wall -Wextra waitthread.c -lpthread || exit
-cc -o tkill -Wall -Wextra tkill.c || exit
+mycc -o waitthread -Wall -Wextra waitthread.c -lpthread || exit
+mycc -o tkill -Wall -Wextra tkill.c || exit
 rm -f waitthread.c tkill.c
 
 rm -f gdbfifo gdbout pstat /tmp/waitthread

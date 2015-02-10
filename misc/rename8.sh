@@ -39,7 +39,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rename8.c
-cc -o rename8 -Wall -Wextra -O2 rename8.c
+mycc -o rename8 -Wall -Wextra -O2 rename8.c
 rm -f rename8.c
 cd $here
 

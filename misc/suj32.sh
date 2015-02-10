@@ -39,7 +39,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > suj32.c
-cc -o suj32 -Wall -Wextra -O2 suj32.c || exit 1
+mycc -o suj32 -Wall -Wextra -O2 suj32.c || exit 1
 rm -f suj32.c
 cd $here
 

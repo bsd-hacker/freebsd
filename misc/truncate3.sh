@@ -47,7 +47,7 @@ export RUNDIR=$mntpoint/stressX
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > truncate3.c
-cc -o truncate3 -Wall -O2 truncate3.c
+mycc -o truncate3 -Wall -O2 truncate3.c
 rm -f truncate3.c
 [ -d $RUNDIR ] || mkdir -p $RUNDIR
 cd $RUNDIR

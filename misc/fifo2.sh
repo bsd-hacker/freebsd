@@ -41,7 +41,7 @@ odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > fifo2.c
 rm -f /tmp/fifo2
-cc -o fifo2 -Wall -Wextra -O2 -g fifo2.c -lpthread || exit 1
+mycc -o fifo2 -Wall -Wextra -O2 -g fifo2.c -lpthread || exit 1
 rm -f fifo2.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

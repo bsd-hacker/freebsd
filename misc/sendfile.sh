@@ -38,7 +38,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > sendfile.c
-cc -o sendfile -Wall sendfile.c -pthread
+mycc -o sendfile -Wall sendfile.c -pthread
 rm -f sendfile.c
 [ -d "$RUNDIR" ] || mkdir -p $RUNDIR
 cd $RUNDIR

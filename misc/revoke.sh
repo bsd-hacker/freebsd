@@ -30,12 +30,14 @@
 
 # Regression test. Causes panic on 6.1
 
+. ../default.cfg
+
 odir=`pwd`
 dir=/tmp
 
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/revoke.c
-cc -o revoke -Wall revoke.c || exit 1
+mycc -o revoke -Wall revoke.c || exit 1
 rm -f revoke.c
 
 n=100	# Number of times to test

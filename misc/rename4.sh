@@ -39,7 +39,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > rename4.c
-cc -o rename4 -Wall rename4.c
+mycc -o rename4 -Wall rename4.c
 rm -f rename4.c
 cd $RUNDIR
 

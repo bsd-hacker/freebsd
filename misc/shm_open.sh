@@ -30,11 +30,13 @@
 
 # "panic: kmem_malloc(4096): kmem_map too small" seen.
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/shm_open.c
-cc -o shm_open -Wall -Wextra -O2 -g shm_open.c || exit 1
+mycc -o shm_open -Wall -Wextra -O2 -g shm_open.c || exit 1
 rm -f shm_open.c
 cd $odir
 

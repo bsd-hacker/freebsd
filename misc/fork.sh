@@ -34,10 +34,12 @@
 
 # Note that program erroneously calls exit(3) and not _exit(2).
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > fork.c
-cc -o fork -Wall -Wextra -O2 -g fork.c -lpthread || exit 1
+mycc -o fork -Wall -Wextra -O2 -g fork.c -lpthread || exit 1
 
 for i in `jot 100`; do
 	/tmp/fork &

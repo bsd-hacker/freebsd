@@ -37,7 +37,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > mlockall.c
-cc -o mlockall -Wall mlockall.c
+mycc -o mlockall -Wall mlockall.c
 rm -f mlockall.c
 
 for i in `jot 10`; do

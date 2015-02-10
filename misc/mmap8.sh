@@ -34,13 +34,15 @@
 
 # Test scenario by: Mark Johnston markj@
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/mmap8.c
 # At one point during the fix development, only the thread version would panic
-cc -o mmap8   -Wall -Wextra mmap8.c          || exit 1
-cc -o mmap8p  -Wall -Wextra mmap8.c -pthread || exit 1
+mycc -o mmap8   -Wall -Wextra mmap8.c          || exit 1
+mycc -o mmap8p  -Wall -Wextra mmap8.c -pthread || exit 1
 rm -f mmap8.c
 cd $odir
 

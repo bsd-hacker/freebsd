@@ -32,11 +32,13 @@
 # "panic: vm_page_dirty: page is invalid!" seen.
 # Fixed in r255396.
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/wire_no_page.c
-cc -o mmap5  -Wall -Wextra wire_no_page.c || exit 1
+mycc -o mmap5  -Wall -Wextra wire_no_page.c || exit 1
 rm -f wire_no_page.c
 cd $odir
 

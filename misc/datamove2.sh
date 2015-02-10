@@ -39,7 +39,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > datamove2.c
-cc -o datamove2 -Wall datamove2.c
+mycc -o datamove2 -Wall datamove2.c
 rm -f datamove2.c
 
 for i in `jot 2`; do

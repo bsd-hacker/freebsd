@@ -48,7 +48,7 @@ rm -rf $dir
 mkdir -p $dir
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/alternativeFlushPath.c
-cc -o /tmp/alternativeFlushPath -Wall -Wextra alternativeFlushPath.c
+mycc -o /tmp/alternativeFlushPath -Wall -Wextra alternativeFlushPath.c
 rm -f alternativeFlushPath.c
 
 for j in `jot 10`; do

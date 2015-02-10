@@ -37,7 +37,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > vnodes.c
-cc -o vnodes -Wall -O2 vnodes.c
+mycc -o vnodes -Wall -O2 vnodes.c
 rm -f vnodes.c
 
 old=`sysctl vfs.numvnodes | tail -1 | sed 's/.*: //'`

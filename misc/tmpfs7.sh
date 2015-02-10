@@ -229,9 +229,9 @@ int fake_sendfile(int from, int to);
 int real_sendfile(int from, int to);
 EOF
 
-cc -c -Wall -Wextra -O2 util.c
-cc -o server -Wall -Wextra -O2 server.c util.o
-cc -o client -Wall -Wextra -O2 client.c util.o
+mycc -c -Wall -Wextra -O2 util.c
+mycc -o server -Wall -Wextra -O2 server.c util.o
+mycc -o client -Wall -Wextra -O2 client.c util.o
 rm -f server.c client.c util.c util.o util.h mysocket
 
 mount | grep "$mntpoint" | grep -q tmpfs && umount $mntpoint

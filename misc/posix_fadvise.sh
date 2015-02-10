@@ -36,7 +36,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > posix_fadvise.c
-cc -o posix_fadvise -Wall -Wextra -O2 -g posix_fadvise.c
+mycc -o posix_fadvise -Wall -Wextra -O2 -g posix_fadvise.c
 
 n1=`vmstat -m | grep fadvise | awk '{print $2 + 0}'`
 /tmp/posix_fadvise

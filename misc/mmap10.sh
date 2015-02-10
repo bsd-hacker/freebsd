@@ -32,12 +32,14 @@
 # http://people.freebsd.org/~pho/stress/log/mmap10.txt
 # No problems seen after r271681.
 
+. ../default.cfg
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > mmap10.c
-cc -o mmap10 -Wall -Wextra -O2 -g mmap10.c -lpthread || exit 1
+mycc -o mmap10 -Wall -Wextra -O2 -g mmap10.c -lpthread || exit 1
 rm -f mmap10.c
 
 daemon sh -c "(cd $here/../testcases/swap; ./swap -t 2m -i 20 -k)"

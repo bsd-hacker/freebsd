@@ -33,19 +33,20 @@
 odir=`pwd`
 
 cd /tmp
-sed '1,/^EOF/d' < $odir/$0 > kevent.c
-cc -o kevent -Wall kevent.c -pthread
-rm -f kevent.c
+sed '1,/^EOF/d' < $odir/$0 > kevent2.c
+mycc -o kevent2 -Wall kevent2.c -pthread
+rm -f kevent2.c
 cd $RUNDIR
 
 for i in `jot 10`; do
 	for j in `jot 12`; do
-		/tmp/kevent > /dev/null 2>&1 &
+		/tmp/kevent2 > /dev/null 2>&1 &
 	done
 	for j in `jot 12`; do
 		wait
 	done
 done
+rm -f /tmp/kevent2
 exit
 EOF
 #include <pthread.h>
@@ -170,6 +171,6 @@ main(int argc, char **argv)
 		if (pthread_cond_destroy(&cond) == -1)
 			err(1, "pthread_condattr_destroy");
 	}
-		
+
 	return (0);
 }

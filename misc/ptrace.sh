@@ -30,10 +30,12 @@
 
 # wait4(2) / ptrace(2) regression test.
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > ptrace.c
-cc -o ptrace -Wall -Wextra -g ptrace.c || exit 1
+mycc -o ptrace -Wall -Wextra -g ptrace.c || exit 1
 rm -f ptrace.c
 cd $here
 

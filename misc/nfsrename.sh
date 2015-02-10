@@ -42,7 +42,7 @@ ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > nfsrename.c
-cc -o nfsrename -Wall nfsrename.c
+mycc -o nfsrename -Wall nfsrename.c
 rm -f nfsrename.c
 cd $odir
 

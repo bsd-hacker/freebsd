@@ -38,7 +38,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > syscall2.c
-cc -o syscall2 -Wall -I $odir/../include -L $odir/../lib syscall2.c -lstress -lutil
+mycc -o syscall2 -Wall -I $odir/../include -L $odir/../lib syscall2.c -lstress -lutil
 rm -f syscall2.c
 
 kldstat -v | grep -q sysvmsg  || kldload sysvmsg

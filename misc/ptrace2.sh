@@ -33,6 +33,8 @@
 
 # Test scenario by Tijl Coosemans, tijl@
 
+. ../default.cfg
+
 cd /tmp
 
 cat > race1.c <<EOF
@@ -134,8 +136,8 @@ main(void)
 }
 EOF
 
-cc -o race1 -Wall -Wextra race1.c
-cc -o race2 -Wall -Wextra race2.c
+mycc -o race1 -Wall -Wextra race1.c
+mycc -o race2 -Wall -Wextra race2.c
 
 ./race1 > /dev/null || echo "FAIL #1"
 ./race2 > /dev/null || echo "FAIL #2"

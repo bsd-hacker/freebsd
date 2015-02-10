@@ -77,7 +77,7 @@ fi
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > suj22.c
-cc -o suj22 -Wall -Wextra -O2 suj22.c
+mycc -o suj22 -Wall -Wextra -O2 suj22.c
 rm -f suj22.c
 
 mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}

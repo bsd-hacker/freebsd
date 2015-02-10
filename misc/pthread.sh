@@ -38,7 +38,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > pth.c
-cc -o pth -Wall pth.c -pthread
+mycc -o pth -Wall pth.c -pthread
 rm -f pth.c
 cd $odir
 

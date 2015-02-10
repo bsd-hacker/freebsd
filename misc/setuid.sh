@@ -38,7 +38,7 @@ odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > setuid.c
 rm -f /tmp/setuid
-cc -o setuid -Wall -Wextra -O2 -g setuid.c -static || exit 1
+mycc -o setuid -Wall -Wextra -O2 -g setuid.c -static || exit 1
 rm -f setuid.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

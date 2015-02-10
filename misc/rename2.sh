@@ -31,23 +31,25 @@
 # With lookup_shared=1 rename() will fail from time to time with ENOENT and
 # the following stat() will succeed. (Variation of rename.sh)
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > rename.c
-cc -o rename -Wall rename.c || exit 1
-rm -f rename.c
+sed '1,/^EOF/d' < $here/$0 > rename2.c
+mycc -o rename2 -Wall rename2.c || exit 1
+rm -f rename2.c
 cd $here
 
 rm -rf /tmp/rename.dir.*
 for i in `jot 10`; do
 	for j in `jot 10`; do
-		/tmp/rename &
+		/tmp/rename2 &
 	done
 	for j in `jot 10`; do
 		wait
 	done
 done
-rm -rf /tmp/rename.dir.*
+rm -rf /tmp/rename.dir.* /tmp/rename2
 exit 0
 EOF
 #include <err.h>
@@ -63,7 +65,7 @@ EOF
 static char dir1[128];
 static char dir2[128];
 
-int 
+int
 main(int argc, char **argv)
 {
 	struct stat sb;

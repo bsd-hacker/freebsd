@@ -33,10 +33,12 @@
 
 # Test scenario by kib@
 
+. ../default.cfg
+
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > mmap2.c
-cc -o mmap2 -Wall -g mmap2.c -lpthread
+mycc -o mmap2 -Wall -g mmap2.c -lpthread
 rm -f mmap2.c
 
 for i in `jot 10`; do

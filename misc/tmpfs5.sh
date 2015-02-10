@@ -38,7 +38,7 @@ here=`pwd`
 src=`uname -v | sed 's/.*:.*:\(.*\)\/sys\/.*/\1/'`
 [ -r $src/tools/regression/fsx/fsx.c ] || exit 1
 cd /tmp
-cc -o fsx -Wall $src/tools/regression/fsx/fsx.c
+mycc -o fsx -Wall $src/tools/regression/fsx/fsx.c
 
 mount | grep "$mntpoint" | grep -q tmpfs && umount $mntpoint
 mount -t tmpfs tmpfs  $mntpoint

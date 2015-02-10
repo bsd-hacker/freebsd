@@ -40,6 +40,8 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 cd /tmp
 if [ "`uname -p`" = "i386" ]; then
 	cat > ldt.c <<EOF

@@ -37,7 +37,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > sem.c
-cc -o sem -Wall sem.c
+mycc -o sem -Wall sem.c
 rm -f sem.c
 
 cd $RUNDIR/..

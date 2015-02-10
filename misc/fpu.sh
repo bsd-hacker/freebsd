@@ -35,7 +35,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > fpu.c
-cc -o fpu -Wall -O2 fpu.c
+mycc -o fpu -Wall -O2 fpu.c
 rm -f fpu.c
 [ -d $RUNDIR ] || mkdir -p $RUNDIR
 cd $RUNDIR

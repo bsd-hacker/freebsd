@@ -33,11 +33,13 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 [ -r /boot/kernel/kernel ] || exit 0
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sendfile_shm.c
-cc -o sendfile_shm -Wall -Wextra -O2 sendfile_shm.c || exit 1
+mycc -o sendfile_shm -Wall -Wextra -O2 sendfile_shm.c || exit 1
 rm -f sendfile_shm.c
 cd $here
 

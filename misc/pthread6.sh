@@ -31,10 +31,12 @@
 # "panic: pmap active 0xfffff80128cd84b8" seen:
 # http://people.freebsd.org/~pho/stress/log/attilio101.txt
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pthread6.c
-cc -o pthread6 -Wall -Wextra -O2 -g -gdwarf-2 pthread6.c -lpthread || exit 1
+mycc -o pthread6 -Wall -Wextra -O2 -g -gdwarf-2 pthread6.c -lpthread || exit 1
 rm -f pthread6.c /tmp/pthread6.core
 rm -f /tmp/pthread6.core
 

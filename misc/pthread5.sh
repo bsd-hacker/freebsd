@@ -30,10 +30,12 @@
 
 # Stress shchan allocations.
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pthread5.c
-cc -o pthread5 -Wall -Wextra -O2 pthread5.c -lpthread || exit 1
+mycc -o pthread5 -Wall -Wextra -O2 pthread5.c -lpthread || exit 1
 rm -f pthread5.c
 
 /tmp/pthread5

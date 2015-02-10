@@ -43,7 +43,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pcatch.c
-cc -o pcatch -Wall -Wextra -O0 -g pcatch.c || exit 1
+mycc -o pcatch -Wall -Wextra -O0 -g pcatch.c || exit 1
 rm -f pcatch.c
 cd $here
 

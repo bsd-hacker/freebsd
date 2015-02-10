@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > fts.c
-cc -o fts -Wall -Wextra fts.c
+mycc -o fts -Wall -Wextra fts.c
 rm -f fts.c
 cd $here
 

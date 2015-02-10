@@ -30,11 +30,13 @@
 
 # Threaded producer-consumer test.
 
+. ../default.cfg
+
 export LANG=C
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pthread2.c
-cc -o pthread2 -Wall -Wextra -O2 -g pthread2.c -lpthread || exit 1
+mycc -o pthread2 -Wall -Wextra -O2 -g pthread2.c -lpthread || exit 1
 rm -f pthread2.c /tmp/pthread2.core
 
 log=/tmp/pthread2.`date '+%Y%m%d-%H%M'`

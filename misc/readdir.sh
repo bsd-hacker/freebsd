@@ -41,7 +41,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > readdir.c
-cc -o readdir -Wall -Wextra readdir.c
+mycc -o readdir -Wall -Wextra readdir.c
 rm -f readdir.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

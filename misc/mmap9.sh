@@ -34,13 +34,15 @@
 
 # Test scenario by: Mark Johnston markj@
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/mmap9.c
 # At one point during the fix development, only the thread version would panic
-cc -o mmap9  -O2 -Wall -Wextra mmap9.c           || exit 1
-cc -o mmap9p -O2 -Wall -Wextra mmap9.c -lpthread || exit 1
+mycc -o mmap9  -O2 -Wall -Wextra mmap9.c           || exit 1
+mycc -o mmap9p -O2 -Wall -Wextra mmap9.c -lpthread || exit 1
 rm -f mmap9.c
 cd $odir
 

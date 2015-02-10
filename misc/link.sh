@@ -40,7 +40,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > link.c
-cc -o link -Wall -Wextra -O2 -g link.c || exit 1
+mycc -o link -Wall -Wextra -O2 -g link.c || exit 1
 rm -f link.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

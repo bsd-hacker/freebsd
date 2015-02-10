@@ -39,7 +39,7 @@ max=`sysctl kern.maxfilesperproc | sed 's/.*: //'`
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > fdgrowtable.c
-cc -o fdgrowtable -Wall -Wextra -O2 fdgrowtable.c || exit 1
+mycc -o fdgrowtable -Wall -Wextra -O2 fdgrowtable.c || exit 1
 rm -f fdgrowtable.c
 cd $here
 

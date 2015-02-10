@@ -41,12 +41,14 @@
 
 # Test scenario by kib@freebsd.org
 
+. ../default.cfg
+
 odir=`pwd`
 dir=/tmp
 
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/devfs2.c
-cc -o devfs2 -Wall devfs2.c -lthr
+mycc -o devfs2 -Wall devfs2.c -lthr
 rm -f devfs2.c
 
 ./devfs2

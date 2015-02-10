@@ -37,7 +37,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pfl.c
-cc -o pfl -Wall -Wextra pfl.c || exit 1
+mycc -o pfl -Wall -Wextra pfl.c || exit 1
 rm -f pfl.c
 cd $here
 

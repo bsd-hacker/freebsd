@@ -47,7 +47,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > tmpfs10.c
-cc -o tmpfs10 -Wall -Wextra -O2 -g tmpfs10.c || exit 1
+mycc -o tmpfs10 -Wall -Wextra -O2 -g tmpfs10.c || exit 1
 rm -f tmpfs10.c
 cd $odir
 

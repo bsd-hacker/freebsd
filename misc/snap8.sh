@@ -53,7 +53,7 @@ newfs -O2 $newfs_flags md${mdstart}${part} > /dev/null
 mount /dev/md${mdstart}${part} $mntpoint
 
 
-cc -o /tmp/fstool -Wall ../tools/fstool.c
+mycc -o /tmp/fstool -Wall ../tools/fstool.c
 for i in `jot $parallel`; do
 	(mkdir $mntpoint/test$i; cd $mntpoint/test$i; /tmp/fstool -l -f 50 -n 500 -s 8k) &
 done

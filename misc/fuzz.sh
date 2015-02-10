@@ -93,7 +93,7 @@ dir=/tmp
 
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/fuzz.c
-cc -o fuzz -Wall fuzz.c
+mycc -o fuzz -Wall fuzz.c
 rm -f fuzz.c
 
 for j in `jot 10`; do

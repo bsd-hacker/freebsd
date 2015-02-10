@@ -40,7 +40,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pread.c
-cc -o pread -Wall -Wextra pread.c
+mycc -o pread -Wall -Wextra pread.c
 rm -f pread.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

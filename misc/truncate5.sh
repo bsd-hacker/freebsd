@@ -46,7 +46,7 @@ mount /dev/md${mdstart}$part $mntpoint
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > truncate5.c
-cc -o truncate5 -Wall -Wextra -O2 truncate5.c
+mycc -o truncate5 -Wall -Wextra -O2 truncate5.c
 rm -f truncate5.c
 
 export RUNDIR=$mntpoint/stressX

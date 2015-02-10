@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sigstop.c
-cc -o sigstop -Wall -Wextra sigstop.c || exit 1
+mycc -o sigstop -Wall -Wextra sigstop.c || exit 1
 rm -f sigstop.c
 cd $here
 

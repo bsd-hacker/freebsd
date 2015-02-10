@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > extattr_set_fd.c
-cc -o extattr_set_fd -Wall -Wextra -O2 extattr_set_fd.c
+mycc -o extattr_set_fd -Wall -Wextra -O2 extattr_set_fd.c
 rm -f extattr_set_fd.c
 
 mount | grep -q "$mntpoint" && umount $mntpoint

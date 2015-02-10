@@ -37,7 +37,7 @@ odir=`pwd`
 cd /tmp
 rm -f core
 sed '1,/^EOF/d' < $odir/$0 > core.c
-cc -o core -Wall core.c
+mycc -o core -Wall core.c
 rm -f core.c
 cd $RUNDIR
 

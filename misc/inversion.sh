@@ -31,6 +31,8 @@
 # Provokes a deadlock by lower priority process holding a lock and
 # never beeing run
 
+. ../default.cfg
+
 dir=/tmp
 N=5	# Number of CPUs + 1
 M=25	# Number of lower priority jobs
@@ -38,7 +40,7 @@ M=25	# Number of lower priority jobs
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/inversion.c
-cc -o inversion -Wall inversion.c
+mycc -o inversion -Wall inversion.c
 rm -f inversion.c
 
 for i in `jot $N`; do

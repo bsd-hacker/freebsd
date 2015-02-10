@@ -38,7 +38,7 @@
 
 . ../default.cfg
 
-cc -o /tmp/fstool -Wall -Wextra -O2 ../tools/fstool.c || exit 1
+mycc -o /tmp/fstool -Wall -Wextra -O2 ../tools/fstool.c || exit 1
 
 cd /tmp
 mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint

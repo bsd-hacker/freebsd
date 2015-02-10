@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sigxcpu.c
-cc -o sigxcpu -Wall -Wextra sigxcpu.c
+mycc -o sigxcpu -Wall -Wextra sigxcpu.c
 rm -f sigxcpu.c
 cd $here
 

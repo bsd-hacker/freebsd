@@ -45,8 +45,10 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 odir=`pwd`
-dir=/tmp/ctest
+dir=/tmp/contigmalloc
 rm -rf $dir; mkdir -p $dir
 cat > $dir/ctest.c <<EOF
 #include <sys/param.h>
@@ -132,7 +134,7 @@ main(int argc, char *argv[])
 }
 
 EOF
-cc -o $dir/ctest -Wall -Wextra -O0 -g $dir/ctest.c || exit
+mycc -o /tmp/ctest -Wall -Wextra -O0 -g $dir/ctest.c || exit
 rm $dir/ctest.c
 
 cd $dir
@@ -149,9 +151,9 @@ kldload $dir/cmalloc.ko || exit 1
 
 cd $odir
 mw=`sysctl -n vm.max_wired` || exit 1
-$dir/ctest `sysctl -n debug.cmalloc_offset` $mw 2>&1 | tail -5
+/tmp/ctest `sysctl -n debug.cmalloc_offset` $mw 2>&1 | tail -5
 kldunload $dir/cmalloc.ko
-rm -rf $dir
+rm -rf $dir /tmp/ctest
 exit
 
 EOF2

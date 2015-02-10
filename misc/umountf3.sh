@@ -41,7 +41,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > umountf3.c
-cc -o umountf3 -Wall umountf3.c
+mycc -o umountf3 -Wall umountf3.c
 rm -f umountf3.c
 cd $odir
 

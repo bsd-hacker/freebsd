@@ -37,7 +37,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > linger.c
-cc -o linger -Wall -O2 linger.c
+mycc -o linger -Wall -O2 linger.c
 rm -f linger.c
 cd $here
 

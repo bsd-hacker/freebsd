@@ -35,15 +35,15 @@
 # Test scenario suggestion by alc@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
-[ `uname -m` = "i386" ] && exit 0 # Not enough vm
 
 . ../default.cfg
 
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > holdcnt0.c
-cc -o holdcnt0 -Wall -Wextra -g holdcnt0.c || exit 1
+mycc -o holdcnt0 -Wall -Wextra -g holdcnt0.c || exit 1
 rm -f holdcnt0.c
+[ `uname -m` = "i386" ] && exit 0 # Not enough vm
 cd $here
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
@@ -198,7 +198,7 @@ reader(void)
 				continue;
 			}
 			len = statbuf.st_size;
-			if ((p = mmap(p, len, PROT_READ, MAP_SHARED, fd, 0)) == MAP_FAILED) 
+			if ((p = mmap(p, len, PROT_READ, MAP_SHARED, fd, 0)) == MAP_FAILED)
 				err(1, "mmap()");
 			close(fd);
 			n = statbuf.st_size / ps;

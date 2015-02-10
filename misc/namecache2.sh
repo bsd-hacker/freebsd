@@ -47,7 +47,7 @@ odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > namecache2.c
 rm -f /tmp/namecache2
-cc -o namecache2 -Wall -Wextra -g -O2 namecache2.c -lpthread || exit 1
+mycc -o namecache2 -Wall -Wextra -g -O2 namecache2.c -lpthread || exit 1
 rm -f namecache2.c
 cd $odir
 

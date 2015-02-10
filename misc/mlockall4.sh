@@ -39,7 +39,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > mlockall4.c
-cc -o mlockall4 -Wall -Wextra mlockall4.c || exit 1
+mycc -o mlockall4 -Wall -Wextra mlockall4.c || exit 1
 rm -f mlockall4.c
 
 mount | grep -q "on $mntpoint " && umount -f $mntpoint

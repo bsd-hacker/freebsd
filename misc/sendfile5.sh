@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sendfile5.c
-cc -o sendfile5 -Wall -Wextra -O2 sendfile5.c
+mycc -o sendfile5 -Wall -Wextra -O2 sendfile5.c
 rm -f sendfile5.c
 dd if=/dev/zero of=/tmp/big bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 cd $here

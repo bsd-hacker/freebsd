@@ -41,7 +41,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > nbufkv.c
-cc -o nbufkv -Wall nbufkv.c
+mycc -o nbufkv -Wall nbufkv.c
 rm -f nbufkv.c
 cd $odir
 

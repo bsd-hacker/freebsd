@@ -40,7 +40,7 @@ mount | grep -q procfs || mount -t procfs procfs /proc
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > procfs4.c
-cc -o procfs4 -Wall -Wextra -O2 procfs4.c
+mycc -o procfs4 -Wall -Wextra -O2 procfs4.c
 rm -f procfs4.c
 cd $here
 

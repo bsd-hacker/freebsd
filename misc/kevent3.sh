@@ -33,19 +33,20 @@
 odir=`pwd`
 
 cd /tmp
-sed '1,/^EOF/d' < $odir/$0 > kevent.c
-cc -o kevent -Wall kevent.c -pthread
-rm -f kevent.c
+sed '1,/^EOF/d' < $odir/$0 > kevent3.c
+mycc -o kevent3 -Wall kevent3.c -pthread
+rm -f kevent3.c
 cd $RUNDIR
 
 for i in `jot 64`; do
 	for j in `jot 12`; do
-		/tmp/kevent > /dev/null 2>&1 &
+		/tmp/kevent3 > /dev/null 2>&1 &
 	done
 	for j in `jot 12`; do
 		wait
 	done
 done
+rm -f /tmp/kevent3
 exit
 EOF
 /*

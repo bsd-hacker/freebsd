@@ -37,6 +37,8 @@ The following sub-directories exists:
 
 These days most test development occur is stress2/misc, where the regression tests reside.
 To run all of these tests once, type "./all.sh -o" in the stress2/misc directory.
+The default mode is to compile tests, but pre-build binaries may be used.
+See default.cfg for details.
 
 The name stress2 indicates that this is the second generation of the Kernel Stress Test Suite.
 The first version (stress) was based mostly on scripts.

@@ -43,12 +43,14 @@
 # Filesystem  1K-blocks    Used Avail Capacity iused  ifree %iused  Mounted on
 # /dev/ad0s1e   1982798 1784528 39648    98%    4965 254105    2%   /tmp
 
+. ../default.cfg
+
 odir=`pwd`
 dir=/tmp
 
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/statfs.c
-cc -o statfs -Wall statfs.c
+mycc -o statfs -Wall statfs.c
 rm -f statfs.c
 
 df -i /tmp

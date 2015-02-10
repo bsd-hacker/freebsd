@@ -66,7 +66,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > namecache.c
-cc -o namecache -Wall namecache.c
+mycc -o namecache -Wall namecache.c
 rm -f namecache.c
 
 #dir=/tmp/namecache.dir	# No problems seen

@@ -41,7 +41,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > mmap4.c
-cc -o mmap4 -Wall -O2 mmap4.c
+mycc -o mmap4 -Wall -O2 mmap4.c
 rm -f mmap4.c
 
 mount | grep -q "$mntpoint" && umount $mntpoint

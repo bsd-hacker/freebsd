@@ -15,7 +15,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > mmap.c
-cc -o mmap -Wall mmap.c
+mycc -o mmap -Wall mmap.c
 rm -f mmap.c
 
 ./mmap

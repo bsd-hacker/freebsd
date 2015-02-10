@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > socketpair.c
-cc -o socketpair -Wall -Wextra -O2 socketpair.c
+mycc -o socketpair -Wall -Wextra -O2 socketpair.c
 rm -f socketpair.c
 [ -d $RUNDIR ] || mkdir -p $RUNDIR
 cd $RUNDIR

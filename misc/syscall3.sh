@@ -38,7 +38,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > syscall3.c
-cc -o syscall3 -Wall syscall3.c
+mycc -o syscall3 -Wall syscall3.c
 rm -f syscall3.c
 
 kldstat -v | grep -q sysvmsg  || kldload sysvmsg

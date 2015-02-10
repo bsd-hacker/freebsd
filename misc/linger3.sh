@@ -37,7 +37,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > linger3.c
-cc -o linger3 -Wall -Wextra -O2 linger3.c
+mycc -o linger3 -Wall -Wextra -O2 linger3.c
 rm -f linger3.c
 
 mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint

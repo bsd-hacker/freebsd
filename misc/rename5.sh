@@ -51,7 +51,7 @@ mount /dev/md${mdstart}$part $mntpoint
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rename5.c
-cc -o rename5 -Wall -Wextra -O2 rename5.c
+mycc -o rename5 -Wall -Wextra -O2 rename5.c
 rm -f rename5.c
 
 cd $mntpoint

@@ -63,7 +63,7 @@ snap () {
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > suj21.c
-cc -o suj21 -Wall -Wextra -g -O2 suj21.c
+mycc -o suj21 -Wall -Wextra -g -O2 suj21.c
 rm -f suj21.c
 
 mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}

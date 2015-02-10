@@ -39,7 +39,7 @@ odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > syscall4.c
 rm -f /tmp/syscall4
-cc -o syscall4 -Wall -Wextra -O2 -g syscall4.c -lpthread || exit 1
+mycc -o syscall4 -Wall -Wextra -O2 -g syscall4.c -lpthread || exit 1
 rm -f syscall4.c
 
 kldstat -v | grep -q sysvmsg  || kldload sysvmsg

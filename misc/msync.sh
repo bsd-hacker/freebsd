@@ -35,11 +35,13 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/msync.c
-cc -o msync -Wall -Wextra msync.c -lpthread || exit 1
+mycc -o msync -Wall -Wextra msync.c -lpthread || exit 1
 rm -f msync.c
 cd $odir
 

@@ -35,7 +35,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kevent4.c
-cc -o kevent4 -Wall kevent4.c -pthread
+mycc -o kevent4 -Wall kevent4.c -pthread
 rm -f kevent4.c
 
 cd $odir

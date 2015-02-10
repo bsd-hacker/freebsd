@@ -39,7 +39,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > suj17.c
-cc -o suj17 -Wall -Wextra -O2 suj17.c
+mycc -o suj17 -Wall -Wextra -O2 suj17.c
 rm -f suj17.c
 cd $here
 

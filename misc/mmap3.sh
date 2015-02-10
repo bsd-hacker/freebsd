@@ -30,10 +30,12 @@
 
 # Variation of mmap2.sh with focus on random arguments for mprotect()
 
+. ../default.cfg
+
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > mmap3.c
-cc -o mmap3 -Wall mmap3.c -lpthread || exit 1
+mycc -o mmap3 -Wall mmap3.c -lpthread || exit 1
 rm -f mmap3.c
 
 start=`date '+%s'`

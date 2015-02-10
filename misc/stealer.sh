@@ -39,7 +39,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > stealer.c
-cc -o stealer -Wall -Wextra stealer.c || exit 1
+mycc -o stealer -Wall -Wextra stealer.c || exit 1
 rm -f stealer.c
 cd $here
 swapoff -a > /dev/null

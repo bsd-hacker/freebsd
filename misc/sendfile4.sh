@@ -31,10 +31,12 @@
 # sendfile(2) test by kib@
 # Both processes will sit in the sbwait state forever:
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sendfile4.c
-cc -o sendfile4 -Wall -Wextra -O2 sendfile4.c || exit
+mycc -o sendfile4 -Wall -Wextra -O2 sendfile4.c || exit
 rm -f sendfile4.c
 cd $here
 

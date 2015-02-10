@@ -40,7 +40,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > socketpair2.c
-cc -o socketpair2 -Wall -Wextra -O2 socketpair2.c || exit
+mycc -o socketpair2 -Wall -Wextra -O2 socketpair2.c || exit
 rm -f socketpair2.c
 
 /tmp/socketpair2 > /dev/null 2>&1

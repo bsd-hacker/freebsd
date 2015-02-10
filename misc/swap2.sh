@@ -53,7 +53,7 @@ dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/swap2.c
-cc -o swap2 -Wall -Wextra -O2 swap2.c || exit 1
+mycc -o swap2 -Wall -Wextra -O2 swap2.c || exit 1
 rm -f swap2.c
 cd $odir
 

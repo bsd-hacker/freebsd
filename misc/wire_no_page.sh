@@ -34,11 +34,13 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/wire_no_page.c
-cc -o wire_no_page -Wall -Wextra wire_no_page.c -lpthread || exit 1
+mycc -o wire_no_page -Wall -Wextra wire_no_page.c -lpthread || exit 1
 rm -f wire_no_page.c
 cd $odir
 

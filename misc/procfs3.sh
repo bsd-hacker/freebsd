@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > procfs3.c
-cc -o procfs3 -Wall -Wextra -O2 procfs3.c || exit 1
+mycc -o procfs3 -Wall -Wextra -O2 procfs3.c || exit 1
 rm -f procfs3.c
 cd $here
 

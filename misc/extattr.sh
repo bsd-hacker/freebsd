@@ -39,7 +39,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > extattr.c
-cc -o extattr -Wall extattr.c
+mycc -o extattr -Wall extattr.c
 rm -f extattr.c
 cd $odir
 

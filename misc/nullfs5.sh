@@ -40,7 +40,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d;s/60/600/' < $odir/kinfo.sh > kinfo.c
-cc -o kinfo -Wall -g kinfo.c -lutil
+mycc -o kinfo -Wall -g kinfo.c -lutil
 rm -f kinfo.c
 cd $odir
 

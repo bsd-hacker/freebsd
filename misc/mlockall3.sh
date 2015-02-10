@@ -34,11 +34,13 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/mlockall3.c
-cc -o mlockall3 -Wall -Wextra mlockall3.c -lpthread || exit 1
+mycc -o mlockall3 -Wall -Wextra mlockall3.c -lpthread || exit 1
 rm -f mlockall3.c
 cd $odir
 

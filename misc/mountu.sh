@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > mountu.c
-cc -o mountu -Wall -Wextra -O2 mountu.c
+mycc -o mountu -Wall -Wextra -O2 mountu.c
 rm -f mountu.c
 
 pstat() {

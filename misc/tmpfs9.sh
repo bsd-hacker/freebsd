@@ -37,7 +37,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > tmpfs9.c
-cc -o tmpfs9 -Wall -Wextra -O2 tmpfs9.c
+mycc -o tmpfs9 -Wall -Wextra -O2 tmpfs9.c
 rm -f tmpfs9.c
 cd $here
 

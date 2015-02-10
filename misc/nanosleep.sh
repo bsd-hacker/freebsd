@@ -28,14 +28,16 @@
 # $FreeBSD$
 #
 
-# A simplistic regression test for r200510: 
+# A simplistic regression test for r200510:
 
 [ `sysctl kern.hz | sed 's/.* //'` -ne 1000 ] && exit 1
+
+. ../default.cfg
 
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > nanosleep.c
-cc -o nanosleep -Wall -Wextra nanosleep.c || exit 1
+mycc -o nanosleep -Wall -Wextra nanosleep.c || exit 1
 rm -f nanosleep.c
 
 /tmp/nanosleep || exit

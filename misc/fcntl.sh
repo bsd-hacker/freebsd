@@ -30,10 +30,12 @@
 
 # fcntl(2) locking scenario. No problems seen.
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > fcntl.c
-cc -o fcntl -Wall -Wextra -O0 -g fcntl.c || exit 1
+mycc -o fcntl -Wall -Wextra -O0 -g fcntl.c || exit 1
 rm -f fcntl.c
 
 /tmp/fcntl

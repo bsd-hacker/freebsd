@@ -40,7 +40,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > newfs4.c
-cc -o newfs4 -Wall -Wextra newfs4.c
+mycc -o newfs4 -Wall -Wextra newfs4.c
 rm -f newfs4.c
 cd $odir
 

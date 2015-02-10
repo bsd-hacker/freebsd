@@ -38,7 +38,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > fullpath.c
-cc -o fullpath -Wall fullpath.c
+mycc -o fullpath -Wall fullpath.c
 rm -f fullpath.c
 cd /proc
 

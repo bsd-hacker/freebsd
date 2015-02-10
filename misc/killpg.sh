@@ -28,15 +28,17 @@
 # $FreeBSD$
 #
 
-# Regression test for r241859: 
+# Regression test for r241859:
 # Return EPERM if processes were found but they were unable to be signaled.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > killpg.c
-cc -o killpg -Wall -Wextra killpg.c
+mycc -o killpg -Wall -Wextra killpg.c
 rm -f killpg.c
 
 /tmp/killpg

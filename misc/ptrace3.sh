@@ -34,10 +34,12 @@
 
 # Test scenario by Mark Johnston markj@
 
+. ../default.cfg
+
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > ptrace3.c
-cc -o ptrace3 -Wall -Wextra -g ptrace3.c || exit 1
+mycc -o ptrace3 -Wall -Wextra -g ptrace3.c || exit 1
 rm -f ptrace3.c
 cd $here
 

@@ -30,7 +30,7 @@
 
 # Test scenario by kib@freebsd.org
 
-# Test of 
+# Test of patch for Giant trick in cdevsw
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -53,12 +53,12 @@ make
 kldload $dir/fpclone.ko
 
 sed '1,/^EOF2/d' < $odir/$0 > fpclone2.c
-cc -o fpclone2 -Wall fpclone2.c
+mycc -o /tmp/fpclone2 -Wall fpclone2.c
 rm -f fpclone2.c
 
 cd $odir
 for i in `jot 10`; do
-	$dir/fpclone2 &
+	/tmp/fpclone2 &
 done
 
 for i in `jot 10`; do
@@ -66,7 +66,7 @@ for i in `jot 10`; do
 done
 kldstat
 kldunload $dir/fpclone.ko
-rm -rf $dir fpclone2
+rm -rf $dir /tmp/fpclone2
 exit
 
 EOF2

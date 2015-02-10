@@ -30,11 +30,13 @@
 
 # PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP version of pthread2.sh
 
+. ../default.cfg
+
 export LANG=C
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pthread4.c
-cc -o pthread4 -Wall -Wextra -O2 -g -gdwarf-2 pthread4.c -lpthread || exit 1
+mycc -o pthread4 -Wall -Wextra -O2 -g -gdwarf-2 pthread4.c -lpthread || exit 1
 rm -f pthread4.c /tmp/pthread4.core
 
 log=/tmp/pthread4.`date '+%Y%m%d-%H%M'`

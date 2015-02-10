@@ -39,7 +39,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > datamove3.c
-cc -o datamove3 -Wall datamove3.c -lpthread
+mycc -o datamove3 -Wall datamove3.c -lpthread
 rm -f datamove3.c
 
 n=5

@@ -41,7 +41,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > suj2.c
-cc -o suj2 -Wall -Wextra -O2 suj2.c
+mycc -o suj2 -Wall -Wextra -O2 suj2.c
 rm -f suj2.c
 
 mount | grep "$mntpoint" | grep -q /dev/md && umount -f $mntpoint

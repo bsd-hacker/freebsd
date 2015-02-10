@@ -13,7 +13,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > kern_umtx_inf_loop.c
-cc -o kern_umtx_inf_loop -Wall -Wextra -O0 -g kern_umtx_inf_loop.c \
+mycc -o kern_umtx_inf_loop -Wall -Wextra -O0 -g kern_umtx_inf_loop.c \
     -lpthread || exit 1
 rm -f kern_umtx_inf_loop.c
 

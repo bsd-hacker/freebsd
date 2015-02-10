@@ -45,7 +45,7 @@ timeout=1200
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > spin.c
-cc -o spin -Wall -Wextra -O0 spin.c || exit 1
+mycc -o spin -Wall -Wextra -O0 spin.c || exit 1
 rm -f spin.c
 cd $here
 

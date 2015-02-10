@@ -42,7 +42,7 @@ dir=$mntpoint
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > symlink.c
-cc -o symlink -Wall symlink.c
+mycc -o symlink -Wall symlink.c
 rm -f symlink.c
 cd $odir
 
