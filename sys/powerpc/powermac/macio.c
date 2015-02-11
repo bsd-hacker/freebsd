@@ -911,7 +911,10 @@ macio_suspend(device_t dev)
 	sc->sc_saved_fcrs[2] = bus_read_4(sc->sc_memr, KEYLARGO_FCR2);
 	sc->sc_saved_fcrs[3] = bus_read_4(sc->sc_memr, KEYLARGO_FCR3);
 	sc->sc_saved_fcrs[4] = bus_read_4(sc->sc_memr, KEYLARGO_FCR4);
-	sc->sc_saved_fcrs[5] = bus_read_4(sc->sc_memr, KEYLARGO_FCR5);
+
+	/* KeyLargo doesn't have FCR5. */
+	if (sc->sc_devid != 0x22)
+		sc->sc_saved_fcrs[5] = bus_read_4(sc->sc_memr, KEYLARGO_FCR5);
 
 	if (sc->sc_devid == 0x4f) {
 		sc->sc_saved_fcrs[6] = bus_read_4(sc->sc_memr, K2_FCR6);
@@ -947,7 +950,10 @@ macio_resume(device_t dev)
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR2, sc->sc_saved_fcrs[2]);
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR3, sc->sc_saved_fcrs[3]);
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR4, sc->sc_saved_fcrs[4]);
-	bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->sc_saved_fcrs[5]);
+
+	/* KeyLargo doesn't have FCR5. */
+	if (sc->sc_devid != 0x22)
+		bus_write_4(sc->sc_memr, KEYLARGO_FCR5, sc->sc_saved_fcrs[5]);
 
 	if (sc->sc_devid == 0x4f) {
 		bus_write_4(sc->sc_memr, K2_FCR6, sc->sc_saved_fcrs[6]);
