@@ -823,7 +823,7 @@ EXTRA_DISTRIBUTIONS+=	tests
 
 DEBUG_DISTRIBUTIONS=
 .if ${MK_DEBUG_FILES} != "no"
-DEBUG_DISTRIBUTIONS+=	base ${EXTRA_DISTRIBUTIONS:S,doc,,}
+DEBUG_DISTRIBUTIONS+=	base ${EXTRA_DISTRIBUTIONS:S,doc,,:S,tests,,}
 .endif
 
 MTREE_MAGIC?=	mtree 2.0
@@ -1634,7 +1634,7 @@ _prebuild_libs=	${_kerberos5_lib_libasn1} \
 		${_lib_libcapsicum} \
 		lib/ncurses/ncurses lib/ncurses/ncursesw \
 		lib/libopie lib/libpam ${_lib_libthr} \
-		lib/libradius lib/libsbuf lib/libtacplus \
+		${_lib_libradius} lib/libsbuf lib/libtacplus \
 		lib/libgeom \
 		${_cddl_lib_libumem} ${_cddl_lib_libnvpair} \
 		${_cddl_lib_libuutil} \
@@ -1657,6 +1657,10 @@ lib/libgeom__L: lib/libexpat__L
 _lib_libthr=	lib/libthr
 .endif
 
+.if ${MK_RADIUS_SUPPORT} != "no"
+_lib_libradius=	lib/libradius
+.endif
+
 .if ${MK_OFED} != "no"
 _ofed_lib=	contrib/ofed/usr.lib/
 .endif
@@ -1667,6 +1671,7 @@ _lib_libcapsicum=lib/libcapsicum
 
 lib/libcapsicum__L: lib/libnv__L
 lib/libpjdlog__L: lib/libutil__L
+lib/liblzma__L: lib/libthr__L
 
 _generic_libs=	${_cddl_lib} gnu/lib ${_kerberos5_lib} lib ${_secure_lib} usr.bin/lex/lib ${_ofed_lib}
 .for _DIR in ${LOCAL_LIB_DIRS}
