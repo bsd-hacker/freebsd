@@ -30,6 +30,11 @@
 #ifndef _MACIO_MACIOVAR_H_
 #define _MACIO_MACIOVAR_H_
 
+#define	KEYLARGO_DEVID	0x22
+#define	PANGEA_DEVID	0x25
+#define	INTREPID_DEVID	0x3e
+#define	K2_DEVID	0x41
+#define	SHASTA_DEVID	0x4f
 /*
  * The addr space size
  * XXX it would be better if this could be determined by querying the

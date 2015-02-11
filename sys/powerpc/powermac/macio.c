@@ -913,7 +913,7 @@ macio_suspend(device_t dev)
 	sc->sc_saved_fcrs[4] = bus_read_4(sc->sc_memr, KEYLARGO_FCR4);
 
 	/* KeyLargo doesn't have FCR5. */
-	if (sc->sc_devid != 0x22)
+	if (sc->sc_devid != KEYLARGO_DEVID)
 		sc->sc_saved_fcrs[5] = bus_read_4(sc->sc_memr, KEYLARGO_FCR5);
 
 	if (sc->sc_devid == 0x4f) {
@@ -924,13 +924,14 @@ macio_suspend(device_t dev)
 		sc->sc_saved_fcrs[10] = bus_read_4(sc->sc_memr, K2_FCR10);
 	}
 
-	if (sc->sc_devid == 0x22) {
+	if (sc->sc_devid == KEYLARGO_DEVID) {
 		return macio_suspend_keylargo(dev);
-	} else if (sc->sc_devid == 0x25) {
+	} else if (sc->sc_devid == PANGEA_DEVID) {
 		return macio_suspend_pangea(dev);
-	} else if (sc->sc_devid == 0x3e) {
+	} else if (sc->sc_devid == INTREPID_DEVID) {
 		return macio_suspend_intrepid(dev);
-	} else if (sc->sc_devid == 0x4f) {
+	} else if (sc->sc_devid == SHASTA_DEVID ||
+	    sc->sc_devid == K2_DEVID) {
 		return macio_suspend_k2(dev);
 	}
 
@@ -942,7 +943,7 @@ macio_resume(device_t dev)
 {
 	struct macio_softc *sc = device_get_softc(dev);
 
-	if (sc->sc_devid == 0x22)
+	if (sc->sc_devid == KEYLARGO_DEVID)
 		bus_write_4(sc->sc_memr, KEYLARGO_MEDIABAY, sc->sc_saved_mbcr);
 
 	bus_write_4(sc->sc_memr, KEYLARGO_FCR0, sc->sc_saved_fcrs[0]);
