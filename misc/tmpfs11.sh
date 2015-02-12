@@ -40,12 +40,13 @@ mp2=${mntpoint}2
 md1=$mdstart
 md2=$((mdstart + 1))
 
+size=$((`sysctl -n hw.usermem` / 1024 / 1024 / 2))
 mount | grep $mp1 | grep -q tmpfs && umount -f $mp1
-mount -t tmpfs tmpfs $mp1
+mount -o size=${size}m -t tmpfs tmpfs $mp1
 chmod 777 $mp1
 
 mount | grep $mp2 | grep -q tmpfs && umount -f $mp2
-mount -t tmpfs tmpfs $mp2
+mount -o size=${size}m -t tmpfs tmpfs $mp2
 chmod 777 $mp2
 
 export runRUNTIME=15m
