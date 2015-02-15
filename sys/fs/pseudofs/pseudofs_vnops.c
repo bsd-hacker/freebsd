@@ -662,7 +662,7 @@ pfs_read(struct vop_read_args *va)
 	if (buflen > MAXPHYS)
 		buflen = MAXPHYS;
 
-	sb = sbuf_new(sb, NULL, buflen + 1, 0);
+	sb = sbuf_new_auto();
 	if (sb == NULL) {
 		error = EIO;
 		goto ret;
