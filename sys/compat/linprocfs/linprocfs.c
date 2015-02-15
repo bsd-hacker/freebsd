@@ -1397,6 +1397,38 @@ linprocfs_douuid(PFS_FILL_ARGS)
 	return(0);
 }
 
+/*
+ * Filler function for proc/pid/auxv
+ */
+static int
+linprocfs_doauxv(PFS_FILL_ARGS)
+{
+	int ret;
+
+	PROC_LOCK(p);
+	if ((ret = p_candebug(td, p)) != 0) {
+		PROC_UNLOCK(p);
+		return (ret);
+	}
+
+	/*
+	 * Mimic linux behavior and pass only processes with usermode
+	 * address space as valid.  Return zero silently otherwize.
+	 */
+	if (p->p_vmspace == &vmspace0) {
+		PROC_UNLOCK(p);
+		return (0);
+	}
+
+	if ((p->p_flag & P_SYSTEM) != 0) {
+		PROC_UNLOCK(p);
+		return (0);
+	}
+
+	PROC_UNLOCK(p);
+
+	return (proc_getauxv(td, p, sb));
+}
 
 /*
  * Constructor
@@ -1472,6 +1504,8 @@ linprocfs_init(PFS_INIT_ARGS)
 	    NULL, NULL, NULL, PFS_RD);
 	pfs_create_link(dir, "fd", &linprocfs_dofdescfs,
 	    NULL, NULL, NULL, 0);
+	pfs_create_file(dir, "auxv", &linprocfs_doauxv,
+	    NULL, NULL, NULL, PFS_RD);
 
 	/* /proc/scsi/... */
 	dir = pfs_create_dir(root, "scsi", NULL, NULL, NULL, 0);
