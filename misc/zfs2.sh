@@ -31,6 +31,7 @@
 # Simple zfs mirror test scenario
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -lt 3 ] && exit 0
 
 . ../default.cfg
 
@@ -55,7 +56,7 @@ zpool create tank mirror md$u1 md$u2
 
 export RUNDIR=/tank/stressX
 export runRUNTIME=10m
-(cd ..; ./run.sh marcus.cfg) 
+(cd ..; ./run.sh marcus.cfg)
 
 zfs destroy -r tank
 zpool destroy tank

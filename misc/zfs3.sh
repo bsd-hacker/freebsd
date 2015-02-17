@@ -33,6 +33,7 @@
 # page fault from fs/zfs/dbuf.c:1807
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -lt 3 ] && exit 0
 
 . ../default.cfg
 
@@ -60,7 +61,7 @@ zfs snapshot tank/test@snap1
 
 export RUNDIR=/tank/test/stressX
 export runRUNTIME=10m
-(cd ..; ./run.sh marcus.cfg) 
+(cd ..; ./run.sh marcus.cfg)
 
 zfs rollback tank/test@snap1
 zfs destroy  tank/test@snap1

@@ -31,6 +31,7 @@
 # Simple zfs snapshot test scenario
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -lt 3 ] && exit 0
 
 . ../default.cfg
 
