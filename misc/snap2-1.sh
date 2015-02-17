@@ -42,15 +42,15 @@
 # --- trap 0xc, eip = 0xc060bcfb, esp = 0xe76728f8, ebp = 0xe767291c ---
 # g_io_request(c53ff7bc,c5051d40,d8c72408,c54ca110,e7672950) at g_io_request+0x5f
 
-mount | grep -q "on /tmp " || exit 0
-rm -f /tmp/.snap/pho
+mount | grep -q "on /tmp (ufs," || exit 0
+rm -f /tmp/.snap/stress2
 [ -d /tmp/.snap ] || mkdir /tmp/.snap
-trap "rm -f /tmp/.snap/pho" 0
+trap "rm -f /tmp/.snap/stress2" 0
 mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mksnap_ffs /tmp /tmp/.snap/pho
-mdconfig -a -t vnode -o readonly -f /tmp/.snap/pho -u $mdstart
+mksnap_ffs /tmp /tmp/.snap/stress2
+mdconfig -a -t vnode -o readonly -f /tmp/.snap/stress2 -u $mdstart
 mount -o ro /dev/md$mdstart $mntpoint
 
 ls -lR $mntpoint > /dev/null 2>&1 &
@@ -58,4 +58,4 @@ mdconfig -d -u $mdstart > /dev/null 2>&1
 
 umount -f $mntpoint
 mdconfig -d -u $mdstart
-rm -f /tmp/.snap/pho
+rm -f /tmp/.snap/stress2

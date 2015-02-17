@@ -35,10 +35,10 @@
 # Test with two snapshots
 # 20070506 Page fault in g_io_request+0x7f
 
-mount | grep -q "on /tmp " || exit 0
-rm -f /tmp/.snap/pho.1
-rm -f /tmp/.snap/pho.2
-trap "rm -f /tmp/.snap/pho.?" 0
+mount | grep -q "on /tmp (ufs," || exit 0
+rm -f /tmp/.snap/stress2.1
+rm -f /tmp/.snap/stress2.2
+trap "rm -f /tmp/.snap/stress2.?" 0
 mount | grep $mntpoint | grep -q md && umount $mntpoint
 m1=$mdstart
 m2=$((m1 + 1))
@@ -47,11 +47,11 @@ mdconfig -l | grep -q md$m2 &&  mdconfig -d -u $m2
 
 start=`date '+%s'`
 while [ `date '+%s'` -lt $((start + 1800)) ]; do
-   mksnap_ffs /tmp /tmp/.snap/pho.1
-   mksnap_ffs /tmp /tmp/.snap/pho.2
-   if [ -r /tmp/.snap/pho.1 -a  -r /tmp/.snap/pho.2 ]; then
-	   mdconfig -a -t vnode -f /tmp/.snap/pho.1 -u $m1 -o readonly
-	   mdconfig -a -t vnode -f /tmp/.snap/pho.2 -u $m2 -o readonly
+   mksnap_ffs /tmp /tmp/.snap/stress2.1
+   mksnap_ffs /tmp /tmp/.snap/stress2.2
+   if [ -r /tmp/.snap/stress2.1 -a  -r /tmp/.snap/stress2.2 ]; then
+	   mdconfig -a -t vnode -f /tmp/.snap/stress2.1 -u $m1 -o readonly
+	   mdconfig -a -t vnode -f /tmp/.snap/stress2.2 -u $m2 -o readonly
 	   mount -o ro /dev/md$m1 $mntpoint
 
 	   sleep 3
@@ -60,5 +60,5 @@ while [ `date '+%s'` -lt $((start + 1800)) ]; do
 	   mdconfig -d -u $m1
 	   mdconfig -d -u $m2
    fi
-   rm -f /tmp/.snap/pho.1 /tmp/.snap/pho.2
+   rm -f /tmp/.snap/stress2.1 /tmp/.snap/stress2.2
 done

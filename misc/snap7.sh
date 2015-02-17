@@ -35,23 +35,23 @@
 # Test with unmount and paralless access to mountpoint
 # 20070508 page fault in g_io_request+0xa6
 
-mount | grep -q "on /tmp " || exit 0
+mount | grep -q "on /tmp (ufs," || exit 0
 mount | grep -q "/dev/md$mdstart on $mntpoint" && umount $mntpoint
-rm -f /tmp/.snap/pho.1
-trap "rm -f /tmp/.snap/pho.1" 0
+rm -f /tmp/.snap/stress2.1
+trap "rm -f /tmp/.snap/stress2.1" 0
 mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 start=`date '+%s'`
 while [ `date '+%s'` -lt $((start + 1800)) ]; do
-   mksnap_ffs /tmp /tmp/.snap/pho.1
-   mdconfig -a -t vnode -f /tmp/.snap/pho.1 -u $mdstart -o readonly
+   mksnap_ffs /tmp /tmp/.snap/stress2.1
+   mdconfig -a -t vnode -f /tmp/.snap/stress2.1 -u $mdstart -o readonly
    sh -c "while true; do ls $mntpoint > /dev/null;done" &
    for i in `jot 64`; do
-      mount -o ro /dev/md$mdstart $mntpoint
-      umount $mntpoint
+      mount -o ro /dev/md$mdstart $mntpoint 2>/dev/null
+      umount $mntpoint 2>/dev/null
    done
    kill $!
    mdconfig -d -u $mdstart
-   rm -f /tmp/.snap/pho.1
+   rm -f /tmp/.snap/stress2.1
 done

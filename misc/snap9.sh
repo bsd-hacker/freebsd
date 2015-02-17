@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008, 2011 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2013 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,34 +28,43 @@
 # $FreeBSD$
 #
 
+# Disk full with one snapshot scenario
+# "panic: softdep_deallocate_dependencies: unrecovered I/O error" seen.
+
+# kern/162362: ufs with snapshot(s) panics when getting full
+
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
 
-mount | grep -q "on /tmp (ufs," || exit 0
-mnt2=${mntpoint}2
-[ ! -d $mnt2 ] && mkdir $mnt2
+exit 0	# Waiting for fix. Still an issue @ 20150217
 
-trap "rm -f /tmp/.snap/stress2" 0
-start=`date '+%s'`
-while [ `date '+%s'` -lt $((start + 1800)) ]; do
-   if mount | grep -q "/dev/md$mdstart on $mnt2"; then
-      umount $mnt2 || exit 2
-   fi
-   if mdconfig -l | grep -q md$mdstart; then
-      mdconfig -d -u $mdstart || exit 3
-   fi
-   rm -f /tmp/.snap/stress2
+mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-   date '+%T'
-   mksnap_ffs /tmp /tmp/.snap/stress2 || continue
-   mdconfig -a -t vnode -f /tmp/.snap/stress2 -u $mdstart -o readonly ||
-       exit 4
-   mount -o ro /dev/md$mdstart $mnt2 || exit 5
+mdconfig -a -t swap -s 2g -u $mdstart || exit 1
+bsdlabel -w md$mdstart auto
+newfs $newfs_flags md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
 
-   ls -l $mnt2 > /dev/null
-   r=`head -c4 /dev/random | od -N2 -tu4 | sed -ne '1s/  *$//;1s/.* //p'`
-   sleep $(( r % 120 ))
+dd if=/dev/zero of=$mntpoint/big1 bs=1m count=512 2>&1 | \
+	egrep -v "records|transferred"
+dd if=/dev/zero of=$mntpoint/big2 bs=1m count=512 2>&1 | \
+	egrep -v "records|transferred"
+dd if=/dev/zero of=$mntpoint/big3 bs=1m count=512 2>&1 | \
+	egrep -v "records|transferred"
+
+mksnap_ffs  $mntpoint  $mntpoint/.snap/snap
+
+for i in `jot 10`; do
+	dd if=/dev/zero of=$mntpoint/big.$i bs=1m count=512 2>&1 | \
+		egrep -v "records|transferred" || break
 done
-mount | grep -q "/dev/md$mdstart on $mnt2" && umount $mnt2
-mdconfig -l | grep -q md$mdstart && mdconfig -d -u $mdstart
+rm $mntpoint/big.*
+rm -f $mntpoint/.snap/snap
+
+while mount | grep "$mntpoint" | grep -q md$mdstart; do
+	umount /mnt || sleep 1
+done
+mdconfig -d -u $mdstart

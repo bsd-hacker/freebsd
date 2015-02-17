@@ -25,21 +25,21 @@
 
 root=/var
 
-mount | grep -q "on /var " || exit 0
-rm -f $root/.snap/pho $root/big $root/big2
-trap "rm -f $root/.snap/pho $root/big $root/big2" 0
+mount | grep -q "on /var (ufs," || exit 0
+rm -f $root/.snap/stress2 $root/big $root/big2
+trap "rm -f $root/.snap/stress2 $root/big $root/big2" 0
 free=`df $root | tail -1 | awk '{print $4}'`
 dd if=/dev/zero of=$root/big bs=1m count=$(( free / 1024 - 90)) > /dev/null 2>&1
 df $root
 
 for i in `jot 1024`; do
    date
-   nice -20 mksnap_ffs $root $root/.snap/pho &
+   nice -20 mksnap_ffs $root $root/.snap/stress2 &
    dd if=/dev/zero of=$root/big2 bs=1m > /dev/null 2>&1
    wait
-   [ -f $root/.snap/pho ] && exit 0
-   rm -f $root/.snap/pho $root/big2
+   [ -f $root/.snap/stress2 ] && exit 0
+   rm -f $root/.snap/stress2 $root/big2
 done
 df $root
 
-rm -f $root/.snap/pho $root/big $root/big2
+rm -f $root/.snap/stress2 $root/big $root/big2

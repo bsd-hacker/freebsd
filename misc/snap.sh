@@ -32,25 +32,25 @@
 
 . ../default.cfg
 
-mount | grep -q "on /tmp " || exit 0
+mount | grep -q "on /tmp (ufs," || exit 0
 mount | grep -q "/dev/md$mdstart on $mntpoint" && umount $mntpoint
-rm -f /tmp/.snap/pho
-trap "rm -f /tmp/.snap/pho" 0
+rm -f /tmp/.snap/stress2
+trap "rm -f /tmp/.snap/stress2" 0
 
 for i in `jot 2`; do
-   mksnap_ffs /tmp /tmp/.snap/pho
-   mdconfig -a -t vnode -f /tmp/.snap/pho -u $mdstart -o readonly
+   mksnap_ffs /tmp /tmp/.snap/stress2
+   mdconfig -a -t vnode -f /tmp/.snap/stress2 -u $mdstart -o readonly
    mount -r /dev/md$mdstart $mntpoint
 
    ls -l $mntpoint > /dev/null
 
    umount $mntpoint
    mdconfig -d -u $mdstart
-   rm -f /tmp/.snap/pho
+   rm -f /tmp/.snap/stress2
 done
 
 
 for i in `jot 2`; do
-   mksnap_ffs /tmp /tmp/.snap/pho
-   rm -f /tmp/.snap/pho
+   mksnap_ffs /tmp /tmp/.snap/stress2
+   rm -f /tmp/.snap/stress2
 done

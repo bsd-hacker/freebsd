@@ -32,26 +32,26 @@
 
 . ../default.cfg
 
-mount | grep -q "on /tmp " || exit 0
+mount | grep -q "on /tmp (ufs," || exit 0
 mnt2=${mntpoint}2
 [ ! -d $mnt2 ] && mkdir $mnt2
 mount | grep -q "/dev/md$mdstart on $mnt2" && umount $mnt2
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
-rm -f /tmp/.snap/pho
-trap "rm -f /tmp/.snap/pho" 0
+rm -f /tmp/.snap/stress2
+trap "rm -f /tmp/.snap/stress2" 0
 
 start=`date '+%s'`
 while [ `date '+%s'` -lt $((start + 1800)) ]; do
    date '+%T'
-   mksnap_ffs /tmp /tmp/.snap/pho
-   mdconfig -a -t vnode -f /tmp/.snap/pho -u $mdstart -o readonly
+   mksnap_ffs /tmp /tmp/.snap/stress2
+   mdconfig -a -t vnode -f /tmp/.snap/stress2 -u $mdstart -o readonly
    mount -o ro /dev/md$mdstart $mnt2
 
    ls -l $mnt2 > /dev/null
-   r=`head -c4 /dev/urandom | od -N2 -tu4 | sed -ne '1s/  *$//;1s/.* //p'`
+   r=`head -c4 /dev/random | od -N2 -tu4 | sed -ne '1s/  *$//;1s/.* //p'`
    sleep $(( r % 120 ))
 
    umount $mnt2
    mdconfig -d -u $mdstart
-   rm -f /tmp/.snap/pho
+   rm -f /tmp/.snap/stress2
 done
