@@ -48,7 +48,7 @@ newfs $newfs_flags  md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 export RUNDIR=${mntpoint}/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
-(cd ..; ./run.sh disk.cfg) 
+(cd ..; ./run.sh disk.cfg)
 while mount | grep -q $mntpoint; do
 	umount $mntpoint > /dev/null 2>&1 || sleep 1
 done

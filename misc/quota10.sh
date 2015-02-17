@@ -88,7 +88,7 @@ else
 	else
 
 		# The test: Parallel mount and unmounts
-		for i in `jot 1024`; do
+		for i in `jot 1000`; do
 			m=$1
 			opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
 			mount $opt /dev/md${m}${part} ${mntpoint}$m

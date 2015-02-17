@@ -30,15 +30,16 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+mount | grep -q "on /tmp (ufs," || exit 0
 if ! grep /tmp /etc/fstab | grep -q quota ; then
 	echo "/tmp must have quota enabled!"
 	exit 2
-fi	
-edquota -u -f /tmp -e /tmp:1500000:1400000:200000:180000 pho
-edquota -g -f /tmp -e /tmp:1500000:1400000:200000:180000 pho
+fi
+edquota -u -f /tmp -e /tmp:1500000:1400000:200000:180000 $testuser
+edquota -g -f /tmp -e /tmp:1500000:1400000:200000:180000 $testuser
 quotaon /tmp
 
-#su pho -c "export runRUNTIME=60m; cd /home/pho/stress2; ./run.sh disk.cfg"
-su pho -c "export runRUNTIME=60m; cd ..; ./mkdir -t 1h -i 200 -v -v"
+su $testuser -c "export runRUNTIME=60m; cd ../testcases/mkdir; \
+    ./mkdir -t 30m -i 200 -v -v"
 
 quotaoff /tmp
