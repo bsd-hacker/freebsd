@@ -50,12 +50,12 @@ mount /dev/md${mdstart}$part $mntpoint
 
 old=`sysctl vfs.recursiveflushes | awk '{print $NF}'`
 cd $mntpoint
-rm -f $mntpoint/.snap/pho.*
-snap $mntpoint $mntpoint/.snap/pho.1
-snap $mntpoint $mntpoint/.snap/pho.2
-snap $mntpoint $mntpoint/.snap/pho.3
-snap $mntpoint $mntpoint/.snap/pho.4
-snap $mntpoint $mntpoint/.snap/pho.5
+rm -f $mntpoint/.snap/stress2.*
+snap $mntpoint $mntpoint/.snap/stress2.1
+snap $mntpoint $mntpoint/.snap/stress2.2
+snap $mntpoint $mntpoint/.snap/stress2.3
+snap $mntpoint $mntpoint/.snap/stress2.4
+snap $mntpoint $mntpoint/.snap/stress2.5
 
 for i in `jot 32`; do
    # Create 32 Mb files
@@ -68,7 +68,7 @@ for i in `jot 32`; do
    rm -f big.$i
 done
 
-rm -f $mntpoint/.snap/pho.*
+rm -f $mntpoint/.snap/stress2.*
 new=`sysctl vfs.recursiveflushes | awk '{print $NF}'`
 [ $old != $new ] && echo "vfs.recursiveflushes changed from $old to $new"
 

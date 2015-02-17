@@ -48,7 +48,7 @@ mount ${mntpoint}
 edquota -u -f $mntpoint -e $mntpoint:850000:900000:130000:140000 root
 quotacheck $mntpoint
 quotaon $mntpoint
-mksnap_ffs $mntpoint $mntpoint/.snap/pho
+mksnap_ffs $mntpoint $mntpoint/.snap/stress2
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
 (cd ..; ./run.sh disk.cfg)
