@@ -41,17 +41,29 @@
 #		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111230
 # dfull.sh	umount stuck in "mount drain"				20111227
 # ext2fs.sh	Deadlock						20120510
+# ext2fs2.sh	panic							20140716
+# fuse.sh	Memory corruption seen in log file kostik734.txt	20141114
 # fuse2.sh	Deadlock seen						20121129
+# fuse3.sh	Deadlock seen						20141120
 # gbde.sh	panic: handle_written_inodeblock: Invalid link count...	20131128
 # gjournal.sh	kmem_malloc(131072): kmem_map too small			20120626
-# gjournal2.sh	
+# gjournal2.sh
 # gjournal3.sh	panic: Journal overflow					20130729
+# memguard.sh	Waiting for fix commit
+# memguard2.sh	Waiting for fix commit
+# memguard3.sh	Waiting for fix commit
+# mmap18.sh	panic: vm_fault_copy_entry: main object missing page	20141015
+# mmap21.sh	panic: vm_reserv_populate: reserv is already promoted	20141122
+# msdos5.sh	Panic: Freeing unused sector ...			20141118
 # newfs.sh	Memory modified after free. ... used by inodedep	20111217
 # newfs2.sh	umount stuck in ufs					20111226
 # nfs2.sh	panic: wrong diroffset					20140219
+# nfs5.sh	Deadlock panic						20141120
+# nfs6.sh	Hang							20141012
 # nfs9.sh	panic: lockmgr still held				20130503
 # nfs10.sh	Deadlock						20130401
 # nfs11.sh	Deadlock						20130429
+# pfl3.sh	panic: handle_written_inodeblock: live inodedep		20140812
 # pmc.sh	NMI ... going to debugger				20111217
 # snap5-1.sh	mksnap_ffs deadlock					20111218
 # quota2.sh	panic: dqflush: stray dquot				20120221
@@ -63,10 +75,13 @@
 # snap5.sh	mksnap_ffs stuck in getblk				20111224
 # snap6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130630
 # snap8.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20120630
+# suj9.sh	page fault in softdep_count_dependencies+0x27		20141116
 # suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
+# suj13.sh	general protection fault in bufdaemon			20141130
 # suj18.sh	panic: Bad tailq NEXT(0xc1e2a6088->tqh_last_s) != NULL	20120213
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
 # suj34.sh	Various hangs and panics				20131210
+# trim4.sh 	Page fault in softdep_count_dependencies+0x27		20140608
 # umountf3.sh	KDB: enter: watchdog timeout				20111217
 # umountf7.sh	panic: handle_written_inodeblock: live inodedep ...	20131129
 # unionfs.sh	insmntque: non-locked vp: xx is not exclusive locked...	20130909
@@ -77,6 +92,9 @@
 
 # fuzz.sh	A know issue
 # newfs3.sh	OK, but runs for a very long time
+# mmap10.sh	OK, but runs for a long time
+# mmap11.sh	OK, but runs for a very long time
+# mmap15.sh	Rung for a very long time
 # statfs.sh	Not very interesting
 # syscall.sh	OK, but runs for a very long time
 # syscall2.sh	OK, but runs for a very long time
@@ -96,7 +114,9 @@
 # suj27.sh
 # suj28.sh
 
-# kevent8.sh	Deadlock seen.						20131017
+# Exclude NFS loopback tests
+# nfs13.sh
+# nullfs8.sh
 
 # End of list
 
@@ -106,19 +126,26 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+# Log files:
+alllog=/tmp/stress2.all.log		# Tests run
+allfaillog=/tmp/stress2.all.fail.log	# Tests that failed
+alllast=/tmp/stress2.all.last		# Last test run
+alloutput=/tmp/stress2.all.output	# Output from current test
+
 args=`getopt acno $*`
 [ $? -ne 0 ] && echo "Usage $0 [-a] [-c] [-n] [tests]" && exit 1
 set -- $args
 for i; do
 	case "$i" in
 	-a)	all=1		# Run all tests
+		echo "Note: including known problem tests."
 		shift
 		;;
-	-c)	rm -f .all.last	# Clear last know test
+	-c)	rm -f $alllast	# Clear last know test
 		shift
 		;;
 	-n)	noshuffle=1	# Do not shuffle the list of tests
-		shift
+		shift		# Resume test after last test
 		;;
 	-o)	once=1		# Only run once
 		shift
@@ -130,26 +157,31 @@ for i; do
 	esac
 done
 
-> .all.log
-find . -maxdepth 1 -name .all.last -mtime +12h -delete
-touch .all.last
-chmod 555 .all.last .all.log
+rm -f $alllog $allfaillog
+find `dirname $alllast` -maxdepth 1 -name $alllast -mtime +12h -delete
+touch $alllast $alllog
+chmod 640 $alllast $alllog
 while true; do
 	exclude=`sed -n '/^# Start of list/,/^# End of list/p' < $0 |
-		cat - all.exclude 2>/dev/null | 
+		cat - all.exclude 2>/dev/null |
 		grep "\.sh" | awk '{print $2}'`
-	list=`ls *.sh | egrep -v "all\.sh|cleanup\.sh"`
+	list=`echo *.sh`
 	[ $# -ne 0 ] && list=$*
+	list=`echo $list | sed  "s/all\.sh//; s/cleanup\.sh//"`
 
 	if [ -n "$noshuffle" -a $# -eq 0 ]; then
-		last=`cat .all.last`
+		last=`cat $alllast`
 		if [ -n "$last" ]; then
-			list=`echo "$list" | sed "1,/$last/d"`
-			echo "Resuming test at `echo "$list" | head -1`"
+			l=`echo "$list" | sed "s/.*$last//"`
+			[ -z "$l" ] && l=$list	# start over
+			list=$l
+			echo "Resuming test at `echo "$list" | \
+			    awk '{print $1}'`"
 		fi
 	fi
 	[ -n "$noshuffle" ] ||
-		list=`echo $list | tr '\n' ' ' | ../tools/shuffle | tr ' ' '\n'`
+	    list=`echo $list | tr '\n' ' ' | ../tools/shuffle | \
+	    tr ' ' '\n'`
 
 	lst=""
 	for i in $list; do
@@ -158,17 +190,26 @@ while true; do
 	done
 	[ -z "$lst" ] && exit
 
+	. ../default.cfg
 	n1=0
 	n2=`echo $lst | wc -w | sed 's/ //g'`
 	for i in $lst; do
 		n1=$((n1 + 1))
-		echo $i > .all.last
+		echo $i > $alllast
 		./cleanup.sh
-		echo "`date '+%Y%m%d %T'` all: $i" | tee /dev/tty >> .all.log
+		echo "`date '+%Y%m%d %T'` all: $i"
+		echo "`date '+%Y%m%d %T'` all: $i" >> $alllog
 		printf "`date '+%Y%m%d %T'` all ($n1/$n2): $i\r\n" > /dev/console
 		logger "Starting test all: $i"
 		sync;sync;sync
-		./$i
+		start=`date '+%s'`
+		./$i 2>&1 | tee $alloutput
+		grep -qw FAIL $alloutput &&
+		    echo "`date '+%Y%m%d %T'` $i" >> $allfaillog
+		rm -f $alloutput
+		[ $((`date '+%s'` - $start)) -gt 1830 ] &&
+		    printf "*** Excessive run time: %s %d min\r\n" $i, \
+		    $(((`date '+%s'` - $start) / 60))> /dev/console
 	done
 	[ -n "$once" ] && break
 done
