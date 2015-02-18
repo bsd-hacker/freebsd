@@ -75,6 +75,7 @@
 # snap5.sh	mksnap_ffs stuck in getblk				20111224
 # snap6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130630
 # snap8.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20120630
+# snap9.sh	panic: softdep_deallocate_dependencies: unrecovered ... 20150217
 # suj9.sh	page fault in softdep_count_dependencies+0x27		20141116
 # suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
 # suj13.sh	general protection fault in bufdaemon			20141130

@@ -38,8 +38,6 @@
 
 . ../default.cfg
 
-exit 0	# Waiting for fix. Still an issue @ 20150217
-
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
