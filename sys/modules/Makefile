@@ -755,4 +755,8 @@ afterinstall:
 	fi
 .endif
 
+.include "${SYSDIR}/conf/config.mk"
+
+SUBDIR:= ${SUBDIR:u:O}
+
 .include <bsd.subdir.mk>
