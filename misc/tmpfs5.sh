@@ -35,10 +35,10 @@
 . ../default.cfg
 
 here=`pwd`
-src=`uname -v | sed 's/.*:.*:\(.*\)\/sys\/.*/\1/'`
-[ -r $src/tools/regression/fsx/fsx.c ] || exit 1
 cd /tmp
-mycc -o fsx -Wall $src/tools/regression/fsx/fsx.c
+sed '1,/^EOF/d' < $here/umountf2.sh > /tmp/fsx.c
+mycc -o /tmp/fsx -O2 /tmp/fsx.c || exit 1
+rm -f fsx.c
 
 mount | grep "$mntpoint" | grep -q tmpfs && umount $mntpoint
 mount -t tmpfs tmpfs  $mntpoint
