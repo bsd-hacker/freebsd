@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/filedesc.h>
 #include <sys/jail.h>
 #include <sys/kernel.h>
+#include <sys/limits.h>
 #include <sys/linker.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -1403,31 +1404,37 @@ linprocfs_douuid(PFS_FILL_ARGS)
 static int
 linprocfs_doauxv(PFS_FILL_ARGS)
 {
-	int ret;
-
-	PROC_LOCK(p);
-	if ((ret = p_candebug(td, p)) != 0) {
-		PROC_UNLOCK(p);
-		return (ret);
-	}
+	struct sbuf *asb;
+	off_t buflen;
+	int error;
 
 	/*
 	 * Mimic linux behavior and pass only processes with usermode
 	 * address space as valid.  Return zero silently otherwize.
 	 */
-	if (p->p_vmspace == &vmspace0) {
-		PROC_UNLOCK(p);
+	if (p->p_vmspace == &vmspace0)
 		return (0);
-	}
 
-	if ((p->p_flag & P_SYSTEM) != 0) {
-		PROC_UNLOCK(p);
+	if (uio->uio_resid == 0)
 		return (0);
-	}
+	if (uio->uio_offset < 0 || uio->uio_resid < 0)
+		return (EINVAL);
+	buflen = uio->uio_resid;
+	if (buflen > IOSIZE_MAX)
+		return (EINVAL);
+	if (buflen > MAXPHYS)
+		buflen = MAXPHYS;
 
-	PROC_UNLOCK(p);
-
-	return (proc_getauxv(td, p, sb));
+	asb = sbuf_new_auto();
+	if (asb == NULL)
+		return (ENOMEM);
+	error = proc_getauxv(td, p, asb);
+	if (error == 0)
+		error = sbuf_finish(asb);
+	if (error == 0)
+		error = uiomove(sbuf_data(asb) + uio->uio_offset, buflen, uio);
+	sbuf_delete(asb);
+	return (error);
 }
 
 /*
@@ -1505,7 +1512,7 @@ linprocfs_init(PFS_INIT_ARGS)
 	pfs_create_link(dir, "fd", &linprocfs_dofdescfs,
 	    NULL, NULL, NULL, 0);
 	pfs_create_file(dir, "auxv", &linprocfs_doauxv,
-	    NULL, NULL, NULL, PFS_RD);
+	    NULL, &procfs_candebug, NULL, PFS_RD|PFS_RAWRD);
 
 	/* /proc/scsi/... */
 	dir = pfs_create_dir(root, "scsi", NULL, NULL, NULL, 0);
