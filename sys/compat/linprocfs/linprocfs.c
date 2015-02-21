@@ -1405,7 +1405,7 @@ static int
 linprocfs_doauxv(PFS_FILL_ARGS)
 {
 	struct sbuf *asb;
-	off_t buflen;
+	off_t buflen, resid;
 	int error;
 
 	/*
@@ -1419,11 +1419,6 @@ linprocfs_doauxv(PFS_FILL_ARGS)
 		return (0);
 	if (uio->uio_offset < 0 || uio->uio_resid < 0)
 		return (EINVAL);
-	buflen = uio->uio_resid;
-	if (buflen > IOSIZE_MAX)
-		return (EINVAL);
-	if (buflen > MAXPHYS)
-		buflen = MAXPHYS;
 
 	asb = sbuf_new_auto();
 	if (asb == NULL)
@@ -1431,6 +1426,19 @@ linprocfs_doauxv(PFS_FILL_ARGS)
 	error = proc_getauxv(td, p, asb);
 	if (error == 0)
 		error = sbuf_finish(asb);
+
+	resid = sbuf_len(asb) - uio->uio_offset;
+	if (resid > uio->uio_resid)
+		buflen = uio->uio_resid;
+	else
+		buflen = resid;
+	if (buflen > IOSIZE_MAX)
+		return (EINVAL);
+	if (buflen > MAXPHYS)
+		buflen = MAXPHYS;
+	if (resid <= 0)
+		return (0);
+
 	if (error == 0)
 		error = uiomove(sbuf_data(asb) + uio->uio_offset, buflen, uio);
 	sbuf_delete(asb);
