@@ -1075,7 +1075,7 @@ linprocfs_doprocmaps(PFS_FILL_ARGS)
 				VOP_GETATTR(vp, &vat, td->td_ucred);
 				ino = vat.va_fileid;
 				vput(vp);
-			} else {
+			} else if (SV_PROC_ABI(p) == SV_ABI_LINUX) {
 				if (e_start == p->p_sysent->sv_shared_page_base)
 					name = vdso_str;
 				if (e_end == p->p_sysent->sv_usrstack)
