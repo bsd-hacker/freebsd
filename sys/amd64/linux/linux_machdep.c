@@ -432,42 +432,6 @@ linux_set_cloned_tls(struct thread *td, void *desc)
 	return (0);
 }
 
-void
-linux_to_bsd_sigset(l_sigset_t *lss, sigset_t *bss)
-{
-	int b, l;
-
-	SIGEMPTYSET(*bss);
-	for (l = 1; l <= LINUX_NSIG; l++) {
-		if (LINUX_SIGISMEMBER(*lss, l)) {
-			if (l <= LINUX_SIGTBLSZ)
-				b = linux_to_bsd_signal[_SIG_IDX(l)];
-			else
-				b = l;
-			if (b)
-				SIGADDSET(*bss, b);
-		}
-	}
-}
-
-void
-bsd_to_linux_sigset(sigset_t *bss, l_sigset_t *lss)
-{
-	int b, l;
-
-	LINUX_SIGEMPTYSET(*lss);
-	for (b = 1; b <= LINUX_NSIG; b++) {
-		if (SIGISMEMBER(*bss, b)) {
-			if (b <= LINUX_SIGTBLSZ)
-				l = bsd_to_linux_signal[_SIG_IDX(b)];
-			else
-				l = b;
-			if (l)
-				LINUX_SIGADDSET(*lss, l);
-		}
-	}
-}
-
 int
 linux_wait4(struct thread *td, struct linux_wait4_args *args)
 {
@@ -552,7 +516,7 @@ linux_waitid(struct thread *td, struct linux_waitid_args *args)
 		if (td->td_retval[0] == 0)
 			bzero(&lsi, sizeof(lsi));
 		else {
-			sig = BSD_TO_LINUX_SIGNAL(siginfo.si_signo);
+			sig = bsd_to_linux_signal(siginfo.si_signo);
 			siginfo_to_lsiginfo(&siginfo, &lsi, sig);
 		}
 		error = copyout(&lsi, args->info, sizeof(lsi));
