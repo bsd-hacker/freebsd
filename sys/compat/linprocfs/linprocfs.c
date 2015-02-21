@@ -857,14 +857,14 @@ linprocfs_doprocstatus(PFS_FILL_ARGS)
 	mtx_unlock(&ps->ps_mtx);
 	PROC_UNLOCK(p);
 
-	sbuf_printf(sb, "SigPnd:\t%016lx\n",	siglist.__mask);
+	sbuf_printf(sb, "SigPnd:\t%016jx\n",	siglist.__mask);
 	/*
 	 * XXX. SigBlk - target thread's signal mask, td_sigmask.
 	 * To implement SigBlk pseudofs should support proc/tid dir entries.
 	 */
 	sbuf_printf(sb, "SigBlk:\t%016x\n",	0);
-	sbuf_printf(sb, "SigIgn:\t%016lx\n",	sigignore.__mask);
-	sbuf_printf(sb, "SigCgt:\t%016lx\n",	sigcatch.__mask);
+	sbuf_printf(sb, "SigIgn:\t%016jx\n",	sigignore.__mask);
+	sbuf_printf(sb, "SigCgt:\t%016jx\n",	sigcatch.__mask);
 
 	/*
 	 * Linux also prints the capability masks, but we don't have
