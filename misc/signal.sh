@@ -36,6 +36,11 @@
 
 . ../default.cfg
 
+here=`pwd`
+wd=/tmp/signal.dir
+rm -rf $wd
+mkdir -p $wd
+cd $wd
 cat > waitthread.c <<EOF
 #include <unistd.h>
 #include <stdlib.h>
@@ -226,5 +231,6 @@ else
 fi
 
 kill $fifopid $gdbpid > /dev/null 2>&1
-rm -f gdbfifo gdbout pstat waitthread tkill /tmp/waitthread
 ps | grep -v grep | grep waitthread | awk '{print $1}' | xargs kill
+cd $here
+rm -rf $wd /tmp/waitthread 

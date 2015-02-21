@@ -311,6 +311,7 @@ mycc -o /tmp/crlogger -Wall -Wextra -O2 -g /tmp/crlogger.c
 rm -f /tmp/crlogger.c
 
 N=200
+cd /tmp
 for i in `jot 40`; do
 	for j in `jot $N`; do
 		/tmp/crwriter | /tmp/crlogger 1236$j 2>/dev/null &
