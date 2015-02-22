@@ -83,6 +83,7 @@ void bsd_to_linux_sigset(sigset_t *, l_sigset_t *);
 #define	LINUX_SIGPOLL		LINUX_SIGIO
 #define	LINUX_SIGPWR		30
 #define	LINUX_SIGSYS		31
+#define	LINUX_SIGTBLSZ		31
 #define	LINUX_SIGRTMIN		32
 #define	LINUX_SIGRTMAX		64
 
