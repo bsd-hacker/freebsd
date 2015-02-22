@@ -36,7 +36,9 @@
 
 . ../default.cfg
 
-opt="-o nfsv3,rw,udp,rdirplus,noauto"
+opt="-o nfsv3,rw,udp,rdirplus,noauto,retrycnt=3"
+grep -q $mntpoint /etc/exports ||
+    { echo "$mntpoint missing from /etc/exports"; exit 0; }
 
 mount | grep -wq $mntpoint && umount $mntpoint
 mount -t nullfs /tmp $mntpoint

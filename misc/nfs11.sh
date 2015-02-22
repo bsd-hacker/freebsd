@@ -34,7 +34,8 @@
 
 . ../default.cfg
 
-grep -q $mntpoint /etc/exports || { echo "$mntpoint missing from /etc/exports"; exit 0; }
+grep -q $mntpoint /etc/exports ||
+    { echo "$mntpoint missing from /etc/exports"; exit 0; }
 
 m2=${mntpoint}2
 [ -d $m2 ] || mkdir $m2
@@ -50,12 +51,12 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-mount -t nfs -o nfsv4 -o rw 127.0.0.1:$mntpoint $m2
+mount -t nfs -o nfsv4 -o rw,retrycnt=3 127.0.0.1:$mntpoint $m2
 
 export RUNDIR=$m2/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
 
-su $testuser -c "(cd ..; ./run.sh marcus.cfg)" 
+su $testuser -c "(cd ..; ./run.sh marcus.cfg)"
 
 while mount | grep "on $m2 " | grep -q nfs; do
 	umount $m2
