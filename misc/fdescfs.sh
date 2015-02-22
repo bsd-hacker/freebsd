@@ -28,7 +28,7 @@
 # $FreeBSD$
 #
 
-# 
+#
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 

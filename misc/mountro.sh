@@ -34,7 +34,7 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 D=$diskimage
-dede $D 1m 128 || exit 
+dede $D 1m 128 || exit
 
 mount | grep "$mntpoint"    | grep -q /md  && umount -f ${mntpoint}
 mdconfig -l | grep -q ${mdstart}  &&  mdconfig -d -u $mdstart

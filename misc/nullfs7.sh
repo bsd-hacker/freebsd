@@ -51,7 +51,7 @@ for i in `jot 50`; do
 	mount -oro -t nullfs $RUNDIR $DST
 	mount -orw -t nullfs /bin $DST
 done
-mount | grep nullfs | awk '{print $3}' | xargs umount 
+mount | grep nullfs | awk '{print $3}' | xargs umount
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1

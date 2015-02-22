@@ -40,7 +40,7 @@ mount -t nullfs $RUNDIR $mntpoint
 
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m
-(cd ..; ./run.sh marcus.cfg) 
+(cd ..; ./run.sh marcus.cfg)
 
 while mount | grep -q "on $mntpoint "; do
 	umount $mntpoint || sleep 1

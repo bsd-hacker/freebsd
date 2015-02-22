@@ -33,7 +33,7 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-(cd ../testcases/swap; ./swap -t 2m -i 20 -v) > /dev/null 
+(cd ../testcases/swap; ./swap -t 2m -i 20 -v) > /dev/null
 ps auxww | awk '{print $8}' | egrep -q ".W"  || exit 0
 swapoff -a > /dev/null || exit 1
 if ps auxww | awk '{print $8}' | egrep -q ".W"; then

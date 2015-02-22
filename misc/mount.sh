@@ -33,7 +33,7 @@
 # cpuid = 1
 # KDB: enter: panic
 # [thread pid 69453 tid 100388 ]
-# Stopped at      kdb_enter+0x2b: nop     
+# Stopped at      kdb_enter+0x2b: nop
 # db> where
 # Tracing pid 69453 tid 100388 td 0xc4b5c1b0
 # kdb_enter(c091d9db) at kdb_enter+0x2b

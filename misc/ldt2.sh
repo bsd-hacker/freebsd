@@ -55,7 +55,7 @@ mkdir -p $jail
 
 cd /var/tmp/deviant2 # You will need to change this!
 make -j4 TARGET=i386 TARGET_ARCH=i386 DESTDIR=$jail world
-make     TARGET=i386 TARGET_ARCH=i386 DESTDIR=$jail distribution 
+make     TARGET=i386 TARGET_ARCH=i386 DESTDIR=$jail distribution
 
 mount -t devfs devfs $jail/dev
 

@@ -52,7 +52,7 @@ mount -t nullfs $mntpoint/null $mnt2
 
 export RUNDIR=$mnt2/stressX
 export runRUNTIME=10m
-(cd ..; ./run.sh marcus.cfg) 
+(cd ..; ./run.sh marcus.cfg)
 
 while mount | grep -q "on $mnt2 "; do
 	umount $mnt2 || sleep 1

@@ -33,7 +33,7 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 D=$diskimage
-dede $D 1m 128 || exit 
+dede $D 1m 128 || exit
 
 mount | grep "${mntpoint}2" | grep nfs > /dev/null && umount -f ${mntpoint}2
 mount | grep "$mntpoint"    | grep /md > /dev/null && umount -f ${mntpoint}

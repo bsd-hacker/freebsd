@@ -48,7 +48,7 @@ for opt in -O1 -O2 -U -j; do
 			mount /dev/md${mdstart}$part $mntpoint
 			export RUNDIR=$mntpoint/stressX
 			export runRUNTIME=4m
-			(cd ..; ./run.sh disk.cfg > /dev/null 2>&1) 
+			(cd ..; ./run.sh disk.cfg > /dev/null 2>&1)
 			while mount | grep "$mntpoint" | grep -q md${mdstart}$part; do
 				umount $mntpoint > /dev/null 2>&1 || sleep 1
 			done

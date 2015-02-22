@@ -40,7 +40,7 @@ fdisk -I md$MD_DEV > /dev/null 2>&1
 bsdlabel -w -B md${MD_DEV}s1 || exit 1
 dd if=/dev/md$MD_DEV of=/dev/null bs=64k 2>&1 |
 	egrep -v "records|transferred"
-bsdlabel md${MD_DEV}s1 > /dev/null || 
+bsdlabel md${MD_DEV}s1 > /dev/null ||
 	{ echo FAIL; status=1; }
 mdconfig -d -u $MD_DEV
 exit $status

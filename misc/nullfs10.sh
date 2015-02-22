@@ -57,7 +57,7 @@ mount -t nullfs $mntpoint $mnt2
 cp /bin/ls $mntpoint
 chmod +w $mntpoint/ls
 sleep 2 >> $mntpoint/ls &
-sleep .5 
+sleep .5
 # This line should cause a "/mnt2/ls: Text file busy"
 $mnt2/ls -l /bin/ls $mntpoint $mnt2 && echo FAIL || echo OK
 kill $!

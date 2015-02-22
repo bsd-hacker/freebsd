@@ -46,7 +46,7 @@ newfs md${mdstart}${part}
 mount /dev/md${mdstart}${part} $mntpoint
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=3m            # Run tests for three minutes
-(cd ..; ./run.sh vfs.cfg) 
+(cd ..; ./run.sh vfs.cfg)
 umount $mntpoint
 mdconfig -d -u ${mdstart}
 rm -f $D

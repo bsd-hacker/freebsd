@@ -32,7 +32,7 @@
 # Kernel must be compiled with options UFS_EXTATTR and UFS_EXTATTR_AUTOSTART
 
 # Scenario by rwatson@ from:
-# 
+#
 # Newsgroups: lucky.freebsd.current
 # Subject: Re: setfacl requirements?
 # Date: Thu, 5 Dec 2002 15:50:02 +0000 (UTC)

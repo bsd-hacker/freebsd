@@ -28,7 +28,7 @@
 # $FreeBSD$
 #
 
-# Problem seen with atomic assingment of f_offset. Fixed in r238029.
+# Problem seen with atomic assignment of f_offset. Fixed in r238029.
 
 # Test scenario by kib@
 
