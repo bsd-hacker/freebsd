@@ -36,20 +36,17 @@
 
 . ../default.cfg
 
-[ -d mp1 ] || mkdir mp1
-[ -d $RUNDIR ] || mkdir $RUNDIR
+[ -d $RUNDIR/stressX ] || mkdir -p $RUNDIR/stressX
 
-mp=`pwd`/mp1
+mp=$mntpoint
 mount | grep -q $mp && umount -f $mp
 
 mount -t nullfs `dirname $RUNDIR` $mp
 
 cd $mp/stressX
-whereis something
+whereis something > /dev/null
 cd /
 
 umount $mp
 
 mount | grep -q $mp && umount -f $mp
-
-rm -rf $mp

@@ -36,7 +36,6 @@
 
 u1=$mdstart
 u2=$((u1 + 1))
-[ -d mp1 ] || mkdir mp1
 
 mount | grep -q /dev/md${u2}$part && umount -f /dev/md${u2}$part
 mount | grep -q /dev/md${u1}$part && umount -f /dev/md${u1}$part
@@ -51,12 +50,12 @@ mdconfig -s 256m -u $u2
 bsdlabel -w md$u2 auto
 newfs md${u2}${part} > /dev/null
 
-mount -o ro    /dev/md${u1}$part mp1
-mount -o union /dev/md${u2}$part mp1 
+mount -o ro    /dev/md${u1}$part $mntpoint
+mount -o union /dev/md${u2}$part $mntpoint
 
-export RUNDIR=`pwd`/mp1/stressX
+export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m
-(cd ..; ./run.sh marcus.cfg) 
+(cd ..; ./run.sh marcus.cfg) > /dev/null
 
 umount /dev/md${u2}$part
 umount /dev/md${u1}$part
@@ -66,5 +65,3 @@ mount | grep -q /dev/md${u1}$part && umount -f /dev/md${u1}$part
 
 mdconfig -d -u $u2
 mdconfig -d -u $u1
-
-rm -rf mp1
