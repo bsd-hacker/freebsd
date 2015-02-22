@@ -43,9 +43,10 @@ for u in $md1 $md2 $md3; do
 	mdconfig -a -t swap -s 1g -u $u
 done
 
-gmirror load || exit 1
+gmirror load > /dev/null 2>&1
 gmirror label -v -b split -s 2048 data /dev/md$md1 /dev/md$md2 \
-    /dev/md$md3 > /dev/null
+    /dev/md$md3 > /dev/null || exit 1
+[ -c /dev/mirror/data ] || exit 1
 newfs $newfs_flags /dev/mirror/data > /dev/null
 mount /dev/mirror/data $mntpoint
 chmod 777 $mntpoint

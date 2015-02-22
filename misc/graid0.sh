@@ -43,9 +43,10 @@ for u in $md1 $md2 $md3; do
 	mdconfig -a -t swap -s 1g -u $u
 done
 
-gstripe load || exit 1
+gstripe load > /dev/null 2>&1
 gstripe label -v -s 131072 data /dev/md$md1 /dev/md$md2 /dev/md$md3  > \
-    /dev/null
+    /dev/null || exit 1
+[ -c /dev/stripe/data ] || exit 1
 newfs $newfs_flags /dev/stripe/data > /dev/null
 mount /dev/stripe/data $mntpoint
 chmod 777 $mntpoint
