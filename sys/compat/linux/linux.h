@@ -37,9 +37,6 @@ int linux_to_bsd_sigaltstack(int lsa);
 int bsd_to_linux_sigaltstack(int bsa);
 
 /* sigset */
-#define	LINUX_SIGTBLSZ		31
-#define	LINUX_NSIG		64
-
 typedef struct {
 	uint64_t	__mask;
 } l_sigset_t;
@@ -87,7 +84,7 @@ void bsd_to_linux_sigset(sigset_t *, l_sigset_t *);
 #define	LINUX_SIGPWR		30
 #define	LINUX_SIGSYS		31
 #define	LINUX_SIGRTMIN		32
-#define	LINUX_SIGRTMAX		LINUX_NSIG-1
+#define	LINUX_SIGRTMAX		64
 
 #define LINUX_SIG_VALID(sig)	((sig) <= LINUX_SIGRTMAX && (sig) > 0)
 
