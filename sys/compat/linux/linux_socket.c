@@ -1418,9 +1418,10 @@ bad:
 int
 linux_recvmsg(struct thread *td, struct linux_recvmsg_args *args)
 {
+	struct msghdr bsd_msg;
 
 	return (linux_recvmsg_common(td, args->s, PTRIN(args->msg),
-	    args->flags, NULL));
+	    args->flags, &bsd_msg));
 }
 
 int
