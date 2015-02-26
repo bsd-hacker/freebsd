@@ -43,6 +43,8 @@ struct pfs_vdata {
 	struct pfs_node	*pvd_pn;
 	pid_t		 pvd_pid;
 	struct vnode	*pvd_vnode;
+	char		*pvd_vnode_name;
+	int		 pvd_vnode_namelen;
 	struct pfs_vdata*pvd_prev, *pvd_next;
 	int		 pvd_dead:1;
 };
@@ -53,7 +55,8 @@ struct pfs_vdata {
 void	 pfs_vncache_load	(void);
 void	 pfs_vncache_unload	(void);
 int	 pfs_vncache_alloc	(struct mount *, struct vnode **,
-				 struct pfs_node *, pid_t pid);
+				 struct pfs_node *, pid_t pid,
+				 char *name, int namelen);
 int	 pfs_vncache_free	(struct vnode *);
 
 /*

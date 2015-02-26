@@ -92,6 +92,7 @@ pfs_fileno_alloc(struct pfs_node *pn)
 	case pfstype_file:
 	case pfstype_symlink:
 	case pfstype_procdir:
+	case pfstype_fdlink:
 		pn->pn_fileno = alloc_unr(pn->pn_info->pi_unrhdr);
 		break;
 	case pfstype_this:
@@ -145,6 +146,7 @@ pfs_fileno_free(struct pfs_node *pn)
 	case pfstype_file:
 	case pfstype_symlink:
 	case pfstype_procdir:
+	case pfstype_fdlink:
 		free_unr(pn->pn_info->pi_unrhdr, pn->pn_fileno);
 		break;
 	case pfstype_this:

@@ -62,7 +62,8 @@ typedef enum {
 	pfstype_parent,
 	pfstype_file,
 	pfstype_symlink,
-	pfstype_procdir
+	pfstype_procdir,
+	pfstype_fdlink
 } pfs_type_t;
 
 /*
@@ -75,6 +76,7 @@ typedef enum {
 #define	PFS_RAWWR	0x0008	/* raw writer */
 #define PFS_RAW		(PFS_RAWRD|PFS_RAWWR)
 #define PFS_PROCDEP	0x0010	/* process-dependent */
+#define PFS_PROCFDDEP	0x0020	/* process-filedesc-dependent */
 
 /*
  * Data structures
@@ -100,9 +102,10 @@ typedef int (*pfs_init_t)(PFS_INIT_ARGS);
  */
 #define PFS_FILL_ARGS \
 	struct thread *td, struct proc *p, struct pfs_node *pn, \
-	struct sbuf *sb, struct uio *uio
+	struct sbuf *sb, struct uio *uio, char *vnode_name,	\
+	int vnode_namelen
 #define PFS_FILL_ARGNAMES \
-	td, p, pn, sb, uio
+	td, p, pn, sb, uio, vnode_name, vnode_namelen
 #define PFS_FILL_PROTO(name) \
 	int name(PFS_FILL_ARGS);
 typedef int (*pfs_fill_t)(PFS_FILL_ARGS);

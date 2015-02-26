@@ -108,12 +108,14 @@ pfs_vncache_unload(void)
  * Allocate a vnode
  */
 int
-pfs_vncache_alloc(struct mount *mp, struct vnode **vpp,
-		  struct pfs_node *pn, pid_t pid)
+pfs_vncache_alloc(struct mount *mp, struct vnode **vpp, struct pfs_node *pn,
+		    pid_t pid, char *name, int namelen)
 {
 	struct pfs_vdata *pvd, *pvd2;
 	struct vnode *vp;
 	int error;
+
+	PFS_TRACE(("%s", (name != NULL? name : pn->pn_name)));
 
 	/*
 	 * See if the vnode is in the cache.
@@ -124,6 +126,10 @@ retry:
 	for (pvd = pfs_vncache; pvd; pvd = pvd->pvd_next) {
 		if (pvd->pvd_pn == pn && pvd->pvd_pid == pid &&
 		    pvd->pvd_vnode->v_mount == mp) {
+			if ((pn->pn_flags & PFS_PROCFDDEP) &&
+			    (namelen != pvd->pvd_vnode_namelen ||
+			    bcmp(name, pvd->pvd_vnode_name, namelen)))
+				continue;
 			vp = pvd->pvd_vnode;
 			VI_LOCK(vp);
 			mtx_unlock(&pfs_vncache_mutex);
@@ -148,7 +154,7 @@ retry:
 	mtx_unlock(&pfs_vncache_mutex);
 
 	/* nope, get a new one */
-	pvd = malloc(sizeof *pvd, M_PFSVNCACHE, M_WAITOK);
+	pvd = malloc(sizeof *pvd, M_PFSVNCACHE, M_WAITOK|M_ZERO);
 	pvd->pvd_next = pvd->pvd_prev = NULL;
 	error = getnewvnode("pseudofs", mp, &pfs_vnodeops, vpp);
 	if (error) {
@@ -157,6 +163,12 @@ retry:
 	}
 	pvd->pvd_pn = pn;
 	pvd->pvd_pid = pid;
+	if (name != NULL && namelen > 0) {
+		pvd->pvd_vnode_name = malloc(namelen + 1, M_PFSVNCACHE,
+		    M_WAITOK);
+		strlcpy(pvd->pvd_vnode_name, name, namelen + 1);
+		pvd->pvd_vnode_namelen = namelen;
+	}
 	(*vpp)->v_data = pvd;
 	switch (pn->pn_type) {
 	case pfstype_root:
@@ -175,6 +187,7 @@ retry:
 		(*vpp)->v_type = VREG;
 		break;
 	case pfstype_symlink:
+	case pfstype_fdlink:
 		(*vpp)->v_type = VLNK;
 		break;
 	case pfstype_none:
@@ -207,6 +220,10 @@ retry2:
 	for (pvd2 = pfs_vncache; pvd2; pvd2 = pvd2->pvd_next) {
 		if (pvd2->pvd_pn == pn && pvd2->pvd_pid == pid &&
 		    pvd2->pvd_vnode->v_mount == mp) {
+			if ((pn->pn_flags & PFS_PROCFDDEP) &&
+			    (namelen != pvd2->pvd_vnode_namelen ||
+			    bcmp(name, pvd2->pvd_vnode_name, namelen)))
+				continue;
 			vp = pvd2->pvd_vnode;
 			VI_LOCK(vp);
 			mtx_unlock(&pfs_vncache_mutex);
@@ -243,7 +260,11 @@ pfs_vncache_free(struct vnode *vp)
 
 	mtx_lock(&pfs_vncache_mutex);
 	pvd = (struct pfs_vdata *)vp->v_data;
+
 	KASSERT(pvd != NULL, ("pfs_vncache_free(): no vnode data\n"));
+	PFS_TRACE(("%s", (pvd->pvd_vnode_name != NULL ?
+	    pvd->pvd_vnode_name : pvd->pvd_pn->pn_name)));
+
 	if (pvd->pvd_next)
 		pvd->pvd_next->pvd_prev = pvd->pvd_prev;
 	if (pvd->pvd_prev) {
@@ -255,6 +276,8 @@ pfs_vncache_free(struct vnode *vp)
 	}
 	mtx_unlock(&pfs_vncache_mutex);
 
+	if (pvd->pvd_vnode_name != NULL)
+		free(pvd->pvd_vnode_name, M_PFSVNCACHE);
 	free(pvd, M_PFSVNCACHE);
 	vp->v_data = NULL;
 	return (0);

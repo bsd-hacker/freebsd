@@ -34,9 +34,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
+#include <sys/capsicum.h>
 #include <sys/ctype.h>
 #include <sys/dirent.h>
 #include <sys/fcntl.h>
+#include <sys/file.h>
+#include <sys/filedesc.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -63,7 +66,8 @@ __FBSDID("$FreeBSD$");
 	    ("%s(): VREG vnode refers to non-file pfs_node", __func__))
 
 #define KASSERT_PN_IS_LINK(pn)						\
-	KASSERT((pn)->pn_type == pfstype_symlink,			\
+	KASSERT((pn)->pn_type == pfstype_symlink ||			\
+	    (pn)->pn_type == pfstype_fdlink,				\
 	    ("%s(): VLNK vnode refers to non-link pfs_node", __func__))
 
 /*
@@ -139,7 +143,8 @@ pfs_access(struct vop_access_args *va)
 	struct vattr vattr;
 	int error;
 
-	PFS_TRACE(("%s", pvd->pvd_pn->pn_name));
+	PFS_TRACE(("%s", (pvd->pvd_vnode_name != NULL ?
+	    pvd->pvd_vnode_name : pvd->pvd_pn->pn_name)));
 	(void)pvd;
 
 	error = VOP_GETATTR(vn, &vattr, va->a_cred);
@@ -229,6 +234,7 @@ pfs_getattr(struct vop_getattr_args *va)
 		break;
 	case pfstype_file:
 	case pfstype_symlink:
+	case pfstype_fdlink:
 		vap->va_mode = 0444;
 		break;
 	default:
@@ -402,7 +408,7 @@ pfs_vptocnp(struct vop_vptocnp_args *ap)
 	locked = VOP_ISLOCKED(vp);
 	VOP_UNLOCK(vp, 0);
 
-	error = pfs_vncache_alloc(mp, dvp, pn, pid);
+	error = pfs_vncache_alloc(mp, dvp, pn, pid, NULL, 0);
 	if (error) {
 		vn_lock(vp, locked | LK_RETRY);
 		vfs_unbusy(mp);
@@ -432,10 +438,15 @@ pfs_lookup(struct vop_cachedlookup_args *va)
 	struct pfs_vdata *pvd = vn->v_data;
 	struct pfs_node *pd = pvd->pvd_pn;
 	struct pfs_node *pn, *pdn = NULL;
+	struct thread *td = curthread;
 	struct mount *mp;
+	cap_rights_t rights;
 	pid_t pid = pvd->pvd_pid;
-	char *pname;
-	int error, i, namelen, visible;
+	char *pname, *pnameend;
+	int error, i, namelen, visible, fileno;
+	struct filedesc *fdp;
+	struct file *fp;
+	struct proc *p;
 
 	PFS_TRACE(("%.*s", (int)cnp->cn_namelen, cnp->cn_nameptr));
 	pfs_assert_not_owned(pd);
@@ -519,7 +530,8 @@ pfs_lookup(struct vop_cachedlookup_args *va)
 
 	/* named node */
 	for (pn = pd->pn_nodes; pn != NULL; pn = pn->pn_next)
-		if (pn->pn_type == pfstype_procdir)
+		if (pn->pn_type == pfstype_procdir ||
+		    pn->pn_type == pfstype_fdlink)
 			pdn = pn;
 		else if (pn->pn_name[namelen] == '\0' &&
 		    bcmp(pname, pn->pn_name, namelen) == 0) {
@@ -528,7 +540,7 @@ pfs_lookup(struct vop_cachedlookup_args *va)
 		}
 
 	/* process dependent node */
-	if ((pn = pdn) != NULL) {
+	if ((pn = pdn) != NULL && pn->pn_type == pfstype_procdir) {
 		pid = 0;
 		for (pid = 0, i = 0; i < namelen && isdigit(pname[i]); ++i)
 			if ((pid = pid * 10 + pname[i] - '0') > PID_MAX)
@@ -539,8 +551,38 @@ pfs_lookup(struct vop_cachedlookup_args *va)
 		}
 	}
 
-	pfs_unlock(pd);
+	/* process filedesc dependent node */
+	if ((pn = pdn) != NULL && pn->pn_type == pfstype_fdlink) {
+		pfs_unlock(pd);
+		fileno = (int)strtol(pname, &pnameend, 10);
+		if ((fileno == 0 && (namelen > 1 ||
+		    (namelen == 1 && pname[0] != '0'))) ||
+		    (namelen != pnameend - pname)) {
+			goto bad;
+		}
+		if ((p = pfind(pid)) == NULL)
+			goto bad;
+		fdp = fdhold(p);
+		if (fdp == NULL) {
+			PROC_UNLOCK(p);
+			goto bad;
+		}
 
+		error = fget_unlocked(fdp, fileno,
+		    cap_rights_init(&rights, CAP_READ), &fp, NULL);
+		if (error == 0) {
+			fdrop(fp, td);
+			fddrop(fdp);
+			PROC_UNLOCK(p);
+			goto got_pnode;
+		}
+		fddrop(fdp);
+		PROC_UNLOCK(p);
+		goto bad;
+	}
+
+	pfs_unlock(pd);
+ bad:
 	PFS_RETURN (ENOENT);
 
  got_pnode:
@@ -552,7 +594,7 @@ pfs_lookup(struct vop_cachedlookup_args *va)
 		goto failed;
 	}
 
-	error = pfs_vncache_alloc(mp, vpp, pn, pid);
+	error = pfs_vncache_alloc(mp, vpp, pn, pid, pname, namelen);
 	if (error)
 		goto failed;
 
@@ -648,7 +690,8 @@ pfs_read(struct vop_read_args *va)
 
 	if (pn->pn_flags & PFS_RAWRD) {
 		PFS_TRACE(("%zd resid", uio->uio_resid));
-		error = pn_fill(curthread, proc, pn, NULL, uio);
+		error = pn_fill(curthread, proc, pn, NULL, uio,
+		    pvd->pvd_vnode_name, pvd->pvd_vnode_namelen);
 		PFS_TRACE(("%zd resid", uio->uio_resid));
 		goto ret;
 	}
@@ -668,7 +711,8 @@ pfs_read(struct vop_read_args *va)
 		goto ret;
 	}
 
-	error = pn_fill(curthread, proc, pn, sb, uio);
+	error = pn_fill(curthread, proc, pn, sb, uio,
+	    pvd->pvd_vnode_name, pvd->pvd_vnode_namelen);
 
 	if (error) {
 		sbuf_delete(sb);
@@ -697,9 +741,11 @@ ret:
  */
 static int
 pfs_iterate(struct thread *td, struct proc *proc, struct pfs_node *pd,
-	    struct pfs_node **pn, struct proc **p)
+    struct pfs_node **pn, struct proc **p, struct filedesc **fdp, int *fileno)
 {
-	int visible;
+	struct file *fp;
+	cap_rights_t rights;
+	int error, visible;
 
 	sx_assert(&allproc_lock, SX_SLOCKED);
 	pfs_assert_owned(pd);
@@ -707,7 +753,8 @@ pfs_iterate(struct thread *td, struct proc *proc, struct pfs_node *pd,
 	if (*pn == NULL) {
 		/* first node */
 		*pn = pd->pn_nodes;
-	} else if ((*pn)->pn_type != pfstype_procdir) {
+	} else if ((*pn)->pn_type != pfstype_procdir &&
+	    (*pn)->pn_type != pfstype_fdlink) {
 		/* next node */
 		*pn = (*pn)->pn_next;
 	}
@@ -723,7 +770,35 @@ pfs_iterate(struct thread *td, struct proc *proc, struct pfs_node *pd,
 		else
 			PROC_LOCK(*p);
 	}
+	if (*pn != NULL && (*pn)->pn_type == pfstype_fdlink) {
+		/* Next fileno */
+		KASSERT(proc != NULL,
+		    ("%s(): fdlink has no proc", __func__));
+		if (*fdp == NULL) {
+			*fdp = fdhold(proc);
+			if (*fdp != NULL)
+				*fileno = -1;
+		}
+		while (*fdp != NULL) {
+			(*fileno) += 1;
+			if ((*fdp)->fd_nfiles == 0 ||
+			    *fileno > (*fdp)->fd_lastfile) {
+				fddrop(*fdp);
+				*fdp = NULL;
+				break;
+			}
 
+			error = fget_unlocked(*fdp, *fileno,
+			    cap_rights_init(&rights, CAP_READ), &fp, NULL);
+			if (error == 0) {
+				fdrop(fp, td);
+				break;
+			}
+		}
+		/* Out of process files: next node */
+		if (*fdp == NULL)
+			*pn = (*pn)->pn_next;
+	}
 	if ((*pn) == NULL)
 		return (-1);
 
@@ -759,12 +834,13 @@ pfs_readdir(struct vop_readdir_args *va)
 	struct pfs_node *pd = pvd->pvd_pn;
 	pid_t pid = pvd->pvd_pid;
 	struct proc *p, *proc;
+	struct filedesc *fdp;
 	struct pfs_node *pn;
 	struct uio *uio;
 	struct pfsentry *pfsent, *pfsent2;
 	struct pfsdirentlist lst;
 	off_t offset;
-	int error, i, resid;
+	int error, i, resid, fileno;
 
 	STAILQ_INIT(&lst);
 	error = 0;
@@ -799,12 +875,16 @@ pfs_readdir(struct vop_readdir_args *va)
 	KASSERT(pid == NO_PID || proc != NULL,
 	    ("%s(): no process for pid %lu", __func__, (unsigned long)pid));
 
+	fdp = NULL;
 	/* skip unwanted entries */
 	for (pn = NULL, p = NULL; offset > 0; offset -= PFS_DELEN) {
-		if (pfs_iterate(curthread, proc, pd, &pn, &p) == -1) {
+		if (pfs_iterate(curthread,
+		    proc, pd, &pn, &p, &fdp, &fileno) == -1) {
 			/* nothing left... */
 			if (proc != NULL)
 				PROC_UNLOCK(proc);
+			if (fdp != NULL)
+				fddrop(fdp);
 			pfs_unlock(pd);
 			sx_sunlock(&allproc_lock);
 			PFS_RETURN (0);
@@ -812,7 +892,7 @@ pfs_readdir(struct vop_readdir_args *va)
 	}
 
 	/* fill in entries */
-	while (pfs_iterate(curthread, proc, pd, &pn, &p) != -1 &&
+	while (pfs_iterate(curthread, proc, pd, &pn, &p, &fdp, &fileno) != -1 &&
 	    resid >= PFS_DELEN) {
 		if ((pfsent = malloc(sizeof(struct pfsentry), M_IOV,
 		    M_NOWAIT | M_ZERO)) == NULL) {
@@ -822,8 +902,12 @@ pfs_readdir(struct vop_readdir_args *va)
 		pfsent->entry.d_reclen = PFS_DELEN;
 		pfsent->entry.d_fileno = pn_fileno(pn, pid);
 		/* PFS_DELEN was picked to fit PFS_NAMLEN */
-		for (i = 0; i < PFS_NAMELEN - 1 && pn->pn_name[i] != '\0'; ++i)
-			pfsent->entry.d_name[i] = pn->pn_name[i];
+
+		if (pn->pn_type != pfstype_procdir &&
+		    pn->pn_type != pfstype_fdlink)
+			for (i = 0; i < PFS_NAMELEN - 1 &&
+			    pn->pn_name[i] != '\0'; ++i)
+				pfsent->entry.d_name[i] = pn->pn_name[i];
 		pfsent->entry.d_name[i] = 0;
 		pfsent->entry.d_namlen = i;
 		switch (pn->pn_type) {
@@ -842,6 +926,10 @@ pfs_readdir(struct vop_readdir_args *va)
 		case pfstype_file:
 			pfsent->entry.d_type = DT_REG;
 			break;
+		case pfstype_fdlink:
+			pfsent->entry.d_namlen = snprintf(pfsent->entry.d_name,
+			    PFS_NAMELEN, "%d", fileno);
+			/* FALLTHROUGH */
 		case pfstype_symlink:
 			pfsent->entry.d_type = DT_LNK;
 			break;
@@ -855,6 +943,8 @@ pfs_readdir(struct vop_readdir_args *va)
 	}
 	if (proc != NULL)
 		PROC_UNLOCK(proc);
+	if (fdp != NULL)
+		fddrop(fdp);
 	pfs_unlock(pd);
 	sx_sunlock(&allproc_lock);
 	i = 0;
@@ -883,7 +973,8 @@ pfs_readlink(struct vop_readlink_args *va)
 	struct sbuf sb;
 	int error, locked;
 
-	PFS_TRACE(("%s", pn->pn_name));
+	PFS_TRACE(("%s", (pvd->pvd_vnode_name != NULL ?
+	    pvd->pvd_vnode_name : pn->pn_name)));
 	pfs_assert_not_owned(pn);
 
 	if (vn->v_type != VLNK)
@@ -910,12 +1001,21 @@ pfs_readlink(struct vop_readlink_args *va)
 	/* sbuf_new() can't fail with a static buffer */
 	sbuf_new(&sb, buf, sizeof buf, 0);
 
-	error = pn_fill(curthread, proc, pn, &sb, NULL);
+	error = pn_fill(curthread, proc, pn, &sb, NULL,
+	    pvd->pvd_vnode_name, pvd->pvd_vnode_namelen);
 
 	if (proc != NULL)
 		PRELE(proc);
 	vn_lock(vn, locked | LK_RETRY);
-	vdrop(vn);
+
+	/*
+	 * Vgone file descriptor dependent node right after use as
+	 * is not trivial to control file operations from pseudofs
+	 */
+	if (pn->pn_flags & PFS_PROCFDDEP)
+		vgone(vn);
+	else
+		vdrop(vn);
 
 	if (error) {
 		sbuf_delete(&sb);
@@ -942,7 +1042,8 @@ pfs_reclaim(struct vop_reclaim_args *va)
 	struct pfs_vdata *pvd = vn->v_data;
 	struct pfs_node *pn = pvd->pvd_pn;
 
-	PFS_TRACE(("%s", pn->pn_name));
+	PFS_TRACE(("%s", (pvd->pvd_vnode_name != NULL ?
+	    pvd->pvd_vnode_name : pn->pn_name)));
 	pfs_assert_not_owned(pn);
 
 	return (pfs_vncache_free(va->a_vp));
@@ -1003,7 +1104,8 @@ pfs_write(struct vop_write_args *va)
 	}
 
 	if (pn->pn_flags & PFS_RAWWR) {
-		error = pn_fill(curthread, proc, pn, NULL, uio);
+		error = pn_fill(curthread, proc, pn, NULL, uio,
+		    pvd->pvd_vnode_name, pvd->pvd_vnode_namelen);
 		if (proc != NULL)
 			PRELE(proc);
 		PFS_RETURN (error);
@@ -1016,7 +1118,8 @@ pfs_write(struct vop_write_args *va)
 		PFS_RETURN (error);
 	}
 
-	error = pn_fill(curthread, proc, pn, &sb, uio);
+	error = pn_fill(curthread, proc, pn, &sb, uio,
+	    pvd->pvd_vnode_name, pvd->pvd_vnode_namelen);
 
 	sbuf_delete(&sb);
 	if (proc != NULL)

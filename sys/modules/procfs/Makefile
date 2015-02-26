@@ -8,6 +8,7 @@ SRCS+=		opt_compat.h
 SRCS+=		vnode_if.h
 SRCS+=		procfs_ctl.c
 SRCS+=		procfs_dbregs.c
+SRCS+=		procfs_fdlink.c
 SRCS+=		procfs_fpregs.c
 SRCS+=		procfs_ioctl.c
 SRCS+=		procfs_map.c
@@ -27,6 +28,7 @@ EXPORT_SYMS+=	procfs_docurproc
 EXPORT_SYMS+=	procfs_doprocfile
 EXPORT_SYMS+=	procfs_doprocmem
 EXPORT_SYMS+=	procfs_notsystem
+EXPORT_SYMS+=	procfs_dofdlink
 
 .if !defined(KERNBUILDDIR)
 opt_compat.h:

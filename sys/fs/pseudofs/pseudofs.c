@@ -222,7 +222,8 @@ pfs_create_link(struct pfs_node *parent, const char *name, pfs_fill_t fill,
 {
 	struct pfs_node *pn;
 
-	pn = pfs_alloc_node(parent->pn_info, name, pfstype_symlink);
+	pn = pfs_alloc_node(parent->pn_info, name,
+	    (flags & PFS_PROCFDDEP) ? pfstype_fdlink : pfstype_symlink);
 	pn->pn_fill = fill;
 	pn->pn_attr = attr;
 	pn->pn_vis = vis;
@@ -361,7 +362,7 @@ pfs_root(struct mount *mp, int flags, struct vnode **vpp)
 	struct pfs_info *pi;
 
 	pi = (struct pfs_info *)mp->mnt_data;
-	return (pfs_vncache_alloc(mp, vpp, pi->pi_root, NO_PID));
+	return (pfs_vncache_alloc(mp, vpp, pi->pi_root, NO_PID, NULL, 0));
 }
 
 /*

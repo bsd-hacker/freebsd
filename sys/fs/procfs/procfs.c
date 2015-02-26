@@ -196,6 +196,10 @@ procfs_init(PFS_INIT_ARGS)
 	pfs_create_link(dir, "file", procfs_doprocfile,
 	    NULL, procfs_notsystem, NULL, 0);
 
+	dir = pfs_create_dir(dir, "fd", NULL, NULL, NULL, 0);
+	pfs_create_link(dir, "---", &procfs_dofdlink,
+	    NULL, procfs_candebug, NULL, PFS_PROCFDDEP);
+
 	return (0);
 }
 

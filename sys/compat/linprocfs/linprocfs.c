@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/exec.h>
 #include <sys/fcntl.h>
+#include <sys/file.h>
 #include <sys/filedesc.h>
 #include <sys/jail.h>
 #include <sys/kernel.h>
@@ -1351,21 +1352,6 @@ linprocfs_domodules(PFS_FILL_ARGS)
 #endif
 
 /*
- * Filler function for proc/pid/fd
- */
-static int
-linprocfs_dofdescfs(PFS_FILL_ARGS)
-{
-
-	if (p == curproc)
-		sbuf_printf(sb, "/dev/fd");
-	else
-		sbuf_printf(sb, "unknown");
-	return (0);
-}
-
-
-/*
  * Filler function for proc/sys/kernel/random/uuid
  */
 static int
@@ -1498,10 +1484,11 @@ linprocfs_init(PFS_INIT_ARGS)
 	    NULL, NULL, NULL, PFS_RD);
 	pfs_create_file(dir, "status", &linprocfs_doprocstatus,
 	    NULL, NULL, NULL, PFS_RD);
-	pfs_create_link(dir, "fd", &linprocfs_dofdescfs,
-	    NULL, NULL, NULL, 0);
 	pfs_create_file(dir, "auxv", &linprocfs_doauxv,
 	    NULL, &procfs_candebug, NULL, PFS_RD|PFS_RAWRD);
+	dir = pfs_create_dir(dir, "fd", NULL, NULL, NULL, 0);
+	pfs_create_link(dir, "---", &procfs_dofdlink,
+	    NULL, &procfs_candebug, NULL, PFS_PROCFDDEP);
 
 	/* /proc/scsi/... */
 	dir = pfs_create_dir(root, "scsi", NULL, NULL, NULL, 0);
