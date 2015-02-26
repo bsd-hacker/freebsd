@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kthread.h>
 #include <sys/clock.h>
 #include <sys/mount.h>	/* For syncer_suspend()/syncer_resume() */
+#include <sys/power.h>
 #include <sys/proc.h>
 #include <sys/reboot.h>
 #include <sys/sysctl.h>
@@ -55,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/pcb.h>
 #include <machine/pio.h>
 #include <machine/resource.h>
+#include <machine/stdarg.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
@@ -101,13 +103,14 @@ static u_int	pmu_poll(device_t dev);
 static void	pmu_shutdown(void *xsc, int howto);
 static void	pmu_set_sleepled(void *xsc, int onoff);
 static int	pmu_server_mode(SYSCTL_HANDLER_ARGS);
-static int	pmu_sleep(SYSCTL_HANDLER_ARGS);
+static int	pmu_sys_suspend(void);
 static int	pmu_acline_state(SYSCTL_HANDLER_ARGS);
 static int	pmu_query_battery(struct pmu_softc *sc, int batt, 
 		    struct pmu_battstate *info);
 static int	pmu_battquery_sysctl(SYSCTL_HANDLER_ARGS);
 static void	pmu_restore_state(struct pmu_softc *sc);
 static void	pmu_save_state(struct pmu_softc *sc);
+static int	pmu_pm_func(u_long cmd, void *arg, ...);
 static int	pmu_suspend(device_t);
 static int	pmu_resume(device_t);
 static int	pmu_battmon(SYSCTL_HANDLER_ARGS);
@@ -437,10 +440,6 @@ pmu_attach(device_t dev)
 	    "server_mode", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
 	    pmu_server_mode, "I", "Enable reboot after power failure");
 
-	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "sleep", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
-	    pmu_sleep, "I", "Put the machine to sleep");
-
 	if (sc->sc_batteries > 0) {
 		struct sysctl_oid *oid, *battroot;
 		char battnum[2];
@@ -522,6 +521,9 @@ pmu_attach(device_t dev)
 	 */
 	EVENTHANDLER_REGISTER(shutdown_final, pmu_shutdown, sc,
 	    SHUTDOWN_PRI_LAST);
+
+	/* Hijack APM for power management. */
+	power_pm_register(POWER_PM_TYPE_APM, pmu_pm_func, sc);
 
 	return (bus_generic_attach(dev));
 }
@@ -1217,15 +1219,9 @@ pmu_set_speed(int low_speed)
 }
 
 static int
-pmu_sleep(SYSCTL_HANDLER_ARGS)
+pmu_sys_suspend(void)
 {
-	u_int sleep = 0;
 	int error;
-
-	error = sysctl_handle_int(oidp, &sleep, 0, req);
-
-	if (error || !req->newptr)
-		return (error);
 
 	EVENTHANDLER_INVOKE(power_suspend_early);
 	stop_all_proc();
@@ -1246,5 +1242,39 @@ pmu_sleep(SYSCTL_HANDLER_ARGS)
 	EVENTHANDLER_INVOKE(power_resume);
 	printf("Fully resumed.\n");
 
+	return (error);
+}
+
+static int
+pmu_pm_func(u_long cmd, void *arg, ...)
+{
+	int	state;
+	int	error;
+	va_list	ap;
+
+	error = 0;
+	switch (cmd) {
+	case POWER_CMD_SUSPEND:
+		va_start(ap, arg);
+		state = va_arg(ap, int);
+		va_end(ap);	
+
+		switch (state) {
+		case POWER_SLEEP_STATE_SUSPEND:
+			pmu_sys_suspend();
+			break;
+		default:
+			error = EINVAL;
+			goto out;
+		}
+
+		break;
+
+	default:
+		error = EINVAL;
+		goto out;
+	}
+
+out:
 	return (error);
 }
