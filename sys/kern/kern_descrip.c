@@ -1845,7 +1845,7 @@ fdinit(struct filedesc *fdp, bool prepfiles)
 	return (newfdp);
 }
 
-static struct filedesc *
+struct filedesc *
 fdhold(struct proc *p)
 {
 	struct filedesc *fdp;
@@ -1858,7 +1858,7 @@ fdhold(struct proc *p)
 	return (fdp);
 }
 
-static void
+void
 fddrop(struct filedesc *fdp)
 {
 	int i;

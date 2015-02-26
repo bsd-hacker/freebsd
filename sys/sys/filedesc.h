@@ -154,6 +154,8 @@ int	fdallocn(struct thread *td, int minfd, int *fds, int n);
 int	fdcheckstd(struct thread *td);
 void	fdclose(struct filedesc *fdp, struct file *fp, int idx, struct thread *td);
 void	fdcloseexec(struct thread *td);
+void	fddrop(struct filedesc *fdp);
+struct filedesc *fdhold(struct proc *p);
 void	fdsetugidsafety(struct thread *td);
 struct	filedesc *fdcopy(struct filedesc *fdp);
 void	fdunshare(struct thread *td);
