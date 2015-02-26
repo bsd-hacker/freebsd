@@ -1087,7 +1087,7 @@ struct linux_clock_adjtime_args {
 	register_t dummy;
 };
 struct linux_syncfs_args {
-	register_t dummy;
+	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
 };
 struct linux_sendmmsg_args {
 	char s_l_[PADL_(l_int)]; l_int s; char s_r_[PADR_(l_int)];
@@ -1648,7 +1648,7 @@ int	linux_finit_module(struct thread *, struct linux_finit_module_args *);
 #define	LINUX_SYS_AUE_linux_name_to_handle_at	AUE_NULL
 #define	LINUX_SYS_AUE_linux_open_by_handle_at	AUE_NULL
 #define	LINUX_SYS_AUE_linux_clock_adjtime	AUE_NULL
-#define	LINUX_SYS_AUE_linux_syncfs	AUE_NULL
+#define	LINUX_SYS_AUE_linux_syncfs	AUE_SYNC
 #define	LINUX_SYS_AUE_linux_sendmmsg	AUE_NULL
 #define	LINUX_SYS_AUE_linux_setns	AUE_NULL
 #define	LINUX_SYS_AUE_linux_process_vm_readv	AUE_NULL
