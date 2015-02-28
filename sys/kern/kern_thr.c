@@ -321,6 +321,7 @@ kern_thr_exit(struct thread *td)
 		LIST_REMOVE(td, td_hash);
 		rw_wunlock(&tidhash_lock);
 		tdsigcleanup(td);
+		umtx_thread_exit(td);
 		PROC_SLOCK(p);
 		thread_stopped(p);
 		thread_exit();
