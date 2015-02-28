@@ -28,17 +28,19 @@
 # $FreeBSD$
 #
 
-#
+# Page fault seen in fdesc_allocvp+0x8f:
+# http://people.freebsd.org/~pho/stress/log/fdescfs-2.txt
+# Fixed by r279401
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
 
 mounts=15		# Number of parallel scripts
-mdstart=$mdstart	# Use md unit numbers from this point
-D=$diskimage
+cont=/tmp/fdescfs.continue
 
 if [ $# -eq 0 ]; then
+	touch $cont
 	# start the parallel tests
 	for i in `jot $mounts`; do
 		[ -d ${mntpoint}$i ] || mkdir -p ${mntpoint}$i
@@ -55,17 +57,19 @@ else
 		exec 7< /dev/zero
 		exec 8< /dev/zero
 		exec 9< /dev/zero
-		for i in `jot 128`; do
+		while [ -r $cont ]; do
 			ls -l ${mntpoint}* > /dev/null 2>&1
 		done
 	else
 
 		# The test: Parallel mount and unmounts
-		for i in `jot 128`; do
+		start=`date '+%s'`
+		while [ `date '+%s'` -lt $((start + 300)) ]; do
 			mount -t fdescfs null ${mntpoint}$1
 			while mount | grep -wq ${mntpoint}$1; do
 				umount -f ${mntpoint}$1 > /dev/null 2>&1
 			done
 		done
+		rm -f $cont
 	fi
 fi
