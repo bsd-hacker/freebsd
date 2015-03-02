@@ -904,12 +904,13 @@ pfs_readdir(struct vop_readdir_args *va)
 		/* PFS_DELEN was picked to fit PFS_NAMLEN */
 
 		if (pn->pn_type != pfstype_procdir &&
-		    pn->pn_type != pfstype_fdlink)
+		    pn->pn_type != pfstype_fdlink) {
 			for (i = 0; i < PFS_NAMELEN - 1 &&
 			    pn->pn_name[i] != '\0'; ++i)
 				pfsent->entry.d_name[i] = pn->pn_name[i];
-		pfsent->entry.d_name[i] = 0;
-		pfsent->entry.d_namlen = i;
+			pfsent->entry.d_name[i] = 0;
+			pfsent->entry.d_namlen = i;
+		}
 		switch (pn->pn_type) {
 		case pfstype_procdir:
 			KASSERT(p != NULL,
