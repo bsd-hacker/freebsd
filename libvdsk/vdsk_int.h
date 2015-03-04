@@ -67,6 +67,6 @@ struct vdsk {
 	struct stat fsbuf;
 	off_t	capacity;
 	int	sectorsize;
-} __attribute__((align(16)));
+} __attribute__((aligned(16)));
 
 #endif /* __VDSK_INT_H__ */
