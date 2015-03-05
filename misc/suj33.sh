@@ -37,7 +37,6 @@
 mount | grep "$mntpoint" | grep -q md${mdstart}$part && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-set -x
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs -j md${mdstart}$part  > /dev/null
@@ -55,6 +54,5 @@ wait
 while mount | grep -q "$mntpoint "; do
 	umount $mntpoint || sleep 1
 done
-set +x
 checkfs /dev/md${mdstart}$part
 mdconfig -d -u $mdstart
