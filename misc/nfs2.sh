@@ -34,10 +34,12 @@
 . ../default.cfg
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+grep -q $mntpoint /etc/exports ||
+	{ echo "$mntpoint missing from /etc/exports"; exit 0; }
 [ -x /sbin/mount_msdosfs ] || exit
 
 D=$diskimage
-dede $D 1m 128 || exit 
+dede $D 1m 128 || exit
 
 mount | grep "${mntpoint}2" | grep nfs > /dev/null && umount -f ${mntpoint}2
 mount | grep "$mntpoint"    | grep /md > /dev/null && umount -f ${mntpoint}
@@ -46,8 +48,8 @@ mdconfig -l | grep -q ${mdstart}  &&  mdconfig -d -u $mdstart
 mdconfig -a -t vnode -f $D -u $mdstart
 
 bsdlabel -w md${mdstart} auto
-newfs_msdos -F 16 -b 8192 /dev/md${mdstart}a > /dev/null
-mount -t msdosfs -o rw /dev/md${mdstart}a $mntpoint
+newfs_msdos -F 16 -b 8192 /dev/md${mdstart}$part > /dev/null
+mount -t msdosfs -o rw /dev/md${mdstart}$part $mntpoint
 
 mkdir ${mntpoint}/stressX
 chmod 777 ${mntpoint}/stressX
@@ -55,12 +57,13 @@ chmod 777 ${mntpoint}/stressX
 [ ! -d ${mntpoint}2 ] &&  mkdir ${mntpoint}2
 chmod 777 ${mntpoint}2
 
-mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:$mntpoint ${mntpoint}2
+mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw \
+    127.0.0.1:$mntpoint ${mntpoint}2
 
 export INODES=9999		# No inodes on a msdos fs
 export RUNDIR=${mntpoint}2/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
-(cd ..; ./run.sh disk.cfg) 
+(cd ..; ./run.sh disk.cfg)
 
 umount -f ${mntpoint}2 > /dev/null 2>&1
 umount -f $mntpoint    > /dev/null 2>&1
