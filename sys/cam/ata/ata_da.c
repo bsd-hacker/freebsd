@@ -113,6 +113,23 @@ typedef enum {
 #define ccb_state	ppriv_field0
 #define ccb_bp		ppriv_ptr1
 
+typedef enum {
+	ADA_DELETE_NONE,
+	ADA_DELETE_DISABLE,
+	ADA_DELETE_CFA_ERASE,
+	ADA_DELETE_DSM_TRIM,
+	ADA_DELETE_NCQ_DSM_TRIM,
+	ADA_DELETE_MIN = ADA_DELETE_CFA_ERASE,
+	ADA_DELETE_MAX = ADA_DELETE_NCQ_DSM_TRIM,
+} ada_delete_methods;
+
+static const char *ada_delete_method_names[] =
+    { "NONE", "DISABLE", "CFA_ERASE", "DSM_TRIM", "NCQ_DSM_TRIM" };
+#if 0
+static const char *ada_delete_method_desc[] =
+    { "NONE", "DISABLED", "CFA Erase", "DSM Trim", "DSM Trim via NCQ" };
+#endif
+
 struct disk_params {
 	u_int8_t  heads;
 	u_int8_t  secs_per_track;
@@ -137,6 +154,7 @@ struct ada_softc {
 	ada_flags flags;
 	ada_quirks quirks;
 	int	 sort_io_queue;
+	ada_delete_methods delete_method;
 	int	 trim_max_ranges;
 	int	 trim_running;
 	int	 read_ahead;
@@ -618,6 +636,8 @@ static struct periph_driver adadriver =
 	TAILQ_HEAD_INITIALIZER(adadriver.units), /* generation */ 0
 };
 
+static int adadeletemethodsysctl(SYSCTL_HANDLER_ARGS);
+
 PERIPHDRIVER_DECLARE(ada, adadriver);
 
 static MALLOC_DEFINE(M_ATADA, "ata_da", "ata_da buffers");
@@ -954,6 +974,20 @@ adacleanup(struct cam_periph *periph)
 }
 
 static void
+adasetdeletemethod(struct ada_softc *softc)
+{
+
+	if (softc->flags & ADA_FLAG_CAN_NCQ_TRIM)
+		softc->delete_method = ADA_DELETE_NCQ_DSM_TRIM;
+	else if (softc->flags & ADA_FLAG_CAN_TRIM)
+		softc->delete_method = ADA_DELETE_DSM_TRIM;
+	else if ((softc->flags & ADA_FLAG_CAN_CFA) && !(softc->flags & ADA_FLAG_CAN_48BIT))
+		softc->delete_method = ADA_DELETE_CFA_ERASE;
+	else
+		softc->delete_method = ADA_DELETE_NONE;
+}
+
+static void
 adaasync(void *callback_arg, u_int32_t code,
 	struct cam_path *path, void *arg)
 {
@@ -1036,6 +1070,7 @@ adaasync(void *callback_arg, u_int32_t code,
 		} else
 			softc->flags &= ~(ADA_FLAG_CAN_TRIM | ADA_FLAG_CAN_NCQ_TRIM);
 
+		adasetdeletemethod(softc);
 		cam_periph_async(periph, code, path, arg);
 		break;
 	}
@@ -1112,6 +1147,10 @@ adasysctlinit(void *context, int pending)
 		return;
 	}
 
+	SYSCTL_ADD_PROC(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
+		OID_AUTO, "delete_method", CTLTYPE_STRING | CTLFLAG_RW,
+		softc, 0, adadeletemethodsysctl, "A",
+		"BIO_DELETE execution method");
 	SYSCTL_ADD_INT(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
 		OID_AUTO, "read_ahead", CTLFLAG_RW | CTLFLAG_MPSAFE,
 		&softc->read_ahead, 0, "Enable disk read ahead.");
@@ -1158,6 +1197,43 @@ adagetattr(struct bio *bp)
 	if (ret == 0)
 		bp->bio_completed = bp->bio_length;
 	return ret;
+}
+
+static int
+adadeletemethodsysctl(SYSCTL_HANDLER_ARGS)
+{
+	char buf[16];
+	const char *p;
+	struct ada_softc *softc;
+	int i, error, value, methods;
+
+	softc = (struct ada_softc *)arg1;
+
+	value = softc->delete_method;
+	if (value < 0 || value > ADA_DELETE_MAX)
+		p = "UNKNOWN";
+	else
+		p = ada_delete_method_names[value];
+	strncpy(buf, p, sizeof(buf));
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	methods = 1 << ADA_DELETE_DISABLE;
+	if ((softc->flags & ADA_FLAG_CAN_CFA) &&
+	    !(softc->flags & ADA_FLAG_CAN_48BIT))
+		methods |= 1 << ADA_DELETE_CFA_ERASE;
+	if (softc->flags & ADA_FLAG_CAN_TRIM)
+		methods |= 1 << ADA_DELETE_DSM_TRIM;
+	if (softc->flags & ADA_FLAG_CAN_NCQ_TRIM)
+		methods |= 1 << ADA_DELETE_NCQ_DSM_TRIM;
+	for (i = 0; i <= ADA_DELETE_MAX; i++) {
+		if (!(methods & (1 << i)) ||
+		    strcmp(buf, ada_delete_method_names[i]) != 0)
+			continue;
+		softc->delete_method = i;
+		return (0);
+	}
+	return (EINVAL);
 }
 
 static cam_status
@@ -1217,6 +1293,8 @@ adaregister(struct cam_periph *periph, void *arg)
 	}
 	if (cgd->ident_data.support.command2 & ATA_SUPPORT_CFA)
 		softc->flags |= ADA_FLAG_CAN_CFA;
+
+	adasetdeletemethod(softc);
 
 	periph->softc = softc;
 
@@ -1343,6 +1421,7 @@ adaregister(struct cam_periph *periph, void *arg)
 	softc->disk->d_fwsectors = softc->params.secs_per_track;
 	softc->disk->d_fwheads = softc->params.heads;
 	ata_disk_firmware_geom_adjust(softc->disk);
+	adasetdeletemethod(softc);
 
 	if (ada_legacy_aliases) {
 #ifdef ATA_STATIC_ID
@@ -1581,14 +1660,17 @@ adastart(struct cam_periph *periph, union ccb *start_ccb)
 		/* Run TRIM if not running yet. */
 		if (!softc->trim_running &&
 		    (bp = bioq_first(&softc->trim_queue)) != 0) {
-			if (softc->flags & ADA_FLAG_CAN_NCQ_TRIM) {
+			switch (softc->delete_method) {
+			case ADA_DELETE_NCQ_DSM_TRIM:
 				ada_ncq_dsmtrim(softc, bp, ataio);
-			} else if (softc->flags & ADA_FLAG_CAN_TRIM) {
+				break;
+			case ADA_DELETE_DSM_TRIM:
 				ada_dsmtrim(softc, bp, ataio);
-			} else if ((softc->flags & ADA_FLAG_CAN_CFA) &&
-			    !(softc->flags & ADA_FLAG_CAN_48BIT)) {
+				break;
+			case ADA_DELETE_CFA_ERASE:
 				ada_cfaerase(softc, bp, ataio);
-			} else {
+				break;
+			default:
 				panic("adastart: BIO_DELETE without method, not possible.");
 			}
 			softc->trim_running = 1;
@@ -1835,6 +1917,7 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 			    (softc->flags & ADA_FLAG_CAN_NCQ_TRIM) != 0) {
 				softc->flags &= ~ADA_FLAG_CAN_NCQ_TRIM;
 				error = 0;
+				adasetdeletemethod(softc);
 			}
 		} else {
 			if ((done_ccb->ccb_h.status & CAM_DEV_QFRZN) != 0)
