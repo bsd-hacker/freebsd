@@ -87,7 +87,8 @@ typedef enum {
 	ADA_FLAG_CAN_CFA        = 0x0400,
 	ADA_FLAG_CAN_POWERMGT   = 0x0800,
 	ADA_FLAG_CAN_DMA48	= 0x1000,
-	ADA_FLAG_DIRTY		= 0x2000
+	ADA_FLAG_DIRTY		= 0x2000,
+	ADA_FLAG_CAN_NCQ_TRIM	= 0x4000	/* CAN_TRIM also set */
 } ada_flags;
 
 typedef enum {
@@ -1018,10 +1019,22 @@ adaasync(void *callback_arg, u_int32_t code,
 		else
 			softc->flags &= ~ADA_FLAG_CAN_NCQ;
 		if ((cgd.ident_data.support_dsm & ATA_SUPPORT_DSM_TRIM) &&
-		    (cgd.inq_flags & SID_DMA))
+		    (cgd.inq_flags & SID_DMA)) {
 			softc->flags |= ADA_FLAG_CAN_TRIM;
-		else
-			softc->flags &= ~ADA_FLAG_CAN_TRIM;
+			/*
+			 * If we can do RCVSND_FPDMA_QUEUED commands, we may be able to do
+			 * NCQ trims, if we support trims at all. We also need support from
+			 * the sim do do things properly. Perhaps we should look at log 13
+			 * dword 0 bit 0 and dword 1 bit 0 are set too...
+			 */
+			if (/* (cpi.hba_misc & PIM_NCQ_KLUDGE) != 0 && */ /* Don't know how to do this here */
+			    (cgd.ident_data.satacapabilities2 & ATA_SUPPORT_RCVSND_FPDMA_QUEUED) != 0 &&
+			    (softc->flags & ADA_FLAG_CAN_TRIM) != 0)
+				softc->flags |= ADA_FLAG_CAN_NCQ_TRIM;
+			else
+				softc->flags &= ~ADA_FLAG_CAN_NCQ_TRIM;
+		} else
+			softc->flags &= ~(ADA_FLAG_CAN_TRIM | ADA_FLAG_CAN_NCQ_TRIM);
 
 		cam_periph_async(periph, code, path, arg);
 		break;
@@ -1293,6 +1306,17 @@ adaregister(struct cam_periph *periph, void *arg)
 		softc->disk->d_delmaxsize = maxio;
 	if ((cpi.hba_misc & PIM_UNMAPPED) != 0)
 		softc->disk->d_flags |= DISKFLAG_UNMAPPED_BIO;
+	/*
+	 * If we can do RCVSND_FPDMA_QUEUED commands, we may be able to do
+	 * NCQ trims, if we support trims at all. We also need support from
+	 * the sim do do things properly. Perhaps we should look at log 13
+	 * dword 0 bit 0 and dword 1 bit 0 are set too...
+	 */
+	if ((cpi.hba_misc & PIM_NCQ_KLUDGE) != 0 &&
+	    (cgd->ident_data.satacapabilities2 &
+		ATA_SUPPORT_RCVSND_FPDMA_QUEUED) != 0 &&
+	    (softc->flags & ADA_FLAG_CAN_TRIM) != 0)
+		softc->flags |= ADA_FLAG_CAN_NCQ_TRIM;
 	strlcpy(softc->disk->d_descr, cgd->ident_data.model,
 	    MIN(sizeof(softc->disk->d_descr), sizeof(cgd->ident_data.model)));
 	strlcpy(softc->disk->d_ident, cgd->ident_data.serial,
@@ -1410,10 +1434,9 @@ adaregister(struct cam_periph *periph, void *arg)
 	return(CAM_REQ_CMP);
 }
 
-static void
-ada_dsmtrim(struct ada_softc *softc, struct bio *bp, struct ccb_ataio *ataio)
+static int
+ada_dsmtrim_req_create(struct ada_softc *softc, struct bio *bp, struct trim_request *req)
 {
-	struct trim_request *req = &softc->trim_req;
 	uint64_t lastlba = (uint64_t)-1;
 	int c, lastcount = 0, off, ranges = 0;
 
@@ -1466,6 +1489,17 @@ ada_dsmtrim(struct ada_softc *softc, struct bio *bp, struct ccb_ataio *ataio)
 		    (softc->trim_max_ranges - ranges) * ATA_DSM_RANGE_MAX)
 			break;
 	} while (1);
+
+	return (ranges);
+}
+
+static void
+ada_dsmtrim(struct ada_softc *softc, struct bio *bp, struct ccb_ataio *ataio)
+{
+	struct trim_request *req = &softc->trim_req;
+	int ranges;
+
+	ranges = ada_dsmtrim_req_create(softc, bp, req);
 	cam_fill_ataio(ataio,
 	    ada_retry_count,
 	    adadone,
@@ -1478,6 +1512,30 @@ ada_dsmtrim(struct ada_softc *softc, struct bio *bp, struct ccb_ataio *ataio)
 	ata_48bit_cmd(ataio, ATA_DATA_SET_MANAGEMENT,
 	    ATA_DSM_TRIM, 0, (ranges + ATA_DSM_BLK_RANGES -
 	    1) / ATA_DSM_BLK_RANGES);
+}
+
+static void
+ada_ncq_dsmtrim(struct ada_softc *softc, struct bio *bp, struct ccb_ataio *ataio)
+{
+	struct trim_request *req = &softc->trim_req;
+	int ranges;
+
+	ranges = ada_dsmtrim_req_create(softc, bp, req);
+	cam_fill_ataio(ataio,
+	    ada_retry_count,
+	    adadone,
+	    CAM_DIR_OUT,
+	    0,
+	    req->data,
+	    ((ranges + ATA_DSM_BLK_RANGES - 1) /
+	    ATA_DSM_BLK_RANGES) * ATA_DSM_BLK_SIZE,
+	    ada_default_timeout * 1000);
+	ata_ncq_cmd(ataio,
+	    ATA_SEND_FPDMA_QUEUED,
+	    0,
+	    (ranges + ATA_DSM_BLK_RANGES - 1) / ATA_DSM_BLK_RANGES);
+	ataio->cmd.sector_count_exp = ATA_SFPDMA_DSM;
+	ataio->cmd.flags |= CAM_ATAIO_AUX_HACK;
 }
 
 static void
@@ -1523,7 +1581,9 @@ adastart(struct cam_periph *periph, union ccb *start_ccb)
 		/* Run TRIM if not running yet. */
 		if (!softc->trim_running &&
 		    (bp = bioq_first(&softc->trim_queue)) != 0) {
-			if (softc->flags & ADA_FLAG_CAN_TRIM) {
+			if (softc->flags & ADA_FLAG_CAN_NCQ_TRIM) {
+				ada_ncq_dsmtrim(softc, bp, ataio);
+			} else if (softc->flags & ADA_FLAG_CAN_TRIM) {
 				ada_dsmtrim(softc, bp, ataio);
 			} else if ((softc->flags & ADA_FLAG_CAN_CFA) &&
 			    !(softc->flags & ADA_FLAG_CAN_48BIT)) {
@@ -1749,6 +1809,7 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 		int error;
 
 		cam_periph_lock(periph);
+		bp = (struct bio *)done_ccb->ccb_h.ccb_bp;
 		if ((done_ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
 			error = adaerror(done_ccb, 0, 0);
 			if (error == ERESTART) {
@@ -1762,12 +1823,24 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 						 /*reduction*/0,
 						 /*timeout*/0,
 						 /*getcount_only*/0);
+			/*
+			 * If we get an error on an NCQ DSM TRIM, fall back
+			 * to a non-NCQ DSM TRIM forever. Please note that if
+			 * CAN_NCQ_TRIM is set, CAN_TRIM is necessarily set too.
+			 * However, for this one trim, we treat it as advisory
+			 * and return success up the stack.
+			 */
+			if (state == ADA_CCB_TRIM &&
+			    error != 0 &&
+			    (softc->flags & ADA_FLAG_CAN_NCQ_TRIM) != 0) {
+				softc->flags &= ~ADA_FLAG_CAN_NCQ_TRIM;
+				error = 0;
+			}
 		} else {
 			if ((done_ccb->ccb_h.status & CAM_DEV_QFRZN) != 0)
 				panic("REQ_CMP with QFRZN");
 			error = 0;
 		}
-		bp = (struct bio *)done_ccb->ccb_h.ccb_bp;
 		bp->bio_error = error;
 		if (error != 0) {
 			bp->bio_resid = bp->bio_bcount;
