@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <cam/cam_periph.h>
 #include <cam/cam_xpt_periph.h>
 #include <cam/cam_sim.h>
+#include <cam/cam_iosched.h>
 
 #include <cam/scsi/scsi_message.h>
 
@@ -199,21 +200,19 @@ struct disk_params {
 #define ATA_TRIM_MAX_RANGES	((UNMAP_BUF_SIZE / \
 	(ATA_DSM_RANGE_SIZE * ATA_DSM_BLK_SIZE)) * ATA_DSM_BLK_SIZE)
 
+#define DA_WORK_TUR		(1 << 16)
+
 struct da_softc {
-	struct	 bio_queue_head bio_queue;
-	struct	 bio_queue_head delete_queue;
+	struct   cam_iosched_softc *cam_iosched;
 	struct	 bio_queue_head delete_run_queue;
 	LIST_HEAD(, ccb_hdr) pending_ccbs;
-	int	 tur;			/* TEST UNIT READY should be sent */
 	int	 refcount;		/* Active xpt_action() calls */
 	da_state state;
 	da_flags flags;	
 	da_quirks quirks;
-	int	 sort_io_queue;
 	int	 minimum_cmd_size;
 	int	 error_inject;
 	int	 trim_max_ranges;
-	int	 delete_running;
 	int	 delete_available;	/* Delete methods possibly available */
 	u_int	 maxio;
 	uint32_t		unmap_max_ranges;
@@ -1228,9 +1227,6 @@ static timeout_t	damediapoll;
 #define	DA_DEFAULT_SEND_ORDERED	1
 #endif
 
-#define DA_SIO (softc->sort_io_queue >= 0 ? \
-    softc->sort_io_queue : cam_sort_io_queues)
-
 static int da_poll_period = DA_DEFAULT_POLL_PERIOD;
 static int da_retry_count = DA_DEFAULT_RETRY;
 static int da_default_timeout = DA_DEFAULT_TIMEOUT;
@@ -1390,12 +1386,7 @@ daschedule(struct cam_periph *periph)
 	if (softc->state != DA_STATE_NORMAL)
 		return;
 
-	/* Check if we have more work to do. */
-	if (bioq_first(&softc->bio_queue) ||
-	    (!softc->delete_running && bioq_first(&softc->delete_queue)) ||
-	    softc->tur) {
-		xpt_schedule(periph, CAM_PRIORITY_NORMAL);
-	}
+	cam_iosched_schedule(softc->cam_iosched, periph);
 }
 
 /*
@@ -1428,13 +1419,7 @@ dastrategy(struct bio *bp)
 	/*
 	 * Place it in the queue of disk activities for this disk
 	 */
-	if (bp->bio_cmd == BIO_DELETE) {
-		bioq_disksort(&softc->delete_queue, bp);
-	} else if (DA_SIO) {
-		bioq_disksort(&softc->bio_queue, bp);
-	} else {
-		bioq_insert_tail(&softc->bio_queue, bp);
-	}
+	cam_iosched_queue_work(softc->cam_iosched, bp);
 
 	/*
 	 * Schedule ourselves for performing the work.
@@ -1595,8 +1580,7 @@ daoninvalidate(struct cam_periph *periph)
 	 * XXX Handle any transactions queued to the card
 	 *     with XPT_ABORT_CCB.
 	 */
-	bioq_flush(&softc->bio_queue, NULL, ENXIO);
-	bioq_flush(&softc->delete_queue, NULL, ENXIO);
+	cam_iosched_flush(softc->cam_iosched, NULL, ENXIO);
 
 	/*
 	 * Tell GEOM that we've gone away, we'll get a callback when it is
@@ -1721,9 +1705,9 @@ daasync(void *callback_arg, u_int32_t code,
 	}
 	case AC_SCSI_AEN:
 		softc = (struct da_softc *)periph->softc;
-		if (!softc->tur) {
+		if (!cam_iosched_has_work_flags(softc->cam_iosched, DA_WORK_TUR)) {
 			if (cam_periph_acquire(periph) == CAM_REQ_CMP) {
-				softc->tur = 1;
+				cam_iosched_set_work_flags(softc->cam_iosched, DA_WORK_TUR);
 				daschedule(periph);
 			}
 		}
@@ -1797,9 +1781,6 @@ dasysctlinit(void *context, int pending)
 		OID_AUTO, "minimum_cmd_size", CTLTYPE_INT | CTLFLAG_RW,
 		&softc->minimum_cmd_size, 0, dacmdsizesysctl, "I",
 		"Minimum CDB size");
-	SYSCTL_ADD_INT(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
-		OID_AUTO, "sort_io_queue", CTLFLAG_RW, &softc->sort_io_queue, 0,
-		"Sort IO queue to try and optimise disk access patterns");
 
 	SYSCTL_ADD_INT(&softc->sysctl_ctx,
 		       SYSCTL_CHILDREN(softc->sysctl_tree),
@@ -1835,6 +1816,10 @@ dasysctlinit(void *context, int pending)
 			    &softc->wwpn, "World Wide Port Name");
 		}
 	}
+
+	cam_iosched_sysctl_init(softc->cam_iosched, &softc->sysctl_ctx,
+	    softc->sysctl_tree);
+
 	cam_periph_release(periph);
 }
 
@@ -1896,7 +1881,6 @@ dacmdsizesysctl(SYSCTL_HANDLER_ARGS)
 static void
 dadeletemethodset(struct da_softc *softc, da_delete_methods delete_method)
 {
-
 
 	softc->delete_method = delete_method;
 	softc->disk->d_delmaxsize = dadeletemaxsize(softc, delete_method);
@@ -2065,14 +2049,18 @@ daregister(struct cam_periph *periph, void *arg)
 
 	if (softc == NULL) {
 		printf("daregister: Unable to probe new device. "
-		       "Unable to allocate softc\n");				
+		       "Unable to allocate softc\n");
 		return(CAM_REQ_CMP_ERR);
 	}
 
+	if (cam_iosched_init(&softc->cam_iosched) != 0) {
+		printf("daregister: Unable to probe new device. "
+		       "Unable to allocate iosched memory\n");
+		return(CAM_REQ_CMP_ERR);
+	}
+	
 	LIST_INIT(&softc->pending_ccbs);
 	softc->state = DA_STATE_PROBE_RC;
-	bioq_init(&softc->bio_queue);
-	bioq_init(&softc->delete_queue);
 	bioq_init(&softc->delete_run_queue);
 	if (SID_IS_REMOVABLE(&cgd->inq_data))
 		softc->flags |= DA_FLAG_PACK_REMOVABLE;
@@ -2080,7 +2068,6 @@ daregister(struct cam_periph *periph, void *arg)
 	softc->unmap_max_lba = UNMAP_RANGE_MAX;
 	softc->ws_max_blks = WS16_MAX_BLKS;
 	softc->trim_max_ranges = ATA_TRIM_MAX_RANGES;
-	softc->sort_io_queue = -1;
 
 	periph->softc = softc;
 
@@ -2267,23 +2254,11 @@ skipstate:
 		struct bio *bp;
 		uint8_t tag_code;
 
-		/* Run BIO_DELETE if not running yet. */
-		if (!softc->delete_running &&
-		    (bp = bioq_first(&softc->delete_queue)) != NULL) {
-			if (softc->delete_func != NULL) {
-				softc->delete_func(periph, start_ccb, bp);
-				goto out;
-			} else {
-				bioq_flush(&softc->delete_queue, NULL, 0);
-				/* FALLTHROUGH */
-			}
-		}
-
-		/* Run regular command. */
-		bp = bioq_takefirst(&softc->bio_queue);
+more:
+		bp = cam_iosched_next_bio(softc->cam_iosched);
 		if (bp == NULL) {
-			if (softc->tur) {
-				softc->tur = 0;
+			if (cam_iosched_has_work_flags(softc->cam_iosched, DA_WORK_TUR)) {
+				cam_iosched_clr_work_flags(softc->cam_iosched, DA_WORK_TUR);
 				scsi_test_unit_ready(&start_ccb->csio,
 				     /*retries*/ da_retry_count,
 				     dadone,
@@ -2297,9 +2272,21 @@ skipstate:
 				xpt_release_ccb(start_ccb);
 			break;
 		}
-		if (softc->tur) {
-			softc->tur = 0;
-			cam_periph_release_locked(periph);
+
+		if (bp->bio_cmd == BIO_DELETE) {
+			if (softc->delete_func != NULL) {
+				softc->delete_func(periph, start_ccb, bp);
+				goto out;
+			} else {
+				/* Not sure this is possible, but failsafe by lying and saying "sure, done." */
+				biofinish(bp, NULL, 0);
+				goto more;
+			}
+		}
+
+		if (cam_iosched_has_work_flags(softc->cam_iosched, DA_WORK_TUR)) {
+			cam_iosched_clr_work_flags(softc->cam_iosched, DA_WORK_TUR);
+			cam_periph_release_locked(periph);	/* XXX is this still valid? I think so but unverified */
 		}
 
 		if ((bp->bio_flags & BIO_ORDERED) != 0 ||
@@ -2604,11 +2591,19 @@ da_delete_unmap(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 	 * fewer LBA's than requested.
 	 */
 
-	softc->delete_running = 1;
 	bzero(softc->unmap_buf, sizeof(softc->unmap_buf));
 	bp1 = bp;
 	do {
-		bioq_remove(&softc->delete_queue, bp1);
+		/*
+		 * Note: ada and da are different in how they store the
+		 * pending bp's in a trim. ada stores all of them in the
+		 * trim_req.bps. da stores all but the first one in the
+		 * delete_run_queue. ada then completes all the bps in
+		 * its adadone() loop. da completes all the bps in the
+		 * delete_run_queue in dadone, and relies on the biodone
+		 * after to complete. This should be reconciled since there's
+		 * no real reason to do it differently. XXX
+		 */
 		if (bp1 != bp)
 			bioq_insert_tail(&softc->delete_run_queue, bp1);
 		lba = bp1->bio_pblkno;
@@ -2648,11 +2643,15 @@ da_delete_unmap(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 			lastcount = c;
 		}
 		lastlba = lba;
-		bp1 = bioq_first(&softc->delete_queue);
-		if (bp1 == NULL || ranges >= softc->unmap_max_ranges ||
-		    totalcount + bp1->bio_bcount /
-		    softc->params.secsize > softc->unmap_max_lba)
+		bp1 = cam_iosched_next_trim(softc->cam_iosched);
+		if (bp1 == NULL)
 			break;
+		if (ranges >= softc->unmap_max_ranges ||
+		    totalcount + bp1->bio_bcount /
+		    softc->params.secsize > softc->unmap_max_lba) {
+			cam_iosched_put_back_trim(softc->cam_iosched, bp1);
+			break;
+		}
 	} while (1);
 	scsi_ulto2b(ranges * 16 + 6, &buf[0]);
 	scsi_ulto2b(ranges * 16, &buf[2]);
@@ -2668,6 +2667,7 @@ da_delete_unmap(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 		   da_default_timeout * 1000);
 	ccb->ccb_h.ccb_state = DA_CCB_DELETE;
 	ccb->ccb_h.flags |= CAM_UNLOCKED;
+	cam_iosched_submit_trim(softc->cam_iosched);
 }
 
 static void
@@ -2682,12 +2682,10 @@ da_delete_trim(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 	uint32_t lastcount = 0, c, requestcount;
 	int ranges = 0, off, block_count;
 
-	softc->delete_running = 1;
 	bzero(softc->unmap_buf, sizeof(softc->unmap_buf));
 	bp1 = bp;
 	do {
-		bioq_remove(&softc->delete_queue, bp1);
-		if (bp1 != bp)
+		if (bp1 != bp)//XXX imp XXX
 			bioq_insert_tail(&softc->delete_run_queue, bp1);
 		lba = bp1->bio_pblkno;
 		count = bp1->bio_bcount / softc->params.secsize;
@@ -2731,10 +2729,14 @@ da_delete_trim(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 			}
 		}
 		lastlba = lba;
-		bp1 = bioq_first(&softc->delete_queue);
-		if (bp1 == NULL || bp1->bio_bcount / softc->params.secsize >
-		    (softc->trim_max_ranges - ranges) * ATA_DSM_RANGE_MAX)
+		bp1 = cam_iosched_next_trim(softc->cam_iosched);
+		if (bp1 == NULL)
 			break;
+		if (bp1->bio_bcount / softc->params.secsize >
+		    (softc->trim_max_ranges - ranges) * ATA_DSM_RANGE_MAX) {
+			cam_iosched_put_back_trim(softc->cam_iosched, bp1);
+			break;
+		}
 	} while (1);
 
 	block_count = (ranges + ATA_DSM_BLK_RANGES - 1) / ATA_DSM_BLK_RANGES;
@@ -2749,6 +2751,7 @@ da_delete_trim(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 		      da_default_timeout * 1000);
 	ccb->ccb_h.ccb_state = DA_CCB_DELETE;
 	ccb->ccb_h.flags |= CAM_UNLOCKED;
+	cam_iosched_submit_trim(softc->cam_iosched);
 }
 
 /*
@@ -2767,13 +2770,11 @@ da_delete_ws(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 
 	softc = (struct da_softc *)periph->softc;
 	ws_max_blks = softc->disk->d_delmaxsize / softc->params.secsize;
-	softc->delete_running = 1;
 	lba = bp->bio_pblkno;
 	count = 0;
 	bp1 = bp;
 	do {
-		bioq_remove(&softc->delete_queue, bp1);
-		if (bp1 != bp)
+		if (bp1 != bp)//XXX imp XXX
 			bioq_insert_tail(&softc->delete_run_queue, bp1);
 		count += bp1->bio_bcount / softc->params.secsize;
 		if (count > ws_max_blks) {
@@ -2784,11 +2785,15 @@ da_delete_ws(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 			count = omin(count, ws_max_blks);
 			break;
 		}
-		bp1 = bioq_first(&softc->delete_queue);
-		if (bp1 == NULL || lba + count != bp1->bio_pblkno ||
-		    count + bp1->bio_bcount /
-		    softc->params.secsize > ws_max_blks)
+		bp1 = cam_iosched_next_trim(softc->cam_iosched);
+		if (bp1 == NULL)
 			break;
+		if (lba + count != bp1->bio_pblkno ||
+		    count + bp1->bio_bcount /
+		    softc->params.secsize > ws_max_blks) {
+			cam_iosched_put_back_trim(softc->cam_iosched, bp1);
+			break;
+		}
 	} while (1);
 
 	scsi_write_same(&ccb->csio,
@@ -2806,6 +2811,7 @@ da_delete_ws(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 			da_default_timeout * 1000);
 	ccb->ccb_h.ccb_state = DA_CCB_DELETE;
 	ccb->ccb_h.flags |= CAM_UNLOCKED;
+	cam_iosched_submit_trim(softc->cam_iosched);
 }
 
 static int
@@ -2849,8 +2855,8 @@ cmd6workaround(union ccb *ccb)
 				  da_delete_method_desc[softc->delete_method]);
 
 		while ((bp = bioq_takefirst(&softc->delete_run_queue)) != NULL)
-			bioq_disksort(&softc->delete_queue, bp);
-		bioq_disksort(&softc->delete_queue,
+			cam_iosched_queue_work(softc->cam_iosched, bp);
+		cam_iosched_queue_work(softc->cam_iosched,
 		    (struct bio *)ccb->ccb_h.ccb_bp);
 		ccb->ccb_h.ccb_bp = NULL;
 		return (0);
@@ -2932,6 +2938,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 	case DA_CCB_DELETE:
 	{
 		struct bio *bp, *bp1;
+		int need_sched;
 
 		cam_periph_lock(periph);
 		bp = (struct bio *)done_ccb->ccb_h.ccb_bp;
@@ -2979,7 +2986,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 					softc->flags |= DA_FLAG_PACK_INVALID;
 					queued_error = ENXIO;
 				}
-				bioq_flush(&softc->bio_queue, NULL,
+				cam_iosched_flush(softc->cam_iosched, NULL,
 					   queued_error);
 				if (bp != NULL) {
 					bp->bio_error = error;
@@ -3022,6 +3029,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 		if (LIST_EMPTY(&softc->pending_ccbs))
 			softc->flags |= DA_FLAG_WAS_OTAG;
 
+		need_sched = cam_iosched_bio_complete(softc->cam_iosched, bp, done_ccb);
 		xpt_release_ccb(done_ccb);
 		if (state == DA_CCB_DELETE) {
 			TAILQ_HEAD(, bio) queue;
@@ -3033,13 +3041,13 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			 * Normally, the xpt_release_ccb() above would make sure
 			 * that when we have more work to do, that work would
 			 * get kicked off. However, we specifically keep
-			 * delete_running set to 0 before the call above to
+			 * delete running set to 0 before the call above to
 			 * allow other I/O to progress when many BIO_DELETE
-			 * requests are pushed down. We set delete_running to 0
+			 * requests are pushed down. We set delete running to 0
 			 * and call daschedule again so that we don't stall if
 			 * there are no other I/Os pending apart from BIO_DELETEs.
 			 */
-			softc->delete_running = 0;
+			cam_iosched_trim_done(softc->cam_iosched);
 			daschedule(periph);
 			cam_periph_unlock(periph);
 			while ((bp1 = TAILQ_FIRST(&queue)) != NULL) {
@@ -3052,8 +3060,11 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 					bp1->bio_resid = 0;
 				biodone(bp1);
 			}
-		} else
+		} else {
+			if (need_sched)
+				daschedule(periph);
 			cam_periph_unlock(periph);
+		}
 		if (bp != NULL)
 			biodone(bp);
 		return;
@@ -3442,7 +3453,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 				scsi_2btoul(bdc->medium_rotation_rate);
 			if (softc->disk->d_rotation_rate ==
 			    SVPD_BDC_RATE_NON_ROTATING) {
-				softc->sort_io_queue = 0;
+				cam_iosched_set_sort_queue(softc->cam_iosched, 0);
 			}
 			if (softc->disk->d_rotation_rate != old_rate) {
 				disk_attr_changed(softc->disk,
@@ -3504,7 +3515,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			    ata_params->media_rotation_rate;
 			if (softc->disk->d_rotation_rate ==
 			    ATA_RATE_NON_ROTATING) {
-				softc->sort_io_queue = 0;
+				cam_iosched_set_sort_queue(softc->cam_iosched, 0);
 			}
 
 			if (softc->disk->d_rotation_rate != old_rate) {
@@ -3654,9 +3665,10 @@ damediapoll(void *arg)
 	struct cam_periph *periph = arg;
 	struct da_softc *softc = periph->softc;
 
-	if (!softc->tur && LIST_EMPTY(&softc->pending_ccbs)) {
+	if (!cam_iosched_has_work_flags(softc->cam_iosched, DA_WORK_TUR) &&
+	    LIST_EMPTY(&softc->pending_ccbs)) {
 		if (cam_periph_acquire(periph) == CAM_REQ_CMP) {
-			softc->tur = 1;
+			cam_iosched_set_work_flags(softc->cam_iosched, DA_WORK_TUR);
 			daschedule(periph);
 		}
 	}

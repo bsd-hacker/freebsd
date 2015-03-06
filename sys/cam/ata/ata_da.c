@@ -59,6 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <cam/cam_periph.h>
 #include <cam/cam_xpt_periph.h>
 #include <cam/cam_sim.h>
+#include <cam/cam_iosched.h>
 
 #include <cam/ata/ata_all.h>
 
@@ -67,6 +68,8 @@ __FBSDID("$FreeBSD$");
 #ifdef _KERNEL
 
 #define ATA_MAX_28BIT_LBA               268435455UL
+
+extern int iosched_debug;
 
 typedef enum {
 	ADA_STATE_RAHEAD,
@@ -147,17 +150,14 @@ struct trim_request {
 };
 
 struct ada_softc {
-	struct	 bio_queue_head bio_queue;
-	struct	 bio_queue_head trim_queue;
+	struct   cam_iosched_softc *cam_iosched;
 	int	 outstanding_cmds;	/* Number of active commands */
 	int	 refcount;		/* Active xpt_action() calls */
 	ada_state state;
 	ada_flags flags;
 	ada_quirks quirks;
-	int	 sort_io_queue;
 	ada_delete_methods delete_method;
 	int	 trim_max_ranges;
-	int	 trim_running;
 	int	 read_ahead;
 	int	 write_cache;
 #ifdef ADA_TEST_FAILURE
@@ -576,8 +576,6 @@ static void		adaresume(void *arg);
 		 softc->read_ahead : ada_read_ahead)
 #define	ADA_WC	(softc->write_cache >= 0 ? \
 		 softc->write_cache : ada_write_cache)
-#define	ADA_SIO	(softc->sort_io_queue >= 0 ? \
-		 softc->sort_io_queue : cam_sort_io_queues)
 
 /*
  * Most platforms map firmware geometry to actual, but some don't.  If
@@ -736,11 +734,7 @@ adaschedule(struct cam_periph *periph)
 	if (softc->state != ADA_STATE_NORMAL)
 		return;
 
-	/* Check if we have more work to do. */
-	if (bioq_first(&softc->bio_queue) ||
-	    (!softc->trim_running && bioq_first(&softc->trim_queue))) {
-		xpt_schedule(periph, CAM_PRIORITY_NORMAL);
-	}
+	cam_iosched_schedule(softc->cam_iosched, periph);
 }
 
 /*
@@ -778,13 +772,8 @@ adastrategy(struct bio *bp)
 			((softc->flags & ADA_FLAG_CAN_CFA) &&
 			 !(softc->flags & ADA_FLAG_CAN_48BIT)),
 			("BIO_DELETE but no supported TRIM method."));
-		bioq_disksort(&softc->trim_queue, bp);
-	} else {
-		if (ADA_SIO)
-		    bioq_disksort(&softc->bio_queue, bp);
-		else
-		    bioq_insert_tail(&softc->bio_queue, bp);
 	}
+	cam_iosched_queue_work(softc->cam_iosched, bp);
 
 	/*
 	 * Schedule ourselves for performing the work.
@@ -945,8 +934,7 @@ adaoninvalidate(struct cam_periph *periph)
 	 * XXX Handle any transactions queued to the card
 	 *     with XPT_ABORT_CCB.
 	 */
-	bioq_flush(&softc->bio_queue, NULL, ENXIO);
-	bioq_flush(&softc->trim_queue, NULL, ENXIO);
+	cam_iosched_flush(softc->cam_iosched, NULL, ENXIO);
 
 	disk_gone(softc->disk);
 }
@@ -1166,10 +1154,6 @@ adasysctlinit(void *context, int pending)
 	SYSCTL_ADD_INT(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
 		OID_AUTO, "write_cache", CTLFLAG_RW | CTLFLAG_MPSAFE,
 		&softc->write_cache, 0, "Enable disk write cache.");
-	SYSCTL_ADD_INT(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
-		OID_AUTO, "sort_io_queue", CTLFLAG_RW | CTLFLAG_MPSAFE,
-		&softc->sort_io_queue, 0,
-		"Sort IO queue to try and optimise disk access patterns");
 #ifdef ADA_TEST_FAILURE
 	/*
 	 * Add a 'door bell' sysctl which allows one to set it from userland
@@ -1189,6 +1173,9 @@ adasysctlinit(void *context, int pending)
 		&softc->periodic_read_error, 0,
 		"Force a read error every N reads (don't set too low).");
 #endif
+	cam_iosched_sysctl_init(softc->cam_iosched, &softc->sysctl_ctx,
+	    softc->sysctl_tree);
+
 	cam_periph_release(periph);
 }
 
@@ -1272,8 +1259,11 @@ adaregister(struct cam_periph *periph, void *arg)
 		return(CAM_REQ_CMP_ERR);
 	}
 
-	bioq_init(&softc->bio_queue);
-	bioq_init(&softc->trim_queue);
+	if (cam_iosched_init(&softc->cam_iosched) != 0) {
+		printf("adaregister: Unable to probe new device. "
+		       "Unable to allocate iosched memory\n");
+		return(CAM_REQ_CMP_ERR);
+	}
 
 	if ((cgd->ident_data.capabilities1 & ATA_SUPPORT_DMA) &&
 	    (cgd->inq_flags & SID_DMA))
@@ -1345,10 +1335,8 @@ adaregister(struct cam_periph *periph, void *arg)
 	    "kern.cam.ada.%d.write_cache", periph->unit_number);
 	TUNABLE_INT_FETCH(announce_buf, &softc->write_cache);
 	/* Disable queue sorting for non-rotational media by default. */
-	if (cgd->ident_data.media_rotation_rate == ATA_RATE_NON_ROTATING)
-		softc->sort_io_queue = 0;
-	else
-		softc->sort_io_queue = -1;
+	cam_iosched_set_sort_queue(softc->cam_iosched,
+		cgd->ident_data.media_rotation_rate == ATA_RATE_NON_ROTATING);
 	adagetparams(periph, cgd);
 	softc->disk = disk_alloc();
 	softc->disk->d_rotation_rate = cgd->ident_data.media_rotation_rate;
@@ -1536,8 +1524,6 @@ ada_dsmtrim_req_create(struct ada_softc *softc, struct bio *bp, struct trim_requ
 		uint64_t lba = bp->bio_pblkno;
 		int count = bp->bio_bcount / softc->params.secsize;
 
-		bioq_remove(&softc->trim_queue, bp);
-
 		/* Try to extend the previous range. */
 		if (lba == lastlba) {
 			c = min(count, ATA_DSM_RANGE_MAX - lastcount);
@@ -1573,11 +1559,15 @@ ada_dsmtrim_req_create(struct ada_softc *softc, struct bio *bp, struct trim_requ
 		}
 		lastlba = lba;
 		TAILQ_INSERT_TAIL(&req->bps, bp, bio_queue);
-		bp = bioq_first(&softc->trim_queue);
-		if (bp == NULL ||
-		    bp->bio_bcount / softc->params.secsize >
-		    (softc->trim_max_ranges - ranges) * ATA_DSM_RANGE_MAX)
+
+		bp = cam_iosched_next_trim(softc->cam_iosched);
+		if (bp == NULL)
 			break;
+		if (bp->bio_bcount / softc->params.secsize >
+		    (softc->trim_max_ranges - ranges) * ATA_DSM_RANGE_MAX) {
+			cam_iosched_put_back_trim(softc->cam_iosched, bp);
+			break;
+		}
 	} while (1);
 
 	return (ranges);
@@ -1637,7 +1627,6 @@ ada_cfaerase(struct ada_softc *softc, struct bio *bp, struct ccb_ataio *ataio)
 
 	bzero(req, sizeof(*req));
 	TAILQ_INIT(&req->bps);
-	bioq_remove(&softc->trim_queue, bp);
 	TAILQ_INSERT_TAIL(&req->bps, bp, bio_queue);
 
 	cam_fill_ataio(ataio,
@@ -1668,37 +1657,15 @@ adastart(struct cam_periph *periph, union ccb *start_ccb)
 		struct bio *bp;
 		u_int8_t tag_code;
 
-		/* Run TRIM if not running yet. */
-		if (!softc->trim_running &&
-		    (bp = bioq_first(&softc->trim_queue)) != 0) {
-			switch (softc->delete_method) {
-			case ADA_DELETE_NCQ_DSM_TRIM:
-				ada_ncq_dsmtrim(softc, bp, ataio);
-				break;
-			case ADA_DELETE_DSM_TRIM:
-				ada_dsmtrim(softc, bp, ataio);
-				break;
-			case ADA_DELETE_CFA_ERASE:
-				ada_cfaerase(softc, bp, ataio);
-				break;
-			default:
-				panic("adastart: BIO_DELETE without method, not possible.");
-			}
-			softc->trim_running = 1;
-			start_ccb->ccb_h.ccb_state = ADA_CCB_TRIM;
-			start_ccb->ccb_h.flags |= CAM_UNLOCKED;
-			goto out;
-		}
-		/* Run regular command. */
-		bp = bioq_first(&softc->bio_queue);
+		bp = cam_iosched_next_bio(softc->cam_iosched);
 		if (bp == NULL) {
 			xpt_release_ccb(start_ccb);
 			break;
 		}
-		bioq_remove(&softc->bio_queue, bp);
 
-		if ((bp->bio_flags & BIO_ORDERED) != 0
-		 || (softc->flags & ADA_FLAG_NEED_OTAG) != 0) {
+		if ((bp->bio_flags & BIO_ORDERED) != 0 ||
+		    (bp->bio_cmd != BIO_DELETE &&
+		    (softc->flags & ADA_FLAG_NEED_OTAG) != 0)) {
 			softc->flags &= ~ADA_FLAG_NEED_OTAG;
 			softc->flags |= ADA_FLAG_WAS_OTAG;
 			tag_code = 0;
@@ -1819,6 +1786,24 @@ adastart(struct cam_periph *periph, union ccb *start_ccb)
 			}
 			break;
 		}
+		case BIO_DELETE:
+			switch (softc->delete_method) {
+			case ADA_DELETE_NCQ_DSM_TRIM:
+				ada_ncq_dsmtrim(softc, bp, ataio);
+				break;
+			case ADA_DELETE_DSM_TRIM:
+				ada_dsmtrim(softc, bp, ataio);
+				break;
+			case ADA_DELETE_CFA_ERASE:
+				ada_cfaerase(softc, bp, ataio);
+				break;
+			default:
+				panic("adastart: BIO_DELETE without method, not possible.");
+			}
+			start_ccb->ccb_h.ccb_state = ADA_CCB_TRIM;
+			start_ccb->ccb_h.flags |= CAM_UNLOCKED;
+			cam_iosched_submit_trim(softc->cam_iosched);
+			goto out;
 		case BIO_FLUSH:
 			cam_fill_ataio(ataio,
 			    1,
@@ -1899,7 +1884,7 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 	case ADA_CCB_TRIM:
 	{
 		struct bio *bp;
-		int error;
+		int error, need_sched;
 
 		cam_periph_lock(periph);
 		bp = (struct bio *)done_ccb->ccb_h.ccb_bp;
@@ -1950,6 +1935,8 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 		softc->outstanding_cmds--;
 		if (softc->outstanding_cmds == 0)
 			softc->flags |= ADA_FLAG_WAS_OTAG;
+
+		need_sched = cam_iosched_bio_complete(softc->cam_iosched, bp, done_ccb);
 		xpt_release_ccb(done_ccb);
 		if (state == ADA_CCB_TRIM) {
 			TAILQ_HEAD(, bio) queue;
@@ -1961,13 +1948,13 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 			 * Normally, the xpt_release_ccb() above would make sure
 			 * that when we have more work to do, that work would
 			 * get kicked off. However, we specifically keep
-			 * trim_running set to 0 before the call above to allow
+			 * trim running set to 0 before the call above to allow
 			 * other I/O to progress when many BIO_DELETE requests
-			 * are pushed down. We set trim_running to 0 and call
+			 * are pushed down. We set trim running to 0 and call
 			 * daschedule again so that we don't stall if there are
 			 * no other I/Os pending apart from BIO_DELETEs.
 			 */
-			softc->trim_running = 0;
+			cam_iosched_trim_done(softc->cam_iosched);
 			adaschedule(periph);
 			cam_periph_unlock(periph);
 			while ((bp1 = TAILQ_FIRST(&queue)) != NULL) {
@@ -1981,6 +1968,8 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 				biodone(bp1);
 			}
 		} else {
+			if (need_sched)
+				adaschedule(periph);
 			cam_periph_unlock(periph);
 			biodone(bp);
 		}
