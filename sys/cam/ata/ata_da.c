@@ -88,7 +88,8 @@ typedef enum {
 	ADA_FLAG_CAN_POWERMGT   = 0x0800,
 	ADA_FLAG_CAN_DMA48	= 0x1000,
 	ADA_FLAG_DIRTY		= 0x2000,
-	ADA_FLAG_CAN_NCQ_TRIM	= 0x4000	/* CAN_TRIM also set */
+	ADA_FLAG_CAN_NCQ_TRIM	= 0x4000,	/* CAN_TRIM also set */
+	ADA_FLAG_PIM_CAN_NCQ_TRIM = 0x8000
 } ada_flags;
 
 typedef enum {
@@ -977,9 +978,16 @@ static void
 adasetdeletemethod(struct ada_softc *softc)
 {
 
+#if 0
+	/*
+	 * Don't set NCQ_DSM_TRIM method by default. It is currently
+	 * a "feature of interest" implicated in some data corruption.
+	 */
 	if (softc->flags & ADA_FLAG_CAN_NCQ_TRIM)
 		softc->delete_method = ADA_DELETE_NCQ_DSM_TRIM;
-	else if (softc->flags & ADA_FLAG_CAN_TRIM)
+	else
+#endif
+	if (softc->flags & ADA_FLAG_CAN_TRIM)
 		softc->delete_method = ADA_DELETE_DSM_TRIM;
 	else if ((softc->flags & ADA_FLAG_CAN_CFA) && !(softc->flags & ADA_FLAG_CAN_48BIT))
 		softc->delete_method = ADA_DELETE_CFA_ERASE;
@@ -1052,6 +1060,7 @@ adaasync(void *callback_arg, u_int32_t code,
 			softc->flags |= ADA_FLAG_CAN_NCQ;
 		else
 			softc->flags &= ~ADA_FLAG_CAN_NCQ;
+
 		if ((cgd.ident_data.support_dsm & ATA_SUPPORT_DSM_TRIM) &&
 		    (cgd.inq_flags & SID_DMA)) {
 			softc->flags |= ADA_FLAG_CAN_TRIM;
@@ -1061,7 +1070,7 @@ adaasync(void *callback_arg, u_int32_t code,
 			 * the sim do do things properly. Perhaps we should look at log 13
 			 * dword 0 bit 0 and dword 1 bit 0 are set too...
 			 */
-			if (/* (cpi.hba_misc & PIM_NCQ_KLUDGE) != 0 && */ /* Don't know how to do this here */
+			if ((softc->flags & ADA_FLAG_PIM_CAN_NCQ_TRIM) != 0 &&
 			    (cgd.ident_data.satacapabilities2 & ATA_SUPPORT_RCVSND_FPDMA_QUEUED) != 0 &&
 			    (softc->flags & ADA_FLAG_CAN_TRIM) != 0)
 				softc->flags |= ADA_FLAG_CAN_NCQ_TRIM;
@@ -1069,8 +1078,8 @@ adaasync(void *callback_arg, u_int32_t code,
 				softc->flags &= ~ADA_FLAG_CAN_NCQ_TRIM;
 		} else
 			softc->flags &= ~(ADA_FLAG_CAN_TRIM | ADA_FLAG_CAN_NCQ_TRIM);
-
 		adasetdeletemethod(softc);
+
 		cam_periph_async(periph, code, path, arg);
 		break;
 	}
@@ -1390,7 +1399,9 @@ adaregister(struct cam_periph *periph, void *arg)
 	 * the sim do do things properly. Perhaps we should look at log 13
 	 * dword 0 bit 0 and dword 1 bit 0 are set too...
 	 */
-	if ((cpi.hba_misc & PIM_NCQ_KLUDGE) != 0 &&
+	if (cpi.hba_misc & PIM_NCQ_KLUDGE)
+		softc->flags |= ADA_FLAG_PIM_CAN_NCQ_TRIM;
+	if ((softc->flags & ADA_FLAG_PIM_CAN_NCQ_TRIM) != 0 &&
 	    (cgd->ident_data.satacapabilities2 &
 		ATA_SUPPORT_RCVSND_FPDMA_QUEUED) != 0 &&
 	    (softc->flags & ADA_FLAG_CAN_TRIM) != 0)
