@@ -51,7 +51,7 @@ export INODES=$(($2 / 10 * 7))
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m
 
-(cd ..; ./run.sh marcus.cfg) 
+(cd ..; ./run.sh marcus.cfg)
 
 umount $mntpoint
 mount | grep -q "$mntpoint" && umount -f $mntpoint
