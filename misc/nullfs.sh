@@ -36,11 +36,13 @@
 . ../default.cfg
 
 mounts=15	# Number of parallel scripts
+cont=/tmp/nullfs.continue
 
 if [ $# -eq 0 ]; then
+	touch $cont
 	for i in `jot $mounts`; do
 		[ ! -d ${mntpoint}$i ] && mkdir ${mntpoint}$i
-		mount | grep "$mntpoint" | grep -q ${mntpoint}$i && umount ${mntpoint}$i
+		mount | grep -q " ${mntpoint}$i " && umount ${mntpoint}$i
 	done
 
 	# start the parallel tests
@@ -59,12 +61,14 @@ if [ $# -eq 0 ]; then
 
 else
 	# The test: Parallel mount and unmounts
-	for i in `jot 1024`; do
+	start=`date '+%s'`
+	while [ `date '+%s'` -lt $((start + 300)) ]; do
 		m=$1
 		mount_nullfs /tmp ${mntpoint}$m > /dev/null 2>&1
 		opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
 		while mount | grep "$mntpoint" | grep -q ${mntpoint}$m; do
-                   umount $opt ${mntpoint}$m > /dev/null 2>&1
+			umount $opt ${mntpoint}$m > /dev/null 2>&1
 		done
 	done
+	rm -f $cont
 fi

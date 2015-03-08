@@ -32,13 +32,14 @@
 
 . ../default.cfg
 
-mounts=10	# Number of parallel scripts
-D=/usr/tmp/diskimage
+mounts=15	# Number of parallel scripts
+cont=/tmp/devfs.continue
 
 if [ $# -eq 0 ]; then
+	touch $cont
 	for i in `jot $mounts`; do
 		[ ! -d ${mntpoint}$i ] && mkdir ${mntpoint}$i
-		mount | grep -q "${mntpoint}$i" && umount ${mntpoint}$i
+		mount | grep -q "on ${mntpoint}$i " && umount ${mntpoint}$i
 	done
 
 	# start the parallel tests
@@ -52,19 +53,21 @@ if [ $# -eq 0 ]; then
 	done
 else
 	if [ $1 = find ]; then
-		for i in `jot 64`; do
+		while [ -r $cont ]; do
 			find ${mntpoint}* -maxdepth 1 -type f > /dev/null 2>&1
 		done
 	else
 
 		# The test: Parallel mount and unmounts
-		for i in `jot 64`; do
+		start=`date '+%s'`
+		while [ `date '+%s'` -lt $((start + 300)) ]; do
 			m=$1
 			mount -t devfs none ${mntpoint}$m
 			opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
-			while mount | grep -q ${mntpoint}$m; do
+			while mount | grep -q " ${mntpoint}$m "; do
 				umount $opt ${mntpoint}$m > /dev/null 2>&1
 			done
 		done
+		rm -f $cont
 	fi
 fi
