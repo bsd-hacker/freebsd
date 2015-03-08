@@ -58,7 +58,6 @@ else
 		while [ -r /tmp/$0 ]; do
 			ls -lR ${mntpoint}*
 		done
-		echo "Done 1 @ `date '+%T'`"
 	else
 
 		# The test: Parallel mount and unmounts
@@ -71,6 +70,5 @@ else
 			done
 		done
 		rm -f /tmp/$0
-		echo "Done 2 @ `date '+%T'`"
 	fi
 fi
