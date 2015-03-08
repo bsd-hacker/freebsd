@@ -355,6 +355,7 @@ SUBDIR=	\
 	${_virtio} \
 	vge \
 	${_viawd} \
+	videomode \
 	vkbd \
 	${_vmm} \
 	${_vmware} \
