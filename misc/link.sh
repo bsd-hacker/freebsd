@@ -48,7 +48,7 @@ mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 
 mdconfig -a -t swap -s 1g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
-newfs -U md${mdstart}$part > /dev/null
+newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 daemon sh -c "(cd $here/../testcases/swap; ./swap -t 5m -i 20 -h -l 100)" \

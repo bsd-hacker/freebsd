@@ -42,7 +42,7 @@
 dd if=/dev/zero of=$diskimage bs=1k count=5k 2>&1 |
     egrep -v "records|transferred"
 mdconfig -f $diskimage -u md$mdstart
-newfs -U /dev/md$mdstart > /dev/null
+newfs $newfs_flags /dev/md$mdstart > /dev/null
 (
 	dd if=/dev/md$mdstart of=/dev/null 2>&1 || echo FAIL
 ) | egrep -v "records|transferred"
