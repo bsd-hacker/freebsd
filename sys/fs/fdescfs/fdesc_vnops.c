@@ -53,6 +53,7 @@
 #include <sys/namei.h>
 #include <sys/proc.h>
 #include <sys/stat.h>
+#include <sys/sysent.h>
 #include <sys/vnode.h>
 
 #include <fs/fdescfs/fdesc.h>
@@ -69,6 +70,7 @@ static vop_getattr_t	fdesc_getattr;
 static vop_lookup_t	fdesc_lookup;
 static vop_open_t	fdesc_open;
 static vop_readdir_t	fdesc_readdir;
+static vop_readlink_t	fdesc_readlink;
 static vop_reclaim_t	fdesc_reclaim;
 static vop_setattr_t	fdesc_setattr;
 
@@ -81,6 +83,7 @@ static struct vop_vector fdesc_vnodeops = {
 	.vop_open =		fdesc_open,
 	.vop_pathconf =		vop_stdpathconf,
 	.vop_readdir =		fdesc_readdir,
+	.vop_readlink =		fdesc_readlink,
 	.vop_reclaim =		fdesc_reclaim,
 	.vop_setattr =		fdesc_setattr,
 };
@@ -368,7 +371,7 @@ fdesc_lookup(ap)
 		error = vn_vget_ino_gen(dvp, fdesc_get_ino_alloc, &arg,
 		    LK_EXCLUSIVE, &fvp);
 	}
-	
+
 	if (error)
 		goto bad;
 	*vpp = fvp;
@@ -562,7 +565,10 @@ fdesc_readdir(ap)
 				break;
 			dp->d_namlen = sprintf(dp->d_name, "%d", fcnt);
 			dp->d_reclen = UIO_MX;
-			dp->d_type = DT_CHR;
+			if (SV_CURPROC_ABI() == SV_ABI_LINUX)
+				dp->d_type = DT_LNK;
+			else
+				dp->d_type = DT_CHR;
 			dp->d_fileno = i + FD_DESC;
 			break;
 		}
@@ -601,4 +607,74 @@ fdesc_reclaim(ap)
 	free(vp->v_data, M_TEMP);
 	vp->v_data = NULL;
 	return (0);
+}
+
+static int
+fdesc_readlink(struct vop_readlink_args *va)
+{
+	struct vnode *vp, *vn = va->a_vp;
+	struct fdescnode *fd = vn->v_data;
+	struct thread *td = curthread;
+	struct uio *uio = va->a_uio;
+	struct filedesc *fdp;
+	struct file *fp;
+	char *freepath, *fullpath;
+	size_t pathlen;
+	int error, locked;
+
+	if (VTOFDESC(vn)->fd_type != Fdesc)
+		panic("fdesc_readlink: not fdescfs link");
+
+	if (vn->v_type != VLNK)
+		return (EINVAL);
+
+	vhold(vn);
+	locked = VOP_ISLOCKED(vn);
+	VOP_UNLOCK(vn, 0);
+
+	fdp = td->td_proc->p_fd;
+	error = fget_unlocked(fdp, fd->fd_fd, NULL, &fp, NULL);
+	if (error != 0)
+		goto out;
+
+	freepath = NULL;
+	switch (fp->f_type) {
+	case DTYPE_VNODE:
+		vp = fp->f_vnode;
+		vref(vp);
+		error = vn_fullpath(td, vp, &fullpath, &freepath);
+		vrele(vp);
+		break;
+
+	case DTYPE_SOCKET:
+		fullpath = "socket:[0]";
+		break;
+
+	case DTYPE_PIPE:
+		fullpath = "pipe:[0]";
+		break;
+
+	case DTYPE_LINUXEFD:
+		fullpath = "anon_inode:[eventpoll]";
+		break;
+
+	default:
+		fullpath = "anon_inode:[unknown]";
+		break;
+	}
+
+	if (error == 0) {
+		pathlen = strnlen(fullpath, MAXPATHLEN);
+		error = uiomove(fullpath, pathlen, uio);
+	}
+	if (freepath != NULL)
+		free(freepath, M_TEMP);
+
+	fdrop(fp, td);
+
+ out:
+
+	vn_lock(vn, locked | LK_RETRY);
+	vdrop(vn);
+	return (error);
 }
