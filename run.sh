@@ -41,16 +41,19 @@ while getopts a name; do
 done
 shift $(($OPTIND - 1))
 
-. ./default.cfg
 if [ ! -z "$aflag" ]; then
+   . ./default.cfg
    export runRUNTIME=5m
    t1=`date '+%s'`
    while true;do
       for i in `ls *.cfg | grep -v default`; do
          t2=`date '+%s'`
          e=` date -u -j -f '%s' '+%T' $((t2 - t1))`
-         echo "`date '+%Y%m%d %T'` $i, elapsed $e" | tee /dev/tty >> /tmp/all.log
+         echo "`date '+%Y%m%d %T'` $i, elapsed $e"
+         echo "`date '+%Y%m%d %T'` $i, elapsed $e" >> /tmp/all.log
          logger "Starting test $i"
+         [ -w /dev/console ] &&
+            printf "`date '+%Y%m%d %T'` run $i\r\n" > /dev/console
          $0 $i
       done
       [ "`id -un`" = pho ] && ipcs | \
