@@ -54,7 +54,7 @@ EOF
  Some systems seem to base how much can be written to the pipe based
  on the size of the socket receive buffer (read-side), while others
  on the size of the socket send buffer (send-side).
- 
+
  This little hack tries to make an educated guess as to what is the
  case on this particular system.
 */

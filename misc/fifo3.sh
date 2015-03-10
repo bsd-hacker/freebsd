@@ -62,8 +62,8 @@
 # #3  0x0000000000400ee9 in test () at /tmp/fifo.c:86
 # 86                      while ((p = fts_read(fts)) != NULL) {
 # Current language:  auto; currently minimal
-# (gdb) 
-# 
+# (gdb)
+#
 
 . ../default.cfg
 

@@ -118,7 +118,7 @@ test(char *mp)
 		err(1, "sigaction");
 
 	snprintf(file, sizeof(file), "%s/file", mp);
-	if ((fd = open(file, O_RDWR | O_CREAT | O_TRUNC, 0640)) == -1) 
+	if ((fd = open(file, O_RDWR | O_CREAT | O_TRUNC, 0640)) == -1)
 		err(1, "open(%s). %s:%d", file, __FILE__, __LINE__);
 
 	suspend(mp);

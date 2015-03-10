@@ -233,4 +233,4 @@ fi
 kill $fifopid $gdbpid > /dev/null 2>&1
 ps | grep -v grep | grep waitthread | awk '{print $1}' | xargs kill
 cd $here
-rm -rf $wd /tmp/waitthread 
+rm -rf $wd /tmp/waitthread

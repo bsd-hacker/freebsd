@@ -64,7 +64,7 @@ done > /dev/null 2>&1  &
 while pgrep -q core3; do
 	[ -d $mntpoint/d ] ||
 	   mount /dev/md${mdstart}$part $mntpoint
-done > /dev/null 2>&1 
+done > /dev/null 2>&1
 wait
 mount | grep -q "on $mntpoint " &&
 	    umount -f $mntpoint

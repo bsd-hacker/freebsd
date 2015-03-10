@@ -132,7 +132,7 @@ main(void)
 	while (time(NULL) - start < 180)
 		sleep(1);
 	stop = 1;
-	for (i = 0; i < ncpus; i++) 
+	for (i = 0; i < ncpus; i++)
 		pthread_join(threads[i], NULL);
 
 	return (0);

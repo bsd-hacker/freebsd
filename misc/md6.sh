@@ -29,7 +29,7 @@
 #
 
 # Regression test for mmap problem introduced by r271635
-# where mdconfig -l fails due to 
+# where mdconfig -l fails due to
 # mmap(0,0x1000,PROT_READ,MAP_FILE,0x4,0)
 # returning 0.
 # Fixed by r271721.

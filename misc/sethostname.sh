@@ -35,4 +35,4 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 export sleeptime=18
-./syscall4.sh 88	# 88 is old sethostname 
+./syscall4.sh 88	# 88 is old sethostname

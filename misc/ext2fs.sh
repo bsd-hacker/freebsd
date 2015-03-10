@@ -34,7 +34,7 @@
 
 . ../default.cfg
 
-# Uses mke2fs from sysutils/e2fsprogs 
+# Uses mke2fs from sysutils/e2fsprogs
 [ -z "`type mke2fs 2>/dev/null`" ] && echo "mke2fs not found" && exit 1
 
 mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint

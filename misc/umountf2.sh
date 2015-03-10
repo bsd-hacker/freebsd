@@ -586,7 +586,7 @@ check_eofpage(char *s, unsigned offset, char *p, int size)
 		return;
 	/*
 	 * we landed in the last page of the file
-	 * test to make sure the VM system provided 0's 
+	 * test to make sure the VM system provided 0's
 	 * beyond the true end of the file mapping
 	 * (as required by mmap def in 1996 posix 1003.1)
 	 */
@@ -1286,7 +1286,7 @@ main(int argc, char **argv)
 				     (unsigned)written, maxfilelen);
 			exit(98);
 		}
-	} else 
+	} else
 		check_trunc_hack();
 
 	while (numops == -1 || numops--)
