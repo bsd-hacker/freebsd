@@ -48,14 +48,11 @@ SUBDIR=	${_addr2line} \
 	expand \
 	false \
 	fetch \
-	file \
 	find \
-	finger \
 	fmt \
 	fold \
 	fstat \
 	fsync \
-	ftp \
 	gcore \
 	gencat \
 	getconf \
@@ -166,7 +163,6 @@ SUBDIR=	${_addr2line} \
 	tcopy \
 	tee \
 	${_tests} \
-	tftp \
 	time \
 	timeout \
 	tip \
@@ -200,12 +196,9 @@ SUBDIR=	${_addr2line} \
 	write \
 	xargs \
 	xinstall \
-	${_xlint} \
 	xo \
-	${_xstr} \
 	xz \
 	xzdec \
-	${_yacc} \
 	yes \
 	${_ypcat} \
 	${_ypmatch} \
@@ -249,8 +242,20 @@ _size=		size
 _strings=	strings
 .endif
 
+.if ${MK_FILE} != "no"
+SUBDIR+=	file
+.endif
+
+.if ${MK_FINGER} != "no"
+SUBDIR+=	finger
+.endif
+
 .if ${MK_FMAKE} != "no"
 SUBDIR+=	make
+.endif
+
+.if ${MK_FTP} != "no"
+SUBDIR+=	ftp
 .endif
 
 .if ${MK_GPL_DTC} != "yes"
@@ -363,6 +368,10 @@ _tests=		tests
 SUBDIR+=	checknr
 SUBDIR+=	colcrt
 SUBDIR+=	ul
+.endif
+
+.if ${MK_TFTP} != "no"
+SUBDIR+=	tftp
 .endif
 
 .if ${MK_TOOLCHAIN} != "no"

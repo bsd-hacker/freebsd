@@ -87,13 +87,13 @@ COMPAT_FREEBSD9	opt_compat.h
 COMPAT_FREEBSD10	opt_compat.h
 COMPAT_LINUXAPI	opt_compat.h
 COMPILING_LINT	opt_global.h
-COMPRESS_USER_CORES opt_core.h
 CY_PCI_FASTINTR
 DEADLKRES	opt_watchdog.h
 DIRECTIO
 FILEMON		opt_dontuse.h
 FFCLOCK
 FULL_PREEMPTION	opt_sched.h
+GZIO		opt_gzio.h
 IMAGACT_BINMISC		opt_dontuse.h
 IPI_PREEMPTION	opt_sched.h
 GEOM_AES	opt_geom.h
@@ -129,6 +129,7 @@ GEOM_SHSEC	opt_geom.h
 GEOM_STRIPE	opt_geom.h
 GEOM_SUNLABEL	opt_geom.h
 GEOM_UNCOMPRESS	opt_geom.h
+GEOM_UNCOMPRESS_DEBUG	opt_geom.h
 GEOM_UZIP	opt_geom.h
 GEOM_VINUM	opt_geom.h
 GEOM_VIRSTOR	opt_geom.h
@@ -172,6 +173,7 @@ NO_SYSCTL_DESCR	opt_global.h
 NSWBUF_MIN	opt_swap.h
 MBUF_PACKET_ZONE_DISABLE	opt_global.h
 PANIC_REBOOT_WAIT_TIME	opt_panic.h
+PCI_IOV		opt_global.h
 PPC_DEBUG	opt_ppc.h
 PPC_PROBE_CHIPSET	opt_ppc.h
 PPS_SYNC	opt_ntp.h
@@ -209,7 +211,7 @@ SW_WATCHDOG	opt_watchdog.h
 TURNSTILE_PROFILING
 UMTX_PROFILING
 VFS_AIO
-VERBOSE_SYSINIT	opt_global.h
+VERBOSE_SYSINIT
 WLCACHE		opt_wavelan.h
 WLDEBUG		opt_wavelan.h
 
@@ -651,6 +653,7 @@ USB_HOST_ALIGN		opt_usb.h
 USB_REQ_DEBUG		opt_usb.h
 USB_TEMPLATE		opt_usb.h
 USB_VERBOSE		opt_usb.h
+USB_DMA_SINGLE_ALLOC	opt_usb.h
 USB_EHCI_BIG_ENDIAN_DESC	opt_usb.h
 U3G_DEBUG		opt_u3g.h
 UKBD_DFLT_KEYMAP	opt_ukbd.h
@@ -845,6 +848,9 @@ MWL_TX_NODROP		opt_mwl.h
 # Options for the Intel 802.11n wireless driver
 IWN_DEBUG		opt_iwn.h
 
+# Options for the Intel 3945ABG wireless driver
+WPI_DEBUG		opt_wpi.h
+
 # dcons options 
 DCONS_BUF_SIZE		opt_dcons.h
 DCONS_POLL_HZ		opt_dcons.h
@@ -883,6 +889,9 @@ TDMA_TXRATE_HALF_DEFAULT	opt_tdma.h
 TDMA_TXRATE_QUARTER_DEFAULT	opt_tdma.h
 TDMA_TXRATE_11NA_DEFAULT	opt_tdma.h
 TDMA_TXRATE_11NG_DEFAULT	opt_tdma.h
+
+# VideoMode
+PICKMODE_DEBUG			opt_videomode.h
 
 # Network stack virtualization options
 VIMAGE			opt_global.h

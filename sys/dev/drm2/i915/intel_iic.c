@@ -258,9 +258,9 @@ gmbus_xfer_read(struct drm_i915_private *dev_priv, struct iic_msg *msg,
 		    (GMBUS_SATOER | GMBUS_HW_RDY)),
 		    50, 1, "915gbr");
 		if (ret)
-			return (ETIMEDOUT);
+			return (-ETIMEDOUT);
 		if (gmbus2 & GMBUS_SATOER)
-			return (ENXIO);
+			return (-ENXIO);
 
 		val = I915_READ(GMBUS3 + reg_offset);
 		do {
@@ -308,9 +308,9 @@ gmbus_xfer_write(struct drm_i915_private *dev_priv, struct iic_msg *msg)
 		    (GMBUS_SATOER | GMBUS_HW_RDY)),
 		    50, 1, "915gbw");
 		if (ret)
-			return (ETIMEDOUT);
+			return (-ETIMEDOUT);
 		if (gmbus2 & GMBUS_SATOER)
-			return (ENXIO);
+			return (-ENXIO);
 	}
 	return 0;
 }
@@ -369,7 +369,7 @@ intel_gmbus_transfer(device_t idev, struct iic_msg *msgs, uint32_t nmsgs)
 
 	sx_xlock(&dev_priv->gmbus_sx);
 	if (sc->force_bit_dev) {
-		error = IICBUS_TRANSFER(dev_priv->bbbus[unit], msgs, nmsgs);
+		error = -IICBUS_TRANSFER(dev_priv->bbbus[unit], msgs, nmsgs);
 		goto out;
 	}
 
@@ -389,9 +389,9 @@ intel_gmbus_transfer(device_t idev, struct iic_msg *msgs, uint32_t nmsgs)
 			error = gmbus_xfer_write(dev_priv, &msgs[i]);
 		}
 
-		if (error == ETIMEDOUT)
+		if (error == -ETIMEDOUT)
 			goto timeout;
-		if (error == ENXIO)
+		if (error == -ENXIO)
 			goto clear_err;
 
 		ret = _intel_wait_for(sc->drm_dev,
@@ -419,7 +419,7 @@ intel_gmbus_transfer(device_t idev, struct iic_msg *msgs, uint32_t nmsgs)
 	    10, 1, "915gbu")) {
 		DRM_DEBUG_KMS("GMBUS [%s] timed out waiting for idle\n",
 		    sc->name);
-		error = ETIMEDOUT;
+		error = -ETIMEDOUT;
 	}
 	I915_WRITE(GMBUS0 + reg_offset, 0);
 	goto out;
@@ -454,7 +454,7 @@ clear_err:
 	 * So, we always return -ENXIO in all NAK cases, to ensure we send
 	 * it at least during the one case that is specified.
 	 */
-	error = ENXIO;
+	error = -ENXIO;
 	goto out;
 
 timeout:
@@ -467,12 +467,12 @@ timeout:
 	 * Try GPIO bitbanging instead.
 	 */
 	sc->force_bit_dev = true;
-	error = IICBUS_TRANSFER(idev, msgs, nmsgs);
+	error = -IICBUS_TRANSFER(idev, msgs, nmsgs);
 	goto out;
 
 out:
 	sx_xunlock(&dev_priv->gmbus_sx);
-	return (error);
+	return (-error);
 }
 
 device_t 
@@ -556,7 +556,9 @@ intel_gmbus_attach(device_t idev)
 	pin = device_get_unit(idev);
 	port = pin + 1;
 
-	snprintf(sc->name, sizeof(sc->name), "gmbus %s", gmbus_ports[pin].name);
+	snprintf(sc->name, sizeof(sc->name), "gmbus %s",
+	    intel_gmbus_is_port_valid(port) ? gmbus_ports[pin].name :
+	    "reserved");
 	device_set_desc(idev, sc->name);
 
 	/* By default use a conservative clock rate */
@@ -613,17 +615,21 @@ intel_iicbb_attach(device_t idev)
 {
 	struct intel_iic_softc *sc;
 	struct drm_i915_private *dev_priv;
-	int pin;
+	int pin, port;
 
 	sc = device_get_softc(idev);
 	sc->drm_dev = device_get_softc(device_get_parent(idev));
 	dev_priv = sc->drm_dev->dev_private;
 	pin = device_get_unit(idev);
+	port = pin + 1;
 
 	snprintf(sc->name, sizeof(sc->name), "i915 iicbb %s",
-	    gmbus_ports[pin].name);
+	    intel_gmbus_is_port_valid(port) ? gmbus_ports[pin].name :
+	    "reserved");
 	device_set_desc(idev, sc->name);
 
+	if (!intel_gmbus_is_port_valid(port))
+		pin = 1 ; /* GPIOA, VGA */
 	sc->reg0 = pin | GMBUS_RATE_100KHZ;
 	sc->reg = dev_priv->gpio_mmio_base + gmbus_ports[pin].reg;
 
@@ -724,15 +730,15 @@ intel_setup_gmbus(struct drm_device *dev)
 		 * gmbus may decide to force quirk transfer in the
 		 * attachment code.
 		 */
-		dev_priv->bbbus_bridge[i] = device_add_child(dev->device,
+		dev_priv->bbbus_bridge[i] = device_add_child(dev->dev,
 		    "intel_iicbb", i);
 		if (dev_priv->bbbus_bridge[i] == NULL) {
 			DRM_ERROR("bbbus bridge %d creation failed\n", i);
-			ret = ENXIO;
+			ret = -ENXIO;
 			goto err;
 		}
 		device_quiet(dev_priv->bbbus_bridge[i]);
-		ret = device_probe_and_attach(dev_priv->bbbus_bridge[i]);
+		ret = -device_probe_and_attach(dev_priv->bbbus_bridge[i]);
 		if (ret != 0) {
 			DRM_ERROR("bbbus bridge %d attach failed, %d\n", i,
 			    ret);
@@ -754,19 +760,19 @@ intel_setup_gmbus(struct drm_device *dev)
 
 		dev_priv->bbbus[i] = iic_dev;
 
-		dev_priv->gmbus_bridge[i] = device_add_child(dev->device,
+		dev_priv->gmbus_bridge[i] = device_add_child(dev->dev,
 		    "intel_gmbus", i);
 		if (dev_priv->gmbus_bridge[i] == NULL) {
 			DRM_ERROR("gmbus bridge %d creation failed\n", i);
-			ret = ENXIO;
+			ret = -ENXIO;
 			goto err;
 		}
 		device_quiet(dev_priv->gmbus_bridge[i]);
-		ret = device_probe_and_attach(dev_priv->gmbus_bridge[i]);
+		ret = -device_probe_and_attach(dev_priv->gmbus_bridge[i]);
 		if (ret != 0) {
 			DRM_ERROR("gmbus bridge %d attach failed, %d\n", i,
 			    ret);
-			ret = ENXIO;
+			ret = -ENXIO;
 			goto err;
 		}
 

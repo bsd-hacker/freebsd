@@ -2628,7 +2628,7 @@ arc_reclaim_needed(void)
 	return (arc_available_memory() < 0);
 }
 
-static void __noinline
+static __noinline void
 arc_kmem_reap_now(void)
 {
 	size_t			i;

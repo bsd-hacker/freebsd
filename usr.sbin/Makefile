@@ -6,7 +6,6 @@
 SUBDIR=	adduser \
 	arp \
 	binmiscctl \
-	bootparamd \
 	bsdconfig \
 	cdcontrol \
 	chkgrp \
@@ -20,6 +19,7 @@ SUBDIR=	adduser \
 	ctld \
 	daemon \
 	dconschat \
+	devctl \
 	devinfo \
 	digictl \
 	diskinfo \
@@ -34,8 +34,8 @@ SUBDIR=	adduser \
 	gstat \
 	i2c \
 	ifmcstat \
-	inetd \
 	iostat \
+	iovctl \
 	kldxref \
 	mailwrapper \
 	makefs \
@@ -82,14 +82,12 @@ SUBDIR=	adduser \
 	spray \
 	syslogd \
 	sysrc \
-	tcpdchk \
-	tcpdmatch \
 	tcpdrop \
 	tcpdump \
-	timed \
 	traceroute \
 	trpt \
 	tzsetup \
+	uefisign \
 	ugidfw \
 	vigr \
 	vipw \
@@ -129,6 +127,10 @@ SUBDIR+=	autofs
 
 .if ${MK_BLUETOOTH} != "no"
 SUBDIR+=	bluetooth
+.endif
+
+.if ${MK_BOOTPARAMD} != "no"
+SUBDIR+=	bootparamd
 .endif
 
 .if ${MK_BSDINSTALL} != "no"
@@ -177,6 +179,10 @@ SUBDIR+=	rtadvctl
 SUBDIR+=	rtadvd
 SUBDIR+=	rtsold
 SUBDIR+=	traceroute6
+.endif
+
+.if ${MK_INETD} != "no"
+SUBDIR+=	inetd
 .endif
 
 .if ${MK_IPFW} != "no"
@@ -300,8 +306,17 @@ SUBDIR+=	praliases
 SUBDIR+=	sendmail
 .endif
 
+.if ${MK_TCP_WRAPPERS} != "no"
+SUBDIR+=	tcpdchk
+SUBDIR+=	tcpdmatch
+.endif
+
 .if ${MK_TESTS} != "no"
 SUBDIR+=	tests
+.endif
+
+.if ${MK_TIMED} != "no"
+SUBDIR+=	timed
 .endif
 
 .if ${MK_TOOLCHAIN} != "no"

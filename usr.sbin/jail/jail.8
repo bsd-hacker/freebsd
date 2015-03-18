@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 28, 2015
+.Dd February 25, 2015
 .Dt JAIL 8
 .Os
 .Sh NAME
@@ -276,7 +276,7 @@ Then there are pseudo-parameters that are only used by
 .Nm
 itself.
 .Pp
-Jails have a set a core parameters, and kernel modules can add their own
+Jails have a set of core parameters, and kernel modules can add their own
 jail parameters.
 The current set of available parameters can be retrieved via
 .Dq Nm sysctl Fl d Va security.jail.param .
@@ -471,6 +471,14 @@ The
 .Va jid
 of the parent of this jail, or zero if this is a top-level jail
 (read-only).
+.It Va osrelease
+The string for the jail's
+.Va kern.osrelease
+sysctl and uname -r.
+.It Va osreldate
+The number for the jail's
+.Va kern.osreldate
+and uname -K.
 .It Va allow.*
 Some restrictions of the jail environment may be set on a per-jail
 basis.
@@ -752,6 +760,12 @@ Mount a
 .Xr fdescfs 5
 filesystem on the chrooted
 .Pa /dev/fd
+directory.
+.It Va mount.procfs
+Mount a
+.Xr procfs 5
+filesystem on the chrooted
+.Pa /proc
 directory.
 .It Va allow.dying
 Allow making changes to a
@@ -1207,6 +1221,7 @@ environment of the first jail.
 .Xr jls 8 ,
 .Xr mount 8 ,
 .Xr named 8 ,
+.Xr procfs 5 ,
 .Xr reboot 8 ,
 .Xr rpcbind 8 ,
 .Xr sendmail 8 ,

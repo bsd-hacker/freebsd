@@ -18,7 +18,6 @@ LDIRS=	BSD_daemon \
 	ipfw \
 	jails \
 	kld \
-	libusb20 \
 	libvgl \
 	mdoc \
 	netgraph \
@@ -28,7 +27,8 @@ LDIRS=	BSD_daemon \
 	printing \
 	ses \
 	scsi_target \
-	sunrpc
+	sunrpc \
+	uefisign
 
 XFILES=	BSD_daemon/FreeBSD.pfa \
 	BSD_daemon/README \
@@ -92,12 +92,6 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	kld/syscall/module/syscall.c \
 	kld/syscall/test/Makefile \
 	kld/syscall/test/call.c \
-	libusb20/Makefile \
-	libusb20/README \
-	libusb20/util.c \
-	libusb20/util.h \
-	libusb20/bulk.c \
-	libusb20/control.c \
 	libvgl/Makefile \
 	libvgl/demo.c \
 	mdoc/POSIX-copyright \
@@ -188,7 +182,8 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	sunrpc/sort/Makefile \
 	sunrpc/sort/rsort.c \
 	sunrpc/sort/sort.x \
-	sunrpc/sort/sort_proc.c
+	sunrpc/sort/sort_proc.c \
+	uefisign/uefikeys
 
 BINDIR= ${SHAREDIR}/examples
 
@@ -201,6 +196,16 @@ XFILES+=	hast/ucarp.sh \
 		hast/ucarp_up.sh \
 		hast/vip-down.sh \
 		hast/vip-up.sh
+.endif
+
+.if ${MK_USB} != "no"
+LDIRS+=		libusb20
+XFILES+=	libusb20/Makefile \
+		libusb20/README \
+		libusb20/util.c \
+		libusb20/util.h \
+		libusb20/bulk.c \
+		libusb20/control.c
 .endif
 
 .if ${MACHINE_CPUARCH} == "amd64"

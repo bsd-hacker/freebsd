@@ -208,6 +208,7 @@ static const struct intel_device_info intel_haswell_d_info = {
 	.has_blt_ring = 1,
 	.has_llc = 1,
 	.has_pch_split = 1,
+	.not_supported = 1,
 };
 
 static const struct intel_device_info intel_haswell_m_info = {
@@ -217,6 +218,7 @@ static const struct intel_device_info intel_haswell_m_info = {
 	.has_blt_ring = 1,
 	.has_llc = 1,
 	.has_pch_split = 1,
+	.not_supported = 1,
 };
 
 #define INTEL_VGA_DEVICE(id, info_) {		\
@@ -282,6 +284,8 @@ static const struct intel_gfx_device_id {
 	{0, 0}
 };
 
+static int i915_enable_unsupported;
+
 static int i915_drm_freeze(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv;
@@ -294,13 +298,11 @@ static int i915_drm_freeze(struct drm_device *dev)
 	pci_save_state(dev->pdev);
 #endif
 
-	DRM_LOCK(dev);
 	/* If KMS is active, we do the leavevt stuff here */
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
-		error = -i915_gem_idle(dev);
+		error = i915_gem_idle(dev);
 		if (error) {
-			DRM_UNLOCK(dev);
-			device_printf(dev->device,
+			device_printf(dev->dev,
 			    "GEM idle failed, resume might fail\n");
 			return (error);
 		}
@@ -313,7 +315,6 @@ static int i915_drm_freeze(struct drm_device *dev)
 
 	/* Modeset on resume, not lid events */
 	dev_priv->modeset_on_lid = 0;
-	DRM_UNLOCK(dev);
 
 	return 0;
 }
@@ -327,13 +328,13 @@ i915_suspend(device_t kdev)
 	dev = device_get_softc(kdev);
 	if (dev == NULL || dev->dev_private == NULL) {
 		DRM_ERROR("DRM not initialized, aborting suspend.\n");
-		return -ENODEV;
+		return ENODEV;
 	}
 
 	DRM_DEBUG_KMS("starting suspend\n");
 	error = i915_drm_freeze(dev);
 	if (error)
-		return (error);
+		return (-error);
 
 	error = bus_generic_suspend(kdev);
 	DRM_DEBUG_KMS("finished suspend %d\n", error);
@@ -345,9 +346,10 @@ static int i915_drm_thaw(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int error = 0;
 
-	DRM_LOCK(dev);
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
+		DRM_LOCK(dev);
 		i915_gem_restore_gtt_mappings(dev);
+		DRM_UNLOCK(dev);
 	}
 
 	i915_restore_state(dev);
@@ -358,6 +360,7 @@ static int i915_drm_thaw(struct drm_device *dev)
 		if (HAS_PCH_SPLIT(dev))
 			ironlake_init_pch_refclk(dev);
 
+		DRM_LOCK(dev);
 		dev_priv->mm.suspended = 0;
 
 		error = i915_gem_init_hw(dev);
@@ -373,14 +376,11 @@ static int i915_drm_thaw(struct drm_device *dev)
 		/* Resume the modeset for every activated CRTC */
 		drm_helper_resume_force_mode(dev);
 		sx_xunlock(&dev->mode_config.mutex);
-		DRM_LOCK(dev);
 	}
 
 	intel_opregion_init(dev);
 
 	dev_priv->modeset_on_lid = 0;
-
-	DRM_UNLOCK(dev);
 
 	return error;
 }
@@ -400,9 +400,9 @@ i915_resume(device_t kdev)
 	pci_set_master(dev->pdev);
 #endif
 
-	ret = -i915_drm_thaw(dev);
+	ret = i915_drm_thaw(dev);
 	if (ret != 0)
-		return (ret);
+		return (-ret);
 
 	drm_kms_helper_poll_enable(dev);
 	ret = bus_generic_resume(kdev);
@@ -413,8 +413,16 @@ i915_resume(device_t kdev)
 static int
 i915_probe(device_t kdev)
 {
+	const struct intel_device_info *info;
+	int error;
 
-	return drm_probe(kdev, i915_pciidlist);
+	error = drm_probe_helper(kdev, i915_pciidlist);
+	if (error != 0)
+		return (-error);
+	info = i915_get_device_id(pci_get_device(kdev));
+	if (info == NULL)
+		return (ENXIO);
+	return (0);
 }
 
 int i915_modeset;
@@ -422,13 +430,10 @@ int i915_modeset;
 static int
 i915_attach(device_t kdev)
 {
-	struct drm_device *dev;
 
-	dev = device_get_softc(kdev);
 	if (i915_modeset == 1)
 		i915_driver_info.driver_features |= DRIVER_MODESET;
-	dev->driver = &i915_driver_info;
-	return (drm_attach(kdev, i915_pciidlist));
+	return (-drm_attach_helper(kdev, i915_pciidlist, &i915_driver_info));
 }
 
 static struct fb_info *
@@ -458,6 +463,8 @@ i915_get_device_id(int device)
 	for (did = &pciidlist[0]; did->device != 0; did++) {
 		if (did->device != device)
 			continue;
+		if (did->info->not_supported && !i915_enable_unsupported)
+			return (NULL);
 		return (did->info);
 	}
 	return (NULL);
@@ -469,7 +476,7 @@ static device_method_t i915_methods[] = {
 	DEVMETHOD(device_attach,	i915_attach),
 	DEVMETHOD(device_suspend,	i915_suspend),
 	DEVMETHOD(device_resume,	i915_resume),
-	DEVMETHOD(device_detach,	drm_detach),
+	DEVMETHOD(device_detach,	drm_generic_detach),
 
 	/* Framebuffer service methods */
 	DEVMETHOD(fb_getinfo,		i915_fb_helper_getinfo),
@@ -527,6 +534,7 @@ int i915_enable_ppgtt = -1;
 TUNABLE_INT("drm.i915.enable_ppgtt", &i915_enable_ppgtt);
 int i915_enable_hangcheck = 1;
 TUNABLE_INT("drm.i915.enable_hangcheck", &i915_enable_hangcheck);
+TUNABLE_INT("drm.i915.enable_unsupported", &i915_enable_unsupported);
 
 #define	PCI_VENDOR_INTEL		0x8086
 #define INTEL_PCH_DEVICE_ID_MASK	0xff00
@@ -758,7 +766,7 @@ i965_reset_complete(struct drm_device *dev)
 {
 	u8 gdrst;
 
-	gdrst = pci_read_config(dev->device, I965_GDRST, 1);
+	gdrst = pci_read_config(dev->dev, I965_GDRST, 1);
 	return (gdrst & GRDOM_RESET_ENABLE) == 0;
 }
 
@@ -773,8 +781,8 @@ i965_do_reset(struct drm_device *dev)
 	 * well as the reset bit (GR/bit 0).  Setting the GR bit
 	 * triggers the reset; when done, the hardware will clear it.
 	 */
-	gdrst = pci_read_config(dev->device, I965_GDRST, 1);
-	pci_write_config(dev->device, I965_GDRST,
+	gdrst = pci_read_config(dev->dev, I965_GDRST, 1);
+	pci_write_config(dev->dev, I965_GDRST,
 	    gdrst | GRDOM_RENDER | GRDOM_RESET_ENABLE, 1);
 
 	ret =  wait_for(i965_reset_complete(dev), 500);
@@ -782,8 +790,8 @@ i965_do_reset(struct drm_device *dev)
 		return ret;
 
 	/* We can't reset render&media without also resetting display ... */
-	gdrst = pci_read_config(dev->device, I965_GDRST, 1);
-	pci_write_config(dev->device, I965_GDRST,
+	gdrst = pci_read_config(dev->dev, I965_GDRST, 1);
+	pci_write_config(dev->dev, I965_GDRST,
 			 gdrst | GRDOM_MEDIA | GRDOM_RESET_ENABLE, 1);
  
  	return wait_for(i965_reset_complete(dev), 500);
@@ -934,9 +942,7 @@ int i915_reset(struct drm_device *dev)
 		if (drm_core_check_feature(dev, DRIVER_MODESET))
 			intel_modeset_init_hw(dev);
 
-		DRM_LOCK(dev);
 		drm_irq_uninstall(dev);
-		DRM_UNLOCK(dev);
 		drm_irq_install(dev);
 	} else
 		DRM_UNLOCK(dev);

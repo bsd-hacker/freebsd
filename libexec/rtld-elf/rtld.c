@@ -876,7 +876,6 @@ digest_dynamic1(Obj_Entry *obj, int early, const Elf_Dyn **dyn_rpath,
     const Elf32_Word *hashval;
     Elf32_Word bkt, nmaskwords;
     int bloom_size32;
-    bool nmw_power2;
     int plttype = DT_REL;
 
     *dyn_rpath = NULL;
@@ -986,16 +985,15 @@ digest_dynamic1(Obj_Entry *obj, int early, const Elf_Dyn **dyn_rpath,
 		obj->symndx_gnu = hashtab[1];
 		nmaskwords = hashtab[2];
 		bloom_size32 = (__ELF_WORD_SIZE / 32) * nmaskwords;
-		/* Number of bitmask words is required to be power of 2 */
-		nmw_power2 = ((nmaskwords & (nmaskwords - 1)) == 0);
 		obj->maskwords_bm_gnu = nmaskwords - 1;
 		obj->shift2_gnu = hashtab[3];
 		obj->bloom_gnu = (Elf_Addr *) (hashtab + 4);
 		obj->buckets_gnu = hashtab + 4 + bloom_size32;
 		obj->chain_zero_gnu = obj->buckets_gnu + obj->nbuckets_gnu -
 		  obj->symndx_gnu;
-		obj->valid_hash_gnu = nmw_power2 && obj->nbuckets_gnu > 0 &&
-		  obj->buckets_gnu != NULL;
+		/* Number of bitmask words is required to be power of 2 */
+		obj->valid_hash_gnu = powerof2(nmaskwords) &&
+		    obj->nbuckets_gnu > 0 && obj->buckets_gnu != NULL;
 	    }
 	    break;
 
@@ -3563,17 +3561,16 @@ rtld_dirname(const char *path, char *bname)
 static int
 rtld_dirname_abs(const char *path, char *base)
 {
-	char base_rel[PATH_MAX];
+	char *last;
 
-	if (rtld_dirname(path, base) == -1)
+	if (realpath(path, base) == NULL)
 		return (-1);
-	if (base[0] == '/')
-		return (0);
-	if (getcwd(base_rel, sizeof(base_rel)) == NULL ||
-	    strlcat(base_rel, "/", sizeof(base_rel)) >= sizeof(base_rel) ||
-	    strlcat(base_rel, base, sizeof(base_rel)) >= sizeof(base_rel))
+	dbg("%s -> %s", path, base);
+	last = strrchr(base, '/');
+	if (last == NULL)
 		return (-1);
-	strcpy(base, base_rel);
+	if (last != base)
+		*last = '\0';
 	return (0);
 }
 

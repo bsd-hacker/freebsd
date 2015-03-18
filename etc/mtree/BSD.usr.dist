@@ -7,15 +7,15 @@
 .
     bin
     ..
-    games
-    ..
     include
     ..
     lib
         aout
         ..
         clang
-            3.5.1
+            3.6.0
+                include
+                ..
                 lib
                     freebsd
                     ..
@@ -182,8 +182,6 @@
             atf
             ..
             atm
-            ..
-            binutils
             ..
             legal
                 intel_ipw
@@ -416,6 +414,8 @@
                 ..
             ..
             tcsh
+            ..
+            uefisign
             ..
         ..
         games

@@ -175,7 +175,8 @@ SUBDIR=	\
 	${_iwn} \
 	${_iwnfw} \
 	${_ixgb} \
-	${_ixgbe} \
+	${_ix} \
+	${_ixv} \
 	${_ixl} \
 	${_ixlv} \
 	jme \
@@ -353,6 +354,7 @@ SUBDIR=	\
 	${_virtio} \
 	vge \
 	${_viawd} \
+	videomode \
 	vkbd \
 	${_vmm} \
 	${_vmware} \
@@ -582,7 +584,6 @@ _iwn=		iwn
 _iwnfw=		iwnfw
 .endif
 _ixgb=		ixgb
-_ixgbe=		ixgbe
 .if ${MK_OFED} != "no" || defined(ALL_MODULES)
 _mlx4=		mlx4
 _mlx4ib=	mlx4ib
@@ -712,6 +713,8 @@ _wi=		wi
 .endif
 
 .if ${MACHINE_ARCH} == "powerpc64"
+_drm2=		drm2
+_i2c=		i2c
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
 _zfs=		zfs
 .endif
@@ -735,6 +738,8 @@ _zfs=		zfs
 
 .endif
 
+SUBDIR+=${MODULES_EXTRA}
+
 .for reject in ${WITHOUT_MODULES}
 SUBDIR:= ${SUBDIR:N${reject}}
 .endfor
@@ -748,5 +753,9 @@ afterinstall:
 		kldxref ${DESTDIR}${KMODDIR}; \
 	fi
 .endif
+
+.include "${SYSDIR}/conf/config.mk"
+
+SUBDIR:= ${SUBDIR:u:O}
 
 .include <bsd.subdir.mk>

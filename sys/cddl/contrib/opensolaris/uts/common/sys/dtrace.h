@@ -2434,6 +2434,17 @@ extern void dtrace_helpers_destroy(proc_t *);
 #define DTRACE_INVOP_MFLR_R0	5
 #define DTRACE_INVOP_NOP	6
 
+#elif defined(__arm__)
+
+#define	DTRACE_INVOP_SHIFT	4
+#define	DTRACE_INVOP_MASK	((1 << DTRACE_INVOP_SHIFT) - 1)
+#define	DTRACE_INVOP_DATA(x)	((x) >> DTRACE_INVOP_SHIFT)
+
+#define DTRACE_INVOP_PUSHM	1
+#define DTRACE_INVOP_POPM	2
+#define DTRACE_INVOP_B		3
+
+
 #endif
 
 #ifdef	__cplusplus
