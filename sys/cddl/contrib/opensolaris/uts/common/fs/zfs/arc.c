@@ -153,13 +153,7 @@ static kmutex_t		arc_reclaim_thr_lock;
 static kcondvar_t	arc_reclaim_thr_cv;	/* used to signal reclaim thr */
 static uint8_t		arc_thread_exit;
 
-#define	ARC_REDUCE_DNLC_PERCENT	3
-uint_t arc_reduce_dnlc_percent = ARC_REDUCE_DNLC_PERCENT;
-
-typedef enum arc_reclaim_strategy {
-	ARC_RECLAIM_AGGR,		/* Aggressive reclaim strategy */
-	ARC_RECLAIM_CONS		/* Conservative reclaim strategy */
-} arc_reclaim_strategy_t;
+uint_t arc_reduce_dnlc_percent = 3;
 
 /*
  * The number of iterations through arc_evict_*() before we
@@ -174,7 +168,19 @@ static int		arc_grow_retry = 60;
 static int		arc_p_min_shift = 4;
 
 /* log2(fraction of arc to reclaim) */
-static int		arc_shrink_shift = 5;
+static int		arc_shrink_shift = 7;
+
+/*
+ * log2(fraction of ARC which must be free to allow growing).
+ * I.e. If there is less than arc_c >> arc_no_grow_shift free memory,
+ * when reading a new block into the ARC, we will evict an equal-sized block
+ * from the ARC.
+ *
+ * This must be less than arc_shrink_shift, so that when we shrink the ARC,
+ * we will still not allow it to grow.
+ */
+int			arc_no_grow_shift = 5;
+
 
 /*
  * minimum lifespan of a prefetch block in clock ticks
@@ -2426,12 +2432,10 @@ arc_flush(spa_t *spa)
 }
 
 void
-arc_shrink(void)
+arc_shrink(int64_t to_free)
 {
 	if (arc_c > arc_c_min) {
-		uint64_t to_free;
 
-		to_free = arc_c >> arc_shrink_shift;
 		DTRACE_PROBE4(arc__shrink, uint64_t, arc_c, uint64_t,
 			arc_c_min, uint64_t, arc_p, uint64_t, to_free);
 		if (arc_c > arc_c_min + to_free)
@@ -2461,41 +2465,57 @@ arc_shrink(void)
 
 static int needfree = 0;
 
-/*
- * Determine if the system is under memory pressure and is asking
- * to reclaim memory. A return value of 1 indicates that the system
- * is under memory pressure and that the arc should adjust accordingly.
- */
-static int
-arc_reclaim_needed(void)
-{
-#ifdef illumos
-	uint64_t extra;
-#endif
+typedef enum free_memory_reason_t {
+	FMR_UNKNOWN,
+	FMR_NEEDFREE,
+	FMR_LOTSFREE,
+	FMR_SWAPFS_MINFREE,
+	FMR_PAGES_PP_MAXIMUM,
+	FMR_HEAP_ARENA,
+	FMR_ZIO_ARENA,
+} free_memory_reason_t;
 
+int64_t last_free_memory;
+free_memory_reason_t last_free_reason;
+
+/*
+ * Additional reserve of pages for pp_reserve.
+ */
+int64_t arc_pages_pp_reserve = 64;
+
+/*
+ * Additional reserve of pages for swapfs.
+ */
+int64_t arc_swapfs_reserve = 64;
+
+/*
+ * Return the amount of memory that can be consumed before reclaim will be
+ * needed.  Positive if there is sufficient free memory, negative indicates
+ * the amount of memory that needs to be freed up.
+ */
+static int64_t
+arc_available_memory(void)
+{
+	int64_t lowest = INT64_MAX;
+	int64_t n;
+	free_memory_reason_t r = FMR_UNKNOWN;
 #ifdef _KERNEL
 
-	if (needfree) {
-		DTRACE_PROBE(arc__reclaim_needfree);
-		return (1);
+	if (needfree > 0) {
+		n = PAGESIZE * (-needfree);
+		if (n < lowest) {
+			lowest = n;
+			r = FMR_NEEDFREE;
+		}
 	}
 
-	/*
-	 * Cooperate with pagedaemon when it's time for it to scan
-	 * and reclaim some pages.
-	 */
-	if (freemem < zfs_arc_free_target) {
-		DTRACE_PROBE2(arc__reclaim_freemem, uint64_t,
-		    freemem, uint64_t, zfs_arc_free_target);
-		return (1);
+	n = PAGESIZE * (freemem - minfree - desfree);
+	if (n < lowest) {
+		lowest = n;
+		r = FMR_LOTSFREE;
 	}
 
 #ifdef illumos
-	/*
-	 * take 'desfree' extra pages, so we reclaim sooner, rather than later
-	 */
-	extra = desfree;
-
 	/*
 	 * check that we're out of range of the pageout scanner.  It starts to
 	 * schedule paging if freemem is less than lotsfree and needfree.
@@ -2503,8 +2523,11 @@ arc_reclaim_needed(void)
 	 * number of needed free pages.  We add extra pages here to make sure
 	 * the scanner doesn't start up while we're freeing memory.
 	 */
-	if (freemem < lotsfree + needfree + extra)
-		return (1);
+	n = PAGESIZE * (freemem - lotsfree - needfree - desfree);
+	if (n < lowest) {
+		lowest = n;
+		r = FMR_LOTSFREE;
+	}
 
 	/*
 	 * check to make sure that swapfs has enough space so that anon
@@ -2513,8 +2536,12 @@ arc_reclaim_needed(void)
 	 * swap pages.  We also add a bit of extra here just to prevent
 	 * circumstances from getting really dire.
 	 */
-	if (availrmem < swapfs_minfree + swapfs_reserve + extra)
-		return (1);
+	n = PAGESIZE * (availrmem - swapfs_minfree - swapfs_reserve -
+	    desfree - arc_swapfs_reserve);
+	if (n < lowest) {
+		lowest = n;
+		r = FMR_SWAPFS_MINFREE;
+	}
 
 	/*
 	 * Check that we have enough availrmem that memory locking (e.g., via
@@ -2523,10 +2550,14 @@ arc_reclaim_needed(void)
 	 * drops below pages_pp_maximum, page locking mechanisms such as
 	 * page_pp_lock() will fail.)
 	 */
-	if (availrmem <= pages_pp_maximum)
-		return (1);
+	n = PAGESIZE * (availrmem - pages_pp_maximum -
+	    arc_pages_pp_reserve);
+	if (n < lowest) {
+		lowest = n;
+		r = FMR_PAGES_PP_MAXIMUM;
+	}
+#endif
 
-#endif	/* illumos */
 #if defined(__i386) || !defined(UMA_MD_SMALL_ALLOC)
 	/*
 	 * If we're on an i386 platform, it's possible that we'll exhaust the
@@ -2539,12 +2570,14 @@ arc_reclaim_needed(void)
 	 * heap is allocated.  (Or, in the calculation, if less than 1/4th is
 	 * free)
 	 */
-	if (vmem_size(heap_arena, VMEM_FREE) <
-	    (vmem_size(heap_arena, VMEM_FREE | VMEM_ALLOC) >> 2)) {
+	n = vmem_size(heap_arena, VMEM_FREE) -
+	    (vmem_size(heap_arena, VMEM_FREE | VMEM_ALLOC) >> 2);
+	if (n < lowest) {
+		lowest = n;
+		r = FMR_HEAP_ARENA;
 		DTRACE_PROBE2(arc__reclaim_used, uint64_t,
 		    vmem_size(heap_arena, VMEM_FREE), uint64_t,
 		    (vmem_size(heap_arena, VMEM_FREE | VMEM_ALLOC)) >> 2);
-		return (1);
 	}
 #endif
 #ifdef illumos
@@ -2557,26 +2590,46 @@ arc_reclaim_needed(void)
 	 * to aggressively evict memory from the arc in order to avoid
 	 * memory fragmentation issues.
 	 */
-	if (zio_arena != NULL &&
-	    vmem_size(zio_arena, VMEM_FREE) <
-	    (vmem_size(zio_arena, VMEM_ALLOC) >> 4))
-		return (1);
+	if (zio_arena != NULL) {
+		n = vmem_size(zio_arena, VMEM_FREE) -
+		    (vmem_size(zio_arena, VMEM_ALLOC) >> 4);
+		if (n < lowest) {
+			lowest = n;
+			r = FMR_ZIO_ARENA;
+		}
+	}
 #endif	/* illumos */
 #else	/* _KERNEL */
+	/* Every 100 calls, free a small amount */
 	if (spa_get_random(100) == 0)
-		return (1);
+		lowest = -1024;
 #endif	/* _KERNEL */
 	DTRACE_PROBE(arc__reclaim_no);
 
-	return (0);
+
+	last_free_memory = lowest;
+	last_free_reason = r;
+
+	return (lowest);
 }
 
 extern kmem_cache_t	*zio_buf_cache[];
 extern kmem_cache_t	*zio_data_buf_cache[];
 extern kmem_cache_t	*range_seg_cache;
 
+/*
+ * Determine if the system is under memory pressure and is asking
+ * to reclaim memory. A return value of TRUE indicates that the system
+ * is under memory pressure and that the arc should adjust accordingly.
+ */
+static boolean_t
+arc_reclaim_needed(void)
+{
+	return (arc_available_memory() < 0);
+}
+
 static void __noinline
-arc_kmem_reap_now(arc_reclaim_strategy_t strat)
+arc_kmem_reap_now(void)
 {
 	size_t			i;
 	kmem_cache_t		*prev_cache = NULL;
@@ -2599,13 +2652,6 @@ arc_kmem_reap_now(arc_reclaim_strategy_t strat)
 #endif
 #endif
 
-	/*
-	 * An aggressive reclamation will shrink the cache size as well as
-	 * reap free buffers from the arc kmem caches.
-	 */
-	if (strat == ARC_RECLAIM_AGGR)
-		arc_shrink();
-
 	for (i = 0; i < SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT; i++) {
 		if (zio_buf_cache[i] != prev_cache) {
 			prev_cache = zio_buf_cache[i];
@@ -2621,12 +2667,13 @@ arc_kmem_reap_now(arc_reclaim_strategy_t strat)
 	kmem_cache_reap_now(range_seg_cache);
 
 #ifdef illumos
-	/*
-	 * Ask the vmem arena to reclaim unused memory from its
-	 * quantum caches.
-	 */
-	if (zio_arena != NULL && strat == ARC_RECLAIM_AGGR)
+	if (zio_arena != NULL) {
+		/*
+		 * Ask the vmem arena to reclaim unused memory from its
+		 * quantum caches.
+		 */
 		vmem_qcache_reap(zio_arena);
+	}
 #endif
 	DTRACE_PROBE(arc__kmem_reap_end);
 }
@@ -2635,46 +2682,44 @@ static void
 arc_reclaim_thread(void *dummy __unused)
 {
 	clock_t			growtime = 0;
-	arc_reclaim_strategy_t	last_reclaim = ARC_RECLAIM_CONS;
 	callb_cpr_t		cpr;
 
 	CALLB_CPR_INIT(&cpr, &arc_reclaim_thr_lock, callb_generic_cpr, FTAG);
 
 	mutex_enter(&arc_reclaim_thr_lock);
 	while (arc_thread_exit == 0) {
-		if (arc_reclaim_needed()) {
+		int64_t free_memory = arc_available_memory();
+		if (free_memory < 0) {
 
-			if (arc_no_grow) {
-				if (last_reclaim == ARC_RECLAIM_CONS) {
-					DTRACE_PROBE(arc__reclaim_aggr_no_grow);
-					last_reclaim = ARC_RECLAIM_AGGR;
-				} else {
-					last_reclaim = ARC_RECLAIM_CONS;
-				}
-			} else {
-				arc_no_grow = TRUE;
-				last_reclaim = ARC_RECLAIM_AGGR;
-				DTRACE_PROBE(arc__reclaim_aggr);
-				membar_producer();
-			}
-
-			/* reset the growth delay for every reclaim */
-			growtime = ddi_get_lbolt() + (arc_grow_retry * hz);
-
-			if (needfree && last_reclaim == ARC_RECLAIM_CONS) {
-				/*
-				 * If needfree is TRUE our vm_lowmem hook
-				 * was called and in that case we must free some
-				 * memory, so switch to aggressive mode.
-				 */
-				arc_no_grow = TRUE;
-				last_reclaim = ARC_RECLAIM_AGGR;
-			}
-			arc_kmem_reap_now(last_reclaim);
+			arc_no_grow = B_TRUE;
 			arc_warm = B_TRUE;
 
-		} else if (arc_no_grow && ddi_get_lbolt() >= growtime) {
-			arc_no_grow = FALSE;
+			/*
+			 * Wait at least zfs_grow_retry (default 60) seconds
+			 * before considering growing.
+			 */
+			growtime = ddi_get_lbolt() + (arc_grow_retry * hz);
+
+			arc_kmem_reap_now();
+
+			/*
+			 * If we are still low on memory, shrink the ARC
+			 * so that we have arc_shrink_min free space.
+			 */
+			free_memory = arc_available_memory();
+
+			int64_t to_free =
+			    (arc_c >> arc_shrink_shift) - free_memory;
+			if (to_free > 0) {
+#ifdef _KERNEL
+				to_free = MAX(to_free, ptob(needfree));
+#endif
+				arc_shrink(to_free);
+			}
+		} else if (free_memory < arc_c >> arc_no_grow_shift) {
+			arc_no_grow = B_TRUE;
+		} else if (ddi_get_lbolt() >= growtime) {
+			arc_no_grow = B_FALSE;
 		}
 
 		arc_adjust();
@@ -4035,7 +4080,6 @@ arc_tempreserve_space(uint64_t reserve, uint64_t txg)
 	return (0);
 }
 
-static kmutex_t arc_lowmem_lock;
 #ifdef _KERNEL
 static eventhandler_tag arc_event_lowmem = NULL;
 
@@ -4043,41 +4087,48 @@ static void
 arc_lowmem(void *arg __unused, int howto __unused)
 {
 
-	/* Serialize access via arc_lowmem_lock. */
-	mutex_enter(&arc_lowmem_lock);
 	mutex_enter(&arc_reclaim_thr_lock);
-	needfree = 1;
+	needfree = 1024;
 	DTRACE_PROBE(arc__needfree);
 	cv_signal(&arc_reclaim_thr_cv);
 
 	/*
-	 * It is unsafe to block here in arbitrary threads, because we can come
-	 * here from ARC itself and may hold ARC locks and thus risk a deadlock
-	 * with ARC reclaim thread.
+	 * Debugging aid: indicate that we are waiting for ZFS to free up memory.
 	 */
 	if (curproc == pageproc) {
 		while (needfree)
 			msleep(&needfree, &arc_reclaim_thr_lock, 0, "zfs:lowmem", 0);
 	}
 	mutex_exit(&arc_reclaim_thr_lock);
-	mutex_exit(&arc_lowmem_lock);
 }
 #endif
 
 void
 arc_init(void)
 {
-	int i, prefetch_tunable_set = 0;
+	int prefetch_tunable_set = 0;
+
+	/*
+	 * allmem is "all memory that we could possibly use".
+	 */
+#ifdef illumos
+#ifdef _KERNEL
+	uint64_t allmem = ptob(physmem - swapfs_minfree);
+#else
+	uint64_t allmem = (physmem * PAGESIZE) / 2;
+#endif
+#else
+	uint64_t allmem = kmem_size();
+#endif
 
 	mutex_init(&arc_reclaim_thr_lock, NULL, MUTEX_DEFAULT, NULL);
 	cv_init(&arc_reclaim_thr_cv, NULL, CV_DEFAULT, NULL);
-	mutex_init(&arc_lowmem_lock, NULL, MUTEX_DEFAULT, NULL);
 
 	/* Convert seconds to clock ticks */
 	arc_min_prefetch_lifespan = 1 * hz;
 
 	/* Start out with 1/8 of all memory */
-	arc_c = kmem_size() / 8;
+	arc_c = allmem / 8;
 
 #ifdef illumos
 #ifdef _KERNEL
@@ -4089,23 +4140,24 @@ arc_init(void)
 	arc_c = MIN(arc_c, vmem_size(heap_arena, VMEM_ALLOC | VMEM_FREE) / 8);
 #endif
 #endif	/* illumos */
+
 	/* set min cache to 1/32 of all memory, or 16MB, whichever is more */
-	arc_c_min = MAX(arc_c / 4, 64<<18);
-	/* set max to 1/2 of all memory, or all but 1GB, whichever is more */
-	if (arc_c * 8 >= 1<<30)
-		arc_c_max = (arc_c * 8) - (1<<30);
+	arc_c_min = MAX(allmem / 32, 64 << 18);
+	/* set max to 3/4 of all memory, or all but 1GB, whichever is more */
+	if (allmem >= 1 << 30)
+		arc_c_max = allmem - (1 << 30);
 	else
 		arc_c_max = arc_c_min;
-	arc_c_max = MAX(arc_c * 5, arc_c_max);
+	arc_c_max = MAX(allmem * 5 / 8, arc_c_max);
 
 #ifdef _KERNEL
 	/*
 	 * Allow the tunables to override our calculations if they are
 	 * reasonable (ie. over 16MB)
 	 */
-	if (zfs_arc_max > 64<<18 && zfs_arc_max < kmem_size())
+	if (zfs_arc_max > 64 << 18 && zfs_arc_max < allmem)
 		arc_c_max = zfs_arc_max;
-	if (zfs_arc_min > 64<<18 && zfs_arc_min <= arc_c_max)
+	if (zfs_arc_min > 64 << 18 && zfs_arc_min <= arc_c_max)
 		arc_c_min = zfs_arc_min;
 #endif
 
@@ -4133,6 +4185,12 @@ arc_init(void)
 
 	if (zfs_arc_shrink_shift > 0)
 		arc_shrink_shift = zfs_arc_shrink_shift;
+
+	/*
+	 * Ensure that arc_no_grow_shift is less than arc_shrink_shift.
+	 */
+	if (arc_no_grow_shift >= arc_shrink_shift)
+		arc_no_grow_shift = arc_shrink_shift - 1;
 
 	if (zfs_arc_p_min_shift > 0)
 		arc_p_min_shift = zfs_arc_p_min_shift;
@@ -4303,7 +4361,6 @@ arc_fini(void)
 
 	ASSERT(arc_loaned_bytes == 0);
 
-	mutex_destroy(&arc_lowmem_lock);
 #ifdef _KERNEL
 	if (arc_event_lowmem != NULL)
 		EVENTHANDLER_DEREGISTER(vm_lowmem, arc_event_lowmem);
