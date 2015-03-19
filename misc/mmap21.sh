@@ -30,6 +30,7 @@
 
 # panic: vm_reserv_populate: reserv 0xfffff807cbd3c400 is already promoted
 # http://people.freebsd.org/~pho/stress/log/mmap21.txt
+# Fixed by r280238
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 

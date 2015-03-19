@@ -29,9 +29,13 @@
 #
 
 # Simplified version of mmap10.sh with focus on core dumps
-# Deadlock seen: 
+# Deadlock seen:
 # http://people.freebsd.org/~pho/stress/log/kostik673.txt
 # No issues seen with r272060.
+
+# panic: vm_reserv_populate: reserv 0xfffff807cbd46300 is already promoted
+# http://people.freebsd.org/~pho/stress/log/kostik764.txt
+# Fixed by r280238
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
