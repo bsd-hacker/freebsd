@@ -84,7 +84,7 @@ main(void)
 		if (finish.tv_nsec < N)
 			errx(1, "Short sleep: %ld", finish.tv_nsec);
 //		fprintf(stderr, "asked for %f, got %f\n", (double)N / 1e9,
-//	  	    (double)finish.tv_nsec / 1e9);
+//		    (double)finish.tv_nsec / 1e9);
 		if (m > finish.tv_nsec)
 			m = finish.tv_nsec;
 	}

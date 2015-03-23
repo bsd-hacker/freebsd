@@ -48,7 +48,7 @@ sysctl vm.old_msync=1
 for i in `jot $n`; do
 	mkdir -p /tmp/datamove3.dir.$i
 	cd /tmp/datamove3.dir.$i
-       	/tmp/datamove3 &
+	/tmp/datamove3 &
 done
 cd /tmp
 for i in `jot $n`; do

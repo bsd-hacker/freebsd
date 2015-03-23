@@ -132,7 +132,7 @@ test(char *path)
 	FTS		*fts;
 	FTSENT		*p;
 	int		ftsoptions;
-	char 		*args[2];
+	char		*args[2];
 	int buf[64], fd;
 
 	signal(SIGSEGV, hand);

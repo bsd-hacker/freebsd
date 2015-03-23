@@ -88,7 +88,7 @@ test(char *path)
 	FTS		*fts;
 	FTSENT		*p;
 	int		ftsoptions;
-	char 		*args[2];
+	char		*args[2];
 
 	ftsoptions = FTS_PHYSICAL;
 	args[0] = path;

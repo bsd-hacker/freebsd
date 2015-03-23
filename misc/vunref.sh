@@ -111,7 +111,7 @@ else
 					echo "*** Leak detected ***"
 					fstat $mntpoint$m
 					rm -f $RUNDIR/active.*
-			       		exit 1
+					exit 1
 				fi
 				sleep 0.1
 			done

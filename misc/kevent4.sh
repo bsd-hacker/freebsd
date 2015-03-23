@@ -174,7 +174,7 @@ void polling()
 			}
 			if (kev[i].fflags & NOTE_EXIT) {
 				printf("%u exited\n", pid);
-//  				del_watch(pid);
+//				del_watch(pid);
 			}
 			if (kev[i].fflags & NOTE_TRACK) {
 				printf("%u forked - track\n", pid);

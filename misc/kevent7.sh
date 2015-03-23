@@ -138,7 +138,7 @@ test(void *arg __unused)
 	FTS		*fts;
 	FTSENT		*p;
 	int		ftsoptions;
-	char 		*args[5];
+	char		*args[5];
 	int i;
 
 	ftsoptions = FTS_PHYSICAL;
