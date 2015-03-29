@@ -1242,7 +1242,7 @@ linux_setgroups(struct thread *td, struct linux_setgroups_args *args)
 		newcred->cr_ngroups = 1;
 
 	setsugid(p);
-	p->p_ucred = newcred;
+	proc_set_cred(p, newcred);
 	PROC_UNLOCK(p);
 	crfree(oldcred);
 	error = 0;

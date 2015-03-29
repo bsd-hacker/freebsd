@@ -62,16 +62,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 
 #include <net/if.h>
-#include <net/if_var.h>
 #include <net/vnet.h>
 
 #include <netinet/in.h>
 
 #ifdef DDB
 #include <ddb/ddb.h>
-#ifdef INET6
-#include <netinet6/in6_var.h>
-#endif /* INET6 */
 #endif /* DDB */
 
 #include <security/mac/mac_framework.h>
@@ -2445,7 +2441,7 @@ do_jail_attach(struct thread *td, struct prison *pr)
 	setsugid(p);
 	crcopy(newcred, oldcred);
 	newcred->cr_prison = pr;
-	p->p_ucred = newcred;
+	proc_set_cred(p, newcred);
 	PROC_UNLOCK(p);
 #ifdef RACCT
 	racct_proc_ucred_changed(p, oldcred, newcred);
