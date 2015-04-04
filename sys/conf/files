@@ -2778,6 +2778,7 @@ fs/nullfs/null_vnops.c		optional nullfs
 fs/procfs/procfs.c		optional procfs
 fs/procfs/procfs_ctl.c		optional procfs
 fs/procfs/procfs_dbregs.c	optional procfs
+fs/procfs/procfs_fdlink.c	optional procfs
 fs/procfs/procfs_fpregs.c	optional procfs
 fs/procfs/procfs_ioctl.c	optional procfs
 fs/procfs/procfs_map.c		optional procfs
