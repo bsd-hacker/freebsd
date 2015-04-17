@@ -82,9 +82,9 @@
  * types of locks: 1) the hash table lock array, and 2) the
  * arc list locks.
  *
- * Buffers do not have their own mutexs, rather they rely on the
- * hash table mutexs for the bulk of their protection (i.e. most
- * fields in the arc_buf_hdr_t are protected by these mutexs).
+ * Buffers do not have their own mutexes, rather they rely on the
+ * hash table mutexes for the bulk of their protection (i.e. most
+ * fields in the arc_buf_hdr_t are protected by these mutexes).
  *
  * buf_hash_find() returns the appropriate mutex (held) when it
  * locates the requested buffer in the hash table.  It returns
@@ -531,10 +531,6 @@ typedef struct arc_stats {
 	kstat_named_t arcstat_l2_compress_failures;
 	kstat_named_t arcstat_l2_write_trylock_fail;
 	kstat_named_t arcstat_l2_write_passed_headroom;
-	kstat_named_t arcstat_l2_write_spa_mismatch;
-	kstat_named_t arcstat_l2_write_in_l2;
-	kstat_named_t arcstat_l2_write_hdr_io_in_progress;
-	kstat_named_t arcstat_l2_write_not_cacheable;
 	kstat_named_t arcstat_l2_write_full;
 	kstat_named_t arcstat_l2_write_buffer_iter;
 	kstat_named_t arcstat_l2_write_pios;
@@ -629,10 +625,6 @@ static arc_stats_t arc_stats = {
 	{ "l2_compress_failures",	KSTAT_DATA_UINT64 },
 	{ "l2_write_trylock_fail",	KSTAT_DATA_UINT64 },
 	{ "l2_write_passed_headroom",	KSTAT_DATA_UINT64 },
-	{ "l2_write_spa_mismatch",	KSTAT_DATA_UINT64 },
-	{ "l2_write_in_l2",		KSTAT_DATA_UINT64 },
-	{ "l2_write_io_in_progress",	KSTAT_DATA_UINT64 },
-	{ "l2_write_not_cacheable",	KSTAT_DATA_UINT64 },
 	{ "l2_write_full",		KSTAT_DATA_UINT64 },
 	{ "l2_write_buffer_iter",	KSTAT_DATA_UINT64 },
 	{ "l2_write_pios",		KSTAT_DATA_UINT64 },
@@ -5051,22 +5043,9 @@ l2arc_write_eligible(uint64_t spa_guid, arc_buf_hdr_t *hdr)
 	 * 3. has an I/O in progress (it may be an incomplete read).
 	 * 4. is flagged not eligible (zfs property).
 	 */
-	if (hdr->b_spa != spa_guid) {
-		ARCSTAT_BUMP(arcstat_l2_write_spa_mismatch);
+	if (hdr->b_spa != spa_guid || HDR_HAS_L2HDR(hdr) ||
+	    HDR_IO_IN_PROGRESS(hdr) || !HDR_L2CACHE(hdr))
 		return (B_FALSE);
-	}
-	if (HDR_HAS_L2HDR(hdr)) {
-		ARCSTAT_BUMP(arcstat_l2_write_in_l2);
-		return (B_FALSE);
-	}
-	if (HDR_IO_IN_PROGRESS(hdr)) {
-		ARCSTAT_BUMP(arcstat_l2_write_hdr_io_in_progress);
-		return (B_FALSE);
-	}
-	if (!HDR_L2CACHE(hdr)) {
-		ARCSTAT_BUMP(arcstat_l2_write_not_cacheable);
-		return (B_FALSE);
-	}
 
 	return (B_TRUE);
 }
