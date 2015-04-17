@@ -31,7 +31,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd December 12, 2014
+.Dd April 16, 2015
 .Dt ZFS 8
 .Os
 .Sh NAME
@@ -2126,7 +2126,8 @@ Property name
 .It value
 Property value
 .It source
-Property source. Can either be local, default, temporary, inherited, or none
+Property source. Can either be local, default,
+temporary, inherited, received, or none
 (\&-).
 .El
 .Pp
@@ -2181,7 +2182,7 @@ displays only snapshots.
 A comma-separated list of sources to display. Those properties coming from a
 source other than those in this list are ignored. Each source must be one of
 the following:
-.Sy local,default,inherited,temporary,received,none .
+.Sy local,default,inherited,received,temporary,none .
 The default value is all sources.
 .El
 .It Xo
@@ -2192,8 +2193,10 @@ The default value is all sources.
 .Ar filesystem Ns | Ns Ar volume Ns | Ns Ar snapshot Ns ...
 .Xc
 .Pp
-Clears the specified property, causing it to be inherited from an ancestor. If
-no ancestor has the property set, then the default value is used. See the
+Clears the specified property, causing it to be inherited from an ancestor,
+restored to default if no ancestor has the property set, or with the
+.Fl S
+option reverted to the received value if one exists.  See the
 .Qq Sx Properties
 section for a listing of default values, and details on which properties can be
 inherited.
@@ -3395,6 +3398,16 @@ to inherit the
 property from their parent.
 .Bd -literal -offset 2n
 .Li # Ic zfs inherit checksum pool/home/bob pool/home/anne
+.Ed
+.Pp
+The following command causes
+.Em pool/name/bob
+to revert to the received
+value for the
+.Sy quota
+property if it exists.
+.Bd -literal -offset 2n
+.Li # Ic zfs inherit -S quota pool/home/bob
 .Ed
 .It Sy Example 12 No Remotely Replicating Tn ZFS No Data
 .Pp
