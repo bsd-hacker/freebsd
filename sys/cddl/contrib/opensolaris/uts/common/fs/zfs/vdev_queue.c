@@ -587,9 +587,10 @@ vdev_queue_aggregate(vdev_queue_t *vq, zio_t *zio)
 	zio_t *first, *last, *aio, *dio, *mandatory, *nio;
 	uint64_t maxgap = 0;
 	uint64_t size;
-	boolean_t stretch;
-	avl_tree_t *t;
-	enum zio_flag flags;
+	boolean_t stretch = B_FALSE;
+	vdev_queue_class_t *vqc = &vq->vq_class[zio->io_priority];
+	avl_tree_t *t = &vqc->vqc_queued_tree;
+	enum zio_flag flags = zio->io_flags & ZIO_FLAG_AGG_INHERIT;
 
 	ASSERT(MUTEX_HELD(&vq->vq_lock));
 
@@ -629,8 +630,6 @@ vdev_queue_aggregate(vdev_queue_t *vq, zio_t *zio)
 	 * Walk backwards through sufficiently contiguous I/Os
 	 * recording the last non-option I/O.
 	 */
-	flags = zio->io_flags & ZIO_FLAG_AGG_INHERIT;
-	t = &vq->vq_class[zio->io_priority].vqc_queued_tree;
 	while ((dio = AVL_PREV(t, first)) != NULL &&
 	    (dio->io_flags & ZIO_FLAG_AGG_INHERIT) == flags &&
 	    IO_SPAN(dio, last) <= zfs_vdev_aggregation_limit &&
@@ -670,7 +669,6 @@ vdev_queue_aggregate(vdev_queue_t *vq, zio_t *zio)
 	 * non-optional I/O is close enough to make aggregation
 	 * worthwhile.
 	 */
-	stretch = B_FALSE;
 	if (zio->io_type == ZIO_TYPE_WRITE && mandatory != NULL) {
 		zio_t *nio = last;
 		while ((dio = AVL_NEXT(t, nio)) != NULL &&
