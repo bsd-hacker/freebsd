@@ -41,8 +41,8 @@
 typedef struct kstat {
 	void	*ks_data;
 	u_int	 ks_ndata;
-#ifdef _KERNEL
 	int	(*ks_update)(struct kstat *, int); /* dynamic update callback */
+#ifdef _KERNEL
 	struct sysctl_ctx_list ks_sysctl_ctx;
 	struct sysctl_oid *ks_sysctl_root;
 #endif
