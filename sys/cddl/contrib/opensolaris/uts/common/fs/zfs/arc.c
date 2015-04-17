@@ -3006,11 +3006,15 @@ arc_available_memory(void)
 	 * Above limits know nothing about real level of KVA fragmentation.
 	 * Start aggressive reclamation if too little sequential KVA left.
 	 */
-	if (vmem_size(heap_arena, VMEM_MAXFREE) < zfs_max_recordsize) {
+	n = vmem_size(heap_arena, VMEM_MAXFREE) - zfs_max_recordsize;
+	if (n < 0) {
 		DTRACE_PROBE2(arc__reclaim_maxfree, uint64_t,
 		    vmem_size(heap_arena, VMEM_MAXFREE),
 		    uint64_t, zfs_max_recordsize);
-		return (1);
+		if (n < lowest) {
+			lowest = n;
+			r = FMR_ZIO_ARENA;
+		}
 	}
 
 #else	/* _KERNEL */
