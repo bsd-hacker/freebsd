@@ -56,6 +56,7 @@ kstat_create(char *module, int instance, char *name, char *class, uchar_t type,
 	 */
 	ksp = malloc(sizeof(*ksp), M_KSTAT, M_WAITOK);
 	ksp->ks_ndata = ndata;
+	ksp->ks_update = NULL;
 
 	/*
 	 * Create sysctl tree for those statistics:
@@ -96,6 +97,23 @@ kstat_create(char *module, int instance, char *name, char *class, uchar_t type,
 }
 
 static int
+kstat_update(SYSCTL_HANDLER_ARGS)
+{
+	kstat_t *ksp = arg1;
+	uint64_t val;
+	struct bintime bt;
+
+	KASSERT(ksp->ks_update != NULL,
+	    ("ksp(%p)->ks_update is NULL", ksp));
+
+	ksp->ks_update(ksp, KSTAT_READ);
+	bintime(&bt);
+	val = (uint64_t)(bttosbt(bt));
+	
+	return sysctl_handle_64(oidp, &val, 0, req);
+}
+
+static int
 kstat_sysctl(SYSCTL_HANDLER_ARGS)
 {
 	kstat_named_t *ksent = arg1;
@@ -112,6 +130,7 @@ kstat_install(kstat_t *ksp)
 	u_int i;
 
 	ksent = ksp->ks_data;
+
 	for (i = 0; i < ksp->ks_ndata; i++, ksent++) {
 		KASSERT(ksent->data_type == KSTAT_DATA_UINT64,
 		    ("data_type=%d", ksent->data_type));
@@ -119,6 +138,17 @@ kstat_install(kstat_t *ksp)
 		    SYSCTL_CHILDREN(ksp->ks_sysctl_root), OID_AUTO, ksent->name,
 		    CTLTYPE_U64 | CTLFLAG_RD, ksent, sizeof(*ksent),
 		    kstat_sysctl, "QU", ksent->desc);
+	}
+	/*
+	 * If we have a ks_update callback, create an additional sysctl
+	 * node that would refresh the subtree and return the system time
+	 * after that.
+	 */
+	if (ksp->ks_update != NULL) {
+		SYSCTL_ADD_PROC(&ksp->ks_sysctl_ctx,
+		    SYSCTL_CHILDREN(ksp->ks_sysctl_root), OID_AUTO, "snapshot_bintime",
+		    CTLTYPE_U64 | CTLFLAG_RD, ksp, sizeof(*ksp),
+		    kstat_update, "QU", "Snapshot time");
 	}
 }
 
