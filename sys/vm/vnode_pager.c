@@ -53,6 +53,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_vm.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/proc.h>
@@ -242,6 +244,9 @@ retry:
 		VI_UNLOCK(vp);
 	} else {
 		object->ref_count++;
+#if VM_NRESERVLEVEL > 0
+		vm_object_color(object, 0);
+#endif
 		VM_OBJECT_WUNLOCK(object);
 	}
 	vref(vp);
@@ -681,7 +686,7 @@ vnode_pager_getpages_async(vm_object_t object, vm_page_t *m, int count,
 
 	vp = object->handle;
 	VM_OBJECT_WUNLOCK(object);
-	rtval = VOP_GETPAGES_ASYNC(vp, m, count * PAGE_SIZE, reqpage, 0,
+	rtval = VOP_GETPAGES_ASYNC(vp, m, count * PAGE_SIZE, reqpage,
 	    iodone, arg);
 	KASSERT(rtval != EOPNOTSUPP,
 	    ("vnode_pager: FS getpages_async not implemented\n"));

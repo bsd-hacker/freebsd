@@ -142,10 +142,11 @@ static driver_t ixv_driver = {
 	"ixv", ixv_methods, sizeof(struct adapter),
 };
 
-devclass_t ixgbe_devclass;
-DRIVER_MODULE(ixv, pci, ixv_driver, ixgbe_devclass, 0, 0);
+devclass_t ixv_devclass;
+DRIVER_MODULE(ixv, pci, ixv_driver, ixv_devclass, 0, 0);
 MODULE_DEPEND(ixv, pci, 1, 1, 1);
 MODULE_DEPEND(ixv, ether, 1, 1, 1);
+/* XXX depend on 'ix' ? */
 
 /*
 ** TUNEABLE PARAMETERS:
@@ -1978,13 +1979,13 @@ ixv_add_stats_sysctls(struct adapter *adapter)
 	struct sysctl_oid_list *stat_list, *queue_list;
 
 	/* Driver Statistics */
-	SYSCTL_ADD_UQUAD(ctx, child, OID_AUTO, "dropped",
+	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "dropped",
 			CTLFLAG_RD, &adapter->dropped_pkts,
 			"Driver dropped packets");
-	SYSCTL_ADD_UQUAD(ctx, child, OID_AUTO, "mbuf_defrag_failed",
+	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "mbuf_defrag_failed",
 			CTLFLAG_RD, &adapter->mbuf_defrag_failed,
 			"m_defrag() failed");
-	SYSCTL_ADD_UQUAD(ctx, child, OID_AUTO, "watchdog_events",
+	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "watchdog_events",
 			CTLFLAG_RD, &adapter->watchdog_events,
 			"Watchdog timeouts");
 

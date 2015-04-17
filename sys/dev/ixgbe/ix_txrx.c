@@ -42,6 +42,7 @@
 #include "ixgbe.h"
 
 #ifdef	RSS
+#include <net/rss_config.h>
 #include <netinet/in_rss.h>
 #endif
 
@@ -49,6 +50,8 @@
 #include <net/netmap.h>
 #include <sys/selinfo.h>
 #include <dev/netmap/netmap_kern.h>
+
+extern int ix_crcstrip;
 #endif
 
 /*
@@ -1046,7 +1049,6 @@ ixgbe_txeof(struct tx_ring *txr)
 			    buf->map);
 			m_freem(buf->m_head);
 			buf->m_head = NULL;
-			buf->map = NULL;
 		}
 		buf->eop = NULL;
 		++txr->tx_avail;
@@ -1072,7 +1074,6 @@ ixgbe_txeof(struct tx_ring *txr)
 				    buf->map);
 				m_freem(buf->m_head);
 				buf->m_head = NULL;
-				buf->map = NULL;
 			}
 			++txr->tx_avail;
 			buf->eop = NULL;
@@ -1239,7 +1240,6 @@ ixgbe_setup_hw_rsc(struct rx_ring *rxr)
 	rdrxctl = IXGBE_READ_REG(hw, IXGBE_RDRXCTL);
 	rdrxctl &= ~IXGBE_RDRXCTL_RSCFRSTSIZE;
 #ifdef DEV_NETMAP /* crcstrip is optional in netmap */
-	extern int ix_crcstrip;
 	if (adapter->ifp->if_capenable & IFCAP_NETMAP && !ix_crcstrip)
 #endif /* DEV_NETMAP */
 	rdrxctl |= IXGBE_RDRXCTL_CRCSTRIP;
@@ -1317,6 +1317,7 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 		 */
 		if ((rxbuf->flags & IXGBE_RX_COPY) == 0) {
 			/* Get the memory mapping */
+			bus_dmamap_unload(rxr->ptag, rxbuf->pmap);
 			error = bus_dmamap_load_mbuf_sg(rxr->ptag,
 			    rxbuf->pmap, mp, seg, &nsegs, BUS_DMA_NOWAIT);
 			if (error != 0) {
@@ -1393,8 +1394,7 @@ ixgbe_allocate_receive_buffers(struct rx_ring *rxr)
 
 	for (i = 0; i < rxr->num_desc; i++, rxbuf++) {
 		rxbuf = &rxr->rx_buffers[i];
-		error = bus_dmamap_create(rxr->ptag,
-		    BUS_DMA_NOWAIT, &rxbuf->pmap);
+		error = bus_dmamap_create(rxr->ptag, 0, &rxbuf->pmap);
 		if (error) {
 			device_printf(dev, "Unable to create RX dma map\n");
 			goto fail;
@@ -1713,6 +1713,7 @@ ixgbe_rx_discard(struct rx_ring *rxr, int i)
 		m_free(rbuf->buf);
 		rbuf->buf = NULL;
 	}
+	bus_dmamap_unload(rxr->ptag, rbuf->pmap);
 
 	rbuf->flags = 0;
  

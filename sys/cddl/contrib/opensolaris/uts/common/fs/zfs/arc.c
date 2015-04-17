@@ -2979,8 +2979,11 @@ arc_available_memory(void)
 		    vmem_size(heap_arena, VMEM_FREE), uint64_t,
 		    (vmem_size(heap_arena, VMEM_FREE | VMEM_ALLOC)) >> 2);
 	}
+#define	zio_arena	NULL
+#else
+#define	zio_arena	heap_arena
 #endif
-#ifdef illumos
+
 	/*
 	 * If zio data pages are being allocated out of a separate heap segment,
 	 * then enforce that the size of available vmem for this arena remains
@@ -2998,7 +3001,18 @@ arc_available_memory(void)
 			r = FMR_ZIO_ARENA;
 		}
 	}
-#endif	/* illumos */
+
+	/*
+	 * Above limits know nothing about real level of KVA fragmentation.
+	 * Start aggressive reclamation if too little sequential KVA left.
+	 */
+	if (vmem_size(heap_arena, VMEM_MAXFREE) < zfs_max_recordsize) {
+		DTRACE_PROBE2(arc__reclaim_maxfree, uint64_t,
+		    vmem_size(heap_arena, VMEM_MAXFREE),
+		    uint64_t, zfs_max_recordsize);
+		return (1);
+	}
+
 #else	/* _KERNEL */
 	/* Every 100 calls, free a small amount */
 	if (spa_get_random(100) == 0)
@@ -4642,7 +4656,7 @@ arc_init(void)
 #endif	/* illumos */
 
 	/* set min cache to 1/32 of all memory, or 16MB, whichever is more */
-	arc_c_min = MAX(allmem / 32, 64 << 18);
+	arc_c_min = MAX(allmem / 32, 16 << 20);
 	/* set max to 3/4 of all memory, or all but 1GB, whichever is more */
 	if (allmem >= 1 << 30)
 		arc_c_max = allmem - (1 << 30);
@@ -4655,9 +4669,9 @@ arc_init(void)
 	 * Allow the tunables to override our calculations if they are
 	 * reasonable (ie. over 16MB)
 	 */
-	if (zfs_arc_max > 64 << 18 && zfs_arc_max < allmem)
+	if (zfs_arc_max > 16 << 20 && zfs_arc_max < allmem)
 		arc_c_max = zfs_arc_max;
-	if (zfs_arc_min > 64 << 18 && zfs_arc_min <= arc_c_max)
+	if (zfs_arc_min > 16 << 20 && zfs_arc_min <= arc_c_max)
 		arc_c_min = zfs_arc_min;
 #endif
 

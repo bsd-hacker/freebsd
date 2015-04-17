@@ -515,7 +515,7 @@ proc0_init(void *dummy __unused)
 	newcred->cr_ruidinfo = uifind(0);
 	newcred->cr_prison = &prison0;
 	newcred->cr_loginclass = loginclass_find("default");
-	proc_set_cred(p, newcred);
+	proc_set_cred_init(p, newcred);
 #ifdef AUDIT
 	audit_cred_kproc0(newcred);
 #endif
@@ -709,6 +709,9 @@ start_init(void *dummy)
 	p = td->td_proc;
 
 	vfs_mountroot();
+
+	/* Wipe GELI passphrase from the environment. */
+	kern_unsetenv("kern.geom.eli.passphrase");
 
 	/*
 	 * Need just enough stack to hold the faked-up "execve()" arguments.
