@@ -299,11 +299,13 @@ vdev_queue_class_tree(vdev_queue_t *vq, zio_priority_t p)
 static inline avl_tree_t *
 vdev_queue_type_tree(vdev_queue_t *vq, zio_type_t t)
 {
-	ASSERT(t == ZIO_TYPE_READ || t == ZIO_TYPE_WRITE);
+	ASSERT(t == ZIO_TYPE_READ || t == ZIO_TYPE_WRITE || t == ZIO_TYPE_FREE);
 	if (t == ZIO_TYPE_READ)
 		return (&vq->vq_read_offset_tree);
-	else
+	else if (t == ZIO_TYPE_WRITE)
 		return (&vq->vq_write_offset_tree);
+	else
+		return (&vq->vq_free_offset_tree);
 }
 
 int
@@ -346,6 +348,9 @@ vdev_queue_init(vdev_t *vd)
 	avl_create(vdev_queue_type_tree(vq, ZIO_TYPE_WRITE),
 	    vdev_queue_offset_compare, sizeof (zio_t),
 	    offsetof(struct zio, io_offset_node));
+	avl_create(vdev_queue_type_tree(vq, ZIO_TYPE_FREE),
+	    vdev_queue_offset_compare, sizeof (zio_t),
+	    offsetof(struct zio, io_offset_node));
 
 	for (zio_priority_t p = 0; p < ZIO_PRIORITY_NUM_QUEUEABLE; p++) {
 		int (*compfn) (const void *, const void *);
@@ -377,6 +382,7 @@ vdev_queue_fini(vdev_t *vd)
 	avl_destroy(&vq->vq_active_tree);
 	avl_destroy(vdev_queue_type_tree(vq, ZIO_TYPE_READ));
 	avl_destroy(vdev_queue_type_tree(vq, ZIO_TYPE_WRITE));
+	avl_destroy(vdev_queue_type_tree(vq, ZIO_TYPE_FREE));
 
 	mutex_destroy(&vq->vq_lock);
 }
