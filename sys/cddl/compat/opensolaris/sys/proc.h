@@ -47,6 +47,7 @@
 #define	maxclsyspri	PVM
 #define	max_ncpus	mp_ncpus
 #define	boot_max_ncpus	mp_ncpus
+#define	boot_ncpus	mp_ncpus
 
 #define	TS_RUN	0
 
