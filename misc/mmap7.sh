@@ -31,6 +31,9 @@
 # Test scenario inspired by alc@
 # Threaded version in order to "use the same pmap", as pointed out by kib@
 
+# https://people.freebsd.org/~pho/stress/log/kostik601.txt
+# Fixed by r255396
+
 . ../default.cfg
 
 dir=/tmp
