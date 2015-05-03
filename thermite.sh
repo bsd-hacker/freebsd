@@ -237,7 +237,7 @@ send_logmail() {
 	local _subject
 	_body="${1}"
 	_subject="${2}"
-	tail -n 10 "${_body}" | \
+	tail -n 50 "${_body}" | \
 		mail -s "${_subject} done" ${emailgoesto}
 	return 0
 }
@@ -265,6 +265,7 @@ build_release() {
 			return 0
 			;;
 	esac
+	ls -1 ${CHROOTDIR}/R/* >> ${logdir}/${_build}.log
 	send_logmail ${logdir}/${_build}.log ${_build}
 	unset _build _conf
 }
