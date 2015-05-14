@@ -262,6 +262,8 @@ build_release() {
 				-c ${_conf} >> ${logdir}/${_build}.log
 			;;
 		*)
+			ls -1 ${CHROOTDIR}/R/* >> ${logdir}/${_build}.log
+			send_logmail ${logdir}/${_build}.log ${_build}
 			return 0
 			;;
 	esac
