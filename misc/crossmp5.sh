@@ -35,7 +35,9 @@
 . ../default.cfg
 
 N=`sysctl -n hw.ncpu`
-size=$((`sysctl -n hw.usermem` / 1024 / 1024 / N))
+usermem=`sysctl -n hw.usermem`
+[ `swapinfo | wc -l` -eq 1 ] && usermem=$((usermem/100*80))
+size=$((usermem / 1024 / 1024 / N))
 
 mounts=$N		# Number of parallel scripts
 

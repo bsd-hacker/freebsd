@@ -35,7 +35,8 @@
 # core dumps seen in watchdogd after mlockall() was added.
 # This scenario demonstrates the problem. Fixed in r242012.
 
-mem=`sysctl hw.usermem | awk '{print $NF}'`
+mem=`sysctl -n hw.usermem`
+[ `swapinfo | wc -l` -eq 1 ] && mem=$((mem/100*60))
 
 here=`pwd`
 cd /tmp

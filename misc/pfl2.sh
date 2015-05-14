@@ -36,16 +36,24 @@
 
 . ../default.cfg
 
+[ `swapinfo | wc -l` -eq 1 ] && exit 0
+
 mp1=$mntpoint
 mp2=${mntpoint}2
 [ -d $mp2 ] || mkdir -p $mp2
 md1=$mdstart
 md2=$((mdstart + 1))
 
+usermem=`sysctl -n hw.usermem`
+size=$((2 * 1024 * 1024 * 1024))	# Ideal disk size is 2G
+[ $((size * 2)) -gt $usermem ] && size=$((usermem / 2))
+size=$((size / 1024 / 1024))
+
 opt=$([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-j" || echo "-U")
+[ "$newfs_flags" = "-U" ] || opt=""
 mount | grep "on $mp1 " | grep -q /dev/md && umount -f $mp1
 mdconfig -l | grep -q md$md1 &&  mdconfig -d -u $md1
-mdconfig -a -t swap -s 2g -u $md1
+mdconfig -a -t swap -s ${size}m -u $md1
 bsdlabel -w md$md1 auto
 newfs $opt md${md1}$part > /dev/null
 mount /dev/md${md1}$part $mp1
@@ -53,7 +61,7 @@ chmod 777 $mp1
 
 mount | grep "on $mp2 " | grep -q /dev/md && umount -f $mp2
 mdconfig -l | grep -q md$md2 &&  mdconfig -d -u $md2
-mdconfig -a -t swap -s 2g -u $md2
+mdconfig -a -t swap -s ${size}m -u $md2
 bsdlabel -w md$md2 auto
 newfs $opt md${md2}$part > /dev/null
 mount /dev/md${md2}$part $mp2

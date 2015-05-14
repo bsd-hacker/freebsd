@@ -35,7 +35,10 @@
 . ../default.cfg
 
 mount | grep "$mntpoint" | grep -q tmpfs && umount $mntpoint
-mount -t tmpfs tmpfs  $mntpoint
+usermem=`sysctl -n hw.usermem`
+[ `swapinfo | wc -l` -eq 1 ] && usermem=$((usermem/100*80))
+size=$((usermem / 1024 / 1024 / 2))
+mount -o size=${size}m -t tmpfs tmpfs  $mntpoint
 
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
