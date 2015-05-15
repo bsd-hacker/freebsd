@@ -31,6 +31,15 @@
 # Threaded syscall(2) fuzz test inspired by the iknowthis test suite
 # by Tavis Ormandy <taviso  cmpxchg8b com>
 
+# Sample problems found:
+# Thread stuck in stopprof.
+# http://people.freebsd.org/~pho/stress/log/kostik732.txt
+# Fixed by r275121.
+
+# panic: td 0xcbe1ac40 is not suspended.
+# https://people.freebsd.org/~pho/stress/log/kostik807.txt
+# Fixed by r282944.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
@@ -64,7 +73,8 @@ while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
 	(cd $mntpoint; /tmp/syscall4 $* ) &
 	start=`date '+%s'`
 	while [ $((`date '+%s'` - start)) -lt $sleeptime ]; do
-		ps aux | grep -v grep | egrep -q "syscall4$" || break
+#		ps aux | grep -v grep | egrep -q "syscall4$" || break
+		pgrep syscall4 > /dev/null || break
 		sleep .5
 	done
 	while pkill -9 syscall4; do
@@ -192,15 +202,16 @@ test(void *arg __unused)
 	FTS		*fts;
 	FTSENT		*p;
 	int		ftsoptions;
-	char 		*args[5];
+	char		*args[6];
 	int i;
 
 	ftsoptions = FTS_PHYSICAL;
 	args[0] = "/dev";
 	args[1] = "/proc";
 	args[2] = "/usr/compat/linux/proc";
-	args[3] = ".";
-	args[4] = 0;
+	args[3] = "/ifs";
+	args[4] = ".";
+	args[5] = 0;
 
 	for (;;) {
 		for (i = 0; i < N; i++)
@@ -290,11 +301,15 @@ main(int argc, char **argv)
 	if ((pw = getpwnam("nobody")) == NULL)
 		err(1, "no such user: nobody");
 
-	if (setgroups(1, &pw->pw_gid) ||
-	    setegid(pw->pw_gid) || setgid(pw->pw_gid) ||
-	    seteuid(pw->pw_uid) || setuid(pw->pw_uid))
-		err(1, "Can't drop privileges to \"nobody\"");
-	endpwent();
+	if (getenv("USE_ROOT"))
+		fprintf(stderr, "Running syscall4 as root.\n");
+	else {
+		if (setgroups(1, &pw->pw_gid) ||
+		    setegid(pw->pw_gid) || setgid(pw->pw_gid) ||
+		    seteuid(pw->pw_uid) || setuid(pw->pw_uid))
+			err(1, "Can't drop privileges to \"nobody\"");
+		endpwent();
+	}
 
 	limit.rlim_cur = limit.rlim_max = 1000;
 #if defined(RLIMIT_NPTS)
