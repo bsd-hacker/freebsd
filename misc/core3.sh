@@ -49,7 +49,6 @@ mount | grep -q "on $mntpoint " && umount $mntpoint
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
-chmod 755 /mnt
 mount /dev/md${mdstart}$part $mntpoint
 mkdir $mntpoint/d
 chmod 777 $mntpoint/d
