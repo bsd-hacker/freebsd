@@ -39,9 +39,13 @@ md1=$mdstart
 md2=$((mdstart + 1))
 md3=$((mdstart + 2))
 
+size=1g
+[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le 4 ] &&
+    size=512m
+
 for u in $md1 $md2 $md3; do
 	mdconfig -l | grep -q md$u && mdconfig -d -u $u
-	mdconfig -a -t swap -s 1g -u $u
+	mdconfig -a -t swap -s $size -u $u
 done
 
 graid3 load > /dev/null 2>&1
