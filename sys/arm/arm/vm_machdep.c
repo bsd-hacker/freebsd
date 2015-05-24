@@ -72,6 +72,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma.h>
 #include <vm/uma_int.h>
 
+#include <machine/acle-compat.h>
 #include <machine/md_var.h>
 #include <machine/vfp.h>
 
@@ -178,11 +179,7 @@ cpu_set_syscall_retval(struct thread *td, int error)
 	 * place the returned data into r1. As the lseek and frerebsd6_lseek
 	 * syscalls also return an off_t they do not need this fixup.
 	 */
-#ifdef __ARM_EABI__
 	call = frame->tf_r7;
-#else
-	call = *(u_int32_t *)(frame->tf_pc - INSN_SIZE) & 0x000fffff;
-#endif
 	if (call == SYS___syscall) {
 		register_t *ap = &frame->tf_r0;
 		register_t code = ap[_QUAD_LOWWORD];
@@ -208,7 +205,12 @@ cpu_set_syscall_retval(struct thread *td, int error)
 		/*
 		 * Reconstruct the pc to point at the swi.
 		 */
-		frame->tf_pc -= INSN_SIZE;
+#if __ARM_ARCH >= 7
+		if ((frame->tf_spsr & PSR_T) != 0)
+			frame->tf_pc -= THUMB_INSN_SIZE;
+		else
+#endif
+			frame->tf_pc -= INSN_SIZE;
 		break;
 	case EJUSTRETURN:
 		/* nothing to do */
