@@ -34,6 +34,8 @@
 # http://people.freebsd.org/~pho/stress/log/kostik698.txt
 # Fixed by r269708.
 
+# Not fixed: https://people.freebsd.org/~pho/stress/log/kostik798.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
