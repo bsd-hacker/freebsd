@@ -242,6 +242,30 @@ send_logmail() {
 	return 0
 }
 
+# Stage builds for ftp propagation.
+ftp_stage() {
+	_build="${rev}-${arch}-${kernel}-${type}"
+	_conf="${scriptdir}/${_build}.conf"
+	source_config || return 0
+
+	load_stage_env
+	info "Staging for ftp: ${build}"
+	[ ! -z "${EMBEDDEDBUILD}" ] && export EMBEDDEDBUILD
+	[ ! -z "${BOARDNAME}" ] && export BOARDNAME
+	[ -e "${scriptdir}/svnrev_src" ] && \
+		export SVNREVISION="$(cat ${scriptdir}/svnrev_src)"
+	[ -e "${scriptdir}/builddate" ] && \
+		export BUILDDATE="$(cat ${scriptdir}/builddate)"
+	chroot ${CHROOTDIR} make -C /usr/src/release \
+		-f Makefile.mirrors \
+		TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} \
+		KERNCONF=${KERNEL} \
+		ftp-stage >> ${logdir}/${_build}.log 2>&1
+
+	unset BOARDNAME BUILDDATE EMBEDDEDBUILD SVNREVISION
+	return 0
+}
+
 # Run the release builds.
 build_release() {
 	_build="${rev}-${arch}-${kernel}-${type}"
@@ -253,24 +277,44 @@ build_release() {
 		/bin/sh ${srcdir}/release.sh -c ${_conf} \
 		>> ${logdir}/${_build}.log 2>&1
 
-	send_logmail ${logdir}/${_build}.log ${_build}
-
-	# Recreate the memstick.img for i386 while here.
-	case ${arch} in
-		i386)
-			/bin/sh ${scriptdir}/remake-memstick.sh \
-				-c ${_conf} >> ${logdir}/${_build}.log
-			;;
-		*)
-			ls -1 ${CHROOTDIR}/R/* >> ${logdir}/${_build}.log
-			send_logmail ${logdir}/${_build}.log ${_build}
-			return 0
-			;;
-	esac
+	ftp_stage
 	ls -1 ${CHROOTDIR}/R/* >> ${logdir}/${_build}.log
 	send_logmail ${logdir}/${_build}.log ${_build}
 	unset _build _conf
 }
+
+# Upload AWS EC2 AMI images.
+build_ec2_ami() {
+	_build="${rev}-${arch}-${kernel}-${type}"
+	_conf="${scriptdir}/${_build}.conf"
+	source_config || return 0
+	case ${arch} in
+		amd64)
+			;;
+		*)
+			return 0
+			;;
+	esac
+	info "Building EC2 AMI for build: ${_build}"
+	if [ ! -e "${CHROOTDIR}/${AWSKEYFILE}" ]; then
+		cp -p ${AWSKEYFILE} ${CHROOTDIR}/${AWSKEYFILE}
+		if [ $? -ne 0 ]; then
+			info "Amazon EC2 key file not found."
+			return 0
+		fi
+	fi
+	if [ -z "${AWSREGION}" -o -z "${AWSBUCKET}" -o "${AWSKEYFILE}" ]; then
+		return 0
+	fi
+	chroot ${CHROOTDIR} make -C /usr/src \
+		AWSREGION=${AWSREGION} \
+		AWSBUCKET=${AWSBUCKET} \
+		AWSKEYFILE=${AWSKEYFILE} \
+		EC2PUBLIC=${EC2PUBLIC} ec2ami \
+		>> ${logdir}/${_build}.log
+	unset _build _conf AWSREGION AWSBUCKET AWSKEYFILE EC2PUBLIC
+	return 0
+} # build_ec2_ami()
 
 # Install amd64/i386 "seed" chroots for all branches being built.
 install_chroots() {
@@ -386,6 +430,7 @@ main() {
 	runall build_chroots
 	runall install_chroots
 	runall build_release
+	runall build_ec2_ami
 }
 
 main "$@"
