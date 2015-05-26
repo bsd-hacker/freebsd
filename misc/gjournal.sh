@@ -25,7 +25,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: projects/stress2/misc/sendfile.sh 199142 2009-11-10 16:47:48Z pho $
+# $FreeBSD$
 #
 
 # Deadlock scenario based on kern/154228, fixed in r217880.

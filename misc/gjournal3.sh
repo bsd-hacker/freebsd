@@ -31,6 +31,13 @@
 # Deadlock seen: http://people.freebsd.org/~pho/stress/log/gjournal3.txt
 # Fixed in r244925
 
+# kib@ wrote:
+# gjournal is good for exposing the suspension problems.  The frequency
+# of the suspensions called from the gjournal is not achievable by other
+# methods, so the tests allow to uncover the problems.  More, the gjournal
+# only establishes the suspension, without snapshotting, which also
+# makes it easier to see the issues.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
