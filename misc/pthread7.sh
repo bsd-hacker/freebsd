@@ -31,6 +31,7 @@
 # PTHREAD_PRIO_INHERIT version of pthread2.sh
 
 . ../default.cfg
+[ `swapinfo | wc -l` -eq 1 ] && exit 0 # kstack allocation failed
 
 export LANG=C
 here=`pwd`
@@ -259,7 +260,7 @@ main(void)
 
 	signal(SIGINFO, hand);
 	signal(SIGALRM, ahand);
-	alarm(300);
+	alarm(400);
 	if ((rc = pthread_create(&tid[0], NULL, loop_create, NULL)) != 0)
 		errc(1, rc, "pthread_create()");
 	if ((rc = pthread_create(&tid[1], NULL, loop_rename, NULL)) != 0)

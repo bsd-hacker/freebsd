@@ -31,6 +31,7 @@
 # Stress shchan allocations.
 
 . ../default.cfg
+[ `swapinfo | wc -l` -eq 1 ] && exit 0 # kstack allocation failed
 
 here=`pwd`
 cd /tmp
