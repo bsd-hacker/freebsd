@@ -34,13 +34,16 @@
 
 . ../default.cfg
 
-[ -z "$nfs_export" ] && exit 0
-ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
-    exit 0
-
 mounts=10	# Number of parallel scripts
 
 if [ $# -eq 0 ]; then
+	[ -z "$nfs_export" ] && exit 0
+	ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
+	    exit 0
+	mount -t nfs -o tcp -o nfsv3 -o retrycnt=1 -o intr -o soft,timeout=1 \
+	    -o rw $nfs_export $mntpoint || exit 0
+	umount $mntpoint
+
 	for i in `jot $mounts`; do
 		mp=${mntpoint}$i
 		[ ! -d $mp ] && mkdir $mp
