@@ -40,7 +40,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 size="1g"
 [ $# -eq 0 ] && trim=-t
-flag="-j"
+[ "$newfs_flags" = "-U" ] && flag="-j"
 for i in `jot 6`; do
 	echo "Test #$i `date '+%T'`"
 	echo "mdconfig -a -t swap -s $size -u $mdstart"

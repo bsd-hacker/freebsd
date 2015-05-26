@@ -41,7 +41,9 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 size="1g"
 [ $# -eq 0 ] && trim=-t
 n=0
-for flag in '' '-U' '-j'; do
+opt=""
+[ "$newfs_flags" = "-U" ] && opt="-U -j"
+for flag in ' ' $opt; do
 	echo "mdconfig -a -t swap -s $size -u $mdstart"
 	mdconfig -a -t swap -s $size -u $mdstart || exit 1
 	bsdlabel -w md$mdstart auto
