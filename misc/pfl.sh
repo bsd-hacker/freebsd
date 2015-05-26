@@ -73,7 +73,16 @@ chmod 777 $mp2
 
 su ${testuser} -c "cd $mp1; /tmp/pfl" &
 su ${testuser} -c "cd $mp2; /tmp/pfl" &
-wait; wait
+sleep .5
+start=`date '+%s'`
+while pgrep -q pfl; do
+	if [ $((`date '+%s'`- start)) -gt 600 ]; then
+		echo "$0 timed out."
+		pkill -9 pfl
+	fi
+	sleep 10
+done
+wait
 
 while mount | grep "$mp2 " | grep -q /dev/md; do
 	umount $mp2 || sleep 1
@@ -86,16 +95,17 @@ mdconfig -d -u $md1
 exit
 
 EOF
+#include <sys/mount.h>
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mount.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #define PARALLEL 10
@@ -104,8 +114,8 @@ static int size = 10000;
 void
 test(void)
 {
-	int fd, i, j;
 	pid_t pid;
+	int fd, i, j;
 	char file[128];
 
 	pid = getpid();
