@@ -249,7 +249,7 @@ ftp_stage() {
 	source_config || return 0
 
 	load_stage_env
-	info "Staging for ftp: ${build}"
+	info "Staging for ftp: ${_build}"
 	[ ! -z "${EMBEDDEDBUILD}" ] && export EMBEDDEDBUILD
 	[ ! -z "${BOARDNAME}" ] && export BOARDNAME
 	[ -e "${scriptdir}/svnrev_src" ] && \
@@ -263,6 +263,7 @@ ftp_stage() {
 		ftp-stage >> ${logdir}/${_build}.log 2>&1
 
 	unset BOARDNAME BUILDDATE EMBEDDEDBUILD SVNREVISION
+	unset _build _conf
 	return 0
 }
 
