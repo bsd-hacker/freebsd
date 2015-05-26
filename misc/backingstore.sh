@@ -48,6 +48,7 @@ mdconfig -a -t vnode -f $D$m -u $m
 
 bsdlabel -w md$m auto
 newfs md${m}${part} > /dev/null 2>&1
+[ -d ${mntpoint}$m ] || mkdir -p ${mntpoint}$m
 mount $opt /dev/md${m}${part} ${mntpoint}$m
 
 n=$m
@@ -61,6 +62,7 @@ mdconfig -a -t vnode -f ${mntpoint}$n/diskimage -u $m
 
 bsdlabel -w md$m auto
 newfs md${m}${part} > /dev/null 2>&1
+[ -d ${mntpoint}$m ] || mkdir -p ${mntpoint}$m
 mount $opt /dev/md${m}${part} ${mntpoint}$m
 
 export RUNDIR=${mntpoint}$m/stressX

@@ -46,6 +46,8 @@ mount | grep "${mntpoint}" | grep -q md$m2 && umount ${mntpoint}$m2
 mdconfig -l | grep -q md$m2 &&  mdconfig -d -u $m2
 mount | grep "${mntpoint}" | grep -q md$m1 && umount ${mntpoint}$m1
 mdconfig -l | grep -q md$m1 &&  mdconfig -d -u $m1
+[ -d ${mntpoint}$m1 ] || mkdir -p ${mntpoint}$m1
+[ -d ${mntpoint}$m2 ] || mkdir -p ${mntpoint}$m2
 
 dede $D$m1 100m 1 || exit 1
 
