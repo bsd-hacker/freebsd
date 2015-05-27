@@ -247,6 +247,7 @@ ftp_stage() {
 	_build="${rev}-${arch}-${kernel}-${type}"
 	_conf="${scriptdir}/${_build}.conf"
 	source_config || return 0
+	[ -z "${EVERYTHINGISFINE}" ] && return 0
 
 	load_stage_env
 	info "Staging for ftp: ${_build}"
@@ -262,6 +263,15 @@ ftp_stage() {
 		KERNCONF=${KERNEL} \
 		ftp-stage >> ${logdir}/${_build}.log 2>&1
 
+	if [ -z "${ftpdir}" ]; then
+		info "FTP directory (ftpdir) not set."
+		info "Refusing to rsync(1) to the stage area."
+		return 0
+	fi
+
+	mkdir -p "${ftpdir}/${type}"
+	rsync -avH ${CHROOTDIR}/R/ftp-stage/${type}/* \
+		${ftpdir}/${type}/
 	unset BOARDNAME BUILDDATE EMBEDDEDBUILD SVNREVISION
 	unset _build _conf
 	return 0
