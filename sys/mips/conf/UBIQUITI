@@ -1,0 +1,13 @@
+#
+# UBIQUITI -- Generic kernel configuration file for FreeBSD/MIPS on Ubiquiti
+#
+# See the OCTEON1 kernel configuration file for the full list of options.
+#
+# $FreeBSD$
+#
+
+include		OCTEON1
+
+#NO_UNIVERSE
+ident		UBIQUITI
+options 	OCTEON_VENDOR_UBIQUITI
