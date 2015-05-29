@@ -40,9 +40,12 @@ mycc -o sendfile4 -Wall -Wextra -O2 sendfile4.c || exit
 rm -f sendfile4.c
 cd $here
 
-/tmp/sendfile4 /usr/libexec/cc1 || echo FAIL
+dd if=/dev/zero of=$diskimage bs=1m count=6 2>&1 | \
+    egrep -v "records|transferred"
 
-rm -f /tmp/sendfile4
+/tmp/sendfile4 $diskimage || echo FAIL
+
+rm -f /tmp/sendfile4 $diskimage
 exit
 EOF
 #include <sys/types.h>
