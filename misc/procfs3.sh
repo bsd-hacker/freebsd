@@ -101,12 +101,15 @@ test(void)
 				continue;
 			case FTS_SL:			/* Ignore. */
 				continue;
-			case FTS_DNR:			/* Warn, continue. */
-			case FTS_ERR:
+			case FTS_DNR:
+				continue;
 			case FTS_NS:
+				continue;
+			case FTS_ERR:
 			case FTS_DEFAULT:
-				warnx("%s: %s", p->fts_path, strerror(p->fts_errno));
-				break;
+				warnx("%s: %s. fts_info = %d", p->fts_path, strerror(p->fts_errno),
+				    p->fts_info);
+				continue;
 			default:
 				printf("%s: default, %d\n", getprogname(), p->fts_info);
 				break;
