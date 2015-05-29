@@ -51,11 +51,13 @@ rm -f /tmp/syscall4
 mycc -o syscall4 -Wall -Wextra -O2 -g syscall4.c -lpthread || exit 1
 rm -f syscall4.c
 
+(
 kldstat -v | grep -q sysvmsg  || kldload sysvmsg
 kldstat -v | grep -q sysvsem  || kldload sysvsem
 kldstat -v | grep -q sysvshm  || kldload sysvshm
 kldstat -v | grep -q aio      || kldload aio
 kldstat -v | grep -q mqueuefs || kldload mqueuefs
+) 2>/dev/null
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
