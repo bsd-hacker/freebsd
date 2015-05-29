@@ -282,7 +282,6 @@ ftp_stage() {
 	rsync -avH ${CHROOTDIR}/R/ftp-stage/${_type}/* \
 		${ftpdir}/${_type}/ >> ${logdir}/${_build}.log 2>&1
 	unset BOARDNAME BUILDDATE EMBEDDEDBUILD SVNREVISION
-	unset _build _conf _type
 	return 0
 }
 
