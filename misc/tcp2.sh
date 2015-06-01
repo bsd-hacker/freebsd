@@ -33,6 +33,9 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
+[ `swapinfo | wc -l` -eq 1 ] && exit 0
+[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le 3 ] && exit 0
+
 . ../default.cfg
 
 rm -rf /tmp/stressX.control
@@ -42,7 +45,8 @@ export runRUNTIME=15m
 export tcpLOAD=100
 export swapLOAD=100
 n=`su $testuser -c "limits | grep maxprocesses | awk '{print \\$NF}'"`
-export tcpINCARNATIONS=$((n / 2 - 40))
+n=$((n - `ps aux | wc -l`))
+export tcpINCARNATIONS=$((n / 2 - 400))
 export TESTPROGS="
 ./testcases/tcp/tcp
 ./testcases/swap/swap
