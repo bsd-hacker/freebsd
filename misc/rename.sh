@@ -40,7 +40,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > rename.c
-mycc -o rename -Wall rename.c
+mycc -o rename -Wall rename.c || exit 1
 rm -f rename.c
 
 rm -rf /tmp/rename.dir.*
@@ -64,9 +64,10 @@ EOF
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
-#define N 30000
+#define RUNTIME 30
 
 static char dir1[128];
 static char dir2[128];
@@ -74,7 +75,8 @@ static char dir2[128];
 int
 main(int argc, char **argv)
 {
-	int i, status;
+	time_t start;
+	int status;
 	struct stat sb;
 	pid_t p;
 
@@ -88,9 +90,11 @@ main(int argc, char **argv)
 	if ((p = fork()) == -1)
 		err(1, "fork()");
 	if (p == 0) {
+		setproctitle("child");
 		if (chdir("..") == -1)
 			err(1, "chdir(%s)", "..");
-		for (i = 0; i < N; i++) {
+		start = time(NULL);
+		while (time(NULL) - start < RUNTIME) {
 			if (rename(dir1, dir2) == -1) {
 				warn("rename(%s, %s)", dir1, dir2);
 				stat(dir1, &sb);
@@ -110,7 +114,9 @@ main(int argc, char **argv)
 		}
 		_exit(0);
 	} else {
-		for (i = 0; i < N; i++) {
+		setproctitle("parent");
+		start = time(NULL);
+		while (time(NULL) - start < RUNTIME) {
 			if (stat("..", &sb) == -1)
 				err(1, "stat(..)");
 		}
