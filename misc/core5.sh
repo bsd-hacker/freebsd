@@ -106,6 +106,8 @@ mount -t tmpfs tmpfs $mp2 || exit 1
 for i in `jot 10`; do
 	(cd $mp2; /tmp/core5-dumper$i ) &
 done
+maxvnodes=`sysctl -n kern.maxvnodes`
+trap "sysctl kern.maxvnodes=$maxvnodes > /dev/null" 0
 $mntpoint/core5 $mntpoint/dir
 wait
 umount $mp2
