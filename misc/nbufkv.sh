@@ -58,8 +58,8 @@ truncate -s 20g $d2
 
 mount | grep -q /dev/md${u2}$part && umount -f /dev/md${u2}$part
 mount | grep -q /dev/md${u1}$part && umount -f /dev/md${u1}$part
-mdconfig -l | grep -q md${u2} && mdconfig -d -u $u2
-mdconfig -l | grep -q md${u1} && mdconfig -d -u $u1
+mdconfig -l | grep -q md$u2 && mdconfig -d -u $u2
+mdconfig -l | grep -q md$u1 && mdconfig -d -u $u1
 
 mdconfig -a -t vnode -f $d1 -u $u1
 bsdlabel -w md$u1 auto
@@ -72,9 +72,9 @@ newfs -b 65536 -f 65536 -O2 md${u2}$part > /dev/null
 mount /dev/md${u1}$part $mp1
 mount /dev/md${u2}$part $mp2
 
-/tmp/nbufkv /$mp1 &
-/tmp/nbufkv /$mp2 &
-wait;wait
+/tmp/nbufkv $mp1 &
+/tmp/nbufkv $mp2 &
+wait
 
 umount /dev/md${u2}$part
 umount /dev/md${u1}$part
