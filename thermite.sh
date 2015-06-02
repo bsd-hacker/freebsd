@@ -281,7 +281,7 @@ ftp_stage() {
 	mkdir -p "${ftpdir}/${_type}"
 	rsync -avH ${CHROOTDIR}/R/ftp-stage/${_type}/* \
 		${ftpdir}/${_type}/ >> ${logdir}/${_build}.log 2>&1
-	unset BOARDNAME BUILDDATE EMBEDDEDBUILD SVNREVISION
+	unset BOARDNAME BUILDDATE EMBEDDEDBUILD SVNREVISION WITH_VMIMAGES
 	return 0
 }
 
@@ -325,6 +325,7 @@ build_ec2_ami() {
 	if [ -z "${AWSREGION}" -o -z "${AWSBUCKET}" -o -z "${AWSKEYFILE}" ]; then
 		return 0
 	fi
+	mount -t devfs devfs ${CHROOTDIR}/dev
 	chroot ${CHROOTDIR} make -C /usr/src/release \
 		AWSREGION=${AWSREGION} \
 		AWSBUCKET=${AWSBUCKET} \
@@ -332,6 +333,7 @@ build_ec2_ami() {
 		EC2PUBLIC=${EC2PUBLIC} ec2ami \
 		>> ${logdir}/${_build}.log 2>&1
 	unset _build _conf AWSREGION AWSBUCKET AWSKEYFILE EC2PUBLIC
+	umount ${CHROOTDIR}/dev
 	return 0
 } # build_ec2_ami()
 
@@ -362,8 +364,8 @@ install_chroots() {
 		__MAKE_CONF=/dev/null SRCCONF=/dev/null \
 		TARGET=${_chrootarch} TARGET_ARCH=${_chrootarch} \
 		DESTDIR=${_dest} \
-		installworld distribution 2>&1 >> \
-		${logdir}/${_build}.log
+		installworld distribution >> \
+		${logdir}/${_build}.log 2>&1
 	unset _build _dest _objdir _srcdir
 }
 
@@ -402,22 +404,22 @@ build_chroots() {
 		info "SVN checkout ${SRCBRANCH} for ${_chrootarch} ${type}"
 		svn co -q ${SVNROOT}/${SRCBRANCH} \
 			${_srcdir} \
-			2>&1 >> ${logdir}/${_build}.log
+			>> ${logdir}/${_build}.log 2>&1
 	fi
 	info "Building ${_srcdir} make(1)"
 	env MAKEOBJDIRPREFIX=${_objdir} \
 		make -C ${_srcdir} ${WORLD_FLAGS} \
 		__MAKE_CONF=/dev/null SRCCONF=/dev/null \
 		TARGET=${_chrootarch} TARGET_ARCH=${_chrootarch} \
-		${__makecmd} 2>&1 >> \
-		${logdir}/${_build}.log
+		${__makecmd} >> \
+		${logdir}/${_build}.log 2>&1
 	info "Building ${_srcdir} world"
 	env MAKEOBJDIRPREFIX=${_objdir} \
 		make -C ${_srcdir} ${WORLD_FLAGS} \
 		__MAKE_CONF=/dev/null SRCCONF=/dev/null \
 		TARGET=${_chrootarch} TARGET_ARCH=${_chrootarch} \
-		buildworld 2>&1 >> \
-		${logdir}/${_build}.log
+		buildworld >> \
+		${logdir}/${_build}.log 2>&1
 	eval chroot_${_chrootarch}_build_${rev}_${type}=1
 	unset _build _dest _objdir _srcdir
 }
