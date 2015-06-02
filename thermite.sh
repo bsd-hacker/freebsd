@@ -260,7 +260,7 @@ ftp_stage() {
 	chroot ${CHROOTDIR} make -C /usr/src/release \
 		-f Makefile.mirrors \
 		TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} \
-		KERNCONF=${KERNEL} \
+		KERNCONF=${KERNEL} WITH_VMIMAGES=${WITH_VMIMAGES} \
 		ftp-stage >> ${logdir}/${_build}.log 2>&1
 
 	if [ -z "${ftpdir}" ]; then
