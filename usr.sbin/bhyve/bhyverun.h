@@ -35,6 +35,9 @@
 #define	__CTASSERT(x, y)	typedef char __assert ## y[(x) ? 1 : -1]
 #endif
 
+#define	VMEXIT_CONTINUE		(0)
+#define	VMEXIT_ABORT		(-1)
+
 struct vmctx;
 extern int guest_ncpus;
 extern char *guest_uuid_str;

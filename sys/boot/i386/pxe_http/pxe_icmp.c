@@ -228,7 +228,7 @@ pxe_ping(const PXE_IPADDR *ip, int count, int flags)
 		
 		while (wait_time < PXE_ICMP_TIMEOUT) {
 			
-			twiddle();
+			twiddle(1);
 			wait_time += 10;
 			
 			if (!pxe_core_recv_packets())

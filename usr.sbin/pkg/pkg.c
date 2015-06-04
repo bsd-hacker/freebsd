@@ -47,7 +47,6 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 #include <ucl.h>
 
@@ -126,7 +125,8 @@ extract_pkg_static(int fd, char *p, int sz)
 	if (r == ARCHIVE_OK)
 		ret = 0;
 	else
-		warnx("fail to extract pkg-static");
+		warnx("failed to extract pkg-static: %s",
+		    archive_error_string(a));
 
 cleanup:
 	archive_read_free(a);
@@ -176,14 +176,11 @@ fetch_to_fd(const char *url, char *path)
 	/* To store _https._tcp. + hostname + \0 */
 	int fd;
 	int retry, max_retry;
-	off_t done, r;
-	time_t now, last;
+	ssize_t r;
 	char buf[10240];
 	char zone[MAXHOSTNAMELEN + 13];
 	static const char *mirror_type = NULL;
 
-	done = 0;
-	last = 0;
 	max_retry = 3;
 	current = mirrors = NULL;
 	remote = NULL;
@@ -201,7 +198,11 @@ fetch_to_fd(const char *url, char *path)
 
 	retry = max_retry;
 
-	u = fetchParseURL(url);
+	if ((u = fetchParseURL(url)) == NULL) {
+		warn("fetchParseURL('%s')", url);
+		return (-1);
+	}
+
 	while (remote == NULL) {
 		if (retry == max_retry) {
 			if (strcmp(u->scheme, "file") != 0 &&
@@ -233,19 +234,16 @@ fetch_to_fd(const char *url, char *path)
 		}
 	}
 
-	while (done < st.size) {
-		if ((r = fread(buf, 1, sizeof(buf), remote)) < 1)
-			break;
-
+	while ((r = fread(buf, 1, sizeof(buf), remote)) > 0) {
 		if (write(fd, buf, r) != r) {
 			warn("write()");
 			goto fetchfail;
 		}
+	}
 
-		done += r;
-		now = time(NULL);
-		if (now > last || done == st.size)
-			last = now;
+	if (r != 0) {
+		warn("An error occurred while fetching pkg(8)");
+		goto fetchfail;
 	}
 
 	if (ferror(remote))
@@ -370,8 +368,11 @@ load_fingerprints(const char *path, int *count)
 		return (NULL);
 	STAILQ_INIT(fingerprints);
 
-	if ((d = opendir(path)) == NULL)
+	if ((d = opendir(path)) == NULL) {
+		free(fingerprints);
+
 		return (NULL);
+	}
 
 	while ((ent = readdir(d))) {
 		if (strcmp(ent->d_name, ".") == 0 ||
@@ -798,8 +799,11 @@ cleanup:
 		close(fd_sig);
 		unlink(tmpsig);
 	}
-	close(fd_pkg);
-	unlink(tmppkg);
+
+	if (fd_pkg != -1) {
+		close(fd_pkg);
+		unlink(tmppkg);
+	}
 
 	return (ret);
 }
@@ -848,7 +852,7 @@ bootstrap_pkg_local(const char *pkgpath, bool force)
 
 	if (config_string(SIGNATURE_TYPE, &signature_type) != 0) {
 		warnx("Error looking up SIGNATURE_TYPE");
-		return (-1);
+		goto cleanup;
 	}
 	if (signature_type != NULL &&
 	    strcasecmp(signature_type, "FINGERPRINTS") == 0) {

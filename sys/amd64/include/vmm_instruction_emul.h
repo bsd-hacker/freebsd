@@ -52,8 +52,8 @@ typedef int (*mem_region_write_t)(void *vm, int cpuid, uint64_t gpa,
  * s
  */
 int vmm_emulate_instruction(void *vm, int cpuid, uint64_t gpa, struct vie *vie,
-			    mem_region_read_t mrr, mem_region_write_t mrw,
-			    void *mrarg);
+    struct vm_guest_paging *paging, mem_region_read_t mrr,
+    mem_region_write_t mrw, void *mrarg);
 
 int vie_update_register(void *vm, int vcpuid, enum vm_reg_name reg,
     uint64_t val, int size);
@@ -81,19 +81,21 @@ int vie_calculate_gla(enum vm_cpu_mode cpu_mode, enum vm_reg_name seg,
  */
 int vmm_fetch_instruction(struct vm *vm, int cpuid,
 			  struct vm_guest_paging *guest_paging,
-			  uint64_t rip, int inst_length, struct vie *vie);
+			  uint64_t rip, int inst_length, struct vie *vie,
+			  int *is_fault);
 
 /*
  * Translate the guest linear address 'gla' to a guest physical address.
  *
- * Returns 0 on success and '*gpa' contains the result of the translation.
- * Returns 1 if an exception was injected into the guest.
- * Returns -1 otherwise.
+ * retval	is_fault	Interpretation
+ *   0		   0		'gpa' contains result of the translation
+ *   0		   1		An exception was injected into the guest
+ * EFAULT	  N/A		An unrecoverable hypervisor error occurred
  */
-int vmm_gla2gpa(struct vm *vm, int vcpuid, struct vm_guest_paging *paging,
-    uint64_t gla, int prot, uint64_t *gpa);
+int vm_gla2gpa(struct vm *vm, int vcpuid, struct vm_guest_paging *paging,
+    uint64_t gla, int prot, uint64_t *gpa, int *is_fault);
 
-void vie_init(struct vie *vie);
+void vie_init(struct vie *vie, const char *inst_bytes, int inst_length);
 
 /*
  * Decode the instruction fetched into 'vie' so it can be emulated.
@@ -108,7 +110,7 @@ void vie_init(struct vie *vie);
  */
 #define	VIE_INVALID_GLA		(1UL << 63)	/* a non-canonical address */
 int vmm_decode_instruction(struct vm *vm, int cpuid, uint64_t gla,
-			   enum vm_cpu_mode cpu_mode, struct vie *vie);
+			   enum vm_cpu_mode cpu_mode, int csd, struct vie *vie);
 #endif	/* _KERNEL */
 
 #endif	/* _VMM_INSTRUCTION_EMUL_H_ */

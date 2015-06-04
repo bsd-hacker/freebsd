@@ -44,12 +44,11 @@ CFLAGS+=${CANCELPOINTS_CFLAGS}
 #
 # Link with static libcompiler_rt.a.
 #
-DPADD+=	${LIBCOMPILER_RT}
 LDFLAGS+= -nodefaultlibs
-LDADD+= -lcompiler_rt
+LIBADD+=	compiler_rt
 
 .if ${MK_SSP} != "no"
-LDADD+= -lssp_nonshared
+LIBADD+=	ssp_nonshared
 .endif
 
 # Extras that live in either libc.a or libc_nonshared.a
@@ -75,12 +74,13 @@ NOASM=
 .include "${LIBC_SRCTOP}/inet/Makefile.inc"
 .include "${LIBC_SRCTOP}/isc/Makefile.inc"
 .include "${LIBC_SRCTOP}/locale/Makefile.inc"
+.include "${LIBC_SRCTOP}/md/Makefile.inc"
 .include "${LIBC_SRCTOP}/nameser/Makefile.inc"
 .include "${LIBC_SRCTOP}/net/Makefile.inc"
 .include "${LIBC_SRCTOP}/nls/Makefile.inc"
 .include "${LIBC_SRCTOP}/posix1e/Makefile.inc"
-.if ${LIBC_ARCH} != "amd64" && \
-    ${LIBC_ARCH} != "ia64" && \
+.if ${LIBC_ARCH} != "aarch64" && \
+    ${LIBC_ARCH} != "amd64" && \
     ${LIBC_ARCH} != "powerpc64" && \
     ${LIBC_ARCH} != "sparc64" && \
     ${MACHINE_ARCH:Mmipsn32*} == "" && \
@@ -150,11 +150,15 @@ KSRCS=	bcmp.c ffs.c ffsl.c fls.c flsl.c mcount.c strcat.c strchr.c \
 libkern: libkern.gen libkern.${LIBC_ARCH}
 
 libkern.gen: ${KQSRCS} ${KSRCS}
-	cp -p ${LIBC_SRCTOP}/quad/quad.h ${.ALLSRC} ${DESTDIR}/sys/libkern
+	${CP} ${LIBC_SRCTOP}/quad/quad.h ${.ALLSRC} ${DESTDIR}/sys/libkern
 
 libkern.${LIBC_ARCH}:: ${KMSRCS}
 .if defined(KMSRCS) && !empty(KMSRCS)
-	cp -p ${.ALLSRC} ${DESTDIR}/sys/libkern/${LIBC_ARCH}
+	${CP} ${.ALLSRC} ${DESTDIR}/sys/libkern/${LIBC_ARCH}
+.endif
+
+.if ${MK_TESTS} != "no"
+SUBDIR+=	tests
 .endif
 
 .include <bsd.lib.mk>

@@ -469,7 +469,7 @@ u_int32_t ar9300_wow_offload_handshake(struct ath_hal *ah, u_int32_t pattern_ena
     OS_REG_SET_BIT(ah, AR_MBOX_CTRL_STATUS, AR_MBOX_WOW_REQ);
     OS_REG_SET_BIT(ah, AR_MBOX_CTRL_STATUS, AR_MBOX_INT_EMB_CPU);
 
-    if (!ath_hal_wait(ah, AR_MBOX_CTRL_STATUS, AR_MBOX_WOW_CONF, AR_MBOX_WOW_CONF, bt_handshake_timeout_us)) {
+    if (!ath_hal_waitfor(ah, AR_MBOX_CTRL_STATUS, AR_MBOX_WOW_CONF, AR_MBOX_WOW_CONF, bt_handshake_timeout_us)) {
         HALDEBUG(ah, HAL_DEBUG_UNMASKABLE, "%s: WoW offload handshake failed", __func__);
         return 0;
     }
@@ -666,6 +666,7 @@ ar9300_set_power_mode(struct ath_hal *ah, HAL_POWER_MODE mode, int set_chip)
     HALDEBUG(ah, HAL_DEBUG_POWER_MGMT, "%s: %s -> %s (%s)\n", __func__,
         modes[ar9300_get_power_mode(ah)], modes[mode],
         set_chip ? "set chip " : "");
+    OS_MARK(ah, AH_MARK_CHIP_POWER, mode);
     
     switch (mode) {
     case HAL_PM_AWAKE:
@@ -677,6 +678,7 @@ ar9300_set_power_mode(struct ath_hal *ah, HAL_POWER_MODE mode, int set_chip)
             OS_REG_WRITE(ah, AR_RTC_KEEP_AWAKE, 0x2);
         }
 #endif
+        ahp->ah_chip_full_sleep = AH_FALSE;
         break;
     case HAL_PM_FULL_SLEEP:
 #if ATH_SUPPORT_MCI
@@ -719,8 +721,10 @@ ar9300_set_power_mode(struct ath_hal *ah, HAL_POWER_MODE mode, int set_chip)
     default:
         HALDEBUG(ah, HAL_DEBUG_POWER_MGMT,
             "%s: unknown power mode %u\n", __func__, mode);
+        OS_MARK(ah, AH_MARK_CHIP_POWER_DONE, -1);
         return AH_FALSE;
     }
+    OS_MARK(ah, AH_MARK_CHIP_POWER_DONE, status);
     return status;
 }
 
@@ -984,7 +988,7 @@ ar9300_set_power_mode_wow_sleep(struct ath_hal *ah)
     OS_REG_SET_BIT(ah, AR_STA_ID1, AR_STA_ID1_PWR_SAV);
 
     OS_REG_WRITE(ah, AR_CR, AR_CR_RXD);    /* Set receive disable bit */
-    if (!ath_hal_wait(ah, AR_CR, AR_CR_RXE, 0, AH_WAIT_TIMEOUT)) {
+    if (!ath_hal_waitfor(ah, AR_CR, AR_CR_RXE, 0, AH_WAIT_TIMEOUT)) {
         HALDEBUG(ah, HAL_DEBUG_POWER_MGMT, "%s: dma failed to stop in 10ms\n"
                  "AR_CR=0x%08x\nAR_DIAG_SW=0x%08x\n", __func__,
                  OS_REG_READ(ah, AR_CR), OS_REG_READ(ah, AR_DIAG_SW));

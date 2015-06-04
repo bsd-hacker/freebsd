@@ -153,19 +153,17 @@ static char *trap_msg[] = {
 };
 
 #if defined(I586_CPU) && !defined(NO_F00F_HACK)
-extern int has_f00f_bug;
+int has_f00f_bug = 0;		/* Initialized so that it can be patched. */
 #endif
 
 #ifdef KDB
 static int kdb_on_nmi = 1;
-SYSCTL_INT(_machdep, OID_AUTO, kdb_on_nmi, CTLFLAG_RW,
+SYSCTL_INT(_machdep, OID_AUTO, kdb_on_nmi, CTLFLAG_RWTUN,
 	&kdb_on_nmi, 0, "Go to KDB on NMI");
-TUNABLE_INT("machdep.kdb_on_nmi", &kdb_on_nmi);
 #endif
 static int panic_on_nmi = 1;
-SYSCTL_INT(_machdep, OID_AUTO, panic_on_nmi, CTLFLAG_RW,
+SYSCTL_INT(_machdep, OID_AUTO, panic_on_nmi, CTLFLAG_RWTUN,
 	&panic_on_nmi, 0, "Panic on NMI");
-TUNABLE_INT("machdep.panic_on_nmi", &panic_on_nmi);
 static int prot_fault_translation = 0;
 SYSCTL_INT(_machdep, OID_AUTO, prot_fault_translation, CTLFLAG_RW,
 	&prot_fault_translation, 0, "Select signal to deliver on protection fault");
@@ -367,6 +365,10 @@ trap(struct trapframe *frame)
 		case T_TSSFLT:		/* invalid TSS fault */
 			i = SIGBUS;
 			ucode = BUS_OBJERR;
+			break;
+		case T_ALIGNFLT:
+			i = SIGBUS;
+			ucode = BUS_ADRALN;
 			break;
 		case T_DOUBLEFLT:	/* double fault */
 		default:
@@ -879,7 +881,7 @@ trap_pfault(frame, usermode, eva)
 	 */
 	if (frame->tf_err & PGEX_W)
 		ftype = VM_PROT_WRITE;
-#ifdef PAE
+#if defined(PAE) || defined(PAE_TABLES)
 	else if ((frame->tf_err & PGEX_I) && pg_nx != 0)
 		ftype = VM_PROT_EXECUTE;
 #endif
@@ -1057,6 +1059,7 @@ cpu_fetch_syscall_args(struct thread *td, struct syscall_args *sa)
 	struct proc *p;
 	struct trapframe *frame;
 	caddr_t params;
+	long tmp;
 	int error;
 
 	p = td->td_proc;
@@ -1072,14 +1075,20 @@ cpu_fetch_syscall_args(struct thread *td, struct syscall_args *sa)
 		/*
 		 * Code is first argument, followed by actual args.
 		 */
-		sa->code = fuword(params);
+		error = fueword(params, &tmp);
+		if (error == -1)
+			return (EFAULT);
+		sa->code = tmp;
 		params += sizeof(int);
 	} else if (sa->code == SYS___syscall) {
 		/*
 		 * Like syscall, but code is a quad, so as to maintain
 		 * quad alignment for the rest of the arguments.
 		 */
-		sa->code = fuword(params);
+		error = fueword(params, &tmp);
+		if (error == -1)
+			return (EFAULT);
+		sa->code = tmp;
 		params += sizeof(quad_t);
 	}
 
@@ -1148,7 +1157,7 @@ syscall(struct trapframe *frame)
 	KASSERT(PCB_USER_FPU(td->td_pcb),
 	    ("System call %s returning with kernel FPU ctx leaked",
 	     syscallname(td->td_proc, sa.code)));
-	KASSERT(td->td_pcb->pcb_save == &td->td_pcb->pcb_user_save,
+	KASSERT(td->td_pcb->pcb_save == get_pcb_user_save_td(td),
 	    ("System call %s returning with mangled pcb_save",
 	     syscallname(td->td_proc, sa.code)));
 

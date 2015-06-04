@@ -54,6 +54,9 @@ CWARNFLAGS+=	-Wchar-subscripts -Winline -Wnested-externs -Wredundant-decls\
 .if !defined(NO_WMISSING_VARIABLE_DECLARATIONS)
 CWARNFLAGS.clang+=	-Wmissing-variable-declarations
 .endif
+.if !defined(NO_WTHREAD_SAFETY)
+CWARNFLAGS.clang+=	-Wthread-safety
+.endif
 .endif # WARNS >= 6
 .if ${WARNS} >= 2 && ${WARNS} <= 4
 # XXX Delete -Wuninitialized by default for now -- the compiler doesn't
@@ -65,13 +68,16 @@ CWARNFLAGS+=	-Wno-pointer-sign
 # is set to low values, these have to be disabled explicitly.
 .if ${WARNS} <= 6
 CWARNFLAGS.clang+=	-Wno-empty-body -Wno-string-plus-int
-.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} > 30300
+.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 30400
 CWARNFLAGS.clang+= -Wno-unused-const-variable
 .endif
 .endif # WARNS <= 6
 .if ${WARNS} <= 3
 CWARNFLAGS.clang+=	-Wno-tautological-compare -Wno-unused-value\
 		-Wno-parentheses-equality -Wno-unused-function -Wno-enum-conversion
+.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 30600
+CWARNFLAGS.clang+=	-Wno-unused-local-typedef
+.endif
 .endif # WARNS <= 3
 .if ${WARNS} <= 2
 CWARNFLAGS.clang+=	-Wno-switch -Wno-switch-enum -Wno-knr-promoted-parameter
@@ -103,17 +109,31 @@ CWARNFLAGS+=	-Werror
 CWARNFLAGS+=	-Wno-format
 .endif # NO_WFORMAT || NO_WFORMAT.${COMPILER_TYPE}
 
+# How to handle FreeBSD custom printf format specifiers.
+.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 30600
+FORMAT_EXTENSIONS=	-D__printf__=__freebsd_kprintf__
+.else
+FORMAT_EXTENSIONS=	-fformat-extensions
+.endif
+
 .if defined(IGNORE_PRAGMA)
 CWARNFLAGS+=	-Wno-unknown-pragmas
 .endif # IGNORE_PRAGMA
 
+# We need this conditional because many places that use it
+# only enable it for some files with CLFAGS.$FILE+=${CLANG_NO_IAS}.
+# unconditionally, and can't easily use the CFLAGS.clang=
+# mechanism.
 .if ${COMPILER_TYPE} == "clang"
-# Would love to do this unconditionally, but can't due to its use in
-# kernel build coupled with CFLAGS.${TARGET} feature
 CLANG_NO_IAS=	 -no-integrated-as
 .endif
 CLANG_OPT_SMALL= -mstack-alignment=8 -mllvm -inline-threshold=3\
-		 -mllvm -enable-load-pre=false -mllvm -simplifycfg-dup-ret
+		 -mllvm -simplifycfg-dup-ret
+.if ${COMPILER_VERSION} >= 30500
+CLANG_OPT_SMALL+= -mllvm -enable-gvn=false
+.else
+CLANG_OPT_SMALL+= -mllvm -enable-load-pre=false
+.endif
 CFLAGS.clang+=	 -Qunused-arguments
 .if ${MACHINE_CPUARCH} == "sparc64"
 # Don't emit .cfi directives, since we must use GNU as on sparc64, for now.
@@ -126,12 +146,12 @@ CFLAGS.clang+=	 -fno-dwarf2-cfi-asm
 # but not yet.
 CXXFLAGS.clang+=	 -Wno-c++11-extensions
 
-.if ${MK_SSP} != "no" && ${MACHINE_CPUARCH} != "ia64" && \
+.if ${MK_SSP} != "no" && \
     ${MACHINE_CPUARCH} != "arm" && ${MACHINE_CPUARCH} != "mips"
 # Don't use -Wstack-protector as it breaks world with -Werror.
 SSP_CFLAGS?=	-fstack-protector
 CFLAGS+=	${SSP_CFLAGS}
-.endif # SSP && !IA64 && !ARM && !MIPS
+.endif # SSP && !ARM && !MIPS
 
 # Allow user-specified additional warning flags, plus compiler specific flag overrides.
 # Unless we've overriden this...

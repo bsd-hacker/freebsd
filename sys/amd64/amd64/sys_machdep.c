@@ -73,7 +73,6 @@ static void
 max_ldt_segment_init(void *arg __unused)
 {
 
-	TUNABLE_INT_FETCH("machdep.max_ldt_segment", &max_ldt_segment);
 	if (max_ldt_segment <= 0)
 		max_ldt_segment = 1;
 	if (max_ldt_segment > MAX_LD)
@@ -320,7 +319,7 @@ sysarch(td, uap)
 		fpugetregs(td);
 		error = copyout((char *)(get_pcb_user_save_td(td) + 1),
 		    a64xfpu.addr, a64xfpu.len);
-		return (error);
+		break;
 
 	default:
 		error = EINVAL;

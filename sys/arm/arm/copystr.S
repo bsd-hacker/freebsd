@@ -38,7 +38,6 @@
  * Created      : 16/05/95
  */
 
-	
 #include "assym.s"
 #include <machine/asm.h>
 #include <machine/armreg.h>
@@ -47,7 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/errno.h>
 
 	.text
-	.align	0
+	.align	2
 
 #ifdef _ARM_ARCH_6
 #define GET_PCB(tmp) \
@@ -195,6 +194,7 @@ END(copyoutstr)
 
 /* A fault occurred during the copy */
 .Lcopystrfault:
+	mov	r0, #EFAULT
 	mov	r1, #0x00000000
 	str	r1, [r4, #PCB_ONFAULT]
 	RESTORE_REGS
@@ -210,5 +210,5 @@ END(copyoutstr)
 
 Lcopystrpcbfaulttext:
 	.asciz	"No valid PCB during copyinoutstr() addr1=%08x addr2=%08x\n"
-	.align	0
+	.align	2
 #endif

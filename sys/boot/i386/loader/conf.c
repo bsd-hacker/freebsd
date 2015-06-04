@@ -88,8 +88,11 @@ struct fs_ops *file_system[] = {
 #if defined(LOADER_NANDFS_SUPPORT)
     &nandfs_fsops,
 #endif
-#ifdef LOADER_SPLIT_SUPPORT
-    &splitfs_fsops,
+#ifdef LOADER_NFS_SUPPORT 
+    &nfs_fsops,
+#endif
+#ifdef LOADER_TFTP_SUPPORT
+    &tftp_fsops,
 #endif
 #ifdef LOADER_GZIP_SUPPORT
     &gzipfs_fsops,
@@ -97,11 +100,8 @@ struct fs_ops *file_system[] = {
 #ifdef LOADER_BZIP2_SUPPORT
     &bzipfs_fsops,
 #endif
-#ifdef LOADER_NFS_SUPPORT 
-    &nfs_fsops,
-#endif
-#ifdef LOADER_TFTP_SUPPORT
-    &tftp_fsops,
+#ifdef LOADER_SPLIT_SUPPORT
+    &splitfs_fsops,
 #endif
 #ifdef LOADER_HTTP_SUPPORT
     &http_fsops,
@@ -118,8 +118,12 @@ extern struct file_format	i386_elf;
 extern struct file_format	i386_elf_obj;
 extern struct file_format	amd64_elf;
 extern struct file_format	amd64_elf_obj;
+extern struct file_format	multiboot;
+extern struct file_format	multiboot_obj;
 
 struct file_format *file_formats[] = {
+	&multiboot,
+	&multiboot_obj,
 #ifdef LOADER_PREFER_AMD64
     &amd64_elf,
     &amd64_elf_obj,

@@ -66,33 +66,33 @@ extern struct ctl_softc *control_softc;
 int
 ctl_backend_register(struct ctl_backend_driver *be)
 {
-	struct ctl_softc *ctl_softc;
+	struct ctl_softc *softc;
 	struct ctl_backend_driver *be_tmp;
 
-	ctl_softc = control_softc;
+	softc = control_softc;
 
-	mtx_lock(&ctl_softc->ctl_lock);
+	mtx_lock(&softc->ctl_lock);
 	/*
 	 * Sanity check, make sure this isn't a duplicate registration.
 	 */
-	STAILQ_FOREACH(be_tmp, &ctl_softc->be_list, links) {
+	STAILQ_FOREACH(be_tmp, &softc->be_list, links) {
 		if (strcmp(be_tmp->name, be->name) == 0) {
-			mtx_unlock(&ctl_softc->ctl_lock);
+			mtx_unlock(&softc->ctl_lock);
 			return (-1);
 		}
 	}
-	mtx_unlock(&ctl_softc->ctl_lock);
+	mtx_unlock(&softc->ctl_lock);
 
 	/*
 	 * Call the backend's initialization routine.
 	 */
 	be->init();
 
-	mtx_lock(&ctl_softc->ctl_lock);
+	mtx_lock(&softc->ctl_lock);
 	
-	STAILQ_INSERT_TAIL(&ctl_softc->be_list, be, links);
+	STAILQ_INSERT_TAIL(&softc->be_list, be, links);
 
-	ctl_softc->num_backends++;
+	softc->num_backends++;
 
 	/*
 	 * Don't want to increment the usage count for internal consumers,
@@ -113,7 +113,7 @@ ctl_backend_register(struct ctl_backend_driver *be)
 	atomic_set(&be->num_luns, 0);
 #endif
 
-	mtx_unlock(&ctl_softc->ctl_lock);
+	mtx_unlock(&softc->ctl_lock);
 
 	return (0);
 }
@@ -121,24 +121,24 @@ ctl_backend_register(struct ctl_backend_driver *be)
 int
 ctl_backend_deregister(struct ctl_backend_driver *be)
 {
-	struct ctl_softc *ctl_softc;
+	struct ctl_softc *softc;
 
-	ctl_softc = control_softc;
+	softc = control_softc;
 
-	mtx_lock(&ctl_softc->ctl_lock);
+	mtx_lock(&softc->ctl_lock);
 
 #if 0
 	if (atomic_read(&be->num_luns) != 0) {
 #endif
 	/* XXX KDM fix this! */
 	if (be->num_luns != 0) {
-		mtx_unlock(&ctl_softc->ctl_lock);
+		mtx_unlock(&softc->ctl_lock);
 		return (-1);
 	}
 
-	STAILQ_REMOVE(&ctl_softc->be_list, be, ctl_backend_driver, links);
+	STAILQ_REMOVE(&softc->be_list, be, ctl_backend_driver, links);
 
-	ctl_softc->num_backends--;
+	softc->num_backends--;
 
 	/* XXX KDM find a substitute for this? */
 #if 0
@@ -146,7 +146,7 @@ ctl_backend_deregister(struct ctl_backend_driver *be)
 		MOD_DEC_USE_COUNT;
 #endif
 
-	mtx_unlock(&ctl_softc->ctl_lock);
+	mtx_unlock(&softc->ctl_lock);
 
 	return (0);
 }
@@ -154,49 +154,53 @@ ctl_backend_deregister(struct ctl_backend_driver *be)
 struct ctl_backend_driver *
 ctl_backend_find(char *backend_name)
 {
-	struct ctl_softc *ctl_softc;
+	struct ctl_softc *softc;
 	struct ctl_backend_driver *be_tmp;
 
-	ctl_softc = control_softc;
+	softc = control_softc;
 
-	mtx_lock(&ctl_softc->ctl_lock);
+	mtx_lock(&softc->ctl_lock);
 
-	STAILQ_FOREACH(be_tmp, &ctl_softc->be_list, links) {
+	STAILQ_FOREACH(be_tmp, &softc->be_list, links) {
 		if (strcmp(be_tmp->name, backend_name) == 0) {
-			mtx_unlock(&ctl_softc->ctl_lock);
+			mtx_unlock(&softc->ctl_lock);
 			return (be_tmp);
 		}
 	}
 
-	mtx_unlock(&ctl_softc->ctl_lock);
+	mtx_unlock(&softc->ctl_lock);
 
 	return (NULL);
 }
 
 void
-ctl_init_opts(struct ctl_be_lun *be_lun, struct ctl_lun_req *req)
+ctl_init_opts(ctl_options_t *opts, int num_args, struct ctl_be_arg *args)
 {
-	struct ctl_be_lun_option *opt;
+	struct ctl_option *opt;
 	int i;
 
-	STAILQ_INIT(&be_lun->options);
-	for (i = 0; i < req->num_be_args; i++) {
+	STAILQ_INIT(opts);
+	for (i = 0; i < num_args; i++) {
+		if ((args[i].flags & CTL_BEARG_RD) == 0)
+			continue;
+		if ((args[i].flags & CTL_BEARG_ASCII) == 0)
+			continue;
 		opt = malloc(sizeof(*opt), M_CTL, M_WAITOK);
-		opt->name = malloc(strlen(req->kern_be_args[i].kname) + 1, M_CTL, M_WAITOK);
-		strcpy(opt->name, req->kern_be_args[i].kname);
-		opt->value = malloc(strlen(req->kern_be_args[i].kvalue) + 1, M_CTL, M_WAITOK);
-		strcpy(opt->value, req->kern_be_args[i].kvalue);
-		STAILQ_INSERT_TAIL(&be_lun->options, opt, links);
+		opt->name = malloc(strlen(args[i].kname) + 1, M_CTL, M_WAITOK);
+		strcpy(opt->name, args[i].kname);
+		opt->value = malloc(strlen(args[i].kvalue) + 1, M_CTL, M_WAITOK);
+		strcpy(opt->value, args[i].kvalue);
+		STAILQ_INSERT_TAIL(opts, opt, links);
 	}
 }
 
 void
-ctl_free_opts(struct ctl_be_lun *be_lun)
+ctl_free_opts(ctl_options_t *opts)
 {
-	struct ctl_be_lun_option *opt;
+	struct ctl_option *opt;
 
-	while ((opt = STAILQ_FIRST(&be_lun->options)) != NULL) {
-		STAILQ_REMOVE_HEAD(&be_lun->options, links);
+	while ((opt = STAILQ_FIRST(opts)) != NULL) {
+		STAILQ_REMOVE_HEAD(opts, links);
 		free(opt->name, M_CTL);
 		free(opt->value, M_CTL);
 		free(opt, M_CTL);
@@ -204,11 +208,11 @@ ctl_free_opts(struct ctl_be_lun *be_lun)
 }
 
 char *
-ctl_get_opt(struct ctl_be_lun *be_lun, const char *name)
+ctl_get_opt(ctl_options_t *opts, const char *name)
 {
-	struct ctl_be_lun_option *opt;
+	struct ctl_option *opt;
 
-	STAILQ_FOREACH(opt, &be_lun->options, links) {
+	STAILQ_FOREACH(opt, opts, links) {
 		if (strcmp(opt->name, name) == 0) {
 			return (opt->value);
 		}

@@ -146,7 +146,7 @@ MAN		The manual pages to be installed (use a .1 - .9 suffix).
 
 MLINKS		List of manual page links (using a .1 - .9 suffix).  The
 		linked-to file must come first, the linked file second,
-		and there may be multiple pairs.  The files are soft-linked.
+		and there may be multiple pairs.  The files are hard-linked.
 
 The include file <bsd.man.mk> includes a file named "../Makefile.inc" if
 it exists.
@@ -231,7 +231,9 @@ LDADD		Additional loader objects.  Usually used for libraries.
 
 			LDADD=-lutil -lcompat
 
-LDFLAGS		Additional loader flags.
+LDFLAGS		Additional loader flags. Passed to the loader via CC,
+		since that's used to link programs as well, so loader
+		specific flags need to be prefixed with -Wl, to work.
 
 LINKS		The list of binary links; should be full pathnames, the
 		linked-to file coming first, followed by the linked
@@ -333,6 +335,13 @@ install, lint, and tags.  It has a limited number of suffixes, consistent
 with the current needs of the BSD tree.
 
 It sets/uses the following variables:
+
+LIB		The name of the library to build.
+
+LIB_CXX		The name of the library to build. It also causes
+		<bsd.lib.mk> to link the library with the
+		standard C++ library.  LIB_CXX overrides the value
+		of LIB if LIB is also set.
 
 LIBDIR		Target directory for libraries.
 

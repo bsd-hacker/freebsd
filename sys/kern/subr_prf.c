@@ -102,23 +102,20 @@ static void  snprintf_func(int ch, void *arg);
 static int msgbufmapped;		/* Set when safe to use msgbuf */
 int msgbuftrigger;
 
-static int      log_console_output = 1;
-TUNABLE_INT("kern.log_console_output", &log_console_output);
-SYSCTL_INT(_kern, OID_AUTO, log_console_output, CTLFLAG_RW,
-    &log_console_output, 0, "Duplicate console output to the syslog.");
+static int log_console_output = 1;
+SYSCTL_INT(_kern, OID_AUTO, log_console_output, CTLFLAG_RWTUN,
+    &log_console_output, 0, "Duplicate console output to the syslog");
 
 /*
  * See the comment in log_console() below for more explanation of this.
  */
-static int log_console_add_linefeed = 0;
-TUNABLE_INT("kern.log_console_add_linefeed", &log_console_add_linefeed);
-SYSCTL_INT(_kern, OID_AUTO, log_console_add_linefeed, CTLFLAG_RW,
-    &log_console_add_linefeed, 0, "log_console() adds extra newlines.");
+static int log_console_add_linefeed;
+SYSCTL_INT(_kern, OID_AUTO, log_console_add_linefeed, CTLFLAG_RWTUN,
+    &log_console_add_linefeed, 0, "log_console() adds extra newlines");
 
-static int	always_console_output = 0;
-TUNABLE_INT("kern.always_console_output", &always_console_output);
-SYSCTL_INT(_kern, OID_AUTO, always_console_output, CTLFLAG_RW,
-    &always_console_output, 0, "Always output to console despite TIOCCONS.");
+static int always_console_output;
+SYSCTL_INT(_kern, OID_AUTO, always_console_output, CTLFLAG_RWTUN,
+    &always_console_output, 0, "Always output to console despite TIOCCONS");
 
 /*
  * Warn that a system table is full.
@@ -298,7 +295,7 @@ log(int level, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	(void)_vprintf(level, log_open ? TOLOG : TOCONS, fmt, ap);
+	(void)_vprintf(level, log_open ? TOLOG : TOCONS | TOLOG, fmt, ap);
 	va_end(ap);
 
 	msgbuftrigger = 1;
@@ -601,7 +598,7 @@ ksprintn(char *nbuf, uintmax_t num, int base, int *lenp, int upper)
  * the next characters (up to a control character, i.e. a character <= 32),
  * give the name of the register.  Thus:
  *
- *	kvprintf("reg=%b\n", 3, "\10\2BITTWO\1BITONE\n");
+ *	kvprintf("reg=%b\n", 3, "\10\2BITTWO\1BITONE");
  *
  * would produce output:
  *
@@ -914,7 +911,7 @@ number:
 			while (percent < fmt)
 				PCHAR(*percent++);
 			/*
-			 * Since we ignore a formatting argument it is no 
+			 * Since we ignore a formatting argument it is no
 			 * longer safe to obey the remaining formatting
 			 * arguments as the arguments will no longer match
 			 * the format specs.
@@ -1012,7 +1009,7 @@ sysctl_kern_msgbuf(SYSCTL_HANDLER_ARGS)
 		len = msgbuf_peekbytes(msgbufp, buf, sizeof(buf), &seq);
 		mtx_unlock(&msgbuf_lock);
 		if (len == 0)
-			return (0);
+			return (SYSCTL_OUT(req, "", 1)); /* add nulterm */
 
 		error = sysctl_handle_opaque(oidp, buf, len, req);
 		if (error)

@@ -235,7 +235,7 @@ pxe_listen(int socket, uint8_t proto, uint16_t port)
 	
 	while (pxe_sockets[socket].waiting == 0) {
 #ifdef PXE_DEBUG
-		twiddle();
+		twiddle(1);
 #endif		
 		if (!pxe_core_recv_packets()) {
 			delay(100000);

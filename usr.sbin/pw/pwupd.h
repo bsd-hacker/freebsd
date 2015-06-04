@@ -71,6 +71,10 @@ extern struct pwf VPWF;
 #define GETGRGID(gid)	PWF._getgrgid(gid)
 #define GETGRNAM(nam)	PWF._getgrnam(nam)
 
+#define PWF_REGULAR 0
+#define PWF_ALT 1
+#define PWF_ROOTDIR 2
+
 #define PWALTDIR()	PWF._altdir
 #ifndef _PATH_PWD
 #define _PATH_PWD	"/etc"
@@ -93,7 +97,6 @@ char * getpwpath(char const * file);
 int addgrent(struct group * grp);
 int delgrent(struct group * grp);
 int chggrent(char const * name, struct group * grp);
-int editgroups(char *name, char **groups);
 
 int setgrdir(const char * dir);
 char * getgrpath(const char *file);
@@ -112,10 +115,7 @@ void           vendgrent(void);
 
 void copymkdir(char const * dir, char const * skel, mode_t mode, uid_t uid, gid_t gid);
 void rm_r(char const * dir, uid_t uid);
-int extendline(char **buf, int *buflen, int needed);
 int extendarray(char ***buf, int *buflen, int needed);
 __END_DECLS
-
-#define PWBUFSZ 1024
 
 #endif				/* !_PWUPD_H */

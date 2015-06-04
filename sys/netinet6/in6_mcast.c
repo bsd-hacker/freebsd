@@ -158,21 +158,18 @@ static SYSCTL_NODE(_net_inet6_ip6, OID_AUTO, mcast, CTLFLAG_RW, 0,
 
 static u_long in6_mcast_maxgrpsrc = IPV6_MAX_GROUP_SRC_FILTER;
 SYSCTL_ULONG(_net_inet6_ip6_mcast, OID_AUTO, maxgrpsrc,
-    CTLFLAG_RW | CTLFLAG_TUN, &in6_mcast_maxgrpsrc, 0,
+    CTLFLAG_RWTUN, &in6_mcast_maxgrpsrc, 0,
     "Max source filters per group");
-TUNABLE_ULONG("net.inet6.ip6.mcast.maxgrpsrc", &in6_mcast_maxgrpsrc);
 
 static u_long in6_mcast_maxsocksrc = IPV6_MAX_SOCK_SRC_FILTER;
 SYSCTL_ULONG(_net_inet6_ip6_mcast, OID_AUTO, maxsocksrc,
-    CTLFLAG_RW | CTLFLAG_TUN, &in6_mcast_maxsocksrc, 0,
+    CTLFLAG_RWTUN, &in6_mcast_maxsocksrc, 0,
     "Max source filters per socket");
-TUNABLE_ULONG("net.inet6.ip6.mcast.maxsocksrc", &in6_mcast_maxsocksrc);
 
 /* TODO Virtualize this switch. */
 int in6_mcast_loop = IPV6_DEFAULT_MULTICAST_LOOP;
-SYSCTL_INT(_net_inet6_ip6_mcast, OID_AUTO, loop, CTLFLAG_RW | CTLFLAG_TUN,
+SYSCTL_INT(_net_inet6_ip6_mcast, OID_AUTO, loop, CTLFLAG_RWTUN,
     &in6_mcast_loop, 0, "Loopback multicast datagrams by default");
-TUNABLE_INT("net.inet6.ip6.mcast.loop", &in6_mcast_loop);
 
 static SYSCTL_NODE(_net_inet6_ip6_mcast, OID_AUTO, filters,
     CTLFLAG_RD | CTLFLAG_MPSAFE, sysctl_ip6_mcast_filters,
@@ -482,7 +479,7 @@ in6_mc_get(struct ifnet *ifp, const struct in6_addr *group,
 	inm->in6m_ifma = ifma;
 	inm->in6m_refcount = 1;
 	inm->in6m_state = MLD_NOT_MEMBER;
-	IFQ_SET_MAXLEN(&inm->in6m_scq, MLD_MAX_STATE_CHANGES);
+	mbufq_init(&inm->in6m_scq, MLD_MAX_STATE_CHANGES);
 
 	inm->in6m_st[0].iss_fmode = MCAST_UNDEFINED;
 	inm->in6m_st[1].iss_fmode = MCAST_UNDEFINED;
@@ -1076,6 +1073,8 @@ in6m_purge(struct in6_multi *inm)
 		free(ims, M_IP6MSOURCE);
 		inm->in6m_nsrc--;
 	}
+	/* Free state-change requests that might be queued. */
+	mbufq_drain(&inm->in6m_scq);
 }
 
 /*
@@ -2349,11 +2348,15 @@ in6p_set_multicast_if(struct inpcb *inp, struct sockopt *sopt)
 		return (error);
 	if (V_if_index < ifindex)
 		return (EINVAL);
-
-	ifp = ifnet_byindex(ifindex);
-	if (ifp == NULL || (ifp->if_flags & IFF_MULTICAST) == 0)
-		return (EADDRNOTAVAIL);
-
+	if (ifindex == 0)
+		ifp = NULL;
+	else {
+		ifp = ifnet_byindex(ifindex);
+		if (ifp == NULL)
+			return (EINVAL);
+		if ((ifp->if_flags & IFF_MULTICAST) == 0)
+			return (EADDRNOTAVAIL);
+	}
 	imo = in6p_findmoptions(inp);
 	imo->im6o_multicast_ifp = ifp;
 	INP_WUNLOCK(inp);
@@ -2805,7 +2808,7 @@ in6m_print(const struct in6_multi *inm)
 	    inm->in6m_timer,
 	    in6m_state_str(inm->in6m_state),
 	    inm->in6m_refcount,
-	    inm->in6m_scq.ifq_len);
+	    mbufq_len(&inm->in6m_scq));
 	printf("mli %p nsrc %lu sctimer %u scrv %u\n",
 	    inm->in6m_mli,
 	    inm->in6m_nsrc,

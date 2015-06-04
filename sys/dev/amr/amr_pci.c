@@ -92,7 +92,6 @@ static int		amr_setup_mbox(struct amr_softc *sc);
 static int		amr_ccb_map(struct amr_softc *sc);
 
 static u_int amr_force_sg32 = 0;
-TUNABLE_INT("hw.amr.force_sg32", &amr_force_sg32);
 SYSCTL_DECL(_hw_amr);
 SYSCTL_UINT(_hw_amr, OID_AUTO, force_sg32, CTLFLAG_RDTUN, &amr_force_sg32, 0,
     "Force the AMR driver to use 32bit scatter gather");
@@ -261,7 +260,8 @@ amr_pci_attach(device_t dev)
 			   BUS_SPACE_MAXADDR_32BIT,	/* lowaddr */
 			   BUS_SPACE_MAXADDR, 		/* highaddr */
 			   NULL, NULL, 			/* filter, filterarg */
-			   MAXBSIZE, AMR_NSEG,		/* maxsize, nsegments */
+			   BUS_SPACE_MAXSIZE,		/* maxsize */
+			   BUS_SPACE_UNRESTRICTED,	/* nsegments */
 			   BUS_SPACE_MAXSIZE_32BIT,	/* maxsegsize */
 			   0,				/* flags */
 			   NULL, NULL,			/* lockfunc, lockarg */
@@ -278,8 +278,9 @@ amr_pci_attach(device_t dev)
 			   BUS_SPACE_MAXADDR_32BIT,	/* lowaddr */
 			   BUS_SPACE_MAXADDR,		/* highaddr */
 			   NULL, NULL,			/* filter, filterarg */
-			   MAXBSIZE, AMR_NSEG,		/* maxsize, nsegments */
-			   MAXBSIZE,			/* maxsegsize */
+			   DFLTPHYS,			/* maxsize */
+			   AMR_NSEG,			/* nsegments */
+			   BUS_SPACE_MAXSIZE_32BIT,	/* maxsegsize */
 			   0,		/* flags */
 			   busdma_lock_mutex,		/* lockfunc */
 			   &sc->amr_list_lock,		/* lockarg */
@@ -293,8 +294,9 @@ amr_pci_attach(device_t dev)
 			   BUS_SPACE_MAXADDR,		/* lowaddr */
 			   BUS_SPACE_MAXADDR,		/* highaddr */
 			   NULL, NULL,			/* filter, filterarg */
-			   MAXBSIZE, AMR_NSEG,		/* maxsize, nsegments */
-			   MAXBSIZE,			/* maxsegsize */
+			   DFLTPHYS,			/* maxsize */
+			   AMR_NSEG,			/* nsegments */
+			   BUS_SPACE_MAXSIZE_32BIT,	/* maxsegsize */
 			   0,		/* flags */
 			   busdma_lock_mutex,		/* lockfunc */
 			   &sc->amr_list_lock,		/* lockarg */

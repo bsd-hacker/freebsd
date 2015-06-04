@@ -104,10 +104,10 @@ int
 emulate_inout(struct vmctx *ctx, int vcpu, struct vm_exit *vmexit, int strict)
 {
 	int addrsize, bytes, flags, in, port, prot, rep;
-	uint32_t val;
+	uint32_t eax, val;
 	inout_func_t handler;
 	void *arg;
-	int error, retval;
+	int error, fault, retval;
 	enum vm_reg_name idxreg;
 	uint64_t gla, index, iterations, count;
 	struct vm_inout_str *vis;
@@ -154,31 +154,28 @@ emulate_inout(struct vmctx *ctx, int vcpu, struct vm_exit *vmexit, int strict)
 		/* Limit number of back-to-back in/out emulations to 16 */
 		iterations = MIN(count, 16);
 		while (iterations > 0) {
+			assert(retval == 0);
 			if (vie_calculate_gla(vis->paging.cpu_mode,
 			    vis->seg_name, &vis->seg_desc, index, bytes,
 			    addrsize, prot, &gla)) {
-				error = vm_inject_exception2(ctx, vcpu,
-				    IDT_GP, 0);
-				assert(error == 0);
-				retval = INOUT_RESTART;
+				vm_inject_gp(ctx, vcpu);
 				break;
 			}
 
-			error = vm_gla2gpa(ctx, vcpu, &vis->paging, gla, bytes,
-			    prot, iov, nitems(iov));
-			assert(error == 0 || error == 1 || error == -1);
+			error = vm_copy_setup(ctx, vcpu, &vis->paging, gla,
+			    bytes, prot, iov, nitems(iov), &fault);
 			if (error) {
-				retval = (error == 1) ? INOUT_RESTART :
-				    INOUT_ERROR;
+				retval = -1;  /* Unrecoverable error */
+				break;
+			} else if (fault) {
+				retval = 0;  /* Resume guest to handle fault */
 				break;
 			}
 
 			if (vie_alignment_check(vis->paging.cpl, bytes,
 			    vis->cr0, vis->rflags, gla)) {
-				error = vm_inject_exception2(ctx, vcpu,
-				    IDT_AC, 0);
-				assert(error == 0);
-				return (INOUT_RESTART);
+				vm_inject_ac(ctx, vcpu, 0);
+				break;
 			}
 
 			val = 0;
@@ -217,16 +214,20 @@ emulate_inout(struct vmctx *ctx, int vcpu, struct vm_exit *vmexit, int strict)
 		}
 
 		/* Restart the instruction if more iterations remain */
-		if (retval == INOUT_OK && count != 0)
-			retval = INOUT_RESTART;
-	} else {
-		if (!in) {
-			val = vmexit->u.inout.eax & vie_size2mask(bytes);
+		if (retval == 0 && count != 0) {
+			error = vm_restart_instruction(ctx, vcpu);
+			assert(error == 0);
 		}
+	} else {
+		eax = vmexit->u.inout.eax;
+		val = eax & vie_size2mask(bytes);
 		retval = handler(ctx, vcpu, in, port, bytes, &val, arg);
 		if (retval == 0 && in) {
-			vmexit->u.inout.eax &= ~vie_size2mask(bytes);
-			vmexit->u.inout.eax |= val & vie_size2mask(bytes);
+			eax &= ~vie_size2mask(bytes);
+			eax |= val & vie_size2mask(bytes);
+			error = vm_set_register(ctx, vcpu, VM_REG_GUEST_RAX,
+			    eax);
+			assert(error == 0);
 		}
 	}
 	return (retval);

@@ -71,12 +71,12 @@ __FBSDID("$FreeBSD$");
 #include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/route.h>
+#include <net/rss_config.h>
 #include <net/vnet.h>
 
 #if defined(INET) || defined(INET6)
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
-#include <netinet/in_rss.h>
 #include <netinet/ip_var.h>
 #include <netinet/tcp_var.h>
 #include <netinet/udp.h>
@@ -164,34 +164,38 @@ sysctl_net_ipport_check(SYSCTL_HANDLER_ARGS)
 static SYSCTL_NODE(_net_inet_ip, IPPROTO_IP, portrange, CTLFLAG_RW, 0,
     "IP Ports");
 
-SYSCTL_VNET_PROC(_net_inet_ip_portrange, OID_AUTO, lowfirst,
-	CTLTYPE_INT|CTLFLAG_RW, &VNET_NAME(ipport_lowfirstauto), 0,
-	&sysctl_net_ipport_check, "I", "");
-SYSCTL_VNET_PROC(_net_inet_ip_portrange, OID_AUTO, lowlast,
-	CTLTYPE_INT|CTLFLAG_RW, &VNET_NAME(ipport_lowlastauto), 0,
-	&sysctl_net_ipport_check, "I", "");
-SYSCTL_VNET_PROC(_net_inet_ip_portrange, OID_AUTO, first,
-	CTLTYPE_INT|CTLFLAG_RW, &VNET_NAME(ipport_firstauto), 0,
-	&sysctl_net_ipport_check, "I", "");
-SYSCTL_VNET_PROC(_net_inet_ip_portrange, OID_AUTO, last,
-	CTLTYPE_INT|CTLFLAG_RW, &VNET_NAME(ipport_lastauto), 0,
-	&sysctl_net_ipport_check, "I", "");
-SYSCTL_VNET_PROC(_net_inet_ip_portrange, OID_AUTO, hifirst,
-	CTLTYPE_INT|CTLFLAG_RW, &VNET_NAME(ipport_hifirstauto), 0,
-	&sysctl_net_ipport_check, "I", "");
-SYSCTL_VNET_PROC(_net_inet_ip_portrange, OID_AUTO, hilast,
-	CTLTYPE_INT|CTLFLAG_RW, &VNET_NAME(ipport_hilastauto), 0,
-	&sysctl_net_ipport_check, "I", "");
-SYSCTL_VNET_INT(_net_inet_ip_portrange, OID_AUTO, reservedhigh,
-	CTLFLAG_RW|CTLFLAG_SECURE, &VNET_NAME(ipport_reservedhigh), 0, "");
-SYSCTL_VNET_INT(_net_inet_ip_portrange, OID_AUTO, reservedlow,
+SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, lowfirst,
+	CTLFLAG_VNET | CTLTYPE_INT | CTLFLAG_RW,
+	&VNET_NAME(ipport_lowfirstauto), 0, &sysctl_net_ipport_check, "I", "");
+SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, lowlast,
+	CTLFLAG_VNET | CTLTYPE_INT | CTLFLAG_RW,
+	&VNET_NAME(ipport_lowlastauto), 0, &sysctl_net_ipport_check, "I", "");
+SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, first,
+	CTLFLAG_VNET | CTLTYPE_INT | CTLFLAG_RW,
+	&VNET_NAME(ipport_firstauto), 0, &sysctl_net_ipport_check, "I", "");
+SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, last,
+	CTLFLAG_VNET | CTLTYPE_INT | CTLFLAG_RW,
+	&VNET_NAME(ipport_lastauto), 0, &sysctl_net_ipport_check, "I", "");
+SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, hifirst,
+	CTLFLAG_VNET | CTLTYPE_INT | CTLFLAG_RW,
+	&VNET_NAME(ipport_hifirstauto), 0, &sysctl_net_ipport_check, "I", "");
+SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, hilast,
+	CTLFLAG_VNET | CTLTYPE_INT | CTLFLAG_RW,
+	&VNET_NAME(ipport_hilastauto), 0, &sysctl_net_ipport_check, "I", "");
+SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, reservedhigh,
+	CTLFLAG_VNET | CTLFLAG_RW | CTLFLAG_SECURE,
+	&VNET_NAME(ipport_reservedhigh), 0, "");
+SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, reservedlow,
 	CTLFLAG_RW|CTLFLAG_SECURE, &VNET_NAME(ipport_reservedlow), 0, "");
-SYSCTL_VNET_INT(_net_inet_ip_portrange, OID_AUTO, randomized, CTLFLAG_RW,
+SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, randomized,
+	CTLFLAG_VNET | CTLFLAG_RW,
 	&VNET_NAME(ipport_randomized), 0, "Enable random port allocation");
-SYSCTL_VNET_INT(_net_inet_ip_portrange, OID_AUTO, randomcps, CTLFLAG_RW,
+SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, randomcps,
+	CTLFLAG_VNET | CTLFLAG_RW,
 	&VNET_NAME(ipport_randomcps), 0, "Maximum number of random port "
 	"allocations before switching to a sequental one");
-SYSCTL_VNET_INT(_net_inet_ip_portrange, OID_AUTO, randomtime, CTLFLAG_RW,
+SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, randomtime,
+	CTLFLAG_VNET | CTLFLAG_RW,
 	&VNET_NAME(ipport_randomtime), 0,
 	"Minimum time to keep sequental port "
 	"allocation before switching to a random one");
@@ -349,6 +353,9 @@ in_pcbbind(struct inpcb *inp, struct sockaddr *nam, struct ucred *cred)
 }
 #endif
 
+/*
+ * Select a local port (number) to use.
+ */
 #if defined(INET) || defined(INET6)
 int
 in_pcb_lport(struct inpcb *inp, struct in_addr *laddrp, u_short *lportp,
@@ -462,7 +469,7 @@ in_pcb_lport(struct inpcb *inp, struct in_addr *laddrp, u_short *lportp,
 #ifdef INET
 	if ((inp->inp_vflag & (INP_IPV4|INP_IPV6)) == INP_IPV4)
 		laddrp->s_addr = laddr.s_addr;
-#endif                 
+#endif
 	*lportp = lport;
 
 	return (0);
@@ -485,6 +492,36 @@ inp_so_options(const struct inpcb *inp)
    return (so_options);
 }
 #endif /* INET || INET6 */
+
+/*
+ * Check if a new BINDMULTI socket is allowed to be created.
+ *
+ * ni points to the new inp.
+ * oi points to the exisitng inp.
+ *
+ * This checks whether the existing inp also has BINDMULTI and
+ * whether the credentials match.
+ */
+int
+in_pcbbind_check_bindmulti(const struct inpcb *ni, const struct inpcb *oi)
+{
+	/* Check permissions match */
+	if ((ni->inp_flags2 & INP_BINDMULTI) &&
+	    (ni->inp_cred->cr_uid !=
+	    oi->inp_cred->cr_uid))
+		return (0);
+
+	/* Check the existing inp has BINDMULTI set */
+	if ((ni->inp_flags2 & INP_BINDMULTI) &&
+	    ((oi->inp_flags2 & INP_BINDMULTI) == 0))
+		return (0);
+
+	/*
+	 * We're okay - either INP_BINDMULTI isn't set on ni, or
+	 * it is and it matches the checks.
+	 */
+	return (1);
+}
 
 #ifdef INET
 /*
@@ -589,6 +626,7 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 	 * This entire block sorely needs a rewrite.
 	 */
 				if (t &&
+				    ((inp->inp_flags2 & INP_BINDMULTI) == 0) &&
 				    ((t->inp_flags & INP_TIMEWAIT) == 0) &&
 				    (so->so_type != SOCK_STREAM ||
 				     ntohl(t->inp_faddr.s_addr) == INADDR_ANY) &&
@@ -597,6 +635,15 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 				     (t->inp_flags2 & INP_REUSEPORT) == 0) &&
 				    (inp->inp_cred->cr_uid !=
 				     t->inp_cred->cr_uid))
+					return (EADDRINUSE);
+
+				/*
+				 * If the socket is a BINDMULTI socket, then
+				 * the credentials need to match and the
+				 * original socket also has to have been bound
+				 * with BINDMULTI.
+				 */
+				if (t && (! in_pcbbind_check_bindmulti(inp, t)))
 					return (EADDRINUSE);
 			}
 			t = in_pcblookup_local(pcbinfo, sin->sin_addr,
@@ -612,7 +659,9 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 				if (tw == NULL ||
 				    (reuseport & tw->tw_so_options) == 0)
 					return (EADDRINUSE);
-			} else if (t && (reuseport & inp_so_options(t)) == 0) {
+			} else if (t &&
+			    ((inp->inp_flags2 & INP_BINDMULTI) == 0) &&
+			    (reuseport & inp_so_options(t)) == 0) {
 #ifdef INET6
 				if (ntohl(sin->sin_addr.s_addr) !=
 				    INADDR_ANY ||
@@ -622,6 +671,8 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 				    (t->inp_vflag & INP_IPV6PROTO) == 0)
 #endif
 				return (EADDRINUSE);
+				if (t && (! in_pcbbind_check_bindmulti(inp, t)))
+					return (EADDRINUSE);
 			}
 		}
 	}
@@ -745,9 +796,11 @@ in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
 		struct in_ifaddr *ia;
 		struct ifnet *ifp;
 
-		ia = ifatoia(ifa_ifwithdstaddr((struct sockaddr *)sin));
+		ia = ifatoia(ifa_ifwithdstaddr((struct sockaddr *)sin,
+					inp->inp_socket->so_fibnum));
 		if (ia == NULL)
-			ia = ifatoia(ifa_ifwithnet((struct sockaddr *)sin, 0));
+			ia = ifatoia(ifa_ifwithnet((struct sockaddr *)sin, 0,
+						inp->inp_socket->so_fibnum));
 		if (ia == NULL) {
 			error = ENETUNREACH;
 			goto done;
@@ -862,9 +915,11 @@ in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
 		sain.sin_len = sizeof(struct sockaddr_in);
 		sain.sin_addr.s_addr = faddr->s_addr;
 
-		ia = ifatoia(ifa_ifwithdstaddr(sintosa(&sain)));
+		ia = ifatoia(ifa_ifwithdstaddr(sintosa(&sain),
+					inp->inp_socket->so_fibnum));
 		if (ia == NULL)
-			ia = ifatoia(ifa_ifwithnet(sintosa(&sain), 0));
+			ia = ifatoia(ifa_ifwithnet(sintosa(&sain), 0,
+						inp->inp_socket->so_fibnum));
 		if (ia == NULL)
 			ia = ifatoia(ifa_ifwithaddr(sintosa(&sain)));
 
@@ -1556,6 +1611,83 @@ in_pcblookup_group(struct inpcbinfo *pcbinfo, struct inpcbgroup *pcbgroup,
 		goto found;
 	}
 
+#ifdef	RSS
+	/*
+	 * For incoming connections, we may wish to do a wildcard
+	 * match for an RSS-local socket.
+	 */
+	if ((lookupflags & INPLOOKUP_WILDCARD) != 0) {
+		struct inpcb *local_wild = NULL, *local_exact = NULL;
+#ifdef INET6
+		struct inpcb *local_wild_mapped = NULL;
+#endif
+		struct inpcb *jail_wild = NULL;
+		struct inpcbhead *head;
+		int injail;
+
+		/*
+		 * Order of socket selection - we always prefer jails.
+		 *      1. jailed, non-wild.
+		 *      2. jailed, wild.
+		 *      3. non-jailed, non-wild.
+		 *      4. non-jailed, wild.
+		 */
+
+		head = &pcbgroup->ipg_hashbase[INP_PCBHASH(INADDR_ANY,
+		    lport, 0, pcbgroup->ipg_hashmask)];
+		LIST_FOREACH(inp, head, inp_pcbgrouphash) {
+#ifdef INET6
+			/* XXX inp locking */
+			if ((inp->inp_vflag & INP_IPV4) == 0)
+				continue;
+#endif
+			if (inp->inp_faddr.s_addr != INADDR_ANY ||
+			    inp->inp_lport != lport)
+				continue;
+
+			injail = prison_flag(inp->inp_cred, PR_IP4);
+			if (injail) {
+				if (prison_check_ip4(inp->inp_cred,
+				    &laddr) != 0)
+					continue;
+			} else {
+				if (local_exact != NULL)
+					continue;
+			}
+
+			if (inp->inp_laddr.s_addr == laddr.s_addr) {
+				if (injail)
+					goto found;
+				else
+					local_exact = inp;
+			} else if (inp->inp_laddr.s_addr == INADDR_ANY) {
+#ifdef INET6
+				/* XXX inp locking, NULL check */
+				if (inp->inp_vflag & INP_IPV6PROTO)
+					local_wild_mapped = inp;
+				else
+#endif
+					if (injail)
+						jail_wild = inp;
+					else
+						local_wild = inp;
+			}
+		} /* LIST_FOREACH */
+
+		inp = jail_wild;
+		if (inp == NULL)
+			inp = local_exact;
+		if (inp == NULL)
+			inp = local_wild;
+#ifdef INET6
+		if (inp == NULL)
+			inp = local_wild_mapped;
+#endif
+		if (inp != NULL)
+			goto found;
+	}
+#endif
+
 	/*
 	 * Then look for a wildcard match, if requested.
 	 */
@@ -1585,11 +1717,6 @@ in_pcblookup_group(struct inpcbinfo *pcbinfo, struct inpcbgroup *pcbgroup,
 #endif
 			if (inp->inp_faddr.s_addr != INADDR_ANY ||
 			    inp->inp_lport != lport)
-				continue;
-
-			/* XXX inp locking */
-			if (ifp && ifp->if_type == IFT_FAITH &&
-			    (inp->inp_flags & INP_FAITH) == 0)
 				continue;
 
 			injail = prison_flag(inp->inp_cred, PR_IP4);
@@ -1730,11 +1857,6 @@ in_pcblookup_hash_locked(struct inpcbinfo *pcbinfo, struct in_addr faddr,
 #endif
 			if (inp->inp_faddr.s_addr != INADDR_ANY ||
 			    inp->inp_lport != lport)
-				continue;
-
-			/* XXX inp locking */
-			if (ifp && ifp->if_type == IFT_FAITH &&
-			    (inp->inp_flags & INP_FAITH) == 0)
 				continue;
 
 			injail = prison_flag(inp->inp_cred, PR_IP4);
@@ -1917,7 +2039,7 @@ in_pcbinshash_internal(struct inpcb *inp, int do_pcbgroup_update)
 
 #ifdef INET6
 	if (inp->inp_vflag & INP_IPV6)
-		hashkey_faddr = inp->in6p_faddr.s6_addr32[3] /* XXX */;
+		hashkey_faddr = INP6_PCBHASHKEY(&inp->in6p_faddr);
 	else
 #endif
 	hashkey_faddr = inp->inp_faddr.s_addr;
@@ -2004,7 +2126,7 @@ in_pcbrehash_mbuf(struct inpcb *inp, struct mbuf *m)
 
 #ifdef INET6
 	if (inp->inp_vflag & INP_IPV6)
-		hashkey_faddr = inp->in6p_faddr.s6_addr32[3] /* XXX */;
+		hashkey_faddr = INP6_PCBHASHKEY(&inp->in6p_faddr);
 	else
 #endif
 	hashkey_faddr = inp->inp_faddr.s_addr;
@@ -2127,7 +2249,7 @@ ipport_tick_init(const void *unused __unused)
 {
 
 	/* Start ipport_tick. */
-	callout_init(&ipport_tick_callout, CALLOUT_MPSAFE);
+	callout_init(&ipport_tick_callout, 1);
 	callout_reset(&ipport_tick_callout, 1, ipport_tick, NULL);
 	EVENTHANDLER_REGISTER(shutdown_pre_sync, ip_fini, NULL,
 		SHUTDOWN_PRI_DEFAULT);
@@ -2329,10 +2451,6 @@ db_print_inpflags(int inp_flags)
 	}
 	if (inp_flags & INP_MTUDISC) {
 		db_printf("%sINP_MTUDISC", comma ? ", " : "");
-		comma = 1;
-	}
-	if (inp_flags & INP_FAITH) {
-		db_printf("%sINP_FAITH", comma ? ", " : "");
 		comma = 1;
 	}
 	if (inp_flags & INP_RECVTTL) {

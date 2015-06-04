@@ -4,7 +4,7 @@
 .error bsd.incs.mk cannot be included directly.
 .endif
 
-.if ${MK_TOOLCHAIN} != "no"
+.if ${MK_INCLUDES} != "no"
 
 INCSGROUPS?=	INCS
 
@@ -23,7 +23,7 @@ all: buildincludes
 ${group}OWN?=	${BINOWN}
 ${group}GRP?=	${BINGRP}
 ${group}MODE?=	${NOBINMODE}
-${group}DIR?=	${INCLUDEDIR}
+${group}DIR?=	${INCLUDEDIR}${PRIVATELIB:D/private/${LIB}}
 
 _${group}INCS=
 .for header in ${${group}}

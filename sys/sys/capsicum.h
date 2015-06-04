@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2008-2010 Robert N. M. Watson
+ * Copyright (c) 2008-2010, 2015 Robert N. M. Watson
  * Copyright (c) 2012 FreeBSD Foundation
  * All rights reserved.
  *
@@ -146,9 +146,9 @@
 #define	CAP_FSTATAT		(CAP_FSTAT | CAP_LOOKUP)
 /* Allows for fstatfs(2). */
 #define	CAP_FSTATFS		CAPRIGHT(0, 0x0000000000100000ULL)
-/* Allows for futimes(2). */
+/* Allows for futimens(2) and futimes(2). */
 #define	CAP_FUTIMES		CAPRIGHT(0, 0x0000000000200000ULL)
-/* Allows for futimes(2) and futimesat(2). */
+/* Allows for futimens(2), futimes(2), futimesat(2) and utimensat(2). */
 #define	CAP_FUTIMESAT		(CAP_FUTIMES | CAP_LOOKUP)
 /* Allows for linkat(2) and renameat(2) (destination directory descriptor). */
 #define	CAP_LINKAT		(CAP_LOOKUP | 0x0000000000400000ULL)
@@ -206,10 +206,10 @@
 	 CAP_SETSOCKOPT | CAP_SHUTDOWN)
 
 /* All used bits for index 0. */
-#define	CAP_ALL0		CAPRIGHT(0, 0x0000007FFFFFFFFFULL)
+#define	CAP_ALL0		CAPRIGHT(0, 0x000001FFFFFFFFFFULL)
 
 /* Available bits for index 0. */
-#define	CAP_UNUSED0_40		CAPRIGHT(0, 0x0000008000000000ULL)
+#define	CAP_UNUSED0_42		CAPRIGHT(0, 0x0000020000000000ULL)
 /* ... */
 #define	CAP_UNUSED0_57		CAPRIGHT(0, 0x0100000000000000ULL)
 
@@ -341,6 +341,7 @@ __END_DECLS
 #define IN_CAPABILITY_MODE(td) (((td)->td_ucred->cr_flags & CRED_FLAG_CAPMODE) != 0)
 
 struct filedesc;
+struct filedescent;
 
 /*
  * Test whether a capability grants the requested rights.
@@ -355,9 +356,11 @@ u_char	cap_rights_to_vmprot(cap_rights_t *havep);
  * For the purposes of procstat(1) and similar tools, allow kern_descrip.c to
  * extract the rights from a capability.
  */
+cap_rights_t	*cap_rights_fde(struct filedescent *fde);
 cap_rights_t	*cap_rights(struct filedesc *fdp, int fd);
 
 int	cap_ioctl_check(struct filedesc *fdp, int fd, u_long cmd);
+int	cap_fcntl_check_fde(struct filedescent *fde, int cmd);
 int	cap_fcntl_check(struct filedesc *fdp, int fd, int cmd);
 
 #else /* !_KERNEL */
@@ -395,13 +398,13 @@ int __cap_rights_get(int version, int fd, cap_rights_t *rights);
 /*
  * Limits allowed ioctls for the given descriptor.
  */
-int cap_ioctls_limit(int fd, const unsigned long *cmds, size_t ncmds);
+int cap_ioctls_limit(int fd, const cap_ioctl_t *cmds, size_t ncmds);
 /*
  * Returns array of allowed ioctls for the given descriptor.
  * If all ioctls are allowed, the cmds array is not populated and
  * the function returns CAP_IOCTLS_ALL.
  */
-ssize_t cap_ioctls_get(int fd, unsigned long *cmds, size_t maxcmds);
+ssize_t cap_ioctls_get(int fd, cap_ioctl_t *cmds, size_t maxcmds);
 /*
  * Limits allowed fcntls for the given descriptor (CAP_FCNTL_*).
  */

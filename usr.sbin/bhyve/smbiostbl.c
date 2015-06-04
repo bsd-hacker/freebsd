@@ -321,8 +321,8 @@ struct smbios_table_type0 smbios_type0_template = {
 
 const char *smbios_type0_strings[] = {
 	"BHYVE",	/* vendor string */
-	__TIME__,	/* bios version string */
-	__DATE__,	/* bios release date string */
+	"1.00",		/* bios version string */
+	"03/14/2014",	/* bios release date string */
 	NULL
 };
 
@@ -737,7 +737,7 @@ smbios_ep_initializer(struct smbios_entry_point *smbios_ep, uint32_t staddr)
 	smbios_ep->eplen = 0x1F;
 	assert(sizeof (struct smbios_entry_point) == smbios_ep->eplen);
 	smbios_ep->major = 2;
-	smbios_ep->minor = 4;
+	smbios_ep->minor = 6;
 	smbios_ep->revision = 0;
 	memcpy(smbios_ep->ianchor, SMBIOS_ENTRY_IANCHOR,
 	    SMBIOS_ENTRY_IANCHORLEN);

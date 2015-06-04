@@ -19,10 +19,10 @@
 
 #NO_UNIVERSE
 
-include		"CHROMEBOOK"
+include 	"CHROMEBOOK"
 ident		CHROMEBOOK-SNOW
 
 #FDT
 options 	FDT
 options 	FDT_DTB_STATIC
-makeoptions	FDT_DTS_FILE=exynos5250-chromebook-snow.dts
+makeoptions	FDT_DTS_FILE=exynos5250-snow.dts

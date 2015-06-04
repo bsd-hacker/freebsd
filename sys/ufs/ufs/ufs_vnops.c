@@ -205,8 +205,10 @@ ufs_create(ap)
 	error =
 	    ufs_makeinode(MAKEIMODE(ap->a_vap->va_type, ap->a_vap->va_mode),
 	    ap->a_dvp, ap->a_vpp, ap->a_cnp);
-	if (error)
+	if (error != 0)
 		return (error);
+	if ((ap->a_cnp->cn_flags & MAKEENTRY) != 0)
+		cache_enter(ap->a_dvp, *ap->a_vpp, ap->a_cnp);
 	return (0);
 }
 
@@ -382,8 +384,7 @@ relock:
 
 	/*
 	 * If immutable bit set, nobody gets to write it.  "& ~VADMIN_PERMS"
-	 * is here, because without it, * it would be impossible for the owner
-	 * to remove the IMMUTABLE flag.
+	 * permits the owner of the file to remove the IMMUTABLE flag.
 	 */
 	if ((accmode & (VMODIFY_PERMS & ~VADMIN_PERMS)) &&
 	    (ip->i_flags & (IMMUTABLE | SF_SNAPSHOT)))
@@ -968,10 +969,6 @@ ufs_link(ap)
 	if ((cnp->cn_flags & HASBUF) == 0)
 		panic("ufs_link: no name");
 #endif
-	if (tdvp->v_mount != vp->v_mount) {
-		error = EXDEV;
-		goto out;
-	}
 	if (VTOI(tdvp)->i_effnlink < 2)
 		panic("ufs_link: Bad link count %d on parent",
 		    VTOI(tdvp)->i_effnlink);
@@ -1143,11 +1140,6 @@ ufs_rename(ap)
 	if ((fvp->v_mount != tdvp->v_mount) ||
 	    (tvp && (fvp->v_mount != tvp->v_mount))) {
 		error = EXDEV;
-		mp = NULL;
-		goto releout;
-	}
-	error = vfs_busy(mp, 0);
-	if (error) {
 		mp = NULL;
 		goto releout;
 	}
@@ -1550,8 +1542,6 @@ unlockout:
 	if (error == 0 && tdp->i_flag & IN_NEEDSYNC)
 		error = VOP_FSYNC(tdvp, MNT_WAIT, td);
 	vput(tdvp);
-	if (mp)
-		vfs_unbusy(mp);
 	return (error);
 
 bad:
@@ -1569,8 +1559,6 @@ releout:
 	vrele(tdvp);
 	if (tvp)
 		vrele(tvp);
-	if (mp)
-		vfs_unbusy(mp);
 
 	return (error);
 }

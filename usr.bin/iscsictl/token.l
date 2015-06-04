@@ -46,6 +46,7 @@ extern int	yylex(void);
 
 %option noinput
 %option nounput
+%option noyywrap
 
 %%
 HeaderDigest		{ return HEADER_DIGEST; }
@@ -62,6 +63,7 @@ tgtChapSecret		{ return MUTUAL_SECRET; }
 AuthMethod		{ return AUTH_METHOD; }
 SessionType		{ return SESSION_TYPE; }
 protocol		{ return PROTOCOL; }
+offload			{ return OFFLOAD; }
 port			{ return IGNORED; }
 MaxConnections		{ return IGNORED; }
 TargetAlias		{ return IGNORED; }
@@ -89,6 +91,7 @@ chapDigest		{ return IGNORED; }
 =			{ return EQUALS; }
 ;			{ return SEMICOLON; }
 #.*$			/* ignore comments */;
+\r\n			{ lineno++; }
 \n			{ lineno++; }
 [ \t]+			/* ignore whitespace */;
 .			{ yylval.str = strdup(yytext); return STR; }

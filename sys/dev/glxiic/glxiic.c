@@ -314,7 +314,6 @@ glxiic_attach(device_t dev)
 	struct sysctl_oid *tree;
 	int error, irq, unit;
 	uint32_t irq_map;
-	char tn[32];
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
@@ -402,10 +401,8 @@ glxiic_attach(device_t dev)
 	tree = device_get_sysctl_tree(dev);
 
 	sc->timeout = GLXIIC_DEFAULT_TIMEOUT;
-	snprintf(tn, sizeof(tn), "dev.glxiic.%d.timeout", unit);
-	TUNABLE_INT_FETCH(tn, &sc->timeout);
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "timeout", CTLFLAG_RW | CTLFLAG_TUN, &sc->timeout, 0,
+	    "timeout", CTLFLAG_RWTUN, &sc->timeout, 0,
 	    "activity timeout in ms");
 
 	glxiic_gpio_enable(sc);
@@ -562,8 +559,8 @@ glxiic_start_timeout_locked(struct glxiic_softc *sc)
 
 	GLXIIC_ASSERT_LOCKED(sc);
 
-	callout_reset(&sc->callout, sc->timeout * 1000 / hz, glxiic_timeout,
-	    sc);
+	callout_reset_sbt(&sc->callout, SBT_1MS * sc->timeout, 0,
+	    glxiic_timeout, sc, 0);
 }
 
 static void

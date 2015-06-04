@@ -27,7 +27,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#define BXE_DRIVER_VERSION "1.78.78"
+#define BXE_DRIVER_VERSION "1.78.79"
 
 #include "bxe.h"
 #include "ecore_sp.h"
@@ -297,67 +297,56 @@ SYSCTL_NODE(_hw, OID_AUTO, bxe, CTLFLAG_RD, 0, "bxe driver parameters");
 
 /* Debug */
 unsigned long bxe_debug = 0;
-TUNABLE_ULONG("hw.bxe.debug", &bxe_debug);
-SYSCTL_ULONG(_hw_bxe, OID_AUTO, debug, (CTLFLAG_RDTUN),
+SYSCTL_ULONG(_hw_bxe, OID_AUTO, debug, CTLFLAG_RDTUN,
              &bxe_debug, 0, "Debug logging mode");
 
 /* Interrupt Mode: 0 (IRQ), 1 (MSI/IRQ), and 2 (MSI-X/MSI/IRQ) */
 static int bxe_interrupt_mode = INTR_MODE_MSIX;
-TUNABLE_INT("hw.bxe.interrupt_mode", &bxe_interrupt_mode);
 SYSCTL_INT(_hw_bxe, OID_AUTO, interrupt_mode, CTLFLAG_RDTUN,
            &bxe_interrupt_mode, 0, "Interrupt (MSI-X/MSI/INTx) mode");
 
 /* Number of Queues: 0 (Auto) or 1 to 16 (fixed queue number) */
 static int bxe_queue_count = 4;
-TUNABLE_INT("hw.bxe.queue_count", &bxe_queue_count);
 SYSCTL_INT(_hw_bxe, OID_AUTO, queue_count, CTLFLAG_RDTUN,
            &bxe_queue_count, 0, "Multi-Queue queue count");
 
 /* max number of buffers per queue (default RX_BD_USABLE) */
 static int bxe_max_rx_bufs = 0;
-TUNABLE_INT("hw.bxe.max_rx_bufs", &bxe_max_rx_bufs);
 SYSCTL_INT(_hw_bxe, OID_AUTO, max_rx_bufs, CTLFLAG_RDTUN,
            &bxe_max_rx_bufs, 0, "Maximum Number of Rx Buffers Per Queue");
 
 /* Host interrupt coalescing RX tick timer (usecs) */
 static int bxe_hc_rx_ticks = 25;
-TUNABLE_INT("hw.bxe.hc_rx_ticks", &bxe_hc_rx_ticks);
 SYSCTL_INT(_hw_bxe, OID_AUTO, hc_rx_ticks, CTLFLAG_RDTUN,
            &bxe_hc_rx_ticks, 0, "Host Coalescing Rx ticks");
 
 /* Host interrupt coalescing TX tick timer (usecs) */
 static int bxe_hc_tx_ticks = 50;
-TUNABLE_INT("hw.bxe.hc_tx_ticks", &bxe_hc_tx_ticks);
 SYSCTL_INT(_hw_bxe, OID_AUTO, hc_tx_ticks, CTLFLAG_RDTUN,
            &bxe_hc_tx_ticks, 0, "Host Coalescing Tx ticks");
 
 /* Maximum number of Rx packets to process at a time */
 static int bxe_rx_budget = 0xffffffff;
-TUNABLE_INT("hw.bxe.rx_budget", &bxe_rx_budget);
 SYSCTL_INT(_hw_bxe, OID_AUTO, rx_budget, CTLFLAG_TUN,
            &bxe_rx_budget, 0, "Rx processing budget");
 
 /* Maximum LRO aggregation size */
 static int bxe_max_aggregation_size = 0;
-TUNABLE_INT("hw.bxe.max_aggregation_size", &bxe_max_aggregation_size);
 SYSCTL_INT(_hw_bxe, OID_AUTO, max_aggregation_size, CTLFLAG_TUN,
            &bxe_max_aggregation_size, 0, "max aggregation size");
 
 /* PCI MRRS: -1 (Auto), 0 (128B), 1 (256B), 2 (512B), 3 (1KB) */
 static int bxe_mrrs = -1;
-TUNABLE_INT("hw.bxe.mrrs", &bxe_mrrs);
 SYSCTL_INT(_hw_bxe, OID_AUTO, mrrs, CTLFLAG_RDTUN,
            &bxe_mrrs, 0, "PCIe maximum read request size");
 
 /* AutoGrEEEn: 0 (hardware default), 1 (force on), 2 (force off) */
 static int bxe_autogreeen = 0;
-TUNABLE_INT("hw.bxe.autogreeen", &bxe_autogreeen);
 SYSCTL_INT(_hw_bxe, OID_AUTO, autogreeen, CTLFLAG_RDTUN,
            &bxe_autogreeen, 0, "AutoGrEEEn support");
 
 /* 4-tuple RSS support for UDP: 0 (disabled), 1 (enabled) */
 static int bxe_udp_rss = 0;
-TUNABLE_INT("hw.bxe.udp_rss", &bxe_udp_rss);
 SYSCTL_INT(_hw_bxe, OID_AUTO, udp_rss, CTLFLAG_RDTUN,
            &bxe_udp_rss, 0, "UDP RSS support");
 
@@ -483,6 +472,8 @@ static const struct {
                 4, STATS_FLAGS_FUNC, "rx_pkts"},
     { STATS_OFFSET32(rx_tpa_pkts),
                 4, STATS_FLAGS_FUNC, "rx_tpa_pkts"},
+    { STATS_OFFSET32(rx_jumbo_sge_pkts),
+                4, STATS_FLAGS_FUNC, "rx_jumbo_sge_pkts"},
     { STATS_OFFSET32(rx_soft_errors),
                 4, STATS_FLAGS_FUNC, "rx_soft_errors"},
     { STATS_OFFSET32(rx_hw_csum_errors),
@@ -594,6 +585,8 @@ static const struct {
                 4, "rx_pkts"},
     { Q_STATS_OFFSET32(rx_tpa_pkts),
                 4, "rx_tpa_pkts"},
+    { Q_STATS_OFFSET32(rx_jumbo_sge_pkts),
+                4, "rx_jumbo_sge_pkts"},
     { Q_STATS_OFFSET32(rx_soft_errors),
                 4, "rx_soft_errors"},
     { Q_STATS_OFFSET32(rx_hw_csum_errors),
@@ -3111,7 +3104,7 @@ static inline void
 bxe_update_sge_prod(struct bxe_softc          *sc,
                     struct bxe_fastpath       *fp,
                     uint16_t                  sge_len,
-                    struct eth_end_agg_rx_cqe *cqe)
+                    union eth_sgl_or_raw_data *cqe)
 {
     uint16_t last_max, last_elem, first_elem;
     uint16_t delta = 0;
@@ -3124,17 +3117,17 @@ bxe_update_sge_prod(struct bxe_softc          *sc,
     /* first mark all used pages */
     for (i = 0; i < sge_len; i++) {
         BIT_VEC64_CLEAR_BIT(fp->sge_mask,
-                            RX_SGE(le16toh(cqe->sgl_or_raw_data.sgl[i])));
+                            RX_SGE(le16toh(cqe->sgl[i])));
     }
 
     BLOGD(sc, DBG_LRO,
           "fp[%02d] fp_cqe->sgl[%d] = %d\n",
           fp->index, sge_len - 1,
-          le16toh(cqe->sgl_or_raw_data.sgl[sge_len - 1]));
+          le16toh(cqe->sgl[sge_len - 1]));
 
     /* assume that the last SGE index is the biggest */
     bxe_update_last_max_sge(fp,
-                            le16toh(cqe->sgl_or_raw_data.sgl[sge_len - 1]));
+                            le16toh(cqe->sgl[sge_len - 1]));
 
     last_max = RX_SGE(fp->last_max_sge);
     last_elem = last_max >> BIT_VEC64_ELEM_SHIFT;
@@ -3230,10 +3223,10 @@ bxe_tpa_stop(struct bxe_softc          *sc,
 #if __FreeBSD_version >= 800000
         /* specify what RSS queue was used for this flow */
         m->m_pkthdr.flowid = fp->index;
-        m->m_flags |= M_FLOWID;
+        M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
 #endif
 
-        if_incipackets(ifp, 1);
+        if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
         fp->eth_q_stats.rx_tpa_pkts++;
 
         /* pass the frame to the stack */
@@ -3250,6 +3243,53 @@ bxe_tpa_stop_exit:
 }
 
 static uint8_t
+bxe_service_rxsgl(
+                 struct bxe_fastpath *fp,
+                 uint16_t len,
+                 uint16_t lenonbd,
+                 struct mbuf *m,
+                 struct eth_fast_path_rx_cqe *cqe_fp)
+{
+    struct mbuf *m_frag;
+    uint16_t frags, frag_len;
+    uint16_t sge_idx = 0;
+    uint16_t j;
+    uint8_t i, rc = 0;
+    uint32_t frag_size;
+
+    /* adjust the mbuf */
+    m->m_len = lenonbd;
+
+    frag_size =  len - lenonbd;
+    frags = SGE_PAGE_ALIGN(frag_size) >> SGE_PAGE_SHIFT;
+
+    for (i = 0, j = 0; i < frags; i += PAGES_PER_SGE, j++) {
+        sge_idx = RX_SGE(le16toh(cqe_fp->sgl_or_raw_data.sgl[j]));
+
+        m_frag = fp->rx_sge_mbuf_chain[sge_idx].m;
+        frag_len = min(frag_size, (uint32_t)(SGE_PAGE_SIZE));
+        m_frag->m_len = frag_len;
+
+       /* allocate a new mbuf for the SGE */
+        rc = bxe_alloc_rx_sge_mbuf(fp, sge_idx);
+        if (rc) {
+            /* Leave all remaining SGEs in the ring! */
+            return (rc);
+        }
+        fp->eth_q_stats.mbuf_alloc_sge--;
+
+        /* concatenate the fragment to the head mbuf */
+        m_cat(m, m_frag);
+
+        frag_size -= frag_len;
+    }
+
+    bxe_update_sge_prod(fp->sc, fp, frags, &cqe_fp->sgl_or_raw_data);
+
+    return rc;
+}
+
+static uint8_t
 bxe_rxeof(struct bxe_softc    *sc,
           struct bxe_fastpath *fp)
 {
@@ -3257,7 +3297,7 @@ bxe_rxeof(struct bxe_softc    *sc,
     uint16_t bd_cons, bd_prod, bd_prod_fw, comp_ring_cons;
     uint16_t hw_cq_cons, sw_cq_cons, sw_cq_prod;
     int rx_pkts = 0;
-    int rc;
+    int rc = 0;
 
     BXE_FP_RX_LOCK(fp);
 
@@ -3289,7 +3329,7 @@ bxe_rxeof(struct bxe_softc    *sc,
         struct eth_fast_path_rx_cqe *cqe_fp;
         uint8_t cqe_fp_flags;
         enum eth_rx_cqe_type cqe_fp_type;
-        uint16_t len, pad;
+        uint16_t len, lenonbd,  pad;
         struct mbuf *m = NULL;
 
         comp_ring_cons = RCQ(sw_cq_cons);
@@ -3304,7 +3344,7 @@ bxe_rxeof(struct bxe_softc    *sc,
         BLOGD(sc, DBG_RX,
               "fp[%02d] Rx hw_cq_cons=%d hw_sw_cons=%d "
               "BD prod=%d cons=%d CQE type=0x%x err=0x%x "
-              "status=0x%x rss_hash=0x%x vlan=0x%x len=%u\n",
+              "status=0x%x rss_hash=0x%x vlan=0x%x len=%u lenonbd=%u\n",
               fp->index,
               hw_cq_cons,
               sw_cq_cons,
@@ -3315,7 +3355,8 @@ bxe_rxeof(struct bxe_softc    *sc,
               cqe_fp->status_flags,
               le32toh(cqe_fp->rss_hash_result),
               le16toh(cqe_fp->vlan_tag),
-              le16toh(cqe_fp->pkt_len_or_gro_seg_len));
+              le16toh(cqe_fp->pkt_len_or_gro_seg_len),
+              le16toh(cqe_fp->len_on_bd));
 
         /* is this a slowpath msg? */
         if (__predict_false(CQE_TYPE_SLOW(cqe_fp_type))) {
@@ -3362,7 +3403,7 @@ bxe_rxeof(struct bxe_softc    *sc,
             bxe_tpa_stop(sc, fp, tpa_info, queue, pages,
                          &cqe->end_agg_cqe, comp_ring_cons);
 
-            bxe_update_sge_prod(sc, fp, pages, &cqe->end_agg_cqe);
+            bxe_update_sge_prod(sc, fp, pages, &cqe->end_agg_cqe.sgl_or_raw_data);
 
             goto next_cqe;
         }
@@ -3378,6 +3419,7 @@ bxe_rxeof(struct bxe_softc    *sc,
         }
 
         len = le16toh(cqe_fp->pkt_len_or_gro_seg_len);
+        lenonbd = le16toh(cqe_fp->len_on_bd);
         pad = cqe_fp->placement_offset;
 
         m = rx_buf->m;
@@ -3399,6 +3441,10 @@ bxe_rxeof(struct bxe_softc    *sc,
                                   (sc->max_rx_bufs != RX_BD_USABLE) ?
                                       bd_prod : bd_cons);
         if (rc != 0) {
+
+            /* we simply reuse the received mbuf and don't post it to the stack */
+            m = NULL;
+
             BLOGE(sc, "mbuf alloc fail for fp[%02d] rx chain (%d)\n",
                   fp->index, rc);
             fp->eth_q_stats.rx_soft_errors++;
@@ -3419,6 +3465,13 @@ bxe_rxeof(struct bxe_softc    *sc,
         /* we allocated a replacement mbuf, fixup the current one */
         m_adj(m, pad);
         m->m_pkthdr.len = m->m_len = len;
+
+        if (len != lenonbd){
+            rc = bxe_service_rxsgl(fp, len, lenonbd, m, cqe_fp);
+            if (rc)
+                break;
+            fp->eth_q_stats.rx_jumbo_sge_pkts++;
+        }
 
         /* assign packet to this interface interface */
 	if_setrcvif(m, ifp);
@@ -3465,7 +3518,7 @@ bxe_rxeof(struct bxe_softc    *sc,
 #if __FreeBSD_version >= 800000
         /* specify what RSS queue was used for this flow */
         m->m_pkthdr.flowid = fp->index;
-        m->m_flags |= M_FLOWID;
+        M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
 #endif
 
 next_rx:
@@ -3476,7 +3529,7 @@ next_rx:
 
         /* pass the frame to the stack */
         if (__predict_true(m != NULL)) {
-            if_incipackets(ifp, 1);
+            if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
             rx_pkts++;
             if_input(ifp, m);
         }
@@ -3487,6 +3540,9 @@ next_cqe:
         sw_cq_cons = RCQ_NEXT(sw_cq_cons);
 
         /* limit spinning on the queue */
+        if (rc != 0)
+            break;
+
         if (rx_pkts == sc->rx_budget) {
             fp->eth_q_stats.rx_budget_reached++;
             break;
@@ -4945,7 +5001,7 @@ bxe_ioctl(if_t ifp,
         BLOGD(sc, DBG_IOCTL,
               "Received SIOCSIFMEDIA/SIOCGIFMEDIA ioctl (cmd=%lu)\n",
               (command & 0xff));
-        error = ifmedia_ioctl_drv(ifp, ifr, &sc->ifmedia, command);
+        error = ifmedia_ioctl(ifp, ifr, &sc->ifmedia, command);
         break;
 
     case SIOCGPRIVATE_0:
@@ -4981,7 +5037,7 @@ bxe_ioctl(if_t ifp,
     default:
         BLOGD(sc, DBG_IOCTL, "Received Unknown Ioctl (cmd=%lu)\n",
               (command & 0xff));
-        error = ether_ioctl_drv(ifp, command, data);
+        error = ether_ioctl(ifp, command, data);
         break;
     }
 
@@ -6048,10 +6104,9 @@ bxe_tx_mq_start(struct ifnet *ifp,
 
     fp_index = 0; /* default is the first queue */
 
-    /* change the queue if using flow ID */
-    if ((m->m_flags & M_FLOWID) != 0) {
+    /* check if flowid is set */
+    if (M_HASHTYPE_GET(m) != M_HASHTYPE_NONE)
         fp_index = (m->m_pkthdr.flowid % sc->num_queues);
-    }
 
     fp = &sc->fp[fp_index];
 
@@ -6106,7 +6161,7 @@ bxe_mq_flush(struct ifnet *ifp)
         }
     }
 
-    if_qflush_drv(ifp);
+    if_qflush(ifp);
 }
 
 #endif /* FreeBSD_version >= 800000 */
@@ -6215,30 +6270,27 @@ static void
 bxe_set_fp_rx_buf_size(struct bxe_softc *sc)
 {
     int i;
+    uint32_t rx_buf_size;
 
-    BLOGD(sc, DBG_LOAD, "mtu = %d\n", sc->mtu);
+    rx_buf_size = (IP_HEADER_ALIGNMENT_PADDING + ETH_OVERHEAD + sc->mtu);
 
     for (i = 0; i < sc->num_queues; i++) {
-        /* get the Rx buffer size for RX frames */
-        sc->fp[i].rx_buf_size =
-            (IP_HEADER_ALIGNMENT_PADDING +
-             ETH_OVERHEAD +
-             sc->mtu);
-
-        BLOGD(sc, DBG_LOAD, "rx_buf_size for fp[%02d] = %d\n",
-              i, sc->fp[i].rx_buf_size);
-
-        /* get the mbuf allocation size for RX frames */
-        if (sc->fp[i].rx_buf_size <= MCLBYTES) {
+        if(rx_buf_size <= MCLBYTES){
+            sc->fp[i].rx_buf_size = rx_buf_size;
             sc->fp[i].mbuf_alloc_size = MCLBYTES;
-        } else if (sc->fp[i].rx_buf_size <= BCM_PAGE_SIZE) {
-            sc->fp[i].mbuf_alloc_size = PAGE_SIZE;
-        } else {
-            sc->fp[i].mbuf_alloc_size = MJUM9BYTES;
+        }else if (rx_buf_size <= MJUMPAGESIZE){
+            sc->fp[i].rx_buf_size = rx_buf_size;
+            sc->fp[i].mbuf_alloc_size = MJUMPAGESIZE;
+        }else if (rx_buf_size <= (MJUMPAGESIZE + MCLBYTES)){
+            sc->fp[i].rx_buf_size = MCLBYTES;
+            sc->fp[i].mbuf_alloc_size = MCLBYTES;
+        }else if (rx_buf_size <= (2 * MJUMPAGESIZE)){
+            sc->fp[i].rx_buf_size = MJUMPAGESIZE;
+            sc->fp[i].mbuf_alloc_size = MJUMPAGESIZE;
+        }else {
+            sc->fp[i].rx_buf_size = MCLBYTES;
+            sc->fp[i].mbuf_alloc_size = MCLBYTES;
         }
-
-        BLOGD(sc, DBG_LOAD, "mbuf_alloc_size for fp[%02d] = %d\n",
-              i, sc->fp[i].mbuf_alloc_size);
     }
 }
 
@@ -6797,42 +6849,40 @@ bxe_alloc_fp_buffers(struct bxe_softc *sc)
         fp->rx_cq_prod = cqe_ring_prod;
         fp->eth_q_stats.rx_calls = fp->eth_q_stats.rx_pkts = 0;
 
-        if (if_getcapenable(sc->ifp) & IFCAP_LRO) {
-            max_agg_queues = MAX_AGG_QS(sc);
+        max_agg_queues = MAX_AGG_QS(sc);
 
-            fp->tpa_enable = TRUE;
+        fp->tpa_enable = TRUE;
 
-            /* fill the TPA pool */
-            for (j = 0; j < max_agg_queues; j++) {
-                rc = bxe_alloc_rx_tpa_mbuf(fp, j);
-                if (rc != 0) {
-                    BLOGE(sc, "mbuf alloc fail for fp[%02d] TPA queue %d\n",
+        /* fill the TPA pool */
+        for (j = 0; j < max_agg_queues; j++) {
+            rc = bxe_alloc_rx_tpa_mbuf(fp, j);
+            if (rc != 0) {
+                BLOGE(sc, "mbuf alloc fail for fp[%02d] TPA queue %d\n",
                           i, j);
+                fp->tpa_enable = FALSE;
+                goto bxe_alloc_fp_buffers_error;
+            }
+
+            fp->rx_tpa_info[j].state = BXE_TPA_STATE_STOP;
+        }
+
+        if (fp->tpa_enable) {
+            /* fill the RX SGE chain */
+            ring_prod = 0;
+            for (j = 0; j < RX_SGE_USABLE; j++) {
+                rc = bxe_alloc_rx_sge_mbuf(fp, ring_prod);
+                if (rc != 0) {
+                    BLOGE(sc, "mbuf alloc fail for fp[%02d] SGE %d\n",
+                              i, ring_prod);
                     fp->tpa_enable = FALSE;
+                    ring_prod = 0;
                     goto bxe_alloc_fp_buffers_error;
                 }
 
-                fp->rx_tpa_info[j].state = BXE_TPA_STATE_STOP;
+                ring_prod = RX_SGE_NEXT(ring_prod);
             }
 
-            if (fp->tpa_enable) {
-                /* fill the RX SGE chain */
-                ring_prod = 0;
-                for (j = 0; j < RX_SGE_USABLE; j++) {
-                    rc = bxe_alloc_rx_sge_mbuf(fp, ring_prod);
-                    if (rc != 0) {
-                        BLOGE(sc, "mbuf alloc fail for fp[%02d] SGE %d\n",
-                              i, ring_prod);
-                        fp->tpa_enable = FALSE;
-                        ring_prod = 0;
-                        goto bxe_alloc_fp_buffers_error;
-                    }
-
-                    ring_prod = RX_SGE_NEXT(ring_prod);
-                }
-
-                fp->rx_sge_prod = ring_prod;
-            }
+            fp->rx_sge_prod = ring_prod;
         }
     }
 
@@ -11482,6 +11532,10 @@ bxe_process_kill(struct bxe_softc *sc,
     bxe_process_kill_chip_reset(sc, global);
     mb();
 
+    /* clear errors in PGB */
+    if (!CHIP_IS_E1(sc))
+        REG_WR(sc, PGLUE_B_REG_LATCHED_ERRORS_CLR, 0x7f);
+
     /* Recover after reset: */
     /* MCP */
     if (global && bxe_reset_mcp_comp(sc, val)) {
@@ -11712,28 +11766,26 @@ bxe_pf_rx_q_prep(struct bxe_softc              *sc,
     uint16_t sge_sz = 0;
     uint16_t tpa_agg_size = 0;
 
-    if (if_getcapenable(sc->ifp)  & IFCAP_LRO) {
-        pause->sge_th_lo = SGE_TH_LO(sc);
-        pause->sge_th_hi = SGE_TH_HI(sc);
+    pause->sge_th_lo = SGE_TH_LO(sc);
+    pause->sge_th_hi = SGE_TH_HI(sc);
 
-        /* validate SGE ring has enough to cross high threshold */
-        if (sc->dropless_fc &&
+    /* validate SGE ring has enough to cross high threshold */
+    if (sc->dropless_fc &&
             (pause->sge_th_hi + FW_PREFETCH_CNT) >
             (RX_SGE_USABLE_PER_PAGE * RX_SGE_NUM_PAGES)) {
-            BLOGW(sc, "sge ring threshold limit\n");
-        }
-
-        /* minimum max_aggregation_size is 2*MTU (two full buffers) */
-        tpa_agg_size = (2 * sc->mtu);
-        if (tpa_agg_size < sc->max_aggregation_size) {
-            tpa_agg_size = sc->max_aggregation_size;
-        }
-
-        max_sge = SGE_PAGE_ALIGN(sc->mtu) >> SGE_PAGE_SHIFT;
-        max_sge = ((max_sge + PAGES_PER_SGE - 1) &
-                   (~(PAGES_PER_SGE - 1))) >> PAGES_PER_SGE_SHIFT;
-        sge_sz = (uint16_t)min(SGE_PAGES, 0xffff);
+        BLOGW(sc, "sge ring threshold limit\n");
     }
+
+    /* minimum max_aggregation_size is 2*MTU (two full buffers) */
+    tpa_agg_size = (2 * sc->mtu);
+    if (tpa_agg_size < sc->max_aggregation_size) {
+        tpa_agg_size = sc->max_aggregation_size;
+    }
+
+    max_sge = SGE_PAGE_ALIGN(sc->mtu) >> SGE_PAGE_SHIFT;
+    max_sge = ((max_sge + PAGES_PER_SGE - 1) &
+                   (~(PAGES_PER_SGE - 1))) >> PAGES_PER_SGE_SHIFT;
+    sge_sz = (uint16_t)min(SGE_PAGES, 0xffff);
 
     /* pause - not for e1 */
     if (!CHIP_IS_E1(sc)) {
@@ -12261,7 +12313,7 @@ bxe_link_report_locked(struct bxe_softc *sc)
 
     if (bxe_test_bit(BXE_LINK_REPORT_LINK_DOWN,
                      &cur_data.link_report_flags)) {
-        if_linkstate_change_drv(sc->ifp, LINK_STATE_DOWN);
+        if_link_state_change(sc->ifp, LINK_STATE_DOWN);
         BLOGI(sc, "NIC Link is Down\n");
     } else {
         const char *duplex;
@@ -12302,7 +12354,7 @@ bxe_link_report_locked(struct bxe_softc *sc)
             flow = "none";
         }
 
-        if_linkstate_change_drv(sc->ifp, LINK_STATE_UP);
+        if_link_state_change(sc->ifp, LINK_STATE_UP);
         BLOGI(sc, "NIC Link is Up, %d Mbps %s duplex, Flow control: %s\n",
               cur_data.line_speed, duplex, flow);
     }
@@ -12588,7 +12640,7 @@ bxe_set_uc_list(struct bxe_softc *sc)
 #if __FreeBSD_version < 800000
     IF_ADDR_LOCK(ifp);
 #else
-    if_addr_rlock_drv(ifp);
+    if_addr_rlock(ifp);
 #endif
 
     /* first schedule a cleanup up of old configuration */
@@ -12598,7 +12650,7 @@ bxe_set_uc_list(struct bxe_softc *sc)
 #if __FreeBSD_version < 800000
         IF_ADDR_UNLOCK(ifp);
 #else
-        if_addr_runlock_drv(ifp);
+        if_addr_runlock(ifp);
 #endif
         return (rc);
     }
@@ -12621,7 +12673,7 @@ bxe_set_uc_list(struct bxe_softc *sc)
 #if __FreeBSD_version < 800000
             IF_ADDR_UNLOCK(ifp);
 #else
-            if_addr_runlock_drv(ifp);
+            if_addr_runlock(ifp);
 #endif
             return (rc);
         }
@@ -12632,7 +12684,7 @@ bxe_set_uc_list(struct bxe_softc *sc)
 #if __FreeBSD_version < 800000
     IF_ADDR_UNLOCK(ifp);
 #else
-    if_addr_runlock_drv(ifp);
+    if_addr_runlock(ifp);
 #endif
 
     /* Execute the pending commands */
@@ -13282,10 +13334,11 @@ bxe_init_ifnet(struct bxe_softc *sc)
     }
 
     if_setsoftc(ifp, sc);
-    if_initname_drv(ifp, device_get_name(sc->dev), device_get_unit(sc->dev));
+    if_initname(ifp, device_get_name(sc->dev), device_get_unit(sc->dev));
     if_setflags(ifp, (IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST));
     if_setioctlfn(ifp, bxe_ioctl);
     if_setstartfn(ifp, bxe_tx_start);
+    if_setgetcounterfn(ifp, bxe_get_counter);
 #if __FreeBSD_version >= 800000
     if_settransmitfn(ifp, bxe_tx_mq_start);
     if_setqflushfn(ifp, bxe_mq_flush);
@@ -13332,7 +13385,7 @@ bxe_init_ifnet(struct bxe_softc *sc)
     sc->ifp = ifp;
 
     /* attach to the Ethernet interface list */
-    ether_ifattach_drv(ifp, sc->link_params.mac_addr);
+    ether_ifattach(ifp, sc->link_params.mac_addr);
 
     return (0);
 }
@@ -16222,7 +16275,7 @@ bxe_add_sysctls(struct bxe_softc *sc)
                       "version");
 
     SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "bc_version",
-                      CTLFLAG_RD, &sc->devinfo.bc_ver_str, 0,
+                      CTLFLAG_RD, sc->devinfo.bc_ver_str, 0,
                       "bootcode version");
 
     snprintf(sc->fw_ver_str, sizeof(sc->fw_ver_str), "%d.%d.%d.%d",
@@ -16231,7 +16284,7 @@ bxe_add_sysctls(struct bxe_softc *sc)
              BCM_5710_FW_REVISION_VERSION,
              BCM_5710_FW_ENGINEERING_VERSION);
     SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "fw_version",
-                      CTLFLAG_RD, &sc->fw_ver_str, 0,
+                      CTLFLAG_RD, sc->fw_ver_str, 0,
                       "firmware version");
 
     snprintf(sc->mf_mode_str, sizeof(sc->mf_mode_str), "%s",
@@ -16241,7 +16294,7 @@ bxe_add_sysctls(struct bxe_softc *sc)
          (sc->devinfo.mf_info.mf_mode == MULTI_FUNCTION_AFEX) ? "MF-AFEX" :
                                                                 "Unknown"));
     SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "mf_mode",
-                      CTLFLAG_RD, &sc->mf_mode_str, 0,
+                      CTLFLAG_RD, sc->mf_mode_str, 0,
                       "multifunction mode");
 
     SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "mf_vnics",
@@ -16249,7 +16302,7 @@ bxe_add_sysctls(struct bxe_softc *sc)
                     "multifunction vnics per port");
 
     SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "mac_addr",
-                      CTLFLAG_RD, &sc->mac_addr_str, 0,
+                      CTLFLAG_RD, sc->mac_addr_str, 0,
                       "mac address");
 
     snprintf(sc->pci_link_str, sizeof(sc->pci_link_str), "%s x%d",
@@ -16259,12 +16312,12 @@ bxe_add_sysctls(struct bxe_softc *sc)
                                               "???GT/s"),
         sc->devinfo.pcie_link_width);
     SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "pci_link",
-                      CTLFLAG_RD, &sc->pci_link_str, 0,
+                      CTLFLAG_RD, sc->pci_link_str, 0,
                       "pci link status");
 
     sc->debug = bxe_debug;
-    SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "debug",
-                    CTLFLAG_RW, &sc->debug, 0,
+    SYSCTL_ADD_ULONG(ctx, children, OID_AUTO, "debug",
+                    CTLFLAG_RW, &sc->debug,
                     "debug logging mode");
 
     sc->rx_budget = bxe_rx_budget;
@@ -16398,7 +16451,7 @@ bxe_attach(device_t dev)
     /* allocate device interrupts */
     if (bxe_interrupt_alloc(sc) != 0) {
         if (sc->ifp != NULL) {
-            ether_ifdetach_drv(sc->ifp);
+            ether_ifdetach(sc->ifp);
         }
         ifmedia_removeall(&sc->ifmedia);
         bxe_release_mutexes(sc);
@@ -16411,7 +16464,7 @@ bxe_attach(device_t dev)
     if (bxe_alloc_ilt_mem(sc) != 0) {
         bxe_interrupt_free(sc);
         if (sc->ifp != NULL) {
-            ether_ifdetach_drv(sc->ifp);
+            ether_ifdetach(sc->ifp);
         }
         ifmedia_removeall(&sc->ifmedia);
         bxe_release_mutexes(sc);
@@ -16425,7 +16478,7 @@ bxe_attach(device_t dev)
         bxe_free_ilt_mem(sc);
         bxe_interrupt_free(sc);
         if (sc->ifp != NULL) {
-            ether_ifdetach_drv(sc->ifp);
+            ether_ifdetach(sc->ifp);
         }
         ifmedia_removeall(&sc->ifmedia);
         bxe_release_mutexes(sc);
@@ -16515,7 +16568,7 @@ bxe_detach(device_t dev)
 
     /* release the network interface */
     if (ifp != NULL) {
-        ether_ifdetach_drv(ifp);
+        ether_ifdetach(ifp);
     }
     ifmedia_removeall(&sc->ifmedia);
 
@@ -16538,7 +16591,7 @@ bxe_detach(device_t dev)
 
     /* Release the FreeBSD interface. */
     if (sc->ifp != NULL) {
-        if_free_drv(sc->ifp);
+        if_free(sc->ifp);
     }
 
     pci_disable_busmaster(dev);

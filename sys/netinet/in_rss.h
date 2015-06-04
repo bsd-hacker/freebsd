@@ -35,65 +35,23 @@
 #include <netinet/in.h>		/* in_addr_t */
 
 /*
- * Supported RSS hash functions.
- */
-#define	RSS_HASH_NAIVE		0x00000001	/* Poor but fast hash. */
-#define	RSS_HASH_TOEPLITZ	0x00000002	/* Required by RSS. */
-#define	RSS_HASH_CRC32		0x00000004	/* Future; some NICs do it. */
-
-#define	RSS_HASH_MASK		(RSS_HASH_NAIVE | RSS_HASH_TOEPLITZ)
-
-/*
- * Instances of struct inpcbinfo declare an RSS hash type indicating what
- * header fields are covered.
- */
-#define	RSS_HASHFIELDS_NONE		0
-#define	RSS_HASHFIELDS_4TUPLE		1
-#define	RSS_HASHFIELDS_2TUPLE		2
-
-/*
- * Compile-time limits on the size of the indirection table.
- */
-#define	RSS_MAXBITS	7
-#define	RSS_TABLE_MAXLEN	(1 << RSS_MAXBITS)
-
-/*
- * Maximum key size used throughout.  It's OK for hardware to use only the
- * first 16 bytes, which is all that's required for IPv4.
- */
-#define	RSS_KEYSIZE	40
-
-/*
- * Device driver interfaces to query RSS properties that must be programmed
- * into hardware.
- */
-u_int	rss_getbits(void);
-u_int	rss_getbucket(u_int hash);
-u_int	rss_get_indirection_to_bucket(u_int index);
-u_int	rss_getcpu(u_int bucket);
-void	rss_getkey(uint8_t *key);
-u_int	rss_gethashalgo(void);
-u_int	rss_getnumbuckets(void);
-u_int	rss_getnumcpus(void);
-
-/*
  * Network stack interface to generate a hash for a protocol tuple.
  */
 uint32_t	rss_hash_ip4_4tuple(struct in_addr src, u_short srcport,
 		    struct in_addr dst, u_short dstport);
 uint32_t	rss_hash_ip4_2tuple(struct in_addr src, struct in_addr dst);
-uint32_t	rss_hash_ip6_4tuple(struct in6_addr src, u_short srcport,
-		    struct in6_addr dst, u_short dstport);
-uint32_t	rss_hash_ip6_2tuple(struct in6_addr src,
-		    struct in6_addr dst);
 
 /*
- * Network stack interface to query desired CPU affinity of a packet.
+ * Functions to calculate a software RSS hash for a given mbuf or
+ * packet detail.
  */
-struct mbuf	*rss_m2cpuid(struct mbuf *m, uintptr_t source, u_int *cpuid);
-u_int		rss_hash2cpuid(uint32_t hash_val, uint32_t hash_type);
-int		rss_hash2bucket(uint32_t hash_val, uint32_t hash_type,
-		uint32_t *bucket_id);
-int		rss_m2bucket(struct mbuf *m, uint32_t *bucket_id);
+int		rss_mbuf_software_hash_v4(const struct mbuf *m, int dir,
+		    uint32_t *hashval, uint32_t *hashtype);
+int		rss_proto_software_hash_v4(struct in_addr src,
+		    struct in_addr dst, u_short src_port, u_short dst_port,
+		    int proto, uint32_t *hashval,
+		    uint32_t *hashtype);
+struct mbuf *	rss_soft_m2cpuid(struct mbuf *m, uintptr_t source,
+		    u_int *cpuid);
 
 #endif /* !_NETINET_IN_RSS_H_ */

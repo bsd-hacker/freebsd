@@ -146,6 +146,8 @@ static struct g_part_scheme g_part_gpt_scheme = {
 G_PART_SCHEME_DECLARE(g_part_gpt);
 
 static struct uuid gpt_uuid_apple_boot = GPT_ENT_TYPE_APPLE_BOOT;
+static struct uuid gpt_uuid_apple_core_storage =
+    GPT_ENT_TYPE_APPLE_CORE_STORAGE;
 static struct uuid gpt_uuid_apple_hfs = GPT_ENT_TYPE_APPLE_HFS;
 static struct uuid gpt_uuid_apple_label = GPT_ENT_TYPE_APPLE_LABEL;
 static struct uuid gpt_uuid_apple_raid = GPT_ENT_TYPE_APPLE_RAID;
@@ -190,6 +192,7 @@ static struct uuid gpt_uuid_dfbsd_hammer = GPT_ENT_TYPE_DRAGONFLY_HAMMER;
 static struct uuid gpt_uuid_dfbsd_hammer2 = GPT_ENT_TYPE_DRAGONFLY_HAMMER2;
 static struct uuid gpt_uuid_dfbsd_label32 = GPT_ENT_TYPE_DRAGONFLY_LABEL32;
 static struct uuid gpt_uuid_dfbsd_label64 = GPT_ENT_TYPE_DRAGONFLY_LABEL64;
+static struct uuid gpt_uuid_prep_boot = GPT_ENT_TYPE_PREP_BOOT;
 
 static struct g_part_uuid_alias {
 	struct uuid *uuid;
@@ -197,6 +200,7 @@ static struct g_part_uuid_alias {
 	int mbrtype;
 } gpt_uuid_alias_match[] = {
 	{ &gpt_uuid_apple_boot,		G_PART_ALIAS_APPLE_BOOT,	 0xab },
+	{ &gpt_uuid_apple_core_storage,	G_PART_ALIAS_APPLE_CORE_STORAGE, 0 },
 	{ &gpt_uuid_apple_hfs,		G_PART_ALIAS_APPLE_HFS,		 0xaf },
 	{ &gpt_uuid_apple_label,	G_PART_ALIAS_APPLE_LABEL,	 0 },
 	{ &gpt_uuid_apple_raid,		G_PART_ALIAS_APPLE_RAID,	 0 },
@@ -240,6 +244,7 @@ static struct g_part_uuid_alias {
 	{ &gpt_uuid_dfbsd_hammer2,	G_PART_ALIAS_DFBSD_HAMMER2,	 0 },
 	{ &gpt_uuid_dfbsd_label32,	G_PART_ALIAS_DFBSD,		 0xa5 },
 	{ &gpt_uuid_dfbsd_label64,	G_PART_ALIAS_DFBSD64,		 0xa5 },
+	{ &gpt_uuid_prep_boot,		G_PART_ALIAS_PREP_BOOT,		 0x41 },
 	{ NULL, 0, 0 }
 };
 

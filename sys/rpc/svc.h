@@ -145,6 +145,7 @@ struct __rpc_svcthread;
  * Server side transport handle. In the kernel, transports have a
  * reference count which tracks the number of currently assigned
  * worker threads plus one for the service pool's reference.
+ * For NFSv4.1 sessions, a reference is also held for a backchannel.
  */
 typedef struct __rpc_svcxprt {
 #ifdef _KERNEL
@@ -370,10 +371,10 @@ typedef struct __rpc_svcpool {
 	 * amount of memory used by RPC requests which are queued
 	 * waiting for execution.
 	 */
-	unsigned int	sp_space_low;
-	unsigned int	sp_space_high;
-	unsigned int	sp_space_used;
-	unsigned int	sp_space_used_highest;
+	unsigned long	sp_space_low;
+	unsigned long	sp_space_high;
+	unsigned long	sp_space_used;
+	unsigned long	sp_space_used_highest;
 	bool_t		sp_space_throttled;
 	int		sp_space_throttle_count;
 
@@ -773,6 +774,13 @@ extern SVCXPRT *svc_vc_create(SVCPOOL *, struct socket *,
          */
 
 extern SVCXPRT *svc_vc_create_backchannel(SVCPOOL *);
+
+extern void *clnt_bck_create(struct socket *, const rpcprog_t, const rpcvers_t);
+	/*
+	 * struct socket *;			-- server transport socket
+	 * const rpcprog_t prog;		-- RPC program number
+	 * const rpcvers_t vers;		-- RPC program version
+	 */
 
 /*
  * Generic TLI create routine

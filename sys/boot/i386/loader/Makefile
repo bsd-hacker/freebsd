@@ -8,8 +8,6 @@ PROG=		${LOADER}.sym
 INTERNALPROG=
 NEWVERSWHAT?=	"bootstrap loader" x86
 
-NO_PIE=	yes
-
 # architecture-specific loader code
 SRCS=		main.c conf.c vers.c
 
@@ -118,11 +116,8 @@ FILESMODE_${LOADER}= ${BINMODE} -b
 
 .if !defined(LOADER_ONLY)
 .PATH: ${.CURDIR}/../../forth
-FILES+=	loader.help loader.4th support.4th loader.conf
-FILES+= screen.4th frames.4th beastie.4th
-FILES+= brand.4th check-password.4th color.4th delay.4th
-FILES+= menu.4th menu-commands.4th menusets.4th shortcuts.4th version.4th
-FILESDIR_loader.conf=	/boot/defaults
+.include	"${.CURDIR}/../../forth/Makefile.inc"
+FILES+=	pcibios.4th
 
 .if !exists(${DESTDIR}/boot/loader.rc)
 FILES+=	loader.rc
@@ -144,6 +139,6 @@ LDADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFSBOOT} ${LIBI386} ${LIBHTTP} ${LIBSTAND}
 beforedepend ${OBJS}: machine
 CLEANFILES+=	machine
 CFLAGS+=	-DLOADER_PREFER_AMD64
-machine:
+machine: .NOPATH
 	ln -sf ${.CURDIR}/../../../i386/include machine
 .endif

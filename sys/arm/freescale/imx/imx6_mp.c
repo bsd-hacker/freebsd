@@ -34,6 +34,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/smp.h>
 
+#include <vm/vm.h>
+#include <vm/pmap.h>
+
 #include <machine/smp.h>
 #include <machine/fdt.h>
 #include <machine/intr.h>
@@ -66,7 +69,7 @@ void
 platform_mp_init_secondary(void)
 {
 
-	gic_init_secondary();
+	arm_init_secondary_ic();
 }
 
 void
@@ -162,7 +165,7 @@ platform_mp_start_ap(void)
 		    ( 1 << (SRC_CONTROL_C1RST_SHIFT - 1 + i)));
 
 	}
-	bus_space_write_4(fdtbus_bs_tag, src, 0, val);
+	bus_space_write_4(fdtbus_bs_tag, src, SRC_CONTROL_REG, val);
 
 	armv7_sev();
 

@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/limits.h>
 #include <sys/queue.h>
 #include <sys/taskqueue.h>
+#include <sys/zlib.h>
 
 #include <net/if.h>
 #include <net/if_types.h>
@@ -60,7 +61,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if_var.h>
 #include <net/if_media.h>
 #include <net/if_vlan_var.h>
-#include <net/zlib.h>
 #include <net/bpf.h>
 
 #include <netinet/in.h>
@@ -2301,10 +2301,19 @@ void ecore_storm_memset_struct(struct bxe_softc *sc, uint32_t addr,
         }                                             \
     } while(0)
 
+#ifdef ECORE_STOP_ON_ERROR
+
 #define bxe_panic(sc, msg) \
     do {                   \
         panic msg;         \
     } while (0)
+
+#else
+
+#define bxe_panic(sc, msg) \
+    device_printf((sc)->dev, "%s (%s,%d)\n", __FUNCTION__, __FILE__, __LINE__);
+
+#endif
 
 #define CATC_TRIGGER(sc, data) REG_WR((sc), 0x2000, (data));
 #define CATC_TRIGGER_START(sc) CATC_TRIGGER((sc), 0xcafecafe)

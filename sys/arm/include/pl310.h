@@ -133,9 +133,11 @@
 #define		PREFETCH_CTRL_DATA_PREFETCH	(1 << 28)
 #define		PREFETCH_CTRL_INSTR_PREFETCH	(1 << 29)
 #define		PREFETCH_CTRL_DL		(1 << 30)
-#define PL310_POWER_CTRL		0xF60
+#define PL310_POWER_CTRL		0xF80
 #define		POWER_CTRL_ENABLE_GATING	(1 << 0)
 #define		POWER_CTRL_ENABLE_STANDBY	(1 << 1)
+
+struct intr_config_hook;
 
 struct pl310_softc {
 	device_t	sc_dev;
@@ -145,6 +147,7 @@ struct pl310_softc {
 	int		sc_enabled;
 	struct mtx	sc_mtx;
 	u_int		sc_rtl_revision;
+	struct intr_config_hook *sc_ich;
 };
 
 /**

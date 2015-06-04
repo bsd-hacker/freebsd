@@ -68,7 +68,7 @@ pxe_await(pxe_await_func await_func, uint16_t trys, uint32_t timeout, void *data
 		
 		while (time_elapsed < timeout) {
 #ifdef PXE_DEBUG
-			twiddle();
+			twiddle(1);
 #endif
         	        if (pxe_core_recv_packets()) {
 				/* means some packet was received */

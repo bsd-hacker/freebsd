@@ -30,7 +30,7 @@
  */
 
 /*
- * This driver is based on the I2C driver for IMX (imx/i2c.c).
+ * This driver is based on the I2C driver for i.MX
  */
 
 #include <sys/cdefs.h>
@@ -57,7 +57,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 
 #include <machine/bus.h>
-#include <machine/fdt.h>
 #include <machine/cpu.h>
 #include <machine/intr.h>
 

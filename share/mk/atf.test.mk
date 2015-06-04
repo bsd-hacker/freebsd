@@ -71,8 +71,11 @@ BINDIR.${_T}= ${TESTSDIR}
 MAN.${_T}?= # empty
 SRCS.${_T}?= ${_T}.c
 DPADD.${_T}+= ${LIBATF_C}
-LDADD.${_T}+= -latf-c
-USEPRIVATELIB+= atf-c
+.if empty(LDFLAGS:M-static) && empty(LDFLAGS.${_T}:M-static)
+LDADD.${_T}+= ${LDADD_atf_c}
+.else
+LDADD.${_T}+= ${LIBATF_C}
+.endif
 TEST_INTERFACE.${_T}= atf
 .endfor
 .endif
@@ -85,8 +88,11 @@ BINDIR.${_T}= ${TESTSDIR}
 MAN.${_T}?= # empty
 SRCS.${_T}?= ${_T}${CXX_SUFFIX:U.cc}
 DPADD.${_T}+= ${LIBATF_CXX} ${LIBATF_C}
-LDADD.${_T}+= -latf-c++ -latf-c
-USEPRIVATELIB+= atf-c++
+.if empty(LDFLAGS:M-static) && empty(LDFLAGS.${_T}:M-static)
+LDADD.${_T}+= ${LDADD_atf_cxx} ${LDADD_atf_c}
+.else
+LDADD.${_T}+= ${LIBATF_CXX} ${LIBATF_C}
+.endif
 TEST_INTERFACE.${_T}= atf
 .endfor
 .endif
@@ -105,7 +111,12 @@ ATF_TESTS_SH_SED_${_T}?= # empty
 ATF_TESTS_SH_SRC_${_T}?= ${_T}.sh
 ${_T}: ${ATF_TESTS_SH_SRC_${_T}}
 	echo '#! /usr/libexec/atf-sh' > ${.TARGET}.tmp
-	cat ${.ALLSRC} | sed ${ATF_TESTS_SH_SED_${_T}} >>${.TARGET}.tmp
+.if empty(ATF_TESTS_SH_SED_${_T})
+	cat ${.ALLSRC:N*Makefile*} >>${.TARGET}.tmp
+.else
+	cat ${.ALLSRC:N*Makefile*} \
+	    | sed ${ATF_TESTS_SH_SED_${_T}} >>${.TARGET}.tmp
+.endif
 	chmod +x ${.TARGET}.tmp
 	mv ${.TARGET}.tmp ${.TARGET}
 .endfor

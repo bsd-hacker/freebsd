@@ -14,10 +14,10 @@ CFLAGS+= -I${.CURDIR}
 CLEANDIRS+= FreeBSD
 CLEANFILES+= bootstrap
 
-#	$Id: Makefile,v 1.23 2014/01/02 22:20:52 sjg Exp $
+#	$Id: Makefile,v 1.38 2015/05/05 21:58:05 sjg Exp $
 
 # Base version on src date
-MAKE_VERSION= 20140101
+MAKE_VERSION= 20150505
 
 PROG?=	${.CURDIR:T}
 
@@ -106,6 +106,7 @@ COPTS.meta.c += -DHAVE_FILEMON_H -I${FILEMON_H:H}
 SUBDIR+= unit-tests
 .endif
 
+
 MAN= ${PROG}.1
 MAN1= ${MAN}
 
@@ -147,9 +148,9 @@ COPTS.parse.c += -Wno-format-nonliteral
 COPTS.var.c += -Wno-format-nonliteral
 
 # Force these
-SHAREDIR= ${prefix}/share
-BINDIR= ${prefix}/bin
-MANDIR= ${SHAREDIR}/man
+SHAREDIR= ${SHAREDIR.bmake:U${prefix}/share}
+BINDIR= ${BINDIR.bmake:U${prefix}/bin}
+MANDIR= ${MANDIR.bmake:U${SHAREDIR}/man}
 
 .if !exists(.depend)
 ${OBJS}: config.h

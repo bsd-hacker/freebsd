@@ -42,6 +42,7 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 		-I${SYSDIR}/cddl/dev/dtrace \
 		-I${SYSDIR}/cddl/dev/dtrace/${ARCHDIR} \
 		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
+		-I${SYSDIR}/cddl/contrib/opensolaris/common/util \
 		-I${SYSDIR} -DDIS_MEM
 
 CFLAGS+=	-DSMP
@@ -51,6 +52,11 @@ EXPORT_SYMS=	dtrace_register \
 		dtrace_probe_lookup
 
 dtrace_asm.o:  assym.s
+
+.if ${MACHINE_CPUARCH} == "arm"
+assym.o: assym.s
+	${AS} -meabi=5 -o assym.o assym.s
+.endif
 
 .include <bsd.kmod.mk>
 

@@ -48,13 +48,23 @@
 
 #include "assym.s"
 
+#include "opt_kdtrace.h"
 #include <machine/asm.h>
 #include <machine/armreg.h>
 #include <machine/asmacros.h>
 __FBSDID("$FreeBSD$");
 
-	.text	
-	.align	0
+#ifdef KDTRACE_HOOKS
+	.bss
+	.align 4
+	.global	_C_LABEL(dtrace_invop_calltrap_addr)
+_C_LABEL(dtrace_invop_calltrap_addr):
+	.word 0
+	.word 0
+#endif
+
+	.text
+	.align	2
 
 /*
  * ASM macros for pushing and pulling trapframes from the stack
@@ -113,7 +123,7 @@ __FBSDID("$FreeBSD$");
 	add	sp, sp, #(4*17);	/* Adjust the stack pointer */	   \
  	ldr	lr, [sp], #4;		/* Pull the return address */	   \
 	add	sp, sp, #4		/* Align the stack */
-#else 
+#else
 #define PULLFRAME							   \
 	ldr	r0, [sp], #4	;	/* Get the SPSR from stack */	   \
 	msr	spsr_fsxc, r0;						   \
@@ -147,7 +157,8 @@ __FBSDID("$FreeBSD$");
 	msr	cpsr_c, r2;		/* Punch into SVC mode */	   \
 	mov	r2, sp;			/* Save	SVC sp */		   \
 	bic	sp, sp, #7;		/* Align sp to an 8-byte addrress */  \
-	sub	sp, sp, #4;		/* Pad trapframe to keep alignment */ \
+	sub	sp, sp, #(4 * 17);	/* Pad trapframe to keep alignment */ \
+				    /* and for dtrace to emulate push/pop */  \
 	str	r0, [sp, #-4]!;		/* Push return address */	   \
 	str	lr, [sp, #-4]!;		/* Push SVC lr */		   \
 	str	r2, [sp, #-4]!;		/* Push SVC sp */		   \
@@ -184,7 +195,8 @@ __FBSDID("$FreeBSD$");
 	msr	cpsr_c, r2;		/* Punch into SVC mode */	   \
 	mov	r2, sp;			/* Save	SVC sp */		   \
 	bic	sp, sp, #7;		/* Align sp to an 8-byte addrress */  \
-	sub	sp, sp, #4;		/* Pad trapframe to keep alignment */ \
+	sub	sp, sp, #(4 * 17);	/* Pad trapframe to keep alignment */ \
+				    /* and for dtrace to emulate push/pop */  \
 	str	r0, [sp, #-4]!;		/* Push return address */	   \
 	str	lr, [sp, #-4]!;		/* Push SVC lr */		   \
 	str	r2, [sp, #-4]!;		/* Push SVC sp */		   \
@@ -214,7 +226,7 @@ __FBSDID("$FreeBSD$");
 	mov	r0, r0;	  		/* NOP for previous instruction */ \
 	add	sp, sp, #(4*15);	/* Adjust the stack pointer */	   \
 	ldmia	sp, {sp, lr, pc}^	/* Restore lr and exit */
-#else 
+#else
 #define PULLFRAMEFROMSVCANDEXIT						   \
 	ldr	r0, [sp], #4;		/* Get the SPSR from stack */	   \
 	msr	spsr_fsxc, r0;		/* restore SPSR */		   \
@@ -225,7 +237,6 @@ __FBSDID("$FreeBSD$");
 	ldmia	sp, {sp, lr, pc}^	/* Restore lr and exit */
 #endif
 
-#if defined(__ARM_EABI__)
 /*
  * Unwind hints so we can unwind past functions that use
  * PULLFRAMEFROMSVCANDEXIT. They are run in reverse order.
@@ -237,30 +248,27 @@ __FBSDID("$FreeBSD$");
 	.pad #(2*4);			/* Skip user sp and lr */	   \
 	.save {r0-r12};			/* Restore r0-r12 */		   \
 	.pad #(4)			/* Skip spsr */
-#else
-#define	UNWINDSVCFRAME
-#endif
 
-#define	DO_AST								\
-	ldr	r0, [sp]		/* Get the SPSR from stack */	;\
-	mrs	r4, cpsr		/* save CPSR */			;\
-	orr	r1, r4, #(I32_bit|F32_bit)				;\
-	msr	cpsr_c, r1		/* Disable interrupts */	;\
-	and	r0, r0, #(PSR_MODE)	/* Returning to USR mode? */	;\
-	teq	r0, #(PSR_USR32_MODE)					;\
-	bne	2f			/* Nope, get out now */		;\
-	bic	r4, r4, #(I32_bit|F32_bit)				;\
-1:	GET_CURTHREAD_PTR(r5)						;\
-	ldr	r1, [r5, #(TD_FLAGS)]					;\
-	and	r1, r1, #(TDF_ASTPENDING|TDF_NEEDRESCHED)		;\
-	teq	r1, #0x00000000						;\
-	beq	2f			/* Nope. Just bail */		;\
-	msr	cpsr_c, r4		/* Restore interrupts */	;\
-	mov	r0, sp							;\
-	bl	_C_LABEL(ast)		/* ast(frame) */		;\
-	orr	r0, r4, #(I32_bit|F32_bit)				;\
-	msr	cpsr_c, r0						;\
-	b	1b							;\
+#define	DO_AST								   \
+	ldr	r0, [sp];		/* Get the SPSR from stack */	   \
+	mrs	r4, cpsr;		/* save CPSR */			   \
+	orr	r1, r4, #(PSR_I|PSR_F);					   \
+	msr	cpsr_c, r1;		/* Disable interrupts */	   \
+	and	r0, r0, #(PSR_MODE);	/* Returning to USR mode? */	   \
+	teq	r0, #(PSR_USR32_MODE);					   \
+	bne	2f;			/* Nope, get out now */		   \
+	bic	r4, r4, #(PSR_I|PSR_F);					   \
+1:	GET_CURTHREAD_PTR(r5);						   \
+	ldr	r1, [r5, #(TD_FLAGS)];					   \
+	and	r1, r1, #(TDF_ASTPENDING|TDF_NEEDRESCHED);		   \
+	teq	r1, #0;							   \
+	beq	2f;			/* Nope. Just bail */		   \
+	msr	cpsr_c, r4;		/* Restore interrupts */	   \
+	mov	r0, sp;							   \
+	bl	_C_LABEL(ast);		/* ast(frame) */		   \
+	orr	r0, r4, #(PSR_I|PSR_F);					   \
+	msr	cpsr_c, r0;						   \
+	b	1b;							   \
 2:
 
 
@@ -280,12 +288,12 @@ ASENTRY_NP(swi_entry)
 	 * that a newly created thread appears to return from a SWI just like
 	 * the parent thread that created it.
 	 */
-ASENTRY_NP(swi_exit)
+ASEENTRY_NP(swi_exit)
 	DO_AST				/* Handle pending signals. */
 	PULLFRAME			/* Deallocate trapframe. */
 	movs	pc, lr			/* Return to userland. */
 	STOP_UNWINDING			/* Don't unwind into user mode. */
-END(swi_exit)
+EEND(swi_exit)
 END(swi_entry)
 
 /*
@@ -308,7 +316,7 @@ END(exception_exit)
  * Entry point for a Prefetch Abort exception.
  *
  * The hardware switches to the abort mode stack; we switch to svc32 before
- * calling the handler, then return directly to the original mode/stack 
+ * calling the handler, then return directly to the original mode/stack
  * on exit (without transitioning back through the abort mode stack).
  */
 ASENTRY_NP(prefetch_abort_entry)
@@ -320,14 +328,15 @@ ASENTRY_NP(prefetch_abort_entry)
 	PUSHFRAMEINSVC			/* mode stack, build trapframe there. */
 	adr	lr, exception_exit	/* Return from handler via standard */
 	mov	r0, sp			/* exception exit routine.  Pass the */
-	b	prefetch_abort_handler	/* trapframe to the handler. */
+	mov	r1, #1			/* Type flag */
+	b	_C_LABEL(abort_handler)
 END(prefetch_abort_entry)
 
 /*
  * Entry point for a Data Abort exception.
  *
  * The hardware switches to the abort mode stack; we switch to svc32 before
- * calling the handler, then return directly to the original mode/stack 
+ * calling the handler, then return directly to the original mode/stack
  * on exit (without transitioning back through the abort mode stack).
  */
 ASENTRY_NP(data_abort_entry)
@@ -337,20 +346,20 @@ ASENTRY_NP(data_abort_entry)
 #endif
 	sub	lr, lr, #8		/* Adjust the lr. Transition to scv32 */
 	PUSHFRAMEINSVC			/* mode stack, build trapframe there. */
-	adr	lr, exception_exit	/* Return from handler via standard */
-	mov	r0, sp			/* exception exit routine.  Pass the */
-	b	data_abort_handler	/* trapframe to the handler. */
+	adr	lr, exception_exit	/* Exception exit routine */
+	mov	r0, sp			/* Trapframe to the handler */
+	mov	r1, #0			/* Type flag */
+	b	_C_LABEL(abort_handler)
 END(data_abort_entry)
 
 /*
  * Entry point for an Undefined Instruction exception.
  *
  * The hardware switches to the undefined mode stack; we switch to svc32 before
- * calling the handler, then return directly to the original mode/stack 
+ * calling the handler, then return directly to the original mode/stack
  * on exit (without transitioning back through the undefined mode stack).
  */
 ASENTRY_NP(undefined_entry)
-	sub	lr, lr, #4		/* Adjust the lr. Transition to scv32 */
 	PUSHFRAMEINSVC			/* mode stack, build trapframe there. */
 	adr	lr, exception_exit      /* Return from handler via standard */
 	mov	r0, sp			/* exception exit routine.  Pass the */
@@ -361,7 +370,7 @@ END(undefined_entry)
  * Entry point for a normal IRQ.
  *
  * The hardware switches to the IRQ mode stack; we switch to svc32 before
- * calling the handler, then return directly to the original mode/stack 
+ * calling the handler, then return directly to the original mode/stack
  * on exit (without transitioning back through the IRQ mode stack).
  */
 ASENTRY_NP(irq_entry)
@@ -370,19 +379,19 @@ ASENTRY_NP(irq_entry)
 	adr	lr, exception_exit	/* Return from handler via standard */
 	mov	r0, sp			/* exception exit routine.  Pass the */
 	b	_C_LABEL(arm_irq_handler)/* trapframe to the handler. */
-END(irq_entry)                           
+END(irq_entry)
 
 /*
  * Entry point for an FIQ interrupt.
  *
- * We don't currently support FIQ handlers very much.  Something can 
+ * We don't currently support FIQ handlers very much.  Something can
  * install itself in the FIQ vector using code (that may or may not work
  * these days) in fiq.c.  If nobody does that and an FIQ happens, this
  * default handler just disables FIQs and otherwise ignores it.
  */
 ASENTRY_NP(fiq_entry)
 	mrs	r8, cpsr		/* FIQ handling isn't supported, */
-	bic	r8, #(F32_bit)		/* just disable FIQ and return.  */
+	bic	r8, #(PSR_F)		/* just disable FIQ and return.  */
 	msr	cpsr_c, r8		/* The r8 we trash here is the  */
 	subs	pc, lr, #4		/* banked FIQ-mode r8. */
 END(fiq_entry)
@@ -403,7 +412,7 @@ Laddr_exception_msg:
 END(addr_exception_entry)
 
 /*
- * Entry point for the system Reset vector.  
+ * Entry point for the system Reset vector.
  * This should never happen, so panic.
  */
 ASENTRY_NP(reset_entry)
@@ -421,8 +430,8 @@ END(reset_entry)
  * the ARM vectors page (high or low) as part of CPU initialization.  The
  * code that does the copy assumes that page0_data holds one 32-bit word
  * of data for each of the predefined ARM vectors.  It also assumes that
- * page0_data follows the vectors in page0, but other stuff can appear 
- * between the two.  We currently leave room between the two for some fiq 
+ * page0_data follows the vectors in page0, but other stuff can appear
+ * between the two.  We currently leave room between the two for some fiq
  * handler code to be copied in.
  */
 	.global	_C_LABEL(page0), _C_LABEL(page0_data)

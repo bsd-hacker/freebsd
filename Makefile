@@ -36,6 +36,9 @@
 #                       specified with XDEV and XDEV_ARCH.
 # xdev-build          - Build cross-development tools.
 # xdev-install        - Install cross-development tools.
+# xdev-links          - Create traditional links in /usr/bin for cc, etc
+# native-xtools       - Create host binaries that produce target objects
+#                       for use in qemu user-mode jails.
 # 
 # "quick" way to test all kernel builds:
 # 	_jflag=`sysctl -n hw.ncpu`
@@ -82,7 +85,7 @@
 #
 # See src/UPDATING `COMMON ITEMS' for more complete information.
 #
-# If TARGET=machine (e.g. ia64, sparc64, ...) is specified you can
+# If TARGET=machine (e.g. powerpc, sparc64, ...) is specified you can
 # cross build world for other machine types using the buildworld target,
 # and once the world is built you can cross build a kernel using the
 # buildkernel target.
@@ -110,6 +113,7 @@ TGTS=	all all-man buildenv buildenvvars buildkernel buildworld \
 	_worldtmp _legacy _bootstrap-tools _cleanobj _obj \
 	_build-tools _cross-tools _includes _libraries _depend \
 	build32 builddtb distribute32 install32 xdev xdev-build xdev-install \
+	xdev-links native-xtools \
 
 TGTS+=	${SUBDIR_TARGETS}
 
@@ -161,16 +165,23 @@ _MAKE=	PATH=${PATH} ${SUB_MAKE} -f Makefile.inc1 TARGET=${_TARGET} TARGET_ARCH=$
 
 # Guess machine architecture from machine type, and vice versa.
 .if !defined(TARGET_ARCH) && defined(TARGET)
-_TARGET_ARCH=	${TARGET:S/pc98/i386/}
+_TARGET_ARCH=	${TARGET:S/pc98/i386/:S/arm64/aarch64/}
 .elif !defined(TARGET) && defined(TARGET_ARCH) && \
     ${TARGET_ARCH} != ${MACHINE_ARCH}
-_TARGET=		${TARGET_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb|hf)?/arm/}
+_TARGET=		${TARGET_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb|hf)?/arm/:C/aarch64/arm64/:C/powerpc64/powerpc/}
 .endif
 .if defined(TARGET) && !defined(_TARGET)
 _TARGET=${TARGET}
 .endif
 .if defined(TARGET_ARCH) && !defined(_TARGET_ARCH)
 _TARGET_ARCH=${TARGET_ARCH}
+.endif
+# for historical compatibility for xdev targets
+.if defined(XDEV)
+_TARGET=	${XDEV}
+.endif
+.if defined(XDEV_ARCH)
+_TARGET_ARCH=	${XDEV_ARCH}
 .endif
 # Otherwise, default to current machine type and architecture.
 _TARGET?=	${MACHINE}
@@ -329,6 +340,7 @@ MMAKEENV=	MAKEOBJDIRPREFIX=${MYMAKE:H} \
 MMAKE=		${MMAKEENV} ${MAKE} \
 		-DNO_MAN -DNO_SHARED \
 		-DNO_CPU_CFLAGS -DNO_WERROR \
+		MK_TESTS=no \
 		DESTDIR= PROGNAME=${MYMAKE:T}
 
 bmake: .PHONY
@@ -361,8 +373,19 @@ kernel-toolchains:
 # existing system is.
 #
 .if make(universe) || make(universe_kernels) || make(tinderbox) || make(targets)
-TARGETS?=amd64 arm i386 ia64 mips pc98 powerpc sparc64
+# XXX Add arm64 to universe only if we have an external binutils installed.
+# It does not build with the in-tree linker.
+.if exists(/usr/local/aarch64-freebsd/bin/ld)
+UNIVERSE_arm64=arm64
+.elif empty(${TARGETS})
+universe: universe_arm64_skip
+universe_epilogue: universe_arm64_skip
+universe_arm64_skip: universe_prologue
+	@echo ">> arm64 skipped - install aarch64-binutils port or package to build"
+.endif
+TARGETS?=amd64 arm ${UNIVERSE_arm64} i386 mips pc98 powerpc sparc64
 TARGET_ARCHES_arm?=	arm armeb armv6 armv6hf
+TARGET_ARCHES_arm64?=	aarch64
 TARGET_ARCHES_mips?=	mipsel mips mips64el mips64 mipsn32
 TARGET_ARCHES_powerpc?=	powerpc powerpc64
 TARGET_ARCHES_pc98?=	i386

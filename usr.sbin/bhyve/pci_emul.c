@@ -59,17 +59,6 @@ __FBSDID("$FreeBSD$");
 
 #define CONF1_ENABLE	   0x80000000ul
 
-#define	CFGWRITE(pi,off,val,b)						\
-do {									\
-	if ((b) == 1) {							\
-		pci_set_cfgdata8((pi),(off),(val));			\
-	} else if ((b) == 2) {						\
-		pci_set_cfgdata16((pi),(off),(val));			\
-	} else {							\
-		pci_set_cfgdata32((pi),(off),(val));			\
-	}								\
-} while (0)
-
 #define	MAXBUSES	(PCI_BUSMAX + 1)
 #define MAXSLOTS	(PCI_SLOTMAX + 1)
 #define	MAXFUNCS	(PCI_FUNCMAX + 1)
@@ -109,16 +98,44 @@ static uint64_t pci_emul_membase64;
 #define	PCI_EMUL_IOBASE		0x2000
 #define	PCI_EMUL_IOLIMIT	0x10000
 
-#define	PCI_EMUL_MEMLIMIT32	0xE0000000	/* 3.5GB */
+#define	PCI_EMUL_ECFG_BASE	0xE0000000		    /* 3.5GB */
+#define	PCI_EMUL_ECFG_SIZE	(MAXBUSES * 1024 * 1024)    /* 1MB per bus */
+SYSRES_MEM(PCI_EMUL_ECFG_BASE, PCI_EMUL_ECFG_SIZE);
+
+#define	PCI_EMUL_MEMLIMIT32	PCI_EMUL_ECFG_BASE
 
 #define	PCI_EMUL_MEMBASE64	0xD000000000UL
 #define	PCI_EMUL_MEMLIMIT64	0xFD00000000UL
 
 static struct pci_devemu *pci_emul_finddev(char *name);
-static void	pci_lintr_route(struct pci_devinst *pi);
-static void	pci_lintr_update(struct pci_devinst *pi);
+static void pci_lintr_route(struct pci_devinst *pi);
+static void pci_lintr_update(struct pci_devinst *pi);
+static void pci_cfgrw(struct vmctx *ctx, int vcpu, int in, int bus, int slot,
+    int func, int coff, int bytes, uint32_t *val);
 
-static struct mem_range pci_mem_hole;
+static __inline void
+CFGWRITE(struct pci_devinst *pi, int coff, uint32_t val, int bytes)
+{
+
+	if (bytes == 1)
+		pci_set_cfgdata8(pi, coff, val);
+	else if (bytes == 2)
+		pci_set_cfgdata16(pi, coff, val);
+	else
+		pci_set_cfgdata32(pi, coff, val);
+}
+
+static __inline uint32_t
+CFGREAD(struct pci_devinst *pi, int coff, int bytes)
+{
+
+	if (bytes == 1)
+		return (pci_get_cfgdata8(pi, coff));
+	else if (bytes == 2)
+		return (pci_get_cfgdata16(pi, coff));
+	else
+		return (pci_get_cfgdata32(pi, coff));
+}
 
 /*
  * I/O access
@@ -1023,12 +1040,37 @@ pci_emul_fallback_handler(struct vmctx *ctx, int vcpu, int dir, uint64_t addr,
 	return (0);
 }
 
+static int
+pci_emul_ecfg_handler(struct vmctx *ctx, int vcpu, int dir, uint64_t addr,
+    int bytes, uint64_t *val, void *arg1, long arg2)
+{
+	int bus, slot, func, coff, in;
+
+	coff = addr & 0xfff;
+	func = (addr >> 12) & 0x7;
+	slot = (addr >> 15) & 0x1f;
+	bus = (addr >> 20) & 0xff;
+	in = (dir == MEM_F_READ);
+	if (in)
+		*val = ~0UL;
+	pci_cfgrw(ctx, vcpu, in, bus, slot, func, coff, bytes, (uint32_t *)val);
+	return (0);
+}
+
+uint64_t
+pci_ecfg_base(void)
+{
+
+	return (PCI_EMUL_ECFG_BASE);
+}
+
 #define	BUSIO_ROUNDUP		32
 #define	BUSMEM_ROUNDUP		(1024 * 1024)
 
 int
 init_pci(struct vmctx *ctx)
 {
+	struct mem_range mr;
 	struct pci_devemu *pde;
 	struct businfo *bi;
 	struct slotinfo *si;
@@ -1112,22 +1154,34 @@ init_pci(struct vmctx *ctx)
 	 * The guest physical memory map looks like the following:
 	 * [0,		    lowmem)		guest system memory
 	 * [lowmem,	    lowmem_limit)	memory hole (may be absent)
-	 * [lowmem_limit,   4GB)		PCI hole (32-bit BAR allocation)
+	 * [lowmem_limit,   0xE0000000)		PCI hole (32-bit BAR allocation)
+	 * [0xE0000000,	    0xF0000000)		PCI extended config window
+	 * [0xF0000000,	    4GB)		LAPIC, IOAPIC, HPET, firmware
 	 * [4GB,	    4GB + highmem)
-	 *
+	 */
+
+	/*
 	 * Accesses to memory addresses that are not allocated to system
 	 * memory or PCI devices return 0xff's.
 	 */
 	lowmem = vm_get_lowmem_size(ctx);
+	bzero(&mr, sizeof(struct mem_range));
+	mr.name = "PCI hole";
+	mr.flags = MEM_F_RW | MEM_F_IMMUTABLE;
+	mr.base = lowmem;
+	mr.size = (4ULL * 1024 * 1024 * 1024) - lowmem;
+	mr.handler = pci_emul_fallback_handler;
+	error = register_mem_fallback(&mr);
+	assert(error == 0);
 
-	memset(&pci_mem_hole, 0, sizeof(struct mem_range));
-	pci_mem_hole.name = "PCI hole";
-	pci_mem_hole.flags = MEM_F_RW;
-	pci_mem_hole.base = lowmem;
-	pci_mem_hole.size = (4ULL * 1024 * 1024 * 1024) - lowmem;
-	pci_mem_hole.handler = pci_emul_fallback_handler;
-
-	error = register_mem_fallback(&pci_mem_hole);
+	/* PCI extended config space */
+	bzero(&mr, sizeof(struct mem_range));
+	mr.name = "PCI ECFG";
+	mr.flags = MEM_F_RW | MEM_F_IMMUTABLE;
+	mr.base = PCI_EMUL_ECFG_BASE;
+	mr.size = PCI_EMUL_ECFG_SIZE;
+	mr.handler = pci_emul_ecfg_handler;
+	error = register_mem(&mr);
 	assert(error == 0);
 
 	return (0);
@@ -1612,62 +1666,31 @@ pci_emul_hdrtype_fixup(int bus, int slot, int off, int bytes, uint32_t *rv)
 	}
 }
 
-static int cfgenable, cfgbus, cfgslot, cfgfunc, cfgoff;
-
-static int
-pci_emul_cfgaddr(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
-		 uint32_t *eax, void *arg)
-{
-	uint32_t x;
-
-	if (bytes != 4) {
-		if (in)
-			*eax = (bytes == 2) ? 0xffff : 0xff;
-		return (0);
-	}
-
-	if (in) {
-		x = (cfgbus << 16) |
-		    (cfgslot << 11) |
-		    (cfgfunc << 8) |
-		    cfgoff;
-                if (cfgenable)
-			x |= CONF1_ENABLE;	       
-		*eax = x;
-	} else {
-		x = *eax;
-		cfgenable = (x & CONF1_ENABLE) == CONF1_ENABLE;
-		cfgoff = x & PCI_REGMAX;
-		cfgfunc = (x >> 8) & PCI_FUNCMAX;
-		cfgslot = (x >> 11) & PCI_SLOTMAX;
-		cfgbus = (x >> 16) & PCI_BUSMAX;
-	}
-
-	return (0);
-}
-INOUT_PORT(pci_cfgaddr, CONF1_ADDR_PORT, IOPORT_F_INOUT, pci_emul_cfgaddr);
-
-static uint32_t
-bits_changed(uint32_t old, uint32_t new, uint32_t mask)
-{
-
-	return ((old ^ new) & mask);
-}
-
 static void
-pci_emul_cmdwrite(struct pci_devinst *pi, uint32_t new, int bytes)
+pci_emul_cmdsts_write(struct pci_devinst *pi, int coff, uint32_t new, int bytes)
 {
-	int i;
-	uint16_t old;
+	int i, rshift;
+	uint32_t cmd, cmd2, changed, old, readonly;
+
+	cmd = pci_get_cfgdata16(pi, PCIR_COMMAND);	/* stash old value */
 
 	/*
-	 * The command register is at an offset of 4 bytes and thus the
-	 * guest could write 1, 2 or 4 bytes starting at this offset.
+	 * From PCI Local Bus Specification 3.0 sections 6.2.2 and 6.2.3.
+	 *
+	 * XXX Bits 8, 11, 12, 13, 14 and 15 in the status register are
+	 * 'write 1 to clear'. However these bits are not set to '1' by
+	 * any device emulation so it is simpler to treat them as readonly.
 	 */
+	rshift = (coff & 0x3) * 8;
+	readonly = 0xFFFFF880 >> rshift;
 
-	old = pci_get_cfgdata16(pi, PCIR_COMMAND);	/* stash old value */
-	CFGWRITE(pi, PCIR_COMMAND, new, bytes);		/* update config */
-	new = pci_get_cfgdata16(pi, PCIR_COMMAND);	/* get updated value */
+	old = CFGREAD(pi, coff, bytes);
+	new &= ~readonly;
+	new |= (old & readonly);
+	CFGWRITE(pi, coff, new, bytes);			/* update config */
+
+	cmd2 = pci_get_cfgdata16(pi, PCIR_COMMAND);	/* get updated value */
+	changed = cmd ^ cmd2;
 
 	/*
 	 * If the MMIO or I/O address space decoding has changed then
@@ -1680,7 +1703,7 @@ pci_emul_cmdwrite(struct pci_devinst *pi, uint32_t new, int bytes)
 				break;
 			case PCIBAR_IO:
 				/* I/O address space decoding changed? */
-				if (bits_changed(old, new, PCIM_CMD_PORTEN)) {
+				if (changed & PCIM_CMD_PORTEN) {
 					if (porten(pi))
 						register_bar(pi, i);
 					else
@@ -1690,7 +1713,7 @@ pci_emul_cmdwrite(struct pci_devinst *pi, uint32_t new, int bytes)
 			case PCIBAR_MEM32:
 			case PCIBAR_MEM64:
 				/* MMIO address space decoding changed? */
-				if (bits_changed(old, new, PCIM_CMD_MEMEN)) {
+				if (changed & PCIM_CMD_MEMEN) {
 					if (memen(pi))
 						register_bar(pi, i);
 					else
@@ -1709,41 +1732,51 @@ pci_emul_cmdwrite(struct pci_devinst *pi, uint32_t new, int bytes)
 	pci_lintr_update(pi);
 }	
 
-static int
-pci_emul_cfgdata(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
-		 uint32_t *eax, void *arg)
+static void
+pci_cfgrw(struct vmctx *ctx, int vcpu, int in, int bus, int slot, int func,
+    int coff, int bytes, uint32_t *eax)
 {
 	struct businfo *bi;
 	struct slotinfo *si;
 	struct pci_devinst *pi;
 	struct pci_devemu *pe;
-	int coff, idx, needcfg;
+	int idx, needcfg;
 	uint64_t addr, bar, mask;
 
-	assert(bytes == 1 || bytes == 2 || bytes == 4);
-
-	if ((bi = pci_businfo[cfgbus]) != NULL) {
-		si = &bi->slotinfo[cfgslot];
-		pi = si->si_funcs[cfgfunc].fi_devi;
+	if ((bi = pci_businfo[bus]) != NULL) {
+		si = &bi->slotinfo[slot];
+		pi = si->si_funcs[func].fi_devi;
 	} else
 		pi = NULL;
 
-	coff = cfgoff + (port - CONF1_DATA_PORT);
-
-#if 0
-	printf("pcicfg-%s from 0x%0x of %d bytes (%d/%d/%d)\n\r",
-		in ? "read" : "write", coff, bytes, cfgbus, cfgslot, cfgfunc);
-#endif
-
 	/*
-	 * Just return if there is no device at this cfgslot:cfgfunc,
-	 * if the guest is doing an un-aligned access, or if the config
-	 * address word isn't enabled.
+	 * Just return if there is no device at this slot:func or if the
+	 * the guest is doing an un-aligned access.
 	 */
-	if (!cfgenable || pi == NULL || (coff & (bytes - 1)) != 0) {
+	if (pi == NULL || (bytes != 1 && bytes != 2 && bytes != 4) ||
+	    (coff & (bytes - 1)) != 0) {
 		if (in)
 			*eax = 0xffffffff;
-		return (0);
+		return;
+	}
+
+	/*
+	 * Ignore all writes beyond the standard config space and return all
+	 * ones on reads.
+	 */
+	if (coff >= PCI_REGMAX + 1) {
+		if (in) {
+			*eax = 0xffffffff;
+			/*
+			 * Extended capabilities begin at offset 256 in config
+			 * space. Absence of extended capabilities is signaled
+			 * with all 0s in the extended capability header at
+			 * offset 256.
+			 */
+			if (coff <= PCI_REGMAX + 4)
+				*eax = 0x00000000;
+		}
+		return;
 	}
 
 	pe = pi->pi_d;
@@ -1754,27 +1787,21 @@ pci_emul_cfgdata(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
 	if (in) {
 		/* Let the device emulation override the default handler */
 		if (pe->pe_cfgread != NULL) {
-			needcfg = pe->pe_cfgread(ctx, vcpu, pi,
-						    coff, bytes, eax);
+			needcfg = pe->pe_cfgread(ctx, vcpu, pi, coff, bytes,
+			    eax);
 		} else {
 			needcfg = 1;
 		}
 
-		if (needcfg) {
-			if (bytes == 1)
-				*eax = pci_get_cfgdata8(pi, coff);
-			else if (bytes == 2)
-				*eax = pci_get_cfgdata16(pi, coff);
-			else
-				*eax = pci_get_cfgdata32(pi, coff);
-		}
+		if (needcfg)
+			*eax = CFGREAD(pi, coff, bytes);
 
-		pci_emul_hdrtype_fixup(cfgbus, cfgslot, coff, bytes, eax);
+		pci_emul_hdrtype_fixup(bus, slot, coff, bytes, eax);
 	} else {
 		/* Let the device emulation override the default handler */
 		if (pe->pe_cfgwrite != NULL &&
 		    (*pe->pe_cfgwrite)(ctx, vcpu, pi, coff, bytes, *eax) == 0)
-			return (0);
+			return;
 
 		/*
 		 * Special handling for write to BAR registers
@@ -1785,7 +1812,7 @@ pci_emul_cfgdata(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
 			 * 4-byte aligned.
 			 */
 			if (bytes != 4 || (coff & 0x3) != 0)
-				return (0);
+				return;
 			idx = (coff - PCIR_BAR(0)) / 4;
 			mask = ~(pi->pi_bar[idx].size - 1);
 			switch (pi->pi_bar[idx].type) {
@@ -1837,13 +1864,63 @@ pci_emul_cfgdata(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
 
 		} else if (pci_emul_iscap(pi, coff)) {
 			pci_emul_capwrite(pi, coff, bytes, *eax);
-		} else if (coff == PCIR_COMMAND) {
-			pci_emul_cmdwrite(pi, *eax, bytes);
+		} else if (coff >= PCIR_COMMAND && coff < PCIR_REVID) {
+			pci_emul_cmdsts_write(pi, coff, *eax, bytes);
 		} else {
 			CFGWRITE(pi, coff, *eax, bytes);
 		}
 	}
+}
 
+static int cfgenable, cfgbus, cfgslot, cfgfunc, cfgoff;
+
+static int
+pci_emul_cfgaddr(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
+		 uint32_t *eax, void *arg)
+{
+	uint32_t x;
+
+	if (bytes != 4) {
+		if (in)
+			*eax = (bytes == 2) ? 0xffff : 0xff;
+		return (0);
+	}
+
+	if (in) {
+		x = (cfgbus << 16) | (cfgslot << 11) | (cfgfunc << 8) | cfgoff;
+		if (cfgenable)
+			x |= CONF1_ENABLE;
+		*eax = x;
+	} else {
+		x = *eax;
+		cfgenable = (x & CONF1_ENABLE) == CONF1_ENABLE;
+		cfgoff = x & PCI_REGMAX;
+		cfgfunc = (x >> 8) & PCI_FUNCMAX;
+		cfgslot = (x >> 11) & PCI_SLOTMAX;
+		cfgbus = (x >> 16) & PCI_BUSMAX;
+	}
+
+	return (0);
+}
+INOUT_PORT(pci_cfgaddr, CONF1_ADDR_PORT, IOPORT_F_INOUT, pci_emul_cfgaddr);
+
+static int
+pci_emul_cfgdata(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
+		 uint32_t *eax, void *arg)
+{
+	int coff;
+
+	assert(bytes == 1 || bytes == 2 || bytes == 4);
+
+	coff = cfgoff + (port - CONF1_DATA_PORT);
+	if (cfgenable) {
+		pci_cfgrw(ctx, vcpu, in, cfgbus, cfgslot, cfgfunc, coff, bytes,
+		    eax);
+	} else {
+		/* Ignore accesses to cfgdata if not enabled by cfgaddr */
+		if (in)
+			*eax = 0xffffffff;
+	}
 	return (0);
 }
 
@@ -1861,7 +1938,7 @@ INOUT_PORT(pci_cfgdata, CONF1_DATA_PORT+3, IOPORT_F_INOUT, pci_emul_cfgdata);
 #define DMEMSZ	4096
 struct pci_emul_dsoftc {
 	uint8_t   ioregs[DIOSZ];
-	uint8_t	  memregs[DMEMSZ];
+	uint8_t	  memregs[2][DMEMSZ];
 };
 
 #define	PCI_EMUL_MSI_MSGS	 4
@@ -1888,6 +1965,9 @@ pci_emul_dinit(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	assert(error == 0);
 
 	error = pci_emul_alloc_bar(pi, 1, PCIBAR_MEM32, DMEMSZ);
+	assert(error == 0);
+
+	error = pci_emul_alloc_bar(pi, 2, PCIBAR_MEM32, DMEMSZ);
 	assert(error == 0);
 
 	return (0);
@@ -1929,21 +2009,23 @@ pci_emul_diow(struct vmctx *ctx, int vcpu, struct pci_devinst *pi, int baridx,
 		}
 	}
 
-	if (baridx == 1) {
+	if (baridx == 1 || baridx == 2) {
 		if (offset + size > DMEMSZ) {
 			printf("diow: memw too large, offset %ld size %d\n",
 			       offset, size);
 			return;
 		}
 
+		i = baridx - 1;		/* 'memregs' index */
+
 		if (size == 1) {
-			sc->memregs[offset] = value;
+			sc->memregs[i][offset] = value;
 		} else if (size == 2) {
-			*(uint16_t *)&sc->memregs[offset] = value;
+			*(uint16_t *)&sc->memregs[i][offset] = value;
 		} else if (size == 4) {
-			*(uint32_t *)&sc->memregs[offset] = value;
+			*(uint32_t *)&sc->memregs[i][offset] = value;
 		} else if (size == 8) {
-			*(uint64_t *)&sc->memregs[offset] = value;
+			*(uint64_t *)&sc->memregs[i][offset] = value;
 		} else {
 			printf("diow: memw unknown size %d\n", size);
 		}
@@ -1953,7 +2035,7 @@ pci_emul_diow(struct vmctx *ctx, int vcpu, struct pci_devinst *pi, int baridx,
 		 */
 	}
 
-	if (baridx > 1) {
+	if (baridx > 2) {
 		printf("diow: unknown bar idx %d\n", baridx);
 	}
 }
@@ -1964,6 +2046,7 @@ pci_emul_dior(struct vmctx *ctx, int vcpu, struct pci_devinst *pi, int baridx,
 {
 	struct pci_emul_dsoftc *sc = pi->pi_arg;
 	uint32_t value;
+	int i;
 
 	if (baridx == 0) {
 		if (offset + size > DIOSZ) {
@@ -1982,29 +2065,31 @@ pci_emul_dior(struct vmctx *ctx, int vcpu, struct pci_devinst *pi, int baridx,
 			printf("dior: ior unknown size %d\n", size);
 		}
 	}
-	
-	if (baridx == 1) {
+
+	if (baridx == 1 || baridx == 2) {
 		if (offset + size > DMEMSZ) {
 			printf("dior: memr too large, offset %ld size %d\n",
 			       offset, size);
 			return (0);
 		}
-	
+		
+		i = baridx - 1;		/* 'memregs' index */
+
 		if (size == 1) {
-			value = sc->memregs[offset];
+			value = sc->memregs[i][offset];
 		} else if (size == 2) {
-			value = *(uint16_t *) &sc->memregs[offset];
+			value = *(uint16_t *) &sc->memregs[i][offset];
 		} else if (size == 4) {
-			value = *(uint32_t *) &sc->memregs[offset];
+			value = *(uint32_t *) &sc->memregs[i][offset];
 		} else if (size == 8) {
-			value = *(uint64_t *) &sc->memregs[offset];
+			value = *(uint64_t *) &sc->memregs[i][offset];
 		} else {
 			printf("dior: ior unknown size %d\n", size);
 		}
 	}
 
 
-	if (baridx > 1) {
+	if (baridx > 2) {
 		printf("dior: unknown bar idx %d\n", baridx);
 		return (0);
 	}
