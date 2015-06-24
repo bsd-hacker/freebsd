@@ -303,7 +303,7 @@ build_release() {
 }
 
 # Upload AWS EC2 AMI images.
-build_ec2_ami() {
+upload_ec2_ami() {
 	_build="${rev}-${arch}-${kernel}-${type}"
 	_conf="${scriptdir}/${_build}.conf"
 	source_config || return 0
@@ -331,11 +331,44 @@ build_ec2_ami() {
 		AWSBUCKET=${AWSBUCKET} \
 		AWSKEYFILE=${AWSKEYFILE} \
 		EC2PUBLIC=${EC2PUBLIC} ec2ami \
-		>> ${logdir}/${_build}.log 2>&1
+		>> ${logdir}/${_build}.ec2.log 2>&1
 	unset _build _conf AWSREGION AWSBUCKET AWSKEYFILE EC2PUBLIC
 	umount ${CHROOTDIR}/dev
 	return 0
-} # build_ec2_ami()
+} # upload_ec2_ami()
+
+# Upload Microsoft Azure virtual machine images.
+upload_azure_image() {
+	_build="${rev}-${arch}-${kernel}-${type}"
+	_conf="${scriptdir}/${_build}.conf"
+	source_config || return 0
+	case ${arch} in
+		amd64)
+			;;
+		*)
+			return 0
+			;;
+	esac
+	if [ -z "${AZURE_UPLOAD_CONF}" ]; then
+		return 0
+	fi
+	info "Uploading Azure virutal machine image for build: ${_build}"
+	if [ ! -e "${CHROOTDIR}/${AZURE_UPLOAD_CONF}" ]; then
+		cp -p ${AZURE_UPLOAD_CONF} ${CHROOTDIR}/${AZURE_UPLOAD_CONF}
+		if [ $? -ne 0 ]; then
+			info "Azure key file not found."
+			return 0
+		fi
+	fi
+	mount -t devfs devfs ${CHROOTDIR}/dev
+	chroot ${CHROOTDIR} make -C /usr/src/release \
+		AZURE_UPLOAD_CONF=${AZURE_UPLOAD_CONF} \
+		azure-upload \
+		>> ${logdir}/${_build}.azure.log 2>&1
+	unset _build _conf AZURE_UPLOAD_CONF
+	umount ${CHROOTDIR}/dev
+	return 0
+} # upload_azure_image()
 
 # Install amd64/i386 "seed" chroots for all branches being built.
 install_chroots() {
@@ -451,7 +484,8 @@ main() {
 	runall build_chroots
 	runall install_chroots
 	runall build_release
-	runall build_ec2_ami
+	runall upload_ec2_ami
+	runall upload_azure_image
 }
 
 main "$@"
