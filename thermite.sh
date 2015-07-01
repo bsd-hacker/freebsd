@@ -314,7 +314,7 @@ upload_ec2_ami() {
 			return 0
 			;;
 	esac
-	info "Building EC2 AMI for build: ${_build}"
+	info "Uploading EC2 AMI image for build: ${_build}"
 	if [ ! -e "${CHROOTDIR}/${AWSKEYFILE}" ]; then
 		cp -p ${AWSKEYFILE} ${CHROOTDIR}/${AWSKEYFILE}
 		if [ $? -ne 0 ]; then
@@ -369,6 +369,76 @@ upload_azure_image() {
 	umount ${CHROOTDIR}/dev
 	return 0
 } # upload_azure_image()
+
+# Upload Vagrant virtual machine images.
+upload_vagrant_image() {
+	_build="${rev}-${arch}-${kernel}-${type}"
+	_conf="${scriptdir}/${_build}.conf"
+	source_config || return 0
+	case ${arch} in
+		amd64)
+			;;
+		*)
+			return 0
+			;;
+	esac
+	if [ -z "${VAGRANT_UPLOAD_CONF}" ]; then
+		return 0
+	fi
+	info "Uploading Vagrant virutal machine image for build: ${_build}"
+	if [ ! -e "${CHROOTDIR}/${VAGRANT_UPLOAD_CONF}" ]; then
+		cp -p ${VAGRANT_UPLOAD_CONF} \
+			${CHROOTDIR}/${VAGRANT_UPLOAD_CONF}
+		if [ $? -ne 0 ]; then
+			info "Vagrant key file not found."
+			return 0
+		fi
+	fi
+	mount -t devfs devfs ${CHROOTDIR}/dev
+	chroot ${CHROOTDIR} make -C /usr/src/release \
+		VAGRANT_UPLOAD_CONF=${VAGRANT_UPLOAD_CONF} \
+		vagrant-upload \
+		>> ${logdir}/${_build}.vagrant.log 2>&1
+	unset _build _conf VAGRANT_UPLOAD_CONF
+	umount ${CHROOTDIR}/dev
+	return 0
+} # upload_vagrant_image()
+
+# Upload Google Compute Engine virtual machine images.
+upload_gce_image() {
+	_build="${rev}-${arch}-${kernel}-${type}"
+	_conf="${scriptdir}/${_build}.conf"
+	source_config || return 0
+	case ${arch} in
+		amd64)
+			;;
+		*)
+			return 0
+			;;
+	esac
+	if [ -z "${GCE_LOGIN_SKIP}" -o -z "${GCE_BUCKET}" ]; then
+		return 0
+	fi
+	info "Uploading GCE virutal machine image for build: ${_build}"
+	if [ ! -d "${CHROOTDIR}/${GCE_CONFIG_DIR}" ]; then
+		if [ ! -e "${GCE_CONFIG_PKG}" ]; then
+			echo "Cannot locate config tarball."
+			return 0
+		fi
+		mkdir -p ${CHROOTDIR}/${GCE_CONFIG_LOC}
+		tar -xzf ${GCE_CONFIG_PKG} -C ${CHROOTDIR}/${GCE_CONFIG_LOC}
+	fi
+	mount -t devfs devfs ${CHROOTDIR}/dev
+	chroot ${CHROOTDIR} make -C /usr/src/release \
+		GCE_BUCKET=${GCE_BUCKET} \
+		GCE_LOGIN_SKIP=1 \
+		gce-upload \
+		>> ${logdir}/${_build}.gce 2>&1
+	unset _build _conf GCE_BUCKET GCE_CONFIG_DIR GCE_CONFIG_PKG
+	unset GCE_CONFIG_LOC GCE_LOGIN_SKIP
+	umount ${CHROOTDIR}/dev
+	return 0
+} # upload_gce_image()
 
 # Install amd64/i386 "seed" chroots for all branches being built.
 install_chroots() {
@@ -486,6 +556,8 @@ main() {
 	runall build_release
 	runall upload_ec2_ami
 	runall upload_azure_image
+	runall upload_gce_image
+	runall upload_vagrant_image
 }
 
 main "$@"
