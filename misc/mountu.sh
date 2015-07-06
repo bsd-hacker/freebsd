@@ -31,6 +31,10 @@
 # Change mount point from rw to ro with a file mapped rw
 # Currently fails for NFS
 
+# Page fault seen:
+# https://people.freebsd.org/~pho/stress/log/mountu.txt
+# Fixed by: r285039.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
