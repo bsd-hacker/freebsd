@@ -261,6 +261,7 @@ ftp_stage() {
 		-f Makefile.mirrors \
 		TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} \
 		KERNCONF=${KERNEL} WITH_VMIMAGES=${WITH_VMIMAGES} \
+		WITH_DVD=${WITH_DVD} \
 		ftp-stage >> ${logdir}/${_build}.log 2>&1
 
 	if [ -z "${ftpdir}" ]; then
