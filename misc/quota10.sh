@@ -84,7 +84,6 @@ else
 			quotaoff ${mntpoint}$2
 			) 2>&1 | egrep -v "No such file or directory"
 		done
-		echo "Done 1 @ `date '+%T'`"
 	else
 
 		# The test: Parallel mount and unmounts
@@ -98,6 +97,5 @@ else
 			done
 		done
 		rm -f /tmp/$0
-		echo "Done 2 @ `date '+%T'`"
 	fi
 fi
