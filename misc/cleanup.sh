@@ -32,21 +32,30 @@
 
 . ../default.cfg
 
-mount | grep -wq $mntpoint && umount -f $mntpoint
+MOUNTS=31
+mount | grep -q "on $mntpoint " && umount -f $mntpoint
 rm -rf ${mntpoint}/stressX*
-rm -f /tmp/.snap/pho* /var/.snap/pho*
+rm -f /tmp/.snap/stress2* /var/.snap/stress2*
 rm -rf /tmp/stressX.control $RUNDIR /tmp/misc.name
 mkdir -p $RUNDIR
 chmod 0777 $RUNDIR
 
-for i in `jot 16 0 | sort -nr` ""; do
-	while mount | grep -q "${mntpoint}$i "; do
+for i in `jot $MOUNTS 0 | sort -nr` ""; do
+	while mount | grep -q "on ${mntpoint}$i "; do
 		fstat ${mntpoint}$i | sed 1d | awk '{print $3}' | xargs kill
 		umount -f ${mntpoint}$i > /dev/null 2>&1
 	done
 done
+# Delete the test mount points /mnt0 .. /mnt31
+for i in `jot $MOUNTS 0`; do
+	if ! mount | grep -q "on ${mntpoint}$i "; then
+		[ -d ${mntpoint}$i ] && find ${mntpoint}$i -delete 2>/dev/null
+		rm -rf ${mntpoint}$i > /dev/null 2>&1
+	fi
+done
+find $mntpoint/* -delete 2>/dev/null
 m=$mdstart
-for i in `jot 15`; do
-	mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
+for i in `jot $MOUNTS`; do
+	[ -c /dev/md$m ] &&  mdconfig -d -u $m
 	m=$((m + 1))
 done
