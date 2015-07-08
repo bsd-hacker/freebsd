@@ -44,7 +44,7 @@ rm -f datamove2.c
 
 for i in `jot 2`; do
 	$here/../testcases/swap/swap -t 10m -i 200 -h &
-	/tmp/datamove2
+	/tmp/datamove2 || { echo FAIL; exit 1; }
 	ps | grep swap | grep -v swap | awk '{print $1}' | xargs kill
 done
 rm -rf /tmp/datamove2
@@ -169,8 +169,16 @@ unmapBuffer(char *bufferp)
 {
 	if (munmap(bufferp, pagesize * 2) == -1)
 		err(1, "unmap 1. buffer");
+	/*
+	   The following unmaps something random, which could trigger:
+	   Program received signal SIGSEGV, Segmentation fault.
+	   free (cp=0x28070000) at /usr/src/libexec/rtld-elf/malloc.c:311
+	*/
+
+#if 0
 	if (munmap(bufferp + pagesize * 2, pagesize * 2) == -1)
 		err(1, "unmap 2. buffer");
+#endif
 }
 
 int
