@@ -40,20 +40,19 @@ dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/wire_no_page.c
-mycc -o mmap7  -Wall -Wextra wire_no_page.c -lpthread || exit 1
+mycc -o mmap7 -Wall -Wextra wire_no_page.c -lpthread || exit 1
 rm -f wire_no_page.c
 cd $odir
 
-cp /tmp/mmap7  /tmp/mmap7.inputfile
 (cd ../testcases/swap; ./swap -t 1m -i 2) &
 cp /tmp/mmap7 /tmp/mmap7.inputfile
-/tmp/mmap7  /tmp/mmap7.inputfile
+/tmp/mmap7 /tmp/mmap7.inputfile
 while ps | grep -v grep | grep -qw swap; do
 	killall -9 swap 2>/dev/null
 	sleep .1
 done
 wait
-rm -f /tmp/mmap7  /tmp/mmap7.inputfile
+rm -f /tmp/mmap7 /tmp/mmap7.inputfile
 exit
 
 EOF
@@ -101,8 +100,8 @@ test2(void *arg __unused)
 void
 test(void)
 {
-	int error, i;
 	pthread_t cp[3];
+	int e, error, i;
 
 	if ((fd = open(file, O_RDWR)) == -1)
 		err(1, "open %s", file);
@@ -117,8 +116,8 @@ test(void)
 		err(1, "mmap");
 
 	for (i = 0; i < 3; i++)
-		if (pthread_create(&cp[i], NULL, test2, NULL) != 0)
-			perror("pthread_create");
+		if ((e = pthread_create(&cp[i], NULL, test2, NULL)) != 0)
+			errc(1, e, "pthread_create");
 	for (i = 0; i < 3; i++)
 		pthread_join(cp[i], NULL);
 

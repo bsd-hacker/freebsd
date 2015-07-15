@@ -30,6 +30,7 @@
 
 # "panic: handle_written_inodeblock: live inodedep 0xcc731200" seen.
 # http://people.freebsd.org/~pho/stress/log/umountf7.txt
+# https://people.freebsd.org/~pho/stress/log/kostik824.txt
 # Problem only seen with SU+J.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
@@ -48,7 +49,8 @@ mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 3g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
-newfs -j md${mdstart}$part > /dev/null
+[ "$newfs_flags" = "-U" ] && opt="-j"
+newfs $opt md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 daemon sh -c '(cd ../testcases/swap; ./swap -t 2m -i 4)'
@@ -144,7 +146,7 @@ int
 main(int argc, char **argv)
 {
         pthread_t rp[3];
-	int i;
+	int e, i;
 
 	if (argc != 2)
 		errx(1, "Usage: %s <number of files>", argv[0]);
@@ -152,14 +154,14 @@ main(int argc, char **argv)
 	n = n2 = -1;
 	pid = getpid();
 
-	if (pthread_create(&rp[0], NULL, cr, NULL) != 0)
-		err(1, "pthread_create");
+	if ((e = pthread_create(&rp[0], NULL, cr, NULL)) != 0)
+		errc(1, e, "pthread_create");
 	usleep(arc4random() % 1000);
-	if (pthread_create(&rp[1], NULL, mv, NULL) != 0)
-		err(1, "pthread_mv");
+	if ((e = pthread_create(&rp[1], NULL, mv, NULL)) != 0)
+		errc(1, e, "pthread_mv");
 	usleep(arc4random() % 1000);
-	if (pthread_create(&rp[2], NULL, rm, NULL) != 0)
-		perror("pthread_rm");
+	if ((e = pthread_create(&rp[2], NULL, rm, NULL)) != 0)
+		errc(1, e, "pthread_rm");
 
         for (i = 0; i < 3; i++)
                 pthread_join(rp[i], NULL);

@@ -140,15 +140,15 @@ test(void *arg __unused)
 int
 main(void)
 {
-	int i;
 	pthread_t cp[PARALLEL], sp;
+	int e, i;
 
-	if (pthread_create(&sp, NULL, spin, NULL) != 0)
-		perror("pthread_create");
+	if ((e = pthread_create(&sp, NULL, spin, NULL)) != 0)
+		errc(1, e, "pthread_create");
 
 	for (i = 0; i < PARALLEL; i++) {
-		if (pthread_create(&cp[i], NULL, test, NULL) != 0)
-			perror("pthread_create");
+		if ((e = pthread_create(&cp[i], NULL, test, NULL)) != 0)
+			errc(1, e, "pthread_create");
 	}
 
 

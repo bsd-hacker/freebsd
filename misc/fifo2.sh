@@ -172,7 +172,7 @@ main(void)
 	struct rlimit limit;
 	pthread_t cp[50];
 	time_t start;
-	int j;
+	int e, j;
 
 	if ((pw = getpwnam("nobody")) == NULL)
 		err(1, "no such user: nobody");
@@ -201,8 +201,8 @@ main(void)
 		if (fork() == 0) {
 			arc4random_stir();
 			for (j = 0; j < 1; j++)
-				if (pthread_create(&cp[j], NULL, calls, NULL) != 0)
-					perror("pthread_create");
+				if ((e = pthread_create(&cp[j], NULL, calls, NULL)) != 0)
+					errc(1, e,"pthread_create");
 
 			for (j = 0; j < 1; j++)
 				pthread_join(cp[j], NULL);

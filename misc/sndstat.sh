@@ -112,12 +112,12 @@ int
 main(void)
 {
         pthread_t rp[10];
-        int i, j;
+        int e, i, j;
 
 	/* Parallel open test */
         for (i = 0; i < 10; i++) {
-                if (pthread_create(&rp[i], NULL, test1, NULL) != 0)
-                        perror("pthread_create");
+                if ((e = pthread_create(&rp[i], NULL, test1, NULL)) != 0)
+                        errc(1, e, "pthread_create");
         }
         for (i = 0; i < 10; i++)
                 pthread_join(rp[i], NULL);
@@ -129,8 +129,8 @@ main(void)
 			continue;
 		}
 		for (j = 0; j < 4; j++)
-			if (pthread_create(&rp[j], NULL, test2, NULL) != 0)
-				perror("pthread_create");
+			if ((e = pthread_create(&rp[j], NULL, test2, NULL)) != 0)
+				errc(1, e, "pthread_create");
 		for (j = 0; j < 4; j++)
 			pthread_join(rp[j], NULL);
 

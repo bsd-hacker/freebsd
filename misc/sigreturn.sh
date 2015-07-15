@@ -95,6 +95,7 @@ int
 main(void)
 {
 	pthread_t cp;
+	int e;
 
 	signal(SIGALRM, hand);
 	signal(SIGILL,  hand);
@@ -106,8 +107,8 @@ main(void)
 	signal(SIGTRAP, hand);
 
 	if (fork() == 0) {
-		if (pthread_create(&cp, NULL, calls, NULL) != 0)
-			perror("pthread_create");
+		if ((e = pthread_create(&cp, NULL, calls, NULL)) != 0)
+			errc(1, e, "pthread_create");
 
 		pthread_join(cp, NULL);
 		_exit(0);

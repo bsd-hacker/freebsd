@@ -221,7 +221,7 @@ main(void)
 	struct passwd *pw;
 	time_t start;
 	pthread_t rp, cp[50];
-	int j;
+	int e, j;
 
 	if ((pw = getpwnam("nobody")) == NULL)
 		err(1, "no such user: nobody");
@@ -247,12 +247,12 @@ main(void)
 	while (time(NULL) - start < 120) {
 		if (fork() == 0) {
 			arc4random_stir();
-			if (pthread_create(&rp, NULL, test, NULL) != 0)
-				perror("pthread_create");
+			if ((e = pthread_create(&rp, NULL, test, NULL)) != 0)
+				errc(1, e, "pthread_create");
 			usleep(1000);
 			for (j = 0; j < 50; j++)
-				if (pthread_create(&cp[j], NULL, calls, NULL) != 0)
-					perror("pthread_create");
+				if ((e = pthread_create(&cp[j], NULL, calls, NULL)) != 0)
+					errc(1, e, "pthread_create");
 
 			for (j = 0; j < 50; j++)
 				pthread_join(cp[j], NULL);
