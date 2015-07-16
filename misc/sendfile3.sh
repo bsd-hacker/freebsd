@@ -44,8 +44,8 @@ rm -f sendfile3.c
 [ -d "$RUNDIR" ] || mkdir -p $RUNDIR
 cd $RUNDIR
 
-in=/tmp/inputFile
-out=/tmp/outputFile
+in=inputFile
+out=outputFile
 parallel=20
 
 for i in 50m 100m; do
@@ -56,9 +56,7 @@ for i in 50m 100m; do
 		rm -f ${out}$j
 		/tmp/sendfile3 $in ${out}$j 1234$j &
 	done
-	for j in `jot $parallel`; do
-		wait
-	done
+	wait
 	for j in `jot $parallel`; do
 		rm -f ${out}$j
 	done

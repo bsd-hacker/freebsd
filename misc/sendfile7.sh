@@ -36,6 +36,6 @@
 ./sendfile5.sh &
 
 while kill -0 $! 2>/dev/null; do
-	../testcases/swap/swap -t 2m -i 40
+	../testcases/swap/swap -t 2m -i 40 > /dev/null 2>&1
 done
 wait

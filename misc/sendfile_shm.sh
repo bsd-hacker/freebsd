@@ -37,6 +37,7 @@
 
 [ -r /boot/kernel/kernel ] || exit 0
 here=`pwd`
+dir=`dirname $diskimage`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sendfile_shm.c
 mycc -o sendfile_shm -Wall -Wextra -O2 sendfile_shm.c || exit 1
@@ -46,7 +47,7 @@ cd $here
 daemon ../testcases/swap/swap -t 2m -i 20 > /dev/null 2>&1
 sleep 5
 for i in `jot 10`; do
-	/tmp/sendfile_shm /boot/kernel/kernel /tmp/sendfile_shm.$i > \
+	/tmp/sendfile_shm /boot/kernel/kernel $dir/sendfile_shm.$i > \
 	    /dev/null &
 done
 for i in `jot 10`; do
@@ -56,9 +57,9 @@ while pkill -9 swap; do
 	sleep .5
 done
 for i in `jot 10`; do
-	cmp -s /boot/kernel/kernel /tmp/sendfile_shm.$i 2>/dev/null ||
+	cmp -s /boot/kernel/kernel $dir/sendfile_shm.$i 2>/dev/null ||
 	    e=1
-	rm -f /tmp/sendfile_shm.$i
+	rm -f $dir/sendfile_shm.$i
 done
 [ -n "$e" ] && echo FAIL
 wait

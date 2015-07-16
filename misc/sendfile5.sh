@@ -36,11 +36,13 @@
 . ../default.cfg
 
 here=`pwd`
+file=`basename $diskimage`
+dir=`dirname $diskimage`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sendfile5.c
 mycc -o sendfile5 -Wall -Wextra -O2 sendfile5.c
 rm -f sendfile5.c
-dd if=/dev/zero of=/tmp/big bs=1m count=1k 2>&1 | egrep -v "records|transferred"
+dd if=/dev/zero of=$diskimage bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 cd $here
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
@@ -48,8 +50,8 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mount -t tmpfs tmpfs $mntpoint
 echo "Testing tmpfs(5)"
-cp /tmp/big $mntpoint
-/tmp/sendfile5 $mntpoint/big
+cp $diskimage $mntpoint
+/tmp/sendfile5 $mntpoint/$file
 umount $mntpoint
 
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
@@ -58,16 +60,16 @@ bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 echo "Testing FFS"
-cp /tmp/big $mntpoint
-/tmp/sendfile5 $mntpoint/big
+cp $diskimage $mntpoint
+/tmp/sendfile5 $mntpoint/$file
 umount $mntpoint
 
-mount -t nullfs /tmp $mntpoint
+mount -t nullfs $dir $mntpoint
 echo "Testing nullfs(5)"
-/tmp/sendfile5 $mntpoint/big
+/tmp/sendfile5 $mntpoint/$file
 umount $mntpoint
 
-rm -f /tmp/sendfile5 /tmp/big
+rm -f /tmp/sendfile5 $diskimage
 exit
 EOF
 #include <sys/types.h>
