@@ -32,6 +32,9 @@
 
 # Sector size > 512 test.
 
+# "panic: Memory modified after free ..." seen.
+# https://people.freebsd.org/~pho/stress/log/suj3-2.txt
+
 . ../default.cfg
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

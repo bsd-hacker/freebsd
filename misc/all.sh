@@ -39,6 +39,9 @@
 #		panic: 43 vncache entries remaining			20111220
 # backingstore3.sh
 #		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111230
+# core5.sh	May slow down if vnode cache is full			20150714
+# crossmp4.sh	Known nullfs issue					20150523
+# crossmp6.sh	Known lockd issue					20150625
 # dfull.sh	umount stuck in "mount drain"				20111227
 # ext2fs.sh	Deadlock						20120510
 # ext2fs2.sh	panic							20140716
@@ -49,11 +52,19 @@
 # gjournal.sh	kmem_malloc(131072): kmem_map too small			20120626
 # gjournal2.sh
 # gjournal3.sh	panic: Journal overflow					20130729
+# lockf5.sh	Page fault						20150622
+# md2.sh	panic: ufs_dirbad: /mnt: bad dir ino ...: mangled entry	20150227
+# maxproc.sh	WiP							20150329
 # memguard.sh	Waiting for fix commit
 # memguard2.sh	Waiting for fix commit
 # memguard3.sh	Waiting for fix commit
+# mkfifo.sh	Page fault in softdep_count_dependencies+0x27 seen	20150524
 # mmap18.sh	panic: vm_fault_copy_entry: main object missing page	20141015
-# mmap21.sh	panic: vm_reserv_populate: reserv is already promoted	20141122
+# mmap21.sh	rangelock issue?					20150326
+# mmap23.sh	Waiting commit
+# mmap24.sh	Waiting commit
+# mmap25.sh	Waiting commit
+# mmap26.sh	Waiting commit
 # msdos5.sh	Panic: Freeing unused sector ...			20141118
 # newfs.sh	Memory modified after free. ... used by inodedep	20111217
 # newfs2.sh	umount stuck in ufs					20111226
@@ -76,13 +87,14 @@
 # snap6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130630
 # snap8.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20120630
 # snap9.sh	panic: softdep_deallocate_dependencies: unrecovered ... 20150217
+# suj3.sh	panic: Memory modified after free			20150721
 # suj9.sh	page fault in softdep_count_dependencies+0x27		20141116
 # suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
 # suj13.sh	general protection fault in bufdaemon			20141130
 # suj18.sh	panic: Bad tailq NEXT(0xc1e2a6088->tqh_last_s) != NULL	20120213
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
 # suj34.sh	Various hangs and panics				20131210
-# trim4.sh 	Page fault in softdep_count_dependencies+0x27		20140608
+# trim4.sh	Page fault in softdep_count_dependencies+0x27		20140608
 # umountf3.sh	KDB: enter: watchdog timeout				20111217
 # umountf7.sh	panic: handle_written_inodeblock: live inodedep ...	20131129
 # unionfs.sh	insmntque: non-locked vp: xx is not exclusive locked...	20130909
@@ -95,7 +107,8 @@
 # newfs3.sh	OK, but runs for a very long time
 # mmap10.sh	OK, but runs for a long time
 # mmap11.sh	OK, but runs for a very long time
-# mmap15.sh	Rung for a very long time
+# mmap15.sh	Runs for a very long time
+# mmap22.sh	Runs for a very long time
 # statfs.sh	Not very interesting
 # syscall.sh	OK, but runs for a very long time
 # syscall2.sh	OK, but runs for a very long time
@@ -206,9 +219,10 @@ while true; do
 		start=`date '+%s'`
 		./$i 2>&1 | tee $alloutput
 		grep -qw FAIL $alloutput &&
-		    echo "`date '+%Y%m%d %T'` $i" >> $allfaillog
+		    echo "`date '+%Y%m%d %T'` $i" >> $allfaillog &&
+		    logger "stress2 test $i failed"
 		rm -f $alloutput
-		[ $((`date '+%s'` - $start)) -gt 1830 ] &&
+		[ $((`date '+%s'` - $start)) -gt 1900 ] &&
 		    printf "*** Excessive run time: %s %d min\r\n" $i, \
 		    $(((`date '+%s'` - $start) / 60))> /dev/console
 	done
