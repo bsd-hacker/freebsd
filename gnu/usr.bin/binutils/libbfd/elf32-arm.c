@@ -9363,7 +9363,8 @@ elf32_arm_post_process_headers (bfd * abfd, struct bfd_link_info * link_info ATT
 
   i_ehdrp = elf_elfheader (abfd);
 
-  if (EF_ARM_EABI_VERSION (i_ehdrp->e_flags) == EF_ARM_EABI_UNKNOWN)
+  if (EF_ARM_EABI_VERSION (i_ehdrp->e_flags) == EF_ARM_EABI_UNKNOWN
+  || EF_ARM_EABI_VERSION (i_ehdrp->e_flags) == EF_ARM_EABI_VER5)
     i_ehdrp->e_ident[EI_OSABI] = ARM_ELF_OS_ABI_VERSION;
   else
     i_ehdrp->e_ident[EI_OSABI] = 0;
