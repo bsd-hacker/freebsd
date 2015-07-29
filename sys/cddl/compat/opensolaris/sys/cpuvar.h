@@ -47,7 +47,9 @@ typedef struct {
 
 /* Some code may choose to redefine this if pcpu_t would be more useful. */
 #define cpu_t	solaris_cpu_t
+#if !defined(cpu_id)
 #define	cpu_id	cpuid
+#endif /* !defined(cpu_id) */
 
 extern solaris_cpu_t    solaris_cpu[];
 
