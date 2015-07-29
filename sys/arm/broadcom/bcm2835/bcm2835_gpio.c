@@ -26,11 +26,12 @@
  *
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: head/sys/arm/broadcom/bcm2835/bcm2835_gpio.c 278215 2015-02-04 18:15:28Z loos $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
+#include <sys/eventhandler.h>
 #include <sys/gpio.h>
 #include <sys/interrupt.h>
 #include <sys/kernel.h>
@@ -92,6 +93,12 @@ struct bcm_gpio_softc {
 	struct bcm_gpio_sysctl	sc_sysctl[BCM_GPIO_PINS];
 	enum intr_trigger	sc_irq_trigger[BCM_GPIO_PINS];
 	enum intr_polarity	sc_irq_polarity[BCM_GPIO_PINS];
+
+	int			sc_act_led_gpio_pin;
+	int			sc_act_led_off;
+	int			sc_act_led_on;
+	eventhandler_tag	sc_event_tag_mountroot;
+	eventhandler_tag	sc_event_tag_shutdown;
 };
 
 enum bcm_gpio_pud {
@@ -741,6 +748,141 @@ bcm_gpio_intr_detach(device_t dev)
 		}
 	}
 }
+ 
+static void
+bcm_gpio_mountroot_handler(void *udata, int howto)
+{
+	struct bcm_gpio_softc *sc = (struct bcm_gpio_softc *)udata;
+
+	if (sc->sc_act_led_gpio_pin >= 0) {
+		device_printf(sc->sc_dev, "tern on ACT LED\n");
+
+		bcm_gpio_pin_set(sc->sc_dev,
+			sc->sc_act_led_gpio_pin,
+			sc->sc_act_led_on);
+	}
+}
+
+static void
+bcm_gpio_shutdown_handler(void *udata, int howto)
+{
+	struct bcm_gpio_softc *sc = (struct bcm_gpio_softc *)udata;
+
+	if (sc->sc_act_led_gpio_pin >= 0) {
+		device_printf(sc->sc_dev, "tern off ACT LED\n");
+
+		bcm_gpio_pin_set(sc->sc_dev,
+			sc->sc_act_led_gpio_pin,
+			sc->sc_act_led_off);
+	}
+}
+
+static void
+bcm_gpio_parse_kenv(device_t dev)
+{
+	struct bcm_gpio_softc *sc = device_get_softc(dev);
+	char	kenv_key[64];
+	char	*kenv_value = NULL;
+
+	sc->sc_event_tag_mountroot = NULL;
+	sc->sc_event_tag_shutdown = NULL;
+	sc->sc_act_led_gpio_pin = -1;
+	sc->sc_act_led_off = -1;
+	sc->sc_act_led_on = -1;
+
+	/* ex.) hw.led.act = "gpio:0:16:1:0" */
+	snprintf(kenv_key, sizeof(kenv_key), "hw.led.act");
+	kenv_value = kern_getenv(kenv_key);
+	if (kenv_value) {
+		char	value[64];
+		char	*dname = NULL;
+		int	dnumber = -1;
+		char	*s = NULL;
+		char	*p = NULL;
+
+		strlcpy(value, kenv_value, sizeof(value));
+
+		dname = value;
+
+		p = strchr(dname, ':');
+		if (p) {
+			char	*endptr = NULL;
+			int	gpio_pin = -1;
+			int	led_on = -1;
+			int	led_off = -1;
+
+			*p = '\0';
+
+			s = p + 1;
+			p = strchr(s, ':');
+			if (p) {
+				*p = '\0';
+
+				endptr = NULL;
+				dnumber = strtol(s, &endptr, 0);
+				if (*endptr != '\0') {
+					dnumber = -1;
+				}
+
+				s = p + 1;
+			}
+
+			if (strcmp(dname, device_get_name(sc->sc_dev)) == 0 && dnumber == device_get_unit(sc->sc_dev)) {
+				/* parse GPIO PIN number */
+				p = strchr(s, ':');
+				if (p) {
+					*p = '\0';
+
+					endptr = NULL;
+					gpio_pin = strtol(s, &endptr, 0);
+					if (*endptr != '\0') {
+						gpio_pin = -1;
+					}
+
+					s = p + 1;
+				}
+
+				/* parse GPIO PIN off value */
+				p = strchr(s, ':');
+				if (p) {
+					*p = '\0';
+
+					endptr = NULL;
+					led_off = strtol(s, &endptr, 0);
+					if (*endptr != '\0') {
+						led_off = -1;
+					}
+
+					s = p + 1;
+				}
+
+				/* parse GPIO PIN on value */
+				endptr = NULL;
+				led_on = strtol(s, &endptr, 0);
+				if (*endptr != '\0') {
+					led_on = -1;
+				}
+			}
+
+			if (gpio_pin < 0 || led_on < 0 || led_off < 0) {
+				/* invalid format */
+
+				device_printf(sc->sc_dev, "invalid hint: %s: %s\n", kenv_key, kenv_value);
+			}
+			else {
+				sc->sc_act_led_gpio_pin = gpio_pin;
+				sc->sc_act_led_off = led_off;
+				sc->sc_act_led_on = led_on;
+
+				device_printf(sc->sc_dev,
+					"ACT LED at %s, pin %d\n",
+						device_get_nameunit(sc->sc_dev),
+						sc->sc_act_led_gpio_pin);
+			}
+		}
+	}
+}
+
 
 static int
 bcm_gpio_attach(device_t dev)
@@ -755,6 +897,7 @@ bcm_gpio_attach(device_t dev)
 
 	bcm_gpio_sc = sc = device_get_softc(dev);
  	sc->sc_dev = dev;
+	bcm_gpio_parse_kenv(sc->sc_dev);
 	mtx_init(&sc->sc_mtx, "bcm gpio", "gpio", MTX_SPIN);
 	if (bus_alloc_resources(dev, bcm_gpio_res_spec, sc->sc_res) != 0) {
 		device_printf(dev, "cannot allocate resources\n");
@@ -797,6 +940,11 @@ bcm_gpio_attach(device_t dev)
 	if (sc->sc_busdev == NULL)
 		goto fail;
 
+	bcm_gpio_sysctl_init(sc);
+
+	sc->sc_event_tag_mountroot = EVENTHANDLER_REGISTER(mountroot, bcm_gpio_mountroot_handler, (void*)sc, EVENTHANDLER_PRI_ANY);
+	sc->sc_event_tag_shutdown = EVENTHANDLER_REGISTER(shutdown_final, bcm_gpio_shutdown_handler, (void*)sc, SHUTDOWN_PRI_LAST);
+
 	return (0);
 
 fail:
@@ -810,6 +958,16 @@ fail:
 static int
 bcm_gpio_detach(device_t dev)
 {
+	struct bcm_gpio_softc *sc = device_get_softc(dev);
+
+	if (sc->sc_event_tag_mountroot) {
+		EVENTHANDLER_DEREGISTER(mountroot, sc->sc_event_tag_mountroot);
+		sc->sc_event_tag_mountroot = NULL;
+	}
+	if (sc->sc_event_tag_shutdown) {
+		EVENTHANDLER_DEREGISTER(shutdown_final, sc->sc_event_tag_shutdown);
+		sc->sc_event_tag_shutdown = NULL;
+	}
 
 	return (EBUSY);
 }
