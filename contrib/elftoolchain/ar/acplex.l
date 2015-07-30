@@ -1,5 +1,6 @@
+%{
 /*-
- * Copyright (C) Baptiste Daroussin <bapt@FreeBSD.org>
+ * Copyright (c) 2008 Kai Wang
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,48 +25,59 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
+#include <err.h>
 #include <errno.h>
-#include <inttypes.h>
-#include <limits.h>
-#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
-#include "pw.h"
+#include "_elftc.h"
 
-uintmax_t
-strtounum(const char * __restrict np, uintmax_t minval, uintmax_t maxval,
-    const char ** __restrict errpp)
-{
-	char *endp;
-	uintmax_t ret;
+ELFTC_VCSID("$Id: acplex.l 3174 2015-03-27 17:13:41Z emaste $");
 
-	if (minval > maxval) {
-		errno = EINVAL;
-		if (errpp != NULL)
-			*errpp = "invalid";
-		return (0);
-	}
-	errno = 0;
-	ret = strtoumax(np, &endp, 10);
-	if (endp == np || *endp != '\0') {
-		errno = EINVAL;
-		if (errpp != NULL)
-			*errpp = "invalid";
-		return (0);
-	}
-	if (ret < minval) {
-		errno = ERANGE;
-		if (errpp != NULL)
-			*errpp = "too small";
-		return (0);
-	}
-	if (errno == ERANGE || ret > maxval) {
-		errno = ERANGE;
-		if (errpp != NULL)
-			*errpp = "too large";
-		return (0);
-	}
-	return (ret);
+#include "acpyacc.h"
+
+#define YY_NO_UNPUT
+#if !defined(ELFTC_BROKEN_YY_NO_INPUT)
+#define YY_NO_INPUT
+#endif
+
+int lineno = 1;
+
+int	yylex(void);
+
+%}
+
+%option nounput
+%option noyywrap
+
+%%
+
+ADDLIB|addlib		{ return (ADDLIB); }
+ADDMOD|addmod		{ return (ADDMOD); }
+CLEAR|clear		{ return (CLEAR); }
+CREATE|create		{ return (CREATE); }
+DELETE|delete		{ return (DELETE); }
+DIRECTORY|directory	{ return (DIRECTORY); }
+END|end			{ return (END); }
+EXTRACT|extract		{ return (EXTRACT); }
+LIST|list		{ return (LIST); }
+OPEN|open		{ return (OPEN); }
+REPLACE|replace		{ return (REPLACE); }
+VERBOSE|verbose		{ return (VERBOSE); }
+SAVE|save		{ return (SAVE); }
+"("			{ return (LP); }
+")"			{ return (RP); }
+","			{ return (COMMA); }
+
+[-_A-Za-z0-9/:$.\\]+	{
+	yylval.str = strdup(yytext);
+	if (yylval.str == NULL)
+		err(EXIT_FAILURE, "strdup failed");
+	return (FNAME);
 }
+
+[ \t]			/* whitespace */
+"*".*			/* comment */
+";".*			/* comment */
+"+\n"			{ lineno++; /* '+' is line continuation char */ }
+"\n"			{ lineno++; return (EOL); }
