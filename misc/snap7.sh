@@ -43,7 +43,7 @@ mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 start=`date '+%s'`
-while [ `date '+%s'` -lt $((start + 1800)) ]; do
+while [ `date '+%s'` -lt $((start + 1200)) ]; do
    mksnap_ffs /tmp /tmp/.snap/stress2.1
    mdconfig -a -t vnode -f /tmp/.snap/stress2.1 -u $mdstart -o readonly
    sh -c "while true; do ls $mntpoint > /dev/null;done" &
@@ -52,6 +52,9 @@ while [ `date '+%s'` -lt $((start + 1800)) ]; do
       umount $mntpoint 2>/dev/null
    done
    kill $!
+   while mount | grep -q "/dev/md$mdstart on $mntpoint"; do
+      umount $mntpoint 2>/dev/null
+   done
    mdconfig -d -u $mdstart
    rm -f /tmp/.snap/stress2.1
 done
