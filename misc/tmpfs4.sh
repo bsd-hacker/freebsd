@@ -41,7 +41,7 @@ for i in `jot 100`; do
 	mkdir -p /${mntpoint}/1/2
 	cd /${mntpoint}/1/2
 	rm -rf /${mntpoint}/1
-	cd .. 2>&1 | grep -v "cd to"
+	cd .. 2>&1 | grep -v "cd: \.\.: No such file or directory"
 done
 
 
