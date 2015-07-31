@@ -38,7 +38,7 @@
 parallel=40
 
 if [ $# -eq 0 ]; then
-	mdconfig -l | grep -q md$mdstart && mdconfig -d -u $mdstart
+	[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 	mdconfig -a -t swap -s 10m -u $mdstart || exit 1
 	bsdlabel -w md$mdstart auto
 	newfs $newfs_flags md${mdstart}$part > /dev/null
@@ -53,19 +53,16 @@ if [ $# -eq 0 ]; then
 			find $mntpoint > /dev/null 2>&1
 		done
 	done
-
-	for i in `jot $parallel`; do
-		wait
-	done
+	wait
 
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
 	mdconfig -d -u $mdstart
 else
-	for i in `jot 1000`; do
-		mount /dev/md${mdstart}$part $mntpoint > /dev/null 2>&1
-		umount $mntpoint > /dev/null 2>&1
-		mount > /dev/null
-	done
+	for i in `jot 200`; do
+		mount /dev/md${mdstart}$part $mntpoint
+		umount $mntpoint
+		mount
+	done > /dev/null 2>&1
 fi
