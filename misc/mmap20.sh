@@ -41,7 +41,7 @@ dir=/tmp
 odir=`pwd`
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/mmap20.c
-mycc -o mmap20  -O2 -Wall -Wextra mmap20.c || exit 1
+mycc -o mmap20 -O2 -Wall -Wextra mmap20.c || exit 1
 rm -f mmap20.c
 cd $odir
 

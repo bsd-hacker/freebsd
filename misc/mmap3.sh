@@ -29,6 +29,7 @@
 #
 
 # Variation of mmap2.sh with focus on random arguments for mprotect()
+# https://people.freebsd.org/~pho/stress/log/kostik209.txt
 
 . ../default.cfg
 
@@ -52,7 +53,7 @@ exit
 
 EOF
 /*
-   Stress mmap by having max 18 threads mapping random areas within
+   Stress mmap by having max 100 threads mapping random areas within
    a 100 Mb range.
  */
 #include <sys/types.h>
