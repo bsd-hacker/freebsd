@@ -30,23 +30,28 @@ static const char rcsid[] =
   "$FreeBSD$";
 #endif /* not lint */
 
+#include <sys/param.h>
+#include <sys/resource.h>
+#include <sys/time.h>
+#include <sys/types.h>
+
 #include <ctype.h>
+#include <dirent.h>
 #include <err.h>
 #include <fcntl.h>
-#include <inttypes.h>
-#include <sys/param.h>
-#include <dirent.h>
-#include <paths.h>
-#include <termios.h>
-#include <sys/types.h>
-#include <sys/time.h>
-#include <sys/resource.h>
-#include <login_cap.h>
-#include <pwd.h>
 #include <grp.h>
+#include <pwd.h>
 #include <libutil.h>
+#include <login_cap.h>
+#include <paths.h>
+#include <string.h>
+#include <sysexits.h>
+#include <termios.h>
+#include <unistd.h>
+
 #include "pw.h"
 #include "bitmap.h"
+#include "psdate.h"
 
 #define LOGNAMESIZE (MAXLOGNAME-1)
 
@@ -618,7 +623,8 @@ rmat(uid_t uid)
 			    st.st_uid == uid) {
 				char            tmp[MAXPATHLEN];
 
-				snprintf(tmp, sizeof(tmp), "/usr/bin/atrm %s", e->d_name);
+				snprintf(tmp, sizeof(tmp), "/usr/bin/atrm %s",
+				    e->d_name);
 				system(tmp);
 			}
 		}
@@ -864,7 +870,8 @@ pw_user_del(int argc, char **argv, char *arg1)
 		/* Remove crontabs */
 		snprintf(file, sizeof(file), "/var/cron/tabs/%s", pwd->pw_name);
 		if (access(file, F_OK) == 0) {
-			snprintf(file, sizeof(file), "crontab -u %s -r", pwd->pw_name);
+			snprintf(file, sizeof(file), "crontab -u %s -r",
+			    pwd->pw_name);
 			system(file);
 		}
 	}
@@ -1316,7 +1323,8 @@ pw_user_add(int argc, char **argv, char *arg1)
 		printf("%s\n", cmdcnf->nispasswd);
 		rc = addnispwent(cmdcnf->nispasswd, pwd);
 		if (rc == -1)
-			warnx("User '%s' already exists in NIS passwd", pwd->pw_name);
+			warnx("User '%s' already exists in NIS passwd",
+			    pwd->pw_name);
 		else if (rc != 0)
 			warn("NIS passwd update");
 		/* NOTE: we treat NIS-only update errors as non-fatal */
@@ -1346,7 +1354,8 @@ pw_user_add(int argc, char **argv, char *arg1)
 	grp = GETGRGID(pwd->pw_gid);
 	pw_log(cnf, M_ADD, W_USER, "%s(%ju):%s(%ju):%s:%s:%s",
 	       pwd->pw_name, (uintmax_t)pwd->pw_uid,
-	    grp ? grp->gr_name : "unknown", (uintmax_t)(grp ? grp->gr_gid : (uid_t)-1),
+	    grp ? grp->gr_name : "unknown",
+	       (uintmax_t)(grp ? grp->gr_gid : (uid_t)-1),
 	       pwd->pw_gecos, pwd->pw_dir, pwd->pw_shell);
 
 	/*
@@ -1577,7 +1586,8 @@ pw_user_mod(int argc, char **argv, char *arg1)
 		if (pwd->pw_uid != 0 && strcmp(pwd->pw_name, "root") == 0)
 			errx(EX_DATAERR, "can't change uid of `root' account");
 		if (pwd->pw_uid == 0 && strcmp(pwd->pw_name, "root") != 0)
-			warnx("WARNING: account `%s' will have a uid of 0 (superuser access!)", pwd->pw_name);
+			warnx("WARNING: account `%s' will have a uid of 0 "
+			    "(superuser access!)", pwd->pw_name);
 	}
 
 	if (grname && pwd->pw_uid != 0) {
