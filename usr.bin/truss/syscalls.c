@@ -93,7 +93,7 @@ static const char rcsid[] =
  */
 static struct syscall syscalls[] = {
 	{ .name = "fcntl", .ret_type = 1, .nargs = 3,
-	  .args = { { Int, 0 }, { Fcntl, 1 }, { Fcntlflag | OUT, 2 } } },
+	  .args = { { Int, 0 }, { Fcntl, 1 }, { Fcntlflag, 2 } } },
 	{ .name = "fork", .ret_type = 1, .nargs = 0 },
 	{ .name = "vfork", .ret_type = 1, .nargs = 0 },
 	{ .name = "rfork", .ret_type = 1, .nargs = 1,
@@ -141,8 +141,10 @@ static struct syscall syscalls[] = {
 	  .args = { { Name, 0 } } },
 	{ .name = "chroot", .ret_type = 0, .nargs = 1,
 	  .args = { { Name, 0 } } },
+	{ .name = "mkfifo", .ret_type = 0, .nargs = 2,
+	  .args = { { Name, 0 }, { Octal, 1 } } },
 	{ .name = "mknod", .ret_type = 0, .nargs = 3,
-	  .args = { { Name, 0 }, { Octal, 1 }, { Int, 3 } } },
+	  .args = { { Name, 0 }, { Octal, 1 }, { Int, 2 } } },
 	{ .name = "chmod", .ret_type = 0, .nargs = 2,
 	  .args = { { Name, 0 }, { Octal, 1 } } },
 	{ .name = "chown", .ret_type = 0, .nargs = 3,
