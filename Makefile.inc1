@@ -1304,7 +1304,8 @@ _lex=		usr.bin/lex
 
 # r277259 crunchide: Correct 64-bit section header offset
 # r281674 crunchide: always include both 32- and 64-bit ELF support
-.if ${BOOTSTRAPPING} < 1100071
+# r285986 crunchen: use STRIPBIN rather than STRIP
+.if ${BOOTSTRAPPING} < 1100078
 _crunch=	usr.sbin/crunch
 .endif
 
@@ -1431,15 +1432,10 @@ _share=	share/syscons/scrnmaps
 _gcc_tools= gnu/usr.bin/cc/cc_tools
 .endif
 
-.if ${MK_RESCUE} != "no"
-_rescue= rescue/rescue
-.endif
-
 build-tools: .MAKE
 .for _tool in \
     bin/csh \
     bin/sh \
-    ${_rescue} \
     ${LOCAL_TOOL_DIRS} \
     lib/ncurses/ncurses \
     lib/ncurses/ncursesw \
