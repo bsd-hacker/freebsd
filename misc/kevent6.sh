@@ -31,6 +31,10 @@
 # "Sleeping thread (tid 101094, pid 13104) owns a non-sleepable lock" seen.
 # Fixed in r255798.
 
+# panic: Memory modified after free:
+# https://people.freebsd.org/~pho/stress/log/alan011.txt
+# https://people.freebsd.org/~pho/stress/log/kevent6.txt
+
 . ../default.cfg
 
 odir=`pwd`
@@ -75,6 +79,7 @@ EOF
 #include <sys/wait.h>
 #include <unistd.h>
 
+#define LOOPS 500000
 #define PARALLEL 8
 
 static char path[80];
@@ -106,7 +111,7 @@ test(void *arg __unused)
 	struct kevent ev;
 	struct timespec ts;
 
-	for (i = 0; i < 500000; i++) {
+	for (i = 0; i < LOOPS; i++) {
 		if ((kq = kqueue()) < 0)
 			err(1, "kqueue()");
 
