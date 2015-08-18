@@ -40,6 +40,7 @@
 
 . ../default.cfg
 
+CONT=/tmp/crossmp3.continue
 N=`sysctl -n hw.ncpu`
 usermem=`sysctl -n hw.usermem`
 [ `swapinfo | wc -l` -eq 1 ] && usermem=$((usermem/100*80))
@@ -50,7 +51,8 @@ mounts=$N		# Number of parallel scripts
 if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
-		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
+		[ ! -d ${mntpoint}$m ] &&
+		    { mkdir ${mntpoint}$m;  chmod 755 ${mntpoint}$m; }
 		mount | grep "${mntpoint}$m" | grep -q md$m && umount ${mntpoint}$m
 		mdconfig -l | grep -q md$m && mdconfig -d -u $m
 
@@ -60,26 +62,23 @@ if [ $# -eq 0 ]; then
 	done
 
 	# start the parallel tests
+	touch $CONT
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		./$0 $m &
 		./$0 find &
 	done
 
-	for i in `jot $mounts`; do
-		wait; wait
-	done
+	wait
 
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		mdconfig -d -u $m
-		rm -f $D$m
 	done
 
 else
-	touch /tmp/crossmp.continue
 	if [ $1 = find ]; then
-		while [ -f /tmp/crossmp.continue ]; do
+		while [ -f $CONT ]; do
 			find ${mntpoint}* -type f > /dev/null 2>&1
 		done
 	else
@@ -87,8 +86,8 @@ else
 		# The test: Parallel mount and unmounts
 		for i in `jot 3`; do
 			m=$1
-			mount /dev/md${m}${part} ${mntpoint}$m
-			chmod 777 ${mntpoint}$m
+			mount /dev/md${m}${part} ${mntpoint}$m &&
+			   chmod 777 ${mntpoint}$m
 			export RUNDIR=${mntpoint}$m/stressX
 			export CTRLDIR=${mntpoint}$m/stressX.control
 			(cd ${mntpoint}$m && find . -delete)
@@ -98,8 +97,9 @@ else
 			while mount | grep -q "on ${mntpoint}$m "; do
 				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f")
 				umount $opt ${mntpoint}$m > /dev/null 2>&1
+				[ -f $CONT ] || break 2
 			done
 		done
-		rm -f /tmp/crossmp.continue
+		rm -f $CONT
 	fi
 fi

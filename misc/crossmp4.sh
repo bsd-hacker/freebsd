@@ -63,13 +63,8 @@ if [ $# -eq 0 ]; then
 		./$0 find &
 	done
 
-	for i in `jot $mounts`; do
-		wait; wait
-	done
+	wait
 
-	for i in `jot $mounts`; do
-		rm -f $D$m
-	done
 	while mount | grep -q "on $mntpoint "; do
 		umount $mntpoint > /dev/null 2>&1 || sleep 1
 	done
