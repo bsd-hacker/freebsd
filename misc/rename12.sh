@@ -49,18 +49,22 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 inodes=`df -i $mntpoint | tail -1 | awk '{print $7}'`
-N=12
-for i in `jot 4`; do
-	for j in `jot $N`; do
+loops=4
+parallel=12
+timeout=1200
+start=`date '+%s'`
+for i in `jot $loops`; do
+	for j in `jot $parallel`; do
 		mkdir -p $mntpoint/d$j/dir1
 		mkdir -p $mntpoint/d$j/dir2
 		(cd $mntpoint/d$j; /tmp/rename12 $((inodes/N)) ) &
 	done
-	for j in `jot $N`; do
-		wait
+	wait
+	for j in `jot $parallel`; do
 		rmdir  $mntpoint/d$j/dir1
 		rmdir  $mntpoint/d$j/dir2
 	done
+	[ $((`date '+%s'` - start)) -lt $timeout ] && break
 done
 
 while mount | grep "on $mntpoint " | grep -q /dev/md; do
@@ -72,6 +76,10 @@ mdconfig -d -u $mdstart
 rm -rf /tmp/rename12
 exit 0
 EOF
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -79,9 +87,6 @@ EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 pid_t crpid;
@@ -159,7 +164,6 @@ main(int argc, char **argv)
 		errx(1, "Usage %s <num inodes>", argv[0]);
 	n = atol(argv[1]);
 	if (n > 32765) {
-//		fprintf(stderr, "Changing number of dirs from %ld to 32765\n", n);
 		n = 32765 - 1;
 	}
 
