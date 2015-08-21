@@ -46,7 +46,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 2g -u $mdstart
 bsdlabel -w md$mdstart auto
 [ $# -eq 1 ] && opt="$1"
-[ $# -eq 0 ] && opt=$newfs_flags	# No argument == default flag
+[ $# -eq 0 ] && opt="$newfs_flags -n"	# No argument == default flag
 echo "newfs $opt md${mdstart}$part"
 newfs $opt md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
@@ -67,20 +67,21 @@ rm -f /tmp/linger4
 exit 0
 EOF
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
-#define PARALLEL 4
-
+#define LOOPS 300
 #define NUMBER 80000 / PARALLEL		/* Number of files to use. Max is 131068 */
+#define PARALLEL 4
+#define TIMEOUT (20 * 60)
 
 void
 Creat(int loopno)
@@ -124,14 +125,15 @@ Creat(int loopno)
 	_exit(e);
 }
 
-
 int
 main()
 {
+	time_t start;
 	int e, i, j, status;
 
 	e = 0;
-	for (j = 0; j < 300; j++) {
+	start = time(NULL);
+	for (j = 0; j < LOOPS; j++) {
 		for (i = 0; i < PARALLEL; i++) {
 			if (fork() == 0)
 				Creat(j);
@@ -144,6 +146,11 @@ main()
 		if (e != 0)
 			break;
 //		sleep(60); /* No problems if this is included */
+		if (time(NULL) - start > TIMEOUT) {
+			fprintf(stderr, "Timeout.\n");
+			e++;
+			break;
+		}
 	}
 
 	return (e);
