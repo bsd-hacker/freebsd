@@ -296,7 +296,7 @@ cb_diskread(void *arg, int unit, uint64_t from, void *to, size_t size,
 
 	iov.iov_base = to;
 	iov.iov_len = size;
-	error = vdsk_read(disk[unit], &iov, 1, from);
+	error = vdsk_read(disk[unit], from, &iov, 1);
 	if (!error)
 		*resid = 0;
 

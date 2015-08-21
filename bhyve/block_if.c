@@ -202,21 +202,16 @@ blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be, uint8_t *buf)
 	err = 0;
 	switch (be->be_op) {
 	case BOP_READ:
-		err = vdsk_read(bc, br->br_iov, br->br_iovcnt, br->br_offset);
+		err = vdsk_read(bc, br->br_offset, br->br_iov, br->br_iovcnt);
 		break;
 	case BOP_WRITE:
-		err = vdsk_write(bc, br->br_iov, br->br_iovcnt, br->br_offset);
+		err = vdsk_write(bc, br->br_offset, br->br_iov, br->br_iovcnt);
 		break;
 	case BOP_FLUSH:
 		err = vdsk_flush(bc);
 		break;
 	case BOP_DELETE:
-		if (!bc->bc_candelete)
-			err = EOPNOTSUPP;
-		else if (bc->bc_rdonly)
-			err = EROFS;
-		else
-			err = EOPNOTSUPP;
+		err = vdsk_trim(bc, br->br_offset, br->br_resid);
 		break;
 	default:
 		err = EINVAL;

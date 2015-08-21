@@ -209,21 +209,31 @@ vdsk_sectorsize(vdskctx ctx)
 }
 
 int
-vdsk_read(vdskctx ctx, const struct iovec *iov, int iovcnt, off_t offset)
+vdsk_read(vdskctx ctx, off_t offset, const struct iovec *iov, int iovcnt)
 {
 	struct vdsk *vdsk = vdsk_deref(ctx);
 
-	return (vdsk->fmt->read(vdsk, iov, iovcnt, offset));
+	return (vdsk->fmt->read(vdsk, offset, iov, iovcnt));
 }
 
 int
-vdsk_write(vdskctx ctx, const struct iovec *iov, int iovcnt, off_t offset)
+vdsk_write(vdskctx ctx, off_t offset, const struct iovec *iov, int iovcnt)
 {
 	struct vdsk *vdsk = vdsk_deref(ctx);
 
 	if ((vdsk->fflags & FWRITE) == 0)
 		return (EROFS);
-	return (vdsk->fmt->write(vdsk, iov, iovcnt, offset));
+	return (vdsk->fmt->write(vdsk, offset, iov, iovcnt));
+}
+
+int
+vdsk_trim(vdskctx ctx, off_t offset, ssize_t length)
+{
+	struct vdsk *vdsk = vdsk_deref(ctx);
+
+	if ((vdsk->fflags & FWRITE) == 0)
+		return (EROFS);
+	return (vdsk->fmt->trim(vdsk, offset, length));
 }
 
 int

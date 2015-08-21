@@ -117,16 +117,24 @@ qcow_close(struct vdsk *vdsk __unused)
 }
 
 static int
-qcow_read(struct vdsk *vdsk __unused, const struct iovec *iov __unused,
-    int iovcnt __unused, off_t offset __unused)
+qcow_read(struct vdsk *vdsk __unused, off_t offset __unused,
+    const struct iovec *iov __unused, int iovcnt __unused)
 {
 
 	return (ENOSYS);
 }
 
 static int
-qcow_write(struct vdsk *vdsk __unused, const struct iovec *iov __unused,
-    int iovcnt __unused, off_t offset __unused)
+qcow_write(struct vdsk *vdsk __unused, off_t offset __unused,
+    const struct iovec *iov __unused, int iovcnt __unused)
+{
+
+	return (ENOSYS);
+}
+
+static int
+qcow_trim(struct vdsk *vdsk __unused, off_t offset __unused,
+    ssize_t length __unused)
 {
 
 	return (ENOSYS);
@@ -148,6 +156,7 @@ static struct vdsk_format qcow_format = {
 	.close = qcow_close,
 	.read = qcow_read,
 	.write = qcow_write,
+	.trim = qcow_trim,
 	.flush = qcow_flush,
 };
 FORMAT_DEFINE(qcow_format);

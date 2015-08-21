@@ -63,16 +63,24 @@ vmdk_close(struct vdsk *vdsk __unused)
 }
 
 static int
-vmdk_read(struct vdsk *vdsk __unused, const struct iovec *iov __unused,
-    int iovcnt __unused, off_t offset __unused)
+vmdk_read(struct vdsk *vdsk __unused, off_t offset __unused,
+    const struct iovec *iov __unused, int iovcnt __unused)
 {
 
 	return (ENOSYS);
 }
 
 static int
-vmdk_write(struct vdsk *vdsk __unused, const struct iovec *iov __unused,
-    int iovcnt __unused, off_t offset __unused)
+vmdk_write(struct vdsk *vdsk __unused, off_t offset __unused,
+    const struct iovec *iov __unused, int iovcnt __unused)
+{
+
+	return (ENOSYS);
+}
+
+static int
+vmdk_trim(struct vdsk *vdsk __unused, off_t offset __unused, 
+    ssize_t length __unused)
 {
 
 	return (ENOSYS);
@@ -94,6 +102,7 @@ static struct vdsk_format vmdk_format = {
 	.close = vmdk_close,
 	.read = vmdk_read,
 	.write = vmdk_write,
+	.trim = vmdk_trim,
 	.flush = vmdk_flush,
 };
 FORMAT_DEFINE(vmdk_format);

@@ -62,7 +62,7 @@ raw_close(struct vdsk *vdsk __unused)
 }
 
 static int
-raw_read(struct vdsk *vdsk, const struct iovec *iov, int iovcnt, off_t offset)
+raw_read(struct vdsk *vdsk, off_t offset, const struct iovec *iov, int iovcnt)
 {
 	ssize_t res;
 
@@ -71,12 +71,20 @@ raw_read(struct vdsk *vdsk, const struct iovec *iov, int iovcnt, off_t offset)
 }
 
 static int
-raw_write(struct vdsk *vdsk, const struct iovec *iov, int iovcnt, off_t offset)
+raw_write(struct vdsk *vdsk, off_t offset, const struct iovec *iov, int iovcnt)
 {
 	ssize_t res;
 
 	res = pwritev(vdsk->fd, iov, iovcnt, offset);
 	return ((res == -1) ? errno : 0);
+}
+
+static int
+raw_trim(struct vdsk *vdsk __unused, off_t offset __unused,
+    ssize_t length __unused)
+{
+
+	return (EOPNOTSUPP);
 }
 
 static int
@@ -97,6 +105,7 @@ static struct vdsk_format raw_format = {
 	.close = raw_close,
 	.read = raw_read,
 	.write = raw_write,
+	.trim = raw_trim,
 	.flush = raw_flush,
 };
 FORMAT_DEFINE(raw_format);
