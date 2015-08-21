@@ -53,16 +53,19 @@ __FBSDID("$FreeBSD$");
 
 #define BLOCKIF_SIG	0xb109b109
 
-#define BLOCKIF_MAXREQ	33
+#define BLOCKIF_NUMTHR	8
+#define BLOCKIF_MAXREQ	(64 + BLOCKIF_NUMTHR)
 
 enum blockop {
 	BOP_READ,
 	BOP_WRITE,
-	BOP_FLUSH
+	BOP_FLUSH,
+	BOP_DELETE
 };
 
 enum blockstat {
 	BST_FREE,
+	BST_BLOCK,
 	BST_PEND,
 	BST_BUSY,
 	BST_DONE
@@ -74,21 +77,22 @@ struct blockif_elem {
 	enum blockop	     be_op;
 	enum blockstat	     be_status;
 	pthread_t            be_tid;
+	off_t		     be_block;
 };
 
 struct blockif_ctxt {
 	int			bc_magic;
+	int			bc_candelete;
 	int			bc_rdonly;
-	pthread_t		bc_btid;
+	int			bc_closing;
+	pthread_t		bc_btid[BLOCKIF_NUMTHR];
         pthread_mutex_t		bc_mtx;
         pthread_cond_t		bc_cond;
-	int			bc_closing;
 
 	/* Request elements and free/pending/busy queues */
 	TAILQ_HEAD(, blockif_elem) bc_freeq;       
 	TAILQ_HEAD(, blockif_elem) bc_pendq;
 	TAILQ_HEAD(, blockif_elem) bc_busyq;
-	u_int			bc_req_count;
 	struct blockif_elem	bc_reqs[BLOCKIF_MAXREQ];
 };
 
@@ -107,69 +111,95 @@ static int
 blockif_enqueue(struct blockif_ctxt *bc, struct blockif_req *breq,
 		enum blockop op)
 {
-	struct blockif_elem *be;
-
-	assert(bc->bc_req_count < BLOCKIF_MAXREQ);
+	struct blockif_elem *be, *tbe;
+	off_t off;
+	int i;
 
 	be = TAILQ_FIRST(&bc->bc_freeq);
 	assert(be != NULL);
 	assert(be->be_status == BST_FREE);
-
 	TAILQ_REMOVE(&bc->bc_freeq, be, be_link);
-	be->be_status = BST_PEND;
 	be->be_req = breq;
 	be->be_op = op;
+	switch (op) {
+	case BOP_READ:
+	case BOP_WRITE:
+	case BOP_DELETE:
+		off = breq->br_offset;
+		for (i = 0; i < breq->br_iovcnt; i++)
+			off += breq->br_iov[i].iov_len;
+		break;
+	default:
+		off = OFF_MAX;
+	}
+	be->be_block = off;
+	TAILQ_FOREACH(tbe, &bc->bc_pendq, be_link) {
+		if (tbe->be_block == breq->br_offset)
+			break;
+	}
+	if (tbe == NULL) {
+		TAILQ_FOREACH(tbe, &bc->bc_busyq, be_link) {
+			if (tbe->be_block == breq->br_offset)
+				break;
+		}
+	}
+	if (tbe == NULL)
+		be->be_status = BST_PEND;
+	else
+		be->be_status = BST_BLOCK;
 	TAILQ_INSERT_TAIL(&bc->bc_pendq, be, be_link);
-
-	bc->bc_req_count++;
-
-	return (0);
+	return (be->be_status == BST_PEND);
 }
 
 static int
-blockif_dequeue(struct blockif_ctxt *bc, struct blockif_elem **bep)
+blockif_dequeue(struct blockif_ctxt *bc, pthread_t t, struct blockif_elem **bep)
 {
 	struct blockif_elem *be;
 
-	if (bc->bc_req_count == 0)
-		return (ENOENT);
-
-	be = TAILQ_FIRST(&bc->bc_pendq);
-	assert(be != NULL);
-	assert(be->be_status == BST_PEND);
+	TAILQ_FOREACH(be, &bc->bc_pendq, be_link) {
+		if (be->be_status == BST_PEND)
+			break;
+		assert(be->be_status == BST_BLOCK);
+	}
+	if (be == NULL)
+		return (0);
 	TAILQ_REMOVE(&bc->bc_pendq, be, be_link);
 	be->be_status = BST_BUSY;
-	be->be_tid = bc->bc_btid;
+	be->be_tid = t;
 	TAILQ_INSERT_TAIL(&bc->bc_busyq, be, be_link);
-
 	*bep = be;
-
-	return (0);
+	return (1);
 }
 
 static void
 blockif_complete(struct blockif_ctxt *bc, struct blockif_elem *be)
 {
-	assert(be->be_status == BST_DONE);
+	struct blockif_elem *tbe;
 
-	TAILQ_REMOVE(&bc->bc_busyq, be, be_link);
+	if (be->be_status == BST_DONE || be->be_status == BST_BUSY)
+		TAILQ_REMOVE(&bc->bc_busyq, be, be_link);
+	else
+		TAILQ_REMOVE(&bc->bc_pendq, be, be_link);
+	TAILQ_FOREACH(tbe, &bc->bc_pendq, be_link) {
+		if (tbe->be_req->br_offset == be->be_block)
+			tbe->be_status = BST_PEND;
+	}
 	be->be_tid = 0;
 	be->be_status = BST_FREE;
 	be->be_req = NULL;
 	TAILQ_INSERT_TAIL(&bc->bc_freeq, be, be_link);
-
-	bc->bc_req_count--;
 }
 
 static void
-blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be)
+blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be, uint8_t *buf)
 {
 	struct blockif_req *br;
 	int err;
 
 	br = be->be_req;
+	if (br->br_iovcnt <= 1)
+		buf = NULL;
 	err = 0;
-
 	switch (be->be_op) {
 	case BOP_READ:
 		err = vdsk_read(bc, br->br_iov, br->br_iovcnt, br->br_offset);
@@ -179,6 +209,14 @@ blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be)
 		break;
 	case BOP_FLUSH:
 		err = vdsk_flush(bc);
+		break;
+	case BOP_DELETE:
+		if (!bc->bc_candelete)
+			err = EOPNOTSUPP;
+		else if (bc->bc_rdonly)
+			err = EROFS;
+		else
+			err = EOPNOTSUPP;
 		break;
 	default:
 		err = EINVAL;
@@ -195,28 +233,27 @@ blockif_thr(void *arg)
 {
 	struct blockif_ctxt *bc;
 	struct blockif_elem *be;
+	pthread_t t;
 
 	bc = arg;
+	t = pthread_self();
 
+	pthread_mutex_lock(&bc->bc_mtx);
 	for (;;) {
-		pthread_mutex_lock(&bc->bc_mtx);
-		while (!blockif_dequeue(bc, &be)) {
+		while (blockif_dequeue(bc, t, &be)) {
 			pthread_mutex_unlock(&bc->bc_mtx);
-			blockif_proc(bc, be);
+			blockif_proc(bc, be, NULL);
 			pthread_mutex_lock(&bc->bc_mtx);
 			blockif_complete(bc, be);
 		}
-		pthread_cond_wait(&bc->bc_cond, &bc->bc_mtx);
-		pthread_mutex_unlock(&bc->bc_mtx);
-
-		/*
-		 * Check ctxt status here to see if exit requested
-		 */
+		/* Check ctxt status here to see if exit requested */
 		if (bc->bc_closing)
-			pthread_exit(NULL);
+			break;
+		pthread_cond_wait(&bc->bc_cond, &bc->bc_mtx);
 	}
+	pthread_mutex_unlock(&bc->bc_mtx);
 
-	/* Not reached */
+	pthread_exit(NULL);
 	return (NULL);
 }
 
@@ -256,13 +293,14 @@ struct blockif_ctxt *
 blockif_open(const char *optstr, const char *ident)
 {
 	char tname[MAXCOMLEN + 1];
-	char *nopt, *xopts;
+	char *nopt, *xopts, *cp;
 	struct blockif_ctxt *bc;
 	int extra, i;
-	int nocache, sync, ro;
+	int nocache, sync, ro, candelete, ssopt, pssopt;
 
 	pthread_once(&blockif_once, blockif_init);
 
+	ssopt = 0;
 	nocache = 0;
 	sync = 0;
 	ro = 0;
@@ -271,16 +309,25 @@ blockif_open(const char *optstr, const char *ident)
 	 * The first element in the optstring is always a pathname.
 	 * Optional elements follow
 	 */
-	nopt = strdup(optstr);
-	for (xopts = strtok(nopt, ",");
-	     xopts != NULL;
-	     xopts = strtok(NULL, ",")) {
-		if (!strcmp(xopts, "nocache"))
+	nopt = xopts = strdup(optstr);
+	while (xopts != NULL) {
+		cp = strsep(&xopts, ",");
+		if (cp == nopt)		/* file or device pathname */
+			continue;
+		else if (!strcmp(cp, "nocache"))
 			nocache = 1;
-		else if (!strcmp(xopts, "sync"))
+		else if (!strcmp(cp, "sync") || !strcmp(cp, "direct"))
 			sync = 1;
-		else if (!strcmp(xopts, "ro"))
+		else if (!strcmp(cp, "ro"))
 			ro = 1;
+		else if (sscanf(cp, "sectorsize=%d/%d", &ssopt, &pssopt) == 2)
+			;
+		else if (sscanf(cp, "sectorsize=%d", &ssopt) == 1)
+			pssopt = ssopt;
+		else {
+			fprintf(stderr, "Invalid device option \"%s\"\n", cp);
+			return (NULL);
+		}
 	}
 
 	extra = 0;
@@ -302,22 +349,23 @@ blockif_open(const char *optstr, const char *ident)
 	}
 
 	bc->bc_magic = BLOCKIF_SIG;
+	bc->bc_candelete = candelete;
 	bc->bc_rdonly = ro;
 	pthread_mutex_init(&bc->bc_mtx, NULL);
 	pthread_cond_init(&bc->bc_cond, NULL);
 	TAILQ_INIT(&bc->bc_freeq);
 	TAILQ_INIT(&bc->bc_pendq);
 	TAILQ_INIT(&bc->bc_busyq);
-	bc->bc_req_count = 0;
 	for (i = 0; i < BLOCKIF_MAXREQ; i++) {
 		bc->bc_reqs[i].be_status = BST_FREE;
 		TAILQ_INSERT_HEAD(&bc->bc_freeq, &bc->bc_reqs[i], be_link);
 	}
 
-	pthread_create(&bc->bc_btid, NULL, blockif_thr, bc);
-
-	snprintf(tname, sizeof(tname), "blk-%s", ident);
-	pthread_set_name_np(bc->bc_btid, tname);
+	for (i = 0; i < BLOCKIF_NUMTHR; i++) {
+		pthread_create(&bc->bc_btid[i], NULL, blockif_thr, bc);
+		snprintf(tname, sizeof(tname), "blk-%s-%d", ident, i);
+		pthread_set_name_np(bc->bc_btid[i], tname);
+	}
 
 	return (bc);
 }
@@ -331,13 +379,13 @@ blockif_request(struct blockif_ctxt *bc, struct blockif_req *breq,
 	err = 0;
 
 	pthread_mutex_lock(&bc->bc_mtx);
-	if (bc->bc_req_count < BLOCKIF_MAXREQ) {
+	if (!TAILQ_EMPTY(&bc->bc_freeq)) {
 		/*
 		 * Enqueue and inform the block i/o thread
 		 * that there is work available
 		 */
-		blockif_enqueue(bc, breq, op);
-		pthread_cond_signal(&bc->bc_cond);
+		if (blockif_enqueue(bc, breq, op))
+			pthread_cond_signal(&bc->bc_cond);
 	} else {
 		/*
 		 * Callers are not allowed to enqueue more than
@@ -377,6 +425,14 @@ blockif_flush(struct blockif_ctxt *bc, struct blockif_req *breq)
 }
 
 int
+blockif_delete(struct blockif_ctxt *bc, struct blockif_req *breq)
+{
+
+	assert(bc->bc_magic == BLOCKIF_SIG);
+	return (blockif_request(bc, breq, BOP_DELETE));
+}
+
+int
 blockif_cancel(struct blockif_ctxt *bc, struct blockif_req *breq)
 {
 	struct blockif_elem *be;
@@ -395,11 +451,7 @@ blockif_cancel(struct blockif_ctxt *bc, struct blockif_req *breq)
 		/*
 		 * Found it.
 		 */
-		TAILQ_REMOVE(&bc->bc_pendq, be, be_link);
-		be->be_status = BST_FREE;
-		be->be_req = NULL;
-		TAILQ_INSERT_TAIL(&bc->bc_freeq, be, be_link);
-		bc->bc_req_count--;
+		blockif_complete(bc, be);
 		pthread_mutex_unlock(&bc->bc_mtx);
 
 		return (0);
@@ -460,7 +512,7 @@ int
 blockif_close(struct blockif_ctxt *bc)
 {
 	void *jval;
-	int err;
+	int err, i;
 
 	err = 0;
 
@@ -469,9 +521,12 @@ blockif_close(struct blockif_ctxt *bc)
 	/*
 	 * Stop the block i/o thread
 	 */
+	pthread_mutex_lock(&bc->bc_mtx);
 	bc->bc_closing = 1;
-	pthread_cond_signal(&bc->bc_cond);
-	pthread_join(bc->bc_btid, &jval);
+	pthread_mutex_unlock(&bc->bc_mtx);
+	pthread_cond_broadcast(&bc->bc_cond);
+	for (i = 0; i < BLOCKIF_NUMTHR; i++)
+		pthread_join(bc->bc_btid[i], &jval);
 
 	/* XXX Cancel queued i/o's ??? */
 
@@ -552,6 +607,15 @@ blockif_sectsz(struct blockif_ctxt *bc)
 	return (vdsk_sectorsize(bc));
 }
 
+void
+blockif_psectsz(struct blockif_ctxt *bc, int *size, int *off)
+{
+
+	assert(bc->bc_magic == BLOCKIF_SIG);
+	*size = vdsk_sectorsize(bc);
+	*off = 0;
+}
+
 int
 blockif_queuesz(struct blockif_ctxt *bc)
 {
@@ -566,4 +630,12 @@ blockif_is_ro(struct blockif_ctxt *bc)
 
 	assert(bc->bc_magic == BLOCKIF_SIG);
 	return (bc->bc_rdonly);
+}
+
+int
+blockif_candelete(struct blockif_ctxt *bc)
+{
+
+	assert(bc->bc_magic == BLOCKIF_SIG);
+	return (bc->bc_candelete);
 }

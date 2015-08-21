@@ -13,6 +13,7 @@ SRCS=	\
 	acpi.c			\
 	bhyverun.c		\
 	block_if.c		\
+	bootrom.c		\
 	consport.c		\
 	dbgport.c		\
 	inout.c			\
@@ -43,8 +44,8 @@ SRCS=	\
 .PATH:	/sys/amd64/vmm
 SRCS+=	vmm_instruction_emul.c
 
-DPADD=	${LIBVDSK} ${LIBVMMAPI} ${LIBMD} ${LIBUTIL} ${LIBPTHREAD}
-LDADD=	-lvdsk -lvmmapi -lmd -lutil -lpthread
+DPADD=	${LIBVDSK} ${LIBVMMAPI} ${LIBMD} ${LIBPTHREAD}
+LDADD=	-lvdsk -lvmmapi -lmd -lpthread
 
 WARNS?=	2
 

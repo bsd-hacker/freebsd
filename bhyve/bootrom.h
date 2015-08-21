@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2014 Hudson River Trading LLC
- * Written by: John H. Baldwin <jhb@FreeBSD.org>
+ * Copyright (c) 2015 Neel Natu <neel@freebsd.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -12,7 +11,7 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
@@ -23,52 +22,17 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
-#include <sys/types.h>
-
-#include <machine/vmm.h>
-#include <vmmapi.h>
-
-#include "ioapic.h"
-
-/*
- * Assign PCI INTx interrupts to I/O APIC pins in a round-robin
- * fashion.  Note that we have no idea what the HPET is using, but the
- * HPET is also programmable whereas this is intended for hardwired
- * PCI interrupts.
  *
- * This assumes a single I/O APIC where pins >= 16 are permitted for
- * PCI devices.
+ * $FreeBSD$
  */
-static int pci_pins;
 
-void
-ioapic_init(struct vmctx *ctx)
-{
+#ifndef	_BOOTROM_H_
+#define	_BOOTROM_H_
 
-	if (vm_ioapic_pincount(ctx, &pci_pins) < 0) {
-		pci_pins = 0;
-		return;
-	}
+#include <stdbool.h>
 
-	/* Ignore the first 16 pins. */
-	if (pci_pins <= 16) {
-		pci_pins = 0;
-		return;
-	}
-	pci_pins -= 16;
-}
+struct vmctx;
 
-int
-ioapic_pci_alloc_irq(void)
-{
-	static int last_pin;
+int	bootrom_init(struct vmctx *ctx, const char *romfile);
 
-	if (pci_pins == 0)
-		return (-1);
-	return (16 + (last_pin++ % pci_pins));
-}
+#endif
