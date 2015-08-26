@@ -13,5 +13,4 @@ options	VIMAGE
 #options	VNET_DEBUG	# debug for VIMAGE
 
 options	BREAK_TO_DEBUGGER
-options	ALT_BREAK_TO_DEBUGGER
 
