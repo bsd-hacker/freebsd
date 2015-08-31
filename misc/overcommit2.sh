@@ -43,6 +43,7 @@ old=`sysctl -n vm.overcommit`
 size=$((`sysctl -n hw.usermem` / 1024 / 1024))	# in MB
 size=$((size + size / 100 * 20))		# 120% of hw.usermem
 sysctl vm.overcommit=1
+trap "sysctl vm.overcommit=$old" EXIT SIGINT
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
@@ -52,8 +53,8 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 echo "Expect:
-/mnt: write failed, filesystem is full
-dd: /mnt/big.1: No space left on device"
+   /mnt: write failed, filesystem is full
+   dd: /mnt/big.1: No space left on device"
 
 for i in `jot 10`; do
 	dd if=/dev/zero of=/mnt/big.$i bs=1m  2>&1 | \
@@ -65,5 +66,3 @@ while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
-
-sysctl vm.overcommit=$old

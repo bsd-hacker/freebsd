@@ -80,7 +80,7 @@ diskfree=`df -k /var/tmp | tail -1 | awk '{print $4}'`
 [ $((diskfree / 1024 / 1024)) -lt 5 ] && echo "Not enough disk space" && exit 1
 
 rm -f /var/.snap/stress2 /var/tmp/big.?
-trap "rm -f /var/.snap/stress2 /var/tmp/big.?" 0
+trap "rm -f /var/.snap/stress2 /var/tmp/big.?" EXIT SIGINT
 persist 'mksnap_ffs /var /var/.snap/stress2'
 tresh=`sysctl  vfs.dirtybufthresh | awk '{print $NF}'`
 sysctl vfs.dirtybufthresh=10

@@ -31,11 +31,10 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 saved=`sysctl vfs.lookup_shared | awk '{print $NF}'`
+trap "sysctl vfs.lookup_shared=$saved" EXIT SIGINT
 
 export runRUNTIME=10m            # Run tests for 10 minutes
 for i in 1 0; do
    sysctl vfs.lookup_shared=$i
    (cd ..; ./run.sh disk.cfg)
 done
-
-sysctl vfs.lookup_shared=$saved

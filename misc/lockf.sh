@@ -41,7 +41,7 @@ ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
 
 pgrep -q lockd || { echo "lockd not running"; exit 0; }
 
-trap "rm -f /tmp/$0.$$.*" 0
+trap "rm -f /tmp/$0.$$.*" EXIT SIGINT
 mount | grep "$mntpoint" | grep nfs > /dev/null && umount $mntpoint
 
 for i in `jot 100`; do

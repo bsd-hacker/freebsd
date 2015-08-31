@@ -202,7 +202,7 @@ rm -f waitthread.c tkill.c
 rm -f gdbfifo gdbout pstat /tmp/waitthread
 ps | grep -v grep | grep waitthread | awk '{print $1}' | xargs kill
 mkfifo gdbfifo
-trap "rm -f gdbfifo" 0
+trap "rm -f gdbfifo" EXIT SIGINT
 sleep 300 > gdbfifo &	# Keep the fifo open
 fifopid=$!
 
