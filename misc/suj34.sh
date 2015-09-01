@@ -28,8 +28,9 @@
 # $FreeBSD$
 #
 
-# Simple suj / nullfs test scenario
+# Simple suj / nullfs test scenario.
 # http://people.freebsd.org/~pho/stress/log/suj34.txt
+# More debug info: https://people.freebsd.org/~pho/stress/log/kostik831.txt
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
