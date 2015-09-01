@@ -37,6 +37,17 @@
 # http://people.freebsd.org/~pho/stress/log/kostik764.txt
 # Fixed by r280238
 
+# panic: vm_reserv_break: reserv 0xfffff807cbe9af00 is full
+# https://people.freebsd.org/~pho/stress/log/alan006.txt
+
+# panic: vm_page_dirty: page is invalid!
+# https://people.freebsd.org/~pho/stress/log/kostik818.txt
+
+# i386 livelock
+# https://people.freebsd.org/~pho/stress/log/mmap14.txt
+
+[ `uname -m` = "i386" ] || exit 0 # Waiting for mmap14.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
