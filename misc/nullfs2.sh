@@ -28,7 +28,11 @@
 # $FreeBSD$
 #
 
-# Simple nullfs test scenario
+# Simple nullfs test scenario.
+
+# Deadlock seen:
+# https://people.freebsd.org/~pho/stress/log/nullfs2-2.txt
+# suj34.sh seems to trigger the same problem.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
