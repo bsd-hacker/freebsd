@@ -33,8 +33,11 @@
 # no syscall (empty wchan).
 
 # http://people.freebsd.org/~pho/stress/log/callout_reset_on.txt
-
 # Fixed in r243901.
+
+# panic: Bad link elm 0xfffff80012ba8ec8 prev->next != elm
+# https://people.freebsd.org/~pho/stress/log/rrs005.txt
+# Fixed in r278623.
 
 . ../default.cfg
 
