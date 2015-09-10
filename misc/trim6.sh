@@ -36,6 +36,9 @@
 # https://people.freebsd.org/~pho/stress/log/trim6.txt
 # Fixed by r287361.
 
+# "panic: negative mnt_ref" seen:
+# https://people.freebsd.org/~pho/stress/log/kostik835.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 r=`mount | grep -w soft-updates | awk '{print $1}' | while read dev; do

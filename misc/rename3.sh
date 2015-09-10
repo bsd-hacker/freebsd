@@ -31,6 +31,10 @@
 # Test vulnerability to transient failures when a directory closer
 # to the root directory is renamed
 
+# Deadlocks seen:
+# https://people.freebsd.org/~pho/stress/log/kostik447.txt
+# https://people.freebsd.org/~pho/stress/log/kirk058.txt
+
 # Test scenario by Tor Egge
 
 root=/tmp

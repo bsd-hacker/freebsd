@@ -33,6 +33,9 @@
 # Run with marcus.cfg on a 2g swap backed MD
 # Scenario: Update old disk to SU+J
 
+# OOVM seen:
+# https://people.freebsd.org/~pho/stress/log/suj31.txt
+
 . ../default.cfg
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
