@@ -259,6 +259,8 @@ typedef __char32_t char32_t;
 #  define _LIBCPP_NORETURN __attribute__ ((noreturn))
 #endif
 
+#define _LIBCPP_UNUSED __attribute__((__unused__))
+
 #if !(__has_feature(cxx_defaulted_functions))
 #define _LIBCPP_HAS_NO_DEFAULTED_FUNCTIONS
 #endif  // !(__has_feature(cxx_defaulted_functions))
@@ -381,6 +383,8 @@ namespace std {
 
 #define _LIBCPP_NORETURN __attribute__((noreturn))
 
+#define _LIBCPP_UNUSED __attribute__((__unused__))
+
 #if _GNUC_VER >= 407
 #define _LIBCPP_UNDERLYING_TYPE(T) __underlying_type(T)
 #define _LIBCPP_IS_LITERAL(T) __is_literal_type(T)
@@ -478,6 +482,7 @@ using namespace _LIBCPP_NAMESPACE __attribute__((__strong__));
 #define _LIBCPP_HAS_NO_DEFAULTED_FUNCTIONS
 #define __alignof__ __alignof
 #define _LIBCPP_NORETURN __declspec(noreturn)
+#define _LIBCPP_UNUSED
 #define _ALIGNAS(x) __declspec(align(x))
 #define _LIBCPP_HAS_NO_VARIADICS
 
@@ -501,6 +506,7 @@ namespace std {
 #define _ALIGNAS_TYPE(x) __attribute__((__aligned__(__alignof(x))))
 #define _ATTRIBUTE(x) __attribute__((x))
 #define _LIBCPP_NORETURN __attribute__((noreturn))
+#define _LIBCPP_UNUSED
 
 #define _NOEXCEPT throw()
 #define _NOEXCEPT_(x)
@@ -659,7 +665,14 @@ template <unsigned> struct __static_assert_check {};
 #endif
 
 #ifndef _LIBCPP_TRIVIAL_PAIR_COPY_CTOR
-#  define _LIBCPP_TRIVIAL_PAIR_COPY_CTOR 1
+#  if defined(__FreeBSD__)
+// Making the std::pair copy constructor trivial breaks ABI compatibility with
+// earlier versions of libc++ shipped by FreeBSD, so turn it off by default.
+// See also http://svnweb.freebsd.org/changeset/base/261801
+#    define _LIBCPP_TRIVIAL_PAIR_COPY_CTOR 0
+#  else
+#    define _LIBCPP_TRIVIAL_PAIR_COPY_CTOR 1
+#  endif
 #endif
 
 #ifndef _LIBCPP_STD_VER
