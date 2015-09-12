@@ -1008,7 +1008,7 @@ sge_timer_cb(void *arg)
 int
 t3_sge_init_adapter(adapter_t *sc)
 {
-	callout_init(&sc->sge_timer_ch, CALLOUT_MPSAFE);
+	callout_init(&sc->sge_timer_ch, 1);
 	callout_reset(&sc->sge_timer_ch, TX_RECLAIM_PERIOD, sge_timer_cb, sc);
 	TASK_INIT(&sc->slow_intr_task, 0, sge_slow_intr_handler, sc);
 	return (0);
@@ -3149,9 +3149,6 @@ t3_dump_rspq(SYSCTL_HANDLER_ARGS)
 	}
 
 	err = sbuf_finish(sb);
-	/* Output a trailing NUL. */
-	if (err == 0)
-		err = SYSCTL_OUT(req, "", 1);
 	sbuf_delete(sb);
 	return (err);
 }	
@@ -3219,9 +3216,6 @@ t3_dump_txq_eth(SYSCTL_HANDLER_ARGS)
 
 	}
 	err = sbuf_finish(sb);
-	/* Output a trailing NUL. */
-	if (err == 0)
-		err = SYSCTL_OUT(req, "", 1);
 	sbuf_delete(sb);
 	return (err);
 }
@@ -3279,9 +3273,6 @@ t3_dump_txq_ctrl(SYSCTL_HANDLER_ARGS)
 
 	}
 	err = sbuf_finish(sb);
-	/* Output a trailing NUL. */
-	if (err == 0)
-		err = SYSCTL_OUT(req, "", 1);
 	sbuf_delete(sb);
 	return (err);
 }

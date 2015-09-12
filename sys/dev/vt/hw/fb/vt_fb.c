@@ -25,8 +25,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/cdefs.h>
@@ -40,6 +38,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/vt/vt.h>
 #include <dev/vt/hw/fb/vt_fb.h>
 #include <dev/vt/colors/vt_termcolors.h>
+
+#include <vm/vm.h>
+#include <vm/pmap.h>
 
 static struct vt_driver vt_fb_driver = {
 	.vd_name = "fb",
@@ -136,10 +137,14 @@ vt_fb_mmap(struct vt_device *vd, vm_ooffset_t offset, vm_paddr_t *paddr,
 		return (ENODEV);
 
 	if (offset >= 0 && offset < info->fb_size) {
-		*paddr = info->fb_pbase + offset;
-	#ifdef VM_MEMATTR_WRITE_COMBINING
-		*memattr = VM_MEMATTR_WRITE_COMBINING;
-	#endif
+		if (info->fb_pbase == 0) {
+			*paddr = vtophys((uint8_t *)info->fb_vbase + offset);
+		} else {
+			*paddr = info->fb_pbase + offset;
+#ifdef VM_MEMATTR_WRITE_COMBINING
+			*memattr = VM_MEMATTR_WRITE_COMBINING;
+#endif
+		}
 		return (0);
 	}
 
@@ -181,7 +186,6 @@ vt_fb_setpixel(struct vt_device *vd, int x, int y, term_color_t color)
 		/* panic? */
 		return;
 	}
-
 }
 
 void
@@ -257,46 +261,41 @@ vt_fb_bitblt_bitmap(struct vt_device *vd, const struct vt_window *vw,
 {
 	struct fb_info *info;
 	uint32_t fgc, bgc, cc, o;
-	int c, l, bpp, bpl;
-	u_long line;
-	uint8_t b, m;
-	const uint8_t *ch;
+	int bpp, bpl, xi, yi;
+	int bit, byte;
 
 	info = vd->vd_softc;
 	bpp = FBTYPE_GET_BYTESPP(info);
 	fgc = info->fb_cmap[fg];
 	bgc = info->fb_cmap[bg];
-	b = m = 0;
-	bpl = (width + 7) >> 3; /* Bytes per source line. */
+	bpl = (width + 7) / 8; /* Bytes per source line. */
 
 	if (info->fb_flags & FB_FLAG_NOWRITE)
 		return;
 
 	KASSERT((info->fb_vbase != 0), ("Unmapped framebuffer"));
 
-	line = (info->fb_stride * y) + (x * bpp);
-	for (l = 0;
-	    l < height && y + l < vw->vw_draw_area.tr_end.tp_row;
-	    l++) {
-		ch = pattern;
-		for (c = 0;
-		    c < width && x + c < vw->vw_draw_area.tr_end.tp_col;
-		    c++) {
-			if (c % 8 == 0)
-				b = *ch++;
-			else
-				b <<= 1;
-			if (mask != NULL) {
-				if (c % 8 == 0)
-					m = *mask++;
-				else
-					m <<= 1;
-				/* Skip pixel write, if mask has no bit set. */
-				if ((m & 0x80) == 0)
-					continue;
-			}
-			o = line + (c * bpp);
-			cc = b & 0x80 ? fgc : bgc;
+	/* Bound by right and bottom edges. */
+	if (y + height > vw->vw_draw_area.tr_end.tp_row) {
+		if (y >= vw->vw_draw_area.tr_end.tp_row)
+			return;
+		height = vw->vw_draw_area.tr_end.tp_row - y;
+	}
+	if (x + width > vw->vw_draw_area.tr_end.tp_col) {
+		if (x >= vw->vw_draw_area.tr_end.tp_col)
+			return;
+		width = vw->vw_draw_area.tr_end.tp_col - x;
+	}
+	for (yi = 0; yi < height; yi++) {
+		for (xi = 0; xi < width; xi++) {
+			byte = yi * bpl + xi / 8;
+			bit = 0x80 >> (xi % 8);
+			/* Skip pixel write, if mask bit not set. */
+			if (mask != NULL && (mask[byte] & bit) == 0)
+				continue;
+			o = (y + yi) * info->fb_stride + (x + xi) * bpp;
+			o += vd->vd_transpose;
+			cc = pattern[byte] & bit ? fgc : bgc;
 
 			switch(bpp) {
 			case 1:
@@ -319,8 +318,6 @@ vt_fb_bitblt_bitmap(struct vt_device *vd, const struct vt_window *vw,
 				break;
 			}
 		}
-		line += info->fb_stride;
-		pattern += bpl;
 	}
 }
 
@@ -415,17 +412,22 @@ int
 vt_fb_init(struct vt_device *vd)
 {
 	struct fb_info *info;
+	u_int margin;
 	int err;
 
 	info = vd->vd_softc;
-	vd->vd_height = info->fb_height;
-	vd->vd_width = info->fb_width;
+	vd->vd_height = MIN(VT_FB_DEFAULT_HEIGHT, info->fb_height);
+	margin = (info->fb_height - vd->vd_height) >> 1;
+	vd->vd_transpose = margin * info->fb_stride;
+	vd->vd_width = MIN(VT_FB_DEFAULT_WIDTH, info->fb_width);
+	margin = (info->fb_width - vd->vd_width) >> 1;
+	vd->vd_transpose += margin * (info->fb_bpp / NBBY);
 	vd->vd_video_dev = info->fb_video_dev;
 
 	if (info->fb_size == 0)
 		return (CN_DEAD);
 
-	if (info->fb_pbase == 0)
+	if (info->fb_pbase == 0 && info->fb_vbase == 0)
 		info->fb_flags |= FB_FLAG_NOMMAP;
 
 	if (info->fb_cmsize <= 0) {

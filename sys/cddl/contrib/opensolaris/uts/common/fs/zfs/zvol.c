@@ -358,7 +358,7 @@ zvol_map_block(spa_t *spa, zilog_t *zilog, const blkptr_t *bp,
 	zvol_extent_t *ze;
 	int bs = ma->ma_zv->zv_volblocksize;
 
-	if (BP_IS_HOLE(bp) ||
+	if (bp == NULL || BP_IS_HOLE(bp) ||
 	    zb->zb_object != ZVOL_OBJ || zb->zb_level != 0)
 		return (0);
 
@@ -2775,7 +2775,11 @@ zvol_geom_worker(void *arg)
 			break;
 		case BIO_READ:
 		case BIO_WRITE:
+		case BIO_DELETE:
 			zvol_strategy(bp);
+			break;
+		default:
+			g_io_deliver(bp, EOPNOTSUPP);
 			break;
 		}
 	}
@@ -3130,7 +3134,9 @@ zvol_d_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct threa
 		struct diocgattr_arg *arg = (struct diocgattr_arg *)data;
 		uint64_t refd, avail, usedobjs, availobjs;
 
-		if (strcmp(arg->name, "blocksavail") == 0) {
+		if (strcmp(arg->name, "GEOM::candelete") == 0)
+			arg->value.i = 1;
+		else if (strcmp(arg->name, "blocksavail") == 0) {
 			dmu_objset_space(zv->zv_objset, &refd, &avail,
 			    &usedobjs, &availobjs);
 			arg->value.off = avail / DEV_BSIZE;

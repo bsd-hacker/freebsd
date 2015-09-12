@@ -253,13 +253,28 @@ static struct ada_quirk_entry ada_quirk_table[] =
 		/*quirks*/ADA_Q_4K
 	},
 	{
+		/* WDC Caviar Red Advanced Format (4k) drives */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD????CX*", "*" },
+		/*quirks*/ADA_Q_4K
+	},
+	{
 		/* WDC Caviar Green Advanced Format (4k) drives */
 		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD????RS*", "*" },
 		/*quirks*/ADA_Q_4K
 	},
 	{
-		/* WDC Caviar Green Advanced Format (4k) drives */
+		/* WDC Caviar Green/Red Advanced Format (4k) drives */
 		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD????RX*", "*" },
+		/*quirks*/ADA_Q_4K
+	},
+	{
+		/* WDC Caviar Red Advanced Format (4k) drives */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD??????CX*", "*" },
+		/*quirks*/ADA_Q_4K
+	},
+	{
+		/* WDC Caviar Black Advanced Format (4k) drives */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD??????EX*", "*" },
 		/*quirks*/ADA_Q_4K
 	},
 	{
@@ -768,10 +783,6 @@ adastrategy(struct bio *bp)
 	 * Place it in the queue of disk activities for this disk
 	 */
 	if (bp->bio_cmd == BIO_DELETE) {
-		KASSERT((softc->flags & ADA_FLAG_CAN_TRIM) ||
-			((softc->flags & ADA_FLAG_CAN_CFA) &&
-			 !(softc->flags & ADA_FLAG_CAN_48BIT)),
-			("BIO_DELETE but no supported TRIM method."));
 	}
 	cam_iosched_queue_work(softc->cam_iosched, bp);
 
@@ -1711,9 +1722,7 @@ adastart(struct cam_periph *periph, union ccb *start_ccb)
 				}
 			}
 			if (fail) {
-				bp->bio_error = EIO;
-				bp->bio_flags |= BIO_ERROR;
-				biodone(bp);
+				biofinish(bp, NULL, EIO);
 				xpt_release_ccb(start_ccb);
 				adaschedule(periph);
 				return;

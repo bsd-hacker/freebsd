@@ -1,4 +1,4 @@
-/*	$Id: read.c,v 1.129 2015/03/02 14:50:17 schwarze Exp $ */
+/*	$Id: read.c,v 1.131 2015/03/11 13:05:20 schwarze Exp $ */
 /*
  * Copyright (c) 2008, 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
  * Copyright (c) 2010-2015 Ingo Schwarze <schwarze@openbsd.org>
@@ -28,6 +28,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <err.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -35,6 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include "mandoc.h"
 #include "mandoc_aux.h"
@@ -636,7 +638,7 @@ read_whole_file(struct mparse *curp, const char *file, int fd,
 	 */
 
 	if (S_ISREG(st.st_mode)) {
-		if (st.st_size >= (1U << 31)) {
+		if (st.st_size > 0x7fffffff) {
 			mandoc_msg(MANDOCERR_TOOLARGE, curp, 0, 0, NULL);
 			return(0);
 		}
@@ -792,6 +794,27 @@ mparse_readfd(struct mparse *curp, int fd, const char *file)
 	return(curp->file_status);
 }
 
+/*
+ * hack to avoid depending on gnuzip(1) waiting for upstream proper
+ * support
+ */
+static int
+gunzip(const char *file)
+{
+	gzFile		  gz;
+	char		  buf[8192];
+	int		  r;
+
+	gz = gzopen(file, "r");
+	if (gz == NULL)
+		err(EXIT_FAILURE, "cannot open %s", file);
+
+	while ((r = gzread(gz, buf, sizeof(buf))) > 0)
+		fwrite(buf, 1, r, stdout);
+
+	gzclose(gz);
+	return (EXIT_SUCCESS);
+}
 enum mandoclevel
 mparse_open(struct mparse *curp, int *fd, const char *file)
 {
@@ -846,9 +869,7 @@ mparse_open(struct mparse *curp, int *fd, const char *file)
 			perror("dup");
 			exit((int)MANDOCLEVEL_SYSERR);
 		}
-		execlp("gunzip", "gunzip", "-c", file, NULL);
-		perror("exec");
-		exit((int)MANDOCLEVEL_SYSERR);
+		exit(gunzip(file));
 	default:
 		close(pfd[1]);
 		*fd = pfd[0];

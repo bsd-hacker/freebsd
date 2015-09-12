@@ -64,7 +64,7 @@ __FBSDID("$FreeBSD$");
 #define PT_OUTER_WT	(2 << 3)
 #define PT_OUTER_WB	(3 << 3)
 #define PT_OUTER_WBWA	(1 << 3)
-	
+
 #ifdef SMP
 #define PT_ATTR	(PT_S|PT_INNER_WBWA|PT_OUTER_WBWA|PT_NOS)
 #else
@@ -247,8 +247,8 @@ ENTRY(armv7_idcache_wbinv_range)
 	add	r0, r0, ip
 	subs	r1, r1, ip
 	bhi	.Larmv7_id_wbinv_next
-	isb				/* instruction synchronization barrier */
 	dsb				/* data synchronization barrier */
+	isb				/* instruction synchronization barrier */
 	RET
 END(armv7_idcache_wbinv_range)
 
@@ -258,22 +258,25 @@ ENTRY_NP(armv7_icache_sync_all)
 #else
 	mcr	CP15_ICIALLU
 #endif
-	isb				/* instruction synchronization barrier */
 	dsb				/* data synchronization barrier */
+	isb				/* instruction synchronization barrier */
 	RET
 END(armv7_icache_sync_all)
 
 ENTRY_NP(armv7_icache_sync_range)
 	ldr	ip, .Larmv7_icache_line_size
 	ldr	ip, [ip]
+	sub	r3, ip, #1		/* Address need not be aligned, but */
+	and	r2, r0, r3		/* round length up if op spans line */
+	add	r1, r1, r2		/* boundary: len += addr & linemask; */
 .Larmv7_sync_next:
-	mcr	CP15_ICIMVAU(r0)
 	mcr	CP15_DCCMVAC(r0)
+	mcr	CP15_ICIMVAU(r0)
 	add	r0, r0, ip
 	subs	r1, r1, ip
 	bhi	.Larmv7_sync_next
-	isb				/* instruction synchronization barrier */
 	dsb				/* data synchronization barrier */
+	isb				/* instruction synchronization barrier */
 	RET
 END(armv7_icache_sync_range)
 
@@ -362,10 +365,4 @@ ENTRY(armv7_idcache_inv_all)
 	isb                             @ instruction sync barrier
 	bx      lr                      @ return
 END(armv7_idcache_inv_all)
-
-ENTRY_NP(armv7_sleep)
-	dsb
-	wfi
-	bx	lr
-END(armv7_sleep)
 

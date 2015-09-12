@@ -20,14 +20,23 @@
 #define WPI_TX_RING_COUNT	256
 #define WPI_TX_RING_LOMARK	192
 #define WPI_TX_RING_HIMARK	224
+
+#ifdef DIAGNOSTIC
+#define WPI_RX_RING_COUNT_LOG	8
+#else
 #define WPI_RX_RING_COUNT_LOG	6
+#endif
+
 #define WPI_RX_RING_COUNT	(1 << WPI_RX_RING_COUNT_LOG)
 
 #define WPI_NTXQUEUES		8
+#define WPI_DRV_NTXQUEUES	5
+#define WPI_CMD_QUEUE_NUM	4
+
 #define WPI_NDMACHNLS		6
 
 /* Maximum scatter/gather. */
-#define WPI_MAX_SCATTER	4
+#define WPI_MAX_SCATTER		4
 
 /*
  * Rings must be aligned on a 16K boundary.
@@ -94,6 +103,7 @@
 #define WPI_ALM_SCHED_TXF5MF		0x2e20
 #define WPI_ALM_SCHED_SBYPASS_MODE1	0x2e2c
 #define WPI_ALM_SCHED_SBYPASS_MODE2	0x2e30
+#define WPI_APMG_CLK_CTRL		0x3000
 #define WPI_APMG_CLK_EN			0x3004
 #define WPI_APMG_CLK_DIS		0x3008
 #define WPI_APMG_PS			0x300c
@@ -221,7 +231,7 @@
 #define WPI_APMG_PCI_STT_L1A_DIS	(1 << 11)
 
 struct wpi_shared {
-	uint32_t	txbase[8];
+	uint32_t	txbase[WPI_NTXQUEUES];
 	uint32_t	next;
 	uint32_t	reserved[2];
 } __packed;
@@ -246,6 +256,26 @@ struct wpi_tx_stat {
 	uint8_t		rate;
 	uint32_t	duration;
 	uint32_t	status;
+#define WPI_TX_STATUS_SUCCESS			0x01
+#define WPI_TX_STATUS_DIRECT_DONE		0x02
+#define WPI_TX_STATUS_FAIL			0x80
+#define WPI_TX_STATUS_FAIL_SHORT_LIMIT		0x82
+#define WPI_TX_STATUS_FAIL_LONG_LIMIT		0x83
+#define WPI_TX_STATUS_FAIL_FIFO_UNDERRUN	0x84
+#define WPI_TX_STATUS_FAIL_MGMNT_ABORT		0x85
+#define WPI_TX_STATUS_FAIL_NEXT_FRAG		0x86
+#define WPI_TX_STATUS_FAIL_LIFE_EXPIRE		0x87
+#define WPI_TX_STATUS_FAIL_NODE_PS		0x88
+#define WPI_TX_STATUS_FAIL_ABORTED		0x89
+#define WPI_TX_STATUS_FAIL_BT_RETRY		0x8a
+#define WPI_TX_STATUS_FAIL_NODE_INVALID		0x8b
+#define WPI_TX_STATUS_FAIL_FRAG_DROPPED		0x8c
+#define WPI_TX_STATUS_FAIL_TID_DISABLE		0x8d
+#define WPI_TX_STATUS_FAIL_FRAME_FLUSHED	0x8e
+#define WPI_TX_STATUS_FAIL_INSUFFICIENT_CF_POLL	0x8f
+#define WPI_TX_STATUS_FAIL_TX_LOCKED		0x90
+#define WPI_TX_STATUS_FAIL_NO_BEACON_ON_RADAR	0x91
+
 } __packed;
 
 struct wpi_rx_desc {
@@ -268,13 +298,16 @@ struct wpi_rx_desc {
 	uint8_t		qid;
 } __packed;
 
+#define WPI_RX_DESC_QID_MSK		0x07
+#define WPI_UNSOLICITED_RX_NOTIF	0x80
+
 struct wpi_rx_stat {
 	uint8_t		len;
 #define WPI_STAT_MAXLEN	20
 
 	uint8_t		id;
 	uint8_t		rssi;	/* received signal strength */
-#define WPI_RSSI_OFFSET	95
+#define WPI_RSSI_OFFSET	-95
 
 	uint8_t		agc;	/* access gain control */
 	uint16_t	signal;
@@ -319,6 +352,7 @@ struct wpi_tx_cmd {
 #define WPI_CMD_SET_LED		 72
 #define WPI_CMD_SET_POWER_MODE	119
 #define WPI_CMD_SCAN		128
+#define WPI_CMD_SCAN_ABORT	129
 #define WPI_CMD_SET_BEACON	145
 #define WPI_CMD_TXPOWER		151
 #define WPI_CMD_BT_COEX		155
@@ -368,6 +402,7 @@ struct wpi_rxon {
 #define WPI_FILTER_NODECRYPT	(1 << 3)
 #define WPI_FILTER_BSS		(1 << 5)
 #define WPI_FILTER_BEACON	(1 << 6)
+#define WPI_FILTER_ASSOC	(1 << 7)    /* Accept associaton requests. */
 
 	uint8_t		chan;
 	uint16_t	reserved5;
@@ -465,7 +500,7 @@ struct wpi_cmd_data {
 	uint16_t	lnext;
 	uint32_t	flags;
 #define WPI_TX_NEED_RTS		(1 <<  1)
-#define WPI_TX_NEED_CTS         (1 <<  2)
+#define WPI_TX_NEED_CTS		(1 <<  2)
 #define WPI_TX_NEED_ACK		(1 <<  3)
 #define WPI_TX_FULL_TXOP	(1 <<  7)
 #define WPI_TX_BT_DISABLE	(1 << 12) 	/* bluetooth coexistence */
@@ -515,10 +550,10 @@ struct wpi_cmd_beacon {
 
 /* Structure for notification WPI_BEACON_MISSED. */
 struct wpi_beacon_missed {
-    uint32_t consecutive;
-    uint32_t total;
-    uint32_t expected;
-    uint32_t received;
+	uint32_t consecutive;
+	uint32_t total;
+	uint32_t expected;
+	uint32_t received;
 } __packed;
 
 
@@ -533,6 +568,8 @@ struct wpi_mrr_setup {
 		uint8_t	plcp;
 		uint8_t	flags;
 		uint8_t	ntries;
+#define		WPI_NTRIES_DEFAULT	2
+
 		uint8_t	next;
 	} __packed	rates[WPI_RIDX_MAX + 1];
 } __packed;
@@ -575,12 +612,17 @@ struct wpi_scan_hdr {
 	uint16_t	len;
 	uint8_t		reserved1;
 	uint8_t		nchan;
-	uint16_t	quiet_time;
-	uint16_t	quiet_threshold;
+	uint16_t	quiet_time;	/* timeout in milliseconds */
+#define WPI_QUIET_TIME_DEFAULT		10
+
+	uint16_t	quiet_threshold; /* min # of packets */
 	uint16_t	crc_threshold;
 	uint16_t	reserved2;
 	uint32_t	max_svc;	/* background scans */
 	uint32_t	pause_svc;	/* background scans */
+#define WPI_PAUSE_MAX_TIME		((1 << 20) - 1)
+#define WPI_PAUSE_SCAN(nbeacons, time)	((nbeacons << 24) | time)
+
 	uint32_t	flags;
 	uint32_t	filter;
 
@@ -616,6 +658,7 @@ struct wpi_scan_chan {
 #define WPI_PASSIVE_DWELL_TIME_2GHZ	( 20)
 #define WPI_PASSIVE_DWELL_TIME_5GHZ	( 10)
 #define WPI_PASSIVE_DWELL_BASE		(100)
+#define WPI_CHANNEL_TUNE_TIME		(  6)
 
 /* Structure for command WPI_CMD_TXPOWER. */
 struct wpi_cmd_txpower {
@@ -683,6 +726,9 @@ struct wpi_start_scan {
 struct wpi_stop_scan {
 	uint8_t		nchan;
 	uint8_t		status;
+#define WPI_SCAN_COMPLETED	1
+#define WPI_SCAN_ABORTED	2
+
 	uint8_t		reserved;
 	uint8_t		chan;
 	uint64_t	tsf;

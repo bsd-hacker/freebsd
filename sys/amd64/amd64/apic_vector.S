@@ -174,13 +174,27 @@ IDTVEC(xen_intr_upcall)
 	jmp	doreti
 #endif
 
+#ifdef HYPERV
+/*
+ * This is the Hyper-V vmbus channel direct callback interrupt.
+ * Only used when it is running on Hyper-V.
+ */
+	.text
+	SUPERALIGN_TEXT
+IDTVEC(hv_vmbus_callback)
+	PUSH_FRAME
+	FAKE_MCOUNT(TF_RIP(%rsp))
+	movq	%rsp, %rdi
+	call	hv_vector_handler
+	MEXITCOUNT
+	jmp	doreti
+#endif
+
 #ifdef SMP
 /*
  * Global address space TLB shootdown.
  */
 	.text
-
-#define	NAKE_INTR_CS	24
 
 	SUPERALIGN_TEXT
 invltlb_ret:
@@ -189,30 +203,28 @@ invltlb_ret:
 	jmp	doreti_iret
 
 	SUPERALIGN_TEXT
-IDTVEC(invltlb_pcid)
-	PUSH_FRAME
-
-	call	invltlb_pcid_handler
-	jmp	invltlb_ret
-
-
-	SUPERALIGN_TEXT
 IDTVEC(invltlb)
 	PUSH_FRAME
 
 	call	invltlb_handler
 	jmp	invltlb_ret
 
+IDTVEC(invltlb_pcid)
+	PUSH_FRAME
+
+	call	invltlb_pcid_handler
+	jmp	invltlb_ret
+
+IDTVEC(invltlb_invpcid)
+	PUSH_FRAME
+
+	call	invltlb_invpcid_handler
+	jmp	invltlb_ret
+
 /*
  * Single page TLB shootdown
  */
 	.text
-	SUPERALIGN_TEXT
-IDTVEC(invlpg_pcid)
-	PUSH_FRAME
-
-	call	invlpg_pcid_handler
-	jmp	invltlb_ret
 
 	SUPERALIGN_TEXT
 IDTVEC(invlpg)
@@ -301,4 +313,35 @@ IDTVEC(rendezvous)
 	call	smp_rendezvous_action
 	call	as_lapic_eoi
 	jmp	doreti
+
+/*
+ * IPI handler whose purpose is to interrupt the CPU with minimum overhead.
+ * This is used by bhyve to force a host cpu executing in guest context to
+ * trap into the hypervisor.
+ *
+ * This handler is different from other IPI handlers in the following aspects:
+ *
+ * 1. It doesn't push a trapframe on the stack.
+ *
+ * This implies that a DDB backtrace involving 'justreturn' will skip the
+ * function that was interrupted by this handler.
+ *
+ * 2. It doesn't 'swapgs' when userspace is interrupted.
+ *
+ * The 'justreturn' handler does not access any pcpu data so it is not an
+ * issue. Moreover the 'justreturn' handler can only be interrupted by an NMI
+ * whose handler already doesn't trust GS.base when kernel code is interrupted.
+ */
+	.text
+	SUPERALIGN_TEXT
+IDTVEC(justreturn)
+	pushq	%rax
+	pushq	%rcx
+	pushq	%rdx
+	call	as_lapic_eoi
+	popq	%rdx
+	popq	%rcx
+	popq	%rax
+	jmp	doreti_iret
+
 #endif /* SMP */

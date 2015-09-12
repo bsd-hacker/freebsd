@@ -48,7 +48,7 @@
 /*********************************************************************
  *  Driver version
  *********************************************************************/
-char ixlv_driver_version[] = "1.2.1";
+char ixlv_driver_version[] = "1.2.6";
 
 /*********************************************************************
  *  PCI Device ID Table
@@ -398,7 +398,7 @@ ixlv_attach(device_t dev)
 
 	vsi->id = sc->vsi_res->vsi_id;
 	vsi->back = (void *)sc;
-	vsi->link_up = TRUE;
+	sc->link_up = TRUE;
 
 	/* This allocates the memory and early settings */
 	if (ixlv_setup_queues(sc) != 0) {
@@ -480,7 +480,7 @@ ixlv_detach(device_t dev)
 
 	/* Make sure VLANS are not using driver */
 	if (vsi->ifp->if_vlantrunk != NULL) {
-		device_printf(dev, "Vlan in use, detach first\n");
+		if_printf(vsi->ifp, "Vlan in use, detach first\n");
 		INIT_DBG_DEV(dev, "end");
 		return (EBUSY);
 	}
@@ -893,7 +893,7 @@ ixlv_init_locked(struct ixlv_sc *sc)
 
 		ixl_init_tx_ring(que);
 
-		if (vsi->max_frame_size <= 2048)
+		if (vsi->max_frame_size <= MCLBYTES)
 			rxr->mbuf_sz = MCLBYTES;
 		else
 			rxr->mbuf_sz = MJUMPAGESIZE;
@@ -1383,7 +1383,7 @@ ixlv_assign_msix(struct ixlv_sc *sc)
 	struct		tx_ring	 *txr;
 	int 		error, rid, vector = 1;
 #ifdef	RSS
-	cpuset_t cpu_mask;
+	cpuset_t	cpu_mask;
 #endif
 
 	for (int i = 0; i < vsi->num_queues; i++, vector++, que++) {
@@ -1413,7 +1413,7 @@ ixlv_assign_msix(struct ixlv_sc *sc)
 #endif
 		bus_bind_intr(dev, que->res, cpu_id);
 		que->msix = vector;
-        	vsi->que_mask |= (u64)(1 << que->msix);
+		vsi->que_mask |= (u64)(1 << que->msix);
 		TASK_INIT(&que->tx_task, 0, ixl_deferred_mq_start, que);
 		TASK_INIT(&que->task, 0, ixlv_handle_que, que);
 		que->tq = taskqueue_create_fast("ixlv_que", M_NOWAIT,
@@ -1693,7 +1693,6 @@ ixlv_setup_queues(struct ixlv_sc *sc)
 	return (0);
 
 fail:
-	free(vsi->queues, M_DEVBUF);
 	for (int i = 0; i < vsi->num_queues; i++) {
 		que = &vsi->queues[i];
 		rxr = &que->rxr;
@@ -1703,6 +1702,7 @@ fail:
 		if (txr->base)
 			i40e_free_dma_mem(&sc->hw, &txr->dma);
 	}
+	free(vsi->queues, M_DEVBUF);
 
 early:
 	return (error);
@@ -1718,12 +1718,12 @@ early:
 static void
 ixlv_register_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 {
-	struct ixl_vsi			*vsi = ifp->if_softc;
+	struct ixl_vsi		*vsi = arg;
 	struct ixlv_sc		*sc = vsi->back;
 	struct ixlv_vlan_filter	*v;
 
 
-	if (ifp->if_softc !=  arg)   /* Not our event */
+	if (ifp->if_softc != arg)   /* Not our event */
 		return;
 
 	if ((vtag == 0) || (vtag > 4095))	/* Invalid */
@@ -1755,12 +1755,12 @@ ixlv_register_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 static void
 ixlv_unregister_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 {
-	struct ixl_vsi			*vsi = ifp->if_softc;
+	struct ixl_vsi		*vsi = arg;
 	struct ixlv_sc		*sc = vsi->back;
 	struct ixlv_vlan_filter	*v;
-	int				i = 0;
+	int			i = 0;
 	
-	if (ifp->if_softc !=  arg)
+	if (ifp->if_softc != arg)
 		return;
 
 	if ((vtag == 0) || (vtag > 4095))	/* Invalid */
@@ -1832,7 +1832,7 @@ ixlv_msix_adminq(void *arg)
         mask = rd32(hw, I40E_VFINT_ICR0_ENA1);
 
         reg = rd32(hw, I40E_VFINT_DYN_CTL01);
-        reg |= I40E_PFINT_DYN_CTL0_CLEARPBA_MASK;
+        reg |= I40E_VFINT_DYN_CTL01_CLEARPBA_MASK;
         wr32(hw, I40E_VFINT_DYN_CTL01, reg);
 
 	/* schedule task */
@@ -1879,7 +1879,7 @@ ixlv_enable_adminq_irq(struct i40e_hw *hw)
 	wr32(hw, I40E_VFINT_DYN_CTL01,
 	    I40E_VFINT_DYN_CTL01_INTENA_MASK |
 	    I40E_VFINT_DYN_CTL01_ITR_INDX_MASK);
-	wr32(hw, I40E_VFINT_ICR0_ENA1, I40E_VFINT_ICR0_ENA_ADMINQ_MASK);
+	wr32(hw, I40E_VFINT_ICR0_ENA1, I40E_VFINT_ICR0_ENA1_ADMINQ_MASK);
 	/* flush */
 	rd32(hw, I40E_VFGEN_RSTAT);
 	return;
@@ -1891,7 +1891,7 @@ ixlv_enable_queue_irq(struct i40e_hw *hw, int id)
 	u32		reg;
 
 	reg = I40E_VFINT_DYN_CTLN1_INTENA_MASK |
-	    I40E_VFINT_DYN_CTLN_CLEARPBA_MASK; 
+	    I40E_VFINT_DYN_CTLN1_CLEARPBA_MASK; 
 	wr32(hw, I40E_VFINT_DYN_CTLN1(id), reg);
 }
 
@@ -2154,7 +2154,7 @@ ixlv_media_status(struct ifnet * ifp, struct ifmediareq * ifmr)
 	ifmr->ifm_status = IFM_AVALID;
 	ifmr->ifm_active = IFM_ETHER;
 
-	if (!vsi->link_up) {
+	if (!sc->link_up) {
 		mtx_unlock(&sc->mtx);
 		INIT_DBG_IF(ifp, "end: link not up");
 		return;
@@ -2375,8 +2375,8 @@ ixlv_local_timer(void *arg)
 	/*
 	** Check status on the queues for a hang
 	*/
-	mask = (I40E_VFINT_DYN_CTLN_INTENA_MASK |
-	    I40E_VFINT_DYN_CTLN_SWINT_TRIG_MASK);
+	mask = (I40E_VFINT_DYN_CTLN1_INTENA_MASK |
+	    I40E_VFINT_DYN_CTLN1_SWINT_TRIG_MASK);
 
 	for (int i = 0; i < vsi->num_queues; i++,que++) {
 		/* Any queues with outstanding work get a sw irq */
@@ -2395,7 +2395,7 @@ ixlv_local_timer(void *arg)
 		} else {
 			/* Check if we've come back from hung */
 			if ((vsi->active_queues & ((u64)1 << que->me)) == 0)
-     				vsi->active_queues |= ((u64)1 << que->me);
+				vsi->active_queues |= ((u64)1 << que->me);
 		}
 		if (que->busy >= IXL_MAX_TX_BUSY) {
 			device_printf(dev,"Warning queue %d "
@@ -2426,20 +2426,19 @@ ixlv_update_link_status(struct ixlv_sc *sc)
 {
 	struct ixl_vsi		*vsi = &sc->vsi;
 	struct ifnet		*ifp = vsi->ifp;
-	device_t		 dev = sc->dev;
 
-	if (vsi->link_up){ 
+	if (sc->link_up){ 
 		if (vsi->link_active == FALSE) {
 			if (bootverbose)
-				device_printf(dev,"Link is Up, %d Gbps\n",
-				    (vsi->link_speed == I40E_LINK_SPEED_40GB) ? 40:10);
+				if_printf(ifp,"Link is Up, %d Gbps\n",
+				    (sc->link_speed == I40E_LINK_SPEED_40GB) ? 40:10);
 			vsi->link_active = TRUE;
 			if_link_state_change(ifp, LINK_STATE_UP);
 		}
 	} else { /* Link down */
 		if (vsi->link_active == TRUE) {
 			if (bootverbose)
-				device_printf(dev,"Link is Down\n");
+				if_printf(ifp,"Link is Down\n");
 			if_link_state_change(ifp, LINK_STATE_DOWN);
 			vsi->link_active = FALSE;
 		}
@@ -2657,7 +2656,6 @@ static int
 ixlv_add_mac_filter(struct ixlv_sc *sc, u8 *macaddr, u16 flags)
 {
 	struct ixlv_mac_filter	*f;
-	device_t			dev = sc->dev;
 
 	/* Does one already exist? */
 	f = ixlv_find_mac_filter(sc, macaddr);
@@ -2670,7 +2668,7 @@ ixlv_add_mac_filter(struct ixlv_sc *sc, u8 *macaddr, u16 flags)
 	/* If not, get a new empty filter */
 	f = ixlv_get_mac_filter(sc);
 	if (f == NULL) {
-		device_printf(dev, "%s: no filters available!!\n",
+		if_printf(sc->vsi.ifp, "%s: no filters available!!\n",
 		    __func__);
 		return (ENOMEM);
 	}
@@ -2744,33 +2742,33 @@ ixlv_do_adminq_locked(struct ixlv_sc *sc)
 
 	/* check for Admin queue errors */
 	oldreg = reg = rd32(hw, hw->aq.arq.len);
-	if (reg & I40E_VF_ARQLEN_ARQVFE_MASK) {
+	if (reg & I40E_VF_ARQLEN1_ARQVFE_MASK) {
 		device_printf(dev, "ARQ VF Error detected\n");
-		reg &= ~I40E_VF_ARQLEN_ARQVFE_MASK;
+		reg &= ~I40E_VF_ARQLEN1_ARQVFE_MASK;
 	}
-	if (reg & I40E_VF_ARQLEN_ARQOVFL_MASK) {
+	if (reg & I40E_VF_ARQLEN1_ARQOVFL_MASK) {
 		device_printf(dev, "ARQ Overflow Error detected\n");
-		reg &= ~I40E_VF_ARQLEN_ARQOVFL_MASK;
+		reg &= ~I40E_VF_ARQLEN1_ARQOVFL_MASK;
 	}
-	if (reg & I40E_VF_ARQLEN_ARQCRIT_MASK) {
+	if (reg & I40E_VF_ARQLEN1_ARQCRIT_MASK) {
 		device_printf(dev, "ARQ Critical Error detected\n");
-		reg &= ~I40E_VF_ARQLEN_ARQCRIT_MASK;
+		reg &= ~I40E_VF_ARQLEN1_ARQCRIT_MASK;
 	}
 	if (oldreg != reg)
 		wr32(hw, hw->aq.arq.len, reg);
 
 	oldreg = reg = rd32(hw, hw->aq.asq.len);
-	if (reg & I40E_VF_ATQLEN_ATQVFE_MASK) {
+	if (reg & I40E_VF_ATQLEN1_ATQVFE_MASK) {
 		device_printf(dev, "ASQ VF Error detected\n");
-		reg &= ~I40E_VF_ATQLEN_ATQVFE_MASK;
+		reg &= ~I40E_VF_ATQLEN1_ATQVFE_MASK;
 	}
-	if (reg & I40E_VF_ATQLEN_ATQOVFL_MASK) {
+	if (reg & I40E_VF_ATQLEN1_ATQOVFL_MASK) {
 		device_printf(dev, "ASQ Overflow Error detected\n");
-		reg &= ~I40E_VF_ATQLEN_ATQOVFL_MASK;
+		reg &= ~I40E_VF_ATQLEN1_ATQOVFL_MASK;
 	}
-	if (reg & I40E_VF_ATQLEN_ATQCRIT_MASK) {
+	if (reg & I40E_VF_ATQLEN1_ATQCRIT_MASK) {
 		device_printf(dev, "ASQ Critical Error detected\n");
-		reg &= ~I40E_VF_ATQLEN_ATQCRIT_MASK;
+		reg &= ~I40E_VF_ATQLEN1_ATQCRIT_MASK;
 	}
 	if (oldreg != reg)
 		wr32(hw, hw->aq.asq.len, reg);
@@ -2836,7 +2834,7 @@ ixlv_add_sysctls(struct ixlv_sc *sc)
 	struct ixl_sysctl_info *entry = ctls;
 	while (entry->stat != 0)
 	{
-		SYSCTL_ADD_UQUAD(ctx, child, OID_AUTO, entry->name,
+		SYSCTL_ADD_QUAD(ctx, child, OID_AUTO, entry->name,
 				CTLFLAG_RD, entry->stat,
 				entry->description);
 		entry++;
@@ -2852,34 +2850,34 @@ ixlv_add_sysctls(struct ixlv_sc *sc)
 		txr = &(queues[q].txr);
 		rxr = &(queues[q].rxr);
 
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "mbuf_defrag_failed",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "mbuf_defrag_failed",
 				CTLFLAG_RD, &(queues[q].mbuf_defrag_failed),
 				"m_defrag() failed");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "dropped",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "dropped",
 				CTLFLAG_RD, &(queues[q].dropped_pkts),
 				"Driver dropped packets");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "irqs",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "irqs",
 				CTLFLAG_RD, &(queues[q].irqs),
 				"irqs on this queue");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "tso_tx",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "tso_tx",
 				CTLFLAG_RD, &(queues[q].tso),
 				"TSO");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "tx_dma_setup",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "tx_dma_setup",
 				CTLFLAG_RD, &(queues[q].tx_dma_setup),
 				"Driver tx dma failure in xmit");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "no_desc_avail",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "no_desc_avail",
 				CTLFLAG_RD, &(txr->no_desc),
 				"Queue No Descriptor Available");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "tx_packets",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "tx_packets",
 				CTLFLAG_RD, &(txr->total_packets),
 				"Queue Packets Transmitted");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "tx_bytes",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "tx_bytes",
 				CTLFLAG_RD, &(txr->tx_bytes),
 				"Queue Bytes Transmitted");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "rx_packets",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "rx_packets",
 				CTLFLAG_RD, &(rxr->rx_packets),
 				"Queue Packets Received");
-		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "rx_bytes",
+		SYSCTL_ADD_QUAD(ctx, queue_list, OID_AUTO, "rx_bytes",
 				CTLFLAG_RD, &(rxr->rx_bytes),
 				"Queue Bytes Received");
 

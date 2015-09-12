@@ -65,6 +65,15 @@ __FBSDID("$FreeBSD$");
 #include "common/t4_tcb.h"
 #include "tom/t4_tom.h"
 
+VNET_DECLARE(int, tcp_do_autorcvbuf);
+#define V_tcp_do_autorcvbuf VNET(tcp_do_autorcvbuf)
+VNET_DECLARE(int, tcp_autorcvbuf_inc);
+#define V_tcp_autorcvbuf_inc VNET(tcp_autorcvbuf_inc)
+VNET_DECLARE(int, tcp_autorcvbuf_max);
+#define V_tcp_autorcvbuf_max VNET(tcp_autorcvbuf_max)
+
+static struct mbuf *get_ddp_mbuf(int len);
+
 #define PPOD_SZ(n)	((n) * sizeof(struct pagepod))
 #define PPOD_SIZE	(PPOD_SZ(1))
 
@@ -396,6 +405,19 @@ handle_ddp_data(struct toepcb *toep, __be32 ddp_report, __be32 rcv_nxt, int len)
 	}
 
 	tp = intotcpcb(inp);
+
+	/*
+	 * For RX_DDP_COMPLETE, len will be zero and rcv_nxt is the
+	 * sequence number of the next byte to receive.  The length of
+	 * the data received for this message must be computed by
+	 * comparing the new and old values of rcv_nxt.
+	 * 
+	 * For RX_DATA_DDP, len might be non-zero, but it is only the
+	 * length of the most recent DMA.  It does not include the
+	 * total length of the data received since the previous update
+	 * for this DDP buffer.  rcv_nxt is the sequence number of the
+	 * first received byte from the most recent DMA.
+	 */
 	len += be32toh(rcv_nxt) - tp->rcv_nxt;
 	tp->rcv_nxt += len;
 	tp->t_rcvtime = ticks;
@@ -410,6 +432,21 @@ handle_ddp_data(struct toepcb *toep, __be32 ddp_report, __be32 rcv_nxt, int len)
 		toep->ddp_score = DDP_HIGH_SCORE;
 	else
 		discourage_ddp(toep);
+
+	/* receive buffer autosize */
+	if (sb->sb_flags & SB_AUTOSIZE &&
+	    V_tcp_do_autorcvbuf &&
+	    sb->sb_hiwat < V_tcp_autorcvbuf_max &&
+	    len > (sbspace(sb) / 8 * 7)) {
+		unsigned int hiwat = sb->sb_hiwat;
+		unsigned int newsize = min(hiwat + V_tcp_autorcvbuf_inc,
+		    V_tcp_autorcvbuf_max);
+
+		if (!sbreserve_locked(sb, newsize, so, NULL))
+			sb->sb_flags &= ~SB_AUTOSIZE;
+		else
+			toep->rx_credits += newsize - hiwat;
+	}
 
 	KASSERT(toep->sb_cc >= sbused(sb),
 	    ("%s: sb %p has more data (%d) than last time (%d).",
@@ -430,6 +467,37 @@ wakeup:
 
 	INP_WUNLOCK(inp);
 	return (0);
+}
+
+void
+handle_ddp_close(struct toepcb *toep, struct tcpcb *tp, struct sockbuf *sb,
+    __be32 rcv_nxt)
+{
+	struct mbuf *m;
+	int len;
+
+	SOCKBUF_LOCK_ASSERT(sb);
+	INP_WLOCK_ASSERT(toep->inp);
+	len = be32toh(rcv_nxt) - tp->rcv_nxt;
+
+	/* Signal handle_ddp() to break out of its sleep loop. */
+	toep->ddp_flags &= ~(DDP_BUF0_ACTIVE | DDP_BUF1_ACTIVE);
+	if (len == 0)
+		return;
+
+	tp->rcv_nxt += len;
+	KASSERT(toep->sb_cc >= sbused(sb),
+	    ("%s: sb %p has more data (%d) than last time (%d).",
+	    __func__, sb, sbused(sb), toep->sb_cc));
+	toep->rx_credits += toep->sb_cc - sbused(sb);
+#ifdef USE_DDP_RX_FLOW_CONTROL
+	toep->rx_credits -= len;	/* adjust for F_RX_FC_DDP */
+#endif
+
+	m = get_ddp_mbuf(len);
+
+	sbappendstream_locked(sb, m, 0);
+	toep->sb_cc = sbused(sb);
 }
 
 #define DDP_ERR (F_DDP_PPOD_MISMATCH | F_DDP_LLIMIT_ERR | F_DDP_ULIMIT_ERR |\
@@ -970,7 +1038,7 @@ soreceive_rcvoob(struct socket *so, struct uio *uio, int flags)
 
 static char ddp_magic_str[] = "nothing to see here";
 
-struct mbuf *
+static struct mbuf *
 get_ddp_mbuf(int len)
 {
 	struct mbuf *m;

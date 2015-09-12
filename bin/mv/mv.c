@@ -122,7 +122,7 @@ main(int argc, char *argv[])
 	 */
 	if (stat(argv[argc - 1], &sb) || !S_ISDIR(sb.st_mode)) {
 		if (argc > 2)
-			usage();
+			errx(1, "%s is not a directory", argv[argc - 1]);
 		exit(do_move(argv[0], argv[1]));
 	}
 
@@ -352,7 +352,7 @@ err:		if (unlink(to))
 
 	ts[0] = sbp->st_atim;
 	ts[1] = sbp->st_mtim;
-	if (utimensat(AT_FDCWD, to, ts, 0))
+	if (futimens(to_fd, ts))
 		warn("%s: set times", to);
 
 	if (close(to_fd)) {

@@ -38,7 +38,7 @@
 
 #include "fbt.h"
 
-#define	FBT_PATCHVAL		0xe06a0cfe /* illegal instruction */
+#define	FBT_PATCHVAL		0xe7f000f0 /* Specified undefined instruction */
 
 #define	FBT_PUSHM		0xe92d0000
 #define	FBT_POPM		0xe8bd0000
@@ -56,7 +56,6 @@ fbt_invop(uintptr_t addr, uintptr_t *stack, uintptr_t rval)
 
 	for (; fbt != NULL; fbt = fbt->fbtp_hashnext) {
 		if ((uintptr_t)fbt->fbtp_patchpoint == addr) {
-			fbt->fbtp_invop_cnt++;
 			cpu->cpu_dtrace_caller = addr;
 
 			/* TODO: Need 5th parameter from stack */
@@ -66,7 +65,7 @@ fbt_invop(uintptr_t addr, uintptr_t *stack, uintptr_t rval)
 
 			cpu->cpu_dtrace_caller = 0;
 
-			return (fbt->fbtp_rval);
+			return (fbt->fbtp_rval | (fbt->fbtp_savedval << DTRACE_INVOP_SHIFT));
 		}
 	}
 
@@ -103,6 +102,13 @@ fbt_provide_module_function(linker_file_t lf, int symindx,
 	}
 
 	if (name[0] == '_' && name[1] == '_')
+		return (0);
+
+	/*
+	 * Architecture-specific exclusion list, largely to do with FBT trap
+	 * processing, to prevent reentrance.
+	 */
+	if (strcmp(name, "undefinedinstruction") == 0)
 		return (0);
 
 	instr = (uint32_t *)symval->value;
@@ -165,7 +171,7 @@ again:
 	fbt->fbtp_name = name;
 	if (retfbt == NULL) {
 		fbt->fbtp_id = dtrace_probe_create(fbt_id, modname,
-		    name, FBT_RETURN, 5, fbt);
+		    name, FBT_RETURN, 3, fbt);
 	} else {
 		retfbt->fbtp_next = fbt;
 		fbt->fbtp_id = retfbt->fbtp_id;

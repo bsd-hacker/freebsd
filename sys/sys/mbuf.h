@@ -150,7 +150,6 @@ struct pkthdr {
 #define	tso_segsz	PH_per.sixteen[1]
 #define	csum_phsum	PH_per.sixteen[2]
 #define	csum_data	PH_per.thirtytwo[1]
-#define	pkt_tcphdr	PH_loc.ptr
 
 /*
  * Description of external storage mapped into mbuf; valid only if M_EXT is
@@ -578,6 +577,7 @@ m_extaddref(struct mbuf *m, caddr_t buf, u_int size, u_int *ref_cnt,
 	m->m_ext.ext_arg1 = arg1;
 	m->m_ext.ext_arg2 = arg2;
 	m->m_ext.ext_type = EXT_EXTREF;
+	m->m_ext.ext_flags = 0;
 }
 
 static __inline uma_zone_t
@@ -615,8 +615,8 @@ m_getzone(int size)
  * should go away with constant propagation for !MGETHDR.
  */
 static __inline int
-m_init(struct mbuf *m, uma_zone_t zone, int size, int how, short type,
-    int flags)
+m_init(struct mbuf *m, uma_zone_t zone __unused, int size __unused, int how,
+    short type, int flags)
 {
 	int error;
 
@@ -685,8 +685,8 @@ static __inline int
 m_clget(struct mbuf *m, int how)
 {
 
-	if (m->m_flags & M_EXT)
-		printf("%s: %p mbuf already has external storage\n", __func__, m);
+	KASSERT((m->m_flags & M_EXT) == 0, ("%s: mbuf %p has M_EXT",
+	    __func__, m));
 	m->m_ext.ext_buf = (char *)NULL;
 	uma_zalloc_arg(zone_clust, m, how);
 	/*
@@ -712,10 +712,11 @@ m_cljget(struct mbuf *m, int how, int size)
 {
 	uma_zone_t zone;
 
-	if (m && m->m_flags & M_EXT)
-		printf("%s: %p mbuf already has external storage\n", __func__, m);
-	if (m != NULL)
+	if (m != NULL) {
+		KASSERT((m->m_flags & M_EXT) == 0, ("%s: mbuf %p has M_EXT",
+		    __func__, m));
 		m->m_ext.ext_buf = NULL;
+	}
 
 	zone = m_getzone(size);
 	return (uma_zalloc_arg(zone, m, how));
@@ -952,16 +953,17 @@ int		 m_extadd(struct mbuf *, caddr_t, u_int,
 struct mbuf	*m_collapse(struct mbuf *, int, int);
 void		 m_copyback(struct mbuf *, int, int, c_caddr_t);
 void		 m_copydata(const struct mbuf *, int, int, caddr_t);
-struct mbuf	*m_copym(struct mbuf *, int, int, int);
+struct mbuf	*m_copym(const struct mbuf *, int, int, int);
 struct mbuf	*m_copypacket(struct mbuf *, int);
 void		 m_copy_pkthdr(struct mbuf *, struct mbuf *);
 struct mbuf	*m_copyup(struct mbuf *, int, int);
 struct mbuf	*m_defrag(struct mbuf *, int);
+void		 m_demote_pkthdr(struct mbuf *);
 void		 m_demote(struct mbuf *, int, int);
 struct mbuf	*m_devget(char *, int, int, struct ifnet *,
 		    void (*)(char *, caddr_t, u_int));
-struct mbuf	*m_dup(struct mbuf *, int);
-int		 m_dup_pkthdr(struct mbuf *, struct mbuf *, int);
+struct mbuf	*m_dup(const struct mbuf *, int);
+int		 m_dup_pkthdr(struct mbuf *, const struct mbuf *, int);
 u_int		 m_fixhdr(struct mbuf *);
 struct mbuf	*m_fragment(struct mbuf *, int, int);
 void		 m_freem(struct mbuf *);
@@ -1068,7 +1070,7 @@ void		 m_tag_delete_chain(struct mbuf *, struct m_tag *);
 void		 m_tag_free_default(struct m_tag *);
 struct m_tag	*m_tag_locate(struct mbuf *, u_int32_t, int, struct m_tag *);
 struct m_tag	*m_tag_copy(struct m_tag *, int);
-int		 m_tag_copy_chain(struct mbuf *, struct mbuf *, int);
+int		 m_tag_copy_chain(struct mbuf *, const struct mbuf *, int);
 void		 m_tag_delete_nonpersistent(struct mbuf *);
 
 /*
@@ -1120,7 +1122,7 @@ m_tag_first(struct mbuf *m)
  * Return the next tag in the list of tags associated with an mbuf.
  */
 static __inline struct m_tag *
-m_tag_next(struct mbuf *m, struct m_tag *t)
+m_tag_next(struct mbuf *m __unused, struct m_tag *t)
 {
 
 	return (SLIST_NEXT(t, m_tag_link));
@@ -1176,7 +1178,7 @@ m_free(struct mbuf *m)
 	return (n);
 }
 
-static int inline
+static __inline int
 rt_m_getfib(struct mbuf *m)
 {
 	KASSERT(m->m_flags & M_PKTHDR , ("Attempt to get FIB from non header mbuf."));
@@ -1189,6 +1191,15 @@ rt_m_getfib(struct mbuf *m)
         KASSERT((_m)->m_flags & M_PKTHDR, ("Attempt to set FIB on non header mbuf."));	\
 	((_m)->m_pkthdr.fibnum) = (_fib);				\
 } while (0)
+
+/* flags passed as first argument for "m_ether_tcpip_hash()" */
+#define	MBUF_HASHFLAG_L2	(1 << 2)
+#define	MBUF_HASHFLAG_L3	(1 << 3)
+#define	MBUF_HASHFLAG_L4	(1 << 4)
+
+/* mbuf hashing helper routines */
+uint32_t	m_ether_tcpip_hash_init(void);
+uint32_t	m_ether_tcpip_hash(const uint32_t, const struct mbuf *, const uint32_t);
 
 #ifdef MBUF_PROFILING
  void m_profile(struct mbuf *m);

@@ -28,7 +28,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_bus.h"
-#include "opt_random.h"
 
 #include <sys/param.h>
 #include <sys/conf.h>
@@ -212,7 +211,7 @@ devclass_sysctl_handler(SYSCTL_HANDLER_ARGS)
 	default:
 		return (EINVAL);
 	}
-	return (SYSCTL_OUT(req, value, strlen(value)));
+	return (SYSCTL_OUT_STR(req, value));
 }
 
 static void
@@ -269,7 +268,7 @@ device_sysctl_handler(SYSCTL_HANDLER_ARGS)
 	default:
 		return (EINVAL);
 	}
-	error = SYSCTL_OUT(req, value, strlen(value));
+	error = SYSCTL_OUT_STR(req, value);
 	if (buf != NULL)
 		free(buf, M_BUS);
 	return (error);
@@ -2113,6 +2112,16 @@ device_probe_child(device_t dev, device_t child)
 			}
 
 			/*
+			 * Probes that return BUS_PROBE_NOWILDCARD or lower
+			 * only match on devices whose driver was explicitly
+			 * specified.
+			 */
+			if (result <= BUS_PROBE_NOWILDCARD &&
+			    !(child->flags & DF_FIXEDCLASS)) {
+				result = ENXIO;
+			}
+
+			/*
 			 * The driver returned an error so it
 			 * certainly doesn't match.
 			 */
@@ -2127,14 +2136,6 @@ device_probe_child(device_t dev, device_t child)
 			 * of pri for the first match.
 			 */
 			if (best == NULL || result > pri) {
-				/*
-				 * Probes that return BUS_PROBE_NOWILDCARD
-				 * or lower only match on devices whose
-				 * driver was explicitly specified.
-				 */
-				if (result <= BUS_PROBE_NOWILDCARD &&
-				    !(child->flags & DF_FIXEDCLASS))
-					continue;
 				best = dl;
 				pri = result;
 				continue;
@@ -2683,6 +2684,25 @@ device_set_devclass(device_t dev, const char *classname)
 }
 
 /**
+ * @brief Set the devclass of a device and mark the devclass fixed.
+ * @see device_set_devclass()
+ */
+int
+device_set_devclass_fixed(device_t dev, const char *classname)
+{
+	int error;
+
+	if (classname == NULL)
+		return (EINVAL);
+
+	error = device_set_devclass(dev, classname);
+	if (error)
+		return (error);
+	dev->flags |= DF_FIXEDCLASS;
+	return (0);
+}
+
+/**
  * @brief Set the driver of a device
  *
  * @retval 0		success
@@ -2856,14 +2876,16 @@ device_attach(device_t dev)
 	attachtime = get_cyclecount() - attachtime;
 	/*
 	 * 4 bits per device is a reasonable value for desktop and server
-	 * hardware with good get_cyclecount() implementations, but may
+	 * hardware with good get_cyclecount() implementations, but WILL
 	 * need to be adjusted on other platforms.
 	 */
-#ifdef RANDOM_DEBUG
-	printf("random: %s(): feeding %d bit(s) of entropy from %s%d\n",
-	    __func__, 4, dev->driver->name, dev->unit);
-#endif
-	random_harvest(&attachtime, sizeof(attachtime), 4, RANDOM_ATTACH);
+#define	RANDOM_PROBE_BIT_GUESS	4
+	if (bootverbose)
+		printf("random: harvesting attach, %zu bytes (%d bits) from %s%d\n",
+		    sizeof(attachtime), RANDOM_PROBE_BIT_GUESS,
+		    dev->driver->name, dev->unit);
+	random_harvest_direct(&attachtime, sizeof(attachtime),
+	    RANDOM_PROBE_BIT_GUESS, RANDOM_ATTACH);
 	device_sysctl_update(dev);
 	if (dev->busy)
 		dev->state = DS_BUSY;

@@ -204,6 +204,7 @@ lapic_write32_nofence(enum LAPIC_REGISTERS reg, uint32_t val)
 	}
 }
 
+#ifdef SMP
 static uint64_t
 lapic_read_icr(void)
 {
@@ -241,6 +242,7 @@ lapic_write_icr(uint32_t vhi, uint32_t vlo)
 		lapic_write32(LAPIC_ICR_LO, vlo);
 	}
 }
+#endif /* SMP */
 
 static void
 native_lapic_enable_x2apic(void)
@@ -292,9 +294,6 @@ static int 	native_lapic_enable_pmc(void);
 static void 	native_lapic_disable_pmc(void);
 static void 	native_lapic_reenable_pmc(void);
 static void 	native_lapic_enable_cmc(void);
-static void 	native_lapic_ipi_raw(register_t icrlo, u_int dest);
-static void 	native_lapic_ipi_vectored(u_int vector, int dest);
-static int 	native_lapic_ipi_wait(int delay);
 static int 	native_lapic_set_lvt_mask(u_int apic_id, u_int lvt,
 		    u_char masked);
 static int 	native_lapic_set_lvt_mode(u_int apic_id, u_int lvt,
@@ -303,6 +302,13 @@ static int 	native_lapic_set_lvt_polarity(u_int apic_id, u_int lvt,
 		    enum intr_polarity pol);
 static int 	native_lapic_set_lvt_triggermode(u_int apic_id, u_int lvt,
 		    enum intr_trigger trigger);
+#ifdef SMP
+static void 	native_lapic_ipi_raw(register_t icrlo, u_int dest);
+static void 	native_lapic_ipi_vectored(u_int vector, int dest);
+static int 	native_lapic_ipi_wait(int delay);
+static int	native_lapic_ipi_alloc(inthand_t *ipifunc);
+static void	native_lapic_ipi_free(int vector);
+#endif /* SMP */
 
 struct apic_ops apic_ops = {
 	.create			= native_lapic_create,
@@ -329,6 +335,8 @@ struct apic_ops apic_ops = {
 	.ipi_raw		= native_lapic_ipi_raw,
 	.ipi_vectored		= native_lapic_ipi_vectored,
 	.ipi_wait		= native_lapic_ipi_wait,
+	.ipi_alloc		= native_lapic_ipi_alloc,
+	.ipi_free		= native_lapic_ipi_free,
 #endif
 	.set_lvt_mask		= native_lapic_set_lvt_mask,
 	.set_lvt_mode		= native_lapic_set_lvt_mode,
@@ -1575,17 +1583,13 @@ apic_setup_io(void *dummy __unused)
 	 * Local APIC must be registered before other PICs and pseudo PICs
 	 * for proper suspend/resume order.
 	 */
-#ifndef XEN
 	intr_register_pic(&lapic_pic);
-#endif
 
 	retval = best_enum->apic_setup_io();
 	if (retval != 0)
 		printf("%s: Failed to setup I/O APICs: returned %d\n",
 		    best_enum->apic_name, retval);
-#ifdef XEN
-	return;
-#endif
+
 	/*
 	 * Finish setting up the local APIC on the BSP once we know
 	 * how to properly program the LINT pins.  In particular, this
@@ -1653,9 +1657,10 @@ native_lapic_ipi_raw(register_t icrlo, u_int dest)
 	    ("%s: reserved bits set in ICR LO register", __func__));
 
 	/* Set destination in ICR HI register if it is being used. */
-	saveintr = intr_disable();
-	if (!x2apic_mode)
+	if (!x2apic_mode) {
+		saveintr = intr_disable();
 		icr = lapic_read_icr();
+	}
 
 	if ((icrlo & APIC_DEST_MASK) == APIC_DEST_DESTFLD) {
 		if (x2apic_mode) {
@@ -1678,7 +1683,8 @@ native_lapic_ipi_raw(register_t icrlo, u_int dest)
 		vlo |= icrlo;
 	}
 	lapic_write_icr(vhi, vlo);
-	intr_restore(saveintr);
+	if (!x2apic_mode)
+		intr_restore(saveintr);
 }
 
 #define	BEFORE_SPIN	50000
@@ -1697,11 +1703,10 @@ native_lapic_ipi_vectored(u_int vector, int dest)
 	icrlo = APIC_DESTMODE_PHY | APIC_TRIGMOD_EDGE | APIC_LEVEL_ASSERT;
 
 	/*
-	 * IPI_STOP_HARD is just a "fake" vector used to send a NMI.
-	 * Use special rules regard NMI if passed, otherwise specify
-	 * the vector.
+	 * NMI IPIs are just fake vectors used to send a NMI.  Use special rules
+	 * regarding NMIs if passed, otherwise specify the vector.
 	 */
-	if (vector == IPI_STOP_HARD)
+	if (vector >= IPI_NMI_FIRST)
 		icrlo |= APIC_DELMODE_NMI;
 	else
 		icrlo |= vector | APIC_DELMODE_FIXED;
@@ -1761,4 +1766,60 @@ native_lapic_ipi_vectored(u_int vector, int dest)
 	}
 #endif /* DETECT_DEADLOCK */
 }
+
+/*
+ * Since the IDT is shared by all CPUs the IPI slot update needs to be globally
+ * visible.
+ *
+ * Consider the case where an IPI is generated immediately after allocation:
+ *     vector = lapic_ipi_alloc(ipifunc);
+ *     ipi_selected(other_cpus, vector);
+ *
+ * In xAPIC mode a write to ICR_LO has serializing semantics because the
+ * APIC page is mapped as an uncached region. In x2APIC mode there is an
+ * explicit 'mfence' before the ICR MSR is written. Therefore in both cases
+ * the IDT slot update is globally visible before the IPI is delivered.
+ */
+static int
+native_lapic_ipi_alloc(inthand_t *ipifunc)
+{
+	struct gate_descriptor *ip;
+	long func;
+	int idx, vector;
+
+	KASSERT(ipifunc != &IDTVEC(rsvd), ("invalid ipifunc %p", ipifunc));
+
+	vector = -1;
+	mtx_lock_spin(&icu_lock);
+	for (idx = IPI_DYN_FIRST; idx <= IPI_DYN_LAST; idx++) {
+		ip = &idt[idx];
+		func = (ip->gd_hioffset << 16) | ip->gd_looffset;
+		if (func == (uintptr_t)&IDTVEC(rsvd)) {
+			vector = idx;
+			setidt(vector, ipifunc, SDT_APIC, SEL_KPL, GSEL_APIC);
+			break;
+		}
+	}
+	mtx_unlock_spin(&icu_lock);
+	return (vector);
+}
+
+static void
+native_lapic_ipi_free(int vector)
+{
+	struct gate_descriptor *ip;
+	long func;
+
+	KASSERT(vector >= IPI_DYN_FIRST && vector <= IPI_DYN_LAST,
+	    ("%s: invalid vector %d", __func__, vector));
+
+	mtx_lock_spin(&icu_lock);
+	ip = &idt[vector];
+	func = (ip->gd_hioffset << 16) | ip->gd_looffset;
+	KASSERT(func != (uintptr_t)&IDTVEC(rsvd),
+	    ("invalid idtfunc %#lx", func));
+	setidt(vector, &IDTVEC(rsvd), SDT_APICT, SEL_KPL, GSEL_APIC);
+	mtx_unlock_spin(&icu_lock);
+}
+
 #endif /* SMP */

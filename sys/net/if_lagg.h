@@ -150,6 +150,7 @@ struct lagg_reqopts {
 #define	LAGG_OPT_LACP_STRICT		0x10		/* LACP strict mode */
 #define	LAGG_OPT_LACP_TXTEST		0x20		/* LACP debug: txtest */
 #define	LAGG_OPT_LACP_RXTEST		0x40		/* LACP debug: rxtest */
+#define	LAGG_OPT_LACP_TIMEOUT		0x80		/* LACP timeout */
 	u_int			ro_count;		/* number of ports */
 	u_int			ro_active;		/* active port count */
 	u_int			ro_flapping;		/* number of flapping */
@@ -279,7 +280,6 @@ extern struct mbuf *(*lagg_input_p)(struct ifnet *, struct mbuf *);
 extern void	(*lagg_linkstate_p)(struct ifnet *, int );
 
 int		lagg_enqueue(struct ifnet *, struct mbuf *);
-uint32_t	lagg_hashmbuf(struct lagg_softc *, struct mbuf *, uint32_t);
 
 SYSCTL_DECL(_net_link_lagg);
 
