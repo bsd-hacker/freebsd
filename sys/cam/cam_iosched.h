@@ -41,7 +41,7 @@ struct sysctl_oid;
 union ccb;
 struct bio;
 
-int cam_iosched_init(struct cam_iosched_softc **);
+int cam_iosched_init(struct cam_iosched_softc **, struct cam_periph *periph);
 void cam_iosched_fini(struct cam_iosched_softc *);
 void cam_iosched_sysctl_init(struct cam_iosched_softc *, struct sysctl_ctx_list *, struct sysctl_oid *);
 struct bio *cam_iosched_next_trim(struct cam_iosched_softc *isc);

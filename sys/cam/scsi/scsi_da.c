@@ -220,6 +220,8 @@ struct da_softc {
 	uint64_t		ws_max_blks;
 	da_delete_methods	delete_method;
 	da_delete_func_t	*delete_func;
+	int			unmappedio;
+	int			rotating;
 	struct	 disk_params params;
 	struct	 disk *disk;
 	union	 ccb saved_ccb;
@@ -231,6 +233,13 @@ struct da_softc {
 	uint8_t	 unmap_buf[UNMAP_BUF_SIZE];
 	struct scsi_read_capacity_data_long rcaplong;
 	struct callout		mediapoll_c;
+#ifdef CAM_IO_STATS
+	struct sysctl_ctx_list	sysctl_stats_ctx;
+	struct sysctl_oid	*sysctl_stats_tree;
+	u_int	errors;
+	u_int	timeouts;
+	u_int	invalidations;
+#endif
 };
 
 #define dadeleteflag(softc, delete_method, enable)			\
@@ -1196,6 +1205,7 @@ static	periph_init_t	dainit;
 static	void		daasync(void *callback_arg, u_int32_t code,
 				struct cam_path *path, void *arg);
 static	void		dasysctlinit(void *context, int pending);
+static	int		dasysctlsofttimeout(SYSCTL_HANDLER_ARGS);
 static	int		dacmdsizesysctl(SYSCTL_HANDLER_ARGS);
 static	int		dadeletemethodsysctl(SYSCTL_HANDLER_ARGS);
 static	int		dadeletemaxsysctl(SYSCTL_HANDLER_ARGS);
@@ -1233,6 +1243,10 @@ static timeout_t	damediapoll;
 #define DA_DEFAULT_TIMEOUT 60	/* Timeout in seconds */
 #endif
 
+#ifndef DA_DEFAULT_SOFTTIMEOUT
+#define DA_DEFAULT_SOFTTIMEOUT	0
+#endif
+
 #ifndef	DA_DEFAULT_RETRY
 #define	DA_DEFAULT_RETRY	4
 #endif
@@ -1244,6 +1258,7 @@ static timeout_t	damediapoll;
 static int da_poll_period = DA_DEFAULT_POLL_PERIOD;
 static int da_retry_count = DA_DEFAULT_RETRY;
 static int da_default_timeout = DA_DEFAULT_TIMEOUT;
+static sbintime_t da_default_softtimeout = DA_DEFAULT_SOFTTIMEOUT;
 static int da_send_ordered = DA_DEFAULT_SEND_ORDERED;
 
 static SYSCTL_NODE(_kern_cam, OID_AUTO, da, CTLFLAG_RD, 0,
@@ -1256,6 +1271,11 @@ SYSCTL_INT(_kern_cam_da, OID_AUTO, default_timeout, CTLFLAG_RWTUN,
            &da_default_timeout, 0, "Normal I/O timeout (in seconds)");
 SYSCTL_INT(_kern_cam_da, OID_AUTO, send_ordered, CTLFLAG_RWTUN,
            &da_send_ordered, 0, "Send Ordered Tags");
+
+SYSCTL_PROC(_kern_cam_da, OID_AUTO, default_softtimeout,
+    CTLTYPE_UINT | CTLFLAG_RW, NULL, 0, dasysctlsofttimeout, "I",
+    "Soft I/O timeout (ms)");
+TUNABLE_LONG("kern.cam.da.default_softtimeout", &da_default_softtimeout);
 
 /*
  * DA_ORDEREDTAG_INTERVAL determines how often, relative
@@ -1508,7 +1528,7 @@ dadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t leng
 				       /*begin_lba*/0,/* Cover the whole disk */
 				       /*lb_count*/0,
 				       SSD_FULL_SIZE,
-				       5 * 60 * 1000);
+				       5 * 1000);
 		xpt_polled_action((union ccb *)&csio);
 
 		error = cam_periph_error((union ccb *)&csio,
@@ -1588,6 +1608,9 @@ daoninvalidate(struct cam_periph *periph)
 	xpt_register_async(0, daasync, periph, periph->path);
 
 	softc->flags |= DA_FLAG_PACK_INVALID;
+#ifdef CAM_IO_STATS
+	softc->invalidations++;
+#endif
 
 	/*
 	 * Return all queued I/O with ENXIO.
@@ -1612,12 +1635,20 @@ dacleanup(struct cam_periph *periph)
 
 	cam_periph_unlock(periph);
 
+	cam_iosched_fini(softc->cam_iosched);
+
 	/*
 	 * If we can't free the sysctl tree, oh well...
 	 */
-	if ((softc->flags & DA_FLAG_SCTX_INIT) != 0
-	    && sysctl_ctx_free(&softc->sysctl_ctx) != 0) {
-		xpt_print(periph->path, "can't remove sysctl context\n");
+	if ((softc->flags & DA_FLAG_SCTX_INIT) != 0) {
+#ifdef CAM_IO_STATS
+		if (sysctl_ctx_free(&softc->sysctl_stats_ctx) != 0)
+			xpt_print(periph->path,
+			    "can't remove sysctl stats context\n");
+#endif
+		if (sysctl_ctx_free(&softc->sysctl_ctx) != 0)
+			xpt_print(periph->path,
+			    "can't remove sysctl context\n");
 	}
 
 	callout_drain(&softc->mediapoll_c);
@@ -1806,6 +1837,23 @@ dasysctlinit(void *context, int pending)
 		       0,
 		       "error_inject leaf");
 
+	SYSCTL_ADD_INT(&softc->sysctl_ctx,
+		       SYSCTL_CHILDREN(softc->sysctl_tree),
+		       OID_AUTO,
+		       "unmapped_io",
+		       CTLFLAG_RD, 
+		       &softc->unmappedio,
+		       0,
+		       "Unmapped I/O leaf");
+
+	SYSCTL_ADD_INT(&softc->sysctl_ctx,
+		       SYSCTL_CHILDREN(softc->sysctl_tree),
+		       OID_AUTO,
+		       "rotating",
+		       CTLFLAG_RD, 
+		       &softc->rotating,
+		       0,
+		       "Rotating media");
 
 	/*
 	 * Add some addressing info.
@@ -1831,6 +1879,40 @@ dasysctlinit(void *context, int pending)
 			    &softc->wwpn, "World Wide Port Name");
 		}
 	}
+
+#ifdef CAM_IO_STATS
+	/*
+	 * Now add some useful stats.
+	 * XXX These should live in cam_periph and be common to all periphs
+	 */
+	softc->sysctl_stats_tree = SYSCTL_ADD_NODE(&softc->sysctl_stats_ctx,
+	    SYSCTL_CHILDREN(softc->sysctl_tree), OID_AUTO, "stats",
+	    CTLFLAG_RD, 0, "Statistics");
+	SYSCTL_ADD_INT(&softc->sysctl_stats_ctx,
+		       SYSCTL_CHILDREN(softc->sysctl_stats_tree),
+		       OID_AUTO,
+		       "errors",
+		       CTLFLAG_RD,
+		       &softc->errors,
+		       0,
+		       "Transport errors reported by the SIM");
+	SYSCTL_ADD_INT(&softc->sysctl_stats_ctx,
+		       SYSCTL_CHILDREN(softc->sysctl_stats_tree),
+		       OID_AUTO,
+		       "timeouts",
+		       CTLFLAG_RD,
+		       &softc->timeouts,
+		       0,
+		       "Device timeouts reported by the SIM");
+	SYSCTL_ADD_INT(&softc->sysctl_stats_ctx,
+		       SYSCTL_CHILDREN(softc->sysctl_stats_tree),
+		       OID_AUTO,
+		       "pack_invalidations",
+		       CTLFLAG_RD,
+		       &softc->invalidations,
+		       0,
+		       "Device pack invalidations");
+#endif
 
 	cam_iosched_sysctl_init(softc->cam_iosched, &softc->sysctl_ctx,
 	    softc->sysctl_tree);
@@ -1890,6 +1972,26 @@ dacmdsizesysctl(SYSCTL_HANDLER_ARGS)
 
 	*(int *)arg1 = value;
 
+	return (0);
+}
+
+static int
+dasysctlsofttimeout(SYSCTL_HANDLER_ARGS)
+{
+	sbintime_t value;
+	int error;
+
+	value = da_default_softtimeout / SBT_1MS;
+
+	error = sysctl_handle_int(oidp, (int *)&value, 0, req);
+	if ((error != 0) || (req->newptr == NULL))
+		return (error);
+
+	/* XXX Should clip this to a reasonable level */
+	if (value > da_default_timeout * 1000)
+		return (EINVAL);
+
+	da_default_softtimeout = value * SBT_1MS;
 	return (0);
 }
 
@@ -2068,7 +2170,7 @@ daregister(struct cam_periph *periph, void *arg)
 		return(CAM_REQ_CMP_ERR);
 	}
 
-	if (cam_iosched_init(&softc->cam_iosched) != 0) {
+	if (cam_iosched_init(&softc->cam_iosched, periph) != 0) {
 		printf("daregister: Unable to probe new device. "
 		       "Unable to allocate iosched memory\n");
 		return(CAM_REQ_CMP_ERR);
@@ -2083,6 +2185,7 @@ daregister(struct cam_periph *periph, void *arg)
 	softc->unmap_max_lba = UNMAP_RANGE_MAX;
 	softc->ws_max_blks = WS16_MAX_BLKS;
 	softc->trim_max_ranges = ATA_TRIM_MAX_RANGES;
+	softc->rotating = 1;
 
 	periph->softc = softc;
 
@@ -2191,8 +2294,11 @@ daregister(struct cam_periph *periph, void *arg)
 	softc->disk->d_flags = DISKFLAG_DIRECT_COMPLETION;
 	if ((softc->quirks & DA_Q_NO_SYNC_CACHE) == 0)
 		softc->disk->d_flags |= DISKFLAG_CANFLUSHCACHE;
-	if ((cpi.hba_misc & PIM_UNMAPPED) != 0)
+	if ((cpi.hba_misc & PIM_UNMAPPED) != 0) {
+		softc->unmappedio = 1;
 		softc->disk->d_flags |= DISKFLAG_UNMAPPED_BIO;
+		xpt_print(periph->path, "UNMAPPED\n");
+	}
 	cam_strvis(softc->disk->d_descr, cgd->inq_data.vendor,
 	    sizeof(cgd->inq_data.vendor), sizeof(softc->disk->d_descr));
 	strlcat(softc->disk->d_descr, " ", sizeof(softc->disk->d_descr));
@@ -2358,6 +2464,7 @@ more:
 		}
 		start_ccb->ccb_h.ccb_state = DA_CCB_BUFFER_IO;
 		start_ccb->ccb_h.flags |= CAM_UNLOCKED;
+		start_ccb->ccb_h.softtimeout = sbttotv(da_default_softtimeout);
 
 out:
 		LIST_INSERT_HEAD(&softc->pending_ccbs,
@@ -2953,7 +3060,6 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 	case DA_CCB_DELETE:
 	{
 		struct bio *bp, *bp1;
-		int need_sched;
 
 		cam_periph_lock(periph);
 		bp = (struct bio *)done_ccb->ccb_h.ccb_bp;
@@ -2999,6 +3105,9 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 					xpt_print(periph->path,
 					    "Invalidating pack\n");
 					softc->flags |= DA_FLAG_PACK_INVALID;
+#ifdef CAM_IO_STATS
+					softc->invalidations++;
+#endif
 					queued_error = ENXIO;
 				}
 				cam_iosched_flush(softc->cam_iosched, NULL,
@@ -3044,7 +3153,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 		if (LIST_EMPTY(&softc->pending_ccbs))
 			softc->flags |= DA_FLAG_WAS_OTAG;
 
-		need_sched = cam_iosched_bio_complete(softc->cam_iosched, bp, done_ccb);
+		cam_iosched_bio_complete(softc->cam_iosched, bp, done_ccb);
 		xpt_release_ccb(done_ccb);
 		if (state == DA_CCB_DELETE) {
 			TAILQ_HEAD(, bio) queue;
@@ -3056,9 +3165,9 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			 * Normally, the xpt_release_ccb() above would make sure
 			 * that when we have more work to do, that work would
 			 * get kicked off. However, we specifically keep
-			 * delete running set to 0 before the call above to
+			 * delete_running set to 0 before the call above to
 			 * allow other I/O to progress when many BIO_DELETE
-			 * requests are pushed down. We set delete running to 0
+			 * requests are pushed down. We set delete_running to 0
 			 * and call daschedule again so that we don't stall if
 			 * there are no other I/Os pending apart from BIO_DELETEs.
 			 */
@@ -3076,8 +3185,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 				biodone(bp1);
 			}
 		} else {
-			if (need_sched)
-				daschedule(periph);
+			daschedule(periph);
 			cam_periph_unlock(periph);
 		}
 		if (bp != NULL)
@@ -3469,6 +3577,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			if (softc->disk->d_rotation_rate ==
 			    SVPD_BDC_RATE_NON_ROTATING) {
 				cam_iosched_set_sort_queue(softc->cam_iosched, 0);
+				softc->rotating = 0;
 			}
 			if (softc->disk->d_rotation_rate != old_rate) {
 				disk_attr_changed(softc->disk,
@@ -3531,8 +3640,8 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			if (softc->disk->d_rotation_rate ==
 			    ATA_RATE_NON_ROTATING) {
 				cam_iosched_set_sort_queue(softc->cam_iosched, 0);
+				softc->rotating = 0;
 			}
-
 			if (softc->disk->d_rotation_rate != old_rate) {
 				disk_attr_changed(softc->disk,
 				    "GEOM::rotation_rate", M_NOWAIT);
@@ -3660,6 +3769,25 @@ daerror(union ccb *ccb, u_int32_t cam_flags, u_int32_t sense_flags)
 	}
 	if (error == ERESTART)
 		return (ERESTART);
+
+	switch (ccb->ccb_h.status & CAM_STATUS_MASK) {
+	case CAM_CMD_TIMEOUT:
+#ifdef CAM_IO_STATS
+		softc->timeouts++;
+#endif
+		break;
+	case CAM_REQ_ABORTED:
+	case CAM_REQ_CMP_ERR:
+	case CAM_REQ_TERMIO:
+	case CAM_UNREC_HBA_ERROR:
+	case CAM_DATA_RUN_ERR:
+#ifdef CAM_IO_STATS
+		softc->errors++;
+#endif
+		break;
+	default:
+		break;
+	}
 
 	/*
 	 * XXX

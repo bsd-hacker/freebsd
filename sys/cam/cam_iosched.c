@@ -63,9 +63,6 @@ static MALLOC_DEFINE(M_CAMSCHED, "CAM I/O Scheduler",
  */
 
 #ifdef CAM_NETFLIX_IOSCHED
-#define IOP_MAX_SKIP 50
-#define IOP_MAX_TRAINING 500
-#define ALPHA_BITS 14                                   /* ~32k events or about the last minute */
 
 SYSCTL_DECL(_kern_cam);
 static int do_netflix_iosched = 1;
@@ -74,20 +71,178 @@ SYSCTL_INT(_kern_cam, OID_AUTO, do_netflix_iosched, CTLFLAG_RD,
     &do_netflix_iosched, 1,
     "Enable Netflix I/O scheduler optimizations.");
 
+static int alpha_bits = 9;
+TUNABLE_INT("kern.cam.iosched_alpha_bits", &alpha_bits);
+SYSCTL_INT(_kern_cam, OID_AUTO, iosched_alpha_bits, CTLFLAG_RW,
+    &alpha_bits, 1,
+    "Bits in EMA's alpha.");
+
+
+
+struct iop_stats;
+struct cam_iosched_softc;
+
 int iosched_debug = 0;
+
+typedef enum {
+	none = 0,				/* No limits */
+	queue_depth,			/* Limit how many ops we queue to SIM */
+	iops,				/* Limit # of IOPS to the drive */
+	bandwidth,			/* Limit bandwidth to the drive */
+	limiter_max
+} io_limiter;
+	
+static const char *cam_iosched_limiter_names[] =
+    { "none", "queue_depth", "iops", "bandwidth" };
+
+/*
+ * Called to initialize the bits of the iop_stats structure relevant to the
+ * limiter. Called just after the limiter is set.
+ */
+typedef int l_init_t(struct iop_stats *);
+
+/*
+ * Called every tick.
+ */
+typedef int l_tick_t(struct iop_stats *);
+
+/*
+ * Called to see if the limiter thinks this IOP can be allowed to
+ * proceed. If so, the limiter assumes that the while IOP proceeded
+ * and makes any accounting of it that's needed.
+ */ 
+typedef int l_iop_t(struct iop_stats *, struct bio *);
+
+/*
+ * Called when an I/O completes so the limiter can updates its
+ * accounting. Pending I/Os may complete in any order (even when
+ * sent to the hardware at the same time), so the limiter may not
+ * make any assumptions other than this I/O has completed. If it
+ * returns 1, then xpt_schedule() needs to be called again.
+ */
+typedef int l_iodone_t(struct iop_stats *, struct bio *);
+
+static l_iop_t cam_iosched_qd_iop;
+static l_iop_t cam_iosched_qd_caniop;
+static l_iodone_t cam_iosched_qd_iodone;
+
+static l_init_t cam_iosched_iops_init;
+static l_tick_t cam_iosched_iops_tick;
+static l_iop_t cam_iosched_iops_caniop;
+static l_iop_t cam_iosched_iops_iop;
+
+static l_init_t cam_iosched_bw_init;
+static l_tick_t cam_iosched_bw_tick;
+static l_iop_t cam_iosched_bw_caniop;
+static l_iop_t cam_iosched_bw_iop;
+
+struct limswitch 
+{
+	l_init_t	*l_init;
+	l_tick_t	*l_tick;
+	l_iop_t		*l_iop;
+	l_iop_t		*l_caniop;
+	l_iodone_t	*l_iodone;
+} limsw[] =
+{
+	{	/* none */
+		.l_init = NULL,
+		.l_tick = NULL,
+		.l_iop = NULL,
+		.l_iodone= NULL,
+	},
+	{	/* queue_depth */
+		.l_init = NULL,
+		.l_tick = NULL,
+		.l_caniop = cam_iosched_qd_caniop,
+		.l_iop = cam_iosched_qd_iop,
+		.l_iodone= cam_iosched_qd_iodone,
+	},
+	{	/* iops */
+		.l_init = cam_iosched_iops_init,
+		.l_tick = cam_iosched_iops_tick,
+		.l_caniop = cam_iosched_iops_caniop,
+		.l_iop = cam_iosched_iops_iop,
+		.l_iodone= NULL,
+	},
+	{	/* bandwidth */
+		.l_init = cam_iosched_bw_init,
+		.l_tick = cam_iosched_bw_tick,
+		.l_caniop = cam_iosched_bw_caniop,
+		.l_iop = cam_iosched_bw_iop,
+		.l_iodone= NULL,
+	},
+};
 
 struct iop_stats 
 {
-	sbintime_t      data[IOP_MAX_TRAINING];	/* Data for training period */
-	sbintime_t	worst;		/* estimate of worst case latency */
-	int		outliers;	/* Number of outlier latency I/Os */
-	int		skipping;	/* Skipping I/Os when < IOP_MAX_SKIP */
-	int		training;	/* Training when < IOP_MAX_TRAINING */
+	/*
+	 * sysctl state for this subnode.
+	 */
+	struct sysctl_ctx_list	sysctl_ctx;
+	struct sysctl_oid	*sysctl_tree;
+
+	/*
+	 * Information about the current rate limiters, if any
+	 */
+	io_limiter	limiter;	/* How are I/Os being limited */
+	int		min;		/* Low range of limit */
+	int		max;		/* High range of limit */
+	int		current;	/* Current rate limiter */
+	int		l_value1;	/* per-limiter scratch value 1. */
+	int		l_value2;	/* per-limiter scratch value 2. */
+	
+
+	/*
+	 * Debug information about counts of I/Os that have gone through the
+	 * scheduler.
+	 */
+	int		pending;	/* I/Os pending in the hardware */
+	int		queued;		/* number currently in the queue */
+	int		total;		/* Total for all time -- wraps */
+	int		in;		/* number queued all time -- wraps */
+	int		out;		/* number completed all time -- wraps */
+	
+	/*
+	 * Statistics on different bits of the process.
+	 */
 		/* Exp Moving Average, alpha = 1 / (1 << alpha_bits) */
 	sbintime_t      ema;
 	sbintime_t      emss;		/* Exp Moving sum of the squares */
 	sbintime_t      sd;		/* Last computed sd */
+
+	struct cam_iosched_softc *softc;
 };
+
+
+typedef enum {
+	set_max = 0,			/* current = max */
+	read_latency,			/* Steer read latency by throttling writes */
+	cl_max				/* Keep last */
+} control_type;
+
+static const char *cam_iosched_control_type_names[] =
+    { "set_max", "read_latency" };
+
+struct control_loop
+{
+	/*
+	 * sysctl state for this subnode.
+	 */
+	struct sysctl_ctx_list	sysctl_ctx;
+	struct sysctl_oid	*sysctl_tree;
+
+	sbintime_t	next_steer;		/* Time of next steer */
+	sbintime_t	steer_interval;		/* How often do we steer? */
+	sbintime_t	lolat;
+	sbintime_t	hilat;
+	int		alpha;
+	control_type	type;			/* What type of control? */
+	int		last_count;		/* Last I/O count */
+
+	struct cam_iosched_softc *softc;
+};
+
 #endif
 
 struct cam_iosched_softc
@@ -98,36 +253,375 @@ struct cam_iosched_softc
 	uint32_t	flags;
 	int		sort_io_queue;
 #ifdef CAM_NETFLIX_IOSCHED
-	/* Number of pending transactions */
-	int		pending_reads;
-	int		pending_writes;
-	/* Have at least this many transactions in progress, if possible */
-	int		min_reads;
-	int		min_writes;
-	/* Maximum number of each type of transaction in progress */
-	int		max_reads;
-	int		max_writes;
-	
-	int		trims;
-	int		reads;
-	int		writes;
-	int		queued_reads;
-	int		queued_writes;
-	int		in_reads;
-	int		in_writes;
-	int		out_reads;
-	int		out_writes;
-
-	int		read_bias;
-	int		current_read_bias;
+	int		read_bias;		/* Read bias setting */
+	int		current_read_bias;	/* Current read bias state */
+	int		total_ticks;
 
 	struct bio_queue_head write_queue;
 	struct iop_stats read_stats, write_stats, trim_stats;
+	struct sysctl_ctx_list	sysctl_ctx;
+	struct sysctl_oid	*sysctl_tree;
+
+	int		quanta;			/* Number of quanta per second */
+	struct callout	ticker;			/* Callout for our quota system */
+	struct cam_periph *periph;		/* cam periph associated with this device */
+	uint32_t	this_frac;		/* Fraction of a second (1024ths) for this tick */
+	sbintime_t	last_time;		/* Last time we ticked */
+	struct control_loop cl;
 #endif
 };
 
+#ifdef CAM_NETFLIX_IOSCHED
+/*
+ * helper functions to call the limsw functions.
+ */
+static int
+cam_iosched_limiter_init(struct iop_stats *ios)
+{
+	int lim = ios->limiter;
+
+	/* maybe this should be a kassert */
+	if (lim < none || lim >= limiter_max)
+		return EINVAL;
+
+	if (limsw[lim].l_init)
+		return limsw[lim].l_init(ios);
+
+	return 0;
+}
+
+static int
+cam_iosched_limiter_tick(struct iop_stats *ios)
+{
+	int lim = ios->limiter;
+
+	/* maybe this should be a kassert */
+	if (lim < none || lim >= limiter_max)
+		return EINVAL;
+
+	if (limsw[lim].l_tick)
+		return limsw[lim].l_tick(ios);
+
+	return 0;
+}
+
+static int
+cam_iosched_limiter_iop(struct iop_stats *ios, struct bio *bp)
+{
+	int lim = ios->limiter;
+
+	/* maybe this should be a kassert */
+	if (lim < none || lim >= limiter_max)
+		return EINVAL;
+
+	if (limsw[lim].l_iop)
+		return limsw[lim].l_iop(ios, bp);
+
+	return 0;
+}
+
+static int
+cam_iosched_limiter_caniop(struct iop_stats *ios, struct bio *bp)
+{
+	int lim = ios->limiter;
+
+	/* maybe this should be a kassert */
+	if (lim < none || lim >= limiter_max)
+		return EINVAL;
+
+	if (limsw[lim].l_caniop)
+		return limsw[lim].l_caniop(ios, bp);
+
+	return 0;
+}
+
+static int
+cam_iosched_limiter_iodone(struct iop_stats *ios, struct bio *bp)
+{
+	int lim = ios->limiter;
+
+	/* maybe this should be a kassert */
+	if (lim < none || lim >= limiter_max)
+		return 0;
+
+	if (limsw[lim].l_iodone)
+		return limsw[lim].l_iodone(ios, bp);
+
+	return 0;
+}
+
+/*
+ * Functions to implement the different kinds of limiters
+ */
+
+static int
+cam_iosched_qd_iop(struct iop_stats *ios, struct bio *bp)
+{
+		
+	if (ios->current <= 0 || ios->pending < ios->current)
+		return 0;
+
+	return EAGAIN;
+}
+
+static int
+cam_iosched_qd_caniop(struct iop_stats *ios, struct bio *bp)
+{
+		
+	if (ios->current <= 0 || ios->pending < ios->current)
+		return 0;
+
+	return EAGAIN;
+}
+
+static int
+cam_iosched_qd_iodone(struct iop_stats *ios, struct bio *bp)
+{
+		
+	if (ios->current <= 0 || ios->pending != ios->current)
+		return 0;
+
+	return 1;
+}
+
+static int
+cam_iosched_iops_init(struct iop_stats *ios)
+{
+
+	ios->l_value1 = ios->current / ios->softc->quanta;
+	if (ios->l_value1 <= 0)
+		ios->l_value1 = 1;
+
+	return 0;
+}
+
+static int
+cam_iosched_iops_tick(struct iop_stats *ios)
+{
+
+	ios->l_value1 = (int)((ios->current * (uint64_t)ios->softc->this_frac) >> 16);
+	if (ios->l_value1 <= 0)
+		ios->l_value1 = 1;
+
+	return 0;
+}
+
+static int
+cam_iosched_iops_caniop(struct iop_stats *ios, struct bio *bp)
+{
+
+	/*
+	 * So if we have any more IOPs left, allow it,
+	 * otherwise wait.
+	 */
+	if (ios->l_value1 <= 0)
+		return EAGAIN;
+	return 0;
+}
+
+static int
+cam_iosched_iops_iop(struct iop_stats *ios, struct bio *bp)
+{
+	int rv;
+
+	rv = cam_iosched_limiter_caniop(ios, bp);
+	if (rv == 0)
+		ios->l_value1--;
+
+	return rv;
+}
+
+static int
+cam_iosched_bw_init(struct iop_stats *ios)
+{
+
+	/* ios->current is in kB/s, so scale to bytes */
+	ios->l_value1 = ios->current * 1000 / ios->softc->quanta;
+
+	return 0;
+}
+
+static int
+cam_iosched_bw_tick(struct iop_stats *ios)
+{
+	int bw;
+
+	/*
+	 * If we're in the hole for available quota from
+	 * the last time, then add the quantum for this.
+	 * If we have any left over from last quantum,
+	 * then too bad, that's lost. Also, ios->current
+	 * is in kB/s, so scale.
+	 *
+	 * We also allow up to 4 quanta of credits to
+	 * accumulate to deal with burstiness. 4 is extremely
+	 * arbitrary.
+	 */
+	bw = (int)((ios->current * 1000ull * (uint64_t)ios->softc->this_frac) >> 16);
+	if (ios->l_value1 < bw * 4)
+		ios->l_value1 += bw;
+
+	return 0;
+}
+
+static int
+cam_iosched_bw_caniop(struct iop_stats *ios, struct bio *bp)
+{
+	/*
+	 * So if we have any more bw quota left, allow it,
+	 * otherwise wait. Not, we'll go negative and that's
+	 * OK. We'll just get a lettle less next quota.
+	 *
+	 * Note on going negative: that allows us to process
+	 * requests in order better, since we won't allow
+	 * shorter reads to get around the long one that we
+	 * don't have the quota to do just yet. It also prevents
+	 * starvation by being a little more permissive about
+	 * what we let through this quantum (to prevent the
+	 * starvation), at the cost of getting a little less
+	 * next quantum.
+	 */
+	if (ios->l_value1 <= 0)
+		return EAGAIN;
+
+
+	return 0;
+}
+
+static int
+cam_iosched_bw_iop(struct iop_stats *ios, struct bio *bp)
+{
+	int rv;
+
+	rv = cam_iosched_limiter_caniop(ios, bp);
+	if (rv == 0)
+		ios->l_value1 -= bp->bio_length;
+
+	return rv;
+}
+
+static void cam_iosched_cl_maybe_steer(struct control_loop *clp);
+
+static void
+cam_iosched_ticker(void *arg)
+{
+	struct cam_iosched_softc *isc = arg;
+	sbintime_t now, delta;
+
+	callout_reset(&isc->ticker, hz / isc->quanta - 1, cam_iosched_ticker, isc);
+
+	now = sbinuptime();
+	delta = now - isc->last_time;
+	isc->this_frac = (uint32_t)delta >> 16;		/* Note: discards seconds -- should be 0 harmless if not */
+	isc->last_time = now;
+
+	cam_iosched_cl_maybe_steer(&isc->cl);
+
+	cam_iosched_limiter_tick(&isc->read_stats);
+	cam_iosched_limiter_tick(&isc->write_stats);
+	cam_iosched_limiter_tick(&isc->trim_stats);
+
+	cam_iosched_schedule(isc, isc->periph);
+
+	isc->total_ticks++;
+}
+
+
+static void
+cam_iosched_cl_init(struct control_loop *clp, struct cam_iosched_softc *isc)
+{
+
+	clp->next_steer = sbinuptime();
+	clp->softc = isc;
+	clp->steer_interval = SBT_1S * 5;	/* Let's start out steering every 5s */
+	clp->lolat = 5 * SBT_1MS;
+	clp->hilat = 15 * SBT_1MS;
+	clp->alpha = 20;			/* Alpha == gain. 20 = .2 */
+	clp->type = set_max;
+}
+
+static void
+cam_iosched_cl_maybe_steer(struct control_loop *clp)
+{
+	struct cam_iosched_softc *isc;
+	sbintime_t now, lat;
+	int old;
+
+	isc = clp->softc;
+	now = isc->last_time;
+	if (now < clp->next_steer)
+		return;
+
+	clp->next_steer = now + clp->steer_interval;
+	switch (clp->type) {
+	case set_max:
+		if (isc->write_stats.current != isc->write_stats.max)
+			printf("Steering write from %d kBps to %d kBps\n",
+			    isc->write_stats.current, isc->write_stats.max);
+		isc->read_stats.current = isc->read_stats.max;
+		isc->write_stats.current = isc->write_stats.max;
+		isc->trim_stats.current = isc->trim_stats.max;
+		break;
+	case read_latency:
+		old = isc->write_stats.current;
+		lat = isc->read_stats.ema;
+		/*
+		 * Simple PLL-like engine. Since we're steering to a range for
+		 * the SP (set point) that makes things a little more
+		 * complicated. In addition, we're not directly controlling our
+		 * PV (process variable), the read latency, but instead are
+		 * manipulating the write bandwidth limit for our MV
+		 * (manipulation variable), analysis of this code gets a bit
+		 * messy. Also, the MV is a very noisy control surface for read
+		 * latency since it is affected by many hidden processes inside
+		 * the device which change how responsive read latency will be
+		 * in reaction to changes in write bandwidth. Unlike the classic
+		 * boiler control PLL. this may result in over-steering while
+		 * the SSD takes its time to react to the new, lower load. This
+		 * is why we use a relatively low alpha of between .1 and .25 to
+		 * compensate for this effect. At .1, it takes ~22 steering
+		 * intervals to back off by a factor of 10. At .2 it only takes
+		 * ~10. At .25 it only takes ~8. However some preliminary data
+		 * from the SSD drives suggests a reasponse time in 10's of
+		 * seconds before latency drops regardless of the new write
+		 * rate. Careful observation will be reqiured to tune this
+		 * effectively.
+		 *
+		 * Also, when there's no read traffic, we jack up the write
+		 * limit too regardless of the last read latency.  10 is
+		 * somewhat arbitrary.
+		 */
+		if (lat < clp->lolat || isc->read_stats.total - clp->last_count < 10)
+			isc->write_stats.current = isc->write_stats.current *
+			    (100 + clp->alpha) / 100;	/* Scale up */
+		else if (lat > clp->hilat)
+			isc->write_stats.current = isc->write_stats.current *
+			    (100 - clp->alpha) / 100;	/* Scale down */
+		clp->last_count = isc->read_stats.total;
+
+		/*
+		 * Even if we don't steer, per se, enforce the min/max limits as
+		 * those may have changed.
+		 */
+		if (isc->write_stats.current < isc->write_stats.min)
+			isc->write_stats.current = isc->write_stats.min;
+		if (isc->write_stats.current > isc->write_stats.max)
+			isc->write_stats.current = isc->write_stats.max;
+		if (old != isc->write_stats.current)
+			printf("Steering write from %d kBps to %d kBps due to latency of %ldus\n",
+			    old, isc->write_stats.current,
+			    ((uint64_t)1000000 * (uint32_t)lat) >> 32);
+		break;
+	case cl_max:
+		break;
+	}
+}
+#endif
+
 			/* Trim or similar currently pending completion */
-#define CAM_IOSCHED_FLAG_TRIM_ACTIVE	1
+#define CAM_IOSCHED_FLAG_TRIM_ACTIVE	(1ul << 0)
+			/* Callout active, and needs to be torn down */
+#define CAM_IOSCHED_FLAG_CALLOUT_ACTIVE (1ul << 1)
 
 			/* Periph drivers set these flags to indicate work */
 #define CAM_IOSCHED_FLAG_WORK_FLAGS	((0xffffu) << 16)
@@ -147,16 +641,16 @@ cam_iosched_has_io(struct cam_iosched_softc *isc)
 {
 #ifdef CAM_NETFLIX_IOSCHED
 	if (do_netflix_iosched) {
-		int can_write = bioq_first(&isc->write_queue) != NULL &&
-		    (isc->max_writes <= 0 ||
-			isc->pending_writes < isc->max_writes);
-		int can_read = bioq_first(&isc->bio_queue) != NULL &&
-		    (isc->max_reads <= 0 ||
-			isc->pending_reads < isc->max_reads);
+		struct bio *rbp = bioq_first(&isc->bio_queue);
+		struct bio *wbp = bioq_first(&isc->write_queue);
+		int can_write = wbp != NULL &&
+		    cam_iosched_limiter_caniop(&isc->write_stats, wbp) == 0;
+		int can_read = rbp != NULL &&
+		    cam_iosched_limiter_caniop(&isc->read_stats, rbp) == 0;
 		if (iosched_debug > 2) {
-			printf("can write %d: pending_writes %d max_writes %d\n", can_write, isc->pending_writes, isc->max_writes);
-			printf("can read %d: pending_reads %d max_reads %d\n", can_read, isc->pending_reads, isc->max_reads);
-			printf("Queued reads %d writes %d\n", isc->queued_reads, isc->queued_writes);
+			printf("can write %d: pending_writes %d max_writes %d\n", can_write, isc->write_stats.pending, isc->write_stats.max);
+			printf("can read %d: read_stats.pending %d max_reads %d\n", can_read, isc->read_stats.pending, isc->read_stats.max);
+			printf("Queued reads %d writes %d\n", isc->read_stats.queued, isc->write_stats.queued);
 		}
 		return can_read || can_write;
 	}
@@ -178,67 +672,303 @@ cam_iosched_has_more_trim(struct cam_iosched_softc *isc)
 static inline int
 cam_iosched_has_work(struct cam_iosched_softc *isc)
 {
+#ifdef CAM_NETFLIX_IOSCHED
 	if (iosched_debug > 2)
 		printf("has work: %d %d %d\n", cam_iosched_has_io(isc),
 		    cam_iosched_has_more_trim(isc),
 		    cam_iosched_has_flagged_work(isc));
+#endif
 
 	return cam_iosched_has_io(isc) ||
 		cam_iosched_has_more_trim(isc) ||
 		cam_iosched_has_flagged_work(isc);
 }
 
+#ifdef CAM_NETFLIX_IOSCHED
 static void
-iop_stats_init(struct iop_stats *ios)
+cam_iosched_iop_stats_init(struct cam_iosched_softc *isc, struct iop_stats *ios)
 {
+
+	ios->limiter = none;
+	cam_iosched_limiter_init(ios);
+	ios->in = 0;
+	ios->max = 300000;
+	ios->min = 1;
+	ios->out = 0;
+	ios->pending = 0;
+	ios->queued = 0;
+	ios->total = 0;
 	ios->ema = 0;
 	ios->emss = 0;
 	ios->sd = 0;
-	ios->outliers = 0;
-	ios->skipping = 0;
-	ios->training = 0;
-	ios->outliers = 0;
+	ios->softc = isc;
 }
 
+static int
+cam_iosched_limiter_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	char buf[16];
+	struct iop_stats *ios;
+	struct cam_iosched_softc *isc;
+	int value, i, error, cantick;
+	const char *p;
+	
+	ios = arg1;
+	isc = ios->softc;
+	value = ios->limiter;
+	if (value < none || value >= limiter_max)
+		p = "UNKNOWN";
+	else
+		p = cam_iosched_limiter_names[value];
+	
+	strlcpy(buf, p, sizeof(buf));
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return error;
+
+	cam_periph_lock(isc->periph);
+
+	for (i = none; i < limiter_max; i++) {
+		if (strcmp(buf, cam_iosched_limiter_names[i]) != 0)
+			continue;
+		ios->limiter = i;
+		error = cam_iosched_limiter_init(ios);
+		if (error != 0) {
+			ios->limiter = value;
+			cam_periph_unlock(isc->periph);
+			return error;
+		}
+		cantick = !!limsw[isc->read_stats.limiter].l_tick +
+		    !!limsw[isc->write_stats.limiter].l_tick +
+		    !!limsw[isc->trim_stats.limiter].l_tick +
+		    1;	/* Control loop requires it */
+		if (isc->flags & CAM_IOSCHED_FLAG_CALLOUT_ACTIVE) {
+			if (cantick == 0) {
+				callout_stop(&isc->ticker);
+				isc->flags &= ~CAM_IOSCHED_FLAG_CALLOUT_ACTIVE;
+			}
+		} else {
+			if (cantick != 0) {
+				callout_reset(&isc->ticker, hz / isc->quanta - 1, cam_iosched_ticker, isc);
+				isc->flags |= CAM_IOSCHED_FLAG_CALLOUT_ACTIVE;
+			}
+		}
+
+		cam_periph_unlock(isc->periph);
+		return 0;
+	}
+
+	cam_periph_unlock(isc->periph);
+	return EINVAL;
+}
+
+static int
+cam_iosched_control_type_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	char buf[16];
+	struct control_loop *clp;
+	struct cam_iosched_softc *isc;
+	int value, i, error;
+	const char *p;
+	
+	clp = arg1;
+	isc = clp->softc;
+	value = clp->type;
+	if (value < none || value >= cl_max)
+		p = "UNKNOWN";
+	else
+		p = cam_iosched_control_type_names[value];
+	
+	strlcpy(buf, p, sizeof(buf));
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return error;
+
+	for (i = set_max; i < cl_max; i++) {
+		if (strcmp(buf, cam_iosched_control_type_names[i]) != 0)
+			continue;
+		cam_periph_lock(isc->periph);
+		clp->type = i;
+		cam_periph_unlock(isc->periph);
+		return 0;
+	}
+
+	return EINVAL;
+}
+
+static int
+cam_iosched_sbintime_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	char buf[16];
+	sbintime_t value;
+	int error;
+	uint64_t us;
+	
+	value = *(sbintime_t *)arg1;
+	us = (uint64_t)value / SBT_1US;
+	snprintf(buf, sizeof(buf), "%ju", (intmax_t)us);
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return error;
+	us = strtoul(buf, NULL, 10);
+	if (us == 0)
+		return EINVAL;
+	*(sbintime_t *)arg1 = us * SBT_1US;
+	return 0;
+}
+
+static void
+cam_iosched_iop_stats_sysctl_init(struct cam_iosched_softc *isc, struct iop_stats *ios, char *name)
+{
+	struct sysctl_oid_list *n;
+	struct sysctl_ctx_list *ctx;
+
+	ios->sysctl_tree = SYSCTL_ADD_NODE(&isc->sysctl_ctx,
+	    SYSCTL_CHILDREN(isc->sysctl_tree), OID_AUTO, name,
+	    CTLFLAG_RD, 0, name);
+	n = SYSCTL_CHILDREN(ios->sysctl_tree);
+	ctx = &ios->sysctl_ctx;
+
+	SYSCTL_ADD_UQUAD(ctx, n,
+	    OID_AUTO, "ema", CTLFLAG_RD,
+	    &ios->ema,
+	    "Fast Exponentially Weighted Moving Average");
+	SYSCTL_ADD_UQUAD(ctx, n,
+	    OID_AUTO, "emss", CTLFLAG_RD,
+	    &ios->emss,
+	    "Fast Exponentially Weighted Moving Sum of Squares (maybe wrong)");
+	SYSCTL_ADD_UQUAD(ctx, n,
+	    OID_AUTO, "sd", CTLFLAG_RD,
+	    &ios->sd,
+	    "Estimated SD for fast ema (may be wrong)");
+
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "pending", CTLFLAG_RD,
+	    &ios->pending, 0,
+	    "Instantaneous # of pending transactions");
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "count", CTLFLAG_RD,
+	    &ios->total, 0,
+	    "# of transactions submitted to hardware");
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "queued", CTLFLAG_RD,
+	    &ios->queued, 0,
+	    "# of transactions in the queue");
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "in", CTLFLAG_RD,
+	    &ios->in, 0,
+	    "# of transactions queued to driver");
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "out", CTLFLAG_RD,
+	    &ios->out, 0,
+	    "# of transactions completed");
+
+	SYSCTL_ADD_PROC(ctx, n,
+	    OID_AUTO, "limiter", CTLTYPE_STRING | CTLFLAG_RW,
+	    ios, 0, cam_iosched_limiter_sysctl, "A",
+	    "Current limiting type.");
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "min", CTLFLAG_RW,
+	    &ios->min, 0,
+	    "min resource");
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "max", CTLFLAG_RW,
+	    &ios->max, 0,
+	    "max resource");
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "current", CTLFLAG_RW,
+	    &ios->current, 0,
+	    "current resource");
+
+}
+
+static void
+cam_iosched_iop_stats_fini(struct iop_stats *ios)
+{
+	if (ios->sysctl_tree)
+		if (sysctl_ctx_free(&ios->sysctl_ctx) != 0)
+			printf("can't remove iosched sysctl stats context\n");
+}
+
+static void
+cam_iosched_cl_sysctl_init(struct cam_iosched_softc *isc)
+{
+	struct sysctl_oid_list *n;
+	struct sysctl_ctx_list *ctx;
+	struct control_loop *clp;
+	
+	clp = &isc->cl;
+	clp->sysctl_tree = SYSCTL_ADD_NODE(&isc->sysctl_ctx,
+	    SYSCTL_CHILDREN(isc->sysctl_tree), OID_AUTO, "control",
+	    CTLFLAG_RD, 0, "Control loop info");
+	n = SYSCTL_CHILDREN(clp->sysctl_tree);
+	ctx = &clp->sysctl_ctx;
+
+	SYSCTL_ADD_PROC(ctx, n,
+	    OID_AUTO, "type", CTLTYPE_STRING | CTLFLAG_RW,
+	    clp, 0, cam_iosched_control_type_sysctl, "A",
+	    "Control loop algorithm");
+	SYSCTL_ADD_PROC(ctx, n,
+	    OID_AUTO, "steer_interval", CTLTYPE_STRING | CTLFLAG_RW,
+	    &clp->steer_interval, 0, cam_iosched_sbintime_sysctl, "A",
+	    "How often to steer (in us)");
+	SYSCTL_ADD_PROC(ctx, n,
+	    OID_AUTO, "lolat", CTLTYPE_STRING | CTLFLAG_RW,
+	    &clp->lolat, 0, cam_iosched_sbintime_sysctl, "A",
+	    "Low water mark for Latency (in us)");
+	SYSCTL_ADD_PROC(ctx, n,
+	    OID_AUTO, "hilat", CTLTYPE_STRING | CTLFLAG_RW,
+	    &clp->hilat, 0, cam_iosched_sbintime_sysctl, "A",
+	    "Hi water mark for Latency (in us)");
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "alpha", CTLFLAG_RW,
+	    &clp->alpha, 0,
+	    "Alpha for PLL (x100) aka gain");
+}
+
+static void
+cam_iosched_cl_sysctl_fini(struct control_loop *clp)
+{
+	if (clp->sysctl_tree)
+		if (sysctl_ctx_free(&clp->sysctl_ctx) != 0)
+			printf("can't remove iosched sysctl control loop context\n");
+}
+#endif
+	    
 /*
  * Allocate the iosched structure. This also insulates callers from knowing
  * sizeof struct cam_iosched_softc.
  */
 int
-cam_iosched_init(struct cam_iosched_softc **iscp)
+cam_iosched_init(struct cam_iosched_softc **iscp, struct cam_periph *periph)
 {
 
 	*iscp = malloc(sizeof(**iscp), M_CAMSCHED, M_NOWAIT | M_ZERO);
 	if (*iscp == NULL)
 		return ENOMEM;
+#ifdef CAM_NETFLIX_IOSCHED
 	if (iosched_debug)
 		printf("CAM IOSCHEDULER Allocating entry at %p\n", *iscp);
+#endif
 	(*iscp)->sort_io_queue = -1;
 	bioq_init(&(*iscp)->bio_queue);
 	bioq_init(&(*iscp)->trim_queue);
 #ifdef CAM_NETFLIX_IOSCHED
 	if (do_netflix_iosched) {
 		bioq_init(&(*iscp)->write_queue);
-		(*iscp)->pending_reads = 0;
-		(*iscp)->pending_writes = 0;
-		(*iscp)->min_reads = 1;
-		(*iscp)->min_writes = 1;
-		(*iscp)->max_reads = 0;
-		(*iscp)->max_writes = 0;
-		(*iscp)->trims = 0;
-		(*iscp)->reads = 0;
-		(*iscp)->writes = 0;
-		(*iscp)->queued_reads = 0;
-		(*iscp)->queued_writes = 0;
-		(*iscp)->out_reads = 0;
-		(*iscp)->out_writes = 0;
-		(*iscp)->in_reads = 0;
-		(*iscp)->in_writes = 0;
 		(*iscp)->read_bias = 100;
 		(*iscp)->current_read_bias = 100;
-		iop_stats_init(&(*iscp)->read_stats);
-		iop_stats_init(&(*iscp)->write_stats);
-		iop_stats_init(&(*iscp)->trim_stats);
+		(*iscp)->quanta = 200;
+		cam_iosched_iop_stats_init(*iscp, &(*iscp)->read_stats);
+		cam_iosched_iop_stats_init(*iscp, &(*iscp)->write_stats);
+		cam_iosched_iop_stats_init(*iscp, &(*iscp)->trim_stats);
+		(*iscp)->trim_stats.max = 1;	/* Trims are special: one at a time for now */
+		(*iscp)->last_time = sbinuptime();
+		callout_init_mtx(&(*iscp)->ticker, cam_periph_mtx(periph), 0);
+		(*iscp)->periph = periph;
+		cam_iosched_cl_init(&(*iscp)->cl, *iscp);
+		callout_reset(&(*iscp)->ticker, hz / (*iscp)->quanta - 1, cam_iosched_ticker, *iscp);
+		(*iscp)->flags |= CAM_IOSCHED_FLAG_CALLOUT_ACTIVE;
 	}
 #endif
 
@@ -252,8 +982,24 @@ cam_iosched_init(struct cam_iosched_softc **iscp)
 void
 cam_iosched_fini(struct cam_iosched_softc *isc)
 {
-	cam_iosched_flush(isc, NULL, ENXIO);
-	free(isc, M_CAMSCHED);
+	if (isc) {
+		cam_iosched_flush(isc, NULL, ENXIO);
+#ifdef CAM_NETFLIX_IOSCHED
+		cam_iosched_iop_stats_fini(&isc->read_stats);
+		cam_iosched_iop_stats_fini(&isc->write_stats);
+		cam_iosched_iop_stats_fini(&isc->trim_stats);
+		cam_iosched_cl_sysctl_fini(&isc->cl);
+		if (isc->sysctl_tree)
+			if (sysctl_ctx_free(&isc->sysctl_ctx) != 0)
+				printf("can't remove iosched sysctl stats context\n");
+		if (isc->flags & CAM_IOSCHED_FLAG_CALLOUT_ACTIVE) {
+			callout_drain(&isc->ticker);
+			isc->flags &= ~ CAM_IOSCHED_FLAG_CALLOUT_ACTIVE;
+		}
+			
+#endif
+		free(isc, M_CAMSCHED);
+	}
 }
 
 /*
@@ -263,153 +1009,44 @@ cam_iosched_fini(struct cam_iosched_softc *isc)
 void cam_iosched_sysctl_init(struct cam_iosched_softc *isc,
     struct sysctl_ctx_list *ctx, struct sysctl_oid *node)
 {
+#ifdef CAM_NETFLIX_IOSCHED
+	struct sysctl_oid_list *n;
+#endif
+
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
 		OID_AUTO, "sort_io_queue", CTLFLAG_RW | CTLFLAG_MPSAFE,
 		&isc->sort_io_queue, 0,
 		"Sort IO queue to try and optimise disk access patterns");
+
 #ifdef CAM_NETFLIX_IOSCHED
 	if (!do_netflix_iosched)
 		return;
 
-	/*
-	 * Read stats
-	 */
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "read_ema", CTLFLAG_RD,
-	    &isc->read_stats.ema,
-	    "Fast Exponentially Weighted Moving Average for reads");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "read_emss", CTLFLAG_RD,
-	    &isc->read_stats.emss,
-	    "Fast Exponentially Weighted Moving Sum of Squares for reads");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "read_sd", CTLFLAG_RD,
-	    &isc->read_stats.sd,
-	    "Estimated SD for fast read ema");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "read_bad_latency", CTLFLAG_RD,
-	    &isc->read_stats.worst,
-	    "read bad latency threshold");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "read_outliers", CTLFLAG_RD,
-	    &isc->read_stats.outliers, 0,
-	    "read latency outliers");
+	isc->sysctl_tree = SYSCTL_ADD_NODE(&isc->sysctl_ctx,
+	    SYSCTL_CHILDREN(node), OID_AUTO, "iosched",
+	    CTLFLAG_RD, 0, "I/O scheduler statistics");
+	n = SYSCTL_CHILDREN(isc->sysctl_tree);
+	ctx = &isc->sysctl_ctx;
 
-	/*
-	 * Write stats
-	 */
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "write_ema", CTLFLAG_RD,
-	    &isc->write_stats.ema,
-	    "Fast Exponentially Weighted Moving Average for writes");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "write_emss", CTLFLAG_RD,
-	    &isc->write_stats.emss,
-	    "Fast Exponentially Weighted Moving Sum of Squares for writes");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "write_sd", CTLFLAG_RD,
-	    &isc->write_stats.sd,
-	    "Estimated SD for fast write ema");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "write_bad_latency", CTLFLAG_RD,
-	    &isc->write_stats.worst,
-	    "write bad latency threshold");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "write_outliers", CTLFLAG_RD,
-	    &isc->write_stats.outliers, 0,
-	    "write latency outliers");
+	cam_iosched_iop_stats_sysctl_init(isc, &isc->read_stats, "read");
+	cam_iosched_iop_stats_sysctl_init(isc, &isc->write_stats, "write");
+	cam_iosched_iop_stats_sysctl_init(isc, &isc->trim_stats, "trim");
+	cam_iosched_cl_sysctl_init(isc);
 
-	/*
-	 * Trim stats
-	 */
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "trim_ema", CTLFLAG_RD,
-	    &isc->trim_stats.ema,
-	    "Fast Exponentially Weighted Moving Average for trims");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "trim_emss", CTLFLAG_RD,
-	    &isc->trim_stats.emss,
-	    "Fast Exponentially Weighted Moving Sum of Squares for trims");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "trim_sd", CTLFLAG_RD,
-	    &isc->trim_stats.sd,
-	    "Estimated SD for fast trim ema");
-	SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "trim_bad_latency", CTLFLAG_RD,
-	    &isc->trim_stats.worst,
-	    "trim bad latency threshold");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "trim_outliers", CTLFLAG_RD,
-	    &isc->trim_stats.outliers, 0,
-	    "trim latency outliers");
-
-	/*
-	 * Other misc knobs.
-	 */
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "pending_reads", CTLFLAG_RD,
-	    &isc->pending_reads, 0,
-	    "Instantaneous # of pending reads");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "pending_writes", CTLFLAG_RD,
-	    &isc->pending_writes, 0,
-	    "Instantaneous # of pending writes");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "trims", CTLFLAG_RD,
-	    &isc->trims, 0,
-	    "# of trims");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "writes", CTLFLAG_RD,
-	    &isc->writes, 0,
-	    "# of writes submitted to hardware");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "reads", CTLFLAG_RD,
-	    &isc->reads, 0,
-	    "# of reads submitted to hardware");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "queued_writes", CTLFLAG_RD,
-	    &isc->queued_writes, 0,
-	    "# of writes in the queue");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "queued_reads", CTLFLAG_RD,
-	    &isc->queued_reads, 0,
-	    "# of reads in the queue");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "in_writes", CTLFLAG_RD,
-	    &isc->in_writes, 0,
-	    "# of writes queued");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "in_reads", CTLFLAG_RD,
-	    &isc->in_reads, 0,
-	    "# of reads queued");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "out_writes", CTLFLAG_RD,
-	    &isc->out_writes, 0,
-	    "# of writes completed");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "out_reads", CTLFLAG_RD,
-	    &isc->in_reads, 0,
-	    "# of reads completed");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
+	SYSCTL_ADD_INT(ctx, n,
 	    OID_AUTO, "read_bias", CTLFLAG_RW,
 	    &isc->read_bias, 100,
-	    "How biased towards read should we be");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "min_reads", CTLFLAG_RW,
-	    &isc->min_reads, 0,
-	    "min reads reserved in the queue");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "min_writes", CTLFLAG_RW,
-	    &isc->min_writes, 0,
-	    "min writes reserved in the queue");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "max_reads", CTLFLAG_RW,
-	    &isc->max_reads, 0,
-	    "max reads reserved in the queue");
-	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node),
-	    OID_AUTO, "max_writes", CTLFLAG_RW,
-	    &isc->max_writes, 0,
-	    "max writes reserved in the queue");
+	    "How biased towards read should we be independent of limits");
+
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "quanta", CTLFLAG_RW,
+	    &isc->quanta, 200,
+	    "How many quanta per second do we slice the I/O up into");
+
+	SYSCTL_ADD_INT(ctx, n,
+	    OID_AUTO, "total_ticks", CTLFLAG_RD,
+	    &isc->total_ticks, 0,
+	    "Total number of ticks we've done");
 #endif
 }
 
@@ -444,30 +1081,43 @@ cam_iosched_get_write(struct cam_iosched_softc *isc)
 	 * the write throughput and give and reads that want to compete to
 	 * compete unfairly.
 	 */
-	if (isc->max_writes > 0 && isc->pending_writes >= isc->max_writes) {
-		if (iosched_debug)
-			printf("Can't write because pending_writes %d and max_writes %d\n",
-			    isc->pending_writes, isc->max_writes);
-		return NULL;
-	}
 	bp = bioq_first(&isc->write_queue);
 	if (bp == NULL) {
 		if (iosched_debug > 3)
 			printf("No writes present in write_queue\n");
 		return NULL;
 	}
+
+	/*
+	 * If pending read, prefer that based on current read bias
+	 * setting.
+	 */
 	if (bioq_first(&isc->bio_queue) && isc->current_read_bias) {
 		if (iosched_debug)
-			printf("Reads present and current_read_bias is %d queued writes %d queued reads %d\n", isc->current_read_bias, isc->queued_writes, isc->queued_reads);
+			printf("Reads present and current_read_bias is %d queued writes %d queued reads %d\n", isc->current_read_bias, isc->write_stats.queued, isc->read_stats.queued);
 		isc->current_read_bias--;
 		return NULL;
 	}
+
+	/*
+	 * See if our current limiter allows this I/O.
+	 */
+	if (cam_iosched_limiter_iop(&isc->write_stats, bp) != 0) {
+		if (iosched_debug)
+			printf("Can't write because limiter says no.\n");
+		return NULL;
+	}
+
+	/*
+	 * Let's do this: We've passed all the gates and we're a go
+	 * to schedule the I/O in the SIM.
+	 */
 	isc->current_read_bias = isc->read_bias;
 	bioq_remove(&isc->write_queue, bp);
 	if (bp->bio_cmd == BIO_WRITE) {
-		isc->queued_writes--;
-		isc->writes++;
-		isc->pending_writes++;
+		isc->write_stats.queued--;
+		isc->write_stats.total++;
+		isc->write_stats.pending++;
 	}
 	if (iosched_debug > 9)
 		printf("HWQ : %p %#x\n", bp, bp->bio_cmd);
@@ -482,7 +1132,11 @@ void
 cam_iosched_put_back_trim(struct cam_iosched_softc *isc, struct bio *bp)
 {
 	bioq_insert_head(&isc->trim_queue, bp);
-	isc->trims--;
+#ifdef CAM_NETFLIX_IOSCHED
+	isc->trim_stats.queued++;
+	isc->trim_stats.total--;		/* since we put it back, don't double count */
+	isc->trim_stats.pending--;
+#endif
 }
 
 /*
@@ -501,7 +1155,11 @@ cam_iosched_next_trim(struct cam_iosched_softc *isc)
 	if (bp == NULL)
 		return NULL;
 	bioq_remove(&isc->trim_queue, bp);
-	isc->trims++;
+#ifdef CAM_NETFLIX_IOSCHED
+	isc->trim_stats.queued--;
+	isc->trim_stats.total++;
+	isc->trim_stats.pending++;
+#endif
 	return bp;
 }
 
@@ -557,37 +1215,34 @@ cam_iosched_next_bio(struct cam_iosched_softc *isc)
 	/*
 	 * next, see if there's other, normal I/O waiting. If so return that.
 	 */
+	if ((bp = bioq_first(&isc->bio_queue)) == NULL)
+		return NULL;
+
 #ifdef CAM_NETFLIX_IOSCHED
 	/*
 	 * For the netflix scheduler, bio_queue is only for reads, so enforce
-	 * the limits here.
+	 * the limits here. Enforce only for reads.
 	 */
 	if (do_netflix_iosched) {
-		if (isc->max_reads > 0 && isc->pending_reads >= isc->max_reads)
+		if (bp->bio_cmd == BIO_READ &&
+		    cam_iosched_limiter_iop(&isc->read_stats, bp) != 0)
 			return NULL;
 	}
 #endif
-	if ((bp = bioq_first(&isc->bio_queue)) != NULL) {
-		bioq_remove(&isc->bio_queue, bp);
+	bioq_remove(&isc->bio_queue, bp);
 #ifdef CAM_NETFLIX_IOSCHED
-		if (do_netflix_iosched) {
-			if (bp->bio_cmd == BIO_READ) {
-				isc->queued_reads--;
-				isc->reads++;
-				isc->pending_reads++;
-			} else
-				printf("Found bio_cmd = %#x\n", bp->bio_cmd);
-		}
-#endif
-		if (iosched_debug > 9)
-			printf("HWQ : %p %#x\n", bp, bp->bio_cmd);
-		return bp;
+	if (do_netflix_iosched) {
+		if (bp->bio_cmd == BIO_READ) {
+			isc->read_stats.queued--;
+			isc->read_stats.total++;
+			isc->read_stats.pending++;
+		} else
+			printf("Found bio_cmd = %#x\n", bp->bio_cmd);
 	}
-
-	/*
-	 * Otherwise, we got nada, so return that
-	 */
-	return NULL;
+	if (iosched_debug > 9)
+		printf("HWQ : %p %#x\n", bp, bp->bio_cmd);
+#endif
+	return bp;
 }
 	
 /*
@@ -607,6 +1262,10 @@ cam_iosched_queue_work(struct cam_iosched_softc *isc, struct bio *bp)
 	 */
 	if (bp->bio_cmd == BIO_DELETE) {
 		bioq_disksort(&isc->trim_queue, bp);
+#ifdef CAM_NETFLIX_IOSCHED
+		isc->trim_stats.in++;
+		isc->trim_stats.queued++;
+#endif
 	}
 #ifdef CAM_NETFLIX_IOSCHED
 	else if (do_netflix_iosched &&
@@ -618,8 +1277,8 @@ cam_iosched_queue_work(struct cam_iosched_softc *isc, struct bio *bp)
 		if (iosched_debug > 9)
 			printf("Qw  : %p %#x\n", bp, bp->bio_cmd);
 		if (bp->bio_cmd == BIO_WRITE) {
-			isc->in_writes++;
-			isc->queued_writes++;
+			isc->write_stats.in++;
+			isc->write_stats.queued++;
 		}
 	}
 #endif
@@ -628,15 +1287,17 @@ cam_iosched_queue_work(struct cam_iosched_softc *isc, struct bio *bp)
 			bioq_disksort(&isc->bio_queue, bp);
 		else
 			bioq_insert_tail(&isc->bio_queue, bp);
+#ifdef CAM_NETFLIX_IOSCHED
 		if (iosched_debug > 9)
 			printf("Qr  : %p %#x\n", bp, bp->bio_cmd);
 		if (bp->bio_cmd == BIO_READ) {
-			isc->in_reads++;
-			isc->queued_reads++;
+			isc->read_stats.in++;
+			isc->read_stats.queued++;
 		} else if (bp->bio_cmd == BIO_WRITE) {
-			isc->in_writes++;
-			isc->queued_writes++;
+			isc->write_stats.in++;
+			isc->write_stats.queued++;
 		}
+#endif
 	}
 }
 
@@ -666,7 +1327,8 @@ cam_iosched_trim_done(struct cam_iosched_softc *isc)
  * might use notes in the ccb for statistics.
  */
 int
-cam_iosched_bio_complete(struct cam_iosched_softc *isc, struct bio *bp, union ccb *done_ccb)
+cam_iosched_bio_complete(struct cam_iosched_softc *isc, struct bio *bp,
+    union ccb *done_ccb)
 {
 	int retval = 0;
 #ifdef CAM_NETFLIX_IOSCHED
@@ -676,16 +1338,17 @@ cam_iosched_bio_complete(struct cam_iosched_softc *isc, struct bio *bp, union cc
 	if (iosched_debug > 10)
 		printf("done: %p %#x\n", bp, bp->bio_cmd);
 	if (bp->bio_cmd == BIO_WRITE) {
-		retval = isc->max_writes > 0 && isc->pending_writes == isc->max_writes;
-		if (isc->max_writes > 0 && retval && iosched_debug)
-			printf("NEEDS SCHED\n");
-		isc->out_writes++;
-		isc->pending_writes--;
+		retval = cam_iosched_limiter_iodone(&isc->write_stats, bp);
+		isc->write_stats.out++;
+		isc->write_stats.pending--;
 	} else if (bp->bio_cmd == BIO_READ) {
-		retval = isc->max_reads > 0 && isc->pending_reads == isc->max_reads;
-		isc->out_reads++;
-		isc->pending_reads--;
-	} else if (bp->bio_cmd != BIO_FLUSH && bp->bio_cmd != BIO_DELETE) {
+		retval = cam_iosched_limiter_iodone(&isc->read_stats, bp);
+		isc->read_stats.out++;
+		isc->read_stats.pending--;
+	} else if (bp->bio_cmd == BIO_DELETE) {
+		isc->trim_stats.out++;
+		isc->trim_stats.pending--;
+	} else if (bp->bio_cmd != BIO_FLUSH) {
 		if (iosched_debug)
 			printf("Completing command with bio_cmd == %#x\n", bp->bio_cmd);
 	}
@@ -811,65 +1474,11 @@ mul(uint64_t a, uint64_t b)
 	return ((ah * bh) << 32) + al * bh + ah * bl + ((al * bl) >> 32);
 }
 
-static int
-cmp(const void *a, const void *b)
-{
-	return (int)(*(sbintime_t *)a - *(sbintime_t *)b);
-}
-
 static void
 cam_iosched_update(struct iop_stats *iop, sbintime_t sim_latency)
 {
 	sbintime_t y, yy;
 	uint64_t var;
-
-	/*
-	 * Skip the first ~50 I/Os since experience has shown the first few are
-	 * atypical.
-	 */
-	if (iop->skipping < IOP_MAX_SKIP) {
-		iop->skipping++;
-		return;
-	}
-
-	/*
-	 * After the first few, the next few hundred are typical of what we'd
-	 * expect.
-	 */
-	if (iop->training < IOP_MAX_TRAINING) {
-		iop->data[iop->training++] = sim_latency;
-		if (iop->training == IOP_MAX_TRAINING) {
-			qsort(iop->data, nitems(iop->data),
-			    sizeof(iop->data[0]), cmp);
-			/* 95th percentile */
-			iop->worst = iop->data[IOP_MAX_TRAINING * 95 / 100];
-			/*
-			 * We expect about 5% of the I/Os to be above the 95th
-			 * percentile. However, the training happens early in
-			 * boot where things are somewhat ideal compared to
-			 * the fully loaded system, so allow for a wide margin
-			 * of error before declaring things outliers by
-			 * multiplying that by 4 to allow for expected
-			 * degredation.
-			 */
-			iop->worst *= 4;
-		}
-		return;
-	}
-
-	if (sim_latency > iop->worst)
-		iop->outliers++;
-
-	/*
-	 * We determine this new measurement is an outlier before we update
-	 * our estimators. If sd is 0, then we have no reliable estimate for
-	 * SD yet so don't bother seeing if this is an outlier.
-	 */
-	if (iop->sd != 0 && sim_latency > iop->ema + 5 * iop->sd) {
-//		printf("Outlier: EMA: %ju SD: %ju lat %ju\n", (intmax_t)iop->ema,
-//		       (intmax_t)iop->sd, (intmax_t)sim_latency);
-		iop->outliers++;
-	}
 
 	/* 
 	 * Classic expoentially decaying average with a tiny alpha
@@ -883,10 +1492,10 @@ cam_iosched_update(struct iop_stats *iop, sbintime_t sim_latency)
 	 * division.
 	 */
 	y = sim_latency;
-	iop->ema = (y + (iop->ema << ALPHA_BITS) - iop->ema) >> ALPHA_BITS;
+	iop->ema = (y + (iop->ema << alpha_bits) - iop->ema) >> alpha_bits;
 
 	yy = mul(y, y);
-	iop->emss = (yy + (iop->emss << ALPHA_BITS) - iop->emss) >> ALPHA_BITS;
+	iop->emss = (yy + (iop->emss << alpha_bits) - iop->emss) >> alpha_bits;
 
 	/*
          * s_1 = sum of data
@@ -958,22 +1567,30 @@ DB_SHOW_COMMAND(iosched, cam_iosched_db_show)
 		return;
 	}
 	isc = (struct cam_iosched_softc *)addr;
-	db_printf("pending_reads:     %d\n", isc->pending_reads);
-	db_printf("min_reads:         %d\n", isc->min_reads);
-	db_printf("max_reads:         %d\n", isc->max_reads);
-	db_printf("reads:             %d\n", isc->reads);
-	db_printf("in_reads:          %d\n", isc->in_reads);
-	db_printf("out_reads:         %d\n", isc->out_reads);
-	db_printf("queued_reads:      %d\n", isc->queued_reads);
+	db_printf("pending_reads:     %d\n", isc->read_stats.pending);
+	db_printf("min_reads:         %d\n", isc->read_stats.min);
+	db_printf("max_reads:         %d\n", isc->read_stats.max);
+	db_printf("reads:             %d\n", isc->read_stats.total);
+	db_printf("in_reads:          %d\n", isc->read_stats.in);
+	db_printf("out_reads:         %d\n", isc->read_stats.out);
+	db_printf("queued_reads:      %d\n", isc->read_stats.queued);
 	db_printf("Current Q len      %d\n", biolen(&isc->bio_queue));
-	db_printf("pending_writes:    %d\n", isc->pending_writes);
-	db_printf("min_writes:        %d\n", isc->min_writes);
-	db_printf("max_writes:        %d\n", isc->max_writes);
-	db_printf("writes:            %d\n", isc->writes);
-	db_printf("in_writes:         %d\n", isc->in_writes);
-	db_printf("out_writes:        %d\n", isc->out_writes);
-	db_printf("queued_writes:     %d\n", isc->queued_writes);
+	db_printf("pending_writes:    %d\n", isc->write_stats.pending);
+	db_printf("min_writes:        %d\n", isc->write_stats.min);
+	db_printf("max_writes:        %d\n", isc->write_stats.max);
+	db_printf("writes:            %d\n", isc->write_stats.total);
+	db_printf("in_writes:         %d\n", isc->write_stats.in);
+	db_printf("out_writes:        %d\n", isc->write_stats.out);
+	db_printf("queued_writes:     %d\n", isc->write_stats.queued);
 	db_printf("Current Q len      %d\n", biolen(&isc->write_queue));
+	db_printf("pending_trims:     %d\n", isc->trim_stats.pending);
+	db_printf("min_trims:         %d\n", isc->trim_stats.min);
+	db_printf("max_trims:         %d\n", isc->trim_stats.max);
+	db_printf("trims:             %d\n", isc->trim_stats.total);
+	db_printf("in_trims:          %d\n", isc->trim_stats.in);
+	db_printf("out_trims:         %d\n", isc->trim_stats.out);
+	db_printf("queued_trims:      %d\n", isc->trim_stats.queued);
+	db_printf("Current Q len      %d\n", biolen(&isc->trim_queue));
 	db_printf("read_bias:         %d\n", isc->read_bias);
 	db_printf("current_read_bias: %d\n", isc->current_read_bias);
 	db_printf("Trim active?       %s\n", 
