@@ -38,6 +38,11 @@
 
 . ../default.cfg
 
+# NULLFS(5) and SUJ has known issues.
+mount | grep "on `df $RUNDIR | sed  '1d;s/.* //'` " | \
+    grep -q  "journaled soft-updates" &&
+    { echo "Skipping test due to SUJ."; exit 0; }
+
 mount | grep -q "on $mntpoint " && umount -f $mntpoint
 
 mount -t nullfs $RUNDIR $mntpoint

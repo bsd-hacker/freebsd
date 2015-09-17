@@ -28,14 +28,25 @@
 # $FreeBSD$
 #
 
-# Composit test: nullfs2.sh + kinfo.sh
+# Composite test: nullfs2.sh + kinfo.sh
 
 # Kernel page fault with the following non-sleepable locks held from
 # nullfs/null_vnops.c:531
 
+# Fatal trap 12: page fault while in kernel mode
+# https://people.freebsd.org/~pho/stress/log/jeff106.txt
+
+# panic: vholdl: inactive held vnode:
+# https://people.freebsd.org/~pho/stress/log/kostik815.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
+
+# NULLFS(5) and SUJ has known issues.
+mount | grep "on `df $RUNDIR | sed  '1d;s/.* //'` " | \
+    grep -q  "journaled soft-updates" &&
+    { echo "Skipping test due to SUJ."; exit 0; }
 
 odir=`pwd`
 cd /tmp
@@ -62,7 +73,5 @@ umount $mntpoint 2>&1 | grep -v busy
 
 mount | grep -q $mntpoint && umount -f $mntpoint
 
-for j in `jot 5`; do
-	wait
-done
+wait
 rm -f /tmp/kinfo
