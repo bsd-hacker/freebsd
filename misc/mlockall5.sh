@@ -80,8 +80,6 @@ EOF
 #include <sys/stat.h>
 #include <sys/wait.h>
 
-#include <machine/atomic.h>
-
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -134,7 +132,7 @@ test(void)
 		rc = pthread_create(&tid[1], NULL, ml, NULL);
 		if (rc != 0)
 			errc(1, rc, "pthread_create()");
-		atomic_add_int(&share, 1);
+		share = 1;
 		for (i = 0; i < (int)nitems(tid); i++) {
 			rc = pthread_join(tid[i], NULL);
 			if (rc != 0)
