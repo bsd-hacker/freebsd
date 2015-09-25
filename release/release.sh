@@ -345,11 +345,11 @@ chroot_arm_armv6_build_release() {
 	arm_install_uboot
 	mdconfig -d -u ${mddev}
 	chroot ${CHROOTDIR} rmdir ${DESTDIR}
-	mv ${IMGBASE} ${CHROOTDIR}/${OBJDIR}/${OSRELEASE}-${KERNEL}.img
+	mv ${IMGBASE} ${CHROOTDIR}/${OBJDIR}/${OSRELEASE}-${KERNEL}${SNAPSHOT}.img
 	chroot ${CHROOTDIR} mkdir -p /R
-	chroot ${CHROOTDIR} cp -p ${OBJDIR}/${OSRELEASE}-${KERNEL}.img \
-		/R/${OSRELEASE}-${KERNEL}.img
-	chroot ${CHROOTDIR} xz -T ${XZ_THREADS} /R/${OSRELEASE}-${KERNEL}.img
+	chroot ${CHROOTDIR} cp -p ${OBJDIR}/${OSRELEASE}-${KERNEL}${SNAPSHOT}.img \
+		/R/${OSRELEASE}-${KERNEL}${SNAPSHOT}.img
+	chroot ${CHROOTDIR} xz -T ${XZ_THREADS} /R/${OSRELEASE}-${KERNEL}${SNAPSHOT}.img
 	cd ${CHROOTDIR}/R && sha256 ${OSRELEASE}* \
 		> CHECKSUM.SHA256
 	cd ${CHROOTDIR}/R && md5 ${OSRELEASE}* \
