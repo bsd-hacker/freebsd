@@ -233,12 +233,14 @@ prebuild_setup() {
 # Email log output when a stage has completed
 send_logmail() {
 	[ -z "${emailgoesto}" ] && return 0
+	[ -z "${emailsentfrom}" ] && return 0
 	local _body
 	local _subject
-	_body="${1}"
 	_subject="${2}"
-	tail -n 50 "${_body}" | \
-		mail -s "${_subject} done" ${emailgoesto}
+	_body="$(tail -n 50 ${1})"
+
+	printf "From: ${emailsentfrom}\nTo: ${emailgoesto}\nSubject: ${_subject}\n\n${_body}\n\n" \
+		| /usr/sbin/sendmail -oi -f ${emailsentfrom} ${emailgoesto}
 	return 0
 }
 
@@ -253,9 +255,11 @@ ftp_stage() {
 	info "Staging for ftp: ${_build}"
 	[ ! -z "${EMBEDDEDBUILD}" ] && export EMBEDDEDBUILD
 	[ ! -z "${BOARDNAME}" ] && export BOARDNAME
-	[ -e "${scriptdir}/svnrev_src" ] && \
+	[ ! -z "${SVNREVISION}" ] && export SVNREVISION
+	[ ! -z "${BUILDDATE}" ] && export BUILDDATE
+	[ -z "${SVNREVISION}" -a -e "${scriptdir}/svnrev_src" ] && \
 		export SVNREVISION="$(cat ${scriptdir}/svnrev_src)"
-	[ -e "${scriptdir}/builddate" ] && \
+	[ -z "${BUILDDATE}" -a -e "${scriptdir}/builddate" ] && \
 		export BUILDDATE="$(cat ${scriptdir}/builddate)"
 	chroot ${CHROOTDIR} make -C /usr/src/release \
 		-f Makefile.mirrors \
