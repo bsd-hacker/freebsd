@@ -49,8 +49,14 @@ mycc -o mmap15 -Wall -Wextra -O2 -g mmap15.c -lpthread || exit 1
 rm -f mmap15.c
 
 for i in `jot 2`; do
-	su $testuser -c /tmp/mmap15
+	su $testuser -c /tmp/mmap15 &
 done
+sleep 300
+while pgrep -q mmap15; do
+	pkill -9 mmap15
+	sleep 2
+done
+wait
 
 rm -f /tmp/mmap15 /tmp/mmap15.core
 exit 0
@@ -74,6 +80,7 @@ EOF
 #include <unistd.h>
 
 #define LOOPS 2
+#define MMSIZE (256 * 1024)
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
 #define PARALLEL 50
 
@@ -123,17 +130,23 @@ void *
 tmmap(void *arg __unused)
 {
 	size_t len;
-	int i, fd;
+	int i, j, fd;
 
 	pthread_set_name_np(pthread_self(), __func__);
-	len = 1LL * 128 * 1024 * 1024;
+	len = MMSIZE;
 
 	if ((fd = open("/dev/zero", O_RDWR)) == -1)
 		err(1,"open()");
-	for (i = 0; i < 100; i++) {
+	for (i = 0, j = 0; i < 100; i++) {
 		p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+		if (p != MAP_FAILED)
+			j++;
 		p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON, -1, 0);
+		if (p != MAP_FAILED)
+			j++;
 	}
+	if (j == 0)
+		fprintf(stderr, "FAIL: all mmap(2) calls failed.\n");
 	close(fd);
 
 	return (NULL);
@@ -195,7 +208,6 @@ main(void)
 {
 	int i, j;
 
-	alarm(120);
 	for (i = 0; i < N; i++)
 		r[i] = arc4random();
 

@@ -46,11 +46,14 @@ sed '1,/^EOF/d' < $here/$0 > mmap22.c
 mycc -o mmap22 -Wall -Wextra -O2 -g mmap22.c -lpthread || exit 1
 rm -f mmap22.c
 
-su $testuser -c /tmp/mmap22
+su $testuser -c /tmp/mmap22 &
 
+sleep 300
 while pgrep -q mmap22; do
+	pkill -9 mmap22
         sleep 2
 done
+wait
 
 rm -f /tmp/mmap22 /tmp/mmap22.core
 exit 0
@@ -69,10 +72,9 @@ EOF
 #include <stdlib.h>
 #include <unistd.h>
 
-#define LOOPS 1
 #define MMAPS 25
-#define PARALLEL 10
-#define SIZ (128 * 1024 * 1024)
+#define PARALLEL 4
+#define SIZ (64 * 1024 * 1024)
 
 void *
 tmmap(void *arg __unused)
@@ -118,7 +120,6 @@ main(void)
 {
 	int i;
 
-	alarm(120);
 	for (i = 0; i < PARALLEL; i++) {
 		if (fork() == 0)
 			test();

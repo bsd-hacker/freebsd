@@ -43,11 +43,16 @@ mycc -o mmap10 -Wall -Wextra -O2 -g mmap10.c -lpthread || exit 1
 rm -f mmap10.c
 
 daemon sh -c "(cd $here/../testcases/swap; ./swap -t 2m -i 20 -k)"
-rnd=`od -An -N1 -t u1 /dev/random | sed 's/ //g'`
-sleep $((rnd % 10))
+sleep `jot -r 1 0 9`
 for i in `jot 2`; do
-	/tmp/mmap10
+	/tmp/mmap10 &
 done
+sleep 300
+while pgrep -q mmap10; do
+	pkill -9 mmap10
+	sleep 2
+done
+wait
 killall -q swap
 
 rm -f /tmp/mmap10 /tmp/mmap10.core
@@ -56,7 +61,6 @@ EOF
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/wait.h>
 
 #include <err.h>
@@ -64,15 +68,13 @@ EOF
 #include <fcntl.h>
 #include <pthread.h>
 #include <pthread_np.h>
-#include <sched.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 
 #define LOOPS 2
+#define MMSIZE (192 * 1024 * 1024)
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
 #define PARALLEL 50
 
@@ -122,12 +124,12 @@ void *
 tmmap(void *arg __unused)
 {
 	size_t len;
-	int i, fd;
+	int i, j, fd;
 
 	pthread_set_name_np(pthread_self(), __func__);
-	len = 1LL * 1024 * 1024 * 1024;
+	len = MMSIZE;
 
-	for (i = 0; i < 100; i++) {
+	for (i = 0, j = 0; i < 100; i++) {
 		if ((fd = open("/dev/zero", O_RDWR)) == -1)
 			err(1,"open()");
 
@@ -135,15 +137,19 @@ tmmap(void *arg __unused)
 		    fd, 0)) != MAP_FAILED) {
 			usleep(100);
 			munmap(p, len);
+			j++;
 		}
 
 		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON,
 		    -1, 0)) != MAP_FAILED) {
 			usleep(100);
 			munmap(p, len);
+			j++;
 		}
 		close(fd);
 	}
+	if (j == 0)
+		fprintf(stderr, "FAIL: all mmap(2) calls failed.\n");
 
 	return (NULL);
 }
@@ -255,7 +261,6 @@ main(void)
 	for (i = 0; i < N; i++)
 		r[i] = arc4random();
 
-	alarm(1200);
 	for (i = 0; i < LOOPS; i++) {
 		for (j = 0; j < PARALLEL; j++) {
 			if (fork() == 0)
