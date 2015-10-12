@@ -28,7 +28,7 @@
 # $FreeBSD$
 #
 
-# phk has seen freezes with this newfs option: "-b 32768 -f  4096 -O2"
+# phk has seen freezes with this newfs option: "-b 32768 -f 4096 -O2"
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -36,24 +36,27 @@
 
 size=$((32 * 1024 * 1024))
 
-mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep -q md${mdstart}$part && umount $mntpoint
+[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
 while [ $size -le $((900 * 1024 * 1024)) ]; do
-	echo "Testing with $((size / 1024 / 1024)) Mb"
-	truncate -s $size $diskimage
-	mdconfig -a -t vnode -f $diskimage -u ${mdstart}
-	disklabel -r -w md${mdstart} auto
-	newfs -b 32768 -f  4096 -O2    md${mdstart}${part} > /dev/null 2>&1
-	mount /dev/md${mdstart}${part} $mntpoint
-	df -i $mntpoint
+	mb=$((size / 1024 / 1024))
+	rm -f $diskimage
+	dd if=/dev/zero of=$diskimage bs=1m count=$mb 2>&1 |
+	    egrep -v "records|transferred"
+	mdconfig -a -t vnode -f $diskimage -u $mdstart
+	bsdlabel -w md$mdstart auto
+	newfs -b 32768 -f 4096 -O2 md${mdstart}$part > /dev/null 2>&1
+	mount /dev/md${mdstart}$part $mntpoint
 	export RUNDIR=$mntpoint/stressX
-	export runRUNTIME=10m            # Run tests for 10 minutes
-	(cd ..; ./run.sh disk.cfg) 
-	while mount | grep "$mntpoint" | grep -q md${mdstart}${part}; do
+	export runRUNTIME=30s
+	export RUNTIME=$runRUNTIME
+	export CTRLDIR=$mntpoint/stressX.control
+	(cd ..; ./run.sh disk.cfg) > /dev/null
+	while mount | grep "$mntpoint" | grep -q md${mdstart}$part; do
 		umount $mntpoint > /dev/null 2>&1
 	done
-	mdconfig -d -u ${mdstart}
+	mdconfig -d -u $mdstart
 	size=$((size + 32 * 1024 * 1024))
 done
 rm -f $diskimage

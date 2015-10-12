@@ -32,24 +32,30 @@
 
 . ../default.cfg
 
-mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null &&
+    umount $mntpoint
 mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 
+echo "Expect warnings from SU and SU+J."
 for opt in -O1 -O2 -U -j; do
+	echo "Testing newfs with option $opt."
 	blocksize=4096
 	while [ $blocksize -le 65536 ]; do
 		for i in 8 4 2 1; do
 			fragsize=$((blocksize / i))
-			echo "`date '+%T'` newfs $opt -b $blocksize -f $fragsize md${mdstart}${part}"
-			newfs $opt -b $blocksize -f $fragsize  md${mdstart}$part > /dev/null
+			newfs $opt -b $blocksize -f $fragsize \
+			    md${mdstart}$part > /dev/null 2>&1 || continue
 			mount /dev/md${mdstart}$part $mntpoint
 			export RUNDIR=$mntpoint/stressX
-			export runRUNTIME=4m
+			export runRUNTIME=15s
+			export RUNTIME=$runRUNTIME
+			export CTRLDIR=$mntpoint/stressX.control
 			(cd ..; ./run.sh disk.cfg > /dev/null 2>&1)
-			while mount | grep "$mntpoint" | grep -q md${mdstart}$part; do
+			while mount | grep "$mntpoint" | \
+			    grep -q md${mdstart}$part; do
 				umount $mntpoint > /dev/null 2>&1 || sleep 1
 			done
 		done

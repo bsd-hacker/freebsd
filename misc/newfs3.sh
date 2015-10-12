@@ -43,24 +43,30 @@
 size=$((32 * 1024 * 1024))
 opt="-O2"	# newfs option. Eg. -U
 
-mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep -q md${mdstart}$part && umount $mntpoint
+[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
 while [ $size -le $((128 * 1024 * 1024)) ]; do
-	truncate -s $size $diskimage
-	mdconfig -a -t vnode -f $diskimage -u ${mdstart}
-	disklabel -r -w md${mdstart} auto
+	mb=$((size / 1024 / 1024))
+	rm -f $diskimage
+	dd if=/dev/zero of=$diskimage bs=1m count=$mb 2>&1 |
+	    egrep -v "records|transferred"
+	mdconfig -a -t vnode -f $diskimage -u $mdstart
+	bsdlabel -w md$mdstart auto
 	blocksize=4096
 	while [ $blocksize -le 65536 ]; do
 		for i in 1 2 4 8; do
 			fragsize=$((blocksize / i))
-			echo "newfs -b $blocksize -f $fragsize $opt md${mdstart}${part} on a $((size / 1024 / 1024)) Mb FS"
-			newfs -b $blocksize -f $fragsize $opt md${mdstart}${part} > /dev/null 2>&1
-			mount /dev/md${mdstart}${part} $mntpoint
+			newfs -b $blocksize -f $fragsize $opt md${mdstart}$part > \
+			    /dev/null 2>&1
+			mount /dev/md${mdstart}$part $mntpoint
 			export RUNDIR=$mntpoint/stressX
-			export runRUNTIME=5m
-			(cd ..; ./run.sh disk.cfg) 
-			while mount | grep "$mntpoint" | grep -q md${mdstart}${part}; do
+			export runRUNTIME=15s
+			export RUNTIME=$runRUNTIME
+			export CTRLDIR=$mntpoint/stressX.control
+			(cd ..; ./run.sh disk.cfg) > /dev/null
+			while mount | grep "$mntpoint" | \
+			    grep -q md${mdstart}$part; do
 				umount $mntpoint > /dev/null 2>&1
 			done
 		done
