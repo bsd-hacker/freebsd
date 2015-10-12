@@ -242,6 +242,8 @@
             test-programs
             ..
         ..
+        libarchive
+        ..
         libc
             c063
             ..
@@ -309,6 +311,8 @@
             ..
         ..
         libutil
+        ..
+        libxo
         ..
         msun
         ..
@@ -524,6 +528,8 @@
         ..
         cmp
         ..
+        cpio
+        ..
         col
         ..
         comm
@@ -562,6 +568,8 @@
         ..
         soelim
         ..
+        tar
+        ..
         timeout
         ..
         tr
@@ -575,6 +583,8 @@
         uuencode
         ..
         xargs
+        ..
+        xo
         ..
         yacc
             yacc
