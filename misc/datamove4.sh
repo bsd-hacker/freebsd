@@ -30,6 +30,11 @@
 
 # Variation of the datamove2.sh, using TMPFS
 # Deadlock seen
+# https://people.freebsd.org/~pho/stress/log/datamove4.txt
+
+# panic: elf32_putnote: Note type 10 changed as we read it (2236 > 2220)...
+# https://people.freebsd.org/~pho/stress/log/datamove4-2.txt
+# Fixed by r288944.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -174,6 +179,11 @@ unmapBuffer(char *bufferp)
 {
 	if (munmap(bufferp, pagesize * 2) == -1)
 		err(1, "unmap 1. buffer");
+	/*
+	   The following unmaps something random, which could trigger:
+	   Program received signal SIGSEGV, Segmentation fault.
+	   free (cp=0x28070000) at /usr/src/libexec/rtld-elf/malloc.c:311
+	*/
 	if (munmap(bufferp + pagesize * 2, pagesize * 2) == -1)
 		err(1, "unmap 2. buffer");
 }
