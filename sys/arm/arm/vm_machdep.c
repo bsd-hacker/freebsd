@@ -54,6 +54,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/sysent.h>
 #include <sys/unistd.h>
+
+#include <machine/acle-compat.h>
 #include <machine/cpu.h>
 #include <machine/frame.h>
 #include <machine/pcb.h>
@@ -82,6 +84,8 @@ __FBSDID("$FreeBSD$");
  */
 CTASSERT(sizeof(struct switchframe) == 48);
 CTASSERT(sizeof(struct trapframe) == 80);
+
+uint32_t initial_fpscr = VFPSCR_DN | VFPSCR_FZ;
 
 /*
  * Finish a fork operation, with process p2 nearly set up.
@@ -132,7 +136,7 @@ cpu_fork(register struct thread *td1, register struct proc *p2,
 	pcb2->pcb_regs.sf_sp = STACKALIGN(td2->td_frame);
 
 	pcb2->pcb_vfpcpu = -1;
-	pcb2->pcb_vfpstate.fpscr = VFPSCR_DN | VFPSCR_FZ;
+	pcb2->pcb_vfpstate.fpscr = initial_fpscr;
 
 	tf = td2->td_frame;
 	tf->tf_spsr &= ~PSR_C;
@@ -143,10 +147,10 @@ cpu_fork(register struct thread *td1, register struct proc *p2,
 	/* Setup to release spin count in fork_exit(). */
 	td2->td_md.md_spinlock_count = 1;
 	td2->td_md.md_saved_cspr = PSR_SVC32_MODE;;
-#ifdef ARM_TP_ADDRESS
-	td2->td_md.md_tp = *(register_t *)ARM_TP_ADDRESS;
-#else
+#if __ARM_ARCH >= 6
 	td2->td_md.md_tp = td1->td_md.md_tp;
+#else
+	td2->td_md.md_tp = *(register_t *)ARM_TP_ADDRESS;
 #endif
 }
 
@@ -273,10 +277,10 @@ cpu_set_user_tls(struct thread *td, void *tls_base)
 	td->td_md.md_tp = (register_t)tls_base;
 	if (td == curthread) {
 		critical_enter();
-#ifdef ARM_TP_ADDRESS
-		*(register_t *)ARM_TP_ADDRESS = (register_t)tls_base;
-#else
+#if __ARM_ARCH >= 6
 		set_tls(tls_base);
+#else
+		*(register_t *)ARM_TP_ADDRESS = (register_t)tls_base;
 #endif
 		critical_exit();
 	}

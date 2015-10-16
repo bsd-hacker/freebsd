@@ -133,7 +133,7 @@ AcpiDsMethodDataInitArgs (
 
 
 static ACPI_TABLE_DESC      LocalTables[1];
-ACPI_PARSE_OBJECT    *AcpiGbl_ParseOpRoot;
+static ACPI_PARSE_OBJECT    *AcpiGbl_ParseOpRoot;
 
 
 /*******************************************************************************
@@ -243,7 +243,7 @@ AdAmlDisassemble (
         while (ExternalFileList)
         {
             ExternalFilename = ExternalFileList->Path;
-            if (!ACPI_STRCMP (ExternalFilename, Filename))
+            if (!strcmp (ExternalFilename, Filename))
             {
                 /* Next external file */
 
@@ -316,7 +316,7 @@ AdAmlDisassemble (
             return (Status);
         }
 
-        if (!AcpiGbl_DbOpt_Disasm)
+        if (!AcpiGbl_DmOpt_Disasm)
         {
             return (AE_OK);
         }
@@ -505,7 +505,7 @@ AdAmlDisassemble (
 
         /* Optional displays */
 
-        if (AcpiGbl_DbOpt_Disasm)
+        if (AcpiGbl_DmOpt_Disasm)
         {
             /* This is the real disassembly */
 
@@ -741,7 +741,7 @@ AdDisplayTables (
         return (AE_NOT_EXIST);
     }
 
-    if (!AcpiGbl_DbOpt_Verbose)
+    if (!AcpiGbl_DmOpt_Listing)
     {
         AdCreateTableHeader (Filename, Table);
     }
@@ -749,7 +749,7 @@ AdDisplayTables (
     AcpiDmDisassemble (NULL, AcpiGbl_ParseOpRoot, ACPI_UINT32_MAX);
     MpEmitMappingInfo ();
 
-    if (AcpiGbl_DbOpt_Verbose)
+    if (AcpiGbl_DmOpt_Listing)
     {
         AcpiOsPrintf ("\n\nTable Header:\n");
         AcpiUtDebugDumpBuffer ((UINT8 *) Table, sizeof (ACPI_TABLE_HEADER),
@@ -796,8 +796,8 @@ AdStoreTable (
 
     AcpiTbInitTableDescriptor (TableDesc, ACPI_PTR_TO_PHYSADDR (Table),
         ACPI_TABLE_ORIGIN_INTERNAL_VIRTUAL, Table);
-    AcpiTbValidateTable (TableDesc);
-    return (AE_OK);
+    Status = AcpiTbValidateTable (TableDesc);
+    return (Status);
 }
 
 
@@ -892,7 +892,7 @@ AdParseTable (
 
     /* Create the root object */
 
-    AcpiGbl_ParseOpRoot = AcpiPsCreateScopeOp ();
+    AcpiGbl_ParseOpRoot = AcpiPsCreateScopeOp (AmlStart);
     if (!AcpiGbl_ParseOpRoot)
     {
         return (AE_NO_MEMORY);

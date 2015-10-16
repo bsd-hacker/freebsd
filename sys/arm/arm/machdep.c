@@ -44,6 +44,7 @@
 
 #include "opt_compat.h"
 #include "opt_ddb.h"
+#include "opt_kstack_pages.h"
 #include "opt_platform.h"
 #include "opt_sched.h"
 #include "opt_timer.h"
@@ -741,10 +742,13 @@ get_mcontext(struct thread *td, mcontext_t *mcp, int clear_ret)
 	struct trapframe *tf = td->td_frame;
 	__greg_t *gr = mcp->__gregs;
 
-	if (clear_ret & GET_MC_CLEAR_RET)
+	if (clear_ret & GET_MC_CLEAR_RET) {
 		gr[_REG_R0] = 0;
-	else
+		gr[_REG_CPSR] = tf->tf_spsr & ~PSR_C;
+	} else {
 		gr[_REG_R0]   = tf->tf_r0;
+		gr[_REG_CPSR] = tf->tf_spsr;
+	}
 	gr[_REG_R1]   = tf->tf_r1;
 	gr[_REG_R2]   = tf->tf_r2;
 	gr[_REG_R3]   = tf->tf_r3;
@@ -760,7 +764,6 @@ get_mcontext(struct thread *td, mcontext_t *mcp, int clear_ret)
 	gr[_REG_SP]   = tf->tf_usr_sp;
 	gr[_REG_LR]   = tf->tf_usr_lr;
 	gr[_REG_PC]   = tf->tf_pc;
-	gr[_REG_CPSR] = tf->tf_spsr;
 
 	return (0);
 }
@@ -909,14 +912,11 @@ fake_preload_metadata(struct arm_boot_params *abp __unused)
 void
 pcpu0_init(void)
 {
-#if ARM_ARCH_6 || ARM_ARCH_7A || defined(CPU_MV_PJ4B)
+#if __ARM_ARCH >= 6
 	set_curthread(&thread0);
 #endif
 	pcpu_init(pcpup, 0, sizeof(struct pcpu));
 	PCPU_SET(curthread, &thread0);
-#ifdef VFP
-	PCPU_SET(cpu, 0);
-#endif
 }
 
 #if defined(LINUX_BOOT_ABI)
@@ -1066,10 +1066,10 @@ init_proc0(vm_offset_t kstack)
 	proc_linkup0(&proc0, &thread0);
 	thread0.td_kstack = kstack;
 	thread0.td_pcb = (struct pcb *)
-		(thread0.td_kstack + KSTACK_PAGES * PAGE_SIZE) - 1;
+		(thread0.td_kstack + kstack_pages * PAGE_SIZE) - 1;
 	thread0.td_pcb->pcb_flags = 0;
 	thread0.td_pcb->pcb_vfpcpu = -1;
-	thread0.td_pcb->pcb_vfpstate.fpscr = VFPSCR_DN | VFPSCR_FZ;
+	thread0.td_pcb->pcb_vfpstate.fpscr = VFPSCR_DN;
 	thread0.td_frame = &proc0_tf;
 	pcpup->pc_curpcb = thread0.td_pcb;
 }
@@ -1360,7 +1360,7 @@ initarm(struct arm_boot_params *abp)
 	valloc_pages(irqstack, IRQ_STACK_SIZE * MAXCPU);
 	valloc_pages(abtstack, ABT_STACK_SIZE * MAXCPU);
 	valloc_pages(undstack, UND_STACK_SIZE * MAXCPU);
-	valloc_pages(kernelstack, KSTACK_PAGES * MAXCPU);
+	valloc_pages(kernelstack, kstack_pages * MAXCPU);
 	valloc_pages(msgbufpv, round_page(msgbufsize) / PAGE_SIZE);
 
 	/*
@@ -1534,10 +1534,7 @@ initarm(struct arm_boot_params *abp)
 	 * Find the dtb passed in by the boot loader.
 	 */
 	kmdp = preload_search_by_type("elf kernel");
-	if (kmdp != NULL)
-		dtbp = MD_FETCH(kmdp, MODINFOMD_DTBP, vm_offset_t);
-	else
-		dtbp = (vm_offset_t)NULL;
+	dtbp = MD_FETCH(kmdp, MODINFOMD_DTBP, vm_offset_t);
 #if defined(FDT_DTB_STATIC)
 	/*
 	 * In case the device tree blob was not retrieved (from metadata) try
@@ -1614,7 +1611,7 @@ initarm(struct arm_boot_params *abp)
 	irqstack    = pmap_preboot_get_vpages(IRQ_STACK_SIZE * MAXCPU);
 	abtstack    = pmap_preboot_get_vpages(ABT_STACK_SIZE * MAXCPU);
 	undstack    = pmap_preboot_get_vpages(UND_STACK_SIZE * MAXCPU );
-	kernelstack = pmap_preboot_get_vpages(KSTACK_PAGES * MAXCPU);
+	kernelstack = pmap_preboot_get_vpages(kstack_pages * MAXCPU);
 
 	/* Allocate message buffer. */
 	msgbufp = (void *)pmap_preboot_get_vpages(

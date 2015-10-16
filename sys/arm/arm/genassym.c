@@ -38,6 +38,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_param.h>
 #include <vm/pmap.h>
 #include <vm/vm_map.h>
+
+#include <machine/acle-compat.h>
 #include <machine/vmparam.h>
 #include <machine/armreg.h>
 #include <machine/frame.h>
@@ -124,7 +126,7 @@ ASSYM(P_FLAG, offsetof(struct proc, p_flag));
 
 ASSYM(SIGF_UC, offsetof(struct sigframe, sf_uc));
 
-#ifdef ARM_TP_ADDRESS
+#if __ARM_ARCH < 6
 ASSYM(ARM_TP_ADDRESS, ARM_TP_ADDRESS);
 ASSYM(ARM_RAS_START, ARM_RAS_START);
 ASSYM(ARM_RAS_END, ARM_RAS_END);
@@ -132,9 +134,9 @@ ASSYM(ARM_RAS_END, ARM_RAS_END);
 
 #ifdef VFP
 ASSYM(PCB_VFPSTATE, offsetof(struct pcb, pcb_vfpstate));
+#endif
 
-ASSYM(PC_CPU, offsetof(struct pcpu, pc_cpu));
-
+#if __ARM_ARCH >= 6
 ASSYM(PC_CURPMAP, offsetof(struct pcpu, pc_curpmap));
 #endif
 
@@ -159,6 +161,7 @@ ASSYM(P_VMSPACE, offsetof(struct proc, p_vmspace));
 ASSYM(VM_PMAP, offsetof(struct vmspace, vm_pmap));
 ASSYM(PM_ACTIVE, offsetof(struct pmap, pm_active));
 ASSYM(PC_CPUID, offsetof(struct pcpu, pc_cpuid));
+ASSYM(VM_MAXUSER_ADDRESS, VM_MAXUSER_ADDRESS);
 
 ASSYM(DCACHE_LINE_SIZE, offsetof(struct cpuinfo, dcache_line_size));
 ASSYM(DCACHE_LINE_MASK, offsetof(struct cpuinfo, dcache_line_mask));

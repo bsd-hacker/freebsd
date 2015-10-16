@@ -207,7 +207,6 @@ struct vm_object {
  */
 #define	OBJPR_CLEANONLY	0x1		/* Don't remove dirty pages. */
 #define	OBJPR_NOTMAPPED	0x2		/* Don't unmap pages. */
-#define	OBJPR_NOTWIRED	0x4		/* Don't remove wired pages. */
 
 TAILQ_HEAD(object_q, vm_object);
 
@@ -305,10 +304,10 @@ void vm_object_terminate (vm_object_t);
 void vm_object_set_writeable_dirty (vm_object_t);
 void vm_object_init (void);
 void vm_object_madvise(vm_object_t, vm_pindex_t, vm_pindex_t, int);
-void vm_object_page_cache(vm_object_t object, vm_pindex_t start,
-    vm_pindex_t end);
 boolean_t vm_object_page_clean(vm_object_t object, vm_ooffset_t start,
     vm_ooffset_t end, int flags);
+void vm_object_page_noreuse(vm_object_t object, vm_pindex_t start,
+    vm_pindex_t end);
 void vm_object_page_remove(vm_object_t object, vm_pindex_t start,
     vm_pindex_t end, int options);
 boolean_t vm_object_populate(vm_object_t, vm_pindex_t, vm_pindex_t);
@@ -322,6 +321,7 @@ boolean_t vm_object_sync(vm_object_t, vm_ooffset_t, vm_size_t, boolean_t,
     boolean_t);
 void vm_object_unwire(vm_object_t object, vm_ooffset_t offset,
     vm_size_t length, uint8_t queue);
+struct vnode *vm_object_vnode(vm_object_t object);
 #endif				/* _KERNEL */
 
 #endif				/* _VM_OBJECT_ */

@@ -14,6 +14,8 @@
         ..
         expr
         ..
+        ls
+        ..
         mv
         ..
         pax
@@ -240,6 +242,8 @@
             test-programs
             ..
         ..
+        libarchive
+        ..
         libc
             c063
             ..
@@ -307,6 +311,8 @@
             ..
         ..
         libutil
+        ..
+        libxo
         ..
         msun
         ..
@@ -403,6 +409,8 @@
             ..
             unlink
             ..
+        ..
+        vfs
         ..
         vm
         ..
@@ -514,6 +522,8 @@
         ..
         cmp
         ..
+        cpio
+        ..
         col
         ..
         comm
@@ -527,6 +537,8 @@
         grep
         ..
         gzip
+        ..
+        ident
         ..
         join
         ..
@@ -550,6 +562,8 @@
         ..
         soelim
         ..
+        tar
+        ..
         timeout
         ..
         tr
@@ -564,6 +578,8 @@
         ..
         xargs
         ..
+        xo
+        ..
         yacc
             yacc
             ..
@@ -571,6 +587,8 @@
     ..
     usr.sbin
         etcupdate
+        ..
+        fstyp
         ..
         newsyslog
         ..

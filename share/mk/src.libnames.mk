@@ -9,8 +9,12 @@
 
 .include <src.opts.mk>
 
-ROOTSRCDIR=	${.MAKE.MAKEFILES:M*/src.libnames.mk:H:H:H}
-ROOTOBJDIR=	${.OBJDIR:S/${.CURDIR}//}${ROOTSRCDIR}
+.if ${.OBJDIR:S,${.CURDIR},,} != ${.OBJDIR}
+ROOTOBJDIR=	${.OBJDIR:S,${.CURDIR},,}${SRCTOP}
+.elif defined(OBJTOP) && ${.OBJDIR:M${OBJTOP}*} != ""
+ROOTOBJDIR=	${OBJTOP}
+.endif
+
 _PRIVATELIBS=	\
 		atf_c \
 		atf_cxx \
@@ -119,6 +123,8 @@ _LIBRARIES=	\
 		nv \
 		opie \
 		pam \
+		panel \
+		panelw \
 		pcap \
 		pcsclite \
 		pjdlog \
@@ -292,9 +298,6 @@ DPADD_gssapi_krb5+=	${DPADD_pthread}
 LDADD_gssapi_krb5+=	${LDADD_pthread}
 
 .for _l in ${LIBADD}
-.if ${_PRIVATELIBS:M${_l}}
-USEPRIVATELIB+=	${_l}
-.endif
 DPADD+=		${DPADD_${_l}:Umissing-dpadd_${_l}}
 LDADD+=		${LDADD_${_l}}
 .endfor
@@ -334,7 +337,7 @@ LIBIPFDIR=	${ROOTOBJDIR}/sbin/ipf/libipf
 LIBIPF?=	${LIBIPFDIR}/libipf.a
 
 LIBTELNETDIR=	${ROOTOBJDIR}/lib/libtelnet
-LIBTELNET?=	${LIBIPFDIR}/libtelnet.a
+LIBTELNET?=	${LIBTELNETDIR}/libtelnet.a
 
 LIBCRONDIR=	${ROOTOBJDIR}/usr.sbin/cron/lib
 LIBCRON?=	${LIBCRONDIR}/libcron.a

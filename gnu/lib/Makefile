@@ -16,7 +16,7 @@ SUBDIR+= libssp
 SUBDIR+= tests
 .endif
 
-.if ${MK_GDB} != "no"
+.if ${MK_BINUTILS} != "no" && ${MK_GDB} != "no"
 SUBDIR+=	libreadline
 .endif
 
@@ -24,6 +24,9 @@ SUBDIR+=	libreadline
 # have taken care of that already.
 .if ${MK_GNUCXX} != "no"
 SUBDIR+= libstdc++ libsupc++
+SUBDIR_DEPENDS_libsupc++:= libstdc++
 .endif
+
+SUBDIR_PARALLEL=
 
 .include <bsd.subdir.mk>

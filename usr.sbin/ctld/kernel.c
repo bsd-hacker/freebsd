@@ -60,10 +60,8 @@ __FBSDID("$FreeBSD$");
 #include <cam/scsi/scsi_message.h>
 #include <cam/ctl/ctl.h>
 #include <cam/ctl/ctl_io.h>
-#include <cam/ctl/ctl_frontend_internal.h>
 #include <cam/ctl/ctl_backend.h>
 #include <cam/ctl/ctl_ioctl.h>
-#include <cam/ctl/ctl_backend_block.h>
 #include <cam/ctl/ctl_util.h>
 #include <cam/ctl/ctl_scsi_all.h>
 
@@ -110,6 +108,7 @@ struct cctl_lun_nv {
 struct cctl_lun {
 	uint64_t lun_id;
 	char *backend_type;
+	uint8_t device_type;
 	uint64_t size_blocks;
 	uint32_t blocksize;
 	char *serial_number;
@@ -121,7 +120,10 @@ struct cctl_lun {
 
 struct cctl_port {
 	uint32_t port_id;
+	char *port_frontend;
 	char *port_name;
+	int pp;
+	int vp;
 	int cfiscsi_state;
 	char *cfiscsi_target;
 	uint16_t cfiscsi_portal_group_tag;
@@ -220,6 +222,8 @@ cctl_end_element(void *user_data, const char *name)
 	if (strcmp(name, "backend_type") == 0) {
 		cur_lun->backend_type = str;
 		str = NULL;
+	} else if (strcmp(name, "lun_type") == 0) {
+		cur_lun->device_type = strtoull(str, NULL, 0);
 	} else if (strcmp(name, "size") == 0) {
 		cur_lun->size_blocks = strtoull(str, NULL, 0);
 	} else if (strcmp(name, "blocksize") == 0) {
@@ -331,9 +335,16 @@ cctl_end_pelement(void *user_data, const char *name)
 	devlist->cur_sb[devlist->level] = NULL;
 	devlist->level--;
 
-	if (strcmp(name, "port_name") == 0) {
+	if (strcmp(name, "frontend_type") == 0) {
+		cur_port->port_frontend = str;
+		str = NULL;
+	} else if (strcmp(name, "port_name") == 0) {
 		cur_port->port_name = str;
 		str = NULL;
+	} else if (strcmp(name, "physical_port") == 0) {
+		cur_port->pp = strtoul(str, NULL, 0);
+	} else if (strcmp(name, "virtual_port") == 0) {
+		cur_port->vp = strtoul(str, NULL, 0);
 	} else if (strcmp(name, "cfiscsi_target") == 0) {
 		cur_port->cfiscsi_target = str;
 		str = NULL;
@@ -391,7 +402,7 @@ conf_new_from_kernel(void)
 	struct cctl_lun *lun;
 	struct cctl_port *port;
 	XML_Parser parser;
-	char *str;
+	char *str, *name;
 	int len, retval;
 
 	bzero(&devlist, sizeof(devlist));
@@ -467,7 +478,7 @@ retry_port:
 		return (NULL);
 	}
 
-	if (list.status == CTL_PORT_LIST_ERROR) {
+	if (list.status == CTL_LUN_LIST_ERROR) {
 		log_warnx("error returned from CTL_PORT_LIST ioctl: %s",
 		    list.error_str);
 		free(str);
@@ -500,18 +511,30 @@ retry_port:
 
 	conf = conf_new();
 
+	name = NULL;
 	STAILQ_FOREACH(port, &devlist.port_list, links) {
+		if (strcmp(port->port_frontend, "ha") == 0)
+			continue;
+		if (name)
+			free(name);
+		if (port->pp == 0 && port->vp == 0)
+			name = checked_strdup(port->port_name);
+		else if (port->vp == 0)
+			asprintf(&name, "%s/%d", port->port_name, port->pp);
+		else
+			asprintf(&name, "%s/%d/%d", port->port_name, port->pp,
+			    port->vp);
 
 		if (port->cfiscsi_target == NULL) {
 			log_debugx("CTL port %u \"%s\" wasn't managed by ctld; ",
-			    port->port_id, port->port_name);
-			pp = pport_find(conf, port->port_name);
+			    port->port_id, name);
+			pp = pport_find(conf, name);
 			if (pp == NULL) {
 #if 0
 				log_debugx("found new kernel port %u \"%s\"",
-				    port->port_id, port->port_name);
+				    port->port_id, name);
 #endif
-				pp = pport_new(conf, port->port_name, port->port_id);
+				pp = pport_new(conf, name, port->port_id);
 				if (pp == NULL) {
 					log_warnx("pport_new failed");
 					continue;
@@ -560,6 +583,8 @@ retry_port:
 		}
 		cp->p_ctl_port = port->port_id;
 	}
+	if (name)
+		free(name);
 
 	STAILQ_FOREACH(lun, &devlist.lun_list, links) {
 		struct cctl_lun_nv *nv;
@@ -588,6 +613,7 @@ retry_port:
 			continue;
 		}
 		lun_set_backend(cl, lun->backend_type);
+		lun_set_device_type(cl, lun->device_type);
 		lun_set_blocksize(cl, lun->blocksize);
 		lun_set_device_id(cl, lun->device_id);
 		lun_set_serial(cl, lun->serial_number);
@@ -640,8 +666,13 @@ kernel_lun_add(struct lun *lun)
 	if (lun->l_size != 0)
 		req.reqdata.create.lun_size_bytes = lun->l_size;
 
+	if (lun->l_ctl_lun >= 0) {
+		req.reqdata.create.req_lun_id = lun->l_ctl_lun;
+		req.reqdata.create.flags |= CTL_LUN_FLAG_ID_REQ;
+	}
+
 	req.reqdata.create.flags |= CTL_LUN_FLAG_DEV_TYPE;
-	req.reqdata.create.device_type = T_DIRECT;
+	req.reqdata.create.device_type = lun->l_device_type;
 
 	if (lun->l_serial != NULL) {
 		strncpy(req.reqdata.create.serial_num, lun->l_serial,
@@ -727,9 +758,11 @@ kernel_lun_add(struct lun *lun)
 }
 
 int
-kernel_lun_resize(struct lun *lun)
+kernel_lun_modify(struct lun *lun)
 {
+	struct lun_option *lo;
 	struct ctl_lun_req req;
+	int error, i, num_options;
 
 	bzero(&req, sizeof(req));
 
@@ -739,7 +772,30 @@ kernel_lun_resize(struct lun *lun)
 	req.reqdata.modify.lun_id = lun->l_ctl_lun;
 	req.reqdata.modify.lun_size_bytes = lun->l_size;
 
-	if (ioctl(ctl_fd, CTL_LUN_REQ, &req) == -1) {
+	num_options = 0;
+	TAILQ_FOREACH(lo, &lun->l_options, lo_next)
+		num_options++;
+
+	req.num_be_args = num_options;
+	if (num_options > 0) {
+		req.be_args = malloc(num_options * sizeof(*req.be_args));
+		if (req.be_args == NULL) {
+			log_warn("error allocating %zd bytes",
+			    num_options * sizeof(*req.be_args));
+			return (1);
+		}
+
+		i = 0;
+		TAILQ_FOREACH(lo, &lun->l_options, lo_next) {
+			str_arg(&req.be_args[i], lo->lo_name, lo->lo_value);
+			i++;
+		}
+		assert(i == num_options);
+	}
+
+	error = ioctl(ctl_fd, CTL_LUN_REQ, &req);
+	free(req.be_args);
+	if (error != 0) {
 		log_warn("error issuing CTL_LUN_REQ ioctl");
 		return (1);
 	}
@@ -983,11 +1039,13 @@ kernel_port_add(struct port *port)
 }
 
 int
-kernel_port_update(struct port *port)
+kernel_port_update(struct port *port, struct port *oport)
 {
 	struct ctl_lun_map lm;
 	struct target *targ = port->p_target;
+	struct target *otarg = oport->p_target;
 	int error, i;
+	uint32_t olun;
 
 	/* Map configured LUNs and unmap others */
 	for (i = 0; i < MAX_LUNS; i++) {
@@ -997,6 +1055,12 @@ kernel_port_update(struct port *port)
 			lm.lun = UINT32_MAX;
 		else
 			lm.lun = targ->t_luns[i]->l_ctl_lun;
+		if (otarg->t_luns[i] == NULL)
+			olun = UINT32_MAX;
+		else
+			olun = otarg->t_luns[i]->l_ctl_lun;
+		if (lm.lun == olun)
+			continue;
 		error = ioctl(ctl_fd, CTL_LUN_MAP, &lm);
 		if (error != 0)
 			log_warn("CTL_LUN_MAP ioctl failed");

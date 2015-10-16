@@ -1153,7 +1153,7 @@ noobj_alloc(uma_zone_t zone, vm_size_t bytes, uint8_t *flags, int wait)
 		 * exit.
 		 */
 		TAILQ_FOREACH_SAFE(p, &alloctail, listq, p_next) {
-			vm_page_unwire(p, PQ_INACTIVE);
+			vm_page_unwire(p, PQ_NONE);
 			vm_page_free(p); 
 		}
 		return (NULL);
@@ -1940,6 +1940,20 @@ uma_zcreate(const char *name, size_t size, uma_ctor ctor, uma_dtor dtor,
 	args.dtor = dtor;
 	args.uminit = uminit;
 	args.fini = fini;
+#ifdef  INVARIANTS
+	/*
+	 * If a zone is being created with an empty constructor and
+	 * destructor, pass UMA constructor/destructor which checks for
+	 * memory use after free.
+	 */
+	if ((!(flags & (UMA_ZONE_ZINIT | UMA_ZONE_NOFREE))) &&
+	    ctor == NULL && dtor == NULL && uminit == NULL && fini == NULL) {
+		args.ctor = trash_ctor;
+		args.dtor = trash_dtor;
+		args.uminit = trash_init;
+		args.fini = trash_fini;
+	}
+#endif
 	args.align = align;
 	args.flags = flags;
 	args.keg = NULL;
@@ -2121,11 +2135,8 @@ uma_zalloc_arg(uma_zone_t zone, void *udata, int flags)
 	int lockfail;
 	int cpu;
 
-#if 0
-	/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-	/* The entropy here is desirable, but the harvesting is expensive */
-	random_harvest(&(zone->uz_name), sizeof(void *), 1, RANDOM_UMA_ALLOC);
-#endif
+	/* Enable entropy collection for RANDOM_ENABLE_UMA kernel option */
+	random_harvest_fast_uma(&zone, sizeof(zone), 1, RANDOM_UMA);
 
 	/* This is the fast path allocation */
 #ifdef UMA_DEBUG_ALLOC_1
@@ -2157,11 +2168,6 @@ uma_zalloc_arg(uma_zone_t zone, void *udata, int flags)
 			    	zone->uz_fini(item, zone->uz_size);
 				return (NULL);
 			}
-#if 0
-			/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-			/* The entropy here is desirable, but the harvesting is expensive */
-			random_harvest(&item, sizeof(void *), 1, RANDOM_UMA_ALLOC);
-#endif
 			return (item);
 		}
 		/* This is unfortunate but should not be fatal. */
@@ -2204,11 +2210,6 @@ zalloc_start:
 #endif
 		if (flags & M_ZERO)
 			uma_zero_item(item, zone);
-#if 0
-		/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-		/* The entropy here is desirable, but the harvesting is expensive */
-		random_harvest(&item, sizeof(void *), 1, RANDOM_UMA_ALLOC);
-#endif
 		return (item);
 	}
 
@@ -2329,11 +2330,6 @@ zalloc_start:
 zalloc_item:
 	item = zone_alloc_item(zone, udata, flags);
 
-#if 0
-	/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-	/* The entropy here is desirable, but the harvesting is expensive */
-	random_harvest(&item, sizeof(void *), 1, RANDOM_UMA_ALLOC);
-#endif
 	return (item);
 }
 
@@ -2681,18 +2677,8 @@ uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
 	int lockfail;
 	int cpu;
 
-#if 0
-	/* XXX: FIX!! Do not enable this in CURRENT!! MarkM */
-	/* The entropy here is desirable, but the harvesting is expensive */
-	struct entropy {
-		const void *uz_name;
-		const void *item;
-	} entropy;
-
-	entropy.uz_name = zone->uz_name;
-	entropy.item = item;
-	random_harvest(&entropy, sizeof(struct entropy), 2, RANDOM_UMA_ALLOC);
-#endif
+	/* Enable entropy collection for RANDOM_ENABLE_UMA kernel option */
+	random_harvest_fast_uma(&zone, sizeof(zone), 1, RANDOM_UMA);
 
 #ifdef UMA_DEBUG_ALLOC_1
 	printf("Freeing item %p to %s(%p)\n", item, zone->uz_name, zone);
@@ -3140,7 +3126,7 @@ uma_zone_reserve_kva(uma_zone_t zone, int count)
 {
 	uma_keg_t keg;
 	vm_offset_t kva;
-	int pages;
+	u_int pages;
 
 	keg = zone_first_keg(zone);
 	if (keg == NULL)
@@ -3155,7 +3141,7 @@ uma_zone_reserve_kva(uma_zone_t zone, int count)
 #else
 	if (1) {
 #endif
-		kva = kva_alloc(pages * UMA_SLAB_SIZE);
+		kva = kva_alloc((vm_size_t)pages * UMA_SLAB_SIZE);
 		if (kva == 0)
 			return (0);
 	} else

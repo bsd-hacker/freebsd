@@ -12,14 +12,17 @@ SUBDIR= ${_toolkit}
 _toolkit=	toolkit
 .endif
 
-SCRIPTS=	disklatency \
+SCRIPTS=	blocking \
+		disklatency \
 		disklatencycmd \
 		hotopen \
+		nfsattrstats \
 		nfsclienttime \
-		udptrack \
+		siftr \
+		tcpconn \
 		tcpstate \
 		tcptrack \
-		tcpconn 
+		udptrack
 
 SCRIPTSDIR= ${SHAREDIR}/dtrace
 

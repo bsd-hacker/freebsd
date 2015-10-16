@@ -59,6 +59,7 @@ ENTRY(casueword32)
 	ldrb	w0, [x0]		/* Try loading the data */
 2:	SET_FAULT_HANDLER(xzr, x5)	/* Reset the fault handler */
 	str	w4, [x2]		/* Store the read data */
+	mov	x0, #0			/* Success */
 	ret				/* Return */
 END(casueword32)
 
@@ -76,6 +77,7 @@ ENTRY(casueword)
 	ldrb	w0, [x0]		/* Try loading the data */
 2:	SET_FAULT_HANDLER(xzr, x5)	/* Reset the fault handler */
 	str	x4, [x2]		/* Store the read data */
+	mov	x0, #0			/* Success */
 	ret				/* Return */
 END(casueword)
 
@@ -221,7 +223,7 @@ END(suswintr)
 ENTRY(setjmp)
 	/* Store the stack pointer */
 	mov	x8, sp
-	str	x8, [x0]
+	str	x8, [x0], #8
 
 	/* Store the general purpose registers and lr */
 	stp	x19, x20, [x0], #16

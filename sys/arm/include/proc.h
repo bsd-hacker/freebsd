@@ -61,11 +61,7 @@ struct mdproc {
 	void	*md_sigtramp;
 };
 
-#ifdef __ARM_EABI__
 #define	KINFO_PROC_SIZE 816
-#else
-#define	KINFO_PROC_SIZE 792
-#endif
 
 #define MAXARGS	8
 /*
@@ -73,7 +69,7 @@ struct mdproc {
  * As some syscall arguments may be 64-bit aligned we need to ensure the
  * args value is 64-bit aligned. The ABI will then ensure any 64-bit
  * arguments are already correctly aligned, even if they were passed in
- * via registers, we just need to make sure we copy them to an algned
+ * via registers, we just need to make sure we copy them to an aligned
  * buffer.
  */
 struct syscall_args {

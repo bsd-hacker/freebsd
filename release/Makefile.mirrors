@@ -27,7 +27,7 @@ EMBEDDED=		1
 .endif
 
 # snapshot
-.if ${BRANCH} == "STABLE" || ${BRANCH} == "CURRENT"
+.if ${BRANCH} == "STABLE" || ${BRANCH} == "CURRENT" || ${BRANCH} == "PRERELEASE"
 SNAPSHOT=		1
 TLD?=			${FTPDIR}/snapshots
 . if !defined(SVNREVISION) || empty(SVNREVISION)
@@ -63,7 +63,7 @@ BOARDNAME:=		${KERNCONF}
 .  else
 OLDNAME:=		${KERNCONF}
 .  endif
-.  if ${BRANCH} == "STABLE" || ${BRANCH} == "CURRENT"
+.  if ${BRANCH} == "STABLE" || ${BRANCH} == "CURRENT" || ${BRANCH} == "PRERELEASE"
 SNAPSHOT=		1
 .  endif
 IMAGES:=		img
@@ -76,7 +76,7 @@ VM_DIR=			${TLD}/VM-IMAGES/${REVISION}-${BRANCH}/${TARGET_ARCH}
 .endif
 
 CLEANFILES+=		${STAGE_TARGETS}
-CHECKSUM_FILES?=	SHA256 MD5
+CHECKSUM_FILES?=	SHA512 SHA256
 SNAP_SUFFIX!=		echo ${_SNAP_SUFFIX:S,^-,,1} | tr -d ' '
 ISO_DIR=		${TLD}/${TARGET}/${TARGET_ARCH}/ISO-IMAGES/${REVISION}
 FTP_DIR=		${TLD}/${TARGET}/${TARGET_ARCH}/${REVISION}-${BRANCH}
