@@ -56,7 +56,7 @@ CFLAGS+=-DPF
 
 BINGRP=	kmem
 BINMODE=2555
-LIBADD=	kvm memstat xo
+LIBADD=	kvm memstat util xo
 
 .if ${MK_NETGRAPH_SUPPORT} != "no"
 SRCS+=	netgraph.c
