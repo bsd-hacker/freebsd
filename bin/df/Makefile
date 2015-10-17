@@ -9,6 +9,6 @@ SRCS=	df.c vfslist.c
 
 CFLAGS+= -I${MOUNT}
 
-LIBADD=	xo
+LIBADD= util xo
 
 .include <bsd.prog.mk>
