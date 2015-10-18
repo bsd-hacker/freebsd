@@ -17,6 +17,6 @@ SRCS=	procstat.c		\
 	procstat_threads.c	\
 	procstat_vm.c
 
-LIBADD+=	procstat util xo sbuf
+LIBADD+=	procstat xo util sbuf
 
 .include <bsd.prog.mk>
