@@ -480,17 +480,9 @@ install_chroots() {
 # Build amd64/i386 "seed" chroots for all branches being built.
 build_chroots() {
 	source_config || return 0
-	if [ ${rev} -le 8 ]; then
+	if [ ${rev} -le 9 ]; then
 		info "This script does not support rev ${rev}"
 		return 0
-	fi
-	# Building stable/9 on head/ is particularly race-prone when
-	# building make(1) for the first time.  I have no idea why.
-	# Apply duct tape for now.
-	if [ ${rev} -lt 10 ]; then
-		__makecmd="make"
-	else
-		__makecmd="bmake"
 	fi
 	case ${arch} in
 		i386)
@@ -514,13 +506,6 @@ build_chroots() {
 			${_srcdir} \
 			>> ${logdir}/${_build}.log 2>&1
 	fi
-	info "Building ${_srcdir} make(1)"
-	env MAKEOBJDIRPREFIX=${_objdir} \
-		make -C ${_srcdir} ${WORLD_FLAGS} \
-		__MAKE_CONF=/dev/null SRCCONF=/dev/null \
-		TARGET=${_chrootarch} TARGET_ARCH=${_chrootarch} \
-		${__makecmd} >> \
-		${logdir}/${_build}.log 2>&1
 	info "Building ${_srcdir} world"
 	env MAKEOBJDIRPREFIX=${_objdir} \
 		make -C ${_srcdir} ${WORLD_FLAGS} \
