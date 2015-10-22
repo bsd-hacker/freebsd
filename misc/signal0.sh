@@ -34,6 +34,10 @@
 # Panic fixed in r258497
 # Signal number fixed in r258499
 
+# panic: vm_fault: fault on nofault entry, addr: cdbbe000
+# https://people.freebsd.org/~pho/stress/log/kostik838.txt
+# Fixed by r289661.
+
 dir=/tmp
 odir=`pwd`
 cd $dir
@@ -46,7 +50,9 @@ cd $odir
 for i in `jot 500`; do
 	/tmp/signal0
 done
-killall -q swap
+while pkill -9 swap; do
+	:
+done
 
 rm -f /tmp/signal0
 exit
