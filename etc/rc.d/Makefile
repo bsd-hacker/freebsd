@@ -45,7 +45,6 @@ FILES=	DAEMON \
 	hostid_save \
 	hostname \
 	iovctl \
-	ip6addrctl \
 	ipfilter \
 	ipfs \
 	ipfw \
@@ -187,6 +186,7 @@ FILES+=		hastd
 .endif
 
 .if ${MK_INET6} != "no"
+FILES+=		ip6addrctl
 FILES+=		mroute6d
 FILES+=		route6d
 FILES+=		rtadvd

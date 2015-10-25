@@ -2784,6 +2784,7 @@ OLD_FILES+=usr/share/man/man3/iconvlist.3.gz
 .endif
 
 .if ${MK_INET6} == no
+OLD_FILES+=etc/rc.d/ip6addrctl
 OLD_FILES+=etc/rc.d/mroute6d
 OLD_FILES+=etc/rc.d/route6d
 OLD_FILES+=etc/rc.d/rtadvd
