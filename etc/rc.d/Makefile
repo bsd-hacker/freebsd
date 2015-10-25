@@ -100,8 +100,6 @@ FILES=	DAEMON \
 	root \
 	routing \
 	rpcbind \
-	rtadvd \
-	rtsold \
 	savecore \
 	sdpd \
 	securelevel \
@@ -191,6 +189,8 @@ FILES+=		hastd
 .if ${MK_INET6} != "no"
 FILES+=		mroute6d
 FILES+=		route6d
+FILES+=		rtadvd
+FILES+=		rtsold
 .endif
 
 .if ${MK_INETD} != "no"
