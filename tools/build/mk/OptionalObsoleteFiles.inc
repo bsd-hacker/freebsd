@@ -999,6 +999,8 @@ OLD_DIRS+=usr/share/dtrace
 OLD_FILES+=boot/gptzfsboot
 OLD_FILES+=boot/zfsboot
 OLD_FILES+=boot/zfsloader
+OLD_FILES+=etc/rc.d/zfs
+OLD_FILES+=etc/rc.d/zvol
 OLD_FILES+=etc/devd/zfs.conf
 OLD_FILES+=etc/periodic/daily/404.status-zfs
 OLD_FILES+=etc/periodic/daily/800.scrub-zfs
@@ -2782,6 +2784,8 @@ OLD_FILES+=usr/share/man/man3/iconvlist.3.gz
 .endif
 
 .if ${MK_INET6} == no
+OLD_FILES+=etc/rc.d/mroute6d
+OLD_FILES+=etc/rc.d/route6d
 OLD_FILES+=sbin/ping6
 OLD_FILES+=sbin/rtsol
 OLD_FILES+=usr/sbin/ip6addrctl
