@@ -70,7 +70,6 @@ FILES=	DAEMON \
 	mdconfig \
 	mdconfig2 \
 	mountd \
-	mroute6d \
 	msgs \
 	natd \
 	netif \
@@ -99,7 +98,6 @@ FILES=	DAEMON \
 	resolv \
 	rfcomm_pppd_server \
 	root \
-	route6d \
 	routing \
 	rpcbind \
 	rtadvd \
@@ -131,8 +129,6 @@ FILES=	DAEMON \
 	ypset \
 	ypupdated \
 	ypxfrd \
-	zfs \
-	zvol
 
 .if ${MK_ACCT} != "no"
 FILES+=		accounting
@@ -190,6 +186,11 @@ FILES+=		ftpd
 
 .if ${MK_HAST} != "no"
 FILES+=		hastd
+.endif
+
+.if ${MK_INET6} != "no"
+FILES+=		mroute6d
+FILES+=		route6d
 .endif
 
 .if ${MK_INETD} != "no"
@@ -282,6 +283,11 @@ FILES+=		virecover
 .if ${MK_WIRELESS} != "no"
 FILES+=		hostapd
 FILES+=		wpa_supplicant
+.endif
+
+.if ${MK_ZFS} != "no"
+FILES+=		zfs
+FILES+=		zvol
 .endif
 
 FILESDIR=	/etc/rc.d
