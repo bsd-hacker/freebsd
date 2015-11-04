@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2013 EMC Corp.
+# Copyright (c) 2015 EMC Corp.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,11 +28,10 @@
 # $FreeBSD$
 #
 
-# "panic: cluster_wbuild: page 0xc2eebc10 failed shared busing" seen.
-# "panic: vdrop: holdcnt 0" seen.
-# "panic: cleaned vnode isn't" seen.
-# OoVM seen with r285808:
-# https://people.freebsd.org/~pho/stress/log/holdcnt0.txt
+# Copy of holdcnt02.sh, but with mmap'ed write.
+# Use 16 GB RAM or less.
+# Deadlock seen:
+# https://people.freebsd.org/~pho/stress/log/alan018.txt
 
 # Test scenario suggestion by alc@
 
@@ -44,30 +43,18 @@
 
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > holdcnt0.c
-mycc -o holdcnt0 -Wall -Wextra -g holdcnt0.c || exit 1
-rm -f holdcnt0.c
+sed '1,/^EOF/d' < $here/$0 > holdcnt03.c
+mycc -o holdcnt03 -Wall -Wextra -g holdcnt03.c || exit 1
+rm -f holdcnt03.c
 cd $here
 
-mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
-mdconfig -a -t swap -s 5g -u $mdstart
-bsdlabel -w md$mdstart auto
-newfs md${mdstart}$part > /dev/null
-mount /dev/md${mdstart}$part $mntpoint
-
-(cd $mntpoint; /tmp/holdcnt0) &
+trap "rm -f /tmp/holdcnt03 `dirname $diskimage`/f000???" EXIT INT
+(cd `dirname $diskimage`; /tmp/holdcnt03) &
 sleep 5
 while kill -0 $! 2> /dev/null; do
 	(cd ../testcases/swap; ./swap -t 1m -i 1) > /dev/null 2>&1
 done
 wait
-
-while mount | grep -q md${mdstart}$part; do
-	umount $mntpoint || sleep 1
-done
-mdconfig -d -u $mdstart
-rm -f /tmp/holdcnt0
 exit 0
 EOF
 /*
@@ -99,7 +86,6 @@ static jmp_buf jbuf;
 off_t maxsize;
 int ps;
 static char *buf;
-volatile char val;
 
 static void
 hand(int i __unused) {  /* handler */
@@ -171,7 +157,7 @@ err:
 }
 
 void
-reader(void)
+touch(void)
 {
 	int fd, i, j, n;
 	void *p;
@@ -179,7 +165,7 @@ reader(void)
 	char file[80];
 	struct stat statbuf;
 
-	setproctitle("reader");
+	setproctitle("touch");
 	signal(SIGSEGV, hand);
 	fd = 0;
 	for (;;) {
@@ -190,7 +176,7 @@ reader(void)
 				close(fd);
 			if ((fd = open(file, O_RDWR)) == -1) {
 				if (errno != ENOENT)
-					warn("reader(%s)", file);
+					warn("touch(%s)", file);
 				_exit(0);
 			}
 			if (fstat(fd, &statbuf) < 0)
@@ -206,13 +192,11 @@ reader(void)
 			close(fd);
 			n = statbuf.st_size / ps;
 			for (j = 0; j < n; j++) {
-				val = *(char *)p;
+				*(char *)p = 1;
 				p = p + ps;
 			}
-#if 0
 			if (munmap(p, len) == -1)
 				perror("munmap");
-#endif
 		}
 	}
 	_exit(0);
@@ -233,7 +217,7 @@ main(void)
 	}
 	for (i = 0; i < RPARALLEL; i++) {
 		if (fork() == 0)
-			reader();
+			touch();
 	}
 
 	for (i = 0; i < WPARALLEL; i++)

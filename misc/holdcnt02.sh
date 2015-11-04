@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2013 EMC Corp.
+# Copyright (c) 2015 EMC Corp.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,11 +28,7 @@
 # $FreeBSD$
 #
 
-# "panic: cluster_wbuild: page 0xc2eebc10 failed shared busing" seen.
-# "panic: vdrop: holdcnt 0" seen.
-# "panic: cleaned vnode isn't" seen.
-# OoVM seen with r285808:
-# https://people.freebsd.org/~pho/stress/log/holdcnt0.txt
+# Copy of holdcnt0.sh, but without the memory disk usage.
 
 # Test scenario suggestion by alc@
 
@@ -44,30 +40,18 @@
 
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > holdcnt0.c
-mycc -o holdcnt0 -Wall -Wextra -g holdcnt0.c || exit 1
-rm -f holdcnt0.c
+sed '1,/^EOF/d' < $here/$0 > holdcnt02.c
+mycc -o holdcnt02 -Wall -Wextra -g holdcnt02.c || exit 1
+rm -f holdcnt02.c
 cd $here
 
-mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
-mdconfig -a -t swap -s 5g -u $mdstart
-bsdlabel -w md$mdstart auto
-newfs md${mdstart}$part > /dev/null
-mount /dev/md${mdstart}$part $mntpoint
-
-(cd $mntpoint; /tmp/holdcnt0) &
+trap "rm -f /tmp/holdcnt02 `dirname $diskimage`/f000???" EXIT INT
+(cd `dirname $diskimage`; /tmp/holdcnt02) &
 sleep 5
 while kill -0 $! 2> /dev/null; do
 	(cd ../testcases/swap; ./swap -t 1m -i 1) > /dev/null 2>&1
 done
 wait
-
-while mount | grep -q md${mdstart}$part; do
-	umount $mntpoint || sleep 1
-done
-mdconfig -d -u $mdstart
-rm -f /tmp/holdcnt0
 exit 0
 EOF
 /*
