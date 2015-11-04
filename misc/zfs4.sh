@@ -35,7 +35,7 @@
 
 . ../default.cfg
 
-kldstat -v | grep -q zfs.ko  || kldload zfs.ko
+kldstat -v | grep -q zfs.ko  || { kldload zfs.ko; loaded=1; }
 
 d1=${diskimage}.1
 d2=${diskimage}.2
@@ -52,6 +52,7 @@ mdconfig -l | grep -q md${u2} && mdconfig -d -u $u2
 mdconfig -a -t vnode -f $d1 -u $u1
 mdconfig -a -t vnode -f $d2 -u $u2
 
+[ -d /tank ] && rm -rf /tank
 zpool create tank md$u1 md$u2
 zfs create tank/test
 zfs set quota=100m tank/test
@@ -76,3 +77,4 @@ mdconfig -d -u $u1
 mdconfig -d -u $u2
 
 rm -rf $d1 $d2
+[ -n "$loaded" ] && kldunload zfs.ko

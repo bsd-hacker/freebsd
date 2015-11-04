@@ -35,7 +35,7 @@
 
 . ../default.cfg
 
-kldstat -v | grep -q zfs.ko  || kldload zfs.ko
+kldstat -v | grep -q zfs.ko  || { kldload zfs.ko; loaded=1; }
 
 d1=${diskimage}.1
 d2=${diskimage}.2
@@ -43,6 +43,7 @@ d2=${diskimage}.2
 dd if=/dev/zero of=$d1 bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 dd if=/dev/zero of=$d2 bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 
+[ -d /tank ] && rm -rf /tank
 zpool create tank $d1 $d2
 zfs create tank/test
 zfs set quota=100m tank/test
@@ -65,3 +66,4 @@ zfs destroy -r tank
 zpool destroy tank
 
 rm -rf $d1 $d2
+[ -n "$loaded" ] && kldunload zfs.ko

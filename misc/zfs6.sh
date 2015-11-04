@@ -28,7 +28,7 @@
 # $FreeBSD$
 #
 
-# Simple zfs mirror test scenario
+# Parallel mount / umount and snapshots. No problems seen.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 [ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le 3 ] && exit 0
@@ -37,33 +37,39 @@
 
 kldstat -v | grep -q zfs.ko  || { kldload zfs.ko; loaded=1; }
 
-d1=${diskimage}.1
-d2=${diskimage}.2
-
-dd if=/dev/zero of=$d1 bs=1m count=1k 2>&1 | egrep -v "records|transferred"
-dd if=/dev/zero of=$d2 bs=1m count=1k 2>&1 | egrep -v "records|transferred"
-
 u1=$mdstart
 u2=$((u1 + 1))
+u3=$((u2 + 1))
 
 mdconfig -l | grep -q md${u1} && mdconfig -d -u $u1
 mdconfig -l | grep -q md${u2} && mdconfig -d -u $u2
+mdconfig -l | grep -q md${u3} && mdconfig -d -u $u3
 
-mdconfig -a -t vnode -f $d1 -u $u1
-mdconfig -a -t vnode -f $d2 -u $u2
+mdconfig -s 512m -u $u1
+mdconfig -s 512m -u $u2
+mdconfig -s 512m -u $u3
 
 [ -d /tank ] && rm -rf /tank
-zpool create tank mirror md$u1 md$u2
+zpool create tank raidz md$u1 md$u2 md$u3
+zfs create tank/test
 
-export RUNDIR=/tank/stressX
-export runRUNTIME=10m
-(cd ..; ./run.sh marcus.cfg)
+while true; do
+	zfs umount tank/test
+	zfs mount tank/test
+done &
 
+for i in `jot 5000`; do
+	touch /tank/test/f$i
+	zfs snapshot tank/test@$i
+	if [ $i -gt 5 ]; then
+		zfs destroy tank/test@$((i - 5))
+	fi
+done
+kill $!
 zfs destroy -r tank
 zpool destroy tank
 
 mdconfig -d -u $u1
 mdconfig -d -u $u2
-
-rm -rf $d1 $d2
+mdconfig -d -u $u3
 [ -n "$loaded" ] && kldunload zfs.ko

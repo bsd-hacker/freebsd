@@ -35,7 +35,7 @@
 
 . ../default.cfg
 
-kldstat -v | grep -q zfs.ko  || kldload zfs.ko
+kldstat -v | grep -q zfs.ko  || { kldload zfs.ko; loaded=1; }
 
 u1=$mdstart
 u2=$((u1 + 1))
@@ -49,6 +49,7 @@ mdconfig -s 512m -u $u1
 mdconfig -s 512m -u $u2
 mdconfig -s 512m -u $u3
 
+[ -d /tank ] && rm -rf /tank
 zpool create tank raidz md$u1 md$u2 md$u3
 zfs create tank/test
 
@@ -62,3 +63,4 @@ zpool destroy tank
 mdconfig -d -u $u1
 mdconfig -d -u $u2
 mdconfig -d -u $u3
+[ -n "$loaded" ] && kldunload zfs.ko
