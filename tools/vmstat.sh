@@ -28,35 +28,54 @@
 # $FreeBSD$
 #
 
-# Memory leak detector: run vmstat -m & -z in a loop
+# Memory leak detector: run vmstat -m & -z in a loop.
 
-[ $# -eq 1 ] && debug="-v debug=1"
 export LANG=en_US.ISO8859-1
+while getopts dmz flag; do
+        case "$flag" in
+        d) debug="-v debug=1" ;;
+        m) optz=n ;;
+        z) optm=n ;;
+        *) echo "Usage $0 [-d] [-m] [-z]"
+           return 1 ;;
+        esac
+done
+
+start=`date '+%s'`
 OIFS=$IFS
 while true; do
 	#          Type InUse MemUse
-	vmstat -m | sed 1d | \
+	[ -z "$optm" ] && vmstat -m | sed 1d | \
 	    sed 's/\(.* \)\([0-9][0-9]*\)  *\(.*\)K .*/\1:\2:\3/' | \
 	    while IFS=: read -r p1 p2 p3; do
 		name=`echo $p1 | sed 's/^ *//;s/ *$//'`
-		memuse=$((p3 * 1024))
+		memuse=$p3
 		[ "$memuse" -ne 0 ] && echo "vmstat -m $name,$memuse"
 	done
 
 	# ITEM                   SIZE  LIMIT     USED
-	IFS=OIFS
-	vmstat -z | sed "1,2d;/^$/d" | while read l; do
-		IFS=':,'
+	[ -z "$optz" ] && vmstat -z | sed "1,2d;/^$/d;s/: /, /" |
+	    while read l; do
+		IFS=','
 		set $l
+		[ $# -ne 8 ] &&
+		    { echo "# args must be 8, but is $#in $l" 1>&2;
+		        continue; }
 		size=$2
 		used=$4
-		[ "$used" -ne 0 ] &&
-		    echo "vmstat -z $1,$((size * used))"
+		[ -z "$used" -o -z "$size" ] &&
+		    { echo "used/size not set $l" 1>&2; continue; }
+		tot=$((size * used / 1024))
+		[ $tot -ne 0 ] &&
+		   echo "vmstat -z $1,$tot"
 	done
+
+	echo "vm.cnt.v_wire_count, \
+	    $((`sysctl -n vm.stats.vm.v_wire_count` * 4))"
 	sleep 10
 done | awk $debug -F, '
 {
-# Pairs of "name, value" are passed to this awk script
+# Pairs of "name, value" are passed to this awk script.
 	name=$1;
 	size=$2;
 	if (size > s[name]) {
@@ -65,7 +84,7 @@ done | awk $debug -F, '
 			cmd | getline t;
 			close(cmd);
 			printf "%s \"%s\" %'\''dK\r\n", t,
-			    name, size / 1024;
+			    name, size;
 			n[name] = 0;
 		}
 		s[name] = size;
@@ -74,4 +93,8 @@ done | awk $debug -F, '
 			    name, s[name], n[name]
 	} else if (size < s[name] && n[name] > 0)
 		n[name]--
-}'
+}' | while read l; do
+	d=$(((`date '+%s'` - start) / 86400))
+	echo "$d $l"
+done
+# Note: the %'d is used to trigger a thousands-separator character.
