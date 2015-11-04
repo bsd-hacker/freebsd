@@ -34,15 +34,7 @@ for i in `find ../testcases -type f -perm -1`; do
 	list=`echo $list $(basename $i)`
 done
 
-ps -a | sed '1d' | awk '{print $1,$5}' | while read line; do
-	set $line
-	pid=$1
-	prog=$2
-	prog=`echo $prog | sed 's/^-//;s#.*/##'`
-	for l in $list; do
-		if [ $l = $prog ]; then
-			echo "kill $l: $pid"
-			kill -9 $pid
-		fi
-	done
+for i in `jot 20`; do
+	killall -q -9 $list 2>/dev/null || break
+	sleep $i
 done
