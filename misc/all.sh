@@ -39,6 +39,7 @@
 #		panic: 43 vncache entries remaining			20111220
 # backingstore3.sh
 #		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111230
+# bio.sh	WiP							20150925
 # core5.sh	May slow down if vnode cache is full			20150714
 # crossmp4.sh	Known nullfs issue					20150523
 # crossmp6.sh	Known lockd issue					20150625
@@ -54,6 +55,7 @@
 # gjournal3.sh	panic: Journal overflow					20130729
 # lockf5.sh	Page fault						20150622
 # md2.sh	panic: ufs_dirbad: /mnt: bad dir ino ...: mangled entry	20150227
+# maxmemdom.sh	Panic: vm_page_alloc: missing page			20151029
 # maxproc.sh	WiP							20150329
 # memguard.sh	Waiting for fix commit
 # memguard2.sh	Waiting for fix commit
@@ -61,19 +63,9 @@
 # mkfifo.sh	Page fault in softdep_count_dependencies+0x27 seen	20150524
 # mmap18.sh	panic: vm_fault_copy_entry: main object missing page	20141015
 # mmap21.sh	rangelock issue?					20150326
-# mmap23.sh	Waiting commit
-# mmap24.sh	Waiting commit
-# mmap25.sh	Waiting commit
-# mmap26.sh	Waiting commit
 # msdos5.sh	Panic: Freeing unused sector ...			20141118
-# newfs.sh	Memory modified after free. ... used by inodedep	20111217
-# newfs2.sh	umount stuck in ufs					20111226
-# nfs2.sh	panic: wrong diroffset					20140219
-# nfs5.sh	Deadlock panic						20141120
-# nfs6.sh	Hang							20141012
-# nfs9.sh	panic: lockmgr still held				20130503
-# nfs10.sh	Deadlock						20130401
-# nfs11.sh	Deadlock						20130429
+# newfs4.sh	Deadlock seen						20150906
+# nfs10.sh	Double fault						20151013
 # pfl3.sh	panic: handle_written_inodeblock: live inodedep		20140812
 # pmc.sh	NMI ... going to debugger				20111217
 # snap5-1.sh	mksnap_ffs deadlock					20111218
@@ -81,6 +73,7 @@
 # quota3.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111222
 # quota6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130206
 # quota7.sh	panic: dqflush: stray dquot				20120221
+# rw.sh		WiP							20150928
 # shm_open.sh	panic: kmem_malloc(4096): kmem_map too small		20130504
 # snap3.sh	mksnap_ffs stuck in snaprdb				20111226
 # snap5.sh	mksnap_ffs stuck in getblk				20111224
@@ -93,7 +86,7 @@
 # suj13.sh	general protection fault in bufdaemon			20141130
 # suj18.sh	panic: Bad tailq NEXT(0xc1e2a6088->tqh_last_s) != NULL	20120213
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
-# suj34.sh	Various hangs and panics				20131210
+# suj34.sh	Various hangs and panics (SUJ + NULLFS iisue)		20131210
 # trim4.sh	Page fault in softdep_count_dependencies+0x27		20140608
 # umountf3.sh	KDB: enter: watchdog timeout				20111217
 # umountf7.sh	panic: handle_written_inodeblock: live inodedep ...	20131129
@@ -104,14 +97,10 @@
 # Test not to run for other reasons:
 
 # fuzz.sh	A know issue
-# newfs3.sh	OK, but runs for a very long time
-# mmap10.sh	OK, but runs for a long time
-# mmap11.sh	OK, but runs for a very long time
-# mmap15.sh	Runs for a very long time
-# mmap22.sh	Runs for a very long time
 # statfs.sh	Not very interesting
 # syscall.sh	OK, but runs for a very long time
 # syscall2.sh	OK, but runs for a very long time
+# syscall3.sh	OK, but syscall4.sh is better
 # vunref.sh	No problems ever seen
 # vunref2.sh	No problems ever seen
 
@@ -129,6 +118,11 @@
 # suj28.sh
 
 # Exclude NFS loopback tests
+# nfs2.sh	panic: wrong diroffset 					20140219
+# nfs5.sh
+# nfs6.sh
+# nfs10.sh
+# nfs11.sh	vmwait deadlock						20151004
 # nfs13.sh
 # nullfs8.sh
 
@@ -141,10 +135,12 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 # Log files:
-alllog=/tmp/stress2.all.log		# Tests run
 allfaillog=/tmp/stress2.all.fail.log	# Tests that failed
 alllast=/tmp/stress2.all.last		# Last test run
+alllist=/tmp/stress2.all.list		# -o list
+alllog=/tmp/stress2.all.log		# Tests run
 alloutput=/tmp/stress2.all.output	# Output from current test
+allexcess=/tmp/stress2.all.excessive	# Tests with excessive runtime
 
 args=`getopt acno $*`
 [ $? -ne 0 ] && echo "Usage $0 [-a] [-c] [-n] [tests]" && exit 1
@@ -171,7 +167,33 @@ for i; do
 	esac
 done
 
-rm -f $alllog $allfaillog
+# Sanity checks
+. ../default.cfg
+minspace=$((1024 * 1024)) # in k
+[ -d `dirname "$diskimage"` ] ||
+    { echo "diskimage dir: $diskimage not found"; exit 1; }
+[ `df -k $(dirname $diskimage) | tail -1 | awk '{print $4'}` -lt \
+    $minspace ] &&
+    echo "Warn: Not enough disk space on `dirname $diskimage` for \$diskimage"
+[ ! -d $(dirname $RUNDIR) ] && echo "No such `dirname $RUNDIR`" &&
+    exit 1
+[ `df -k $(dirname $RUNDIR) | tail -1 | awk '{print $4'}` -lt \
+    $minspace ] &&
+    echo "Warn: Not enough disk space on `dirname $RUNDIR` for \$RUNDIR"
+probe=`dirname $RUNDIR`/probe
+su $testuser -c "touch $probe" > /dev/null 2>&1
+[ -f `dirname $RUNDIR`/probe ] && rm $probe ||
+    { echo "No write access to `dirname $RUNDIR`."; exit 1; }
+[ `swapinfo | wc -l` -eq 1 ] &&
+    echo "Consider adding a swap disk. Many tests rely on this."
+grep -wq "$testuser" /etc/passwd ||
+    { echo "\$testuser not found."; exit 1; }
+[ -x ../testcases/run/run ] ||
+    { echo "Please run \"cd stress2; make\" first." && exit 1; }
+ping -c 2 -t 2 $BLASTHOST > /dev/null 2>&1 ||
+    { echo "Can not ping \$BLASTHOST: $BLASTHOST"; }
+
+rm -f $alllog $alllist
 find `dirname $alllast` -maxdepth 1 -name $alllast -mtime +12h -delete
 touch $alllast $alllog
 chmod 640 $alllast $alllog
@@ -186,6 +208,7 @@ while true; do
 	if [ -n "$noshuffle" -a $# -eq 0 ]; then
 		last=`cat $alllast`
 		if [ -n "$last" ]; then
+			last=`basename $last`
 			l=`echo "$list" | sed "s/.*$last//"`
 			[ -z "$l" ] && l=$list	# start over
 			list=$l
@@ -203,8 +226,8 @@ while true; do
 		lst="$lst $i"
 	done
 	[ -z "$lst" ] && exit
+	[ -n "$once" ] && echo "$lst" > $alllist
 
-	. ../default.cfg
 	n1=0
 	n2=`echo $lst | wc -w | sed 's/ //g'`
 	for i in $lst; do
@@ -222,9 +245,14 @@ while true; do
 		    echo "`date '+%Y%m%d %T'` $i" >> $allfaillog &&
 		    logger "stress2 test $i failed"
 		rm -f $alloutput
-		[ $((`date '+%s'` - $start)) -gt 1900 ] &&
+		[ $((`date '+%s'` - $start)) -gt 1980 ] &&
 		    printf "*** Excessive run time: %s %d min\r\n" $i, \
-		    $(((`date '+%s'` - $start) / 60))> /dev/console
+		    $(((`date '+%s'` - $start) / 60)) | \
+		    tee /dev/console >> $allexcess
+		while pgrep -q swap; do
+			echo "swap still running"
+			sleep 2
+		done
 	done
 	[ -n "$once" ] && break
 done
