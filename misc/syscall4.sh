@@ -51,13 +51,11 @@ rm -f /tmp/syscall4
 mycc -o syscall4 -Wall -Wextra -O2 -g syscall4.c -lpthread || exit 1
 rm -f syscall4.c
 
-(
-kldstat -v | grep -q sysvmsg  || kldload sysvmsg
-kldstat -v | grep -q sysvsem  || kldload sysvsem
-kldstat -v | grep -q sysvshm  || kldload sysvshm
-kldstat -v | grep -q aio      || kldload aio
-kldstat -v | grep -q mqueuefs || kldload mqueuefs
-) 2>/dev/null
+kldstat -v | grep -q sysvmsg  || $odir/../tools/kldload.sh sysvmsg
+kldstat -v | grep -q sysvsem  || $odir/../tools/kldload.sh sysvsem
+kldstat -v | grep -q sysvshm  || $odir/../tools/kldload.sh sysvshm
+kldstat -v | grep -q aio      || $odir/../tools/kldload.sh aio
+kldstat -v | grep -q mqueuefs || $odir/../tools/kldload.sh mqueuefs
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
@@ -75,7 +73,6 @@ while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
 	(cd $mntpoint; /tmp/syscall4 $* ) &
 	start=`date '+%s'`
 	while [ $((`date '+%s'` - start)) -lt $sleeptime ]; do
-#		ps aux | grep -v grep | egrep -q "syscall4$" || break
 		pgrep syscall4 > /dev/null || break
 		sleep .5
 	done
@@ -83,7 +80,9 @@ while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
 		:
 	done
 	wait
-	pkill -9 swap
+	while pkill -9 swap; do
+		:
+	done
 	ipcs | grep nobody | awk '/^(q|m|s)/ {print " -" $1, $2}' |
 	    xargs -L 1 ipcrm
 done
@@ -104,7 +103,13 @@ fi
 rm -f /tmp/syscall4
 exit
 EOF
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -113,16 +118,10 @@ EOF
 #include <pthread.h>
 #include <pwd.h>
 #include <signal.h>
-#include <sys/socket.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/param.h>
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <sys/syscall.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 static int ignore[] = {
@@ -158,6 +157,9 @@ int fd[900], fds[2], socketpr[2];
 #endif
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
 #define MAGIC 1664
+#define RUNTIME 120
+#define THREADS 50
+
 u_int32_t r[N];
 int magic1, syscallno, magic2;
 
@@ -274,7 +276,7 @@ calls(void *arg __unused)
 		arg6 = makearg();
 		arg7 = makearg();
 
-#if 0
+#if 0		/* Debug mode */
 		fprintf(stderr, "%2d : syscall(%3d, %lx, %lx, %lx, %lx, %lx, %lx, %lx)\n",
 			i, num, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 		sleep(2);
@@ -294,9 +296,9 @@ main(int argc, char **argv)
 {
 	struct passwd *pw;
 	struct rlimit limit;
-	pthread_t rp, cp[50];
+	pthread_t rp, cp[THREADS];
 	time_t start;
-	int j;
+	int e, j;
 
 
 	magic1 = magic2 = MAGIC;
@@ -341,17 +343,16 @@ main(int argc, char **argv)
 		err(1, "daemon()");
 
 	start = time(NULL);
-	while ((time(NULL) - start) < 120) {
+	while ((time(NULL) - start) < RUNTIME) {
 		if (fork() == 0) {
 			arc4random_stir();
-			if (pthread_create(&rp, NULL, test, NULL) != 0)
-				perror("pthread_create");
+			if ((e = pthread_create(&rp, NULL, test, NULL)) != 0)
+				errc(1, e, "pthread_create");
 			usleep(1000);
-			for (j = 0; j < 50; j++)
-				if (pthread_create(&cp[j], NULL, calls, NULL) != 0)
-					perror("pthread_create");
-
-			for (j = 0; j < 50; j++)
+			for (j = 0; j < THREADS; j++)
+				if ((e = pthread_create(&cp[j], NULL, calls, NULL)) != 0)
+					errc(1, e, "pthread_create");
+			for (j = 0; j < THREADS; j++)
 				pthread_join(cp[j], NULL);
 			_exit(0);
 		}
