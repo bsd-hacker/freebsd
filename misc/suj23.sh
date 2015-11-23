@@ -31,6 +31,12 @@
 # Scenario from kern/159971
 # bstg0003.c by Kirk Russell <kirk ba23 org>
 
+# panic: ino 0xc84c9b00(0x3C8209) 65554, 32780 != 65570
+# https://people.freebsd.org/~pho/stress/log/suj23.txt
+
+# panic: first_unlinked_inodedep: prev != next. inodedep = 0xcadf9e00
+# https://people.freebsd.org/~pho/stress/log/jeff091.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
@@ -41,21 +47,21 @@ sed '1,/^EOF/d' < $here/$0 > suj23.c
 mycc -o suj23 -Wall -Wextra -O2 suj23.c
 rm -f suj23.c
 
-mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}
-mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
+mount | grep "on $mntpoint " | grep -q md$mdstart && umount $mntpoint
+[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 1g -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs -j md${mdstart}${part} > /dev/null
+mdconfig -a -t swap -s 1g -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs -j md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
 su $testuser -c '/tmp/suj23'
 
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
+while mount | grep -q "on $mntpoint "; do
+	umount $mntpoint || sleep 1
 done
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart
 rm -f /tmp/suj23
 exit 0
 EOF
@@ -81,9 +87,12 @@ EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
+
+#define RUNTIME 600
 
 static char *bstg_pathstore[] = {
 	"/mnt/111/z",
@@ -382,6 +391,7 @@ dosync()
 int
 main()
 {
+	time_t start;
 	unsigned x;
 	int i, status;
 	void (*funcs[]) () = {
@@ -413,10 +423,13 @@ main()
 			/* give child a new seed for the pathname selection */
 			srand(x);
 
+			start = time(NULL);
 			for (i = 0; i < 1000; i++) {
 				/* each child will start looping at different
 				 * function */
 				(*funcs[x++ % 16]) ();
+				if (time(NULL) - start > RUNTIME)
+					break;
 			}
 			/* we never expect this code to run */
 			_exit(1);
