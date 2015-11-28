@@ -43,10 +43,7 @@ if [ $# -eq 0 ]; then
 		./$0 $i &
 		./$0 find &
 	done
-
-	for i in `jot $mounts`; do
-		wait; wait
-	done
+	wait
 
 else
 	if [ $1 = find ]; then

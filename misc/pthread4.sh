@@ -46,9 +46,7 @@ for i in `jot 5`; do
 	for i in `jot 8`; do
 		/tmp/pthread4 &
 	done
-	for i in `jot 8`; do
-		wait
-	done
+	wait
 	'
 done > $log 2>&1
 rm -f /tmp/pthread4

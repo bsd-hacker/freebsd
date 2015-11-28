@@ -59,10 +59,7 @@ if [ $# -eq 0 ]; then
 		./$0 $m &
 		./$0 find &
 	done
-
-	for i in `jot $mounts`; do
-		wait; wait
-	done
+	wait
 
 	for i in `jot $mounts`; do
 		m=$((i + mdstart - 1))

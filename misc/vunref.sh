@@ -74,10 +74,7 @@ if [ $# -eq 0 ]; then
 	while [ ! -z "`ls $RUNDIR/active.* 2>/dev/null`" ] ; do
 		../testcases/swap/swap -t 2m -i 20
 	done
-
-	for i in `jot $mounts`; do
-		wait; wait
-	done
+	wait
 
 	for i in `jot $mounts`; do
 		m=$((i + mdstart - 1))

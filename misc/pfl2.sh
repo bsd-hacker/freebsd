@@ -92,7 +92,7 @@ export TESTPROGS="$TESTPROGS testcases/swap/swap"
 export RUNDIR=$mp2/stressX
 export CTRLDIR=$mp2/stressX.control
 su $testuser -c 'cd ..; ./testcases/run/run $TESTPROGS' > /dev/null 2>&1 &
-wait; wait
+wait
 
 while mount | grep "$mp2 " | grep -q /dev/md; do
 	umount $mp2 || sleep 1

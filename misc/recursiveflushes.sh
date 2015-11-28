@@ -61,9 +61,7 @@ for i in `jot 32`; do
    # Create 32 Mb files
    dd if=/dev/zero of=big.$i bs=16k count=2048 2>&1 | egrep -v "records|transferred"&
 done
-for i in `jot 32`; do
-   wait
-done
+wait
 for i in `jot 32`; do
    rm -f big.$i
 done

@@ -54,9 +54,7 @@ rm -f alternativeFlushPath.c
 for j in `jot 10`; do
    /tmp/alternativeFlushPath &
 done
-for j in `jot 10`; do
-   wait
-done
+wait
 sysctl vfs.altbufferflushes
 
 rm -rf /tmp/alternativeFlushPath $dir

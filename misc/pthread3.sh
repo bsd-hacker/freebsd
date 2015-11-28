@@ -41,9 +41,7 @@ rm -f pthread3.c
 for i in `jot 8`; do
 	/tmp/pthread3 &
 done
-for i in `jot 8`; do
-	wait
-done
+wait
 
 rm -f /tmp/pthread3
 

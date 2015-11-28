@@ -46,9 +46,7 @@ for i in `jot $n`; do
    ./revoke /dev/ttyva > /dev/null 2>&1 &
    ./revoke /dev/ttyvb > /dev/null 2>&1 &
    ./revoke /dev/ttyvc > /dev/null 2>&1 &
-   for j in `jot 4`; do
-      wait
-   done
+   wait
 done
 
 rm -f revoke

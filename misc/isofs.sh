@@ -54,9 +54,7 @@ mount -t cd9660 /dev/md${mdstart} $mntpoint
 for i in `jot 64`; do
    find /$mntpoint -type f > /dev/null 2>&1 &
 done
-for i in `jot 64`; do
-   wait
-done
+wait
 
 umount ${mntpoint}
 mdconfig -d -u ${mdstart}

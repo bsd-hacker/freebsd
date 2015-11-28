@@ -54,9 +54,7 @@ chmod 777 $mntpoint
 for i in `jot 10`; do
 	/tmp/suj30 $mntpoint/test-$i 100000 &
 done
-for i in `jot 10`; do
-	wait
-done
+wait
 
 while mount | grep -q $mntpoint; do
 	umount $mntpoint || sleep 1
