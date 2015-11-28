@@ -147,17 +147,17 @@ test(void)
 	int i, rc;
 
 	go = 0;
-	if ((rc = pthread_create(&tid[0], NULL, t1, NULL)) == -1)
+	if ((rc = pthread_create(&tid[0], NULL, t1, NULL)) != 0)
 		errc(1, rc, "pthread_create");
-	if ((rc = pthread_create(&tid[1], NULL, t2, NULL)) == -1)
+	if ((rc = pthread_create(&tid[1], NULL, t2, NULL)) != 0)
 		errc(1, rc, "pthread_create");
-	if ((rc = pthread_create(&tid[2], NULL, t3, NULL)) == -1)
+	if ((rc = pthread_create(&tid[2], NULL, t3, NULL)) != 0)
 		errc(1, rc, "pthread_create");
 	usleep(200);
 	atomic_add_int(&go, 1);
 
 	for (i = 0; i < 3; i++) {
-		if ((rc = pthread_join(tid[i], NULL)) == -1)
+		if ((rc = pthread_join(tid[i], NULL)) != 0)
 			errc(1, rc, "pthread_join");
 	}
 

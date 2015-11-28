@@ -157,12 +157,12 @@ main(int argc, char **argv)
 	for (i = 0; i < n; i++) {
 		nr[i] = i;
 		if ((r = pthread_create(&threads[i], NULL, thr, (void *)&nr[i])) != 0)
-			err(1, "pthread_create(): %s\n", strerror(r));
+			errc(1, r, "pthread_create()");
 	}
 
 	for (i = 0; i < n; i++) {
-		if (pthread_join(threads[i], NULL) != 0)
-			err(1, "pthread_join(%d)", i);
+		if ((r = pthread_join(threads[i], NULL)) != 0)
+			errc(1, r, "pthread_join(%d)", i);
 	}
 
 	return (0);

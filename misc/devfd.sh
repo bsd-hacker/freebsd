@@ -115,14 +115,15 @@ int
 main(void)
 {
 	pthread_t p1, p2;
+	int r;
 
 	close(0);
 	close(1);
 	close(2);
-	if (pthread_create(&p1, NULL, thr1, NULL) != 0)
-		err(1, "pthread_create");
-	if (pthread_create(&p2, NULL, thr2, NULL) != 0)
-		err(1, "pthread_create");
+	if ((r = pthread_create(&p1, NULL, thr1, NULL)) != 0)
+		errc(1, r, "pthread_create");
+	if ((r = pthread_create(&p2, NULL, thr2, NULL)) != 0)
+		errc(1, r, "pthread_create");
 	pthread_join(p1, NULL);
 	pthread_join(p2, NULL);
 

@@ -91,7 +91,7 @@ test(void)
 	for (iter = 0; iter < ITER; iter++) {
 		for (i = 0; i < num_thread; i++) {
 			if ((rc = pthread_create(&tid[i], NULL, nicethreads,
-			    NULL)) == -1)
+			    NULL)) != 0)
 				errc(1, rc, "pthread_create");
 		}
 		usleep(20000);
@@ -101,7 +101,7 @@ test(void)
 			rc = pthread_mutex_unlock(&mutex);
 		}
 		for (i = 0; i < num_thread; i++)
-			if ((rc = pthread_join(tid[i], NULL)) == -1)
+			if ((rc = pthread_join(tid[i], NULL)) != 0)
 				errc(1, rc, "pthread_join");
 	}
 

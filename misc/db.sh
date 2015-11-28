@@ -40,7 +40,6 @@ mycc -o db -Wall -Wextra -O0 -g db.c -lpthread || exit 1
 rm -f db.c
 cd $odir
 
-diskimage=/var/tmp/diskimage
 dd if=/dev/zero of=$diskimage bs=1m count=10 2>&1 | \
     egrep -v "records|transferred"
 
@@ -89,16 +88,17 @@ wt(void *arg __unused)
 	time_t start;
 	int64_t pos;
 	void *c;
+	int r;
 	char buf[BZ];
 
 #ifdef __NP__
 	pthread_set_name_np(pthread_self(), __func__);
 #endif
-	if (pthread_mutex_lock(&mutex) == -1)
-		err(1, "pthread_mutex_lock");
+	if ((r = pthread_mutex_lock(&mutex)) != 0)
+		errc(1, r, "pthread_mutex_lock");
 	wthreads++;
-	if (pthread_mutex_unlock(&mutex) == -1)
-		err(1, "pthread_mutex_unlock");
+	if ((r = pthread_mutex_unlock(&mutex)) != 0)
+		errc(1, r, "pthread_mutex_unlock");
 
 	start = time(NULL);
 	while (time(NULL) - start < RUNTIME) {
@@ -112,11 +112,11 @@ wt(void *arg __unused)
 		usleep(10000 + arc4random() % 1000);
 	}
 
-	if (pthread_mutex_lock(&mutex) == -1)
-		err(1, "pthread_mutex_lock");
+	if ((r = pthread_mutex_lock(&mutex)) != 0)
+		errc(1, r, "pthread_mutex_lock");
 	wthreads--;
-	if (pthread_mutex_unlock(&mutex) == -1)
-		err(1, "pthread_mutex_unlock");
+	if ((r = pthread_mutex_unlock(&mutex)) != 0)
+		errc(1, r, "pthread_mutex_unlock");
 
 	return (NULL);
 }

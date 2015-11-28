@@ -42,9 +42,7 @@ for i in `jot 10`; do
 	for j in `jot 12`; do
 		/tmp/kevent2 > /dev/null 2>&1 &
 	done
-	for j in `jot 12`; do
-		wait
-	done
+	wait
 done
 rm -f /tmp/kevent2
 exit
@@ -70,7 +68,7 @@ static int fd3[2];
 void *
 thr1(void *arg)
 {
-	int n;
+	int n, r;
 	int kq = -1;
 	struct kevent ev[3];
 	struct timespec ts;
@@ -92,13 +90,13 @@ thr1(void *arg)
 	if (kevent(kq, ev, n, NULL, 0, NULL) < 0)
 		err(1, "kevent(). %s:%d", __FILE__, __LINE__);
 
-	if (pthread_mutex_lock(&mutex) == -1)
-		err(1, "pthread_mutex_lock");
+	if ((r = pthread_mutex_lock(&mutex)) != 0)
+		errc(1, r, "pthread_mutex_lock");
 	waiting = 0;
-	if (pthread_cond_signal(&cond) == -1)
-		err(1, "pthread_cond_signal");
-	if (pthread_mutex_unlock(&mutex) == -1)
-		err(1, "pthread_mutex_unlock");
+	if ((r = pthread_cond_signal(&cond)) != 0)
+		errc(1, r, "pthread_cond_signal");
+	if ((r = pthread_mutex_unlock(&mutex)) != 0)
+		errc(1, r, "pthread_mutex_unlock");
 
 	n = 0;
 	EV_SET(&ev[n], fd1[1], EVFILT_WRITE,
@@ -120,14 +118,16 @@ thr1(void *arg)
 void *
 thr2(void *arg)
 {
-	if (pthread_mutex_lock(&mutex) == -1)
-		err(1, "pthread_mutex_lock");
+	int r;
+
+	if ((r = pthread_mutex_lock(&mutex)) != 0)
+		errc(1, r, "pthread_mutex_lock");
 	while (waiting == 1) {
-		if (pthread_cond_wait(&cond, &mutex) == -1)
-			err(1, "pthread_cond_wait");
+		if ((r = pthread_cond_wait(&cond, &mutex)) != 0)
+			errc(1, r, "pthread_cond_wait");
 	}
-	if (pthread_mutex_unlock(&mutex) == -1)
-		err(1, "pthread_mutex_unlock");
+	if ((r = pthread_mutex_unlock(&mutex)) != 0)
+		errc(1, r, "pthread_mutex_unlock");
 //	printf("%s:%d\n", __FILE__, __LINE__); fflush(stdout);
 	close(fd1[0]);
 	close(fd2[0]);
@@ -152,24 +152,24 @@ main(int argc, char **argv)
 		if (pipe(fd3) == -1)
 			err(1, "pipe()");
 
-		if (pthread_mutex_init(&mutex, 0) == -1)
-			err(1, "pthread_mutex_init");
-		if (pthread_cond_init(&cond, NULL) == -1)
-			err(1, "pthread_cond_init");
+		if ((r = pthread_mutex_init(&mutex, 0)) != 0)
+			errc(1, r, "pthread_mutex_init");
+		if ((r = pthread_cond_init(&cond, NULL)) != 0)
+			errc(1, r, "pthread_cond_init");
 
 		if ((r = pthread_create(&threads[0], NULL, thr1, 0)) != 0)
-			err(1, "pthread_create(): %s\n", strerror(r));
+			errc(1, r, "pthread_create()");
 		if ((r = pthread_create(&threads[1], NULL, thr2, 0)) != 0)
-			err(1, "pthread_create(): %s\n", strerror(r));
+			errc(1, r, "pthread_create()");
 
-		if (pthread_join(threads[0], NULL) != 0)
-			err(1, "pthread_join(%d)", 0);
-		if (pthread_join(threads[1], NULL) != 0)
-			err(1, "pthread_join(%d)", 1);
-		if (pthread_mutex_destroy(&mutex) == -1)
-			err(1, "pthread_mutex_destroy");
-		if (pthread_cond_destroy(&cond) == -1)
-			err(1, "pthread_condattr_destroy");
+		if ((r = pthread_join(threads[0], NULL)) != 0)
+			errc(1, r, "pthread_join(%d)", 0);
+		if ((r = pthread_join(threads[1], NULL)) != 0)
+			errc(1, r, "pthread_join(%d)", 1);
+		if ((r = pthread_mutex_destroy(&mutex)) != 0)
+			errc(1, r, "pthread_mutex_destroy");
+		if ((r = pthread_cond_destroy(&cond)) != 0)
+			errc(1, r, "pthread_condattr_destroy");
 	}
 
 	return (0);

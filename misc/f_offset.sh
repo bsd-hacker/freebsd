@@ -141,18 +141,18 @@ main(void)
 
 	for (i = 0; i < 20 && errors < 10; i++) {
 		if ((r = pthread_create(&threads[0], NULL, t1, 0)) != 0)
-			err(1, "pthread_create(): %s\n", strerror(r));
+			errc(1, r, "pthread_create()");
 		if ((r = pthread_create(&threads[1], NULL, t2, 0)) != 0)
-			err(1, "pthread_create(): %s\n", strerror(r));
+			errc(1, r, "pthread_create()");
 		if ((r = pthread_create(&threads[2], NULL, t3, 0)) != 0)
-			err(1, "pthread_create(): %s\n", strerror(r));
+			errc(1, r, "pthread_create()");
 
-		if (pthread_join(threads[0], NULL) != 0)
-			err(1, "pthread_join(%d)", 0);
-		if (pthread_join(threads[1], NULL) != 0)
-			err(1, "pthread_join(%d)", 1);
-		if (pthread_join(threads[2], NULL) != 0)
-			err(1, "pthread_join(%d)", 2);
+		if ((r = pthread_join(threads[0], NULL)) != 0)
+			errc(1, r, "pthread_join(%d)", 0);
+		if ((r = pthread_join(threads[1], NULL)) != 0)
+			errc(1, r, "pthread_join(%d)", 1);
+		if ((r = pthread_join(threads[2], NULL)) != 0)
+			errc(1, r, "pthread_join(%d)", 2);
 	}
 	close(fd);
 	if (unlink(file) == -1)

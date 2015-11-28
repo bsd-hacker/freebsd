@@ -104,11 +104,11 @@ churning(void) {
 		if (r == 0) {
 			for (i = 0; i < 5; i++) {
 				if ((r = pthread_create(&threads[i], NULL, thr, 0)) != 0)
-					err(1, "pthread_create(): %s\n", strerror(r));
+					errc(1, r, "pthread_create()");
 			}
 			for (i = 0; i < 5; i++) {
-				if (pthread_join(threads[i], NULL) != 0)
-						err(1, "pthread_join(%d)", 0);
+				if ((r = pthread_join(threads[i], NULL)) != 0)
+						errc(1, r, "pthread_join(%d)", i);
 			}
 
 			bzero(buf, sizeof(buf));

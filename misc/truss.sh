@@ -115,13 +115,13 @@ main(int argc, char *argv[])
 	start = time(NULL);
 	while ((time(NULL) - start) < runtime) {
 		for (i = 0; i < THREADS; i++) {
-			if ((rc = pthread_create(&tid[i], NULL, t1, NULL)) ==
-			    -1)
+			if ((rc = pthread_create(&tid[i], NULL, t1, NULL)) !=
+			    0)
 				errc(1, rc, "pthread_create");
 		}
 
 		for (i = 0; i < THREADS; i++) {
-			if ((rc = pthread_join(tid[i], NULL)) == -1)
+			if ((rc = pthread_join(tid[i], NULL)) != 0)
 				errc(1, rc, "pthread_join");
 		}
 	}
