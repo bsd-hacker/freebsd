@@ -41,6 +41,8 @@ while getopts a name; do
 done
 shift $(($OPTIND - 1))
 
+pgrep -fq all.sh ||
+    echo "Note: all.sh in stress2/misc is the preferred test to run."
 if [ ! -z "$aflag" ]; then
    . ./default.cfg
    export runRUNTIME=5m
@@ -56,8 +58,6 @@ if [ ! -z "$aflag" ]; then
             printf "`date '+%Y%m%d %T'` run $i\r\n" > /dev/console
          $0 $i
       done
-      [ "`id -un`" = pho ] && ipcs | \
-      awk '$5 ~/pho/ && $6 ~/pho/ {print "-" $1,$2}' | xargs ipcrm
    done
 else
    CONFIG=./default.cfg
