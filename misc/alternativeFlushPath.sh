@@ -48,7 +48,8 @@ rm -rf $dir
 mkdir -p $dir
 cd $dir
 sed '1,/^EOF/d' < $odir/$0 > $dir/alternativeFlushPath.c
-mycc -o /tmp/alternativeFlushPath -Wall -Wextra alternativeFlushPath.c
+mycc -o /tmp/alternativeFlushPath -Wall -Wextra alternativeFlushPath.c ||
+    exit 1
 rm -f alternativeFlushPath.c
 
 for j in `jot 10`; do
@@ -72,6 +73,8 @@ EOF
 #include <sys/resource.h>
 #include <err.h>
 
+#define MAXNOFILE 500000	/* To limit runtime */
+
 static volatile sig_atomic_t more;
 
 static void
@@ -90,6 +93,8 @@ test(void)
 
         if (getrlimit(RLIMIT_NOFILE, &rlp) == -1)
                 err(1, "getrlimit(RLIMIT_NOFILE)");
+	if (rlp.rlim_cur > MAXNOFILE)
+		rlp.rlim_cur = MAXNOFILE;
 	rlp.rlim_cur /= 10;
         mypid = getpid();
         fd = malloc(rlp.rlim_cur * sizeof(int));
