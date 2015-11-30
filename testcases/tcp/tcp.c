@@ -31,14 +31,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <err.h>
+#include <errno.h>
 #include <netdb.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <signal.h>
-#include <errno.h>
 #include <string.h>
-#include <err.h>
+#include <unistd.h>
 
 #include "stress.h"
 
@@ -114,6 +114,7 @@ writer(void) {
 			err(1, "setsockopt(), %s:%d", __FILE__, __LINE__);
 
 		hostent = gethostbyname ("localhost");
+		bzero((char *) &inetaddr, sizeof(inetaddr));
 		memcpy (&inetaddr.sin_addr.s_addr, hostent->h_addr,
 			sizeof (struct in_addr));
 
