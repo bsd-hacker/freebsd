@@ -72,11 +72,10 @@ setup(int nb)
 			pct = random_int(120, 130);
 
 		if (swapinfo == 0) {
+			pct = random_int(30, 50);
 			if (mem <= MINLEFT)
 				_exit(1);
 			mem -= MINLEFT;
-			if (pct > 100)
-				pct = 100;
 			size = mem / 100 * pct;
 		} else {
 			size = mem / 100 * pct;
