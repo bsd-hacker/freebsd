@@ -102,6 +102,7 @@ test(void)
 	tm = localtime(&t);
 	(void) strftime(ct, sizeof(ct), "%T", tm);
 	printf("%s Loop #%d\n", ct, loop++);
+	fflush(stdout);
 
 	for (i = 0; i < op->argc; i++) {
 		if ((r[i] = fork()) == 0) {
