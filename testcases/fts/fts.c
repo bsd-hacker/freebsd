@@ -61,7 +61,7 @@ test(void)
 	FTS		*fts;
 	FTSENT		*p;
 	int		ftsoptions;
-	char 		*args[2];
+	char		*args[2];
 
 	ftsoptions = FTS_LOGICAL;
 	args[0] = ".";
