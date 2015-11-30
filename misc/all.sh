@@ -39,8 +39,7 @@
 #		panic: 43 vncache entries remaining			20111220
 # backingstore3.sh
 #		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111230
-# bio.sh	WiP							20150925
-# core5.sh	May slow down if vnode cache is full			20150714
+# bio.sh	WiP							20151116
 # crossmp4.sh	Known nullfs issue					20150523
 # crossmp6.sh	Known lockd issue					20150625
 # dfull.sh	umount stuck in "mount drain"				20111227
@@ -53,10 +52,10 @@
 # gjournal.sh	kmem_malloc(131072): kmem_map too small			20120626
 # gjournal2.sh
 # gjournal3.sh	panic: Journal overflow					20130729
+# holdcnt03.sh	WiP							20151115
 # lockf5.sh	Page fault						20150622
 # md2.sh	panic: ufs_dirbad: /mnt: bad dir ino ...: mangled entry	20150227
 # maxmemdom.sh	Panic: vm_page_alloc: missing page			20151029
-# maxproc.sh	WiP							20150329
 # memguard.sh	Waiting for fix commit
 # memguard2.sh	Waiting for fix commit
 # memguard3.sh	Waiting for fix commit
@@ -73,7 +72,7 @@
 # quota3.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111222
 # quota6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130206
 # quota7.sh	panic: dqflush: stray dquot				20120221
-# rw.sh		WiP							20150928
+# rw.sh		WiP							20151116
 # shm_open.sh	panic: kmem_malloc(4096): kmem_map too small		20130504
 # snap3.sh	mksnap_ffs stuck in snaprdb				20111226
 # snap5.sh	mksnap_ffs stuck in getblk				20111224
@@ -87,6 +86,7 @@
 # suj18.sh	panic: Bad tailq NEXT(0xc1e2a6088->tqh_last_s) != NULL	20120213
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
 # suj34.sh	Various hangs and panics (SUJ + NULLFS iisue)		20131210
+# swap3.sh	WiP							20151120
 # trim4.sh	Page fault in softdep_count_dependencies+0x27		20140608
 # umountf3.sh	KDB: enter: watchdog timeout				20111217
 # umountf7.sh	panic: handle_written_inodeblock: live inodedep ...	20131129
@@ -191,7 +191,7 @@ grep -wq "$testuser" /etc/passwd ||
 [ -x ../testcases/run/run ] ||
     { echo "Please run \"cd stress2; make\" first." && exit 1; }
 ping -c 2 -t 2 $BLASTHOST > /dev/null 2>&1 ||
-    { echo "Can not ping \$BLASTHOST: $BLASTHOST"; }
+    { echo "Note: Can not ping \$BLASTHOST: $BLASTHOST"; }
 
 rm -f $alllog $alllist
 find `dirname $alllast` -maxdepth 1 -name $alllast -mtime +12h -delete
