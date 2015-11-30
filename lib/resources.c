@@ -167,6 +167,9 @@ getdf(int64_t *block, int64_t *inode)
 					O_CREAT | O_TRUNC | O_WRONLY | O_EXCL, 0644)) != -1)
 				break;
 			usleep(10000); /* sleep 1/100 sec */
+			if (i > 0 && i % 1000 == 0)
+				fprintf(stderr, "%s is waiting for lock file %s\n",
+				    getprogname(), lockpath);
 		}
 		if (lockfd != -1)
 			break;
@@ -222,7 +225,7 @@ reservedf(int64_t blks, int64_t inos)
 				getprogname(), blks/1024, inos, blocks/1024, inodes);
 	blocks -= blks;
 	inodes -= inos;
-	
+
 	snprintf(buf, sizeof(buf), "%jd %jd", blocks, inodes);
 	if (blocks < 0 || inodes < 0)
 		printf("******************************** %s: %s\n", getprogname(), buf);

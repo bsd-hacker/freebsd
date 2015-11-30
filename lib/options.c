@@ -139,7 +139,7 @@ environment(void)
 			usage("INODES");
 	}
 }
-	
+
 void
 options(int argc, char **argv)
 {
@@ -220,6 +220,7 @@ show_status(void)
 		printf("%8s: run time %2d+%s, incarnations %3d, load %3d, verbose %d\n",
 			getprogname(), days, buf, op->incarnations, op->load,
 			op->verbose);
+		fflush(stdout);
 	}
 }
 
