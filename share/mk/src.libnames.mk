@@ -170,10 +170,11 @@ _DP_archive+=	crypto
 .else
 _DP_archive+=	md
 .endif
+_DP_sqlite3=	pthread
 _DP_ssl=	crypto
-_DP_ssh=	crypto crypt
+_DP_ssh=	crypto crypt z
 .if ${MK_LDNS} != "no"
-_DP_ssh+=	ldns z
+_DP_ssh+=	ldns
 .endif
 _DP_edit=	ncursesw
 .if ${MK_OPENSSL} != "no"
@@ -205,10 +206,11 @@ _DP_proc=	supcplusplus
 .if ${MK_CDDL} != "no"
 _DP_proc+=	ctf
 .endif
+_DP_proc+=	elf rtld_db util
 _DP_mp=	crypto
 _DP_memstat=	kvm
 _DP_magic=	z
-_DP_mt=		bsdxml
+_DP_mt=		sbuf bsdxml
 _DP_ldns=	crypto
 .if ${MK_OPENSSL} != "no"
 _DP_fetch=	ssl crypto
@@ -239,8 +241,7 @@ _DP_lzma=	pthread
 _DP_ucl=	m
 _DP_vmmapi=	util
 _DP_ctf=	z
-_DP_proc=	rtld_db util
-_DP_dtrace=	rtld_db pthread
+_DP_dtrace=	ctf elf proc pthread rtld_db
 _DP_xo=		util
 
 # Define spacial cases
@@ -275,20 +276,11 @@ LDADD_${_l}+=	${LDADD_${_d}}
 DPADD_atf_cxx+=	${DPADD_atf_c}
 LDADD_atf_cxx+=	${LDADD_atf_c}
 
-DPADD_sqlite3+=	${DPADD_pthread}
-LDADD_sqlite3+=	${LDADD_pthread}
-
 DPADD_fifolog+=	${DPADD_z}
 LDADD_fifolog+=	${LDADD_z}
 
 DPADD_ipf+=	${DPADD_kvm}
 LDADD_ipf+=	${LDADD_kvm}
-
-DPADD_mt+=	${DPADD_sbuf}
-LDADD_mt+=	${LDADD_sbuf}
-
-DPADD_dtrace+=	${DPADD_ctf} ${DPADD_elf} ${DPADD_proc}
-LDADD_dtrace+=	${LDADD_ctf} ${LDADD_elf} ${LDADD_proc}
 
 # The following depends on libraries which are using pthread
 DPADD_hdb+=	${DPADD_pthread}
