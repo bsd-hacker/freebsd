@@ -2133,7 +2133,7 @@ in6_lltable_free_entry(struct lltable *llt, struct llentry *lle)
 		lltable_unlink_entry(llt, lle);
 	}
 
-	if (callout_stop(&lle->lle_timer))
+	if (callout_stop(&lle->lle_timer) > 0)
 		LLE_REMREF(lle);
 
 	llentry_free(lle);
@@ -2261,8 +2261,8 @@ in6_lltable_alloc(struct lltable *llt, u_int flags,
 	}
 	lle->la_flags = flags;
 	if ((flags & LLE_IFADDR) == LLE_IFADDR) {
-		bcopy(IF_LLADDR(ifp), &lle->ll_addr, ifp->if_addrlen);
-		lle->la_flags |= (LLE_VALID | LLE_STATIC);
+		lltable_set_entry_addr(ifp, lle, IF_LLADDR(ifp));
+		lle->la_flags |= LLE_STATIC;
 	}
 
 	if ((lle->la_flags & LLE_STATIC) != 0)
@@ -2354,6 +2354,8 @@ in6_lltable_dump_entry(struct lltable *llt, struct llentry *lle,
 			ndpc.rtm.rtm_flags |= (RTF_HOST | RTF_LLDATA);
 			if (lle->la_flags & LLE_STATIC)
 				ndpc.rtm.rtm_flags |= RTF_STATIC;
+			if (lle->la_flags & LLE_IFADDR)
+				ndpc.rtm.rtm_flags |= RTF_PINNED;
 			ndpc.rtm.rtm_index = ifp->if_index;
 			error = SYSCTL_OUT(wr, &ndpc, sizeof(ndpc));
 

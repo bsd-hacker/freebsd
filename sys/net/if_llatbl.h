@@ -75,7 +75,6 @@ struct llentry {
 	uint16_t		 la_flags;
 	uint16_t		 la_asked;
 	uint16_t		 la_preempt;
-	uint16_t		 ln_byhint;
 	int16_t			 ln_state;	/* IPv6 has ND6_LLINFO_NOSTATE == -2 */
 	uint16_t		 ln_router;
 	time_t			 ln_ntick;
@@ -208,6 +207,8 @@ struct llentry  *llentry_alloc(struct ifnet *, struct lltable *,
 
 /* helper functions */
 size_t lltable_drop_entry_queue(struct llentry *);
+void lltable_set_entry_addr(struct ifnet *ifp, struct llentry *lle,
+    const char *lladdr);
 
 struct llentry *lltable_alloc_entry(struct lltable *llt, u_int flags,
     const struct sockaddr *l4addr);
