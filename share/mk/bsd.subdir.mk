@@ -37,10 +37,10 @@
 __<bsd.subdir.mk>__:
 
 ALL_SUBDIR_TARGETS= all all-man buildconfig buildfiles buildincludes \
-		    checkdpadd clean cleandepend cleandir cleanilinks \
+		    check checkdpadd clean cleandepend cleandir cleanilinks \
 		    cleanobj depend distribute files includes installconfig \
 		    installfiles installincludes realinstall lint maninstall \
-		    manlint obj objlink regress tags \
+		    manlint obj objlink tags \
 		    ${SUBDIR_TARGETS}
 
 # Described above.

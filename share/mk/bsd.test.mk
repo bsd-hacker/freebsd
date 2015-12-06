@@ -76,19 +76,14 @@ PROGS_TARGETS+= install
 .include <suite.test.mk>
 .endif
 
-.if !target(realtest)
-realtest: .PHONY
+.if !target(realcheck)
+realcheck: .PHONY
 	@echo "$@ not defined; skipping"
 .endif
 
-test: .PHONY
-.ORDER: beforetest realtest
-test: beforetest realtest
-
-.if target(aftertest)
-.ORDER: realtest aftertest
-test: aftertest
-.endif
+beforecheck realcheck aftercheck check: .PHONY
+.ORDER: beforecheck realcheck aftercheck
+check: beforecheck realcheck aftercheck
 
 .ifdef PROG
 # we came here via bsd.progs.mk below
