@@ -90,10 +90,8 @@ Kyuafile: Makefile
 
 _kyuafile=	${DESTDIR}${TESTSDIR}/Kyuafile
 
-KYUA?= ${KYUA_PREFIX}/bin/kyua
+KYUA= ${KYUA_PREFIX}/bin/kyua
 
-realcheck: .PHONY
-.if exists(${KYUA})
 # Definition of the "make check" target and supporting variables.
 #
 # This target, by necessity, can only work for native builds (i.e. a FreeBSD
@@ -103,5 +101,16 @@ realcheck: .PHONY
 # Due to the dependencies of the binaries built by the source tree and how they
 # are used by tests, it is highly possible for a execution of "make test" to
 # report bogus results unless the new binaries are put in place.
+
+${KYUA}:
+	@echo
+	@echo "kyua binary not installed at expected location (${.TARGET})"
+	@echo
+	@echo "Please install via pkg install, or specify the path to the kyua"
+	@echo "package via the \$${KYUA_PREFIX} variable, e.g. "
+	@echo "KYUA_PREFIX=\"${KYUA_PREFIX}\""
+	@false
+
+realcheck: .PHONY
+realcheck: ${KYUA}
 	@${KYUA} test -k ${DESTDIR}${TESTSDIR}/Kyuafile
-.endif
