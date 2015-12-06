@@ -10,6 +10,9 @@
 
 __<bsd.test.mk>__:
 
+# Path to the prefix of the ATF and Kyua CLI.
+LOCALBASE?=	/usr/local
+
 # Tests install directory
 TESTSDIR?=	${TESTSBASE}/${RELDIR:H}
 

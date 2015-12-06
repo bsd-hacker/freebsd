@@ -45,13 +45,6 @@ KYUAFILE?= auto
 # unqualified TEST_METADATA variable.
 #TEST_METADATA.<test-program>+= key="value"
 
-# Path to the prefix of the installed Kyua CLI, if any.
-#
-# If kyua is installed from ports, we automatically define a realcheck target
-# below to run the tests using this tool.  The tools are searched for in the
-# hierarchy specified by this variable.
-LOCALBASE?=	/usr/local
-
 .if ${KYUAFILE:tl} != "no"
 FILES+=	Kyuafile
 FILESDIR_Kyuafile= ${TESTSDIR}
