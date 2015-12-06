@@ -490,10 +490,9 @@ TESTSDIR	Path to the installed tests.  Must be a subdirectory of
 		${TESTSBASE}/${RELDIR:H} , e.g. /usr/tests/bin/ls when
 		included from bin/ls/tests .
 
-CHECKDIR	The value of CHECKDIR defaults to TESTSDIR when make check is
-		run from the top-level directory. Conversely, the value of
-		CHECKDIR defaults to .OBJDIR when make check is not run from
-		the top-level directory.
+CHECKDIR	The directory that 'make check' executes tests from.
+
+		The value of CHECKDIR defaults to .OBJDIR.
 
 KYUAFILE	If 'auto' (the default), generate a Kyuafile out of the
 		test programs defined in the Makefile.  If 'yes', then a
