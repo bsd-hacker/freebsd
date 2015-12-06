@@ -449,11 +449,10 @@ It has seven targets:
 	all:
 		build the test programs.
 	check:
-		runs the test programs from CHECKDIR with kyua test, if the
-		Makefile does not define the check target.
+		runs the test programs from CHECKDIR with kyua test.
 
 		The beforecheck and aftercheck targets will be invoked, if
-		defined, to execute commands before and after the check
+		defined, to execute commands before and after the realcheck
 		target has been executed, respectively.
 
 		The devel/kyua package must be installed before invoking this
