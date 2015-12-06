@@ -10,7 +10,7 @@
 
 __<bsd.test.mk>__:
 
-# Path to the prefix of the ATF and Kyua CLI.
+# Third-party software (kyua, etc) prefix.
 LOCALBASE?=	/usr/local
 
 # Tests install directory
