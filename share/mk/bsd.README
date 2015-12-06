@@ -449,13 +449,17 @@ It has seven targets:
 	all:
 		build the test programs.
 	check:
-		runs the test programs from the object directory; if the
-		Makefile does not itself define the target test, the targets
-		beforecheck and aftercheck may also be used to cause actions
-		immediately before and after the test target is executed.
+		runs the test programs from CHECKDIR with kyua test, if the
+		Makefile does not define the check target.
+
+		The beforecheck and aftercheck targets will be invoked, if
+		defined, to execute commands before and after the check
+		target has been executed, respectively.
 
 		The devel/kyua package must be installed before invoking this
 		target.
+
+		See CHECKDIR for more details.
 	clean:
 		remove the test programs and any object files.
 	cleandir:
@@ -487,6 +491,11 @@ TESTSDIR	Path to the installed tests.  Must be a subdirectory of
 		${TESTSBASE}/${RELDIR:H} , e.g. /usr/tests/bin/ls when
 		included from bin/ls/tests .
 
+CHECKDIR	The value of CHECKDIR defaults to TESTSDIR when make check is
+		run from the top-level directory. Conversely, the value of
+		CHECKDIR defaults to .OBJDIR when make check is not run from
+		the top-level directory.
+
 KYUAFILE	If 'auto' (the default), generate a Kyuafile out of the
 		test programs defined in the Makefile.  If 'yes', then a
 		manually-crafted Kyuafile must be supplied with the
@@ -494,9 +503,9 @@ KYUAFILE	If 'auto' (the default), generate a Kyuafile out of the
 		subdirectories providing helper programs or data files
 		only).
 
-KYUA_PREFIX	The --prefix for the kyua package.
+LOCALBASE	The --prefix for the kyua package.
 
-		The value of KYUA_PREFIX defaults to /usr/local .
+		The value of LOCALBASE defaults to /usr/local .
 
 ATF_TESTS_C	The names of the ATF C test programs to build.
 

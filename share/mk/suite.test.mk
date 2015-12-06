@@ -8,10 +8,6 @@
 .error suite.test.mk cannot be included directly.
 .endif
 
-# Directory in which to install tests defined by the current Makefile.
-# Makefiles have to override this to point to a subdirectory of TESTSBASE.
-TESTSDIR?= .
-
 # Name of the test suite these tests belong to.  Should rarely be changed for
 # Makefiles built into the FreeBSD src tree.
 TESTSUITE?= FreeBSD
@@ -54,7 +50,7 @@ KYUAFILE?= auto
 # If kyua is installed from ports, we automatically define a realcheck target
 # below to run the tests using this tool.  The tools are searched for in the
 # hierarchy specified by this variable.
-KYUA_PREFIX?= /usr/local
+LOCALBASE?=	/usr/local
 
 .if ${KYUAFILE:tl} != "no"
 FILES+=	Kyuafile
@@ -88,9 +84,17 @@ Kyuafile: Makefile
 	@mv ${.TARGET}.tmp ${.TARGET}
 .endif
 
-_kyuafile=	${DESTDIR}${TESTSDIR}/Kyuafile
+CHECKDIR?=	${DESTDIR}${TESTSDIR}
 
-KYUA= ${KYUA_PREFIX}/bin/kyua
+KYUA= ${LOCALBASE}/bin/kyua
+${KYUA}:
+	@echo
+	@echo "kyua binary not installed at expected location (${.TARGET})"
+	@echo
+	@echo "Please install via pkg install, or specify the path to the kyua"
+	@echo "package via the \$${LOCALBASE} variable, e.g. "
+	@echo "LOCALBASE=\"${LOCALBASE}\""
+	@false
 
 # Definition of the "make check" target and supporting variables.
 #
@@ -102,15 +106,6 @@ KYUA= ${KYUA_PREFIX}/bin/kyua
 # are used by tests, it is highly possible for a execution of "make test" to
 # report bogus results unless the new binaries are put in place.
 
-${KYUA}:
-	@echo
-	@echo "kyua binary not installed at expected location (${.TARGET})"
-	@echo
-	@echo "Please install via pkg install, or specify the path to the kyua"
-	@echo "package via the \$${KYUA_PREFIX} variable, e.g. "
-	@echo "KYUA_PREFIX=\"${KYUA_PREFIX}\""
-	@false
-
 realcheck: .PHONY
 realcheck: ${KYUA}
-	@${KYUA} test -k ${DESTDIR}${TESTSDIR}/Kyuafile
+	@${KYUA} test -k ${CHECKDIR}/Kyuafile
