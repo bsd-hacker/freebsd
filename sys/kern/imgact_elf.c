@@ -273,6 +273,9 @@ __elfN(get_brandinfo)(struct image_params *imgp, const char *interp,
 		if (hdr->e_machine == bi->machine && (bi->flags &
 		    (BI_BRAND_NOTE|BI_BRAND_NOTE_MANDATORY)) != 0) {
 			ret = __elfN(check_note)(imgp, bi->brand_note, osrel);
+			/* Give brand a chance to veto check_note's guess */
+			if (ret && bi->header_supported)
+				ret = bi->header_supported(imgp);
 			if (ret)
 				return (bi);
 		}
@@ -286,8 +289,11 @@ __elfN(get_brandinfo)(struct image_params *imgp, const char *interp,
 		if (hdr->e_machine == bi->machine &&
 		    (hdr->e_ident[EI_OSABI] == bi->brand ||
 		    strncmp((const char *)&hdr->e_ident[OLD_EI_BRAND],
-		    bi->compat_3_brand, strlen(bi->compat_3_brand)) == 0))
-			return (bi);
+		    bi->compat_3_brand, strlen(bi->compat_3_brand)) == 0)) {
+			/* Looks good, but give brand a chance to veto */
+			if (!bi->header_supported || bi->header_supported(imgp))
+				return (bi);
+		}
 	}
 
 	/* No known brand, see if the header is recognized by any brand */
@@ -1270,9 +1276,11 @@ __elfN(coredump)(struct thread *td, struct vnode *vp, off_t limit, int flags)
 	struct note_info *ninfo;
 	void *hdr, *tmpbuf;
 	size_t hdrsize, notesz, coresize;
+#ifdef GZIO
 	boolean_t compress;
 
 	compress = (flags & IMGACT_CORE_COMPRESS) != 0;
+#endif
 	hdr = NULL;
 	tmpbuf = NULL;
 	TAILQ_INIT(&notelst);

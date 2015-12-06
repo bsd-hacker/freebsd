@@ -57,6 +57,7 @@ arm64/cloudabi64/cloudabi64_sysvec.c	optional compat_cloudabi64
 crypto/blowfish/bf_enc.c	optional	crypto | ipsec
 crypto/des/des_enc.c		optional	crypto | ipsec | netsmb
 dev/acpica/acpi_if.m		optional	acpi
+dev/ahci/ahci_generic.c		optional ahci fdt
 dev/fdt/fdt_arm64.c		optional	fdt
 dev/hwpmc/hwpmc_arm64.c		optional	hwpmc
 dev/hwpmc/hwpmc_arm64_md.c	optional	hwpmc
@@ -88,7 +89,7 @@ libkern/flsl.c			standard
 libkern/flsll.c			standard
 libkern/memmove.c		standard
 libkern/memset.c		standard
-cddl/compat/opensolaris/kern/opensolaris_atomic.c	optional zfs | dtrace compile-with "${CDDL_C}"
+cddl/contrib/opensolaris/common/atomic/aarch64/opensolaris_atomic.S	optional zfs | dtrace compile-with "${CDDL_C}"
 cddl/dev/dtrace/aarch64/dtrace_asm.S			optional dtrace compile-with "${DTRACE_S}"
 cddl/dev/dtrace/aarch64/dtrace_subr.c			optional dtrace compile-with "${DTRACE_C}"
 cddl/dev/fbt/aarch64/fbt_isa.c				optional dtrace_fbt | dtraceall compile-with "${FBT_C}"

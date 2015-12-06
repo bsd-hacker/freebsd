@@ -275,6 +275,8 @@
                 data
                 ..
             ..
+            rpc
+            ..
             ssp
             ..
             stdio
@@ -371,7 +373,11 @@
         file
         ..
         kern
+            acct
+            ..
             execve
+            ..
+            pipe
             ..
         ..
         kqueue
@@ -551,6 +557,8 @@
         jot
         ..
         lastcomm
+        ..
+        limits
         ..
         m4
         ..

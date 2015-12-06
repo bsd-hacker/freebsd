@@ -78,6 +78,7 @@ SUBDIR=	alias \
 	lesskey \
 	limits \
 	locale \
+	localedef \
 	lock \
 	lockf \
 	logger \
@@ -210,7 +211,9 @@ SUBDIR.${MK_GAMES}+=	pom
 SUBDIR.${MK_GAMES}+=	primes
 SUBDIR.${MK_GAMES}+=	random
 .if ${MK_GPL_DTC} != "yes"
+.if ${COMPILER_FEATURES:Mc++11}
 SUBDIR+=	dtc
+.endif
 .endif
 SUBDIR.${MK_GROFF}+=	vgrind
 SUBDIR.${MK_HESIOD}+=	hesinfo
