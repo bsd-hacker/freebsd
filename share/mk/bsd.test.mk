@@ -57,11 +57,15 @@ _TESTS=
 .include <plain.test.mk>
 .include <tap.test.mk>
 
+# kyua automatically descends directories; only run make check on the
+# top-level directory
+.if !make(check)
 .for ts in ${TESTS_SUBDIRS}
 .if empty(SUBDIR:M${ts})
 SUBDIR+= ${ts}
 .endif
 .endfor
+.endif
 
 # it is rare for test cases to have man pages
 .if !defined(MAN)
