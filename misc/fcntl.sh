@@ -38,8 +38,7 @@ sed '1,/^EOF/d' < $here/$0 > fcntl.c
 mycc -o fcntl -Wall -Wextra -O0 -g fcntl.c || exit 1
 rm -f fcntl.c
 
-/tmp/fcntl
-status=$?
+/tmp/fcntl || { status=$?; echo FAIL; }
 
 rm -f /tmp/fcntl
 exit $status
@@ -61,6 +60,13 @@ EOF
 static volatile sig_atomic_t completed;
 const char name[] = "work";
 int fd;
+
+static void
+ahandler(int s __unused)
+{
+	unlink(name);
+	_exit(1);
+}
 
 static void
 handler(int s __unused)
@@ -176,6 +182,8 @@ main(void)
 	off_t len;
 
 	signal(SIGHUP, handler);
+	signal(SIGALRM, ahandler);
+	alarm(300);
 	if ((fd = open(name, O_RDWR | O_CREAT | O_TRUNC, 0640)) == -1)
 		err(1, "open(%s)", name);
 	len = N * sizeof(val);
