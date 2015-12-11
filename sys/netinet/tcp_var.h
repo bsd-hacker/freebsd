@@ -78,6 +78,7 @@ struct sackhint {
 					 * Total sacked bytes reported by the
 					 * receiver via sack option
 					 */
+	uint32_t	_pad1[1];	/* TBD */
 	uint64_t	_pad[1];	/* TBD */
 };
 
@@ -334,7 +335,6 @@ struct hc_metrics_lite {	/* must stay in sync with hc_metrics */
 	u_long	rmx_ssthresh;	/* outbound gateway buffer limit */
 	u_long	rmx_rtt;	/* estimated round trip time */
 	u_long	rmx_rttvar;	/* estimated rtt variance */
-	u_long	rmx_bandwidth;	/* estimated bandwidth */
 	u_long	rmx_cwnd;	/* congestion window */
 	u_long	rmx_sendpipe;   /* outbound delay-bandwidth product */
 	u_long	rmx_recvpipe;   /* inbound delay-bandwidth product */
