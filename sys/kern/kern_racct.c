@@ -495,13 +495,13 @@ racct_destroy(struct racct **racct)
 }
 
 /*
- * Increase consumption of 'resource' by 'amount' for 'racct'
- * and all its parents.  Differently from other cases, 'amount' here
+ * Increase consumption of 'resource' by 'amount' for 'racct',
+ * but not its parents.  Differently from other cases, 'amount' here
  * may be less than zero.
  */
 static void
 racct_adjust_resource(struct racct *racct, int resource,
-    uint64_t amount)
+    int64_t amount)
 {
 
 	ASSERT_RACCT_ENABLED();
