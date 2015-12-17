@@ -218,6 +218,7 @@ struct da_softc {
 	uint32_t		unmap_max_ranges;
 	uint32_t		unmap_max_lba; /* Max LBAs in UNMAP req */
 	uint64_t		ws_max_blks;
+	da_delete_methods	delete_method_pref;
 	da_delete_methods	delete_method;
 	da_delete_func_t	*delete_func;
 	int			unmappedio;
@@ -375,7 +376,7 @@ static struct da_quirk_entry da_quirk_table[] =
 		 * VMware returns BUSY status when storage has transient
 		 * connectivity problems, so better wait.
 		 */
-		{T_DIRECT, SIP_MEDIA_FIXED, "VMware", "Virtual disk", "*"},
+		{T_DIRECT, SIP_MEDIA_FIXED, "VMware*", "*", "*"},
 		/*quirks*/ DA_Q_RETRY_BUSY
 	},
 	/* USB mass storage devices supported by umass(4) */
@@ -1816,7 +1817,7 @@ dasysctlinit(void *context, int pending)
 	 * the fly.
 	 */
 	SYSCTL_ADD_PROC(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
-		OID_AUTO, "delete_method", CTLTYPE_STRING | CTLFLAG_RW,
+		OID_AUTO, "delete_method", CTLTYPE_STRING | CTLFLAG_RWTUN,
 		softc, 0, dadeletemethodsysctl, "A",
 		"BIO_DELETE execution method");
 	SYSCTL_ADD_PROC(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
@@ -2051,25 +2052,17 @@ daprobedone(struct cam_periph *periph, union ccb *ccb)
 
 		snprintf(buf, sizeof(buf), "Delete methods: <");
 		sep = 0;
-		for (i = DA_DELETE_MIN; i <= DA_DELETE_MAX; i++) {
-			if (softc->delete_available & (1 << i)) {
-				if (sep) {
-					strlcat(buf, ",", sizeof(buf));
-				} else {
-				    sep = 1;
-				}
-				strlcat(buf, da_delete_method_names[i],
-				    sizeof(buf));
-				if (i == softc->delete_method) {
-					strlcat(buf, "(*)", sizeof(buf));
-				}
-			}
-		}
-		if (sep == 0) {
-			if (softc->delete_method == DA_DELETE_NONE) 
-				strlcat(buf, "NONE(*)", sizeof(buf));
-			else
-				strlcat(buf, "DISABLED(*)", sizeof(buf));
+		for (i = 0; i <= DA_DELETE_MAX; i++) {
+			if ((softc->delete_available & (1 << i)) == 0 &&
+			    i != softc->delete_method)
+				continue;
+			if (sep)
+				strlcat(buf, ",", sizeof(buf));
+			strlcat(buf, da_delete_method_names[i],
+			    sizeof(buf));
+			if (i == softc->delete_method)
+				strlcat(buf, "(*)", sizeof(buf));
+			sep = 1;
 		}
 		strlcat(buf, ">", sizeof(buf));
 		printf("%s%d: %s\n", periph->periph_name,
@@ -2099,21 +2092,28 @@ daprobedone(struct cam_periph *periph, union ccb *ccb)
 static void
 dadeletemethodchoose(struct da_softc *softc, da_delete_methods default_method)
 {
-	int i, delete_method;
+	int i, methods;
 
-	delete_method = default_method;
+	/* If available, prefer the method requested by user. */
+	i = softc->delete_method_pref;
+	methods = softc->delete_available | (1 << DA_DELETE_DISABLE);
+	if (methods & (1 << i)) {
+		dadeletemethodset(softc, i);
+		return;
+	}
 
-	/*
-	 * Use the pre-defined order to choose the best
-	 * performing delete.
-	 */
+	/* Use the pre-defined order to choose the best performing delete. */
 	for (i = DA_DELETE_MIN; i <= DA_DELETE_MAX; i++) {
+		if (i == DA_DELETE_ZERO)
+			continue;
 		if (softc->delete_available & (1 << i)) {
 			dadeletemethodset(softc, i);
 			return;
 		}
 	}
-	dadeletemethodset(softc, delete_method);
+
+	/* Fallback to default. */
+	dadeletemethodset(softc, default_method);
 }
 
 static int
@@ -2137,13 +2137,14 @@ dadeletemethodsysctl(SYSCTL_HANDLER_ARGS)
 		return (error);
 	methods = softc->delete_available | (1 << DA_DELETE_DISABLE);
 	for (i = 0; i <= DA_DELETE_MAX; i++) {
-		if (!(methods & (1 << i)) ||
-		    strcmp(buf, da_delete_method_names[i]) != 0)
-			continue;
-		dadeletemethodset(softc, i);
-		return (0);
+		if (strcmp(buf, da_delete_method_names[i]) == 0)
+			break;
 	}
-	return (EINVAL);
+	if (i > DA_DELETE_MAX)
+		return (EINVAL);
+	softc->delete_method_pref = i;
+	dadeletemethodchoose(softc, DA_DELETE_NONE);
+	return (0);
 }
 
 static cam_status
@@ -2421,29 +2422,40 @@ more:
 
 		switch (bp->bio_cmd) {
 		case BIO_WRITE:
-			softc->flags |= DA_FLAG_DIRTY;
-			/* FALLTHROUGH */
 		case BIO_READ:
+		{
+			void *data_ptr;
+			int rw_op;
+
+			if (bp->bio_cmd == BIO_WRITE) {
+				softc->flags |= DA_FLAG_DIRTY;
+				rw_op = SCSI_RW_WRITE;
+			} else {
+				rw_op = SCSI_RW_READ;
+			}
+
+			data_ptr = bp->bio_data;
+			if ((bp->bio_flags & (BIO_UNMAPPED|BIO_VLIST)) != 0) {
+				rw_op |= SCSI_RW_BIO;
+				data_ptr = bp;
+			}
+
 			scsi_read_write(&start_ccb->csio,
 					/*retries*/da_retry_count,
 					/*cbfcnp*/dadone,
 					/*tag_action*/tag_code,
-					/*read_op*/(bp->bio_cmd == BIO_READ ?
-					SCSI_RW_READ : SCSI_RW_WRITE) |
-					((bp->bio_flags & BIO_UNMAPPED) != 0 ?
-					SCSI_RW_BIO : 0),
+					rw_op,
 					/*byte2*/0,
 					softc->minimum_cmd_size,
 					/*lba*/bp->bio_pblkno,
 					/*block_count*/bp->bio_bcount /
 					softc->params.secsize,
-					/*data_ptr*/ (bp->bio_flags &
-					BIO_UNMAPPED) != 0 ? (void *)bp :
-					bp->bio_data,
+					data_ptr,
 					/*dxfer_len*/ bp->bio_bcount,
 					/*sense_len*/SSD_FULL_SIZE,
 					da_default_timeout * 1000);
 			break;
+		}
 		case BIO_FLUSH:
 			/*
 			 * BIO_FLUSH doesn't currently communicate
@@ -3268,13 +3280,10 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 				lbp = (lalba & SRC16_LBPME_A);
 				dp = &softc->params;
 				snprintf(announce_buf, sizeof(announce_buf),
-				        "%juMB (%ju %u byte sectors: %dH %dS/T "
-                                        "%dC)", (uintmax_t)
-	                                (((uintmax_t)dp->secsize *
-				        dp->sectors) / (1024*1024)),
-			                (uintmax_t)dp->sectors,
-				        dp->secsize, dp->heads,
-                                        dp->secs_per_track, dp->cylinders);
+				    "%juMB (%ju %u byte sectors)",
+				    ((uintmax_t)dp->secsize * dp->sectors) /
+				     (1024 * 1024),
+				    (uintmax_t)dp->sectors, dp->secsize);
 			}
 		} else {
 			int	error;
@@ -3410,6 +3419,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 
 		/* Ensure re-probe doesn't see old delete. */
 		softc->delete_available = 0;
+		dadeleteflag(softc, DA_DELETE_ZERO, 1);
 		if (lbp && (softc->quirks & DA_Q_NO_UNMAP) == 0) {
 			/*
 			 * Based on older SBC-3 spec revisions
@@ -3426,7 +3436,6 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			 */
 			dadeleteflag(softc, DA_DELETE_WS16, 1);
 			dadeleteflag(softc, DA_DELETE_WS10, 1);
-			dadeleteflag(softc, DA_DELETE_ZERO, 1);
 			dadeleteflag(softc, DA_DELETE_UNMAP, 1);
 
 			xpt_release_ccb(done_ccb);
@@ -3454,8 +3463,6 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			dadeleteflag(softc, DA_DELETE_WS16,
 				     (lbp->flags & SVPD_LBP_WS16));
 			dadeleteflag(softc, DA_DELETE_WS10,
-				     (lbp->flags & SVPD_LBP_WS10));
-			dadeleteflag(softc, DA_DELETE_ZERO,
 				     (lbp->flags & SVPD_LBP_WS10));
 			dadeleteflag(softc, DA_DELETE_UNMAP,
 				     (lbp->flags & SVPD_LBP_UNMAP));
