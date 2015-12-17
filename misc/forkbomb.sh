@@ -66,7 +66,7 @@ while mount | grep "on $mntpoint " | grep -q /dev/md; do
 done
 mdconfig -d -u $mdstart
 rm -rf /tmp/forkbomb
-exit $r
+exit
 
 EOF
 #include <sys/param.h>
@@ -87,7 +87,7 @@ volatile u_int *share;
 #define R1 0
 #define R2 1
 
-#define MXFAIL 10000
+#define MXFAIL 100
 #define PARALLEL 200
 
 void
@@ -128,8 +128,7 @@ main(void)
 	}
 
 	while (share[R2] < MXFAIL)
-		usleep(10000);
-	sleep(10);
+		sleep(1);
 
 	return (0);
 }
