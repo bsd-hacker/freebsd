@@ -218,6 +218,9 @@ typedef struct efx_mcdi_transport_s {
 	void		(*emt_logger)(void *, efx_log_msg_t,
 					void *, size_t, void *, size_t);
 #endif /* EFSYS_OPT_MCDI_LOGGING */
+#if EFSYS_OPT_MCDI_PROXY_AUTH
+	void		(*emt_ev_proxy_response)(void *, uint32_t, efx_rc_t);
+#endif /* EFSYS_OPT_MCDI_PROXY_AUTH */
 } efx_mcdi_transport_t;
 
 extern	__checkReturn	efx_rc_t
@@ -1173,8 +1176,10 @@ typedef struct efx_nic_cfg_s {
 	/* Datapath firmware vadapter/vport/vswitch support */
 	boolean_t		enc_datapath_cap_evb;
 	boolean_t               enc_rx_disable_scatter_supported;
+	boolean_t               enc_allow_set_mac_with_installed_filters;
 	/* External port identifier */
 	uint8_t			enc_external_port;
+	uint32_t		enc_mcdi_max_payload_length;
 } efx_nic_cfg_t;
 
 #define	EFX_PCI_FUNCTION_IS_PF(_encp)	((_encp)->enc_vf == 0xffff)
@@ -2025,6 +2030,9 @@ efx_tx_fini(
 #define	EFX_TXQ_DC_NDESCS(_dcsize)	(8 << _dcsize)
 
 #define	EFX_TXQ_MAX_BUFS 8 /* Maximum independent of EFX_BUG35388_WORKAROUND. */
+
+#define	EFX_TXQ_CKSUM_IPV4	0x0001
+#define	EFX_TXQ_CKSUM_TCPUDP	0x0002
 
 extern	__checkReturn	efx_rc_t
 efx_tx_qcreate(
