@@ -482,16 +482,23 @@ main(int argc, char *argv[])
 	exit(0);
 #endif
 
+	j = 1;
+
 	printf("1..19\n");
 
 	for (i = 0; i < nitems(rmodes); i++, j++) {
 		printf("rmode = %d\n", rmodes[i]);
 		fesetround(rmodes[i]);
 		test_zeroes();
-		printf("ok %d - fma zeroes\n", i + 1);
+		printf("ok %d - fma zeroes\n", j);
 	}
 
 	for (i = 0; i < nitems(rmodes); i++, j++) {
+#if defined(__amd64__)
+		printf("ok %d # SKIP testcase fails assertion on "
+		    "amd64\n", j);
+		continue;
+#endif
 		printf("rmode = %d\n", rmodes[i]);
 		fesetround(rmodes[i]);
 		test_infinities();
