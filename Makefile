@@ -329,6 +329,10 @@ bmake: .PHONY
 		${MMAKE} all; \
 		${MMAKE} install DESTDIR=${MYMAKE:H} BINDIR=
 
+regress: .PHONY
+	@echo "'make regress' has been renamed 'make check'" | /usr/bin/fmt
+	@false
+
 tinderbox toolchains kernel-toolchains: upgrade_checks
 
 tinderbox:

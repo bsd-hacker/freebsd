@@ -78,14 +78,6 @@ Kyuafile: Makefile
 CHECKDIR?=	${DESTDIR}${TESTSDIR}
 
 KYUA= ${LOCALBASE}/bin/kyua
-${KYUA}:
-	@echo
-	@echo "kyua binary not installed at expected location (${.TARGET})"
-	@echo
-	@echo "Please install via pkg install, or specify the path to the kyua"
-	@echo "package via the \$${LOCALBASE} variable, e.g. "
-	@echo "LOCALBASE=\"${LOCALBASE}\""
-	@false
 
 # Definition of the "make check" target and supporting variables.
 #
@@ -98,5 +90,13 @@ ${KYUA}:
 # report bogus results unless the new binaries are put in place.
 
 realcheck: .PHONY
-realcheck: ${KYUA}
+	@if [ ! -x ${KYUA} ]; then \
+		echo; \
+		echo "kyua binary not installed at expected location (${.TARGET})"; \
+		echo; \
+		echo "Please install via pkg install, or specify the path to the kyua"; \
+		echo "package via the \$${LOCALBASE} variable, e.g. "; \
+		echo "LOCALBASE=\"${LOCALBASE}\""; \
+		false; \
+	fi
 	@${KYUA} test -k ${CHECKDIR}/Kyuafile
