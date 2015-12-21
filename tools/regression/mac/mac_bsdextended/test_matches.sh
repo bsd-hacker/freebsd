@@ -19,6 +19,10 @@ if [ $(id -u) -ne 0 ]; then
 	echo "1..0 # SKIP test must be run as root"
 	exit 0
 fi
+if ! sysctl -N security.mac.bsdextended >/dev/null 2>&1; then
+	echo "1..0 # SKIP mac_bsdextended(4) support isn't available"
+	exit 0
+fi
 if ! playground=$(mktemp -d $TMPDIR/tmp.XXXXXXX); then
 	echo "1..0 # SKIP failed to create temporary directory"
 	exit 0
@@ -97,7 +101,7 @@ echo "# subject matching jailid:"
 jailid=`jail -i / localhost 127.0.0.1 /usr/sbin/daemon -f /bin/sh -c "(sleep 5; touch $playground/test-jail) &"`
 ugidfw set 1 subject jailid $jailid object mode rasx
 sleep 10
-if [ -f $playground/test-jail ]; then echo not ok; else echo ok; fi
+if [ -f $playground/test-jail ]; then echo "not ok # TODO this testcase is buggy (see bug # 205481)"; else echo ok; fi
 
 rm -f $playground/test-jail
 echo "# subject nonmatching jailid:"
