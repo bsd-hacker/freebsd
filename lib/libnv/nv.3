@@ -28,14 +28,16 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 30, 2015
+.Dd May 1, 2015
 .Dt NV 3
 .Os
 .Sh NAME
 .Nm nvlist_create ,
 .Nm nvlist_destroy ,
 .Nm nvlist_error ,
+.Nm nvlist_set_error ,
 .Nm nvlist_empty ,
+.Nm nvlist_flags ,
 .Nm nvlist_exists ,
 .Nm nvlist_free ,
 .Nm nvlist_clone ,
@@ -63,8 +65,12 @@
 .Fn nvlist_destroy "nvlist_t *nvl"
 .Ft int
 .Fn nvlist_error "const nvlist_t *nvl"
+.Ft void
+.Fn nvlist_set_error "nvlist_t *nvl, int error"
 .Ft bool
 .Fn nvlist_empty "const nvlist_t *nvl"
+.Ft int
+.Fn nvlist_flags "const nvlist_t *nvl"
 .\"
 .Ft "nvlist_t *"
 .Fn nvlist_clone "const nvlist_t *nvl"
@@ -248,13 +254,28 @@ the
 error will be returned.
 .Pp
 The
+.Fn nvlist_set_error
+function sets an nvlist to be in the error state.
+Subsequent calls to
+.Fn nvlist_error
+will return the given error value.
+This function cannot be used to clear the error state from an nvlist.
+This function does nothing if the nvlist is already in the error state.
+.Pp
+The
 .Fn nvlist_empty
-functions returns
+function returns
 .Dv true
 if the given nvlist is empty and
 .Dv false
 otherwise.
 The nvlist must not be in error state.
+.Pp
+The
+.Fn nvlist_flags
+function returns flags used to create the nvlist with the
+.Fn nvlist_create
+function.
 .Pp
 The
 .Fn nvlist_clone
