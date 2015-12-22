@@ -60,6 +60,7 @@ MLINKS+=nv.3 nvlist_create.3 \
 	nv.3 nvlist_get_nvlist.3 \
 	nv.3 nvlist_get_descriptor.3 \
 	nv.3 nvlist_get_binary.3 \
+	nv.3 nvlist_get_parent.3 \
 	nv.3 nvlist_take_bool.3 \
 	nv.3 nvlist_take_number.3 \
 	nv.3 nvlist_take_string.3 \
@@ -148,7 +149,7 @@ MLINKS+=nv.3 nvlist_existsv.3 \
 	nv.3 nvlist_takev_nvlist.3 \
 	nv.3 nvlist_takev_descriptor.3 \
 	nv.3 nvlist_takev_binary.3 \
-	nv.3 nvlist_freef.3 \
+	nv.3 nvlist_freev.3 \
 	nv.3 nvlist_freev_type.3 \
 	nv.3 nvlist_freev_null.3 \
 	nv.3 nvlist_freev_bool.3 \
