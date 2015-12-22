@@ -892,7 +892,7 @@ nvlist_recv(int sock)
 	struct nvlist_header nvlhdr;
 	nvlist_t *nvl, *ret;
 	unsigned char *buf;
-	size_t nfds, size;
+	size_t nfds, size, i;
 	int serrno, *fds;
 
 	if (buf_recv(sock, &nvlhdr, sizeof(nvlhdr)) == -1)
@@ -925,8 +925,11 @@ nvlist_recv(int sock)
 	}
 
 	nvl = nvlist_xunpack(buf, size, fds, nfds);
-	if (nvl == NULL)
+	if (nvl == NULL) {
+		for (i = 0; i < nfds; i++)
+			close(fds[i]);
 		goto out;
+	}
 
 	ret = nvl;
 out:
