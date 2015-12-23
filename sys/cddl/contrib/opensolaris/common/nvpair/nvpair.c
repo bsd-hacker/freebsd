@@ -44,14 +44,6 @@
 #endif
 #define	skip_whitespace(p)	while ((*(p) == ' ') || (*(p) == '\t')) p++
 
-#if defined(__FreeBSD__) && !defined(_KERNEL)
-/*
- * libnvpair is the lowest commen denominator for ZFS related libraries,
- * defining aok here makes it usable by all ZFS related libraries
- */
-int aok;
-#endif
-
 /*
  * nvpair.c - Provides kernel & userland interfaces for manipulating
  *	name-value pairs.
@@ -1235,7 +1227,6 @@ nvpair_type_is_array(nvpair_t *nvp)
 	data_type_t type = NVP_TYPE(nvp);
 
 	if ((type == DATA_TYPE_BYTE_ARRAY) ||
-	    (type == DATA_TYPE_INT8_ARRAY) ||
 	    (type == DATA_TYPE_UINT8_ARRAY) ||
 	    (type == DATA_TYPE_INT16_ARRAY) ||
 	    (type == DATA_TYPE_UINT16_ARRAY) ||
