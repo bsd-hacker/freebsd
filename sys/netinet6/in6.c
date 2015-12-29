@@ -2008,6 +2008,7 @@ in6_if2idlen(struct ifnet *ifp)
 	case IFT_PROPVIRTUAL:	/* XXX: no RFC. treat it as ether */
 	case IFT_L2VLAN:	/* ditto */
 	case IFT_IEEE80211:	/* ditto */
+	case IFT_BRIDGE:	/* bridge(4) only does Ethernet-like links */
 	case IFT_INFINIBAND:
 		return (64);
 	case IFT_FDDI:		/* RFC2467 */
@@ -2359,13 +2360,20 @@ in6_lltable_dump_entry(struct lltable *llt, struct llentry *lle,
 			sdl->sdl_index = ifp->if_index;
 			sdl->sdl_type = ifp->if_type;
 			bcopy(&lle->ll_addr, LLADDR(sdl), ifp->if_addrlen);
-			ndpc.rtm.rtm_rmx.rmx_expire = lle->la_expire +
-			    lle->lle_remtime / hz;
+			if (lle->la_expire != 0)
+				ndpc.rtm.rtm_rmx.rmx_expire = lle->la_expire +
+				    lle->lle_remtime / hz +
+				    time_second - time_uptime;
 			ndpc.rtm.rtm_flags |= (RTF_HOST | RTF_LLDATA);
 			if (lle->la_flags & LLE_STATIC)
 				ndpc.rtm.rtm_flags |= RTF_STATIC;
 			if (lle->la_flags & LLE_IFADDR)
 				ndpc.rtm.rtm_flags |= RTF_PINNED;
+			if (lle->ln_router != 0)
+				ndpc.rtm.rtm_flags |= RTF_GATEWAY;
+			ndpc.rtm.rtm_rmx.rmx_pksent = lle->la_asked;
+			/* Store state in rmx_weight value */
+			ndpc.rtm.rtm_rmx.rmx_state = lle->ln_state;
 			ndpc.rtm.rtm_index = ifp->if_index;
 			error = SYSCTL_OUT(wr, &ndpc, sizeof(ndpc));
 
@@ -2432,6 +2440,8 @@ in6_domifattach(struct ifnet *ifp)
 int
 in6_domifmtu(struct ifnet *ifp)
 {
+	if (ifp->if_afdata[AF_INET6] == NULL)
+		return ifp->if_mtu;
 
 	return (IN6_LINKMTU(ifp));
 }

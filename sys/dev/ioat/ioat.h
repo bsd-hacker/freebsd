@@ -48,6 +48,14 @@ __FBSDID("$FreeBSD$");
 #define	DMA_NO_WAIT	0x2
 #define	DMA_ALL_FLAGS	(DMA_INT_EN | DMA_NO_WAIT)
 
+/*
+ * Hardware revision number.  Different hardware revisions support different
+ * features.  For example, 3.2 cannot read from MMIO space, while 3.3 can.
+ */
+#define	IOAT_VER_3_0			0x30
+#define	IOAT_VER_3_2			0x32
+#define	IOAT_VER_3_3			0x33
+
 typedef void *bus_dmaengine_t;
 struct bus_dmadesc;
 typedef void (*bus_dmaengine_callback_t)(void *arg, int error);
@@ -59,6 +67,31 @@ bus_dmaengine_t ioat_get_dmaengine(uint32_t channel_index);
 
 /* Release the DMA channel */
 void ioat_put_dmaengine(bus_dmaengine_t dmaengine);
+
+/* Check the DMA engine's HW version */
+int ioat_get_hwversion(bus_dmaengine_t dmaengine);
+
+/*
+ * Set interrupt coalescing on a DMA channel.
+ *
+ * The argument is in microseconds.  A zero value disables coalescing.  Any
+ * other value delays interrupt generation for N microseconds to provide
+ * opportunity to coalesce multiple operations into a single interrupt.
+ *
+ * Returns an error status, or zero on success.
+ *
+ * - ERANGE if the given value exceeds the delay supported by the hardware.
+ *   (All current hardware supports a maximum of 0x3fff microseconds delay.)
+ * - ENODEV if the hardware does not support interrupt coalescing.
+ */
+int ioat_set_interrupt_coalesce(bus_dmaengine_t dmaengine, uint16_t delay);
+
+/*
+ * Return the maximum supported coalescing period, for use in
+ * ioat_set_interrupt_coalesce().  If the hardware does not support coalescing,
+ * returns zero.
+ */
+uint16_t ioat_get_max_coalesce_period(bus_dmaengine_t dmaengine);
 
 /*
  * Acquire must be called before issuing an operation to perform. Release is

@@ -599,7 +599,7 @@ arpintr(struct mbuf *m)
 		layer = "firewire";
 
 		/*
-		 * Restrict too long harware addresses.
+		 * Restrict too long hardware addresses.
 		 * Currently we are capable of handling 20-byte
 		 * addresses ( sizeof(lle->ll_addr) )
 		 */
@@ -608,8 +608,8 @@ arpintr(struct mbuf *m)
 		break;
 	default:
 		ARP_LOG(LOG_NOTICE,
-		    "packet with unknown harware format 0x%02d received on %s\n",
-		    ntohs(ar->ar_hrd), if_name(ifp));
+		    "packet with unknown hardware format 0x%02d received on "
+		    "%s\n", ntohs(ar->ar_hrd), if_name(ifp));
 		m_freem(m);
 		return;
 	}
@@ -849,12 +849,20 @@ match:
 		arp_check_update_lle(ah, isaddr, ifp, bridged, la);
 	else if (itaddr.s_addr == myaddr.s_addr) {
 		/*
-		 * Reply to our address, but no lle exists yet.
-		 * do we really have to create an entry?
+		 * Request/reply to our address, but no lle exists yet.
+		 * Try to create new llentry.
 		 */
 		la = lltable_alloc_entry(LLTABLE(ifp), 0, dst);
-		if (la == NULL)
-			goto drop;
+		if (la == NULL) {
+
+			/*
+			 * lle creation may fail if source address belongs
+			 * to non-directly connected subnet. However, we
+			 * will try to answer the request instead of dropping
+			 * frame.
+			 */
+			goto reply;
+		}
 		lltable_set_entry_addr(ifp, la, ar_sha(ah));
 
 		IF_AFDATA_WLOCK(ifp);
