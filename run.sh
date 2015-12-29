@@ -41,8 +41,9 @@ while getopts a name; do
 done
 shift $(($OPTIND - 1))
 
-pgrep -fq all.sh ||
-    echo "Note: all.sh in stress2/misc is the preferred test to run."
+[ `basename ${stress2origin:-X}` != misc ] &&
+    echo "Note: all.sh in stress2/misc is the preferred test to run." \
+    1>&2
 if [ ! -z "$aflag" ]; then
    . ./default.cfg
    export runRUNTIME=5m
