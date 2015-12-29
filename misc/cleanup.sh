@@ -37,6 +37,7 @@ mount | grep -q "on $mntpoint " && umount -f $mntpoint
 rm -rf ${mntpoint}/stressX*
 rm -f /tmp/.snap/stress2* /var/.snap/stress2*
 rm -rf /tmp/stressX.control $RUNDIR /tmp/misc.name
+[ -d `dirname "$diskimage"` ] || mkdir -p `dirname "$diskimage"`
 mkdir -p $RUNDIR
 chmod 0777 $RUNDIR
 
@@ -59,3 +60,8 @@ for i in `jot $MOUNTS`; do
 	[ -c /dev/md$m ] &&  mdconfig -d -u $m
 	m=$((m + 1))
 done
+
+# Delete $testuser's ipcs
+ipcs | awk "\$5 ~/$testuser/ && \$6 ~/$testuser/ {print \"-\" \$1,\$2}" | \
+    xargs -t ipcrm
+
