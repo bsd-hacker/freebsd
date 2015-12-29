@@ -36,11 +36,11 @@ here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pthread8.c
 mycc -o pthread8 -Wall -Wextra -O0 -g pthread8.c -lpthread || exit 1
-#rm -f pthread8.c /tmp/pthread8.core
+rm -f pthread8.c /tmp/pthread8.core
 
 /tmp/pthread8
 
-#rm -f /tmp/pthread8
+rm -f /tmp/pthread8
 exit 0
 EOF
 /* $Id: pi.c,v 1.2 2015/01/31 11:36:07 kostik Exp kostik $ */
