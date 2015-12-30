@@ -28,23 +28,23 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
+#include <sys/errno.h>
+#include <sys/param.h>
+#include <sys/stat.h>
 #include <sys/sysctl.h>
-#include <unistd.h>
+#include <sys/types.h>
+
+#include <err.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/param.h>
-#include <sys/errno.h>
 #include <string.h>
-#include <err.h>
-
+#include <unistd.h>
 
 static int files = 5;
 static int fs = 1024;
+static int max, rnd;
 static char *buffer;
-static int max;
 
 void
 error(char *op, char* arg, char* file, int line) {
@@ -54,19 +54,22 @@ error(char *op, char* arg, char* file, int line) {
 
 void
 mkDir(char *path, int level) {
-	int fd, j;
+	int fd, j, len;
 	char newPath[MAXPATHLEN + 1];
 	char file[128];
 
 	if (mkdir(path, 0770) == -1) {
 		error("mkdir", path, __FILE__, __LINE__);
-		fprintf(stderr, "length(path) = %d\n", strlen(path));
+		fprintf(stderr, "length(path) = %d\n", (int)strlen(path));
 		fprintf(stderr, ") level = %d\n", level);
 		exit(2);
 	}
 	chdir(path);
 
+	len = fs;
 	for (j = 0; j <  files; j++) {
+		if (rnd)
+			len = arc4random() % fs + 1;
 		sprintf(file,"f%05d", j);
 		if ((fd = creat(file, 0660)) == -1) {
 			if (errno != EINTR) {
@@ -74,7 +77,7 @@ mkDir(char *path, int level) {
 				break;
 			}
 		}
-		if (write(fd, buffer, fs) != fs)
+		if (write(fd, buffer, len) != len)
 			err(1, "%d: write(%s), %s:%d", level, file, __FILE__, __LINE__);
 
 		if (fd != -1 && close(fd) == -1)
@@ -103,7 +106,6 @@ rmFile(void)
 void
 rmDir(char *path, int level) {
 	char newPath[10];
-
 
 	if (level < max) {
 		sprintf(newPath,"d%d", level+1);
@@ -138,14 +140,17 @@ rmDir2(char *path, int level) {
 int
 main(int argc, char **argv)
 {
+	pid_t pid;
 	int c, levels = 1, leave = 0;
 	char path[128], rpath[128] = "";
 	char ch = 0;
 	extern char *optarg;
-	pid_t pid;
 
-	while ((c = getopt(argc, argv, "ln:r:f:s:")) != -1)
+	while ((c = getopt(argc, argv, "aln:r:f:s:")) != -1)
 		switch (c) {
+			case 'a':
+				rnd = 1;
+				break;
 			case 'l':
 				leave = 1;
 				break;
@@ -192,5 +197,6 @@ main(int argc, char **argv)
 		mkDir(path, 1);
 		if (leave == 0) rmDir(path, 1);
 	}
-	return 0;
+
+	return (0);
 }
