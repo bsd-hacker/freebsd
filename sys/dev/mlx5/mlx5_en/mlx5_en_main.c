@@ -106,8 +106,8 @@ static const struct {
 		.subtype = IFM_10G_SR,
 		.baudrate = IF_Gbps(10ULL),
 	},
-	[MLX5E_10GBASE_ER] = {
-		.subtype = IFM_10G_ER,
+	[MLX5E_10GBASE_LR] = {
+		.subtype = IFM_10G_LR,
 		.baudrate = IF_Gbps(10ULL),
 	},
 	[MLX5E_40GBASE_SR4] = {
@@ -2298,6 +2298,7 @@ mlx5e_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	int size_read = 0;
 	int module_num;
 	int max_mtu;
+	uint8_t read_addr;
 
 	priv = ifp->if_softc;
 
@@ -2484,11 +2485,21 @@ out:
 		}
 
 		/*
-		 * Note that we ignore i2c.addr here. The driver hardcodes
-		 * the address to 0x50, while standard expects it to be 0xA0.
+		 * Currently 0XA0 and 0xA2 are the only addresses permitted.
+		 * The internal conversion is as follows:
 		 */
+		if (i2c.dev_addr == 0xA0)
+			read_addr = MLX5E_I2C_ADDR_LOW;
+		else if (i2c.dev_addr == 0xA2)
+			read_addr = MLX5E_I2C_ADDR_HIGH;
+		else {
+			if_printf(ifp, "Query eeprom failed, "
+			    "Invalid Address: %X\n", i2c.dev_addr);
+			error = EINVAL;
+			goto err_i2c;
+		}
 		error = mlx5_query_eeprom(priv->mdev,
-		    MLX5E_I2C_ADDR_LOW, MLX5E_EEPROM_LOW_PAGE,
+		    read_addr, MLX5E_EEPROM_LOW_PAGE,
 		    (uint32_t)i2c.offset, (uint32_t)i2c.len, module_num,
 		    (uint32_t *)i2c.data, &size_read);
 		if (error) {
@@ -2499,7 +2510,7 @@ out:
 
 		if (i2c.len > MLX5_EEPROM_MAX_BYTES) {
 			error = mlx5_query_eeprom(priv->mdev,
-			    MLX5E_I2C_ADDR_LOW, MLX5E_EEPROM_LOW_PAGE,
+			    read_addr, MLX5E_EEPROM_LOW_PAGE,
 			    (uint32_t)(i2c.offset + size_read),
 			    (uint32_t)(i2c.len - size_read), module_num,
 			    (uint32_t *)(i2c.data + size_read), &size_read);
