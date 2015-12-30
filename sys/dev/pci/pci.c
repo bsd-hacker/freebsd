@@ -77,7 +77,6 @@ __FBSDID("$FreeBSD$");
 static int		pci_has_quirk(uint32_t devid, int quirk);
 static pci_addr_t	pci_mapbase(uint64_t mapreg);
 static const char	*pci_maptype(uint64_t mapreg);
-static int		pci_mapsize(uint64_t testval);
 static int		pci_maprange(uint64_t mapreg);
 static pci_addr_t	pci_rombase(uint64_t mapreg);
 static int		pci_romsize(uint64_t testval);
@@ -492,7 +491,7 @@ pci_maptype(uint64_t mapreg)
 
 /* return log2 of map size decoded for memory or port map */
 
-static int
+int
 pci_mapsize(uint64_t testval)
 {
 	int ln2size;
@@ -2674,8 +2673,9 @@ pci_memen(device_t dev)
 	return (pci_read_config(dev, PCIR_COMMAND, 2) & PCIM_CMD_MEMEN) != 0;
 }
 
-static void
-pci_read_bar(device_t dev, int reg, pci_addr_t *mapp, pci_addr_t *testvalp)
+void
+pci_read_bar(device_t dev, int reg, pci_addr_t *mapp, pci_addr_t *testvalp,
+    int *bar64)
 {
 	struct pci_devinfo *dinfo;
 	pci_addr_t map, testval;
@@ -2695,6 +2695,8 @@ pci_read_bar(device_t dev, int reg, pci_addr_t *mapp, pci_addr_t *testvalp)
 		pci_write_config(dev, reg, map, 4);
 		*mapp = map;
 		*testvalp = testval;
+		if (bar64 != NULL)
+			*bar64 = 0;
 		return;
 	}
 
@@ -2736,6 +2738,8 @@ pci_read_bar(device_t dev, int reg, pci_addr_t *mapp, pci_addr_t *testvalp)
 
 	*mapp = map;
 	*testvalp = testval;
+	if (bar64 != NULL)
+		*bar64 = (ln2range == 64);
 }
 
 static void
@@ -2790,7 +2794,7 @@ pci_bar_enabled(device_t dev, struct pci_map *pm)
 		return ((cmd & PCIM_CMD_PORTEN) != 0);
 }
 
-static struct pci_map *
+struct pci_map *
 pci_add_bar(device_t dev, int reg, pci_addr_t value, pci_addr_t size)
 {
 	struct pci_devinfo *dinfo;
@@ -2861,7 +2865,7 @@ pci_add_map(device_t bus, device_t dev, int reg, struct resource_list *rl,
 		return (barlen);
 	}
 
-	pci_read_bar(dev, reg, &map, &testval);
+	pci_read_bar(dev, reg, &map, &testval, NULL);
 	if (PCI_BAR_MEM(map)) {
 		type = SYS_RES_MEMORY;
 		if (map & PCIM_BAR_MEM_PREFETCH)
@@ -4531,7 +4535,7 @@ DB_SHOW_COMMAND(pciregs, db_pci_dump)
 
 static struct resource *
 pci_reserve_map(device_t dev, device_t child, int type, int *rid,
-    u_long start, u_long end, u_long count, u_int flags)
+    u_long start, u_long end, u_long count, u_int num, u_int flags)
 {
 	struct pci_devinfo *dinfo = device_get_ivars(child);
 	struct resource_list *rl = &dinfo->resources;
@@ -4555,7 +4559,7 @@ pci_reserve_map(device_t dev, device_t child, int type, int *rid,
 		 * have a atapci device in legacy mode and it fails
 		 * here, that other code is broken.
 		 */
-		pci_read_bar(child, *rid, &map, &testval);
+		pci_read_bar(child, *rid, &map, &testval, NULL);
 
 		/*
 		 * Determine the size of the BAR and ignore BARs with a size
@@ -4597,7 +4601,7 @@ pci_reserve_map(device_t dev, device_t child, int type, int *rid,
 	 * situation where we might allocate the excess to
 	 * another driver, which won't work.
 	 */
-	count = (pci_addr_t)1 << mapsize;
+	count = ((pci_addr_t)1 << mapsize) * num;
 	if (RF_ALIGNMENT(flags) < mapsize)
 		flags = (flags & ~RF_ALIGNMENT_MASK) | RF_ALIGNMENT_LOG2(mapsize);
 	if (PCI_BAR_MEM(map) && (map & PCIM_BAR_MEM_PREFETCH))
@@ -4628,18 +4632,14 @@ out:
 }
 
 struct resource *
-pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
-		   u_long start, u_long end, u_long count, u_int flags)
+pci_alloc_multi_resource(device_t dev, device_t child, int type, int *rid,
+    u_long start, u_long end, u_long count, u_long num, u_int flags)
 {
 	struct pci_devinfo *dinfo;
 	struct resource_list *rl;
 	struct resource_list_entry *rle;
 	struct resource *res;
 	pcicfgregs *cfg;
-
-	if (device_get_parent(child) != dev)
-		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
-		    type, rid, start, end, count, flags));
 
 	/*
 	 * Perform lazy resource allocation
@@ -4697,13 +4697,26 @@ pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
 		rle = resource_list_find(rl, type, *rid);
 		if (rle == NULL) {
 			res = pci_reserve_map(dev, child, type, rid, start, end,
-			    count, flags);
+			    count, num, flags);
 			if (res == NULL)
 				return (NULL);
 		}
 	}
 	return (resource_list_alloc(rl, dev, child, type, rid,
 	    start, end, count, flags));
+}
+
+struct resource *
+pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
+    u_long start, u_long end, u_long count, u_int flags)
+{
+
+	if (device_get_parent(child) != dev)
+		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
+		    type, rid, start, end, count, flags));
+
+	return (pci_alloc_multi_resource(dev, child, type, rid, start, end,
+	    count, 1, flags));
 }
 
 int
