@@ -684,7 +684,7 @@ only forth also support-functions also file-processing definitions
   s" loader_conf_files" getenv conf_files string=
 ;
 
-: set_nextboot_conf \ XXX maybe do as set_conf_files ?
+: set_nextboot_conf
   value_buffer strget unquote nextboot_conf_file string=
 ;
 
@@ -930,6 +930,30 @@ only forth definitions also support-functions
   repeat
 ;
 
+: free-one-module { addr -- addr }
+  addr module.name strfree
+  addr module.loadname strfree
+  addr module.type strfree
+  addr module.args strfree
+  addr module.beforeload strfree
+  addr module.afterload strfree
+  addr module.loaderror strfree
+  addr
+;
+
+: free-module-options
+  module_options @
+  begin
+    ?dup
+  while
+    free-one-module
+    dup module.next @
+    swap free-memory
+  repeat
+  0 module_options !
+  0 last_module_option !
+;
+
 only forth also support-functions definitions
 
 \ Variables used for processing multiple conf files
@@ -1019,7 +1043,7 @@ string current_file_name_ref	\ used to print the file name
 ;
 
 : get_nextboot_conf_file ( -- addr len )
-  nextboot_conf_file strget strdup
+  nextboot_conf_file strget
 ;
 
 : rewrite_nextboot_file ( -- )
