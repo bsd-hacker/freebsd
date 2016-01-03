@@ -6619,7 +6619,11 @@ ixl_uninit_iov(device_t dev)
 		pf->veb_seid = 0;
 	}
 
+#if __FreeBSD_version > 1100022
 	if ((if_getdrvflags(ifp) & IFF_DRV_RUNNING) == 0)
+#else
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+#endif
 		ixl_disable_intr(vsi);
 
 	vfs = pf->vfs;
