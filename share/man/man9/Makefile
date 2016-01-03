@@ -195,9 +195,10 @@ MAN=	accept_filter.9 \
 	p_candebug.9 \
 	p_cansee.9 \
 	pci.9 \
-	PCI_ADD_VF.9 \
-	PCI_INIT_IOV.9 \
-	PCI_UNINIT_IOV.9 \
+	PCI_IOV_ADD_VF.9 \
+	PCI_IOV_INIT.9 \
+	pci_iov_schema.9 \
+	PCI_IOV_UNINIT.9 \
 	pfil.9 \
 	pfind.9 \
 	pget.9 \
@@ -1086,6 +1087,8 @@ MLINKS+=pci.9 pci_alloc_msi.9 \
 	pci.9 pci_get_powerstate.9 \
 	pci.9 pci_get_vpd_ident.9 \
 	pci.9 pci_get_vpd_readonly.9 \
+	pci.9 pci_iov_attach.9 \
+	pci.9 pci_iov_detach.9 \
 	pci.9 pci_msi_count.9 \
 	pci.9 pci_msix_count.9 \
 	pci.9 pci_pending_msix.9 \
@@ -1100,6 +1103,14 @@ MLINKS+=pci.9 pci_alloc_msi.9 \
 	pci.9 pcie_adjust_config.9 \
 	pci.9 pcie_read_config.9 \
 	pci.9 pcie_write_config.9
+MLINKS+=pci_iov_schema.9 pci_iov_schema_alloc_node.9 \
+	pci_iov_schema.9 pci_iov_schema_add_bool.9 \
+	pci_iov_schema.9 pci_iov_schema_add_string.9 \
+	pci_iov_schema.9 pci_iov_schema_add_uint8.9 \
+	pci_iov_schema.9 pci_iov_schema_add_uint16.9 \
+	pci_iov_schema.9 pci_iov_schema_add_uint32.9 \
+	pci_iov_schema.9 pci_iov_schema_add_uint64.9 \
+	pci_iov_schema.9 pci_iov_schema_add_unicast_mac.9
 MLINKS+=pfil.9 pfil_add_hook.9 \
 	pfil.9 pfil_hook_get.9 \
 	pfil.9 pfil_remove_hook.9
