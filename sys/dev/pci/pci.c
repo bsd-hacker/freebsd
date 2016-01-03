@@ -186,6 +186,11 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(pci_msix_count,	pci_msix_count_method),
 	DEVMETHOD(pci_get_rid,		pci_get_rid_method),
 	DEVMETHOD(pci_child_added,	pci_child_added_method),
+#ifdef PCI_IOV
+	DEVMETHOD(pci_iov_attach,	pci_iov_attach_method),
+	DEVMETHOD(pci_iov_detach,	pci_iov_detach_method),
+	DEVMETHOD(pci_create_iov_child,	pci_create_iov_child_method),
+#endif
 
 	DEVMETHOD_END
 };
@@ -652,6 +657,9 @@ pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
 	cfg->mfdev		= (cfg->hdrtype & PCIM_MFDEV) != 0;
 	cfg->hdrtype		&= ~PCIM_MFDEV;
 	STAILQ_INIT(&cfg->maps);
+
+	cfg->devinfo_size	= size;
+	cfg->iov		= NULL;
 
 	pci_fixancient(cfg);
 	pci_hdrtypedata(pcib, b, s, f, cfg);
@@ -3611,6 +3619,51 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 #undef REG
 }
 
+#ifdef PCI_IOV
+device_t
+pci_add_iov_child(device_t bus, device_t pf, size_t size, uint16_t rid,
+    uint16_t vid, uint16_t did)
+{
+	struct pci_devinfo *pf_dinfo, *vf_dinfo;
+	device_t pcib;
+	int busno, slot, func;
+
+	pf_dinfo = device_get_ivars(pf);
+
+	/*
+	 * Do a sanity check that we have been passed the correct size.  If this
+	 * test fails then likely the pci subclass hasn't implemented the
+	 * pci_create_iov_child method like it's supposed it.
+	 */
+	if (size != pf_dinfo->cfg.devinfo_size) {
+		device_printf(pf,
+		    "PCI subclass does not properly implement PCI_IOV\n");
+		return (NULL);
+	}
+
+	pcib = device_get_parent(bus);
+
+	PCIB_DECODE_RID(pcib, rid, &busno, &slot, &func);
+
+	vf_dinfo = pci_fill_devinfo(pcib, pci_get_domain(pcib), busno, slot, func,
+	    vid, did, size);
+
+	vf_dinfo->cfg.flags |= PCICFG_VF;
+	pci_add_child(bus, vf_dinfo);
+
+	return (vf_dinfo->cfg.dev);
+}
+
+device_t
+pci_create_iov_child_method(device_t bus, device_t pf, uint16_t rid,
+    uint16_t vid, uint16_t did)
+{
+
+	return (pci_add_iov_child(bus, pf, sizeof(struct pci_devinfo), rid, vid,
+	    did));
+}
+#endif
+
 void
 pci_add_child(device_t bus, struct pci_devinfo *dinfo)
 {
@@ -4722,10 +4775,29 @@ struct resource *
 pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
     u_long start, u_long end, u_long count, u_int flags)
 {
+#ifdef PCI_IOV
+	struct pci_devinfo *dinfo;
+#endif
 
 	if (device_get_parent(child) != dev)
 		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
 		    type, rid, start, end, count, flags));
+
+#ifdef PCI_IOV
+	dinfo = device_get_ivars(child);
+	if (dinfo->cfg.flags & PCICFG_VF) {
+		switch (type) {
+		/* VFs can't have I/O BARs. */
+		case SYS_RES_IOPORT:
+			return (NULL);
+		case SYS_RES_MEMORY:
+			return (pci_vf_alloc_mem_resource(dev, child, rid,
+			    start, end, count, flags));
+		}
+
+		/* Fall through for other types of resource allocations. */
+	}
+#endif
 
 	return (pci_alloc_multi_resource(dev, child, type, rid, start, end,
 	    count, 1, flags));
@@ -4745,6 +4817,22 @@ pci_release_resource(device_t dev, device_t child, int type, int rid,
 
 	dinfo = device_get_ivars(child);
 	cfg = &dinfo->cfg;
+
+#ifdef PCI_IOV
+	if (dinfo->cfg.flags & PCICFG_VF) {
+		switch (type) {
+		/* VFs can't have I/O BARs. */
+		case SYS_RES_IOPORT:
+			return (EDOOFUS);
+		case SYS_RES_MEMORY:
+			return (pci_vf_release_mem_resource(dev, child, rid,
+			    r));
+		}
+
+		/* Fall through for other types of resource allocations. */
+	}
+#endif
+
 #ifdef NEW_PCIB
 	/*
 	 * PCI-PCI bridge I/O window resources are not BARs.  For

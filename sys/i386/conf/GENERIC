@@ -91,6 +91,7 @@ device		cpufreq
 device		acpi
 device		eisa
 device		pci
+options		PCI_IOV			# PCI SR-IOV support
 
 # Floppy drives
 device		fdc
