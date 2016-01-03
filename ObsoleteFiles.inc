@@ -78,6 +78,9 @@ OLD_FILES+=usr/share/man/man9/MEXT_REM_REF.9.gz
 OLD_FILES+=usr/share/man/man9/MFREE.9.gz
 # 20151023: unused sgsmsg utility is removed
 OLD_FILES+=usr/bin/sgsmsg
+# 20150702: Remove duplicated nvlist includes.
+OLD_FILES+=usr/include/dnv.h
+OLD_FILES+=usr/include/nv.h
 # 20150506
 OLD_FILES+=usr/share/man/man9/NDHASGIANT.9.gz
 # 20141223: remove in6_gif.h and in_gif.h
