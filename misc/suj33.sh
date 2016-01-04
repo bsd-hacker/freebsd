@@ -29,6 +29,7 @@
 #
 
 # Test "umount" of active file system
+# Triggers "fsync: giving up on dirty" with ease.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
