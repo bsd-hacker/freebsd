@@ -210,8 +210,15 @@
             execve
             ..
             pipe
+            ..
         ..
         kqueue
+        ..
+        mac
+            bsdextended
+            ..
+            portacl
+            ..
         ..
         mqueue
         ..
