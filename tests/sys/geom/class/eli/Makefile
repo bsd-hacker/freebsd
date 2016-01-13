@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+TESTSDIR=	${TESTSBASE}/sys/geom/class/${.CURDIR:T}
+
 TAP_TESTS_SH+= attach_d_test
 TAP_TESTS_SH+= configure_b_B_test
 TAP_TESTS_SH+= delkey_test
@@ -32,5 +34,9 @@ TEST_METADATA.onetime_test+=	timeout="600"
 FILES+=		conf.sh
 FILESNAME_conf.sh=	conf.sh
 FILESDIR=	${TESTSDIR}
+
+.for t in ${TAP_TESTS_SH}
+TEST_METADATA.$t+=	required_user="root"
+.endfor
 
 .include <bsd.test.mk>

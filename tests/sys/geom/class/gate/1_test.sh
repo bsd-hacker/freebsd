@@ -3,13 +3,15 @@
 
 . `dirname $0`/conf.sh
 
+echo '1..2'
+
 base=`basename $0`
 us=0
 while [ -c /dev/ggate${us} ]; do
 	: $(( us += 1 ))
 done
 conf=`mktemp $base.XXXXXX` || exit 1
-pidfile=ggated.pid
+pidfile=/var/run/ggated.pid
 port=33080
 
 work=$(attach_md -t malloc -s 1M)
@@ -29,11 +31,12 @@ src_checksum=$(md5 -q /dev/$src)
 
 echo "127.0.0.1 RW /dev/$work" > $conf
 
-if ! ggated -F $pidfile -p $port $conf; then
+if ! ggated -p $port $conf; then
 	echo 'ggated failed to start'
 	echo 'Bail out!'
 	exit 1
 fi
+sleep 1
 if ! ggatec create -p $port -u $us 127.0.0.1 /dev/$work; then
 	echo 'ggatec create failed'
 	echo 'Bail out!'
@@ -42,8 +45,6 @@ fi
 
 dd if=/dev/${src} of=/dev/ggate${us} bs=1m count=1
 sleep 1
-
-echo '1..2'
 
 work_checksum=$(md5 -q /dev/$work)
 if [ "$work_checksum" != "$src_checksum" ]; then

@@ -4,6 +4,8 @@
 class="eli"
 base=`basename $0`
 
+# We need to use linear probing in order to detect the first available md(4)
+# device instead of using mdconfig -a -t, because geli(8) attachs md(4) devices
 no=0
 while [ -c /dev/md$no ]; do
 	: $(( no += 1 ))

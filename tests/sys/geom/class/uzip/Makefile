@@ -4,6 +4,8 @@
 # Regression test for geom_uzip.
 #
 
+TESTSDIR=	${TESTSBASE}/sys/geom/class/${.CURDIR:T}
+
 IMAGE=		1.img
 ZIMAGE=		${IMAGE}.uzip
 UZIMAGE=	${ZIMAGE}.uue
@@ -32,5 +34,9 @@ etalon+=	etalon/etalon.txt
 etalonDIR=	${TESTSDIR}/etalon
 
 TAP_TESTS_SH+=	1_test
+
+.for t in ${TAP_TESTS_SH}
+TEST_METADATA.$t+=	required_user="root"
+.endfor
 
 .include <bsd.test.mk>
