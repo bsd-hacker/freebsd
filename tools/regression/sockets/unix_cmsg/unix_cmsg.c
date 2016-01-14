@@ -131,7 +131,7 @@ static const struct test_func test_stream_tbl[] = {
 };
 
 #define TEST_STREAM_TBL_SIZE \
-	(sizeof(test_stream_tbl) / sizeof(test_stream_tbl[0]))
+	nitems(test_stream_tbl)
 
 static const struct test_func test_dgram_tbl[] = {
 	{
