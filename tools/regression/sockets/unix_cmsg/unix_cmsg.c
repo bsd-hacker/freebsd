@@ -1027,60 +1027,60 @@ check_xucred(const struct xucred *xucred, socklen_t len)
 static int
 check_scm_creds_cmsgcred(struct cmsghdr *cmsghdr)
 {
-	const struct cmsgcred *cmsgcred;
+	struct cmsgcred cmsgcred;
 
-	if (check_cmsghdr(cmsghdr, SCM_CREDS, sizeof(*cmsgcred)) < 0)
+	if (check_cmsghdr(cmsghdr, SCM_CREDS, sizeof(cmsgcred)) < 0)
 		return (-1);
 
-	cmsgcred = (struct cmsgcred *)CMSG_DATA(cmsghdr);
+	bcopy(&cmsgcred, CMSG_DATA(cmsghdr), sizeof(struct cmsgcred));
 
-	dbgmsg("cmsgcred.cmcred_pid %ld", (long)cmsgcred->cmcred_pid);
-	dbgmsg("cmsgcred.cmcred_uid %lu", (u_long)cmsgcred->cmcred_uid);
-	dbgmsg("cmsgcred.cmcred_euid %lu", (u_long)cmsgcred->cmcred_euid);
-	dbgmsg("cmsgcred.cmcred_gid %lu", (u_long)cmsgcred->cmcred_gid);
-	dbgmsg("cmsgcred.cmcred_ngroups %d", cmsgcred->cmcred_ngroups);
+	dbgmsg("cmsgcred.cmcred_pid %ld", (long)cmsgcred.cmcred_pid);
+	dbgmsg("cmsgcred.cmcred_uid %lu", (u_long)cmsgcred.cmcred_uid);
+	dbgmsg("cmsgcred.cmcred_euid %lu", (u_long)cmsgcred.cmcred_euid);
+	dbgmsg("cmsgcred.cmcred_gid %lu", (u_long)cmsgcred.cmcred_gid);
+	dbgmsg("cmsgcred.cmcred_ngroups %d", cmsgcred.cmcred_ngroups);
 
-	if (cmsgcred->cmcred_pid != client_pid) {
+	if (cmsgcred.cmcred_pid != client_pid) {
 		logmsgx("cmsgcred.cmcred_pid %ld != %ld",
-		    (long)cmsgcred->cmcred_pid, (long)client_pid);
+		    (long)cmsgcred.cmcred_pid, (long)client_pid);
 		return (-1);
 	}
-	if (cmsgcred->cmcred_uid != proc_cred.uid) {
+	if (cmsgcred.cmcred_uid != proc_cred.uid) {
 		logmsgx("cmsgcred.cmcred_uid %lu != %lu",
-		    (u_long)cmsgcred->cmcred_uid, (u_long)proc_cred.uid);
+		    (u_long)cmsgcred.cmcred_uid, (u_long)proc_cred.uid);
 		return (-1);
 	}
-	if (cmsgcred->cmcred_euid != proc_cred.euid) {
+	if (cmsgcred.cmcred_euid != proc_cred.euid) {
 		logmsgx("cmsgcred.cmcred_euid %lu != %lu",
-		    (u_long)cmsgcred->cmcred_euid, (u_long)proc_cred.euid);
+		    (u_long)cmsgcred.cmcred_euid, (u_long)proc_cred.euid);
 		return (-1);
 	}
-	if (cmsgcred->cmcred_gid != proc_cred.gid) {
+	if (cmsgcred.cmcred_gid != proc_cred.gid) {
 		logmsgx("cmsgcred.cmcred_gid %lu != %lu",
-		    (u_long)cmsgcred->cmcred_gid, (u_long)proc_cred.gid);
+		    (u_long)cmsgcred.cmcred_gid, (u_long)proc_cred.gid);
 		return (-1);
 	}
-	if (cmsgcred->cmcred_ngroups == 0) {
+	if (cmsgcred.cmcred_ngroups == 0) {
 		logmsgx("cmsgcred.cmcred_ngroups == 0");
 		return (-1);
 	}
-	if (cmsgcred->cmcred_ngroups < 0) {
+	if (cmsgcred.cmcred_ngroups < 0) {
 		logmsgx("cmsgcred.cmcred_ngroups %d < 0",
-		    cmsgcred->cmcred_ngroups);
+		    cmsgcred.cmcred_ngroups);
 		return (-1);
 	}
-	if (cmsgcred->cmcred_ngroups > CMGROUP_MAX) {
+	if (cmsgcred.cmcred_ngroups > CMGROUP_MAX) {
 		logmsgx("cmsgcred.cmcred_ngroups %d > %d",
-		    cmsgcred->cmcred_ngroups, CMGROUP_MAX);
+		    cmsgcred.cmcred_ngroups, CMGROUP_MAX);
 		return (-1);
 	}
-	if (cmsgcred->cmcred_groups[0] != proc_cred.egid) {
+	if (cmsgcred.cmcred_groups[0] != proc_cred.egid) {
 		logmsgx("cmsgcred.cmcred_groups[0] %lu != %lu (EGID)",
-		    (u_long)cmsgcred->cmcred_groups[0], (u_long)proc_cred.egid);
+		    (u_long)cmsgcred.cmcred_groups[0], (u_long)proc_cred.egid);
 		return (-1);
 	}
-	if (check_groups("cmsgcred.cmcred_groups", cmsgcred->cmcred_groups,
-	    "cmsgcred.cmcred_ngroups", cmsgcred->cmcred_ngroups, false) < 0)
+	if (check_groups("cmsgcred.cmcred_groups", cmsgcred.cmcred_groups,
+	    "cmsgcred.cmcred_ngroups", cmsgcred.cmcred_ngroups, false) < 0)
 		return (-1);
 	return (0);
 }
@@ -1088,56 +1088,56 @@ check_scm_creds_cmsgcred(struct cmsghdr *cmsghdr)
 static int
 check_scm_creds_sockcred(struct cmsghdr *cmsghdr)
 {
-	const struct sockcred *sockcred;
+	struct sockcred sockcred;
 
 	if (check_cmsghdr(cmsghdr, SCM_CREDS,
 	    SOCKCREDSIZE(proc_cred.gid_num)) < 0)
 		return (-1);
 
-	sockcred = (struct sockcred *)CMSG_DATA(cmsghdr);
+	bcopy(&sockcred, CMSG_DATA(cmsghdr), sizeof(sockcred));
 
-	dbgmsg("sockcred.sc_uid %lu", (u_long)sockcred->sc_uid);
-	dbgmsg("sockcred.sc_euid %lu", (u_long)sockcred->sc_euid);
-	dbgmsg("sockcred.sc_gid %lu", (u_long)sockcred->sc_gid);
-	dbgmsg("sockcred.sc_egid %lu", (u_long)sockcred->sc_egid);
-	dbgmsg("sockcred.sc_ngroups %d", sockcred->sc_ngroups);
+	dbgmsg("sockcred.sc_uid %lu", (u_long)sockcred.sc_uid);
+	dbgmsg("sockcred.sc_euid %lu", (u_long)sockcred.sc_euid);
+	dbgmsg("sockcred.sc_gid %lu", (u_long)sockcred.sc_gid);
+	dbgmsg("sockcred.sc_egid %lu", (u_long)sockcred.sc_egid);
+	dbgmsg("sockcred.sc_ngroups %d", sockcred.sc_ngroups);
 
-	if (sockcred->sc_uid != proc_cred.uid) {
+	if (sockcred.sc_uid != proc_cred.uid) {
 		logmsgx("sockcred.sc_uid %lu != %lu",
-		    (u_long)sockcred->sc_uid, (u_long)proc_cred.uid);
+		    (u_long)sockcred.sc_uid, (u_long)proc_cred.uid);
 		return (-1);
 	}
-	if (sockcred->sc_euid != proc_cred.euid) {
+	if (sockcred.sc_euid != proc_cred.euid) {
 		logmsgx("sockcred.sc_euid %lu != %lu",
-		    (u_long)sockcred->sc_euid, (u_long)proc_cred.euid);
+		    (u_long)sockcred.sc_euid, (u_long)proc_cred.euid);
 		return (-1);
 	}
-	if (sockcred->sc_gid != proc_cred.gid) {
+	if (sockcred.sc_gid != proc_cred.gid) {
 		logmsgx("sockcred.sc_gid %lu != %lu",
-		    (u_long)sockcred->sc_gid, (u_long)proc_cred.gid);
+		    (u_long)sockcred.sc_gid, (u_long)proc_cred.gid);
 		return (-1);
 	}
-	if (sockcred->sc_egid != proc_cred.egid) {
+	if (sockcred.sc_egid != proc_cred.egid) {
 		logmsgx("sockcred.sc_egid %lu != %lu",
-		    (u_long)sockcred->sc_egid, (u_long)proc_cred.egid);
+		    (u_long)sockcred.sc_egid, (u_long)proc_cred.egid);
 		return (-1);
 	}
-	if (sockcred->sc_ngroups == 0) {
+	if (sockcred.sc_ngroups == 0) {
 		logmsgx("sockcred.sc_ngroups == 0");
 		return (-1);
 	}
-	if (sockcred->sc_ngroups < 0) {
+	if (sockcred.sc_ngroups < 0) {
 		logmsgx("sockcred.sc_ngroups %d < 0",
-		    sockcred->sc_ngroups);
+		    sockcred.sc_ngroups);
 		return (-1);
 	}
-	if (sockcred->sc_ngroups != proc_cred.gid_num) {
+	if (sockcred.sc_ngroups != proc_cred.gid_num) {
 		logmsgx("sockcred.sc_ngroups %d != %u",
-		    sockcred->sc_ngroups, proc_cred.gid_num);
+		    sockcred.sc_ngroups, proc_cred.gid_num);
 		return (-1);
 	}
-	if (check_groups("sockcred.sc_groups", sockcred->sc_groups,
-	    "sockcred.sc_ngroups", sockcred->sc_ngroups, true) < 0)
+	if (check_groups("sockcred.sc_groups", sockcred.sc_groups,
+	    "sockcred.sc_ngroups", sockcred.sc_ngroups, true) < 0)
 		return (-1);
 	return (0);
 }
@@ -1145,15 +1145,15 @@ check_scm_creds_sockcred(struct cmsghdr *cmsghdr)
 static int
 check_scm_timestamp(struct cmsghdr *cmsghdr)
 {
-	const struct timeval *timeval;
+	const struct timeval timeval;
 
 	if (check_cmsghdr(cmsghdr, SCM_TIMESTAMP, sizeof(struct timeval)) < 0)
 		return (-1);
 
-	timeval = (struct timeval *)CMSG_DATA(cmsghdr);
+	bcopy(&timeval, CMSG_DATA(cmsghdr), sizeof(timeval));
 
 	dbgmsg("timeval.tv_sec %"PRIdMAX", timeval.tv_usec %"PRIdMAX,
-	    (intmax_t)timeval->tv_sec, (intmax_t)timeval->tv_usec);
+	    (intmax_t)timeval.tv_sec, (intmax_t)timeval.tv_usec);
 
 	return (0);
 }
@@ -1161,15 +1161,15 @@ check_scm_timestamp(struct cmsghdr *cmsghdr)
 static int
 check_scm_bintime(struct cmsghdr *cmsghdr)
 {
-	const struct bintime *bintime;
+	const struct bintime bintime;
 
 	if (check_cmsghdr(cmsghdr, SCM_BINTIME, sizeof(struct bintime)) < 0)
 		return (-1);
 
-	bintime = (struct bintime *)CMSG_DATA(cmsghdr);
+	bcopy(&bintime, CMSG_DATA(cmsghdr), sizeof(bintime));
 
 	dbgmsg("bintime.sec %"PRIdMAX", bintime.frac %"PRIu64,
-	    (intmax_t)bintime->sec, bintime->frac);
+	    (intmax_t)bintime.sec, bintime.frac);
 
 	return (0);
 }
