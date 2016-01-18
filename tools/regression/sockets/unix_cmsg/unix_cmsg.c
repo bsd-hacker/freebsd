@@ -980,6 +980,8 @@ check_groups(const char *gid_arr_str, const gid_t *gid_arr,
 static int
 check_xucred(const struct xucred *xucred, socklen_t len)
 {
+	int rc;
+
 	if (len != sizeof(*xucred)) {
 		logmsgx("option value size %zu != %zu",
 		    (size_t)len, sizeof(*xucred));
@@ -990,44 +992,47 @@ check_xucred(const struct xucred *xucred, socklen_t len)
 	dbgmsg("xucred.cr_uid %lu", (u_long)xucred->cr_uid);
 	dbgmsg("xucred.cr_ngroups %d", xucred->cr_ngroups);
 
+	rc = 0;
+
 	if (xucred->cr_version != XUCRED_VERSION) {
 		logmsgx("xucred.cr_version %u != %d",
 		    xucred->cr_version, XUCRED_VERSION);
-		return (-1);
+		rc = -1;
 	}
 	if (xucred->cr_uid != proc_cred.euid) {
 		logmsgx("xucred.cr_uid %lu != %lu (EUID)",
 		   (u_long)xucred->cr_uid, (u_long)proc_cred.euid);
-		return (-1);
+		rc = -1;
 	}
 	if (xucred->cr_ngroups == 0) {
 		logmsgx("xucred.cr_ngroups == 0");
-		return (-1);
+		rc = -1;
 	}
 	if (xucred->cr_ngroups < 0) {
 		logmsgx("xucred.cr_ngroups < 0");
-		return (-1);
+		rc = -1;
 	}
 	if (xucred->cr_ngroups > XU_NGROUPS) {
 		logmsgx("xucred.cr_ngroups %hu > %u (max)",
 		    xucred->cr_ngroups, XU_NGROUPS);
-		return (-1);
+		rc = -1;
 	}
 	if (xucred->cr_groups[0] != proc_cred.egid) {
 		logmsgx("xucred.cr_groups[0] %lu != %lu (EGID)",
 		    (u_long)xucred->cr_groups[0], (u_long)proc_cred.egid);
-		return (-1);
+		rc = -1;
 	}
 	if (check_groups("xucred.cr_groups", xucred->cr_groups,
 	    "xucred.cr_ngroups", xucred->cr_ngroups, false) < 0)
-		return (-1);
-	return (0);
+		rc = -1;
+	return (rc);
 }
 
 static int
 check_scm_creds_cmsgcred(struct cmsghdr *cmsghdr)
 {
 	struct cmsgcred cmsgcred;
+	int rc;
 
 	if (check_cmsghdr(cmsghdr, SCM_CREDS, sizeof(cmsgcred)) < 0)
 		return (-1);
@@ -1040,55 +1045,58 @@ check_scm_creds_cmsgcred(struct cmsghdr *cmsghdr)
 	dbgmsg("cmsgcred.cmcred_gid %lu", (u_long)cmsgcred.cmcred_gid);
 	dbgmsg("cmsgcred.cmcred_ngroups %d", cmsgcred.cmcred_ngroups);
 
+	rc = 0;
+
 	if (cmsgcred.cmcred_pid != client_pid) {
 		logmsgx("cmsgcred.cmcred_pid %ld != %ld",
 		    (long)cmsgcred.cmcred_pid, (long)client_pid);
-		return (-1);
+		rc = -1;
 	}
 	if (cmsgcred.cmcred_uid != proc_cred.uid) {
 		logmsgx("cmsgcred.cmcred_uid %lu != %lu",
 		    (u_long)cmsgcred.cmcred_uid, (u_long)proc_cred.uid);
-		return (-1);
+		rc = -1;
 	}
 	if (cmsgcred.cmcred_euid != proc_cred.euid) {
 		logmsgx("cmsgcred.cmcred_euid %lu != %lu",
 		    (u_long)cmsgcred.cmcred_euid, (u_long)proc_cred.euid);
-		return (-1);
+		rc = -1;
 	}
 	if (cmsgcred.cmcred_gid != proc_cred.gid) {
 		logmsgx("cmsgcred.cmcred_gid %lu != %lu",
 		    (u_long)cmsgcred.cmcred_gid, (u_long)proc_cred.gid);
-		return (-1);
+		rc = -1;
 	}
 	if (cmsgcred.cmcred_ngroups == 0) {
 		logmsgx("cmsgcred.cmcred_ngroups == 0");
-		return (-1);
+		rc = -1;
 	}
 	if (cmsgcred.cmcred_ngroups < 0) {
 		logmsgx("cmsgcred.cmcred_ngroups %d < 0",
 		    cmsgcred.cmcred_ngroups);
-		return (-1);
+		rc = -1;
 	}
 	if (cmsgcred.cmcred_ngroups > CMGROUP_MAX) {
 		logmsgx("cmsgcred.cmcred_ngroups %d > %d",
 		    cmsgcred.cmcred_ngroups, CMGROUP_MAX);
-		return (-1);
+		rc = -1;
 	}
 	if (cmsgcred.cmcred_groups[0] != proc_cred.egid) {
 		logmsgx("cmsgcred.cmcred_groups[0] %lu != %lu (EGID)",
 		    (u_long)cmsgcred.cmcred_groups[0], (u_long)proc_cred.egid);
-		return (-1);
+		rc = -1;
 	}
 	if (check_groups("cmsgcred.cmcred_groups", cmsgcred.cmcred_groups,
 	    "cmsgcred.cmcred_ngroups", cmsgcred.cmcred_ngroups, false) < 0)
-		return (-1);
-	return (0);
+		rc = -1;
+	return (rc);
 }
 
 static int
 check_scm_creds_sockcred(struct cmsghdr *cmsghdr)
 {
 	struct sockcred sockcred;
+	int rc;
 
 	if (check_cmsghdr(cmsghdr, SCM_CREDS,
 	    SOCKCREDSIZE(proc_cred.gid_num)) < 0)
@@ -1102,44 +1110,46 @@ check_scm_creds_sockcred(struct cmsghdr *cmsghdr)
 	dbgmsg("sockcred.sc_egid %lu", (u_long)sockcred.sc_egid);
 	dbgmsg("sockcred.sc_ngroups %d", sockcred.sc_ngroups);
 
+	rc = 0;
+
 	if (sockcred.sc_uid != proc_cred.uid) {
 		logmsgx("sockcred.sc_uid %lu != %lu",
 		    (u_long)sockcred.sc_uid, (u_long)proc_cred.uid);
-		return (-1);
+		rc = -1;
 	}
 	if (sockcred.sc_euid != proc_cred.euid) {
 		logmsgx("sockcred.sc_euid %lu != %lu",
 		    (u_long)sockcred.sc_euid, (u_long)proc_cred.euid);
-		return (-1);
+		rc = -1;
 	}
 	if (sockcred.sc_gid != proc_cred.gid) {
 		logmsgx("sockcred.sc_gid %lu != %lu",
 		    (u_long)sockcred.sc_gid, (u_long)proc_cred.gid);
-		return (-1);
+		rc = -1;
 	}
 	if (sockcred.sc_egid != proc_cred.egid) {
 		logmsgx("sockcred.sc_egid %lu != %lu",
 		    (u_long)sockcred.sc_egid, (u_long)proc_cred.egid);
-		return (-1);
+		rc = -1;
 	}
 	if (sockcred.sc_ngroups == 0) {
 		logmsgx("sockcred.sc_ngroups == 0");
-		return (-1);
+		rc = -1;
 	}
 	if (sockcred.sc_ngroups < 0) {
 		logmsgx("sockcred.sc_ngroups %d < 0",
 		    sockcred.sc_ngroups);
-		return (-1);
+		rc = -1;
 	}
 	if (sockcred.sc_ngroups != proc_cred.gid_num) {
 		logmsgx("sockcred.sc_ngroups %d != %u",
 		    sockcred.sc_ngroups, proc_cred.gid_num);
-		return (-1);
+		rc = -1;
 	}
 	if (check_groups("sockcred.sc_groups", sockcred.sc_groups,
 	    "sockcred.sc_ngroups", sockcred.sc_ngroups, true) < 0)
-		return (-1);
-	return (0);
+		rc = -1;
+	return (rc);
 }
 
 static int
