@@ -1,4 +1,4 @@
-/* $OpenBSD: auth.h,v 1.78 2014/07/03 11:16:55 djm Exp $ */
+/* $OpenBSD: auth.h,v 1.84 2015/05/08 06:41:56 djm Exp $ */
 
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
@@ -42,6 +42,9 @@
 #include <krb5.h>
 #endif
 
+struct ssh;
+struct sshkey;
+
 typedef struct Authctxt Authctxt;
 typedef struct Authmethod Authmethod;
 typedef struct KbdintDevice KbdintDevice;
@@ -53,7 +56,7 @@ struct Authctxt {
 	int		 valid;		/* user exists and is allowed to login */
 	int		 attempt;
 	int		 failures;
-	int		 server_caused_failure; 
+	int		 server_caused_failure;
 	int		 force_pwchange;
 	char		*user;		/* username sent by the client */
 	char		*service;
@@ -75,6 +78,9 @@ struct Authctxt {
 #endif
 	Buffer		*loginmsg;
 	void		*methoddata;
+
+	struct sshkey	**prev_userkeys;
+	u_int		 nprev_userkeys;
 };
 /*
  * Every authentication method has to handle authentication requests for
@@ -120,9 +126,11 @@ int	 auth_rsa_key_allowed(struct passwd *, BIGNUM *, Key **);
 
 int	 auth_rhosts_rsa_key_allowed(struct passwd *, char *, char *, Key *);
 int	 hostbased_key_allowed(struct passwd *, const char *, char *, Key *);
-int	 user_key_allowed(struct passwd *, Key *);
+int	 user_key_allowed(struct passwd *, Key *, int);
 void	 pubkey_auth_info(Authctxt *, const Key *, const char *, ...)
 	    __attribute__((__format__ (printf, 3, 4)));
+void	 auth2_record_userkey(Authctxt *, struct sshkey *);
+int	 auth2_userkey_already_used(Authctxt *, struct sshkey *);
 
 struct stat;
 int	 auth_secure_path(const char *, struct stat *, const char *, uid_t,
@@ -195,12 +203,13 @@ check_key_in_hostfiles(struct passwd *, Key *, const char *,
 
 /* hostkey handling */
 Key	*get_hostkey_by_index(int);
-Key	*get_hostkey_public_by_index(int);
-Key	*get_hostkey_public_by_type(int);
-Key	*get_hostkey_private_by_type(int);
-int	 get_hostkey_index(Key *);
+Key	*get_hostkey_public_by_index(int, struct ssh *);
+Key	*get_hostkey_public_by_type(int, int, struct ssh *);
+Key	*get_hostkey_private_by_type(int, int, struct ssh *);
+int	 get_hostkey_index(Key *, int, struct ssh *);
 int	 ssh1_session_key(BIGNUM *);
-void	 sshd_hostkey_sign(Key *, Key *, u_char **, u_int *, u_char *, u_int);
+int	 sshd_hostkey_sign(Key *, Key *, u_char **, size_t *,
+	     const u_char *, size_t, u_int);
 
 /* debug messages during authentication */
 void	 auth_debug_add(const char *fmt,...) __attribute__((format(printf, 1, 2)));

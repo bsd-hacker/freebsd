@@ -1,4 +1,4 @@
-#	$OpenBSD: integrity.sh,v 1.14 2014/05/21 07:04:21 djm Exp $
+#	$OpenBSD: integrity.sh,v 1.16 2015/03/24 20:22:17 markus Exp $
 #	Placed in the Public Domain.
 
 tid="integrity"
@@ -20,7 +20,7 @@ echo "KexAlgorithms diffie-hellman-group14-sha1,diffie-hellman-group1-sha1" \
 	>> $OBJ/ssh_proxy
 
 # sshd-command for proxy (see test-exec.sh)
-cmd="$SUDO sh ${SRC}/sshd-log-wrapper.sh ${SSHD} ${TEST_SSHD_LOGFILE} -i -f $OBJ/sshd_proxy"
+cmd="$SUDO sh ${SRC}/sshd-log-wrapper.sh ${TEST_SSHD_LOGFILE} ${SSHD} -i -f $OBJ/sshd_proxy"
 
 for m in $macs; do
 	trace "test $tid: mac $m"
@@ -38,7 +38,7 @@ for m in $macs; do
 		cp $OBJ/sshd_proxy_bak $OBJ/sshd_proxy
 		# modify output from sshd at offset $off
 		pxy="proxycommand=$cmd | $OBJ/modpipe -wm xor:$off:1"
-		if ssh -Q cipher-auth | grep "^${m}\$" >/dev/null 2>&1 ; then
+		if ${SSH} -Q cipher-auth | grep "^${m}\$" >/dev/null 2>&1 ; then
 			echo "Ciphers=$m" >> $OBJ/sshd_proxy
 			macopt="-c $m"
 		else
@@ -58,7 +58,7 @@ for m in $macs; do
 		     tr -s '\r\n' '.')
 		case "$out" in
 		Bad?packet*)	elen=`expr $elen + 1`; skip=3;;
-		Corrupted?MAC* | Decryption?integrity?check?failed*)
+		Corrupted?MAC* | *message?authentication?code?incorrect*)
 				emac=`expr $emac + 1`; skip=0;;
 		padding*)	epad=`expr $epad + 1`; skip=0;;
 		*)		fail "unexpected error mac $m at $off: $out";;
