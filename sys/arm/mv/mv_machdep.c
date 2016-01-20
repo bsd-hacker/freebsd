@@ -66,6 +66,10 @@ static int platform_mpp_init(void);
 void armadaxp_init_coher_fabric(void);
 void armadaxp_l2_init(void);
 #endif
+#if defined(SOC_MV_ARMADA38X)
+int armada38x_win_set_iosync_barrier(void);
+int armada38x_scu_enable(void);
+#endif
 
 #define MPP_PIN_MAX		68
 #define MPP_PIN_CELLS		2
@@ -248,6 +252,14 @@ platform_late_init(void)
 	armadaxp_init_coher_fabric();
 #endif
 	armadaxp_l2_init();
+#endif
+
+#if defined(SOC_MV_ARMADA38X)
+	/* Set IO Sync Barrier bit for all Mbus devices */
+	if (armada38x_win_set_iosync_barrier() != 0)
+		printf("WARNING: could not map CPU Subsystem registers\n");
+	if (armada38x_scu_enable() != 0)
+		printf("WARNING: could not enable SCU\n");
 #endif
 }
 
