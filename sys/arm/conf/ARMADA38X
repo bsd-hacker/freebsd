@@ -51,6 +51,12 @@ device		uart_ns8250
 # Network
 device		ether
 device		vlan
+device		mii
+device		bpf
+device		re
+
+# PCI
+device		pci
 
 # Interrupt controllers
 device		gic
@@ -65,6 +71,10 @@ device		umass
 device		scbus
 device		pass
 device		da
+
+# I2C
+device		iic
+device		iicbus
 
 #FDT
 options 	FDT
