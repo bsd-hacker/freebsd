@@ -44,6 +44,12 @@ CODE {
 		device_printf(bus, "PCI_IOV not implemented on this bus.\n");
 		return (NULL);
 	}
+
+	static int
+	null_msix_bar(device_t dev, device_t child)
+	{
+		return (-1);
+	}
 };
 
 HEADER {
@@ -191,6 +197,16 @@ METHOD int msix_count {
 	device_t	dev;
 	device_t	child;
 } DEFAULT null_msi_count;
+
+METHOD int msix_pba_bar {
+	device_t	dev;
+	device_t	child;
+} DEFAULT null_msix_bar;
+
+METHOD int msix_table_bar {
+	device_t	dev;
+	device_t	child;
+} DEFAULT null_msix_bar;
 
 METHOD uint16_t get_rid {
 	device_t	dev;
