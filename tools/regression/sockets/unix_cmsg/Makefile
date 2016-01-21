@@ -2,6 +2,6 @@
 
 PROG=	unix_cmsg
 MAN=
-WARNS?=	6
+WARNS?=	3
 
 .include <bsd.prog.mk>
