@@ -1233,6 +1233,10 @@ msghdr_init_client(struct msghdr *msghdr, struct iovec *iov,
 
 	msghdr_init_generic(msghdr, iov, cmsg_data);
 	if (cmsg_data != NULL) {
+		if (send_array_flag)
+			dbgmsg("sending an array");
+		else
+			dbgmsg("sending a scalar");
 		msghdr->msg_controllen = send_array_flag ?
 		    cmsg_size : CMSG_SPACE(0);
 		cmsghdr = CMSG_FIRSTHDR(msghdr);
@@ -1874,8 +1878,11 @@ t_cmsg_len_client(int fd)
 		    (u_int)msghdr.msg_controllen);
 		dbgmsg("send: cmsghdr.cmsg_len %u",
 		    (u_int)cmsghdr->cmsg_len);
-		if (sendmsg(fd, &msghdr, 0) < 0)
+		if (sendmsg(fd, &msghdr, 0) < 0) {
+			dbgmsg("sendmsg(2) failed: %s; retrying",
+			    strerror(errno));
 			continue;
+		}
 		logmsgx("sent message with cmsghdr.cmsg_len %u < %u",
 		    (u_int)cmsghdr->cmsg_len, (u_int)CMSG_LEN(0));
 		break;
