@@ -38,6 +38,8 @@
 #   xargs -n1 | sort | uniq -d;
 # done
 
+OLD_FILES+=usr/tests/sys/kern/unix_passfd_test
+OLD_FILES+=usr/tests/sys/kern/unix_seqpacket_test
 # 20160116: Update mandoc to cvs snapshot 20160116
 OLD_FILES+=usr/share/mdocml/example.style.css
 OLD_FILES+=usr/share/mdocml/style.css

@@ -409,6 +409,8 @@
             ..
             pipe
             ..
+            sockets
+            ..
         ..
         kqueue
         ..
