@@ -14,9 +14,7 @@ PLAIN_TESTS_C+=	rtsocket_test
 PLAIN_TESTS_C+=	sblock_test
 PLAIN_TESTS_C+=	sendfile_test
 PLAIN_TESTS_C+=	shutdown_test
-# XXX: make the test function in a standalone manner instead of having it be a
-# test program
-#PLAIN_TESTS_C+=	sigpipe_test
+PLAIN_TESTS_C+=	sigpipe_test
 PLAIN_TESTS_C+=	so_setfib_test
 PLAIN_TESTS_C+=	socketpair_test
 PLAIN_TESTS_C+=	unix_bindconnect_test

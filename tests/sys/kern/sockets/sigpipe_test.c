@@ -39,23 +39,7 @@
 #include <string.h>
 #include <unistd.h>
 
-/*
- * This regression test is intended to verify whether or not SIGPIPE is
- * properly generated in several simple test cases, as well as testing
- * whether SO_NOSIGPIPE disables SIGPIPE, if available on the system.
- * SIGPIPE is generated if a write or send is attempted on a socket that has
- * been shutdown for write.  This test runs several test cases with UNIX
- * domain sockets and TCP sockets to confirm that either EPIPE or SIGPIPE is
- * properly returned.
- *
- * For the purposes of testing TCP, an unused port number must be specified.
- */
-static void
-usage(void)
-{
-
-	errx(-1, "usage: sigpipe tcpport");
-}
+#define	DEFAULT_PORT 10000
 
 /*
  * Signal catcher.  Set a global flag that can be tested by the caller.
@@ -252,14 +236,7 @@ main(int argc, char *argv[])
 {
 	char *dummy;
 	int sock[2];
-	long port;
-
-	if (argc != 2)
-		usage();
-
-	port = strtol(argv[1], &dummy, 10);
-	if (port < 0 || port > 65535 || *dummy != '\0')
-		usage();
+	in_port_t port = DEFAULT_PORT;
 
 #ifndef SO_NOSIGPIPE
 	warnx("sigpipe: SO_NOSIGPIPE not defined, skipping some tests");
