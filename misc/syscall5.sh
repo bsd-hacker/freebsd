@@ -37,33 +37,26 @@
 
 syscall=`grep SYS_MAXSYSCALL /usr/include/sys/syscall.h | awk '{print $NF}'`
 syscall=$((syscall - 1))
+uname -a | grep -q OneFS &&
+    syscall=`sysctl kern.syscalls | grep -v nosys | grep : | tail -1 | \
+    sed 's/:.*//'`
 
-args=`getopt ars:t: $*`
-[ $? -ne 0 ] && echo "Usage $0 [-a] [-r] [-s number] [-t seconds]" && exit 1
-set -- $args
 last=/tmp/syscall5.last
 log=/tmp/syscall5.log
-for i; do
-	case "$i" in
-	-a)	all=1		# Test all syscalls
-		shift
-		;;
-	-r)	[ -h $last ] &&
-			syscall=`ls -l $last | awk '{print $NF}'`
-			syscall=$((syscall - 1))
-		shift
-		;;
-	-s)	syscall=$2
-		shift; shift
-		;;
-	-t)	sleeptime=$2
-		export sleeptime=$((sleeptime / 10))	# used in syscall4.sh
-		shift; shift
-		;;
-	--)
-		shift
-		break
-		;;
+
+while getopts ars:t:u flag; do
+	case "$flag" in
+	a) all=1 ;;
+	r) [ -h $last ] &&
+	       syscall=`ls -l $last | awk '{print $NF}'`
+	       syscall=$((syscall - 1))
+	   ;;
+	s) syscall="$OPTARG" ;;
+	t) sleeptime="$OPTARG"
+	   export sleeptime=$((sleeptime / 10))	;; # used in syscall4.sh
+	u) unnamed=1 ;;
+	*) echo "Usage $0 [-a] [-r] [-s number] [-t seconds] [-u]"
+	   return 1 ;;
 	esac
 done
 
@@ -83,12 +76,15 @@ while [ $n -gt 0 ]; do
 	ln -fs $n $last
 	name=`grep -w "$n$" /usr/include/sys/syscall.h | awk '{print $2}' |
 		sed 's/SYS_//'`
+	[ -z "$name" -a -n "$unnamed" ] &&
+		{ n=$((n - 1)); continue; }
 	[ -z "$name" ] && name="unknown"
-	if [ -x ../tools/exclude_syscall.sh ]; then
-		name=`../tools/exclude_syscall.sh $n`
-		[ $name = "Excluded" ] &&
-		    { n=$((n - 1)); continue; }
-	fi
+	rm -f /tmp/syscall5.name
+	[ -x ../tools/exclude_syscall.sh ] &&
+	    ../tools/exclude_syscall.sh $n &&
+	    { n=$((n - 1)); continue; }
+	[ "$name" = "unknown" ] && [ -f /tmp/syscall5.name ] &&
+	    name=`cat /tmp/syscall5.name`
 	echo "`date '+%T'` syscall $n ($name)"
 	echo "`date '+%T'` syscall $n ($name)"  >> $log
 	printf "`date '+%T'` syscall $n ($name)\r\n" > /dev/console
