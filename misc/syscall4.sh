@@ -31,6 +31,10 @@
 # Threaded syscall(2) fuzz test inspired by the iknowthis test suite
 # by Tavis Ormandy <taviso  cmpxchg8b com>
 
+# Usage: syscall4.sh [syscall number]
+# 	Without an argument random syscall numbers are tested.
+#	With an argument only the specified syscall number is tested.
+
 # Sample problems found:
 # Thread stuck in stopprof.
 # http://people.freebsd.org/~pho/stress/log/kostik732.txt

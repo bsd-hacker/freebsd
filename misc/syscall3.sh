@@ -30,6 +30,7 @@
 
 # Test random syscalls with random arguments.
 # Regression test of r209697
+# Old unused test scenario. syscall4.sh replaces this.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 

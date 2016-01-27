@@ -30,6 +30,7 @@
 
 # Test calls with random arguments, in reverse order
 # Variation of the syscall test program.
+# Old unused test scenario. syscall4.sh replaces this.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
