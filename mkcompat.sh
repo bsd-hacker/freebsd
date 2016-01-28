@@ -39,7 +39,7 @@ error() {
 	exit 1
 }
 
-[ $# -ne 3 ] || error "usage: ${progname} /path/old /path/new"
+[ $# -eq 2 ] || error "usage: ${progname} /path/old /path/new"
 
 # Extract version information from old release
 old="$1"
@@ -108,12 +108,14 @@ portname="compat${old_major}x"
 portversion="${old_revision}.${old_version}.${today}"
 pkgname="${portname}-${old_arch}-${portversion}"
 tarname="${pkgname}.tar.xz"
-mtree="mtree.${old_arch}"
+mtree="mtree-${old_arch}-${portversion}"
 echo '#mtree' >"${mtree}"
-plist="pkg-plist.${old_arch}"
+plist="pkg-plist-${old_arch}-${portversion}"
 :>"${plist}"
-distinfo="distinfo.${old_arch}"
+distinfo="distinfo-${old_arch}-${portversion}"
 :>"${distinfo}"
+digests="digests-${old_arch}-${portversion}"
+:>"${digests}"
 
 # Search old tree for libraries which do not exist in the new tree
 (cd "${old}" && find -s lib* usr/lib* -type f -name 'lib*.so.*') | \
@@ -122,17 +124,20 @@ distinfo="distinfo.${old_arch}"
 	if [ ! -f "${new}/${file}" ] ; then
 	    lib=$(basename "${file}")
 	    dir=$(basename $(dirname "${file}"))
-	    if [ -f "${pkgname}/${dir}/${lib}" ] ; then
-		error "duplicate library: ${dir}/${lib}"
+	    target="${dir}/${lib}"
+	    if [ -f "${pkgname}/${target}" ] ; then
+		error "duplicate library: ${target}"
 	    fi
-	    notice "missing ${dir}/${lib}"
-	    echo "${pkgname}/${dir}/${lib} uid=0 gid=0 mode=0444" \
+	    notice "missing ${target}"
+	    echo "${pkgname}/${target} uid=0 gid=0 mode=0444" \
 		 "type=file content=${old}/${file}" >>"${mtree}"
-	    echo "${dir}/${lib}" >>"${plist}"
+	    echo "${dir}/compat/${lib}" >>"${plist}"
+	    echo $(sha256 -q "${old}/${file}") "${target}" >>"${digests}"
 	fi
     done
 sort "${plist}" >"${plist}-" && mv "${plist}-" "${plist}"
 sort "${mtree}" >"${mtree}-" && mv "${mtree}-" "${mtree}"
+sort -k 2 "${digests}" > "${digests}-" && mv "${digests}-" "${digests}"
 
 # Create tarball and distinfo
 tar -Jcf "${tarname}" @"${mtree}" || exit 1
