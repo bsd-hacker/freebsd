@@ -1049,6 +1049,36 @@ pmap_kextract(vm_offset_t va)
 	return (pa);
 }
 
+/*
+ *  Extract from the kernel page table the physical address
+ *  that is mapped by the given virtual address "va". Also
+ *  return L2 page table entry which maps the address.
+ *
+ *  This is only intended to be used for panic dumps.
+ */
+vm_paddr_t
+pmap_dump_kextract(vm_offset_t va, pt2_entry_t *pte2p)
+{
+	vm_paddr_t pa;
+	pt1_entry_t pte1;
+	pt2_entry_t pte2;
+
+	pte1 = pte1_load(kern_pte1(va));
+	if (pte1_is_section(pte1)) {
+		pa = pte1_pa(pte1) | (va & PTE1_OFFSET);
+		pte2 = pa | ATTR_TO_L2(pte1) | PTE2_V;
+	} else if (pte1_is_link(pte1)) {
+		pte2 = pte2_load(pt2map_entry(va));
+		pa = pte2_pa(pte2);
+	} else {
+		pte2 = 0;
+		pa = 0;
+	}
+	if (pte2p != NULL)
+		*pte2p = pte2;
+	return (pa);
+}
+
 /*****************************************************************************
  *
  *	PMAP second stage initialization and utility functions
@@ -1109,7 +1139,7 @@ pmap_bootstrap(vm_offset_t firstaddr)
 	 * mapping of pages.
 	 */
 #define	SYSMAP(c, p, v, n)  do {		\
-	v = (c)pmap_preboot_reserve_pages(1);	\
+	v = (c)pmap_preboot_reserve_pages(n);	\
 	p = pt2map_entry((vm_offset_t)v);	\
 	} while (0)
 
@@ -3769,14 +3799,19 @@ validate:
 		 * is set. Do it now, before the mapping is stored and made
 		 * valid for hardware table walk. If done later, there is a race
 		 * for other threads of current process in lazy loading case.
+		 * Don't do it for kernel memory which is mapped with exec
+		 * permission even if the memory isn't going to hold executable
+		 * code. The only time when icache sync is needed is after
+		 * kernel module is loaded and the relocation info is processed.
+		 * And it's done in elf_cpu_load_file().
 		 *
 		 * QQQ: (1) Does it exist any better way where
 		 *          or how to sync icache?
 		 *      (2) Now, we do it on a page basis.
 		 */
-		if ((prot & VM_PROT_EXECUTE) &&
-		    (m->md.pat_mode == PTE2_ATTR_WB_WA) &&
-		    ((opa != pa) || (opte2 & PTE2_NX)))
+		if ((prot & VM_PROT_EXECUTE) && pmap != kernel_pmap &&
+		    m->md.pat_mode == PTE2_ATTR_WB_WA &&
+		    (opa != pa || (opte2 & PTE2_NX)))
 			cache_icache_sync_fresh(va, pa, PAGE_SIZE);
 
 		npte2 |= PTE2_A;
@@ -4375,7 +4410,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 		l2prot |= PTE2_U | PTE2_NG;
 	if ((prot & VM_PROT_EXECUTE) == 0)
 		l2prot |= PTE2_NX;
-	else if (m->md.pat_mode == PTE2_ATTR_WB_WA) {
+	else if (m->md.pat_mode == PTE2_ATTR_WB_WA && pmap != kernel_pmap) {
 		/*
 		 * Sync icache if exec permission and attribute PTE2_ATTR_WB_WA
 		 * is set. QQQ: For more info, see comments in pmap_enter().
@@ -4446,7 +4481,7 @@ pmap_enter_pte1(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 		l1prot |= PTE1_U | PTE1_NG;
 	if ((prot & VM_PROT_EXECUTE) == 0)
 		l1prot |= PTE1_NX;
-	else if (m->md.pat_mode == PTE2_ATTR_WB_WA) {
+	else if (m->md.pat_mode == PTE2_ATTR_WB_WA && pmap != kernel_pmap) {
 		/*
 		 * Sync icache if exec permission and attribute PTE2_ATTR_WB_WA
 		 * is set. QQQ: For more info, see comments in pmap_enter().
@@ -6116,7 +6151,7 @@ pmap_fault(pmap_t pmap, vm_offset_t far, uint32_t fsr, int idx, bool usermode)
 			    __func__, pmap, pmap->pm_pt1, far);
 			panic("%s: pm_pt1 abort", __func__);
 		}
-		return (EFAULT);
+		return (KERN_INVALID_ADDRESS);
 	}
 	if (__predict_false(IN_RANGE2(far, PT2MAP, PT2MAP_SIZE))) {
 		/*
@@ -6132,7 +6167,7 @@ pmap_fault(pmap_t pmap, vm_offset_t far, uint32_t fsr, int idx, bool usermode)
 			    __func__, pmap, PT2MAP, far);
 			panic("%s: PT2MAP abort", __func__);
 		}
-		return (EFAULT);
+		return (KERN_INVALID_ADDRESS);
 	}
 
 	/*
@@ -6152,7 +6187,7 @@ pte2_seta:
 			if (!pte2_cmpset(pte2p, pte2, pte2 | PTE2_A)) {
 				goto pte2_seta;
 			}
-			return (0);
+			return (KERN_SUCCESS);
 		}
 	}
 	if (idx == FAULT_ACCESS_L1) {
@@ -6163,7 +6198,7 @@ pte1_seta:
 			if (!pte1_cmpset(pte1p, pte1, pte1 | PTE1_A)) {
 				goto pte1_seta;
 			}
-			return (0);
+			return (KERN_SUCCESS);
 		}
 	}
 
@@ -6187,7 +6222,7 @@ pte2_setrw:
 				goto pte2_setrw;
 			}
 			tlb_flush(trunc_page(far));
-			return (0);
+			return (KERN_SUCCESS);
 		}
 	}
 	if ((fsr & FSR_WNR) && (idx == FAULT_PERM_L1)) {
@@ -6200,7 +6235,7 @@ pte1_setrw:
 				goto pte1_setrw;
 			}
 			tlb_flush(pte1_trunc(far));
-			return (0);
+			return (KERN_SUCCESS);
 		}
 	}
 
@@ -6239,7 +6274,7 @@ pte1_setrw:
 		}
 	}
 #endif
-	return (EAGAIN);
+	return (KERN_FAILURE);
 }
 
 /* !!!! REMOVE !!!! */

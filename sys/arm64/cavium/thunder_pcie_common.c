@@ -35,12 +35,17 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>
 #include <sys/bus.h>
+#include <sys/rman.h>
+
 #include <machine/bus.h>
 #include <machine/cpu.h>
 #include <machine/intr.h>
 
 #include "thunder_pcie_common.h"
+
+MALLOC_DEFINE(M_THUNDER_PCIE, "Thunder PCIe driver", "Thunder PCIe driver memory");
 
 uint32_t
 range_addr_is_pci(struct pcie_range *ranges, uint64_t addr, uint64_t size)
@@ -48,7 +53,7 @@ range_addr_is_pci(struct pcie_range *ranges, uint64_t addr, uint64_t size)
 	struct pcie_range *r;
 	int tuple;
 
-	for (tuple = 0; tuple < MAX_RANGES_TUPLES; tuple++) {
+	for (tuple = 0; tuple < RANGES_TUPLES_MAX; tuple++) {
 		r = &ranges[tuple];
 		if (addr >= r->pci_base &&
 		    addr < (r->pci_base + r->size) &&
@@ -68,7 +73,7 @@ range_addr_is_phys(struct pcie_range *ranges, uint64_t addr, uint64_t size)
 	struct pcie_range *r;
 	int tuple;
 
-	for (tuple = 0; tuple < MAX_RANGES_TUPLES; tuple++) {
+	for (tuple = 0; tuple < RANGES_TUPLES_MAX; tuple++) {
 		r = &ranges[tuple];
 		if (addr >= r->phys_base &&
 		    addr < (r->phys_base + r->size) &&
@@ -90,7 +95,7 @@ range_addr_pci_to_phys(struct pcie_range *ranges, uint64_t pci_addr)
 	int tuple;
 
 	/* Find physical address corresponding to given bus address */
-	for (tuple = 0; tuple < MAX_RANGES_TUPLES; tuple++) {
+	for (tuple = 0; tuple < RANGES_TUPLES_MAX; tuple++) {
 		r = &ranges[tuple];
 		if (pci_addr >= r->pci_base &&
 		    pci_addr < (r->pci_base + r->size)) {

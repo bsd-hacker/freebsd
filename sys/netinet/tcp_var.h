@@ -34,6 +34,7 @@
 #define _NETINET_TCP_VAR_H_
 
 #include <netinet/tcp.h>
+#include <netinet/tcp_fsm.h>
 
 #ifdef _KERNEL
 #include <net/vnet.h>
@@ -180,8 +181,6 @@ struct tcpcb {
 	u_long	snd_spare2;		/* unused */
 	tcp_seq	snd_recover;		/* for use in NewReno Fast Recovery */
 
-	u_int	t_maxopd;		/* mss plus options */
-
 	u_int	t_rcvtime;		/* inactivity time */
 	u_int	t_starttime;		/* time connection was established */
 	u_int	t_rtttime;		/* RTT measurement start time */
@@ -192,6 +191,7 @@ struct tcpcb {
 
 	int	t_rxtcur;		/* current retransmit value (ticks) */
 	u_int	t_maxseg;		/* maximum segment size */
+	u_int	t_pmtud_saved_maxseg;	/* pre-blackhole MSS */
 	int	t_srtt;			/* smoothed round-trip time */
 	int	t_rttvar;		/* variance in round-trip time */
 
@@ -251,7 +251,6 @@ struct tcpcb {
 	u_int	t_tsomax;		/* TSO total burst length limit in bytes */
 	u_int	t_tsomaxsegcount;	/* TSO maximum segment count */
 	u_int	t_tsomaxsegsize;	/* TSO maximum segment size in bytes */
-	u_int	t_pmtud_saved_maxopd;	/* pre-blackhole MSS */
 	u_int	t_flags2;		/* More tcpcb flags storage */
 #if defined(_KERNEL) && defined(TCP_RFC7413)
 	uint32_t t_ispare[6];		/* 5 UTO, 1 TBD */
@@ -589,6 +588,9 @@ struct	tcpstat {
 	uint64_t tcps_sig_err_sigopt;	/* No signature expected by socket */
 	uint64_t tcps_sig_err_nosigopt;	/* No signature provided by segment */
 
+	/* Running connection count. */
+	uint64_t tcps_states[TCP_NSTATES];
+
 	uint64_t _pad[12];		/* 6 UTO, 6 TBD */
 };
 
@@ -607,6 +609,9 @@ VNET_PCPUSTAT_DECLARE(struct tcpstat, tcpstat);	/* tcp statistics */
 #define	TCPSTAT_ADD(name, val)	\
     VNET_PCPUSTAT_ADD(struct tcpstat, tcpstat, name, (val))
 #define	TCPSTAT_INC(name)	TCPSTAT_ADD(name, 1)
+#define	TCPSTAT_DEC(name)	TCPSTAT_ADD(name, -1)
+#define	TCPSTAT_FETCH(name)	VNET_PCPUSTAT_FETCH(struct tcpstat, tcpstat, \
+				    name)
 
 /*
  * Kernel module consumers must use this accessor macro.
@@ -775,6 +780,7 @@ int tcp_default_ctloutput(struct socket *so, struct sockopt *sopt, struct inpcb 
 
 u_long	 tcp_maxmtu(struct in_conninfo *, struct tcp_ifcap *);
 u_long	 tcp_maxmtu6(struct in_conninfo *, struct tcp_ifcap *);
+u_int	 tcp_maxseg(const struct tcpcb *);
 void	 tcp_mss_update(struct tcpcb *, int, int, struct hc_metrics_lite *,
 	    struct tcp_ifcap *);
 void	 tcp_mss(struct tcpcb *, int);
