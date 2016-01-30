@@ -64,8 +64,7 @@ arm/arm/pl310.c			optional	pl310
 arm/arm/platform.c		optional	platform
 arm/arm/platform_if.m		optional	platform
 arm/arm/pmap.c			optional	!armv6
-arm/arm/pmap-v6.c		optional	armv6 !arm_new_pmap
-arm/arm/pmap-v6-new.c		optional	armv6 arm_new_pmap
+arm/arm/pmap-v6.c		optional	armv6
 arm/arm/pmu.c			optional	pmu | fdt hwpmc
 arm/arm/sc_machdep.c		optional	sc
 arm/arm/setcpsr.S		standard
@@ -75,6 +74,8 @@ arm/arm/stdatomic.c		standard \
 	compile-with "${NORMAL_C:N-Wmissing-prototypes}"
 arm/arm/support.S		standard
 arm/arm/swtch.S			standard
+arm/arm/swtch-v4.S		optional	!armv6
+arm/arm/swtch-v6.S		optional	armv6
 arm/arm/sys_machdep.c		standard
 arm/arm/syscall.c		standard
 arm/arm/trap.c			optional	!armv6

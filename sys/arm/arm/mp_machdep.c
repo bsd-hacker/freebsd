@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_kern.h>
 #include <vm/pmap.h>
 
+#include <machine/acle-compat.h>
 #include <machine/armreg.h>
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
@@ -155,7 +156,6 @@ init_secondary(int cpu)
 #ifndef ARM_INTRNG
 	int start = 0, end = 0;
 #endif
-#ifdef ARM_NEW_PMAP
 	uint32_t actlr_mask, actlr_set;
 
 	pmap_set_tex();
@@ -167,11 +167,6 @@ init_secondary(int cpu)
 	set_stackptrs(cpu);
 
 	enable_interrupts(PSR_A);
-#else /* ARM_NEW_PMAP */
-	cpu_setup();
-	setttb(pmap_pa);
-	cpu_tlb_flushID();
-#endif /* ARM_NEW_PMAP */
 	pc = &__pcpu[cpu];
 
 	/*
@@ -183,10 +178,6 @@ init_secondary(int cpu)
 
 	pcpu_init(pc, cpu, sizeof(struct pcpu));
 	dpcpu_init(dpcpu[cpu - 1], cpu);
-#ifndef ARM_NEW_PMAP
-	/* Provide stack pointers for other processor modes. */
-	set_stackptrs(cpu);
-#endif
 	/* Signal our startup to BSP */
 	atomic_add_rel_32(&mp_naps, 1);
 
@@ -350,13 +341,6 @@ ipi_hardclock(void *arg)
 	critical_exit();
 }
 
-static void
-ipi_tlb(void *dummy __unused)
-{
-
-	CTR1(KTR_SMP, "%s: IPI_TLB", __func__);
-	cpufuncs.cf_tlb_flushID();
-}
 #else
 static int
 ipi_handler(void *arg)
@@ -422,10 +406,6 @@ ipi_handler(void *arg)
 			CTR1(KTR_SMP, "%s: IPI_HARDCLOCK", __func__);
 			hardclockintr();
 			break;
-		case IPI_TLB:
-			CTR1(KTR_SMP, "%s: IPI_TLB", __func__);
-			cpufuncs.cf_tlb_flushID();
-			break;
 		default:
 			panic("Unknown IPI 0x%0x on cpu %d", ipi, curcpu);
 		}
@@ -455,7 +435,6 @@ release_aps(void *dummy __unused)
 	intr_ipi_set_handler(IPI_STOP, "stop", ipi_stop, NULL, 0);
 	intr_ipi_set_handler(IPI_PREEMPT, "preempt", ipi_preempt, NULL, 0);
 	intr_ipi_set_handler(IPI_HARDCLOCK, "hardclock", ipi_hardclock, NULL, 0);
-	intr_ipi_set_handler(IPI_TLB, "tlb", ipi_tlb, NULL, 0);
 
 #else
 #ifdef IPI_IRQ_START
@@ -547,10 +526,3 @@ ipi_selected(cpuset_t cpus, u_int ipi)
 	platform_ipi_send(cpus, ipi);
 }
 
-void
-tlb_broadcast(int ipi)
-{
-
-	if (smp_started)
-		ipi_all_but_self(ipi);
-}

@@ -46,9 +46,11 @@
  *
  * $FreeBSD$
  */
-#ifdef ARM_NEW_PMAP
+ #include <machine/acle-compat.h>
+
+#if __ARM_ARCH >= 6
 #include <machine/pmap-v6.h>
-#else /* ARM_NEW_PMAP */
+#else /* __ARM_ARCH >= 6 */
 
 #ifndef _MACHINE_PMAP_H_
 #define _MACHINE_PMAP_H_
@@ -174,7 +176,6 @@ typedef struct pmap *pmap_t;
 #ifdef _KERNEL
 extern struct pmap	kernel_pmap_store;
 #define kernel_pmap	(&kernel_pmap_store)
-#define pmap_kernel() kernel_pmap
 
 #define	PMAP_ASSERT_LOCKED(pmap) \
 				mtx_assert(&(pmap)->pm_mtx, MA_OWNED)
@@ -245,7 +246,7 @@ vtopte(vm_offset_t va)
 	pd_entry_t *pdep;
 	pt_entry_t *ptep;
 
-	if (pmap_get_pde_pte(pmap_kernel(), va, &pdep, &ptep) == FALSE)
+	if (pmap_get_pde_pte(kernel_pmap, va, &pdep, &ptep) == FALSE)
 		return (NULL);
 	return (ptep);
 }
@@ -623,9 +624,6 @@ void	pmap_copy_page_generic(vm_paddr_t, vm_paddr_t);
 void	pmap_zero_page_generic(vm_paddr_t, int, int);
 
 void	pmap_pte_init_generic(void);
-#if (ARM_MMU_V6 + ARM_MMU_V7) != 0
-void	pmap_pte_init_mmu_v6(void);
-#endif /* (ARM_MMU_V6 + ARM_MMU_V7) != 0 */
 #endif /* (ARM_MMU_GENERIC + ARM_MMU_V6 + ARM_MMU_V7) != 0 */
 
 #if ARM_MMU_XSCALE == 1
@@ -704,4 +702,4 @@ extern vm_paddr_t dump_avail[];
 #endif	/* !LOCORE */
 
 #endif	/* !_MACHINE_PMAP_H_ */
-#endif	/* !ARM_NEW_PMAP */
+#endif	/* __ARM_ARCH >= 6 */
