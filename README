@@ -4,12 +4,10 @@ This is the FreeBSD kernel stress test suite. The purpose is to crash the
 computer, by stressing selected parts of the kernel, thus exposing inadequate
 error handling.
 
-Do not run the syscall test as root.
-
 To build and use:
 
 make
-sh ./run.sh
+sh ./run.sh (see stress2/misc)
 
 The "run.sh" script accepts an optional configuration file in order to test specific areas.
 For example:
@@ -39,6 +37,14 @@ These days most test development occur is stress2/misc, where the regression tes
 To run all of these tests once, type "./all.sh -o" in the stress2/misc directory.
 The default mode is to compile tests, but pre-build binaries may be used.
 See default.cfg for details.
+
+There may sometimes be a need for running single syscall fuzzing as root.
+This can be achieved by setting the environment variable "USE_ROOT",
+before running misc/syscall4.sh. For example:
+$ ./syscall4.sh 6
+$ USE_ROOT= ./syscall4.sh 6
+Running syscall4 as root for 6.
+$
 
 The name stress2 indicates that this is the second generation of the Kernel Stress Test Suite.
 The first version (stress) was based mostly on scripts.

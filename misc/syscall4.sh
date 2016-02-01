@@ -236,7 +236,7 @@ test(void *arg __unused)
 					if ((fd[i] = open(p->fts_path, O_RDONLY)) == -1)
 						continue;
 			i++;
-			i = i % 900;
+			i = i % nitems(fd);
 		}
 
 		if (fts_close(fts) == -1)
@@ -309,8 +309,9 @@ main(int argc, char **argv)
 	if ((pw = getpwnam("nobody")) == NULL)
 		err(1, "no such user: nobody");
 
-	if (getenv("USE_ROOT"))
-		fprintf(stderr, "Running syscall4 as root.\n");
+	if (getenv("USE_ROOT") && argc == 2)
+		fprintf(stderr, "Running syscall4 as root for %s.\n",
+				argv[1]);
 	else {
 		if (setgroups(1, &pw->pw_gid) ||
 		    setegid(pw->pw_gid) || setgid(pw->pw_gid) ||
