@@ -158,7 +158,7 @@ snmp_oct2tc(enum snmp_tc tc, uint32_t len, char *octets)
 	uint32_t tc_len;
 	char * buf;
 
-	if (tc < 0 || tc > SNMP_UNKNOWN)
+	if (tc > SNMP_UNKNOWN)
 		tc = SNMP_UNKNOWN;
 
 	if (text_convs[tc].len > 0)
@@ -183,7 +183,7 @@ snmp_oct2tc(enum snmp_tc tc, uint32_t len, char *octets)
 char *
 snmp_tc2oid(enum snmp_tc tc, char *str, struct asn_oid *oid)
 {
-	if (tc < 0 || tc > SNMP_UNKNOWN)
+	if (tc > SNMP_UNKNOWN)
 		tc = SNMP_UNKNOWN;
 
 	return (text_convs[tc].tc2oid(str, oid));
@@ -192,7 +192,7 @@ snmp_tc2oid(enum snmp_tc tc, char *str, struct asn_oid *oid)
 int32_t
 snmp_tc2oct(enum snmp_tc tc, struct snmp_value *value, char *string)
 {
-	if (tc < 0 || tc > SNMP_UNKNOWN)
+	if (tc > SNMP_UNKNOWN)
 		tc = SNMP_UNKNOWN;
 
 	return (text_convs[tc].tc2oct(value, string));
