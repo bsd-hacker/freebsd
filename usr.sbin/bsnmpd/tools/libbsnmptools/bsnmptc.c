@@ -777,11 +777,11 @@ parse_ntp_ts(struct snmp_value *sv, char *val)
 	saved_errno = errno;
 	v = strtoul(val, &endptr, 10);
 	if (errno != 0 || (v / 1000) > 9) {
-		saved_errno = errno;
 		warnx("Integer value %s not supported", val);
+		errno = saved_errno;
 		return (-1);
 	} else
-		saved_errno = errno;
+		errno = saved_errno;
 
 	if (*endptr != '.') {
 		warnx("Failed reading octet - %s", val);
@@ -798,11 +798,11 @@ parse_ntp_ts(struct snmp_value *sv, char *val)
 	saved_errno = errno;
 	v = strtoul(val, &endptr, 10);
 	if (errno != 0 || (v / 1000) > 9) {
-		saved_errno = errno;
 		warnx("Integer value %s not supported", val);
+		errno = saved_errno;
 		return (-1);
 	} else
-		saved_errno = errno;
+		errno = saved_errno;
 
 	for (i = 0, d = 1000; i < 4; i++) {
 		ntp_ts[i + 4] = v / d;
@@ -879,8 +879,6 @@ snmp_bridgeid2oct(char *str, struct asn_oid *oid)
 	/* Read the priority. */
 	saved_errno = errno;
 	v = strtoul(ptr, &endptr, 10);
-	errno = 0;
-
 	if (v > SNMP_MAX_BRIDGE_PRIORITY || errno != 0 || *endptr != '.') {
 		errno = saved_errno;
 		warnx("Bad bridge priority value %d", v);
@@ -928,12 +926,11 @@ snmp_bridgeid2oct(char *str, struct asn_oid *oid)
 static int32_t
 parse_bridge_id(struct snmp_value *sv, char *string)
 {
-	char *ptr, *endptr;
+	char *endptr;
 	int32_t i, saved_errno;
 	uint32_t v;
 	uint8_t	bridge_id[SNMP_BRIDGEID_OCTETS];
 
-	ptr = string;
 	/* Read the priority. */
 	saved_errno = errno;
 	errno = 0;
@@ -1027,8 +1024,6 @@ snmp_bport_id2oct(char *str, struct asn_oid *oid)
 	/* Read the priority. */
 	saved_errno = errno;
 	v = strtoul(ptr, &endptr, 10);
-	errno = 0;
-
 	if (v > SNMP_MAX_BPORT_PRIORITY || errno != 0 || *endptr != '.') {
 		errno = saved_errno;
 		warnx("Bad bridge port priority value %d", v);
@@ -1056,12 +1051,11 @@ snmp_bport_id2oct(char *str, struct asn_oid *oid)
 static int32_t
 parse_bport_id(struct snmp_value *value, char *string)
 {
-	char *ptr, *endptr;
+	char *endptr;
 	int saved_errno;
 	uint32_t v;
 	uint8_t	bport_id[SNMP_BPORT_OCTETS];
 
-	ptr = string;
 	/* Read the priority. */
 	saved_errno = errno;
 	errno = 0;
@@ -1215,7 +1209,6 @@ snmp_bits2oct(char *str, struct asn_oid *oid)
 
 	saved_errno = errno;
 	errno = 0;
-
 	v = strtoull(str, &endptr, 16);
 	if (errno != 0) {
 		warnx("Bad BITS value %s - %s", str, strerror(errno));
@@ -1254,9 +1247,7 @@ parse_bits(struct snmp_value *value, char *string)
 
 	saved_errno = errno;
 	errno = 0;
-
 	v = strtoull(string, &endptr, 16);
-
 	if (errno != 0) {
 		warnx("Bad BITS value %s - %s", string, strerror(errno));
 		errno = saved_errno;
