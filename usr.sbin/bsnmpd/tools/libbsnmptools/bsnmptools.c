@@ -468,7 +468,7 @@ parse_ascii(char *ascii, uint8_t *binstr, size_t binlen)
 			return (-1);
 		}
 		binstr[count] = (uint8_t) val;
-		if (++count >= binlen) {
+		if ((size_t)++count >= binlen) {
 			warnx("Key %s too long - truncating to %zu octets",
 			    ascii, binlen);
 			break;
@@ -483,7 +483,7 @@ parse_ascii(char *ascii, uint8_t *binstr, size_t binlen)
  * snmp_client structure.
  */
 int32_t
-parse_authentication(struct snmp_toolinfo *snmptoolctx, char *opt_arg)
+parse_authentication(struct snmp_toolinfo *snmptoolctx __unused, char *opt_arg)
 {
 	int32_t count, subopt;
 	char *val, *option;
@@ -538,7 +538,7 @@ parse_authentication(struct snmp_toolinfo *snmptoolctx, char *opt_arg)
 }
 
 int32_t
-parse_privacy(struct snmp_toolinfo *snmptoolctx, char *opt_arg)
+parse_privacy(struct snmp_toolinfo *snmptoolctx __unused, char *opt_arg)
 {
 	int32_t count, subopt;
 	char *val, *option;
@@ -591,7 +591,7 @@ parse_privacy(struct snmp_toolinfo *snmptoolctx, char *opt_arg)
 }
 
 int32_t
-parse_context(struct snmp_toolinfo *snmptoolctx, char *opt_arg)
+parse_context(struct snmp_toolinfo *snmptoolctx __unused, char *opt_arg)
 {
 	int32_t count, subopt;
 	char *val, *option;
@@ -633,7 +633,7 @@ parse_context(struct snmp_toolinfo *snmptoolctx, char *opt_arg)
 }
 
 int32_t
-parse_user_security(struct snmp_toolinfo *snmptoolctx, char *opt_arg)
+parse_user_security(struct snmp_toolinfo *snmptoolctx __unused, char *opt_arg)
 {
 	int32_t count, subopt, saved_errno;
 	char *val, *option;
