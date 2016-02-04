@@ -93,7 +93,7 @@ static char *snmp_oct2bits(uint32_t len, char *octets, char *buf);
 static char *snmp_bits2oct(char *str, struct asn_oid *oid);
 static int32_t parse_bits(struct snmp_value *value, char *string);
 
-struct snmp_text_conv {
+static struct snmp_text_conv {
 	enum snmp_tc	tc;
 	const char	*tc_str;
 	int32_t		len;
@@ -1174,13 +1174,13 @@ snmp_oct2inetaddr(uint32_t len, char *octets, char *buf)
 }
 
 static char *
-snmp_inetaddr2oct(char *str, struct asn_oid *oid)
+snmp_inetaddr2oct(char *str __unused, struct asn_oid *oid __unused)
 {
 	return (NULL);
 }
 
 static int32_t
-parse_inetaddr(struct snmp_value *value, char *string)
+parse_inetaddr(struct snmp_value *value __unused, char *string __unused)
 {
 	return (-1);
 }
