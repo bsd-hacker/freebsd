@@ -20,6 +20,7 @@ SUBDIR=	adduser \
 	ctld \
 	daemon \
 	dconschat \
+	devctl \
 	devinfo \
 	digictl \
 	diskinfo \
@@ -91,6 +92,7 @@ SUBDIR=	adduser \
 	tzsetup \
 	uefisign \
 	ugidfw \
+	vigr \
 	vipw \
 	wake \
 	watch \
