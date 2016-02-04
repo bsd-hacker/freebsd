@@ -43,8 +43,7 @@
 # crossmp4.sh	Known nullfs issue					20150523
 # crossmp6.sh	Known lockd issue					20150625
 # dfull.sh	umount stuck in "mount drain"				20111227
-# ext2fs.sh	Deadlock						20120510
-# ext2fs2.sh	panic							20140716
+# full.sh	OOM							20160116
 # fuse.sh	Memory corruption seen in log file kostik734.txt	20141114
 # fuse2.sh	Deadlock seen						20121129
 # fuse3.sh	Deadlock seen						20141120
@@ -62,11 +61,17 @@
 # mkfifo.sh	Page fault in softdep_count_dependencies+0x27 seen	20150524
 # mmap18.sh	panic: vm_fault_copy_entry: main object missing page	20141015
 # mmap21.sh	rangelock issue?					20150326
+# msdos4.sh 	OOM							20160115
 # msdos5.sh	Panic: Freeing unused sector ...			20141118
 # newfs4.sh	Deadlock seen						20150906
 # nfs10.sh	Double fault						20151013
+# oovm.sh	WiP							20151206
+# oovm2.sh	WiP							20151206
 # pfl3.sh	panic: handle_written_inodeblock: live inodedep		20140812
 # pmc.sh	NMI ... going to debugger				20111217
+# posix_openpt2.sh
+#		WiP							20160109
+# pty.sh	WiP							20160111
 # snap5-1.sh	mksnap_ffs deadlock					20111218
 # quota2.sh	panic: dqflush: stray dquot				20120221
 # quota3.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111222
@@ -84,6 +89,7 @@
 # suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
 # suj13.sh	general protection fault in bufdaemon			20141130
 # suj18.sh	panic: Bad tailq NEXT(0xc1e2a6088->tqh_last_s) != NULL	20120213
+# suj29.sh	OOM							20160116
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
 # suj34.sh	Various hangs and panics (SUJ + NULLFS iisue)		20131210
 # swap3.sh	WiP							20151120
@@ -97,10 +103,9 @@
 # Test not to run for other reasons:
 
 # fuzz.sh	A know issue
+# marcus3.sh	OK, but runs for a long time
+# marcus4.sh	OK, but runs for a long time
 # statfs.sh	Not very interesting
-# syscall.sh	OK, but runs for a very long time
-# syscall2.sh	OK, but runs for a very long time
-# syscall3.sh	OK, but syscall4.sh is better
 # vunref.sh	No problems ever seen
 # vunref2.sh	No problems ever seen
 
@@ -180,14 +185,14 @@ minspace=$((1024 * 1024)) # in k
 [ `df -k $(dirname $RUNDIR) | tail -1 | awk '{print $4'}` -lt \
     $minspace ] &&
     echo "Warn: Not enough disk space on `dirname $RUNDIR` for \$RUNDIR"
+grep -wq "$testuser" /etc/passwd ||
+    { echo "\$testuser \"$testuser\" not found."; exit 1; }
 probe=`dirname $RUNDIR`/probe
 su $testuser -c "touch $probe" > /dev/null 2>&1
-[ -f `dirname $RUNDIR`/probe ] && rm $probe ||
+[ -f $probe ] && rm $probe ||
     { echo "No write access to `dirname $RUNDIR`."; exit 1; }
 [ `swapinfo | wc -l` -eq 1 ] &&
     echo "Consider adding a swap disk. Many tests rely on this."
-grep -wq "$testuser" /etc/passwd ||
-    { echo "\$testuser not found."; exit 1; }
 [ -x ../testcases/run/run ] ||
     { echo "Please run \"cd stress2; make\" first." && exit 1; }
 ping -c 2 -t 2 $BLASTHOST > /dev/null 2>&1 ||
