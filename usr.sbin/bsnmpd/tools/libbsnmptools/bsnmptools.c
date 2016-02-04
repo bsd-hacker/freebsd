@@ -1060,8 +1060,8 @@ static char *
 snmp_oid2asn_oid(struct snmp_toolinfo *snmptoolctx, char *str,
     struct asn_oid *oid)
 {
-	int32_t i;
 	char string[MAXSTR], *endptr;
+	size_t i;
 	struct snmp_object obj;
 
 	for (i = 0; i < MAXSTR; i++)
@@ -1076,7 +1076,7 @@ snmp_oid2asn_oid(struct snmp_toolinfo *snmptoolctx, char *str,
 		if (snmp_suboid_append(oid, (asn_subid_t) obj.val.var.len) < 0)
 			return (NULL);
 	} else {
-		strlcpy(string, str, MAX(i + 1, sizeof(string)));
+		strlcpy(string, str, MIN(i + 1, nitems(string)));
 		if (snmp_lookup_enumoid(snmptoolctx, &obj, string) < 0) {
 			warnx("Unknown string - %s",string);
 			return (NULL);
