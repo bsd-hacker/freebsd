@@ -8,21 +8,7 @@ MK_SSP=		no
 PROG=		loader.sym
 INTERNALPROG=
 
-.if ${MK_ZFS} != "no"
-# Disable warnings that are currently incompatible with the zfs boot code
-CWARNFLAGS.zfs_module.c += -Wno-array-bounds
-CWARNFLAGS.zfs_module.c += -Wno-cast-align
-CWARNFLAGS.zfs_module.c += -Wno-cast-qual
-CWARNFLAGS.zfs_module.c += -Wno-missing-prototypes
-CWARNFLAGS.zfs_module.c += -Wno-sign-compare
-CWARNFLAGS.zfs_module.c += -Wno-unused-parameter
-CWARNFLAGS.zfs_module.c += -Wno-unused-function
-.endif
-
 SRCS=		conf.c efimd.c main.c pal.S start.S vers.c
-.if ${MK_ZFS} != "no"
-SRCS+=		zfs_module.c
-.endif
 
 .PATH: ${.CURDIR}/../../../${MACHINE_CPUARCH}/${MACHINE_CPUARCH} ${.CURDIR}/../../efi/boot1
 
@@ -32,12 +18,6 @@ CFLAGS+=	-I${.CURDIR}/../../efi/include
 CFLAGS+=	-I${.CURDIR}/../../efi/include/${MACHINE_CPUARCH}
 CFLAGS+=	-I${.CURDIR}/../../..
 CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand
-
-.if ${MK_ZFS} != "no"
-CFLAGS+=	-I${.CURDIR}/../../zfs/
-CFLAGS+=	-I${.CURDIR}/../../../cddl/boot/zfs/
-CFLAGS+=	-DEFI_ZFS_BOOT
-.endif
 
 LDSCRIPT=	${.CURDIR}/ldscript.${MACHINE_CPUARCH}
 LDFLAGS=	-Wl,-T${LDSCRIPT} -shared -symbolic

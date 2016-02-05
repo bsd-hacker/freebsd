@@ -144,7 +144,6 @@ main(int argc, CHAR16 *argv[])
 	EFI_LOADED_IMAGE *img;
 	char *dev;
 	int i;
-	uint64_t pool_guid;
 
 	/* 
 	 * XXX Chicken-and-egg problem; we want to have console output
@@ -180,27 +179,9 @@ main(int argc, CHAR16 *argv[])
 	BS->HandleProtocol(IH, &imgid, (VOID**)&img);
 
 	bzero(&currdev, sizeof(currdev));
-	if (efi_handle_lookup(img->DeviceHandle, &dev, &unit, &pool_guid) != 0)
+	if (efi_handle_lookup(img->DeviceHandle, &dev, &unit, NULL) != 0)
 		return (EFI_NOT_FOUND);
-	switch (dev->dv_type) {
-#ifdef EFI_ZFS_BOOT
-	case DEVT_ZFS: {
-		struct zfs_devdesc currdev;
-
-		currdev.d_dev = dev;
-		currdev.d_unit = unit;
-		currdev.d_type = currdev.d_dev->dv_type;
-		currdev.d_opendata = NULL;
-		currdev.pool_guid = pool_guid;
-		currdev.root_guid = 0;
-		env_setenv("currdev", EV_VOLATILE, efi_fmtdev(&currdev),
-			   efi_setcurrdev, env_nounset);
-		env_setenv("loaddev", EV_VOLATILE, efi_fmtdev(&currdev), env_noset,
-			   env_nounset);
-		break;
-	}
-#endif
-	default: {
+	{
 		struct devdesc currdev;
 
 		dev = get_dev_option(argc, argv);
@@ -216,7 +197,6 @@ main(int argc, CHAR16 *argv[])
 		env_setenv("loaddev", EV_VOLATILE, efi_fmtdev(&currdev), env_noset,
 			   env_nounset);
 		break;
-	}
 	}
 
 	env_setenv("currdev", EV_VOLATILE, dev, ia64_setcurrdev, env_nounset);
