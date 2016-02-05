@@ -88,8 +88,7 @@ hv_vmbus_negotiate_version(hv_vmbus_channel_msg_info *msg_info,
 	msg->monitor_page_1 = hv_get_phys_addr(
 		hv_vmbus_g_connection.monitor_pages);
 
-	msg->monitor_page_2 =
-		hv_get_phys_addr(
+	msg->monitor_page_2 = hv_get_phys_addr(
 			((uint8_t *) hv_vmbus_g_connection.monitor_pages
 			+ PAGE_SIZE));
 
@@ -164,8 +163,6 @@ hv_vmbus_connect(void) {
 	 * Initialize the vmbus connection
 	 */
 	hv_vmbus_g_connection.connect_state = HV_CONNECTING;
-	hv_vmbus_g_connection.work_queue = hv_work_queue_create("vmbusQ");
-	sema_init(&hv_vmbus_g_connection.control_sema, 1, "control_sema");
 
 	TAILQ_INIT(&hv_vmbus_g_connection.channel_msg_anchor);
 	mtx_init(&hv_vmbus_g_connection.channel_msg_lock, "vmbus channel msg",
@@ -181,16 +178,9 @@ hv_vmbus_connect(void) {
 	 */
 	hv_vmbus_g_connection.interrupt_page = contigmalloc(
 					PAGE_SIZE, M_DEVBUF,
-					M_NOWAIT | M_ZERO, 0UL,
+					M_WAITOK | M_ZERO, 0UL,
 					BUS_SPACE_MAXADDR,
 					PAGE_SIZE, 0);
-	KASSERT(hv_vmbus_g_connection.interrupt_page != NULL,
-	    ("Error VMBUS: malloc failed to allocate Channel"
-		" Request Event message!"));
-	if (hv_vmbus_g_connection.interrupt_page == NULL) {
-	    ret = ENOMEM;
-	    goto cleanup;
-	}
 
 	hv_vmbus_g_connection.recv_interrupt_page =
 		hv_vmbus_g_connection.interrupt_page;
@@ -206,28 +196,16 @@ hv_vmbus_connect(void) {
 	hv_vmbus_g_connection.monitor_pages = contigmalloc(
 		2 * PAGE_SIZE,
 		M_DEVBUF,
-		M_NOWAIT | M_ZERO,
+		M_WAITOK | M_ZERO,
 		0UL,
 		BUS_SPACE_MAXADDR,
 		PAGE_SIZE,
 		0);
-	KASSERT(hv_vmbus_g_connection.monitor_pages != NULL,
-	    ("Error VMBUS: malloc failed to allocate Monitor Pages!"));
-	if (hv_vmbus_g_connection.monitor_pages == NULL) {
-	    ret = ENOMEM;
-	    goto cleanup;
-	}
 
 	msg_info = (hv_vmbus_channel_msg_info*)
 		malloc(sizeof(hv_vmbus_channel_msg_info) +
 			sizeof(hv_vmbus_channel_initiate_contact),
-			M_DEVBUF, M_NOWAIT | M_ZERO);
-	KASSERT(msg_info != NULL,
-	    ("Error VMBUS: malloc failed for Initiate Contact message!"));
-	if (msg_info == NULL) {
-	    ret = ENOMEM;
-	    goto cleanup;
-	}
+			M_DEVBUF, M_WAITOK | M_ZERO);
 
 	hv_vmbus_g_connection.channels = malloc(sizeof(hv_vmbus_channel*) *
 		HV_CHANNEL_MAX_COUNT,
@@ -269,8 +247,6 @@ hv_vmbus_connect(void) {
 
 	hv_vmbus_g_connection.connect_state = HV_DISCONNECTED;
 
-	hv_work_queue_close(hv_vmbus_g_connection.work_queue);
-	sema_destroy(&hv_vmbus_g_connection.control_sema);
 	mtx_destroy(&hv_vmbus_g_connection.channel_lock);
 	mtx_destroy(&hv_vmbus_g_connection.channel_msg_lock);
 
@@ -305,31 +281,18 @@ hv_vmbus_connect(void) {
 int
 hv_vmbus_disconnect(void) {
 	int			 ret = 0;
-	hv_vmbus_channel_unload* msg;
+	hv_vmbus_channel_unload  msg;
 
-	msg = malloc(sizeof(hv_vmbus_channel_unload),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-	KASSERT(msg != NULL,
-	    ("Error VMBUS: malloc failed to allocate Channel Unload Msg!"));
-	if (msg == NULL)
-	    return (ENOMEM);
+	msg.message_type = HV_CHANNEL_MESSAGE_UNLOAD;
 
-	msg->message_type = HV_CHANNEL_MESSAGE_UNLOAD;
-
-	ret = hv_vmbus_post_message(msg, sizeof(hv_vmbus_channel_unload));
-
+	ret = hv_vmbus_post_message(&msg, sizeof(hv_vmbus_channel_unload));
 
 	contigfree(hv_vmbus_g_connection.interrupt_page, PAGE_SIZE, M_DEVBUF);
 
 	mtx_destroy(&hv_vmbus_g_connection.channel_msg_lock);
 
-	hv_work_queue_close(hv_vmbus_g_connection.work_queue);
-	sema_destroy(&hv_vmbus_g_connection.control_sema);
-
 	free(hv_vmbus_g_connection.channels, M_DEVBUF);
 	hv_vmbus_g_connection.connect_state = HV_DISCONNECTED;
-
-	free(msg, M_DEVBUF);
 
 	return (ret);
 }
