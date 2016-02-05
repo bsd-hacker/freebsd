@@ -1015,6 +1015,7 @@ typedef struct hn_softc {
 	bus_dma_tag_t	hn_tx_rndis_dtag;
 	int		hn_tx_chimney_size;
 	int		hn_tx_chimney_max;
+	uint64_t	hn_csum_assist;
 
 	struct mtx	hn_txlist_spin;
 	struct hn_txdesc_list hn_txlist;
