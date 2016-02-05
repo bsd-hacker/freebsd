@@ -24,7 +24,7 @@ SRCS=		conf.c efimd.c main.c pal.S start.S vers.c
 SRCS+=		zfs_module.c
 .endif
 
-.PATH: ${.CURDIR}/../../../${MACHINE_CPUARCH}/${MACHINE_CPUARCH}
+.PATH: ${.CURDIR}/../../../${MACHINE_CPUARCH}/${MACHINE_CPUARCH} ${.CURDIR}/../../efi/boot1
 
 CFLAGS+=	-I${.CURDIR}/../common
 CFLAGS+=	-I${.CURDIR}/../../common
