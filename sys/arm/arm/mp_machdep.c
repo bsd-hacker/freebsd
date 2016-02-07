@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/smp.h>
 #include <machine/pcb.h>
 #include <machine/pmap.h>
-#include <machine/pte.h>
 #include <machine/physmem.h>
 #include <machine/intr.h>
 #include <machine/vmparam.h>
@@ -124,9 +123,7 @@ cpu_mp_start(void)
 		dpcpu[i] = (void *)kmem_malloc(kernel_arena, DPCPU_SIZE,
 		    M_WAITOK | M_ZERO);
 
-	cpu_idcache_wbinv_all();
-	cpu_l2cache_wbinv_all();
-	cpu_idcache_wbinv_all();
+	dcache_wbinv_poc_all();
 
 	/* Initialize boot code and start up processors */
 	platform_mp_start_ap();
@@ -284,7 +281,7 @@ ipi_stop(void *dummy __unused)
 	 * stop will do the l2 cache flush after all other cores
 	 * have done their l1 flushes and stopped.
 	 */
-	cpu_idcache_wbinv_all();
+	dcache_wbinv_poc_all();
 
 	/* Indicate we are stopped */
 	CPU_SET_ATOMIC(cpu, &stopped_cpus);
@@ -382,7 +379,7 @@ ipi_handler(void *arg)
 			 * stop will do the l2 cache flush after all other cores
 			 * have done their l1 flushes and stopped.
 			 */
-			cpu_idcache_wbinv_all();
+			dcache_wbinv_poc_all();
 
 			/* Indicate we are stopped */
 			CPU_SET_ATOMIC(cpu, &stopped_cpus);
