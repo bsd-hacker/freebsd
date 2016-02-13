@@ -55,7 +55,7 @@ mycc -o kinfo -Wall -g kinfo.c -lutil
 rm -f kinfo.c
 cd $odir
 
-mount | grep -q procfs || mount -t procfs procfs /procfs
+mount | grep -q procfs || mount -t procfs procfs /proc
 
 for j in `jot 5`; do
 	/tmp/kinfo &
