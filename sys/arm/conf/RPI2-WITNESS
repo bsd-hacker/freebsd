@@ -2,7 +2,7 @@
 #
 #
 
-include RPI2
+include RPI2-KSTACK_PAGES
 
 ident	RPI2-WITNESS
 

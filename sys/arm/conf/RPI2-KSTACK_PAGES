@@ -1,0 +1,10 @@
+#
+#
+#
+
+include RPI2
+
+ident		RPI2-KSTACK_PAGES
+
+options	KSTACK_PAGES=4
+
