@@ -5,6 +5,11 @@
 #
 # +++ variables +++
 #
+# CLEANDEPENDDIRS	Additional directories to remove for the cleandepend
+# 			target.
+#
+# CLEANDEPENDFILES	Additional files to remove for the cleandepend target.
+#
 # CTAGS		A tags file generation program [gtags]
 #
 # CTAGSFLAGS	Options for ctags(1) [not set]
@@ -27,7 +32,8 @@
 # +++ targets +++
 #
 #	cleandepend:
-#		Remove depend and tags file
+#		remove ${CLEANDEPENDFILES}; remove ${CLEANDEPENDDIRS} and all
+#		contents.
 #
 #	depend:
 #		Make the dependencies for the source files, and store
@@ -59,7 +65,7 @@ DEPENDFILE?=	.depend
 .if ${MK_DIRDEPS_BUILD} == "no"
 .MAKE.DEPENDFILE= ${DEPENDFILE}
 .endif
-DEPENDFILES=	${DEPENDFILE}
+CLEANDEPENDFILES=	${DEPENDFILE} ${DEPENDFILE}.*
 
 # Keep `tags' here, before SRCS are mangled below for `depend'.
 .if !target(tags) && defined(SRCS) && !defined(NO_TAGS)
@@ -156,7 +162,6 @@ ${_D}.po: ${_DSRC} ${POBJS:S/^${_D}.po$//}
 
 .if ${MK_FAST_DEPEND} == "yes" && \
     (${.MAKE.MODE:Mmeta} == "" || ${.MAKE.MODE:Mnofilemon} != "")
-DEPENDFILES+=	${DEPENDFILE}.*
 DEPEND_MP?=	-MP
 # Handle OBJS=../somefile.o hacks.  Just replace '/' rather than use :T to
 # avoid collisions.
@@ -253,16 +258,20 @@ afterdepend:
 .endif
 .endif
 
+.if ${CTAGS:T} == "gtags"
+CLEANDEPENDFILES+=	GPATH GRTAGS GSYMS GTAGS
+.if defined(HTML)
+CLEANDEPENDDIRS+=	HTML
+.endif
+.else
+CLEANDEPENDFILES+=	tags
+.endif
 .if !target(cleandepend)
 cleandepend:
 .if defined(SRCS)
-.if ${CTAGS:T} == "gtags"
-	rm -f ${DEPENDFILES} GPATH GRTAGS GSYMS GTAGS
-.if defined(HTML)
-	rm -rf HTML
-.endif
-.else
-	rm -f ${DEPENDFILES} tags
+	rm -f ${CLEANDEPENDFILES}
+.if !empty(CLEANDEPENDDIRS)
+	rm -rf ${CLEANDEPENDDIRS}
 .endif
 .endif
 .endif
