@@ -255,7 +255,7 @@ ftp_stage() {
 	info "Staging for ftp: ${_build}"
 	[ ! -z "${EMBEDDEDBUILD}" ] && export EMBEDDEDBUILD
 	[ ! -z "${BOARDNAME}" ] && export BOARDNAME
-	[ ! -z "${SVNREVISION}" ] && export SVNREVISION
+	[ ! -z "${BUILDSVNREV}" ] && export SVNREVISION=${BUILDSVNREV}
 	[ ! -z "${BUILDDATE}" ] && export BUILDDATE
 	[ -z "${SVNREVISION}" -a -e "${scriptdir}/svnrev_src" ] && \
 		export SVNREVISION="$(cat ${scriptdir}/svnrev_src)"
