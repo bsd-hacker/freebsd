@@ -550,7 +550,7 @@ main() {
 	runall build_chroots
 	runall install_chroots
 	runall build_release
-	if [ ! -z "${TURNITUPTOELEVEN}" ]; then
+	if [ -z "${TURNITUPTOELEVEN}" ]; then
 		runall upload_ec2_ami
 		runall upload_azure_image
 		runall upload_gce_image
