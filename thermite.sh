@@ -282,6 +282,12 @@ ftp_stage() {
 			_type="snapshots"
 			;;
 	esac
+	if [ ! -z "${TURNITUPTOELEVEN}" ]; then
+		chroot ${CHROOTDIR} make -C /usr/src \
+			TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} \
+			KERNCONF=${KERNEL} \
+			packages >> ${logdir}/${_build}.log 2>&1
+	fi
 
 	mkdir -p "${ftpdir}/${_type}"
 	rsync -avH ${CHROOTDIR}/R/ftp-stage/${_type}/* \
@@ -544,10 +550,12 @@ main() {
 	runall build_chroots
 	runall install_chroots
 	runall build_release
-	runall upload_ec2_ami
-	runall upload_azure_image
-	runall upload_gce_image
-	runall upload_vagrant_image
+	if [ ! -z "${TURNITUPTOELEVEN}" ]; then
+		runall upload_ec2_ami
+		runall upload_azure_image
+		runall upload_gce_image
+		runall upload_vagrant_image
+	fi
 }
 
 main "$@"
