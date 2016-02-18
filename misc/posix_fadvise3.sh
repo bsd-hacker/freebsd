@@ -32,6 +32,10 @@
 # https://people.freebsd.org/~pho/stress/log/kostik855.txt
 # Fixed by r293197.
 
+# Again on i386:
+# https://people.freebsd.org/~pho/stress/log/kostik867.txt
+# Fixed by r295716.
+
 . ../default.cfg
 
 odir=`pwd`

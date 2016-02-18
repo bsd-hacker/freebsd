@@ -185,7 +185,7 @@ minspace=$((1024 * 1024)) # in k
 [ `df -k $(dirname $RUNDIR) | tail -1 | awk '{print $4'}` -lt \
     $minspace ] &&
     echo "Warn: Not enough disk space on `dirname $RUNDIR` for \$RUNDIR"
-grep -wq "$testuser" /etc/passwd ||
+id $testuser > /dev/null 2>&1 ||
     { echo "\$testuser \"$testuser\" not found."; exit 1; }
 probe=`dirname $RUNDIR`/probe
 su $testuser -c "touch $probe" > /dev/null 2>&1
