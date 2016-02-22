@@ -43,12 +43,14 @@ mycc -o datamove2 -Wall datamove2.c
 rm -f datamove2.c
 
 for i in `jot 2`; do
-	$here/../testcases/swap/swap -t 10m -i 200 -h &
-	/tmp/datamove2 || { echo FAIL; exit 1; }
-	ps | grep swap | grep -v swap | awk '{print $1}' | xargs kill
+	$here/../testcases/swap/swap -t 5m -i 100 -h &
+	sleep 1
+	/tmp/datamove2 || { echo FAIL; r=1; }
+	while pkill -9 swap; do :; done
+	[ -n "$r" ] && break
 done
 rm -rf /tmp/datamove2
-exit 0
+exit $r
 EOF
 /*-
  * Copyright (c) 2006, Stephan Uphoff <ups@freebsd.org>
