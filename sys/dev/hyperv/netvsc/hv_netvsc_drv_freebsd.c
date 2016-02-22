@@ -653,17 +653,10 @@ hn_txdesc_hold(struct hn_txdesc *txd)
 	atomic_add_int(&txd->refs, 1);
 }
 
-/*
- * Send completion processing
- *
- * Note:  It looks like offset 0 of buf is reserved to hold the softc
- * pointer.  The sc pointer is not currently needed in this function, and
- * it is not presently populated by the TX function.
- */
-void
-netvsc_xmit_completion(void *context)
+static void
+hn_tx_done(void *xpkt)
 {
-	netvsc_packet *packet = context;
+	netvsc_packet *packet = xpkt;
 	struct hn_txdesc *txd;
 	struct hn_tx_ring *txr;
 
@@ -671,7 +664,7 @@ netvsc_xmit_completion(void *context)
 	    packet->compl.send.send_completion_tid;
 
 	txr = txd->txr;
-	txr->hn_txeof = 1;
+	txr->hn_has_txeof = 1;
 	hn_txdesc_put(txr, txd);
 }
 
@@ -691,11 +684,11 @@ netvsc_channel_rollup(struct hv_device *device_ctx)
 	}
 #endif
 
-	if (!txr->hn_txeof)
+	if (!txr->hn_has_txeof)
 		return;
 
-	txr->hn_txeof = 0;
-	hn_start_txeof(txr);
+	txr->hn_has_txeof = 0;
+	txr->hn_txeof(txr);
 }
 
 /*
@@ -905,7 +898,7 @@ done:
 	txd->m = m_head;
 
 	/* Set the completion routine */
-	packet->compl.send.on_send_completion = netvsc_xmit_completion;
+	packet->compl.send.on_send_completion = hn_tx_done;
 	packet->compl.send.send_completion_context = packet;
 	packet->compl.send.send_completion_tid = (uint64_t)(uintptr_t)txd;
 
@@ -983,12 +976,12 @@ again:
 			 * commands to run?  Ask netvsc_channel_rollup()
 			 * to kick start later.
 			 */
-			txr->hn_txeof = 1;
+			txr->hn_has_txeof = 1;
 			if (!send_failed) {
 				txr->hn_send_failed++;
 				send_failed = 1;
 				/*
-				 * Try sending again after set hn_txeof;
+				 * Try sending again after set hn_has_txeof;
 				 * in case that we missed the last
 				 * netvsc_channel_rollup().
 				 */
@@ -2117,6 +2110,8 @@ hn_create_tx_ring(struct hn_softc *sc, int id)
 	 * transmission.  This one gives the best performance so far.
 	 */
 	txr->hn_sched_tx = 1;
+
+	txr->hn_txeof = hn_start_txeof; /* TODO: if_transmit */
 
 	parent_dtag = bus_get_dma_tag(sc->hn_dev);
 
