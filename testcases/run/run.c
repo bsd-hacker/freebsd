@@ -30,14 +30,15 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <libgen.h>
-#include <time.h>
 #include <sys/param.h>
 #include <sys/wait.h>
+
 #include <err.h>
+#include <libgen.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "stress.h"
 
@@ -105,6 +106,9 @@ test(void)
 	fflush(stdout);
 
 	for (i = 0; i < op->argc; i++) {
+		r[i] = 0;
+		if (op->argv[i][0] == 0)
+			continue;
 		if ((r[i] = fork()) == 0) {
 			snprintf(fullpath, sizeof(fullpath), "%s/%s", home,
 				op->argv[i]);
