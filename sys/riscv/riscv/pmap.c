@@ -13,7 +13,7 @@
  * All rights reserved.
  * Copyright (c) 2014 The FreeBSD Foundation
  * All rights reserved.
- * Copyright (c) 2015 Ruslan Bukin <br@bsdpad.com>
+ * Copyright (c) 2015-2016 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
  *
  * This code is derived from software contributed to Berkeley by
@@ -216,8 +216,6 @@ vm_offset_t kernel_vm_end = 0;
 struct msgbuf *msgbufp = NULL;
 
 static struct rwlock_padalign pvh_global_lock;
-
-extern uint64_t pagetable_l0;
 
 /*
  * Data for the pv entry allocation mechanism
@@ -445,31 +443,33 @@ pmap_early_vtophys(vm_offset_t l1pt, vm_offset_t va)
 }
 
 static void
-pmap_bootstrap_dmap(vm_offset_t l2pt)
+pmap_bootstrap_dmap(vm_offset_t l1pt, vm_paddr_t kernstart)
 {
 	vm_offset_t va;
 	vm_paddr_t pa;
-	pd_entry_t *l2;
-	u_int l2_slot;
+	pd_entry_t *l1;
+	u_int l1_slot;
 	pt_entry_t entry;
 	u_int pn;
 
+	pa = kernstart & ~L1_OFFSET;
 	va = DMAP_MIN_ADDRESS;
-	l2 = (pd_entry_t *)l2pt;
-	l2_slot = pmap_l2_index(DMAP_MIN_ADDRESS);
+	l1 = (pd_entry_t *)l1pt;
+	l1_slot = pmap_l1_index(DMAP_MIN_ADDRESS);
 
-	for (pa = 0; va < DMAP_MAX_ADDRESS; pa += L2_SIZE, va += L2_SIZE, l2_slot++) {
-		KASSERT(l2_slot < Ln_ENTRIES, ("Invalid L2 index"));
+	for (; va < DMAP_MAX_ADDRESS;
+	    pa += L1_SIZE, va += L1_SIZE, l1_slot++) {
+		KASSERT(l1_slot < Ln_ENTRIES, ("Invalid L1 index"));
 
 		/* superpages */
-		pn = ((pa >> L2_SHIFT) & Ln_ADDR_MASK);
+		pn = ((pa >> L1_SHIFT) & Ln_ADDR_MASK);
 		entry = (PTE_VALID | (PTE_TYPE_SRWX << PTE_TYPE_S));
-		entry |= (pn << PTE_PPN1_S);
+		entry |= (pn << PTE_PPN2_S);
 
-		pmap_load_store(&l2[l2_slot], entry);
+		pmap_load_store(&l1[l1_slot], entry);
 	}
 
-	cpu_dcache_wb_range((vm_offset_t)l2, PAGE_SIZE);
+	cpu_dcache_wb_range((vm_offset_t)l1, PAGE_SIZE);
 	cpu_tlb_flushID();
 }
 
@@ -485,7 +485,6 @@ pmap_bootstrap(vm_offset_t l1pt, vm_paddr_t kernstart, vm_size_t kernlen)
 	vm_offset_t va, freemempos;
 	vm_offset_t dpcpu, msgbufpv;
 	vm_paddr_t pa, min_pa;
-	vm_offset_t l2pt;
 	int i;
 
 	kern_delta = KERNBASE - kernstart;
@@ -520,8 +519,7 @@ pmap_bootstrap(vm_offset_t l1pt, vm_paddr_t kernstart, vm_size_t kernlen)
 	}
 
 	/* Create a direct map region early so we can use it for pa -> va */
-	l2pt = (l1pt + PAGE_SIZE);
-	pmap_bootstrap_dmap(l2pt);
+	pmap_bootstrap_dmap(l1pt, min_pa);
 
 	va = KERNBASE;
 	pa = KERNBASE - kern_delta;
@@ -3097,7 +3095,7 @@ pmap_activate(struct thread *td)
 	pn = (td->td_pcb->pcb_l1addr / PAGE_SIZE);
 	entry = (PTE_VALID | (PTE_TYPE_PTR << PTE_TYPE_S));
 	entry |= (pn << PTE_PPN0_S);
-	pmap_load_store(&pagetable_l0, entry);
+	pmap_load_store((uint64_t *)PCPU_GET(sptbr), entry);
 
 	pmap_invalidate_all(pmap);
 	critical_exit();
