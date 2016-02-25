@@ -43,6 +43,16 @@
 .Ft struct cam_sim *
 .Fn cam_sim_alloc "sim_action_func sim_action" "sim_poll_func sim_poll" "const char * sim_name" "void *softc" "u_int32_t unit" "struct mtx *mtx" "int max_dev_transactions" "int max_tagged_dev_transactions" "struct cam_devq *queue"
 .Sh DESCRIPTION
+Create a CAM SIM.
+A SIM is a System Interface Module.
+It processes CCBs with its
+.Fn sim_action_func
+as described in
+.Xr cam.9 .
+.Pp
+The
+.Fn sim_poll_func
+is used to create crash dumps.
 .Sh SEE ALSO
 .Sh AUTHORS
 This manual page was written by

@@ -402,6 +402,7 @@ MAN=	accept_filter.9 \
 	watchdog.9 \
 	xpt_print.9 \
 	xpt_print_path.9 \
+	xpt_register_async.9 \
 	xpt_release_ccb.9 \
 	zone.9
 
@@ -1908,6 +1909,7 @@ MLINKS+=vrele.9 vput.9 \
 	vrele.9 vunref.9
 MLINKS+=vslock.9 vsunlock.9
 MLINKS+=xpt_print_path.9 xpt_path_string.9
+MLINKS+=xpt_register_async.9 xpt_async.9
 MLINKS+=zone.9 uma.9 \
 	zone.9 uma_find_refcnt.9 \
 	zone.9 uma_zalloc.9 \

@@ -28,18 +28,106 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 19, 2016
+.Dd February 23, 2016
 .Dt XPT_REGISTER_ASYNC
 .Os
 .Sh NAME
 .Nm xpt_register_async
-.Nd xxx xxx xxx blah blah blah
+.Nd Manage async events
 .Sh SYNOPSIS
 .In cam/cam_xpt.h
+.Ft typedef void
+.Fn "\*(lp*cbfunc\*(rp" "void *cbarg" "u_int32_t code" "struct cam_path *path" "void *arg"
 .Ft cam_status
-.Fn xpt_async "int event" "ac_callback_t *cbfunc" "void *cbarg" "struct cam_path *path"
+.Fn xpt_register_async "int event" "ac_callback_t *cbfunc" "void *cbarg" "struct cam_path *path"
+.Ft void
+.Fn xpt_async "u_int32_t async_code" "struct cam_path *path" "void *async_arg"
 .Sh DESCRIPTION
+.Fn xpt_register_async 
+registers a callback to be called when an event happens.
+Callback numbers are bits, so the
+.Fn event
+parameter is an or'd together list of events that should be called.
+A mask of 0 will unregister the callback.
+Events on
+.Va path
+are delivered to this async function.
+When
+.Va path
+is
+.Va NULL
+the callback is registered for events on all paths and the
+callback function is expected to cope with unknown paths.
+.Va path
+may also have elements that are wildcards and so will be called for
+all paths that match.
+.Pp
+.Fn xpt_async
+queues the asynchronous event
+.Va code
+for the CAM
+.Va path
+specified.
+.Va async_arg
+contains additional information about the event.
+CAM knows about all the possible events, what is passed to them, and
+how large the argument is.
+CAM copies the event into the async CCB, so callers may modify the
+argument after
+.Fn xpt_async
+returns.
+.Pp
+When
+.Fn cbfunc
+is called, the
+.Va cbarg
+is the corresponding
+.Va cb
+from the
+.Fn xpt_register_async
+call.
+.Va code
+will contain the code from the
+.Fn xpt_async
+call.
+.Va path
+will be the specific path for the CAM object that the message was sent
+to.
+The
+.Va arg
+parameter is supplied by the caller of
+.Fn xpt_async
+and must match the following table.
+.Bl -tag -width indent
+.It Li AC_PATH_REGISTERED
+.Va struct ccb_pathinq
+.It Li AC_FOUND_DEVICE
+.Va struct ccb_getdev
+.It Li AC_TRANSFER_NEG
+.Va struct ccb_trans_settings
+.It Li AC_CONTRACT
+.Va struct ac_contract
+.It Li AC_UNIT_ATTENTION
+.Va struct ccb_scsiio
+.El
+The
+.Li AC_BUS_RESET ,
+.Li AC_UNSOL_RESEL ,
+.Li AC_SCSI_AEN ,
+.Li AC_SENT_BDR ,
+.Li AC_PATH_DEREGISTERED ,
+.Li AC_LOST_DEVICE ,
+.Li AC_INQ_CHANGED ,
+.Li AC_GETDEV_CHANGED ,
+and 
+.Li AC_ADVINFO_CHANGED
+messages send nothing.
+Messages not listed here also effectively send nothing, but should be
+added to either the table or the above list.
+The argument passed into .
 .Sh SEE ALSO
+.Xr cam 9 ,
+.Xr cam_ccb 9 ,
 .Xr cam_periph 9 ,
 .Xr xpt_release_ccb 9 ,
 .Xr xpt_setup_cbb 9
