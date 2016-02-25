@@ -1,0 +1,238 @@
+.\" -*- nroff -*-
+.\"
+.\" Copyright (c) 2016 M. Warner Losh
+.\"
+.\" All rights reserved.
+.\"
+.\" This program is free software.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE DEVELOPERS ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+.\" OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+.\" IN NO EVENT SHALL THE DEVELOPERS BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+.\" NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+.\" DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+.\" THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+.\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+.\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd January 19, 2016
+.Dt CAM 9
+.Os
+.Sh NAME
+.Nm cam
+.Nd CAM -- common access method
+.Sh SYNOPSIS
+.In cam/cam.h
+.Sh DESCRIPTION
+CAM is common access method.
+.Sh TYPES
+.Ss cam_status
+.In sys/cam.h
+typedef enum { ... } cam_status
+.Bl -tag -width indent
+.It Li CAM_REQ_INPROG
+CCB request is in progress
+.It Li CAM_REQ_CMP
+CCB request completed without error
+.It Li CAM_REQ_ABORTED
+CCB request aborted by the host
+.It Li CAM_UA_ABORT
+Unable to abort CCB request
+.It Li CAM_REQ_CMP_ERR
+CCB request completed with an error
+.It Li CAM_BUSY
+CAM subsystem is busy
+.It Li CAM_REQ_INVALID
+CCB request was invalid
+.It Li CAM_PATH_INVALID
+Supplied Path ID is invalid
+.It Li CAM_DEV_NOT_THERE
+SCSI Device Not Installed/there
+.It Li CAM_UA_TERMIO
+Unable to terminate I/O CCB request
+.It Li CAM_SEL_TIMEOUT
+Target Selection Timeout
+.It Li CAM_CMD_TIMEOUT
+Command timeout
+.It Li CAM_SCSI_STATUS_ERROR
+SCSI error, look at error code in CCB
+.It Li CAM_MSG_REJECT_REC
+Message Reject Received
+.It Li CAM_SCSI_BUS_RESET
+SCSI Bus Reset Sent/Received
+.It Li CAM_UNCOR_PARITY
+Uncorrectable parity error occurred
+.It Li CAM_AUTOSENSE_FAIL
+Autosense: request sense cmd fail
+.It Li CAM_NO_HBA
+No HBA Detected error
+.It Li CAM_DATA_RUN_ERR
+Data Overrun error
+.It Li CAM_UNEXP_BUSFREE
+Unexpected Bus Free
+.It Li CAM_SEQUENCE_FAIL
+Target Bus Phase Sequence Failure
+.It Li CAM_CCB_LEN_ERR
+CCB length supplied is inadequate
+.It Li CAM_PROVIDE_FAIL
+Unable to provide requested capabilit
+.It Li CAM_BDR_SENT
+A SCSI BDR msg was sent to target
+.It Li CAM_REQ_TERMIO
+CCB request terminated by the host
+.It Li CAM_UNREC_HBA_ERROR
+Unrecoverable Host Bus Adapter Error
+.It Li CAM_REQ_TOO_BIG
+Request was too large for this host
+.It Li CAM_REQUEUE_REQ
+This request should be requeued to preserve
+transaction ordering.  This typically occurs
+when the SIM recognizes an error that should
+freeze the queue and must place additional
+requests for the target at the sim level
+back into the XPT queue.
+.It Li CAM_ATA_STATUS_ERROR
+ATA error, look at error code in CCB
+.It Li CAM_SCSI_IT_NEXUS_LOST
+Initiator/Target Nexus lost.
+.It Li CAM_SMP_STATUS_ERROR
+SMP error, look at error code in CCB
+.It Li CAM_REQ_SOFTTIMEOUT
+Command completed without error but  exceeded the soft
+timeout threshold.
+.It Li CAM_IDE	
+Initiator Detected Error
+.It Li CAM_RESRC_UNAVAIL
+Resource Unavailable
+.It Li CAM_UNACKED_EVENT
+Unacknowledged Event by Host
+.It Li CAM_MESSAGE_RECV
+Message Received in Host Target Mode
+.It Li CAM_INVALID_CDB
+Invalid CDB received in Host Target Mode
+.It Li CAM_LUN_INVALID
+Lun supplied is invalid
+.It Li CAM_TID_INVALID
+Target ID supplied is invalid
+.It Li CAM_FUNC_NOTAVAIL
+The requested function is not available
+.It Li CAM_NO_NEXUS
+Nexus is not established
+.It Li CAM_IID_INVALID
+The initiator ID is invalid
+.It Li CAM_CDB_RECVD
+The SCSI CDB has been received
+.It Li CAM_LUN_ALRDY_ENA
+The LUN is already enabled for target mode
+.It Li CAM_SCSI_BUSY
+SCSI Bus Busy
+.It Flags
+.It Li CAM_DEV_QFRZN
+The DEV queue is frozen w/this err
+.It Li CAM_AUTOSNS_VALID
+Autosense data valid for target
+.It Li CAM_RELEASE_SIMQ
+SIM ready to take more commands
+.It Li CAM_SIM_QUEUED
+SIM has this command in it's queue
+.It Li CAM_QOS_VALID
+Quality of service data is valid
+.It Li CAM_STATUS_MASK
+Mask bits for just the status #
+.It Li CAM_SENT_SENSE
+sent sense with status
+.El
+.Ss cam_periph_type
+.In sys/cam/cam_periph.h
+typedef enum { ... } cam_periph_type;
+.Bl -tag -width indent
+.It Li CAM_PERIPH_BIO
+This driver takes BIOs at the top end and translates them into top of
+the driver and translates them to protocol requests for the specific
+device this driver is for.
+.El
+.Ss Weird anonymous enum bitfield
+.Bl -tag -width indent
+.It Li SF_RETRY_UA
+Retry UNIT ATTENTION conditions.
+.It Li SF_NO_PRINT
+Never print error status.
+.It Li SF_QUIET_IR
+Be quiet about Illegal Request reponses
+.It Li SF_PRINT_ALWAYS
+Always print error status.
+.It Li SF_NO_RECOVERY
+Don't do active error recovery.
+.It Li SF_NO_RETRY
+Don't do any retries.
+.It Li SF_RETRY_BUSY
+Retry BUSY status.
+.El
+.Ss cam_flags
+.Bl -tag -width indent
+.It Li CAM_FLAG_NONE
+.It Li CAM_EXPECT_INQ_CHANGE
+.It Li CAM_RETRY_SELTO
+.El
+.Ss struct cam_path
+.Ss struct cam_device
+.Ss struct cam_ed
+.Ss path_id_t
+.Ss target_id_t
+.Ss lun_id_t
+.Ss struct cam_sim
+.Ss struct cam_periph
+.Ss cam_pinfo;
+.Ss cam_rl
+See section on priorities
+.Bl -tag -width indent
+.It Li CAM_RL_HOST
+.It Li CAM_RL_BUS
+.It Li CAM_RL_XPT
+.It Li CAM_RL_DEV
+.It Li CAM_RL_NORMAL
+.It Li CAM_RL_VALUES
+.El
+.Ss cam_error_string_flags
+.Ss cam_error_proto_flags
+.Ss cam_error_scsi_flags
+.Ss cam_error_smp_flags
+.Ss cam_error_ata_flags
+.ss cam_strvis_flags
+.Ss Defines
+.Bl -tag -width indent
+.It Li CAM_XPT_PATH_ID
+.It Li CAM_BUS_WILDCARD
+.It Li CAM_TARGET_WILDCARD
+.It Li CAM_LUN_WILDCARD
+.It Li CAM_EXTLUN_BYTE_SWIZZLE
+.It Li CAM_MAX_CDBLEN
+.It Li GENERATIONCMP
+.Ss Priorities
+CAM_PRIORITY_HOST
+CAM_PRIORITY_BUS
+CAM_PRIORITY_XPT
+CAM_PRIORITY_DEV
+CAM_PRIORITY_OOB
+CAM_PRIORITY_NORMAL
+CAM_PRIORITY_NONE
+.Sh SEE ALSO
+.Xr cam_periph 9 ,
+.Xr xpt_release_ccb 9 ,
+.Xr xpt_setup_cbb 9
+.Sh AUTHORS
+This manual page was written by
+.An M. Warner Losh .

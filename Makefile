@@ -50,6 +50,7 @@ MAN=	accept_filter.9 \
 	BUS_SETUP_INTR.9 \
 	bus_space.9 \
 	byteorder.9 \
+	cam_periph_getccb.9 \
 	casuword.9 \
 	cd.9 \
 	condvar.9 \
@@ -399,6 +400,9 @@ MAN=	accept_filter.9 \
 	vrele.9 \
 	vslock.9 \
 	watchdog.9 \
+	xpt_print.9 \
+	xpt_print_path.9 \
+	xpt_release_ccb.9 \
 	zone.9
 
 MLINKS=	unr.9 alloc_unr.9 \
@@ -1903,6 +1907,7 @@ MLINKS+=vref.9 VREF.9
 MLINKS+=vrele.9 vput.9 \
 	vrele.9 vunref.9
 MLINKS+=vslock.9 vsunlock.9
+MLINKS+=xpt_print_path.9 xpt_path_string.9
 MLINKS+=zone.9 uma.9 \
 	zone.9 uma_find_refcnt.9 \
 	zone.9 uma_zalloc.9 \

@@ -1,0 +1,99 @@
+.\" -*- nroff -*-
+.\"
+.\" Copyright (c) 2016 M. Warner Losh
+.\"
+.\" All rights reserved.
+.\"
+.\" This program is free software.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE DEVELOPERS ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+.\" OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+.\" IN NO EVENT SHALL THE DEVELOPERS BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+.\" NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+.\" DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+.\" THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+.\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+.\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd January 19, 2016
+.Dt XPT_PRINT_PATH 9
+.Os
+.Sh NAME
+.Nm xpt_print_path ,
+.Nm xpt_path_string
+.Nd Print the specified CAM path
+.Sh SYNOPSIS
+.In cam/cam_xpt.h
+.Ft void
+.Fn xpt_print_path "struct cam_path *path"
+.Ft int
+.Fn xpt_path_string "struct cam_path *path" "char *str" "size_t str_len"
+.Sh DESCRIPTION
+These functions will render the path to a string or output it.
+If
+.Fa path
+is
+.Va NULL ,
+then 
+.Qq (nopath):
+is used.
+Otherwise,
+.Qq (periph:bus:target:lun)
+is returned.
+.Qq periph
+is the name of the peripheral formed by appending the peripheral class
+name with its unit number in decimal.
+If no peripheral has yet been associated with the path, the string
+.Qq noperiph
+is used.
+.Qq bus
+is the name of the sim class associated with the bus with the sim unit
+number appended, followed by : followed by the bus number with that
+sim unit.
+If there's no bus associated with the path, the string
+.Qq nobus
+is used.
+.Qq target
+is the target number of the device associated with the device, as a
+decimal, or
+.Qq X
+if no device is associated with this path.
+.Qq lun
+is the logical unit number of the target in hexidecimal, or
+.Qq X
+if no device is associated with this path.
+.Pp
+The
+.Nm xpt_print_path
+function prints the path using the
+.Xr printf 9
+function.
+.Pp
+The
+.Nm xpt_path_string
+function deposits the string into
+.Fa str
+truncating it to
+.Fa str_len
+characters.
+It returns the length of the string.
+This length includes characters that may have been truncated.
+.Sh SEE ALSO
+.Xr printf 3 ,
+.Xr printf 9
+.Sh AUTHORS
+This manual page was written by
+.An M. Warner Losh .

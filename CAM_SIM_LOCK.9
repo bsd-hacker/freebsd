@@ -1,0 +1,64 @@
+.\" -*- nroff -*-
+.\"
+.\" Copyright (c) 2016 M. Warner Losh
+.\"
+.\" All rights reserved.
+.\"
+.\" This program is free software.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE DEVELOPERS ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+.\" OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+.\" IN NO EVENT SHALL THE DEVELOPERS BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+.\" NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+.\" DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+.\" THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+.\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+.\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd January 19, 2016
+.Dt CAM_SIM_LOCK 9
+.Os
+.Sh NAME
+.Nm CAM_SIM_LOCK , 
+.Nm CAM_SIM_UNLOCK
+.Nd Lock and unlock the SIM mutex
+.Sh SYNOPSIS
+.In cam/cam_sim.h
+.Ft int
+.Fn CAM_SIM_LOCK "struct cam_sim *sim"
+.Ft int
+.Fn CAM_SIM_UNLOCK "struct cam_sim *sim"
+.Sh DESCRIPTION
+When the SIM is called from the XPT, these macros are used to ensure
+that the SIM lock is held when the
+.Va sim_action ,
+.Va sim_poll ,
+or when the
+.Va callback
+for any async callback that's registered by the SIM.
+It is also used by
+.Xr cam_sim_hold 9
+and 
+.Xr cam_sim_release 9
+to keep the sim reference count consistent and sane.
+.Pp
+These macros are currently only used internally to synchronize the
+SIM's data structures and prevent concurrent access.
+.Sh SEE ALSO
+.Xr cam_sim 9
+.Sh AUTHORS
+This manual page was written by
+.An M. Warner Losh .

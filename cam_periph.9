@@ -1,0 +1,89 @@
+.\" -*- nroff -*-
+.\"
+.\" Copyright (c) 2016 M. Warner Losh
+.\"
+.\" All rights reserved.
+.\"
+.\" This program is free software.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE DEVELOPERS ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+.\" OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+.\" IN NO EVENT SHALL THE DEVELOPERS BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+.\" NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+.\" DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+.\" THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+.\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+.\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd January 19, 2016
+.Dt CAM_PERIPH 9
+.Os
+.Sh NAME
+.Nm cam_periph
+.Nd Peripheral driver for CAM
+.Sh SYNOPSIS
+.In cam/cam_xpt_periph.h
+.Sh DESCRIPTION
+In CAM, periph drivers translate upper layer requests into protocol
+requests that the CAM transport (XPT) delivers to a CAM SIM driver.
+.Sh COMPONENTS
+.Ss Creating a Periph Driver
+Peripheral drivers are created with
+.Xr cam_periph_alloc 9
+with a number of routines.
+The
+.Va ctor
+function is used to initialize the instance of the driver.
+The
+.Va oninvalidate
+function, if present, is called when CAM determines the driver is no
+longer valid.
+The
+.Va dtor
+function is called when the driver is destroyed.
+The
+.Va start
+function is called when CAM allocates a CCB for this periph to do
+work.
+.Ss Device Queue
+Each periph has a device queue associated with it.
+The device queue throttles the number of requests that CAM will allow
+the periph to generate.
+When a request is freed, or other times when the device queue is run,
+CAM will call the device's
+.Va start
+routine with a free CCB.
+This is how CAM gets work done in the system.
+Periph drivers usually call
+.Xr xpt_schedule 9
+when they have work to do.
+If there's free slots in the device queue, the
+.Va start
+routine will be called to do it.
+CAM also allows limits between devices for total requests at one time
+to accommodate SIM drivers for devices that can have fewer total
+outstanding transactions than the sum of the transactions each device
+can have outstanding.
+.Sh TYPES
+.Ss ac_callback_t
+.Ss ac_code
+.Sh SEE ALSO
+.Xr cam_periph 9 ,
+.Xr xpt_release_ccb 9 ,
+.Xr xpt_setup_cbb 9
+.Sh AUTHORS
+This manual page was written by
+.An M. Warner Losh .
