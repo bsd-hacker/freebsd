@@ -117,7 +117,7 @@ hv_nv_get_inbound_net_device(struct hv_device *device)
 	 * permit incoming packets if and only if there
 	 * are outstanding sends.
 	 */
-	if (net_dev->destroy && net_dev->num_outstanding_sends == 0) {
+	if (net_dev->destroy) {
 		return (NULL);
 	}
 
@@ -723,11 +723,6 @@ hv_nv_on_device_remove(struct hv_device *device, boolean_t destroy_channel)
 	/* Stop outbound traffic ie sends and receives completions */
 	net_dev->destroy = TRUE;
 
-	/* Wait for all send completions */
-	while (net_dev->num_outstanding_sends) {
-		DELAY(100);
-	}
-
 	hv_nv_disconnect_from_vsp(net_dev);
 
 	/* At this point, no one should be accessing net_dev except in here */
@@ -805,8 +800,6 @@ hv_nv_on_send_completion(netvsc_dev *net_dev,
 			    net_vsc_pkt->compl.send.send_completion_context);
 
 		}
-
-		atomic_subtract_int(&net_dev->num_outstanding_sends, 1);
 	}
 }
 
@@ -816,15 +809,10 @@ hv_nv_on_send_completion(netvsc_dev *net_dev,
  * Returns 0 on success, non-zero on failure.
  */
 int
-hv_nv_on_send(struct hv_device *device, netvsc_packet *pkt)
+hv_nv_on_send(struct hv_vmbus_channel *chan, netvsc_packet *pkt)
 {
-	netvsc_dev *net_dev;
 	nvsp_msg send_msg;
 	int ret;
-
-	net_dev = hv_nv_get_outbound_net_device(device);
-	if (!net_dev)
-		return (ENODEV);
 
 	send_msg.hdr.msg_type = nvsp_msg_1_type_send_rndis_pkt;
 	if (pkt->is_data_pkt) {
@@ -841,19 +829,15 @@ hv_nv_on_send(struct hv_device *device, netvsc_packet *pkt)
 	    pkt->send_buf_section_size;
 
 	if (pkt->page_buf_count) {
-		ret = hv_vmbus_channel_send_packet_pagebuffer(device->channel,
+		ret = hv_vmbus_channel_send_packet_pagebuffer(chan,
 		    pkt->page_buffers, pkt->page_buf_count,
 		    &send_msg, sizeof(nvsp_msg), (uint64_t)(uintptr_t)pkt);
 	} else {
-		ret = hv_vmbus_channel_send_packet(device->channel,
+		ret = hv_vmbus_channel_send_packet(chan,
 		    &send_msg, sizeof(nvsp_msg), (uint64_t)(uintptr_t)pkt,
 		    HV_VMBUS_PACKET_TYPE_DATA_IN_BAND,
 		    HV_VMBUS_DATA_PACKET_FLAG_COMPLETION_REQUESTED);
 	}
-
-	/* Record outstanding send only if send_packet() succeeded */
-	if (ret == 0)
-		atomic_add_int(&net_dev->num_outstanding_sends, 1);
 
 	return (ret);
 }
