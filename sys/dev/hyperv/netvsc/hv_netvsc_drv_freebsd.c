@@ -117,6 +117,8 @@ __FBSDID("$FreeBSD$");
 #include "hv_rndis.h"
 #include "hv_rndis_filter.h"
 
+#define hv_chan_rxr	hv_chan_priv1
+#define hv_chan_txr	hv_chan_priv2
 
 /* Short for Hyper-V network interface */
 #define NETVSC_DEVNAME    "hn"
@@ -376,6 +378,7 @@ static int
 netvsc_attach(device_t dev)
 {
 	struct hv_device *device_ctx = vmbus_get_devctx(dev);
+	struct hv_vmbus_channel *chan;
 	netvsc_device_info device_info;
 	hn_softc_t *sc;
 	int unit = device_get_unit(dev);
@@ -426,6 +429,13 @@ netvsc_attach(device_t dev)
 		goto failed;
 
 	hn_create_rx_data(sc);
+
+	/*
+	 * Associate the first TX/RX ring w/ the primary channel.
+	 */
+	chan = device_ctx->channel;
+	chan->hv_chan_rxr = &sc->hn_rx_ring[0];
+	chan->hv_chan_txr = &sc->hn_tx_ring[0];
 
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
 	ifp->if_dunit = unit;
@@ -684,12 +694,11 @@ hn_tx_done(void *xpkt)
 }
 
 void
-netvsc_channel_rollup(struct hv_device *device_ctx)
+netvsc_channel_rollup(struct hv_vmbus_channel *chan)
 {
-	struct hn_softc *sc = device_get_softc(device_ctx->device);
-	struct hn_tx_ring *txr = &sc->hn_tx_ring[0]; /* TODO: vRSS */
+	struct hn_tx_ring *txr = chan->hv_chan_txr;
 #if defined(INET) || defined(INET6)
-	struct hn_rx_ring *rxr = &sc->hn_rx_ring[0]; /* TODO: vRSS */
+	struct hn_rx_ring *rxr = chan->hv_chan_rxr;
 	struct lro_ctrl *lro = &rxr->hn_lro;
 	struct lro_entry *queued;
 
@@ -699,7 +708,12 @@ netvsc_channel_rollup(struct hv_device *device_ctx)
 	}
 #endif
 
-	if (!txr->hn_has_txeof)
+	/*
+	 * NOTE:
+	 * 'txr' could be NULL, if multiple channels and
+	 * ifnet.if_start method are enabled.
+	 */
+	if (txr == NULL || !txr->hn_has_txeof)
 		return;
 
 	txr->hn_has_txeof = 0;
@@ -1135,24 +1149,16 @@ hv_m_append(struct mbuf *m0, int len, c_caddr_t cp)
  * Note:  This is no longer used as a callback
  */
 int
-netvsc_recv(struct hv_device *device_ctx, netvsc_packet *packet,
+netvsc_recv(struct hv_vmbus_channel *chan, netvsc_packet *packet,
     rndis_tcp_ip_csum_info *csum_info)
 {
-	struct hn_softc *sc = device_get_softc(device_ctx->device);
-	struct hn_rx_ring *rxr = &sc->hn_rx_ring[0]; /* TODO: vRSS */
+	struct hn_rx_ring *rxr = chan->hv_chan_rxr;
+	struct ifnet *ifp = rxr->hn_ifp;
 	struct mbuf *m_new;
-	struct ifnet *ifp;
 	int size, do_lro = 0, do_csum = 1;
 
-	if (sc == NULL) {
-		return (0); /* TODO: KYS how can this be! */
-	}
-
-	ifp = sc->hn_ifp;
-
-	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
+	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
 		return (0);
-	}
 
 	/*
 	 * Bail out if packet contains more data than configured MTU.
@@ -1303,11 +1309,6 @@ skip:
 	(*ifp->if_input)(ifp, m_new);
 
 	return (0);
-}
-
-void
-netvsc_recv_rollup(struct hv_device *device_ctx __unused)
-{
 }
 
 /*
@@ -2026,6 +2027,7 @@ hn_create_rx_data(struct hn_softc *sc)
 			rxr->hn_trust_hcsum |= HN_TRUST_HCSUM_UDP;
 		if (hn_trust_hostip)
 			rxr->hn_trust_hcsum |= HN_TRUST_HCSUM_IP;
+		rxr->hn_ifp = sc->hn_ifp;
 
 		/*
 		 * Initialize LRO.
