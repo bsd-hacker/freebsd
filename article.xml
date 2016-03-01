@@ -3026,10 +3026,10 @@ Relnotes:           yes</programlisting>
 
 	  <procedure xml:id="phabricator-revision-steps">
 
-	<step>
-	  <para>From the top of the SVN or git tree, run the
-	    following command to create a new revision for the given
-	    paths:</para>
+	    <step>
+	      <para>From the top of the SVN or git tree, run the
+		following command to create a new revision for the
+		given paths:</para>
 
 	<screen>&prompt.user; <userinput>arc diff --create <replaceable>/path/to/file</replaceable></userinput></screen>
 	</step>
@@ -3038,8 +3038,7 @@ Relnotes:           yes</programlisting>
 	  <para>Executing the previous step will open an editor with
 	    the following template to fill in:</para>
 
-	  <programlisting><informalexample>
-Replace this line with your Revision Title <co xml:id="phabricator-revision"/>
+	  <programlisting>Replace this line with your Revision Title <co xml:id="phabricator-revision"/>
 
 Summary:<co xml:id="phabricator-summary"/>
 
@@ -3055,8 +3054,8 @@ Subscribers:<co xml:id="phabricator-subscribers"/>
 # arc could not identify any existing revision in your working copy.
 # If you intended to update an existing revision, use:
 #
-#   $ arc diff --update <replaceable>revision</replaceable></programlisting>
-    </informalexample>
+#   $ arc diff --update <replaceable>revision</replaceable> </programlisting>
+
     <para>Use these guidelines for filling in the template:</para>
 
 	  <calloutlist>
@@ -3108,10 +3107,10 @@ Subscribers:<co xml:id="phabricator-subscribers"/>
 	  </calloutlist>
 	</step>
 
-	  <step>
-	    <para>After saving and exiting your editor, the changeset
-	      will be creating in Phabricator and Arcanist will print
-	      a tracking link for your revision:</para>
+	<step>
+	  <para>After saving and exiting your editor, the changeset
+	    will be creating in Phabricator and Arcanist will print
+	    a tracking link for your revision:</para>
 
 	<screen>https://reviews.freebsd.org/D<replaceable>XXX</replaceable></screen>
 	  </step>
