@@ -16,8 +16,10 @@ SRCS=	article.xml
 IMAGES_LIB=	callouts/1.png
 IMAGES_LIB+=	callouts/2.png
 IMAGES_LIB+=	callouts/3.png
+IMAGES_LIB+=	callouts/4.png
+IMAGES_LIB+=	callouts/5.png
 
 URL_RELPREFIX?=	../../../..
-DOC_PREFIX?=	${.CURDIR}/../../..
+DOC_PREFIX?=	${.CURDIR}/../../../doc
 
 .include "${DOC_PREFIX}/share/mk/doc.project.mk"

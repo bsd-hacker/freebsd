@@ -33,6 +33,7 @@
       <year>2013</year>
       <year>2014</year>
       <year>2015</year>
+      <year>2016</year>
       <holder>The &os; Documentation Project</holder>
     </copyright>
 
@@ -2433,7 +2434,30 @@ freebsd-mfc-after = 2 weeks</programlisting>
       <para>When the mentor decides that a mentee has learned the
 	ropes and is ready to commit on their own, the mentor
 	announces it with a commit to
-	<filename>mentors</filename>.</para>
+	<filename>conf/mentors</filename>.  This file is in the
+	<filename>svnadmin</filename> branch of each
+	repository:</para>
+
+      <informaltable frame="none">
+	<tgroup cols="2">
+	  <tbody>
+	    <row>
+	      <entry><literal>src</literal></entry>
+	      <entry><filename>base/svnadmin/conf/mentors</filename></entry>
+	    </row>
+
+	    <row>
+	      <entry><literal>doc</literal></entry>
+	      <entry><filename>doc/svnadmin/conf/mentors</filename></entry>
+	    </row>
+
+	    <row>
+	      <entry><literal>ports</literal></entry>
+	      <entry><filename>ports/svnadmin/conf/mentors</filename></entry>
+	    </row>
+	  </tbody>
+	</tgroup>
+      </informaltable>
     </sect2>
   </sect1>
 
@@ -2924,15 +2948,176 @@ Relnotes:           yes</programlisting>
     </itemizedlist>
   </sect1>
 
-  <sect1>
+  <sect1 xml:id="phabricator-intro">
     <title>Phabricator</title>
 
-    <para>The &os; Project utilizes <link
-	xlink:href="https://reviews.freebsd.org">Phabricator</link>
-      for code review requests.  See the <link
-	xlink:href="https://wiki.freebsd.org/CodeReview">CodeReview</link>
-      wiki page for details.</para>
+    <para>Phabricator is an online service that provides pre-commit
+      code review workflows.  Revisions are created in Phabricator
+      with a command-line tool, reviewed by developers and committed
+      once changes have been accepted.</para>
 
+    <para>This section describes how to use Phabricator in the context
+      of &os; source and ports trees by using the service hosted at
+	<link xlink:href="https://reviews.freebsd.org/">
+	  https://reviews.freebsd.org/</link></para>
+
+      <sect2 xml:id="phabricator-setup">
+	<title>Setup</title>
+
+	<para>Before being able to create revisions for code review,
+	  an account is required.  Additionally, command-line client
+	  tools need to be installed.</para>
+
+	<procedure xml:id="phabricator-setup-steps">
+
+	  <step>
+	    <para>Create an account by visiting <link
+		xlink:href="https://reviews.freebsd.org/auth/register/">Phabricator
+	      Registration</link>.  Please use a &os; email address
+	      when registrating so Phabricator admins can track who
+	      you are.</para>
+	  </step>
+
+	  <step>
+	    <para>Install the client package.</para>
+
+	<screen>&prompt.root; <userinput>pkg install php5-arcanist</userinput></screen>
+	  </step>
+
+	  <step>
+	    <para>Setup the client resource configuration file
+	      <filename>~/.arcrc</filename> with the certificates
+	      required to access the online service.  This process
+	      requires manually copy/pasting a cookie provided by the
+	      online service.  Do this by typing the command below and
+	      following the online instructions.</para>
+
+	<screen>&prompt.root; <userinput>arc install-certificate https://reviews.freebsd.org</userinput></screen>
+
+	<para>After completion, configure Arcanist to use <link
+	    xlink:href="https://reviews.freebsd.org">https://reviews.freebsd.org</link>
+	  as the default URI:</para>
+
+	<screen>&prompt.root; <userinput>arc set-config default https://reviews.freebsd.org/</userinput></screen>
+	  </step>
+	</procedure>
+      </sect2>
+
+      <sect2 xml:id="phabricator-revision-introduction">
+	<title>Create a Revision</title>
+
+	<para>Once you have finished preparing a change locally, you
+	  are ready to send it out for review.</para>
+
+	<para>Please make sure that your changeset does one thing
+	  (and one thing only) so the review process goes smoothly.
+	  Small and self-contained changes are much easier to
+	  review!</para>
+
+	<para>Phabricator has two groups of participants in a review:
+	  Reviewers and Subscribers.  Individuals and project groups
+	  may be Reviewers, and at least one reviewer must accept a
+	  revision for it to proceed.  Subscribers are notified of a
+	  revision and any changes, but are not required to accept a
+	  revision.  Subscribers may be individuals, project groups,
+	  and mailing lists.</para>
+
+	<sect3 xml:id="phabricator-revision-method-command-line">
+
+	  <procedure xml:id="phabricator-revision-steps">
+
+	<step>
+	  <para>From the top of the SVN or git tree, run the
+	    following command to create a new revision for the given
+	    paths:</para>
+
+	<screen>&prompt.user; <userinput>arc diff --create <replaceable>/path/to/file</replaceable></userinput></screen>
+	</step>
+
+	<step>
+	  <para>Executing the previous step will open an editor with
+	    the following template to fill in:</para>
+
+	  <programlisting><informalexample>
+Replace this line with your Revision Title <co xml:id="phabricator-revision"/>
+
+Summary:<co xml:id="phabricator-summary"/>
+
+Test Plan:<co xml:id="phabricator-testplan"/>
+
+Reviewers:<co xml:id="phabricator-reviewers"/>
+
+Subscribers:<co xml:id="phabricator-subscribers"/>
+
+# NEW DIFFERENTIAL REVISION <co xml:id="phabricator-diffrev"/>
+# Describe the changes in this new revision.
+#
+# arc could not identify any existing revision in your working copy.
+# If you intended to update an existing revision, use:
+#
+#   $ arc diff --update <replaceable>revision</replaceable></programlisting>
+    </informalexample>
+    <para>Use these guidelines for filling in the template:</para>
+
+	  <calloutlist>
+
+	    <callout arearefs="phabricator-revision">
+	      <para>The <emphasis>Revision Title</emphasis> is
+		mandatory.  This is a one line description of the
+		change.</para>
+	    </callout>
+
+	    <callout arearefs="phabricator-summary">
+	      <para>The <emphasis>Summary</emphasis> is optional.
+		However, this should contain verbatim content of the
+		commit message to be used when submitting the
+		change.</para>
+	    </callout>
+
+	    <callout arearefs="phabricator-testplan">
+	      <para>The <emphasis>Test Plan</emphasis> is optional.
+		Describe how to test the patch and how the reviewer
+		may test it.  If it is difficult to draft a plan,
+		please reconsider.</para>
+	    </callout>
+
+	    <callout arearefs="phabricator-reviewers">
+	      <para>The <emphasis>Reviewers</emphasis> is optional.
+		However, &os; committers that are expected to review
+		the patch may be listed here.  If such committers have
+		accounts on Phabricator, they will automatically be
+		notified of your submission.  Reviewers may be added
+		by their nickname:</para>
+
+	<screen>&prompt.user; <userinput>arc diff --reviewers <replaceable>nick</replaceable></userinput></screen>
+
+	    <para>or by project:</para>
+
+	<screen>&prompt.user; <userinput>arc diff --reviewers <replaceable>#portmgr</replaceable></userinput></screen>
+	    </callout>
+
+	    <callout arearefs="phabricator-subscribers">
+	      <para>Subscribers may be individuals, project groups,
+		and mailing lists.</para>
+	    </callout>
+
+	    <callout arearefs="phabricator-diffrev">
+	      <para>The Differential Revision cannot be added here,
+		however it must be in the svn commit message.</para>
+	    </callout>
+	  </calloutlist>
+	</step>
+
+	  <step>
+	    <para>After saving and exiting your editor, the changeset
+	      will be creating in Phabricator and Arcanist will print
+	      a tracking link for your revision:</para>
+
+	<screen>https://reviews.freebsd.org/D<replaceable>XXX</replaceable></screen>
+	  </step>
+	</procedure>
+      </sect3>
+    </sect2>
   </sect1>
 
   <sect1 xml:id="people">
