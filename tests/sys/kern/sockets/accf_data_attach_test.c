@@ -70,7 +70,7 @@ main(void)
 	const char *_mod_name = "accf_data";
 
 	if (modfind(_mod_name) == -1) {
-		printf("1..0 # SKIP - module %s could not be resolved: %s\n",
+		printf("1..0 # SKIP: module %s could not be resolved -- %s\n",
 		    _mod_name, strerror(errno));
 		_exit(0);
 	}
