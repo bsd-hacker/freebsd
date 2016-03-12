@@ -62,6 +62,7 @@ while kill -0 $pid 2> /dev/null; do
 	/tmp/fts $mntpoint
 	sleep 1
 done
+wait
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1

@@ -69,3 +69,4 @@ tst "tail -F    /dev/ttyU0"
 tst "tail       /dev/ttyU0"
 
 [ ! -z "$pid" ] && kill $pid
+wait

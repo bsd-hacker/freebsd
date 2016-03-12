@@ -49,6 +49,7 @@ sleep 120
 kill $rpid
 ../tools/killall.sh > /dev/null 2>&1
 kill $!
+wait
 rm -f /tmp/kevent4
 
 exit

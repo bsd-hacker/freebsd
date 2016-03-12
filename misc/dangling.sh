@@ -77,6 +77,7 @@ for i in `jot 10`; do
 	kill $!
 	../tools/killall.sh > /dev/null 2>&1
 	../tools/killall.sh > /dev/null 2>&1
+	wait
 done
 
 while mount | grep $mntpoint | grep -q /dev/md; do

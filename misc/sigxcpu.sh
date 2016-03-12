@@ -67,6 +67,7 @@ done
 kill $!
 ../tools/killall.sh
 ../tools/killall.sh
+wait
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1

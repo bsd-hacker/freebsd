@@ -59,3 +59,4 @@ mdconfig -d -u $mdstart > /dev/null 2>&1
 umount -f $mntpoint
 mdconfig -d -u $mdstart
 rm -f /tmp/.snap/stress2
+wait

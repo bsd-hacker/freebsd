@@ -44,6 +44,7 @@ cd $odir
 sleep 5
 /tmp/machipc
 pkill swap
+wait
 rm -f /tmp/machipc
 exit 0
 EOF

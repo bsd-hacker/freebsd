@@ -64,6 +64,7 @@ for i in `jot 10`; do
 		umount -f $mntpoint > /dev/null 2>&1
 	done
 	kill -9 $!
+	wait
 done
 ../tools/killall.sh
 rm -rf /tmp/nfs9

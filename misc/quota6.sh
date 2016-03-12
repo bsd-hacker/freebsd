@@ -59,6 +59,7 @@ for i in `jot 5`; do
 	rm -f $mntpoint/.snap/snap1
 done
 kill $pid
+wait
 while mount | grep -q ${mntpoint}; do
 	umount ${mntpoint} || sleep 1
 done

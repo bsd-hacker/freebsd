@@ -66,6 +66,7 @@ for i in `jot 5000`; do
 	fi
 done
 kill $!
+wait
 zfs destroy -r tank
 zpool destroy tank
 

@@ -58,6 +58,7 @@ for i in `jot 60`; do
 	umount $mntpoint 2>/dev/null || sleep 1
 	mount | grep -q "on $mntpoint " || break
 done
+wait
 mount | grep -q "on $mntpoint " &&
     umount -f $mntpoint
 mdconfig -d -u $mdstart

@@ -53,6 +53,7 @@ done
 while pkill -9 swap; do
 	:
 done
+wait
 
 rm -f /tmp/signal0
 exit

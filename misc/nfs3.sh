@@ -58,3 +58,4 @@ while mount | grep -q "on $mntpoint "; do
 done
 kill -9 $!
 ../tools/killall.sh
+wait

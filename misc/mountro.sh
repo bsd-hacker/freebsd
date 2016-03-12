@@ -65,3 +65,4 @@ umount -f $mntpoint    > /dev/null 2>&1
 mdconfig -d -u $mdstart
 rm -f $D
 kill `ps | grep run.sh | grep -v grep | awk '{print $1}'`
+wait

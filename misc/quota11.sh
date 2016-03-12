@@ -56,6 +56,7 @@ while true; do repquota -av > /dev/null; done &
 dd if=/dev/random of=$mntpoint/foo.data bs=512 count=1024x1024 2>&1 |
     egrep -v "trans|record"
 kill $!
+wait
 
 while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1

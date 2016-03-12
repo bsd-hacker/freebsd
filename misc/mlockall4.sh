@@ -48,6 +48,7 @@ mount -t nullfs /tmp $mntpoint
 sleep 2
 umount -f $mntpoint
 
+wait
 rm -f /tmp/mlockall4
 exit
 EOF

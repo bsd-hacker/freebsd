@@ -52,6 +52,7 @@ while [ `date '+%s'` -lt $((start + 1200)) ]; do
       umount $mntpoint 2>/dev/null
    done
    kill $!
+   wait
    while mount | grep -q "/dev/md$mdstart on $mntpoint"; do
       umount $mntpoint 2>/dev/null
    done

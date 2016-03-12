@@ -245,6 +245,7 @@ cmp $mntpoint/data data.$$ ||
 	{ echo "FAIL Data mismatch"; ls -l $mntpoint/data data.$$; }
 rm -f data.$$ server client mysocket
 
+wait
 while mount | grep "$mntpoint" | grep -q tmpfs; do
 	umount $mntpoint || sleep 1
 done
