@@ -37,20 +37,26 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pts.c
-mycc -o pts -Wall -Wextra -O2 pts.c -lutil
+mycc -o pts -Wall -Wextra -O2 pts.c -lutil || exit 1
 rm -f pts.c
 
 /tmp/pts &
+pid=$!
 
 while kill -0 $! 2>/dev/null; do
-	$here/../testcases/swap/swap -t 2m -i 20
+	$here/../testcases/swap/swap -t 2m -i 20 > /dev/null
 done
-wait
+wait $pid
+status=$?
 
 rm -f /tmp/pts
-exit 0
+exit $status
 EOF
 #include <sys/types.h>
+#include <sys/ioctl.h>
+#include <sys/param.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -60,19 +66,20 @@ EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
-#include <sys/param.h>
-#include <sys/wait.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
+
+#define LOOPS 10
+#define RUNTIME 60
 
 void
 churn(char *path)
 {
-
 	FTS *fts;
 	FTSENT *p;
-	int fd, ftsoptions, i;
+	time_t start;
+	int fd, ftsoptions;
 	char *args[2];
 
 	ftsoptions = FTS_PHYSICAL;
@@ -80,7 +87,8 @@ churn(char *path)
 	args[1] = 0;
 
 	setproctitle("churn");
-	for (i = 0; i < 5000; i++) {
+	start = time(NULL);
+	while (time(NULL) - start < RUNTIME) {
 		if ((fts = fts_open(args, ftsoptions, NULL)) == NULL)
 			err(1, "fts_open");
 
@@ -105,13 +113,15 @@ churn(char *path)
 void
 pty(void)
 {
-        int i, master, slave;
+	time_t start;
+        int master, slave;
 	char slname[1025];
 
-	setproctitle("pty");
-	for (i = 0; i < 20000; i++) {
+	start = time(NULL);
+	while (time(NULL) - start < RUNTIME) {
 		if (openpty(&master, &slave, slname, NULL, NULL) == -1)
 			err(1, "openpty");
+		usleep(arc4random() % 10000);
 		if (close(master) == -1)
 			err(1, "close(master)");
 		if (close(slave) == -1)
@@ -123,9 +133,10 @@ pty(void)
 int
 main(void)
 {
-	int i, j;
+	int i, j, s, status;
 
-	for (j = 0; j < 10; j++) {
+	status = 0;
+	for (j = 0; j < LOOPS && status == 0; j++) {
 		for (i = 0; i < 2; i++) {
 			if (fork() == 0)
 				pty();
@@ -134,9 +145,12 @@ main(void)
 			if (fork() == 0)
 				churn("/dev/pts");
 		}
-		for (i = 0; i < 4; i++)
-			wait(NULL);
+		for (i = 0; i < 4; i++) {
+			wait(&s);
+			if (s != 0)
+				status = 1;
+		}
 	}
 
-	return (0);
+	return (status);
 }
