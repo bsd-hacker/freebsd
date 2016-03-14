@@ -219,13 +219,37 @@ chroot_setup() {
 	mkdir -p ${CHROOTDIR}/usr
 
 	if [ -z "${SRC_UPDATE_SKIP}" ]; then
-		${VCSCMD} ${FORCE_SRC_KEY} ${SRCBRANCH} ${CHROOTDIR}/usr/src
+		if [ -z "${SVNROOT}" ]; then
+			if [ -d ${CHROOTDIR}/usr/src ]; then
+				(cd ${CHROOTDIR}/usr/src; ${VCSCMD} pull)
+			else
+				${VCSCMD} clone ${FORCE_SRC_KEY} ${SRCBRANCH} ${CHROOTDIR}/usr/src
+			fi
+		else
+			${VCSCMD} ${FORCE_SRC_KEY} ${SRCBRANCH} ${CHROOTDIR}/usr/src
+		fi
 	fi
 	if [ -z "${NODOC}" ] && [ -z "${DOC_UPDATE_SKIP}" ]; then
-		${VCSCMD} ${DOCBRANCH} ${CHROOTDIR}/usr/doc
+		if [ -z "${SVNROOT}" ]; then
+			if [ -d ${CHROOTDIR}/usr/doc ]; then
+				(cd ${CHROOTDIR}/usr/doc; ${VCSCMD} pull)
+			else
+				${VCSCMD} clone ${FORCE_SRC_KEY} ${DOCBRANCH} ${CHROOTDIR}/usr/doc
+			fi
+		else
+			${VCSCMD} ${DOCBRANCH} ${CHROOTDIR}/usr/doc
+		fi
 	fi
 	if [ -z "${NOPORTS}" ] && [ -z "${PORTS_UPDATE_SKIP}" ]; then
-		${VCSCMD} ${PORTBRANCH} ${CHROOTDIR}/usr/ports
+		if [ -z "${SVNROOT}" ]; then
+			if [ -d ${CHROOTDIR}/usr/ports ]; then
+				(cd ${CHROOTDIR}/usr/ports; ${VCSCMD} pull)
+			else
+				${VCSCMD} clone ${FORCE_SRC_KEY} ${PORTBRANCH} ${CHROOTDIR}/usr/ports
+			fi
+		else
+			${VCSCMD} ${PORTBRANCH} ${CHROOTDIR}/usr/ports
+		fi
 	fi
 
 	if [ -z "${CHROOTBUILD_SKIP}" ]; then
