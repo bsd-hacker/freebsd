@@ -61,7 +61,20 @@ zrl_init(zrlock_t *zrl)
 void
 zrl_destroy(zrlock_t *zrl)
 {
+#if 0
 	ASSERT0(zrl->zr_refcount);
+#else
+	do {
+        const TYPE __left = (uintmax_t)(zrl->zr_refcount); \
+        const TYPE __right = (uintmax_t)(0); \
+        if (!(__left == __right)) {
+			printf("%s:%d: not zero: zrl->zr_refcount: %d\n",
+					__func__, __LINE__,
+					zrl->zr_refcount
+					);
+		}
+	} while (0);
+#endif
 
 	mutex_destroy(&zrl->zr_mtx);
 	zrl->zr_refcount = ZRL_DESTROYED;
