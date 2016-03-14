@@ -65,8 +65,8 @@ zrl_destroy(zrlock_t *zrl)
 	ASSERT0(zrl->zr_refcount);
 #else
 	do {
-        const TYPE __left = (uintmax_t)(zrl->zr_refcount); \
-        const TYPE __right = (uintmax_t)(0); \
+        const uintmax_t __left = (uintmax_t)(zrl->zr_refcount); \
+        const uintmax_t __right = (uintmax_t)(0); \
         if (!(__left == __right)) {
 			printf("%s:%d: not zero: zrl->zr_refcount: %d\n",
 					__func__, __LINE__,
