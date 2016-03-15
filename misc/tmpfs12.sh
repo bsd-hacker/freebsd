@@ -91,3 +91,7 @@ for i in `jot $N 1`; do
 	done
 done
 ../tools/killall.sh
+while pgrep -q swap; do
+	pkill -9 swap
+done
+wait
