@@ -54,6 +54,7 @@ mkdir $mntpoint/d
 chmod 777 $mntpoint/d
 
 su $testuser -c "/tmp/core3 $mntpoint/d" &
+pid=$!
 sleep 1
 
 while pgrep -q core3; do
@@ -64,14 +65,17 @@ while pgrep -q core3; do
 	[ -d $mntpoint/d ] ||
 	   mount /dev/md${mdstart}$part $mntpoint
 done > /dev/null 2>&1
-wait
+wait $pid
+status=$?
 mount | grep -q "on $mntpoint " &&
 	    umount -f $mntpoint
 mdconfig -d -u $mdstart
+[ $status -ne 0 ] && exit $status
 
 # tmpfs
-mount -t tmpfs tmpfs $mntpoint
+mount -o size=1g -t tmpfs tmpfs $mntpoint
 su $testuser -c "/tmp/core3 $mntpoint/d" &
+pid=$!
 sleep 1
 
 while pgrep -q core3; do
@@ -84,12 +88,13 @@ while pgrep -q core3; do
 		mkdir $mntpoint/d
 	fi
 done
-wait
+wait $pid
+status=$?
 mount | grep -q "on $mntpoint " &&
     umount -f $mntpoint
 
 rm -f core3
-exit
+exit $status
 EOF
 #include <sys/mman.h>
 #include <sys/wait.h>
@@ -104,8 +109,14 @@ EOF
 
 #define PARALLEL 64
 #define SIZ (4 * 1024 * 1024)
+#define TIMEDOUT 22
 
 void *p;
+
+static void
+hand(int i __unused) {	/* handler */
+	_exit(TIMEDOUT);
+}
 
 void
 test(char *argv[])
@@ -119,6 +130,8 @@ test(char *argv[])
 	 * This loop caused mount to wait in "ufs".
 	 * Adding a usleep(200) would remove the hang.
 	 */
+	signal(SIGALRM, hand);
+	alarm(600);
 	while (chdir(argv[1]) == -1)
 		;
 
@@ -131,20 +144,24 @@ int
 main(int argc, char *argv[])
 {
 	time_t start;
-	int i;
+	int i, s, status;
 
 	if (argc != 2)
 		errx(1, "Usage: %s <path>", argv[0]);
 
+	status = 0;
 	start = time(NULL);
-	while (time(NULL) - start < 600) {
+	while (time(NULL) - start < 600 && status == 0) {
 		for (i = 0; i < PARALLEL; i++) {
 			if (fork() == 0)
 				test(argv);
 		}
-		for (i = 0; i < PARALLEL; i++)
-			wait(NULL);
+		for (i = 0; i < PARALLEL; i++) {
+			wait(&s);
+			if (WEXITSTATUS(s) == TIMEDOUT)
+				status = 1;
+		}
 	}
 
-	return (0);
+	return (status);
 }
