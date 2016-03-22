@@ -66,7 +66,7 @@ __DEFAULT_NO_OPTIONS:=	${__DEFAULT_NO_OPTIONS:NFAST_DEPEND}
 # Things that don't work based on the CPU
 .if ${MACHINE_CPUARCH} == "arm"
 . if ${MACHINE_ARCH:Marmv6*} == ""
-BROKEN_OPTIONS+= CDDL ZFS
+#BROKEN_OPTIONS+= CDDL ZFS
 . endif
 .endif
 
