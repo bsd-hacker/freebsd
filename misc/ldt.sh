@@ -369,3 +369,4 @@ if [ "`uname -p`" = "amd64" ]; then
 	[ -x ioperm_static_i386 ] && ./ioperm_static_i386
 	[ -x fault_static_i386 ]  && ./fault_static_i386
 fi
+exit 0

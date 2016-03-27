@@ -52,8 +52,9 @@ max=$((128 * 1024)) # Max is 128 GB
 [ $free -gt $max ] && free=$max
 mp=$2
 image=`echo $mp/diskimage | sed s#//#/#` # fix "//" for case mp = "/"
-trap "rm -f $image" EXIT SIGINT
+trap "rm -f $image" EXIT INT
 
 echo "dd if=/dev/zero of=$image bs=1m count=$free"
 dd if=/dev/zero of=$image bs=1m count=$free 2>&1 |
     egrep -v 'records|transferred'
+exit 0

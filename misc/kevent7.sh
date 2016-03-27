@@ -59,7 +59,10 @@ chmod 777 $mntpoint
 for i in `jot 5`; do
 	(cd $mntpoint; /tmp/kevent7 $* < /dev/null) &
 	sleep 60
-	killall -9 kevent7
+	while pgrep -q kevent7; do
+		pkill -9 kevent7
+		sleep 1
+	done
 done
 
 for i in `jot 5`; do
@@ -73,7 +76,7 @@ if mount | grep -q md${mdstart}$part; then
 	exit 1
 fi
 rm -f /tmp/kevent7
-exit
+exit 0
 EOF
 #include <sys/types.h>
 #include <err.h>

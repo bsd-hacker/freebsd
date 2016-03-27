@@ -60,7 +60,7 @@ if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		umount ${nullfs_dstdir}$i > /dev/null 2>&1
 	done
-
+	exit 0
 else
 	if [ $1 = find ]; then
 		while [ -f $CONT ]; do

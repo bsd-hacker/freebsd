@@ -32,7 +32,7 @@
 
 if sysctl security.mac.test 2>&1 | grep -q unknown; then
    echo "Kernel must be configured with MAC and MAC_TEST!"
-   exit 1
+   exit 0
 fi
 
 ./crossmp.sh

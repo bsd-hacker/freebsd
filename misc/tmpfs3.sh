@@ -44,3 +44,4 @@ export runRUNTIME=10m            # Run tests for 10 minutes
 
 umount $mntpoint
 mount | grep "$mntpoint" | grep -q tmpfs && umount -f $mntpoint
+exit 0

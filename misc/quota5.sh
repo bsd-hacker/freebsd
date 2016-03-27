@@ -33,7 +33,7 @@
 mount | grep -q "on /tmp (ufs," || exit 0
 if ! grep /tmp /etc/fstab | grep -q quota ; then
 	echo "/tmp must have quota enabled!"
-	exit 2
+	exit 0
 fi
 edquota -u -f /tmp -e /tmp:1500000:1400000:200000:180000 $testuser
 edquota -g -f /tmp -e /tmp:1500000:1400000:200000:180000 $testuser

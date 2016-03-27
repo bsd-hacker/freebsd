@@ -35,3 +35,4 @@ for i in `find /proc ! -type d`; do
 	dd if=$i of=/dev/null   > /dev/null 2>&1
 	dd if=/dev/random of=$i > /dev/null 2>&1
 done
+exit 0

@@ -55,3 +55,4 @@ cd /
 umount $mp
 
 mount | grep -q $mp && umount -f $mp
+exit 0
