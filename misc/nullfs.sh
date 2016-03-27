@@ -29,46 +29,46 @@
 #
 
 # Stress test by performing parallel calls to mount and umount. Alternate
-# between forced and non-forced unmounts
+# between forced and non-forced unmounts.
+
+# https://people.freebsd.org/~pho/stress/log/kostik169.txt
+# https://people.freebsd.org/~pho/stress/log/kostik487.txt
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
 
 mounts=15	# Number of parallel scripts
-cont=/tmp/nullfs.continue
+: ${nullfs_srcdir:=/tmp}
+: ${nullfs_dstdir:=$mntpoint}
 
 if [ $# -eq 0 ]; then
-	touch $cont
 	for i in `jot $mounts`; do
-		[ ! -d ${mntpoint}$i ] && mkdir ${mntpoint}$i
-		mount | grep -q " ${mntpoint}$i " && umount ${mntpoint}$i
+		[ ! -d ${nullfs_dstdir}$i ] && mkdir ${nullfs_dstdir}$i
+		mount | grep -q " ${nullfs_dstdir}$i " &&
+		    umount ${nullfs_dstdir}$i
 	done
 
 	# start the parallel tests
 	for i in `jot $mounts`; do
 		./$0 $i &
 	done
-
-
-	for i in `jot $mounts`; do
-		wait
-	done
+	wait
 
 	for i in `jot $mounts`; do
-		umount ${mntpoint}$i > /dev/null 2>&1
+		umount ${nullfs_dstdir}$i > /dev/null 2>&1
 	done
-
+	exit 0
 else
 	# The test: Parallel mount and unmounts
 	start=`date '+%s'`
 	while [ `date '+%s'` -lt $((start + 300)) ]; do
 		m=$1
-		mount_nullfs /tmp ${mntpoint}$m > /dev/null 2>&1
+		mount_nullfs $nullfs_srcdir ${nullfs_dstdir}$m > \
+		    /dev/null 2>&1
 		opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
-		while mount | grep "$mntpoint" | grep -q ${mntpoint}$m; do
-			umount $opt ${mntpoint}$m > /dev/null 2>&1
+		while mount | grep -q ${nullfs_dstdir}$m; do
+			umount $opt ${nullfs_dstdir}$m > /dev/null 2>&1
 		done
 	done
-	rm -f $cont
 fi
