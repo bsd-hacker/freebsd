@@ -40,16 +40,22 @@ mount | grep -q procfs || mount -t procfs procfs /proc
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > procfs4.c
-mycc -o procfs4 -Wall -Wextra -O2 procfs4.c
+mycc -o procfs4 -Wall -Wextra -O2 procfs4.c || exit 1
 rm -f procfs4.c
 cd $here
 
 su $testuser -c /tmp/procfs4
+e=$?
 
 rm -f /tmp/procfs4
-exit 0
+exit $e
 EOF
 #include <sys/param.h>
+#include <sys/ioctl.h>
+#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -57,14 +63,12 @@ EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
-#define PARALLEL 10
 #define LOOPS 1000
+#define MAXRUN 600
+#define PARALLEL 10
 
 char *files[] = {
 	"cmdline",
@@ -129,8 +133,11 @@ test(void)
 int
 main(void)
 {
-	int i, j;
+	time_t start;
+	int e, i, j;
 
+	e = 0;
+	start = time(NULL);
 	for (i = 0; i < LOOPS; i++) {
 		for (j = 0; j < PARALLEL; j++) {
 			if (fork() == 0)
@@ -140,7 +147,12 @@ main(void)
 		for (j = 0; j < PARALLEL; j++)
 			wait(NULL);
 		usleep(10000);
+		if (time(NULL) - start > MAXRUN) {
+			fprintf(stderr, "FAIL Timeout\n");
+			e = 1;
+			break;
+		}
 	}
 
-	return (0);
+	return (e);
 }
