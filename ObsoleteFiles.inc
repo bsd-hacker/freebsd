@@ -38,6 +38,8 @@
 #   xargs -n1 | sort | uniq -d;
 # done
 
+# 20160216: Remove obsolete unbound-control-setup
+OLD_FILES+=usr/sbin/unbound-control-setup
 # 20151222: liblzma header
 OLD_FILES+=usr/include/lzma/lzma.h
 # 20151115: added missing _test suffix on multiple tests in lib/libc
@@ -6281,22 +6283,6 @@ OLD_FILES+=usr/share/bsnmp/mibs/FOKUS-MIB.txt
 OLD_FILES+=usr/share/bsnmp/mibs/BEGEMOT-MIB.txt
 OLD_FILES+=usr/share/bsnmp/mibs/BEGEMOT-SNMPD.txt
 OLD_FILES+=usr/share/bsnmp/mibs/BEGEMOT-NETGRAPH.txt
-OLD_FILES+=usr/libdata/ldscripts/elf64_sparc.x
-OLD_FILES+=usr/libdata/ldscripts/elf64_sparc.xbn
-OLD_FILES+=usr/libdata/ldscripts/elf64_sparc.xn
-OLD_FILES+=usr/libdata/ldscripts/elf64_sparc.xr
-OLD_FILES+=usr/libdata/ldscripts/elf64_sparc.xs
-OLD_FILES+=usr/libdata/ldscripts/elf64_sparc.xu
-OLD_FILES+=usr/libdata/ldscripts/elf64_sparc.xc
-OLD_FILES+=usr/libdata/ldscripts/elf64_sparc.xsc
-OLD_FILES+=usr/libdata/ldscripts/elf32_sparc.x
-OLD_FILES+=usr/libdata/ldscripts/elf32_sparc.xbn
-OLD_FILES+=usr/libdata/ldscripts/elf32_sparc.xn
-OLD_FILES+=usr/libdata/ldscripts/elf32_sparc.xr
-OLD_FILES+=usr/libdata/ldscripts/elf32_sparc.xs
-OLD_FILES+=usr/libdata/ldscripts/elf32_sparc.xu
-OLD_FILES+=usr/libdata/ldscripts/elf32_sparc.xc
-OLD_FILES+=usr/libdata/ldscripts/elf32_sparc.xsc
 OLD_FILES+=usr/libdata/msdosfs/iso22dos
 OLD_FILES+=usr/libdata/msdosfs/iso72dos
 OLD_FILES+=usr/libdata/msdosfs/koi2dos

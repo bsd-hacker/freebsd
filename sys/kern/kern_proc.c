@@ -2228,7 +2228,7 @@ next:;
  * Must be called with the process locked and will return unlocked.
  */
 int
-kern_proc_vmmap_out(struct proc *p, struct sbuf *sb)
+kern_proc_vmmap_out(struct proc *p, struct sbuf *sb, ssize_t maxlen, int flags)
 {
 	vm_map_entry_t entry, tmp_entry;
 	struct vattr va;
@@ -2252,7 +2252,7 @@ kern_proc_vmmap_out(struct proc *p, struct sbuf *sb)
 		PRELE(p);
 		return (ESRCH);
 	}
-	kve = malloc(sizeof(*kve), M_TEMP, M_WAITOK);
+	kve = malloc(sizeof(*kve), M_TEMP, M_WAITOK | M_ZERO);
 
 	error = 0;
 	map = &vm->vm_map;
@@ -2387,10 +2387,23 @@ kern_proc_vmmap_out(struct proc *p, struct sbuf *sb)
 			free(freepath, M_TEMP);
 
 		/* Pack record size down */
-		kve->kve_structsize = offsetof(struct kinfo_vmentry, kve_path) +
-		    strlen(kve->kve_path) + 1;
+		if ((flags & KERN_VMMAP_PACK_KINFO) != 0)
+			kve->kve_structsize =
+			    offsetof(struct kinfo_vmentry, kve_path) +
+			    strlen(kve->kve_path) + 1;
+		else
+			kve->kve_structsize = sizeof(*kve);
 		kve->kve_structsize = roundup(kve->kve_structsize,
 		    sizeof(uint64_t));
+
+		/* Halt filling and truncate rather than exceeding maxlen */
+		if (maxlen != -1 && maxlen < kve->kve_structsize) {
+			error = 0;
+			vm_map_lock_read(map);
+			break;
+		} else if (maxlen != -1)
+			maxlen -= kve->kve_structsize;
+
 		if (sbuf_bcat(sb, kve, kve->kve_structsize) != 0)
 			error = ENOMEM;
 		vm_map_lock_read(map);
@@ -2422,7 +2435,7 @@ sysctl_kern_proc_vmmap(SYSCTL_HANDLER_ARGS)
 		sbuf_delete(&sb);
 		return (error);
 	}
-	error = kern_proc_vmmap_out(p, &sb);
+	error = kern_proc_vmmap_out(p, &sb, -1, KERN_VMMAP_PACK_KINFO);
 	error2 = sbuf_finish(&sb);
 	sbuf_delete(&sb);
 	return (error != 0 ? error : error2);
@@ -2895,6 +2908,12 @@ static SYSCTL_NODE(_kern_proc, KERN_PROC_SIGTRAMP, sigtramp, CTLFLAG_RD |
 
 int allproc_gen;
 
+/*
+ * stop_all_proc() purpose is to stop all process which have usermode,
+ * except current process for obvious reasons.  This makes it somewhat
+ * unreliable when invoked from multithreaded process.  The service
+ * must not be user-callable anyway.
+ */
 void
 stop_all_proc(void)
 {
@@ -2903,17 +2922,6 @@ stop_all_proc(void)
 	bool restart, seen_stopped, seen_exiting, stopped_some;
 
 	cp = curproc;
-	/*
-	 * stop_all_proc() assumes that all process which have
-	 * usermode must be stopped, except current process, for
-	 * obvious reasons.  Since other threads in the process
-	 * establishing global stop could unstop something, disable
-	 * calls from multithreaded processes as precaution.  The
-	 * service must not be user-callable anyway.
-	 */
-	KASSERT((cp->p_flag & P_HADTHREADS) == 0 ||
-	    (cp->p_flag & P_KTHREAD) != 0, ("mt stop_all_proc"));
-
 allproc_loop:
 	sx_xlock(&allproc_lock);
 	gen = allproc_gen;
@@ -3000,7 +3008,7 @@ resume_all_proc(void)
 	sx_xunlock(&allproc_lock);
 }
 
-#define	TOTAL_STOP_DEBUG	1
+/* #define	TOTAL_STOP_DEBUG	1 */
 #ifdef TOTAL_STOP_DEBUG
 volatile static int ap_resume;
 #include <sys/mount.h>
