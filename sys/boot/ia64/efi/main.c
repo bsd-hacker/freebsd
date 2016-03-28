@@ -142,7 +142,7 @@ main(int argc, CHAR16 *argv[])
 {
 	struct devdesc currdev;
 	EFI_LOADED_IMAGE *img;
-	struct devsw *dev;
+	char *dev;
 	int i;
 
 	/* 
@@ -179,25 +179,17 @@ main(int argc, CHAR16 *argv[])
 	BS->HandleProtocol(IH, &imgid, (VOID**)&img);
 
 	bzero(&currdev, sizeof(currdev));
-	if (efi_handle_lookup(img->DeviceHandle, &dev, &currdev.d_unit, NULL) != 0)
-		return (EFI_NOT_FOUND);
-	{
-		struct devdesc currdev;
+	efi_handle_lookup(img->DeviceHandle, &currdev.d_dev, &currdev.d_unit);
+	currdev.d_type = currdev.d_dev->dv_type;
 
-#if 0
-		dev = get_dev_option(argc, argv);
-		if (dev == NULL)
-			dev = ia64_fmtdev(&currdev);
-#endif
+	env_setenv("loaddev", EV_VOLATILE, ia64_fmtdev(&currdev), env_noset,
+	    env_nounset);
 
-		currdev.d_dev = dev;
-		currdev.d_opendata = NULL;
-		currdev.d_type = currdev.d_dev->dv_type;
-		env_setenv("currdev", EV_VOLATILE, ia64_fmtdev(&currdev),
-			   ia64_setcurrdev, env_nounset);
-		env_setenv("loaddev", EV_VOLATILE, ia64_fmtdev(&currdev), env_noset,
-			   env_nounset);
-	}
+	dev = get_dev_option(argc, argv);
+	if (dev == NULL)
+		dev = ia64_fmtdev(&currdev);
+
+	env_setenv("currdev", EV_VOLATILE, dev, ia64_setcurrdev, env_nounset);
 
 	setenv("LINES", "24", 1);	/* optional */
 

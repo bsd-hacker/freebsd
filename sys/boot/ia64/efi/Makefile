@@ -7,10 +7,9 @@ MK_SSP=		no
 
 PROG=		loader.sym
 INTERNALPROG=
-
 SRCS=		conf.c efimd.c main.c pal.S start.S vers.c
 
-.PATH: ${.CURDIR}/../../../${MACHINE_CPUARCH}/${MACHINE_CPUARCH} ${.CURDIR}/../../efi/boot1
+.PATH: ${.CURDIR}/../../../${MACHINE_CPUARCH}/${MACHINE_CPUARCH}
 
 CFLAGS+=	-I${.CURDIR}/../common
 CFLAGS+=	-I${.CURDIR}/../../common
