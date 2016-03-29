@@ -34,6 +34,10 @@
 # http://people.freebsd.org/~pho/stress/log/core5.txt
 # Fixed by r279237.
 
+# 20150714 Slowdown seen with core5 waiting in vlruwk.
+# sysctl vfs.vlru_allow_cache_src=1 resolves this.
+# For now change MAXVNODES from 1.000 to 1.500.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
@@ -102,12 +106,12 @@ cd $mntpoint
 mp2=${mntpoint}2
 [ -d $mp2 ] || mkdir $mp2
 mount | grep -q "on $mp2 " && umount $mp2
-mount -t tmpfs tmpfs $mp2 || exit 1
+mount -o size=2g -t tmpfs tmpfs $mp2 || exit 1
 for i in `jot 10`; do
 	(cd $mp2; /tmp/core5-dumper$i ) &
 done
 maxvnodes=`sysctl -n kern.maxvnodes`
-trap "sysctl kern.maxvnodes=$maxvnodes > /dev/null" 0
+trap "sysctl kern.maxvnodes=$maxvnodes > /dev/null" EXIT INT
 $mntpoint/core5 $mntpoint/dir
 wait
 umount $mp2
@@ -131,7 +135,7 @@ EOF
 #include <time.h>
 #include <unistd.h>
 
-#define MAXVNODES 1000
+#define MAXVNODES 1500
 #define NBFILES 10000
 #define PARALLEL 4
 #define RTIME (10 * 60)
