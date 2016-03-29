@@ -61,11 +61,10 @@ _MKDEPCC:=	${CC:N${CCACHE_BIN}}
 _MKDEPCC+=	${DEPFLAGS}
 .endif
 MKDEPCMD?=	CC='${_MKDEPCC}' mkdep
-DEPENDFILE?=	.depend
 .if ${MK_DIRDEPS_BUILD} == "no"
 .MAKE.DEPENDFILE= ${DEPENDFILE}
 .endif
-CLEANDEPENDFILES=	${DEPENDFILE} ${DEPENDFILE}.*
+CLEANDEPENDFILES+=	${DEPENDFILE} ${DEPENDFILE}.*
 
 # Keep `tags' here, before SRCS are mangled below for `depend'.
 .if !target(tags) && defined(SRCS) && !defined(NO_TAGS)
@@ -84,7 +83,7 @@ tags: ${SRCS}
 # Skip reading .depend when not needed to speed up tree-walks
 # and simple lookups.
 .if !empty(.MAKEFLAGS:M-V${_V_READ_DEPEND}) || make(obj) || make(clean*) || \
-    make(install*)
+    make(install*) || make(analyze)
 _SKIP_READ_DEPEND=	1
 .if ${MK_DIRDEPS_BUILD} == "no"
 .MAKE.DEPENDFILE=	/dev/null
@@ -177,7 +176,9 @@ ${_D}.po: ${_DSRC} ${POBJS:S/^${_D}.po$//}
 _meta_filemon=	1
 .endif
 .if ${MK_FAST_DEPEND} == "yes"
+.if ${MAKE_VERSION} < 20160220
 DEPEND_MP?=	-MP
+.endif
 # Handle OBJS=../somefile.o hacks.  Just replace '/' rather than use :T to
 # avoid collisions.
 DEPEND_FILTER=	C,/,_,g
@@ -201,7 +202,11 @@ CFLAGS+=	${DEPEND_CFLAGS}
 .endif
 .if !defined(_SKIP_READ_DEPEND)
 .for __depend_obj in ${DEPENDFILES_OBJS}
-.sinclude "${__depend_obj}"
+.if ${MAKE_VERSION} < 20160220
+.sinclude "${.OBJDIR}/${__depend_obj}"
+.else
+.dinclude "${.OBJDIR}/${__depend_obj}"
+.endif
 .endfor
 .endif	# !defined(_SKIP_READ_DEPEND)
 .endif	# !defined(_meta_filemon)

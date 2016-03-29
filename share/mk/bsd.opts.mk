@@ -52,6 +52,7 @@ __DEFAULT_YES_OPTIONS = \
     ASSERT_DEBUG \
     DEBUG_FILES \
     DOCCOMPRESS \
+    FAST_DEPEND \
     INCLUDES \
     INSTALLLIB \
     KERBEROS \
@@ -68,7 +69,6 @@ __DEFAULT_YES_OPTIONS = \
 
 __DEFAULT_NO_OPTIONS = \
     CCACHE_BUILD \
-    FAST_DEPEND \
     CTF \
     INSTALL_AS_USER \
     STALE_STAGED
@@ -101,8 +101,7 @@ __DEFAULT_NO_OPTIONS:=	${__DEFAULT_NO_OPTIONS:NFAST_DEPEND}
     PROFILE \
     WARNS
 .if defined(NO_${var})
-# This warning may be premature...
-#.warning "NO_${var} is defined, but deprecated. Please use MK_${var}=no instead."
+.warning "NO_${var} is defined, but deprecated. Please use MK_${var}=no instead."
 MK_${var}:=no
 .endif
 .endfor

@@ -27,7 +27,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#define BXE_DRIVER_VERSION "1.78.79"
+#define BXE_DRIVER_VERSION "1.78.81"
 
 #include "bxe.h"
 #include "ecore_sp.h"
@@ -669,6 +669,8 @@ static void bxe_handle_fp_tq(void *context, int pending);
 static int bxe_add_cdev(struct bxe_softc *sc);
 static void bxe_del_cdev(struct bxe_softc *sc);
 static int bxe_grc_dump(struct bxe_softc *sc);
+static int bxe_alloc_buf_rings(struct bxe_softc *sc);
+static void bxe_free_buf_rings(struct bxe_softc *sc);
 
 /* calculate crc32 on a buffer (NOTE: crc32_length MUST be aligned to 8) */
 uint32_t
@@ -1458,14 +1460,14 @@ bxe_nvram_write(struct bxe_softc *sc,
 /* copy command into DMAE command memory and set DMAE command Go */
 void
 bxe_post_dmae(struct bxe_softc    *sc,
-              struct dmae_command *dmae,
+              struct dmae_cmd *dmae,
               int                 idx)
 {
     uint32_t cmd_offset;
     int i;
 
-    cmd_offset = (DMAE_REG_CMD_MEM + (sizeof(struct dmae_command) * idx));
-    for (i = 0; i < ((sizeof(struct dmae_command) / 4)); i++) {
+    cmd_offset = (DMAE_REG_CMD_MEM + (sizeof(struct dmae_cmd) * idx));
+    for (i = 0; i < ((sizeof(struct dmae_cmd) / 4)); i++) {
         REG_WR(sc, (cmd_offset + (i * 4)), *(((uint32_t *)dmae) + i));
     }
 
@@ -1476,14 +1478,14 @@ uint32_t
 bxe_dmae_opcode_add_comp(uint32_t opcode,
                          uint8_t  comp_type)
 {
-    return (opcode | ((comp_type << DMAE_COMMAND_C_DST_SHIFT) |
-                      DMAE_COMMAND_C_TYPE_ENABLE));
+    return (opcode | ((comp_type << DMAE_CMD_C_DST_SHIFT) |
+                      DMAE_CMD_C_TYPE_ENABLE));
 }
 
 uint32_t
 bxe_dmae_opcode_clr_src_reset(uint32_t opcode)
 {
-    return (opcode & ~DMAE_COMMAND_SRC_RESET);
+    return (opcode & ~DMAE_CMD_SRC_RESET);
 }
 
 uint32_t
@@ -1495,17 +1497,17 @@ bxe_dmae_opcode(struct bxe_softc *sc,
 {
     uint32_t opcode = 0;
 
-    opcode |= ((src_type << DMAE_COMMAND_SRC_SHIFT) |
-               (dst_type << DMAE_COMMAND_DST_SHIFT));
+    opcode |= ((src_type << DMAE_CMD_SRC_SHIFT) |
+               (dst_type << DMAE_CMD_DST_SHIFT));
 
-    opcode |= (DMAE_COMMAND_SRC_RESET | DMAE_COMMAND_DST_RESET);
+    opcode |= (DMAE_CMD_SRC_RESET | DMAE_CMD_DST_RESET);
 
     opcode |= (SC_PORT(sc) ? DMAE_CMD_PORT_1 : DMAE_CMD_PORT_0);
 
-    opcode |= ((SC_VN(sc) << DMAE_COMMAND_E1HVN_SHIFT) |
-               (SC_VN(sc) << DMAE_COMMAND_DST_VN_SHIFT));
+    opcode |= ((SC_VN(sc) << DMAE_CMD_E1HVN_SHIFT) |
+               (SC_VN(sc) << DMAE_CMD_DST_VN_SHIFT));
 
-    opcode |= (DMAE_COM_SET_ERR << DMAE_COMMAND_ERR_POLICY_SHIFT);
+    opcode |= (DMAE_COM_SET_ERR << DMAE_CMD_ERR_POLICY_SHIFT);
 
 #ifdef __BIG_ENDIAN
     opcode |= DMAE_CMD_ENDIANITY_B_DW_SWAP;
@@ -1522,11 +1524,11 @@ bxe_dmae_opcode(struct bxe_softc *sc,
 
 static void
 bxe_prep_dmae_with_comp(struct bxe_softc    *sc,
-                        struct dmae_command *dmae,
+                        struct dmae_cmd *dmae,
                         uint8_t             src_type,
                         uint8_t             dst_type)
 {
-    memset(dmae, 0, sizeof(struct dmae_command));
+    memset(dmae, 0, sizeof(struct dmae_cmd));
 
     /* set the opcode */
     dmae->opcode = bxe_dmae_opcode(sc, src_type, dst_type,
@@ -1541,7 +1543,7 @@ bxe_prep_dmae_with_comp(struct bxe_softc    *sc,
 /* issue a DMAE command over the init channel and wait for completion */
 static int
 bxe_issue_dmae_with_comp(struct bxe_softc    *sc,
-                         struct dmae_command *dmae)
+                         struct dmae_cmd *dmae)
 {
     uint32_t *wb_comp = BXE_SP(sc, wb_comp);
     int timeout = CHIP_REV_IS_SLOW(sc) ? 400000 : 4000;
@@ -1587,7 +1589,7 @@ bxe_read_dmae(struct bxe_softc *sc,
               uint32_t         src_addr,
               uint32_t         len32)
 {
-    struct dmae_command dmae;
+    struct dmae_cmd dmae;
     uint32_t *data;
     int i, rc;
 
@@ -1627,7 +1629,7 @@ bxe_write_dmae(struct bxe_softc *sc,
                uint32_t         dst_addr,
                uint32_t         len32)
 {
-    struct dmae_command dmae;
+    struct dmae_cmd dmae;
     int rc;
 
     if (!sc->dmae_ready) {
@@ -2382,13 +2384,13 @@ bxe_sp_post(struct bxe_softc *sc,
 
     /* CID needs port number to be encoded int it */
     spe->hdr.conn_and_cmd_data =
-        htole32((command << SPE_HDR_CMD_ID_SHIFT) | HW_CID(sc, cid));
+        htole32((command << SPE_HDR_T_CMD_ID_SHIFT) | HW_CID(sc, cid));
 
-    type = (cmd_type << SPE_HDR_CONN_TYPE_SHIFT) & SPE_HDR_CONN_TYPE;
+    type = (cmd_type << SPE_HDR_T_CONN_TYPE_SHIFT) & SPE_HDR_T_CONN_TYPE;
 
     /* TBD: Check if it works for VFs */
-    type |= ((SC_FUNC(sc) << SPE_HDR_FUNCTION_ID_SHIFT) &
-             SPE_HDR_FUNCTION_ID);
+    type |= ((SC_FUNC(sc) << SPE_HDR_T_FUNCTION_ID_SHIFT) &
+             SPE_HDR_T_FUNCTION_ID);
 
     spe->hdr.type = htole16(type);
 
@@ -3050,7 +3052,7 @@ bxe_tpa_stop(struct bxe_softc          *sc,
         fp->eth_q_stats.rx_soft_errors++;
         m_freem(m);
     } else {
-        if (tpa_info->parsing_flags & PARSING_FLAGS_VLAN) {
+        if (tpa_info->parsing_flags & PARSING_FLAGS_INNER_VLAN_EXIST) {
             m->m_pkthdr.ether_vtag = tpa_info->vlan_tag;
             m->m_flags |= M_VLANTAG;
         }
@@ -3061,7 +3063,7 @@ bxe_tpa_stop(struct bxe_softc          *sc,
 #if __FreeBSD_version >= 800000
         /* specify what RSS queue was used for this flow */
         m->m_pkthdr.flowid = fp->index;
-        M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
+        BXE_SET_FLOWID(m);
 #endif
 
         if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
@@ -3342,7 +3344,7 @@ bxe_rxeof(struct bxe_softc    *sc,
         }
 
         /* if there is a VLAN tag then flag that info */
-        if (cqe->fast_path_cqe.pars_flags.flags & PARSING_FLAGS_VLAN) {
+        if (cqe->fast_path_cqe.pars_flags.flags & PARSING_FLAGS_INNER_VLAN_EXIST) {
             m->m_pkthdr.ether_vtag = cqe->fast_path_cqe.vlan_tag;
             m->m_flags |= M_VLANTAG;
         }
@@ -3350,7 +3352,7 @@ bxe_rxeof(struct bxe_softc    *sc,
 #if __FreeBSD_version >= 800000
         /* specify what RSS queue was used for this flow */
         m->m_pkthdr.flowid = fp->index;
-        M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
+        BXE_SET_FLOWID(m);
 #endif
 
 next_rx:
@@ -4193,8 +4195,19 @@ bxe_nic_unload(struct bxe_softc *sc,
 {
     uint8_t global = FALSE;
     uint32_t val;
+    int i;
 
     BXE_CORE_LOCK_ASSERT(sc);
+
+    if_setdrvflagbits(sc->ifp, 0, IFF_DRV_RUNNING);
+
+    for (i = 0; i < sc->num_queues; i++) {
+        struct bxe_fastpath *fp;
+
+        fp = &sc->fp[i];
+        BXE_FP_TX_LOCK(fp);
+        BXE_FP_TX_UNLOCK(fp);
+    }
 
     BLOGD(sc, DBG_LOAD, "Starting NIC unload...\n");
 
@@ -4816,6 +4829,8 @@ bxe_dump_mbuf(struct bxe_softc *sc,
     }
 
     while (m) {
+
+#if __FreeBSD_version >= 1000000
         BLOGD(sc, DBG_MBUF,
               "%02d: mbuf=%p m_len=%d m_flags=0x%b m_data=%p\n",
               i, m, m->m_len, m->m_flags, M_FLAG_BITS, m->m_data);
@@ -4826,6 +4841,26 @@ bxe_dump_mbuf(struct bxe_softc *sc,
                    i, m->m_pkthdr.len, m->m_flags, M_FLAG_BITS,
                    (int)m->m_pkthdr.csum_flags, CSUM_BITS);
         }
+#else
+        BLOGD(sc, DBG_MBUF,
+              "%02d: mbuf=%p m_len=%d m_flags=0x%b m_data=%p\n",
+              i, m, m->m_len, m->m_flags,
+              "\20\1M_EXT\2M_PKTHDR\3M_EOR\4M_RDONLY", m->m_data);
+
+        if (m->m_flags & M_PKTHDR) {
+             BLOGD(sc, DBG_MBUF,
+                   "%02d: - m_pkthdr: tot_len=%d flags=0x%b csum_flags=%b\n",
+                   i, m->m_pkthdr.len, m->m_flags,
+                   "\20\12M_BCAST\13M_MCAST\14M_FRAG"
+                   "\15M_FIRSTFRAG\16M_LASTFRAG\21M_VLANTAG"
+                   "\22M_PROMISC\23M_NOFREE",
+                   (int)m->m_pkthdr.csum_flags,
+                   "\20\1CSUM_IP\2CSUM_TCP\3CSUM_UDP\4CSUM_IP_FRAGS"
+                   "\5CSUM_FRAGMENT\6CSUM_TSO\11CSUM_IP_CHECKED"
+                   "\12CSUM_IP_VALID\13CSUM_DATA_VALID"
+                   "\14CSUM_PSEUDO_HDR");
+        }
+#endif /* #if __FreeBSD_version >= 1000000 */
 
         if (m->m_flags & M_EXT) {
             switch (m->m_ext.ext_type) {
@@ -5209,7 +5244,9 @@ bxe_tx_encap(struct bxe_fastpath *fp, struct mbuf **m_head)
 
     sc = fp->sc;
 
+#if __FreeBSD_version >= 800000
     M_ASSERTPKTHDR(*m_head);
+#endif /* #if __FreeBSD_version >= 800000 */
 
     m0 = *m_head;
     rc = defragged = nbds = ovlan = vlan_off = total_pkt_size = 0;
@@ -5726,9 +5763,9 @@ bxe_tx_mq_start_locked(struct bxe_softc    *sc,
     }
 
     if (!sc->link_vars.link_up ||
-        (ifp->if_drv_flags &
+        (if_getdrvflags(ifp) &
         (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) != IFF_DRV_RUNNING) {
-        rc = drbr_enqueue_drv(ifp, tx_br, m);
+        rc = drbr_enqueue(ifp, tx_br, m);
         goto bxe_tx_mq_start_locked_exit;
     }
 
@@ -5743,7 +5780,7 @@ bxe_tx_mq_start_locked(struct bxe_softc    *sc,
         next = drbr_dequeue_drv(ifp, tx_br);
     } else if (drbr_needs_enqueue_drv(ifp, tx_br)) {
         /* have both new and pending work, maintain packet order */
-        rc = drbr_enqueue_drv(ifp, tx_br, m);
+        rc = drbr_enqueue(ifp, tx_br, m);
         if (rc != 0) {
             fp->eth_q_stats.tx_soft_errors++;
             goto bxe_tx_mq_start_locked_exit;
@@ -5772,7 +5809,7 @@ bxe_tx_mq_start_locked(struct bxe_softc    *sc,
                 /* mark the TX queue as full and save the frame */
                 if_setdrvflagbits(ifp, IFF_DRV_OACTIVE, 0);
                 /* XXX this may reorder the frame */
-                rc = drbr_enqueue_drv(ifp, tx_br, next);
+                rc = drbr_enqueue(ifp, tx_br, next);
                 fp->eth_q_stats.mbuf_alloc_tx--;
                 fp->eth_q_stats.tx_frames_deferred++;
             }
@@ -5824,7 +5861,8 @@ bxe_tx_mq_start(struct ifnet *ifp,
     fp_index = 0; /* default is the first queue */
 
     /* check if flowid is set */
-    if (M_HASHTYPE_GET(m) != M_HASHTYPE_NONE)
+
+    if (BXE_VALID_FLOWID(m))
         fp_index = (m->m_pkthdr.flowid % sc->num_queues);
 
     fp = &sc->fp[fp_index];
@@ -5833,7 +5871,7 @@ bxe_tx_mq_start(struct ifnet *ifp,
         rc = bxe_tx_mq_start_locked(sc, ifp, fp, m);
         BXE_FP_TX_UNLOCK(fp);
     } else
-        rc = drbr_enqueue_drv(ifp, fp->tx_br, m);
+        rc = drbr_enqueue(ifp, fp->tx_br, m);
 
     return (rc);
 }
@@ -6239,8 +6277,6 @@ bxe_free_fp_buffers(struct bxe_softc *sc)
                     m_freem(m);
                 BXE_FP_TX_UNLOCK(fp);
             }
-            buf_ring_free(fp->tx_br, M_DEVBUF);
-            fp->tx_br = NULL;
         }
 #endif
 
@@ -6270,14 +6306,6 @@ bxe_free_fp_buffers(struct bxe_softc *sc)
         }
 
         /* XXX verify all mbufs were reclaimed */
-
-        if (mtx_initialized(&fp->tx_mtx)) {
-            mtx_destroy(&fp->tx_mtx);
-        }
-
-        if (mtx_initialized(&fp->rx_mtx)) {
-            mtx_destroy(&fp->rx_mtx);
-        }
     }
 }
 
@@ -6498,15 +6526,6 @@ bxe_alloc_fp_buffers(struct bxe_softc *sc)
 
     for (i = 0; i < sc->num_queues; i++) {
         fp = &sc->fp[i];
-
-#if __FreeBSD_version >= 800000
-        fp->tx_br = buf_ring_alloc(BXE_BR_SIZE, M_DEVBUF,
-                                   M_NOWAIT, &fp->tx_mtx);
-        if (fp->tx_br == NULL) {
-            BLOGE(sc, "buf_ring alloc fail for fp[%02d]\n", i);
-            goto bxe_alloc_fp_buffers_error;
-        }
-#endif
 
         ring_prod = cqe_ring_prod = 0;
         fp->rx_bd_cons = 0;
@@ -8737,7 +8756,7 @@ bxe_handle_fp_tq(void *context,
 
     if (more_rx /*|| more_tx*/) {
         /* still more work to do */
-        taskqueue_enqueue_fast(fp->tq, &fp->tq_task);
+        taskqueue_enqueue(fp->tq, &fp->tq_task);
         return;
     }
 
@@ -8771,7 +8790,7 @@ bxe_task_fp(struct bxe_fastpath *fp)
 
     if (more_rx /*|| more_tx*/) {
         /* still more work to do, bail out if this ISR and process later */
-        taskqueue_enqueue_fast(fp->tq, &fp->tq_task);
+        taskqueue_enqueue(fp->tq, &fp->tq_task);
         return;
     }
 
@@ -8838,7 +8857,7 @@ bxe_intr_legacy(void *xsc)
         bxe_ack_sb(sc, sc->igu_dsb_id, USTORM_ID, 0, IGU_INT_DISABLE, 0);
 
         /* schedule slowpath handler */
-        taskqueue_enqueue_fast(sc->sp_tq, &sc->sp_tq_task);
+        taskqueue_enqueue(sc->sp_tq, &sc->sp_tq_task);
 
         status &= ~0x1;
     }
@@ -8860,7 +8879,7 @@ bxe_intr_sp(void *xsc)
     bxe_ack_sb(sc, sc->igu_dsb_id, USTORM_ID, 0, IGU_INT_DISABLE, 0);
 
     /* schedule slowpath handler */
-    taskqueue_enqueue_fast(sc->sp_tq, &sc->sp_tq_task);
+    taskqueue_enqueue(sc->sp_tq, &sc->sp_tq_task);
 }
 
 /* fastpath interrupt entry point */
@@ -9615,14 +9634,6 @@ bxe_init_eth_fp(struct bxe_softc *sc,
     fp->sc    = sc;
     fp->index = idx;
 
-    snprintf(fp->tx_mtx_name, sizeof(fp->tx_mtx_name),
-             "bxe%d_fp%d_tx_lock", sc->unit, idx);
-    mtx_init(&fp->tx_mtx, fp->tx_mtx_name, NULL, MTX_DEF);
-
-    snprintf(fp->rx_mtx_name, sizeof(fp->rx_mtx_name),
-             "bxe%d_fp%d_rx_lock", sc->unit, idx);
-    mtx_init(&fp->rx_mtx, fp->rx_mtx_name, NULL, MTX_DEF);
-
     fp->igu_sb_id = (sc->igu_base_sb + idx + CNIC_SUPPORT(sc));
     fp->fw_sb_id = (sc->base_fw_ndsb + idx + CNIC_SUPPORT(sc));
 
@@ -9775,7 +9786,7 @@ bxe_init_rx_rings(struct bxe_softc *sc)
 static void
 bxe_init_tx_ring_one(struct bxe_fastpath *fp)
 {
-    SET_FLAG(fp->tx_db.data.header.header, DOORBELL_HDR_DB_TYPE, 1);
+    SET_FLAG(fp->tx_db.data.header.data, DOORBELL_HDR_T_DB_TYPE, 1);
     fp->tx_db.data.zero_fill1 = 0;
     fp->tx_db.data.prod = 0;
 
@@ -10600,8 +10611,8 @@ bxe_func_start(struct bxe_softc *sc)
         start_params->network_cos_mode = FW_WRR;
     }
 
-    start_params->gre_tunnel_mode = 0;
-    start_params->gre_tunnel_rss  = 0;
+    //start_params->gre_tunnel_mode = 0;
+    //start_params->gre_tunnel_rss  = 0;
 
     return (ecore_func_state_change(sc, &func_params));
 }
@@ -12859,7 +12870,7 @@ bxe_allocate_bars(struct bxe_softc *sc)
         sc->bar[i].handle = rman_get_bushandle(sc->bar[i].resource);
         sc->bar[i].kva    = (vm_offset_t)rman_get_virtual(sc->bar[i].resource);
 
-        BLOGI(sc, "PCI BAR%d [%02x] memory allocated: %p-%p (%ld) -> %p\n",
+        BLOGI(sc, "PCI BAR%d [%02x] memory allocated: %p-%p (%jd) -> %p\n",
               i, PCIR_BAR(i),
               (void *)rman_get_start(sc->bar[i].resource),
               (void *)rman_get_end(sc->bar[i].resource),
@@ -15691,18 +15702,11 @@ bxe_add_sysctls(struct bxe_softc *sc)
                       CTLFLAG_RD, BXE_DRIVER_VERSION, 0,
                       "version");
 
-    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "bc_version",
-                      CTLFLAG_RD, sc->devinfo.bc_ver_str, 0,
-                      "bootcode version");
-
     snprintf(sc->fw_ver_str, sizeof(sc->fw_ver_str), "%d.%d.%d.%d",
              BCM_5710_FW_MAJOR_VERSION,
              BCM_5710_FW_MINOR_VERSION,
              BCM_5710_FW_REVISION_VERSION,
              BCM_5710_FW_ENGINEERING_VERSION);
-    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "fw_version",
-                      CTLFLAG_RD, sc->fw_ver_str, 0,
-                      "firmware version");
 
     snprintf(sc->mf_mode_str, sizeof(sc->mf_mode_str), "%s",
         ((sc->devinfo.mf_info.mf_mode == SINGLE_FUNCTION)     ? "Single"  :
@@ -15710,17 +15714,9 @@ bxe_add_sysctls(struct bxe_softc *sc)
          (sc->devinfo.mf_info.mf_mode == MULTI_FUNCTION_SI)   ? "MF-SI"   :
          (sc->devinfo.mf_info.mf_mode == MULTI_FUNCTION_AFEX) ? "MF-AFEX" :
                                                                 "Unknown"));
-    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "mf_mode",
-                      CTLFLAG_RD, sc->mf_mode_str, 0,
-                      "multifunction mode");
-
     SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "mf_vnics",
                     CTLFLAG_RD, &sc->devinfo.mf_info.vnics_per_port, 0,
                     "multifunction vnics per port");
-
-    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "mac_addr",
-                      CTLFLAG_RD, sc->mac_addr_str, 0,
-                      "mac address");
 
     snprintf(sc->pci_link_str, sizeof(sc->pci_link_str), "%s x%d",
         ((sc->devinfo.pcie_link_speed == 1) ? "2.5GT/s" :
@@ -15728,14 +15724,48 @@ bxe_add_sysctls(struct bxe_softc *sc)
          (sc->devinfo.pcie_link_speed == 4) ? "8.0GT/s" :
                                               "???GT/s"),
         sc->devinfo.pcie_link_width);
+
+    sc->debug = bxe_debug;
+
+#if __FreeBSD_version >= 900000
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "bc_version",
+                      CTLFLAG_RD, sc->devinfo.bc_ver_str, 0,
+                      "bootcode version");
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "fw_version",
+                      CTLFLAG_RD, sc->fw_ver_str, 0,
+                      "firmware version");
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "mf_mode",
+                      CTLFLAG_RD, sc->mf_mode_str, 0,
+                      "multifunction mode");
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "mac_addr",
+                      CTLFLAG_RD, sc->mac_addr_str, 0,
+                      "mac address");
     SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "pci_link",
                       CTLFLAG_RD, sc->pci_link_str, 0,
                       "pci link status");
-
-    sc->debug = bxe_debug;
     SYSCTL_ADD_ULONG(ctx, children, OID_AUTO, "debug",
                     CTLFLAG_RW, &sc->debug,
                     "debug logging mode");
+#else
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "bc_version",
+                      CTLFLAG_RD, &sc->devinfo.bc_ver_str, 0,
+                      "bootcode version");
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "fw_version",
+                      CTLFLAG_RD, &sc->fw_ver_str, 0,
+                      "firmware version");
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "mf_mode",
+                      CTLFLAG_RD, &sc->mf_mode_str, 0,
+                      "multifunction mode");
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "mac_addr",
+                      CTLFLAG_RD, &sc->mac_addr_str, 0,
+                      "mac address");
+    SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "pci_link",
+                      CTLFLAG_RD, &sc->pci_link_str, 0,
+                      "pci link status");
+    SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "debug",
+                    CTLFLAG_RW, &sc->debug, 0,
+                    "debug logging mode");
+#endif /* #if __FreeBSD_version >= 900000 */
 
     SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "trigger_grcdump",
                     CTLTYPE_UINT | CTLFLAG_RW, sc, 0,
@@ -15787,6 +15817,89 @@ bxe_add_sysctls(struct bxe_softc *sc)
         }
     }
 }
+
+static int
+bxe_alloc_buf_rings(struct bxe_softc *sc)
+{
+#if __FreeBSD_version >= 800000
+
+    int i;
+    struct bxe_fastpath *fp;
+
+    for (i = 0; i < sc->num_queues; i++) {
+
+        fp = &sc->fp[i];
+
+        fp->tx_br = buf_ring_alloc(BXE_BR_SIZE, M_DEVBUF,
+                                   M_NOWAIT, &fp->tx_mtx);
+        if (fp->tx_br == NULL)
+            return (-1);
+    }
+#endif
+    return (0);
+}
+
+static void
+bxe_free_buf_rings(struct bxe_softc *sc)
+{
+#if __FreeBSD_version >= 800000
+
+    int i;
+    struct bxe_fastpath *fp;
+
+    for (i = 0; i < sc->num_queues; i++) {
+
+        fp = &sc->fp[i];
+
+        if (fp->tx_br) {
+            buf_ring_free(fp->tx_br, M_DEVBUF);
+            fp->tx_br = NULL;
+        }
+    }
+
+#endif
+}
+
+static void
+bxe_init_fp_mutexs(struct bxe_softc *sc)
+{
+    int i;
+    struct bxe_fastpath *fp;
+
+    for (i = 0; i < sc->num_queues; i++) {
+
+        fp = &sc->fp[i];
+
+        snprintf(fp->tx_mtx_name, sizeof(fp->tx_mtx_name),
+            "bxe%d_fp%d_tx_lock", sc->unit, i);
+        mtx_init(&fp->tx_mtx, fp->tx_mtx_name, NULL, MTX_DEF);
+
+        snprintf(fp->rx_mtx_name, sizeof(fp->rx_mtx_name),
+            "bxe%d_fp%d_rx_lock", sc->unit, i);
+        mtx_init(&fp->rx_mtx, fp->rx_mtx_name, NULL, MTX_DEF);
+    }
+}
+
+static void
+bxe_destroy_fp_mutexs(struct bxe_softc *sc)
+{
+    int i;
+    struct bxe_fastpath *fp;
+
+    for (i = 0; i < sc->num_queues; i++) {
+
+        fp = &sc->fp[i];
+
+        if (mtx_initialized(&fp->tx_mtx)) {
+            mtx_destroy(&fp->tx_mtx);
+        }
+
+        if (mtx_initialized(&fp->rx_mtx)) {
+            mtx_destroy(&fp->rx_mtx);
+        }
+    }
+}
+
 
 /*
  * Device attach function.
@@ -15899,8 +16012,25 @@ bxe_attach(device_t dev)
         return (ENXIO);
     }
 
+    bxe_init_fp_mutexs(sc);
+
+    if (bxe_alloc_buf_rings(sc) != 0) {
+	bxe_free_buf_rings(sc);
+        bxe_interrupt_free(sc);
+        bxe_del_cdev(sc);
+        if (sc->ifp != NULL) {
+            ether_ifdetach(sc->ifp);
+        }
+        ifmedia_removeall(&sc->ifmedia);
+        bxe_release_mutexes(sc);
+        bxe_deallocate_bars(sc);
+        pci_disable_busmaster(dev);
+        return (ENXIO);
+    }
+
     /* allocate ilt */
     if (bxe_alloc_ilt_mem(sc) != 0) {
+	bxe_free_buf_rings(sc);
         bxe_interrupt_free(sc);
         bxe_del_cdev(sc);
         if (sc->ifp != NULL) {
@@ -15916,6 +16046,7 @@ bxe_attach(device_t dev)
     /* allocate the host hardware/software hsi structures */
     if (bxe_alloc_hsi_mem(sc) != 0) {
         bxe_free_ilt_mem(sc);
+	bxe_free_buf_rings(sc);
         bxe_interrupt_free(sc);
         bxe_del_cdev(sc);
         if (sc->ifp != NULL) {
@@ -16023,11 +16154,15 @@ bxe_detach(device_t dev)
     /* free ilt */
     bxe_free_ilt_mem(sc);
 
+    bxe_free_buf_rings(sc);
+
     /* release the interrupts */
     bxe_interrupt_free(sc);
 
     /* Release the mutexes*/
+    bxe_destroy_fp_mutexs(sc);
     bxe_release_mutexes(sc);
+
 
     /* Release the PCIe BAR mapped memory */
     bxe_deallocate_bars(sc);

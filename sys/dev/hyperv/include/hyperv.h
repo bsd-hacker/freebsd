@@ -124,6 +124,8 @@ typedef struct hv_guid {
 	 unsigned char data[16];
 } __packed hv_guid;
 
+int snprintf_hv_guid(char *, size_t, const hv_guid *);
+
 #define HV_NIC_GUID							\
 	.data = {0x63, 0x51, 0x61, 0xF8, 0x3E, 0xDF, 0xc5, 0x46,	\
 		0x91, 0x3F, 0xF2, 0xD2, 0xF9, 0x65, 0xED, 0x0E}
@@ -753,8 +755,6 @@ typedef struct hv_vmbus_channel {
 	 */
 	hv_vmbus_ring_buffer_info	inbound;
 
-	struct mtx			inbound_lock;
-
 	struct taskqueue *		rxq;
 	struct task			channel_task;
 	hv_vmbus_pfn_channel_callback	on_channel_callback;
@@ -824,11 +824,16 @@ typedef struct hv_vmbus_channel {
 	 * This will be NULL for the primary channel.
 	 */
 	struct hv_vmbus_channel		*primary_channel;
+
 	/*
-	 * Support per channel state for use by vmbus drivers.
+	 * Driver private data
 	 */
-	void				*per_channel_state;
+	void				*hv_chan_priv1;
+	void				*hv_chan_priv2;
+	void				*hv_chan_priv3;
 } hv_vmbus_channel;
+
+#define HV_VMBUS_CHAN_ISPRIMARY(chan)	((chan)->primary_channel == NULL)
 
 static inline void
 hv_set_channel_read_state(hv_vmbus_channel* channel, boolean_t state)
@@ -907,6 +912,8 @@ int		hv_vmbus_channel_teardown_gpdal(
 				uint32_t		gpadl_handle);
 
 struct hv_vmbus_channel* vmbus_select_outgoing_channel(struct hv_vmbus_channel *promary);
+
+void		vmbus_channel_cpu_set(struct hv_vmbus_channel *chan, int cpu);
 
 /**
  * @brief Get physical address from virtual
