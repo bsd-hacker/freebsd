@@ -35,6 +35,7 @@
 # Fixed by r269708.
 
 # Not fixed: https://people.freebsd.org/~pho/stress/log/kostik798.txt
+# https://people.freebsd.org/~pho/stress/log/kostik856.txt
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -43,7 +44,7 @@
 N=`sysctl -n hw.ncpu`
 usermem=`sysctl -n hw.usermem`
 [ `swapinfo | wc -l` -eq 1 ] && usermem=$((usermem/100*80))
-size=$((usermem / 1024 / 1024 / N))
+size=$((usermem / 1024 / 1024))
 
 mounts=$N		# Number of parallel scripts
 
