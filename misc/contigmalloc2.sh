@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2014 EMC Corp.
+# Copyright (c) 2015 EMC Corp.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,19 +29,9 @@
 #
 
 # contigmalloc(9) / contigfree(9) test scenario.
-# malloc() a random number of buffers with random size and then free them.
-
-# A malloc pattern might look like this:
-# contigmalloc(186 pages)
-# contigmalloc(56 pages)
-# contigmalloc(9 pages)
-# contigmalloc(202 pages)
-# contigmalloc(49 pages)
-# contigmalloc(5 pages)
-
-# "panic: vm_reserv_alloc_contig: reserv 0xff... isn't free" seen.
-# http://people.freebsd.org/~pho/stress/log/contigmalloc.txt
-# Fixed by r271351.
+# Regression test for allocations >= 2 GiB.
+# "panic: vm_page_insert_after: mpred doesn't precede pindex" seen.
+# Fixed by r284207.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -50,33 +40,28 @@
 odir=`pwd`
 dir=/tmp/contigmalloc
 rm -rf $dir; mkdir -p $dir
-cat > $dir/ctest.c <<EOF
+cat > $dir/ctest2.c <<EOF
 #include <sys/param.h>
 #include <sys/syscall.h>
 
 #include <err.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <unistd.h>
 
-#define min(a,b) (((a)<(b))?(a):(b))
-#define CAP (64 * 1024 * 1024)		/* Total allocation */
-#define MAXBUF (32 * 1024 * 1024)	/* Max buffer size */
-#define N 512				/* Max allocations */
-#define RUNTIME 120
 #define TALLOC 1
 #define TFREE  2
 
-void *p[N];
-long size[N];
+void *p;
+long size;
 int n;
 
 void
 test(int argc, char *argv[])
 {
-	long mw, s;
-	int i, no, ps, res;
+	long mw;
+	int no, ps, res;
 
 	if (argc == 3) {
 		no = atoi(argv[1]);
@@ -86,74 +71,58 @@ test(int argc, char *argv[])
 		errx(1, "Usage: %s <syscall number> <max wired>", argv[0]);
 
 	ps = getpagesize();
-	s = 0;
-	n = arc4random() % N + 1;
-	mw = mw / 100 * 10 * ps;	/* Use 10% of vm.max_wired */
-	mw = min(mw, CAP);
-	for (i = 0; i < n; i++) {
-		size[i] = round_page((arc4random() % MAXBUF) + 1);
-		if (s + size[i] > mw)
-			continue;
-		res = syscall(no, TALLOC, &p[i], &size[i]);
+	size = mw / 100 * 80 * ps;	/* Use 80% of vm.max_wired */
+	while (size > 0) {
+		res = syscall(no, TALLOC, &p, &size);
 		if (res == -1) {
-			warn("contigmalloc(%lu pages) failed at loop %d",
-			    size[i] / ps, i);
+			if (errno != ENOMEM)
+				warn("contigmalloc(%lu pages) failed",
+				    size);
 		} else {
 #if defined(TEST)
-			fprintf(stderr, "contigmalloc(%lu pages)\n",
-			    size[i] / ps);
+			fprintf(stderr, "pre contigmalloc(%lu pages): %lu MiB\n",
+			    size, size * ps / 1024 / 1024);
 #endif
-			s += size[i];
-		}
-	}
-
-	setproctitle("%ld Mb", s / 1024 / 1024);
-
-	for (i = 0; i < n; i++) {
-		if (p[i] != NULL) {
-			res = syscall(no, TFREE, &p[i], &size[i]);
+			res = syscall(no, TFREE, &p, &size);
 #if defined(TEST)
 			fprintf(stderr, "contigfree(%lu pages)\n",
-			    size[i] / ps);
+			    size);
 #endif
-			p[i] = NULL;
 		}
+		size /= 2;
 	}
 }
 
 int
 main(int argc, char *argv[])
 {
-	time_t start;
-
-	start = time(NULL);
-	while (time(NULL) - start < RUNTIME)
-		test(argc, argv);
+	test(argc, argv);
 
 	return (0);
 }
 
 EOF
-mycc -o /tmp/ctest -Wall -Wextra -O0 -g $dir/ctest.c || exit 1
-rm $dir/ctest.c
+mycc -o /tmp/ctest2 -Wall -Wextra -O0 -g $dir/ctest2.c || exit 1
+rm $dir/ctest2.c
 
 cd $dir
 cat > Makefile <<EOF
-KMOD= cmalloc
-SRCS= cmalloc.c
+KMOD= cmalloc2
+SRCS= cmalloc2.c
 
 .include <bsd.kmod.mk>
 EOF
 
-sed '1,/^EOF2/d' < $odir/$0 > cmalloc.c
-make || exit 1
-kldload $dir/cmalloc.ko || exit 1
+sed '1,/^EOF2/d' < $odir/$0 > cmalloc2.c
+make depend all || exit 1
+kldload $dir/cmalloc2.ko || exit 1
 
 cd $odir
-mw=`sysctl -n vm.max_wired` || exit 1
-/tmp/ctest `sysctl -n debug.cmalloc_offset` $mw 2>&1 | tail -5
-kldunload $dir/cmalloc.ko
-rm -rf $dir /tmp/ctest
+mw=$((`sysctl -n vm.max_wired` - `sysctl -n vm.stats.vm.v_wire_count`)) ||
+    exit 1
+/tmp/ctest2 `sysctl -n debug.cmalloc_offset` $mw #2>&1 | tail -5
+kldunload $dir/cmalloc2.ko
+rm -rf $dir /tmp/ctest2
 exit 0
 
 EOF2
