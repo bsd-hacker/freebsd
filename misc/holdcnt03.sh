@@ -37,7 +37,7 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 [ `swapinfo | wc -l` -eq 1 ] && exit 0
-[ `sysctl -n hw.physmem` -lt $((4 * 1024 * 1024 * 1024)) ] && exit 0
+[ `sysctl -n hw.physmem` -lt $((9 * 1024 * 1024 * 1024)) ] && exit 0
 
 . ../default.cfg
 
