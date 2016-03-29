@@ -31,7 +31,7 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 saved=`sysctl vfs.lookup_shared | awk '{print $NF}'`
-trap "sysctl vfs.lookup_shared=$saved" EXIT SIGINT
+trap "sysctl vfs.lookup_shared=$saved" EXIT INT
 
 export runRUNTIME=10m            # Run tests for 10 minutes
 for i in 1 0; do

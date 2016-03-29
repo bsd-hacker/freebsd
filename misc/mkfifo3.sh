@@ -48,7 +48,7 @@ rm -f mkfifo3.c
 cd $odir
 
 fifo=/tmp/mkfifo3.fifo
-trap "rm -f $fifo /tmp/mkfifo3" EXIT SIGINT
+trap "rm -f $fifo /tmp/mkfifo3" EXIT INT
 
 /tmp/mkfifo3 &
 

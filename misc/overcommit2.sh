@@ -43,7 +43,7 @@ old=`sysctl -n vm.overcommit`
 size=$((`sysctl -n hw.usermem` / 1024 / 1024))	# in MB
 size=$((size + size / 100 * 20))		# 120% of hw.usermem
 sysctl vm.overcommit=1
-trap "sysctl vm.overcommit=$old" EXIT SIGINT
+trap "sysctl vm.overcommit=$old" EXIT INT
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
