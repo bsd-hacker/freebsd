@@ -99,7 +99,7 @@ volatile u_int *share;
 char *cmdline[] = { "./true", NULL };
 const char *tp;
 
-#define EXAMPLE 0
+#define SYNC 0
 #define PARALLEL 2
 
 #define RUNTIME (1 * 60)
@@ -117,8 +117,8 @@ slock(void)
 	int fd;
 
 	setproctitle("%s", __func__);
-	atomic_add_int(&share[EXAMPLE], 1);
-	while (share[EXAMPLE] != PARALLEL)
+	atomic_add_int(&share[SYNC], 1);
+	while (share[SYNC] != PARALLEL)
 		;
 
 	tp = __func__;
@@ -137,8 +137,8 @@ elock(void)
 	int fd;
 
 	setproctitle("%s", __func__);
-	atomic_add_int(&share[EXAMPLE], 1);
-	while (share[EXAMPLE] != PARALLEL)
+	atomic_add_int(&share[SYNC], 1);
+	while (share[SYNC] != PARALLEL)
 		;
 
 	tp = __func__;
@@ -160,8 +160,8 @@ stest(void)
 	int fd;
 
 	setproctitle("%s", __func__);
-	atomic_add_int(&share[EXAMPLE], 1);
-	while (share[EXAMPLE] != PARALLEL)
+	atomic_add_int(&share[SYNC], 1);
+	while (share[SYNC] != PARALLEL)
 		;
 
 	tp = __func__;
@@ -181,8 +181,8 @@ etest(void)
 	int fd;
 
 	setproctitle("%s", __func__);
-	atomic_add_int(&share[EXAMPLE], 1);
-	while (share[EXAMPLE] != PARALLEL)
+	atomic_add_int(&share[SYNC], 1);
+	while (share[SYNC] != PARALLEL)
 		;
 
 	tp = __func__;
@@ -213,7 +213,7 @@ main(void)
 	start = time(NULL);
 	while ((time(NULL) - start) < RUNTIME) {
 		n++;
-		share[EXAMPLE] = 0;
+		share[SYNC] = 0;
 		if (fork() == 0)
 			slock();
 		if (fork() == 0)
@@ -226,7 +226,7 @@ main(void)
 		if (r != 0)
 			break;
 
-		share[EXAMPLE] = 0;
+		share[SYNC] = 0;
 		if (fork() == 0)
 			elock();
 		if (fork() == 0)
