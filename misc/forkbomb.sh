@@ -53,20 +53,14 @@ bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
-sysctl kern.maxproc
-vmstat -z | sed -n "1p;/PROC/p;/THREAD/p"
-echo
-
-/tmp/forkbomb
-
-vmstat -z | sed -n "/PROC/p;/THREAD/p"
+su $testuser -c /tmp/forkbomb
 
 while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
 rm -rf /tmp/forkbomb
-exit
+exit 0
 
 EOF
 #include <sys/param.h>
@@ -84,10 +78,14 @@ EOF
 
 volatile u_int *share;
 
-#define R1 0
-#define R2 1
+#define R1 1 /* sync start  */
+#define R2 2 /* forks       */
+#define R3 3 /* exits       */
+#define R4 4 /* fork failed */
 
+//#define DEBUG
 #define MXFAIL 100
+#define MAXPROC 40000	/* Arbitrary cap */
 #define PARALLEL 200
 
 void
@@ -98,37 +96,53 @@ test(void)
 	atomic_add_int(&share[R1], 1);
 	while (share[R1] != PARALLEL)
 		;
+	atomic_add_int(&share[R2], 1);
 
 	for (;;) {
-		r = fork();
-		if (r == -1)
-			atomic_add_int(&share[R2], 1);
-		if (share[R2] > MXFAIL)
+		if (share[R2] >= MAXPROC || share[R4] > MXFAIL)
 			break;
+		atomic_add_int(&share[R2], 1);
+		if ((r = fork()) == -1) {
+			atomic_add_int(&share[R4], 1);
+			atomic_add_int(&share[R2], -1);
+			break;
+		}
 	}
 
+	atomic_add_int(&share[R3], 1);
 	_exit(0);
 }
 
 int
 main(void)
 {
+	struct sigaction sa;
 	size_t len;
 	int i;
 
-	len = getpagesize();
-	if ((share = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON | MAP_SHARED,
-	    -1, 0)) == MAP_FAILED)
+	len = PAGE_SIZE;
+	if ((share = mmap(NULL, len, PROT_READ | PROT_WRITE,
+	    MAP_ANON | MAP_SHARED, -1, 0)) == MAP_FAILED)
 		err(1, "mmap");
 
-	signal(SIGCHLD, SIG_IGN);
+	sa.sa_handler = SIG_IGN;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	if (sigaction(SIGCHLD, &sa, 0) == -1)
+		err(1, "sigaction");
+
 	for (i = 0; i < PARALLEL; i++) {
 		if (fork() == 0)
 			test();
 	}
 
-	while (share[R2] < MXFAIL)
+	while (share[R2] == 0 || share[R3] < share[R2])
 		sleep(1);
+
+#if defined(DEBUG)
+	fprintf(stderr, "MAXPROC: %d. forks: %u / exits: %u / fails: %u\n",
+	    MAXPROC, share[R2], share[R3], share[R4]);
+#endif
 
 	return (0);
 }
