@@ -48,7 +48,13 @@ while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint > /dev/null 2>&1 || sleep 1
 done
 
-mount /dev/md${mdstart}$part $mntpoint
+# Expect console output:
+# Failed to find journal.  Use tunefs to create one
+# Failed to start journal: 2
+
+echo "Expect: \"mount: /dev/md5a: No such file or directory\""
+[ -c /dev/md${mdstart}$part ] &&
+   mount /dev/md${mdstart}$part $mntpoint
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint > /dev/null 2>&1 || sleep 1

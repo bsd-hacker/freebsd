@@ -33,6 +33,10 @@
 # tunefs -j enable -S xxx regression test
 # causes "Sparse journal inode 4."
 
+# Deadlocks seen:
+# https://people.freebsd.org/~pho/stress/log/jeff116.txt
+# https://people.freebsd.org/~pho/stress/log/jeff117.txt
+
 . ../default.cfg
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

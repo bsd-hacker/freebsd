@@ -49,7 +49,8 @@ chmod 777 $mntpoint
 su $testuser -c '(cd ..; ./run.sh disk.cfg)' > /dev/null 2>&1 &
 sleep 20
 umount $mntpoint
-killall -u $testuser
+kill $!
+../tools/killall.sh
 wait
 
 while mount | grep -q "$mntpoint "; do
