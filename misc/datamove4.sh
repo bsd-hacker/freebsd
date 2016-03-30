@@ -184,8 +184,11 @@ unmapBuffer(char *bufferp)
 	   Program received signal SIGSEGV, Segmentation fault.
 	   free (cp=0x28070000) at /usr/src/libexec/rtld-elf/malloc.c:311
 	*/
+
+#if 0
 	if (munmap(bufferp + pagesize * 2, pagesize * 2) == -1)
 		err(1, "unmap 2. buffer");
+#endif
 }
 
 int

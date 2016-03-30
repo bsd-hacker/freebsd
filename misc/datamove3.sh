@@ -222,9 +222,9 @@ main(int argc, char *argv[], char *envp[])
 	a[1].fd2 = fdA;
 
 	if ((r = pthread_create(&threads[0], NULL, mapBuffer, (void *)0)) != 0)
-		err(1, "pthread_create(): %s\n", strerror(r));
+		errc(1, r, "pthread_create()");
 	if ((r = pthread_create(&threads[1], NULL, mapBuffer, (void *)1)) != 0)
-		err(1, "pthread_create(): %s\n", strerror(r));
+		errc(1, r, "pthread_create()");
 
 	while (a[0].bp == NULL || a[1].bp == NULL)
 		pthread_yield();
