@@ -43,7 +43,6 @@ for size in $((4 * 1024 * 1024 * 1024 - 1)) $((4 * 1024 * 1024 * 1024)); do
 	newfs $newfs_flags md${mdstart}$part > /dev/null
 	mount /dev/md${mdstart}$part $mntpoint
 
-	echo "Truncate file size: $size"
 	truncate -s $size $mntpoint/f1 && rm $mntpoint/f1
 
 	while mount | grep "$mntpoint " | grep -q /dev/md; do

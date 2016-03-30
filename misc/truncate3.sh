@@ -28,7 +28,7 @@
 # $FreeBSD: projects/stress2/misc/rename.sh 191485 2009-04-25 10:19:36Z pho $
 #
 
-# Variation of truncate2.sh whih FS check added.
+# Variation of truncate2.sh with FS check added.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -40,8 +40,8 @@ mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 400m -u $mdstart
 bsdlabel -w md${mdstart} auto
 
-newfs $newfs_flags md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}${part} $mntpoint
+newfs $newfs_flags md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
 export RUNDIR=$mntpoint/stressX
 
 here=`pwd`
@@ -64,8 +64,8 @@ while mount | grep -q $mntpoint; do
 	umount $mntpoint
 done
 
-if fsck -n -t ufs /dev/md${mdstart}${part} | egrep -q "BAD|WRONG"; then
-	fsck -n -t ufs /dev/md${mdstart}${part}
+if fsck -n -t ufs /dev/md${mdstart}$part | egrep -q "BAD|WRONG"; then
+	fsck -n -t ufs /dev/md${mdstart}$part
 fi
 
 mdconfig -d -u $mdstart
