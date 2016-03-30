@@ -61,9 +61,7 @@ if [ $# -eq 0 ]; then
 		./$0 find &
 	done
 
-	for i in `jot $mounts`; do
-		wait; wait
-	done
+	wait
 
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
@@ -83,8 +81,7 @@ else
 		for i in `jot 200`; do
 			mount /dev/md${m}${part} ${mntpoint}$m
 			chmod 777 ${mntpoint}$m
-			l=`od -An -N2 -t u2 /dev/random |
-			    sed 's/ //g'`
+			l=`jot -r 1 65535`
 			dd if=/dev/zero of=$mntpoint/$i bs=$l count=100 \
 			    2>&1 | egrep -v 'records|transferred'
 			rm -f $mntpoint/$i
