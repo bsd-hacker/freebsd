@@ -33,6 +33,7 @@
 # non-directory use of the vnode v_un union.
 # mckusick@ suggested using fifos for this test.
 
+# "panic: mtx_lock() of spin mutex  @ ../kern/vfs_subr.c:512" seen.
 # https://people.freebsd.org/~pho/stress/log/crossmp8.txt
 # Fixed by r291671.
 
@@ -40,7 +41,7 @@
 
 . ../default.cfg
 
-CONT=/tmp/crossmp3.continue
+CONT=/tmp/crossmp8.continue
 N=`sysctl -n hw.ncpu`
 usermem=`sysctl -n hw.usermem`
 [ `swapinfo | wc -l` -eq 1 ] && usermem=$((usermem/100*80))
