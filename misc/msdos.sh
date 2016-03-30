@@ -40,15 +40,15 @@ mdconfig -l | grep -q ${mdstart} &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md${mdstart} auto
-newfs_msdos /dev/md${mdstart}a > /dev/null
-mount -t msdosfs /dev/md${mdstart}a $mntpoint
+newfs_msdos /dev/md${mdstart}$part > /dev/null
+mount -t msdosfs /dev/md${mdstart}$part $mntpoint
 
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
-(cd ..; ./run.sh disk.cfg) 
+(cd ..; ./run.sh disk.cfg)
 
 while mount | grep "$mntpoint" | grep -q md$mdstart; do
 	umount $mntpoint || sleep 1
 done
-fsck -t msdosfs -y /dev/md${mdstart}a
+fsck -t msdosfs -y /dev/md${mdstart}$part
 mdconfig -d -u $mdstart

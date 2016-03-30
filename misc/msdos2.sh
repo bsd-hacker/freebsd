@@ -42,15 +42,15 @@ mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md${mdstart} auto
-newfs_msdos /dev/md${mdstart}a > /dev/null
-mount -t msdosfs /dev/md${mdstart}a $mntpoint
+newfs_msdos /dev/md${mdstart}$part > /dev/null
+mount -t msdosfs /dev/md${mdstart}$part $mntpoint
 
 u=$((mdstart + 1))
 mdconfig -l | grep -q $u &&  mdconfig -d -u $u
 mdconfig -a -t swap -s 1g -u $u
 bsdlabel -w md${u} auto
-newfs_msdos /dev/md${u}a > /dev/null
-mount -u /dev/md${u}a $mntpoint > /dev/null 2>&1 # panic
+newfs_msdos /dev/md${u}$part > /dev/null
+mount -u /dev/md${u}$part $mntpoint > /dev/null 2>&1 # panic
 
 ls $mntpoint > /dev/null
 
