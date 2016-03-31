@@ -109,7 +109,11 @@ zrl_add_impl(zrlock_t *zrl, const char *zc)
 		cv_wait(&zrl->zr_cv, &zrl->zr_mtx);
 	}
 	ASSERT3S(zrl->zr_refcount, >=, 0);
+#if 0
 	zrl->zr_refcount++;
+#else
+	atomic_add_32((uint32_t *)&zrl->zr_refcount, 1);
+#endif
 #ifdef	ZFS_DEBUG
 	zrl->zr_owner = curthread;
 	zrl->zr_caller = zc;
