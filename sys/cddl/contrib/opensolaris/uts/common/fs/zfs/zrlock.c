@@ -129,7 +129,20 @@ zrl_remove(zrlock_t *zrl)
 	}
 #endif
 	n = atomic_dec_32_nv((uint32_t *)&zrl->zr_refcount);
+#if 0
 	ASSERT3S((int32_t)n, >=, 0);
+#else
+	do {
+		const int64_t __left = (int64_t)(n);
+		const int64_t __right = (int64_t)(0);
+		if (!(__left >= __right)) {
+			printf("%s:%d: >= 0: n: %d\n",
+					__func__, __LINE__,
+					n
+					);
+		}
+	} while (0);
+#endif
 }
 
 int
