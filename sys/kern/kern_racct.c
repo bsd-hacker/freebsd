@@ -548,12 +548,10 @@ racct_add_locked(struct proc *p, int resource, uint64_t amount, int force)
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 
 #ifdef RCTL
-	if (!force) {
-		error = rctl_enforce(p, resource, amount);
-		if (error && RACCT_IS_DENIABLE(resource)) {
-			SDT_PROBE3(racct, , rusage, add__failure, p, resource, amount);
-			return (error);
-		}
+	error = rctl_enforce(p, resource, amount);
+	if (error && !force && RACCT_IS_DENIABLE(resource)) {
+		SDT_PROBE3(racct, , rusage, add__failure, p, resource, amount);
+		return (error);
 	}
 #endif
 	racct_adjust_resource(p->p_racct, resource, amount);
@@ -580,6 +578,24 @@ racct_add(struct proc *p, int resource, uint64_t amount)
 	error = racct_add_locked(p, resource, amount, 0);
 	mtx_unlock(&racct_lock);
 	return (error);
+}
+
+/*
+ * Increase allocation of 'resource' by 'amount' for process 'p'.
+ * Doesn't check for limits and never fails.
+ */
+void
+racct_add_force(struct proc *p, int resource, uint64_t amount)
+{
+
+	if (!racct_enable)
+		return;
+
+	SDT_PROBE3(racct, , rusage, add__force, p, resource, amount);
+
+	mtx_lock(&racct_lock);
+	racct_add_locked(p, resource, amount, 1);
+	mtx_unlock(&racct_lock);
 }
 
 static void
@@ -611,24 +627,6 @@ racct_add_cred(struct ucred *cred, int resource, uint64_t amount)
 
 	mtx_lock(&racct_lock);
 	racct_add_cred_locked(cred, resource, amount);
-	mtx_unlock(&racct_lock);
-}
-
-/*
- * Increase allocation of 'resource' by 'amount' for process 'p'.
- * Doesn't check for limits and never fails.
- */
-void
-racct_add_force(struct proc *p, int resource, uint64_t amount)
-{
-
-	if (!racct_enable)
-		return;
-
-	SDT_PROBE3(racct, , rusage, add__force, p, resource, amount);
-
-	mtx_lock(&racct_lock);
-	racct_add_locked(p, resource, amount, 1);
 	mtx_unlock(&racct_lock);
 }
 
@@ -670,9 +668,9 @@ racct_set_locked(struct proc *p, int resource, uint64_t amount, int force)
 	     resource));
 #endif
 #ifdef RCTL
-	if (!force && diff_proc > 0) {
+	if (diff_proc > 0) {
 		error = rctl_enforce(p, resource, diff_proc);
-		if (error && RACCT_IS_DENIABLE(resource)) {
+		if (error && !force && RACCT_IS_DENIABLE(resource)) {
 			SDT_PROBE3(racct, , rusage, set__failure, p, resource,
 			    amount);
 			return (error);
@@ -686,20 +684,6 @@ racct_set_locked(struct proc *p, int resource, uint64_t amount, int force)
 		racct_sub_cred_locked(p->p_ucred, resource, -diff_cred);
 
 	return (0);
-}
-
-void
-racct_set_force(struct proc *p, int resource, uint64_t amount)
-{
-
-	if (!racct_enable)
-		return;
-
-	SDT_PROBE3(racct, , rusage, set, p, resource, amount);
-
-	mtx_lock(&racct_lock);
-	racct_set_locked(p, resource, amount, 1);
-	mtx_unlock(&racct_lock);
 }
 
 /*
@@ -723,6 +707,20 @@ racct_set(struct proc *p, int resource, uint64_t amount)
 	error = racct_set_locked(p, resource, amount, 0);
 	mtx_unlock(&racct_lock);
 	return (error);
+}
+
+void
+racct_set_force(struct proc *p, int resource, uint64_t amount)
+{
+
+	if (!racct_enable)
+		return;
+
+	SDT_PROBE3(racct, , rusage, set, p, resource, amount);
+
+	mtx_lock(&racct_lock);
+	racct_set_locked(p, resource, amount, 1);
+	mtx_unlock(&racct_lock);
 }
 
 /*
