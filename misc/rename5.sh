@@ -70,15 +70,18 @@ checkfs /dev/md${mdstart}$part
 mdconfig -d -u $mdstart
 exit 0
 EOF
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define N 1000
+#define RUNTIME (5 * 60)
 
 
 void
@@ -100,10 +103,12 @@ test(void)
 int
 main()
 {
-	int fd, i, j;
+	time_t start;
+	int fd, i;
 	char dir[128], file[128];
 
-	for (j = 0; j < 50; j++) {
+	start = time(NULL);
+	while (time(NULL) - start < RUNTIME) {
 		if (mkdir("src", 0700) == -1)
 			err(1, "mkdir(src)");
 

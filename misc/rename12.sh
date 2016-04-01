@@ -57,7 +57,7 @@ for i in `jot $loops`; do
 	for j in `jot $parallel`; do
 		mkdir -p $mntpoint/d$j/dir1
 		mkdir -p $mntpoint/d$j/dir2
-		(cd $mntpoint/d$j; /tmp/rename12 $((inodes/N)) ) &
+		(cd $mntpoint/d$j; /tmp/rename12 $((inodes/parallel)) ) &
 	done
 	wait
 	for j in `jot $parallel`; do
