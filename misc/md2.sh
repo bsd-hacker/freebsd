@@ -34,20 +34,23 @@
 
 . ../default.cfg
 
-mount | grep "$mntpoint" | grep md${mdstart} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "on $mntpoint " | grep -q md$mdstart && umount $mntpoint
+[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
-mdconfig -a -t malloc -s 256m -u ${mdstart}
+mdconfig -a -t malloc -s 256m -u $mdstart
 
+export RUNDIR=$mntpoint/stressX
+export runRUNTIME=10m
 for i in 1 2; do
-	newfs -O$i -i1024 /dev/md${mdstart} > /dev/null 2>&1
-	mount /dev/md${mdstart} ${mntpoint}
-	df -i $mntpoint
+	echo "newfs -O$i -i1024 /dev/md$mdstart"
+	newfs -O$i -i1024 /dev/md$mdstart > /dev/null 2>&1
+	mount /dev/md$mdstart $mntpoint
 
-	export RUNDIR=$mntpoint/stressX
-	export runRUNTIME=10m
-	cd ..; ./run.sh
+	(cd ..; ./run.sh)
 
-	umount ${mntpoint}
+	while true; do
+		umount $mntpoint && break
+	done
 done
 mdconfig -d -u $mdstart
+exit 0

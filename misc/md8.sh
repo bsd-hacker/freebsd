@@ -52,9 +52,7 @@ rm -f /tmp/md8
 mycc -o md8 -Wall -Wextra -g -O2 md8.c || exit 1
 rm -f md8.c
 
-cc -o /tmp/fstool $odir/../tools/fstool.c || exit 1
 cd $odir
-
 trap "rm -f $diskimage" EXIT INT
 dd if=/dev/zero of=$diskimage bs=1m count=50 2>&1 | \
     egrep -v 'records|transferred'
