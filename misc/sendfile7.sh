@@ -31,6 +31,9 @@
 # Run sendfile5.sh with VM pressure added.
 # "panic: vm_page_requeue: page 0xc47fdcc0 is not queued" seen.
 
+# OOM seen:
+# https://people.freebsd.org/~pho/stress/log/sendfile7.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 ./sendfile5.sh &
