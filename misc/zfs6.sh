@@ -28,7 +28,8 @@
 # $FreeBSD$
 #
 
-# Parallel mount / umount and snapshots. No problems seen.
+# Parallel mount / umount and snapshots. zpool hang seen:
+# https://people.freebsd.org/~pho/stress/log/zfs6.txt
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 [ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le 3 ] && exit 0
@@ -49,9 +50,10 @@ mdconfig -s 512m -u $u1
 mdconfig -s 512m -u $u2
 mdconfig -s 512m -u $u3
 
+zpool list | grep -q tank && zpool destroy tank
 [ -d /tank ] && rm -rf /tank
-zpool create tank raidz md$u1 md$u2 md$u3
-zfs create tank/test
+zpool create tank raidz md$u1 md$u2 md$u3 || exit 1
+zfs create tank/test || exit 1
 
 while true; do
 	zfs umount tank/test
@@ -74,3 +76,4 @@ mdconfig -d -u $u1
 mdconfig -d -u $u2
 mdconfig -d -u $u3
 [ -n "$loaded" ] && kldunload zfs.ko
+exit 0

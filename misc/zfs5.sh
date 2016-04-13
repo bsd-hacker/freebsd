@@ -67,3 +67,4 @@ zpool destroy tank
 
 rm -rf $d1 $d2
 [ -n "$loaded" ] && kldunload zfs.ko
+exit 0
