@@ -74,3 +74,6 @@ GFB_NO_FONT_LOADING	opt_gfb.h
 GFB_NO_MODE_CHANGE	opt_gfb.h
 AT91C_MAIN_CLOCK	opt_at91.h
 VFP			opt_global.h
+
+# Change KVM size.  Changes things all over the kernel.
+KVA_PAGES		opt_global.h
