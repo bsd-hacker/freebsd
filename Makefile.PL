@@ -17,6 +17,7 @@ requires 'Catalyst::Plugin::ConfigLoader';
 requires 'Config::General';
 requires 'Catalyst::Plugin::DateTime';
 requires 'MooseX::Types::DateTime::MoreCoercions';
+requires 'MooseX::Types::Common::Numeric';
 requires 'Catalyst::Plugin::Session';
 requires 'Catalyst::Plugin::Session::State::Cookie';
 requires 'Catalyst::Plugin::Session::Store::FastMmap';
