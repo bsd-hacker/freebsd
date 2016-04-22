@@ -1078,7 +1078,7 @@ snmp_oid2asn_oid(struct snmp_toolinfo *snmptoolctx, char *str,
 	} else {
 		strlcpy(string, str, MIN(i + 1, nitems(string)));
 		if (snmp_lookup_enumoid(snmptoolctx, &obj, string) < 0) {
-			warnx("Unknown string - %s",string);
+			warnx("Unknown string - %s", string);
 			return (NULL);
 		}
 	}

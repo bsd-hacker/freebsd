@@ -141,6 +141,7 @@ void devctl_notify(const char *__system, const char *__subsystem,
     const char *__type, const char *__data);
 void devctl_queue_data_f(char *__data, int __flags);
 void devctl_queue_data(char *__data);
+void devctl_safe_quote(char *__dst, const char *__src, size_t len);
 
 /**
  * Device name parsers.  Hook to allow device enumerators to map
@@ -478,7 +479,14 @@ void	bus_enumerate_hinted_children(device_t bus);
 static __inline struct resource *
 bus_alloc_resource_any(device_t dev, int type, int *rid, u_int flags)
 {
-	return (bus_alloc_resource(dev, type, rid, 0ul, ~0ul, 1, flags));
+	return (bus_alloc_resource(dev, type, rid, 0, ~0, 1, flags));
+}
+
+static __inline struct resource *
+bus_alloc_resource_anywhere(device_t dev, int type, int *rid,
+    rman_res_t count, u_int flags)
+{
+	return (bus_alloc_resource(dev, type, rid, 0, ~0, count, flags));
 }
 
 /*
@@ -516,6 +524,7 @@ int	device_is_attached(device_t dev);	/* did attach succeed? */
 int	device_is_enabled(device_t dev);
 int	device_is_suspended(device_t dev);
 int	device_is_quiet(device_t dev);
+device_t device_lookup_by_name(const char *name);
 int	device_print_prettyname(device_t dev);
 int	device_printf(device_t dev, const char *, ...) __printflike(2, 3);
 int	device_probe(device_t dev);

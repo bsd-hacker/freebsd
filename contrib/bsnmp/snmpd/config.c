@@ -1151,7 +1151,8 @@ parse_define(const char *varname)
 			free(m->value);
 			m->value = string;
 			m->length = length;
-		}
+		} else
+			free(string);
 	}
 
 	token = TOK_EOL;

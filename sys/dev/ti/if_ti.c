@@ -434,7 +434,7 @@ ti_mem_read(struct ti_softc *sc, uint32_t addr, uint32_t len, void *buf)
 			segsize = cnt;
 		else
 			segsize = TI_WINLEN - (segptr % TI_WINLEN);
-		CSR_WRITE_4(sc, TI_WINBASE, (segptr & ~(TI_WINLEN - 1)));
+		CSR_WRITE_4(sc, TI_WINBASE, rounddown2(segptr, TI_WINLEN));
 		bus_space_read_region_4(sc->ti_btag, sc->ti_bhandle,
 		    TI_WINDOW + (segptr & (TI_WINLEN - 1)), (uint32_t *)ptr,
 		    segsize / 4);
@@ -464,7 +464,7 @@ ti_mem_write(struct ti_softc *sc, uint32_t addr, uint32_t len, void *buf)
 			segsize = cnt;
 		else
 			segsize = TI_WINLEN - (segptr % TI_WINLEN);
-		CSR_WRITE_4(sc, TI_WINBASE, (segptr & ~(TI_WINLEN - 1)));
+		CSR_WRITE_4(sc, TI_WINBASE, rounddown2(segptr, TI_WINLEN));
 		bus_space_write_region_4(sc->ti_btag, sc->ti_bhandle,
 		    TI_WINDOW + (segptr & (TI_WINLEN - 1)), (uint32_t *)ptr,
 		    segsize / 4);
@@ -491,7 +491,7 @@ ti_mem_zero(struct ti_softc *sc, uint32_t addr, uint32_t len)
 			segsize = cnt;
 		else
 			segsize = TI_WINLEN - (segptr % TI_WINLEN);
-		CSR_WRITE_4(sc, TI_WINBASE, (segptr & ~(TI_WINLEN - 1)));
+		CSR_WRITE_4(sc, TI_WINBASE, rounddown2(segptr, TI_WINLEN));
 		bus_space_set_region_4(sc->ti_btag, sc->ti_bhandle,
 		    TI_WINDOW + (segptr & (TI_WINLEN - 1)), 0, segsize / 4);
 		segptr += segsize;
@@ -559,7 +559,7 @@ ti_copy_mem(struct ti_softc *sc, uint32_t tigon_addr, uint32_t len,
 			segsize = cnt;
 		else
 			segsize = TI_WINLEN - (segptr % TI_WINLEN);
-		CSR_WRITE_4(sc, TI_WINBASE, (segptr & ~(TI_WINLEN - 1)));
+		CSR_WRITE_4(sc, TI_WINBASE, rounddown2(segptr, TI_WINLEN));
 
 		ti_offset = TI_WINDOW + (segptr & (TI_WINLEN -1));
 
@@ -628,7 +628,7 @@ ti_copy_mem(struct ti_softc *sc, uint32_t tigon_addr, uint32_t len,
 		/*
 		 * Set the segment pointer.
 		 */
-		CSR_WRITE_4(sc, TI_WINBASE, (segptr & ~(TI_WINLEN - 1)));
+		CSR_WRITE_4(sc, TI_WINBASE, rounddown2(segptr, TI_WINLEN));
 
 		ti_offset = TI_WINDOW + (segptr & (TI_WINLEN - 1));
 
@@ -1720,7 +1720,7 @@ ti_init_rx_ring_std(struct ti_softc *sc)
 	for (i = 0; i < TI_STD_RX_RING_CNT; i++) {
 		if (ti_newbuf_std(sc, i) != 0)
 			return (ENOBUFS);
-	};
+	}
 
 	sc->ti_std = TI_STD_RX_RING_CNT - 1;
 	TI_UPDATE_STDPROD(sc, TI_STD_RX_RING_CNT - 1);
@@ -1758,7 +1758,7 @@ ti_init_rx_ring_jumbo(struct ti_softc *sc)
 	for (i = 0; i < TI_JUMBO_RX_RING_CNT; i++) {
 		if (ti_newbuf_jumbo(sc, i, NULL) != 0)
 			return (ENOBUFS);
-	};
+	}
 
 	sc->ti_jumbo = TI_JUMBO_RX_RING_CNT - 1;
 	TI_UPDATE_JUMBOPROD(sc, TI_JUMBO_RX_RING_CNT - 1);
@@ -1795,7 +1795,7 @@ ti_init_rx_ring_mini(struct ti_softc *sc)
 	for (i = 0; i < TI_MINI_RX_RING_CNT; i++) {
 		if (ti_newbuf_mini(sc, i) != 0)
 			return (ENOBUFS);
-	};
+	}
 
 	sc->ti_mini = TI_MINI_RX_RING_CNT - 1;
 	TI_UPDATE_MINIPROD(sc, TI_MINI_RX_RING_CNT - 1);

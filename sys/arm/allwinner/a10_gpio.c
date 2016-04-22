@@ -81,6 +81,8 @@ __FBSDID("$FreeBSD$");
 static struct ofw_compat_data compat_data[] = {
 	{"allwinner,sun4i-a10-pinctrl", 1},
 	{"allwinner,sun7i-a20-pinctrl", 1},
+	{"allwinner,sun6i-a31-pinctrl", 1},
+	{"allwinner,sun6i-a31s-pinctrl", 1},
 	{NULL,             0}
 };
 
@@ -106,6 +108,16 @@ extern const struct allwinner_padconf a10_padconf;
 extern const struct allwinner_padconf a20_padconf;
 #endif
 
+/* Defined in a31_padconf.c */
+#ifdef SOC_ALLWINNER_A31
+extern const struct allwinner_padconf a31_padconf;
+#endif
+
+/* Defined in a31s_padconf.c */
+#ifdef SOC_ALLWINNER_A31S
+extern const struct allwinner_padconf a31s_padconf;
+#endif
+
 #define	A10_GPIO_LOCK(_sc)		mtx_lock_spin(&(_sc)->sc_mtx)
 #define	A10_GPIO_UNLOCK(_sc)		mtx_unlock_spin(&(_sc)->sc_mtx)
 #define	A10_GPIO_LOCK_ASSERT(_sc)	mtx_assert(&(_sc)->sc_mtx, MA_OWNED)
@@ -123,8 +135,6 @@ extern const struct allwinner_padconf a20_padconf;
 #define	A10_GPIO_GP_INT_CTL		0x210
 #define	A10_GPIO_GP_INT_STA		0x214
 #define	A10_GPIO_GP_INT_DEB		0x218
-
-static struct a10_gpio_softc *a10_gpio_sc;
 
 #define	A10_GPIO_WRITE(_sc, _off, _val)		\
     bus_space_write_4(_sc->sc_bst, _sc->sc_bsh, _off, _val)
@@ -550,12 +560,6 @@ a10_gpio_attach(device_t dev)
 		/* Node is not a GPIO controller. */
 		goto fail;
 
-	a10_gpio_sc = sc;
-	sc->sc_busdev = gpiobus_attach_bus(dev);
-	if (sc->sc_busdev == NULL)
-		goto fail;
-
-
 	/* Use the right pin data for the current SoC */
 	switch (allwinner_soc_type()) {
 #ifdef SOC_ALLWINNER_A10
@@ -568,9 +572,23 @@ a10_gpio_attach(device_t dev)
 		sc->padconf = &a20_padconf;
 		break;
 #endif
+#ifdef SOC_ALLWINNER_A31
+	case ALLWINNERSOC_A31:
+		sc->padconf = &a31_padconf;
+		break;
+#endif
+#ifdef SOC_ALLWINNER_A31S
+	case ALLWINNERSOC_A31S:
+		sc->padconf = &a31s_padconf;
+		break;
+#endif
 	default:
 		return (ENOENT);
 	}
+
+	sc->sc_busdev = gpiobus_attach_bus(dev);
+	if (sc->sc_busdev == NULL)
+		goto fail;
 
 	/*
 	 * Register as a pinctrl device
