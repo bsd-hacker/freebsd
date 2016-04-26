@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Ruslan Bukin <br@bsdpad.com>
+ * Copyright (c) 2016 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
  *
  * Portions of this software were developed by SRI International and the
@@ -30,39 +30,56 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#ifndef	_MACHINE_INTR_MACHDEP_H_
-#define	_MACHINE_INTR_MACHDEP_H_
+#include <machine/asm.h>
 
-struct trapframe;
+__FBSDID("$FreeBSD$");
 
-void riscv_init_interrupts(void);
-int riscv_teardown_intr(void *);
-int riscv_config_intr(u_int, enum intr_trigger, enum intr_polarity);
-int riscv_setup_intr(const char *, driver_filter_t *, driver_intr_t *,
-    void *, int, int, void **);
-void riscv_cpu_intr(struct trapframe *);
+ENTRY(generic_bs_r_1)
+	add	a3, a1, a2
+	lb	a0, 0(a3)
+	ret
+END(generic_bs_r_1)
 
-typedef unsigned long * riscv_intrcnt_t;
+ENTRY(generic_bs_r_2)
+	add	a3, a1, a2
+	lh	a0, 0(a3)
+	ret
+END(generic_bs_r_2)
 
-riscv_intrcnt_t riscv_intrcnt_create(const char *);
-void riscv_intrcnt_setname(riscv_intrcnt_t, const char *);
+ENTRY(generic_bs_r_4)
+	add	a3, a1, a2
+	lw	a0, 0(a3)
+	ret
+END(generic_bs_r_4)
 
-#ifdef SMP
-void riscv_setup_ipihandler(driver_filter_t *);
-void riscv_unmask_ipi(void);
-#endif
+ENTRY(generic_bs_r_8)
+	add	a3, a1, a2
+	ld	a0, 0(a3)
+	ret
+END(generic_bs_r_8)
 
-enum {
-	IRQ_SOFTWARE,
-	IRQ_TIMER,
-	IRQ_HTIF,
-	IRQ_COP,	/* lowRISC only */
-	IRQ_UART,	/* lowRISC only */
-	NIRQS
-};
+ENTRY(generic_bs_w_1)
+	add	a4, a1, a2
+	sb	a3, 0(a4)
+	ret
+END(generic_bs_w_1)
 
-#endif /* !_MACHINE_INTR_MACHDEP_H_ */
+ENTRY(generic_bs_w_2)
+	add	a4, a1, a2
+	sh	a3, 0(a4)
+	ret
+END(generic_bs_w_2)
+
+ENTRY(generic_bs_w_4)
+	add	a4, a1, a2
+	sw	a3, 0(a4)
+	ret
+END(generic_bs_w_4)
+
+ENTRY(generic_bs_w_8)
+	add	a4, a1, a2
+	sd	a3, 0(a4)
+	ret
+END(generic_bs_w_8)
