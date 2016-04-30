@@ -46,7 +46,6 @@ KYUAFILE?= auto
 #TEST_METADATA.<test-program>+= key="value"
 
 .if ${KYUAFILE:tl} != "no"
-FILESGROUPS+=	TESTS
 TESTS+=		Kyuafile
 .endif
 

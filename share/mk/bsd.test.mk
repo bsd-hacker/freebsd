@@ -15,6 +15,8 @@ LOCALBASE?=	/usr/local
 
 # Tests install directory
 TESTSDIR?=	${TESTSBASE}/${RELDIR:H}
+
+FILESGROUPS+=	TESTS
 PACKAGE=	tests
 
 # List of subdirectories containing tests into which to recurse.  This has the
