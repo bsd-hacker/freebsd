@@ -48,7 +48,6 @@ KYUAFILE?= auto
 .if ${KYUAFILE:tl} != "no"
 FILESGROUPS+=	TESTS
 TESTS+=		Kyuafile
-TESTSDIR_Kyuafile= ${TESTSDIR}
 .endif
 
 .for _T in ${_TESTS}
