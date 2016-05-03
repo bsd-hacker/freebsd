@@ -1,15 +1,12 @@
 # $FreeBSD$
 
-PACKAGE=	tests
-FILESGROUPS=	TESTS
-TESTSPACKAGE=	${PACKAGE}
 TESTSDIR=	${TESTSBASE}/lib/libc/nss
 
 BINDIR=		${TESTSDIR}
 
 .PATH: ${.CURDIR:H}/resolv
 
-FILES+=		mach
+TESTS+=		mach
 
 CFLAGS+=	-I${SRCTOP}/tests
 

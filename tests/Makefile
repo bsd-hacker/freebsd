@@ -1,12 +1,8 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
-
-FILESGROUPS=	FILES
 PACKAGE= tests
-FILESGROUPS+=	TESTS
-TESTSPACKAGE=	${PACKAGE}
-TESTS+=		Kyuafile
+
+${PACKAGE}FILES+=		Kyuafile
 
 SUBDIR+= etc
 SUBDIR+= sys
@@ -15,8 +11,7 @@ SUBDIR_PARALLEL=
 TESTSDIR= ${TESTSBASE}
 KYUAFILE= yes
 
-FILES+= README
-FILESDIR_README= ${TESTSDIR}
+${PACKAGE}FILES+=		README
 
 afterinstall: install-tests-local
 install-tests-local: .PHONY
