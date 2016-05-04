@@ -2,16 +2,16 @@
 
 PACKAGE= tests
 
-${PACKAGE}FILES+=		Kyuafile
+TESTSDIR= ${TESTSBASE}
+
+${PACKAGE}FILES+=		README
+
+KYUAFILE= yes
 
 SUBDIR+= etc
 SUBDIR+= sys
+
 SUBDIR_PARALLEL=
-
-TESTSDIR= ${TESTSBASE}
-KYUAFILE= yes
-
-${PACKAGE}FILES+=		README
 
 afterinstall: install-tests-local
 install-tests-local: .PHONY
