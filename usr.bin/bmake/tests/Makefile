@@ -1,7 +1,9 @@
 # $FreeBSD$
 
-TESTS+=		common.sh
-TESTS+=		test-new.mk
+PACKAGE=	tests
+
+${PACKAGE}FILES+=	common.sh
+${PACKAGE}FILES+=	test-new.mk
 
 TESTS_SUBDIRS=	archives
 TESTS_SUBDIRS+=	basic
