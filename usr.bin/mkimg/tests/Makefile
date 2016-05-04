@@ -7,10 +7,10 @@ ATF_TESTS_SH=	mkimg
 SOURCES!=	cd ${.CURDIR}; echo *.uu
 ${PACKAGE}FILES+=		${SOURCES:S,.gz.uu,,g}
 
-${TESTS}:
+${${PACKAGE}FILES}:
 	uudecode -p ${.CURDIR}/${.TARGET}.gz.uu | gunzip -c > ${.TARGET}
 
-CLEANFILES+=	${TESTS}
+CLEANFILES+=	${${PACKAGE}FILES}}
 
 rebase:
 	(cd ${.CURDIR}; atf-sh mkimg.sh rebase)
