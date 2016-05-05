@@ -31,6 +31,7 @@
 
 # PROVIDE: static_ndp
 # REQUIRE: netif
+# BEFORE: NETWORKING
 # KEYWORD: nojail
 
 . /etc/rc.subr

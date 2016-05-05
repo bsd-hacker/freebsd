@@ -3,8 +3,9 @@
 # $FreeBSD$
 #
 
-# PROVIDE: ipfilter
+# PROVIDE: ipfilter FIREWALL
 # REQUIRE: FILESYSTEMS
+# BEFORE: netif
 # KEYWORD: nojail
 
 . /etc/rc.subr

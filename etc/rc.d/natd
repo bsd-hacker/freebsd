@@ -4,6 +4,7 @@
 #
 
 # PROVIDE: natd
+# REQUIRE: ipfw
 # KEYWORD: nostart nojail
 
 . /etc/rc.subr

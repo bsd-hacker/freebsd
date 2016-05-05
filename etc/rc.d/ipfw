@@ -3,8 +3,9 @@
 # $FreeBSD$
 #
 
-# PROVIDE: ipfw
+# PROVIDE: ipfw FIREWALL
 # REQUIRE: ppp
+# BEFORE: NETWORKING
 # KEYWORD: nojailvnet
 
 . /etc/rc.subr

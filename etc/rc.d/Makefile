@@ -8,6 +8,7 @@ FILESMODE=	${BINMODE}
 
 FILES=	DAEMON \
 	FILESYSTEMS \
+	FIREWALL \
 	LOGIN \
 	NETWORKING \
 	SERVERS \
@@ -44,11 +45,6 @@ FILES=	DAEMON \
 	hostid_save \
 	hostname \
 	iovctl \
-	ipfilter \
-	ipfs \
-	ipfw \
-	ipmon \
-	ipnat \
 	ipsec \
 	${_kadmind} \
 	${_kdc} \
@@ -69,7 +65,6 @@ FILES=	DAEMON \
 	mdconfig2 \
 	mountd \
 	msgs \
-	natd \
 	netif \
 	netoptions \
 	netwait \
@@ -83,9 +78,6 @@ FILES=	DAEMON \
 	nsswitch \
 	ntpdate \
 	${_opensm} \
-	pf \
-	pflog \
-	pfsync \
 	ppp \
 	pppoed \
 	pwcheck \
@@ -105,7 +97,6 @@ FILES=	DAEMON \
 	sppp \
 	statd \
 	static_arp \
-	static_ndp \
 	stf \
 	swap \
 	swaplate \
@@ -203,10 +194,27 @@ FILES+=		ip6addrctl
 FILES+=		route6d
 FILES+=		rtadvd
 FILES+=		rtsold
+FILES+=		static_ndp
 .endif
 
 .if ${MK_INETD} != "no"
 FILES+=		inetd
+.endif
+
+.if ${MK_IPFILTER} != "no"
+FILESGROUPS+=	IPFILTER
+IPFILTER+=	ipfilter
+IPFILTER+=	ipmon
+IPFILTER+=	ipnat
+IPFILTER+=	ipfs
+IPFILTERPACKAGE=	ipfilter
+.endif
+
+.if ${MK_IPFW} != "no"
+FILESGROUPS+=	IPFW
+IPFW+=		ipfw
+IPFW+=		natd
+IPFWPACKAGE=	ipfw
 .endif
 
 .if ${MK_ISCSI} != "no"
@@ -265,7 +273,12 @@ SSHPACKAGE=	ssh
 .endif
 
 .if ${MK_PF} != "no"
-FILES+=		ftp-proxy
+FILESGROUPS+=	PF
+PF+=		ftp-proxy
+PF+=		pf
+PF+=		pflog
+PF+=		pfsync
+PFPACKAGE=	pf
 .endif
 
 .if ${MK_RCMDS} != "no"
