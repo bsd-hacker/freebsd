@@ -32,9 +32,11 @@ __FBSDID("$FreeBSD$");
 #include "opt_wlan.h"
 
 #include <sys/param.h>
-#include <sys/kernel.h>
 #include <sys/systm.h> 
+#include <sys/eventhandler.h>
+#include <sys/kernel.h>
 #include <sys/linker.h>
+#include <sys/malloc.h>
 #include <sys/mbuf.h>   
 #include <sys/module.h>
 #include <sys/proc.h>
@@ -338,7 +340,7 @@ ieee80211_flush_ifq(struct ifqueue *ifq, struct ieee80211vap *vap)
  */
 #define	MC_ALIGN(m, len)						\
 do {									\
-	(m)->m_data += (MCLBYTES - (len)) &~ (sizeof(long) - 1);	\
+	(m)->m_data += rounddown2(MCLBYTES - (len), sizeof(long));	\
 } while (/* CONSTCOND */ 0)
 
 /*

@@ -264,6 +264,7 @@ _vm_object_allocate(objtype_t type, vm_pindex_t size, vm_object_t object)
 #if VM_NRESERVLEVEL > 0
 	LIST_INIT(&object->rvq);
 #endif
+	umtx_shm_object_init(object);
 }
 
 /*
@@ -475,6 +476,9 @@ vm_object_vndeallocate(vm_object_t object)
 	}
 #endif
 
+	if (object->ref_count == 1)
+		umtx_shm_object_terminated(object);
+
 	/*
 	 * The test for text of vp vnode does not need a bypass to
 	 * reach right VV_TEXT there, since it is obtained from
@@ -647,6 +651,7 @@ retry:
 			return;
 		}
 doterm:
+		umtx_shm_object_terminated(object);
 		temp = object->backing_object;
 		if (temp != NULL) {
 			KASSERT((object->flags & OBJ_TMPFS_NODE) == 0,
@@ -2106,7 +2111,7 @@ vm_object_coalesce(vm_object_t prev_object, vm_ooffset_t prev_offset,
 
 		/*
 		 * If prev_object was charged, then this mapping,
-		 * althought not charged now, may become writable
+		 * although not charged now, may become writable
 		 * later. Non-NULL cred in the object would prevent
 		 * swap reservation during enabling of the write
 		 * access, so reserve swap now. Failed reservation

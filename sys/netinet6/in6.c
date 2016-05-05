@@ -1316,7 +1316,7 @@ in6_purgeaddr(struct ifaddr *ifa)
 	plen = in6_mask2len(&ia->ia_prefixmask.sin6_addr, NULL); /* XXX */
 	if ((ia->ia_flags & IFA_ROUTE) && plen == 128) {
 		error = rtinit(&(ia->ia_ifa), RTM_DELETE, ia->ia_flags |
-		    (ia->ia_dstaddr.sin6_family == AF_INET6) ? RTF_HOST : 0);
+		    (ia->ia_dstaddr.sin6_family == AF_INET6 ? RTF_HOST : 0));
 		if (error != 0)
 			log(LOG_INFO, "%s: err=%d, destination address delete "
 			    "failed\n", __func__, error);
@@ -1552,7 +1552,7 @@ in6ifa_llaonifp(struct ifnet *ifp)
 
 	if (ND_IFINFO(ifp)->flags & ND6_IFF_IFDISABLED)
 		return (NULL);
-	if_addr_rlock(ifp);
+	IF_ADDR_RLOCK(ifp);
 	TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
@@ -1562,7 +1562,7 @@ in6ifa_llaonifp(struct ifnet *ifp)
 		    IN6_IS_ADDR_MC_NODELOCAL(&sin6->sin6_addr))
 			break;
 	}
-	if_addr_runlock(ifp);
+	IF_ADDR_RUNLOCK(ifp);
 
 	return ((struct in6_ifaddr *)ifa);
 }
@@ -1823,7 +1823,7 @@ in6_ifawithifp(struct ifnet *ifp, struct in6_addr *dst)
 {
 	int dst_scope =	in6_addrscope(dst), blen = -1, tlen;
 	struct ifaddr *ifa;
-	struct in6_ifaddr *besta = 0;
+	struct in6_ifaddr *besta = NULL;
 	struct in6_ifaddr *dep[2];	/* last-resort: deprecated */
 
 	dep[0] = dep[1] = NULL;
@@ -1955,7 +1955,7 @@ in6if_do_dad(struct ifnet *ifp)
 	/*
 	 * Our DAD routine requires the interface up and running.
 	 * However, some interfaces can be up before the RUNNING
-	 * status.  Additionaly, users may try to assign addresses
+	 * status.  Additionally, users may try to assign addresses
 	 * before the interface becomes up (or running).
 	 * This function returns EAGAIN in that case.
 	 * The caller should mark "tentative" on the address instead of
@@ -2056,6 +2056,17 @@ struct in6_llentry {
 
 /*
  * Do actual deallocation of @lle.
+ */
+static void
+in6_lltable_destroy_lle_unlocked(struct llentry *lle)
+{
+
+	LLE_LOCK_DESTROY(lle);
+	LLE_REQ_DESTROY(lle);
+	free(lle, M_LLTABLE);
+}
+
+/*
  * Called by LLE_FREE_LOCKED when number of references
  * drops to zero.
  */
@@ -2064,9 +2075,7 @@ in6_lltable_destroy_lle(struct llentry *lle)
 {
 
 	LLE_WUNLOCK(lle);
-	LLE_LOCK_DESTROY(lle);
-	LLE_REQ_DESTROY(lle);
-	free(lle, M_LLTABLE);
+	in6_lltable_destroy_lle_unlocked(lle);
 }
 
 static struct llentry *
@@ -2245,6 +2254,9 @@ in6_lltable_alloc(struct lltable *llt, u_int flags,
 	const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *)l3addr;
 	struct ifnet *ifp = llt->llt_ifp;
 	struct llentry *lle;
+	char linkhdr[LLE_MAX_LINKHDR];
+	size_t linkhdrsize;
+	int lladdr_off;
 
 	KASSERT(l3addr->sa_family == AF_INET6,
 	    ("sin_family %d", l3addr->sa_family));
@@ -2265,7 +2277,14 @@ in6_lltable_alloc(struct lltable *llt, u_int flags,
 	}
 	lle->la_flags = flags;
 	if ((flags & LLE_IFADDR) == LLE_IFADDR) {
-		lltable_set_entry_addr(ifp, lle, IF_LLADDR(ifp));
+		linkhdrsize = LLE_MAX_LINKHDR;
+		if (lltable_calc_llheader(ifp, AF_INET6, IF_LLADDR(ifp),
+		    linkhdr, &linkhdrsize, &lladdr_off) != 0) {
+			in6_lltable_destroy_lle_unlocked(lle);
+			return (NULL);
+		}
+		lltable_set_entry_addr(ifp, lle, linkhdr, linkhdrsize,
+		    lladdr_off);
 		lle->la_flags |= LLE_STATIC;
 	}
 
@@ -2359,7 +2378,7 @@ in6_lltable_dump_entry(struct lltable *llt, struct llentry *lle,
 			sdl->sdl_alen = ifp->if_addrlen;
 			sdl->sdl_index = ifp->if_index;
 			sdl->sdl_type = ifp->if_type;
-			bcopy(&lle->ll_addr, LLADDR(sdl), ifp->if_addrlen);
+			bcopy(lle->ll_addr, LLADDR(sdl), ifp->if_addrlen);
 			if (lle->la_expire != 0)
 				ndpc.rtm.rtm_rmx.rmx_expire = lle->la_expire +
 				    lle->lle_remtime / hz +

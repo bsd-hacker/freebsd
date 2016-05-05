@@ -46,7 +46,32 @@ __FBSDID("$FreeBSD$");
  * descriptor without blocking.
  */
 #define	DMA_NO_WAIT	0x2
-#define	DMA_ALL_FLAGS	(DMA_INT_EN | DMA_NO_WAIT)
+/*
+ * Disallow prefetching the source of the following operation.  Ordinarily, DMA
+ * operations can be pipelined on some hardware.  E.g., operation 2's source
+ * may be prefetched before operation 1 completes.
+ */
+#define	DMA_FENCE	0x4
+#define	_DMA_GENERIC_FLAGS	(DMA_INT_EN | DMA_NO_WAIT | DMA_FENCE)
+
+/*
+ * Emit a CRC32C as the result of a ioat_copy_crc() or ioat_crc().
+ */
+#define	DMA_CRC_STORE	0x8
+
+/*
+ * Compare the CRC32C of a ioat_copy_crc() or ioat_crc() against an expeceted
+ * value.  It is invalid to specify both TEST and STORE.
+ */
+#define	DMA_CRC_TEST	0x10
+#define	_DMA_CRC_TESTSTORE	(DMA_CRC_STORE | DMA_CRC_TEST)
+
+/*
+ * Use an inline comparison CRC32C or emit an inline CRC32C result.  Invalid
+ * without one of STORE or TEST.
+ */
+#define	DMA_CRC_INLINE	0x20
+#define	_DMA_CRC_FLAGS	(DMA_CRC_STORE | DMA_CRC_TEST | DMA_CRC_INLINE)
 
 /*
  * Hardware revision number.  Different hardware revisions support different
@@ -62,14 +87,17 @@ typedef void (*bus_dmaengine_callback_t)(void *arg, int error);
 
 /*
  * Called first to acquire a reference to the DMA channel
+ *
+ * Flags may be M_WAITOK or M_NOWAIT.
  */
-bus_dmaengine_t ioat_get_dmaengine(uint32_t channel_index);
+bus_dmaengine_t ioat_get_dmaengine(uint32_t channel_index, int flags);
 
 /* Release the DMA channel */
 void ioat_put_dmaengine(bus_dmaengine_t dmaengine);
 
 /* Check the DMA engine's HW version */
 int ioat_get_hwversion(bus_dmaengine_t dmaengine);
+size_t ioat_get_max_io_size(bus_dmaengine_t dmaengine);
 
 /*
  * Set interrupt coalescing on a DMA channel.
@@ -95,11 +123,24 @@ uint16_t ioat_get_max_coalesce_period(bus_dmaengine_t dmaengine);
 
 /*
  * Acquire must be called before issuing an operation to perform. Release is
- * called after. Multiple operations can be issued within the context of one
+ * called after.  Multiple operations can be issued within the context of one
  * acquire and release
  */
 void ioat_acquire(bus_dmaengine_t dmaengine);
 void ioat_release(bus_dmaengine_t dmaengine);
+
+/*
+ * Acquire_reserve can be called to ensure there is room for N descriptors.  If
+ * it succeeds, the next N valid operations will successfully enqueue.
+ *
+ * It may fail with:
+ *   - ENXIO if the channel is in an errored state, or the driver is being
+ *     unloaded
+ *   - EAGAIN if mflags included M_NOWAIT
+ *
+ * On failure, the caller does not hold the dmaengine.
+ */
+int ioat_acquire_reserve(bus_dmaengine_t dmaengine, unsigned n, int mflags);
 
 /*
  * Issue a blockfill operation.  The 64-bit pattern 'fillpattern' is written to
@@ -127,6 +168,42 @@ struct bus_dmadesc *ioat_copy(bus_dmaengine_t dmaengine, bus_addr_t dst,
  */
 struct bus_dmadesc *ioat_copy_8k_aligned(bus_dmaengine_t dmaengine,
     bus_addr_t dst1, bus_addr_t dst2, bus_addr_t src1, bus_addr_t src2,
+    bus_dmaengine_callback_t callback_fn, void *callback_arg, uint32_t flags);
+
+/*
+ * Copy len bytes from dst to src, like ioat_copy().
+ *
+ * Additionally, accumulate a CRC32C of the data.
+ *
+ * If initialseed is not NULL, the value it points to is used to seed the
+ * initial value of the CRC32C.
+ *
+ * If flags include DMA_CRC_STORE and not DMA_CRC_INLINE, crcptr is written
+ * with the 32-bit CRC32C result (in wire format).
+ *
+ * If flags include DMA_CRC_TEST and not DMA_CRC_INLINE, the computed CRC32C is
+ * compared with the 32-bit CRC32C pointed to by crcptr.  If they do not match,
+ * a channel error is raised.
+ *
+ * If the DMA_CRC_INLINE flag is set, crcptr is ignored and the DMA engine uses
+ * the 4 bytes trailing the source data (TEST) or the destination data (STORE).
+ */
+struct bus_dmadesc *ioat_copy_crc(bus_dmaengine_t dmaengine, bus_addr_t dst,
+    bus_addr_t src, bus_size_t len, uint32_t *initialseed, bus_addr_t crcptr,
+    bus_dmaengine_callback_t callback_fn, void *callback_arg, uint32_t flags);
+
+/*
+ * ioat_crc() is nearly identical to ioat_copy_crc(), but does not actually
+ * move data around.
+ *
+ * Like ioat_copy_crc, ioat_crc computes a CRC32C over len bytes pointed to by
+ * src.  The flags affect its operation in the same way, with one exception:
+ *
+ * If flags includes both DMA_CRC_STORE and DMA_CRC_INLINE, the computed CRC32C
+ * is written to the 4 bytes trailing the *source* data.
+ */
+struct bus_dmadesc *ioat_crc(bus_dmaengine_t dmaengine, bus_addr_t src,
+    bus_size_t len, uint32_t *initialseed, bus_addr_t crcptr,
     bus_dmaengine_callback_t callback_fn, void *callback_arg, uint32_t flags);
 
 /*

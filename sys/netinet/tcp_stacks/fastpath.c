@@ -81,19 +81,15 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/uma.h>
 
-#include <net/if.h>
-#include <net/if_var.h>
 #include <net/route.h>
 #include <net/vnet.h>
 
 #define TCPSTATES		/* for logging */
 
-#include <netinet/cc.h>
 #include <netinet/in.h>
 #include <netinet/in_kdtrace.h>
 #include <netinet/in_pcb.h>
 #include <netinet/in_systm.h>
-#include <netinet/in_var.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>	/* required for icmp_var.h */
 #include <netinet/icmp_var.h>	/* for ICMP_BANDLIM */
@@ -103,7 +99,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/icmp6.h>
 #include <netinet6/in6_pcb.h>
 #include <netinet6/ip6_var.h>
-#include <netinet6/nd6.h>
+#include <netinet/tcp.h>
 #include <netinet/tcp_fsm.h>
 #include <netinet/tcp_seq.h>
 #include <netinet/tcp_timer.h>
@@ -111,6 +107,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/tcp6_var.h>
 #include <netinet/tcpip.h>
 #include <netinet/tcp_syncache.h>
+#include <netinet/cc/cc.h>
 #ifdef TCPDEBUG
 #include <netinet/tcp_debug.h>
 #endif /* TCPDEBUG */
@@ -126,8 +123,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/in_cksum.h>
 
 #include <security/mac/mac_framework.h>
-
-const int tcprexmtthresh;
 
 VNET_DECLARE(int, tcp_autorcvbuf_inc);
 #define	V_tcp_autorcvbuf_inc	VNET(tcp_autorcvbuf_inc)
@@ -158,13 +153,11 @@ static void	 tcp_do_segment_fastack(struct mbuf *, struct tcphdr *,
  *	  the ack that opens up a 0-sized window.
  *	- LRO wasn't used for this segment. We make sure by checking that the
  *	  segment size is not larger than the MSS.
- *	- Delayed acks are enabled or this is a half-synchronized T/TCP
- *	  connection.
  */
 #define DELAY_ACK(tp, tlen)						\
 	((!tcp_timer_active(tp, TT_DELACK) &&				\
 	    (tp->t_flags & TF_RXWIN0SENT) == 0) &&			\
-	    (tlen <= tp->t_maxopd) &&					\
+	    (tlen <= tp->t_maxseg) &&					\
 	    (V_tcp_delack_enabled || (tp->t_flags & TF_NEEDSYN)))
 
 /*
@@ -192,7 +185,7 @@ tcp_do_fastack(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	short ostate = 0;
 #endif
         /*
-	 * The following if statment will be true if
+	 * The following if statement will be true if
 	 * we are doing the win_up_in_fp <and>
 	 * - We have more new data (SEQ_LT(tp->snd_wl1, th->th_seq)) <or>
 	 * - No more new data, but we have an ack for new data
@@ -296,7 +289,6 @@ tcp_do_fastack(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		 */
 		tp->snd_wl2 = th->th_ack;
 		tp->t_dupacks = 0;
-		m_freem(m);
 
 		/*
 		 * If all outstanding data are acked, stop
@@ -313,6 +305,8 @@ tcp_do_fastack(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				  (void *)tcp_saveipgen,
 				  &tcp_savetcp, 0);
 #endif
+		TCP_PROBE3(debug__input, tp, th, mtod(m, const char *));
+		m_freem(m);
 		if (tp->snd_una == tp->snd_max)
 			tcp_timer_activate(tp, TT_REXMT, 0);
 		else if (!tcp_timer_active(tp, TT_PERSIST))
@@ -403,6 +397,7 @@ tcp_do_fastnewdata(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		tcp_trace(TA_INPUT, ostate, tp,
 			  (void *)tcp_saveipgen, &tcp_savetcp, 0);
 #endif
+	TCP_PROBE3(debug__input, tp, th, mtod(m, const char *));
 	/*
 	 * Automatic sizing of receive socket buffer.  Often the send
 	 * buffer size is not optimally adjusted to the actual network
@@ -1066,7 +1061,7 @@ tcp_do_slowpath(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				 * change and FIN isn't set),
 				 * the ack is the biggest we've
 				 * seen and we've seen exactly our rexmt
-				 * threshhold of them, assume a packet
+				 * threshold of them, assume a packet
 				 * has been dropped and retransmit it.
 				 * Kludge snd_nxt & the congestion
 				 * window so we send only this one
@@ -1700,7 +1695,7 @@ dropafterack:
 		tcp_trace(TA_DROP, ostate, tp, (void *)tcp_saveipgen,
 			  &tcp_savetcp, 0);
 #endif
-	TCP_PROBE3(debug__input, tp, th, mtod(m, const char *));
+	TCP_PROBE3(debug__drop, tp, th, mtod(m, const char *));
 	if (ti_locked == TI_RLOCKED) {
 		INP_INFO_RUNLOCK(&V_tcbinfo);
 	}
@@ -1743,7 +1738,7 @@ drop:
 		tcp_trace(TA_DROP, ostate, tp, (void *)tcp_saveipgen,
 			  &tcp_savetcp, 0);
 #endif
-	TCP_PROBE3(debug__input, tp, th, mtod(m, const char *));
+	TCP_PROBE3(debug__drop, tp, th, mtod(m, const char *));
 	if (tp != NULL)
 		INP_WUNLOCK(tp->t_inpcb);
 	m_freem(m);
@@ -2139,7 +2134,6 @@ tcp_fastack(struct mbuf *m, struct tcphdr *th, struct socket *so,
 
 		tp->snd_una = th->th_ack;
 		tp->t_dupacks = 0;
-		m_freem(m);
 
 		/*
 		 * If all outstanding data are acked, stop
@@ -2156,6 +2150,8 @@ tcp_fastack(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				  (void *)tcp_saveipgen,
 				  &tcp_savetcp, 0);
 #endif
+		TCP_PROBE3(debug__input, tp, th, mtod(m, const char *));
+		m_freem(m);
 		if (tp->snd_una == tp->snd_max)
 			tcp_timer_activate(tp, TT_REXMT, 0);
 		else if (!tcp_timer_active(tp, TT_PERSIST))
@@ -2390,7 +2386,6 @@ struct tcp_function_block __tcp_fastslow = {
 	NULL,
 	NULL,
 	NULL,
-	NULL,
 	0,
 	0
 
@@ -2401,7 +2396,6 @@ struct tcp_function_block __tcp_fastack = {
 	tcp_output,
 	tcp_do_segment_fastack,
 	tcp_default_ctloutput,
-	NULL,
 	NULL,
 	NULL,
 	NULL,
@@ -2458,4 +2452,4 @@ static moduledata_t new_tcp_fastpaths = {
 };
 
 MODULE_VERSION(kern_tcpfastpaths, 1);
-DECLARE_MODULE(kern_tcpfastpaths, new_tcp_fastpaths, SI_SUB_PSEUDO, SI_ORDER_ANY);
+DECLARE_MODULE(kern_tcpfastpaths, new_tcp_fastpaths, SI_SUB_PROTO_DOMAIN, SI_ORDER_ANY);

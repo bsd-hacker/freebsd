@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/bus.h>
 #include <sys/gpio.h>
+#include <sys/intr.h>
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
@@ -71,6 +72,31 @@ static int gpiobus_pin_getcaps(device_t, device_t, uint32_t, uint32_t*);
 static int gpiobus_pin_set(device_t, device_t, uint32_t, unsigned int);
 static int gpiobus_pin_get(device_t, device_t, uint32_t, unsigned int*);
 static int gpiobus_pin_toggle(device_t, device_t, uint32_t);
+
+/*
+ * XXX -> Move me to better place - gpio_subr.c?
+ * Also, this function must be changed when interrupt configuration
+ * data will be moved into struct resource.
+ */
+#ifdef INTRNG
+struct resource *
+gpio_alloc_intr_resource(device_t consumer_dev, int *rid, u_int alloc_flags,
+    gpio_pin_t pin, uint32_t intr_mode)
+{
+	u_int irqnum;
+
+	/*
+	 * Allocate new fictitious interrupt number and store configuration
+	 * into it.
+	 */
+	irqnum = intr_gpio_map_irq(pin->dev, pin->pin, pin->flags, intr_mode);
+	if (irqnum == INTR_IRQ_INVALID)
+		return (NULL);
+
+	return (bus_alloc_resource(consumer_dev, SYS_RES_IRQ, rid,
+	    irqnum, irqnum, 1, alloc_flags));
+}
+#endif
 
 int
 gpio_check_flags(uint32_t caps, uint32_t flags)
@@ -184,7 +210,7 @@ gpiobus_init_softc(device_t dev)
 	if (GPIO_PIN_MAX(sc->sc_dev, &sc->sc_npins) != 0)
 		return (ENXIO);
 
-	KASSERT(sc->sc_npins != 0, ("GPIO device with no pins"));
+	KASSERT(sc->sc_npins >= 0, ("GPIO device with no pins"));
 
 	/* Pins = GPIO_PIN_MAX() + 1 */
 	sc->sc_npins++;
@@ -390,7 +416,7 @@ gpiobus_probe_nomatch(device_t dev, device_t child)
 		device_printf(dev, "<unknown device> at pins %s", pins);
 	else
 		device_printf(dev, "<unknown device> at pin %s", pins);
-	resource_list_print_type(&devi->rl, "irq", SYS_RES_IRQ, "%ld");
+	resource_list_print_type(&devi->rl, "irq", SYS_RES_IRQ, "%jd");
 	printf("\n");
 }
 
@@ -412,7 +438,7 @@ gpiobus_print_child(device_t dev, device_t child)
 		gpiobus_print_pins(devi, pins, sizeof(pins));
 		retval += printf("%s", pins);
 	}
-	resource_list_print_type(&devi->rl, "irq", SYS_RES_IRQ, "%ld");
+	resource_list_print_type(&devi->rl, "irq", SYS_RES_IRQ, "%jd");
 	retval += bus_print_child_footer(dev, child);
 
 	return (retval);
@@ -488,7 +514,7 @@ gpiobus_hinted_child(device_t bus, const char *dname, int dunit)
 
 static int
 gpiobus_set_resource(device_t dev, device_t child, int type, int rid,
-    u_long start, u_long count)
+    rman_res_t start, rman_res_t count)
 {
 	struct gpiobus_ivar *devi;
 	struct resource_list_entry *rle;
@@ -506,7 +532,7 @@ gpiobus_set_resource(device_t dev, device_t child, int type, int rid,
 
 static struct resource *
 gpiobus_alloc_resource(device_t bus, device_t child, int type, int *rid,
-    u_long start, u_long end, u_long count, u_int flags)
+    rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
 {
 	struct gpiobus_softc *sc;
 	struct resource *rv;
@@ -516,7 +542,7 @@ gpiobus_alloc_resource(device_t bus, device_t child, int type, int *rid,
 
 	if (type != SYS_RES_IRQ)
 		return (NULL);
-	isdefault = (start == 0UL && end == ~0UL && count == 1);
+	isdefault = (RMAN_IS_DEFAULT_RANGE(start, end) && count == 1);
 	rle = NULL;
 	if (isdefault) {
 		rl = BUS_GET_RESOURCE_LIST(bus, child);

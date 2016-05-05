@@ -58,9 +58,10 @@ __FBSDID("$FreeBSD$");
 #include <netpfil/ipfw/ip_fw_private.h>
 #include <netpfil/ipfw/ip_fw_table.h>
 
-static uint32_t hash_table_value(struct namedobj_instance *ni, void *key,
+static uint32_t hash_table_value(struct namedobj_instance *ni, const void *key,
     uint32_t kopt);
-static int cmp_table_value(struct named_object *no, void *key, uint32_t kopt);
+static int cmp_table_value(struct named_object *no, const void *key,
+    uint32_t kopt);
 
 static int list_table_values(struct ip_fw_chain *ch, ip_fw3_opheader *op3,
     struct sockopt_data *sd);
@@ -87,14 +88,14 @@ struct vdump_args {
 
 
 static uint32_t
-hash_table_value(struct namedobj_instance *ni, void *key, uint32_t kopt)
+hash_table_value(struct namedobj_instance *ni, const void *key, uint32_t kopt)
 {
 
 	return (hash32_buf(key, 56, 0));
 }
 
 static int
-cmp_table_value(struct named_object *no, void *key, uint32_t kopt)
+cmp_table_value(struct named_object *no, const void *key, uint32_t kopt)
 {
 
 	return (memcmp(((struct table_val_link *)no)->pval, key, 56));
@@ -158,6 +159,7 @@ update_tvalue(struct namedobj_instance *ni, struct named_object *no, void *arg)
 
 	pval = da->pval;
 	ptv->pval = &pval[ptv->no.kidx];
+	ptv->no.name = (char *)&pval[ptv->no.kidx];
 
 }
 
@@ -498,7 +500,7 @@ ipfw_link_table_values(struct ip_fw_chain *ch, struct tableop_state *ts)
 	count = ts->count;
 	for (i = 0; i < count; i++) {
 		ptei = &tei[i];
-		ptei->value = 0; /* Ensure value is always 0 in the beginnig */
+		ptei->value = 0; /* Ensure value is always 0 in the beginning */
 		mask_table_value(ptei->pvalue, &tval, ts->vmask);
 		ptv = (struct table_val_link *)ipfw_objhash_lookup_name(vi, 0,
 		    (char *)&tval);
@@ -601,7 +603,7 @@ ipfw_link_table_values(struct ip_fw_chain *ch, struct tableop_state *ts)
 }
 
 /*
- * Compability function used to import data from old
+ * Compatibility function used to import data from old
  * IP_FW_TABLE_ADD / IP_FW_TABLE_XADD opcodes.
  */
 void

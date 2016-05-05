@@ -309,7 +309,7 @@ struct sa_prot_map {
 	  /*min_val*/ 0, /*max_val*/ 1, NULL }
 };
 
-#define	SA_NUM_PROT_ENTS sizeof(sa_prot_table)/sizeof(sa_prot_table[0])
+#define	SA_NUM_PROT_ENTS nitems(sa_prot_table)
 
 #define	SA_PROT_ENABLED(softc) ((softc->flags & SA_FLAG_PROTECT_SUPP)	\
 	&& (softc->prot_info.cur_prot_state.initialized != 0)		\
@@ -731,9 +731,6 @@ saclose(struct cdev *dev, int flag, int fmt, struct thread *td)
 
 	mode = SAMODE(dev);
 	periph = (struct cam_periph *)dev->si_drv1;
-	if (periph == NULL)
-		return (ENXIO);	
-
 	cam_periph_lock(periph);
 
 	softc = (struct sa_softc *)periph->softc;
@@ -906,10 +903,6 @@ sastrategy(struct bio *bp)
 		return;
 	}
 	periph = (struct cam_periph *)bp->bio_dev->si_drv1;
-	if (periph == NULL) {
-		biofinish(bp, NULL, ENXIO);
-		return;
-	}
 	cam_periph_lock(periph);
 
 	softc = (struct sa_softc *)periph->softc;
@@ -1320,7 +1313,7 @@ safindparament(struct mtparamset *ps)
 {
 	unsigned int i;
 
-	for (i = 0; i < sizeof(sa_param_table) /sizeof(sa_param_table[0]); i++){
+	for (i = 0; i < nitems(sa_param_table); i++){
 		/*
 		 * For entries, we compare all of the characters.  For
 		 * nodes, we only compare the first N characters.  The node
@@ -1517,9 +1510,6 @@ saioctl(struct cdev *dev, u_long cmd, caddr_t arg, int flag, struct thread *td)
 	spaceop = 0;		/* shut up gcc */
 
 	periph = (struct cam_periph *)dev->si_drv1;
-	if (periph == NULL)
-		return (ENXIO);	
-
 	cam_periph_lock(periph);
 	softc = (struct sa_softc *)periph->softc;
 
@@ -2285,7 +2275,7 @@ saasync(void *callback_arg, u_int32_t code,
 static void
 sasetupdev(struct sa_softc *softc, struct cdev *dev)
 {
-	dev->si_drv1 = softc->periph;
+
 	dev->si_iosize_max = softc->maxio;
 	dev->si_flags |= softc->si_flags;
 	/*
@@ -2347,8 +2337,10 @@ saregister(struct cam_periph *periph, void *arg)
 	struct sa_softc *softc;
 	struct ccb_getdev *cgd;
 	struct ccb_pathinq cpi;
+	struct make_dev_args args;
 	caddr_t match;
 	char tmpstr[80];
+	int error;
 	
 	cgd = (struct ccb_getdev *)arg;
 	if (cgd == NULL) {
@@ -2383,7 +2375,7 @@ saregister(struct cam_periph *periph, void *arg)
 	 */
 	match = cam_quirkmatch((caddr_t)&cgd->inq_data,
 			       (caddr_t)sa_quirk_table,
-			       sizeof(sa_quirk_table)/sizeof(*sa_quirk_table),
+			       nitems(sa_quirk_table),
 			       sizeof(*sa_quirk_table), scsi_inquiry_match);
 
 	if (match != NULL) {
@@ -2506,25 +2498,48 @@ saregister(struct cam_periph *periph, void *arg)
 		return (CAM_REQ_CMP_ERR);
 	}
 
-	softc->devs.ctl_dev = make_dev(&sa_cdevsw, SAMINOR(SA_CTLDEV,
-	    SA_ATYPE_R), UID_ROOT, GID_OPERATOR,
-	    0660, "%s%d.ctl", periph->periph_name, periph->unit_number);
+	make_dev_args_init(&args);
+	args.mda_devsw = &sa_cdevsw;
+	args.mda_si_drv1 = softc->periph;
+	args.mda_uid = UID_ROOT;
+	args.mda_gid = GID_OPERATOR;
+	args.mda_mode = 0660;
+
+	args.mda_unit = SAMINOR(SA_CTLDEV, SA_ATYPE_R);
+	error = make_dev_s(&args, &softc->devs.ctl_dev, "%s%d.ctl",
+	    periph->periph_name, periph->unit_number);
+	if (error != 0) {
+		cam_periph_lock(periph);
+		return (CAM_REQ_CMP_ERR);
+	}
 	sasetupdev(softc, softc->devs.ctl_dev);
 
-	softc->devs.r_dev = make_dev(&sa_cdevsw, SAMINOR(SA_NOT_CTLDEV,
-	    SA_ATYPE_R), UID_ROOT, GID_OPERATOR,
-	    0660, "%s%d", periph->periph_name, periph->unit_number);
+	args.mda_unit = SAMINOR(SA_NOT_CTLDEV, SA_ATYPE_R);
+	error = make_dev_s(&args, &softc->devs.r_dev, "%s%d",
+	    periph->periph_name, periph->unit_number);
+	if (error != 0) {
+		cam_periph_lock(periph);
+		return (CAM_REQ_CMP_ERR);
+	}
 	sasetupdev(softc, softc->devs.r_dev);
 
-	softc->devs.nr_dev = make_dev(&sa_cdevsw, SAMINOR(SA_NOT_CTLDEV,
-	    SA_ATYPE_NR), UID_ROOT, GID_OPERATOR,
-	    0660, "n%s%d", periph->periph_name, periph->unit_number);
+	args.mda_unit = SAMINOR(SA_NOT_CTLDEV, SA_ATYPE_NR);
+	error = make_dev_s(&args, &softc->devs.nr_dev, "n%s%d",
+	    periph->periph_name, periph->unit_number);
+	if (error != 0) {
+		cam_periph_lock(periph);
+		return (CAM_REQ_CMP_ERR);
+	}
 	sasetupdev(softc, softc->devs.nr_dev);
 
-	softc->devs.er_dev = make_dev(&sa_cdevsw, SAMINOR(SA_NOT_CTLDEV,
-	    SA_ATYPE_ER), UID_ROOT, GID_OPERATOR,
-	    0660, "e%s%d", periph->periph_name, periph->unit_number);
-	sasetupdev(softc,  softc->devs.er_dev);
+	args.mda_unit = SAMINOR(SA_NOT_CTLDEV, SA_ATYPE_ER);
+	error = make_dev_s(&args, &softc->devs.er_dev, "e%s%d",
+	    periph->periph_name, periph->unit_number);
+	if (error != 0) {
+		cam_periph_lock(periph);
+		return (CAM_REQ_CMP_ERR);
+	}
+	sasetupdev(softc, softc->devs.er_dev);
 
 	cam_periph_lock(periph);
 
@@ -2847,7 +2862,7 @@ samount(struct cam_periph *periph, int oflags, struct cdev *dev)
 	softc = (struct sa_softc *)periph->softc;
 
 	/*
-	 * This should determine if something has happend since the last
+	 * This should determine if something has happened since the last
 	 * open/mount that would invalidate the mount. We do *not* want
 	 * to retry this command- we just want the status. But we only
 	 * do this if we're mounted already- if we're not mounted,
@@ -4946,10 +4961,6 @@ sasetpos(struct cam_periph *periph, int hard, struct mtlocate *locate_info)
 			       /*sense_len*/ SSD_FULL_SIZE,
 			       /*timeout*/ SPACE_TIMEOUT);
 	} else {
-		uint32_t blk_pointer;
-
-		blk_pointer = locate_info->logical_id;
-
 		scsi_locate_10(&ccb->csio,
 			       /*retries*/ 1,
 			       /*cbfcnp*/ sadone,

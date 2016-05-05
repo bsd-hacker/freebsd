@@ -182,7 +182,7 @@
 /* #undef C_ALLOCA */
 
 /* Enable debugging code? */
-#define DEBUG 1
+/* #undef DEBUG */
 
 /* Enable processing time debugging? */
 /* #undef DEBUG_TIMING */
@@ -304,8 +304,14 @@
 /* The number of minutes in a DST adjustment */
 #define DSTMINUTES 60
 
+/* support dynamic interleave? */
+#define DYNAMIC_INTERLEAVE 0
+
 /* number of args to el_init() */
 #define EL_INIT_ARGS 4
+
+/* Provide the explicit 127.0.0.0/8 martian filter? */
+#define ENABLE_BUG3020_FIX 1
 
 /* nls support in libopts */
 /* #undef ENABLE_NLS */
@@ -334,6 +340,9 @@
 
 /* Define to 1 if you have the <arpa/nameser.h> header file. */
 #define HAVE_ARPA_NAMESER_H 1
+
+/* Define to 1 if you have the `atomic_thread_fence' function. */
+/* #undef HAVE_ATOMIC_THREAD_FENCE */
 
 /* Do we have audio support? */
 #define HAVE_AUDIO /**/
@@ -387,6 +396,9 @@
 
 /* Define to 1 if you have the <errno.h> header file. */
 #define HAVE_ERRNO_H 1
+
+/* Define to 1 if you have the `EVP_MD_do_all_sorted' function. */
+#define HAVE_EVP_MD_DO_ALL_SORTED 1
 
 /* Define to 1 if you have the `fchmod' function. */
 #define HAVE_FCHMOD 1
@@ -613,6 +625,9 @@
 /* Define to 1 if you have the <net/if.h> header file. */
 #define HAVE_NET_IF_H 1
 
+/* Define to 1 if you have the <net/if_var.h> header file. */
+#define HAVE_NET_IF_VAR_H 1
+
 /* Define to 1 if you have the <net/route.h> header file. */
 #define HAVE_NET_ROUTE_H 1
 
@@ -820,7 +835,10 @@
 /* Define to 1 if you have the <stdarg.h> header file. */
 #define HAVE_STDARG_H 1
 
-/* Define to 1 if you have the <stdbool.h> header file. */
+/* Define to 1 if you have the <stdatomic.h> header file. */
+#define HAVE_STDATOMIC_H 1
+
+/* Define to 1 if stdbool.h conforms to C99. */
 #define HAVE_STDBOOL_H 1
 
 /* Define to 1 if you have the <stddef.h> header file. */
@@ -1132,7 +1150,7 @@
 /* #undef HAVE_UNIXWARE_SIGWAIT */
 
 /* Define to 1 if the system has the type `unsigned long long int'. */
-/* #undef HAVE_UNSIGNED_LONG_LONG_INT */
+#define HAVE_UNSIGNED_LONG_LONG_INT 1
 
 /* Define to 1 if you have the `updwtmp' function. */
 /* #undef HAVE_UPDWTMP */
@@ -1190,6 +1208,9 @@
 
 /* define if select implicitly yields */
 #define HAVE_YIELDING_SELECT 1
+
+/* Define to 1 if the system has the type `_Bool'. */
+#define HAVE__BOOL 1
 
 /* Define to 1 if you have the `_exit' function. */
 #define HAVE__EXIT 1
@@ -1314,6 +1335,9 @@
 /* define to 1 if library is thread safe */
 #define LDAP_API_FEATURE_X_OPENLDAP_THREAD_SAFE 1
 
+/* leap smear mechanism */
+/* #undef LEAP_SMEAR */
+
 /* Define to any value to include libseccomp sandboxing. */
 /* #undef LIBSECCOMP */
 
@@ -1329,6 +1353,13 @@
 
 /* Should we recommend a minimum value for tickadj? */
 /* #undef MIN_REC_TICKADJ */
+
+/* Define to 1 if the compiler does not support C99's structure
+   initialization. */
+/* #undef MISSING_C99_STRUCT_INIT */
+
+/* having to fork the DNS worker early when doing chroot? */
+/* #undef NEED_EARLY_FORK */
 
 /* Do we need HPUX adjtime() library support? */
 /* #undef NEED_HPUX_ADJTIME */
@@ -1418,7 +1449,7 @@
 #define PACKAGE_NAME "ntp"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "ntp 4.2.8p4"
+#define PACKAGE_STRING "ntp 4.2.8p7"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "ntp"
@@ -1427,13 +1458,13 @@
 #define PACKAGE_URL "http://www.ntp.org./"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "4.2.8p4"
+#define PACKAGE_VERSION "4.2.8p7"
 
 /* data dir */
 #define PERLLIBDIR "/usr/local/share/ntp/lib"
 
 /* define to a working POSIX compliant shell */
-#define POSIX_SHELL "/bin/bash"
+#define POSIX_SHELL "/bin/sh"
 
 /* PARSE kernel PLL PPS support */
 /* #undef PPS_SYNC */
@@ -1468,7 +1499,7 @@
 /* Do we want the SCO clock hacks? */
 /* #undef SCO5_CLOCK */
 
-/* The size of `char*', as computed by sizeof. */
+/* The size of `char *', as computed by sizeof. */
 #ifdef __LP64__
 #define SIZEOF_CHARP 8
 #else
@@ -1608,7 +1639,7 @@ typedef unsigned int	uintptr_t;
 /* #undef USE_UDP_SIGPOLL */
 
 /* Version number of package */
-#define VERSION "4.2.8p4"
+#define VERSION "4.2.8p7"
 
 /* vsnprintf expands "%m" to strerror(errno) */
 /* #undef VSNPRINTF_PERCENT_M */
@@ -1785,5 +1816,5 @@ typedef union mpinfou {
 /*
  * FreeBSD specific: Explicitly specify date/time for reproducible build.
  */
-#define	MKREPRO_DATE "Oct 22 2015"
-#define	MKREPRO_TIME "17:58:31"
+#define	MKREPRO_DATE "Apr 27 2016"
+#define	MKREPRO_TIME "05:53:49"

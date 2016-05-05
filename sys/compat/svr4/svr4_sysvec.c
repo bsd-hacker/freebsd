@@ -194,6 +194,7 @@ struct sysentvec svr4_sysvec = {
 	.sv_syscallnames = NULL,
 	.sv_schedtail	= NULL,
 	.sv_thread_detach = NULL,
+	.sv_trap	= NULL,
 };
 
 const char      svr4_emul_path[] = "/compat/svr4";
@@ -309,4 +310,4 @@ static moduledata_t svr4_elf_mod = {
 	0
 };
 DECLARE_MODULE_TIED(svr4elf, svr4_elf_mod, SI_SUB_EXEC, SI_ORDER_ANY);
-MODULE_DEPEND(svr4elf, streams, 1, 1, 1);
+MODULE_VERSION(svr4elf, 1);

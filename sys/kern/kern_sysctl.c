@@ -166,6 +166,8 @@ sysctl_root_handler_locked(struct sysctl_oid *oid, void *arg1, intmax_t arg2,
 	if (!(oid->oid_kind & CTLFLAG_MPSAFE))
 		mtx_unlock(&Giant);
 
+	KFAIL_POINT_ERROR(_debug_fail_point, sysctl_running, error);
+
 	if (tracker != NULL)
 		SYSCTL_RLOCK(tracker);
 	else
@@ -357,7 +359,7 @@ sysctl_register_oid(struct sysctl_oid *oidp)
 	 *
 	 * NOTE: DO NOT change the starting value here, change it in
 	 * <sys/sysctl.h>, and make sure it is at least 256 to
-	 * accomodate e.g. net.inet.raw as a static sysctl node.
+	 * accommodate e.g. net.inet.raw as a static sysctl node.
 	 */
 	if (oid_number < 0) {
 		static int newoid;
@@ -492,7 +494,7 @@ sysctl_ctx_free(struct sysctl_ctx_list *clist)
 	}
 	/*
 	 * Restore deregistered entries, either from the end,
-	 * or from the place where error occured.
+	 * or from the place where error occurred.
 	 * e contains the entry that was not unregistered
 	 */
 	if (error)
@@ -910,7 +912,7 @@ sysctl_sysctl_name(SYSCTL_HANDLER_ARGS)
 			name++;
 			continue;
 		}
-		lsp2 = 0;
+		lsp2 = NULL;
 		SLIST_FOREACH(oid, lsp, oid_link) {
 			if (oid->oid_number != *name)
 				continue;
@@ -1081,7 +1083,7 @@ sysctl_sysctl_name2oid(SYSCTL_HANDLER_ARGS)
 {
 	char *p;
 	int error, oid[CTL_MAXNAME], len = 0;
-	struct sysctl_oid *op = 0;
+	struct sysctl_oid *op = NULL;
 	struct rm_priotracker tracker;
 
 	if (!req->newlen) 
@@ -1837,8 +1839,6 @@ sysctl_root(SYSCTL_HANDLER_ARGS)
 		arg1 = (void *)(curvnet->vnet_data_base + (uintptr_t)arg1);
 #endif
 	error = sysctl_root_handler_locked(oid, arg1, arg2, req, &tracker);
-
-	KFAIL_POINT_ERROR(_debug_fail_point, sysctl_running, error);
 
 out:
 	SYSCTL_RUNLOCK(&tracker);

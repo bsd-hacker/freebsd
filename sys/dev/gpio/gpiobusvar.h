@@ -38,6 +38,7 @@
 
 #ifdef FDT
 #include <dev/ofw/ofw_bus_subr.h>
+#include <gnu/dts/include/dt-bindings/gpio/gpio.h>
 #endif
 
 #include "gpio_if.h"
@@ -59,6 +60,9 @@
 
 #define	GPIOBUS_WAIT		1
 #define	GPIOBUS_DONTWAIT	2
+
+/* Use default interrupt mode -  for gpio_alloc_intr_resource */
+#define GPIO_INTR_CONFORM	GPIO_INTR_NONE
 
 struct gpiobus_pin_data
 {
@@ -83,6 +87,7 @@ struct gpiobus_pin
 	uint32_t	flags;	/* pin flags */
 	uint32_t	pin;	/* pin number */
 };
+typedef struct gpiobus_pin *gpio_pin_t;
 
 struct gpiobus_ivar
 {
@@ -109,6 +114,20 @@ device_t ofw_gpiobus_add_fdt_child(device_t, const char *, phandle_t);
 int ofw_gpiobus_parse_gpios(device_t, char *, struct gpiobus_pin **);
 void ofw_gpiobus_register_provider(device_t);
 void ofw_gpiobus_unregister_provider(device_t);
+
+/* Consumers interface. */
+int gpio_pin_get_by_ofw_name(device_t consumer, char *name, gpio_pin_t *gpio);
+int gpio_pin_get_by_ofw_idx(device_t consumer, int idx, gpio_pin_t *gpio);
+int gpio_pin_get_by_ofw_property(device_t consumer, char *name,
+    gpio_pin_t *gpio);
+void gpio_pin_release(gpio_pin_t gpio);
+int gpio_pin_is_active(gpio_pin_t pin, bool *active);
+int gpio_pin_set_active(gpio_pin_t pin, bool active);
+int gpio_pin_setflags(gpio_pin_t pin, uint32_t flags);
+#endif
+#ifdef INTRNG
+struct resource *gpio_alloc_intr_resource(device_t consumer_dev, int *rid,
+    u_int alloc_flags, gpio_pin_t pin, uint32_t intr_mode);
 #endif
 int gpio_check_flags(uint32_t, uint32_t);
 device_t gpiobus_attach_bus(device_t);

@@ -261,7 +261,8 @@ powerpc_init(vm_offset_t fdt, vm_offset_t toc, vm_offset_t ofentry, void *mdp)
 		kmdp = preload_search_by_type("elf kernel");
 		if (kmdp != NULL) {
 			boothowto = MD_FETCH(kmdp, MODINFOMD_HOWTO, int);
-			kern_envp = MD_FETCH(kmdp, MODINFOMD_ENVP, char *);
+			init_static_kenv(MD_FETCH(kmdp, MODINFOMD_ENVP, char *),
+			    0);
 			endkernel = ulmax(endkernel, MD_FETCH(kmdp,
 			    MODINFOMD_KERNEND, vm_offset_t));
 #ifdef DDB
@@ -273,6 +274,7 @@ powerpc_init(vm_offset_t fdt, vm_offset_t toc, vm_offset_t ofentry, void *mdp)
 	} else {
 		bzero(__sbss_start, __sbss_end - __sbss_start);
 		bzero(__bss_start, _end - __bss_start);
+		init_static_kenv(NULL, 0);
 	}
 #ifdef BOOKE
 	tlb1_init();
@@ -448,7 +450,7 @@ cpu_flush_dcache(void *ptr, size_t len)
 	addr = (uintptr_t)ptr;
 	off = addr & (cacheline_size - 1);
 	addr -= off;
-	len = (len + off + cacheline_size - 1) & ~(cacheline_size - 1);
+	len = roundup2(len + off, cacheline_size);
 
 	while (len > 0) {
 		__asm __volatile ("dcbf 0,%0" :: "r"(addr));

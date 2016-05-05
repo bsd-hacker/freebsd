@@ -429,6 +429,7 @@ imx_sdhci_write_2(device_t dev, struct sdhci_slot *slot, bus_size_t off, uint16_
 		} else {
 			imx_sdhc_set_clock(sc, false);
 		}
+		return;
 	}
 
 	/*
@@ -835,3 +836,4 @@ static driver_t imx_sdhci_driver = {
 DRIVER_MODULE(sdhci_imx, simplebus, imx_sdhci_driver, imx_sdhci_devclass, 0, 0);
 MODULE_DEPEND(sdhci_imx, sdhci, 1, 1, 1);
 DRIVER_MODULE(mmc, sdhci_imx, mmc_driver, mmc_devclass, NULL, NULL);
+MODULE_DEPEND(sdhci_imx, mmc, 1, 1, 1);

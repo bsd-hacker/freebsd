@@ -46,7 +46,7 @@
  * without an NDA (if at all). What they do release is an API library
  * called the HCF (Hardware Control Functions) which is supposed to
  * do the device-specific operations of a device driver for you. The
- * publically available version of the HCF library (the 'HCF Light') is 
+ * publicly available version of the HCF library (the 'HCF Light') is 
  * a) extremely gross, b) lacks certain features, particularly support
  * for 802.11 frames, and c) is contaminated by the GNU Public License.
  *
@@ -74,6 +74,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>
 #include <sys/socket.h>
 #include <sys/module.h>
 #include <sys/bus.h>
@@ -336,7 +337,7 @@ wi_attach(device_t dev)
 	 */
 	buflen = sizeof(val);
 	if (wi_read_rid(sc, WI_RID_CHANNEL_LIST, &val, &buflen) != 0)
-		val = htole16(0x1fff);	/* assume 1-11 */
+		val = htole16(0x1fff);	/* assume 1-13 */
 	KASSERT(val != 0, ("wi_attach: no available channels listed!"));
 
 	val <<= 1;			/* shift for base 1 indices */
@@ -1994,8 +1995,8 @@ wi_alloc(device_t dev, int rid)
 
 	if (sc->wi_bus_type != WI_BUS_PCI_NATIVE) {
 		sc->iobase_rid = rid;
-		sc->iobase = bus_alloc_resource(dev, SYS_RES_IOPORT,
-		    &sc->iobase_rid, 0, ~0, (1 << 6),
+		sc->iobase = bus_alloc_resource_anywhere(dev, SYS_RES_IOPORT,
+		    &sc->iobase_rid, (1 << 6),
 		    rman_make_alignment_flags(1 << 6) | RF_ACTIVE);
 		if (sc->iobase == NULL) {
 			device_printf(dev, "No I/O space?!\n");

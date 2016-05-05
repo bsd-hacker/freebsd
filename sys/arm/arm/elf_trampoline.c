@@ -36,7 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/elf32.h>
 #include <sys/inflate.h>
 #include <machine/elf.h>
-#include <machine/pte.h>
+#include <machine/pte-v4.h>
 #include <machine/cpufunc.h>
 #include <machine/armreg.h>
 
@@ -49,7 +49,7 @@ void _start(void);
 void __start(void);
 void __startC(void);
 
-extern unsigned int cpufunc_id(void);
+extern unsigned int cpu_ident(void);
 extern void armv6_idcache_wbinv_all(void);
 extern void armv7_idcache_wbinv_all(void);
 extern void do_call(void *, void *, void *, int);
@@ -67,9 +67,7 @@ extern void fa526_idcache_wbinv_all(void);
 extern void armv5_ec_idcache_wbinv_all(void);
 #elif defined(CPU_ARM1176)
 #define cpu_idcache_wbinv_all	armv6_idcache_wbinv_all
-#elif defined(CPU_XSCALE_80321) || \
-  defined(CPU_XSCALE_PXA2X0) || defined(CPU_XSCALE_IXP425) ||	\
-  defined(CPU_XSCALE_80219)
+#elif defined(CPU_XSCALE_PXA2X0) || defined(CPU_XSCALE_IXP425)
 #define cpu_idcache_wbinv_all	xscale_cache_purgeID
 extern void xscale_cache_purgeID(void);
 #elif defined(CPU_XSCALE_81342)
@@ -127,7 +125,6 @@ static int      arm_dcache_l2_assoc;
 static int      arm_dcache_l2_linesize;
 
 
-int block_userspace_access = 0;
 extern int arm9_dcache_sets_inc;
 extern int arm9_dcache_sets_max;
 extern int arm9_dcache_index_max;
@@ -248,7 +245,7 @@ _startC(void)
 #ifndef KZIP
 #ifdef CPU_ARM9
 	/* So that idcache_wbinv works; */
-	if ((cpufunc_id() & 0x0000f000) == 0x00009000)
+	if ((cpu_ident() & 0x0000f000) == 0x00009000)
 		arm9_setup();
 #endif
 #endif
@@ -266,7 +263,7 @@ get_cachetype_cp15()
 	__asm __volatile("mrc p15, 0, %0, c0, c0, 1"
 		: "=r" (ctype));
 
-	cpuid = cpufunc_id();
+	cpuid = cpu_ident();
 	/*
 	 * ...and thus spake the ARM ARM:
 	 *
@@ -678,12 +675,12 @@ __start(void)
 	curaddr = (void*)((unsigned int)curaddr & 0xfff00000);
 #ifdef KZIP
 	if (*kernel == 0x1f && kernel[1] == 0x8b) {
-		pt_addr = (((int)&_end + KERNSIZE + 0x100) &
-		    ~(L1_TABLE_SIZE - 1)) + L1_TABLE_SIZE;
+		pt_addr = L1_TABLE_SIZE +
+		    rounddown2((int)&_end + KERNSIZE + 0x100, L1_TABLE_SIZE);
 
 #ifdef CPU_ARM9
 		/* So that idcache_wbinv works; */
-		if ((cpufunc_id() & 0x0000f000) == 0x00009000)
+		if ((cpu_ident() & 0x0000f000) == 0x00009000)
 			arm9_setup();
 #endif
 		setup_pagetables(pt_addr, (vm_paddr_t)curaddr,
@@ -713,7 +710,7 @@ __start(void)
 	    (unsigned int)curaddr,
 	    (unsigned int)&func_end, 0);
 	dst = (void *)(((vm_offset_t)dst & ~3));
-	pt_addr = ((unsigned int)dst &~(L1_TABLE_SIZE - 1)) + L1_TABLE_SIZE;
+	pt_addr = L1_TABLE_SIZE + rounddown2((unsigned int)dst, L1_TABLE_SIZE);
 	setup_pagetables(pt_addr, (vm_paddr_t)curaddr,
 	    (vm_paddr_t)curaddr + 0x10000000, 0);
 	sp = pt_addr + L1_TABLE_SIZE + 8192;

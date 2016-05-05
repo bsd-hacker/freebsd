@@ -553,6 +553,29 @@ udp6_common_ctlinput(int cmd, struct sockaddr *sa, void *d,
 		bzero(&uh, sizeof(uh));
 		m_copydata(m, off, sizeof(*uhp), (caddr_t)&uh);
 
+		if (!PRC_IS_REDIRECT(cmd)) {
+			/* Check to see if its tunneled */
+			struct inpcb *inp;
+			inp = in6_pcblookup_mbuf(pcbinfo, &ip6->ip6_dst,
+			    uh.uh_dport, &ip6->ip6_src, uh.uh_sport,
+			    INPLOOKUP_WILDCARD | INPLOOKUP_RLOCKPCB,
+			    m->m_pkthdr.rcvif, m);
+			if (inp != NULL) {
+				struct udpcb *up;
+				
+				up = intoudpcb(inp);
+				if (up->u_icmp_func) {
+					/* Yes it is. */
+					INP_RUNLOCK(inp);
+					(*up->u_icmp_func)(cmd, (struct sockaddr *)ip6cp->ip6c_src,
+					      d, up->u_tun_ctx);
+					return;
+				} else {
+					/* Can't find it. */
+					INP_RUNLOCK(inp);
+				}
+			}
+		}
 		(void)in6_pcbnotify(pcbinfo, sa, uh.uh_dport,
 		    (struct sockaddr *)ip6cp->ip6c_src, uh.uh_sport, cmd,
 		    cmdarg, notify);
@@ -631,7 +654,6 @@ udp6_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr6,
 	struct udphdr *udp6;
 	struct in6_addr *laddr, *faddr, in6a;
 	struct sockaddr_in6 *sin6 = NULL;
-	struct ifnet *oifp = NULL;
 	int cscov_partial = 0;
 	int scope_ambiguous = 0;
 	u_short fport;
@@ -731,15 +753,10 @@ udp6_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr6,
 		}
 
 		if (!IN6_IS_ADDR_V4MAPPED(faddr)) {
-			error = in6_selectsrc(sin6, optp, inp, NULL,
-			    td->td_ucred, &oifp, &in6a);
+			error = in6_selectsrc_socket(sin6, optp, inp,
+			    td->td_ucred, scope_ambiguous, &in6a, NULL);
 			if (error)
 				goto release;
-			if (oifp && scope_ambiguous &&
-			    (error = in6_setscope(&sin6->sin6_addr,
-			    oifp, NULL))) {
-				goto release;
-			}
 			laddr = &in6a;
 		} else
 			laddr = &inp->in6p_laddr;	/* XXX */
@@ -882,8 +899,8 @@ udp6_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr6,
 
 		UDP_PROBE(send, NULL, inp, ip6, inp, udp6);
 		UDPSTAT_INC(udps_opackets);
-		error = ip6_output(m, optp, NULL, flags, inp->in6p_moptions,
-		    NULL, inp);
+		error = ip6_output(m, optp, &inp->inp_route6, flags,
+		    inp->in6p_moptions, NULL, inp);
 		break;
 	case AF_INET:
 		error = EAFNOSUPPORT;
@@ -1218,9 +1235,9 @@ udp6_send(struct socket *so, int flags, struct mbuf *m,
 #ifdef INET
 	if ((inp->inp_flags & IN6P_IPV6_V6ONLY) == 0) {
 		int hasv4addr;
-		struct sockaddr_in6 *sin6 = 0;
+		struct sockaddr_in6 *sin6 = NULL;
 
-		if (addr == 0)
+		if (addr == NULL)
 			hasv4addr = (inp->inp_vflag & INP_IPV4);
 		else {
 			sin6 = (struct sockaddr_in6 *)addr;

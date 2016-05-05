@@ -171,11 +171,11 @@ main(int argc __unused, char *argv[] __unused)
 	size_t s;
 
 	if (geteuid() != 0) {
-		printf("1..0 # SKIP: must be root");
+		printf("1..0 # SKIP: must be root\n");
 		return (0);
 	}
 
-	/* Initalize randomness. */
+	/* Initialize randomness. */
 	srandomdev();
 
 	/* Get number of FIBs supported by kernel. */

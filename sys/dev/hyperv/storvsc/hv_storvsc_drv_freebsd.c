@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2009-2012 Microsoft Corp.
+ * Copyright (c) 2009-2012,2016 Microsoft Corp.
  * Copyright (c) 2012 NetApp Inc.
  * Copyright (c) 2012 Citrix Inc.
  * All rights reserved.
@@ -140,7 +140,6 @@ struct storvsc_softc {
 	uint32_t			hs_num_out_reqs;
 	boolean_t			hs_destroy;
 	boolean_t			hs_drain_notify;
-	boolean_t			hs_open_multi_channel;
 	struct sema 			hs_drain_sema;	
 	struct hv_storvsc_request	hs_init_req;
 	struct hv_storvsc_request	hs_reset_req;
@@ -293,9 +292,6 @@ get_stor_device(struct hv_device *device,
 	struct storvsc_softc *sc;
 
 	sc = device_get_softc(device->device);
-	if (sc == NULL) {
-		return NULL;
-	}
 
 	if (outbound) {
 		/*
@@ -319,29 +315,19 @@ get_stor_device(struct hv_device *device,
 	return sc;
 }
 
-/**
- * @brief Callback handler, will be invoked when receive mutil-channel offer
- *
- * @param context  new multi-channel
- */
 static void
-storvsc_handle_sc_creation(void *context)
+storvsc_subchan_attach(struct hv_vmbus_channel *new_channel)
 {
-	hv_vmbus_channel *new_channel;
 	struct hv_device *device;
 	struct storvsc_softc *sc;
 	struct vmstor_chan_props props;
 	int ret = 0;
 
-	new_channel = (hv_vmbus_channel *)context;
-	device = new_channel->primary_channel->device;
+	device = new_channel->device;
 	sc = get_stor_device(device, TRUE);
 	if (sc == NULL)
 		return;
 
-	if (FALSE == sc->hs_open_multi_channel)
-		return;
-	
 	memset(&props, 0, sizeof(props));
 
 	ret = hv_vmbus_channel_open(new_channel,
@@ -364,11 +350,12 @@ storvsc_handle_sc_creation(void *context)
 static void
 storvsc_send_multichannel_request(struct hv_device *dev, int max_chans)
 {
+	struct hv_vmbus_channel **subchan;
 	struct storvsc_softc *sc;
 	struct hv_storvsc_request *request;
 	struct vstor_packet *vstor_packet;	
 	int request_channels_cnt = 0;
-	int ret;
+	int ret, i;
 
 	/* get multichannels count that need to create */
 	request_channels_cnt = MIN(max_chans, mp_ncpus);
@@ -381,9 +368,6 @@ storvsc_send_multichannel_request(struct hv_device *dev, int max_chans)
 	}
 
 	request = &sc->hs_init_req;
-
-	/* Establish a handler for multi-channel */
-	dev->channel->sc_creation_callback = storvsc_handle_sc_creation;
 
 	/* request the host to create multi-channel */
 	memset(request, 0, sizeof(struct hv_storvsc_request));
@@ -420,7 +404,15 @@ storvsc_send_multichannel_request(struct hv_device *dev, int max_chans)
 		return;
 	}
 
-	sc->hs_open_multi_channel = TRUE;
+	/* Wait for sub-channels setup to complete. */
+	subchan = vmbus_get_subchan(dev->channel, request_channels_cnt);
+
+	/* Attach the sub-channels. */
+	for (i = 0; i < request_channels_cnt; ++i)
+		storvsc_subchan_attach(subchan[i]);
+
+	/* Release the sub-channels. */
+	vmbus_rel_subchan(subchan, request_channels_cnt);
 
 	if (bootverbose)
 		printf("Storvsc create multi-channel success!\n");
@@ -810,8 +802,8 @@ hv_storvsc_rescan_target(struct storvsc_softc *sc)
 
 	if (xpt_create_path(&ccb->ccb_h.path, NULL, pathid, targetid,
 	    CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
-		printf("unable to create path for rescan, pathid: %d,"
-		    "targetid: %d\n", pathid, targetid);
+		printf("unable to create path for rescan, pathid: %u,"
+		    "targetid: %u\n", pathid, targetid);
 		xpt_free_ccb(ccb);
 		return;
 	}
@@ -837,12 +829,7 @@ hv_storvsc_on_channel_callback(void *context)
 	struct hv_storvsc_request *request;
 	struct vstor_packet *vstor_packet;
 
-	if (channel->primary_channel != NULL){
-		device = channel->primary_channel->device;
-	} else {
-		device = channel->device;
-	}
-
+	device = channel->device;
 	KASSERT(device, ("device is NULL"));
 
 	sc = get_stor_device(device, FALSE);
@@ -937,6 +924,7 @@ storvsc_probe(device_t dev)
 			if(bootverbose)
 				device_printf(dev,
 					"Enlightened ATA/IDE detected\n");
+			device_set_desc(dev, g_drv_props_table[DRIVER_BLKVSC].drv_desc);
 			ret = BUS_PROBE_DEFAULT;
 		} else if(bootverbose)
 			device_printf(dev, "Emulated ATA/IDE set (hw.ata.disk_enable set)\n");
@@ -944,6 +932,7 @@ storvsc_probe(device_t dev)
 	case DRIVER_STORVSC:
 		if(bootverbose)
 			device_printf(dev, "Enlightened SCSI device detected\n");
+		device_set_desc(dev, g_drv_props_table[DRIVER_STORVSC].drv_desc);
 		ret = BUS_PROBE_DEFAULT;
 		break;
 	default:
@@ -981,10 +970,6 @@ storvsc_attach(device_t dev)
 	root_mount_token = root_mount_hold("storvsc");
 
 	sc = device_get_softc(dev);
-	if (sc == NULL) {
-		ret = ENOMEM;
-		goto cleanup;
-	}
 
 	stor_type = storvsc_get_storage_type(dev);
 
@@ -993,15 +978,12 @@ storvsc_attach(device_t dev)
 		goto cleanup;
 	}
 
-	bzero(sc, sizeof(struct storvsc_softc));
-
 	/* fill in driver specific properties */
 	sc->hs_drv_props = &g_drv_props_table[stor_type];
 
 	/* fill in device specific properties */
 	sc->hs_unit	= device_get_unit(dev);
 	sc->hs_dev	= hv_dev;
-	device_set_desc(dev, g_drv_props_table[stor_type].drv_desc);
 
 	LIST_INIT(&sc->hs_free_list);
 	mtx_init(&sc->hs_lock, "hvslck", NULL, MTX_DEF);
@@ -1048,7 +1030,6 @@ storvsc_attach(device_t dev)
 
 	sc->hs_destroy = FALSE;
 	sc->hs_drain_notify = FALSE;
-	sc->hs_open_multi_channel = FALSE;
 	sema_init(&sc->hs_drain_sema, 0, "Store Drain Sema");
 
 	ret = hv_storvsc_connect_vsp(hv_dev);
@@ -1153,9 +1134,7 @@ storvsc_detach(device_t dev)
 	struct hv_sgl_node *sgl_node = NULL;
 	int j = 0;
 
-	mtx_lock(&hv_device->channel->inbound_lock);
 	sc->hs_destroy = TRUE;
-	mtx_unlock(&hv_device->channel->inbound_lock);
 
 	/*
 	 * At this point, all outbound traffic should be disabled. We
@@ -1273,6 +1252,7 @@ storvsc_timeout_test(struct hv_storvsc_request *reqp,
 }
 #endif /* HVS_TIMEOUT_TEST */
 
+#ifdef notyet
 /**
  * @brief timeout handler for requests
  *
@@ -1320,6 +1300,7 @@ storvsc_timeout(void *arg)
 	storvsc_timeout_test(reqp, MODE_SELECT_10, 1);
 #endif
 }
+#endif
 
 /**
  * @brief StorVSC device poll function
@@ -1472,6 +1453,7 @@ storvsc_action(struct cam_sim *sim, union ccb *ccb)
 			return;
 		}
 
+#ifdef notyet
 		if (ccb->ccb_h.timeout != CAM_TIME_INFINITY) {
 			callout_init(&reqp->callout, 1);
 			callout_reset_sbt(&reqp->callout,
@@ -1491,6 +1473,7 @@ storvsc_action(struct cam_sim *sim, union ccb *ccb)
 			}
 #endif /* HVS_TIMEOUT_TEST */
 		}
+#endif
 
 		if ((res = hv_storvsc_io_request(sc->hs_dev, reqp)) != 0) {
 			xpt_print(ccb->ccb_h.path,
@@ -1524,13 +1507,12 @@ static void
 storvsc_destroy_bounce_buffer(struct sglist *sgl)
 {
 	struct hv_sgl_node *sgl_node = NULL;
-
-	sgl_node = LIST_FIRST(&g_hv_sgl_page_pool.in_use_sgl_list);
-	LIST_REMOVE(sgl_node, link);
-	if (NULL == sgl_node) {
+	if (LIST_EMPTY(&g_hv_sgl_page_pool.in_use_sgl_list)) {
 		printf("storvsc error: not enough in use sgl\n");
 		return;
 	}
+	sgl_node = LIST_FIRST(&g_hv_sgl_page_pool.in_use_sgl_list);
+	LIST_REMOVE(sgl_node, link);
 	sgl_node->sgl_data = sgl;
 	LIST_INSERT_HEAD(&g_hv_sgl_page_pool.free_sgl_list, sgl_node, link);
 }
@@ -1556,12 +1538,12 @@ storvsc_create_bounce_buffer(uint16_t seg_count, int write)
 	struct hv_sgl_node *sgl_node = NULL;	
 
 	/* get struct sglist from free_sgl_list */
-	sgl_node = LIST_FIRST(&g_hv_sgl_page_pool.free_sgl_list);
-	LIST_REMOVE(sgl_node, link);
-	if (NULL == sgl_node) {
+	if (LIST_EMPTY(&g_hv_sgl_page_pool.free_sgl_list)) {
 		printf("storvsc error: not enough free sgl\n");
 		return NULL;
 	}
+	sgl_node = LIST_FIRST(&g_hv_sgl_page_pool.free_sgl_list);
+	LIST_REMOVE(sgl_node, link);
 	bounce_sgl = sgl_node->sgl_data;
 	LIST_INSERT_HEAD(&g_hv_sgl_page_pool.in_use_sgl_list, sgl_node, link);
 
@@ -1923,6 +1905,66 @@ create_storvsc_request(union ccb *ccb, struct hv_storvsc_request *reqp)
 	return(0);
 }
 
+/*
+ * Modified based on scsi_print_inquiry which is responsible to
+ * print the detail information for scsi_inquiry_data.
+ *
+ * Return 1 if it is valid, 0 otherwise.
+ */
+static inline int
+is_inquiry_valid(const struct scsi_inquiry_data *inq_data)
+{
+	uint8_t type;
+	char vendor[16], product[48], revision[16];
+
+	/*
+	 * Check device type and qualifier
+	 */
+	if (!(SID_QUAL_IS_VENDOR_UNIQUE(inq_data) ||
+	    SID_QUAL(inq_data) == SID_QUAL_LU_CONNECTED))
+		return (0);
+
+	type = SID_TYPE(inq_data);
+	switch (type) {
+	case T_DIRECT:
+	case T_SEQUENTIAL:
+	case T_PRINTER:
+	case T_PROCESSOR:
+	case T_WORM:
+	case T_CDROM:
+	case T_SCANNER:
+	case T_OPTICAL:
+	case T_CHANGER:
+	case T_COMM:
+	case T_STORARRAY:
+	case T_ENCLOSURE:
+	case T_RBC:
+	case T_OCRW:
+	case T_OSD:
+	case T_ADC:
+		break;
+	case T_NODEVICE:
+	default:
+		return (0);
+	}
+
+	/*
+	 * Check vendor, product, and revision
+	 */
+	cam_strvis(vendor, inq_data->vendor, sizeof(inq_data->vendor),
+	    sizeof(vendor));
+	cam_strvis(product, inq_data->product, sizeof(inq_data->product),
+	    sizeof(product));
+	cam_strvis(revision, inq_data->revision, sizeof(inq_data->revision),
+	    sizeof(revision));
+	if (strlen(vendor) == 0  ||
+	    strlen(product) == 0 ||
+	    strlen(revision) == 0)
+		return (0);
+
+	return (1);
+}
+
 /**
  * @brief completion function before returning to CAM
  *
@@ -1979,6 +2021,7 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 		mtx_unlock(&sc->hs_lock);
 	}
 
+#ifdef notyet
 	/*
 	 * callout_drain() will wait for the timer handler to finish
 	 * if it is running. So we don't need any lock to synchronize
@@ -1989,15 +2032,38 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 	if (ccb->ccb_h.timeout != CAM_TIME_INFINITY) {
 		callout_drain(&reqp->callout);
 	}
+#endif
 
 	ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
 	ccb->ccb_h.status &= ~CAM_STATUS_MASK;
 	if (vm_srb->scsi_status == SCSI_STATUS_OK) {
-		ccb->ccb_h.status |= CAM_REQ_CMP;
-	 } else {
+		const struct scsi_generic *cmd;
+
+		/*
+		 * Check whether the data for INQUIRY cmd is valid or
+		 * not.  Windows 10 and Windows 2016 send all zero
+		 * inquiry data to VM even for unpopulated slots.
+		 */
+		cmd = (const struct scsi_generic *)
+		    ((ccb->ccb_h.flags & CAM_CDB_POINTER) ?
+		     csio->cdb_io.cdb_ptr : csio->cdb_io.cdb_bytes);
+		if (cmd->opcode == INQUIRY &&
+		    is_inquiry_valid(
+		    (const struct scsi_inquiry_data *)csio->data_ptr) == 0) {
+			ccb->ccb_h.status |= CAM_DEV_NOT_THERE;
+			if (bootverbose) {
+				mtx_lock(&sc->hs_lock);
+				xpt_print(ccb->ccb_h.path,
+				    "storvsc uninstalled device\n");
+				mtx_unlock(&sc->hs_lock);
+			}
+		} else {
+			ccb->ccb_h.status |= CAM_REQ_CMP;
+		}
+	} else {
 		mtx_lock(&sc->hs_lock);
 		xpt_print(ccb->ccb_h.path,
-			"srovsc scsi_status = %d\n",
+			"storvsc scsi_status = %d\n",
 			vm_srb->scsi_status);
 		mtx_unlock(&sc->hs_lock);
 		ccb->ccb_h.status |= CAM_SCSI_STATUS_ERROR;
@@ -2020,8 +2086,9 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 		reqp->softc->hs_frozen = 0;
 	}
 	storvsc_free_request(sc, reqp);
-	xpt_done(ccb);
 	mtx_unlock(&sc->hs_lock);
+
+	xpt_done_direct(ccb);
 }
 
 /**
