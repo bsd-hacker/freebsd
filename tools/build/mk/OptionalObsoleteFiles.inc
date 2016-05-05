@@ -76,6 +76,9 @@ OLD_FILES+=usr/share/man/man8/atrun.8.gz
 .endif
 
 .if ${MK_ATM} == no
+OLD_FILES+=etc/rc.d/atm1
+OLD_FILES+=etc/rc.d/atm2
+OLD_FILES+=etc/rc.d/atm3
 OLD_FILES+=rescue/atmconfig
 OLD_FILES+=sbin/atmconfig
 OLD_FILES+=usr/bin/sscop
@@ -2852,6 +2855,10 @@ OLD_FILES+=usr/share/man/man8/inetd.8.gz
 .if ${MK_IPFILTER} == no
 OLD_FILES+=etc/periodic/security/510.ipfdenied
 OLD_FILES+=etc/periodic/security/610.ipf6denied
+OLD_FILES+=etc/rc.d/ipfilter
+OLD_FILES+=etc/rc.d/ipmon
+OLD_FILES+=etc/rc.d/ipnat
+OLD_FILES+=etc/rc.d/ipfs
 OLD_FILES+=rescue/ipf
 OLD_FILES+=sbin/ipf
 OLD_FILES+=sbin/ipfs
@@ -2935,6 +2942,8 @@ OLD_FILES+=usr/share/man/man8/ippool.8.gz
 .if ${MK_IPFW} == no
 OLD_FILES+=etc/periodic/security/500.ipfwdenied
 OLD_FILES+=etc/periodic/security/550.ipfwlimit
+OLD_FILES+=etc/rc.d/ipfw
+OLD_FILES+=etc/rc.d/natd
 OLD_FILES+=sbin/ipfw
 OLD_FILES+=sbin/natd
 OLD_FILES+=usr/sbin/ipfwpcap
