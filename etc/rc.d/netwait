@@ -3,7 +3,7 @@
 # $FreeBSD$
 #
 # PROVIDE: netwait
-# REQUIRE: devd FIREWALL routing
+# REQUIRE: FIREWALL devd routing
 # KEYWORD: nojail
 #
 # The netwait script helps handle two situations:
