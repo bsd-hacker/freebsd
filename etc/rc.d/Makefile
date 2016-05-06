@@ -4,7 +4,6 @@
 
 BINDIR=		/etc/rc.d
 FILESGROUPS=	FILES
-FILESMODE=	${BINMODE}
 
 FILES=	DAEMON \
 	FILESYSTEMS \
@@ -328,5 +327,9 @@ ZFS+=		zfs
 ZFS+=		zvol
 ZFSPACKAGE=	zfs
 .endif
+
+.for fg in ${FILESGROUPS}
+${fg}MODE?=	${BINMODE}
+.endfor
 
 .include <bsd.prog.mk>
