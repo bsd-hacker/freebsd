@@ -6,7 +6,7 @@
 # Start keyserv if we are running Secure RPC
 
 # PROVIDE: keyserv
-# REQUIRE: ypset
+# REQUIRE: rpcbind ypset
 # BEFORE: DAEMON
 # KEYWORD: shutdown
 

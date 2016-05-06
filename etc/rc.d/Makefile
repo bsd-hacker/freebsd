@@ -72,7 +72,6 @@ FILES=	DAEMON \
 	nfscbd \
 	nfsd \
 	nfsuserd \
-	nisdomain \
 	${_nscd} \
 	nsswitch \
 	ntpdate \
@@ -107,12 +106,6 @@ FILES=	DAEMON \
 	${_utx} \
 	var \
 	watchdogd \
-	ypbind \
-	yppasswdd \
-	ypserv \
-	ypset \
-	ypupdated \
-	ypxfrd \
 
 .if ${MK_ACCT} != "no"
 FILESGROUPS+=	ACCT
@@ -247,6 +240,18 @@ _kpasswdd=	kpasswdd
 
 .if ${MK_MAIL} != "no"
 FILES+=		othermta
+.endif
+
+.if ${MK_NIS} != "no"
+FILESGROUPS+=	NIS
+NIS+=		nisdomain
+NIS+=		ypbind
+NIS+=		yppasswdd
+NIS+=		ypserv
+NIS+=		ypset
+NIS+=		ypupdated
+NIS+=		ypxfrd
+NISPACKAGE=	nis
 .endif
 
 .if ${MK_NS_CACHING} != "no"
