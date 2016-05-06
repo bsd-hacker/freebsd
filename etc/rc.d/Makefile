@@ -2,8 +2,8 @@
 
 .include <src.opts.mk>
 
+BINDIR=		/etc/rc.d
 FILESGROUPS=	FILES
-FILESDIR=	/etc/rc.d
 FILESMODE=	${BINMODE}
 
 FILES=	DAEMON \
