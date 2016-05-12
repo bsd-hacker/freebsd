@@ -489,6 +489,7 @@ if_free_internal(struct ifnet *ifp)
 		counter_u64_free(ifp->if_counters[i]);
 
 	free(ifp, M_IFNET);
+	ifp = NULL;
 }
 
 /*
