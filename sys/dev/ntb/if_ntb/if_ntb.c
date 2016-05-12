@@ -419,7 +419,6 @@ ntb_setup_interface(void)
 	rc = ntb_transport_probe(net_softc.ntb);
 	if (rc != 0) {
 		printf("ntb: Cannot init transport: %d\n", rc);
-		if_free(net_softc.ifp);
 		return (rc);
 	}
 
