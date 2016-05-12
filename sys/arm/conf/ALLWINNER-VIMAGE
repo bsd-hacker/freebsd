@@ -2,9 +2,9 @@
 #
 #
 
-include A20
+include ALLWINNER
 
-ident		A20-VIMAGE
+ident		ALLWINNER-VIMAGE
 
 device		pass		#CAM passthrough driver
 
