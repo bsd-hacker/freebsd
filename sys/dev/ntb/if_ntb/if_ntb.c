@@ -567,15 +567,14 @@ ntb_net_event_handler(void *data, enum ntb_link_event status)
 {
 	struct ifnet *ifp;
 
-	ifp = data;
-	(void)ifp;
-
-	/* XXX The Linux driver munges with the carrier status here. */
+	ifp = (struct ifnet*)data;
 
 	switch (status) {
 	case NTB_LINK_DOWN:
+		if_link_state_change(ifp, LINK_STATE_DOWN);
 		break;
 	case NTB_LINK_UP:
+		if_link_state_change(ifp, LINK_STATE_UP);
 		break;
 	default:
 		panic("Bogus ntb_link_event %u\n", status);
