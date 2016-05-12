@@ -398,6 +398,7 @@ static int
 ntb_setup_interface(void)
 {
 	struct ifnet *ifp;
+	struct ntb_transport_qp *qp;
 	struct ntb_queue_handlers handlers = { ntb_net_rx_handler,
 	    ntb_net_tx_handler, ntb_net_event_handler };
 	int rc;
@@ -408,7 +409,7 @@ ntb_setup_interface(void)
 		return (ENXIO);
 	}
 
-	ifp = net_softc.ifp = if_alloc(IFT_ETHER);
+	ifp = if_alloc(IFT_ETHER);
 	if (ifp == NULL) {
 		ntb_transport_free(&net_softc);
 		printf("ntb: Cannot allocate ifnet structure\n");
@@ -418,12 +419,12 @@ ntb_setup_interface(void)
 
 	rc = ntb_transport_probe(&net_softc);
 	if (rc != 0) {
+		if_free(ifp);
 		printf("ntb: Cannot init transport: %d\n", rc);
 		return (rc);
 	}
 
-	net_softc.qp = ntb_transport_create_queue(ifp, net_softc.ntb,
-	    &handlers);
+	qp = ntb_transport_create_queue(ifp, net_softc.ntb, &handlers);
 	ifp->if_init = ntb_net_init;
 	ifp->if_softc = &net_softc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX;
@@ -436,12 +437,16 @@ ntb_setup_interface(void)
 	ether_ifattach(ifp, net_softc.eaddr);
 	ifp->if_capabilities = IFCAP_HWCSUM | IFCAP_JUMBO_MTU;
 	ifp->if_capenable = ifp->if_capabilities;
-	ifp->if_mtu = ntb_transport_max_size(net_softc.qp) - ETHER_HDR_LEN -
+	ifp->if_mtu = ntb_transport_max_size(qp) - ETHER_HDR_LEN -
 	    ETHER_CRC_LEN;
 
-	ntb_transport_link_up(net_softc.qp);
-	net_softc.bufsize = ntb_transport_max_size(net_softc.qp) +
+	net_softc.bufsize = ntb_transport_max_size(qp) +
 	    sizeof(struct ether_header);
+
+	net_softc.ifp = ifp;
+	net_softc.qp = qp;
+
+	ntb_transport_link_up(net_softc.qp);
 	return (0);
 }
 
