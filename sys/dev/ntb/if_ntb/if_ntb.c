@@ -303,8 +303,8 @@ static void ntb_net_tx_handler(struct ntb_transport_qp *qp, void *qp_data,
 static void ntb_net_rx_handler(struct ntb_transport_qp *qp, void *qp_data,
     void *data, int len);
 static void ntb_net_event_handler(void *data, enum ntb_link_event status);
-static int ntb_transport_probe(struct ntb_softc *ntb);
-static void ntb_transport_free(struct ntb_transport_ctx *);
+static int ntb_transport_probe(struct ntb_transport_ctx *nt);
+static void ntb_transport_free(struct ntb_transport_ctx *nt);
 static void ntb_transport_init_queue(struct ntb_transport_ctx *nt,
     unsigned int qp_num);
 static void ntb_transport_free_queue(struct ntb_transport_qp *qp);
@@ -416,7 +416,7 @@ ntb_setup_interface(void)
 	}
 	if_initname(ifp, "ntb", 0);
 
-	rc = ntb_transport_probe(net_softc.ntb);
+	rc = ntb_transport_probe(&net_softc);
 	if (rc != 0) {
 		printf("ntb: Cannot init transport: %d\n", rc);
 		return (rc);
@@ -595,14 +595,15 @@ xeon_link_watchdog_hb(void *arg)
 }
 
 static int
-ntb_transport_probe(struct ntb_softc *ntb)
+ntb_transport_probe(struct ntb_transport_ctx *nt)
 {
-	struct ntb_transport_ctx *nt = &net_softc;
+	struct ntb_softc *ntb;
 	struct ntb_transport_mw *mw;
 	uint64_t qp_bitmap;
 	int rc;
 	unsigned i;
 
+	ntb = nt->ntb;
 	nt->mw_count = ntb_mw_count(ntb);
 	for (i = 0; i < nt->mw_count; i++) {
 		mw = &nt->mw_vec[i];
