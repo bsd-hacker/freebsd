@@ -450,17 +450,19 @@ static int
 ntb_teardown_interface(void)
 {
 
-	if (net_softc.qp != NULL) {
+	/* Bring the link down before detaching everything */
+	if (net_softc.qp != NULL)
 		ntb_transport_link_down(net_softc.qp);
-
-		ntb_transport_free_queue(net_softc.qp);
-		ntb_transport_free(&net_softc);
-	}
 
 	if (net_softc.ifp != NULL) {
 		ether_ifdetach(net_softc.ifp);
 		if_free(net_softc.ifp);
 		net_softc.ifp = NULL;
+	}
+
+	if (net_softc.qp != NULL) {
+		ntb_transport_free_queue(net_softc.qp);
+		ntb_transport_free(&net_softc);
 	}
 
 	return (0);
