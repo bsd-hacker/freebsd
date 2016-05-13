@@ -33,6 +33,7 @@ __FBSDID("$FreeBSD$");
 
 #include <stand.h>
 #include <string.h>
+#include <strings.h>
 
 #include "bootstrap.h"
 
