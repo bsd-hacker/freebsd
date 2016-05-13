@@ -381,7 +381,7 @@ soc_id(uint32_t *dev, uint32_t *rev)
 	 * Notice: system identifiers are available in the registers range of
 	 * PCIE controller, so using this function is only allowed (and
 	 * possible) after the internal registers range has been mapped in via
-	 * arm_devmap_bootstrap().
+	 * devmap_bootstrap().
 	 */
 	*dev = bus_space_read_4(fdtbus_bs_tag, MV_PCIE_BASE, 0) >> 16;
 	*rev = bus_space_read_4(fdtbus_bs_tag, MV_PCIE_BASE, 8) & 0xff;
@@ -1398,7 +1398,7 @@ decode_win_pcie_setup(u_long base)
 
 	/*
 	 * Upper 16 bits in BAR register is interpreted as BAR size
-	 * (in 64 kB units) plus 64kB, so substract 0x10000
+	 * (in 64 kB units) plus 64kB, so subtract 0x10000
 	 * form value passed to register to get correct value.
 	 */
 	size -= 0x10000;

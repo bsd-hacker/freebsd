@@ -388,9 +388,9 @@ acpi_cpu_attach(device_t dev)
      * Intel Processor Vendor-Specific ACPI Interface Specification.
      */
     if (sc->cpu_features) {
-	cap_set[0] = 0;
 	cap_set[1] = sc->cpu_features;
-	status = acpi_EvaluateOSC(sc->cpu_handle, cpu_oscuuid, 1, 2, cap_set);
+	status = acpi_EvaluateOSC(sc->cpu_handle, cpu_oscuuid, 1, 2, cap_set,
+	    cap_set, false);
 	if (ACPI_SUCCESS(status)) {
 	    if (cap_set[0] != 0)
 		device_printf(dev, "_OSC returned status %#x\n", cap_set[0]);
@@ -429,7 +429,8 @@ acpi_cpu_postattach(void *unused __unused)
     }
     attached = 0;
     for (i = 0; i < n; i++)
-	if (device_is_attached(devices[i]))
+	if (device_is_attached(devices[i]) &&
+	    device_get_driver(devices[i]) == &acpi_cpu_driver)
 	    attached = 1;
     for (i = 0; i < n; i++)
 	bus_generic_probe(devices[i]);
@@ -640,7 +641,7 @@ acpi_cpu_shutdown(device_t dev)
     disable_idle(device_get_softc(dev));
 
     /*
-     * CPU devices are not truely detached and remain referenced,
+     * CPU devices are not truly detached and remain referenced,
      * so their resources are not freed.
      */
 
