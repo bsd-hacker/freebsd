@@ -78,10 +78,9 @@ extern "C" {
 #define	EFX_MOD_FILTER		0x00001000
 #define	EFX_MOD_LIC		0x00002000
 
-#define	EFX_RESET_MAC		0x00000001
-#define	EFX_RESET_PHY		0x00000002
-#define	EFX_RESET_RXQ_ERR	0x00000004
-#define	EFX_RESET_TXQ_ERR	0x00000008
+#define	EFX_RESET_PHY		0x00000001
+#define	EFX_RESET_RXQ_ERR	0x00000002
+#define	EFX_RESET_TXQ_ERR	0x00000004
 
 typedef enum efx_mac_type_e {
 	EFX_MAC_INVALID = 0,
@@ -180,7 +179,6 @@ typedef struct efx_rx_ops_s {
 } efx_rx_ops_t;
 
 typedef struct efx_mac_ops_s {
-	efx_rc_t	(*emo_reset)(efx_nic_t *); /* optional */
 	efx_rc_t	(*emo_poll)(efx_nic_t *, efx_link_mode_t *);
 	efx_rc_t	(*emo_up)(efx_nic_t *, boolean_t *);
 	efx_rc_t	(*emo_addr_set)(efx_nic_t *);
@@ -208,23 +206,11 @@ typedef struct efx_phy_ops_s {
 	efx_rc_t	(*epo_reset)(efx_nic_t *);
 	efx_rc_t	(*epo_reconfigure)(efx_nic_t *);
 	efx_rc_t	(*epo_verify)(efx_nic_t *);
-	efx_rc_t	(*epo_uplink_check)(efx_nic_t *,
-					    boolean_t *); /* optional */
-	efx_rc_t	(*epo_downlink_check)(efx_nic_t *, efx_link_mode_t *,
-					      unsigned int *, uint32_t *);
 	efx_rc_t	(*epo_oui_get)(efx_nic_t *, uint32_t *);
 #if EFSYS_OPT_PHY_STATS
 	efx_rc_t	(*epo_stats_update)(efx_nic_t *, efsys_mem_t *,
 					    uint32_t *);
 #endif	/* EFSYS_OPT_PHY_STATS */
-#if EFSYS_OPT_PHY_PROPS
-#if EFSYS_OPT_NAMES
-	const char	*(*epo_prop_name)(efx_nic_t *, unsigned int);
-#endif	/* EFSYS_OPT_PHY_PROPS */
-	efx_rc_t	(*epo_prop_get)(efx_nic_t *, unsigned int, uint32_t,
-					uint32_t *);
-	efx_rc_t	(*epo_prop_set)(efx_nic_t *, unsigned int, uint32_t);
-#endif	/* EFSYS_OPT_PHY_PROPS */
 #if EFSYS_OPT_BIST
 	efx_rc_t	(*epo_bist_enable_offline)(efx_nic_t *);
 	efx_rc_t	(*epo_bist_start)(efx_nic_t *, efx_bist_type_t);
@@ -306,8 +292,6 @@ typedef struct efx_port_s {
 } efx_port_t;
 
 typedef struct efx_mon_ops_s {
-	efx_rc_t	(*emo_reset)(efx_nic_t *);
-	efx_rc_t	(*emo_reconfigure)(efx_nic_t *);
 #if EFSYS_OPT_MON_STATS
 	efx_rc_t	(*emo_stats_update)(efx_nic_t *, efsys_mem_t *,
 					    efx_mon_stat_value_t *);
@@ -714,7 +698,6 @@ struct efx_evq_s {
 
 #define	EFX_EVQ_MAGIC	0x08081997
 
-#define	EFX_EVQ_FALCON_TIMER_QUANTUM_NS	4968 /* 621 cycles */
 #define	EFX_EVQ_SIENA_TIMER_QUANTUM_NS	6144 /* 768 cycles */
 
 struct efx_rxq_s {
