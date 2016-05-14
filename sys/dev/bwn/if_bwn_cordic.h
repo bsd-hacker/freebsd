@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2009-2010 Weongyo Jeong <weongyo@freebsd.org>
+ * Copyright (c) 2016 Adrian Chadd <adrian@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,30 +28,69 @@
  *
  * $FreeBSD$
  */
+#ifndef	__IF_BWN_CORDIC_H__
+#define	__IF_BWN_CORDIC_H__
 
-#ifndef	__IF_BWN_PHY_G_H__
-#define	__IF_BWN_PHY_G_H__
+/*
+ * These functions are used by the PHY code.
+ */
 
-extern int bwn_phy_g_attach(struct bwn_mac *mac);
-extern void bwn_phy_g_detach(struct bwn_mac *mac);
-extern int bwn_phy_g_prepare_hw(struct bwn_mac *mac);
-extern void bwn_phy_g_init_pre(struct bwn_mac *mac);
-extern int bwn_phy_g_init(struct bwn_mac *mac);
-extern void bwn_phy_g_exit(struct bwn_mac *mac);
-extern uint16_t bwn_phy_g_read(struct bwn_mac *mac, uint16_t reg);
-extern void bwn_phy_g_write(struct bwn_mac *mac, uint16_t reg, uint16_t value);
-extern uint16_t bwn_phy_g_rf_read(struct bwn_mac *mac, uint16_t reg);
-extern void bwn_phy_g_rf_write(struct bwn_mac *mac, uint16_t reg, uint16_t value);
-extern int bwn_phy_g_hwpctl(struct bwn_mac *mac);
-extern void bwn_phy_g_rf_onoff(struct bwn_mac *mac, int on);
-extern void bwn_phy_switch_analog(struct bwn_mac *mac, int on);
-extern int bwn_phy_g_switch_channel(struct bwn_mac *mac, uint32_t newchan);
-extern uint32_t bwn_phy_g_get_default_chan(struct bwn_mac *mac);
-extern void bwn_phy_g_set_antenna(struct bwn_mac *mac, int antenna);
-extern int bwn_phy_g_im(struct bwn_mac *mac, int mode);
-extern bwn_txpwr_result_t bwn_phy_g_recalc_txpwr(struct bwn_mac *mac, int ignore_tssi);
-extern void bwn_phy_g_set_txpwr(struct bwn_mac *mac);
-extern void bwn_phy_g_task_15s(struct bwn_mac *mac);
-extern void bwn_phy_g_task_60s(struct bwn_mac *mac);
+/* Complex number using 2 32-bit signed integers */
+struct bwn_c32 {
+	int32_t i;
+	int32_t q;
+};
 
-#endif	/* __IF_BWN_PHY_G_H__ */
+#define	CORDIC_CONVERT(value)	(((value) >= 0) ?	\
+	    ((((value) >> 15) + 1) >> 1) :		\
+	    -((((-(value)) >> 15) + 1) >> 1))
+
+static const uint32_t bwn_arctg[] = {
+    2949120, 1740967, 919879, 466945, 234379, 117304, 58666, 29335, 14668,
+    7334, 3667, 1833, 917, 458, 229, 115, 57, 29,
+};
+
+/* http://bcm-v4.sipsolutions.net/802.11/PHY/Cordic */
+static inline struct bwn_c32
+bwn_cordic(int theta)
+{
+	uint8_t i;
+	int32_t tmp;
+	int8_t signx = 1;
+	uint32_t angle = 0;
+	struct bwn_c32 ret = { .i = 39797, .q = 0, };
+
+	while (theta > (180 << 16))
+		theta -= (360 << 16);
+	while (theta < -(180 << 16))
+		theta += (360 << 16);
+
+	if (theta > (90 << 16)) {
+		theta -= (180 << 16);
+		signx = -1;
+	} else if (theta < -(90 << 16)) {
+		theta += (180 << 16);
+		signx = -1;
+	}
+
+	for (i = 0; i <= 17; i++) {
+		if (theta > angle) {
+			tmp = ret.i - (ret.q >> i);
+			ret.q += ret.i >> i;
+			ret.i = tmp;
+			angle += bwn_arctg[i];
+		} else {
+			tmp = ret.i + (ret.q >> i);
+			ret.q -= ret.i >> i;
+			ret.i = tmp;
+			angle -= bwn_arctg[i];
+		}
+	}
+
+	ret.i *= signx;
+	ret.q *= signx;
+
+	return ret;
+}
+
+#endif	/* __IF_BWN_CORDIC_H__ */
