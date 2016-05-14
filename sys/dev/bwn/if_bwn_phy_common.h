@@ -28,39 +28,14 @@
  *
  * $FreeBSD$
  */
-#ifndef	__IF_BWN_UTIL_H__
-#define	__IF_BWN_UTIL_H__
+#ifndef	__PHY_COMMON_H__
+#define	__PHY_COMMON_H__
 
-/* Hamming weight; used in the PHY routines */
-static inline int
-bwn_hweight32(uint32_t val)
-{
-	int i, r = 0;
-	/* yes, could do it without a loop.. */
-	for (i = 0; i < 32; i++) {
-		r = r + (val & 1);
-		val = val >> 1;
-	}
-	return r;
-}
+extern	void bwn_mac_switch_freq(struct bwn_mac *mac, int spurmode);
+extern	void bwn_phy_force_clock(struct bwn_mac *mac, int force);
+extern	int bwn_radio_wait_value(struct bwn_mac *mac, uint16_t offset,
+	    uint16_t mask, uint16_t value, int delay, int timeout);
+extern	void bwn_mac_phy_clock_set(struct bwn_mac *mac, int enabled);
+extern	void bwn_wireless_core_phy_pll_reset(struct bwn_mac *mac);
 
-/* Clamp value; PHY code */
-static inline int
-bwn_clamp_val(int val, int lo, int hi)
-{
-	if (val < lo)
-		return lo;
-	if (val > hi)
-		return hi;
-	return val;
-}
-
-/* Q52 format - used in PHY routines */
-#define	INT_TO_Q52(i)		((i) << 2)
-#define	Q52_TO_INT(q52)		((q52) >> 2)
-#define	Q52_FMT			"%u.%u"
-#define	Q52_ARG(q52)		Q52_TO_INT(q52), ((((q52) & 0x3) * 100) / 4)
-
-extern	unsigned int bwn_sqrt(struct bwn_mac *mac, unsigned int x);
-
-#endif	/* __IF_BWN_UTIL_H__ */
+#endif	/* __PHY_COMMON_H__ */
