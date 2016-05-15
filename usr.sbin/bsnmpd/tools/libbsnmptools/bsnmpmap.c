@@ -55,12 +55,11 @@ snmp_mapping_init(void)
 {
 	struct snmp_mappings *m;
 
-	if ((m = malloc(sizeof(struct snmp_mappings))) == NULL) {
+	if ((m = calloc(1, sizeof(struct snmp_mappings))) == NULL) {
 		syslog(LOG_ERR, "malloc() failed: %s", strerror(errno));
 		return (NULL);
 	}
 
-	memset(m, 0, sizeof(struct snmp_mappings));
 	return (m);
 }
 
@@ -269,12 +268,12 @@ enum_pair_insert(struct enum_pairs *headp, int32_t enum_val, char *enum_str)
 	struct enum_pair *e_new;
 
 	if ((e_new = calloc(1, sizeof(struct enum_pair))) == NULL) {
-		syslog(LOG_ERR, "malloc() failed: %s", strerror(errno));
+		syslog(LOG_ERR, "calloc() failed: %s", strerror(errno));
 		return (-1);
 	}
 
 	if ((e_new->enum_str = strdup(enum_str)) == NULL) {
-		syslog(LOG_ERR, "malloc() failed: %s", strerror(errno));
+		syslog(LOG_ERR, "strdup() failed: %s", strerror(errno));
 		free(e_new);
 		return (-1);
 	}
@@ -478,12 +477,10 @@ snmp_syntax_insert(struct snmp_idxlist *headp, struct enum_pairs *enums,
 {
 	struct index *idx;
 
-	if ((idx = malloc(sizeof(struct index))) == NULL) {
+	if ((idx = calloc(1, sizeof(struct index))) == NULL) {
 		syslog(LOG_ERR, "malloc() failed: %s", strerror(errno));
 		return (-1);
 	}
-
-	memset(idx, 0, sizeof(struct index));
 
 	if (snmp_index_insert(headp, idx) < 0) {
 		free(idx);
