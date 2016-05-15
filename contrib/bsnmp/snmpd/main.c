@@ -1220,7 +1220,7 @@ snmpd_input(struct port_input *pi, struct tport *tport)
 		
 		ret = recv_dgram(pi, &laddr);
 
-		if (laddr.s_addr == NULL) {
+		if (laddr.s_addr == 0) {
 			msg.msg_control = NULL;
 			msg.msg_controllen = 0;
 		}
