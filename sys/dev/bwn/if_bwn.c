@@ -388,6 +388,7 @@ static const struct bwn_channelinfo bwn_chantable_a = {
 	.nchannels = 37
 };
 
+#if 0
 static const struct bwn_channelinfo bwn_chantable_n = {
 	.channels = {
 		{ 5160,  32, 30 }, { 5170,  34, 30 }, { 5180,  36, 30 },
@@ -429,6 +430,7 @@ static const struct bwn_channelinfo bwn_chantable_n = {
 		{ 6130, 226, 30 }, { 6140, 228, 30 } },
 	.nchannels = 110
 };
+#endif
 
 #define	VENDOR_LED_ACT(vendor)				\
 {							\
@@ -482,6 +484,7 @@ static const struct siba_devid bwn_devs[] = {
 	SIBA_DEV(BROADCOM, 80211, 9, "Revision 9"),
 	SIBA_DEV(BROADCOM, 80211, 10, "Revision 10"),
 	SIBA_DEV(BROADCOM, 80211, 11, "Revision 11"),
+	SIBA_DEV(BROADCOM, 80211, 12, "Revision 12"),
 	SIBA_DEV(BROADCOM, 80211, 13, "Revision 13"),
 	SIBA_DEV(BROADCOM, 80211, 15, "Revision 15"),
 	SIBA_DEV(BROADCOM, 80211, 16, "Revision 16")
@@ -1450,6 +1453,7 @@ bwn_setup_channels(struct bwn_mac *mac, int have_bg, int have_a)
 	if (have_bg)
 		bwn_addchannels(ic->ic_channels, IEEE80211_CHAN_MAX,
 		    &ic->ic_nchans, &bwn_chantable_bg, IEEE80211_CHAN_G);
+#if 0
 	if (mac->mac_phy.type == BWN_PHYTYPE_N) {
 		if (have_a)
 			bwn_addchannels(ic->ic_channels, IEEE80211_CHAN_MAX,
@@ -1461,6 +1465,11 @@ bwn_setup_channels(struct bwn_mac *mac, int have_bg, int have_a)
 			    &ic->ic_nchans, &bwn_chantable_a,
 			    IEEE80211_CHAN_A);
 	}
+#endif
+	if (have_a)
+		bwn_addchannels(ic->ic_channels, IEEE80211_CHAN_MAX,
+		    &ic->ic_nchans, &bwn_chantable_a,
+		    IEEE80211_CHAN_A);
 
 	mac->mac_phy.supports_2ghz = have_bg;
 	mac->mac_phy.supports_5ghz = have_a;
@@ -1879,6 +1888,8 @@ bwn_init(struct bwn_softc *sc)
 
 	BWN_ASSERT_LOCKED(sc);
 
+	DPRINTF(sc, BWN_DEBUG_RESET, "%s: called\n", __func__);
+
 	bzero(sc->sc_bssid, IEEE80211_ADDR_LEN);
 	sc->sc_flags |= BWN_FLAG_NEED_BEACON_TP;
 	sc->sc_filters = 0;
@@ -1913,6 +1924,8 @@ bwn_stop(struct bwn_softc *sc)
 	struct bwn_mac *mac = sc->sc_curmac;
 
 	BWN_ASSERT_LOCKED(sc);
+
+	DPRINTF(sc, BWN_DEBUG_RESET, "%s: called\n", __func__);
 
 	if (mac->mac_status >= BWN_MAC_STATUS_INITED) {
 		/* XXX FIXME opmode not based on VAP */
@@ -4576,7 +4589,8 @@ bwn_switch_band(struct bwn_softc *sc, struct ieee80211_channel *chan)
 	if (up_dev == sc->sc_curmac && sc->sc_curmac->mac_phy.gmode == gmode)
 		return (0);
 
-	device_printf(sc->sc_dev, "switching to %s-GHz band\n",
+	DPRINTF(sc, BWN_DEBUG_RF | BWN_DEBUG_PHY | BWN_DEBUG_RESET,
+	    "switching to %s-GHz band\n",
 	    IEEE80211_IS_CHAN_2GHZ(chan) ? "2" : "5");
 
 	down_dev = sc->sc_curmac;
@@ -4614,6 +4628,8 @@ static void
 bwn_rf_turnon(struct bwn_mac *mac)
 {
 
+	DPRINTF(mac->mac_sc, BWN_DEBUG_RESET, "%s: called\n", __func__);
+
 	bwn_mac_suspend(mac);
 	mac->mac_phy.rf_onoff(mac, 1);
 	mac->mac_phy.rf_on = 1;
@@ -4623,6 +4639,8 @@ bwn_rf_turnon(struct bwn_mac *mac)
 static void
 bwn_rf_turnoff(struct bwn_mac *mac)
 {
+
+	DPRINTF(mac->mac_sc, BWN_DEBUG_RESET, "%s: called\n", __func__);
 
 	bwn_mac_suspend(mac);
 	mac->mac_phy.rf_onoff(mac, 0);
@@ -5717,6 +5735,13 @@ bwn_rxeof(struct bwn_mac *mac, struct mbuf *m, const void *_rxhdr)
 		    !! (phystat0 & BWN_RX_PHYST0_GAINCTL),
 		    !! (phystat3 & BWN_RX_PHYST3_TRSTATE));
 		break;
+	case BWN_PHYTYPE_N:
+		/* Broadcom has code for min/avg, but always used max */
+		if (rxhdr->phy.n.power0 == 16 || rxhdr->phy.n.power0 == 32)
+			rssi = max(rxhdr->phy.n.power1, rxhdr->ps2.n.power2);
+		else
+			rssi = max(rxhdr->phy.n.power0, rxhdr->phy.n.power1);
+		break;
 	default:
 		/* XXX TODO: implement rssi for other PHYs */
 		break;
@@ -5879,7 +5904,7 @@ bwn_phy_txpower_check(struct bwn_mac *mac, uint32_t flags)
 	struct bwn_phy *phy = &mac->mac_phy;
 	struct ieee80211com *ic = &sc->sc_ic;
 	unsigned long now;
-	int result;
+	bwn_txpwr_result_t result;
 
 	BWN_GETTIME(now);
 
@@ -5969,6 +5994,77 @@ bwn_ieeerate2hwrate(struct bwn_softc *sc, int rate)
 	return (BWN_CCK_RATE_1MB);
 }
 
+static uint16_t
+bwn_set_txhdr_phyctl1(struct bwn_mac *mac, uint8_t bitrate)
+{
+	struct bwn_phy *phy = &mac->mac_phy;
+	uint16_t control = 0;
+	uint16_t bw;
+
+	/* XXX TODO: this is for LP phy, what about N-PHY, etc? */
+	bw = BWN_TXH_PHY1_BW_20;
+
+	if (BWN_ISCCKRATE(bitrate) && phy->type != BWN_PHYTYPE_LP) {
+		control = bw;
+	} else {
+		control = bw;
+		/* Figure out coding rate and modulation */
+		/* XXX TODO: table-ize, for MCS transmit */
+		/* Note: this is BWN_*_RATE values */
+		switch (bitrate) {
+		case BWN_CCK_RATE_1MB:
+			control |= 0;
+			break;
+		case BWN_CCK_RATE_2MB:
+			control |= 1;
+			break;
+		case BWN_CCK_RATE_5MB:
+			control |= 2;
+			break;
+		case BWN_CCK_RATE_11MB:
+			control |= 3;
+			break;
+		case BWN_OFDM_RATE_6MB:
+			control |= BWN_TXH_PHY1_CRATE_1_2;
+			control |= BWN_TXH_PHY1_MODUL_BPSK;
+			break;
+		case BWN_OFDM_RATE_9MB:
+			control |= BWN_TXH_PHY1_CRATE_3_4;
+			control |= BWN_TXH_PHY1_MODUL_BPSK;
+			break;
+		case BWN_OFDM_RATE_12MB:
+			control |= BWN_TXH_PHY1_CRATE_1_2;
+			control |= BWN_TXH_PHY1_MODUL_QPSK;
+			break;
+		case BWN_OFDM_RATE_18MB:
+			control |= BWN_TXH_PHY1_CRATE_3_4;
+			control |= BWN_TXH_PHY1_MODUL_QPSK;
+			break;
+		case BWN_OFDM_RATE_24MB:
+			control |= BWN_TXH_PHY1_CRATE_1_2;
+			control |= BWN_TXH_PHY1_MODUL_QAM16;
+			break;
+		case BWN_OFDM_RATE_36MB:
+			control |= BWN_TXH_PHY1_CRATE_3_4;
+			control |= BWN_TXH_PHY1_MODUL_QAM16;
+			break;
+		case BWN_OFDM_RATE_48MB:
+			control |= BWN_TXH_PHY1_CRATE_1_2;
+			control |= BWN_TXH_PHY1_MODUL_QAM64;
+			break;
+		case BWN_OFDM_RATE_54MB:
+			control |= BWN_TXH_PHY1_CRATE_3_4;
+			control |= BWN_TXH_PHY1_MODUL_QAM64;
+			break;
+		default:
+			break;
+		}
+		control |= BWN_TXH_PHY1_MODE_SISO;
+	}
+
+	return control;
+}
+
 static int
 bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
     struct mbuf *m, struct bwn_txhdr *txhdr, uint16_t cookie)
@@ -5988,6 +6084,7 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 	int protdur, rts_rate, rts_rate_fb, ismcast, isshort, rix, type;
 	uint16_t phyctl = 0;
 	uint8_t rate, rate_fb;
+	int fill_phy_ctl1 = 0;
 
 	wh = mtod(m, struct ieee80211_frame *);
 	memset(txhdr, 0, sizeof(*txhdr));
@@ -5995,6 +6092,10 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 	type = wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK;
 	ismcast = IEEE80211_IS_MULTICAST(wh->i_addr1);
 	isshort = (ic->ic_flags & IEEE80211_F_SHPREAMBLE) != 0;
+
+	if ((phy->type == BWN_PHYTYPE_N) || (phy->type == BWN_PHYTYPE_LP)
+	    || (phy->type == BWN_PHYTYPE_HT))
+		fill_phy_ctl1 = 1;
 
 	/*
 	 * Find TX rate
@@ -6055,6 +6156,9 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 	if (isshort && (rate == BWN_CCK_RATE_2MB || rate == BWN_CCK_RATE_5MB ||
 	     rate == BWN_CCK_RATE_11MB))
 		phyctl |= BWN_TX_PHY_SHORTPRMBL;
+
+	if (! phy->gmode)
+		macctl |= BWN_TX_MAC_5GHZ;
 
 	/* XXX TX antenna selection */
 
@@ -6146,6 +6250,16 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 		}
 		txhdr->eftypes |= (BWN_ISOFDMRATE(rts_rate_fb)) ?
 		    BWN_TX_EFT_RTS_FBOFDM : BWN_TX_EFT_RTS_FBCCK;
+
+		if (fill_phy_ctl1) {
+			txhdr->phyctl_1rts = htole16(bwn_set_txhdr_phyctl1(mac, rts_rate));
+			txhdr->phyctl_1rtsfb = htole16(bwn_set_txhdr_phyctl1(mac, rts_rate_fb));
+		}
+	}
+
+	if (fill_phy_ctl1) {
+		txhdr->phyctl_1 = htole16(bwn_set_txhdr_phyctl1(mac, rate));
+		txhdr->phyctl_1fb = htole16(bwn_set_txhdr_phyctl1(mac, rate_fb));
 	}
 
 	if (BWN_ISOLDFMT(mac))
@@ -6365,10 +6479,15 @@ static void
 bwn_set_slot_time(struct bwn_mac *mac, uint16_t time)
 {
 
+	/* XXX should exit if 5GHz band .. */
 	if (mac->mac_phy.type != BWN_PHYTYPE_G)
 		return;
+
 	BWN_WRITE_2(mac, 0x684, 510 + time);
+	/* Disabled in Linux b43, can adversely effect performance */
+#if 0
 	bwn_shm_write_2(mac, BWN_SHARED, 0x0010, time);
+#endif
 }
 
 static struct bwn_dma_ring *
@@ -7074,7 +7193,8 @@ bwn_rfswitch(void *arg)
 	KASSERT(mac->mac_status >= BWN_MAC_STATUS_STARTED,
 	    ("%s: invalid MAC status %d", __func__, mac->mac_status));
 
-	if (mac->mac_phy.rev >= 3 || mac->mac_phy.type == BWN_PHYTYPE_LP) {
+	if (mac->mac_phy.rev >= 3 || mac->mac_phy.type == BWN_PHYTYPE_LP
+	    || mac->mac_phy.type == BWN_PHYTYPE_N) {
 		if (!(BWN_READ_4(mac, BWN_RF_HWENABLED_HI)
 			& BWN_RF_HWENABLED_HI_MASK))
 			cur = 1;
@@ -7086,6 +7206,9 @@ bwn_rfswitch(void *arg)
 
 	if (mac->mac_flags & BWN_MAC_FLAG_RADIO_ON)
 		prev = 1;
+
+	DPRINTF(sc, BWN_DEBUG_RESET, "%s: called; cur=%d, prev=%d\n",
+	    __func__, cur, prev);
 
 	if (cur != prev) {
 		if (cur)
