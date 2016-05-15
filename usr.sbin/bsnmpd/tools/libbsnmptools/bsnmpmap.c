@@ -268,21 +268,18 @@ enum_pair_insert(struct enum_pairs *headp, int32_t enum_val, char *enum_str)
 {
 	struct enum_pair *e_new;
 
-	if ((e_new = malloc(sizeof(struct enum_pair))) == NULL) {
+	if ((e_new = calloc(1, sizeof(struct enum_pair))) == NULL) {
 		syslog(LOG_ERR, "malloc() failed: %s", strerror(errno));
 		return (-1);
 	}
 
-	memset(e_new, 0, sizeof(struct enum_pair));
-
-	if ((e_new->enum_str = malloc(strlen(enum_str) + 1)) == NULL) {
+	if ((e_new->enum_str = strdup(enum_str)) == NULL) {
 		syslog(LOG_ERR, "malloc() failed: %s", strerror(errno));
 		free(e_new);
 		return (-1);
 	}
 
 	e_new->enum_val = enum_val;
-	strlcpy(e_new->enum_str, enum_str, nitems(e_new->enum_str));
 	STAILQ_INSERT_TAIL(headp, e_new, link);
 
 	return (1);
@@ -557,18 +554,16 @@ snmp_enumtc_init(char *name)
 {
 	struct enum_type *enum_tc;
 
-	if ((enum_tc = malloc(sizeof(struct enum_type))) == NULL) {
+	if ((enum_tc = calloc(1, sizeof(struct enum_type))) == NULL) {
 		syslog(LOG_ERR, "malloc() failed: %s", strerror(errno));
 		return (NULL);
 	}
 
-	memset(enum_tc, 0, sizeof(struct enum_type));
-	if ((enum_tc->name = malloc(strlen(name) + 1)) == NULL) {
+	if ((enum_tc->name = strdup(name)) == NULL) {
 		syslog(LOG_ERR, "malloc() failed: %s", strerror(errno));
 		free(enum_tc);
 		return (NULL);
 	}
-	strlcpy(enum_tc->name, name, nitems(enum_tc->name));
 
 	return (enum_tc);
 }
