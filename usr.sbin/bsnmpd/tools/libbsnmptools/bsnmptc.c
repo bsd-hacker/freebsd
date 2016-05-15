@@ -1227,6 +1227,7 @@ snmp_bits2oct(char *str, struct asn_oid *oid)
 
 	saved_errno = errno;
 	errno = 0;
+
 	v = strtoull(str, &endptr, 16);
 	if (errno != 0) {
 		warnx("Bad BITS value %s - %s", str, strerror(errno));
@@ -1265,7 +1266,9 @@ parse_bits(struct snmp_value *value, char *string)
 
 	saved_errno = errno;
 	errno = 0;
+
 	v = strtoull(string, &endptr, 16);
+
 	if (errno != 0) {
 		warnx("Bad BITS value %s - %s", string, strerror(errno));
 		errno = saved_errno;

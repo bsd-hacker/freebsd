@@ -466,7 +466,7 @@ parse_ascii(char *ascii, uint8_t *binstr, size_t binlen)
 			return (-1);
 		}
 		binstr[count] = (uint8_t) val;
-		if ((size_t)++count >= binlen) {
+		if (++count >= binlen) {
 			warnx("Key %s too long - truncating to %zu octets",
 			    ascii, binlen);
 			break;
@@ -1058,8 +1058,8 @@ static char *
 snmp_oid2asn_oid(struct snmp_toolinfo *snmptoolctx, char *str,
     struct asn_oid *oid)
 {
+	int32_t i;
 	char string[MAXSTR + 1], *endptr;
-	size_t i;
 	struct snmp_object obj;
 
 	for (i = 0; i < MAXSTR; i++)
