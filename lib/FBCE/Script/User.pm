@@ -1,4 +1,5 @@
 use utf8;
+use open ':locale';
 package FBCE::Script::User;
 
 use Moose;
