@@ -42,7 +42,7 @@ rm -f wire_no_page.c
 cd $odir
 
 cp /tmp/mmap6  /tmp/mmap6.inputfile
-(cd ../testcases/swap; ./swap -t 1m -i 2) &
+(cd ../testcases/swap; ./swap -t 5m -i 2) &
 cp /tmp/mmap6 /tmp/mmap6.inputfile
 /tmp/mmap6  /tmp/mmap6.inputfile
 while killall -9 swap; do
@@ -50,19 +50,22 @@ while killall -9 swap; do
 done > /dev/null 2>&1
 wait
 rm -f /tmp/mmap6  /tmp/mmap6.inputfile
-exit
+exit 0
 
 EOF
+#include <sys/param.h>
+#include <sys/fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <stdlib.h>
-#include <sys/fcntl.h>
-#include <sys/mman.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
+
+#define RUNTIME 300
 
 const char *file;
 char c;
@@ -110,9 +113,11 @@ wr(void)
 	if ((error = fstat(fd, &st)) == -1)
 		err(1, "stat(%s)", file);
 	len = round_page(st.st_size);
-	if ((p1 = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) == MAP_FAILED)
+	if ((p1 = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) ==
+	    MAP_FAILED)
 		err(1, "mmap");
-	if ((p2 = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) == MAP_FAILED)
+	if ((p2 = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) ==
+		    MAP_FAILED)
 		err(1, "mmap");
 	p1[arc4random() % len] = 1;
 	p2[arc4random() % len] = 1;
@@ -159,13 +164,14 @@ test(void)
 int
 main(int argc, char *argv[])
 {
-	int i;
+	time_t start;
 
 	if (argc != 2)
 		errx(1, "Usage: %s <file>", argv[0]);
 	file = argv[1];
 
-	for (i = 0; i < 30000; i++) {
+	start = time(NULL);
+	while (time(NULL) - start < RUNTIME) {
 		if (fork() == 0)
 			test();
 		wait(NULL);

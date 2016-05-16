@@ -45,13 +45,12 @@ rm -f wire_no_page.c
 cd $odir
 
 cp /tmp/wire_no_page /tmp/wire_no_page2
-for i in `jot 100`; do
-	for j in `jot 50`; do
+start=`date '+%s'`
+while [ $((`date '+%s'` - start)) -lt 300 ]; do
+	for i in `jot 50`; do
 		/tmp/wire_no_page /tmp/wire_no_page2 &
 	done
-	for j in `jot 50`; do
-		wait
-	done
+	wait
 done
 
 rm -f /tmp/wire_no_page /tmp/wire_no_page2

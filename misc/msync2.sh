@@ -48,16 +48,19 @@ rm -f /tmp/msync2  /tmp/msync2.inputfile
 exit
 
 EOF
+#include <sys/param.h>
+#include <sys/fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <stdlib.h>
-#include <sys/fcntl.h>
-#include <sys/mman.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
+
+#define RUNTIME 300
 
 const char *file;
 char c;
@@ -75,7 +78,8 @@ wr(void)
 	if ((error = fstat(fd, &st)) == -1)
 		err(1, "stat(%s)", file);
 	len = round_page(st.st_size);
-	if ((p1 = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) == MAP_FAILED)
+	if ((p1 = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) ==
+	    MAP_FAILED)
 		err(1, "mmap");
 //	p1[len - 1] = 1;		/* No panic with this */
 	p1[arc4random() % len] = 1;	/* Need this for the panic */
@@ -112,13 +116,14 @@ test(void)
 int
 main(int argc, char *argv[])
 {
-	int i;
+	time_t start;
 
 	if (argc != 2)
 		errx(1, "Usage: %s <file>", argv[0]);
 	file = argv[1];
 
-	for (i = 0; i < 30000; i++) {
+	start = time(NULL);
+	while (time(NULL) - start < RUNTIME) {
 		if (fork() == 0)
 			test();
 		wait(NULL);
