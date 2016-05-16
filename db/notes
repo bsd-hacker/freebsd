@@ -35,21 +35,15 @@ psql -f db/fbce.sql fbce fbce
 perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("4ltInn!?")'
 
 #
-# The list of users is extracted from fst3k:
+# The list of users is generated on freefall using scripts written for
+# that purpose by gjb:
 #
-# fst3k=# \t on
-# Showing only tuples.
-# fst3k=# \o users-20160518.txt
-# fst3k=# select login from persons where login != 'cvs2svn';
-# fst3k=# \o
-#
-# Real names are taken from freefall:
-#
+# des@freefall ~% ~gjb/bin/genuserlist.sh                          
+# des@freefall ~% sort users.txt >users-20160518.txt
 # des@freefall ~% getent passwd >gecos-20160518.txt
 #
 ./script/fbce_user.pl import users-20160518.txt
 ./script/fbce_user.pl gecos gecos-20160518.txt
-./script/fbce_user.pl smash
 
 #
 # The list of active committers is extracted from fst3k:
@@ -60,12 +54,13 @@ perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" }
 # fst3k=# select p.login from persons p join revisions r on p.id = r.author where r.datetime >= '2015-05-18' group by p.login;
 # fst3k=# \o
 #
+./script/fbce_user.pl smash
 ./script/fbce_user.pl activate active-20160518.txt
 
 #
 # The list of incumbents is obtained from freefall:
 #
-# des@freefall ~% getent group core | cut -d: -f4 | tr , '\n' >core-20160518.txt
+# des@freefall ~% getent group core | grep -v matthew | cut -d: -f4 | tr , '\n' >core-20160518.txt
 #
 ./script/fbce_user.pl incumbent core-20160518.txt
 
