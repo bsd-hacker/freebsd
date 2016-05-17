@@ -1,7 +1,7 @@
 [%-# $FreeBSD$ -%]
 <h3>What is this?</h3>
 
-<p>This is the website for the 2014 FreeBSD core team elections.  See the <a href="[% c.uri_for('/bylaws') | html %]">bylaws</a> and the schedule posted on the front page for additional information on the election rules.</p>
+<p>This is the website for the 2016 FreeBSD core team elections.  See the <a href="[% c.uri_for('/bylaws') | html %]">bylaws</a> and the schedule posted on the front page for additional information on the election rules.</p>
 
 <h3>Who has access?</h3>
 
