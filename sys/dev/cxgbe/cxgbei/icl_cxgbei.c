@@ -429,6 +429,7 @@ icl_cxgbei_new_conn(const char *name, struct mtx *lock)
 	ic->ic_max_data_segment_length = CXGBEI_MAX_DSL;
 	ic->ic_name = name;
 	ic->ic_offload = "cxgbei";
+	ic->ic_unmapped = false;
 
 	CTR2(KTR_CXGBE, "%s: icc %p", __func__, icc);
 
@@ -777,8 +778,8 @@ icl_cxgbei_conn_close(struct icl_conn *ic)
 }
 
 int
-icl_cxgbei_conn_task_setup(struct icl_conn *ic, struct ccb_scsiio *csio,
-    uint32_t *task_tagp, void **prvp)
+icl_cxgbei_conn_task_setup(struct icl_conn *ic, struct icl_pdu *ip,
+    struct ccb_scsiio *csio, uint32_t *task_tagp, void **prvp)
 {
 	void *prv;
 
