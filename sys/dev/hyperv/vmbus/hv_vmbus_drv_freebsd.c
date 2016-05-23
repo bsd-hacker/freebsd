@@ -68,7 +68,6 @@ __FBSDID("$FreeBSD$");
 
 struct vmbus_softc	*vmbus_sc;
 
-static device_t vmbus_devp;
 static int vmbus_inited;
 static hv_setup_args setup_args; /* only CPU 0 supported at this time */
 
@@ -324,7 +323,7 @@ hv_vmbus_child_device_register(struct hv_device *child_dev)
 		printf("VMBUS: Class ID: %s\n", name);
 	}
 
-	child = device_add_child(vmbus_devp, NULL, -1);
+	child = device_add_child(vmbus_get_device(), NULL, -1);
 	child_dev->device = child;
 	device_set_ivars(child, child_dev);
 
@@ -340,7 +339,7 @@ hv_vmbus_child_device_unregister(struct hv_device *child_dev)
 	 * device_add_child()
 	 */
 	mtx_lock(&Giant);
-	ret = device_delete_child(vmbus_devp, child_dev->device);
+	ret = device_delete_child(vmbus_get_device(), child_dev->device);
 	mtx_unlock(&Giant);
 	return(ret);
 }
@@ -386,25 +385,18 @@ vmbus_bus_init(void)
 	sc = vmbus_get_softc();
 
 	/*
-	 * Find a free IDT slot for vmbus callback.
+	 * Find a free IDT vector for vmbus messages/events.
 	 */
-	hv_vmbus_g_context.hv_cb_vector = lapic_ipi_alloc(IDTVEC(hv_vmbus_callback));
-	if (hv_vmbus_g_context.hv_cb_vector < 0) {
-		if(bootverbose)
-			printf("Error VMBUS: Cannot find free IDT slot for "
-			    "vmbus callback!\n");
+	sc->vmbus_idtvec = lapic_ipi_alloc(IDTVEC(hv_vmbus_callback));
+	if (sc->vmbus_idtvec < 0) {
+		device_printf(sc->vmbus_dev, "cannot find free IDT vector\n");
 		ret = ENXIO;
 		goto cleanup;
 	}
-
-	if(bootverbose)
-		printf("VMBUS: vmbus callback vector %d\n",
-		    hv_vmbus_g_context.hv_cb_vector);
-
-	/*
-	 * Notify the hypervisor of our vector.
-	 */
-	setup_args.vector = hv_vmbus_g_context.hv_cb_vector;
+	if(bootverbose) {
+		device_printf(sc->vmbus_dev, "vmbus IDT vector %d\n",
+		    sc->vmbus_idtvec);
+	}
 
 	CPU_FOREACH(j) {
 		snprintf(buf, sizeof(buf), "cpu%d:hyperv", j);
@@ -471,8 +463,8 @@ vmbus_bus_init(void)
 	hv_vmbus_request_channel_offers();
 
 	vmbus_scan();
-	bus_generic_attach(vmbus_devp);
-	device_printf(vmbus_devp, "device scan, probe and attach done\n");
+	bus_generic_attach(sc->vmbus_dev);
+	device_printf(sc->vmbus_dev, "device scan, probe and attach done\n");
 
 	return (ret);
 
@@ -494,7 +486,7 @@ vmbus_bus_init(void)
 		}
 	}
 
-	lapic_ipi_free(hv_vmbus_g_context.hv_cb_vector);
+	lapic_ipi_free(sc->vmbus_idtvec);
 
 	cleanup:
 	return (ret);
@@ -508,11 +500,8 @@ vmbus_event_proc_dummy(struct vmbus_softc *sc __unused, int cpu __unused)
 static int
 vmbus_attach(device_t dev)
 {
-	if(bootverbose)
-		device_printf(dev, "VMBUS: attach dev: %p\n", dev);
-
-	vmbus_devp = dev;
 	vmbus_sc = device_get_softc(dev);
+	vmbus_sc->vmbus_dev = dev;
 
 	/*
 	 * Event processing logic will be configured:
@@ -557,6 +546,7 @@ vmbus_sysinit(void *arg __unused)
 static int
 vmbus_detach(device_t dev)
 {
+	struct vmbus_softc *sc = device_get_softc(dev);
 	int i;
 
 	hv_vmbus_release_unattached_channels();
@@ -577,7 +567,7 @@ vmbus_detach(device_t dev)
 		}
 	}
 
-	lapic_ipi_free(hv_vmbus_g_context.hv_cb_vector);
+	lapic_ipi_free(sc->vmbus_idtvec);
 
 	return (0);
 }
