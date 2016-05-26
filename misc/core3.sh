@@ -34,6 +34,9 @@
 # Fixed by r272535.
 # On i386 pgrep(1) loops. Fixed by r272566.
 
+# "Sleeping on "pmapdi" with the following non-sleepable locks held:"
+# https://people.freebsd.org/~pho/stress/log/kostik883.txt
+
 . ../default.cfg
 
 odir=`pwd`
