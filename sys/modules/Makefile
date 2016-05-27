@@ -125,7 +125,7 @@ SUBDIR=	\
 	geom \
 	${_glxiic} \
 	${_glxsb} \
-	gpio \
+	${_gpio} \
 	hatm \
 	hifn \
 	hme \
@@ -738,6 +738,10 @@ _opensolaris=	opensolaris
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
 _zfs=		zfs
 .endif
+.endif
+
+.if ${MACHINE_ARCH} == "armv6"
+_gpio=		gpio
 .endif
 
 .if ${MACHINE_CPUARCH} == "powerpc"
