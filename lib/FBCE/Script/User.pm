@@ -26,7 +26,7 @@ has dryrun => (
     documentation => q{Dry run},
 );
 
-has tarball => (
+has pwtarball => (
     traits	  => [qw(Getopt)],
     cmd_aliases	  => 't',
     isa		  => Str,
@@ -35,7 +35,7 @@ has tarball => (
     default       => 'fbce-passwords.tgz',
 );
 
-has file => (
+has pwfile => (
     traits	  => [qw(Getopt)],
     cmd_aliases	  => 'f',
     isa		  => Str,
@@ -305,10 +305,10 @@ sub cmd_pwgen($@) {
 	if @argv;
 
     # Please don't overwrite an existing password tarball!
-    my $tarball = $self->tarball;
+    my $tarball = $self->pwtarball;
     die("$tarball exists, delete or move and try again\n")
 	if -e $tarball;
-    my $pwfile = $self->file;
+    my $pwfile = $self->pwfile;
 
     # Generate enough passwords for everybody
     my $persons = FBCE->model('FBCE::Person')->
@@ -375,3 +375,14 @@ __PACKAGE__->meta->make_immutable;
 1;
 
 # $FreeBSD$
+
+=head1 AUTHOR
+
+Dag-Erling Smørgrav
+
+=head1 LICENSE
+
+This library is free software. You can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
