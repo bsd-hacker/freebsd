@@ -133,14 +133,16 @@ sub cmd_list($@) {
 	if @argv;
     my $persons = FBCE->model('FBCE::Person')->
 	search(undef, { order_by => 'login' });
-    printf("%-16s%-8s%-8s%s\n",
+    printf("%-16s%-8s%-8s%-8s%s\n",
 	   'login',
-	   'active',
-	   'admin',
+	   'inc',
+	   'act',
+	   'adm',
 	   'name');
     foreach my $person ($persons->all()) {
-	printf("%-16s%-8s%-8s%s\n",
+	printf("%-16s%-8s%-8s%-8s%s\n",
 	       $person->login,
+	       $person->incumbent ? 'yes' : 'no',
 	       $person->active ? 'yes' : 'no',
 	       $person->admin ? 'yes' : 'no',
 	       $person->name);
