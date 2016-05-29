@@ -1,5 +1,6 @@
 /*-
  * Copyright 2005 Colin Percival
+ * Copyright (c) 2015 Allan Jude <allanjude@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #include "sha512.h"
+#include "sha512t.h"
 #include "sha384.h"
 
 #if BYTE_ORDER == BIG_ENDIAN
@@ -311,7 +313,7 @@ SHA512_Update(SHA512_CTX * ctx, const void *in, size_t len)
  * and clears the context state.
  */
 void
-SHA512_Final(unsigned char digest[SHA512_DIGEST_LENGTH], SHA512_CTX * ctx)
+SHA512_Final(unsigned char digest[static SHA512_DIGEST_LENGTH], SHA512_CTX *ctx)
 {
 
 	/* Add padding */
@@ -321,7 +323,89 @@ SHA512_Final(unsigned char digest[SHA512_DIGEST_LENGTH], SHA512_CTX * ctx)
 	be64enc_vect(digest, ctx->state, SHA512_DIGEST_LENGTH);
 
 	/* Clear the context state */
-	memset((void *)ctx, 0, sizeof(*ctx));
+	memset(ctx, 0, sizeof(*ctx));
+}
+
+/*** SHA-512t: *********************************************************/
+/*
+ * the SHA512t transforms are identical to SHA512 so reuse the existing function
+ */
+void
+SHA512_224_Init(SHA512_CTX * ctx)
+{
+
+	/* Zero bits processed so far */
+	ctx->count[0] = ctx->count[1] = 0;
+
+	/* Magic initialization constants */
+	ctx->state[0] = 0x8c3d37c819544da2ULL;
+	ctx->state[1] = 0x73e1996689dcd4d6ULL;
+	ctx->state[2] = 0x1dfab7ae32ff9c82ULL;
+	ctx->state[3] = 0x679dd514582f9fcfULL;
+	ctx->state[4] = 0x0f6d2b697bd44da8ULL;
+	ctx->state[5] = 0x77e36f7304c48942ULL;
+	ctx->state[6] = 0x3f9d85a86a1d36c8ULL;
+	ctx->state[7] = 0x1112e6ad91d692a1ULL;
+}
+
+void
+SHA512_224_Update(SHA512_CTX * ctx, const void *in, size_t len)
+{
+
+	SHA512_Update(ctx, in, len);
+}
+
+void
+SHA512_224_Final(unsigned char digest[static SHA512_224_DIGEST_LENGTH], SHA512_CTX * ctx)
+{
+
+	/* Add padding */
+	SHA512_Pad(ctx);
+
+	/* Write the hash */
+	be64enc_vect(digest, ctx->state, SHA512_224_DIGEST_LENGTH);
+
+	/* Clear the context state */
+	memset(ctx, 0, sizeof(*ctx));
+}
+
+void
+SHA512_256_Init(SHA512_CTX * ctx)
+{
+
+	/* Zero bits processed so far */
+	ctx->count[0] = ctx->count[1] = 0;
+
+	/* Magic initialization constants */
+	ctx->state[0] = 0x22312194fc2bf72cULL;
+	ctx->state[1] = 0x9f555fa3c84c64c2ULL;
+	ctx->state[2] = 0x2393b86b6f53b151ULL;
+	ctx->state[3] = 0x963877195940eabdULL;
+	ctx->state[4] = 0x96283ee2a88effe3ULL;
+	ctx->state[5] = 0xbe5e1e2553863992ULL;
+	ctx->state[6] = 0x2b0199fc2c85b8aaULL;
+	ctx->state[7] = 0x0eb72ddc81c52ca2ULL;
+}
+
+void
+SHA512_256_Update(SHA512_CTX * ctx, const void *in, size_t len)
+{
+
+	SHA512_Update(ctx, in, len);
+}
+
+void
+SHA512_256_Final(unsigned char digest[static SHA512_256_DIGEST_LENGTH], SHA512_CTX * ctx)
+{
+
+	/* Add padding */
+	SHA512_Pad(ctx);
+
+	/* Write the hash */
+	be64enc_vect(digest, ctx->state, SHA512_256_DIGEST_LENGTH);
+
+	/* Clear the context state */
+	memset(ctx, 0, sizeof(*ctx));
 }
 
 /*** SHA-384: *********************************************************/
@@ -361,7 +445,7 @@ SHA384_Update(SHA384_CTX * ctx, const void *in, size_t len)
  * and clears the context state.
  */
 void
-SHA384_Final(unsigned char digest[SHA384_DIGEST_LENGTH], SHA384_CTX * ctx)
+SHA384_Final(unsigned char digest[static SHA384_DIGEST_LENGTH], SHA384_CTX *ctx)
 {
 
 	/* Add padding */
@@ -371,7 +455,7 @@ SHA384_Final(unsigned char digest[SHA384_DIGEST_LENGTH], SHA384_CTX * ctx)
 	be64enc_vect(digest, ctx->state, SHA384_DIGEST_LENGTH);
 
 	/* Clear the context state */
-	memset((void *)ctx, 0, sizeof(*ctx));
+	memset(ctx, 0, sizeof(*ctx));
 }
 
 #ifdef WEAK_REFS
@@ -387,6 +471,20 @@ __weak_reference(_libmd_SHA512_Update, SHA512_Update);
 __weak_reference(_libmd_SHA512_Final, SHA512_Final);
 #undef SHA512_Transform
 __weak_reference(_libmd_SHA512_Transform, SHA512_Transform);
+
+#undef SHA512_224_Init
+__weak_reference(_libmd_SHA512_224_Init, SHA512_224_Init);
+#undef SHA512_224_Update
+__weak_reference(_libmd_SHA512_224_Update, SHA512_224_Update);
+#undef SHA512_224_Final
+__weak_reference(_libmd_SHA512_224_Final, SHA512_224_Final);
+
+#undef SHA512_256_Init
+__weak_reference(_libmd_SHA512_256_Init, SHA512_256_Init);
+#undef SHA512_256_Update
+__weak_reference(_libmd_SHA512_256_Update, SHA512_256_Update);
+#undef SHA512_256_Final
+__weak_reference(_libmd_SHA512_256_Final, SHA512_256_Final);
 
 #undef SHA384_Init
 __weak_reference(_libmd_SHA384_Init, SHA384_Init);

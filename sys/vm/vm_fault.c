@@ -496,11 +496,13 @@ fast_failed:
 				goto readrest;
 			break;
 		}
+		KASSERT(fs.m == NULL, ("fs.m should be NULL, not %p", fs.m));
 
 		/*
-		 * Page is not resident.  If this is the search termination
-		 * or the pager might contain the page, allocate a new page.
-		 * Default objects are zero-fill, there is no real pager.
+		 * Page is not resident.  If the pager might contain the page
+		 * or this is the beginning of the search, allocate a new
+		 * page.  (Default objects are zero-fill, so there is no real
+		 * pager for them.)
 		 */
 		if (fs.object->type != OBJT_DEFAULT ||
 		    fs.object == fs.first_object) {
@@ -517,7 +519,6 @@ fast_failed:
 			 * there, and allocation can fail, causing
 			 * restart and new reading of the p_flag.
 			 */
-			fs.m = NULL;
 			if (!vm_page_count_severe() || P_KILLED(curproc)) {
 #if VM_NRESERVLEVEL > 0
 				vm_object_color(fs.object, atop(vaddr) -
@@ -541,14 +542,12 @@ fast_failed:
 
 readrest:
 		/*
-		 * We have found a valid page or we have allocated a new page.
-		 * The page thus may not be valid or may not be entirely 
-		 * valid.
+		 * We have either allocated a new page or found an existing
+		 * page that is only partially valid.
 		 *
 		 * Attempt to fault-in the page if there is a chance that the
 		 * pager has it, and potentially fault in additional pages
-		 * at the same time.  For default objects simply provide
-		 * zero-filled pages.
+		 * at the same time.
 		 */
 		if (fs.object->type != OBJT_DEFAULT) {
 			int rv;
@@ -705,7 +704,6 @@ vnode_locked:
 		 * Move on to the next object.  Lock the next object before
 		 * unlocking the current one.
 		 */
-		fs.pindex += OFF_TO_IDX(fs.object->backing_object_offset);
 		next_object = fs.object->backing_object;
 		if (next_object == NULL) {
 			/*
@@ -743,6 +741,8 @@ vnode_locked:
 			vm_object_pip_add(next_object, 1);
 			if (fs.object != fs.first_object)
 				vm_object_pip_wakeup(fs.object);
+			fs.pindex +=
+			    OFF_TO_IDX(fs.object->backing_object_offset);
 			VM_OBJECT_WUNLOCK(fs.object);
 			fs.object = next_object;
 		}
@@ -799,26 +799,15 @@ vnode_locked:
 				 * We don't chase down the shadow chain
 				 */
 			    fs.object == fs.first_object->backing_object) {
-				/*
-				 * get rid of the unnecessary page
-				 */
+				vm_page_lock(fs.m);
+				vm_page_remove(fs.m);
+				vm_page_unlock(fs.m);
 				vm_page_lock(fs.first_m);
-				vm_page_remove(fs.first_m);
-				vm_page_unlock(fs.first_m);
-				/*
-				 * grab the page and put it into the 
-				 * process'es object.  The page is 
-				 * automatically made dirty.
-				 */
-				if (vm_page_rename(fs.m, fs.first_object,
-				    fs.first_pindex)) {
-					VM_OBJECT_WUNLOCK(fs.first_object);
-					unlock_and_deallocate(&fs);
-					goto RetryFault;
-				}
-				vm_page_lock(fs.first_m);
+				vm_page_replace_checked(fs.m, fs.first_object,
+				    fs.first_pindex, fs.first_m);
 				vm_page_free(fs.first_m);
 				vm_page_unlock(fs.first_m);
+				vm_page_dirty(fs.m);
 #if VM_NRESERVLEVEL > 0
 				/*
 				 * Rename the reservation.
@@ -827,6 +816,10 @@ vnode_locked:
 				    fs.object, OFF_TO_IDX(
 				    fs.first_object->backing_object_offset));
 #endif
+				/*
+				 * Removing the page from the backing object
+				 * unbusied it.
+				 */
 				vm_page_xbusy(fs.m);
 				fs.first_m = fs.m;
 				fs.m = NULL;

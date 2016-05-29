@@ -329,6 +329,7 @@ FILES+=		wpa_supplicant
 .if ${MK_ZFS} != "no"
 FILESGROUPS+=	ZFS
 ZFS+=		zfs
+ZFS+=		zfsd
 ZFS+=		zvol
 ZFSPACKAGE=	zfs
 .endif

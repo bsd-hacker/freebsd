@@ -1,14 +1,6 @@
 /*-
- * Copyright (c) 2015 Ruslan Bukin <br@bsdpad.com>
+ * Copyright (c) 2000 Doug Rabson
  * All rights reserved.
- *
- * Portions of this software were developed by SRI International and the
- * University of Cambridge Computer Laboratory under DARPA/AFRL contract
- * FA8750-10-C-0237 ("CTSRD"), as part of the DARPA CRASH research programme.
- *
- * Portions of this software were developed by the University of Cambridge
- * Computer Laboratory as part of the CTSRD Project, with support from the
- * UK Higher Education Innovation Fund (HEIF).
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,50 +22,31 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ *	$FreeBSD$
  */
 
-#include <machine/asm.h>
-__FBSDID("$FreeBSD$");
+#ifndef _SYS_SPIGENIO_H_
+#define _SYS_SPIGENIO_H_
 
-#include "SYS.h"
+#include <sys/_iovec.h>
 
-	.globl	_C_LABEL(_end)
+struct spigen_transfer {
+	struct iovec st_command; /* master to slave */
+	struct iovec st_data;    /* slave to master and/or master to slave */
+};
 
-	.data
-	.align	3
-	.globl	_C_LABEL(minbrk)
-	.type	_C_LABEL(minbrk), %object
-_C_LABEL(minbrk):
-	.quad	_C_LABEL(_end)
+struct spigen_transfer_mmapped {
+	size_t stm_command_length; /* at offset 0 in mmap(2) area */
+	size_t stm_data_length;    /* at offset stm_command_length */
+};
 
-	.text
-/*
- * int brk(const void *addr);
- */
-ENTRY(_brk)
-	WEAK_REFERENCE(_brk, brk)
+#define SPIGENIOC_BASE     'S'
+#define SPIGENIOC_TRANSFER 	   _IOW(SPIGENIOC_BASE, 0, \
+	    struct spigen_transfer)
+#define SPIGENIOC_TRANSFER_MMAPPED _IOW(SPIGENIOC_BASE, 1, \
+	    struct spigen_transfer_mmapped)
+#define SPIGENIOC_GET_CLOCK_SPEED  _IOR(SPIGENIOC_BASE, 2, uint32_t)
+#define SPIGENIOC_SET_CLOCK_SPEED  _IOW(SPIGENIOC_BASE, 3, uint32_t)
 
-	/* Load the address of minbrk */
-	la	a3, minbrk
-	ld	a2, 0(a3)
-
-	/* Validate the address */
-	bge	a0, a2, 1f
-	/* Invalid, set it to the minimum */
-	mv	a0, a2
-
-	/* Backup the new address */
-1:	mv	a4, a0
-
-	/* Update for this value, will overwrite a0 and a1 */
-	_SYSCALL(break)
-	bnez	t0, cerror
-
-	/* Store the new curbrk value */
-	la	a2, curbrk
-	sd	a4, 0(a2)
-
-	/* Return success */
-	li	a0, 0
-	ret
-END(_brk)
+#endif /* !_SYS_SPIGENIO_H_ */

@@ -115,7 +115,7 @@ SYSCTL_INT(_net_link, OID_AUTO, log_link_state_change, CTLFLAG_RW,
 /* Log promiscuous mode change events */
 static int log_promisc_mode_change = 1;
 
-SYSCTL_INT(_net_link, OID_AUTO, log_promisc_mode_change, CTLFLAG_RW,
+SYSCTL_INT(_net_link, OID_AUTO, log_promisc_mode_change, CTLFLAG_RDTUN,
 	&log_promisc_mode_change, 1,
 	"log promiscuous mode change events");
 
@@ -821,8 +821,7 @@ if_attachdomain1(struct ifnet *ifp)
 	 * Since dp->dom_ifattach calls malloc() with M_WAITOK, we
 	 * cannot lock ifp->if_afdata initialization, entirely.
 	 */
-	if (IF_AFDATA_TRYLOCK(ifp) == 0)
-		return;
+	IF_AFDATA_LOCK(ifp);
 	if (ifp->if_afdata_initialized >= domain_init_status) {
 		IF_AFDATA_UNLOCK(ifp);
 		log(LOG_WARNING, "%s called more than once on %s\n",
