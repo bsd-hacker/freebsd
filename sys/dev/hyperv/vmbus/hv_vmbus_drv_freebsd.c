@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/hyperv/vmbus/hv_vmbus_priv.h>
 #include <dev/hyperv/vmbus/hyperv_reg.h>
 #include <dev/hyperv/vmbus/hyperv_var.h>
+#include <dev/hyperv/vmbus/vmbus_reg.h>
 #include <dev/hyperv/vmbus/vmbus_var.h>
 
 #include <contrib/dev/acpica/include/acpi.h>
@@ -70,15 +71,13 @@ __FBSDID("$FreeBSD$");
 
 struct vmbus_softc	*vmbus_sc;
 
-static char *vmbus_ids[] = { "VMBUS", NULL };
-
 extern inthand_t IDTVEC(vmbus_isr);
 
 static void
 vmbus_msg_task(void *xsc, int pending __unused)
 {
 	struct vmbus_softc *sc = xsc;
-	hv_vmbus_message *msg;
+	volatile struct vmbus_message *msg;
 
 	msg = VMBUS_PCPU_GET(sc, message, curcpu) + VMBUS_SINT_MESSAGE;
 	for (;;) {
@@ -86,10 +85,12 @@ vmbus_msg_task(void *xsc, int pending __unused)
 		hv_vmbus_channel_msg_header *hdr;
 		hv_vmbus_channel_msg_type msg_type;
 
-		if (msg->header.message_type == HV_MESSAGE_TYPE_NONE)
+		if (msg->msg_type == VMBUS_MSGTYPE_NONE)
 			break; /* no message */
 
-		hdr = (hv_vmbus_channel_msg_header *)msg->u.payload;
+		/* XXX: update messageHandler interface */
+		hdr = __DEVOLATILE(hv_vmbus_channel_msg_header *,
+		    msg->msg_data);
 		msg_type = hdr->message_type;
 
 		if (msg_type >= HV_CHANNEL_MESSAGE_COUNT) {
@@ -101,20 +102,20 @@ vmbus_msg_task(void *xsc, int pending __unused)
 		if (entry->messageHandler)
 			entry->messageHandler(hdr);
 handled:
-		msg->header.message_type = HV_MESSAGE_TYPE_NONE;
+		msg->msg_type = VMBUS_MSGTYPE_NONE;
 		/*
-		 * Make sure the write to message_type (ie set to
-		 * HV_MESSAGE_TYPE_NONE) happens before we read the
-		 * message_pending and EOMing. Otherwise, the EOMing will
-		 * not deliver any more messages
-		 * since there is no empty slot
+		 * Make sure the write to msg_type (i.e. set to
+		 * VMBUS_MSGTYPE_NONE) happens before we read the
+		 * msg_flags and EOMing. Otherwise, the EOMing will
+		 * not deliver any more messages since there is no
+		 * empty slot
 		 *
 		 * NOTE:
 		 * mb() is used here, since atomic_thread_fence_seq_cst()
 		 * will become compiler fence on UP kernel.
 		 */
 		mb();
-		if (msg->header.message_flags.u.message_pending) {
+		if (msg->msg_flags & VMBUS_MSGFLAG_PENDING) {
 			/*
 			 * This will cause message queue rescan to possibly
 			 * deliver another msg from the hypervisor
@@ -127,7 +128,8 @@ handled:
 static __inline int
 vmbus_handle_intr1(struct vmbus_softc *sc, struct trapframe *frame, int cpu)
 {
-	hv_vmbus_message *msg, *msg_base;
+	volatile struct vmbus_message *msg;
+	struct vmbus_message *msg_base;
 
 	msg_base = VMBUS_PCPU_GET(sc, message, cpu);
 
@@ -137,25 +139,24 @@ vmbus_handle_intr1(struct vmbus_softc *sc, struct trapframe *frame, int cpu)
 	 * TODO: move this to independent IDT vector.
 	 */
 	msg = msg_base + VMBUS_SINT_TIMER;
-	if (msg->header.message_type == HV_MESSAGE_TIMER_EXPIRED) {
-		msg->header.message_type = HV_MESSAGE_TYPE_NONE;
+	if (msg->msg_type == VMBUS_MSGTYPE_TIMER_EXPIRED) {
+		msg->msg_type = VMBUS_MSGTYPE_NONE;
 
 		vmbus_et_intr(frame);
 
 		/*
-		 * Make sure the write to message_type (ie set to
-		 * HV_MESSAGE_TYPE_NONE) happens before we read the
-		 * message_pending and EOMing. Otherwise, the EOMing will
-		 * not deliver any more messages
-		 * since there is no empty slot
+		 * Make sure the write to msg_type (i.e. set to
+		 * VMBUS_MSGTYPE_NONE) happens before we read the
+		 * msg_flags and EOMing. Otherwise, the EOMing will
+		 * not deliver any more messages since there is no
+		 * empty slot
 		 *
 		 * NOTE:
 		 * mb() is used here, since atomic_thread_fence_seq_cst()
 		 * will become compiler fence on UP kernel.
 		 */
 		mb();
-
-		if (msg->header.message_flags.u.message_pending) {
+		if (msg->msg_flags & VMBUS_MSGFLAG_PENDING) {
 			/*
 			 * This will cause message queue rescan to possibly
 			 * deliver another msg from the hypervisor
@@ -177,7 +178,7 @@ vmbus_handle_intr1(struct vmbus_softc *sc, struct trapframe *frame, int cpu)
 	 * Check messages.  Mainly management stuffs; ultra low rate.
 	 */
 	msg = msg_base + VMBUS_SINT_MESSAGE;
-	if (__predict_false(msg->header.message_type != HV_MESSAGE_TYPE_NONE)) {
+	if (__predict_false(msg->msg_type != VMBUS_MSGTYPE_NONE)) {
 		taskqueue_enqueue(VMBUS_PCPU_GET(sc, message_tq, cpu),
 		    VMBUS_PCPU_PTR(sc, message_task, cpu));
 	}
@@ -569,7 +570,9 @@ hv_vmbus_child_device_unregister(struct hv_device *child_dev)
 static int
 vmbus_probe(device_t dev)
 {
-	if (ACPI_ID_PROBE(device_get_parent(dev), dev, vmbus_ids) == NULL ||
+	char *id[] = { "VMBUS", NULL };
+
+	if (ACPI_ID_PROBE(device_get_parent(dev), dev, id) == NULL ||
 	    device_get_unit(dev) != 0 || vm_guest != VM_GUEST_HV ||
 	    (hyperv_features & CPUID_HV_MSR_SYNIC) == 0)
 		return (ENXIO);
