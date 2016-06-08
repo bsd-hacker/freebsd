@@ -30,6 +30,11 @@
 
 # Regression test for r218019: "panic: oof, we didn't get our fd"
 
+# Page fault seen:
+# https://people.freebsd.org/~pho/stress/log/kostik895.txt
+# Caused by r300792 + r300793.
+# Fixed by r301580.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
