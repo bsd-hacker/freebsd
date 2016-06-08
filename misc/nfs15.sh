@@ -118,7 +118,7 @@ t2(void *data __unused)
 			err(1, "open(%s)", file);
 		do {
 			r = lockf(fd, F_LOCK, 0);
-		} while (r == -1 & errno == EDEADLK);
+		} while (r == -1 && errno == EDEADLK);
 		if (r == -1)
 			err(1, "lockf(%s, F_LOCK)", file);
 		write(fd, "x", 1);

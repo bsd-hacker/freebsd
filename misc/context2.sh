@@ -78,7 +78,7 @@ thr_routine(void *arg)
 	int i;
 	int token;
 
-	i = (int)arg;
+	i = (long)arg;
 	for (;;) {
 		if (read(fds[i][0], &token, sizeof(token)) != sizeof(token))
 			err(1, "read pipe 2");
@@ -94,6 +94,7 @@ main(void)
 {
 	pthread_t threads[NTHREADS];
 	time_t start;
+	long arg;
 	int i, r, token;
 
 	for (i = 0; i < NTHREADS + 1; i++) {
@@ -101,10 +102,12 @@ main(void)
 			err(1, "pipe");
 	}
 
-	for (i = 0; i < NTHREADS; i++)
+	for (i = 0; i < NTHREADS; i++) {
+		arg = i;
 		if ((r = pthread_create(&threads[i], NULL, thr_routine,
-		    (void *)i)) != 0)
+		    (void *)arg)) != 0)
 			errc(1, r, "pthread_create(): %s\n", strerror(r));
+	}
 
 
 	start = time(NULL);
