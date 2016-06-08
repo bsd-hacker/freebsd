@@ -1,6 +1,4 @@
-.\"
-.\" Copyright (c) 2014 Hans Petter Selasky
-.\" All rights reserved.
+.\" Copyright (c) 2015, Mellanox Technologies, Inc. All rights reserved.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
 .\" modification, are permitted provided that the following conditions
@@ -22,46 +20,75 @@
 .\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
-.\" 
-.\" $FreeBSD$
 .\"
-.Dd June 8, 2016
-.Dt USFS 4
+.\"
+.\" $FreeBSD$
+.Dd June 6, 2016
+.Dt ISER 4
 .Os
 .Sh NAME
-.Nm usfs
-.Nd USB device side support for bulk only transport mass storage
+.Nm iser
+.Nd iSCSI Extensions for RDMA (iSER) driver
 .Sh SYNOPSIS
 To compile this driver into the kernel,
-place the following lines in your
+place the following line in the
 kernel configuration file:
 .Bd -ragged -offset indent
-.Cd "device usb"
-.Cd "device usfs"
+.Cd "device iser"
 .Ed
 .Pp
 Alternatively, to load the driver as a
 module at boot time, place the following line in
 .Xr loader.conf 5 :
 .Bd -literal -offset indent
-usfs_load="YES"
+iser_load="YES"
 .Ed
 .Sh DESCRIPTION
 The
 .Nm
-driver provides support for emulating an USB mass storage device when
-the USB stack is activated in USB device side mode (the
-.Xr usb_template 4
-module is loaded and the
-.Va hw.usb.template
-sysctl is set to 0).
-.Pp
-Upon attach the driver creates a RAM disk which can be read and written.
+(iSCSI Extensions for RDMA) initiator driver extends the iSCSI protocol to RDMA.
+It permits data to be transferred directly into and out of SCSI buffers
+without intermediate data copies.
+iSER uses the RDMA protocol suite to supply higher bandwidth for
+block storage transfers (zero copy behavior).
+To that fact, it eliminates the
+TCP/IP processing overhead while preserving the compatibility with iSCSI protocol.
+The initiator is the iSCSI/iSER client, which connects to an iSCSI/iSER target,
+providing local access to a remote block device.
+The userland component is provided by
+.Xr iscsid 8
+and both the kernel and userland are configured using
+.Xr iscsictl 8 .
+.Sh SYSCTL VARIABLES
+The following variables are available as both
+.Xr sysctl 8
+variables and
+.Xr loader 8
+tunables:
+.Bl -tag -width indent
+.It Va kern.iser.debug
+Verbosity level for log messages from the
+.Nm
+driver.
+Set to 0 to disable logging or 1 to warn about potential problems.
+Larger values enable info and debugging output.
+Defaults to 0.
+.El
 .Sh SEE ALSO
-.Xr umass 4 ,
-.Xr usb 4 ,
-.Xr usb_template 4
+.Xr iscsi 4 ,
+.Xr iscsi.conf 5 ,
+.Xr iscsictl 8 ,
+.Xr iscsid 8
 .Sh HISTORY
 The
 .Nm
-driver appeared in FreeBSD 8.
+subsystem first appeared in
+.Fx 11.0 .
+.Sh AUTHORS
+The
+.Nm
+subsystem was developed by
+.An Max Gurtovoy Aq Mt maxg@mellanox.com
+and
+.An Sagi Grimberg Aq Mt sagig@mellanox.com
+under sponsorship from Mellanox Technologies.
