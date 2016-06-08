@@ -37,7 +37,7 @@
 # 3. The file is extended again to cover the whole mapped area.
 # 4. The program accesses the mapping past the point of truncation.
 
-. ../default.cfg 
+. ../default.cfg
 
 dir=/tmp
 odir=`pwd`
@@ -54,8 +54,8 @@ sleep 1
 
 /tmp/mmap25 /tmp/mmap25.inputfile
 
-while ps auxww | grep -v grep | grep -qw swap; do
-	killall -9 swap 2>/dev/null
+while pgrep -q swap; do
+	pkill -9 swap
 done
 rm -f /tmp/mmap25 /tmp/mmap25.inputfile mmap25.core
 exit

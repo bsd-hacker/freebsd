@@ -37,8 +37,8 @@
 # kernel: pid 5654 (sort), uid 0, was killed: out of swap space
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
-[ `sysctl -n hw.physmem` -gt $(( 1 * 1024 * 1024 * 1024)) ] && 
-echo "RAM should be capped to 1GB for this test."
+[ `sysctl -n hw.physmem` -gt $(( 1 * 1024 * 1024 * 1024)) ] &&
+    echo "RAM should be capped to 1GB for this test."
 [ `sysctl -n hw.physmem` -gt $(( 8 * 1024 * 1024 * 1024)) ] && exit 0
 [ `sysctl -n vm.swap_total` -gt 0 ] && { swapoff -a; off=1; }
 

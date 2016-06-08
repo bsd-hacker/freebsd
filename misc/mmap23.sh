@@ -33,7 +33,7 @@
 # Test scenario by kib@.
 # Fixed by r285878.
 
-. ../default.cfg 
+. ../default.cfg
 
 dir=/tmp
 odir=`pwd`
@@ -52,8 +52,8 @@ sleep .2
 dd if=/dev/zero of=/tmp/mmap23.inputfile bs=1k count=1 2>&1 | \
     egrep -v "records|transferred"
 
-while ps auxww | grep -v grep | grep -qw swap; do
-	killall -9 swap 2>/dev/null
+while pgrep -q swap; do
+	pkill -9 swap
 done
 
 rm -f /tmp/mmap23 /tmp/mmap23.inputfile
