@@ -157,7 +157,7 @@ test(void)
 	if ((pid = fork()) == -1)
 		err(1, "fork");
 
-	if (pid == 0) {	
+	if (pid == 0) {
 		fd = open("/etc/passwd", O_RDONLY);
 		if (fd < 0)
 			err(1, "/etc/passwd");
