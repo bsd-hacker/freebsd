@@ -101,7 +101,7 @@ static int zfs_fhtovp(vfs_t *vfsp, fid_t *fidp, int flags, vnode_t **vpp);
 static void zfs_objset_close(zfsvfs_t *zfsvfs);
 static void zfs_freevfs(vfs_t *vfsp);
 
-static struct vfsops zfs_vfsops = {
+struct vfsops zfs_vfsops = {
 	.vfs_mount =		zfs_mount,
 	.vfs_unmount =		zfs_umount,
 	.vfs_root =		zfs_root,
@@ -1170,6 +1170,7 @@ zfs_domount(vfs_t *vfsp, char *osname)
 	vfsp->mnt_kern_flag |= MNTK_LOOKUP_SHARED;
 	vfsp->mnt_kern_flag |= MNTK_SHARED_WRITES;
 	vfsp->mnt_kern_flag |= MNTK_EXTENDED_SHARED;
+	vfsp->mnt_kern_flag |= MNTK_NO_IOPF;	/* vn_io_fault can be used */
 
 	/*
 	 * The fsid is 64 bits, composed of an 8-bit fs type, which
@@ -1781,12 +1782,11 @@ zfs_root(vfs_t *vfsp, int flags, vnode_t **vpp)
 
 	if (error == 0) {
 		error = vn_lock(*vpp, flags);
-		if (error == 0)
-			(*vpp)->v_vflag |= VV_ROOT;
+		if (error != 0) {
+			VN_RELE(*vpp);
+			*vpp = NULL;
+		}
 	}
-	if (error != 0)
-		*vpp = NULL;
-
 	return (error);
 }
 
@@ -2004,12 +2004,6 @@ zfs_umount(vfs_t *vfsp, int fflag)
 	 */
 	if (zfsvfs->z_ctldir != NULL)
 		zfsctl_destroy(zfsvfs);
-	if (zfsvfs->z_issnap) {
-		vnode_t *svp = vfsp->mnt_vnodecovered;
-
-		if (svp->v_count >= 2)
-			VN_RELE(svp);
-	}
 	zfs_freevfs(vfsp);
 
 	return (0);

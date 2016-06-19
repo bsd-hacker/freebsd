@@ -28,6 +28,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_ddb.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_rss.h"
@@ -62,6 +63,10 @@ __FBSDID("$FreeBSD$");
 #if defined(__i386__) || defined(__amd64__)
 #include <vm/vm.h>
 #include <vm/pmap.h>
+#endif
+#ifdef DDB
+#include <ddb/ddb.h>
+#include <ddb/db_lex.h>
 #endif
 
 #include "common/common.h"
@@ -491,6 +496,7 @@ static int sysctl_tp_la(SYSCTL_HANDLER_ARGS);
 static int sysctl_tx_rate(SYSCTL_HANDLER_ARGS);
 static int sysctl_ulprx_la(SYSCTL_HANDLER_ARGS);
 static int sysctl_wcwr_stats(SYSCTL_HANDLER_ARGS);
+static int sysctl_tc_params(SYSCTL_HANDLER_ARGS);
 #endif
 #ifdef TCP_OFFLOAD
 static int sysctl_tp_tick(SYSCTL_HANDLER_ARGS);
@@ -870,6 +876,9 @@ t4_attach(device_t dev)
 		mtx_init(&pi->pi_lock, pi->lockname, 0, MTX_DEF);
 		sc->chan_map[pi->tx_chan] = i;
 
+		pi->tc = malloc(sizeof(struct tx_sched_class) *
+		    sc->chip_params->nsched_cls, M_CXGBE, M_ZERO | M_WAITOK);
+
 		if (is_10G_port(pi) || is_40G_port(pi)) {
 			n10g++;
 			for_each_vi(pi, j, vi) {
@@ -1126,6 +1135,7 @@ t4_detach(device_t dev)
 
 			mtx_destroy(&pi->pi_lock);
 			free(pi->vi, M_CXGBE);
+			free(pi->tc, M_CXGBE);
 			free(pi, M_CXGBE);
 		}
 	}
@@ -2123,7 +2133,7 @@ rw_via_memwin(struct adapter *sc, int idx, uint32_t addr, uint32_t *val,
 			} else {
 				v = *val++;
 				t4_write_reg(sc, mw->mw_base + addr -
-				    mw->mw_curpos, htole32(v));;
+				    mw->mw_curpos, htole32(v));
 			}
 			addr += 4;
 			len -= 4;
@@ -4141,7 +4151,7 @@ vi_full_init(struct vi_info *vi)
 
 	if (extra) {
 		if_printf(ifp,
-		    "global RSS config (0x%x) cannot be accomodated.\n",
+		    "global RSS config (0x%x) cannot be accommodated.\n",
 		    hashconfig);
 	}
 	if (extra & RSS_HASHTYPE_RSS_IPV4)
@@ -4896,15 +4906,6 @@ t4_sysctls(struct adapter *sc)
 		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "ddp", CTLFLAG_RW,
 		    &sc->tt.ddp, 0, "DDP allowed");
 
-		sc->tt.indsz = G_INDICATESIZE(t4_read_reg(sc, A_TP_PARA_REG5));
-		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "indsz", CTLFLAG_RW,
-		    &sc->tt.indsz, 0, "DDP max indicate size allowed");
-
-		sc->tt.ddp_thres =
-		    G_RXCOALESCESIZE(t4_read_reg(sc, A_TP_PARA_REG2));
-		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "ddp_thres", CTLFLAG_RW,
-		    &sc->tt.ddp_thres, 0, "DDP threshold");
-
 		sc->tt.rx_coalesce = 1;
 		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "rx_coalesce",
 		    CTLFLAG_RW, &sc->tt.rx_coalesce, 0, "receive coalescing");
@@ -5034,8 +5035,10 @@ cxgbe_sysctls(struct port_info *pi)
 {
 	struct sysctl_ctx_list *ctx;
 	struct sysctl_oid *oid;
-	struct sysctl_oid_list *children;
+	struct sysctl_oid_list *children, *children2;
 	struct adapter *sc = pi->adapter;
+	int i;
+	char name[16];
 
 	ctx = device_get_sysctl_ctx(pi->dev);
 
@@ -5062,6 +5065,29 @@ cxgbe_sysctls(struct port_info *pi)
 
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "max_speed", CTLFLAG_RD, NULL,
 	    port_top_speed(pi), "max speed (in Gbps)");
+
+	/*
+	 * dev.(cxgbe|cxl).X.tc.
+	 */
+	oid = SYSCTL_ADD_NODE(ctx, children, OID_AUTO, "tc", CTLFLAG_RD, NULL,
+	    "Tx scheduler traffic classes");
+	for (i = 0; i < sc->chip_params->nsched_cls; i++) {
+		struct tx_sched_class *tc = &pi->tc[i];
+
+		snprintf(name, sizeof(name), "%d", i);
+		children2 = SYSCTL_CHILDREN(SYSCTL_ADD_NODE(ctx,
+		    SYSCTL_CHILDREN(oid), OID_AUTO, name, CTLFLAG_RD, NULL,
+		    "traffic class"));
+		SYSCTL_ADD_UINT(ctx, children2, OID_AUTO, "flags", CTLFLAG_RD,
+		    &tc->flags, 0, "flags");
+		SYSCTL_ADD_UINT(ctx, children2, OID_AUTO, "refcount",
+		    CTLFLAG_RD, &tc->refcount, 0, "references to this class");
+#ifdef SBUF_DRAIN
+		SYSCTL_ADD_PROC(ctx, children2, OID_AUTO, "params",
+		    CTLTYPE_STRING | CTLFLAG_RD, sc, (pi->port_id << 16) | i,
+		    sysctl_tc_params, "A", "traffic class parameters");
+#endif
+	}
 
 	/*
 	 * dev.cxgbe.X.stats.
@@ -5202,7 +5228,7 @@ cxgbe_sysctls(struct port_info *pi)
 	SYSCTL_ADD_UQUAD(ctx, children, OID_AUTO, #name, CTLFLAG_RD, \
 	    &pi->stats.name, desc)
 
-	/* We get these from port_stats and they may be stale by upto 1s */
+	/* We get these from port_stats and they may be stale by up to 1s */
 	SYSCTL_ADD_T4_PORTSTAT(rx_ovflow0,
 	    "# drops due to buffer-group 0 overflows");
 	SYSCTL_ADD_T4_PORTSTAT(rx_ovflow1,
@@ -7456,6 +7482,101 @@ sysctl_wcwr_stats(SYSCTL_HANDLER_ARGS)
 
 	return (rc);
 }
+
+static int
+sysctl_tc_params(SYSCTL_HANDLER_ARGS)
+{
+	struct adapter *sc = arg1;
+	struct tx_sched_class *tc;
+	struct t4_sched_class_params p;
+	struct sbuf *sb;
+	int i, rc, port_id, flags, mbps, gbps;
+
+	rc = sysctl_wire_old_buffer(req, 0);
+	if (rc != 0)
+		return (rc);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	port_id = arg2 >> 16;
+	MPASS(port_id < sc->params.nports);
+	MPASS(sc->port[port_id] != NULL);
+	i = arg2 & 0xffff;
+	MPASS(i < sc->chip_params->nsched_cls);
+	tc = &sc->port[port_id]->tc[i];
+
+	rc = begin_synchronized_op(sc, NULL, HOLD_LOCK | SLEEP_OK | INTR_OK,
+	    "t4tc_p");
+	if (rc)
+		goto done;
+	flags = tc->flags;
+	p = tc->params;
+	end_synchronized_op(sc, LOCK_HELD);
+
+	if ((flags & TX_SC_OK) == 0) {
+		sbuf_printf(sb, "none");
+		goto done;
+	}
+
+	if (p.level == SCHED_CLASS_LEVEL_CL_WRR) {
+		sbuf_printf(sb, "cl-wrr weight %u", p.weight);
+		goto done;
+	} else if (p.level == SCHED_CLASS_LEVEL_CL_RL)
+		sbuf_printf(sb, "cl-rl");
+	else if (p.level == SCHED_CLASS_LEVEL_CH_RL)
+		sbuf_printf(sb, "ch-rl");
+	else {
+		rc = ENXIO;
+		goto done;
+	}
+
+	if (p.ratemode == SCHED_CLASS_RATEMODE_REL) {
+		/* XXX: top speed or actual link speed? */
+		gbps = port_top_speed(sc->port[port_id]);
+		sbuf_printf(sb, " %u%% of %uGbps", p.maxrate, gbps);
+	}
+	else if (p.ratemode == SCHED_CLASS_RATEMODE_ABS) {
+		switch (p.rateunit) {
+		case SCHED_CLASS_RATEUNIT_BITS:
+			mbps = p.maxrate / 1000;
+			gbps = p.maxrate / 1000000;
+			if (p.maxrate == gbps * 1000000)
+				sbuf_printf(sb, " %uGbps", gbps);
+			else if (p.maxrate == mbps * 1000)
+				sbuf_printf(sb, " %uMbps", mbps);
+			else
+				sbuf_printf(sb, " %uKbps", p.maxrate);
+			break;
+		case SCHED_CLASS_RATEUNIT_PKTS:
+			sbuf_printf(sb, " %upps", p.maxrate);
+			break;
+		default:
+			rc = ENXIO;
+			goto done;
+		}
+	}
+
+	switch (p.mode) {
+	case SCHED_CLASS_MODE_CLASS:
+		sbuf_printf(sb, " aggregate");
+		break;
+	case SCHED_CLASS_MODE_FLOW:
+		sbuf_printf(sb, " per-flow");
+		break;
+	default:
+		rc = ENXIO;
+		goto done;
+	}
+
+done:
+	if (rc == 0)
+		rc = sbuf_finish(sb);
+	sbuf_delete(sb);
+
+	return (rc);
+}
 #endif
 
 #ifdef TCP_OFFLOAD
@@ -8301,152 +8422,144 @@ in_range(int val, int lo, int hi)
 }
 
 static int
-set_sched_class(struct adapter *sc, struct t4_sched_params *p)
+set_sched_class_config(struct adapter *sc, int minmax)
 {
-	int fw_subcmd, fw_type, rc;
+	int rc;
 
-	rc = begin_synchronized_op(sc, NULL, SLEEP_OK | INTR_OK, "t4setsc");
+	if (minmax < 0)
+		return (EINVAL);
+
+	rc = begin_synchronized_op(sc, NULL, SLEEP_OK | INTR_OK, "t4sscc");
 	if (rc)
 		return (rc);
+	rc = -t4_sched_config(sc, FW_SCHED_TYPE_PKTSCHED, minmax, 1);
+	end_synchronized_op(sc, 0);
 
-	if (!(sc->flags & FULL_INIT_DONE)) {
-		rc = EAGAIN;
-		goto done;
-	}
+	return (rc);
+}
+
+static int
+set_sched_class_params(struct adapter *sc, struct t4_sched_class_params *p,
+    int sleep_ok)
+{
+	int rc, top_speed, fw_level, fw_mode, fw_rateunit, fw_ratemode;
+	struct port_info *pi;
+	struct tx_sched_class *tc;
+
+	if (p->level == SCHED_CLASS_LEVEL_CL_RL)
+		fw_level = FW_SCHED_PARAMS_LEVEL_CL_RL;
+	else if (p->level == SCHED_CLASS_LEVEL_CL_WRR)
+		fw_level = FW_SCHED_PARAMS_LEVEL_CL_WRR;
+	else if (p->level == SCHED_CLASS_LEVEL_CH_RL)
+		fw_level = FW_SCHED_PARAMS_LEVEL_CH_RL;
+	else
+		return (EINVAL);
+
+	if (p->mode == SCHED_CLASS_MODE_CLASS)
+		fw_mode = FW_SCHED_PARAMS_MODE_CLASS;
+	else if (p->mode == SCHED_CLASS_MODE_FLOW)
+		fw_mode = FW_SCHED_PARAMS_MODE_FLOW;
+	else
+		return (EINVAL);
+
+	if (p->rateunit == SCHED_CLASS_RATEUNIT_BITS)
+		fw_rateunit = FW_SCHED_PARAMS_UNIT_BITRATE;
+	else if (p->rateunit == SCHED_CLASS_RATEUNIT_PKTS)
+		fw_rateunit = FW_SCHED_PARAMS_UNIT_PKTRATE;
+	else
+		return (EINVAL);
+
+	if (p->ratemode == SCHED_CLASS_RATEMODE_REL)
+		fw_ratemode = FW_SCHED_PARAMS_RATE_REL;
+	else if (p->ratemode == SCHED_CLASS_RATEMODE_ABS)
+		fw_ratemode = FW_SCHED_PARAMS_RATE_ABS;
+	else
+		return (EINVAL);
+
+	/* Vet our parameters ... */
+	if (!in_range(p->channel, 0, sc->chip_params->nchan - 1))
+		return (ERANGE);
+
+	pi = sc->port[sc->chan_map[p->channel]];
+	if (pi == NULL)
+		return (ENXIO);
+	MPASS(pi->tx_chan == p->channel);
+	top_speed = port_top_speed(pi) * 1000000; /* Gbps -> Kbps */
+
+	if (!in_range(p->cl, 0, sc->chip_params->nsched_cls) ||
+	    !in_range(p->minrate, 0, top_speed) ||
+	    !in_range(p->maxrate, 0, top_speed) ||
+	    !in_range(p->weight, 0, 100))
+		return (ERANGE);
 
 	/*
-	 * Translate the cxgbetool parameters into T4 firmware parameters.  (The
-	 * sub-command and type are in common locations.)
+	 * Translate any unset parameters into the firmware's
+	 * nomenclature and/or fail the call if the parameters
+	 * are required ...
 	 */
-	if (p->subcmd == SCHED_CLASS_SUBCMD_CONFIG)
-		fw_subcmd = FW_SCHED_SC_CONFIG;
-	else if (p->subcmd == SCHED_CLASS_SUBCMD_PARAMS)
-		fw_subcmd = FW_SCHED_SC_PARAMS;
+	if (p->rateunit < 0 || p->ratemode < 0 || p->channel < 0 || p->cl < 0)
+		return (EINVAL);
+
+	if (p->minrate < 0)
+		p->minrate = 0;
+	if (p->maxrate < 0) {
+		if (p->level == SCHED_CLASS_LEVEL_CL_RL ||
+		    p->level == SCHED_CLASS_LEVEL_CH_RL)
+			return (EINVAL);
+		else
+			p->maxrate = 0;
+	}
+	if (p->weight < 0) {
+		if (p->level == SCHED_CLASS_LEVEL_CL_WRR)
+			return (EINVAL);
+		else
+			p->weight = 0;
+	}
+	if (p->pktsize < 0) {
+		if (p->level == SCHED_CLASS_LEVEL_CL_RL ||
+		    p->level == SCHED_CLASS_LEVEL_CH_RL)
+			return (EINVAL);
+		else
+			p->pktsize = 0;
+	}
+
+	rc = begin_synchronized_op(sc, NULL,
+	    sleep_ok ? (SLEEP_OK | INTR_OK) : HOLD_LOCK, "t4sscp");
+	if (rc)
+		return (rc);
+	tc = &pi->tc[p->cl];
+	tc->params = *p;
+	rc = -t4_sched_params(sc, FW_SCHED_TYPE_PKTSCHED, fw_level, fw_mode,
+	    fw_rateunit, fw_ratemode, p->channel, p->cl, p->minrate, p->maxrate,
+	    p->weight, p->pktsize, sleep_ok);
+	if (rc == 0)
+		tc->flags |= TX_SC_OK;
 	else {
-		rc = EINVAL;
-		goto done;
-	}
-	if (p->type == SCHED_CLASS_TYPE_PACKET)
-		fw_type = FW_SCHED_TYPE_PKTSCHED;
-	else {
-		rc = EINVAL;
-		goto done;
-	}
-
-	if (fw_subcmd == FW_SCHED_SC_CONFIG) {
-		/* Vet our parameters ..*/
-		if (p->u.config.minmax < 0) {
-			rc = EINVAL;
-			goto done;
-		}
-
-		/* And pass the request to the firmware ...*/
-		rc = -t4_sched_config(sc, fw_type, p->u.config.minmax, 1);
-		goto done;
-	}
-
-	if (fw_subcmd == FW_SCHED_SC_PARAMS) {
-		int fw_level;
-		int fw_mode;
-		int fw_rateunit;
-		int fw_ratemode;
-
-		if (p->u.params.level == SCHED_CLASS_LEVEL_CL_RL)
-			fw_level = FW_SCHED_PARAMS_LEVEL_CL_RL;
-		else if (p->u.params.level == SCHED_CLASS_LEVEL_CL_WRR)
-			fw_level = FW_SCHED_PARAMS_LEVEL_CL_WRR;
-		else if (p->u.params.level == SCHED_CLASS_LEVEL_CH_RL)
-			fw_level = FW_SCHED_PARAMS_LEVEL_CH_RL;
-		else {
-			rc = EINVAL;
-			goto done;
-		}
-
-		if (p->u.params.mode == SCHED_CLASS_MODE_CLASS)
-			fw_mode = FW_SCHED_PARAMS_MODE_CLASS;
-		else if (p->u.params.mode == SCHED_CLASS_MODE_FLOW)
-			fw_mode = FW_SCHED_PARAMS_MODE_FLOW;
-		else {
-			rc = EINVAL;
-			goto done;
-		}
-
-		if (p->u.params.rateunit == SCHED_CLASS_RATEUNIT_BITS)
-			fw_rateunit = FW_SCHED_PARAMS_UNIT_BITRATE;
-		else if (p->u.params.rateunit == SCHED_CLASS_RATEUNIT_PKTS)
-			fw_rateunit = FW_SCHED_PARAMS_UNIT_PKTRATE;
-		else {
-			rc = EINVAL;
-			goto done;
-		}
-
-		if (p->u.params.ratemode == SCHED_CLASS_RATEMODE_REL)
-			fw_ratemode = FW_SCHED_PARAMS_RATE_REL;
-		else if (p->u.params.ratemode == SCHED_CLASS_RATEMODE_ABS)
-			fw_ratemode = FW_SCHED_PARAMS_RATE_ABS;
-		else {
-			rc = EINVAL;
-			goto done;
-		}
-
-		/* Vet our parameters ... */
-		if (!in_range(p->u.params.channel, 0, 3) ||
-		    !in_range(p->u.params.cl, 0, sc->chip_params->nsched_cls) ||
-		    !in_range(p->u.params.minrate, 0, 10000000) ||
-		    !in_range(p->u.params.maxrate, 0, 10000000) ||
-		    !in_range(p->u.params.weight, 0, 100)) {
-			rc = ERANGE;
-			goto done;
-		}
-
 		/*
-		 * Translate any unset parameters into the firmware's
-		 * nomenclature and/or fail the call if the parameters
-		 * are required ...
+		 * Unknown state at this point, see tc->params for what was
+		 * attempted.
 		 */
-		if (p->u.params.rateunit < 0 || p->u.params.ratemode < 0 ||
-		    p->u.params.channel < 0 || p->u.params.cl < 0) {
-			rc = EINVAL;
-			goto done;
-		}
-		if (p->u.params.minrate < 0)
-			p->u.params.minrate = 0;
-		if (p->u.params.maxrate < 0) {
-			if (p->u.params.level == SCHED_CLASS_LEVEL_CL_RL ||
-			    p->u.params.level == SCHED_CLASS_LEVEL_CH_RL) {
-				rc = EINVAL;
-				goto done;
-			} else
-				p->u.params.maxrate = 0;
-		}
-		if (p->u.params.weight < 0) {
-			if (p->u.params.level == SCHED_CLASS_LEVEL_CL_WRR) {
-				rc = EINVAL;
-				goto done;
-			} else
-				p->u.params.weight = 0;
-		}
-		if (p->u.params.pktsize < 0) {
-			if (p->u.params.level == SCHED_CLASS_LEVEL_CL_RL ||
-			    p->u.params.level == SCHED_CLASS_LEVEL_CH_RL) {
-				rc = EINVAL;
-				goto done;
-			} else
-				p->u.params.pktsize = 0;
-		}
-
-		/* See what the firmware thinks of the request ... */
-		rc = -t4_sched_params(sc, fw_type, fw_level, fw_mode,
-		    fw_rateunit, fw_ratemode, p->u.params.channel,
-		    p->u.params.cl, p->u.params.minrate, p->u.params.maxrate,
-		    p->u.params.weight, p->u.params.pktsize, 1);
-		goto done;
+		tc->flags &= ~TX_SC_OK;
 	}
+	end_synchronized_op(sc, sleep_ok ? 0 : LOCK_HELD);
 
-	rc = EINVAL;
-done:
-	end_synchronized_op(sc, 0);
 	return (rc);
+}
+
+static int
+set_sched_class(struct adapter *sc, struct t4_sched_params *p)
+{
+
+	if (p->type != SCHED_CLASS_TYPE_PACKET)
+		return (EINVAL);
+
+	if (p->subcmd == SCHED_CLASS_SUBCMD_CONFIG)
+		return (set_sched_class_config(sc, p->u.config.minmax));
+
+	if (p->subcmd == SCHED_CLASS_SUBCMD_PARAMS)
+		return (set_sched_class_params(sc, &p->u.params, 1));
+
+	return (EINVAL);
 }
 
 static int
@@ -8462,11 +8575,6 @@ set_sched_queue(struct adapter *sc, struct t4_sched_queue *p)
 	if (rc)
 		return (rc);
 
-	if (!(sc->flags & FULL_INIT_DONE)) {
-		rc = EAGAIN;
-		goto done;
-	}
-
 	if (p->port >= sc->params.nports) {
 		rc = EINVAL;
 		goto done;
@@ -8475,7 +8583,14 @@ set_sched_queue(struct adapter *sc, struct t4_sched_queue *p)
 	/* XXX: Only supported for the main VI. */
 	pi = sc->port[p->port];
 	vi = &pi->vi[0];
-	if (!in_range(p->queue, 0, vi->ntxq - 1) || !in_range(p->cl, 0, 7)) {
+	if (!(vi->flags & VI_INIT_DONE)) {
+		/* tx queues not set up yet */
+		rc = EAGAIN;
+		goto done;
+	}
+
+	if (!in_range(p->queue, 0, vi->ntxq - 1) ||
+	    !in_range(p->cl, 0, sc->chip_params->nsched_cls - 1)) {
 		rc = EINVAL;
 		goto done;
 	}
@@ -9162,6 +9277,179 @@ tweak_tunables(void)
 
 	t4_intr_types &= INTR_MSIX | INTR_MSI | INTR_INTX;
 }
+
+#ifdef DDB
+static void
+t4_dump_tcb(struct adapter *sc, int tid)
+{
+	uint32_t base, i, j, off, pf, reg, save, tcb_addr, win_pos;
+
+	reg = PCIE_MEM_ACCESS_REG(A_PCIE_MEM_ACCESS_OFFSET, 2);
+	save = t4_read_reg(sc, reg);
+	base = sc->memwin[2].mw_base;
+
+	/* Dump TCB for the tid */
+	tcb_addr = t4_read_reg(sc, A_TP_CMM_TCB_BASE);
+	tcb_addr += tid * TCB_SIZE;
+
+	if (is_t4(sc)) {
+		pf = 0;
+		win_pos = tcb_addr & ~0xf;	/* start must be 16B aligned */
+	} else {
+		pf = V_PFNUM(sc->pf);
+		win_pos = tcb_addr & ~0x7f;	/* start must be 128B aligned */
+	}
+	t4_write_reg(sc, reg, win_pos | pf);
+	t4_read_reg(sc, reg);
+
+	off = tcb_addr - win_pos;
+	for (i = 0; i < 4; i++) {
+		uint32_t buf[8];
+		for (j = 0; j < 8; j++, off += 4)
+			buf[j] = htonl(t4_read_reg(sc, base + off));
+
+		db_printf("%08x %08x %08x %08x %08x %08x %08x %08x\n",
+		    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6],
+		    buf[7]);
+	}
+
+	t4_write_reg(sc, reg, save);
+	t4_read_reg(sc, reg);
+}
+
+static void
+t4_dump_devlog(struct adapter *sc)
+{
+	struct devlog_params *dparams = &sc->params.devlog;
+	struct fw_devlog_e e;
+	int i, first, j, m, nentries, rc;
+	uint64_t ftstamp = UINT64_MAX;
+
+	if (dparams->start == 0) {
+		db_printf("devlog params not valid\n");
+		return;
+	}
+
+	nentries = dparams->size / sizeof(struct fw_devlog_e);
+	m = fwmtype_to_hwmtype(dparams->memtype);
+
+	/* Find the first entry. */
+	first = -1;
+	for (i = 0; i < nentries && !db_pager_quit; i++) {
+		rc = -t4_mem_read(sc, m, dparams->start + i * sizeof(e),
+		    sizeof(e), (void *)&e);
+		if (rc != 0)
+			break;
+
+		if (e.timestamp == 0)
+			break;
+
+		e.timestamp = be64toh(e.timestamp);
+		if (e.timestamp < ftstamp) {
+			ftstamp = e.timestamp;
+			first = i;
+		}
+	}
+
+	if (first == -1)
+		return;
+
+	i = first;
+	do {
+		rc = -t4_mem_read(sc, m, dparams->start + i * sizeof(e),
+		    sizeof(e), (void *)&e);
+		if (rc != 0)
+			return;
+
+		if (e.timestamp == 0)
+			return;
+
+		e.timestamp = be64toh(e.timestamp);
+		e.seqno = be32toh(e.seqno);
+		for (j = 0; j < 8; j++)
+			e.params[j] = be32toh(e.params[j]);
+
+		db_printf("%10d  %15ju  %8s  %8s  ",
+		    e.seqno, e.timestamp,
+		    (e.level < nitems(devlog_level_strings) ?
+			devlog_level_strings[e.level] : "UNKNOWN"),
+		    (e.facility < nitems(devlog_facility_strings) ?
+			devlog_facility_strings[e.facility] : "UNKNOWN"));
+		db_printf(e.fmt, e.params[0], e.params[1], e.params[2],
+		    e.params[3], e.params[4], e.params[5], e.params[6],
+		    e.params[7]);
+
+		if (++i == nentries)
+			i = 0;
+	} while (i != first && !db_pager_quit);
+}
+
+static struct command_table db_t4_table = LIST_HEAD_INITIALIZER(db_t4_table);
+_DB_SET(_show, t4, NULL, db_show_table, 0, &db_t4_table);
+
+DB_FUNC(devlog, db_show_devlog, db_t4_table, CS_OWN, NULL)
+{
+	device_t dev;
+	int t;
+	bool valid;
+
+	valid = false;
+	t = db_read_token();
+	if (t == tIDENT) {
+		dev = device_lookup_by_name(db_tok_string);
+		valid = true;
+	}
+	db_skip_to_eol();
+	if (!valid) {
+		db_printf("usage: show t4 devlog <nexus>\n");
+		return;
+	}
+
+	if (dev == NULL) {
+		db_printf("device not found\n");
+		return;
+	}
+
+	t4_dump_devlog(device_get_softc(dev));
+}
+
+DB_FUNC(tcb, db_show_t4tcb, db_t4_table, CS_OWN, NULL)
+{
+	device_t dev;
+	int radix, tid, t;
+	bool valid;
+
+	valid = false;
+	radix = db_radix;
+	db_radix = 10;
+	t = db_read_token();
+	if (t == tIDENT) {
+		dev = device_lookup_by_name(db_tok_string);
+		t = db_read_token();
+		if (t == tNUMBER) {
+			tid = db_tok_number;
+			valid = true;
+		}
+	}	
+	db_radix = radix;
+	db_skip_to_eol();
+	if (!valid) {
+		db_printf("usage: show t4 tcb <nexus> <tid>\n");
+		return;
+	}
+
+	if (dev == NULL) {
+		db_printf("device not found\n");
+		return;
+	}
+	if (tid < 0) {
+		db_printf("invalid tid\n");
+		return;
+	}
+
+	t4_dump_tcb(device_get_softc(dev), tid);
+}
+#endif
 
 static struct sx mlu;	/* mod load unload */
 SX_SYSINIT(cxgbe_mlu, &mlu, "cxgbe mod load/unload");

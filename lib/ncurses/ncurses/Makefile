@@ -1,5 +1,6 @@
 # $FreeBSD$
 
+PACKAGE=	clibs
 SHLIBDIR?=	/lib
 
 .if !defined(ENABLE_WIDEC)
@@ -341,7 +342,7 @@ unctrl.c: MKunctrl.awk
 	echo | ${AWK} -f ${NCURSES_DIR}/ncurses/base/MKunctrl.awk bigstrings=${USE_BIG_STRINGS} > unctrl.c
 
 comp_captab.c: MKcaptab.sh MKcaptab.awk Caps make_hash
-	sh ${NCURSES_DIR}/ncurses/tinfo/MKcaptab.sh "${AWK}" \
+	env PATH=${BTOOLSPATH:U.}:${PATH} sh ${NCURSES_DIR}/ncurses/tinfo/MKcaptab.sh "${AWK}" \
 	    ${USE_BIG_STRINGS} ${NCURSES_DIR}/ncurses/tinfo/MKcaptab.awk \
 	    ${NCURSES_DIR}/include/Caps > comp_captab.c
 
@@ -357,7 +358,7 @@ nomacros.h: MKlib_gen.sh curses.h
 	    "${AWK}" generated < curses.h | fgrep undef > $@
 
 init_keytry.h: keys.list make_keys
-	./make_keys keys.list > init_keytry.h
+	${BTOOLSPATH:U.}/make_keys keys.list > init_keytry.h
 
 hashsize.h: MKhashsize.sh Caps
 	sh ${NCURSES_DIR}/include/MKhashsize.sh ${NCURSES_DIR}/include/Caps > $@
@@ -389,10 +390,10 @@ keys.list: MKkeys_list.sh Caps
 # Build tools
 build-tools: make_hash make_keys
 
-make_keys: make_keys.c names.c ncurses_def.h ${HEADERS}
+make_keys: make_keys.c names.c ncurses_def.h ${HEADERS} ${BUILD_TOOLS_META}
 	${CC} -o $@ ${CFLAGS} ${NCURSES_DIR}/ncurses/tinfo/make_keys.c
 
-make_hash: make_hash.c hashsize.h ncurses_def.h ${HEADERS}
+make_hash: make_hash.c hashsize.h ncurses_def.h ${HEADERS} ${BUILD_TOOLS_META}
 	${CC} -o $@ ${CFLAGS} -DMAIN_PROGRAM \
 		${NCURSES_DIR}/ncurses/tinfo/make_hash.c
 

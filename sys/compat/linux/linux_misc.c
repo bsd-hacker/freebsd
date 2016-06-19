@@ -149,6 +149,7 @@ linux_sysinfo(struct thread *td, struct linux_sysinfo_args *args)
 	int i, j;
 	struct timespec ts;
 
+	bzero(&sysinfo, sizeof(sysinfo));
 	getnanouptime(&ts);
 	if (ts.tv_nsec != 0)
 		ts.tv_sec++;
@@ -199,7 +200,7 @@ linux_alarm(struct thread *td, struct linux_alarm_args *args)
 #endif
 	secs = args->secs;
 	/*
-	 * Linux alarm() is always successfull. Limit secs to INT32_MAX / 2
+	 * Linux alarm() is always successful. Limit secs to INT32_MAX / 2
 	 * to match kern_setitimer()'s limit to avoid error from it.
 	 *
 	 * XXX. Linux limit secs to INT_MAX on 32 and does not limit on 64-bit
@@ -895,13 +896,14 @@ linux_utimensat(struct thread *td, struct linux_utimensat_args *args)
 			break;
 		}
 		timesp = times;
-	}
 
-	if (times[0].tv_nsec == UTIME_OMIT && times[1].tv_nsec == UTIME_OMIT)
 		/* This breaks POSIX, but is what the Linux kernel does
 		 * _on purpose_ (documented in the man page for utimensat(2)),
 		 * so we must follow that behaviour. */
-		return (0);
+		if (times[0].tv_nsec == UTIME_OMIT &&
+		    times[1].tv_nsec == UTIME_OMIT)
+			return (0);
+	}
 
 	if (args->pathname != NULL)
 		LCONVPATHEXIST_AT(td, args->pathname, &path, dfd);

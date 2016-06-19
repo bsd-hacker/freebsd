@@ -1242,6 +1242,10 @@ pfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags, struct thread *td
 			error = ENOMEM;
 		if (pf_anchor_setup(rule, ruleset, pr->anchor_call))
 			error = EINVAL;
+		if (rule->scrub_flags & PFSTATE_SETPRIO &&
+		    (rule->set_prio[0] > PF_PRIO_MAX ||
+		    rule->set_prio[1] > PF_PRIO_MAX))
+			error = EINVAL;
 		TAILQ_FOREACH(pa, &V_pf_pabuf, entries)
 			if (pa->addr.type == PF_ADDR_TABLE) {
 				pa->addr.p.tbl = pfr_attach_table(ruleset,
@@ -3539,7 +3543,7 @@ shutdown_pf(void)
 		pf_clear_srcnodes(NULL);
 
 		/* status does not use malloced mem so no need to cleanup */
-		/* fingerprints and interfaces have thier own cleanup code */
+		/* fingerprints and interfaces have their own cleanup code */
 	} while(0);
 
 	return (error);

@@ -304,7 +304,7 @@ SYSCTL_INT(_hw_igb, OID_AUTO, buf_ring_size, CTLFLAG_RDTUN,
 
 /*
 ** Header split causes the packet header to
-** be dma'd to a seperate mbuf from the payload.
+** be dma'd to a separate mbuf from the payload.
 ** this can have memory alignment benefits. But
 ** another plus is that small packets often fit
 ** into the header and thus use no cluster. Its
@@ -659,7 +659,8 @@ igb_attach(device_t dev)
 	return (0);
 
 err_late:
-	igb_detach(dev);
+	if (igb_detach(dev) == 0) /* igb_detach() already did the cleanup */
+		return(error);
 	igb_free_transmit_structures(adapter);
 	igb_free_receive_structures(adapter);
 	igb_release_hw_control(adapter);
@@ -1887,7 +1888,7 @@ retry:
 	}
 
 	/* Make certain there are enough descriptors */
-	if (nsegs > txr->tx_avail - 2) {
+	if (txr->tx_avail < (nsegs + 2)) {
 		txr->no_desc_avail++;
 		bus_dmamap_unload(txr->txtag, map);
 		return (ENOBUFS);
@@ -4482,7 +4483,7 @@ skip_head:
 	** Now set up the LRO interface, we
 	** also only do head split when LRO
 	** is enabled, since so often they
-	** are undesireable in similar setups.
+	** are undesirable in similar setups.
 	*/
 	if (ifp->if_capenable & IFCAP_LRO) {
 		error = tcp_lro_init(lro);
@@ -4974,7 +4975,6 @@ igb_rxeof(struct igb_queue *que, int count, int *done)
 	struct rx_ring		*rxr = que->rxr;
 	struct ifnet		*ifp = adapter->ifp;
 	struct lro_ctrl		*lro = &rxr->lro;
-	struct lro_entry	*queued;
 	int			i, processed = 0, rxdone = 0;
 	u32			ptype, staterr = 0;
 	union e1000_adv_rx_desc	*cur;
@@ -5154,7 +5154,7 @@ igb_rxeof(struct igb_queue *que, int count, int *done)
 					default:
 						/* XXX fallthrough */
 						M_HASHTYPE_SET(rxr->fmp,
-						    M_HASHTYPE_OPAQUE);
+						    M_HASHTYPE_OPAQUE_HASH);
 				}
 			} else {
 #ifndef IGB_LEGACY_TX
@@ -5202,10 +5202,7 @@ next_desc:
 	/*
 	 * Flush any outstanding LRO work
 	 */
-	while ((queued = SLIST_FIRST(&lro->lro_active)) != NULL) {
-		SLIST_REMOVE_HEAD(&lro->lro_active, next);
-		tcp_lro_flush(lro, queued);
-	}
+	tcp_lro_flush_all(lro);
 
 	if (done != NULL)
 		*done += rxdone;

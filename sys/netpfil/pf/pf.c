@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_types.h>
+#include <net/if_vlan_var.h>
 #include <net/route.h>
 #include <net/radix_mpath.h>
 #include <net/vnet.h>
@@ -2445,6 +2446,45 @@ pf_send_tcp(struct mbuf *replyto, const struct pf_rule *r, sa_family_t af,
 	pf_send(pfse);
 }
 
+static int
+pf_ieee8021q_setpcp(struct mbuf *m, u_int8_t prio)
+{
+	struct m_tag *mtag;
+
+	KASSERT(prio <= PF_PRIO_MAX,
+	    ("%s with invalid pcp", __func__));
+
+	mtag = m_tag_locate(m, MTAG_8021Q, MTAG_8021Q_PCP_OUT, NULL);
+	if (mtag == NULL) {
+		mtag = m_tag_alloc(MTAG_8021Q, MTAG_8021Q_PCP_OUT,
+		    sizeof(uint8_t), M_NOWAIT);
+		if (mtag == NULL)
+			return (ENOMEM);
+		m_tag_prepend(m, mtag);
+	}
+
+	*(uint8_t *)(mtag + 1) = prio;
+	return (0);
+}
+
+static int
+pf_match_ieee8021q_pcp(u_int8_t prio, struct mbuf *m)
+{
+	struct m_tag *mtag;
+	u_int8_t mpcp;
+
+	mtag = m_tag_locate(m, MTAG_8021Q, MTAG_8021Q_PCP_IN, NULL);
+	if (mtag == NULL)
+		return (0);
+
+	if (prio == PF_PRIO_ZERO)
+		prio = 0;
+
+	mpcp = *(uint8_t *)(mtag + 1);
+
+	return (mpcp == prio);
+}
+
 static void
 pf_send_icmp(struct mbuf *m, u_int8_t type, u_int8_t code, sa_family_t af,
     struct pf_rule *r)
@@ -3317,6 +3357,9 @@ pf_test_rule(struct pf_rule **rm, struct pf_state **sm, int direction,
 		    !pf_match_gid(r->gid.op, r->gid.gid[0], r->gid.gid[1],
 		    pd->lookup.gid))
 			r = TAILQ_NEXT(r, entries);
+		else if (r->prio &&
+		    !pf_match_ieee8021q_pcp(r->prio, m))
+			r = TAILQ_NEXT(r, entries);
 		else if (r->prob &&
 		    r->prob <= arc4random())
 			r = TAILQ_NEXT(r, entries);
@@ -3779,6 +3822,9 @@ pf_test_fragment(struct pf_rule **rm, int direction, struct pfi_kif *kif,
 		    pd->proto == IPPROTO_ICMPV6) &&
 		    (r->type || r->code))
 			r = TAILQ_NEXT(r, entries);
+		else if (r->prio &&
+		    !pf_match_ieee8021q_pcp(r->prio, m))
+			r = TAILQ_NEXT(r, entries);
 		else if (r->prob && r->prob <=
 		    (arc4random() % (UINT_MAX - 1) + 1))
 			r = TAILQ_NEXT(r, entries);
@@ -3957,7 +4003,7 @@ pf_tcp_track_full(struct pf_state_peer *src, struct pf_state_peer *dst,
 	 * (Selective ACK). We could optionally validate the SACK values
 	 * against the current ACK window, either forwards or backwards, but
 	 * I'm not confident that SACK has been implemented properly
-	 * everywhere. It wouldn't surprise me if several stacks accidently
+	 * everywhere. It wouldn't surprise me if several stacks accidentally
 	 * SACK too far backwards of previously ACKed data. There really aren't
 	 * any security implications of bad SACKing unless the target stack
 	 * doesn't validate the option length correctly. Someone trying to
@@ -4784,8 +4830,7 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 				    &nk->addr[pd2.didx], pd2.af) ||
 				    nk->port[pd2.didx] != th.th_dport)
 					pf_change_icmp(pd2.dst, &th.th_dport,
-					    NULL, /* XXX Inbound NAT? */
-					    &nk->addr[pd2.didx],
+					    saddr, &nk->addr[pd2.didx],
 					    nk->port[pd2.didx], NULL,
 					    pd2.ip_sum, icmpsum,
 					    pd->ip_sum, 0, pd2.af);
@@ -4857,8 +4902,7 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 				    &nk->addr[pd2.didx], pd2.af) ||
 				    nk->port[pd2.didx] != uh.uh_dport)
 					pf_change_icmp(pd2.dst, &uh.uh_dport,
-					    NULL, /* XXX Inbound NAT? */
-					    &nk->addr[pd2.didx],
+					    saddr, &nk->addr[pd2.didx],
 					    nk->port[pd2.didx], &uh.uh_sum,
 					    pd2.ip_sum, icmpsum,
 					    pd->ip_sum, 1, pd2.af);
@@ -4925,8 +4969,7 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 				    &nk->addr[pd2.didx], pd2.af) ||
 				    nk->port[pd2.didx] != iih.icmp_id)
 					pf_change_icmp(pd2.dst, &iih.icmp_id,
-					    NULL, /* XXX Inbound NAT? */
-					    &nk->addr[pd2.didx],
+					    saddr, &nk->addr[pd2.didx],
 					    nk->port[pd2.didx], NULL,
 					    pd2.ip_sum, icmpsum,
 					    pd->ip_sum, 0, AF_INET);
@@ -4978,8 +5021,7 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 				    &nk->addr[pd2.didx], pd2.af) ||
 				    nk->port[pd2.didx] != iih.icmp6_id)
 					pf_change_icmp(pd2.dst, &iih.icmp6_id,
-					    NULL, /* XXX Inbound NAT? */
-					    &nk->addr[pd2.didx],
+					    saddr, &nk->addr[pd2.didx],
 					    nk->port[pd2.didx], NULL,
 					    pd2.ip_sum, icmpsum,
 					    pd->ip_sum, 0, AF_INET6);
@@ -5018,8 +5060,7 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 				if (PF_ANEQ(pd2.dst,
 				    &nk->addr[pd2.didx], pd2.af))
-					pf_change_icmp(pd2.src, NULL,
-					    NULL, /* XXX Inbound NAT? */
+					pf_change_icmp(pd2.dst, NULL, saddr,
 					    &nk->addr[pd2.didx], 0, NULL,
 					    pd2.ip_sum, icmpsum,
 					    pd->ip_sum, 0, pd2.af);
@@ -6008,6 +6049,18 @@ done:
 	if (r->rtableid >= 0)
 		M_SETFIB(m, r->rtableid);
 
+	if (r->scrub_flags & PFSTATE_SETPRIO) {
+		if (pd.tos & IPTOS_LOWDELAY)
+			pqid = 1;
+		if (pf_ieee8021q_setpcp(m, r->set_prio[pqid])) {
+			action = PF_DROP;
+			REASON_SET(&reason, PFRES_MEMORY);
+			log = 1;
+			DPFPRINTF(PF_DEBUG_MISC,
+			    ("pf: failed to allocate 802.1q mtag\n"));
+		}
+	}
+
 #ifdef ALTQ
 	if (action == PF_PASS && r->qid) {
 		if (pd.pf_mtag == NULL &&
@@ -6181,7 +6234,7 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0, struct inpcb *inp)
 	struct pf_state		*s = NULL;
 	struct pf_ruleset	*ruleset = NULL;
 	struct pf_pdesc		 pd;
-	int			 off, terminal = 0, dirndx, rh_cnt = 0;
+	int			 off, terminal = 0, dirndx, rh_cnt = 0, pqid = 0;
 	int			 fwdir = dir;
 
 	M_ASSERTPKTHDR(m);
@@ -6453,6 +6506,18 @@ done:
 	}
 	if (r->rtableid >= 0)
 		M_SETFIB(m, r->rtableid);
+
+	if (r->scrub_flags & PFSTATE_SETPRIO) {
+		if (pd.tos & IPTOS_LOWDELAY)
+			pqid = 1;
+		if (pf_ieee8021q_setpcp(m, r->set_prio[pqid])) {
+			action = PF_DROP;
+			REASON_SET(&reason, PFRES_MEMORY);
+			log = 1;
+			DPFPRINTF(PF_DEBUG_MISC,
+			    ("pf: failed to allocate 802.1q mtag\n"));
+		}
+	}
 
 #ifdef ALTQ
 	if (action == PF_PASS && r->qid) {

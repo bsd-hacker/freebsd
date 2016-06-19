@@ -54,6 +54,7 @@
 #include <netinet/tcp_lro.h>
 
 #include "offload.h"
+#include "t4_ioctl.h"
 #include "common/t4_msg.h"
 #include "firmware/t4fw_interface.h"
 
@@ -246,12 +247,10 @@ struct vi_info {
 	int rsrv_noflowq; /* Reserve queue 0 for non-flowid packets */
 	int nrxq;	/* # of rx queues */
 	int first_rxq;	/* index of first rx queue */
-#ifdef TCP_OFFLOAD
 	int nofldtxq;		/* # of offload tx queues */
 	int first_ofld_txq;	/* index of first offload tx queue */
 	int nofldrxq;		/* # of offload rx queues */
 	int first_ofld_rxq;	/* index of first offload rx queue */
-#endif
 	int tmr_idx;
 	int pktc_idx;
 	int qsize_rxq;
@@ -266,6 +265,17 @@ struct vi_info {
 	uint8_t hw_addr[ETHER_ADDR_LEN]; /* factory MAC address, won't change */
 };
 
+enum {
+	/* tx_sched_class flags */
+	TX_SC_OK	= (1 << 0),	/* Set up in hardware, active. */
+};
+
+struct tx_sched_class {
+	int refcount;
+	int flags;
+	struct t4_sched_class_params params;
+};
+
 struct port_info {
 	device_t dev;
 	struct adapter *adapter;
@@ -274,6 +284,8 @@ struct port_info {
 	int nvi;
 	int up_vis;
 	int uld_vis;
+
+	struct tx_sched_class *tc;	/* traffic classes for this channel */
 
 	struct mtx pi_lock;
 	char lockname[16];
@@ -311,9 +323,7 @@ struct cluster_layout {
 
 struct cluster_metadata {
 	u_int refcount;
-#ifdef INVARIANTS
 	struct fl_sdesc *sd;	/* For debug only.  Could easily be stale */
-#endif
 };
 
 struct fl_sdesc {
@@ -526,6 +536,7 @@ struct sge_txq {
 	struct tx_sdesc *sdesc;	/* KVA of software descriptor ring */
 	struct sglist *gl;
 	__be32 cpl_ctrl0;	/* for convenience */
+	int tc_idx;		/* traffic class */
 
 	struct task tx_reclaim_task;
 	/* stats for common events first */
@@ -571,7 +582,6 @@ iq_to_rxq(struct sge_iq *iq)
 }
 
 
-#ifdef TCP_OFFLOAD
 /* ofld_rxq: SGE ingress queue + SGE free list + miscellaneous items */
 struct sge_ofld_rxq {
 	struct sge_iq iq;	/* MUST be first */
@@ -584,7 +594,6 @@ iq_to_ofld_rxq(struct sge_iq *iq)
 
 	return (__containerof(iq, struct sge_ofld_rxq, iq));
 }
-#endif
 
 struct wrqe {
 	STAILQ_ENTRY(wrqe) link;
@@ -627,7 +636,7 @@ struct sge_wrq {
 
 	/*
 	 * Scratch space for work requests that wrap around after reaching the
-	 * status page, and some infomation about the last WR that used it.
+	 * status page, and some information about the last WR that used it.
 	 */
 	uint16_t ss_pidx;
 	uint16_t ss_len;
@@ -636,7 +645,6 @@ struct sge_wrq {
 } __aligned(CACHE_LINE_SIZE);
 
 
-#ifdef DEV_NETMAP
 struct sge_nm_rxq {
 	struct vi_info *vi;
 
@@ -691,19 +699,14 @@ struct sge_nm_txq {
 	bus_addr_t ba;
 	int iqidx;
 } __aligned(CACHE_LINE_SIZE);
-#endif
 
 struct sge {
 	int nrxq;	/* total # of Ethernet rx queues */
 	int ntxq;	/* total # of Ethernet tx tx queues */
-#ifdef TCP_OFFLOAD
 	int nofldrxq;	/* total # of TOE rx queues */
 	int nofldtxq;	/* total # of TOE tx queues */
-#endif
-#ifdef DEV_NETMAP
 	int nnmrxq;	/* total # of netmap rx queues */
 	int nnmtxq;	/* total # of netmap tx queues */
-#endif
 	int niq;	/* total # of ingress queues */
 	int neq;	/* total # of egress queues */
 
@@ -712,14 +715,10 @@ struct sge {
 	struct sge_wrq *ctrlq;	/* Control queues */
 	struct sge_txq *txq;	/* NIC tx queues */
 	struct sge_rxq *rxq;	/* NIC rx queues */
-#ifdef TCP_OFFLOAD
 	struct sge_wrq *ofld_txq;	/* TOE tx queues */
 	struct sge_ofld_rxq *ofld_rxq;	/* TOE rx queues */
-#endif
-#ifdef DEV_NETMAP
 	struct sge_nm_txq *nm_txq;	/* netmap tx queues */
 	struct sge_nm_rxq *nm_rxq;	/* netmap rx queues */
-#endif
 
 	uint16_t iq_start;
 	int eq_start;
@@ -778,20 +777,16 @@ struct adapter {
 	struct port_info *port[MAX_NPORTS];
 	uint8_t chan_map[MAX_NCHAN];
 
-#ifdef TCP_OFFLOAD
 	void *tom_softc;	/* (struct tom_data *) */
 	struct tom_tunables tt;
 	void *iwarp_softc;	/* (struct c4iw_dev *) */
 	void *iscsi_ulp_softc;	/* (struct cxgbei_data *) */
-#endif
 	struct l2t_data *l2t;	/* L2 table */
 	struct tid_info tids;
 
 	uint16_t doorbells;
-#ifdef TCP_OFFLOAD
 	int offload_map;	/* ports with IFCAP_TOE enabled */
 	int active_ulds;	/* ULDs activated on this adapter */
-#endif
 	int flags;
 	int debug_flags;
 
@@ -840,11 +835,9 @@ struct adapter {
 	fw_msg_handler_t fw_msg_handler[7];	/* NUM_FW6_TYPES */
 	cpl_handler_t cpl_handler[0xef];	/* NUM_CPL_CMDS */
 
-#ifdef INVARIANTS
 	const char *last_op;
 	const void *last_op_thr;
 	int last_op_flags;
-#endif
 
 	int sc_do_rxcopy;
 };

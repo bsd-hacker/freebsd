@@ -214,8 +214,8 @@ TUNABLE_INT("hw.tegra124.cpufreq.lowest_freq", &cpufreq_lowest_freq);
 
 #define	DIV_ROUND_CLOSEST(val, div)	(((val) + ((div) / 2)) / (div))
 
-#define	ROUND_UP(val, div)	((((val) + ((div) - 1)) / (div)) * (div))
-#define	ROUND_DOWN(val, div)	(((val) / (div)) * (div))
+#define	ROUND_UP(val, div)	roundup(val, div)
+#define	ROUND_DOWN(val, div)	rounddown(val, div)
 
 /*
  * Compute requesetd voltage for given frequency and SoC process variations,
@@ -335,9 +335,24 @@ set_cpu_freq(struct tegra124_cpufreq_softc *sc, uint64_t freq)
 		if (rv != 0)
 			return (rv);
 	}
-	rv = clk_set_freq(sc->clk_cpu_g, point->freq, CLK_SET_ROUND_DOWN);
+
+	/* Switch supermux to PLLP first */
+	rv = clk_set_parent_by_clk(sc->clk_cpu_g, sc->clk_pll_p);
+	if (rv != 0) {
+		device_printf(sc->dev, "Can't set parent to PLLP\n");
+		return (rv);
+	}
+
+	/* Set PLLX frequency */
+	rv = clk_set_freq(sc->clk_pll_x, point->freq, CLK_SET_ROUND_DOWN);
 	if (rv != 0) {
 		device_printf(sc->dev, "Can't set CPU clock frequency\n");
+		return (rv);
+	}
+
+	rv = clk_set_parent_by_clk(sc->clk_cpu_g, sc->clk_pll_x);
+	if (rv != 0) {
+		device_printf(sc->dev, "Can't set parent to PLLX\n");
 		return (rv);
 	}
 
