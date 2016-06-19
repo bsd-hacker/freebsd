@@ -489,7 +489,7 @@ gfs_file_create(size_t size, vnode_t *pvp, vfs_t *vfsp, vnodeops_t *ops)
 	 * Allocate vnode and internal data structure
 	 */
 	fp = kmem_zalloc(size, KM_SLEEP);
-	error = getnewvnode("zfs", vfsp, ops, &vp);
+	error = getnewvnode("zfs_gfs", vfsp, ops, &vp);
 	ASSERT(error == 0);
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	vp->v_data = (caddr_t)fp;
@@ -589,7 +589,9 @@ gfs_root_create(size_t size, vfs_t *vfsp, vnodeops_t *ops, ino64_t ino,
 {
 	vnode_t *vp;
 
+#ifdef illumos
 	VFS_HOLD(vfsp);
+#endif
 	vp = gfs_dir_create(size, NULL, vfsp, ops, entries, inode_cb,
 	    maxlen, readdir_cb, lookup_cb);
 	/* Manually set the inode */
@@ -700,7 +702,9 @@ found:
 		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	} else {
 		ASSERT(vp->v_vfsp != NULL);
+#ifdef illumos
 		VFS_RELE(vp->v_vfsp);
+#endif
 	}
 #ifdef TODO
 	if (vp->v_flag & V_XATTRDIR)

@@ -392,6 +392,8 @@
                 ..
             ..
         ..
+	bsdcat
+	..
         calendar
         ..
         cmp
@@ -453,6 +455,8 @@
     ..
     usr.sbin
         etcupdate
+        ..
+        extattr
         ..
         fstyp
         ..
