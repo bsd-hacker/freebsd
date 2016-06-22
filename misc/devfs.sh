@@ -51,7 +51,7 @@ if [ $# -eq 0 ]; then
 else
 	if [ $1 = find ]; then
 		while [ -r $cont ]; do
-			find ${mntpoint}* -maxdepth 1 -type f > /dev/null 2>&1
+			find ${mntpoint}* > /dev/null 2>&1
 		done
 	else
 
