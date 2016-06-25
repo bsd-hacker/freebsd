@@ -357,7 +357,7 @@ upload_azure_image() {
 	if [ -z "${AZURE_UPLOAD_CONF}" ]; then
 		return 0
 	fi
-	info "Uploading Azure virutal machine image for build: ${_build}"
+	info "Uploading Azure virtual machine image for build: ${_build}"
 	if [ ! -e "${CHROOTDIR}/${AZURE_UPLOAD_CONF}" ]; then
 		cp -p ${AZURE_UPLOAD_CONF} ${CHROOTDIR}/${AZURE_UPLOAD_CONF}
 		if [ $? -ne 0 ]; then
@@ -390,7 +390,7 @@ upload_vagrant_image() {
 	if [ -z "${VAGRANT_UPLOAD_CONF}" ]; then
 		return 0
 	fi
-	info "Uploading Vagrant virutal machine image for build: ${_build}"
+	info "Uploading Vagrant virtual machine image for build: ${_build}"
 	if [ ! -e "${CHROOTDIR}/${VAGRANT_UPLOAD_CONF}" ]; then
 		cp -p ${VAGRANT_UPLOAD_CONF} \
 			${CHROOTDIR}/${VAGRANT_UPLOAD_CONF}
@@ -424,7 +424,7 @@ upload_gce_image() {
 	if [ -z "${GCE_LOGIN_SKIP}" -o -z "${GCE_BUCKET}" ]; then
 		return 0
 	fi
-	info "Uploading GCE virutal machine image for build: ${_build}"
+	info "Uploading GCE virtual machine image for build: ${_build}"
 	if [ ! -d "${CHROOTDIR}/${GCE_CONFIG_DIR}" ]; then
 		if [ ! -e "${GCE_CONFIG_PKG}" ]; then
 			echo "Cannot locate config tarball."
