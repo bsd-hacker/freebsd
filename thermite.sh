@@ -342,39 +342,6 @@ upload_ec2_ami() {
 	return 0
 } # upload_ec2_ami()
 
-# Upload Microsoft Azure virtual machine images.
-upload_azure_image() {
-	_build="${rev}-${arch}-${kernel}-${type}"
-	_conf="${scriptdir}/${_build}.conf"
-	source_config || return 0
-	case ${arch} in
-		amd64)
-			;;
-		*)
-			return 0
-			;;
-	esac
-	if [ -z "${AZURE_UPLOAD_CONF}" ]; then
-		return 0
-	fi
-	info "Uploading Azure virtual machine image for build: ${_build}"
-	if [ ! -e "${CHROOTDIR}/${AZURE_UPLOAD_CONF}" ]; then
-		cp -p ${AZURE_UPLOAD_CONF} ${CHROOTDIR}/${AZURE_UPLOAD_CONF}
-		if [ $? -ne 0 ]; then
-			info "Azure key file not found."
-			return 0
-		fi
-	fi
-	mount -t devfs devfs ${CHROOTDIR}/dev
-	chroot ${CHROOTDIR} make -C /usr/src/release \
-		AZURE_UPLOAD_CONF=${AZURE_UPLOAD_CONF} \
-		azure-upload \
-		>> ${logdir}/${_build}.azure.log 2>&1
-	unset _build _conf AZURE_UPLOAD_CONF
-	umount ${CHROOTDIR}/dev
-	return 0
-} # upload_azure_image()
-
 # Upload Vagrant virtual machine images.
 upload_vagrant_image() {
 	_build="${rev}-${arch}-${kernel}-${type}"
@@ -545,7 +512,6 @@ main() {
 	runall install_chroots
 	runall build_release
 	runall upload_ec2_ami
-	#runall upload_azure_image
 	runall upload_gce_image
 	runall upload_vagrant_image
 }
