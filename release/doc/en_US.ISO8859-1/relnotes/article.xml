@@ -505,13 +505,16 @@
       <para revision="281373">The &man.nvi.1; utility has been updated
 	to version 2.1.3.</para>
 
-      <para revision="281806">The &man.wpa.supplicant.8; and
+      <para revision="289549">The &man.wpa.supplicant.8; and
 	&man.hostapd.8; utilities have been updated to version
-	2.4.</para>
+	2.5.</para>
 
       <para revision="296190" contrib="sponsor" sponsor="&ff;">The
 	&man.resolvconf.8; utility has been updated to version
 	3.7.3.</para>
+
+      <para revision="293190"><application>less</application> has
+	been updated to version v481.</para>
 
       <para revision="284254"><application>bmake</application> has
 	been updated to version 20150606.</para>
@@ -1296,6 +1299,11 @@
       <para revision="288654">The &man.lagg.4; driver has been updated
 	to remove support for the <literal>fec</literal>
 	protocol.</para>
+
+       <para revision="302110" contrib="sponsor" sponsor="&chelsio;">netmap
+	support from the ncxgbe/ncxl interfaces has been merged into the
+	vcxgbe/vcxl interfaces for the &man.cxgbe.4; driver.</para>
+
     </sect2>
   </sect1>
 
