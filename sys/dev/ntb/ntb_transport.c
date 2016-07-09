@@ -157,8 +157,8 @@ struct ntb_transport_qp {
 	struct ntb_queue_list	rx_pend_q;
 	/* ntb_rx_q_lock: synchronize access to rx_XXXX_q */
 	struct mtx		ntb_rx_q_lock;
-	struct task		rx_completion_task;
 	struct task		rxc_db_work;
+	struct taskqueue	*rxc_tq;
 	caddr_t			rx_buff;
 	ntb_q_idx_t		rx_index;
 	ntb_q_idx_t		rx_max_entry;
@@ -181,6 +181,8 @@ struct ntb_transport_qp {
 	uint64_t		tx_pkts;
 	uint64_t		tx_ring_full;
 	uint64_t		tx_err_no_buf;
+
+	struct mtx		tx_lock;
 };
 
 struct ntb_transport_mw {
@@ -199,6 +201,7 @@ struct ntb_transport_mw {
 };
 
 struct ntb_transport_ctx {
+	device_t		 dev;
 	device_t		 ntb;
 	struct ntb_transport_mw	*mw_vec;
 	struct ntb_transport_qp	*qp_vec;
@@ -210,8 +213,6 @@ struct ntb_transport_ctx {
 	struct callout		link_work;
 	struct callout		link_watchdog;
 	struct task		link_cleanup;
-	struct mtx		tx_lock;
-	struct mtx		rx_lock;
 };
 
 enum {
@@ -270,7 +271,7 @@ static void ntb_memcpy_rx(struct ntb_transport_qp *qp,
     struct ntb_queue_entry *entry, void *offset);
 static inline void ntb_rx_copy_callback(struct ntb_transport_qp *qp,
     void *data);
-static void ntb_complete_rxc(void *arg, int pending);
+static void ntb_complete_rxc(struct ntb_transport_qp *qp);
 static void ntb_transport_doorbell_callback(void *data, uint32_t vector);
 static void ntb_transport_event_callback(void *data);
 static void ntb_transport_link_work(void *arg);
@@ -338,6 +339,7 @@ ntb_transport_attach(device_t dev)
 	int rc;
 	unsigned i;
 
+	nt->dev = dev;
 	nt->ntb = ntb;
 	nt->mw_count = NTB_MW_COUNT(ntb);
 	nt->mw_vec = malloc(nt->mw_count * sizeof(*nt->mw_vec), M_NTB_T,
@@ -371,9 +373,6 @@ ntb_transport_attach(device_t dev)
 	else if (nt->mw_count < nt->qp_count)
 		nt->qp_count = nt->mw_count;
 	KASSERT(nt->qp_count <= QP_SETSIZE, ("invalid qp_count"));
-
-	mtx_init(&nt->tx_lock, "ntb transport tx", NULL, MTX_DEF);
-	mtx_init(&nt->rx_lock, "ntb transport rx", NULL, MTX_DEF);
 
 	nt->qp_vec = malloc(nt->qp_count * sizeof(*nt->qp_vec), M_NTB_T,
 	    M_WAITOK | M_ZERO);
@@ -490,8 +489,7 @@ ntb_transport_init_queue(struct ntb_transport_ctx *nt, unsigned int qp_num)
 	qp->rx_info = (void *)(qp->tx_mw + tx_size);
 
 	/* Due to house-keeping, there must be at least 2 buffs */
-	qp->tx_max_frame = qmin(tx_size / 2,
-	    transport_mtu + sizeof(struct ntb_payload_header));
+	qp->tx_max_frame = qmin(transport_mtu, tx_size / 2);
 	qp->tx_max_entry = tx_size / qp->tx_max_frame;
 
 	callout_init(&qp->link_work, 0);
@@ -499,14 +497,16 @@ ntb_transport_init_queue(struct ntb_transport_ctx *nt, unsigned int qp_num)
 
 	mtx_init(&qp->ntb_rx_q_lock, "ntb rx q", NULL, MTX_SPIN);
 	mtx_init(&qp->ntb_tx_free_q_lock, "ntb tx free q", NULL, MTX_SPIN);
-	TASK_INIT(&qp->rx_completion_task, 0, ntb_complete_rxc, qp);
+	mtx_init(&qp->tx_lock, "ntb transport tx", NULL, MTX_DEF);
 	TASK_INIT(&qp->rxc_db_work, 0, ntb_transport_rxc_db, qp);
+	qp->rxc_tq = taskqueue_create("ntbt_rx", M_WAITOK,
+	    taskqueue_thread_enqueue, &qp->rxc_tq);
+	taskqueue_start_threads(&qp->rxc_tq, 1, PI_NET, "%s rx%d",
+	    device_get_nameunit(nt->dev), qp_num);
 
 	STAILQ_INIT(&qp->rx_post_q);
 	STAILQ_INIT(&qp->rx_pend_q);
 	STAILQ_INIT(&qp->tx_free_q);
-
-	callout_reset(&qp->link_work, 0, ntb_qp_link_work, qp);
 }
 
 void
@@ -520,8 +520,8 @@ ntb_transport_free_queue(struct ntb_transport_qp *qp)
 	callout_drain(&qp->link_work);
 
 	NTB_DB_SET_MASK(qp->ntb, 1ull << qp->qp_num);
-	taskqueue_drain(taskqueue_swi, &qp->rxc_db_work);
-	taskqueue_drain(taskqueue_swi, &qp->rx_completion_task);
+	taskqueue_drain_all(qp->rxc_tq);
+	taskqueue_free(qp->rxc_tq);
 
 	qp->cb_data = NULL;
 	qp->rx_handler = NULL;
@@ -595,7 +595,6 @@ ntb_transport_create_queue(void *data, device_t dev,
 	}
 
 	NTB_DB_CLEAR(ntb, 1ull << qp->qp_num);
-	NTB_DB_CLEAR_MASK(ntb, 1ull << qp->qp_num);
 	return (qp);
 }
 
@@ -660,9 +659,9 @@ ntb_transport_tx_enqueue(struct ntb_transport_qp *qp, void *cb, void *data,
 	entry->len = len;
 	entry->flags = 0;
 
-	mtx_lock(&qp->transport->tx_lock);
+	mtx_lock(&qp->tx_lock);
 	rc = ntb_process_tx(qp, entry);
-	mtx_unlock(&qp->transport->tx_lock);
+	mtx_unlock(&qp->tx_lock);
 	if (rc != 0) {
 		ntb_list_add(&qp->ntb_tx_free_q_lock, entry, &qp->tx_free_q);
 		CTR1(KTR_NTB,
@@ -784,37 +783,18 @@ static void
 ntb_transport_rxc_db(void *arg, int pending __unused)
 {
 	struct ntb_transport_qp *qp = arg;
-	ntb_q_idx_t i;
 	int rc;
 
-	/*
-	 * Limit the number of packets processed in a single interrupt to
-	 * provide fairness to others
-	 */
 	CTR0(KTR_NTB, "RX: transport_rx");
-	mtx_lock(&qp->transport->rx_lock);
-	for (i = 0; i < qp->rx_max_entry; i++) {
-		rc = ntb_process_rxc(qp);
-		if (rc != 0) {
-			CTR0(KTR_NTB, "RX: process_rxc failed");
-			break;
-		}
-	}
-	mtx_unlock(&qp->transport->rx_lock);
+again:
+	while ((rc = ntb_process_rxc(qp)) == 0)
+		;
+	CTR1(KTR_NTB, "RX: process_rxc returned %d", rc);
 
-	if (i == qp->rx_max_entry)
-		taskqueue_enqueue(taskqueue_swi, &qp->rxc_db_work);
-	else if ((NTB_DB_READ(qp->ntb) & (1ull << qp->qp_num)) != 0) {
-		/* If db is set, clear it and read it back to commit clear. */
+	if ((NTB_DB_READ(qp->ntb) & (1ull << qp->qp_num)) != 0) {
+		/* If db is set, clear it and check queue once more. */
 		NTB_DB_CLEAR(qp->ntb, 1ull << qp->qp_num);
-		(void)NTB_DB_READ(qp->ntb);
-
-		/*
-		 * An interrupt may have arrived between finishing
-		 * ntb_process_rxc and clearing the doorbell bit: there might
-		 * be some more work to do.
-		 */
-		taskqueue_enqueue(taskqueue_swi, &qp->rxc_db_work);
+		goto again;
 	}
 }
 
@@ -870,7 +850,7 @@ ntb_process_rxc(struct ntb_transport_qp *qp)
 		entry->len = -EIO;
 		entry->flags |= NTBT_DESC_DONE_FLAG;
 
-		taskqueue_enqueue(taskqueue_swi, &qp->rx_completion_task);
+		ntb_complete_rxc(qp);
 	} else {
 		qp->rx_bytes += hdr->len;
 		qp->rx_pkts++;
@@ -897,6 +877,8 @@ ntb_memcpy_rx(struct ntb_transport_qp *qp, struct ntb_queue_entry *entry,
 	CTR2(KTR_NTB, "RX: copying %d bytes from offset %p", len, offset);
 
 	entry->buf = (void *)m_devget(offset, len, 0, ifp, NULL);
+	if (entry->buf == NULL)
+		entry->len = -ENOMEM;
 
 	/* Ensure that the data is globally visible before clearing the flag */
 	wmb();
@@ -912,13 +894,12 @@ ntb_rx_copy_callback(struct ntb_transport_qp *qp, void *data)
 
 	entry = data;
 	entry->flags |= NTBT_DESC_DONE_FLAG;
-	taskqueue_enqueue(taskqueue_swi, &qp->rx_completion_task);
+	ntb_complete_rxc(qp);
 }
 
 static void
-ntb_complete_rxc(void *arg, int pending)
+ntb_complete_rxc(struct ntb_transport_qp *qp)
 {
-	struct ntb_transport_qp *qp = arg;
 	struct ntb_queue_entry *entry;
 	struct mbuf *m;
 	unsigned len;
@@ -977,12 +958,15 @@ ntb_transport_doorbell_callback(void *data, uint32_t vector)
 	BIT_NAND(QP_SETSIZE, &db_bits, &nt->qp_bitmap_free);
 
 	vec_mask = NTB_DB_VECTOR_MASK(nt->ntb, vector);
+	if ((vec_mask & (vec_mask - 1)) != 0)
+		vec_mask &= NTB_DB_READ(nt->ntb);
 	while (vec_mask != 0) {
 		qp_num = ffsll(vec_mask) - 1;
 
 		if (test_bit(qp_num, &db_bits)) {
 			qp = &nt->qp_vec[qp_num];
-			taskqueue_enqueue(taskqueue_swi, &qp->rxc_db_work);
+			if (qp->link_is_up)
+				taskqueue_enqueue(qp->rxc_tq, &qp->rxc_db_work);
 		}
 
 		vec_mask &= ~(1ull << qp_num);
@@ -1187,8 +1171,7 @@ ntb_transport_setup_qp_mw(struct ntb_transport_ctx *nt, unsigned int qp_num)
 	qp->remote_rx_info = (void*)(qp->rx_buff + rx_size);
 
 	/* Due to house-keeping, there must be at least 2 buffs */
-	qp->rx_max_frame = qmin(rx_size / 2,
-	    transport_mtu + sizeof(struct ntb_payload_header));
+	qp->rx_max_frame = qmin(transport_mtu, rx_size / 2);
 	qp->rx_max_entry = rx_size / qp->rx_max_frame;
 	qp->rx_index = 0;
 
@@ -1231,7 +1214,7 @@ ntb_qp_link_work(void *arg)
 		if (qp->event_handler != NULL)
 			qp->event_handler(qp->cb_data, NTB_LINK_UP);
 
-		taskqueue_enqueue(taskqueue_swi, &qp->rxc_db_work);
+		NTB_DB_CLEAR_MASK(ntb, 1ull << qp->qp_num);
 	} else if (nt->link_is_up)
 		callout_reset(&qp->link_work,
 		    NTB_LINK_DOWN_TIMEOUT * hz / 1000, ntb_qp_link_work, qp);
@@ -1287,6 +1270,7 @@ ntb_qp_link_down_reset(struct ntb_transport_qp *qp)
 {
 
 	qp->link_is_up = false;
+	NTB_DB_SET_MASK(qp->ntb, 1ull << qp->qp_num);
 
 	qp->tx_index = qp->rx_index = 0;
 	qp->tx_bytes = qp->rx_bytes = 0;
@@ -1302,17 +1286,12 @@ ntb_qp_link_down_reset(struct ntb_transport_qp *qp)
 static void
 ntb_qp_link_cleanup(struct ntb_transport_qp *qp)
 {
-	struct ntb_transport_ctx *nt = qp->transport;
 
 	callout_drain(&qp->link_work);
 	ntb_qp_link_down_reset(qp);
 
 	if (qp->event_handler != NULL)
 		qp->event_handler(qp->cb_data, NTB_LINK_DOWN);
-
-	if (nt->link_is_up)
-		callout_reset(&qp->link_work,
-		    NTB_LINK_DOWN_TIMEOUT * hz / 1000, ntb_qp_link_work, qp);
 }
 
 /* Link commanded down */
@@ -1386,11 +1365,11 @@ ntb_send_link_down(struct ntb_transport_qp *qp)
 	entry->len = 0;
 	entry->flags = NTBT_LINK_DOWN_FLAG;
 
-	mtx_lock(&qp->transport->tx_lock);
+	mtx_lock(&qp->tx_lock);
 	rc = ntb_process_tx(qp, entry);
+	mtx_unlock(&qp->tx_lock);
 	if (rc != 0)
 		printf("ntb: Failed to send link down\n");
-	mtx_unlock(&qp->transport->tx_lock);
 
 	ntb_qp_link_down_reset(qp);
 }
