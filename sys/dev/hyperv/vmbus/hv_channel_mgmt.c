@@ -39,7 +39,9 @@
 typedef void	(*vmbus_chanmsg_proc_t)
 		(struct vmbus_softc *, const struct vmbus_message *);
 
-static void	vmbus_channel_on_offer_internal(void *context);
+static struct hv_vmbus_channel *hv_vmbus_allocate_channel(struct vmbus_softc *);
+static void	vmbus_channel_on_offer_internal(struct vmbus_softc *,
+		    const hv_vmbus_channel_offer_channel *offer);
 static void	vmbus_channel_on_offer_rescind_internal(void *context);
 
 static void	vmbus_channel_on_offer(struct vmbus_softc *,
@@ -130,15 +132,13 @@ hv_queue_work_item(
 /**
  * @brief Allocate and initialize a vmbus channel object
  */
-hv_vmbus_channel*
-hv_vmbus_allocate_channel(void)
+static struct hv_vmbus_channel *
+hv_vmbus_allocate_channel(struct vmbus_softc *sc)
 {
-	hv_vmbus_channel* channel;
+	struct hv_vmbus_channel *channel;
 
-	channel = (hv_vmbus_channel*) malloc(
-					sizeof(hv_vmbus_channel),
-					M_DEVBUF,
-					M_WAITOK | M_ZERO);
+	channel = malloc(sizeof(*channel), M_DEVBUF, M_WAITOK | M_ZERO);
+	channel->vmbus_sc = sc;
 
 	mtx_init(&channel->sc_lock, "vmbus multi channel", NULL, MTX_DEF);
 	TAILQ_INIT(&channel->sc_list_anchor);
@@ -296,7 +296,7 @@ vmbus_channel_cpu_set(struct hv_vmbus_channel *chan, int cpu)
 	}
 
 	chan->target_cpu = cpu;
-	chan->target_vcpu = VMBUS_PCPU_GET(vmbus_get_softc(), vcpuid, cpu);
+	chan->target_vcpu = VMBUS_PCPU_GET(chan->vmbus_sc, vcpuid, cpu);
 
 	if (bootverbose) {
 		printf("vmbus_chan%u: assigned to cpu%u [vcpu%u]\n",
@@ -365,46 +365,30 @@ vmbus_channel_select_defcpu(struct hv_vmbus_channel *channel)
 /**
  * @brief Handler for channel offers from Hyper-V/Azure
  *
- * Handler for channel offers from vmbus in parent partition. We ignore
- * all offers except network and storage offers. For each network and storage
- * offers, we create a channel object and queue a work item to the channel
- * object to process the offer synchronously
+ * Handler for channel offers from vmbus in parent partition.
  */
 static void
 vmbus_channel_on_offer(struct vmbus_softc *sc, const struct vmbus_message *msg)
 {
-	const hv_vmbus_channel_msg_header *hdr =
-	    (const hv_vmbus_channel_msg_header *)msg->msg_data;
-
 	const hv_vmbus_channel_offer_channel *offer;
-	hv_vmbus_channel_offer_channel *copied;
-
-	offer = (const hv_vmbus_channel_offer_channel *)hdr;
-
-	// copy offer data
-	copied = malloc(sizeof(*copied), M_DEVBUF, M_NOWAIT);
-	if (copied == NULL) {
-		printf("fail to allocate memory\n");
-		return;
-	}
-
-	memcpy(copied, hdr, sizeof(*copied));
-	hv_queue_work_item(vmbus_channel_on_offer_internal, copied);
 
 	mtx_lock(&vmbus_chwait_lock);
 	if ((vmbus_chancnt & VMBUS_CHANCNT_DONE) == 0)
 		vmbus_chancnt++;
 	mtx_unlock(&vmbus_chwait_lock);
+
+	offer = (const hv_vmbus_channel_offer_channel *)msg->msg_data;
+	vmbus_channel_on_offer_internal(sc, offer);
 }
 
 static void
-vmbus_channel_on_offer_internal(void* context)
+vmbus_channel_on_offer_internal(struct vmbus_softc *sc,
+    const hv_vmbus_channel_offer_channel *offer)
 {
 	hv_vmbus_channel* new_channel;
 
-	hv_vmbus_channel_offer_channel* offer = (hv_vmbus_channel_offer_channel*)context;
 	/* Allocate the channel object and save this offer */
-	new_channel = hv_vmbus_allocate_channel();
+	new_channel = hv_vmbus_allocate_channel(sc);
 
 	/*
 	 * By default we setup state to enable batched
@@ -441,8 +425,6 @@ vmbus_channel_on_offer_internal(void* context)
 	vmbus_channel_select_defcpu(new_channel);
 
 	vmbus_channel_process_offer(new_channel);
-
-	free(offer, M_DEVBUF);
 }
 
 /**
@@ -699,7 +681,7 @@ vmbus_select_outgoing_channel(struct hv_vmbus_channel *primary)
 		return outgoing_channel;
 	}
 
-	cur_vcpu = VMBUS_PCPU_GET(vmbus_get_softc(), vcpuid, smp_pro_id);
+	cur_vcpu = VMBUS_PCPU_GET(primary->vmbus_sc, vcpuid, smp_pro_id);
 	
 	TAILQ_FOREACH(new_channel, &primary->sc_list_anchor, sc_list_entry) {
 		if (new_channel->state != HV_CHANNEL_OPENED_STATE){
