@@ -427,70 +427,54 @@ hv_vmbus_channel_establish_gpadl(struct hv_vmbus_channel *channel,
 	return 0;
 }
 
-/**
- * @brief Teardown the specified GPADL handle
+/*
+ * Disconnect the GPA from the target channel
  */
 int
-hv_vmbus_channel_teardown_gpdal(
-	hv_vmbus_channel*	channel,
-	uint32_t		gpadl_handle)
+hv_vmbus_channel_teardown_gpdal(struct hv_vmbus_channel *chan, uint32_t gpadl)
 {
-	int					ret = 0;
-	hv_vmbus_channel_gpadl_teardown*	msg;
-	hv_vmbus_channel_msg_info*		info;
+	struct vmbus_softc *sc = chan->vmbus_sc;
+	struct vmbus_msghc *mh;
+	struct vmbus_chanmsg_gpadl_disconn *req;
+	int error;
 
-	info = (hv_vmbus_channel_msg_info *)
-		malloc(	sizeof(hv_vmbus_channel_msg_info) +
-			sizeof(hv_vmbus_channel_gpadl_teardown),
-				M_DEVBUF, M_NOWAIT);
-	KASSERT(info != NULL,
-	    ("Error VMBUS: malloc failed to allocate Gpadl Teardown Msg!"));
-	if (info == NULL) {
-	    ret = ENOMEM;
-	    goto cleanup;
+	mh = vmbus_msghc_get(sc, sizeof(*req));
+	if (mh == NULL) {
+		device_printf(sc->vmbus_dev,
+		    "can not get msg hypercall for gpa x->chan%u\n",
+		    chan->offer_msg.child_rel_id);
+		return EBUSY;
 	}
 
-	sema_init(&info->wait_sema, 0, "Open Info Sema");
+	req = vmbus_msghc_dataptr(mh);
+	req->chm_hdr.chm_type = VMBUS_CHANMSG_TYPE_GPADL_DISCONN;
+	req->chm_chanid = chan->offer_msg.child_rel_id;
+	req->chm_gpadl = gpadl;
 
-	msg = (hv_vmbus_channel_gpadl_teardown*) info->msg;
+	error = vmbus_msghc_exec(sc, mh);
+	if (error) {
+		device_printf(sc->vmbus_dev,
+		    "gpa x->chan%u msg hypercall exec failed: %d\n",
+		    chan->offer_msg.child_rel_id, error);
+		vmbus_msghc_put(sc, mh);
+		return error;
+	}
 
-	msg->header.message_type = HV_CHANNEL_MESSAGE_GPADL_TEARDOWN;
-	msg->child_rel_id = channel->offer_msg.child_rel_id;
-	msg->gpadl = gpadl_handle;
+	vmbus_msghc_wait_result(sc, mh);
+	/* Discard result; no useful information */
+	vmbus_msghc_put(sc, mh);
 
-	mtx_lock(&hv_vmbus_g_connection.channel_msg_lock);
-	TAILQ_INSERT_TAIL(&hv_vmbus_g_connection.channel_msg_anchor,
-			info, msg_list_entry);
-	mtx_unlock(&hv_vmbus_g_connection.channel_msg_lock);
-
-	ret = hv_vmbus_post_message(msg,
-			sizeof(hv_vmbus_channel_gpadl_teardown));
-	if (ret != 0) 
-	    goto cleanup;
-	
-	ret = sema_timedwait(&info->wait_sema, 5 * hz); /* KYS 5 seconds */
-
-cleanup:
-	/*
-	 * Received a torndown response
-	 */
-	mtx_lock(&hv_vmbus_g_connection.channel_msg_lock);
-	TAILQ_REMOVE(&hv_vmbus_g_connection.channel_msg_anchor,
-			info, msg_list_entry);
-	mtx_unlock(&hv_vmbus_g_connection.channel_msg_lock);
-	sema_destroy(&info->wait_sema);
-	free(info, M_DEVBUF);
-
-	return (ret);
+	return 0;
 }
 
 static void
 hv_vmbus_channel_close_internal(hv_vmbus_channel *channel)
 {
-	int ret = 0;
+	struct vmbus_softc *sc = channel->vmbus_sc;
+	struct vmbus_msghc *mh;
+	struct vmbus_chanmsg_chclose *req;
 	struct taskqueue *rxq = channel->rxq;
-	hv_vmbus_channel_close_channel* msg;
-	hv_vmbus_channel_msg_info* info;
+	int error;
 
 	channel->state = HV_CHANNEL_OPEN_STATE;
 
@@ -504,20 +488,31 @@ hv_vmbus_channel_close_internal(hv_vmbus_channel *channel)
 	/**
 	 * Send a closing message
 	 */
-	info = (hv_vmbus_channel_msg_info *)
-		malloc(	sizeof(hv_vmbus_channel_msg_info) +
-			sizeof(hv_vmbus_channel_close_channel),
-				M_DEVBUF, M_NOWAIT);
-	KASSERT(info != NULL, ("VMBUS: malloc failed hv_vmbus_channel_close!"));
-	if(info == NULL)
-	    return;
 
-	msg = (hv_vmbus_channel_close_channel*) info->msg;
-	msg->header.message_type = HV_CHANNEL_MESSAGE_CLOSE_CHANNEL;
-	msg->child_rel_id = channel->offer_msg.child_rel_id;
+	mh = vmbus_msghc_get(sc, sizeof(*req));
+	if (mh == NULL) {
+		device_printf(sc->vmbus_dev,
+		    "can not get msg hypercall for chclose(chan%u)\n",
+		    channel->offer_msg.child_rel_id);
+		return;
+	}
 
-	ret = hv_vmbus_post_message(
-		msg, sizeof(hv_vmbus_channel_close_channel));
+	req = vmbus_msghc_dataptr(mh);
+	req->chm_hdr.chm_type = VMBUS_CHANMSG_TYPE_CHCLOSE;
+	req->chm_chanid = channel->offer_msg.child_rel_id;
+
+	error = vmbus_msghc_exec_noresult(mh);
+	vmbus_msghc_put(sc, mh);
+
+	if (error) {
+		device_printf(sc->vmbus_dev,
+		    "chclose(chan%u) msg hypercall exec failed: %d\n",
+		    channel->offer_msg.child_rel_id, error);
+		return;
+	} else if (bootverbose) {
+		device_printf(sc->vmbus_dev, "close chan%u\n",
+		    channel->offer_msg.child_rel_id);
+	}
 
 	/* Tear down the gpadl for the channel's ring buffer */
 	if (channel->ring_buffer_gpadl_handle) {
@@ -533,8 +528,6 @@ hv_vmbus_channel_close_internal(hv_vmbus_channel *channel)
 
 	contigfree(channel->ring_buffer_pages, channel->ring_buffer_size,
 	    M_DEVBUF);
-
-	free(info, M_DEVBUF);
 }
 
 /**

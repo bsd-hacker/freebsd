@@ -96,9 +96,12 @@ struct vmbus_gpa_range {
 #define VMBUS_CHANMSG_TYPE_CHANNEL_REQ		3	/* REQ */
 #define VMBUS_CHANMSG_TYPE_CHOPEN		5	/* REQ */
 #define VMBUS_CHANMSG_TYPE_CHOPEN_RESP		6	/* RESP */
+#define VMBUS_CHANMSG_TYPE_CHCLOSE		7	/* REQ */
 #define VMBUS_CHANMSG_TYPE_GPADL_CONN		8	/* REQ */
 #define VMBUS_CHANMSG_TYPE_GPADL_SUBCONN	9	/* REQ */
-#define VMBUS_CHANMSG_TYPE_GPADP_CONNRESP	10	/* RESP */
+#define VMBUS_CHANMSG_TYPE_GPADL_CONNRESP	10	/* RESP */
+#define VMBUS_CHANMSG_TYPE_GPADL_DISCONN	11	/* REQ */
+#define VMBUS_CHANMSG_TYPE_GPADL_DISCONNRESP	12	/* RESP */
 #define VMBUS_CHANMSG_TYPE_INIT_CONTACT		14	/* REQ */
 #define VMBUS_CHANMSG_TYPE_VERSION_RESP		15	/* RESP */
 #define VMBUS_CHANMSG_TYPE_UNLOAD		16	/* REQ */
@@ -188,6 +191,19 @@ struct vmbus_chanmsg_gpadl_connresp {
 	uint32_t	chm_chanid;
 	uint32_t	chm_gpadl;
 	uint32_t	chm_status;
+} __packed;
+
+/* VMBUS_CHANMSG_TYPE_CHCLOSE */
+struct vmbus_chanmsg_chclose {
+	struct vmbus_chanmsg_hdr chm_hdr;
+	uint32_t	chm_chanid;
+} __packed;
+
+/* VMBUS_CHANMSG_TYPE_GPADL_DISCONN */
+struct vmbus_chanmsg_gpadl_disconn {
+	struct vmbus_chanmsg_hdr chm_hdr;
+	uint32_t	chm_chanid;
+	uint32_t	chm_gpadl;
 } __packed;
 
 #endif	/* !_VMBUS_REG_H_ */
