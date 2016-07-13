@@ -538,6 +538,7 @@ typedef struct hv_vmbus_channel {
 	struct vmbus_softc		*vmbus_sc;
 	hv_vmbus_channel_state		state;
 	hv_vmbus_channel_offer_channel	offer_msg;
+	uint32_t			ch_flags;	/* VMBUS_CHAN_FLAG_ */
 	uint32_t			ch_id;		/* channel id */
 	/*
 	 * These are based on the offer_msg.monitor_id.
@@ -631,10 +632,15 @@ typedef struct hv_vmbus_channel {
 	TAILQ_ENTRY(hv_vmbus_channel)	ch_link;
 	uint32_t			ch_subidx;	/* subchan index */
 
+	struct hv_guid			ch_guid_type;
+	struct hv_guid			ch_guid_inst;
+
 	struct sysctl_ctx_list		ch_sysctl_ctx;
 } hv_vmbus_channel;
 
 #define HV_VMBUS_CHAN_ISPRIMARY(chan)	((chan)->primary_channel == NULL)
+
+#define VMBUS_CHAN_FLAG_HASMNF		0x0001
 
 static inline void
 hv_set_channel_read_state(hv_vmbus_channel* channel, boolean_t state)
