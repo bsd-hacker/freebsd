@@ -856,34 +856,34 @@ VmbusProcessChannelEvent(void* context, int pending)
 	void* arg;
 	uint32_t bytes_to_read;
 	hv_vmbus_channel* channel = (hv_vmbus_channel*)context;
-	boolean_t is_batched_reading;
+	bool is_batched_reading = false;
 
-	if (channel->on_channel_callback != NULL) {
-		arg = channel->channel_callback_context;
-		is_batched_reading = channel->batched_reading;
-		/*
-		 * Optimize host to guest signaling by ensuring:
-		 * 1. While reading the channel, we disable interrupts from
-		 *    host.
-		 * 2. Ensure that we process all posted messages from the host
-		 *    before returning from this callback.
-		 * 3. Once we return, enable signaling from the host. Once this
-		 *    state is set we check to see if additional packets are
-		 *    available to read. In this case we repeat the process.
-		 */
-		do {
-			if (is_batched_reading)
-				hv_ring_buffer_read_begin(&channel->inbound);
+	if (channel->ch_flags & VMBUS_CHAN_FLAG_BATCHREAD)
+		is_batched_reading = true;
 
-			channel->on_channel_callback(arg);
+	arg = channel->channel_callback_context;
+	/*
+	 * Optimize host to guest signaling by ensuring:
+	 * 1. While reading the channel, we disable interrupts from
+	 *    host.
+	 * 2. Ensure that we process all posted messages from the host
+	 *    before returning from this callback.
+	 * 3. Once we return, enable signaling from the host. Once this
+	 *    state is set we check to see if additional packets are
+	 *    available to read. In this case we repeat the process.
+	 */
+	do {
+		if (is_batched_reading)
+			hv_ring_buffer_read_begin(&channel->inbound);
 
-			if (is_batched_reading)
-				bytes_to_read =
-				    hv_ring_buffer_read_end(&channel->inbound);
-			else
-				bytes_to_read = 0;
-		} while (is_batched_reading && (bytes_to_read != 0));
-	}
+		channel->on_channel_callback(arg);
+
+		if (is_batched_reading)
+			bytes_to_read =
+			    hv_ring_buffer_read_end(&channel->inbound);
+		else
+			bytes_to_read = 0;
+	} while (is_batched_reading && (bytes_to_read != 0));
 }
 
 static __inline void
@@ -917,7 +917,7 @@ vmbus_event_flags_proc(struct vmbus_softc *sc, volatile u_long *event_flags,
 			if (channel == NULL || channel->rxq == NULL)
 				continue;
 
-			if (channel->batched_reading)
+			if (channel->ch_flags & VMBUS_CHAN_FLAG_BATCHREAD)
 				hv_ring_buffer_read_begin(&channel->inbound);
 			taskqueue_enqueue(channel->rxq, &channel->channel_task);
 		}
