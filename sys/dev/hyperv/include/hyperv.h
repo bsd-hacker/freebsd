@@ -471,7 +471,7 @@ typedef struct {
 	uint8_t                 reserved[4084];
 
 	/*
-	 * WARNING: Ring data starts here + ring_data_start_offset
+	 * WARNING: Ring data starts here
 	 *  !!! DO NOT place any fields below this !!!
 	 */
 	uint8_t			buffer[0];	/* doubles as interrupt mask */
@@ -491,10 +491,8 @@ typedef struct {
 
 typedef struct {
 	hv_vmbus_ring_buffer*	ring_buffer;
-	uint32_t		ring_size;	/* Include the shared header */
 	struct mtx		ring_lock;
 	uint32_t		ring_data_size;	/* ring_size */
-	uint32_t		ring_data_start_offset;
 } hv_vmbus_ring_buffer_info;
 
 typedef void (*hv_vmbus_pfn_channel_callback)(void *context);
@@ -563,8 +561,6 @@ typedef struct hv_vmbus_channel {
 	 * drivers that don't want this behavior can turn it off.
 	 */
 	boolean_t			batched_reading;
-
-	boolean_t			is_dedicated_interrupt;
 
 	struct hypercall_sigevt_in	*ch_sigevt;
 	struct hyperv_dma		ch_sigevt_dma;
