@@ -978,20 +978,10 @@ vmbus_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	case HV_VMBUS_IVAR_NODE:
 		*result = (uintptr_t)child_dev_ctx->device;
 		return (0);
-	}
-	return (ENOENT);
-}
 
-static int
-vmbus_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
-{
-	switch (index) {
-	case HV_VMBUS_IVAR_TYPE:
-	case HV_VMBUS_IVAR_INSTANCE:
-	case HV_VMBUS_IVAR_DEVCTX:
-	case HV_VMBUS_IVAR_NODE:
-		/* read-only */
-		return (EINVAL);
+	case HV_VMBUS_IVAR_CHAN:
+		*result = (uintptr_t)child_dev_ctx->channel;
+		return (0);
 	}
 	return (ENOENT);
 }
@@ -1311,7 +1301,6 @@ static device_method_t vmbus_methods[] = {
 	DEVMETHOD(bus_add_child,		bus_generic_add_child),
 	DEVMETHOD(bus_print_child,		bus_generic_print_child),
 	DEVMETHOD(bus_read_ivar,		vmbus_read_ivar),
-	DEVMETHOD(bus_write_ivar,		vmbus_write_ivar),
 	DEVMETHOD(bus_child_pnpinfo_str,	vmbus_child_pnpinfo_str),
 
 	/* Vmbus interface */
