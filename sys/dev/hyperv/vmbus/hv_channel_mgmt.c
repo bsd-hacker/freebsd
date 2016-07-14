@@ -52,26 +52,29 @@ static void	vmbus_channel_on_offers_delivered(struct vmbus_softc *,
 static void	vmbus_chan_msgproc_chrescind(struct vmbus_softc *,
 		    const struct vmbus_message *);
 
-/**
- * Channel message dispatch table
+/*
+ * Vmbus channel message processing.
  */
+
+#define VMBUS_CHANMSG_PROC(name, func)	\
+	[VMBUS_CHANMSG_TYPE_##name] = func
+#define VMBUS_CHANMSG_PROC_WAKEUP(name)	\
+	VMBUS_CHANMSG_PROC(name, vmbus_msghc_wakeup)
+
 static const vmbus_chanmsg_proc_t
-vmbus_chanmsg_process[HV_CHANNEL_MESSAGE_COUNT] = {
-	[HV_CHANNEL_MESSAGE_OFFER_CHANNEL] =
-		vmbus_channel_on_offer,
-	[HV_CHANNEL_MESSAGE_RESCIND_CHANNEL_OFFER] =
-		vmbus_chan_msgproc_chrescind,
-	[HV_CHANNEL_MESSAGE_ALL_OFFERS_DELIVERED] =
-		vmbus_channel_on_offers_delivered,
-	[HV_CHANNEL_MESSAGE_OPEN_CHANNEL_RESULT] =
-		vmbus_msghc_wakeup,
-	[HV_CHANNEL_MESSAGE_GPADL_CREATED] =
-		vmbus_msghc_wakeup,
-	[HV_CHANNEL_MESSAGE_GPADL_TORNDOWN] =
-		vmbus_msghc_wakeup,
-	[HV_CHANNEL_MESSAGE_VERSION_RESPONSE] =
-		vmbus_msghc_wakeup
+vmbus_chanmsg_process[VMBUS_CHANMSG_TYPE_MAX] = {
+	VMBUS_CHANMSG_PROC(CHOFFER,	vmbus_channel_on_offer),
+	VMBUS_CHANMSG_PROC(CHRESCIND,	vmbus_chan_msgproc_chrescind),
+	VMBUS_CHANMSG_PROC(CHOFFER_DONE,vmbus_channel_on_offers_delivered),
+
+	VMBUS_CHANMSG_PROC_WAKEUP(CHOPEN_RESP),
+	VMBUS_CHANMSG_PROC_WAKEUP(GPADL_CONNRESP),
+	VMBUS_CHANMSG_PROC_WAKEUP(GPADL_DISCONNRESP),
+	VMBUS_CHANMSG_PROC_WAKEUP(CONNECT_RESP)
 };
+
+#undef VMBUS_CHANMSG_PROC_WAKEUP
+#undef VMBUS_CHANMSG_PROC
 
 /**
  * @brief Allocate and initialize a vmbus channel object
@@ -562,7 +565,7 @@ vmbus_chan_msgproc(struct vmbus_softc *sc, const struct vmbus_message *msg)
 	uint32_t msg_type;
 
 	msg_type = ((const struct vmbus_chanmsg_hdr *)msg->msg_data)->chm_type;
-	if (msg_type >= HV_CHANNEL_MESSAGE_COUNT) {
+	if (msg_type >= VMBUS_CHANMSG_TYPE_MAX) {
 		device_printf(sc->vmbus_dev, "unknown message type 0x%x\n",
 		    msg_type);
 		return;
