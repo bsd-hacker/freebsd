@@ -40,13 +40,11 @@
 typedef void	(*vmbus_chanmsg_proc_t)
 		(struct vmbus_softc *, const struct vmbus_message *);
 
-static void	vmbus_channel_on_offer_internal(struct vmbus_softc *,
-		    const struct vmbus_chanmsg_choffer *);
 static void	vmbus_chan_detach_task(void *, int);
 
-static void	vmbus_channel_on_offer(struct vmbus_softc *,
-		    const struct vmbus_message *);
 static void	vmbus_channel_on_offers_delivered(struct vmbus_softc *,
+		    const struct vmbus_message *);
+static void	vmbus_chan_msgproc_choffer(struct vmbus_softc *,
 		    const struct vmbus_message *);
 static void	vmbus_chan_msgproc_chrescind(struct vmbus_softc *,
 		    const struct vmbus_message *);
@@ -62,7 +60,7 @@ static void	vmbus_chan_msgproc_chrescind(struct vmbus_softc *,
 
 static const vmbus_chanmsg_proc_t
 vmbus_chanmsg_process[VMBUS_CHANMSG_TYPE_MAX] = {
-	VMBUS_CHANMSG_PROC(CHOFFER,	vmbus_channel_on_offer),
+	VMBUS_CHANMSG_PROC(CHOFFER,	vmbus_chan_msgproc_choffer),
 	VMBUS_CHANMSG_PROC(CHRESCIND,	vmbus_chan_msgproc_chrescind),
 	VMBUS_CHANMSG_PROC(CHOFFER_DONE,vmbus_channel_on_offers_delivered),
 
@@ -114,8 +112,8 @@ vmbus_chan_free(struct hv_vmbus_channel *chan)
  * @brief Process the offer by creating a channel/device
  * associated with this offer
  */
-static void
-vmbus_channel_process_offer(hv_vmbus_channel *new_channel)
+static int
+vmbus_chan_add(hv_vmbus_channel *new_channel)
 {
 	struct vmbus_softc *sc = new_channel->vmbus_sc;
 	hv_vmbus_channel*	channel;
@@ -126,9 +124,13 @@ vmbus_channel_process_offer(hv_vmbus_channel *new_channel)
 	mtx_lock(&sc->vmbus_chlist_lock);
 	if (new_channel->ch_id == 0) {
 		/*
-		 * XXX channel0 will not be processed; skip it.
+		 * XXX
+		 * Chan0 will neither be processed nor should be offered;
+		 * skip it.
 		 */
-		printf("VMBUS: got channel0 offer\n");
+		mtx_unlock(&sc->vmbus_chlist_lock);
+		device_printf(sc->vmbus_dev, "got chan0 offer\n");
+		return EINVAL;
 	} else {
 		sc->vmbus_chmap[new_channel->ch_id] = new_channel;
 	}
@@ -201,27 +203,16 @@ vmbus_channel_process_offer(hv_vmbus_channel *new_channel)
 			mtx_unlock(&channel->sc_lock);
 			wakeup(channel);
 
-			return;
+			return 0;
 		}
 
-		printf("VMBUS: duplicated primary channel%u\n",
+		device_printf(sc->vmbus_dev, "duplicated primary chan%u\n",
 		    new_channel->ch_id);
-		vmbus_chan_free(new_channel);
-		return;
+		return EINVAL;
 	}
 
 	new_channel->state = HV_CHANNEL_OPEN_STATE;
-
-	/*
-	 * Add the new device to the bus. This will kick off device-driver
-	 * binding which eventually invokes the device driver's AddDevice()
-	 * method.
-	 *
-	 * NOTE:
-	 * Error is ignored here; don't have much to do if error really
-	 * happens.
-	 */
-	hv_vmbus_child_device_register(new_channel);
+	return 0;
 }
 
 void
@@ -266,26 +257,15 @@ vmbus_channel_select_defcpu(struct hv_vmbus_channel *chan)
 	vmbus_channel_cpu_set(chan, 0);
 }
 
-/**
- * @brief Handler for channel offers from Hyper-V/Azure
- *
- * Handler for channel offers from vmbus in parent partition.
- */
 static void
-vmbus_channel_on_offer(struct vmbus_softc *sc, const struct vmbus_message *msg)
+vmbus_chan_msgproc_choffer(struct vmbus_softc *sc,
+    const struct vmbus_message *msg)
 {
-	/* New channel is offered by vmbus */
-	vmbus_scan_newchan(sc);
-
-	vmbus_channel_on_offer_internal(sc,
-	    (const struct vmbus_chanmsg_choffer *)msg->msg_data);
-}
-
-static void
-vmbus_channel_on_offer_internal(struct vmbus_softc *sc,
-    const struct vmbus_chanmsg_choffer *offer)
-{
+	const struct vmbus_chanmsg_choffer *offer;
 	hv_vmbus_channel* new_channel;
+	int error;
+
+	offer = (const struct vmbus_chanmsg_choffer *)msg->msg_data;
 
 	/*
 	 * Allocate the channel object and save this offer
@@ -323,7 +303,24 @@ vmbus_channel_on_offer_internal(struct vmbus_softc *sc,
 	/* Select default cpu for this channel. */
 	vmbus_channel_select_defcpu(new_channel);
 
-	vmbus_channel_process_offer(new_channel);
+	error = vmbus_chan_add(new_channel);
+	if (error) {
+		device_printf(sc->vmbus_dev, "add chan%u failed: %d\n",
+		    new_channel->ch_id, error);
+		vmbus_chan_free(new_channel);
+		return;
+	}
+
+	if (HV_VMBUS_CHAN_ISPRIMARY(new_channel)) {
+		/*
+		 * Add device for this primary channel.
+		 *
+		 * NOTE:
+		 * Error is ignored here; don't have much to do if error
+		 * really happens.
+		 */
+		hv_vmbus_child_device_register(new_channel);
+	}
 }
 
 /*
