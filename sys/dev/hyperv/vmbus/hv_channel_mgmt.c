@@ -191,8 +191,6 @@ vmbus_chan_add(hv_vmbus_channel *new_channel)
 			    ch_link);
 			mtx_unlock(&sc->vmbus_chlist_lock);
 
-			new_channel->state = HV_CHANNEL_OPEN_STATE;
-
 			/*
 			 * Bump up sub-channel count and notify anyone that is
 			 * interested in this sub-channel, after this sub-channel
@@ -210,8 +208,6 @@ vmbus_chan_add(hv_vmbus_channel *new_channel)
 		    new_channel->ch_id);
 		return EINVAL;
 	}
-
-	new_channel->state = HV_CHANNEL_OPEN_STATE;
 	return 0;
 }
 
@@ -247,7 +243,7 @@ vmbus_channel_cpu_rr(struct hv_vmbus_channel *chan)
 }
 
 static void
-vmbus_channel_select_defcpu(struct hv_vmbus_channel *chan)
+vmbus_chan_cpu_default(struct hv_vmbus_channel *chan)
 {
 	/*
 	 * By default, pin the channel to cpu0.  Devices having
@@ -262,56 +258,54 @@ vmbus_chan_msgproc_choffer(struct vmbus_softc *sc,
     const struct vmbus_message *msg)
 {
 	const struct vmbus_chanmsg_choffer *offer;
-	hv_vmbus_channel* new_channel;
+	struct hv_vmbus_channel *chan;
 	int error;
 
 	offer = (const struct vmbus_chanmsg_choffer *)msg->msg_data;
 
-	/*
-	 * Allocate the channel object and save this offer
-	 */
-	new_channel = vmbus_chan_alloc(sc);
-	if (new_channel == NULL) {
+	chan = vmbus_chan_alloc(sc);
+	if (chan == NULL) {
 		device_printf(sc->vmbus_dev, "allocate chan%u failed\n",
 		    offer->chm_chanid);
 		return;
 	}
 
-	new_channel->ch_id = offer->chm_chanid;
-	new_channel->ch_subidx = offer->chm_subidx;
-	new_channel->ch_guid_type = offer->chm_chtype;
-	new_channel->ch_guid_inst = offer->chm_chinst;
+	chan->ch_id = offer->chm_chanid;
+	chan->ch_subidx = offer->chm_subidx;
+	chan->ch_guid_type = offer->chm_chtype;
+	chan->ch_guid_inst = offer->chm_chinst;
 
 	/* Batch reading is on by default */
-	new_channel->ch_flags |= VMBUS_CHAN_FLAG_BATCHREAD;
-	if (offer->chm_flags1 & VMBUS_CHOFFER_FLAG1_HASMNF)
-		new_channel->ch_flags |= VMBUS_CHAN_FLAG_HASMNF;
+	chan->ch_flags |= VMBUS_CHAN_FLAG_BATCHREAD;
 
-	new_channel->ch_monprm->mp_connid = VMBUS_CONNID_EVENT;
+	chan->ch_monprm->mp_connid = VMBUS_CONNID_EVENT;
 	if (sc->vmbus_version != VMBUS_VERSION_WS2008)
-		new_channel->ch_monprm->mp_connid = offer->chm_connid;
+		chan->ch_monprm->mp_connid = offer->chm_connid;
 
-	if (new_channel->ch_flags & VMBUS_CHAN_FLAG_HASMNF) {
-		new_channel->ch_montrig_idx =
-		    offer->chm_montrig / VMBUS_MONTRIG_LEN;
-		if (new_channel->ch_montrig_idx >= VMBUS_MONTRIGS_MAX)
+	if (offer->chm_flags1 & VMBUS_CHOFFER_FLAG1_HASMNF) {
+		/*
+		 * Setup MNF stuffs.
+		 */
+		chan->ch_flags |= VMBUS_CHAN_FLAG_HASMNF;
+		chan->ch_montrig_idx = offer->chm_montrig / VMBUS_MONTRIG_LEN;
+		if (chan->ch_montrig_idx >= VMBUS_MONTRIGS_MAX)
 			panic("invalid monitor trigger %u", offer->chm_montrig);
-		new_channel->ch_montrig_mask =
+		chan->ch_montrig_mask =
 		    1 << (offer->chm_montrig % VMBUS_MONTRIG_LEN);
 	}
 
 	/* Select default cpu for this channel. */
-	vmbus_channel_select_defcpu(new_channel);
+	vmbus_chan_cpu_default(chan);
 
-	error = vmbus_chan_add(new_channel);
+	error = vmbus_chan_add(chan);
 	if (error) {
 		device_printf(sc->vmbus_dev, "add chan%u failed: %d\n",
-		    new_channel->ch_id, error);
-		vmbus_chan_free(new_channel);
+		    chan->ch_id, error);
+		vmbus_chan_free(chan);
 		return;
 	}
 
-	if (HV_VMBUS_CHAN_ISPRIMARY(new_channel)) {
+	if (HV_VMBUS_CHAN_ISPRIMARY(chan)) {
 		/*
 		 * Add device for this primary channel.
 		 *
@@ -319,7 +313,7 @@ vmbus_chan_msgproc_choffer(struct vmbus_softc *sc,
 		 * Error is ignored here; don't have much to do if error
 		 * really happens.
 		 */
-		hv_vmbus_child_device_register(new_channel);
+		hv_vmbus_child_device_register(chan);
 	}
 }
 
@@ -481,7 +475,7 @@ vmbus_select_outgoing_channel(struct hv_vmbus_channel *primary)
 	cur_vcpu = VMBUS_PCPU_GET(primary->vmbus_sc, vcpuid, smp_pro_id);
 	
 	TAILQ_FOREACH(new_channel, &primary->sc_list_anchor, sc_list_entry) {
-		if (new_channel->state != HV_CHANNEL_OPENED_STATE){
+		if ((new_channel->ch_stflags & VMBUS_CHAN_ST_OPENED) == 0) {
 			continue;
 		}
 
