@@ -1222,7 +1222,6 @@ dounmount(struct mount *mp, int flags, struct thread *td)
 		VI_LOCK(coveredvp);
 		vholdl(coveredvp);
 		vn_lock(coveredvp, LK_EXCLUSIVE | LK_INTERLOCK | LK_RETRY);
-		vdrop(coveredvp);
 		/*
 		 * Check for mp being unmounted while waiting for the
 		 * covered vnode lock.
@@ -1230,18 +1229,22 @@ dounmount(struct mount *mp, int flags, struct thread *td)
 		if (coveredvp->v_mountedhere != mp ||
 		    coveredvp->v_mountedhere->mnt_gen != mnt_gen_r) {
 			VOP_UNLOCK(coveredvp, 0);
+			vdrop(coveredvp);
 			vfs_rel(mp);
 			return (EBUSY);
 		}
 	}
+
 	/*
 	 * Only privileged root, or (if MNT_USER is set) the user that did the
 	 * original mount is permitted to unmount this filesystem.
 	 */
 	error = vfs_suser(mp, td);
 	if (error != 0) {
-		if (coveredvp)
+		if (coveredvp != NULL) {
 			VOP_UNLOCK(coveredvp, 0);
+			vdrop(coveredvp);
+		}
 		vfs_rel(mp);
 		return (error);
 	}
@@ -1251,8 +1254,10 @@ dounmount(struct mount *mp, int flags, struct thread *td)
 	if ((mp->mnt_kern_flag & MNTK_UNMOUNT) != 0 ||
 	    !TAILQ_EMPTY(&mp->mnt_uppers)) {
 		MNT_IUNLOCK(mp);
-		if (coveredvp)
+		if (coveredvp != NULL) {
 			VOP_UNLOCK(coveredvp, 0);
+			vdrop(coveredvp);
+		}
 		vn_finished_write(mp);
 		return (EBUSY);
 	}
@@ -1285,6 +1290,16 @@ dounmount(struct mount *mp, int flags, struct thread *td)
 	if (mp->mnt_flag & MNT_EXPUBLIC)
 		vfs_setpublicfs(NULL, NULL, NULL);
 
+	/*
+	 * From now, we can claim that the use reference on the
+	 * coveredvp is ours, and the ref can be released only by
+	 * successfull unmount by us, or left for later unmount
+	 * attempt.  The previously acquired hold reference is no
+	 * longer needed to protect the vnode from reuse.
+	 */
+	if (coveredvp != NULL)
+		vdrop(coveredvp);
+
 	vfs_msync(mp, MNT_WAIT);
 	MNT_ILOCK(mp);
 	async_flag = mp->mnt_flag & MNT_ASYNC;
@@ -1300,7 +1315,8 @@ dounmount(struct mount *mp, int flags, struct thread *td)
 	 */
 	if ((flags & MNT_FORCE) &&
 	    VFS_ROOT(mp, LK_EXCLUSIVE, &fsrootvp) == 0) {
-		if (mp->mnt_vnodecovered != NULL)
+		if (mp->mnt_vnodecovered != NULL &&
+		    (mp->mnt_flag & MNT_IGNORE) == 0)
 			mountcheckdirs(fsrootvp, mp->mnt_vnodecovered);
 		if (fsrootvp == rootvnode) {
 			vrele(rootvnode);
@@ -1321,7 +1337,8 @@ dounmount(struct mount *mp, int flags, struct thread *td)
 	if (error && error != ENXIO) {
 		if ((flags & MNT_FORCE) &&
 		    VFS_ROOT(mp, LK_EXCLUSIVE, &fsrootvp) == 0) {
-			if (mp->mnt_vnodecovered != NULL)
+			if (mp->mnt_vnodecovered != NULL &&
+			    (mp->mnt_flag & MNT_IGNORE) == 0)
 				mountcheckdirs(mp->mnt_vnodecovered, fsrootvp);
 			if (rootvnode == NULL) {
 				rootvnode = fsrootvp;
