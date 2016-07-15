@@ -110,22 +110,10 @@ int			hv_ring_buffer_read(
 				uint32_t			buffer_len,
 				uint32_t			offset);
 
-uint32_t		hv_vmbus_get_ring_buffer_interrupt_mask(
-				hv_vmbus_ring_buffer_info	*ring_info);
-
-void			hv_vmbus_dump_ring_info(
-				hv_vmbus_ring_buffer_info	*ring_info,
-				char				*prefix);
-
 void			hv_ring_buffer_read_begin(
 				hv_vmbus_ring_buffer_info	*ring_info);
 
 uint32_t		hv_ring_buffer_read_end(
 				hv_vmbus_ring_buffer_info	*ring_info);
-
-int			hv_vmbus_child_device_register(
-					struct hv_vmbus_channel *chan);
-int			hv_vmbus_child_device_unregister(
-					struct hv_vmbus_channel *chan);
 
 #endif  /* __HYPERV_PRIV_H__ */
