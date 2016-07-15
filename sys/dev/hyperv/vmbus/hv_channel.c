@@ -99,88 +99,106 @@ vmbus_chan_send_event(hv_vmbus_channel *channel)
 }
 
 static int
-vmbus_channel_sysctl_monalloc(SYSCTL_HANDLER_ARGS)
+vmbus_chan_sysctl_mnf(SYSCTL_HANDLER_ARGS)
 {
 	struct hv_vmbus_channel *chan = arg1;
-	int alloc = 0;
+	int mnf = 0;
 
 	if (chan->ch_flags & VMBUS_CHAN_FLAG_HASMNF)
-		alloc = 1;
-	return sysctl_handle_int(oidp, &alloc, 0, req);
+		mnf = 1;
+	return sysctl_handle_int(oidp, &mnf, 0, req);
 }
 
 static void
-vmbus_channel_sysctl_create(hv_vmbus_channel* channel)
+vmbus_chan_sysctl_create(struct hv_vmbus_channel *chan)
 {
-	device_t dev;
-	struct sysctl_oid *devch_sysctl;
-	struct sysctl_oid *devch_id_sysctl, *devch_sub_sysctl;
-	struct sysctl_oid *devch_id_in_sysctl, *devch_id_out_sysctl;
+	struct sysctl_oid *ch_tree, *chid_tree, *br_tree;
 	struct sysctl_ctx_list *ctx;
 	uint32_t ch_id;
-	uint16_t sub_ch_id;
 	char name[16];
-	
-	hv_vmbus_channel* primary_ch = channel->ch_prichan;
 
-	if (primary_ch == NULL) {
-		dev = channel->ch_dev;
-		ch_id = channel->ch_id;
-	} else {
-		dev = primary_ch->ch_dev;
-		ch_id = primary_ch->ch_id;
-		sub_ch_id = channel->ch_subidx;
-	}
-	ctx = &channel->ch_sysctl_ctx;
+	/*
+	 * Add sysctl nodes related to this channel to this
+	 * channel's sysctl ctx, so that they can be destroyed
+	 * independently upon close of this channel, which can
+	 * happen even if the device is not detached.
+	 */
+	ctx = &chan->ch_sysctl_ctx;
 	sysctl_ctx_init(ctx);
-	/* This creates dev.DEVNAME.DEVUNIT.channel tree */
-	devch_sysctl = SYSCTL_ADD_NODE(ctx,
-		    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
-		    OID_AUTO, "channel", CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
-	/* This creates dev.DEVNAME.DEVUNIT.channel.CHANID tree */
+
+	/*
+	 * Create dev.NAME.UNIT.channel tree.
+	 */
+	ch_tree = SYSCTL_ADD_NODE(ctx,
+	    SYSCTL_CHILDREN(device_get_sysctl_tree(chan->ch_dev)),
+	    OID_AUTO, "channel", CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
+	if (ch_tree == NULL)
+		return;
+
+	/*
+	 * Create dev.NAME.UNIT.channel.CHANID tree.
+	 */
+	if (VMBUS_CHAN_ISPRIMARY(chan))
+		ch_id = chan->ch_id;
+	else
+		ch_id = chan->ch_prichan->ch_id;
 	snprintf(name, sizeof(name), "%d", ch_id);
-	devch_id_sysctl = SYSCTL_ADD_NODE(ctx,
-	    	    SYSCTL_CHILDREN(devch_sysctl),
-	    	    OID_AUTO, name, CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
+	chid_tree = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(ch_tree),
+	    OID_AUTO, name, CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
+	if (chid_tree == NULL)
+		return;
 
-	if (primary_ch != NULL) {
-		devch_sub_sysctl = SYSCTL_ADD_NODE(ctx,
-			SYSCTL_CHILDREN(devch_id_sysctl),
-			OID_AUTO, "sub", CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
-		snprintf(name, sizeof(name), "%d", sub_ch_id);
-		devch_id_sysctl = SYSCTL_ADD_NODE(ctx,
-			SYSCTL_CHILDREN(devch_sub_sysctl),
-			OID_AUTO, name, CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
+	if (!VMBUS_CHAN_ISPRIMARY(chan)) {
+		/*
+		 * Create dev.NAME.UNIT.channel.CHANID.sub tree.
+		 */
+		ch_tree = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(chid_tree),
+		    OID_AUTO, "sub", CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
+		if (ch_tree == NULL)
+			return;
 
-		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(devch_id_sysctl),
-		    OID_AUTO, "chanid", CTLFLAG_RD,
-		    &channel->ch_id, 0, "channel id");
+		/*
+		 * Create dev.NAME.UNIT.channel.CHANID.sub.SUBIDX tree.
+		 *
+		 * NOTE:
+		 * chid_tree is changed to this new sysctl tree.
+		 */
+		snprintf(name, sizeof(name), "%d", chan->ch_subidx);
+		chid_tree = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(ch_tree),
+		    OID_AUTO, name, CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
+		if (chid_tree == NULL)
+			return;
+
+		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(chid_tree), OID_AUTO,
+		    "chanid", CTLFLAG_RD, &chan->ch_id, 0, "channel id");
 	}
-	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(devch_id_sysctl), OID_AUTO,
-	    "cpu", CTLFLAG_RD, &channel->ch_cpuid, 0, "owner CPU id");
-	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(devch_id_sysctl), OID_AUTO,
-	    "monitor_allocated", CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE,
-	    channel, 0, vmbus_channel_sysctl_monalloc, "I",
-	    "is monitor allocated to this channel");
 
-	devch_id_in_sysctl = SYSCTL_ADD_NODE(ctx,
-                    SYSCTL_CHILDREN(devch_id_sysctl),
-                    OID_AUTO,
-		    "in",
-		    CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
-	devch_id_out_sysctl = SYSCTL_ADD_NODE(ctx,
-                    SYSCTL_CHILDREN(devch_id_sysctl),
-                    OID_AUTO,
-		    "out",
-		    CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
-	hv_ring_buffer_stat(ctx,
-		SYSCTL_CHILDREN(devch_id_in_sysctl),
-		&(channel->inbound),
-		"inbound ring buffer stats");
-	hv_ring_buffer_stat(ctx,
-		SYSCTL_CHILDREN(devch_id_out_sysctl),
-		&(channel->outbound),
-		"outbound ring buffer stats");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(chid_tree), OID_AUTO,
+	    "cpu", CTLFLAG_RD, &chan->ch_cpuid, 0, "owner CPU id");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(chid_tree), OID_AUTO,
+	    "mnf", CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE,
+	    chan, 0, vmbus_chan_sysctl_mnf, "I",
+	    "has monitor notification facilities");
+
+	/*
+	 * Create sysctl tree for RX bufring.
+	 */
+	br_tree = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(chid_tree), OID_AUTO,
+	    "in", CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
+	if (br_tree != NULL) {
+		hv_ring_buffer_stat(ctx, SYSCTL_CHILDREN(br_tree),
+		    &chan->inbound, "inbound ring buffer stats");
+	}
+
+	/*
+	 * Create sysctl tree for TX bufring.
+	 */
+	br_tree = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(chid_tree), OID_AUTO,
+	    "out", CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
+	if (br_tree != NULL) {
+		hv_ring_buffer_stat(ctx, SYSCTL_CHILDREN(br_tree),
+		    &chan->outbound, "outbound ring buffer stats");
+	}
 }
 
 /**
@@ -257,7 +275,7 @@ hv_vmbus_channel_open(
 	    br + send_ring_buffer_size, recv_ring_buffer_size);
 
 	/* Create sysctl tree for this channel */
-	vmbus_channel_sysctl_create(new_channel);
+	vmbus_chan_sysctl_create(new_channel);
 
 	/*
 	 * Connect the bufrings, both RX and TX, to this channel.
@@ -324,7 +342,7 @@ hv_vmbus_channel_open(
 
 failed:
 	if (new_channel->ch_bufring_gpadl) {
-		hv_vmbus_channel_teardown_gpdal(new_channel,
+		vmbus_chan_gpadl_disconnect(new_channel,
 		    new_channel->ch_bufring_gpadl);
 		new_channel->ch_bufring_gpadl = 0;
 	}
@@ -468,7 +486,7 @@ vmbus_chan_gpadl_connect(struct hv_vmbus_channel *chan, bus_addr_t paddr,
  * Disconnect the GPA from the target channel
  */
 int
-hv_vmbus_channel_teardown_gpdal(struct hv_vmbus_channel *chan, uint32_t gpadl)
+vmbus_chan_gpadl_disconnect(struct hv_vmbus_channel *chan, uint32_t gpadl)
 {
 	struct vmbus_softc *sc = chan->vmbus_sc;
 	struct vmbus_msghc *mh;
@@ -505,41 +523,45 @@ hv_vmbus_channel_teardown_gpdal(struct hv_vmbus_channel *chan, uint32_t gpadl)
 }
 
 static void
-hv_vmbus_channel_close_internal(hv_vmbus_channel *channel)
+vmbus_chan_close_internal(struct hv_vmbus_channel *chan)
 {
-	struct vmbus_softc *sc = channel->vmbus_sc;
+	struct vmbus_softc *sc = chan->vmbus_sc;
 	struct vmbus_msghc *mh;
 	struct vmbus_chanmsg_chclose *req;
-	struct taskqueue *tq = channel->ch_tq;
+	struct taskqueue *tq = chan->ch_tq;
 	int error;
 
 	/* TODO: stringent check */
-	atomic_clear_int(&channel->ch_stflags, VMBUS_CHAN_ST_OPENED);
-
-	sysctl_ctx_free(&channel->ch_sysctl_ctx);
+	atomic_clear_int(&chan->ch_stflags, VMBUS_CHAN_ST_OPENED);
 
 	/*
-	 * Set ch_tq to NULL to avoid more requests be scheduled
+	 * Free this channel's sysctl tree attached to its device's
+	 * sysctl tree.
 	 */
-	channel->ch_tq = NULL;
-	taskqueue_drain(tq, &channel->ch_task);
-	channel->ch_cb = NULL;
+	sysctl_ctx_free(&chan->ch_sysctl_ctx);
 
-	/**
-	 * Send a closing message
+	/*
+	 * Set ch_tq to NULL to avoid more requests be scheduled.
+	 * XXX pretty broken; need rework.
 	 */
+	chan->ch_tq = NULL;
+	taskqueue_drain(tq, &chan->ch_task);
+	chan->ch_cb = NULL;
 
+	/*
+	 * Close this channel.
+	 */
 	mh = vmbus_msghc_get(sc, sizeof(*req));
 	if (mh == NULL) {
 		device_printf(sc->vmbus_dev,
 		    "can not get msg hypercall for chclose(chan%u)\n",
-		    channel->ch_id);
+		    chan->ch_id);
 		return;
 	}
 
 	req = vmbus_msghc_dataptr(mh);
 	req->chm_hdr.chm_type = VMBUS_CHANMSG_TYPE_CHCLOSE;
-	req->chm_chanid = channel->ch_id;
+	req->chm_chanid = chan->ch_id;
 
 	error = vmbus_msghc_exec_noresult(mh);
 	vmbus_msghc_put(sc, mh);
@@ -547,30 +569,28 @@ hv_vmbus_channel_close_internal(hv_vmbus_channel *channel)
 	if (error) {
 		device_printf(sc->vmbus_dev,
 		    "chclose(chan%u) msg hypercall exec failed: %d\n",
-		    channel->ch_id, error);
+		    chan->ch_id, error);
 		return;
 	} else if (bootverbose) {
-		device_printf(sc->vmbus_dev, "close chan%u\n",
-		    channel->ch_id);
+		device_printf(sc->vmbus_dev, "close chan%u\n", chan->ch_id);
 	}
 
-	/* Tear down the gpadl for the channel's ring buffer */
-	if (channel->ch_bufring_gpadl) {
-		hv_vmbus_channel_teardown_gpdal(channel,
-		    channel->ch_bufring_gpadl);
-		channel->ch_bufring_gpadl = 0;
+	/*
+	 * Disconnect the TX+RX bufrings from this channel.
+	 */
+	if (chan->ch_bufring_gpadl) {
+		vmbus_chan_gpadl_disconnect(chan, chan->ch_bufring_gpadl);
+		chan->ch_bufring_gpadl = 0;
 	}
 
-	/* TODO: Send a msg to release the childRelId */
-
-	/* cleanup the ring buffers for this channel */
-	hv_ring_buffer_cleanup(&channel->outbound);
-	hv_ring_buffer_cleanup(&channel->inbound);
-
-	if (channel->ch_bufring != NULL) {
-		hyperv_dmamem_free(&channel->ch_bufring_dma,
-		    channel->ch_bufring);
-		channel->ch_bufring = NULL;
+	/*
+	 * Destroy the TX+RX bufrings.
+	 */
+	hv_ring_buffer_cleanup(&chan->outbound);
+	hv_ring_buffer_cleanup(&chan->inbound);
+	if (chan->ch_bufring != NULL) {
+		hyperv_dmamem_free(&chan->ch_bufring_dma, chan->ch_bufring);
+		chan->ch_bufring = NULL;
 	}
 }
 
@@ -600,14 +620,14 @@ hv_vmbus_channel_close(struct hv_vmbus_channel *chan)
 		struct hv_vmbus_channel **subchan;
 		int i;
 
-		subchan = vmbus_get_subchan(chan, subchan_cnt);
+		subchan = vmbus_subchan_get(chan, subchan_cnt);
 		for (i = 0; i < subchan_cnt; ++i)
-			hv_vmbus_channel_close_internal(subchan[i]);
-		vmbus_rel_subchan(subchan, subchan_cnt);
+			vmbus_chan_close_internal(subchan[i]);
+		vmbus_subchan_rel(subchan, subchan_cnt);
 	}
 
 	/* Then close the primary channel. */
-	hv_vmbus_channel_close_internal(chan);
+	vmbus_chan_close_internal(chan);
 }
 
 int
@@ -1038,7 +1058,7 @@ vmbus_chan_add(struct hv_vmbus_channel *newchan)
 }
 
 void
-vmbus_channel_cpu_set(struct hv_vmbus_channel *chan, int cpu)
+vmbus_chan_cpu_set(struct hv_vmbus_channel *chan, int cpu)
 {
 	KASSERT(cpu >= 0 && cpu < mp_ncpus, ("invalid cpu %d", cpu));
 
@@ -1058,13 +1078,13 @@ vmbus_channel_cpu_set(struct hv_vmbus_channel *chan, int cpu)
 }
 
 void
-vmbus_channel_cpu_rr(struct hv_vmbus_channel *chan)
+vmbus_chan_cpu_rr(struct hv_vmbus_channel *chan)
 {
 	static uint32_t vmbus_chan_nextcpu;
 	int cpu;
 
 	cpu = atomic_fetchadd_int(&vmbus_chan_nextcpu, 1) % mp_ncpus;
-	vmbus_channel_cpu_set(chan, cpu);
+	vmbus_chan_cpu_set(chan, cpu);
 }
 
 static void
@@ -1073,9 +1093,9 @@ vmbus_chan_cpu_default(struct hv_vmbus_channel *chan)
 	/*
 	 * By default, pin the channel to cpu0.  Devices having
 	 * special channel-cpu mapping requirement should call
-	 * vmbus_channel_cpu_{set,rr}().
+	 * vmbus_chan_cpu_{set,rr}().
 	 */
-	vmbus_channel_cpu_set(chan, 0);
+	vmbus_chan_cpu_set(chan, 0);
 }
 
 static void
@@ -1309,7 +1329,7 @@ vmbus_select_outgoing_channel(struct hv_vmbus_channel *primary)
 }
 
 struct hv_vmbus_channel **
-vmbus_get_subchan(struct hv_vmbus_channel *pri_chan, int subchan_cnt)
+vmbus_subchan_get(struct hv_vmbus_channel *pri_chan, int subchan_cnt)
 {
 	struct hv_vmbus_channel **ret, *chan;
 	int i;
@@ -1340,14 +1360,14 @@ vmbus_get_subchan(struct hv_vmbus_channel *pri_chan, int subchan_cnt)
 }
 
 void
-vmbus_rel_subchan(struct hv_vmbus_channel **subchan, int subchan_cnt __unused)
+vmbus_subchan_rel(struct hv_vmbus_channel **subchan, int subchan_cnt __unused)
 {
 
 	free(subchan, M_TEMP);
 }
 
 void
-vmbus_drain_subchan(struct hv_vmbus_channel *pri_chan)
+vmbus_subchan_drain(struct hv_vmbus_channel *pri_chan)
 {
 	mtx_lock(&pri_chan->ch_subchan_lock);
 	while (pri_chan->ch_subchan_cnt > 0)
