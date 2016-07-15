@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_param.h>
 #include <vm/pmap.h>
 
+#include <dev/hyperv/include/hyperv_busdma.h>
 #include <dev/hyperv/vmbus/hv_vmbus_priv.h>
 #include <dev/hyperv/vmbus/hyperv_var.h>
 #include <dev/hyperv/vmbus/vmbus_reg.h>
@@ -156,7 +157,7 @@ vmbus_channel_sysctl_create(hv_vmbus_channel* channel)
 		    &channel->ch_id, 0, "channel id");
 	}
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(devch_id_sysctl), OID_AUTO,
-	    "cpu", CTLFLAG_RD, &channel->target_cpu, 0, "owner CPU id");
+	    "cpu", CTLFLAG_RD, &channel->ch_cpuid, 0, "owner CPU id");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(devch_id_sysctl), OID_AUTO,
 	    "monitor_allocated", CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE,
 	    channel, 0, vmbus_channel_sysctl_monalloc, "I",
@@ -202,7 +203,7 @@ hv_vmbus_channel_open(
 	struct vmbus_msghc *mh;
 	uint32_t status;
 	int ret = 0;
-	void *in, *out;
+	uint8_t *br;
 
 	if (user_data_len > VMBUS_CHANMSG_CHOPEN_UDATA_SIZE) {
 		device_printf(sc->vmbus_dev,
@@ -210,6 +211,10 @@ hv_vmbus_channel_open(
 		    user_data_len, new_channel->ch_id);
 		return EINVAL;
 	}
+	KASSERT((send_ring_buffer_size & PAGE_MASK) == 0,
+	    ("send bufring size is not multiple page"));
+	KASSERT((recv_ring_buffer_size & PAGE_MASK) == 0,
+	    ("recv bufring size is not multiple page"));
 
 	if (atomic_testandset_int(&new_channel->ch_stflags,
 	    VMBUS_CHAN_ST_OPENED_SHIFT))
@@ -221,7 +226,7 @@ hv_vmbus_channel_open(
 	vmbus_chan_update_evtflagcnt(sc, new_channel);
 
 	new_channel->rxq = VMBUS_PCPU_GET(new_channel->vmbus_sc, event_tq,
-	    new_channel->target_cpu);
+	    new_channel->ch_cpuid);
 	if (new_channel->ch_flags & VMBUS_CHAN_FLAG_BATCHREAD) {
 		TASK_INIT(&new_channel->channel_task, 0,
 		    vmbus_chan_task, new_channel);
@@ -230,46 +235,43 @@ hv_vmbus_channel_open(
 		    vmbus_chan_task_nobatch, new_channel);
 	}
 
-	/* Allocate the ring buffer */
-	out = contigmalloc((send_ring_buffer_size + recv_ring_buffer_size),
-	    M_DEVBUF, M_ZERO, 0UL, BUS_SPACE_MAXADDR, PAGE_SIZE, 0);
-	KASSERT(out != NULL,
-	    ("Error VMBUS: contigmalloc failed to allocate Ring Buffer!"));
-	if (out == NULL) {
+	/*
+	 * Allocate the TX+RX bufrings.
+	 * XXX should use ch_dev dtag
+	 */
+	br = hyperv_dmamem_alloc(bus_get_dma_tag(sc->vmbus_dev),
+	    PAGE_SIZE, 0, send_ring_buffer_size + recv_ring_buffer_size,
+	    &new_channel->ch_bufring_dma, BUS_DMA_WAITOK | BUS_DMA_ZERO);
+	if (br == NULL) {
+		device_printf(sc->vmbus_dev, "bufring allocation failed\n");
 		ret = ENOMEM;
 		goto failed;
 	}
+	new_channel->ch_bufring = br;
 
-	in = ((uint8_t *) out + send_ring_buffer_size);
-
-	new_channel->ring_buffer_pages = out;
-	new_channel->ring_buffer_page_count = (send_ring_buffer_size +
-	    recv_ring_buffer_size) >> PAGE_SHIFT;
-	new_channel->ring_buffer_size = send_ring_buffer_size +
-	    recv_ring_buffer_size;
-
-	hv_vmbus_ring_buffer_init(
-		&new_channel->outbound,
-		out,
-		send_ring_buffer_size);
-
-	hv_vmbus_ring_buffer_init(
-		&new_channel->inbound,
-		in,
-		recv_ring_buffer_size);
+	/* TX bufring comes first */
+	hv_vmbus_ring_buffer_init(&new_channel->outbound,
+	    br, send_ring_buffer_size);
+	/* RX bufring immediately follows TX bufring */
+	hv_vmbus_ring_buffer_init(&new_channel->inbound,
+	    br + send_ring_buffer_size, recv_ring_buffer_size);
 
 	/* Create sysctl tree for this channel */
 	vmbus_channel_sysctl_create(new_channel);
 
-	/**
-	 * Establish the gpadl for the ring buffer
+	/*
+	 * Connect the bufrings, both RX and TX, to this channel.
 	 */
-	new_channel->ring_buffer_gpadl_handle = 0;
-
-	ret = hv_vmbus_channel_establish_gpadl(new_channel,
-		new_channel->outbound.ring_buffer,
+	ret = vmbus_chan_gpadl_connect(new_channel,
+		new_channel->ch_bufring_dma.hv_paddr,
 		send_ring_buffer_size + recv_ring_buffer_size,
-		&new_channel->ring_buffer_gpadl_handle);
+		&new_channel->ch_bufring_gpadl);
+	if (ret != 0) {
+		device_printf(sc->vmbus_dev,
+		    "failed to connect bufring GPADL to chan%u\n",
+		    new_channel->ch_id);
+		goto failed;
+	}
 
 	/*
 	 * Open channel w/ the bufring GPADL on the target CPU.
@@ -287,8 +289,8 @@ hv_vmbus_channel_open(
 	req->chm_hdr.chm_type = VMBUS_CHANMSG_TYPE_CHOPEN;
 	req->chm_chanid = new_channel->ch_id;
 	req->chm_openid = new_channel->ch_id;
-	req->chm_gpadl = new_channel->ring_buffer_gpadl_handle;
-	req->chm_vcpuid = new_channel->target_vcpu;
+	req->chm_gpadl = new_channel->ch_bufring_gpadl;
+	req->chm_vcpuid = new_channel->ch_vcpuid;
 	req->chm_rxbr_pgofs = send_ring_buffer_size >> PAGE_SHIFT;
 	if (user_data_len)
 		memcpy(req->chm_udata, user_data, user_data_len);
@@ -321,6 +323,16 @@ hv_vmbus_channel_open(
 	ret = ENXIO;
 
 failed:
+	if (new_channel->ch_bufring_gpadl) {
+		hv_vmbus_channel_teardown_gpdal(new_channel,
+		    new_channel->ch_bufring_gpadl);
+		new_channel->ch_bufring_gpadl = 0;
+	}
+	if (new_channel->ch_bufring != NULL) {
+		hyperv_dmamem_free(&new_channel->ch_bufring_dma,
+		    new_channel->ch_bufring);
+		new_channel->ch_bufring = NULL;
+	}
 	atomic_clear_int(&new_channel->ch_stflags, VMBUS_CHAN_ST_OPENED);
 	return ret;
 }
@@ -554,9 +566,10 @@ hv_vmbus_channel_close_internal(hv_vmbus_channel *channel)
 	}
 
 	/* Tear down the gpadl for the channel's ring buffer */
-	if (channel->ring_buffer_gpadl_handle) {
+	if (channel->ch_bufring_gpadl) {
 		hv_vmbus_channel_teardown_gpdal(channel,
-			channel->ring_buffer_gpadl_handle);
+		    channel->ch_bufring_gpadl);
+		channel->ch_bufring_gpadl = 0;
 	}
 
 	/* TODO: Send a msg to release the childRelId */
@@ -565,8 +578,11 @@ hv_vmbus_channel_close_internal(hv_vmbus_channel *channel)
 	hv_ring_buffer_cleanup(&channel->outbound);
 	hv_ring_buffer_cleanup(&channel->inbound);
 
-	contigfree(channel->ring_buffer_pages, channel->ring_buffer_size,
-	    M_DEVBUF);
+	if (channel->ch_bufring != NULL) {
+		hyperv_dmamem_free(&channel->ch_bufring_dma,
+		    channel->ch_bufring);
+		channel->ch_bufring = NULL;
+	}
 }
 
 /*
@@ -989,7 +1005,7 @@ vmbus_chan_update_evtflagcnt(struct vmbus_softc *sc,
 	int flag_cnt;
 
 	flag_cnt = (chan->ch_id / VMBUS_EVTFLAG_LEN) + 1;
-	flag_cnt_ptr = VMBUS_PCPU_PTR(sc, event_flags_cnt, chan->target_cpu);
+	flag_cnt_ptr = VMBUS_PCPU_PTR(sc, event_flags_cnt, chan->ch_cpuid);
 
 	for (;;) {
 		int old_flag_cnt;
@@ -1001,8 +1017,7 @@ vmbus_chan_update_evtflagcnt(struct vmbus_softc *sc,
 			if (bootverbose) {
 				device_printf(sc->vmbus_dev,
 				    "channel%u update cpu%d flag_cnt to %d\n",
-				    chan->ch_id,
-				    chan->target_cpu, flag_cnt);
+				    chan->ch_id, chan->ch_cpuid, flag_cnt);
 			}
 			break;
 		}
@@ -1146,13 +1161,12 @@ vmbus_channel_cpu_set(struct hv_vmbus_channel *chan, int cpu)
 		cpu = 0;
 	}
 
-	chan->target_cpu = cpu;
-	chan->target_vcpu = VMBUS_PCPU_GET(chan->vmbus_sc, vcpuid, cpu);
+	chan->ch_cpuid = cpu;
+	chan->ch_vcpuid = VMBUS_PCPU_GET(chan->vmbus_sc, vcpuid, cpu);
 
 	if (bootverbose) {
 		printf("vmbus_chan%u: assigned to cpu%u [vcpu%u]\n",
-		    chan->ch_id,
-		    chan->target_cpu, chan->target_vcpu);
+		    chan->ch_id, chan->ch_cpuid, chan->ch_vcpuid);
 	}
 }
 
@@ -1385,17 +1399,17 @@ vmbus_select_outgoing_channel(struct hv_vmbus_channel *primary)
 			continue;
 		}
 
-		if (new_channel->target_vcpu == cur_vcpu){
+		if (new_channel->ch_vcpuid == cur_vcpu){
 			return new_channel;
 		}
 
-		old_cpu_distance = ((outgoing_channel->target_vcpu > cur_vcpu) ?
-		    (outgoing_channel->target_vcpu - cur_vcpu) :
-		    (cur_vcpu - outgoing_channel->target_vcpu));
+		old_cpu_distance = ((outgoing_channel->ch_vcpuid > cur_vcpu) ?
+		    (outgoing_channel->ch_vcpuid - cur_vcpu) :
+		    (cur_vcpu - outgoing_channel->ch_vcpuid));
 
-		new_cpu_distance = ((new_channel->target_vcpu > cur_vcpu) ?
-		    (new_channel->target_vcpu - cur_vcpu) :
-		    (cur_vcpu - new_channel->target_vcpu));
+		new_cpu_distance = ((new_channel->ch_vcpuid > cur_vcpu) ?
+		    (new_channel->ch_vcpuid - cur_vcpu) :
+		    (cur_vcpu - new_channel->ch_vcpuid));
 
 		if (old_cpu_distance < new_cpu_distance) {
 			continue;

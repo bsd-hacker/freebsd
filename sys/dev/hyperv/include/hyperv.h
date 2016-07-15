@@ -257,13 +257,6 @@ typedef struct hv_vmbus_channel {
 	int				ch_montrig_idx;	/* MNF trig index */
 	uint32_t			ch_montrig_mask;/* MNF trig mask */
 
-	uint32_t			ring_buffer_gpadl_handle;
-	/*
-	 * Allocated memory for ring buffer
-	 */
-	void*				ring_buffer_pages;
-	unsigned long			ring_buffer_size;
-	uint32_t			ring_buffer_page_count;
 	/*
 	 * send to parent
 	 */
@@ -281,16 +274,13 @@ typedef struct hv_vmbus_channel {
 	struct hyperv_mon_param		*ch_monprm;
 	struct hyperv_dma		ch_monprm_dma;
 
+	int				ch_cpuid;	/* owner cpu */
 	/*
-	 * From Win8, this field specifies the target virtual process
-	 * on which to deliver the interrupt from the host to guest.
-	 * Before Win8, all channel interrupts would only be
-	 * delivered on cpu 0. Setting this value to 0 would preserve
-	 * the earlier behavior.
+	 * Virtual cpuid for ch_cpuid; it is used to communicate cpuid
+	 * related information w/ Hyper-V.  If MSR_HV_VP_INDEX does not
+	 * exist, ch_vcpuid will always be 0 for compatibility.
 	 */
-	uint32_t			target_vcpu;
-	/* The corresponding CPUID in the guest */
-	uint32_t			target_cpu;
+	uint32_t			ch_vcpuid;
 
 	/*
 	 * If this is a primary channel, ch_subchan* fields
@@ -311,6 +301,10 @@ typedef struct hv_vmbus_channel {
 	void				*hv_chan_priv1;
 	void				*hv_chan_priv2;
 	void				*hv_chan_priv3;
+
+	void				*ch_bufring;	/* TX+RX bufrings */
+	struct hyperv_dma		ch_bufring_dma;
+	uint32_t			ch_bufring_gpadl;
 
 	struct task			ch_detach_task;
 	TAILQ_ENTRY(hv_vmbus_channel)	ch_prilink;	/* primary chan link */
