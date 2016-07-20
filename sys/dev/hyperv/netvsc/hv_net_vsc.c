@@ -50,14 +50,14 @@
 #include "hv_rndis_filter.h"
 
 /* priv1 and priv2 are consumed by the main driver */
-#define hv_chan_rdbuf	hv_chan_priv3
+#define ch_dev_rdbuf	ch_dev_priv3
 
 MALLOC_DEFINE(M_NETVSC, "netvsc", "Hyper-V netvsc driver");
 
 /*
  * Forward declarations
  */
-static void hv_nv_on_channel_callback(void *xchan);
+static void hv_nv_on_channel_callback(struct hv_vmbus_channel *chan, void *arg);
 static int  hv_nv_init_send_buffer_with_net_vsp(struct hn_softc *sc);
 static int  hv_nv_init_rx_buffer_with_net_vsp(struct hn_softc *);
 static int  hv_nv_destroy_send_buffer(netvsc_dev *net_dev);
@@ -644,10 +644,10 @@ void
 hv_nv_subchan_attach(struct hv_vmbus_channel *chan)
 {
 
-	chan->hv_chan_rdbuf = malloc(NETVSC_PACKET_SIZE, M_NETVSC, M_WAITOK);
+	chan->ch_dev_rdbuf = malloc(NETVSC_PACKET_SIZE, M_NETVSC, M_WAITOK);
 	vmbus_chan_open(chan, NETVSC_DEVICE_RING_BUFFER_SIZE,
 	    NETVSC_DEVICE_RING_BUFFER_SIZE, NULL, 0,
-	    hv_nv_on_channel_callback, chan);
+	    hv_nv_on_channel_callback, NULL);
 }
 
 /*
@@ -670,16 +670,16 @@ hv_nv_on_device_add(struct hn_softc *sc, void *additional_info)
 
 	sema_init(&net_dev->channel_init_sema, 0, "netdev_sema");
 
-	chan->hv_chan_rdbuf = malloc(NETVSC_PACKET_SIZE, M_NETVSC, M_WAITOK);
+	chan->ch_dev_rdbuf = malloc(NETVSC_PACKET_SIZE, M_NETVSC, M_WAITOK);
 
 	/*
 	 * Open the channel
 	 */
 	ret = vmbus_chan_open(chan,
 	    NETVSC_DEVICE_RING_BUFFER_SIZE, NETVSC_DEVICE_RING_BUFFER_SIZE,
-	    NULL, 0, hv_nv_on_channel_callback, chan);
+	    NULL, 0, hv_nv_on_channel_callback, NULL);
 	if (ret != 0) {
-		free(chan->hv_chan_rdbuf, M_NETVSC);
+		free(chan->ch_dev_rdbuf, M_NETVSC);
 		goto cleanup;
 	}
 
@@ -694,7 +694,7 @@ hv_nv_on_device_add(struct hn_softc *sc, void *additional_info)
 
 close:
 	/* Now, we can close the channel safely */
-	free(chan->hv_chan_rdbuf, M_NETVSC);
+	free(chan->ch_dev_rdbuf, M_NETVSC);
 	vmbus_chan_close(chan);
 
 cleanup:
@@ -725,7 +725,7 @@ hv_nv_on_device_remove(struct hn_softc *sc, boolean_t destroy_channel)
 
 	/* Now, we can close the channel safely */
 
-	free(sc->hn_prichan->hv_chan_rdbuf, M_NETVSC);
+	free(sc->hn_prichan->ch_dev_rdbuf, M_NETVSC);
 	vmbus_chan_close(sc->hn_prichan);
 
 	sema_destroy(&net_dev->channel_init_sema);
@@ -973,9 +973,8 @@ hv_nv_send_table(struct hn_softc *sc, const struct vmbus_chanpkt_hdr *pkt)
  * Net VSC on channel callback
  */
 static void
-hv_nv_on_channel_callback(void *xchan)
+hv_nv_on_channel_callback(struct hv_vmbus_channel *chan, void *arg __unused)
 {
-	struct hv_vmbus_channel *chan = xchan;
 	device_t dev = chan->ch_dev;
 	struct hn_softc *sc = device_get_softc(dev);
 	netvsc_dev *net_dev;
@@ -986,7 +985,7 @@ hv_nv_on_channel_callback(void *xchan)
 	if (net_dev == NULL)
 		return;
 
-	buffer = chan->hv_chan_rdbuf;
+	buffer = chan->ch_dev_rdbuf;
 	do {
 		struct vmbus_chanpkt_hdr *pkt = buffer;
 		uint32_t bytes_rxed;
