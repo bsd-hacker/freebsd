@@ -30,28 +30,32 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/param.h>
+#include <sys/wait.h>
+
+#include <err.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/param.h>
-#include <sys/wait.h>
-#include <signal.h>
-#include <errno.h>
-#include <err.h>
 
 #include <stress.h>
 
-char file[128];
+pid_t pid;
 int fd;
 int freespace;
-pid_t	pid;
+char file[128];
 
 int
 get(void) {
-	int sem;
-	if (lockf(fd, F_LOCK, 0) == -1)
+	int r, sem;
+
+	do {
+		r = lockf(fd, F_LOCK, 0);
+	} while (r == -1 && errno == EINTR);
+	if (r == -1)
 		err(1, "lockf(%s, F_LOCK)", file);
 	if (read(fd, &sem, sizeof(sem)) != sizeof(sem))
 		err(1, "get: read(%d)", fd);
@@ -64,8 +68,12 @@ get(void) {
 
 void
 incr(void) {
-	int sem;
-	if (lockf(fd, F_LOCK, 0) == -1)
+	int r, sem;
+
+	do {
+		r = lockf(fd, F_LOCK, 0);
+	} while (r == -1 && errno == EINTR);
+	if (r == -1)
 		err(1, "lockf(%s, F_LOCK)", file);
 	if (read(fd, &sem, sizeof(sem)) != sizeof(sem))
 		err(1, "incr: read(%d)", fd);

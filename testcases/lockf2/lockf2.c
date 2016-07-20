@@ -36,15 +36,15 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/types.h>
+
+#include <err.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/param.h>
 #include <strings.h>
-#include <errno.h>
-#include <err.h>
+#include <unistd.h>
 
 #include <stress.h>
 
@@ -103,9 +103,9 @@ cleanup(void)
 int
 test(void)
 {
-	int i;
 	off_t pos;
 	off_t size;
+	int i, r;
 
 	if ((fd = open(file, O_RDWR, 0600)) == -1)
 		err(1, "open(%s)", file);
@@ -117,7 +117,10 @@ test(void)
 		size = random_int(1, 1024 * 1024 - pos);
 		if (size > 64)
 			size = 64;
-		if (lockf(fd, F_LOCK, size) == -1)
+		do {
+			r = lockf(fd, F_LOCK, size);
+		} while (r == -1 && errno == EINTR);
+		if (r == -1)
 			err(1, "lockf(%s, F_LOCK)", file);
 		size = random_int(1, size);
 		if (lockf(fd, F_ULOCK, size) == -1)
