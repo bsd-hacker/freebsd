@@ -39,6 +39,10 @@
 # https://people.freebsd.org/~pho/stress/log/rrs005.txt
 # Fixed in r278623.
 
+# "ritwait DE    0- 0:00.01 crlogger: writer" seen.
+# https://people.freebsd.org/~pho/stress/log/kostik917.txt
+# Fixed in r302981
+
 . ../default.cfg
 
 rm -f /tmp/crwriter /tmp/crlogger || exit 1

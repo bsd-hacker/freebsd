@@ -30,6 +30,9 @@
 
 # Regression test for r246484.
 
+# "panic: failed to set signal flags for ast p ... fl 4" seen.
+# Fixed in r302999.
+
 . ../default.cfg
 
 cd /tmp
