@@ -176,8 +176,8 @@ sdp_pcbfree(struct sdp_sock *ssk)
 	sdp_tx_ring_destroy(ssk);
 	sdp_rx_ring_destroy(ssk);
 	rw_destroy(&ssk->rx_ring.destroyed_lock);
-	uma_zfree(sdp_zone, ssk);
 	rw_destroy(&ssk->lock);
+	uma_zfree(sdp_zone, ssk);
 }
 
 /*
@@ -469,6 +469,7 @@ sdp_attach(struct socket *so, int proto, struct thread *td)
 	ssk->flags = 0;
 	ssk->qp_active = 0;
 	ssk->state = TCPS_CLOSED;
+	mbufq_init(&ssk->rxctlq, INT_MAX);
 	SDP_LIST_WLOCK();
 	LIST_INSERT_HEAD(&sdp_list, ssk, list);
 	sdp_count++;

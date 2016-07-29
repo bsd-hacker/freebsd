@@ -459,14 +459,9 @@ sdp_process_rx_mb(struct sdp_sock *ssk, struct mbuf *mb)
 					ntohl(rrch->len));
 		}
 #endif
-		mb->m_nextpkt = NULL;
-		if (ssk->rx_ctl_tail)
-			ssk->rx_ctl_tail->m_nextpkt = mb;
-		else
-			ssk->rx_ctl_q = mb;
-		ssk->rx_ctl_tail = mb;
-
-		return 0;
+		if (mbufq_enqueue(&ssk->rxctlq, mb) != 0)
+			m_freem(mb);
+		return (0);
 	}
 
 	sdp_prf1(sk, NULL, "queueing %s mb\n", mid2str(h->mid));
@@ -611,11 +606,8 @@ sdp_do_posts(struct sdp_sock *ssk)
 		return;
 	}
 
-	while ((mb = ssk->rx_ctl_q)) {
-		ssk->rx_ctl_q = mb->m_nextpkt;
-		mb->m_nextpkt = NULL;
+	while ((mb = mbufq_dequeue(&ssk->rxctlq)) != NULL)
 		sdp_process_rx_ctl_mb(ssk, mb);
-	}
 
 	if (ssk->state == TCPS_TIME_WAIT)
 		return;
@@ -673,13 +665,10 @@ sdp_process_rx(struct sdp_sock *ssk)
 static void
 sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 {
-	struct socket *sk = cq_context;
-	struct sdp_sock *ssk = sdp_sk(sk);
+	struct sdp_sock *ssk;
 
-	if (cq != ssk->rx_ring.cq) {
-		sdp_dbg(sk, "cq = %p, ssk->cq = %p\n", cq, ssk->rx_ring.cq);
-		return;
-	}
+	ssk = cq_context;
+	KASSERT(cq == ssk->rx_ring.cq, ("%s: mismatched cq on %p", ssk));
 
 	SDPSTATS_COUNTER_INC(rx_int_count);
 
@@ -736,7 +725,7 @@ sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	}
 
 	rx_cq = ib_create_cq(device, sdp_rx_irq, sdp_rx_cq_event_handler,
-			  ssk->socket, SDP_RX_SIZE, 0);
+	    ssk, SDP_RX_SIZE, 0);
 
 	if (IS_ERR(rx_cq)) {
 		rc = PTR_ERR(rx_cq);
