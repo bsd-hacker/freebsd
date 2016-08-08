@@ -64,7 +64,7 @@ hv_heartbeat_cb(struct vmbus_channel *channel, void *context)
 	softc = (hv_util_sc*)context;
 	buf = softc->receive_buffer;
 
-	recvlen = PAGE_SIZE;
+	recvlen = softc->ic_buflen;
 	ret = vmbus_chan_recv(channel, buf, &recvlen, &requestid);
 	KASSERT(ret != ENOBUFS, ("hvheartbeat recvbuf is not large enough"));
 	/* XXX check recvlen to make sure that it contains enough data */
@@ -109,11 +109,7 @@ hv_heartbeat_probe(device_t dev)
 static int
 hv_heartbeat_attach(device_t dev)
 {
-	hv_util_sc *softc = (hv_util_sc*)device_get_softc(dev);
-
-	softc->callback = hv_heartbeat_cb;
-
-	return hv_util_attach(dev);
+	return hv_util_attach(dev, hv_heartbeat_cb);
 }
 
 static device_method_t heartbeat_methods[] = {

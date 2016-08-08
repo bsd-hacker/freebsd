@@ -145,7 +145,7 @@ hv_timesync_cb(struct vmbus_channel *channel, void *context)
 	softc = (hv_timesync_sc*)context;
 	time_buf = softc->util_sc.receive_buffer;
 
-	recvlen = PAGE_SIZE;
+	recvlen = softc->util_sc.ic_buflen;
 	ret = vmbus_chan_recv(channel, time_buf, &recvlen, &requestId);
 	KASSERT(ret != ENOBUFS, ("hvtimesync recvbuf is not large enough"));
 	/* XXX check recvlen to make sure that it contains enough data */
@@ -189,18 +189,16 @@ hv_timesync_attach(device_t dev)
 {
 	hv_timesync_sc *softc = device_get_softc(dev);
 
-	softc->util_sc.callback = hv_timesync_cb;
 	TASK_INIT(&softc->task, 1, hv_set_host_time, softc);
-
-	return hv_util_attach(dev);
+	return hv_util_attach(dev, hv_timesync_cb);
 }
 
 static int
 hv_timesync_detach(device_t dev)
 {
 	hv_timesync_sc *softc = device_get_softc(dev);
-	taskqueue_drain(taskqueue_thread, &softc->task);
 
+	taskqueue_drain(taskqueue_thread, &softc->task);
 	return hv_util_detach(dev);
 }
 

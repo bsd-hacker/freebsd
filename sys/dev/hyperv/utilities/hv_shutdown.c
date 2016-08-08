@@ -68,7 +68,7 @@ hv_shutdown_cb(struct vmbus_channel *channel, void *context)
 	softc = (hv_util_sc*)context;
 	buf = softc->receive_buffer;
 
-	recv_len = PAGE_SIZE;
+	recv_len = softc->ic_buflen;
 	ret = vmbus_chan_recv(channel, buf, &recv_len, &request_id);
 	KASSERT(ret != ENOBUFS, ("hvshutdown recvbuf is not large enough"));
 	/* XXX check recv_len to make sure that it contains enough data */
@@ -131,11 +131,7 @@ hv_shutdown_probe(device_t dev)
 static int
 hv_shutdown_attach(device_t dev)
 {
-	hv_util_sc *softc = (hv_util_sc*)device_get_softc(dev);
-
-	softc->callback = hv_shutdown_cb;
-
-	return hv_util_attach(dev);
+	return hv_util_attach(dev, hv_shutdown_cb);
 }
 
 static device_method_t shutdown_methods[] = {
