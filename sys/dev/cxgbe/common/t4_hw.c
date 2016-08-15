@@ -289,6 +289,14 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	if ((size & 15) || size > MBOX_LEN)
 		return -EINVAL;
 
+	if (adap->flags & IS_VF) {
+		if (is_t6(adap))
+			data_reg = FW_T6VF_MBDATA_BASE_ADDR;
+		else
+			data_reg = FW_T4VF_MBDATA_BASE_ADDR;
+		ctl_reg = VF_CIM_REG(A_CIM_VF_EXT_MAILBOX_CTRL);
+	}
+
 	/*
 	 * If we have a negative timeout, that implies that we can't sleep.
 	 */
@@ -343,6 +351,22 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	for (i = 0; i < size; i += 8, p++)
 		t4_write_reg64(adap, data_reg + i, be64_to_cpu(*p));
 
+	if (adap->flags & IS_VF) {
+		/*
+		 * For the VFs, the Mailbox Data "registers" are
+		 * actually backed by T4's "MA" interface rather than
+		 * PL Registers (as is the case for the PFs).  Because
+		 * these are in different coherency domains, the write
+		 * to the VF's PL-register-backed Mailbox Control can
+		 * race in front of the writes to the MA-backed VF
+		 * Mailbox Data "registers".  So we need to do a
+		 * read-back on at least one byte of the VF Mailbox
+		 * Data registers before doing the write to the VF
+		 * Mailbox Control register.
+		 */
+		t4_read_reg(adap, data_reg);
+	}
+
 	CH_DUMP_MBOX(adap, mbox, data_reg);
 
 	t4_write_reg(adap, ctl_reg, F_MBMSGVALID | V_MBOWNER(X_MBOWNER_FW));
@@ -355,10 +379,13 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	 * Loop waiting for the reply; bail out if we time out or the firmware
 	 * reports an error.
 	 */
-	for (i = 0;
-	     !((pcie_fw = t4_read_reg(adap, A_PCIE_FW)) & F_PCIE_FW_ERR) &&
-	     i < timeout;
-	     i += ms) {
+	pcie_fw = 0;
+	for (i = 0; i < timeout; i += ms) {
+		if (!(adap->flags & IS_VF)) {
+			pcie_fw = t4_read_reg(adap, A_PCIE_FW);
+			if (pcie_fw & F_PCIE_FW_ERR)
+				break;
+		}
 		if (sleep_ok) {
 			ms = delay[delay_idx];  /* last element may repeat */
 			if (delay_idx < ARRAY_SIZE(delay) - 1)
@@ -7644,6 +7671,7 @@ int t4_init_sge_params(struct adapter *adapter)
 {
 	u32 r;
 	struct sge_params *sp = &adapter->params.sge;
+	unsigned i;
 
 	r = t4_read_reg(adapter, A_SGE_INGRESS_RX_THRESHOLD);
 	sp->counter_val[0] = G_THRESHOLD_0(r);
@@ -7686,6 +7714,7 @@ int t4_init_sge_params(struct adapter *adapter)
 	sp->page_shift = (r & M_HOSTPAGESIZEPF0) + 10;
 
 	r = t4_read_reg(adapter, A_SGE_CONTROL);
+	sp->sge_control = r;
 	sp->spg_len = r & F_EGRSTATUSPAGESIZE ? 128 : 64;
 	sp->fl_pktshift = G_PKTSHIFT(r);
 	sp->pad_boundary = 1 << (G_INGPADBOUNDARY(r) + 5);
@@ -7698,6 +7727,9 @@ int t4_init_sge_params(struct adapter *adapter)
 		else
 			sp->pack_boundary = 1 << (G_INGPACKBOUNDARY(r) + 5);
 	}
+	for (i = 0; i < SGE_FLBUF_SIZES; i++)
+		sp->sge_fl_buffer_size[i] = t4_read_reg(adapter,
+		    A_SGE_FL_BUFFER_SIZE0 + (4 * i));
 
 	return 0;
 }
