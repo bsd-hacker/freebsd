@@ -255,6 +255,8 @@ ffs_balloc_ufs1(struct vnode *vp, off_t startoffset, int size,
 		}
 		pref = newb + fs->fs_frag;
 		nb = newb;
+		MPASS(allocblk < allociblk + nitems(allociblk));
+		MPASS(lbns_remfree < lbns + nitems(lbns));
 		*allocblk++ = nb;
 		*lbns_remfree++ = indirs[1].in_lbn;
 		bp = getblk(vp, indirs[1].in_lbn, fs->fs_bsize, 0, 0, gbflags);
@@ -309,7 +311,7 @@ retry:
 		if ((error = ffs_alloc(ip, lbn, pref, (int)fs->fs_bsize,
 		    flags | IO_BUFLOCKED, cred, &newb)) != 0) {
 			brelse(bp);
-			if (++reclaimed == 1) {
+			if (DOINGSOFTDEP(vp) && ++reclaimed == 1) {
 				UFS_LOCK(ump);
 				softdep_request_cleanup(fs, vp, cred,
 				    FLUSH_BLOCKS_WAIT);
@@ -325,6 +327,8 @@ retry:
 		}
 		pref = newb + fs->fs_frag;
 		nb = newb;
+		MPASS(allocblk < allociblk + nitems(allociblk));
+		MPASS(lbns_remfree < lbns + nitems(lbns));
 		*allocblk++ = nb;
 		*lbns_remfree++ = indirs[i].in_lbn;
 		nbp = getblk(vp, indirs[i].in_lbn, fs->fs_bsize, 0, 0, 0);
@@ -386,7 +390,7 @@ retry:
 		    flags | IO_BUFLOCKED, cred, &newb);
 		if (error) {
 			brelse(bp);
-			if (++reclaimed == 1) {
+			if (DOINGSOFTDEP(vp) && ++reclaimed == 1) {
 				UFS_LOCK(ump);
 				softdep_request_cleanup(fs, vp, cred,
 				    FLUSH_BLOCKS_WAIT);
@@ -401,6 +405,8 @@ retry:
 			goto fail;
 		}
 		nb = newb;
+		MPASS(allocblk < allociblk + nitems(allociblk));
+		MPASS(lbns_remfree < lbns + nitems(lbns));
 		*allocblk++ = nb;
 		*lbns_remfree++ = lbn;
 		nbp = getblk(vp, lbn, fs->fs_bsize, 0, 0, gbflags);
@@ -818,6 +824,8 @@ ffs_balloc_ufs2(struct vnode *vp, off_t startoffset, int size,
 		}
 		pref = newb + fs->fs_frag;
 		nb = newb;
+		MPASS(allocblk < allociblk + nitems(allociblk));
+		MPASS(lbns_remfree < lbns + nitems(lbns));
 		*allocblk++ = nb;
 		*lbns_remfree++ = indirs[1].in_lbn;
 		bp = getblk(vp, indirs[1].in_lbn, fs->fs_bsize, 0, 0,
@@ -873,7 +881,7 @@ retry:
 		if ((error = ffs_alloc(ip, lbn, pref, (int)fs->fs_bsize,
 		    flags | IO_BUFLOCKED, cred, &newb)) != 0) {
 			brelse(bp);
-			if (++reclaimed == 1) {
+			if (DOINGSOFTDEP(vp) && ++reclaimed == 1) {
 				UFS_LOCK(ump);
 				softdep_request_cleanup(fs, vp, cred,
 				    FLUSH_BLOCKS_WAIT);
@@ -889,6 +897,8 @@ retry:
 		}
 		pref = newb + fs->fs_frag;
 		nb = newb;
+		MPASS(allocblk < allociblk + nitems(allociblk));
+		MPASS(lbns_remfree < lbns + nitems(lbns));
 		*allocblk++ = nb;
 		*lbns_remfree++ = indirs[i].in_lbn;
 		nbp = getblk(vp, indirs[i].in_lbn, fs->fs_bsize, 0, 0,
@@ -951,7 +961,7 @@ retry:
 		    flags | IO_BUFLOCKED, cred, &newb);
 		if (error) {
 			brelse(bp);
-			if (++reclaimed == 1) {
+			if (DOINGSOFTDEP(vp) && ++reclaimed == 1) {
 				UFS_LOCK(ump);
 				softdep_request_cleanup(fs, vp, cred,
 				    FLUSH_BLOCKS_WAIT);
@@ -966,6 +976,8 @@ retry:
 			goto fail;
 		}
 		nb = newb;
+		MPASS(allocblk < allociblk + nitems(allociblk));
+		MPASS(lbns_remfree < lbns + nitems(lbns));
 		*allocblk++ = nb;
 		*lbns_remfree++ = lbn;
 		nbp = getblk(vp, lbn, fs->fs_bsize, 0, 0, gbflags);
