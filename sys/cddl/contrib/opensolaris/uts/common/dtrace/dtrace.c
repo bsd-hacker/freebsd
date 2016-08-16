@@ -707,8 +707,8 @@ dtrace_canstore_statvar(uint64_t addr, size_t sz,
 	if (nsvars == 0)
 		return (0);
 
-	maxglobalsize = dtrace_statvar_maxsize;
-	maxlocalsize = (maxglobalsize + sizeof (uint64_t)) * NCPU;
+	maxglobalsize = dtrace_statvar_maxsize + sizeof (uint64_t);
+	maxlocalsize = maxglobalsize * NCPU;
 
 	for (i = 0; i < nsvars; i++) {
 		dtrace_statvar_t *svar = svars[i];
@@ -726,8 +726,8 @@ dtrace_canstore_statvar(uint64_t addr, size_t sz,
 		 * DTrace to escalate an orthogonal kernel heap corruption bug
 		 * into the ability to store to arbitrary locations in memory.
 		 */
-		VERIFY((scope == DIFV_SCOPE_GLOBAL && size < maxglobalsize) ||
-		    (scope == DIFV_SCOPE_LOCAL && size < maxlocalsize));
+		VERIFY((scope == DIFV_SCOPE_GLOBAL && size <= maxglobalsize) ||
+		    (scope == DIFV_SCOPE_LOCAL && size <= maxlocalsize));
 
 		if (DTRACE_INRANGE(addr, sz, svar->dtsv_data, svar->dtsv_size))
 			return (1);
@@ -6929,6 +6929,7 @@ dtrace_action_ustack(dtrace_mstate_t *mstate, dtrace_state_t *state,
 	uint64_t *pcs = &buf[1], *fps;
 	char *str = (char *)&pcs[nframes];
 	int size, offs = 0, i, j;
+	size_t rem;
 	uintptr_t old = mstate->dtms_scratch_ptr, saved;
 	uint16_t *flags = &cpu_core[curcpu].cpuc_dtrace_flags;
 	char *sym;
@@ -7000,12 +7001,18 @@ dtrace_action_ustack(dtrace_mstate_t *mstate, dtrace_state_t *state,
 			continue;
 		}
 
+		if (!dtrace_strcanload((uintptr_t)sym, strsize, &rem, mstate,
+		    &(state->dts_vstate))) {
+			str[offs++] = '\0';
+			continue;
+		}
+
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 
 		/*
 		 * Now copy in the string that the helper returned to us.
 		 */
-		for (j = 0; offs + j < strsize; j++) {
+		for (j = 0; offs + j < strsize && j < rem; j++) {
 			if ((str[offs + j] = sym[j]) == '\0')
 				break;
 		}
@@ -11017,7 +11024,7 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 	}
 }
 
-static void
+static int
 dtrace_ecb_resize(dtrace_ecb_t *ecb)
 {
 	dtrace_action_t *act;
@@ -11051,6 +11058,8 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 
 			curneeded = P2ROUNDUP(curneeded, rec->dtrd_alignment);
 			rec->dtrd_offset = curneeded;
+			if (curneeded + rec->dtrd_size < curneeded)
+				return (EINVAL);
 			curneeded += rec->dtrd_size;
 			ecb->dte_needed = MAX(ecb->dte_needed, curneeded);
 
@@ -11075,6 +11084,8 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 			}
 			curneeded = P2ROUNDUP(curneeded, rec->dtrd_alignment);
 			rec->dtrd_offset = curneeded;
+			if (curneeded + rec->dtrd_size < curneeded)
+				return (EINVAL);
 			curneeded += rec->dtrd_size;
 		} else {
 			/* tuples must be followed by an aggregation */
@@ -11084,6 +11095,8 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 			ecb->dte_size = P2ROUNDUP(ecb->dte_size,
 			    rec->dtrd_alignment);
 			rec->dtrd_offset = ecb->dte_size;
+			if (ecb->dte_size + rec->dtrd_size < ecb->dte_size)
+				return (EINVAL);
 			ecb->dte_size += rec->dtrd_size;
 			ecb->dte_needed = MAX(ecb->dte_needed, ecb->dte_size);
 		}
@@ -11103,6 +11116,7 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 	ecb->dte_needed = P2ROUNDUP(ecb->dte_needed, (sizeof (dtrace_epid_t)));
 	ecb->dte_state->dts_needed = MAX(ecb->dte_state->dts_needed,
 	    ecb->dte_needed);
+	return (0);
 }
 
 static dtrace_action_t *
@@ -11788,7 +11802,10 @@ dtrace_ecb_create(dtrace_state_t *state, dtrace_probe_t *probe,
 		}
 	}
 
-	dtrace_ecb_resize(ecb);
+	if ((enab->dten_error = dtrace_ecb_resize(ecb)) != 0) {
+		dtrace_ecb_destroy(ecb);
+		return (NULL);
+	}
 
 	return (dtrace_ecb_create_cache = ecb);
 }
