@@ -690,8 +690,6 @@ hv_nv_on_device_add(struct hn_softc *sc, void *additional_info,
 
 	/* Initialize the NetVSC channel extension */
 
-	sema_init(&net_dev->channel_init_sema, 0, "netdev_sema");
-
 	/*
 	 * Open the channel
 	 */
@@ -722,7 +720,6 @@ cleanup:
 	 * Free the packet buffers on the netvsc device packet queue.
 	 * Release other resources.
 	 */
-	sema_destroy(&net_dev->channel_init_sema);
 	free(net_dev, M_NETVSC);
 
 	return (NULL);
@@ -747,7 +744,6 @@ hv_nv_on_device_remove(struct hn_softc *sc, boolean_t destroy_channel)
 
 	vmbus_chan_close(sc->hn_prichan);
 
-	sema_destroy(&net_dev->channel_init_sema);
 	free(net_dev, M_NETVSC);
 
 	return (0);
@@ -852,7 +848,7 @@ hv_nv_on_receive(netvsc_dev *net_dev, struct hn_rx_ring *rxr,
 	netvsc_packet *net_vsc_pkt = &vsc_pkt;
 	int count = 0;
 	int i = 0;
-	int status = nvsp_status_success;
+	int status = HN_NVS_STATUS_OK;
 
 	/* Make sure that this is a RNDIS message. */
 	nvs_hdr = VMBUS_CHANPKT_CONST_DATA(pkthdr);
@@ -874,15 +870,16 @@ hv_nv_on_receive(netvsc_dev *net_dev, struct hn_rx_ring *rxr,
 
 	/* Each range represents 1 RNDIS pkt that contains 1 Ethernet frame */
 	for (i = 0; i < count; i++) {
-		net_vsc_pkt->status = nvsp_status_success;
+		net_vsc_pkt->status = HN_NVS_STATUS_OK;
 		net_vsc_pkt->data = ((uint8_t *)net_dev->rx_buf +
 		    pkt->cp_rxbuf[i].rb_ofs);
 		net_vsc_pkt->tot_data_buf_len = pkt->cp_rxbuf[i].rb_len;
 
 		hv_rf_on_receive(net_dev, rxr, net_vsc_pkt);
-		if (net_vsc_pkt->status != nvsp_status_success) {
-			status = nvsp_status_failure;
-		}
+
+		/* XXX pretty broken; whack it */
+		if (net_vsc_pkt->status != HN_NVS_STATUS_OK)
+			status = HN_NVS_STATUS_FAILED;
 	}
 	
 	/*
