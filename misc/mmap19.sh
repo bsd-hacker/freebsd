@@ -49,7 +49,9 @@ sleep $((rnd % 10))
 for i in `jot 2`; do
 	/tmp/mmap19
 done
-killall -q swap
+while pgrep -q swap; do
+	pkill -9 swap
+done
 
 rm -f /tmp/mmap19 /tmp/mmap19.core
 exit 0
@@ -153,7 +155,7 @@ tmmap(void *arg __unused)
 void *
 tmprotect(void *arg __unused)
 {
-	const void *addr;
+	void *addr;
 	size_t len;
 	int i, n, prot;
 

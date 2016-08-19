@@ -185,7 +185,7 @@ void *
 tmprotect(void *arg __unused)
 {
 	size_t len;
-	const void *addr;
+	void *addr;
 	int i, n, prot;
 
 	pthread_set_name_np(pthread_self(), __func__);
