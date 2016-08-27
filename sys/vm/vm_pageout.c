@@ -1158,8 +1158,8 @@ vm_pageout_laundry_worker(void *arg)
 			 */
 			if (vm_laundry_target() <= 0 || cycle == 0) {
 				prev_shortfall = target = 0;
-				last_launder = wakeups;
 			} else {
+				last_launder = wakeups;
 				launder = target / cycle--;
 				goto dolaundry;
 			}
@@ -1171,7 +1171,8 @@ vm_pageout_laundry_worker(void *arg)
 		 *
 		 * 1. The ratio of dirty to clean inactive pages exceeds the
 		 *    background laundering threshold and the pagedaemon has
-		 *    recently been woken up, or
+		 *    been woken up to reclaim pages since our last
+		 *    laundering, or
 		 * 2. we haven't yet reached the target of the current
 		 *    background laundering run.
 		 *
@@ -1188,6 +1189,7 @@ vm_pageout_laundry_worker(void *arg)
 			last_launder = wakeups;
 			target = starting_target = vm_background_launder_target;
 		}
+
 		/*
 		 * We have a non-zero background laundering target.  If we've
 		 * laundered up to our maximum without observing a page daemon
@@ -1197,14 +1199,13 @@ vm_pageout_laundry_worker(void *arg)
 		 * proceed at the background laundering rate.
 		 */
 		if (target > 0) {
-			if (last_launder != wakeups) {
+			if (wakeups != last_launder) {
 				last_launder = wakeups;
 				starting_target = target;
 			} else if (starting_target - target >=
 			    vm_background_launder_max * PAGE_SIZE / 1024) {
 				target = 0;
 			}
-
 			launder = vm_background_launder_rate * PAGE_SIZE / 1024;
 			launder /= VM_LAUNDER_INTERVAL;
 			if (launder < target)
@@ -1212,10 +1213,15 @@ vm_pageout_laundry_worker(void *arg)
 		}
 
 dolaundry:
-		if (launder > 0)
+		if (launder > 0) {
+			/*
+			 * Because of I/O clustering, the number of laundered
+			 * pages could exceed "target" by the maximum size of
+			 * a cluster minus one. 
+			 */
 			target -= min(vm_pageout_launder(domain, launder,
 			    prev_shortfall > 0), target);
-
+		}
 		tsleep(&vm_cnt.v_laundry_count, PVM, "laundr",
 		    hz / VM_LAUNDER_INTERVAL);
 	}
