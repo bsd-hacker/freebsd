@@ -1186,8 +1186,7 @@ vm_pageout_laundry_worker(void *arg)
 		ndirty = vm_cnt.v_laundry_count;
 		if (target == 0 && wakeups != last_launder &&
 		    ndirty * isqrt(wakeups - last_launder) >= nclean) {
-			last_launder = wakeups;
-			target = starting_target = vm_background_launder_target;
+			target = vm_background_launder_target;
 		}
 
 		/*
@@ -1208,7 +1207,7 @@ vm_pageout_laundry_worker(void *arg)
 			}
 			launder = vm_background_launder_rate * PAGE_SIZE / 1024;
 			launder /= VM_LAUNDER_INTERVAL;
-			if (launder < target)
+			if (launder > target)
 				launder = target;
 		}
 
