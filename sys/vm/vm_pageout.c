@@ -1107,8 +1107,8 @@ vm_pageout_laundry_worker(void *arg)
 	struct vm_domain *domain;
 	uint64_t nclean, ndirty;
 	u_int last_launder, wakeups;
-	int cycle, domidx, launder, prev_shortfall, shortfall;
-	int starting_target, target;
+	int cycle, domidx, launder, last_target, prev_shortfall, shortfall;
+	int target;
 
 	domidx = (uintptr_t)arg;
 	domain = &vm_dom[domidx];
@@ -1200,8 +1200,8 @@ vm_pageout_laundry_worker(void *arg)
 		if (target > 0) {
 			if (wakeups != last_launder) {
 				last_launder = wakeups;
-				starting_target = target;
-			} else if (starting_target - target >=
+				last_target = target;
+			} else if (last_target - target >=
 			    vm_background_launder_max * PAGE_SIZE / 1024) {
 				target = 0;
 			}
