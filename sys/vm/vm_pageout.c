@@ -1133,9 +1133,8 @@ vm_pageout_laundry_worker(void *arg)
 		 * First determine whether we need to launder pages to meet a
 		 * shortage of free pages.
 		 */
-		if (vm_laundering_needed()) {
-			shortfall = vm_laundry_target() + vm_pageout_deficit;
-
+		shortfall = vm_laundry_target() + vm_pageout_deficit;
+		if (shortfall > 0) {
 			/*
 			 * If we're in shortfall and we haven't yet started a
 			 * laundering cycle to get us out of it, begin a run.
@@ -1156,7 +1155,7 @@ vm_pageout_laundry_worker(void *arg)
 			 * shortfall, we have no immediate need to launder
 			 * pages.  Otherwise keep laundering.
 			 */
-			if (vm_laundry_target() <= 0 || cycle == 0) {
+			if (shortfall <= 0 || cycle == 0) {
 				prev_shortfall = target = 0;
 			} else {
 				last_launder = wakeups;
