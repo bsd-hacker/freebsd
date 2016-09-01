@@ -1582,16 +1582,7 @@ drop_page:
 		if (m->act_count == 0) {
 			/* Dequeue to avoid later lock recursion. */
 			vm_page_dequeue_locked(m);
-#if 0
-			/*
-			 * This requires the object write lock.  It might be a
-			 * good idea during a page shortage, but might also
-			 * cause contention with a concurrent attempt to launder
-			 * pages from this object.
-			 */
-			if (m->object->ref_count != 0)
-				vm_page_test_dirty(m);
-#endif
+
 			/*
 			 * When not short for inactive pages, let dirty pages go
 			 * through the inactive queue before moving to the
@@ -1604,6 +1595,16 @@ drop_page:
 			if (page_shortage <= 0)
 				vm_page_deactivate(m);
 			else {
+				/*
+				 * Calling vm_page_test_dirty() here would
+				 * require acquisition of the object's write
+				 * lock.  However, during a page shortage,
+				 * directing dirty pages into the laundry
+				 * queue is only an optimization and not a
+				 * requirement.  Therefore, we simply rely on
+				 * the opportunistic updates to the page's
+				 * dirty field by the pmap.
+				 */
 				if (m->dirty == 0) {
 					vm_page_deactivate(m);
 					page_shortage -=
