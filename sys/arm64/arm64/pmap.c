@@ -242,7 +242,7 @@ extern pt_entry_t pagetable_dmap[];
 
 static SYSCTL_NODE(_vm, OID_AUTO, pmap, CTLFLAG_RD, 0, "VM/pmap parameters");
 
-static int superpages_enabled = 0;
+static int superpages_enabled = 1;
 SYSCTL_INT(_vm_pmap, OID_AUTO, superpages_enabled,
     CTLFLAG_RDTUN | CTLFLAG_NOFETCH, &superpages_enabled, 0,
     "Are large page mappings enabled?");
@@ -3261,20 +3261,6 @@ pmap_zero_page_area(vm_page_t m, int off, int size)
 		pagezero((void *)va);
 	else
 		bzero((char *)va + off, size);
-}
-
-/*
- *	pmap_zero_page_idle zeros the specified hardware page by mapping
- *	the page into KVM and using bzero to clear its contents.  This
- *	is intended to be called from the vm_pagezero process only and
- *	outside of Giant.
- */
-void
-pmap_zero_page_idle(vm_page_t m)
-{
-	vm_offset_t va = PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m));
-
-	pagezero((void *)va);
 }
 
 /*
