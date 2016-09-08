@@ -104,9 +104,12 @@ intsmb_probe(device_t dev)
 		device_set_desc(dev, "ATI IXP400 SMBus Controller");
 		break;
 	case 0x43851002:
-	case 0x780b1022:	/* AMD Hudson */
-		device_set_desc(dev, "AMD SB600/7xx/8xx SMBus Controller");
-		/* XXX Maybe force polling right here? */
+		device_set_desc(dev, "AMD SB600/7xx/8xx/9xx SMBus Controller");
+		break;
+	case 0x780b1022:	/* AMD FCH */
+		if (pci_get_revid(dev) < 0x40)
+			return (ENXIO);
+		device_set_desc(dev, "AMD FCH SMBus Controller");
 		break;
 	default:
 		return (ENXIO);
@@ -194,6 +197,23 @@ sb8xx_attach(device_t dev)
 	    (cfg & AMDSB_SMBUS_REV_MASK) >> AMDSB_SMBUS_REV_SHIFT);
 
 	return (0);
+}
+
+static void
+intsmb_release_resources(device_t dev)
+{
+	struct intsmb_softc *sc = device_get_softc(dev);
+
+	if (sc->smbus)
+		device_delete_child(dev, sc->smbus);
+	if (sc->irq_hand)
+		bus_teardown_intr(dev, sc->irq_res, sc->irq_hand);
+	if (sc->irq_res)
+		bus_release_resource(dev, SYS_RES_IRQ, 0, sc->irq_res);
+	if (sc->io_res)
+		bus_release_resource(dev, SYS_RES_IOPORT, sc->io_rid,
+		    sc->io_res);
+	mtx_destroy(&sc->lock);
 }
 
 static int
@@ -308,12 +328,15 @@ no_intr:
 	sc->isbusy = 0;
 	sc->smbus = device_add_child(dev, "smbus", -1);
 	if (sc->smbus == NULL) {
+		device_printf(dev, "failed to add smbus child\n");
 		error = ENXIO;
 		goto fail;
 	}
 	error = device_probe_and_attach(sc->smbus);
-	if (error)
+	if (error) {
+		device_printf(dev, "failed to probe+attach smbus child\n");
 		goto fail;
+	}
 
 #ifdef ENABLE_ALART
 	/* Enable Arart */
@@ -322,30 +345,22 @@ no_intr:
 	return (0);
 
 fail:
-	intsmb_detach(dev);
+	intsmb_release_resources(dev);
 	return (error);
 }
 
 static int
 intsmb_detach(device_t dev)
 {
-	struct intsmb_softc *sc = device_get_softc(dev);
 	int error;
 
 	error = bus_generic_detach(dev);
-	if (error)
+	if (error) {
+		device_printf(dev, "bus detach failed\n");
 		return (error);
+	}
 
-	if (sc->smbus)
-		device_delete_child(dev, sc->smbus);
-	if (sc->irq_hand)
-		bus_teardown_intr(dev, sc->irq_res, sc->irq_hand);
-	if (sc->irq_res)
-		bus_release_resource(dev, SYS_RES_IRQ, 0, sc->irq_res);
-	if (sc->io_res)
-		bus_release_resource(dev, SYS_RES_IOPORT, sc->io_rid,
-		    sc->io_res);
-	mtx_destroy(&sc->lock);
+	intsmb_release_resources(dev);
 	return (0);
 }
 
