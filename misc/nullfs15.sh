@@ -64,3 +64,4 @@ while mount | grep -q "$mntpoint "; do
 done
 mdconfig -d -u $mdstart
 rm -f /tmp/bar
+exit 0
