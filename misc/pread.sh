@@ -50,7 +50,9 @@ mount -t tmpfs tmpfs $mntpoint
 cp -a /usr/include $mntpoint
 echo "Testing tmpfs(5)"
 /tmp/pread $mntpoint
-umount $mntpoint
+while mount | grep -q "on $mntpoint "; do
+	umount $mntpoint || sleep 1
+done
 
 echo "Testing fdescfs(5)"
 mount -t fdescfs null /dev/fd
@@ -69,7 +71,6 @@ while mount | grep -q "on $mntpoint "; do
 	umount $mntpoint || sleep 1
 done
 
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
@@ -80,6 +81,7 @@ echo "Testing FFS"
 while mount | grep -q "on $mntpoint "; do
 	umount $mntpoint || sleep 1
 done
+mdconfig -d -u $mdstart
 
 mount -t nullfs /bin $mntpoint
 echo "Testing nullfs(5)"
