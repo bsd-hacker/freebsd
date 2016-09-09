@@ -56,7 +56,7 @@ pages=$((pages / hw))
 echo "`date '+%T'` Test with $pages pages."
 su $testuser -c "sh -c \"/tmp/stealer $pages\"" &
 sleep 30
-while swapinfo | grep -q /dev; do
+while swapinfo | grep -q /dev/md$mdstart; do
 	swapoff /dev/md$mdstart 2>&1 |
 	    grep -v "Cannot allocate memory"
 	sleep 2
