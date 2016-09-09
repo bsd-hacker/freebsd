@@ -31,6 +31,10 @@
 # SUJ and quota test scenario.
 # "panic: check_inode_unwritten: busy inode" seen.
 
+# Deadlock seen:
+# https://people.freebsd.org/~pho/stress/log/suj18.txt
+# Fixed by r305594.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
@@ -53,8 +57,10 @@ export RUNDIR=${mntpoint}/stressX
 chmod 777 ${mntpoint}
 su ${testuser} -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > /dev/null 2>&1)"'
 
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
-done
-mdconfig -d -u ${mdstart}
 rm -f $PATH_FSTAB
+for i in `jot 6`; do
+	umount $mntpoint && break || sleep 10
+done
+[ $i -eq 6 ] && exit 1
+mdconfig -d -u ${mdstart}
+exit 0
