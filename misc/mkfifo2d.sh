@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2011 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2016 EMC Corp.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -25,20 +25,14 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: projects/stress2/misc/suj.sh 210724 2010-08-01 10:33:03Z pho $
+# $FreeBSD$
 #
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-# "bad offset" panic after up 10:57 on leopard3
-
-# Run with mkfifo.cfg on a 2g swap backed MD
-# Problem seen with and without +j
-
-# "panic: ufsdirhash_newblk: bad offset" seen:
-# https://people.freebsd.org/~pho/stress/log/mkfifo2c.txt
-# https://people.freebsd.org/~pho/stress/log/mkfifo2c-2.txt
-# https://people.freebsd.org/~pho/stress/log/kostik932.txt
+# Copy of mkfifo2c.sh, but with a SU file system and async mount
+# "panic: ufsdirhash_newblk: bad offset" seen from openat()
+# https://people.freebsd.org/~pho/stress/log/mkfifo2d.txt
 # Fixed by r305601.
 
 . ../default.cfg
@@ -49,13 +43,11 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 2g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 
-[ $# -eq 1 ] && opt="$1"
-[ $# -eq 0 ] && opt="-j"
-newfs $opt md${mdstart}$part > /dev/null
-mount /dev/md${mdstart}$part $mntpoint
+newfs $newfs_flags md${mdstart}$part > /dev/null
+mount -o async /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-export runRUNTIME=30m
+export runRUNTIME=5m
 export RUNDIR=$mntpoint/stressX
 
 export TESTPROGS="
