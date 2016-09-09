@@ -49,7 +49,7 @@ if [ $# -eq 0 ]; then
 	done
 
 	while kill -0 $! 2> /dev/null; do
-		for i in `jot 200`; do
+		for i in `jot 100`; do
 			find $mntpoint > /dev/null 2>&1
 		done
 	done
@@ -59,8 +59,10 @@ if [ $# -eq 0 ]; then
 		umount $mntpoint || sleep 1
 	done
 	mdconfig -d -u $mdstart
+	exit 0
 else
-	for i in `jot 200`; do
+	start=`date '+%s'`
+	while [ $((`date '+%s'` - start)) -lt 600 ]; do
 		mount /dev/md${mdstart}$part $mntpoint
 		umount $mntpoint
 		mount
