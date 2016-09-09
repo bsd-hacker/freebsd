@@ -35,6 +35,9 @@
 # Spinning threads seen.
 # Fixed in r255877.
 
+# "panic: softclock_call_cc: act 0xfffff801219a0840 0" seen:
+# https://people.freebsd.org/~pho/stress/log/kevent7.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
