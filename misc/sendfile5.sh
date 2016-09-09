@@ -54,7 +54,6 @@ cp $diskimage $mntpoint
 /tmp/sendfile5 $mntpoint/$file
 umount $mntpoint
 
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 2g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
@@ -63,6 +62,7 @@ echo "Testing FFS"
 cp $diskimage $mntpoint
 /tmp/sendfile5 $mntpoint/$file
 umount $mntpoint
+mdconfig -d -u $mdstart
 
 mount -t nullfs $dir $mntpoint
 echo "Testing nullfs(5)"
