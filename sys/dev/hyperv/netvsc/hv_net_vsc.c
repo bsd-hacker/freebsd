@@ -61,7 +61,6 @@ static int  hn_nvs_conn_chim(struct hn_softc *sc);
 static int  hn_nvs_conn_rxbuf(struct hn_softc *);
 static int  hn_nvs_disconn_chim(struct hn_softc *sc);
 static int  hn_nvs_disconn_rxbuf(struct hn_softc *sc);
-static int  hv_nv_connect_to_vsp(struct hn_softc *sc, int mtu);
 static void hn_nvs_sent_none(struct hn_send_ctx *sndc,
     struct hn_softc *, struct vmbus_channel *chan,
     const void *, int);
@@ -103,7 +102,7 @@ hn_chim_alloc(struct hn_softc *sc)
 	return (ret);
 }
 
-const void *
+static const void *
 hn_nvs_xact_execute(struct hn_softc *sc, struct vmbus_xact *xact,
     void *req, int reqlen, size_t *resplen0, uint32_t type)
 {
@@ -521,45 +520,48 @@ hn_nvs_init(struct hn_softc *sc)
 	return (ENXIO);
 }
 
-static int
-hv_nv_connect_to_vsp(struct hn_softc *sc, int mtu)
+int
+hn_nvs_attach(struct hn_softc *sc, int mtu)
 {
-	int ret;
+	int error;
 
 	/*
 	 * Initialize NVS.
 	 */
-	ret = hn_nvs_init(sc);
-	if (ret != 0)
-		return (ret);
+	error = hn_nvs_init(sc);
+	if (error)
+		return (error);
 
 	if (sc->hn_nvs_ver >= HN_NVS_VERSION_2) {
 		/*
 		 * Configure NDIS before initializing it.
 		 */
-		ret = hn_nvs_conf_ndis(sc, mtu);
-		if (ret != 0)
-			return (ret);
+		error = hn_nvs_conf_ndis(sc, mtu);
+		if (error)
+			return (error);
 	}
 
 	/*
 	 * Initialize NDIS.
 	 */
-	ret = hn_nvs_init_ndis(sc);
-	if (ret != 0)
-		return (ret);
+	error = hn_nvs_init_ndis(sc);
+	if (error)
+		return (error);
 
 	/*
 	 * Connect RXBUF.
 	 */
-	ret = hn_nvs_conn_rxbuf(sc);
-	if (ret != 0)
-		return (ret);
+	error = hn_nvs_conn_rxbuf(sc);
+	if (error)
+		return (error);
 
 	/*
 	 * Connect chimney sending buffer.
 	 */
-	return hn_nvs_conn_chim(sc);
+	error = hn_nvs_conn_chim(sc);
+	if (error)
+		return (error);
+	return (0);
 }
 
 /*
@@ -570,21 +572,6 @@ hv_nv_disconnect_from_vsp(struct hn_softc *sc)
 {
 	hn_nvs_disconn_rxbuf(sc);
 	hn_nvs_disconn_chim(sc);
-}
-
-/*
- * Net VSC on device add
- * 
- * Callback when the device belonging to this driver is added
- */
-int
-hv_nv_on_device_add(struct hn_softc *sc, int mtu)
-{
-
-	/*
-	 * Connect with the NetVsp
-	 */
-	return (hv_nv_connect_to_vsp(sc, mtu));
 }
 
 /*
@@ -665,4 +652,55 @@ hv_nv_on_send(struct vmbus_channel *chan, uint32_t rndis_mtype,
 	}
 
 	return (ret);
+}
+
+int
+hn_nvs_alloc_subchans(struct hn_softc *sc, int *nsubch0)
+{
+	struct vmbus_xact *xact;
+	struct hn_nvs_subch_req *req;
+	const struct hn_nvs_subch_resp *resp;
+	int error, nsubch_req;
+	uint32_t nsubch;
+	size_t resp_len;
+
+	nsubch_req = *nsubch0;
+	KASSERT(nsubch_req > 0, ("invalid # of sub-channels %d", nsubch_req));
+
+	xact = vmbus_xact_get(sc->hn_xact, sizeof(*req));
+	if (xact == NULL) {
+		if_printf(sc->hn_ifp, "no xact for nvs subch alloc\n");
+		return (ENXIO);
+	}
+	req = vmbus_xact_req_data(xact);
+	req->nvs_type = HN_NVS_TYPE_SUBCH_REQ;
+	req->nvs_op = HN_NVS_SUBCH_OP_ALLOC;
+	req->nvs_nsubch = nsubch_req;
+
+	resp_len = sizeof(*resp);
+	resp = hn_nvs_xact_execute(sc, xact, req, sizeof(*req), &resp_len,
+	    HN_NVS_TYPE_SUBCH_RESP);
+	if (resp == NULL) {
+		if_printf(sc->hn_ifp, "exec nvs subch alloc failed\n");
+		error = EIO;
+		goto done;
+	}
+	if (resp->nvs_status != HN_NVS_STATUS_OK) {
+		if_printf(sc->hn_ifp, "nvs subch alloc failed: %x\n",
+		    resp->nvs_status);
+		error = EIO;
+		goto done;
+	}
+
+	nsubch = resp->nvs_nsubch;
+	if (nsubch > nsubch_req) {
+		if_printf(sc->hn_ifp, "%u subchans are allocated, "
+		    "requested %d\n", nsubch, nsubch_req);
+		nsubch = nsubch_req;
+	}
+	*nsubch0 = nsubch;
+	error = 0;
+done:
+	vmbus_xact_put(xact);
+	return (error);
 }
