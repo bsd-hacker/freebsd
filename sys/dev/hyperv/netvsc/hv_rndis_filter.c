@@ -75,18 +75,12 @@ static void hv_rf_receive_indicate_status(struct hn_softc *sc,
     const void *data, int dlen);
 static void hv_rf_receive_data(struct hn_rx_ring *rxr,
     const void *data, int dlen);
-static int hv_rf_query_device_mac(struct hn_softc *sc, uint8_t *eaddr);
-static int hv_rf_query_device_link_status(struct hn_softc *sc,
-    uint32_t *link_status);
-static int  hv_rf_init_device(struct hn_softc *sc);
 
 static int hn_rndis_query(struct hn_softc *sc, uint32_t oid,
     const void *idata, size_t idlen, void *odata, size_t *odlen0);
 static int hn_rndis_set(struct hn_softc *sc, uint32_t oid, const void *data,
     size_t dlen);
 static int hn_rndis_conf_offload(struct hn_softc *sc);
-static int hn_rndis_get_rsscaps(struct hn_softc *sc, int *rxr_cnt);
-static int hn_rndis_conf_rss(struct hn_softc *sc, int nchan);
 
 static __inline uint32_t
 hn_rndis_rid(struct hn_softc *sc)
@@ -480,11 +474,8 @@ hv_rf_on_receive(struct hn_softc *sc, struct hn_rx_ring *rxr,
 	}
 }
 
-/*
- * RNDIS filter query device MAC address
- */
-static int
-hv_rf_query_device_mac(struct hn_softc *sc, uint8_t *eaddr)
+int
+hn_rndis_get_eaddr(struct hn_softc *sc, uint8_t *eaddr)
 {
 	size_t eaddr_len;
 	int error;
@@ -501,11 +492,8 @@ hv_rf_query_device_mac(struct hn_softc *sc, uint8_t *eaddr)
 	return (0);
 }
 
-/*
- * RNDIS filter query device link status
- */
-static int
-hv_rf_query_device_link_status(struct hn_softc *sc, uint32_t *link_status)
+int
+hn_rndis_get_linkstatus(struct hn_softc *sc, uint32_t *link_status)
 {
 	size_t size;
 	int error;
@@ -721,7 +709,7 @@ done:
 	return (error);
 }
 
-static int
+int
 hn_rndis_get_rsscaps(struct hn_softc *sc, int *rxr_cnt)
 {
 	struct ndis_rss_caps in, caps;
@@ -856,7 +844,7 @@ hn_rndis_conf_offload(struct hn_softc *sc)
 	return (error);
 }
 
-static int
+int
 hn_rndis_conf_rss(struct hn_softc *sc, int nchan)
 {
 	struct ndis_rssprm_toeplitz *rss = &sc->hn_rss;
@@ -922,11 +910,8 @@ hn_rndis_set_rxfilter(struct hn_softc *sc, uint32_t filter)
 	return (error);
 }
 
-/*
- * RNDIS filter init device
- */
 static int
-hv_rf_init_device(struct hn_softc *sc)
+hn_rndis_init(struct hn_softc *sc)
 {
 	struct rndis_init_req *req;
 	const struct rndis_init_comp *comp;
@@ -1007,136 +992,24 @@ hv_rf_halt_device(struct hn_softc *sc)
 	return (0);
 }
 
-/*
- * RNDIS filter on device add
- */
 int
-hv_rf_on_device_add(struct hn_softc *sc, void *additl_info,
-    int *nchan0, int mtu)
+hn_rndis_attach(struct hn_softc *sc)
 {
-	int ret;
-	netvsc_device_info *dev_info = (netvsc_device_info *)additl_info;
-	device_t dev = sc->hn_dev;
-	struct hn_nvs_subch_req *req;
-	const struct hn_nvs_subch_resp *resp;
-	size_t resp_len;
-	struct vmbus_xact *xact = NULL;
-	uint32_t status, nsubch;
-	int nchan = *nchan0;
-	int rxr_cnt;
+	int error;
 
 	/*
-	 * Let the inner driver handle this first to create the netvsc channel
-	 * NOTE! Once the channel is created, we may get a receive callback 
-	 * (hv_rf_on_receive()) before this call is completed.
-	 * Note:  Earlier code used a function pointer here.
+	 * Initialize RNDIS.
 	 */
-	ret = hv_nv_on_device_add(sc, mtu);
-	if (ret != 0)
-		return (ret);
+	error = hn_rndis_init(sc);
+	if (error)
+		return (error);
 
 	/*
-	 * Initialize the rndis device
+	 * Configure NDIS offload settings.
+	 * XXX no offloading, if error happened?
 	 */
-
-	/* Send the rndis initialization message */
-	ret = hv_rf_init_device(sc);
-	if (ret != 0) {
-		/*
-		 * TODO: If rndis init failed, we will need to shut down
-		 * the channel
-		 */
-	}
-
-	/* Get the mac address */
-	ret = hv_rf_query_device_mac(sc, dev_info->mac_addr);
-	if (ret != 0) {
-		/* TODO: shut down rndis device and the channel */
-	}
-
-	/* Configure NDIS offload settings */
 	hn_rndis_conf_offload(sc);
-
-	hv_rf_query_device_link_status(sc, &dev_info->link_state);
-
-	if (sc->hn_ndis_ver < HN_NDIS_VERSION_6_30 || nchan == 1) {
-		/*
-		 * Either RSS is not supported, or multiple RX/TX rings
-		 * are not requested.
-		 */
-		*nchan0 = 1;
-		return (0);
-	}
-
-	/*
-	 * Get RSS capabilities, e.g. # of RX rings, and # of indirect
-	 * table entries.
-	 */
-	ret = hn_rndis_get_rsscaps(sc, &rxr_cnt);
-	if (ret) {
-		/* No RSS; this is benign. */
-		*nchan0 = 1;
-		return (0);
-	}
-	if (nchan > rxr_cnt)
-		nchan = rxr_cnt;
-	if_printf(sc->hn_ifp, "RX rings offered %u, requested %d\n",
-	    rxr_cnt, nchan);
-
-	if (nchan == 1) {
-		device_printf(dev, "only 1 channel is supported, no vRSS\n");
-		goto out;
-	}
-	
-	/*
-	 * Ask NVS to allocate sub-channels.
-	 */
-	xact = vmbus_xact_get(sc->hn_xact, sizeof(*req));
-	if (xact == NULL) {
-		if_printf(sc->hn_ifp, "no xact for nvs subch req\n");
-		ret = ENXIO;
-		goto out;
-	}
-	req = vmbus_xact_req_data(xact);
-	req->nvs_type = HN_NVS_TYPE_SUBCH_REQ;
-	req->nvs_op = HN_NVS_SUBCH_OP_ALLOC;
-	req->nvs_nsubch = nchan - 1;
-
-	resp_len = sizeof(*resp);
-	resp = hn_nvs_xact_execute(sc, xact, req, sizeof(*req), &resp_len,
-	    HN_NVS_TYPE_SUBCH_RESP);
-	if (resp == NULL) {
-		if_printf(sc->hn_ifp, "exec subch failed\n");
-		ret = EIO;
-		goto out;
-	}
-
-	status = resp->nvs_status;
-	nsubch = resp->nvs_nsubch;
-	vmbus_xact_put(xact);
-	xact = NULL;
-
-	if (status != HN_NVS_STATUS_OK) {
-		if_printf(sc->hn_ifp, "subch req failed: %x\n", status);
-		ret = EIO;
-		goto out;
-	}
-	if (nsubch > nchan - 1) {
-		if_printf(sc->hn_ifp, "%u subchans are allocated, requested %u\n",
-		    nsubch, nchan - 1);
-		nsubch = nchan - 1;
-	}
-	nchan = nsubch + 1;
-
-	ret = hn_rndis_conf_rss(sc, nchan);
-	if (ret != 0)
-		*nchan0 = 1;
-	else
-		*nchan0 = nchan;
-out:
-	if (xact != NULL)
-		vmbus_xact_put(xact);
-	return (ret);
+	return (0);
 }
 
 /*

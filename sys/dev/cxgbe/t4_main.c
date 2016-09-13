@@ -355,8 +355,8 @@ TUNABLE_INT("hw.cxgbe.toecaps_allowed", &t4_toecaps_allowed);
 static int t4_rdmacaps_allowed = -1;
 TUNABLE_INT("hw.cxgbe.rdmacaps_allowed", &t4_rdmacaps_allowed);
 
-static int t4_tlscaps_allowed = 0;
-TUNABLE_INT("hw.cxgbe.tlscaps_allowed", &t4_tlscaps_allowed);
+static int t4_cryptocaps_allowed = 0;
+TUNABLE_INT("hw.cxgbe.cryptocaps_allowed", &t4_cryptocaps_allowed);
 
 static int t4_iscsicaps_allowed = -1;
 TUNABLE_INT("hw.cxgbe.iscsicaps_allowed", &t4_iscsicaps_allowed);
@@ -675,7 +675,7 @@ t4_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-	TUNABLE_INT_FETCH("hw.cxgbe.debug_flags", &sc->debug_flags);
+	TUNABLE_INT_FETCH("hw.cxgbe.dflags", &sc->debug_flags);
 
 	if ((pci_get_device(dev) & 0xff00) == 0x5400)
 		t5_attribute_workaround(dev);
@@ -2027,11 +2027,11 @@ t4_map_bar_2(struct adapter *sc)
 	}
 	sc->udbs_base = rman_get_virtual(sc->udbs_res);
 
-	if (is_t5(sc)) {
+	if (chip_id(sc) >= CHELSIO_T5) {
 		setbit(&sc->doorbells, DOORBELL_UDB);
 #if defined(__i386__) || defined(__amd64__)
 		if (t5_write_combine) {
-			int rc;
+			int rc, mode;
 
 			/*
 			 * Enable write combining on BAR2.  This is the
@@ -2054,8 +2054,9 @@ t4_map_bar_2(struct adapter *sc)
 				    rc);
 			}
 
+			mode = is_t5(sc) ? V_STATMODE(0) : V_T6_STATMODE(0);
 			t4_write_reg(sc, A_SGE_STAT_CFG,
-			    V_STATSOURCE_T5(7) | V_STATMODE(0));
+			    V_STATSOURCE_T5(7) | mode);
 		}
 #endif
 	}
@@ -3113,7 +3114,7 @@ use_config_on_flash:
 	LIMIT_CAPS(niccaps);
 	LIMIT_CAPS(toecaps);
 	LIMIT_CAPS(rdmacaps);
-	LIMIT_CAPS(tlscaps);
+	LIMIT_CAPS(cryptocaps);
 	LIMIT_CAPS(iscsicaps);
 	LIMIT_CAPS(fcoecaps);
 #undef LIMIT_CAPS
@@ -3250,7 +3251,7 @@ get_params__post_init(struct adapter *sc)
 	READ_CAPS(niccaps);
 	READ_CAPS(toecaps);
 	READ_CAPS(rdmacaps);
-	READ_CAPS(tlscaps);
+	READ_CAPS(cryptocaps);
 	READ_CAPS(iscsicaps);
 	READ_CAPS(fcoecaps);
 
@@ -3459,6 +3460,38 @@ build_medialist(struct port_info *pi, struct ifmedia *media)
 		}
 		break;
 
+	case FW_PORT_TYPE_CR_QSFP:
+	case FW_PORT_TYPE_SFP28:
+		switch (pi->mod_type) {
+
+		case FW_PORT_MOD_TYPE_SR:
+			MPASS(pi->port_type == FW_PORT_TYPE_SFP28);
+			ifmedia_add(media, m | IFM_25G_SR, 0, NULL);
+			ifmedia_set(media, m | IFM_25G_SR);
+			break;
+
+		case FW_PORT_MOD_TYPE_TWINAX_PASSIVE:
+		case FW_PORT_MOD_TYPE_TWINAX_ACTIVE:
+			ifmedia_add(media, m | IFM_25G_CR, 0, NULL);
+			ifmedia_set(media, m | IFM_25G_CR);
+			break;
+
+		case FW_PORT_MOD_TYPE_NONE:
+			m &= ~IFM_FDX;
+			ifmedia_add(media, m | IFM_NONE, 0, NULL);
+			ifmedia_set(media, m | IFM_NONE);
+			break;
+
+		default:
+			device_printf(pi->dev,
+			    "unknown port_type (%d), mod_type (%d)\n",
+			    pi->port_type, pi->mod_type);
+			ifmedia_add(media, m | IFM_UNKNOWN, 0, NULL);
+			ifmedia_set(media, m | IFM_UNKNOWN);
+			break;
+		}
+		break;
+
 	case FW_PORT_TYPE_QSFP:
 		switch (pi->mod_type) {
 
@@ -3476,6 +3509,67 @@ build_medialist(struct port_info *pi, struct ifmedia *media)
 		case FW_PORT_MOD_TYPE_TWINAX_ACTIVE:
 			ifmedia_add(media, m | IFM_40G_CR4, 0, NULL);
 			ifmedia_set(media, m | IFM_40G_CR4);
+			break;
+
+		case FW_PORT_MOD_TYPE_NONE:
+			m &= ~IFM_FDX;
+			ifmedia_add(media, m | IFM_NONE, 0, NULL);
+			ifmedia_set(media, m | IFM_NONE);
+			break;
+
+		default:
+			device_printf(pi->dev,
+			    "unknown port_type (%d), mod_type (%d)\n",
+			    pi->port_type, pi->mod_type);
+			ifmedia_add(media, m | IFM_UNKNOWN, 0, NULL);
+			ifmedia_set(media, m | IFM_UNKNOWN);
+			break;
+		}
+		break;
+
+	case FW_PORT_TYPE_CR2_QSFP:
+		switch (pi->mod_type) {
+
+		case FW_PORT_MOD_TYPE_TWINAX_PASSIVE:
+		case FW_PORT_MOD_TYPE_TWINAX_ACTIVE:
+			ifmedia_add(media, m | IFM_50G_CR2, 0, NULL);
+			ifmedia_set(media, m | IFM_50G_CR2);
+			break;
+
+		case FW_PORT_MOD_TYPE_NONE:
+			m &= ~IFM_FDX;
+			ifmedia_add(media, m | IFM_NONE, 0, NULL);
+			ifmedia_set(media, m | IFM_NONE);
+			break;
+
+		default:
+			device_printf(pi->dev,
+			    "unknown port_type (%d), mod_type (%d)\n",
+			    pi->port_type, pi->mod_type);
+			ifmedia_add(media, m | IFM_UNKNOWN, 0, NULL);
+			ifmedia_set(media, m | IFM_UNKNOWN);
+			break;
+		}
+		break;
+
+	case FW_PORT_TYPE_KR4_100G:
+	case FW_PORT_TYPE_CR4_QSFP:
+		switch (pi->mod_type) {
+
+		case FW_PORT_MOD_TYPE_LR:
+			ifmedia_add(media, m | IFM_100G_LR4, 0, NULL);
+			ifmedia_set(media, m | IFM_100G_LR4);
+			break;
+
+		case FW_PORT_MOD_TYPE_SR:
+			ifmedia_add(media, m | IFM_100G_SR4, 0, NULL);
+			ifmedia_set(media, m | IFM_100G_SR4);
+			break;
+
+		case FW_PORT_MOD_TYPE_TWINAX_PASSIVE:
+		case FW_PORT_MOD_TYPE_TWINAX_ACTIVE:
+			ifmedia_add(media, m | IFM_100G_CR4, 0, NULL);
+			ifmedia_set(media, m | IFM_100G_CR4);
 			break;
 
 		case FW_PORT_MOD_TYPE_NONE:
@@ -4590,7 +4684,7 @@ static char *caps_decoder[] = {
 	    "\005INITIATOR_SSNOFLD\006TARGET_SSNOFLD"
 	    "\007T10DIF"
 	    "\010INITIATOR_CMDOFLD\011TARGET_CMDOFLD",
-	"\20\00KEYS",					/* 7: TLS */
+	"\20\001LOOKASIDE\002TLSKEYS",			/* 7: Crypto */
 	"\20\001INITIATOR\002TARGET\003CTRL_OFLD"	/* 8: FCoE */
 		    "\004PO_INITIATOR\005PO_TARGET",
 };
@@ -4641,7 +4735,7 @@ t4_sysctls(struct adapter *sc)
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "lro_timeout", CTLFLAG_RW,
 	    &sc->lro_timeout, 0, "lro inactive-flush timeout (in us)");
 
-	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "debug_flags", CTLFLAG_RW,
+	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "dflags", CTLFLAG_RW,
 	    &sc->debug_flags, 0, "flags to enable runtime debugging");
 
 	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "tp_version",
@@ -4698,7 +4792,7 @@ t4_sysctls(struct adapter *sc)
 	SYSCTL_CAP(toecaps, 4, "TCP offload");
 	SYSCTL_CAP(rdmacaps, 5, "RDMA");
 	SYSCTL_CAP(iscsicaps, 6, "iSCSI");
-	SYSCTL_CAP(tlscaps, 7, "TLS");
+	SYSCTL_CAP(cryptocaps, 7, "crypto");
 	SYSCTL_CAP(fcoecaps, 8, "FCoE");
 #undef SYSCTL_CAP
 
@@ -7472,6 +7566,8 @@ sysctl_wcwr_stats(SYSCTL_HANDLER_ARGS)
 	struct sbuf *sb;
 	int rc, v;
 
+	MPASS(chip_id(sc) >= CHELSIO_T5);
+
 	rc = sysctl_wire_old_buffer(req, 0);
 	if (rc != 0)
 		return (rc);
@@ -7482,14 +7578,19 @@ sysctl_wcwr_stats(SYSCTL_HANDLER_ARGS)
 
 	v = t4_read_reg(sc, A_SGE_STAT_CFG);
 	if (G_STATSOURCE_T5(v) == 7) {
-		if (G_STATMODE(v) == 0) {
+		int mode;
+
+		mode = is_t5(sc) ? G_STATMODE(v) : G_T6_STATMODE(v);
+		if (mode == 0) {
 			sbuf_printf(sb, "total %d, incomplete %d",
 			    t4_read_reg(sc, A_SGE_STAT_TOTAL),
 			    t4_read_reg(sc, A_SGE_STAT_MATCH));
-		} else if (G_STATMODE(v) == 1) {
+		} else if (mode == 1) {
 			sbuf_printf(sb, "total %d, data overflow %d",
 			    t4_read_reg(sc, A_SGE_STAT_TOTAL),
 			    t4_read_reg(sc, A_SGE_STAT_MATCH));
+		} else {
+			sbuf_printf(sb, "unknown mode %d", mode);
 		}
 	}
 	rc = sbuf_finish(sb);
