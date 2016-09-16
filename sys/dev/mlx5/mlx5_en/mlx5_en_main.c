@@ -674,7 +674,6 @@ mlx5e_create_rq(struct mlx5e_channel *c,
 		wqe->data.byte_count = cpu_to_be32(byte_count | MLX5_HW_START_PADDING);
 	}
 
-	rq->pdev = c->pdev;
 	rq->ifp = c->ifp;
 	rq->channel = c;
 	rq->ix = c->ix;
@@ -873,7 +872,7 @@ mlx5e_close_rq_wait(struct mlx5e_rq *rq)
 	mlx5e_destroy_rq(rq);
 }
 
-static void
+void
 mlx5e_free_sq_db(struct mlx5e_sq *sq)
 {
 	int wq_sz = mlx5_wq_cyc_get_size(&sq->wq);
@@ -884,7 +883,7 @@ mlx5e_free_sq_db(struct mlx5e_sq *sq)
 	free(sq->mbuf, M_MLX5EN);
 }
 
-static int
+int
 mlx5e_alloc_sq_db(struct mlx5e_sq *sq)
 {
 	int wq_sz = mlx5_wq_cyc_get_size(&sq->wq);
@@ -962,7 +961,6 @@ mlx5e_create_sq(struct mlx5e_channel *c,
 	if (err)
 		goto err_sq_wq_destroy;
 
-	sq->pdev = c->pdev;
 	sq->mkey_be = c->mkey_be;
 	sq->ifp = priv->ifp;
 	sq->priv = priv;
@@ -1033,8 +1031,9 @@ mlx5e_destroy_sq(struct mlx5e_sq *sq)
 	buf_ring_free(sq->br, M_MLX5EN);
 }
 
-static int
-mlx5e_enable_sq(struct mlx5e_sq *sq, struct mlx5e_sq_param *param)
+int
+mlx5e_enable_sq(struct mlx5e_sq *sq, struct mlx5e_sq_param *param,
+    int tis_num)
 {
 	void *in;
 	void *sqc;
@@ -1053,7 +1052,7 @@ mlx5e_enable_sq(struct mlx5e_sq *sq, struct mlx5e_sq_param *param)
 
 	memcpy(sqc, param->sqc, sizeof(param->sqc));
 
-	MLX5_SET(sqc, sqc, tis_num_0, sq->priv->tisn[sq->tc]);
+	MLX5_SET(sqc, sqc, tis_num_0, tis_num);
 	MLX5_SET(sqc, sqc, cqn, sq->cq.mcq.cqn);
 	MLX5_SET(sqc, sqc, state, MLX5_SQC_STATE_RST);
 	MLX5_SET(sqc, sqc, tis_lst_sz, 1);
@@ -1075,7 +1074,7 @@ mlx5e_enable_sq(struct mlx5e_sq *sq, struct mlx5e_sq_param *param)
 	return (err);
 }
 
-static int
+int
 mlx5e_modify_sq(struct mlx5e_sq *sq, int curr_state, int next_state)
 {
 	void *in;
@@ -1101,7 +1100,7 @@ mlx5e_modify_sq(struct mlx5e_sq *sq, int curr_state, int next_state)
 	return (err);
 }
 
-static void
+void
 mlx5e_disable_sq(struct mlx5e_sq *sq)
 {
 
@@ -1120,7 +1119,7 @@ mlx5e_open_sq(struct mlx5e_channel *c,
 	if (err)
 		return (err);
 
-	err = mlx5e_enable_sq(sq, param);
+	err = mlx5e_enable_sq(sq, param, c->priv->tisn[tc]);
 	if (err)
 		goto err_destroy_sq;
 
@@ -1196,8 +1195,8 @@ mlx5e_sq_cev_timeout(void *arg)
 	callout_reset_curcpu(&sq->cev_callout, hz, mlx5e_sq_cev_timeout, sq);
 }
 
-static void
-mlx5e_close_sq_wait(struct mlx5e_sq *sq)
+void
+mlx5e_drain_sq(struct mlx5e_sq *sq)
 {
 
 	mtx_lock(&sq->lock);
@@ -1224,7 +1223,13 @@ mlx5e_close_sq_wait(struct mlx5e_sq *sq)
 		mtx_lock(&sq->lock);
 	}
 	mtx_unlock(&sq->lock);
+}
 
+static void
+mlx5e_close_sq_wait(struct mlx5e_sq *sq)
+{
+
+	mlx5e_drain_sq(sq);
 	mlx5e_disable_sq(sq);
 	mlx5e_destroy_sq(sq);
 }
@@ -1479,7 +1484,6 @@ mlx5e_open_channel(struct mlx5e_priv *priv, int ix,
 	c->priv = priv;
 	c->ix = ix;
 	c->cpu = 0;
-	c->pdev = &priv->mdev->pdev->dev;
 	c->ifp = priv->ifp;
 	c->mkey_be = cpu_to_be32(priv->mr.key);
 	c->num_tc = priv->num_tc;
@@ -2166,7 +2170,6 @@ mlx5e_set_dev_port_mtu(struct ifnet *ifp, int sw_mtu)
 	int hw_mtu;
 	int err;
 
-
 	err = mlx5_set_port_mtu(mdev, MLX5E_SW2HW_MTU(sw_mtu));
 	if (err) {
 		if_printf(ifp, "%s: mlx5_set_port_mtu failed setting %d, err=%d\n",
@@ -2174,19 +2177,20 @@ mlx5e_set_dev_port_mtu(struct ifnet *ifp, int sw_mtu)
 		return (err);
 	}
 	err = mlx5_query_port_oper_mtu(mdev, &hw_mtu);
-	if (!err) {
-		ifp->if_mtu = MLX5E_HW2SW_MTU(hw_mtu);
-
-		if (ifp->if_mtu != sw_mtu) {
-			if_printf(ifp, "Port MTU %d is different than "
-			    "ifp mtu %d\n", sw_mtu, (int)ifp->if_mtu);
-		}
-	} else {
+	if (err) {
 		if_printf(ifp, "Query port MTU, after setting new "
 		    "MTU value, failed\n");
-		ifp->if_mtu = sw_mtu;
+	} else if (MLX5E_HW2SW_MTU(hw_mtu) < sw_mtu) {
+		err = -E2BIG,
+		if_printf(ifp, "Port MTU %d is smaller than "
+                    "ifp mtu %d\n", hw_mtu, sw_mtu);
+	} else if (MLX5E_HW2SW_MTU(hw_mtu) > sw_mtu) {
+		err = -EINVAL;
+                if_printf(ifp, "Port MTU %d is bigger than "
+                    "ifp mtu %d\n", hw_mtu, sw_mtu);
 	}
-	return (0);
+	ifp->if_mtu = sw_mtu;
+	return (err);
 }
 
 int
@@ -2647,6 +2651,9 @@ mlx5e_check_required_hca_cap(struct mlx5_core_dev *mdev)
 
 	/* TODO: add more must-to-have features */
 
+	if (MLX5_CAP_GEN(mdev, port_type) != MLX5_CAP_PORT_TYPE_ETH)
+		return (-ENODEV);
+
 	return (0);
 }
 
@@ -2753,6 +2760,7 @@ mlx5e_priv_mtx_init(struct mlx5e_priv *priv)
 	mtx_init(&priv->async_events_mtx, "mlx5async", MTX_NETWORK_LOCK, MTX_DEF);
 	sx_init(&priv->state_lock, "mlx5state");
 	callout_init_mtx(&priv->watchdog, &priv->async_events_mtx, 0);
+	MLX5_INIT_DOORBELL_LOCK(&priv->doorbell_lock);
 }
 
 static void

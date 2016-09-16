@@ -467,7 +467,6 @@ struct mlx5e_rq {
 	bus_dma_tag_t dma_tag;
 	u32	wqe_sz;
 	struct mlx5e_rq_mbuf *mbuf;
-	struct device *pdev;
 	struct ifnet *ifp;
 	struct mlx5e_rq_stats stats;
 	struct mlx5e_cq cq;
@@ -532,7 +531,6 @@ struct mlx5e_sq {
 	struct	ifnet *ifp;
 	u32	sqn;
 	u32	bf_buf_size;
-	struct  device *pdev;
 	u32	mkey_be;
 
 	/* control path */
@@ -553,7 +551,6 @@ struct mlx5e_channel {
 	/* data path */
 	struct mlx5e_rq rq;
 	struct mlx5e_sq sq[MLX5E_MAX_TX_NUM_TC];
-	struct device *pdev;
 	struct ifnet *ifp;
 	u32	mkey_be;
 	u8	num_tc;
@@ -662,6 +659,7 @@ struct mlx5e_priv {
 	struct work_struct update_stats_work;
 	struct work_struct update_carrier_work;
 	struct work_struct set_rx_mode_work;
+	MLX5_DECLARE_DOORBELL_LOCK(doorbell_lock)
 
 	struct mlx5_core_dev *mdev;
 	struct ifnet *ifp;
@@ -784,7 +782,8 @@ mlx5e_tx_notify_hw(struct mlx5e_sq *sq, u32 *wqe, int bf_sz)
 		wmb();
 
 	} else {
-		mlx5_write64(wqe, sq->uar.map + ofst, NULL);
+		mlx5_write64(wqe, sq->uar.map + ofst,
+		    MLX5_GET_DOORBELL_LOCK(&sq->priv->doorbell_lock));
 	}
 
 	sq->bf_offset ^= sq->bf_buf_size;
@@ -810,5 +809,11 @@ int	mlx5e_refresh_channel_params(struct mlx5e_priv *);
 int	mlx5e_open_cq(struct mlx5e_priv *, struct mlx5e_cq_param *,
     struct mlx5e_cq *, mlx5e_cq_comp_t *, int eq_ix);
 void	mlx5e_close_cq(struct mlx5e_cq *);
+void	mlx5e_free_sq_db(struct mlx5e_sq *);
+int	mlx5e_alloc_sq_db(struct mlx5e_sq *);
+int	mlx5e_enable_sq(struct mlx5e_sq *, struct mlx5e_sq_param *, int tis_num);
+int	mlx5e_modify_sq(struct mlx5e_sq *, int curr_state, int next_state);
+void	mlx5e_disable_sq(struct mlx5e_sq *);
+void	mlx5e_drain_sq(struct mlx5e_sq *);
 
 #endif					/* _MLX5_EN_H_ */
