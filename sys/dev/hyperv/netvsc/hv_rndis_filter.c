@@ -510,14 +510,6 @@ hn_rndis_get_linkstatus(struct hn_softc *sc, uint32_t *link_status)
 	return (0);
 }
 
-static uint8_t netvsc_hash_key[NDIS_HASH_KEYSIZE_TOEPLITZ] = {
-	0x6d, 0x5a, 0x56, 0xda, 0x25, 0x5b, 0x0e, 0xc2,
-	0x41, 0x67, 0x25, 0x3d, 0x43, 0xa3, 0x8f, 0xb0,
-	0xd0, 0xca, 0x2b, 0xcb, 0xae, 0x7b, 0x30, 0xb4,
-	0x77, 0xcb, 0x2d, 0xa3, 0x80, 0x30, 0xf2, 0x0c,
-	0x6a, 0x42, 0xb7, 0x3b, 0xbe, 0xac, 0x01, 0xfa
-};
-
 static const void *
 hn_rndis_xact_exec1(struct hn_softc *sc, struct vmbus_xact *xact, size_t reqlen,
     struct hn_send_ctx *sndc, size_t *comp_len)
@@ -808,6 +800,7 @@ static int
 hn_rndis_conf_offload(struct hn_softc *sc)
 {
 	struct ndis_offload_params params;
+	uint32_t caps;
 	size_t paramsz;
 	int error;
 
@@ -824,32 +817,37 @@ hn_rndis_conf_offload(struct hn_softc *sc)
 	}
 	params.ndis_hdr.ndis_size = paramsz;
 
+	caps = HN_CAP_IPCS | HN_CAP_TCP4CS | HN_CAP_TCP6CS;
 	params.ndis_ip4csum = NDIS_OFFLOAD_PARAM_TXRX;
 	params.ndis_tcp4csum = NDIS_OFFLOAD_PARAM_TXRX;
 	params.ndis_tcp6csum = NDIS_OFFLOAD_PARAM_TXRX;
 	if (sc->hn_ndis_ver >= HN_NDIS_VERSION_6_30) {
+		caps |= HN_CAP_UDP4CS | HN_CAP_UDP6CS;
 		params.ndis_udp4csum = NDIS_OFFLOAD_PARAM_TXRX;
 		params.ndis_udp6csum = NDIS_OFFLOAD_PARAM_TXRX;
 	}
+	caps |= HN_CAP_TSO4;
 	params.ndis_lsov2_ip4 = NDIS_OFFLOAD_LSOV2_ON;
 	/* XXX ndis_lsov2_ip6 = NDIS_OFFLOAD_LSOV2_ON */
 
 	error = hn_rndis_set(sc, OID_TCP_OFFLOAD_PARAMETERS, &params, paramsz);
 	if (error) {
 		if_printf(sc->hn_ifp, "offload config failed: %d\n", error);
-	} else {
-		if (bootverbose)
-			if_printf(sc->hn_ifp, "offload config done\n");
+		return (error);
 	}
-	return (error);
+
+	if (bootverbose)
+		if_printf(sc->hn_ifp, "offload config done\n");
+	sc->hn_caps |= caps;
+	return (0);
 }
 
 int
-hn_rndis_conf_rss(struct hn_softc *sc, int nchan)
+hn_rndis_conf_rss(struct hn_softc *sc, uint16_t flags)
 {
 	struct ndis_rssprm_toeplitz *rss = &sc->hn_rss;
 	struct ndis_rss_params *prm = &rss->rss_params;
-	int i, error;
+	int error;
 
 	/*
 	 * Only NDIS 6.30+ is supported.
@@ -857,10 +855,16 @@ hn_rndis_conf_rss(struct hn_softc *sc, int nchan)
 	KASSERT(sc->hn_ndis_ver >= HN_NDIS_VERSION_6_30,
 	    ("NDIS 6.30+ is required, NDIS version 0x%08x", sc->hn_ndis_ver));
 
-	memset(rss, 0, sizeof(*rss));
+	/*
+	 * NOTE:
+	 * DO NOT whack rss_key and rss_ind, which are setup by the caller.
+	 */
+	memset(prm, 0, sizeof(*prm));
+
 	prm->ndis_hdr.ndis_type = NDIS_OBJTYPE_RSS_PARAMS;
 	prm->ndis_hdr.ndis_rev = NDIS_RSS_PARAMS_REV_2;
 	prm->ndis_hdr.ndis_size = sizeof(*rss);
+	prm->ndis_flags = flags;
 	prm->ndis_hash = NDIS_HASH_FUNCTION_TOEPLITZ |
 	    NDIS_HASH_IPV4 | NDIS_HASH_TCP_IPV4 |
 	    NDIS_HASH_IPV6 | NDIS_HASH_TCP_IPV6;
@@ -871,14 +875,6 @@ hn_rndis_conf_rss(struct hn_softc *sc, int nchan)
 	prm->ndis_keysize = sizeof(rss->rss_key);
 	prm->ndis_keyoffset =
 	    __offsetof(struct ndis_rssprm_toeplitz, rss_key[0]);
-
-	/* Setup RSS key */
-	memcpy(rss->rss_key, netvsc_hash_key, sizeof(rss->rss_key));
-
-	/* Setup RSS indirect table */
-	/* TODO: Take ndis_rss_caps.ndis_nind into account */
-	for (i = 0; i < NDIS_HASH_INDCNT; ++i)
-		rss->rss_ind[i] = i % nchan;
 
 	error = hn_rndis_set(sc, OID_GEN_RECEIVE_SCALE_PARAMETERS,
 	    rss, sizeof(*rss));

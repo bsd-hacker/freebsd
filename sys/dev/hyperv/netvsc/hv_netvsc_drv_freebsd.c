@@ -195,21 +195,12 @@ struct hn_txdesc {
 
 #define HN_LRO_ACKCNT_DEF		1
 
-/*
- * Be aware that this sleepable mutex will exhibit WITNESS errors when
- * certain TCP and ARP code paths are taken.  This appears to be a
- * well-known condition, as all other drivers checked use a sleeping
- * mutex to protect their transmit paths.
- * Also Be aware that mutexes do not play well with semaphores, and there
- * is a conflicting semaphore in a certain channel code path.
- */
-#define NV_LOCK_INIT(_sc, _name) \
-	    mtx_init(&(_sc)->hn_lock, _name, MTX_NETWORK_LOCK, MTX_DEF)
-#define NV_LOCK(_sc)		mtx_lock(&(_sc)->hn_lock)
-#define NV_LOCK_ASSERT(_sc)	mtx_assert(&(_sc)->hn_lock, MA_OWNED)
-#define NV_UNLOCK(_sc)		mtx_unlock(&(_sc)->hn_lock)
-#define NV_LOCK_DESTROY(_sc)	mtx_destroy(&(_sc)->hn_lock)
-
+#define HN_LOCK_INIT(sc)		\
+	sx_init(&(sc)->hn_lock, device_get_nameunit((sc)->hn_dev))
+#define HN_LOCK_ASSERT(sc)		sx_assert(&(sc)->hn_lock, SA_XLOCKED)
+#define HN_LOCK_DESTROY(sc)		sx_destroy(&(sc)->hn_lock)
+#define HN_LOCK(sc)			sx_xlock(&(sc)->hn_lock)
+#define HN_UNLOCK(sc)			sx_xunlock(&(sc)->hn_lock)
 
 /*
  * Globals
@@ -241,12 +232,10 @@ SYSCTL_INT(_hw_hn, OID_AUTO, trust_hostip, CTLFLAG_RDTUN,
     "Trust ip packet verification on host side, "
     "when csum info is missing (global setting)");
 
-#if __FreeBSD_version >= 1100045
 /* Limit TSO burst size */
 static int hn_tso_maxlen = 0;
 SYSCTL_INT(_hw_hn, OID_AUTO, tso_maxlen, CTLFLAG_RDTUN,
     &hn_tso_maxlen, 0, "TSO burst limit");
-#endif
 
 /* Limit chimney send size */
 static int hn_tx_chimney_size = 0;
@@ -312,9 +301,9 @@ static u_int hn_cpu_index;
 /*
  * Forward declarations
  */
-static void hn_stop(hn_softc_t *sc);
-static void hn_ifinit_locked(hn_softc_t *sc);
-static void hn_ifinit(void *xsc);
+static void hn_stop(struct hn_softc *sc);
+static void hn_init_locked(struct hn_softc *sc);
+static void hn_init(void *xsc);
 static int  hn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data);
 static int hn_start_locked(struct hn_tx_ring *txr, int len);
 static void hn_start(struct ifnet *ifp);
@@ -327,11 +316,18 @@ static int hn_lro_ackcnt_sysctl(SYSCTL_HANDLER_ARGS);
 #endif
 static int hn_trust_hcsum_sysctl(SYSCTL_HANDLER_ARGS);
 static int hn_chim_size_sysctl(SYSCTL_HANDLER_ARGS);
-static int hn_rx_stat_ulong_sysctl(SYSCTL_HANDLER_ARGS);
+#if __FreeBSD_version < 1100095
+static int hn_rx_stat_int_sysctl(SYSCTL_HANDLER_ARGS);
+#else
 static int hn_rx_stat_u64_sysctl(SYSCTL_HANDLER_ARGS);
+#endif
+static int hn_rx_stat_ulong_sysctl(SYSCTL_HANDLER_ARGS);
 static int hn_tx_stat_ulong_sysctl(SYSCTL_HANDLER_ARGS);
 static int hn_tx_conf_int_sysctl(SYSCTL_HANDLER_ARGS);
 static int hn_ndis_version_sysctl(SYSCTL_HANDLER_ARGS);
+static int hn_caps_sysctl(SYSCTL_HANDLER_ARGS);
+static int hn_rss_key_sysctl(SYSCTL_HANDLER_ARGS);
+static int hn_rss_ind_sysctl(SYSCTL_HANDLER_ARGS);
 static int hn_check_iplen(const struct mbuf *, int);
 static int hn_create_tx_ring(struct hn_softc *, int);
 static void hn_destroy_tx_ring(struct hn_tx_ring *);
@@ -368,6 +364,14 @@ static void hn_xmit_txeof(struct hn_tx_ring *);
 static void hn_xmit_taskfunc(void *, int);
 static void hn_xmit_txeof_taskfunc(void *, int);
 
+static const uint8_t	hn_rss_key_default[NDIS_HASH_KEYSIZE_TOEPLITZ] = {
+	0x6d, 0x5a, 0x56, 0xda, 0x25, 0x5b, 0x0e, 0xc2,
+	0x41, 0x67, 0x25, 0x3d, 0x43, 0xa3, 0x8f, 0xb0,
+	0xd0, 0xca, 0x2b, 0xcb, 0xae, 0x7b, 0x30, 0xb4,
+	0x77, 0xcb, 0x2d, 0xa3, 0x80, 0x30, 0xf2, 0x0c,
+	0x6a, 0x42, 0xb7, 0x3b, 0xbe, 0xac, 0x01, 0xfa
+};
+
 #if __FreeBSD_version >= 1100099
 static void
 hn_set_lro_lenlim(struct hn_softc *sc, int lenlim)
@@ -387,6 +391,64 @@ hn_get_txswq_depth(const struct hn_tx_ring *txr)
 	if (hn_tx_swq_depth < txr->hn_txdesc_cnt)
 		return txr->hn_txdesc_cnt;
 	return hn_tx_swq_depth;
+}
+
+static int
+hn_rss_reconfig(struct hn_softc *sc)
+{
+	int error;
+
+	HN_LOCK_ASSERT(sc);
+
+	/*
+	 * Disable RSS first.
+	 *
+	 * NOTE:
+	 * Direct reconfiguration by setting the UNCHG flags does
+	 * _not_ work properly.
+	 */
+	if (bootverbose)
+		if_printf(sc->hn_ifp, "disable RSS\n");
+	error = hn_rndis_conf_rss(sc, NDIS_RSS_FLAG_DISABLE);
+	if (error) {
+		if_printf(sc->hn_ifp, "RSS disable failed\n");
+		return (error);
+	}
+
+	/*
+	 * Reenable the RSS w/ the updated RSS key or indirect
+	 * table.
+	 */
+	if (bootverbose)
+		if_printf(sc->hn_ifp, "reconfig RSS\n");
+	error = hn_rndis_conf_rss(sc, NDIS_RSS_FLAG_NONE);
+	if (error) {
+		if_printf(sc->hn_ifp, "RSS reconfig failed\n");
+		return (error);
+	}
+	return (0);
+}
+
+static void
+hn_rss_ind_fixup(struct hn_softc *sc, int nchan)
+{
+	struct ndis_rssprm_toeplitz *rss = &sc->hn_rss;
+	int i;
+
+	KASSERT(nchan > 1, ("invalid # of channels %d", nchan));
+
+	/*
+	 * Check indirect table to make sure that all channels in it
+	 * can be used.
+	 */
+	for (i = 0; i < NDIS_HASH_INDCNT; ++i) {
+		if (rss->rss_ind[i] >= nchan) {
+			if_printf(sc->hn_ifp,
+			    "RSS indirect table %d fixup: %u -> %d\n",
+			    i, rss->rss_ind[i], nchan - 1);
+			rss->rss_ind[i] = nchan - 1;
+		}
+	}
 }
 
 static int
@@ -442,24 +504,22 @@ netvsc_probe(device_t dev)
 static int
 netvsc_attach(device_t dev)
 {
+	struct hn_softc *sc = device_get_softc(dev);
 	struct sysctl_oid_list *child;
 	struct sysctl_ctx_list *ctx;
 	uint8_t eaddr[ETHER_ADDR_LEN];
 	uint32_t link_status;
-	hn_softc_t *sc;
-	int unit = device_get_unit(dev);
 	struct ifnet *ifp = NULL;
 	int error, ring_cnt, tx_ring_cnt;
-#if __FreeBSD_version >= 1100045
 	int tso_maxlen;
-#endif
 
-	sc = device_get_softc(dev);
-
-	sc->hn_unit = unit;
 	sc->hn_dev = dev;
 	sc->hn_prichan = vmbus_get_channel(dev);
+	HN_LOCK_INIT(sc);
 
+	/*
+	 * Setup taskqueue for transmission.
+	 */
 	if (hn_tx_taskq == NULL) {
 		sc->hn_tx_taskq = taskqueue_create("hn_tx", M_WAITOK,
 		    taskqueue_thread_enqueue, &sc->hn_tx_taskq);
@@ -480,11 +540,21 @@ netvsc_attach(device_t dev)
 	} else {
 		sc->hn_tx_taskq = hn_tx_taskq;
 	}
-	NV_LOCK_INIT(sc, "NetVSCLock");
 
+	/*
+	 * Allocate ifnet and setup its name earlier, so that if_printf
+	 * can be used by functions, which will be called after
+	 * ether_ifattach().
+	 */
 	ifp = sc->hn_ifp = if_alloc(IFT_ETHER);
 	ifp->if_softc = sc;
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
+
+	/*
+	 * Initialize ifmedia earlier so that it can be unconditionally
+	 * destroyed, if error happened later on.
+	 */
+	ifmedia_init(&sc->hn_media, 0, hn_ifmedia_upd, hn_ifmedia_sts);
 
 	/*
 	 * Figure out the # of RX rings (ring_cnt) and the # of TX rings
@@ -516,6 +586,10 @@ netvsc_attach(device_t dev)
 	 */
 	sc->hn_cpu = atomic_fetchadd_int(&hn_cpu_index, ring_cnt) % mp_ncpus;
 
+	/*
+	 * Create enough TX/RX rings, even if only limited number of
+	 * channels can be allocated.
+	 */
 	error = hn_create_tx_data(sc, tx_ring_cnt);
 	if (error)
 		goto failed;
@@ -538,39 +612,15 @@ netvsc_attach(device_t dev)
 	if (error)
 		goto failed;
 
-	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_ioctl = hn_ioctl;
-	ifp->if_init = hn_ifinit;
-	ifp->if_mtu = ETHERMTU;
-	if (hn_use_if_start) {
-		int qdepth = hn_get_txswq_depth(&sc->hn_tx_ring[0]);
+	error = hn_rndis_get_linkstatus(sc, &link_status);
+	if (error)
+		goto failed;
+	if (link_status == NDIS_MEDIA_STATE_CONNECTED)
+		sc->hn_carrier = 1;
 
-		ifp->if_start = hn_start;
-		IFQ_SET_MAXLEN(&ifp->if_snd, qdepth);
-		ifp->if_snd.ifq_drv_maxlen = qdepth - 1;
-		IFQ_SET_READY(&ifp->if_snd);
-	} else {
-		ifp->if_transmit = hn_transmit;
-		ifp->if_qflush = hn_xmit_qflush;
-	}
-
-	ifmedia_init(&sc->hn_media, 0, hn_ifmedia_upd, hn_ifmedia_sts);
-	ifmedia_add(&sc->hn_media, IFM_ETHER | IFM_AUTO, 0, NULL);
-	ifmedia_set(&sc->hn_media, IFM_ETHER | IFM_AUTO);
-	/* XXX ifmedia_set really should do this for us */
-	sc->hn_media.ifm_media = sc->hn_media.ifm_cur->ifm_media;
-
-	/*
-	 * Tell upper layers that we support full VLAN capability.
-	 */
-	ifp->if_hdrlen = sizeof(struct ether_vlan_header);
-	ifp->if_capabilities |=
-	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_MTU | IFCAP_HWCSUM | IFCAP_TSO |
-	    IFCAP_LRO;
-	ifp->if_capenable |=
-	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_MTU | IFCAP_HWCSUM | IFCAP_TSO |
-	    IFCAP_LRO;
-	ifp->if_hwassist = sc->hn_tx_ring[0].hn_csum_assist | CSUM_TSO;
+	error = hn_rndis_get_eaddr(sc, eaddr);
+	if (error)
+		goto failed;
 
 #if __FreeBSD_version >= 1100099
 	if (sc->hn_rx_ring_inuse > 1) {
@@ -580,33 +630,6 @@ netvsc_attach(device_t dev)
 		 */
 		hn_set_lro_lenlim(sc, HN_LRO_LENLIM_MULTIRX_DEF);
 	}
-#endif
-
-	error = hn_rndis_get_linkstatus(sc, &link_status);
-	if (error)
-		goto failed;
-	if (link_status == NDIS_MEDIA_STATE_CONNECTED)
-		sc->hn_carrier = 1;
-
-#if __FreeBSD_version >= 1100045
-	tso_maxlen = hn_tso_maxlen;
-	if (tso_maxlen <= 0 || tso_maxlen > IP_MAXPACKET)
-		tso_maxlen = IP_MAXPACKET;
-
-	ifp->if_hw_tsomaxsegcount = HN_TX_DATA_SEGCNT_MAX;
-	ifp->if_hw_tsomaxsegsize = PAGE_SIZE;
-	ifp->if_hw_tsomax = tso_maxlen -
-	    (ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN);
-#endif
-
-	error = hn_rndis_get_eaddr(sc, eaddr);
-	if (error)
-		goto failed;
-	ether_ifattach(ifp, eaddr);
-
-#if __FreeBSD_version >= 1100045
-	if_printf(ifp, "TSO: %u/%u/%u\n", ifp->if_hw_tsomax,
-	    ifp->if_hw_tsomaxsegcount, ifp->if_hw_tsomaxsegsize);
 #endif
 
 	hn_set_chim_size(sc, sc->hn_chim_szmax);
@@ -621,9 +644,72 @@ netvsc_attach(device_t dev)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "ndis_version",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    hn_ndis_version_sysctl, "A", "NDIS version");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "caps",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    hn_caps_sysctl, "A", "capabilities");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rss_key",
+	    CTLTYPE_OPAQUE | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    hn_rss_key_sysctl, "IU", "RSS key");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rss_ind",
+	    CTLTYPE_OPAQUE | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    hn_rss_ind_sysctl, "IU", "RSS indirect table");
+
+	/*
+	 * Setup the ifmedia, which has been initialized earlier.
+	 */
+	ifmedia_add(&sc->hn_media, IFM_ETHER | IFM_AUTO, 0, NULL);
+	ifmedia_set(&sc->hn_media, IFM_ETHER | IFM_AUTO);
+	/* XXX ifmedia_set really should do this for us */
+	sc->hn_media.ifm_media = sc->hn_media.ifm_cur->ifm_media;
+
+	/*
+	 * Setup the ifnet for this interface.
+	 */
+
+	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	ifp->if_ioctl = hn_ioctl;
+	ifp->if_init = hn_init;
+	if (hn_use_if_start) {
+		int qdepth = hn_get_txswq_depth(&sc->hn_tx_ring[0]);
+
+		ifp->if_start = hn_start;
+		IFQ_SET_MAXLEN(&ifp->if_snd, qdepth);
+		ifp->if_snd.ifq_drv_maxlen = qdepth - 1;
+		IFQ_SET_READY(&ifp->if_snd);
+	} else {
+		ifp->if_transmit = hn_transmit;
+		ifp->if_qflush = hn_xmit_qflush;
+	}
+
+	ifp->if_capabilities |=
+	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_MTU | IFCAP_HWCSUM | IFCAP_TSO |
+	    IFCAP_LRO;
+	ifp->if_capenable |=
+	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_MTU | IFCAP_HWCSUM | IFCAP_TSO |
+	    IFCAP_LRO;
+	ifp->if_hwassist = sc->hn_tx_ring[0].hn_csum_assist | CSUM_TSO;
+
+	tso_maxlen = hn_tso_maxlen;
+	if (tso_maxlen <= 0 || tso_maxlen > IP_MAXPACKET)
+		tso_maxlen = IP_MAXPACKET;
+	ifp->if_hw_tsomaxsegcount = HN_TX_DATA_SEGCNT_MAX;
+	ifp->if_hw_tsomaxsegsize = PAGE_SIZE;
+	ifp->if_hw_tsomax = tso_maxlen -
+	    (ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN);
+
+	ether_ifattach(ifp, eaddr);
+
+	if (bootverbose) {
+		if_printf(ifp, "TSO: %u/%u/%u\n", ifp->if_hw_tsomax,
+		    ifp->if_hw_tsomaxsegcount, ifp->if_hw_tsomaxsegsize);
+	}
+
+	/* Inform the upper layer about the long frame support. */
+	ifp->if_hdrlen = sizeof(struct ether_vlan_header);
 
 	return (0);
 failed:
+	/* TODO: reuse netvsc_detach() */
 	hn_destroy_tx_data(sc);
 	if (ifp != NULL)
 		if_free(ifp);
@@ -665,6 +751,7 @@ netvsc_detach(device_t dev)
 		taskqueue_free(sc->hn_tx_taskq);
 
 	vmbus_xact_ctx_destroy(sc->hn_xact);
+	HN_LOCK_DESTROY(sc);
 	return (0);
 }
 
@@ -1471,52 +1558,31 @@ skip:
 	return (0);
 }
 
-/*
- * Rules for using sc->temp_unusable:
- * 1.  sc->temp_unusable can only be read or written while holding NV_LOCK()
- * 2.  code reading sc->temp_unusable under NV_LOCK(), and finding 
- *     sc->temp_unusable set, must release NV_LOCK() and exit
- * 3.  to retain exclusive control of the interface,
- *     sc->temp_unusable must be set by code before releasing NV_LOCK()
- * 4.  only code setting sc->temp_unusable can clear sc->temp_unusable
- * 5.  code setting sc->temp_unusable must eventually clear sc->temp_unusable
- */
-
-/*
- * Standard ioctl entry point.  Called when the user wants to configure
- * the interface.
- */
 static int
 hn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
-	hn_softc_t *sc = ifp->if_softc;
+	struct hn_softc *sc = ifp->if_softc;
 	struct ifreq *ifr = (struct ifreq *)data;
-#ifdef INET
-	struct ifaddr *ifa = (struct ifaddr *)data;
-#endif
 	int mask, error = 0;
-	int retry_cnt = 500;
-	
-	switch(cmd) {
 
-	case SIOCSIFADDR:
-#ifdef INET
-		if (ifa->ifa_addr->sa_family == AF_INET) {
-			ifp->if_flags |= IFF_UP;
-			if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
-				hn_ifinit(sc);
-			arp_ifinit(ifp, ifa);
-		} else
-#endif
-		error = ether_ioctl(ifp, cmd, data);
-		break;
+	switch (cmd) {
 	case SIOCSIFMTU:
-		/* Check MTU value change */
-		if (ifp->if_mtu == ifr->ifr_mtu)
-			break;
-
 		if (ifr->ifr_mtu > NETVSC_MAX_CONFIGURABLE_MTU) {
 			error = EINVAL;
+			break;
+		}
+
+		HN_LOCK(sc);
+
+		if ((sc->hn_caps & HN_CAP_MTU) == 0) {
+			/* Can't change MTU */
+			HN_UNLOCK(sc);
+			error = EOPNOTSUPP;
+			break;
+		}
+
+		if (ifp->if_mtu == ifr->ifr_mtu) {
+			HN_UNLOCK(sc);
 			break;
 		}
 
@@ -1528,30 +1594,10 @@ hn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		 * Make sure that LRO aggregation length limit is still
 		 * valid, after the MTU change.
 		 */
-		NV_LOCK(sc);
 		if (sc->hn_rx_ring[0].hn_lro.lro_length_lim <
 		    HN_LRO_LENLIM_MIN(ifp))
 			hn_set_lro_lenlim(sc, HN_LRO_LENLIM_MIN(ifp));
-		NV_UNLOCK(sc);
 #endif
-
-		do {
-			NV_LOCK(sc);
-			if (!sc->temp_unusable) {
-				sc->temp_unusable = TRUE;
-				retry_cnt = -1;
-			}
-			NV_UNLOCK(sc);
-			if (retry_cnt > 0) {
-				retry_cnt--;
-				DELAY(5 * 1000);
-			}
-		} while (retry_cnt > 0);
-
-		if (retry_cnt == 0) {
-			error = EINVAL;
-			break;
-		}
 
 		/* We must remove and add back the device to cause the new
 		 * MTU to take effect.  This includes tearing down, but not
@@ -1559,9 +1605,7 @@ hn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		 */
 		error = hv_rf_on_device_remove(sc);
 		if (error) {
-			NV_LOCK(sc);
-			sc->temp_unusable = FALSE;
-			NV_UNLOCK(sc);
+			HN_UNLOCK(sc);
 			break;
 		}
 
@@ -1579,30 +1623,13 @@ hn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		if (sc->hn_tx_ring[0].hn_chim_size > sc->hn_chim_szmax)
 			hn_set_chim_size(sc, sc->hn_chim_szmax);
 
-		hn_ifinit_locked(sc);
+		hn_init_locked(sc);
 
-		NV_LOCK(sc);
-		sc->temp_unusable = FALSE;
-		NV_UNLOCK(sc);
+		HN_UNLOCK(sc);
 		break;
-	case SIOCSIFFLAGS:
-		do {
-                       NV_LOCK(sc);
-                       if (!sc->temp_unusable) {
-                               sc->temp_unusable = TRUE;
-                               retry_cnt = -1;
-                       }
-                       NV_UNLOCK(sc);
-                       if (retry_cnt > 0) {
-                      	        retry_cnt--;
-                        	DELAY(5 * 1000);
-                       }
-                } while (retry_cnt > 0);
 
-                if (retry_cnt == 0) {
-                       error = EINVAL;
-                       break;
-                }
+	case SIOCSIFFLAGS:
+		HN_LOCK(sc);
 
 		if (ifp->if_flags & IFF_UP) {
 			/*
@@ -1625,20 +1652,19 @@ hn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 				/* do something here for Hyper-V */
 			} else
 #endif
-				hn_ifinit_locked(sc);
+				hn_init_locked(sc);
 		} else {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 				hn_stop(sc);
 			}
 		}
-		NV_LOCK(sc);
-		sc->temp_unusable = FALSE;
-		NV_UNLOCK(sc);
 		sc->hn_if_flags = ifp->if_flags;
-		error = 0;
+
+		HN_UNLOCK(sc);
 		break;
+
 	case SIOCSIFCAP:
-		NV_LOCK(sc);
+		HN_LOCK(sc);
 
 		mask = ifr->ifr_reqcap ^ ifp->if_capenable;
 		if (mask & IFCAP_TXCSUM) {
@@ -1674,42 +1700,38 @@ hn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 				ifp->if_hwassist &= ~CSUM_IP6_TSO;
 		}
 
-		NV_UNLOCK(sc);
-		error = 0;
+		HN_UNLOCK(sc);
 		break;
+
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
-#ifdef notyet
-		/* Fixme:  Multicast mode? */
-		if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
-			NV_LOCK(sc);
-			netvsc_setmulti(sc);
-			NV_UNLOCK(sc);
-			error = 0;
-		}
-#endif
-		error = EINVAL;
+		/* Always all-multi */
+		/*
+		 * TODO:
+		 * Enable/disable all-multi according to the emptiness of
+		 * the mcast address list.
+		 */
 		break;
+
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA:
 		error = ifmedia_ioctl(ifp, ifr, &sc->hn_media, cmd);
 		break;
+
 	default:
 		error = ether_ioctl(ifp, cmd, data);
 		break;
 	}
-
 	return (error);
 }
 
-/*
- *
- */
 static void
-hn_stop(hn_softc_t *sc)
+hn_stop(struct hn_softc *sc)
 {
 	struct ifnet *ifp;
 	int ret, i;
+
+	HN_LOCK_ASSERT(sc);
 
 	ifp = sc->hn_ifp;
 
@@ -1722,7 +1744,6 @@ hn_stop(hn_softc_t *sc)
 		sc->hn_tx_ring[i].hn_oactive = 0;
 
 	if_link_state_change(ifp, LINK_STATE_DOWN);
-	sc->hn_initdone = 0;
 
 	ret = hv_rf_on_close(sc);
 }
@@ -1785,14 +1806,13 @@ do_sched:
 	}
 }
 
-/*
- *
- */
 static void
-hn_ifinit_locked(hn_softc_t *sc)
+hn_init_locked(struct hn_softc *sc)
 {
 	struct ifnet *ifp;
 	int ret, i;
+
+	HN_LOCK_ASSERT(sc);
 
 	ifp = sc->hn_ifp;
 
@@ -1803,11 +1823,8 @@ hn_ifinit_locked(hn_softc_t *sc)
 	hv_promisc_mode = 1;
 
 	ret = hv_rf_on_open(sc);
-	if (ret != 0) {
+	if (ret != 0)
 		return;
-	} else {
-		sc->hn_initdone = 1;
-	}
 
 	atomic_clear_int(&ifp->if_drv_flags, IFF_DRV_OACTIVE);
 	for (i = 0; i < sc->hn_tx_ring_inuse; ++i)
@@ -1817,27 +1834,14 @@ hn_ifinit_locked(hn_softc_t *sc)
 	if_link_state_change(ifp, LINK_STATE_UP);
 }
 
-/*
- *
- */
 static void
-hn_ifinit(void *xsc)
+hn_init(void *xsc)
 {
-	hn_softc_t *sc = xsc;
+	struct hn_softc *sc = xsc;
 
-	NV_LOCK(sc);
-	if (sc->temp_unusable) {
-		NV_UNLOCK(sc);
-		return;
-	}
-	sc->temp_unusable = TRUE;
-	NV_UNLOCK(sc);
-
-	hn_ifinit_locked(sc);
-
-	NV_LOCK(sc);
-	sc->temp_unusable = FALSE;
-	NV_UNLOCK(sc);
+	HN_LOCK(sc);
+	hn_init_locked(sc);
+	HN_UNLOCK(sc);
 }
 
 #ifdef LATER
@@ -1847,11 +1851,9 @@ hn_ifinit(void *xsc)
 static void
 hn_watchdog(struct ifnet *ifp)
 {
-	hn_softc_t *sc;
-	sc = ifp->if_softc;
 
-	printf("hn%d: watchdog timeout -- resetting\n", sc->hn_unit);
-	hn_ifinit(sc);    /*???*/
+	if_printf(ifp, "watchdog timeout -- resetting\n");
+	hn_init(ifp->if_softc);    /* XXX */
 	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 }
 #endif
@@ -1870,13 +1872,15 @@ hn_lro_lenlim_sysctl(SYSCTL_HANDLER_ARGS)
 	if (error || req->newptr == NULL)
 		return error;
 
+	HN_LOCK(sc);
 	if (lenlim < HN_LRO_LENLIM_MIN(sc->hn_ifp) ||
-	    lenlim > TCP_LRO_LENGTH_MAX)
+	    lenlim > TCP_LRO_LENGTH_MAX) {
+		HN_UNLOCK(sc);
 		return EINVAL;
-
-	NV_LOCK(sc);
+	}
 	hn_set_lro_lenlim(sc, lenlim);
-	NV_UNLOCK(sc);
+	HN_UNLOCK(sc);
+
 	return 0;
 }
 
@@ -1903,10 +1907,10 @@ hn_lro_ackcnt_sysctl(SYSCTL_HANDLER_ARGS)
 	 * count limit.
 	 */
 	--ackcnt;
-	NV_LOCK(sc);
+	HN_LOCK(sc);
 	for (i = 0; i < sc->hn_rx_ring_inuse; ++i)
 		sc->hn_rx_ring[i].hn_lro.lro_ackcnt_lim = ackcnt;
-	NV_UNLOCK(sc);
+	HN_UNLOCK(sc);
 	return 0;
 }
 
@@ -1927,7 +1931,7 @@ hn_trust_hcsum_sysctl(SYSCTL_HANDLER_ARGS)
 	if (error || req->newptr == NULL)
 		return error;
 
-	NV_LOCK(sc);
+	HN_LOCK(sc);
 	for (i = 0; i < sc->hn_rx_ring_inuse; ++i) {
 		struct hn_rx_ring *rxr = &sc->hn_rx_ring[i];
 
@@ -1936,7 +1940,7 @@ hn_trust_hcsum_sysctl(SYSCTL_HANDLER_ARGS)
 		else
 			rxr->hn_trust_hcsum &= ~hcsum;
 	}
-	NV_UNLOCK(sc);
+	HN_UNLOCK(sc);
 	return 0;
 }
 
@@ -1954,9 +1958,66 @@ hn_chim_size_sysctl(SYSCTL_HANDLER_ARGS)
 	if (chim_size > sc->hn_chim_szmax || chim_size <= 0)
 		return EINVAL;
 
+	HN_LOCK(sc);
 	hn_set_chim_size(sc, chim_size);
+	HN_UNLOCK(sc);
 	return 0;
 }
+
+#if __FreeBSD_version < 1100095
+static int
+hn_rx_stat_int_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct hn_softc *sc = arg1;
+	int ofs = arg2, i, error;
+	struct hn_rx_ring *rxr;
+	uint64_t stat;
+
+	stat = 0;
+	for (i = 0; i < sc->hn_rx_ring_cnt; ++i) {
+		rxr = &sc->hn_rx_ring[i];
+		stat += *((int *)((uint8_t *)rxr + ofs));
+	}
+
+	error = sysctl_handle_64(oidp, &stat, 0, req);
+	if (error || req->newptr == NULL)
+		return error;
+
+	/* Zero out this stat. */
+	for (i = 0; i < sc->hn_rx_ring_cnt; ++i) {
+		rxr = &sc->hn_rx_ring[i];
+		*((int *)((uint8_t *)rxr + ofs)) = 0;
+	}
+	return 0;
+}
+#else
+static int
+hn_rx_stat_u64_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct hn_softc *sc = arg1;
+	int ofs = arg2, i, error;
+	struct hn_rx_ring *rxr;
+	uint64_t stat;
+
+	stat = 0;
+	for (i = 0; i < sc->hn_rx_ring_inuse; ++i) {
+		rxr = &sc->hn_rx_ring[i];
+		stat += *((uint64_t *)((uint8_t *)rxr + ofs));
+	}
+
+	error = sysctl_handle_64(oidp, &stat, 0, req);
+	if (error || req->newptr == NULL)
+		return error;
+
+	/* Zero out this stat. */
+	for (i = 0; i < sc->hn_rx_ring_inuse; ++i) {
+		rxr = &sc->hn_rx_ring[i];
+		*((uint64_t *)((uint8_t *)rxr + ofs)) = 0;
+	}
+	return 0;
+}
+
+#endif
 
 static int
 hn_rx_stat_ulong_sysctl(SYSCTL_HANDLER_ARGS)
@@ -1980,32 +2041,6 @@ hn_rx_stat_ulong_sysctl(SYSCTL_HANDLER_ARGS)
 	for (i = 0; i < sc->hn_rx_ring_inuse; ++i) {
 		rxr = &sc->hn_rx_ring[i];
 		*((u_long *)((uint8_t *)rxr + ofs)) = 0;
-	}
-	return 0;
-}
-
-static int
-hn_rx_stat_u64_sysctl(SYSCTL_HANDLER_ARGS)
-{
-	struct hn_softc *sc = arg1;
-	int ofs = arg2, i, error;
-	struct hn_rx_ring *rxr;
-	uint64_t stat;
-
-	stat = 0;
-	for (i = 0; i < sc->hn_rx_ring_inuse; ++i) {
-		rxr = &sc->hn_rx_ring[i];
-		stat += *((uint64_t *)((uint8_t *)rxr + ofs));
-	}
-
-	error = sysctl_handle_64(oidp, &stat, 0, req);
-	if (error || req->newptr == NULL)
-		return error;
-
-	/* Zero out this stat. */
-	for (i = 0; i < sc->hn_rx_ring_inuse; ++i) {
-		rxr = &sc->hn_rx_ring[i];
-		*((uint64_t *)((uint8_t *)rxr + ofs)) = 0;
 	}
 	return 0;
 }
@@ -2050,12 +2085,12 @@ hn_tx_conf_int_sysctl(SYSCTL_HANDLER_ARGS)
 	if (error || req->newptr == NULL)
 		return error;
 
-	NV_LOCK(sc);
+	HN_LOCK(sc);
 	for (i = 0; i < sc->hn_tx_ring_inuse; ++i) {
 		txr = &sc->hn_tx_ring[i];
 		*((int *)((uint8_t *)txr + ofs)) = conf;
 	}
-	NV_UNLOCK(sc);
+	HN_UNLOCK(sc);
 
 	return 0;
 }
@@ -2070,6 +2105,91 @@ hn_ndis_version_sysctl(SYSCTL_HANDLER_ARGS)
 	    HN_NDIS_VERSION_MAJOR(sc->hn_ndis_ver),
 	    HN_NDIS_VERSION_MINOR(sc->hn_ndis_ver));
 	return sysctl_handle_string(oidp, verstr, sizeof(verstr), req);
+}
+
+static int
+hn_caps_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct hn_softc *sc = arg1;
+	char caps_str[128];
+	uint32_t caps;
+
+	HN_LOCK(sc);
+	caps = sc->hn_caps;
+	HN_UNLOCK(sc);
+	snprintf(caps_str, sizeof(caps_str), "%b", caps,
+	    "\020"
+	    "\001VLAN"
+	    "\002MTU"
+	    "\003IPCS"
+	    "\004TCP4CS"
+	    "\005TCP6CS"
+	    "\006UDP4CS"
+	    "\007UDP6CS"
+	    "\010TSO4"
+	    "\011TSO6");
+	return sysctl_handle_string(oidp, caps_str, sizeof(caps_str), req);
+}
+
+static int
+hn_rss_key_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct hn_softc *sc = arg1;
+	int error;
+
+	HN_LOCK(sc);
+
+	error = SYSCTL_OUT(req, sc->hn_rss.rss_key, sizeof(sc->hn_rss.rss_key));
+	if (error || req->newptr == NULL)
+		goto back;
+
+	error = SYSCTL_IN(req, sc->hn_rss.rss_key, sizeof(sc->hn_rss.rss_key));
+	if (error)
+		goto back;
+	sc->hn_flags |= HN_FLAG_HAS_RSSKEY;
+
+	if (sc->hn_rx_ring_inuse > 1) {
+		error = hn_rss_reconfig(sc);
+	} else {
+		/* Not RSS capable, at least for now; just save the RSS key. */
+		error = 0;
+	}
+back:
+	HN_UNLOCK(sc);
+	return (error);
+}
+
+static int
+hn_rss_ind_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct hn_softc *sc = arg1;
+	int error;
+
+	HN_LOCK(sc);
+
+	error = SYSCTL_OUT(req, sc->hn_rss.rss_ind, sizeof(sc->hn_rss.rss_ind));
+	if (error || req->newptr == NULL)
+		goto back;
+
+	/*
+	 * Don't allow RSS indirect table change, if this interface is not
+	 * RSS capable currently.
+	 */
+	if (sc->hn_rx_ring_inuse == 1) {
+		error = EOPNOTSUPP;
+		goto back;
+	}
+
+	error = SYSCTL_IN(req, sc->hn_rss.rss_ind, sizeof(sc->hn_rss.rss_ind));
+	if (error)
+		goto back;
+	sc->hn_flags |= HN_FLAG_HAS_RSSIND;
+
+	hn_rss_ind_fixup(sc, sc->hn_rx_ring_inuse);
+	error = hn_rss_reconfig(sc);
+back:
+	HN_UNLOCK(sc);
+	return (error);
 }
 
 static int
@@ -2260,11 +2380,21 @@ hn_create_rx_data(struct hn_softc *sc, int ring_cnt)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "lro_queued",
 	    CTLTYPE_U64 | CTLFLAG_RW | CTLFLAG_MPSAFE, sc,
 	    __offsetof(struct hn_rx_ring, hn_lro.lro_queued),
-	    hn_rx_stat_u64_sysctl, "LU", "LRO queued");
+#if __FreeBSD_version < 1100095
+	    hn_rx_stat_int_sysctl,
+#else
+	    hn_rx_stat_u64_sysctl,
+#endif
+	    "LU", "LRO queued");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "lro_flushed",
 	    CTLTYPE_U64 | CTLFLAG_RW | CTLFLAG_MPSAFE, sc,
 	    __offsetof(struct hn_rx_ring, hn_lro.lro_flushed),
-	    hn_rx_stat_u64_sysctl, "LU", "LRO flushed");
+#if __FreeBSD_version < 1100095
+	    hn_rx_stat_int_sysctl,
+#else
+	    hn_rx_stat_u64_sysctl,
+#endif
+	    "LU", "LRO flushed");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "lro_tried",
 	    CTLTYPE_ULONG | CTLFLAG_RW | CTLFLAG_MPSAFE, sc,
 	    __offsetof(struct hn_rx_ring, hn_lro_tried),
@@ -2699,10 +2829,8 @@ hn_set_chim_size(struct hn_softc *sc, int chim_size)
 {
 	int i;
 
-	NV_LOCK(sc);
 	for (i = 0; i < sc->hn_tx_ring_inuse; ++i)
 		sc->hn_tx_ring[i].hn_chim_size = chim_size;
-	NV_UNLOCK(sc);
 }
 
 static void
@@ -3146,7 +3274,13 @@ hn_synth_alloc_subchans(struct hn_softc *sc, int *nsubch)
 static int
 hn_synth_attach(struct hn_softc *sc, int mtu)
 {
-	int error, nsubch;
+	struct ndis_rssprm_toeplitz *rss = &sc->hn_rss;
+	int error, nsubch, nchan, i;
+	uint32_t old_caps;
+
+	/* Save capabilities for later verification. */
+	old_caps = sc->hn_caps;
+	sc->hn_caps = 0;
 
 	/*
 	 * Attach the primary channel _before_ attaching NVS and RNDIS.
@@ -3170,6 +3304,17 @@ hn_synth_attach(struct hn_softc *sc, int mtu)
 		return (error);
 
 	/*
+	 * Make sure capabilities are not changed.
+	 */
+	if (device_is_attached(sc->hn_dev) && old_caps != sc->hn_caps) {
+		if_printf(sc->hn_ifp, "caps mismatch old 0x%08x, new 0x%08x\n",
+		    old_caps, sc->hn_caps);
+		/* Restore old capabilities and abort. */
+		sc->hn_caps = old_caps;
+		return ENXIO;
+	}
+
+	/*
 	 * Allocate sub-channels for multi-TX/RX rings.
 	 *
 	 * NOTE:
@@ -3180,7 +3325,9 @@ hn_synth_attach(struct hn_softc *sc, int mtu)
 	error = hn_synth_alloc_subchans(sc, &nsubch);
 	if (error)
 		return (error);
-	if (nsubch == 0) {
+
+	nchan = nsubch + 1;
+	if (nchan == 1) {
 		/* Only the primary channel can be used; done */
 		goto back;
 	}
@@ -3189,20 +3336,53 @@ hn_synth_attach(struct hn_softc *sc, int mtu)
 	 * Configure RSS key and indirect table _after_ all sub-channels
 	 * are allocated.
 	 */
-	error = hn_rndis_conf_rss(sc, nsubch + 1);
+
+	if ((sc->hn_flags & HN_FLAG_HAS_RSSKEY) == 0) {
+		/*
+		 * RSS key is not set yet; set it to the default RSS key.
+		 */
+		if (bootverbose)
+			if_printf(sc->hn_ifp, "setup default RSS key\n");
+		memcpy(rss->rss_key, hn_rss_key_default, sizeof(rss->rss_key));
+		sc->hn_flags |= HN_FLAG_HAS_RSSKEY;
+	}
+
+	if ((sc->hn_flags & HN_FLAG_HAS_RSSIND) == 0) {
+		/*
+		 * RSS indirect table is not set yet; set it up in round-
+		 * robin fashion.
+		 */
+		if (bootverbose) {
+			if_printf(sc->hn_ifp, "setup default RSS indirect "
+			    "table\n");
+		}
+		/* TODO: Take ndis_rss_caps.ndis_nind into account. */
+		for (i = 0; i < NDIS_HASH_INDCNT; ++i)
+			rss->rss_ind[i] = i % nchan;
+		sc->hn_flags |= HN_FLAG_HAS_RSSIND;
+	} else {
+		/*
+		 * # of usable channels may be changed, so we have to
+		 * make sure that all entries in RSS indirect table
+		 * are valid.
+		 */
+		hn_rss_ind_fixup(sc, nchan);
+	}
+
+	error = hn_rndis_conf_rss(sc, NDIS_RSS_FLAG_NONE);
 	if (error) {
 		/*
 		 * Failed to configure RSS key or indirect table; only
 		 * the primary channel can be used.
 		 */
-		nsubch = 0;
+		nchan = 1;
 	}
 back:
 	/*
 	 * Set the # of TX/RX rings that could be used according to
 	 * the # of channels that NVS offered.
 	 */
-	hn_set_ring_inuse(sc, nsubch + 1);
+	hn_set_ring_inuse(sc, nchan);
 
 	/*
 	 * Attach the sub-channels, if any.
@@ -3469,7 +3649,7 @@ static device_method_t netvsc_methods[] = {
 static driver_t netvsc_driver = {
         NETVSC_DEVNAME,
         netvsc_methods,
-        sizeof(hn_softc_t)
+        sizeof(struct hn_softc)
 };
 
 static devclass_t netvsc_devclass;
