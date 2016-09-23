@@ -37,10 +37,6 @@
 # https://people.freebsd.org/~pho/stress/log/crossmp8.txt
 # Fixed by r291671.
 
-# "panic: Bad link elm 0xfffff80de1231770 prev->next != elm":
-# https://people.freebsd.org/~pho/stress/log/mjguzik004.txt
-# Fixed in patch.
-
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
