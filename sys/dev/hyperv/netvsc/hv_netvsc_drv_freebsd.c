@@ -205,8 +205,6 @@ struct hn_txdesc {
  * Globals
  */
 
-int hv_promisc_mode = 0;    /* normal mode by default */
-
 SYSCTL_NODE(_hw, OID_AUTO, hn, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
     "Hyper-V network interface");
 
@@ -1779,7 +1777,7 @@ static void
 hn_stop(struct hn_softc *sc)
 {
 	struct ifnet *ifp;
-	int ret, i;
+	int i;
 
 	HN_LOCK_ASSERT(sc);
 
@@ -1795,7 +1793,8 @@ hn_stop(struct hn_softc *sc)
 
 	if_link_state_change(ifp, LINK_STATE_DOWN);
 
-	ret = hv_rf_on_close(sc);
+	/* Disable RX by clearing RX filter. */
+	hn_rndis_set_rxfilter(sc, 0);
 }
 
 /*
@@ -1870,9 +1869,8 @@ hn_init_locked(struct hn_softc *sc)
 		return;
 	}
 
-	hv_promisc_mode = 1;
-
-	ret = hv_rf_on_open(sc);
+	/* TODO: add hn_rx_filter */
+	ret = hn_rndis_set_rxfilter(sc, NDIS_PACKET_TYPE_PROMISCUOUS);
 	if (ret != 0)
 		return;
 
@@ -3576,20 +3574,22 @@ hn_suspend(struct hn_softc *sc)
 	}
 
 	/*
-	 * Disable RX.
+	 * Disable RX by clearing RX filter.
 	 */
-	hv_rf_on_close(sc);
+	hn_rndis_set_rxfilter(sc, 0);
 
-	/* Give RNDIS enough time to flush all pending data packets. */
+	/*
+	 * Give RNDIS enough time to flush all pending data packets.
+	 */
 	pause("waitrx", (200 * hz) / 1000);
-
-	nsubch = sc->hn_rx_ring_inuse - 1;
-	if (nsubch > 0)
-		subch = vmbus_subchan_get(sc->hn_prichan, nsubch);
 
 	/*
 	 * Drain RX/TX bufrings and interrupts.
 	 */
+	nsubch = sc->hn_rx_ring_inuse - 1;
+	if (nsubch > 0)
+		subch = vmbus_subchan_get(sc->hn_prichan, nsubch);
+
 	if (subch != NULL) {
 		for (i = 0; i < nsubch; ++i)
 			hn_rx_drain(subch[i]);
@@ -3610,8 +3610,9 @@ hn_resume(struct hn_softc *sc)
 
 	/*
 	 * Re-enable RX.
+	 * TODO: add hn_rx_filter.
 	 */
-	hv_rf_on_open(sc);
+	hn_rndis_set_rxfilter(sc, NDIS_PACKET_TYPE_PROMISCUOUS);
 
 	/*
 	 * Make sure to clear suspend status on "all" TX rings,
