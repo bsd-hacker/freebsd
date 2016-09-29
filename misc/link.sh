@@ -176,7 +176,7 @@ main(int argc, char **argv)
 	int i, type;
 
 	if (argc != 2)
-		errx(1, "Usage: %s <fill path to dir>", argv[0]);
+		errx(1, "Usage: %s <full path to dir>", argv[0]);
 	dir = argv[1];
 	type = arc4random() % 2; /* test either link() or rename() */
 
