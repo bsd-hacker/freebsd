@@ -155,6 +155,15 @@ hv_rf_receive_indicate_status(struct hn_softc *sc, const void *data, int dlen)
 		netvsc_linkstatus_callback(sc, 0);
 		break;
 
+	case RNDIS_STATUS_TASK_OFFLOAD_CURRENT_CONFIG:
+		/* Not really useful; ignore. */
+		break;
+
+	case RNDIS_STATUS_NETWORK_CHANGE:
+		/* TODO */
+		if_printf(sc->hn_ifp, "network changed\n");
+		break;
+
 	default:
 		/* TODO: */
 		if_printf(sc->hn_ifp, "unknown RNDIS status 0x%08x\n",
@@ -887,7 +896,7 @@ hn_rndis_conf_rss(struct hn_softc *sc, uint16_t flags)
 	return (error);
 }
 
-static int
+int
 hn_rndis_set_rxfilter(struct hn_softc *sc, uint32_t filter)
 {
 	int error;
@@ -957,11 +966,8 @@ done:
 	return (error);
 }
 
-/*
- * RNDIS filter halt device
- */
 static int
-hv_rf_halt_device(struct hn_softc *sc)
+hn_rndis_halt(struct hn_softc *sc)
 {
 	struct vmbus_xact *xact;
 	struct rndis_halt_req *halt;
@@ -1008,50 +1014,12 @@ hn_rndis_attach(struct hn_softc *sc)
 	return (0);
 }
 
-/*
- * RNDIS filter on device remove
- */
-int
-hv_rf_on_device_remove(struct hn_softc *sc)
-{
-	int ret;
-
-	/* Halt and release the rndis device */
-	ret = hv_rf_halt_device(sc);
-
-	/* Pass control to inner driver to remove the device */
-	ret |= hv_nv_on_device_remove(sc);
-
-	return (ret);
-}
-
-/*
- * RNDIS filter on open
- */
-int
-hv_rf_on_open(struct hn_softc *sc)
-{
-	uint32_t filter;
-
-	/* XXX */
-	if (hv_promisc_mode != 1) {
-		filter = NDIS_PACKET_TYPE_BROADCAST |
-		    NDIS_PACKET_TYPE_ALL_MULTICAST |
-		    NDIS_PACKET_TYPE_DIRECTED;
-	} else {
-		filter = NDIS_PACKET_TYPE_PROMISCUOUS;
-	}
-	return (hn_rndis_set_rxfilter(sc, filter));
-}
-
-/*
- * RNDIS filter on close
- */
-int 
-hv_rf_on_close(struct hn_softc *sc)
+void
+hn_rndis_detach(struct hn_softc *sc)
 {
 
-	return (hn_rndis_set_rxfilter(sc, 0));
+	/* Halt the RNDIS. */
+	hn_rndis_halt(sc);
 }
 
 void
