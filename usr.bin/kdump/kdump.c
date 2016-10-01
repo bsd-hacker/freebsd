@@ -41,16 +41,11 @@ static char sccsid[] = "@(#)kdump.c	8.1 (Berkeley) 6/6/93";
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#define _KERNEL
-extern int errno;
-#include <sys/errno.h>
-#undef _KERNEL
+#define _WANT_KERNEL_ERRNO
 #include <sys/param.h>
 #include <sys/capsicum.h>
 #include <sys/errno.h>
-#define _KERNEL
 #include <sys/time.h>
-#undef _KERNEL
 #include <sys/uio.h>
 #include <sys/ktrace.h>
 #include <sys/ioctl.h>
@@ -567,7 +562,8 @@ void
 dumpheader(struct ktr_header *kth)
 {
 	static char unknown[64];
-	static struct timeval prevtime, prevtime_e, temp;
+	static struct timeval prevtime, prevtime_e;
+	struct timeval temp;
 	const char *type;
 	const char *sign;
 
@@ -640,27 +636,23 @@ dumpheader(struct ktr_header *kth)
 		if (timestamp & TIMESTAMP_ELAPSED) {
 			if (prevtime_e.tv_sec == 0)
 				prevtime_e = kth->ktr_time;
-			timevalsub(&kth->ktr_time, &prevtime_e);
-			printf("%jd.%06ld ", (intmax_t)kth->ktr_time.tv_sec,
-			    kth->ktr_time.tv_usec);
-			timevaladd(&kth->ktr_time, &prevtime_e);
+			timersub(&kth->ktr_time, &prevtime_e, &temp);
+			printf("%jd.%06ld ", (intmax_t)temp.tv_sec,
+			    temp.tv_usec);
 		}
 		if (timestamp & TIMESTAMP_RELATIVE) {
 			if (prevtime.tv_sec == 0)
 				prevtime = kth->ktr_time;
-			temp = kth->ktr_time;
-			timevalsub(&kth->ktr_time, &prevtime);
-			if ((intmax_t)kth->ktr_time.tv_sec < 0) {
-                        	kth->ktr_time = prevtime;
-				prevtime = temp;
-				timevalsub(&kth->ktr_time, &prevtime);
+			if (timercmp(&kth->ktr_time, &prevtime, <)) {
+				timersub(&prevtime, &kth->ktr_time, &temp);
 				sign = "-";
 			} else {
-				prevtime = temp;
+				timersub(&kth->ktr_time, &prevtime, &temp);
 				sign = "";
 			}
-			printf("%s%jd.%06ld ", sign, (intmax_t)kth->ktr_time.tv_sec,
-			    kth->ktr_time.tv_usec);
+			prevtime = kth->ktr_time;
+			printf("%s%jd.%06ld ", sign, (intmax_t)temp.tv_sec,
+			    temp.tv_usec);
 		}
 	}
 	printf("%s  ", type);
@@ -1341,6 +1333,12 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				}
 				ip++;
 				narg--;
+				break;
+			case SYS_ftruncate:
+			case SYS_truncate:
+				print_number(ip, narg, c);
+				print_number64(first, ip, narg, c);
+				break;
 			}
 		}
 		while (narg > 0) {
