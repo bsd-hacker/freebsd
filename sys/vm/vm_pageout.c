@@ -166,6 +166,12 @@ static int vm_pageout_oom_seq = 12;
 bool vm_pageout_wanted;		/* Event on which pageout daemon sleeps */
 bool vm_pages_needed;		/* Are threads waiting for free pages? */
 
+static enum {
+	VM_LAUNDRY_IDLE,
+	VM_LAUNDRY_BACKGROUND,
+	VM_LAUNDRY_SHORTFALL,
+} vm_laundry_request;		/* Pending request for dirty page laundering. */
+
 #if !defined(NO_SWAPPING)
 static int vm_pageout_req_swapout;	/* XXX */
 static int vm_daemon_needed;
@@ -1105,19 +1111,21 @@ static void
 vm_pageout_laundry_worker(void *arg)
 {
 	struct vm_domain *domain;
+	struct vm_pagequeue *pq;
 	uint64_t nclean, ndirty;
 	u_int last_launder, wakeups;
 	int cycle, domidx, last_target, launder, prev_shortfall, shortfall;
-	int target;
+	int sleeptime, target;
 
 	domidx = (uintptr_t)arg;
 	domain = &vm_dom[domidx];
+	pq = &domain->vmd_pagequeues[PQ_LAUNDRY];
 	KASSERT(domain->vmd_segs != 0, ("domain without segments"));
 	vm_pageout_init_marker(&domain->vmd_laundry_marker, PQ_LAUNDRY);
 
 	cycle = 0;
 	last_launder = 0;
-	prev_shortfall = 0;
+	shortfall = prev_shortfall = 0;
 	target = 0;
 
 	/*
@@ -1133,18 +1141,9 @@ vm_pageout_laundry_worker(void *arg)
 		 * First determine whether we need to launder pages to meet a
 		 * shortage of free pages.
 		 */
-		shortfall = vm_laundry_target() + vm_pageout_deficit;
 		if (shortfall > 0) {
-			/*
-			 * If we're in shortfall and we haven't yet started a
-			 * laundering cycle to get us out of it, begin a run.
-			 * If we're still in shortfall despite a previous
-			 * laundering run, start a new one.
-			 */
-			if (prev_shortfall == 0 || cycle == 0) {
-				target = shortfall;
-				cycle = VM_LAUNDER_RATE;
-			}
+			target = shortfall;
+			cycle = VM_LAUNDER_RATE;
 			prev_shortfall = shortfall;
 		}
 		if (prev_shortfall > 0) {
@@ -1155,7 +1154,7 @@ vm_pageout_laundry_worker(void *arg)
 			 * shortfall, we have no immediate need to launder
 			 * pages.  Otherwise keep laundering.
 			 */
-			if (shortfall <= 0 || cycle == 0) {
+			if (vm_laundry_target() <= 0 || cycle == 0) {
 				prev_shortfall = target = 0;
 			} else {
 				last_launder = wakeups;
@@ -1211,17 +1210,34 @@ vm_pageout_laundry_worker(void *arg)
 		}
 
 dolaundry:
-		if (launder > 0) {
+		if (launder > 0)
 			/*
 			 * Because of I/O clustering, the number of laundered
 			 * pages could exceed "target" by the maximum size of
 			 * a cluster minus one. 
 			 */
 			target -= min(vm_pageout_launder(domain, launder,
-			    prev_shortfall > 0), target);
-		}
-		tsleep(&vm_cnt.v_laundry_count, PVM, "laundr",
-		    hz / VM_LAUNDER_INTERVAL);
+			    shortfall > 0), target);
+
+		/*
+		 * Sleep for a little bit if we're in the middle of a laundering
+		 * run or a pagedaemon thread has signalled us since the last run
+		 * started.  Otherwise, wait for a kick from the pagedaemon.
+		 */
+		vm_pagequeue_lock(pq);
+		if (target > 0 || vm_laundry_request != VM_LAUNDRY_IDLE)
+			sleeptime = hz / VM_LAUNDER_INTERVAL;
+		else
+			sleeptime = 0;
+		(void)mtx_sleep(&vm_laundry_request, vm_pagequeue_lockptr(pq),
+		    PVM, "laundr", sleeptime);
+		if (vm_laundry_request == VM_LAUNDRY_SHORTFALL)
+			shortfall = vm_laundry_target() + vm_pageout_deficit;
+		else
+			shortfall = 0;
+		if (target == 0)
+			vm_laundry_request = VM_LAUNDRY_IDLE;
+		vm_pagequeue_unlock(pq);
 	}
 }
 
@@ -1235,7 +1251,7 @@ static void
 vm_pageout_scan(struct vm_domain *vmd, int pass)
 {
 	vm_page_t m, next;
-	struct vm_pagequeue *pq;
+	struct vm_pagequeue *pq, *laundryq;
 	vm_object_t object;
 	long min_scan;
 	int act_delta, addl_page_shortage, deficit, maxscan;
@@ -1456,11 +1472,22 @@ drop_page:
 	vm_pagequeue_unlock(pq);
 
 	/*
-	 * Wakeup the laundry thread(s) if we didn't free the targeted number
-	 * of pages.
+	 * Wake up the laundry thread so that it can perform any needed
+	 * laundering.  If we didn't meet our target, we're in shortfall and
+	 * need to launder more aggressively.
 	 */
-	if (page_shortage > 0)
-		wakeup(&vm_cnt.v_laundry_count);
+	if (vm_laundry_request == VM_LAUNDRY_IDLE &&
+	    starting_page_shortage > 0) {
+		laundryq = &vm_dom[0].vmd_pagequeues[PQ_LAUNDRY];
+		vm_pagequeue_lock(laundryq);
+		if (page_shortage > 0)
+			vm_laundry_request = VM_LAUNDRY_SHORTFALL;
+		else if (vm_laundry_request != VM_LAUNDRY_SHORTFALL)
+			vm_laundry_request = VM_LAUNDRY_BACKGROUND;
+		wakeup(&vm_laundry_request);
+		vm_pagequeue_unlock(laundryq);
+		PCPU_INC(cnt.v_ltwakeups);
+	}
 
 #if !defined(NO_SWAPPING)
 	/*

@@ -77,6 +77,7 @@ struct vmmeter {
 	u_int v_intrans;	/* (p) intransit blocking page faults */
 	u_int v_reactivated;	/* (p) pages reactivated by the pagedaemon */
 	u_int v_pdwakeups;	/* (p) times daemon has awaken from sleep */
+	u_int v_ltwakeups;	/* (p) times laundry thread has been woken */
 	u_int v_pdpages;	/* (p) pages analyzed by daemon */
 
 	u_int v_tcached;	/* (p) total pages cached */
@@ -112,7 +113,6 @@ struct vmmeter {
 	u_int v_vforkpages;	/* (p) VM pages affected by vfork() */
 	u_int v_rforkpages;	/* (p) VM pages affected by rfork() */
 	u_int v_kthreadpages;	/* (p) VM pages affected by fork() by kernel */
-	u_int v_spare[1];
 };
 #ifdef _KERNEL
 
@@ -193,8 +193,7 @@ static inline int
 vm_laundry_target(void)
 {
 
-	return (vm_cnt.v_inactive_target - vm_cnt.v_inactive_count +
-	    vm_paging_target());
+	return (vm_paging_target());
 }
 
 /*
