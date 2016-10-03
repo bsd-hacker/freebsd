@@ -302,7 +302,7 @@ evdev_set_serial(struct evdev_dev *evdev, const char *serial)
 
 inline void
 evdev_set_methods(struct evdev_dev *evdev, void *softc,
-    struct evdev_methods *methods)
+    const struct evdev_methods *methods)
 {
 
 	evdev->ev_methods = methods;
@@ -918,22 +918,4 @@ evdev_stop_repeat(struct evdev_dev *evdev)
 	}
 }
 
-static int
-evdev_modevent(module_t mod, int type, void *unused)
-{
-        switch (type) {
-        case MOD_LOAD:
-                return 0;
-        case MOD_UNLOAD:
-                return 0;
-        }
-        return EINVAL;
-}
-
-static moduledata_t evdev_mod = {
-        "evdev",
-        evdev_modevent,
-        0
-};
-DECLARE_MODULE(evdev, evdev_mod, SI_SUB_DRIVERS, SI_ORDER_ANY);
 MODULE_VERSION(evdev, 1);
