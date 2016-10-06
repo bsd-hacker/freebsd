@@ -1244,8 +1244,8 @@ dolaundry:
 /*
  *	vm_pageout_scan does the dirty work for the pageout daemon.
  *
- *	pass 0 - Update active LRU/deactivate pages
- *	pass 1 - Free inactive pages
+ *	pass == 0: Update active LRU/deactivate pages
+ *	pass >= 1: Free inactive pages
  *
  * Returns true if pass was zero or enough pages were freed by the inactive
  * queue scan to meet the target.
@@ -1954,13 +1954,13 @@ vm_pageout_worker(void *arg)
 			 * thread during the previous scan, which must have
 			 * been a level 0 scan, or vm_pageout_wanted was
 			 * already set and the scan failed to free enough
-			 * pages.  If we haven't yet performed a level >= 2
-			 * scan (unlimited dirty cleaning), then upgrade the
-			 * level and scan again now.  Otherwise, sleep a bit
-			 * and try again later.
+			 * pages.  If we haven't yet performed a level >= 1
+			 * (page reclamation) scan, then increase the level
+			 * and scan again now.  Otherwise, sleep a bit and
+			 * try again later.
 			 */
 			mtx_unlock(&vm_page_queue_free_mtx);
-			if (pass > 1)
+			if (pass >= 1)
 				pause("psleep", hz / 2);
 			pass++;
 		} else {
