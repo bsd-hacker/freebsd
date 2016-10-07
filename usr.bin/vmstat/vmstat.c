@@ -567,6 +567,7 @@ fill_vmmeter(struct vmmeter *vmmp)
 		GET_VM_STATS(vm, v_reactivated);
 		GET_VM_STATS(vm, v_pdwakeups);
 		GET_VM_STATS(vm, v_pdpages);
+		GET_VM_STATS(vm, v_pdshortfalls);
 		GET_VM_STATS(vm, v_dfree);
 		GET_VM_STATS(vm, v_pfree);
 		GET_VM_STATS(vm, v_tfree);
@@ -1058,6 +1059,8 @@ dosum(void)
 		sum.v_pdwakeups);
 	xo_emit("{:page-daemon-pages/%9u} {N:pages examined by the page daemon}\n",
 		sum.v_pdpages);
+	xo_emit("{:page-reclaimation-shortfalls/%9u} {N:clean page reclaimation shortfalls}\n",
+		sum.v_pdshortfalls);
 	xo_emit("{:reactivated/%9u} {N:pages reactivated by the page daemon}\n",
 		sum.v_reactivated);
 	xo_emit("{:copy-on-write-faults/%9u} {N:copy-on-write faults}\n",
