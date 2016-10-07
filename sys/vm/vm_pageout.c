@@ -1485,13 +1485,13 @@ drop_page:
 	    starting_page_shortage > 0) {
 		laundryq = &vm_dom[0].vmd_pagequeues[PQ_LAUNDRY];
 		vm_pagequeue_lock(laundryq);
-		if (page_shortage > 0)
+		if (page_shortage > 0) {
 			vm_laundry_request = VM_LAUNDRY_SHORTFALL;
-		else if (vm_laundry_request != VM_LAUNDRY_SHORTFALL)
+			PCPU_INC(cnt.v_pdshortfalls);
+		} else if (vm_laundry_request != VM_LAUNDRY_SHORTFALL)
 			vm_laundry_request = VM_LAUNDRY_BACKGROUND;
 		wakeup(&vm_laundry_request);
 		vm_pagequeue_unlock(laundryq);
-		PCPU_INC(cnt.v_ltwakeups);
 	}
 
 #if !defined(NO_SWAPPING)

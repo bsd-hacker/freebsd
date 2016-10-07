@@ -77,8 +77,8 @@ struct vmmeter {
 	u_int v_intrans;	/* (p) intransit blocking page faults */
 	u_int v_reactivated;	/* (p) pages reactivated by the pagedaemon */
 	u_int v_pdwakeups;	/* (p) times daemon has awaken from sleep */
-	u_int v_ltwakeups;	/* (p) times laundry thread has been woken */
 	u_int v_pdpages;	/* (p) pages analyzed by daemon */
+	u_int v_pdshortfalls;	/* (p) page reclamation shortfalls */
 
 	u_int v_tcached;	/* (p) total pages cached */
 	u_int v_dfree;		/* (p) pages freed by daemon */
