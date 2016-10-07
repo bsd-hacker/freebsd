@@ -95,7 +95,6 @@ static struct Info {
 	u_int v_reactivated;	/* number of pages reactivated by pagedaemon */
 	u_int v_pdwakeups;	/* number of times daemon has awaken from sleep */
 	u_int v_pdpages;	/* number of pages analyzed by daemon */
-	u_int v_pdshortfalls;	/* number of page reclaimation shortfalls */
 
 	u_int v_dfree;		/* pages freed by daemon */
 	u_int v_pfree;		/* pages freed by exiting processes */
@@ -340,15 +339,14 @@ labelkre(void)
 	mvprintw(VMSTATROW + 8, VMSTATCOL + 9, "react");
 	mvprintw(VMSTATROW + 9, VMSTATCOL + 9, "pdwak");
 	mvprintw(VMSTATROW + 10, VMSTATCOL + 9, "pdpgs");
-	mvprintw(VMSTATROW + 11, VMSTATCOL + 9, "pdshort");
-	mvprintw(VMSTATROW + 12, VMSTATCOL + 9, "intrn");
-	mvprintw(VMSTATROW + 13, VMSTATCOL + 9, "wire");
-	mvprintw(VMSTATROW + 14, VMSTATCOL + 9, "act");
-	mvprintw(VMSTATROW + 15, VMSTATCOL + 9, "inact");
-	mvprintw(VMSTATROW + 16, VMSTATCOL + 9, "laund");
-	mvprintw(VMSTATROW + 17, VMSTATCOL + 9, "free");
-	if (LINES - 1 > VMSTATROW + 18)
-		mvprintw(VMSTATROW + 18, VMSTATCOL + 9, "buf");
+	mvprintw(VMSTATROW + 11, VMSTATCOL + 9, "intrn");
+	mvprintw(VMSTATROW + 12, VMSTATCOL + 9, "wire");
+	mvprintw(VMSTATROW + 13, VMSTATCOL + 9, "act");
+	mvprintw(VMSTATROW + 14, VMSTATCOL + 9, "inact");
+	mvprintw(VMSTATROW + 15, VMSTATCOL + 9, "laund");
+	mvprintw(VMSTATROW + 16, VMSTATCOL + 9, "free");
+	if (LINES - 1 > VMSTATROW + 17)
+		mvprintw(VMSTATROW + 17, VMSTATCOL + 9, "buf");
 
 	mvprintw(GENSTATROW, GENSTATCOL, " Csw  Trp  Sys  Int  Sof  Flt");
 
@@ -517,15 +515,14 @@ showkre(void)
 	PUTRATE(v_reactivated, VMSTATROW + 8, VMSTATCOL, 8);
 	PUTRATE(v_pdwakeups, VMSTATROW + 9, VMSTATCOL, 8);
 	PUTRATE(v_pdpages, VMSTATROW + 10, VMSTATCOL, 8);
-	PUTRATE(v_pdshortfalls, VMSTATROW + 11, VMSTATCOL, 8);
-	PUTRATE(v_intrans, VMSTATROW + 12, VMSTATCOL, 8);
-	putint(pgtokb(s.v_wire_count), VMSTATROW + 13, VMSTATCOL, 8);
-	putint(pgtokb(s.v_active_count), VMSTATROW + 14, VMSTATCOL, 8);
-	putint(pgtokb(s.v_inactive_count), VMSTATROW + 15, VMSTATCOL, 8);
-	putint(pgtokb(s.v_laundry_count), VMSTATROW + 16, VMSTATCOL, 8);
-	putint(pgtokb(s.v_free_count), VMSTATROW + 17, VMSTATCOL, 8);
-	if (LINES - 1 > VMSTATROW + 18)
-		putint(s.bufspace / 1024, VMSTATROW + 18, VMSTATCOL, 8);
+	PUTRATE(v_intrans, VMSTATROW + 11, VMSTATCOL, 8);
+	putint(pgtokb(s.v_wire_count), VMSTATROW + 12, VMSTATCOL, 8);
+	putint(pgtokb(s.v_active_count), VMSTATROW + 13, VMSTATCOL, 8);
+	putint(pgtokb(s.v_inactive_count), VMSTATROW + 14, VMSTATCOL, 8);
+	putint(pgtokb(s.v_laundry_count), VMSTATROW + 15, VMSTATCOL, 8);
+	putint(pgtokb(s.v_free_count), VMSTATROW + 16, VMSTATCOL, 8);
+	if (LINES - 1 > VMSTATROW + 17)
+		putint(s.bufspace / 1024, VMSTATROW + 17, VMSTATCOL, 8);
 	PUTRATE(v_vnodein, PAGEROW + 2, PAGECOL + 6, 5);
 	PUTRATE(v_vnodeout, PAGEROW + 2, PAGECOL + 12, 5);
 	PUTRATE(v_swapin, PAGEROW + 2, PAGECOL + 19, 5);
@@ -789,7 +786,6 @@ getinfo(struct Info *ls)
 	GETSYSCTL("vm.stats.vm.v_reactivated", ls->v_reactivated);
 	GETSYSCTL("vm.stats.vm.v_pdwakeups", ls->v_pdwakeups);
 	GETSYSCTL("vm.stats.vm.v_pdpages", ls->v_pdpages);
-	GETSYSCTL("vm.stats.vm.v_pdshortfalls", ls->v_pdshortfalls);
 	GETSYSCTL("vm.stats.vm.v_dfree", ls->v_dfree);
 	GETSYSCTL("vm.stats.vm.v_pfree", ls->v_pfree);
 	GETSYSCTL("vm.stats.vm.v_tfree", ls->v_tfree);
