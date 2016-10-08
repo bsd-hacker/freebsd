@@ -1217,7 +1217,7 @@ dolaundry:
 			 * a cluster minus one. 
 			 */
 			target -= min(vm_pageout_launder(domain, launder,
-			    shortfall > 0), target);
+			    prev_shortfall > 0), target);
 
 		/*
 		 * Sleep for a little bit if we're in the middle of a laundering
