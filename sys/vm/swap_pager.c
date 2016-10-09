@@ -1549,13 +1549,16 @@ swp_pager_async_iodone(struct buf *bp)
 			 * For write success, clear the dirty
 			 * status, then finish the I/O ( which decrements the
 			 * busy count and possibly wakes waiter's up ).
+			 * A page is only written to swap after a period of
+			 * inactivity.  Therefore, we do not expect it to be
+			 * reused.
 			 */
 			KASSERT(!pmap_page_is_write_mapped(m),
 			    ("swp_pager_async_iodone: page %p is not write"
 			    " protected", m));
 			vm_page_undirty(m);
 			vm_page_lock(m);
-			vm_page_deactivate(m);
+			vm_page_deactivate_noreuse(m);
 			vm_page_unlock(m);
 			vm_page_sunbusy(m);
 		}
