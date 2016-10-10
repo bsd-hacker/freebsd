@@ -81,7 +81,7 @@ fsck -t ufs -y -v /dev/md${mdstart}$part > /tmp/fsck.log 2>&1
 dumpfs /dev/md${mdstart}$part | grep -v UFS2 > /tmp/dumpfs.2
 diff -c /tmp/dumpfs.1 /tmp/dumpfs.2 || cat /tmp/fsck.log
 mdconfig -d -u $mdstart
-rm -f /tmp/fsck.log /tmp/dumpfs.?
+rm -f /tmp/fsck.log /tmp/dumpfs.? /tmp/suj10
 exit
 EOF
 #include <err.h>

@@ -91,6 +91,7 @@ mdconfig -d -u $md2
 while mount | grep "$mp1 " | grep -q /dev/md; do
 	umount $mp1 || sleep 1
 done
+rm -f /tmp/pfl
 mdconfig -d -u $md1
 exit
 

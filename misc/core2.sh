@@ -62,7 +62,7 @@ wait
 mount | grep -q "on $mntpoint " &&
     umount -f $mntpoint
 mdconfig -d -u $mdstart
-rm -f core2
+rm -f /tmp/core2
 exit
 EOF
 #include <sys/mman.h>

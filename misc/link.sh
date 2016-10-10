@@ -87,6 +87,7 @@ done > /dev/null 2>&1
 while mount | grep $mntpoint | grep -q tmpfs; do
 	umount $mntpoint || sleep 1
 done
+[ -d "$mntpoint" ] && (cd $mntpoint && find . -delete)
 rm -f /tmp/link
 exit 0
 EOF

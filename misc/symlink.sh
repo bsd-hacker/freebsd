@@ -80,6 +80,7 @@ for i in "" "-U"; do
 
 	umount -f ${mntpoint}
 done
+rm -f /tmp/symlink
 mdconfig -d -u $mdstart
 exit
 EOF

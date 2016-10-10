@@ -73,6 +73,7 @@ while mount | grep "on $mntpoint " | grep -q /dev/md; do
 done
 
 checkfs /dev/md${mdstart}$part
+rm -f /tmp/rename10
 mdconfig -d -u $mdstart
 exit 0
 EOF

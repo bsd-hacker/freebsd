@@ -51,7 +51,7 @@ cd $odir
 
 (cd /tmp; ./mmap28)
 
-rm -f /tmp/mmap28 /tmp/mmap28.0*
+rm -f /tmp/mmap28 /tmp/mmap28.0* /tmp/mmap28.core
 exit 0
 
 EOF

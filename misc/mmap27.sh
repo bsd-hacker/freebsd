@@ -48,7 +48,7 @@ sleep 2
 while pgrep -q swap; do
 	pkill -9 swap
 done
-rm -f ./mmap27 /tmp/mmap27.0*
+rm -f ./mmap27 /tmp/mmap27.0* /tmp/mmap27
 exit 0
 
 EOF

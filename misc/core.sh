@@ -49,7 +49,7 @@ for i in `jot 2`; do
 		wait
 	done
 done
-rm -f core
+rm -f /tmp/core
 exit
 EOF
 #include <err.h>

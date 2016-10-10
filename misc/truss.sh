@@ -76,11 +76,11 @@ sleep 2
 if pgrep -q ttruss; then
 	echo FAIL
 	ps -lH | grep -v grep | grep ttruss
-	exit 1
+	s=1
 fi
 
-rm -rf /tmp/ttruss
-exit
+rm -rf /tmp/ttruss /tmp/ttruss.core
+exit $s
 
 EOF
 #include <sys/param.h>

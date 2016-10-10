@@ -45,7 +45,7 @@ start=`date '+%s'`
 while [ $((`date '+%s'` - start)) -lt 600 ]; do
 	./mmap2
 done
-rm -f ./mmap2
+rm -f ./mmap2*
 exit
 
 EOF

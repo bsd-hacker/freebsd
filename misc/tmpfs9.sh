@@ -56,7 +56,7 @@ wait
 while mount | grep $mntpoint | grep -q tmpfs; do
 	umount $mntpoint || sleep 1
 done
-rm -d /tmp/tmpfs9
+rm -f /tmp/tmpfs9
 exit
 EOF
 #include <sys/types.h>

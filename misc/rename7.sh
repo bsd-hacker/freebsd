@@ -63,7 +63,7 @@ if mount | grep -q md${mdstart}$part; then
 	echo "Test failed"
 	exit 1
 fi
-rm -d /tmp/rename7
+rm -f /tmp/rename7
 exit 0
 EOF
 #include <err.h>

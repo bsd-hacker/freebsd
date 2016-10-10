@@ -96,7 +96,7 @@ status=$?
 mount | grep -q "on $mntpoint " &&
     umount -f $mntpoint
 
-rm -f core3
+rm -f /tmp/core3
 exit $status
 EOF
 #include <sys/mman.h>

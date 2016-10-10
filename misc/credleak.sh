@@ -64,7 +64,7 @@ done > /dev/null 2>&1
 while mount | grep $mntpoint | grep -q tmpfs; do
 	umount $mntpoint || sleep 1
 done
-[ -n "`ls $mntpoint`" ] && find $mntpoint/* -delete
+[ -d "$mntpoint" ] && (cd $mntpoint && find . -delete)
 rm -f /tmp/credleak
 
 s=0
@@ -145,8 +145,10 @@ main(int argc, char **argv)
 {
 	int i, j;
 
-	if (argc != 2)
-		errx(1, "Usage: %s <full path to dir>", argv[0]);
+	if (argc != 2) {
+		fprintf(stderr, "Usage: %s <full path to dir>", argv[0]);
+		exit(1);
+	}
 	dir = argv[1];
 
 	for (j = 0; j < LOOPS; j++) {

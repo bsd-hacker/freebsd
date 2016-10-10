@@ -49,6 +49,7 @@ if ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1; then
 	mount -t nfs -o nfsv3,tcp,nolockd,retrycnt=3,intr $nfs_export \
 	    $mntpoint || exit 1
 	sleep .5
+	echo "Expect core dumps"
 	(cd $mntpoint; /tmp/pthread9) &
 	sleep 200
 	if pgrep -q pthread9; then
@@ -60,7 +61,7 @@ if ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1; then
 	wait
 fi
 
-rm -f /tmp/pthread9
+rm -f /tmp/pthread9 /tmp/pthread9.core
 exit $status
 EOF
 #include <sys/types.h>

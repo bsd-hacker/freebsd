@@ -63,8 +63,10 @@ if [ $# -eq 0 ]; then
 	wait
 	mount -t nfs -o tcp -o nfsv3 -o retrycnt=1 -o soft,timeout=1 \
 	    -o rw $nfs_export $mntpoint || exit 0
-	rm -f /mnt/$0.*
+	sleep .5
+	rm -f $mntpoint/$0.*
 	umount $mntpoint
+	rm -f $mntpoint*/$0.*
 	exit 0
 else
 	if [ $1 = find ]; then
