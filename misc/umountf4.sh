@@ -46,7 +46,8 @@ if [ $# -eq 0 ]; then
 		mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
 
 		dede $D$m 1m 10
-		mdconfig -a -t vnode -f $D$m -u $m
+		mdconfig -a -t vnode -f $D$m -u $m ||
+		    { rm -f $D$m; exit 1; }
 		bsdlabel -w md$m auto
 		newfs md${m}${part} > /dev/null 2>&1
 	done

@@ -48,7 +48,8 @@ if [ $# -eq 0 ]; then
 		dede $D$m 1m 10
 		dd if=/dev/zero of=$D$m bs=1m count=10 2>&1 |
 			egrep -v "records|transferred"
-		mdconfig -a -t vnode -f $D$m -u $m
+		mdconfig -a -t vnode -f $D$m -u $m ||
+		    { rm -f $D$m; exit 1; }
 		bsdlabel -w md$m auto
 		newfs $newfs_flags md${m}$part > /dev/null 2>&1
 	done

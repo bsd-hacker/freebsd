@@ -41,7 +41,7 @@ dede $D 1m 64 || exit 1
 mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpoint
 mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
 
-mdconfig -a -t vnode -f $D -u ${mdstart}
+mdconfig -a -t vnode -f $D -u ${mdstart} || { rm -f $D; exit 1; }
 bsdlabel -w md${mdstart} auto
 newfs $newfs_flags md${mdstart}${part} > /dev/null 2>&1
 

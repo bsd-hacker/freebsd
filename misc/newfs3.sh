@@ -51,7 +51,8 @@ while [ $size -le $((128 * 1024 * 1024)) ]; do
 	rm -f $diskimage
 	dd if=/dev/zero of=$diskimage bs=1m count=$mb 2>&1 |
 	    egrep -v "records|transferred"
-	mdconfig -a -t vnode -f $diskimage -u $mdstart
+	mdconfig -a -t vnode -f $diskimage -u $mdstart ||
+	    { rm -f $diskimage; exit 1; }
 	bsdlabel -w md$mdstart auto
 	blocksize=4096
 	while [ $blocksize -le 65536 ]; do
