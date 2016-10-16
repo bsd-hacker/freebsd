@@ -262,7 +262,7 @@ SYSCTL_INT(_vm, OID_AUTO, max_wired,
 static u_int isqrt(u_int num);
 static boolean_t vm_pageout_fallback_object_lock(vm_page_t, vm_page_t *);
 static int vm_pageout_launder(struct vm_domain *vmd, int launder,
-    bool shortfall);
+    bool in_shortfall);
 static void vm_pageout_laundry_worker(void *arg);
 #if !defined(NO_SWAPPING)
 static void vm_pageout_map_deactivate_pages(vm_map_t, long);
@@ -878,7 +878,7 @@ unlock_mp:
  * Returns the number of pages successfully laundered.
  */
 static int
-vm_pageout_launder(struct vm_domain *vmd, int launder, bool shortfall)
+vm_pageout_launder(struct vm_domain *vmd, int launder, bool in_shortfall)
 {
 	struct vm_pagequeue *pq;
 	vm_object_t object;
@@ -986,7 +986,7 @@ vm_pageout_launder(struct vm_domain *vmd, int launder, bool shortfall)
 				 * laundry queue, and an activation is a valid
 				 * way out.
 				 */
-				if (!shortfall)
+				if (!in_shortfall)
 					launder--;
 				goto drop_page;
 			} else if ((object->flags & OBJ_DEAD) == 0)
@@ -1114,8 +1114,9 @@ vm_pageout_laundry_worker(void *arg)
 	struct vm_pagequeue *pq;
 	uint64_t nclean, ndirty;
 	u_int last_launder, wakeups;
-	int cycle, domidx, last_target, launder, prev_shortfall, shortfall;
+	int cycle, domidx, last_target, launder, shortfall;
 	int sleeptime, target;
+	bool in_shortfall;
 
 	domidx = (uintptr_t)arg;
 	domain = &vm_dom[domidx];
@@ -1123,17 +1124,18 @@ vm_pageout_laundry_worker(void *arg)
 	KASSERT(domain->vmd_segs != 0, ("domain without segments"));
 	vm_pageout_init_marker(&domain->vmd_laundry_marker, PQ_LAUNDRY);
 
+	shortfall = 0;
+	in_shortfall = false;
+	target = 0;
 	cycle = 0;
 	last_launder = 0;
-	shortfall = prev_shortfall = 0;
-	target = 0;
 
 	/*
 	 * The pageout laundry worker is never done, so loop forever.
 	 */
 	for (;;) {
-		KASSERT(cycle >= 0, ("negative cycle %d", cycle));
 		KASSERT(target >= 0, ("negative target %d", target));
+		KASSERT(cycle >= 0, ("negative cycle %d", cycle));
 		launder = 0;
 		wakeups = VM_METER_PCPU_CNT(v_pdwakeups);
 
@@ -1142,26 +1144,26 @@ vm_pageout_laundry_worker(void *arg)
 		 * shortage of free pages.
 		 */
 		if (shortfall > 0) {
+			in_shortfall = true;
 			target = shortfall;
 			cycle = VM_LAUNDER_RATE;
-			prev_shortfall = shortfall;
-		}
-		if (prev_shortfall > 0) {
+		} else if (!in_shortfall)
+			goto trybackground;
+		else if (cycle == 0 || vm_laundry_target() <= 0) {
 			/*
-			 * We entered shortfall at some point in the recent
-			 * past.  If we have reached our target, or the
-			 * laundering run is finished and we're not currently in
-			 * shortfall, we have no immediate need to launder
-			 * pages.  Otherwise keep laundering.
+			 * We recently entered shortfall and began laundering
+			 * pages.  If we have completed that laundering run
+			 * (and we are no longer in shortfall) or we have met
+			 * our laundry target through other activity, then we
+			 * can stop laundering pages.
 			 */
-			if (vm_laundry_target() <= 0 || cycle == 0) {
-				prev_shortfall = target = 0;
-			} else {
-				last_launder = wakeups;
-				launder = target / cycle--;
-				goto dolaundry;
-			}
+			in_shortfall = false;
+			target = 0;
+			goto trybackground;
 		}
+		last_launder = wakeups;
+		launder = target / cycle--;
+		goto dolaundry;
 
 		/*
 		 * There's no immediate need to launder any pages; see if we
@@ -1180,6 +1182,7 @@ vm_pageout_laundry_worker(void *arg)
 		 * ratio of dirty to clean inactive pages grows, the amount of
 		 * memory pressure required to trigger laundering decreases.
 		 */
+trybackground:
 		nclean = vm_cnt.v_inactive_count + vm_cnt.v_free_count;
 		ndirty = vm_cnt.v_laundry_count;
 		if (target == 0 && wakeups != last_launder &&
@@ -1217,7 +1220,7 @@ dolaundry:
 			 * a cluster minus one. 
 			 */
 			target -= min(vm_pageout_launder(domain, launder,
-			    prev_shortfall > 0), target);
+			    in_shortfall), target);
 
 		/*
 		 * Sleep for a little bit if we're in the middle of a laundering
