@@ -166,11 +166,12 @@ static int vm_pageout_oom_seq = 12;
 bool vm_pageout_wanted;		/* Event on which pageout daemon sleeps */
 bool vm_pages_needed;		/* Are threads waiting for free pages? */
 
+/* Pending request for dirty page laundering. */
 static enum {
 	VM_LAUNDRY_IDLE,
 	VM_LAUNDRY_BACKGROUND,
-	VM_LAUNDRY_SHORTFALL,
-} vm_laundry_request;		/* Pending request for dirty page laundering. */
+	VM_LAUNDRY_SHORTFALL
+} vm_laundry_request = VM_LAUNDRY_IDLE;
 
 #if !defined(NO_SWAPPING)
 static int vm_pageout_req_swapout;	/* XXX */
