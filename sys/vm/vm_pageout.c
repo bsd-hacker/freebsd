@@ -1115,8 +1115,7 @@ vm_pageout_laundry_worker(void *arg)
 	struct vm_pagequeue *pq;
 	uint64_t nclean, ndirty;
 	u_int last_launder, wakeups;
-	int cycle, domidx, last_target, launder, shortfall;
-	int sleeptime, target;
+	int domidx, last_target, launder, shortfall, shortfall_cycle, target;
 	bool in_shortfall;
 
 	domidx = (uintptr_t)arg;
@@ -1127,8 +1126,8 @@ vm_pageout_laundry_worker(void *arg)
 
 	shortfall = 0;
 	in_shortfall = false;
+	shortfall_cycle = 0;
 	target = 0;
-	cycle = 0;
 	last_launder = 0;
 
 	/*
@@ -1136,7 +1135,8 @@ vm_pageout_laundry_worker(void *arg)
 	 */
 	for (;;) {
 		KASSERT(target >= 0, ("negative target %d", target));
-		KASSERT(cycle >= 0, ("negative cycle %d", cycle));
+		KASSERT(shortfall_cycle >= 0,
+		    ("negative cycle %d", shortfall_cycle));
 		launder = 0;
 		wakeups = VM_METER_PCPU_CNT(v_pdwakeups);
 
@@ -1146,11 +1146,11 @@ vm_pageout_laundry_worker(void *arg)
 		 */
 		if (shortfall > 0) {
 			in_shortfall = true;
+			shortfall_cycle = VM_LAUNDER_RATE;
 			target = shortfall;
-			cycle = VM_LAUNDER_RATE;
 		} else if (!in_shortfall)
 			goto trybackground;
-		else if (cycle == 0 || vm_laundry_target() <= 0) {
+		else if (shortfall_cycle == 0 || vm_laundry_target() <= 0) {
 			/*
 			 * We recently entered shortfall and began laundering
 			 * pages.  If we have completed that laundering run
@@ -1163,7 +1163,7 @@ vm_pageout_laundry_worker(void *arg)
 			goto trybackground;
 		}
 		last_launder = wakeups;
-		launder = target / cycle--;
+		launder = target / shortfall_cycle--;
 		goto dolaundry;
 
 		/*
@@ -1229,16 +1229,26 @@ dolaundry:
 		 * started.  Otherwise, wait for a kick from the pagedaemon.
 		 */
 		vm_pagequeue_lock(pq);
-		if (target > 0 || vm_laundry_request != VM_LAUNDRY_IDLE)
-			sleeptime = hz / VM_LAUNDER_INTERVAL;
-		else
-			sleeptime = 0;
-		(void)mtx_sleep(&vm_laundry_request, vm_pagequeue_lockptr(pq),
-		    PVM, "laundr", sleeptime);
-		if (vm_laundry_request == VM_LAUNDRY_SHORTFALL)
+		if (target > 0 || vm_laundry_request != VM_LAUNDRY_IDLE) {
+			vm_pagequeue_unlock(pq);
+			pause("laundr", hz / VM_LAUNDER_INTERVAL);
+			vm_pagequeue_lock(pq);
+		} else
+			(void)mtx_sleep(&vm_laundry_request,
+			    vm_pagequeue_lockptr(pq), PVM, "laundr", 0);
+
+		/*
+		 * If the pagedaemon has indicated that it's in shortfall, start
+		 * a shortfall laundering unless we're already in the middle of
+		 * one.  This may preempt a background laundering.
+		 */
+		if (vm_laundry_request == VM_LAUNDRY_SHORTFALL &&
+		    (!in_shortfall || shortfall_cycle == 0)) {
 			shortfall = vm_laundry_target() + vm_pageout_deficit;
-		else
+			target = 0;
+		} else
 			shortfall = 0;
+
 		if (target == 0)
 			vm_laundry_request = VM_LAUNDRY_IDLE;
 		vm_pagequeue_unlock(pq);
