@@ -63,6 +63,7 @@ wait
 while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
+mdconfig -d -u $mdstart
 
 rm -f /tmp/mmap24
 exit

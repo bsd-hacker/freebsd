@@ -68,5 +68,6 @@ timeout 60 find / -xdev -print >/dev/null
 while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
+mdconfig -d -u $mdstart
 rm mmap29
 exit 0
