@@ -1214,7 +1214,7 @@ trybackground:
 		}
 
 dolaundry:
-		if (launder > 0)
+		if (launder > 0) {
 			/*
 			 * Because of I/O clustering, the number of laundered
 			 * pages could exceed "target" by the maximum size of
@@ -1222,20 +1222,18 @@ dolaundry:
 			 */
 			target -= min(vm_pageout_launder(domain, launder,
 			    in_shortfall), target);
+			pause("laundp", hz / VM_LAUNDER_INTERVAL);
+		}
 
 		/*
-		 * Sleep for a little bit if we're in the middle of a laundering
-		 * run or a pagedaemon thread has signalled us since the last run
-		 * started.  Otherwise, wait for a kick from the pagedaemon.
+		 * If we're not currently laundering pages and the page daemon
+		 * hasn't posted a new request, sleep until the page daemon
+		 * kicks us.
 		 */
 		vm_pagequeue_lock(pq);
-		if (target > 0 || vm_laundry_request != VM_LAUNDRY_IDLE) {
-			vm_pagequeue_unlock(pq);
-			pause("laundr", hz / VM_LAUNDER_INTERVAL);
-			vm_pagequeue_lock(pq);
-		} else
+		if (target == 0 && vm_laundry_request == VM_LAUNDRY_IDLE)
 			(void)mtx_sleep(&vm_laundry_request,
-			    vm_pagequeue_lockptr(pq), PVM, "laundr", 0);
+			    vm_pagequeue_lockptr(pq), PVM, "launds", 0);
 
 		/*
 		 * If the pagedaemon has indicated that it's in shortfall, start
