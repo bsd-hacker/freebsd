@@ -27,10 +27,10 @@
 #include "opt_inet.h"
 #include "opt_inet6.h"
 
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/module.h>
 #include <sys/errno.h>
-#include <sys/param.h>  /* defines used in kernel.h */
+#include <sys/jail.h>
 #include <sys/poll.h>  /* POLLIN, POLLOUT */
 #include <sys/kernel.h> /* types used in module initialization */
 #include <sys/conf.h>	/* DEV_MODULE_ORDERED */
@@ -353,7 +353,7 @@ nm_os_generic_xmit_frame(struct nm_os_gen_arg *a)
 	bcopy(a->addr, m->m_data, len);
 #else  /* __FreeBSD_version >= 1100000 */
 	/* New FreeBSD versions. Link the external storage to
-	 * the netmap buffer, so that no copy is necessary. */ 
+	 * the netmap buffer, so that no copy is necessary. */
 	m->m_ext.ext_buf = m->m_data = a->addr;
 	m->m_ext.ext_size = len;
 #endif /* __FreeBSD_version >= 1100000 */
@@ -644,7 +644,8 @@ DRIVER_MODULE_ORDERED(ptn_memdev, pci, ptn_memdev_driver, ptnetmap_devclass,
  * of the netmap memory mapped in the guest.
  */
 int
-nm_os_pt_memdev_iomap(struct ptnetmap_memdev *ptn_dev, vm_paddr_t *nm_paddr, void **nm_addr)
+nm_os_pt_memdev_iomap(struct ptnetmap_memdev *ptn_dev, vm_paddr_t *nm_paddr,
+		      void **nm_addr)
 {
 	uint32_t mem_size;
 	int rid;
@@ -668,8 +669,8 @@ nm_os_pt_memdev_iomap(struct ptnetmap_memdev *ptn_dev, vm_paddr_t *nm_paddr, voi
 
 	D("=== BAR %d start %lx len %lx mem_size %x ===",
 			PTNETMAP_MEM_PCI_BAR,
-			*nm_paddr,
-			rman_get_size(ptn_dev->pci_mem),
+			(unsigned long)(*nm_paddr),
+			(unsigned long)rman_get_size(ptn_dev->pci_mem),
 			mem_size);
 	return (0);
 }
@@ -1048,8 +1049,8 @@ nm_os_kthread_send_irq(struct nm_kthread *nmk)
 	if (ctx->user_td && ctx->irq_fd > 0) {
 		err = kern_ioctl(ctx->user_td, ctx->irq_fd, ctx->irq_ioctl.com, (caddr_t)&ctx->irq_ioctl.data.msix);
 		if (err) {
-			D("kern_ioctl error: %d ioctl parameters: fd %d com %lu data %p",
-				err, ctx->irq_fd, ctx->irq_ioctl.com, &ctx->irq_ioctl.data);
+			D("kern_ioctl error: %d ioctl parameters: fd %d com %ju data %p",
+				err, ctx->irq_fd, (uintmax_t)ctx->irq_ioctl.com, &ctx->irq_ioctl.data);
 		}
 	}
 }
@@ -1406,7 +1407,7 @@ freebsd_netmap_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t data,
 	int error;
 	struct netmap_priv_d *priv;
 
-	CURVNET_SET(TD_TO_VNET(rd));
+	CURVNET_SET(TD_TO_VNET(td));
 	error = devfs_get_cdevpriv((void **)&priv);
 	if (error) {
 		/* XXX ENOENT should be impossible, since the priv
