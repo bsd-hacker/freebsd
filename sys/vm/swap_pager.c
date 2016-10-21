@@ -1636,12 +1636,15 @@ swap_pager_isswapped(vm_object_t object, struct swdevt *sp)
 /*
  * SWP_PAGER_FORCE_PAGEIN() - force a swap block to be paged in
  *
- *	This routine dissociates the page at the given index within a
- *	swap block from its backing store, paging it in if necessary.
- *	If the page is paged in, it is placed in the laundry queue,
- *	since it had its backing store ripped out from under it.
- *	We also attempt to swap in all other pages in the swap block,
- *	we only guarantee that the one at the specified index is
+ *	This routine dissociates the page at the given index within an object
+ *	from its backing store, paging it in if it does not reside in memory.
+ *	If the page is paged in, it is marked dirty and placed in the laundry
+ *	queue.  The page is marked dirty because it no longer has backing
+ *	store.  It is placed in the laundry queue because it has not been
+ *	accessed recently.  Otherwise, it would already reside in memory.
+ *
+ *	We also attempt to swap in all other pages in the swap block.
+ *	However, we only guarantee that the one at the specified index is
  *	paged in.
  *
  *	XXX - The code to page the whole block in doesn't work, so we
