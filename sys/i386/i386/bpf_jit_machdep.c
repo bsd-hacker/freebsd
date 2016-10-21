@@ -83,12 +83,13 @@ emit_code(bpf_bin_stream *stream, u_int value, u_int len)
 		break;
 
 	case 2:
-		*((u_short *)(stream->ibuf + stream->cur_ip)) = (u_short)value;
+		*((u_short *)(void *)(stream->ibuf + stream->cur_ip)) =
+		    (u_short)value;
 		stream->cur_ip += 2;
 		break;
 
 	case 4:
-		*((u_int *)(stream->ibuf + stream->cur_ip)) = value;
+		*((u_int *)(void *)(stream->ibuf + stream->cur_ip)) = value;
 		stream->cur_ip += 4;
 		break;
 	}
@@ -445,75 +446,58 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, size_t *size)
 				break;
 
 			case BPF_JMP|BPF_JGT|BPF_K:
-				if (ins->jt == ins->jf) {
-					JUMP(ins->jt);
-					break;
-				}
-				CMPid(ins->k, EAX);
-				JCC(JA, JBE);
-				break;
-
 			case BPF_JMP|BPF_JGE|BPF_K:
-				if (ins->jt == ins->jf) {
-					JUMP(ins->jt);
-					break;
-				}
-				CMPid(ins->k, EAX);
-				JCC(JAE, JB);
-				break;
-
 			case BPF_JMP|BPF_JEQ|BPF_K:
-				if (ins->jt == ins->jf) {
-					JUMP(ins->jt);
-					break;
-				}
-				CMPid(ins->k, EAX);
-				JCC(JE, JNE);
-				break;
-
 			case BPF_JMP|BPF_JSET|BPF_K:
-				if (ins->jt == ins->jf) {
-					JUMP(ins->jt);
-					break;
-				}
-				TESTid(ins->k, EAX);
-				JCC(JNE, JE);
-				break;
-
 			case BPF_JMP|BPF_JGT|BPF_X:
-				if (ins->jt == ins->jf) {
-					JUMP(ins->jt);
-					break;
-				}
-				CMPrd(EDX, EAX);
-				JCC(JA, JBE);
-				break;
-
 			case BPF_JMP|BPF_JGE|BPF_X:
-				if (ins->jt == ins->jf) {
-					JUMP(ins->jt);
-					break;
-				}
-				CMPrd(EDX, EAX);
-				JCC(JAE, JB);
-				break;
-
 			case BPF_JMP|BPF_JEQ|BPF_X:
-				if (ins->jt == ins->jf) {
-					JUMP(ins->jt);
-					break;
-				}
-				CMPrd(EDX, EAX);
-				JCC(JE, JNE);
-				break;
-
 			case BPF_JMP|BPF_JSET|BPF_X:
 				if (ins->jt == ins->jf) {
 					JUMP(ins->jt);
 					break;
 				}
-				TESTrd(EDX, EAX);
-				JCC(JNE, JE);
+				switch (ins->code) {
+				case BPF_JMP|BPF_JGT|BPF_K:
+					CMPid(ins->k, EAX);
+					JCC(JA, JBE);
+					break;
+
+				case BPF_JMP|BPF_JGE|BPF_K:
+					CMPid(ins->k, EAX);
+					JCC(JAE, JB);
+					break;
+
+				case BPF_JMP|BPF_JEQ|BPF_K:
+					CMPid(ins->k, EAX);
+					JCC(JE, JNE);
+					break;
+
+				case BPF_JMP|BPF_JSET|BPF_K:
+					TESTid(ins->k, EAX);
+					JCC(JNE, JE);
+					break;
+
+				case BPF_JMP|BPF_JGT|BPF_X:
+					CMPrd(EDX, EAX);
+					JCC(JA, JBE);
+					break;
+
+				case BPF_JMP|BPF_JGE|BPF_X:
+					CMPrd(EDX, EAX);
+					JCC(JAE, JB);
+					break;
+
+				case BPF_JMP|BPF_JEQ|BPF_X:
+					CMPrd(EDX, EAX);
+					JCC(JE, JNE);
+					break;
+
+				case BPF_JMP|BPF_JSET|BPF_X:
+					TESTrd(EDX, EAX);
+					JCC(JNE, JE);
+					break;
+				}
 				break;
 
 			case BPF_ALU|BPF_ADD|BPF_X:
@@ -679,5 +663,5 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, size_t *size)
 	}
 #endif
 
-	return ((bpf_filter_func)stream.ibuf);
+	return ((bpf_filter_func)(void *)stream.ibuf);
 }
