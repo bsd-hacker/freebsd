@@ -3314,7 +3314,7 @@ vm_page_advise(vm_page_t m, int advice)
 	 * laundry are moved there.
 	 */
 	if (m->dirty == 0)
-		_vm_page_deactivate(m, TRUE);
+		vm_page_deactivate_noreuse(m);
 	else
 		vm_page_launder(m);
 }
