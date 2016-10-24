@@ -59,11 +59,13 @@ test() {
 	mdconfig -d -u $mdstart
 }
 
-gnop load
+kldstat | grep -q geom_nop || { gnop load 2>/dev/null || exit 0 &&
+    notloaded=1; }
 gnop status || exit
 
 for i in 1k 2k 4k 8k; do
 	test $i
 done
 
-gnop unload
+[ $notloaded ] && gnop unload
+exit 0
