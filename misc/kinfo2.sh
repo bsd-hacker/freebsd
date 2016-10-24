@@ -37,7 +37,7 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kinfo2.c
-mycc -o kinfo2 -Wall kinfo2.c -lutil
+mycc -o kinfo2 -Wall -Wextra kinfo2.c -lutil || exit 1
 rm -f kinfo2.c
 
 mount | grep -q procfs || mount -t procfs procfs /proc
@@ -45,37 +45,35 @@ for i in `jot 30`; do
 	for j in `jot 5`; do
 		/tmp/kinfo2 &
 	done
-
-	for j in `jot 5`; do
-		wait
-	done
+	wait
 done
 
 rm -f /tmp/kinfo2
-exit
+exit 0
 EOF
 
 #include <sys/types.h>
+#include <sys/signal.h>
+#include <sys/wait.h>
+
+#include <dirent.h>
+#include <err.h>
+#include <fcntl.h>
+#include <libutil.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/signal.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <err.h>
 #include <strings.h>
-#include <sys/wait.h>
-#include <libutil.h>
+#include <unistd.h>
 
-char buf[8096];
+static char buf[8096];
 
-void
-handler(int i) {
-	exit(0);
+static void
+handler(int i __unused) {
+	_exit(0);
 }
 
 /* Stir /dev/proc */
-int
+static void
 churning(void) {
 	pid_t r;
 	int fd, status;
@@ -86,7 +84,7 @@ churning(void) {
 			if ((fd = open("/proc/curproc/mem", O_RDONLY)) == -1)
 				err(1, "open(/proc/curproc/mem)");
 			bzero(buf, sizeof(buf));
-			exit(0);
+			_exit(0);
 		}
 		if (r < 0) {
 			perror("fork");
@@ -100,15 +98,15 @@ churning(void) {
 void
 list(void)
 {
-	int cnt, fd, n;
-	int space = sizeof(buf);
-	long base;
 	struct dirent *dp;
         struct kinfo_file *freep;
 	struct kinfo_vmentry *freep_vm;
-	char *bp = buf;
 	pid_t pid;
+	long base;
 	long l;
+	int cnt, fd, n;
+	int space = sizeof(buf);
+	char *bp = buf;
 	char *dummy;
 
 	if ((fd = open("/proc", O_RDONLY)) == -1)
@@ -125,14 +123,15 @@ list(void)
 	bp = buf;
 	dp = (struct dirent *)bp;
 	for (;;) {
-#if 0
-		printf("name: %-10s, inode %7d, type %2d, namelen %d, d_reclen %d\n",
-				dp->d_name, dp->d_fileno, dp->d_type, dp->d_namlen,
-				dp->d_reclen); fflush(stdout);
+#if defined(DEBUG)
+		printf("name: %-10s, inode %7lu, type %2d, namelen %d, "
+		    "d_reclen %d\n",
+		    dp->d_name, (unsigned long)dp->d_fileno, dp->d_type,
+		    dp->d_namlen, dp->d_reclen); fflush(stdout);
 #endif
 
 		if (dp->d_type == DT_DIR &&
-				(dp->d_name[0] >= '0' && dp->d_name[0] <= '9')) {
+		    (dp->d_name[0] >= '0' && dp->d_name[0] <= '9')) {
 			l = strtol(dp->d_name, &dummy, 10);
 			pid = l;
 
@@ -153,9 +152,10 @@ list(void)
 }
 
 int
-main(int argc, char **argv)
+main(void)
 {
 	pid_t r;
+
 	signal(SIGALRM, handler);
 	alarm(60);
 
