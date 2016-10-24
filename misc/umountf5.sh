@@ -38,10 +38,11 @@ D=$diskimage
 dd if=/dev/zero of=$D$m bs=1m count=10 2>&1 |
 	egrep -v "records|transferred"
 
-mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null &&
+    umount $mntpoint
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u ${mdstart}
+mdconfig -a -t vnode -f $D -u $mdstart || { rm -f $diskimage; exit 1; }
 bsdlabel -w md${mdstart} auto
 newfs $newfs_flags md${mdstart}$part > /dev/null 2>&1
 mount /dev/md${mdstart}$part $mntpoint
@@ -49,7 +50,6 @@ mount /dev/md${mdstart}$part $mntpoint
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=2m
 cd ..; ./run.sh vfs.cfg > /dev/null 2>&1 &
-pid=$!
 
 sleep 30
 
@@ -57,7 +57,8 @@ umount -f $mntpoint
 mdconfig -d -u $mdstart
 rm -f $D
 
-while ps | egrep "testcases|swap|mkdir|creat" | grep -vq grep; do
-   ps | egrep "testcases|swap|mkdir|creat" | grep -v grep | awk '{print $1}' | xargs kill
+while pkill -f "swap|mkdir|creat"; do
    sleep 1
 done
+wait
+exit 0
