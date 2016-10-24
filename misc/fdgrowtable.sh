@@ -48,7 +48,7 @@ while kill -0 $! 2>/dev/null; do
 	../testcases/swap/swap -t 2m -i 40 -h
 done
 wait
-rm -d /tmp/fdgrowtable
+rm -f /tmp/fdgrowtable
 exit
 
 EOF
