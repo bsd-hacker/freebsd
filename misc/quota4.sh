@@ -31,6 +31,7 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 # Has shown a deadlock after 7 hours of testing
+# https://people.freebsd.org/~pho/stress/log/quota4.txt
 
 . ../default.cfg
 
