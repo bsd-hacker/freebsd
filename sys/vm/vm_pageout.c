@@ -405,7 +405,6 @@ vm_pageout_cluster(vm_page_t m)
 	 */
 	vm_page_assert_unbusied(m);
 	KASSERT(m->hold_count == 0, ("page %p is held", m));
-	vm_page_dequeue(m);
 	vm_page_unlock(m);
 
 	mc[vm_pageout_page_count] = pb = ps = m;
@@ -448,7 +447,6 @@ more:
 			ib = 0;
 			break;
 		}
-		vm_page_dequeue(p);
 		vm_page_unlock(p);
 		mc[--page_base] = pb = p;
 		++pageout_count;
@@ -474,7 +472,6 @@ more:
 			vm_page_unlock(p);
 			break;
 		}
-		vm_page_dequeue(p);
 		vm_page_unlock(p);
 		mc[page_base + pageout_count] = ps = p;
 		++pageout_count;
@@ -550,6 +547,11 @@ vm_pageout_flush(vm_page_t *mc, int count, int flags, int mreq, int *prunlen,
 		    ("vm_pageout_flush: page %p is not write protected", mt));
 		switch (pageout_status[i]) {
 		case VM_PAGER_OK:
+			vm_page_lock(mt);
+			if (vm_page_in_laundry(mt))
+				vm_page_deactivate_noreuse(mt);
+			vm_page_unlock(mt);
+			/* FALLTHROUGH */
 		case VM_PAGER_PEND:
 			numpagedout++;
 			break;
