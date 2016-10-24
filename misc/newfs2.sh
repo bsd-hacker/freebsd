@@ -39,12 +39,14 @@ size=$((32 * 1024 * 1024))
 mount | grep "$mntpoint" | grep -q md${mdstart}$part && umount $mntpoint
 [ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
+start=`date '+%s'`
 while [ $size -le $((900 * 1024 * 1024)) ]; do
 	mb=$((size / 1024 / 1024))
 	rm -f $diskimage
 	dd if=/dev/zero of=$diskimage bs=1m count=$mb 2>&1 |
 	    egrep -v "records|transferred"
-	mdconfig -a -t vnode -f $diskimage -u $mdstart
+	mdconfig -a -t vnode -f $diskimage -u $mdstart ||
+	    { rm $diskimage; exit 1; }
 	bsdlabel -w md$mdstart auto
 	newfs -b 32768 -f 4096 -O2 md${mdstart}$part > /dev/null 2>&1
 	mount /dev/md${mdstart}$part $mntpoint
@@ -58,5 +60,11 @@ while [ $size -le $((900 * 1024 * 1024)) ]; do
 	done
 	mdconfig -d -u $mdstart
 	size=$((size + 32 * 1024 * 1024))
+	if [ $((`date '+%s'` - start)) -gt 1800 ]; then
+		echo "Timed out"
+		s=1
+		break
+	fi
 done
 rm -f $diskimage
+return $s
