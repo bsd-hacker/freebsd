@@ -184,7 +184,6 @@ static int vm_pageout_update_period;
 static int disable_swap_pageouts;
 static int lowmem_period = 10;
 static time_t lowmem_uptime;
-static u_int vm_background_launder_target;
 
 #if defined(NO_SWAPPING)
 static int vm_swap_enabled = 0;
@@ -239,6 +238,7 @@ SYSCTL_INT(_vm, OID_AUTO, act_scan_laundry_weight,
 	CTLFLAG_RW, &act_scan_laundry_weight, 0,
 	"weight given to clean vs. dirty pages in active queue scans");
 
+static u_int vm_background_launder_target;
 SYSCTL_UINT(_vm, OID_AUTO, background_launder_target,
 	CTLFLAG_RW, &vm_background_launder_target, 0,
 	"background laundering target, in pages");
