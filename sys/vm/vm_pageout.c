@@ -1265,7 +1265,7 @@ static bool
 vm_pageout_scan(struct vm_domain *vmd, int pass)
 {
 	vm_page_t m, next;
-	struct vm_pagequeue *pq, *laundryq;
+	struct vm_pagequeue *pq;
 	vm_object_t object;
 	long min_scan;
 	int act_delta, addl_page_shortage, deficit, inactq_shortage, maxscan;
@@ -1494,15 +1494,15 @@ drop_page:
 	 */
 	if (vm_laundry_request == VM_LAUNDRY_IDLE &&
 	    starting_page_shortage > 0) {
-		laundryq = &vm_dom[0].vmd_pagequeues[PQ_LAUNDRY];
-		vm_pagequeue_lock(laundryq);
+		pq = &vm_dom[0].vmd_pagequeues[PQ_LAUNDRY];
+		vm_pagequeue_lock(pq);
 		if (page_shortage > 0) {
 			vm_laundry_request = VM_LAUNDRY_SHORTFALL;
 			PCPU_INC(cnt.v_pdshortfalls);
 		} else if (vm_laundry_request != VM_LAUNDRY_SHORTFALL)
 			vm_laundry_request = VM_LAUNDRY_BACKGROUND;
 		wakeup(&vm_laundry_request);
-		vm_pagequeue_unlock(laundryq);
+		vm_pagequeue_unlock(pq);
 	}
 
 #if !defined(NO_SWAPPING)
