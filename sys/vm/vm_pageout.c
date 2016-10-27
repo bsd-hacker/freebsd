@@ -154,11 +154,9 @@ static struct kproc_desc vm_kp = {
 SYSINIT(vmdaemon, SI_SUB_KTHREAD_VM, SI_ORDER_FIRST, kproc_start, &vm_kp);
 #endif
 
-/* Sleep intervals for pagedaemon threads, in subdivisions of one second. */
-#define	VM_LAUNDER_INTERVAL	10
-#define	VM_INACT_SCAN_INTERVAL	2
-
-#define	VM_LAUNDER_RATE		(VM_LAUNDER_INTERVAL / VM_INACT_SCAN_INTERVAL)
+/* Pagedaemon activity rates, in subdivisions of one second. */
+#define	VM_LAUNDER_RATE		10
+#define	VM_INACT_SCAN_RATE	2
 
 int vm_pageout_deficit;		/* Estimated number of pages deficit */
 u_int vm_pageout_wakeup_thresh;
@@ -1148,7 +1146,7 @@ vm_pageout_laundry_worker(void *arg)
 		 */
 		if (shortfall > 0) {
 			in_shortfall = true;
-			shortfall_cycle = VM_LAUNDER_RATE;
+			shortfall_cycle = VM_LAUNDER_RATE / VM_INACT_SCAN_RATE;
 			target = shortfall;
 		} else if (!in_shortfall)
 			goto trybackground;
@@ -1210,7 +1208,7 @@ trybackground:
 				target = 0;
 			}
 			launder = vm_background_launder_rate * PAGE_SIZE / 1024;
-			launder /= VM_LAUNDER_INTERVAL;
+			launder /= VM_LAUNDER_RATE;
 			if (launder > target)
 				launder = target;
 		}
@@ -1224,7 +1222,7 @@ dolaundry:
 			 */
 			target -= min(vm_pageout_launder(domain, launder,
 			    in_shortfall), target);
-			pause("laundp", hz / VM_LAUNDER_INTERVAL);
+			pause("laundp", hz / VM_LAUNDER_RATE);
 		}
 
 		/*
@@ -1975,7 +1973,7 @@ vm_pageout_worker(void *arg)
 			 */
 			mtx_unlock(&vm_page_queue_free_mtx);
 			if (pass >= 1)
-				pause("psleep", hz / 2);
+				pause("psleep", hz / VM_INACT_SCAN_RATE);
 			pass++;
 		} else {
 			/*
