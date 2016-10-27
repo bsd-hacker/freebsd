@@ -232,24 +232,23 @@ SYSCTL_INT(_vm, OID_AUTO, pageout_oom_seq,
 	"back-to-back calls to oom detector to start OOM");
 
 static int act_scan_laundry_weight = 3;
-SYSCTL_INT(_vm, OID_AUTO, act_scan_laundry_weight,
-	CTLFLAG_RW, &act_scan_laundry_weight, 0,
-	"weight given to clean vs. dirty pages in active queue scans");
+SYSCTL_INT(_vm, OID_AUTO, act_scan_laundry_weight, CTLFLAG_RW,
+    &act_scan_laundry_weight, 0,
+    "weight given to clean vs. dirty pages in active queue scans");
 
 static u_int vm_background_launder_target;
-SYSCTL_UINT(_vm, OID_AUTO, background_launder_target,
-	CTLFLAG_RW, &vm_background_launder_target, 0,
-	"background laundering target, in pages");
+SYSCTL_UINT(_vm, OID_AUTO, background_launder_target, CTLFLAG_RW,
+    &vm_background_launder_target, 0,
+    "background laundering target, in pages");
 
 static u_int vm_background_launder_rate = 4096;
-SYSCTL_UINT(_vm, OID_AUTO, background_launder_rate,
-	CTLFLAG_RW, &vm_background_launder_rate, 0,
-	"background laundering rate, in kilobytes per second");
+SYSCTL_UINT(_vm, OID_AUTO, background_launder_rate, CTLFLAG_RW,
+    &vm_background_launder_rate, 0,
+    "background laundering rate, in kilobytes per second");
 
 static u_int vm_background_launder_max = 20 * 1024;
-SYSCTL_UINT(_vm, OID_AUTO, background_launder_max,
-	CTLFLAG_RW, &vm_background_launder_max, 0,
-	"background laundering cap, in kilobytes");
+SYSCTL_UINT(_vm, OID_AUTO, background_launder_max, CTLFLAG_RW,
+    &vm_background_launder_max, 0, "background laundering cap, in kilobytes");
 
 #define VM_PAGEOUT_PAGE_COUNT 16
 int vm_pageout_page_count = VM_PAGEOUT_PAGE_COUNT;
