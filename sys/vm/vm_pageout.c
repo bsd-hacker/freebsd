@@ -554,13 +554,15 @@ vm_pageout_flush(vm_page_t *mc, int count, int flags, int mreq, int *prunlen,
 			break;
 		case VM_PAGER_BAD:
 			/*
-			 * Page outside of range of object. Right now we
-			 * essentially lose the changes by pretending it
-			 * worked.
+			 * The page is outside the object's range.  We pretend
+			 * that the page out worked and clean the page, so the
+			 * changes will be lost if the page is reclaimed by
+			 * the page daemon.
 			 */
 			vm_page_undirty(mt);
 			vm_page_lock(mt);
-			vm_page_deactivate(mt);
+			if (vm_page_in_laundry(mt))
+				vm_page_deactivate_noreuse(mt);
 			vm_page_unlock(mt);
 			break;
 		case VM_PAGER_ERROR:
