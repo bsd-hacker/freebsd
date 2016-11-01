@@ -39,8 +39,6 @@
 /* Claimed to be 12232B */
 #define HN_MTU_MAX			(9 * 1024)
 
-#define HN_PKTBUF_LEN			4096
-
 #define HN_TXBR_SIZE			(128 * PAGE_SIZE)
 #define HN_RXBR_SIZE			(128 * PAGE_SIZE)
 
@@ -50,17 +48,6 @@
 #define HN_XACT_RESP_SIZE		(HN_XACT_RESP_PGCNT * PAGE_SIZE)
 
 #define HN_GPACNT_MAX			32
-
-#define HN_NDIS_VLAN_INFO_INVALID	0xffffffff
-#define HN_NDIS_RXCSUM_INFO_INVALID	0
-#define HN_NDIS_HASH_INFO_INVALID	0
-
-struct hn_recvinfo {
-	uint32_t			vlan_info;
-	uint32_t			csum_info;
-	uint32_t			hash_info;
-	uint32_t			hash_value;
-};
 
 struct hn_txdesc;
 #ifndef HN_USE_TXDESC_BUFRING
@@ -74,6 +61,7 @@ struct hn_rx_ring {
 	struct ifnet	*hn_ifp;
 	struct hn_tx_ring *hn_txr;
 	void		*hn_pktbuf;
+	int		hn_pktbuf_len;
 	uint8_t		*hn_rxbuf;	/* shadow sc->hn_rxbuf */
 	int		hn_rx_idx;
 
@@ -89,6 +77,7 @@ struct hn_rx_ring {
 	u_long		hn_small_pkts;
 	u_long		hn_pkts;
 	u_long		hn_rss_pkts;
+	u_long		hn_ack_failed;
 
 	/* Rarely used stuffs */
 	struct sysctl_oid *hn_rx_sysctl_tree;
@@ -241,25 +230,5 @@ struct hn_softc {
 
 #define HN_LINK_FLAG_LINKUP		0x0001
 #define HN_LINK_FLAG_NETCHG		0x0002
-
-struct rndis_packet_msg;
-
-int		hn_rndis_attach(struct hn_softc *sc, int mtu);
-void		hn_rndis_detach(struct hn_softc *sc);
-int		hn_rndis_conf_rss(struct hn_softc *sc, uint16_t flags);
-void		*hn_rndis_pktinfo_append(struct rndis_packet_msg *,
-		    size_t pktsize, size_t pi_dlen, uint32_t pi_type);
-int		hn_rndis_query_rsscaps(struct hn_softc *sc, int *rxr_cnt);
-int		hn_rndis_get_eaddr(struct hn_softc *sc, uint8_t *eaddr);
-int		hn_rndis_get_linkstatus(struct hn_softc *sc,
-		    uint32_t *link_status);
-/* filter: NDIS_PACKET_TYPE_. */
-int		hn_rndis_set_rxfilter(struct hn_softc *sc, uint32_t filter);
-
-int		hn_rxpkt(struct hn_rx_ring *rxr, const void *data, int dlen,
-		    const struct hn_recvinfo *info);
-void		hn_chan_rollup(struct hn_rx_ring *rxr, struct hn_tx_ring *txr);
-void		hn_link_status_update(struct hn_softc *sc);
-void		hn_network_change(struct hn_softc *sc);
 
 #endif	/* !_IF_HNVAR_H_ */

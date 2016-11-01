@@ -1375,6 +1375,10 @@ zvol_get_data(void *arg, lr_write_t *lr, char *buf, zio_t *zio)
  * Otherwise we will later flush the data out via dmu_sync().
  */
 ssize_t zvol_immediate_write_sz = 32768;
+#ifdef _KERNEL
+SYSCTL_LONG(_vfs_zfs_vol, OID_AUTO, immediate_write_sz, CTLFLAG_RWTUN,
+    &zvol_immediate_write_sz, 0, "Minimal size for indirect log write");
+#endif
 
 static void
 zvol_log_write(zvol_state_t *zv, dmu_tx_t *tx, offset_t off, ssize_t resid,
@@ -1670,7 +1674,7 @@ zvol_strategy(struct bio *bp)
 		if (error != 0) {
 			dmu_tx_abort(tx);
 		} else {
-			zvol_log_truncate(zv, tx, off, resid, B_TRUE);
+			zvol_log_truncate(zv, tx, off, resid, sync);
 			dmu_tx_commit(tx);
 			error = dmu_free_long_range(zv->zv_objset, ZVOL_OBJ,
 			    off, resid);
@@ -3114,9 +3118,9 @@ zvol_d_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct threa
 {
 	zvol_state_t *zv;
 	rl_t *rl;
-	off_t offset, length, chunk;
+	off_t offset, length;
 	int i, error;
-	u_int u;
+	boolean_t sync;
 
 	zv = dev->si_drv2;
 
@@ -3154,15 +3158,17 @@ zvol_d_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct threa
 		dmu_tx_t *tx = dmu_tx_create(zv->zv_objset);
 		error = dmu_tx_assign(tx, TXG_WAIT);
 		if (error != 0) {
+			sync = FALSE;
 			dmu_tx_abort(tx);
 		} else {
-			zvol_log_truncate(zv, tx, offset, length, B_TRUE);
+			sync = (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS);
+			zvol_log_truncate(zv, tx, offset, length, sync);
 			dmu_tx_commit(tx);
 			error = dmu_free_long_range(zv->zv_objset, ZVOL_OBJ,
 			    offset, length);
 		}
 		zfs_range_unlock(rl);
-		if (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS)
+		if (sync)
 			zil_commit(zv->zv_zilog, ZVOL_OBJ);
 		break;
 	case DIOCGSTRIPESIZE:
