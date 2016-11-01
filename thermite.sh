@@ -244,6 +244,20 @@ send_logmail() {
 	return 0
 }
 
+# Email completed output
+send_completed_email() {
+	[ -z "${emailgoesto}" ] && return 0
+	[ -z "${emailsentfrom}" ] && return 0
+	local _body
+	local _subject
+	_subject="Snapshot builds completed"
+	_body="Weeee!"
+
+	printf "From: ${emailsentfrom}\nTo: ${emailgoesto}\nSubject: ${_subject}\n\n${_body}\n\n" \
+		| /usr/sbin/sendmail -oi -f ${emailsentfrom} ${emailgoesto}
+	return 0
+}
+
 # Stage builds for ftp propagation.
 ftp_stage() {
 	_build="${rev}-${arch}-${kernel}-${type}"
@@ -514,6 +528,7 @@ main() {
 	runall upload_ec2_ami
 	runall upload_gce_image
 	runall upload_vagrant_image
+	send_completed_email
 }
 
 main "$@"
