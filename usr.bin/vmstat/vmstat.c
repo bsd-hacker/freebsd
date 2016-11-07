@@ -1059,7 +1059,7 @@ dosum(void)
 		sum.v_pdwakeups);
 	xo_emit("{:page-daemon-pages/%9u} {N:pages examined by the page daemon}\n",
 		sum.v_pdpages);
-	xo_emit("{:page-reclaimation-shortfalls/%9u} {N:clean page reclaimation shortfalls}\n",
+	xo_emit("{:page-reclamation-shortfalls/%9u} {N:clean page reclamation shortfalls}\n",
 		sum.v_pdshortfalls);
 	xo_emit("{:reactivated/%9u} {N:pages reactivated by the page daemon}\n",
 		sum.v_reactivated);
