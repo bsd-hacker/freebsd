@@ -306,8 +306,6 @@ struct sysmaps {
 	caddr_t	CADDR3;
 };
 static struct sysmaps sysmaps_pcpu[MAXCPU];
-static pt2_entry_t *CMAP3;
-static caddr_t CADDR3;
 caddr_t _tmppt = 0;
 
 struct msgbuf *msgbufp = NULL; /* XXX move it to machdep.c */
@@ -502,7 +500,8 @@ pmap_set_tex(void)
 
 	/* Add shareable bits for normal memory in SMP case. */
 #ifdef SMP
-	prrr |= PRRR_NS1;
+	if (ARM_USE_MP_EXTENSIONS)
+		prrr |= PRRR_NS1;
 #endif
 	cp15_prrr_set(prrr);
 	cp15_nmrr_set(nmrr);
@@ -1176,7 +1175,6 @@ pmap_bootstrap(vm_offset_t firstaddr)
 	/*
 	 * Local CMAP1/CMAP2 are used for zeroing and copying pages.
 	 * Local CMAP3 is used for data cache cleaning.
-	 * Global CMAP3 is used for the idle process page zeroing.
 	 */
 	for (i = 0; i < MAXCPU; i++) {
 		sysmaps = &sysmaps_pcpu[i];
@@ -1185,7 +1183,6 @@ pmap_bootstrap(vm_offset_t firstaddr)
 		SYSMAP(caddr_t, sysmaps->CMAP2, sysmaps->CADDR2, 1);
 		SYSMAP(caddr_t, sysmaps->CMAP3, sysmaps->CADDR3, 1);
 	}
-	SYSMAP(caddr_t, CMAP3, CADDR3, 1);
 
 	/*
 	 * Crashdump maps.
@@ -2742,31 +2739,25 @@ SYSCTL_INT(_vm_pmap, OID_AUTO, pv_entry_spare, CTLFLAG_RD, &pv_entry_spare, 0,
 /*
  *  Is given page managed?
  */
-static __inline boolean_t
+static __inline bool
 is_managed(vm_paddr_t pa)
 {
-	vm_offset_t pgnum;
 	vm_page_t m;
 
-	pgnum = atop(pa);
-	if (pgnum >= first_page) {
-		m = PHYS_TO_VM_PAGE(pa);
-		if (m == NULL)
-			return (FALSE);
-		if ((m->oflags & VPO_UNMANAGED) == 0)
-			return (TRUE);
-	}
-	return (FALSE);
+	m = PHYS_TO_VM_PAGE(pa);
+	if (m == NULL)
+		return (false);
+	return ((m->oflags & VPO_UNMANAGED) == 0);
 }
 
-static __inline boolean_t
+static __inline bool
 pte1_is_managed(pt1_entry_t pte1)
 {
 
 	return (is_managed(pte1_pa(pte1)));
 }
 
-static __inline boolean_t
+static __inline bool
 pte2_is_managed(pt2_entry_t pte2)
 {
 
@@ -5165,8 +5156,6 @@ pmap_is_referenced(vm_page_t m)
 	return (rv);
 }
 
-#define	PMAP_TS_REFERENCED_MAX	5
-
 /*
  *	pmap_ts_referenced:
  *
@@ -5175,9 +5164,13 @@ pmap_is_referenced(vm_page_t m)
  *	is necessary that 0 only be returned when there are truly no
  *	reference bits set.
  *
- *	XXX: The exact number of bits to check and clear is a matter that
- *	should be tested and standardized at some point in the future for
- *	optimal aging of shared pages.
+ *	As an optimization, update the page's dirty field if a modified bit is
+ *	found while counting reference bits.  This opportunistic update can be
+ *	performed at low cost and can eliminate the need for some future calls
+ *	to pmap_is_modified().  However, since this function stops after
+ *	finding PMAP_TS_REFERENCED_MAX reference bits, it may not detect some
+ *	dirty pages.  Those dirty pages will only be detected by a future call
+ *	to pmap_is_modified().
  */
 int
 pmap_ts_referenced(vm_page_t m)
@@ -5186,7 +5179,7 @@ pmap_ts_referenced(vm_page_t m)
 	pv_entry_t pv, pvf;
 	pmap_t pmap;
 	pt1_entry_t  *pte1p, opte1;
-	pt2_entry_t *pte2p;
+	pt2_entry_t *pte2p, opte2;
 	vm_paddr_t pa;
 	int rtval = 0;
 
@@ -5205,6 +5198,14 @@ pmap_ts_referenced(vm_page_t m)
 		PMAP_LOCK(pmap);
 		pte1p = pmap_pte1(pmap, pv->pv_va);
 		opte1 = pte1_load(pte1p);
+		if (pte1_is_dirty(opte1)) {
+			/*
+			 * Although "opte1" is mapping a 1MB page, because
+			 * this function is called at a 4KB page granularity,
+			 * we only update the 4KB page under test.
+			 */
+			vm_page_dirty(m);
+		}
 		if ((opte1 & PTE1_A) != 0) {
 			/*
 			 * Since this reference bit is shared by 256 4KB pages,
@@ -5253,7 +5254,10 @@ small_mappings:
 		    ("%s: not found a link in page %p's pv list", __func__, m));
 
 		pte2p = pmap_pte2_quick(pmap, pv->pv_va);
-		if ((pte2_load(pte2p) & PTE2_A) != 0) {
+		opte2 = pte2_load(pte2p);
+		if (pte2_is_dirty(opte2))
+			vm_page_dirty(m);
+		if ((opte2 & PTE2_A) != 0) {
 			pte2_clear_bit(pte2p, PTE2_A);
 			pmap_tlb_flush(pmap, pv->pv_va);
 			rtval++;
@@ -5786,27 +5790,6 @@ pmap_zero_page_area(vm_page_t m, int off, int size)
 }
 
 /*
- *	pmap_zero_page_idle zeros the specified hardware page by mapping
- *	the page into KVM and using bzero to clear its contents.  This
- *	is intended to be called from the vm_pagezero process only and
- *	outside of Giant.
- */
-void
-pmap_zero_page_idle(vm_page_t m)
-{
-
-	if (pte2_load(CMAP3) != 0)
-		panic("%s: CMAP3 busy", __func__);
-	sched_pin();
-	pte2_store(CMAP3, PTE2_KERN_NG(VM_PAGE_TO_PHYS(m), PTE2_AP_KRW,
-	    vm_page_pte2_attr(m)));
-	pagezero(CADDR3);
-	pte2_clear(CMAP3);
-	tlb_flush((vm_offset_t)CADDR3);
-	sched_unpin();
-}
-
-/*
  *	pmap_copy_page copies the specified (machine independent)
  *	page by mapping the page into virtual memory and using
  *	bcopy to copy the page, one machine dependent page at a
@@ -6114,7 +6097,7 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr, vm_paddr_t *locked_pa)
 	pt1_entry_t *pte1p, pte1;
 	pt2_entry_t *pte2p, pte2;
 	vm_paddr_t pa;
-	boolean_t managed;
+	bool managed;
 	int val;
 
 	PMAP_LOCK(pmap);
@@ -6141,7 +6124,7 @@ retry:
 		if (pte2 & PTE2_A)
 			val |= MINCORE_REFERENCED | MINCORE_REFERENCED_OTHER;
 	} else {
-		managed = FALSE;
+		managed = false;
 		val = 0;
 	}
 	if ((val & (MINCORE_MODIFIED_OTHER | MINCORE_REFERENCED_OTHER)) !=

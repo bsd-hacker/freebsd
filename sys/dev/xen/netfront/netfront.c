@@ -156,21 +156,6 @@ static int xn_get_responses(struct netfront_rxq *,
 #define virt_to_mfn(x) (vtophys(x) >> PAGE_SHIFT)
 
 #define INVALID_P2M_ENTRY (~0UL)
-
-struct xn_rx_stats
-{
-	u_long	rx_packets;	/* total packets received	*/
-	u_long	rx_bytes;	/* total bytes received 	*/
-	u_long	rx_errors;	/* bad packets received		*/
-};
-
-struct xn_tx_stats
-{
-	u_long	tx_packets;	/* total packets transmitted	*/
-	u_long	tx_bytes;	/* total bytes transmitted	*/
-	u_long	tx_errors;	/* packet transmit problems	*/
-};
-
 #define XN_QUEUE_NAME_LEN  8	/* xn{t,r}x_%u, allow for two digits */
 struct netfront_rxq {
 	struct netfront_info 	*info;
@@ -190,8 +175,6 @@ struct netfront_rxq {
 	struct lro_ctrl		lro;
 
 	struct callout		rx_refill;
-
-	struct xn_rx_stats	stats;
 };
 
 struct netfront_txq {
@@ -215,8 +198,6 @@ struct netfront_txq {
 	struct task       	defrtask;
 
 	bool			full;
-
-	struct xn_tx_stats	stats;
 };
 
 struct netfront_info {
@@ -1191,7 +1172,7 @@ xn_rxeof(struct netfront_rxq *rxq)
 			if (__predict_false(err)) {
 				if (m)
 					(void )mbufq_enqueue(&mbufq_errq, m);
-				rxq->stats.rx_errors++;
+				if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
 				continue;
 			}
 
@@ -1215,9 +1196,6 @@ xn_rxeof(struct netfront_rxq *rxq)
 				extras[XEN_NETIF_EXTRA_TYPE_GSO - 1].u.gso.size;
 				m->m_pkthdr.csum_flags |= CSUM_TSO;
 			}
-
-			rxq->stats.rx_packets++;
-			rxq->stats.rx_bytes += m->m_pkthdr.len;
 
 			(void )mbufq_enqueue(&mbufq_rxq, m);
 			rxq->ring.rsp_cons = i;
@@ -1304,12 +1282,6 @@ xn_txeof(struct netfront_txq *txq)
 				"trying to free it again!"));
 			M_ASSERTVALID(m);
 
-			/*
-			 * Increment packet count if this is the last
-			 * mbuf of the chain.
-			 */
-			if (!m->m_next)
-				if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
 			if (__predict_false(gnttab_query_foreign_access(
 			    txq->grant_ref[id]) != 0)) {
 				panic("%s: grant id %u still in use by the "
@@ -1701,10 +1673,12 @@ xn_assemble_tx_request(struct netfront_txq *txq, struct mbuf *m_head)
 	}
 	BPF_MTAP(ifp, m_head);
 
-	xn_txeof(txq);
+	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+	if_inc_counter(ifp, IFCOUNTER_OBYTES, m_head->m_pkthdr.len);
+	if (m_head->m_flags & M_MCAST)
+		if_inc_counter(ifp, IFCOUNTER_OMCASTS, 1);
 
-	txq->stats.tx_bytes += m_head->m_pkthdr.len;
-	txq->stats.tx_packets++;
+	xn_txeof(txq);
 
 	return (0);
 }
@@ -1760,7 +1734,7 @@ xn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 #ifdef INET
 	struct ifaddr *ifa = (struct ifaddr *)data;
 #endif
-	int mask, error = 0;
+	int mask, error = 0, reinit;
 
 	dev = sc->xbdev;
 
@@ -1809,41 +1783,36 @@ xn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 	case SIOCSIFCAP:
 		mask = ifr->ifr_reqcap ^ ifp->if_capenable;
+		reinit = 0;
+
 		if (mask & IFCAP_TXCSUM) {
-			if (IFCAP_TXCSUM & ifp->if_capenable) {
-				ifp->if_capenable &= ~(IFCAP_TXCSUM|IFCAP_TSO4);
-				ifp->if_hwassist &= ~(CSUM_TCP | CSUM_UDP
-				    | CSUM_IP | CSUM_TSO);
-			} else {
-				ifp->if_capenable |= IFCAP_TXCSUM;
-				ifp->if_hwassist |= (CSUM_TCP | CSUM_UDP
-				    | CSUM_IP);
-			}
-		}
-		if (mask & IFCAP_RXCSUM) {
-			ifp->if_capenable ^= IFCAP_RXCSUM;
+			ifp->if_capenable ^= IFCAP_TXCSUM;
+			ifp->if_hwassist ^= XN_CSUM_FEATURES;
 		}
 		if (mask & IFCAP_TSO4) {
-			if (IFCAP_TSO4 & ifp->if_capenable) {
-				ifp->if_capenable &= ~IFCAP_TSO4;
-				ifp->if_hwassist &= ~CSUM_TSO;
-			} else if (IFCAP_TXCSUM & ifp->if_capenable) {
-				ifp->if_capenable |= IFCAP_TSO4;
-				ifp->if_hwassist |= CSUM_TSO;
-			} else {
-				IPRINTK("Xen requires tx checksum offload"
-				    " be enabled to use TSO\n");
-				error = EINVAL;
-			}
+			ifp->if_capenable ^= IFCAP_TSO4;
+			ifp->if_hwassist ^= CSUM_TSO;
 		}
-		if (mask & IFCAP_LRO) {
-			ifp->if_capenable ^= IFCAP_LRO;
 
+		if (mask & (IFCAP_RXCSUM | IFCAP_LRO)) {
+			/* These Rx features require us to renegotiate. */
+			reinit = 1;
+
+			if (mask & IFCAP_RXCSUM)
+				ifp->if_capenable ^= IFCAP_RXCSUM;
+			if (mask & IFCAP_LRO)
+				ifp->if_capenable ^= IFCAP_LRO;
 		}
+
+		if (reinit == 0)
+			break;
+
 		/*
 		 * We must reset the interface so the backend picks up the
 		 * new features.
 		 */
+		device_printf(sc->xbdev,
+		    "performing interface reset due to feature change\n");
 		XN_LOCK(sc);
 		netfront_carrier_off(sc);
 		sc->xn_reset = true;
@@ -1865,6 +1834,13 @@ xn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		xs_rm(XST_NIL, xenbus_get_node(dev), "feature-gso-tcpv4");
 		xs_rm(XST_NIL, xenbus_get_node(dev), "feature-no-csum-offload");
 		xenbus_set_state(dev, XenbusStateClosing);
+
+		/*
+		 * Wait for the frontend to reconnect before returning
+		 * from the ioctl. 30s should be more than enough for any
+		 * sane backend to reconnect.
+		 */
+		error = tsleep(sc, 0, "xn_rst", 30*hz);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
@@ -1971,6 +1947,7 @@ xn_connect(struct netfront_info *np)
 	 * packets.
 	 */
 	netfront_carrier_on(np);
+	wakeup(np);
 
 	return (0);
 }
@@ -2085,7 +2062,7 @@ xn_configure_features(struct netfront_info *np)
 #endif
 	if ((ifp->if_capabilities & cap_enabled & IFCAP_TXCSUM) != 0) {
 		ifp->if_capenable |= IFCAP_TXCSUM;
-		ifp->if_hwassist |= CSUM_TCP|CSUM_UDP;
+		ifp->if_hwassist |= XN_CSUM_FEATURES;
 	}
 	if ((ifp->if_capabilities & cap_enabled & IFCAP_RXCSUM) != 0)
 		ifp->if_capenable |= IFCAP_RXCSUM;
@@ -2156,6 +2133,9 @@ xn_txq_mq_start(struct ifnet *ifp, struct mbuf *m)
 
 	np = ifp->if_softc;
 	npairs = np->num_queues;
+
+	if (!netfront_carrier_ok(np))
+		return (ENOBUFS);
 
 	KASSERT(npairs != 0, ("called with 0 available queues"));
 

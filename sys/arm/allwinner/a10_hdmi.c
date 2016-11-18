@@ -293,17 +293,17 @@ a10hdmi_attach(device_t dev)
 	}
 
 	/* Setup clocks */
-	error = clk_get_by_ofw_name(dev, "ahb", &sc->clk_ahb);
+	error = clk_get_by_ofw_name(dev, 0, "ahb", &sc->clk_ahb);
 	if (error != 0) {
 		device_printf(dev, "cannot find ahb clock\n");
 		return (error);
 	}
-	error = clk_get_by_ofw_name(dev, "hdmi", &sc->clk_hdmi);
+	error = clk_get_by_ofw_name(dev, 0, "hdmi", &sc->clk_hdmi);
 	if (error != 0) {
 		device_printf(dev, "cannot find hdmi clock\n");
 		return (error);
 	}
-	error = clk_get_by_ofw_name(dev, "lcd", &sc->clk_lcd);
+	error = clk_get_by_ofw_name(dev, 0, "lcd", &sc->clk_lcd);
 	if (error != 0) {
 		device_printf(dev, "cannot find lcd clock\n");
 	}
@@ -581,7 +581,7 @@ a10hdmi_get_tcon_config(struct a10hdmi_softc *sc, int *div, int *dbl)
 	/* Detect LCD CH1 special clock using a 1X or 2X source */
 	/* XXX */
 	pname = clk_get_name(clk_lcd_parent);
-	if (strcmp(pname, "pll3-1x") == 0 || strcmp(pname, "pll7-1x") == 0)
+	if (strcmp(pname, "pll3") == 0 || strcmp(pname, "pll7") == 0)
 		*dbl = 0;
 	else
 		*dbl = 1;

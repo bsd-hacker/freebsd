@@ -135,7 +135,7 @@ static int bd_realstrategy(void *devdata, int flag, daddr_t dblk, size_t offset,
 static int bd_open(struct open_file *f, ...);
 static int bd_close(struct open_file *f);
 static int bd_ioctl(struct open_file *f, u_long cmd, void *data);
-static void bd_print(int verbose);
+static int bd_print(int verbose);
 static void bd_cleanup(void);
 
 #ifdef LOADER_GELI_SUPPORT
@@ -244,6 +244,7 @@ static int
 bd_int13probe(struct bdinfo *bd)
 {
 	struct edd_params params;
+	int ret = 1;	/* assume success */
 
 	v86.ctl = V86_FLAGS;
 	v86.addr = 0x13;
@@ -251,10 +252,13 @@ bd_int13probe(struct bdinfo *bd)
 	v86.edx = bd->bd_unit;
 	v86int();
 
+	/* Don't error out if we get bad sector number, try EDD as well */
 	if (V86_CY(v86.efl) ||	/* carry set */
-	    (v86.ecx & 0x3f) == 0 || /* absurd sector number */
 	    (v86.edx & 0xff) <= (unsigned)(bd->bd_unit & 0x7f))	/* unit # bad */
 		return (0);	/* skip device */
+
+	if ((v86.ecx & 0x3f) == 0) /* absurd sector number */
+		ret = 0;	/* set error */
 
 	/* Convert max cyl # -> # of cylinders */
 	bd->bd_cyl = ((v86.ecx & 0xc0) << 2) + ((v86.ecx & 0xff00) >> 8) + 1;
@@ -280,7 +284,8 @@ bd_int13probe(struct bdinfo *bd)
 	if (V86_CY(v86.efl) ||	/* carry set */
 	    (v86.ebx & 0xffff) != 0xaa55 || /* signature */
 	    (v86.ecx & EDD_INTERFACE_FIXED_DISK) == 0)
-		return (1);
+		return (ret);	/* return code from int13 AH=08 */
+
 	/* EDD supported */
 	bd->bd_flags |= BD_MODEEDD1;
 	if ((v86.eax & 0xff00) >= 0x3000)
@@ -295,30 +300,42 @@ bd_int13probe(struct bdinfo *bd)
 	v86.esi = VTOPOFF(&params);
 	v86int();
 	if (!V86_CY(v86.efl)) {
-		bd->bd_sectors = params.sectors;
+		uint64_t total;
+
+		if (params.sectors != 0)
+			bd->bd_sectors = params.sectors;
+
+		total = (uint64_t)params.cylinders *
+		    params.heads * params.sectors_per_track;
+		if (bd->bd_sectors < total)
+			bd->bd_sectors = total;
+
 		bd->bd_sectorsize = params.sector_size;
+		ret = 1;
 	}
 	DEBUG("unit 0x%x flags %x, sectors %llu, sectorsize %u",
 	    bd->bd_unit, bd->bd_flags, bd->bd_sectors, bd->bd_sectorsize);
-	return (1);
+	return (ret);
 }
 
 /*
  * Print information about disks
  */
-static void
+static int
 bd_print(int verbose)
 {
 	static char line[80];
 	struct disk_devdesc dev;
-	int i;
+	int i, ret = 0;
 
-	pager_open();
 	for (i = 0; i < nbdinfo; i++) {
-		sprintf(line, "    disk%d:   BIOS drive %c:\n", i,
+		snprintf(line, sizeof(line),
+		    "    disk%d:   BIOS drive %c (%ju X %u):\n", i,
 		    (bdinfo[i].bd_unit < 0x80) ? ('A' + bdinfo[i].bd_unit):
-		    ('C' + bdinfo[i].bd_unit - 0x80));
-		if (pager_output(line))
+		    ('C' + bdinfo[i].bd_unit - 0x80),
+		    (uintmax_t)bdinfo[i].bd_sectors,
+		    bdinfo[i].bd_sectorsize);
+		if ((ret = pager_output(line)) != 0)
 			break;
 		dev.d_dev = &biosdisk;
 		dev.d_unit = i;
@@ -329,12 +346,14 @@ bd_print(int verbose)
 		    bdinfo[i].bd_sectorsize,
 		    (bdinfo[i].bd_flags & BD_FLOPPY) ?
 		    DISK_F_NOCACHE: 0) == 0) {
-			sprintf(line, "    disk%d", i);
-			disk_print(&dev, line, verbose);
+			snprintf(line, sizeof(line), "    disk%d", i);
+			ret = disk_print(&dev, line, verbose);
 			disk_close(&dev);
+			if (ret != 0)
+			    return (ret);
 		}
 	}
-	pager_close();
+	return (ret);
 }
 
 /*
@@ -495,7 +514,7 @@ bd_realstrategy(void *devdata, int rw, daddr_t dblk, size_t offset, size_t size,
     char *buf, size_t *rsize)
 {
     struct disk_devdesc *dev = (struct disk_devdesc *)devdata;
-    int			blks;
+    int			blks, remaining;
 #ifdef BD_SUPPORT_FRAGS /* XXX: sector size */
     char		fragbuf[BIOSDISK_SECSIZE];
     size_t		fragsize;
@@ -511,14 +530,15 @@ bd_realstrategy(void *devdata, int rw, daddr_t dblk, size_t offset, size_t size,
     if (rsize)
 	*rsize = 0;
 
-    if (dblk >= BD(dev).bd_sectors) {
-	DEBUG("IO past disk end %llu", (unsigned long long)dblk);
-	return (EIO);
-    }
-
-    if (dblk + blks > BD(dev).bd_sectors) {
-	/* perform partial read */
-	blks = BD(dev).bd_sectors - dblk;
+    /*
+     * Perform partial read to prevent read-ahead crossing
+     * the end of disk - or any 32 bit aliases of the end.
+     * Signed arithmetic is used to handle wrap-around cases
+     * like we do for TCP sequence numbers.
+     */
+    remaining = (int)(BD(dev).bd_sectors - dblk);	/* truncate */
+    if (remaining > 0 && remaining < blks) {
+	blks = remaining;
 	size = blks * BD(dev).bd_sectorsize;
 	DEBUG("short read %d", blks);
     }

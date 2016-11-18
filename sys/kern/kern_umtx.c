@@ -198,7 +198,9 @@ struct umtxq_chain {
 			 PRI_MAX_TIMESHARE : (td)->td_user_pri)
 
 #define	GOLDEN_RATIO_PRIME	2654404609U
+#ifndef	UMTX_CHAINS
 #define	UMTX_CHAINS		512
+#endif
 #define	UMTX_SHIFTS		(__WORD_BIT - 9)
 
 #define	GET_SHARE(flags)	\
@@ -2609,7 +2611,7 @@ do_rw_rdlock(struct thread *td, struct urwlock *rwlock, long fflag, struct _umtx
 	uint32_t flags, wrflags;
 	int32_t state, oldstate;
 	int32_t blocked_readers;
-	int error, rv;
+	int error, error1, rv;
 
 	uq = td->td_umtxq;
 	error = fueword32(&rwlock->rw_flags, &flags);
@@ -2743,9 +2745,12 @@ sleep:
 		suword32(&rwlock->rw_blocked_readers, blocked_readers-1);
 		if (blocked_readers == 1) {
 			rv = fueword32(&rwlock->rw_state, &state);
-			if (rv == -1)
+			if (rv == -1) {
+				umtxq_unbusy_unlocked(&uq->uq_key);
 				error = EFAULT;
-			while (error == 0) {
+				break;
+			}
+			for (;;) {
 				rv = casueword32(&rwlock->rw_state, state,
 				    &oldstate, state & ~URWLOCK_READ_WAITERS);
 				if (rv == -1) {
@@ -2755,7 +2760,12 @@ sleep:
 				if (oldstate == state)
 					break;
 				state = oldstate;
-				error = umtxq_check_susp(td);
+				error1 = umtxq_check_susp(td);
+				if (error1 != 0) {
+					if (error == 0)
+						error = error1;
+					break;
+				}
 			}
 		}
 
@@ -2778,7 +2788,7 @@ do_rw_wrlock(struct thread *td, struct urwlock *rwlock, struct _umtx_time *timeo
 	int32_t state, oldstate;
 	int32_t blocked_writers;
 	int32_t blocked_readers;
-	int error, rv;
+	int error, error1, rv;
 
 	uq = td->td_umtxq;
 	error = fueword32(&rwlock->rw_flags, &flags);
@@ -2924,14 +2934,17 @@ sleep:
 				if (oldstate == state)
 					break;
 				state = oldstate;
-				error = umtxq_check_susp(td);
+				error1 = umtxq_check_susp(td);
 				/*
 				 * We are leaving the URWLOCK_WRITE_WAITERS
 				 * behind, but this should not harm the
 				 * correctness.
 				 */
-				if (error != 0)
+				if (error1 != 0) {
+					if (error == 0)
+						error = error1;
 					break;
+				}
 			}
 			rv = fueword32(&rwlock->rw_blocked_readers,
 			    &blocked_readers);
@@ -3123,7 +3136,6 @@ do_sem_wake(struct thread *td, struct _usem *sem)
 	umtxq_busy(&key);
 	cnt = umtxq_count(&key);
 	if (cnt > 0) {
-		umtxq_signal(&key, 1);
 		/*
 		 * Check if count is greater than 0, this means the memory is
 		 * still being referenced by user code, so we can safely
@@ -3136,6 +3148,7 @@ do_sem_wake(struct thread *td, struct _usem *sem)
 			if (error == -1)
 				error = EFAULT;
 		}
+		umtxq_signal(&key, 1);
 	}
 	umtxq_unbusy(&key);
 	umtxq_unlock(&key);
@@ -3235,8 +3248,6 @@ do_sem2_wake(struct thread *td, struct _usem2 *sem)
 	umtxq_busy(&key);
 	cnt = umtxq_count(&key);
 	if (cnt > 0) {
-		umtxq_signal(&key, 1);
-
 		/*
 		 * If this was the last sleeping thread, clear the waiters
 		 * flag in _count.
@@ -3251,6 +3262,8 @@ do_sem2_wake(struct thread *td, struct _usem2 *sem)
 				error = EFAULT;
 			umtxq_lock(&key);
 		}
+
+		umtxq_signal(&key, 1);
 	}
 	umtxq_unbusy(&key);
 	umtxq_unlock(&key);

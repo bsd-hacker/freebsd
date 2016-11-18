@@ -193,6 +193,12 @@ static em_vendor_info_t em_vendor_info_array[] =
 	{ 0x8086, E1000_DEV_ID_PCH_SPT_I219_V2, PCI_ANY_ID, PCI_ANY_ID, 0},
 	{ 0x8086, E1000_DEV_ID_PCH_LBG_I219_LM3,
 						PCI_ANY_ID, PCI_ANY_ID, 0},
+	{ 0x8086, E1000_DEV_ID_PCH_SPT_I219_LM4,
+						PCI_ANY_ID, PCI_ANY_ID, 0},
+	{ 0x8086, E1000_DEV_ID_PCH_SPT_I219_V4, PCI_ANY_ID, PCI_ANY_ID, 0},
+	{ 0x8086, E1000_DEV_ID_PCH_SPT_I219_LM5,
+						PCI_ANY_ID, PCI_ANY_ID, 0},
+	{ 0x8086, E1000_DEV_ID_PCH_SPT_I219_V5, PCI_ANY_ID, PCI_ANY_ID, 0},
 	/* required last entry */
 	{ 0, 0, 0, 0, 0}
 };
@@ -359,15 +365,9 @@ MODULE_DEPEND(em, netmap, 1, 1, 1);
 
 #define EM_TICKS_TO_USECS(ticks)	((1024 * (ticks) + 500) / 1000)
 #define EM_USECS_TO_TICKS(usecs)	((1000 * (usecs) + 512) / 1024)
-#define M_TSO_LEN			66
 
 #define MAX_INTS_PER_SEC	8000
 #define DEFAULT_ITR		(1000000000/(MAX_INTS_PER_SEC * 256))
-
-/* Allow common code without TSO */
-#ifndef CSUM_TSO
-#define CSUM_TSO	0
-#endif
 
 #define TSO_WORKAROUND	4
 
@@ -1214,7 +1214,8 @@ em_ioctl(if_t ifp, u_long command, caddr_t data)
 		if_setmtu(ifp, ifr->ifr_mtu);
 		adapter->hw.mac.max_frame_size =
 		    if_getmtu(ifp) + ETHER_HDR_LEN + ETHER_CRC_LEN;
-		em_init_locked(adapter);
+		if (if_getdrvflags(ifp) & IFF_DRV_RUNNING)
+			em_init_locked(adapter);
 		EM_CORE_UNLOCK(adapter);
 		break;
 	    }
@@ -1390,15 +1391,9 @@ em_init_locked(struct adapter *adapter)
 	if_clearhwassist(ifp);
 	if (if_getcapenable(ifp) & IFCAP_TXCSUM)
 		if_sethwassistbits(ifp, CSUM_TCP | CSUM_UDP, 0);
-	/* 
-	** There have proven to be problems with TSO when not
-	** at full gigabit speed, so disable the assist automatically
-	** when at lower speeds.  -jfv
-	*/
-	if (if_getcapenable(ifp) & IFCAP_TSO4) {
-		if (adapter->link_speed == SPEED_1000)
-			if_sethwassistbits(ifp, CSUM_TSO, 0);
-	}
+
+	if (if_getcapenable(ifp) & IFCAP_TSO4)
+		if_sethwassistbits(ifp, CSUM_TSO, 0);
 
 	/* Configure for OS presence */
 	em_init_manageability(adapter);
@@ -2406,6 +2401,18 @@ em_update_link_status(struct adapter *adapter)
 	if (link_check && (adapter->link_active == 0)) {
 		e1000_get_speed_and_duplex(hw, &adapter->link_speed,
 		    &adapter->link_duplex);
+		/* 
+		** There have proven to be problems with TSO when not
+		** at full gigabit speed, so disable the assist automatically
+		** when at lower speeds.  -jfv
+		*/
+		if (adapter->link_speed != SPEED_1000) {
+			if_sethwassistbits(ifp, 0, CSUM_TSO);
+			if_setcapenablebit(ifp, 0, IFCAP_TSO4);
+        		if_setcapabilitiesbit(ifp, 0, IFCAP_TSO4);
+
+		}
+
 		/* Check if we must disable SPEED_MODE bit on PCI-E */
 		if ((adapter->link_speed != SPEED_1000) &&
 		    ((hw->mac.type == e1000_82571) ||
@@ -4391,6 +4398,7 @@ em_setup_receive_ring(struct rx_ring *rxr)
 
 			addr = PNMB(na, slot + si, &paddr);
 			netmap_load_map(na, rxr->rxtag, rxbuf->map, addr);
+			rxbuf->paddr = paddr;
 			em_setup_rxdesc(&rxr->rx_base[j], rxbuf);
 			continue;
 		}
@@ -5266,6 +5274,8 @@ em_get_wakeup(device_t dev)
 	case e1000_ich10lan:
 	case e1000_pchlan:
 	case e1000_pch2lan:
+	case e1000_pch_lpt:
+	case e1000_pch_spt:
 		apme_mask = E1000_WUC_APME;
 		adapter->has_amt = TRUE;
 		eeprom_data = E1000_READ_REG(&adapter->hw, E1000_WUC);
@@ -5314,7 +5324,7 @@ em_enable_wakeup(device_t dev)
 {
 	struct adapter	*adapter = device_get_softc(dev);
 	if_t ifp = adapter->ifp;
-	u32		pmc, ctrl, ctrl_ext, rctl;
+	u32		pmc, ctrl, ctrl_ext, rctl, wuc;
 	u16     	status;
 
 	if ((pci_find_cap(dev, PCIY_PMG, &pmc) != 0))
@@ -5324,7 +5334,9 @@ em_enable_wakeup(device_t dev)
 	ctrl = E1000_READ_REG(&adapter->hw, E1000_CTRL);
 	ctrl |= (E1000_CTRL_SWDPIN2 | E1000_CTRL_SWDPIN3);
 	E1000_WRITE_REG(&adapter->hw, E1000_CTRL, ctrl);
-	E1000_WRITE_REG(&adapter->hw, E1000_WUC, E1000_WUC_PME_EN);
+	wuc = E1000_READ_REG(&adapter->hw, E1000_WUC);
+	wuc |= E1000_WUC_PME_EN;
+ 	E1000_WRITE_REG(&adapter->hw, E1000_WUC, wuc);
 
 	if ((adapter->hw.mac.type == e1000_ich8lan) ||
 	    (adapter->hw.mac.type == e1000_pchlan) ||
@@ -5355,8 +5367,10 @@ em_enable_wakeup(device_t dev)
 		E1000_WRITE_REG(&adapter->hw, E1000_RCTL, rctl);
 	}
 
-	if ((adapter->hw.mac.type == e1000_pchlan) ||
-	    (adapter->hw.mac.type == e1000_pch2lan)) {
+	if ((adapter->hw.mac.type == e1000_pchlan)  ||
+	    (adapter->hw.mac.type == e1000_pch2lan) ||
+	    (adapter->hw.mac.type == e1000_pch_lpt) ||
+	    (adapter->hw.mac.type == e1000_pch_spt)) {
 		if (em_enable_phy_wakeup(adapter))
 			return;
 	} else {

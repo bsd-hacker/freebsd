@@ -17,6 +17,7 @@ SRCS+=	__getosreldate.c \
 	assert.c \
 	auxv.c \
 	basename.c \
+	basename_compat.c \
 	cap_sandboxed.c \
 	check_utility_compat.c \
 	clock.c \
@@ -29,6 +30,7 @@ SRCS+=	__getosreldate.c \
 	devname.c \
 	dirfd.c \
 	dirname.c \
+	dirname_compat.c \
 	disklabel.c \
 	dlfcn.c \
 	drand48.c \
@@ -390,6 +392,7 @@ MLINKS+=getgrent.3 endgrent.3 \
 	getgrent.3 getgrgid_r.3
 MLINKS+=gethostname.3 sethostname.3
 MLINKS+=getnetgrent.3 endnetgrent.3 \
+	getnetgrent.3 getnetgrent_r.3 \
 	getnetgrent.3 innetgr.3 \
 	getnetgrent.3 setnetgrent.3
 MLINKS+=getprogname.3 setprogname.3

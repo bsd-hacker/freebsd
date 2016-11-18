@@ -75,7 +75,7 @@ static int	pxe_strategy(void *devdata, int flag, daddr_t dblk,
 			     size_t offset, size_t size, char *buf, size_t *rsize);
 static int	pxe_open(struct open_file *f, ...);
 static int	pxe_close(struct open_file *f);
-static void	pxe_print(int verbose);
+static int	pxe_print(int verbose);
 static void	pxe_cleanup(void);
 static void	pxe_setnfshandle(char *rootpath);
 
@@ -288,10 +288,15 @@ pxe_open(struct open_file *f, ...)
 		bootp(pxe_sock, BOOTP_PXE);
 		if (rootip.s_addr == 0)
 			rootip.s_addr = bootplayer.sip;
-#ifdef LOADER_NFS_SUPPORT
-		if (!rootpath[0])
+
+		netproto = NET_NFS;
+		if (tftpip.s_addr != 0) {
+			netproto = NET_TFTP;
+			rootip.s_addr = tftpip.s_addr;
+		}
+
+		if (netproto == NET_NFS && !rootpath[0])
 			strcpy(rootpath, PXENFSROOTPATH);
-#endif
 
 		for (i = 0; rootpath[i] != '\0' && i < FNAME_SIZE; i++)
 			if (rootpath[i] == ':')
@@ -306,6 +311,7 @@ pxe_open(struct open_file *f, ...)
 		setenv("boot.netif.ip", inet_ntoa(myip), 1);
 		setenv("boot.netif.netmask", intoa(netmask), 1);
 		setenv("boot.netif.gateway", inet_ntoa(gateip), 1);
+		setenv("boot.netif.server", inet_ntoa(rootip), 1);
 		if (bootplayer.Hardware == ETHER_TYPE) {
 		    sprintf(temp, "%6D", bootplayer.CAddr, ":");
 		    setenv("boot.netif.hwaddr", temp, 1);
@@ -315,17 +321,17 @@ pxe_open(struct open_file *f, ...)
 			sprintf(mtu, "%u", intf_mtu);
 			setenv("boot.netif.mtu", mtu, 1);
 		}
-#ifdef LOADER_NFS_SUPPORT
 		printf("pxe_open: server addr: %s\n", inet_ntoa(rootip));
 		printf("pxe_open: server path: %s\n", rootpath);
 		printf("pxe_open: gateway ip:  %s\n", inet_ntoa(gateip));
 
-		setenv("boot.nfsroot.server", inet_ntoa(rootip), 1);
-		setenv("boot.nfsroot.path", rootpath, 1);
-#else
-		setenv("boot.netif.server", inet_ntoa(rootip), 1);
-		setenv("boot.tftproot.path", rootpath, 1);
-#endif
+		if (netproto == NET_TFTP) {
+			setenv("boot.tftproot.server", inet_ntoa(rootip), 1);
+			setenv("boot.tftproot.path", rootpath, 1);
+		} else if (netproto == NET_NFS) {
+			setenv("boot.nfsroot.server", inet_ntoa(rootip), 1);
+			setenv("boot.nfsroot.path", rootpath, 1);
+		}
 		setenv("dhcp.host-name", hostname, 1);
 
 		setenv("pxeboot.ip", inet_ntoa(myip), 1);
@@ -359,10 +365,10 @@ pxe_close(struct open_file *f)
     if (pxe_opens > 0)
 	return(0);
 
-#ifdef LOADER_NFS_SUPPORT
-    /* get an NFS filehandle for our root filesystem */
-    pxe_setnfshandle(rootpath);
-#endif
+    if (netproto == NET_NFS) {
+	/* get an NFS filehandle for our root filesystem */
+	pxe_setnfshandle(rootpath);
+    }
 
     if (pxe_sock >= 0) {
 
@@ -376,14 +382,20 @@ pxe_close(struct open_file *f)
     return (0);
 }
 
-static void
+static int
 pxe_print(int verbose)
 {
-
+	char line[255];
 	if (pxe_call == NULL)
-		return;
+		return (0);
 
-	printf("    pxe0:    %s:%s\n", inet_ntoa(rootip), rootpath);
+	if (verbose) {
+		snprintf(line, sizeof(line), "    pxe0:    %s:%s\n",
+		    inet_ntoa(rootip), rootpath);
+	} else {
+		snprintf(line, sizeof(line), "    pxe0:\n");
+	}
+	return (pager_output(line));
 }
 
 static void
@@ -422,7 +434,6 @@ pxe_perror(int err)
 	return;
 }
 
-#ifdef LOADER_NFS_SUPPORT
 /*
  * Reach inside the libstand NFS code and dig out an NFS handle
  * for the root filesystem.
@@ -533,7 +544,6 @@ pxe_setnfshandle(char *rootpath)
 	setenv("boot.nfsroot.nfshandlelen", buf, 1);
 }
 #endif	/* OLD_NFSV2 */
-#endif /* LOADER_NFS_SUPPORT */
 
 void
 pxenv_call(int func)
@@ -583,7 +593,7 @@ bangpxe_call(int func)
 
 
 time_t
-getsecs()
+getsecs(void)
 {
 	time_t n = 0;
 	time(&n);

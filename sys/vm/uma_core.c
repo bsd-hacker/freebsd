@@ -845,8 +845,7 @@ static void
 keg_drain(uma_keg_t keg)
 {
 	struct slabhead freeslabs = { 0 };
-	uma_slab_t slab;
-	uma_slab_t n;
+	uma_slab_t slab, tmp;
 
 	/*
 	 * We don't want to take pages from statically allocated kegs at this
@@ -862,15 +861,10 @@ keg_drain(uma_keg_t keg)
 	if (keg->uk_free == 0)
 		goto finished;
 
-	slab = LIST_FIRST(&keg->uk_free_slab);
-	while (slab) {
-		n = LIST_NEXT(slab, us_link);
-
-		/* We have no where to free these to */
-		if (slab->us_flags & UMA_SLAB_BOOT) {
-			slab = n;
+	LIST_FOREACH_SAFE(slab, &keg->uk_free_slab, us_link, tmp) {
+		/* We have nowhere to free these to. */
+		if (slab->us_flags & UMA_SLAB_BOOT)
 			continue;
-		}
 
 		LIST_REMOVE(slab, us_link);
 		keg->uk_pages -= keg->uk_ppera;
@@ -880,8 +874,6 @@ keg_drain(uma_keg_t keg)
 			UMA_HASH_REMOVE(&keg->uk_hash, slab, slab->us_data);
 
 		SLIST_INSERT_HEAD(&freeslabs, slab, us_hlink);
-
-		slab = n;
 	}
 finished:
 	KEG_UNLOCK(keg);
@@ -1227,7 +1219,7 @@ keg_small_init(uma_keg_t keg)
 	u_int shsize;
 
 	if (keg->uk_flags & UMA_ZONE_PCPU) {
-		u_int ncpus = mp_ncpus ? mp_ncpus : MAXCPU;
+		u_int ncpus = (mp_maxid + 1) ? (mp_maxid + 1) : MAXCPU;
 
 		keg->uk_slabsize = sizeof(struct pcpu);
 		keg->uk_ppera = howmany(ncpus * sizeof(struct pcpu),
@@ -2744,6 +2736,8 @@ zfree_start:
 		goto zfree_start;
 	}
 	cache->uc_freebucket = NULL;
+	/* We are no longer associated with this CPU. */
+	critical_exit();
 
 	/* Can we throw this on the zone full list? */
 	if (bucket != NULL) {
@@ -2755,9 +2749,6 @@ zfree_start:
 		    ("uma_zfree: Attempting to insert an empty bucket onto the full list.\n"));
 		LIST_INSERT_HEAD(&zone->uz_buckets, bucket, ub_link);
 	}
-
-	/* We are no longer associated with this CPU. */
-	critical_exit();
 
 	/*
 	 * We bump the uz count when the cache size is insufficient to
@@ -3265,9 +3256,10 @@ uma_large_free(uma_slab_t slab)
 static void
 uma_zero_item(void *item, uma_zone_t zone)
 {
+	int i;
 
 	if (zone->uz_flags & UMA_ZONE_PCPU) {
-		for (int i = 0; i < mp_ncpus; i++)
+		CPU_FOREACH(i)
 			bzero(zpcpu_get_cpu(item, i), zone->uz_size);
 	} else
 		bzero(item, zone->uz_size);

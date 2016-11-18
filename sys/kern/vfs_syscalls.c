@@ -15,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -446,16 +446,19 @@ kern_getfsstat(struct thread *td, struct statfs **buf, size_t bufsize,
     size_t *countp, enum uio_seg bufseg, int flags)
 {
 	struct mount *mp, *nmp;
-	struct statfs *sfsp, *sp, sb;
+	struct statfs *sfsp, *sp, sb, *tofree;
 	size_t count, maxcount;
 	int error;
 
+restart:
 	maxcount = bufsize / sizeof(struct statfs);
-	if (bufsize == 0)
+	if (bufsize == 0) {
 		sfsp = NULL;
-	else if (bufseg == UIO_USERSPACE)
+		tofree = NULL;
+	} else if (bufseg == UIO_USERSPACE) {
 		sfsp = *buf;
-	else /* if (bufseg == UIO_SYSSPACE) */ {
+		tofree = NULL;
+	} else /* if (bufseg == UIO_SYSSPACE) */ {
 		count = 0;
 		mtx_lock(&mountlist_mtx);
 		TAILQ_FOREACH(mp, &mountlist, mnt_list) {
@@ -464,8 +467,8 @@ kern_getfsstat(struct thread *td, struct statfs **buf, size_t bufsize,
 		mtx_unlock(&mountlist_mtx);
 		if (maxcount > count)
 			maxcount = count;
-		sfsp = *buf = malloc(maxcount * sizeof(struct statfs), M_TEMP,
-		    M_WAITOK);
+		tofree = sfsp = *buf = malloc(maxcount * sizeof(struct statfs),
+		    M_TEMP, M_WAITOK);
 	}
 	count = 0;
 	mtx_lock(&mountlist_mtx);
@@ -480,9 +483,24 @@ kern_getfsstat(struct thread *td, struct statfs **buf, size_t bufsize,
 			continue;
 		}
 #endif
-		if (vfs_busy(mp, MBF_NOWAIT | MBF_MNTLSTLOCK)) {
-			nmp = TAILQ_NEXT(mp, mnt_list);
-			continue;
+		if (flags == MNT_WAIT) {
+			if (vfs_busy(mp, MBF_MNTLSTLOCK) != 0) {
+				/*
+				 * If vfs_busy() failed, and MBF_NOWAIT
+				 * wasn't passed, then the mp is gone.
+				 * Furthermore, because of MBF_MNTLSTLOCK,
+				 * the mountlist_mtx was dropped.  We have
+				 * no other choice than to start over.
+				 */
+				mtx_unlock(&mountlist_mtx);
+				free(tofree, M_TEMP);
+				goto restart;
+			}
+		} else {
+			if (vfs_busy(mp, MBF_NOWAIT | MBF_MNTLSTLOCK) != 0) {
+				nmp = TAILQ_NEXT(mp, mnt_list);
+				continue;
+			}
 		}
 		if (sfsp && count < maxcount) {
 			sp = &mp->mnt_stat;
@@ -495,16 +513,16 @@ kern_getfsstat(struct thread *td, struct statfs **buf, size_t bufsize,
 			sp->f_flags = mp->mnt_flag & MNT_VISFLAGMASK;
 			/*
 			 * If MNT_NOWAIT or MNT_LAZY is specified, do not
-			 * refresh the fsstat cache. MNT_NOWAIT or MNT_LAZY
-			 * overrides MNT_WAIT.
+			 * refresh the fsstat cache.
 			 */
-			if (((flags & (MNT_LAZY|MNT_NOWAIT)) == 0 ||
-			    (flags & MNT_WAIT)) &&
-			    (error = VFS_STATFS(mp, sp))) {
-				mtx_lock(&mountlist_mtx);
-				nmp = TAILQ_NEXT(mp, mnt_list);
-				vfs_unbusy(mp);
-				continue;
+			if (flags != MNT_LAZY && flags != MNT_NOWAIT) {
+				error = VFS_STATFS(mp, sp);
+				if (error != 0) {
+					mtx_lock(&mountlist_mtx);
+					nmp = TAILQ_NEXT(mp, mnt_list);
+					vfs_unbusy(mp);
+					continue;
+				}
 			}
 			if (priv_check(td, PRIV_VFS_GENERATION)) {
 				bcopy(sp, &sb, sizeof(sb));
@@ -942,6 +960,7 @@ int
 sys_openat(struct thread *td, struct openat_args *uap)
 {
 
+	AUDIT_ARG_FD(uap->fd);
 	return (kern_openat(td, uap->fd, uap->path, UIO_USERSPACE, uap->flag,
 	    uap->mode));
 }
@@ -962,7 +981,6 @@ kern_openat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 
 	AUDIT_ARG_FFLAGS(flags);
 	AUDIT_ARG_MODE(mode);
-	/* XXX: audit dirfd */
 	cap_rights_init(&rights, CAP_LOOKUP);
 	flags_to_rights(flags, &rights);
 	/*
@@ -1012,7 +1030,7 @@ kern_openat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 		 * understand exactly what would happen, and we don't think
 		 * that it ever should.
 		 */
-		if (nd.ni_strictrelative == 0 &&
+		if ((nd.ni_lcf & NI_LCF_STRICTRELATIVE) == 0 &&
 		    (error == ENODEV || error == ENXIO) &&
 		    td->td_dupfd >= 0) {
 			error = dupfdopen(td, fdp, td->td_dupfd, flags, error,
@@ -1058,7 +1076,7 @@ success:
 		struct filecaps *fcaps;
 
 #ifdef CAPABILITIES
-		if (nd.ni_strictrelative == 1)
+		if ((nd.ni_lcf & NI_LCF_STRICTRELATIVE) != 0)
 			fcaps = &nd.ni_filecaps;
 		else
 #endif
@@ -1167,6 +1185,8 @@ kern_mknodat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 	case S_IFCHR:
 	case S_IFBLK:
 		error = priv_check(td, PRIV_VFS_MKNOD_DEV);
+		if (error == 0 && dev == VNOVAL)
+			error = EINVAL;
 		break;
 	case S_IFMT:
 		error = priv_check(td, PRIV_VFS_MKNOD_BAD);
@@ -3352,20 +3372,8 @@ freebsd6_ftruncate(struct thread *td, struct freebsd6_ftruncate_args *uap)
 }
 #endif
 
-/*
- * Sync an open file.
- */
-#ifndef _SYS_SYSPROTO_H_
-struct fsync_args {
-	int	fd;
-};
-#endif
 int
-sys_fsync(td, uap)
-	struct thread *td;
-	struct fsync_args /* {
-		int fd;
-	} */ *uap;
+kern_fsync(struct thread *td, int fd, bool fullsync)
 {
 	struct vnode *vp;
 	struct mount *mp;
@@ -3373,11 +3381,15 @@ sys_fsync(td, uap)
 	cap_rights_t rights;
 	int error, lock_flags;
 
-	AUDIT_ARG_FD(uap->fd);
-	error = getvnode(td, uap->fd, cap_rights_init(&rights, CAP_FSYNC), &fp);
+	AUDIT_ARG_FD(fd);
+	error = getvnode(td, fd, cap_rights_init(&rights, CAP_FSYNC), &fp);
 	if (error != 0)
 		return (error);
 	vp = fp->f_vnode;
+#if 0
+	if (!fullsync)
+		/* XXXKIB: compete outstanding aio writes */;
+#endif
 	error = vn_start_write(vp, &mp, V_WAIT | PCATCH);
 	if (error != 0)
 		goto drop;
@@ -3394,13 +3406,34 @@ sys_fsync(td, uap)
 		vm_object_page_clean(vp->v_object, 0, 0, 0);
 		VM_OBJECT_WUNLOCK(vp->v_object);
 	}
-	error = VOP_FSYNC(vp, MNT_WAIT, td);
-
+	error = fullsync ? VOP_FSYNC(vp, MNT_WAIT, td) : VOP_FDATASYNC(vp, td);
 	VOP_UNLOCK(vp, 0);
 	vn_finished_write(mp);
 drop:
 	fdrop(fp, td);
 	return (error);
+}
+
+/*
+ * Sync an open file.
+ */
+#ifndef _SYS_SYSPROTO_H_
+struct fsync_args {
+	int	fd;
+};
+#endif
+int
+sys_fsync(struct thread *td, struct fsync_args *uap)
+{
+
+	return (kern_fsync(td, uap->fd, true));
+}
+
+int
+sys_fdatasync(struct thread *td, struct fdatasync_args *uap)
+{
+
+	return (kern_fsync(td, uap->fd, false));
 }
 
 /*

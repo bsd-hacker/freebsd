@@ -334,7 +334,7 @@ vnet_route_uninit(const void *unused __unused)
 	free(V_rt_tables, M_RTABLE);
 	uma_zdestroy(V_rtzone);
 }
-VNET_SYSUNINIT(vnet_route_uninit, SI_SUB_PROTO_DOMAIN, SI_ORDER_THIRD,
+VNET_SYSUNINIT(vnet_route_uninit, SI_SUB_PROTO_DOMAIN, SI_ORDER_FIRST,
     vnet_route_uninit, 0);
 #endif
 
@@ -352,7 +352,7 @@ rt_table_init(int offset)
 	rh->head.rnh_masks = &rh->rmhead;
 
 	/* Init locks */
-	rw_init(&rh->rib_lock, "rib head lock");
+	RIB_LOCK_INIT(rh);
 
 	/* Finally, set base callbacks */
 	rh->rnh_addaddr = rn_addroute;
@@ -384,7 +384,7 @@ rt_table_destroy(struct rib_head *rh)
 	rn_walktree(&rh->rmhead.head, rt_freeentry, &rh->rmhead.head);
 
 	/* Assume table is already empty */
-	rw_destroy(&rh->rib_lock);
+	RIB_LOCK_DESTROY(rh);
 	free(rh, M_RTABLE);
 }
 

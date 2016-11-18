@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <err.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -223,8 +224,10 @@ add_threads(struct trussinfo *info, struct procinfo *p)
 		t = new_thread(p, lwps[i]);
 		if (ptrace(PT_LWPINFO, lwps[i], (caddr_t)&pl, sizeof(pl)) == -1)
 			err(1, "ptrace(PT_LWPINFO)");
-		if (pl.pl_flags & PL_FLAG_SCE)
+		if (pl.pl_flags & PL_FLAG_SCE) {
+			info->curthread = t;
 			enter_syscall(info, t, &pl);
+		}
 	}
 	free(lwps);
 }
@@ -589,14 +592,15 @@ static void
 report_signal(struct trussinfo *info, siginfo_t *si)
 {
 	struct threadinfo *t;
-	char *signame;
+	const char *signame;
 
 	t = info->curthread;
 	clock_gettime(CLOCK_REALTIME, &t->after);
 	print_line_prefix(info);
-	signame = strsig(si->si_status);
-	fprintf(info->outfile, "SIGNAL %u (%s)\n", si->si_status,
-	    signame == NULL ? "?" : signame);
+	signame = sysdecode_signal(si->si_status);
+	if (signame == NULL)
+		signame = "?";
+	fprintf(info->outfile, "SIGNAL %u (%s)\n", si->si_status, signame);
 }
 
 /*

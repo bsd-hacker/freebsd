@@ -186,7 +186,7 @@ tcp_tw_init(void)
 {
 
 	V_tcptw_zone = uma_zcreate("tcptw", sizeof(struct tcptw),
-	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_NOFREE);
+	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, 0);
 	TUNABLE_INT_FETCH("net.inet.tcp.maxtcptw", &maxtcptw);
 	if (maxtcptw == 0)
 		uma_zone_set_max(V_tcptw_zone, tcptw_auto_size());
@@ -230,6 +230,10 @@ tcp_twstart(struct tcpcb *tp)
 
 	INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 	INP_WLOCK_ASSERT(inp);
+
+	/* A dropped inp should never transition to TIME_WAIT state. */
+	KASSERT((inp->inp_flags & INP_DROPPED) == 0, ("tcp_twstart: "
+	    "(inp->inp_flags & INP_DROPPED) != 0"));
 
 	if (V_nolocaltimewait) {
 		int error = 0;

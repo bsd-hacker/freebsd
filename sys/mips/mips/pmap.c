@@ -74,11 +74,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/rwlock.h>
 #include <sys/sched.h>
-#ifdef SMP
 #include <sys/smp.h>
-#else
-#include <sys/cpuset.h>
-#endif
 #include <sys/sysctl.h>
 #include <sys/vmmeter.h>
 
@@ -2558,24 +2554,6 @@ pmap_zero_page_area(vm_page_t m, int off, int size)
 	}
 }
 
-void
-pmap_zero_page_idle(vm_page_t m)
-{
-	vm_offset_t va;
-	vm_paddr_t phys = VM_PAGE_TO_PHYS(m);
-
-	if (MIPS_DIRECT_MAPPABLE(phys)) {
-		va = MIPS_PHYS_TO_DIRECT(phys);
-		bzero((caddr_t)va, PAGE_SIZE);
-		mips_dcache_wbinv_range(va, PAGE_SIZE);
-	} else {
-		va = pmap_lmem_map1(phys);
-		bzero((caddr_t)va, PAGE_SIZE);
-		mips_dcache_wbinv_range(va, PAGE_SIZE);
-		pmap_lmem_unmap();
-	}
-}
-
 /*
  *	pmap_copy_page copies the specified (machine independent)
  *	page by mapping the page into virtual memory and using
@@ -3284,9 +3262,19 @@ pmap_activate(struct thread *td)
 	critical_exit();
 }
 
+static void
+pmap_sync_icache_one(void *arg __unused)
+{
+
+	mips_icache_sync_all();
+	mips_dcache_wbinv_all();
+}
+
 void
 pmap_sync_icache(pmap_t pm, vm_offset_t va, vm_size_t sz)
 {
+
+	smp_rendezvous(NULL, pmap_sync_icache_one, NULL, NULL);
 }
 
 /*

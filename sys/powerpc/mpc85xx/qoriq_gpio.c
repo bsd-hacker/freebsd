@@ -173,7 +173,7 @@ qoriq_gpio_pin_set(device_t dev, uint32_t pin, unsigned int value)
 	outvals = bus_read_4(sc->sc_mem, GPIO_GPDAT);
 	outvals &= ~(1 << pinbit);
 	outvals |= (value << pinbit);
-	bus_write_4(sc->sc_mem, 0, outvals);
+	bus_write_4(sc->sc_mem, GPIO_GPDAT, outvals);
 
 	GPIO_UNLOCK(sc);
 
@@ -208,7 +208,7 @@ qoriq_gpio_pin_toggle(device_t dev, uint32_t pin)
 
 	val = bus_read_4(sc->sc_mem, GPIO_GPDAT);
 	val ^= (1 << (31 - pin));
-	bus_write_4(sc->sc_mem, 0, val);
+	bus_write_4(sc->sc_mem, GPIO_GPDAT, val);
 	
 	GPIO_UNLOCK(sc);
 
@@ -220,6 +220,7 @@ qoriq_gpio_probe(device_t dev)
 {
 
 	if (!ofw_bus_is_compatible(dev, "fsl,qoriq-gpio") &&
+	    !ofw_bus_is_compatible(dev, "fsl,pq3-gpio") &&
 	    !ofw_bus_is_compatible(dev, "fsl,mpc8572-gpio"))
 		return (ENXIO);
 

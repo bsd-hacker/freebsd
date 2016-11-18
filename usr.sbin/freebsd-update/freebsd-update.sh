@@ -953,7 +953,7 @@ fetch_pick_server_init () {
 # "$name server selection ..."; we allow either format.
 	MLIST="_http._tcp.${SERVERNAME}"
 	host -t srv "${MLIST}" |
-	    sed -nE "s/${MLIST} (has SRV record|server selection) //p" |
+	    sed -nE "s/${MLIST} (has SRV record|server selection) //Ip" |
 	    cut -f 1,2,4 -d ' ' |
 	    sed -e 's/\.$//' |
 	    sort > serverlist_full
@@ -1250,7 +1250,7 @@ fetch_metadata_sanity () {
 
 	# Check that the first four fields make sense.
 	if gunzip -c < files/$1.gz |
-	    grep -qvE "^[a-z]+\|[0-9a-z]+\|${P}+\|[fdL-]\|"; then
+	    grep -qvE "^[a-z]+\|[0-9a-z-]+\|${P}+\|[fdL-]\|"; then
 		fetch_metadata_bogus ""
 		return 1
 	fi
@@ -2380,7 +2380,7 @@ upgrade_merge () {
 				cp merge/old/${F} merge/new/${F}
 				;;
 			*)
-				if ! merge -p -L "current version"	\
+				if ! diff3 -E -m -L "current version"	\
 				    -L "${OLDRELNUM}" -L "${RELNUM}"	\
 				    merge/old/${F}			\
 				    merge/${OLDRELNUM}/${F}		\

@@ -254,6 +254,36 @@ enum tokens {
 	TOK_UNLOCK,
 	TOK_VLIST,
 	TOK_OLIST,
+
+	/* NAT64 tokens */
+	TOK_NAT64STL,
+	TOK_NAT64LSN,
+	TOK_STATS,
+	TOK_STATES,
+	TOK_CONFIG,
+	TOK_TABLE4,
+	TOK_TABLE6,
+	TOK_PREFIX4,
+	TOK_PREFIX6,
+	TOK_AGG_LEN,
+	TOK_AGG_COUNT,
+	TOK_MAX_PORTS,
+	TOK_JMAXLEN,
+	TOK_PORT_RANGE,
+	TOK_HOST_DEL_AGE,
+	TOK_PG_DEL_AGE,
+	TOK_TCP_SYN_AGE,
+	TOK_TCP_CLOSE_AGE,
+	TOK_TCP_EST_AGE,
+	TOK_UDP_AGE,
+	TOK_ICMP_AGE,
+	TOK_LOGOFF,
+
+	/* NPTv6 tokens */
+	TOK_NPTV6,
+	TOK_INTPREFIX,
+	TOK_EXTPREFIX,
+	TOK_PREFIXLEN,
 };
 
 /*
@@ -340,6 +370,9 @@ void ipfw_flush(int force);
 void ipfw_zero(int ac, char *av[], int optname);
 void ipfw_list(int ac, char *av[], int show_counters);
 void ipfw_internal_handler(int ac, char *av[]);
+void ipfw_nat64lsn_handler(int ac, char *av[]);
+void ipfw_nat64stl_handler(int ac, char *av[]);
+void ipfw_nptv6_handler(int ac, char *av[]);
 int ipfw_check_object_name(const char *name);
 
 #ifdef PF
@@ -363,17 +396,28 @@ void print_flow6id(struct buf_pr *bp, struct _ipfw_insn_u32 *cmd);
 void print_icmp6types(struct buf_pr *bp, struct _ipfw_insn_u32 *cmd);
 void print_ext6hdr(struct buf_pr *bp, struct _ipfw_insn *cmd );
 
-struct _ipfw_insn *add_srcip6(struct _ipfw_insn *cmd, char *av, int cblen);
-struct _ipfw_insn *add_dstip6(struct _ipfw_insn *cmd, char *av, int cblen);
+struct tidx;
+struct _ipfw_insn *add_srcip6(struct _ipfw_insn *cmd, char *av, int cblen,
+    struct tidx *tstate);
+struct _ipfw_insn *add_dstip6(struct _ipfw_insn *cmd, char *av, int cblen,
+    struct tidx *tstate);
 
 void fill_flow6(struct _ipfw_insn_u32 *cmd, char *av, int cblen);
 void fill_unreach6_code(u_short *codep, char *str);
 void fill_icmp6types(struct _ipfw_insn_icmp6 *cmd, char *av, int cblen);
 int fill_ext6hdr(struct _ipfw_insn *cmd, char *av);
 
+/* ipfw2.c */
+void bp_flush(struct buf_pr *b);
+void fill_table(struct _ipfw_insn *cmd, char *av, uint8_t opcode,
+    struct tidx *tstate);
+
 /* tables.c */
 struct _ipfw_obj_ctlv;
+struct _ipfw_obj_ntlv;
 int table_check_name(const char *tablename);
 void ipfw_list_ta(int ac, char *av[]);
 void ipfw_list_values(int ac, char *av[]);
+void table_fill_ntlv(struct _ipfw_obj_ntlv *ntlv, const char *name,
+    uint8_t set, uint16_t uidx);
 

@@ -926,8 +926,7 @@ adaclose(struct disk *dp)
 
 		if (error != 0)
 			xpt_print(periph->path, "Synchronize cache failed\n");
-		else
-			softc->flags &= ~ADA_FLAG_DIRTY;
+		softc->flags &= ~ADA_FLAG_DIRTY;
 		xpt_release_ccb(ccb);
 		cam_periph_unhold(periph);
 	}
@@ -1774,6 +1773,8 @@ adaregister(struct cam_periph *periph, void *arg)
 		softc->disk->d_flags |= DISKFLAG_UNMAPPED_BIO;
 		softc->unmappedio = 1;
 	}
+	if (cpi.hba_misc & PIM_ATA_EXT)
+		softc->flags |= ADA_FLAG_PIM_ATA_EXT;
 	strlcpy(softc->disk->d_descr, cgd->ident_data.model,
 	    MIN(sizeof(softc->disk->d_descr), sizeof(cgd->ident_data.model)));
 	strlcpy(softc->disk->d_ident, cgd->ident_data.serial,

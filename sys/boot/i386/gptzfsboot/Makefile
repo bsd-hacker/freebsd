@@ -2,7 +2,7 @@
 
 .PATH:		${.CURDIR}/../boot2 ${.CURDIR}/../gptboot \
 		${.CURDIR}/../zfsboot ${.CURDIR}/../common \
-		${.CURDIR}/../../common
+		${.CURDIR}/../../common ${.CURDIR}/../../../crypto/skein
 
 FILES=		gptzfsboot
 MAN=		gptzfsboot.8
@@ -19,7 +19,7 @@ ORG2=	0x0
 
 CFLAGS=	-DBOOTPROG=\"gptzfsboot\" \
 	-O1 \
-	-DGPT -DBOOT2 \
+	-DGPT -DZFS -DBOOT2 \
 	-DSIOPRT=${BOOT_COMCONSOLE_PORT} \
 	-DSIOFMT=${B2SIOFMT} \
 	-DSIOSPD=${BOOT_COMCONSOLE_SPEED} \
@@ -27,13 +27,17 @@ CFLAGS=	-DBOOTPROG=\"gptzfsboot\" \
 	-I${.CURDIR}/../common \
 	-I${.CURDIR}/../../zfs \
 	-I${.CURDIR}/../../../cddl/boot/zfs \
+	-I${.CURDIR}/../../../crypto/skein \
 	-I${.CURDIR}/../btx/lib -I. \
 	-I${.CURDIR}/../boot2 \
 	-I${.CURDIR}/../../.. \
-	-Wall -Waggregate-return -Wbad-function-cast -Wcast-align \
+	-Wall -Waggregate-return -Wbad-function-cast -Wno-cast-align \
 	-Wmissing-declarations -Wmissing-prototypes -Wnested-externs \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
-	-Winline
+	-Winline -Wno-tentative-definition-incomplete-type -Wno-pointer-sign
+
+# Do not unroll skein loops, reduce code size
+CFLAGS+=	-DSKEIN_LOOP=111
 
 .if !defined(LOADER_NO_GELI_SUPPORT)
 CFLAGS+=	-DLOADER_GELI_SUPPORT
@@ -45,7 +49,7 @@ OPENCRYPTO_XTS=	xform_aes_xts.o
 
 CFLAGS.gcc+=	--param max-inline-insns-single=100
 
-LD_FLAGS=-static -N --gc-sections
+LD_FLAGS=${LD_FLAGS_BIN}
 
 LIBSTAND=	${.OBJDIR}/../../libstand32/libstand.a
 
@@ -67,13 +71,14 @@ gptldr.out: gptldr.o
 	${LD} ${LD_FLAGS} -e start -Ttext ${ORG1} -o ${.TARGET} gptldr.o
 
 CLEANFILES+=	gptzfsboot.bin gptzfsboot.out zfsboot.o sio.o cons.o \
-		drv.o gpt.o util.o ${OPENCRYPTO_XTS}
+		drv.o gpt.o util.o skein.o skein_block.o ${OPENCRYPTO_XTS}
 
 gptzfsboot.bin: gptzfsboot.out
 	${OBJCOPY} -S -O binary gptzfsboot.out ${.TARGET}
 
-gptzfsboot.out: ${BTXCRT} zfsboot.o sio.o gpt.o drv.o cons.o util.o ${OPENCRYPTO_XTS}
-	${LD} ${LD_FLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC} ${LIBSTAND} ${LIBGELIBOOT}
+gptzfsboot.out: ${BTXCRT} zfsboot.o sio.o gpt.o drv.o cons.o util.o \
+	skein.o skein_block.o ${OPENCRYPTO_XTS}
+	${LD} ${LD_FLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC} ${LIBGELIBOOT} ${LIBSTAND}
 
 zfsboot.o: ${.CURDIR}/../../zfs/zfsimpl.c
 

@@ -32,7 +32,7 @@
 #include "file.h"
 
 #ifndef	lint
-FILE_RCSID("@(#)$File: file.c,v 1.170 2016/03/31 17:51:12 christos Exp $")
+FILE_RCSID("@(#)$File: file.c,v 1.172 2016/10/24 15:21:07 christos Exp $")
 #endif	/* lint */
 
 #include "magic.h"
@@ -351,9 +351,10 @@ main(int argc, char *argv[])
 		if (c == -1) {
 			(void)fprintf(stderr, "%s: %s\n", progname,
 			    magic_error(magic));
-			return 1;
+			e = 1;
+			goto out;
 		}
-		return 0;
+		goto out;
 	default:
 		if (magic == NULL)
 			if ((magic = load(magicfile, flags)) == NULL)
@@ -383,6 +384,7 @@ main(int argc, char *argv[])
 			e |= process(magic, argv[optind], wid);
 	}
 
+out:
 	if (magic)
 		magic_close(magic);
 	return e;
@@ -429,6 +431,8 @@ private struct magic_set *
 load(const char *magicfile, int flags)
 {
 	struct magic_set *magic = magic_open(flags);
+	const char *e;
+
 	if (magic == NULL) {
 		(void)fprintf(stderr, "%s: %s\n", progname, strerror(errno));
 		return NULL;
@@ -439,6 +443,8 @@ load(const char *magicfile, int flags)
 		magic_close(magic);
 		return NULL;
 	}
+	if ((e = magic_error(magic)) != NULL)
+		(void)fprintf(stderr, "%s: Warning: %s\n", progname, e);
 	return magic;
 }
 

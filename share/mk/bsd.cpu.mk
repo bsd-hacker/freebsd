@@ -137,6 +137,8 @@ _CPUCFLAGS = -Wa,-me500 -msoft-float
 .  else
 _CPUCFLAGS = -mcpu=${CPUTYPE} -mno-powerpc64
 .  endif
+. elif ${MACHINE_ARCH} == "powerpcspe"
+_CPUCFLAGS = -Wa,-me500 -mspe=yes -mabi=spe -mfloat-gprs=double
 . elif ${MACHINE_ARCH} == "powerpc64"
 _CPUCFLAGS = -mcpu=${CPUTYPE}
 . elif ${MACHINE_CPUARCH} == "mips"
@@ -153,8 +155,6 @@ _CPUCFLAGS = -march=${CPUTYPE}
 #	sb1, xlp, xlr
 _CPUCFLAGS = -march=${CPUTYPE:S/^mips//}
 . endif
-. elif ${MACHINE_CPUARCH} == "riscv"
-_CPUCFLAGS = -msoft-float # -march="RV64I" # RISCVTODO
 . elif ${MACHINE_ARCH} == "sparc64"
 .  if ${CPUTYPE} == "v9"
 _CPUCFLAGS = -mcpu=v9
@@ -301,6 +301,22 @@ MACHINE_CPU = v9 ultrasparc ultrasparc3
 
 .if ${MACHINE_CPUARCH} == "mips"
 CFLAGS += -G0
+. if ${MACHINE_ARCH:Mmips*el*} != ""
+ACFLAGS += -EL
+AFLAGS += -EL
+CFLAGS += -EL
+LDFLAGS += -EL
+. else
+ACFLAGS += -EB
+AFLAGS += -EB
+CFLAGS += -EB
+LDFLAGS += -EB
+. endif
+. if ${MACHINE_ARCH:Mmips*hf}
+CFLAGS += -mhard-float
+. else
+CFLAGS += -msoft-float
+. endif
 .endif
 
 ########## arm
@@ -327,8 +343,15 @@ CFLAGS += -mfloat-abi=softfp
 .endif
 .endif
 
+.if ${MACHINE_ARCH} == "powerpcspe"
+CFLAGS += -mcpu=8540 -Wa,-me500 -mspe=yes -mabi=spe -mfloat-gprs=double
+.endif
+
 .if ${MACHINE_CPUARCH} == "riscv"
-CFLAGS += -msoft-float
+.if ${TARGET_ARCH:Mriscv*sf}
+CFLAGS += -mno-float
+ACFLAGS += -mno-float
+.endif
 .endif
 
 # NB: COPTFLAGS is handled in /usr/src/sys/conf/kern.pre.mk

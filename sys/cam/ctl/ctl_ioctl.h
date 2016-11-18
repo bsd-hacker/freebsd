@@ -317,20 +317,20 @@ typedef enum {
  *
  * flags:	Flags for the parameter, see above for values.
  *
- * vallen:	Length of the value in bytes.
+ * vallen:	Length of the value in bytes, including the terminating NUL.
  *
- * value:	Value to be set/fetched.
+ * value:	Value to be set/fetched. This must be NUL-terminated.
  *
  * kname:	For kernel use only.
  *
  * kvalue:	For kernel use only.
  */
 struct ctl_be_arg {
-	int	namelen;
-	char	*name;
-	int	flags;
-	int	vallen;
-	void	*value;
+	unsigned int	namelen;
+	char		*name;
+	int		flags;
+	unsigned int	vallen;
+	void		*value;
 
 	char	*kname;
 	void	*kvalue;
@@ -622,7 +622,7 @@ struct ctl_iscsi_handoff_params {
 	char			target_name[CTL_ISCSI_NAME_LEN];
 	int			socket;
 	int			portal_group_tag;
-	
+
 	/*
 	 * Connection parameters negotiated by ctld(8).
 	 */
@@ -630,17 +630,17 @@ struct ctl_iscsi_handoff_params {
 	ctl_iscsi_digest	data_digest;
 	uint32_t		cmdsn;
 	uint32_t		statsn;
-	uint32_t		max_recv_data_segment_length;
-	uint32_t		max_burst_length;
-	uint32_t		first_burst_length;
+	int			max_recv_data_segment_length;
+	int			max_burst_length;
+	int			first_burst_length;
 	uint32_t		immediate_data;
 	char			offload[CTL_ISCSI_OFFLOAD_LEN];
 #ifdef ICL_KERNEL_PROXY
 	int			connection_id;
-	int			spare[1];
 #else
-	int			spare[2];
+	int			spare;
 #endif
+	int			max_send_data_segment_length;
 };
 
 struct ctl_iscsi_list_params {
@@ -671,11 +671,15 @@ struct ctl_iscsi_terminate_params {
 };
 
 struct ctl_iscsi_limits_params {
+	/* passed to kernel */
 	char			offload[CTL_ISCSI_OFFLOAD_LEN];
-						/* passed to kernel */
-	size_t			data_segment_limit;
-						/* passed to userland */
-	int			spare[4];
+
+	/* passed to userland */
+	size_t			spare;
+	int			max_recv_data_segment_length;
+	int			max_send_data_segment_length;
+	int			max_burst_length;
+	int			first_burst_length;
 };
 
 #ifdef ICL_KERNEL_PROXY

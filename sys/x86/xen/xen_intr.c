@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/interrupt.h>
 #include <sys/pcpu.h>
 #include <sys/smp.h>
+#include <sys/refcount.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
@@ -128,9 +129,8 @@ struct xenisrc {
 	u_int		xi_activehi:1;
 	u_int		xi_edgetrigger:1;
 	u_int		xi_masked:1;
+	volatile u_int	xi_refcount;
 };
-
-#define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
 
 static void	xen_intr_suspend(struct pic *);
 static void	xen_intr_resume(struct pic *, bool suspend_cancelled);
@@ -345,10 +345,8 @@ xen_intr_release_isrc(struct xenisrc *isrc)
 {
 
 	mtx_lock(&xen_intr_isrc_lock);
-	if (isrc->xi_intsrc.is_handlers != 0) {
-		mtx_unlock(&xen_intr_isrc_lock);
-		return (EBUSY);
-	}
+	KASSERT(isrc->xi_intsrc.is_handlers == 0,
+	    ("Release called, but xenisrc still in use"));
 	evtchn_mask_port(isrc->xi_port);
 	evtchn_clear_port(isrc->xi_port);
 
@@ -419,10 +417,11 @@ xen_intr_bind_isrc(struct xenisrc **isrcp, evtchn_port_t local_port,
 	}
 	isrc->xi_port = local_port;
 	xen_intr_port_to_isrc[local_port] = isrc;
+	refcount_init(&isrc->xi_refcount, 1);
 	mtx_unlock(&xen_intr_isrc_lock);
 
 	/* Assign the opaque handler (the event channel port) */
-	*port_handlep = &isrc->xi_port;
+	*port_handlep = &isrc->xi_vector;
 
 #ifdef SMP
 	if (type == EVTCHN_TYPE_PORT) {
@@ -468,16 +467,17 @@ xen_intr_bind_isrc(struct xenisrc **isrcp, evtchn_port_t local_port,
 static struct xenisrc *
 xen_intr_isrc(xen_intr_handle_t handle)
 {
-	evtchn_port_t port;
+	int vector;
 
 	if (handle == NULL)
 		return (NULL);
 
-	port = *(evtchn_port_t *)handle;
-	if (!is_valid_evtchn(port) || port >= NR_EVENT_CHANNELS)
-		return (NULL);
+	vector = *(int *)handle;
+	KASSERT(vector >= FIRST_EVTCHN_INT &&
+	    vector < (FIRST_EVTCHN_INT + xen_intr_auto_vector_count),
+	    ("Xen interrupt vector is out of range"));
 
-	return (xen_intr_port_to_isrc[port]);
+	return ((struct xenisrc *)intr_lookup_source(vector));
 }
 
 /**
@@ -780,10 +780,6 @@ xen_intr_resume(struct pic *unused, bool suspend_cancelled)
 				xen_rebind_virq(isrc);
 				break;
 			default:
-				intr_remove_handler(isrc->xi_cookie);
-				isrc->xi_cpu = 0;
-				isrc->xi_type = EVTCHN_TYPE_UNBOUND;
-				isrc->xi_cookie = NULL;
 				break;
 			}
 		}
@@ -944,7 +940,7 @@ xen_intr_disable_source(struct intsrc *base_isrc, int eoi)
 	/*
 	 * NB: checking if the event channel is already masked is
 	 * needed because the event channel user-space device
-	 * masks event channels on it's filter as part of it's
+	 * masks event channels on its filter as part of its
 	 * normal operation, and those shouldn't be automatically
 	 * unmasked by the generic interrupt code. The event channel
 	 * device will unmask them when needed.
@@ -1513,6 +1509,13 @@ xen_intr_unbind(xen_intr_handle_t *port_handlep)
 	if (isrc == NULL)
 		return;
 
+	mtx_lock(&xen_intr_isrc_lock);
+	if (refcount_release(&isrc->xi_refcount) == 0) {
+		mtx_unlock(&xen_intr_isrc_lock);
+		return;
+	}
+	mtx_unlock(&xen_intr_isrc_lock);
+
 	if (isrc->xi_cookie != NULL)
 		intr_remove_handler(isrc->xi_cookie);
 	xen_intr_release_isrc(isrc);
@@ -1566,6 +1569,31 @@ xen_intr_add_handler(device_t dev, driver_filter_t filter,
 	}
 
 	return (error);
+}
+
+int
+xen_intr_get_evtchn_from_port(evtchn_port_t port, xen_intr_handle_t *handlep)
+{
+
+	if (!is_valid_evtchn(port) || port >= NR_EVENT_CHANNELS)
+		return (EINVAL);
+
+	if (handlep == NULL) {
+		return (EINVAL);
+	}
+
+	mtx_lock(&xen_intr_isrc_lock);
+	if (xen_intr_port_to_isrc[port] == NULL) {
+		mtx_unlock(&xen_intr_isrc_lock);
+		return (EINVAL);
+	}
+	refcount_acquire(&xen_intr_port_to_isrc[port]->xi_refcount);
+	mtx_unlock(&xen_intr_isrc_lock);
+
+	/* Assign the opaque handler (the event channel port) */
+	*handlep = &xen_intr_port_to_isrc[port]->xi_vector;
+
+	return (0);
 }
 
 #ifdef DDB

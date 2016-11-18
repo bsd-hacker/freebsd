@@ -884,8 +884,10 @@ write_hierarchy(struct bsdtar *bsdtar, struct archive *a, const char *path)
 		else if (r != ARCHIVE_OK) {
 			lafe_warnc(archive_errno(disk),
 			    "%s", archive_error_string(disk));
-			if (r == ARCHIVE_FATAL) {
+			if (r == ARCHIVE_FATAL || r == ARCHIVE_FAILED) {
 				bsdtar->return_value = 1;
+				archive_entry_free(entry);
+				archive_read_close(disk);
 				return;
 			} else if (r < ARCHIVE_WARN)
 				continue;

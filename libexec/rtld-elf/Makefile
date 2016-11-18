@@ -2,7 +2,7 @@
 
 # Use the following command to build local debug version of dynamic
 # linker:
-# make DEBUG_FLAGS=-g DEBUG=-DDEBUG MK_TESTS=no all
+# make DEBUG_FLAGS=-g DEBUG=-DDEBUG WITHOUT_TESTS=yes all
 
 .include <src.opts.mk>
 PACKAGE=	clibs
@@ -47,7 +47,7 @@ CFLAGS+=	-DPIC $(DEBUG)
 .if ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386"
 CFLAGS+=	-fvisibility=hidden
 .endif
-LDFLAGS+=	-shared -Wl,-Bsymbolic
+LDFLAGS+=	-shared -Wl,-Bsymbolic -Wl,-z,defs
 LIBADD=		c_pic
 .if ${MK_TOOLCHAIN} == "no"
 LDFLAGS+=	-L${LIBCDIR}
@@ -68,8 +68,6 @@ VERSION_DEF=	${LIBCSRCDIR}/Versions.def
 SYMBOL_MAPS=	${.CURDIR}/Symbol.map
 VERSION_MAP=	Version.map
 LDFLAGS+=	-Wl,--version-script=${VERSION_MAP}
-
-${PROG}:	${VERSION_MAP}
 
 .if exists(${.CURDIR}/${RTLD_ARCH}/Symbol.map)
 SYMBOL_MAPS+=	${.CURDIR}/${RTLD_ARCH}/Symbol.map
@@ -92,4 +90,5 @@ SUBDIR+=	tests
 .endif
 
 .include <bsd.prog.mk>
+${PROG_FULL}:	${VERSION_MAP}
 .include <bsd.symver.mk>

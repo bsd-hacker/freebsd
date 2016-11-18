@@ -1373,8 +1373,10 @@ mpr_get_tunables(struct mpr_softc *sc)
 	sc->disable_msix = 0;
 	sc->disable_msi = 0;
 	sc->max_chains = MPR_CHAIN_FRAMES;
+	sc->max_io_pages = MPR_MAXIO_PAGES;
 	sc->enable_ssu = MPR_SSU_ENABLE_SSD_DISABLE_HDD;
 	sc->spinup_wait_time = DEFAULT_SPINUP_WAIT;
+	sc->use_phynum = 1;
 
 	/*
 	 * Grab the global variables.
@@ -1383,8 +1385,10 @@ mpr_get_tunables(struct mpr_softc *sc)
 	TUNABLE_INT_FETCH("hw.mpr.disable_msix", &sc->disable_msix);
 	TUNABLE_INT_FETCH("hw.mpr.disable_msi", &sc->disable_msi);
 	TUNABLE_INT_FETCH("hw.mpr.max_chains", &sc->max_chains);
+	TUNABLE_INT_FETCH("hw.mpr.max_io_pages", &sc->max_io_pages);
 	TUNABLE_INT_FETCH("hw.mpr.enable_ssu", &sc->enable_ssu);
 	TUNABLE_INT_FETCH("hw.mpr.spinup_wait_time", &sc->spinup_wait_time);
+	TUNABLE_INT_FETCH("hw.mpr.use_phy_num", &sc->use_phynum);
 
 	/* Grab the unit-instance variables */
 	snprintf(tmpstr, sizeof(tmpstr), "dev.mpr.%d.debug_level",
@@ -1403,6 +1407,10 @@ mpr_get_tunables(struct mpr_softc *sc)
 	    device_get_unit(sc->mpr_dev));
 	TUNABLE_INT_FETCH(tmpstr, &sc->max_chains);
 
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mpr.%d.max_io_pages",
+	    device_get_unit(sc->mpr_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->max_io_pages);
+
 	bzero(sc->exclude_ids, sizeof(sc->exclude_ids));
 	snprintf(tmpstr, sizeof(tmpstr), "dev.mpr.%d.exclude_ids",
 	    device_get_unit(sc->mpr_dev));
@@ -1415,6 +1423,10 @@ mpr_get_tunables(struct mpr_softc *sc)
 	snprintf(tmpstr, sizeof(tmpstr), "dev.mpr.%d.spinup_wait_time",
 	    device_get_unit(sc->mpr_dev));
 	TUNABLE_INT_FETCH(tmpstr, &sc->spinup_wait_time);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mpr.%d.use_phy_num",
+	    device_get_unit(sc->mpr_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->use_phynum);
 }
 
 static void
@@ -1488,6 +1500,11 @@ mpr_setup_sysctl(struct mpr_softc *sc)
 	    &sc->max_chains, 0,"maximum chain frames that will be allocated");
 
 	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
+	    OID_AUTO, "max_io_pages", CTLFLAG_RD,
+	    &sc->max_io_pages, 0,"maximum pages to allow per I/O (if <1 use "
+	    "IOCFacts)");
+
+	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
 	    OID_AUTO, "enable_ssu", CTLFLAG_RW, &sc->enable_ssu, 0,
 	    "enable SSU to SATA SSD/HDD at shutdown");
 
@@ -1499,6 +1516,10 @@ mpr_setup_sysctl(struct mpr_softc *sc)
 	    OID_AUTO, "spinup_wait_time", CTLFLAG_RD,
 	    &sc->spinup_wait_time, DEFAULT_SPINUP_WAIT, "seconds to wait for "
 	    "spinup after SATA ID error");
+
+	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
+	    OID_AUTO, "use_phy_num", CTLFLAG_RD, &sc->use_phynum, 0,
+	    "Use the phy number for enumeration");
 }
 
 int

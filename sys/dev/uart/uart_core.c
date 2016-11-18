@@ -97,15 +97,19 @@ uart_pps_print_mode(struct uart_softc *sc)
 {
 
 	device_printf(sc->sc_dev, "PPS capture mode: ");
-	switch(sc->sc_pps_mode) {
+	switch(sc->sc_pps_mode & UART_PPS_SIGNAL_MASK) {
 	case UART_PPS_DISABLED:
 		printf("disabled");
+		break;
 	case UART_PPS_CTS:
 		printf("CTS");
+		break;
 	case UART_PPS_DCD:
 		printf("DCD");
+		break;
 	default:
 		printf("invalid");
+		break;
 	}
 	if (sc->sc_pps_mode & UART_PPS_INVERT_PULSE)
 		printf("-Inverted");
@@ -569,7 +573,7 @@ uart_bus_attach(device_t dev)
 	 * the device.
 	 */
 	sc0 = device_get_softc(dev);
-	if (sc0->sc_class->size > sizeof(*sc)) {
+	if (sc0->sc_class->size > device_get_driver(dev)->size) {
 		sc = malloc(sc0->sc_class->size, M_UART, M_WAITOK|M_ZERO);
 		bcopy(sc0, sc, sizeof(*sc));
 		device_set_softc(dev, sc);
@@ -777,11 +781,10 @@ uart_bus_detach(device_t dev)
 
 	mtx_destroy(&sc->sc_hwmtx_s);
 
-	if (sc->sc_class->size > sizeof(*sc)) {
+	if (sc->sc_class->size > device_get_driver(dev)->size) {
 		device_set_softc(dev, NULL);
 		free(sc, M_UART);
-	} else
-		device_set_softc(dev, NULL);
+	}
 
 	return (0);
 }

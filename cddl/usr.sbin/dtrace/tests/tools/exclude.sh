@@ -27,7 +27,6 @@ exclude()
 }
 
 exclude EXFAIL common/aggs/tst.subr.d
-exclude EXFAIL common/dtraceUtil/tst.DataModel32.d.ksh
 exclude EXFAIL common/dtraceUtil/tst.ELFGenerationOut.d.ksh
 exclude EXFAIL common/dtraceUtil/tst.ELFGenerationWithO.d.ksh
 exclude EXFAIL common/funcs/tst.copyin.d
@@ -73,6 +72,7 @@ exclude EXFAIL common/mib/tst.udp.ksh
 exclude SKIP common/privs/tst.fds.ksh
 exclude SKIP common/privs/tst.func_access.ksh
 exclude SKIP common/privs/tst.getf.ksh
+exclude SKIP common/privs/tst.kpriv.ksh
 exclude SKIP common/privs/tst.op_access.ksh
 exclude SKIP common/privs/tst.procpriv.ksh
 exclude SKIP common/privs/tst.providers.ksh

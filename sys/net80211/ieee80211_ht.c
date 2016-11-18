@@ -582,7 +582,13 @@ ieee80211_ampdu_rx_start_ext(struct ieee80211_node *ni, int tid, int seq, int ba
 	memset(rap, 0, sizeof(*rap));
 	rap->rxa_wnd = (baw== 0) ?
 	    IEEE80211_AGGR_BAWMAX : min(baw, IEEE80211_AGGR_BAWMAX);
-	rap->rxa_start = seq;
+	if (seq == -1) {
+		/* Wait for the first RX frame, use that as BAW */
+		rap->rxa_start = 0;
+		rap->rxa_flags |= IEEE80211_AGGR_WAITRX;
+	} else {
+		rap->rxa_start = seq;
+	}
 	rap->rxa_flags |=  IEEE80211_AGGR_RUNNING | IEEE80211_AGGR_XCHGPEND;
 
 	IEEE80211_NOTE(ni->ni_vap, IEEE80211_MSG_11N, ni,
@@ -597,6 +603,19 @@ ieee80211_ampdu_rx_start_ext(struct ieee80211_node *ni, int tid, int seq, int ba
 }
 
 /*
+ * Public function; manually stop the RX AMPDU state.
+ */
+void
+ieee80211_ampdu_rx_stop_ext(struct ieee80211_node *ni, int tid)
+{
+	struct ieee80211_rx_ampdu *rap;
+
+	/* XXX TODO: sanity check tid, seq, baw */
+	rap = &ni->ni_rx_ampdu[tid];
+	ampdu_rx_stop(ni, rap);
+}
+
+/*
  * Stop A-MPDU rx processing for the specified TID.
  */
 static void
@@ -604,7 +623,9 @@ ampdu_rx_stop(struct ieee80211_node *ni, struct ieee80211_rx_ampdu *rap)
 {
 
 	ampdu_rx_purge(rap);
-	rap->rxa_flags &= ~(IEEE80211_AGGR_RUNNING | IEEE80211_AGGR_XCHGPEND);
+	rap->rxa_flags &= ~(IEEE80211_AGGR_RUNNING
+	    | IEEE80211_AGGR_XCHGPEND
+	    | IEEE80211_AGGR_WAITRX);
 }
 
 /*
@@ -779,8 +800,6 @@ ampdu_rx_flush_upto(struct ieee80211_node *ni,
 int
 ieee80211_ampdu_reorder(struct ieee80211_node *ni, struct mbuf *m)
 {
-#define	IEEE80211_FC0_QOSDATA \
-	(IEEE80211_FC0_TYPE_DATA|IEEE80211_FC0_SUBTYPE_QOS|IEEE80211_FC0_VERSION_0)
 #define	PROCESS		0	/* caller should process frame */
 #define	CONSUMED	1	/* frame consumed, caller does nothing */
 	struct ieee80211vap *vap = ni->ni_vap;
@@ -831,6 +850,16 @@ ieee80211_ampdu_reorder(struct ieee80211_node *ni, struct mbuf *m)
 	}
 	rxseq >>= IEEE80211_SEQ_SEQ_SHIFT;
 	rap->rxa_nframes++;
+
+	/*
+	 * Handle waiting for the first frame to define the BAW.
+	 * Some firmware doesn't provide the RX of the starting point
+	 * of the BAW and we have to cope.
+	 */
+	if (rap->rxa_flags & IEEE80211_AGGR_WAITRX) {
+		rap->rxa_flags &= ~IEEE80211_AGGR_WAITRX;
+		rap->rxa_start = rxseq;
+	}
 again:
 	if (rxseq == rap->rxa_start) {
 		/*
@@ -966,7 +995,6 @@ again:
 	}
 #undef CONSUMED
 #undef PROCESS
-#undef IEEE80211_FC0_QOSDATA
 }
 
 /*
@@ -2843,6 +2871,96 @@ ieee80211_add_htcap(uint8_t *frm, struct ieee80211_node *ni)
 	frm[0] = IEEE80211_ELEMID_HTCAP;
 	frm[1] = sizeof(struct ieee80211_ie_htcap) - 2;
 	return ieee80211_add_htcap_body(frm + 2, ni);
+}
+
+/*
+ * Non-associated probe request - add HT capabilities based on
+ * the current channel configuration.
+ */
+static uint8_t *
+ieee80211_add_htcap_body_ch(uint8_t *frm, struct ieee80211vap *vap,
+    struct ieee80211_channel *c)
+{
+#define	ADDSHORT(frm, v) do {			\
+	frm[0] = (v) & 0xff;			\
+	frm[1] = (v) >> 8;			\
+	frm += 2;				\
+} while (0)
+	struct ieee80211com *ic = vap->iv_ic;
+	uint16_t caps, extcaps;
+	int rxmax, density;
+
+	/* HT capabilities */
+	caps = vap->iv_htcaps & 0xffff;
+
+	/*
+	 * We don't use this in STA mode; only in IBSS mode.
+	 * So in IBSS mode we base our HTCAP flags on the
+	 * given channel.
+	 */
+
+	/* override 20/40 use based on current channel */
+	if (IEEE80211_IS_CHAN_HT40(c))
+		caps |= IEEE80211_HTCAP_CHWIDTH40;
+	else
+		caps &= ~IEEE80211_HTCAP_CHWIDTH40;
+
+	/* Use the currently configured values */
+	rxmax = vap->iv_ampdu_rxmax;
+	density = vap->iv_ampdu_density;
+
+	/* adjust short GI based on channel and config */
+	if ((vap->iv_flags_ht & IEEE80211_FHT_SHORTGI20) == 0)
+		caps &= ~IEEE80211_HTCAP_SHORTGI20;
+	if ((vap->iv_flags_ht & IEEE80211_FHT_SHORTGI40) == 0 ||
+	    (caps & IEEE80211_HTCAP_CHWIDTH40) == 0)
+		caps &= ~IEEE80211_HTCAP_SHORTGI40;
+	ADDSHORT(frm, caps);
+
+	/* HT parameters */
+	*frm = SM(rxmax, IEEE80211_HTCAP_MAXRXAMPDU)
+	     | SM(density, IEEE80211_HTCAP_MPDUDENSITY)
+	     ;
+	frm++;
+
+	/* pre-zero remainder of ie */
+	memset(frm, 0, sizeof(struct ieee80211_ie_htcap) - 
+		__offsetof(struct ieee80211_ie_htcap, hc_mcsset));
+
+	/* supported MCS set */
+	/*
+	 * XXX: For sta mode the rate set should be restricted based
+	 * on the AP's capabilities, but ni_htrates isn't setup when
+	 * we're called to form an AssocReq frame so for now we're
+	 * restricted to the device capabilities.
+	 */
+	ieee80211_set_mcsset(ic, frm);
+
+	frm += __offsetof(struct ieee80211_ie_htcap, hc_extcap) -
+		__offsetof(struct ieee80211_ie_htcap, hc_mcsset);
+
+	/* HT extended capabilities */
+	extcaps = vap->iv_htextcaps & 0xffff;
+
+	ADDSHORT(frm, extcaps);
+
+	frm += sizeof(struct ieee80211_ie_htcap) -
+		__offsetof(struct ieee80211_ie_htcap, hc_txbf);
+
+	return frm;
+#undef ADDSHORT
+}
+
+/*
+ * Add 802.11n HT capabilities information element
+ */
+uint8_t *
+ieee80211_add_htcap_ch(uint8_t *frm, struct ieee80211vap *vap,
+    struct ieee80211_channel *c)
+{
+	frm[0] = IEEE80211_ELEMID_HTCAP;
+	frm[1] = sizeof(struct ieee80211_ie_htcap) - 2;
+	return ieee80211_add_htcap_body_ch(frm + 2, vap, c);
 }
 
 /*

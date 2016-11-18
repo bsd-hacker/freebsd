@@ -201,12 +201,12 @@ sub callback_ampm {
 	my $s = shift;
 	my $nl = $callback{data}{l} . "_" . $callback{data}{c};
 	my $enc = $callback{data}{e};
-	my  $converter = Text::Iconv->new("utf-8", "$enc");
 
 	if ($nl eq 'ru_RU') {
 		if ($enc eq 'UTF-8') {
 			$s = 'дп;пп';
 		} else {
+			my  $converter = Text::Iconv->new("utf-8", "$enc");
 			$s = $converter->convert("дп;пп");
 		}
 	}
@@ -217,9 +217,13 @@ sub callback_cformat {
 	my $s = shift;
 	my $nl = $callback{data}{l} . "_" . $callback{data}{c};
 
+	if ($nl eq 'ko_KR') {
+		$s =~ s/(> )(%p)/$1%A $2/;
+	}
 	$s =~ s/\.,/\./;
 	$s =~ s/ %Z//;
 	$s =~ s/ %z//;
+	$s =~ s/^"%e\./%A %e/;
 	$s =~ s/^"(%B %e, )/"%A, $1/;
 	$s =~ s/^"(%e %B )/"%A $1/;
 	return $s;
@@ -239,8 +243,14 @@ sub callback_dtformat {
 
 	if ($nl eq 'ja_JP') {
 		$s =~ s/(> )(%H)/$1%A $2/;
+	} elsif ($nl eq 'ko_KR' || $nl eq 'zh_CN' || $nl eq 'zh_TW') {
+		if ($nl ne 'ko_KR') {
+			$s =~ s/%m/%_m/;
+		}
+		$s =~ s/(> )(%p)/$1%A $2/;
 	}
 	$s =~ s/\.,/\./;
+	$s =~ s/^"%e\./%A %e/;
 	$s =~ s/^"(%B %e, )/"%A, $1/;
 	$s =~ s/^"(%e %B )/"%A $1/;
 	return $s;
@@ -595,8 +605,8 @@ sub get_fields {
 					$line =~ s/^$k\s+//;
 				}
 
-				$values{$l}{$c}{$k} = ""
-					if (!defined $values{$l}{$c}{$k});
+				$values{$l}{$f}{$c}{$k} = ""
+					if (!defined $values{$l}{$f}{$c}{$k});
 
 				$continue = ($line =~ /\/$/);
 				$line =~ s/\/$// if ($continue);
@@ -606,7 +616,7 @@ sub get_fields {
 					    s/\<([^>_]+)_([^>]+)\>/<$1 $2>/;
 				}
 				die "_ in data - $line" if ($line =~ /_/);
-				$values{$l}{$c}{$k} .= $line;
+				$values{$l}{$f}{$c}{$k} .= $line;
 
 				last if (!$continue);
 			}
@@ -723,7 +733,7 @@ sub print_fields {
 # -----------------------------------------------------------------------------
 EOF
 			foreach my $k (keys(%keys)) {
-				my $f = $keys{$k};
+				my $g = $keys{$k};
 
 				die("Unknown $k in \%DESC")
 					if (!defined $DESC{$k});
@@ -731,37 +741,38 @@ EOF
 				$output .= "#\n# $DESC{$k}\n";
 
 				# Replace one row with another
-				if ($f =~ /^>/) {
-					$k = substr($f, 1);
-					$f = $keys{$k};
+				if ($g =~ /^>/) {
+					$k = substr($g, 1);
+					$g = $keys{$k};
 				}
 
 				# Callback function
-				if ($f =~ /^\</) {
+				if ($g =~ /^\</) {
 					$callback{data}{c} = $c;
 					$callback{data}{k} = $k;
+					$callback{data}{f} = $f;
 					$callback{data}{l} = $l;
 					$callback{data}{e} = $enc;
-					my @a = split(/\</, substr($f, 1));
+					my @a = split(/\</, substr($g, 1));
 					my $rv =
-					    &{$callback{$a[0]}}($values{$l}{$c}{$a[1]});
-					$values{$l}{$c}{$k} = $rv;
-					$f = $a[2];
+					    &{$callback{$a[0]}}($values{$l}{$f}{$c}{$a[1]});
+					$values{$l}{$f}{$c}{$k} = $rv;
+					$g = $a[2];
 					$callback{data} = ();
 				}
 
-				my $v = $values{$l}{$c}{$k};
+				my $v = $values{$l}{$f}{$c}{$k};
 				$v = "undef" if (!defined $v);
 
-				if ($f eq "i") {
+				if ($g eq "i") {
 					$output .= "$v\n";
 					next;
 				}
-				if ($f eq "ai") {
+				if ($g eq "ai") {
 					$output .= "$v\n";
 					next;
 				}
-				if ($f eq "s") {
+				if ($g eq "s") {
 					$v =~ s/^"//;
 					$v =~ s/"$//;
 					my $cm = "";
@@ -785,7 +796,7 @@ EOF
 					$output .= "$v\n";
 					next;
 				}
-				if ($f eq "as") {
+				if ($g eq "as") {
 					foreach my $v (split(/;/, $v)) {
 						$v =~ s/^"//;
 						$v =~ s/"$//;
@@ -815,7 +826,7 @@ EOF
 					next;
 				}
 
-				die("$k is '$f'");
+				die("$k is '$g'");
 
 			}
 
@@ -847,7 +858,7 @@ sub make_makefile {
 	my $MAPLOC;
 	if ($TYPE eq "colldef") {
 		$SRCOUT = "localedef -D -U -i \${.IMPSRC} \\\n" .
-			"\t-f \${MAPLOC}/map.\${.TARGET:T:R:E} " .
+			"\t-f \${MAPLOC}/map.\${.TARGET:T:R:E:C/@.*//} " .
 			"\${.OBJDIR}/\${.IMPSRC:T:R}";
 		$MAPLOC = "MAPLOC=\t\t\${.CURDIR}/../../tools/tools/" .
 				"locale/etc/final-maps\n";
@@ -858,7 +869,7 @@ sub make_makefile {
 			"FILESDIR_\$t.LC_COLLATE=\t\${LOCALEDIR}/\$t\n" .
 			"\$t.LC_COLLATE: \${.CURDIR}/\$f.src\n" .
 			"\tlocaledef -D -U -i \${.ALLSRC} \\\n" .
-			"\t\t-f \${MAPLOC}/map.\${.TARGET:T:R:E} \\\n" .
+			"\t\t-f \${MAPLOC}/map.\${.TARGET:T:R:E:C/@.*//} \\\n" .
 			"\t\t\${.OBJDIR}/\${.TARGET:T:R}\n" .
 			".endfor\n\n";
 		$SRCOUT4 = "## LOCALES_MAPPED\n";

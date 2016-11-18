@@ -42,7 +42,9 @@ static const char sccsid[] = "@(#)tr.c	8.2 (Berkeley) 5/4/95";
 #endif
 
 #include <sys/types.h>
+#include <sys/capsicum.h>
 
+#include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
 #include <limits.h>
@@ -76,6 +78,12 @@ main(int argc, char **argv)
 	wint_t ch, cnt, lastch;
 
 	(void)setlocale(LC_ALL, "");
+
+	if (caph_limit_stdio() == -1)
+		err(1, "unable to limit stdio");
+
+	if (cap_enter() < 0 && errno != ENOSYS)
+		err(1, "unable to enter capability mode");
 
 	Cflag = cflag = dflag = sflag = 0;
 	while ((ch = getopt(argc, argv, "Ccdsu")) != -1)
@@ -272,10 +280,11 @@ endloop:
 			if (Cflag && !iswrune(cnt))
 				continue;
 			if (cmap_lookup(map, cnt) == OOBCH) {
-				if (next(&s2))
+				if (next(&s2)) {
 					cmap_add(map, cnt, s2.lastch);
-				if (sflag)
-					cset_add(squeeze, s2.lastch);
+					if (sflag)
+						cset_add(squeeze, s2.lastch);
+				}
 			} else
 				cmap_add(map, cnt, cnt);
 			if ((s2.state == EOS || s2.state == INFINITE) &&

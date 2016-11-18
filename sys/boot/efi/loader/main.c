@@ -55,6 +55,22 @@ extern char bootprog_rev[];
 extern char bootprog_date[];
 extern char bootprog_maker[];
 
+#ifdef BOOT_FORTH
+/*
+ * Normally, efi.o from libefi.a would be brought in due to a function we call
+ * there that's defined there.  However, none of its functions are callable from
+ * here since it just adds words to the FORTH environment or implement those
+ * words. So, add a reference to a symbol in efi.o to force it to be be brought
+ * in so the init function there gets added to the "compile" linker set happens
+ * correctly.
+ *
+ * This assumes there's no global analysys that notices dummy1 isn't used
+ * anywhere and tries to eliminate it.
+ */
+extern int efi_variable_support;
+int *dummy1 = &efi_variable_support;
+#endif
+
 struct arch_switch archsw;	/* MI/MD interface boundary */
 
 EFI_GUID acpi = ACPI_TABLE_GUID;
@@ -221,6 +237,11 @@ find_currdev(EFI_LOADED_IMAGE *img, struct devsw **dev, int *unit,
 		}
 	}
 
+	/* Try to fallback on first device */
+	if (devsw[0] != NULL) {
+		*dev = devsw[0];
+		return (0);
+	}
 	return (ENOENT);
 }
 
@@ -235,6 +256,7 @@ main(int argc, CHAR16 *argv[])
 	uint64_t pool_guid;
 	UINTN k;
 	int has_kbd;
+	char buf[40];
 
 	archsw.arch_autoload = efi_autoload;
 	archsw.arch_getdev = efi_getdev;
@@ -447,6 +469,9 @@ main(int argc, CHAR16 *argv[])
 	for (k = 0; k < ST->NumberOfTableEntries; k++) {
 		guid = &ST->ConfigurationTable[k].VendorGuid;
 		if (!memcmp(guid, &smbios, sizeof(EFI_GUID))) {
+			snprintf(buf, sizeof(buf), "%p",
+			    ST->ConfigurationTable[k].VendorTable);
+			setenv("hint.smbios.0.mem", buf, 1);
 			smbios_detect(ST->ConfigurationTable[k].VendorTable);
 			break;
 		}
@@ -508,6 +533,7 @@ command_memmap(int argc, char *argv[])
 	UINT32 dver;
 	EFI_STATUS status;
 	int i, ndesc;
+	char line[80];
 	static char *types[] = {
 	    "Reserved",
 	    "LoaderCode",
@@ -539,14 +565,19 @@ command_memmap(int argc, char *argv[])
 	}
 
 	ndesc = sz / dsz;
-	printf("%23s %12s %12s %8s %4s\n",
+	snprintf(line, sizeof(line), "%23s %12s %12s %8s %4s\n",
 	    "Type", "Physical", "Virtual", "#Pages", "Attr");
+	pager_open();
+	if (pager_output(line)) {
+		pager_close();
+		return (CMD_OK);
+	}
 
 	for (i = 0, p = map; i < ndesc;
 	     i++, p = NextMemoryDescriptor(p, dsz)) {
 		printf("%23s %012jx %012jx %08jx ", types[p->Type],
-		   (uintmax_t)p->PhysicalStart, (uintmax_t)p->VirtualStart,
-		   (uintmax_t)p->NumberOfPages);
+		    (uintmax_t)p->PhysicalStart, (uintmax_t)p->VirtualStart,
+		    (uintmax_t)p->NumberOfPages);
 		if (p->Attribute & EFI_MEMORY_UC)
 			printf("UC ");
 		if (p->Attribute & EFI_MEMORY_WC)
@@ -563,9 +594,11 @@ command_memmap(int argc, char *argv[])
 			printf("RP ");
 		if (p->Attribute & EFI_MEMORY_XP)
 			printf("XP ");
-		printf("\n");
+		if (pager_output("\n"))
+			break;
 	}
 
+	pager_close();
 	return (CMD_OK);
 }
 
@@ -587,10 +620,17 @@ guid_to_string(EFI_GUID *guid)
 static int
 command_configuration(int argc, char *argv[])
 {
+	char line[80];
 	UINTN i;
 
-	printf("NumberOfTableEntries=%lu\n",
+	snprintf(line, sizeof(line), "NumberOfTableEntries=%lu\n",
 		(unsigned long)ST->NumberOfTableEntries);
+	pager_open();
+	if (pager_output(line)) {
+		pager_close();
+		return (CMD_OK);
+	}
+
 	for (i = 0; i < ST->NumberOfTableEntries; i++) {
 		EFI_GUID *guid;
 
@@ -603,7 +643,8 @@ command_configuration(int argc, char *argv[])
 		else if (!memcmp(guid, &acpi20, sizeof(EFI_GUID)))
 			printf("ACPI 2.0 Table");
 		else if (!memcmp(guid, &smbios, sizeof(EFI_GUID)))
-			printf("SMBIOS Table");
+			printf("SMBIOS Table %p",
+			    ST->ConfigurationTable[i].VendorTable);
 		else if (!memcmp(guid, &dxe, sizeof(EFI_GUID)))
 			printf("DXE Table");
 		else if (!memcmp(guid, &hoblist, sizeof(EFI_GUID)))
@@ -616,9 +657,13 @@ command_configuration(int argc, char *argv[])
 			printf("FDT Table");
 		else
 			printf("Unknown Table (%s)", guid_to_string(guid));
-		printf(" at %p\n", ST->ConfigurationTable[i].VendorTable);
+		snprintf(line, sizeof(line), " at %p\n",
+		    ST->ConfigurationTable[i].VendorTable);
+		if (pager_output(line))
+			break;
 	}
 
+	pager_close();
 	return (CMD_OK);
 }
 
@@ -814,8 +859,10 @@ command_efi_show(int argc, char *argv[])
 	EFI_GUID	varguid = { 0,0,0,{0,0,0,0,0,0,0,0} };
 	EFI_GUID	matchguid = { 0,0,0,{0,0,0,0,0,0,0,0} };
 	uint32_t	uuid_status;
-	CHAR16		varname[128];
+	CHAR16		*varname;
+	CHAR16		*newnm;
 	CHAR16		varnamearg[128];
+	UINTN		varalloc;
 	UINTN		varsz;
 
 	while ((ch = getopt(argc, argv, "ag:lv:")) != -1) {
@@ -899,8 +946,8 @@ command_efi_show(int argc, char *argv[])
 		return (rv);
 	}
 
-	if (argc != 0) {
-		printf("Too many args\n");
+	if (argc > 0) {
+		printf("Too many args %d\n", argc);
 		pager_close();
 		return (CMD_ERROR);
 	}
@@ -910,10 +957,33 @@ command_efi_show(int argc, char *argv[])
 	 * to specify the initial call must be a poiner to a NULL
 	 * character.
 	 */
-	varsz = nitems(varname);
+	varalloc = 1024;
+	varname = malloc(varalloc);
+	if (varname == NULL) {
+		printf("Can't allocate memory to get variables\n");
+		pager_close();
+		return (CMD_ERROR);
+	}
 	varname[0] = 0;
-	while ((status = RS->GetNextVariableName(&varsz, varname, &varguid)) !=
-	    EFI_NOT_FOUND) {
+	while (1) {
+		varsz = varalloc;
+		status = RS->GetNextVariableName(&varsz, varname, &varguid);
+		if (status == EFI_BUFFER_TOO_SMALL) {
+			varalloc = varsz;
+			newnm = malloc(varalloc);
+			if (newnm == NULL) {
+				printf("Can't allocate memory to get variables\n");
+				free(varname);
+				pager_close();
+				return (CMD_ERROR);
+			}
+			memcpy(newnm, varname, varsz);
+			free(varname);
+			varname = newnm;
+			continue; /* Try again with bigger buffer */
+		}
+		if (status != EFI_SUCCESS)
+			break;
 		if (aflag) {
 			if (efi_print_var(varname, &varguid, lflag) != CMD_OK)
 				break;
@@ -934,6 +1004,7 @@ command_efi_show(int argc, char *argv[])
 			}
 		}
 	}
+	free(varname);
 	pager_close();
 
 	return (CMD_OK);

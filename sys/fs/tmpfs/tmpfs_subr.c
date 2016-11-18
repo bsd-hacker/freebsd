@@ -819,10 +819,13 @@ tmpfs_dir_lookup_cookie(struct tmpfs_node *node, off_t cookie,
 		goto out;
 	}
 
-	MPASS((cookie & TMPFS_DIRCOOKIE_MASK) == cookie);
-	dekey.td_hash = cookie;
-	/* Recover if direntry for cookie was removed */
-	de = RB_NFIND(tmpfs_dir, dirhead, &dekey);
+	if ((cookie & TMPFS_DIRCOOKIE_MASK) != cookie) {
+		de = NULL;
+	} else {
+		dekey.td_hash = cookie;
+		/* Recover if direntry for cookie was removed */
+		de = RB_NFIND(tmpfs_dir, dirhead, &dekey);
+	}
 	dc->tdc_tree = de;
 	dc->tdc_current = de;
 	if (de != NULL && tmpfs_dirent_duphead(de)) {
@@ -1369,12 +1372,9 @@ retry:
 					VM_WAIT;
 					VM_OBJECT_WLOCK(uobj);
 					goto retry;
-				} else if (m->valid != VM_PAGE_BITS_ALL)
-					rv = vm_pager_get_pages(uobj, &m, 1,
-					    NULL, NULL);
-				else
-					/* A cached page was reactivated. */
-					rv = VM_PAGER_OK;
+				}
+				rv = vm_pager_get_pages(uobj, &m, 1, NULL,
+				    NULL);
 				vm_page_lock(m);
 				if (rv == VM_PAGER_OK) {
 					vm_page_deactivate(m);

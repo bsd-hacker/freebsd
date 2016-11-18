@@ -1,9 +1,14 @@
 /*-
- * Copyright (c) 2009 Robert N. M. Watson
+ * Copyright (c) 2009, 2016 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed at the University of Cambridge Computer
  * Laboratory with support from a grant from Google, Inc.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -383,6 +388,7 @@ procdesc_close(struct file *fp, struct thread *td)
 		sx_xunlock(&proctree_lock);
 	} else {
 		PROC_LOCK(p);
+		AUDIT_ARG_PROCESS(p);
 		if (p->p_state == PRS_ZOMBIE) {
 			/*
 			 * If the process is already dead and just awaiting
@@ -517,7 +523,7 @@ procdesc_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
     struct thread *td)
 {
 	struct procdesc *pd;
-	struct timeval pstart;
+	struct timeval pstart, boottime;
 
 	/*
 	 * XXXRW: Perhaps we should cache some more information from the
@@ -529,9 +535,11 @@ procdesc_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
 	sx_slock(&proctree_lock);
 	if (pd->pd_proc != NULL) {
 		PROC_LOCK(pd->pd_proc);
+		AUDIT_ARG_PROCESS(pd->pd_proc);
 
 		/* Set birth and [acm] times to process start time. */
 		pstart = pd->pd_proc->p_stats->p_start;
+		getboottime(&boottime);
 		timevaladd(&pstart, &boottime);
 		TIMEVAL_TO_TIMESPEC(&pstart, &sb->st_birthtim);
 		sb->st_atim = sb->st_birthtim;

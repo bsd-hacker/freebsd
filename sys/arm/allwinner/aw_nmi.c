@@ -35,15 +35,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/proc.h>
+#include <sys/rman.h>
 #include <machine/bus.h>
 #include <machine/intr.h>
 
-#include <dev/fdt/fdt_common.h>
+#include <dev/fdt/fdt_intr.h>
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
-
-#include <dt-bindings/interrupt-controller/irq.h>
 
 #include "pic_if.h"
 
@@ -154,19 +153,19 @@ aw_nmi_map_fdt(device_t dev, u_int ncells, pcell_t *cells, u_int *irqp,
 	tripol = cells[1];
 
 	switch (tripol) {
-	case IRQ_TYPE_EDGE_RISING:
+	case FDT_INTR_EDGE_RISING:
 		trig = INTR_TRIGGER_EDGE;
 		pol  = INTR_POLARITY_HIGH;
 		break;
-	case IRQ_TYPE_EDGE_FALLING:
+	case FDT_INTR_EDGE_FALLING:
 		trig = INTR_TRIGGER_EDGE;
 		pol  = INTR_POLARITY_LOW;
 		break;
-	case IRQ_TYPE_LEVEL_HIGH:
+	case FDT_INTR_LEVEL_HIGH:
 		trig = INTR_TRIGGER_LEVEL;
 		pol  = INTR_POLARITY_HIGH;
 		break;
-	case IRQ_TYPE_LEVEL_LOW:
+	case FDT_INTR_LEVEL_LOW:
 		trig = INTR_TRIGGER_LEVEL;
 		pol  = INTR_POLARITY_LOW;
 		break;
@@ -400,4 +399,4 @@ static driver_t aw_nmi_driver = {
 static devclass_t aw_nmi_devclass;
 
 EARLY_DRIVER_MODULE(aw_nmi, simplebus, aw_nmi_driver,
-    aw_nmi_devclass, 0, 0, BUS_PASS_INTERRUPT + BUS_PASS_ORDER_LAST);
+    aw_nmi_devclass, 0, 0, BUS_PASS_INTERRUPT + BUS_PASS_ORDER_LATE);

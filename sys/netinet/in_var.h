@@ -82,6 +82,8 @@ struct in_ifaddr {
 	struct	sockaddr_in ia_dstaddr; /* reserve space for broadcast addr */
 #define	ia_broadaddr	ia_dstaddr
 	struct	sockaddr_in ia_sockmask; /* reserve space for general netmask */
+	struct	callout ia_garp_timer;	/* timer for retransmitting GARPs */
+	int	ia_garp_count;		/* count of retransmitted GARPs */
 };
 
 /*
@@ -376,6 +378,7 @@ int	in_control(struct socket *, u_long, caddr_t, struct ifnet *,
 	    struct thread *);
 int	in_addprefix(struct in_ifaddr *, int);
 int	in_scrubprefix(struct in_ifaddr *, u_int);
+void	in_ifscrub_all(void);
 void	ip_input(struct mbuf *);
 void	ip_direct_input(struct mbuf *);
 void	in_ifadown(struct ifaddr *ifa, int);

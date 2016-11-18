@@ -9,6 +9,12 @@ ATF_TESTS_C+=	kern_copyin
 ATF_TESTS_C+=	kern_descrip_test
 ATF_TESTS_C+=	ptrace_test
 PLAIN_TESTS_C+=	subr_unit_test
+ATF_TESTS_C+=	waitpid_nohang
+
+ATF_TESTS_SH+=	coredump_phnum_test
+
+BINDIR=		${TESTSDIR}
+PROGS+=		coredump_phnum_helper
 
 LIBADD.ptrace_test+=			pthread
 

@@ -75,9 +75,7 @@ __RCSID("$FreeBSD$");
 #include "authfile.h"
 #include "ssherr.h"
 #include "compat.h"
-#ifdef USE_BLACKLIST
 #include "blacklist_client.h"
-#endif
 
 /* import */
 extern ServerOptions options;
@@ -295,8 +293,11 @@ auth_log(Authctxt *authctxt, int authenticated, int partial,
 		authmsg = "Postponed";
 	else if (partial)
 		authmsg = "Partial";
-	else
+	else {
 		authmsg = authenticated ? "Accepted" : "Failed";
+		BLACKLIST_NOTIFY(authenticated ?
+		    BLACKLIST_AUTH_OK : BLACKLIST_AUTH_FAIL);
+	}
 
 	authlog("%s %s%s%s for %s%.100s from %.200s port %d %s%s%s",
 	    authmsg,
@@ -309,10 +310,6 @@ auth_log(Authctxt *authctxt, int authenticated, int partial,
 	    compat20 ? "ssh2" : "ssh1",
 	    authctxt->info != NULL ? ": " : "",
 	    authctxt->info != NULL ? authctxt->info : "");
-#ifdef USE_BLACKLIST
-	if (!authctxt->postponed)
-		blacklist_notify(!authenticated);
-#endif
 	free(authctxt->info);
 	authctxt->info = NULL;
 
@@ -647,9 +644,7 @@ getpwnamallow(const char *user)
 	}
 #endif
 	if (pw == NULL) {
-#ifdef USE_BLACKLIST
-		blacklist_notify(1);
-#endif
+		BLACKLIST_NOTIFY(BLACKLIST_AUTH_FAIL);
 		logit("Invalid user %.100s from %.100s",
 		    user, get_remote_ipaddr());
 #ifdef CUSTOM_FAILED_LOGIN

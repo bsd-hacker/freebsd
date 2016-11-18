@@ -272,6 +272,15 @@ freebsd4_freebsd32_getfsstat(struct thread *td, struct freebsd4_freebsd32_getfss
 }
 #endif
 
+#ifdef COMPAT_FREEBSD10
+int
+freebsd10_freebsd32_pipe(struct thread *td,
+    struct freebsd10_freebsd32_pipe_args *uap) {
+	
+	return (freebsd10_pipe(td, (struct freebsd10_pipe_args*)uap));
+}
+#endif
+
 int
 freebsd32_sigaltstack(struct thread *td,
 		      struct freebsd32_sigaltstack_args *uap)
@@ -3039,6 +3048,7 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 	switch (uap->com) {
 	case PROC_SPROTECT:
 	case PROC_TRACE_CTL:
+	case PROC_TRAPCAP_CTL:
 		error = copyin(PTRIN(uap->data), &flags, sizeof(flags));
 		if (error != 0)
 			return (error);
@@ -3068,6 +3078,7 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 		data = &x.rk;
 		break;
 	case PROC_TRACE_STATUS:
+	case PROC_TRAPCAP_STATUS:
 		data = &flags;
 		break;
 	default:
@@ -3086,6 +3097,7 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 			error = error1;
 		break;
 	case PROC_TRACE_STATUS:
+	case PROC_TRAPCAP_STATUS:
 		if (error == 0)
 			error = copyout(&flags, uap->data, sizeof(flags));
 		break;

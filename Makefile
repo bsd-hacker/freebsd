@@ -103,13 +103,14 @@
 
 # This is included so CC is set to ccache for -V, and COMPILER_TYPE/VERSION
 # can be cached for sub-makes.
-.if ${MAKE_VERSION} >= 20140620
+.if ${MAKE_VERSION} >= 20140620 && defined(.PARSEDIR)
 .include <bsd.compiler.mk>
 .endif
 
 # Note: we use this awkward construct to be compatible with FreeBSD's
 # old make used in 10.0 and 9.2 and earlier.
-.if defined(MK_DIRDEPS_BUILD) && ${MK_DIRDEPS_BUILD} == "yes" && !make(showconfig)
+.if defined(MK_DIRDEPS_BUILD) && ${MK_DIRDEPS_BUILD} == "yes" && \
+    !make(showconfig) && !make(print-dir)
 # targets/Makefile plays the role of top-level
 .include "targets/Makefile"
 .else
@@ -131,7 +132,8 @@ TGTS=	all all-man buildenv buildenvvars buildkernel buildworld \
 	builddtb xdev xdev-build xdev-install \
 	xdev-links native-xtools stageworld stagekernel stage-packages \
 	create-world-packages create-kernel-packages create-packages \
-	packages installconfig real-packages sign-packages package-pkg
+	packages installconfig real-packages sign-packages package-pkg \
+	print-dir test-system-compiler
 
 # XXX: r156740: This can't work since bsd.subdir.mk is not included ever.
 # It will only work for SUBDIR_TARGETS in make.conf.
@@ -150,9 +152,10 @@ TGTS+=	${BITGTS}
 # the ones that benefit from it.
 META_TGT_WHITELIST+= \
 	_* build32 buildfiles buildincludes buildkernel buildsoft \
-	buildworld everything kernel-toolchains kernel kernels libraries \
-	native-xtools showconfig tinderbox toolchain toolchains universe \
-	world worlds xdev xdev-build
+	buildworld everything kernel-toolchain kernel-toolchains kernel \
+	kernels libraries native-xtools showconfig test-system-compiler \
+	tinderbox toolchain \
+	toolchains universe world worlds xdev xdev-build
 
 .ORDER: buildworld installworld
 .ORDER: buildworld distributeworld
@@ -207,7 +210,8 @@ SUB_MAKE= `test -x ${MYMAKE} && echo ${MYMAKE} || echo ${MAKE}` \
 SUB_MAKE= ${MAKE} -m ${.CURDIR}/share/mk
 .endif
 
-_MAKE=	PATH=${PATH} ${SUB_MAKE} -f Makefile.inc1 TARGET=${_TARGET} TARGET_ARCH=${_TARGET_ARCH}
+_MAKE=	PATH=${PATH} MAKE_CMD=${MAKE} ${SUB_MAKE} -f Makefile.inc1 \
+	TARGET=${_TARGET} TARGET_ARCH=${_TARGET_ARCH}
 
 # Only allow meta mode for the whitelisted targets.  See META_TGT_WHITELIST
 # above.
@@ -218,7 +222,9 @@ _CAN_USE_META_MODE?= yes
 .endfor
 .if !defined(_CAN_USE_META_MODE)
 _MAKE+=	MK_META_MODE=no
+.if defined(.PARSEDIR)
 .unexport META_MODE
+.endif
 .elif defined(MK_META_MODE) && ${MK_META_MODE} == "yes"
 .if !exists(/dev/filemon) && !defined(NO_FILEMON) && !make(showconfig)
 # Require filemon be loaded to provide a working incremental build
@@ -233,7 +239,7 @@ _MAKE+=	MK_META_MODE=no
 _TARGET_ARCH=	${TARGET:S/pc98/i386/:S/arm64/aarch64/}
 .elif !defined(TARGET) && defined(TARGET_ARCH) && \
     ${TARGET_ARCH} != ${MACHINE_ARCH}
-_TARGET=		${TARGET_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C/aarch64/arm64/:C/powerpc64/powerpc/:C/riscv64/riscv/}
+_TARGET=		${TARGET_ARCH:C/mips(n32|64)?(el)?(hf)?/mips/:C/arm(v6)?(eb)?/arm/:C/aarch64/arm64/:C/powerpc64/powerpc/:C/powerpcspe/powerpc/:C/riscv64(sf)?/riscv/}
 .endif
 .if defined(TARGET) && !defined(_TARGET)
 _TARGET=${TARGET}
@@ -251,6 +257,10 @@ _TARGET_ARCH=	${XDEV_ARCH}
 # Otherwise, default to current machine type and architecture.
 _TARGET?=	${MACHINE}
 _TARGET_ARCH?=	${MACHINE_ARCH}
+
+.if make(print-dir)
+.SILENT:
+.endif
 
 #
 # Make sure we have an up-to-date make(1). Only world and buildworld
@@ -311,7 +321,7 @@ world: upgrade_checks .PHONY
 	${_+_}@cd ${.CURDIR}; ${_MAKE} pre-world
 .endif
 	${_+_}@cd ${.CURDIR}; ${_MAKE} buildworld
-	${_+_}@cd ${.CURDIR}; ${_MAKE} -B installworld
+	${_+_}@cd ${.CURDIR}; ${_MAKE} installworld MK_META_MODE=no
 .if target(post-world)
 	@echo
 	@echo "--------------------------------------------------------------"
@@ -411,8 +421,8 @@ TARGETS?=amd64 arm arm64 i386 mips pc98 powerpc sparc64
 _UNIVERSE_TARGETS=	${TARGETS}
 TARGET_ARCHES_arm?=	arm armeb armv6
 TARGET_ARCHES_arm64?=	aarch64
-TARGET_ARCHES_mips?=	mipsel mips mips64el mips64 mipsn32
-TARGET_ARCHES_powerpc?=	powerpc powerpc64
+TARGET_ARCHES_mips?=	mipsel mips mips64el mips64 mipsn32 mipselhf mipshf mips64elhf mips64hf
+TARGET_ARCHES_powerpc?=	powerpc powerpc64 powerpcspe
 TARGET_ARCHES_pc98?=	i386
 .for target in ${TARGETS}
 TARGET_ARCHES_${target}?= ${target}

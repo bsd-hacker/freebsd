@@ -76,7 +76,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/pcpu.h>
 #include <sys/ptrace.h>
 #include <sys/reboot.h>
+#if defined(LINUX_BOOT_ABI)
 #include <sys/boot.h>
+#endif
 #include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/signalvar.h>
@@ -412,7 +414,7 @@ arm_vector_init(vm_offset_t va, int which)
 	icache_sync(va, (ARM_NVEC * 2) * sizeof(u_int));
 
 	vector_page = va;
-
+#if __ARM_ARCH < 6
 	if (va == ARM_VECTORS_HIGH) {
 		/*
 		 * Enable high vectors in the system control reg (SCTLR).
@@ -427,6 +429,7 @@ arm_vector_init(vm_offset_t va, int which)
 		 */
 		cpu_control(CPU_CONTROL_VECRELOC, CPU_CONTROL_VECRELOC);
 	}
+#endif
 }
 
 static void
@@ -1398,9 +1401,6 @@ set_stackptrs(int cpu)
 #endif
 
 #ifdef EFI
-#define efi_next_descriptor(ptr, size) \
-	((struct efi_md *)(((uint8_t *) ptr) + size))
-
 static void
 add_efi_map_entries(struct efi_map_header *efihdr, struct mem_region *mr,
     int *mrcnt)
@@ -1424,7 +1424,8 @@ add_efi_map_entries(struct efi_map_header *efihdr, struct mem_region *mr,
 		"ACPIMemoryNVS",
 		"MemoryMappedIO",
 		"MemoryMappedIOPortSpace",
-		"PalCode"
+		"PalCode",
+		"PersistentMemory"
 	};
 
 	*mrcnt = 0;
@@ -1448,7 +1449,7 @@ add_efi_map_entries(struct efi_map_header *efihdr, struct mem_region *mr,
 	for (i = 0, j = 0, p = map; i < ndesc; i++,
 	    p = efi_next_descriptor(p, efihdr->descriptor_size)) {
 		if (boothowto & RB_VERBOSE) {
-			if (p->md_type <= EFI_MD_TYPE_PALCODE)
+			if (p->md_type < nitems(types))
 				type = types[p->md_type];
 			else
 				type = "<INVALID>";
@@ -1470,6 +1471,12 @@ add_efi_map_entries(struct efi_map_header *efihdr, struct mem_region *mr,
 				printf("RP ");
 			if (p->md_attr & EFI_MD_ATTR_XP)
 				printf("XP ");
+			if (p->md_attr & EFI_MD_ATTR_NV)
+				printf("NV ");
+			if (p->md_attr & EFI_MD_ATTR_MORE_RELIABLE)
+				printf("MORE_RELIABLE ");
+			if (p->md_attr & EFI_MD_ATTR_RO)
+				printf("RO ");
 			if (p->md_attr & EFI_MD_ATTR_RT)
 				printf("RUNTIME");
 			printf("\n");
@@ -1996,14 +2003,3 @@ initarm(struct arm_boot_params *abp)
 
 #endif /* __ARM_ARCH < 6 */
 #endif /* FDT */
-
-uint32_t (*arm_cpu_fill_vdso_timehands)(struct vdso_timehands *,
-    struct timecounter *);
-
-uint32_t
-cpu_fill_vdso_timehands(struct vdso_timehands *vdso_th, struct timecounter *tc)
-{
-
-	return (arm_cpu_fill_vdso_timehands != NULL ?
-	    arm_cpu_fill_vdso_timehands(vdso_th, tc) : 0);
-}

@@ -28,6 +28,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_bus.h"
+#include "opt_ddb.h"
 
 #include <sys/param.h>
 #include <sys/conf.h>
@@ -64,6 +65,8 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/uma.h>
 #include <vm/vm.h>
+
+#include <ddb/ddb.h>
 
 SYSCTL_NODE(_hw, OID_AUTO, bus, CTLFLAG_RW, NULL, NULL);
 SYSCTL_ROOT_NODE(OID_AUTO, dev, CTLFLAG_RW, NULL, NULL);
@@ -143,6 +146,9 @@ static MALLOC_DEFINE(M_BUS_SC, "bus-sc", "Bus data structures, softc");
 
 static void devctl2_init(void);
 
+#define DRIVERNAME(d)	((d)? d->name : "no driver")
+#define DEVCLANAME(d)	((d)? d->name : "no devclass")
+
 #ifdef BUS_DEBUG
 
 static int bus_debug = 1;
@@ -151,8 +157,6 @@ SYSCTL_INT(_debug, OID_AUTO, bus_debug, CTLFLAG_RWTUN, &bus_debug, 0,
 
 #define PDEBUG(a)	if (bus_debug) {printf("%s:%d: ", __func__, __LINE__), printf a; printf("\n");}
 #define DEVICENAME(d)	((d)? device_get_name(d): "no device")
-#define DRIVERNAME(d)	((d)? d->name : "no driver")
-#define DEVCLANAME(d)	((d)? d->name : "no devclass")
 
 /**
  * Produce the indenting, indent*2 spaces plus a '.' ahead of that to
@@ -176,8 +180,6 @@ void print_devclass_list(void);
 /* Make the compiler ignore the function calls */
 #define PDEBUG(a)			/* nop */
 #define DEVICENAME(d)			/* nop */
-#define DRIVERNAME(d)			/* nop */
-#define DEVCLANAME(d)			/* nop */
 
 #define print_device_short(d,i)		/* nop */
 #define print_device(d,i)		/* nop */
@@ -1794,7 +1796,7 @@ make_device(device_t parent, const char *name, int unit)
 		dc = NULL;
 	}
 
-	dev = malloc(sizeof(struct device), M_BUS, M_NOWAIT|M_ZERO);
+	dev = malloc(sizeof(*dev), M_BUS, M_NOWAIT|M_ZERO);
 	if (!dev)
 		return (NULL);
 
@@ -1949,15 +1951,17 @@ device_delete_child(device_t dev, device_t child)
 
 	PDEBUG(("%s from %s", DEVICENAME(child), DEVICENAME(dev)));
 
-	/* remove children first */
+	/* detach parent before deleting children, if any */
+	if ((error = device_detach(child)) != 0)
+		return (error);
+	
+	/* remove children second */
 	while ((grandchild = TAILQ_FIRST(&child->children)) != NULL) {
 		error = device_delete_child(child, grandchild);
 		if (error)
 			return (error);
 	}
 
-	if ((error = device_detach(child)) != 0)
-		return (error);
 	if (child->devclass)
 		devclass_delete_device(child->devclass, child);
 	if (child->parent)
@@ -2144,6 +2148,12 @@ device_probe_child(device_t dev, device_t child)
 				pri = 0;
 				break;
 			}
+
+			/*
+			 * Reset DF_QUIET in case this driver doesn't
+			 * end up as the best driver.
+			 */
+			device_verbose(child);
 
 			/*
 			 * Probes that return BUS_PROBE_NOWILDCARD or lower
@@ -2970,6 +2980,7 @@ device_detach(device_t dev)
 	if (!(dev->flags & DF_FIXEDCLASS))
 		devclass_delete_device(dev->devclass, dev);
 
+	device_verbose(dev);
 	dev->state = DS_NOTPRESENT;
 	(void)device_set_driver(dev, NULL);
 	device_sysctl_fini(dev);
@@ -3951,23 +3962,6 @@ bus_generic_new_pass(device_t dev)
 }
 
 /**
- * @brief Helper function for implementing BUS_MAP_INTR().
- *
- * This simple implementation of BUS_MAP_INTR() simply calls the
- * BUS_MAP_INTR() method of the parent of @p dev.
- */
-int
-bus_generic_map_intr(device_t dev, device_t child, int *rid, rman_res_t *start,
-    rman_res_t *end, rman_res_t *count, struct intr_map_data **imd)
-{
-	/* Propagate up the bus hierarchy until someone handles it. */
-	if (dev->parent)
-		return (BUS_MAP_INTR(dev->parent, child, rid, start, end, count,
-		    imd));
-	return (EINVAL);
-}
-
-/**
  * @brief Helper function for implementing BUS_SETUP_INTR().
  *
  * This simple implementation of BUS_SETUP_INTR() simply calls the
@@ -4422,41 +4416,6 @@ bus_release_resources(device_t dev, const struct resource_spec *rs,
 		}
 }
 
-#ifdef INTRNG
-/**
- * @internal
- *
- * This can be converted to bus method later. (XXX)
- */
-static struct intr_map_data *
-bus_extend_resource(device_t dev, int type, int *rid, rman_res_t *start,
-    rman_res_t *end, rman_res_t *count)
-{
-	struct intr_map_data *imd;
-	struct resource_list *rl;
-	int rv;
-
-	if (dev->parent == NULL)
-		return (NULL);
-	if (type != SYS_RES_IRQ)
-		return (NULL);
-
-	if (!RMAN_IS_DEFAULT_RANGE(*start, *end))
-		return (NULL);
-	rl = BUS_GET_RESOURCE_LIST(dev->parent, dev);
-	if (rl != NULL) {
-		if (resource_list_find(rl, type, *rid) != NULL)
-			return (NULL);
-	}
-	rv = BUS_MAP_INTR(dev->parent, dev, rid, start, end, count, &imd);
-	if (rv != 0)
-		return (NULL);
-	if (rl != NULL)
-		resource_list_add(rl, type, *rid, *start, *end, *count);
-	return (imd);
-}
-#endif
-
 /**
  * @brief Wrapper function for BUS_ALLOC_RESOURCE().
  *
@@ -4468,26 +4427,11 @@ bus_alloc_resource(device_t dev, int type, int *rid, rman_res_t start,
     rman_res_t end, rman_res_t count, u_int flags)
 {
 	struct resource *res;
-#ifdef INTRNG
-	struct intr_map_data *imd;
-#endif
 
 	if (dev->parent == NULL)
 		return (NULL);
-
-#ifdef INTRNG
-	imd = bus_extend_resource(dev, type, rid, &start, &end, &count);
-#endif
 	res = BUS_ALLOC_RESOURCE(dev->parent, dev, type, rid, start, end,
 	    count, flags);
-#ifdef INTRNG
-	if (imd != NULL) {
-		if (res != NULL && rman_get_virtual(res) == NULL)
-			rman_set_virtual(res, imd);
-		else
-			imd->destruct(imd);
-	}
-#endif
 	return (res);
 }
 
@@ -4574,21 +4518,10 @@ int
 bus_release_resource(device_t dev, int type, int rid, struct resource *r)
 {
 	int rv;
-#ifdef INTRNG
-	struct intr_map_data *imd;
-#endif
 
 	if (dev->parent == NULL)
 		return (EINVAL);
-
-#ifdef INTRNG
-	imd = (type == SYS_RES_IRQ) ? rman_get_virtual(r) : NULL;
-#endif
 	rv = BUS_RELEASE_RESOURCE(dev->parent, dev, type, rid, r);
-#ifdef INTRNG
-	if (imd != NULL)
-		imd->destruct(imd);
-#endif
 	return (rv);
 }
 
@@ -5278,7 +5211,7 @@ sysctl_devices(SYSCTL_HANDLER_ARGS)
 	int			*name = (int *)arg1;
 	u_int			namelen = arg2;
 	int			index;
-	struct device		*dev;
+	device_t		dev;
 	struct u_device		udev;	/* XXX this is a bit big */
 	int			error;
 
@@ -5427,6 +5360,7 @@ devctl2_ioctl(struct cdev *cdev, u_long cmd, caddr_t data, int fflag,
 	case DEV_SUSPEND:
 	case DEV_RESUME:
 	case DEV_SET_DRIVER:
+	case DEV_CLEAR_DRIVER:
 	case DEV_RESCAN:
 	case DEV_DELETE:
 		error = priv_check(td, PRIV_DRIVER);
@@ -5592,6 +5526,25 @@ devctl2_ioctl(struct cdev *cdev, u_long cmd, caddr_t data, int fflag,
 		error = device_probe_and_attach(dev);
 		break;
 	}
+	case DEV_CLEAR_DRIVER:
+		if (!(dev->flags & DF_FIXEDCLASS)) {
+			error = 0;
+			break;
+		}
+		if (device_is_attached(dev)) {
+			if (req->dr_flags & DEVF_CLEAR_DRIVER_DETACH)
+				error = device_detach(dev);
+			else
+				error = EBUSY;
+			if (error)
+				break;
+		}
+
+		dev->flags &= ~DF_FIXEDCLASS;
+		dev->flags |= DF_WILDCARD;
+		devclass_delete_device(dev->devclass, dev);
+		error = device_probe_and_attach(dev);
+		break;
 	case DEV_RESCAN:
 		if (!device_is_attached(dev)) {
 			error = ENXIO;
@@ -5635,3 +5588,32 @@ devctl2_init(void)
 	make_dev_credf(MAKEDEV_ETERNAL, &devctl2_cdevsw, 0, NULL,
 	    UID_ROOT, GID_WHEEL, 0600, "devctl2");
 }
+
+#ifdef DDB
+DB_SHOW_COMMAND(device, db_show_device)
+{
+	device_t dev;
+
+	if (!have_addr)
+		return;
+
+	dev = (device_t)addr;
+
+	db_printf("name:    %s\n", device_get_nameunit(dev));
+	db_printf("  driver:  %s\n", DRIVERNAME(dev->driver));
+	db_printf("  class:   %s\n", DEVCLANAME(dev->devclass));
+	db_printf("  addr:    %p\n", dev);
+	db_printf("  parent:  %p\n", dev->parent);
+	db_printf("  softc:   %p\n", dev->softc);
+	db_printf("  ivars:   %p\n", dev->ivars);
+}
+
+DB_SHOW_ALL_COMMAND(devices, db_show_all_devices)
+{
+	device_t dev;
+
+	TAILQ_FOREACH(dev, &bus_data_devices, devlink) {
+		db_show_device((db_expr_t)dev, true, count, modif);
+	}
+}
+#endif

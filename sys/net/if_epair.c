@@ -807,9 +807,9 @@ epair_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	 * cache locality but we can at least allow parallelism.
 	 */
 	sca->cpuid =
-	    netisr_get_cpuid(sca->ifp->if_index % netisr_get_cpucount());
+	    netisr_get_cpuid(sca->ifp->if_index);
 	scb->cpuid =
-	    netisr_get_cpuid(scb->ifp->if_index % netisr_get_cpucount());
+	    netisr_get_cpuid(scb->ifp->if_index);
 
 	/* Initialise pseudo media types. */
 	ifmedia_init(&sca->media, 0, epair_media_change, epair_media_status);
@@ -963,7 +963,7 @@ vnet_epair_init(const void *unused __unused)
 	netisr_register_vnet(&epair_nh);
 #endif
 }
-VNET_SYSINIT(vnet_epair_init, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY,
+VNET_SYSINIT(vnet_epair_init, SI_SUB_PSEUDO, SI_ORDER_ANY,
     vnet_epair_init, NULL);
 
 static void
@@ -975,7 +975,7 @@ vnet_epair_uninit(const void *unused __unused)
 #endif
 	if_clone_detach(V_epair_cloner);
 }
-VNET_SYSUNINIT(vnet_epair_uninit, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY,
+VNET_SYSUNINIT(vnet_epair_uninit, SI_SUB_INIT_IF, SI_ORDER_ANY,
     vnet_epair_uninit, NULL);
 
 static int
@@ -1012,5 +1012,5 @@ static moduledata_t epair_mod = {
 	0
 };
 
-DECLARE_MODULE(if_epair, epair_mod, SI_SUB_PSEUDO, SI_ORDER_ANY);
+DECLARE_MODULE(if_epair, epair_mod, SI_SUB_PSEUDO, SI_ORDER_MIDDLE);
 MODULE_VERSION(if_epair, 1);

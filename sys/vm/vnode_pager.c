@@ -169,10 +169,21 @@ vnode_destroy_vobject(struct vnode *vp)
 		/*
 		 * don't double-terminate the object
 		 */
-		if ((obj->flags & OBJ_DEAD) == 0)
+		if ((obj->flags & OBJ_DEAD) == 0) {
 			vm_object_terminate(obj);
-		else
+		} else {
+			/*
+			 * Waiters were already handled during object
+			 * termination.  The exclusive vnode lock hopefully
+			 * prevented new waiters from referencing the dying
+			 * object.
+			 */
+			KASSERT((obj->flags & OBJ_DISCONNECTWNT) == 0,
+			    ("OBJ_DISCONNECTWNT set obj %p flags %x",
+			    obj, obj->flags));
+			vp->v_object = NULL;
 			VM_OBJECT_WUNLOCK(obj);
+		}
 	} else {
 		/*
 		 * Woe to the process that tries to page now :-).
@@ -180,7 +191,7 @@ vnode_destroy_vobject(struct vnode *vp)
 		vm_pager_deallocate(obj);
 		VM_OBJECT_WUNLOCK(obj);
 	}
-	vp->v_object = NULL;
+	KASSERT(vp->v_object == NULL, ("vp %p obj %p", vp, vp->v_object));
 }
 
 
@@ -455,10 +466,6 @@ vnode_pager_setsize(struct vnode *vp, vm_ooffset_t nsize)
 			 * replacement from working properly.
 			 */
 			vm_page_clear_dirty(m, base, PAGE_SIZE - base);
-		} else if ((nsize & PAGE_MASK) &&
-		    vm_page_is_cached(object, OFF_TO_IDX(nsize))) {
-			vm_page_cache_free(object, OFF_TO_IDX(nsize),
-			    nobjsize);
 		}
 	}
 	object->un_pager.vnp.vnp_size = nsize;
@@ -736,6 +743,9 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 	struct bufobj *bo;
 	struct buf *bp;
 	off_t foff;
+#ifdef INVARIANTS
+	off_t blkno0;
+#endif
 	int bsize, pagesperblock, *freecnt;
 	int error, before, after, rbehind, rahead, poff, i;
 	int bytecount, secmask;
@@ -836,6 +846,9 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 		return (VM_PAGER_OK);
 	}
 
+#ifdef INVARIANTS
+	blkno0 = bp->b_blkno;
+#endif
 	bp->b_blkno += (foff % bsize) / DEV_BSIZE;
 
 	/* Recalculate blocks available after/before to pages. */
@@ -857,7 +870,25 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 	rbehind = min(rbehind, m[0]->pindex);
 	rahead = min(rahead, after);
 	rahead = min(rahead, object->size - m[count - 1]->pindex);
-	KASSERT(rbehind + rahead + count <= sizeof(bp->b_pages),
+	/*
+	 * Check that total amount of pages fit into buf.  Trim rbehind and
+	 * rahead evenly if not.
+	 */
+	if (rbehind + rahead + count > nitems(bp->b_pages)) {
+		int trim, sum;
+
+		trim = rbehind + rahead + count - nitems(bp->b_pages) + 1;
+		sum = rbehind + rahead;
+		if (rbehind == before) {
+			/* Roundup rbehind trim to block size. */
+			rbehind -= roundup(trim * rbehind / sum, pagesperblock);
+			if (rbehind < 0)
+				rbehind = 0;
+		} else
+			rbehind -= trim * rbehind / sum;
+		rahead -= trim * rahead / sum;
+	}
+	KASSERT(rbehind + rahead + count <= nitems(bp->b_pages),
 	    ("%s: behind %d ahead %d count %d", __func__,
 	    rbehind, rahead, count));
 
@@ -883,8 +914,7 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 		for (tpindex = m[0]->pindex - 1;
 		    tpindex >= startpindex && tpindex < m[0]->pindex;
 		    tpindex--, i++) {
-			p = vm_page_alloc(object, tpindex, VM_ALLOC_NORMAL |
-			    VM_ALLOC_IFNOTCACHED);
+			p = vm_page_alloc(object, tpindex, VM_ALLOC_NORMAL);
 			if (p == NULL) {
 				/* Shift the array. */
 				for (int j = 0; j < i; j++)
@@ -921,8 +951,7 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 
 		for (tpindex = m[count - 1]->pindex + 1;
 		    tpindex < endpindex; i++, tpindex++) {
-			p = vm_page_alloc(object, tpindex, VM_ALLOC_NORMAL |
-			    VM_ALLOC_IFNOTCACHED);
+			p = vm_page_alloc(object, tpindex, VM_ALLOC_NORMAL);
 			if (p == NULL)
 				break;
 			bp->b_pages[i] = p;
@@ -942,8 +971,14 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 	if (a_rahead)
 		*a_rahead = bp->b_pgafter;
 
-	KASSERT(bp->b_npages <= sizeof(bp->b_pages),
+#ifdef INVARIANTS
+	KASSERT(bp->b_npages <= nitems(bp->b_pages),
 	    ("%s: buf %p overflowed", __func__, bp));
+	for (int j = 1; j < bp->b_npages; j++)
+		KASSERT(bp->b_pages[j]->pindex - 1 ==
+		    bp->b_pages[j - 1]->pindex,
+		    ("%s: pages array not consecutive, bp %p", __func__, bp));
+#endif
 
 	/*
 	 * Recalculate first offset and bytecount with regards to read behind.
@@ -982,6 +1017,13 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 	bp->b_vp = vp;
 	bp->b_bcount = bp->b_bufsize = bp->b_runningbufspace = bytecount;
 	bp->b_iooffset = dbtob(bp->b_blkno);
+	KASSERT(IDX_TO_OFF(m[0]->pindex - bp->b_pages[0]->pindex) ==
+	    (blkno0 - bp->b_blkno) * DEV_BSIZE +
+	    IDX_TO_OFF(m[0]->pindex) % bsize,
+	    ("wrong offsets bsize %d m[0] %ju b_pages[0] %ju "
+	    "blkno0 %ju b_blkno %ju", bsize,
+	    (uintmax_t)m[0]->pindex, (uintmax_t)bp->b_pages[0]->pindex,
+	    (uintmax_t)blkno0, (uintmax_t)bp->b_blkno));
 
 	atomic_add_long(&runningbufspace, bp->b_runningbufspace);
 	PCPU_INC(cnt.v_vnodein);

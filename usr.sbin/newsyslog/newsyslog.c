@@ -1510,11 +1510,11 @@ validate_old_timelog(int fd, const struct dirent *dp, const char *logfname,
 static void
 delete_oldest_timelog(const struct conf_entry *ent, const char *archive_dir)
 {
-	char *logfname, *s, *dir, errbuf[80];
+	char *basebuf, *dirbuf, errbuf[80];
+	const char *base, *dir;
 	int dir_fd, i, logcnt, max_logcnt;
 	struct oldlog_entry *oldlogs;
 	struct dirent *dp;
-	const char *cdir;
 	struct tm tm;
 	DIR *dirp;
 
@@ -1522,19 +1522,19 @@ delete_oldest_timelog(const struct conf_entry *ent, const char *archive_dir)
 	max_logcnt = MAX_OLDLOGS;
 	logcnt = 0;
 
-	if (archive_dir != NULL && archive_dir[0] != '\0')
-		cdir = archive_dir;
-	else
-		if ((cdir = dirname(ent->log)) == NULL)
-			err(1, "dirname()");
-	if ((dir = strdup(cdir)) == NULL)
-		err(1, "strdup()");
+	if (archive_dir != NULL && archive_dir[0] != '\0') {
+		dirbuf = NULL;
+		dir = archive_dir;
+	} else {
+		if ((dirbuf = strdup(ent->log)) == NULL)
+			err(1, "strdup()");
+		dir = dirname(dirbuf);
+	}
 
-	if ((s = basename(ent->log)) == NULL)
-		err(1, "basename()");
-	if ((logfname = strdup(s)) == NULL)
+	if ((basebuf = strdup(ent->log)) == NULL)
 		err(1, "strdup()");
-	if (strcmp(logfname, "/") == 0)
+	base = basename(basebuf);
+	if (strcmp(base, "/") == 0)
 		errx(1, "Invalid log filename - became '/'");
 
 	if (verbose > 2)
@@ -1545,7 +1545,7 @@ delete_oldest_timelog(const struct conf_entry *ent, const char *archive_dir)
 		err(1, "Cannot open log directory '%s'", dir);
 	dir_fd = dirfd(dirp);
 	while ((dp = readdir(dirp)) != NULL) {
-		if (validate_old_timelog(dir_fd, dp, logfname, &tm) == 0)
+		if (validate_old_timelog(dir_fd, dp, base, &tm) == 0)
 			continue;
 
 		/*
@@ -1610,8 +1610,8 @@ delete_oldest_timelog(const struct conf_entry *ent, const char *archive_dir)
 		free(oldlogs[i].fname);
 	}
 	free(oldlogs);
-	free(logfname);
-	free(dir);
+	free(dirbuf);
+	free(basebuf);
 }
 
 /*
@@ -2062,7 +2062,7 @@ do_zipwork(struct zipwork_entry *zwork)
  * Save information on any process we need to signal.  Any single
  * process may need to be sent different signal-values for different
  * log files, but usually a single signal-value will cause the process
- * to close and re-open all of it's log files.
+ * to close and re-open all of its log files.
  */
 static struct sigwork_entry *
 save_sigwork(const struct conf_entry *ent)
@@ -2286,26 +2286,29 @@ mtime_old_timelog(const char *file)
 	time_t t;
 	struct dirent *dp;
 	DIR *dirp;
-	char *s, *logfname, *dir;
+	char *logfname, *logfnamebuf, *dir, *dirbuf;
 
 	t = -1;
 
-	if ((dir = dirname(file)) == NULL) {
-		warn("dirname() of '%s'", file);
+	if ((dirbuf = strdup(file)) == NULL) {
+		warn("strdup() of '%s'", file);
 		return (t);
 	}
-	if ((s = basename(file)) == NULL) {
-		warn("basename() of '%s'", file);
+	dir = dirname(dirbuf);
+	if ((logfnamebuf = strdup(file)) == NULL) {
+		warn("strdup() of '%s'", file);
+		free(dirbuf);
 		return (t);
-	} else if (s[0] == '/') {
-		warnx("Invalid log filename '%s'", s);
-		return (t);
-	} else if ((logfname = strdup(s)) == NULL)
-		err(1, "strdup()");
+	}
+	logfname = basename(logfnamebuf);
+	if (logfname[0] == '/') {
+		warnx("Invalid log filename '%s'", logfname);
+		goto out;
+	}
 
 	if ((dirp = opendir(dir)) == NULL) {
 		warn("Cannot open log directory '%s'", dir);
-		return (t);
+		goto out;
 	}
 	dir_fd = dirfd(dirp);
 	/* Open the archive dir and find the most recent archive of logfname. */
@@ -2322,6 +2325,9 @@ mtime_old_timelog(const char *file)
 	}
 	closedir(dirp);
 
+out:
+	free(dirbuf);
+	free(logfnamebuf);
 	return (t);
 }
 

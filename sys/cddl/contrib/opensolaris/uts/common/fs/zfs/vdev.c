@@ -25,6 +25,7 @@
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2013 Martin Matuska <mm@FreeBSD.org>. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
+ * Copyright 2016 Toomas Soome <tsoome@me.com>
  */
 
 #include <sys/zfs_context.h>
@@ -441,6 +442,7 @@ vdev_alloc_common(spa_t *spa, uint_t id, uint64_t guid, vdev_ops_t *ops)
 	mutex_init(&vd->vdev_dtl_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&vd->vdev_stat_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&vd->vdev_probe_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&vd->vdev_queue_lock, NULL, MUTEX_DEFAULT, NULL);
 	for (int t = 0; t < DTL_TYPES; t++) {
 		vd->vdev_dtl[t] = range_tree_create(NULL, NULL,
 		    &vd->vdev_dtl_lock);
@@ -770,6 +772,7 @@ vdev_free(vdev_t *vd)
 	}
 	mutex_exit(&vd->vdev_dtl_lock);
 
+	mutex_destroy(&vd->vdev_queue_lock);
 	mutex_destroy(&vd->vdev_dtl_lock);
 	mutex_destroy(&vd->vdev_stat_lock);
 	mutex_destroy(&vd->vdev_probe_lock);
@@ -1086,7 +1089,8 @@ vdev_probe_done(zio_t *zio)
 		vd->vdev_probe_zio = NULL;
 		mutex_exit(&vd->vdev_probe_lock);
 
-		while ((pio = zio_walk_parents(zio)) != NULL)
+		zio_link_t *zl = NULL;
+		while ((pio = zio_walk_parents(zio, &zl)) != NULL)
 			if (!vdev_accessible(vd, pio))
 				pio->io_error = SET_ERROR(ENXIO);
 
@@ -2857,7 +2861,8 @@ vdev_allocatable(vdev_t *vd)
 	 * we're asking two separate questions about it.
 	 */
 	return (!(state < VDEV_STATE_DEGRADED && state != VDEV_STATE_CLOSED) &&
-	    !vd->vdev_cant_write && !vd->vdev_ishole);
+	    !vd->vdev_cant_write && !vd->vdev_ishole &&
+	    vd->vdev_mg->mg_initialized);
 }
 
 boolean_t
@@ -2885,6 +2890,7 @@ vdev_get_stats(vdev_t *vd, vdev_stat_t *vs)
 {
 	spa_t *spa = vd->vdev_spa;
 	vdev_t *rvd = spa->spa_root_vdev;
+	vdev_t *tvd = vd->vdev_top;
 
 	ASSERT(spa_config_held(spa, SCL_ALL, RW_READER) != 0);
 
@@ -2895,8 +2901,15 @@ vdev_get_stats(vdev_t *vd, vdev_stat_t *vs)
 	vs->vs_rsize = vdev_get_min_asize(vd);
 	if (vd->vdev_ops->vdev_op_leaf)
 		vs->vs_rsize += VDEV_LABEL_START_SIZE + VDEV_LABEL_END_SIZE;
-	if (vd->vdev_max_asize != 0)
-		vs->vs_esize = vd->vdev_max_asize - vd->vdev_asize;
+	/*
+	 * Report expandable space on top-level, non-auxillary devices only.
+	 * The expandable space is reported in terms of metaslab sized units
+	 * since that determines how much space the pool can expand.
+	 */
+	if (vd->vdev_aux == NULL && tvd != NULL && vd->vdev_max_asize != 0) {
+		vs->vs_esize = P2ALIGN(vd->vdev_max_asize - vd->vdev_asize,
+		    1ULL << tvd->vdev_ms_shift);
+	}
 	vs->vs_configured_ashift = vd->vdev_top != NULL
 	    ? vd->vdev_top->vdev_ashift : vd->vdev_ashift;
 	vs->vs_logical_ashift = vd->vdev_logical_ashift;
@@ -3462,16 +3475,10 @@ vdev_set_state(vdev_t *vd, boolean_t isopen, vdev_state_t state, vdev_aux_t aux)
 
 /*
  * Check the vdev configuration to ensure that it's capable of supporting
- * a root pool.
+ * a root pool. We do not support partial configuration.
+ * In addition, only a single top-level vdev is allowed.
  *
- * On Solaris, we do not support RAID-Z or partial configuration.  In
- * addition, only a single top-level vdev is allowed and none of the
- * leaves can be wholedisks.
- *
- * For FreeBSD, we can boot from any configuration. There is a
- * limitation that the boot filesystem must be either uncompressed or
- * compresses with lzjb compression but I'm not sure how to enforce
- * that here.
+ * FreeBSD does not have above limitations.
  */
 boolean_t
 vdev_is_bootable(vdev_t *vd)
@@ -3483,8 +3490,7 @@ vdev_is_bootable(vdev_t *vd)
 		if (strcmp(vdev_type, VDEV_TYPE_ROOT) == 0 &&
 		    vd->vdev_children > 1) {
 			return (B_FALSE);
-		} else if (strcmp(vdev_type, VDEV_TYPE_RAIDZ) == 0 ||
-		    strcmp(vdev_type, VDEV_TYPE_MISSING) == 0) {
+		} else if (strcmp(vdev_type, VDEV_TYPE_MISSING) == 0) {
 			return (B_FALSE);
 		}
 	}

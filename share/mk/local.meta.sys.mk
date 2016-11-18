@@ -46,9 +46,9 @@ OBJROOT:= ${OBJROOT:H:tA}/${OBJROOT:T}
 TARGET_ARCHES_arm?=     arm armeb armv6
 TARGET_ARCHES_arm64?=   aarch64
 TARGET_ARCHES_mips?=    mipsel mips mips64el mips64 mipsn32 mipsn32el
-TARGET_ARCHES_powerpc?= powerpc powerpc64
+TARGET_ARCHES_powerpc?= powerpc powerpc64 powerpcspe
 TARGET_ARCHES_pc98?=    i386
-TARGET_ARCHES_riscv?=   riscv64
+TARGET_ARCHES_riscv?=   riscv64 riscv64sf
 
 # some corner cases
 BOOT_MACHINE_DIR.amd64 = boot/i386
@@ -214,7 +214,8 @@ CSU_DIR := ${CSU_DIR.${MACHINE_ARCH}}
 .if !empty(TIME_STAMP)
 TRACER= ${TIME_STAMP} ${:U}
 .endif
-.if !defined(_RECURSING_PROGS) && !defined(_RECURSING_CRUNCH)
+.if !defined(_RECURSING_PROGS) && !defined(_RECURSING_CRUNCH) && \
+    !make(print-dir)
 WITH_META_STATS= t
 .endif
 
@@ -222,7 +223,7 @@ WITH_META_STATS= t
 .if ${MACHINE} == "host"
 MK_SHARED_TOOLCHAIN= no
 .endif
-TOOLCHAIN_VARS=	AS AR CC CLANG_TBLGEN CXX CPP LD NM OBJDUMP OBJCOPY RANLIB \
+TOOLCHAIN_VARS=	AS AR CC CLANG_TBLGEN CXX CPP LD NM OBJCOPY RANLIB \
 		STRINGS SIZE LLVM_TBLGEN
 _toolchain_bin_CLANG_TBLGEN=	/usr/bin/clang-tblgen
 _toolchain_bin_LLVM_TBLGEN=	/usr/bin/llvm-tblgen

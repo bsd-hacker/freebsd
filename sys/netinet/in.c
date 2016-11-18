@@ -397,6 +397,8 @@ in_aifaddr_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp, struct thread *td)
 	ifa->ifa_addr = (struct sockaddr *)&ia->ia_addr;
 	ifa->ifa_dstaddr = (struct sockaddr *)&ia->ia_dstaddr;
 	ifa->ifa_netmask = (struct sockaddr *)&ia->ia_sockmask;
+	callout_init_rw(&ia->ia_garp_timer, &ifp->if_addr_lock,
+	    CALLOUT_RETURNUNLOCKED);
 
 	ia->ia_ifp = ifp;
 	ia->ia_addr = *addr;
@@ -634,6 +636,12 @@ in_difaddr_ioctl(caddr_t data, struct ifnet *ifp, struct thread *td)
 		}
 		IN_MULTI_UNLOCK();
 	}
+
+	IF_ADDR_WLOCK(ifp);
+	if (callout_stop(&ia->ia_garp_timer) == 1) {
+		ifa_free(&ia->ia_ifa);
+	}
+	IF_ADDR_WUNLOCK(ifp);
 
 	EVENTHANDLER_INVOKE(ifaddr_event, ifp);
 	ifa_free(&ia->ia_ifa);		/* in_ifaddrhead */
@@ -895,6 +903,58 @@ in_scrubprefix(struct in_ifaddr *target, u_int flags)
 
 #undef rtinitflags
 
+void
+in_ifscrub_all(void)
+{
+	struct ifnet *ifp;
+	struct ifaddr *ifa, *nifa;
+	struct ifaliasreq ifr;
+
+	IFNET_RLOCK();
+	TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
+		/* Cannot lock here - lock recursion. */
+		/* IF_ADDR_RLOCK(ifp); */
+		TAILQ_FOREACH_SAFE(ifa, &ifp->if_addrhead, ifa_link, nifa) {
+			if (ifa->ifa_addr->sa_family != AF_INET)
+				continue;
+
+			/*
+			 * This is ugly but the only way for legacy IP to
+			 * cleanly remove addresses and everything attached.
+			 */
+			bzero(&ifr, sizeof(ifr));
+			ifr.ifra_addr = *ifa->ifa_addr;
+			if (ifa->ifa_dstaddr)
+			ifr.ifra_broadaddr = *ifa->ifa_dstaddr;
+			(void)in_control(NULL, SIOCDIFADDR, (caddr_t)&ifr,
+			    ifp, NULL);
+		}
+		/* IF_ADDR_RUNLOCK(ifp); */
+		in_purgemaddrs(ifp);
+		igmp_domifdetach(ifp);
+	}
+	IFNET_RUNLOCK();
+}
+
+int
+in_ifaddr_broadcast(struct in_addr in, struct in_ifaddr *ia)
+{
+
+	return ((in.s_addr == ia->ia_broadaddr.sin_addr.s_addr ||
+	     /*
+	      * Check for old-style (host 0) broadcast, but
+	      * taking into account that RFC 3021 obsoletes it.
+	      */
+	    (ia->ia_subnetmask != IN_RFC3021_MASK &&
+	    ntohl(in.s_addr) == ia->ia_subnet)) &&
+	     /*
+	      * Check for an all one subnetmask. These
+	      * only exist when an interface gets a secondary
+	      * address.
+	      */
+	    ia->ia_subnetmask != (u_long)0xffffffff);
+}
+
 /*
  * Return 1 if the address might be a local broadcast address.
  */
@@ -902,37 +962,27 @@ int
 in_broadcast(struct in_addr in, struct ifnet *ifp)
 {
 	register struct ifaddr *ifa;
-	u_long t;
+	int found;
 
 	if (in.s_addr == INADDR_BROADCAST ||
 	    in.s_addr == INADDR_ANY)
 		return (1);
 	if ((ifp->if_flags & IFF_BROADCAST) == 0)
 		return (0);
-	t = ntohl(in.s_addr);
+	found = 0;
 	/*
 	 * Look through the list of addresses for a match
 	 * with a broadcast address.
 	 */
-#define ia ((struct in_ifaddr *)ifa)
+	IF_ADDR_RLOCK(ifp);
 	TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link)
 		if (ifa->ifa_addr->sa_family == AF_INET &&
-		    (in.s_addr == ia->ia_broadaddr.sin_addr.s_addr ||
-		     /*
-		      * Check for old-style (host 0) broadcast, but
-		      * taking into account that RFC 3021 obsoletes it.
-		      */
-		    (ia->ia_subnetmask != IN_RFC3021_MASK &&
-		    t == ia->ia_subnet)) &&
-		     /*
-		      * Check for an all one subnetmask. These
-		      * only exist when an interface gets a secondary
-		      * address.
-		      */
-		    ia->ia_subnetmask != (u_long)0xffffffff)
-			    return (1);
-	return (0);
-#undef ia
+		    in_ifaddr_broadcast(in, (struct in_ifaddr *)ifa)) {
+			found = 1;
+			break;
+		}
+	IF_ADDR_RUNLOCK(ifp);
+	return (found);
 }
 
 /*

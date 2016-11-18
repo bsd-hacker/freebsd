@@ -107,9 +107,8 @@ hostap_vattach(struct ieee80211vap *vap)
 static void
 sta_disassoc(void *arg, struct ieee80211_node *ni)
 {
-	struct ieee80211vap *vap = arg;
 
-	if (ni->ni_vap == vap && ni->ni_associd != 0) {
+	if (ni->ni_associd != 0) {
 		IEEE80211_SEND_MGMT(ni, IEEE80211_FC0_SUBTYPE_DISASSOC,
 			IEEE80211_REASON_ASSOC_LEAVE);
 		ieee80211_node_leave(ni);
@@ -119,9 +118,9 @@ sta_disassoc(void *arg, struct ieee80211_node *ni)
 static void
 sta_csa(void *arg, struct ieee80211_node *ni)
 {
-	struct ieee80211vap *vap = arg;
+	struct ieee80211vap *vap = ni->ni_vap;
 
-	if (ni->ni_vap == vap && ni->ni_associd != 0)
+	if (ni->ni_associd != 0)
 		if (ni->ni_inact > vap->iv_inact_init) {
 			ni->ni_inact = vap->iv_inact_init;
 			IEEE80211_NOTE(vap, IEEE80211_MSG_INACT, ni,
@@ -132,9 +131,8 @@ sta_csa(void *arg, struct ieee80211_node *ni)
 static void
 sta_drop(void *arg, struct ieee80211_node *ni)
 {
-	struct ieee80211vap *vap = arg;
 
-	if (ni->ni_vap == vap && ni->ni_associd != 0)
+	if (ni->ni_associd != 0)
 		ieee80211_node_leave(ni);
 }
 
@@ -179,7 +177,8 @@ hostap_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			ieee80211_dfs_cac_stop(vap);
 			break;
 		case IEEE80211_S_RUN:
-			ieee80211_iterate_nodes(&ic->ic_sta, sta_disassoc, vap);
+			ieee80211_iterate_nodes_vap(&ic->ic_sta, vap,
+			    sta_disassoc, NULL);
 			break;
 		default:
 			break;
@@ -195,7 +194,8 @@ hostap_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		switch (ostate) {
 		case IEEE80211_S_CSA:
 		case IEEE80211_S_RUN:
-			ieee80211_iterate_nodes(&ic->ic_sta, sta_disassoc, vap);
+			ieee80211_iterate_nodes_vap(&ic->ic_sta, vap,
+			    sta_disassoc, NULL);
 			/*
 			 * Clear overlapping BSS state; the beacon frame
 			 * will be reconstructed on transition to the RUN
@@ -289,7 +289,8 @@ hostap_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			 * Shorten inactivity timer of associated stations
 			 * to weed out sta's that don't follow a CSA.
 			 */
-			ieee80211_iterate_nodes(&ic->ic_sta, sta_csa, vap);
+			ieee80211_iterate_nodes_vap(&ic->ic_sta, vap,
+			    sta_csa, NULL);
 			/*
 			 * Update bss node channel to reflect where
 			 * we landed after CSA.
@@ -340,7 +341,8 @@ hostap_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			 * such as capabilities and the negotiated rate
 			 * set may/will be wrong).
 			 */
-			ieee80211_iterate_nodes(&ic->ic_sta, sta_drop, vap);
+			ieee80211_iterate_nodes_vap(&ic->ic_sta, vap,
+			    sta_drop, NULL);
 		}
 		break;
 	default:
@@ -1153,28 +1155,36 @@ bad:
  * record any key length.
  */
 static int
-wpa_cipher(const uint8_t *sel, uint8_t *keylen)
+wpa_cipher(const uint8_t *sel, uint8_t *keylen, uint8_t *cipher)
 {
 #define	WPA_SEL(x)	(((x)<<24)|WPA_OUI)
 	uint32_t w = le32dec(sel);
 
 	switch (w) {
 	case WPA_SEL(WPA_CSE_NULL):
-		return IEEE80211_CIPHER_NONE;
+		*cipher = IEEE80211_CIPHER_NONE;
+		break;
 	case WPA_SEL(WPA_CSE_WEP40):
 		if (keylen)
 			*keylen = 40 / NBBY;
-		return IEEE80211_CIPHER_WEP;
+		*cipher = IEEE80211_CIPHER_WEP;
+		break;
 	case WPA_SEL(WPA_CSE_WEP104):
 		if (keylen)
 			*keylen = 104 / NBBY;
-		return IEEE80211_CIPHER_WEP;
+		*cipher = IEEE80211_CIPHER_WEP;
+		break;
 	case WPA_SEL(WPA_CSE_TKIP):
-		return IEEE80211_CIPHER_TKIP;
+		*cipher = IEEE80211_CIPHER_TKIP;
+		break;
 	case WPA_SEL(WPA_CSE_CCMP):
-		return IEEE80211_CIPHER_AES_CCM;
+		*cipher = IEEE80211_CIPHER_AES_CCM;
+		break;
+	default:
+		return (EINVAL);
 	}
-	return 32;		/* NB: so 1<< is discarded */
+
+	return (0);
 #undef WPA_SEL
 }
 
@@ -1212,7 +1222,7 @@ ieee80211_parse_wpa(struct ieee80211vap *vap, const uint8_t *frm,
 {
 	uint8_t len = frm[1];
 	uint32_t w;
-	int n;
+	int error, n;
 
 	/*
 	 * Check the length once for fixed parts: OUI, type,
@@ -1245,7 +1255,14 @@ ieee80211_parse_wpa(struct ieee80211vap *vap, const uint8_t *frm,
 	memset(rsn, 0, sizeof(*rsn));
 
 	/* multicast/group cipher */
-	rsn->rsn_mcastcipher = wpa_cipher(frm, &rsn->rsn_mcastkeylen);
+	error = wpa_cipher(frm, &rsn->rsn_mcastkeylen, &rsn->rsn_mcastcipher);
+	if (error != 0) {
+		IEEE80211_DISCARD_IE(vap,
+		    IEEE80211_MSG_ELEMID | IEEE80211_MSG_WPA,
+		    wh, "WPA", "unknown mcast cipher suite %08X",
+		    le32dec(frm));
+		return IEEE80211_REASON_GROUP_CIPHER_INVALID;
+	}
 	frm += 4, len -= 4;
 
 	/* unicast ciphers */
@@ -1260,13 +1277,26 @@ ieee80211_parse_wpa(struct ieee80211vap *vap, const uint8_t *frm,
 	}
 	w = 0;
 	for (; n > 0; n--) {
-		w |= 1<<wpa_cipher(frm, &rsn->rsn_ucastkeylen);
+		uint8_t cipher;
+
+		error = wpa_cipher(frm, &rsn->rsn_ucastkeylen, &cipher);
+		if (error == 0)
+			w |= 1 << cipher;
+
 		frm += 4, len -= 4;
 	}
-	if (w & (1<<IEEE80211_CIPHER_TKIP))
-		rsn->rsn_ucastcipher = IEEE80211_CIPHER_TKIP;
-	else
+	if (w == 0) {
+		IEEE80211_DISCARD_IE(vap,
+		    IEEE80211_MSG_ELEMID | IEEE80211_MSG_WPA,
+		    wh, "WPA", "no usable pairwise cipher suite found (w=%d)",
+		    w);
+		return IEEE80211_REASON_PAIRWISE_CIPHER_INVALID;
+	}
+	/* XXX other? */
+	if (w & (1 << IEEE80211_CIPHER_AES_CCM))
 		rsn->rsn_ucastcipher = IEEE80211_CIPHER_AES_CCM;
+	else
+		rsn->rsn_ucastcipher = IEEE80211_CIPHER_TKIP;
 
 	/* key management algorithms */
 	n = le16dec(frm);
@@ -1300,30 +1330,39 @@ ieee80211_parse_wpa(struct ieee80211vap *vap, const uint8_t *frm,
  * record any key length.
  */
 static int
-rsn_cipher(const uint8_t *sel, uint8_t *keylen)
+rsn_cipher(const uint8_t *sel, uint8_t *keylen, uint8_t *cipher)
 {
 #define	RSN_SEL(x)	(((x)<<24)|RSN_OUI)
 	uint32_t w = le32dec(sel);
 
 	switch (w) {
 	case RSN_SEL(RSN_CSE_NULL):
-		return IEEE80211_CIPHER_NONE;
+		*cipher = IEEE80211_CIPHER_NONE;
+		break;
 	case RSN_SEL(RSN_CSE_WEP40):
 		if (keylen)
 			*keylen = 40 / NBBY;
-		return IEEE80211_CIPHER_WEP;
+		*cipher = IEEE80211_CIPHER_WEP;
+		break;
 	case RSN_SEL(RSN_CSE_WEP104):
 		if (keylen)
 			*keylen = 104 / NBBY;
-		return IEEE80211_CIPHER_WEP;
+		*cipher = IEEE80211_CIPHER_WEP;
+		break;
 	case RSN_SEL(RSN_CSE_TKIP):
-		return IEEE80211_CIPHER_TKIP;
+		*cipher = IEEE80211_CIPHER_TKIP;
+		break;
 	case RSN_SEL(RSN_CSE_CCMP):
-		return IEEE80211_CIPHER_AES_CCM;
+		*cipher = IEEE80211_CIPHER_AES_CCM;
+		break;
 	case RSN_SEL(RSN_CSE_WRAP):
-		return IEEE80211_CIPHER_AES_OCB;
+		*cipher = IEEE80211_CIPHER_AES_OCB;
+		break;
+	default:
+		return (EINVAL);
 	}
-	return 32;		/* NB: so 1<< is discarded */
+
+	return (0);
 #undef WPA_SEL
 }
 
@@ -1360,7 +1399,7 @@ ieee80211_parse_rsn(struct ieee80211vap *vap, const uint8_t *frm,
 {
 	uint8_t len = frm[1];
 	uint32_t w;
-	int n;
+	int error, n;
 
 	/*
 	 * Check the length once for fixed parts: 
@@ -1373,6 +1412,7 @@ ieee80211_parse_rsn(struct ieee80211vap *vap, const uint8_t *frm,
 		    wh, "WPA", "not RSN, flags 0x%x", vap->iv_flags);
 		return IEEE80211_REASON_IE_INVALID;
 	}
+	/* XXX may be shorter */
 	if (len < 10) {
 		IEEE80211_DISCARD_IE(vap,
 		    IEEE80211_MSG_ELEMID | IEEE80211_MSG_WPA,
@@ -1385,14 +1425,28 @@ ieee80211_parse_rsn(struct ieee80211vap *vap, const uint8_t *frm,
 		IEEE80211_DISCARD_IE(vap,
 		    IEEE80211_MSG_ELEMID | IEEE80211_MSG_WPA,
 		    wh, "RSN", "bad version %u", w);
-		return IEEE80211_REASON_IE_INVALID;
+		return IEEE80211_REASON_UNSUPP_RSN_IE_VERSION;
 	}
 	frm += 2, len -= 2;
 
 	memset(rsn, 0, sizeof(*rsn));
 
 	/* multicast/group cipher */
-	rsn->rsn_mcastcipher = rsn_cipher(frm, &rsn->rsn_mcastkeylen);
+	error = rsn_cipher(frm, &rsn->rsn_mcastkeylen, &rsn->rsn_mcastcipher);
+	if (error != 0) {
+		IEEE80211_DISCARD_IE(vap,
+		    IEEE80211_MSG_ELEMID | IEEE80211_MSG_WPA,
+		    wh, "RSN", "unknown mcast cipher suite %08X",
+		    le32dec(frm));
+		return IEEE80211_REASON_GROUP_CIPHER_INVALID;
+	}
+	if (rsn->rsn_mcastcipher == IEEE80211_CIPHER_NONE) {
+		IEEE80211_DISCARD_IE(vap,
+		    IEEE80211_MSG_ELEMID | IEEE80211_MSG_WPA,
+		    wh, "RSN", "invalid mcast cipher suite %d",
+		    rsn->rsn_mcastcipher);
+		return IEEE80211_REASON_GROUP_CIPHER_INVALID;
+	}
 	frm += 4, len -= 4;
 
 	/* unicast ciphers */
@@ -1406,14 +1460,33 @@ ieee80211_parse_rsn(struct ieee80211vap *vap, const uint8_t *frm,
 		return IEEE80211_REASON_IE_INVALID;
 	}
 	w = 0;
+
 	for (; n > 0; n--) {
-		w |= 1<<rsn_cipher(frm, &rsn->rsn_ucastkeylen);
+		uint8_t cipher;
+
+		error = rsn_cipher(frm, &rsn->rsn_ucastkeylen, &cipher);
+		if (error == 0)
+			w |= 1 << cipher;
+
 		frm += 4, len -= 4;
 	}
-	if (w & (1<<IEEE80211_CIPHER_TKIP))
+        if (w & (1 << IEEE80211_CIPHER_AES_CCM))
+                rsn->rsn_ucastcipher = IEEE80211_CIPHER_AES_CCM;
+	else if (w & (1 << IEEE80211_CIPHER_AES_OCB))
+		rsn->rsn_ucastcipher = IEEE80211_CIPHER_AES_OCB;
+	else if (w & (1 << IEEE80211_CIPHER_TKIP))
 		rsn->rsn_ucastcipher = IEEE80211_CIPHER_TKIP;
-	else
-		rsn->rsn_ucastcipher = IEEE80211_CIPHER_AES_CCM;
+	else if ((w & (1 << IEEE80211_CIPHER_NONE)) &&
+	    (rsn->rsn_mcastcipher == IEEE80211_CIPHER_WEP ||
+	     rsn->rsn_mcastcipher == IEEE80211_CIPHER_TKIP))
+		rsn->rsn_ucastcipher = IEEE80211_CIPHER_NONE;
+	else {
+		IEEE80211_DISCARD_IE(vap,
+		    IEEE80211_MSG_ELEMID | IEEE80211_MSG_WPA,
+		    wh, "RSN", "no usable pairwise cipher suite found (w=%d)",
+		    w);
+		return IEEE80211_REASON_PAIRWISE_CIPHER_INVALID;
+	}
 
 	/* key management algorithms */
 	n = le16dec(frm);
@@ -1510,6 +1583,7 @@ wpa_assocreq(struct ieee80211_node *ni, struct ieee80211_rsnparms *rsnparms,
 	else
 		reason = ieee80211_parse_rsn(vap, rsn, rsnparms, wh);
 	if (reason != 0) {
+		/* XXX wpa->rsn fallback? */
 		/* XXX distinguish WPA/RSN? */
 		vap->iv_stats.is_rx_assoc_badwpaie++;
 		goto bad;

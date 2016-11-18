@@ -36,53 +36,196 @@
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/reboot.h>
+#include <sys/systm.h>
+#include <sys/sysctl.h>
 #include <sys/timetc.h>
-#include <sys/syscallsubr.h>
 
 #include <dev/hyperv/include/hyperv.h>
-#include "hv_util.h"
+#include <dev/hyperv/include/vmbus.h>
+#include <dev/hyperv/utilities/hv_util.h>
+#include <dev/hyperv/utilities/vmbus_icreg.h>
 
-void
-hv_negotiate_version(
-	struct hv_vmbus_icmsg_hdr*		icmsghdrp,
-	struct hv_vmbus_icmsg_negotiate*	negop,
-	uint8_t*				buf)
+#include "vmbus_if.h"
+
+#define VMBUS_IC_BRSIZE		(4 * PAGE_SIZE)
+
+#define VMBUS_IC_VERCNT		2
+#define VMBUS_IC_NEGOSZ		\
+	__offsetof(struct vmbus_icmsg_negotiate, ic_ver[VMBUS_IC_VERCNT])
+CTASSERT(VMBUS_IC_NEGOSZ < VMBUS_IC_BRSIZE);
+
+static int	vmbus_ic_fwver_sysctl(SYSCTL_HANDLER_ARGS);
+static int	vmbus_ic_msgver_sysctl(SYSCTL_HANDLER_ARGS);
+
+int
+vmbus_ic_negomsg(struct hv_util_sc *sc, void *data, int *dlen0,
+    uint32_t fw_ver, uint32_t msg_ver)
 {
-	icmsghdrp->icmsgsize = 0x10;
+	struct vmbus_icmsg_negotiate *nego;
+	int i, cnt, dlen = *dlen0, error;
+	uint32_t sel_fw_ver, sel_msg_ver;
+	bool has_fw_ver, has_msg_ver;
 
-	negop = (struct hv_vmbus_icmsg_negotiate *)&buf[
-		sizeof(struct hv_vmbus_pipe_hdr) +
-		sizeof(struct hv_vmbus_icmsg_hdr)];
+	/*
+	 * Preliminary message verification.
+	 */
+	if (dlen < sizeof(*nego)) {
+		device_printf(sc->ic_dev, "truncated ic negotiate, len %d\n",
+		    dlen);
+		return (EINVAL);
+	}
+	nego = data;
 
-	if (negop->icframe_vercnt >= 2 &&
-	    negop->icversion_data[1].major == 3) {
-		negop->icversion_data[0].major = 3;
-		negop->icversion_data[0].minor = 0;
-		negop->icversion_data[1].major = 3;
-		negop->icversion_data[1].minor = 0;
-	} else {
-		negop->icversion_data[0].major = 1;
-		negop->icversion_data[0].minor = 0;
-		negop->icversion_data[1].major = 1;
-		negop->icversion_data[1].minor = 0;
+	if (nego->ic_fwver_cnt == 0) {
+		device_printf(sc->ic_dev, "ic negotiate does not contain "
+		    "framework version %u\n", nego->ic_fwver_cnt);
+		return (EINVAL);
+	}
+	if (nego->ic_msgver_cnt == 0) {
+		device_printf(sc->ic_dev, "ic negotiate does not contain "
+		    "message version %u\n", nego->ic_msgver_cnt);
+		return (EINVAL);
 	}
 
-	negop->icframe_vercnt = 1;
-	negop->icmsg_vercnt = 1;
+	cnt = nego->ic_fwver_cnt + nego->ic_msgver_cnt;
+	if (dlen < __offsetof(struct vmbus_icmsg_negotiate, ic_ver[cnt])) {
+		device_printf(sc->ic_dev, "ic negotiate does not contain "
+		    "versions %d\n", dlen);
+		return (EINVAL);
+	}
+
+	error = EOPNOTSUPP;
+
+	/*
+	 * Find the best match framework version.
+	 */
+	has_fw_ver = false;
+	for (i = 0; i < nego->ic_fwver_cnt; ++i) {
+		if (VMBUS_ICVER_LE(nego->ic_ver[i], fw_ver)) {
+			if (!has_fw_ver) {
+				sel_fw_ver = nego->ic_ver[i];
+				has_fw_ver = true;
+			} else if (VMBUS_ICVER_GT(nego->ic_ver[i],
+			    sel_fw_ver)) {
+				sel_fw_ver = nego->ic_ver[i];
+			}
+		}
+	}
+	if (!has_fw_ver) {
+		device_printf(sc->ic_dev, "failed to select framework "
+		    "version\n");
+		goto done;
+	}
+
+	/*
+	 * Fine the best match message version.
+	 */
+	has_msg_ver = false;
+	for (i = nego->ic_fwver_cnt;
+	    i < nego->ic_fwver_cnt + nego->ic_msgver_cnt; ++i) {
+		if (VMBUS_ICVER_LE(nego->ic_ver[i], msg_ver)) {
+			if (!has_msg_ver) {
+				sel_msg_ver = nego->ic_ver[i];
+				has_msg_ver = true;
+			} else if (VMBUS_ICVER_GT(nego->ic_ver[i],
+			    sel_msg_ver)) {
+				sel_msg_ver = nego->ic_ver[i];
+			}
+		}
+	}
+	if (!has_msg_ver) {
+		device_printf(sc->ic_dev, "failed to select message "
+		    "version\n");
+		goto done;
+	}
+
+	error = 0;
+done:
+	if (bootverbose || !has_fw_ver || !has_msg_ver) {
+		if (has_fw_ver) {
+			device_printf(sc->ic_dev, "sel framework version: "
+			    "%u.%u\n",
+			    VMBUS_ICVER_MAJOR(sel_fw_ver),
+			    VMBUS_ICVER_MINOR(sel_fw_ver));
+		}
+		for (i = 0; i < nego->ic_fwver_cnt; i++) {
+			device_printf(sc->ic_dev, "supp framework version: "
+			    "%u.%u\n",
+			    VMBUS_ICVER_MAJOR(nego->ic_ver[i]),
+			    VMBUS_ICVER_MINOR(nego->ic_ver[i]));
+		}
+
+		if (has_msg_ver) {
+			device_printf(sc->ic_dev, "sel message version: "
+			    "%u.%u\n",
+			    VMBUS_ICVER_MAJOR(sel_msg_ver),
+			    VMBUS_ICVER_MINOR(sel_msg_ver));
+		}
+		for (i = nego->ic_fwver_cnt;
+		    i < nego->ic_fwver_cnt + nego->ic_msgver_cnt; i++) {
+			device_printf(sc->ic_dev, "supp message version: "
+			    "%u.%u\n",
+			    VMBUS_ICVER_MAJOR(nego->ic_ver[i]),
+			    VMBUS_ICVER_MINOR(nego->ic_ver[i]));
+		}
+	}
+	if (error)
+		return (error);
+
+	/* Record the selected versions. */
+	sc->ic_fwver = sel_fw_ver;
+	sc->ic_msgver = sel_msg_ver;
+
+	/* One framework version. */
+	nego->ic_fwver_cnt = 1;
+	nego->ic_ver[0] = sel_fw_ver;
+
+	/* One message version. */
+	nego->ic_msgver_cnt = 1;
+	nego->ic_ver[1] = sel_msg_ver;
+
+	/* Update data size. */
+	nego->ic_hdr.ic_dsize = VMBUS_IC_NEGOSZ -
+	    sizeof(struct vmbus_icmsg_hdr);
+
+	/* Update total size, if necessary. */
+	if (dlen < VMBUS_IC_NEGOSZ)
+		*dlen0 = VMBUS_IC_NEGOSZ;
+
+	return (0);
 }
 
 int
-hv_util_attach(device_t dev)
+vmbus_ic_probe(device_t dev, const struct vmbus_ic_desc descs[])
 {
-	struct hv_device*	hv_dev;
-	struct hv_util_sc*	softc;
-	int			ret;
+	device_t bus = device_get_parent(dev);
+	const struct vmbus_ic_desc *d;
 
-	hv_dev = vmbus_get_devctx(dev);
-	softc = device_get_softc(dev);
-	softc->hv_dev = hv_dev;
-	softc->receive_buffer =
-		malloc(4 * PAGE_SIZE, M_DEVBUF, M_WAITOK | M_ZERO);
+	if (resource_disabled(device_get_name(dev), 0))
+		return (ENXIO);
+
+	for (d = descs; d->ic_desc != NULL; ++d) {
+		if (VMBUS_PROBE_GUID(bus, dev, &d->ic_guid) == 0) {
+			device_set_desc(dev, d->ic_desc);
+			return (BUS_PROBE_DEFAULT);
+		}
+	}
+	return (ENXIO);
+}
+
+int
+hv_util_attach(device_t dev, vmbus_chan_callback_t cb)
+{
+	struct hv_util_sc *sc = device_get_softc(dev);
+	struct vmbus_channel *chan = vmbus_get_channel(dev);
+	struct sysctl_oid_list *child;
+	struct sysctl_ctx_list *ctx;
+	int error;
+
+	sc->ic_dev = dev;
+	sc->ic_buflen = VMBUS_IC_BRSIZE;
+	sc->receive_buffer = malloc(VMBUS_IC_BRSIZE, M_DEVBUF,
+	    M_WAITOK | M_ZERO);
 
 	/*
 	 * These services are not performance critical and do not need
@@ -91,33 +234,56 @@ hv_util_attach(device_t dev)
 	 * Turn off batched reading for all util drivers before we open the
 	 * channel.
 	 */
-	hv_set_channel_read_state(hv_dev->channel, FALSE);
+	vmbus_chan_set_readbatch(chan, false);
 
-	ret = hv_vmbus_channel_open(hv_dev->channel, 4 * PAGE_SIZE,
-			4 * PAGE_SIZE, NULL, 0,
-			softc->callback, softc);
+	error = vmbus_chan_open(chan, VMBUS_IC_BRSIZE, VMBUS_IC_BRSIZE, NULL, 0,
+	    cb, sc);
+	if (error) {
+		free(sc->receive_buffer, M_DEVBUF);
+		return (error);
+	}
 
-	if (ret)
-		goto error0;
+	ctx = device_get_sysctl_ctx(dev);
+	child = SYSCTL_CHILDREN(device_get_sysctl_tree(dev));
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "fw_version",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    vmbus_ic_fwver_sysctl, "A", "framework version");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "msg_version",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    vmbus_ic_msgver_sysctl, "A", "message version");
 
 	return (0);
+}
 
-error0:
-	free(softc->receive_buffer, M_DEVBUF);
-	return (ret);
+static int
+vmbus_ic_fwver_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct hv_util_sc *sc = arg1;
+	char verstr[16];
+
+	snprintf(verstr, sizeof(verstr), "%u.%u",
+	    VMBUS_ICVER_MAJOR(sc->ic_fwver), VMBUS_ICVER_MINOR(sc->ic_fwver));
+	return sysctl_handle_string(oidp, verstr, sizeof(verstr), req);
+}
+
+static int
+vmbus_ic_msgver_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct hv_util_sc *sc = arg1;
+	char verstr[16];
+
+	snprintf(verstr, sizeof(verstr), "%u.%u",
+	    VMBUS_ICVER_MAJOR(sc->ic_msgver), VMBUS_ICVER_MINOR(sc->ic_msgver));
+	return sysctl_handle_string(oidp, verstr, sizeof(verstr), req);
 }
 
 int
 hv_util_detach(device_t dev)
 {
-	struct hv_device*	hv_dev;
-	struct hv_util_sc*	softc;
+	struct hv_util_sc *sc = device_get_softc(dev);
 
-	hv_dev = vmbus_get_devctx(dev);
+	vmbus_chan_close(vmbus_get_channel(dev));
+	free(sc->receive_buffer, M_DEVBUF);
 
-	hv_vmbus_channel_close(hv_dev->channel);
-	softc = device_get_softc(dev);
-
-	free(softc->receive_buffer, M_DEVBUF);
 	return (0);
 }

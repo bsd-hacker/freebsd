@@ -289,6 +289,14 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	if ((size & 15) || size > MBOX_LEN)
 		return -EINVAL;
 
+	if (adap->flags & IS_VF) {
+		if (is_t6(adap))
+			data_reg = FW_T6VF_MBDATA_BASE_ADDR;
+		else
+			data_reg = FW_T4VF_MBDATA_BASE_ADDR;
+		ctl_reg = VF_CIM_REG(A_CIM_VF_EXT_MAILBOX_CTRL);
+	}
+
 	/*
 	 * If we have a negative timeout, that implies that we can't sleep.
 	 */
@@ -343,6 +351,22 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	for (i = 0; i < size; i += 8, p++)
 		t4_write_reg64(adap, data_reg + i, be64_to_cpu(*p));
 
+	if (adap->flags & IS_VF) {
+		/*
+		 * For the VFs, the Mailbox Data "registers" are
+		 * actually backed by T4's "MA" interface rather than
+		 * PL Registers (as is the case for the PFs).  Because
+		 * these are in different coherency domains, the write
+		 * to the VF's PL-register-backed Mailbox Control can
+		 * race in front of the writes to the MA-backed VF
+		 * Mailbox Data "registers".  So we need to do a
+		 * read-back on at least one byte of the VF Mailbox
+		 * Data registers before doing the write to the VF
+		 * Mailbox Control register.
+		 */
+		t4_read_reg(adap, data_reg);
+	}
+
 	CH_DUMP_MBOX(adap, mbox, data_reg);
 
 	t4_write_reg(adap, ctl_reg, F_MBMSGVALID | V_MBOWNER(X_MBOWNER_FW));
@@ -355,10 +379,13 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	 * Loop waiting for the reply; bail out if we time out or the firmware
 	 * reports an error.
 	 */
-	for (i = 0;
-	     !((pcie_fw = t4_read_reg(adap, A_PCIE_FW)) & F_PCIE_FW_ERR) &&
-	     i < timeout;
-	     i += ms) {
+	pcie_fw = 0;
+	for (i = 0; i < timeout; i += ms) {
+		if (!(adap->flags & IS_VF)) {
+			pcie_fw = t4_read_reg(adap, A_PCIE_FW);
+			if (pcie_fw & F_PCIE_FW_ERR)
+				break;
+		}
 		if (sleep_ok) {
 			ms = delay[delay_idx];  /* last element may repeat */
 			if (delay_idx < ARRAY_SIZE(delay) - 1)
@@ -404,6 +431,21 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	ret = (pcie_fw & F_PCIE_FW_ERR) ? -ENXIO : -ETIMEDOUT;
 	CH_ERR(adap, "command %#x in mailbox %d timed out\n",
 	       *(const u8 *)cmd, mbox);
+
+	/* If DUMP_MBOX is set the mbox has already been dumped */
+	if ((adap->debug_flags & DF_DUMP_MBOX) == 0) {
+		p = cmd;
+		CH_ERR(adap, "mbox: %016llx %016llx %016llx %016llx "
+		    "%016llx %016llx %016llx %016llx\n",
+		    (unsigned long long)be64_to_cpu(p[0]),
+		    (unsigned long long)be64_to_cpu(p[1]),
+		    (unsigned long long)be64_to_cpu(p[2]),
+		    (unsigned long long)be64_to_cpu(p[3]),
+		    (unsigned long long)be64_to_cpu(p[4]),
+		    (unsigned long long)be64_to_cpu(p[5]),
+		    (unsigned long long)be64_to_cpu(p[6]),
+		    (unsigned long long)be64_to_cpu(p[7]));
+	}
 
 	t4_report_fw_error(adap);
 	t4_fatal_err(adap);
@@ -698,10 +740,14 @@ unsigned int t4_get_regs_len(struct adapter *adapter)
 
 	switch (chip_version) {
 	case CHELSIO_T4:
+		if (adapter->flags & IS_VF)
+			return FW_T4VF_REGMAP_SIZE;
 		return T4_REGMAP_SIZE;
 
 	case CHELSIO_T5:
 	case CHELSIO_T6:
+		if (adapter->flags & IS_VF)
+			return FW_T4VF_REGMAP_SIZE;
 		return T5_REGMAP_SIZE;
 	}
 
@@ -1178,6 +1224,18 @@ void t4_get_regs(struct adapter *adap, u8 *buf, size_t buf_size)
 		0x27cf0, 0x27cf0,
 		0x27cf8, 0x27d7c,
 		0x27e00, 0x27e04,
+	};
+
+	static const unsigned int t4vf_reg_ranges[] = {
+		VF_SGE_REG(A_SGE_VF_KDOORBELL), VF_SGE_REG(A_SGE_VF_GTS),
+		VF_MPS_REG(A_MPS_VF_CTL),
+		VF_MPS_REG(A_MPS_VF_STAT_RX_VF_ERR_FRAMES_H),
+		VF_PL_REG(A_PL_VF_WHOAMI), VF_PL_REG(A_PL_VF_WHOAMI),
+		VF_CIM_REG(A_CIM_VF_EXT_MAILBOX_CTRL),
+		VF_CIM_REG(A_CIM_VF_EXT_MAILBOX_STATUS),
+		FW_T4VF_MBDATA_BASE_ADDR,
+		FW_T4VF_MBDATA_BASE_ADDR +
+		((NUM_CIM_PF_MAILBOX_DATA_INSTANCES - 1) * 4),
 	};
 
 	static const unsigned int t5_reg_ranges[] = {
@@ -1955,6 +2013,18 @@ void t4_get_regs(struct adapter *adap, u8 *buf, size_t buf_size)
 		0x51300, 0x51308,
 	};
 
+	static const unsigned int t5vf_reg_ranges[] = {
+		VF_SGE_REG(A_SGE_VF_KDOORBELL), VF_SGE_REG(A_SGE_VF_GTS),
+		VF_MPS_REG(A_MPS_VF_CTL),
+		VF_MPS_REG(A_MPS_VF_STAT_RX_VF_ERR_FRAMES_H),
+		VF_PL_REG(A_PL_VF_WHOAMI), VF_PL_REG(A_PL_VF_REVISION),
+		VF_CIM_REG(A_CIM_VF_EXT_MAILBOX_CTRL),
+		VF_CIM_REG(A_CIM_VF_EXT_MAILBOX_STATUS),
+		FW_T4VF_MBDATA_BASE_ADDR,
+		FW_T4VF_MBDATA_BASE_ADDR +
+		((NUM_CIM_PF_MAILBOX_DATA_INSTANCES - 1) * 4),
+	};
+
 	static const unsigned int t6_reg_ranges[] = {
 		0x1008, 0x101c,
 		0x1024, 0x10a8,
@@ -2532,6 +2602,18 @@ void t4_get_regs(struct adapter *adap, u8 *buf, size_t buf_size)
 		0x51300, 0x51324,
 	};
 
+	static const unsigned int t6vf_reg_ranges[] = {
+		VF_SGE_REG(A_SGE_VF_KDOORBELL), VF_SGE_REG(A_SGE_VF_GTS),
+		VF_MPS_REG(A_MPS_VF_CTL),
+		VF_MPS_REG(A_MPS_VF_STAT_RX_VF_ERR_FRAMES_H),
+		VF_PL_REG(A_PL_VF_WHOAMI), VF_PL_REG(A_PL_VF_REVISION),
+		VF_CIM_REG(A_CIM_VF_EXT_MAILBOX_CTRL),
+		VF_CIM_REG(A_CIM_VF_EXT_MAILBOX_STATUS),
+		FW_T6VF_MBDATA_BASE_ADDR,
+		FW_T6VF_MBDATA_BASE_ADDR +
+		((NUM_CIM_PF_MAILBOX_DATA_INSTANCES - 1) * 4),
+	};
+
 	u32 *buf_end = (u32 *)(buf + buf_size);
 	const unsigned int *reg_ranges;
 	int reg_ranges_size, range;
@@ -2543,18 +2625,33 @@ void t4_get_regs(struct adapter *adap, u8 *buf, size_t buf_size)
 	 */
 	switch (chip_version) {
 	case CHELSIO_T4:
-		reg_ranges = t4_reg_ranges;
-		reg_ranges_size = ARRAY_SIZE(t4_reg_ranges);
+		if (adap->flags & IS_VF) {
+			reg_ranges = t4vf_reg_ranges;
+			reg_ranges_size = ARRAY_SIZE(t4vf_reg_ranges);
+		} else {
+			reg_ranges = t4_reg_ranges;
+			reg_ranges_size = ARRAY_SIZE(t4_reg_ranges);
+		}
 		break;
 
 	case CHELSIO_T5:
-		reg_ranges = t5_reg_ranges;
-		reg_ranges_size = ARRAY_SIZE(t5_reg_ranges);
+		if (adap->flags & IS_VF) {
+			reg_ranges = t5vf_reg_ranges;
+			reg_ranges_size = ARRAY_SIZE(t5vf_reg_ranges);
+		} else {
+			reg_ranges = t5_reg_ranges;
+			reg_ranges_size = ARRAY_SIZE(t5_reg_ranges);
+		}
 		break;
 
 	case CHELSIO_T6:
-		reg_ranges = t6_reg_ranges;
-		reg_ranges_size = ARRAY_SIZE(t6_reg_ranges);
+		if (adap->flags & IS_VF) {
+			reg_ranges = t6vf_reg_ranges;
+			reg_ranges_size = ARRAY_SIZE(t6vf_reg_ranges);
+		} else {
+			reg_ranges = t6_reg_ranges;
+			reg_ranges_size = ARRAY_SIZE(t6_reg_ranges);
+		}
 		break;
 
 	default:
@@ -3152,6 +3249,20 @@ int t4_get_fw_version(struct adapter *adapter, u32 *vers)
 }
 
 /**
+ *	t4_get_bs_version - read the firmware bootstrap version
+ *	@adapter: the adapter
+ *	@vers: where to place the version
+ *
+ *	Reads the FW Bootstrap version from flash.
+ */
+int t4_get_bs_version(struct adapter *adapter, u32 *vers)
+{
+	return t4_read_flash(adapter, FLASH_FWBOOTSTRAP_START +
+			     offsetof(struct fw_hdr, fw_ver), 1,
+			     vers, 0);
+}
+
+/**
  *	t4_get_tp_version - read the TP microcode version
  *	@adapter: the adapter
  *	@vers: where to place the version
@@ -3200,6 +3311,110 @@ int t4_get_exprom_version(struct adapter *adap, u32 *vers)
 		 V_FW_HDR_FW_VER_MICRO(hdr->hdr_ver[2]) |
 		 V_FW_HDR_FW_VER_BUILD(hdr->hdr_ver[3]));
 	return 0;
+}
+
+/**
+ *	t4_get_scfg_version - return the Serial Configuration version
+ *	@adapter: the adapter
+ *	@vers: where to place the version
+ *
+ *	Reads the Serial Configuration Version via the Firmware interface
+ *	(thus this can only be called once we're ready to issue Firmware
+ *	commands).  The format of the Serial Configuration version is
+ *	adapter specific.  Returns 0 on success, an error on failure.
+ *
+ *	Note that early versions of the Firmware didn't include the ability
+ *	to retrieve the Serial Configuration version, so we zero-out the
+ *	return-value parameter in that case to avoid leaving it with
+ *	garbage in it.
+ *
+ *	Also note that the Firmware will return its cached copy of the Serial
+ *	Initialization Revision ID, not the actual Revision ID as written in
+ *	the Serial EEPROM.  This is only an issue if a new VPD has been written
+ *	and the Firmware/Chip haven't yet gone through a RESET sequence.  So
+ *	it's best to defer calling this routine till after a FW_RESET_CMD has
+ *	been issued if the Host Driver will be performing a full adapter
+ *	initialization.
+ */
+int t4_get_scfg_version(struct adapter *adapter, u32 *vers)
+{
+	u32 scfgrev_param;
+	int ret;
+
+	scfgrev_param = (V_FW_PARAMS_MNEM(FW_PARAMS_MNEM_DEV) |
+			 V_FW_PARAMS_PARAM_X(FW_PARAMS_PARAM_DEV_SCFGREV));
+	ret = t4_query_params(adapter, adapter->mbox, adapter->pf, 0,
+			      1, &scfgrev_param, vers);
+	if (ret)
+		*vers = 0;
+	return ret;
+}
+
+/**
+ *	t4_get_vpd_version - return the VPD version
+ *	@adapter: the adapter
+ *	@vers: where to place the version
+ *
+ *	Reads the VPD via the Firmware interface (thus this can only be called
+ *	once we're ready to issue Firmware commands).  The format of the
+ *	VPD version is adapter specific.  Returns 0 on success, an error on
+ *	failure.
+ *
+ *	Note that early versions of the Firmware didn't include the ability
+ *	to retrieve the VPD version, so we zero-out the return-value parameter
+ *	in that case to avoid leaving it with garbage in it.
+ *
+ *	Also note that the Firmware will return its cached copy of the VPD
+ *	Revision ID, not the actual Revision ID as written in the Serial
+ *	EEPROM.  This is only an issue if a new VPD has been written and the
+ *	Firmware/Chip haven't yet gone through a RESET sequence.  So it's best
+ *	to defer calling this routine till after a FW_RESET_CMD has been issued
+ *	if the Host Driver will be performing a full adapter initialization.
+ */
+int t4_get_vpd_version(struct adapter *adapter, u32 *vers)
+{
+	u32 vpdrev_param;
+	int ret;
+
+	vpdrev_param = (V_FW_PARAMS_MNEM(FW_PARAMS_MNEM_DEV) |
+			V_FW_PARAMS_PARAM_X(FW_PARAMS_PARAM_DEV_VPDREV));
+	ret = t4_query_params(adapter, adapter->mbox, adapter->pf, 0,
+			      1, &vpdrev_param, vers);
+	if (ret)
+		*vers = 0;
+	return ret;
+}
+
+/**
+ *	t4_get_version_info - extract various chip/firmware version information
+ *	@adapter: the adapter
+ *
+ *	Reads various chip/firmware version numbers and stores them into the
+ *	adapter Adapter Parameters structure.  If any of the efforts fails
+ *	the first failure will be returned, but all of the version numbers
+ *	will be read.
+ */
+int t4_get_version_info(struct adapter *adapter)
+{
+	int ret = 0;
+
+	#define FIRST_RET(__getvinfo) \
+	do { \
+		int __ret = __getvinfo; \
+		if (__ret && !ret) \
+			ret = __ret; \
+	} while (0)
+
+	FIRST_RET(t4_get_fw_version(adapter, &adapter->params.fw_vers));
+	FIRST_RET(t4_get_bs_version(adapter, &adapter->params.bs_vers));
+	FIRST_RET(t4_get_tp_version(adapter, &adapter->params.tp_vers));
+	FIRST_RET(t4_get_exprom_version(adapter, &adapter->params.er_vers));
+	FIRST_RET(t4_get_scfg_version(adapter, &adapter->params.scfg_vers));
+	FIRST_RET(t4_get_vpd_version(adapter, &adapter->params.vpd_vers));
+
+	#undef FIRST_RET
+
+	return ret;
 }
 
 /**
@@ -3469,8 +3684,9 @@ void t4_ulprx_read_la(struct adapter *adap, u32 *la_buf)
 }
 
 #define ADVERT_MASK (FW_PORT_CAP_SPEED_100M | FW_PORT_CAP_SPEED_1G |\
-		     FW_PORT_CAP_SPEED_10G | FW_PORT_CAP_SPEED_40G | \
-		     FW_PORT_CAP_SPEED_100G | FW_PORT_CAP_ANEG)
+		     FW_PORT_CAP_SPEED_10G | FW_PORT_CAP_SPEED_25G | \
+		     FW_PORT_CAP_SPEED_40G | FW_PORT_CAP_SPEED_100G | \
+		     FW_PORT_CAP_ANEG)
 
 /**
  *	t4_link_l1cfg - apply link configuration to MAC/PHY
@@ -5575,6 +5791,11 @@ const char *t4_get_port_type_description(enum fw_port_type port_type)
 		"QSA",
 		"QSFP",
 		"BP40_BA",
+		"KR4_100G",
+		"CR4_QSFP",
+		"CR_QSFP",
+		"CR2_QSFP",
+		"SFP28",
 	};
 
 	if (port_type < ARRAY_SIZE(port_type_description))
@@ -5649,10 +5870,13 @@ void t4_get_port_stats(struct adapter *adap, int idx, struct port_stats *p)
 	p->tx_ppp6		= GET_STAT(TX_PORT_PPP6);
 	p->tx_ppp7		= GET_STAT(TX_PORT_PPP7);
 
-	if (stat_ctl & F_COUNTPAUSESTATTX) {
-		p->tx_frames -= p->tx_pause;
-		p->tx_octets -= p->tx_pause * 64;
-		p->tx_mcast_frames -= p->tx_pause;
+	if (chip_id(adap) >= CHELSIO_T5) {
+		if (stat_ctl & F_COUNTPAUSESTATTX) {
+			p->tx_frames -= p->tx_pause;
+			p->tx_octets -= p->tx_pause * 64;
+		}
+		if (stat_ctl & F_COUNTPAUSEMCTX)
+			p->tx_mcast_frames -= p->tx_pause;
 	}
 
 	p->rx_pause		= GET_STAT(RX_PORT_PAUSE);
@@ -5683,10 +5907,13 @@ void t4_get_port_stats(struct adapter *adap, int idx, struct port_stats *p)
 	p->rx_ppp6		= GET_STAT(RX_PORT_PPP6);
 	p->rx_ppp7		= GET_STAT(RX_PORT_PPP7);
 
-	if (stat_ctl & F_COUNTPAUSESTATRX) {
-		p->rx_frames -= p->rx_pause;
-		p->rx_octets -= p->rx_pause * 64;
-		p->rx_mcast_frames -= p->rx_pause;
+	if (chip_id(adap) >= CHELSIO_T5) {
+		if (stat_ctl & F_COUNTPAUSESTATRX) {
+			p->rx_frames -= p->rx_pause;
+			p->rx_octets -= p->rx_pause * 64;
+		}
+		if (stat_ctl & F_COUNTPAUSEMCRX)
+			p->rx_mcast_frames -= p->rx_pause;
 	}
 
 	p->rx_ovflow0 = (bgmap & 1) ? GET_STAT_COM(RX_BG_0_MAC_DROP_FRAME) : 0;
@@ -7262,8 +7489,12 @@ int t4_handle_fw_rpl(struct adapter *adap, const __be64 *rpl)
 			speed = 1000;
 		else if (stat & V_FW_PORT_CMD_LSPEED(FW_PORT_CAP_SPEED_10G))
 			speed = 10000;
+		else if (stat & V_FW_PORT_CMD_LSPEED(FW_PORT_CAP_SPEED_25G))
+			speed = 25000;
 		else if (stat & V_FW_PORT_CMD_LSPEED(FW_PORT_CAP_SPEED_40G))
 			speed = 40000;
+		else if (stat & V_FW_PORT_CMD_LSPEED(FW_PORT_CAP_SPEED_100G))
+			speed = 100000;
 
 		for_each_port(adap, i) {
 			pi = adap2pinfo(adap, i);
@@ -7416,7 +7647,7 @@ static void set_pcie_completion_timeout(struct adapter *adapter,
 	}
 }
 
-static const struct chip_params *get_chip_params(int chipid)
+const struct chip_params *t4_get_chip_params(int chipid)
 {
 	static const struct chip_params chip_params[] = {
 		{
@@ -7495,7 +7726,7 @@ int t4_prep_adapter(struct adapter *adapter, u8 *buf)
 		}
 	}
 
-	adapter->chip_params = get_chip_params(chip_id(adapter));
+	adapter->chip_params = t4_get_chip_params(chip_id(adapter));
 	if (adapter->chip_params == NULL)
 		return -EINVAL;
 
@@ -7644,6 +7875,7 @@ int t4_init_sge_params(struct adapter *adapter)
 {
 	u32 r;
 	struct sge_params *sp = &adapter->params.sge;
+	unsigned i;
 
 	r = t4_read_reg(adapter, A_SGE_INGRESS_RX_THRESHOLD);
 	sp->counter_val[0] = G_THRESHOLD_0(r);
@@ -7665,8 +7897,10 @@ int t4_init_sge_params(struct adapter *adapter)
 	sp->fl_starve_threshold = G_EGRTHRESHOLD(r) * 2 + 1;
 	if (is_t4(adapter))
 		sp->fl_starve_threshold2 = sp->fl_starve_threshold;
-	else
+	else if (is_t5(adapter))
 		sp->fl_starve_threshold2 = G_EGRTHRESHOLDPACKING(r) * 2 + 1;
+	else
+		sp->fl_starve_threshold2 = G_T6_EGRTHRESHOLDPACKING(r) * 2 + 1;
 
 	/* egress queues: log2 of # of doorbells per BAR2 page */
 	r = t4_read_reg(adapter, A_SGE_EGRESS_QUEUES_PER_PAGE_PF);
@@ -7686,9 +7920,16 @@ int t4_init_sge_params(struct adapter *adapter)
 	sp->page_shift = (r & M_HOSTPAGESIZEPF0) + 10;
 
 	r = t4_read_reg(adapter, A_SGE_CONTROL);
+	sp->sge_control = r;
 	sp->spg_len = r & F_EGRSTATUSPAGESIZE ? 128 : 64;
 	sp->fl_pktshift = G_PKTSHIFT(r);
-	sp->pad_boundary = 1 << (G_INGPADBOUNDARY(r) + 5);
+	if (chip_id(adapter) <= CHELSIO_T5) {
+		sp->pad_boundary = 1 << (G_INGPADBOUNDARY(r) +
+		    X_INGPADBOUNDARY_SHIFT);
+	} else {
+		sp->pad_boundary = 1 << (G_INGPADBOUNDARY(r) +
+		    X_T6_INGPADBOUNDARY_SHIFT);
+	}
 	if (is_t4(adapter))
 		sp->pack_boundary = sp->pad_boundary;
 	else {
@@ -7698,6 +7939,9 @@ int t4_init_sge_params(struct adapter *adapter)
 		else
 			sp->pack_boundary = 1 << (G_INGPACKBOUNDARY(r) + 5);
 	}
+	for (i = 0; i < SGE_FLBUF_SIZES; i++)
+		sp->sge_fl_buffer_size[i] = t4_read_reg(adapter,
+		    A_SGE_FL_BUFFER_SIZE0 + (4 * i));
 
 	return 0;
 }
@@ -7851,34 +8095,41 @@ int t4_port_init(struct adapter *adap, int mbox, int pf, int vf, int port_id)
 		} while ((adap->params.portvec & (1 << j)) == 0);
 	}
 
-	c.op_to_portid = htonl(V_FW_CMD_OP(FW_PORT_CMD) |
-			       F_FW_CMD_REQUEST | F_FW_CMD_READ |
-			       V_FW_PORT_CMD_PORTID(j));
-	c.action_to_len16 = htonl(
-		V_FW_PORT_CMD_ACTION(FW_PORT_ACTION_GET_PORT_INFO) |
-		FW_LEN16(c));
-	ret = t4_wr_mbox(adap, mbox, &c, sizeof(c), &c);
-	if (ret)
-		return ret;
+	if (!(adap->flags & IS_VF) ||
+	    adap->params.vfres.r_caps & FW_CMD_CAP_PORT) {
+		c.op_to_portid = htonl(V_FW_CMD_OP(FW_PORT_CMD) |
+				       F_FW_CMD_REQUEST | F_FW_CMD_READ |
+				       V_FW_PORT_CMD_PORTID(j));
+		c.action_to_len16 = htonl(
+			V_FW_PORT_CMD_ACTION(FW_PORT_ACTION_GET_PORT_INFO) |
+			FW_LEN16(c));
+		ret = t4_wr_mbox(adap, mbox, &c, sizeof(c), &c);
+		if (ret)
+			return ret;
+
+		ret = be32_to_cpu(c.u.info.lstatus_to_modtype);
+		p->mdio_addr = (ret & F_FW_PORT_CMD_MDIOCAP) ?
+			G_FW_PORT_CMD_MDIOADDR(ret) : -1;
+		p->port_type = G_FW_PORT_CMD_PTYPE(ret);
+		p->mod_type = G_FW_PORT_CMD_MODTYPE(ret);
+
+		init_link_config(&p->link_cfg, be16_to_cpu(c.u.info.pcap));
+	}
 
 	ret = t4_alloc_vi(adap, mbox, j, pf, vf, 1, addr, &rss_size);
 	if (ret < 0)
 		return ret;
 
 	p->vi[0].viid = ret;
+	if (chip_id(adap) <= CHELSIO_T5)
+		p->vi[0].smt_idx = (ret & 0x7f) << 1;
+	else
+		p->vi[0].smt_idx = (ret & 0x7f);
 	p->tx_chan = j;
 	p->rx_chan_map = t4_get_mps_bg_map(adap, j);
 	p->lport = j;
 	p->vi[0].rss_size = rss_size;
 	t4_os_set_hw_addr(adap, p->port_id, addr);
-
-	ret = be32_to_cpu(c.u.info.lstatus_to_modtype);
-	p->mdio_addr = (ret & F_FW_PORT_CMD_MDIOCAP) ?
-		G_FW_PORT_CMD_MDIOADDR(ret) : -1;
-	p->port_type = G_FW_PORT_CMD_PTYPE(ret);
-	p->mod_type = G_FW_PORT_CMD_MODTYPE(ret);
-
-	init_link_config(&p->link_cfg, be16_to_cpu(c.u.info.pcap));
 
 	param = V_FW_PARAMS_MNEM(FW_PARAMS_MNEM_DEV) |
 	    V_FW_PARAMS_PARAM_X(FW_PARAMS_PARAM_DEV_RSSINFO) |

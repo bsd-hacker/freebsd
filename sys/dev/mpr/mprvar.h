@@ -33,7 +33,7 @@
 #ifndef _MPRVAR_H
 #define _MPRVAR_H
 
-#define MPR_DRIVER_VERSION	"13.00.00.00-fbsd"
+#define MPR_DRIVER_VERSION	"13.01.00.00-fbsd"
 
 #define MPR_DB_MAX_WAIT		2500
 
@@ -41,6 +41,7 @@
 #define MPR_EVT_REPLY_FRAMES	32
 #define MPR_REPLY_FRAMES	MPR_REQ_FRAMES
 #define MPR_CHAIN_FRAMES	2048
+#define MPR_MAXIO_PAGES		(-1)
 #define MPR_SENSE_LEN		SSD_FULL_SIZE
 #define MPR_MSI_COUNT		1
 #define MPR_SGE64_SIZE		12
@@ -264,11 +265,13 @@ struct mpr_softc {
 	int				io_cmds_highwater;
 	int				chain_free;
 	int				max_chains;
+	int				max_io_pages;
 	int				chain_free_lowwater;
 	uint32_t			chain_frame_size;
 	uint16_t			chain_seg_size;
 	u_int				enable_ssu;
 	int				spinup_wait_time;
+	int				use_phynum;
 	uint64_t			chain_alloc_fail;
 	struct sysctl_ctx_list		sysctl_ctx;
 	struct sysctl_oid		*sysctl_tree;

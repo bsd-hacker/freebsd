@@ -51,6 +51,9 @@
 
 #define USE_DDP_RX_FLOW_CONTROL
 
+#define PPOD_SZ(n)	((n) * sizeof(struct pagepod))
+#define PPOD_SIZE	(PPOD_SZ(1))
+
 /* TOE PCB flags */
 enum {
 	TPF_ATTACHED	   = (1 << 0),	/* a tcpcb refers to this toepcb */
@@ -83,16 +86,31 @@ struct ofld_tx_sdesc {
 	uint8_t tx_credits;	/* firmware tx credits (unit is 16B) */
 };
 
+struct ppod_region {
+	u_int pr_start;
+	u_int pr_len;
+	u_int pr_page_shift[4];
+	uint32_t pr_tag_mask;		/* hardware tagmask for this region. */
+	uint32_t pr_invalid_bit;	/* OR with this to invalidate tag. */
+	uint32_t pr_alias_mask;		/* AND with tag to get alias bits. */
+	u_int pr_alias_shift;		/* shift this much for first alias bit. */
+	vmem_t *pr_arena;
+};
+
+struct ppod_reservation {
+	struct ppod_region *prsv_pr;
+	uint32_t prsv_tag;		/* Full tag: pgsz, alias, tag, color */
+	u_int prsv_nppods;
+};
+
 struct pageset {
 	TAILQ_ENTRY(pageset) link;
 	vm_page_t *pages;
 	int npages;
 	int flags;
-	u_int ppod_addr;
-	int nppods;
-	uint32_t tag;	/* includes color, page pod addr, and DDP page size */
 	int offset;		/* offset in first page */
 	int len;
+	struct ppod_reservation prsv;
 	struct vmspace *vm;
 	u_int vm_timestamp;
 };
@@ -102,11 +120,19 @@ TAILQ_HEAD(pagesetq, pageset);
 #define	PS_WIRED		0x0001	/* Pages wired rather than held. */
 #define	PS_PPODS_WRITTEN	0x0002	/* Page pods written to the card. */
 
+#define	EXT_FLAG_AIOTX		EXT_FLAG_VENDOR1
+
 struct ddp_buffer {
 	struct pageset *ps;
 
 	struct kaiocb *job;
 	int cancel_pending;
+};
+
+struct aiotx_buffer {
+	struct pageset ps;
+	struct kaiocb *job;
+	int refcount;
 };
 
 struct toepcb {
@@ -150,6 +176,10 @@ struct toepcb {
 	struct task ddp_requeue_task;
 	struct kaiocb *ddp_queueing;
 	struct mtx ddp_lock;
+
+	TAILQ_HEAD(, kaiocb) aiotx_jobq;
+	struct task aiotx_task;
+	bool aiotx_task_active;
 
 	/* Tx software descriptor */
 	uint8_t txsd_total;
@@ -227,8 +257,7 @@ struct tom_data {
 	u_long listen_mask;
 	int lctx_count;		/* # of lctx in the hash table */
 
-	u_int ppod_start;
-	vmem_t *ppod_arena;
+	struct ppod_region pr;
 
 	struct mtx clip_table_lock;
 	struct clip_head clip_table;
@@ -294,13 +323,13 @@ struct clip_entry *hold_lip(struct tom_data *, struct in6_addr *);
 void release_lip(struct tom_data *, struct clip_entry *);
 
 /* t4_connect.c */
-void t4_init_connect_cpl_handlers(struct adapter *);
+void t4_init_connect_cpl_handlers(void);
 int t4_connect(struct toedev *, struct socket *, struct rtentry *,
     struct sockaddr *);
 void act_open_failure_cleanup(struct adapter *, u_int, u_int);
 
 /* t4_listen.c */
-void t4_init_listen_cpl_handlers(struct adapter *);
+void t4_init_listen_cpl_handlers(void);
 int t4_listen_start(struct toedev *, struct tcpcb *);
 int t4_listen_stop(struct toedev *, struct tcpcb *);
 void t4_syncache_added(struct toedev *, void *);
@@ -313,8 +342,10 @@ int do_abort_rpl_synqe(struct sge_iq *, const struct rss_header *,
 void t4_offload_socket(struct toedev *, void *, struct socket *);
 
 /* t4_cpl_io.c */
-void t4_init_cpl_io_handlers(struct adapter *);
-void t4_uninit_cpl_io_handlers(struct adapter *);
+void aiotx_init_toep(struct toepcb *);
+int t4_aio_queue_aiotx(struct socket *, struct kaiocb *);
+void t4_init_cpl_io_handlers(void);
+void t4_uninit_cpl_io_handlers(void);
 void send_abort_rpl(struct adapter *, struct sge_wrq *, int , int);
 void send_flowc_wr(struct toepcb *, struct flowc_tx_params *);
 void send_reset(struct adapter *, struct toepcb *, uint32_t);
@@ -324,16 +355,24 @@ void t4_rcvd_locked(struct toedev *, struct tcpcb *);
 int t4_tod_output(struct toedev *, struct tcpcb *);
 int t4_send_fin(struct toedev *, struct tcpcb *);
 int t4_send_rst(struct toedev *, struct tcpcb *);
-void t4_set_tcb_field(struct adapter *, struct toepcb *, int, uint16_t,
-    uint64_t, uint64_t);
-void t4_set_tcb_field_rpl(struct adapter *, struct toepcb *, int, uint16_t,
-    uint64_t, uint64_t, uint8_t);
+void t4_set_tcb_field(struct adapter *, struct sge_wrq *, int, uint16_t,
+    uint64_t, uint64_t, int, int, int);
 void t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop);
 void t4_push_pdus(struct adapter *sc, struct toepcb *toep, int drop);
+int do_set_tcb_rpl(struct sge_iq *, const struct rss_header *, struct mbuf *);
 
 /* t4_ddp.c */
-void t4_init_ddp(struct adapter *, struct tom_data *);
-void t4_uninit_ddp(struct adapter *, struct tom_data *);
+int t4_init_ppod_region(struct ppod_region *, struct t4_range *, u_int,
+    const char *);
+void t4_free_ppod_region(struct ppod_region *);
+int t4_alloc_page_pods_for_ps(struct ppod_region *, struct pageset *);
+int t4_alloc_page_pods_for_buf(struct ppod_region *, vm_offset_t, int,
+    struct ppod_reservation *);
+int t4_write_page_pods_for_ps(struct adapter *, struct sge_wrq *, int,
+    struct pageset *);
+int t4_write_page_pods_for_buf(struct adapter *, struct sge_wrq *, int tid,
+    struct ppod_reservation *, vm_offset_t, int);
+void t4_free_page_pods(struct ppod_reservation *);
 int t4_soreceive_ddp(struct socket *, struct sockaddr **, struct uio *,
     struct mbuf **, struct mbuf **, int *);
 int t4_aio_queue_ddp(struct socket *, struct kaiocb *);

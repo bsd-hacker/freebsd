@@ -38,7 +38,10 @@
 
 #ifdef FDT
 #include <dev/ofw/ofw_bus_subr.h>
-#include <gnu/dts/include/dt-bindings/gpio/gpio.h>
+#endif
+
+#ifdef	INTRNG
+#include <sys/intr.h>
 #endif
 
 #include "gpio_if.h"
@@ -70,12 +73,14 @@ struct gpiobus_pin_data
 	char		*name;		/* pin name. */
 };
 
+#ifdef INTRNG
 struct intr_map_data_gpio {
 	struct intr_map_data	hdr;
 	u_int			gpio_pin_num;
 	u_int			gpio_pin_flags;
 	u_int		 	gpio_intr_mode;
 };
+#endif
 
 struct gpiobus_softc
 {

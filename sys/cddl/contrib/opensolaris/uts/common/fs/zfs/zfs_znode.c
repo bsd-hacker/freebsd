@@ -124,16 +124,12 @@ zfs_znode_cache_constructor(void *buf, void *arg, int kmflags)
 
 	list_link_init(&zp->z_link_node);
 
-	mutex_init(&zp->z_lock, NULL, MUTEX_DEFAULT, NULL);
-	rw_init(&zp->z_parent_lock, NULL, RW_DEFAULT, NULL);
-	rw_init(&zp->z_name_lock, NULL, RW_DEFAULT, NULL);
 	mutex_init(&zp->z_acl_lock, NULL, MUTEX_DEFAULT, NULL);
 
 	mutex_init(&zp->z_range_lock, NULL, MUTEX_DEFAULT, NULL);
 	avl_create(&zp->z_range_avl, zfs_range_compare,
 	    sizeof (rl_t), offsetof(rl_t, r_node));
 
-	zp->z_dirlocks = NULL;
 	zp->z_acl_cached = NULL;
 	zp->z_vnode = NULL;
 	zp->z_moved = 0;
@@ -150,14 +146,10 @@ zfs_znode_cache_destructor(void *buf, void *arg)
 	ASSERT(ZTOV(zp) == NULL);
 	vn_free(ZTOV(zp));
 	ASSERT(!list_link_active(&zp->z_link_node));
-	mutex_destroy(&zp->z_lock);
-	rw_destroy(&zp->z_parent_lock);
-	rw_destroy(&zp->z_name_lock);
 	mutex_destroy(&zp->z_acl_lock);
 	avl_destroy(&zp->z_range_avl);
 	mutex_destroy(&zp->z_range_lock);
 
-	ASSERT(zp->z_dirlocks == NULL);
 	ASSERT(zp->z_acl_cached == NULL);
 }
 
@@ -559,8 +551,6 @@ zfs_znode_sa_init(zfsvfs_t *zfsvfs, znode_t *zp,
 	ASSERT(!POINTER_IS_VALID(zp->z_zfsvfs) || (zfsvfs == zp->z_zfsvfs));
 	ASSERT(MUTEX_HELD(ZFS_OBJ_MUTEX(zfsvfs, zp->z_id)));
 
-	mutex_enter(&zp->z_lock);
-
 	ASSERT(zp->z_sa_hdl == NULL);
 	ASSERT(zp->z_acl_cached == NULL);
 	if (sa_hdl == NULL) {
@@ -580,7 +570,6 @@ zfs_znode_sa_init(zfsvfs_t *zfsvfs, znode_t *zp,
 	if (zp->z_id == zfsvfs->z_root && zfsvfs->z_parent == zfsvfs)
 		ZTOV(zp)->v_flag |= VROOT;
 
-	mutex_exit(&zp->z_lock);
 	vn_exists(ZTOV(zp));
 }
 
@@ -637,7 +626,6 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	zp->z_vnode = vp;
 	vp->v_data = zp;
 
-	ASSERT(zp->z_dirlocks == NULL);
 	ASSERT(!POINTER_IS_VALID(zp->z_zfsvfs));
 	zp->z_moved = 0;
 
@@ -739,7 +727,14 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	/*
 	 * Acquire vnode lock before making it available to the world.
 	 */
+#ifdef DIAGNOSTIC
+	vop_lock1_t *orig_lock = vp->v_op->vop_lock1;
+	vp->v_op->vop_lock1 = vop_stdlock;
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	vp->v_op->vop_lock1 = orig_lock;
+#else
+	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+#endif
 	VN_LOCK_AREC(vp);
 	if (vp->v_type != VFIFO)
 		VN_LOCK_ASHARE(vp);
@@ -1161,54 +1156,55 @@ again:
 	if (hdl != NULL) {
 		zp  = sa_get_userdata(hdl);
 
-
 		/*
 		 * Since "SA" does immediate eviction we
 		 * should never find a sa handle that doesn't
 		 * know about the znode.
 		 */
-
 		ASSERT3P(zp, !=, NULL);
-
-		mutex_enter(&zp->z_lock);
 		ASSERT3U(zp->z_id, ==, obj_num);
-		if (zp->z_unlinked) {
-			err = SET_ERROR(ENOENT);
-		} else {
-			vp = ZTOV(zp);
-			*zpp = zp;
-			err = 0;
-		}
+		*zpp = zp;
+		vp = ZTOV(zp);
 
 		/* Don't let the vnode disappear after ZFS_OBJ_HOLD_EXIT. */
-		if (err == 0)
-			VN_HOLD(vp);
+		VN_HOLD(vp);
 
-		mutex_exit(&zp->z_lock);
 		sa_buf_rele(db, NULL);
 		ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
 
-		if (err == 0) {
-			locked = VOP_ISLOCKED(vp);
-			VI_LOCK(vp);
-			if ((vp->v_iflag & VI_DOOMED) != 0 &&
-			    locked != LK_EXCLUSIVE) {
-				/*
-				 * The vnode is doomed and this thread doesn't
-				 * hold the exclusive lock on it, so the vnode
-				 * must be being reclaimed by another thread.
-				 * Otherwise the doomed vnode is being reclaimed
-				 * by this thread and zfs_zget is called from
-				 * ZIL internals.
-				 */
-				VI_UNLOCK(vp);
-				VN_RELE(vp);
-				goto again;
-			}
+		locked = VOP_ISLOCKED(vp);
+		VI_LOCK(vp);
+		if ((vp->v_iflag & VI_DOOMED) != 0 &&
+		    locked != LK_EXCLUSIVE) {
+			/*
+			 * The vnode is doomed and this thread doesn't
+			 * hold the exclusive lock on it, so the vnode
+			 * must be being reclaimed by another thread.
+			 * Otherwise the doomed vnode is being reclaimed
+			 * by this thread and zfs_zget is called from
+			 * ZIL internals.
+			 */
 			VI_UNLOCK(vp);
+
+			/*
+			 * XXX vrele() locks the vnode when the last reference
+			 * is dropped.  Although in this case the vnode is
+			 * doomed / dead and so no inactivation is required,
+			 * the vnode lock is still acquired.  That could result
+			 * in a LOR with z_teardown_lock if another thread holds
+			 * the vnode's lock and tries to take z_teardown_lock.
+			 * But that is only possible if the other thread peforms
+			 * a ZFS vnode operation on the vnode.  That either
+			 * should not happen if the vnode is dead or the thread
+			 * should also have a refrence to the vnode and thus
+			 * our reference is not last.
+			 */
+			VN_RELE(vp);
+			goto again;
 		}
+		VI_UNLOCK(vp);
 		getnewvnode_drop_reserve();
-		return (err);
+		return (0);
 	}
 
 	/*
@@ -1391,20 +1387,16 @@ zfs_zinactive(znode_t *zp)
 	 */
 	ZFS_OBJ_HOLD_ENTER(zfsvfs, z_id);
 
-	mutex_enter(&zp->z_lock);
-
 	/*
 	 * If this was the last reference to a file with no links,
 	 * remove the file from the file system.
 	 */
 	if (zp->z_unlinked) {
-		mutex_exit(&zp->z_lock);
 		ZFS_OBJ_HOLD_EXIT(zfsvfs, z_id);
 		zfs_rmnode(zp);
 		return;
 	}
 
-	mutex_exit(&zp->z_lock);
 	zfs_znode_dmu_fini(zp);
 	ZFS_OBJ_HOLD_EXIT(zfsvfs, z_id);
 	zfs_znode_free(zp);
@@ -1944,7 +1936,6 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 		mutex_destroy(&zfsvfs->z_hold_mtx[i]);
 	kmem_free(zfsvfs, sizeof (zfsvfs_t));
 }
-
 #endif /* _KERNEL */
 
 static int
@@ -2200,3 +2191,35 @@ zfs_obj_to_stats(objset_t *osp, uint64_t obj, zfs_stat_t *sb,
 	zfs_release_sa_handle(hdl, db, FTAG);
 	return (error);
 }
+
+#ifdef _KERNEL
+int
+zfs_znode_parent_and_name(znode_t *zp, znode_t **dzpp, char *buf)
+{
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	uint64_t parent;
+	int is_xattrdir;
+	int err;
+
+	/* Extended attributes should not be visible as regular files. */
+	if ((zp->z_pflags & ZFS_XATTR) != 0)
+		return (SET_ERROR(EINVAL));
+
+	err = zfs_obj_to_pobj(zfsvfs->z_os, zp->z_sa_hdl, zfsvfs->z_attr_table,
+	    &parent, &is_xattrdir);
+	if (err != 0)
+		return (err);
+	ASSERT0(is_xattrdir);
+
+	/* No name as this is a root object. */
+	if (parent == zp->z_id)
+		return (SET_ERROR(EINVAL));
+
+	err = zap_value_search(zfsvfs->z_os, parent, zp->z_id,
+	    ZFS_DIRENT_OBJ(-1ULL), buf);
+	if (err != 0)
+		return (err);
+	err = zfs_zget(zfsvfs, parent, dzpp);
+	return (err);
+}
+#endif /* _KERNEL */

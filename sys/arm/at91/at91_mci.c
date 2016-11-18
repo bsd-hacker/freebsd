@@ -51,8 +51,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/watchdog.h>
 
 #include <machine/bus.h>
-#include <machine/cpu.h>
-#include <machine/cpufunc.h>
 #include <machine/resource.h>
 #include <machine/intr.h>
 
@@ -65,7 +63,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/mmc/mmcbrvar.h>
 
 #ifdef FDT
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 #endif

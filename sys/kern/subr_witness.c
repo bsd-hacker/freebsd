@@ -599,7 +599,7 @@ static struct witness_order_list_entry order_lists[] = {
 	 * CDEV
 	 */
 	{ "vm map (system)", &lock_class_mtx_sleep },
-	{ "vm page queue", &lock_class_mtx_sleep },
+	{ "vm pagequeue", &lock_class_mtx_sleep },
 	{ "vnode interlock", &lock_class_mtx_sleep },
 	{ "cdev", &lock_class_mtx_sleep },
 	{ NULL, NULL },
@@ -609,7 +609,7 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "vm map (user)", &lock_class_sx },
 	{ "vm object", &lock_class_rw },
 	{ "vm page", &lock_class_mtx_sleep },
-	{ "vm page queue", &lock_class_mtx_sleep },
+	{ "vm pagequeue", &lock_class_mtx_sleep },
 	{ "pmap pv global", &lock_class_rw },
 	{ "pmap", &lock_class_mtx_sleep },
 	{ "pmap pv list", &lock_class_rw },
@@ -621,6 +621,14 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "kqueue", &lock_class_mtx_sleep },
 	{ "struct mount mtx", &lock_class_mtx_sleep },
 	{ "vnode interlock", &lock_class_mtx_sleep },
+	{ NULL, NULL },
+	/*
+	 * VFS namecache
+	 */
+	{ "ncvn", &lock_class_mtx_sleep },
+	{ "ncbuc", &lock_class_rw },
+	{ "vnode interlock", &lock_class_mtx_sleep },
+	{ "ncneg", &lock_class_mtx_sleep },
 	{ NULL, NULL },
 	/*
 	 * ZFS locking
@@ -637,7 +645,6 @@ static struct witness_order_list_entry order_lists[] = {
 #endif
 	{ "rm.mutex_mtx", &lock_class_mtx_spin },
 	{ "sio", &lock_class_mtx_spin },
-	{ "scrlock", &lock_class_mtx_spin },
 #ifdef __i386__
 	{ "cy", &lock_class_mtx_spin },
 #endif
@@ -653,6 +660,7 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "pmc-per-proc", &lock_class_mtx_spin },
 #endif
 	{ "process slock", &lock_class_mtx_spin },
+	{ "syscons video lock", &lock_class_mtx_spin },
 	{ "sleepq chain", &lock_class_mtx_spin },
 	{ "rm_spinlock", &lock_class_mtx_spin },
 	{ "turnstile chain", &lock_class_mtx_spin },
@@ -661,7 +669,6 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "td_contested", &lock_class_mtx_spin },
 	{ "callout", &lock_class_mtx_spin },
 	{ "entropy harvest mutex", &lock_class_mtx_spin },
-	{ "syscons video lock", &lock_class_mtx_spin },
 #ifdef SMP
 	{ "smp rendezvous", &lock_class_mtx_spin },
 #endif

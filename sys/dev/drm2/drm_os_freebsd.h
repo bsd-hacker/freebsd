@@ -438,6 +438,9 @@ capable(enum __drm_capabilities cap)
 	switch (cap) {
 	case CAP_SYS_ADMIN:
 		return DRM_SUSER(curthread);
+	default:
+		panic("%s: unhandled capability: %0x", __func__, cap);
+		return (false);
 	}
 }
 
@@ -589,8 +592,10 @@ typedef struct drm_pci_id_list
 #define	CONFIG_COMPAT
 #endif
 
+#ifndef __arm__
 #define	CONFIG_AGP	1
 #define	CONFIG_MTRR	1
+#endif
 
 #define	CONFIG_FB	1
 extern const char *fb_mode_option;

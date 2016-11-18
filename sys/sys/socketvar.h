@@ -126,6 +126,9 @@ struct socket {
 	 */
 	int so_fibnum;		/* routing domain for this socket */
 	uint32_t so_user_cookie;
+
+	void *so_pspare[2];	/* packet pacing / general use */
+	int so_ispare[2];	/* packet pacing / general use */
 };
 
 /*
@@ -318,6 +321,7 @@ extern u_long	sb_max;
 extern so_gen_t so_gencnt;
 
 struct file;
+struct filecaps;
 struct filedesc;
 struct mbuf;
 struct sockaddr;
@@ -337,7 +341,7 @@ struct uio;
  */
 int	getsockaddr(struct sockaddr **namp, caddr_t uaddr, size_t len);
 int	getsock_cap(struct thread *td, int fd, cap_rights_t *rightsp,
-	    struct file **fpp, u_int *fflagp);
+	    struct file **fpp, u_int *fflagp, struct filecaps *havecaps);
 void	soabort(struct socket *so);
 int	soaccept(struct socket *so, struct sockaddr **nam);
 void	soaio_enqueue(struct task *task);

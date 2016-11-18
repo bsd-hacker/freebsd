@@ -1,3 +1,44 @@
+2016-10-25  10:40  Christos Zoulas <christos@zoulas.com>
+	
+	* release 5.28
+
+2016-10-24  11:20  Christos Zoulas <christos@zoulas.com>
+
+	* der getlength overflow (Jonas Wagner)
+	* multiple magic file load failure (Christoph Biedl)
+
+2016-10-17  11:26  Christos Zoulas <christos@zoulas.com>
+
+	* CDF parsing improvements (Guy Helmer)
+
+2016-07-20   7:26  Christos Zoulas <christos@zoulas.com>
+
+	* Add support for signed indirect offsets
+
+2016-07-18   7:41  Christos Zoulas <christos@zoulas.com>
+
+	* cat /dev/null | file - should print empty (Christoph Biedl)
+
+2016-07-05  15:20  Christos Zoulas <christos@zoulas.com>
+
+	* Bump string size from 64 to 96.
+
+2016-06-13  20:20  Christos Zoulas <christos@zoulas.com>
+
+	* PR/556: Fix separators on annotations.
+
+2016-06-13  19:40  Christos Zoulas <christos@zoulas.com>
+
+	* release 5.28
+	* fix leak on allocation failure
+
+2016-06-01   1:20  Christos Zoulas <christos@zoulas.com>
+
+	* PR/555: Avoid overflow for offset > nbytes
+	* PR/550: Segv on DER parsing:
+	    - use the correct variable for length
+	    - set offset to 0 on failure.
+
 2016-05-13  12:00  Christos Zoulas <christos@zoulas.com>
 	
 	* release 5.27
