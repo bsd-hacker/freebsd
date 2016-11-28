@@ -296,6 +296,7 @@ static int			hn_synth_attach(struct hn_softc *, int);
 static void			hn_synth_detach(struct hn_softc *);
 static int			hn_synth_alloc_subchans(struct hn_softc *,
 				    int *);
+static bool			hn_synth_attachable(const struct hn_softc *);
 static void			hn_suspend(struct hn_softc *);
 static void			hn_suspend_data(struct hn_softc *);
 static void			hn_suspend_mgmt(struct hn_softc *);
@@ -705,6 +706,10 @@ hn_set_txagg(struct hn_softc *sc)
 	if (sc->hn_rndis_agg_size < size)
 		size = sc->hn_rndis_agg_size;
 
+	/* NOTE: We only aggregate packets using chimney sending buffers. */
+	if (size > (uint32_t)sc->hn_chim_szmax)
+		size = sc->hn_chim_szmax;
+
 	if (size <= 2 * HN_PKTSIZE_MIN(sc->hn_rndis_agg_align)) {
 		/* Disable */
 		size = 0;
@@ -715,10 +720,6 @@ hn_set_txagg(struct hn_softc *sc)
 	/* NOTE: Type of the per TX ring setting is 'int'. */
 	if (size > INT_MAX)
 		size = INT_MAX;
-
-	/* NOTE: We only aggregate packets using chimney sending buffers. */
-	if (size > (uint32_t)sc->hn_chim_szmax)
-		size = sc->hn_chim_szmax;
 
 	/*
 	 * Setup aggregation packet count.
@@ -3249,7 +3250,10 @@ hn_destroy_rx_data(struct hn_softc *sc)
 	int i;
 
 	if (sc->hn_rxbuf != NULL) {
-		hyperv_dmamem_free(&sc->hn_rxbuf_dma, sc->hn_rxbuf);
+		if ((sc->hn_flags & HN_FLAG_RXBUF_REF) == 0)
+			hyperv_dmamem_free(&sc->hn_rxbuf_dma, sc->hn_rxbuf);
+		else
+			device_printf(sc->hn_dev, "RXBUF is referenced\n");
 		sc->hn_rxbuf = NULL;
 	}
 
@@ -3261,7 +3265,12 @@ hn_destroy_rx_data(struct hn_softc *sc)
 
 		if (rxr->hn_br == NULL)
 			continue;
-		hyperv_dmamem_free(&rxr->hn_br_dma, rxr->hn_br);
+		if ((rxr->hn_rx_flags & HN_RX_FLAG_BR_REF) == 0) {
+			hyperv_dmamem_free(&rxr->hn_br_dma, rxr->hn_br);
+		} else {
+			device_printf(sc->hn_dev,
+			    "%dth channel bufring is referenced", i);
+		}
 		rxr->hn_br = NULL;
 
 #if defined(INET) || defined(INET6)
@@ -3730,7 +3739,12 @@ hn_destroy_tx_data(struct hn_softc *sc)
 	int i;
 
 	if (sc->hn_chim != NULL) {
-		hyperv_dmamem_free(&sc->hn_chim_dma, sc->hn_chim);
+		if ((sc->hn_flags & HN_FLAG_CHIM_REF) == 0) {
+			hyperv_dmamem_free(&sc->hn_chim_dma, sc->hn_chim);
+		} else {
+			device_printf(sc->hn_dev,
+			    "chimney sending buffer is referenced");
+		}
 		sc->hn_chim = NULL;
 	}
 
@@ -4214,7 +4228,7 @@ static void
 hn_chan_detach(struct hn_softc *sc, struct vmbus_channel *chan)
 {
 	struct hn_rx_ring *rxr;
-	int idx;
+	int idx, error;
 
 	idx = vmbus_chan_subidx(chan);
 
@@ -4243,7 +4257,16 @@ hn_chan_detach(struct hn_softc *sc, struct vmbus_channel *chan)
 	 * NOTE:
 	 * Channel closing does _not_ destroy the target channel.
 	 */
-	vmbus_chan_close(chan);
+	error = vmbus_chan_close_direct(chan);
+	if (error == EISCONN) {
+		if_printf(sc->hn_ifp, "chan%u subidx%u "
+		    "bufring is connected after being closed\n",
+		    vmbus_chan_id(chan), vmbus_chan_subidx(chan));
+		rxr->hn_rx_flags |= HN_RX_FLAG_BR_REF;
+	} else if (error) {
+		if_printf(sc->hn_ifp, "chan%u subidx%u close failed: %d\n",
+		    vmbus_chan_id(chan), vmbus_chan_subidx(chan), error);
+	}
 }
 
 static int
@@ -4373,6 +4396,23 @@ hn_synth_alloc_subchans(struct hn_softc *sc, int *nsubch)
 	return (0);
 }
 
+static bool
+hn_synth_attachable(const struct hn_softc *sc)
+{
+	int i;
+
+	if (sc->hn_flags & HN_FLAG_ERRORS)
+		return (false);
+
+	for (i = 0; i < sc->hn_rx_ring_cnt; ++i) {
+		const struct hn_rx_ring *rxr = &sc->hn_rx_ring[i];
+
+		if (rxr->hn_rx_flags & HN_RX_FLAG_BR_REF)
+			return (false);
+	}
+	return (true);
+}
+
 static int
 hn_synth_attach(struct hn_softc *sc, int mtu)
 {
@@ -4382,6 +4422,9 @@ hn_synth_attach(struct hn_softc *sc, int mtu)
 
 	KASSERT((sc->hn_flags & HN_FLAG_SYNTH_ATTACHED) == 0,
 	    ("synthetic parts were attached"));
+
+	if (!hn_synth_attachable(sc))
+		return (ENXIO);
 
 	/* Save capabilities for later verification. */
 	old_caps = sc->hn_caps;
