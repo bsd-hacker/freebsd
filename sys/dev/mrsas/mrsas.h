@@ -106,7 +106,7 @@ __FBSDID("$FreeBSD$");
  */
 #define	BYTE_ALIGNMENT					1
 #define	MRSAS_MAX_NAME_LENGTH			32
-#define	MRSAS_VERSION					"06.709.07.00-fbsd"
+#define	MRSAS_VERSION					"06.712.04.00-fbsd"
 #define	MRSAS_ULONG_MAX					0xFFFFFFFFFFFFFFFF
 #define	MRSAS_DEFAULT_TIMEOUT			0x14	/* Temporarily set */
 #define	DONE							0
@@ -1334,7 +1334,6 @@ enum MR_EVT_ARGS {
 	MR_EVT_ARGS_GENERIC,
 };
 
-
 /*
  * Thunderbolt (and later) Defines
  */
@@ -2083,6 +2082,11 @@ struct mrsas_ctrl_info {
 #define	MR_MAX_REPLY_QUEUES_EXT_OFFSET			(0x003FC000)
 #define	MR_MAX_REPLY_QUEUES_EXT_OFFSET_SHIFT	14
 #define	MR_MAX_MSIX_REG_ARRAY					16
+
+/*
+ * SYNC CACHE offset define
+ */
+#define MR_CAN_HANDLE_SYNC_CACHE_OFFSET     0X01000000
 
 /*
  * FW reports the maximum of number of commands that it can accept (maximum
@@ -2840,6 +2844,8 @@ struct mrsas_softc {
 	u_int8_t do_timedout_reset;
 	u_int32_t reset_in_progress;
 	u_int32_t reset_count;
+	u_int32_t block_sync_cache;
+	u_int8_t fw_sync_cache_support;
 	mrsas_atomic_t target_reset_outstanding;
 #define MRSAS_MAX_TM_TARGETS (MRSAS_MAX_PD + MRSAS_MAX_LD_IDS)
     struct mrsas_mpt_cmd *target_reset_pool[MRSAS_MAX_TM_TARGETS];

@@ -432,6 +432,11 @@ mrsas_setup_sysctl(struct mrsas_softc *sc)
 	    OID_AUTO, "reset_in_progress", CTLFLAG_RD,
 	    &sc->reset_in_progress, 0, "ocr in progress status");
 
+	SYSCTL_ADD_UINT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
+	    OID_AUTO, "block_sync_cache", CTLFLAG_RW,
+	    &sc->block_sync_cache, 0,
+	    "Block SYNC CACHE at driver. <default: 0, send it to FW>");
+
 }
 
 /*
@@ -451,6 +456,7 @@ mrsas_get_tunables(struct mrsas_softc *sc)
 	sc->mrsas_fw_fault_check_delay = 1;
 	sc->reset_count = 0;
 	sc->reset_in_progress = 0;
+	sc->block_sync_cache = 0;
 
 	/*
 	 * Grab the global variables.
@@ -2438,12 +2444,21 @@ mrsas_ioc_init(struct mrsas_softc *sc)
 	u_int8_t max_wait = MRSAS_IOC_INIT_WAIT_TIME;
 	bus_addr_t phys_addr;
 	int i, retcode = 0;
+	u_int32_t scratch_pad_2;
 
 	/* Allocate memory for the IOC INIT command */
 	if (mrsas_alloc_ioc_cmd(sc)) {
 		device_printf(sc->mrsas_dev, "Cannot allocate IOC command.\n");
 		return (1);
 	}
+
+	if (!sc->block_sync_cache) {
+		scratch_pad_2 = mrsas_read_reg(sc, offsetof(mrsas_reg_set,
+		    outbound_scratch_pad_2));
+		sc->fw_sync_cache_support = (scratch_pad_2 &
+		    MR_CAN_HANDLE_SYNC_CACHE_OFFSET) ? 1 : 0;
+	}
+
 	IOCInitMsg = (pMpi2IOCInitRequest_t)(((char *)sc->ioc_init_mem) + 1024);
 	IOCInitMsg->Function = MPI2_FUNCTION_IOC_INIT;
 	IOCInitMsg->WhoInit = MPI2_WHOINIT_HOST_DRIVER;
@@ -2839,6 +2854,14 @@ mrsas_ocr_thread(void *arg)
 				mtx_unlock_spin(&sc->ioctl_lock);
 				sc->reset_count++;
 				
+				/*
+				 * Wait for the AEN task to be completed if it is running.
+				 */
+				mtx_unlock(&sc->sim_lock);
+				taskqueue_drain(sc->ev_tq, &sc->ev_task);
+				mtx_lock(&sc->sim_lock);
+
+				taskqueue_block(sc->ev_tq);
 				/* Try to reset the controller */
 				mrsas_reset_ctrl(sc, sc->do_timedout_reset);
 
@@ -2848,6 +2871,7 @@ mrsas_ocr_thread(void *arg)
 				mrsas_atomic_set(&sc->target_reset_outstanding, 0);
 				memset(sc->target_reset_pool, 0,
 				    sizeof(sc->target_reset_pool));
+				taskqueue_unblock(sc->ev_tq);
 			}
 
 			/* Now allow IOs to come to the SIM */
@@ -2903,6 +2927,7 @@ mrsas_reset_ctrl(struct mrsas_softc *sc, u_int8_t reset_reason)
 	struct mrsas_mfi_cmd *mfi_cmd;
 	struct mrsas_mpt_cmd *mpt_cmd;
 	union mrsas_evt_class_locale class_locale;
+	MRSAS_REQUEST_DESCRIPTOR_UNION *req_desc;
 
 	if (sc->adprecovery == MRSAS_HW_CRITICAL_ERROR) {
 		device_printf(sc->mrsas_dev,
@@ -3030,11 +3055,24 @@ mrsas_reset_ctrl(struct mrsas_softc *sc, u_int8_t reset_reason)
 				mpt_cmd = sc->mpt_cmd_list[j];
 				if (mpt_cmd->sync_cmd_idx != (u_int32_t)MRSAS_ULONG_MAX) {
 					mfi_cmd = sc->mfi_cmd_list[mpt_cmd->sync_cmd_idx];
-					mrsas_release_mfi_cmd(mfi_cmd);
+					/* If not an IOCTL then release the command else re-fire */
+					if (!mfi_cmd->sync_cmd) {
+						mrsas_release_mfi_cmd(mfi_cmd);
+					} else {
+						req_desc = mrsas_get_request_desc(sc,
+						    mfi_cmd->cmd_id.context.smid - 1);
+						mrsas_dprint(sc, MRSAS_OCR,
+						    "Re-fire command DCMD opcode 0x%x index %d\n ",
+						    mfi_cmd->frame->dcmd.opcode, j);
+						if (!req_desc)
+							device_printf(sc->mrsas_dev, 
+							    "Cannot build MPT cmd.\n");
+						else
+							mrsas_fire_cmd(sc, req_desc->addr.u.low,
+							    req_desc->addr.u.high);
+					}
 				}
 			}
-
-			sc->aen_cmd = NULL;
 
 			/* Reset load balance info */
 			memset(sc->load_balance_info, 0,
@@ -3050,17 +3088,6 @@ mrsas_reset_ctrl(struct mrsas_softc *sc, u_int8_t reset_reason)
 
 			megasas_setup_jbod_map(sc);
 
-			memset(sc->pd_list, 0,
-			    MRSAS_MAX_PD * sizeof(struct mrsas_pd_list));
-			if (mrsas_get_pd_list(sc) != SUCCESS) {
-				device_printf(sc->mrsas_dev, "Get PD list failed from OCR.\n"
-				    "Will get the latest PD LIST after OCR on event.\n");
-			}
-			memset(sc->ld_ids, 0xff, MRSAS_MAX_LD_IDS);
-			if (mrsas_get_ld_list(sc) != SUCCESS) {
-				device_printf(sc->mrsas_dev, "Get LD lsit failed from OCR.\n"
-				    "Will get the latest LD LIST after OCR on event.\n");
-			}
 			mrsas_clear_bit(MRSAS_FUSION_IN_RESET, &sc->reset_flags);
 			mrsas_enable_intr(sc);
 			sc->adprecovery = MRSAS_HBA_OPERATIONAL;
@@ -3070,6 +3097,7 @@ mrsas_reset_ctrl(struct mrsas_softc *sc, u_int8_t reset_reason)
 			class_locale.members.locale = MR_EVT_LOCALE_ALL;
 			class_locale.members.class = MR_EVT_CLASS_DEBUG;
 
+			mtx_unlock(&sc->sim_lock);
 			if (mrsas_register_aen(sc, sc->last_seq_num,
 			    class_locale.word)) {
 				device_printf(sc->mrsas_dev,
@@ -3079,6 +3107,8 @@ mrsas_reset_ctrl(struct mrsas_softc *sc, u_int8_t reset_reason)
 				    "or the controller does not support AEN.\n"
 				    "Please contact to the SUPPORT TEAM if the problem persists\n");
 			}
+			mtx_lock(&sc->sim_lock);
+
 			/* Adapter reset completed successfully */
 			device_printf(sc->mrsas_dev, "Reset successful\n");
 			retval = SUCCESS;
@@ -3197,8 +3227,10 @@ mrsas_wait_for_outstanding(struct mrsas_softc *sc, u_int8_t check_reason)
 			mrsas_dprint(sc, MRSAS_OCR, "[%2d]waiting for %d "
 			    "commands to complete\n", i, outstanding);
 			count = sc->msix_vectors > 0 ? sc->msix_vectors : 1;
+			mtx_unlock(&sc->sim_lock);
 			for (MSIxIndex = 0; MSIxIndex < count; MSIxIndex++)
 				mrsas_complete_cmd(sc, MSIxIndex);
+			mtx_lock(&sc->sim_lock);
 		}
 		DELAY(1000 * 1000);
 	}
@@ -4422,6 +4454,11 @@ mrsas_aen_handler(struct mrsas_softc *sc)
 		printf("invalid instance!\n");
 		return;
 	}
+	if (sc->remove_in_progress || sc->reset_in_progress) {
+		device_printf(sc->mrsas_dev, "Returning from %s, line no %d\n",
+			__func__, __LINE__);
+		return;
+	}
 	if (sc->evt_detail_mem) {
 		switch (sc->evt_detail_mem->code) {
 		case MR_EVT_PD_INSERTED:
@@ -4536,8 +4573,7 @@ mrsas_complete_aen(struct mrsas_softc *sc, struct mrsas_mfi_cmd *cmd)
 	sc->aen_cmd = NULL;
 	mrsas_release_mfi_cmd(cmd);
 
-	if (!sc->remove_in_progress)
-		taskqueue_enqueue(sc->ev_tq, &sc->ev_task);
+	taskqueue_enqueue(sc->ev_tq, &sc->ev_task);
 
 	return;
 }
