@@ -758,6 +758,15 @@ _zfs=		zfs
 .endif
 .endif
 
+.if ${MACHINE_CPUARCH} == "arm64"
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
+_opensolaris=	opensolaris
+.endif
+.if ${MK_ZFS} != "no" || defined(ALL_MODULES)
+_zfs=		zfs
+.endif
+.endif
+
 .if ${MACHINE_CPUARCH} == "powerpc"
 _agp=		agp
 _an=		an
