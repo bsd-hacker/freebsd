@@ -39,11 +39,8 @@
 #		panic: 43 vncache entries remaining			20111220
 # backingstore3.sh
 #		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111230
-# bio.sh	WiP							20151116
 # crossmp4.sh	Known nullfs issue					20150523
-# crossmp6.sh	Known lockd issue					20150625
-# dfull.sh	umount stuck in "mount drain"				20111227
-# full.sh	OOM							20160116
+# fsync.sh	GEOM_JOURNAL: Cannot suspend file system /mnt		20160818
 # fuse.sh	Memory corruption seen in log file kostik734.txt	20141114
 # fuse2.sh	Deadlock seen						20121129
 # fuse3.sh	Deadlock seen						20141120
@@ -51,22 +48,22 @@
 # gjournal.sh	kmem_malloc(131072): kmem_map too small			20120626
 # gjournal2.sh
 # gjournal3.sh	panic: Journal overflow					20130729
-# holdcnt03.sh	WiP							20151115
-# lockf5.sh	Page fault						20150622
-# md2.sh	panic: ufs_dirbad: /mnt: bad dir ino ...: mangled entry	20150227
-# maxmemdom.sh	Panic: vm_page_alloc: missing page			20151029
+# gjournal4.sh	panic: Journal overflow					20160829
+# kevent7.sh	panic: softclock_call_cc: act 0xfffff800380dad40 0	20161115
+# lockf5.sh	Spinning threads seen					20160718
+# maxvnodes2.sh	WiP							20161129
+# mdconfig.sh	Panic:  g_read_data(): invalid length 262144		20161128
 # memguard.sh	Waiting for fix commit
 # memguard2.sh	Waiting for fix commit
 # memguard3.sh	Waiting for fix commit
-# mkfifo.sh	Page fault in softdep_count_dependencies+0x27 seen	20150524
-# mmap18.sh	panic: vm_fault_copy_entry: main object missing page	20141015
-# mmap21.sh	rangelock issue?					20150326
-# msdos4.sh 	OOM							20160115
+# mmap18.sh	panic: vm_fault_copy_entry: main object missing page	20161102
+# msdos4.sh 	panic: Assertion sq->sq_wchan != NULL 			20160610
 # msdos5.sh	Panic: Freeing unused sector ...			20141118
 # newfs4.sh	Deadlock seen						20150906
 # nfs10.sh	Double fault						20151013
-# oovm.sh	WiP							20151206
-# oovm2.sh	WiP							20151206
+# nfs16.sh	panic: Failed to register NFS lock locally - error=11	20160608
+# oovm.sh	Waiting for PQ_LAUNDRY					20151206
+# oovm2.sh	Waiting for PQ_LAUNDRY					20151206
 # pfl3.sh	panic: handle_written_inodeblock: live inodedep		20140812
 # pmc.sh	NMI ... going to debugger				20111217
 # posix_openpt2.sh
@@ -77,7 +74,8 @@
 # quota3.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111222
 # quota6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130206
 # quota7.sh	panic: dqflush: stray dquot				20120221
-# rw.sh		WiP							20151116
+# rw.sh		Out of VM						20151116
+# sendmsg.sh	Test loops in the kernel				20160519
 # shm_open.sh	panic: kmem_malloc(4096): kmem_map too small		20130504
 # snap3.sh	mksnap_ffs stuck in snaprdb				20111226
 # snap5.sh	mksnap_ffs stuck in getblk				20111224
@@ -88,17 +86,16 @@
 # suj9.sh	page fault in softdep_count_dependencies+0x27		20141116
 # suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
 # suj13.sh	general protection fault in bufdaemon			20141130
-# suj18.sh	panic: Bad tailq NEXT(0xc1e2a6088->tqh_last_s) != NULL	20120213
-# suj29.sh	OOM							20160116
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
-# suj34.sh	Various hangs and panics (SUJ + NULLFS iisue)		20131210
-# swap3.sh	WiP							20151120
+# suj34.sh	Various hangs and panics (SUJ + NULLFS issue)		20131210
 # trim4.sh	Page fault in softdep_count_dependencies+0x27		20140608
 # umountf3.sh	KDB: enter: watchdog timeout				20111217
 # umountf7.sh	panic: handle_written_inodeblock: live inodedep ...	20131129
+# umountf9.sh	panic: handle_written_inodeblock: live inodedep ...	20160921
 # unionfs.sh	insmntque: non-locked vp: xx is not exclusive locked...	20130909
 # unionfs2.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111219
 # unionfs3.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111216
+# zfs3.sh	Page fault						20161118
 
 # Test not to run for other reasons:
 
@@ -157,6 +154,7 @@ for i; do
 		shift
 		;;
 	-c)	rm -f $alllast	# Clear last know test
+		rm -f $alllist
 		shift
 		;;
 	-n)	noshuffle=1	# Do not shuffle the list of tests
@@ -180,7 +178,7 @@ minspace=$((1024 * 1024)) # in k
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print $4'}` -lt \
     $minspace ] &&
     echo "Warn: Not enough disk space on `dirname $diskimage` for \$diskimage"
-[ ! -d $(dirname $RUNDIR) ] && echo "No such `dirname $RUNDIR`" &&
+[ ! -d $(dirname $RUNDIR) ] && echo "No such \$RUNDIR \"`dirname $RUNDIR`\"" &&
     exit 1
 [ `df -k $(dirname $RUNDIR) | tail -1 | awk '{print $4'}` -lt \
     $minspace ] &&
@@ -202,13 +200,22 @@ rm -f $alllog $alllist
 find `dirname $alllast` -maxdepth 1 -name $alllast -mtime +12h -delete
 touch $alllast $alllog
 chmod 640 $alllast $alllog
+
+console=/dev/console
+printf "\r\n" > $console &
+pid=$!
+sleep 1
+kill -0 $pid > /dev/null 2>&1 &&
+{ console=/dev/null; kill -9 $pid; }
+
 while true; do
 	exclude=`sed -n '/^# Start of list/,/^# End of list/p' < $0 |
 		cat - all.exclude 2>/dev/null |
 		grep "\.sh" | awk '{print $2}'`
 	list=`echo *.sh`
 	[ $# -ne 0 ] && list=$*
-	list=`echo $list | sed  "s/all\.sh//; s/cleanup\.sh//"`
+	list=`echo $list | \
+	     sed  "s/[[:<:]]all\.sh[[:>:]]//g; s/[[:<:]]cleanup\.sh[[:>:]]//g"`
 
 	if [ -n "$noshuffle" -a $# -eq 0 ]; then
 		last=`cat $alllast`
@@ -222,8 +229,8 @@ while true; do
 		fi
 	fi
 	[ -n "$noshuffle" ] ||
-	    list=`echo $list | tr '\n' ' ' | ../tools/shuffle | \
-	    tr ' ' '\n'`
+	    list=`echo $list | tr ' ' '\n' | sort -R | \
+	    tr '\n' ' '`
 
 	lst=""
 	for i in $list; do
@@ -238,14 +245,19 @@ while true; do
 	for i in $lst; do
 		n1=$((n1 + 1))
 		echo $i > $alllast
-		./cleanup.sh
+		./cleanup.sh || exit 1
 		echo "`date '+%Y%m%d %T'` all: $i"
-		echo "`date '+%Y%m%d %T'` all: $i" >> $alllog
-		printf "`date '+%Y%m%d %T'` all ($n1/$n2): $i\r\n" > /dev/console
+		printf "`date '+%Y%m%d %T'` all ($n1/$n2): $i\n" >> $alllog
+		printf "`date '+%Y%m%d %T'` all ($n1/$n2): $i\r\n" > $console
 		logger "Starting test all: $i"
 		sync;sync;sync
 		start=`date '+%s'`
-		./$i 2>&1 | tee $alloutput
+		(
+			./$i 2>&1
+			e=$?
+			[ $e -ne 0 ] &&
+			    echo "FAIL $i exit code $e"
+		) | tee $alloutput
 		grep -qw FAIL $alloutput &&
 		    echo "`date '+%Y%m%d %T'` $i" >> $allfaillog &&
 		    logger "stress2 test $i failed"
@@ -253,7 +265,7 @@ while true; do
 		[ $((`date '+%s'` - $start)) -gt 1980 ] &&
 		    printf "*** Excessive run time: %s %d min\r\n" $i, \
 		    $(((`date '+%s'` - $start) / 60)) | \
-		    tee /dev/console >> $allexcess
+		    tee $console >> $allexcess
 		while pgrep -q swap; do
 			echo "swap still running"
 			sleep 2
