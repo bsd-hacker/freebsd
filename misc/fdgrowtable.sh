@@ -34,7 +34,7 @@
 
 . ../default.cfg
 
-max=`sysctl kern.maxfilesperproc | sed 's/.*: //'`
+max=`ulimit -n`
 
 here=`pwd`
 cd /tmp
