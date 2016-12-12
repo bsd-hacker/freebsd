@@ -126,18 +126,14 @@ static const char include_ext[] = ".conf";
 #define	MAXUNAMES	20	/* maximum number of user names */
 
 #define	sstosa(ss)	((struct sockaddr *)(ss))
-#ifdef INET
-#define	satosin(sa)	((struct sockaddr_in *)(void *)(sa))
-#endif
-#ifdef INET6
 #define	satosin6(sa)	((struct sockaddr_in6 *)(void *)(sa))
+#define	satosin(sa)	((struct sockaddr_in *)(void *)(sa))
 #define	s6_addr32	__u6_addr.__u6_addr32
 #define	IN6_ARE_MASKED_ADDR_EQUAL(d, a, m)	(	\
 	(((d)->s6_addr32[0] ^ (a)->s6_addr32[0]) & (m)->s6_addr32[0]) == 0 && \
 	(((d)->s6_addr32[1] ^ (a)->s6_addr32[1]) & (m)->s6_addr32[1]) == 0 && \
 	(((d)->s6_addr32[2] ^ (a)->s6_addr32[2]) & (m)->s6_addr32[2]) == 0 && \
 	(((d)->s6_addr32[3] ^ (a)->s6_addr32[3]) & (m)->s6_addr32[3]) == 0 )
-#endif
 /*
  * List of peers and sockets for binding.
  */
@@ -351,12 +347,12 @@ static void	dodie(int);
 static void	dofsync(void);
 static void	domark(int);
 static void	fprintlog(struct filed *, int, const char *);
-static int	socksetup(struct peer *);
 static void	init(int);
 static void	logerror(const char *);
 static void	logmsg(int, const char *, const char *, int);
 static void	log_deadchild(pid_t, int, const char *);
 static void	markit(void);
+static int	socksetup(struct peer *);
 static int	skip_message(const char *, const char *, int);
 static void	printline(const char *, char *, int);
 static void	printsys(char *);
@@ -399,6 +395,7 @@ main(int argc, char *argv[])
 	sigset_t mask;
 	pid_t ppid = 1, spid;
 	socklen_t sslen;
+	char *p;
 
 	if (madvise(NULL, 0, MADV_PROTECT) != 0)
 		dprintf("madvise() failed: %s\n", strerror(errno));
@@ -429,8 +426,17 @@ main(int argc, char *argv[])
 		case 'b':
 			if ((pe = calloc(1, sizeof(*pe))) == NULL)
 				err(1, "malloc failed");
-			pe->pe_name = optarg;
-			pe->pe_serv = NULL;
+			if ((p = strchr(optarg, ':')) == NULL) {
+				/* A hostname or filename only. */
+				pe->pe_name = optarg;
+				pe->pe_serv = "syslog";
+			} else {
+				/* The case of "name:service". */
+				*p++ = '\0';
+				pe->pe_serv = p;
+				pe->pe_name = (strlen(optarg) == 0) ?
+				    NULL : optarg;
+			}
 			STAILQ_INSERT_TAIL(&pqueue, pe, next);
 			break;
 		case 'c':
@@ -674,7 +680,6 @@ main(int argc, char *argv[])
 		free(fdsr);
 }
 
-#ifdef INET6
 static void
 unmapped(struct sockaddr *sa)
 {
@@ -698,12 +703,6 @@ unmapped(struct sockaddr *sa)
 
 	memcpy(sa, &sin4, sin4.sin_len);
 }
-#else
-static void
-unmapped(struct sockaddr *sa __unused)
-{
-}
-#endif
 
 static void
 usage(void)
@@ -1774,7 +1773,6 @@ init(int signo)
 		free(f->f_host);
 		free(f);
 	}
-	nextp = &Files;
 
 	/* open the configuration file */
 	if ((cf = fopen(ConfFile, "r")) == NULL) {
@@ -2474,8 +2472,9 @@ validate(struct sockaddr *sa, const char *hname)
 	u_short sport;
 	int num = 0;
 
-	STAILQ_FOREACH(ap, &aphead, next)
+	STAILQ_FOREACH(ap, &aphead, next) {
 		num++;
+	}
 	dprintf("# of validation rule: %d\n", num);
 	if (num == 0)
 		/* traditional behaviour, allow everything */
@@ -2866,7 +2865,7 @@ socksetup(struct peer *pe)
 	}
 	freeaddrinfo(res0);
 
-	return (error);
+	return(error);
 }
 
 static void
