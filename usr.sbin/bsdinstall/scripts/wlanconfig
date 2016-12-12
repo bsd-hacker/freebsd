@@ -37,39 +37,26 @@ f_include $BSDCFG_SHARE/dialog.subr
 
 country_set()
 {
-	local error_str
-	local iface_up
-	local ifconfig_args=
+	local error_str iface_up ifconfig_args=
 
 	#
 	# Setup what was selected
 	# NB: Do not change order of arguments (or regdomain will be ignored)
 	#
-	if [ "$2" ]; then
-		ifconfig_args="${ifconfig_args}country $2"
-	fi
-	if [ "$1" ]; then
-		if [ "$2" ]; then
-			ifconfig_args="${ifconfig_args} "
-		fi
-		ifconfig_args="${ifconfig_args}regdomain $1"
-	fi
-	if [ ! "$ifconfig_args" ]; then
-		# Nothing to do (everything was skipped)
-		return $SUCCESS
-	fi
+	[ "$2" ] && ifconfig_args="$ifconfig_args country $2"
+	[ "$1" ] && ifconfig_args="$ifconfig_args regdomain $1"
+	[ "$ifconfig_args" ] || return $SUCCESS # Nothing to do
+	ifconfig_args="${ifconfig_args# }"
 
 	# Regdomain/country cannot be applied while interface is running
 	iface_up=$( ifconfig -lu | grep -w $WLAN_IFACE )
-	if [ "$iface_up" ]; then
-		ifconfig $WLAN_IFACE down
-	fi
+	[ "$iface_up" ] && ifconfig $WLAN_IFACE down
 	error_str=$( ifconfig $WLAN_IFACE $ifconfig_args 2>&1 |
-		sed 's/ifconfig: //' )
+		sed -e 's/ifconfig: //' )
 	if [ "$iface_up" ]; then
 		# Restart wpa_supplicant(8) (should not fail).
 		wpa_supplicant -B -i $WLAN_IFACE -c \
-		    $BSDINSTALL_TMPETC/wpa_supplicant.conf
+		    "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 	fi
 	if [ "$error_str" ]; then
 		dialog --backtitle "FreeBSD Installer" --title "Error" \
@@ -81,9 +68,9 @@ country_set()
 			return $SUCCESS # Skip
 		fi
 	else
-		: > $BSDINSTALL_TMPETC/rc.conf.net.wlan
+		: > "$BSDINSTALL_TMPETC/rc.conf.net.wlan"
 		echo create_args_$WLAN_IFACE=\"$ifconfig_args\" >> \
-		    $BSDINSTALL_TMPETC/rc.conf.net.wlan
+		    "$BSDINSTALL_TMPETC/rc.conf.net.wlan"
 	fi
 
 	return $SUCCESS
@@ -91,22 +78,18 @@ country_set()
 
 dialog_country_select()
 {
-	local input
+	local input regdomains countries regdomain country
 	local def_item_regdomain=
 	local def_item_country=
-	local regdomains
-	local countries
-	local regdomain
-	local country
 
 	#
 	# Parse available countries/regdomains
 	#
-	input=$( ifconfig $WLAN_IFACE list countries | sed 's/DEBUG//gi' )
-	regdomains=$( echo $input | sed 's/.*domains://' | tr ' ' '\n' |
+	input=$( ifconfig $WLAN_IFACE list countries | sed -e 's/DEBUG//gi' )
+	regdomains=$( echo $input | sed -e 's/.*domains://' | tr ' ' '\n' |
 		sort | tr '\n' ' ' )
-	countries=$( echo $input | sed 's/Country codes://' |
-	    sed 's/Regulatory.*//' | awk '{
+	countries=$( echo $input | sed -e 's/Country codes://' |
+	    sed -e 's/Regulatory.*//' | awk '{
 		for (i = 1; i <= NF; i++) {
 			printf "%s", $i
 			if (match($i, "[[:lower:]]"))
@@ -159,21 +142,21 @@ dialog_country_select()
 
 ############################################################ MAIN
 
-echo -n > $BSDINSTALL_TMPETC/wpa_supplicant.conf
-chmod 0600 $BSDINSTALL_TMPETC/wpa_supplicant.conf
+echo -n > "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
+chmod 0600 "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 
-echo "ctrl_interface=/var/run/wpa_supplicant" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
-echo "eapol_version=2" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
-echo "ap_scan=1" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
-echo "fast_reauth=1" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
-echo >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
+echo "ctrl_interface=/var/run/wpa_supplicant" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
+echo "eapol_version=2" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
+echo "ap_scan=1" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
+echo "fast_reauth=1" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
+echo >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 
 #
 # Try to reach wpa_supplicant. If it isn't running and we can modify the
 # existing system, start it. Otherwise, fail.
 #
 (wpa_cli ping >/dev/null 2>/dev/null || ([ "$BSDINSTALL_CONFIGCURRENT" ] &&
-	wpa_supplicant -B -i $1 -c $BSDINSTALL_TMPETC/wpa_supplicant.conf)) ||
+	wpa_supplicant -B -i $1 -c "$BSDINSTALL_TMPETC/wpa_supplicant.conf")) ||
 	(dialog --backtitle "FreeBSD Installer" --title "Error" --msgbox \
 	"Could not start wpa_supplicant!" 0 0; exit 1) || exit 1
 
@@ -194,13 +177,9 @@ if [ "$BSDINSTALL_CONFIGCURRENT" ]; then
 	WLAN_IFACE=$( wpa_cli ifname | tail -n 1 )
 	INPUT=$( ifconfig $WLAN_IFACE list regdomain | head -n 1 )
 	DEF_REGDOMAIN=$( echo $INPUT | cut -w -f 2 )
-	if [ "$DEF_REGDOMAIN" = "0" ]; then
-		DEF_REGDOMAIN="<not selected>"
-	fi
 	DEF_COUNTRY=$( echo $INPUT | cut -w -f 4 )
-	if [ "$DEF_COUNTRY" = "0" ]; then
-		DEF_COUNTRY="<not selected>"
-	fi
+	[ "$DEF_REGDOMAIN" = 0 ] && DEF_REGDOMAIN="<not selected>"
+	[ "$DEF_COUNTRY" = 0 ] && DEF_COUNTRY="<not selected>"
 	dialog --backtitle "FreeBSD Installer" --title "Regdomain/country" \
 	    --yesno "Change regdomain/country (now \
 	    $DEF_REGDOMAIN/$DEF_COUNTRY)?" 0 0
@@ -264,7 +243,7 @@ do
 	exec 3>&-
 done
 
-[ ! "$ENCRYPTION" ] && ENCRYPTION=$( echo "$NETWORKS" | awk -F '\t' \
+[ "$ENCRYPTION" ] || ENCRYPTION=$( echo "$NETWORKS" | awk -F '\t' \
     "/^\"$NETWORK\"\t/ {printf(\"%s\n\", \\\$2 );}" )
 
 if echo $ENCRYPTION | grep -q 'PSK'; then
@@ -281,7 +260,7 @@ echo "network={
 	scan_ssid=$SCANSSID
 	psk=\"$PASS\"
 	priority=5
-}" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
+}" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 elif echo $ENCRYPTION | grep -q EAP; then
 	exec 3>&1
 	USERPASS=$( dialog --insecure --backtitle "FreeBSD Installer" \
@@ -295,7 +274,7 @@ elif echo $ENCRYPTION | grep -q EAP; then
 echo "network={
 	ssid=\"$NETWORK\"
 	scan_ssid=$SCANSSID
-	key_mgmt=WPA-EAP" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
+	key_mgmt=WPA-EAP" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 echo "$USERPASS" | awk '
 {
 	if (NR == 1) {
@@ -303,9 +282,9 @@ echo "$USERPASS" | awk '
 	} else if (NR == 2) {
 		printf "	password=\"%s\"\n", $1;
 	}
-}' >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
+}' >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 echo "	priority=5
-}" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
+}" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 elif echo $ENCRYPTION | grep -q WEP; then
 	exec 3>&1
 	WEPKEY=$( dialog --insecure --backtitle "FreeBSD Installer" \
@@ -321,21 +300,21 @@ echo "network={
 	wep_key0=\"$WEPKEY\"
 	wep_tx_keyidx=0
 	priority=5
-}" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
+}" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 else	# Open
 echo "network={
 	ssid=\"$NETWORK\"
 	scan_ssid=$SCANSSID
 	key_mgmt=NONE
 	priority=5
-}" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
+}" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 fi
 
 # Connect to any open networks policy
 echo "network={
 	priority=0
 	key_mgmt=NONE
-}" >> $BSDINSTALL_TMPETC/wpa_supplicant.conf
+}" >> "$BSDINSTALL_TMPETC/wpa_supplicant.conf"
 
 # Bring up new network
 if [ "$BSDINSTALL_CONFIGCURRENT" ]; then
