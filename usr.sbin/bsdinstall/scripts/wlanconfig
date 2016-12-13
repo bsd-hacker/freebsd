@@ -52,8 +52,9 @@ country_set()
 	# Regdomain/country cannot be applied while interface is running
 	iface_up=$( ifconfig -lu | grep -w "$WLAN_IFACE" )
 	[ "$iface_up" ] && ifconfig "$WLAN_IFACE" down
-	error_str=$( ifconfig "$WLAN_IFACE" $ifconfig_args 2>&1 |
-		sed -e 's/ifconfig: //' )
+	f_eval_catch -dk error_str wlanconfig ifconfig "ifconfig %s %s" \
+		"$WLAN_IFACE" "$ifconfig_args"
+	error_str="${error_str#ifconfig: }"
 	if [ "$iface_up" ]; then
 		# Restart wpa_supplicant(8) (should not fail).
 		wpa_supplicant -B -i "$WLAN_IFACE" -c \
@@ -165,22 +166,17 @@ EOF
 # Try to reach wpa_supplicant. If it isn't running and we can modify the
 # existing system, start it. Otherwise, fail.
 #
-if ! wpa_cli ping > /dev/null 2>&1; then
+if ! f_eval_catch -d wlanconfig wpa_cli "wpa_cli ping"; then
 	if [ ! "$BSDINSTALL_CONFIGCURRENT" ]; then
-		$DIALOG --backtitle "$DIALOG_BACKTITLE" --title "$msg_error" --msgbox \
-			"Wireless cannot be configured without making changes to the local system!" 0 0
+		f_show_err "Wireless cannot be configured without %s" \
+		           "making changes to the local system!"
 		exit 1
 	fi
-	wpa_supplicant -B -i $1 -c "$BSDINSTALL_TMPETC/wpa_supplicant.conf") || exit 1
+	f_eval_catch wlanconfig wpa_supplicant \
+		'wpa_supplicant -B -i "%s" -c "%s/wpa_supplicant.conf"' \
+		"$1" "$BSDINSTALL_TMPETC" || exit 1
 
-	if ! wpa_cli ping > /dev/null 2>&1 && [ ! "$BSDINSTALL_CONFIGCURRENT" ]; then
-		$DIALOG \
-			--title "$msg_error" \
-			--backtitle "$DIALOG_BACKTITLE" \
-			--msgbox "Could not start wpa_supplicant!" \
-			0 0
-		exit 1
-	fi
+	f_eval_catch wlanconfig wpa_cli "wpa_cli ping" || exit 1
 fi
 
 #
@@ -196,11 +192,7 @@ if [ "$BSDINSTALL_CONFIGCURRENT" ]; then
 	[ "$DEF_REGDOMAIN" = 0 ] && DEF_REGDOMAIN="<not selected>"
 	[ "$DEF_COUNTRY" = 0 ] && DEF_COUNTRY="<not selected>"
 	f_dialog_title "Regdomain/country"
-	$DIALOG \
-		--title "$DIALOG_TITLE" \
-		--backtitle "$DIALOG_BACKTITLE" \
-		--yesno "Change regdomain/country (now $DEF_REGDOMAIN/$DEF_COUNTRY)?" \
-		0 0
+	f_yesno "Change regdomain/country (now $DEF_REGDOMAIN/$DEF_COUNTRY)?"
 	if [ $? -eq 0 ]; then
 		while :; do
 			dialog_country_select "$DEF_REGDOMAIN" "$DEF_COUNTRY"
@@ -213,40 +205,33 @@ fi
 
 while :; do
 	SCANSSID=0
-	output=$( wpa_cli scan 2>&1 )
-	f_dprintf "%s" "$output"
+	f_eval_catch -d wlanconfig wpa_cli "wpa_cli scan"
 	f_dialog_title "Scanning"
-	$DIALOG \
-		--title "$DIALOG_TITLE" \
-		--backtitle "$DIALOG_BACKTITLE" \
-		--ok-label "$msg_skip" \
-		--pause "Waiting 5 seconds to scan for wireless networks..." \
-		9 40 5 || exit 1
+	f_dialog_pause "Waiting 5 seconds to scan for wireless networks..." 5 ||
+		exit 1
 
-	SCAN_RESULTS=$( wpa_cli scan_results )
+	f_eval_catch -dk SCAN_RESULTS wlanconfig wpa_cli "wpa_cli scan_results"
 	NETWORKS=$( echo "$SCAN_RESULTS" | awk -F '\t' '
 		/..:..:..:..:..:../ && $5 { printf "\"%s\"\t%s\n", $5, $4 }
 	' | sort | uniq )
 
 	if [ ! "$NETWORKS" ]; then
 		f_dialog_title "$msg_error"
-		$DIALOG \
-			--title "$DIALOG_TITLE" \
-			--backtitle "$DIALOG_BACKTITLE" \
-			--yesno "No wireless networks were found. Rescan?" \
-			0 0 && continue
+		f_yesno "No wireless networks were found. Rescan?" && continue
 		exit 1
 	fi
 
 	f_dialog_title "Network Selection"
-	NETWORK=$( sh -c "$DIALOG \
-		--title \"$DIALOG_TITLE\" \
-		--backtitle \"$DIALOG_BACKTITLE\" \
-		--extra-button \
-		--extra-label \"Rescan\" \
-		--menu \"Select a wireless network to connect to.\" \
-		0 0 0 \
-		$( echo $NETWORKS | tr '\n' ' ' )" \
+	prompt="Select a wireless network to connect to."
+	menu_list=$( echo $NETWORKS | tr '\n' ' ' )
+	NETWORK=$( eval $DIALOG \
+		--title \"\$DIALOG_TITLE\"         \
+		--backtitle \"\$DIALOG_BACKTITLE\" \
+		--extra-button                     \
+		--extra-label \"Rescan\"           \
+		--menu \"\$prompt\"                \
+		$height $width $rows               \
+		$menu_list                         \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	)
 	retval=$?
@@ -254,19 +239,25 @@ while :; do
 	case $retval in
 	$DIALOG_OK) break ;;
 	$DIALOG_CANCEL)
-		# here we ask if the user wants to select the network manually
+		# Ask if the user wants to select network manually
 		f_dialog_title "Network Selection"
 		f_yesno "Do you want to select the network manually?" || exit 1
 		f_dialog_input NETWORK "Enter SSID" || exit 1
-		ENCRYPTION=$( $DIALOG \
-			--title "$DIALOG_TITLE" \
-			--backtitle "$DIALOG_BACKTITLE" \
-			--menu "Select encryption type" \
-			0 0 0 \
-			"1 WPA/WPA2 PSK" "" \
-			"2 WPA/WPA2 EAP" "" \
-			"3 WEP" "" \
-			"0 None" "" \
+		prompt="Select encryption type"
+		menu_list="
+			'1 WPA/WPA2 PSK' ''
+			'2 WPA/WPA2 EAP' ''
+			'3 WEP' ''
+			'0 None' ''
+		" # END-QUOTE
+		eval f_dialog_menu_size height width rows \"\$DIALOG_TITLE\" \
+			\"\$DIALOG_BACKTITLE\" \"\$prompt\" \"\" $menu_list
+		ENCRYPTION=$( eval $DIALOG \
+			--title \"\$DIALOG_TITLE\"         \
+			--backtitle \"\$DIALOG_BACKTITLE\" \
+			--menu \"\$prompt\"                \
+			$height $width $rows               \
+			$menu_list                         \
 			2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 		) || exit 1
 		SCANSSID=1
@@ -369,8 +360,7 @@ EOF
 
 # Bring up new network
 if [ "$BSDINSTALL_CONFIGCURRENT" ]; then
-	output=$( wpa_cli reconfigure 2>&1 )
-	f_dprintf "%s" "$output"
+	f_eval_catch -d wlanconfig wpa_cli "wpa_cli reconfigure"
 fi
 
 exit $SUCCESS
