@@ -166,21 +166,22 @@ EOF
 # existing system, start it. Otherwise, fail.
 #
 if ! wpa_cli ping > /dev/null 2>&1; then
-	([ "$BSDINSTALL_CONFIGCURRENT" ] &&
-		wpa_supplicant -B -i $1 -c "$BSDINSTALL_TMPETC/wpa_supplicant.conf") ||
+	if [ ! "$BSDINSTALL_CONFIGCURRENT" ]; then
 		$DIALOG --backtitle "$DIALOG_BACKTITLE" --title "$msg_error" --msgbox \
-		"Could not start wpa_supplicant!" 0 0; exit 1 || exit 1
+			"Wireless cannot be configured without making changes to the local system!" 0 0
+		exit 1
+	fi
+	wpa_supplicant -B -i $1 -c "$BSDINSTALL_TMPETC/wpa_supplicant.conf") || exit 1
 
 	if ! wpa_cli ping > /dev/null 2>&1 && [ ! "$BSDINSTALL_CONFIGCURRENT" ]; then
 		$DIALOG \
 			--title "$msg_error" \
 			--backtitle "$DIALOG_BACKTITLE" \
-			--msgbox "Wireless cannot be configured without making changes to the local system!" \
+			--msgbox "Could not start wpa_supplicant!" \
 			0 0
 		exit 1
 	fi
 fi
-
 
 #
 # There is no way to check country/regdomain without (possible)
@@ -224,7 +225,7 @@ while :; do
 
 	SCAN_RESULTS=$( wpa_cli scan_results )
 	NETWORKS=$( echo "$SCAN_RESULTS" | awk -F '\t' '
-		/..:..:..:..:..:../ && $5 { printf("\"%s\"\t%s\n", $5, $4) }
+		/..:..:..:..:..:../ && $5 { printf "\"%s\"\t%s\n", $5, $4 }
 	' | sort | uniq )
 
 	if [ ! "$NETWORKS" ]; then
@@ -277,17 +278,17 @@ while :; do
 done
 
 [ "$ENCRYPTION" ] || ENCRYPTION=$( echo "$NETWORKS" |
-	awk -F '\t' "/^\"$NETWORK\"\t/ { printf(\"%s\n\", \\\$2 ) }" )
+	awk -F '\t' "/^\"$NETWORK\"\t/ { print \$2 }" )
 
-if echo $ENCRYPTION | grep -q 'PSK'; then
+if echo "$ENCRYPTION" | grep -q PSK; then
 	PASS=$( $DIALOG \
-		--title "WPA Setup" \
-		--backtitle "$DIALOG_BACKTITLE" \
-		--insecure \
-		--mixedform "" \
-		0 0 0 \
+		--title "WPA Setup"              \
+		--backtitle "$DIALOG_BACKTITLE"  \
+		--insecure                       \
+		--mixedform ""                   \
+		0 0 0                            \
 		"SSID" 1 0 "$NETWORK" 1 12 0 0 2 \
-		"Password" 2 0 "" 2 12 15 63 1 \
+		"Password" 2 0 "" 2 12 15 63 1   \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	) || exec "$0" "$@"
 	awk 'sub(/^\t/,"")||1' \
@@ -299,16 +300,16 @@ if echo $ENCRYPTION | grep -q 'PSK'; then
 		priority=5
 	}
 	EOF
-elif echo $ENCRYPTION | grep -q EAP; then
+elif echo "$ENCRYPTION" | grep -q EAP; then
 	USERPASS=$( $DIALOG \
-		--title "WPA-Enterprise Setup" \
-		--backtitle "$DIALOG_BACKTITLE" \
-		--insecure \
-		--mixedform "" \
-		0 0 0 \
+		--title "WPA-Enterprise Setup"   \
+		--backtitle "$DIALOG_BACKTITLE"  \
+		--insecure                       \
+		--mixedform ""                   \
+		0 0 0                            \
 		"SSID" 1 0 "$NETWORK" 1 12 0 0 2 \
-		"Username" 2 0 "" 2 12 25 63 0 \
-		"Password" 3 0 "" 3 12 25 63 1 \
+		"Username" 2 0 "" 2 12 25 63 0   \
+		"Password" 3 0 "" 3 12 25 63 1   \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	) || exec "$0" "$@"
 	awk 'sub(/^\t/,"")||1' \
@@ -324,15 +325,15 @@ elif echo $ENCRYPTION | grep -q EAP; then
 		priority=5
 	}
 	EOF
-elif echo $ENCRYPTION | grep -q WEP; then
+elif echo "$ENCRYPTION" | grep -q WEP; then
 	WEPKEY=$( $DIALOG \
-		--title "WEP Setup" \
-		--backtitle "$DIALOG_BACKTITLE" \
-		--insecure \
-		--mixedform "" \
-		0 0 0 \
+		--title "WEP Setup"              \
+		--backtitle "$DIALOG_BACKTITLE"  \
+		--insecure                       \
+		--mixedform ""                   \
+		0 0 0                            \
 		"SSID" 1 0 "$NETWORK" 1 12 0 0 2 \
-		"WEP Key 0" 2 0 "" 2 12 15 0 1 \
+		"WEP Key 0" 2 0 "" 2 12 15 0 1   \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	) || exec "$0" "$@"
 	awk 'sub(/^\t/,"")||1' \
