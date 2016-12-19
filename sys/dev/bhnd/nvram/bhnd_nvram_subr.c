@@ -136,6 +136,12 @@ bhnd_nvram_type_name(bhnd_nvram_type type)
 		return ("int64");
 	case BHND_NVRAM_TYPE_STRING:
 		return ("string");
+	case BHND_NVRAM_TYPE_BOOL:
+		return ("bool");
+	case BHND_NVRAM_TYPE_NULL:
+		return ("null");
+	case BHND_NVRAM_TYPE_DATA:
+		return ("data");
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		return ("uint8[]");
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
@@ -156,6 +162,8 @@ bhnd_nvram_type_name(bhnd_nvram_type type)
 		return ("char[]");
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
 		return ("string[]");
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
+		return ("bool[]");
 	}
 
 	/* Quiesce gcc4.2 */
@@ -186,6 +194,9 @@ bhnd_nvram_is_signed_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_UINT32:
 	case BHND_NVRAM_TYPE_UINT64:
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_DATA:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
@@ -196,6 +207,7 @@ bhnd_nvram_is_signed_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
 		return (false);
 	}
 
@@ -243,6 +255,9 @@ bhnd_nvram_is_int_type(bhnd_nvram_type type)
 
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_DATA:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
@@ -253,6 +268,7 @@ bhnd_nvram_is_int_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
 		return (false);
 	}
 
@@ -279,6 +295,9 @@ bhnd_nvram_is_array_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64:
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_DATA:
 		return (false);
 
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
@@ -291,6 +310,7 @@ bhnd_nvram_is_array_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
 		return (true);
 	}
 
@@ -318,6 +338,9 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64:
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_DATA:
 		return (type);
 
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:	return (BHND_NVRAM_TYPE_UINT8);
@@ -330,6 +353,63 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64_ARRAY:	return (BHND_NVRAM_TYPE_INT64);
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:	return (BHND_NVRAM_TYPE_CHAR);
 	case BHND_NVRAM_TYPE_STRING_ARRAY:	return (BHND_NVRAM_TYPE_STRING);
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:	return (BHND_NVRAM_TYPE_BOOL);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
+ * Return the raw data type used to represent values of @p type, or return
+ * @p type is @p type is not a complex type.
+ *
+ * @param type The type to query.
+ */
+bhnd_nvram_type
+bhnd_nvram_raw_type(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_CHAR:
+		return (BHND_NVRAM_TYPE_UINT8);
+
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+		return (BHND_NVRAM_TYPE_UINT8_ARRAY);
+
+	case BHND_NVRAM_TYPE_BOOL: {
+		_Static_assert(sizeof(bhnd_nvram_bool_t) == sizeof(uint8_t),
+		    "bhnd_nvram_bool_t must be uint8-representable");
+		return (BHND_NVRAM_TYPE_UINT8);
+	}
+
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
+		return (BHND_NVRAM_TYPE_UINT8_ARRAY);
+
+	case BHND_NVRAM_TYPE_DATA:
+		return (BHND_NVRAM_TYPE_UINT8_ARRAY);
+
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (BHND_NVRAM_TYPE_UINT8_ARRAY);
+
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_UINT64:
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_INT64:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_UINT64_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT64_ARRAY:
+		return (type);
 	}
 
 	/* Quiesce gcc4.2 */
@@ -348,7 +428,15 @@ bhnd_nvram_type_width(bhnd_nvram_type type)
 	switch (type) {
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_DATA:
 		return (0);
+
+	case BHND_NVRAM_TYPE_NULL:
+		return (0);
+
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
+		return (sizeof(bhnd_nvram_bool_t));
 
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
@@ -392,9 +480,18 @@ bhnd_nvram_type_host_align(bhnd_nvram_type type)
 	switch (type) {
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_DATA:
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
 		return (_Alignof(uint8_t));
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY: {
+		_Static_assert(sizeof(bhnd_nvram_bool_t) == sizeof(uint8_t),
+		    "bhnd_nvram_bool_t must be uint8-representable");
+		return (_Alignof(uint8_t));
+	}
+	case BHND_NVRAM_TYPE_NULL:
+		return (1);
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		return (_Alignof(uint8_t));
@@ -517,44 +614,45 @@ bhnd_nvram_get_vardefn(size_t id)
  * Scans for special characters (path delimiters, value delimiters, path
  * alias prefixes), returning false if the given name cannot be used
  * as a relative NVRAM key.
- * 
+ *
  * @param name A relative NVRAM variable name to validate.
- * @param name_len The length of @p name, in bytes.
  * 
  * @retval true If @p name is a valid relative NVRAM key.
  * @retval false If @p name should not be used as a relative NVRAM key.
  */
 bool
-bhnd_nvram_validate_name(const char *name, size_t name_len)
+bhnd_nvram_validate_name(const char *name)
 {
-	size_t limit;
-
-	limit = strnlen(name, name_len);
-	if (limit == 0)
+	/* Reject path-prefixed variable names */
+	if (bhnd_nvram_trim_path_name(name) != name)
 		return (false);
 
-	/* Disallow path alias prefixes ([0-9]+:.*) */
-	if (limit >= 2 && bhnd_nv_isdigit(*name)) {
-		for (const char *p = name; (size_t)(p - name) < limit; p++) {
-			if (bhnd_nv_isdigit(*p))
-				continue;
-			else if (*p == ':')
-				return (false);
-			else
-				break;
-		}
+	/* Reject device path alias declarations (devpath[1-9][0-9]*.*\0) */
+	if (strncmp(name, "devpath", strlen("devpath")) == 0) {
+		const char	*p;
+		char		*endp;
+
+		/* Check for trailing [1-9][0-9]* */
+		p = name + strlen("devpath");
+		strtoul(p, &endp, 10);
+		if (endp != p)
+			return (false);
 	}
 
-	/* Scan for special characters */
-	for (const char *p = name; (size_t)(p - name) < limit; p++) {
+	/* Scan for [^A-Za-z_0-9] */
+	for (const char *p = name; *p != '\0'; p++) {
 		switch (*p) {
-		case '/':	/* path delimiter */
-		case '=':	/* key=value delimiter */
-			return (false);
+		/* [0-9_] */
+		case '0': case '1': case '2': case '3': case '4':
+		case '5': case '6': case '7': case '8': case '9':
+		case '_':
+			break;
 
+		/* [A-Za-z] */
 		default:
-			if (!isascii(*p) || bhnd_nv_isspace(*p))
+			if (!bhnd_nv_isalpha(*p))
 				return (false);
+			break;
 		}
 	}
 
@@ -850,6 +948,46 @@ bhnd_nvram_parse_int(const char *str, size_t maxlen,  u_int base,
 	}
 
 	return (0);
+}
+
+/**
+ * Trim leading path (pci/1/1) or path alias (0:) prefix from @p name, if any,
+ * returning a pointer to the start of the relative variable name.
+ * 
+ * @par Examples
+ * 
+ * - "/foo"		-> "foo"
+ * - "dev/pci/foo"	-> "foo"
+ * - "0:foo"		-> "foo"
+ * - "foo"		-> "foo"
+ * 
+ * @param name The string to be trimmed.
+ * 
+ * @return A pointer to the start of the relative variable name in @p name.
+ */
+const char *
+bhnd_nvram_trim_path_name(const char *name)
+{
+	char *endp;
+
+	/* path alias prefix? (0:varname) */
+	if (bhnd_nv_isdigit(*name)) {
+		/* Parse '0...:' alias prefix, if it exists */
+		strtoul(name, &endp, 10);
+		if (endp != name && *endp == ':') {
+			/* Variable name follows 0: prefix */
+			return (endp+1);
+		}
+	}
+
+	/* device path prefix? (pci/1/1/varname) */
+	if ((endp = strrchr(name, '/')) != NULL) {
+		/* Variable name follows the final path separator '/' */
+		return (endp+1);
+	}
+
+	/* variable name is not prefixed */
+	return (name);
 }
 
 /**
