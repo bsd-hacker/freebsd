@@ -79,6 +79,7 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size), M_BHND_NVRAM, \
 					    M_WAITOK)
 #define	bhnd_nv_free(buf)		free((buf), M_BHND_NVRAM)
+#define	bhnd_nv_strdup(str)		strdup(str, M_BHND_NVRAM)
 #define	bhnd_nv_strndup(str, len)	strndup(str, len, M_BHND_NVRAM)
 
 #ifdef INVARIANTS
@@ -118,6 +119,7 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #define	bhnd_nv_calloc(n, size)		calloc((n), (size))
 #define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size))
 #define	bhnd_nv_free(buf)		free((buf))
+#define	bhnd_nv_strdup(str)		strdup(str)
 #define	bhnd_nv_strndup(str, len)	strndup(str, len)
 
 #ifndef NDEBUG
@@ -165,11 +167,15 @@ int				 bhnd_nvram_value_coerce(const void *inp,
 				     void *outp, size_t *olen,
 				     bhnd_nvram_type otype);
 
-int				 bhnd_nvram_value_nelem(bhnd_nvram_type type,
-				     const void *data, size_t len,
+int				 bhnd_nvram_value_check_aligned(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype);
+
+int				 bhnd_nvram_value_nelem(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype,
 				     size_t *nelem);
-size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
-				     const void *data, size_t nbytes, 
+
+size_t				 bhnd_nvram_value_size(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype,
 				     size_t nelem);
 
 int				 bhnd_nvram_value_printf(const char *fmt,
@@ -180,6 +186,10 @@ int				 bhnd_nvram_value_vprintf(const char *fmt,
 				     const void *inp, size_t ilen,
 				     bhnd_nvram_type itype, char *outp,
 				     size_t *olen, va_list ap);
+
+const void			*bhnd_nvram_value_array_next(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype,
+				     const void *prev, size_t *olen);
 
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 const struct bhnd_nvram_vardefn	*bhnd_nvram_get_vardefn(size_t id);
@@ -258,7 +268,7 @@ struct bhnd_nvram_vardefn {
 	bhnd_nvram_type			 type;	/**< variable type */
 	uint8_t				 nelem;	/**< element count, or 1 if not
 						     an array-typed variable */
-	const bhnd_nvram_val_fmt_t	*fmt;	/**< value format, or NULL */
+	const bhnd_nvram_val_fmt	*fmt;	/**< value format, or NULL */
 	uint32_t			 flags;	/**< flags (BHND_NVRAM_VF_*) */
 };
 

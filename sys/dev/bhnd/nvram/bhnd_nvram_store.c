@@ -140,7 +140,7 @@ cleanup:
  */
 int
 bhnd_nvram_store_parse_new(struct bhnd_nvram_store **store,
-    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls)
+    struct bhnd_nvram_io *io, bhnd_nvram_data_class *cls)
 {
 	struct bhnd_nvram_data	*data;
 	int			 error;
@@ -288,7 +288,7 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 
 	/* Verify buffer size alignment for the given type. If this is a
 	 * variable width type, a width of 0 will always pass this check */
-	if (len % bhnd_nvram_value_size(type, buf, len, 1) != 0)
+	if (len % bhnd_nvram_value_size(buf, len, type, 1) != 0)
 		return (EINVAL);
 
 	/* Determine string format (or directly add variable, if a C string) */

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,40 +29,47 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_STORE_H_
-#define _BHND_NVRAM_BHND_NVRAM_STORE_H_
+#ifndef _BHND_NVRAM_BHND_PLISTVAR_H_
+#define _BHND_NVRAM_BHND_PLISTVAR_H_
 
-#ifdef _KERNEL
-#include <sys/param.h>
-#include <sys/bus.h>
-#include <sys/nv.h>
-#else /* !_KERNEL */
-#include <errno.h>
-
-#include <nv.h>
-
-#include <stdint.h>
-#include <stdlib.h>
-#endif
-
+#include "bhnd_nvram_plist.h"
 #include <sys/queue.h>
 
-#include "bhnd_nvram_data.h"
-#include "bhnd_nvram_io.h"
+LIST_HEAD(bhnd_nvram_plist_entry_list, bhnd_nvram_plist_entry);
 
-struct bhnd_nvram_store;
+typedef struct bhnd_nvram_plist_entry		bhnd_nvram_plist_entry;
+typedef struct bhnd_nvram_plist_entry_list	bhnd_nvram_plist_entry_list;
 
-int	bhnd_nvram_store_new(struct bhnd_nvram_store **store,
-	    struct bhnd_nvram_data *data);
+/**
+ * NVRAM property.
+ */
+struct bhnd_nvram_prop {
+	volatile u_int	 refs;	/**< refcount */
 
-int	bhnd_nvram_store_parse_new(struct bhnd_nvram_store **store,
-	    struct bhnd_nvram_io *io, bhnd_nvram_data_class *cls);
+	char		*name;	/**< property name */
+	bhnd_nvram_val	*val;	/**< property value */
+};
 
-void	bhnd_nvram_store_free(struct bhnd_nvram_store *store);
+/**
+ * NVRAM property list entry.
+ */
+struct bhnd_nvram_plist_entry {
+	bhnd_nvram_prop	*prop;
 
-int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
-	    void *buf, size_t *len, bhnd_nvram_type type);
-int	bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
-	    const void *buf, size_t len, bhnd_nvram_type type);
+	TAILQ_ENTRY(bhnd_nvram_plist_entry)	pl_link;
+	LIST_ENTRY(bhnd_nvram_plist_entry)	pl_hash_link;
+};
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_STORE_H_ */
+/**
+ * NVRAM property list.
+ * 
+ * Provides an ordered list of property values.
+ */
+struct bhnd_nvram_plist {
+	volatile u_int				refs;		/**< refcount */
+	TAILQ_HEAD(,bhnd_nvram_plist_entry)	entries;	/**< all properties */
+	size_t					num_entries;	/**< entry count */
+	bhnd_nvram_plist_entry_list		names[16];	/**< name-based hash table */
+};
+
+#endif /* _BHND_NVRAM_BHND_PLISTVAR_H_ */
