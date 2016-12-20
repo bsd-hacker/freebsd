@@ -36,10 +36,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/hyperv/include/hyperv.h>
 #include <dev/hyperv/include/vmbus.h>
-#include <dev/hyperv/utilities/hv_util.h>
 #include <dev/hyperv/utilities/vmbus_icreg.h>
-
-#include "vmbus_if.h"
+#include <dev/hyperv/utilities/vmbus_icvar.h>
 
 #define VMBUS_SHUTDOWN_FWVER_MAJOR	3
 #define VMBUS_SHUTDOWN_FWVER		\
