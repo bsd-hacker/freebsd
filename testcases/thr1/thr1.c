@@ -68,7 +68,7 @@ test(void)
 
 	for (i = 0; i < NTHREADS; i++)
 		if ((r = pthread_create(&threads[i], NULL, thr_routine, 0)) != 0)
-			err(1, "pthread_create(): %s\n", strerror(r));
+			errc(1, r, "pthread_create()");
 
 	for (i = 0; i < NTHREADS; i++)
 		if ((r = pthread_join(threads[i], NULL)) != 0)
