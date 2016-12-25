@@ -138,7 +138,7 @@ test(void)
 	pid = fork();
 	if (pid == -1) {
 		perror("fork");
-		exit(2);
+		_exit(2);
 	}
 
 	if (pid == 0) {	/* child */
@@ -159,7 +159,7 @@ test(void)
 			i = (i + 1) % (10 * pgsize);
 			Sig(0);
 		}
-		exit(0);
+		_exit(0);
 
 	} else {	/* parent */
 		i = 0;

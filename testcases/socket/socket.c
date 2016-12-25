@@ -110,7 +110,7 @@ test(void)
 		err(1, "socketpair()");
 	if ((pid = fork()) == 0) {
 		writer();
-		exit(EXIT_SUCCESS);
+		_exit(EXIT_SUCCESS);
 
 	} else if (pid > 0) {
 		reader();
