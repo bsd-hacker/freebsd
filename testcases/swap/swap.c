@@ -29,13 +29,14 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
+#include <sys/resource.h>
 #include <sys/sysctl.h>
-#include <unistd.h>
+#include <sys/time.h>
+
+#include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
-#include <sys/resource.h>
-#include <err.h>
+#include <unistd.h>
 
 #include "stress.h"
 
@@ -50,15 +51,16 @@ static unsigned long size;
 int
 setup(int nb)
 {
-	int pct = 0;
-	unsigned long mem;
-	int64_t  swapinfo = 0;
 	struct rlimit rlp;
+	int64_t  swapinfo;
+	unsigned long mem;
+	int pct;
 
 	if (nb == 0) {
 		mem = usermem();
 		swapinfo = swap();
 
+		pct = 0;
 		if (op->hog == 0)
 			pct = random_int(80, 100);
 
@@ -112,11 +114,12 @@ cleanup(void)
 int
 test(void)
 {
-	char *c;
-	int page;
-	unsigned long i, oldsize = size;
 	time_t start;
+	unsigned long i, oldsize;
+	int page;
+	char *c;
 
+	oldsize = size;
 	c = malloc(size);
 	while (c == NULL && done_testing == 0) {
 		size -=  1024 * 1024;
