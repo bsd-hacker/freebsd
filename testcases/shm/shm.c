@@ -138,7 +138,7 @@ test(void)
 	pid = fork();
 	if (pid == -1) {
 		perror("fork");
-		_exit(2);
+		exit(2);
 	}
 
 	if (pid == 0) {	/* child */
