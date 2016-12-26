@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include "diff.h"
 #include "xmalloc.h"
 
-int	 Nflag, Pflag, rflag, sflag, Tflag;
+int	 lflag, Nflag, Pflag, rflag, sflag, Tflag;
 int	 diff_format, diff_context, status;
 char	*start, *ifdefname, *diffargs, *label[2], *ignore_pats;
 struct stat stb1, stb2;
@@ -57,6 +57,7 @@ static struct option longopts[] = {
 	{ "forward-ed",			no_argument,		0,	'f' },
 	{ "ignore-matching-lines",	required_argument,	0,	'I' },
 	{ "ignore-case",		no_argument,		0,	'i' },
+	{ "paginate",			no_argument,		NULL,	'l' },
 	{ "label",			required_argument,	0,	'L' },
 	{ "new-file",			no_argument,		0,	'N' },
 	{ "rcs",			no_argument,		0,	'n' },
@@ -153,6 +154,9 @@ main(int argc, char **argv)
 				label[1] = optarg;
 			else
 				usage();
+			break;
+		case 'l':
+			lflag = 1;
 			break;
 		case 'N':
 			Nflag = 1;
