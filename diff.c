@@ -94,6 +94,8 @@ main(int argc, char **argv)
 	lastch = '\0';
 	prevoptind = 1;
 	newarg = 1;
+	diff_context = 3;
+	diff_format = 0;
 	while ((ch = getopt_long(argc, argv, OPTIONS, longopts, NULL)) != -1) {
 		switch (ch) {
 		case '0': case '1': case '2': case '3': case '4':
@@ -120,8 +122,7 @@ main(int argc, char **argv)
 				if (*ep != '\0' || l < 0 || l >= INT_MAX)
 					usage();
 				diff_context = (int)l;
-			} else
-				diff_context = 3;
+			}
 			break;
 		case 'd':
 			dflags |= D_MINIMAL;
@@ -160,6 +161,8 @@ main(int argc, char **argv)
 			diff_format = D_NREVERSE;
 			break;
 		case 'p':
+			if (diff_format == 0)
+				diff_format = D_CONTEXT;
 			dflags |= D_PROTOTYPE;
 			break;
 		case 'P':
@@ -191,8 +194,7 @@ main(int argc, char **argv)
 				if (*ep != '\0' || l < 0 || l >= INT_MAX)
 					usage();
 				diff_context = (int)l;
-			} else
-				diff_context = 3;
+			}
 			break;
 		case 'w':
 			dflags |= D_IGNOREBLANKS;
