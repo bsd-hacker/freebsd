@@ -418,12 +418,12 @@ void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: diff [-aBbdipTtw] [-c | -e | -f | -n | -q | -u] [-I pattern] [-L label]\n"
+	    "usage: diff [-aBbdilpTtw] [-c | -e | -f | -n | -q | -u] [-I pattern] [-L label]\n"
 	    "            file1 file2\n"
-	    "       diff [-aBbdipTtw] [-I pattern] [-L label] -C number file1 file2\n"
-	    "       diff [-aBbditw] [-I pattern] -D string file1 file2\n"
-	    "       diff [-aBbdipTtw] [-I pattern] [-L label] -U number file1 file2\n"
-	    "       diff [-aBbdiNPprsTtw] [-c | -e | -f | -n | -q | -u] [-I pattern]\n"
+	    "       diff [-aBbdilpTtw] [-I pattern] [-L label] -C number file1 file2\n"
+	    "       diff [-aBbdiltw] [-I pattern] -D string file1 file2\n"
+	    "       diff [-aBbdilpTtw] [-I pattern] [-L label] -U number file1 file2\n"
+	    "       diff [-aBbdilNPprsTtw] [-c | -e | -f | -n | -q | -u] [-I pattern]\n"
 	    "            [-L label] [-S name] [-X file] [-x pattern] dir1 dir2\n");
 
 	exit(2);
