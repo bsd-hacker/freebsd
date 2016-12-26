@@ -82,6 +82,7 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
+#include <signal.h>
 
 #include "diff.h"
 #include "xmalloc.h"
@@ -384,6 +385,7 @@ diffreg(char *file1, char *file2, int flags)
 
 		xasprintf(&header, "%s %s %s", diffargs, file1, file2);
 		prargv[2] = header;
+		signal(SIGPIPE, SIG_IGN);
 		fflush(stdout);
 		rewind(stdout);
 		pipe(pfd);
