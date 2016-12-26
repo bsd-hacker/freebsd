@@ -381,10 +381,8 @@ diffreg(char *file1, char *file2, int flags)
 		/* redirect stdout to pr */
 		int	 pfd[2];
 		char	*header;
-		char * prargv[] = { "pr", "-h", NULL, "-f", NULL };
 
 		xasprintf(&header, "%s %s %s", diffargs, file1, file2);
-		prargv[2] = header;
 		signal(SIGPIPE, SIG_IGN);
 		fflush(stdout);
 		rewind(stdout);
@@ -401,7 +399,7 @@ diffreg(char *file1, char *file2, int flags)
 				close(pfd[0]);
 			}
 			close(pfd[1]);
-			execv(_PATH_PR, (char *const *)prargv);
+			execl(_PATH_PR, _PATH_PR, "-h", header, (char *)0);
 			_exit(127);
 		default:
 			/* parent */
