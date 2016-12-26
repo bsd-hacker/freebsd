@@ -41,15 +41,21 @@ __FBSDID("$FreeBSD$");
 
 int	 lflag, Nflag, Pflag, rflag, sflag, Tflag;
 int	 diff_format, diff_context, status;
+int	 tabsize = 8;
 char	*start, *ifdefname, *diffargs, *label[2], *ignore_pats;
 struct stat stb1, stb2;
 struct excludes *excludes_list;
 regex_t	 ignore_re;
 
-#define	OPTIONS	"0123456789abC:cdD:efhI:iL:lnNPpqrS:sTtU:uwX:x:"
+#define	OPTIONS	"0123456789aBbC:cdD:efhI:iL:lnNPpqrS:sTtU:uwX:x:"
+enum {
+	OPT_TSIZE = CHAR_MAX + 1,
+};
+
 static struct option longopts[] = {
 	{ "text",			no_argument,		0,	'a' },
 	{ "ignore-space-change",	no_argument,		0,	'b' },
+	{ "ignore-blank-lines",		no_argument,		NULL,	'B' },
 	{ "context",			optional_argument,	0,	'C' },
 	{ "ifdef",			required_argument,	0,	'D' },
 	{ "minimal",			no_argument,		0,	'd' },
@@ -73,6 +79,7 @@ static struct option longopts[] = {
 	{ "ignore-all-space",		no_argument,		0,	'w' },
 	{ "exclude",			required_argument,	0,	'x' },
 	{ "exclude-from",		required_argument,	0,	'X' },
+	{ "tabsize",			optional_argument,	NULL,	OPT_TSIZE },
 	{ NULL,				0,			0,	'\0'}
 };
 
@@ -85,6 +92,7 @@ void set_argstr(char **, char **);
 int
 main(int argc, char **argv)
 {
+	const char *errstr = NULL;
 	char *ep, **oargv;
 	long  l;
 	int   ch, dflags, lastch, gotstdin, prevoptind, newarg;
@@ -114,6 +122,9 @@ main(int argc, char **argv)
 			break;
 		case 'b':
 			dflags |= D_FOLDBLANKS;
+			break;
+		case 'B':
+			dflags |= D_IGNOREBLANKLINES;
 			break;
 		case 'C':
 		case 'c':
@@ -208,6 +219,13 @@ main(int argc, char **argv)
 			break;
 		case 'x':
 			push_excludes(optarg);
+			break;
+		case OPT_TSIZE:
+			tabsize = (int) strtonum(optarg, 1, INT_MAX, &errstr);
+			if (errstr) {
+				warnx("Invalid argument for tabsize");
+				usage();
+			}
 			break;
 		default:
 			usage();
@@ -400,12 +418,12 @@ void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: diff [-abdipTtw] [-c | -e | -f | -n | -q | -u] [-I pattern] [-L label]\n"
+	    "usage: diff [-aBbdipTtw] [-c | -e | -f | -n | -q | -u] [-I pattern] [-L label]\n"
 	    "            file1 file2\n"
-	    "       diff [-abdipTtw] [-I pattern] [-L label] -C number file1 file2\n"
-	    "       diff [-abditw] [-I pattern] -D string file1 file2\n"
-	    "       diff [-abdipTtw] [-I pattern] [-L label] -U number file1 file2\n"
-	    "       diff [-abdiNPprsTtw] [-c | -e | -f | -n | -q | -u] [-I pattern]\n"
+	    "       diff [-aBbdipTtw] [-I pattern] [-L label] -C number file1 file2\n"
+	    "       diff [-aBbditw] [-I pattern] -D string file1 file2\n"
+	    "       diff [-aBbdipTtw] [-I pattern] [-L label] -U number file1 file2\n"
+	    "       diff [-aBbdiNPprsTtw] [-c | -e | -f | -n | -q | -u] [-I pattern]\n"
 	    "            [-L label] [-S name] [-X file] [-x pattern] dir1 dir2\n");
 
 	exit(2);

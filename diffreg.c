@@ -770,7 +770,7 @@ check(FILE *f1, FILE *f2, int flags)
 			ixnew[j] = ctnew += skipline(f2);
 			j++;
 		}
-		if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNORECASE)) {
+		if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNORECASE|D_IGNOREBLANKLINES)) {
 			for (;;) {
 				c = getc(f1);
 				d = getc(f2);
@@ -778,7 +778,7 @@ check(FILE *f1, FILE *f2, int flags)
 				 * GNU diff ignores a missing newline
 				 * in one file for -b or -w.
 				 */
-				if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS)) {
+				if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNOREBLANKLINES)) {
 					if (c == EOF && d == '\n') {
 						ctnew++;
 						break;
@@ -807,6 +807,15 @@ check(FILE *f1, FILE *f2, int flags)
 						ctold++;
 					}
 					while (isspace(d) && d != '\n') {
+						d = getc(f2);
+						ctnew++;
+					}
+				} else if (flags & D_IGNOREBLANKLINES) {
+					while (isspace(c) && c == '\n') {
+						c = getc(f1);
+						ctold++;
+					}
+					while (isspace(d) && d == '\n') {
 						d = getc(f2);
 						ctnew++;
 					}
@@ -1151,6 +1160,7 @@ static int
 fetch(long *f, int a, int b, FILE *lb, int ch, int oldfile, int flags)
 {
 	int i, j, c, lastc, col, nc;
+	int	newcol;
 
 	/*
 	 * When doing #ifdef's, copy down to current line
@@ -1200,9 +1210,10 @@ fetch(long *f, int a, int b, FILE *lb, int ch, int oldfile, int flags)
 				return (0);
 			}
 			if (c == '\t' && (flags & D_EXPANDTABS)) {
+				newcol = ((col/tabsize)+1)*tabsize;
 				do {
 					diff_output(" ");
-				} while (++col & 7);
+				} while (++col < newcol);
 			} else {
 				if (diff_format == D_EDIT && j == 1 && c == '\n'
 				    && lastc == '.') {

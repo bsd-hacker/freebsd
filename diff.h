@@ -58,13 +58,14 @@
 /*
  * Command line flags
  */
-#define D_FORCEASCII	0x008	/* Treat file as ascii regardless of content */
-#define D_FOLDBLANKS	0x010	/* Treat all white space as equal */
-#define D_MINIMAL	0x020	/* Make diff as small as possible */
-#define D_IGNORECASE	0x040	/* Case-insensitive matching */
-#define D_PROTOTYPE	0x080	/* Display C function prototype */
-#define D_EXPANDTABS	0x100	/* Expand tabs to spaces */
-#define D_IGNOREBLANKS	0x200	/* Ignore white space changes */
+#define D_FORCEASCII		0x008	/* Treat file as ascii regardless of content */
+#define D_FOLDBLANKS		0x010	/* Treat all white space as equal */
+#define D_MINIMAL		0x020	/* Make diff as small as possible */
+#define D_IGNORECASE		0x040	/* Case-insensitive matching */
+#define D_PROTOTYPE		0x080	/* Display C function prototype */
+#define D_EXPANDTABS		0x100	/* Expand tabs to spaces */
+#define D_IGNOREBLANKS		0x200	/* Ignore white space changes */
+#define D_IGNOREBLANKLINES	0x400	/* Ignore blank lines changes */
 
 /*
  * Status values for print_status() and diffreg() return values
@@ -84,6 +85,7 @@ struct excludes {
 
 extern int	lflag, Nflag, Pflag, rflag, sflag, Tflag;
 extern int	diff_format, diff_context, status;
+extern int	tabsize;
 extern char	*start, *ifdefname, *diffargs, *label[2], *ignore_pats;
 extern struct	stat stb1, stb2;
 extern struct	excludes *excludes_list;
