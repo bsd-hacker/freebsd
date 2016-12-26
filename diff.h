@@ -29,6 +29,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)diff.h	8.1 (Berkeley) 6/6/93
+ * $FreeBSD$
  */
 
 #include <sys/types.h>
@@ -95,4 +96,4 @@ void	*emalloc(size_t);
 void	*erealloc(void *, size_t);
 void	diffdir(char *, char *, int);
 void	print_only(const char *, size_t, const char *);
-void	print_status(int, char *, char *, char *);
+void	print_status(int, char *, char *, const char *);

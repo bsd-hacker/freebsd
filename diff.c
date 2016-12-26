@@ -20,6 +20,9 @@
  * Materiel Command, USAF, under agreement number F39502-99-1-0512.
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 #include <sys/stat.h>
 
 #include <ctype.h>
@@ -72,7 +75,7 @@ static struct option longopts[] = {
 	{ NULL,				0,			0,	'\0'}
 };
 
-__dead void usage(void);
+void usage(void) __dead2;
 void push_excludes(char *);
 void push_ignore_pats(char *);
 void read_excludes_file(char *file);
@@ -211,8 +214,10 @@ main(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
+#ifdef __OpenBSD__
 	if (pledge("stdio rpath tmppath", NULL) == -1)
 		err(2, "pledge");
+#endif
 
 	/*
 	 * Do sanity checks, fill in stb1 and stb2 and call the appropriate
@@ -349,7 +354,7 @@ print_only(const char *path, size_t dirlen, const char *entry)
 }
 
 void
-print_status(int val, char *path1, char *path2, char *entry)
+print_status(int val, char *path1, char *path2, const char *entry)
 {
 	switch (val) {
 	case D_BINARY:
@@ -385,7 +390,7 @@ print_status(int val, char *path1, char *path2, char *entry)
 	}
 }
 
-__dead void
+void
 usage(void)
 {
 	(void)fprintf(stderr,

@@ -13,6 +13,9 @@
  * called by a name other than "ssh" or "Secure Shell".
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 #include <err.h>
 #include <stdarg.h>
 #include <stdint.h>

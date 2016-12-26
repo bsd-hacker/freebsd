@@ -64,6 +64,9 @@
  *	@(#)diffreg.c   8.1 (Berkeley) 6/6/93
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 #include <sys/stat.h>
 #include <sys/wait.h>
 
@@ -159,7 +162,7 @@ struct cand {
 	int	pred;
 };
 
-struct line {
+static struct line {
 	int	serial;
 	int	value;
 } *file[2];
@@ -180,7 +183,7 @@ struct context_vec {
 static FILE	*opentemp(const char *);
 static void	 output(char *, FILE *, char *, FILE *, int);
 static void	 check(FILE *, FILE *, int);
-static void	 range(int, int, char *);
+static void	 range(int, int, const char *);
 static void	 uni_range(int, int);
 static void	 dump_context_vec(FILE *, FILE *, int);
 static void	 dump_unified_vec(FILE *, FILE *, int);
@@ -235,7 +238,7 @@ static int lastmatchline;
  * chrtran points to one of 2 translation tables: cup2low if folding upper to
  * lower case clow2low if not folding case
  */
-u_char clow2low[256] = {
+static u_char clow2low[256] = {
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
 	0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
 	0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
@@ -262,7 +265,7 @@ u_char clow2low[256] = {
 	0xfd, 0xfe, 0xff
 };
 
-u_char cup2low[256] = {
+static u_char cup2low[256] = {
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
 	0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
 	0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
@@ -444,15 +447,15 @@ files_differ(FILE *f1, FILE *f2, int flags)
 }
 
 static FILE *
-opentemp(const char *file)
+opentemp(const char *path)
 {
 	char buf[BUFSIZ], tempfile[PATH_MAX];
 	ssize_t nread;
 	int ifd, ofd;
 
-	if (strcmp(file, "-") == 0)
+	if (strcmp(path, "-") == 0)
 		ifd = STDIN_FILENO;
-	else if ((ifd = open(file, O_RDONLY, 0644)) < 0)
+	else if ((ifd = open(path, O_RDONLY, 0644)) < 0)
 		return (NULL);
 
 	(void)strlcpy(tempfile, _PATH_TMP "/diff.XXXXXXXX", sizeof(tempfile));
@@ -475,7 +478,7 @@ opentemp(const char *file)
 }
 
 char *
-splice(char *dir, char *file)
+splice(char *dir, char *path)
 {
 	char *tail, *buf;
 	size_t dirlen;
@@ -483,8 +486,8 @@ splice(char *dir, char *file)
 	dirlen = strlen(dir);
 	while (dirlen != 0 && dir[dirlen - 1] == '/')
 	    dirlen--;
-	if ((tail = strrchr(file, '/')) == NULL)
-		tail = file;
+	if ((tail = strrchr(path, '/')) == NULL)
+		tail = path;
 	else
 		tail++;
 	xasprintf(&buf, "%.*s/%s", (int)dirlen, dir, tail);
@@ -495,12 +498,12 @@ static void
 prepare(int i, FILE *fd, off_t filesize, int flags)
 {
 	struct line *p;
-	int j, h;
-	size_t sz;
+	int h;
+	size_t sz, j;
 
 	rewind(fd);
 
-	sz = (filesize <= SIZE_MAX ? filesize : SIZE_MAX) / 25;
+	sz = ((unsigned long)filesize <= SIZE_MAX ? filesize : SIZE_MAX) / 25;
 	if (sz < 100)
 		sz = 100;
 
@@ -905,7 +908,7 @@ output(char *file1, FILE *f1, char *file2, FILE *f2, int flags)
 }
 
 static void
-range(int a, int b, char *separator)
+range(int a, int b, const char *separator)
 {
 	diff_output("%d", a > b ? b : a);
 	if (a < b)
@@ -1253,7 +1256,7 @@ match_function(const long *f, int pos, FILE *fp)
 	unsigned char buf[FUNCTION_CONTEXT_SIZE];
 	size_t nc;
 	int last = lastline;
-	char *state = NULL;
+	const char *state = NULL;
 
 	lastline = pos;
 	while (pos > last) {
