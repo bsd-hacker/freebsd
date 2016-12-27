@@ -65,7 +65,6 @@
 #define D_PROTOTYPE		0x080	/* Display C function prototype */
 #define D_EXPANDTABS		0x100	/* Expand tabs to spaces */
 #define D_IGNOREBLANKS		0x200	/* Ignore white space changes */
-#define D_IGNOREBLANKLINES	0x400	/* Ignore blank lines changes */
 
 /*
  * Status values for print_status() and diffreg() return values

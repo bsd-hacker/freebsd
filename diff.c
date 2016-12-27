@@ -55,7 +55,6 @@ enum {
 static struct option longopts[] = {
 	{ "text",			no_argument,		0,	'a' },
 	{ "ignore-space-change",	no_argument,		0,	'b' },
-	{ "ignore-blank-lines",		no_argument,		NULL,	'B' },
 	{ "context",			optional_argument,	0,	'C' },
 	{ "ifdef",			required_argument,	0,	'D' },
 	{ "minimal",			no_argument,		0,	'd' },
@@ -122,9 +121,6 @@ main(int argc, char **argv)
 			break;
 		case 'b':
 			dflags |= D_FOLDBLANKS;
-			break;
-		case 'B':
-			dflags |= D_IGNOREBLANKLINES;
 			break;
 		case 'C':
 		case 'c':

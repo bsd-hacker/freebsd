@@ -770,7 +770,7 @@ check(FILE *f1, FILE *f2, int flags)
 			ixnew[j] = ctnew += skipline(f2);
 			j++;
 		}
-		if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNORECASE|D_IGNOREBLANKLINES)) {
+		if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNORECASE)) {
 			for (;;) {
 				c = getc(f1);
 				d = getc(f2);
@@ -778,7 +778,7 @@ check(FILE *f1, FILE *f2, int flags)
 				 * GNU diff ignores a missing newline
 				 * in one file for -b or -w.
 				 */
-				if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNOREBLANKLINES)) {
+				if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS)) {
 					if (c == EOF && d == '\n') {
 						ctnew++;
 						break;
@@ -807,15 +807,6 @@ check(FILE *f1, FILE *f2, int flags)
 						ctold++;
 					}
 					while (isspace(d) && d != '\n') {
-						d = getc(f2);
-						ctnew++;
-					}
-				} else if (flags & D_IGNOREBLANKLINES) {
-					while (isspace(c) && c == '\n') {
-						c = getc(f1);
-						ctold++;
-					}
-					while (isspace(d) && d == '\n') {
 						d = getc(f2);
 						ctnew++;
 					}
