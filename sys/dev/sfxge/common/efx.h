@@ -1867,12 +1867,12 @@ typedef enum efx_rx_hash_alg_e {
 	EFX_RX_HASHALG_TOEPLITZ
 } efx_rx_hash_alg_t;
 
-typedef enum efx_rx_hash_type_e {
-	EFX_RX_HASH_IPV4 = 0,
-	EFX_RX_HASH_TCPIPV4,
-	EFX_RX_HASH_IPV6,
-	EFX_RX_HASH_TCPIPV6,
-} efx_rx_hash_type_t;
+#define	EFX_RX_HASH_IPV4	(1U << 0)
+#define	EFX_RX_HASH_TCPIPV4	(1U << 1)
+#define	EFX_RX_HASH_IPV6	(1U << 2)
+#define	EFX_RX_HASH_TCPIPV6	(1U << 3)
+
+typedef unsigned int efx_rx_hash_type_t;
 
 typedef enum efx_rx_hash_support_e {
 	EFX_RX_HASH_UNAVAILABLE = 0,	/* Hardware hash not inserted */
@@ -1920,7 +1920,7 @@ efx_rx_scale_key_set(
 	__in		size_t n);
 
 extern	__checkReturn	uint32_t
-efx_psuedo_hdr_hash_get(
+efx_pseudo_hdr_hash_get(
 	__in		efx_rxq_t *erp,
 	__in		efx_rx_hash_alg_t func,
 	__in		uint8_t *buffer);
@@ -1928,7 +1928,7 @@ efx_psuedo_hdr_hash_get(
 #endif	/* EFSYS_OPT_RX_SCALE */
 
 extern	__checkReturn	efx_rc_t
-efx_psuedo_hdr_pkt_length_get(
+efx_pseudo_hdr_pkt_length_get(
 	__in		efx_rxq_t *erp,
 	__in		uint8_t *buffer,
 	__out		uint16_t *pkt_lengthp);
@@ -2180,20 +2180,22 @@ efx_tx_qdestroy(
 #define	EFX_IPPROTO_TCP 6
 #define	EFX_IPPROTO_UDP 17
 
-typedef enum efx_filter_flag_e {
-	EFX_FILTER_FLAG_RX_RSS = 0x01,		/* use RSS to spread across
-						 * multiple queues */
-	EFX_FILTER_FLAG_RX_SCATTER = 0x02,	/* enable RX scatter */
-	EFX_FILTER_FLAG_RX_OVER_AUTO = 0x04,	/* Override an automatic filter
-						 * (priority EFX_FILTER_PRI_AUTO).
-						 * May only be set by the filter
-						 * implementation for each type.
-						 * A removal request will
-						 * restore the automatic filter
-						 * in its place. */
-	EFX_FILTER_FLAG_RX = 0x08,		/* Filter is for RX */
-	EFX_FILTER_FLAG_TX = 0x10,		/* Filter is for TX */
-} efx_filter_flag_t;
+/* Use RSS to spread across multiple queues */
+#define	EFX_FILTER_FLAG_RX_RSS		0x01
+/* Enable RX scatter */
+#define	EFX_FILTER_FLAG_RX_SCATTER	0x02
+/*
+ * Override an automatic filter (priority EFX_FILTER_PRI_AUTO).
+ * May only be set by the filter implementation for each type.
+ * A removal request will restore the automatic filter in its place.
+ */
+#define	EFX_FILTER_FLAG_RX_OVER_AUTO	0x04
+/* Filter is for RX */
+#define	EFX_FILTER_FLAG_RX		0x08
+/* Filter is for TX */
+#define	EFX_FILTER_FLAG_TX		0x10
+
+typedef unsigned int efx_filter_flags_t;
 
 typedef enum efx_filter_match_flags_e {
 	EFX_FILTER_MATCH_REM_HOST = 0x0001,	/* Match by remote IP host
@@ -2209,10 +2211,10 @@ typedef enum efx_filter_match_flags_e {
 	EFX_FILTER_MATCH_OUTER_VID = 0x0100,	/* Match by outer VLAN ID */
 	EFX_FILTER_MATCH_IP_PROTO = 0x0200,	/* Match by IP transport
 						 * protocol */
-	EFX_FILTER_MATCH_LOC_MAC_IG = 0x0400,	/* Match by local MAC address
-						 * I/G bit. Used for RX default
-						 * unicast and multicast/
-						 * broadcast filters. */
+	/* Match otherwise-unmatched multicast and broadcast packets */
+	EFX_FILTER_MATCH_UNKNOWN_MCAST_DST = 0x40000000,
+	/* Match otherwise-unmatched unicast packets */
+	EFX_FILTER_MATCH_UNKNOWN_UCAST_DST = 0x80000000,
 } efx_filter_match_flags_t;
 
 typedef enum efx_filter_priority_s {
@@ -2234,7 +2236,7 @@ typedef enum efx_filter_priority_s {
  */
 
 typedef struct efx_filter_spec_s {
-	uint32_t	efs_match_flags:12;
+	uint32_t	efs_match_flags;
 	uint32_t	efs_priority:2;
 	uint32_t	efs_flags:6;
 	uint32_t	efs_dmaq_id:12;
@@ -2289,7 +2291,7 @@ extern			void
 efx_filter_spec_init_rx(
 	__out		efx_filter_spec_t *spec,
 	__in		efx_filter_priority_t priority,
-	__in		efx_filter_flag_t flags,
+	__in		efx_filter_flags_t flags,
 	__in		efx_rxq_t *erp);
 
 extern			void
