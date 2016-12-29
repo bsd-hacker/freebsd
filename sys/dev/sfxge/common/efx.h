@@ -535,6 +535,29 @@ efx_mac_stat_name(
 
 #endif	/* EFSYS_OPT_NAMES */
 
+#define	EFX_MAC_STATS_MASK_BITS_PER_PAGE	(8 * sizeof (uint32_t))
+
+#define	EFX_MAC_STATS_MASK_NPAGES	\
+	(P2ROUNDUP(EFX_MAC_NSTATS, EFX_MAC_STATS_MASK_BITS_PER_PAGE) / \
+	    EFX_MAC_STATS_MASK_BITS_PER_PAGE)
+
+/*
+ * Get mask of MAC statistics supported by the hardware.
+ *
+ * If mask_size is insufficient to return the mask, EINVAL error is
+ * returned. EFX_MAC_STATS_MASK_NPAGES multiplied by size of the page
+ * (which is sizeof (uint32_t)) is sufficient.
+ */
+extern	__checkReturn			efx_rc_t
+efx_mac_stats_get_mask(
+	__in				efx_nic_t *enp,
+	__out_bcount(mask_size)		uint32_t *maskp,
+	__in				size_t mask_size);
+
+#define	EFX_MAC_STAT_SUPPORTED(_mask, _stat)	\
+	((_mask)[(_stat) / EFX_MAC_STATS_MASK_BITS_PER_PAGE] &	\
+	 (1ULL << ((_stat) & (EFX_MAC_STATS_MASK_BITS_PER_PAGE - 1))))
+
 #define	EFX_MAC_STATS_SIZE 0x400
 
 /*
@@ -1105,18 +1128,16 @@ typedef struct efx_nic_cfg_s {
 #if EFSYS_OPT_PHY_STATS
 	uint64_t		enc_phy_stat_mask;
 #endif	/* EFSYS_OPT_PHY_STATS */
-#if EFSYS_OPT_SIENA
+#if EFSYS_OPT_MCDI
 	uint8_t			enc_mcdi_mdio_channel;
 #if EFSYS_OPT_PHY_STATS
 	uint32_t		enc_mcdi_phy_stat_mask;
 #endif	/* EFSYS_OPT_PHY_STATS */
-#endif /* EFSYS_OPT_SIENA */
-#if (EFSYS_OPT_SIENA || EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD)
 #if EFSYS_OPT_MON_STATS
 	uint32_t		*enc_mcdi_sensor_maskp;
 	uint32_t		enc_mcdi_sensor_mask_size;
 #endif	/* EFSYS_OPT_MON_STATS */
-#endif	/* (EFSYS_OPT_SIENA || EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD) */
+#endif	/* EFSYS_OPT_MCDI */
 #if EFSYS_OPT_BIST
 	uint32_t		enc_bist_mask;
 #endif	/* EFSYS_OPT_BIST */
@@ -1141,13 +1162,19 @@ typedef struct efx_nic_cfg_s {
 	uint32_t		enc_tx_tso_tcp_header_offset_limit;
 	boolean_t		enc_fw_assisted_tso_enabled;
 	boolean_t		enc_fw_assisted_tso_v2_enabled;
+	/* Number of TSO contexts on the NIC (FATSOv2) */
+	uint32_t		enc_fw_assisted_tso_v2_n_contexts;
 	boolean_t		enc_hw_tx_insert_vlan_enabled;
+	/* Number of PFs on the NIC */
+	uint32_t		enc_hw_pf_count;
 	/* Datapath firmware vadapter/vport/vswitch support */
 	boolean_t		enc_datapath_cap_evb;
 	boolean_t		enc_rx_disable_scatter_supported;
 	boolean_t		enc_allow_set_mac_with_installed_filters;
 	boolean_t		enc_enhanced_set_mac_supported;
 	boolean_t		enc_init_evq_v2_supported;
+	boolean_t		enc_pm_and_rxdp_counters;
+	boolean_t		enc_mac_stats_40g_tx_size_bins;
 	/* External port identifier */
 	uint8_t			enc_external_port;
 	uint32_t		enc_mcdi_max_payload_length;
@@ -1894,7 +1921,7 @@ efx_rx_scale_key_set(
 
 extern	__checkReturn	uint32_t
 efx_psuedo_hdr_hash_get(
-	__in		efx_nic_t *enp,
+	__in		efx_rxq_t *erp,
 	__in		efx_rx_hash_alg_t func,
 	__in		uint8_t *buffer);
 
@@ -1902,7 +1929,7 @@ efx_psuedo_hdr_hash_get(
 
 extern	__checkReturn	efx_rc_t
 efx_psuedo_hdr_pkt_length_get(
-	__in		efx_nic_t *enp,
+	__in		efx_rxq_t *erp,
 	__in		uint8_t *buffer,
 	__out		uint16_t *pkt_lengthp);
 
