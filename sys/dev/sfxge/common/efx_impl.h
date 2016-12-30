@@ -74,7 +74,6 @@ extern "C" {
 #define	EFX_MOD_TX		0x00000100
 #define	EFX_MOD_PORT		0x00000200
 #define	EFX_MOD_MON		0x00000400
-#define	EFX_MOD_WOL		0x00000800
 #define	EFX_MOD_FILTER		0x00001000
 #define	EFX_MOD_LIC		0x00002000
 
@@ -231,7 +230,8 @@ typedef struct efx_filter_ops_s {
 	efx_rc_t	(*efo_add)(efx_nic_t *, efx_filter_spec_t *,
 				   boolean_t may_replace);
 	efx_rc_t	(*efo_delete)(efx_nic_t *, efx_filter_spec_t *);
-	efx_rc_t	(*efo_supported_filters)(efx_nic_t *, uint32_t *, size_t *);
+	efx_rc_t	(*efo_supported_filters)(efx_nic_t *, uint32_t *,
+				   size_t, size_t *);
 	efx_rc_t	(*efo_reconfigure)(efx_nic_t *, uint8_t const *, boolean_t,
 				   boolean_t, boolean_t, boolean_t,
 				   uint8_t const *, uint32_t);
