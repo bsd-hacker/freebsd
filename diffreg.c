@@ -89,6 +89,12 @@ __FBSDID("$FreeBSD$");
 
 #define _PATH_PR "/usr/bin/pr"
 
+#ifdef ST_MTIM_NSEC
+# define TIMESPEC_NS(timespec) ((timespec).ST_MTIM_NSEC)
+#else
+# define TIMESPEC_NS(timespec) 0
+#endif
+
 #define MINIMUM(a, b)	(((a) < (b)) ? (a) : (b))
 #define MAXIMUM(a, b)	(((a) > (b)) ? (a) : (b))
 
@@ -1529,16 +1535,43 @@ dump_unified_vec(FILE *f1, FILE *f2, int flags)
 static void
 print_header(const char *file1, const char *file2)
 {
+	const char *time_format;
+	char buf1[256];
+	char buf2[256];
+	char end1[10];
+	char end2[10];
+	struct tm *tm_ptr1, *tm_ptr2;
+	int nsec1 = TIMESPEC_NS (stb1.st_mtime);
+	int nsec2 = TIMESPEC_NS (stb2.st_mtime);
+
+#ifdef ST_MTIM_NSEC
+		time_format = "%Y-%m-%d %H:%M:%S.%N";
+#else
+		time_format = "%Y-%m-%d %H:%M:%S";
+#endif
+
+	if (cflag)
+		time_format = "%c";
+	tm_ptr1 = localtime(&stb1.st_mtime);
+	tm_ptr2 = localtime(&stb2.st_mtime);
+	strftime(buf1, 256, time_format, tm_ptr1);
+	strftime(buf2, 256, time_format, tm_ptr2);
+	if (!cflag) {
+		strftime(end1, 10, "%z", tm_ptr1);
+		strftime(end2, 10, "%z", tm_ptr2);
+		sprintf(buf1, "%s.%.9d %s", buf1, nsec1, end1);
+		sprintf(buf2, "%s.%.9d %s", buf2, nsec2, end2);
+	}
 	if (label[0] != NULL)
 		diff_output("%s %s\n", diff_format == D_CONTEXT ? "***" : "---",
 		    label[0]);
 	else
-		diff_output("%s %s\t%s", diff_format == D_CONTEXT ? "***" : "---",
-		    file1, ctime(&stb1.st_mtime));
+		diff_output("%s %s\t%s\n", diff_format == D_CONTEXT ? "***" : "---",
+		    file1, buf1);
 	if (label[1] != NULL)
 		diff_output("%s %s\n", diff_format == D_CONTEXT ? "---" : "+++",
 		    label[1]);
 	else
-		diff_output("%s %s\t%s", diff_format == D_CONTEXT ? "---" : "+++",
-		    file2, ctime(&stb2.st_mtime));
+		diff_output("%s %s\t%s\n", diff_format == D_CONTEXT ? "---" : "+++",
+		    file2, buf2);
 }

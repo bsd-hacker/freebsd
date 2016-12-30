@@ -82,7 +82,7 @@ struct excludes {
 	struct excludes *next;
 };
 
-extern int	lflag, Nflag, Pflag, rflag, sflag, Tflag;
+extern int	lflag, Nflag, Pflag, rflag, sflag, Tflag, cflag;
 extern int	diff_format, diff_context, status;
 extern int	tabsize;
 extern char	*start, *ifdefname, *diffargs, *label[2], *ignore_pats;

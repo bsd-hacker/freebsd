@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include "diff.h"
 #include "xmalloc.h"
 
-int	 lflag, Nflag, Pflag, rflag, sflag, Tflag;
+int	 lflag, Nflag, Pflag, rflag, sflag, Tflag, cflag;
 int	 diff_format, diff_context, status;
 int	 tabsize = 8;
 char	*start, *ifdefname, *diffargs, *label[2], *ignore_pats;
@@ -124,6 +124,7 @@ main(int argc, char **argv)
 			break;
 		case 'C':
 		case 'c':
+			cflag = 1;
 			diff_format = D_CONTEXT;
 			if (optarg != NULL) {
 				l = strtol(optarg, &ep, 10);
