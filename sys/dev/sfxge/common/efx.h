@@ -128,11 +128,6 @@ typedef struct efx_rxq_s	efx_rxq_t;
 
 typedef struct efx_nic_s	efx_nic_t;
 
-#define	EFX_NIC_FUNC_PRIMARY	0x00000001
-#define	EFX_NIC_FUNC_LINKCTRL	0x00000002
-#define	EFX_NIC_FUNC_TRUSTED	0x00000004
-
-
 extern	__checkReturn	efx_rc_t
 efx_nic_create(
 	__in		efx_family_t family,
@@ -246,6 +241,12 @@ efx_mcdi_reboot(
 			void
 efx_mcdi_new_epoch(
 	__in		efx_nic_t *enp);
+
+extern			void
+efx_mcdi_get_timeout(
+	__in		efx_nic_t *enp,
+	__in		efx_mcdi_req_t *emrp,
+	__out		uint32_t *usec_timeoutp);
 
 extern			void
 efx_mcdi_request_start(
@@ -1100,7 +1101,6 @@ typedef struct efx_nic_cfg_s {
 	unsigned int		enc_features;
 	uint8_t			enc_mac_addr[6];
 	uint8_t			enc_port;	/* PHY port number */
-	uint32_t		enc_func_flags;
 	uint32_t		enc_intr_vec_base;
 	uint32_t		enc_intr_limit;
 	uint32_t		enc_evq_limit;
@@ -1422,6 +1422,29 @@ efx_nvram_fini(
 
 #if EFSYS_OPT_BOOTCFG
 
+/* Report size and offset of bootcfg sector in NVRAM partition. */
+extern	__checkReturn		efx_rc_t
+efx_bootcfg_sector_info(
+	__in			efx_nic_t *enp,
+	__in			uint32_t pf,
+	__out_opt		uint32_t *sector_countp,
+	__out			size_t *offsetp,
+	__out			size_t *max_sizep);
+
+/*
+ * Copy bootcfg sector data to a target buffer which may differ in size.
+ * Optionally corrects format errors in source buffer.
+ */
+extern				efx_rc_t
+efx_bootcfg_copy_sector(
+	__in			efx_nic_t *enp,
+	__inout_bcount(sector_length)
+				uint8_t *sector,
+	__in			size_t sector_length,
+	__out_bcount(data_size)	uint8_t *data,
+	__in			size_t data_size,
+	__in			boolean_t handle_format_errors);
+
 extern				efx_rc_t
 efx_bootcfg_read(
 	__in			efx_nic_t *enp,
@@ -1629,6 +1652,10 @@ efx_ev_fini(
 #define	EFX_EVQ_FLAGS_TYPE_AUTO		(0x0)
 #define	EFX_EVQ_FLAGS_TYPE_THROUGHPUT	(0x1)
 #define	EFX_EVQ_FLAGS_TYPE_LOW_LATENCY	(0x2)
+
+#define	EFX_EVQ_FLAGS_NOTIFY_MASK	(0xC)
+#define	EFX_EVQ_FLAGS_NOTIFY_INTERRUPT	(0x0)	/* Interrupting (default) */
+#define	EFX_EVQ_FLAGS_NOTIFY_DISABLED	(0x4)	/* Non-interrupting */
 
 extern	__checkReturn	efx_rc_t
 efx_ev_qcreate(
