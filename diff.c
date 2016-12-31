@@ -52,6 +52,7 @@ enum {
 	OPT_TSIZE = CHAR_MAX + 1,
 	OPT_STRIPCR,
 	OPT_IGN_FN_CASE,
+	OPT_NO_IGN_FN_CASE,
 };
 
 static struct option longopts[] = {
@@ -81,6 +82,7 @@ static struct option longopts[] = {
 	{ "exclude",			required_argument,	0,	'x' },
 	{ "exclude-from",		required_argument,	0,	'X' },
 	{ "ignore-file-name-case",	no_argument,		NULL,	OPT_IGN_FN_CASE },
+	{ "no-ignore-file-name-case",	no_argument,		NULL,	OPT_NO_IGN_FN_CASE },
 	{ "strip-trailing-cr",		no_argument,		NULL,	OPT_STRIPCR },
 	{ "tabsize",			optional_argument,	NULL,	OPT_TSIZE },
 	{ NULL,				0,			0,	'\0'}
@@ -223,6 +225,9 @@ main(int argc, char **argv)
 			break;
 		case OPT_IGN_FN_CASE:
 			ignore_file_case = 1;
+			break;
+		case OPT_NO_IGN_FN_CASE:
+			ignore_file_case = 0;
 			break;
 		case OPT_TSIZE:
 			tabsize = (int) strtonum(optarg, 1, INT_MAX, &errstr);
