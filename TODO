@@ -10,7 +10,6 @@ to be implemented:
 --horizon-lines
 --ignore-tab-expansion
 --line-format
---normal
 
 Will probably be not implemented:
 --GTYPE-group-format
