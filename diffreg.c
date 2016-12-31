@@ -776,7 +776,7 @@ check(FILE *f1, FILE *f2, int flags)
 			ixnew[j] = ctnew += skipline(f2);
 			j++;
 		}
-		if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNORECASE)) {
+		if (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNORECASE|D_STRIPCR)) {
 			for (;;) {
 				c = getc(f1);
 				d = getc(f2);
@@ -795,6 +795,20 @@ check(FILE *f1, FILE *f2, int flags)
 				}
 				ctold++;
 				ctnew++;
+				if (flags & D_STRIPCR) {
+					if (c == '\r') {
+						if ((c = getc(f1)) == '\n') {
+							ctnew++;
+							break;
+						}
+					}
+					if (d == '\r') {
+						if ((d = getc(f2)) == '\n') {
+							ctold++;
+							break;
+						}
+					}
+				}
 				if ((flags & D_FOLDBLANKS) && isspace(c) &&
 				    isspace(d)) {
 					do {
@@ -850,8 +864,9 @@ check(FILE *f1, FILE *f2, int flags)
 		ixnew[j] = ctnew;
 		j++;
 	}
-	for (; j <= len[1]; j++)
+	for (; j <= len[1]; j++) {
 		ixnew[j] = ctnew += skipline(f2);
+	}
 	/*
 	 * if (jackpot)
 	 *	fprintf(stderr, "jackpot\n");
@@ -1246,6 +1261,12 @@ readhash(FILE *f, int flags)
 	if ((flags & (D_FOLDBLANKS|D_IGNOREBLANKS)) == 0) {
 		if (flags & D_IGNORECASE)
 			for (i = 0; (t = getc(f)) != '\n'; i++) {
+				if (flags & D_STRIPCR && t == '\r') {
+					t = getc(f);
+					if (t == '\n')
+						break;
+					ungetc(t, f);
+				}
 				if (t == EOF) {
 					if (i == 0)
 						return (0);
@@ -1255,6 +1276,12 @@ readhash(FILE *f, int flags)
 			}
 		else
 			for (i = 0; (t = getc(f)) != '\n'; i++) {
+				if (flags & D_STRIPCR && t == '\r') {
+					t = getc(f);
+					if (t == '\n')
+						break;
+					ungetc(t, f);
+				}
 				if (t == EOF) {
 					if (i == 0)
 						return (0);
@@ -1265,8 +1292,8 @@ readhash(FILE *f, int flags)
 	} else {
 		for (i = 0;;) {
 			switch (t = getc(f)) {
-			case '\t':
 			case '\r':
+			case '\t':
 			case '\v':
 			case '\f':
 			case ' ':

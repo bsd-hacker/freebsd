@@ -50,6 +50,7 @@ regex_t	 ignore_re;
 #define	OPTIONS	"0123456789aBbC:cdD:efhI:iL:lnNPpqrS:sTtU:uwX:x:"
 enum {
 	OPT_TSIZE = CHAR_MAX + 1,
+	OPT_STRIPCR,
 };
 
 static struct option longopts[] = {
@@ -78,6 +79,7 @@ static struct option longopts[] = {
 	{ "ignore-all-space",		no_argument,		0,	'w' },
 	{ "exclude",			required_argument,	0,	'x' },
 	{ "exclude-from",		required_argument,	0,	'X' },
+	{ "strip-trailing-cr",		no_argument,		NULL,	OPT_STRIPCR },
 	{ "tabsize",			optional_argument,	NULL,	OPT_TSIZE },
 	{ NULL,				0,			0,	'\0'}
 };
@@ -223,6 +225,9 @@ main(int argc, char **argv)
 				warnx("Invalid argument for tabsize");
 				usage();
 			}
+			break;
+		case OPT_STRIPCR:
+			dflags |= D_STRIPCR;
 			break;
 		default:
 			usage();
