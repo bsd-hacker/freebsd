@@ -40,7 +40,7 @@ __FBSDID("$FreeBSD$");
 #include "xmalloc.h"
 
 int	 lflag, Nflag, Pflag, rflag, sflag, Tflag, cflag;
-int	 diff_format, diff_context, status;
+int	 diff_format, diff_context, status, ignore_file_case;
 int	 tabsize = 8;
 char	*start, *ifdefname, *diffargs, *label[2], *ignore_pats;
 struct stat stb1, stb2;
@@ -51,6 +51,7 @@ regex_t	 ignore_re;
 enum {
 	OPT_TSIZE = CHAR_MAX + 1,
 	OPT_STRIPCR,
+	OPT_IGN_FN_CASE,
 };
 
 static struct option longopts[] = {
@@ -79,6 +80,7 @@ static struct option longopts[] = {
 	{ "ignore-all-space",		no_argument,		0,	'w' },
 	{ "exclude",			required_argument,	0,	'x' },
 	{ "exclude-from",		required_argument,	0,	'X' },
+	{ "ignore-file-name-case",	no_argument,		NULL,	OPT_IGN_FN_CASE },
 	{ "strip-trailing-cr",		no_argument,		NULL,	OPT_STRIPCR },
 	{ "tabsize",			optional_argument,	NULL,	OPT_TSIZE },
 	{ NULL,				0,			0,	'\0'}
@@ -218,6 +220,9 @@ main(int argc, char **argv)
 			break;
 		case 'x':
 			push_excludes(optarg);
+			break;
+		case OPT_IGN_FN_CASE:
+			ignore_file_case = 1;
 			break;
 		case OPT_TSIZE:
 			tabsize = (int) strtonum(optarg, 1, INT_MAX, &errstr);

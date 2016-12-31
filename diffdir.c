@@ -124,7 +124,8 @@ diffdir(char *p1, char *p2, int flags)
 		dent2 = dp2 != edp2 ? *dp2 : NULL;
 
 		pos = dent1 == NULL ? 1 : dent2 == NULL ? -1 :
-		    strcmp(dent1->d_name, dent2->d_name);
+		    ignore_file_case ? strcasecmp(dent1->d_name, dent2->d_name) :
+		    strcmp(dent1->d_name, dent2->d_name) ;
 		if (pos == 0) {
 			/* file exists in both dirs, diff it */
 			diffit(dent1, path1, dirlen1, path2, dirlen2, flags);

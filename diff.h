@@ -84,7 +84,7 @@ struct excludes {
 };
 
 extern int	lflag, Nflag, Pflag, rflag, sflag, Tflag, cflag;
-extern int	diff_format, diff_context, status;
+extern int	diff_format, diff_context, status, ignore_file_case;
 extern int	tabsize;
 extern char	*start, *ifdefname, *diffargs, *label[2], *ignore_pats;
 extern struct	stat stb1, stb2;
