@@ -399,12 +399,11 @@ static void
 save_typdef(char *name)
 {
 	struct tdef *t;
-	t = malloc(sizeof(struct tdef));
 
+	t = calloc(1, sizeof(struct tdef));
 	if (t == NULL)
 		err(1, NULL);
 
-	memset(t, 0 , sizeof(struct tdef));
 	t->name = name;
 	SLIST_INSERT_HEAD(&tdefs, t, link);
 }
@@ -561,6 +560,8 @@ main(int argc, char *argv[])
 	level = 0;
 	last = NULL;
 	for (opt = 0; opt < argc; opt++) {
+		if (mods[opt] == NULL) /* smiGetModule failed above */
+			continue;
 		n = smiGetFirstNode(mods[opt], SMI_NODEKIND_ANY);
 		if (n == NULL)
 			continue;
