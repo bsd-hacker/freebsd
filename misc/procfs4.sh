@@ -30,7 +30,7 @@
 
 # Test scenario idea by kib@
 
-# "panic: double fault" seen due to recurtion
+# "panic: double fault" seen due to recursion
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -67,7 +67,7 @@ EOF
 #include <unistd.h>
 
 #define LOOPS 1000
-#define MAXRUN 600
+#define MAXRUN 1200
 #define PARALLEL 10
 
 char *files[] = {
