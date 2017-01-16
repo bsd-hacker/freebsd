@@ -41,7 +41,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > readdir.c
-mycc -o readdir -Wall -Wextra readdir.c
+mycc -o readdir -Wall -Wextra readdir.c || exit 1
 rm -f readdir.c
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
@@ -65,7 +65,8 @@ umount $mntpoint
 
 if ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1; then
 	echo "Testing nfs"
-	mount -t nfs -o nfsv3,tcp,nolockd $nfs_export $mntpoint
+	mount -t nfs -o nfsv3,tcp,nolockd,retrycnt=3,soft,timeout=1 \
+	    $nfs_export $mntpoint
 	/tmp/readdir $mntpoint
 	umount $mntpoint
 fi
@@ -99,6 +100,9 @@ rm -f /tmp/readdir
 exit 0
 EOF
 #include <sys/types.h>
+#include <sys/uio.h>
+#include <sys/wait.h>
+
 #include <dirent.h>
 #include <err.h>
 #include <fcntl.h>
@@ -106,9 +110,10 @@ EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
-#include <sys/uio.h>
+#include <time.h>
 #include <unistd.h>
-#include <sys/wait.h>
+
+#define RUNTIME 120
 
 /* copy from /usr/src/lib/libc/gen/gen-private.h */
 struct _telldir;		/* see telldir.h */
@@ -139,7 +144,7 @@ hand(int i __unused) {	/* handler */
 	_exit(1);
 }
 
-int
+static void
 test(char *path)
 {
 
@@ -147,7 +152,7 @@ test(char *path)
 	int i;
 
 	signal(SIGSEGV, hand);
-
+	alarm(300);
 	for (i = 0; i < 2000; i++) {
 		if ((dirp = opendir(path)) == NULL)
 			break;
@@ -157,15 +162,16 @@ test(char *path)
 		closedir(dirp);
 	}
 
-	exit(0);
+	_exit(0);
 }
 
 int
 main(int argc __unused, char **argv)
 {
-	int i;
+	time_t start;
 
-	for (i = 0; i < 1000; i++) {
+	start = time(NULL);
+	while (time(NULL) - start < RUNTIME) {
 		if (fork() == 0)
 			test(argv[1]);
 		wait(NULL);
