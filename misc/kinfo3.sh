@@ -37,52 +37,58 @@
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kinfo3.c
-mycc -o kinfo3 -Wall kinfo3.c -lutil -pthread
+mycc -o kinfo3 -Wall -Wextra kinfo3.c -lutil -pthread || exit 1
 rm -f kinfo3.c
 
+s=0
 mount | grep -q procfs || mount -t procfs procfs /proc
-for i in `jot 30`; do
-	for j in `jot 5`; do
+start=`date '+%s'`
+while [ $((`date '+%s'` - start)) -lt 1200 ]; do
+	pids=""
+	for i in `jot 5`; do
 		/tmp/kinfo3 &
+		pids="$pids $!"
 	done
-
-	for j in `jot 5`; do
-		wait
+	for pid in $pids; do
+		wait $pid
+		[ $? -ne 0 ] && s=1
 	done
 done
 
 rm -f /tmp/kinfo3
-exit
+exit $s
 EOF
 
 #include <sys/types.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/sysctl.h>
-#include <sys/param.h>
-#include <sys/user.h>
 #include <sys/signal.h>
-#include <fcntl.h>
-#include <err.h>
-#include <strings.h>
-#include <string.h>
+#include <sys/sysctl.h>
+#include <sys/user.h>
 #include <sys/wait.h>
+
+#include <err.h>
+#include <fcntl.h>
 #include <libutil.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <unistd.h>
 
-char buf[8096];
+static char buf[8096];
 static volatile sig_atomic_t more;
 
-void
-handler(int i) {
+static void
+handler(int i __unused) {
+
 	more = 0;
 }
 
-void *
-thr(void *arg)
+static void *
+thr(void *arg __unused)
 {
 	int fd;
+
 	if ((fd = open("/proc/curproc/mem", O_RDONLY)) == -1)
 		err(1, "open(/proc/curproc/mem)");
 	close(fd);
@@ -91,13 +97,11 @@ thr(void *arg)
 
 
 /* Stir /dev/proc */
-int
+static int
 churning(void) {
-	int i;
 	pid_t r;
-	int status;
 	pthread_t threads[5];
-
+	int i, status;;
 
 	while(more) {
 		r = fork();
@@ -112,7 +116,7 @@ churning(void) {
 			}
 
 			bzero(buf, sizeof(buf));
-			exit(0);
+			_exit(0);
 		}
 		if (r < 0) {
 			perror("fork");
@@ -120,19 +124,19 @@ churning(void) {
 		}
 		wait(&status);
 	}
-	exit(0);
+	_exit(0);
 }
 
 /* Get files for each proc */
-void
+static void
 list(void)
 {
-        struct kinfo_file *freep, *kif;
+	struct kinfo_proc *kipp;
 	struct kinfo_vmentry *freep_vm;
+        struct kinfo_file *freep, *kif;
+	size_t len;
 	long i, j;
 	int cnt, name[4];
-	struct kinfo_proc *kipp;
-	size_t len;
 
 	name[0] = CTL_KERN;
 	name[1] = KERN_PROC;
@@ -152,7 +156,7 @@ list(void)
 		return;
 	}
 
-	for (i = 0; i < len / sizeof(*kipp); i++) {
+	for (i = 0; i < (long)(len / sizeof(*kipp)); i++) {
 
 		/* The test starts here */
 		freep = kinfo_getfile(kipp[i].ki_pid, &cnt);
@@ -170,9 +174,10 @@ list(void)
 }
 
 int
-main(int argc, char **argv)
+main(void)
 {
 	pid_t r;
+
 	signal(SIGALRM, handler);
 	alarm(30);
 

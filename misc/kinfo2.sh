@@ -41,7 +41,7 @@ mycc -o kinfo2 -Wall -Wextra kinfo2.c -lutil || exit 1
 rm -f kinfo2.c
 
 mount | grep -q procfs || mount -t procfs procfs /proc
-for i in `jot 30`; do
+for i in `jot 20`; do
 	for j in `jot 5`; do
 		/tmp/kinfo2 &
 	done
