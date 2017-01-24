@@ -2129,15 +2129,7 @@ hn_rxpkt(struct hn_rx_ring *rxr, const void *data, int dlen,
 	int size, do_lro = 0, do_csum = 1;
 	int hash_type;
 
-	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
-		return (0);
-
-	/*
-	 * Bail out if packet contains more data than configured MTU.
-	 */
-	if (dlen > (ifp->if_mtu + ETHER_HDR_LEN)) {
-		return (0);
-	} else if (dlen <= MHLEN) {
+	if (dlen <= MHLEN) {
 		m_new = m_gethdr(M_NOWAIT, MT_DATA);
 		if (m_new == NULL) {
 			if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
@@ -4323,6 +4315,7 @@ hn_chan_attach(struct hn_softc *sc, struct vmbus_channel *chan)
 	KASSERT((rxr->hn_rx_flags & HN_RX_FLAG_ATTACHED) == 0,
 	    ("RX ring %d already attached", idx));
 	rxr->hn_rx_flags |= HN_RX_FLAG_ATTACHED;
+	rxr->hn_chan = chan;
 
 	if (bootverbose) {
 		if_printf(sc->hn_ifp, "link RX ring %d to chan%u\n",
