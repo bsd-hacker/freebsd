@@ -32,12 +32,17 @@
 
 # page fault from fs/zfs/dbuf.c:1807
 
+# Page fault seen:
+# https://people.freebsd.org/~pho/stress/log/zfs3-2.txt
+# Fixed in r308887.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
-[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le 3 ] && exit 0
+[ `sysctl -n kern.kstack_pages` -lt 4 ] && exit 0
 
 . ../default.cfg
 
-kldstat -v | grep -q zfs.ko  || { kldload zfs.ko; loaded=1; }
+kldstat -v | grep -q zfs.ko  || { kldload zfs.ko ||
+    exit 0; loaded=1; }
 
 d1=${diskimage}.1
 d2=${diskimage}.2
@@ -54,6 +59,7 @@ mdconfig -l | grep -q md${u2} && mdconfig -d -u $u2
 mdconfig -a -t vnode -f $d1 -u $u1
 mdconfig -a -t vnode -f $d2 -u $u2
 
+zpool list | egrep -q "^tank" && zpool destroy tank
 [ -d /tank ] && rm -rf /tank
 zpool create tank md$u1 md$u2
 zfs create tank/test
@@ -75,3 +81,4 @@ mdconfig -d -u $u2
 
 rm -rf $d1 $d2
 [ -n "$loaded" ] && kldunload zfs.ko
+exit 0

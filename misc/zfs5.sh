@@ -31,11 +31,12 @@
 # Simple zfs test of vdev as a file and snapshot clones
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
-[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le 3 ] && exit 0
+[ `sysctl -n kern.kstack_pages` -lt 4 ] && exit 0
 
 . ../default.cfg
 
-kldstat -v | grep -q zfs.ko  || { kldload zfs.ko; loaded=1; }
+kldstat -v | grep -q zfs.ko  || { kldload zfs.ko ||
+    exit 0; loaded=1; }
 
 d1=${diskimage}.1
 d2=${diskimage}.2
@@ -43,6 +44,7 @@ d2=${diskimage}.2
 dd if=/dev/zero of=$d1 bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 dd if=/dev/zero of=$d2 bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 
+zpool list | egrep -q "^tank" && zpool destroy tank
 [ -d /tank ] && rm -rf /tank
 zpool create tank $d1 $d2
 zfs create tank/test
