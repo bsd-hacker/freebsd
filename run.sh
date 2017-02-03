@@ -41,9 +41,12 @@ while getopts a name; do
 done
 shift $(($OPTIND - 1))
 
+[ -x ./testcases/run/run ] ||
+    { echo "Please run \"make\" first." && exit 1; }
 [ `basename ${stress2origin:-X}` != misc ] &&
     echo "Note: all.sh in stress2/misc is the preferred test to run." \
     1>&2
+find ./testcases -perm -1 \( -name "*.debug" -o -name "*.full" \) -delete
 if [ ! -z "$aflag" ]; then
    . ./default.cfg
    export runRUNTIME=5m
@@ -76,7 +79,8 @@ else
    [ -z "$EXCLUDETESTS" ] && EXCLUDETESTS=DuMmY
 
    [ -z "$TESTPROGS" ] && \
-      TESTPROGS=`find testcases/ -perm -1 -type f | egrep -v "/run/|$EXCLUDETESTS"`
+      TESTPROGS=`find testcases/ -perm -1 -type f | \
+          egrep -v "/run/|$EXCLUDETESTS|\.full|\.debug"`
    #LD_PRELOAD=/usr/local/lib/libefence.so.0 ./testcases/run/run $TESTPROGS
    ./testcases/run/run $TESTPROGS
 fi
