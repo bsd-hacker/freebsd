@@ -41,13 +41,13 @@
 
 sed '1,/^EOF/d' < $0 > /tmp/fsx.c
 mycc -o /tmp/fsx -O2 /tmp/fsx.c || exit 1
-rm -f fsx.c
+rm -f /tmp/fsx.c
 
 D=$diskimage
 dede $D 1m 1k || exit 1
 
 mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u $mdstart
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t vnode -f $D -u $mdstart
 bsdlabel -w md$mdstart auto
@@ -59,7 +59,7 @@ for i in `jot 100`; do
 done
 sleep 30
 umount -f $mntpoint &
-for i in `jot 10`; do
+for i in `jot 30`; do
 	sleep 30
 	pgrep -q fsx || break
 done

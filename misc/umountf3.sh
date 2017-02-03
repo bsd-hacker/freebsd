@@ -46,13 +46,13 @@ rm -f umountf3.c
 cd $odir
 
 
-mount | grep "$mntpoint" | grep md${mdstart} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md$mdstart > /dev/null && umount $mntpoint
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs md${mdstart}${part} > /dev/null 2>&1
-mount /dev/md${mdstart}${part} $mntpoint
+mdconfig -a -t vnode -f $D -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs md${mdstart}$part > /dev/null 2>&1
+mount /dev/md${mdstart}$part $mntpoint
 export RUNDIR=$mntpoint/stressX
 for i in `jot 25`; do
 	(cd /$mntpoint; /tmp/umountf3) &
@@ -60,6 +60,8 @@ done
 sleep $((4 * 60))
 echo "umount -f $mntpoint"
 umount -f $mntpoint
+while pkill -f umountf3; do :; done
+wait
 mdconfig -d -u $mdstart
 rm -f $D /tmp/umountf3
 exit

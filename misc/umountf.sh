@@ -56,7 +56,16 @@ umount -f $mntpoint
 mdconfig -d -u $mdstart
 rm -f $D
 
+s=0
+n=0
 while pkill -f "swap|mkdir|creat"; do
 	sleep 1
+	n=$((n + 1))
+	if [ $n -gt 60 ]; then
+		pgrep "swap|mkdir|creat"
+		s=1
+		break
+	fi
 done
 wait
+exit $s
