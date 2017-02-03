@@ -34,6 +34,7 @@
 
 # "panic: SACK scoreboard must not be empty" seen:
 # https://people.freebsd.org/~pho/stress/log/full.txt
+# Fixed by r310547.
 
 . ../default.cfg
 
@@ -49,7 +50,8 @@ export LOAD=80
 export rwLOAD=80
 export runRUNTIME=10m
 export RUNDIR=$mntpoint/stressX
-export TESTPROGS=`cd ..; find testcases/ -perm -1 -type f | egrep -v "/run/|/syscall/"`
+export TESTPROGS=`cd ..; find testcases/ -perm -1 -type f | \
+    egrep -v "/run/|/syscall/"`
 
 su $testuser -c 'cd ..; ./testcases/run/run $TESTPROGS'
 
