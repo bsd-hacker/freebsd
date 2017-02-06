@@ -452,7 +452,6 @@ struct iwm_softc {
 	struct iwm_dma_info	fw_dma;
 
 	int			sc_fw_chunk_done;
-	int			sc_init_complete;
 
 	struct iwm_ucode_status	sc_uc;
 	enum iwm_ucode_type	sc_uc_current;
@@ -519,6 +518,8 @@ struct iwm_softc {
 	struct iwm_tx_radiotap_header sc_txtap;
 
 	int			sc_max_rssi;
+
+	struct iwm_notif_wait_data *sc_notif_wait;
 };
 
 #define IWM_LOCK_INIT(_sc) \
