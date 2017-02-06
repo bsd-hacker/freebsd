@@ -314,25 +314,6 @@ enum iwm_hcmd_dataflag {
 	IWM_HCMD_DFL_DUP        = (1 << 1),
 };
 
-/*
- * iwlwifi/iwl-phy-db
- */
-
-#define IWM_NUM_PAPD_CH_GROUPS	9
-#define IWM_NUM_TXP_CH_GROUPS	9
-
-struct iwm_phy_db_entry {
-	uint16_t size;
-	uint8_t *data;
-};
-
-struct iwm_phy_db {
-	struct iwm_phy_db_entry	cfg;
-	struct iwm_phy_db_entry	calib_nch;
-	struct iwm_phy_db_entry	calib_ch_group_papd[IWM_NUM_PAPD_CH_GROUPS];
-	struct iwm_phy_db_entry	calib_ch_group_txp[IWM_NUM_TXP_CH_GROUPS];
-};
-
 struct iwm_int_sta {
 	uint32_t sta_id;
 	uint32_t tfd_queue_msk;
@@ -388,6 +369,7 @@ struct iwm_node {
 struct iwm_softc {
 	device_t		sc_dev;
 	uint32_t		sc_debug;
+	int			sc_attached;
 
 	struct mtx		sc_mtx;
 	struct mbufq		sc_snd;
@@ -432,10 +414,6 @@ struct iwm_softc {
 	int			ict_cur;
 
 	int			sc_hw_rev;
-#define IWM_SILICON_A_STEP	0
-#define IWM_SILICON_B_STEP	1
-#define IWM_SILICON_C_STEP	2
-#define IWM_SILICON_D_STEP	3
 	int			sc_hw_id;
 	int			sc_device_family;
 #define IWM_DEVICE_FAMILY_7000	1
@@ -478,7 +456,7 @@ struct iwm_softc {
 	struct iwm_tlv_calib_ctrl sc_default_calib[IWM_UCODE_TYPE_MAX];
 
 	struct iwm_nvm_data	sc_nvm;
-	struct iwm_phy_db	sc_phy_db;
+	struct iwm_phy_db	*sc_phy_db;
 
 	struct iwm_bf_data	sc_bf;
 

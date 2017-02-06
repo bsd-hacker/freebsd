@@ -297,6 +297,16 @@
 #define IWM_CSR_HW_REV_DASH(_val)          (((_val) & 0x0000003) >> 0)
 #define IWM_CSR_HW_REV_STEP(_val)          (((_val) & 0x000000C) >> 2)
 
+/**
+ *  hw_rev values
+ */
+enum {
+	IWM_SILICON_A_STEP = 0,
+	IWM_SILICON_B_STEP,
+	IWM_SILICON_C_STEP,
+};
+
+
 #define IWM_CSR_HW_REV_TYPE_MSK		(0x000FFF0)
 #define IWM_CSR_HW_REV_TYPE_5300	(0x0000020)
 #define IWM_CSR_HW_REV_TYPE_5350	(0x0000030)
@@ -2002,45 +2012,6 @@ struct iwm_phy_cfg_cmd {
 #define IWM_PHY_CFG_RX_CHAIN_A	(1 << 12)
 #define IWM_PHY_CFG_RX_CHAIN_B	(1 << 13)
 #define IWM_PHY_CFG_RX_CHAIN_C	(1 << 14)
-
-/*
- * PHY db
- */
-
-enum iwm_phy_db_section_type {
-	IWM_PHY_DB_CFG = 1,
-	IWM_PHY_DB_CALIB_NCH,
-	IWM_PHY_DB_UNUSED,
-	IWM_PHY_DB_CALIB_CHG_PAPD,
-	IWM_PHY_DB_CALIB_CHG_TXP,
-	IWM_PHY_DB_MAX
-};
-
-#define IWM_PHY_DB_CMD 0x6c /* TEMP API - The actual is 0x8c */
-
-/*
- * phy db - configure operational ucode
- */
-struct iwm_phy_db_cmd {
-	uint16_t type;
-	uint16_t length;
-	uint8_t data[];
-} __packed;
-
-/* for parsing of tx power channel group data that comes from the firmware */
-struct iwm_phy_db_chg_txp {
-	uint32_t space;
-	uint16_t max_channel_idx;
-} __packed;
-
-/*
- * phy db - Receive phy db chunk after calibrations
- */
-struct iwm_calib_res_notif_phy_db {
-	uint16_t type;
-	uint16_t length;
-	uint8_t data[];
-} __packed;
 
 
 /* Target of the IWM_NVM_ACCESS_CMD */
