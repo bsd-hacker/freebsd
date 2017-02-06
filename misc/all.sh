@@ -62,19 +62,13 @@
 # newfs4.sh	Deadlock seen						20150906
 # nfs10.sh	Double fault						20151013
 # nfs16.sh	panic: Failed to register NFS lock locally - error=11	20160608
-# oovm.sh	Waiting for PQ_LAUNDRY					20151206
-# oovm2.sh	Waiting for PQ_LAUNDRY					20151206
 # pfl3.sh	panic: handle_written_inodeblock: live inodedep		20140812
 # pmc.sh	NMI ... going to debugger				20111217
-# posix_openpt2.sh
-#		WiP							20160109
-# pty.sh	WiP							20160111
 # snap5-1.sh	mksnap_ffs deadlock					20111218
 # quota2.sh	panic: dqflush: stray dquot				20120221
 # quota3.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111222
 # quota6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130206
 # quota7.sh	panic: dqflush: stray dquot				20120221
-# rw.sh		Out of VM						20151116
 # sendmsg.sh	Test loops in the kernel				20160519
 # shm_open.sh	panic: kmem_malloc(4096): kmem_map too small		20130504
 # snap3.sh	mksnap_ffs stuck in snaprdb				20111226
@@ -123,9 +117,7 @@
 # nfs2.sh	panic: wrong diroffset 					20140219
 # nfs5.sh
 # nfs6.sh
-# nfs10.sh
 # nfs11.sh	vmwait deadlock						20151004
-# nfs13.sh
 # nullfs8.sh
 
 # End of list
@@ -200,6 +192,7 @@ rm -f $alllog $alllist
 find `dirname $alllast` -maxdepth 1 -name $alllast -mtime +12h -delete
 touch $alllast $alllog
 chmod 640 $alllast $alllog
+find ../testcases -perm -1 \( -name "*.debug" -o -name "*.full" \) -delete
 
 console=/dev/console
 printf "\r\n" > $console &
@@ -208,6 +201,7 @@ sleep 1
 kill -0 $pid > /dev/null 2>&1 &&
 { console=/dev/null; kill -9 $pid; }
 
+[ -f all.debug.inc ] && . all.debug.inc
 while true; do
 	exclude=`sed -n '/^# Start of list/,/^# End of list/p' < $0 |
 		cat - all.exclude 2>/dev/null |
@@ -250,6 +244,7 @@ while true; do
 		printf "`date '+%Y%m%d %T'` all ($n1/$n2): $i\n" >> $alllog
 		printf "`date '+%Y%m%d %T'` all ($n1/$n2): $i\r\n" > $console
 		logger "Starting test all: $i"
+		[ $all_debug ] && pre_debug
 		sync;sync;sync
 		start=`date '+%s'`
 		(
@@ -270,6 +265,7 @@ while true; do
 			echo "swap still running"
 			sleep 2
 		done
+		[ $all_debug ] && post_debug
 	done
 	[ -n "$once" ] && break
 done
