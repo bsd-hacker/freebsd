@@ -892,6 +892,9 @@ iwm_read_firmware(struct iwm_softc *sc, enum iwm_ucode_type ucode_type)
 			    le32toh(((const uint32_t *)tlv_data)[2]));
 			break;
 
+		case IWM_UCODE_TLV_FW_MEM_SEG:
+			break;
+
 		default:
 			device_printf(sc->sc_dev,
 			    "%s: unknown firmware section %d, abort\n",
@@ -2674,12 +2677,6 @@ iwm_load_firmware(struct iwm_softc *sc, enum iwm_ucode_type ucode_type)
 			    iwm_read_prph(sc, IWM_SB_CPU_2_STATUS));
 		}
 	}
-
-	/*
-	 * Give the firmware some time to initialize.
-	 * Accessing it too early causes errors.
-	 */
-	msleep(&w, &sc->sc_mtx, 0, "iwmfwinit", hz);
 
 	return error;
 }
@@ -5479,7 +5476,7 @@ iwm_notif_intr(struct iwm_softc *sc)
 		case IWM_TIME_EVENT_CMD:
 		case IWM_WIDE_ID(IWM_ALWAYS_LONG_GROUP, IWM_SCAN_CFG_CMD):
 		case IWM_WIDE_ID(IWM_ALWAYS_LONG_GROUP, IWM_SCAN_REQ_UMAC):
-		case IWM_WIDE_ID(IWM_ALWAYS_LONG_GROUP, IWM_SCAN_ABORT_UMAC):
+		case IWM_SCAN_ABORT_UMAC:
 		case IWM_SCAN_OFFLOAD_REQUEST_CMD:
 		case IWM_SCAN_OFFLOAD_ABORT_CMD:
 		case IWM_REPLY_BEACON_FILTERING_CMD:
