@@ -34,19 +34,23 @@
 # Deadlock and "panic: smp_targeted_tlb_shootdown: interrupts disabled"
 # https://people.freebsd.org/~pho/stress/log/marcus4.txt
 
+# "panic: spin lock held too long" seen.
+# Fixed in r313472.
+
 . ../default.cfg
 
-pgrep -q watchdogd && exit 0
+pgrep -q watchdogd && { service watchdogd stop > /dev/null  && restart=1; }
 dev=$(df -h `dirname $RUNDIR` | tail -1 | awk '{print $1}')
 mount | grep $dev | grep -q journaled && exit 0
 size=$((`sysctl -n hw.physmem` / 1024 / 1024))
 [ $size -gt $((4 * 1024)) ] &&
-    { echo "RAM must be capped to 4GB for this test."; exit 0; }
+    { echo "RAM should be capped to 4GB for this test."; }
 [ "`sysctl -n debug.deadlkres.sleepfreq 2>/dev/null`" = "3" ] &&
     { echo "deadlkres must be disabled for this test."; exit 0; }
 
 n=`find ../testcases -perm -1 -type f | wc -l`
 m=`su $testuser -c "limits | grep maxprocesses | awk '{print \\$NF}'"`
+m=$((m / 2))
 
 export INCARNATIONS=$((m / n))
 export runRUNTIME=15m
@@ -67,4 +71,12 @@ testcases/rename/rename
 testcases/mkfifo/mkfifo
 "
 
-su $testuser -c 'cd ..; ./testcases/run/run $TESTPROGS'
+su $testuser -c 'cd ..; ./testcases/run/run $TESTPROGS' &
+
+sleep $((16 * 60))
+../tools/killall.sh
+wait
+./cleanup.sh
+
+[ $restart ] && service watchdogd start > /dev/null 
+exit 0

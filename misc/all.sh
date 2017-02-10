@@ -95,7 +95,6 @@
 
 # fuzz.sh	A know issue
 # marcus3.sh	OK, but runs for a long time
-# marcus4.sh	OK, but runs for a long time
 # statfs.sh	Not very interesting
 # vunref.sh	No problems ever seen
 # vunref2.sh	No problems ever seen
