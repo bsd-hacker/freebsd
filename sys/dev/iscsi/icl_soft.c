@@ -260,8 +260,8 @@ icl_soft_conn_new_pdu(struct icl_conn *ic, int flags)
 	if (ip == NULL)
 		return (NULL);
 
-	ip->ip_bhs_mbuf = m_getm2(NULL, sizeof(struct iscsi_bhs),
-	    flags, MT_DATA, M_PKTHDR);
+	CTASSERT(sizeof(struct iscsi_bhs) <= MHLEN);
+	ip->ip_bhs_mbuf = m_gethdr(flags, MT_DATA);
 	if (ip->ip_bhs_mbuf == NULL) {
 		ICL_WARN("failed to allocate BHS mbuf");
 		icl_pdu_free(ip);
@@ -403,10 +403,10 @@ icl_pdu_check_header_digest(struct icl_pdu *request, size_t *availablep)
 	}
 	*availablep -= ISCSI_HEADER_DIGEST_SIZE;
 
-	/*
-	 * XXX: Handle AHS.
-	 */
+	/* Temporary attach AHS to BHS to calculate header digest. */
+	request->ip_bhs_mbuf->m_next = request->ip_ahs_mbuf;
 	valid_digest = icl_mbuf_to_crc32c(request->ip_bhs_mbuf);
+	request->ip_bhs_mbuf->m_next = NULL;
 	if (received_digest != valid_digest) {
 		ICL_WARN("header digest check failed; got 0x%x, "
 		    "should be 0x%x", received_digest, valid_digest);
