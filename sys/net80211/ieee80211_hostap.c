@@ -2101,6 +2101,18 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 			     return);		/* XXX just NULL out? */
 		}
 
+		/* Validate VHT IEs */
+		if (vhtcap != NULL) {
+			IEEE80211_VERIFY_LENGTH(vhtcap[1],
+			    sizeof(struct ieee80211_ie_vhtcap) - 2,
+			    return);
+		}
+		if (vhtinfo != NULL) {
+			IEEE80211_VERIFY_LENGTH(vhtinfo[1],
+			    sizeof(struct ieee80211_ie_vht_operation) - 2,
+			    return);
+		}
+
 		if ((vap->iv_flags & IEEE80211_F_WPA) &&
 		    !wpa_assocreq(ni, &rsnparms, wh, wpa, rsn, capinfo))
 			return;
@@ -2152,7 +2164,7 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 
 		/* VHT */
 		if (IEEE80211_IS_CHAN_VHT(ni->ni_chan) &&
-		    htcap != NULL &&
+		    vhtcap != NULL &&
 		    vhtinfo != NULL) {
 			/* XXX TODO; see below */
 			printf("%s: VHT TODO!\n", __func__);
