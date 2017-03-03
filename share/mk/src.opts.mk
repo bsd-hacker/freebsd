@@ -237,7 +237,11 @@ __DEFAULT_NO_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC LLD
 .endif
 # In-tree binutils/gcc are older versions without modern architecture support.
 .if ${__T} == "aarch64" || ${__T:Mriscv*} != ""
-BROKEN_OPTIONS+=BINUTILS BINUTILS_BOOTSTRAP GCC GCC_BOOTSTRAP GDB
+#BROKEN_OPTIONS+=BINUTILS
+#BROKEN_OPTIONS+=BINUTILS_BOOTSTRAP
+#BROKEN_OPTIONS+=GCC
+#BROKEN_OPTIONS+=GCC_BOOTSTRAP
+BROKEN_OPTIONS+=GDB
 .endif
 .if ${__T:Mriscv*} != ""
 BROKEN_OPTIONS+=PROFILE # "sorry, unimplemented: profiler support for RISC-V"
