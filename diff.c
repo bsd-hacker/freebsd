@@ -307,8 +307,8 @@ main(int argc, char **argv)
 			if (stat(argv[1], &stb2) < 0)
 				err(2, "%s", argv[1]);
 		}
-		print_status(diffreg(argv[0], argv[1], dflags), argv[0], argv[1],
-		    "");
+		print_status(diffreg(argv[0], argv[1], dflags, 1), argv[0],
+		    argv[1], "");
 	}
 	exit(status);
 }

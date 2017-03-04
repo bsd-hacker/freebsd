@@ -207,7 +207,7 @@ diffit(struct dirent *dp, char *path1, size_t plen1, char *path2, size_t plen2,
 	else if (!S_ISREG(stb2.st_mode) && !S_ISDIR(stb2.st_mode))
 		dp->d_status = D_SKIPPED2;
 	else
-		dp->d_status = diffreg(path1, path2, flags);
+		dp->d_status = diffreg(path1, path2, flags, 0);
 	print_status(dp->d_status, path1, path2, "");
 }
 

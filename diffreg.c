@@ -306,7 +306,7 @@ static u_char cup2low[256] = {
 };
 
 int
-diffreg(char *file1, char *file2, int flags)
+diffreg(char *file1, char *file2, int flags, int capsicum)
 {
 	FILE *f1, *f2;
 	int i, rval;
@@ -405,23 +405,25 @@ diffreg(char *file1, char *file2, int flags)
 		}
 	}
 
-	cap_rights_init(&rights_ro, CAP_READ, CAP_FSTAT, CAP_SEEK);
-	if (cap_rights_limit(fileno(f1), &rights_ro) < 0)
-		err(2, "unable to limit rights on: %s", file1);
-	if (cap_rights_limit(fileno(f2), &rights_ro) < 0)
-		err(2, "unable to limit rights on: %s", file2);
-	if (fileno(f1) == STDIN_FILENO || fileno(f2) == STDIN_FILENO) {
-		/* stding has already been limited */
-		if (caph_limit_stderr() == -1)
-			err(2, "unable to limit stderr");
-		if (caph_limit_stdout() == -1)
-			err(2, "unable to limit stdout");
-	} else if (caph_limit_stdio() == -1)
-			err(2, "unable to limit stdio");
+	if (capsicum) {
+		cap_rights_init(&rights_ro, CAP_READ, CAP_FSTAT, CAP_SEEK);
+		if (cap_rights_limit(fileno(f1), &rights_ro) < 0)
+			err(2, "unable to limit rights on: %s", file1);
+		if (cap_rights_limit(fileno(f2), &rights_ro) < 0)
+			err(2, "unable to limit rights on: %s", file2);
+		if (fileno(f1) == STDIN_FILENO || fileno(f2) == STDIN_FILENO) {
+			/* stding has already been limited */
+			if (caph_limit_stderr() == -1)
+				err(2, "unable to limit stderr");
+			if (caph_limit_stdout() == -1)
+				err(2, "unable to limit stdout");
+		} else if (caph_limit_stdio() == -1)
+				err(2, "unable to limit stdio");
 
-	caph_cache_catpages();
-	if (cap_enter() < 0 && errno != ENOSYS)
-		err(2, "unable to enter capability mode");
+		caph_cache_catpages();
+		if (cap_enter() < 0 && errno != ENOSYS)
+			err(2, "unable to enter capability mode");
+	}
 
 	switch (files_differ(f1, f2, flags)) {
 	case 0:
