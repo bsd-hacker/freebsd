@@ -485,6 +485,7 @@ diffreg(char *file1, char *file2, int flags)
 		if (kevent(kq, NULL, 0, e, 1, NULL) == -1)
 			err(2, "kevent");
 		wstatus = e[0].data;
+		close(kq);
 		if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) != 0)
 			errx(2, "pr exited abnormally");
 		else if (WIFSIGNALED(wstatus))
