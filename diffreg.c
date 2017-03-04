@@ -67,9 +67,14 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/capsicum.h>
+#include <sys/procdesc.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/event.h>
 #include <sys/wait.h>
 
+#include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
@@ -307,7 +312,9 @@ diffreg(char *file1, char *file2, int flags)
 	FILE *f1, *f2;
 	int i, rval;
 	int	ostdout = -1;
-	pid_t pid = -1;
+	int pr_pd, kq;
+	struct kevent *e;
+	cap_rights_t rights_ro;
 
 	f1 = f2 = NULL;
 	rval = D_SAME;
@@ -366,6 +373,65 @@ diffreg(char *file1, char *file2, int flags)
 		goto closem;
 	}
 
+	if (lflag) {
+		/* redirect stdout to pr */
+		int	 pfd[2];
+		pid_t	pid;
+		char	*header;
+
+		xasprintf(&header, "%s %s %s", diffargs, file1, file2);
+		signal(SIGPIPE, SIG_IGN);
+		fflush(stdout);
+		rewind(stdout);
+		pipe(pfd);
+		switch ((pid = pdfork(&pr_pd, PD_CLOEXEC))) {
+		case -1:
+			status |= 2;
+			free(header);
+			err(2, "No more processes");
+		case 0:
+			/* child */
+			if (pfd[0] != STDIN_FILENO) {
+				dup2(pfd[0], STDIN_FILENO);
+				close(pfd[0]);
+			}
+			close(pfd[1]);
+			execl(_PATH_PR, _PATH_PR, "-h", header, (char *)0);
+			_exit(127);
+		default:
+
+			/* parent */
+			if (pfd[1] != STDOUT_FILENO) {
+				ostdout = dup(STDOUT_FILENO);
+				dup2(pfd[1], STDOUT_FILENO);
+				close(pfd[1]);
+			}
+			close(pfd[0]);
+			rewind(stdout);
+			free(header);
+			kq = kqueue();
+			if (kq == -1)
+				err(2, "kqueue");
+			e = xmalloc(sizeof(struct kevent));
+			EV_SET(e, pr_pd, EVFILT_PROCDESC, EV_ADD, NOTE_EXIT, 0,
+			    NULL);
+			if (kevent(kq, e, 1, NULL, 0, NULL) == -1)
+				err(2, "kevent");
+		}
+	}
+
+	cap_rights_init(&rights_ro, CAP_READ, CAP_FSTAT, CAP_SEEK);
+	if (cap_rights_limit(fileno(f1), &rights_ro) < 0)
+		err(2, "unable to limit rights on: %s", file1);
+	if (cap_rights_limit(fileno(f2), &rights_ro) < 0)
+		err(2, "unable to limit rights on: %s", file2);
+	if (caph_limit_stdio() == -1)
+		err(2, "unable to limit stdio");
+
+	caph_cache_catpages();
+	if (cap_enter() < 0 && errno != ENOSYS)
+		err(2, "unable to enter capability mode");
+
 	switch (files_differ(f1, f2, flags)) {
 	case 0:
 		goto closem;
@@ -382,42 +448,6 @@ diffreg(char *file1, char *file2, int flags)
 		rval = D_BINARY;
 		status |= 1;
 		goto closem;
-	}
-	if (lflag) {
-		/* redirect stdout to pr */
-		int	 pfd[2];
-		char	*header;
-
-		xasprintf(&header, "%s %s %s", diffargs, file1, file2);
-		signal(SIGPIPE, SIG_IGN);
-		fflush(stdout);
-		rewind(stdout);
-		pipe(pfd);
-		switch ((pid = fork())) {
-		case -1:
-			status |= 2;
-			free(header);
-			err(2, "No more processes");
-		case 0:
-			/* child */
-			if (pfd[0] != STDIN_FILENO) {
-				dup2(pfd[0], STDIN_FILENO);
-				close(pfd[0]);
-			}
-			close(pfd[1]);
-			execl(_PATH_PR, _PATH_PR, "-h", header, (char *)0);
-			_exit(127);
-		default:
-			/* parent */
-			if (pfd[1] != STDOUT_FILENO) {
-				ostdout = dup(STDOUT_FILENO);
-				dup2(pfd[1], STDOUT_FILENO);
-				close(pfd[1]);
-			}
-			close(pfd[0]);
-			rewind(stdout);
-			free(header);
-		}
 	}
 	prepare(0, f1, stb1.st_size, flags);
 	prepare(1, f2, stb2.st_size, flags);
@@ -452,19 +482,25 @@ diffreg(char *file1, char *file2, int flags)
 	check(f1, f2, flags);
 	output(file1, f1, file2, f2, flags);
 	if (ostdout != -1) {
+		/* close the pipe to pr and restore stdout */
 		int wstatus;
 
-		/* close the pipe to pr and restore stdout */
 		fflush(stdout);
-		rewind(stdout);
 		if (ostdout != STDOUT_FILENO) {
 			close(STDOUT_FILENO);
 			dup2(ostdout, STDOUT_FILENO);
 			close(ostdout);
 		}
-		waitpid(pid, &wstatus, 0);
+		if (kevent(kq, NULL, 0, e, 1, NULL) == -1)
+			err(2, "kevent");
+		wstatus = e[0].data;
+		if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) != 0)
+			errx(2, "pr exited abnormally");
+		else if (WIFSIGNALED(wstatus))
+			errx(2, "pr killed by signal %d",
+			    WTERMSIG(wstatus));
 	}
-	
+
 closem:
 	if (anychange) {
 		status |= 1;
