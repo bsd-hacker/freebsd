@@ -425,8 +425,14 @@ diffreg(char *file1, char *file2, int flags)
 		err(2, "unable to limit rights on: %s", file1);
 	if (cap_rights_limit(fileno(f2), &rights_ro) < 0)
 		err(2, "unable to limit rights on: %s", file2);
-	if (caph_limit_stdio() == -1)
-		err(2, "unable to limit stdio");
+	if (fileno(f1) == STDIN_FILENO || fileno(f2) == STDIN_FILENO) {
+		/* stding has already been limited */
+		if (caph_limit_stderr() == -1)
+			err(2, "unable to limit stderr");
+		if (caph_limit_stdout() == -1)
+			err(2, "unable to limit stdout");
+	} else if (caph_limit_stdio() == -1)
+			err(2, "unable to limit stdio");
 
 	caph_cache_catpages();
 	if (cap_enter() < 0 && errno != ENOSYS)
