@@ -38,7 +38,7 @@
 #   xargs -n1 | sort | uniq -d;
 # done
 
-# 20170313: sbin/ipftest and ipresend temporarily disconnected (r315218).
+# 20170313: sbin/ipftest and ipresend temporarily disconnected.
 OLD_FILES+=sbin/ipftest
 OLD_FILES+=sbin/ipresend
 # 20170311: Remove WITHOUT_MANDOCDB option
