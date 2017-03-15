@@ -37,9 +37,9 @@
 
 here=`pwd`
 cd /tmp
-sed '1,/^EOF/d' < $here/$0 > fts.c
-mycc -o fts -Wall -Wextra fts.c
-rm -f fts.c
+sed '1,/^EOF/d' < $here/$0 > fts1.c
+mycc -o fts1 -Wall -Wextra fts1.c || exit 1
+rm -f fts1.c
 cd $here
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
@@ -53,23 +53,25 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-export runRUNTIME=30m
+export runRUNTIME=20m
 export RUNDIR=$mntpoint/stressX
 
 su $testuser -c 'cd ..; ./run.sh marcus.cfg' > /dev/null &
 pid=$!
 while kill -0 $pid 2> /dev/null; do
-	/tmp/fts $mntpoint
+	/tmp/fts1 $mntpoint
 	sleep 1
 done
 wait
 
-while mount | grep $mntpoint | grep -q /dev/md; do
-	umount $mntpoint || sleep 1
+s=0
+for i in `jot 6`; do
+	umount $mntpoint && break || sleep 10
 done
+[ $i -eq 6 ] && s=1
 mdconfig -d -u $mdstart
-rm -f /tmp/fts
-exit
+rm -f /tmp/fts1
+exit $s
 EOF
 #include <sys/param.h>
 #include <err.h>
