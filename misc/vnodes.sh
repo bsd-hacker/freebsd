@@ -34,21 +34,26 @@
 
 . ../default.cfg
 
+kldstat -v | grep -q pty || { kldload pty || exit 0; }
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > vnodes.c
-mycc -o vnodes -Wall -O2 vnodes.c
+mycc -o vnodes -Wall -Wextra -O2 vnodes.c || exit 1
 rm -f vnodes.c
 
-old=`sysctl vfs.numvnodes | tail -1 | sed 's/.*: //'`
+s=0
+old=`sysctl -n vfs.numvnodes`
 /tmp/vnodes
-new=`sysctl vfs.numvnodes | tail -1 | sed 's/.*: //'`
-[ $((new - old)) -gt 100 ] && echo "FAIL vnode leak"
+new=`sysctl -n vfs.numvnodes`
+[ $((new - old)) -gt 100 ] && { s=1; echo "FAIL vnode leak"; }
 
 rm -f /tmp/vnodes
-exit 0
+exit $s
 EOF
 #include <sys/types.h>
+
+#include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,18 +71,21 @@ void leak(void)
 		for (i = '0'; i < '9'; i ++) {
 			dname[9] = i;
 			fd = open(dname, O_RDWR);
+			if (fd == -1)
+				if (errno != EBUSY && errno != ENXIO)
+					err(1, "open(%s)", dname);
 		}
-		exit(0);
+		_exit(0);
 	}
 	wait(NULL);
 }
 
-int main()
+int main(void)
 {
 	int i;
 
 	for (i = 0 ;i < 100000; i++) {
 		leak();
 	}
-	return 0;
+	return (0);
 }
