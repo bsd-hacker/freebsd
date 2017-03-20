@@ -140,10 +140,12 @@ main(void)
 		if (r1 == 0 && r2 == 0 &&
 		    bcmp(&sb1, &sb2, sizeof(sb1)) == 0) {
 			fprintf(stderr, "FAIL 1\n");
-			fprintf(stderr, "%-15s: ino = %4d, nlink = %d, size = %jd\n",
-			    logfile, sb1.st_ino, sb1.st_nlink, sb1.st_blocks);
-			fprintf(stderr, "%-15s: ino = %4d, nlink = %d, size = %jd\n",
-			    new    , sb2.st_ino, sb2.st_nlink, sb2.st_blocks);
+			fprintf(stderr, "%-15s: ino = %4ju, nlink = %ju, "
+			    "size  = %jd\n", logfile, (uintmax_t)sb1.st_ino,
+			   (uintmax_t)sb1.st_nlink, sb1.st_blocks);
+			fprintf(stderr, "%-15s: ino = %4ju, nlink = %ju, "
+			    "size = %jd\n", new    , (uintmax_t)sb2.st_ino,
+			    (uintmax_t)sb2.st_nlink, sb2.st_blocks);
 		}
 		if (bcmp(&sb2, &sb3, sizeof(sb2)) == 0) {
 			fprintf(stderr, "Old to file is lingering\n");
@@ -152,16 +154,20 @@ main(void)
 			fprintf(stderr, "FAIL 2\n");
 			if (r1 == 0)
 				fprintf(stderr,
-				    "sb1: %-15s: ino = %4d, nlink = %d, size = %jd\n",
-				    logfile, sb1.st_ino, sb1.st_nlink, sb1.st_blocks);
+				    "sb1: %-15s: ino = %4ju, nlink = %ju, "
+				    "size = %jd\n", logfile,
+				    (uintmax_t)sb1.st_ino,
+				    (uintmax_t)sb1.st_nlink, sb1.st_blocks);
 			if (r2 == 0)
 				fprintf(stderr,
-				    "sb2: %-15s: ino = %4d, nlink = %d, size = %jd\n",
-				    new, sb2.st_ino, sb2.st_nlink, sb2.st_blocks);
+				    "sb2: %-15s: ino = %4ju, nlink = %ju, "
+				    "size = %jd\n", new, (uintmax_t)sb2.st_ino,
+				    (uintmax_t)sb2.st_nlink, sb2.st_blocks);
 			if (r3 == 0)
 				fprintf(stderr,
-				    "sb3: %-15s: ino = %4d, nlink = %d, size = %jd\n",
-				    new    , sb3.st_ino, sb3.st_nlink, sb3.st_blocks);
+				    "sb3: %-15s: ino = %4ju, nlink = %ju, "
+				    "size = %jd\n", new, (uintmax_t)sb3.st_ino,
+				    (uintmax_t)sb3.st_nlink, sb3.st_blocks);
 			exit(1);
 		}
 		unlink(new);

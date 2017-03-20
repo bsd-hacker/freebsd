@@ -157,8 +157,9 @@ main(int ac, char **av)
 			err(1, "stat(%s)", file1);
 		if (sb.st_ino != sb2.st_ino ||
 		    sb.st_ino == always_ino) {
-			printf("FAIL. Bad stat: always: %d file1: %d (should be %d)\n",
-			    always_ino, sb.st_ino, sb2.st_ino);
+			printf("FAIL. Bad stat: always: %ju file1: %ju (should be %ju)\n",
+			    (uintmax_t)always_ino, (uintmax_t)sb.st_ino,
+			    (uintmax_t)sb2.st_ino);
 			r = EXIT_FAILURE;
 			break;
 		}

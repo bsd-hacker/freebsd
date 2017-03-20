@@ -116,12 +116,14 @@ main(void)
 		bzero(&fa, sizeof(fa));
 		bzero(&ta, sizeof(ta));
 
-		if ((fd = open(fromFile, O_RDWR | O_CREAT | O_TRUNC, 0644)) == -1)
+		if ((fd = open(fromFile, O_RDWR | O_CREAT | O_TRUNC, 0644))
+		    == -1)
 			err(1, "creat(%s)", fromFile);
 		close(fd);
 
 		sprintf(toFile, "toFile.log.%05d", i);
-		if ((fd = open(toFile, O_RDWR | O_CREAT | O_TRUNC, 0644)) == -1)
+		if ((fd = open(toFile, O_RDWR | O_CREAT | O_TRUNC, 0644))
+		    == -1)
 			err(1, "creat(%s)", toFile);
 		write(fd, "xxx", 3);
 		close(fd);
@@ -135,22 +137,27 @@ main(void)
 			err(1, "stat(%s)", toFile);
 
 		if (tb.st_ino == ta.st_ino) {
-			fprintf(stderr, "FAIL: old and new \"To\" inode number is identical\n");
+			fprintf(stderr, "FAIL: old and new \"To\" inode "
+			    "number is identical\n");
 			fprintf(stderr, "stat() before the rename():\n");
 			fprintf(stderr,
-			    "%-16s: ino = %4d, nlink = %d, size = %jd\n",
-			    fromFile, fb.st_ino, fb.st_nlink, fb.st_blocks);
+			    "%-16s: ino = %4ju, nlink = %ju, size = %jd\n",
+			    fromFile, (uintmax_t)fb.st_ino, (uintmax_t)fb.st_nlink,
+			    fb.st_blocks);
 			fprintf(stderr,
-			    "%-16s: ino = %4d, nlink = %d, size = %jd\n",
-			    toFile, tb.st_ino, tb.st_nlink, tb.st_blocks);
+			    "%-16s: ino = %4ju, nlink = %ju, size = %jd\n",
+			    toFile, (uintmax_t)tb.st_ino, (uintmax_t)tb.st_nlink,
+			    tb.st_blocks);
 			fprintf(stderr, "\nstat() after the rename():\n");
 			if (fa.st_ino != 0)
 				fprintf(stderr,
-				    "%-16s: ino = %4d, nlink = %d, size = %jd\n",
-				    fromFile, fa.st_ino, fa.st_nlink, fa.st_blocks);
+				    "%-16s: ino = %4ju, nlink = %ju, size = "
+				    "%jd\n", fromFile, (uintmax_t)fa.st_ino,
+				    (uintmax_t)fa.st_nlink, fa.st_blocks);
 			fprintf(stderr,
-			    "%-16s: ino = %4d, nlink = %d, size = %jd\n",
-			    toFile, ta.st_ino, ta.st_nlink, ta.st_blocks);
+			    "%-16s: ino = %4ju, nlink = %ju, size = %jd\n",
+			    toFile, (uintmax_t)ta.st_ino, (uintmax_t)ta.st_nlink,
+			    ta.st_blocks);
 			kill(spid, SIGINT);
 			exit(1);
 		}

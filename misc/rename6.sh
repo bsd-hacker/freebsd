@@ -133,10 +133,12 @@ main(void)
 		if (stat(logfile, &sb1) == 0 && stat(new, &sb2) == 0 &&
 		    bcmp(&sb1, &sb2, sizeof(sb1)) == 0) {
 			fprintf(stderr, "At loop #%d\n", i);
-			fprintf(stderr, "%-15s: ino = %d, nlink = %d, size = %jd\n",
-			    logfile, sb1.st_ino, sb1.st_nlink, sb1.st_blocks);
-			fprintf(stderr, "%-15s: ino = %d, nlink = %d, size = %jd\n",
-			    new    , sb2.st_ino, sb2.st_nlink, sb2.st_blocks);
+			fprintf(stderr, "%-15s: ino = %ju, nlink = %ju,"
+			   " size = %jd\n", logfile, (uintmax_t)sb1.st_ino,
+			   (uintmax_t)sb1.st_nlink, sb1.st_blocks);
+			fprintf(stderr, "%-15s: ino = %ju, nlink = %ju, "
+			    "size = %jd\n", new    , (uintmax_t)sb2.st_ino,
+			    (uintmax_t)sb2.st_nlink, sb2.st_blocks);
 		}
 		unlink(new);
 	}
