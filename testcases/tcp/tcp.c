@@ -30,7 +30,10 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
+
 #include <netinet/in.h>
+
 #include <err.h>
 #include <errno.h>
 #include <netdb.h>
@@ -143,8 +146,10 @@ writer(void) {
 			if (write(tcpsock, buf, bufsize) < 0) {
 				if (errno == EPIPE)
 					return;
-				err(1, "write(%d), %s:%d", tcpsock,
+				if (errno != ECONNRESET)
+					err(1, "write(%d), %s:%d", tcpsock,
 						__FILE__, __LINE__);
+				_exit(EXIT_SUCCESS);
 			}
 		}
 	}
@@ -171,11 +176,13 @@ test(void)
 
 	if ((pid = fork()) == 0) {
 		writer();
-		exit(EXIT_SUCCESS);
+		_exit(EXIT_SUCCESS);
 
 	} else if (pid > 0) {
 		reader();
 		kill(pid, SIGINT);
+		if (waitpid(pid, NULL, 0) != pid)
+			err(1, "waitpid(%d)", pid);
 	} else
 		err(1, "fork(), %s:%d",  __FILE__, __LINE__);
 
