@@ -83,7 +83,7 @@ setup(int nb)
 	if (mkdir(path1, 0770) < 0)
 		err(1, "mkdir(%s), %s:%d", path1, __FILE__, __LINE__);
 	if (chdir(path1) == -1)
-		err(1, "chdir(%s), %s:%d", path2, __FILE__, __LINE__);
+		err(1, "chdir(%s), %s:%d", path1, __FILE__, __LINE__);
 
 	if (mkdir(path2, 0770) < 0)
 		err(1, "mkdir(%s), %s:%d", path2, __FILE__, __LINE__);
