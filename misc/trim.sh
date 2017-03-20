@@ -42,7 +42,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 size="128m"
 [ `uname -m` = "amd64" ] && size="1g"
 [ $# -eq 0 ] && trim=-t
-n=0
+s=0
 opt=""
 [ "$newfs_flags" = "-U" ] && opt="-U -j"
 for flag in ' ' $opt; do
@@ -52,7 +52,7 @@ for flag in ' ' $opt; do
 
 	echo "newfs $trim $flag md${mdstart}$part"
 	newfs $trim $flag md${mdstart}$part > /dev/null
-	mount /dev/md${mdstart}$part $mntpoint
+	mount /dev/md${mdstart}$part $mntpoint || exit 1
 	chmod 777 $mntpoint
 
 	export runRUNTIME=10m
@@ -60,11 +60,13 @@ for flag in ' ' $opt; do
 
 	su $testuser -c 'cd ..; ./run.sh marcus.cfg' > /dev/null 2>&1
 
-	while mount | grep $mntpoint | grep -q /dev/md; do
-		umount $mntpoint || sleep 1
+	for i in `jot 6`; do
+		umount $mntpoint && break || sleep 10
 	done
+	[ $i -eq 6 ] && { s=1; break; }
 	checkfs /dev/md${mdstart}$part
 	mdconfig -d -u $mdstart
 done
 rm -f /tmp/fsck.log
 [ $malloc_wait != 1 ] && sysctl vm.md_malloc_wait=$malloc_wait
+exit $s
