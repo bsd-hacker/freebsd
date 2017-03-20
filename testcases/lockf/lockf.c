@@ -41,7 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <stress.h>
+#include "stress.h"
 
 pid_t pid;
 int fd;
@@ -54,11 +54,18 @@ get(void) {
 
 	do {
 		r = lockf(fd, F_LOCK, 0);
-	} while (r == -1 && errno == EINTR);
+	} while (r == -1 && errno == EINTR && done_testing == 0);
 	if (r == -1)
 		err(1, "lockf(%s, F_LOCK)", file);
-	if (read(fd, &sem, sizeof(sem)) != sizeof(sem))
+	if (lseek(fd, 0, SEEK_SET) == -1) // XXX
+		err(1, "lseek"); // XXX
+	r = read(fd, &sem, sizeof(sem));
+	if (r == -1)
 		err(1, "get: read(%d)", fd);
+	if (r == 0)
+		errx(1, "get() read 0 bytes");
+	if (r != sizeof(sem))
+		errx(1, "get() size error: %d", r);
 	if (lseek(fd, 0, SEEK_SET) == -1)
 		err(1, "lseek");
 	if (lockf(fd, F_ULOCK, 0) == -1)
@@ -72,7 +79,7 @@ incr(void) {
 
 	do {
 		r = lockf(fd, F_LOCK, 0);
-	} while (r == -1 && errno == EINTR);
+	} while (r == -1 && errno == EINTR && done_testing == 0);
 	if (r == -1)
 		err(1, "lockf(%s, F_LOCK)", file);
 	if (read(fd, &sem, sizeof(sem)) != sizeof(sem))
@@ -132,8 +139,12 @@ test(void)
 	int sem = 0;
 
 	sprintf(file, "lockf.0.%d", getpid());
-	if ((fd = open(file,O_CREAT | O_TRUNC | O_RDWR, 0600)) == -1)
-		err(1, "creat(%s)", file);
+	if ((fd = open(file,O_CREAT | O_TRUNC | O_RDWR, 0600)) == -1) {
+		if (errno == ENOENT)
+			return (0);
+		else
+			err(1, "creat(%s) %s:%d", file, __FILE__, __LINE__);
+	}
 	if (write(fd, &sem, sizeof(sem)) != sizeof(sem))
 		err(1, "write");
 	if (lseek(fd, 0, SEEK_SET) == -1)
@@ -146,18 +157,19 @@ test(void)
 	}
 
 	if (pid == 0) {	/* child */
-		for (i = 0; i < 100; i++) {
-			while ((get() & 1) == 0)
+		alarm(60);
+		for (i = 0; i < 100 && done_testing == 0; i++) {
+			while ((get() & 1) == 0 && done_testing == 0)
 				;
 			if (op->verbose > 3)
 				printf("Child  %d, sem = %d\n", i, get()),
 					fflush(stdout);
 			incr();
 		}
-		exit(0);
+		_exit(0);
 	} else {	/* parent */
-		for (i = 0; i < 100; i++) {
-			while ((get() & 1) == 1)
+		for (i = 0; i < 100 && done_testing == 0; i++) {
+			while ((get() & 1) == 1 && done_testing == 0)
 				;
 			if (op->verbose > 3)
 				printf("Parent %d, sem = %d\n", i, get()),
@@ -166,6 +178,8 @@ test(void)
 		}
 	}
 	close(fd);
+	if (done_testing == 1)
+		kill(pid, SIGHUP);
 	waitpid(pid, &i, 0);
 	unlink(file);
 
