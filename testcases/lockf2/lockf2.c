@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <strings.h>
 #include <unistd.h>
 
-#include <stress.h>
+#include "stress.h"
 
 char file[128];
 int fd;
