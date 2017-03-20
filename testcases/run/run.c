@@ -70,16 +70,6 @@ clean(void)
 {
 	char buf[132];
 
-	/* cleanup after the syscall test */
-	snprintf(buf, sizeof(buf),
-		"cd %s; find . -type d -mtime -1 -exec chmod 777 {} \\;", op->wd);
-	(void)system(buf);
-	snprintf(buf, sizeof(buf),
-		"cd %s; find . -type f -mtime -1 -exec chmod 666 {} \\;", op->wd);
-	(void)system(buf);
-	snprintf(buf, sizeof(buf),
-		"cd %s; chflags \"nouappnd nouchg nouunlnk\" .", op->wd);
-	(void)system(buf);
 	snprintf(buf, sizeof(buf),
 		"cd %s; rm -rf syscall.[0-9]* fifo.[0-9]* creat.[0-9]* "
 		"p[0-9]*.d1 df lock", op->cd);
