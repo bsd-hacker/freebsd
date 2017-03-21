@@ -1,12 +1,6 @@
 # $FreeBSD$
 
-.POSIX:
-
 PROG	= sizes
-CC	= c99
-CFLAGS	= # none
+MAN1	= # none
 
-all: ${PROG}
-
-clean:
-	-rm ${PROG}
+.include <bsd.prog.mk>

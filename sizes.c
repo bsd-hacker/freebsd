@@ -79,7 +79,7 @@ typedef void (*func_ptr)(void);
 		printf("%-12s %12zd %12zd\n", #type,			\
 		    sizeof(type) * 8,					\
 		    offsetof(struct s_##t, t) * 8);			\
-	} while (0)					
+	} while (0)
 
 static void
 sizes(void)
@@ -87,10 +87,15 @@ sizes(void)
 	printf("type                 size    alignment\n");
 	printf("--------------------------------------\n");
 	describe(char);
+	describe(wchar_t);
 	describe(short);
 	describe(int);
 	describe(long);
 	describe(long long);
+	describe(int8_t);
+	describe(int16_t);
+	describe(int32_t);
+	describe(int64_t);
 	describe(intmax_t);
 	describe(float);
 	describe(double);
@@ -100,7 +105,9 @@ sizes(void)
 	describe(time_t);
 	describe(void_ptr);
 	describe(func_ptr);
-	describe(wchar_t);
+#if __STDC_VERSION__ >= 201112L
+	describe(max_align_t);
+#endif
 	describe(sig_atomic_t);
 }
 
