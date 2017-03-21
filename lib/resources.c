@@ -170,8 +170,6 @@ getdf(int64_t *block, int64_t *inode)
 			fprintf(stderr, "%s is waiting for lock file %s\n",
 			    getprogname(), lockpath);
 	}
-	if (lockfd != -1)
-		break;
 	fprintf(stderr, "%s. Removing stale %s\n", getprogname(), lockpath);
 	unlink(lockpath);
 	if (lockfd == -1)
