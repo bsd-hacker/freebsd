@@ -30,6 +30,9 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/wait.h>
+#include <sys/stat.h>
+
 #include <stdio.h>
 #include <signal.h>
 #include <unistd.h>
@@ -38,8 +41,6 @@ __FBSDID("$FreeBSD$");
 #include <time.h>
 #include <err.h>
 #include <errno.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
 
 #include "stress.h"
 
@@ -50,9 +51,9 @@ volatile int done_testing;
 static int cleanupcalled = 0;
 char *home;
 
-static	pid_t *r;
+static pid_t *r;
 
-void
+static void
 handler(int i __unused)
 {
 	int j;
@@ -77,21 +78,21 @@ handler(int i __unused)
 	}
 }
 
-void
+static void
 run_test_handler(int i __unused)
 {
 
 	done_testing = 1;
 }
 
-void
+static void
 exit_handler(int i __unused)
 {
 
-	exit(1);
+	_exit(1);
 }
 
-void
+static void
 callcleanup(void)
 {
 	if (cleanupcalled == 0)
@@ -103,6 +104,7 @@ static void
 run_tests(int i)
 {
 	time_t start;
+	int e;
 
 	signal(SIGHUP, run_test_handler);
 	signal(SIGINT, exit_handler);
@@ -111,21 +113,22 @@ run_tests(int i)
 	setup(i);
 	if ((strcmp(getprogname(), "run") != 0) && (op->nodelay == 0))
 		sleep(random_int(1,10));
+	e = 0;
 	start = time(NULL);
-	while (done_testing == 0 &&
+	while (done_testing == 0 && e == 0 &&
 			(time(NULL) - start) < op->run_time) {
-		test();
+		e = test();
 	}
 	callcleanup();
-	exit(EXIT_SUCCESS);
+	exit(e);
 }
 
 static void
 run_incarnations(void)
 {
-	int i;
-	int s;
+	int e, i, s;
 
+	e = 0;
 	signal(SIGHUP, handler);
 	for (i = 0; i < op->incarnations && done_testing == 0; i++) {
 		if ((r[i] = fork()) == 0) {
@@ -137,11 +140,14 @@ run_incarnations(void)
 			break;
 		}
 	}
-	for (i = 0; i < op->incarnations; i++)
+	for (i = 0; i < op->incarnations; i++) {
 		if (r[i] != 0 && waitpid(r[i], &s, 0) == -1)
 			warn("waitpid(%d), %s:%d", r[i], __FILE__, __LINE__);
+		if (s != 0)
+			e = 1;
+	}
 
-	exit(EXIT_SUCCESS);
+	exit(e);
 }
 
 static int
@@ -169,7 +175,7 @@ run_test(void)
 			(time(NULL) - start) < op->run_time) {
 		sleep(1);
 		if (waitpid(p, &status, WNOHANG) == p)
-			return (status);
+			return (status != 0);
 	}
 	if (kill(p, SIGHUP) == -1)
 		warn("kill(%d, SIGHUP), %s:%d", p, __FILE__, __LINE__);
@@ -177,7 +183,7 @@ run_test(void)
 	if (waitpid(p, &status, 0) == -1)
 		err(1, "waitpid(%d), %s:%d", p, __FILE__, __LINE__);
 
-	return (status);
+	return (status != 0);
 }
 
 int
