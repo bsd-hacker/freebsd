@@ -157,25 +157,23 @@ void cleanupdf()
 void
 getdf(int64_t *block, int64_t *inode)
 {
-	int i, j;
+	int i;
 	char buf[128];
 
 	snprintf(lockpath, sizeof(lockpath), "%s/lock", op->cd);
-	for (j = 0; j < 10; j++) {
-		for (i = 0; i < 10000; i++) {
-			if ((lockfd = open(lockpath,
-					O_CREAT | O_TRUNC | O_WRONLY | O_EXCL, 0644)) != -1)
-				break;
-			usleep(10000); /* sleep 1/100 sec */
-			if (i > 0 && i % 1000 == 0)
-				fprintf(stderr, "%s is waiting for lock file %s\n",
-				    getprogname(), lockpath);
-		}
-		if (lockfd != -1)
+	for (i = 0; i < 10000; i++) {
+		if ((lockfd = open(lockpath,
+				O_CREAT | O_TRUNC | O_WRONLY | O_EXCL, 0644)) != -1)
 			break;
-		fprintf(stderr, "%s. Removing stale %s\n", getprogname(), lockpath);
-		unlink(lockpath);
+		usleep(10000); /* sleep 1/100 sec */
+		if (i > 0 && i % 1000 == 0)
+			fprintf(stderr, "%s is waiting for lock file %s\n",
+			    getprogname(), lockpath);
 	}
+	if (lockfd != -1)
+		break;
+	fprintf(stderr, "%s. Removing stale %s\n", getprogname(), lockpath);
+	unlink(lockpath);
 	if (lockfd == -1)
 			errx(1, "%s. Can not create %s\n", getprogname(), lockpath);
 	snprintf(dfpath, sizeof(dfpath), "%s/df", op->cd);
