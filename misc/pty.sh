@@ -40,7 +40,7 @@
 
 . ../default.cfg
 
-kldstat -v | grep -q pty || { kldload pty || exit 1; }
+kldstat -v | grep -q pty || { kldload pty || exit 0; }
 
 here=`pwd`
 cd /tmp
