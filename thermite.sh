@@ -250,8 +250,8 @@ send_completed_email() {
 	[ -z "${emailsentfrom}" ] && return 0
 	local _body
 	local _subject
-	_subject="Snapshot builds completed"
-	_body="Weeee!"
+	_subject="$(hostname -s) snapshot builds completed"
+	_body="$(uname -r)"
 
 	printf "From: ${emailsentfrom}\nTo: ${emailgoesto}\nSubject: ${_subject}\n\n${_body}\n\n" \
 		| /usr/sbin/sendmail -oi -f ${emailsentfrom} ${emailgoesto}
