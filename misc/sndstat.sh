@@ -36,7 +36,7 @@
 
 . ../default.cfg
 
-[ -r /dev/sndstat ] || exit 1
+[ -r /dev/sndstat ] || exit 0
 
 here=`pwd`
 cd /tmp
