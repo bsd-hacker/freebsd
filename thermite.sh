@@ -1,6 +1,6 @@
 #!/bin/sh
 #-
-# Copyright (c) 2013-2015 The FreeBSD Foundation
+# Copyright (c) 2013-2017 The FreeBSD Foundation
 # Copyright (c) 2012, 2013 Glen Barber
 # All rights reserved.
 #
