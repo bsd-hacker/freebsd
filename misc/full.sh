@@ -37,6 +37,7 @@
 # Fixed by r310547.
 
 . ../default.cfg
+kldstat -v | grep -q pty || kldload pty # ignore any load failure
 
 mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint
 [ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart
