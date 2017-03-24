@@ -46,7 +46,6 @@ cd $odir
 for i in `jot 900`; do
 	date -f %s $((`date +%s` + `jot -r 1 -5 5`)) > /dev/null
 	sleep .`jot -r 1 1 9`
-	[ $i -eq 900 ] && echo XXX
 done &
 pid=$!
 
@@ -77,7 +76,7 @@ main(void)
     int result;
     struct timespec ts;
 
-    alarm(120);
+    alarm(600);
     result = sem_init(&sem, 0, 0);
     if (result)
         err(1, "sem_init");
