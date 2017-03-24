@@ -72,7 +72,8 @@ inodes(void)
 			buf.f_ffree = 9999;
 	flags = buf.f_flags & MNT_VISFLAGMASK;
 	if (op->verbose > 2)
-		printf("Free inodes on %s (%s): %jd\n", path, buf.f_mntonname, buf.f_ffree);
+		printf("Free inodes on %s (%s): %jd\n", path,
+		    buf.f_mntonname, buf.f_ffree);
 	return (buf.f_ffree);
 }
 
@@ -91,11 +92,13 @@ df(void)
 	if (statfs(path, &buf) < 0)
 		err(1, "statfs(%s)", path);
 	if (buf.f_bavail > (int64_t)buf.f_blocks || buf.f_bavail < 0) {
-		warnx("Corrupt statfs(%s). f_bavail = %jd!", path, buf.f_bavail);
+		warnx("Corrupt statfs(%s). f_bavail = %jd!", path,
+		    buf.f_bavail);
 		buf.f_bavail = 100;
 	}
 	if (op->verbose > 2)
-		printf("Free space on %s: %jd Mb\n", path, buf.f_bavail * buf.f_bsize / 1024 / 1024);
+		printf("Free space on %s: %jd Mb\n", path, buf.f_bavail *
+		    buf.f_bsize / 1024 / 1024);
 	return (buf.f_bavail * buf.f_bsize);
 }
 
@@ -157,36 +160,45 @@ void cleanupdf()
 void
 getdf(int64_t *block, int64_t *inode)
 {
-	int i;
+	int i, j;
 	char buf[128];
 
 	snprintf(lockpath, sizeof(lockpath), "%s/lock", op->cd);
-	for (i = 0; i < 10000; i++) {
-		if ((lockfd = open(lockpath,
-				O_CREAT | O_TRUNC | O_WRONLY | O_EXCL, 0644)) != -1)
+	for (j = 0; j < 2; j++) {
+		for (i = 0; i < 10000; i++) {
+			if ((lockfd = open(lockpath,
+			    O_CREAT | O_TRUNC | O_WRONLY |
+			    O_EXCL, 0644)) != -1)
+				break;
+			usleep(10000); /* sleep 1/100 sec */
+			if (i > 0 && i % 1000 == 0)
+				fprintf(stderr, "%s is waiting for lock file"
+				    " %s\n",
+				    getprogname(), lockpath);
+		}
+		if (lockfd != -1)
 			break;
-		usleep(10000); /* sleep 1/100 sec */
-		if (i > 0 && i % 1000 == 0)
-			fprintf(stderr, "%s is waiting for lock file %s\n",
-			    getprogname(), lockpath);
+		fprintf(stderr, "%s. Removing stale %s\n", getprogname(),
+		    lockpath);
+		unlink(lockpath);
 	}
-	fprintf(stderr, "%s. Removing stale %s\n", getprogname(), lockpath);
-	unlink(lockpath);
 	if (lockfd == -1)
-			errx(1, "%s. Can not create %s\n", getprogname(), lockpath);
+		errx(1, "%s. Can not create %s\n", getprogname(), lockpath);
 	snprintf(dfpath, sizeof(dfpath), "%s/df", op->cd);
 	if ((dffd = open(dfpath, O_RDWR, 0644)) == -1) {
 		if ((dffd = open(dfpath,
 				O_CREAT | O_TRUNC | O_WRONLY, 0644)) == -1) {
 			unlink(lockpath);
-			err(1, "creat(%s) %s:%d", dfpath, __FILE__, __LINE__);
+			err(1, "creat(%s) %s:%d", dfpath, __FILE__,
+			    __LINE__);
 		}
 		atexit(cleanupdf);
 		*block = df();
 		*inode = inodes();
 		snprintf(buf, sizeof(buf), "%jd %jd", *block, *inode);
 
-		if (write(dffd, buf, strlen(buf) + 1) != (ssize_t)strlen(buf) +1)
+		if (write(dffd, buf, strlen(buf) + 1) !=
+		    (ssize_t)strlen(buf) +1)
 			err(1, "write df. %s:%d", __FILE__, __LINE__);
 	} else {
 		if (read(dffd, buf, sizeof(buf)) < 1) {
@@ -207,7 +219,8 @@ reservedf(int64_t blks, int64_t inos)
 	int64_t blocks, inodes;
 
 	if ((dffd = open(dfpath, O_RDWR, 0644)) == -1) {
-		warn("open(%s) %s:%d. %s", dfpath, __FILE__, __LINE__, getprogname());
+		warn("open(%s) %s:%d. %s", dfpath, __FILE__, __LINE__,
+		    getprogname());
 		goto err;
 	}
 	if (read(dffd, buf, sizeof(buf)) < 1) {
@@ -218,13 +231,15 @@ reservedf(int64_t blks, int64_t inos)
 
 	if (op->verbose > 2)
 		printf("%-8s: reservefd(%9jdK, %6jd) out of (%9jdK, %6jd)\n",
-				getprogname(), blks/1024, inos, blocks/1024, inodes);
+				getprogname(), blks/1024, inos, blocks/1024,
+				inodes);
 	blocks -= blks;
 	inodes -= inos;
 
 	snprintf(buf, sizeof(buf), "%jd %jd", blocks, inodes);
 	if (blocks < 0 || inodes < 0)
-		printf("******************************** %s: %s\n", getprogname(), buf);
+		printf("******************************** %s: %s\n",
+		    getprogname(), buf);
 	if (lseek(dffd, 0, 0) == -1)
 		err(1, "lseek. %s:%d", __FILE__, __LINE__);
 	if (write(dffd, buf, strlen(buf) + 1) != (ssize_t)strlen(buf) +1)
