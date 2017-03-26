@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+.include <src.opts.mk>
+
 PACKAGE=lib${LIB}
 LIB=	md
 SHLIB_MAJOR= 6
@@ -99,6 +101,7 @@ CFLAGS+= -DSHA1_ASM
 SRCS+=	rmd160.S
 CFLAGS+= -DRMD160_ASM
 .endif
+.if ${MK_LLVM_AS_IS_AS} == "no"
 .if exists(${MACHINE_ARCH}/skein_block_asm.s)
 AFLAGS += --strip-local-absolute
 SRCS+= skein_block_asm.s
@@ -106,6 +109,7 @@ CFLAGS+= -DSKEIN_ASM -DSKEIN_USE_ASM=1792 # list of block functions to replace w
 .endif
 .if exists(${MACHINE_ARCH}/sha.S) || exists(${MACHINE_ARCH}/rmd160.S) || exists(${MACHINE_ARCH}/skein_block_asm.s)
 ACFLAGS+= -DELF -Wa,--noexecstack
+.endif
 .endif
 
 md4hl.c: mdXhl.c

@@ -12,7 +12,7 @@
 NO_WERROR.clang=
 .endif
 
-PROG=	as
+PROG=	gas
 SRCS+=	app.c \
 	as.c \
 	atof-generic.c \
@@ -96,5 +96,9 @@ DPADD=	${RELTOP}/libbfd/libbfd.a
 DPADD+=	${RELTOP}/libiberty/libiberty.a
 DPADD+=	${RELTOP}/libopcodes/libopcodes.a
 LDADD=	${DPADD}
+
+.if ${MK_LLVM_AS_IS_AS} == "no"
+LINKS=		${BINDIR}/gas ${BINDIR}/as
+.endif
 
 .include <bsd.prog.mk>
