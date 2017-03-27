@@ -3292,8 +3292,8 @@ iwn5000_rx_calib_results(struct iwn_softc *sc, struct iwn_rx_desc *desc,
 
 	/* Runtime firmware should not send such a notification. */
 	if (sc->sc_flags & IWN_FLAG_CALIB_DONE){
-		DPRINTF(sc, IWN_DEBUG_TRACE, "->%s received after clib done\n",
-	    __func__);
+		DPRINTF(sc, IWN_DEBUG_TRACE,
+		    "->%s received after calib done\n", __func__);
 		return;
 	}
 	len = (le32toh(desc->len) & 0x3fff) - 4;
@@ -3516,11 +3516,7 @@ iwn4965_tx_done(struct iwn_softc *sc, struct iwn_rx_desc *desc,
     struct iwn_rx_data *data)
 {
 	struct iwn4965_tx_stat *stat = (struct iwn4965_tx_stat *)(desc + 1);
-	struct iwn_tx_ring *ring;
-	int qid;
-
-	qid = desc->qid & 0xf;
-	ring = &sc->txq[qid];
+	int qid = desc->qid & 0xf;
 
 	DPRINTF(sc, IWN_DEBUG_XMIT, "%s: "
 	    "qid %d idx %d RTS retries %d ACK retries %d nkill %d rate %x duration %d status %x\n",
@@ -3531,7 +3527,6 @@ iwn4965_tx_done(struct iwn_softc *sc, struct iwn_rx_desc *desc,
 	    stat->rate, le16toh(stat->duration),
 	    le32toh(stat->status));
 
-	bus_dmamap_sync(ring->data_dmat, data->map, BUS_DMASYNC_POSTREAD);
 	if (qid >= sc->firstaggqueue) {
 		iwn_ampdu_tx_done(sc, qid, desc->idx, stat->nframes,
 		    stat->rtsfailcnt, stat->ackfailcnt, &stat->status);
@@ -3546,11 +3541,7 @@ iwn5000_tx_done(struct iwn_softc *sc, struct iwn_rx_desc *desc,
     struct iwn_rx_data *data)
 {
 	struct iwn5000_tx_stat *stat = (struct iwn5000_tx_stat *)(desc + 1);
-	struct iwn_tx_ring *ring;
-	int qid;
-
-	qid = desc->qid & 0xf;
-	ring = &sc->txq[qid];
+	int qid = desc->qid & 0xf;
 
 	DPRINTF(sc, IWN_DEBUG_XMIT, "%s: "
 	    "qid %d idx %d RTS retries %d ACK retries %d nkill %d rate %x duration %d status %x\n",
@@ -3566,7 +3557,6 @@ iwn5000_tx_done(struct iwn_softc *sc, struct iwn_rx_desc *desc,
 	iwn5000_reset_sched(sc, desc->qid & 0xf, desc->idx);
 #endif
 
-	bus_dmamap_sync(ring->data_dmat, data->map, BUS_DMASYNC_POSTREAD);
 	if (qid >= sc->firstaggqueue) {
 		iwn_ampdu_tx_done(sc, qid, desc->idx, stat->nframes,
 		    stat->rtsfailcnt, stat->ackfailcnt, &stat->status);
@@ -4749,9 +4739,19 @@ iwn_tx_cmd(struct iwn_softc *sc, struct mbuf *m, struct ieee80211_node *ni,
 		error = bus_dmamap_load_mbuf_sg(ring->data_dmat, data->map, m,
 		    segs, &nsegs, BUS_DMA_NOWAIT);
 		if (error != 0) {
+			/* XXX fix this */
+			/*
+			 * NB: Do not return error;
+			 * original mbuf does not exist anymore.
+			 */
 			device_printf(sc->sc_dev,
-			    "%s: can't map mbuf (error %d)\n", __func__, error);
-			return error;
+			    "%s: can't map mbuf (error %d)\n",
+			    __func__, error);
+			if_inc_counter(ni->ni_vap->iv_ifp,
+			    IFCOUNTER_OERRORS, 1);
+			ieee80211_free_node(ni);
+			m_freem(m);
+			return 0;
 		}
 	}
 
