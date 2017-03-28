@@ -38,8 +38,6 @@ CFLAGS=	-fomit-frame-pointer \
 	-Winline
 
 CFLAGS.gcc+=	-Os \
-		-fno-guess-branch-probability \
-		-fno-unit-at-a-time \
 		--param max-inline-insns-single=100
 .if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} <= 40201
 CFLAGS.gcc+=   -mno-align-long-strings
@@ -69,9 +67,9 @@ CLEANFILES+=	boot2 boot2.ld boot2.ldr boot2.bin boot2.out boot2.o \
 		boot2.h sio.o
 
 boot2: boot2.ld
-	@set -- `ls -l boot2.ld`; x=$$((7680-$$5)); \
+	@set -- `ls -l ${.ALLSRC}`; x=$$((7680-$$5)); \
 	    echo "$$x bytes available"; test $$x -ge 0
-	${DD} if=boot2.ld of=${.TARGET} obs=7680 conv=osync
+	${DD} if=${.ALLSRC} of=${.TARGET} obs=7680 conv=osync
 
 boot2.ld: boot2.ldr boot2.bin ${BTXKERN}
 	btxld -v -E ${ORG2} -f bin -b ${BTXKERN} -l boot2.ldr \
