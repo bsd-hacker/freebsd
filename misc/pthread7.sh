@@ -31,13 +31,12 @@
 # PTHREAD_PRIO_INHERIT version of pthread2.sh
 
 . ../default.cfg
-[ `swapinfo | wc -l` -eq 1 ] && exit 0 # kstack allocation failed
 
 export LANG=C
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > pthread7.c
-mycc -o pthread7 -Wall -Wextra -O2 -g -gdwarf-2 pthread7.c -lpthread || exit 1
+mycc -o pthread7 -Wall -Wextra -O2 -g pthread7.c -lpthread || exit 1
 rm -f pthread7.c
 
 for i in `jot 5`; do
@@ -81,7 +80,7 @@ EOF
 #define	WAIT(x)		pwait(&x.wait, &x.mtx)
 
 long ncreate, nrename, nunlink;
-int bench, max;
+int max;
 char *dirname1;
 char *dirname2;
 
@@ -99,6 +98,8 @@ struct files {
 static struct files newfiles;
 static struct files renamedfiles;
 
+#define MAXQ 100000		/* Max create queue length */
+#define MESSAGES 10000000;
 
 static void
 hand(int i __unused) {	/* handler */
@@ -152,7 +153,7 @@ pwait(pthread_cond_t *c, pthread_mutex_t *l)
 void *
 loop_create(void *arg __unused)
 {
-	int i, j;
+	int i;
 	struct file *file;
 
 #ifdef __NP__
@@ -167,9 +168,8 @@ loop_create(void *arg __unused)
 		ncreate++;
 		UNLOCK(newfiles);
 		SIGNAL(newfiles);
-		if ((bench == 0) && (i > 0) && (i % 100000 == 0))
-			for (j = 0; j < 10 && ncreate != nrename; j++)
-				usleep(400);
+		if (ncreate - nrename > MAXQ)
+			usleep(400);
 	}
 	return (NULL);
 }
@@ -237,10 +237,9 @@ main(void)
 	pthread_t tid[3];
 	pthread_mutexattr_t attr, *pattr = NULL;
 
-	bench = getenv("bench") != NULL;
 	asprintf(&dirname1, "%s.1", "f1");
 	asprintf(&dirname2, "%s.2", "f2");
-	max = 15000000;
+	max = MESSAGES;
 
 	STAILQ_INIT(&newfiles.list);
 	STAILQ_INIT(&renamedfiles.list);
@@ -260,7 +259,7 @@ main(void)
 
 	signal(SIGINFO, hand);
 	signal(SIGALRM, ahand);
-	alarm(400);
+	alarm(300);
 	if ((rc = pthread_create(&tid[0], NULL, loop_create, NULL)) != 0)
 		errc(1, rc, "pthread_create()");
 	if ((rc = pthread_create(&tid[1], NULL, loop_rename, NULL)) != 0)

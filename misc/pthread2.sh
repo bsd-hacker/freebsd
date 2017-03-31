@@ -46,9 +46,7 @@ for i in `jot 5`; do
 	for i in `jot 8`; do
 		/tmp/pthread2 &
 	done
-	for i in `jot 8`; do
-		wait
-	done
+	wait
 	'
 done > $log 2>&1
 rm -f /tmp/pthread2
@@ -115,6 +113,8 @@ struct files {
 static struct files newfiles;
 static struct files renamedfiles;
 
+#define MAXQ 100000		/* Max create queue length */
+#define MESSAGES 10000000;
 
 static void
 hand(int i __unused) {	/* handler */
@@ -168,7 +168,7 @@ pwait(pthread_cond_t *c, pthread_mutex_t *l)
 void *
 loop_create(void *arg __unused)
 {
-	int i, j;
+	int i;
 	struct file *file;
 
 #ifdef __NP__
@@ -183,9 +183,8 @@ loop_create(void *arg __unused)
 		ncreate++;
 		UNLOCK(newfiles);
 		SIGNAL(newfiles);
-		if ((bench == 0) && (i > 0) && (i % 100000 == 0))
-			for (j = 0; j < 10 && ncreate != nrename; j++)
-				usleep(400);
+		if (ncreate - nrename > MAXQ)
+			usleep(400);
 	}
 	return (NULL);
 }
@@ -255,7 +254,7 @@ main(void)
 	bench = getenv("bench") != NULL;
 	asprintf(&dirname1, "%s.1", "f1");
 	asprintf(&dirname2, "%s.2", "f2");
-	max = 15000000;
+	max = MESSAGES;
 
 	STAILQ_INIT(&newfiles.list);
 	STAILQ_INIT(&renamedfiles.list);
