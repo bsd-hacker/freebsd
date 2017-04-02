@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Oleksandr Tymoshenko <gonzo@freebsd.org>
+ * Copyright (c) 2016 Eric McCorkle
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,54 +22,43 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- * 
+ *
  * $FreeBSD$
  */
 
+#ifndef _INTAKE_H_
+#define _INTAKE_H_
 
-#include "am335x-boneblack.dts"
-#include "beaglebone-common.dtsi"
+#include  <sys/param.h>
 
-&am33xx_pinmux {
-	i2c1_pins: pinmux_i2c1_pins {
-		pinctrl-single,pins = <
-			AM33XX_IOPAD(0x958, PIN_INPUT_PULLUP | MUX_MODE2)	/* spi0_d1.i2c1_sda */
-			AM33XX_IOPAD(0x95c, PIN_INPUT_PULLUP | MUX_MODE2)	/* spi0_cs0.i2c1_scl */
-		>;
-	};
+/*
+ * This file provides an interface for providing keys to the kernel
+ * during boot time.
+ */
 
-	spi1_pins: pinmux_spi1_pins {
-		pinctrl-single,pins = <
-			AM33XX_IOPAD(0x964, PIN_INPUT_PULLUP | MUX_MODE2)	/* eCAP0_in_PWM0_out.spi1_cs1 */
-			AM33XX_IOPAD(0x990, PIN_INPUT_PULLDOWN | MUX_MODE3)	/* mcasp0_aclkx.spi1_sclk */
-			AM33XX_IOPAD(0x994, PIN_INPUT_PULLDOWN | MUX_MODE3)	/* mcasp0_fsx.spi1_d0 - miso */
-			AM33XX_IOPAD(0x998, PIN_INPUT_PULLUP | MUX_MODE3)	/* mcasp0_axr0.spi1_d1  - mosi */
-			AM33XX_IOPAD(0x99c, PIN_INPUT_PULLUP | MUX_MODE3)	/* mcasp0_ahclkr.spi1_cs0 */
-		>;
-	};
+#define MAX_KEY_BITS	4096
+#define	MAX_KEY_BYTES	(MAX_KEY_BITS / NBBY)
+
+#define KEYBUF_SENTINEL	0xcee54b5d	/* KEYS4BSD */
+
+enum {
+        KEYBUF_TYPE_NONE,
+        KEYBUF_TYPE_GELI
 };
 
-&i2c1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c1_pins>;
-
-	status = "okay";
+struct keybuf_ent {
+        unsigned int ke_type;
+        char ke_data[MAX_KEY_BYTES];
 };
 
-&i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins>;
-
-	status = "okay";
+struct keybuf {
+        unsigned int kb_nents;
+        struct keybuf_ent kb_ents[];
 };
 
-&spi1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi1_pins>;
+#ifdef _KERNEL
+/* Get the key intake buffer */
+extern struct keybuf* get_keybuf(void);
+#endif
 
-	status = "okay";
-};
-
-&lcdc {
-	hdmi = <&tda19988>;
-};
+#endif
