@@ -46,11 +46,11 @@ dd if=/dev/zero of=$diskimage bs=1m count=10 2>&1 | \
 /tmp/db $diskimage &
 
 start=`date '+%s'`
-ls -l $diskimage > /dev/null
-[ `date '+%s'` -gt $((start + 90)) ] && { fail="yes"; echo FAIL; }
+ls -l $diskimage > /dev/null # Will wait for more than 90 seconds
+[ `date '+%s'` -gt $((start + 90)) ] && fail="yes"
 wait
 rm -f /tmp/db $diskimage
-[ "$fail" = "yes" ] && exit 1 || exit 0
+[ $fail ] && exit 1 || exit 0
 
 EOF
 #include <sys/types.h>
