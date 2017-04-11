@@ -30,7 +30,10 @@
 
 # Copy of mmap10.sh with core dump disabled.
 # http://people.freebsd.org/~pho/stress/log/kostik711.txt
+
+# panic: vm_fault_copy_entry: main object missing page
 # http://people.freebsd.org/~pho/stress/log/mmap18.txt
+# Fixed by: r316689
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -42,16 +45,14 @@ sed '1,/^EOF/d' < $here/$0 > mmap18.c
 mycc -o mmap18 -Wall -Wextra -O2 mmap18.c -lpthread || exit 1
 rm -f mmap18.c
 
-daemon sh -c "(cd $here/../testcases/swap; ./swap -t 2m -i 20 -k)"
-rnd=`od -An -N1 -t u1 /dev/random | sed 's/ //g'`
-sleep $((rnd % 10))
-for i in `jot 2`; do
-	/tmp/mmap18
+s=0
+wire=$((`sysctl -n vm.max_wired` - `sysctl -n vm.stats.vm.v_wire_count`))
+for i in `jot 5`; do
+	/tmp/mmap18 `sysctl -n vm.max_wired` || s=1
 done
-killall -q swap
 
 rm -f /tmp/mmap18 /tmp/mmap18.core
-exit 0
+exit $s
 EOF
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -77,10 +78,10 @@ EOF
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
 #define PARALLEL 50
 
-u_int32_t r[N];
-void *p;
+static u_int32_t r[N];
+static void *p;
 
-unsigned long
+static unsigned long
 makearg(void)
 {
 	unsigned long val;
@@ -102,10 +103,10 @@ makearg(void)
 	}
 #endif
 
-	return(val);
+	return (val);
 }
 
-void *
+static void *
 makeptr(void)
 {
 	unsigned long val;
@@ -119,7 +120,7 @@ makeptr(void)
 	return ((void *)val);
 }
 
-void *
+static void *
 tmmap(void *arg __unused)
 {
 	size_t len;
@@ -138,8 +139,8 @@ tmmap(void *arg __unused)
 			munmap(p, len);
 		}
 
-		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON, -1,
-		    0)) != MAP_FAILED) {
+		if ((p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON,
+		    -1, 0)) != MAP_FAILED) {
 			usleep(100);
 			munmap(p, len);
 		}
@@ -149,7 +150,7 @@ tmmap(void *arg __unused)
 	return (NULL);
 }
 
-void *
+static void *
 tmlock(void *arg __unused)
 {
 	int i, n;
@@ -167,16 +168,16 @@ tmlock(void *arg __unused)
 				n++;
 	}
 	if (n < 10)
-		fprintf(stderr, "Note: tmlock() only succeeded %d times.\n",
-		    n);
+		fprintf(stderr, "Note: tmlock() only succeeded %d "
+		    "times.\n", n);
 
 	return (NULL);
 }
 
-void *
+static void *
 tmprotect(void *arg __unused)
 {
-	const void *addr;
+	void *addr;
 	size_t len;
 	int i, n, prot;
 
@@ -191,13 +192,13 @@ tmprotect(void *arg __unused)
 		usleep(1000);
 	}
 	if (n < 10)
-		fprintf(stderr, "Note: tmprotect() only succeeded %d times.\n",
-		    n);
+		fprintf(stderr, "Note: tmprotect() only succeeded %d "
+		    "times.\n", n);
 
 	return (NULL);
 }
 
-void *
+static void *
 tmlockall(void *arg __unused)
 {
 	int flags, i, n;
@@ -213,13 +214,13 @@ tmlockall(void *arg __unused)
 		usleep(1000);
 	}
 	if (n < 10)
-		fprintf(stderr, "Note: tmlockall() only succeeded %d times.\n",
-		    n);
+		fprintf(stderr, "Note: tmlockall() only succeeded %d "
+		    "times.\n", n);
 
 	return (NULL);
 }
 
-void
+static void
 test(void)
 {
 	pthread_t tid[4];
@@ -249,14 +250,31 @@ test(void)
 }
 
 int
-main(void)
+main(int argc, char *argv[])
 {
 	struct rlimit rl;
+	rlim_t maxlock;
 	int i, j;
 
+	if (argc != 2) {
+		fprintf(stderr, "Usage:%s <max pages to lock.>\n", argv[0]);
+		exit(1);
+	}
 	rl.rlim_max = rl.rlim_cur = 0;
 	if (setrlimit(RLIMIT_CORE, &rl) == -1)
 		warn("setrlimit");
+
+	if (getrlimit(RLIMIT_MEMLOCK, &rl) == -1)
+		warn("getrlimit");
+	maxlock = atol(argv[1]);
+	if (maxlock == 0)
+		errx(1, "Argument is zero");
+	maxlock = (maxlock / 10 * 8) / PARALLEL * PAGE_SIZE;
+	if (maxlock < rl.rlim_cur) {
+		rl.rlim_max = rl.rlim_cur = maxlock;
+		if (setrlimit(RLIMIT_MEMLOCK, &rl) == -1)
+			warn("setrlimit");
+	}
 
 	for (i = 0; i < N; i++)
 		r[i] = arc4random();
