@@ -1,0 +1,170 @@
+# $FreeBSD$
+--- start template ---
+
+%%SBRANCH%% = "stable/%%MAJOR%%
+%%MAJOR%%   = "X" in "X.Y"
+%%MINOR%%   = "Y" in "X.Y"
+%%PREV%%    = "X-1.Y-RELEASE"
+%%VERSION%% = X.Y
+%%BRANCH%%  = BETA1, BETA2, etc.
+%%WHICH%%   = first, second, etc.
+%%WHAT%%    = ALPHA, BETA, RC, etc.
+%%LAST%%    = X.Y-BETAN-1, X.Y-RCN-1
+
+!!!IMPORTANT!!!
+Look for the 'XXX' sections and fill in appropriately.
+
+---- end template ----
+
+To: freebsd-current@FreeBSD.org, freebsd-stable@FreeBSD.org
+Cc: re@FreeBSD.org
+Subject: FreeBSD %%VERSION%%-%%BRANCH%% Now Available
+
+The %%WHICH%% %%WHAT%% build of the %%VERSION%%-RELEASE release cycle is now available.
+
+Installation images are available for:
+
+# XXX # UPDATE THIS WITH REALITY
+o amd64 GENERIC
+o i386 GENERIC
+o powerpc GENERIC
+o powerpc64 GENERIC64
+o sparc64 GENERIC
+o armv6 BEAGLEBONE
+o armv6 CUBOX-HUMMINGBOARD
+o armv6 GUMSTIX
+o armv6 PANDABOARD
+o armv6 RPI-B
+o armv6 WANDBOARD
+# END # UPDATE THIS WITH REALITY
+
+Note regarding arm/armv6 images: For convenience for those without
+console access to the system, a freebsd user with a password of
+freebsd is available by default for ssh(1) access.  Additionally,
+the root user password is set to root, which it is strongly
+recommended to change the password for both users after gaining
+access to the system.
+
+Installer images and memory stick images are available here:
+
+    ftp://ftp.freebsd.org/pub/FreeBSD/releases/ISO-IMAGES/%%VERSION%%/
+
+The image checksums follow at the end of this e-mail.
+
+If you notice problems you can report them through the Bugzilla PR
+system or on the -stable mailing list.
+
+If you would like to use SVN to do a source based update of an existing
+system, use the "%%SBRANCH%%" branch.
+
+XXX: If BETA1, remove this.  For non-BETA1, fill in the change list.
+A summary of changes since %%LAST%% includes:
+XXX: Insert change list here
+
+A list of changes since %%PREV%% are available on the %%SBRANCH%%
+release notes:
+
+XXX: If -CURRENT, exclude %%MAJOR%%.
+XXX: If in -RC phase, use the second URL.
+
+    https://www.freebsd.org/relnotes/%%MAJOR%%-%%BRANCH%%/relnotes/article.html
+    https://www.freebsd.org/releases/%%VERSION%%R/relnotes.html
+
+Please note, the release notes page is not yet complete, and will be
+updated on an ongoing basis as the %%VERSION%%-RELEASE cycle progresses.
+
+=== Virtual Machine Disk Images ===
+
+VM disk images are available for the amd64 and i386 architectures.
+Disk images may be downloaded from the following URL (or any of the
+FreeBSD FTP mirrors):
+
+    ftp://ftp.freebsd.org/pub/FreeBSD/releases/VM-IMAGES/%%VERSION%%-%%BRANCH%%/
+
+The partition layout is:
+
+    ~ 16 kB - freebsd-boot GPT partition type (bootfs GPT label)
+    ~ 1 GB  - freebsd-swap GPT partition type (swapfs GPT label)
+    ~ 20 GB - freebsd-ufs GPT partition type (rootfs GPT label)
+
+The disk images are available in QCOW2, VHD, VMDK, and raw disk image
+formats.  The image download size is approximately 135 MB and 165 MB
+respectively (amd64/i386), decompressing to a 21 GB sparse image.
+
+Note regarding arm64/aarch64 virtual machine images: a modified QEMU EFI
+loader file is needed for qemu-system-aarch64 to be able to boot the
+virtual machine images.  See this page for more information:
+
+    https://wiki.freebsd.org/arm64/QEMU
+
+To boot the VM image, run:
+
+    % qemu-system-aarch64 -m 4096M -cpu cortex-a57 -M virt  \
+	-bios QEMU_EFI.fd -serial telnet::4444,server -nographic \
+	-drive if=none,file=VMDISK,id=hd0 \
+	-device virtio-blk-device,drive=hd0 \
+	-device virtio-net-device,netdev=net0 \
+	-netdev user,id=net0
+
+Be sure to replace "VMDISK" with the path to the virtual machine image.
+
+=== Amazon EC2 AMI Images ===
+
+FreeBSD/amd64 EC2 AMIs are available in the following regions:
+
+XXX: grab the AMI IDs from the thermite.sh log
+
+=== Vagrant Images ===
+
+FreeBSD/amd64 images are available on the Hashicorp Atlas site, and can
+be installed by running:
+
+    % vagrant init freebsd/FreeBSD-%%VERSION%%-%%BRANCH%%
+    % vagrant up
+
+=== Upgrading ===
+
+The freebsd-update(8) utility supports binary upgrades of amd64 and i386
+systems running earlier FreeBSD releases.  Systems running earlier
+FreeBSD releases can upgrade as follows:
+
+	# freebsd-update upgrade -r %%VERSION%%-%%BRANCH%%
+
+During this process, freebsd-update(8) may ask the user to help by
+merging some configuration files or by confirming that the automatically
+performed merging was done correctly.
+
+	# freebsd-update install
+
+The system must be rebooted with the newly installed kernel before
+continuing.
+
+	# shutdown -r now
+
+After rebooting, freebsd-update needs to be run again to install the new
+userland components:
+
+	# freebsd-update install
+
+It is recommended to rebuild and install all applications if possible,
+especially if upgrading from an earlier FreeBSD release, for example,
+FreeBSD 10.x.  Alternatively, the user can install misc/compat10x and
+other compatibility libraries, afterwards the system must be rebooted
+into the new userland:
+
+	# shutdown -r now
+
+Finally, after rebooting, freebsd-update needs to be run again to remove
+stale files:
+
+	# freebsd-update install
+
+== ISO CHECKSUMS ==
+
+XXX: Insert checksums here
+
+== VM IMAGE CHECKSUMS ==
+
+XXX: Insert checksums here
+
+
