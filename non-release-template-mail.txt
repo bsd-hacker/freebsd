@@ -41,9 +41,9 @@ o armv6 WANDBOARD
 Note regarding arm/armv6 images: For convenience for those without
 console access to the system, a freebsd user with a password of
 freebsd is available by default for ssh(1) access.  Additionally,
-the root user password is set to root, which it is strongly
-recommended to change the password for both users after gaining
-access to the system.
+the root user password is set to root.  It is strongly recommended
+to change the password for both users after gaining access to the
+system.
 
 Installer images and memory stick images are available here:
 
