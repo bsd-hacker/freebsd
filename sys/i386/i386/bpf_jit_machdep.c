@@ -37,9 +37,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
-#include <sys/mbuf.h>
 #include <sys/socket.h>
 #include <sys/malloc.h>
+#include <sys/mbuf.h>
 #include <net/if.h>
 #else
 #include <stdlib.h>
@@ -54,8 +54,6 @@ __FBSDID("$FreeBSD$");
 #include <net/bpf_jitter.h>
 
 #include <i386/i386/bpf_jit_machdep.h>
-
-bpf_filter_func	bpf_jit_compile(struct bpf_insn *, u_int, size_t *);
 
 /*
  * Emit routine to update the jump table.

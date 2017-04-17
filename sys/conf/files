@@ -591,6 +591,7 @@ crypto/blowfish/bf_ecb.c	optional ipsec | ipsec_support
 crypto/blowfish/bf_skey.c	optional crypto | ipsec | ipsec_support
 crypto/camellia/camellia.c	optional crypto | ipsec | ipsec_support
 crypto/camellia/camellia-api.c	optional crypto | ipsec | ipsec_support
+crypto/chacha20/chacha20.c	optional chacha20
 crypto/des/des_ecb.c		optional crypto | ipsec | ipsec_support | netsmb
 crypto/des/des_setkey.c		optional crypto | ipsec | ipsec_support | netsmb
 crypto/rc4/rc4.c		optional netgraph_mppc_encryption | kgssapi
@@ -3809,6 +3810,7 @@ kgssapi/gsstest.c		optional kgssapi_debug
 # the file should be moved to conf/files.<arch> from here.
 #
 libkern/arc4random.c		standard
+crypto/chacha20/chacha.c	standard
 libkern/asprintf.c		standard
 libkern/bcd.c			standard
 libkern/bsearch.c		standard
@@ -4230,6 +4232,8 @@ netpfil/ipfw/nptv6/ip_fw_nptv6.c	optional inet inet6 ipfirewall \
 	ipfirewall_nptv6
 netpfil/ipfw/nptv6/nptv6.c	optional inet inet6 ipfirewall \
 	ipfirewall_nptv6
+netpfil/ipfw/pmod/ip_fw_pmod.c	optional inet ipfirewall_pmod
+netpfil/ipfw/pmod/tcpmod.c	optional inet ipfirewall_pmod
 netpfil/pf/if_pflog.c		optional pflog pf inet
 netpfil/pf/if_pfsync.c		optional pfsync pf inet
 netpfil/pf/pf.c			optional pf inet
@@ -4593,6 +4597,7 @@ rpc/rpcsec_gss/svc_rpcsec_gss.c	optional krpc kgssapi | nfslockd kgssapi | nfscl
 security/audit/audit.c		optional audit
 security/audit/audit_arg.c	optional audit
 security/audit/audit_bsm.c	optional audit
+security/audit/audit_bsm_db.c	optional audit
 security/audit/audit_bsm_klib.c	optional audit
 security/audit/audit_dtrace.c	optional dtaudit audit | dtraceall audit compile-with "${CDDL_C}"
 security/audit/audit_pipe.c	optional audit
