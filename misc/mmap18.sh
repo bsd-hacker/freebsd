@@ -48,7 +48,7 @@ rm -f mmap18.c
 s=0
 wire=$((`sysctl -n vm.max_wired` - `sysctl -n vm.stats.vm.v_wire_count`))
 for i in `jot 5`; do
-	/tmp/mmap18 `sysctl -n vm.max_wired` || s=1
+	/tmp/mmap18 $wire || s=1
 done
 
 rm -f /tmp/mmap18 /tmp/mmap18.core
