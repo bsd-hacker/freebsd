@@ -43,11 +43,6 @@
 # panic: vm_page_dirty: page is invalid!
 # https://people.freebsd.org/~pho/stress/log/kostik818.txt
 
-# i386 livelock
-# https://people.freebsd.org/~pho/stress/log/mmap14.txt
-
-[ `uname -m` = "i386" ] || exit 0 # Waiting for mmap14.txt
-
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
@@ -59,18 +54,21 @@ mycc -o mmap14 -Wall -Wextra -O2 -g mmap14.c -lpthread || exit 1
 rm -f mmap14.c
 
 daemon sh -c "(cd $here/../testcases/swap; ./swap -t 2m -i 20 -k -h)"
-rnd=`od -An -N1 -t u1 /dev/random | sed 's/ //g'`
-sleep $((rnd % 10))
+sleep `jot -r 1 1 10`
+wire=$((`sysctl -n vm.max_wired` - `sysctl -n vm.stats.vm.v_wire_count`))
 for i in `jot 2`; do
-	/tmp/mmap14
+	/tmp/mmap14 $wire
 done
-killall -q swap
+while pgrep -q swap; do
+	pkill -9 swap
+done
 
 rm -f /tmp/mmap14 /tmp/mmap14.core
 exit 0
 EOF
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -92,10 +90,10 @@ EOF
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
 #define PARALLEL 50
 
-void *p;
-u_int32_t r[N];
+static void *p;
+static u_int32_t r[N];
 
-unsigned long
+static unsigned long
 makearg(void)
 {
 	unsigned long val;
@@ -120,7 +118,7 @@ makearg(void)
 	return(val);
 }
 
-void *
+static void *
 makeptr(void)
 {
 	unsigned long val;
@@ -134,7 +132,7 @@ makeptr(void)
 	return ((void *)val);
 }
 
-void *
+static void *
 tmmap(void *arg __unused)
 {
 	size_t len;
@@ -164,7 +162,7 @@ tmmap(void *arg __unused)
 	return (NULL);
 }
 
-void *
+static void *
 tmlock(void *arg __unused)
 {
 	size_t len;
@@ -188,7 +186,7 @@ tmlock(void *arg __unused)
 	return (NULL);
 }
 
-void
+static void
 test(void)
 {
 	pthread_t tid[4];
@@ -216,9 +214,27 @@ test(void)
 }
 
 int
-main(void)
+main(int argc, char *argv[])
 {
+	struct rlimit rl;
+	rlim_t maxlock;
 	int i, j;
+
+	if (argc != 2) {
+		fprintf(stderr, "Usage:%s <max pages to lock.>\n", argv[0]);
+		exit(1);
+	}
+	if (getrlimit(RLIMIT_MEMLOCK, &rl) == -1)
+		warn("getrlimit");
+	maxlock = atol(argv[1]);
+	if (maxlock == 0)
+		errx(1, "Argument is zero");
+	maxlock = (maxlock / 10 * 8) / PARALLEL * PAGE_SIZE;
+	if (maxlock < rl.rlim_cur) {
+		rl.rlim_max = rl.rlim_cur = maxlock;
+		if (setrlimit(RLIMIT_MEMLOCK, &rl) == -1)
+			warn("setrlimit");
+	}
 
 	for (i = 0; i < N; i++)
 		r[i] = arc4random();
