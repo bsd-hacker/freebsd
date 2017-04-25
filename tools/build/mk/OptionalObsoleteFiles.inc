@@ -870,7 +870,6 @@ OLD_FILES+=usr/share/man/man3/snmp_trace.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_value_copy.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_value_free.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_value_parse.3.gz
-OLD_FILES+=usr/share/man/man3/tree.3.gz
 OLD_FILES+=usr/share/man/man3/tree_size.3.gz
 # usr.sbin/bsnmpd/bsnmpd
 OLD_FILES+=usr/share/man/man3/FIND_OBJECT_INT.3.gz
@@ -2432,7 +2431,7 @@ OLD_FILES+=usr/bin/gcov
 OLD_FILES+=usr/share/man/man1/gcov.1.gz
 .endif
 
-.if ${MK_GDB} == no
+.if ${MK_GDB} == no || ${MK_GDB_LIBEXEC} == yes
 OLD_FILES+=usr/bin/gdb
 OLD_FILES+=usr/bin/gdbserver
 OLD_FILES+=usr/bin/gdbtui
@@ -2440,6 +2439,11 @@ OLD_FILES+=usr/bin/kgdb
 OLD_FILES+=usr/share/man/man1/gdb.1.gz
 OLD_FILES+=usr/share/man/man1/gdbserver.1.gz
 OLD_FILES+=usr/share/man/man1/kgdb.1.gz
+.endif
+
+.if ${MK_GDB} == no || ${MK_GDB_LIBEXEC} == no
+OLD_FILES+=usr/libexec/gdb
+OLD_FILES+=usr/libexec/kgdb
 .endif
 
 .if ${MK_GPIO} == no
