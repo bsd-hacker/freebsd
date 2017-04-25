@@ -29,6 +29,7 @@
 #
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 # Has shown a deadlock after 7 hours of testing
 # https://people.freebsd.org/~pho/stress/log/quota4.txt
@@ -39,23 +40,28 @@ D=$diskimage
 trap "rm -f $D" 0
 dede $D 1m 1k || exit 1
 
-mount | grep "${mntpoint}" | grep md${mdstart}${part} > /dev/null && umount ${mntpoint}
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount \
+    $mntpoint
 mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
 
 mdconfig -a -t vnode -f $D -u ${mdstart}
 bsdlabel -w md${mdstart} auto
-newfs $newfs_flags  md${mdstart}${part} > /dev/null
-echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" >> /etc/fstab
-mount ${mntpoint}
-edquota -u -f ${mntpoint} -e ${mntpoint}:850000:900000:130000:140000 root > /dev/null 2>&1
-quotaon ${mntpoint}
+newfs $newfs_flags  md${mdstart}$part > /dev/null
+echo "/dev/md${mdstart}$part $mntpoint ufs rw,userquota 2 2" >> \
+    /etc/fstab
+mount $mntpoint
+edquota -u -f $mntpoint -e ${mntpoint}:850000:900000:130000:140000 root \
+    > /dev/null 2>&1
+quotaon $mntpoint
 sed -i -e "/md${mdstart}${part}/d" /etc/fstab	# clean up before any panics
 export RUNDIR=${mntpoint}/stressX
-../testcases/rw/rw -t 2m -i 200 -h -n -v -v&
+../testcases/rw/rw -t 2m -i 200 -h -n 2>/dev/null &
 sleep 60
 false
-while mount | grep -q ${mntpoint}; do
-	umount $([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f" || echo "") ${mntpoint} > /dev/null 2>&1
+while mount | grep -q $mntpoint; do
+	umount $([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f" || echo "") \
+	    $mntpoint > /dev/null 2>&1
 done
 mdconfig -d -u ${mdstart}
 rm -f $D
+exit 0

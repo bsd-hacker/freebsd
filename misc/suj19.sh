@@ -31,6 +31,7 @@
 # SUJ, quota and snapshots test scenario
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 . ../default.cfg
 

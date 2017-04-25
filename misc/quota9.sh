@@ -43,52 +43,50 @@ qc() {
 if [ $# -eq 0 ]; then
 	trap "rm -f $D $tmp" 0
 	[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+	[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 	dede $D 1m 50 || exit 1
 
-	mount | grep "${mntpoint}" | grep -q md${mdstart} && umount -f ${mntpoint}
-	mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
+	mount | grep "$mntpoint" | grep -q md$mdstart &&
+	    umount -f $mntpoint
+	[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
-	mdconfig -a -t vnode -f $D -u ${mdstart}
-	bsdlabel -w md${mdstart} auto
-	newfs $newfs_flags  md${mdstart}${part} > /dev/null
-	echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" >> /etc/fstab
-	mount ${mntpoint}
+	mdconfig -a -t vnode -f $D -u $mdstart
+	bsdlabel -w md$mdstart auto
+	newfs $newfs_flags  md${mdstart}$part > /dev/null
+	echo "/dev/md${mdstart}$part $mntpoint ufs rw,userquota 2 2" \
+	    >> /etc/fstab
+	mount $mntpoint
 	mkdir ${mntpoint}/stressX
 	chown $testuser ${mntpoint}/stressX
-	set `df -ik ${mntpoint} | tail -1 | awk '{print $4,$7}'`
+	set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 	export KBLOCKS=$1
 	export INODES=$2
 
 	export QK=$((KBLOCKS / 2))
 	export QI=$((INODES / 2))
-	edquota -u -f ${mntpoint} -e ${mntpoint}:$((QK - 50)):$QK:$((QI - 50 )):$QI ${testuser} > /dev/null 2>&1
-	quotaon ${mntpoint}
+	edquota -u -f $mntpoint -e \
+	    ${mntpoint}:$((QK - 50)):$QK:$((QI - 50 )):$QI $testuser > \
+	    /dev/null 2>&1
+	quotaon $mntpoint
 
-#	quotaoff ${mntpoint};umount ${mntpoint}; mount ${mntpoint};quotaon ${mntpoint}
-#	df -i ${mntpoint}
-#	repquota   -v ${mntpoint}
-	qc            ${mntpoint}
-#	repquota   -v ${mntpoint}
-#	echo "- Start test -"
+	qc $mntpoint
 
 	su ${testuser} $0 xxx
 	du -k /mnt/stressX
 
-#	quotaoff ${mntpoint};umount ${mntpoint}; mount ${mntpoint};quotaon ${mntpoint}
-#	df -i ${mntpoint}
-#	repquota   -v ${mntpoint}
-	qc            ${mntpoint}
-#	repquota   -v ${mntpoint}
+	qc $mntpoint
 
 	sed -i -e "/md${mdstart}${part}/d" /etc/fstab
-	while mount | grep -q ${mntpoint}; do
-		umount $([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f" || echo "") ${mntpoint} > /dev/null 2>&1
+	while mount | grep -q $mntpoint; do
+		umount $([ $((`date '+%s'` % 2)) -eq 0 ] &&
+		    echo "-f" || echo "") $mntpoint > /dev/null 2>&1
 	done
-	mdconfig -d -u ${mdstart}
+	mdconfig -d -u $mdstart
 	rm -f $D
 else
 	for i in `jot 20`; do
-		dede ${mntpoint}/stressX/d$i 1m 1
+		dede $mntpoint/stressX/d$i 1m 1
 	done
 fi
+exit 0

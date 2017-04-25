@@ -29,8 +29,11 @@
 #
 
 # Hunt for deadlock that could occur running umount and quota at the same time
+# "panic: dqsync: file" seen:
+# https://people.freebsd.org/~pho/stress/log/quota10.txt
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 . ../default.cfg
 
@@ -42,18 +45,21 @@ export PATH_FSTAB=/tmp/fstab
 if [ $# -eq 0 ]; then
 	rm -f $PATH_FSTAB
 	for i in `jot $mounts`; do
-		m=$(( i + mdstart - 1 ))
+		m=$((i + mdstart - 1))
 		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
-		mount | grep "$mntpoint" | grep -q md$m && umount ${mntpoint}$m
-		mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
+		mount | grep "$mntpoint" | grep -q md$m &&
+		    umount ${mntpoint}$m
+		[ -c /dev/md$m ] && mdconfig -d -u $m
 
 		dede $D$m 1m 1
 		mdconfig -a -t vnode -f $D$m -u $m
 		bsdlabel -w md$m auto
 		newfs md${m}${part} > /dev/null 2>&1
-		echo "/dev/md${m}${part} ${mntpoint}$m ufs rw,userquota 2 2" >> $PATH_FSTAB
+		echo "/dev/md${m}$part ${mntpoint}$m ufs rw,userquota 2 2" \
+		    >> $PATH_FSTAB
 		mount ${mntpoint}$m
-		edquota -u -f ${mntpoint}$m -e ${mntpoint}$m:100000:110000:15000:16000 root
+		edquota -u -f ${mntpoint}$m -e \
+		    ${mntpoint}$m:100000:110000:15000:16000 root
 		umount ${mntpoint}$m
 	done
 	sync;sync;sync
@@ -61,14 +67,14 @@ if [ $# -eq 0 ]; then
 	# start the parallel tests
 	touch /tmp/$0
 	for i in `jot $mounts`; do
-		m=$(( i + mdstart - 1 ))
+		m=$((i + mdstart - 1))
 		./$0 $m &
 		./$0 find $m &
 	done
 	wait
 
 	for i in `jot $mounts`; do
-		m=$(( i + mdstart - 1 ))
+		m=$((i + mdstart - 1))
 		mdconfig -d -u $m
 		rm -f $D$m
 	done
@@ -89,10 +95,12 @@ else
 			opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
 			mount $opt /dev/md${m}${part} ${mntpoint}$m
 			while mount | grep -qw $mntpoint$m; do
-				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f")
+				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] &&
+				    echo "-f")
 				umount $opt ${mntpoint}$m > /dev/null 2>&1
 			done
 		done
 		rm -f /tmp/$0
 	fi
 fi
+exit 0

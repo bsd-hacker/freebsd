@@ -31,7 +31,8 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 # Causes this: panic: mutex Giant not owned at ../../../kern/vfs_subr.c:1968
-# with a kernel compiled with "options QUOTA"
+# with a kernel compiled with "options QUOTA".
+# This is not really a quota test.
 
 . ../default.cfg
 
@@ -39,7 +40,8 @@ D=$diskimage
 trap "rm -f $D" 0
 dede $D 1m 128 || exit 1
 
-mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null &&
+    umount $mntpoint
 mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t vnode -f $D -u $mdstart
@@ -54,3 +56,4 @@ while mount | grep -q $mntpoint; do
 done
 mdconfig -d -u $mdstart
 rm -f $D
+exit 0

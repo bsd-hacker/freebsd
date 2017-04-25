@@ -29,6 +29,7 @@
 #
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 . ../default.cfg
 
@@ -44,9 +45,11 @@ mdconfig -a -t vnode -f $D -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags  md${mdstart}$part > /dev/null
 export PATH_FSTAB=/tmp/fstab
-echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" > $PATH_FSTAB
+echo "/dev/md${mdstart}$part $mntpoint ufs rw,userquota 2 2" > \
+    $PATH_FSTAB
 mount $mntpoint
-edquota -u -f $mntpoint -e $mntpoint:850000:900000:130000:140000 root > /dev/null 2>&1
+edquota -u -f $mntpoint -e $mntpoint:850000:900000:130000:140000 root > \
+    /dev/null 2>&1
 quotaon $mntpoint
 export RUNDIR=$mntpoint/stressX
 ../testcases/rw/rw -t 10m -i 200 -h -n &
@@ -60,8 +63,9 @@ for i in `jot 5`; do
 done
 kill $pid
 wait
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
+while mount | grep -q $mntpoint; do
+	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
 rm -f $D $PATH_FSTAB
+exit 0

@@ -32,6 +32,7 @@
 # Causes spin in ffs_sync or panic in panic: vfs_allocate_syncvnode: insmntque failed
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 . ../default.cfg
 
@@ -46,7 +47,7 @@ mdconfig -a -t vnode -f $D -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags  md${mdstart}$part > /dev/null
 export PATH_FSTAB=/tmp/fstab
-echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" > $PATH_FSTAB
+echo "/dev/md${mdstart}${part} $mntpoint ufs rw,userquota 2 2" > $PATH_FSTAB
 mount $mntpoint
 set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 export KBLOCKS=$(($1 / 21))
@@ -73,8 +74,8 @@ echo "rm -f $mntpoint/.snap/snap$i"
 rm -f $mntpoint/.snap/snap$i
 wait
 
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
+while mount | grep -q $mntpoint; do
+	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
 rm -f $D $PATH_FSTAB

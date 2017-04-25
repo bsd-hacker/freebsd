@@ -35,6 +35,7 @@
 # Test scenario by Hiroki Sato <hrs FreeBSD org>
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 . ../default.cfg
 
@@ -58,7 +59,11 @@ dd if=/dev/random of=$mntpoint/foo.data bs=512 count=1024x1024 2>&1 |
 kill $!
 wait
 
+n=0
 while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
+	n=$((n + 1))
+	[ $n -gt 60 ] && exit 1
 done
 mdconfig -d -u $mdstart
+exit 0

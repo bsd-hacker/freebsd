@@ -36,31 +36,35 @@
 # Fixed by r305594.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 . ../default.cfg
 
-mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}
-mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs -j  md${mdstart}${part} > /dev/null
+bsdlabel -w md$mdstart auto
+newfs -j  md${mdstart}$part > /dev/null
 export PATH_FSTAB=/tmp/fstab
-echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" > $PATH_FSTAB
-mount ${mntpoint}
-set `df -ik ${mntpoint} | tail -1 | awk '{print $4,$7}'`
+echo "/dev/md${mdstart}$part $mntpoint ufs rw,userquota 2 2" > \
+    $PATH_FSTAB
+mount $mntpoint
+set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 export QK=$(($1 / 10 * 8))
 export QI=$(($2 / 10 * 8))
-edquota -u -f ${mntpoint} -e ${mntpoint}:$((QK - 50)):$QK:$((QI - 50 )):$QI ${testuser}
-quotaon ${mntpoint}
+edquota -u -f $mntpoint -e ${mntpoint}:$((QK - 50)):$QK:$((QI - 50 )):$QI \
+    $testuser
+quotaon $mntpoint
 export RUNDIR=${mntpoint}/stressX
-chmod 777 ${mntpoint}
-su ${testuser} -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > /dev/null 2>&1)"'
+chmod 777 $mntpoint
+su $testuser -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > \
+    /dev/null 2>&1)"'
 
 rm -f $PATH_FSTAB
 for i in `jot 6`; do
 	umount $mntpoint && break || sleep 10
 done
 [ $i -eq 6 ] && exit 1
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart
 exit 0

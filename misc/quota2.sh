@@ -29,6 +29,7 @@
 #
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 . ../default.cfg
 
@@ -50,8 +51,9 @@ quotacheck $mntpoint
 quotaon $mntpoint
 export RUNDIR=${mntpoint}/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
-(cd ..; ./run.sh disk.cfg)
+(cd ..; ./run.sh disk.cfg) 2>/dev/null
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
+exit 0

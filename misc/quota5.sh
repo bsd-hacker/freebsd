@@ -29,6 +29,7 @@
 #
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ "`sysctl -in kern.features.ufs_quota`" != "1" ] && exit 0
 
 mount | grep -q "on /tmp (ufs," || exit 0
 if ! grep /tmp /etc/fstab | grep -q quota ; then
