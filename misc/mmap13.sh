@@ -50,11 +50,12 @@ for i in `jot 5000`; do
 	/tmp/mmap13
 done
 v2=`sysctl -n vm.stats.vm.v_wire_count`
+s=0
 [ $v2 -gt $((v1 + 500)) ] &&
-    echo "FAIL vm.stats.vm.v_wire_count changed from $v1 to $v2."
+{ s=1; echo "vm.stats.vm.v_wire_count changed from $v1 to $v2."; }
 
 rm -f /tmp/mmap13
-exit
+exit $s
 
 EOF
 #include <sys/mman.h>
