@@ -145,7 +145,7 @@ test(void)
 	if (fork() == 0)
 		tmkdir();
 
-	ftsoptions = 0;
+	ftsoptions = FTS_PHYSICAL;
 	args[0] = ".";
 	args[1] = 0;
 
