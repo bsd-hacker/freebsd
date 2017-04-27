@@ -49,10 +49,11 @@ need=$((size * 2))
 d1=${diskimage}.1
 d2=${diskimage}.2
 rm -f $d1 $d2 || exit 1
-[ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` -lt \
-    $need ] && printf "Need %d MB on %s.\n" $need `dirname $diskimage` && exit
+[ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` \
+    -lt $need ] &&
+    printf "Need %d MB on %s.\n" $need `dirname $diskimage` && exit 0
 trap "rm -f $d1 $d2" EXIT INT
 dd if=/dev/zero of=$d1 bs=1m count=$size 2>&1 | \
     egrep -v "records|transferred"
 cp $d1 $d2
-[ -n "$off" ] && swapon -a
+[ $off ] && swapon -a
