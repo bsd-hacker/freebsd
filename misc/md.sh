@@ -35,13 +35,13 @@
 
 . ../default.cfg
 
-mount | grep "${mntpoint}" | grep md${mdstart}${part} > /dev/null && umount ${mntpoint}
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpoint
+[ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 2m -u ${mdstart}
+mdconfig -a -t swap -s 2m -u $mdstart
 bsdlabel -w md${mdstart} auto
 newfs md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}${part} ${mntpoint}
+mount /dev/md${mdstart}$part $mntpoint
 
 export RUNDIR=${mntpoint}/stressX
 export KBLOCKS=30000		# Exaggerate disk capacity
@@ -51,8 +51,10 @@ for i in `jot 20`; do
    (cd ../testcases/rw;./rw -t 2m -i 20 > /dev/null 2>&1)
 done
 
-while mount | grep -q ${mntpoint}; do
-   umount $([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f" || echo "") ${mntpoint} > /dev/null 2>&1
+while mount | grep -q $mntpoint; do
+	umount $([ $((`date '+%s'` % 2)) -eq 0 ] &&
+	    echo "-f" || echo "") $mntpoint > /dev/null 2>&1
 done
 
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart
+exit 0
