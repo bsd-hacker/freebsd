@@ -151,7 +151,7 @@ main(void)
 	}
 	result = pthread_create(&threadId, NULL, statThread, NULL);
 	if (result < 0)
-		err(1, "pthread_create(): %s\n", strerror(result));
+		errc(1, result, "pthread_create()");
 
 	start = time(NULL);
 	for (number = 0; number < 0x001FFFFF; number += 2) {
@@ -183,7 +183,7 @@ main(void)
 			nanosleep(&period, 0);
 			return 0;
 		}
-		if (time(NULL) - start > 600) {
+		if (time(NULL) - start > 1800) {
 			fprintf(stderr, "Test timed out.\n");
 			break;
 		}
