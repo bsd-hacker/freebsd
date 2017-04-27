@@ -40,7 +40,7 @@ gigs=9
 
 kldstat | grep -q geom_nop || { gnop load 2>/dev/null || exit 0 &&
     notloaded=1; }
-gnop status || exit
+gnop status || exit 1
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 [ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart

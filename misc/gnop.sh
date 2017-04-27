@@ -61,7 +61,7 @@ test() {
 
 kldstat | grep -q geom_nop || { gnop load 2>/dev/null || exit 0 &&
     notloaded=1; }
-gnop status || exit
+gnop status || exit 1
 
 for i in 1k 2k 4k 8k; do
 	test $i

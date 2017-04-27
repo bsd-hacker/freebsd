@@ -42,7 +42,7 @@ old=`sysctl -n kern.geom.mirror.debug`
 sysctl kern.geom.mirror.debug=-1 | grep -q -- -1 ||
     sysctl kern.geom.mirror.debug=$old > /dev/null
 kldstat | grep -q geom_nop || { gnop load 2>/dev/null || exit 0; }
-gnop status || exit 0
+gnop status || exit 1
 
 u1=$mdstart
 s=0
