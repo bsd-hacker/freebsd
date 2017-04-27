@@ -46,9 +46,10 @@ rm -f mmap20.c
 cd $odir
 
 /tmp/mmap20
+s=$?
 
 rm -f /tmp/mmap20
-exit
+exit $s
 
 EOF
 #include <sys/types.h>
