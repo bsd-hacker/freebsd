@@ -75,7 +75,7 @@ main(int argc, char **argv)
 	if ((fd1 = open("/dev/null", O_RDWR, 0)) == -1)
 		err(1, "open /dev/null");
 
-	if ((fd2 = open("/dev/zero", O_RDONLY)) == -1)
+	if ((fd2 = open("/dev/zero", O_RDWR)) == -1)
 		err(1, "open /dev/zero");
 
 	if (sizeof(size_t) == sizeof(int32_t))
