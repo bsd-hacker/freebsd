@@ -98,7 +98,7 @@ main(int argc, char **argv)
 	bzero(&ru, sizeof(ru));
 	usleep(2000);
 	if ((rpid = wait4(-1, &status, WNOHANG, &ru)) == -1) {
-			err(1, "OK wait4");
+			err(0, "OK wait4");
 	}
 	if (rpid == 0) {
 //		fprintf(stderr, "No rusage info.\n");
@@ -122,10 +122,12 @@ rm  vfork2.c
 
 ./vfork1 &
 sleep .2
-childpid=`ps -l | grep -v grep | grep vfork1 |
+childpid=`ps -lx | grep -v grep | grep vfork1 |
     tail -1 | grep nanslp | awk '{print $2}'`
 # Seen before fix:
 # failed to set signal flags properly for ast()
 ./vfork2 $childpid
+s=$?
 
 rm -f vfork1 vfork2
+exit $s

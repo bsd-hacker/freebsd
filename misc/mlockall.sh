@@ -43,7 +43,8 @@ rm -f mlockall.c
 for i in `jot 10`; do
 	/tmp/mlockall &
 	sleep 1
-	ps | grep /tmp/mlockall | grep -v grep | awk '{print $1}' | while read pid; do
+	ps -x | grep /tmp/mlockall | grep -v grep | awk '{print $1}' | \
+	    while read pid; do
 		kill -2 $pid
 		kill -9 $pid
 	done

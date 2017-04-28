@@ -59,7 +59,7 @@ sleep .5
 for i in `jot 30`; do
 	truss /tmp/ttruss 10 > /dev/null 2>&1 &
 	sleep 11
-	if ps -l | grep -v grep | grep -q uwrlck; then
+	if ps -lx | grep -v grep | grep -q uwrlck; then
 		echo FAIL
 		ps -lH | egrep -v "grep|truss.sh" | grep truss
 		while pkill -9 swap; do
@@ -75,7 +75,7 @@ done
 sleep 2
 if pgrep -q ttruss; then
 	echo FAIL
-	ps -lH | grep -v grep | grep ttruss
+	ps -lxH | grep -v grep | grep ttruss
 	s=1
 fi
 

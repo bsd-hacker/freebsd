@@ -125,7 +125,7 @@ rm ptrace10.c
 ./ptrace10
 s=$?
 if [ $s -ne 0 ]; then
-	ps -lH | grep -v grep | egrep "UID|ptrace10"
+	ps -lxH | grep -v grep | egrep "UID|ptrace10"
 	while pgrep -q ptrace10; do
 		pkill -9 ptrace10
 	done

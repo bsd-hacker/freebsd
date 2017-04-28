@@ -41,7 +41,7 @@ cd $RUNDIR
 /tmp/truncate2 &
 
 sleep 1
-while ps | grep -v grep | egrep -q "truncate2$"; do
+while ps -x | grep -v grep | egrep -q "truncate2$"; do
 	$here/../testcases/swap/swap -t 2m -i 20
 done
 

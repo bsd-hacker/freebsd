@@ -72,7 +72,7 @@ while [ $((`date '+%s'` - start)) -lt 300 ]; do
 	gmirror rebuild test /dev/md$md1
 	sleep 2
 	n=0
-	while ps -l | grep -v grep | grep graid1_2 | grep -q D; do
+	while ps -lx | grep -v grep | grep graid1_2 | grep -q D; do
 		opid=$pid
 		pid=`pgrep graid1_2`
 		[ -z "$pid" -o "$pid" != "$opid" ] && n=0
@@ -80,7 +80,7 @@ while [ $((`date '+%s'` - start)) -lt 300 ]; do
 		n=$((n + 1))
 		if [ $n -gt 180 ]; then
 			echo FAIL
-			ps -l | grep -v grep | grep graid1_2 | grep D
+			ps -lx | grep -v grep | grep graid1_2 | grep D
 			exit 1
 		fi
 	done

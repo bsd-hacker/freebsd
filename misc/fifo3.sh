@@ -197,7 +197,7 @@ mount /dev/md${mdstart}$part $mntpoint
 (cd $mntpoint; /tmp/fifo3 ) &
 
 while pgrep -q fifo3; do
-	ps -l | grep -v grep | grep -q fifoor &&
+	ps -lx | grep -v grep | grep -q fifoor &&
 	    { echo FAIL; exit 1; }
 	sleep 2
 done
