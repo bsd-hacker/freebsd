@@ -56,8 +56,22 @@
 #define	NFS_MAXDGRAMDATA 16384
 #define	NFS_MAXPATHLEN	1024
 #define	NFS_MAXNAMLEN	255
+/*
+ * Calculating the maximum XDR overhead for an NFS RPC isn't easy.
+ * NFS_MAXPKTHDR is antiquated and assume AUTH_SYS over UDP.
+ * NFS_MAXXDR should be sufficient for all NFS versions over TCP.
+ * It includes:
+ * - Maximum RPC message header. It can include 2 400byte authenticators plus
+ *   a machine name of unlimited length, although it is usually relatively
+ *   small.
+ * - XDR overheads for the NFSv4 compound. This can include Owner and
+ *   Owner_group strings, which are usually fairly small, but are allowed
+ *   to be up to 1024 bytes each.
+ * 4096 is overkill, but should always be sufficient.
+ */
 #define	NFS_MAXPKTHDR	404
-#define	NFS_MAXPACKET	(NFS_SRVMAXIO + 2048)
+#define	NFS_MAXXDR	4096
+#define	NFS_MAXPACKET	(NFS_SRVMAXIO + NFS_MAXXDR)
 #define	NFS_MINPACKET	20
 #define	NFS_FABLKSIZE	512	/* Size in bytes of a block wrt fa_blocks */
 #define	NFSV4_MINORVERSION	0	/* V4 Minor version */
@@ -244,6 +258,10 @@
 #define	NFSX_V4SETTIME		(NFSX_UNSIGNED + NFSX_V4TIME)
 #define	NFSX_V4SESSIONID	16
 #define	NFSX_V4DEVICEID		16
+#define	NFSX_V4PNFSFH		(sizeof(fhandle_t) + 1)
+#define	NFSX_V4FILELAYOUT	(4 * NFSX_UNSIGNED + NFSX_V4DEVICEID +	\
+				 NFSX_HYPER + NFSM_RNDUP(NFSX_V4PNFSFH))
+#define	NFSX_V4MAXLAYOUT	NFSX_V4FILELAYOUT
 
 /* sizes common to multiple NFS versions */
 #define	NFSX_FHMAX		(NFSX_V4FHMAX)
@@ -633,6 +651,7 @@
 /* Flags for File Layout. */
 #define	NFSFLAYUTIL_DENSE		0x1
 #define	NFSFLAYUTIL_COMMIT_THRU_MDS	0x2
+#define	NFSFLAYUTIL_STRIPE_MASK		0xffffffc0
 
 /* Conversion macros */
 #define	vtonfsv2_mode(t,m) 						\
@@ -1342,5 +1361,15 @@ struct nfsv4stateid {
 	u_int32_t	other[NFSX_STATEIDOTHER / NFSX_UNSIGNED];
 };
 typedef struct nfsv4stateid nfsv4stateid_t;
+
+/* Notify bits and notify bitmap size. */
+#define	NFSV4NOTIFY_CHANGE	1
+#define	NFSV4NOTIFY_DELETE	2
+#define	NFSV4_NOTIFYBITMAP	1	/* # of 32bit values needed for bits */
+
+/* Layoutreturn kinds. */
+#define	NFSV4LAYOUTRET_FILE	1
+#define	NFSV4LAYOUTRET_FSID	2
+#define	NFSV4LAYOUTRET_ALL	3
 
 #endif	/* _NFS_NFSPROTO_H_ */
