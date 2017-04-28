@@ -39,6 +39,9 @@
 # panic: vholdl: inactive held vnode:
 # https://people.freebsd.org/~pho/stress/log/kostik815.txt
 
+# umount busy seen:
+# https://people.freebsd.org/~pho/stress/log/kostik893.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg

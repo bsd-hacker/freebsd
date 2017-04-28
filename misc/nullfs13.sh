@@ -31,6 +31,8 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 # kern/178238 "nullfs don't release i-nodes on unlink"
+# See also nullfs16.sh
+# Fixed by: r292961.
 
 . ../default.cfg
 

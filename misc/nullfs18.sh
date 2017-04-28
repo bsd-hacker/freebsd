@@ -31,7 +31,7 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 # Demonstate nullfs(5) inode leak.
-# Fixed by 295717.
+# Fixed by r295717.
 
 . ../default.cfg
 
