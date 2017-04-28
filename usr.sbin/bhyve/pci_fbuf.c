@@ -55,7 +55,7 @@ __FBSDID("$FreeBSD$");
  * BAR0 points to the current mode information.
  * BAR1 is the 32-bit framebuffer address.
  *
- *  -s <b>,fbuf,wait,tcp=<ip>:port,w=width,h=height
+ *  -s <b>,fbuf,wait,vga=on|io|off,rfb=<ip>:port,w=width,h=height
  */
 
 static int fbuf_debug = 1;
@@ -364,6 +364,8 @@ pci_fbuf_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	sc->vga_full = 0;
 
 	sc->fsc_pi = pi;
+
+	sc->rfb_port = 5900;
 
 	error = pci_fbuf_parse_opts(sc, opts);
 	if (error != 0)
