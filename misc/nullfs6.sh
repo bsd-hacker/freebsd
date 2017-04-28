@@ -36,16 +36,17 @@
 
 . ../default.cfg
 
-mount | grep nullfs | grep -q /tmp/1 && umount /tmp/1
+nullfs_srcdir=${nullfs_srcdir:-/tmp}
+mount | grep nullfs | grep -q $nullfs_srcdir/1 && umount $nullfs_srcdir/1
 
-rm -rf /tmp/1 /tmp/2
-mkdir /tmp/1 /tmp/2
-touch /tmp/1/test.file
+rm -rf $nullfs_srcdir/1 $nullfs_srcdir/2
+mkdir $nullfs_srcdir/1 $nullfs_srcdir/2
+touch $nullfs_srcdir/1/test.file
 
-mount -t nullfs /tmp/1 /tmp/2
+mount -t nullfs $nullfs_srcdir/1 $nullfs_srcdir/2
 
-cp /tmp/1/test.file /tmp/2/test.file	# scenario by kib
-mv /tmp/1/test.file /tmp/2/		# panics with lock violation
+cp $nullfs_srcdir/1/test.file $nullfs_srcdir/2/test.file	# scenario by kib
+mv $nullfs_srcdir/1/test.file $nullfs_srcdir/2/	# panics with lock violation
 
-umount /tmp/1
-rm -rf /tmp/1 /tmp/2
+umount $nullfs_srcdir/1
+rm -rf $nullfs_srcdir/1 $nullfs_srcdir/2

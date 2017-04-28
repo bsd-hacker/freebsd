@@ -36,12 +36,13 @@
 
 . ../default.cfg
 
+nullfs_srcdir=${nullfs_srcdir:-/tmp}
 opt="-o nfsv3,rw,udp,rdirplus,noauto,retrycnt=3"
 grep -q $mntpoint /etc/exports ||
     { echo "$mntpoint missing from /etc/exports"; exit 0; }
 
 mount | grep -wq $mntpoint && umount $mntpoint
-mount -t nullfs /tmp $mntpoint
+mount -t nullfs $nullfs_srcdir $mntpoint
 
 mntpoint2=${mntpoint}2
 mntpoint3=${mntpoint}3
@@ -54,11 +55,11 @@ done
 for i in `jot 50` ; do
 	su $testuser -c "cp -r /usr/include $mntpoint2/nullfs8-2 2>/dev/null" &
 	su $testuser -c "cp -r /usr/include $mntpoint3/nullfs8-2 2>/dev/null" &
-	wait;wait
+	wait
 	su $testuser -c "find $mntpoint2 > /dev/null 2>&1" &
 	su $testuser -c "find $mntpoint3 > /dev/null 2>&1" &
-	wait;wait
-	rm -rf /tmp/nullfs8-2
+	wait
+	rm -rf $nullfs_srcdir/nullfs8-2
 done
 
 for m in $mntpoint3 $mntpoint2 $mntpoint; do
