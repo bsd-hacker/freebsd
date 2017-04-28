@@ -653,6 +653,7 @@
 #define	NFSFLAYUTIL_COMMIT_THRU_MDS	0x2
 #define	NFSFLAYUTIL_STRIPE_MASK		0xffffffc0
 
+#if defined(_KERNEL) || defined(KERNEL)
 /* Conversion macros */
 #define	vtonfsv2_mode(t,m) 						\
 		txdr_unsigned(((t) == VFIFO) ? MAKEIMODE(VCHR, (m)) : 	\
@@ -802,6 +803,7 @@ struct nfsv3_sattr {
 	u_int32_t sa_mtimetype;
 	nfstime3  sa_mtime;
 };
+#endif	/* _KERNEL */
 
 /*
  * The attribute bits used for V4.
