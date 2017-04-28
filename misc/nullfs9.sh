@@ -36,7 +36,7 @@
 
 . ../default.cfg
 
-mnt2=/mnt2
+mnt2=${mntpoint}2
 mount | grep -q $mnt2/mp && umount $mnt2/mp
 
 [ -d $mnt2 ] || mkdir $mnt2

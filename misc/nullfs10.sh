@@ -40,7 +40,7 @@
 
 . ../default.cfg
 
-mnt2=/mnt2
+mnt2=${mntpoint}2
 mount | grep -q $mnt2 && umount $mnt2
 
 [ -d $mnt2 ] || mkdir $mnt2
@@ -61,6 +61,7 @@ sleep .5
 # This line should cause a "/mnt2/ls: Text file busy"
 $mnt2/ls -l /bin/ls $mntpoint $mnt2 && echo FAIL || echo OK
 kill $!
+wait
 
 while mount | grep -q "$mnt2 "; do
 	umount $mnt2 || sleep 1

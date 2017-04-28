@@ -43,8 +43,8 @@ fi
 export LANG=C
 CACHE=nullfs11-cache.log
 NOCACHE=nullfs11-nocache.log
-mp1=/mnt
-mp2=/mnt2
+mp1=$mntpoint
+mp2=${mntpoint}2
 [ -d $mp2 ] || mkdir $mp2
 rm -f $CACHE $NOCACHE
 
