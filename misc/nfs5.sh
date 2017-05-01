@@ -36,22 +36,23 @@ D=$diskimage
 dede $D 1m 128 || exit
 
 mount | grep "${mntpoint}2" | grep nfs > /dev/null && umount -f ${mntpoint}2
-mount | grep "$mntpoint"    | grep /md > /dev/null && umount -f ${mntpoint}
-mdconfig -l | grep -q ${mdstart}  &&  mdconfig -d -u $mdstart
+mount | grep "$mntpoint"    | grep /md > /dev/null && umount -f $mntpoint
+mdconfig -l | grep -q $mdstart  &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t vnode -f $D -u $mdstart
 
-bsdlabel -w md${mdstart} auto
-newfs $newfs_flags md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}${part} $mntpoint
+bsdlabel -w md$mdstart auto
+newfs $newfs_flags md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
 
-mkdir ${mntpoint}/stressX
-chmod 777 ${mntpoint}/stressX
+mkdir $mntpoint/stressX
+chmod 777 $mntpoint/stressX
 
 [ ! -d ${mntpoint}2 ] &&  mkdir ${mntpoint}2
 chmod 777 ${mntpoint}2
 
-mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw 127.0.0.1:/$mntpoint ${mntpoint}2
+mount -t nfs -o tcp -o retrycnt=3 -o intr,soft -o rw 127.0.0.1:$mntpoint \
+    ${mntpoint}2
 
 export RUNDIR=${mntpoint}2/stressX
 export runRUNTIME=4m
@@ -63,5 +64,7 @@ umount -f ${mntpoint}2 > /dev/null 2>&1
 
 mdconfig -d -u $mdstart
 rm -f $D
-kill `ps | grep run.sh | grep -v grep | awk '{print $1}'`
+kill $!
+../tools/killall.sh
 wait
+exit 0
