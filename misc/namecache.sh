@@ -86,13 +86,13 @@ for i in `jot 30`; do
 	[ $((`date '+%s'` - start)) -gt 1800 ] && break
 done
 
-if ls -l ${dir}/file.0* 2>&1 | egrep "file.0[0-9]" | grep -q "No such file"; then
+if ls -l $dir/file.0* 2>&1 | egrep "file.0[0-9]" | grep -q "No such file"; then
 	echo FAIL
-	echo "ls -l ${dir}/file.0*"
-	ls -l ${dir}/file.0*
+	echo "ls -l $dir/file.0*"
+	ls -l $dir/file.0*
 fi
 
-rm -f /tmp/namecache # /${dir}/file.0*
+rm -f /tmp/namecache # /$dir/file.0*
 exit
 EOF
 /* Test scenario for possible name cache problem */
@@ -144,9 +144,10 @@ pm(void)
 
 			if (stat(dp->d_name, &statb) == -1) {
 				warn("stat(%s)", dp->d_name);
-				printf("name: %-10s, inode %7d, type %2d, namelen %d, d_reclen %d\n",
-					dp->d_name, dp->d_fileno, dp->d_type, dp->d_namlen,
-					dp->d_reclen);
+				printf("name: %-10s, inode %7lu, "
+				    "type %2d, namelen %d, d_reclen %d\n",
+				    dp->d_name, (unsigned long)dp->d_fileno, dp->d_type,
+				    dp->d_namlen, dp->d_reclen);
 				fflush(stdout);
 			} else {
 				printf("stat(%s) succeeded!\n", path);

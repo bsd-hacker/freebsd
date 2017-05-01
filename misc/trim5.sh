@@ -43,7 +43,7 @@ bsdlabel -w md$mdstart auto
 newfs -U -t md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
-mksnap_ffs $mntpoint ${mntpoint}/.snap/snap
+mksnap_ffs $mntpoint $mntpoint/.snap/snap
 
 while mount | grep -q $mntpoint; do
 	umount $mntpoint || sleep 1
