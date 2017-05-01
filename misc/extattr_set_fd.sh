@@ -34,6 +34,8 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
+[ "`sysctl -in kern.features.ufs_extattr`" != "1" ] && exit 0
+[ -z "`which setfacl`" ] && exit 0
 
 here=`pwd`
 cd /tmp

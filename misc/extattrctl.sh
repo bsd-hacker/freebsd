@@ -42,27 +42,28 @@
 
 . ../default.cfg
 
-sysctl -a | ! grep -q ufs_extattr && echo "Missing options UFS_EXTATTR" && exit 1
+[ "`sysctl -in kern.features.ufs_extattr`" != "1" ] && exit 0
+[ -z "`which setfacl`" ] && exit 0
 
-mount | grep "${mntpoint}" | grep -q md${mdstart}${part} && umount $mntpoint
+mount | grep "$mntpoint" | grep -q md${mdstart}$part && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 20m -u $mdstart
 bsdlabel -w md$mdstart auto
 
-newfs -O 1 md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}${part} $mntpoint
+newfs -O 1 md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
 
-mkdir -p ${mntpoint}/.attribute/system
-cd ${mntpoint}/.attribute/system
+mkdir -p $mntpoint/.attribute/system
+cd $mntpoint/.attribute/system
 
 extattrctl initattr -p . 388 posix1e.acl_access
 extattrctl initattr -p . 388 posix1e.acl_default
 cd /
 umount /mnt
-tunefs -a enable /dev/md${mdstart}${part}
-mount /dev/md${mdstart}${part} $mntpoint
-mount | grep md${mdstart}${part}
+tunefs -a enable /dev/md${mdstart}$part
+mount /dev/md${mdstart}$part $mntpoint
+mount | grep md${mdstart}$part
 
 touch $mntpoint/acl-test
 setfacl -b $mntpoint/acl-test
