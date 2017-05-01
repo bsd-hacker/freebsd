@@ -43,7 +43,7 @@
 mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 1g -u ${mdstart}
+mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs -j  md${mdstart}$part > /dev/null
 export PATH_FSTAB=/tmp/fstab
@@ -56,7 +56,7 @@ export QI=$(($2 / 10 * 8))
 edquota -u -f $mntpoint -e ${mntpoint}:$((QK - 50)):$QK:$((QI - 50 )):$QI \
     $testuser
 quotaon $mntpoint
-export RUNDIR=${mntpoint}/stressX
+export RUNDIR=$mntpoint/stressX
 chmod 777 $mntpoint
 su $testuser -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > \
     /dev/null 2>&1)"'

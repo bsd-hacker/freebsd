@@ -47,7 +47,7 @@ mdconfig -a -t vnode -f $D -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags  md${mdstart}$part > /dev/null
 export PATH_FSTAB=/tmp/fstab
-echo "/dev/md${mdstart}${part} $mntpoint ufs rw,userquota 2 2" > $PATH_FSTAB
+echo "/dev/md${mdstart}$part $mntpoint ufs rw,userquota 2 2" > $PATH_FSTAB
 mount $mntpoint
 set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 export KBLOCKS=$(($1 / 21))

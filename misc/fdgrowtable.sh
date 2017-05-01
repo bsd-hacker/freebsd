@@ -43,7 +43,7 @@ mycc -o fdgrowtable -Wall -Wextra -O2 fdgrowtable.c || exit 1
 rm -f fdgrowtable.c
 cd $here
 
-su ${testuser} -c "/tmp/fdgrowtable $max" &
+su $testuser -c "/tmp/fdgrowtable $max" &
 while kill -0 $! 2>/dev/null; do
 	../testcases/swap/swap -t 2m -i 40 -h
 done

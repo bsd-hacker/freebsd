@@ -97,7 +97,7 @@ else
 		start=`date '+%s'`
 		while [ $((`date '+%s'` - start)) -lt 300 ]; do
 			m=$1
-			mount /dev/md${m}${part} ${mntpoint}$m &&
+			mount /dev/md${m}$part ${mntpoint}$m &&
 			   chmod 777 ${mntpoint}$m
 			export RUNDIR=${mntpoint}$m/stressX
 			export CTRLDIR=${mntpoint}$m/stressX.control

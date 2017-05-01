@@ -45,11 +45,11 @@ mdconfig -a -t vnode -f $D -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags  md${mdstart}$part > /dev/null
 echo "/dev/md${mdstart}$part $mntpoint ufs rw,userquota 2 2" > $PATH_FSTAB
-mount ${mntpoint}
+mount $mntpoint
 edquota -u -f $mntpoint -e $mntpoint:100000:110000:15000:16000 root
 quotacheck $mntpoint
 quotaon $mntpoint
-export RUNDIR=${mntpoint}/stressX
+export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
 (cd ..; ./run.sh disk.cfg) 2>/dev/null
 while mount | grep $mntpoint | grep -q /dev/md; do

@@ -46,10 +46,10 @@ mycc -o symlink -Wall symlink.c
 rm -f symlink.c
 cd $odir
 
-mount | grep "$mntpoint" | grep md${mdstart} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md$mdstart > /dev/null && umount $mntpoint
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u ${mdstart}
+mdconfig -a -t vnode -f $D -u $mdstart
 
 
 tst() {
@@ -72,13 +72,13 @@ tst() {
 }
 
 for i in "" "-U"; do
-	echo "newfs $i /dev/md${mdstart}"
-	newfs $i /dev/md${mdstart} > /dev/null 2>&1
-	mount /dev/md${mdstart} ${mntpoint}
+	echo "newfs $i /dev/md$mdstart"
+	newfs $i /dev/md$mdstart > /dev/null 2>&1
+	mount /dev/md$mdstart $mntpoint
 
 	tst
 
-	umount -f ${mntpoint}
+	umount -f $mntpoint
 done
 rm -f /tmp/symlink
 mdconfig -d -u $mdstart

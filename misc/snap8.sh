@@ -39,7 +39,7 @@
 . ../default.cfg
 
 mount | grep -q /dev/md${mdstart}$part && umount -f /dev/md${mdstart}$part
-mdconfig -l | grep -q md${mdstart} && mdconfig -d -u $mdstart
+mdconfig -l | grep -q md$mdstart && mdconfig -d -u $mdstart
 
 parallel=20
 size=25  # Gb
@@ -49,8 +49,8 @@ truncate -s ${size}G $diskimage
 
 mdconfig -a -t vnode -f $diskimage -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs -O2 $newfs_flags md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}${part} $mntpoint
+newfs -O2 $newfs_flags md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
 
 
 mycc -o /tmp/fstool -Wall ../tools/fstool.c
@@ -90,5 +90,5 @@ wait
 umount /dev/md${mdstart}$part
 
 mount | grep -q /dev/md${mdstart}$part && umount -f /dev/md${mdstart}$part
-mdconfig -l | grep -q md${mdstart} && mdconfig -d -u $mdstart
+mdconfig -l | grep -q md$mdstart && mdconfig -d -u $mdstart
 rm -f $diskimage

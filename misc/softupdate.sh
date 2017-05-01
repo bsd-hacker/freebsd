@@ -36,25 +36,25 @@
 . ../default.cfg
 RUNTIME=2m
 runRUNTIME=2m
-RUNDIR=${mntpoint}/stressX
+RUNDIR=$mntpoint/stressX
 
 D=$diskimage
 dede $D 1m 512 || exit 1
 
-mount | grep "$mntpoint" | grep md${mdstart} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md$mdstart > /dev/null && umount $mntpoint
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u ${mdstart}
+mdconfig -a -t vnode -f $D -u $mdstart
 
 for mode in "" "-U"; do
 	printf "newfs -O2 $mode /dev/md${mdstart}\n\n"
-	newfs -O2 $mode /dev/md${mdstart} > /dev/null 2>&1
-	mount /dev/md${mdstart} ${mntpoint}
+	newfs -O2 $mode /dev/md$mdstart > /dev/null 2>&1
+	mount /dev/md$mdstart $mntpoint
 
 	for i in `jot 5`; do
 		(cd ..;./run.sh disk.cfg)
 	done
 
-	umount -f ${mntpoint}
+	umount -f $mntpoint
 done
 mdconfig -d -u $mdstart

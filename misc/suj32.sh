@@ -43,18 +43,18 @@ mycc -o suj32 -Wall -Wextra -O2 suj32.c || exit 1
 rm -f suj32.c
 cd $here
 
-mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}
-mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
+mount | grep "on $mntpoint " | grep -q md$mdstart && umount $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 5g -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs -U md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}$part $mntpoint
+mdconfig -a -t swap -s 5g -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs -U md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint || exit 1
 
 # fill the root directory to become larger than NIDIR * blksize
 (cd $mntpoint; /tmp/suj32)
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
+while mount | grep -q $mntpoint; do
+	umount $mntpoint || sleep 1
 done
 
 tunefs -j enable /dev/md${mdstart}$part
@@ -66,7 +66,7 @@ else
 	umount $mntpoint
 fi
 
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart
 rm -f /tmp/suj32
 exit 0
 EOF

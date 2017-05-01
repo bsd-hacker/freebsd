@@ -59,7 +59,7 @@ su $testuser -c "/tmp/linger3"
 cd $here
 
 while mount | grep -q $mntpoint; do
-	umount ${mntpoint} 2> /dev/null || sleep 1
+	umount $mntpoint 2> /dev/null || sleep 1
 done
 mdconfig -d -u $mdstart
 rm -f /tmp/linger3

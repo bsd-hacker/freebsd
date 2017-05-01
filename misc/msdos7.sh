@@ -43,7 +43,7 @@ mount | grep -q "on $mntpoint " && umount $mntpoint
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs_msdos -F 32 -b 8192 /dev/md${mdstart}$part > /dev/null || exit 1
-mount -t msdosfs /dev/md${mdstart}${part} $mntpoint
+mount -t msdosfs /dev/md${mdstart}$part $mntpoint
 
 here=`pwd`
 cd /tmp

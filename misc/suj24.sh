@@ -38,17 +38,17 @@
 
 here=`pwd`
 
-mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}
-mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 1g -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs -j md${mdstart}${part} > /dev/null
+mdconfig -a -t swap -s 1g -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs -j md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 (cd $mntpoint; mksnap_ffs $mntpoint/.snap/snapshot)
 
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
+while mount | grep -q $mntpoint; do
+	umount $mntpoint || sleep 1
 done
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart

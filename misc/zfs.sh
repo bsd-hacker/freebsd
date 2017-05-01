@@ -42,9 +42,9 @@ u1=$mdstart
 u2=$((u1 + 1))
 u3=$((u2 + 1))
 
-mdconfig -l | grep -q md${u1} && mdconfig -d -u $u1
-mdconfig -l | grep -q md${u2} && mdconfig -d -u $u2
-mdconfig -l | grep -q md${u3} && mdconfig -d -u $u3
+mdconfig -l | grep -q md$u1 && mdconfig -d -u $u1
+mdconfig -l | grep -q md$u2 && mdconfig -d -u $u2
+mdconfig -l | grep -q md$u3 && mdconfig -d -u $u3
 
 mdconfig -s 512m -u $u1
 mdconfig -s 512m -u $u2

@@ -38,9 +38,9 @@ mount | grep "$mntpoint" | grep -q tmpfs && umount $mntpoint
 mount -t tmpfs tmpfs  $mntpoint
 
 for i in `jot 100`; do
-	mkdir -p ${mntpoint}/1/2
-	cd ${mntpoint}/1/2
-	rm -rf ${mntpoint}/1
+	mkdir -p $mntpoint/1/2
+	cd $mntpoint/1/2
+	rm -rf $mntpoint/1
 	cd .. 2>&1 | grep -v "cd: \.\.: No such file or directory"
 done
 

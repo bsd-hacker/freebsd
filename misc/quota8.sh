@@ -66,20 +66,20 @@ edquota -u -f $mntpoint -e ${mntpoint}:$((QK - 50)):$QK:$((QI - 50 )):$QI \
 $testuser
 quotaon $mntpoint
 sed -i -e "/md${mdstart}$part/d" /etc/fstab
-export RUNDIR=${mntpoint}/stressX
-mkdir ${mntpoint}/stressX
-chmod 777 ${mntpoint}/stressX
+export RUNDIR=$mntpoint/stressX
+mkdir $mntpoint/stressX
+chmod 777 $mntpoint/stressX
 su $testuser -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > \
     /dev/null 2>&1)"&'
 for i in `jot 20`; do
-	echo "`date '+%T'` mksnap_ffs $mntpoint ${mntpoint}/.snap/snap$i"
-	mksnap_ffs $mntpoint ${mntpoint}/.snap/snap$i
+	echo "`date '+%T'` mksnap_ffs $mntpoint $mntpoint/.snap/snap$i"
+	mksnap_ffs $mntpoint $mntpoint/.snap/snap$i
 	sleep 1
 done
 # Remove random snapshot file
 i=$((`date +%S` % 20 + 1))
-echo "rm -f ${mntpoint}/.snap/snap$i"
-rm -f ${mntpoint}/.snap/snap$i
+echo "rm -f $mntpoint/.snap/snap$i"
+rm -f $mntpoint/.snap/snap$i
 wait
 
 su $testuser -c 'sh -c "../tools/killall.sh"'

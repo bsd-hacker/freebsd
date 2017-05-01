@@ -39,16 +39,16 @@ u2=$((u1 + 1))
 
 mount | grep -q /dev/md${u2}$part && umount -f /dev/md${u2}$part
 mount | grep -q /dev/md${u1}$part && umount -f /dev/md${u1}$part
-mdconfig -l | grep -q md${u2} && mdconfig -d -u $u2
-mdconfig -l | grep -q md${u1} && mdconfig -d -u $u1
+mdconfig -l | grep -q md$u2 && mdconfig -d -u $u2
+mdconfig -l | grep -q md$u1 && mdconfig -d -u $u1
 
 mdconfig -s 256m -u $u1
 bsdlabel -w md$u1 auto
-newfs md${u1}${part} > /dev/null
+newfs md${u1}$part > /dev/null
 
 mdconfig -s 256m -u $u2
 bsdlabel -w md$u2 auto
-newfs md${u2}${part} > /dev/null
+newfs md${u2}$part > /dev/null
 
 mount -o ro    /dev/md${u1}$part $mntpoint
 mount -o union /dev/md${u2}$part $mntpoint

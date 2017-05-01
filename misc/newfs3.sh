@@ -73,7 +73,7 @@ while [ $size -le $((128 * 1024 * 1024)) ]; do
 		done
 		blocksize=$((blocksize * 2))
 	done
-	mdconfig -d -u ${mdstart}
+	mdconfig -d -u $mdstart
 	size=$((size + 32 * 1024 * 1024))
 done
 rm -f $diskimage

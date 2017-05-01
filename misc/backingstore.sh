@@ -39,7 +39,7 @@ export here=`pwd`
 
 m=$mdstart
 
-mount | grep "${mntpoint}" | grep -q md$m && umount ${mntpoint}$m
+mount | grep "$mntpoint" | grep -q md$m && umount ${mntpoint}$m
 mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
 
 dede $D$m 100m 1 || exit 1
@@ -47,23 +47,23 @@ dede $D$m 100m 1 || exit 1
 mdconfig -a -t vnode -f $D$m -u $m
 
 bsdlabel -w md$m auto
-newfs md${m}${part} > /dev/null 2>&1
+newfs md${m}$part > /dev/null 2>&1
 [ -d ${mntpoint}$m ] || mkdir -p ${mntpoint}$m
-mount $opt /dev/md${m}${part} ${mntpoint}$m
+mount $opt /dev/md${m}$part ${mntpoint}$m
 
 n=$m
 m=$((m + 1))
 
-mount | grep "${mntpoint}" | grep -q md$m && umount ${mntpoint}$m
+mount | grep "$mntpoint" | grep -q md$m && umount ${mntpoint}$m
 mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
 
 truncate -s 500M ${mntpoint}$n/diskimage
 mdconfig -a -t vnode -f ${mntpoint}$n/diskimage -u $m
 
 bsdlabel -w md$m auto
-newfs md${m}${part} > /dev/null 2>&1
+newfs md${m}$part > /dev/null 2>&1
 [ -d ${mntpoint}$m ] || mkdir -p ${mntpoint}$m
-mount $opt /dev/md${m}${part} ${mntpoint}$m
+mount $opt /dev/md${m}$part ${mntpoint}$m
 
 export RUNDIR=${mntpoint}$m/stressX
 ../testcases/rw/rw -t 5m -i 200 -h -n

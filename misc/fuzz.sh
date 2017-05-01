@@ -84,7 +84,7 @@ tst() {
          break
       fi
    done
-   mdconfig -d -u ${mdstart}
+   mdconfig -d -u $mdstart
    rm -f $D
 }
 

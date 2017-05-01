@@ -54,7 +54,7 @@ if [ $# -eq 0 ]; then
 		dede $D$m 1m 1
 		mdconfig -a -t vnode -f $D$m -u $m
 		bsdlabel -w md$m auto
-		newfs md${m}${part} > /dev/null 2>&1
+		newfs md${m}$part > /dev/null 2>&1
 		echo "/dev/md${m}$part ${mntpoint}$m ufs rw,userquota 2 2" \
 		    >> $PATH_FSTAB
 		mount ${mntpoint}$m
@@ -93,7 +93,7 @@ else
 		for i in `jot 200`; do
 			m=$1
 			opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
-			mount $opt /dev/md${m}${part} ${mntpoint}$m
+			mount $opt /dev/md${m}$part ${mntpoint}$m
 			while mount | grep -qw $mntpoint$m; do
 				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] &&
 				    echo "-f")

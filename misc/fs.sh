@@ -41,7 +41,7 @@ ftest () {	# option, disk full
 	mount /dev/md${mdstart}$part $mntpoint
 	chmod 777 $mntpoint
 
-	export RUNDIR=${mntpoint}/stressX
+	export RUNDIR=$mntpoint/stressX
 	export runRUNTIME=2m
 	disk=$(($2 + 1))	# 1 or 2
 	set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
@@ -59,11 +59,11 @@ ftest () {	# option, disk full
 }
 
 
-mount | grep "${mntpoint}" | grep md${mdstart}${part} > /dev/null && umount ${mntpoint}
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 20m -u ${mdstart}
-bsdlabel -w md${mdstart} auto
+mdconfig -a -t swap -s 20m -u $mdstart
+bsdlabel -w md$mdstart auto
 
 ftest "-O 1"  0	# ufs1
 ftest "-O 1"  1	# ufs1, disk full
@@ -74,4 +74,4 @@ ftest "-U"    1	# ufs2 + soft update, disk full
 ftest "-j"    0	# ufs2 + SU+J
 ftest "-j"    1	# ufs2 + SU+J, disk full
 
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart

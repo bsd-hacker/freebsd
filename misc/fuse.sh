@@ -43,9 +43,9 @@ mount | grep -q "$mntpoint" && umount $mntpoint
 mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart
-mkntfs -Ff /dev/md${mdstart} > /dev/null 2>&1 || exit 1
+mkntfs -Ff /dev/md$mdstart > /dev/null 2>&1 || exit 1
 
-$MOUNT /dev/md${mdstart} $mntpoint || exit 1
+$MOUNT /dev/md$mdstart $mntpoint || exit 1
 
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=20m

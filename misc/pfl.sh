@@ -71,8 +71,8 @@ newfs $opt md${md2}$part > /dev/null
 mount /dev/md${md2}$part $mp2
 chmod 777 $mp2
 
-su ${testuser} -c "cd $mp1; /tmp/pfl" &
-su ${testuser} -c "cd $mp2; /tmp/pfl" &
+su $testuser -c "cd $mp1; /tmp/pfl" &
+su $testuser -c "cd $mp2; /tmp/pfl" &
 sleep .5
 start=`date '+%s'`
 while pgrep -q pfl; do

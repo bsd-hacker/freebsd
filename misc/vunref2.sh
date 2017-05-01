@@ -36,19 +36,19 @@
 
 . ../default.cfg
 
-mount | grep "${mntpoint}" | grep -q md${mdstart}${part} && umount -f $mntpoint
+mount | grep "$mntpoint" | grep -q md${mdstart}$part && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 12m -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs $newfs_flags md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}${part} $mntpoint
-chmod 777 ${mntpoint}
+newfs $newfs_flags md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
+chmod 777 $mntpoint
 
 export runRUNTIME=5m
 export LOAD=100
 export swapLOAD=100
-export RUNDIR=${mntpoint}/stressX
+export RUNDIR=$mntpoint/stressX
 
 for i in `jot 10`; do
 	su $testuser -c "\
@@ -59,7 +59,7 @@ for i in `jot 10`; do
 	sleep 5
 	n=0
 	while mount | grep -qw $mntpoint; do
-		umount ${mntpoint} > /dev/null 2>&1 || sleep 0.1
+		umount $mntpoint > /dev/null 2>&1 || sleep 0.1
 		n=$((n + 1))
 		if [ $n -gt 25 ]; then
 			echo "*** Leak detected ***"
@@ -67,7 +67,7 @@ for i in `jot 10`; do
 			exit 1
 		fi
 	done
-	mount /dev/md${mdstart}${part} $mntpoint
+	mount /dev/md${mdstart}$part $mntpoint
 done
 
 umount $mntpoint

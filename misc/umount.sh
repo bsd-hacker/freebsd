@@ -37,16 +37,16 @@
 D=$diskimage
 dede $D 1m 110 || exit 1
 
-mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs md${mdstart}${part} > /dev/null
-mount /dev/md${mdstart}${part} $mntpoint
+mdconfig -a -t vnode -f $D -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs md${mdstart}$part > /dev/null
+mount /dev/md${mdstart}$part $mntpoint
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=3m            # Run tests for three minutes
 (cd ..; ./run.sh vfs.cfg)
 umount $mntpoint
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart
 rm -f $D

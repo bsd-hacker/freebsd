@@ -70,7 +70,7 @@ newfs -j md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-su ${testuser} -c "cd $mntpoint; /tmp/suj10"
+su $testuser -c "cd $mntpoint; /tmp/suj10"
 
 while mount | grep "$mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1

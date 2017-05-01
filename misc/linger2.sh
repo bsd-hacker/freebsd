@@ -54,7 +54,7 @@ set `df -i $mntpoint | tail -1 | awk '{print $3, $6}'`
 
 min=24
 [ -r $mntpoint/.sujournal ] && { size=88; min=8232; }
-if ! su ${testuser} -c "cd $mntpoint; /tmp/linger2 $size 2>/dev/null"; then
+if ! su $testuser -c "cd $mntpoint; /tmp/linger2 $size 2>/dev/null"; then
 	r=`df -i $mntpoint | head -1`
 	echo "         $r"
 	for i in `jot 12`; do

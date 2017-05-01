@@ -49,7 +49,7 @@ size=$((usermem / 1024 / 1024))
 mounts=$N		# Number of parallel scripts
 
 if [ $# -eq 0 ]; then
-	mount | grep "$mntpoint" | grep -q md && umount ${mntpoint}
+	mount | grep "$mntpoint" | grep -q md && umount $mntpoint
 	mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 	mdconfig -a -t swap -s ${size}m -u $mdstart

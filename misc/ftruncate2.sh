@@ -28,7 +28,7 @@
 # $FreeBSD$
 #
 
-# A fuzz test. Most likely a disk full / FFS issue.
+# A fuzz test triggered a failed block allocation unwinding problem.
 
 # "panic: ffs_blkfree_cg: freeing free block" seen:
 # https://people.freebsd.org/~pho/stress/log/kostik923.txt
@@ -49,7 +49,7 @@ echo "Expect: \"/mnt: write failed, filesystem is full\""
 mount | grep $mntpoint | grep -q "on $mntpoint " && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart || exit 1
-bsdlabel -w md${mdstart} auto
+bsdlabel -w md$mdstart auto
 newfs md${mdstart}$part > /dev/null		# Non SU panics
 mount /dev/md${mdstart}$part $mntpoint
 

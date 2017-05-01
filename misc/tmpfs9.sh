@@ -46,7 +46,7 @@ mount -t tmpfs tmpfs $mntpoint
 chmod 777 $mntpoint
 
 cp /usr/bin/true $mntpoint
-su ${testuser} -c "/tmp/tmpfs9 $mntpoint" &
+su $testuser -c "/tmp/tmpfs9 $mntpoint" &
 
 while kill -0 $! 2>/dev/null; do
 	../testcases/swap/swap -t 2m -i 40 -h

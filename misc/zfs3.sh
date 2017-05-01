@@ -53,8 +53,8 @@ dd if=/dev/zero of=$d2 bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 u1=$mdstart
 u2=$((u1 + 1))
 
-mdconfig -l | grep -q md${u1} && mdconfig -d -u $u1
-mdconfig -l | grep -q md${u2} && mdconfig -d -u $u2
+mdconfig -l | grep -q md$u1 && mdconfig -d -u $u1
+mdconfig -l | grep -q md$u2 && mdconfig -d -u $u2
 
 mdconfig -a -t vnode -f $d1 -u $u1
 mdconfig -a -t vnode -f $d2 -u $u2

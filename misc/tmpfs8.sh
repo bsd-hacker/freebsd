@@ -46,7 +46,7 @@ mount | grep $mntpoint | grep -q tmpfs && umount -f $mntpoint
 mount -t tmpfs tmpfs $mntpoint
 chmod 777 $mntpoint
 
-su ${testuser} -c "cd $mntpoint; /tmp/tmpfs8"
+su $testuser -c "cd $mntpoint; /tmp/tmpfs8"
 
 while mount | grep $mntpoint | grep -q tmpfs; do
 	umount $mntpoint || sleep 1

@@ -41,7 +41,7 @@ mount | grep "$mntpoint" | grep -q md$mdstart && umount -f $mntpoint
 mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart
-bsdlabel -w md${mdstart} auto
+bsdlabel -w md$mdstart auto
 newfs_msdos /dev/md${mdstart}$part > /dev/null
 
 mount -t msdosfs /dev/md${mdstart}$part $mntpoint

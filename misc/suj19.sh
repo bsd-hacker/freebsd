@@ -44,36 +44,36 @@ snap () {
 	return 1
 }
 
-mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}
-mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 1g -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs -j  md${mdstart}${part} > /dev/null
+mdconfig -a -t swap -s 1g -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs -j  md${mdstart}$part > /dev/null
 export PATH_FSTAB=/tmp/fstab
-echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" > $PATH_FSTAB
-mount ${mntpoint}
-set `df -ik ${mntpoint} | tail -1 | awk '{print $4,$7}'`
+echo "/dev/md${mdstart}$part $mntpoint ufs rw,userquota 2 2" > $PATH_FSTAB
+mount $mntpoint
+set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 export QK=$(($1 / 4))
 export QI=$(($2 / 4))
-edquota -u -f ${mntpoint} -e ${mntpoint}:$((QK - 50)):$QK:$((QI - 50 )):$QI ${testuser}
-quotaon ${mntpoint}
-export RUNDIR=${mntpoint}/stressX
-chmod 777 ${mntpoint}
-su ${testuser} -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > /dev/null 2>&1)"' &
+edquota -u -f $mntpoint -e ${mntpoint}:$((QK - 50)):$QK:$((QI - 50 )):$QI $testuser
+quotaon $mntpoint
+export RUNDIR=$mntpoint/stressX
+chmod 777 $mntpoint
+su $testuser -c 'sh -c "(cd ..;runRUNTIME=20m ./run.sh disk.cfg > /dev/null 2>&1)"' &
 
 for i in `jot 20`; do
-	echo "`date '+%T'` mksnap_ffs ${mntpoint} ${mntpoint}/.snap/snap$i"
-	snap ${mntpoint} ${mntpoint}/.snap/snap$i || break
+	echo "`date '+%T'` mksnap_ffs $mntpoint $mntpoint/.snap/snap$i"
+	snap $mntpoint $mntpoint/.snap/snap$i || break
 	sleep 1
 done
 i=$(($(date '+%S') % 20 + 1))
-echo "rm -f ${mntpoint}/.snap/snap$i"
-rm -f ${mntpoint}/.snap/snap$i
+echo "rm -f $mntpoint/.snap/snap$i"
+rm -f $mntpoint/.snap/snap$i
 wait
 
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
+while mount | grep -q $mntpoint; do
+	umount $mntpoint || sleep 1
 done
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart
 rm -f $PATH_FSTAB

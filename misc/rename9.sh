@@ -51,7 +51,7 @@ rm -rf $mntpoint/.snap
 chmod 777 $mntpoint
 
 (while true; do ls -lRi $mntpoint > /dev/null 2>&1; done) &
-su ${testuser} -c "cd $mntpoint; /tmp/rename9"
+su $testuser -c "cd $mntpoint; /tmp/rename9"
 kill $! > /dev/null 2>&1
 wait
 ls -ilR $mntpoint | egrep -v "^total "

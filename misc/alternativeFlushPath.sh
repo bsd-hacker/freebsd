@@ -41,7 +41,7 @@
 . ../default.cfg
 
 odir=`pwd`
-dir=${RUNDIR}/alternativeFlushPath
+dir=$RUNDIR/alternativeFlushPath
 
 [ -d $dir ] && find $dir -type f | xargs rm
 rm -rf $dir
@@ -58,6 +58,7 @@ done
 wait
 sysctl vfs.altbufferflushes
 
+cd $odir
 rm -rf /tmp/alternativeFlushPath $dir
 
 exit

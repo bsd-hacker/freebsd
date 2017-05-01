@@ -49,9 +49,9 @@ bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
-mkdir ${mntpoint}/dir
+mkdir $mntpoint/dir
 (
-	cd ${mntpoint}/dir
+	cd $mntpoint/dir
 	/tmp/rename11 || echo FAIL
 )
 

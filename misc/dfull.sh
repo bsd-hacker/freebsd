@@ -43,7 +43,7 @@ bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
-export RUNDIR=${mntpoint}/stressX
+export RUNDIR=$mntpoint/stressX
 set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 export KBLOCKS=$(($1 * 10))
 export INODES=$(($2 * 10))

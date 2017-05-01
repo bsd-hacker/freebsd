@@ -80,7 +80,7 @@ else
 		start=`date '+%s'`
 		while [ $((`date '+%s'` - start)) -lt 300 ] ; do
 			m=$1
-			mount /dev/md${m}${part} ${mntpoint}$m
+			mount /dev/md${m}$part ${mntpoint}$m
 			while mount | grep -qw ${mntpoint}$m; do
 				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f")
 				umount $opt ${mntpoint}$m > /dev/null 2>&1

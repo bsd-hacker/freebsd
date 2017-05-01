@@ -53,7 +53,7 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-su ${testuser} -c "cd $mntpoint; /tmp/rename7 || echo FAIL"
+su $testuser -c "cd $mntpoint; /tmp/rename7 || echo FAIL"
 
 for i in `jot 10`; do
 	mount | grep -q md${mdstart}$part  && \

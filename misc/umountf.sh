@@ -37,7 +37,7 @@
 D=$diskimage
 dede $D 1m 110 || exit 1
 
-mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null &&
+mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null &&
     umount $mntpoint
 mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 

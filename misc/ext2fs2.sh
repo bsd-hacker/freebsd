@@ -37,11 +37,11 @@
 
 # Uses mke2fs from sysutils/e2fsprogs
 [ -x /usr/local/sbin/mke2fs ] || exit 0
-mount | grep "$mntpoint" | grep -q md$mdstart && umount -f ${mntpoint}
-mdconfig -l | grep -q ${mdstart} &&  mdconfig -d -u $mdstart
+mount | grep "$mntpoint" | grep -q md$mdstart && umount -f $mntpoint
+mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart
-bsdlabel -w md${mdstart} auto
+bsdlabel -w md$mdstart auto
 mke2fs /dev/md${mdstart}a
 # No panic seen when disabling hashed b-tree lookup for large directories
 # tune2fs -O ^dir_index /dev/md${mdstart}$part

@@ -28,7 +28,7 @@
 # $FreeBSD$
 #
 
-# Testing problem with buffer cache inconsistancy
+# Testing problem with buffer cache inconsistency
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -46,30 +46,30 @@ mycc -o symlink2 -Wall symlink2.c
 rm -f symlink2.c
 cd $odir
 
-mount | grep "$mntpoint" | grep md${mdstart} > /dev/null && umount $mntpoint
-mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep md$mdstart > /dev/null && umount $mntpoint
+mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t vnode -f $D -u ${mdstart}
+mdconfig -a -t vnode -f $D -u $mdstart
 
 for i in "" "-U"; do
-	echo "newfs $i /dev/md${mdstart}"
-	newfs $i /dev/md${mdstart} > /dev/null 2>&1
-	mount /dev/md${mdstart} $mntpoint
-	mkdir ${mntpoint}/dir
+	echo "newfs $i /dev/md$mdstart"
+	newfs $i /dev/md$mdstart > /dev/null 2>&1
+	mount /dev/md$mdstart $mntpoint
+	mkdir $mntpoint/dir
 
-	/tmp/symlink2 ${mntpoint}/dir/link
+	/tmp/symlink2 $mntpoint/dir/link
 
-	ls -l ${mntpoint}/dir > /dev/null 2>&1
+	ls -l $mntpoint/dir > /dev/null 2>&1
 	if [ $? -ne 0 ]; then
 		set -x
-		ls -l ${mntpoint}/dir
+		ls -l $mntpoint/dir
 		umount $mntpoint
-		mount /dev/md${mdstart} $mntpoint
-		ls -l ${mntpoint}/dir
+		mount /dev/md$mdstart $mntpoint
+		ls -l $mntpoint/dir
 		set +x
 	fi
 
-	umount -f ${mntpoint}
+	umount -f $mntpoint
 done
 rm -f /tmp/symlink2 $D
 mdconfig -d -u $mdstart

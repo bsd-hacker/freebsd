@@ -79,7 +79,7 @@ else
 		# The test: Parallel mount and unmount
 		m=$1
 		for i in `jot 200`; do
-			mount /dev/md${m}${part} ${mntpoint}$m
+			mount /dev/md${m}$part ${mntpoint}$m
 			chmod 777 ${mntpoint}$m
 			l=`jot -r 1 65535`
 			dd if=/dev/zero of=$mntpoint/$i bs=$l count=100 \

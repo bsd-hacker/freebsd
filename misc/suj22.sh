@@ -67,9 +67,9 @@ D=$diskimage
 
 if [ -n "`find $D -mtime -1h 2>/dev/null`" ]; then
 	# FS left by previous crash
-	mdconfig -a -t vnode -f $D -u ${mdstart}
-	fsck -t ufs -y md${mdstart}${part}
-	fsck -t ufs -y md${mdstart}${part}
+	mdconfig -a -t vnode -f $D -u $mdstart
+	fsck -t ufs -y md${mdstart}$part
+	fsck -t ufs -y md${mdstart}$part
 	rm -f $D
 	exit 0
 fi
@@ -80,37 +80,37 @@ sed '1,/^EOF/d' < $here/$0 > suj22.c
 mycc -o suj22 -Wall -Wextra -O2 suj22.c
 rm -f suj22.c
 
-mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}
-mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 dede $D 1m 1k || exit 1
-mdconfig -a -t vnode -f $D -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs -j md${mdstart}${part} > /dev/null
+mdconfig -a -t vnode -f $D -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs -j md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 cd $mntpoint
 chmod 777 $mntpoint
 /tmp/suj22
-snap $mntpoint ${mntpoint}/.snap/snap1
+snap $mntpoint $mntpoint/.snap/snap1
 /tmp/suj22 prune
-snap $mntpoint ${mntpoint}/.snap/snap2
+snap $mntpoint $mntpoint/.snap/snap2
 /tmp/suj22
 for i in `jot 10`; do
 	/tmp/suj22 prune
 	/tmp/suj22
-	snap $mntpoint ${mntpoint}/.snap/snap$((i + 2)) || break
-	sn=`ls -tU ${mntpoint}/.snap | tail -1`
-	rm -f ${mntpoint}/.snap/$sn
+	snap $mntpoint $mntpoint/.snap/snap$((i + 2)) || break
+	sn=`ls -tU $mntpoint/.snap | tail -1`
+	rm -f $mntpoint/.snap/$sn
 done
 cd $here
 
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
+while mount | grep -q $mntpoint; do
+	umount $mntpoint || sleep 1
 done
-fsck -t ufs -y md${mdstart}${part}
-fsck -t ufs -y md${mdstart}${part}
-mdconfig -d -u ${mdstart}
+fsck -t ufs -y md${mdstart}$part
+fsck -t ufs -y md${mdstart}$part
+mdconfig -d -u $mdstart
 rm -f /tmp/suj22 $D
 exit 0
 EOF

@@ -51,7 +51,7 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-su ${testuser} -c "cd $mntpoint; /tmp/rename6"
+su $testuser -c "cd $mntpoint; /tmp/rename6"
 
 while mount | grep -q md${mdstart}$part; do
 	umount $mntpoint || sleep 1

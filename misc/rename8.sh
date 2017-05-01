@@ -51,7 +51,7 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-su ${testuser} -c "cd $mntpoint; mkdir r; /tmp/rename8 r"
+su $testuser -c "cd $mntpoint; mkdir r; /tmp/rename8 r"
 ls -li $mntpoint/r | egrep -v "^total"
 
 for i in `jot 10`; do

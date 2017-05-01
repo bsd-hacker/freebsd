@@ -66,34 +66,34 @@ sed '1,/^EOF/d' < $here/$0 > suj21.c
 mycc -o suj21 -Wall -Wextra -g -O2 suj21.c
 rm -f suj21.c
 
-mount | grep "${mntpoint}" | grep -q md${mdstart} && umount ${mntpoint}
-mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
+mount | grep "$mntpoint" | grep -q md$mdstart && umount $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 1g -u ${mdstart}
-bsdlabel -w md${mdstart} auto
-newfs -j md${mdstart}${part} > /dev/null
+mdconfig -a -t swap -s 1g -u $mdstart
+bsdlabel -w md$mdstart auto
+newfs -j md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 cd $mntpoint
 chmod 777 $mntpoint
 su $testuser -c '/tmp/suj21'
-snap $mntpoint ${mntpoint}/.snap/snap1
+snap $mntpoint $mntpoint/.snap/snap1
 su $testuser -c '/tmp/suj21 prune'
-snap $mntpoint ${mntpoint}/.snap/snap2
+snap $mntpoint $mntpoint/.snap/snap2
 su $testuser -c '/tmp/suj21'
 for i in `jot 10`; do
 	su $testuser -c '/tmp/suj21 prune'
 	su $testuser -c '/tmp/suj21'
-	snap $mntpoint ${mntpoint}/.snap/snap$((i + 2))
-	sn=`ls -tU ${mntpoint}/.snap | tail -1`
-	rm -f ${mntpoint}/.snap/$sn
+	snap $mntpoint $mntpoint/.snap/snap$((i + 2))
+	sn=`ls -tU $mntpoint/.snap | tail -1`
+	rm -f $mntpoint/.snap/$sn
 done
 cd $here
 
-while mount | grep -q ${mntpoint}; do
-	umount ${mntpoint} || sleep 1
+while mount | grep -q $mntpoint; do
+	umount $mntpoint || sleep 1
 done
-mdconfig -d -u ${mdstart}
+mdconfig -d -u $mdstart
 rm -f /tmp/suj21
 exit 0
 EOF

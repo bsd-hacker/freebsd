@@ -47,7 +47,7 @@ mycc -o fragments -Wall -Wextra -O2 -g fragments.c
 rm -f fragments.c
 cd $here
 
-mount | grep "$mntpoint" | grep -q md$mdstart && umount -f ${mntpoint}
+mount | grep "$mntpoint" | grep -q md$mdstart && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart

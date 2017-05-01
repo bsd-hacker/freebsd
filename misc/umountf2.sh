@@ -55,7 +55,7 @@ newfs md${mdstart}$part > /dev/null 2>&1
 mount /dev/md${mdstart}$part $mntpoint
 sleep 5
 for i in `jot 100`; do
-	/tmp/fsx -S $i -q ${mntpoint}/xxx$i > /dev/null &
+	/tmp/fsx -S $i -q $mntpoint/xxx$i > /dev/null &
 done
 sleep 30
 umount -f $mntpoint &

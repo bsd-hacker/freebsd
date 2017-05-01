@@ -57,8 +57,8 @@ if [ $# -eq 0 ]; then
 	echo "/dev/md${mdstart}$part $mntpoint ufs rw,userquota 2 2" \
 	    >> /etc/fstab
 	mount $mntpoint
-	mkdir ${mntpoint}/stressX
-	chown $testuser ${mntpoint}/stressX
+	mkdir $mntpoint/stressX
+	chown $testuser $mntpoint/stressX
 	set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 	export KBLOCKS=$1
 	export INODES=$2
@@ -72,12 +72,12 @@ if [ $# -eq 0 ]; then
 
 	qc $mntpoint
 
-	su ${testuser} $0 xxx
+	su $testuser $0 xxx
 	du -k /mnt/stressX
 
 	qc $mntpoint
 
-	sed -i -e "/md${mdstart}${part}/d" /etc/fstab
+	sed -i -e "/md${mdstart}$part/d" /etc/fstab
 	while mount | grep -q $mntpoint; do
 		umount $([ $((`date '+%s'` % 2)) -eq 0 ] &&
 		    echo "-f" || echo "") $mntpoint > /dev/null 2>&1

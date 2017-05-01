@@ -45,7 +45,7 @@ rm -f suj30.c
 mount | grep "on $mntpoint " | grep -q md$mdstart && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 4g -u ${mdstart}
+mdconfig -a -t swap -s 4g -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs -j md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint

@@ -42,14 +42,14 @@ if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
-		mount | grep "${mntpoint}" | grep -q md$m &&
+		mount | grep "$mntpoint" | grep -q md$m &&
 		    umount ${mntpoint}$m
 		mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
 
 		dd if=/dev/zero of=$D$m bs=1m count=1 > /dev/null 2>&1
 		mdconfig -a -t vnode -f $D$m -u $m || { rm -f $D$m; exit 1; }
 		bsdlabel -w md$m auto
-		newfs md${m}${part} > /dev/null 2>&1
+		newfs md${m}$part > /dev/null 2>&1
 	done
 
 	# start the parallel tests
@@ -74,7 +74,7 @@ else
 	for i in `jot 1024`; do
 		m=$1
 		opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
-		mount /dev/md${m}${part} ${mntpoint}$m
+		mount /dev/md${m}$part ${mntpoint}$m
 		while mount | grep -q ${mntpoint}$m; do
 			umount $opt ${mntpoint}$m > /dev/null 2>&1
 		done
