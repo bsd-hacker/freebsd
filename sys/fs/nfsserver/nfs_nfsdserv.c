@@ -3142,6 +3142,7 @@ nfsrvd_close(struct nfsrv_descript *nd, __unused int isdgram,
 	int error = 0;
 	nfsv4stateid_t stateid;
 	nfsquad_t clientid;
+	struct nfsvattr na;
 
 	NFSM_DISSECT(tl, u_int32_t *, NFSX_UNSIGNED + NFSX_STATEID);
 	stp->ls_seq = fxdr_unsigned(u_int32_t, *tl++);
@@ -3182,6 +3183,8 @@ nfsrvd_close(struct nfsrv_descript *nd, __unused int isdgram,
 		nd->nd_clientid.qval = clientid.qval;
 	}
 	nd->nd_repstat = nfsrv_openupdate(vp, stp, clientid, &stateid, nd, p);
+	/* For pNFS, update the attributes. */
+	nfsrv_updatemdsattr(vp, &na, p);
 	vput(vp);
 	if (!nd->nd_repstat) {
 		/*
