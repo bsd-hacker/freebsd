@@ -144,9 +144,9 @@ pm(void)
 
 			if (stat(dp->d_name, &statb) == -1) {
 				warn("stat(%s)", dp->d_name);
-				printf("name: %-10s, inode %7lu, "
+				printf("name: %-10s, inode %7ju, "
 				    "type %2d, namelen %d, d_reclen %d\n",
-				    dp->d_name, (unsigned long)dp->d_fileno, dp->d_type,
+				    dp->d_name, (uintmax_t)dp->d_fileno, dp->d_type,
 				    dp->d_namlen, dp->d_reclen);
 				fflush(stdout);
 			} else {
