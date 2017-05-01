@@ -33,6 +33,7 @@
 # Fixed by r292326.
 
 . ../default.cfg
+[ -f /usr/libexec/sendmail/sendmail ] || exit 0
 
 here=`pwd`
 cd /tmp
