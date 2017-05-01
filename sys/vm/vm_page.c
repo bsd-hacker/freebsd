@@ -1521,6 +1521,9 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	if (object != NULL)
 		VM_OBJECT_ASSERT_WLOCKED(object);
 
+	if (__predict_false((req & VM_ALLOC_IFCACHED) != 0))
+		return (NULL);
+
 	req_class = req & VM_ALLOC_CLASS_MASK;
 
 	/*
