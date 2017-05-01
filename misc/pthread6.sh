@@ -45,7 +45,10 @@ echo "Expect SIGABRT"
 for i in `jot 50`; do
 	/tmp/pthread6
 done
-killall -q swap
+while pgrep -q swap; do
+	pkill swap
+	sleep 1
+done
 
 rm -f /tmp/pthread6 /tmp/pthread6.core
 exit 0
