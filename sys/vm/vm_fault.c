@@ -756,8 +756,7 @@ RetryFault:;
 				unlock_and_deallocate(&fs);
 				VM_WAITPFAULT;
 				goto RetryFault;
-			} else if (fs.m->valid == VM_PAGE_BITS_ALL)
-				break;
+			}
 		}
 
 readrest:
