@@ -42,9 +42,7 @@ sed '1,/^EOF/d' < $here/$0 > mmap21.c
 mycc -o mmap21 -Wall -Wextra -O2 -g mmap21.c -lpthread || exit 1
 rm -f mmap21.c
 
-for i in `jot 2`; do
-	su $testuser -c /tmp/mmap21
-done
+su $testuser -c /tmp/mmap21
 
 rm -f /tmp/mmap21 /tmp/mmap21.core
 exit 0
@@ -64,12 +62,13 @@ EOF
 #include <stdlib.h>
 #include <unistd.h>
 
-#define LOOPS 2
-#define PARALLEL 50
+#define LOOPS 1
+#define NMAPS 50
+#define PARALLEL 2
 
 void *p;
 
-void *
+static void *
 tmmap(void *arg __unused)
 {
 	size_t len;
@@ -78,13 +77,13 @@ tmmap(void *arg __unused)
 	pthread_set_name_np(pthread_self(), __func__);
 	len = 1LL * 128 * 1024 * 1024;
 
-	for (i = 0; i < 100; i++)
+	for (i = 0; i < NMAPS; i++)
 		p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON, -1, 0);
 
 	return (NULL);
 }
 
-void *
+static void *
 tmlock(void *arg __unused)
 {
 	size_t len;
@@ -108,9 +107,10 @@ tmlock(void *arg __unused)
 	return (NULL);
 }
 
-void
+static void
 test(void)
 {
+	pid_t pid;
 	pthread_t tid[2];
 	int i, rc;
 
@@ -120,11 +120,12 @@ test(void)
 		errc(1, rc, "tmlock()");
 
 	for (i = 0; i < 100; i++) {
-		if (fork() == 0) {
+		if ((pid = fork()) == 0) {
 			usleep(10000);
 			_exit(0);
 		}
-		wait(NULL);
+		if (waitpid(pid, NULL, 0) != pid)
+			err(1, "waitpid(%d)", pid);
 	}
 
 	raise(SIGSEGV);
@@ -138,18 +139,23 @@ test(void)
 int
 main(void)
 {
-	int i, j;
 
-	alarm(120);
+	pid_t pids[PARALLEL];
+	int e, i, j, status;
+
 	for (i = 0; i < LOOPS; i++) {
 		for (j = 0; j < PARALLEL; j++) {
-			if (fork() == 0)
+			if ((pids[j] = fork()) == 0)
 				test();
 		}
 
-		for (j = 0; j < PARALLEL; j++)
-			wait(NULL);
+		e = 0;
+		for (j = 0; j < PARALLEL; j++) {
+			if (waitpid(pids[j], &status, 0) == -1)
+				err(1, "waitpid(%d)", pids[j]);
+			e += status == 0 ? 0 : 1;
+		}
 	}
 
-	return (0);
+	return (e);
 }
