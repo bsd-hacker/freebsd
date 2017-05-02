@@ -47,7 +47,7 @@ for u in $md1 $md2 $md3; do
 	mdconfig -a -t swap -s $size -u $u
 done
 
-gstripe load > /dev/null 2>&1
+gstripe load > /dev/null 2>&1 && unload=1
 gstripe label -v -s 131072 data /dev/md$md1 /dev/md$md2 /dev/md$md3  > \
     /dev/null || exit 1
 [ -c /dev/stripe/data ] || exit 1
@@ -62,9 +62,10 @@ su $testuser -c 'cd ..; ./run.sh marcus.cfg'
 while mount | grep $mntpoint | grep -q /stripe/; do
 	umount $mntpoint || sleep 1
 done
-gstripe stop data
-gstripe unload
+gstripe stop data && s=0 || s=1
+[ $unload ] && gstripe unload
 
 for u in $md3 $md2 $md1; do
 	mdconfig -d -u $u
 done
+exit $s

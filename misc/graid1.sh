@@ -38,6 +38,7 @@ md1=$mdstart
 md2=$((mdstart + 1))
 md3=$((mdstart + 2))
 
+s=0
 size=1g
 [ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le 4 ] &&
     size=512m
@@ -47,7 +48,7 @@ for u in $md1 $md2 $md3; do
 	mdconfig -a -t swap -s $size -u $u
 done
 
-gmirror load > /dev/null 2>&1
+gmirror load > /dev/null 2>&1 && unload=1
 gmirror label -v -b split -s 2048 data /dev/md$md1 /dev/md$md2 \
     /dev/md$md3 > /dev/null || exit 1
 [ -c /dev/mirror/data ] || exit 1
@@ -62,9 +63,11 @@ su $testuser -c 'cd ..; ./run.sh marcus.cfg'
 while mount | grep $mntpoint | grep -q /mirror/; do
 	umount $mntpoint || sleep 1
 done
-gmirror stop data
-gmirror unload
+gmirror stop data || s=1
+gmirror destroy data 2>/dev/null
+[ $unload ] && gmirror unload
 
 for u in $md3 $md2 $md1; do
-	mdconfig -d -u $u
+	mdconfig -d -u $u || s=3
 done
+exit $s

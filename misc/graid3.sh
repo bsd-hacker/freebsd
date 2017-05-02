@@ -48,7 +48,7 @@ for u in $md1 $md2 $md3; do
 	mdconfig -a -t swap -s $size -u $u
 done
 
-graid3 load > /dev/null 2>&1
+graid3 load > /dev/null 2>&1 && unload=1
 graid3 label -v -r data md$md1 md$md2 md$md3 > /dev/null || exit 1
 [ -c /dev/raid3/data ] || exit 1
 newfs $newfs_flags /dev/raid3/data  > /dev/null
@@ -64,9 +64,10 @@ while mount | grep $mntpoint | grep -q raid3; do
 	umount $mntpoint || sleep 1
 done
 
-graid3 stop data
-graid3 unload
+graid3 stop data && s=0 || s=1
+[ $unload ] && graid3 unload
 
 for u in $md3 $md2 $md1; do
 	mdconfig -d -u $u
 done
+exit $s
