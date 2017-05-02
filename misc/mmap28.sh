@@ -37,6 +37,7 @@
 # whereas this test runs as expected on r292372.
 # https://people.freebsd.org/~pho/stress/log/mmap28-2.txt
 # https://people.freebsd.org/~pho/stress/log/mmap28-3.txt
+# Fixed by r307626
 
 # Test scenario refinement by kib@
 
