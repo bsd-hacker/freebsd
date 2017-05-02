@@ -37,9 +37,9 @@
 dir=/tmp
 odir=`pwd`
 cd $dir
-sed '1,/^EOF/d' < $odir/$0 > $dir/wire_no_page.c
-mycc -o mmap5  -Wall -Wextra wire_no_page.c || exit 1
-rm -f wire_no_page.c
+sed '1,/^EOF/d' < $odir/$0 > $dir/mmap5.c
+mycc -o mmap5  -Wall -Wextra mmap5.c || exit 1
+rm -f mmap5.c
 cd $odir
 
 cp /tmp/mmap5  /tmp/mmap5.inputfile
