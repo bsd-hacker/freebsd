@@ -48,7 +48,7 @@ cd $odir
 v1=`sysctl -n vm.stats.vm.v_wire_count`
 for i in `jot 5000`; do
 	/tmp/mmap13
-done
+done 2>&1 | tail -5
 v2=`sysctl -n vm.stats.vm.v_wire_count`
 s=0
 [ $v2 -gt $((v1 + 500)) ] &&
