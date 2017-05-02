@@ -45,12 +45,10 @@ rm -f wire_no_page.c
 cd $odir
 
 (cd ../testcases/swap; ./swap -t 1m -i 2) &
+sleep 1
 cp /tmp/mmap7 /tmp/mmap7.inputfile
 /tmp/mmap7 /tmp/mmap7.inputfile
-while ps | grep -v grep | grep -qw swap; do
-	killall -9 swap 2>/dev/null
-	sleep .1
-done
+while pkill -9 swap; do :; done
 wait
 rm -f /tmp/mmap7 /tmp/mmap7.inputfile
 exit
