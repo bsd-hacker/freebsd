@@ -45,9 +45,10 @@ mycc -o msync -Wall -Wextra msync.c -lpthread || exit 1
 rm -f msync.c
 cd $odir
 
-/tmp/msync
-
-killall msync > /dev/null 2>&1
+/tmp/msync &
+sleep 180
+while pkill -9 msync; do :; done
+wait
 rm -f /tmp/msync
 exit
 

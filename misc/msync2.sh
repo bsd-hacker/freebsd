@@ -60,7 +60,7 @@ EOF
 #include <time.h>
 #include <unistd.h>
 
-#define RUNTIME 300
+#define RUNTIME 400
 
 const char *file;
 char c;
