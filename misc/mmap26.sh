@@ -53,11 +53,9 @@ sleep 1
 
 (cd /tmp; /tmp/mmap26 /tmp/mmap26.inputfile)
 
-while ps auxww | grep -v grep | grep -qw swap; do
-	killall -9 swap 2>/dev/null
-done
+while pkill -9 swap; do :; done
 rm -f /tmp/mmap26 /tmp/mmap26.inputfile /tmp/mmap26.core
-exit
+exit 0
 
 EOF
 #include <sys/fcntl.h>
@@ -103,7 +101,8 @@ test(void)
 	p[len - 1] = 1;
 
 	/* one byte past EOF */
-	if (round_page(p + len) == round_page(p + len - 1)) {
+	if (round_page((unsigned long)&p[len]) ==
+	    round_page((unsigned long)&p[len - 1])) {
 		fprintf(stderr, "Expect: Segmentation fault (core dumped)\n");
 		c = p[len];
 	}
