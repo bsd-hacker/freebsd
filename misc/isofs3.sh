@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2016 Dell EMC
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,35 +28,41 @@
 # $FreeBSD$
 #
 
-[ `id -u ` -ne 0 ] && echo "Must not be root!" && exit 1
+# Simple isofs / union test scenario
 
-[ -z "`type mkisofs 2>/dev/null`" ] && echo "mkisofs not found" && exit 0
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ -z "`which mkisofs`" ] && echo "mkisofs not found" && exit 0
 
 . ../default.cfg
 
 D=`dirname $diskimage`/dir
 I=`dirname $diskimage`/dir.iso
-export here=`pwd`
-cd /tmp
-
-mycc -o fstool $here/../tools/fstool.c
 
 rm -rf $D $I
-mkdir $D
-
-(cd $D; /tmp/fstool -n 10 -l -f 512)
+mkdir -p $D
+cp -r ../../stress2 $D 2>/dev/null
 
 mkisofs -o $I -r $D > /dev/null 2>&1
 
-mdconfig -a -t vnode -f $I -u $mdstart
-mount -t cd9660 /dev/md$mdstart $mntpoint
+mount | grep -q /dev/md${mdstart}$part && umount -f /dev/md${mdstart}$part
+[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
+mdconfig -a -t vnode -f $I -u $mdstart || exit 1
+mount -t cd9660 /dev/md$mdstart $mntpoint || exit 1
 
-for i in `jot 64`; do
-   find /$mntpoint -type f > /dev/null 2>&1 &
-done
-wait
+m2=$((mdstart + 1))
+mdconfig -s 1g -u $m2
+bsdlabel -w md$m2 auto
+newfs $newfs_flags md${m2}$part > /dev/null
 
-umount $mntpoint
+mount -o union /dev/md${m2}$part $mntpoint || exit 1
+
+export RUNDIR=$mntpoint/stressX
+export runRUNTIME=5m
+(cd $mntpoint/stress2; ./run.sh marcus.cfg) > /dev/null
+
+umount /mnt
+mdconfig -d -u $m2
+umount /mnt
 mdconfig -d -u $mdstart
-
-rm -rf $D $I fstool
+rm -rf $D $I
+exit 0

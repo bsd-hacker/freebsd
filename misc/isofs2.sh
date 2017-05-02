@@ -35,7 +35,7 @@
 
 [ `id -u ` -ne 0 ] && echo "Must not be root!" && exit 1
 
-[ -z "`type mkisofs 2>/dev/null`" ] && echo "mkisofs not found" && exit 1
+[ -z "`type mkisofs 2>/dev/null`" ] && echo "mkisofs not found" && exit 0
 
 . ../default.cfg
 
