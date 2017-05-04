@@ -28,9 +28,10 @@
 # $FreeBSD$
 #
 
-# Demonstrate that "options MAXMEMDOM" is broken.
+# Demonstrate that "options MAXMEMDOM" is broken. (NUMA test)
 # panic: vm_page_alloc: missing page
 # https://people.freebsd.org/~pho/stress/log/maxmemdom.txt
+# Fixed in r293640.
 
 . ../default.cfg
 
