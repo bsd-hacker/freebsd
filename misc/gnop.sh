@@ -42,8 +42,8 @@ test() {
 
 	mdconfig -a -t swap -s 2g -u $mdstart || exit 1
 	gnop create -S $1 /dev/md$mdstart
-	newfs $newfs_flags /dev/md${mdstart}.nop > /dev/null
-	mount /dev/md${mdstart}.nop $mntpoint
+	newfs $newfs_flags /dev/md$mdstart.nop > /dev/null
+	mount /dev/md$mdstart.nop $mntpoint
 	chmod 777 $mntpoint
 
 	export runRUNTIME=4m
@@ -54,8 +54,8 @@ test() {
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
-	checkfs /dev/md${mdstart}.nop
-	gnop destroy /dev/md${mdstart}.nop
+	checkfs /dev/md$mdstart.nop
+	gnop destroy /dev/md$mdstart.nop
 	mdconfig -d -u $mdstart
 }
 

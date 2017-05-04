@@ -41,8 +41,8 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart || exit 1
 gnop status || exit 1
 gnop create -S 4k /dev/md$mdstart
-newfs -j /dev/md${mdstart}.nop
-mount /dev/md${mdstart}.nop $mntpoint
+newfs -j /dev/md$mdstart.nop
+mount /dev/md$mdstart.nop $mntpoint
 chmod 777 $mntpoint
 
 export runRUNTIME=20m
@@ -53,7 +53,7 @@ su $testuser -c 'cd ..; ./run.sh marcus.cfg'
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
-checkfs /dev/md${mdstart}.nop
-gnop destroy /dev/md${mdstart}.nop
+checkfs /dev/md$mdstart.nop
+gnop destroy /dev/md$mdstart.nop
 gnop unload
 mdconfig -d -u $mdstart

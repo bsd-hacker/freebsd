@@ -46,20 +46,20 @@ echo test | geli init -s 4096 -J - -K /tmp/suj3.key /dev/md$mdstart > /dev/null
 echo test | geli attach -j - -k /tmp/suj3.key /dev/md$mdstart
 newfs /dev/md$mdstart.eli > /dev/null
 
-tunefs -j enable /dev/md${mdstart}.eli
-mount /dev/md${mdstart}.eli $mntpoint
+tunefs -j enable /dev/md$mdstart.eli
+mount /dev/md$mdstart.eli $mntpoint
 chmod 777 $mntpoint
 
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=5m
 
-mount | grep -q md${mdstart}.eli && \
+mount | grep -q md$mdstart.eli && \
 	su $testuser -c "cd ..; ./run.sh rw.cfg"
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
-checkfs /dev/md${mdstart}.eli
+checkfs /dev/md$mdstart.eli
 geli kill /dev/md$mdstart.eli
 mdconfig -d -u $mdstart
 rm -f /tmp/suj3.key

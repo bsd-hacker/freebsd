@@ -46,8 +46,8 @@
 [ `swapinfo | wc -l` -eq 1 ] || { swapoff -a; off=1; }
 size=$((`sysctl -n hw.physmem` / 1024 / 1024))
 need=$((size * 2))
-d1=${diskimage}.1
-d2=${diskimage}.2
+d1=$diskimage.1
+d2=$diskimage.2
 rm -f $d1 $d2 || exit 1
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` \
     -lt $need ] &&

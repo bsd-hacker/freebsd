@@ -45,8 +45,8 @@ size=$((`sysctl -n hw.physmem` / 1024 / 1024))
     echo "RAM should be capped to 4GB for this test."
 [ $size -gt $maxsize ] && size=$maxsize
 need=$((size * 2))
-d1=${diskimage}.1
-d2=${diskimage}.2
+d1=$diskimage.1
+d2=$diskimage.2
 rm -f $d1 $d2
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` -lt \
     $need ] && printf "Need %d MB on %s.\n" $need `dirname $diskimage` && exit

@@ -62,7 +62,7 @@ gpart add -t freebsd-ufs -s 340m md$u3
 ) > /dev/null
 gnop create md$u2
 gnop create md$u3
-gmirror label test md${u1}p1 md${u2}.nopp1 md${u3}.nopp1
+gmirror label test md${u1}p1 md$u2.nopp1 md$u3.nopp1
 [ -c /dev/mirror/test ] || exit 1
 
 newfs /dev/mirror/test > /dev/null
@@ -77,18 +77,18 @@ rm -rf /tmp/stressX.control
 su $testuser -c 'cd ..; ./run.sh marcus.cfg' > /dev/null 2>&1 &
 pid=$!
 
-gnop configure -r 0 -w 1 md${u2}.nop
-gnop configure -r 0 -w 1 md${u3}.nop
+gnop configure -r 0 -w 1 md$u2.nop
+gnop configure -r 0 -w 1 md$u3.nop
 while kill -0 $pid > /dev/null 2>&1; do
-	if ! gmirror status test | grep -q md${u2}.nopp1; then
+	if ! gmirror status test | grep -q md$u2.nopp1; then
 		gmirror forget test
-		gmirror remove test md${u2}.nopp1 2>/dev/null
-		gmirror insert test md${u2}.nopp1 2>/dev/null
+		gmirror remove test md$u2.nopp1 2>/dev/null
+		gmirror insert test md$u2.nopp1 2>/dev/null
 	fi
-	if ! gmirror status test | grep -q md${u3}.nopp1; then
+	if ! gmirror status test | grep -q md$u3.nopp1; then
 		gmirror forget test
-		gmirror remove test md${u3}.nopp1 2>/dev/null
-		gmirror insert test md${u3}.nopp1 2>/dev/null
+		gmirror remove test md$u3.nopp1 2>/dev/null
+		gmirror insert test md$u3.nopp1 2>/dev/null
 	fi
 	sleep 1
 done

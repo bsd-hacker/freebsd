@@ -47,8 +47,8 @@ mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 
 mdconfig -a -t swap -s ${gigs}g -u $mdstart || exit 1
 gnop create -S 8k /dev/md$mdstart
-newfs $newfs_flags /dev/md${mdstart}.nop > /dev/null
-mount /dev/md${mdstart}.nop $mntpoint
+newfs $newfs_flags /dev/md$mdstart.nop > /dev/null
+mount /dev/md$mdstart.nop $mntpoint
 chmod 777 $mntpoint
 
 start=`date '+%s'`
@@ -69,7 +69,7 @@ cd /
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
-gnop destroy /dev/md${mdstart}.nop
+gnop destroy /dev/md$mdstart.nop
 mdconfig -d -u $mdstart
 [ $notloaded ] && gnop unload
 exit 0

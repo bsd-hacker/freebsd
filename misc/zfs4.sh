@@ -38,8 +38,8 @@
 kldstat -v | grep -q zfs.ko  || { kldload zfs.ko ||
     exit 0; loaded=1; }
 
-d1=${diskimage}.1
-d2=${diskimage}.2
+d1=$diskimage.1
+d2=$diskimage.2
 
 dd if=/dev/zero of=$d1 bs=1m count=1k 2>&1 | egrep -v "records|transferred"
 dd if=/dev/zero of=$d2 bs=1m count=1k 2>&1 | egrep -v "records|transferred"

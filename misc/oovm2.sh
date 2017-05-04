@@ -41,10 +41,10 @@
 maxsize=$((2 * 1024)) # Limit size due to runtime reasons
 size=$((`sysctl -n hw.physmem` / 1024 / 1024))
 [ $size -gt $maxsize ] && size=$maxsize
-d1=${diskimage}.1
-d2=${diskimage}.2
-d3=${diskimage}.3
-d4=${diskimage}.4
+d1=$diskimage.1
+d2=$diskimage.2
+d3=$diskimage.3
+d4=$diskimage.4
 rm -f $d1 $d2 $d3 $d4
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` -lt \
     $size ] && printf "Need %d MB on %s.\n" $size `dirname $diskimage` && exit
