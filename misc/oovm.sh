@@ -28,19 +28,23 @@
 # $FreeBSD$
 #
 
-# Out of VM deadlock seen.
+# Out of VM deadlock seen. Introduced by r285808.
 # https://people.freebsd.org/~pho/stress/log/oovm.txt
 # https://people.freebsd.org/~pho/stress/log/oovm-2.txt
+
+# Fixed by r290047 and <alc's PQ_LAUNDRY patch>
 
 # Test scenario suggestion by alc@
 
 . ../default.cfg
 
 [ `swapinfo | wc -l` -eq 1 ] && exit 0
+maxsize=$((2 * 1024)) # Limit size due to runtime reasons
 size=$((`sysctl -n hw.physmem` / 1024 / 1024))
-need=$((size * 2))
 [ $size -gt $((4 * 1024)) ] &&
-    echo "RAM should be be capped to 4G for this test."
+    echo "RAM should be capped to 4GB for this test."
+[ $size -gt $maxsize ] && size=$maxsize
+need=$((size * 2))
 d1=${diskimage}.1
 d2=${diskimage}.2
 rm -f $d1 $d2
@@ -49,7 +53,7 @@ rm -f $d1 $d2
 dd if=/dev/zero of=$d1 bs=1m count=$size 2>&1 | \
     egrep -v "records|transferred"
 cp $d1 $d2 || exit
-trap "rm -f $d1 $d2" EXIT SIGINT
+trap "rm -f $d1 $d2" EXIT INT
 
 dir=/tmp
 odir=`pwd`

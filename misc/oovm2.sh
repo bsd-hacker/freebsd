@@ -31,12 +31,16 @@
 # Out of VM deadlock seen. Introduced by r285808. Variation of oovm.sh
 # https://people.freebsd.org/~pho/stress/log/oovm2.txt
 
+# Fixed by r290047 and <alc's PQ_LAUNDRY patch>
+
 # Test scenario suggestion by alc@
 
 . ../default.cfg
 
 [ `swapinfo | wc -l` -eq 1 ] && exit 0
+maxsize=$((2 * 1024)) # Limit size due to runtime reasons
 size=$((`sysctl -n hw.physmem` / 1024 / 1024))
+[ $size -gt $maxsize ] && size=$maxsize
 d1=${diskimage}.1
 d2=${diskimage}.2
 d3=${diskimage}.3
