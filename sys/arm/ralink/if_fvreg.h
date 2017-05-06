@@ -11,135 +11,139 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * THIS SOFTWFV IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
  * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE FV DISCLAIMED.
  * IN NO EVENT SHALL THE AUTHOR OR HIS RELATIVES BE LIABLE FOR ANY DIRECT,
  * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
  * SERVICES; LOSS OF MIND, USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
  * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
  * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
- * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * IN ANY WAY OUT OF THE USE OF THIS SOFTWFV, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  *
  * $FreeBSD$
  *
  */
 
-#ifndef __IF_AREREG_H__
-#define __IF_AREREG_H__
+#ifndef __IF_FVREG_H__
+#define	__IF_FVREG_H__
 
-struct are_desc {
-	uint32_t	are_stat;
-	uint32_t	are_devcs;
-	uint32_t	are_addr;
-	uint32_t	are_link;
+struct fv_desc {
+	uint32_t	fv_stat;
+	uint32_t	fv_devcs;
+	uint32_t	fv_addr;
+	uint32_t	fv_link;
 };
 
-#define	ARE_DMASIZE(len)		((len)  & ((1 << 11)-1))		
-#define	ARE_PKTSIZE(len)		((len & 0xffff0000) >> 16)
+#define	FV_DMASIZE(len)		((len)  & ((1 << 11)-1))		
+#define	FV_PKTSIZE(len)		((len & 0xffff0000) >> 16)
 
-#define	ARE_RX_RING_CNT		128
-#define	ARE_TX_RING_CNT		128
-#define	ARE_TX_RING_SIZE		sizeof(struct are_desc) * ARE_TX_RING_CNT
-#define	ARE_RX_RING_SIZE		sizeof(struct are_desc) * ARE_RX_RING_CNT
+#define	FV_RX_RING_CNT		128
+#define	FV_TX_RING_CNT		128
+#define	FV_TX_RING_SIZE		sizeof(struct fv_desc) * FV_TX_RING_CNT
+#define	FV_RX_RING_SIZE		sizeof(struct fv_desc) * FV_RX_RING_CNT
+#define	FV_RING_ALIGN		sizeof(struct fv_desc)
+#define	FV_RX_ALIGN		sizeof(uint32_t)
+#define	FV_MAXFRAGS		8
+#define	FV_TX_INTR_THRESH	8
 
-#define	ARE_MIN_FRAMELEN		60
-#define	ARE_RING_ALIGN		sizeof(struct are_desc)
-#define	ARE_RX_ALIGN		sizeof(uint32_t)
-#define	ARE_MAXFRAGS		8
-#define	ARE_TX_INTR_THRESH	8
+#define	FV_TX_RING_ADDR(sc, i)	\
+    ((sc)->fv_rdata.fv_tx_ring_paddr + sizeof(struct fv_desc) * (i))
+#define	FV_RX_RING_ADDR(sc, i)	\
+    ((sc)->fv_rdata.fv_rx_ring_paddr + sizeof(struct fv_desc) * (i))
+#define	FV_INC(x,y)		(x) = (((x) + 1) % y)
 
-#define	ARE_TX_RING_ADDR(sc, i)	\
-    ((sc)->are_rdata.are_tx_ring_paddr + sizeof(struct are_desc) * (i))
-#define	ARE_RX_RING_ADDR(sc, i)	\
-    ((sc)->are_rdata.are_rx_ring_paddr + sizeof(struct are_desc) * (i))
-#define	ARE_INC(x,y)		(x) = (((x) + 1) % y)
-
-struct are_txdesc {
+struct fv_txdesc {
 	struct mbuf	*tx_m;
 	bus_dmamap_t	tx_dmamap;
 };
 
-struct are_rxdesc {
+struct fv_rxdesc {
 	struct mbuf	*rx_m;
 	bus_dmamap_t	rx_dmamap;
-	struct are_desc	*desc;
+	struct fv_desc	*desc;
 	/* Use this values on error instead of allocating new mbuf */
 	uint32_t	saved_ctl, saved_ca; 
 };
 
-struct are_chain_data {
-	bus_dma_tag_t		are_parent_tag;
-	bus_dma_tag_t		are_tx_tag;
-	struct are_txdesc	are_txdesc[ARE_TX_RING_CNT];
-	bus_dma_tag_t		are_rx_tag;
-	struct are_rxdesc	are_rxdesc[ARE_RX_RING_CNT];
-	bus_dma_tag_t		are_tx_ring_tag;
-	bus_dma_tag_t		are_rx_ring_tag;
-	bus_dmamap_t		are_tx_ring_map;
-	bus_dmamap_t		are_rx_ring_map;
-	bus_dmamap_t		are_rx_sparemap;
-	int			are_tx_pkts;
-	int			are_tx_prod;
-	int			are_tx_cons;
-	int			are_tx_cnt;
-	int			are_rx_cons;
+struct fv_chain_data {
+	bus_dma_tag_t		fv_parent_tag;
+	bus_dma_tag_t		fv_tx_tag;
+	struct fv_txdesc	fv_txdesc[FV_TX_RING_CNT];
+	bus_dma_tag_t		fv_rx_tag;
+	struct fv_rxdesc	fv_rxdesc[FV_RX_RING_CNT];
+	bus_dma_tag_t		fv_tx_ring_tag;
+	bus_dma_tag_t		fv_rx_ring_tag;
+	bus_dmamap_t		fv_tx_ring_map;
+	bus_dmamap_t		fv_rx_ring_map;
+	bus_dmamap_t		fv_rx_sparemap;
+	int			fv_tx_pkts;
+	int			fv_tx_prod;
+	int			fv_tx_cons;
+	int			fv_tx_cnt;
+	int			fv_rx_cons;
+
+	bus_dma_tag_t		fv_sf_tag;
+	bus_dmamap_t		fv_sf_buff_map;
+	uint32_t		*fv_sf_buff;
 };
 
-struct are_ring_data {
-	struct are_desc		*are_rx_ring;
-	struct are_desc		*are_tx_ring;
-	bus_addr_t		are_rx_ring_paddr;
-	bus_addr_t		are_tx_ring_paddr;
+struct fv_ring_data {
+	struct fv_desc		*fv_rx_ring;
+	struct fv_desc		*fv_tx_ring;
+	bus_addr_t		fv_rx_ring_paddr;
+	bus_addr_t		fv_tx_ring_paddr;
+	bus_addr_t		fv_sf_paddr;
 };
 
-struct are_softc {
-	struct ifnet		*are_ifp;	/* interface info */
-	bus_space_handle_t	are_bhandle;	/* bus space handle */
-	bus_space_tag_t		are_btag;	/* bus space tag */
-	device_t		are_dev;
-	uint8_t			are_eaddr[ETHER_ADDR_LEN];
-	struct resource		*are_res;
-	int			are_rid;
-	struct resource		*are_irq;
-	void			*are_intrhand;
+struct fv_softc {
+	struct ifnet		*fv_ifp;	/* interface info */
+	bus_space_handle_t	fv_bhandle;	/* bus space handle */
+	bus_space_tag_t		fv_btag;	/* bus space tag */
+	device_t		fv_dev;
+	uint8_t			fv_eaddr[ETHER_ADDR_LEN];
+	struct resource		*fv_res;
+	int			fv_rid;
+	struct resource		*fv_irq;
+	void			*fv_intrhand;
 	u_int32_t		sc_inten;	/* copy of CSR_INTEN */
 	u_int32_t		sc_rxint_mask;	/* mask of Rx interrupts we want */
 	u_int32_t		sc_txint_mask;	/* mask of Tx interrupts we want */
-#ifdef ARE_MII
-	device_t		are_miibus;
+#ifdef MII
+	device_t		fv_miibus;
 #else
-	struct ifmedia		are_ifmedia;
+	struct ifmedia		fv_ifmedia;
 #endif
-#ifdef ARE_MDIO
-	device_t		are_miiproxy;
+#ifdef FV_MDIO
+	device_t		fv_miiproxy;
 #endif
-	bus_dma_tag_t		are_parent_tag;
-	bus_dma_tag_t		are_tag;
-	struct mtx		are_mtx;
-	struct callout		are_stat_callout;
-	struct task		are_link_task;
-	struct are_chain_data	are_cdata;
-	struct are_ring_data	are_rdata;
-	int			are_link_status;
-	int			are_detach;
-	int			are_if_flags;   /* last if flags */
+	int			fv_if_flags;
+	bus_dma_tag_t		fv_parent_tag;
+	bus_dma_tag_t		fv_tag;
+	struct mtx		fv_mtx;
+	phandle_t		fv_ofw;
+	struct callout		fv_stat_callout;
+	struct task		fv_link_task;
+	struct fv_chain_data	fv_cdata;
+	struct fv_ring_data	fv_rdata;
+	int			fv_link_status;
+	int			fv_detach;
 };
 
-#define	ARE_LOCK(_sc)		mtx_lock(&(_sc)->are_mtx)
-#define	ARE_UNLOCK(_sc)		mtx_unlock(&(_sc)->are_mtx)
-#define	ARE_LOCK_ASSERT(_sc)	mtx_assert(&(_sc)->are_mtx, MA_OWNED)
+#define	FV_LOCK(_sc)		mtx_lock(&(_sc)->fv_mtx)
+#define	FV_UNLOCK(_sc)		mtx_unlock(&(_sc)->fv_mtx)
+#define	FV_LOCK_ASSERT(_sc)	mtx_assert(&(_sc)->fv_mtx, MA_OWNED)
 
 /*
  * register space access macros
  */
 #define	CSR_WRITE_4(sc, reg, val)	\
-    bus_space_write_4(sc->are_btag, sc->are_bhandle, reg, val)
+	bus_space_write_4(sc->fv_btag, sc->fv_bhandle, reg, val)
 
 #define	CSR_READ_4(sc, reg)		\
-    bus_space_read_4(sc->are_btag, sc->are_bhandle, reg)
+	bus_space_read_4(sc->fv_btag, sc->fv_bhandle, reg)
 
 
 /*	$NetBSD: aereg.h,v 1.2 2008/04/28 20:23:28 martin Exp $	*/
@@ -161,16 +165,16 @@ struct are_softc {
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * THIS SOFTWFV IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
  * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
  * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * PURPOSE FV DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
  * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWFV, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
@@ -237,6 +241,7 @@ struct are_softc {
 #define	ADCTL_Tx_IC	0x80000000	/* Interrupt on Completion */
 #define	ADCTL_Tx_LS	0x40000000	/* Last Segment */
 #define	ADCTL_Tx_FS	0x20000000	/* First Segment */
+#define	ADCTL_Tx_SETUP	0x08000000	/* Setup frame */
 #define	ADCTL_Tx_AC	0x04000000	/* Add CRC Disable */
 #define	ADCTL_Tx_DPD	0x00800000	/* Disabled Padding */
 
@@ -245,6 +250,7 @@ struct are_softc {
  */
 
 /* tese are registers only found on this part */
+#ifdef NOTUSE
 #define	CSR_MACCTL	0x0000		/* mac control */
 #define	CSR_MACHI	0x0004
 #define	CSR_MACLO	0x0008
@@ -254,19 +260,35 @@ struct are_softc {
 #define	CSR_MIIDATA	0x0018		/* mii data */
 #define	CSR_FLOWC	0x001C		/* flow control */
 #define	CSR_VL1		0x0020		/* vlan 1 tag */
+#endif
 	
 /* these are more or less normal Tulip registers */
-#define	CSR_BUSMODE	0x1000		/* bus mode */
-#define	CSR_TXPOLL	0x1004		/* tx poll demand */
-#define	CSR_RXPOLL	0x1008		/* rx poll demand */
-#define	CSR_RXLIST	0x100C		/* rx base descriptor address */
-#define	CSR_TXLIST	0x1010		/* tx base descriptor address */
-#define	CSR_STATUS	0x1014		/* (interrupt) status */
-#define	CSR_OPMODE	0x1018		/* operation mode */
-#define	CSR_INTEN	0x101C		/* interrupt enable */
-#define	CSR_MISSED	0x1020		/* missed frame counter */
+#define	CSR_BUSMODE	(0x08*0)	/* bus mode */
+#define	CSR_TXPOLL	(0x08*1)	/* tx poll demand */
+#define	CSR_RXPOLL	(0x08*2)	/* rx poll demand */
+#define	CSR_RXLIST	(0x08*3)	/* rx base descriptor address */
+#define	CSR_TXLIST	(0x08*4)	/* tx base descriptor address */
+#define	CSR_STATUS	(0x08*5)	/* (interrupt) status */
+#define	CSR_OPMODE	(0x08*6)	/* operation mode */
+#define	CSR_INTEN	(0x08*7)	/* interrupt enable */
+#define	CSR_MISSED	(0x08*8)	/* missed frame counter */
+
+#ifdef NOTUSE
 #define	CSR_HTBA	0x1050		/* host tx buffer address (ro) */
 #define	CSR_HRBA	0x1054		/* host rx buffer address (ro) */
+#endif
+
+#define	CSR_MIIMNG	(0x08*9)	/* MII Management Register */
+#define	CSR_FULLDUP	(0x08*11)	/* Full Duplex Register */
+
+/* 21143 like register */
+#define	FULLDUP_CS		0x80000000	/* Cycle Size */
+#define	FULLDUP_TT_SHIFT	27	/* Transmit Timer */
+#define	FULLDUP_NTP_SHIFT	24	/* Number of Transmit Packets */
+#define	FULLDUP_RT_SHIFT	20	/* Receive Timer */
+#define	FULLDUP_NRP_SHIFT	17	/* Number of Receive Packets */
+#define	FULLDUP_CON_MODE	0x00010000	/* Continuous Mode */
+#define	FULLDUP_TIM_SHIFT	0	/* Timer Value */
 
 /* CSR_MACCTL - Mac Control */
 #define	MACCTL_RE		0x00000004	/* rx enable */
@@ -325,6 +347,7 @@ struct are_softc {
 #define	BUSMODE_PBL_8LW		0x00000800	/*     8 longwords */
 #define	BUSMODE_PBL_16LW	0x00001000	/*    16 longwords */
 #define	BUSMODE_PBL_32LW	0x00002000	/*    32 longwords */
+#define	BUSMODE_TAP_SHIFT	17		/* Transmit Automatic Polling */
 #define	BUSMODE_DBO		0x00100000	/* descriptor endian */
 #define	BUSMODE_ALIGN_16B	0x01000000	/* force oddhw rx buf align */
 
@@ -382,6 +405,9 @@ struct are_softc {
 /* CSR_OPMODE - Operation Mode */
 #define	OPMODE_SR		0x00000002	/* start receive */
 #define	OPMODE_OSF		0x00000004	/* operate on second frame */
+#define	OPMODE_PR		0x00000040	/* promiscuous mode */
+#define	OPMODE_PM		0x00000080	/* pass all multicast */
+#define	OPMODE_FDX		0x00000200	/* full duplex mode */
 #define	OPMODE_ST		0x00002000	/* start transmitter */
 #define	OPMODE_TR		0x0000c000	/* threshold control */
 #define	OPMODE_TR_32		0x00000000	/*     32 words */
@@ -389,6 +415,7 @@ struct are_softc {
 #define	OPMODE_TR_128		0x00008000	/*    128 words */
 #define	OPMODE_TR_256		0x0000c000	/*    256 words */
 #define	OPMODE_SF		0x00200000	/* store and forward mode */
+#define	OPMODE_SPEED		0x80000000	/* speed 100M:1 10M:0 */
 
 /* CSR_INTEN - Interrupt Enable */
 	/* See bits for CSR_STATUS -- Status */
@@ -401,4 +428,25 @@ struct are_softc {
 #define	MISSED_GETMFC(x)	((x) & MISSED_MFC)
 #define	MISSED_GETFOC(x)	(((x) & MISSED_FOC) >> 16)
 
-#endif /* __IF_AREREG_H__ */
+/* setup frame code refer dc code */
+
+#define	FV_SFRAME_LEN		192
+#define	FV_MIN_FRAMELEN		60
+
+/*
+ * MII Definitions for the 21041 and 21140/21140A/21142
+ * copy from if_devar.h
+ */
+#define	MII_PREAMBLE            (~0)
+#define	MII_TEST                0xAAAAAAAA
+#define	MII_RDCMD               0x06
+#define	MII_WRCMD               0x05
+#define	MII_DIN                 0x00080000
+#define	MII_RD                  0x00040000
+#define	MII_WR                  0x00000000
+#define	MII_DOUT                0x00020000
+#define	MII_CLK                 0x00010000
+#define	MII_CLKON               MII_CLK
+#define	MII_CLKOFF              MII_CLK
+
+#endif /* __IF_FVREG_H__ */
