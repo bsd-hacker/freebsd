@@ -47,9 +47,15 @@ l=0
 while ps -Unobody | grep -v grep | grep -q syscall4; do
 	l=$((l + 1))
 	if [ $l -gt 10 ]; then
+		ps -HlUnobody | grep syscall4
 		echo FAIL
 		break
 	fi
 	sleep 10
+done
+kill $! 2>/dev/null
+pkill -9 swap syscall4
+while pgrep -q swap; do
+	pkill -9 swap
 done
 wait
