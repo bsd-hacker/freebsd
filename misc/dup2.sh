@@ -40,10 +40,10 @@ mycc -o dup2  -Wall -Wextra dup2.c || exit 1
 rm -f dup2.c
 cd $odir
 
-/tmp/dup2 || echo FAIL
+/tmp/dup2 || { echo FAIL; exit 1; }
 
 rm -f /tmp/dup2
-exit
+exit 0
 
 EOF
 #include <err.h>
