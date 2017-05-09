@@ -47,6 +47,7 @@ export swapLOAD=100
 n=`su $testuser -c "limits | grep maxprocesses | awk '{print \\$NF}'"`
 n=$((n - `ps aux | wc -l`))
 export tcpINCARNATIONS=$((n / 2 - 400))
+[ $tcpINCARNATIONS -le 0 ] && exit 0
 export TESTPROGS="
 ./testcases/tcp/tcp
 ./testcases/swap/swap

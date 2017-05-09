@@ -31,6 +31,9 @@
 # "panic: tcp_do_segment: TCPS_LISTEN" seen:
 # http://people.freebsd.org/~pho/stress/log/tcp.txt
 
+# "panic: m_uiotombuf: progress != total" seen:
+# https://people.freebsd.org/~pho/stress/log/gleb010.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 [ `swapinfo | wc -l` -eq 1 ] && exit 0
@@ -46,6 +49,7 @@ export tcpLOAD=100
 n=`su $testuser -c "limits | grep maxprocesses | awk '{print \\$NF}'"`
 n=$((n - `ps aux | wc -l`))
 export tcpINCARNATIONS=$((n / 2 - 400))
+[ $tcpINCARNATIONS -le 0 ] && exit 0
 export TESTPROGS=" ./testcases/tcp/tcp"
 
 su $testuser -c '(cd ..; ./testcases/run/run $TESTPROGS)' &
