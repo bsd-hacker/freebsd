@@ -57,19 +57,19 @@ mycc -o swap2 -Wall -Wextra -O2 swap2.c || exit 1
 rm -f swap2.c
 cd $odir
 
-usermem=`sysctl hw.usermem | sed 's/.* //'`
-swap=`sysctl vm.swap_total | sed 's/.* //'`
+usermem=`sysctl -n hw.usermem`
+swap=`sysctl -n vm.swap_total`
 
 if [ $swap -gt 0 ]; then
 	size=$((usermem/10*11))
 else
-	size=$((usermem/10*9))
+	size=$((usermem/10*8))
 fi
 
 /tmp/swap2 $((size / 4096)) &
 sleep 30
 su $testuser -c "(cd ../testcases/rw;   ./rw   -t 3m -i 40 -l 100 -v -h -h)" &
-wait; wait
+wait
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
