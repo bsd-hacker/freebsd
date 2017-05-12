@@ -164,6 +164,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/iwm/if_iwm_time_event.h>
 #include <dev/iwm/if_iwm_power.h>
 #include <dev/iwm/if_iwm_scan.h>
+#include <dev/iwm/if_iwm_sta.h>
 
 #include <dev/iwm/if_iwm_pcie_trans.h>
 #include <dev/iwm/if_iwm_led.h>
@@ -265,7 +266,6 @@ static void	iwm_mvm_nic_config(struct iwm_softc *);
 static int	iwm_nic_rx_init(struct iwm_softc *);
 static int	iwm_nic_tx_init(struct iwm_softc *);
 static int	iwm_nic_init(struct iwm_softc *);
-static int	iwm_enable_txq(struct iwm_softc *, int, int, int);
 static int	iwm_trans_pcie_fw_alive(struct iwm_softc *, uint32_t);
 static int	iwm_nvm_read_chunk(struct iwm_softc *, uint16_t, uint16_t,
                                    uint16_t, uint8_t *, uint16_t *);
@@ -344,19 +344,6 @@ static int	iwm_tx(struct iwm_softc *, struct mbuf *,
                        struct ieee80211_node *, int);
 static int	iwm_raw_xmit(struct ieee80211_node *, struct mbuf *,
 			     const struct ieee80211_bpf_params *);
-static int	iwm_mvm_flush_tx_path(struct iwm_softc *sc,
-				      uint32_t tfd_msk, uint32_t flags);
-static int	iwm_mvm_send_add_sta_cmd_status(struct iwm_softc *,
-					        struct iwm_mvm_add_sta_cmd *,
-                                                int *);
-static int	iwm_mvm_sta_send_to_fw(struct iwm_softc *, struct iwm_node *,
-                                       int);
-static int	iwm_mvm_add_sta(struct iwm_softc *, struct iwm_node *);
-static int	iwm_mvm_update_sta(struct iwm_softc *, struct iwm_node *);
-static int	iwm_mvm_add_int_sta_common(struct iwm_softc *,
-                                           struct iwm_int_sta *,
-				           const uint8_t *, uint16_t, uint16_t);
-static int	iwm_mvm_add_aux_sta(struct iwm_softc *);
 static int	iwm_mvm_update_quotas(struct iwm_softc *, struct iwm_vap *);
 static int	iwm_auth(struct ieee80211vap *, struct iwm_softc *);
 static int	iwm_release(struct iwm_softc *, struct iwm_node *);
@@ -1532,7 +1519,7 @@ iwm_nic_init(struct iwm_softc *sc)
 	return 0;
 }
 
-static int
+int
 iwm_enable_txq(struct iwm_softc *sc, int sta_id, int qid, int fifo)
 {
 	if (!iwm_nic_lock(sc)) {
@@ -3884,137 +3871,6 @@ iwm_mvm_flush_tx_path(struct iwm_softc *sc, uint32_t tfd_msk, uint32_t flags)
 }
 
 /*
- * BEGIN mvm/sta.c
- */
-
-static int
-iwm_mvm_send_add_sta_cmd_status(struct iwm_softc *sc,
-	struct iwm_mvm_add_sta_cmd *cmd, int *status)
-{
-	return iwm_mvm_send_cmd_pdu_status(sc, IWM_ADD_STA, sizeof(*cmd),
-	    cmd, status);
-}
-
-/* send station add/update command to firmware */
-static int
-iwm_mvm_sta_send_to_fw(struct iwm_softc *sc, struct iwm_node *in, int update)
-{
-	struct iwm_vap *ivp = IWM_VAP(in->in_ni.ni_vap);
-	struct iwm_mvm_add_sta_cmd add_sta_cmd;
-	int ret;
-	uint32_t status;
-
-	memset(&add_sta_cmd, 0, sizeof(add_sta_cmd));
-
-	add_sta_cmd.sta_id = IWM_STATION_ID;
-	add_sta_cmd.mac_id_n_color
-	    = htole32(IWM_FW_CMD_ID_AND_COLOR(ivp->id, ivp->color));
-	if (!update) {
-		int ac;
-		for (ac = 0; ac < WME_NUM_AC; ac++) {
-			add_sta_cmd.tfd_queue_msk |=
-			    htole32(1 << iwm_mvm_ac_to_tx_fifo[ac]);
-		}
-		IEEE80211_ADDR_COPY(&add_sta_cmd.addr, in->in_ni.ni_bssid);
-	}
-	add_sta_cmd.add_modify = update ? 1 : 0;
-	add_sta_cmd.station_flags_msk
-	    |= htole32(IWM_STA_FLG_FAT_EN_MSK | IWM_STA_FLG_MIMO_EN_MSK);
-	add_sta_cmd.tid_disable_tx = htole16(0xffff);
-	if (update)
-		add_sta_cmd.modify_mask |= (IWM_STA_MODIFY_TID_DISABLE_TX);
-
-	status = IWM_ADD_STA_SUCCESS;
-	ret = iwm_mvm_send_add_sta_cmd_status(sc, &add_sta_cmd, &status);
-	if (ret)
-		return ret;
-
-	switch (status & IWM_ADD_STA_STATUS_MASK) {
-	case IWM_ADD_STA_SUCCESS:
-		break;
-	default:
-		ret = EIO;
-		device_printf(sc->sc_dev, "IWM_ADD_STA failed\n");
-		break;
-	}
-
-	return ret;
-}
-
-static int
-iwm_mvm_add_sta(struct iwm_softc *sc, struct iwm_node *in)
-{
-	return iwm_mvm_sta_send_to_fw(sc, in, 0);
-}
-
-static int
-iwm_mvm_update_sta(struct iwm_softc *sc, struct iwm_node *in)
-{
-	return iwm_mvm_sta_send_to_fw(sc, in, 1);
-}
-
-static int
-iwm_mvm_add_int_sta_common(struct iwm_softc *sc, struct iwm_int_sta *sta,
-	const uint8_t *addr, uint16_t mac_id, uint16_t color)
-{
-	struct iwm_mvm_add_sta_cmd cmd;
-	int ret;
-	uint32_t status;
-
-	memset(&cmd, 0, sizeof(cmd));
-	cmd.sta_id = sta->sta_id;
-	cmd.mac_id_n_color = htole32(IWM_FW_CMD_ID_AND_COLOR(mac_id, color));
-
-	cmd.tfd_queue_msk = htole32(sta->tfd_queue_msk);
-	cmd.tid_disable_tx = htole16(0xffff);
-
-	if (addr)
-		IEEE80211_ADDR_COPY(cmd.addr, addr);
-
-	ret = iwm_mvm_send_add_sta_cmd_status(sc, &cmd, &status);
-	if (ret)
-		return ret;
-
-	switch (status & IWM_ADD_STA_STATUS_MASK) {
-	case IWM_ADD_STA_SUCCESS:
-		IWM_DPRINTF(sc, IWM_DEBUG_RESET,
-		    "%s: Internal station added.\n", __func__);
-		return 0;
-	default:
-		device_printf(sc->sc_dev,
-		    "%s: Add internal station failed, status=0x%x\n",
-		    __func__, status);
-		ret = EIO;
-		break;
-	}
-	return ret;
-}
-
-static int
-iwm_mvm_add_aux_sta(struct iwm_softc *sc)
-{
-	int ret;
-
-	sc->sc_aux_sta.sta_id = IWM_AUX_STA_ID;
-	sc->sc_aux_sta.tfd_queue_msk = (1 << IWM_MVM_AUX_QUEUE);
-
-	ret = iwm_enable_txq(sc, 0, IWM_MVM_AUX_QUEUE, IWM_MVM_TX_FIFO_MCAST);
-	if (ret)
-		return ret;
-
-	ret = iwm_mvm_add_int_sta_common(sc,
-	    &sc->sc_aux_sta, NULL, IWM_MAC_INDEX_AUX, 0);
-
-	if (ret)
-		memset(&sc->sc_aux_sta, 0, sizeof(sc->sc_aux_sta));
-	return ret;
-}
-
-/*
- * END mvm/sta.c
- */
-
-/*
  * BEGIN mvm/quota.c
  */
 
@@ -4120,6 +3976,21 @@ iwm_auth(struct ieee80211vap *vap, struct iwm_softc *sc)
 
 	in->in_assoc = 0;
 
+	/*
+	 * Firmware bug - it'll crash if the beacon interval is less
+	 * than 16. We can't avoid connecting at all, so refuse the
+	 * station state change, this will cause net80211 to abandon
+	 * attempts to connect to this AP, and eventually wpa_s will
+	 * blacklist the AP...
+	 */
+	if (ni->ni_intval < 16) {
+		device_printf(sc->sc_dev,
+		    "AP %s beacon interval is %d, refusing due to firmware bug!\n",
+		    ether_sprintf(ni->ni_bssid), ni->ni_intval);
+		error = EINVAL;
+		goto out;
+	}
+
 	error = iwm_mvm_sf_config(sc, IWM_SF_FULL_ON);
 	if (error != 0)
 		return error;
@@ -4158,12 +4029,6 @@ iwm_auth(struct ieee80211vap *vap, struct iwm_softc *sc)
 			    "%s: failed to add MAC\n", __func__);
 			goto out;
 		}
-		if ((error = iwm_mvm_power_update_mac(sc)) != 0) {
-			device_printf(sc->sc_dev,
-			    "%s: failed to update power management\n",
-			    __func__);
-			goto out;
-		}
 	}
 
 	if ((error = iwm_mvm_phy_ctxt_changed(sc, &sc->sc_phyctxt[0],
@@ -4177,6 +4042,12 @@ iwm_auth(struct ieee80211vap *vap, struct iwm_softc *sc)
 	if ((error = iwm_mvm_binding_add_vif(sc, iv)) != 0) {
 		device_printf(sc->sc_dev,
 		    "%s: binding update cmd\n", __func__);
+		goto out;
+	}
+	if ((error = iwm_mvm_power_update_mac(sc)) != 0) {
+		device_printf(sc->sc_dev,
+		    "%s: failed to update power management\n",
+		    __func__);
 		goto out;
 	}
 	if ((error = iwm_mvm_add_sta(sc, in)) != 0) {
@@ -4508,6 +4379,45 @@ iwm_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 
 	switch (nstate) {
 	case IEEE80211_S_INIT:
+	case IEEE80211_S_SCAN:
+		if (vap->iv_state == IEEE80211_S_AUTH ||
+		    vap->iv_state == IEEE80211_S_ASSOC) {
+			int myerr;
+			IWM_UNLOCK(sc);
+			IEEE80211_LOCK(ic);
+			myerr = ivp->iv_newstate(vap, nstate, arg);
+			IEEE80211_UNLOCK(ic);
+			IWM_LOCK(sc);
+			in = IWM_NODE(vap->iv_bss);
+			error = iwm_mvm_rm_sta(sc, vap, in);
+                        if (error) {
+                                device_printf(sc->sc_dev,
+				    "%s: Failed to remove station: %d\n",
+				    __func__, error);
+			}
+			error = iwm_mvm_mac_ctxt_changed(sc, vap);
+                        if (error) {
+                                device_printf(sc->sc_dev,
+                                    "%s: Failed to change mac context: %d\n",
+                                    __func__, error);
+                        }
+                        error = iwm_mvm_binding_remove_vif(sc, ivp);
+                        if (error) {
+                                device_printf(sc->sc_dev,
+                                    "%s: Failed to remove channel ctx: %d\n",
+                                    __func__, error);
+                        }
+			ivp->phy_ctxt = NULL;
+			error = iwm_mvm_power_update_mac(sc);
+			if (error != 0) {
+				device_printf(sc->sc_dev,
+				    "%s: failed to update power management\n",
+				    __func__);
+			}
+			IWM_UNLOCK(sc);
+			IEEE80211_LOCK(ic);
+			return myerr;
+		}
 		break;
 
 	case IEEE80211_S_AUTH:
