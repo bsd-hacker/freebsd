@@ -199,7 +199,8 @@ main(int argc, char **argv)
 		if (mkdir(op->wd, 0770) == -1)
 			if (errno != EEXIST)
 				err(1, "mkdir(%s) %s:%d", op->wd, __FILE__, __LINE__);
-	}
+	} else if ((sb.st_mode & S_IRWXU) == 0)
+		errx(1, "No RWX access to %s", op->wd);
 	if (stat(op->cd, &sb) == -1) {
 		if (mkdir(op->cd, 0770) == -1)
 			if (errno != EEXIST)
