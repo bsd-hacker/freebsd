@@ -4044,7 +4044,15 @@ iwm_auth(struct ieee80211vap *vap, struct iwm_softc *sc)
 		    "%s: binding update cmd\n", __func__);
 		goto out;
 	}
-	if ((error = iwm_mvm_power_update_mac(sc)) != 0) {
+	/*
+	 * Authentication becomes unreliable when powersaving is left enabled
+	 * here. Powersaving will be activated again when association has
+	 * finished or is aborted.
+	 */
+	iv->ps_disabled = TRUE;
+	error = iwm_mvm_power_update_mac(sc);
+	iv->ps_disabled = FALSE;
+	if (error != 0) {
 		device_printf(sc->sc_dev,
 		    "%s: failed to update power management\n",
 		    __func__);
@@ -4388,8 +4396,7 @@ iwm_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			myerr = ivp->iv_newstate(vap, nstate, arg);
 			IEEE80211_UNLOCK(ic);
 			IWM_LOCK(sc);
-			in = IWM_NODE(vap->iv_bss);
-			error = iwm_mvm_rm_sta(sc, vap, in);
+			error = iwm_mvm_rm_sta(sc, vap, FALSE);
                         if (error) {
                                 device_printf(sc->sc_dev,
 				    "%s: Failed to remove station: %d\n",
@@ -4462,7 +4469,7 @@ iwm_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			    "%s: failed to update MAC: %d\n", __func__, error);
 		}
 
-		iwm_mvm_enable_beacon_filter(sc, in);
+		iwm_mvm_enable_beacon_filter(sc, ivp);
 		iwm_mvm_power_update_mac(sc);
 		iwm_mvm_update_quotas(sc, ivp);
 		iwm_setrates(sc, in);
@@ -5443,7 +5450,7 @@ iwm_handle_rxb(struct iwm_softc *sc, struct mbuf *m)
 		case IWM_TIME_EVENT_CMD:
 		case IWM_WIDE_ID(IWM_ALWAYS_LONG_GROUP, IWM_SCAN_CFG_CMD):
 		case IWM_WIDE_ID(IWM_ALWAYS_LONG_GROUP, IWM_SCAN_REQ_UMAC):
-		case IWM_SCAN_ABORT_UMAC:
+		case IWM_WIDE_ID(IWM_ALWAYS_LONG_GROUP, IWM_SCAN_ABORT_UMAC):
 		case IWM_SCAN_OFFLOAD_REQUEST_CMD:
 		case IWM_SCAN_OFFLOAD_ABORT_CMD:
 		case IWM_REPLY_BEACON_FILTERING_CMD:
@@ -5452,7 +5459,8 @@ iwm_handle_rxb(struct iwm_softc *sc, struct mbuf *m)
 		case IWM_REMOVE_STA:
 		case IWM_TXPATH_FLUSH:
 		case IWM_LQ_CMD:
-		case IWM_FW_PAGING_BLOCK_CMD:
+		case IWM_WIDE_ID(IWM_ALWAYS_LONG_GROUP,
+				 IWM_FW_PAGING_BLOCK_CMD):
 		case IWM_BT_CONFIG:
 		case IWM_REPLY_THERMAL_MNG_BACKOFF:
 			cresp = (void *)pkt->data;
@@ -6277,6 +6285,7 @@ iwm_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ], int unit,
 	ivp->color = IWM_DEFAULT_COLOR;
 
 	ivp->have_wme = FALSE;
+	ivp->ps_disabled = FALSE;
 
 	ieee80211_ratectl_init(vap);
 	/* Complete setup. */
