@@ -34,7 +34,7 @@
 
 . ../default.cfg
 
-rm -f ${diskimage}*
+rm -f $diskimage*
 need=1024 # MB
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` -lt \
     $need ] && printf "Need %d MB on %s.\n" $need `dirname $diskimage` && exit

@@ -30,7 +30,7 @@
 
 # A simplistic regression test for r200510:
 
-[ `sysctl kern.hz | sed 's/.* //'` -ne 1000 ] && exit 1
+[ `sysctl -n kern.hz` -lt 1000 ] && exit 0
 
 . ../default.cfg
 

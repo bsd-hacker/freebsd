@@ -47,13 +47,13 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 mount -t nullfs $mntpoint $nullfsmp
 
-mkdir ${mntpoint}/.new_packages ${nullfsmp}/new_packages
-mount -t nullfs ${mntpoint}/.new_packages ${nullfsmp}/new_packages
-dd if=/dev/zero of=${nullfsmp}/new_packages/bar count=20000  2>&1 |
+mkdir $mntpoint/.new_packages $nullfsmp/new_packages
+mount -t nullfs $mntpoint/.new_packages $nullfsmp/new_packages
+dd if=/dev/zero of=$nullfsmp/new_packages/bar count=20000  2>&1 |
 	egrep -v "records|transferred"
-mv ${mntpoint}/.new_packages/bar /tmp/
-rm -rf ${mntpoint}/.new_packages
-umount -f ${nullfsmp}/new_packages
+mv $mntpoint/.new_packages/bar /tmp/
+rm -rf $mntpoint/.new_packages
+umount -f $nullfsmp/new_packages
 
 while mount | grep -q "$nullfsmp "; do
 	umount $nullfsmp || sleep 1

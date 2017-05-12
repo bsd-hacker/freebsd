@@ -63,8 +63,7 @@ error=0
 n=0
 while kill -0 $! 2>/dev/null; do
 	sleep 1
-	n=$((n + 1))
-	if [ $n -gt $timeout ]; then
+	if [ $((n += 1)) -gt $timeout ]; then
 		echo FAIL
 		ps -l | grep -v sed | sed -n '1p;/ufs/p'
 		pkill spin

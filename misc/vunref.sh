@@ -103,8 +103,7 @@ else
 			n=0
 			while mount | grep -qw $mntpoint$m; do
 				umount ${mntpoint}$m > /dev/null 2>&1 && n=0
-				n=$((n + 1))
-				if [ $n -gt 600 ]; then
+				if [ $((n += 1)) -gt 600 ]; then
 					echo "*** Leak detected ***"
 					fstat $mntpoint$m
 					rm -f $RUNDIR/active.*
