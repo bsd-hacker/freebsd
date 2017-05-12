@@ -41,6 +41,7 @@ while getopts dmz flag; do
         esac
 done
 
+pages=`sysctl -n vm.stats.vm.v_page_count`
 start=`date '+%s'`
 OIFS=$IFS
 while true; do
@@ -54,7 +55,7 @@ while true; do
 	done
 
 	# ITEM                   SIZE  LIMIT     USED
-	[ -z "$optz" ] && vmstat -z | sed "1,2d;/^$/d;s/: /, /" |
+	[ -z "$optz" ] && vmstat -z | sed "1,2d;/^$/d;s/: /, /" | sed -E 's/[^[:print:]\r\t]/ /g' |
 	    while read l; do
 		IFS=','
 		set $l
@@ -70,8 +71,17 @@ while true; do
 		   echo "vmstat -z $1,$tot"
 	done
 
+	r=`sysctl -n vm.stats.vm.v_wire_count`
+	[ -n "$r" ] &&
 	echo "vm.cnt.v_wire_count, \
-	    $((`sysctl -n vm.stats.vm.v_wire_count` * 4))"
+	    $((r * 4))"
+	r=`sysctl -n vm.stats.vm.v_free_count`
+	[ -n "$r" ] &&
+	echo "pages in use, \
+	    $(((pages - r) * 4))"
+	r=`sysctl -n vm.kmem_map_size`
+	[ -n "$r" ] &&
+	echo "kmem_map_size, $r"
 	sleep 10
 done | awk $debug -F, '
 {
