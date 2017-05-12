@@ -73,8 +73,8 @@ static pthread_barrier_t barr;
 static sig_atomic_t alarms;
 static int lines;
 
-#define N 2000 /* also seen fail with N = 20.000 */
 #define LINES 128000
+#define N 2000 /* also seen fail with N = 20.000 */
 #define PARALLEL 16 /* Fails seen with 1 - 16 */
 #define RUNTIME (10 * 60)
 
