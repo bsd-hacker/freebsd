@@ -54,14 +54,14 @@ mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
 (cd $mntpoint; /tmp/rot)
-(cd /tmp;      /tmp/rot)
+(cd `dirname $diskimage`; /tmp/rot)
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
 rm -f /tmp/rot
-exit
+exit 0
 EOF
 #include <err.h>
 #include <fcntl.h>
@@ -69,17 +69,19 @@ EOF
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define N 10240	/* 40 Mb */
 #define PARALLEL 20
+#define RUNTIME (60 * 15)
 
 int
 test(void)
 {
+	int fd, i, j, s;
 	unsigned char *buf;
 	char path[128];
-	int fd, i, j, s;
 
 	s = getpagesize();
 
@@ -94,7 +96,8 @@ test(void)
 		err(1, "write error");
 
 	for (i = 0; i < N; i++) {
-		if ((buf = mmap(0, s, PROT_READ | PROT_WRITE, MAP_SHARED, fd, i * s)) == MAP_FAILED)
+		if ((buf = mmap(0, s, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+		    i * s)) == MAP_FAILED)
 			err(1, "write map");
 		for (j = 0; j < s; j++)
 			buf[j] = i % 256;
@@ -106,7 +109,8 @@ test(void)
 	if ((fd = open(path, O_RDONLY)) < 0)
 		err(1, "open(%s)", path);
 	for (i = 0; i < N; i++) {
-		if ((buf = mmap(0, s, PROT_READ, MAP_SHARED, fd, i * s)) == MAP_FAILED)
+		if ((buf = mmap(0, s, PROT_READ, MAP_SHARED, fd, i * s)) ==
+		    MAP_FAILED)
 			err(1, "write map");
 		for (j = 0; j < s; j++)
 			if (buf[j] != i % 256)
@@ -124,9 +128,11 @@ test(void)
 int
 main(void)
 {
-	int i, j;
+	time_t start;
+	int i;
 
-	for (j = 0; j < 50; j++) {
+	start = time(NULL);
+	while (time(NULL) - start < RUNTIME) {
 		for (i = 0; i < PARALLEL; i++)
 			if (fork() == 0)
 				test();
