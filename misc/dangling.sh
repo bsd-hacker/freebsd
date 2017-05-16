@@ -46,7 +46,7 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 4g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
-mount /dev/md${mdstart}$part $mntpoint
+mount /dev/md${mdstart}$part $mntpoint || exit 1
 chmod 777 $mntpoint
 
 export runRUNTIME=4m
@@ -80,7 +80,10 @@ for i in `jot 10`; do
 	wait
 done
 
-while mount | grep $mntpoint | grep -q /dev/md; do
-	umount $mntpoint || sleep 1
+s=0
+for i in `jot 6`; do
+	umount $mntpoint && break || sleep 10
 done
+[ $i -eq 6 ] && s=1
 mdconfig -d -u $mdstart
+exit $s
