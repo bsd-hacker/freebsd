@@ -35,17 +35,20 @@
 
 # Fixed by r294204.
 
+# "panic: Assertion !tty_gone(tp) failed at ../sys/ttydevsw.h:165" seen:
+# https://people.freebsd.org/~pho/stress/log/dev2-2.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
 
+kldstat -v | grep -q pty || { kldload pty || exit 0; }
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > dev2.c
 mycc -o dev2 -Wall -Wextra -O2 dev2.c || exit 1
 rm -f dev2.c
 
-kldstat -v | grep -q pty || kldload pty
 daemon sh -c \
     "(cd $here/../testcases/swap; ./swap -t 6m -i 20 -k -l 100)" > \
     /dev/null
@@ -73,7 +76,6 @@ EOF
 #include <time.h>
 #include <unistd.h>
 
-#define NFLAGS
 #define PARALLEL 4
 #define RUNTIME 300
 
