@@ -40,6 +40,7 @@ mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 
 echo "Expect warnings from SU and SU+J."
+start=`date '+%s'`
 for opt in -O1 -O2 -U -j; do
 	echo "Testing newfs with option $opt."
 	blocksize=4096
@@ -61,5 +62,11 @@ for opt in -O1 -O2 -U -j; do
 		done
 		blocksize=$((blocksize * 2))
 	done
+	if [ $((`date '+%s'` - start)) -gt 1800 ]; then
+		echo "Timed out"
+		s=1
+		break
+	fi
 done
+exit $s
 mdconfig -d -u $mdstart
