@@ -34,22 +34,27 @@
 
 . ../default.cfg
 
-size="2g"
+[ `swapinfo | wc -l` -eq 1 ] && exit 0
+size="5g"
+jsize="3g"
+[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le ${size%g} ] && exit 0
+[ `swapinfo -k | tail -1 | awk '{print int($4/1024/1024)}'` -lt \
+    ${size%g} ] && exit 0
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
+[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 mdconfig -a -t swap -s $size -u $mdstart || exit 1
 
 gjournal load
-gjournal label md$mdstart
+gjournal label -s $jsize md$mdstart
 sleep .5
 newfs -J /dev/md$mdstart.journal > /dev/null
 mount -o async /dev/md$mdstart.journal $mntpoint
 chmod 777 $mntpoint
 
-export runRUNTIME=30m
+export runRUNTIME=10m
 export RUNDIR=$mntpoint/stressX
 
-su $testuser -c 'cd ..; ./run.sh marcus.cfg'
+su $testuser -c 'cd ..; ./run.sh marcus.cfg' > /dev/null 2>&1
 
 gjournal sync
 while mount | grep $mntpoint | grep -q /dev/md; do
