@@ -35,30 +35,37 @@
 . ../default.cfg
 
 size="2g"
+[ `swapinfo | wc -l` -eq 1 ] && exit 0
+[ `swapinfo -k | tail -1 | awk '{print int($4/1024/1024)}'` -lt \
+    ${size%g} ] && exit 0
 m=$((mdstart + 1))
-mount | grep /media    | grep -q /dev/md && umount -f /media
+mp2=${mntpoint}2
+mount | grep $mp2    | grep -q /dev/md && umount -f $mp2
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
-mdconfig -l | grep -q md$m       &&  mdconfig -d -u $m
+[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
+[ -c /dev/md$m ] && mdconfig -d -u $m
+mkdir -p $mp2
 mdconfig -a -t swap -s $size -u $mdstart || exit 1
 
 gjournal load
-gjournal label -s $((200 * 1024 * 1024)) md$mdstart
+gjournal label -s 512m md$mdstart
 sleep .5
 newfs -J /dev/md$mdstart.journal > /dev/null
 mount -o async /dev/md$mdstart.journal $mntpoint
 
 here=`pwd`
 cd $mntpoint
-truncate -s 1g image
+dd if=/dev/zero of=image bs=1m count=1k 2>&1 | \
+    egrep -v 'records|transferred'
 mdconfig -a -t vnode -f image -u $m
 bsdlabel -w md$m auto
 newfs md${m}$part > /dev/null
-mount /dev/md${m}$part /media
+mount /dev/md${m}$part $mp2
 # dd will suspend in wdrain
-dd if=/dev/zero of=/media/zero bs=1M 2>&1 | egrep -v "records|transferred"
-while mount | grep /media | grep -q /dev/md; do
-	umount /media || sleep 1
+echo "Expect \"$mp2: write failed, filesystem is full\""
+dd if=/dev/zero of=$mp2/zero bs=1M > /dev/null 2>&1
+while mount | grep $mp2 | grep -q /dev/md; do
+	umount $mp2 || sleep 1
 done
 mdconfig -d -u $m
 cd $here
