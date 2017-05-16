@@ -38,6 +38,15 @@
 # - advisory locking tests on NFS files, while e.g. sending SIGSTOP/SIGCONT
 #   to the test programs.
 
+# See also pthread9.sh
+
+# https://people.freebsd.org/~pho/stress/log/kostik897.txt
+# Fixed in r302013.
+
+# "panic: mutex sleepq chain not owned at subr_sleepqueue.c:1009" seen:
+# https://people.freebsd.org/~pho/stress/log/kostik914.txt
+# Fixed in r302328.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
@@ -55,8 +64,8 @@ cd $here
 
 mount | grep "on $mntpoint " | grep nfs > /dev/null && umount $mntpoint
 
-mount -t nfs -o tcp -o retrycnt=3 -o soft -o rw -o nolockd -o intr \
-    $nfs_export $mntpoint
+mount -t nfs -o tcp -o retrycnt=3 -o intr,soft -o rw -o nolockd \
+    $nfs_export $mntpoint || exit 1
 sleep 2
 wd=$mntpoint/nfs15.dir
 rm -rf $wd
@@ -114,7 +123,8 @@ t2(void *data __unused)
 	for (i = 0; i < 100; i++) {
 		atomic_add_int(&share[SYNC], 1);
 		snprintf(file, sizeof(file), "file.%06d", i);
-		if ((fd = open(file, O_WRONLY | O_CREAT | O_APPEND, DEFFILEMODE)) == -1)
+		if ((fd = open(file, O_WRONLY | O_CREAT | O_APPEND,
+		    DEFFILEMODE)) == -1)
 			err(1, "open(%s)", file);
 		do {
 			r = lockf(fd, F_LOCK, 0);
