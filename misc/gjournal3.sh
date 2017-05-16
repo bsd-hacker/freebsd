@@ -31,6 +31,9 @@
 # Deadlock seen: http://people.freebsd.org/~pho/stress/log/gjournal3.txt
 # Fixed in r244925
 
+# panic: Bio not on queue
+# https://people.freebsd.org/~pho/stress/log/gjournal3-2.txt
+
 # kib@ wrote:
 # gjournal is good for exposing the suspension problems.  The frequency
 # of the suspensions called from the gjournal is not achievable by other
@@ -38,17 +41,26 @@
 # only establishes the suspension, without snapshotting, which also
 # makes it easier to see the issues.
 
+# gjournal / ffs snapshot suspension deadlock:
+# https://people.freebsd.org/~pho/stress/log/gjournal3-4.txt
+# Originally reported as  kern/164252.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
 
-size="2g"
+[ `swapinfo | wc -l` -eq 1 ] && exit 0
+size="6g"
+jsize="4g"
+[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le ${size%g} ] && exit 0
+[ `swapinfo -k | tail -1 | awk '{print int($4/1024/1024)}'` -lt \
+    ${size%g} ] && exit 0
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
+[ -c /dev/mdmd$mdstart ] && mdconfig -d -u $mdstart
 mdconfig -a -t swap -s $size -u $mdstart || exit 1
 
 gjournal load
-gjournal label md$mdstart
+gjournal label -s $jsize md$mdstart
 sleep .5
 newfs -J /dev/md$mdstart.journal > /dev/null
 mount -o async /dev/md$mdstart.journal $mntpoint
