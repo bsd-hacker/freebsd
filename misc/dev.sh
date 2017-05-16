@@ -49,13 +49,14 @@ daemon sh -c \
     /dev/null
 
 /tmp/dev	# Note: this runs as root.
+s=$?
 
 while pkill -9 swap; do
 	:
 done
 
 rm -f /tmp/dev
-exit
+exit $s
 EOF
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -115,14 +116,18 @@ churn(char *path)
 int
 main(void)
 {
-	int i;
+	int e, i, status;;
 
+	e = 0;
 	for (i = 0; i < PARALLEL; i++)
 		if (fork() == 0)
 			churn("/dev");
 
-	for (i = 0; i < PARALLEL; i++)
-		wait(NULL);
+	for (i = 0; i < PARALLEL; i++) {
+		wait(&status);
+		if (status != 0)
+			e++;
+	}
 
-	return (0);
+	return (e);
 }
