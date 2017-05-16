@@ -58,7 +58,7 @@ else
 	else
 
 		# The test: Parallel mount and unmounts
-		for i in `jot 1024`; do
+		for i in `jot 128`; do
 			m=$1
 			mount -t procfs proc ${mntpoint}$m
 			while mount | grep -qw $mntpoint$m; do
