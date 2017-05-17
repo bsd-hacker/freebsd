@@ -273,6 +273,9 @@ mv_mpic_attach(device_t dev)
 		bus_release_resources(dev, mv_mpic_spec, sc->mpic_res);
 		return (ENXIO);
 	}
+
+	OF_device_register_xref(OF_xref_from_node(ofw_bus_get_node(dev)), dev);
+
 	if (intr_pic_register(dev, OF_xref_from_device(dev)) == NULL) {
 		device_printf(dev, "could not register PIC\n");
 		bus_release_resources(dev, mv_mpic_spec, sc->mpic_res);
@@ -398,7 +401,7 @@ static driver_t mv_mpic_driver = {
 static devclass_t mv_mpic_devclass;
 
 EARLY_DRIVER_MODULE(mpic, simplebus, mv_mpic_driver, mv_mpic_devclass, 0, 0,
-    BUS_PASS_INTERRUPT);
+    BUS_PASS_INTERRUPT + BUS_PASS_ORDER_LATE);
 
 #ifndef INTRNG
 int
