@@ -19,7 +19,7 @@ bsdlabel -w md$mdstart auto
 newfs -U md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
-mkdir /mnt/mmap29
+mkdir $mntpoint/mmap29
 cd /tmp
 cat > mmap29.c <<EOFHERE
 #include <sys/param.h>
@@ -60,7 +60,7 @@ EOFHERE
 
 cc -o mmap29 -Wall -Wextra -O0 -g mmap29.c || exit 1
 rm mmap29.c
-./mmap29 /mnt/mmap29/mmap291
+./mmap29 $mntpoint/mmap29/mmap291
 old=`sysctl -n kern.maxvnodes`
 trap "sysctl kern.maxvnodes=$old" EXIT INT
 sysctl kern.maxvnodes=2000

@@ -57,7 +57,7 @@ echo "Expect:
    dd: /mnt/big.1: No space left on device"
 
 for i in `jot 10`; do
-	dd if=/dev/zero of=/mnt/big.$i bs=1m  2>&1 | \
+	dd if=/dev/zero of=$mntpoint/big.$i bs=1m  2>&1 | \
 	    egrep -v "records|transferred" &
 done
 wait

@@ -65,11 +65,11 @@ mntpoint2=${mntpoint}2
 mount | grep $mntpoint2 | grep -q /dev/md && umount -f $mntpoint2
 mdconfig -l | grep -q md$mdstart2 &&  mdconfig -d -u $mdstart2
 while kill -0 $rpid 2> /dev/null; do
-	rm -f /mnt/.snap/suj28
-	{ mksnap_ffs /mnt /mnt/.snap/suj28 || continue; } 2>&1 | \
+	rm -f $mntpoint/.snap/suj28
+	{ mksnap_ffs $mntpoint $mntpoint/.snap/suj28 || continue; } 2>&1 | \
 		grep -v "Resource temporarily unavailable"
-	[ ! -s /mnt/.snap/suj28 ] && continue
-	mdconfig -a -t vnode -f /mnt/.snap/suj28 -u $mdstart2 -o readonly
+	[ ! -s $mntpoint/.snap/suj28 ] && continue
+	mdconfig -a -t vnode -f $mntpoint/.snap/suj28 -u $mdstart2 -o readonly
 	mount -r /dev/md$mdstart2 $mntpoint2
 
 	ls -l $mntpoint2 > /dev/null

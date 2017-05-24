@@ -43,7 +43,7 @@ mdconfig -a -t vnode -f $diskimage -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
-mount -t unionfs -o noatime /mnt /tmp
+mount -t unionfs -o noatime $mntpoint /tmp
 export RUNDIR=/tmp/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
 (cd ..; ./run.sh disk.cfg)

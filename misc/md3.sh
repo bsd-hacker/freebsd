@@ -44,7 +44,7 @@ newfs $newfs_flags md5$part > /dev/null
 mount /dev/md5$part $mntpoint
 
 # Stop FS "out of inodes" problem by only using 70%
-set `df -ik /mnt | tail -1 | awk '{print $4,$7}'`
+set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 export KBLOCKS=$(($1 / 10 * 7))
 export INODES=$(($2 / 10 * 7))
 

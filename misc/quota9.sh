@@ -73,7 +73,7 @@ if [ $# -eq 0 ]; then
 	qc $mntpoint
 
 	su $testuser $0 xxx
-	du -k /mnt/stressX
+	du -k $mntpoint/stressX
 
 	qc $mntpoint
 

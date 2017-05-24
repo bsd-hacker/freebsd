@@ -45,7 +45,7 @@ rm -f tmpfs14.c
 cd $odir
 
 mount | grep -q "$mntpoint " && umount -f $mntpoint
-mount -t tmpfs tmpfs /mnt
+mount -t tmpfs tmpfs $mntpoint
 
 (cd $mntpoint; /tmp/tmpfs14) &
 

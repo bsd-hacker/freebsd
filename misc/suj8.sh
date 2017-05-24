@@ -50,7 +50,7 @@ for i in 1 2 ; do
 
 	mount /dev/md${mdstart}$part $mntpoint
 
-	dd if=/dev/zero of=/mnt/big bs=4k > /dev/null 2>&1
+	dd if=/dev/zero of=$mntpoint/big bs=4k > /dev/null 2>&1
 
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1

@@ -44,7 +44,7 @@ rm -f mlockall4.c
 
 mount | grep -q "on $mntpoint " && umount -f $mntpoint
 mount -t nullfs /tmp $mntpoint
-/mnt/mlockall4 &
+$mntpoint/mlockall4 &
 sleep 2
 umount -f $mntpoint
 

@@ -60,7 +60,7 @@ cd $mntpoint/.attribute/system
 extattrctl initattr -p . 388 posix1e.acl_access
 extattrctl initattr -p . 388 posix1e.acl_default
 cd /
-umount /mnt
+umount $mntpoint
 tunefs -a enable /dev/md${mdstart}$part
 mount /dev/md${mdstart}$part $mntpoint
 mount | grep md${mdstart}$part

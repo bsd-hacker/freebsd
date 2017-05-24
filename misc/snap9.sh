@@ -63,6 +63,6 @@ rm $mntpoint/big.*
 rm -f $mntpoint/.snap/snap
 
 while mount | grep "$mntpoint" | grep -q md$mdstart; do
-	umount /mnt || sleep 1
+	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart

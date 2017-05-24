@@ -60,9 +60,9 @@ export RUNDIR=$mntpoint/stressX
 export runRUNTIME=5m
 (cd $mntpoint/stress2; ./run.sh marcus.cfg) > /dev/null
 
-umount /mnt
+umount $mntpoint
 mdconfig -d -u $m2
-umount /mnt
+umount $mntpoint
 mdconfig -d -u $mdstart
 rm -rf $D $I
 exit 0
