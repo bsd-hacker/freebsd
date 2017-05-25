@@ -50,15 +50,17 @@ rm -f bio.c
 cd $odir
 
 mount | grep "on $mntpoint " | grep -q /dev/md && umount -f $mntpoint
-[ -c md$mdstart ] &&  mdconfig -d -u $mdstart
+[ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 2g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 newfs -n md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 (cd $mntpoint; /tmp/bio) &
+pid1=$!
 sleep 5
 (cd ../testcases/swap; ./swap -t 10m -i 20 -k -l 100 -h) &
+pid2=$!
 
 while pgrep -q bio; do
 	sleep 2
@@ -67,14 +69,16 @@ done
 while pgrep -q swap; do
 	pkill -9 swap
 done
-wait
+wait $pid2
+wait $pid1
+s=$?
 
 while mount | grep "on $mntpoint " | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
 rm -rf /tmp/bio
-exit
+exit $s
 
 EOF
 #include <sys/param.h>
@@ -100,13 +104,16 @@ EOF
 #define PAGES (512 * 1024 * 1024 / PS)	/* 512MB file size */
 #define PARALLEL 3
 #define RUNTIME (5 * 60)
+#define TIMEOUT (20 * 60)
 
 char buf[PS];
 
 void
 test(int inx)
 {
+	pid_t pid;
 	size_t i, len, slen;
+	time_t start;
 	volatile u_int *share;
 	int fd, r;
 	u_int *ip, val;
@@ -131,7 +138,9 @@ test(int inx)
 	    fd, 0)) == MAP_FAILED)
 			err(1, "mmap");
 
-	if (fork() == 0) {
+	start = time(NULL);
+	if ((pid = fork()) == 0) {
+		alarm(2 * RUNTIME);
 		/* mmap read / write access */
 		for (i = 0; i < (size_t)(PAGES * PS); i += PS) {
 			while (share[SYN1] == 0)
@@ -144,11 +153,16 @@ test(int inx)
 			share[INDX] += PS;
 			ip[share[INDX] / sizeof(u_int)] = share[INDX];
 			atomic_add_int(&share[SYN2], 1); /* signal parent */
+			if (i % 1000 == 0 && time(NULL) - start > TIMEOUT)
+				errx(1, "Timed out");;
 		}
 		_exit(0);
 	}
+	if (pid == -1)
+		err(1, "fork()");
 	share[INDX] = 0;
 	atomic_add_int(&share[SYN2], 1);
+	alarm(2 * RUNTIME);
 	for (i = 0; i < (size_t)(PAGES * PS); i += PS) {
 		while (share[SYN2] == 0)
 			sched_yield();
@@ -167,9 +181,11 @@ test(int inx)
 			err(1, "write");
 
 		atomic_add_int(&share[SYN1], 1); /* signal child */
+		if (i % 1000 == 0 && time(NULL) - start > TIMEOUT)
+			errx(1, "Timed out");;
 	}
 	atomic_add_int(&share[SYN2], -1);
-	if (wait(NULL) == -1)
+	if (waitpid(pid, NULL, 0) != pid)
 		err(1, "wait");
 
 	if (munmap(ip, len) == -1)
@@ -186,6 +202,7 @@ test(int inx)
 int
 main(void)
 {
+	pid_t pids[PARALLEL];
 	time_t start;
 	int i, s, status;
 
@@ -193,13 +210,13 @@ main(void)
 	s = 0;
 	while ((time(NULL) - start) < RUNTIME && s == 0) {
 		for (i = 0; i < PARALLEL; i++) {
-			if (fork() == 0)
+			if ((pids[i] = fork()) == 0)
 				test(i);
 		}
 		for (i = 0; i < PARALLEL; i++) {
-			if (wait(&status) == -1)
-				err(1, "wait");
-			s += WEXITSTATUS(status);
+			if (waitpid(pids[i], &status, 0) == -1)
+				err(1, "waitpid(%d)", pids[i]);
+			s += status == 0 ? 0 : 1;
 		}
 	}
 
