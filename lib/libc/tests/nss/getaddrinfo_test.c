@@ -28,7 +28,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -125,7 +125,8 @@ compare_addrinfo_(struct addrinfo *ai1, struct addrinfo *ai2)
 }
 
 static int
-compare_addrinfo(struct addrinfo *ai1, struct addrinfo *ai2, void *mdata)
+compare_addrinfo(struct addrinfo *ai1, struct addrinfo *ai2,
+    void *mdata __unused)
 {
 	int rv;
 
@@ -164,30 +165,30 @@ sdump_addrinfo(struct addrinfo *ai, char *buffer, size_t buflen)
 		ai->ai_flags, ai->ai_family, ai->ai_socktype, ai->ai_protocol,
 		ai->ai_addrlen);
 	buffer += written;
-	if (written > buflen)
+	if (written > (int)buflen)
 		return;
 	buflen -= written;
 
 	written = snprintf(buffer, buflen, "%s ",
 		ai->ai_canonname == NULL ? "(null)" : ai->ai_canonname);
 	buffer += written;
-	if (written > buflen)
+	if (written > (int)buflen)
 		return;
 	buflen -= written;
 
 	if (ai->ai_addr == NULL) {
 		written = snprintf(buffer, buflen, "(null)");
 		buffer += written;
-		if (written > buflen)
+		if (written > (int)buflen)
 			return;
 		buflen -= written;
 	} else {
-		for (i = 0; i < ai->ai_addrlen; i++) {
+		for (i = 0; i < (int)ai->ai_addrlen; i++) {
 			written = snprintf(buffer, buflen,
-			    i + 1 != ai->ai_addrlen ? "%d." : "%d",
+			    i + 1 != (int)ai->ai_addrlen ? "%d." : "%d",
 			    ((unsigned char *)ai->ai_addr)[i]);
 			buffer += written;
-			if (written > buflen)
+			if (written > (int)buflen)
 				return;
 			buflen -= written;
 
@@ -199,7 +200,7 @@ sdump_addrinfo(struct addrinfo *ai, char *buffer, size_t buflen)
 	if (ai->ai_next != NULL) {
 		written = snprintf(buffer, buflen, ":");
 		buffer += written;
-		if (written > buflen)
+		if (written > (int)buflen)
 			return;
 		buflen -= written;
 
@@ -344,7 +345,7 @@ addrinfo_read_snapshot_func(struct addrinfo *ai, char *line)
 }
 
 static int
-addrinfo_test_correctness(struct addrinfo *ai, void *mdata)
+addrinfo_test_correctness(struct addrinfo *ai, void *mdata __unused)
 {
 
 	printf("testing correctness with the following data:\n");
