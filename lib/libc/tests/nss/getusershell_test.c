@@ -48,8 +48,6 @@ struct usershell {
 	char *path;
 };
 
-static enum test_methods method = TEST_GETUSERSHELL;
-
 DECLARE_TEST_DATA(usershell)
 DECLARE_TEST_FILE_SNAPSHOT(usershell)
 DECLARE_2PASS_TEST(usershell)
@@ -134,7 +132,7 @@ usershell_read_snapshot_func(struct usershell *us, char *line)
 	return (0);
 }
 
-int
+static int
 run_tests(const char *snapshot_file, enum test_methods method)
 {
 	struct usershell_test_data td, td_snap;
