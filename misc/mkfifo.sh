@@ -45,7 +45,8 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 2g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 
-newfs -j md${mdstart}$part > /dev/null
+[ "$newfs_flags" = "-U" ] && opt="-j"
+newfs $opt md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
@@ -82,3 +83,4 @@ while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
+exit 0
