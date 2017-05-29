@@ -34,6 +34,7 @@
 # Fixed by r284207.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ -d /usr/src/sys ] || exit 0
 
 . ../default.cfg
 
