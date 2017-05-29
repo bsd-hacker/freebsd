@@ -57,13 +57,15 @@ chown $testuser $mntpoint/test
 chmod +w $mntpoint/test
 
 su $testuser -c "/tmp/flock_open_close $mntpoint/test" &
+pid=$!
 while kill -0 $! 2>/dev/null; do
 	mksnap_ffs $mntpoint $mntpoint/.snap/snap
 	sleep 2
 	rm -f $mntpoint/.snap/snap
 	sleep 1
 done
-wait
+wait $pid
+s=$?
 
 for i in `jot 10`; do
 	mount | grep -q md${mdstart}$part  && \
@@ -76,7 +78,7 @@ if mount | grep -q md${mdstart}$part; then
 	exit 1
 fi
 rm -f /tmp/flock_open_close
-exit
+exit $s
 EOF
 
 #include <sys/types.h>
@@ -113,7 +115,7 @@ child(const char *binary)
 			 */
 			if (errno == ETXTBSY)
 				continue;
-			err(1, "can't open %s", binary);
+			err(2, "can't open %s", binary);
 		}
 		close(fd);
 	}
@@ -136,7 +138,7 @@ main(int ac, char **av)
 {
 	struct stat sb;
 	pid_t pid;
-	int i, status;
+	int e, i, status;
 
 	if (ac < 2)
 		usage();
@@ -150,6 +152,7 @@ main(int ac, char **av)
 		err(1, "fork");
 	if (pid == 0)
 		child(av[1]);
+	e = 0;
 	for (i = 0; i < 200000; i++) {
 		pid = fork();
 		if (pid < 0)
@@ -159,8 +162,14 @@ main(int ac, char **av)
 		wait(&status);
 		if (WIFEXITED(status) && WEXITSTATUS(status) == 127) {
 			fprintf(stderr, "FAIL\n");
+			e = 1;
+			break;
+		}
+		if (WIFEXITED(status) && WEXITSTATUS(status) != 1) {
+			/* /bin/test returns 1 */
+			e = 1;
 			break;
 		}
 	}
-	return (0);
+	return (e);
 }
