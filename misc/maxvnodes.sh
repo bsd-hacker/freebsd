@@ -34,6 +34,7 @@
 
 . ../default.cfg
 
+kldstat | grep -q tmpfs.ko || notloaded=1
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mount -o size=2g -t tmpfs tmpfs $mntpoint || exit 1
 chmod 777 $mntpoint
@@ -64,3 +65,5 @@ wait
 while mount | grep $mntpoint | grep -q tmpfs; do
 	umount $mntpoint || sleep 1
 done
+[ $notloaded ] && kldunload tmpfs.ko
+exit 0
