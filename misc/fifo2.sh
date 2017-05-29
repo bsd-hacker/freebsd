@@ -36,7 +36,6 @@
 
 . ../default.cfg
 
-killall 2>&1 | grep -q q && q="-q"
 odir=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > fifo2.c
@@ -47,7 +46,7 @@ rm -f fifo2.c
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 2g -u $mdstart || exit 1
+mdconfig -a -t swap -s 1g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
@@ -61,19 +60,12 @@ while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
 	(cd $mntpoint; /tmp/fifo2) &
 	start=`date '+%s'`
 	while [ $((`date '+%s'` - start)) -lt $sleeptime ]; do
-		ps aux | grep -v grep | egrep -q "fifo2$" || break
+		pgrep -q fifo2 || break
 		sleep .5
 	done
-	if ps aux | grep -v grep | egrep -q "fifo2$"; then
-		killall $q fifo2
-		ps aux | grep -v grep | egrep -q "fifo2 " &&
-		    killall $q -9 fifo2
-	fi
+	while pkill -9 fifo2; do :; done
 	wait
 done
-killall $q -9 fifo2
-ps aux | grep -v grep | egrep -v "\.sh" | grep -q fifo2 &&
-    killall $q -9 fifo2
 
 for i in `jot 10`; do
 	mount | grep -q md${mdstart}$part  && \
@@ -81,11 +73,18 @@ for i in `jot 10`; do
 		    mdconfig -d -u $mdstart && break
 	sleep 10
 done
-mount | grep -q md${mdstart}$part && echo "umount $mntpoint failed"
+s=0
+mount | grep -q md${mdstart}$part &&
+    { echo "umount $mntpoint failed"; s=1; }
 rm -f /tmp/fifo2
-exit
+exit $s
 EOF
 #include <sys/types.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -97,11 +96,6 @@ EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/param.h>
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <sys/syscall.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #define N (128 * 1024 / (int)sizeof(u_int32_t))
@@ -112,7 +106,7 @@ hand(int i __unused) {	/* handler */
 	_exit(1);
 }
 
-unsigned long
+static unsigned long
 makearg(void)
 {
 	unsigned int i;
@@ -137,11 +131,11 @@ makearg(void)
 	return(val);
 }
 
-void *
+static void *
 calls(void *arg __unused)
 {
-	int i, num;
 	unsigned long arg1, arg2, arg3, arg4, arg5, arg6, arg7;
+	int i, num;
 
 	for (i = 0;; i++) {
 		arg1 = (unsigned long)(void *)"f";
