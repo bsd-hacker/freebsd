@@ -36,7 +36,9 @@
 . ../default.cfg
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ -z "$footshoot" ] && exit 0
 
+[ -f /usr/sbin/auditd -a -f /etc/rc.d/auditd ] || exit 0
 pgrep -q auditd && exit 0
 mount | grep -q /var || exit 0
 
@@ -54,3 +56,4 @@ service auditd onestop
 
 # Some services react badly to /var being unmounted.
 service -R
+exit 0
