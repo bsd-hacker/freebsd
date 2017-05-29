@@ -46,7 +46,7 @@ rm -f cmp.c
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 [ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 1g -u $mdstart || exit 1
+mdconfig -a -t swap -s 2g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
 # Don't use SU due to bogus "out of inodes" messages.
 newfs md${mdstart}$part > /dev/null
@@ -70,6 +70,7 @@ while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
+[ -d "$mntpoint" ] && (cd $mntpoint && find . -delete)
 
 # tmpfs
 mount -t tmpfs tmpfs $mntpoint
@@ -92,6 +93,7 @@ done > /dev/null 2>&1
 while mount | grep $mntpoint | grep -q tmpfs; do
 	umount $mntpoint || sleep 1
 done
+[ -d "$mntpoint" ] && (cd $mntpoint && find . -delete)
 rm -f /tmp/cmp
 exit 0
 EOF
@@ -168,8 +170,10 @@ main(int argc, char **argv)
 {
 	int i, j;
 
-	if (argc != 2)
-		errx(1, "Usage: %s <fill path to dir>", argv[0]);
+	if (argc != 2) {
+		fprintf(stderr, "Usage: %s <full path to dir>", argv[0]);
+		exit(1);
+	}
 	dir = argv[1];
 
 	for (j = 0; j < LOOPS; j++) {
