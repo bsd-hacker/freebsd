@@ -37,16 +37,15 @@
 
 syscall=`grep SYS_MAXSYSCALL /usr/include/sys/syscall.h | awk '{print $NF}'`
 syscall=$((syscall - 1))
-uname -a | grep -q OneFS &&
-    syscall=`sysctl kern.syscalls | grep -v nosys | grep : | tail -1 | \
-    sed 's/:.*//'`
+esyscall=0
 
 last=/tmp/syscall5.last
 log=/tmp/syscall5.log
 
-while getopts ars:t:u flag; do
+while getopts ae:rs:t:u flag; do
 	case "$flag" in
 	a) all=1 ;;
+	e) esyscall="$OPTARG" ;;
 	r) [ -h $last ] &&
 	       syscall=`ls -l $last | awk '{print $NF}'`
 	       syscall=$((syscall - 1))
@@ -55,10 +54,12 @@ while getopts ars:t:u flag; do
 	t) sleeptime="$OPTARG"
 	   export sleeptime=$((sleeptime / 10))	;; # used in syscall4.sh
 	u) unnamed=1 ;;
-	*) echo "Usage $0 [-a] [-r] [-s number] [-t seconds] [-u]"
+	*) echo "Usage $0 [-a] [-r] [-s number] [-e number] [-t seconds] [-u]"
 	   return 1 ;;
 	esac
 done
+[ $syscall -gt $esyscall ] ||
+    { echo "$syscall must be greater than $esyscall"; exit 1; }
 
 # syscalls with known issues:
 broken="
@@ -76,8 +77,6 @@ while [ $n -gt 0 ]; do
 	ln -fs $n $last
 	name=`grep -w "$n$" /usr/include/sys/syscall.h | awk '{print $2}' |
 		sed 's/SYS_//'`
-	[ -z "$name" -a -n "$unnamed" ] &&
-		{ n=$((n - 1)); continue; }
 	[ -z "$name" ] && name="unknown"
 	rm -f /tmp/syscall5.name
 	[ -x ../tools/exclude_syscall.sh ] &&
@@ -85,12 +84,15 @@ while [ $n -gt 0 ]; do
 	    { n=$((n - 1)); continue; }
 	[ "$name" = "unknown" ] && [ -f /tmp/syscall5.name ] &&
 	    name=`cat /tmp/syscall5.name`
+	[ -z "$name" -a -n "$unnamed" ] &&
+		{ n=$((n - 1)); continue; }
 	echo "`date '+%T'` syscall $n ($name)"
 	echo "`date '+%T'` syscall $n ($name)"  >> $log
 	printf "`date '+%T'` syscall $n ($name)\r\n" > /dev/console
 	sync; sleep 1
 	echo "$broken" | grep -qw "$name" ||
 		./syscall4.sh $n || break
+	[ $n -le $esyscall ] && break
 	n=$((n - 1))
 	[ -z "$all" -a `date '+%s'` -gt $((start + 1800)) ] && break
 done
