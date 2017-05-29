@@ -59,7 +59,7 @@ mkdir $TMPDIR
 chmod 0777 $TMPDIR
 
 p=$((`sysctl -n hw.ncpu`+ 1))
-make -j $p buildworld  DESTDIR=$mntpoint TARGET=amd64 TARGET_ARCH=amd64 \
+make -i -j $p buildworld  DESTDIR=$mntpoint TARGET=amd64 TARGET_ARCH=amd64 \
     > /dev/null &
 sleep $((20 *  60))
 kill $!
@@ -69,3 +69,4 @@ while mount | grep -q "on $mntpoint "; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
+exit 0
