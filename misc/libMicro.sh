@@ -37,12 +37,13 @@ if [ $# -eq 0 ]; then
 	[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 	[ -x /usr/local/bin/libmicro-bench ] ||
-	    { echo "ports/benchmarks/libmicro is not installed"; exit 1; }
+	    { echo "ports/benchmarks/libmicro is not installed"; exit 0; }
 
 	[ `id -un` = $testuser ] &&
 	    { echo "\$testuser is identical to current id"; exit 1; }
 
 	rm -f /tmp/libmicro.log
+	trap "rm -rf /var/tmp/libmicro.[0-9]*" 0
 	su $testuser -c "$0 x"
 	echo ""
 else
@@ -50,4 +51,5 @@ else
 	# Temp. work-around for hanging "c_lockf_10" test.
 	sleep 60
 	kill 0
+	wait
 fi
