@@ -30,16 +30,21 @@
 
 # Parallel mount and umount of zfs file systems.
 
+# Page fault seen:
+# https://people.freebsd.org/~pho/stress/log/avg002.txt
+# Fixed by r309090.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
-[ $((`sysctl -n hw.usermem` / 1024 / 1024 / 1024)) -le 3 ] && exit 0
+[ `sysctl -n kern.kstack_pages` -lt 4 ] && exit 0
 
 . ../default.cfg
 
 mounts=15		# Number of parallel scripts
 
 if [ $# -eq 0 ]; then
-	kldstat -v | grep -q zfs.ko  || { kldload zfs.ko; loaded=1; }
-	zpool list | grep -q tank && zpool destroy tank
+	kldstat -v | grep -q zfs.ko  || { kldload zfs.ko ||
+	    exit 0; loaded=1; }
+	zpool list | egrep -q "^tank" && zpool destroy tank
 
 	u1=$mdstart
 	u2=$((u1 + 1))
