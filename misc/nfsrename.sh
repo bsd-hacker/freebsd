@@ -47,15 +47,18 @@ rm -f nfsrename.c
 cd $odir
 
 mount | grep "$mntpoint" | grep nfs > /dev/null && umount $mntpoint
-mount -t nfs -o tcp -o retrycnt=3 -o intr -o soft -o rw $nfs_export $mntpoint
+mount -t nfs -o tcp -o retrycnt=3 -o intr,soft -o rw $nfs_export $mntpoint
 
 for i in `jot 10`; do
-	/tmp/nfsrename  $mntpoint/nfsrename.$i &
+	/tmp/nfsrename  $mntpoint/nfsrename.$i > /dev/null 2>&1 &
+	pids="$pids $!"
 done
-for i in `jot 10`; do
-	wait
+s=0
+for i in $pids; do
+	wait $i
+	[ $? -ne 0 ] && s=1
 done
-killall nfsrename
+pkill nfsrename
 rm -f $mntpoint/nfsrename.*
 
 umount $mntpoint > /dev/null 2>&1
@@ -64,7 +67,7 @@ while mount | grep "$mntpoint" | grep -q nfs; do
 done
 
 rm -f /tmp/nfsrename
-exit
+exit $s
 
 EOF
 /*
@@ -81,10 +84,13 @@ EOF
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 
-const char *filename;
-const char *dir;
+static char *filename;
+static char *dir;
+
+#define RUNTIME 720
 
 static void
 usage(void)
@@ -102,7 +108,6 @@ read_file(void)
 
 	fp = fopen(filename, "r");
 	if (fp == NULL) {
-		warn("fopen");
 		return;
 	}
 	while (!feof(fp)) {
@@ -130,7 +135,7 @@ write_file(void)
 
 	fp = fdopen(fd, "w");
 	if (fp == NULL) {
-		warn("fopen:writer");
+		warn("fdopen:writer");
 		close(fd);
 		unlink(path);
 	}
@@ -155,10 +160,14 @@ random_sleep(int base, int slop)
 static void
 child(void)
 {
+	time_t start;
 
+	start = time(NULL);
 	for (;;) {
 		random_sleep(500, 50);
 		read_file();
+		if (time(NULL) - start > RUNTIME)
+			errx(1, "Timed out");
 	}
 	exit(0);
 }
@@ -166,6 +175,7 @@ child(void)
 int
 main(int ac, char **av)
 {
+	time_t start;
 	long i, nchild;
 	char *cp;
 	int ch;
@@ -205,9 +215,12 @@ main(int ac, char **av)
 		}
 	}
 
+	start = time(NULL);
 	for (i = 0; i < 10000; i++) {
 		random_sleep(1500, 1000);
 		write_file();
+		if (time(NULL) - start > RUNTIME)
+			errx(1, "Timed out");
 	}
 
 	return (0);
