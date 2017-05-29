@@ -30,6 +30,9 @@
 
 # panic: ufs_dirbad: /mnt: bad dir ino 32899 at offset 16896: mangled entry
 
+# "panic: ffs_read: type 0" seen:
+# https://people.freebsd.org/~pho/stress/log/kostik969.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
