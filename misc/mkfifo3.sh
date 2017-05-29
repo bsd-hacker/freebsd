@@ -56,9 +56,10 @@ for i in `jot 12`; do
 	pgrep -q mkfifo3 || break
 	sleep 10
 done
+s=0
 if pgrep -q mkfifo3; then
-	echo FAIL
-	ps -l | grep -v grep | grep mkfifo3
+	s=1
+	pgrep mkfifo3 | xargs ps -lp
 	pkill mkfifo3
 fi
 wait
