@@ -33,6 +33,7 @@
 # Test of patch for Giant trick in cdevsw
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ -d /usr/src/sys ] || exit 0
 
 . ../default.cfg
 
