@@ -39,12 +39,13 @@
 
 . ../default.cfg
 
+log=/tmp/md5.log
 dd if=/dev/zero of=$diskimage bs=1k count=5k 2>&1 |
     egrep -v "records|transferred"
-mdconfig -f $diskimage -u md$mdstart
+mdconfig -f $diskimage -u md$mdstart || exit 1
 newfs $newfs_flags /dev/md$mdstart > /dev/null
-(
-	dd if=/dev/md$mdstart of=/dev/null 2>&1 || echo FAIL
-) | egrep -v "records|transferred"
+dd if=/dev/md$mdstart of=/dev/null > $log 2>&1 && s=0 || s=1
+[ $s -eq 1 ] && cat $log
 mdconfig -d -u $mdstart
-rm -f $diskimage
+rm -f $diskimage $log
+exit $s
