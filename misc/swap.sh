@@ -99,7 +99,7 @@ setup(void)
 int
 test(void)
 {
-	char *c;
+	volatile char *c;
 	int page;
 	unsigned long i, j;
 	time_t start;
@@ -127,7 +127,7 @@ test(void)
 			}
 		}
 	}
-	free(c);
+	free((void *)c);
 
 	_exit(0);
 }

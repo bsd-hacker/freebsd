@@ -117,7 +117,7 @@ test(void)
 	time_t start;
 	unsigned long i, oldsize;
 	int page;
-	char *c;
+	volatile char *c;
 
 	oldsize = size;
 	c = malloc(size);
@@ -142,7 +142,7 @@ test(void)
 			usleep(1000);
 #endif
 	}
-	free(c);
+	free((void *)c);
 
 	return (0);
 }

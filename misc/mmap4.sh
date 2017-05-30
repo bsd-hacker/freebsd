@@ -88,7 +88,8 @@ main(int argc, char **argv)
 	int fd, ps;
 	void *p;
 	size_t len;
-	char *c, *path;
+	volatile char *c;
+	char *path;
 
 	p = (void *)STARTADDR;
 	len = ADRSPACE;

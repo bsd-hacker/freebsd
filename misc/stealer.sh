@@ -88,7 +88,7 @@ handler(int i __unused)
 void
 stealer(int pages)
 {
-	char *c;
+	volatile char *c;
 	int i, page, size;
 
 	page = getpagesize();
