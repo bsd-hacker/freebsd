@@ -30,11 +30,24 @@
 
 # Kill all running test programs from stress2/testcases
 
-for i in `find ../testcases -type f -perm -1`; do
-	list=`echo $list $(basename $i)`
-done
+list="`find ../testcases -type f -perm -1 | xargs basename`"
+[ -z "$list" ] && exit 1
 
-for i in `jot 20`; do
-	killall -q -9 $list 2>/dev/null || break
-	sleep $i
+i=0
+while pkill -9 $list; do
+	[ $((i += 1)) -lt 3 ] && continue
+	if [ -z "$(ps `pgrep $list` | sed 1d)" ]; then # <defunct>
+		for j in "`pgrep $list`"; do
+			ps auxwwl | awk "\$2 == $j"
+		done
+		echo "$0 FAIL"; exit 2
+	fi
+	if [ $i -eq 30 ]; then
+		pgrep $list | xargs ps -lp
+		echo "$0 FAIL @ $i"
+		exit 3
+	fi
+	sleep 5
 done
+[ $i -gt 2 ] && echo "Note: $0 exit @ $i"
+exit 0
