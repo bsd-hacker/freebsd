@@ -36,12 +36,12 @@
 # This scenario demonstrates the problem. Fixed in r242012.
 
 mem=`sysctl -n hw.usermem`
-[ `swapinfo | wc -l` -eq 1 ] && mem=$((mem/100*60))
+[ `sysctl -n vm.swap_total` -eq 0 ] && mem=$((mem / 100 * 60))
 
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > mlockall2.c
-mycc -o mlockall2 -Wall -Wextra -O2 -g mlockall2.c
+mycc -o mlockall2 -Wall -Wextra -O2 -g mlockall2.c || exit 1
 rm -f mlockall2.c
 cd $here
 
@@ -51,31 +51,36 @@ while kill -0 $! 2>/dev/null; do
         [ -r mlockall2.core ] && kill $! && break
         sleep 10
 done
-[ -r mlockall2.core ] && echo "FAIL"
-killall mlockall2
-rm -f /tmp/mlockall2
-exit 0
+[ -r mlockall2.core ] && s=1 || s=0
+pkill mlockall2
+wait
+rm -f /tmp/mlockall2 mlockall2.core
+exit $s
 EOF
 #include <sys/types.h>
-#include <err.h>
-#include <sys/rtprio.h>
-#include <stdlib.h>
 #include <sys/mman.h>
+#include <sys/rtprio.h>
 #include <sys/wait.h>
+
+#include <err.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 
 #define LOAD 40
 #define N 90000
 #define PARALLEL 5
+#define RUNTIME 600
 
-long size;
+static long size;
 
-void
+static void
 swap(void)
 {
-	char *c;
-	int page;
 	long i;
+	int page;
+	volatile char *c;
 
 	setproctitle("swap");
 	c = malloc(size);
@@ -93,7 +98,7 @@ swap(void)
 	}
 }
 
-void
+static void
 test(void)
 {
         pid_t p;
@@ -105,7 +110,7 @@ test(void)
 			_exit(0);
 		}
                 if (p > 0)
-                        wait(&status);
+                        waitpid(p, &status, 0);
 		if (status != 0)
 			break;
         }
@@ -115,12 +120,14 @@ test(void)
 int
 main(int argc __unused, char **argv)
 {
+	time_t start;
 	struct rtprio rtp;
-        int i, j;
+	pid_t pids[LOAD], pids2[PARALLEL];
+        int i;
 
 	size = atol(argv[1]) / LOAD * 1.5;
 	for (i = 0; i < LOAD; i++)
-		if (fork() == 0)
+		if ((pids[i] = fork()) == 0)
 			swap();
 	sleep(10);
 
@@ -134,18 +141,24 @@ main(int argc __unused, char **argv)
 	if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0)
 		err(1, "mlockall failed");
 
-	alarm(600);
-	for (j = 0; j < 10; j++) {
+	start = time(NULL);
+	while (time(NULL) - start < RUNTIME) {
 		for (i = 0; i < PARALLEL; i++) {
-			if (fork() == 0)
+			if ((pids2[i] = fork()) == 0)
 				test();
 		}
 
 		for (i = 0; i < PARALLEL; i++)
-			wait(NULL);
+			if (waitpid(pids2[i], NULL, 0) != pids2[i])
+				err(1, "waitpid(%d) (2)", pids2[i]);
 		if (access("mlockall2.core", R_OK) == 0)
 			break;
 	}
+	for (i = 0; i < LOAD; i++)
+		kill(pids[i], SIGHUP);
+	for (i = 0; i < LOAD; i++)
+		if (waitpid(pids[i], NULL, 0) != pids[i])
+			err(1, "waitpid(%d)", pids[i]);
 
         return (0);
 }
