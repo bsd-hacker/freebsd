@@ -60,7 +60,7 @@ done
 sleep $((4 * 60))
 echo "umount -f $mntpoint"
 umount -f $mntpoint
-while pkill -f umountf3; do :; done
+while pkill umountf3; do :; done
 wait
 mdconfig -d -u $mdstart
 rm -f $D /tmp/umountf3
