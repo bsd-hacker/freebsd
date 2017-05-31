@@ -319,6 +319,7 @@ rm -f /tmp/crlogger.c
 
 N=200
 cd /tmp
+start=`date '+%s'`
 for i in `jot 40`; do
 	for j in `jot $N`; do
 		/tmp/crwriter | /tmp/crlogger 1236$j 2>/dev/null &
@@ -327,5 +328,7 @@ for i in `jot 40`; do
 	for j in `jot $N`; do
 		wait
 	done
+	[ $((`date '+%s'` - start)) -gt 1800 ] && break
 done
 rm -f /tmp/crwriter /tmp/crlogger ./barrier.*
+exit 0
