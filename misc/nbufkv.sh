@@ -37,6 +37,11 @@
 
 . ../default.cfg
 
+dir=`dirname $diskimage`
+[ `df -k $dir | tail -1 | awk '{print $4'}` -lt \
+    $((40 * 1024 * 1024)) ] &&
+    echo "Not enough disk space on $dir." && exit 0
+
 odir=`pwd`
 
 cd /tmp
@@ -47,25 +52,28 @@ cd $odir
 
 u1=$mdstart
 u2=$((u1 + 1))
-d1=/tmp/diskimage1
-d2=/tmp/diskimage2
+d1=$dir/diskimage1
+d2=$dir/diskimage2
 mp1=$mntpoint
 mp2=${mntpoint}2
 [ -d $mp1 ] || mkdir $mp1
 [ -d $mp2 ] || mkdir $mp2
-truncate -s 20g $d1
-truncate -s 20g $d2
+rm -f $d1 $d2
+(
+	dd if=/dev/zero of=$d1 bs=1m count=20k || exit 1
+) 2>&1 | egrep -v 'records|transferred'
+cp $d1 $d2 || exit 1
 
 mount | grep -q /dev/md${u2}$part && umount -f /dev/md${u2}$part
 mount | grep -q /dev/md${u1}$part && umount -f /dev/md${u1}$part
-mdconfig -l | grep -q md$u2 && mdconfig -d -u $u2
-mdconfig -l | grep -q md$u1 && mdconfig -d -u $u1
+[ -c /dev/md$u2 ] && mdconfig -d -u $u2
+[ -c /dev/md$u1 ] && mdconfig -d -u $u1
 
-mdconfig -a -t vnode -f $d1 -u $u1
+mdconfig -a -t vnode -f $d1 -u $u1 || exit 1
 bsdlabel -w md$u1 auto
 newfs -b 65536 -f 65536 -O2 md${u1}$part > /dev/null
 
-mdconfig -a -t vnode -f $d2 -u $u2
+mdconfig -a -t vnode -f $d2 -u $u2 || exit 1
 bsdlabel -w md$u2 auto
 newfs -b 65536 -f 65536 -O2 md${u2}$part > /dev/null
 
