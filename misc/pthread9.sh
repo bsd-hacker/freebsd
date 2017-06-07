@@ -57,6 +57,7 @@ if ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1; then
 		procstat -k `pgrep pthread9 | grep -v $!`
 		status=1
 	fi
+	rm -f $mntpoint/pthread9.core
 	umount -f $mntpoint
 	wait
 fi
