@@ -33,6 +33,8 @@
 # Test of patch for Giant trick in cdevsw
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ -d /usr/src/sys ] || exit 0
+kldstat -v | grep -q pty || { kldload pty || exit 0; }
 
 . ../default.cfg
 
@@ -58,7 +60,7 @@ for i in `jot 10`; do
 done
 
 export runRUNTIME=2m
-cd ..; ./run.sh pty.cfg 
+cd ..; ./run.sh pty.cfg
 
 for i in `jot 10`; do
 	wait
@@ -87,7 +89,7 @@ static d_read_t		fpclone_read;
 static struct cdevsw fpclone_cdevsw = {
 	.d_open =	fpclone_open,
 	.d_close =	fpclone_close,
-	.d_read =	fpclone_read,	
+	.d_read =	fpclone_read,
 	.d_name =	"fpclone",
 	.d_version =	D_VERSION,
 	.d_flags =	D_TRACKCLOSE
@@ -110,7 +112,7 @@ fpclone_cdevpriv_dtr(void *data)
 }
 
 static int
-fpclone_open(struct cdev *dev, int oflags, int devtype, d_thread_t *td)
+fpclone_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
 {
 	struct fpclone_sc *sc;
 	int error;
@@ -124,7 +126,7 @@ fpclone_open(struct cdev *dev, int oflags, int devtype, d_thread_t *td)
 }
 
 static int
-fpclone_close(struct cdev *dev, int fflag, int devtype, d_thread_t *td)
+fpclone_close(struct cdev *dev, int fflag, int devtype, struct thread *td)
 {
 
 	devfs_clear_cdevpriv();
@@ -138,7 +140,7 @@ fpclone_read(struct cdev *dev, struct uio *uio, int ioflag)
 {
 	struct fpclone_sc *sc;
 	int rv, amnt, svpos, error;
-	
+
 	error = devfs_get_cdevpriv((void **)&sc);
 	if (error)
 		return (error);
