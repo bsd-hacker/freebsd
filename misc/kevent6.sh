@@ -49,7 +49,7 @@ cd $odir
 mount | grep "on $mntpoint " | grep -q md$mdstart && umount -f $mntpoint
 mdconfig -l | grep -q $mdstart && mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 2g -u ${mdstart}
+mdconfig -a -t swap -s 2g -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
@@ -61,6 +61,13 @@ while mount | grep -q $mntpoint; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
+
+mount -o size=1g -t tmpfs tmpfs $mntpoint
+chmod 777 $mntpoint
+su $testuser -c "(cd $mntpoint; /tmp/kevent6)"
+while mount | grep -q $mntpoint; do
+	umount $mntpoint || sleep 1
+done
 rm -f /tmp/kevent6
 
 exit
