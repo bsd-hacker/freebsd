@@ -55,11 +55,11 @@ rm -f /tmp/syscall4
 mycc -o syscall4 -Wall -Wextra -O2 -g syscall4.c -lpthread || exit 1
 rm -f syscall4.c
 
-kldstat -v | grep -q sysvmsg  || $odir/../tools/kldload.sh sysvmsg
-kldstat -v | grep -q sysvsem  || $odir/../tools/kldload.sh sysvsem
-kldstat -v | grep -q sysvshm  || $odir/../tools/kldload.sh sysvshm
-kldstat -v | grep -q aio      || $odir/../tools/kldload.sh aio
-kldstat -v | grep -q mqueuefs || $odir/../tools/kldload.sh mqueuefs
+kldstat -v | grep -q sysvmsg  || $stress2tools/kldload.sh sysvmsg
+kldstat -v | grep -q sysvsem  || $stress2tools/kldload.sh sysvsem
+kldstat -v | grep -q sysvshm  || $stress2tools/kldload.sh sysvshm
+kldstat -v | grep -q aio      || $stress2tools/kldload.sh aio
+kldstat -v | grep -q mqueuefs || $stress2tools/kldload.sh mqueuefs
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
@@ -70,10 +70,11 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
+daemon sh -c "(cd $odir/../testcases/swap; ./swap -t 10m -i 20 -k)" > \
+    /dev/null
 sleeptime=${sleeptime:-12}
 st=`date '+%s'`
 while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
-	daemon sh -c "(cd $odir/../testcases/swap; ./swap -t 5m -i 20 -k -h)" > /dev/null
 	(cd $mntpoint; /tmp/syscall4 $* ) &
 	start=`date '+%s'`
 	while [ $((`date '+%s'` - start)) -lt $sleeptime ]; do
@@ -84,11 +85,11 @@ while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
 		:
 	done
 	wait
-	while pkill -9 swap; do
-		:
-	done
 	ipcs | grep nobody | awk '/^(q|m|s)/ {print " -" $1, $2}' |
 	    xargs -L 1 ipcrm
+done
+while pkill -9 swap; do
+	:
 done
 while pkill -9 syscall4; do
 	:
@@ -108,6 +109,7 @@ rm -f /tmp/syscall4
 exit
 EOF
 #include <sys/param.h>
+#include <sys/event.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -146,16 +148,9 @@ static int ignore[] = {
 	SYS_mac_syscall,
 	SYS_sigtimedwait,
 	SYS_sigwaitinfo,
-#if       __FreeBSD_version <  804500
-	SYS_thr_create,
-	SYS_thr_new,
-#endif
-#if       __FreeBSD_version >= 900041
-	SYS_pdfork,
-#endif
 };
 
-int fd[900], fds[2], socketpr[2];
+int fd[900], fds[2], kq, socketpr[2];
 #ifndef nitems
 #define nitems(x) (sizeof((x)) / sizeof((x)[0]))
 #endif
@@ -209,17 +204,17 @@ test(void *arg __unused)
 
 	FTS		*fts;
 	FTSENT		*p;
-	int		ftsoptions;
-	char		*args[6];
-	int i;
+	int		ftsoptions, i;
+	char *args[] = {
+	    "/dev",
+	    "/proc",
+	    "/compat/linux/proc",
+	    "/media",
+	    ".",
+	    NULL,
+	};
 
 	ftsoptions = FTS_PHYSICAL;
-	args[0] = "/dev";
-	args[1] = "/proc";
-	args[2] = "/usr/compat/linux/proc";
-	args[3] = "/ifs";
-	args[4] = ".";
-	args[5] = 0;
 
 	for (;;) {
 		for (i = 0; i < N; i++)
@@ -245,11 +240,13 @@ test(void *arg __unused)
 			err(1, "pipe()");
 		if (socketpair(PF_UNIX, SOCK_SEQPACKET, 0, socketpr) == -1)
 			err(1, "socketpair()");
+		kq = kqueue();
 		sleep(1);
 		close(socketpr[0]);
 		close(socketpr[1]);
 		close(fds[0]);
 		close(fds[1]);
+		close(kq);
 	}
 	return(0);
 }
@@ -307,7 +304,7 @@ main(int argc, char **argv)
 
 	magic1 = magic2 = MAGIC;
 	if ((pw = getpwnam("nobody")) == NULL)
-		err(1, "no such user: nobody");
+		err(1, "failed to resolve nobody");
 
 	if (getenv("USE_ROOT") && argc == 2)
 		fprintf(stderr, "Running syscall4 as root for %s.\n",
@@ -335,8 +332,10 @@ main(int argc, char **argv)
 	signal(SIGSYS,  hand);
 	signal(SIGTRAP, hand);
 
-	if (argc > 2)
-		errx(1, "Usage: %s {<syscall no>}", argv[0]);
+	if (argc > 2) {
+		fprintf(stderr, "usage: %s [syscall-num]\n", argv[0]);
+		exit(1);
+	}
 	if (argc == 2) {
 		syscallno = atoi(argv[1]);
 		for (j = 0; j < (int)nitems(ignore); j++)
