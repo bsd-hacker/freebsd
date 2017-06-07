@@ -42,8 +42,6 @@ sed '1,/^EOF/d' < $here/$0 > posix_openpt.c
 mycc -o posix_openpt -Wall -Wextra -O2 posix_openpt.c || exit 1
 rm -f posix_openpt.c
 
-kldstat -v | grep -q pty || { kldload pty || exit 1; }
-
 for i in `jot 10`; do
 	/tmp/posix_openpt &
 done
