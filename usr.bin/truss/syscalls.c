@@ -299,6 +299,8 @@ static struct syscall decoded_syscalls[] = {
 	  .args = { { Name | IN, 0 }, { Timeval2 | IN, 1 } } },
 	{ .name = "madvise", .ret_type = 1, .nargs = 3,
 	  .args = { { Ptr, 0 }, { Sizet, 1 }, { Madvice, 2 } } },
+	{ .name = "minherit", .ret_type = 1, .nargs = 3,
+	  .args = { { Ptr, 0 }, { Sizet, 1 }, { Minherit, 2 } } },
 	{ .name = "mkdir", .ret_type = 1, .nargs = 2,
 	  .args = { { Name, 0 }, { Octal, 1 } } },
 	{ .name = "mkdirat", .ret_type = 1, .nargs = 3,
@@ -311,6 +313,10 @@ static struct syscall decoded_syscalls[] = {
 	  .args = { { Name, 0 }, { Octal, 1 }, { Int, 2 } } },
 	{ .name = "mknodat", .ret_type = 1, .nargs = 4,
 	  .args = { { Atfd, 0 }, { Name, 1 }, { Octal, 2 }, { Int, 3 } } },
+	{ .name = "mlock", .ret_type = 1, .nargs = 2,
+	  .args = { { Ptr, 0 }, { Sizet, 1 } } },
+	{ .name = "mlockall", .ret_type = 1, .nargs = 1,
+	  .args = { { Mlockall, 0 } } },
 	{ .name = "mmap", .ret_type = 1, .nargs = 6,
 	  .args = { { Ptr, 0 }, { Sizet, 1 }, { Mprot, 2 }, { Mmapflags, 3 },
 		    { Int, 4 }, { QuadHex, 5 } } },
@@ -320,6 +326,8 @@ static struct syscall decoded_syscalls[] = {
 	  .args = { { Name, 0 }, { Name, 1 }, { Int, 2 }, { Ptr, 3 } } },
 	{ .name = "mprotect", .ret_type = 1, .nargs = 3,
 	  .args = { { Ptr, 0 }, { Sizet, 1 }, { Mprot, 2 } } },
+	{ .name = "munlock", .ret_type = 1, .nargs = 2,
+	  .args = { { Ptr, 0 }, { Sizet, 1 } } },
 	{ .name = "munmap", .ret_type = 1, .nargs = 2,
 	  .args = { { Ptr, 0 }, { Sizet, 1 } } },
 	{ .name = "nanosleep", .ret_type = 1, .nargs = 1,
@@ -2097,6 +2105,13 @@ print_arg(struct syscall_args *sc, unsigned long *args, long *retval,
 	case Extattrnamespace:
 		print_integer_arg(sysdecode_extattrnamespace, fp,
 		    args[sc->offset]);
+		break;
+	case Minherit:
+		print_integer_arg(sysdecode_minherit_inherit, fp,
+		    args[sc->offset]);
+		break;
+	case Mlockall:
+		print_mask_arg(sysdecode_mlockall_flags, fp, args[sc->offset]);
 		break;
 
 	case CloudABIAdvice:
