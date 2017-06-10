@@ -52,7 +52,7 @@ newfs $opt md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-if ! su ${testuser} -c "cd $mntpoint; /tmp/linger $size"; then
+if ! su $testuser -c "cd $mntpoint; /tmp/linger $size"; then
 	min=2
 	[ -r $mntpoint/.sujournal ] && min=3
 	r=`df -hi $mntpoint | head -1`
@@ -73,22 +73,25 @@ mdconfig -d -u $mdstart
 rm -f /tmp/linger
 exit
 EOF
+#include <sys/mount.h>
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mount.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define PARALLEL 10
+#define TIMEOUT 1200
 static int size = 6552;	/* 10 free inodes */
 
-int
+static int
 test(void)
 {
 	int fd, i, j;
@@ -128,12 +131,14 @@ test(void)
 int
 main(void)
 {
+	time_t start;
 	int error = 0, fd, i, j, status;
 
 	umask(0);
 	if ((fd = open("continue", O_CREAT, 0644)) == -1)
 		err(1, "open()");
 	close(fd);
+	start = time(NULL);
 	for (i = 0; i < 100; i++) {
 		for (j = 0; j < PARALLEL; j++) {
 			if (fork() == 0) {
@@ -152,8 +157,10 @@ main(void)
 		}
 
 		unlink("rendezvous");
-		if (access("continue", R_OK) == -1) {
-			fprintf(stderr, "Loop #%d\n", i + 1);
+		if (access("continue", R_OK) == -1)
+			break;
+		if (time(NULL) - start > TIMEOUT) {
+			fprintf(stderr, "FAIL Timeout\n");
 			break;
 		}
 	}
