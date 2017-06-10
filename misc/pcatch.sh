@@ -33,10 +33,13 @@
 # when fs is suspended, and process is signaled.
 
 # Test scenario mostly by kib.
-
 # Fixed in r275744.
 
+# Deadlock seen:
+# https://people.freebsd.org/~pho/stress/log/pcatch.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+[ -z "$DEBUG" ] && exit 0 # Waiting for fix
 
 . ../default.cfg
 
@@ -50,12 +53,15 @@ cd $here
 mount | grep -q "$mntpoint" && umount $mntpoint
 mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart
-bsdlabel -w md${mdstart} auto
+bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 
 mount /dev/md${mdstart}$part $mntpoint
 
-/tmp/pcatch $mntpoint
+start=`date '+%s'`
+while [ $((`date '+%s'` - start)) -lt 120 ]; do
+	/tmp/pcatch $mntpoint
+done
 
 while mount | grep -q "on $mntpoint "; do
 	umount $mntpoint || sleep 1
@@ -80,12 +86,12 @@ EOF
 #include <string.h>
 #include <unistd.h>
 
-void
+static void
 hand_sigaction(int signo __unused, siginfo_t *si __unused, void *c __unused)
 {
 }
 
-void
+static void
 suspend(char *path)
 {
         struct statfs s;
@@ -104,7 +110,7 @@ suspend(char *path)
 	}
 }
 
-void
+static void
 test(char *mp)
 {
 	pid_t pid;
