@@ -36,11 +36,11 @@
 . ../default.cfg
 
 mount | grep "$mntpoint " | grep -q md$mdstart && umount $mntpoint
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
+[ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t malloc -s 128m -u $mdstart
 bsdlabel -w md$mdstart auto
-newfs -U -t md${mdstart}$part > /dev/null
+newfs $newfs_flags -t md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 mksnap_ffs $mntpoint $mntpoint/.snap/snap
