@@ -95,7 +95,6 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	USB_QUIRK(SILICONPORTALS, YAPPHONE, 0x100, 0x100, UQ_AU_INP_ASYNC),
 	USB_QUIRK(LOGITECH, UN53B, 0x0000, 0xffff, UQ_NO_STRINGS),
 	USB_QUIRK(REALTEK, RTL8196EU, 0x0000, 0xffff, UQ_CFG_INDEX_1),
-	USB_QUIRK(REALTEK, RTL8153, 0x0000, 0xffff, UQ_CFG_INDEX_1),
 	USB_QUIRK(ELSA, MODEM1, 0x0000, 0xffff, UQ_CFG_INDEX_1),
 	USB_QUIRK(PLANEX2, MZKUE150N, 0x0000, 0xffff, UQ_CFG_INDEX_1),
 	USB_QUIRK(CISCOLINKSYS, USB3GIGV1, 0x0000, 0xffff, UQ_CFG_INDEX_1),
@@ -519,6 +518,7 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	/* Non-standard USB AUDIO devices */
 	USB_QUIRK(MAUDIO, FASTTRACKULTRA, 0x0000, 0xffff, UQ_AU_VENDOR_CLASS),
 	USB_QUIRK(MAUDIO, FASTTRACKULTRA8R, 0x0000, 0xffff, UQ_AU_VENDOR_CLASS),
+	USB_QUIRK(CMEDIA, CM6206, 0x0000, 0xffff, UQ_AU_SET_SPDIF_CM6206),
 
 	/*
 	 * Quirks for manufacturers which USB devices does not respond
@@ -605,6 +605,7 @@ static const char *usb_quirk_str[USB_QUIRK_MAX] = {
 	[UQ_AU_VENDOR_CLASS]		= "UQ_AU_VENDOR_CLASS",
 	[UQ_SINGLE_CMD_MIDI]		= "UQ_SINGLE_CMD_MIDI",
 	[UQ_MSC_DYMO_EJECT]		= "UQ_MSC_DYMO_EJECT",
+	[UQ_AU_SET_SPDIF_CM6206]	= "UQ_AU_SET_SPDIF_CM6206",
 };
 
 /*------------------------------------------------------------------------*

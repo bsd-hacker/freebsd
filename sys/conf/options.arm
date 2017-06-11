@@ -7,11 +7,11 @@ ARM_MANY_BOARD		opt_global.h
 NKPT2PG			opt_pmap.h
 ARM_WANT_TP_ADDRESS	opt_global.h
 COUNTS_PER_SEC		opt_timer.h
+CPSW_ETHERSWITCH	opt_cpsw.h
 CPU_ARM9		opt_global.h
 CPU_ARM9E		opt_global.h
 CPU_ARM1176		opt_global.h
-CPU_CORTEXA8		opt_global.h # Support the Cortex-A8 (no MP extensions)
-CPU_CORTEXA_MP		opt_global.h # Support Cortex-A CPUs with MP extensions
+CPU_CORTEXA		opt_global.h
 CPU_KRAIT		opt_global.h
 CPU_FA526		opt_global.h
 CPU_MV_PJ4B		opt_global.h
@@ -19,6 +19,7 @@ CPU_XSCALE_81342	opt_global.h
 CPU_XSCALE_IXP425	opt_global.h
 CPU_XSCALE_IXP435	opt_global.h
 CPU_XSCALE_PXA2X0	opt_global.h
+SMP_ON_UP		opt_global.h # Runtime detection of MP extensions
 DEV_GIC			opt_global.h
 DEV_PMU			opt_global.h
 EFI			opt_platform.h
@@ -46,8 +47,11 @@ SOC_ALLWINNER_A13	opt_global.h
 SOC_ALLWINNER_A20	opt_global.h
 SOC_ALLWINNER_A31	opt_global.h
 SOC_ALLWINNER_A31S	opt_global.h
+SOC_ALLWINNER_A33	opt_global.h
 SOC_ALLWINNER_A83T	opt_global.h
 SOC_ALLWINNER_H3	opt_global.h
+SOC_ALTERA_ARRIA10	opt_global.h
+SOC_ALTERA_CYCLONE5	opt_global.h
 SOC_BCM2835		opt_global.h
 SOC_BCM2836		opt_global.h
 SOC_IMX51		opt_global.h
@@ -56,13 +60,11 @@ SOC_IMX6		opt_global.h
 SOC_MV_ARMADAXP		opt_global.h
 SOC_MV_ARMADA38X	opt_global.h
 SOC_MV_DISCOVERY	opt_global.h
-SOC_MV_DOVE		opt_global.h
-SOC_MV_FREY		opt_global.h
 SOC_MV_KIRKWOOD		opt_global.h
-SOC_MV_LOKIPLUS		opt_global.h
 SOC_MV_ORION		opt_global.h
 SOC_OMAP3		opt_global.h
 SOC_OMAP4		opt_global.h
+SOC_ROCKCHIP_RK3188	opt_global.h
 SOC_TI_AM335X		opt_global.h
 SOC_TEGRA2		opt_global.h
 XSCALE_CACHE_READ_WRITE_ALLOCATE	opt_global.h

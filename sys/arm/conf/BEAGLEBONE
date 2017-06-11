@@ -29,6 +29,7 @@ include 	"../ti/am335x/std.am335x"
 makeoptions	MODULES_EXTRA="dtb/am335x am335x_dmtpps"
 
 options 	INTRNG
+options 	MULTIDELAY
 
 options 	SCHED_4BSD		# 4BSD scheduler
 options 	PLATFORM
@@ -114,9 +115,8 @@ device		bpf
 # USB Ethernet support, requires miibus
 device		miibus
 
-# Device mode support and USFS template
+# Device mode support
 device		usb_template    	# Control of the gadget
-device		usfs
 
 # Pinmux
 device		fdt_pinctrl

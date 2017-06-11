@@ -15,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -74,7 +74,7 @@ __FBSDID("$FreeBSD$");
 #ifdef _KERNEL
 #define MINDEX(m, k) \
 { \
-	register int len = m->m_len; \
+	int len = m->m_len; \
  \
 	while (k >= len) { \
 		k -= len; \
@@ -341,7 +341,7 @@ bpf_filter(const struct bpf_insn *pc, u_char *p, u_int wirelen, u_int buflen)
 			k = pc->k;
 			if (k >= buflen) {
 #ifdef _KERNEL
-				register struct mbuf *m;
+				struct mbuf *m;
 
 				if (buflen != 0)
 					return (0);
@@ -549,8 +549,8 @@ static const u_short	bpf_code_map[] = {
 int
 bpf_validate(const struct bpf_insn *f, int len)
 {
-	register int i;
-	register const struct bpf_insn *p;
+	int i;
+	const struct bpf_insn *p;
 
 	/* Do not accept negative length filter. */
 	if (len < 0)
@@ -572,7 +572,7 @@ bpf_validate(const struct bpf_insn *f, int len)
 		 * the code block.
 		 */
 		if (BPF_CLASS(p->code) == BPF_JMP) {
-			register u_int offset;
+			u_int offset;
 
 			if (p->code == (BPF_JMP|BPF_JA))
 				offset = p->k;

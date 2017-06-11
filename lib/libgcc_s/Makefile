@@ -1,16 +1,22 @@
 # $FreeBSD$
 
-PKG=		clibs
+PACKAGE=	clibs
 SHLIB_NAME=	libgcc_s.so.1
 SHLIBDIR?=	/lib
 
+MK_SSP=		no
 WARNS?=	2
 
 LDFLAGS+=	-nodefaultlibs
+LIBADD+=	c
 VERSION_MAP=	${.CURDIR}/Version.map
 
 .include "../libcompiler_rt/Makefile.inc"
 .include "../libgcc_eh/Makefile.inc"
+
+# gcc has incompatible internal declarations for __divtc3 and __multc3, but has
+# no option to silence its warning, so make warnings non-fatal.
+NO_WERROR.gcc=
 
 LIBCSRCDIR=	${SRCTOP}/lib/libc
 LIBMSRCDIR=	${SRCTOP}/lib/msun/src

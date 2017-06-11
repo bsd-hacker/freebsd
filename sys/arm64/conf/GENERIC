@@ -50,6 +50,7 @@ options 	PSEUDOFS		# Pseudo-filesystem framework
 options 	GEOM_PART_GPT		# GUID Partition Tables.
 options 	GEOM_RAID		# Soft RAID functionality.
 options 	GEOM_LABEL		# Provides labelization
+options 	COMPAT_FREEBSD11	# Compatible with FreeBSD11
 options 	SCSI_DELAY=5000		# Delay (in ms) before probing SCSI
 options 	KTRACE			# ktrace(1) support
 options 	STACK			# stack(9) support
@@ -90,6 +91,7 @@ options 	MALLOC_DEBUG_MAXZONES=8	# Separate malloc(9) zones
 options 	SOC_ALLWINNER_A64
 options 	SOC_CAVM_THUNDERX
 options 	SOC_HISI_HI6220
+options 	SOC_BRCM_BCM2837
 
 # Annapurna Alpine drivers
 device		al_ccu			# Alpine Cache Coherency Unit
@@ -100,6 +102,7 @@ device		al_udma			# Universal DMA
 
 # VirtIO support
 device		virtio
+device		virtio_pci
 device		virtio_mmio
 device		virtio_blk
 device		vtnet
@@ -117,10 +120,11 @@ options 	PCI_IOV		# PCI SR-IOV support
 device		mii
 device		miibus		# MII bus support
 device		awg		# Allwinner EMAC Gigabit Ethernet
+device		axgbe		# AMD Opteron A1100 integrated NIC
 device		em		# Intel PRO/1000 Gigabit Ethernet Family
-device		igb		# Intel PRO/1000 PCIE Server Gigabit Family
 device		ix		# Intel 10Gb Ethernet Family
 device		msk		# Marvell/SysKonnect Yukon II Gigabit Ethernet
+device  	smc		# SMSC LAN91C111
 device		vnic		# Cavium ThunderX NIC
 device		al_eth		# Annapurna Alpine Ethernet NIC
 
@@ -171,6 +175,7 @@ device		fdt_pinctrl
 device		aw_rsb		# Allwinner Reduced Serial Bus
 device		bcm2835_bsc	# Broadcom BCM283x I2C bus
 device		iicbus
+device		iic
 
 # Clock and reset controllers
 device		aw_ccu		# Allwinner clock controller
@@ -228,7 +233,7 @@ device		bpf		# Berkeley packet filter
 options 	THUNDERX_PASS_1_1_ERRATA
 
 options 	FDT
-#device		acpi
+device		acpi
 
 # The crypto framework is required by IPSEC
 device		crypto			# Required by IPSEC

@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/rman.h>
 #include <sys/taskqueue.h>
+#include <sys/time.h>
 #include <sys/tree.h>
 #include <sys/vmem.h>
 #include <machine/bus.h>
@@ -70,27 +71,27 @@ dmar_qi_seq_processed(const struct dmar_unit *unit,
 static int
 dmar_enable_qi(struct dmar_unit *unit)
 {
+	int error;
 
 	DMAR_ASSERT_LOCKED(unit);
 	unit->hw_gcmd |= DMAR_GCMD_QIE;
 	dmar_write4(unit, DMAR_GCMD_REG, unit->hw_gcmd);
-	/* XXXKIB should have a timeout */
-	while ((dmar_read4(unit, DMAR_GSTS_REG) & DMAR_GSTS_QIES) == 0)
-		cpu_spinwait();
-	return (0);
+	DMAR_WAIT_UNTIL(((dmar_read4(unit, DMAR_GSTS_REG) & DMAR_GSTS_QIES)
+	    != 0));
+	return (error);
 }
 
 static int
 dmar_disable_qi(struct dmar_unit *unit)
 {
+	int error;
 
 	DMAR_ASSERT_LOCKED(unit);
 	unit->hw_gcmd &= ~DMAR_GCMD_QIE;
 	dmar_write4(unit, DMAR_GCMD_REG, unit->hw_gcmd);
-	/* XXXKIB should have a timeout */
-	while ((dmar_read4(unit, DMAR_GSTS_REG) & DMAR_GSTS_QIES) != 0)
-		cpu_spinwait();
-	return (0);
+	DMAR_WAIT_UNTIL(((dmar_read4(unit, DMAR_GSTS_REG) & DMAR_GSTS_QIES)
+	    == 0));
+	return (error);
 }
 
 static void
@@ -378,7 +379,7 @@ dmar_init_qi(struct dmar_unit *unit)
 
 	TAILQ_INIT(&unit->tlb_flush_entries);
 	TASK_INIT(&unit->qi_task, 0, dmar_qi_task, unit);
-	unit->qi_taskqueue = taskqueue_create_fast("dmar", M_WAITOK,
+	unit->qi_taskqueue = taskqueue_create_fast("dmarqf", M_WAITOK,
 	    taskqueue_thread_enqueue, &unit->qi_taskqueue);
 	taskqueue_start_threads(&unit->qi_taskqueue, 1, PI_AV,
 	    "dmar%d qi taskq", unit->unit);

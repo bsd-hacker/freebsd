@@ -34,20 +34,23 @@ __DEFAULT_YES_OPTIONS = \
     INET \
     INET6 \
     IPFILTER \
+    IPSEC_SUPPORT \
     ISCSI \
     KERNEL_SYMBOLS \
     NETGRAPH \
     PF \
     SOURCELESS_HOST \
     SOURCELESS_UCODE \
+    TESTS \
     USB_GADGET_EXAMPLES \
     ZFS
 
 __DEFAULT_NO_OPTIONS = \
-    EISA \
     EXTRA_TCP_STACKS \
     NAND \
-    OFED
+    OFED \
+    RATELIMIT \
+    REPRODUCIBLE_BUILD
 
 # Some options are totally broken on some architectures. We disable
 # them. If you need to enable them on an experimental basis, you
@@ -72,12 +75,12 @@ BROKEN_OPTIONS+= CDDL ZFS SSP
 BROKEN_OPTIONS+= ZFS
 .endif
 
-# Things that don't work because the kernel doesn't have the support
-# for them.
-.if ${MACHINE} != "i386"
-BROKEN_OPTIONS+= EISA
+.if ${MACHINE_CPUARCH} == "riscv"
+BROKEN_OPTIONS+= FORMAT_EXTENSIONS
 .endif
 
+# Things that don't work because the kernel doesn't have the support
+# for them.
 .if ${MACHINE} != "i386" && ${MACHINE} != "amd64"
 BROKEN_OPTIONS+= OFED
 .endif

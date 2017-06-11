@@ -188,6 +188,12 @@ char *arcnames[] = {
 	NULL
 };
 
+int carc_stats[5];
+char *carcnames[] = {
+	"K Compressed, ", "K Uncompressed, ", ":1 Ratio, ", "K Overhead",
+	NULL
+};
+
 int swap_stats[7];
 char *swapnames[] = {
 	"K Total, ", "K Used, ", "K Free, ", "% Inuse, ", "K In, ", "K Out",
@@ -223,6 +229,7 @@ static long total_majflt;
 /* these are for getting the memory statistics */
 
 static int arc_enabled;
+static int carc_enabled;
 static int pageshift;		/* log base 2 of the pagesize */
 
 /* define pagetok in terms of pageshift */
@@ -234,7 +241,7 @@ static int pageshift;		/* log base 2 of the pagesize */
     ((kip)->ki_swrss > (kip)->ki_rssize ? (kip)->ki_swrss - (kip)->ki_rssize : 0)
 
 /* useful externals */
-long percentages();
+long percentages(int cnt, int *out, long *new, long *old, long *diffs);
 
 #ifdef ORDER
 /*
@@ -283,16 +290,18 @@ update_layout(void)
 
 	y_mem = 3;
 	y_arc = 4;
-	y_swap = 4 + arc_enabled;
-	y_idlecursor = 5 + arc_enabled;
-	y_message = 5 + arc_enabled;
-	y_header = 6 + arc_enabled;
-	y_procs = 7 + arc_enabled;
-	Header_lines = 7 + arc_enabled;
+	y_carc = 5;
+	y_swap = 4 + arc_enabled + carc_enabled;
+	y_idlecursor = 5 + arc_enabled + carc_enabled;
+	y_message = 5 + arc_enabled + carc_enabled;
+	y_header = 6 + arc_enabled + carc_enabled;
+	y_procs = 7 + arc_enabled + carc_enabled;
+	Header_lines = 7 + arc_enabled + carc_enabled;
 
 	if (pcpu_stats) {
 		y_mem += ncpus - 1;
 		y_arc += ncpus - 1;
+		y_carc += ncpus - 1;
 		y_swap += ncpus - 1;
 		y_idlecursor += ncpus - 1;
 		y_message += ncpus - 1;
@@ -307,6 +316,7 @@ machine_init(struct statics *statics, char do_unames)
 {
 	int i, j, empty, pagesize;
 	uint64_t arc_size;
+	boolean_t carc_en;
 	size_t size;
 	struct passwd *pw;
 
@@ -318,6 +328,10 @@ machine_init(struct statics *statics, char do_unames)
 	    size != sizeof(smpmode))
 		smpmode = 0;
 
+	size = sizeof(carc_en);
+	if (sysctlbyname("vfs.zfs.compressed_arc_enabled", &carc_en, &size,
+	    NULL, 0) == 0 && carc_en == 1)
+		carc_enabled = 1;
 	size = sizeof(arc_size);
 	if (sysctlbyname("kstat.zfs.misc.arcstats.size", &arc_size, &size,
 	    NULL, 0) == 0 && arc_size != 0)
@@ -368,6 +382,10 @@ machine_init(struct statics *statics, char do_unames)
 		statics->arc_names = arcnames;
 	else
 		statics->arc_names = NULL;
+	if (carc_enabled)
+		statics->carc_names = carcnames;
+	else
+		statics->carc_names = NULL;
 	statics->swap_names = swapnames;
 #ifdef ORDER
 	statics->order_names = ordernames;
@@ -413,7 +431,7 @@ format_header(char *uname_field)
 {
 	static char Header[128];
 	const char *prehead;
-	
+
 	if (ps.jail)
 		jidlength = TOP_JID_LEN + 1;	/* +1 for extra left space. */
 	else
@@ -498,7 +516,7 @@ get_system_info(struct system_info *si)
 		static int swapavail = 0;
 		static int swapfree = 0;
 		static long bufspace = 0;
-		static int nspgsin, nspgsout;
+		static uint64_t nspgsin, nspgsout;
 
 		GETSYSCTL("vfs.bufspace", bufspace);
 		GETSYSCTL("vm.stats.vm.v_active_count", memory_stats[0]);
@@ -559,7 +577,17 @@ get_system_info(struct system_info *si)
 		arc_stats[5] = arc_stat >> 10;
 		si->arc = arc_stats;
 	}
-		    
+	if (carc_enabled) {
+		GETSYSCTL("kstat.zfs.misc.arcstats.compressed_size", arc_stat);
+		carc_stats[0] = arc_stat >> 10;
+		GETSYSCTL("kstat.zfs.misc.arcstats.uncompressed_size", arc_stat);
+		carc_stats[1] = arc_stat >> 10;
+		carc_stats[2] = arc_stats[0]; /* ARC Total */
+		GETSYSCTL("kstat.zfs.misc.arcstats.overhead_size", arc_stat);
+		carc_stats[3] = arc_stat >> 10;
+		si->carc = carc_stats;
+	}
+
 	/* set arrays and strings */
 	if (pcpu_stats) {
 		si->cpustates = pcpu_cpu_states;
@@ -585,7 +613,7 @@ get_system_info(struct system_info *si)
 	mib[0] = CTL_KERN;
 	mib[1] = KERN_BOOTTIME;
 	size = sizeof(boottime);
-	if (sysctl(mib, 2, &boottime, &size, NULL, 0) != -1 &&
+	if (sysctl(mib, nitems(mib), &boottime, &size, NULL, 0) != -1 &&
 	    boottime.tv_sec != 0) {
 		si->boottime = boottime;
 	} else {
@@ -991,8 +1019,8 @@ format_next_process(caddr_t handle, char *(*get_userid)(int), int flags)
 	if (!(flags & FMT_SHOWARGS)) {
 		if (ps.thread && pp->ki_flag & P_HADTHREADS &&
 		    pp->ki_tdname[0]) {
-			snprintf(cmdbuf, cmdlen, "%s{%s}", pp->ki_comm,
-			    pp->ki_tdname);
+			snprintf(cmdbuf, cmdlen, "%s{%s%s}", pp->ki_comm,
+			    pp->ki_tdname, pp->ki_moretdname);
 		} else {
 			snprintf(cmdbuf, cmdlen, "%s", pp->ki_comm);
 		}
@@ -1004,7 +1032,8 @@ format_next_process(caddr_t handle, char *(*get_userid)(int), int flags)
 			if (ps.thread && pp->ki_flag & P_HADTHREADS &&
 		    	    pp->ki_tdname[0]) {
 				snprintf(cmdbuf, cmdlen,
-				    "[%s{%s}]", pp->ki_comm, pp->ki_tdname);
+				    "[%s{%s%s}]", pp->ki_comm, pp->ki_tdname,
+				    pp->ki_moretdname);
 			} else {
 				snprintf(cmdbuf, cmdlen,
 				    "[%s]", pp->ki_comm);
@@ -1052,8 +1081,9 @@ format_next_process(caddr_t handle, char *(*get_userid)(int), int flags)
 				if (ps.thread && pp->ki_flag & P_HADTHREADS &&
 				    pp->ki_tdname[0])
 					snprintf(cmdbuf, cmdlen,
-					    "%s (%s){%s}", argbuf, pp->ki_comm,
-					    pp->ki_tdname);
+					    "%s (%s){%s%s}", argbuf,
+					    pp->ki_comm, pp->ki_tdname,
+					    pp->ki_moretdname);
 				else
 					snprintf(cmdbuf, cmdlen,
 					    "%s (%s)", argbuf, pp->ki_comm);
@@ -1061,7 +1091,8 @@ format_next_process(caddr_t handle, char *(*get_userid)(int), int flags)
 				if (ps.thread && pp->ki_flag & P_HADTHREADS &&
 				    pp->ki_tdname[0])
 					snprintf(cmdbuf, cmdlen,
-					    "%s{%s}", argbuf, pp->ki_tdname);
+					    "%s{%s%s}", argbuf, pp->ki_tdname,
+					    pp->ki_moretdname);
 				else
 					strlcpy(cmdbuf, argbuf, cmdlen);
 			}
@@ -1069,7 +1100,7 @@ format_next_process(caddr_t handle, char *(*get_userid)(int), int flags)
 		}
 	}
 
-	if (ps.jail == 0) 
+	if (ps.jail == 0)
 		jid_buf[0] = '\0';
 	else
 		snprintf(jid_buf, sizeof(jid_buf), "%*d",

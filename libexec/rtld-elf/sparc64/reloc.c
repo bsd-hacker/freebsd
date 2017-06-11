@@ -581,7 +581,9 @@ reloc_jmpslot(Elf_Addr *wherep, Elf_Addr target, const Obj_Entry *obj,
 	Elf_Addr offset;
 	Elf_Word *where;
 
-	if (rela - refobj->pltrela < 32764) {
+	if (ld_bind_not) {
+		/* Skip any PLT modifications */
+	} else if (rela - refobj->pltrela < 32764) {
 		/*
 		 * At the PLT entry pointed at by `where', we now construct
 		 * a direct transfer to the now fully resolved function
@@ -784,6 +786,11 @@ reloc_jmpslot(Elf_Addr *wherep, Elf_Addr target, const Obj_Entry *obj,
 	}
 
 	return (target);
+}
+
+void
+ifunc_init(Elf_Auxinfo aux_info[__min_size(AT_COUNT)] __unused)
+{
 }
 
 /*

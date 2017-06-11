@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/rtwn/usb/rtwn_usb_var.h>
 
 #include <dev/rtwn/rtl8192c/r92c_var.h>
-#include <dev/rtwn/rtl8192c/r92c_rom_defs.h>
 
 #include <dev/rtwn/rtl8192c/usb/r92cu.h>
 #include <dev/rtwn/rtl8192c/usb/r92cu_priv.h>
@@ -166,6 +165,7 @@ r92cu_attach(struct rtwn_usb_softc *uc)
 	sc->sc_dump_tx_desc		= r92cu_dump_tx_desc;
 	sc->sc_tx_radiotap_flags	= r92c_tx_radiotap_flags;
 	sc->sc_rx_radiotap_flags	= r92c_rx_radiotap_flags;
+	sc->sc_get_rx_stats		= r92c_get_rx_stats;
 	sc->sc_get_rssi_cck		= r92c_get_rssi_cck;
 	sc->sc_get_rssi_ofdm		= r92c_get_rssi_ofdm;
 	sc->sc_classify_intr		= r92cu_classify_intr;
@@ -184,6 +184,7 @@ r92cu_attach(struct rtwn_usb_softc *uc)
 	sc->sc_fw_reset			= r92c_fw_reset;
 	sc->sc_fw_download_enable	= r92c_fw_download_enable;
 #endif
+	sc->sc_llt_init			= r92c_llt_init;
 	sc->sc_set_page_size		= r92c_set_page_size;
 	sc->sc_lc_calib			= r92c_lc_calib;
 	sc->sc_iq_calib			= r92c_iq_calib;	/* XXX TODO */

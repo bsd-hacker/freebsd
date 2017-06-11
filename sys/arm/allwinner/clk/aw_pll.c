@@ -180,9 +180,6 @@ __FBSDID("$FreeBSD$");
 #define	H3_PLL2_PRE_DIV			(0x1f << 0)
 #define	H3_PLL2_PRE_DIV_SHIFT		0
 
-#define	CLKID_A10_PLL3_1X		0
-#define	CLKID_A10_PLL3_2X		1
-
 #define	CLKID_A10_PLL5_DDR		0
 #define	CLKID_A10_PLL5_OTHER		1
 
@@ -345,6 +342,9 @@ a10_pll1_set_freq(struct aw_pll_sc *sc, uint64_t fin, uint64_t *fout,
 	if (f == NULL)
 		return (EINVAL);
 
+	if ((flags & CLK_SET_DRYRUN) != 0)
+		return (0);
+
 	DEVICE_LOCK(sc);
 	PLL_READ(sc, &val);
 	val &= ~(A10_PLL1_FACTOR_N|A10_PLL1_FACTOR_K|A10_PLL1_FACTOR_M|
@@ -443,6 +443,9 @@ a10_pll2_set_freq(struct aw_pll_sc *sc, uint64_t fin, uint64_t *fout,
 	post_div = 4;
 	n = (*fout * pre_div * post_div * 2) / (2 * fin);
 
+	if ((flags & CLK_SET_DRYRUN) != 0)
+		return (0);
+
 	DEVICE_LOCK(sc);
 	PLL_READ(sc, &val);
 	val &= ~(A10_PLL2_POST_DIV | A10_PLL2_FACTOR_N | A10_PLL2_PRE_DIV);
@@ -476,9 +479,6 @@ a10_pll3_recalc(struct aw_pll_sc *sc, uint64_t *freq)
 			*freq = 297000000;
 	}
 
-	if (sc->id == CLKID_A10_PLL3_2X)
-		*freq *= 2;
-
 	return (0);
 }
 
@@ -488,15 +488,23 @@ a10_pll3_set_freq(struct aw_pll_sc *sc, uint64_t fin, uint64_t *fout,
 {
 	uint32_t val, m, mode, func;
 
-	m = *fout / A10_PLL3_REF_FREQ;
-	if (sc->id == CLKID_A10_PLL3_2X)
-		m /= 2;
+	if (*fout == 297000000) {
+		func = A10_PLL3_FUNC_SET_297MHZ;
+		mode = A10_PLL3_MODE_SEL_FRACT;
+		m = 0;
+	} else if (*fout == 270000000) {
+		func = A10_PLL3_FUNC_SET_270MHZ;
+		mode = A10_PLL3_MODE_SEL_FRACT;
+		m = 0;
+	} else {
+		mode = A10_PLL3_MODE_SEL_INT;
+		func = 0;
+		m = *fout / A10_PLL3_REF_FREQ;
+		*fout = m * A10_PLL3_REF_FREQ;
+	}
 
-	mode = A10_PLL3_MODE_SEL_INT;
-	func = 0;
-	*fout = m * A10_PLL3_REF_FREQ;
-	if (sc->id == CLKID_A10_PLL3_2X)
-		*fout *= 2;
+	if ((flags & CLK_SET_DRYRUN) != 0)
+		return (0);
 
 	DEVICE_LOCK(sc);
 	PLL_READ(sc, &val);
@@ -700,6 +708,9 @@ a13_pll2_set_freq(struct aw_pll_sc *sc, uint64_t fin, uint64_t *fout,
 	post_div = 4;
 	n = (*fout * pre_div * post_div * 2) / (2 * fin);
 
+	if ((flags & CLK_SET_DRYRUN) != 0)
+		return (0);
+
 	DEVICE_LOCK(sc);
 	PLL_READ(sc, &val);
 	val &= ~(A13_PLL2_POST_DIV | A13_PLL2_FACTOR_N | A13_PLL2_PRE_DIV);
@@ -766,6 +777,9 @@ h3_pll2_set_freq(struct aw_pll_sc *sc, uint64_t fin, uint64_t *fout,
 	if (f == NULL)
 		return (EINVAL);
 
+	if ((flags & CLK_SET_DRYRUN) != 0)
+		return (0);
+
 	DEVICE_LOCK(sc);
 	PLL_READ(sc, &val);
 	val &= ~(H3_PLL2_POST_DIV|H3_PLL2_FACTOR_N|H3_PLL2_PRE_DIV);
@@ -808,6 +822,9 @@ a23_pll1_set_freq(struct aw_pll_sc *sc, uint64_t fin, uint64_t *fout,
 	}
 	if (f == NULL)
 		return (EINVAL);
+
+	if ((flags & CLK_SET_DRYRUN) != 0)
+		return (0);
 
 	DEVICE_LOCK(sc);
 	PLL_READ(sc, &val);
@@ -860,6 +877,9 @@ h3_pll1_set_freq(struct aw_pll_sc *sc, uint64_t fin, uint64_t *fout,
 	}
 	if (f == NULL)
 		return (EINVAL);
+
+	if ((flags & CLK_SET_DRYRUN) != 0)
+		return (0);
 
 	DEVICE_LOCK(sc);
 	PLL_READ(sc, &val);
@@ -1067,6 +1087,9 @@ a83t_pllcpux_set_freq(struct aw_pll_sc *sc, uint64_t fin, uint64_t *fout,
 
 	if (n < A83T_PLLCPUX_FACTOR_N_MIN || n > A83T_PLLCPUX_FACTOR_N_MAX)
 		return (EINVAL);
+
+	if ((flags & CLK_SET_DRYRUN) != 0)
+		return (0);
 
 	DEVICE_LOCK(sc);
 	PLL_READ(sc, &val);

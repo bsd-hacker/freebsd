@@ -127,6 +127,7 @@ r88eu_attach(struct rtwn_usb_softc *uc)
 	sc->sc_dump_tx_desc		= r92cu_dump_tx_desc;
 	sc->sc_tx_radiotap_flags	= r92c_tx_radiotap_flags;
 	sc->sc_rx_radiotap_flags	= r92c_rx_radiotap_flags;
+	sc->sc_get_rx_stats		= r88e_get_rx_stats;
 	sc->sc_get_rssi_cck		= r88e_get_rssi_cck;
 	sc->sc_get_rssi_ofdm		= r88e_get_rssi_ofdm;
 	sc->sc_classify_intr		= r88eu_classify_intr;
@@ -145,6 +146,7 @@ r88eu_attach(struct rtwn_usb_softc *uc)
 	sc->sc_fw_reset			= r88e_fw_reset;
 	sc->sc_fw_download_enable	= r88e_fw_download_enable;
 #endif
+	sc->sc_llt_init			= r92c_llt_init;
 	sc->sc_set_page_size		= r92c_set_page_size;
 	sc->sc_lc_calib			= r92c_lc_calib;
 	sc->sc_iq_calib			= r88e_iq_calib;	/* XXX TODO */
@@ -171,7 +173,7 @@ r88eu_attach(struct rtwn_usb_softc *uc)
 	sc->sc_init_intr		= r88eu_init_intr;
 	sc->sc_init_edca		= r92c_init_edca;
 	sc->sc_init_bb			= r88e_init_bb;
-	sc->sc_init_rf			= r92c_init_rf_common;
+	sc->sc_init_rf			= r92c_init_rf;
 	sc->sc_init_antsel		= rtwn_nop_softc;
 	sc->sc_post_init		= r88eu_post_init;
 	sc->sc_init_bcnq1_boundary	= rtwn_nop_int_softc;

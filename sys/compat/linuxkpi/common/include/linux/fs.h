@@ -2,7 +2,7 @@
  * Copyright (c) 2010 Isilon Systems, Inc.
  * Copyright (c) 2010 iX Systems, Inc.
  * Copyright (c) 2010 Panasas, Inc.
- * Copyright (c) 2013 Mellanox Technologies, Ltd.
+ * Copyright (c) 2013-2016 Mellanox Technologies, Ltd.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,7 @@
 #include <linux/types.h>
 #include <linux/wait.h>
 #include <linux/semaphore.h>
+#include <linux/spinlock.h>
 
 struct module;
 struct kiocb;
@@ -79,6 +80,16 @@ struct linux_file {
 	struct selinfo	f_selinfo;
 	struct sigio	*f_sigio;
 	struct vnode	*f_vnode;
+	volatile u_int	f_count;
+
+	/* kqfilter support */
+	int		f_kqflags;
+#define	LINUX_KQ_FLAG_HAS_READ (1 << 0)
+#define	LINUX_KQ_FLAG_HAS_WRITE (1 << 1)
+#define	LINUX_KQ_FLAG_NEED_READ (1 << 2)
+#define	LINUX_KQ_FLAG_NEED_WRITE (1 << 3)
+	/* protects f_selinfo.si_note */
+	spinlock_t	f_kqlock;
 };
 
 #define	file		linux_file
@@ -151,6 +162,39 @@ struct file_operations {
 #define	FMODE_WRITE	FWRITE
 #define	FMODE_EXEC	FEXEC
 
+int __register_chrdev(unsigned int major, unsigned int baseminor,
+    unsigned int count, const char *name,
+    const struct file_operations *fops);
+int __register_chrdev_p(unsigned int major, unsigned int baseminor,
+    unsigned int count, const char *name,
+    const struct file_operations *fops, uid_t uid,
+    gid_t gid, int mode);
+void __unregister_chrdev(unsigned int major, unsigned int baseminor,
+    unsigned int count, const char *name);
+
+static inline void
+unregister_chrdev(unsigned int major, const char *name)
+{
+
+	__unregister_chrdev(major, 0, 256, name);
+}
+
+static inline int
+register_chrdev(unsigned int major, const char *name,
+    const struct file_operations *fops)
+{
+
+	return (__register_chrdev(major, 0, 256, name, fops));
+}
+
+static inline int
+register_chrdev_p(unsigned int major, const char *name,
+    const struct file_operations *fops, uid_t uid, gid_t gid, int mode)
+{
+
+	return (__register_chrdev_p(major, 0, 256, name, fops, uid, gid, mode));
+}
+
 static inline int
 register_chrdev_region(dev_t dev, unsigned range, const char *name)
 {
@@ -184,7 +228,15 @@ static inline dev_t
 iminor(struct inode *inode)
 {
 
-	return dev2unit(inode->v_rdev);
+	return (minor(dev2unit(inode->v_rdev)));
+}
+
+static inline struct linux_file *
+get_file(struct linux_file *f)
+{
+
+	refcount_acquire(f->_file == NULL ? &f->f_count : &f->_file->f_count);
+	return (f);
 }
 
 static inline struct inode *

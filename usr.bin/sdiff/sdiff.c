@@ -82,34 +82,13 @@ enum {
 	NORMAL_OPT,
 	FCASE_SENSITIVE_OPT,
 	FCASE_IGNORE_OPT,
-	FROMFILE_OPT,
-	TOFILE_OPT,
-	UNIDIR_OPT,
 	STRIPCR_OPT,
-	HORIZ_OPT,
-	LEFTC_OPT,
-	SUPCL_OPT,
-	LF_OPT,
-	/* the following groupings must be in sequence */
-	OLDGF_OPT,
-	NEWGF_OPT,
-	UNCGF_OPT,
-	CHGF_OPT,
-	OLDLF_OPT,
-	NEWLF_OPT,
-	UNCLF_OPT,
-	/* end order-sensitive enums */
 	TSIZE_OPT,
-	HLINES_OPT,
-	LFILES_OPT,
 	DIFFPROG_OPT,
-
-	NOOP_OPT,
 };
 
 static struct option longopts[] = {
 	/* options only processed in sdiff */
-	{ "left-column",		no_argument,		NULL,	LEFTC_OPT },
 	{ "suppress-common-lines",	no_argument,		NULL,	's' },
 	{ "width",			required_argument,	NULL,	'w' },
 
@@ -129,6 +108,7 @@ static struct option longopts[] = {
 	{ "ignore-tab-expansion",	no_argument,		NULL,	'E' },
 	{ "ignore-matching-lines",	required_argument,	NULL,	'I' },
 	{ "ignore-case",		no_argument,		NULL,	'i' },
+	{ "left-column",		no_argument,		NULL,	'l' },
 	{ "expand-tabs",		no_argument,		NULL,	't' },
 	{ "speed-large-files",		no_argument,		NULL,	'H' },
 	{ "ignore-all-space",		no_argument,		NULL,	'W' },
@@ -233,7 +213,6 @@ main(int argc, char **argv)
 	int ch, fd[2] = {-1}, status;
 	pid_t pid=0;
 	const char *outfile = NULL;
-	struct option *popt;
 	char **diffargv, *diffprog = DIFF_PATH, *filename1, *filename2,
 	     *tmp1, *tmp2, *s1, *s2;
 	int i;
@@ -279,9 +258,7 @@ main(int argc, char **argv)
 		case 'E':
 		case 'i':
 		case 't':
-		case 'H':
 		case 'W':
-			for(popt = longopts; ch != popt->val && popt->name != NULL; popt++);
 			diffargv[1]  = realloc(diffargv[1], sizeof(char) * strlen(diffargv[1]) + 2);
 			/*
 			 * In diff, the 'W' option is 'w' and the 'w' is 'W'.
@@ -290,6 +267,9 @@ main(int argc, char **argv)
 				sprintf(diffargv[1], "%sw", diffargv[1]);
 			else
 				sprintf(diffargv[1], "%s%c", diffargv[1], ch);
+			break;
+		case 'H':
+			diffargv[diffargc++] = "--speed-large-files";
 			break;
 		case DIFFPROG_OPT:
 			diffargv[0] = diffprog = optarg;
@@ -1171,7 +1151,7 @@ usage(void)
 {
 
 	fprintf(stderr,
-	    "usage: sdiff [-abdilstW] [-I regexp] [-o outfile] [-w width] file1"
+	    "usage: sdiff [-abdilstHW] [-I regexp] [-o outfile] [-w width] file1"
 	    " file2\n");
 	exit(2);
 }

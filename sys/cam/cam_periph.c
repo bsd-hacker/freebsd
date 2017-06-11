@@ -139,6 +139,38 @@ again:
 		(*drv->init)();
 }
 
+int
+periphdriver_unregister(void *data)
+{
+	struct periph_driver *drv = (struct periph_driver *)data;
+	int error, n;
+
+	/* If driver marked as early or it is late now, deinitialize it. */
+	if (((drv->flags & CAM_PERIPH_DRV_EARLY) != 0 && initialized > 0) ||
+	    initialized > 1) {
+		if (drv->deinit == NULL) {
+			printf("CAM periph driver '%s' doesn't have deinit.\n",
+			    drv->driver_name);
+			return (EOPNOTSUPP);
+		}
+		error = drv->deinit();
+		if (error != 0)
+			return (error);
+	}
+
+	xpt_lock_buses();
+	for (n = 0; n < nperiph_drivers && periph_drivers[n] != drv; n++)
+		;
+	KASSERT(n < nperiph_drivers,
+	    ("Periph driver '%s' was not registered", drv->driver_name));
+	for (; n + 1 < nperiph_drivers; n++)
+		periph_drivers[n] = periph_drivers[n + 1];
+	periph_drivers[n + 1] = NULL;
+	nperiph_drivers--;
+	xpt_unlock_buses();
+	return (0);
+}
+
 void
 periphdriver_init(int level)
 {
@@ -609,8 +641,15 @@ cam_periph_invalidate(struct cam_periph *periph)
 		return;
 
 	CAM_DEBUG(periph->path, CAM_DEBUG_INFO, ("Periph invalidated\n"));
-	if ((periph->flags & CAM_PERIPH_ANNOUNCED) && !rebooting)
-		xpt_denounce_periph(periph);
+	if ((periph->flags & CAM_PERIPH_ANNOUNCED) && !rebooting) {
+		struct sbuf sb;
+		char buffer[160];
+
+		sbuf_new(&sb, buffer, 160, SBUF_FIXEDLEN);
+		xpt_denounce_periph_sbuf(periph, &sb);
+		sbuf_finish(&sb);
+		sbuf_putbuf(&sb);
+	}
 	periph->flags |= CAM_PERIPH_INVALID;
 	periph->flags &= ~CAM_PERIPH_NEW_DEV_FOUND;
 	if (periph->periph_oninval != NULL)
@@ -1930,10 +1969,7 @@ cam_periph_devctl_notify(union ccb *ccb)
 
 	if (ccb->ccb_h.func_code == XPT_SCSI_IO) {
 		sbuf_printf(&sb, "CDB=\"");
-		if ((ccb->ccb_h.flags & CAM_CDB_POINTER) != 0)
-			scsi_cdb_sbuf(ccb->csio.cdb_io.cdb_ptr, &sb);
-		else
-			scsi_cdb_sbuf(ccb->csio.cdb_io.cdb_bytes, &sb);
+		scsi_cdb_sbuf(scsiio_cdb_ptr(&ccb->csio), &sb);
 		sbuf_printf(&sb, "\" ");
 	} else if (ccb->ccb_h.func_code == XPT_ATA_IO) {
 		sbuf_printf(&sb, "ACB=\"");

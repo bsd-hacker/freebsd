@@ -33,12 +33,22 @@
 #define	CPSW_INTR_COUNT		4
 
 /* MII BUS  */
-#define	CPSW_MIIBUS_RETRIES	5
-#define	CPSW_MIIBUS_DELAY	1000
+#define	CPSW_MIIBUS_RETRIES	20
+#define	CPSW_MIIBUS_DELAY	100
 
 #define	CPSW_MAX_ALE_ENTRIES	1024
 
 #define	CPSW_SYSCTL_COUNT	34
+
+#ifdef CPSW_ETHERSWITCH
+#define	CPSW_CPU_PORT		0
+#define	CPSW_PORTS_MASK		0x7
+#define	CPSW_VLANS		128	/* Arbitrary number. */
+
+struct cpsw_vlangroups {
+	int vid;
+};
+#endif
 
 struct cpsw_slot {
 	uint32_t bd_offset;  /* Offset of corresponding BD within CPPI RAM. */
@@ -79,7 +89,6 @@ struct cpsw_softc {
 	int		active_slave;
 	int		debug;
 	int		dualemac;
-	int		rx_batch;
 	phandle_t	node;
 	struct bintime	attach_uptime; /* system uptime when attach happened. */
 	struct cpsw_port port[2];
@@ -94,10 +103,8 @@ struct cpsw_softc {
 	struct resource	*irq_res[CPSW_INTR_COUNT];
 	void		*ih_cookie[CPSW_INTR_COUNT];
 
-	/* An mbuf full of nulls for TX padding. */
-	bus_dmamap_t null_mbuf_dmamap;
-	struct mbuf *null_mbuf;
-	bus_addr_t null_mbuf_paddr;
+	/* A buffer full of nulls for TX padding. */
+	void		*nullpad;
 
 	bus_dma_tag_t	mbuf_dtag;
 

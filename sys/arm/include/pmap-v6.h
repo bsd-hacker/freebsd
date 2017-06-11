@@ -166,7 +166,6 @@ extern ttb_entry_t pmap_kern_ttb; 	/* TTB for kernel pmap */
 void pmap_bootstrap(vm_offset_t);
 void pmap_kenter(vm_offset_t, vm_paddr_t);
 void pmap_kremove(vm_offset_t);
-void *pmap_mapdev_attr(vm_paddr_t, vm_size_t, int);
 boolean_t pmap_page_is_mapped(vm_page_t);
 
 void pmap_tlb_flush(pmap_t, vm_offset_t);
@@ -189,6 +188,7 @@ vm_offset_t pmap_preboot_reserve_pages(u_int);
 vm_offset_t pmap_preboot_get_vpages(u_int);
 void pmap_preboot_map_attr(vm_paddr_t, vm_offset_t, vm_size_t, vm_prot_t,
     vm_memattr_t);
+void pmap_remap_vm_attr(vm_memattr_t old_attr, vm_memattr_t new_attr);
 
 #endif	/* _KERNEL */
 #endif	/* !_MACHINE_PMAP_V6_H_ */

@@ -73,7 +73,8 @@ COMMON_SRCS= b_exp.c b_log.c b_tgamma.c \
 	s_nexttowardf.c s_remquo.c s_remquof.c \
 	s_rint.c s_rintf.c s_round.c s_roundf.c \
 	s_scalbln.c s_scalbn.c s_scalbnf.c s_signbit.c \
-	s_signgam.c s_significand.c s_significandf.c s_sin.c s_sinf.c \
+	s_signgam.c s_significand.c s_significandf.c s_sin.c \
+	s_sincos.c s_sincosf.c s_sinf.c \
 	s_tan.c s_tanf.c s_tanh.c s_tanhf.c s_tgammaf.c s_trunc.c s_truncf.c \
 	w_cabs.c w_cabsf.c w_drem.c w_dremf.c
 
@@ -94,7 +95,8 @@ SYMBOL_MAPS=	${SYM_MAPS}
 COMMON_SRCS+=	s_copysignl.c s_fabsl.c s_llrintl.c s_lrintl.c s_modfl.c
 .if ${LDBL_PREC} != 53
 # If long double != double use these; otherwise, we alias the double versions.
-COMMON_SRCS+=	e_acoshl.c e_acosl.c e_asinl.c e_atan2l.c e_atanhl.c \
+COMMON_SRCS+=	catrigl.c \
+	e_acoshl.c e_acosl.c e_asinl.c e_atan2l.c e_atanhl.c \
 	e_coshl.c e_fmodl.c e_hypotl.c \
 	e_lgammal.c e_lgammal_r.c \
 	e_remainderl.c e_sinhl.c e_sqrtl.c \
@@ -103,7 +105,8 @@ COMMON_SRCS+=	e_acoshl.c e_acosl.c e_asinl.c e_atan2l.c e_atanhl.c \
 	s_csqrtl.c s_erfl.c s_exp2l.c s_expl.c s_floorl.c s_fmal.c \
 	s_fmaxl.c s_fminl.c s_frexpl.c s_logbl.c s_logl.c s_nanl.c \
 	s_nextafterl.c s_nexttoward.c s_remquol.c s_rintl.c s_roundl.c \
-	s_scalbnl.c s_sinl.c s_tanhl.c s_tanl.c s_truncl.c w_cabsl.c
+	s_scalbnl.c s_sinl.c s_sincosl.c \
+	s_tanhl.c s_tanl.c s_truncl.c w_cabsl.c
 .endif
 
 # C99 complex functions
@@ -136,7 +139,8 @@ MAN=	acos.3 acosh.3 asin.3 asinh.3 atan.3 atan2.3 atanh.3 \
 	fma.3 fmax.3 fmod.3 hypot.3 ieee.3 ieee_test.3 ilogb.3 j0.3 \
 	lgamma.3 log.3 lrint.3 lround.3 math.3 nan.3 \
 	nextafter.3 remainder.3 rint.3 \
-	round.3 scalbn.3 signbit.3 sin.3 sinh.3 sqrt.3 tan.3 tanh.3 trunc.3 \
+	round.3 scalbn.3 signbit.3 sin.3 sincos.3 \
+	sinh.3 sqrt.3 tan.3 tanh.3 trunc.3 \
 	complex.3
 
 MLINKS+=acos.3 acosf.3 acos.3 acosl.3
@@ -147,9 +151,12 @@ MLINKS+=atan.3 atanf.3 atan.3 atanl.3
 MLINKS+=atanh.3 atanhf.3 atanh.3 atanhl.3
 MLINKS+=atan2.3 atan2f.3 atan2.3 atan2l.3 \
 	atan2.3 carg.3 atan2.3 cargf.3 atan2.3 cargl.3
-MLINKS+=cacos.3 cacosf.3 cacos.3 cacosh.3 cacos.3 cacoshf.3 \
-	cacos.3 casin.3 cacos.3 casinf.3 cacos.3 casinh.3 cacos.3 casinhf.3 \
-	cacos.3 catan.3 cacos.3 catanf.3 cacos.3 catanh.3 cacos.3 catanhf.3
+MLINKS+=cacos.3 cacosf.3 cacos.3 cacosl.3 \
+	cacos.3 cacosh.3 cacos.3 cacoshf.3 cacos.3 cacoshl.3 \
+	cacos.3 casin.3 cacos.3 casinf.3 cacos.3 casinl.3 \
+	cacos.3 casinh.3 cacos.3 casinhf.3 cacos.3 casinhl.3 \
+	cacos.3 catan.3 cacos.3 catanf.3 cacos.3 catanl.3 \
+	cacos.3 catanh.3 cacos.3 catanhf.3 cacos.3 catanhl.3
 MLINKS+=ccos.3 ccosf.3 ccos.3 csin.3 ccos.3 csinf.3 ccos.3 ctan.3 ccos.3 ctanf.3
 MLINKS+=ccosh.3 ccoshf.3 ccosh.3 csinh.3 ccosh.3 csinhf.3 \
 	ccosh.3 ctanh.3 ccosh.3 ctanhf.3
@@ -211,6 +218,7 @@ MLINKS+=round.3 roundf.3 round.3 roundl.3
 MLINKS+=scalbn.3 scalbln.3 scalbn.3 scalblnf.3 scalbn.3 scalblnl.3
 MLINKS+=scalbn.3 scalbnf.3 scalbn.3 scalbnl.3
 MLINKS+=sin.3 sinf.3 sin.3 sinl.3
+MLINKS+=sincos.3 sincosf.3 sin.3 sincosl.3
 MLINKS+=sinh.3 sinhf.3 sinh.3 sinhl.3
 MLINKS+=sqrt.3 cbrt.3 sqrt.3 cbrtf.3 sqrt.3 cbrtl.3 sqrt.3 sqrtf.3 \
 	sqrt.3 sqrtl.3

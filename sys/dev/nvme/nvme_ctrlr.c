@@ -193,8 +193,10 @@ nvme_ctrlr_fail(struct nvme_controller *ctrlr)
 
 	ctrlr->is_failed = TRUE;
 	nvme_qpair_fail(&ctrlr->adminq);
-	for (i = 0; i < ctrlr->num_io_queues; i++)
-		nvme_qpair_fail(&ctrlr->ioq[i]);
+	if (ctrlr->ioq != NULL) {
+		for (i = 0; i < ctrlr->num_io_queues; i++)
+			nvme_qpair_fail(&ctrlr->ioq[i]);
+	}
 	nvme_notify_fail_consumers(ctrlr);
 }
 
@@ -397,7 +399,7 @@ nvme_ctrlr_set_num_qpairs(struct nvme_controller *ctrlr)
 	while (status.done == FALSE)
 		pause("nvme", 1);
 	if (nvme_completion_is_error(&status.cpl)) {
-		nvme_printf(ctrlr, "nvme_set_num_queues failed!\n");
+		nvme_printf(ctrlr, "nvme_ctrlr_set_num_qpairs failed!\n");
 		return (ENXIO);
 	}
 
@@ -458,13 +460,11 @@ static int
 nvme_ctrlr_construct_namespaces(struct nvme_controller *ctrlr)
 {
 	struct nvme_namespace	*ns;
-	int			i, status;
+	int			i;
 
-	for (i = 0; i < ctrlr->cdata.nn; i++) {
+	for (i = 0; i < min(ctrlr->cdata.nn, NVME_MAX_NAMESPACES); i++) {
 		ns = &ctrlr->ns[i];
-		status = nvme_ns_construct(ns, i+1, ctrlr);
-		if (status != 0)
-			return (status);
+		nvme_ns_construct(ns, i+1, ctrlr);
 	}
 
 	return (0);
@@ -874,8 +874,20 @@ nvme_ctrlr_passthrough_cmd(struct nvme_controller *ctrlr,
 	struct mtx		*mtx;
 	struct buf		*buf = NULL;
 	int			ret = 0;
+	vm_offset_t		addr, end;
 
 	if (pt->len > 0) {
+		/*
+		 * vmapbuf calls vm_fault_quick_hold_pages which only maps full
+		 * pages. Ensure this request has fewer than MAXPHYS bytes when
+		 * extended to full pages.
+		 */
+		addr = (vm_offset_t)pt->buf;
+		end = round_page(addr + pt->len);
+		addr = trunc_page(addr);
+		if (end - addr > MAXPHYS)
+			return EIO;
+
 		if (pt->len > ctrlr->max_xfer_size) {
 			nvme_printf(ctrlr, "pt->len (%d) "
 			    "exceeds max_xfer_size (%d)\n", pt->len,

@@ -78,10 +78,6 @@ r92cu_init_bb(struct rtwn_softc *sc)
 	rtwn_write_1(sc, R92C_AFE_XTAL_CTRL + 1, 0x80);
 
 	r92c_init_bb_common(sc);
-
-	if (rtwn_bb_read(sc, R92C_HSSI_PARAM2(0)) &
-	    R92C_HSSI_PARAM2_CCK_HIPWR)
-		sc->sc_flags |= RTWN_FLAG_CCK_HIPWR;
 }
 
 int
@@ -333,9 +329,11 @@ void
 r92cu_init_tx_agg(struct rtwn_softc *sc)
 {
 	struct rtwn_usb_softc *uc = RTWN_USB_SOFTC(sc);
+	uint32_t reg;
 
-	rtwn_setbits_4(sc, R92C_TDECTRL,
-	    R92C_TDECTRL_BLK_DESC_NUM_M, uc->tx_agg_desc_num);
+	reg = rtwn_read_4(sc, R92C_TDECTRL);
+	reg = RW(reg, R92C_TDECTRL_BLK_DESC_NUM, uc->tx_agg_desc_num);
+	rtwn_write_4(sc, R92C_TDECTRL, reg);
 }
 
 void

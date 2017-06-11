@@ -41,14 +41,22 @@ ${PACKAGE}FILESDIR=	${TESTSDIR}
 PROGS+=			h_tools
 BINDIR.h_tools=		${TESTSDIR}
 
+ATF_TESTS_SH_SED_mknod_test=		\
+					-e 's,mknod pipe p,mkfifo pipe,g' \
+					-e 's,mknod dir/pipe p,mkfifo dir/pipe,g'
+
 ATF_TESTS_SH_SED_mount_test=		\
 					-e 's,-o -g,-o gid=,g' \
 					-e 's,-o -m,-o mode=,g' \
 					-e 's,-o -s,-o size=,g' \
 					-e 's,-o -u,-o uid=,g' \
 					-e 's,mount_${FILESYSTEM},mount -t ${FILESYSTEM},g'
+ATF_TESTS_SH_SED_readdir_test=		-e 's,mknod fifo p,mkfifo fifo,g'
 ATF_TESTS_SH_SED_sizes_test=		-e 's,-o -s,-o size=,g'
 ATF_TESTS_SH_SED_statvfs_test=		-e 's,-o -s,-o size=,g'
+ATF_TESTS_SH_SED_vnd_test=		\
+					-e 's,vndconfig -u /dev/vnd3,mdconfig -d -u $$md_dev,g' \
+					-e 's,/dev/vnd3,/dev/$$md_dev,g'
 ATF_TESTS_SH_SED_vnode_leak_test=	-e 's,-o -s,-o size=,g'
 
 .include <netbsd-tests.test.mk>

@@ -288,15 +288,6 @@ static int bufspace_request;
 static int bd_speedupreq;
 
 /*
- * bogus page -- for I/O to/from partially complete buffers
- * this is a temporary solution to the problem, but it is not
- * really that bad.  it would be better to split the buffer
- * for input in the case of buffers partially already in memory,
- * but the code is intricate enough already.
- */
-vm_page_t bogus_page;
-
-/*
  * Synchronization (sleep/wakeup) variable for active buffer space requests.
  * Set when wait starts, cleared prior to wakeup().
  * Used in runningbufwakeup() and waitrunningbufspace().
@@ -1114,9 +1105,6 @@ bufinit(void)
 	lofreebuffers = MIN((nbuf / 25) + (20 * mp_ncpus), 128 * mp_ncpus);
 	hifreebuffers = (3 * lofreebuffers) / 2;
 	numfreebuffers = nbuf;
-
-	bogus_page = vm_page_alloc(NULL, 0, VM_ALLOC_NOOBJ |
-	    VM_ALLOC_NORMAL | VM_ALLOC_WIRED);
 
 	/* Setup the kva and free list allocators. */
 	vmem_set_reclaim(buffer_arena, bufkva_reclaim);
@@ -2302,18 +2290,28 @@ brelse(struct buf *bp)
 		bdirty(bp);
 	}
 	if (bp->b_iocmd == BIO_WRITE && (bp->b_ioflags & BIO_ERROR) &&
+	    (bp->b_error != ENXIO || !LIST_EMPTY(&bp->b_dep)) &&
 	    !(bp->b_flags & B_INVAL)) {
 		/*
-		 * Failed write, redirty.  Must clear BIO_ERROR to prevent
-		 * pages from being scrapped.
+		 * Failed write, redirty.  All errors except ENXIO (which
+		 * means the device is gone) are expected to be potentially
+		 * transient - underlying media might work if tried again
+		 * after EIO, and memory might be available after an ENOMEM.
+		 *
+		 * Do this also for buffers that failed with ENXIO, but have
+		 * non-empty dependencies - the soft updates code might need
+		 * to access the buffer to untangle them.
+		 *
+		 * Must clear BIO_ERROR to prevent pages from being scrapped.
 		 */
 		bp->b_ioflags &= ~BIO_ERROR;
 		bdirty(bp);
 	} else if ((bp->b_flags & (B_NOCACHE | B_INVAL)) ||
 	    (bp->b_ioflags & BIO_ERROR) || (bp->b_bufsize <= 0)) {
 		/*
-		 * Either a failed read I/O or we were asked to free or not
-		 * cache the buffer.
+		 * Either a failed read I/O, or we were asked to free or not
+		 * cache the buffer, or we failed to write to a device that's
+		 * no longer present.
 		 */
 		bp->b_flags |= B_INVAL;
 		if (!LIST_EMPTY(&bp->b_dep))
@@ -2493,7 +2491,8 @@ vfs_vmio_iodone(struct buf *bp)
 	vm_page_t m;
 	vm_object_t obj;
 	struct vnode *vp;
-	int bogus, i, iosize;
+	int i, iosize, resid;
+	bool bogus;
 
 	obj = bp->b_bufobj->bo_object;
 	KASSERT(obj->paging_in_progress >= bp->b_npages,
@@ -2510,12 +2509,10 @@ vfs_vmio_iodone(struct buf *bp)
 	KASSERT(bp->b_offset != NOOFFSET,
 	    ("vfs_vmio_iodone: bp %p has no buffer offset", bp));
 
-	bogus = 0;
+	bogus = false;
 	iosize = bp->b_bcount - bp->b_resid;
 	VM_OBJECT_WLOCK(obj);
 	for (i = 0; i < bp->b_npages; i++) {
-		int resid;
-
 		resid = ((foff + PAGE_SIZE) & ~(off_t)PAGE_MASK) - foff;
 		if (resid > iosize)
 			resid = iosize;
@@ -2525,7 +2522,7 @@ vfs_vmio_iodone(struct buf *bp)
 		 */
 		m = bp->b_pages[i];
 		if (m == bogus_page) {
-			bogus = 1;
+			bogus = true;
 			m = vm_page_lookup(obj, OFF_TO_IDX(foff));
 			if (m == NULL)
 				panic("biodone: page disappeared!");
@@ -3906,7 +3903,7 @@ biodone(struct bio *bp)
 		start = trunc_page((vm_offset_t)bp->bio_data);
 		end = round_page((vm_offset_t)bp->bio_data + bp->bio_length);
 		bp->bio_data = unmapped_buf;
-		pmap_qremove(start, OFF_TO_IDX(end - start));
+		pmap_qremove(start, atop(end - start));
 		vmem_free(transient_arena, start, end - start);
 		atomic_add_int(&inflight_transient_maps, -1);
 	}
@@ -3917,10 +3914,8 @@ biodone(struct bio *bp)
 		bp->bio_flags |= BIO_DONE;
 		wakeup(bp);
 		mtx_unlock(mtxp);
-	} else {
-		bp->bio_flags |= BIO_DONE;
+	} else
 		done(bp);
-	}
 }
 
 /*
@@ -4225,10 +4220,11 @@ vfs_drain_busy_pages(struct buf *bp)
 void
 vfs_busy_pages(struct buf *bp, int clear_modify)
 {
-	int i, bogus;
 	vm_object_t obj;
 	vm_ooffset_t foff;
 	vm_page_t m;
+	int i;
+	bool bogus;
 
 	if (!(bp->b_flags & B_VMIO))
 		return;
@@ -4241,7 +4237,7 @@ vfs_busy_pages(struct buf *bp, int clear_modify)
 	vfs_drain_busy_pages(bp);
 	if (bp->b_bufsize != 0)
 		vfs_setdirty_locked_object(bp);
-	bogus = 0;
+	bogus = false;
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
 
@@ -4270,7 +4266,7 @@ vfs_busy_pages(struct buf *bp, int clear_modify)
 		} else if (m->valid == VM_PAGE_BITS_ALL &&
 		    (bp->b_flags & B_CACHE) == 0) {
 			bp->b_pages[i] = bogus_page;
-			bogus++;
+			bogus = true;
 		}
 		foff = (foff + PAGE_SIZE) & ~(off_t)PAGE_MASK;
 	}
@@ -4411,6 +4407,45 @@ vfs_bio_bzero_buf(struct buf *bp, int base, int size)
 			n = PAGE_SIZE;
 		}
 	}
+}
+
+/*
+ * Update buffer flags based on I/O request parameters, optionally releasing the
+ * buffer.  If it's VMIO or direct I/O, the buffer pages are released to the VM,
+ * where they may be placed on a page queue (VMIO) or freed immediately (direct
+ * I/O).  Otherwise the buffer is released to the cache.
+ */
+static void
+b_io_dismiss(struct buf *bp, int ioflag, bool release)
+{
+
+	KASSERT((ioflag & IO_NOREUSE) == 0 || (ioflag & IO_VMIO) != 0,
+	    ("buf %p non-VMIO noreuse", bp));
+
+	if ((ioflag & IO_DIRECT) != 0)
+		bp->b_flags |= B_DIRECT;
+	if ((ioflag & (IO_VMIO | IO_DIRECT)) != 0 && LIST_EMPTY(&bp->b_dep)) {
+		bp->b_flags |= B_RELBUF;
+		if ((ioflag & IO_NOREUSE) != 0)
+			bp->b_flags |= B_NOREUSE;
+		if (release)
+			brelse(bp);
+	} else if (release)
+		bqrelse(bp);
+}
+
+void
+vfs_bio_brelse(struct buf *bp, int ioflag)
+{
+
+	b_io_dismiss(bp, ioflag, true);
+}
+
+void
+vfs_bio_set_flags(struct buf *bp, int ioflag)
+{
+
+	b_io_dismiss(bp, ioflag, false);
 }
 
 /*
@@ -4655,7 +4690,24 @@ bdata2bio(struct buf *bp, struct bio *bip)
 	}
 }
 
-static int buf_pager_relbuf;
+/*
+ * The MIPS pmap code currently doesn't handle aliased pages.
+ * The VIPT caches may not handle page aliasing themselves, leading
+ * to data corruption.
+ *
+ * As such, this code makes a system extremely unhappy if said
+ * system doesn't support unaliasing the above situation in hardware.
+ * Some "recent" systems (eg some mips24k/mips74k cores) don't enable
+ * this feature at build time, so it has to be handled in software.
+ *
+ * Once the MIPS pmap/cache code grows to support this function on
+ * earlier chips, it should be flipped back off.
+ */
+#ifdef	__mips__
+static int buf_pager_relbuf = 1;
+#else
+static int buf_pager_relbuf = 0;
+#endif
 SYSCTL_INT(_vfs, OID_AUTO, buf_pager_relbuf, CTLFLAG_RWTUN,
     &buf_pager_relbuf, 0,
     "Make buffer pager release buffers after reading");
@@ -4690,7 +4742,7 @@ vfs_bio_getpages(struct vnode *vp, vm_page_t *ma, int count,
 	daddr_t lbn, lbnp;
 	vm_ooffset_t la, lb, poff, poffe;
 	long bsize;
-	int bo_bs, br_flags, error, i;
+	int bo_bs, br_flags, error, i, pgsin, pgsin_a, pgsin_b;
 	bool redo, lpart;
 
 	object = vp->v_object;
@@ -4700,17 +4752,26 @@ vfs_bio_getpages(struct vnode *vp, vm_page_t *ma, int count,
 		return (VM_PAGER_BAD);
 	lpart = la + PAGE_SIZE > object->un_pager.vnp.vnp_size;
 	bo_bs = get_blksize(vp, get_lblkno(vp, IDX_TO_OFF(ma[0]->pindex)));
-	if (rbehind != NULL) {
-		lb = IDX_TO_OFF(ma[0]->pindex);
-		*rbehind = OFF_TO_IDX(lb - rounddown2(lb, bo_bs));
-	}
-	if (rahead != NULL) {
-		*rahead = OFF_TO_IDX(roundup2(la, bo_bs) - la);
-		if (la + IDX_TO_OFF(*rahead) >= object->un_pager.vnp.vnp_size) {
-			*rahead = OFF_TO_IDX(roundup2(object->un_pager.
-			    vnp.vnp_size, PAGE_SIZE) - la);
-		}
-	}
+
+	/*
+	 * Calculate read-ahead, behind and total pages.
+	 */
+	pgsin = count;
+	lb = IDX_TO_OFF(ma[0]->pindex);
+	pgsin_b = OFF_TO_IDX(lb - rounddown2(lb, bo_bs));
+	pgsin += pgsin_b;
+	if (rbehind != NULL)
+		*rbehind = pgsin_b;
+	pgsin_a = OFF_TO_IDX(roundup2(la, bo_bs) - la);
+	if (la + IDX_TO_OFF(pgsin_a) >= object->un_pager.vnp.vnp_size)
+		pgsin_a = OFF_TO_IDX(roundup2(object->un_pager.vnp.vnp_size,
+		    PAGE_SIZE) - la);
+	pgsin += pgsin_a;
+	if (rahead != NULL)
+		*rahead = pgsin_a;
+	VM_CNT_INC(v_vnodein);
+	VM_CNT_ADD(v_vnodepgsin, pgsin);
+
 	br_flags = (mp != NULL && (mp->mnt_kern_flag & MNTK_UNMAPPED_BUFS)
 	    != 0) ? GB_UNMAPPED : 0;
 	VM_OBJECT_WLOCK(object);
@@ -4866,9 +4927,12 @@ DB_SHOW_COMMAND(buffer, db_show_buffer)
 	db_printf("b_io_tracking: b_io_tcnt = %u\n", bp->b_io_tcnt);
 
 	i = bp->b_io_tcnt % BUF_TRACKING_SIZE;
-	for (j = 1; j <= BUF_TRACKING_SIZE; j++)
+	for (j = 1; j <= BUF_TRACKING_SIZE; j++) {
+		if (bp->b_io_tracking[BUF_TRACKING_ENTRY(i - j)] == NULL)
+			continue;
 		db_printf(" %2u: %s\n", j,
 		    bp->b_io_tracking[BUF_TRACKING_ENTRY(i - j)]);
+	}
 #elif defined(BUF_TRACKING)
 	db_printf("b_io_tracking: %s\n", bp->b_io_tracking);
 #endif
@@ -4886,6 +4950,8 @@ DB_SHOW_COMMAND(lockedbufs, lockedbufs)
 		if (BUF_ISLOCKED(bp)) {
 			db_show_buffer((uintptr_t)bp, 1, 0, NULL);
 			db_printf("\n");
+			if (db_pager_quit)
+				break;
 		}
 	}
 }

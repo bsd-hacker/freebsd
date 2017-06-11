@@ -49,18 +49,6 @@
 	};
 };
 
-&i2c0 {
-	tda998x: hdmi-encoder {
-		compatible = "nxp,tda998x";
-		reg = <0x70>;
-
- 		pinctrl-names = "default", "off";
- 		pinctrl-0 = <&nxp_hdmi_bonelt_pins>;
- 		pinctrl-1 = <&nxp_hdmi_bonelt_off_pins>;
-		status = "okay";
- 	};
-};
-
 &i2c1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c1_pins>;
@@ -83,11 +71,5 @@
 };
 
 &lcdc {
-	hdmi = <&tda998x>;
-};
-
-/ {
-	hdmi {
-		status = "disabled";
-	};
+	hdmi = <&tda19988>;
 };

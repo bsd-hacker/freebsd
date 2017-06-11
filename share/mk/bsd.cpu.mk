@@ -155,8 +155,6 @@ _CPUCFLAGS = -march=${CPUTYPE}
 #	sb1, xlp, xlr
 _CPUCFLAGS = -march=${CPUTYPE:S/^mips//}
 . endif
-. elif ${MACHINE_CPUARCH} == "riscv"
-_CPUCFLAGS = -mno-float -march="IMAFD"
 . elif ${MACHINE_ARCH} == "sparc64"
 .  if ${CPUTYPE} == "v9"
 _CPUCFLAGS = -mcpu=v9
@@ -175,7 +173,9 @@ _CPUCFLAGS = -mcpu=${CPUTYPE}
 
 ########## i386
 . if ${MACHINE_CPUARCH} == "i386"
-.  if ${CPUTYPE} == "bdver4"
+.  if ${CPUTYPE} == "znver1"
+MACHINE_CPU = avx2 avx sse42 sse41 ssse3 sse4a sse3 sse2 sse mmx k6 k5 i586
+.  elif ${CPUTYPE} == "bdver4"
 MACHINE_CPU = xop avx2 avx sse42 sse41 ssse3 sse4a sse3 sse2 sse mmx k6 k5 i586
 .  elif ${CPUTYPE} == "bdver3" || ${CPUTYPE} == "bdver2" || \
     ${CPUTYPE} == "bdver1"
@@ -244,7 +244,9 @@ MACHINE_CPU = mmx
 MACHINE_CPU += i486
 ########## amd64
 . elif ${MACHINE_CPUARCH} == "amd64"
-.  if ${CPUTYPE} == "bdver4"
+.  if ${CPUTYPE} == "znver1"
+MACHINE_CPU = avx2 avx sse42 sse41 ssse3 sse4a sse3
+.  elif ${CPUTYPE} == "bdver4"
 MACHINE_CPU = xop avx2 avx sse42 sse41 ssse3 sse4a sse3
 .  elif ${CPUTYPE} == "bdver3" || ${CPUTYPE} == "bdver2" || \
     ${CPUTYPE} == "bdver1"
@@ -303,9 +305,33 @@ MACHINE_CPU = v9 ultrasparc ultrasparc3
 
 .if ${MACHINE_CPUARCH} == "mips"
 CFLAGS += -G0
-.if ${MACHINE_ARCH:Mmips*hf}
+. if ${MACHINE_ARCH:Mmips*el*} != ""
+AFLAGS += -EL
+CFLAGS += -EL
+LDFLAGS += -EL
+. else
+AFLAGS += -EB
+CFLAGS += -EB
+LDFLAGS += -EB
+. endif
+. if ${MACHINE_ARCH:Mmips64*} != ""
+AFLAGS+= -mabi=64
+CFLAGS+= -mabi=64
+LDFLAGS+= -mabi=64
+. elif ${MACHINE_ARCH:Mmipsn32*} != ""
+AFLAGS+= -mabi=n32
+CFLAGS+= -mabi=n32
+LDFLAGS+= -mabi=n32
+. else
+AFLAGS+= -mabi=32
+CFLAGS+= -mabi=32
+LDFLAGS+= -mabi=32
+. endif
+. if ${MACHINE_ARCH:Mmips*hf}
 CFLAGS += -mhard-float
-.endif
+. else
+CFLAGS += -msoft-float
+. endif
 .endif
 
 ########## arm
@@ -337,8 +363,10 @@ CFLAGS += -mcpu=8540 -Wa,-me500 -mspe=yes -mabi=spe -mfloat-gprs=double
 .endif
 
 .if ${MACHINE_CPUARCH} == "riscv"
+.if ${TARGET_ARCH:Mriscv*sf}
 CFLAGS += -mno-float
 ACFLAGS += -mno-float
+.endif
 .endif
 
 # NB: COPTFLAGS is handled in /usr/src/sys/conf/kern.pre.mk

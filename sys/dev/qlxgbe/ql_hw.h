@@ -1543,7 +1543,6 @@ typedef struct _qla_hw_tx_cntxt {
 
 	uint32_t        tx_prod_reg;
 	uint16_t	tx_cntxt_id;
-	uint8_t		frame_hdr[QL_FRAME_HDR_SIZE];
 
 } qla_hw_tx_cntxt_t;
 
@@ -1675,6 +1674,8 @@ typedef struct _qla_hw {
 	uint32_t	max_tx_segs;
 	uint32_t	min_lro_pkt_size;
 	
+	uint32_t        enable_hw_lro;
+	uint32_t        enable_soft_lro;
 	uint32_t        enable_9kb;
 
 	uint32_t	user_pri_nic;

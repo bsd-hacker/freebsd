@@ -4,9 +4,10 @@
 # https://git.linaro.org/toolchain/cortex-strings.git
 #
 
-.PATH: ${LIBC_SRCTOP}/../../contrib/cortex-strings/src/aarch64
+.PATH: ${SRCTOP}/contrib/cortex-strings/src/aarch64
 
-MDSRCS+=memchr.S \
+MDSRCS+= \
+	memchr.S \
 	memcmp.S \
 	memcpy.S \
 	memmove.S \

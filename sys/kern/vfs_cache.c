@@ -200,72 +200,68 @@ struct	namecache_ts {
  */
 #define NCHHASH(hash) \
 	(&nchashtbl[(hash) & nchash])
-static LIST_HEAD(nchashhead, namecache) *nchashtbl;	/* Hash Table */
-static u_long	nchash;			/* size of hash table */
+static __read_mostly LIST_HEAD(nchashhead, namecache) *nchashtbl;/* Hash Table */
+static u_long __read_mostly	nchash;			/* size of hash table */
 SYSCTL_ULONG(_debug, OID_AUTO, nchash, CTLFLAG_RD, &nchash, 0,
     "Size of namecache hash table");
-static u_long	ncnegfactor = 16;	/* ratio of negative entries */
+static u_long __read_mostly	ncnegfactor = 16; /* ratio of negative entries */
 SYSCTL_ULONG(_vfs, OID_AUTO, ncnegfactor, CTLFLAG_RW, &ncnegfactor, 0,
     "Ratio of negative namecache entries");
-static u_long	numneg;			/* number of negative entries allocated */
+static u_long __exclusive_cache_line	numneg;	/* number of negative entries allocated */
 SYSCTL_ULONG(_debug, OID_AUTO, numneg, CTLFLAG_RD, &numneg, 0,
     "Number of negative entries in namecache");
-static u_long	numcache;		/* number of cache entries allocated */
+static u_long __exclusive_cache_line	numcache;/* number of cache entries allocated */
 SYSCTL_ULONG(_debug, OID_AUTO, numcache, CTLFLAG_RD, &numcache, 0,
     "Number of namecache entries");
-static u_long	numcachehv;		/* number of cache entries with vnodes held */
+static u_long __exclusive_cache_line	numcachehv;/* number of cache entries with vnodes held */
 SYSCTL_ULONG(_debug, OID_AUTO, numcachehv, CTLFLAG_RD, &numcachehv, 0,
     "Number of namecache entries with vnodes held");
-u_int	ncsizefactor = 2;
+u_int __read_mostly	ncsizefactor = 2;
 SYSCTL_UINT(_vfs, OID_AUTO, ncsizefactor, CTLFLAG_RW, &ncsizefactor, 0,
     "Size factor for namecache");
-static u_int	ncpurgeminvnodes;
+static u_int __read_mostly	ncpurgeminvnodes;
 SYSCTL_UINT(_vfs, OID_AUTO, ncpurgeminvnodes, CTLFLAG_RW, &ncpurgeminvnodes, 0,
     "Number of vnodes below which purgevfs ignores the request");
-static u_int	ncneghitsrequeue = 8;
+static u_int __read_mostly	ncneghitsrequeue = 8;
 SYSCTL_UINT(_vfs, OID_AUTO, ncneghitsrequeue, CTLFLAG_RW, &ncneghitsrequeue, 0,
     "Number of hits to requeue a negative entry in the LRU list");
 
 struct nchstats	nchstats;		/* cache effectiveness statistics */
 
 static struct mtx       ncneg_shrink_lock;
-MTX_SYSINIT(vfscache_shrink_neg, &ncneg_shrink_lock, "Name Cache shrink neg",
-    MTX_DEF);
+static int	shrink_list_turn;
 
 struct neglist {
 	struct mtx		nl_lock;
 	TAILQ_HEAD(, namecache) nl_list;
 } __aligned(CACHE_LINE_SIZE);
 
-static struct neglist *neglists;
+static struct neglist __read_mostly	*neglists;
 static struct neglist ncneg_hot;
 
-static int	shrink_list_turn;
-
-static u_int	numneglists;
+#define	numneglists (ncneghash + 1)
+static u_int __read_mostly	ncneghash;
 static inline struct neglist *
 NCP2NEGLIST(struct namecache *ncp)
 {
 
-	return (&neglists[(((uintptr_t)(ncp) >> 8) % numneglists)]);
+	return (&neglists[(((uintptr_t)(ncp) >> 8) & ncneghash)]);
 }
 
-static u_int   numbucketlocks;
-static struct rwlock_padalign  *bucketlocks;
+#define	numbucketlocks (ncbuckethash + 1)
+static u_int __read_mostly  ncbuckethash;
+static struct rwlock_padalign __read_mostly  *bucketlocks;
 #define	HASH2BUCKETLOCK(hash) \
-	((struct rwlock *)(&bucketlocks[((hash) % numbucketlocks)]))
+	((struct rwlock *)(&bucketlocks[((hash) & ncbuckethash)]))
 
-static u_int   numvnodelocks;
-static struct mtx *vnodelocks;
+#define	numvnodelocks (ncvnodehash + 1)
+static u_int __read_mostly  ncvnodehash;
+static struct mtx __read_mostly *vnodelocks;
 static inline struct mtx *
 VP2VNODELOCK(struct vnode *vp)
 {
-	struct mtx *vlp;
 
-	if (vp == NULL)
-		return (NULL);
-	vlp = &vnodelocks[(((uintptr_t)(vp) >> 8) % numvnodelocks)];
-	return (vlp);
+	return (&vnodelocks[(((uintptr_t)(vp) >> 8) & ncvnodehash)]);
 }
 
 /*
@@ -275,10 +271,10 @@ VP2VNODELOCK(struct vnode *vp)
  * most common.  The large cache is used for entries which are too big to
  * fit in the small cache.
  */
-static uma_zone_t cache_zone_small;
-static uma_zone_t cache_zone_small_ts;
-static uma_zone_t cache_zone_large;
-static uma_zone_t cache_zone_large_ts;
+static uma_zone_t __read_mostly cache_zone_small;
+static uma_zone_t __read_mostly cache_zone_small_ts;
+static uma_zone_t __read_mostly cache_zone_large;
+static uma_zone_t __read_mostly cache_zone_large_ts;
 
 #define	CACHE_PATH_CUTOFF	35
 
@@ -344,7 +340,7 @@ cache_out_ts(struct namecache *ncp, struct timespec *tsp, int *ticksp)
 		*ticksp = ((struct namecache_ts *)ncp)->nc_ticks;
 }
 
-static int	doingcache = 1;		/* 1 => enable the cache */
+static int __read_mostly	doingcache = 1;	/* 1 => enable the cache */
 SYSCTL_INT(_debug, OID_AUTO, vfscache, CTLFLAG_RW, &doingcache, 0,
     "VFS namecache enabled");
 
@@ -360,7 +356,7 @@ static SYSCTL_NODE(_vfs, OID_AUTO, cache, CTLFLAG_RW, 0,
 #define STATNODE_ULONG(name, descr)	\
 	SYSCTL_ULONG(_vfs_cache, OID_AUTO, name, CTLFLAG_RD, &name, 0, descr);
 #define STATNODE_COUNTER(name, descr)	\
-	static counter_u64_t name;	\
+	static counter_u64_t __read_mostly name; \
 	SYSCTL_COUNTER_U64(_vfs_cache, OID_AUTO, name, CTLFLAG_RD, &name, descr);
 STATNODE_ULONG(numneg, "Number of negative cache entries");
 STATNODE_ULONG(numcache, "Number of cache entries");
@@ -739,13 +735,12 @@ cache_negative_remove(struct namecache *ncp, bool neg_locked)
 			list_locked = true;
 			mtx_lock(&neglist->nl_lock);
 		}
-	} else {
-		mtx_assert(&neglist->nl_lock, MA_OWNED);
-		mtx_assert(&ncneg_hot.nl_lock, MA_OWNED);
 	}
 	if (ncp->nc_flag & NCF_HOTNEGATIVE) {
+		mtx_assert(&ncneg_hot.nl_lock, MA_OWNED);
 		TAILQ_REMOVE(&ncneg_hot.nl_list, ncp, nc_dst);
 	} else {
+		mtx_assert(&neglist->nl_lock, MA_OWNED);
 		TAILQ_REMOVE(&neglist->nl_list, ncp, nc_dst);
 	}
 	if (list_locked)
@@ -783,7 +778,7 @@ cache_negative_shrink_select(int start, struct namecache **ncpp,
 static void
 cache_negative_zap_one(void)
 {
-	struct namecache *ncp, *ncp2, *ncpc;
+	struct namecache *ncp, *ncp2;
 	struct neglist *neglist;
 	struct mtx *dvlp;
 	struct rwlock *blp;
@@ -791,7 +786,6 @@ cache_negative_zap_one(void)
 	if (!mtx_trylock(&ncneg_shrink_lock))
 		return;
 
-	ncpc = NULL;
 	mtx_lock(&ncneg_hot.nl_lock);
 	ncp = TAILQ_FIRST(&ncneg_hot.nl_list);
 	if (ncp != NULL) {
@@ -821,7 +815,6 @@ cache_negative_zap_one(void)
 	mtx_unlock(&ncneg_hot.nl_lock);
 	mtx_lock(dvlp);
 	rw_wlock(blp);
-	mtx_lock(&ncneg_hot.nl_lock);
 	mtx_lock(&neglist->nl_lock);
 	ncp2 = TAILQ_FIRST(&neglist->nl_list);
 	if (ncp != ncp2 || dvlp != VP2VNODELOCK(ncp2->nc_dvp) ||
@@ -835,7 +828,6 @@ cache_negative_zap_one(void)
 	cache_zap_locked(ncp, true);
 out_unlock_all:
 	mtx_unlock(&neglist->nl_lock);
-	mtx_unlock(&ncneg_hot.nl_lock);
 	rw_wunlock(blp);
 	mtx_unlock(dvlp);
 out:
@@ -868,6 +860,13 @@ cache_zap_locked(struct namecache *ncp, bool neg_locked)
 		    nc_get_name(ncp), ncp->nc_neghits);
 	}
 	LIST_REMOVE(ncp, nc_hash);
+	if (!(ncp->nc_flag & NCF_NEGATIVE)) {
+		TAILQ_REMOVE(&ncp->nc_vp->v_cache_dst, ncp, nc_dst);
+		if (ncp == ncp->nc_vp->v_cache_dd)
+			ncp->nc_vp->v_cache_dd = NULL;
+	} else {
+		cache_negative_remove(ncp, neg_locked);
+	}
 	if (ncp->nc_flag & NCF_ISDOTDOT) {
 		if (ncp == ncp->nc_dvp->v_cache_dd)
 			ncp->nc_dvp->v_cache_dd = NULL;
@@ -877,13 +876,6 @@ cache_zap_locked(struct namecache *ncp, bool neg_locked)
 			ncp->nc_flag |= NCF_DVDROP;
 			atomic_subtract_rel_long(&numcachehv, 1);
 		}
-	}
-	if (!(ncp->nc_flag & NCF_NEGATIVE)) {
-		TAILQ_REMOVE(&ncp->nc_vp->v_cache_dst, ncp, nc_dst);
-		if (ncp == ncp->nc_vp->v_cache_dd)
-			ncp->nc_vp->v_cache_dd = NULL;
-	} else {
-		cache_negative_remove(ncp, neg_locked);
 	}
 	atomic_subtract_rel_long(&numcache, 1);
 }
@@ -1108,7 +1100,7 @@ cache_lookup(struct vnode *dvp, struct vnode **vpp, struct componentname *cnp,
 	uint32_t hash;
 	int error, ltype;
 
-	if (!doingcache) {
+	if (__predict_false(!doingcache)) {
 		cnp->cn_flags &= ~MAKEENTRY;
 		return (0);
 	}
@@ -1129,7 +1121,7 @@ retry:
 				timespecclear(tsp);
 			if (ticksp != NULL)
 				*ticksp = ticks;
-			VREF(*vpp);
+			vrefact(*vpp);
 			/*
 			 * When we lookup "." we still can be asked to lock it
 			 * differently...
@@ -1375,8 +1367,8 @@ cache_lock_vnodes_cel_3(struct celockstate *cel, struct vnode *vp)
 	cache_assert_vlp_locked(cel->vlp[1]);
 	MPASS(cel->vlp[2] == NULL);
 
+	MPASS(vp != NULL);
 	vlp = VP2VNODELOCK(vp);
-	MPASS(vlp != NULL);
 
 	ret = true;
 	if (vlp >= cel->vlp[1]) {
@@ -1548,13 +1540,13 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 	VNASSERT(dvp == NULL || (dvp->v_iflag & VI_DOOMED) == 0, dvp,
 	    ("cache_enter: Doomed vnode used as src"));
 
-	if (!doingcache)
+	if (__predict_false(!doingcache))
 		return;
 
 	/*
 	 * Avoid blowout in namecache entries.
 	 */
-	if (numcache >= desiredvnodes * ncsizefactor)
+	if (__predict_false(numcache >= desiredvnodes * ncsizefactor))
 		return;
 
 	cache_celockstate_init(&cel);
@@ -1780,19 +1772,21 @@ nchinit(void *dummy __unused)
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_ZINIT);
 
 	nchashtbl = hashinit(desiredvnodes * 2, M_VFSCACHE, &nchash);
-	numbucketlocks = cache_roundup_2(mp_ncpus * 64);
+	ncbuckethash = cache_roundup_2(mp_ncpus * 64) - 1;
+	if (ncbuckethash > nchash)
+		ncbuckethash = nchash;
 	bucketlocks = malloc(sizeof(*bucketlocks) * numbucketlocks, M_VFSCACHE,
 	    M_WAITOK | M_ZERO);
 	for (i = 0; i < numbucketlocks; i++)
 		rw_init_flags(&bucketlocks[i], "ncbuc", RW_DUPOK | RW_RECURSE);
-	numvnodelocks = cache_roundup_2(mp_ncpus * 64);
+	ncvnodehash = cache_roundup_2(mp_ncpus * 64) - 1;
 	vnodelocks = malloc(sizeof(*vnodelocks) * numvnodelocks, M_VFSCACHE,
 	    M_WAITOK | M_ZERO);
 	for (i = 0; i < numvnodelocks; i++)
 		mtx_init(&vnodelocks[i], "ncvn", NULL, MTX_DUPOK | MTX_RECURSE);
 	ncpurgeminvnodes = numbucketlocks;
 
-	numneglists = 4;
+	ncneghash = 3;
 	neglists = malloc(sizeof(*neglists) * numneglists, M_VFSCACHE,
 	    M_WAITOK | M_ZERO);
 	for (i = 0; i < numneglists; i++) {
@@ -1801,6 +1795,8 @@ nchinit(void *dummy __unused)
 	}
 	mtx_init(&ncneg_hot.nl_lock, "ncneglh", NULL, MTX_DEF);
 	TAILQ_INIT(&ncneg_hot.nl_list);
+
+	mtx_init(&ncneg_shrink_lock, "ncnegs", NULL, MTX_DEF);
 
 	numcalls = counter_u64_alloc(M_WAITOK);
 	dothits = counter_u64_alloc(M_WAITOK);
@@ -1829,7 +1825,11 @@ cache_changesize(int newmaxvnodes)
 	uint32_t hash;
 	int i;
 
-	new_nchashtbl = hashinit(newmaxvnodes * 2, M_VFSCACHE, &new_nchash);
+	newmaxvnodes = cache_roundup_2(newmaxvnodes * 2);
+	if (newmaxvnodes < numbucketlocks)
+		newmaxvnodes = numbucketlocks;
+
+	new_nchashtbl = hashinit(newmaxvnodes, M_VFSCACHE, &new_nchash);
 	/* If same hash table size, nothing to do */
 	if (nchash == new_nchash) {
 		free(new_nchashtbl, M_VFSCACHE);
@@ -2028,7 +2028,7 @@ vfs_cache_lookup(struct vop_lookup_args *ap)
 /*
  * XXX All of these sysctls would probably be more productive dead.
  */
-static int disablecwd;
+static int __read_mostly disablecwd;
 SYSCTL_INT(_debug, OID_AUTO, disablecwd, CTLFLAG_RW, &disablecwd, 0,
    "Disable the getcwd syscall");
 
@@ -2042,17 +2042,17 @@ sys___getcwd(struct thread *td, struct __getcwd_args *uap)
 }
 
 int
-kern___getcwd(struct thread *td, char *buf, enum uio_seg bufseg, u_int buflen,
-    u_int path_max)
+kern___getcwd(struct thread *td, char *buf, enum uio_seg bufseg, size_t buflen,
+    size_t path_max)
 {
 	char *bp, *tmpbuf;
 	struct filedesc *fdp;
 	struct vnode *cdir, *rdir;
 	int error;
 
-	if (disablecwd)
+	if (__predict_false(disablecwd))
 		return (ENODEV);
-	if (buflen < 2)
+	if (__predict_false(buflen < 2))
 		return (EINVAL);
 	if (buflen > path_max)
 		buflen = path_max;
@@ -2061,9 +2061,9 @@ kern___getcwd(struct thread *td, char *buf, enum uio_seg bufseg, u_int buflen,
 	fdp = td->td_proc->p_fd;
 	FILEDESC_SLOCK(fdp);
 	cdir = fdp->fd_cdir;
-	VREF(cdir);
+	vrefact(cdir);
 	rdir = fdp->fd_rdir;
-	VREF(rdir);
+	vrefact(rdir);
 	FILEDESC_SUNLOCK(fdp);
 	error = vn_fullpath1(td, cdir, rdir, tmpbuf, &bp, buflen);
 	vrele(rdir);
@@ -2087,7 +2087,7 @@ kern___getcwd(struct thread *td, char *buf, enum uio_seg bufseg, u_int buflen,
  * Thus begins the fullpath magic.
  */
 
-static int disablefullpath;
+static int __read_mostly disablefullpath;
 SYSCTL_INT(_debug, OID_AUTO, disablefullpath, CTLFLAG_RW, &disablefullpath, 0,
     "Disable the vn_fullpath function");
 
@@ -2103,16 +2103,16 @@ vn_fullpath(struct thread *td, struct vnode *vn, char **retbuf, char **freebuf)
 	struct vnode *rdir;
 	int error;
 
-	if (disablefullpath)
+	if (__predict_false(disablefullpath))
 		return (ENODEV);
-	if (vn == NULL)
+	if (__predict_false(vn == NULL))
 		return (EINVAL);
 
 	buf = malloc(MAXPATHLEN, M_TEMP, M_WAITOK);
 	fdp = td->td_proc->p_fd;
 	FILEDESC_SLOCK(fdp);
 	rdir = fdp->fd_rdir;
-	VREF(rdir);
+	vrefact(rdir);
 	FILEDESC_SUNLOCK(fdp);
 	error = vn_fullpath1(td, vn, rdir, buf, retbuf, MAXPATHLEN);
 	vrele(rdir);
@@ -2137,9 +2137,9 @@ vn_fullpath_global(struct thread *td, struct vnode *vn,
 	char *buf;
 	int error;
 
-	if (disablefullpath)
+	if (__predict_false(disablefullpath))
 		return (ENODEV);
-	if (vn == NULL)
+	if (__predict_false(vn == NULL))
 		return (EINVAL);
 	buf = malloc(MAXPATHLEN, M_TEMP, M_WAITOK);
 	error = vn_fullpath1(td, vn, rootvnode, buf, retbuf, MAXPATHLEN);
@@ -2403,7 +2403,7 @@ vn_path_to_global_path(struct thread *td, struct vnode *vp, char *path,
 	ASSERT_VOP_ELOCKED(vp, __func__);
 
 	/* Return ENODEV if sysctl debug.disablefullpath==1 */
-	if (disablefullpath)
+	if (__predict_false(disablefullpath))
 		return (ENODEV);
 
 	/* Construct global filesystem path from vp. */

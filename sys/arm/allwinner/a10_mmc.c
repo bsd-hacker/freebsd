@@ -45,7 +45,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 
 #include <dev/mmc/bridge.h>
-#include <dev/mmc/mmcreg.h>
 #include <dev/mmc/mmcbrvar.h>
 
 #include <arm/allwinner/a10_mmc.h>
@@ -58,12 +57,14 @@ __FBSDID("$FreeBSD$");
 #define	A10_MMC_DMA_SEGS		((MAXPHYS / PAGE_SIZE) + 1)
 #define	A10_MMC_DMA_MAX_SIZE	0x2000
 #define	A10_MMC_DMA_FTRGLEVEL	0x20070008
+#define	A10_MMC_RESET_RETRY	1000
 
 #define	CARD_ID_FREQUENCY	400000
 
 static struct ofw_compat_data compat_data[] = {
 	{"allwinner,sun4i-a10-mmc", 1},
 	{"allwinner,sun5i-a13-mmc", 1},
+	{"allwinner,sun7i-a20-mmc", 1},
 	{NULL,             0}
 };
 
@@ -229,7 +230,7 @@ a10_mmc_attach(device_t dev)
 		bus_width = 4;
 
 	sc->a10_host.f_min = 400000;
-	sc->a10_host.f_max = 50000000;
+	sc->a10_host.f_max = 52000000;
 	sc->a10_host.host_ocr = MMC_OCR_320_330 | MMC_OCR_330_340;
 	sc->a10_host.mode = mode_sd;
 	sc->a10_host.caps = MMC_CAP_HSPEED;
@@ -449,11 +450,27 @@ a10_mmc_req_done(struct a10_mmc_softc *sc)
 {
 	struct mmc_command *cmd;
 	struct mmc_request *req;
+	uint32_t val, mask;
+	int retry;
 
 	cmd = sc->a10_req->cmd;
 	if (cmd->error != MMC_ERR_NONE) {
-		/* Reset the controller. */
-		a10_mmc_reset(sc);
+		/* Reset the FIFO and DMA engines. */
+		mask = A10_MMC_CTRL_FIFO_RST | A10_MMC_CTRL_DMA_RST;
+		val = A10_MMC_READ_4(sc, A10_MMC_GCTL);
+		A10_MMC_WRITE_4(sc, A10_MMC_GCTL, val | mask);
+
+		retry = A10_MMC_RESET_RETRY;
+		while (--retry > 0) {
+			val = A10_MMC_READ_4(sc, A10_MMC_GCTL);
+			if ((val & mask) == 0)
+				break;
+			DELAY(10);
+		}
+		if (retry == 0)
+			device_printf(sc->a10_dev,
+			    "timeout resetting DMA/FIFO\n");
+		a10_mmc_update_clock(sc, 1);
 	}
 
 	req = sc->a10_req;
@@ -880,7 +897,6 @@ static device_method_t a10_mmc_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_read_ivar,	a10_mmc_read_ivar),
 	DEVMETHOD(bus_write_ivar,	a10_mmc_write_ivar),
-	DEVMETHOD(bus_print_child,	bus_generic_print_child),
 
 	/* MMC bridge interface */
 	DEVMETHOD(mmcbr_update_ios,	a10_mmc_update_ios),
@@ -900,6 +916,6 @@ static driver_t a10_mmc_driver = {
 	sizeof(struct a10_mmc_softc),
 };
 
-DRIVER_MODULE(a10_mmc, simplebus, a10_mmc_driver, a10_mmc_devclass, 0, 0);
-DRIVER_MODULE(mmc, a10_mmc, mmc_driver, mmc_devclass, NULL, NULL);
-MODULE_DEPEND(a10_mmc, mmc, 1, 1, 1);
+DRIVER_MODULE(a10_mmc, simplebus, a10_mmc_driver, a10_mmc_devclass, NULL,
+    NULL);
+MMC_DECLARE_BRIDGE(a10_mmc);

@@ -138,15 +138,11 @@ r92ce_adj_devcaps(struct rtwn_softc *sc)
 {
 	struct ieee80211com *ic = &sc->sc_ic;
 
-	/* XXX TODO: test everything that removed here before enabling. */
-	/* XX do NOT enable PMGT until RSVD_PAGE command will not be fixed. */
-	ic->ic_caps &= ~(
-		  IEEE80211_C_PMGT	/* check null frame / device usability */
-		| IEEE80211_C_SWAMSDUTX
-		| IEEE80211_C_FF
-	);
-
-	ic->ic_htcaps = 0;
+	/*
+	 * XXX do NOT enable PMGT until RSVD_PAGE command
+	 * will not be tested / fixed + HRPWM register must be set too.
+	 */
+	ic->ic_caps &= ~IEEE80211_C_PMGT;
 }
 
 void
@@ -176,6 +172,7 @@ r92ce_attach(struct rtwn_pci_softc *pc)
 	sc->sc_dump_tx_desc		= r92ce_dump_tx_desc;
 	sc->sc_tx_radiotap_flags	= r92c_tx_radiotap_flags;
 	sc->sc_rx_radiotap_flags	= r92c_rx_radiotap_flags;
+	sc->sc_get_rx_stats		= r92c_get_rx_stats;
 	sc->sc_get_rssi_cck		= r92c_get_rssi_cck;
 	sc->sc_get_rssi_ofdm		= r92c_get_rssi_ofdm;
 	sc->sc_classify_intr		= r92ce_classify_intr;
@@ -194,6 +191,7 @@ r92ce_attach(struct rtwn_pci_softc *pc)
 	sc->sc_fw_reset			= r92ce_fw_reset;
 	sc->sc_fw_download_enable	= r92c_fw_download_enable;
 #endif
+	sc->sc_llt_init			= r92c_llt_init;
 	sc->sc_set_page_size		= r92c_set_page_size;
 	sc->sc_lc_calib			= r92c_lc_calib;
 	sc->sc_iq_calib			= r92ce_iq_calib;

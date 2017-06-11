@@ -56,7 +56,9 @@
 #define	__devexit
 #define __exit
 #define	__rcu
-#define	__stringify(x)			#x
+#define	__malloc
+#define	___stringify(...)		#__VA_ARGS__
+#define	__stringify(...)		___stringify(__VA_ARGS__)
 #define	__attribute_const__		__attribute__((__const__))
 #undef __always_inline
 #define	__always_inline			inline
@@ -67,7 +69,6 @@
 #define typeof(x)			__typeof(x)
 
 #define	uninitialized_var(x)		x = x
-#define	__read_mostly __attribute__((__section__(".data.read_mostly")))
 #define	__always_unused			__unused
 #define	__must_check			__result_use_check
 
@@ -87,9 +88,10 @@
 } while (0)
 
 #define	READ_ONCE(x) ({			\
-	__typeof(x) __var;		\
-	barrier();			\
-	__var = ACCESS_ONCE(x);		\
+	__typeof(x) __var = ({		\
+		barrier();		\
+		ACCESS_ONCE(x);		\
+	});				\
 	barrier();			\
 	__var;				\
 })

@@ -91,9 +91,9 @@ static struct ieee80211vap *rtwn_vap_create(struct ieee80211com *,
 static void		rtwn_vap_delete(struct ieee80211vap *);
 static int		rtwn_read_chipid(struct rtwn_softc *);
 static int		rtwn_ioctl_reset(struct ieee80211vap *, u_long);
-#ifndef RTWN_WITHOUT_UCODE
 static void		rtwn_set_media_status(struct rtwn_softc *,
 			    union sec_param *);
+#ifndef RTWN_WITHOUT_UCODE
 static int		rtwn_tx_fwpkt_check(struct rtwn_softc *,
 			    struct ieee80211vap *);
 static int		rtwn_construct_nulldata(struct rtwn_softc *,
@@ -121,9 +121,6 @@ static int		rtwn_run(struct rtwn_softc *,
 static void		rtwn_watchdog(void *);
 #endif
 static void		rtwn_parent(struct ieee80211com *);
-static int		rtwn_llt_write(struct rtwn_softc *, uint32_t,
-			    uint32_t);
-static int		rtwn_llt_init(struct rtwn_softc *);
 static int		rtwn_dma_init(struct rtwn_softc *);
 static int		rtwn_mac_init(struct rtwn_softc *);
 static void		rtwn_mrr_init(struct rtwn_softc *);
@@ -580,6 +577,8 @@ rtwn_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ], int unit,
 	vap->iv_ampdu_density = IEEE80211_HTCAP_MPDUDENSITY_16;
 	vap->iv_ampdu_rxmax = IEEE80211_HTCAP_MAXRXAMPDU_64K;
 
+	TIMEOUT_TASK_INIT(taskqueue_thread, &uvp->tx_beacon_csa, 0,
+	    rtwn_tx_beacon_csa, vap);
 	if (opmode == IEEE80211_M_IBSS) {
 		uvp->recv_mgmt = vap->iv_recv_mgmt;
 		vap->iv_recv_mgmt = rtwn_adhoc_recv_mgmt;
@@ -693,6 +692,7 @@ rtwn_ioctl_reset(struct ieee80211vap *vap, u_long cmd)
 	case IEEE80211_IOC_RTSTHRESHOLD:
 	case IEEE80211_IOC_PROTMODE:
 	case IEEE80211_IOC_HTPROTMODE:
+	case IEEE80211_IOC_LDPC:
 		error = 0;
 		break;
 	default:
@@ -703,13 +703,13 @@ rtwn_ioctl_reset(struct ieee80211vap *vap, u_long cmd)
 	return (error);
 }
 
-#ifndef RTWN_WITHOUT_UCODE
 static void
 rtwn_set_media_status(struct rtwn_softc *sc, union sec_param *data)
 {
 	sc->sc_set_media_status(sc, data->macid);
 }
 
+#ifndef RTWN_WITHOUT_UCODE
 static int
 rtwn_tx_fwpkt_check(struct rtwn_softc *sc, struct ieee80211vap *vap)
 {
@@ -1067,9 +1067,26 @@ rtwn_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 	} else
 		early_newstate = 0;
 
+	if (ostate == IEEE80211_S_CSA) {
+		taskqueue_cancel_timeout(taskqueue_thread,
+		    &uvp->tx_beacon_csa, NULL);
+
+		/*
+		 * In multi-vap case second counter may not be cleared
+		 * properly.
+		 */
+		vap->iv_csa_count = 0;
+	}
 	IEEE80211_UNLOCK(ic);
 	RTWN_LOCK(sc);
-	if (ostate == IEEE80211_S_RUN) {
+
+	if (ostate == IEEE80211_S_CSA) {
+		/* Unblock all queues (multi-vap case). */
+		rtwn_write_1(sc, R92C_TXPAUSE, 0);
+	}
+
+	if ((ostate == IEEE80211_S_RUN && nstate != IEEE80211_S_CSA) ||
+	    ostate == IEEE80211_S_CSA) {
 		sc->vaps_running--;
 
 		/* Set media status to 'No Link'. */
@@ -1140,6 +1157,11 @@ rtwn_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		}
 
 		sc->vaps_running++;
+		break;
+	case IEEE80211_S_CSA:
+		/* Block all Tx queues (except beacon queue). */
+		rtwn_setbits_1(sc, R92C_TXPAUSE, 0,
+		    R92C_TX_QUEUE_AC | R92C_TX_QUEUE_MGT | R92C_TX_QUEUE_HIGH);
 		break;
 	default:
 		break;
@@ -1356,54 +1378,6 @@ rtwn_parent(struct ieee80211com *ic)
 			ieee80211_start_all(ic);
 	} else
 		rtwn_stop(sc);
-}
-
-
-static int
-rtwn_llt_write(struct rtwn_softc *sc, uint32_t addr, uint32_t data)
-{
-	int ntries, error;
-
-	error = rtwn_write_4(sc, R92C_LLT_INIT,
-	    SM(R92C_LLT_INIT_OP, R92C_LLT_INIT_OP_WRITE) |
-	    SM(R92C_LLT_INIT_ADDR, addr) |
-	    SM(R92C_LLT_INIT_DATA, data));
-	if (error != 0)
-		return (error);
-	/* Wait for write operation to complete. */
-	for (ntries = 0; ntries < 20; ntries++) {
-		if (MS(rtwn_read_4(sc, R92C_LLT_INIT), R92C_LLT_INIT_OP) ==
-		    R92C_LLT_INIT_OP_NO_ACTIVE)
-			return (0);
-		rtwn_delay(sc, 10);
-	}
-	return (ETIMEDOUT);
-}
-
-static int
-rtwn_llt_init(struct rtwn_softc *sc)
-{
-	int i, error;
-
-	/* Reserve pages [0; page_count]. */
-	for (i = 0; i < sc->page_count; i++) {
-		if ((error = rtwn_llt_write(sc, i, i + 1)) != 0)
-			return (error);
-	}
-	/* NB: 0xff indicates end-of-list. */
-	if ((error = rtwn_llt_write(sc, i, 0xff)) != 0)
-		return (error);
-	/*
-	 * Use pages [page_count + 1; pktbuf_count - 1]
-	 * as ring buffer.
-	 */
-	for (++i; i < sc->pktbuf_count - 1; i++) {
-		if ((error = rtwn_llt_write(sc, i, i + 1)) != 0)
-			return (error);
-	}
-	/* Make the last page point to the beginning of the ring buffer. */
-	error = rtwn_llt_write(sc, i, sc->page_count + 1);
-	return (error);
 }
 
 static int
@@ -1744,13 +1718,13 @@ rtwn_node_alloc(struct ieee80211vap *vap,
 }
 
 static void
-rtwn_newassoc(struct ieee80211_node *ni, int isnew)
+rtwn_newassoc(struct ieee80211_node *ni, int isnew __unused)
 {
 	struct rtwn_softc *sc = ni->ni_ic->ic_softc;
 	struct rtwn_node *un = RTWN_NODE(ni);
 	int id;
 
-	if (!isnew)
+	if (un->id != RTWN_MACID_UNDEFINED)
 		return;
 
 	RTWN_NT_LOCK(sc);
@@ -1769,11 +1743,9 @@ rtwn_newassoc(struct ieee80211_node *ni, int isnew)
 		return;
 	}
 
-#ifndef RTWN_WITHOUT_UCODE
 	/* Notify firmware. */
 	id |= RTWN_MACID_VALID;
 	rtwn_cmd_sleepable(sc, &id, sizeof(id), rtwn_set_media_status);
-#endif
 }
 
 static void
@@ -1785,10 +1757,8 @@ rtwn_node_free(struct ieee80211_node *ni)
 	RTWN_NT_LOCK(sc);
 	if (un->id != RTWN_MACID_UNDEFINED) {
 		sc->node_list[un->id] = NULL;
-#ifndef RTWN_WITHOUT_UCODE
 		rtwn_cmd_sleepable(sc, &un->id, sizeof(un->id),
 		    rtwn_set_media_status);
-#endif
 	}
 	RTWN_NT_UNLOCK(sc);
 
@@ -1975,6 +1945,7 @@ rtwn_stop(struct rtwn_softc *sc)
 	sc->fwver = 0;
 	sc->thcal_temp = 0;
 	sc->cur_bcnq_id = RTWN_VAP_ID_INVALID;
+	bzero(&sc->last_physt, sizeof(sc->last_physt));
 
 #ifdef D4054
 	ieee80211_tx_watchdog_stop(&sc->sc_ic);

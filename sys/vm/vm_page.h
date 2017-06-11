@@ -13,7 +13,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -207,7 +207,8 @@ struct vm_page {
 #define	PQ_INACTIVE	0
 #define	PQ_ACTIVE	1
 #define	PQ_LAUNDRY	2
-#define	PQ_COUNT	3
+#define	PQ_UNSWAPPABLE	3
+#define	PQ_COUNT	4
 
 TAILQ_HEAD(pglist, vm_page);
 SLIST_HEAD(spglist, vm_page);
@@ -242,6 +243,8 @@ extern struct vm_domain vm_dom[MAXMEMDOM];
 #define	vm_pagequeue_unlock(pq)		mtx_unlock(&(pq)->pq_mutex)
 
 #ifdef _KERNEL
+extern vm_page_t bogus_page;
+
 static __inline void
 vm_pagequeue_cnt_add(struct vm_pagequeue *pq, int addend)
 {
@@ -326,7 +329,6 @@ extern struct mtx_padalign pa_lock[];
  * Page flags.  If changed at any other time than page allocation or
  * freeing, the modification must be protected by the vm_page lock.
  */
-#define	PG_CACHED	0x0001		/* page is cached */
 #define	PG_FICTITIOUS	0x0004		/* physical page doesn't exist */
 #define	PG_ZERO		0x0008		/* page is zeroed */
 #define	PG_MARKER	0x0010		/* special queue marker page */
@@ -348,24 +350,25 @@ extern struct mtx_padalign pa_lock[];
 #include <machine/atomic.h>
 
 /*
- * Each pageable resident page falls into one of four lists:
+ * Each pageable resident page falls into one of five lists:
  *
  *	free
  *		Available for allocation now.
  *
- *	cache
- *		Almost available for allocation. Still associated with
- *		an object, but clean and immediately freeable.
- *
- * The following lists are LRU sorted:
- *
  *	inactive
  *		Low activity, candidates for reclamation.
+ *		This list is approximately LRU ordered.
+ *
+ *	laundry
  *		This is the list of pages that should be
  *		paged out next.
  *
+ *	unswappable
+ *		Dirty anonymous pages that cannot be paged
+ *		out because no swap device is configured.
+ *
  *	active
- *		Pages that are "active" i.e. they have been
+ *		Pages that are "active", i.e., they have been
  *		recently referenced.
  *
  */
@@ -409,8 +412,6 @@ vm_page_t PHYS_TO_VM_PAGE(vm_paddr_t pa);
 #define	VM_ALLOC_ZERO		0x0040	/* (acfg) Try to obtain a zeroed page */
 #define	VM_ALLOC_NOOBJ		0x0100	/* (acg) No associated object */
 #define	VM_ALLOC_NOBUSY		0x0200	/* (acg) Do not busy the page */
-#define	VM_ALLOC_IFCACHED	0x0400	/* (ag) Fail if page is not cached */
-#define	VM_ALLOC_IFNOTCACHED	0x0800	/* (ag) Fail if page is cached */
 #define	VM_ALLOC_IGN_SBUSY	0x1000	/* (g) Ignore shared busy flag */
 #define	VM_ALLOC_NODUMP		0x2000	/* (ag) don't include in dump */
 #define	VM_ALLOC_SBUSY		0x4000	/* (acg) Shared busy the page */
@@ -453,8 +454,6 @@ vm_page_t vm_page_alloc_contig(vm_object_t object, vm_pindex_t pindex, int req,
     vm_paddr_t boundary, vm_memattr_t memattr);
 vm_page_t vm_page_alloc_freelist(int, int);
 vm_page_t vm_page_grab (vm_object_t, vm_pindex_t, int);
-void vm_page_cache_free(vm_object_t, vm_pindex_t, vm_pindex_t);
-void vm_page_cache_transfer(vm_object_t, vm_pindex_t, vm_object_t);
 int vm_page_try_to_free (vm_page_t);
 void vm_page_deactivate (vm_page_t);
 void vm_page_deactivate_noreuse(vm_page_t);
@@ -464,7 +463,6 @@ vm_page_t vm_page_find_least(vm_object_t, vm_pindex_t);
 vm_page_t vm_page_getfake(vm_paddr_t paddr, vm_memattr_t memattr);
 void vm_page_initfake(vm_page_t m, vm_paddr_t paddr, vm_memattr_t memattr);
 int vm_page_insert (vm_page_t, vm_object_t, vm_pindex_t);
-boolean_t vm_page_is_cached(vm_object_t object, vm_pindex_t pindex);
 void vm_page_launder(vm_page_t m);
 vm_page_t vm_page_lookup (vm_object_t, vm_pindex_t);
 vm_page_t vm_page_next(vm_page_t m);
@@ -492,6 +490,7 @@ vm_offset_t vm_page_startup(vm_offset_t vaddr);
 void vm_page_sunbusy(vm_page_t m);
 int vm_page_trysbusy(vm_page_t m);
 void vm_page_unhold_pages(vm_page_t *ma, int count);
+void vm_page_unswappable(vm_page_t m);
 boolean_t vm_page_unwire(vm_page_t m, uint8_t queue);
 void vm_page_updatefake(vm_page_t m, vm_paddr_t paddr, vm_memattr_t memattr);
 void vm_page_wire (vm_page_t);
@@ -716,7 +715,7 @@ static inline bool
 vm_page_in_laundry(vm_page_t m)
 {
 
-	return (m->queue == PQ_LAUNDRY);
+	return (m->queue == PQ_LAUNDRY || m->queue == PQ_UNSWAPPABLE);
 }
 
 #endif				/* _KERNEL */

@@ -94,20 +94,31 @@ static void	rtwn_pci_beacon_update_end(struct rtwn_softc *,
 static void	rtwn_pci_attach_methods(struct rtwn_softc *);
 
 
-static int matched_chip = RTWN_CHIP_MAX_PCI;
+static const struct rtwn_pci_ident *
+rtwn_pci_probe_sub(device_t dev)
+{
+	const struct rtwn_pci_ident *ident;
+	int vendor_id, device_id;
+
+	vendor_id = pci_get_vendor(dev);
+	device_id = pci_get_device(dev);
+
+	for (ident = rtwn_pci_ident_table; ident->name != NULL; ident++)
+		if (vendor_id == ident->vendor && device_id == ident->device)
+			return (ident);
+
+	return (NULL);
+}
 
 static int
 rtwn_pci_probe(device_t dev)
 {
 	const struct rtwn_pci_ident *ident;
 
-	for (ident = rtwn_pci_ident_table; ident->name != NULL; ident++) {
-		if (pci_get_vendor(dev) == ident->vendor &&
-		    pci_get_device(dev) == ident->device) {
-			matched_chip = ident->chip;
-			device_set_desc(dev, ident->name);
-			return (BUS_PROBE_DEFAULT);
-		}
+	ident = rtwn_pci_probe_sub(dev);
+	if (ident != NULL) {
+		device_set_desc(dev, ident->name);
+		return (BUS_PROBE_DEFAULT);
 	}
 	return (ENXIO);
 }
@@ -149,8 +160,8 @@ rtwn_pci_alloc_rx_list(struct rtwn_softc *sc)
 
 	/* Create RX buffer DMA tag. */
 	error = bus_dma_tag_create(bus_get_dma_tag(sc->sc_dev), 1, 0,
-	    BUS_SPACE_MAXADDR_32BIT, BUS_SPACE_MAXADDR, NULL, NULL, MCLBYTES,
-	    1, MCLBYTES, 0, NULL, NULL, &rx_ring->data_dmat);
+	    BUS_SPACE_MAXADDR_32BIT, BUS_SPACE_MAXADDR, NULL, NULL,
+	    MJUMPAGESIZE, 1, MJUMPAGESIZE, 0, NULL, NULL, &rx_ring->data_dmat);
 	if (error != 0) {
 		device_printf(sc->sc_dev, "could not create rx buf DMA tag\n");
 		goto fail;
@@ -166,7 +177,8 @@ rtwn_pci_alloc_rx_list(struct rtwn_softc *sc)
 			goto fail;
 		}
 
-		rx_data->m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
+		rx_data->m = m_getjcl(M_NOWAIT, MT_DATA, M_PKTHDR,
+		    MJUMPAGESIZE);
 		if (rx_data->m == NULL) {
 			device_printf(sc->sc_dev,
 			    "could not allocate rx mbuf\n");
@@ -175,8 +187,8 @@ rtwn_pci_alloc_rx_list(struct rtwn_softc *sc)
 		}
 
 		error = bus_dmamap_load(rx_ring->data_dmat, rx_data->map,
-		    mtod(rx_data->m, void *), MCLBYTES, rtwn_pci_dma_map_addr,
-		    &rx_data->paddr, BUS_DMA_NOWAIT);
+		    mtod(rx_data->m, void *), MJUMPAGESIZE,
+		    rtwn_pci_dma_map_addr, &rx_data->paddr, BUS_DMA_NOWAIT);
 		if (error != 0) {
 			device_printf(sc->sc_dev,
 			    "could not load rx buf DMA map");
@@ -184,7 +196,7 @@ rtwn_pci_alloc_rx_list(struct rtwn_softc *sc)
 		}
 
 		rtwn_pci_setup_rx_desc(pc, &rx_ring->desc[i], rx_data->paddr,
-		    MCLBYTES, i);
+		    MJUMPAGESIZE, i);
 	}
 	rx_ring->cur = 0;
 
@@ -206,7 +218,7 @@ rtwn_pci_reset_rx_list(struct rtwn_softc *sc)
 	for (i = 0; i < RTWN_PCI_RX_LIST_COUNT; i++) {
 		rx_data = &rx_ring->rx_data[i];
 		rtwn_pci_setup_rx_desc(pc, &rx_ring->desc[i],
-		    rx_data->paddr, MCLBYTES, i);
+		    rx_data->paddr, MJUMPAGESIZE, i);
 	}
 	rx_ring->cur = 0;
 }
@@ -287,8 +299,8 @@ rtwn_pci_alloc_tx_list(struct rtwn_softc *sc, int qid)
 	    BUS_DMASYNC_PREWRITE);
 
 	error = bus_dma_tag_create(bus_get_dma_tag(sc->sc_dev), 1, 0,
-	    BUS_SPACE_MAXADDR_32BIT, BUS_SPACE_MAXADDR, NULL, NULL, MCLBYTES,
-	    1, MCLBYTES, 0, NULL, NULL, &tx_ring->data_dmat);
+	    BUS_SPACE_MAXADDR_32BIT, BUS_SPACE_MAXADDR, NULL, NULL,
+	    MJUMPAGESIZE, 1, MJUMPAGESIZE, 0, NULL, NULL, &tx_ring->data_dmat);
 	if (error != 0) {
 		device_printf(sc->sc_dev, "could not create tx buf DMA tag\n");
 		goto fail;
@@ -590,13 +602,15 @@ rtwn_pci_attach_methods(struct rtwn_softc *sc)
 static int
 rtwn_pci_attach(device_t dev)
 {
+	const struct rtwn_pci_ident *ident;
 	struct rtwn_pci_softc *pc = device_get_softc(dev);
 	struct rtwn_softc *sc = &pc->pc_sc;
 	struct ieee80211com *ic = &sc->sc_ic;
 	uint32_t lcsr;
 	int cap_off, i, error, rid;
 
-	if (matched_chip >= RTWN_CHIP_MAX_PCI)
+	ident = rtwn_pci_probe_sub(dev);
+	if (ident == NULL)
 		return (ENXIO);
 
 	/*
@@ -648,8 +662,7 @@ rtwn_pci_attach(device_t dev)
 	mtx_init(&sc->sc_mtx, ic->ic_name, MTX_NETWORK_LOCK, MTX_DEF);
 
 	rtwn_pci_attach_methods(sc);
-	/* XXX something similar to USB_GET_DRIVER_INFO() */
-	rtwn_pci_attach_private(pc, matched_chip);
+	rtwn_pci_attach_private(pc, ident->chip);
 
 	/* Allocate Tx/Rx buffers. */
 	error = rtwn_pci_alloc_rx_list(sc);

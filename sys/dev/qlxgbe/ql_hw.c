@@ -51,7 +51,6 @@ static void qla_del_rcv_cntxt(qla_host_t *ha);
 static int qla_init_rcv_cntxt(qla_host_t *ha);
 static void qla_del_xmt_cntxt(qla_host_t *ha);
 static int qla_init_xmt_cntxt(qla_host_t *ha);
-static void qla_hw_tx_done_locked(qla_host_t *ha, uint32_t txr_idx);
 static int qla_mbx_cmd(qla_host_t *ha, uint32_t *h_mbox, uint32_t n_hmbox,
 	uint32_t *fw_mbox, uint32_t n_fwmbox, uint32_t no_pause);
 static int qla_config_intr_cntxt(qla_host_t *ha, uint32_t start_idx,
@@ -184,9 +183,9 @@ qla_sysctl_stop_pegs(SYSCTL_HANDLER_ARGS)
 
 	if (ret == 1) {
 		ha = (qla_host_t *)arg1;
-		(void)QLA_LOCK(ha, __func__, 0);
+		QLA_LOCK(ha);
 		qla_stop_pegs(ha);	
-		QLA_UNLOCK(ha, __func__);
+		QLA_UNLOCK(ha);
 	}
 
 	return err;
@@ -440,6 +439,17 @@ ql_hw_add_sysctls(qla_host_t *ha)
                 SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
                 OID_AUTO, "enable_9kb", CTLFLAG_RW, &ha->hw.enable_9kb,
                 ha->hw.enable_9kb, "Enable 9Kbyte Buffers when MTU = 9000");
+
+        ha->hw.enable_hw_lro = 1;
+
+        SYSCTL_ADD_UINT(device_get_sysctl_ctx(dev),
+                SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
+                OID_AUTO, "enable_hw_lro", CTLFLAG_RW, &ha->hw.enable_hw_lro,
+                ha->hw.enable_hw_lro, "Enable Hardware LRO; Default is true \n"
+		"\t 1 : Hardware LRO if LRO is enabled\n"
+		"\t 0 : Software LRO if LRO is enabled\n"
+		"\t Any change requires ifconfig down/up to take effect\n"
+		"\t Note that LRO may be turned off/on via ifconfig\n");
 
 	ha->hw.mdump_active = 0;
         SYSCTL_ADD_UINT(device_get_sysctl_ctx(dev),
@@ -2047,7 +2057,7 @@ ql_hw_send(qla_host_t *ha, bus_dma_segment_t *segs, int nsegs,
 		ha->hw.iscsi_pkt_count++;
 
 	if (hw->tx_cntxt[txr_idx].txr_free <= (num_tx_cmds + QLA_TX_MIN_FREE)) {
-		qla_hw_tx_done_locked(ha, txr_idx);
+		ql_hw_tx_done_locked(ha, txr_idx);
 		if (hw->tx_cntxt[txr_idx].txr_free <=
 				(num_tx_cmds + QLA_TX_MIN_FREE)) {
         		QL_DPRINT8(ha, (dev, "%s: (hw->txr_free <= "
@@ -2256,6 +2266,83 @@ qla_config_rss_ind_table(qla_host_t *ha)
 	return (0);
 }
 
+static int
+qla_config_soft_lro(qla_host_t *ha)
+{
+        int i;
+        qla_hw_t *hw = &ha->hw;
+        struct lro_ctrl *lro;
+
+        for (i = 0; i < hw->num_sds_rings; i++) {
+                lro = &hw->sds[i].lro;
+
+		bzero(lro, sizeof(struct lro_ctrl));
+
+#if (__FreeBSD_version >= 1100101)
+                if (tcp_lro_init_args(lro, ha->ifp, 0, NUM_RX_DESCRIPTORS)) {
+                        device_printf(ha->pci_dev,
+				"%s: tcp_lro_init_args [%d] failed\n",
+                                __func__, i);
+                        return (-1);
+                }
+#else
+                if (tcp_lro_init(lro)) {
+                        device_printf(ha->pci_dev,
+				"%s: tcp_lro_init [%d] failed\n",
+                                __func__, i);
+                        return (-1);
+                }
+#endif /* #if (__FreeBSD_version >= 1100101) */
+
+                lro->ifp = ha->ifp;
+        }
+
+        QL_DPRINT2(ha, (ha->pci_dev, "%s: LRO initialized\n", __func__));
+        return (0);
+}
+
+static void
+qla_drain_soft_lro(qla_host_t *ha)
+{
+        int i;
+        qla_hw_t *hw = &ha->hw;
+        struct lro_ctrl *lro;
+
+       	for (i = 0; i < hw->num_sds_rings; i++) {
+               	lro = &hw->sds[i].lro;
+
+#if (__FreeBSD_version >= 1100101)
+		tcp_lro_flush_all(lro);
+#else
+                struct lro_entry *queued;
+
+		while ((!SLIST_EMPTY(&lro->lro_active))) {
+			queued = SLIST_FIRST(&lro->lro_active);
+			SLIST_REMOVE_HEAD(&lro->lro_active, next);
+			tcp_lro_flush(lro, queued);
+		}
+#endif /* #if (__FreeBSD_version >= 1100101) */
+	}
+
+	return;
+}
+
+static void
+qla_free_soft_lro(qla_host_t *ha)
+{
+        int i;
+        qla_hw_t *hw = &ha->hw;
+        struct lro_ctrl *lro;
+
+        for (i = 0; i < hw->num_sds_rings; i++) {
+               	lro = &hw->sds[i].lro;
+		tcp_lro_free(lro);
+	}
+
+	return;
+}
+
+
 /*
  * Name: ql_del_hw_if
  * Function: Destroys the hardware specific entities corresponding to an
@@ -2288,6 +2375,11 @@ ql_del_hw_if(qla_host_t *ha)
 		ha->hw.flags.init_intr_cnxt = 0;
 	}
 
+	if (ha->hw.enable_soft_lro) {
+		qla_drain_soft_lro(ha);
+		qla_free_soft_lro(ha);
+	}
+
 	return;
 }
 
@@ -2309,7 +2401,6 @@ qla_confirm_9kb_enable(qla_host_t *ha)
 
 	return;
 }
-
 
 /*
  * Name: ql_init_hw_if
@@ -2417,8 +2508,19 @@ ql_init_hw_if(qla_host_t *ha)
 	if (qla_link_event_req(ha, ha->hw.rcv_cntxt_id))
 		return (-1);
 
-	if (qla_config_fw_lro(ha, ha->hw.rcv_cntxt_id))
-		return (-1);
+	if (ha->ifp->if_capenable & IFCAP_LRO) {
+		if (ha->hw.enable_hw_lro) {
+			ha->hw.enable_soft_lro = 0;
+
+			if (qla_config_fw_lro(ha, ha->hw.rcv_cntxt_id))
+				return (-1);
+		} else {
+			ha->hw.enable_soft_lro = 1;
+
+			if (qla_config_soft_lro(ha))
+				return (-1);
+		}
+	}
 
         if (qla_init_nic_func(ha))
                 return (-1);
@@ -2552,15 +2654,8 @@ qla_init_rcv_cntxt(qla_host_t *ha)
 			qla_host_to_le64(hw->dma_buf.sds_ring[i].dma_addr);
 		rcntxt->sds[i].size =
 			qla_host_to_le32(NUM_STATUS_DESCRIPTORS);
-		if (ha->msix_count == 2) {
-			rcntxt->sds[i].intr_id =
-				qla_host_to_le16(hw->intr_id[0]);
-			rcntxt->sds[i].intr_src_bit = qla_host_to_le16((i));
-		} else {
-			rcntxt->sds[i].intr_id =
-				qla_host_to_le16(hw->intr_id[i]);
-			rcntxt->sds[i].intr_src_bit = qla_host_to_le16(0);
-		}
+		rcntxt->sds[i].intr_id = qla_host_to_le16(hw->intr_id[i]);
+		rcntxt->sds[i].intr_src_bit = qla_host_to_le16(0);
 	}
 
 	for (i = 0; i <  rcntxt_rds_rings; i++) {
@@ -2672,17 +2767,11 @@ qla_add_rcv_rings(qla_host_t *ha, uint32_t sds_idx, uint32_t nsds)
                 add_rcv->sds[i].size =
                         qla_host_to_le32(NUM_STATUS_DESCRIPTORS);
 
-                if (ha->msix_count == 2) {
-                        add_rcv->sds[i].intr_id =
-                                qla_host_to_le16(hw->intr_id[0]);
-                        add_rcv->sds[i].intr_src_bit = qla_host_to_le16(j);
-                } else {
-                        add_rcv->sds[i].intr_id =
-                                qla_host_to_le16(hw->intr_id[j]);
-                        add_rcv->sds[i].intr_src_bit = qla_host_to_le16(0);
-                }
+                add_rcv->sds[i].intr_id = qla_host_to_le16(hw->intr_id[j]);
+                add_rcv->sds[i].intr_src_bit = qla_host_to_le16(0);
 
         }
+
         for (i = 0; (i <  nsds); i++) {
                 j = i + sds_idx;
 
@@ -2803,6 +2892,7 @@ qla_init_xmt_cntxt_i(qla_host_t *ha, uint32_t txr_idx)
 	q80_rsp_tx_cntxt_t	*tcntxt_rsp;
 	uint32_t		err;
 	qla_hw_tx_cntxt_t       *hw_tx_cntxt;
+	uint32_t		intr_idx;
 
 	hw_tx_cntxt = &hw->tx_cntxt[txr_idx];
 
@@ -2818,6 +2908,8 @@ qla_init_xmt_cntxt_i(qla_host_t *ha, uint32_t txr_idx)
 	tcntxt->count_version = (sizeof (q80_rq_tx_cntxt_t) >> 2);
 	tcntxt->count_version |= Q8_MBX_CMD_VERSION;
 
+	intr_idx = txr_idx;
+
 #ifdef QL_ENABLE_ISCSI_TLV
 
 	tcntxt->cap0 = Q8_TX_CNTXT_CAP0_BASEFW | Q8_TX_CNTXT_CAP0_LSO |
@@ -2827,8 +2919,9 @@ qla_init_xmt_cntxt_i(qla_host_t *ha, uint32_t txr_idx)
 		tcntxt->traffic_class = 1;
 	}
 
-#else
+	intr_idx = txr_idx % (ha->hw.num_tx_rings >> 1);
 
+#else
 	tcntxt->cap0 = Q8_TX_CNTXT_CAP0_BASEFW | Q8_TX_CNTXT_CAP0_LSO;
 
 #endif /* #ifdef QL_ENABLE_ISCSI_TLV */
@@ -2841,9 +2934,8 @@ qla_init_xmt_cntxt_i(qla_host_t *ha, uint32_t txr_idx)
 		qla_host_to_le64(hw_tx_cntxt->tx_cons_paddr);
 	tcntxt->tx_ring[0].nentries = qla_host_to_le16(NUM_TX_DESCRIPTORS);
 
-	tcntxt->tx_ring[0].intr_id = qla_host_to_le16(hw->intr_id[0]);
+	tcntxt->tx_ring[0].intr_id = qla_host_to_le16(hw->intr_id[intr_idx]);
 	tcntxt->tx_ring[0].intr_src_bit = qla_host_to_le16(0);
-
 
 	hw_tx_cntxt->txr_free = NUM_TX_DESCRIPTORS;
 	hw_tx_cntxt->txr_next = hw_tx_cntxt->txr_comp = 0;
@@ -3166,11 +3258,11 @@ ql_hw_set_multi(qla_host_t *ha, uint8_t *mcast_addr, uint32_t mcnt,
 }
 
 /*
- * Name: qla_hw_tx_done_locked
+ * Name: ql_hw_tx_done_locked
  * Function: Handle Transmit Completions
  */
-static void
-qla_hw_tx_done_locked(qla_host_t *ha, uint32_t txr_idx)
+void
+ql_hw_tx_done_locked(qla_host_t *ha, uint32_t txr_idx)
 {
 	qla_tx_buf_t *txb;
         qla_hw_t *hw = &ha->hw;
@@ -3205,34 +3297,6 @@ qla_hw_tx_done_locked(qla_host_t *ha, uint32_t txr_idx)
 	}
 
 	hw_tx_cntxt->txr_free += comp_count;
-	return;
-}
-
-/*
- * Name: ql_hw_tx_done
- * Function: Handle Transmit Completions
- */
-void
-ql_hw_tx_done(qla_host_t *ha)
-{
-	int i;
-	uint32_t flag = 0;
-
-	if (!mtx_trylock(&ha->tx_lock)) {
-       		QL_DPRINT8(ha, (ha->pci_dev,
-			"%s: !mtx_trylock(&ha->tx_lock)\n", __func__));
-		return;
-	}
-	for (i = 0; i < ha->hw.num_tx_rings; i++) {
-		qla_hw_tx_done_locked(ha, i);
-		if (ha->hw.tx_cntxt[i].txr_free <= (NUM_TX_DESCRIPTORS >> 1))
-			flag = 1;
-	}
-
-	if (!flag)
-		ha->ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
-
-	QLA_TX_UNLOCK(ha);
 	return;
 }
 
@@ -3655,7 +3719,7 @@ qla_get_port_config(qla_host_t *ha, uint32_t *cfg_bits)
 }
 
 int
-qla_iscsi_pdu(qla_host_t *ha, struct mbuf *mp)
+ql_iscsi_pdu(qla_host_t *ha, struct mbuf *mp)
 {
         struct ether_vlan_header        *eh;
         uint16_t                        etype;

@@ -6,6 +6,7 @@ MAN=
 
 PROG?=		loader
 NEWVERSWHAT?=	"bootstrap loader" sparc64
+VERSION_FILE=	${.CURDIR}/../loader/version
 INSTALLFLAGS=	-b
 
 # Architecture-specific loader code
@@ -70,7 +71,7 @@ LIBFICL=	${.OBJDIR}/../../ficl/libficl.a
 CFLAGS+=	-I${.CURDIR}/../../common
 CFLAGS+=	-I.
 
-CLEANFILES+=	vers.c loader.help
+CLEANFILES+=	loader.help
 
 LDFLAGS=	-static
 
@@ -81,12 +82,11 @@ CFLAGS+=	-I${.CURDIR}/../../ofw/libofw/
 # where to get libstand from
 CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand/
 
+# Need sys/ for crypto/intake.h
+CFLAGS+=	-I${SRCTOP}/sys
+
 DPADD=		${LIBFICL} ${LIBZFSBOOT} ${LIBOFW} ${LIBSTAND}
 LDADD=		${LIBFICL} ${LIBZFSBOOT} ${LIBOFW} -lstand
-
-vers.c:	${.CURDIR}/../../common/newvers.sh ${.CURDIR}/../loader/version
-	sh ${.CURDIR}/../../common/newvers.sh ${.CURDIR}/../loader/version \
-	    ${NEWVERSWHAT}
 
 loader.help: help.common help.sparc64
 	cat ${.ALLSRC} | \

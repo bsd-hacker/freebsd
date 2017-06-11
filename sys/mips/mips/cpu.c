@@ -78,9 +78,6 @@ struct mips_cpuinfo cpuinfo;
 #   define	_ADDU_V0_T0_T1 \
     _ENCODE_INSN(0, T0, T1, V0, OP_DADDU)
 
-#   define _MTC0_V0_USERLOCAL \
-    _ENCODE_INSN(OP_COP0, OP_DMT, V0, 4, 2)
-
 #else /* mips 32 */
 
 #   define	_LOAD_T0_MDTLS_A1 \
@@ -93,10 +90,19 @@ struct mips_cpuinfo cpuinfo;
 #   define	_ADDU_V0_T0_T1 \
     _ENCODE_INSN(0, T0, T1, V0, OP_ADDU)
 
+#endif /* ! __mips_n64 */
+
+#if defined(__mips_n64) || defined(__mips_n32)
+
+#   define _MTC0_V0_USERLOCAL \
+    _ENCODE_INSN(OP_COP0, OP_DMT, V0, 4, 2)
+
+#else /* mips o32 */
+
 #   define _MTC0_V0_USERLOCAL \
     _ENCODE_INSN(OP_COP0, OP_MT, V0, 4, 2)
 
-#endif /* ! __mips_n64 */
+#endif /* ! (__mips_n64 || __mipsn32) */
 
 #define	_JR_RA	_ENCODE_INSN(OP_SPECIAL, RA, 0, 0, OP_JR)
 #define	_NOP	0
@@ -177,6 +183,10 @@ mips_get_identity(struct mips_cpuinfo *cpuinfo)
 		if (cfg2 & MIPS_CONFIG2_M)
 			cfg3 = mips_rd_config3();
 	}
+
+	/* Save FP implementation revision if FP is present. */
+	if (cfg1 & MIPS_CONFIG1_FP)
+		cpuinfo->fpu_id = MipsFPID();
 
 	/* Check to see if UserLocal register is implemented. */
 	if (cfg3 & MIPS_CONFIG3_ULR) {
@@ -337,6 +347,9 @@ static void
 cpu_identify(void)
 {
 	uint32_t cfg0, cfg1, cfg2, cfg3;
+#if defined(CPU_MIPS1004K) || defined (CPU_MIPS74K) || defined (CPU_MIPS24K)
+	uint32_t cfg7;
+#endif
 	printf("cpu%d: ", 0);   /* XXX per-cpu */
 	switch (cpuinfo.cpu_vendor) {
 	case MIPS_PRID_CID_MTI:
@@ -369,6 +382,10 @@ cpu_identify(void)
 		break;
 	case MIPS_PRID_CID_CAVIUM:
 		printf("Cavium");
+		break;
+	case MIPS_PRID_CID_INGENIC:
+	case MIPS_PRID_CID_INGENIC2:
+		printf("Ingenic XBurst");
 		break;
 	case MIPS_PRID_CID_PREHISTORIC:
 	default:
@@ -461,6 +478,19 @@ cpu_identify(void)
 	printf("  Config1=0x%b\n", cfg1, 
 	    "\20\7COP2\6MDMX\5PerfCount\4WatchRegs\3MIPS16\2EJTAG\1FPU");
 
+	if (cpuinfo.fpu_id != 0)
+		printf("  FPU ID=0x%b\n", cpuinfo.fpu_id,
+		    "\020"
+		    "\020S"
+		    "\021D"
+		    "\022PS"
+		    "\0233D"
+		    "\024W"
+		    "\025L"
+		    "\026F64"
+		    "\0272008"
+		    "\034UFRP");
+
 	/* If config register selection 2 does not exist, exit. */
 	if (!(cfg1 & MIPS_CONFIG_CM))
 		return;
@@ -478,7 +508,12 @@ cpu_identify(void)
 
 	/* Print Config3 if it contains any useful info */
 	if (cfg3 & ~(0x80000000))
-		printf("  Config3=0x%b\n", cfg3, "\20\14ULRI\2SmartMIPS\1TraceLogic");
+		printf("  Config3=0x%b\n", cfg3, "\20\16ULRI\2SmartMIPS\1TraceLogic");
+
+#if defined(CPU_MIPS1004K) || defined (CPU_MIPS74K) || defined (CPU_MIPS24K)
+	cfg7 = mips_rd_config7();
+	printf("  Config7=0x%b\n", cfg7, "\20\40WII\21AR");
+#endif
 }
 
 static struct rman cpu_hardirq_rman;

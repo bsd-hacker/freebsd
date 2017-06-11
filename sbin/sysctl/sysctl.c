@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -114,7 +114,7 @@ static const char *ctl_typename[CTLTYPE+1] = {
 	[CTLTYPE_ULONG] = "unsigned long",
 	[CTLTYPE_U8] = "uint8_t",
 	[CTLTYPE_U16] = "uint16_t",
-	[CTLTYPE_U32] = "uint16_t",
+	[CTLTYPE_U32] = "uint32_t",
 	[CTLTYPE_U64] = "uint64_t",
 	[CTLTYPE_S8] = "int8_t",
 	[CTLTYPE_S16] = "int16_t",

@@ -7,8 +7,6 @@ FILESGROUPS=	FILES
 
 # No need as it is empty and just causes rebuilds since this file does so much.
 UPDATE_DEPENDFILE=	no
-SUBDIR=	\
-	newsyslog.conf.d
 
 .if ${MK_SENDMAIL} != "no"
 SUBDIR+=sendmail
@@ -64,7 +62,7 @@ BIN1+=	etc.${MACHINE_CPUARCH}/ttys
 .error etc.MACHINE/ttys missing
 .endif
 
-OPENBSMDIR=			${.CURDIR}/../contrib/openbsm
+OPENBSMDIR=			${SRCTOP}/contrib/openbsm
 BSM_ETC_OPEN_FILES=		${OPENBSMDIR}/etc/audit_class \
 				${OPENBSMDIR}/etc/audit_event
 BSM_ETC_RESTRICTED_FILES=	${OPENBSMDIR}/etc/audit_control \
@@ -103,7 +101,7 @@ BIN1+= inetd.conf
 .endif
 
 .if ${MK_LOCATE} != "no"
-BIN1+=	${.CURDIR}/../usr.bin/locate/locate/locate.rc
+BIN1+=	${SRCTOP}/usr.bin/locate/locate/locate.rc
 .endif
 
 .if ${MK_LPR} != "no"
@@ -111,7 +109,7 @@ BIN1+=	hosts.lpd printcap
 .endif
 
 .if ${MK_MAIL} != "no"
-BIN1+=	${.CURDIR}/../usr.bin/mail/misc/mail.rc
+BIN1+=	${SRCTOP}/usr.bin/mail/misc/mail.rc
 .endif
 
 .if ${MK_NTP} != "no"
@@ -119,12 +117,12 @@ BIN1+=	ntp.conf
 .endif
 
 .if ${MK_OPENSSH} != "no"
-SSH=	${.CURDIR}/../crypto/openssh/ssh_config \
-	${.CURDIR}/../crypto/openssh/sshd_config \
-	${.CURDIR}/../crypto/openssh/moduli
+SSH=	${SRCTOP}/crypto/openssh/ssh_config \
+	${SRCTOP}/crypto/openssh/sshd_config \
+	${SRCTOP}/crypto/openssh/moduli
 .endif
 .if ${MK_OPENSSL} != "no"
-SSL=	${.CURDIR}/../crypto/openssl/apps/openssl.cnf
+SSL=	${SRCTOP}/crypto/openssl/apps/openssl.cnf
 .endif
 
 .if ${MK_NS_CACHING} != "no"
@@ -185,7 +183,7 @@ DESTDIR:=	${DESTDIR:C://*:/:g}
 
 afterinstall:
 .if ${MK_MAN} != "no"
-	${_+_}cd ${.CURDIR}/../share/man; ${MAKE} makedb
+	${_+_}cd ${SRCTOP}/share/man; ${MAKE} makedb
 .endif
 
 distribute:
@@ -252,9 +250,11 @@ distribution:
 .if ${MK_CASPER} != "no"
 	${_+_}cd ${.CURDIR}/casper; ${MAKE} install
 .endif
+	${_+_}cd ${.CURDIR}/cron.d; ${MAKE} install
 	${_+_}cd ${.CURDIR}/defaults; ${MAKE} install
 	${_+_}cd ${.CURDIR}/devd; ${MAKE} install
 	${_+_}cd ${.CURDIR}/gss; ${MAKE} install
+	${_+_}cd ${.CURDIR}/newsyslog.conf.d; ${MAKE} install
 .if ${MK_NTP} != "no"
 	${_+_}cd ${.CURDIR}/ntp; ${MAKE} install
 .endif
@@ -263,8 +263,9 @@ distribution:
 	${_+_}cd ${.CURDIR}/pkg; ${MAKE} install
 .endif
 	${_+_}cd ${.CURDIR}/rc.d; ${MAKE} install
-	${_+_}cd ${.CURDIR}/../share/termcap; ${MAKE} etc-termcap
-	${_+_}cd ${.CURDIR}/../usr.sbin/rmt; ${MAKE} etc-rmt
+	${_+_}cd ${SRCTOP}/share/termcap; ${MAKE} etc-termcap
+	${_+_}cd ${.CURDIR}/syslog.d; ${MAKE} install
+	${_+_}cd ${SRCTOP}/usr.sbin/rmt; ${MAKE} etc-rmt
 	${_+_}cd ${.CURDIR}/pam.d; ${MAKE} install
 	cd ${.CURDIR}; ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 0444 \
 	    ${BSM_ETC_OPEN_FILES} ${BSM_ETC_DIR}
@@ -328,9 +329,9 @@ distribution:
 	cd ${.CURDIR}/..; ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 444 \
 		${FREEBSD} ${DESTDIR}/
 .if ${MK_BOOT} != "no"
-.if exists(${.CURDIR}/../sys/${MACHINE}/conf/GENERIC.hints)
+.if exists(${SRCTOP}/sys/${MACHINE}/conf/GENERIC.hints)
 	${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 444 \
-	    ${.CURDIR}/../sys/${MACHINE}/conf/GENERIC.hints \
+	    ${SRCTOP}/sys/${MACHINE}/conf/GENERIC.hints \
 	    ${DESTDIR}/boot/device.hints
 .endif
 .endif
@@ -359,9 +360,6 @@ MTREES=		mtree/BSD.root.dist		/		\
 		mtree/BSD.usr.dist		/usr		\
 		mtree/BSD.include.dist		/usr/include	\
 		mtree/BSD.debug.dist		/usr/lib
-.if ${MK_GROFF} != "no"
-MTREES+=	mtree/BSD.groff.dist		/usr
-.endif
 .if ${MK_LIB32} != "no"
 MTREES+=	mtree/BSD.lib32.dist		/usr
 MTREES+=	mtree/BSD.lib32.dist		/usr/lib/debug/usr

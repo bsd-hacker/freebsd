@@ -486,8 +486,9 @@ ioat3_attach(device_t device)
 	ringsz = sizeof(struct ioat_dma_hw_descriptor) * num_descriptors;
 
 	error = bus_dma_tag_create(bus_get_dma_tag(ioat->device),
-	    2 * 1024 * 1024, 0x0, BUS_SPACE_MAXADDR_40BIT, BUS_SPACE_MAXADDR,
-	    NULL, NULL, ringsz, 1, ringsz, 0, NULL, NULL, &ioat->hw_desc_tag);
+	    2 * 1024 * 1024, 0x0, (bus_addr_t)BUS_SPACE_MAXADDR_40BIT,
+	    BUS_SPACE_MAXADDR, NULL, NULL, ringsz, 1, ringsz, 0, NULL, NULL,
+	    &ioat->hw_desc_tag);
 	if (error != 0)
 		return (error);
 
@@ -765,6 +766,15 @@ out:
 	mtx_lock(&ioat->submit_lock);
 	mtx_lock(&ioat->cleanup_lock);
 	ioat->quiescing = TRUE;
+	/*
+	 * This is safe to do here because we have both locks and the submit
+	 * queue is quiesced.  We know that we will drain all outstanding
+	 * events, so ioat_reset_hw can't deadlock.  It is necessary to
+	 * protect other ioat_process_event threads from racing ioat_reset_hw,
+	 * reading an indeterminate hw state, and attempting to continue
+	 * issuing completions.
+	 */
+	ioat->resetting_cleanup = TRUE;
 
 	chanerr = ioat_read_4(ioat, IOAT_CHANERR_OFFSET);
 	if (1 <= g_ioat_debug_level)
@@ -938,6 +948,7 @@ ioat_acquire(bus_dmaengine_t dmaengine)
 	ioat = to_ioat_softc(dmaengine);
 	mtx_lock(&ioat->submit_lock);
 	CTR2(KTR_IOAT, "%s channel=%u", __func__, ioat->chan_idx);
+	ioat->acq_head = ioat->head;
 }
 
 int
@@ -967,12 +978,15 @@ ioat_release(bus_dmaengine_t dmaengine)
 	CTR4(KTR_IOAT, "%s channel=%u dispatch2 hw_head=%u head=%u", __func__,
 	    ioat->chan_idx, ioat->hw_head & UINT16_MAX, ioat->head);
 
-	ioat_write_2(ioat, IOAT_DMACOUNT_OFFSET, (uint16_t)ioat->hw_head);
+	if (ioat->acq_head != ioat->head) {
+		ioat_write_2(ioat, IOAT_DMACOUNT_OFFSET,
+		    (uint16_t)ioat->hw_head);
 
-	if (!ioat->is_completion_pending) {
-		ioat->is_completion_pending = TRUE;
-		callout_reset(&ioat->poll_timer, 1, ioat_poll_timer_callback,
-		    ioat);
+		if (!ioat->is_completion_pending) {
+			ioat->is_completion_pending = TRUE;
+			callout_reset(&ioat->poll_timer, 1,
+			    ioat_poll_timer_callback, ioat);
+		}
 	}
 	mtx_unlock(&ioat->submit_lock);
 }

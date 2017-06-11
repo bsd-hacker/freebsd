@@ -14,7 +14,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_extern.h>
 #include <sys/user.h>
 #include <sys/uio.h>
+#include <machine/cpuinfo.h>
 #include <machine/reg.h>
 #include <machine/md_var.h>
 #include <machine/sigframe.h>
@@ -292,9 +293,9 @@ void
 makectx(struct trapframe *tf, struct pcb *pcb)
 {
 
-	pcb->pcb_regs.ra = tf->ra;
-	pcb->pcb_regs.pc = tf->pc;
-	pcb->pcb_regs.sp = tf->sp;
+	pcb->pcb_context[PCB_REG_RA] = tf->ra;
+	pcb->pcb_context[PCB_REG_PC] = tf->pc;
+	pcb->pcb_context[PCB_REG_SP] = tf->sp;
 }
 
 int
@@ -378,7 +379,8 @@ fill_fpregs(struct thread *td, struct fpreg *fpregs)
 {
 	if (td == PCPU_GET(fpcurthread))
 		MipsSaveCurFPState(td);
-	memcpy(fpregs, &td->td_frame->f0, sizeof(struct fpreg)); 
+	memcpy(fpregs, &td->td_frame->f0, sizeof(struct fpreg));
+	fpregs->r_regs[FIR_NUM] = cpuinfo.fpu_id;
 	return 0;
 }
 

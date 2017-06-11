@@ -139,6 +139,10 @@ host_dev_print(int verbose)
 {
 	char line[80];
 
+	printf("%s devices:", host_dev.dv_name);
+	if (pager_output("\n") != 0)
+		return (1);
+
 	snprintf(line, sizeof(line), "    host%d:   Host filesystem\n", 0);
 	return (pager_output(line));
 }
@@ -167,8 +171,8 @@ host_dev_close(struct open_file *f)
 }
 
 static int
-host_dev_strategy(void *devdata, int rw, daddr_t dblk, size_t offset,
-    size_t size, char *buf, size_t *rsize)
+host_dev_strategy(void *devdata, int rw, daddr_t dblk, size_t size,
+    char *buf, size_t *rsize)
 {
 
 	return (ENOSYS);

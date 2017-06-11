@@ -1,4 +1,5 @@
 /*-
+ * Copyright (c) 2017 Dell EMC
  * Copyright (c) 2007 Sandvine Incorporated
  * Copyright (c) 1998 John D. Polstra
  * All rights reserved.
@@ -102,6 +103,7 @@ static void *elf_note_fpregset(void *, size_t *);
 static void *elf_note_prpsinfo(void *, size_t *);
 static void *elf_note_prstatus(void *, size_t *);
 static void *elf_note_thrmisc(void *, size_t *);
+static void *elf_note_ptlwpinfo(void *, size_t *);
 #if defined(__i386__) || defined(__amd64__)
 static void *elf_note_x86_xstate(void *, size_t *);
 #endif
@@ -117,8 +119,8 @@ static void *elf_note_procstat_psstrings(void *, size_t *);
 static void *elf_note_procstat_rlimit(void *, size_t *);
 static void *elf_note_procstat_umask(void *, size_t *);
 static void *elf_note_procstat_vmmap(void *, size_t *);
-static void elf_puthdr(pid_t, vm_map_entry_t, void *, size_t, size_t, size_t,
-    int);
+static void elf_puthdr(int, pid_t, vm_map_entry_t, void *, size_t, size_t,
+    size_t, int);
 static void elf_putnote(int, notefunc_t, void *, struct sbuf *);
 static void elf_putnotes(pid_t, struct sbuf *, size_t *);
 static void freemap(vm_map_entry_t);
@@ -178,7 +180,7 @@ elf_detach(void)
  * Write an ELF coredump for the given pid to the given fd.
  */
 static void
-elf_coredump(int efd __unused, int fd, pid_t pid)
+elf_coredump(int efd, int fd, pid_t pid)
 {
 	vm_map_entry_t map;
 	struct sseg_closure seginfo;
@@ -230,7 +232,7 @@ elf_coredump(int efd __unused, int fd, pid_t pid)
 	hdr = sbuf_data(sb);
 	segoff = sbuf_len(sb);
 	/* Fill in the header. */
-	elf_puthdr(pid, map, hdr, hdrsize, notesz, segoff, seginfo.count);
+	elf_puthdr(efd, pid, map, hdr, hdrsize, notesz, segoff, seginfo.count);
 
 	n = write(fd, hdr, segoff);
 	if (n == -1)
@@ -360,6 +362,7 @@ elf_putnotes(pid_t pid, struct sbuf *sb, size_t *sizep)
 		elf_putnote(NT_PRSTATUS, elf_note_prstatus, tids + i, sb);
 		elf_putnote(NT_FPREGSET, elf_note_fpregset, tids + i, sb);
 		elf_putnote(NT_THRMISC, elf_note_thrmisc, tids + i, sb);
+		elf_putnote(NT_PTLWPINFO, elf_note_ptlwpinfo, tids + i, sb);
 #if defined(__i386__) || defined(__amd64__)
 		elf_putnote(NT_X86_XSTATE, elf_note_x86_xstate, tids + i, sb);
 #endif
@@ -420,13 +423,20 @@ elf_putnote(int type, notefunc_t notefunc, void *arg, struct sbuf *sb)
  * Generate the ELF coredump header.
  */
 static void
-elf_puthdr(pid_t pid, vm_map_entry_t map, void *hdr, size_t hdrsize,
+elf_puthdr(int efd, pid_t pid, vm_map_entry_t map, void *hdr, size_t hdrsize,
     size_t notesz, size_t segoff, int numsegs)
 {
-	Elf_Ehdr *ehdr;
+	Elf_Ehdr *ehdr, binhdr;
 	Elf_Phdr *phdr;
 	Elf_Shdr *shdr;
 	struct phdr_closure phc;
+	ssize_t cnt;
+
+	cnt = read(efd, &binhdr, sizeof(binhdr));
+	if (cnt < 0)
+		err(1, "Failed to re-read ELF header");
+	else if (cnt != sizeof(binhdr))
+		errx(1, "Failed to re-read ELF header");
 
 	ehdr = (Elf_Ehdr *)hdr;
 
@@ -441,11 +451,11 @@ elf_puthdr(pid_t pid, vm_map_entry_t map, void *hdr, size_t hdrsize,
 	ehdr->e_ident[EI_ABIVERSION] = 0;
 	ehdr->e_ident[EI_PAD] = 0;
 	ehdr->e_type = ET_CORE;
-	ehdr->e_machine = ELF_ARCH;
+	ehdr->e_machine = binhdr.e_machine;
 	ehdr->e_version = EV_CURRENT;
 	ehdr->e_entry = 0;
 	ehdr->e_phoff = sizeof(Elf_Ehdr);
-	ehdr->e_flags = 0;
+	ehdr->e_flags = binhdr.e_flags;
 	ehdr->e_ehsize = sizeof(Elf_Ehdr);
 	ehdr->e_phentsize = sizeof(Elf_Phdr);
 	ehdr->e_shentsize = sizeof(Elf_Shdr);
@@ -680,6 +690,24 @@ elf_note_thrmisc(void *arg, size_t *sizep)
 
 	*sizep = sizeof(*thrmisc);
 	return (thrmisc);
+}
+
+static void *
+elf_note_ptlwpinfo(void *arg, size_t *sizep)
+{
+	lwpid_t tid;
+	void *p;
+
+	tid = *(lwpid_t *)arg;
+	p = calloc(1, sizeof(int) + sizeof(struct ptrace_lwpinfo));
+	if (p == NULL)
+		errx(1, "out of memory");
+	*(int *)p = sizeof(struct ptrace_lwpinfo);
+	ptrace(PT_LWPINFO, tid,
+	    (char *)p + sizeof (int), sizeof(struct ptrace_lwpinfo));
+
+	*sizep = sizeof(int) + sizeof(struct ptrace_lwpinfo);
+	return (p);
 }
 
 #if defined(__i386__) || defined(__amd64__)

@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd May 3, 2016
+.Dd April 18, 2017
 .Dt KQUEUE 2
 .Os
 .Sh NAME
@@ -34,9 +34,7 @@
 .Sh LIBRARY
 .Lb libc
 .Sh SYNOPSIS
-.In sys/types.h
 .In sys/event.h
-.In sys/time.h
 .Ft int
 .Fn kqueue "void"
 .Ft int
@@ -334,6 +332,9 @@ For sockets, the low water mark and socket error handling is
 identical to the
 .Dv EVFILT_READ
 case.
+.It Dv EVFILT_EMPTY
+Takes a descriptor as the identifier, and returns whenever
+there is no remaining data in the write buffer.
 .It Dv EVFILT_AIO
 The sigevent portion of the AIO request is filled in, with
 .Va sigev_notify_kqueue
@@ -633,15 +634,12 @@ If the time limit expires, then
 returns 0.
 .Sh EXAMPLES
 .Bd -literal -compact
-#include <sys/types.h>
 #include <sys/event.h>
-#include <sys/time.h>
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 int
 main(int argc, char **argv)
@@ -769,3 +767,9 @@ The
 .Fa timeout
 value is limited to 24 hours; longer timeouts will be silently
 reinterpreted as 24 hours.
+.Pp
+Previous versions of
+.In sys/event.h
+fail to parse without including
+.In sys/types.h
+manually.

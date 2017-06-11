@@ -44,8 +44,7 @@ __FBSDID("$FreeBSD$");
 static int	beri_cfi_disk_init(void);
 static int	beri_cfi_disk_open(struct open_file *, ...);
 static int	beri_cfi_disk_close(struct open_file *);
-static void	beri_cfi_disk_cleanup(void);
-static int	beri_cfi_disk_strategy(void *, int, daddr_t, size_t, size_t,
+static int	beri_cfi_disk_strategy(void *, int, daddr_t, size_t,
 		    char *, size_t *);
 static int	beri_cfi_disk_print(int);
 
@@ -58,7 +57,7 @@ struct devsw beri_cfi_disk = {
 	.dv_close = beri_cfi_disk_close,
 	.dv_ioctl = noioctl,
 	.dv_print = beri_cfi_disk_print,
-	.dv_cleanup = beri_cfi_disk_cleanup,
+	.dv_cleanup = NULL,
 };
 
 static int
@@ -69,11 +68,12 @@ beri_cfi_disk_init(void)
 }
 
 static int
-beri_cfi_disk_strategy(void *devdata, int flag, daddr_t dblk, size_t offset,
-    size_t size, char *buf, size_t *rsizep)
+beri_cfi_disk_strategy(void *devdata, int flag, daddr_t dblk, size_t size,
+    char *buf, size_t *rsizep)
 {
 	int error;
 
+	flag &= F_MASK;
 	if (flag == F_WRITE)
 		return (EROFS);
 	if (flag != F_READ)
@@ -100,7 +100,7 @@ beri_cfi_disk_open(struct open_file *f, ...)
 
 	if (dev->d_unit != 0)
 		return (EIO);
-	return (disk_open(dev, cfi_get_mediasize(), cfi_get_sectorsize(), 0));
+	return (disk_open(dev, cfi_get_mediasize(), cfi_get_sectorsize()));
 }
 
 static int
@@ -119,6 +119,10 @@ beri_cfi_disk_print(int verbose)
 	char line[80];
 	int ret;
 
+	printf("%s devices:", beri_cfi_disk.dv_name);
+	if ((ret = pager_output("\n")) != 0)
+		return (ret);
+
 	snprintf(line, sizeof(line), "    cfi%d   CFI flash device\n", 0);
 	ret = pager_output(line);
 	if (ret != 0)
@@ -127,19 +131,11 @@ beri_cfi_disk_print(int verbose)
 	dev.d_unit = 0;
 	dev.d_slice = -1;
 	dev.d_partition = -1;
-	if (disk_open(&dev, cfi_get_mediasize(),
-	    cfi_get_sectorsize(), 0) == 0) {
+	if (disk_open(&dev, cfi_get_mediasize(), cfi_get_sectorsize()) == 0) {
 		snprintf(line, sizeof(line), "    cfi%d", 0);
 		ret = disk_print(&dev, line, verbose);
 		disk_close(&dev);
 	}
 
 	return (ret);
-}
-
-static void
-beri_cfi_disk_cleanup(void)
-{
-
-	disk_cleanup(&beri_cfi_disk);
 }

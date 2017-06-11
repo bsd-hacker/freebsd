@@ -6189,7 +6189,7 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 	struct ieee80211_frame *protwh;
 	struct ieee80211_frame_cts *cts;
 	struct ieee80211_frame_rts *rts;
-	const struct ieee80211_txparam *tp;
+	const struct ieee80211_txparam *tp = ni->ni_txparms;
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct mbuf *mprot;
@@ -6214,7 +6214,6 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 	/*
 	 * Find TX rate
 	 */
-	tp = &vap->iv_txparms[ieee80211_chan2mode(ic->ic_curchan)];
 	if (type != IEEE80211_FC0_TYPE_DATA || (m->m_flags & M_EAPOL))
 		rate = rate_fb = tp->mgmtrate;
 	else if (ismcast)
@@ -6755,10 +6754,15 @@ static void
 bwn_txpwr(void *arg, int npending)
 {
 	struct bwn_mac *mac = arg;
-	struct bwn_softc *sc = mac->mac_sc;
+	struct bwn_softc *sc;
+
+	if (mac == NULL)
+		return;
+
+	sc = mac->mac_sc;
 
 	BWN_LOCK(sc);
-	if (mac && mac->mac_status >= BWN_MAC_STATUS_STARTED &&
+	if (mac->mac_status >= BWN_MAC_STATUS_STARTED &&
 	    mac->mac_phy.set_txpwr != NULL)
 		mac->mac_phy.set_txpwr(mac);
 	BWN_UNLOCK(sc);

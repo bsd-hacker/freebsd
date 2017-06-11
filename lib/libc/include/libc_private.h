@@ -42,7 +42,10 @@
  * or more threads. It is used to avoid calling locking functions
  * when they are not required.
  */
+#ifndef __LIBC_ISTHREADED_DECLARED
+#define __LIBC_ISTHREADED_DECLARED
 extern int	__isthreaded;
+#endif
 
 /*
  * Elf_Auxinfo *__elf_aux_vector, the pointer to the ELF aux vector
@@ -229,6 +232,7 @@ enum {
 	INTERPOS_ppoll,
 	INTERPOS_map_stacks_exec,
 	INTERPOS_fdatasync,
+	INTERPOS_clock_nanosleep,
 	INTERPOS_MAX
 };
 
@@ -272,6 +276,8 @@ void _malloc_thread_cleanup(void);
  * thread is exiting, so its thread-local dtors should be called.
  */
 void __cxa_thread_call_dtors(void);
+int __cxa_thread_atexit_hidden(void (*dtor_func)(void *), void *obj,
+    void *dso_symbol) __hidden;
 
 /*
  * These functions are used by the threading libraries in order to protect
@@ -304,6 +310,7 @@ struct pollfd;
 struct rusage;
 struct sigaction;
 struct sockaddr;
+struct stat;
 struct timespec;
 struct timeval;
 struct timezone;
@@ -316,10 +323,14 @@ int		__sys_aio_suspend(const struct aiocb * const[], int,
 int		__sys_accept(int, struct sockaddr *, __socklen_t *);
 int		__sys_accept4(int, struct sockaddr *, __socklen_t *, int);
 int		__sys_clock_gettime(__clockid_t, struct timespec *ts);
+int		__sys_clock_nanosleep(__clockid_t, int,
+		    const struct timespec *, struct timespec *);
 int		__sys_close(int);
 int		__sys_connect(int, const struct sockaddr *, __socklen_t);
+__ssize_t	__sys_getdirentries(int, char *, __size_t, __off_t *);
 int		__sys_fcntl(int, int, ...);
 int		__sys_fdatasync(int);
+int		__sys_fstatat(int, const char *, struct stat *, int);
 int		__sys_fsync(int);
 __pid_t		__sys_fork(void);
 int		__sys_ftruncate(int, __off_t);
@@ -398,5 +409,7 @@ void __libc_map_stacks_exec(void);
 
 void	_pthread_cancel_enter(int);
 void	_pthread_cancel_leave(int);
+
+void __throw_constraint_handler_s(const char * restrict msg, int error);
 
 #endif /* _LIBC_PRIVATE_H_ */

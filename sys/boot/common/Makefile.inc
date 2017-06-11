@@ -7,8 +7,6 @@ SRCS+=	module.c panic.c
 .if ${MACHINE} == "i386" || ${MACHINE_CPUARCH} == "amd64"
 SRCS+=	load_elf32.c load_elf32_obj.c reloc_elf32.c
 SRCS+=	load_elf64.c load_elf64_obj.c reloc_elf64.c
-.elif ${MACHINE} == "pc98"
-SRCS+=	load_elf32.c load_elf32_obj.c reloc_elf32.c
 .elif ${MACHINE_CPUARCH} == "aarch64"
 SRCS+=	load_elf64.c reloc_elf64.c
 .elif ${MACHINE_CPUARCH} == "arm"
@@ -38,6 +36,9 @@ CFLAGS+= -DLOADER_GPT_SUPPORT
 .if !defined(LOADER_NO_MBR_SUPPORT)
 CFLAGS+= -DLOADER_MBR_SUPPORT
 .endif
+.endif
+.if !defined(LOADER_NO_GELI_SUPPORT)
+CFLAGS+= -DLOADER_GELI_SUPPORT
 .endif
 
 .if defined(HAVE_BCACHE)
@@ -71,3 +72,12 @@ CFLAGS+=	-DBOOT_PROMPT_123
 SRCS+=	install.c
 CFLAGS+=-I${.CURDIR}/../../../../lib/libstand
 .endif
+
+CLEANFILES+=	vers.c
+VERSION_FILE?=	${.CURDIR}/version
+.if ${MK_REPRODUCIBLE_BUILD} != no
+REPRO_FLAG=	-r
+.endif
+vers.c: ${SRCTOP}/sys/boot/common/newvers.sh ${VERSION_FILE}
+	sh ${SRCTOP}/sys/boot/common/newvers.sh ${REPRO_FLAG} ${VERSION_FILE} \
+	    ${NEWVERSWHAT}

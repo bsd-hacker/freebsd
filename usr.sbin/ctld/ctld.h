@@ -48,8 +48,6 @@
 #define	MAX_LUNS			1024
 #define	MAX_NAME_LEN			223
 #define	MAX_DATA_SEGMENT_LENGTH		(128 * 1024)
-#define	MAX_BURST_LENGTH		16776192
-#define	FIRST_BURST_LENGTH		(128 * 1024)
 #define	SOCKBUF_SIZE			1048576
 
 struct auth {
@@ -151,7 +149,6 @@ struct port {
 	struct portal_group		*p_portal_group;
 	struct pport			*p_pport;
 	struct target			*p_target;
-	int				p_foreign;
 
 	uint32_t			p_ctl_port;
 };
@@ -242,6 +239,10 @@ struct connection {
 	struct sockaddr_storage	conn_initiator_sa;
 	uint32_t		conn_cmdsn;
 	uint32_t		conn_statsn;
+	int			conn_max_recv_data_segment_limit;
+	int			conn_max_send_data_segment_limit;
+	int			conn_max_burst_limit;
+	int			conn_first_burst_limit;
 	int			conn_max_recv_data_segment_length;
 	int			conn_max_send_data_segment_length;
 	int			conn_max_burst_length;
@@ -371,6 +372,7 @@ struct port		*port_find(const struct conf *conf, const char *name);
 struct port		*port_find_in_pg(const struct portal_group *pg,
 			    const char *target);
 void			port_delete(struct port *port);
+int			port_is_dummy(struct port *port);
 
 struct target		*target_new(struct conf *conf, const char *name);
 void			target_delete(struct target *target);

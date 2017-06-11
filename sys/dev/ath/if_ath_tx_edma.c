@@ -178,6 +178,13 @@ ath_tx_edma_push_staging_list(struct ath_softc *sc, struct ath_txq *txq,
 
 	ATH_TXQ_LOCK_ASSERT(txq);
 
+	DPRINTF(sc, ATH_DEBUG_XMIT | ATH_DEBUG_TX_PROC,
+	    "%s: called; TXQ=%d, fifo.depth=%d, axq_q empty=%d\n",
+	    __func__,
+	    txq->axq_qnum,
+	    txq->axq_fifo_depth,
+	    !! (TAILQ_EMPTY(&txq->axq_q)));
+
 	/*
 	 * Don't bother doing any work if it's full.
 	 */
@@ -755,11 +762,30 @@ ath_edma_tx_proc(void *arg, int npending)
 {
 	struct ath_softc *sc = (struct ath_softc *) arg;
 
+	ATH_PCU_LOCK(sc);
+	sc->sc_txproc_cnt++;
+	ATH_PCU_UNLOCK(sc);
+
+	ATH_LOCK(sc);
+	ath_power_set_power_state(sc, HAL_PM_AWAKE);
+	ATH_UNLOCK(sc);
+
 #if 0
 	DPRINTF(sc, ATH_DEBUG_TX_PROC, "%s: called, npending=%d\n",
 	    __func__, npending);
 #endif
 	ath_edma_tx_processq(sc, 1);
+
+
+	ATH_PCU_LOCK(sc);
+	sc->sc_txproc_cnt--;
+	ATH_PCU_UNLOCK(sc);
+
+	ATH_LOCK(sc);
+	ath_power_restore_power_state(sc);
+	ATH_UNLOCK(sc);
+
+	ath_tx_kick(sc);
 }
 
 /*
@@ -783,6 +809,8 @@ ath_edma_tx_processq(struct ath_softc *sc, int dosched)
 	uint32_t txstatus[32];
 #endif
 
+	DPRINTF(sc, ATH_DEBUG_TX_PROC, "%s: called\n", __func__);
+
 	for (idx = 0; ; idx++) {
 		bzero(&ts, sizeof(ts));
 
@@ -793,8 +821,12 @@ ath_edma_tx_processq(struct ath_softc *sc, int dosched)
 		status = ath_hal_txprocdesc(ah, NULL, (void *) &ts);
 		ATH_TXSTATUS_UNLOCK(sc);
 
-		if (status == HAL_EINPROGRESS)
+		if (status == HAL_EINPROGRESS) {
+			DPRINTF(sc, ATH_DEBUG_TX_PROC,
+			    "%s: (%d): EINPROGRESS\n",
+			    __func__, idx);
 			break;
+		}
 
 #ifdef	ATH_DEBUG
 		if (sc->sc_debug & ATH_DEBUG_TX_PROC)
@@ -997,6 +1029,10 @@ ath_edma_tx_processq(struct ath_softc *sc, int dosched)
 		/* Attempt to schedule more hardware frames to the TX FIFO */
 		for (i = 0; i < HAL_NUM_TX_QUEUES; i++) {
 			if (ATH_TXQ_SETUP(sc, i)) {
+				ATH_TX_LOCK(sc);
+				ath_txq_sched(sc, &sc->sc_txq[i]);
+				ATH_TX_UNLOCK(sc);
+
 				ATH_TXQ_LOCK(&sc->sc_txq[i]);
 				ath_edma_tx_fifo_fill(sc, &sc->sc_txq[i]);
 				ATH_TXQ_UNLOCK(&sc->sc_txq[i]);
@@ -1005,6 +1041,8 @@ ath_edma_tx_processq(struct ath_softc *sc, int dosched)
 		/* Kick software scheduler */
 		ath_tx_swq_kick(sc);
 	}
+
+	DPRINTF(sc, ATH_DEBUG_TX_PROC, "%s: end\n", __func__);
 }
 
 static void

@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pci_iov.h>
 #endif
 
+#include "common/common.h"
 #include "t4_if.h"
 
 struct t4iov_softc {
@@ -91,11 +92,25 @@ struct {
 	{0x5013,  "Chelsio T580-CHR"},
 #endif
 }, t6iov_pciids[] = {
+	{0x6000, "Chelsio T6-DBG-25"},		/* 2 x 10/25G, debug */
 	{0x6001, "Chelsio T6225-CR"},		/* 2 x 10/25G */
 	{0x6002, "Chelsio T6225-SO-CR"},	/* 2 x 10/25G, nomem */
+	{0x6003, "Chelsio T6425-CR"},		/* 4 x 10/25G */
+	{0x6004, "Chelsio T6425-SO-CR"},	/* 4 x 10/25G, nomem */
+	{0x6005, "Chelsio T6225-OCP-SO"},	/* 2 x 10/25G, nomem */
+	{0x6006, "Chelsio T62100-OCP-SO"},	/* 2 x 40/50/100G, nomem */
 	{0x6007, "Chelsio T62100-LP-CR"},	/* 2 x 40/50/100G */
 	{0x6008, "Chelsio T62100-SO-CR"},	/* 2 x 40/50/100G, nomem */
+	{0x6009, "Chelsio T6210-BT"},		/* 2 x 10GBASE-T */
 	{0x600d, "Chelsio T62100-CR"},		/* 2 x 40/50/100G */
+	{0x6010, "Chelsio T6-DBG-100"},		/* 2 x 40/50/100G, debug */
+	{0x6011, "Chelsio T6225-LL-CR"},	/* 2 x 10/25G */
+	{0x6014, "Chelsio T61100-OCP-SO"},	/* 1 x 40/50/100G, nomem */
+	{0x6015, "Chelsio T6201-BT"},		/* 2 x 1000BASE-T */
+
+	/* Custom */
+	{0x6080, "Chelsio T6225 80"},
+	{0x6081, "Chelsio T62100 81"},
 };
 
 static int	t4iov_attach_child(device_t dev);
@@ -105,6 +120,9 @@ t4iov_probe(device_t dev)
 {
 	uint16_t d;
 	size_t i;
+
+	if (pci_get_vendor(dev) != PCI_VENDOR_ID_CHELSIO)
+		return (ENXIO);
 
 	d = pci_get_device(dev);
 	for (i = 0; i < nitems(t4iov_pciids); i++) {
@@ -123,6 +141,9 @@ t5iov_probe(device_t dev)
 	uint16_t d;
 	size_t i;
 
+	if (pci_get_vendor(dev) != PCI_VENDOR_ID_CHELSIO)
+		return (ENXIO);
+
 	d = pci_get_device(dev);
 	for (i = 0; i < nitems(t5iov_pciids); i++) {
 		if (d == t5iov_pciids[i].device) {
@@ -139,6 +160,9 @@ t6iov_probe(device_t dev)
 {
 	uint16_t d;
 	size_t i;
+
+	if (pci_get_vendor(dev) != PCI_VENDOR_ID_CHELSIO)
+		return (ENXIO);
 
 	d = pci_get_device(dev);
 	for (i = 0; i < nitems(t6iov_pciids); i++) {
@@ -161,6 +185,8 @@ t4iov_attach(device_t dev)
 
 	sc->sc_main = pci_find_dbsf(pci_get_domain(dev), pci_get_bus(dev),
 	    pci_get_slot(dev), 4);
+	if (sc->sc_main == NULL)
+		return (ENXIO);
 	if (T4_IS_MAIN_READY(sc->sc_main) == 0)
 		return (t4iov_attach_child(dev));
 	return (0);

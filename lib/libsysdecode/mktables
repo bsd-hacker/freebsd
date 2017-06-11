@@ -37,11 +37,16 @@ LC_ALL=C; export LC_ALL
 
 if [ -z "$1" ]
 then
-	echo "usage: sh $0 include-dir"
+	echo "usage: sh $0 include-dir [output-file]"
 	exit 1
 fi
 include_dir=$1
+if [ -n "$2" ]; then
+	output_file="$2"
+	exec > "$output_file"
+fi
 
+all_headers=
 #
 # Generate a table C #definitions.  The including file can define the
 # TABLE_NAME(n), TABLE_ENTRY(x), and TABLE_END macros to define what
@@ -60,6 +65,7 @@ gen_table()
 	else
 		filter="egrep -v"
 	fi
+	all_headers="${all_headers:+${all_headers} }${file}"
 	cat <<_EOF_
 TABLE_START(${name})
 _EOF_
@@ -88,7 +94,6 @@ gen_table "extattrns"       "EXTATTR_NAMESPACE_[A-Z]+[[:space:]]+0x[0-9]+" "sys/
 gen_table "fadvisebehav"    "POSIX_FADV_[A-Z]+[[:space:]]+[0-9]+"          "sys/fcntl.h"
 gen_table "openflags"       "O_[A-Z]+[[:space:]]+0x[0-9A-Fa-f]+"           "sys/fcntl.h"	"O_RDONLY|O_RDWR|O_WRONLY"
 gen_table "flockops"        "LOCK_[A-Z]+[[:space:]]+0x[0-9]+"              "sys/fcntl.h"
-gen_table "getfsstatflags"  "MNT_[A-Z]+[[:space:]]+[1-9][0-9]*"            "sys/mount.h"
 gen_table "kldsymcmd"       "KLDSYM_[A-Z]+[[:space:]]+[0-9]+"              "sys/linker.h"
 gen_table "kldunloadfflags" "LINKER_UNLOAD_[A-Z]+[[:space:]]+[0-9]+"       "sys/linker.h"
 gen_table "lio_listiomodes" "LIO_(NO)?WAIT[[:space:]]+[0-9]+"              "aio.h"
@@ -109,6 +114,7 @@ gen_table "quotactlcmds"    "Q_[A-Z]+[[:space:]]+0x[0-9]+"                 "ufs/
 gen_table "rebootopt"       "RB_[A-Z]+[[:space:]]+0x[0-9]+"                "sys/reboot.h"
 gen_table "rforkflags"      "RF[A-Z]+[[:space:]]+\([0-9]+<<[0-9]+\)"       "sys/unistd.h"
 gen_table "rlimit"          "RLIMIT_[A-Z]+[[:space:]]+[0-9]+"              "sys/resource.h"
+gen_table "rusage"          "RUSAGE_[A-Z]+[[:space:]]+[-0-9]+"             "sys/resource.h"
 gen_table "schedpolicy"     "SCHED_[A-Z]+[[:space:]]+[0-9]+"               "sched.h"
 gen_table "sendfileflags"   "SF_[A-Z]+[[:space:]]+[0-9]+"                  "sys/socket.h"
 gen_table "shmatflags"      "SHM_[A-Z]+[[:space:]]+[0-9]{6}+"              "sys/shm.h"
@@ -125,20 +131,32 @@ gen_table "sockfamily"      "AF_[[:alnum:]]+[[:space:]]+"                  "sys/
 gen_table "sockipproto"     "IPPROTO_[[:alnum:]]+[[:space:]]+"             "netinet/in.h"
 gen_table "sockopt"         "SO_[A-Z]+[[:space:]]+0x[0-9]+"                "sys/socket.h"
 gen_table "sockoptip"       "(IP_[[:alnum:]_]+|MCAST_[[:alnum:]_]+_GROUP)[[:space:]]+" "netinet/in.h" "IP_DEFAULT|IP_MIN|IP_MAX|IP_PORTRANGE"
+gen_table "sockoptipv6"     "IPV6_[[:alnum:]_]+[[:space:]]+[0-9]+"         "netinet6/in6.h"     "IPV6_ADDR_|IPV6_TAG_DIRECT|IPV6_OPTIONS|IPV6_RECVOPTS|IPV6_RECVRETOPTS|IPV6_RECVDSTADDR|IPV6_RETOPTS|IPV6_2292|IPV6_RECVRTHDRDSTOPTS|IPV6_REACHCONF|IPV6_PKTOPTIONS"
+gen_table "sockoptsctp"     "SCTP_[[:alnum:]_]+[[:space:]]+[0-9]+"         "netinet/sctp.h"
 gen_table "sockopttcp"      "TCP_[[:alnum:]_]+[[:space:]]+[0-9]+"          "netinet/tcp.h"      "TCP_MIN|TCP_MAX[^S]|TCP_MSS|TCP_[[:alnum:]_]+_MAX"
 gen_table "sockoptudp"      "UDP_[[:alnum:]]+[[:space:]]+[0-9]+"           "netinet/udp.h"      "UDP_ENCAP_"
+gen_table "sockoptudplite"  "UDPLITE_[[:alnum:]_]+[[:space:]]+[0-9]+"      "netinet/udplite.h"
 gen_table "socktype"        "SOCK_[A-Z]+[[:space:]]+[1-9]+[0-9]*"          "sys/socket.h"
 gen_table "thrcreateflags"  "THR_[A-Z]+[[:space:]]+0x[0-9]+"               "sys/thr.h"
 gen_table "umtxop"          "UMTX_OP_[[:alnum:]_]+[[:space:]]+[0-9]+"      "sys/umtx.h"
-gen_table "vmprot"          "VM_PROT_[A-Z]+[[:space:]]+\(\(vm_prot_t\)\)"  "vm/vm.h"
+gen_table "vmprot"          "VM_PROT_[A-Z]+[[:space:]]+\(\(vm_prot_t\)[[:space:]]+0x[0-9]+\)"  "vm/vm.h"
 gen_table "vmresult"        "KERN_[A-Z]+[[:space:]]+[0-9]+"                "vm/vm_param.h"
 gen_table "wait6opt"        "W[A-Z]+[[:space:]]+[0-9]+"                    "sys/wait.h"
 gen_table "seekwhence"      "SEEK_[A-Z]+[[:space:]]+[0-9]+"                "sys/unistd.h"
 gen_table "fcntlcmd"        "F_[A-Z0-9_]+[[:space:]]+[0-9]+[[:space:]]+"   "sys/fcntl.h"	"F_CANCEL|F_..LCK"
 gen_table "mmapflags"       "MAP_[A-Z_]+[[:space:]]+0x[0-9A-Fa-f]+"        "sys/mman.h"
 gen_table "rtpriofuncs"     "RTP_[A-Z]+[[:space:]]+[0-9]+"                 "sys/rtprio.h"
-gen_table "msgflags"        "MSG_[A-Z]+[[:space:]]+0x[0-9]+"               "sys/socket.h"	"MSG_SOCALLBCK"
+gen_table "msgflags"        "MSG_[A-Z]+[[:space:]]+0x[0-9]+"               "sys/socket.h"	"MSG_SOCALLBCK|MSG_MORETOCOME"
 gen_table "sigcode"         "SI_[A-Z]+[[:space:]]+0(x[0-9abcdef]+)?"       "sys/signal.h"
 gen_table "umtxcvwaitflags" "CVWAIT_[A-Z_]+[[:space:]]+0x[0-9]+"           "sys/umtx.h"
 gen_table "umtxrwlockflags" "URWLOCK_PREFER_READER[[:space:]]+0x[0-9]+"    "sys/umtx.h"
 gen_table "caprights"       "CAP_[A-Z_]+[[:space:]]+CAPRIGHT\([0-9],[[:space:]]+0x[0-9]{16}ULL\)"   "sys/capsicum.h"
+
+# Generate a .depend file for our output file
+if [ -n "$output_file" ]; then
+	echo "$output_file: \\" > ".depend.$output_file"
+	echo "$all_headers" | tr ' ' '\n' | sort -u |
+	    sed -e "s,^,	$include_dir/," -e 's,$, \\,' >> \
+	    ".depend.$output_file"
+	echo >> ".depend.$output_file"
+fi

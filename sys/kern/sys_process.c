@@ -1125,6 +1125,16 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 			td2->td_dbgflags &= ~TDB_XSIG;
 			td2->td_xsig = data;
 
+			/*
+			 * P_WKILLED is insurance that a PT_KILL/SIGKILL always
+			 * works immediately, even if another thread is
+			 * unsuspended first and attempts to handle a different
+			 * signal or if the POSIX.1b style signal queue cannot
+			 * accommodate any new signals.
+			 */
+			if (data == SIGKILL)
+				p->p_flag |= P_WKILLED;
+
 			if (req == PT_DETACH) {
 				FOREACH_THREAD_IN_PROC(p, td3)
 					td3->td_dbgflags &= ~TDB_SUSPEND;
@@ -1296,7 +1306,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 		pl->pl_flags = 0;
 		if (td2->td_dbgflags & TDB_XSIG) {
 			pl->pl_event = PL_EVENT_SIGNAL;
-			if (td2->td_dbgksi.ksi_signo != 0 &&
+			if (td2->td_si.si_signo != 0 &&
 #ifdef COMPAT_FREEBSD32
 			    ((!wrap32 && data >= offsetof(struct ptrace_lwpinfo,
 			    pl_siginfo) + sizeof(pl->pl_siginfo)) ||
@@ -1308,7 +1318,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 #endif
 			){
 				pl->pl_flags |= PL_FLAG_SI;
-				pl->pl_siginfo = td2->td_dbgksi.ksi_info;
+				pl->pl_siginfo = td2->td_si;
 			}
 		}
 		if ((pl->pl_flags & PL_FLAG_SI) == 0)

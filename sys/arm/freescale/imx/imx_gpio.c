@@ -52,7 +52,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr.h>
 #include <machine/resource.h>
 
-#include <dev/fdt/fdt_common.h>
 #include <dev/gpio/gpiobusvar.h>
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
@@ -728,7 +727,7 @@ imx51_gpio_attach(device_t dev)
  		    (READ4(sc, IMX_GPIO_OE_REG) & (1U << i)) ? GPIO_PIN_OUTPUT :
  		    GPIO_PIN_INPUT;
  		snprintf(sc->gpio_pins[i].gp_name, GPIOMAXNAME,
- 		    "imx_gpio%d.%d", unit, i);
+ 		    "GPIO%d_IO%02d", unit + 1, i);
 	}
 
 #ifdef INTRNG

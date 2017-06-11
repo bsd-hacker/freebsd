@@ -16,7 +16,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -51,6 +51,7 @@ struct vnode;
 int	ext2_add_entry(struct vnode *, struct ext2fs_direct_2 *);
 int	ext2_alloc(struct inode *, daddr_t, e4fs_daddr_t, int,
 	    struct ucred *, e4fs_daddr_t *);
+daddr_t ext2_allocfacl(struct inode *ip);
 int	ext2_balloc(struct inode *,
 	    e2fs_lbn_t, int, struct ucred *, struct buf **, int);
 int	ext2_blkatoff(struct vnode *, off_t, char **, struct buf **);
@@ -110,4 +111,4 @@ int	ext2_search_dirblock(struct inode *, void *, int *, const char *, int,
 extern struct vop_vector ext2_vnodeops;
 extern struct vop_vector ext2_fifoops;
 
-#endif /* !_FS_EXT2FS_EXT2_EXTERN_H_ */
+#endif	/* !_FS_EXT2FS_EXT2_EXTERN_H_ */

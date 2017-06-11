@@ -15,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -481,6 +481,7 @@ cd9660_readdir(ap)
 	u_short namelen;
 	int ncookies = 0;
 	u_long *cookies = NULL;
+	cd_ino_t ino;
 
 	dp = VTOI(vdp);
 	imp = dp->i_mnt;
@@ -576,8 +577,10 @@ cd9660_readdir(ap)
 
 		switch (imp->iso_ftype) {
 		case ISO_FTYPE_RRIP:
-			cd9660_rrip_getname(ep,idp->current.d_name, &namelen,
-					   &idp->current.d_fileno,imp);
+			ino = idp->current.d_fileno;
+			cd9660_rrip_getname(ep, idp->current.d_name, &namelen,
+			    &ino, imp);
+			idp->current.d_fileno = ino;
 			idp->current.d_namlen = (u_char)namelen;
 			if (idp->current.d_namlen)
 				error = iso_uiodir(idp,&idp->current,idp->curroff);
@@ -831,8 +834,8 @@ cd9660_vptofh(ap)
 	memcpy(ap->a_fhp, &ifh, sizeof(ifh));
 
 #ifdef	ISOFS_DBG
-	printf("vptofh: ino %d, start %ld\n",
-	    ifh.ifid_ino, ifh.ifid_start);
+	printf("vptofh: ino %jd, start %ld\n",
+	    (uintmax_t)ifh.ifid_ino, ifh.ifid_start);
 #endif
 
 	return (0);

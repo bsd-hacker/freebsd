@@ -46,7 +46,7 @@
 
 static int ps3cdrom_init(void);
 static int ps3cdrom_strategy(void *devdata, int flag, daddr_t dblk,
-	size_t offset, size_t size, char *buf, size_t *rsize);
+	size_t size, char *buf, size_t *rsize);
 static int ps3cdrom_open(struct open_file *f, ...);
 static int ps3cdrom_close(struct open_file *f);
 static int ps3cdrom_print(int verbose);
@@ -76,13 +76,14 @@ static int ps3cdrom_init(void)
 }
 
 static int ps3cdrom_strategy(void *devdata, int flag, daddr_t dblk,
-	size_t offset, size_t size, char *buf, size_t *rsize)
+	size_t size, char *buf, size_t *rsize)
 {
 	struct ps3_devdesc *dev = (struct ps3_devdesc *) devdata;
 	int err;
 
 	DEBUG("d_unit=%u dblk=%llu size=%u", dev->d_unit, dblk, size);
 
+	flag &= F_MASK;
 	if (flag != F_READ) {
 		dev_printf(dev, "write operation is not supported!");
 		return EROFS;

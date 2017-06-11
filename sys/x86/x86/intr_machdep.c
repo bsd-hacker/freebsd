@@ -49,6 +49,7 @@
 #include <sys/sx.h>
 #include <sys/syslog.h>
 #include <sys/systm.h>
+#include <sys/vmmeter.h>
 #include <machine/clock.h>
 #include <machine/intr_machdep.h>
 #include <machine/smp.h>
@@ -61,11 +62,7 @@
 #include <machine/frame.h>
 #include <dev/ic/i8259.h>
 #include <x86/isa/icu.h>
-#ifdef PC98
-#include <pc98/cbus/cbus.h>
-#else
 #include <isa/isareg.h>
-#endif
 #endif
 
 #define	MAX_STRAY_LOG	5
@@ -249,7 +246,7 @@ intr_execute_handlers(struct intsrc *isrc, struct trapframe *frame)
 	 * processed too.
 	 */
 	(*isrc->is_count)++;
-	PCPU_INC(cnt.v_intr);
+	VM_CNT_INC(v_intr);
 
 	ie = isrc->is_event;
 

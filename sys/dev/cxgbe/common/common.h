@@ -62,6 +62,12 @@ enum {
 	PAUSE_AUTONEG = 1 << 2
 };
 
+enum {
+	FEC_RS        = 1 << 0,
+	FEC_BASER_RS  = 1 << 1,
+	FEC_RESERVED  = 1 << 2,
+};
+
 struct port_stats {
 	u64 tx_octets;            /* total # of octets in good frames */
 	u64 tx_frames;            /* all good frames */
@@ -204,7 +210,7 @@ struct tp_rdma_stats {
 };
 
 struct sge_params {
-	int timer_val[SGE_NTIMERS];
+	int timer_val[SGE_NTIMERS];	/* final, scaled values */
 	int counter_val[SGE_NCOUNTERS];
 	int fl_starve_threshold;
 	int fl_starve_threshold2;
@@ -227,7 +233,7 @@ struct tp_params {
 
 	uint32_t vlan_pri_map;
 	uint32_t ingress_config;
-	uint32_t rx_pkt_encap;
+	__be16 err_vec_mask;
 
 	int8_t fcoe_shift;
 	int8_t port_shift;
@@ -360,6 +366,9 @@ struct adapter_params {
 
 	unsigned int ofldq_wr_cred;
 	unsigned int eo_wr_cred;
+
+	unsigned int max_ordird_qp;
+	unsigned int max_ird_adapter;
 };
 
 #define CHELSIO_T4		0x4
@@ -392,12 +401,16 @@ struct trace_params {
 struct link_config {
 	unsigned short supported;        /* link capabilities */
 	unsigned short advertising;      /* advertised capabilities */
-	unsigned short requested_speed;  /* speed user has requested */
-	unsigned short speed;            /* actual link speed */
+	unsigned short lp_advertising;   /* peer advertised capabilities */
+	unsigned int   requested_speed;  /* speed user has requested */
+	unsigned int   speed;            /* actual link speed */
 	unsigned char  requested_fc;     /* flow control user has requested */
 	unsigned char  fc;               /* actual link flow control */
+	unsigned char  requested_fec;    /* FEC user has requested */
+	unsigned char  fec;              /* actual FEC */
 	unsigned char  autoneg;          /* autonegotiating? */
 	unsigned char  link_ok;          /* link up? */
+	unsigned char  link_down_rc;     /* link down reason */
 };
 
 #include "adapter.h"
@@ -578,7 +591,8 @@ int t4_config_rss_range(struct adapter *adapter, int mbox, unsigned int viid,
 int t4_config_glbl_rss(struct adapter *adapter, int mbox, unsigned int mode,
 		       unsigned int flags);
 int t4_config_vi_rss(struct adapter *adapter, int mbox, unsigned int viid,
-		     unsigned int flags, unsigned int defq);
+		     unsigned int flags, unsigned int defq, unsigned int skeyidx,
+		     unsigned int skey);
 int t4_read_rss(struct adapter *adapter, u16 *entries);
 void t4_fw_tp_pio_rw(struct adapter *adap, u32 *vals, unsigned int nregs,
 		  unsigned int start_index, unsigned int rw);
@@ -760,6 +774,13 @@ int t4_sched_params(struct adapter *adapter, int type, int level, int mode,
 		    int rateunit, int ratemode, int channel, int cl,
 		    int minrate, int maxrate, int weight, int pktsize,
 		    int sleep_ok);
+int t4_sched_params_ch_rl(struct adapter *adapter, int channel, int ratemode,
+			  unsigned int maxrate, int sleep_ok);
+int t4_sched_params_cl_wrr(struct adapter *adapter, int channel, int cl,
+			   int weight, int sleep_ok);
+int t4_sched_params_cl_rl_kbps(struct adapter *adapter, int channel, int cl,
+			       int mode, unsigned int maxrate, int pktsize,
+			       int sleep_ok);
 int t4_config_watchdog(struct adapter *adapter, unsigned int mbox,
 		       unsigned int pf, unsigned int vf,
 		       unsigned int timeout, unsigned int action);

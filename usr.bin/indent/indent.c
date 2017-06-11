@@ -98,6 +98,7 @@ main(int argc, char **argv)
     int         type_code;	/* the type of token, returned by lexi */
 
     int         last_else = 0;	/* true iff last keyword was an else */
+    const char *profile_name = NULL;
 
 
     /*-----------------------------------------------*\
@@ -194,9 +195,11 @@ main(int argc, char **argv)
     for (i = 1; i < argc; ++i)
 	if (strcmp(argv[i], "-npro") == 0)
 	    break;
+	else if (argv[i][0] == '-' && argv[i][1] == 'P' && argv[i][2] != '\0')
+	    profile_name = argv[i];	/* non-empty -P (set profile) */
     set_defaults();
     if (i >= argc)
-	set_profile();
+	set_profile(profile_name);
 
     for (i = 1; i < argc; ++i) {
 
@@ -335,8 +338,10 @@ main(int argc, char **argv)
 	    switch (type_code) {
 	    case newline:
 		++line_no;
-		if (sc_end != NULL)
-		    goto sw_buffer;	/* dump comment, if any */
+		if (sc_end != NULL) {	/* dump comment, if any */
+		    *sc_end++ = '\n';	/* newlines are needed in this case */
+		    goto sw_buffer;
+		}
 		flushed_nl = true;
 	    case form_feed:
 		break;		/* form feeds and newlines found here will be
@@ -523,7 +528,12 @@ check_type:
 	    break;
 
 	case lparen:		/* got a '(' or '[' */
-	    ++ps.p_l_follow;	/* count parens to make Healy happy */
+	    /* count parens to make Healy happy */
+	    if (++ps.p_l_follow == nitems(ps.paren_indents)) {
+		diag3(0, "Reached internal limit of %d unclosed parens",
+		    nitems(ps.paren_indents));
+		ps.p_l_follow--;
+	    }
 	    if (ps.want_blank && *token != '[' &&
 		    (ps.last_token != ident || proc_calls_space ||
 		    /* offsetof (1) is never allowed a space; sizeof (2) gets
@@ -918,8 +928,11 @@ check_type:
 	    }
 	    goto copy_id;	/* move the token into line */
 
-	case decl:		/* we have a declaration type (int, register,
-				 * etc.) */
+	case storage:
+	    prefix_blankline_requested = 0;
+	    goto copy_id;
+
+	case decl:		/* we have a declaration type (int, etc.) */
 	    parse(decl);	/* let parser worry about indentation */
 	    if (ps.last_token == rparen && ps.tos <= 1) {
 		ps.in_parameter_declaration = 1;
@@ -1002,6 +1015,16 @@ check_type:
 		    *e_code++ = *t_ptr;
 		}
 	    ps.want_blank = true;
+	    break;
+
+	case strpfx:
+	    if (ps.want_blank)
+		*e_code++ = ' ';
+	    for (t_ptr = token; *t_ptr; ++t_ptr) {
+		CHECK_SIZE_CODE;
+		*e_code++ = *t_ptr;
+	    }
+	    ps.want_blank = false;
 	    break;
 
 	case period:		/* treat a period kind of like a binary

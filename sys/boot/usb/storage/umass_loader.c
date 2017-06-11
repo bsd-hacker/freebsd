@@ -48,8 +48,7 @@ static int umass_disk_open(struct open_file *,...);
 static int umass_disk_close(struct open_file *);
 static void umass_disk_cleanup(void);
 static int umass_disk_ioctl(struct open_file *, u_long, void *);
-static int umass_disk_strategy(void *, int, daddr_t, size_t, size_t, char *,
-    size_t *);
+static int umass_disk_strategy(void *, int, daddr_t, size_t, char *, size_t *);
 static int umass_disk_print(int);
 
 struct devsw umass_disk = {
@@ -85,14 +84,15 @@ umass_disk_init(void)
 }
 
 static int
-umass_disk_strategy(void *devdata, int flag, daddr_t dblk, size_t offset,
-    size_t size, char *buf, size_t *rsizep)
+umass_disk_strategy(void *devdata, int flag, daddr_t dblk, size_t size,
+    char *buf, size_t *rsizep)
 {
 	if (umass_uaa.device == NULL)
 		return (ENXIO);
 	if (rsizep != NULL)
 		*rsizep = 0;
 
+	flag &= F_MASK;
 	if (flag == F_WRITE) {
 		if (usb_msc_write_10(umass_uaa.device, 0, dblk, size >> 9, buf) != 0)
 			return (EINVAL);
@@ -117,7 +117,7 @@ umass_disk_open_sub(struct disk_devdesc *dev)
 	if (usb_msc_read_capacity(umass_uaa.device, 0, &nblock, &blocksize) != 0)
 		return (EINVAL);
 
-	return (disk_open(dev, ((uint64_t)nblock + 1) * (uint64_t)blocksize, blocksize, 0));
+	return (disk_open(dev, ((uint64_t)nblock + 1) * (uint64_t)blocksize, blocksize));
 }
 
 static int
@@ -138,20 +138,30 @@ umass_disk_open(struct open_file *f,...)
 }
 
 static int
-umass_disk_ioctl(struct open_file *f __unused, u_long cmd, void *buf)
+umass_disk_ioctl(struct open_file *f, u_long cmd, void *buf)
 {
+	struct disk_devdesc *dev;
 	uint32_t nblock;
 	uint32_t blocksize;
+	int rc;
+
+	dev = (struct disk_devdesc *)(f->f_devdata);
+	if (dev == NULL)
+		return (EINVAL);
+
+	rc = disk_ioctl(dev, cmd, buf);
+	if (rc != ENOTTY)
+		return (rc);
 
 	switch (cmd) {
-	case IOCTL_GET_BLOCK_SIZE:
-	case IOCTL_GET_BLOCKS:
+	case DIOCGSECTORSIZE:
+	case DIOCGMEDIASIZE:
 		if (usb_msc_read_capacity(umass_uaa.device, 0,
 		    &nblock, &blocksize) != 0)
 			return (EINVAL);
 
-		if (cmd == IOCTL_GET_BLOCKS)
-			*(uint32_t*)buf = nblock;
+		if (cmd == DIOCGMEDIASIZE)
+			*(uint64_t*)buf = nblock;
 		else
 			*(uint32_t*)buf = blocksize;
 
@@ -175,6 +185,10 @@ umass_disk_print(int verbose)
 {
 	struct disk_devdesc dev;
 
+	printf("%s devices:", umass_disk.dv_name);
+	if (pager_output("\n") != 0)
+		return (1);
+
 	memset(&dev, 0, sizeof(dev));
 
 	ret = pager_output("    umass0   UMASS device\n");
@@ -195,7 +209,6 @@ umass_disk_print(int verbose)
 static void
 umass_disk_cleanup(void)
 {
-	disk_cleanup(&umass_disk);
 
 	usb_uninit();
 }

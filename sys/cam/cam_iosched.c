@@ -93,6 +93,7 @@ SYSCTL_INT(_kern_cam, OID_AUTO, do_dynamic_iosched, CTLFLAG_RD,
  * For a brief intro: https://en.wikipedia.org/wiki/Moving_average
  *
  * [*] Steal from the load average code and many other places.
+ * Note: See computation of EMA and EMVAR for acceptable ranges of alpha.
  */
 static int alpha_bits = 9;
 TUNABLE_INT("kern.cam.iosched_alpha_bits", &alpha_bits);
@@ -112,7 +113,7 @@ typedef enum {
 	bandwidth,			/* Limit bandwidth to the drive */
 	limiter_max
 } io_limiter;
-	
+
 static const char *cam_iosched_limiter_names[] =
     { "none", "queue_depth", "iops", "bandwidth" };
 
@@ -131,7 +132,7 @@ typedef int l_tick_t(struct iop_stats *);
  * Called to see if the limiter thinks this IOP can be allowed to
  * proceed. If so, the limiter assumes that the while IOP proceeded
  * and makes any accounting of it that's needed.
- */ 
+ */
 typedef int l_iop_t(struct iop_stats *, struct bio *);
 
 /*
@@ -157,8 +158,7 @@ static l_tick_t cam_iosched_bw_tick;
 static l_iop_t cam_iosched_bw_caniop;
 static l_iop_t cam_iosched_bw_iop;
 
-struct limswitch 
-{
+struct limswitch {
 	l_init_t	*l_init;
 	l_tick_t	*l_tick;
 	l_iop_t		*l_iop;
@@ -195,8 +195,7 @@ struct limswitch
 	},
 };
 
-struct iop_stats 
-{
+struct iop_stats {
 	/*
 	 * sysctl state for this subnode.
 	 */
@@ -212,7 +211,6 @@ struct iop_stats
 	int		current;	/* Current rate limiter */
 	int		l_value1;	/* per-limiter scratch value 1. */
 	int		l_value2;	/* per-limiter scratch value 2. */
-	
 
 	/*
 	 * Debug information about counts of I/Os that have gone through the
@@ -223,13 +221,13 @@ struct iop_stats
 	int		total;		/* Total for all time -- wraps */
 	int		in;		/* number queued all time -- wraps */
 	int		out;		/* number completed all time -- wraps */
-	
+
 	/*
 	 * Statistics on different bits of the process.
 	 */
 		/* Exp Moving Average, see alpha_bits for more details */
 	sbintime_t      ema;
-	sbintime_t      emss;		/* Exp Moving sum of the squares */
+	sbintime_t      emvar;
 	sbintime_t      sd;		/* Last computed sd */
 
 	uint32_t	state_flags;
@@ -251,8 +249,7 @@ typedef enum {
 static const char *cam_iosched_control_type_names[] =
     { "set_max", "read_latency" };
 
-struct control_loop
-{
+struct control_loop {
 	/*
 	 * sysctl state for this subnode.
 	 */
@@ -272,8 +269,7 @@ struct control_loop
 
 #endif
 
-struct cam_iosched_softc
-{
+struct cam_iosched_softc {
 	struct bio_queue_head bio_queue;
 	struct bio_queue_head trim_queue;
 				/* scheduler flags < 16, user flags >= 16 */
@@ -385,7 +381,7 @@ cam_iosched_limiter_iodone(struct iop_stats *ios, struct bio *bp)
 static int
 cam_iosched_qd_iop(struct iop_stats *ios, struct bio *bp)
 {
-		
+
 	if (ios->current <= 0 || ios->pending < ios->current)
 		return 0;
 
@@ -395,7 +391,7 @@ cam_iosched_qd_iop(struct iop_stats *ios, struct bio *bp)
 static int
 cam_iosched_qd_caniop(struct iop_stats *ios, struct bio *bp)
 {
-		
+
 	if (ios->current <= 0 || ios->pending < ios->current)
 		return 0;
 
@@ -405,7 +401,7 @@ cam_iosched_qd_caniop(struct iop_stats *ios, struct bio *bp)
 static int
 cam_iosched_qd_iodone(struct iop_stats *ios, struct bio *bp)
 {
-		
+
 	if (ios->current <= 0 || ios->pending != ios->current)
 		return 0;
 
@@ -760,8 +756,7 @@ cam_iosched_iop_stats_init(struct cam_iosched_softc *isc, struct iop_stats *ios)
 	ios->queued = 0;
 	ios->total = 0;
 	ios->ema = 0;
-	ios->emss = 0;
-	ios->sd = 0;
+	ios->emvar = 0;
 	ios->softc = isc;
 }
 
@@ -773,7 +768,7 @@ cam_iosched_limiter_sysctl(SYSCTL_HANDLER_ARGS)
 	struct cam_iosched_softc *isc;
 	int value, i, error;
 	const char *p;
-	
+
 	ios = arg1;
 	isc = ios->softc;
 	value = ios->limiter;
@@ -781,7 +776,7 @@ cam_iosched_limiter_sysctl(SYSCTL_HANDLER_ARGS)
 		p = "UNKNOWN";
 	else
 		p = cam_iosched_limiter_names[value];
-	
+
 	strlcpy(buf, p, sizeof(buf));
 	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
 	if (error != 0 || req->newptr == NULL)
@@ -819,7 +814,7 @@ cam_iosched_control_type_sysctl(SYSCTL_HANDLER_ARGS)
 	struct cam_iosched_softc *isc;
 	int value, i, error;
 	const char *p;
-	
+
 	clp = arg1;
 	isc = clp->softc;
 	value = clp->type;
@@ -827,7 +822,7 @@ cam_iosched_control_type_sysctl(SYSCTL_HANDLER_ARGS)
 		p = "UNKNOWN";
 	else
 		p = cam_iosched_control_type_names[value];
-	
+
 	strlcpy(buf, p, sizeof(buf));
 	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
 	if (error != 0 || req->newptr == NULL)
@@ -852,7 +847,7 @@ cam_iosched_sbintime_sysctl(SYSCTL_HANDLER_ARGS)
 	sbintime_t value;
 	int error;
 	uint64_t us;
-	
+
 	value = *(sbintime_t *)arg1;
 	us = (uint64_t)value / SBT_1US;
 	snprintf(buf, sizeof(buf), "%ju", (intmax_t)us);
@@ -902,13 +897,9 @@ cam_iosched_iop_stats_sysctl_init(struct cam_iosched_softc *isc, struct iop_stat
 	    &ios->ema,
 	    "Fast Exponentially Weighted Moving Average");
 	SYSCTL_ADD_UQUAD(ctx, n,
-	    OID_AUTO, "emss", CTLFLAG_RD,
-	    &ios->emss,
-	    "Fast Exponentially Weighted Moving Sum of Squares (maybe wrong)");
-	SYSCTL_ADD_UQUAD(ctx, n,
-	    OID_AUTO, "sd", CTLFLAG_RD,
-	    &ios->sd,
-	    "Estimated SD for fast ema (may be wrong)");
+	    OID_AUTO, "emvar", CTLFLAG_RD,
+	    &ios->emvar,
+	    "Fast Exponentially Weighted Moving Variance");
 
 	SYSCTL_ADD_INT(ctx, n,
 	    OID_AUTO, "pending", CTLFLAG_RD,
@@ -969,7 +960,7 @@ cam_iosched_cl_sysctl_init(struct cam_iosched_softc *isc)
 	struct sysctl_oid_list *n;
 	struct sysctl_ctx_list *ctx;
 	struct control_loop *clp;
-	
+
 	clp = &isc->cl;
 	clp->sysctl_tree = SYSCTL_ADD_NODE(&isc->sysctl_ctx,
 	    SYSCTL_CHILDREN(isc->sysctl_tree), OID_AUTO, "control",
@@ -1007,7 +998,7 @@ cam_iosched_cl_sysctl_fini(struct control_loop *clp)
 			printf("can't remove iosched sysctl control loop context\n");
 }
 #endif
-	    
+
 /*
  * Allocate the iosched structure. This also insulates callers from knowing
  * sizeof struct cam_iosched_softc.
@@ -1069,7 +1060,6 @@ cam_iosched_fini(struct cam_iosched_softc *isc)
 			callout_drain(&isc->ticker);
 			isc->flags &= ~ CAM_IOSCHED_FLAG_CALLOUT_ACTIVE;
 		}
-			
 #endif
 		free(isc, M_CAMSCHED);
 	}
@@ -1328,7 +1318,7 @@ cam_iosched_next_bio(struct cam_iosched_softc *isc)
 #endif
 	return bp;
 }
-	
+
 /*
  * Driver has been given some work to do by the block layer. Tell the
  * scheduler about it and have it queue the work up. The scheduler module
@@ -1385,7 +1375,7 @@ cam_iosched_queue_work(struct cam_iosched_softc *isc, struct bio *bp)
 	}
 }
 
-/* 
+/*
  * If we have work, get it scheduled. Called with the periph lock held.
  */
 void
@@ -1525,37 +1515,8 @@ isqrt64(uint64_t val)
 			res >>= 1;
 		bit >>= 2;
 	}
-	
-	return res;
-}
 
-/*
- * a and b are 32.32 fixed point stored in a 64-bit word.
- * Let al and bl be the .32 part of a and b.
- * Let ah and bh be the 32 part of a and b.
- * R is the radix and is 1 << 32
- *
- * a * b
- * (ah + al / R) * (bh + bl / R)
- * ah * bh + (al * bh + ah * bl) / R + al * bl / R^2
- *
- * After multiplicaiton, we have to renormalize by multiply by
- * R, so we wind up with
- *	ah * bh * R + al * bh + ah * bl + al * bl / R
- * which turns out to be a very nice way to compute this value
- * so long as ah and bh are < 65536 there's no loss of high bits
- * and the low order bits are below the threshold of caring for
- * this application.
- */
-static uint64_t
-mul(uint64_t a, uint64_t b)
-{
-	uint64_t al, ah, bl, bh;
-	al = a & 0xffffffff;
-	ah = a >> 32;
-	bl = b & 0xffffffff;
-	bh = b >> 32;
-	return ((ah * bh) << 32) + al * bh + ah * bl + ((al * bl) >> 32);
+	return res;
 }
 
 static sbintime_t latencies[] = {
@@ -1575,8 +1536,7 @@ static sbintime_t latencies[] = {
 static void
 cam_iosched_update(struct iop_stats *iop, sbintime_t sim_latency)
 {
-	sbintime_t y, yy;
-	uint64_t var;
+	sbintime_t y, deltasq, delta;
 	int i;
 
 	/*
@@ -1597,45 +1557,63 @@ cam_iosched_update(struct iop_stats *iop, sbintime_t sim_latency)
 	 * (2 ^ -alpha_bits). For more info see the NIST statistical
 	 * handbook.
 	 *
-	 * ema_t = y_t * alpha + ema_t-1 * (1 - alpha)
+	 * ema_t = y_t * alpha + ema_t-1 * (1 - alpha)		[nist]
+	 * ema_t = y_t * alpha + ema_t-1 - alpha * ema_t-1
+	 * ema_t = alpha * y_t - alpha * ema_t-1 + ema_t-1
 	 * alpha = 1 / (1 << alpha_bits)
+	 * sub e == ema_t-1, b == 1/alpha (== 1 << alpha_bits), d == y_t - ema_t-1
+	 *	= y_t/b - e/b + be/b
+	 *      = (y_t - e + be) / b
+	 *	= (e + d) / b
 	 *
 	 * Since alpha is a power of two, we can compute this w/o any mult or
 	 * division.
+	 *
+	 * Variance can also be computed. Usually, it would be expressed as follows:
+	 *	diff_t = y_t - ema_t-1
+	 *	emvar_t = (1 - alpha) * (emavar_t-1 + diff_t^2 * alpha)
+	 *	  = emavar_t-1 - alpha * emavar_t-1 + delta_t^2 * alpha - (delta_t * alpha)^2
+	 * sub b == 1/alpha (== 1 << alpha_bits), e == emavar_t-1, d = delta_t^2
+	 *	  = e - e/b + dd/b + dd/bb
+	 *	  = (bbe - be + bdd + dd) / bb
+	 *	  = (bbe + b(dd-e) + dd) / bb (which is expanded below bb = 1<<(2*alpha_bits))
+	 */
+	/*
+	 * XXX possible numeric issues
+	 *	o We assume right shifted integers do the right thing, since that's
+	 *	  implementation defined. You can change the right shifts to / (1LL << alpha).
+	 *	o alpha_bits = 9 gives ema ceiling of 23 bits of seconds for ema and 14 bits
+	 *	  for emvar. This puts a ceiling of 13 bits on alpha since we need a
+	 *	  few tens of seconds of representation.
+	 *	o We mitigate alpha issues by never setting it too high.
 	 */
 	y = sim_latency;
-	iop->ema = (y + (iop->ema << alpha_bits) - iop->ema) >> alpha_bits;
-
-	yy = mul(y, y);
-	iop->emss = (yy + (iop->emss << alpha_bits) - iop->emss) >> alpha_bits;
+	delta = (y - iop->ema);					/* d */
+	iop->ema = ((iop->ema << alpha_bits) + delta) >> alpha_bits;
 
 	/*
-         * s_1 = sum of data
-	 * s_2 = sum of data * data
-	 * ema ~ mean (or s_1 / N)
-	 * emss ~ s_2 / N
-	 *
-	 * sd = sqrt((N * s_2 - s_1 ^ 2) / (N * (N - 1)))
-	 * sd = sqrt((N * s_2 / N * (N - 1)) - (s_1 ^ 2 / (N * (N - 1))))
-	 *
-	 * N ~ 2 / alpha - 1
-	 * alpha < 1 / 16 (typically much less)
-	 * N > 31 --> N large so N * (N - 1) is approx N * N
-	 *
-	 * substituting and rearranging:
-	 * sd ~ sqrt(s_2 / N - (s_1 / N) ^ 2)
-	 *    ~ sqrt(emss - ema ^ 2);
-	 * which is the formula used here to get a decent estimate of sd which
-	 * we use to detect outliers. Note that when first starting up, it
-	 * takes a while for emss sum of squares estimator to converge on a
-	 * good value.  during this time, it can be less than ema^2. We
-	 * compute a sd of 0 in that case, and ignore outliers.
+	 * Were we to naively plow ahead at this point, we wind up with many numerical
+	 * issues making any SD > ~3ms unreliable. So, we shift right by 12. This leaves
+	 * us with microsecond level precision in the input, so the same in the
+	 * output. It means we can't overflow deltasq unless delta > 4k seconds. It
+	 * also means that emvar can be up 46 bits 40 of which are fraction, which
+	 * gives us a way to measure up to ~8s in the SD before the computation goes
+	 * unstable. Even the worst hard disk rarely has > 1s service time in the
+	 * drive. It does mean we have to shift left 12 bits after taking the
+	 * square root to compute the actual standard deviation estimate. This loss of
+	 * precision is preferable to needing int128 types to work. The above numbers
+	 * assume alpha=9. 10 or 11 are ok, but we start to run into issues at 12,
+	 * so 12 or 13 is OK for EMA, EMVAR and SD will be wrong in those cases.
 	 */
-	var = iop->emss - mul(iop->ema, iop->ema);
-	iop->sd = (int64_t)var < 0 ? 0 : isqrt64(var);
+	delta >>= 12;
+	deltasq = delta * delta;				/* dd */
+	iop->emvar = ((iop->emvar << (2 * alpha_bits)) +	/* bbe */
+	    ((deltasq - iop->emvar) << alpha_bits) +		/* b(dd-e) */
+	    deltasq)						/* dd */
+	    >> (2 * alpha_bits);				/* div bb */
+	iop->sd = (sbintime_t)isqrt64((uint64_t)iop->emvar) << 12;
 }
 
-#ifdef CAM_IOSCHED_DYNAMIC
 static void
 cam_iosched_io_metric_update(struct cam_iosched_softc *isc,
     sbintime_t sim_latency, int cmd, size_t size)
@@ -1655,7 +1633,6 @@ cam_iosched_io_metric_update(struct cam_iosched_softc *isc,
 		break;
 	}
 }
-#endif
 
 #ifdef DDB
 static int biolen(struct bio_queue_head *bq)
@@ -1707,7 +1684,7 @@ DB_SHOW_COMMAND(iosched, cam_iosched_db_show)
 	db_printf("Current Q len      %d\n", biolen(&isc->trim_queue));
 	db_printf("read_bias:         %d\n", isc->read_bias);
 	db_printf("current_read_bias: %d\n", isc->current_read_bias);
-	db_printf("Trim active?       %s\n", 
+	db_printf("Trim active?       %s\n",
 	    (isc->flags & CAM_IOSCHED_FLAG_TRIM_ACTIVE) ? "yes" : "no");
 }
 #endif

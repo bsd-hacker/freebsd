@@ -35,7 +35,7 @@ KERN_DEBUGDIR?=	${DEBUGDIR}
 .MAIN: all
 
 .for target in all clean cleandepend cleandir clobber depend install \
-    obj reinstall tags
+    ${_obj} reinstall tags
 ${target}: kernel-${target}
 .if !defined(MODULES_WITH_WORLD) && !defined(NO_MODULES) && exists($S/modules)
 ${target}: modules-${target}
@@ -63,7 +63,7 @@ OSRELDATE!=	awk '/^\#define[[:space:]]*__FreeBSD_version/ { print $$3 }' \
 		    ${MAKEOBJDIRPREFIX}${SRC_BASE}/include/osreldate.h
 .endif
 # Keep the related ports builds in the obj directory so that they are only rebuilt once per kernel build
-WRKDIRPREFIX?=	${MAKEOBJDIRPREFIX}${SRC_BASE}/sys/${KERNCONF}
+WRKDIRPREFIX?=	${.OBJDIR}
 PORTSMODULESENV=\
 	env \
 	-u CC \
@@ -79,7 +79,7 @@ PORTSMODULESENV=\
 all:
 .for __i in ${PORTS_MODULES}
 	@${ECHO} "===> Ports module ${__i} (all)"
-	cd $${PORTSDIR:-/usr/ports}/${__i}; ${PORTSMODULESENV} ${MAKE} -B clean all
+	cd $${PORTSDIR:-/usr/ports}/${__i}; ${PORTSMODULESENV} ${MAKE} -B clean build
 .endfor
 
 .for __target in install reinstall clean
@@ -189,7 +189,7 @@ assym.s: $S/kern/genassym.sh genassym.o
 	NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh genassym.o > ${.TARGET}
 
 genassym.o: $S/$M/$M/genassym.c
-	${CC} -c ${CFLAGS:N-fno-common} $S/$M/$M/genassym.c
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} $S/$M/$M/genassym.c
 
 ${SYSTEM_OBJS} genassym.o vers.o: opt_global.h
 
@@ -357,8 +357,11 @@ config.o env.o hints.o vers.o vnode_if.o:
 config.ln env.ln hints.ln vers.ln vnode_if.ln:
 	${NORMAL_LINT}
 
+.if ${MK_REPRODUCIBLE_BUILD} != "no"
+REPRO_FLAG="-r"
+.endif
 vers.c: $S/conf/newvers.sh $S/sys/param.h ${SYSTEM_DEP}
-	MAKE=${MAKE} sh $S/conf/newvers.sh ${KERN_IDENT}
+	MAKE=${MAKE} sh $S/conf/newvers.sh ${REPRO_FLAG} ${KERN_IDENT}
 
 vnode_if.c: $S/tools/vnode_if.awk $S/kern/vnode_if.src
 	${AWK} -f $S/tools/vnode_if.awk $S/kern/vnode_if.src -c

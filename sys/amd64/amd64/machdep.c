@@ -1673,6 +1673,16 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 	wrmsr(MSR_SF_MASK, PSL_NT|PSL_T|PSL_I|PSL_C|PSL_D);
 
 	/*
+	 * Temporary forge some valid pointer to PCB, for exception
+	 * handlers.  It is reinitialized properly below after FPU is
+	 * set up.  Also set up td_critnest to short-cut the page
+	 * fault handler.
+	 */
+	cpu_max_ext_state_size = sizeof(struct savefpu);
+	thread0.td_pcb = get_pcb_td(&thread0);
+	thread0.td_critnest = 1;
+
+	/*
 	 * The console and kdb should be initialized even earlier than here,
 	 * but some console drivers don't work until after getmemsize().
 	 * Default to late console initialization to support these drivers.
@@ -1724,6 +1734,7 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 	 * area.
 	 */
 	thread0.td_pcb = get_pcb_td(&thread0);
+	thread0.td_pcb->pcb_save = get_pcb_user_save_td(&thread0);
 	bzero(get_pcb_user_save_td(&thread0), cpu_max_ext_state_size);
 	if (use_xsave) {
 		xhdr = (struct xstate_hdr *)(get_pcb_user_save_td(&thread0) +
@@ -1762,6 +1773,7 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 #ifdef FDT
 	x86_init_fdt();
 #endif
+	thread0.td_critnest = 0;
 
 	/* Location of kernel stack for locore */
 	return ((u_int64_t)thread0.td_pcb);

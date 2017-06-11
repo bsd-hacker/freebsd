@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sbuf.h>
 #include <sys/smp.h>
 #include <sys/sx.h>
+#include <sys/vmmeter.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
 #include <sys/unistd.h>
@@ -86,6 +87,11 @@ SYSCTL_ROOT_NODE(OID_AUTO, security, CTLFLAG_RW, 0,
 #ifdef REGRESSION
 SYSCTL_ROOT_NODE(OID_AUTO, regression, CTLFLAG_RW, 0,
      "Regression test MIB");
+#endif
+
+#ifdef EXT_RESOURCES
+SYSCTL_ROOT_NODE(OID_AUTO, clock, CTLFLAG_RW, 0,
+	"Clocks");
 #endif
 
 SYSCTL_STRING(_kern, OID_AUTO, ident, CTLFLAG_RD|CTLFLAG_MPSAFE,

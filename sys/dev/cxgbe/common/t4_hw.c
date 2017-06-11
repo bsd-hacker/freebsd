@@ -3683,9 +3683,7 @@ void t4_ulprx_read_la(struct adapter *adap, u32 *la_buf)
 	}
 }
 
-#define ADVERT_MASK (FW_PORT_CAP_SPEED_100M | FW_PORT_CAP_SPEED_1G |\
-		     FW_PORT_CAP_SPEED_10G | FW_PORT_CAP_SPEED_25G | \
-		     FW_PORT_CAP_SPEED_40G | FW_PORT_CAP_SPEED_100G | \
+#define ADVERT_MASK (V_FW_PORT_CAP_SPEED(M_FW_PORT_CAP_SPEED) | \
 		     FW_PORT_CAP_ANEG)
 
 /**
@@ -3705,13 +3703,22 @@ int t4_link_l1cfg(struct adapter *adap, unsigned int mbox, unsigned int port,
 		  struct link_config *lc)
 {
 	struct fw_port_cmd c;
-	unsigned int fc = 0, mdi = V_FW_PORT_CAP_MDI(FW_PORT_CAP_MDI_AUTO);
+	unsigned int mdi = V_FW_PORT_CAP_MDI(FW_PORT_CAP_MDI_AUTO);
+	unsigned int fc, fec;
 
-	lc->link_ok = 0;
+	fc = 0;
 	if (lc->requested_fc & PAUSE_RX)
 		fc |= FW_PORT_CAP_FC_RX;
 	if (lc->requested_fc & PAUSE_TX)
 		fc |= FW_PORT_CAP_FC_TX;
+
+	fec = 0;
+	if (lc->requested_fec & FEC_RS)
+		fec |= FW_PORT_CAP_FEC_RS;
+	if (lc->requested_fec & FEC_BASER_RS)
+		fec |= FW_PORT_CAP_FEC_BASER_RS;
+	if (lc->requested_fec & FEC_RESERVED)
+		fec |= FW_PORT_CAP_FEC_RESERVED;
 
 	memset(&c, 0, sizeof(c));
 	c.op_to_portid = cpu_to_be32(V_FW_CMD_OP(FW_PORT_CMD) |
@@ -3723,13 +3730,16 @@ int t4_link_l1cfg(struct adapter *adap, unsigned int mbox, unsigned int port,
 
 	if (!(lc->supported & FW_PORT_CAP_ANEG)) {
 		c.u.l1cfg.rcap = cpu_to_be32((lc->supported & ADVERT_MASK) |
-					     fc);
-		lc->fc = lc->requested_fc & (PAUSE_RX | PAUSE_TX);
+					     fc | fec);
+		lc->fc = lc->requested_fc & ~PAUSE_AUTONEG;
+		lc->fec = lc->requested_fec;
 	} else if (lc->autoneg == AUTONEG_DISABLE) {
-		c.u.l1cfg.rcap = cpu_to_be32(lc->requested_speed | fc | mdi);
-		lc->fc = lc->requested_fc & (PAUSE_RX | PAUSE_TX);
+		c.u.l1cfg.rcap = cpu_to_be32(lc->requested_speed |
+					     fc | fec | mdi);
+		lc->fc = lc->requested_fc & ~PAUSE_AUTONEG;
+		lc->fec = lc->requested_fec;
 	} else
-		c.u.l1cfg.rcap = cpu_to_be32(lc->advertising | fc | mdi);
+		c.u.l1cfg.rcap = cpu_to_be32(lc->advertising | fc | fec | mdi);
 
 	return t4_wr_mbox(adap, mbox, &c, sizeof(c), NULL);
 }
@@ -4322,7 +4332,8 @@ static void mem_intr_handler(struct adapter *adapter, int idx)
 	if (v & F_ECC_CE_INT_CAUSE) {
 		u32 cnt = G_ECC_CECNT(t4_read_reg(adapter, cnt_addr));
 
-		t4_edc_err_read(adapter, idx);
+		if (idx <= MEM_EDC1)
+			t4_edc_err_read(adapter, idx);
 
 		t4_write_reg(adapter, cnt_addr, V_ECC_CECNT(M_ECC_CECNT));
 		CH_WARN_RATELIMIT(adapter,
@@ -4754,7 +4765,7 @@ int t4_config_glbl_rss(struct adapter *adapter, int mbox, unsigned int mode,
 		c.u.manual.mode_pkd =
 			cpu_to_be32(V_FW_RSS_GLB_CONFIG_CMD_MODE(mode));
 	} else if (mode == FW_RSS_GLB_CONFIG_CMD_MODE_BASICVIRTUAL) {
-		c.u.basicvirtual.mode_pkd =
+		c.u.basicvirtual.mode_keymode =
 			cpu_to_be32(V_FW_RSS_GLB_CONFIG_CMD_MODE(mode));
 		c.u.basicvirtual.synmapen_to_hashtoeplitz = cpu_to_be32(flags);
 	} else
@@ -4769,11 +4780,14 @@ int t4_config_glbl_rss(struct adapter *adapter, int mbox, unsigned int mode,
  *	@viid: the VI id
  *	@flags: RSS flags
  *	@defq: id of the default RSS queue for the VI.
+ *	@skeyidx: RSS secret key table index for non-global mode
+ *	@skey: RSS vf_scramble key for VI.
  *
  *	Configures VI-specific RSS properties.
  */
 int t4_config_vi_rss(struct adapter *adapter, int mbox, unsigned int viid,
-		     unsigned int flags, unsigned int defq)
+		     unsigned int flags, unsigned int defq, unsigned int skeyidx,
+		     unsigned int skey)
 {
 	struct fw_rss_vi_config_cmd c;
 
@@ -4784,6 +4798,10 @@ int t4_config_vi_rss(struct adapter *adapter, int mbox, unsigned int viid,
 	c.retval_len16 = cpu_to_be32(FW_LEN16(c));
 	c.u.basicvirtual.defaultq_to_udpen = cpu_to_be32(flags |
 					V_FW_RSS_VI_CONFIG_CMD_DEFAULTQ(defq));
+	c.u.basicvirtual.secretkeyidx_pkd = cpu_to_be32(
+					V_FW_RSS_VI_CONFIG_CMD_SECRETKEYIDX(skeyidx));
+	c.u.basicvirtual.secretkeyxor = cpu_to_be32(skey);
+
 	return t4_wr_mbox(adapter, mbox, &c, sizeof(c), NULL);
 }
 
@@ -4902,11 +4920,11 @@ void t4_write_rss_key(struct adapter *adap, u32 *key, int idx)
 	if (idx >= 0 && idx < rss_key_addr_cnt) {
 		if (rss_key_addr_cnt > 16)
 			t4_write_reg(adap, A_TP_RSS_CONFIG_VRT,
-				     V_KEYWRADDRX(idx >> 4) |
+				     vrt | V_KEYWRADDRX(idx >> 4) |
 				     V_T6_VFWRADDR(idx) | F_KEYWREN);
 		else
 			t4_write_reg(adap, A_TP_RSS_CONFIG_VRT,
-				     V_KEYWRADDR(idx) | F_KEYWREN);
+				     vrt| V_KEYWRADDR(idx) | F_KEYWREN);
 	}
 }
 
@@ -5796,6 +5814,7 @@ const char *t4_get_port_type_description(enum fw_port_type port_type)
 		"CR_QSFP",
 		"CR2_QSFP",
 		"SFP28",
+		"KR_SFP28",
 	};
 
 	if (port_type < ARRAY_SIZE(port_type_description))
@@ -7509,18 +7528,14 @@ int t4_handle_fw_rpl(struct adapter *adap, const __be64 *rpl)
 		}
 		if (link_ok != lc->link_ok || speed != lc->speed ||
 		    fc != lc->fc) {                    /* something changed */
-			int reason;
-
 			if (!link_ok && lc->link_ok)
-				reason = G_FW_PORT_CMD_LINKDNRC(stat);
-			else
-				reason = -1;
-
+				lc->link_down_rc = G_FW_PORT_CMD_LINKDNRC(stat);
 			lc->link_ok = link_ok;
 			lc->speed = speed;
 			lc->fc = fc;
 			lc->supported = be16_to_cpu(p->u.info.pcap);
-			t4_os_link_changed(adap, i, link_ok, reason);
+			lc->lp_advertising = be16_to_cpu(p->u.info.lpacap);
+			t4_os_link_changed(adap, i, link_ok);
 		}
 	} else {
 		CH_WARN_RATELIMIT(adap, "Unknown firmware reply %d\n", opcode);
@@ -7554,17 +7569,34 @@ static void get_pci_mode(struct adapter *adapter,
 /**
  *	init_link_config - initialize a link's SW state
  *	@lc: structure holding the link state
- *	@caps: link capabilities
+ *	@pcaps: supported link capabilities
+ *	@acaps: advertised link capabilities
  *
  *	Initializes the SW state maintained for each link, including the link's
  *	capabilities and default speed/flow-control/autonegotiation settings.
  */
-static void init_link_config(struct link_config *lc, unsigned int caps)
+static void init_link_config(struct link_config *lc, unsigned int pcaps,
+    			     unsigned int acaps)
 {
-	lc->supported = caps;
+	unsigned int fec;
+
+	lc->supported = pcaps;
+	lc->lp_advertising = 0;
 	lc->requested_speed = 0;
 	lc->speed = 0;
 	lc->requested_fc = lc->fc = PAUSE_RX | PAUSE_TX;
+	lc->link_ok = 0;
+	lc->link_down_rc = 255;
+
+	fec = 0;
+	if (acaps & FW_PORT_CAP_FEC_RS)
+		fec |= FEC_RS;
+	if (acaps & FW_PORT_CAP_FEC_BASER_RS)
+		fec |= FEC_BASER_RS;
+	if (acaps & FW_PORT_CAP_FEC_RESERVED)
+		fec |= FEC_RESERVED;
+	lc->requested_fec = lc->fec = fec;
+
 	if (lc->supported & FW_PORT_CAP_ANEG) {
 		lc->advertising = lc->supported & ADVERT_MASK;
 		lc->autoneg = AUTONEG_ENABLE;
@@ -7875,7 +7907,7 @@ int t4_init_sge_params(struct adapter *adapter)
 {
 	u32 r;
 	struct sge_params *sp = &adapter->params.sge;
-	unsigned i;
+	unsigned i, tscale = 1;
 
 	r = t4_read_reg(adapter, A_SGE_INGRESS_RX_THRESHOLD);
 	sp->counter_val[0] = G_THRESHOLD_0(r);
@@ -7883,15 +7915,24 @@ int t4_init_sge_params(struct adapter *adapter)
 	sp->counter_val[2] = G_THRESHOLD_2(r);
 	sp->counter_val[3] = G_THRESHOLD_3(r);
 
+	if (chip_id(adapter) >= CHELSIO_T6) {
+		r = t4_read_reg(adapter, A_SGE_ITP_CONTROL);
+		tscale = G_TSCALE(r);
+		if (tscale == 0)
+			tscale = 1;
+		else
+			tscale += 2;
+	}
+
 	r = t4_read_reg(adapter, A_SGE_TIMER_VALUE_0_AND_1);
-	sp->timer_val[0] = core_ticks_to_us(adapter, G_TIMERVALUE0(r));
-	sp->timer_val[1] = core_ticks_to_us(adapter, G_TIMERVALUE1(r));
+	sp->timer_val[0] = core_ticks_to_us(adapter, G_TIMERVALUE0(r)) * tscale;
+	sp->timer_val[1] = core_ticks_to_us(adapter, G_TIMERVALUE1(r)) * tscale;
 	r = t4_read_reg(adapter, A_SGE_TIMER_VALUE_2_AND_3);
-	sp->timer_val[2] = core_ticks_to_us(adapter, G_TIMERVALUE2(r));
-	sp->timer_val[3] = core_ticks_to_us(adapter, G_TIMERVALUE3(r));
+	sp->timer_val[2] = core_ticks_to_us(adapter, G_TIMERVALUE2(r)) * tscale;
+	sp->timer_val[3] = core_ticks_to_us(adapter, G_TIMERVALUE3(r)) * tscale;
 	r = t4_read_reg(adapter, A_SGE_TIMER_VALUE_4_AND_5);
-	sp->timer_val[4] = core_ticks_to_us(adapter, G_TIMERVALUE4(r));
-	sp->timer_val[5] = core_ticks_to_us(adapter, G_TIMERVALUE5(r));
+	sp->timer_val[4] = core_ticks_to_us(adapter, G_TIMERVALUE4(r)) * tscale;
+	sp->timer_val[5] = core_ticks_to_us(adapter, G_TIMERVALUE5(r)) * tscale;
 
 	r = t4_read_reg(adapter, A_SGE_CONM_CTRL);
 	sp->fl_starve_threshold = G_EGRTHRESHOLD(r) * 2 + 1;
@@ -8012,12 +8053,17 @@ int t4_init_tp_params(struct adapter *adap)
 	read_filter_mode_and_ingress_config(adap);
 
 	/*
-	 * For T6, cache the adapter's compressed error vector
-	 * and passing outer header info for encapsulated packets.
+	 * Cache a mask of the bits that represent the error vector portion of
+	 * rx_pkt.err_vec.  T6+ can use a compressed error vector to make room
+	 * for information about outer encapsulation (GENEVE/VXLAN/NVGRE).
 	 */
+	tpp->err_vec_mask = htobe16(0xffff);
 	if (chip_id(adap) > CHELSIO_T5) {
 		v = t4_read_reg(adap, A_TP_OUT_CONFIG);
-		tpp->rx_pkt_encap = (v & F_CRXPKTENC) ? 1 : 0;
+		if (v & F_CRXPKTENC) {
+			tpp->err_vec_mask =
+			    htobe16(V_T6_COMPR_RXERR_VEC(M_T6_COMPR_RXERR_VEC));
+		}
 	}
 
 	return 0;
@@ -8113,7 +8159,8 @@ int t4_port_init(struct adapter *adap, int mbox, int pf, int vf, int port_id)
 		p->port_type = G_FW_PORT_CMD_PTYPE(ret);
 		p->mod_type = G_FW_PORT_CMD_MODTYPE(ret);
 
-		init_link_config(&p->link_cfg, be16_to_cpu(c.u.info.pcap));
+		init_link_config(&p->link_cfg, be16_to_cpu(c.u.info.pcap),
+		    		 be16_to_cpu(c.u.info.acap));
 	}
 
 	ret = t4_alloc_vi(adap, mbox, j, pf, vf, 1, addr, &rss_size);
@@ -9343,6 +9390,79 @@ int t4_sched_params(struct adapter *adapter, int type, int level, int mode,
 	cmd.u.params.min = cpu_to_be32(minrate);
 	cmd.u.params.max = cpu_to_be32(maxrate);
 	cmd.u.params.weight = cpu_to_be16(weight);
+	cmd.u.params.pktsize = cpu_to_be16(pktsize);
+
+	return t4_wr_mbox_meat(adapter,adapter->mbox, &cmd, sizeof(cmd),
+			       NULL, sleep_ok);
+}
+
+int t4_sched_params_ch_rl(struct adapter *adapter, int channel, int ratemode,
+    unsigned int maxrate, int sleep_ok)
+{
+	struct fw_sched_cmd cmd;
+
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.op_to_write = cpu_to_be32(V_FW_CMD_OP(FW_SCHED_CMD) |
+				      F_FW_CMD_REQUEST |
+				      F_FW_CMD_WRITE);
+	cmd.retval_len16 = cpu_to_be32(FW_LEN16(cmd));
+
+	cmd.u.params.sc = FW_SCHED_SC_PARAMS;
+	cmd.u.params.type = FW_SCHED_TYPE_PKTSCHED;
+	cmd.u.params.level = FW_SCHED_PARAMS_LEVEL_CH_RL;
+	cmd.u.params.ch = channel;
+	cmd.u.params.rate = ratemode;		/* REL or ABS */
+	cmd.u.params.max = cpu_to_be32(maxrate);/*  %  or kbps */
+
+	return t4_wr_mbox_meat(adapter,adapter->mbox, &cmd, sizeof(cmd),
+			       NULL, sleep_ok);
+}
+
+int t4_sched_params_cl_wrr(struct adapter *adapter, int channel, int cl,
+    int weight, int sleep_ok)
+{
+	struct fw_sched_cmd cmd;
+
+	if (weight < 0 || weight > 100)
+		return -EINVAL;
+
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.op_to_write = cpu_to_be32(V_FW_CMD_OP(FW_SCHED_CMD) |
+				      F_FW_CMD_REQUEST |
+				      F_FW_CMD_WRITE);
+	cmd.retval_len16 = cpu_to_be32(FW_LEN16(cmd));
+
+	cmd.u.params.sc = FW_SCHED_SC_PARAMS;
+	cmd.u.params.type = FW_SCHED_TYPE_PKTSCHED;
+	cmd.u.params.level = FW_SCHED_PARAMS_LEVEL_CL_WRR;
+	cmd.u.params.ch = channel;
+	cmd.u.params.cl = cl;
+	cmd.u.params.weight = cpu_to_be16(weight);
+
+	return t4_wr_mbox_meat(adapter,adapter->mbox, &cmd, sizeof(cmd),
+			       NULL, sleep_ok);
+}
+
+int t4_sched_params_cl_rl_kbps(struct adapter *adapter, int channel, int cl,
+    int mode, unsigned int maxrate, int pktsize, int sleep_ok)
+{
+	struct fw_sched_cmd cmd;
+
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.op_to_write = cpu_to_be32(V_FW_CMD_OP(FW_SCHED_CMD) |
+				      F_FW_CMD_REQUEST |
+				      F_FW_CMD_WRITE);
+	cmd.retval_len16 = cpu_to_be32(FW_LEN16(cmd));
+
+	cmd.u.params.sc = FW_SCHED_SC_PARAMS;
+	cmd.u.params.type = FW_SCHED_TYPE_PKTSCHED;
+	cmd.u.params.level = FW_SCHED_PARAMS_LEVEL_CL_RL;
+	cmd.u.params.mode = mode;
+	cmd.u.params.ch = channel;
+	cmd.u.params.cl = cl;
+	cmd.u.params.unit = FW_SCHED_PARAMS_UNIT_BITRATE;
+	cmd.u.params.rate = FW_SCHED_PARAMS_RATE_ABS;
+	cmd.u.params.max = cpu_to_be32(maxrate);
 	cmd.u.params.pktsize = cpu_to_be16(pktsize);
 
 	return t4_wr_mbox_meat(adapter,adapter->mbox, &cmd, sizeof(cmd),

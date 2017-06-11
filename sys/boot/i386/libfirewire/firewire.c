@@ -66,7 +66,7 @@ struct crom_src_buf {
 
 static int	fw_init(void);
 static int	fw_strategy(void *devdata, int flag, daddr_t dblk,
-		    size_t offset, size_t size, char *buf, size_t *rsize);
+		    size_t size, char *buf, size_t *rsize);
 static int	fw_open(struct open_file *f, ...);
 static int	fw_close(struct open_file *f);
 static int	fw_print(int verbose);
@@ -155,6 +155,10 @@ fw_print(int verbose)
 	int i, ret = 0;
 	struct fwohci_softc *sc;
 
+	printf("%s devices:", fwohci.dv_name);
+	if ((ret = pager_output("\n")) != 0)
+		return (ret);
+
 	for (i = 0; i < MAX_OHCI; i ++) {
 		sc = &fwinfo[i];
 		if (sc->state == FWOHCI_STATE_DEAD)
@@ -206,7 +210,7 @@ fw_cleanup()
 }
 
 static int 
-fw_strategy(void *devdata, int rw, daddr_t dblk, size_t offset, size_t size,
+fw_strategy(void *devdata, int rw, daddr_t dblk, size_t size,
     char *buf, size_t *rsize)
 {
 	return (EIO);

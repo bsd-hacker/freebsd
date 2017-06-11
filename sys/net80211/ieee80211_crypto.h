@@ -114,7 +114,8 @@ struct ieee80211_key {
 
 #define IEEE80211_KEY_DEVICE		/* flags owned by device driver */\
 	(IEEE80211_KEY_DEVKEY|IEEE80211_KEY_CIPHER0|IEEE80211_KEY_CIPHER1| \
-	 IEEE80211_KEY_SWCRYPT|IEEE80211_KEY_SWMIC)
+	 IEEE80211_KEY_SWCRYPT|IEEE80211_KEY_SWMIC|IEEE80211_KEY_NOIV | \
+	 IEEE80211_KEY_NOIVMGT|IEEE80211_KEY_NOMIC|IEEE80211_KEY_NOMICMGT)
 
 #define	IEEE80211_KEY_BITS \
 	"\20\1XMIT\2RECV\3GROUP\4SWENCRYPT\5SWDECRYPT\6SWENMIC\7SWDEMIC" \
@@ -170,6 +171,8 @@ int	ieee80211_crypto_delkey(struct ieee80211vap *,
 int	ieee80211_crypto_setkey(struct ieee80211vap *, struct ieee80211_key *);
 void	ieee80211_crypto_delglobalkeys(struct ieee80211vap *);
 void	ieee80211_crypto_reload_keys(struct ieee80211com *);
+void	ieee80211_crypto_set_deftxkey(struct ieee80211vap *,
+	    ieee80211_keyix kid);
 
 /*
  * Template for a supported cipher.  Ciphers register with the
@@ -201,14 +204,16 @@ void	ieee80211_crypto_register(const struct ieee80211_cipher *);
 void	ieee80211_crypto_unregister(const struct ieee80211_cipher *);
 int	ieee80211_crypto_available(u_int cipher);
 
+int	ieee80211_crypto_get_key_wepidx(const struct ieee80211vap *,
+	    const struct ieee80211_key *k);
 uint8_t	ieee80211_crypto_get_keyid(struct ieee80211vap *vap,
 		struct ieee80211_key *k);
 struct ieee80211_key *ieee80211_crypto_get_txkey(struct ieee80211_node *,
 		struct mbuf *);
 struct ieee80211_key *ieee80211_crypto_encap(struct ieee80211_node *,
 		struct mbuf *);
-struct ieee80211_key *ieee80211_crypto_decap(struct ieee80211_node *,
-		struct mbuf *, int);
+int	ieee80211_crypto_decap(struct ieee80211_node *,
+		struct mbuf *, int, struct ieee80211_key **);
 int ieee80211_crypto_demic(struct ieee80211vap *vap, struct ieee80211_key *k,
 		struct mbuf *, int);
 /*

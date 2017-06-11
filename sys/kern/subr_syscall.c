@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/capsicum.h>
 #include <sys/ktr.h>
+#include <sys/vmmeter.h>
 #ifdef KTRACE
 #include <sys/uio.h>
 #include <sys/ktrace.h>
@@ -57,7 +58,7 @@ syscallenter(struct thread *td, struct syscall_args *sa)
 	struct proc *p;
 	int error, traced;
 
-	PCPU_INC(cnt.v_syscall);
+	VM_CNT_INC(v_syscall);
 	p = td->td_proc;
 
 	td->td_pticks = 0;
@@ -88,7 +89,7 @@ syscallenter(struct thread *td, struct syscall_args *sa)
 			td->td_dbg_sc_code = sa->code;
 			td->td_dbg_sc_narg = sa->narg;
 			if (p->p_ptevents & PTRACE_SCE)
-				ptracestop((td), SIGTRAP);
+				ptracestop((td), SIGTRAP, NULL);
 			PROC_UNLOCK(p);
 		}
 		if (td->td_dbgflags & TDB_USERWR) {
@@ -222,7 +223,7 @@ syscallret(struct thread *td, int error, struct syscall_args *sa)
 		if (traced &&
 		    ((td->td_dbgflags & (TDB_FORK | TDB_EXEC)) != 0 ||
 		    (p->p_ptevents & PTRACE_SCX) != 0))
-			ptracestop(td, SIGTRAP);
+			ptracestop(td, SIGTRAP, NULL);
 		td->td_dbgflags &= ~(TDB_SCX | TDB_EXEC | TDB_FORK);
 		PROC_UNLOCK(p);
 	}
@@ -259,7 +260,7 @@ again:
 		if (td->td_dbgflags & TDB_VFORK) {
 			PROC_LOCK(p);
 			if (p->p_ptevents & PTRACE_VFORK)
-				ptracestop(td, SIGTRAP);
+				ptracestop(td, SIGTRAP, NULL);
 			td->td_dbgflags &= ~TDB_VFORK;
 			PROC_UNLOCK(p);
 		}

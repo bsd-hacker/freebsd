@@ -143,14 +143,6 @@ nvme_sim_action(struct cam_sim *sim, union ccb *ccb)
 		 */
 		/*FALLTHROUGH*/
 	case XPT_ABORT:			/* Abort the specified CCB */
-	case XPT_EN_LUN:		/* Enable LUN as a target */
-	case XPT_TARGET_IO:		/* Execute target I/O request */
-	case XPT_ACCEPT_TARGET_IO:	/* Accept Host Target Mode CDB */
-	case XPT_CONT_TARGET_IO:	/* Continue Host Target I/O Connection*/
-		/*
-		 * Only target mode generates these, and only for SCSI. They are
-		 * all invalid/unsupported for NVMe.
-		 */
 		ccb->ccb_h.status = CAM_REQ_INVALID;
 		break;
 	case XPT_SET_TRAN_SETTINGS:
@@ -181,14 +173,14 @@ nvme_sim_action(struct cam_sim *sim, union ccb *ccb)
 		cpi->initiator_id = 0;
 		cpi->bus_id = cam_sim_bus(sim);
 		cpi->base_transfer_speed = 4000000;	/* 4 GB/s 4 lanes pcie 3 */
-		strncpy(cpi->sim_vid, "FreeBSD", SIM_IDLEN);
-		strncpy(cpi->hba_vid, "NVMe", HBA_IDLEN);
-		strncpy(cpi->dev_name, cam_sim_name(sim), DEV_IDLEN);
+		strlcpy(cpi->sim_vid, "FreeBSD", SIM_IDLEN);
+		strlcpy(cpi->hba_vid, "NVMe", HBA_IDLEN);
+		strlcpy(cpi->dev_name, cam_sim_name(sim), DEV_IDLEN);
 		cpi->unit_number = cam_sim_unit(sim);
-                cpi->transport = XPORT_NVME;		/* XXX XPORT_PCIE ? */
-                cpi->transport_version = 1;		/* XXX Get PCIe spec ? */
-                cpi->protocol = PROTO_NVME;
-                cpi->protocol_version = NVME_REV_1;	/* Groks all 1.x NVMe cards */
+		cpi->transport = XPORT_NVME;		/* XXX XPORT_PCIE ? */
+		cpi->transport_version = 1;		/* XXX Get PCIe spec ? */
+		cpi->protocol = PROTO_NVME;
+		cpi->protocol_version = NVME_REV_1;	/* Groks all 1.x NVMe cards */
 		cpi->xport_specific.nvme.nsid = ns->id;
 		cpi->ccb_h.status = CAM_REQ_CMP;
 		break;

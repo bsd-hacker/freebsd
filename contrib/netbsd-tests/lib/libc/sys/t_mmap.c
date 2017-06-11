@@ -1,4 +1,4 @@
-/* $NetBSD: t_mmap.c,v 1.9 2015/02/28 13:57:08 martin Exp $ */
+/* $NetBSD: t_mmap.c,v 1.12 2017/01/16 16:31:05 christos Exp $ */
 
 /*-
  * Copyright (c) 2011 The NetBSD Foundation, Inc.
@@ -55,10 +55,12 @@
  * SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: t_mmap.c,v 1.9 2015/02/28 13:57:08 martin Exp $");
+__RCSID("$NetBSD: t_mmap.c,v 1.12 2017/01/16 16:31:05 christos Exp $");
 
 #include <sys/param.h>
+#include <sys/disklabel.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <sys/wait.h>
@@ -72,13 +74,7 @@ __RCSID("$NetBSD: t_mmap.c,v 1.9 2015/02/28 13:57:08 martin Exp $");
 #include <string.h>
 #include <unistd.h>
 #include <paths.h>
-#ifdef __NetBSD__
-#include <machine/disklabel.h>
-#endif
-
 #ifdef __FreeBSD__
-#include <sys/disklabel.h>
-#include <sys/stat.h>
 #include <stdint.h>
 #endif
 
@@ -383,7 +379,12 @@ ATF_TC_BODY(mmap_prot_3, tc)
 	fd = open(path, O_RDWR | O_CREAT, 0700);
 
 	if (fd < 0)
+#ifdef	__FreeBSD__
+		atf_tc_skip("opening %s failed; skipping testcase: %s",
+		    path, strerror(errno));
+#else
 		return;
+#endif
 
 	ATF_REQUIRE(write(fd, "XXX", 3) == 3);
 	ATF_REQUIRE(close(fd) == 0);
@@ -409,6 +410,9 @@ ATF_TC_BODY(mmap_prot_3, tc)
 	ATF_REQUIRE(WIFEXITED(sta) != 0);
 	ATF_REQUIRE(WEXITSTATUS(sta) == SIGSEGV);
 	ATF_REQUIRE(munmap(map, 3) == 0);
+#ifdef	__FreeBSD__
+	(void)close(fd);
+#endif
 }
 
 ATF_TC_CLEANUP(mmap_prot_3, tc)
@@ -453,6 +457,7 @@ ATF_TC_BODY(mmap_truncate, tc)
 	ATF_REQUIRE(ftruncate(fd, page / 12) == 0);
 	ATF_REQUIRE(ftruncate(fd, page / 64) == 0);
 
+	(void)munmap(map, page);
 	ATF_REQUIRE(close(fd) == 0);
 }
 
@@ -509,6 +514,8 @@ ATF_TC_BODY(mmap_truncate_signal, tc)
 		   prevent the access to be optimized out */
 		ATF_REQUIRE(i == 0);
 		ATF_REQUIRE(sta == 0);
+		(void)munmap(map, page);
+		(void)close(fd);
 		return;
 	}
 

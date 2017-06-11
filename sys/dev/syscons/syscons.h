@@ -38,14 +38,6 @@
 #include <sys/_lock.h>
 #include <sys/_mutex.h>
 
-/* machine-dependent part of the header */
-
-#ifdef PC98
-#include <pc98/cbus/sc_machdep.h>
-#elif defined(__i386__)
-/* nothing for the moment */
-#endif
-
 /* default values for configuration options */
 
 #ifndef MAXCONS
@@ -76,11 +68,11 @@
 #endif
 
 #ifndef SC_CURSOR_CHAR
-#define SC_CURSOR_CHAR	(0x07)
+#define SC_CURSOR_CHAR	7
 #endif
 
 #ifndef SC_MOUSE_CHAR
-#define SC_MOUSE_CHAR	(0xd0)
+#define SC_MOUSE_CHAR	8
 #endif
 
 #if SC_MOUSE_CHAR <= SC_CURSOR_CHAR && SC_CURSOR_CHAR < (SC_MOUSE_CHAR + 4)
@@ -320,8 +312,6 @@ typedef struct scr_stat {
 
 	int		cursor_pos;		/* cursor buffer position */
 	int		cursor_oldpos;		/* cursor old buffer position */
-	u_short		cursor_saveunder_char;	/* saved char under cursor */
-	u_short		cursor_saveunder_attr;	/* saved attr under cursor */
 	struct cursor_attr dflt_curs_attr;
 	struct cursor_attr curr_curs_attr;
 	struct cursor_attr curs_attr;
@@ -389,7 +379,7 @@ typedef int	sc_term_init_t(scr_stat *scp, void **tcp, int code);
 #define SC_TE_COLD_INIT	0
 #define SC_TE_WARM_INIT	1
 typedef int	sc_term_term_t(scr_stat *scp, void **tcp);
-typedef void	sc_term_puts_t(scr_stat *scp, u_char *buf, int len, int kernel);
+typedef void	sc_term_puts_t(scr_stat *scp, u_char *buf, int len);
 typedef int	sc_term_ioctl_t(scr_stat *scp, struct tty *tp, u_long cmd,
 				caddr_t data, struct thread *td);
 typedef int	sc_term_reset_t(scr_stat *scp, int code);
@@ -402,6 +392,7 @@ typedef void	sc_term_notify_t(scr_stat *scp, int event);
 #define SC_TE_NOTIFY_VTSWITCH_OUT	1
 typedef int	sc_term_input_t(scr_stat *scp, int c, struct tty *tp);
 typedef const char *sc_term_fkeystr_t(scr_stat *scp, int c);
+typedef void sc_term_sync_t(scr_stat *scp);
 
 typedef struct sc_term_sw {
 	LIST_ENTRY(sc_term_sw)	link;
@@ -420,6 +411,7 @@ typedef struct sc_term_sw {
 	sc_term_notify_t	*te_notify;
 	sc_term_input_t		*te_input;
 	sc_term_fkeystr_t	*te_fkeystr;
+	sc_term_sync_t		*te_sync;
 } sc_term_sw_t;
 
 #define SCTERM_MODULE(name, sw)					\

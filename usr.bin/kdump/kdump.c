@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -840,6 +840,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				quad_slots = 1;
 			switch (ktr->ktr_code) {
 			case SYS_bindat:
+			case SYS_chflagsat:
 			case SYS_connectat:
 			case SYS_faccessat:
 			case SYS_fchmodat:
@@ -931,7 +932,6 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				ip++;
 				narg--;
 				break;
-			case SYS_mknod:
 			case SYS_mknodat:
 				print_number(ip, narg, c);
 				putchar(',');
@@ -943,7 +943,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				print_number(ip, narg, c);
 				print_number(ip, narg, c);
 				putchar(',');
-				print_mask_arg(sysdecode_getfsstat_flags, *ip);
+				print_integer_arg(sysdecode_getfsstat_mode, *ip);
 				ip++;
 				narg--;
 				break;
@@ -982,6 +982,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				narg--;
 				break;
 			case SYS_chflags:
+			case SYS_chflagsat:
 			case SYS_fchflags:
 			case SYS_lchflags:
 				print_number(ip, narg, c);
@@ -1059,11 +1060,11 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				ip++;
 				narg--;
 				break;
+			case SYS_getpriority:
 			case SYS_setpriority:
-				print_number(ip, narg, c);
-				print_number(ip, narg, c);
-				putchar(',');
+				putchar('(');
 				print_integer_arg(sysdecode_prio_which, *ip);
+				c = ',';
 				ip++;
 				narg--;
 				break;
@@ -1189,6 +1190,13 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				narg--;
 				c = ',';
 				break;
+			case SYS_getrusage:
+				putchar('(');
+				print_integer_arg(sysdecode_getrusage_who, *ip);
+				ip++;
+				narg--;
+				c = ',';
+				break;
 			case SYS_quotactl:
 				print_number(ip, narg, c);
 				putchar(',');
@@ -1211,6 +1219,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				c = ',';
 				break;
 			case SYS_rtprio:
+			case SYS_rtprio_thread:
 				putchar('(');
 				print_integer_arg(sysdecode_rtprio_function,
 				    *ip);
@@ -1734,8 +1743,6 @@ ktrsockaddr(struct sockaddr *sa)
 {
 /*
  TODO: Support additional address families
-	#include <netnatm/natm.h>
-	struct sockaddr_natm	*natm;
 	#include <netsmb/netbios.h>
 	struct sockaddr_nb	*nb;
 */

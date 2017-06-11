@@ -41,7 +41,7 @@ __<src.opts.mk>__:
 # that haven't been converted over.
 #
 
-# These options are used by src the builds
+# These options are used by the src builds
 
 __DEFAULT_YES_OPTIONS = \
     ACCT \
@@ -62,6 +62,7 @@ __DEFAULT_YES_OPTIONS = \
     BOOTPARAMD \
     BOOTPD \
     BSD_CPIO \
+    BSD_GREP_FASTMATCH \
     BSDINSTALL \
     BSNMP \
     BZIP2 \
@@ -97,13 +98,10 @@ __DEFAULT_YES_OPTIONS = \
     GAMES \
     GCOV \
     GDB \
-    GNU \
     GNU_DIFF \
     GNU_GREP \
-    GNU_GREP_COMPAT \
     GPIO \
     GPL_DTC \
-    GROFF \
     HAST \
     HTML \
     HYPERV \
@@ -131,7 +129,6 @@ __DEFAULT_YES_OPTIONS = \
     MAIL \
     MAILWRAPPER \
     MAKE \
-    MANDOCDB \
     NDIS \
     NETCAT \
     NETGRAPH \
@@ -183,13 +180,14 @@ __DEFAULT_NO_OPTIONS = \
     BSD_GREP \
     CLANG_EXTRAS \
     DTRACE_TESTS \
-    EISA \
+    GNU_GREP_COMPAT \
     HESIOD \
     LIBSOFT \
     NAND \
     OFED \
     OPENLDAP \
-    RCS \
+    REPRODUCIBLE_BUILD \
+    RPCBIND_WARMSTART_SUPPORT \
     SHARED_TOOLCHAIN \
     SORT_THREADS \
     SVN \
@@ -223,32 +221,38 @@ __TT=${MACHINE}
 .if ${COMPILER_FEATURES:Mc++11} && (${__T} == "aarch64" || \
     ${__T} == "amd64" || ${__TT} == "arm" || ${__T} == "i386")
 # Clang is enabled, and will be installed as the default /usr/bin/cc.
-__DEFAULT_YES_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC
+__DEFAULT_YES_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC LLD
 __DEFAULT_NO_OPTIONS+=GCC GCC_BOOTSTRAP GNUCXX
-.elif ${COMPILER_FEATURES:Mc++11} && ${__T:Mpowerpc*}
-# On powerpc, if an external compiler that supports C++11 is used as ${CC},
-# then Clang is enabled, but GCC is installed as the default /usr/bin/cc.
+.elif ${COMPILER_FEATURES:Mc++11} && ${__T} != "riscv64" && ${__T} != "sparc64"
+# If an external compiler that supports C++11 is used as ${CC} and Clang
+# supports the target, then Clang is enabled but GCC is installed as the
+# default /usr/bin/cc.
 __DEFAULT_YES_OPTIONS+=CLANG CLANG_FULL GCC GCC_BOOTSTRAP GNUCXX
-__DEFAULT_NO_OPTIONS+=CLANG_BOOTSTRAP CLANG_IS_CC
+__DEFAULT_NO_OPTIONS+=CLANG_BOOTSTRAP CLANG_IS_CC LLD
 .else
 # Everything else disables Clang, and uses GCC instead.
 __DEFAULT_YES_OPTIONS+=GCC GCC_BOOTSTRAP GNUCXX
-__DEFAULT_NO_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC
+__DEFAULT_NO_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC LLD
 .endif
 # In-tree binutils/gcc are older versions without modern architecture support.
-.if ${__T} == "aarch64" || ${__T} == "riscv64"
+.if ${__T} == "aarch64" || ${__T:Mriscv*} != ""
 BROKEN_OPTIONS+=BINUTILS BINUTILS_BOOTSTRAP GCC GCC_BOOTSTRAP GDB
 .endif
-.if ${__T} == "riscv64"
+.if ${__T:Mriscv*} != ""
 BROKEN_OPTIONS+=PROFILE # "sorry, unimplemented: profiler support for RISC-V"
 BROKEN_OPTIONS+=TESTS   # "undefined reference to `_Unwind_Resume'"
 BROKEN_OPTIONS+=CXX     # "libcxxrt.so: undefined reference to `_Unwind_Resume_or_Rethrow'"
 .endif
 .if ${__T} == "aarch64" || ${__T} == "amd64" || ${__T} == "i386" || \
-    ${__T} == "riscv64"
+    ${__T:Mriscv*} != ""
 __DEFAULT_YES_OPTIONS+=LLVM_LIBUNWIND
 .else
 __DEFAULT_NO_OPTIONS+=LLVM_LIBUNWIND
+.endif
+.if ${__T} == "aarch64"
+__DEFAULT_YES_OPTIONS+=LLD_BOOTSTRAP LLD_IS_LD
+.else
+__DEFAULT_NO_OPTIONS+=LLD_BOOTSTRAP LLD_IS_LD
 .endif
 .if ${__T} == "aarch64" || ${__T} == "amd64"
 __DEFAULT_YES_OPTIONS+=LLDB
@@ -259,6 +263,14 @@ __DEFAULT_NO_OPTIONS+=LLDB
 .if ${__T} == "arm" || ${__T} == "armeb"
 BROKEN_OPTIONS+=LLDB
 .endif
+# GDB in base is generally less functional than GDB in ports.  Ports GDB
+# does not yet contain kernel support for arm, and sparc64 kernel support
+# has not been tested.
+.if ${__T:Marm*} != "" || ${__T} == "sparc64"
+__DEFAULT_NO_OPTIONS+=GDB_LIBEXEC
+.else
+__DEFAULT_YES_OPTIONS+=GDB_LIBEXEC
+.endif
 # Only doing soft float API stuff on armv6
 .if ${__T} != "armv6"
 BROKEN_OPTIONS+=LIBSOFT
@@ -268,6 +280,13 @@ BROKEN_OPTIONS+=SSP
 .endif
 .if ${__T:Mmips*} || ${__T:Mpowerpc*} || ${__T:Msparc64} || ${__T:Mriscv*}
 BROKEN_OPTIONS+=EFI
+.endif
+
+.if ${__T} == "aarch64" || ${__T} == "amd64" || ${__T} == "i386" || \
+    ${__T} == "powerpc64" || ${__T} == "sparc64"
+__DEFAULT_YES_OPTIONS+=CXGBETOOL
+.else
+__DEFAULT_NO_OPTIONS+=CXGBETOOL
 .endif
 
 .include <bsd.mkopt.mk>
@@ -306,6 +325,10 @@ MK_LLVM_LIBUNWIND:=	no
 MK_GDB:=	no
 .endif
 
+.if ${MK_CAPSICUM} == "no"
+MK_CASPER:=	no
+.endif
+
 .if ${MK_LIBPTHREAD} == "no"
 MK_LIBTHR:=	no
 .endif
@@ -333,7 +356,6 @@ MK_KERBEROS:=	no
 
 .if ${MK_CXX} == "no"
 MK_CLANG:=	no
-MK_GROFF:=	no
 MK_GNUCXX:=	no
 MK_TESTS:=	no
 .endif
@@ -366,10 +388,6 @@ MK_AUTHPF:=	no
 MK_DTRACE_TESTS:= no
 .endif
 
-.if ${MK_TEXTPROC} == "no"
-MK_GROFF:=	no
-.endif
-
 .if ${MK_CROSS_COMPILER} == "no"
 MK_BINUTILS_BOOTSTRAP:= no
 MK_CLANG_BOOTSTRAP:= no
@@ -383,6 +401,7 @@ MK_CLANG:=	no
 MK_GCC:=	no
 MK_GDB:=	no
 MK_INCLUDES:=	no
+MK_LLD:=	no
 MK_LLDB:=	no
 .endif
 
@@ -390,33 +409,6 @@ MK_LLDB:=	no
 MK_CLANG_EXTRAS:= no
 MK_CLANG_FULL:= no
 .endif
-
-#
-# Set defaults for the MK_*_SUPPORT variables.
-#
-
-#
-# MK_*_SUPPORT options which default to "yes" unless their corresponding
-# MK_* variable is set to "no".
-#
-.for var in \
-    BLACKLIST \
-    BZIP2 \
-    GNU \
-    INET \
-    INET6 \
-    KERBEROS \
-    KVM \
-    NETGRAPH \
-    PAM \
-    TESTS \
-    WIRELESS
-.if defined(WITHOUT_${var}_SUPPORT) || ${MK_${var}} == "no"
-MK_${var}_SUPPORT:= no
-.else
-MK_${var}_SUPPORT:= yes
-.endif
-.endfor
 
 #
 # MK_* options whose default value depends on another option.
@@ -430,6 +422,32 @@ MK_${vv:H}:=	yes
 MK_${vv:H}:=	no
 .else
 MK_${vv:H}:=	${MK_${vv:T}}
+.endif
+.endfor
+
+#
+# Set defaults for the MK_*_SUPPORT variables.
+#
+
+#
+# MK_*_SUPPORT options which default to "yes" unless their corresponding
+# MK_* variable is set to "no".
+#
+.for var in \
+    BLACKLIST \
+    BZIP2 \
+    INET \
+    INET6 \
+    KERBEROS \
+    KVM \
+    NETGRAPH \
+    PAM \
+    TESTS \
+    WIRELESS
+.if defined(WITHOUT_${var}_SUPPORT) || ${MK_${var}} == "no"
+MK_${var}_SUPPORT:= no
+.else
+MK_${var}_SUPPORT:= yes
 .endif
 .endfor
 

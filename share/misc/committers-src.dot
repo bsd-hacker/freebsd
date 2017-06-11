@@ -15,7 +15,7 @@ digraph src {
 #   foo [label="Foo Bar\nfoo@FreeBSD.org\n????/??/??"]
 #
 # ????/??/?? is the date when the commit bit was obtained, usually the one you
-# can find looking at svn logs for the svnadmin/access file.
+# can find looking at svn logs for the svnadmin/conf/access file.
 # Use YYYY/MM/DD format.
 #
 # For returned commit bits, the node definition will follow this example:
@@ -78,7 +78,6 @@ non [label="Noriaki Mitsnaga\nnon@FreeBSD.org\n2000/06/19\n2007/03/06"]
 onoe [label="Atsushi Onoe\nonoe@FreeBSD.org\n2000/07/21\n2008/11/10"]
 rafan [label="Rong-En Fan\nrafan@FreeBSD.org\n2007/01/31\n2012/07/23"]
 randi [label="Randi Harper\nrandi@FreeBSD.org\n2010/04/20\n2012/05/10"]
-rgrimes [label="Rod Grimes\nrgrimes@FreeBSD.org\n1993/06/12\n2003/03/08"]
 rink [label="Rink Springer\nrink@FreeBSD.org\n2006/01/16\n2010/11/04"]
 robert [label="Robert Drehmel\nrobert@FreeBSD.org\n2001/08/23\n2006/05/13"]
 sah [label="Sam Hopkins\nsah@FreeBSD.org\n2004/12/15\n2008/11/10"]
@@ -140,11 +139,14 @@ cognet [label="Olivier Houchard\ncognet@FreeBSD.org\n2002/10/09"]
 cokane [label="Coleman Kane\ncokane@FreeBSD.org\n2000/06/19"]
 cperciva [label="Colin Percival\ncperciva@FreeBSD.org\n2004/01/20"]
 csjp [label="Christian S.J. Peron\ncsjp@FreeBSD.org\n2004/05/04"]
+dab [label="David Bright\ndab@FreeBSD.org\n2016/10/24"]
 das [label="David Schultz\ndas@FreeBSD.org\n2003/02/21"]
 davide [label="Davide Italiano\ndavide@FreeBSD.org\n2012/01/27"]
 dchagin [label="Dmitry Chagin\ndchagin@FreeBSD.org\n2009/02/28"]
+def [label="Konrad Witaszczyk\ndef@FreeBSD.org\n2016/11/02"]
 delphij [label="Xin Li\ndelphij@FreeBSD.org\n2004/09/14"]
 des [label="Dag-Erling Smorgrav\ndes@FreeBSD.org\n1998/04/03"]
+dexuan [label="Dexuan Cui\ndexuan@FreeBSD.org\n2016/10/24"]
 dfr [label="Doug Rabson\ndfr@FreeBSD.org\n????/??/??"]
 dg [label="David Greenman\ndg@FreeBSD.org\n1993/06/14"]
 dim [label="Dimitry Andric\ndim@FreeBSD.org\n2010/08/30"]
@@ -167,6 +169,7 @@ flz [label="Florent Thoumie\nflz@FreeBSD.org\n2006/03/30"]
 gabor [label="Gabor Kovesdan\ngabor@FreeBSD.org\n2010/02/02"]
 gad [label="Garance A. Drosehn\ngad@FreeBSD.org\n2000/10/27"]
 gallatin [label="Andrew Gallatin\ngallatin@FreeBSD.org\n1999/01/15"]
+ganbold [label="Ganbold Tsagaankhuu\nganbold@FreeBSD.org\n2013/12/18"]
 gavin [label="Gavin Atkinson\ngavin@FreeBSD.org\n2009/12/07"]
 gibbs [label="Justin T. Gibbs\ngibbs@FreeBSD.org\n????/??/??"]
 gjb [label="Glen Barber\ngjb@FreeBSD.org\n2013/06/04"]
@@ -271,6 +274,7 @@ qingli [label="Qing Li\nqingli@FreeBSD.org\n2005/04/13"]
 ray [label="Aleksandr Rybalko\nray@FreeBSD.org\n2011/05/25"]
 rdivacky [label="Roman Divacky\nrdivacky@FreeBSD.org\n2008/03/13"]
 remko [label="Remko Lodder\nremko@FreeBSD.org\n2007/02/23"]
+rgrimes [label="Rodney W. Grimes\nrgrimes@FreeBSD.org\n1993/06/12\n2017/03/03"]
 rik [label="Roman Kurakin\nrik@FreeBSD.org\n2003/12/18"]
 rmacklem [label="Rick Macklem\nrmacklem@FreeBSD.org\n2009/03/27"]
 rmh [label="Robert Millan\nrmh@FreeBSD.org\n2011/09/18"]
@@ -330,6 +334,7 @@ wkoszek [label="Wojciech A. Koszek\nwkoszek@FreeBSD.org\n2006/02/21"]
 wma [label="Wojciech Macek\nwma@FreeBSD.org\n2016/01/18"]
 wollman [label="Garrett Wollman\nwollman@FreeBSD.org\n????/??/??"]
 wsalamon [label="Wayne Salamon\nwsalamon@FreeBSD.org\n2005/06/25"]
+wulf [label="Vladimir Kondratyev\nwulf@FreeBSD.org\n2017/04/27"]
 yongari [label="Pyun YongHyeon\nyongari@FreeBSD.org\n2004/08/01"]
 zbb [label="Zbigniew Bodek\nzbb@FreeBSD.org\n2013/09/02"]
 zec [label="Marko Zec\nzec@FreeBSD.org\n2008/06/22"]
@@ -381,6 +386,7 @@ avg -> smh
 bapt -> allanjude
 bapt -> araujo
 bapt -> bdrewery
+bapt -> wulf
 
 benno -> grehan
 
@@ -492,8 +498,10 @@ gnn -> jtl
 gnn -> karels
 
 gonzo -> jmcneill
+gonzo -> wulf
 
 grehan -> bryanv
+grehan -> rgrimes
 
 grog -> edwin
 grog -> le
@@ -683,6 +691,7 @@ philip -> kp
 phk -> jkoshy
 phk -> mux
 
+pjd -> def
 pjd -> kib
 pjd -> lulf
 pjd -> oshogbo
@@ -753,6 +762,8 @@ scottl -> sbruno
 scottl -> slm
 scottl -> yongari
 
+sephe -> dexuan
+
 sheldonh -> dwmalone
 sheldonh -> iedowse
 
@@ -764,6 +775,8 @@ sjg -> phil
 sjg -> stevek
 
 sos -> marcel
+
+stas -> ganbold
 
 theraven -> phil
 
@@ -778,6 +791,7 @@ ume -> suz
 ume -> tshiozak
 
 vangyzen -> badger
+vangyzen -> dab
 
 wes -> scf
 
