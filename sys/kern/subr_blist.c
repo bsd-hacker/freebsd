@@ -215,17 +215,19 @@ blist_destroy(blist_t bl)
 daddr_t 
 blist_alloc(blist_t bl, daddr_t count)
 {
-	daddr_t blk = SWAPBLK_NONE;
+	daddr_t blk;
 
-	if (bl) {
+	if (bl != NULL && count <= bl->bl_root->bm_bighint) {
 		if (bl->bl_radix == BLIST_BMAP_RADIX)
 			blk = blst_leaf_alloc(bl->bl_root, 0, count);
 		else
-			blk = blst_meta_alloc(bl->bl_root, 0, count, bl->bl_radix, bl->bl_skip);
+			blk = blst_meta_alloc(bl->bl_root, 0, count,
+			    bl->bl_radix, bl->bl_skip);
 		if (blk != SWAPBLK_NONE)
 			bl->bl_free -= count;
+		return (blk);
 	}
-	return(blk);
+	return (SWAPBLK_NONE);
 }
 
 /*
@@ -417,27 +419,27 @@ blst_meta_alloc(
 	daddr_t radix, 
 	int skip
 ) {
+	daddr_t r;
 	int i;
 	int next_skip = ((u_int)skip / BLIST_META_RADIX);
 
-	if (scan->u.bmu_avail == 0)  {
-		/*
-		 * ALL-ALLOCATED special case
-		 */
-		scan->bm_bighint = 0;
-		return(SWAPBLK_NONE);
+	if (scan->u.bmu_avail < count) {
+		scan->bm_bighint = scan->u.bmu_avail;
+		return (SWAPBLK_NONE);
 	}
 
+	/*
+	 * An ALL-FREE meta node requires special handling before allocating
+	 * any of its blocks.
+	 */
 	if (scan->u.bmu_avail == radix) {
 		radix /= BLIST_META_RADIX;
 
 		/*
-		 * ALL-FREE special case, initialize uninitialize
-		 * sublevel.
+		 * Reinitialize each of the meta node's children.  An ALL-FREE
+		 * meta node cannot have a terminator in any subtree.
 		 */
 		for (i = 1; i <= skip; i += next_skip) {
-			if (scan[i].bm_bighint == (daddr_t)-1)
-				break;
 			if (next_skip == 1) {
 				scan[i].u.bmu_bitmap = (u_daddr_t)-1;
 				scan[i].bm_bighint = BLIST_BMAP_RADIX;
@@ -450,34 +452,33 @@ blst_meta_alloc(
 		radix /= BLIST_META_RADIX;
 	}
 
+	if (count > radix) {
+		/*
+		 * The allocation exceeds the number of blocks that are
+		 * managed by a subtree of this meta node.
+		 */
+		panic("allocation too large");
+	}
 	for (i = 1; i <= skip; i += next_skip) {
 		if (count <= scan[i].bm_bighint) {
 			/*
-			 * count fits in object
+			 * The allocation might fit in the i'th subtree.
 			 */
-			daddr_t r;
 			if (next_skip == 1) {
 				r = blst_leaf_alloc(&scan[i], blk, count);
 			} else {
-				r = blst_meta_alloc(&scan[i], blk, count, radix, next_skip - 1);
+				r = blst_meta_alloc(&scan[i], blk, count,
+				    radix, next_skip - 1);
 			}
 			if (r != SWAPBLK_NONE) {
 				scan->u.bmu_avail -= count;
-				if (scan->bm_bighint > scan->u.bmu_avail)
-					scan->bm_bighint = scan->u.bmu_avail;
-				return(r);
+				return (r);
 			}
 		} else if (scan[i].bm_bighint == (daddr_t)-1) {
 			/*
 			 * Terminator
 			 */
 			break;
-		} else if (count > radix) {
-			/*
-			 * count does not fit in object even if it were
-			 * complete free.
-			 */
-			panic("blist_meta_alloc: allocation too large");
 		}
 		blk += radix;
 	}
@@ -771,8 +772,13 @@ blst_meta_fill(
 	int next_skip = ((u_int)skip / BLIST_META_RADIX);
 	daddr_t nblks = 0;
 
-	if (count > radix)
-		panic("blist_meta_fill: allocation too large");
+	if (count > radix) {
+		/*
+		 * The allocation exceeds the number of blocks that are
+		 * managed by this meta node.
+		 */
+		panic("allocation too large");
+	}
 	if (count == radix || scan->u.bmu_avail == 0)  {
 		/*
 		 * ALL-ALLOCATED special case
@@ -783,15 +789,18 @@ blst_meta_fill(
 		return nblks;
 	}
 
+	/*
+	 * An ALL-FREE meta node requires special handling before allocating
+	 * any of its blocks.
+	 */
 	if (scan->u.bmu_avail == radix) {
 		radix /= BLIST_META_RADIX;
 
 		/*
-		 * ALL-FREE special case, initialize sublevel
+		 * Reinitialize each of the meta node's children.  An ALL-FREE
+		 * meta node cannot have a terminator in any subtree.
 		 */
 		for (i = 1; i <= skip; i += next_skip) {
-			if (scan[i].bm_bighint == (daddr_t)-1)
-				break;
 			if (next_skip == 1) {
 				scan[i].u.bmu_bitmap = (u_daddr_t)-1;
 				scan[i].bm_bighint = BLIST_BMAP_RADIX;
