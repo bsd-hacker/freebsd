@@ -46,8 +46,8 @@ start=`date '+%s'`
 OIFS=$IFS
 while true; do
 	#          Type InUse MemUse
-	[ -z "$optm" ] && vmstat -m | sed 1d | \
-	    sed 's/\(.* \)\([0-9][0-9]*\)  *\(.*\)K .*/\1:\2:\3/' | \
+	[ -z "$optm" ] && vmstat -m | sed 1d |
+	    sed 's/\(.* \)\([0-9][0-9]*\)  *\(.*\)K .*/\1:\2:\3/' |
 	    while IFS=: read -r p1 p2 p3; do
 		name=`echo $p1 | sed 's/^ *//;s/ *$//'`
 		memuse=$p3
@@ -55,7 +55,8 @@ while true; do
 	done
 
 	# ITEM                   SIZE  LIMIT     USED
-	[ -z "$optz" ] && vmstat -z | sed "1,2d;/^$/d;s/: /, /" | sed -E 's/[^[:print:]\r\t]/ /g' |
+	[ -z "$optz" ] && vmstat -z | sed "1,2d;/^$/d;s/: /, /" |
+	    sed -E 's/[^[:print:]\r\t]/ /g' |
 	    while read l; do
 		IFS=','
 		set $l
