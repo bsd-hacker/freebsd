@@ -51,7 +51,7 @@ for i in $list; do
 	lst="$lst $i"
 done
 n=`echo $lst | wc -w`
-(cd /tmp; echo $lst | tr ' ' '\n' | split -d -l $((n / parts)) - str)
+(cd /tmp; echo $lst | tr ' ' '\n' | split -d -l $((n / parts + 1)) - str)
 part=`printf "/tmp/str%02d" $((pno - 1))`
 plist=`cat $part | tr '\n' ' '`
 rm -f /tmp/str0?
