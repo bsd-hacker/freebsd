@@ -106,6 +106,7 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <stdarg.h>
 
+#define	bitcount64(x)	__bitcount64((uint64_t)(x))
 #define malloc(a,b,c)	calloc(a, 1)
 #define free(a,b)	free(a)
 
@@ -169,7 +170,7 @@ blist_create(daddr_t blocks, int flags)
 		skip = (skip + 1) * BLIST_META_RADIX;
 	}
 
-	bl = malloc(sizeof(struct blist), M_SWAP, flags | M_ZERO);
+	bl = malloc(sizeof(struct blist), M_SWAP, flags);
 	if (bl == NULL)
 		return (NULL);
 
@@ -207,7 +208,7 @@ blist_destroy(blist_t bl)
 }
 
 /*
- * blist_alloc() - reserve space in the block bitmap.  Return the base
+ * blist_alloc() -   reserve space in the block bitmap.  Return the base
  *		     of a contiguous region or SWAPBLK_NONE if space could
  *		     not be allocated.
  */
@@ -223,11 +224,23 @@ blist_alloc(blist_t bl, daddr_t count)
 		else
 			blk = blst_meta_alloc(bl->bl_root, 0, count,
 			    bl->bl_radix, bl->bl_skip);
-		if (blk != SWAPBLK_NONE)
-			bl->bl_free -= count;
 		return (blk);
 	}
 	return (SWAPBLK_NONE);
+}
+
+/*
+ * blist_avail() -	return the number of free blocks.
+ */
+
+daddr_t
+blist_avail(blist_t bl)
+{
+
+	if (bl->bl_radix == BLIST_BMAP_RADIX)
+		return (bitcount64(bl->bl_root->u.bmu_bitmap));
+	else
+		return (bl->bl_root->u.bmu_avail);
 }
 
 /*
@@ -243,8 +256,8 @@ blist_free(blist_t bl, daddr_t blkno, daddr_t count)
 		if (bl->bl_radix == BLIST_BMAP_RADIX)
 			blst_leaf_free(bl->bl_root, blkno, count);
 		else
-			blst_meta_free(bl->bl_root, blkno, count, bl->bl_radix, bl->bl_skip, 0);
-		bl->bl_free += count;
+			blst_meta_free(bl->bl_root, blkno, count,
+			    bl->bl_radix, bl->bl_skip, 0);
 	}
 }
 
@@ -266,10 +279,9 @@ blist_fill(blist_t bl, daddr_t blkno, daddr_t count)
 		else
 			filled = blst_meta_fill(bl->bl_root, blkno, count,
 			    bl->bl_radix, bl->bl_skip, 0);
-		bl->bl_free -= filled;
-		return filled;
-	} else
-		return 0;
+		return (filled);
+	}
+	return (0);
 }
 
 /*
@@ -424,6 +436,11 @@ blst_meta_alloc(
 	int next_skip = ((u_int)skip / BLIST_META_RADIX);
 
 	if (scan->u.bmu_avail < count) {
+		/*
+		 * The meta node's hint must be too large if the allocation
+		 * exceeds the number of free blocks.  Reduce the hint, and
+		 * return failure.
+		 */
 		scan->bm_bighint = scan->u.bmu_avail;
 		return (SWAPBLK_NONE);
 	}
@@ -737,18 +754,16 @@ blst_leaf_fill(blmeta_t *scan, daddr_t blk, int count)
 {
 	int n = blk & (BLIST_BMAP_RADIX - 1);
 	daddr_t nblks;
-	u_daddr_t mask, bitmap;
+	u_daddr_t mask;
 
 	mask = ((u_daddr_t)-1 << n) &
 	    ((u_daddr_t)-1 >> (BLIST_BMAP_RADIX - count - n));
 
-	/* Count the number of blocks we're about to allocate */
-	bitmap = scan->u.bmu_bitmap & mask;
-	for (nblks = 0; bitmap != 0; nblks++)
-		bitmap &= bitmap - 1;
+	/* Count the number of blocks that we are allocating. */
+	nblks = bitcount64(scan->u.bmu_bitmap & mask);
 
 	scan->u.bmu_bitmap &= ~mask;
-	return nblks;
+	return (nblks);
 }
 
 /*
@@ -1029,7 +1044,7 @@ main(int ac, char **av)
 		long long da = 0;
 		long long count = 0;
 
-		printf("%lld/%lld/%lld> ", (long long)bl->bl_free,
+		printf("%lld/%lld/%lld> ", (long long)blist_avail(bl),
 		    (long long)size, (long long)bl->bl_radix);
 		fflush(stdout);
 		if (fgets(buf, sizeof(buf), stdin) == NULL)
