@@ -61,39 +61,34 @@ kldstat -v | grep -q sysvshm  || $stress2tools/kldload.sh sysvshm
 kldstat -v | grep -q aio      || $stress2tools/kldload.sh aio
 kldstat -v | grep -q mqueuefs || $stress2tools/kldload.sh mqueuefs
 
-mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
-mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
+mount | grep -q "on $mntpoint " && umount -f $mntpoint
+[ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 2g -u $mdstart || exit 1
 bsdlabel -w md$mdstart auto
-newfs $newfs_flags md${mdstart}$part > /dev/null
+newfs $newfs_flags -n md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
-daemon sh -c "(cd $odir/../testcases/swap; ./swap -t 10m -i 20 -k)" > \
+[ -z "$noswap" ] &&
+    daemon sh -c "(cd $odir/../testcases/swap; ./swap -t 10m -i 20 -k)" > \
     /dev/null
 sleeptime=${sleeptime:-12}
 st=`date '+%s'`
 while [ $((`date '+%s'` - st)) -lt $((10 * sleeptime)) ]; do
-	(cd $mntpoint; /tmp/syscall4 $* ) &
+	(cd $mntpoint; /tmp/syscall4 $* 1>>stdout 2>>stderr) &
 	start=`date '+%s'`
 	while [ $((`date '+%s'` - start)) -lt $sleeptime ]; do
 		pgrep syscall4 > /dev/null || break
 		sleep .5
 	done
-	while pkill -9 syscall4; do
-		:
-	done
+	while pkill -9 syscall4; do :; done
 	wait
 	ipcs | grep nobody | awk '/^(q|m|s)/ {print " -" $1, $2}' |
 	    xargs -L 1 ipcrm
 done
-while pkill -9 swap; do
-	:
-done
-while pkill -9 syscall4; do
-	:
-done
+while pkill -9 swap; do :; done
+while pkill -9 syscall4; do :; done
 
 for i in `jot 10`; do
 	mount | grep -q md${mdstart}$part  && \
@@ -106,9 +101,9 @@ if mount | grep -q md${mdstart}$part; then
 	exit 1
 fi
 rm -f /tmp/syscall4
-exit
+exit 0
 EOF
-#include <sys/param.h>
+#include <sys/types.h>
 #include <sys/event.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -122,6 +117,10 @@ EOF
 #include <fts.h>
 #include <libutil.h>
 #include <pthread.h>
+#if defined(__FreeBSD__)
+#include <pthread_np.h>
+#define	__NP__
+#endif
 #include <pwd.h>
 #include <signal.h>
 #include <stdint.h>
@@ -150,17 +149,17 @@ static int ignore[] = {
 	SYS_sigwaitinfo,
 };
 
-int fd[900], fds[2], kq, socketpr[2];
+static int fd[900], fds[2], kq, socketpr[2];
 #ifndef nitems
 #define nitems(x) (sizeof((x)) / sizeof((x)[0]))
 #endif
-#define N (128 * 1024 / (int)sizeof(u_int32_t))
+#define N 4096
 #define MAGIC 1664
 #define RUNTIME 120
 #define THREADS 50
 
-u_int32_t r[N];
-int magic1, syscallno, magic2;
+static uint32_t r[N];
+static int magic1, syscallno, magic2;
 
 static int
 random_int(int mi, int ma)
@@ -170,10 +169,10 @@ random_int(int mi, int ma)
 
 static void
 hand(int i __unused) {	/* handler */
-	_exit(1);
+	exit(1);
 }
 
-unsigned long
+static unsigned long
 makearg(void)
 {
 	unsigned int i;
@@ -198,27 +197,37 @@ makearg(void)
 	return(val);
 }
 
-void *
+static void *
 test(void *arg __unused)
 {
-
-	FTS		*fts;
-	FTSENT		*p;
-	int		ftsoptions, i;
+	FTS *fts;
+	FTSENT *p;
+	time_t start;
+	int ftsoptions, i, numfiles;
 	char *args[] = {
 	    "/dev",
 	    "/proc",
-	    "/compat/linux/proc",
-	    "/media",
+	    "mnt2",
 	    ".",
 	    NULL,
 	};
 
+#ifdef __NP__
+	pthread_set_name_np(pthread_self(), __func__);
+#endif
+	numfiles = 0;
 	ftsoptions = FTS_PHYSICAL;
-
-	for (;;) {
+	start = time(NULL);
+	while (time(NULL) - start < 2) {
 		for (i = 0; i < N; i++)
 			r[i] = arc4random();
+
+		if (pipe(fds) == -1)
+			err(1, "pipe()");
+		if (socketpair(PF_UNIX, SOCK_SEQPACKET, 0, socketpr) == -1)
+			err(1, "socketpair()");
+		kq = kqueue();
+
 		if ((fts = fts_open(args, ftsoptions, NULL)) == NULL)
 			err(1, "fts_open");
 
@@ -227,20 +236,21 @@ test(void *arg __unused)
 			if (fd[i] > 0)
 				close(fd[i]);
 			if ((fd[i] = open(p->fts_path, O_RDWR)) == -1)
-				if ((fd[i] = open(p->fts_path, O_WRONLY)) == -1)
-					if ((fd[i] = open(p->fts_path, O_RDONLY)) == -1)
+				if ((fd[i] = open(p->fts_path, O_WRONLY)) ==
+				    -1)
+					if ((fd[i] = open(p->fts_path,
+					    O_RDONLY)) == -1)
 						continue;
 			i++;
 			i = i % nitems(fd);
+			if (numfiles++ < 10) {
+				fprintf(stderr, "%d: pts_path = %s\n",
+				    numfiles, p->fts_path);
+			}
 		}
 
 		if (fts_close(fts) == -1)
-			err(1, "fts_close()");
-		if (pipe(fds) == -1)
-			err(1, "pipe()");
-		if (socketpair(PF_UNIX, SOCK_SEQPACKET, 0, socketpr) == -1)
-			err(1, "socketpair()");
-		kq = kqueue();
+			warn("fts_close()");
 		sleep(1);
 		close(socketpr[0]);
 		close(socketpr[1]);
@@ -248,18 +258,21 @@ test(void *arg __unused)
 		close(fds[1]);
 		close(kq);
 	}
-	return(0);
+	return(NULL);
 }
 
-void *
+static void *
 calls(void *arg __unused)
 {
+	time_t start;
 	int i, j, num;
 	unsigned long arg1, arg2, arg3, arg4, arg5, arg6, arg7;
 
-	for (i = 0;; i++) {
-		if (i == 0)
-			usleep(1000);
+#ifdef __NP__
+	pthread_set_name_np(pthread_self(), __func__);
+#endif
+	start = time(NULL);
+	for (i = 0; time(NULL) - start < 10; i++) {
 		num = syscallno;
 		while (num == 0) {
 			num = random_int(0, SYS_MAXSYSCALL);
@@ -278,7 +291,8 @@ calls(void *arg __unused)
 		arg7 = makearg();
 
 #if 0		/* Debug mode */
-		fprintf(stderr, "%2d : syscall(%3d, %lx, %lx, %lx, %lx, %lx, %lx, %lx)\n",
+		fprintf(stderr, "%2d : syscall(%3d, %lx, %lx, %lx, %lx, %lx,"
+		   " %lx, %lx)\n",
 			i, num, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 		sleep(2);
 #endif
@@ -286,10 +300,10 @@ calls(void *arg __unused)
 		syscall(num, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 		num = 0;
 		if (magic1 != MAGIC || magic2 != MAGIC)
-			_exit(1);
+			exit(1);
 	}
 
-	return (0);
+	return (NULL);
 }
 
 int
@@ -300,7 +314,6 @@ main(int argc, char **argv)
 	pthread_t rp, cp[THREADS];
 	time_t start;
 	int e, j;
-
 
 	magic1 = magic2 = MAGIC;
 	if ((pw = getpwnam("nobody")) == NULL)
@@ -340,27 +353,32 @@ main(int argc, char **argv)
 		syscallno = atoi(argv[1]);
 		for (j = 0; j < (int)nitems(ignore); j++)
 			if (syscallno == ignore[j])
-				errx(0, "syscall #%d is on the ignore list.", syscallno);
+				errx(0, "syscall #%d is on the ignore list.",
+				    syscallno);
 	}
 
-	if (daemon(0, 0) == -1)
+	if (daemon(1, 1) == -1)
 		err(1, "daemon()");
 
 	start = time(NULL);
 	while ((time(NULL) - start) < RUNTIME) {
 		if (fork() == 0) {
-			arc4random_stir();
 			if ((e = pthread_create(&rp, NULL, test, NULL)) != 0)
 				errc(1, e, "pthread_create");
 			usleep(1000);
 			for (j = 0; j < THREADS; j++)
-				if ((e = pthread_create(&cp[j], NULL, calls, NULL)) != 0)
+				if ((e = pthread_create(&cp[j], NULL, calls,
+				    NULL)) != 0)
 					errc(1, e, "pthread_create");
 			for (j = 0; j < THREADS; j++)
 				pthread_join(cp[j], NULL);
-			_exit(0);
+
+			if ((e = pthread_kill(rp, SIGINT)) != 0)
+				errc(1, e, "pthread_kill");
+			exit(0);
 		}
 		wait(NULL);
+		usleep(10000);
 	}
 
 	return (0);
