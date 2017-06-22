@@ -42,7 +42,12 @@ cd /tmp
 sed '1,/^EOF/d' < $here/$0 > sendfile5.c
 mycc -o sendfile5 -Wall -Wextra -O2 sendfile5.c
 rm -f sendfile5.c
-dd if=/dev/zero of=$diskimage bs=1m count=1k 2>&1 | egrep -v "records|transferred"
+need=1024
+[ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` \
+    -lt $need ] &&
+    printf "Need %d MB on %s.\n" $need `dirname $diskimage` && exit 0
+dd if=/dev/zero of=$diskimage bs=1m count=$need 2>&1 |
+    egrep -v "records|transferred"
 cd $here
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
