@@ -42,10 +42,11 @@ esyscall=0
 last=/tmp/syscall5.last
 log=/tmp/syscall5.log
 
-while getopts ae:rs:t:u flag; do
+while getopts ae:nrs:t:u flag; do
 	case "$flag" in
 	a) all=1 ;;
 	e) esyscall="$OPTARG" ;;
+	n) export noswap=1 ;;
 	r) [ -h $last ] &&
 	       syscall=`ls -l $last | awk '{print $NF}'`
 	       syscall=$((syscall - 1))
@@ -54,7 +55,8 @@ while getopts ae:rs:t:u flag; do
 	t) sleeptime="$OPTARG"
 	   export sleeptime=$((sleeptime / 10))	;; # used in syscall4.sh
 	u) unnamed=1 ;;
-	*) echo "Usage $0 [-a] [-r] [-s number] [-e number] [-t seconds] [-u]"
+	*) echo "Usage $0 [-a] [-n] [-r] [-s number] [-e number] "\
+	    "[-t seconds] [-u]"
 	   return 1 ;;
 	esac
 done
