@@ -28,42 +28,41 @@
 # $FreeBSD$
 #
 
-exit 0	# Experimental test scenario
-
 # Test scenario by kib@
 
 [ `uname -m` = "i386" ] || exit 0
 
 . ../default.cfg
 
+grep -q MAP_GUARD /usr/include/sys/mman.h 2>/dev/null || exit 0
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > mmap16.c
 mycc -o mmap16 -Wall -Wextra -O2 -g mmap16.c -lpthread || exit 1
 rm -f mmap16.c /tmp/mmap16.core
-rm -f /tmp/mmap16.core
 
+echo "Expect:
+    mmap16: mprotect: Permission denied"
 /tmp/mmap16 > /dev/null
+s=$?
 
 rm -f /tmp/mmap16 /tmp/mmap16.core
-exit 0
+exit $s
 EOF
 /* $Id: map_hole.c,v 1.6 2014/06/16 05:52:03 kostik Exp kostik $ */
 
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+
 #include <err.h>
+#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ucontext.h>
 #include <unistd.h>
-
-#ifndef MAP_HOLE
-#define	MAP_HOLE	 0x00002000 /* no backing pages */
-#endif
 
 static void
 sighandler(int signo, siginfo_t *info, void *uap1)
@@ -126,10 +125,10 @@ main(void)
 		err(1, "sigaction");
 	pagesz = getpagesize();
 
-	printf("MAP_HOLE\n");
-	addr = mmap(NULL, pagesz, PROT_NONE, MAP_HOLE, -1, 0);
+	printf("MAP_GUARD\n");
+	addr = mmap(NULL, pagesz, PROT_NONE, MAP_GUARD, -1, 0);
 	if (addr == (char *)MAP_FAILED)
-		err(1, "FAIL: mmap(MAP_HOLE)");
+		err(1, "FAIL: mmap(MAP_GUARD)");
 	test_access(addr);
 
 	printf("PROT_NONE wire\n");
@@ -137,7 +136,8 @@ main(void)
 	if (addr == (char *)MAP_FAILED)
 		err(1, "mmap(PROT_NONE)");
 	if (mlock(addr, pagesz) == -1)
-		err(1, "mlock");
+		if (errno != ENOMEM)
+			err(1, "mlock");
 	test_access(addr);
 
 	snprintf(cmd, sizeof(cmd), "procstat -v %d", getpid());
