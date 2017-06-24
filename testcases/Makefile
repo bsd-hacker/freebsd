@@ -21,7 +21,6 @@ shm \
 socket \
 swap \
 symlink \
-syscall \
 sysctl \
 tcp \
 thr1 \
