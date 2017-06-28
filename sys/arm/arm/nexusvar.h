@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Emmanuel Vadot <manu@bidouilliste.com>
+ * Copyright (c) 2017 Ian Lepore <ian@freebsd.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,60 +26,11 @@
  * $FreeBSD$
  */
 
-#include "sun7i-a20-olimex-som-evb.dts"
-#include "sun7i-a20-hdmi.dtsi"
-#include "xpowers-axp209.dtsi"
+#ifndef	_ARM_ARM_NEXUSVAR_H_
+#define	_ARM_ARM_NEXUSVAR_H_
 
-/ {
-	soc@01c00000 {
-		hdmi@01c16000 {
-			status = "okay";
-		};
+/* Set a platform busdma tag to be inherited by all busses and devices. */
+void nexus_set_dma_tag(bus_dma_tag_t _tag);
 
-		hdmiaudio {
-			status = "okay";
-		};
-	};
-};
+#endif
 
-&cpu0 {
-	cpu-supply = <&reg_dcdc2>;
-};
-
-&i2c1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c1_pins_a>;
-	status = "okay";
-};
-
-&i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins_a>;
-	status = "okay";
-};
-
-&spi1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi1_pins_a>,
-		    <&spi1_cs0_pins_a>;
-	status = "okay";
-};
-
-&spi2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi2_pins_a>,
-		    <&spi2_cs0_pins_a>;
-	status = "okay";
-};
-
-&uart6 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&uart6_pins_a>;
-	status = "okay";
-};
-
-&uart7 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&uart7_pins_a>;
-	status = "okay";
-};
