@@ -24,3 +24,8 @@ include		"GENERIC"
 
 ident		RPI3
 
+# Comment following lines for boot console on serial port
+device		vt
+device		kbdmux
+device		ukbd
+
