@@ -393,6 +393,7 @@ chroot_arm_build_release() {
 		TARGET=${EMBEDDED_TARGET} TARGET_ARCH=${EMBEDDED_TARGET_ARCH} \
 		-V OSRELEASE)"
 	chroot ${CHROOTDIR} mkdir -p ${DESTDIR}
+	chroot ${CHROOTDIR} rm -f ${IMGBASE##${CHROOTDIR}}
 	chroot ${CHROOTDIR} truncate -s ${IMAGE_SIZE} ${IMGBASE##${CHROOTDIR}}
 	export mddev=$(chroot ${CHROOTDIR} \
 		mdconfig -f ${IMGBASE##${CHROOTDIR}} ${MD_ARGS})
