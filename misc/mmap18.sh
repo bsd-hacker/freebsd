@@ -46,8 +46,9 @@ mycc -o mmap18 -Wall -Wextra -O2 mmap18.c -lpthread || exit 1
 rm -f mmap18.c
 
 s=0
-wire=$((`sysctl -n vm.max_wired` - `sysctl -n vm.stats.vm.v_wire_count`))
 for i in `jot 5`; do
+	wire=$((`sysctl -n vm.max_wired` - \
+	    `sysctl -n vm.stats.vm.v_wire_count`))
 	/tmp/mmap18 $wire || s=1
 done
 
@@ -267,8 +268,8 @@ main(int argc, char *argv[])
 	if (getrlimit(RLIMIT_MEMLOCK, &rl) == -1)
 		warn("getrlimit");
 	maxlock = atol(argv[1]);
-	if (maxlock == 0)
-		errx(1, "Argument is zero");
+	if (maxlock <= 0)
+		errx(1, "Bad argument %jd", maxlock);
 	maxlock = (maxlock / 10 * 8) / PARALLEL * PAGE_SIZE;
 	if (maxlock < rl.rlim_cur) {
 		rl.rlim_max = rl.rlim_cur = maxlock;
