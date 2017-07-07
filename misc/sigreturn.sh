@@ -77,6 +77,10 @@ unsigned long buf[] = {
 0xffffffe8, 0xe445c7ff, 0x00000000, 0xc76634eb, 0x00200c46, 0xffe845c7
 };
 
+#if !defined(SYS_freebsd4_sigreturn)
+#define SYS_freebsd4_sigreturn 344
+#endif
+
 static void
 hand(int i __unused) {	/* handler */
 	_exit(1);
