@@ -34,7 +34,6 @@ saved=`sysctl vfs.lookup_shared | awk '{print $NF}'`
 trap "sysctl vfs.lookup_shared=$saved" EXIT INT
 
 export runRUNTIME=10m            # Run tests for 10 minutes
-for i in 1 0; do
-   sysctl vfs.lookup_shared=$i
-   (cd ..; ./run.sh disk.cfg)
-done
+sysctl vfs.lookup_shared=0
+(cd ..; ./run.sh disk.cfg)
+exit 0
