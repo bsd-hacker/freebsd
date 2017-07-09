@@ -28,8 +28,7 @@
 # $FreeBSD$
 #
 
-# Variation of mmap18.sh, where a leak of wired pages is observed:
-# vm.stats.vm.v_wire_count was 172817, is 181696. 8879
+# Variation of mmap18.sh. No problems seen.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -256,8 +255,6 @@ main(int argc, char *argv[])
 			err(1, "vm.stats.vm.v_wire_count");
 		fprintf(stderr, "vm.stats.vm.v_wire_count was %d, is %d. %d\n",
 		    wire_count_old, wire_count, wire_count - wire_count_old);
-		if (wire_count - wire_count_old > 0)
-			s = 1;
 	}
 
 	return (s);
