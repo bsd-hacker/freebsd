@@ -3818,7 +3818,7 @@ tlb1_read_entry(tlb_entry_t *entry, unsigned int slot)
 	KASSERT((entry != NULL), ("%s(): Entry is NULL!", __func__));
 
 	msr = mfmsr();
-	mtmsr(msr & ~PSL_EE);
+	__asm __volatile("wrteei 0");
 
 	mas0 = MAS0_TLBSEL(1) | MAS0_ESEL(slot);
 	mtspr(SPR_MAS0, mas0);
@@ -3850,7 +3850,6 @@ tlb1_read_entry(tlb_entry_t *entry, unsigned int slot)
 
 /*
  * Write given entry to TLB1 hardware.
- * Use 32 bit pa, clear 4 high-order bits of RPN (mas7).
  */
 static void
 tlb1_write_entry(tlb_entry_t *e, unsigned int idx)
@@ -3865,7 +3864,7 @@ tlb1_write_entry(tlb_entry_t *e, unsigned int idx)
 	//debugf("tlb1_write_entry: mas0 = 0x%08x\n", mas0);
 
 	msr = mfmsr();
-	mtmsr(msr & ~PSL_EE);
+	__asm __volatile("wrteei 0");
 
 	mtspr(SPR_MAS0, mas0);
 	__asm __volatile("isync");

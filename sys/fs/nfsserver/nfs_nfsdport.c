@@ -93,7 +93,6 @@ static int nfs_commit_miss;
 extern int nfsrv_issuedelegs;
 extern int nfsrv_dolocallocks;
 extern int nfsd_enable_stringtouid;
-extern int nfsd_enable_uidtostring;
 extern struct nfsdevicehead nfsrv_devidhead;
 
 static void nfsrv_pnfscreate(struct vnode *, struct vattr *, struct ucred *,
@@ -136,8 +135,6 @@ SYSCTL_INT(_vfs_nfsd, OID_AUTO, debuglevel, CTLFLAG_RW, &nfsd_debuglevel,
     0, "Debug level for NFS server");
 SYSCTL_INT(_vfs_nfsd, OID_AUTO, enable_stringtouid, CTLFLAG_RW,
     &nfsd_enable_stringtouid, 0, "Enable nfsd to accept numeric owner_names");
-SYSCTL_INT(_vfs_nfsd, OID_AUTO, enable_uidtostring, CTLFLAG_RW,
-    &nfsd_enable_uidtostring, 0, "Make nfsd always send numeric owner_names");
 static int nfsrv_pnfsgetdsattr = 1;
 SYSCTL_INT(_vfs_nfsd, OID_AUTO, pnfsgetdsattr, CTLFLAG_RW,
     &nfsrv_pnfsgetdsattr, 0, "When set getattr gets DS attributes via RPC");
