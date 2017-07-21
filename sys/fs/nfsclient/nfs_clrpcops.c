@@ -4672,14 +4672,13 @@ nfsrpc_createsession(struct nfsmount *nmp, struct nfsclsession *sep,
 	uint32_t crflags, maxval, *tl;
 	struct nfsrv_descript nfsd;
 	struct nfsrv_descript *nd = &nfsd;
-	int error, irdcnt, rsiz, wsiz;
+	int error, irdcnt;
 
-	rsiz = nmp->nm_rsize;
-	if (rsiz == 0)
-		rsiz = NFS_MAXBSIZE;
-	wsiz = nmp->nm_wsize;
-	if (wsiz == 0)
-		wsiz = NFS_MAXBSIZE;
+	/* Make sure nm_rsize, nm_wsize is set. */
+	if (nmp->nm_rsize > NFS_MAXBSIZE || nmp->nm_rsize == 0)
+		nmp->nm_rsize = NFS_MAXBSIZE;
+	if (nmp->nm_wsize > NFS_MAXBSIZE || nmp->nm_wsize == 0)
+		nmp->nm_wsize = NFS_MAXBSIZE;
 	nfscl_reqstart(nd, NFSPROC_CREATESESSION, nmp, NULL, 0, NULL, NULL);
 	NFSM_BUILD(tl, uint32_t *, 4 * NFSX_UNSIGNED);
 	*tl++ = sep->nfsess_clientid.lval[0];
@@ -4693,8 +4692,8 @@ nfsrpc_createsession(struct nfsmount *nmp, struct nfsclsession *sep,
 	/* Fill in fore channel attributes. */
 	NFSM_BUILD(tl, uint32_t *, 7 * NFSX_UNSIGNED);
 	*tl++ = 0;				/* Header pad size */
-	*tl++ = txdr_unsigned(wsiz + NFS_MAXXDR);/* Max request size */
-	*tl++ = txdr_unsigned(rsiz + NFS_MAXXDR);/* Max reply size */
+	*tl++ = txdr_unsigned(nmp->nm_wsize + NFS_MAXXDR);/* Max request size */
+	*tl++ = txdr_unsigned(nmp->nm_rsize + NFS_MAXXDR);/* Max reply size */
 	*tl++ = txdr_unsigned(4096);		/* Max response size cached */
 	*tl++ = txdr_unsigned(20);		/* Max operations */
 	*tl++ = txdr_unsigned(64);		/* Max slots */
