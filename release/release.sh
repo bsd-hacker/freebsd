@@ -407,10 +407,10 @@ chroot_arm_build_release() {
 	chroot ${CHROOTDIR} cp -p ${OBJDIR}/${OSRELEASE}-${KERNEL}${SNAPSHOT}.img \
 		/R/${OSRELEASE}-${KERNEL}${SNAPSHOT}.img
 	chroot ${CHROOTDIR} xz -T ${XZ_THREADS} /R/${OSRELEASE}-${KERNEL}${SNAPSHOT}.img
-	cd ${CHROOTDIR}/R && sha512 ${OSRELEASE}* \
-		> CHECKSUM.SHA512
-	cd ${CHROOTDIR}/R && sha256 ${OSRELEASE}* \
-		> CHECKSUM.SHA256
+	cd ${CHROOTDIR}/R && sha512 ${OSRELEASE}-${KERNEL}${SNAPSHOT}.img* \
+		> ${OSRELEASE}-${KERNEL}${SNAPSHOT}.CHECKSUM.SHA512
+	cd ${CHROOTDIR}/R && sha256 ${OSRELEASE}-${KERNEL}${SNAPSHOT}.img* \
+		> ${OSRELEASE}-${KERNEL}${SNAPSHOT}.CHECKSUM.SHA256
 
 	return 0
 } # chroot_arm_build_release()
