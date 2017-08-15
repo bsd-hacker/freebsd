@@ -2,9 +2,9 @@
 #
 #
 
-include	RPI3-VIMAGE
+include	"RPI3-VIMAGE"
 
 ident	RPI3-VIMAGE-WITNESS
 
-include	WITNESS
+include	"WITH_DEBUG"
 

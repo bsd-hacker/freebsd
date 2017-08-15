@@ -6,7 +6,5 @@ include		"RPI3"
 
 ident		RPI3-VIMAGE
 
-# Network stack virtualization.
-options	VIMAGE
-#options	VNET_DEBUG	# debug for VIMAGE
+include		"WITH_VIMAGE"
 

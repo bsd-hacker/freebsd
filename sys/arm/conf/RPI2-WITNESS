@@ -2,7 +2,7 @@
 #
 #
 
-include RPI2-KSTACK_PAGES
+include "RPI2-KSTACK_PAGES"
 
 ident	RPI2-WITNESS
 
@@ -10,5 +10,5 @@ device		pass		#CAM passthrough driver
 
 options	KVA_PAGES=260
 
-include WITNESS
+include "WITH_DEBUG"
 

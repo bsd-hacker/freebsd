@@ -2,11 +2,11 @@
 #
 #
 
-include	RPI-B-VIMAGE
+include	"RPI-B-VIMAGE"
 
 ident	RPI-B-VIMAGE-WITNESS
 
 device		pass		#CAM passthrough driver
 
-include	WITNESS
+include	"WITH_DEBUG"
 

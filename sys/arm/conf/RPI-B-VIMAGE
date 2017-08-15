@@ -2,15 +2,13 @@
 #
 #
 
-include RPI-B
+include "RPI-B"
 
 ident		RPI-B-VIMAGE
 
 device		pass		#CAM passthrough driver
 
-# Network stack virtualization.
-options	VIMAGE
-#options	VNET_DEBUG	# debug for VIMAGE
+include	"WITH_VIMAGE"
 
 options	BREAK_TO_DEBUGGER
 

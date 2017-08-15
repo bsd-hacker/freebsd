@@ -2,9 +2,9 @@
 #
 #
 
-include	RPI3
+include	"RPI3"
 
 ident	RPI3-WITNESS
 
-include	WITNESS
+include	"WITH_DEBUG"
 
