@@ -46,10 +46,10 @@ mycc -o fsgs -Wall -Wextra -O0 -g fsgs.c || exit 1
 rm -f fsgs.c
 cd $odir
 
-/tmp/fsgs
+$dir/fsgs
 s=$?
 
-rm -rf /tmp/fsgs
+rm -rf $dir/fsgs
 exit $s
 
 EOF
