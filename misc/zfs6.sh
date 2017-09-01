@@ -51,27 +51,27 @@ mdconfig -s 512m -u $u1
 mdconfig -s 512m -u $u2
 mdconfig -s 512m -u $u3
 
-zpool list | egrep -q "^tank" && zpool destroy tank
-[ -d /tank ] && rm -rf /tank
-zpool create tank raidz md$u1 md$u2 md$u3 || exit 1
-zfs create tank/test || exit 1
+zpool list | egrep -q "^stress2_tank" && zpool destroy stress2_tank
+[ -d /stress2_tank ] && rm -rf /stress2_tank
+zpool create stress2_tank raidz md$u1 md$u2 md$u3 || exit 1
+zfs create stress2_tank/test || exit 1
 
 while true; do
-	zfs umount tank/test
-	zfs mount tank/test
+	zfs umount stress2_tank/test
+	zfs mount stress2_tank/test
 done &
 
 for i in `jot 5000`; do
-	touch /tank/test/f$i
-	zfs snapshot tank/test@$i
+	touch /stress2_tank/test/f$i
+	zfs snapshot stress2_tank/test@$i
 	if [ $i -gt 5 ]; then
-		zfs destroy tank/test@$((i - 5))
+		zfs destroy stress2_tank/test@$((i - 5))
 	fi
 done
 kill $!
 wait
-zfs destroy -r tank
-zpool destroy tank
+zfs destroy -r stress2_tank
+zpool destroy stress2_tank
 
 mdconfig -d -u $u1
 mdconfig -d -u $u2

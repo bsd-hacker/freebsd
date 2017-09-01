@@ -50,17 +50,17 @@ mdconfig -s 512m -u $u1
 mdconfig -s 512m -u $u2
 mdconfig -s 512m -u $u3
 
-zpool list | egrep -q "^tank" && zpool destroy tank
-[ -d /tank ] && rm -rf /tank
-zpool create tank raidz md$u1 md$u2 md$u3
-zfs create tank/test
+zpool list | egrep -q "^stress2_tank" && zpool destroy stress2_tank
+[ -d /stress2_tank ] && rm -rf /stress2_tank
+zpool create stress2_tank raidz md$u1 md$u2 md$u3
+zfs create stress2_tank/test
 
-export RUNDIR=/tank/test/stressX
+export RUNDIR=/stress2_tank/test/stressX
 export runRUNTIME=20m
 (cd ..; ./run.sh marcus.cfg)
 
-zfs destroy -r tank
-zpool destroy tank
+zfs destroy -r stress2_tank
+zpool destroy stress2_tank
 
 mdconfig -d -u $u1
 mdconfig -d -u $u2

@@ -53,16 +53,16 @@ mdconfig -l | grep -q md$u2 && mdconfig -d -u $u2
 mdconfig -a -t vnode -f $d1 -u $u1
 mdconfig -a -t vnode -f $d2 -u $u2
 
-zpool list | egrep -q "^tank" && zpool destroy tank
-[ -d /tank ] && rm -rf /tank
-zpool create tank mirror md$u1 md$u2
+zpool list | egrep -q "^stress2_tank" && zpool destroy stress2_tank
+[ -d /stress2_tank ] && rm -rf /stress2_tank
+zpool create stress2_tank mirror md$u1 md$u2
 
-export RUNDIR=/tank/stressX
+export RUNDIR=/stress2_tank/stressX
 export runRUNTIME=10m
 (cd ..; ./run.sh marcus.cfg)
 
-zfs destroy -r tank
-zpool destroy tank
+zfs destroy -r stress2_tank
+zpool destroy stress2_tank
 
 mdconfig -d -u $u1
 mdconfig -d -u $u2

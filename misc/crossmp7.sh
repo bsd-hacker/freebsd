@@ -44,7 +44,7 @@ mounts=15		# Number of parallel scripts
 if [ $# -eq 0 ]; then
 	kldstat -v | grep -q zfs.ko  || { kldload zfs.ko ||
 	    exit 0; loaded=1; }
-	zpool list | egrep -q "^tank" && zpool destroy tank
+	zpool list | egrep -q "^stress2_tank" && zpool destroy stress2_tank
 
 	u1=$mdstart
 	u2=$((u1 + 1))
@@ -58,11 +58,11 @@ if [ $# -eq 0 ]; then
 	mdconfig -s 512m -u $u2
 	mdconfig -s 512m -u $u3
 
-	zpool create tank raidz md$u1 md$u2 md$u3
+	zpool create stress2_tank raidz md$u1 md$u2 md$u3
 
 	for i in `jot $mounts`; do
-		zfs create tank/test$i
-		zfs umount tank/test$i
+		zfs create stress2_tank/test$i
+		zfs umount stress2_tank/test$i
 	done
 
 	# start the parallel tests
@@ -74,7 +74,7 @@ if [ $# -eq 0 ]; then
 
 	wait
 
-	zpool destroy tank
+	zpool destroy stress2_tank
 	mdconfig -d -u $u1
 	mdconfig -d -u $u2
 	mdconfig -d -u $u3
@@ -82,14 +82,14 @@ if [ $# -eq 0 ]; then
 else
 	if [ $1 = find ]; then
 		while [ -f /tmp/crossmp7.continue ]; do
-			find /tank -type f > /dev/null 2>&1
+			find /stress2_tank -type f > /dev/null 2>&1
 		done
 	else
 		# The test: Parallel mount and unmounts
 		m=$1
 		for i in `jot 1024`; do
-			zfs mount     tank/test$m
-			zfs umount -f tank/test$m
+			zfs mount     stress2_tank/test$m
+			zfs umount -f stress2_tank/test$m
 		done 2>/dev/null
 		rm -f /tmp/crossmp7.continue
 	fi
