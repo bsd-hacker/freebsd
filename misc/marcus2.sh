@@ -53,10 +53,22 @@ m=`su $testuser -c "limits | grep maxprocesses | awk '{print \\$NF}'"`
 export INCARNATIONS=$((m / n))
 export swapINCARNATIONS=$INCARNATIONS
 
-su $testuser -c 'cd ..; ./run.sh marcus.cfg'
+su $testuser -c 'cd ..; ./run.sh marcus.cfg' &
 
+sleep 10
+start=`date '+%s'`
+while pgrep -q run; do
+	[ $((`date '+%s'` - start)) -gt 1500 ] &&
+	    ../tools/killall.sh
+	sleep 10
+done
+wait
+
+n=0
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
+	[ $((n += 1)) -gt 300 ] && { echo FAIL; exit 1; }
 done
-checkfs /dev/md${mdstart}$part
+checkfs /dev/md${mdstart}$part; s=$?
 mdconfig -d -u $mdstart
+exit $s
