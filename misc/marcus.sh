@@ -47,8 +47,11 @@ export RUNDIR=$mntpoint/stressX
 
 su $testuser -c 'cd ..; ./run.sh marcus.cfg'
 
+n=0
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
+	[ $((n += 1)) -gt 300 ] && { echo FAIL; exit 1; }
 done
-checkfs /dev/md${mdstart}$part
+checkfs /dev/md${mdstart}$part; s=$?
 mdconfig -d -u $mdstart
+exit $s
