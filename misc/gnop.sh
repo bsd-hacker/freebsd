@@ -34,17 +34,20 @@
 # Out of VM seen:
 # https://people.freebsd.org/~pho/stress/log/gnop.txt
 
+flag=/tmp/gnop.sh.flag
 test() {
 	. ../default.cfg
 
+	set -e
 	mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 	[ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart
 
-	mdconfig -a -t swap -s 2g -u $mdstart || exit 1
+	mdconfig -a -t swap -s 2g -u $mdstart
 	gnop create -S $1 /dev/md$mdstart
 	newfs $newfs_flags /dev/md$mdstart.nop > /dev/null
 	mount /dev/md$mdstart.nop $mntpoint
 	chmod 777 $mntpoint
+	set +e
 
 	export runRUNTIME=4m
 	export RUNDIR=$mntpoint/stressX
@@ -54,7 +57,7 @@ test() {
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
-	checkfs /dev/md$mdstart.nop
+	checkfs /dev/md$mdstart.nop || touch $flag
 	gnop destroy /dev/md$mdstart.nop
 	mdconfig -d -u $mdstart
 }
@@ -68,4 +71,6 @@ for i in 1k 2k 4k 8k; do
 done
 
 [ $notloaded ] && gnop unload
-exit 0
+[ -f $flag ] && s=1 || s=0
+rm -f $flag
+exit $s
