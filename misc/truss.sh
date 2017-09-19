@@ -79,6 +79,7 @@ if pgrep -q ttruss; then
 	s=1
 fi
 
+[ -f /tmp/truss.core ] && { ls -l /tmp/truss.core; s=1; }
 rm -rf /tmp/ttruss /tmp/ttruss.core
 exit $s
 
