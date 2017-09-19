@@ -57,7 +57,7 @@ rm -f truncate6.c
 cd $mntpoint
 
 /tmp/truncate6
-inode=`ls -ail | grep temp | sed 's/ .*//'`
+inode=`ls -ail | grep temp | awk '{print $1}'`
 
 cd $here
 rm -f /tmp/truncate6
@@ -84,6 +84,7 @@ else
 fi
 
 mdconfig -d -u $mdstart
+rm /tmp/truncate6
 exit $e
 EOF
 #include <sys/types.h>
