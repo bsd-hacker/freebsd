@@ -33,6 +33,7 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
+flag=/tmp/fs.sh.flag
 
 ftest () {	# option, disk full
 	[ $2 -eq 1 ] && df=", disk full" || df=""
@@ -42,7 +43,7 @@ ftest () {	# option, disk full
 	chmod 777 $mntpoint
 
 	export RUNDIR=$mntpoint/stressX
-	export runRUNTIME=2m
+	export runRUNTIME=1m
 	disk=$(($2 + 1))	# 1 or 2
 	set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
 	export KBLOCKS=$(($1 * disk))
@@ -50,17 +51,22 @@ ftest () {	# option, disk full
 
 	for i in `jot 2`; do
 		rm -rf /tmp/stressX.control $RUNDIR
-		su $testuser -c "(cd ..; ./run.sh disk.cfg)" > /dev/null 2>&1
+		su $testuser -c "(cd ..; ./run.sh disk.cfg)" > \
+		    /dev/null 2>&1 &
+		sleep 60
+		../tools/killall.sh
+		wait
 	done
 
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
+	checkfs /dev/md${mdstart}$part || touch $flag
 }
 
 
-mount | grep "$mntpoint" | grep md${mdstart}$part > /dev/null && umount $mntpoint
-mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
+mount | grep "on $mntpoint " | grep -q md${mdstart}$part && umount $mntpoint
+[ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 20m -u $mdstart
 bsdlabel -w md$mdstart auto
@@ -75,3 +81,6 @@ ftest "-j"    0	# ufs2 + SU+J
 ftest "-j"    1	# ufs2 + SU+J, disk full
 
 mdconfig -d -u $mdstart
+[ -f $flag ] && s=1 || s=0
+rm -f $flag
+exit $s
