@@ -32,19 +32,23 @@
 
 # "panic: leaf should be empty" seen
 
+# "panic: Assertion sq->sq_wchan != NULL" seen:
+# https://people.freebsd.org/~pho/stress/log/msdos4.txt
+
 . ../default.cfg
 
 [ -x /sbin/mount_msdosfs ] || exit
-mount | grep "$mntpoint" | grep -q md$mdstart && umount -f ${mntpoint}
-mdconfig -l | grep -q ${mdstart} &&  mdconfig -d -u $mdstart
+log=/tmp/msdos4.sh.log
+mount | grep "$mntpoint" | grep -q md$mdstart && umount -f $mntpoint
+mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 1g -u $mdstart
-bsdlabel -w md${mdstart} auto
+bsdlabel -w md$mdstart auto
 newfs_msdos /dev/md${mdstart}$part > /dev/null
 mount -t msdosfs /dev/md${mdstart}$part $mntpoint || exit 1
 
 export RUNDIR=$mntpoint/stressX
-export runRUNTIME=20m
+export runRUNTIME=10m
 export TESTPROGS='
 testcases/lockf2/lockf2
 testcases/openat/openat
@@ -62,5 +66,12 @@ testcases/swap/swap
 while mount | grep "$mntpoint" | grep -q md$mdstart; do
 	umount $mntpoint || sleep 1
 done
-fsck -t msdosfs -y /dev/md${mdstart}$part
+fsck -t msdosfs -y /dev/md${mdstart}$part > $log 2>&1
+s=0
+if egrep -q "BAD|INCONSISTENCY|MODIFIED" $log; then
+	cat $log
+	rm $log
+	s=1
+fi
 mdconfig -d -u $mdstart
+exit $s
