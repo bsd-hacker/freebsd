@@ -35,6 +35,7 @@
 . ../default.cfg
 
 [ -x /sbin/mount_msdosfs ] || exit
+log=/tmp/msdos.sh.log
 mount | grep "$mntpoint" | grep -q md$mdstart && umount -f $mntpoint
 mdconfig -l | grep -q $mdstart &&  mdconfig -d -u $mdstart
 
@@ -50,5 +51,12 @@ export runRUNTIME=10m            # Run tests for 10 minutes
 while mount | grep "$mntpoint" | grep -q md$mdstart; do
 	umount $mntpoint || sleep 1
 done
-fsck -t msdosfs -y /dev/md${mdstart}$part
+fsck -t msdosfs -y /dev/md${mdstart}$part > $log 2>&1
+s=0
+if egrep -q "BAD|INCONSISTENCY|MODIFIED" $log; then
+	cat $log
+	rm $log
+	s=1
+fi
 mdconfig -d -u $mdstart
+exit $s
