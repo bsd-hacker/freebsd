@@ -49,7 +49,7 @@ export runRUNTIME=20m
 export RUNDIR=$mntpoint/stressX
 
 n=`find ../testcases -perm -1 -type f | wc -l`
-m=`su $testuser -c "limits | grep maxprocesses | awk '{print \\$NF}'"`
+m=`su $testuser -c "limits | awk '/maxprocesses/ {print \\$NF}'"`
 export INCARNATIONS=$((m / n))
 export swapINCARNATIONS=$INCARNATIONS
 

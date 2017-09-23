@@ -53,7 +53,7 @@ size=$((`sysctl -n hw.physmem` / 1024 / 1024))
     { echo "deadlkres must be disabled for this test."; exit 0; }
 
 n=`find ../testcases -perm -1 -type f | wc -l`
-m=`su $testuser -c "limits | grep maxprocesses | awk '{print \\$NF}'"`
+m=`su $testuser -c "limits | awk '/maxprocesses/ {print \\$NF}'"`
 
 export RUNDIR=$mntpoint/stressX
 export INCARNATIONS=$((m / n))
