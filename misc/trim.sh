@@ -64,9 +64,8 @@ for flag in ' ' $opt; do
 		umount $mntpoint && break || sleep 10
 	done
 	[ $i -eq 6 ] && { s=1; break; }
-	checkfs /dev/md${mdstart}$part
+	checkfs /dev/md${mdstart}$part || s=1
 	mdconfig -d -u $mdstart
 done
-rm -f /tmp/fsck.log
 [ $malloc_wait != 1 ] && sysctl vm.md_malloc_wait=$malloc_wait
 exit $s

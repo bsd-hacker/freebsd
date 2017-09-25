@@ -54,10 +54,8 @@ while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 
-grep -a -qm1 Trim /dev/md${mdstart}$part && echo "Test failed"
+grep -a -qm1 Trim /dev/md${mdstart}$part && { echo "Test failed"; s=1; }
 
-fsck -t ufs -y /dev/md${mdstart}$part 2>&1 | tee /tmp/fsck.log | \
-     grep -v "IS CLEAN" | egrep -q  -m1 "[A-Z][A-Z]" && \
-     cat /tmp/fsck.log
+checkfs /dev/md${mdstart}$part; s=$?
 mdconfig -d -u $mdstart
-rm -f /tmp/fsck.log
+exit $s

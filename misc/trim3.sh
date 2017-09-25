@@ -62,6 +62,7 @@ for flag in ' ' $opt; do
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
-	checkfs /dev/md${mdstart}$part
+	checkfs /dev/md${mdstart}$part; s=$?
 	mdconfig -d -u $mdstart
 done
+exit $s
