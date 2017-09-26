@@ -46,6 +46,7 @@ opt="-O2"	# newfs option. Eg. -U
 mount | grep "$mntpoint" | grep -q md${mdstart}$part && umount $mntpoint
 [ -c /dev/md$mdstart ] && mdconfig -d -u $mdstart
 
+s=0
 while [ $size -le $((128 * 1024 * 1024)) ]; do
 	mb=$((size / 1024 / 1024))
 	rm -f $diskimage
@@ -65,11 +66,15 @@ while [ $size -le $((128 * 1024 * 1024)) ]; do
 			export runRUNTIME=15s
 			export RUNTIME=$runRUNTIME
 			export CTRLDIR=$mntpoint/stressX.control
-			(cd ..; ./run.sh disk.cfg) > /dev/null
+			(cd ..; ./run.sh disk.cfg) > /dev/null 2>&1 &
+			sleep 15
+			../tools/killall.sh
+			wait
 			while mount | grep "$mntpoint" | \
 			    grep -q md${mdstart}$part; do
 				umount $mntpoint > /dev/null 2>&1
 			done
+			checkfs /dev/md${mdstart}$part || s=1
 		done
 		blocksize=$((blocksize * 2))
 	done
@@ -77,3 +82,4 @@ while [ $size -le $((128 * 1024 * 1024)) ]; do
 	size=$((size + 32 * 1024 * 1024))
 done
 rm -f $diskimage
+return $s
