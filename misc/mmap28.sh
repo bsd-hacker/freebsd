@@ -37,6 +37,7 @@
 # whereas this test runs as expected on r292372.
 # https://people.freebsd.org/~pho/stress/log/mmap28-2.txt
 # https://people.freebsd.org/~pho/stress/log/mmap28-3.txt
+# To repeat, run this test with "sysctl vfs.ffs.use_buf_pager=0".
 # Fixed by r307626
 
 # Test scenario refinement by kib@
