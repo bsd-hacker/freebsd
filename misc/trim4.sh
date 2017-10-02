@@ -41,9 +41,10 @@ mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 size="1g"
 [ $# -eq 0 ] && trim=-t
 [ "$newfs_flags" = "-U" ] && flag="-j"
+s=0
 start=`date +%s`
 while [ $((`date +%s` - start)) -lt $((15 * 60)) ]; do
-	echo "Test #$i `date '+%T'`"
+	echo "Test `date '+%T'`"
 	echo "mdconfig -a -t swap -s $size -u $mdstart"
 	mdconfig -a -t swap -s $size -u $mdstart || exit 1
 	bsdlabel -w md$mdstart auto
@@ -62,7 +63,8 @@ while [ $((`date +%s` - start)) -lt $((15 * 60)) ]; do
 	while mount | grep $mntpoint | grep -q /dev/md; do
 		umount $mntpoint || sleep 1
 	done
-	checkfs /dev/md${mdstart}$part; s=$?
+#	Do not break in case of fsck error
+	checkfs /dev/md${mdstart}$part || s=$?
 	mdconfig -d -u $mdstart
 done
-exit $?
+exit $s
