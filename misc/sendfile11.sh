@@ -129,10 +129,11 @@ reader(void) {
 
 	t = 0;
 	if ((buf = malloc(BUFSIZE)) == NULL)
-			err(1, "malloc(%d), %s:%d", BUFSIZE, __FILE__, __LINE__);
+		err(1, "malloc(%d), %s:%d", BUFSIZE, __FILE__, __LINE__);
 
-	if ((fd = open(outputFile, O_RDWR | O_CREAT | O_TRUNC, 0640)) == -1)
-			err(1, "open(%s)", outputFile);
+	if ((fd = open(outputFile, O_RDWR | O_CREAT | O_TRUNC, 0640)) ==
+	    -1)
+		err(1, "open(%s)", outputFile);
 
 	for (;;) {
 		if ((n = read(msgsock, buf, BUFSIZE)) < 0)
@@ -169,7 +170,8 @@ writer(void) {
 		size = getpagesize() -4;
 		if (setsockopt(tcpsock,
 		    SOL_SOCKET, SO_SNDBUF, (void *)&size, sizeof(size)) < 0)
-			err(1, "setsockopt(SO_SNDBUF), %s:%d", __FILE__, __LINE__);
+			err(1, "setsockopt(SO_SNDBUF), %s:%d", __FILE__,
+			    __LINE__);
 
 		hostent = gethostbyname ("localhost");
 		memcpy (&inetaddr.sin_addr.s_addr, hostent->h_addr,
@@ -206,11 +208,14 @@ int
 main(int argc, char **argv)
 {
 	pid_t pid;
+	int e, s;
 
 	if (argc != 4) {
-		fprintf(stderr, "Usage: %s <inputFile outputFile portNumber\n", argv[0]);
+		fprintf(stderr,
+		    "Usage: %s <inputFile outputFile portNumber\n", argv[0]);
 			return (1);
 	}
+	e = 0;
 	inputFile = argv[1];
 	outputFile = argv[2];
 	port = atoi(argv[3]);
@@ -222,8 +227,11 @@ main(int argc, char **argv)
 	} else if (pid > 0) {
 		reader();
 		kill(pid, SIGINT);
+		waitpid(pid, &s, 0);
+		if (s != 0)
+			e = 1;
 	} else
 		err(1, "fork(), %s:%d",  __FILE__, __LINE__);
 
-	return (0);
+	return (e);
 }
