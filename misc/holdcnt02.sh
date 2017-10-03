@@ -47,12 +47,13 @@ cd $here
 
 trap "rm -f /tmp/holdcnt02 `dirname $diskimage`/f000???" EXIT INT
 (cd `dirname $diskimage`; /tmp/holdcnt02) &
+pid=$!
 sleep 5
 while kill -0 $! 2> /dev/null; do
 	(cd ../testcases/swap; ./swap -t 1m -i 1) > /dev/null 2>&1
 done
-wait
-exit 0
+wait $pid
+exit
 EOF
 /*
    A test that causes the page daemon to generate cached pages
@@ -61,6 +62,10 @@ EOF
 */
 
 #include <sys/types.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -68,9 +73,6 @@ EOF
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -80,17 +82,17 @@ EOF
 #define WPARALLEL 2
 
 static jmp_buf jbuf;
-off_t maxsize;
-int ps;
+static off_t maxsize;
+static int ps;
 static char *buf;
-volatile char val;
+static volatile char val;
 
 static void
 hand(int i __unused) {  /* handler */
         longjmp(jbuf, 1);
 }
 
-void
+static void
 cleanup(void)
 {
 	int i;
@@ -102,15 +104,16 @@ cleanup(void)
 	}
 }
 
-void
+static void
 init(void)
 {
-	char file[80];
 	int fd, i;
+	char file[80];
 
 	for (i = 0; i < FILES; i++) {
 		snprintf(file, sizeof(file), "f%06d", i);
-		if ((fd = open(file, O_RDWR | O_CREAT | O_TRUNC, 0644)) == -1)
+		if ((fd = open(file, O_RDWR | O_CREAT | O_TRUNC, 0644)) ==
+		    -1)
 			err(1, "open(%s)", file);
 		if (write(fd, buf, BUFSIZE) != BUFSIZE)
 			err(1, "write");
@@ -119,7 +122,7 @@ init(void)
 
 }
 
-void
+static void
 writer(void)
 {
 	int fd, i;
@@ -154,7 +157,7 @@ err:
 	_exit(0);
 }
 
-void
+static void
 reader(void)
 {
 	int fd, i, j, n;
@@ -185,7 +188,8 @@ reader(void)
 				continue;
 			}
 			len = statbuf.st_size;
-			if ((p = mmap(p, len, PROT_READ, MAP_SHARED, fd, 0)) == MAP_FAILED)
+			if ((p = mmap(p, len, PROT_READ, MAP_SHARED, fd, 0))
+			    == MAP_FAILED)
 				err(1, "mmap()");
 			close(fd);
 			n = statbuf.st_size / ps;
@@ -204,28 +208,32 @@ reader(void)
 int
 main(void)
 {
-	int i;
+	pid_t rpid[RPARALLEL], wpid[WPARALLEL];
+	int e, i, s;
 
 	maxsize = 2LL * 1024 * 1024 * 1024 / FILES;
 	buf = malloc(BUFSIZE);
 	ps = getpagesize();
 
 	init();
+	e = 0;
 	for (i = 0; i < WPARALLEL; i++) {
-		if (fork() == 0)
+		if ((wpid[i] = fork()) == 0)
 			writer();
 	}
 	for (i = 0; i < RPARALLEL; i++) {
-		if (fork() == 0)
+		if ((rpid[i] = fork()) == 0)
 			reader();
 	}
 
 	for (i = 0; i < WPARALLEL; i++)
-		wait(NULL);
+		waitpid(wpid[i], &s, 0);
+	e += s == 0 ? 0 : 1;
 	for (i = 0; i < RPARALLEL; i++)
-		wait(NULL);
+		waitpid(rpid[i], &s, 0);
+	e += s == 0 ? 0 : 1;
 
 	free(buf);
 
-	return (0);
+	return (e);
 }

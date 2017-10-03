@@ -37,7 +37,7 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 [ `swapinfo | wc -l` -eq 1 ] && exit 0
-[ `sysctl -n hw.physmem` -lt $((9 * 1024 * 1024 * 1024)) ] && exit 0
+[ `sysctl -n hw.physmem` -lt $((32 * 1024 * 1024 * 1024)) ] && exit 0
 
 . ../default.cfg
 
@@ -50,12 +50,13 @@ cd $here
 
 trap "rm -f /tmp/holdcnt03 `dirname $diskimage`/f000???" EXIT INT
 (cd `dirname $diskimage`; /tmp/holdcnt03) &
+pid=$!
 sleep 5
 while kill -0 $! 2> /dev/null; do
 	(cd ../testcases/swap; ./swap -t 1m -i 1) > /dev/null 2>&1
 done
-wait
-exit 0
+wait $pid
+exit
 EOF
 /*
    A test that causes the page daemon to generate cached pages
@@ -64,6 +65,10 @@ EOF
 */
 
 #include <sys/types.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -71,9 +76,6 @@ EOF
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -83,8 +85,8 @@ EOF
 #define WPARALLEL 2
 
 static jmp_buf jbuf;
-off_t maxsize;
-int ps;
+static off_t maxsize;
+static int ps;
 static char *buf;
 
 static void
@@ -92,7 +94,7 @@ hand(int i __unused) {  /* handler */
         longjmp(jbuf, 1);
 }
 
-void
+static void
 cleanup(void)
 {
 	int i;
@@ -104,7 +106,7 @@ cleanup(void)
 	}
 }
 
-void
+static void
 init(void)
 {
 	char file[80];
@@ -121,7 +123,7 @@ init(void)
 
 }
 
-void
+static void
 writer(void)
 {
 	int fd, i;
@@ -156,7 +158,7 @@ err:
 	_exit(0);
 }
 
-void
+static void
 touch(void)
 {
 	int fd, i, j, n;
@@ -201,31 +203,36 @@ touch(void)
 	}
 	_exit(0);
 }
+
 int
 main(void)
 {
-	int i;
+	pid_t rpid[RPARALLEL], wpid[WPARALLEL];
+	int e, i, s;
 
 	maxsize = 2LL * 1024 * 1024 * 1024 / FILES;
 	buf = malloc(BUFSIZE);
 	ps = getpagesize();
 
 	init();
+	e = 0;
 	for (i = 0; i < WPARALLEL; i++) {
-		if (fork() == 0)
+		if ((wpid[i] = fork()) == 0)
 			writer();
 	}
 	for (i = 0; i < RPARALLEL; i++) {
-		if (fork() == 0)
+		if ((rpid[i] = fork()) == 0)
 			touch();
 	}
 
 	for (i = 0; i < WPARALLEL; i++)
-		wait(NULL);
+		waitpid(wpid[i], &s, 0);
+	e += s == 0 ? 0 : 1;
 	for (i = 0; i < RPARALLEL; i++)
-		wait(NULL);
+		waitpid(rpid[i], &s, 0);
+	e += s == 0 ? 0 : 1;
 
 	free(buf);
 
-	return (0);
+	return (e);
 }
