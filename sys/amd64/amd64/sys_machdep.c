@@ -64,7 +64,7 @@ __FBSDID("$FreeBSD$");
 
 #define	MAX_LD		8192
 
-int max_ldt_segment = 1024;
+int max_ldt_segment = 512;
 SYSCTL_INT(_machdep, OID_AUTO, max_ldt_segment, CTLFLAG_RDTUN,
     &max_ldt_segment, 0,
     "Maximum number of allowed LDT segments in the single address space");
@@ -426,7 +426,7 @@ done:
  * Update the GDT entry pointing to the LDT to point to the LDT of the
  * current process.
  */
-void
+static void
 set_user_ldt(struct mdproc *mdp)
 {
 
@@ -558,7 +558,7 @@ amd64_get_ldt(td, uap)
 	struct user_segment_descriptor *lp;
 
 #ifdef	DEBUG
-	printf("amd64_get_ldt: start=%d num=%d descs=%p\n",
+	printf("amd64_get_ldt: start=%u num=%u descs=%p\n",
 	    uap->start, uap->num, (void *)uap->descs);
 #endif
 
@@ -594,7 +594,7 @@ amd64_set_ldt(struct thread *td, struct i386_ldt_args *uap,
 	unsigned int largest_ld, i;
 
 #ifdef	DEBUG
-	printf("amd64_set_ldt: start=%d num=%d descs=%p\n",
+	printf("amd64_set_ldt: start=%u num=%u descs=%p\n",
 	    uap->start, uap->num, (void *)uap->descs);
 #endif
 	mdp = &td->td_proc->p_md;
@@ -655,12 +655,7 @@ amd64_set_ldt(struct thread *td, struct i386_ldt_args *uap,
 		case SDT_SYSNULL4:
 		case SDT_SYSIGT:
 		case SDT_SYSTGT:
-			/* I can't think of any reason to allow a user proc
-			 * to create a segment of these types.  They are
-			 * for OS use only.
-			 */
 			return (EACCES);
-			/*NOTREACHED*/
 
 		/* memory segment types */
 		case SDT_MEMEC:   /* memory execute only conforming */
@@ -686,7 +681,6 @@ amd64_set_ldt(struct thread *td, struct i386_ldt_args *uap,
 			break;
 		default:
 			return(EINVAL);
-			/*NOTREACHED*/
 		}
 
 		/* Only user (ring-3) descriptors may be present. */
