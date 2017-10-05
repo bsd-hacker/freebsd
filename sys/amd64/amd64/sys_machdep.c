@@ -548,9 +548,7 @@ user_ldt_deref(struct proc_ldt *pldt)
  * the OS-specific one.
  */
 int
-amd64_get_ldt(td, uap)
-	struct thread *td;
-	struct i386_ldt_args *uap;
+amd64_get_ldt(struct thread *td, struct i386_ldt_args *uap)
 {
 	int error = 0;
 	struct proc_ldt *pldt;
@@ -590,8 +588,8 @@ amd64_set_ldt(struct thread *td, struct i386_ldt_args *uap,
 	struct proc_ldt *pldt;
 	struct user_segment_descriptor *dp;
 	struct proc *p;
+	u_int largest_ld, i;
 	int error;
-	unsigned int largest_ld, i;
 
 #ifdef	DEBUG
 	printf("amd64_set_ldt: start=%u num=%u descs=%p\n",
@@ -618,7 +616,7 @@ amd64_set_ldt(struct thread *td, struct i386_ldt_args *uap,
 			return (EINVAL);
 		mtx_lock(&dt_lock);
 		for (i = uap->start; i < largest_ld; i++)
-			((uint64_t *)(pldt->ldt_base))[i] = 0;
+			((volatile uint64_t *)(pldt->ldt_base))[i] = 0;
 		mtx_unlock(&dt_lock);
 		return (0);
 	}
@@ -736,15 +734,15 @@ amd64_set_ldt_data(struct thread *td, int start, int num,
 {
 	struct mdproc *mdp;
 	struct proc_ldt *pldt;
-	uint64_t *dst, *src;
+	volatile uint64_t *dst, *src;
 	int i;
 
 	mtx_assert(&dt_lock, MA_OWNED);
 
 	mdp = &td->td_proc->p_md;
 	pldt = mdp->md_ldt;
-	dst = (uint64_t *)(pldt->ldt_base);
-	src = (uint64_t *)descs;
+	dst = (volatile uint64_t *)(pldt->ldt_base);
+	src = (volatile uint64_t *)descs;
 	for (i = 0; i < num; i++)
 		dst[start + i] = src[i];
 	return (0);
