@@ -16,7 +16,7 @@ SRCS=	autoload.c \
 	bootinfo.c \
 	conf.c \
 	copy.c \
-	devicename.c \
+	efi_main.c \
 	main.c \
 	self_reloc.c \
 	smbios.c \

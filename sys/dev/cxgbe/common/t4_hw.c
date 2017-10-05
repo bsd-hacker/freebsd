@@ -286,6 +286,9 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	__be64 cmd_rpl[MBOX_LEN/8];
 	u32 pcie_fw;
 
+	if (adap->flags & CHK_MBOX_ACCESS)
+		ASSERT_SYNCHRONIZED_OP(adap);
+
 	if ((size & 15) || size > MBOX_LEN)
 		return -EINVAL;
 
@@ -333,9 +336,9 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	 * presaged the firmware crashing ...
 	 */
 	if (ctl & F_MBMSGVALID) {
-		CH_ERR(adap, "found VALID command in mbox %u: "
-		       "%llx %llx %llx %llx %llx %llx %llx %llx\n", mbox,
-		       (unsigned long long)t4_read_reg64(adap, data_reg),
+		CH_ERR(adap, "found VALID command in mbox %u: %016llx %016llx "
+		       "%016llx %016llx %016llx %016llx %016llx %016llx\n",
+		       mbox, (unsigned long long)t4_read_reg64(adap, data_reg),
 		       (unsigned long long)t4_read_reg64(adap, data_reg + 8),
 		       (unsigned long long)t4_read_reg64(adap, data_reg + 16),
 		       (unsigned long long)t4_read_reg64(adap, data_reg + 24),
@@ -7715,7 +7718,7 @@ int t4_handle_fw_rpl(struct adapter *adap, const __be64 *rpl)
 		int i, old_ptype, old_mtype;
 		int chan = G_FW_PORT_CMD_PORTID(be32_to_cpu(p->op_to_portid));
 		struct port_info *pi = NULL;
-		struct link_config *lc, old_lc;
+		struct link_config *lc, *old_lc;
 
 		for_each_port(adap, i) {
 			pi = adap2pinfo(adap, i);
@@ -7724,19 +7727,20 @@ int t4_handle_fw_rpl(struct adapter *adap, const __be64 *rpl)
 		}
 
 		lc = &pi->link_cfg;
-		old_lc = *lc;
+		old_lc = &pi->old_link_cfg;
 		old_ptype = pi->port_type;
 		old_mtype = pi->mod_type;
 
 		handle_port_info(pi, &p->u.info);
 		if (old_ptype != pi->port_type || old_mtype != pi->mod_type) {
-			t4_os_portmod_changed(pi, old_ptype, old_mtype,
-			    &old_lc);
+			t4_os_portmod_changed(pi);
 		}
-		if (old_lc.link_ok != lc->link_ok ||
-		    old_lc.speed != lc->speed ||
-		    old_lc.fc != lc->fc) {
-			t4_os_link_changed(pi, &old_lc);
+		if (old_lc->link_ok != lc->link_ok ||
+		    old_lc->speed != lc->speed ||
+		    old_lc->fec != lc->fec ||
+		    old_lc->fc != lc->fc) {
+			t4_os_link_changed(pi);
+			*old_lc = *lc;
 		}
 	} else {
 		CH_WARN_RATELIMIT(adap, "Unknown firmware reply %d\n", opcode);
@@ -8350,12 +8354,9 @@ int t4_port_init(struct adapter *adap, int mbox, int pf, int vf, int port_id)
 {
 	u8 addr[6];
 	int ret, i, j;
-	struct fw_port_cmd c;
 	u16 rss_size;
 	struct port_info *p = adap2pinfo(adap, port_id);
 	u32 param, val;
-
-	memset(&c, 0, sizeof(c));
 
 	for (i = 0, j = -1; i <= p->port_id; i++) {
 		do {

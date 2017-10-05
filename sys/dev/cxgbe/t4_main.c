@@ -73,6 +73,7 @@ __FBSDID("$FreeBSD$");
 #include "common/t4_msg.h"
 #include "common/t4_regs.h"
 #include "common/t4_regs_values.h"
+#include "cudbg/cudbg.h"
 #include "t4_ioctl.h"
 #include "t4_l2t.h"
 #include "t4_mp_ring.h"
@@ -293,6 +294,59 @@ TUNABLE_INT("hw.cxgbe.nofldtxq_vi", &t4_nofldtxq_vi);
 #define NOFLDRXQ_VI 1
 static int t4_nofldrxq_vi = -NOFLDRXQ_VI;
 TUNABLE_INT("hw.cxgbe.nofldrxq_vi", &t4_nofldrxq_vi);
+
+#define TMR_IDX_OFLD 1
+int t4_tmr_idx_ofld = TMR_IDX_OFLD;
+TUNABLE_INT("hw.cxgbe.holdoff_timer_idx_ofld", &t4_tmr_idx_ofld);
+
+#define PKTC_IDX_OFLD (-1)
+int t4_pktc_idx_ofld = PKTC_IDX_OFLD;
+TUNABLE_INT("hw.cxgbe.holdoff_pktc_idx_ofld", &t4_pktc_idx_ofld);
+
+/* 0 means chip/fw default, non-zero number is value in microseconds */
+static u_long t4_toe_keepalive_idle = 0;
+TUNABLE_ULONG("hw.cxgbe.toe.keepalive_idle", &t4_toe_keepalive_idle);
+
+/* 0 means chip/fw default, non-zero number is value in microseconds */
+static u_long t4_toe_keepalive_interval = 0;
+TUNABLE_ULONG("hw.cxgbe.toe.keepalive_interval", &t4_toe_keepalive_interval);
+
+/* 0 means chip/fw default, non-zero number is # of keepalives before abort */
+static int t4_toe_keepalive_count = 0;
+TUNABLE_INT("hw.cxgbe.toe.keepalive_count", &t4_toe_keepalive_count);
+
+/* 0 means chip/fw default, non-zero number is value in microseconds */
+static u_long t4_toe_rexmt_min = 0;
+TUNABLE_ULONG("hw.cxgbe.toe.rexmt_min", &t4_toe_rexmt_min);
+
+/* 0 means chip/fw default, non-zero number is value in microseconds */
+static u_long t4_toe_rexmt_max = 0;
+TUNABLE_ULONG("hw.cxgbe.toe.rexmt_max", &t4_toe_rexmt_max);
+
+/* 0 means chip/fw default, non-zero number is # of rexmt before abort */
+static int t4_toe_rexmt_count = 0;
+TUNABLE_INT("hw.cxgbe.toe.rexmt_count", &t4_toe_rexmt_count);
+
+/* -1 means chip/fw default, other values are raw backoff values to use */
+static int t4_toe_rexmt_backoff[16] = {
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
+};
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.0", &t4_toe_rexmt_backoff[0]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.1", &t4_toe_rexmt_backoff[1]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.2", &t4_toe_rexmt_backoff[2]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.3", &t4_toe_rexmt_backoff[3]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.4", &t4_toe_rexmt_backoff[4]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.5", &t4_toe_rexmt_backoff[5]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.6", &t4_toe_rexmt_backoff[6]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.7", &t4_toe_rexmt_backoff[7]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.8", &t4_toe_rexmt_backoff[8]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.9", &t4_toe_rexmt_backoff[9]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.10", &t4_toe_rexmt_backoff[10]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.11", &t4_toe_rexmt_backoff[11]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.12", &t4_toe_rexmt_backoff[12]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.13", &t4_toe_rexmt_backoff[13]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.14", &t4_toe_rexmt_backoff[14]);
+TUNABLE_INT("hw.cxgbe.toe.rexmt_backoff.15", &t4_toe_rexmt_backoff[15]);
 #endif
 
 #ifdef DEV_NETMAP
@@ -406,7 +460,7 @@ TUNABLE_INT("hw.cxgbe.toecaps_allowed", &t4_toecaps_allowed);
 static int t4_rdmacaps_allowed = -1;
 TUNABLE_INT("hw.cxgbe.rdmacaps_allowed", &t4_rdmacaps_allowed);
 
-static int t4_cryptocaps_allowed = 0;
+static int t4_cryptocaps_allowed = -1;
 TUNABLE_INT("hw.cxgbe.cryptocaps_allowed", &t4_cryptocaps_allowed);
 
 static int t4_iscsicaps_allowed = -1;
@@ -421,8 +475,9 @@ TUNABLE_INT("hw.cxl.write_combine", &t5_write_combine);
 static int t4_num_vis = 1;
 TUNABLE_INT("hw.cxgbe.num_vis", &t4_num_vis);
 
-/* Functions used by extra VIs to obtain unique MAC addresses for each VI. */
+/* Functions used by VIs to obtain unique MAC addresses for each VI. */
 static int vi_mac_funcs[] = {
+	FW_VI_FUNC_ETH,
 	FW_VI_FUNC_OFLD,
 	FW_VI_FUNC_IWARP,
 	FW_VI_FUNC_OPENISCSI,
@@ -553,6 +608,8 @@ static int sysctl_tp_dack_timer(SYSCTL_HANDLER_ARGS);
 static int sysctl_tp_timer(SYSCTL_HANDLER_ARGS);
 static int sysctl_tp_shift_cnt(SYSCTL_HANDLER_ARGS);
 static int sysctl_tp_backoff(SYSCTL_HANDLER_ARGS);
+static int sysctl_holdoff_tmr_idx_ofld(SYSCTL_HANDLER_ARGS);
+static int sysctl_holdoff_pktc_idx_ofld(SYSCTL_HANDLER_ARGS);
 #endif
 static uint32_t fconf_iconf_to_mode(uint32_t, uint32_t);
 static uint32_t mode_to_fconf(uint32_t);
@@ -575,6 +632,7 @@ static int load_fw(struct adapter *, struct t4_data *);
 static int load_cfg(struct adapter *, struct t4_data *);
 static int load_boot(struct adapter *, struct t4_bootrom *);
 static int load_bootcfg(struct adapter *, struct t4_data *);
+static int cudbg_dump(struct adapter *, struct t4_cudbg_dump *);
 static int read_card_mem(struct adapter *, int, struct t4_mem_range *);
 static int read_i2c(struct adapter *, struct t4_i2c_data *);
 #ifdef TCP_OFFLOAD
@@ -999,6 +1057,10 @@ t4_attach(device_t dev)
 			n1g++;
 		}
 
+		/* All VIs on this port share this media. */
+		ifmedia_init(&pi->media, IFM_IMASK, cxgbe_media_change,
+		    cxgbe_media_status);
+
 		pi->dev = device_add_child(dev, sc->names->ifnet_name, -1);
 		if (pi->dev == NULL) {
 			device_printf(dev,
@@ -1130,6 +1192,8 @@ t4_attach(device_t dev)
 				vi->rsrv_noflowq = 0;
 
 #ifdef TCP_OFFLOAD
+			vi->ofld_tmr_idx = t4_tmr_idx_ofld;
+			vi->ofld_pktc_idx = t4_pktc_idx_ofld;
 			vi->first_ofld_rxq = ofld_rqidx;
 			vi->first_ofld_txq = ofld_tqidx;
 			if (port_top_speed(pi) >= 10) {
@@ -1173,6 +1237,15 @@ t4_attach(device_t dev)
 		device_printf(dev, "failed to probe child drivers: %d\n", rc);
 		goto done;
 	}
+
+	/*
+	 * Ensure thread-safe mailbox access (in debug builds).
+	 *
+	 * So far this was the only thread accessing the mailbox but various
+	 * ifnets and sysctls are about to be created and their handlers/ioctls
+	 * will access the mailbox from different threads.
+	 */
+	sc->flags |= CHK_MBOX_ACCESS;
 
 	rc = bus_generic_attach(dev);
 	if (rc != 0) {
@@ -1289,6 +1362,7 @@ t4_detach_common(device_t dev)
 
 	sc = device_get_softc(dev);
 
+	sc->flags &= ~CHK_MBOX_ACCESS;
 	if (sc->flags & FULL_INIT_DONE) {
 		if (!(sc->flags & IS_VF))
 			t4_intr_disable(sc);
@@ -1459,10 +1533,6 @@ cxgbe_vi_attach(device_t dev, struct vi_info *vi)
 	ifp->if_hw_tsomaxsegcount = TX_SGL_SEGS;
 	ifp->if_hw_tsomaxsegsize = 65536;
 
-	/* Initialize ifmedia for this VI */
-	ifmedia_init(&vi->media, IFM_IMASK, cxgbe_media_change,
-	    cxgbe_media_status);
-
 	vi->vlan_c = EVENTHANDLER_REGISTER(vlan_config, cxgbe_vlan_config, ifp,
 	    EVENTHANDLER_PRI_ANY);
 
@@ -1543,7 +1613,6 @@ cxgbe_vi_detach(struct vi_info *vi)
 	callout_drain(&vi->tick);
 	vi_full_uninit(vi);
 
-	ifmedia_removeall(&vi->media);
 	if_free(vi->ifp);
 	vi->ifp = NULL;
 }
@@ -1570,6 +1639,7 @@ cxgbe_detach(device_t dev)
 
 	cxgbe_vi_detach(&pi->vi[0]);
 	callout_drain(&pi->tick);
+	ifmedia_removeall(&pi->media);
 
 	end_synchronized_op(sc, 0);
 
@@ -1593,7 +1663,8 @@ cxgbe_ioctl(struct ifnet *ifp, unsigned long cmd, caddr_t data)
 {
 	int rc = 0, mtu, flags, can_sleep;
 	struct vi_info *vi = ifp->if_softc;
-	struct adapter *sc = vi->pi->adapter;
+	struct port_info *pi = vi->pi;
+	struct adapter *sc = pi->adapter;
 	struct ifreq *ifr = (struct ifreq *)data;
 	uint32_t mask;
 
@@ -1773,7 +1844,7 @@ fail:
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA:
 	case SIOCGIFXMEDIA:
-		ifmedia_ioctl(ifp, ifr, &vi->media, cmd);
+		ifmedia_ioctl(ifp, ifr, &pi->media, cmd);
 		break;
 
 	case SIOCGI2C: {
@@ -1793,7 +1864,7 @@ fail:
 		rc = begin_synchronized_op(sc, vi, SLEEP_OK | INTR_OK, "t4i2c");
 		if (rc)
 			return (rc);
-		rc = -t4_i2c_rd(sc, sc->mbox, vi->pi->port_id, i2c.dev_addr,
+		rc = -t4_i2c_rd(sc, sc->mbox, pi->port_id, i2c.dev_addr,
 		    i2c.offset, i2c.len, &i2c.data[0]);
 		end_synchronized_op(sc, 0);
 		if (rc == 0)
@@ -2015,13 +2086,11 @@ cxgbe_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 		PORT_LOCK(pi);
 		if (pi->up_vis == 0) {
 			t4_update_port_info(pi);
-			build_medialist(pi, &vi->media);
+			build_medialist(pi, &pi->media);
 		}
 		PORT_UNLOCK(pi);
 		end_synchronized_op(pi->adapter, 0);
 	}
-
-	cur = vi->media.ifm_cur;
 
 	ifmr->ifm_status = IFM_AVALID;
 	if (lc->link_ok == 0)
@@ -2035,7 +2104,8 @@ cxgbe_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 		ifmr->ifm_active |= IFM_ETH_TXPAUSE;
 
 	/* active and current will differ iff current media is autoselect. */
-	if (IFM_SUBTYPE(cur->ifm_media) != IFM_AUTO)
+	cur = pi->media.ifm_cur;
+	if (cur != NULL && IFM_SUBTYPE(cur->ifm_media) != IFM_AUTO)
 		return;
 
 	ifmr->ifm_active = IFM_ETHER | IFM_FDX;
@@ -2076,28 +2146,24 @@ vcxgbe_probe(device_t dev)
 }
 
 static int
-vcxgbe_attach(device_t dev)
+alloc_extra_vi(struct adapter *sc, struct port_info *pi, struct vi_info *vi)
 {
-	struct vi_info *vi;
-	struct port_info *pi;
-	struct adapter *sc;
 	int func, index, rc;
-	u32 param, val;
+	uint32_t param, val;
 
-	vi = device_get_softc(dev);
-	pi = vi->pi;
-	sc = pi->adapter;
+	ASSERT_SYNCHRONIZED_OP(sc);
 
 	index = vi - pi->vi;
+	MPASS(index > 0);	/* This function deals with _extra_ VIs only */
 	KASSERT(index < nitems(vi_mac_funcs),
 	    ("%s: VI %s doesn't have a MAC func", __func__,
-	    device_get_nameunit(dev)));
+	    device_get_nameunit(vi->dev)));
 	func = vi_mac_funcs[index];
 	rc = t4_alloc_vi_func(sc, sc->mbox, pi->tx_chan, sc->pf, 0, 1,
 	    vi->hw_addr, &vi->rss_size, func, 0);
 	if (rc < 0) {
-		device_printf(dev, "Failed to allocate virtual interface "
-		    "for port %d: %d\n", pi->port_id, -rc);
+		device_printf(vi->dev, "failed to allocate virtual interface %d"
+		    "for port %d: %d\n", index, pi->port_id, -rc);
 		return (-rc);
 	}
 	vi->viid = rc;
@@ -2106,6 +2172,19 @@ vcxgbe_attach(device_t dev)
 	else
 		vi->smt_idx = (rc & 0x7f);
 
+	if (vi->rss_size == 1) {
+		/*
+		 * This VI didn't get a slice of the RSS table.  Reduce the
+		 * number of VIs being created (hw.cxgbe.num_vis) or modify the
+		 * configuration file (nvi, rssnvi for this PF) if this is a
+		 * problem.
+		 */
+		device_printf(vi->dev, "RSS table not available.\n");
+		vi->rss_base = 0xffff;
+
+		return (0);
+	}
+
 	param = V_FW_PARAMS_MNEM(FW_PARAMS_MNEM_DEV) |
 	    V_FW_PARAMS_PARAM_X(FW_PARAMS_PARAM_DEV_RSSINFO) |
 	    V_FW_PARAMS_PARAM_YZ(vi->viid);
@@ -2113,9 +2192,32 @@ vcxgbe_attach(device_t dev)
 	if (rc)
 		vi->rss_base = 0xffff;
 	else {
-		/* MPASS((val >> 16) == rss_size); */
+		MPASS((val >> 16) == vi->rss_size);
 		vi->rss_base = val & 0xffff;
 	}
+
+	return (0);
+}
+
+static int
+vcxgbe_attach(device_t dev)
+{
+	struct vi_info *vi;
+	struct port_info *pi;
+	struct adapter *sc;
+	int rc;
+
+	vi = device_get_softc(dev);
+	pi = vi->pi;
+	sc = pi->adapter;
+
+	rc = begin_synchronized_op(sc, vi, SLEEP_OK | INTR_OK, "t4via");
+	if (rc)
+		return (rc);
+	rc = alloc_extra_vi(sc, pi, vi);
+	end_synchronized_op(sc, 0);
+	if (rc)
+		return (rc);
 
 	rc = cxgbe_vi_attach(dev, vi);
 	if (rc) {
@@ -3486,6 +3588,18 @@ get_params__post_init(struct adapter *sc)
 	READ_CAPS(iscsicaps);
 	READ_CAPS(fcoecaps);
 
+	/*
+	 * The firmware attempts memfree TOE configuration for -SO cards and
+	 * will report toecaps=0 if it runs out of resources (this depends on
+	 * the config file).  It may not report 0 for other capabilities
+	 * dependent on the TOE in this case.  Set them to 0 here so that the
+	 * driver doesn't bother tracking resources that will never be used.
+	 */
+	if (sc->toecaps == 0) {
+		sc->iscsicaps = 0;
+		sc->rdmacaps = 0;
+	}
+
 	if (sc->niccaps & FW_CAPS_CONFIG_NIC_ETHOFLD) {
 		param[0] = FW_PARAM_PFVF(ETHOFLD_START);
 		param[1] = FW_PARAM_PFVF(ETHOFLD_END);
@@ -3609,62 +3723,70 @@ static int
 set_params__post_init(struct adapter *sc)
 {
 	uint32_t param, val;
+#ifdef TCP_OFFLOAD
 	int i, v, shift;
-	char s[32];
+#endif
 
 	/* ask for encapsulated CPLs */
 	param = FW_PARAM_PFVF(CPLFW4MSG_ENCAP);
 	val = 1;
 	(void)t4_set_params(sc, sc->mbox, sc->pf, 0, 1, &param, &val);
 
+#ifdef TCP_OFFLOAD
 	/*
 	 * Override the TOE timers with user provided tunables.  This is not the
 	 * recommended way to change the timers (the firmware config file is) so
 	 * these tunables are not documented.
 	 *
-	 * All the timer tunables are in milliseconds.
+	 * All the timer tunables are in microseconds.
 	 */
-	if (TUNABLE_INT_FETCH("hw.cxgbe.toe.keepalive_idle", &v)) {
+	if (t4_toe_keepalive_idle != 0) {
+		v = us_to_tcp_ticks(sc, t4_toe_keepalive_idle);
+		v &= M_KEEPALIVEIDLE;
 		t4_set_reg_field(sc, A_TP_KEEP_IDLE,
-		    V_KEEPALIVEIDLE(M_KEEPALIVEIDLE),
-		    V_KEEPALIVEIDLE(ms_to_tcp_ticks(sc, v)));
+		    V_KEEPALIVEIDLE(M_KEEPALIVEIDLE), V_KEEPALIVEIDLE(v));
 	}
-	if (TUNABLE_INT_FETCH("hw.cxgbe.toe.keepalive_interval", &v)) {
+	if (t4_toe_keepalive_interval != 0) {
+		v = us_to_tcp_ticks(sc, t4_toe_keepalive_interval);
+		v &= M_KEEPALIVEINTVL;
 		t4_set_reg_field(sc, A_TP_KEEP_INTVL,
-		    V_KEEPALIVEINTVL(M_KEEPALIVEINTVL),
-		    V_KEEPALIVEINTVL(ms_to_tcp_ticks(sc, v)));
+		    V_KEEPALIVEINTVL(M_KEEPALIVEINTVL), V_KEEPALIVEINTVL(v));
 	}
-	if (TUNABLE_INT_FETCH("hw.cxgbe.toe.keepalive_count", &v)) {
-		v &= M_KEEPALIVEMAXR1;
+	if (t4_toe_keepalive_count != 0) {
+		v = t4_toe_keepalive_count & M_KEEPALIVEMAXR2;
 		t4_set_reg_field(sc, A_TP_SHIFT_CNT,
 		    V_KEEPALIVEMAXR1(M_KEEPALIVEMAXR1) |
 		    V_KEEPALIVEMAXR2(M_KEEPALIVEMAXR2),
 		    V_KEEPALIVEMAXR1(1) | V_KEEPALIVEMAXR2(v));
 	}
-	if (TUNABLE_INT_FETCH("hw.cxgbe.toe.rexmt_min", &v)) {
+	if (t4_toe_rexmt_min != 0) {
+		v = us_to_tcp_ticks(sc, t4_toe_rexmt_min);
+		v &= M_RXTMIN;
 		t4_set_reg_field(sc, A_TP_RXT_MIN,
-		    V_RXTMIN(M_RXTMIN), V_RXTMIN(ms_to_tcp_ticks(sc, v)));
+		    V_RXTMIN(M_RXTMIN), V_RXTMIN(v));
 	}
-	if (TUNABLE_INT_FETCH("hw.cxgbe.toe.rexmt_max", &v)) {
+	if (t4_toe_rexmt_max != 0) {
+		v = us_to_tcp_ticks(sc, t4_toe_rexmt_max);
+		v &= M_RXTMAX;
 		t4_set_reg_field(sc, A_TP_RXT_MAX,
-		    V_RXTMAX(M_RXTMAX), V_RXTMAX(ms_to_tcp_ticks(sc, v)));
+		    V_RXTMAX(M_RXTMAX), V_RXTMAX(v));
 	}
-	if (TUNABLE_INT_FETCH("hw.cxgbe.toe.rexmt_count", &v)) {
-		v &= M_RXTSHIFTMAXR1;
+	if (t4_toe_rexmt_count != 0) {
+		v = t4_toe_rexmt_count & M_RXTSHIFTMAXR2;
 		t4_set_reg_field(sc, A_TP_SHIFT_CNT,
 		    V_RXTSHIFTMAXR1(M_RXTSHIFTMAXR1) |
 		    V_RXTSHIFTMAXR2(M_RXTSHIFTMAXR2),
 		    V_RXTSHIFTMAXR1(1) | V_RXTSHIFTMAXR2(v));
 	}
-	for (i = 0; i < 16; i++) {
-		snprintf(s, sizeof(s), "hw.cxgbe.toe.rexmt_backoff.%d", i);
-		if (TUNABLE_INT_FETCH(s, &v)) {
-			v &= M_TIMERBACKOFFINDEX0;
+	for (i = 0; i < nitems(t4_toe_rexmt_backoff); i++) {
+		if (t4_toe_rexmt_backoff[i] != -1) {
+			v = t4_toe_rexmt_backoff[i] & M_TIMERBACKOFFINDEX0;
 			shift = (i & 3) << 3;
 			t4_set_reg_field(sc, A_TP_TCP_BACKOFF_REG0 + (i & ~3),
 			    M_TIMERBACKOFFINDEX0 << shift, v << shift);
 		}
 	}
+#endif
 	return (0);
 }
 
@@ -4204,7 +4326,7 @@ cxgbe_init_synchronized(struct vi_info *vi)
 	PORT_LOCK(pi);
 	if (pi->up_vis++ == 0) {
 		t4_update_port_info(pi);
-		build_medialist(vi->pi, &vi->media);
+		build_medialist(pi, &pi->media);
 		init_l1cfg(pi);
 	}
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
@@ -4280,7 +4402,8 @@ cxgbe_uninit_synchronized(struct vi_info *vi)
 	pi->link_cfg.link_ok = 0;
 	pi->link_cfg.speed = 0;
 	pi->link_cfg.link_down_rc = 255;
-	t4_os_link_changed(pi, NULL);
+	t4_os_link_changed(pi);
+	pi->old_link_cfg = pi->link_cfg;
 
 	return (0);
 }
@@ -5317,6 +5440,12 @@ t4_sysctls(struct adapter *sc)
 		    NULL, "TOE parameters");
 		children = SYSCTL_CHILDREN(oid);
 
+		sc->tt.cong_algorithm = -1;
+		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "cong_algorithm",
+		    CTLFLAG_RW, &sc->tt.cong_algorithm, 0, "congestion control "
+		    "(-1 = default, 0 = reno, 1 = tahoe, 2 = newreno, "
+		    "3 = highspeed)");
+
 		sc->tt.sndbuf = 256 * 1024;
 		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "sndbuf", CTLFLAG_RW,
 		    &sc->tt.sndbuf, 0, "max hardware send buffer size");
@@ -5462,6 +5591,14 @@ vi_sysctls(struct vi_info *vi)
 		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "first_ofld_txq",
 		    CTLFLAG_RD, &vi->first_ofld_txq, 0,
 		    "index of first TOE tx queue");
+		SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "holdoff_tmr_idx_ofld",
+		    CTLTYPE_INT | CTLFLAG_RW, vi, 0,
+		    sysctl_holdoff_tmr_idx_ofld, "I",
+		    "holdoff timer index for TOE queues");
+		SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "holdoff_pktc_idx_ofld",
+		    CTLTYPE_INT | CTLFLAG_RW, vi, 0,
+		    sysctl_holdoff_pktc_idx_ofld, "I",
+		    "holdoff packet counter index for TOE queues");
 	}
 #endif
 #ifdef DEV_NETMAP
@@ -5812,9 +5949,6 @@ sysctl_holdoff_tmr_idx(SYSCTL_HANDLER_ARGS)
 	struct adapter *sc = vi->pi->adapter;
 	int idx, rc, i;
 	struct sge_rxq *rxq;
-#ifdef TCP_OFFLOAD
-	struct sge_ofld_rxq *ofld_rxq;
-#endif
 	uint8_t v;
 
 	idx = vi->tmr_idx;
@@ -5839,15 +5973,6 @@ sysctl_holdoff_tmr_idx(SYSCTL_HANDLER_ARGS)
 		rxq->iq.intr_params = v;
 #endif
 	}
-#ifdef TCP_OFFLOAD
-	for_each_ofld_rxq(vi, i, ofld_rxq) {
-#ifdef atomic_store_rel_8
-		atomic_store_rel_8(&ofld_rxq->iq.intr_params, v);
-#else
-		ofld_rxq->iq.intr_params = v;
-#endif
-	}
-#endif
 	vi->tmr_idx = idx;
 
 	end_synchronized_op(sc, LOCK_HELD);
@@ -8263,6 +8388,73 @@ sysctl_tp_backoff(SYSCTL_HANDLER_ARGS)
 
 	return (sysctl_handle_int(oidp, &v, 0, req));
 }
+
+static int
+sysctl_holdoff_tmr_idx_ofld(SYSCTL_HANDLER_ARGS)
+{
+	struct vi_info *vi = arg1;
+	struct adapter *sc = vi->pi->adapter;
+	int idx, rc, i;
+	struct sge_ofld_rxq *ofld_rxq;
+	uint8_t v;
+
+	idx = vi->ofld_tmr_idx;
+
+	rc = sysctl_handle_int(oidp, &idx, 0, req);
+	if (rc != 0 || req->newptr == NULL)
+		return (rc);
+
+	if (idx < 0 || idx >= SGE_NTIMERS)
+		return (EINVAL);
+
+	rc = begin_synchronized_op(sc, vi, HOLD_LOCK | SLEEP_OK | INTR_OK,
+	    "t4otmr");
+	if (rc)
+		return (rc);
+
+	v = V_QINTR_TIMER_IDX(idx) | V_QINTR_CNT_EN(vi->ofld_pktc_idx != -1);
+	for_each_ofld_rxq(vi, i, ofld_rxq) {
+#ifdef atomic_store_rel_8
+		atomic_store_rel_8(&ofld_rxq->iq.intr_params, v);
+#else
+		ofld_rxq->iq.intr_params = v;
+#endif
+	}
+	vi->ofld_tmr_idx = idx;
+
+	end_synchronized_op(sc, LOCK_HELD);
+	return (0);
+}
+
+static int
+sysctl_holdoff_pktc_idx_ofld(SYSCTL_HANDLER_ARGS)
+{
+	struct vi_info *vi = arg1;
+	struct adapter *sc = vi->pi->adapter;
+	int idx, rc;
+
+	idx = vi->ofld_pktc_idx;
+
+	rc = sysctl_handle_int(oidp, &idx, 0, req);
+	if (rc != 0 || req->newptr == NULL)
+		return (rc);
+
+	if (idx < -1 || idx >= SGE_NCOUNTERS)
+		return (EINVAL);
+
+	rc = begin_synchronized_op(sc, vi, HOLD_LOCK | SLEEP_OK | INTR_OK,
+	    "t4opktc");
+	if (rc)
+		return (rc);
+
+	if (vi->flags & VI_INIT_DONE)
+		rc = EBUSY; /* cannot be changed once the queues are created */
+	else
+		vi->ofld_pktc_idx = idx;
+
+	end_synchronized_op(sc, LOCK_HELD);
+	return (rc);
+}
 #endif
 
 static uint32_t
@@ -8950,7 +9142,14 @@ load_fw(struct adapter *sc, struct t4_data *fw)
 	if (rc)
 		return (rc);
 
-	if (sc->flags & FULL_INIT_DONE) {
+	/*
+	 * The firmware, with the sole exception of the memory parity error
+	 * handler, runs from memory and not flash.  It is almost always safe to
+	 * install a new firmware on a running system.  Just set bit 1 in
+	 * hw.cxgbe.dflags or dev.<nexus>.<n>.dflags first.
+	 */
+	if (sc->flags & FULL_INIT_DONE &&
+	    (sc->debug_flags & DF_LOAD_FW_ANYTIME) == 0) {
 		rc = EBUSY;
 		goto done;
 	}
@@ -9084,6 +9283,49 @@ done:
 	return (rc);
 }
 
+static int
+cudbg_dump(struct adapter *sc, struct t4_cudbg_dump *dump)
+{
+	int rc;
+	struct cudbg_init *cudbg;
+	void *handle, *buf;
+
+	/* buf is large, don't block if no memory is available */
+	buf = malloc(dump->len, M_CXGBE, M_NOWAIT | M_ZERO);
+	if (buf == NULL)
+		return (ENOMEM);
+
+	handle = cudbg_alloc_handle();
+	if (handle == NULL) {
+		rc = ENOMEM;
+		goto done;
+	}
+
+	cudbg = cudbg_get_init(handle);
+	cudbg->adap = sc;
+	cudbg->print = (cudbg_print_cb)printf;
+
+#ifndef notyet
+	device_printf(sc->dev, "%s: wr_flash %u, len %u, data %p.\n",
+	    __func__, dump->wr_flash, dump->len, dump->data);
+#endif
+
+	if (dump->wr_flash)
+		cudbg->use_flash = 1;
+	MPASS(sizeof(cudbg->dbg_bitmap) == sizeof(dump->bitmap));
+	memcpy(cudbg->dbg_bitmap, dump->bitmap, sizeof(cudbg->dbg_bitmap));
+
+	rc = cudbg_collect(handle, buf, &dump->len);
+	if (rc != 0)
+		goto done;
+
+	rc = copyout(buf, dump->data, dump->len);
+done:
+	cudbg_free_handle(handle);
+	free(buf, M_CXGBE);
+	return (rc);
+}
+
 #define MAX_READ_BUF_SIZE (128 * 1024)
 static int
 read_card_mem(struct adapter *sc, int win, struct t4_mem_range *mr)
@@ -9176,27 +9418,25 @@ t4_os_pci_restore_state(struct adapter *sc)
 }
 
 void
-t4_os_portmod_changed(struct port_info *pi, int old_ptype, int old_mtype,
-    struct link_config *old_lc)
+t4_os_portmod_changed(struct port_info *pi)
 {
+	struct adapter *sc = pi->adapter;
 	struct vi_info *vi;
 	struct ifnet *ifp;
-	int v;
 	static const char *mod_str[] = {
 		NULL, "LR", "SR", "ER", "TWINAX", "active TWINAX", "LRM"
 	};
 
 	PORT_LOCK(pi);
-	for_each_vi(pi, v, vi) {
-		build_medialist(pi, &vi->media);
-	}
+	build_medialist(pi, &pi->media);
 	PORT_UNLOCK(pi);
-	if (begin_synchronized_op(pi->adapter, vi, HOLD_LOCK, "t4mod") == 0) {
+	vi = &pi->vi[0];
+	if (begin_synchronized_op(sc, vi, HOLD_LOCK, "t4mod") == 0) {
 		init_l1cfg(pi);
-		end_synchronized_op(pi->adapter, LOCK_HELD);
+		end_synchronized_op(sc, LOCK_HELD);
 	}
 
-	ifp = pi->vi[0].ifp;
+	ifp = vi->ifp;
 	if (pi->mod_type == FW_PORT_MOD_TYPE_NONE)
 		if_printf(ifp, "transceiver unplugged.\n");
 	else if (pi->mod_type == FW_PORT_MOD_TYPE_UNKNOWN)
@@ -9213,7 +9453,7 @@ t4_os_portmod_changed(struct port_info *pi, int old_ptype, int old_mtype,
 }
 
 void
-t4_os_link_changed(struct port_info *pi, struct link_config *old_lc)
+t4_os_link_changed(struct port_info *pi)
 {
 	struct vi_info *vi;
 	struct ifnet *ifp;
@@ -9431,6 +9671,9 @@ t4_ioctl(struct cdev *dev, unsigned long cmd, caddr_t data, int fflag,
 		break;
 	case CHELSIO_T4_LOAD_BOOTCFG:
 		rc = load_bootcfg(sc, (struct t4_data *)data);
+		break;
+	case CHELSIO_T4_CUDBG_DUMP:
+		rc = cudbg_dump(sc, (struct t4_cudbg_dump *)data);
 		break;
 	default:
 		rc = ENOTTY;
@@ -9740,6 +9983,12 @@ tweak_tunables(void)
 		    FW_CAPS_CONFIG_ISCSI_TARGET_PDU |
 		    FW_CAPS_CONFIG_ISCSI_T10DIF;
 	}
+
+	if (t4_tmr_idx_ofld < 0 || t4_tmr_idx_ofld >= SGE_NTIMERS)
+		t4_tmr_idx_ofld = TMR_IDX_OFLD;
+
+	if (t4_pktc_idx_ofld < -1 || t4_pktc_idx_ofld >= SGE_NCOUNTERS)
+		t4_pktc_idx_ofld = PKTC_IDX_OFLD;
 #else
 	if (t4_toecaps_allowed == -1)
 		t4_toecaps_allowed = 0;

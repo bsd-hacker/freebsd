@@ -80,7 +80,7 @@ struct sf_io {
 	volatile u_int	nios;
 	u_int		error;
 	int		npages;
-	struct file	*sock_fp;
+	struct socket	*so;
 	struct mbuf	*m;
 	vm_page_t	pa[];
 };
@@ -255,7 +255,7 @@ static void
 sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 {
 	struct sf_io *sfio = arg;
-	struct socket *so;
+	struct socket *so = sfio->so;
 
 	for (int i = 0; i < count; i++)
 		if (pg[i] != bogus_page)
@@ -266,8 +266,6 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 
 	if (!refcount_release(&sfio->nios))
 		return;
-
-	so = sfio->sock_fp->f_data;
 
 	if (sfio->error) {
 		struct mbuf *m;
@@ -296,8 +294,8 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 		CURVNET_RESTORE();
 	}
 
-	/* XXXGL: curthread */
-	fdrop(sfio->sock_fp, curthread);
+	SOCK_LOCK(so);
+	sorele(so);
 	free(sfio, M_TEMP);
 }
 
@@ -309,7 +307,7 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
     int npages, int rhpages, int flags)
 {
 	vm_page_t *pa = sfio->pa;
-	int nios;
+	int grabbed, nios;
 
 	nios = 0;
 	flags = (flags & SF_NODISKIO) ? VM_ALLOC_NOWAIT : 0;
@@ -319,14 +317,14 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
 	 * only required pages.  Readahead pages are dealt with later.
 	 */
 	VM_OBJECT_WLOCK(obj);
-	for (int i = 0; i < npages; i++) {
-		pa[i] = vm_page_grab(obj, OFF_TO_IDX(vmoff(i, off)),
-		    VM_ALLOC_WIRED | VM_ALLOC_NORMAL | flags);
-		if (pa[i] == NULL) {
-			npages = i;
-			rhpages = 0;
-			break;
-		}
+
+	grabbed = vm_page_grab_pages(obj, OFF_TO_IDX(off),
+	    VM_ALLOC_NORMAL | VM_ALLOC_WIRED | flags, pa, npages);
+	if (grabbed < npages) {
+		for (int i = grabbed; i < npages; i++)
+			pa[i] = NULL;
+		npages = grabbed;
+		rhpages = 0;
 	}
 
 	for (int i = 0; i < npages;) {
@@ -355,7 +353,7 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
 		    &a)) {
 			pmap_zero_page(pa[i]);
 			pa[i]->valid = VM_PAGE_BITS_ALL;
-			pa[i]->dirty = 0;
+			MPASS(pa[i]->dirty == 0);
 			vm_page_xunbusy(pa[i]);
 			i++;
 			continue;
@@ -724,6 +722,7 @@ retry_space:
 		sfio = malloc(sizeof(struct sf_io) +
 		    npages * sizeof(vm_page_t), M_TEMP, M_WAITOK);
 		refcount_init(&sfio->nios, 1);
+		sfio->so = so;
 		sfio->error = 0;
 
 		nios = sendfile_swapin(obj, sfio, off, space, npages, rhpages,
@@ -858,9 +857,8 @@ prepend_header:
 			error = (*so->so_proto->pr_usrreqs->pru_send)
 			    (so, 0, m, NULL, NULL, td);
 		} else {
-			sfio->sock_fp = sock_fp;
 			sfio->npages = npages;
-			fhold(sock_fp);
+			soref(so);
 			error = (*so->so_proto->pr_usrreqs->pru_send)
 			    (so, PRUS_NOTREADY, m, NULL, NULL, td);
 			sendfile_iodone(sfio, NULL, 0, 0);
@@ -945,6 +943,7 @@ sendfile(struct thread *td, struct sendfile_args *uap, int compat)
 	if (uap->offset < 0)
 		return (EINVAL);
 
+	sbytes = 0;
 	hdr_uio = trl_uio = NULL;
 
 	if (uap->hdtr != NULL) {

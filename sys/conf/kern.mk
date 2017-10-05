@@ -58,7 +58,6 @@ CWARNEXTRA?=	-Wno-error=address				\
 		-Wno-error=maybe-uninitialized			\
 		-Wno-error=overflow				\
 		-Wno-error=sequence-point			\
-		-Wno-error=strict-overflow			\
 		-Wno-error=unused-but-set-variable
 .if ${COMPILER_VERSION} >= 60100
 CWARNEXTRA+=	-Wno-error=misleading-indentation		\
@@ -121,7 +120,7 @@ INLINE_LIMIT?=	8000
 .endif
 
 .if ${MACHINE_CPUARCH} == "riscv"
-CFLAGS.gcc+=	-mcmodel=medany
+CFLAGS.gcc+=	-mcmodel=medany -march=rv64imafdc -mabi=lp64
 INLINE_LIMIT?=	8000
 .endif
 

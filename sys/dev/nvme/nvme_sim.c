@@ -73,11 +73,13 @@ nvme_sim_nvmeio_done(void *ccb_arg, const struct nvme_completion *cpl)
 	 * it means. Make our best guess, though for the status code.
 	 */
 	memcpy(&ccb->nvmeio.cpl, cpl, sizeof(*cpl));
-	if (nvme_completion_is_error(cpl))
+	if (nvme_completion_is_error(cpl)) {
 		ccb->ccb_h.status = CAM_REQ_CMP_ERR;
-	else
+		xpt_done(ccb);
+	} else {
 		ccb->ccb_h.status = CAM_REQ_CMP;
-	xpt_done(ccb);
+		xpt_done_direct(ccb);
+	}
 }
 
 static void
@@ -96,6 +98,8 @@ nvme_sim_nvmeio(struct cam_sim *sim, union ccb *ccb)
 	if ((nvmeio->ccb_h.flags & CAM_DATA_MASK) == CAM_DATA_BIO)
 		req = nvme_allocate_request_bio((struct bio *)payload,
 		    nvme_sim_nvmeio_done, ccb);
+	else if ((nvmeio->ccb_h.flags & CAM_DATA_SG) == CAM_DATA_SG)
+		req = nvme_allocate_request_ccb(ccb, nvme_sim_nvmeio_done, ccb);
 	else if (payload == NULL)
 		req = nvme_allocate_request_null(nvme_sim_nvmeio_done, ccb);
 	else
@@ -253,7 +257,7 @@ nvme_sim_new_controller(struct nvme_controller *ctrlr)
 	int unit;
 	struct nvme_sim_softc *sc = NULL;
 
-	max_trans = 256;/* XXX not so simple -- must match queues */
+	max_trans = ctrlr->max_hw_pend_io;
 	unit = device_get_unit(ctrlr->dev);
 	devq = cam_simq_alloc(max_trans);
 	if (devq == NULL)
@@ -371,6 +375,8 @@ struct nvme_consumer *consumer_cookie;
 static void
 nvme_sim_init(void)
 {
+	if (nvme_use_nvd)
+		return;
 
 	consumer_cookie = nvme_register_consumer(nvme_sim_new_ns,
 	    nvme_sim_new_controller, NULL, nvme_sim_controller_fail);
@@ -382,6 +388,8 @@ SYSINIT(nvme_sim_register, SI_SUB_DRIVERS, SI_ORDER_ANY,
 static void
 nvme_sim_uninit(void)
 {
+	if (nvme_use_nvd)
+		return;
 	/* XXX Cleanup */
 
 	nvme_unregister_consumer(consumer_cookie);
