@@ -154,8 +154,6 @@ sysarch(struct thread *td, struct sysarch_args *uap)
 		if ((error = copyin(uap->parms, &kargs.largs,
 		    sizeof(struct i386_ldt_args))) != 0)
 			return (error);
-		if (kargs.largs.num > MAX_LD || kargs.largs.num <= 0)
-			return (EINVAL);
 		break;
 	case I386_GET_XFPUSTATE:
 		if ((error = copyin(uap->parms, &kargs.xfpu,
@@ -166,14 +164,15 @@ sysarch(struct thread *td, struct sysarch_args *uap)
 		break;
 	}
 
-	switch(uap->op) {
+	switch (uap->op) {
 	case I386_GET_LDT:
 		error = i386_get_ldt(td, &kargs.largs);
 		break;
 	case I386_SET_LDT:
 		if (kargs.largs.descs != NULL) {
-			lp = (union descriptor *)malloc(
-			    kargs.largs.num * sizeof(union descriptor),
+			if (kargs.largs.num > MAX_LD)
+				return (EINVAL);
+			lp = malloc(kargs.largs.num * sizeof(union descriptor),
 			    M_TEMP, M_WAITOK);
 			error = copyin(kargs.largs.descs, lp,
 			    kargs.largs.num * sizeof(union descriptor));
@@ -432,8 +431,7 @@ user_ldt_alloc(struct mdproc *mdp, int len)
 
 	mtx_assert(&dt_lock, MA_OWNED);
 	mtx_unlock_spin(&dt_lock);
-	new_ldt = malloc(sizeof(struct proc_ldt),
-		M_SUBPROC, M_WAITOK);
+	new_ldt = malloc(sizeof(struct proc_ldt), M_SUBPROC, M_WAITOK);
 
 	new_ldt->ldt_len = len = NEW_MAX_LD(len);
 	new_ldt->ldt_base = (caddr_t)kmem_malloc(kernel_arena,
@@ -463,10 +461,11 @@ user_ldt_alloc(struct mdproc *mdp, int len)
 void
 user_ldt_free(struct thread *td)
 {
-	struct mdproc *mdp = &td->td_proc->p_md;
+	struct mdproc *mdp;
 	struct proc_ldt *pldt;
 
 	mtx_assert(&dt_lock, MA_OWNED);
+	mdp = &td->td_proc->p_md;
 	if ((pldt = mdp->md_ldt) == NULL) {
 		mtx_unlock_spin(&dt_lock);
 		return;
@@ -502,62 +501,58 @@ user_ldt_deref(struct proc_ldt *pldt)
  * the OS-specific one.
  */
 int
-i386_get_ldt(td, uap)
-	struct thread *td;
-	struct i386_ldt_args *uap;
+i386_get_ldt(struct thread *td, struct i386_ldt_args *uap)
 {
-	int error = 0;
 	struct proc_ldt *pldt;
-	int nldt, num;
-	union descriptor *lp;
+	char *data;
+	u_int nldt, num;
+	int error;
 
-#ifdef	DEBUG
-	printf("i386_get_ldt: start=%d num=%d descs=%p\n",
+#ifdef DEBUG
+	printf("i386_get_ldt: start=%u num=%u descs=%p\n",
 	    uap->start, uap->num, (void *)uap->descs);
 #endif
 
+	if (uap->start >= MAX_LD)
+		return (EINVAL);
+	num = min(uap->num, MAX_LD - uap->start);
+	data = malloc(uap->num * sizeof(union descriptor), M_TEMP, M_WAITOK);
 	mtx_lock_spin(&dt_lock);
-	if ((pldt = td->td_proc->p_md.md_ldt) != NULL) {
-		nldt = pldt->ldt_len;
-		lp = &((union descriptor *)(pldt->ldt_base))[uap->start];
+	pldt = td->td_proc->p_md.md_ldt;
+	nldt = pldt != NULL ? pldt->ldt_len : nitems(ldt);
+	num = min(num, nldt);
+	if (uap->start > nldt || uap->start + num > nldt) {
 		mtx_unlock_spin(&dt_lock);
-		num = min(uap->num, nldt);
-	} else {
-		mtx_unlock_spin(&dt_lock);
-		nldt = sizeof(ldt)/sizeof(ldt[0]);
-		num = min(uap->num, nldt);
-		lp = &ldt[uap->start];
+		return (EINVAL);
 	}
+	bcopy(pldt != NULL ?
+	    &((union descriptor *)(pldt->ldt_base))[uap->start] :
+	    &ldt[uap->start], data, num * sizeof(union descriptor));
+	mtx_unlock_spin(&dt_lock);
 
-	if ((uap->start > (unsigned int)nldt) ||
-	    ((unsigned int)num > (unsigned int)nldt) ||
-	    ((unsigned int)(uap->start + num) > (unsigned int)nldt))
-		return(EINVAL);
-
-	error = copyout(lp, uap->descs, num * sizeof(union descriptor));
-	if (!error)
+	error = copyout(data, uap->descs, num * sizeof(union descriptor));
+	if (error == 0)
 		td->td_retval[0] = num;
-
-	return(error);
+	free(data, M_TEMP);
+	return (error);
 }
 
 int
-i386_set_ldt(td, uap, descs)
-	struct thread *td;
-	struct i386_ldt_args *uap;
-	union descriptor *descs;
+i386_set_ldt(struct thread *td, struct i386_ldt_args *uap,
+    union descriptor *descs)
 {
-	int error, i;
-	int largest_ld;
-	struct mdproc *mdp = &td->td_proc->p_md;
+	struct mdproc *mdp;
 	struct proc_ldt *pldt;
 	union descriptor *dp;
+	u_int largest_ld, i;
+	int error;
 
-#ifdef	DEBUG
-	printf("i386_set_ldt: start=%d num=%d descs=%p\n",
+#ifdef DEBUG
+	printf("i386_set_ldt: start=%u num=%u descs=%p\n",
 	    uap->start, uap->num, (void *)uap->descs);
 #endif
 	error = 0;
+	mdp = &td->td_proc->p_md;
 
 	if (descs == NULL) {
 		/* Free descriptors */
@@ -569,8 +564,6 @@ i386_set_ldt(td, uap, descs)
 			uap->start = NLDT;
 			uap->num = MAX_LD - NLDT;
 		}
-		if (uap->num == 0)
-			return (EINVAL);
 		mtx_lock_spin(&dt_lock);
 		if ((pldt = mdp->md_ldt) == NULL ||
 		    uap->start >= pldt->ldt_len) {
@@ -587,12 +580,11 @@ i386_set_ldt(td, uap, descs)
 		return (0);
 	}
 
-	if (!(uap->start == LDT_AUTO_ALLOC && uap->num == 1)) {
+	if (uap->start != LDT_AUTO_ALLOC || uap->num != 1) {
 		/* verify range of descriptors to modify */
 		largest_ld = uap->start + uap->num;
-		if (uap->start >= MAX_LD || largest_ld > MAX_LD) {
+		if (uap->start >= MAX_LD || largest_ld > MAX_LD)
 			return (EINVAL);
-		}
 	}
 
 	/* Check descriptors for access violations */
@@ -618,12 +610,7 @@ i386_set_ldt(td, uap, descs)
 		case SDT_SYS386TGT: /* system 386 trap gate */
 		case SDT_SYS286CGT: /* system 286 call gate */ 
 		case SDT_SYS386CGT: /* system 386 call gate */
-			/* I can't think of any reason to allow a user proc
-			 * to create a segment of these types.  They are
-			 * for OS use only.
-			 */
 			return (EACCES);
-			/*NOTREACHED*/
 
 		/* memory segment types */
 		case SDT_MEMEC:   /* memory execute only conforming */
@@ -648,12 +635,11 @@ i386_set_ldt(td, uap, descs)
 		case SDT_MEMERA:  /* memory execute read accessed */
 			break;
 		default:
-			return(EINVAL);
-			/*NOTREACHED*/
+			return (EINVAL);
 		}
 
 		/* Only user (ring-3) descriptors may be present. */
-		if ((dp->sd.sd_p != 0) && (dp->sd.sd_dpl != SEL_UPL))
+		if (dp->sd.sd_p != 0 && dp->sd.sd_dpl != SEL_UPL)
 			return (EACCES);
 	}
 
