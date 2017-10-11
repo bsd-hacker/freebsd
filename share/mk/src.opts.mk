@@ -180,10 +180,10 @@ __DEFAULT_NO_OPTIONS = \
     GNU_GREP_COMPAT \
     HESIOD \
     LIBSOFT \
+    LOADER_FORCE_LE \
     NAND \
     OFED \
     OPENLDAP \
-    RCMDS \
     REPRODUCIBLE_BUILD \
     RPCBIND_WARMSTART_SUPPORT \
     SHARED_TOOLCHAIN \
@@ -276,7 +276,7 @@ __DEFAULT_NO_OPTIONS+=GDB_LIBEXEC
 __DEFAULT_YES_OPTIONS+=GDB_LIBEXEC
 .endif
 # Only doing soft float API stuff on armv6
-.if ${__T} != "armv6"
+.if ${__T} != "armv6" && ${__T} != "armv7"
 BROKEN_OPTIONS+=LIBSOFT
 .endif
 .if ${__T:Mmips*}
