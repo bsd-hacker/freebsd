@@ -108,6 +108,7 @@ enum {
 #define	FECTYPE_MASK		0x0000ffff
 #define	FECFLAG_GBE		(1 << 16)
 #define	FECFLAG_AVB		(1 << 17)
+#define	FECFLAG_RACC		(1 << 18)
 
 /*
  * Table of supported FDT compat strings and their associated FECTYPE values.
@@ -115,10 +116,11 @@ enum {
 static struct ofw_compat_data compat_data[] = {
 	{"fsl,imx51-fec",	FECTYPE_GENERIC},
 	{"fsl,imx53-fec",	FECTYPE_IMX53},
-	{"fsl,imx6q-fec",	FECTYPE_IMX6 | FECFLAG_GBE},
-	{"fsl,imx6ul-fec",	FECTYPE_IMX6},
-	{"fsl,imx7d-fec",	FECTYPE_IMX6 | FECFLAG_GBE | FECFLAG_AVB},
-	{"fsl,mvf600-fec",	FECTYPE_MVF},
+	{"fsl,imx6q-fec",	FECTYPE_IMX6 | FECFLAG_RACC | FECFLAG_GBE },
+	{"fsl,imx6ul-fec",	FECTYPE_IMX6 | FECFLAG_RACC },
+	{"fsl,imx7d-fec",	FECTYPE_IMX6 | FECFLAG_RACC | FECFLAG_GBE |
+				FECFLAG_AVB },
+	{"fsl,mvf600-fec",	FECTYPE_MVF  | FECFLAG_RACC },
 	{"fsl,mvf-fec",		FECTYPE_MVF},
 	{NULL,		 	FECTYPE_NONE},
 };
@@ -133,6 +135,8 @@ static struct ofw_compat_data compat_data[] = {
 
 #define	WATCHDOG_TIMEOUT_SECS	5
 
+#define	MAX_IRQ_COUNT 3
+
 struct ffec_bufmap {
 	struct mbuf	*mbuf;
 	bus_dmamap_t	map;
@@ -145,9 +149,9 @@ struct ffec_softc {
 	struct ifnet		*ifp;
 	int			if_flags;
 	struct mtx		mtx;
-	struct resource		*irq_res;
+	struct resource		*irq_res[MAX_IRQ_COUNT];
 	struct resource		*mem_res;
-	void *			intr_cookie;
+	void *			intr_cookie[MAX_IRQ_COUNT];
 	struct callout		ffec_callout;
 	mii_contype_t		phy_conn_type;
 	uintptr_t		fectype;
@@ -175,6 +179,13 @@ struct ffec_softc {
 	uint32_t		tx_idx_head;
 	uint32_t		tx_idx_tail;
 	int			txcount;
+};
+
+static struct resource_spec irq_res_spec[MAX_IRQ_COUNT + 1] = {
+	{ SYS_RES_IRQ,		0,	RF_ACTIVE },
+	{ SYS_RES_IRQ,		1,	RF_ACTIVE | RF_OPTIONAL },
+	{ SYS_RES_IRQ,		2,	RF_ACTIVE | RF_OPTIONAL },
+	RESOURCE_SPEC_END
 };
 
 #define	FFEC_LOCK(sc)			mtx_lock(&(sc)->mtx)
@@ -751,14 +762,17 @@ ffec_setup_rxbuf(struct ffec_softc *sc, int idx, struct mbuf * m)
 	int error, nsegs;
 	struct bus_dma_segment seg;
 
-	/*
-	 * We need to leave at least ETHER_ALIGN bytes free at the beginning of
-	 * the buffer to allow the data to be re-aligned after receiving it (by
-	 * copying it backwards ETHER_ALIGN bytes in the same buffer).  We also
-	 * have to ensure that the beginning of the buffer is aligned to the
-	 * hardware's requirements.
-	 */
-	m_adj(m, roundup(ETHER_ALIGN, sc->rxbuf_align));
+	if ((sc->fectype & FECFLAG_RACC) == 0) {
+		/*
+		 * The RACC[SHIFT16] feature is not available.  So, we need to
+		 * leave at least ETHER_ALIGN bytes free at the beginning of the
+		 * buffer to allow the data to be re-aligned after receiving it
+		 * (by copying it backwards ETHER_ALIGN bytes in the same
+		 * buffer).  We also have to ensure that the beginning of the
+		 * buffer is aligned to the hardware's requirements.
+		 */
+		m_adj(m, roundup(ETHER_ALIGN, sc->rxbuf_align));
+	}
 
 	error = bus_dmamap_load_mbuf_sg(sc->rxbuf_tag, sc->rxbuf_map[idx].map,
 	    m, &seg, &nsegs, 0);
@@ -806,23 +820,6 @@ ffec_rxfinish_onebuf(struct ffec_softc *sc, int len)
 		return;
 	}
 
-	/*
-	 *  Unfortunately, the protocol headers need to be aligned on a 32-bit
-	 *  boundary for the upper layers.  The hardware requires receive
-	 *  buffers to be 16-byte aligned.  The ethernet header is 14 bytes,
-	 *  leaving the protocol header unaligned.  We used m_adj() after
-	 *  allocating the buffer to leave empty space at the start of the
-	 *  buffer, now we'll use the alignment agnostic bcopy() routine to
-	 *  shuffle all the data backwards 2 bytes and adjust m_data.
-	 *
-	 *  XXX imx6 hardware is able to do this 2-byte alignment by setting the
-	 *  SHIFT16 bit in the RACC register.  Older hardware doesn't have that
-	 *  feature, but for them could we speed this up by copying just the
-	 *  protocol headers into their own small mbuf then chaining the cluster
-	 *  to it?  That way we'd only need to copy like 64 bytes or whatever
-	 *  the biggest header is, instead of the whole 1530ish-byte frame.
-	 */
-
 	FFEC_UNLOCK(sc);
 
 	bmap = &sc->rxbuf_map[sc->rx_idx];
@@ -835,10 +832,25 @@ ffec_rxfinish_onebuf(struct ffec_softc *sc, int len)
 	m->m_pkthdr.len = len;
 	m->m_pkthdr.rcvif = sc->ifp;
 
-	src = mtod(m, uint8_t*);
-	dst = src - ETHER_ALIGN;
-	bcopy(src, dst, len);
-	m->m_data = dst;
+	/*
+	 * Align the protocol headers in the receive buffer on a 32-bit
+	 * boundary.  Newer hardware does the alignment for us.  On hardware
+	 * that doesn't support this feature, we have to copy-align the data.
+	 *
+	 *  XXX for older hardware, could we speed this up by copying just the
+	 *  protocol headers into their own small mbuf then chaining the cluster
+	 *  to it? That way we'd only need to copy like 64 bytes or whatever the
+	 *  biggest header is, instead of the whole 1530ish-byte frame.
+	 */
+
+	if (sc->fectype & FECFLAG_RACC) {
+		m->m_data = mtod(m, uint8_t *) + 2;
+	} else {
+		src = mtod(m, uint8_t*);
+		dst = src - ETHER_ALIGN;
+		bcopy(src, dst, len);
+		m->m_data = dst;
+	}
 	sc->ifp->if_input(sc->ifp, m);
 
 	FFEC_LOCK(sc);
@@ -1212,6 +1224,14 @@ ffec_init_locked(struct ffec_softc *sc)
 	ffec_clear_stats(sc);
 	WR4(sc, FEC_MIBC_REG, regval & ~FEC_MIBC_DIS);
 
+	if (sc->fectype & FECFLAG_RACC) {
+		/*
+		 * RACC - Receive Accelerator Function Configuration.
+		 */
+		regval = RD4(sc, FEC_RACC_REG);
+		WR4(sc, FEC_RACC_REG, regval | FEC_RACC_SHIFT16);
+	}
+
 	/*
 	 * ECR - Ethernet control register.
 	 *
@@ -1364,7 +1384,7 @@ ffec_detach(device_t dev)
 {
 	struct ffec_softc *sc;
 	bus_dmamap_t map;
-	int idx;
+	int idx, irq;
 
 	/*
 	 * NB: This function can be called internally to unwind a failure to
@@ -1415,14 +1435,16 @@ ffec_detach(device_t dev)
 		bus_dmamap_destroy(sc->txdesc_tag, sc->txdesc_map);
 	}
 	if (sc->txdesc_tag != NULL)
-	bus_dma_tag_destroy(sc->txdesc_tag);
+		bus_dma_tag_destroy(sc->txdesc_tag);
 
 	/* Release bus resources. */
-	if (sc->intr_cookie)
-		bus_teardown_intr(dev, sc->irq_res, sc->intr_cookie);
-
-	if (sc->irq_res != NULL)
-		bus_release_resource(dev, SYS_RES_IRQ, 0, sc->irq_res);
+	for (irq = 0; irq < MAX_IRQ_COUNT; ++irq) {
+		if (sc->intr_cookie[irq] != NULL) {
+			bus_teardown_intr(dev, sc->irq_res[irq],
+			    sc->intr_cookie[irq]);
+		}
+	}
+	bus_release_resources(dev, irq_res_spec, sc->irq_res);
 
 	if (sc->mem_res != NULL)
 		bus_release_resource(dev, SYS_RES_MEMORY, 0, sc->mem_res);
@@ -1439,7 +1461,7 @@ ffec_attach(device_t dev)
 	struct mbuf *m;
 	void *dummy;
 	phandle_t ofw_node;
-	int error, phynum, rid;
+	int error, phynum, rid, irq;
 	uint8_t eaddr[ETHER_ADDR_LEN];
 	uint32_t idx, mscr;
 
@@ -1490,12 +1512,10 @@ ffec_attach(device_t dev)
 		error = ENOMEM;
 		goto out;
 	}
-	rid = 0;
-	sc->irq_res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
-	    RF_ACTIVE);
-	if (sc->irq_res == NULL) {
-		device_printf(dev, "could not allocate interrupt resources.\n");
-		error = ENOMEM;
+
+	error = bus_alloc_resources(dev, irq_res_spec, sc->irq_res);
+	if (error != 0) {
+		device_printf(dev, "could not allocate interrupt resources\n");
 		goto out;
 	}
 
@@ -1656,11 +1676,17 @@ ffec_attach(device_t dev)
 		WR4(sc, FEC_ECR_REG, FEC_ECR_RESET);
 
 	/* Setup interrupt handler. */
-	error = bus_setup_intr(dev, sc->irq_res, INTR_TYPE_NET | INTR_MPSAFE,
-	    NULL, ffec_intr, sc, &sc->intr_cookie);
-	if (error != 0) {
-		device_printf(dev, "could not setup interrupt handler.\n");
-		goto out;
+	for (irq = 0; irq < MAX_IRQ_COUNT; ++irq) {
+		if (sc->irq_res[irq] != NULL) {
+			error = bus_setup_intr(dev, sc->irq_res[irq],
+			    INTR_TYPE_NET | INTR_MPSAFE, NULL, ffec_intr, sc,
+			    &sc->intr_cookie[irq]);
+			if (error != 0) {
+				device_printf(dev,
+				    "could not setup interrupt handler.\n");
+				goto out;
+			}
+		}
 	}
 
 	/*
