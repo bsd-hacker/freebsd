@@ -25,7 +25,11 @@ BINDIR?=	/boot
 # NB: The makefiles depend on these being empty when we don't build forth.
 .if ${MK_FORTH} != "no"
 LIBFICL=	${BOOTOBJ}/ficl/libficl.a
+.if ${MACHINE} == "i386"
+LIBFICL32=	${LIBFICL}
+.else
 LIBFICL32=	${BOOTOBJ}/ficl32/libficl.a
+.endif
 .endif
 LIBSA=		${BOOTOBJ}/libsa/libsa.a
 .if ${MACHINE} == "i386"
@@ -84,6 +88,12 @@ CFLAGS+= -DLOADER_MBR_SUPPORT
 .if ${LOADER_GELI_SUPPORT:Uyes} == "yes"
 CFLAGS+= -DLOADER_GELI_SUPPORT
 .endif
+.endif
+
+# All PowerPC builds are 32 bit. We have no 64-bit loaders on powerpc
+# or powerpc64.
+.if ${MACHINE_ARCH} == "powerpc64"
+CFLAGS+=	-m32 -mcpu=powerpc
 .endif
 
 .endif # __BOOT_DEFS_MK__
