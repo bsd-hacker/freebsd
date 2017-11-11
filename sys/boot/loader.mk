@@ -2,9 +2,9 @@
 
 .include "defs.mk"
 
-.PATH: ${LDR_MI} ${BOOTDIR}/libsa
+.PATH: ${LDRSRC} ${BOOTSRC}/libsa
 
-CFLAGS+=-I${LDR_MI}
+CFLAGS+=-I${LDRSRC}
 
 SRCS+=	boot.c commands.c console.c devopen.c interp.c 
 SRCS+=	interp_backslash.c interp_parse.c ls.c misc.c 
@@ -43,6 +43,8 @@ SRCS+=  bcache.c
 .if defined(MD_IMAGE_SIZE)
 CFLAGS+= -DMD_IMAGE_SIZE=${MD_IMAGE_SIZE}
 SRCS+=	md.c
+.else
+CLEANFILES+=	md.o
 .endif
 
 # Machine-independant ISA PnP
@@ -56,7 +58,7 @@ SRCS+=	pnp.c
 # Forth interpreter
 .if ${MK_FORTH} != "no"
 SRCS+=	interp_forth.c
-.include "${BOOTDIR}/ficl.mk"
+.include "${BOOTSRC}/ficl.mk"
 .endif
 
 .if defined(BOOT_PROMPT_123)
@@ -67,11 +69,32 @@ CFLAGS+=	-DBOOT_PROMPT_123
 SRCS+=	install.c
 .endif
 
+.if defined(HAVE_ZFS)
+CFLAGS+=	-DLOADER_ZFS_SUPPORT
+CFLAGS+=	-I${ZFSSRC}
+CFLAGS+=	-I${SYSDIR}/cddl/boot/zfs
+.if ${MACHINE} == "amd64"
+# Have to override to use 32-bit version of zfs library...
+# kinda lame to select that there XXX
+LIBZFSBOOT=	${BOOTOBJ}/zfs32/libzfsboot.a
+.else
+LIBZFSBOOT=	${BOOTOBJ}/zfs/libzfsboot.a
+.endif
+.endif
+
 CLEANFILES+=	vers.c
 VERSION_FILE?=	${.CURDIR}/version
 .if ${MK_REPRODUCIBLE_BUILD} != no
 REPRO_FLAG=	-r
 .endif
-vers.c: ${LDR_MI}/newvers.sh ${VERSION_FILE}
-	sh ${LDR_MI}/newvers.sh ${REPRO_FLAG} ${VERSION_FILE} \
+vers.c: ${LDRSRC}/newvers.sh ${VERSION_FILE}
+	sh ${LDRSRC}/newvers.sh ${REPRO_FLAG} ${VERSION_FILE} \
 	    ${NEWVERSWHAT}
+
+.if !empty(HELP_FILES)
+CLEANFILES+=	loader.help
+FILES+=		loader.help
+
+loader.help: ${HELP_FILES}
+	cat ${HELP_FILES} | awk -f ${LDRSRC}/merge_help.awk > ${.TARGET}
+.endif

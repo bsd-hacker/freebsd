@@ -1,19 +1,5 @@
 # $FreeBSD$
 
-.include <src.opts.mk>
-MK_SSP=		no
-MAN=
-
-PROG=		loader.kboot
-NEWVERSWHAT=	"kboot loader" ${MACHINE_ARCH}
-BINDIR?=	/boot
-INSTALLFLAGS=	-b
-
-# Architecture-specific loader code
-SRCS=		conf.c metadata.c vers.c main.c ppc64_elf_freebsd.c
-SRCS+=		host_syscall.S hostcons.c hostdisk.c kerneltramp.S kbootfdt.c
-SRCS+=		ucmpdi2.c
-
 LOADER_CD9660_SUPPORT?=	yes
 LOADER_MSDOS_SUPPORT?=	no
 LOADER_EXT2FS_SUPPORT?=	yes
@@ -22,26 +8,29 @@ LOADER_NET_SUPPORT?=	yes
 LOADER_NFS_SUPPORT?=	yes
 LOADER_TFTP_SUPPORT?=	no
 LOADER_GZIP_SUPPORT?=	yes
-LOADER_FDT_SUPPORT=	yes
 LOADER_BZIP2_SUPPORT?=	no
 
-.if ${LOADER_FDT_SUPPORT} == "yes"
-CFLAGS+=	-I${.CURDIR}/../../fdt
-CFLAGS+=	-I${.OBJDIR}/../../fdt
-CFLAGS+=	-I${.CURDIR}/../../../contrib/libfdt
-CFLAGS+=	-DLOADER_FDT_SUPPORT
-LIBFDT=		${.OBJDIR}/../../fdt/libfdt.a
-.endif
+.include <bsd.init.mk>
+MK_SSP=		no
+MAN=
+
+PROG=		loader.kboot
+NEWVERSWHAT=	"kboot loader" ${MACHINE_ARCH}
+INSTALLFLAGS=	-b
+
+# Architecture-specific loader code
+SRCS=		conf.c metadata.c vers.c main.c ppc64_elf_freebsd.c
+SRCS+=		host_syscall.S hostcons.c hostdisk.c kerneltramp.S kbootfdt.c
+SRCS+=		ucmpdi2.c
+
+.include	"${BOOTSRC}/fdt.mk"
 
 CFLAGS+=	-mcpu=powerpc64
 
 # Always add MI sources
-.include	"../../loader.mk"
-.PATH:		${.CURDIR}/../../../libkern
-CFLAGS+=	-I${.CURDIR}/../../..
-CFLAGS+=	-I.
-
-CLEANFILES+=	loader.help
+HELP_FILES=	# Disable
+.include	"${BOOTSRC}/loader.mk"
+.PATH:		${SYSDIR}/libkern
 
 CFLAGS+=	-Wall -ffreestanding -msoft-float -DAIM
 # load address. set in linker script
@@ -53,20 +42,9 @@ LDFLAGS=	-nostdlib -static -T ${.CURDIR}/ldscript.powerpc
 # 64-bit bridge extensions
 CFLAGS+= -Wa,-mppc64bridge
 
-# Pull in common loader code
-#.PATH:		${.CURDIR}/../../ofw/common
-#.include	"${.CURDIR}/../../ofw/common/Makefile.inc"
+DPADD=		${LIBFICL} ${LIBOFW} ${LIBFDT} ${LIBSA}
+LDADD=		${LIBFICL} ${LIBOFW} ${LIBFDT} ${LIBSA}
 
-DPADD=		${LIBFICL} ${LIBOFW} ${LIBFDT} ${LIBSA32}
-LDADD=		${LIBFICL} ${LIBOFW} ${LIBFDT} ${LIBSA32}
-
-loader.help: help.common help.kboot ${.CURDIR}/../../fdt/help.fdt
-	cat ${.ALLSRC} | \
-	    awk -f ${LDR_MI}/merge_help.awk > ${.TARGET}
-
-.PATH: ${.CURDIR}/../../forth
-.include	"${.CURDIR}/../../forth/Makefile.inc"
-
-FILES+= loader.rc menu.rc
+HELP_FILES+=	${FDTSRC}/help.fdt
 
 .include <bsd.prog.mk>
