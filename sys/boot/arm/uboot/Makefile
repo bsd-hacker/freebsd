@@ -17,7 +17,7 @@ LOADER_GELI_SUPPORT?=	yes
 
 .include <bsd.init.mk>
 
-FILES=		ubldr ubldr.bin
+FILES+=		ubldr ubldr.bin
 
 NEWVERSWHAT=	"U-Boot loader" ${MACHINE_ARCH}
 INSTALLFLAGS=	-b
@@ -33,6 +33,8 @@ SRCS=		start.S conf.c self_reloc.c vers.c
 CWARNFLAGS.self_reloc.c+=	-Wno-error=maybe-uninitialized
 .endif
 
+HELP_FILES+=	 help.uboot ${BOOTSRC}/fdt/help.fdt
+
 # Set by zfsloader Makefile
 .if defined(LOADER_ZFS_SUPPORT)
 CFLAGS+=	-DLOADER_ZFS_SUPPORT
@@ -41,9 +43,6 @@ LIBZFSBOOT=	${.OBJDIR}/../../zfs/libzfsboot.a
 
 # Always add MI sources
 .include	"${BOOTSRC}/loader.mk"
-CFLAGS+=	-I.
-
-CLEANFILES+=	loader.help
 
 CFLAGS+=	-ffreestanding -msoft-float
 
@@ -59,10 +58,6 @@ DPADD=		${LIBFICL} ${LIBUBOOT} ${LIBFDT} ${LIBUBOOT_FDT} ${LIBSA}
 LDADD=		${LIBFICL} ${LIBUBOOT} ${LIBFDT} ${LIBUBOOT_FDT} ${LIBSA}
 
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
-
-loader.help: help.common help.uboot ${BOOTSRC}/fdt/help.fdt
-	cat ${.ALLSRC} | \
-	    awk -f ${LDRSRC}/merge_help.awk > ${.TARGET}
 
 ldscript.abs:
 	echo "UBLDR_LOADADDR = ${UBLDR_LOADADDR};" >${.TARGET}
@@ -82,16 +77,5 @@ ubldr.bin: ubldr.pie
 	${OBJCOPY} -S -O binary ubldr.pie ${.TARGET}
 
 CLEANFILES+=	ldscript.abs ldscript.pie ubldr ubldr.pie ubldr.bin
-
-.if !defined(LOADER_ONLY)
-.PATH: ${BOOTSRC}/forth
-.include	"${BOOTSRC}/forth/Makefile.inc"
-
-# Install loader.rc.
-FILES+=	loader.rc
-# Put sample menu.rc on disk but don't enable it by default.
-FILES+=	menu.rc
-FILESNAME_menu.rc=	menu.rc.sample
-.endif
 
 .include <bsd.prog.mk>
