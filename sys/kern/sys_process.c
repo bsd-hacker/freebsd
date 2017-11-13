@@ -920,10 +920,27 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 		if (p->p_pptr != td->td_proc) {
 			proc_reparent(p, td->td_proc);
 		}
-		data = SIGSTOP;
 		CTR2(KTR_PTRACE, "PT_ATTACH: pid %d, oppid %d", p->p_pid,
 		    p->p_oppid);
-		goto sendsig;	/* in PT_CONTINUE below */
+
+		sx_xunlock(&proctree_lock);
+		proctree_locked = 0;
+		MPASS(p->p_xthread == NULL);
+		MPASS((p->p_flag & P_STOPPED_TRACE) == 0);
+
+		/*
+		 * If already stopped due to a stop signal, clear the
+		 * existing stop before triggering a traced SIGSTOP.
+		 */
+		if ((p->p_flag & P_STOPPED_SIG) != 0) {
+			PROC_SLOCK(p);
+			p->p_flag &= ~(P_STOPPED_SIG | P_WAITED);
+			thread_unsuspend(p);
+			PROC_SUNLOCK(p);
+		}
+
+		kern_psignal(p, SIGSTOP);
+		break;
 
 	case PT_CLEARSTEP:
 		CTR2(KTR_PTRACE, "PT_CLEARSTEP: tid %d (pid %d)", td2->td_tid,
@@ -1111,8 +1128,10 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 					sigqueue_delete(&td3->td_sigqueue,
 					    SIGSTOP);
 				}
-				td3->td_dbgflags &= ~(TDB_XSIG | TDB_FSTP);
+				td3->td_dbgflags &= ~(TDB_XSIG | TDB_FSTP |
+				    TDB_SUSPEND);
 			}
+
 			if ((p->p_flag2 & P2_PTRACE_FSTP) != 0) {
 				sigqueue_delete(&p->p_sigqueue, SIGSTOP);
 				p->p_flag2 &= ~P2_PTRACE_FSTP;
@@ -1123,12 +1142,11 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 			break;
 		}
 
+		sx_xunlock(&proctree_lock);
+		proctree_locked = 0;
+
 	sendsig:
-		/* proctree_locked is true for all but PT_KILL. */
-		if (proctree_locked) {
-			sx_xunlock(&proctree_lock);
-			proctree_locked = 0;
-		}
+		MPASS(proctree_locked == 0);
 		
 		/* 
 		 * Clear the pending event for the thread that just
@@ -1138,54 +1156,31 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 		 *
 		 * Deliver any pending signal via the reporting thread.
 		 */
-		if ((p->p_flag & P_STOPPED_TRACE) != 0) {
-			MPASS(p->p_xthread != NULL);
-			p->p_xthread->td_dbgflags &= ~TDB_XSIG;
-			p->p_xthread->td_xsig = data;
-			p->p_xthread = NULL;
-			p->p_xsig = data;
-		} else {
-			MPASS(p->p_xthread == NULL);
-			MPASS(req == PT_ATTACH);
-		}
-
-		if ((p->p_flag & (P_STOPPED_SIG | P_STOPPED_TRACE)) != 0) {
-			/*
-			 * P_WKILLED is insurance that a PT_KILL/SIGKILL always
-			 * works immediately, even if another thread is
-			 * unsuspended first and attempts to handle a different
-			 * signal or if the POSIX.1b style signal queue cannot
-			 * accommodate any new signals.
-			 */
-			if (data == SIGKILL)
-				p->p_flag |= P_WKILLED;
-
-			if (req == PT_DETACH) {
-				FOREACH_THREAD_IN_PROC(p, td3)
-					td3->td_dbgflags &= ~TDB_SUSPEND;
-			}
-
-			/*
-			 * Unsuspend all threads.  To leave a thread
-			 * suspended, use PT_SUSPEND to suspend it
-			 * before continuing the process.
-			 */
-			PROC_SLOCK(p);
-			p->p_flag &= ~(P_STOPPED_TRACE|P_STOPPED_SIG|P_WAITED);
-			thread_unsuspend(p);
-			PROC_SUNLOCK(p);
-		}
+		MPASS(p->p_xthread != NULL);
+		p->p_xthread->td_dbgflags &= ~TDB_XSIG;
+		p->p_xthread->td_xsig = data;
+		p->p_xthread = NULL;
+		p->p_xsig = data;
 
 		/*
-		 * For requests other than PT_ATTACH, P_STOPPED_TRACE
-		 * was set, so any pending signal in 'data' is
-		 * delivered via the reporting thread (p_xthread).
-		 * For PT_ATTACH the process is not yet stopped for
-		 * tracing, so P_STOPPED_TRACE cannot be set and the
-		 * SIGSTOP must be delivered to the process.
+		 * P_WKILLED is insurance that a PT_KILL/SIGKILL
+		 * always works immediately, even if another thread is
+		 * unsuspended first and attempts to handle a
+		 * different signal or if the POSIX.1b style signal
+		 * queue cannot accommodate any new signals.
 		 */
-		if (req == PT_ATTACH)
-			kern_psignal(p, data);
+		if (data == SIGKILL)
+			p->p_flag |= P_WKILLED;
+
+		/*
+		 * Unsuspend all threads.  To leave a thread
+		 * suspended, use PT_SUSPEND to suspend it before
+		 * continuing the process.
+		 */
+		PROC_SLOCK(p);
+		p->p_flag &= ~(P_STOPPED_TRACE | P_STOPPED_SIG | P_WAITED);
+		thread_unsuspend(p);
+		PROC_SUNLOCK(p);
 		break;
 
 	case PT_WRITE_I:
