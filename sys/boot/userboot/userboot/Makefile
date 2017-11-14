@@ -2,14 +2,14 @@
 
 MAN=
 
-.include <bsd.init.mk>
-
-MK_SSP=		no
-
 LOADER_MSDOS_SUPPORT?=	yes
 LOADER_UFS_SUPPORT?=	yes
 LOADER_CD9660_SUPPORT?=	no
 LOADER_EXT2FS_SUPPORT?=	no
+
+.include <bsd.init.mk>
+
+MK_SSP=		no
 
 SHLIB_NAME=	userboot.so
 MK_CTF=		no
@@ -36,8 +36,7 @@ SRCS+=		vers.c
 
 CFLAGS+=	-Wall
 CFLAGS+=	-I${BOOTSRC}/userboot
-CFLAGS+=	-I${SYSDIR}
-CFLAGS+=	-ffreestanding -I.
+CFLAGS+=	-ffreestanding
 
 CWARNFLAGS.main.c += -Wno-implicit-function-declaration
 
@@ -51,6 +50,7 @@ LIBZFSBOOT=	${BOOTOBJ}/zfs/libzfsboot.a
 .endif
 
 # Always add MI sources 
+HELP_FILES=	# Disable
 .include	"${BOOTSRC}/loader.mk"
 CFLAGS+=	-I.
 DPADD+=		${LIBFICL} ${LIBZFSBOOT} ${LIBSA} 
