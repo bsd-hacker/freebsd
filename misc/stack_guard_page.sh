@@ -28,9 +28,8 @@
 # $FreeBSD$
 #
 
-# Setting a negative guard page size will cause "Abort trap"
-# Reported by Shawn Webb <shawn.webb@hardenedbsd.org>
-# Fixed in r320560.
+# Test with stack_guard_page set between 1 and 512.
+# A negative value is considered invalid.
 
 [ `sysctl -n security.bsd.stack_guard_page` -eq 0 ] && exit 0
 
@@ -41,7 +40,7 @@ trap "sysctl security.bsd.stack_guard_page=$old" EXIT INT
 
 start=`date +%s`
 while [ $((`date +%s` - start)) -lt 60 ]; do
-	sysctl security.bsd.stack_guard_page=`jot -r 1 -1 512` > \
+	sysctl security.bsd.stack_guard_page=`jot -r 1 1 512` > \
 	    /dev/null 2>&1
 	sleep 1
 done
