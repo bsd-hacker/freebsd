@@ -26,6 +26,7 @@
  */
 
 #include "opt_acpi.h"
+#include "opt_compat.h"
 #include "opt_platform.h"
 #include "opt_ddb.h"
 
@@ -278,6 +279,56 @@ set_dbregs(struct thread *td, struct dbreg *regs)
 	return (EDOOFUS);
 }
 
+#ifdef COMPAT_FREEBSD32
+int
+fill_regs32(struct thread *td, struct reg32 *regs)
+{
+
+	printf("ARM64TODO: fill_regs32");
+	return (EDOOFUS);
+}
+
+int
+set_regs32(struct thread *td, struct reg32 *regs)
+{
+
+	printf("ARM64TODO: set_regs32");
+	return (EDOOFUS);
+}
+
+int
+fill_fpregs32(struct thread *td, struct fpreg32 *regs)
+{
+
+	printf("ARM64TODO: fill_fpregs32");
+	return (EDOOFUS);
+}
+
+int
+set_fpregs32(struct thread *td, struct fpreg32 *regs)
+{
+
+	printf("ARM64TODO: set_fpregs32");
+	return (EDOOFUS);
+}
+
+int
+fill_dbregs32(struct thread *td, struct dbreg32 *regs)
+{
+
+	printf("ARM64TODO: fill_dbregs32");
+	return (EDOOFUS);
+}
+
+int
+set_dbregs32(struct thread *td, struct dbreg32 *regs)
+{
+
+	printf("ARM64TODO: set_dbregs32");
+	return (EDOOFUS);
+}
+#endif
+
 int
 ptrace_set_pc(struct thread *td, u_long addr)
 {
@@ -311,12 +362,7 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 
 	memset(tf, 0, sizeof(struct trapframe));
 
-	/*
-	 * We need to set x0 for init as it doesn't call
-	 * cpu_set_syscall_retval to copy the value. We also
-	 * need to set td_retval for the cases where we do.
-	 */
-	tf->tf_x[0] = td->td_retval[0] = stack;
+	tf->tf_x[0] = stack;
 	tf->tf_sp = STACKALIGN(stack);
 	tf->tf_lr = imgp->entry_addr;
 	tf->tf_elr = imgp->entry_addr;
