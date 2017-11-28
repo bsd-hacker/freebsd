@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2006 Rice University
  * Copyright (c) 2007 Alan L. Cox <alc@cs.rice.edu>
  * All rights reserved.
@@ -1033,24 +1035,6 @@ vm_phys_fictitious_unreg_range(vm_paddr_t start, vm_paddr_t end)
 	rw_wunlock(&vm_phys_fictitious_reg_lock);
 	free(seg->first_page, M_FICT_PAGES);
 	free(seg, M_FICT_PAGES);
-}
-
-/*
- * Find the segment containing the given physical address.
- */
-int
-vm_phys_paddr_to_segind(vm_paddr_t pa)
-{
-	struct vm_phys_seg *seg;
-	int segind;
-
-	for (segind = 0; segind < vm_phys_nsegs; segind++) {
-		seg = &vm_phys_segs[segind];
-		if (pa >= seg->start && pa < seg->end)
-			return (segind);
-	}
-	panic("vm_phys_paddr_to_segind: paddr %#jx is not in any segment" ,
-	    (uintmax_t)pa);
 }
 
 /*
