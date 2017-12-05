@@ -654,6 +654,8 @@
         ..
         cut
         ..
+        dc
+        ..
         diff
         ..
         dirname
@@ -709,6 +711,8 @@
             ..
         ..
         soelim
+        ..
+        sponge
         ..
         stat
         ..
