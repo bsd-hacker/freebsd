@@ -39,9 +39,12 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/dirent.h>
 #include <sys/fcntl.h>
+#include <sys/limits.h>
 #include <sys/lockf.h>
 #include <sys/lock.h>
+#include <sys/mount.h>
 #include <sys/namei.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
@@ -616,8 +619,8 @@ tmpfs_link(struct vop_link_args *v)
 
 	/* Ensure that we do not overflow the maximum number of links imposed
 	 * by the system. */
-	MPASS(node->tn_links <= LINK_MAX);
-	if (node->tn_links == LINK_MAX) {
+	MPASS(node->tn_links <= TMPFS_LINK_MAX);
+	if (node->tn_links == TMPFS_LINK_MAX) {
 		error = EMLINK;
 		goto out;
 	}
@@ -1346,6 +1349,18 @@ tmpfs_pathconf(struct vop_pathconf_args *v)
 	error = 0;
 
 	switch (name) {
+	case _PC_LINK_MAX:
+		*retval = TMPFS_LINK_MAX;
+		break;
+
+	case _PC_NAME_MAX:
+		*retval = NAME_MAX;
+		break;
+
+	case _PC_CHOWN_RESTRICTED:
+		*retval = 1;
+		break;
+
 	case _PC_NO_TRUNC:
 		*retval = 1;
 		break;

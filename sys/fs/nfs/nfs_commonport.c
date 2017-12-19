@@ -338,7 +338,7 @@ nfsvno_pathconf(struct vnode *vp, int flag, register_t *retf,
 		 */
 		switch (flag) {
 		case _PC_LINK_MAX:
-			*retf = LINK_MAX;
+			*retf = NFS_LINK_MAX;
 			break;
 		case _PC_NAME_MAX:
 			*retf = NAME_MAX;
