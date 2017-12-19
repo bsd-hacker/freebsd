@@ -28,6 +28,10 @@
 # $FreeBSD$
 #
 
+# Page fault seen:
+# https://people.freebsd.org/~pho/stress/log/devfs.txt
+# Fixed by r326851.
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
