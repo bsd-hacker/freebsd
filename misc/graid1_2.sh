@@ -95,10 +95,10 @@ done
 gmirror stop test || s=2
 [ $unload ] && gmirror unload
 
-for u in $md3 $md2 $md1; do
+for u in $md2 $md1; do
 	mdconfig -d -u $u || s=4
 done
-rm -d /tmp/graid1_2 /tmp/graid1_2_di?
+rm -f /tmp/graid1_2 /tmp/graid1_2_di*
 exit $s
 EOF
 /* Write last sector on disk */
