@@ -47,7 +47,7 @@ rm -f sendfile12.c
 set -e
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 [ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart
-mdconfig -a -t swap -s 1g -u $mdstart
+mdconfig -a -t swap -s 2g -u $mdstart
 newfs $newfs_flags /dev/md$mdstart > /dev/null
 
 mount /dev/md${mdstart} $mntpoint
@@ -55,8 +55,8 @@ chmod 777 $mntpoint
 set +e
 
 cd $mntpoint
-dd if=/dev/zero of=file bs=1m count=512
-(cd $odir/../testcases/swap; ./swap -t 5m -i 20 -h -l 100) &
+dd if=/dev/zero of=file bs=1m count=512 2>&1 | egrep -v "records|transferred"
+(cd $odir/../testcases/swap; ./swap -t 5m -i 20 -h -l 100) > /dev/null &
 sleep 5
 /tmp/sendfile12 file output 12345; s=$?
 cd $odir
@@ -77,11 +77,13 @@ EOF
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+
+#include <netinet/in.h>
 
 #include <err.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
