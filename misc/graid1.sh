@@ -49,6 +49,9 @@ for u in $md1 $md2 $md3; do
 done
 
 gmirror load > /dev/null 2>&1 && unload=1
+old=`sysctl -n kern.geom.mirror.debug`
+sysctl kern.geom.mirror.debug=-1 | grep -q -- -1 ||
+    sysctl kern.geom.mirror.debug=$old > /dev/null
 gmirror label -v -b split -s 2048 data /dev/md$md1 /dev/md$md2 \
     /dev/md$md3 > /dev/null || exit 1
 [ -c /dev/mirror/data ] || exit 1
@@ -63,7 +66,8 @@ su $testuser -c 'cd ..; ./run.sh marcus.cfg'
 while mount | grep $mntpoint | grep -q /mirror/; do
 	umount $mntpoint || sleep 1
 done
-gmirror stop data || s=1
+checkfs /dev/mirror/data || s=1
+gmirror stop data || s=2
 gmirror destroy data 2>/dev/null
 [ $unload ] && gmirror unload
 
