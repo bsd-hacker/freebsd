@@ -126,6 +126,8 @@ fuzz(int arg, void *addr, size_t len, int prot, int flags, int fd,
 			prot = makearg();
 			flags = makearg();
 			break;
+		default:
+			errx(1, "Bad argument %d to %s", arg, __func__);
 		}
 		vp = mmap(addr, len, prot, flags, fd, offset);
 		if (vp != MAP_FAILED) {
