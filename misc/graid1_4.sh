@@ -91,7 +91,7 @@ gmirror stop test || s=1
 gmirror destroy test 2>/dev/null
 [ $unload ] && gmirror unload
 
-for u in $md3 $md2 $md1; do
+for u in $md2 $md1; do
 	mdconfig -d -u $u || s=3
 done
 rm -f $diskimage*
