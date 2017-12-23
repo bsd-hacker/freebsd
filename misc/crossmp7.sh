@@ -75,6 +75,7 @@ if [ $# -eq 0 ]; then
 	wait
 
 	zpool destroy stress2_tank
+	[ -n "$loaded" ] && kldunload zfs.ko
 	mdconfig -d -u $u1
 	mdconfig -d -u $u2
 	mdconfig -d -u $u3
@@ -94,4 +95,3 @@ else
 		rm -f /tmp/crossmp7.continue
 	fi
 fi
-[ -n "$loaded" ] && kldunload zfs.ko
