@@ -34,17 +34,18 @@
 
 MOUNTS=31
 mount | grep -q "on $mntpoint " && umount -f $mntpoint
-rm -rf ${mntpoint}/stressX*
+rm -rf $mntpoint/stressX*
 rm -f /tmp/.snap/stress2* /var/.snap/stress2*
 rm -rf /tmp/stressX.control $RUNDIR /tmp/misc.name
 [ -d `dirname "$diskimage"` ] || mkdir -p `dirname "$diskimage"`
 mkdir -p $RUNDIR
 chmod 0777 $RUNDIR
 
+s=0
 for i in `jot $MOUNTS 0 | sort -nr` ""; do
 	while mount | grep -q "on ${mntpoint}$i "; do
-		fstat ${mntpoint}$i | sed 1d | awk '{print $3}' | xargs kill
-		umount -f ${mntpoint}$i > /dev/null 2>&1
+		fstat -mf ${mntpoint}$i | sed 1d | awk '{print $3}' | xargs kill
+		umount -f ${mntpoint}$i > /dev/null 2>&1 || s=1
 	done
 done
 # Delete the test mount points /mnt0 .. /mnt31
@@ -54,14 +55,12 @@ for i in `jot $MOUNTS 0`; do
 		rm -rf ${mntpoint}$i > /dev/null 2>&1
 	fi
 done
-find $mntpoint/* -delete 2>/dev/null
-m=$mdstart
-for i in `jot $MOUNTS`; do
-	[ -c /dev/md$m ] &&  mdconfig -d -u $m
-	m=$((m + 1))
+[ -d "$mntpoint" ] && (cd $mntpoint && find . -delete)
+for i in `jot $MOUNTS $mdstart`; do
+	[ -c /dev/md$i ] &&  { mdconfig -d -u $i || s=1; }
 done
 
 # Delete $testuser's ipcs
 ipcs | awk "\$5 ~/$testuser/ && \$6 ~/$testuser/ {print \"-\" \$1,\$2}" | \
     xargs -t ipcrm
-
+exit $s
