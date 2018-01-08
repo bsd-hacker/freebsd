@@ -86,7 +86,7 @@ kill $pid $pid2 $tpid
 wait
 
 umount $mntpoint
-rm -f $mntpoint/file.*
+rm -f $mntpoint/file.* /tmp/umountf10
 mdconfig -d -u $mdstart
 
 exit 0
