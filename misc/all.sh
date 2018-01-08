@@ -39,57 +39,52 @@
 #		panic: 43 vncache entries remaining			20111220
 # backingstore3.sh
 #		g_vfs_done():md6a[WRITE(offset=...)]error = 28		20111230
+# chain.sh	WiP							20171225
 # crossmp4.sh	Known nullfs issue					20150523
 # fsync.sh	GEOM_JOURNAL: Cannot suspend file system /mnt		20160818
 # fuse.sh	Memory corruption seen in log file kostik734.txt	20141114
 # fuse2.sh	Deadlock seen						20121129
 # fuse3.sh	Deadlock seen						20141120
 # gbde.sh	panic: handle_written_inodeblock: Invalid link count...	20131128
-# gjournal.sh	kmem_malloc(131072): kmem_map too small			20120626
-# gjournal2.sh
-# gjournal3.sh	panic: Journal overflow					20130729
-# gjournal4.sh	panic: Journal overflow					20160829
-# kevent7.sh	panic: softclock_call_cc: act 0xfffff800380dad40 0	20161115
+# gjournal3.sh	panic: Bio not on queue					20171225
+# graid1_8.sh	Known issue						20170909
+# graid1_9.sh	WiP							20180108
 # lockf5.sh	Spinning threads seen					20160718
 # maxvnodes2.sh	WiP							20161129
 # mdconfig.sh	Panic:  g_read_data(): invalid length 262144		20161128
 # memguard.sh	Waiting for fix commit
 # memguard2.sh	Waiting for fix commit
 # memguard3.sh	Waiting for fix commit
-# mmap18.sh	panic: vm_fault_copy_entry: main object missing page	20161102
-# msdos4.sh 	panic: Assertion sq->sq_wchan != NULL 			20160610
-# msdos5.sh	Panic: Freeing unused sector ...			20141118
-# newfs4.sh	Deadlock seen						20150906
+# mmap32.sh	Kernel loop						20171118
+# msdos5.sh	panic: Freeing unused sector 320185 25 fc000004		20170819
 # nfs10.sh	Double fault						20151013
 # nfs16.sh	panic: Failed to register NFS lock locally - error=11	20160608
+# Xnullfs23.sh	panic: Lock (lockmgr) nullfs not locked			20170817
 # pfl3.sh	panic: handle_written_inodeblock: live inodedep		20140812
-# pmc.sh	NMI ... going to debugger				20111217
-# snap5-1.sh	mksnap_ffs deadlock					20111218
+# ptrace9.sh	WiP
 # quota2.sh	panic: dqflush: stray dquot				20120221
 # quota3.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20111222
 # quota6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130206
 # quota7.sh	panic: dqflush: stray dquot				20120221
-# sendmsg.sh	Test loops in the kernel				20160519
-# shm_open.sh	panic: kmem_malloc(4096): kmem_map too small		20130504
-# snap3.sh	mksnap_ffs stuck in snaprdb				20111226
-# snap5.sh	mksnap_ffs stuck in getblk				20111224
+# sendfile11.sh	panic: vnode_pager_generic_getpages: sector size 8192 . 20170930
+# signal.sh	Timing issues. Needs fixing				20171116
 # snap6.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20130630
 # snap8.sh	panic: softdep_deallocate_dependencies: unrecovered ...	20120630
-# snap9.sh	panic: softdep_deallocate_dependencies: unrecovered ... 20150217
+# snap9.sh	panic: handle_written_filepage: not started		20170722
 # suj3.sh	panic: Memory modified after free			20150721
-# suj9.sh	page fault in softdep_count_dependencies+0x27		20141116
 # suj11.sh	panic: ufsdirhash_newblk: bad offset			20120118
 # suj13.sh	general protection fault in bufdaemon			20141130
 # suj30.sh	panic: flush_pagedep_deps: MKDIR_PARENT			20121020
 # suj34.sh	Various hangs and panics (SUJ + NULLFS issue)		20131210
-# trim4.sh	Page fault in softdep_count_dependencies+0x27		20140608
-# umountf3.sh	KDB: enter: watchdog timeout				20111217
+# swap4.sh	WiP							20171208
+# swapoff2.sh	swap_pager_force_pagein: read from swap failed		20171223
+# umountf3.sh	KDB: enter: watchdog timeout				20170514
 # umountf7.sh	panic: handle_written_inodeblock: live inodedep ...	20131129
-# umountf9.sh	panic: handle_written_inodeblock: live inodedep ...	20160921
+# umountf9.sh	panic: handle_written_inodeblock: live inodedep ...	20170221
 # unionfs.sh	insmntque: non-locked vp: xx is not exclusive locked...	20130909
 # unionfs2.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111219
 # unionfs3.sh	insmntque: mp-safe fs and non-locked vp is not ...	20111216
-# zfs3.sh	Page fault						20161118
+# Xzfs3.sh	Page fault						20161118
 
 # Test not to run for other reasons:
 
@@ -128,15 +123,23 @@
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 # Log files:
-allfaillog=/tmp/stress2.all.fail.log	# Tests that failed
-alllast=/tmp/stress2.all.last		# Last test run
-alllist=/tmp/stress2.all.list		# -o list
-alllog=/tmp/stress2.all.log		# Tests run
-alloutput=/tmp/stress2.all.output	# Output from current test
-allexcess=/tmp/stress2.all.excessive	# Tests with excessive runtime
+sdir=/tmp/stress2.d
+mkdir -p $sdir
+allfaillog=$sdir/fail		# Tests that failed
+alllast=$sdir/last		# Last test run
+alllist=$sdir/list		# -o list
+alllog=$sdir/log		# Tests run
+alloutput=$sdir/output		# Output from current test
+allexcess=$sdir/excessive	# Tests with excessive runtime
+allelapsed=$sdir/elapsed		# Test runtime
+loops=0				# Times to run the tests
+rev=`uname -a | awk '{print $7}' | sed 's/://'`
+rev="`uname -a | sed 's#.*/compile/##; s/ .*//'` $rev"
 
-args=`getopt acno $*`
-[ $? -ne 0 ] && echo "Usage $0 [-a] [-c] [-n] [tests]" && exit 1
+args=`getopt acl:m:no "$@"`
+[ $? -ne 0 ] &&
+    echo "Usage $0 [-a] [-c] [-l <val>] [-m <min.>] [-n] [-o] [tests]" &&
+    exit 1
 set -- $args
 for i; do
 	case "$i" in
@@ -148,10 +151,16 @@ for i; do
 		rm -f $alllist
 		shift
 		;;
+	-l)	loops=$2	# Number of time to run
+		shift; shift
+		;;
+	-m)	minutes=$(($2 * 60))	# Run for minutes
+		shift; shift
+		;;
 	-n)	noshuffle=1	# Do not shuffle the list of tests
 		shift		# Resume test after last test
 		;;
-	-o)	once=1		# Only run once
+	-o)	loops=1		# Only run once
 		shift
 		;;
 	--)
@@ -168,8 +177,10 @@ minspace=$((1024 * 1024)) # in k
     { echo "diskimage dir: $diskimage not found"; exit 1; }
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print $4'}` -lt \
     $minspace ] &&
-    echo "Warn: Not enough disk space on `dirname $diskimage` for \$diskimage"
-[ ! -d $(dirname $RUNDIR) ] && echo "No such \$RUNDIR \"`dirname $RUNDIR`\"" &&
+    echo "Warn: Not enough disk space on `dirname $diskimage` " \
+	"for \$diskimage"
+[ ! -d $(dirname $RUNDIR) ] &&
+    echo "No such \$RUNDIR \"`dirname $RUNDIR`\"" &&
     exit 1
 [ `df -k $(dirname $RUNDIR) | tail -1 | awk '{print $4'}` -lt \
     $minspace ] &&
@@ -183,11 +194,13 @@ su $testuser -c "touch $probe" > /dev/null 2>&1
 [ `swapinfo | wc -l` -eq 1 ] &&
     echo "Consider adding a swap disk. Many tests rely on this."
 [ -x ../testcases/run/run ] ||
-    { echo "Please run \"cd stress2; make\" first." && exit 1; }
+	(cd ..; make)
 ping -c 2 -t 2 $BLASTHOST > /dev/null 2>&1 ||
     { echo "Note: Can not ping \$BLASTHOST: $BLASTHOST"; }
+echo "$loops" | grep -Eq "^[0-9]+$" ||
+    { echo "The -l argument must be a positive number"; exit 1; }
 
-rm -f $alllog $alllist
+rm -f $alllog $alllist $allelepsed
 find `dirname $alllast` -maxdepth 1 -name $alllast -mtime +12h -delete
 touch $alllast $alllog
 chmod 640 $alllast $alllog
@@ -199,16 +212,19 @@ pid=$!
 sleep 1
 kill -0 $pid > /dev/null 2>&1 &&
 { console=/dev/null; kill -9 $pid; }
+while pgrep -q fsck; do sleep 10; done
 
 [ -f all.debug.inc ] && . all.debug.inc
+s1=`date +%s`
 while true; do
 	exclude=`sed -n '/^# Start of list/,/^# End of list/p' < $0 |
-		cat - all.exclude 2>/dev/null |
-		grep "\.sh" | awk '{print $2}'`
+	    cat - all.exclude 2>/dev/null |
+	    grep "\.sh" | awk '{print $2}'`
 	list=`echo *.sh`
 	[ $# -ne 0 ] && list=$*
-	list=`echo $list | \
-	     sed  "s/[[:<:]]all\.sh[[:>:]]//g; s/[[:<:]]cleanup\.sh[[:>:]]//g"`
+	list=`echo $list |
+	     sed  "s/[[:<:]]all\.sh[[:>:]]//g;\
+	           s/[[:<:]]cleanup\.sh[[:>:]]//g"`
 
 	if [ -n "$noshuffle" -a $# -eq 0 ]; then
 		last=`cat $alllast`
@@ -217,33 +233,37 @@ while true; do
 			l=`echo "$list" | sed "s/.*$last//"`
 			[ -z "$l" ] && l=$list	# start over
 			list=$l
-			echo "Resuming test at `echo "$list" | \
+			echo "Resuming test at `echo "$list" |
 			    awk '{print $1}'`"
 		fi
 	fi
 	[ -n "$noshuffle" ] ||
-	    list=`echo $list | tr ' ' '\n' | sort -R | \
-	    tr '\n' ' '`
+	    list=`echo $list | tr ' ' '\n' | sort -R |
+	        tr '\n' ' '`
 
 	lst=""
 	for i in $list; do
-		[ -z "$all" ] && echo $exclude | grep -qw $i && continue
+		[ -z "$all" ] && echo $exclude | grep -qw `basename $i` &&
+		    continue
 		lst="$lst $i"
 	done
 	[ -z "$lst" ] && exit
-	[ -n "$once" ] && echo "$lst" > $alllist
+	echo "$lst" > $alllist
 
 	n1=0
 	n2=`echo $lst | wc -w | sed 's/ //g'`
 	for i in $lst; do
+		i=`basename $i`
 		n1=$((n1 + 1))
 		echo $i > $alllast
 		./cleanup.sh || exit 1
-		echo "`date '+%Y%m%d %T'` all: $i"
-		printf "`date '+%Y%m%d %T'` all ($n1/$n2): $i\n" >> $alllog
-		printf "`date '+%Y%m%d %T'` all ($n1/$n2): $i\r\n" > $console
+		ts=`date '+%Y%m%d %T'`
+		echo "$ts all: $i"
+		printf "$ts all ($n1/$n2): $i\n" >> $alllog
+		printf "$ts all ($n1/$n2): $i\r\n" > $console
 		logger "Starting test all: $i"
 		[ $all_debug ] && pre_debug
+		[ -f $i ] || loops=1	# break
 		sync;sync;sync
 		start=`date '+%s'`
 		(
@@ -252,19 +272,29 @@ while true; do
 			[ $e -ne 0 ] &&
 			    echo "FAIL $i exit code $e"
 		) | tee $alloutput
+		ts=`date '+%Y%m%d %T'`
 		grep -qw FAIL $alloutput &&
-		    echo "`date '+%Y%m%d %T'` $i" >> $allfaillog &&
+		    echo "$ts $i" >> $allfaillog &&
 		    logger "stress2 test $i failed"
 		rm -f $alloutput
-		[ $((`date '+%s'` - $start)) -gt 1980 ] &&
-		    printf "*** Excessive run time: %s %d min\r\n" $i, \
-		    $(((`date '+%s'` - $start) / 60)) | \
+		printf "$ts $rev $i $((`date '+%s'` - start))\n" >> \
+		    $allelapsed
+		[ -f ../tools/ministat.sh ] &&
+		    ../tools/ministat.sh $allelapsed $i
+		[ $((`date '+%s'` - start)) -gt 1980 ] &&
+		    printf "$ts *** Excessive run time: %s %d min\r\n" $i, \
+		        $(((`date '+%s'` - start) / 60)) |
 		    tee $console >> $allexcess
-		while pgrep -q swap; do
+		while pgrep -q "^swap$"; do
 			echo "swap still running"
 			sleep 2
 		done
 		[ $all_debug ] && post_debug
+		[ $minutes ] && [ $((`date +%s` - s1)) -ge $minutes ] && break 2
 	done
-	[ -n "$once" ] && break
+	[ $((loops -= 1)) -eq 0 ] && break
 done
+printf "`date '+%Y%m%d %T'` all: done\n"
+printf "`date '+%Y%m%d %T'` all: done\r\n" > $console
+[ -x ../tools/fail.sh ] && ../tools/fail.sh
+find /tmp . -name "*.core" -mtime -2 -maxdepth 2 -ls 2>/dev/null
