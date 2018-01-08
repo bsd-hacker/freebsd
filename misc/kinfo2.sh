@@ -41,19 +41,26 @@ mycc -o kinfo2 -Wall -Wextra kinfo2.c -lutil || exit 1
 rm -f kinfo2.c
 
 mount | grep -q procfs || mount -t procfs procfs /proc
-for i in `jot 20`; do
+s=0
+for i in `jot 15`; do
+	pids=""
 	for j in `jot 5`; do
 		/tmp/kinfo2 &
+		pids="$pids $!"
 	done
-	wait
+	for p in $pids; do
+		wait $p
+		[ $? -ne 0 ] && s=1
+	done
 done
 
 rm -f /tmp/kinfo2
-exit 0
+exit $s
 EOF
 
 #include <sys/types.h>
 #include <sys/signal.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #include <dirent.h>
@@ -101,8 +108,9 @@ list(void)
 	struct dirent *dp;
         struct kinfo_file *freep;
 	struct kinfo_vmentry *freep_vm;
+	struct stat sb;
 	pid_t pid;
-	long base;
+	off_t base;
 	long l;
 	int cnt, fd, n;
 	int space = sizeof(buf);
@@ -112,10 +120,14 @@ list(void)
 	if ((fd = open("/proc", O_RDONLY)) == -1)
 		err(1, "open(%s)", "/proc");
 
+	if (fstat(fd, &sb) == -1)
+		err(1, "fstat()");
 	do {
 		if ((n = getdirentries(fd, bp, space, &base)) == -1)
 			err(1, "getdirentries");
 		space = space - n;
+		if (space < sb.st_blksize)
+			break;
 		bp   = bp + n;
 	} while (n != 0);
 	close(fd);
