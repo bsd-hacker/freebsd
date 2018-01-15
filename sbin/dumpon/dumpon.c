@@ -46,12 +46,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/capsicum.h>
 #include <sys/disk.h>
+#include <sys/socket.h>
 #include <sys/sysctl.h>
 
 #include <assert.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
+#include <netdb.h>
 #include <paths.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -60,6 +63,15 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <sysexits.h>
 #include <unistd.h>
+
+#include <arpa/inet.h>
+
+#include <net/if.h>
+#include <net/if_dl.h>
+#include <net/route.h>
+
+#include <netinet/in.h>
+#include <netinet/netdump/netdump.h>
 
 #ifdef HAVE_CRYPTO
 #include <openssl/err.h>
@@ -73,10 +85,102 @@ static void
 usage(void)
 {
 	fprintf(stderr, "%s\n%s\n%s\n",
-	    "usage: dumpon [-v] [-k public_key_file] [-z] special_file",
-	    "       dumpon [-v] off",
-	    "       dumpon [-v] -l");
+    "usage: dumpon [-v] [-k public_key_file] [-z] special_file",
+    "usage: dumpon [-v] [-g <gateway>|default] -s <host> -c <client> <iface>\n"
+    "       dumpon [-v] off",
+    "       dumpon [-v] -l");
 	exit(EX_USAGE);
+}
+
+/*
+ * Look for a default route on the specified interface.
+ */
+static char *
+find_gateway(const char *ifname)
+{
+	struct ifaddrs *ifa, *ifap;
+	struct rt_msghdr *rtm;
+	struct sockaddr *sa;
+	struct sockaddr_dl *sdl;
+	struct sockaddr_in *dst, *mask, *gw;
+	char *buf, *next, *ret;
+	size_t sz;
+	int error, i, ifindex, mib[7];
+
+	ret = NULL;
+
+	/* First look up the interface index. */
+	if (getifaddrs(&ifap) != 0)
+		err(EX_OSERR, "getifaddrs");
+	for (ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+		if (ifa->ifa_addr->sa_family != AF_LINK)
+			continue;
+		if (strcmp(ifa->ifa_name, ifname) == 0) {
+			sdl = (struct sockaddr_dl *)(void *)ifa->ifa_addr;
+			ifindex = sdl->sdl_index;
+			break;
+		}
+	}
+	if (ifa == NULL)
+		errx(1, "couldn't find interface index for '%s'", ifname);
+	freeifaddrs(ifap);
+
+	/* Now get the IPv4 routing table. */
+	mib[0] = CTL_NET;
+	mib[1] = PF_ROUTE;
+	mib[2] = 0;
+	mib[3] = AF_INET;
+	mib[4] = NET_RT_DUMP;
+	mib[5] = 0;
+	mib[6] = -1; /* FIB */
+
+	for (;;) {
+		if (sysctl(mib, nitems(mib), NULL, &sz, NULL, 0) != 0)
+			err(EX_OSERR, "sysctl(NET_RT_DUMP)");
+		buf = malloc(sz);
+		error = sysctl(mib, nitems(mib), buf, &sz, NULL, 0);
+		if (error == 0)
+			break;
+		if (errno != ENOMEM)
+			err(EX_OSERR, "sysctl(NET_RT_DUMP)");
+		free(buf);
+	}
+
+	for (next = buf; next < buf + sz; next += rtm->rtm_msglen) {
+		rtm = (struct rt_msghdr *)(void *)next;
+		if (rtm->rtm_version != RTM_VERSION)
+			continue;
+		if ((rtm->rtm_flags & RTF_GATEWAY) == 0 ||
+		    rtm->rtm_index != ifindex)
+			continue;
+
+		dst = gw = mask = NULL;
+		sa = (struct sockaddr *)(rtm + 1);
+		for (i = 0; i < RTAX_MAX; i++) {
+			if ((rtm->rtm_addrs & (1 << i)) != 0) {
+				switch (i) {
+				case RTAX_DST:
+					dst = (void *)sa;
+					break;
+				case RTAX_GATEWAY:
+					gw = (void *)sa;
+					break;
+				case RTAX_NETMASK:
+					mask = (void *)sa;
+					break;
+				}
+			}
+			sa = (struct sockaddr *)((char *)sa + SA_SIZE(sa));
+		}
+
+		if (dst->sin_addr.s_addr == INADDR_ANY &&
+		    mask->sin_addr.s_addr == 0) {
+			ret = inet_ntoa(gw->sin_addr);
+			break;
+		}
+	}
+	free(buf);
+	return (ret);
 }
 
 static void
@@ -162,8 +266,10 @@ static void
 listdumpdev(void)
 {
 	char dumpdev[PATH_MAX];
+	struct netdump_conf ndconf;
 	size_t len;
 	const char *sysctlname = "kern.shutdown.dumpdevname";
+	int fd;
 
 	len = sizeof(dumpdev);
 	if (sysctlbyname(sysctlname, &dumpdev, &len, NULL, 0) != 0) {
@@ -174,36 +280,62 @@ listdumpdev(void)
 			err(EX_OSERR, "Sysctl get '%s'\n", sysctlname);
 		}
 	}
-	if (verbose) {
-		printf("kernel dumps on ");
+	if (strlen(dumpdev) == 0)
+		(void)strlcpy(dumpdev, _PATH_DEVNULL, sizeof(dumpdev));
+
+	if (verbose)
+		printf("kernel dumps on %s\n", dumpdev);
+
+	/* If netdump is enabled, print the configuration parameters. */
+	fd = open(_PATH_NETDUMP, O_RDONLY);
+	if (fd < 0) {
+		if (errno != ENOENT)
+			err(EX_OSERR, "opening %s", _PATH_NETDUMP);
+		return;
 	}
-	if (strlen(dumpdev) == 0) {
-		printf("%s\n", _PATH_DEVNULL);
-	} else {
-		printf("%s\n", dumpdev);
+	if (ioctl(fd, NETDUMPGCONF, &ndconf) != 0) {
+		if (errno != ENXIO)
+			err(EX_OSERR, "ioctl(NETDUMPGCONF)");
+		(void)close(fd);
+		return;
 	}
+
+	printf("server address: %s\n", inet_ntoa(ndconf.ndc_server));
+	printf("client address: %s\n", inet_ntoa(ndconf.ndc_client));
+	printf("gateway address: %s\n", inet_ntoa(ndconf.ndc_gateway));
+	(void)close(fd);
 }
 
 int
 main(int argc, char *argv[])
 {
+	struct netdump_conf ndconf;
 	struct diocskerneldump_arg kda;
-	const char *pubkeyfile;
-	int ch;
-	int i, fd;
-	int do_listdumpdev = 0;
+	struct addrinfo hints, *res;
+	const char *dev, *pubkeyfile, *server, *client, *gateway;
+	int ch, do_listdumpdev = 0, error, fd, i;
 	bool enable, gzip;
 
 	gzip = false;
 	pubkeyfile = NULL;
+	server = client = gateway = NULL;
 
-	while ((ch = getopt(argc, argv, "k:lvz")) != -1)
+	while ((ch = getopt(argc, argv, "c:g:k:ls:vz")) != -1)
 		switch((char)ch) {
+		case 'c':
+			client = optarg;
+			break;
+		case 'g':
+			gateway = optarg;
+			break;
 		case 'k':
 			pubkeyfile = optarg;
 			break;
 		case 'l':
 			do_listdumpdev = 1;
+			break;
+		case 's':
+			server = optarg;
 			break;
 		case 'v':
 			verbose = 1;
@@ -226,7 +358,14 @@ main(int argc, char *argv[])
 	if (argc != 1)
 		usage();
 
-	enable = (strcmp(argv[0], "off") != 0);
+	if (server != NULL && client != NULL)
+		dev = _PATH_NETDUMP;
+	else if (server == NULL && client == NULL && argc > 0) {
+		dev = argv[0];
+		enable = strcmp(dev, "off") != 0;
+	} else
+		usage();
+
 #ifndef HAVE_CRYPTO
 	if (pubkeyfile != NULL) {
 		enable = false;
@@ -234,7 +373,43 @@ main(int argc, char *argv[])
 	}
 #endif
 
-	if (enable) {
+	if (server != NULL) {
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_INET;
+		hints.ai_protocol = IPPROTO_UDP;
+		res = NULL;
+		error = getaddrinfo(server, NULL, &hints, &res);
+		if (error != 0)
+			err(1, "%s", gai_strerror(error));
+		if (res == NULL)
+			errx(1, "failed to resolve '%s'", server);
+		server = inet_ntoa(
+		    ((struct sockaddr_in *)(void *)res->ai_addr)->sin_addr);
+		freeaddrinfo(res);
+
+		if (strlcpy(ndconf.ndc_iface, argv[0],
+		    sizeof(ndconf.ndc_iface)) >= sizeof(ndconf.ndc_iface))
+			errx(EX_USAGE, "invalid interface name '%s'", argv[0]);
+		if (inet_aton(server, &ndconf.ndc_server) == 0)
+			errx(EX_USAGE, "invalid server address '%s'", server);
+		if (inet_aton(client, &ndconf.ndc_client) == 0)
+			errx(EX_USAGE, "invalid client address '%s'", client);
+
+		if (gateway == NULL)
+			gateway = server;
+		else if (strcmp(gateway, "default") == 0 &&
+		    (gateway = find_gateway(argv[0])) == NULL)
+			errx(EX_NOHOST,
+			    "failed to look up next-hop router for %s", server);
+		if (inet_aton(gateway, &ndconf.ndc_gateway) == 0)
+			errx(EX_USAGE, "invalid gateway address '%s'", gateway);
+
+		fd = open(dev, O_RDONLY);
+		if (fd < 0)
+			err(EX_OSFILE, "%s", dev);
+		if (ioctl(fd, NETDUMPSCONF, &ndconf) != 0)
+			err(EX_OSERR, "ioctl(NETDUMPSCONF)");
+	} else if (enable) {
 		char tmp[PATH_MAX];
 		char *dumpdev;
 
@@ -276,6 +451,8 @@ main(int argc, char *argv[])
 		explicit_bzero(&kda, sizeof(kda));
 		if (i == 0 && verbose)
 			printf("kernel dumps on %s\n", dumpdev);
+		if (i < 0)
+			err(EX_OSERR, "ioctl(DIOCSKERNELDUMP)");
 	} else {
 		fd = open(_PATH_DEVNULL, O_RDONLY);
 		if (fd < 0)
@@ -286,9 +463,9 @@ main(int argc, char *argv[])
 		explicit_bzero(&kda, sizeof(kda));
 		if (i == 0 && verbose)
 			printf("kernel dumps disabled\n");
+		if (i < 0)
+			err(EX_OSERR, "ioctl(DIOCSKERNELDUMP)");
 	}
-	if (i < 0)
-		err(EX_OSERR, "ioctl(DIOCSKERNELDUMP)");
 
 	exit (0);
 }
