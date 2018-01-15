@@ -52,7 +52,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/taskqueue.h>
 #include <sys/limits.h>
 
-
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_types.h>
@@ -71,6 +70,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/ip_var.h>
+#include <netinet/netdump/netdump.h>
 #include <netinet6/ip6_var.h>
 
 #include <machine/bus.h>
@@ -726,6 +726,8 @@ static void iflib_if_init_locked(if_ctx_t ctx);
 #ifndef __NO_STRICT_ALIGNMENT
 static struct mbuf * iflib_fixup_rx(struct mbuf *m);
 #endif
+
+NETDUMP_DEFINE(iflib);
 
 #ifdef DEV_NETMAP
 #include <sys/selinfo.h>
@@ -3363,7 +3365,7 @@ iflib_tx_desc_free(iflib_txq_t txq, int n)
 	ifsd_map = txq->ift_sds.ifsd_map;
 	do_prefetch = (txq->ift_ctx->ifc_flags & IFC_PREFETCH);
 
-	while (n--) {
+	while (n-- > 0) {
 		if (do_prefetch) {
 			prefetch(ifsd_m[(cidx + 3) & mask]);
 			prefetch(ifsd_m[(cidx + 4) & mask]);
@@ -4396,6 +4398,8 @@ iflib_device_register(device_t dev, void *sc, if_shared_ctx_t sctx, if_ctx_t *ct
 		goto fail_detach;
 	}
 	*ctxp = ctx;
+
+	NETDUMP_SET(ctx->ifc_ifp, iflib);
 
 	if_setgetcounterfn(ctx->ifc_ifp, iflib_if_get_counter);
 	iflib_add_device_sysctl_post(ctx);
@@ -5962,3 +5966,81 @@ iflib_fixup_rx(struct mbuf *m)
 	return (n);
 }
 #endif
+
+#ifdef NETDUMP
+static void
+iflib_netdump_init(struct ifnet *ifp, int *nmbufp, int *nclustp)
+{
+	if_ctx_t ctx;
+
+	ctx = ifp->if_softc;
+
+	*nmbufp += ctx->ifc_rxqs[0].ifr_fl->ifl_size;
+	*nclustp += ctx->ifc_rxqs[0].ifr_fl->ifl_size;
+}
+
+static void
+iflib_netdump_event(struct ifnet *ifp, enum netdump_ev event)
+{
+	if_ctx_t ctx;
+	if_softc_ctx_t scctx;
+	int i;
+
+	ctx = ifp->if_softc;
+	scctx = &ctx->ifc_softc_ctx;
+
+	switch (event) {
+	case NETDUMP_START:
+		for (i = 0; i < scctx->isc_nrxqsets; i++)
+			ctx->ifc_rxqs[i].ifr_fl->ifl_buf_size = MCLBYTES;
+		iflib_no_tx_batch = 1;
+		break;
+	default:
+		break;
+	}
+}
+
+static int
+iflib_netdump_transmit(struct ifnet *ifp, struct mbuf *m)
+{
+	if_ctx_t ctx;
+	iflib_txq_t txq;
+	int error;
+
+	ctx = ifp->if_softc;
+
+	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
+	    IFF_DRV_RUNNING)
+		return (EBUSY);
+
+	txq = &ctx->ifc_txqs[0];
+	error = iflib_encap(txq, &m);
+	if (error == 0)
+		(void)iflib_txd_db_check(ctx, txq, true, txq->ift_in_use);
+	return (error);
+}
+
+static int
+iflib_netdump_poll(struct ifnet *ifp, int count)
+{
+	if_ctx_t ctx;
+	if_softc_ctx_t scctx;
+	iflib_txq_t txq;
+	int i;
+
+	ctx = ifp->if_softc;
+	scctx = &ctx->ifc_softc_ctx;
+
+	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
+	    IFF_DRV_RUNNING)
+		return (EBUSY);
+
+	txq = &ctx->ifc_txqs[0];
+	(void)iflib_tx_credits_update(ctx, txq);
+	(void)iflib_completed_tx_reclaim(txq, RECLAIM_THRESH(ctx));
+
+	for (i = 0; i < scctx->isc_nrxqsets; i++)
+		(void)iflib_rxeof(&ctx->ifc_rxqs[i], 16 /* XXX */);
+	return (0);
+}
+#endif /* NETDUMP */
