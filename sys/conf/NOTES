@@ -1032,6 +1032,9 @@ options 	TCP_SIGNATURE		#include support for RFC 2385
 # a smooth scheduling of the traffic.
 options 	DUMMYNET
 
+options 	NETDUMP
+options 	NETDUMP_DEBUG
+
 #####################################################################
 # FILESYSTEM OPTIONS
 

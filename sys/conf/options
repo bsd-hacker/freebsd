@@ -310,6 +310,9 @@ NFS_ROOT	opt_nfsroot.h
 # SMB/CIFS requester
 NETSMB		opt_netsmb.h
 
+NETDUMP 	opt_global.h
+NETDUMP_DEBUG 	opt_netdump.h
+
 # Options used only in subr_param.c.
 HZ		opt_param.h
 MAXFILES	opt_param.h

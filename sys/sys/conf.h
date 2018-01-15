@@ -125,6 +125,8 @@ typedef int d_mmap_single_t(struct cdev *cdev, vm_ooffset_t *offset,
     vm_size_t size, struct vm_object **object, int nprot);
 typedef void d_purge_t(struct cdev *dev);
 
+typedef int dumper_init_t(void *priv);
+typedef void dumper_fini_t(void *priv);
 typedef int dumper_t(
 	void *_priv,		/* Private to the driver. */
 	void *_virtual,		/* Virtual (mapped) address. */
@@ -331,7 +333,9 @@ struct kerneldumpcrypto;
 struct kerneldumpheader;
 
 struct dumperinfo {
+	dumper_init_t *dumper_init; /* Dump device init callback. */
 	dumper_t *dumper;	/* Dumping function. */
+	dumper_fini_t *dumper_fini; /* Dump device completion callback. */
 	void	*priv;		/* Private parts. */
 	u_int	blocksize;	/* Size of block in bytes. */
 	u_int	maxiosize;	/* Max size allowed for an individual I/O */

@@ -1101,7 +1101,7 @@ static int
 dump_check_bounds(struct dumperinfo *di, off_t offset, size_t length)
 {
 
-	if (length != 0 && (offset < di->mediaoffset ||
+	if (di->mediasize > 0 && length != 0 && (offset < di->mediaoffset ||
 	    offset - di->mediaoffset + length > di->mediasize)) {
 		printf("Attempt to write outside dump device boundaries.\n"
 	    "offset(%jd), mediaoffset(%jd), length(%ju), mediasize(%jd).\n",
@@ -1274,9 +1274,10 @@ dump_start(struct dumperinfo *di, struct kerneldumpheader *kdh)
 {
 	uint64_t dumpextent;
 	uint32_t keysize;
+	int error;
 
 #ifdef EKCD
-	int error = kerneldumpcrypto_init(di->kdcrypto);
+	error = kerneldumpcrypto_init(di->kdcrypto);
 	if (error != 0)
 		return (error);
 	keysize = kerneldumpcrypto_dumpkeysize(di->kdcrypto);
@@ -1284,8 +1285,15 @@ dump_start(struct dumperinfo *di, struct kerneldumpheader *kdh)
 	keysize = 0;
 #endif
 
+	if (di->dumper_init != NULL) {
+		error = di->dumper_init(di->priv);
+		if (error != 0)
+			return (error);
+	}
+
 	dumpextent = dtoh64(kdh->dumpextent);
-	if (di->mediasize < SIZEOF_METADATA + dumpextent + 2 * di->blocksize +
+	if (di->mediasize > 0 &&
+	    di->mediasize < SIZEOF_METADATA + dumpextent + 2 * di->blocksize +
 	    keysize) {
 		if (di->kdcomp != NULL) {
 			/*
@@ -1304,8 +1312,12 @@ dump_start(struct dumperinfo *di, struct kerneldumpheader *kdh)
 	}
 
 	/* The offset at which to begin writing the dump. */
-	di->dumpoff = di->mediaoffset + di->mediasize - di->blocksize -
-	    dumpextent;
+	/* XXXMJ ugly */
+	if (di->mediasize == 0)
+		di->dumpoff = di->blocksize;
+	else
+		di->dumpoff = di->mediaoffset + di->mediasize - di->blocksize -
+		    dumpextent;
 
 	return (0);
 }
@@ -1413,10 +1425,14 @@ dump_finish(struct dumperinfo *di, struct kerneldumpheader *kdh)
 	/*
 	 * Write kerneldump headers at the beginning and end of the dump extent.
 	 * Write the key after the leading header.
+	 * XXXMJ quite ugly
 	 */
-	error = dump_write_header(di, kdh,
-	    di->mediaoffset + di->mediasize - 2 * di->blocksize - extent -
-	    keysize);
+	if (di->mediasize == 0)
+		error = dump_write_header(di, kdh, 0);
+	else
+		error = dump_write_header(di, kdh,
+		    di->mediaoffset + di->mediasize - 2 * di->blocksize - extent -
+		    keysize);
 	if (error != 0)
 		return (error);
 
@@ -1427,10 +1443,15 @@ dump_finish(struct dumperinfo *di, struct kerneldumpheader *kdh)
 		return (error);
 #endif
 
-	error = dump_write_header(di, kdh,
-	    di->mediaoffset + di->mediasize - di->blocksize);
-	if (error != 0)
-		return (error);
+	/* XXX comment */
+	if (di->dumper_fini != NULL)
+		di->dumper_fini(di->priv);
+	else {
+		error = dump_write_header(di, kdh,
+		    di->mediaoffset + di->mediasize - di->blocksize);
+		if (error != 0)
+			return (error);
+	}
 
 	(void)dump_write(di, NULL, 0, 0, 0);
 	return (0);
