@@ -1784,7 +1784,6 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		m = virtqueue_dequeue(vq, &len);
 		if (m == NULL)
 			break;
-
 		deq++;
 
 		if (len < sc->vtnet_hdr_size + ETHER_HDR_LEN) {
@@ -1812,7 +1811,6 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 			vtnet_rxq_discard_buf(rxq, m);
 			if (nbufs > 1)
 				vtnet_rxq_discard_merged_bufs(rxq, nbufs);
-			printf("vtnet_rxq_replace_buf failed!\n");
 			continue;
 		}
 
