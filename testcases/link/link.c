@@ -28,30 +28,30 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <string.h>
-#include <sys/stat.h>
 #include <sys/param.h>
-#include <sys/syslimits.h>
+#include <sys/stat.h>
+
 #include <err.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 #include "stress.h"
 
-static char path[128];
 static unsigned long size;
+static char path[128];
 
 int
 setup(int nb)
 {
-	int pct;
-	int64_t in;
 	int64_t bl;
-	int64_t reserve_in;
+	int64_t in;
 	int64_t reserve_bl;
+	int64_t reserve_in;
+	int pct;
 
 	umask(0);
 	path[0] = 0;
@@ -66,8 +66,6 @@ setup(int nb)
 
 		if (size > 32000 && op->hog == 0)
 			size = 32000;	/* arbitrary limit number of files pr. dir */
-		if (size > LINK_MAX)
-			size = LINK_MAX;
 
 		/* Resource requirements: */
 		reserve_in =  2 * op->incarnations + 7;
@@ -109,8 +107,8 @@ cleanup(void)
 int
 test(void)
 {
-	int fd, i, j;
 	pid_t pid;
+	int fd, i, j;
 	char file[128];
 	char lfile[128];
 
