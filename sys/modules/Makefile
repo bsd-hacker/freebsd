@@ -79,6 +79,7 @@ SUBDIR=	\
 	cas \
 	${_cbb} \
 	cc \
+	${_ccp} \
 	cd9660 \
 	cd9660_iconv \
 	${_ce} \
@@ -115,7 +116,6 @@ SUBDIR=	\
 	dummynet \
 	${_ed} \
 	${_efirt} \
-	${_elink} \
 	${_em} \
 	${_ena} \
 	${_ep} \
@@ -704,6 +704,7 @@ _x86bios=	x86bios
 .endif
 
 .if ${MACHINE_CPUARCH} == "amd64"
+_ccp=		ccp
 _efirt=		efirt
 _ioat=		ioat
 _ixl=		ixl
@@ -742,7 +743,6 @@ _coff=		coff
 .if ${MK_SOURCELESS_UCODE} != "no"
 _cp=		cp
 .endif
-_elink=		elink
 _glxiic=	glxiic
 _glxsb=		glxsb
 #_ibcs2=		ibcs2

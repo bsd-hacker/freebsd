@@ -133,7 +133,7 @@ static __inline void bd_wakeup(void);
 static int sysctl_runningspace(SYSCTL_HANDLER_ARGS);
 static void bufkva_reclaim(vmem_t *, int);
 static void bufkva_free(struct buf *);
-static int buf_import(void *, void **, int, int);
+static int buf_import(void *, void **, int, int, int);
 static void buf_release(void *, void **, int);
 static void maxbcachebuf_adjust(void);
 
@@ -1419,7 +1419,7 @@ buf_free(struct buf *bp)
  *	only as a per-cpu cache of bufs still maintained on a global list.
  */
 static int
-buf_import(void *arg, void **store, int cnt, int flags)
+buf_import(void *arg, void **store, int cnt, int domain, int flags)
 {
 	struct buf *bp;
 	int i;
@@ -4802,7 +4802,14 @@ vfs_bio_getpages(struct vnode *vp, vm_page_t *ma, int count,
 	la = IDX_TO_OFF(ma[count - 1]->pindex);
 	if (la >= object->un_pager.vnp.vnp_size)
 		return (VM_PAGER_BAD);
-	lpart = la + PAGE_SIZE > object->un_pager.vnp.vnp_size;
+
+	/*
+	 * Change the meaning of la from where the last requested page starts
+	 * to where it ends, because that's the end of the requested region
+	 * and the start of the potential read-ahead region.
+	 */
+	la += PAGE_SIZE;
+	lpart = la > object->un_pager.vnp.vnp_size;
 	bo_bs = get_blksize(vp, get_lblkno(vp, IDX_TO_OFF(ma[0]->pindex)));
 
 	/*

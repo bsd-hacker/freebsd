@@ -1909,9 +1909,6 @@ xptedtdevicefunc(struct cam_ed *device, void *arg)
 		bcopy(&device->ident_data,
 		      &cdm->matches[j].result.device_result.ident_data,
 		      sizeof(struct ata_params));
-		bcopy(&device->mmc_ident_data,
-		      &cdm->matches[j].result.device_result.mmc_ident_data,
-		      sizeof(struct mmc_params));
 
 		/* Let the user know whether this device is unconfigured */
 		if (device->flags & CAM_DEV_UNCONFIGURED)
@@ -3383,6 +3380,7 @@ xpt_run_allocq(struct cam_periph *periph, int sleep)
 	cam_periph_assert(periph, MA_OWNED);
 	if (periph->periph_allocating)
 		return;
+	cam_periph_doacquire(periph);
 	periph->periph_allocating = 1;
 	CAM_DEBUG_PRINT(CAM_DEBUG_XPT, ("xpt_run_allocq(%p)\n", periph));
 	device = periph->path->device;
@@ -3426,6 +3424,7 @@ restart:
 	if (ccb != NULL)
 		xpt_release_ccb(ccb);
 	periph->periph_allocating = 0;
+	cam_periph_release_locked(periph);
 }
 
 static void

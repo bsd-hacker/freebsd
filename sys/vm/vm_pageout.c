@@ -150,7 +150,7 @@ SDT_PROBE_DEFINE(vm, , , vm__lowmem_scan);
 int vm_pageout_deficit;		/* Estimated number of pages deficit */
 u_int vm_pageout_wakeup_thresh;
 static int vm_pageout_oom_seq = 12;
-bool vm_pageout_wanted;		/* Event on which pageout daemon sleeps */
+static bool vm_pageout_wanted;	/* Event on which pageout daemon sleeps */
 bool vm_pages_needed;		/* Are threads waiting for free pages? */
 
 /* Pending request for dirty page laundering. */
@@ -1919,16 +1919,13 @@ static void
 vm_pageout(void)
 {
 	int error;
-#ifdef VM_NUMA_ALLOC
 	int i;
-#endif
 
 	swap_pager_swap_init();
 	error = kthread_add(vm_pageout_laundry_worker, NULL, curproc, NULL,
 	    0, 0, "laundry: dom0");
 	if (error != 0)
 		panic("starting laundry for domain 0, error %d", error);
-#ifdef VM_NUMA_ALLOC
 	for (i = 1; i < vm_ndomains; i++) {
 		error = kthread_add(vm_pageout_worker, (void *)(uintptr_t)i,
 		    curproc, NULL, 0, 0, "dom%d", i);
@@ -1937,7 +1934,6 @@ vm_pageout(void)
 			    i, error);
 		}
 	}
-#endif
 	error = kthread_add(uma_reclaim_worker, NULL, curproc, NULL,
 	    0, 0, "uma");
 	if (error != 0)

@@ -1545,8 +1545,9 @@ unlockout:
 		error = UFS_TRUNCATE(tdvp, endoff, IO_NORMAL |
 		    (DOINGASYNC(tdvp) ? 0 : IO_SYNC), tcnp->cn_cred);
 		if (error != 0)
-			vn_printf(tdvp, "ufs_rename: failed to truncate "
-			    "err %d", error);
+			vn_printf(tdvp,
+			    "ufs_rename: failed to truncate, error %d\n",
+			    error);
 #ifdef UFS_DIRHASH
 		else if (tdp->i_dirhash != NULL)
 			ufsdirhash_dirtrunc(tdp, endoff);
@@ -2169,7 +2170,7 @@ ufs_readdir(ap)
 	off_t offset, startoffset;
 	size_t readcnt, skipcnt;
 	ssize_t startresid;
-	int ncookies;
+	u_int ncookies;
 	int error;
 
 	if (uio->uio_offset < 0)
@@ -2184,7 +2185,8 @@ ufs_readdir(ap)
 		else if (ip->i_size - uio->uio_offset < ncookies)
 			ncookies = ip->i_size - uio->uio_offset;
 		ncookies = ncookies / (offsetof(struct direct, d_name) + 4) + 1;
-		cookies = malloc(ncookies * sizeof(*cookies), M_TEMP, M_WAITOK);
+		cookies = mallocarray(ncookies, sizeof(*cookies), M_TEMP,
+		    M_WAITOK);
 		*ap->a_ncookies = ncookies;
 		*ap->a_cookies = cookies;
 	} else {

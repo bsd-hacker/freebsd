@@ -18,6 +18,8 @@
         ..
         modules
         ..
+        overlays
+        ..
         zfs
         ..
     ..
@@ -69,8 +71,6 @@
         rc.d
         ..
         security
-        ..
-        skel
         ..
         ssh
         ..

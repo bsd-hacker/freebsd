@@ -354,6 +354,7 @@ extern char const	hex2ascii_data[];
 #define	bcd2bin(bcd)	(bcd2bin_data[bcd])
 #define	bin2bcd(bin)	(bin2bcd_data[bin])
 #define	hex2ascii(hex)	(hex2ascii_data[hex])
+#define	validbcd(bcd)	(bcd == 0 || (bcd > 0 && bcd <= 0x99 && bcd2bin_data[bcd] != 0))
 
 /* min/max (undocumented) */
 static __inline int imax(int a, int b) { return (a > b ? a : b); }
@@ -393,6 +394,7 @@ extern void		putchar(int);
 extern int		devopen(struct open_file *, const char *, const char **);
 extern int		devclose(struct open_file *f);
 extern void		panic(const char *, ...) __dead2 __printflike(1, 2);
+extern time_t		getsecs(void);
 extern struct fs_ops	*file_system[];
 extern struct fs_ops	*exclusive_file_system;
 extern struct devsw	*devsw[];
