@@ -1,5 +1,6 @@
-#-
-# Copyright 2016 Michal Meloun <mmel@FreeBSD.org>
+# SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+#
+# Copyright 2018 (C) Yuri Pankov
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,61 +25,25 @@
 # SUCH DAMAGE.
 #
 # $FreeBSD$
-#
 
-#ifdef FDT
-#include <sys/types.h>
-#include <dev/ofw/ofw_bus.h>
-#endif
+atf_test_case c_flag
+c_flag_head()
+{
+	atf_set "descr" "Verify -c output (PR 224552)"
+}
+c_flag_body()
+{
+	export LC_ALL="en_US.UTF-8"
 
-INTERFACE phy;
-
-#ifdef FDT
-HEADER {
-int phy_default_map(device_t , phandle_t, int, pcell_t *, intptr_t *);
+	printf 'TestTestTestTes\345Test\345' > d_od_cflag.in
+	atf_check -o file:"$(atf_get_srcdir)/d_od_cflag_a.out" \
+	    od -c d_od_cflag.in
+	printf 'TestTestTestTesтТест' > d_od_cflag.in
+	atf_check -o file:"$(atf_get_srcdir)/d_od_cflag_b.out" \
+	    od -c d_od_cflag.in
 }
 
-#
-# map fdt property cells to phy number
-# Returns 0 on success or a standard errno value.
-#
-METHOD int map {
-	device_t	provider_dev;
-	phandle_t 	xref;
-	int		ncells;
-	pcell_t		*cells;
-	intptr_t	*id;
-} DEFAULT phy_default_map;
-#endif
-
-#
-# Init/deinit phy
-# Returns 0 on success or a standard errno value.
-#
-METHOD int init {
-	device_t	provider_dev;
-	intptr_t	id;
-	bool		inti;
-};
-
-#
-# Enable/disable phy
-# Returns 0 on success or a standard errno value.
-#
-METHOD int enable {
-	device_t	provider_dev;
-	intptr_t	id;
-	bool		enable;
-};
-
-#
-# Get phy status
-# Returns 0 on success or a standard errno value.
-#
-METHOD int status {
-	device_t	provider_dev;
-	intptr_t	id;
-	int		*status;    /* PHY_STATUS_* */
-};
-
-
+atf_init_test_cases()
+{
+	atf_add_test_case c_flag
+}
