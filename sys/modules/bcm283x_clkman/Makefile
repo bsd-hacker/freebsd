@@ -2,8 +2,10 @@
 
 .PATH: ${SRCTOP}/sys/arm/broadcom/bcm2835/
 
-KMOD=	rpi_pwm
-SRCS=	bcm2835_pwm.c
+KMOD=	bcm283x_clkman
+SRCS=	bcm2835_clkman.c
+
+EXPORT_SYMS=	bcm2835_clkman_set_frequency
 
 SRCS+= bus_if.h device_if.h ofw_bus_if.h
 
