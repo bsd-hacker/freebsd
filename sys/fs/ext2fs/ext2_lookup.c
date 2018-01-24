@@ -160,8 +160,7 @@ ext2_readdir(struct vop_readdir_args *ap)
 			ncookies = ip->i_size - uio->uio_offset;
 		ncookies = ncookies / (offsetof(struct ext2fs_direct_2,
 		    e2d_namlen) + 4) + 1;
-		cookies = mallocarray(ncookies, sizeof(*cookies), M_TEMP,
-		    M_WAITOK);
+		cookies = malloc(ncookies * sizeof(*cookies), M_TEMP, M_WAITOK);
 		*ap->a_ncookies = ncookies;
 		*ap->a_cookies = cookies;
 	} else {
