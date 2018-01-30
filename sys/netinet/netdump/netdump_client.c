@@ -1156,8 +1156,8 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		dumper.maxiosize = MAXDUMPPGS * PAGE_SIZE;
 		dumper.mediaoffset = 0;
 		dumper.mediasize = 0;
-		error = set_dumper(&dumper, conf->ndc_iface, curthread, 0, 0,
-		    NULL, 0, NULL);
+		error = set_dumper(&dumper, conf->ndc_iface, td, 0, 0, NULL, 0,
+		    NULL);
 		if (error != 0) {
 			nd_enabled = 0;
 			netdump_mbuf_drain();
