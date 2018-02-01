@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2003 Peter Wemm
- * All rights reserved.
+ * Copyright (c) 2018 Netflix
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,53 +25,12 @@
  * $FreeBSD$
  */
 
-#include <machine/asmacros.h>
+#ifndef STAND_XLOCALE_PRIVATE_H
+#define STAND_XLOCALE_PRIVATE_H 1
 
-#include "assym.s"
+typedef int locale_t;
+#define FIX_LOCALE(x)
+#define isspace_l(c, l) isspace(c)
+#define __get_locale()	0
 
-	.text
-/*
- * Call gate entry for FreeBSD ELF and Linux/NetBSD syscall (int 0x80)
- *
- * This is a SDT_SYSIDT entry point (unlike the i386 port) so that we
- * can do a swapgs before enabling interrupts.  This is critical because
- * if we took an interrupt before swapgs, the interrupt code would see
- * that it originated in supervisor mode and skip the swapgs.
- */
-	SUPERALIGN_TEXT
-IDTVEC(int0x80_syscall_pti)
-	PTI_UENTRY has_err=0
-	jmp	int0x80_syscall_common
-	SUPERALIGN_TEXT
-IDTVEC(int0x80_syscall)
-	swapgs
-int0x80_syscall_common:
-	pushq	$2			/* sizeof "int 0x80" */
-	subq	$TF_ERR,%rsp		/* skip over tf_trapno */
-	movq	%rdi,TF_RDI(%rsp)
-	movq	PCPU(CURPCB),%rdi
-	andl	$~PCB_FULL_IRET,PCB_FLAGS(%rdi)
-	SAVE_SEGS
-	movq	%rax,TF_RAX(%rsp)
-	movq	%rdx,TF_RDX(%rsp)
-	movq	%rcx,TF_RCX(%rsp)
-	call	handle_ibrs_entry
-	sti
-	movq	%rsi,TF_RSI(%rsp)
-	movq	%r8,TF_R8(%rsp)
-	movq	%r9,TF_R9(%rsp)
-	movq	%rbx,TF_RBX(%rsp)
-	movq	%rbp,TF_RBP(%rsp)
-	movq	%r10,TF_R10(%rsp)
-	movq	%r11,TF_R11(%rsp)
-	movq	%r12,TF_R12(%rsp)
-	movq	%r13,TF_R13(%rsp)
-	movq	%r14,TF_R14(%rsp)
-	movq	%r15,TF_R15(%rsp)
-	movl	$TF_HASSEGS,TF_FLAGS(%rsp)
-	cld
-	FAKE_MCOUNT(TF_RIP(%rsp))
-	movq	%rsp, %rdi
-	call	ia32_syscall
-	MEXITCOUNT
-	jmp	doreti
+#endif /* STAND_XLOCALE_PRIVATE_H */
