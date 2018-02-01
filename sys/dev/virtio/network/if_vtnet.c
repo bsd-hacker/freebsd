@@ -4003,7 +4003,8 @@ vtnet_netdump_init(struct ifnet *ifp, int *nmbufp, int *nclustp)
 	 * XXX add a separate zone like we do for mbufs? otherwise we may alloc
 	 * buckets
 	 */
-	uma_zone_reserve_kva(vtnet_tx_header_zone, NETDUMP_MAX_IN_FLIGHT * 2);
+	uma_zone_reserve(vtnet_tx_header_zone, NETDUMP_MAX_IN_FLIGHT * 2);
+	uma_prealloc(vtnet_tx_header_zone, NETDUMP_MAX_IN_FLIGHT * 2);
 }
 
 static void
