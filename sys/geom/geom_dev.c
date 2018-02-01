@@ -144,6 +144,7 @@ g_dev_setdumpdev(struct cdev *dev, struct diocskerneldump_arg *kda,
 
 	cp = dev->si_drv2;
 	len = sizeof(kd);
+	memset(&kd, 0, len);
 	kd.offset = 0;
 	kd.length = OFF_MAX;
 	error = g_io_getattr("GEOM::kerneldump", cp, &len, &kd);

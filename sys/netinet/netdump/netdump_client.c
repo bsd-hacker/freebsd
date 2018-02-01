@@ -104,10 +104,8 @@ static int	 netdump_dumper(void *priv __unused, void *virtual,
 		    vm_offset_t physical __unused, off_t offset, size_t length);
 static int	 netdump_ether_output(struct mbuf *m, struct ifnet *ifp,
 		    struct ether_addr dst, u_short etype);
-static void	 netdump_fini(void *priv __unused);
 static void	 netdump_handle_arp(struct mbuf **mb);
 static void	 netdump_handle_ip(struct mbuf **mb);
-static int	 netdump_init(void *priv __unused);
 static int	 netdump_ioctl(struct cdev *dev __unused, u_long cmd,
 		    caddr_t addr, int flags __unused, struct thread *td);
 static int	 netdump_modevent(module_t mod, int type, void *priv);
@@ -116,6 +114,7 @@ static void	 netdump_pkt_in(struct ifnet *ifp, struct mbuf *m);
 static int	 netdump_send(uint32_t type, off_t offset, unsigned char *data,
 		    uint32_t datalen);
 static int	 netdump_send_arp(in_addr_t dst);
+static int	 netdump_start(struct dumperinfo *di);
 static int	 netdump_udp_output(struct mbuf *m);
 
 /* Must be at least as big as the chunks dumpsys() gives us. */
@@ -343,15 +342,15 @@ static int
 netdump_arp_gw(void)
 {
 	in_addr_t dst;
-	int err, polls, retries;
+	int error, polls, retries;
 
 	dst = nd_server.s_addr;
 restart:
 	for (retries = 0; retries < nd_arp_retries && have_gw_mac == 0;
 	    retries++) {
-		err = netdump_send_arp(dst);
-		if (err != 0)
-			return (err);
+		error = netdump_send_arp(dst);
+		if (error != 0)
+			return (error);
 		for (polls = 0; polls < nd_polls && have_gw_mac == 0; polls++) {
 			netdump_network_poll();
 			DELAY(500);
@@ -893,34 +892,29 @@ static int
 netdump_dumper(void *priv __unused, void *virtual,
     vm_offset_t physical __unused, off_t offset, size_t length)
 {
-	int err, msgtype;
+	int error;
 
 	NETDDEBUGV("netdump_dumper(NULL, %p, NULL, %ju, %zu)\n",
 	    virtual, (uintmax_t)offset, length);
 
-	if (virtual == NULL)
-		/* XXX why don't we need this in onefs? */
+	if (virtual == NULL) {
+		if (dump_failed != 0)
+			printf("failed to dump the kernel core\n");
+		else if (netdump_send(NETDUMP_FINISHED, 0, NULL, 0) != 0)
+			printf("failed to close the transaction\n");
+		else
+			printf("\nnetdump finished.\n");
+		netdump_cleanup();
 		return (0);
+	}
 	if (length > sizeof(nd_buf))
 		return (ENOSPC);
 
-	/*
-	 * The first write (at offset 0) is the kernel dump header.  Flag it
-	 * for the server to treat specially.
-	 * XXX: This doesn't strip out the footer KDH, although it
-	 * should not hurt anything.
-	 */
-	msgtype = NETDUMP_VMCORE;
-	if (offset == 0 && length > 0) {
-		length = sizeof(struct kerneldumpheader);
-		msgtype = NETDUMP_KDH;
-	} else if (offset > 0)
-		offset -= NETDUMP_DATASIZE; /* di->blocksize */
 	memmove(nd_buf, virtual, length);
-	err = netdump_send(msgtype, offset, nd_buf, length);
-	if (err != 0) {
+	error = netdump_send(NETDUMP_VMCORE, offset, nd_buf, length);
+	if (error != 0) {
 		dump_failed = 1;
-		return (err);
+		return (error);
 	}
 	return (0);
 }
@@ -928,8 +922,8 @@ netdump_dumper(void *priv __unused, void *virtual,
 /*
  * Perform any initalization needed prior to transmitting the kernel core.
  */
-int
-netdump_init(void *priv __unused)
+static int
+netdump_start(struct dumperinfo *di)
 {
 	char *path;
 	char buf[INET_ADDRSTRLEN];
@@ -945,13 +939,16 @@ netdump_init(void *priv __unused)
 	MPASS(nd_ifp != NULL);
 
 	if (nd_server.s_addr == INADDR_ANY) {
-		printf("netdump_init: can't netdump; no server IP given\n");
+		printf("netdump_start: can't netdump; no server IP given\n");
 		return (EINVAL);
 	}
 	if (nd_client.s_addr == INADDR_ANY) {
-		printf("netdump_init: can't netdump; no client IP given\n");
+		printf("netdump_start: can't netdump; no client IP given\n");
 		return (EINVAL);
 	}
+
+	/* We start dumping at offset 0. */
+	di->dumpoff = 0;
 
 	nd_seqno = 1;
 
@@ -1003,20 +1000,18 @@ trig_abort:
 	return (error);
 }
 
-/*
- * Completion routine for a netdump.
- */
-static void
-netdump_fini(void *priv __unused)
+static int
+netdump_write_headers(struct dumperinfo *di, struct kerneldumpheader *kdh,
+    void *key, uint32_t keysize)
 {
 
-	if (dump_failed != 0)
-		printf("failed to dump the kernel core\n");
-	else if (netdump_send(NETDUMP_FINISHED, 0, NULL, 0) != 0)
-		printf("failed to close the transaction\n");
-	else
-		printf("\nnetdump finished.\n");
-	netdump_cleanup();
+	if (sizeof(*kdh) + keysize > sizeof(nd_buf))
+		return (EINVAL);
+
+	memcpy(nd_buf, kdh, sizeof(*kdh));
+	if (key != NULL)
+		memcpy(nd_buf + sizeof(*kdh), key, keysize);
+	return (netdump_send(NETDUMP_KDH, 0, nd_buf, sizeof(*kdh) + keysize));
 }
 
 /*
@@ -1148,9 +1143,9 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 			break;
 		}
 
-		dumper.dumper_init = netdump_init;
+		dumper.dumper_start = netdump_start;
+		dumper.dumper_hdr = netdump_write_headers;
 		dumper.dumper = netdump_dumper;
-		dumper.dumper_fini = netdump_fini;
 		dumper.priv = NULL;
 		dumper.blocksize = NETDUMP_DATASIZE;
 		dumper.maxiosize = MAXDUMPPGS * PAGE_SIZE;

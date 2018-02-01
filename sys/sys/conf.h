@@ -101,6 +101,8 @@ struct cdev {
 
 struct bio;
 struct buf;
+struct dumperinfo;
+struct kerneldumpheader;
 struct thread;
 struct uio;
 struct knote;
@@ -125,14 +127,15 @@ typedef int d_mmap_single_t(struct cdev *cdev, vm_ooffset_t *offset,
     vm_size_t size, struct vm_object **object, int nprot);
 typedef void d_purge_t(struct cdev *dev);
 
-typedef int dumper_init_t(void *priv);
-typedef void dumper_fini_t(void *priv);
 typedef int dumper_t(
 	void *_priv,		/* Private to the driver. */
 	void *_virtual,		/* Virtual (mapped) address. */
 	vm_offset_t _physical,	/* Physical address of virtual. */
 	off_t _offset,		/* Byte-offset to write at. */
 	size_t _length);	/* Number of bytes to dump. */
+typedef int dumper_start_t(struct dumperinfo *di);
+typedef int dumper_hdr_t(struct dumperinfo *di, struct kerneldumpheader *kdh,
+    void *key, uint32_t keylen);
 
 #endif /* _KERNEL */
 
@@ -333,9 +336,9 @@ struct kerneldumpcrypto;
 struct kerneldumpheader;
 
 struct dumperinfo {
-	dumper_init_t *dumper_init; /* Dump device init callback. */
 	dumper_t *dumper;	/* Dumping function. */
-	dumper_fini_t *dumper_fini; /* Dump device completion callback. */
+	dumper_start_t *dumper_start; /* Dumper callback for dump_start(). */
+	dumper_hdr_t *dumper_hdr; /* Dumper callback for writing headers. */
 	void	*priv;		/* Private parts. */
 	u_int	blocksize;	/* Size of block in bytes. */
 	u_int	maxiosize;	/* Max size allowed for an individual I/O */
