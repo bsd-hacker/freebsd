@@ -71,6 +71,7 @@ struct g_part_alias_list {
 	const char *lexeme;
 	enum g_part_alias alias;
 } g_part_alias_list[G_PART_ALIAS_COUNT] = {
+	{ "apple-apfs", G_PART_ALIAS_APPLE_APFS },
 	{ "apple-boot", G_PART_ALIAS_APPLE_BOOT },
 	{ "apple-core-storage", G_PART_ALIAS_APPLE_CORE_STORAGE },
 	{ "apple-hfs", G_PART_ALIAS_APPLE_HFS },
@@ -1540,18 +1541,21 @@ g_part_wither(struct g_geom *gp, int error)
 {
 	struct g_part_entry *entry;
 	struct g_part_table *table;
+	struct g_provider *pp;
 
 	table = gp->softc;
 	if (table != NULL) {
-		G_PART_DESTROY(table, NULL);
+		gp->softc = NULL;
 		while ((entry = LIST_FIRST(&table->gpt_entry)) != NULL) {
 			LIST_REMOVE(entry, gpe_entry);
+			pp = entry->gpe_pp;
+			entry->gpe_pp->private = NULL;
+			entry->gpe_pp = NULL;
+			g_wither_provider(pp, error);
 			g_free(entry);
 		}
-		if (gp->softc != NULL) {
-			kobj_delete((kobj_t)gp->softc, M_GEOM);
-			gp->softc = NULL;
-		}
+		G_PART_DESTROY(table, NULL);
+		kobj_delete((kobj_t)table, M_GEOM);
 	}
 	g_wither_geom(gp, error);
 }

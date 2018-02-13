@@ -10,9 +10,11 @@ __BOOT_DEFS_MK__=${MFILE}
 MK_CTF=		no
 MK_SSP=		no
 MK_PROFILE=	no
-NO_PIC=
 MAN=
+.if !defined(PIC)
+NO_PIC=
 INTERNALLIB=
+.endif
 
 BOOTSRC=	${SRCTOP}/stand
 EFISRC=		${BOOTSRC}/efi
@@ -21,6 +23,8 @@ EFIINCMD=	${EFIINC}/${MACHINE}
 FDTSRC=		${BOOTSRC}/fdt
 FICLSRC=	${BOOTSRC}/ficl
 LDRSRC=		${BOOTSRC}/common
+LIBLUASRC=	${BOOTSRC}/liblua
+LUASRC=		${SRCTOP}/contrib/lua/src
 SASRC=		${BOOTSRC}/libsa
 SYSDIR=		${SRCTOP}/sys
 UBOOTSRC=	${BOOTSRC}/uboot
