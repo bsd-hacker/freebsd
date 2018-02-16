@@ -321,6 +321,25 @@ build_release() {
 	unset _build _conf
 }
 
+# Run the release builds in parallel.  CAUSES INSANE CPU LOAD.
+parallelbuild_release() {
+	_build="${rev}-${arch}-${kernel}-${type}"
+	_conf="${scriptdir}/${_build}.conf"
+	source_config || return 0
+	(
+	info "Building release: ${_build}"
+	set >> ${logdir}/${_build}.log
+	env -i __BUILDCONFDIR="${__BUILDCONFDIR}" \
+		/bin/sh ${srcdir}/release.sh -c ${_conf} \
+		>> ${logdir}/${_build}.log 2>&1
+
+	ftp_stage
+	ls -1 ${CHROOTDIR}/R/* >> ${logdir}/${_build}.log
+	send_logmail ${logdir}/${_build}.log ${_build}
+	) &
+	unset _build _conf
+}
+
 # Upload AWS EC2 AMI images.
 upload_ec2_ami() {
 	_build="${rev}-${arch}-${kernel}-${type}"
@@ -524,7 +543,8 @@ main() {
 	zfs_bootstrap
 	runall build_chroots
 	runall install_chroots
-	runall build_release
+	runall ${parallel}build_release
+	wait
 	runall upload_ec2_ami
 	runall upload_gce_image
 	runall upload_vagrant_image
