@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014 Pedro Souza <pedrosouza@freebsd.org>
+ * Copyright (c) 2018 Conrad Meyer <cem@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,57 +26,8 @@
  * $FreeBSD$
  */
 
-#ifndef LSTD_H
-#define LSTD_H
+#pragma once
 
-#include <stand.h>
-#include <sys/types.h>
-#include <sys/stdint.h>
-#include <limits.h>
-#include <string.h>
-#include <machine/stdarg.h>
+#include <lua.h>
 
-typedef struct FILE
-{
-	int fd;
-	size_t offset;
-	size_t size;
-} FILE;
-
-typedef struct DIR
-{
-	int fd;
-} DIR;
-
-FILE *fopen(const char *filename, const char *mode);
-FILE *freopen( const char *filename, const char *mode, FILE *stream);
-size_t fread(void *ptr, size_t size, size_t count, FILE *stream);
-int fclose(FILE *stream);
-int ferror(FILE *stream);
-int feof(FILE *stream);
-int getc(FILE * stream);
-DIR *opendir(const char *name);
-DIR *fdopendir(int fd);
-int closedir(DIR *);
-
-#ifndef EOF
-#define EOF (-1)
-#endif
-
-#define stdin ((FILE*)NULL)
-#define stdout 1
-
-#ifndef BUFSIZ
-#define BUFSIZ 512
-#endif
-
-#define lua_writestringerror(s, p) do { printf((s), (p)); } while (0)
-
-void luai_writestring(const char *, int);
-
-#define lua_writestring(s,l) luai_writestring(s,l)
-
-#define fflush	/* */
-#define fgets(b, l, s) fgetstr((b), (l), 0)
-
-#endif /* LSTD_H */
+int luaopen_lfs(lua_State *L);
