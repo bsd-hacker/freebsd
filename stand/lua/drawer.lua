@@ -1,5 +1,6 @@
 --
 -- Copyright (c) 2015 Pedro Souza <pedrosouza@freebsd.org>
+-- Copyright (c) 2018 Kyle Evans <kevans@FreeBSD.org>
 -- All rights reserved.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -38,6 +39,7 @@ local beastie;
 local fbsd_logo_v;
 local orb;
 local none;
+local none_shifted = false;
 
 drawer.menu_name_handlers = {
 	-- Menu name handlers should take the menu being drawn and entry being
@@ -59,9 +61,6 @@ drawer.menu_name_handlers = {
 
 drawer.brand_position = {x = 2, y = 1};
 drawer.logo_position = {x = 46, y = 1};
-drawer.fbsd_logo_shift = {x = 5, y = 4};
-drawer.orb_shift = {x = 2, y = 4};
-drawer.none_shift = {x = 17, y = 0};
 drawer.menu_position = {x = 6, y = 11};
 drawer.box_pos_dim = {x = 3, y = 10, w = 41, h = 11};
 
@@ -173,6 +172,53 @@ orb = {
 
 none = {""};
 
+drawer.branddefs = {
+	-- Indexed by valid values for loader_brand in loader.conf(5). Valid
+	-- keys are: graphic (table depicting graphic)
+	["fbsd"] = {
+		graphic = fbsd_logo,
+	},
+	["none"] = {
+		graphic = none,
+	},
+};
+
+drawer.logodefs = {
+	-- Indexed by valid values for loader_logo in loader.conf(5). Valid keys
+	-- are: requires_color (boolean), graphic (table depicting graphic), and
+	-- shift (table containing x and y).
+	["beastie"] = {
+		requires_color = true,
+		graphic = beastie_color,
+	},
+	["beastiebw"] = {
+		graphic = beastie,
+	},
+	["fbsdbw"] = {
+		graphic = fbsd_logo_v,
+		shift = {x = 5, y = 4},
+	},
+	["orb"] = {
+		requires_color = true,
+		graphic = orb_color,
+		shift = {x = 2, y = 4},
+	},
+	["orbbw"] = {
+		graphic = orb,
+		shift = {x = 2, y = 4},
+	},
+	["tribute"] = {
+		graphic = fbsd_logo,
+	},
+	["tributebw"] = {
+		graphic = fbsd_logo,
+	},
+	["none"] = {
+		graphic = none,
+		shift = {x = 17, y = 0},
+	},
+};
+
 function drawer.drawscreen(menu_opts)
 	-- drawlogo() must go first.
 	-- it determines the positions of other elements
@@ -281,9 +327,20 @@ function drawer.drawbrand()
 	local y = tonumber(loader.getenv("loader_brand_y")) or
 	    drawer.brand_position.y;
 
-	local logo = load("return " .. tostring(loader.getenv("loader_brand")))() or
-	    fbsd_logo;
-	drawer.draw(x, y, logo);
+	local graphic = drawer.branddefs[loader.getenv("loader_brand")];
+	if (graphic == nil) then
+		graphic = fbsd_logo;
+	end
+	drawer.draw(x, y, graphic);
+end
+
+function shift_brand_text(shift)
+	drawer.brand_position.x = drawer.brand_position.x + shift.x;
+	drawer.brand_position.y = drawer.brand_position.y + shift.y;
+	drawer.menu_position.x = drawer.menu_position.x + shift.x;
+	drawer.menu_position.y = drawer.menu_position.y + shift.y;
+	drawer.box_pos_dim.x = drawer.box_pos_dim.x + shift.x;
+	drawer.box_pos_dim.y = drawer.box_pos_dim.y + shift.y;
 end
 
 function drawer.drawlogo()
@@ -293,51 +350,31 @@ function drawer.drawlogo()
 	    drawer.logo_position.y;
 
 	local logo = loader.getenv("loader_logo");
-	local s = {x = 0, y = 0};
 	local colored = color.isEnabled();
 
-	if (logo == "beastie") then
-		if (colored) then
-			logo = beastie_color;
+	-- Lookup
+	local logodef = drawer.logodefs[logo];
+
+	if (logodef ~= nil) and (logodef.graphic == none) then
+		-- centre brand and text if no logo
+		if (not none_shifted) then
+			shift_brand_text(logodef.shift);
+			none_shifted = true;
 		end
-	elseif (logo == "beastiebw") then
-		logo = beastie;
-	elseif (logo == "fbsdbw") then
-		logo = fbsd_logo_v;
-		s = drawer.fbsd_logo_shift;
-	elseif (logo == "orb") then
+	elseif (logodef == nil) or (logodef.graphic == nil) or
+	    ((not colored) and logodef.requires_color) then
+		-- Choose a sensible default
 		if (colored) then
-			logo = orb_color;
-		end
-		s = drawer.orb_shift;
-	elseif (logo == "orbbw") then
-		logo = orb;
-		s = drawer.orb_shift;
-	elseif (logo == "tribute") then
-		logo = fbsd_logo;
-	elseif (logo == "tributebw") then
-		logo = fbsd_logo;
-	elseif (logo == "none") then
-		--centre brand and text if no logo
-		drawer.brand_position.x = drawer.brand_position.x + drawer.none_shift.x;
-		drawer.brand_position.y = drawer.brand_position.y + drawer.none_shift.y;
-		drawer.menu_position.x = drawer.menu_position.x + drawer.none_shift.x;
-		drawer.menu_position.y = drawer.menu_position.y + drawer.none_shift.y;
-		drawer.box_pos_dim.x = drawer.box_pos_dim.x + drawer.none_shift.x;
-		drawer.box_pos_dim.y = drawer.box_pos_dim.y + drawer.none_shift.y;
-		--prevent redraws from moving menu further
-		drawer.none_shift.x = 0;
-		drawer.none_shift.y = 0;
-		logo = none;
-	end
-	if (not logo) then
-		if (colored) then
-			logo = orb_color;
+			logodef = drawer.logodefs["orb"];
 		else
-			logo = orb;
+			logodef = drawer.logodefs["orbbw"];
 		end
 	end
-	drawer.draw(x + s.x, y + s.y, logo);
+	if (logodef.shift ~= nil) then
+		x = x + logodef.shift.x;
+		y = y + logodef.shift.y;
+	end
+	drawer.draw(x, y, logodef.graphic);
 end
 
 return drawer;
