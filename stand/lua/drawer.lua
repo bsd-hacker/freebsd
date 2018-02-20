@@ -32,8 +32,40 @@ local screen = require("screen");
 
 local drawer = {};
 
+local fbsd_logo;
+local beastie_color;
+local beastie;
+local fbsd_logo_v;
+local orb;
+local none;
+
+drawer.menu_name_handlers = {
+	-- Menu name handlers should take the menu being drawn and entry being
+	-- drawn as parameters, and return the name of the item.
+	-- This is designed so that everything, including menu separators, may
+	-- have their names derived differently. The default action for entry
+	-- types not specified here is to call and use entry.name().
+	[core.MENU_CAROUSEL_ENTRY] = function(drawing_menu, entry)
+		local carid = entry.carousel_id;
+		local caridx = menu.getCarouselIndex(carid);
+		local choices = entry.items();
+
+		if (#choices < caridx) then
+			caridx = 1;
+		end
+		return entry.name(caridx, choices[caridx], choices);
+	end,
+};
+
 drawer.brand_position = {x = 2, y = 1};
-drawer.fbsd_logo = {
+drawer.logo_position = {x = 46, y = 1};
+drawer.fbsd_logo_shift = {x = 5, y = 4};
+drawer.orb_shift = {x = 2, y = 4};
+drawer.none_shift = {x = 17, y = 0};
+drawer.menu_position = {x = 6, y = 11};
+drawer.box_pos_dim = {x = 3, y = 10, w = 41, h = 11};
+
+fbsd_logo = {
 	"  ______               ____   _____ _____  ",
 	" |  ____|             |  _ \\ / ____|  __ \\ ",
 	" | |___ _ __ ___  ___ | |_) | (___ | |  | |",
@@ -43,8 +75,7 @@ drawer.fbsd_logo = {
 	" |_|   |_|  \\___|\\___||____/|_____/|_____/ "
 };
 
-drawer.logo_position = {x = 46, y = 1};
-drawer.beastie_color = {
+beastie_color = {
 	"               \027[31m,        ,",
 	"              /(        )`",
 	"              \\ \\___   / |",
@@ -66,7 +97,7 @@ drawer.beastie_color = {
 	"         `--{__________)\027[37m"
 };
 
-drawer.beastie = {
+beastie = {
 	"               ,        ,",
 	"              /(        )`",
 	"              \\ \\___   / |",
@@ -88,8 +119,7 @@ drawer.beastie = {
 	"         `--{__________)"
 };
 
-drawer.fbsd_logo_shift = {x = 5, y = 4};
-drawer.fbsd_logo_v = {
+fbsd_logo_v = {
 	"  ______",
 	" |  ____| __ ___  ___ ",
 	" | |__ | '__/ _ \\/ _ \\",
@@ -105,8 +135,7 @@ drawer.fbsd_logo_v = {
 	" |____/|_____/|_____/"
 };
 
-drawer.orb_shift = {x = 2, y = 4};
-drawer.orb_color = {
+orb_color = {
 	"  \027[31m```                        \027[31;1m`\027[31m",
 	" s` `.....---...\027[31;1m....--.```   -/\027[31m",
 	" +o   .--`         \027[31;1m/y:`      +.\027[31m",
@@ -124,7 +153,7 @@ drawer.orb_color = {
 	"         .---.....----.\027[37m"
 };
 
-drawer.orb = {
+orb = {
 	"  ```                        `",
 	" s` `.....---.......--.```   -/",
 	" +o   .--`         /y:`      +.",
@@ -142,13 +171,7 @@ drawer.orb = {
 	"         .---.....----."
 };
 
-drawer.none = {""};
-
-drawer.none_shift = {x = 17, y = 0};
-
-drawer.menu_position = {x = 6, y = 11};
-
-drawer.box_pos_dim = {x = 3, y = 10, w = 41, h = 11};
+none = {""};
 
 function drawer.drawscreen(menu_opts)
 	-- drawlogo() must go first.
@@ -157,6 +180,15 @@ function drawer.drawscreen(menu_opts)
         drawer.drawbrand();
         drawer.drawbox();
 	return drawer.drawmenu(menu_opts);
+end
+
+function menu_entry_name(drawing_menu, entry)
+	local name_handler = drawer.menu_name_handlers[entry.entry_type];
+
+	if (name_handler ~= nil) then
+		return name_handler(drawing_menu, entry);
+	end
+	return entry.name();
 end
 
 function drawer.drawmenu(m)
@@ -179,21 +211,8 @@ function drawer.drawmenu(m)
 		if (e.entry_type ~= core.MENU_SEPARATOR) then
 			entry_num = entry_num + 1;
 			screen.setcursor(x, y + line_num);
-			local name = "";
 
-			if (e.entry_type == core.MENU_CAROUSEL_ENTRY) then
-				local carid = e.carousel_id;
-				local caridx = menu.getCarouselIndex(carid);
-				local choices = e.items();
-
-				if (#choices < caridx) then
-					caridx = 1;
-				end
-				name = e.name(caridx, choices[caridx], choices);
-			else
-				name = e.name();
-			end
-			print(entry_num .. ". " .. name);
+			print(entry_num .. ". " .. menu_entry_name(m, e));
 
 			-- fill the alias table
 			alias_table[tostring(entry_num)] = e;
@@ -204,7 +223,7 @@ function drawer.drawmenu(m)
 			end
 		else
 			screen.setcursor(x, y + line_num);
-			print(e.name());
+			print(menu_entry_name(m, e));
 		end
 		::continue::
 	end
@@ -263,7 +282,7 @@ function drawer.drawbrand()
 	    drawer.brand_position.y;
 
 	local logo = load("return " .. tostring(loader.getenv("loader_brand")))() or
-	    drawer.fbsd_logo;
+	    fbsd_logo;
 	drawer.draw(x, y, logo);
 end
 
@@ -279,25 +298,25 @@ function drawer.drawlogo()
 
 	if (logo == "beastie") then
 		if (colored) then
-			logo = drawer.beastie_color;
+			logo = beastie_color;
 		end
 	elseif (logo == "beastiebw") then
-		logo = drawer.beastie;
+		logo = beastie;
 	elseif (logo == "fbsdbw") then
-		logo = drawer.fbsd_logo_v;
+		logo = fbsd_logo_v;
 		s = drawer.fbsd_logo_shift;
 	elseif (logo == "orb") then
 		if (colored) then
-			logo = drawer.orb_color;
+			logo = orb_color;
 		end
 		s = drawer.orb_shift;
 	elseif (logo == "orbbw") then
-		logo = drawer.orb;
+		logo = orb;
 		s = drawer.orb_shift;
 	elseif (logo == "tribute") then
-		logo = drawer.fbsd_logo;
+		logo = fbsd_logo;
 	elseif (logo == "tributebw") then
-		logo = drawer.fbsd_logo;
+		logo = fbsd_logo;
 	elseif (logo == "none") then
 		--centre brand and text if no logo
 		drawer.brand_position.x = drawer.brand_position.x + drawer.none_shift.x;
@@ -309,13 +328,13 @@ function drawer.drawlogo()
 		--prevent redraws from moving menu further
 		drawer.none_shift.x = 0;
 		drawer.none_shift.y = 0;
-		logo = drawer.none;
+		logo = none;
 	end
 	if (not logo) then
 		if (colored) then
-			logo = drawer.orb_color;
+			logo = orb_color;
 		else
-			logo = drawer.orb;
+			logo = orb;
 		end
 	end
 	drawer.draw(x + s.x, y + s.y, logo);
