@@ -1,5 +1,6 @@
 --
 -- Copyright (c) 2015 Pedro Souza <pedrosouza@freebsd.org>
+-- Copyright (C) 2018 Kyle Evans <kevans@FreeBSD.org>
 -- All rights reserved.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -27,8 +28,36 @@
 --
 
 local config = {};
+-- Which variables we changed
+config.env_changed = {};
+-- Values to restore env to (nil to unset)
+config.env_restore = {};
 
 local modules = {};
+
+function config.restoreEnv()
+	for k, v in pairs(config.env_changed) do
+		local restore_value = config.env_restore[k];
+		if (restore_value ~= nil) then
+			loader.setenv(k, restore_value);
+		else
+			loader.unsetenv(k);
+		end
+	end
+
+	config.env_changed = {};
+	config.env_restore = {};
+end
+
+function config.setenv(k, v)
+	-- Do we need to track this change?
+	if (config.env_changed[k] == nil) then
+		config.env_changed[k] = true;
+		config.env_restore[k] = loader.getenv(k);
+	end
+
+	return loader.setenv(k, v);
+end
 
 function config.setKey(k, n, v)
 	if (modules[k] == nil) then
@@ -115,7 +144,7 @@ local pattern_table = {
 	[10] = {
 		str = "^%s*([%w%p]+)%s*=%s*\"([%w%s%p]-)\"%s*(.*)",
 		process = function(k, v)
-			if (loader.setenv(k, v) ~= 0) then
+			if (config.setenv(k, v) ~= 0) then
 				print("Failed to set '" .. k ..
 				    "' with value: " .. v .. "");
 			end
@@ -125,7 +154,7 @@ local pattern_table = {
 	[11] = {
 		str = "^%s*([%w%p]+)%s*=%s*(%d+)%s*(.*)",
 		process = function(k, v)
-			if (loader.setenv(k, v) ~= 0) then
+			if (config.setenv(k, v) ~= 0) then
 				print("Failed to set '" .. k ..
 				    "' with value: " .. v .. "");
 			end
@@ -168,7 +197,7 @@ function config.loadmod(mod, silent)
 					if (not silent) then
 						print("Failed to execute '" ..
 						    v.before ..
-						    "' before loading '".. k ..
+						    "' before loading '" .. k ..
 						    "'");
 					end
 					status = false;
@@ -199,7 +228,9 @@ function config.loadmod(mod, silent)
 			end
 
 		else
-			--if not silent then print("Skiping module '".. k .. "'"); end
+			-- if not silent then
+				-- print("Skiping module '". . k .. "'");
+			-- end
 		end
 	end
 
@@ -297,6 +328,8 @@ function config.loadkernel(other_kernel)
 		local res = load_bootfile();
 
 		if (res ~= nil) then
+			-- Default kernel is loaded
+			config.kernel_loaded = nil;
 			return true;
 		else
 			print("No kernel set, failed to load from module_path");
@@ -321,6 +354,7 @@ function config.loadkernel(other_kernel)
 
 			-- succeeded, add path to module_path
 			if (res ~= nil) then
+				config.kernel_loaded = kernel;
 				if (module_path ~= nil) then
 					loader.setenv("module_path", v .. ";" ..
 					    module_path);
@@ -333,6 +367,7 @@ function config.loadkernel(other_kernel)
 		-- try as a file
 		res = try_load(kernel);
 		if (res ~= nil) then
+			config.kernel_loaded = kernel;
 			return true;
 		else
 			print("Failed to load kernel '" .. kernel .. "'");
@@ -341,6 +376,9 @@ function config.loadkernel(other_kernel)
 	end
 end
 
+function config.selectkernel(kernel)
+	config.kernel_selected = kernel;
+end
 
 function config.load(file)
 	if (not file) then
@@ -363,9 +401,31 @@ function config.load(file)
 
 	-- Cache the provided module_path at load time for later use
 	config.module_path = loader.getenv("module_path");
+end
+
+-- Reload configuration
+function config.reload(file)
+	modules = {};
+	config.restoreEnv();
+	config.load(file);
+end
+
+function config.loadelf()
+	local kernel = config.kernel_loaded or config.kernel_selected;
+	local loaded = false;
 
 	print("Loading kernel...");
-	config.loadkernel();
+	loaded = config.loadkernel(kernel);
+
+	if (not loaded) then
+		loaded = config.loadkernel();
+	end
+
+	if (not loaded) then
+		-- Ultimately failed to load kernel
+		print("Failed to load any kernel");
+		return;
+	end
 
 	print("Loading configured modules...");
 	if (not config.loadmod(modules)) then
@@ -373,30 +433,5 @@ function config.load(file)
 	end
 end
 
-function config.reload(kernel)
-	local kernel_loaded = false;
 
-	-- unload all modules
-	print("Unloading modules...");
-	loader.perform("unload");
-
-	if (kernel ~= nil) then
-		print("Trying to load '" .. kernel .. "'")
-		kernel_loaded = config.loadkernel(kernel);
-		if (kernel_loaded) then
-			print("Kernel '" .. kernel .. "' loaded!");
-		end
-	end
-
-	-- failed to load kernel or it is nil
-	-- then load default
-	if (not kernel_loaded) then
-		print("Loading default kernel...");
-		config.loadkernel();
-	end
-
-	-- load modules
-	config.loadmod(modules);
-end
-
-return config
+return config;

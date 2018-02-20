@@ -1,5 +1,6 @@
 --
 -- Copyright (c) 2015 Pedro Souza <pedrosouza@freebsd.org>
+-- Copyright (C) 2018 Kyle Evans <kevans@FreeBSD.org>
 -- All rights reserved.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -26,10 +27,10 @@
 -- $FreeBSD$
 --
 
-local password = {};
-
 local core = require("core");
 local screen = require("screen");
+
+local password = {};
 
 function password.read()
 	local str = "";
@@ -58,6 +59,7 @@ function password.read()
 end
 
 function password.check()
+	screen.clear();
 	screen.defcursor();
 	-- pwd is optionally supplied if we want to check it
 	local function do_prompt(prompt, pwd)

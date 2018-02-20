@@ -26,11 +26,11 @@
 -- $FreeBSD$
 --
 
-local drawer = {};
-
 local color = require("color");
 local core = require("core");
 local screen = require("screen");
+
+local drawer = {};
 
 drawer.brand_position = {x = 2, y = 1};
 drawer.fbsd_logo = {
@@ -166,7 +166,16 @@ function drawer.drawmenu(m)
 	-- print the menu and build the alias table
 	local alias_table = {};
 	local entry_num = 0;
-	for line_num, e in ipairs(m) do
+	local menu_entries = m.entries;
+	if (type(menu_entries) == "function") then
+		menu_entries = menu_entries();
+	end
+	for line_num, e in ipairs(menu_entries) do
+		-- Allow menu items to be conditionally visible by specifying
+		-- a visible function.
+		if (e.visible ~= nil) and (not e.visible()) then
+			goto continue;
+		end
 		if (e.entry_type ~= core.MENU_SEPARATOR) then
 			entry_num = entry_num + 1;
 			screen.setcursor(x, y + line_num);
@@ -184,7 +193,7 @@ function drawer.drawmenu(m)
 			else
 				name = e.name();
 			end
-			print(entry_num .. ". "..name);
+			print(entry_num .. ". " .. name);
 
 			-- fill the alias table
 			alias_table[tostring(entry_num)] = e;
@@ -197,6 +206,7 @@ function drawer.drawmenu(m)
 			screen.setcursor(x, y + line_num);
 			print(e.name());
 		end
+		::continue::
 	end
 	return alias_table;
 end

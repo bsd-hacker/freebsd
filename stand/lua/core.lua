@@ -26,6 +26,8 @@
 -- $FreeBSD$
 --
 
+local config = require('config');
+
 local core = {};
 
 -- Commonly appearing constants
@@ -180,14 +182,21 @@ function core.setDefaults()
 end
 
 function core.autoboot()
+	config.loadelf();
 	loader.perform("autoboot");
 end
 
 function core.boot()
+	config.loadelf();
 	loader.perform("boot");
 end
 
-function core.bootserial()
+function core.isSingleUserBoot()
+	local single_user = loader.getenv("boot_single");
+	return single_user ~= nil and single_user:lower() == "yes";
+end
+
+function core.isSerialBoot()
 	local c = loader.getenv("console");
 
 	if (c ~= nil) then
@@ -208,5 +217,24 @@ function core.bootserial()
 	return false;
 end
 
-core.setACPI(core.getACPIPresent(false));
+-- This may be a better candidate for a 'utility' module.
+function core.shallowCopyTable(tbl)
+	local new_tbl = {};
+	for k, v in pairs(tbl) do
+		if (type(v) == "table") then
+			new_tbl[k] = core.shallowCopyTable(v);
+		else
+			new_tbl[k] = v;
+		end
+	end
+	return new_tbl;
+end
+
+-- On i386, hint.acpi.0.rsdp will be set before we're loaded. On !i386, it will
+-- generally be set upon execution of the kernel. Because of this, we can't (or
+-- don't really want to) detect/disable ACPI on !i386 reliably. Just set it
+-- enabled if we detect it and leave well enough alone if we don't.
+if (core.getACPIPresent(false)) then
+	core.setACPI(true);
+end
 return core;
