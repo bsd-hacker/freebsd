@@ -1097,10 +1097,10 @@ swap_pager_getpages(vm_object_t object, vm_page_t *ma, int count, int *rbehind,
     int *rahead)
 {
 	struct buf *bp;
-	vm_page_t mpred, msucc, p;
+	vm_page_t mpred, msucc;
 	vm_pindex_t pindex;
 	daddr_t blk;
-	int i, j, maxahead, maxbehind, reqcount, shift;
+	int i, maxahead, maxbehind, reqcount, shift;
 
 	reqcount = count;
 
@@ -1136,39 +1136,27 @@ swap_pager_getpages(vm_object_t object, vm_page_t *ma, int count, int *rbehind,
 	/*
 	 * Allocate readahead and readbehind pages.
 	 */
-	shift = rbehind != NULL ? *rbehind : 0;
-	if (shift != 0) {
-		for (i = 1; i <= shift; i++) {
-			p = vm_page_alloc(object, ma[0]->pindex - i,
-			    VM_ALLOC_NORMAL);
-			if (p == NULL) {
-				/* Shift allocated pages to the left. */
-				for (j = 0; j < i - 1; j++)
-					bp->b_pages[j] =
-					    bp->b_pages[j + shift - i + 1];
-				break;
-			}
-			bp->b_pages[shift - i] = p;
-		}
-		shift = i - 1;
-		*rbehind = shift;
-	}
+	if (rbehind != NULL && *rbehind > 0) {
+		shift = vm_page_alloc_pages_after(object,
+		    ma[0]->pindex - *rbehind, VM_ALLOC_NORMAL, &bp->b_pages[0],
+		    *rbehind, mpred);
+		if (shift != *rbehind) {
+			/* Drop a partially allocated run. */
+			for (i = 0; i < shift; i++)
+				vm_page_free(bp->b_pages[i]);
+			shift = *rbehind = 0;
+		} else
+			count += *rbehind;
+	} else
+		shift = 0;
 	for (i = 0; i < reqcount; i++)
 		bp->b_pages[i + shift] = ma[i];
-	if (rahead != NULL) {
-		for (i = 0; i < *rahead; i++) {
-			p = vm_page_alloc(object,
-			    ma[reqcount - 1]->pindex + i + 1, VM_ALLOC_NORMAL);
-			if (p == NULL)
-				break;
-			bp->b_pages[shift + reqcount + i] = p;
-		}
-		*rahead = i;
-	}
-	if (rbehind != NULL)
-		count += *rbehind;
-	if (rahead != NULL)
+	if (rahead != NULL && *rahead > 0) {
+		*rahead = vm_page_alloc_pages_after(object,
+		    ma[reqcount - 1]->pindex + 1, VM_ALLOC_NORMAL,
+		    &bp->b_pages[reqcount + shift], *rahead, ma[reqcount - 1]);
 		count += *rahead;
+	}
 
 	vm_object_pip_add(object, count);
 

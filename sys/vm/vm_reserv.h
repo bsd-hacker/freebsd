@@ -54,10 +54,12 @@ vm_page_t	vm_reserv_extend_contig(int req, vm_object_t object,
 		    vm_pindex_t pindex, int domain, u_long npages,
 		    vm_paddr_t low, vm_paddr_t high, u_long alignment,
 		    vm_paddr_t boundary, vm_page_t mpred);
-vm_page_t	vm_reserv_alloc_page(int req, vm_object_t object, vm_pindex_t pindex,
-		    int domain, vm_page_t mpred);
+vm_page_t	vm_reserv_alloc_page(int req, vm_object_t object,
+		    vm_pindex_t pindex, int domain, vm_page_t mpred,
+		    int *countp);
 vm_page_t	vm_reserv_extend(int req, vm_object_t object,
-		    vm_pindex_t pindex, int domain, vm_page_t mpred);
+		    vm_pindex_t pindex, int domain, vm_page_t mpred,
+		    int *countp);
 void		vm_reserv_break_all(vm_object_t object);
 boolean_t	vm_reserv_free_page(vm_page_t m);
 void		vm_reserv_init(void);
@@ -67,7 +69,7 @@ int		vm_reserv_level_iffullpop(vm_page_t m);
 boolean_t	vm_reserv_reclaim_contig(int domain, u_long npages,
 		    vm_paddr_t low, vm_paddr_t high, u_long alignment,
 		    vm_paddr_t boundary);
-boolean_t	vm_reserv_reclaim_inactive(int domain);
+int		vm_reserv_reclaim_inactive(int domain);
 void		vm_reserv_rename(vm_page_t m, vm_object_t new_object,
 		    vm_object_t old_object, vm_pindex_t old_object_offset);
 int		vm_reserv_size(int level);

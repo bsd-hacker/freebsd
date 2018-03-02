@@ -183,7 +183,8 @@ vm_pagequeue_cnt_add(struct vm_pagequeue *pq, int addend)
 
 void vm_domain_set(struct vm_domain *vmd);
 void vm_domain_clear(struct vm_domain *vmd);
-int vm_domain_allocate(struct vm_domain *vmd, int req, int npages);
+int vm_domain_allocate(struct vm_domain *vmd, int req, int npages,
+    bool partial);
 
 /*
  *      vm_pagequeue_domain:

@@ -897,35 +897,27 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 
 	/*
 	 * Fill in the bp->b_pages[] array with requested and optional   
-	 * read behind or read ahead pages.  Read behind pages are looked
-	 * up in a backward direction, down to a first cached page.  Same
-	 * for read ahead pages, but there is no need to shift the array
-	 * in case of encountering a cached page.
+	 * read behind or read ahead pages.
 	 */
 	i = bp->b_npages = 0;
-	if (rbehind) {
-		vm_pindex_t startpindex, tpindex;
-		vm_page_t p;
+	if (rbehind > 0) {
+		vm_pindex_t startpindex;
+		vm_page_t mpred;
 
 		VM_OBJECT_WLOCK(object);
 		startpindex = m[0]->pindex - rbehind;
-		if ((p = TAILQ_PREV(m[0], pglist, listq)) != NULL &&
-		    p->pindex >= startpindex)
-			startpindex = p->pindex + 1;
+		if ((mpred = TAILQ_PREV(m[0], pglist, listq)) != NULL &&
+		    mpred->pindex >= startpindex)
+			startpindex = mpred->pindex + 1;
 
-		/* tpindex is unsigned; beware of numeric underflow. */
-		for (tpindex = m[0]->pindex - 1;
-		    tpindex >= startpindex && tpindex < m[0]->pindex;
-		    tpindex--, i++) {
-			p = vm_page_alloc(object, tpindex, VM_ALLOC_NORMAL);
-			if (p == NULL) {
-				/* Shift the array. */
-				for (int j = 0; j < i; j++)
-					bp->b_pages[j] = bp->b_pages[j + 
-					    tpindex + 1 - startpindex]; 
-				break;
-			}
-			bp->b_pages[tpindex - startpindex] = p;
+		i = vm_page_alloc_pages_after(object, startpindex,
+		    VM_ALLOC_NORMAL, &bp->b_pages[0],
+		    m[0]->pindex - startpindex, mpred);
+		if (i < m[0]->pindex - startpindex) {
+			/* We have to drop the partially allocated run. */
+			for (int j = 0; j < i; j++)
+				vm_page_free(bp->b_pages[j]);
+			i = 0;
 		}
 
 		bp->b_pgbefore = i;
@@ -939,29 +931,24 @@ vnode_pager_generic_getpages(struct vnode *vp, vm_page_t *m, int count,
 		bp->b_pages[i] = m[j];
 	bp->b_npages += count;
 
-	if (rahead) {
-		vm_pindex_t endpindex, tpindex;
-		vm_page_t p;
+	if (rahead > 0) {
+		vm_pindex_t endpindex, startpindex;
+		vm_page_t msucc;
 
 		if (!VM_OBJECT_WOWNED(object))
 			VM_OBJECT_WLOCK(object);
-		endpindex = m[count - 1]->pindex + rahead + 1;
-		if ((p = TAILQ_NEXT(m[count - 1], listq)) != NULL &&
-		    p->pindex < endpindex)
-			endpindex = p->pindex;
+		startpindex = m[count - 1]->pindex + 1;
+		endpindex = startpindex + rahead;
+		if ((msucc = TAILQ_NEXT(m[count - 1], listq)) != NULL &&
+		    msucc->pindex < endpindex)
+			endpindex = msucc->pindex;
 		if (endpindex > object->size)
 			endpindex = object->size;
 
-		for (tpindex = m[count - 1]->pindex + 1;
-		    tpindex < endpindex; i++, tpindex++) {
-			p = vm_page_alloc(object, tpindex, VM_ALLOC_NORMAL);
-			if (p == NULL)
-				break;
-			bp->b_pages[i] = p;
-		}
-
-		bp->b_pgafter = i - bp->b_npages;
-		bp->b_npages = i;
+		bp->b_pgafter = vm_page_alloc_pages_after(object, startpindex,
+		    VM_ALLOC_NORMAL, &bp->b_pages[i], endpindex - startpindex,
+		    m[count - 1]);
+		bp->b_npages += bp->b_pgafter;
 	} else
 		bp->b_pgafter = 0;
 

@@ -643,7 +643,7 @@ vm_reserv_extend_contig(int req, vm_object_t object, vm_pindex_t pindex,
 		if (popmap_is_set(rv->popmap, index + i))
 			goto out;
 	}
-	if (!vm_domain_allocate(vmd, req, npages))
+	if (vm_domain_allocate(vmd, req, npages, false) == 0)
 		goto out;
 	for (i = 0; i < npages; i++)
 		vm_reserv_populate(rv, index + i);
@@ -792,7 +792,7 @@ vm_reserv_alloc_contig(int req, vm_object_t object, vm_pindex_t pindex, int doma
 	 */
 	m = NULL;
 	vmd = VM_DOMAIN(domain);
-	if (vm_domain_allocate(vmd, req, allocpages)) {
+	if (vm_domain_allocate(vmd, req, allocpages, false) == allocpages) {
 		vm_domain_free_lock(vmd);
 		m = vm_phys_alloc_contig(domain, allocpages, low, high,
 		    ulmax(alignment, VM_LEVEL_0_SIZE),
@@ -839,8 +839,10 @@ vm_reserv_alloc_contig(int req, vm_object_t object, vm_pindex_t pindex, int doma
 }
 
 /*
- * Attempts to extend an existing reservation and allocate the page to the
- * object.
+ * Attempts to extend an existing reservation and allocate the request page to
+ * the object.  Opportunistically returns up to "*countp" contiguous pages if
+ * the caller so requests.  The number of pages allocated is returned in
+ * "*countp".
  *
  * The page "mpred" must immediately precede the offset "pindex" within the
  * specified object.
@@ -849,12 +851,12 @@ vm_reserv_alloc_contig(int req, vm_object_t object, vm_pindex_t pindex, int doma
  */
 vm_page_t
 vm_reserv_extend(int req, vm_object_t object, vm_pindex_t pindex, int domain,
-    vm_page_t mpred)
+    vm_page_t mpred, int *countp)
 {
 	struct vm_domain *vmd;
 	vm_page_t m, msucc;
 	vm_reserv_t rv;
-	int index;
+	int avail, index, nalloc;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 
@@ -886,10 +888,30 @@ vm_reserv_extend(int req, vm_object_t object, vm_pindex_t pindex, int domain,
 		m = NULL;
 		goto out;
 	}
-	if (vm_domain_allocate(vmd, req, 1) == 0)
-		m = NULL;
-	else
+
+	/*
+	 * If the caller is prepared to accept multiple pages, try to allocate
+	 * them.  We are constrained by:
+	 *   1) the number of pages the caller can accept,
+	 *   2) the number of free pages in the reservation succeeding "index",
+	 *   3) the number of available free pages in the domain.
+	 */
+	nalloc = countp != NULL ? imin(VM_LEVEL_0_NPAGES - index, *countp) : 1;
+	if ((avail = vm_domain_allocate(vmd, req, nalloc, true)) > 0) {
 		vm_reserv_populate(rv, index);
+		if (countp != NULL) {
+			for (nalloc = 1; nalloc < avail; nalloc++) {
+				if (popmap_is_set(rv->popmap, ++index))
+					break;
+				vm_reserv_populate(rv, index);
+			}
+			if (nalloc < avail)
+				/* Return leftover pages. */
+				vm_domain_freecnt_inc(vmd, avail - nalloc);
+			*countp = nalloc;
+		}
+	} else
+		m = NULL;
 out:
 	vm_reserv_unlock(rv);
 
@@ -897,22 +919,25 @@ out:
 }
 
 /*
- * Allocates a page from an existing reservation.
+ * Allocates a new reservation for the object, and returns a page from that
+ * reservation.  Opportunistically returns up to *"countp" contiguous pages if
+ * the caller so requests.  The number of pages allocated is returned in
+ * "*countp".
  *
  * The page "mpred" must immediately precede the offset "pindex" within the
  * specified object.
  *
- * The object and free page queue must be locked.
+ * The object and per-domain free page queues must be locked.
  */
 vm_page_t
 vm_reserv_alloc_page(int req, vm_object_t object, vm_pindex_t pindex, int domain,
-    vm_page_t mpred)
+    vm_page_t mpred, int *countp)
 {
 	struct vm_domain *vmd;
 	vm_page_t m, msucc;
 	vm_pindex_t first, leftcap, rightcap;
 	vm_reserv_t rv;
-	int index;
+	int avail, index, nalloc;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 
@@ -981,16 +1006,24 @@ vm_reserv_alloc_page(int req, vm_object_t object, vm_pindex_t pindex, int domain
 
 	/*
 	 * Allocate and populate the new reservation.
+	 *
+	 * If the caller is prepared to accept multiple pages, try to allocate
+	 * them.  We are constrained by:
+	 *   1) the number of pages the caller can accept,
+	 *   2) the number of free pages in the reservation succeeding "index",
+	 *   3) the number of available free pages in the domain.
 	 */
+	index = VM_RESERV_INDEX(object, pindex);
 	m = NULL;
+	nalloc = countp != NULL ? imin(VM_LEVEL_0_NPAGES - index, *countp) : 1;
 	vmd = VM_DOMAIN(domain);
-	if (vm_domain_allocate(vmd, req, 1)) {
+	if ((avail = vm_domain_allocate(vmd, req, nalloc, true)) > 0) {
 		vm_domain_free_lock(vmd);
 		m = vm_phys_alloc_pages(domain, VM_FREEPOOL_DEFAULT,
 		    VM_LEVEL_0_ORDER);
 		vm_domain_free_unlock(vmd);
 		if (m == NULL) {
-			vm_domain_freecnt_inc(vmd, 1);
+			vm_domain_freecnt_inc(vmd, avail);
 			return (NULL);
 		}
 	} else
@@ -1000,11 +1033,22 @@ vm_reserv_alloc_page(int req, vm_object_t object, vm_pindex_t pindex, int domain
 	KASSERT(rv->pages == m,
 	    ("vm_reserv_alloc_page: reserv %p's pages is corrupted", rv));
 	vm_reserv_insert(rv, object, first);
-	index = VM_RESERV_INDEX(object, pindex);
 	vm_reserv_populate(rv, index);
+	m = &rv->pages[index];
+	if (countp != NULL) {
+		for (nalloc = 1; nalloc < avail; nalloc++) {
+			if (popmap_is_set(rv->popmap, ++index))
+				break;
+			vm_reserv_populate(rv, index);
+		}
+		if (nalloc < avail)
+			/* Return leftover pages. */
+			vm_domain_freecnt_inc(vmd, avail - nalloc);
+		*countp = nalloc;
+	}
 	vm_reserv_unlock(rv);
 
-	return (&rv->pages[index]);
+	return (m);
 }
 
 /*
@@ -1227,15 +1271,16 @@ vm_reserv_reclaim(vm_reserv_t rv)
 
 /*
  * Breaks the reservation at the head of the partially populated reservation
- * queue, releasing its free pages to the physical memory allocator.  Returns
- * TRUE if a reservation is broken and FALSE otherwise.
+ * queue, releasing its free pages to the physical memory allocator, and
+ * returns the number of pages released.
  *
  * The free page queue lock must be held.
  */
-boolean_t
+int
 vm_reserv_reclaim_inactive(int domain)
 {
 	vm_reserv_t rv;
+	int freed;
 
 	while ((rv = TAILQ_FIRST(&vm_rvq_partpop[domain])) != NULL) {
 		vm_reserv_lock(rv);
@@ -1243,11 +1288,12 @@ vm_reserv_reclaim_inactive(int domain)
 			vm_reserv_unlock(rv);
 			continue;
 		}
+		freed = VM_LEVEL_0_NPAGES - rv->popcnt;
 		vm_reserv_reclaim(rv);
 		vm_reserv_unlock(rv);
-		return (TRUE);
+		return (freed);
 	}
-	return (FALSE);
+	return (0);
 }
 
 /*
