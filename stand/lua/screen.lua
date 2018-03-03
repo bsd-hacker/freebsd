@@ -34,11 +34,14 @@ local core = require("core")
 local screen = {}
 
 -- Module exports
+screen.default_x = 0
+screen.default_y = 25
+
 function screen.clear()
 	if core.isSerialBoot() then
 		return
 	end
-	loader.printc("\027[H\027[J")
+	printc(core.KEYSTR_CSI .. "H" .. core.KEYSTR_CSI .. "J")
 end
 
 function screen.setcursor(x, y)
@@ -46,32 +49,32 @@ function screen.setcursor(x, y)
 		return
 	end
 
-	loader.printc("\027[" .. y .. ";" .. x .. "H")
+	printc(core.KEYSTR_CSI .. y .. ";" .. x .. "H")
 end
 
 function screen.setforeground(color_value)
 	if color.disabled then
 		return color_value
 	end
-	loader.printc(color.escapef(color_value))
+	printc(color.escapef(color_value))
 end
 
 function screen.setbackground(color_value)
 	if color.disabled then
 		return color_value
 	end
-	loader.printc(color.escapeb(color_value))
+	printc(color.escapeb(color_value))
 end
 
 function screen.defcolor()
-	loader.printc(color.default())
+	printc(color.default())
 end
 
 function screen.defcursor()
 	if core.isSerialBoot() then
 		return
 	end
-	loader.printc("\027[25;0H")
+	screen.setcursor(screen.default_x, screen.default_y)
 end
 
 return screen
