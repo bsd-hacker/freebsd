@@ -1,5 +1,8 @@
 --
+-- SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+--
 -- Copyright (c) 2015 Pedro Souza <pedrosouza@freebsd.org>
+-- Copyright (c) 2018 Kyle Evans <kevans@FreeBSD.org>
 -- All rights reserved.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -26,10 +29,31 @@
 -- $FreeBSD$
 --
 
-config = require("config");
-menu = require("menu");
-password = require("password");
+-- The cli module should be included first here. Some of the functions that it
+-- defines are necessary for the Lua-based loader to operate in general.
+-- Other modules will also need some of the functions it defines to safely
+-- execute loader commands.
+require("cli")
+local core = require("core")
+local config = require("config")
+local menu
+if not core.isMenuSkipped() then
+	menu = require("menu")
+end
+local password = require("password")
 
-config.load();
-password.check();
-menu.run();
+local result = lfs.attributes("/boot/lua/local.lua")
+-- Effectively discard any errors; we'll just act if it succeeds.
+if result ~= nil then
+	require("local")
+end
+
+config.load()
+password.check()
+-- menu might be disabled
+if menu ~= nil then
+	menu.run()
+else
+	-- Load kernel/modules before we go
+	config.loadelf()
+end

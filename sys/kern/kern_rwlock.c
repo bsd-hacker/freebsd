@@ -645,9 +645,12 @@ __rw_rlock_int(struct rwlock *rw LOCK_FILE_LINE_ARG_DEF)
 	WITNESS_CHECKORDER(&rw->lock_object, LOP_NEWORDER, file, line, NULL);
 
 	v = RW_READ_VALUE(rw);
-	if (__predict_false(LOCKSTAT_OOL_PROFILE_ENABLED(rw__acquire) ||
+	if (__predict_false(LOCKSTAT_PROFILE_ENABLED(rw__acquire) ||
 	    !__rw_rlock_try(rw, td, &v, true LOCK_FILE_LINE_ARG)))
 		__rw_rlock_hard(rw, td, v LOCK_FILE_LINE_ARG);
+	else
+		lock_profile_obtain_lock_success(&rw->lock_object, 0, 0,
+		    file, line);
 
 	LOCK_LOG_LOCK("RLOCK", &rw->lock_object, 0, 0, file, line);
 	WITNESS_LOCK(&rw->lock_object, 0, file, line);
@@ -760,21 +763,18 @@ __rw_runlock_hard(struct rwlock *rw, struct thread *td, uintptr_t v
 	if (SCHEDULER_STOPPED())
 		return;
 
+	if (__rw_runlock_try(rw, td, &v))
+		goto out_lockstat;
+
+	/*
+	 * Ok, we know we have waiters and we think we are the
+	 * last reader, so grab the turnstile lock.
+	 */
+	turnstile_chain_lock(&rw->lock_object);
+	v = RW_READ_VALUE(rw);
 	for (;;) {
 		if (__rw_runlock_try(rw, td, &v))
 			break;
-
-		/*
-		 * Ok, we know we have waiters and we think we are the
-		 * last reader, so grab the turnstile lock.
-		 */
-		turnstile_chain_lock(&rw->lock_object);
-		v = RW_READ_VALUE(rw);
-retry_ts:
-		if (__rw_runlock_try(rw, td, &v)) {
-			turnstile_chain_unlock(&rw->lock_object);
-			break;
-		}
 
 		v &= (RW_LOCK_WAITERS | RW_LOCK_WRITE_SPINNER);
 		MPASS(v & RW_LOCK_WAITERS);
@@ -803,7 +803,7 @@ retry_ts:
 		}
 		v |= RW_READERS_LOCK(1);
 		if (!atomic_fcmpset_rel_ptr(&rw->rw_lock, &v, setv))
-			goto retry_ts;
+			continue;
 		if (LOCK_LOG_TEST(&rw->lock_object, 0))
 			CTR2(KTR_LOCK, "%s: %p last succeeded with waiters",
 			    __func__, rw);
@@ -819,10 +819,11 @@ retry_ts:
 		MPASS(ts != NULL);
 		turnstile_broadcast(ts, queue);
 		turnstile_unpend(ts, TS_SHARED_LOCK);
-		turnstile_chain_unlock(&rw->lock_object);
 		td->td_rw_rlocks--;
 		break;
 	}
+	turnstile_chain_unlock(&rw->lock_object);
+out_lockstat:
 	LOCKSTAT_PROFILE_RELEASE_RWLOCK(rw__release, rw, LOCKSTAT_READER);
 }
 
@@ -841,9 +842,11 @@ _rw_runlock_cookie_int(struct rwlock *rw LOCK_FILE_LINE_ARG_DEF)
 	td = curthread;
 	v = RW_READ_VALUE(rw);
 
-	if (__predict_false(LOCKSTAT_OOL_PROFILE_ENABLED(rw__release) ||
+	if (__predict_false(LOCKSTAT_PROFILE_ENABLED(rw__release) ||
 	    !__rw_runlock_try(rw, td, &v)))
 		__rw_runlock_hard(rw, td, v LOCK_FILE_LINE_ARG);
+	else
+		lock_profile_release_lock(&rw->lock_object);
 
 	TD_LOCKS_DEC(curthread);
 }
@@ -872,7 +875,7 @@ __rw_wlock_hard(volatile uintptr_t *c, uintptr_t v LOCK_FILE_LINE_ARG_DEF)
 #ifdef ADAPTIVE_RWLOCKS
 	int spintries = 0;
 	int i, n;
-	int sleep_reason = 0;
+	enum { READERS, WRITER } sleep_reason;
 #endif
 	uintptr_t x;
 #ifdef LOCK_PROFILING
@@ -953,9 +956,11 @@ __rw_wlock_hard(volatile uintptr_t *c, uintptr_t v LOCK_FILE_LINE_ARG_DEF)
 		 * running on another CPU, spin until the owner stops
 		 * running or the state of the lock changes.
 		 */
-		sleep_reason = 1;
-		owner = lv_rw_wowner(v);
-		if (!(v & RW_LOCK_READ) && TD_IS_RUNNING(owner)) {
+		if (!(v & RW_LOCK_READ)) {
+			sleep_reason = WRITER;
+			owner = lv_rw_wowner(v);
+			if (!TD_IS_RUNNING(owner))
+				goto ts;
 			if (LOCK_LOG_TEST(&rw->lock_object, 0))
 				CTR3(KTR_LOCK, "%s: spinning on %p held by %p",
 				    __func__, rw, owner);
@@ -970,9 +975,10 @@ __rw_wlock_hard(volatile uintptr_t *c, uintptr_t v LOCK_FILE_LINE_ARG_DEF)
 			KTR_STATE0(KTR_SCHED, "thread", sched_tdname(curthread),
 			    "running");
 			continue;
-		}
-		if ((v & RW_LOCK_READ) && RW_READERS(v) &&
-		    spintries < rowner_retries) {
+		} else if (RW_READERS(v) > 0) {
+			sleep_reason = READERS;
+			if (spintries == rowner_retries)
+				goto ts;
 			if (!(v & RW_LOCK_WRITE_SPINNER)) {
 				if (!atomic_fcmpset_ptr(&rw->rw_lock, &v,
 				    v | RW_LOCK_WRITE_SPINNER)) {
@@ -990,15 +996,15 @@ __rw_wlock_hard(volatile uintptr_t *c, uintptr_t v LOCK_FILE_LINE_ARG_DEF)
 				if ((v & RW_LOCK_WRITE_SPINNER) == 0)
 					break;
 			}
+#ifdef KDTRACE_HOOKS
+			lda.spin_cnt += i;
+#endif
 			KTR_STATE0(KTR_SCHED, "thread", sched_tdname(curthread),
 			    "running");
-#ifdef KDTRACE_HOOKS
-			lda.spin_cnt += rowner_loops - i;
-#endif
 			if (i < rowner_loops)
 				continue;
-			sleep_reason = 2;
 		}
+ts:
 #endif
 		ts = turnstile_trywait(&rw->lock_object);
 		v = RW_READ_VALUE(rw);
@@ -1018,7 +1024,7 @@ retry_ts:
 				turnstile_cancel(ts);
 				continue;
 			}
-		} else if (RW_READERS(v) > 0 && sleep_reason == 1) {
+		} else if (RW_READERS(v) > 0 && sleep_reason == WRITER) {
 			turnstile_cancel(ts);
 			continue;
 		}

@@ -1161,6 +1161,10 @@ mprsas_complete_all_commands(struct mpr_softc *sc)
 	/* complete all commands with a NULL reply */
 	for (i = 1; i < sc->num_reqs; i++) {
 		cm = &sc->commands[i];
+		if (cm->cm_state == MPR_CM_STATE_FREE)
+			continue;
+
+		cm->cm_state = MPR_CM_STATE_BUSY;
 		cm->cm_reply = NULL;
 		completed = 0;
 
@@ -1173,9 +1177,7 @@ mprsas_complete_all_commands(struct mpr_softc *sc)
 			    cm, cm->cm_state, cm->cm_ccb);
 			cm->cm_complete(sc, cm);
 			completed = 1;
-		}
-
-		if (cm->cm_flags & MPR_CM_FLAGS_WAKEUP) {
+		} else if (cm->cm_flags & MPR_CM_FLAGS_WAKEUP) {
 			mprsas_log_command(cm, MPR_RECOVERY,
 			    "waking up cm %p state %x ccb %p for diag reset\n", 
 			    cm, cm->cm_state, cm->cm_ccb);
@@ -1183,9 +1185,6 @@ mprsas_complete_all_commands(struct mpr_softc *sc)
 			completed = 1;
 		}
 
-		if (cm->cm_sc->io_cmds_active != 0)
-			cm->cm_sc->io_cmds_active--;
-		
 		if ((completed == 0) && (cm->cm_state != MPR_CM_STATE_FREE)) {
 			/* this should never happen, but if it does, log */
 			mprsas_log_command(cm, MPR_RECOVERY,
@@ -1194,6 +1193,8 @@ mprsas_complete_all_commands(struct mpr_softc *sc)
 			    cm->cm_ccb);
 		}
 	}
+
+	sc->io_cmds_active = 0;
 }
 
 void
@@ -1248,6 +1249,11 @@ mprsas_tm_timeout(void *data)
 
 	mprsas_log_command(tm, MPR_INFO|MPR_RECOVERY, "task mgmt %p timed "
 	    "out\n", tm);
+
+	KASSERT(tm->cm_state == MPR_CM_STATE_INQUEUE,
+	    ("command not inqueue\n"));
+
+	tm->cm_state = MPR_CM_STATE_BUSY;
 	mpr_reinit(sc);
 }
 
@@ -1657,7 +1663,7 @@ mprsas_scsiio_timeout(void *data)
 	 * and been re-used, though this is unlikely.
 	 */
 	mpr_intr_locked(sc);
-	if (cm->cm_state == MPR_CM_STATE_FREE) {
+	if (cm->cm_state != MPR_CM_STATE_INQUEUE) {
 		mprsas_log_command(cm, MPR_XINFO,
 		    "SCSI command %p almost timed out\n", cm);
 		return;
@@ -1833,7 +1839,7 @@ mprsas_build_nvme_unmap(struct mpr_softc *sc, struct mpr_command *cm,
 
 	/* Build NVMe DSM command */
 	c = (struct nvme_command *) req->NVMe_Command;
-	c->opc = NVME_OPC_DATASET_MANAGEMENT;
+	c->opc_fuse = NVME_CMD_SET_OPC(NVME_OPC_DATASET_MANAGEMENT);
 	c->nsid = htole32(csio->ccb_h.target_lun + 1);
 	c->cdw10 = htole32(ndesc - 1);
 	c->cdw11 = htole32(NVME_DSM_ATTR_DEALLOCATE);
@@ -2257,22 +2263,26 @@ mpr_sc_failed_io_info(struct mpr_softc *sc, struct ccb_scsiio *csio,
  * Returns appropriate scsi_status
  */
 static u8
-mprsas_nvme_trans_status_code(struct nvme_status nvme_status,
+mprsas_nvme_trans_status_code(uint16_t nvme_status,
     struct mpr_command *cm)
 {
 	u8 status = MPI2_SCSI_STATUS_GOOD;
 	int skey, asc, ascq;
 	union ccb *ccb = cm->cm_complete_data;
 	int returned_sense_len;
+	uint8_t sct, sc;
+
+	sct = NVME_STATUS_GET_SCT(nvme_status);
+	sc = NVME_STATUS_GET_SC(nvme_status);
 
 	status = MPI2_SCSI_STATUS_CHECK_CONDITION;
 	skey = SSD_KEY_ILLEGAL_REQUEST;
 	asc = SCSI_ASC_NO_SENSE;
 	ascq = SCSI_ASCQ_CAUSE_NOT_REPORTABLE;
 
-	switch (nvme_status.sct) {
+	switch (sct) {
 	case NVME_SCT_GENERIC:
-		switch (nvme_status.sc) {
+		switch (sc) {
 		case NVME_SC_SUCCESS:
 			status = MPI2_SCSI_STATUS_GOOD;
 			skey = SSD_KEY_NO_SENSE;
@@ -2345,7 +2355,7 @@ mprsas_nvme_trans_status_code(struct nvme_status nvme_status,
 		}
 		break;
 	case NVME_SCT_COMMAND_SPECIFIC:
-		switch (nvme_status.sc) {
+		switch (sc) {
 		case NVME_SC_INVALID_FORMAT:
 			status = MPI2_SCSI_STATUS_CHECK_CONDITION;
 			skey = SSD_KEY_ILLEGAL_REQUEST;
@@ -2361,7 +2371,7 @@ mprsas_nvme_trans_status_code(struct nvme_status nvme_status,
 		}
 		break;
 	case NVME_SCT_MEDIA_ERROR:
-		switch (nvme_status.sc) {
+		switch (sc) {
 		case NVME_SC_WRITE_FAULTS:
 			status = MPI2_SCSI_STATUS_CHECK_CONDITION;
 			skey = SSD_KEY_MEDIUM_ERROR;
@@ -2492,6 +2502,7 @@ mprsas_scsiio_complete(struct mpr_softc *sc, struct mpr_command *cm)
 
 	if (cm->cm_state == MPR_CM_STATE_TIMEDOUT) {
 		TAILQ_REMOVE(&cm->cm_targ->timedout_commands, cm, cm_recovery);
+		cm->cm_state = MPR_CM_STATE_BUSY;
 		if (cm->cm_reply != NULL)
 			mprsas_log_command(cm, MPR_RECOVERY,
 			    "completed timedout cm %p ccb %p during recovery "

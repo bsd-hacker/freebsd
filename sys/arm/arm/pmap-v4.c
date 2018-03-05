@@ -1725,6 +1725,8 @@ pmap_page_init(vm_page_t m)
 
 	TAILQ_INIT(&m->md.pv_list);
 	m->md.pv_memattr = VM_MEMATTR_DEFAULT;
+	m->md.pvh_attrs = 0;
+	m->md.pv_kva = 0;
 }
 
 /*
@@ -3248,7 +3250,7 @@ do_l2b_alloc:
 			if ((flags & PMAP_ENTER_NOSLEEP) == 0) {
 				PMAP_UNLOCK(pmap);
 				rw_wunlock(&pvh_global_lock);
-				VM_WAIT;
+				vm_wait(NULL);
 				rw_wlock(&pvh_global_lock);
 				PMAP_LOCK(pmap);
 				goto do_l2b_alloc;

@@ -829,10 +829,8 @@ _thread_lock(struct thread *td)
 		WITNESS_LOCK(&m->lock_object, LOP_EXCLUSIVE, file, line);
 		return;
 	}
-	if (m->mtx_recurse != 0)
-		m->mtx_recurse--;
-	else
-		_mtx_release_lock_quick(m);
+	MPASS(m->mtx_recurse == 0);
+	_mtx_release_lock_quick(m);
 slowpath_unlocked:
 	spinlock_exit();
 slowpath_noirq:
@@ -886,9 +884,10 @@ thread_lock_flags_(struct thread *td, int opts, const char *file, int line)
 	if (__predict_false(doing_lockprof))
 		spin_time -= lockstat_nsecs(&td->td_lock->lock_object);
 #endif
+	spinlock_enter();
+
 	for (;;) {
 retry:
-		spinlock_enter();
 		m = td->td_lock;
 		thread_lock_validate(m, opts, file, line);
 		v = MTX_READ_VALUE(m);
@@ -900,6 +899,7 @@ retry:
 			}
 			if (v == tid) {
 				m->mtx_recurse++;
+				MPASS(m == td->td_lock);
 				break;
 			}
 			lock_profile_obtain_lock_failed(&m->lock_object,
@@ -912,15 +912,18 @@ retry:
 				} else {
 					_mtx_lock_indefinite_check(m, &lda);
 				}
-				if (m != td->td_lock)
+				if (m != td->td_lock) {
+					spinlock_enter();
 					goto retry;
+				}
 				v = MTX_READ_VALUE(m);
 			} while (v != MTX_UNOWNED);
 			spinlock_enter();
 		}
 		if (m == td->td_lock)
 			break;
-		__mtx_unlock_spin(m);	/* does spinlock_exit() */
+		MPASS(m->mtx_recurse == 0);
+		_mtx_release_lock_quick(m);
 	}
 	LOCK_LOG_LOCK("LOCK", &m->lock_object, opts, m->mtx_recurse, file,
 	    line);
@@ -1224,6 +1227,31 @@ _mtx_lock_indefinite_check(struct mtx *m, struct lock_delay_arg *ldap)
 		panic("spin lock held too long");
 	}
 	cpu_spinwait();
+}
+
+void
+mtx_spin_wait_unlocked(struct mtx *m)
+{
+	struct lock_delay_arg lda;
+
+	KASSERT(m->mtx_lock != MTX_DESTROYED,
+	    ("%s() of destroyed mutex %p", __func__, m));
+	KASSERT(LOCK_CLASS(&m->lock_object) == &lock_class_mtx_spin,
+	    ("%s() of sleep mutex %p (%s)", __func__, m,
+	    m->lock_object.lo_name));
+	KASSERT(!mtx_owned(m), ("%s() waiting on myself on lock %p (%s)", __func__, m,
+	    m->lock_object.lo_name));
+
+	lda.spin_cnt = 0;
+
+	while (atomic_load_acq_ptr(&m->mtx_lock) != MTX_UNOWNED) {
+		if (__predict_true(lda.spin_cnt < 10000000)) {
+			cpu_spinwait();
+			lda.spin_cnt++;
+		} else {
+			_mtx_lock_indefinite_check(m, &lda);
+		}
+	}
 }
 
 #ifdef DDB

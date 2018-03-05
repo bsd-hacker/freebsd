@@ -74,6 +74,7 @@ SUBDIR=	\
 	bwi \
 	bwn \
 	${_bytgpio} \
+	${_chvgpio} \
 	cam \
 	${_cardbus} \
 	${_carp} \
@@ -360,7 +361,7 @@ SUBDIR=	\
 	snp \
 	sound \
 	${_speaker} \
-	spigen \
+	spi \
 	${_splash} \
 	${_sppp} \
 	ste \
@@ -636,6 +637,7 @@ _amdtemp=	amdtemp
 _arcmsr=	arcmsr
 _asmc=		asmc
 _bytgpio=	bytgpio
+_chvgpio=	chvgpio
 _ciss=		ciss
 _chromebook_platform=	chromebook_platform
 _cmx=		cmx
@@ -811,10 +813,6 @@ _cloudabi64=	cloudabi64
 .if ${MACHINE_ARCH:Marmv[67]*} != "" || ${MACHINE_CPUARCH} == "aarch64"
 _bcm283x_clkman=  bcm283x_clkman
 _bcm283x_pwm=  bcm283x_pwm
-.endif
-
-.if ${MACHINE_ARCH:Marmv[67]*} != ""
-_ffec=		ffec
 .endif
 
 SUBDIR+=${MODULES_EXTRA}
