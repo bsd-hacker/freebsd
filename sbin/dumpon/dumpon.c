@@ -212,13 +212,13 @@ check_size(int fd, const char *fn)
 
 #ifdef HAVE_CRYPTO
 static void
-genkey(const char *pubkeyfile, struct diocskerneldump_arg *kda)
+genkey(const char *pubkeyfile, struct diocskerneldump_arg *kdap)
 {
 	FILE *fp;
 	RSA *pubkey;
 
 	assert(pubkeyfile != NULL);
-	assert(kda != NULL);
+	assert(kdap != NULL);
 
 	fp = NULL;
 	pubkey = NULL;
@@ -242,21 +242,21 @@ genkey(const char *pubkeyfile, struct diocskerneldump_arg *kda)
 	if (pubkey == NULL)
 		errx(1, "Unable to read data from %s.", pubkeyfile);
 
-	kda->kda_encryptedkeysize = RSA_size(pubkey);
-	if (kda->kda_encryptedkeysize > KERNELDUMP_ENCKEY_MAX_SIZE) {
+	kdap->kda_encryptedkeysize = RSA_size(pubkey);
+	if (kdap->kda_encryptedkeysize > KERNELDUMP_ENCKEY_MAX_SIZE) {
 		errx(1, "Public key has to be at most %db long.",
 		    8 * KERNELDUMP_ENCKEY_MAX_SIZE);
 	}
 
-	kda->kda_encryptedkey = calloc(1, kda->kda_encryptedkeysize);
-	if (kda->kda_encryptedkey == NULL)
+	kdap->kda_encryptedkey = calloc(1, kdap->kda_encryptedkeysize);
+	if (kdap->kda_encryptedkey == NULL)
 		err(1, "Unable to allocate encrypted key");
 
-	kda->kda_encryption = KERNELDUMP_ENC_AES_256_CBC;
-	arc4random_buf(kda->kda_key, sizeof(kda->kda_key));
-	if (RSA_public_encrypt(sizeof(kda->kda_key), kda->kda_key,
-	    kda->kda_encryptedkey, pubkey,
-	    RSA_PKCS1_PADDING) != (int)kda->kda_encryptedkeysize) {
+	kdap->kda_encryption = KERNELDUMP_ENC_AES_256_CBC;
+	arc4random_buf(kdap->kda_key, sizeof(kdap->kda_key));
+	if (RSA_public_encrypt(sizeof(kdap->kda_key), kdap->kda_key,
+	    kdap->kda_encryptedkey, pubkey,
+	    RSA_PKCS1_PADDING) != (int)kdap->kda_encryptedkeysize) {
 		errx(1, "Unable to encrypt the one-time key.");
 	}
 	RSA_free(pubkey);
@@ -285,44 +285,70 @@ listdumpdev(void)
 		(void)strlcpy(dumpdev, _PATH_DEVNULL, sizeof(dumpdev));
 
 	if (verbose)
-		printf("kernel dumps on %s\n", dumpdev);
+		printf("kernel dumps on ");
+	printf("%s\n", dumpdev);
 
 	/* If netdump is enabled, print the configuration parameters. */
-	fd = open(_PATH_NETDUMP, O_RDONLY);
-	if (fd < 0) {
-		if (errno != ENOENT)
-			err(EX_OSERR, "opening %s", _PATH_NETDUMP);
-		return;
-	}
-	if (ioctl(fd, NETDUMPGCONF, &ndconf) != 0) {
-		if (errno != ENXIO)
-			err(EX_OSERR, "ioctl(NETDUMPGCONF)");
+	if (verbose) {
+		fd = open(_PATH_NETDUMP, O_RDONLY);
+		if (fd < 0) {
+			if (errno != ENOENT)
+				err(EX_OSERR, "opening %s", _PATH_NETDUMP);
+			return;
+		}
+		if (ioctl(fd, NETDUMPGCONF, &ndconf) != 0) {
+			if (errno != ENXIO)
+				err(EX_OSERR, "ioctl(NETDUMPGCONF)");
+			(void)close(fd);
+			return;
+		}
+
+		printf("server address: %s\n", inet_ntoa(ndconf.ndc_server));
+		printf("client address: %s\n", inet_ntoa(ndconf.ndc_client));
+		printf("gateway address: %s\n", inet_ntoa(ndconf.ndc_gateway));
 		(void)close(fd);
-		return;
+	}
+}
+
+static int
+opendumpdev(const char *arg, char *dumpdev)
+{
+	int fd, i;
+
+	if (strncmp(arg, _PATH_DEV, sizeof(_PATH_DEV) - 1) == 0)
+		strlcpy(dumpdev, arg, PATH_MAX);
+	else {
+		i = snprintf(dumpdev, PATH_MAX, "%s%s", _PATH_DEV, arg);
+		if (i < 0)
+			err(EX_OSERR, "%s", arg);
+		if (i >= PATH_MAX)
+			errc(EX_DATAERR, EINVAL, "%s", arg);
 	}
 
-	printf("server address: %s\n", inet_ntoa(ndconf.ndc_server));
-	printf("client address: %s\n", inet_ntoa(ndconf.ndc_client));
-	printf("gateway address: %s\n", inet_ntoa(ndconf.ndc_gateway));
-	(void)close(fd);
+	fd = open(dumpdev, O_RDONLY);
+	if (fd < 0)
+		err(EX_OSFILE, "%s", dumpdev);
+	return (fd);
 }
 
 int
 main(int argc, char *argv[])
 {
+	char dumpdev[PATH_MAX];
+	struct diocskerneldump_arg _kda, *kdap;
 	struct netdump_conf ndconf;
-	struct diocskerneldump_arg kda;
 	struct addrinfo hints, *res;
 	const char *dev, *pubkeyfile, *server, *client, *gateway;
-	int ch, do_listdumpdev = 0, error, fd, i;
-	bool enable, gzip, zstd;
+	int ch, error, fd;
+	bool enable, gzip, list, netdump, zstd;
 
-	gzip = zstd = false;
+	gzip = list = netdump = zstd = false;
+	kdap = NULL;
 	pubkeyfile = NULL;
 	server = client = gateway = NULL;
 
 	while ((ch = getopt(argc, argv, "c:g:k:ls:vZz")) != -1)
-		switch((char)ch) {
+		switch ((char)ch) {
 		case 'c':
 			client = optarg;
 			break;
@@ -333,7 +359,7 @@ main(int argc, char *argv[])
 			pubkeyfile = optarg;
 			break;
 		case 'l':
-			do_listdumpdev = 1;
+			list = true;
 			break;
 		case 's':
 			server = optarg;
@@ -357,7 +383,7 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (do_listdumpdev) {
+	if (list) {
 		listdumpdev();
 		exit(EX_OK);
 	}
@@ -365,22 +391,44 @@ main(int argc, char *argv[])
 	if (argc != 1)
 		usage();
 
-	if (server != NULL && client != NULL)
+#ifndef HAVE_CRYPTO
+	if (pubkeyfile != NULL)
+		errx("Unable to use the public key. Recompile dumpon with OpenSSL support.");
+#endif
+
+	if (server != NULL && client != NULL) {
+		enable = true;
 		dev = _PATH_NETDUMP;
-	else if (server == NULL && client == NULL && argc > 0) {
-		dev = argv[0];
-		enable = strcmp(dev, "off") != 0;
+		netdump = true;
+		kdap = &ndconf.ndc_kda;
+	} else if (server == NULL && client == NULL && argc > 0) {
+		enable = strcmp(argv[0], "off") != 0;
+		dev = enable ? argv[0] : _PATH_DEVNULL;
+		netdump = false;
+		kdap = &_kda;
 	} else
 		usage();
 
-#ifndef HAVE_CRYPTO
-	if (pubkeyfile != NULL) {
-		enable = false;
-		warnx("Unable to use the public key. Recompile dumpon with OpenSSL support.");
-	}
-#endif
+	fd = opendumpdev(dev, dumpdev);
+	if (!netdump && !gzip)
+		check_size(fd, dumpdev);
 
-	if (server != NULL) {
+	bzero(kdap, sizeof(*kdap));
+	kdap->kda_enable = 0;
+	if (ioctl(fd, DIOCSKERNELDUMP, kdap) != 0)
+		err(EX_OSERR, "ioctl(DIOCSKERNELDUMP)");
+	if (!enable)
+		exit(EX_OK);
+
+	explicit_bzero(kdap, sizeof(*kdap));
+	kdap->kda_enable = 1;
+	kdap->kda_compression = KERNELDUMP_COMP_NONE;
+	if (zstd)
+		kdap->kda_compression = KERNELDUMP_COMP_ZSTD;
+	else if (gzip)
+		kdap->kda_compression = KERNELDUMP_COMP_GZIP;
+
+	if (netdump) {
 		memset(&hints, 0, sizeof(hints));
 		hints.ai_family = AF_INET;
 		hints.ai_protocol = IPPROTO_UDP;
@@ -411,71 +459,36 @@ main(int argc, char *argv[])
 		if (inet_aton(gateway, &ndconf.ndc_gateway) == 0)
 			errx(EX_USAGE, "invalid gateway address '%s'", gateway);
 
-		fd = open(dev, O_RDONLY);
-		if (fd < 0)
-			err(EX_OSFILE, "%s", dev);
-		if (ioctl(fd, NETDUMPSCONF, &ndconf) != 0)
-			err(EX_OSERR, "ioctl(NETDUMPSCONF)");
-	} else if (enable) {
-		char tmp[PATH_MAX];
-		char *dumpdev;
-
-		if (strncmp(argv[0], _PATH_DEV, sizeof(_PATH_DEV) - 1) == 0) {
-			dumpdev = argv[0];
-		} else {
-			i = snprintf(tmp, PATH_MAX, "%s%s", _PATH_DEV, argv[0]);
-			if (i < 0) {
-				err(EX_OSERR, "%s", argv[0]);
-			} else if (i >= PATH_MAX) {
-				errno = EINVAL;
-				err(EX_DATAERR, "%s", argv[0]);
-			}
-			dumpdev = tmp;
-		}
-		fd = open(dumpdev, O_RDONLY);
-		if (fd < 0)
-			err(EX_OSFILE, "%s", dumpdev);
-
-		if (!gzip && !zstd)
-			check_size(fd, dumpdev);
-
-		bzero(&kda, sizeof(kda));
-		kda.kda_enable = 0;
-		i = ioctl(fd, DIOCSKERNELDUMP, &kda);
-		explicit_bzero(&kda, sizeof(kda));
-
 #ifdef HAVE_CRYPTO
 		if (pubkeyfile != NULL)
-			genkey(pubkeyfile, &kda);
+			genkey(pubkeyfile, kdap);
 #endif
-
-		kda.kda_enable = 1;
-		kda.kda_compression = KERNELDUMP_COMP_NONE;
-		if (zstd)
-			kda.kda_compression = KERNELDUMP_COMP_ZSTD;
-		else if (gzip)
-			kda.kda_compression = KERNELDUMP_COMP_GZIP;
-		i = ioctl(fd, DIOCSKERNELDUMP, &kda);
-		explicit_bzero(kda.kda_encryptedkey, kda.kda_encryptedkeysize);
-		free(kda.kda_encryptedkey);
-		explicit_bzero(&kda, sizeof(kda));
-		if (i == 0 && verbose)
-			printf("kernel dumps on %s\n", dumpdev);
-		if (i < 0)
-			err(EX_OSERR, "ioctl(DIOCSKERNELDUMP)");
+		error = ioctl(fd, NETDUMPSCONF, &ndconf);
+		if (error != 0)
+			error = errno;
+		explicit_bzero(kdap->kda_encryptedkey,
+		    kdap->kda_encryptedkeysize);
+		free(kdap->kda_encryptedkey);
+		explicit_bzero(kdap, sizeof(*kdap));
+		if (error != 0)
+			errc(EX_OSERR, error, "ioctl(NETDUMPSCONF)");
 	} else {
-		fd = open(_PATH_DEVNULL, O_RDONLY);
-		if (fd < 0)
-			err(EX_OSFILE, "%s", _PATH_DEVNULL);
-
-		kda.kda_enable = 0;
-		i = ioctl(fd, DIOCSKERNELDUMP, &kda);
-		explicit_bzero(&kda, sizeof(kda));
-		if (i == 0 && verbose)
-			printf("kernel dumps disabled\n");
-		if (i < 0)
-			err(EX_OSERR, "ioctl(DIOCSKERNELDUMP)");
+#ifdef HAVE_CRYPTO
+		if (pubkeyfile != NULL)
+			genkey(pubkeyfile, kdap);
+#endif
+		error = ioctl(fd, DIOCSKERNELDUMP, kdap);
+		if (error != 0)
+			error = errno;
+		explicit_bzero(kdap->kda_encryptedkey,
+		    kdap->kda_encryptedkeysize);
+		free(kdap->kda_encryptedkey);
+		explicit_bzero(kdap, sizeof(*kdap));
+		if (error != 0)
+			errc(EX_OSERR, error, "ioctl(DIOCSKERNELDUMP)");
 	}
+	if (verbose)
+		printf("kernel dumps on %s\n", dumpdev);
 
-	exit (0);
+	exit(EX_OK);
 }

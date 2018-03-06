@@ -31,6 +31,7 @@
 #define	_NETINET_NETDUMP_H_
 
 #include <sys/types.h>
+#include <sys/disk.h>
 #include <sys/ioccom.h>
 
 #include <net/if.h>
@@ -59,6 +60,7 @@ struct netdump_ack {
 } __packed;
 
 struct netdump_conf {
+	struct diocskerneldump_arg ndc_kda;
 	char		ndc_iface[IFNAMSIZ];
 	struct in_addr	ndc_server;
 	struct in_addr	ndc_client;

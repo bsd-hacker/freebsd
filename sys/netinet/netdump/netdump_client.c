@@ -1140,6 +1140,14 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 			break;
 
 		conf = (struct netdump_conf *)addr;
+		if (conf->ndc_kda.kda_enable == 0) {
+			if (nd_enabled) {
+				nd_enabled = 0;
+				netdump_mbuf_drain();
+			}
+			break;
+		}
+
 		if (netdump_configure(conf) != 0) {
 			error = EINVAL;
 			break;
@@ -1153,8 +1161,10 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		dumper.maxiosize = MAXDUMPPGS * PAGE_SIZE;
 		dumper.mediaoffset = 0;
 		dumper.mediasize = 0;
-		error = set_dumper(&dumper, conf->ndc_iface, td, 0, 0, NULL, 0,
-		    NULL);
+		error = set_dumper(&dumper, conf->ndc_iface, td,
+		    conf->ndc_kda.kda_compression, conf->ndc_kda.kda_encryption,
+		    conf->ndc_kda.kda_key, conf->ndc_kda.kda_encryptedkeysize,
+		    conf->ndc_kda.kda_encryptedkey);
 		if (error != 0) {
 			nd_enabled = 0;
 			netdump_mbuf_drain();
