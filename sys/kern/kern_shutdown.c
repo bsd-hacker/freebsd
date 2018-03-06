@@ -1369,11 +1369,13 @@ dump_start(struct dumperinfo *di, struct kerneldumpheader *kdh)
 			kdh->dumpextent = htod64(dumpextent);
 		}
 
-		/* The offset at which to begin writing the dump. */
+		/*
+		 * The offset at which to begin writing the dump.
+		 */
 		di->dumpoff = di->mediaoffset + di->mediasize - di->blocksize -
 		    dumpextent;
 	}
-
+	di->origdumpoff = di->dumpoff;
 	return (error);
 }
 
@@ -1462,18 +1464,13 @@ dump_finish(struct dumperinfo *di, struct kerneldumpheader *kdh)
 		 * We now know the size of the compressed dump, so update the
 		 * header accordingly and recompute parity.
 		 */
-		kdh->dumplength = htod64(di->dumpoff -
-		    (di->mediaoffset + di->mediasize - di->blocksize - extent));
+		kdh->dumplength = htod64(di->dumpoff - di->origdumpoff);
 		kdh->parity = 0;
 		kdh->parity = kerneldump_parity(kdh);
 
 		compressor_reset(di->kdcomp->kdc_stream);
 	}
 
-	/*
-	 * Write kerneldump headers at the beginning and end of the dump extent.
-	 * Write the key after the leading header.
-	 */
 	error = dump_write_headers(di, kdh);
 	if (error != 0)
 		return (error);

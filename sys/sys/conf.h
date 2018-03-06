@@ -344,8 +344,11 @@ struct dumperinfo {
 	u_int	maxiosize;	/* Max size allowed for an individual I/O */
 	off_t	mediaoffset;	/* Initial offset in bytes. */
 	off_t	mediasize;	/* Space available in bytes. */
+
+	/* MI kernel dump state. */
 	void	*blockbuf;	/* Buffer for padding shorter dump blocks */
 	off_t	dumpoff;	/* Offset of ongoing kernel dump. */
+	off_t	origdumpoff;	/* Starting dump offset. */
 	struct kerneldumpcrypto	*kdcrypto; /* Kernel dump crypto. */
 	struct kerneldumpcomp *kdcomp; /* Kernel dump compression. */
 };
