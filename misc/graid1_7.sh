@@ -32,6 +32,9 @@
 # g_dev_taste: make_dev_p() failed
 # (gp->name=gptid/7c598e03-19cb-11e7-b62b-001e6756c168, error=17)
 
+# Deadlock seen:
+# https://people.freebsd.org/~pho/stress/log/graid1_7.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
@@ -41,8 +44,6 @@ gmirror load > /dev/null 2>&1 && unload=1
 old=`sysctl -n kern.geom.mirror.debug`
 sysctl kern.geom.mirror.debug=-1 | grep -q -- -1 ||
     sysctl kern.geom.mirror.debug=$old > /dev/null
-kldstat | grep -q geom_nop || { gnop load 2>/dev/null || exit 0; }
-gnop status || exit 1
 
 u1=$mdstart
 s=0
