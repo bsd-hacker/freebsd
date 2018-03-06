@@ -280,7 +280,8 @@ static void		vm_reserv_depopulate(vm_reserv_t rv, int index);
 static vm_reserv_t	vm_reserv_from_page(vm_page_t m);
 static boolean_t	vm_reserv_has_pindex(vm_reserv_t rv,
 			    vm_pindex_t pindex);
-static void		vm_reserv_populate(vm_reserv_t rv, int index);
+static void		vm_reserv_populate(vm_reserv_t rv, int index,
+			    int count);
 static void		vm_reserv_reclaim(vm_reserv_t rv);
 
 /*
@@ -523,10 +524,10 @@ vm_reserv_has_pindex(vm_reserv_t rv, vm_pindex_t pindex)
  * Increases the given reservation's population count.  Moves the reservation
  * to the tail of the partially populated reservation queue.
  *
- * The free page queue must be locked.
+ * The reservation must be locked.
  */
 static void
-vm_reserv_populate(vm_reserv_t rv, int index)
+vm_reserv_populate(vm_reserv_t rv, int index, int count)
 {
 
 	vm_reserv_assert_locked(rv);
@@ -534,18 +535,21 @@ vm_reserv_populate(vm_reserv_t rv, int index)
 	    __FUNCTION__, rv, rv->object, rv->popcnt, rv->inpartpopq);
 	KASSERT(rv->object != NULL,
 	    ("vm_reserv_populate: reserv %p is free", rv));
-	KASSERT(popmap_is_clear(rv->popmap, index),
-	    ("vm_reserv_populate: reserv %p's popmap[%d] is set", rv,
-	    index));
-	KASSERT(rv->popcnt < VM_LEVEL_0_NPAGES,
+	KASSERT(rv->popcnt >= 0 && rv->popcnt + count <= VM_LEVEL_0_NPAGES,
 	    ("vm_reserv_populate: reserv %p is already full", rv));
 	KASSERT(rv->pages->psind == 0,
 	    ("vm_reserv_populate: reserv %p is already promoted", rv));
 	KASSERT(rv->domain >= 0 && rv->domain < vm_ndomains,
 	    ("vm_reserv_populate: reserv %p's domain is corrupted %d",
 	    rv, rv->domain));
-	popmap_set(rv->popmap, index);
-	rv->popcnt++;
+
+	rv->popcnt += count;
+	for (; count > 0; count--, index++) {
+		KASSERT(popmap_is_clear(rv->popmap, index),
+		    ("vm_reserv_populate: reserv %p's popmap[%d] is set", rv,
+		    index));
+		popmap_set(rv->popmap, index);
+	}
 	vm_reserv_domain_lock(rv->domain);
 	if (rv->inpartpopq) {
 		TAILQ_REMOVE(&vm_rvq_partpop[rv->domain], rv, partpopq);
@@ -645,8 +649,7 @@ vm_reserv_extend_contig(int req, vm_object_t object, vm_pindex_t pindex,
 	}
 	if (vm_domain_allocate(vmd, req, npages, false) == 0)
 		goto out;
-	for (i = 0; i < npages; i++)
-		vm_reserv_populate(rv, index + i);
+	vm_reserv_populate(rv, index, npages);
 	vm_reserv_unlock(rv);
 	return (m);
 
@@ -681,7 +684,7 @@ vm_reserv_alloc_contig(int req, vm_object_t object, vm_pindex_t pindex, int doma
 	vm_pindex_t first, leftcap, rightcap;
 	vm_reserv_t rv;
 	u_long allocpages, maxpages, minpages;
-	int i, index, n;
+	int index, n;
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	KASSERT(npages != 0, ("vm_reserv_alloc_contig: npages is 0"));
@@ -823,8 +826,7 @@ vm_reserv_alloc_contig(int req, vm_object_t object, vm_pindex_t pindex, int doma
 		vm_reserv_lock(rv);
 		vm_reserv_insert(rv, object, first);
 		n = ulmin(VM_LEVEL_0_NPAGES - index, npages);
-		for (i = 0; i < n; i++)
-			vm_reserv_populate(rv, index + i);
+		vm_reserv_populate(rv, index, n);
 		npages -= n;
 		if (m_ret == NULL) {
 			m_ret = &rv->pages[index];
@@ -898,18 +900,16 @@ vm_reserv_extend(int req, vm_object_t object, vm_pindex_t pindex, int domain,
 	 */
 	nalloc = countp != NULL ? imin(VM_LEVEL_0_NPAGES - index, *countp) : 1;
 	if ((avail = vm_domain_allocate(vmd, req, nalloc, true)) > 0) {
-		vm_reserv_populate(rv, index);
 		if (countp != NULL) {
-			for (nalloc = 1; nalloc < avail; nalloc++) {
-				if (popmap_is_set(rv->popmap, ++index))
+			for (nalloc = 1; nalloc < avail; nalloc++)
+				if (popmap_is_set(rv->popmap, index + nalloc))
 					break;
-				vm_reserv_populate(rv, index);
-			}
 			if (nalloc < avail)
 				/* Return leftover pages. */
 				vm_domain_freecnt_inc(vmd, avail - nalloc);
 			*countp = nalloc;
 		}
+		vm_reserv_populate(rv, index, nalloc);
 	} else
 		m = NULL;
 out:
@@ -1033,19 +1033,17 @@ vm_reserv_alloc_page(int req, vm_object_t object, vm_pindex_t pindex, int domain
 	KASSERT(rv->pages == m,
 	    ("vm_reserv_alloc_page: reserv %p's pages is corrupted", rv));
 	vm_reserv_insert(rv, object, first);
-	vm_reserv_populate(rv, index);
 	m = &rv->pages[index];
 	if (countp != NULL) {
-		for (nalloc = 1; nalloc < avail; nalloc++) {
-			if (popmap_is_set(rv->popmap, ++index))
+		for (nalloc = 1; nalloc < avail; nalloc++)
+			if (popmap_is_set(rv->popmap, index + nalloc))
 				break;
-			vm_reserv_populate(rv, index);
-		}
 		if (nalloc < avail)
 			/* Return leftover pages. */
 			vm_domain_freecnt_inc(vmd, avail - nalloc);
 		*countp = nalloc;
 	}
+	vm_reserv_populate(rv, index, nalloc);
 	vm_reserv_unlock(rv);
 
 	return (m);
