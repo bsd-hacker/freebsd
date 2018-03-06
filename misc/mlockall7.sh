@@ -28,7 +28,10 @@
 # $FreeBSD$
 #
 
-# Variation of mmap18.sh. No problems seen.
+# Variation of mmap18.sh.
+# "panic: vm_page_unwire: page 0xfffff81038d721f0's wire count is zero" seen:
+# https://people.freebsd.org/~pho/stress/log/mlockall7.txt
+# Fixed by r328880
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -55,7 +58,6 @@ EOF
 #include <sys/wait.h>
 
 #include <err.h>
-//#include <errno.h>
 #include <fcntl.h>
 #include <pwd.h>
 #include <pthread.h>
