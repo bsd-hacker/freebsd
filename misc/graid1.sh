@@ -63,8 +63,11 @@ export runRUNTIME=10m
 export RUNDIR=$mntpoint/stressX
 
 su $testuser -c 'cd ..; ./run.sh marcus.cfg'
-while mount | grep $mntpoint | grep -q /mirror/; do
-	umount $mntpoint || sleep 1
+for i in `jot 6`; do
+	mount | grep -q "on $mntpoint " || break
+	umount $mntpoint && break || sleep 10
+	[ $i -eq 6 ] &&
+	    { echo FATAL; fstat -mf $mntpoint; exit 1; }
 done
 checkfs /dev/mirror/data || s=1
 gmirror stop data || s=2
