@@ -84,11 +84,12 @@ static int	verbose;
 static void
 usage(void)
 {
-	fprintf(stderr, "%s\n%s\n%s\n",
-    "usage: dumpon [-v] [-k public_key_file] [-Zz] special_file",
-    "usage: dumpon [-v] [-g <gateway>|default] -s <host> -c <client> <iface>\n"
-    "       dumpon [-v] off",
-    "       dumpon [-v] -l");
+	fprintf(stderr,
+    "usage: dumpon [-v] [-k <pubkey>] [-Zz] <device>\n"
+    "       dumpon [-v] [-k <pubkey>] [-Zz]\n"
+    "              [-g <gateway>|default] -s <server> -c <client> <iface>\n"
+    "       dumpon [-v] off\n"
+    "       dumpon [-v] -l\n");
 	exit(EX_USAGE);
 }
 
