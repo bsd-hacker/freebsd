@@ -30,7 +30,8 @@
 
 # Mirror tests with gnop(8) errors introduced in 2 out of three partitions.
 
-# No problems seen.
+# https://people.freebsd.org/~pho/stress/log/graid1_5-2.txt
+# Fixed by r327698
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
