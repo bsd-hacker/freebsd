@@ -521,7 +521,7 @@ netdump_mbuf_init(int nmbuf, int nclust)
 }
 
 /*
- * Free preallocated mbufs and clusters.
+ * Free preallocated mbufs and clusters and destroy netdump cache zones.
  */
 void
 netdump_mbuf_drain(void)
@@ -534,9 +534,18 @@ netdump_mbuf_drain(void)
 	while ((item = mbufq_dequeue(&nd_clustq)) != NULL)
 		uma_zfree(zone_clust, item);
 
-	uma_zdestroy(nd_zone_mbuf);
-	uma_zdestroy(nd_zone_clust);
-	uma_zdestroy(nd_zone_pack);
+	if (nd_zone_mbuf != NULL) {
+		uma_zdestroy(nd_zone_mbuf);
+		nd_zone_mbuf = NULL;
+	}
+	if (nd_zone_clust != NULL) {
+		uma_zdestroy(nd_zone_clust);
+		nd_zone_clust = NULL;
+	}
+	if (nd_zone_pack != NULL) {
+		uma_zdestroy(nd_zone_pack);
+		nd_zone_pack = NULL;
+	}
 }
 
 /*

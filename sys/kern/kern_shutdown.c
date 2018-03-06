@@ -190,6 +190,11 @@ SYSCTL_INT(_kern, OID_AUTO, kerneldump_gzlevel, CTLFLAG_RWTUN,
     &kerneldump_gzlevel, 0,
     "Kernel crash dump compression level");
 
+#ifdef NETDUMP
+/* Defined in kern_mbuf.c. */
+void	netdump_mbuf_drain(void);
+#endif
+
 /*
  * Variable panicstr contains argument to first call to panic; used as flag
  * to indicate that the kernel has already called panic.
@@ -1040,10 +1045,6 @@ set_dumper(struct dumperinfo *di, const char *devname, struct thread *td,
 	if (error != 0)
 		return (error);
 
-	if (di == NULL) {
-		error = 0;
-		goto cleanup;
-	}
 	if (dumper.dumper != NULL)
 		return (EBUSY);
 	dumper = *di;
@@ -1089,7 +1090,25 @@ set_dumper(struct dumperinfo *di, const char *devname, struct thread *td,
 
 	dumper.blockbuf = malloc(di->blocksize, M_DUMPER, M_WAITOK | M_ZERO);
 	return (0);
+
 cleanup:
+	(void)clear_dumper(td);
+	return (error);
+}
+
+int
+clear_dumper(struct thread *td)
+{
+	int error;
+
+	error = priv_check(td, PRIV_SETDUMPER);
+	if (error != 0)
+		return (error);
+
+#ifdef NETDUMP
+	netdump_mbuf_drain();
+#endif
+
 #ifdef EKCD
 	if (dumper.kdcrypto != NULL) {
 		explicit_bzero(dumper.kdcrypto, sizeof(*dumper.kdcrypto) +
@@ -1106,7 +1125,7 @@ cleanup:
 	}
 	explicit_bzero(&dumper, sizeof(dumper));
 	dumpdevname[0] = '\0';
-	return (error);
+	return (0);
 }
 
 static int

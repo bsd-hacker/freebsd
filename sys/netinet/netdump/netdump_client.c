@@ -1135,15 +1135,12 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		memcpy(&conf->ndc_gateway, &nd_gateway, sizeof(nd_gateway));
 		break;
 	case NETDUMPSCONF:
-		error = priv_check(td, PRIV_SETDUMPER);
-		if (error != 0)
-			break;
-
 		conf = (struct netdump_conf *)addr;
 		if (conf->ndc_kda.kda_enable == 0) {
 			if (nd_enabled) {
-				nd_enabled = 0;
-				netdump_mbuf_drain();
+				error = clear_dumper(td);
+				if (error == 0)
+					nd_enabled = 0;
 			}
 			break;
 		}
@@ -1165,10 +1162,8 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		    conf->ndc_kda.kda_compression, conf->ndc_kda.kda_encryption,
 		    conf->ndc_kda.kda_key, conf->ndc_kda.kda_encryptedkeysize,
 		    conf->ndc_kda.kda_encryptedkey);
-		if (error != 0) {
+		if (error != 0)
 			nd_enabled = 0;
-			netdump_mbuf_drain();
-		}
 		break;
 	default:
 		error = EINVAL;
@@ -1229,9 +1224,9 @@ netdump_modevent(module_t mod __unused, int what, void *priv __unused)
 	case MOD_UNLOAD:
 		destroy_dev(netdump_cdev);
 		if (nd_enabled) {
-			(void)set_dumper(NULL, NULL, curthread, 0, 0, NULL, 0,
-			    NULL);
-			netdump_mbuf_drain();
+			printf("netdump: disabling dump device for unload\n");
+			(void)clear_dumper(curthread);
+			nd_enabled = 0;
 		}
 		break;
 	default:
