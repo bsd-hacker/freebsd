@@ -150,6 +150,8 @@ static struct ether_addr nd_gw_mac;
 static struct ifnet *nd_ifp;
 static uint16_t nd_server_port = NETDUMP_PORT;
 
+FEATURE(netdump, "Netdump client support");
+
 static SYSCTL_NODE(_net, OID_AUTO, netdump, CTLFLAG_RD, NULL,
     "netdump parameters");
 
