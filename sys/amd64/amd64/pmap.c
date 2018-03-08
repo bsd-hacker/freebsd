@@ -687,22 +687,6 @@ static vm_page_t pmap_allocpte(pmap_t pmap, vm_offset_t va,
 static void _pmap_unwire_ptp(pmap_t pmap, vm_offset_t va, vm_page_t m,
     struct spglist *free);
 static int pmap_unuse_pt(pmap_t, vm_offset_t, pd_entry_t, struct spglist *);
-static vm_offset_t pmap_kmem_choose(vm_offset_t addr);
-
-/*
- * Move the kernel virtual free pointer to the next
- * 2MB.  This is used to help improve performance
- * by using a large (2MB) page for much of the kernel
- * (.text, .data, .bss)
- */
-static vm_offset_t
-pmap_kmem_choose(vm_offset_t addr)
-{
-	vm_offset_t newaddr = addr;
-
-	newaddr = roundup2(addr, NBPDR);
-	return (newaddr);
-}
 
 /********************/
 /* Inline functions */
@@ -886,14 +870,64 @@ nkpt_init(vm_paddr_t addr)
 	nkpt = pt_pages;
 }
 
+/*
+ * Returns the proper write/execute permission for a physical page that is
+ * part of the initial boot allocations.
+ *
+ * If the page has kernel text, it is marked as read-only. If the page has
+ * kernel read-only data, it is marked as read-only/not-executable. If the
+ * page has only read-write data, it is marked as read-write/not-executable.
+ * If the page is below/above the kernel range, it is marked as read-write.
+ *
+ * This function operates on 2M pages, since we map the kernel space that
+ * way.
+ *
+ * Note that this doesn't currently provide any protection for modules.
+ */
+static inline pt_entry_t
+bootaddr_rwx(vm_paddr_t pa)
+{
+
+	/*
+	 * Everything in the same 2M page as the start of the kernel
+	 * should be static. On the other hand, things in the same 2M
+	 * page as the end of the kernel could be read-write/executable,
+	 * as the kernel image is not guaranteed to end on a 2M boundary.
+	 */
+	if (pa < trunc_2mpage(btext - KERNBASE) ||
+	   pa >= trunc_2mpage(_end - KERNBASE))
+		return (X86_PG_RW);
+	/*
+	 * The linker should ensure that the read-only and read-write
+	 * portions don't share the same 2M page, so this shouldn't
+	 * impact read-only data. However, in any case, any page with
+	 * read-write data needs to be read-write.
+	 */
+	if (pa >= trunc_2mpage(brwsection - KERNBASE))
+		return (X86_PG_RW | pg_nx);
+	/*
+	 * Mark any 2M page containing kernel text as read-only. Mark
+	 * other pages with read-only data as read-only and not executable.
+	 * (It is likely a small portion of the read-only data section will
+	 * be marked as read-only, but executable. This should be acceptable
+	 * since the read-only protection will keep the data from changing.)
+	 * Note that fixups to the .text section will still work until we
+	 * set CR0.WP.
+	 */
+	if (pa < round_2mpage(etext - KERNBASE))
+		return (0);
+	return (pg_nx);
+}
+
 static void
 create_pagetables(vm_paddr_t *firstaddr)
 {
-	int i, j, ndm1g, nkpdpe;
+	int i, j, ndm1g, nkpdpe, nkdmpde;
 	pt_entry_t *pt_p;
 	pd_entry_t *pd_p;
 	pdp_entry_t *pdp_p;
 	pml4_entry_t *p4_p;
+	uint64_t DMPDkernphys;
 
 	/* Allocate page table pages for the direct map */
 	ndmpdp = howmany(ptoa(Maxmem), NBPDP);
@@ -912,8 +946,20 @@ create_pagetables(vm_paddr_t *firstaddr)
 	}
 	DMPDPphys = allocpages(firstaddr, ndmpdpphys);
 	ndm1g = 0;
-	if ((amd_feature & AMDID_PAGE1GB) != 0)
+	if ((amd_feature & AMDID_PAGE1GB) != 0) {
+		/*
+		 * Calculate the number of 1G pages that will fully fit in
+		 * Maxmem.
+		 */
 		ndm1g = ptoa(Maxmem) >> PDPSHIFT;
+
+		/*
+		 * Allocate 2M pages for the kernel. These will be used in
+		 * place of the first one or more 1G pages from ndm1g.
+		 */
+		nkdmpde = howmany((vm_offset_t)(brwsection - KERNBASE), NBPDP);
+		DMPDkernphys = allocpages(firstaddr, nkdmpde);
+	}
 	if (ndm1g < ndmpdp)
 		DMPDphys = allocpages(firstaddr, ndmpdp - ndm1g);
 	dmaplimit = (vm_paddr_t)ndmpdp << PDPSHIFT;
@@ -939,11 +985,10 @@ create_pagetables(vm_paddr_t *firstaddr)
 	KPDphys = allocpages(firstaddr, nkpdpe);
 
 	/* Fill in the underlying page table pages */
-	/* Nominally read-only (but really R/W) from zero to physfree */
 	/* XXX not fully used, underneath 2M pages */
 	pt_p = (pt_entry_t *)KPTphys;
 	for (i = 0; ptoa(i) < *firstaddr; i++)
-		pt_p[i] = ptoa(i) | X86_PG_RW | X86_PG_V | pg_g;
+		pt_p[i] = ptoa(i) | X86_PG_V | pg_g | bootaddr_rwx(ptoa(i));
 
 	/* Now map the page tables at their location within PTmap */
 	pd_p = (pd_entry_t *)KPDphys;
@@ -953,8 +998,8 @@ create_pagetables(vm_paddr_t *firstaddr)
 	/* Map from zero to end of allocations under 2M pages */
 	/* This replaces some of the KPTphys entries above */
 	for (i = 0; (i << PDRSHIFT) < *firstaddr; i++)
-		pd_p[i] = (i << PDRSHIFT) | X86_PG_RW | X86_PG_V | PG_PS |
-		    pg_g;
+		pd_p[i] = (i << PDRSHIFT) | X86_PG_V | PG_PS | pg_g |
+		    bootaddr_rwx(i << PDRSHIFT);
 
 	/*
 	 * Because we map the physical blocks in 2M pages, adjust firstaddr
@@ -996,10 +1041,26 @@ create_pagetables(vm_paddr_t *firstaddr)
 		pdp_p[i] |= X86_PG_RW | X86_PG_V | PG_U;
 	}
 
+	/*
+	 * Instead of using a 1G page for the memory containing the kernel,
+	 * use 2M pages with appropriate permissions. (If using 1G pages,
+	 * this will partially overwrite the PDPEs above.)
+	 */
+	if (ndm1g) {
+		pd_p = (pd_entry_t *)DMPDkernphys;
+		for (i = 0; i < (NPDEPG * nkdmpde); i++)
+			pd_p[i] = (i << PDRSHIFT) | X86_PG_V | PG_PS | pg_g |
+			    X86_PG_M | X86_PG_A | pg_nx |
+			    bootaddr_rwx(i << PDRSHIFT);
+		for (i = 0; i < nkdmpde; i++)
+			pdp_p[i] = (DMPDkernphys + ptoa(i)) | X86_PG_RW |
+			    X86_PG_V | PG_U;
+	}
+
 	/* And recursively map PML4 to itself in order to get PTmap */
 	p4_p = (pml4_entry_t *)KPML4phys;
 	p4_p[PML4PML4I] = KPML4phys;
-	p4_p[PML4PML4I] |= X86_PG_RW | X86_PG_V | PG_U;
+	p4_p[PML4PML4I] |= X86_PG_RW | X86_PG_V | PG_U | pg_nx;
 
 	/* Connect the Direct Map slot(s) up to the PML4. */
 	for (i = 0; i < ndmpdpphys; i++) {
@@ -1049,7 +1110,6 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 	vm_phys_add_seg(KPTphys, KPTphys + ptoa(nkpt));
 
 	virtual_avail = (vm_offset_t) KERNBASE + *firstaddr;
-	virtual_avail = pmap_kmem_choose(virtual_avail);
 
 	virtual_end = VM_MAX_KERNEL_ADDRESS;
 
