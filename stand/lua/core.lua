@@ -138,7 +138,18 @@ function core.setSafeMode(safe_mode)
 	core.sm = safe_mode
 end
 
+function core.configReloaded()
+	-- Clear the kernel cache on config changes, autodetect might have
+	-- changed or if we've switched boot environments then we could have
+	-- a new kernel set.
+	core.cached_kernels = nil
+end
+
 function core.kernelList()
+	if core.cached_kernels ~= nil then
+		return core.cached_kernels
+	end
+
 	local k = loader.getenv("kernel")
 	local v = loader.getenv("kernels")
 	local autodetect = loader.getenv("kernels_autodetect") or ""
@@ -166,7 +177,8 @@ function core.kernelList()
 	-- setting, kernels_autodetect. If it's set to 'yes', we'll add
 	-- any kernels we detect based on the criteria described.
 	if autodetect:lower() ~= "yes" then
-		return kernels
+		core.cached_kernels = kernels
+		return core.cached_kernels
 	end
 
 	-- Automatically detect other bootable kernel directories using a
@@ -195,7 +207,8 @@ function core.kernelList()
 
 		::continue::
 	end
-	return kernels
+	core.cached_kernels = kernels
+	return core.cached_kernels
 end
 
 function core.bootenvDefault()
@@ -240,12 +253,18 @@ function core.setDefaults()
 end
 
 function core.autoboot(argstr)
-	config.loadelf()
+	-- loadelf() only if we've not already loaded a kernel
+	if loader.getenv("kernelname") == nil then
+		config.loadelf()
+	end
 	loader.perform(composeLoaderCmd("autoboot", argstr))
 end
 
 function core.boot(argstr)
-	config.loadelf()
+	-- loadelf() only if we've not already loaded a kernel
+	if loader.getenv("kernelname") == nil then
+		config.loadelf()
+	end
 	loader.perform(composeLoaderCmd("boot", argstr))
 end
 
