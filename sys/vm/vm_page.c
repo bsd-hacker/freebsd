@@ -1678,7 +1678,7 @@ vm_page_alloc_after(vm_object_t object, vm_pindex_t pindex,
 	vm_page_t m;
 	int domain;
 
-	vm_domainset_iter_page_init(&di, object, &domain, &req);
+	vm_domainset_iter_page_init(&di, object, pindex, &domain, &req);
 	do {
 		m = vm_page_alloc_domain_after(object, pindex, domain, req,
 		    mpred);
@@ -1881,7 +1881,7 @@ vm_page_alloc_pages_after(vm_object_t object, vm_pindex_t pindex, int req,
 	struct vm_domainset_iter di;
 	int domain, n;
 
-	vm_domainset_iter_page_init(&di, object, &domain, &req);
+	vm_domainset_iter_page_init(&di, object, pindex, &domain, &req);
 	do {
 		n = vm_page_alloc_pages_domain_after(object, pindex, domain,
 		    req, ma, nreq, mpred);
@@ -2108,7 +2108,7 @@ vm_page_alloc_contig(vm_object_t object, vm_pindex_t pindex, int req,
 	vm_page_t m;
 	int domain;
 
-	vm_domainset_iter_page_init(&di, object, &domain, &req);
+	vm_domainset_iter_page_init(&di, object, pindex, &domain, &req);
 	do {
 		m = vm_page_alloc_contig_domain(object, pindex, domain, req,
 		    npages, low, high, alignment, boundary, memattr);
@@ -2312,7 +2312,7 @@ vm_page_alloc_freelist(int freelist, int req)
 	vm_page_t m;
 	int domain;
 
-	vm_domainset_iter_page_init(&di, kernel_object, &domain, &req);
+	vm_domainset_iter_page_init(&di, NULL, 0, &domain, &req);
 	do {
 		m = vm_page_alloc_freelist_domain(domain, freelist, req);
 		if (m != NULL)
@@ -2816,21 +2816,7 @@ unlock:
 	}
 	if (m_mtx != NULL)
 		mtx_unlock(m_mtx);
-	if ((m = SLIST_FIRST(&free)) != NULL) {
-		int cnt;
-
-		cnt = 0;
-		vmd = VM_DOMAIN(domain);
-		vm_domain_free_lock(vmd);
-		do {
-			MPASS(vm_phys_domain(m) == domain);
-			SLIST_REMOVE_HEAD(&free, plinks.s.ss);
-			vm_page_free_phys(vmd, m);
-			cnt++;
-		} while ((m = SLIST_FIRST(&free)) != NULL);
-		vm_domain_free_unlock(vmd);
-		vm_domain_freecnt_inc(vmd, cnt);
-	}
+	vm_page_free_pages_toq(&free, false);
 	return (error);
 }
 
@@ -2959,7 +2945,7 @@ vm_page_reclaim_contig(int req, u_long npages, vm_paddr_t low, vm_paddr_t high,
 	int domain;
 	bool ret;
 
-	vm_domainset_iter_page_init(&di, kernel_object, &domain, &req);
+	vm_domainset_iter_page_init(&di, NULL, 0, &domain, &req);
 	do {
 		ret = vm_page_reclaim_contig_domain(domain, req, npages, low,
 		    high, alignment, boundary);
@@ -3682,7 +3668,37 @@ vm_page_free_toq(vm_page_t m)
 }
 
 /*
- * vm_page_wire:
+ *	vm_page_free_pages_toq:
+ *
+ *	Returns a list of pages to the free list, disassociating it
+ *	from any VM object.  In other words, this is equivalent to
+ *	calling vm_page_free_toq() for each page of a list of VM objects.
+ *
+ *	The objects must be locked.  The pages must be locked if it is
+ *	managed.
+ */
+void
+vm_page_free_pages_toq(struct spglist *free, bool update_wire_count)
+{
+	vm_page_t m;
+	int count;
+
+	if (SLIST_EMPTY(free))
+		return;
+
+	count = 0;
+	while ((m = SLIST_FIRST(free)) != NULL) {
+		count++;
+		SLIST_REMOVE_HEAD(free, plinks.s.ss);
+		vm_page_free_toq(m);
+	}
+
+	if (update_wire_count)
+		vm_wire_sub(count);
+}
+
+/*
+ *	vm_page_wire:
  *
  * Mark this page as wired down.  If the page is fictitious, then
  * its wire count must remain one.
