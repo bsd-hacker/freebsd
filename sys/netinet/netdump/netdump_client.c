@@ -1006,14 +1006,17 @@ static int
 netdump_write_headers(struct dumperinfo *di, struct kerneldumpheader *kdh,
     void *key, uint32_t keysize)
 {
-
-	if (sizeof(*kdh) + keysize > sizeof(nd_buf))
-		return (EINVAL);
+	int error;
 
 	memcpy(nd_buf, kdh, sizeof(*kdh));
-	if (key != NULL)
-		memcpy(nd_buf + sizeof(*kdh), key, keysize);
-	return (netdump_send(NETDUMP_KDH, 0, nd_buf, sizeof(*kdh) + keysize));
+	error = netdump_send(NETDUMP_KDH, 0, nd_buf, sizeof(*kdh));
+	if (error == 0 && keysize > 0) {
+		if (keysize > sizeof(nd_buf))
+			return (EINVAL);
+		memcpy(nd_buf, key, keysize);
+		error = netdump_send(NETDUMP_EKCD_KEY, 0, nd_buf, keysize);
+	}
+	return (error);
 }
 
 /*
