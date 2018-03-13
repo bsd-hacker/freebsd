@@ -1,10 +1,6 @@
 /*-
- * Copyright (c) 2013 Robert N. M. Watson
+ * Copyright (c) 2018 Netflix, Inc.
  * All rights reserved.
- *
- * This software was developed by SRI International and the University of
- * Cambridge Computer Laboratory under DARPA/AFRL contract (FA8750-10-C-0237)
- * ("CTSRD"), as part of the DARPA CRASH research programme.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,60 +27,61 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
+#include <stand.h>
+#include <efi.h>
+#include <efichar.h>
+#include <efilib.h>
 
-#include <bootstrap.h>
+static EFI_GUID FreeBSDBootVarGUID = FREEBSD_BOOT_VAR_GUID;
+static EFI_GUID GlobalBootVarGUID = UEFI_BOOT_VAR_GUID;
 
-#include <cons.h>
-
-static void	c_probe(struct console *);
-static int	c_init(int);
-static void	c_out(int);
-static int	c_in(void);
-static int	c_ready(void);
-
-struct console altera_jtag_uart_console = {
-	.c_name = "comconsole",
-	.c_desc = "altera jtag uart",
-	.c_flags = 0,
-	.c_probe = c_probe,
-	.c_init = c_init,
-	.c_out = c_out,
-	.c_in = c_in,
-	.c_ready = c_ready,
-};
-
-static void
-c_probe(struct console *cp)
+EFI_STATUS
+efi_getenv(EFI_GUID *g, const char *v, void *data, size_t *len)
 {
+	size_t ul;
+	CHAR16 *uv;
+	UINT32 attr;
+	UINTN dl;
+	EFI_STATUS rv;
 
-	cp->c_flags |= C_PRESENTIN|C_PRESENTOUT;
+	uv = NULL;
+	if (utf8_to_ucs2(v, &uv, &ul) != 0)
+		return (EFI_OUT_OF_RESOURCES);
+	dl = *len;
+	rv = RS->GetVariable(uv, g, &attr, &dl, data);
+	if (rv == EFI_SUCCESS)
+		*len = dl;
+	free(uv);
+	return (rv);
 }
 
-static int
-c_init(int arg)
+EFI_STATUS
+efi_global_getenv(const char *v, void *data, size_t *len)
 {
 
-	return (0);
+	return (efi_getenv(&GlobalBootVarGUID, v, data, len));
 }
 
-static void
-c_out(int c)
+EFI_STATUS
+efi_freebsd_getenv(const char *v, void *data, size_t *len)
 {
 
-	beri_putc(c);
+	return (efi_getenv(&FreeBSDBootVarGUID, v, data, len));
 }
 
-static int
-c_in(void)
+EFI_STATUS
+efi_setenv_freebsd_wcs(const char *varname, CHAR16 *valstr)
 {
+	CHAR16 *var = NULL;
+	size_t len;
+	EFI_STATUS rv;
 
-	return (beri_getc());
+	if (utf8_to_ucs2(varname, &var, &len) != 0)
+		return (EFI_OUT_OF_RESOURCES);
+	rv = RS->SetVariable(var, &FreeBSDBootVarGUID,
+	    EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS,
+	    (ucs2len(valstr) + 1) * sizeof(efi_char), valstr);
+	free(var);
+	return (rv);
 }
 
-static int
-c_ready(void)
-{
-
-	return (keyhit(0));
-}
