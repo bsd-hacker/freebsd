@@ -57,8 +57,12 @@ export TESTPROGS=`cd ..; find testcases/ -perm -1 -type f | \
 su $testuser -c 'cd ..; ./testcases/run/run $TESTPROGS'
 
 ../tools/killall.sh
-while mount | grep "on $mntpoint " | grep -q /dev/md; do
-	umount $mntpoint || sleep 1
+for i in `jot 6`; do
+	mount | grep -q "on $mntpoint " || break
+	umount $mntpoint && break || sleep 10
+	[ $i -eq 6 ] &&
+	    { echo FATAL; fstat -mf $mntpoint; exit 1; }
 done
-checkfs /dev/md${mdstart}$part
+checkfs /dev/md${mdstart}$part; s=$?
 mdconfig -d -u $mdstart
+return $s
