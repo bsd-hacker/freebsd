@@ -29,19 +29,7 @@
 #
 
 # contigmalloc(9) / contigfree(9) test scenario.
-# malloc() a random number of buffers with random size and then free them.
-
-# A malloc pattern might look like this:
-# contigmalloc(186 pages)
-# contigmalloc(56 pages)
-# contigmalloc(9 pages)
-# contigmalloc(202 pages)
-# contigmalloc(49 pages)
-# contigmalloc(5 pages)
-
-# "panic: vm_reserv_alloc_contig: reserv 0xff... isn't free" seen.
-# http://people.freebsd.org/~pho/stress/log/contigmalloc.txt
-# Fixed by r271351.
+# Test allocation with 1GB
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 [ -d /usr/src/sys ] || exit 0
@@ -64,23 +52,16 @@ cat > $dir/ctest.c <<EOF
 #include <time.h>
 #include <unistd.h>
 
-#define min(a,b) (((a)<(b))?(a):(b))
-#define CAP (64 * 1024 * 1024)		/* Total allocation */
-#define MAXBUF (32 * 1024 * 1024)	/* Max buffer size */
-#define N 512				/* Max allocations */
-#define RUNTIME 120
+#define MAXBUF (1LL * 1024 * 1024 * 1024)	/* Max buffer size */
 #define TALLOC 1
 #define TFREE  2
-
-void *p[N];
-long size[N];
-int n;
 
 void
 test(int argc, char *argv[])
 {
-	long mw, s;
+	long mw, size;
 	int i, no, ps, res;
+	char *cp;
 
 	if (argc == 3) {
 		no = atoi(argv[1]);
@@ -90,49 +71,35 @@ test(int argc, char *argv[])
 		errx(1, "Usage: %s <syscall number> <max wired>", argv[0]);
 
 	ps = getpagesize();
-	s = 0;
-	n = arc4random() % N + 1;
-	mw = mw / 100 * 10 * ps;	/* Use 10% of vm.max_wired */
-	mw = min(mw, CAP);
-	for (i = 0; i < n; i++) {
-		size[i] = round_page((arc4random() % MAXBUF) + 1);
-		if (s + size[i] > mw)
-			continue;
-		res = syscall(no, TALLOC, &p[i], &size[i]);
-		if (res == -1) {
-			warn("contigmalloc(%lu pages) failed at loop %d",
-			    size[i] / ps, i);
-		} else {
+	if (mw < MAXBUF / ps) {
+		fprintf(stderr, "max_wired too small for this test\n");
+		exit (0);
+	}
+	i = 0;
+	size = round_page(MAXBUF);
+	res = syscall(no, TALLOC, &cp, &size);
+	if (res == -1) {
+		err(1, "contigmalloc(%lu MB) failed",
+		    size / 1024 / 1024);
+	} else {
 #if defined(TEST)
-			fprintf(stderr, "contigmalloc(%lu pages)\n",
-			    size[i] / ps);
+		fprintf(stderr, "contigmalloc(%lu pages) %luMB\n",
+		    size / ps, size / 1024 / 1024);
 #endif
-			s += size[i];
-		}
 	}
 
-	setproctitle("%ld Mb", s / 1024 / 1024);
-
-	for (i = 0; i < n; i++) {
-		if (p[i] != NULL) {
-			res = syscall(no, TFREE, &p[i], &size[i]);
+	res = syscall(no, TFREE, &cp, &size);
 #if defined(TEST)
-			fprintf(stderr, "contigfree(%lu pages)\n",
-			    size[i] / ps);
+	fprintf(stderr, "contigfree(%lu pages) %luMB\n",
+	    size / ps, size / 1024 / 1024);
 #endif
-			p[i] = NULL;
-		}
-	}
 }
 
 int
 main(int argc, char *argv[])
 {
-	time_t start;
 
-	start = time(NULL);
-	while (time(NULL) - start < RUNTIME)
-		test(argc, argv);
+	test(argc, argv);
 
 	return (0);
 }
